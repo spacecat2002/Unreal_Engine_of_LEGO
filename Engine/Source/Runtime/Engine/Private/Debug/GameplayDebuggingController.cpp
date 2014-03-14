@@ -11,7 +11,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogGameplayDebugging, Log, All);
 #define BUGIT_VIEWS (1<<EAIDebugDrawDataView::Basic) | (1 << EAIDebugDrawDataView::OverHead)
 #define BREAK_LINE_TEXT TEXT("________________________________________________________________")
 
-UGameplayDebuggingControllerComponent::UGameplayDebuggingControllerComponent(const class FPostConstructInitializeProperties& PCIP) 
+UGameplayDebuggingController::UGameplayDebuggingController(const class FPostConstructInitializeProperties& PCIP) 
 	: Super(PCIP)
 	, DebugComponentKey(EKeys::Quote)
 	, CurrentQuickBugNum(0)
@@ -28,11 +28,11 @@ UGameplayDebuggingControllerComponent::UGameplayDebuggingControllerComponent(con
 	DebugComponent_LastActiveViews = 1 << EAIDebugDrawDataView::Basic;
 }
 
-void UGameplayDebuggingControllerComponent::BeginDestroy()
+void UGameplayDebuggingController::BeginDestroy()
 {
 #if !UE_BUILD_SHIPPING && WITH_EDITOR
 	// Register for debug drawing
-	UDebugDrawService::Unregister(FDebugDrawDelegate::CreateUObject(this, &UGameplayDebuggingControllerComponent::OnDebugAI));
+	UDebugDrawService::Unregister(FDebugDrawDelegate::CreateUObject(this, &UGameplayDebuggingController::OnDebugAI));
 #endif
 
 	APlayerController* PC = Cast<APlayerController>(GetOuter());
@@ -59,7 +59,7 @@ void UGameplayDebuggingControllerComponent::BeginDestroy()
 	Super::BeginDestroy();
 }
 
-void UGameplayDebuggingControllerComponent::InitializeComponent()
+void UGameplayDebuggingController::InitializeComponent()
 {
 	Super::InitializeComponent();
 
@@ -67,8 +67,8 @@ void UGameplayDebuggingControllerComponent::InitializeComponent()
 
 	if (PC && PC->InputComponent)
 	{
-		PC->InputComponent->BindKey(FInputChord(DebugComponentKey, false, false, false), IE_Pressed, this, &UGameplayDebuggingControllerComponent::OnControlPressed);
-		PC->InputComponent->BindKey(FInputChord(DebugComponentKey, false, false, false), IE_Released, this, &UGameplayDebuggingControllerComponent::OnControlReleased);
+		PC->InputComponent->BindKey(FInputChord(DebugComponentKey, false, false, false), IE_Pressed, this, &UGameplayDebuggingController::StartAIDebugView);
+		PC->InputComponent->BindKey(FInputChord(DebugComponentKey, false, false, false), IE_Released, this, &UGameplayDebuggingController::LockAIDebugView);
 	}
 
 	if ( DebugComponentHUDClass == NULL )
@@ -78,31 +78,11 @@ void UGameplayDebuggingControllerComponent::InitializeComponent()
 
 #if !UE_BUILD_SHIPPING && WITH_EDITOR
 	// Register for debug drawing
-	UDebugDrawService::Register(TEXT("DebugAI"), FDebugDrawDelegate::CreateUObject(this, &UGameplayDebuggingControllerComponent::OnDebugAI));
+	UDebugDrawService::Register(TEXT("DebugAI"), FDebugDrawDelegate::CreateUObject(this, &UGameplayDebuggingController::OnDebugAI));
 #endif
 }
 
-void UGameplayDebuggingControllerComponent::OnControlPressed()
-{
-	ControlKeyPressedTime = GetWorld()->GetTimeSeconds();
-	bWasDisplayingInfo = bDisplayAIDebugInfo;
-	StartAIDebugView();
-}
-
-void UGameplayDebuggingControllerComponent::OnControlReleased()
-{
-	const float DownTime = GetWorld()->GetTimeSeconds() - ControlKeyPressedTime;
-	if (DownTime < 0.5f && bWasDisplayingInfo)
-	{
-		EndAIDebugView();
-	}
-	else
-	{
-		LockAIDebugView();
-	}
-}
-
-void UGameplayDebuggingControllerComponent::OnDebugAI(class UCanvas* Canvas, class APlayerController* PC)
+void UGameplayDebuggingController::OnDebugAI(class UCanvas* Canvas, class APlayerController* PC)
 {
 #if !UE_BUILD_SHIPPING && WITH_EDITOR
 	if (World == NULL || IsPendingKill() || Canvas == NULL || Canvas->IsPendingKill())
@@ -125,9 +105,7 @@ void UGameplayDebuggingControllerComponent::OnDebugAI(class UCanvas* Canvas, cla
 	{
 		APawn *Pawn = *Iterator;
 		if (Pawn == NULL || Pawn->IsPendingKill())
-		{
 			continue;
-		}
 
 		if (UGameplayDebuggingComponent* DebuggingComponent = Pawn->GetDebugComponent(true))
 		{
@@ -157,12 +135,12 @@ void UGameplayDebuggingControllerComponent::OnDebugAI(class UCanvas* Canvas, cla
 #endif
 }
 
-void UGameplayDebuggingControllerComponent::StartAIDebugView()
+void UGameplayDebuggingController::StartAIDebugView()
 {
 	BeginAIDebugView();
 }
 
-void UGameplayDebuggingControllerComponent::BeginAIDebugView(bool bInJustBugIt)
+void UGameplayDebuggingController::BeginAIDebugView(bool bInJustBugIt)
 {
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	APlayerController* PC = Cast<APlayerController>(GetOuter());
@@ -189,9 +167,7 @@ void UGameplayDebuggingControllerComponent::BeginAIDebugView(bool bInJustBugIt)
 			{
 				APawn* NewTarget = *Iterator;
 				if ( NewTarget == PC->GetPawn() || (NewTarget->PlayerState && !NewTarget->PlayerState->bIsABot))
-				{
 					continue;
-				}
 
 				PC->ServerReplicateMessageToAIDebugView(NewTarget, EDebugComponentMessage::ActivateReplication, 0);
 			}
@@ -234,7 +210,7 @@ void UGameplayDebuggingControllerComponent::BeginAIDebugView(bool bInJustBugIt)
 #endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
 
-void UGameplayDebuggingControllerComponent::LockAIDebugView()
+void UGameplayDebuggingController::LockAIDebugView()
 {
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	APlayerController* MyPC = Cast<APlayerController>(GetOuter());
@@ -253,7 +229,7 @@ void UGameplayDebuggingControllerComponent::LockAIDebugView()
 #endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
 
-void UGameplayDebuggingControllerComponent::EndAIDebugView()
+void UGameplayDebuggingController::EndAIDebugView()
 {
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	// disable debug flag
@@ -277,7 +253,7 @@ void UGameplayDebuggingControllerComponent::EndAIDebugView()
 			OwnerComp->ServerEnableTargetSelection(false);
 			if (OwnerComp->IsViewActive(EAIDebugDrawDataView::NavMesh))
 			{
-				ToggleAIDebugView_SetView0();
+				ToggleAIDebugView_SetView13();
 			}
 		}
 	}
@@ -330,7 +306,7 @@ void UGameplayDebuggingControllerComponent::EndAIDebugView()
 #endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
 
-void UGameplayDebuggingControllerComponent::SetGameplayDebugFlag(bool bNewValue, APlayerController* PlayerController)
+void UGameplayDebuggingController::SetGameplayDebugFlag(bool bNewValue, APlayerController* PlayerController)
 {
 	if (PlayerController == NULL)
 	{
@@ -343,7 +319,7 @@ void UGameplayDebuggingControllerComponent::SetGameplayDebugFlag(bool bNewValue,
 	}
 }
 
-void UGameplayDebuggingControllerComponent::ToggleAIDebugView()
+void UGameplayDebuggingController::ToggleAIDebugView()
 {
 	if (!bDisplayAIDebugInfo)
 	{
@@ -356,14 +332,14 @@ void UGameplayDebuggingControllerComponent::ToggleAIDebugView()
 	}
 }
 
-void UGameplayDebuggingControllerComponent::BugIt()
+void UGameplayDebuggingController::BugIt()
 {
 	BeginAIDebugView(true);
 	LockAIDebugView();
 	bJustBugIt = true;
 }
 
-void UGameplayDebuggingControllerComponent::BindAIDebugViewKeys()
+void UGameplayDebuggingController::BindAIDebugViewKeys()
 {
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	if (!AIDebugViewInputComponent)
@@ -371,184 +347,227 @@ void UGameplayDebuggingControllerComponent::BindAIDebugViewKeys()
 		AIDebugViewInputComponent = ConstructObject<UInputComponent>(UInputComponent::StaticClass(), GetOwner(), TEXT("AIDebugViewInputComponent0"));
 		AIDebugViewInputComponent->RegisterComponent();
 
-		AIDebugViewInputComponent->BindKey(EKeys::Tab, IE_Pressed, this, &UGameplayDebuggingControllerComponent::ToggleAIDebugView_CycleView);
-		AIDebugViewInputComponent->BindKey(EKeys::NumPadZero, IE_Pressed, this, &UGameplayDebuggingControllerComponent::ToggleAIDebugView_SetView0);
-		AIDebugViewInputComponent->BindKey(EKeys::NumPadOne, IE_Pressed, this, &UGameplayDebuggingControllerComponent::ToggleAIDebugView_SetView1);
-		AIDebugViewInputComponent->BindKey(EKeys::NumPadTwo, IE_Pressed, this, &UGameplayDebuggingControllerComponent::ToggleAIDebugView_SetView2);
-		AIDebugViewInputComponent->BindKey(EKeys::NumPadThree, IE_Pressed, this, &UGameplayDebuggingControllerComponent::ToggleAIDebugView_SetView3);
-		AIDebugViewInputComponent->BindKey(EKeys::NumPadFour, IE_Pressed, this, &UGameplayDebuggingControllerComponent::ToggleAIDebugView_SetView4);
-		AIDebugViewInputComponent->BindKey(EKeys::NumPadFive, IE_Pressed, this, &UGameplayDebuggingControllerComponent::ToggleAIDebugView_SetView5);
-		AIDebugViewInputComponent->BindKey(EKeys::NumPadSix, IE_Pressed, this, &UGameplayDebuggingControllerComponent::ToggleAIDebugView_SetView6);
-		AIDebugViewInputComponent->BindKey(EKeys::NumPadSeven, IE_Pressed, this, &UGameplayDebuggingControllerComponent::ToggleAIDebugView_SetView7);
-		AIDebugViewInputComponent->BindKey(EKeys::NumPadEight, IE_Pressed, this, &UGameplayDebuggingControllerComponent::ToggleAIDebugView_SetView8);
-		AIDebugViewInputComponent->BindKey(EKeys::NumPadNine, IE_Pressed, this, &UGameplayDebuggingControllerComponent::ToggleAIDebugView_SetView9);
+		AIDebugViewInputComponent->BindKey(EKeys::Tab, IE_Pressed, this, &UGameplayDebuggingController::ToggleAIDebugView_CycleView);
+		AIDebugViewInputComponent->BindKey(EKeys::One, IE_Pressed, this, &UGameplayDebuggingController::ToggleAIDebugView_SetView1);
+		AIDebugViewInputComponent->BindKey(EKeys::Two, IE_Pressed, this, &UGameplayDebuggingController::ToggleAIDebugView_SetView2);
+		AIDebugViewInputComponent->BindKey(EKeys::Three, IE_Pressed, this, &UGameplayDebuggingController::ToggleAIDebugView_SetView3);
+		AIDebugViewInputComponent->BindKey(EKeys::Four, IE_Pressed, this, &UGameplayDebuggingController::ToggleAIDebugView_SetView4);
+		AIDebugViewInputComponent->BindKey(EKeys::Five, IE_Pressed, this, &UGameplayDebuggingController::ToggleAIDebugView_SetView5);
+		AIDebugViewInputComponent->BindKey(EKeys::Six, IE_Pressed, this, &UGameplayDebuggingController::ToggleAIDebugView_SetView6);
+		AIDebugViewInputComponent->BindKey(EKeys::Seven, IE_Pressed, this, &UGameplayDebuggingController::ToggleAIDebugView_SetView7);
+		AIDebugViewInputComponent->BindKey(EKeys::Eight, IE_Pressed, this, &UGameplayDebuggingController::ToggleAIDebugView_SetView8);
+		AIDebugViewInputComponent->BindKey(EKeys::Nine, IE_Pressed, this, &UGameplayDebuggingController::ToggleAIDebugView_SetView9);
+		AIDebugViewInputComponent->BindKey(EKeys::Zero, IE_Pressed, this, &UGameplayDebuggingController::ToggleAIDebugView_SetView10);
+		AIDebugViewInputComponent->BindKey(EKeys::Subtract, IE_Pressed, this, &UGameplayDebuggingController::ToggleAIDebugView_SetView11);
+		AIDebugViewInputComponent->BindKey(EKeys::Equals, IE_Pressed, this, &UGameplayDebuggingController::ToggleAIDebugView_SetView12);
+		AIDebugViewInputComponent->BindKey(EKeys::Divide, IE_Pressed, this, &UGameplayDebuggingController::ToggleAIDebugView_SetView13);
+		AIDebugViewInputComponent->BindKey(FInputChord(EKeys::Quote, false, false, true), IE_Pressed, this, &UGameplayDebuggingController::EndAIDebugView);
 	}
 	APlayerController* PC = Cast<APlayerController>(GetOuter());
 	PC->PushInputComponent(AIDebugViewInputComponent);
 #endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
 
-bool UGameplayDebuggingControllerComponent::CanToggleView()
+void UGameplayDebuggingController::ToggleAIDebugView_CycleView()
 {
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	APlayerController* MyPC = Cast<APlayerController>(GetOuter());
 	APawn* Pawn = MyPC->GetPawn();
-	return  (MyPC && bDisplayAIDebugInfo && DebugAITargetActor);
-#else
-	return false;
-#endif
-}
+	if (!MyPC || !bDisplayAIDebugInfo || !DebugAITargetActor)
+		return;
 
-void UGameplayDebuggingControllerComponent::ToggleAIDebugView_CycleView()
-{
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	if (CanToggleView())
-	{
-		APlayerController* MyPC = Cast<APlayerController>(GetOuter());
-		MyPC->ServerReplicateMessageToAIDebugView(DebugAITargetActor, EDebugComponentMessage::CycleReplicationView);
-	}
+	MyPC->ServerReplicateMessageToAIDebugView(DebugAITargetActor, EDebugComponentMessage::CycleReplicationView);
 #endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
 
-void UGameplayDebuggingControllerComponent::ToggleAIDebugView_SetView0()
+void UGameplayDebuggingController::ToggleAIDebugView_SetView1()
 {
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	if (CanToggleView())
+	APlayerController* MyPC = Cast<APlayerController>(GetOuter());
+	APawn* Pawn = MyPC->GetPawn();
+	if (!MyPC || !bDisplayAIDebugInfo || !DebugAITargetActor)
+		return;
+
+	DebugAITargetActor->GetDebugComponent(false)->ToggleActiveView(EAIDebugDrawDataView::Basic);
+#endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+}
+
+void UGameplayDebuggingController::ToggleAIDebugView_SetView2()
+{
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+	APlayerController* MyPC = Cast<APlayerController>(GetOuter());
+	APawn* Pawn = MyPC->GetPawn();
+	if (!MyPC || !bDisplayAIDebugInfo || !DebugAITargetActor)
+		return;
+
+	DebugAITargetActor->GetDebugComponent(false)->ToggleActiveView(EAIDebugDrawDataView::BehaviorTree);
+#endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+}
+
+void UGameplayDebuggingController::ToggleAIDebugView_SetView3()
+{
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+	APlayerController* MyPC = Cast<APlayerController>(GetOuter());
+	APawn* Pawn = MyPC->GetPawn();
+	if (!MyPC || !bDisplayAIDebugInfo || !DebugAITargetActor)
+		return;
+
+	DebugAITargetActor->GetDebugComponent(false)->ToggleActiveView(EAIDebugDrawDataView::EQS);
+#endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+}
+
+void UGameplayDebuggingController::ToggleAIDebugView_SetView4()
+{
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+	APlayerController* MyPC = Cast<APlayerController>(GetOuter());
+	APawn* Pawn = MyPC->GetPawn();
+	if (!MyPC || !bDisplayAIDebugInfo || !DebugAITargetActor)
+		return;
+
+	DebugAITargetActor->GetDebugComponent(false)->ToggleActiveView(EAIDebugDrawDataView::Perception);
+#endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+}
+
+void UGameplayDebuggingController::ToggleAIDebugView_SetView5()
+{
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+	APlayerController* MyPC = Cast<APlayerController>(GetOuter());
+	APawn* Pawn = MyPC->GetPawn();
+	if (!MyPC || !bDisplayAIDebugInfo || !DebugAITargetActor)
+		return;
+
+	DebugAITargetActor->GetDebugComponent(false)->ToggleActiveView(EAIDebugDrawDataView::GameView1);
+#endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+}
+
+void UGameplayDebuggingController::ToggleAIDebugView_SetView6()
+{
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+	APlayerController* MyPC = Cast<APlayerController>(GetOuter());
+	APawn* Pawn = MyPC->GetPawn();
+	if (!MyPC || !bDisplayAIDebugInfo || !DebugAITargetActor)
+		return;
+
+	DebugAITargetActor->GetDebugComponent(false)->ToggleActiveView(EAIDebugDrawDataView::GameView2);
+#endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+}
+
+void UGameplayDebuggingController::ToggleAIDebugView_SetView7()
+{
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+	APlayerController* MyPC = Cast<APlayerController>(GetOuter());
+	APawn* Pawn = MyPC->GetPawn();
+	if (!MyPC || !bDisplayAIDebugInfo || !DebugAITargetActor)
+		return;
+
+	DebugAITargetActor->GetDebugComponent(false)->ToggleActiveView(EAIDebugDrawDataView::GameView3);
+#endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+}
+
+void UGameplayDebuggingController::ToggleAIDebugView_SetView8()
+{
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+	APlayerController* MyPC = Cast<APlayerController>(GetOuter());
+	APawn* Pawn = MyPC->GetPawn();
+	if (!MyPC || !bDisplayAIDebugInfo || !DebugAITargetActor)
+		return;
+
+	DebugAITargetActor->GetDebugComponent(false)->ToggleActiveView(EAIDebugDrawDataView::GameView4);
+#endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+}
+
+void UGameplayDebuggingController::ToggleAIDebugView_SetView9()
+{
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+	APlayerController* MyPC = Cast<APlayerController>(GetOuter());
+	APawn* Pawn = MyPC->GetPawn();
+	if (!MyPC || !bDisplayAIDebugInfo || !DebugAITargetActor)
+		return;
+
+	DebugAITargetActor->GetDebugComponent(false)->ToggleActiveView(EAIDebugDrawDataView::GameView5);
+#endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+}
+
+void UGameplayDebuggingController::ToggleAIDebugView_SetView10()
+{
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+	APlayerController* MyPC = Cast<APlayerController>(GetOuter());
+	APawn* Pawn = MyPC->GetPawn();
+	if (!MyPC || !bDisplayAIDebugInfo || !DebugAITargetActor)
+		return;
+
+	DebugAITargetActor->GetDebugComponent(false)->ToggleActiveView(EAIDebugDrawDataView::GameView6);
+#endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+}
+
+void UGameplayDebuggingController::ToggleAIDebugView_SetView11()
+{
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+	APlayerController* MyPC = Cast<APlayerController>(GetOuter());
+	APawn* Pawn = MyPC->GetPawn();
+	if (!MyPC || !bDisplayAIDebugInfo || !DebugAITargetActor)
+		return;
+
+	DebugAITargetActor->GetDebugComponent(false)->ToggleActiveView(EAIDebugDrawDataView::GameView7);
+#endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+}
+
+void UGameplayDebuggingController::ToggleAIDebugView_SetView12()
+{
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+	APlayerController* MyPC = Cast<APlayerController>(GetOuter());
+	APawn* Pawn = MyPC->GetPawn();
+	if (!MyPC || !bDisplayAIDebugInfo || !DebugAITargetActor)
+		return;
+
+	DebugAITargetActor->GetDebugComponent()->ToggleActiveView(EAIDebugDrawDataView::GameView8);
+#endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+}
+
+void UGameplayDebuggingController::ToggleAIDebugView_SetView13()
+{
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+	APlayerController* MyPC = Cast<APlayerController>(GetOuter());
+	APawn* Pawn = MyPC->GetPawn();
+	if (!MyPC || !bDisplayAIDebugInfo || Pawn == NULL)
+		return;
+
+	if (UGameplayDebuggingComponent* OwnerComp = Pawn->GetDebugComponent(false))
 	{
-		APlayerController* MyPC = Cast<APlayerController>(GetOuter());
-		APawn* Pawn = MyPC->GetPawn();
-		if (UGameplayDebuggingComponent* OwnerComp = Pawn->GetDebugComponent(false))
+		OwnerComp->ToggleActiveView(EAIDebugDrawDataView::NavMesh);
+		if (OwnerComp->IsViewActive(EAIDebugDrawDataView::NavMesh))
 		{
-			OwnerComp->ToggleActiveView(EAIDebugDrawDataView::NavMesh);
-			if (OwnerComp->IsViewActive(EAIDebugDrawDataView::NavMesh))
-			{
-				GetWorld()->GetTimerManager().SetTimer(this, &UGameplayDebuggingControllerComponent::UpdateNavMeshTimer, 5.0f, true);
-				UpdateNavMeshTimer();
-
-				MyPC->ServerReplicateMessageToAIDebugView(Pawn, EDebugComponentMessage::ActivateReplication, 1 << EAIDebugDrawDataView::Empty);
-				OwnerComp->SetVisibility(true, true);
-				OwnerComp->SetHiddenInGame(false, true);
-				OwnerComp->MarkRenderStateDirty();
-			}
-			else
-			{
-				GetWorld()->GetTimerManager().ClearTimer(this, &UGameplayDebuggingControllerComponent::UpdateNavMeshTimer);
-
-				MyPC->ServerReplicateMessageToAIDebugView(Pawn, EDebugComponentMessage::DeactivateReplilcation, 1 << EAIDebugDrawDataView::Empty);
-				OwnerComp->ServerDiscardNavmeshData();
-				OwnerComp->SetVisibility(false, true);
-				OwnerComp->SetHiddenInGame(true, true);
-				OwnerComp->MarkRenderStateDirty();
-			}
+			MyPC->ServerReplicateMessageToAIDebugView(Pawn, EDebugComponentMessage::ActivateReplication, 1 << EAIDebugDrawDataView::Empty);
+			OwnerComp->ServerCollectNavmeshData();
+			OwnerComp->SetVisibility(true, true);
+			OwnerComp->SetHiddenInGame(false, true);
+			OwnerComp->MarkRenderStateDirty();
+		}
+		else
+		{
+			MyPC->ServerReplicateMessageToAIDebugView(Pawn, EDebugComponentMessage::DeactivateReplilcation, 1 << EAIDebugDrawDataView::Empty);
+			OwnerComp->SetVisibility(false, true);
+			OwnerComp->SetHiddenInGame(true, true);
+			OwnerComp->MarkRenderStateDirty();
 		}
 	}
 #endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
 
-void UGameplayDebuggingControllerComponent::ToggleAIDebugView_SetView1()
-{
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	if (CanToggleView())
-	{
-		DebugAITargetActor->GetDebugComponent(false)->ToggleActiveView(EAIDebugDrawDataView::Basic);
-	}
-#endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-}
-
-void UGameplayDebuggingControllerComponent::ToggleAIDebugView_SetView2()
-{
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	if (CanToggleView())
-	{
-		DebugAITargetActor->GetDebugComponent(false)->ToggleActiveView(EAIDebugDrawDataView::BehaviorTree);
-	}
-#endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-}
-
-void UGameplayDebuggingControllerComponent::ToggleAIDebugView_SetView3()
-{
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	if (CanToggleView())
-	{
-		DebugAITargetActor->GetDebugComponent(false)->ToggleActiveView(EAIDebugDrawDataView::EQS);
-	}
-#endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-}
-
-void UGameplayDebuggingControllerComponent::ToggleAIDebugView_SetView4()
-{
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	if (CanToggleView())
-	{
-		DebugAITargetActor->GetDebugComponent(false)->ToggleActiveView(EAIDebugDrawDataView::Perception);
-	}
-#endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-}
-
-void UGameplayDebuggingControllerComponent::ToggleAIDebugView_SetView5()
-{
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	if (CanToggleView())
-	{
-		DebugAITargetActor->GetDebugComponent(false)->ToggleActiveView(EAIDebugDrawDataView::GameView1);
-	}
-#endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-}
-
-void UGameplayDebuggingControllerComponent::ToggleAIDebugView_SetView6()
-{
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	if (CanToggleView())
-	{
-		DebugAITargetActor->GetDebugComponent(false)->ToggleActiveView(EAIDebugDrawDataView::GameView2);
-	}
-#endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-}
-
-void UGameplayDebuggingControllerComponent::ToggleAIDebugView_SetView7()
-{
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	if (CanToggleView())
-	{
-		DebugAITargetActor->GetDebugComponent(false)->ToggleActiveView(EAIDebugDrawDataView::GameView3);
-	}
-#endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-}
-
-void UGameplayDebuggingControllerComponent::ToggleAIDebugView_SetView8()
-{
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	if (CanToggleView())
-	{
-		DebugAITargetActor->GetDebugComponent(false)->ToggleActiveView(EAIDebugDrawDataView::GameView4);
-	}
-#endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-}
-
-void UGameplayDebuggingControllerComponent::ToggleAIDebugView_SetView9()
-{
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	if (CanToggleView())
-	{
-		DebugAITargetActor->GetDebugComponent(false)->ToggleActiveView(EAIDebugDrawDataView::GameView5);
-	}
-#endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-}
-
-APawn* UGameplayDebuggingControllerComponent::GetCurrentDebugTarget() const
+APawn* UGameplayDebuggingController::GetCurrentDebugTarget() const
 {
 	return DebugAITargetActor;
 }
 
 
-void UGameplayDebuggingControllerComponent::OnScreenshotCaptured(int32 Width, int32 Height, const TArray<FColor>& Bitmap)
+void UGameplayDebuggingController::OnScreenshotCaptured(int32 Width, int32 Height, const TArray<FColor>& Bitmap)
 {
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	ToggleAIDebugView();
 #endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
 
-void UGameplayDebuggingControllerComponent::TakeScreenShot()
+void UGameplayDebuggingController::TakeScreenShot()
 {
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	APlayerController* MyPC = Cast<APlayerController>(GetOuter());
@@ -575,13 +594,13 @@ void UGameplayDebuggingControllerComponent::TakeScreenShot()
 	LocString = FString::Printf(TEXT("?BugLoc=%s?BugRot=%s"), *ViewLocation.ToString(), *ViewRotation.ToString());
 	UE_LOG(LogGameplayDebugging, Log, TEXT("%s"), *LocString);
 
-	MyPC->GetWorldTimerManager().SetTimer(this, &UGameplayDebuggingControllerComponent::EndAIDebugView, 0.1, false);
+	MyPC->GetWorldTimerManager().SetTimer(this, &UGameplayDebuggingController::EndAIDebugView, 0.1, false);
 
 	LogOutBugItGoToLogFile( ScreenShotDescription, GoString, LocString );
 #endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
 
-void UGameplayDebuggingControllerComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction)
+void UGameplayDebuggingController::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
@@ -630,10 +649,10 @@ void UGameplayDebuggingControllerComponent::TickComponent(float DeltaTime, enum 
 
 		if (OwnerComp->IsViewActive(EAIDebugDrawDataView::NavMesh))
 		{
-			ToggleAIDebugView_SetView0();
+			ToggleAIDebugView_SetView13();
 		}
-		ToggleAIDebugView_SetView1();
-		MyPC->GetWorldTimerManager().SetTimer(this, &UGameplayDebuggingControllerComponent::TakeScreenShot, 1.0, false);
+		ToggleAIDebugView_SetView13();
+		MyPC->GetWorldTimerManager().SetTimer(this, &UGameplayDebuggingController::TakeScreenShot, 1.0, false);
 		bJustBugIt = false;
 	}
 
@@ -652,7 +671,7 @@ void UGameplayDebuggingControllerComponent::TickComponent(float DeltaTime, enum 
 #endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
 
-void UGameplayDebuggingControllerComponent::LogOutBugItGoToLogFile( const FString& InScreenShotDesc, const FString& InGoString, const FString& InLocString )
+void UGameplayDebuggingController::LogOutBugItGoToLogFile( const FString& InScreenShotDesc, const FString& InGoString, const FString& InLocString )
 {
 #if ALLOW_DEBUG_FILES
 	// Create folder if not already there
@@ -686,7 +705,7 @@ void UGameplayDebuggingControllerComponent::LogOutBugItGoToLogFile( const FStrin
 	OutputFile.Logf( TEXT(" ---=== GameSpecificData ===--- ") );
 	
 	APlayerController* MyPC = Cast<APlayerController>(GetOuter());
-	AGameplayDebuggingHUDComponent* HUD = Cast<AGameplayDebuggingHUDComponent>(MyPC->MyHUD);
+	AGameplayDebuggingComponentHUD* HUD = Cast<AGameplayDebuggingComponentHUD>(MyPC->MyHUD);
 	if(HUD)
 	{
 		FString TargetString = HUD->GenerateAllData();
@@ -724,20 +743,4 @@ void UGameplayDebuggingControllerComponent::LogOutBugItGoToLogFile( const FStrin
 	// so here we want to send this bad boy back to the PC
 	SendDataToPCViaUnrealConsole( TEXT("UE_PROFILER!BUGIT:"), *(FullFileName) );
 #endif // ALLOW_DEBUG_FILES
-}
-
-void UGameplayDebuggingControllerComponent::UpdateNavMeshTimer()
-{
-	APlayerController* MyPC = Cast<APlayerController>(GetOuter());
-	APawn* Pawn = MyPC ? MyPC->GetPawn() : NULL;
-	UGameplayDebuggingComponent* OwnerComp = Pawn ? Pawn->GetDebugComponent(false) : NULL;
-	if (OwnerComp)
-	{
-		const FVector AdditionalTargetLoc =
-			DebugAITargetActor ? DebugAITargetActor->GetActorLocation() :
-			Pawn ? Pawn->GetActorLocation() : 
-			FVector::ZeroVector;
-
-		OwnerComp->ServerCollectNavmeshData(AdditionalTargetLoc);
-	}
 }

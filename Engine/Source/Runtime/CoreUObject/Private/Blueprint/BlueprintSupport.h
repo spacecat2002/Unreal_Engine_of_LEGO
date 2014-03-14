@@ -28,20 +28,11 @@ struct FBlueprintSupport
  * recompile any classes that may depend on each other a second time to ensure that that functions and properties
  * are properly resolved
  */
-struct COREUOBJECT_API FScopedClassDependencyGather
+struct FScopedClassDependencyGather
 {
 public:
 	FScopedClassDependencyGather(UClass* ClassToGather);
 	~FScopedClassDependencyGather();
-
-	/**
-	 * Post load, some systems would like an easy list of dependencies. This will
-	 * retrieve that latest BatchClassDependencies (filled with dependencies from
-	 * the last loaded class).
-	 * 
-	 * @return The most recent array of tracked dependencies.
-	 */
-	static TArray<UClass*> const& GetCachedDependencies();
 
 private:
 	/** Whether or not this dependency gather is the dependency master, and thus should process all dependencies in the destructor */

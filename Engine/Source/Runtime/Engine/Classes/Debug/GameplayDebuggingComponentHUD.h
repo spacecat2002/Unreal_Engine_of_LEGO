@@ -1,11 +1,10 @@
 // Copyright 1998-2014 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
-
-#include "GameplayDebuggingHUDComponent.generated.h"
+#include "GameplayDebuggingComponentHUD.generated.h"
 
 UCLASS(notplaceable)
-class ENGINE_API AGameplayDebuggingHUDComponent : public AHUD
+class ENGINE_API AGameplayDebuggingComponentHUD : public AHUD
 {
 	GENERATED_UCLASS_BODY()
 
@@ -39,10 +38,10 @@ protected:
 	virtual void DrawNavMeshSnapshot(APlayerController* PC, class UGameplayDebuggingComponent *DebugComponent);
 
 	void PrintAllData();
-	static void CalulateStringSize(const AGameplayDebuggingHUDComponent::FPrintContext& DefaultContext, UFont* Font, const FString& InString, float& OutX, float& OutY );
-	static FVector ProjectLocation(const AGameplayDebuggingHUDComponent::FPrintContext& Context, const FVector& Location);
-	static void DrawItem(const AGameplayDebuggingHUDComponent::FPrintContext& DefaultContext, class FCanvasItem& Item, float X, float Y );
-	static void DrawIcon(const AGameplayDebuggingHUDComponent::FPrintContext& DefaultContext, const FColor& InColor, const FCanvasIcon& Icon, float X, float Y, float Scale = 0.f);
+	static void CalulateStringSize(const AGameplayDebuggingComponentHUD::FPrintContext& DefaultContext, UFont* Font, const FString& InString, float& OutX, float& OutY );
+	static FVector ProjectLocation(const AGameplayDebuggingComponentHUD::FPrintContext& Context, const FVector& Location);
+	static void DrawItem(const AGameplayDebuggingComponentHUD::FPrintContext& DefaultContext, class FCanvasItem& Item, float X, float Y );
+	static void DrawIcon(const AGameplayDebuggingComponentHUD::FPrintContext& DefaultContext, const FColor& InColor, const FCanvasIcon& Icon, float X, float Y, float Scale = 0.f);
 
 private:
 	// local player related draw from PostRender

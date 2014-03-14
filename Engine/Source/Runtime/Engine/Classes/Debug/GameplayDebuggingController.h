@@ -5,10 +5,10 @@
  */
 
 #pragma once
-#include "GameplayDebuggingControllerComponent.generated.h"
+#include "GameplayDebuggingController.generated.h"
 
 UCLASS(config=Engine, HeaderGroup=Component)
-class ENGINE_API UGameplayDebuggingControllerComponent : public UActorComponent
+class ENGINE_API UGameplayDebuggingController : public UActorComponent
 {
 	GENERATED_UCLASS_BODY()
 
@@ -32,9 +32,6 @@ class ENGINE_API UGameplayDebuggingControllerComponent : public UActorComponent
 
 	APawn* GetCurrentDebugTarget() const;
 
-	/** periodic update of navmesh data */
-	void UpdateNavMeshTimer();
-
 protected:
 
 	UPROPERTY(Transient)
@@ -54,9 +51,6 @@ protected:
 	virtual void LockAIDebugView();
 	virtual void EndAIDebugView();
 
-	virtual void OnControlPressed();
-	virtual void OnControlReleased();
-
 	/** Sets appropriate EngineFlags.GameplayDebug flag to bNewValue. 
 	 *	@param MyPC used to determine which EngineFlags instance to use. If NULL component's Owner will be used */
 	void SetGameplayDebugFlag(bool bNewValue, APlayerController* PlayerController = NULL);
@@ -66,9 +60,7 @@ protected:
 	virtual void TakeScreenShot();
 	virtual void OnScreenshotCaptured(int32 Width, int32 Height, const TArray<FColor>& Bitmap);
 
-	bool CanToggleView();
 	virtual void ToggleAIDebugView_CycleView();
-	virtual void ToggleAIDebugView_SetView0();
 	virtual void ToggleAIDebugView_SetView1();
 	virtual void ToggleAIDebugView_SetView2();
 	virtual void ToggleAIDebugView_SetView3();
@@ -78,16 +70,19 @@ protected:
 	virtual void ToggleAIDebugView_SetView7();
 	virtual void ToggleAIDebugView_SetView8();
 	virtual void ToggleAIDebugView_SetView9();
+	virtual void ToggleAIDebugView_SetView10();
+	virtual void ToggleAIDebugView_SetView11();
+	virtual void ToggleAIDebugView_SetView12();
+	virtual void ToggleAIDebugView_SetView13();
 
 	virtual void BindAIDebugViewKeys();
 
 	void LogOutBugItGoToLogFile( const FString& InScreenShotDesc, const FString& InGoString, const FString& InLocString );
-	
+
+
 	UClass* DebugComponentHUDClass;
 	uint32 DebugComponent_LastActiveViews;
 	int32 CurrentQuickBugNum;
-	float ControlKeyPressedTime;
-	uint32 bWasDisplayingInfo : 1;
 	uint32 bDisplayAIDebugInfo : 1;
 	uint32 bWaitingForOwnersComponent : 1;
 	uint32 bJustBugIt : 1;

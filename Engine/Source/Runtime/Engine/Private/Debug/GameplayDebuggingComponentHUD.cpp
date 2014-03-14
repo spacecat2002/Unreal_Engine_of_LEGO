@@ -11,13 +11,13 @@
 DEFINE_LOG_CATEGORY_STATIC(LogHUD, Log, All);
 
 
-AGameplayDebuggingHUDComponent::AGameplayDebuggingHUDComponent(const class FPostConstructInitializeProperties& PCIP)
+AGameplayDebuggingComponentHUD::AGameplayDebuggingComponentHUD(const class FPostConstructInitializeProperties& PCIP)
 	: Super(PCIP)
 	, bDrawToScreen(true)
 {
 }
 
-FString AGameplayDebuggingHUDComponent::GenerateAllData()
+FString AGameplayDebuggingComponentHUD::GenerateAllData()
 {
 	bDrawToScreen = false;
 	HugeOutputString.Empty();
@@ -29,13 +29,13 @@ FString AGameplayDebuggingHUDComponent::GenerateAllData()
 	return ReturnString;
 }
 
-void AGameplayDebuggingHUDComponent::PostRender()
+void AGameplayDebuggingComponentHUD::PostRender()
 {
 	Super::PostRender();
 	PrintAllData();
 }
 
-void AGameplayDebuggingHUDComponent::PrintAllData()
+void AGameplayDebuggingComponentHUD::PrintAllData()
 {
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 
@@ -57,18 +57,19 @@ void AGameplayDebuggingHUDComponent::PrintAllData()
 		{
 			APawn* NewTarget = *Iterator;
 			UGameplayDebuggingComponent* DebuggingComponent = NewTarget->GetDebugComponent(false);
-			if (DebuggingComponent)
+			if ( DebuggingComponent == NULL || NewTarget == MyPC->GetPawn() || (NewTarget->PlayerState && !NewTarget->PlayerState->bIsABot))
+				continue;
+
+			DrawDebugComponentData(MyPC, DebuggingComponent);
+		}
+
+		if (APawn* MyPawn = MyPC->GetPawn())
+		{
+			if (UGameplayDebuggingComponent *MyComp = MyPawn->GetDebugComponent(false))
 			{
-				if (NewTarget == MyPC->GetPawn())
+				if (MyComp->IsViewActive(EAIDebugDrawDataView::NavMesh) && bDrawToScreen)
 				{
-					if (DebuggingComponent->IsViewActive(EAIDebugDrawDataView::NavMesh) && bDrawToScreen)
-					{
-						DrawNavMeshSnapshot(MyPC, DebuggingComponent);
-					}
-				}
-				else if (NewTarget->PlayerState == NULL || NewTarget->PlayerState->bIsABot)
-				{
-					DrawDebugComponentData(MyPC, DebuggingComponent);
+					DrawNavMeshSnapshot(MyPC, MyComp);
 				}
 			}
 		}
@@ -76,7 +77,7 @@ void AGameplayDebuggingHUDComponent::PrintAllData()
 #endif
 }
 
-void AGameplayDebuggingHUDComponent::DrawDebugComponentData(APlayerController* MyPC, class UGameplayDebuggingComponent *DebugComponent)
+void AGameplayDebuggingComponentHUD::DrawDebugComponentData(APlayerController* MyPC, class UGameplayDebuggingComponent *DebugComponent)
 {
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	APawn* Pawn = Cast<APawn>(DebugComponent->GetOwner());
@@ -87,62 +88,22 @@ void AGameplayDebuggingHUDComponent::DrawDebugComponentData(APlayerController* M
 	if (bDrawToScreen && (DebugComponent->IsViewActive(EAIDebugDrawDataView::OverHead) || DebugComponent->IsViewActive(EAIDebugDrawDataView::EditorDebugAIFlag)))
 		DrawOverHeadInformation(MyPC, DebugComponent);
 
+	if (bDrawToScreen && !DebugComponent->IsViewActive(EAIDebugDrawDataView::EditorDebugAIFlag) && DefaultContext.Canvas != NULL)
+	{
+		float XL = 0.f, YL = 0.f;
+		const FString Keys = DebugComponent->GetKeyboardDesc();
+		UFont* OldFont = DefaultContext.Font;
+		DefaultContext.Font = GEngine->GetMediumFont();
+		CalulateStringSize(DefaultContext, DefaultContext.Font, Keys, XL, YL);
+		FCanvasTileItem TileItem( FVector2D(10, 10), GWhiteTexture, FVector2D( XL+20, YL+20 ), FColor(0,0,0,20) );
+		TileItem.BlendMode = SE_BLEND_Translucent;
+		DrawItem(DefaultContext, TileItem, 0, 0);
+		PrintString(DefaultContext, FColor::White, Keys, 20, 20);
+		DefaultContext.Font = OldFont;
+	}
+
 	if (DebugComponent->bIsSelectedForDebugging && DebugComponent->ShowExtendedInformatiomCounter > 0)
 	{
-		if (bDrawToScreen && !DebugComponent->IsViewActive(EAIDebugDrawDataView::EditorDebugAIFlag) && DefaultContext.Canvas != NULL)
-		{
-			TArray<FDebugCategoryView> Categories;
-			DebugComponent->GetKeyboardDesc(Categories);
-
-			UFont* OldFont = DefaultContext.Font;
-			DefaultContext.Font = GEngine->GetMediumFont();
-
-			TArray<float> CategoriesWidth;
-			CategoriesWidth.AddZeroed(Categories.Num());
-			float TotalWidth = 0.0f, MaxHeight = 0.0f;
-
-			FString HeaderDesc(TEXT("Tap [\"] to close, use Numpad to toggle categories"));
-			float HeaderWidth = 0.0f;
-			CalulateStringSize(DefaultContext, DefaultContext.Font, HeaderDesc, HeaderWidth, MaxHeight);
-
-			for (int32 i = 0; i < Categories.Num(); i++)
-			{
-				Categories[i].Desc = FString::Printf(TEXT("%d:%s "), i, *Categories[i].Desc);
-
-				float StrHeight = 0.0f;
-				CalulateStringSize(DefaultContext, DefaultContext.Font, Categories[i].Desc, CategoriesWidth[i], StrHeight);
-				TotalWidth += CategoriesWidth[i];
-				MaxHeight = FMath::Max(MaxHeight, StrHeight);
-			}
-
-			TotalWidth = FMath::Max(TotalWidth, HeaderWidth);
-
-			FCanvasTileItem TileItem( FVector2D(10, 10), GWhiteTexture, FVector2D( TotalWidth+20, MaxHeight+20 ), FColor(0,0,0,20) );
-			TileItem.BlendMode = SE_BLEND_Translucent;
-			DrawItem(DefaultContext, TileItem, 0, 0);
-
-			PrintString(DefaultContext, FColorList::LightBlue, HeaderDesc, 2, 2);
-
-			APawn* PCPawn = MyPC->GetPawn();
-			UGameplayDebuggingComponent* PlayerDebugComp = PCPawn ? PCPawn->GetDebugComponent(false) : NULL;
-
-			if (PlayerDebugComp)
-			{
-				float XPos = 20.0f;
-				for (int32 i = 0; i < Categories.Num(); i++)
-				{
-					const bool bIsActive = (Categories[i].View == EAIDebugDrawDataView::NavMesh) ?
-						PlayerDebugComp->IsViewActive(Categories[i].View) :
-						DebugComponent->IsViewActive(Categories[i].View);
-
-					PrintString(DefaultContext, bIsActive ? FColorList::Green : FColor::White, Categories[i].Desc, XPos, 20);
-					XPos += CategoriesWidth[i];
-				}
-			}
-
-			DefaultContext.Font = OldFont;
-		}
-
 		if (!bDrawToScreen || DebugComponent->IsViewActive(EAIDebugDrawDataView::Basic))
 		{
 			DrawBasicData(MyPC, DebugComponent);
@@ -168,7 +129,7 @@ void AGameplayDebuggingHUDComponent::DrawDebugComponentData(APlayerController* M
 #endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
 
-void AGameplayDebuggingHUDComponent::DrawPath(APlayerController* MyPC, class UGameplayDebuggingComponent *DebugComponent)
+void AGameplayDebuggingComponentHUD::DrawPath(APlayerController* MyPC, class UGameplayDebuggingComponent *DebugComponent)
 {
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	static const FColor Grey(100,100,100);
@@ -198,7 +159,7 @@ void AGameplayDebuggingHUDComponent::DrawPath(APlayerController* MyPC, class UGa
 #endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
 
-void AGameplayDebuggingHUDComponent::DrawOverHeadInformation(APlayerController* PC, class UGameplayDebuggingComponent *DebugComponent)
+void AGameplayDebuggingComponentHUD::DrawOverHeadInformation(APlayerController* PC, class UGameplayDebuggingComponent *DebugComponent)
 {
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	APawn* MyPawn = Cast<APawn>(DebugComponent->GetOwner());
@@ -247,7 +208,7 @@ void AGameplayDebuggingHUDComponent::DrawOverHeadInformation(APlayerController* 
 #endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
 
-void AGameplayDebuggingHUDComponent::DrawBasicData(APlayerController* PC, class UGameplayDebuggingComponent *DebugComponent)
+void AGameplayDebuggingComponentHUD::DrawBasicData(APlayerController* PC, class UGameplayDebuggingComponent *DebugComponent)
 {
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	PrintString(DefaultContext, TEXT("\n{R=0,G=255,B=0,A=255}BASIC DATA\n"));
@@ -265,7 +226,7 @@ void AGameplayDebuggingHUDComponent::DrawBasicData(APlayerController* PC, class 
 #endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
 
-void AGameplayDebuggingHUDComponent::DrawBehaviorTreeData(APlayerController* PC, class UGameplayDebuggingComponent *DebugComponent)
+void AGameplayDebuggingComponentHUD::DrawBehaviorTreeData(APlayerController* PC, class UGameplayDebuggingComponent *DebugComponent)
 {
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	PrintString(DefaultContext, TEXT("\n{green}BEHAVIOR TREE\n"));
@@ -273,7 +234,7 @@ void AGameplayDebuggingHUDComponent::DrawBehaviorTreeData(APlayerController* PC,
 #endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
 
-void AGameplayDebuggingHUDComponent::DrawEQSData(APlayerController* PC, class UGameplayDebuggingComponent *DebugComponent)
+void AGameplayDebuggingComponentHUD::DrawEQSData(APlayerController* PC, class UGameplayDebuggingComponent *DebugComponent)
 {
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	PrintString(DefaultContext, TEXT("\n{green}EQS\n"));
@@ -293,35 +254,24 @@ void AGameplayDebuggingHUDComponent::DrawEQSData(APlayerController* PC, class UG
 #endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
 
-void AGameplayDebuggingHUDComponent::DrawPerception(APlayerController* PC, class UGameplayDebuggingComponent *DebugComponent)
+void AGameplayDebuggingComponentHUD::DrawPerception(APlayerController* PC, class UGameplayDebuggingComponent *DebugComponent)
 {
+
 }
 
-void AGameplayDebuggingHUDComponent::DrawNavMeshSnapshot(APlayerController* PC, class UGameplayDebuggingComponent *DebugComponent)
+void AGameplayDebuggingComponentHUD::DrawNavMeshSnapshot(APlayerController* PC, class UGameplayDebuggingComponent *DebugComponent)
 {
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	if (DebugComponent && DebugComponent->NavmeshRepData.Num())
+	PrintString(DefaultContext, TEXT("\n{green}NavMesh snapshot\n"));
+	if (DebugComponent != NULL && DebugComponent->AllNavMeshAreas[0].IndexBuffer.Num() > 0)
 	{
-		float TimeLeft = 0.0f;
-		if (PC && PC->GetDebuggingController())
-		{
-			TimeLeft = GetWorldTimerManager().GetTimerRemaining(PC->GetDebuggingController(), &UGameplayDebuggingControllerComponent::UpdateNavMeshTimer);
-		}
-
-		FString NextUpdateDesc;
-		if (TimeLeft > 0.0f)
-		{
-			NextUpdateDesc = FString::Printf(TEXT(", next update: {yellow}%.1fs"), TimeLeft);
-		}
-	
-		PrintString(DefaultContext, FString::Printf(TEXT("\n\n{green}Showing NavMesh (%.1fkB)%s\n"),
-			DebugComponent->NavmeshRepData.Num() / 1024.0f, *NextUpdateDesc));
+		PrintString(DefaultContext, TEXT("\n{green}GOT {red}NAVMESH {blue}DATA\n"));
 	}
 #endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
 
 //////////////////////////////////////////////////////////////////////////
-void AGameplayDebuggingHUDComponent::PrintString(FPrintContext& Context, const FString& InString )
+void AGameplayDebuggingComponentHUD::PrintString(FPrintContext& Context, const FString& InString )
 {
 	class FParserHelper
 	{
@@ -534,12 +484,12 @@ void AGameplayDebuggingHUDComponent::PrintString(FPrintContext& Context, const F
 	Context.CursorY += YMovement;
 }
 
-void AGameplayDebuggingHUDComponent::PrintString(FPrintContext& Context, const FColor& InColor, const FString& InString )
+void AGameplayDebuggingComponentHUD::PrintString(FPrintContext& Context, const FColor& InColor, const FString& InString )
 {
 	PrintString( Context, FString::Printf(TEXT("{%s}%s"), *InColor.ToString(), *InString));
 }
 
-void AGameplayDebuggingHUDComponent::PrintString(FPrintContext& Context, const FColor& InColor, const FString& InString, float X, float Y )
+void AGameplayDebuggingComponentHUD::PrintString(FPrintContext& Context, const FColor& InColor, const FString& InString, float X, float Y )
 {
 	const float OldX = Context.CursorX, OldY = Context.CursorY;
 	const float OldDX = Context.DefaultX, OldDY = Context.DefaultY;
@@ -555,7 +505,7 @@ void AGameplayDebuggingHUDComponent::PrintString(FPrintContext& Context, const F
 }
 
 
-void AGameplayDebuggingHUDComponent::CalulateStringSize(const AGameplayDebuggingHUDComponent::FPrintContext& DefaultContext, UFont* Font, const FString& InString, float& OutX, float& OutY )
+void AGameplayDebuggingComponentHUD::CalulateStringSize(const AGameplayDebuggingComponentHUD::FPrintContext& DefaultContext, UFont* Font, const FString& InString, float& OutX, float& OutY )
 {
 	OutX = OutY = 0;
 	if (DefaultContext.Canvas != NULL)
@@ -564,7 +514,7 @@ void AGameplayDebuggingHUDComponent::CalulateStringSize(const AGameplayDebugging
 	}
 }
 
-FVector AGameplayDebuggingHUDComponent::ProjectLocation(const AGameplayDebuggingHUDComponent::FPrintContext& Context, const FVector& Location)
+FVector AGameplayDebuggingComponentHUD::ProjectLocation(const AGameplayDebuggingComponentHUD::FPrintContext& Context, const FVector& Location)
 {
 	if (Context.Canvas != NULL)
 	{
@@ -574,7 +524,7 @@ FVector AGameplayDebuggingHUDComponent::ProjectLocation(const AGameplayDebugging
 	return FVector();
 }
 
-void AGameplayDebuggingHUDComponent::DrawItem(const AGameplayDebuggingHUDComponent::FPrintContext& DefaultContext, class FCanvasItem& Item, float X, float Y )
+void AGameplayDebuggingComponentHUD::DrawItem(const AGameplayDebuggingComponentHUD::FPrintContext& DefaultContext, class FCanvasItem& Item, float X, float Y )
 {
 	if(DefaultContext.Canvas)
 	{
@@ -582,7 +532,7 @@ void AGameplayDebuggingHUDComponent::DrawItem(const AGameplayDebuggingHUDCompone
 	}
 }
 
-void AGameplayDebuggingHUDComponent::DrawIcon(const AGameplayDebuggingHUDComponent::FPrintContext& DefaultContext, const FColor& InColor, const FCanvasIcon& Icon, float X, float Y, float Scale)
+void AGameplayDebuggingComponentHUD::DrawIcon(const AGameplayDebuggingComponentHUD::FPrintContext& DefaultContext, const FColor& InColor, const FCanvasIcon& Icon, float X, float Y, float Scale)
 {
 	if(DefaultContext.Canvas)
 	{
