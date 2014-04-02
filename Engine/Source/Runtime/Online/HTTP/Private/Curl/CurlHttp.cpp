@@ -4,6 +4,8 @@
 #include "CurlHttp.h"
 #include "EngineVersion.h"
 
+#if WITH_LIBCURL
+
 // FCurlHttpRequest
 
 FCurlHttpRequest::FCurlHttpRequest(CURLM * InMultiHandle)
@@ -265,6 +267,7 @@ size_t FCurlHttpRequest::ReceiveResponseHeaderCallback(void * Ptr, size_t SizeIn
 			// kill \n\r
 			Header = Header.Replace(TEXT("\n"), TEXT(""));
 			Header = Header.Replace(TEXT("\r"), TEXT(""));
+
 			UE_LOG(LogHttp, Verbose, TEXT("%p: Received response header '%s'."), this, *Header);
 
 			FString HeaderName, Param;
@@ -294,6 +297,13 @@ size_t FCurlHttpRequest::ReceiveResponseBodyCallback(void * Ptr, size_t SizeInBl
 	if (Response.IsValid())
 	{
 		uint32 SizeToDownload = SizeInBlocks * BlockSizeInBytes;
+
+		UE_LOG(LogHttp, Verbose, TEXT("%p: ReceiveResponseBodyCallback: %d bytes out of %d received. (SizeInBlocks=%d, BlockSizeInBytes=%d, Response->TotalBytesRead=%d, Response->GetContentLength()=%d, SizeToDownload=%d (<-this will get returned from the callback))"),
+			this,
+			static_cast<int32>(Response->TotalBytesRead + SizeToDownload), Response->GetContentLength(),
+			static_cast<int32>(SizeInBlocks), static_cast<int32>(BlockSizeInBytes), Response->TotalBytesRead, Response->GetContentLength(), static_cast<int32>(SizeToDownload)
+			);
+
 		// note that we can be passed 0 bytes if file transmitted has 0 length
 		if (SizeToDownload > 0)
 		{
@@ -302,6 +312,9 @@ size_t FCurlHttpRequest::ReceiveResponseBodyCallback(void * Ptr, size_t SizeInBl
 			// save
 			FMemory::Memcpy( static_cast< uint8* >( Response->Payload.GetData() ) + Response->TotalBytesRead, Ptr, SizeToDownload );
 			Response->TotalBytesRead += SizeToDownload;
+
+			// Update response progress
+			OnRequestProgress().ExecuteIfBound(SharedThis(this), Response->TotalBytesRead);
 
 			return SizeToDownload;
 		}
@@ -382,12 +395,14 @@ size_t FCurlHttpRequest::DebugCallback(CURL * Handle, curl_infotype DebugInfoTyp
 			break;
 
 		default:
-			UE_LOG(LogHttp, VeryVerbose, TEXT("%p: DebugCallback: Unknown DebugInfoType=%d (DebugInfoSize: %d bytes)"), this, DebugInfoType, DebugInfoSize);
+			UE_LOG(LogHttp, VeryVerbose, TEXT("%p: DebugCallback: Unknown DebugInfoType=%d (DebugInfoSize: %d bytes)"), this, (int32)DebugInfoType, DebugInfoSize);
 			break;
 	}
 	
 	return 0;
 }
+
+#endif // !UE_BUILD_SHIPPING && !UE_BUILD_TEST
 
 bool IsURLEncoded(const TArray<uint8> & Payload)
 {
@@ -397,9 +412,9 @@ bool IsURLEncoded(const TArray<uint8> & Payload)
 
 	if (!bTableFilled)
 	{
-		for(int32 Idx=0; Idx < ARRAY_COUNT(AllowedChars) - 1; ++Idx)	// -1 to avoid trailing 0
+		for (int32 Idx = 0; Idx < ARRAY_COUNT(AllowedChars) - 1; ++Idx)	// -1 to avoid trailing 0
 		{
-			uint8 AllowedCharIdx = static_cast< uint8 >( AllowedChars[Idx] );
+			uint8 AllowedCharIdx = static_cast<uint8>(AllowedChars[Idx]);
 			check(AllowedCharIdx < ARRAY_COUNT(AllowedTable));
 			AllowedTable[AllowedCharIdx] = true;
 		}
@@ -410,18 +425,22 @@ bool IsURLEncoded(const TArray<uint8> & Payload)
 	const int32 Num = Payload.Num();
 	for (int32 Idx = 0; Idx < Num; ++Idx)
 	{
-		if (!AllowedTable[ Payload[Idx] ])
+		if (!AllowedTable[Payload[Idx]])
 			return false;
 	}
 
 	return true;
 }
 
-#endif // !UE_BUILD_SHIPPING && !UE_BUILD_TEST
-
 bool FCurlHttpRequest::StartRequest()
 {
 	check(EasyHandle);
+
+	// default no verb to a GET
+	if (Verb.IsEmpty())
+	{
+		Verb = TEXT("GET");
+	}
 
 	UE_LOG(LogHttp, Verbose, TEXT("%p: URL='%s'"), this, *URL);
 	UE_LOG(LogHttp, Verbose, TEXT("%p: Verb='%s'"), this, *Verb);
@@ -669,7 +688,7 @@ void FCurlHttpRequest::FinishedRequest()
 	}
 	else
 	{
-		UE_LOG(LogHttp, Verbose, TEXT("%p: request failed, libcurl error: %d (%s)"), this, CurlCompletionResult, ANSI_TO_TCHAR(curl_easy_strerror(CurlCompletionResult)));
+		UE_LOG(LogHttp, Verbose, TEXT("%p: request failed, libcurl error: %d (%s)"), this, (int32)CurlCompletionResult, ANSI_TO_TCHAR(curl_easy_strerror(CurlCompletionResult)));
 
 		// Mark last request attempt as completed but failed
 		CompletionStatus = EHttpRequestStatus::Failed;
@@ -784,3 +803,5 @@ FString FCurlHttpResponse::GetContentAsString()
 	ZeroTerminatedPayload.Add(0);
 	return UTF8_TO_TCHAR(ZeroTerminatedPayload.GetData());
 }
+
+#endif //WITH_LIBCURL

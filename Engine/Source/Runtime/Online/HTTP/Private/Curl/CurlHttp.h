@@ -2,7 +2,99 @@
 
 #pragma once
 
-#include "curl/curl.h"
+#if WITH_LIBCURL
+#if PLATFORM_WINDOWS
+#include "AllowWindowsPlatformTypes.h"
+#endif
+	#include "curl/curl.h"
+#if PLATFORM_WINDOWS
+#include "HideWindowsPlatformTypes.h"
+#endif
+
+namespace
+{
+	/**
+	* A callback that libcurl will use to allocate memory
+	*
+	* @param Size size of allocation in bytes
+	* @return Pointer to memory chunk or NULL if failed
+	*/
+	void * CurlMalloc(size_t Size)
+	{
+		check(Size);
+		return FMemory::Malloc(Size);
+	}
+
+	/**
+	* A callback that libcurl will use to free memory
+	*
+	* @param Ptr pointer to memory chunk (may be NULL)
+	*/
+	void CurlFree(void * Ptr)
+	{
+		FMemory::Free(Ptr);
+	}
+
+	/**
+	* A callback that libcurl will use to reallocate memory
+	*
+	* @param Ptr pointer to existing memory chunk (may be NULL)
+	* @param Size size of allocation in bytes
+	* @return Pointer to memory chunk or NULL if failed
+	*/
+	void * CurlRealloc(void * Ptr, size_t Size)
+	{
+		check(Size);
+		return FMemory::Realloc(Ptr, Size);
+	}
+
+	/**
+	* A callback that libcurl will use to duplicate a string
+	*
+	* @param ZeroTerminatedString pointer to string (ANSI or UTF-8, but this does not matter in this case)
+	* @return Pointer to a copy of string
+	*/
+	char * CurlStrdup(const char * ZeroTerminatedString)
+	{
+		char * Copy = NULL;
+		check(ZeroTerminatedString);
+		if (ZeroTerminatedString)
+		{
+			SIZE_T StrLen = FCStringAnsi::Strlen(ZeroTerminatedString);
+			Copy = reinterpret_cast<char*>(FMemory::Malloc(StrLen + 1));
+			if (Copy)
+			{
+				FCStringAnsi::Strcpy(Copy, StrLen, ZeroTerminatedString);
+				check(FCStringAnsi::Strcmp(Copy, ZeroTerminatedString) == 0);
+			}
+		}
+		return Copy;
+	}
+
+	/**
+	* A callback that libcurl will use to allocate zero-initialized memory
+	*
+	* @param NumElems number of elements to allocate (may be 0, then NULL should be returned)
+	* @param ElemSize size of each element in bytes (may be 0)
+	* @return Pointer to memory chunk, filled with zeroes or NULL if failed
+	*/
+	void * CurlCalloc(size_t NumElems, size_t ElemSize)
+	{
+		void * Return = NULL;
+		const size_t Size = NumElems * ElemSize;
+		if (Size)
+		{
+			Return = FMemory::Malloc(Size);
+
+			if (Return)
+			{
+				FMemory::Memzero(Return, Size);
+			}
+		}
+
+		return Return;
+	}
+}
 
 /**
  * Curl implementation of an HTTP request
@@ -272,7 +364,6 @@ public:
 	 */
 	virtual ~FCurlHttpResponse();
 
-
 private:
 
 	/** BYTE array to fill in as the response is read via didReceiveData */
@@ -290,3 +381,5 @@ private:
 	/** True if the response was successfully received/processed */
 	int32 volatile bSucceeded;
 };
+
+#endif //WITH_LIBCURL

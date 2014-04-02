@@ -2,10 +2,17 @@
 
 #pragma once
 
-#include <curl/curl.h>
+#if WITH_LIBCURL
+#if PLATFORM_WINDOWS
+#include "AllowWindowsPlatformTypes.h"
+#endif
+	#include "curl/curl.h"
+#if PLATFORM_WINDOWS
+#include "HideWindowsPlatformTypes.h"
+#endif
 #include "HttpManager.h"
 
-class FLinuxHttpManager : public FHttpManager
+class FCurlHttpManager : public FHttpManager
 {
 protected:
 
@@ -26,5 +33,11 @@ public:
 	virtual bool Tick(float DeltaSeconds) OVERRIDE;
 	// End HttpManager interface
 
-	FLinuxHttpManager(CURLM * InMultiHandle);
+	FCurlHttpManager();
+
+	static void InitCurl();
+	static void ShutdownCurl();
+	static CURLM * GMultiHandle;
 };
+
+#endif //WITH_LIBCURL
