@@ -9,26 +9,23 @@ class UMG_API UCanvasPanelComponent : public USlateNonLeafWidgetComponent
 {
 	GENERATED_UCLASS_BODY()
 
+	/** The items placed on the canvas */
+	UPROPERTY(EditAnywhere, EditInline, Category=Slots)
+	TArray<UCanvasPanelSlot*> Slots;
+
+	/** The desired size of the canvas */
+	UPROPERTY(EditAnywhere, Category=Appearance)
+	FVector2D DesiredCanvasSize;
+
+	UCanvasPanelSlot* AddSlot(USlateWrapperComponent* Content);
+
 #if WITH_EDITOR
 	// UObject interface
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) OVERRIDE;
 	// End of UObject interface
 #endif
 
-	// USceneComponent interface
-	virtual bool HasAnySockets() const OVERRIDE;
-	virtual FTransform GetSocketTransform(FName InSocketName, ERelativeTransformSpace TransformSpace = RTS_World) const OVERRIDE;
-	virtual void QuerySupportedSockets(TArray<FComponentSocketDescription>& OutSockets) const OVERRIDE;
-	// End of USceneComponent interface
-
 protected:
-	/** The items placed on the canvas */
-	UPROPERTY(EditAnywhere, Category=Slots)
-	TArray<class UCanvasPanelSlot*> Slots;
-
-	/** The desired size of the canvas */
-	UPROPERTY(EditAnywhere, Category=Appearance)
-	FVector2D DesiredCanvasSize;
 
 	TWeakPtr<class SFixedSizeCanvas> MyCanvas;
 
