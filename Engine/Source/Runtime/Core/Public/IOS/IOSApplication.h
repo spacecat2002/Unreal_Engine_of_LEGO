@@ -3,8 +3,7 @@
 #pragma once
 
 #include "GenericApplication.h"
-
-class FIOSWindow;
+#include "IOSWindow.h"
 
 class FIOSApplication : public GenericApplication
 {
