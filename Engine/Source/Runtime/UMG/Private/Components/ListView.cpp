@@ -12,7 +12,7 @@ UListView::UListView(const FPostConstructInitializeProperties& PCIP)
 {
 	bIsVariable = true;
 
-	ItemHeight = 20.0f;
+	ItemHeight = 16.0f;
 	SelectionMode = ESelectionMode::Single;
 }
 
@@ -37,6 +37,7 @@ TSharedRef<SWidget> UListView::RebuildWidget()
 
 TSharedRef<ITableRow> UListView::HandleOnGenerateRow(UObject* Item, const TSharedRef< STableViewBase >& OwnerTable) const
 {
+	// Call the user's delegate to see if they want to generate a custom widget bound to the data source.
 	if ( OnGenerateRowEvent.IsBound() )
 	{
 		UWidget* Widget = OnGenerateRowEvent.Execute(Item);

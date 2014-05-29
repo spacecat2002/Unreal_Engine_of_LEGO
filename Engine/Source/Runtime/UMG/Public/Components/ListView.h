@@ -4,13 +4,11 @@
 
 #include "ListView.generated.h"
 
-UCLASS(meta=(BlueprintSpawnableComponent), ClassGroup=UserInterface)
-class UMG_API UListView : public UWidget
+UCLASS(meta=( BlueprintSpawnableComponent ), ClassGroup=UserInterface)
+class UMG_API UListView : public UTableViewBase
 {
 	GENERATED_UCLASS_BODY()
 
-	DECLARE_DYNAMIC_DELEGATE_RetVal_OneParam(UWidget*, FOnGenerateRowUObject, UObject*, Item);
-		
 public:
 
 	UPROPERTY(EditDefaultsOnly, Category=Content)
