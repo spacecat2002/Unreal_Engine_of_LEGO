@@ -6,26 +6,34 @@
 
 #include "VerticalBoxSlot.generated.h"
 
+/** The Slot for the UVerticalBox, contains the widget that is flowed vertically */
 UCLASS()
 class UMG_API UVerticalBoxSlot : public UPanelSlot
 {
 	GENERATED_UCLASS_BODY()
 	
-	UPROPERTY(EditAnywhere, Category=Appearance)
+	/** The padding area between the slot and the content it contains. */
+	UPROPERTY(EditDefaultsOnly, Category=Layout)
 	FMargin Padding;
 
 	/** How much space this slot should occupy in the direction of the panel. */
-	UPROPERTY(EditAnywhere, Category=Appearance)
+	UPROPERTY(EditDefaultsOnly, Category=Layout)
 	FSlateChildSize Size;
 
-	UPROPERTY(EditAnywhere, Category=Appearance)
+	/** The alignment of the object horizontally. */
+	UPROPERTY(EditDefaultsOnly, Category=Layout)
 	TEnumAsByte<EHorizontalAlignment> HorizontalAlignment;
 
-	UPROPERTY(EditAnywhere, Category=Appearance)
+	/** The alignment of the object vertically. */
+	UPROPERTY(EditDefaultsOnly, Category=Layout)
 	TEnumAsByte<EVerticalAlignment> VerticalAlignment;
 
+	/** Builds the underlying FSlot for the Slate layout panel. */
 	void BuildSlot(TSharedRef<SVerticalBox> InVerticalBox);
 
 private:
+	//TODO UMG Slots should hold weak or shared refs to slots.
+
+	/** A raw pointer to the slot to allow us to adjust the size, padding...etc at runtime. */
 	SVerticalBox::FSlot* Slot;
 };
