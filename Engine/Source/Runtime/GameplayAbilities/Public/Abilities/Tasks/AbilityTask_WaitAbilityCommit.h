@@ -2,6 +2,7 @@
 #pragma once
 #include "AbilityTask.h"
 #include "Abilities/GameplayAbilityTypes.h"
+#include "AttributeSet.h"
 #include "AbilityTask_WaitAbilityCommit.generated.h"
 
 
@@ -28,7 +29,7 @@ class UAbilityTask_WaitAbilityCommit : public UAbilityTask
 
 	/** Wait until an overlap occurs. This will need to be better fleshed out so we can specify game specific collision requirements */
 	UFUNCTION(BlueprintCallable, meta = (HidePin = "WorldContextObject", DefaultToSelf = "WorldContextObject", BlueprintInternalUseOnly = "TRUE"))
-	static UAbilityTask_WaitAbilityCommit* WaitForAbilityCommit(UObject* WorldContextObject, FGameplayTag WithTag, FGameplayTag WithoutTag);	
+	static UAbilityTask_WaitAbilityCommit* WaitForAbilityCommit(UObject* WorldContextObject, FGameplayTag WithTag, FGameplayTag WithoutTage);	
 
 	FGameplayTag WithTag;
 	FGameplayTag WithoutTag;
