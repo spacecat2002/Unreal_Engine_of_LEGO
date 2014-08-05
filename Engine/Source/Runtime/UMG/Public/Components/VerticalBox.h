@@ -16,8 +16,8 @@ class UMG_API UVerticalBox : public UPanelWidget
 public:
 
 	/**  */
-	UFUNCTION(BlueprintCallable, Category="Widget")
-	UVerticalBoxSlot* AddChildToVerticalBox(UWidget* Content);
+	UFUNCTION(BlueprintCallable, Category="Panel")
+	UVerticalBoxSlot* AddSlot(UWidget* Content);
 
 #if WITH_EDITOR
 	// UWidget interface
