@@ -31,4 +31,13 @@
 	#endif // EMIT_DEPRECATED_WARNING_MESSAGE_STR
 
 	#define EMIT_DEPRECATED_WARNING_MESSAGE(Msg) __pragma(message(__FILE__ "(" EMIT_DEPRECATED_WARNING_MESSAGE_STR(__LINE__) "): warning C4996: " Msg))
+
+	#define PRAGMA_DISABLE_DEPRECATION_WARNINGS \
+		__pragma (warning(push)) \
+		__pragma (warning(disable:4995)) \
+		__pragma (warning(disable:4996))
+
+	#define PRAGMA_ENABLE_DEPRECATION_WARNINGS \
+		__pragma(warning(pop))
+
 #endif // DISABLE_DEPRECATION

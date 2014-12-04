@@ -26,4 +26,12 @@
 	 * @param MESSAGE A message containing upgrade notes.
 	 */
 	#define DEPRECATED(VERSION, MESSAGE) __attribute__((deprecated(MESSAGE " Please update your code to the new API before upgrading to the next release, otherwise your project will no longer compile.")))
+
+	#define PRAGMA_DISABLE_DEPRECATION_WARNINGS \
+		_Pragma ("clang diagnostic push") \
+		_Pragma ("clang diagnostic ignored \"-Wdeprecated-declarations\"")
+
+	#define PRAGMA_ENABLE_DEPRECATION_WARNINGS \
+		_Pragma("clang diagnostic pop")
+
 #endif // DISABLE_DEPRECATION
