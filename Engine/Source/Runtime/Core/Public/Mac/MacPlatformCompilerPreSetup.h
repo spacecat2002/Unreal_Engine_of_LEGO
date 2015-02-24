@@ -1,4 +1,4 @@
-// Copyright 1998-2014 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -26,4 +26,20 @@
 	 * @param MESSAGE A message containing upgrade notes.
 	 */
 	#define DEPRECATED(VERSION, MESSAGE) __attribute__((deprecated(MESSAGE " Please update your code to the new API before upgrading to the next release, otherwise your project will no longer compile.")))
+
+	#define PRAGMA_DISABLE_DEPRECATION_WARNINGS \
+		_Pragma ("clang diagnostic push") \
+		_Pragma ("clang diagnostic ignored \"-Wdeprecated-declarations\"")
+
+	#define PRAGMA_ENABLE_DEPRECATION_WARNINGS \
+		_Pragma ("clang diagnostic push") \
+		_Pragma ("clang diagnostic warning \"-Wdeprecated-declarations\"")
+
+	#define PRAGMA_POP \
+		_Pragma("clang diagnostic pop")
 #endif // DISABLE_DEPRECATION
+
+#ifndef EMIT_CUSTOM_WARNING
+#define EMIT_CUSTOM_WARNING(Warning) \
+	_Pragma(PREPROCESSOR_TO_STRING(message(WARNING_LOCATION Warning)))
+#endif // EMIT_CUSTOM_WARNING
