@@ -16,10 +16,13 @@
 // isteamcontroller.h.
 #include "steamtypes.h"
 #else
-// Otherwise, we assume it's a firmware build, which doesn't deal with all the
-// things that exist in steamtypes.h, and hardcode the typedefs we need.
-typedef unsigned           int uint32;
-typedef unsigned       __int64 uint64;
+#include <stdint.h>
+typedef uint32_t uint32;
+#ifdef __C51__
+typedef uint8_t uint64[8];
+#else
+typedef uint64_t uint64;
+#endif
 #endif
 
 #pragma pack(1)
@@ -51,7 +54,7 @@ typedef unsigned       __int64 uint64;
 
 // Only add fields to the end of this struct, or if you need to change it in a larger
 // way add a new message id and new struct completely so as to not break old clients.
-typedef struct 
+struct SteamControllerState_t
 {
 	// If packet num matches that on your prior call, then the controller state hasn't been changed since 
 	// your last call and there is no need to process it
@@ -68,7 +71,7 @@ typedef struct
 	short sRightPadX;
 	short sRightPadY;
 
-} SteamControllerState_t; 
+}; 
 
 #pragma pack()
 

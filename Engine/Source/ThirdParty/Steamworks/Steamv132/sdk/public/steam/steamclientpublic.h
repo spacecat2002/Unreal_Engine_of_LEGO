@@ -112,7 +112,10 @@ enum EResult
 	k_EResultAccountLoginDeniedNeedTwoFactor = 85,	// Need two-factor code to login
 	k_EResultItemDeleted = 86,					// The thing we're trying to access has been deleted
 	k_EResultAccountLoginDeniedThrottle = 87,	// login attempt failed, try to throttle response to possible attacker
-	k_EResultTwoFactorCodeMismatch = 88,		// two factor code mismatch (only on token setup, not on login path)
+	k_EResultTwoFactorCodeMismatch = 88,		// two factor code mismatch
+	k_EResultTwoFactorActivationCodeMismatch = 89,	// activation code for two-factor didn't match
+	k_EResultAccountAssociatedToMultiplePartners = 90,	// account has been associated with multiple partners
+	k_EResultNotModified = 91, // data not modified
 };
 
 // Error codes for use with the voice functions
@@ -126,11 +129,13 @@ enum EVoiceResult
 	k_EVoiceResultDataCorrupted = 5,
 	k_EVoiceResultRestricted = 6,
 	k_EVoiceResultUnsupportedCodec = 7,
+	k_EVoiceResultReceiverOutOfDate = 8,
+	k_EVoiceResultReceiverDidNotAnswer = 9,
 
 };
 
 // Result codes to GSHandleClientDeny/Kick
-typedef enum
+enum EDenyReason
 {
 	k_EDenyInvalid = 0,
 	k_EDenyInvalidVersion = 1,
@@ -148,14 +153,14 @@ typedef enum
 	k_EDenySteamResponseTimedOut = 13,
 	k_EDenySteamValidationStalled = 14,
 	k_EDenySteamOwnerLeftGuestUser = 15,
-} EDenyReason;
+};
 
 // return type of GetAuthSessionTicket
 typedef uint32 HAuthTicket;
 const HAuthTicket k_HAuthTicketInvalid = 0;
 
 // results from BeginAuthSession
-typedef enum
+enum EBeginAuthSessionResult
 {
 	k_EBeginAuthSessionResultOK = 0,						// Ticket is valid for this game and this steamID.
 	k_EBeginAuthSessionResultInvalidTicket = 1,				// Ticket is not valid.
@@ -163,10 +168,10 @@ typedef enum
 	k_EBeginAuthSessionResultInvalidVersion = 3,			// Ticket is from an incompatible interface version
 	k_EBeginAuthSessionResultGameMismatch = 4,				// Ticket is not for this game
 	k_EBeginAuthSessionResultExpiredTicket = 5,				// Ticket has expired
-} EBeginAuthSessionResult;
+};
 
 // Callback values for callback ValidateAuthTicketResponse_t which is a response to BeginAuthSession
-typedef enum
+enum EAuthSessionResponse
 {
 	k_EAuthSessionResponseOK = 0,							// Steam has verified the user is online, the ticket is valid and ticket has not been reused.
 	k_EAuthSessionResponseUserNotConnectedToSteam = 1,		// The user in question is not connected to steam
@@ -177,15 +182,16 @@ typedef enum
 	k_EAuthSessionResponseAuthTicketCanceled = 6,			// The ticket has been canceled by the issuer
 	k_EAuthSessionResponseAuthTicketInvalidAlreadyUsed = 7,	// This ticket has already been used, it is not valid.
 	k_EAuthSessionResponseAuthTicketInvalid = 8,			// This ticket is not from a user instance currently connected to steam.
-} EAuthSessionResponse;
+	k_EAuthSessionResponsePublisherIssuedBan = 9,			// The user is banned for this game. The ban came via the web api and not VAC
+};
 
 // results from UserHasLicenseForApp
-typedef enum
+enum EUserHasLicenseForAppResult
 {
 	k_EUserHasLicenseResultHasLicense = 0,					// User has a license for specified app
 	k_EUserHasLicenseResultDoesNotHaveLicense = 1,			// User does not have a license for the specified app
 	k_EUserHasLicenseResultNoAuth = 2,						// User has not been authenticated
-} EUserHasLicenseForAppResult;
+};
 
 
 // Steam account types
@@ -255,15 +261,21 @@ enum EAppType
 	k_EAppType_Application			= 0x002,	// software application
 	k_EAppType_Tool					= 0x004,	// SDKs, editors & dedicated servers
 	k_EAppType_Demo					= 0x008,	// game demo
-	k_EAppType_Media				= 0x010,	// media trailer
+	k_EAppType_Media_DEPRECATED		= 0x010,	// legacy - was used for game trailers, which are now just videos on the web
 	k_EAppType_DLC					= 0x020,	// down loadable content
 	k_EAppType_Guide				= 0x040,	// game guide, PDF etc
 	k_EAppType_Driver				= 0x080,	// hardware driver updater (ATI, Razor etc)
 	k_EAppType_Config				= 0x100,	// hidden app used to config Steam features (backpack, sales, etc)
+	k_EAppType_Film					= 0x200,	// A Movie (feature film)
+	k_EAppType_TVSeries				= 0x400,	// A TV or other video series which will have episodes and perhaps seasons
+	k_EAppType_Video				= 0x800,	// A video component of either a Film or TVSeries (may be the feature, an episode, preview, making-of, etc)
+	k_EAppType_Plugin				= 0x1000,	// Plug-in types for other Apps
+	k_EAppType_Music				= 0x2000,	// Music files
 		
 	k_EAppType_Shortcut				= 0x40000000,	// just a shortcut, client side only
 	k_EAppType_DepotOnly			= 0x80000000,	// placeholder since depots and apps share the same namespace
 };
+
 
 
 //-----------------------------------------------------------------------------
@@ -303,7 +315,8 @@ enum EChatEntryType
 	k_EChatEntryTypeWasBanned = 9,		// user was banned (data: 64-bit steamid of actor performing the ban)
 	k_EChatEntryTypeDisconnected = 10,	// user disconnected
 	k_EChatEntryTypeHistoricalChat = 11,	// a chat message from user's chat history or offilne message
-
+	k_EChatEntryTypeReserved1 = 12,
+	k_EChatEntryTypeReserved2 = 13,
 };
 
 
@@ -526,7 +539,7 @@ public:
 	}
 
 
-#if defined( INCLUDED_STEAM_COMMON_STEAMCOMMON_H ) 
+#if defined( INCLUDED_STEAM2_USERID_STRUCTS ) 
 	//-----------------------------------------------------------------------------
 	// Purpose: Initializes a steam ID from a Steam2 ID structure
 	// Input:	pTSteamGlobalUserID -	Steam2 ID to convert
@@ -887,10 +900,10 @@ public:
 		m_gameID.m_nType = k_EGameIDTypeGameMod;
 
 		char rgchModDir[MAX_PATH];
-		Q_FileBase( pchModPath, rgchModDir, sizeof( rgchModDir ) );
+		V_FileBase( pchModPath, rgchModDir, sizeof( rgchModDir ) );
 		CRC32_t crc32;
 		CRC32_Init( &crc32 );
-		CRC32_ProcessBuffer( &crc32, rgchModDir, Q_strlen( rgchModDir ) );
+		CRC32_ProcessBuffer( &crc32, rgchModDir, V_strlen( rgchModDir ) );
 		CRC32_Final( &crc32 );
 
 		// set the high-bit on the mod-id 
@@ -907,8 +920,8 @@ public:
 
 		CRC32_t crc32;
 		CRC32_Init( &crc32 );
-		CRC32_ProcessBuffer( &crc32, pchExePath, Q_strlen( pchExePath ) );
-		CRC32_ProcessBuffer( &crc32, pchAppName, Q_strlen( pchAppName ) );
+		CRC32_ProcessBuffer( &crc32, pchExePath, V_strlen( pchExePath ) );
+		CRC32_ProcessBuffer( &crc32, pchAppName, V_strlen( pchAppName ) );
 		CRC32_Final( &crc32 );
 
 		// set the high-bit on the mod-id 
@@ -928,7 +941,7 @@ public:
 		CRC32_t crc32;
 		CRC32_Init( &crc32 );
 		const char *pchFileId = vstFileID.Render();
-		CRC32_ProcessBuffer( &crc32, pchFileId, Q_strlen( pchFileId ) );
+		CRC32_ProcessBuffer( &crc32, pchFileId, V_strlen( pchFileId ) );
 		CRC32_Final( &crc32 );
 
 		// set the high-bit on the mod-id 
