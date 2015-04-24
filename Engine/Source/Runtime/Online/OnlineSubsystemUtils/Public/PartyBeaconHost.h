@@ -1,7 +1,7 @@
 // Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
-#include "Runtime/Online/OnlineSubsystemUtils/Classes/OnlineBeaconHostObject.h"
+#include "Runtime/Online/OnlineSubsystemUtils/Public/OnlineBeaconHostObject.h"
 #include "PartyBeaconState.h"
 #include "PartyBeaconHost.generated.h"
 
@@ -56,9 +56,6 @@ class ONLINESUBSYSTEMUTILS_API APartyBeaconHost : public AOnlineBeaconHostObject
 	// End AActor Interface
 
 	// Begin AOnlineBeaconHostObject Interface 
-	virtual AOnlineBeaconClient* SpawnBeaconActor(UNetConnection* ClientConnection) override;
-	virtual void ClientConnected(AOnlineBeaconClient* NewClientActor, UNetConnection* ClientConnection) override;
-	virtual void RemoveClientActor(AOnlineBeaconClient* ClientActor) override;
 	// End AOnlineBeaconHost Interface 
 
 	/**
@@ -261,10 +258,6 @@ protected:
 	UPROPERTY()
 	UPartyBeaconState* State;
 
-	/** List of all party beacon actors with active connections */
-	UPROPERTY()
-	TArray<AOnlineBeaconClient*> ClientActors;
-
 	/** Delegate fired when the beacon indicates all reservations are taken */
 	FOnReservationsFull ReservationsFull;
 	/** Delegate fired when the beacon indicates a reservation add/remove */
@@ -287,6 +280,11 @@ protected:
 	 * @return the class of the state object inside this beacon
 	 */
 	virtual TSubclassOf<UPartyBeaconState> GetPartyBeaconHostClass() const { return UPartyBeaconState::StaticClass(); }
+
+	/**
+	 * Update clients with current reservation information
+	 */
+	void SendReservationUpdates();
 
 	/**
 	 * Handle a newly added player

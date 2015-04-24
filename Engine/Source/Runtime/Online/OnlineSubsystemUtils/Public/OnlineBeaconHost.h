@@ -1,7 +1,7 @@
 // Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
-#include "Runtime/Online/OnlineSubsystemUtils/Classes/OnlineBeacon.h"
+#include "OnlineBeacon.h"
 #include "OnlineBeaconHost.generated.h"
 
 class AOnlineBeaconHostObject;
@@ -77,10 +77,11 @@ class ONLINESUBSYSTEMUTILS_API AOnlineBeaconHost : public AOnlineBeacon
 	AOnlineBeaconHostObject* GetHost(const FString& BeaconType);
 
 	/**
-	 * Save actors on seamless travel
-	 * see AGameMode::GetSeamlessTravelActorList
+	 * Disconnect a given client from the host
+	 *
+	 * @param ClientActor the beacon client to disconnect
 	 */
-	void GetSeamlessTravelActorList(bool bToEntry, TArray<AActor*>& ActorList);
+	void DisconnectClient(AOnlineBeaconClient* ClientActor);
 
 	/**
 	 * Get a client beacon actor for a given connection

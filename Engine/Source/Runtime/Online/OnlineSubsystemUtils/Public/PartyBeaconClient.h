@@ -14,7 +14,14 @@
  *
  * @param ReservationResponse response from the server
  */
-DECLARE_DELEGATE_OneParam(FOnReservationRequestComplete, EPartyReservationResult::Type);
+DECLARE_DELEGATE_OneParam(FOnReservationRequestComplete, EPartyReservationResult::Type /** ReservationResponse */);
+
+/**
+ * Delegate triggered when the host indicated a reservation count has changed
+ *
+ * @param NumRemaining number of slots remaining in the session
+ */
+DECLARE_DELEGATE_OneParam(FOnReservationCountUpdate, int32 /** NumRemaining */);
 
 /**
  * A beacon client used for making reservations with an existing game session
@@ -59,11 +66,26 @@ class ONLINESUBSYSTEMUTILS_API APartyBeaconClient : public AOnlineBeaconClient
 	virtual void ClientReservationResponse(EPartyReservationResult::Type ReservationResponse);
 
 	/**
+	 * Response from the host session that the reservation count has changed
+	 *
+	 * @param NumRemainingReservations number of slots remaining until a full session
+	 */
+	UFUNCTION(client, reliable)
+	virtual void ClientSendReservationUpdates(int32 NumRemainingReservations);
+
+	/**
 	 * Delegate triggered when a response from the party beacon host has been received
 	 *
 	 * @return delegate to handle response from the server
 	 */
 	FOnReservationRequestComplete& OnReservationRequestComplete() { return ReservationRequestComplete; }
+
+	/**
+	 * Delegate triggered when the host indicated a reservation count has changed
+	 *
+	 * @param NumRemaining number of slots remaining in the session
+	 */
+	FOnReservationCountUpdate& OnReservationCountUpdate() { return ReservationCountUpdate; }
 
 	/**
 	* @return the pending reservation associated with this beacon client
@@ -74,6 +96,8 @@ protected:
 
 	/** Delegate for reservation request responses */
 	FOnReservationRequestComplete ReservationRequestComplete;
+	/** Delegate for reservation count updates */
+	FOnReservationCountUpdate ReservationCountUpdate;
 
 	/** Session Id of the destination host */
 	FString DestSessionId;

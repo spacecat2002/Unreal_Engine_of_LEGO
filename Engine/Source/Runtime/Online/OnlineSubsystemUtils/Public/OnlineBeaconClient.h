@@ -2,7 +2,7 @@
 
 #pragma once
 #include "TimerManager.h"
-#include "Runtime/Online/OnlineSubsystemUtils/Classes/OnlineBeacon.h"
+#include "OnlineBeacon.h"
 #include "OnlineBeaconClient.generated.h"
 
 class AOnlineBeaconHost;
@@ -28,7 +28,8 @@ class ONLINESUBSYSTEMUTILS_API AOnlineBeaconClient : public AOnlineBeacon
 	GENERATED_UCLASS_BODY()
 
 	// Begin AActor Interface
-	void OnNetCleanup(UNetConnection* Connection) override;
+	virtual void OnNetCleanup(UNetConnection* Connection) override;
+	virtual const AActor* GetNetOwner() const override;
 	virtual UNetConnection* GetNetConnection() const override;
 	// End AActor Interface
 

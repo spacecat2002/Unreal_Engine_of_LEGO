@@ -3,6 +3,12 @@
 #pragma once
 #include "OnlineBeacon.generated.h"
 
+class UWorld;
+class UNetDriver;
+class UNetConnection;
+class UChannel;
+class FInBunch;
+
 ONLINESUBSYSTEMUTILS_API DECLARE_LOG_CATEGORY_EXTERN(LogBeacon, Display, All);
 
 /** States that a beacon can be in */
@@ -24,15 +30,19 @@ class ONLINESUBSYSTEMUTILS_API AOnlineBeacon : public AActor, public FNetworkNot
 	GENERATED_UCLASS_BODY()
 
 	// Begin AActor Interface
-	virtual void OnActorChannelOpen(class FInBunch& InBunch, class UNetConnection* Connection) override;
+	virtual void OnActorChannelOpen(FInBunch& InBunch, UNetConnection* Connection) override;
+	virtual bool IsRelevancyOwnerFor(const AActor* ReplicatedActor, const AActor* ActorOwner, const AActor* ConnectionActor) const override;
+	virtual bool IsNetRelevantFor(const AActor* RealViewer, const AActor* ViewTarget, const FVector& SrcLocation) const override;
+	virtual const AActor* GetNetOwner() const override { return nullptr; }
 	virtual UNetConnection* GetNetConnection() const override { return nullptr; }
+	virtual bool IsLevelBoundsRelevant() const override { return false; }
 	// End AActor Interface
 
 	// Begin FNetworkNotify Interface
 	virtual EAcceptConnection::Type NotifyAcceptingConnection() override;
-	virtual void NotifyAcceptedConnection(class UNetConnection* Connection) override;
-	virtual bool NotifyAcceptingChannel(class UChannel* Channel) override;
-	virtual void NotifyControlMessage(class UNetConnection* Connection, uint8 MessageType, class FInBunch& Bunch) override;
+	virtual void NotifyAcceptedConnection(UNetConnection* Connection) override;
+	virtual bool NotifyAcceptingChannel(UChannel* Channel) override;
+	virtual void NotifyControlMessage(UNetConnection* Connection, uint8 MessageType, FInBunch& Bunch) override;
 	// End FNetworkNotify Interface
 
 	/**
@@ -49,7 +59,15 @@ class ONLINESUBSYSTEMUTILS_API AOnlineBeacon : public AActor, public FNetworkNot
 	 */
 	EBeaconState::Type GetBeaconState() const { return BeaconState; }
 
-	virtual void HandleNetworkFailure(class UWorld* World, class UNetDriver *NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString);
+	/**
+	 * Notification of network error messages, allows a beacon to handle the failure
+	 *
+	 * @param	World associated with failure
+	 * @param	NetDriver associated with failure
+	 * @param	FailureType	the type of error
+	 * @param	ErrorString	additional string detailing the error
+	 */
+	virtual void HandleNetworkFailure(UWorld* World, UNetDriver *NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString);
 
 	/**
 	 * Set Beacon state 

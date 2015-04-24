@@ -278,6 +278,16 @@ class ONLINESUBSYSTEMUTILS_API UPartyBeaconState : public UObject
 	virtual int32 GetReservationCount() const { return Reservations.Num(); }
 
 	/**
+	 * @return the total number of reservations allowed
+	 */
+	virtual int32 GetMaxReservations() const { return MaxReservations; }
+
+	/**
+	 * @return the amount of space left in the beacon
+	 */
+	virtual int32 GetRemainingReservations() const { return MaxReservations - NumConsumedReservations; }
+
+	/**
 	 * @return the number of actually used reservations across all parties
 	 */
 	virtual int32 GetNumConsumedReservations() const { return NumConsumedReservations; }

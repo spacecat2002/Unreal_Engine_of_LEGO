@@ -1,9 +1,10 @@
 // Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
-#include "Runtime/Online/OnlineSubsystemUtils/Classes/OnlineBeacon.h"
+#include "OnlineBeacon.h"
 #include "OnlineBeaconHostObject.generated.h"
 
+class UClass;
 class AOnlineBeaconClient;
 class UNetConnection;
 
@@ -18,9 +19,8 @@ class ONLINESUBSYSTEMUTILS_API AOnlineBeaconHostObject : public AActor
 {
 	GENERATED_UCLASS_BODY()
 
-	/** Custom name for this beacon */
-	UPROPERTY(Transient)
-	FString BeaconTypeName;
+	/** @return the name of the net driver associated with this object */
+	FName GetNetDriverName() const;
 
 	/** Get the state of the beacon (accepting/rejecting connections) */
 	EBeaconState::Type GetBeaconState() const;
@@ -33,7 +33,7 @@ class ONLINESUBSYSTEMUTILS_API AOnlineBeaconHostObject : public AActor
 	 *
 	 * @return new client beacon actor that this beacon host knows how to communicate with
 	 */
-	virtual AOnlineBeaconClient* SpawnBeaconActor(UNetConnection* ClientConnection) PURE_VIRTUAL(AOnlineBeaconHostObject::SpawnBeaconActor, return NULL;);
+	virtual AOnlineBeaconClient* SpawnBeaconActor(UNetConnection* ClientConnection);
 
 	/**
 	 * Delegate triggered when a new client connection is made
@@ -41,12 +41,39 @@ class ONLINESUBSYSTEMUTILS_API AOnlineBeaconHostObject : public AActor
 	 * @param NewClientActor new client beacon actor
 	 * @param ClientConnection new connection established
 	 */
-	virtual void ClientConnected(AOnlineBeaconClient* NewClientActor, UNetConnection* ClientConnection) PURE_VIRTUAL(AOnlineBeaconHostObject::ClientConnected, );
+	virtual void ClientConnected(AOnlineBeaconClient* NewClientActor, UNetConnection* ClientConnection);
 
 	/**
-	 * Remove a client beacon actor from the list of active connections
+	 * Disconnect a given client from the host
 	 *
-	 * @param ClientActor client beacon actor to remove
+	 * @param ClientActor the beacon client to disconnect
 	 */
-	virtual void RemoveClientActor(AOnlineBeaconClient* ClientActor);
+	virtual void DisconnectClient(AOnlineBeaconClient* ClientActor);
+
+	/**
+	 * Notification that a client has been disconnected from the host in some way (timeout, client initiated, etc)
+	 *
+	 * @param LeavingClientActor actor that has disconnected
+	 */
+	virtual void NotifyClientDisconnected(AOnlineBeaconClient* LeavingClientActor);
+
+	/**
+	 * Called when this class is unregistered by the beacon host 
+	 * Do any necessary cleanup.
+	 */
+	virtual void Unregister();
+
+protected:
+
+	/** Custom name for this beacon */
+	UPROPERTY(Transient)
+	FString BeaconTypeName;
+
+	/** Class reference for spawning client beacon actor */
+	UPROPERTY()
+	TSubclassOf<AOnlineBeaconClient> ClientBeaconActorClass;
+
+	/** List of all client beacon actors with active connections */
+	UPROPERTY()
+	TArray<AOnlineBeaconClient*> ClientActors;
 };
