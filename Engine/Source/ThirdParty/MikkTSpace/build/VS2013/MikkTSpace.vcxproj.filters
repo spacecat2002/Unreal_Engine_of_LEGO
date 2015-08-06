@@ -15,12 +15,12 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="inc\mikktspace.h">
+    <ClInclude Include="..\..\inc\mikktspace.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\mikktspace.c">
+    <ClCompile Include="..\..\src\mikktspace.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
