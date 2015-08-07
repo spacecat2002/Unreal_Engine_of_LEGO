@@ -11,44 +11,44 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="tools\kfc.c">
+    <ClCompile Include="..\..\tools\kfc.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="kiss_fft.c">
+    <ClCompile Include="..\..\kiss_fft.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="tools\kiss_fftnd.c">
+    <ClCompile Include="..\..\tools\kiss_fftnd.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="tools\kiss_fftndr.c">
+    <ClCompile Include="..\..\tools\kiss_fftndr.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="tools\kiss_fftr.c">
+    <ClCompile Include="..\..\tools\kiss_fftr.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="_kiss_fft_guts.h">
+    <ClInclude Include="..\..\_kiss_fft_guts.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="tools\kfc.h">
+    <ClInclude Include="..\..\tools\kfc.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="kiss_fft.h">
+    <ClInclude Include="..\..\kiss_fft.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="tools\kiss_fftnd.h">
+    <ClInclude Include="..\..\tools\kiss_fftnd.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="tools\kiss_fftndr.h">
+    <ClInclude Include="..\..\tools\kiss_fftndr.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="tools\kiss_fftr.h">
+    <ClInclude Include="..\..\tools\kiss_fftr.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="README" />
-    <None Include="README.simd" />
+    <None Include="..\..\README" />
+    <None Include="..\..\README.simd" />
   </ItemGroup>
 </Project>
