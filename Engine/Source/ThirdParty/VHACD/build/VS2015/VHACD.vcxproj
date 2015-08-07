@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
       <Configuration>Debug</Configuration>
@@ -19,36 +19,36 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="inc\btAlignedAllocator.h" />
-    <ClInclude Include="inc\btAlignedObjectArray.h" />
-    <ClInclude Include="inc\btConvexHullComputer.h" />
-    <ClInclude Include="inc\btMinMax.h" />
-    <ClInclude Include="inc\btScalar.h" />
-    <ClInclude Include="inc\btVector3.h" />
-    <ClInclude Include="inc\vhacdCircularList.h" />
-    <ClInclude Include="inc\vhacdICHull.h" />
-    <ClInclude Include="inc\vhacdManifoldMesh.h" />
-    <ClInclude Include="inc\vhacdMesh.h" />
-    <ClInclude Include="inc\vhacdMutex.h" />
-    <ClInclude Include="inc\vhacdSArray.h" />
-    <ClInclude Include="inc\vhacdTimer.h" />
-    <ClInclude Include="inc\vhacdVector.h" />
-    <ClInclude Include="inc\vhacdVHACD.h" />
-    <ClInclude Include="inc\vhacdVolume.h" />
-    <ClInclude Include="public\VHACD.h" />
+    <ClInclude Include="..\..\inc\btAlignedAllocator.h" />
+    <ClInclude Include="..\..\inc\btAlignedObjectArray.h" />
+    <ClInclude Include="..\..\inc\btConvexHullComputer.h" />
+    <ClInclude Include="..\..\inc\btMinMax.h" />
+    <ClInclude Include="..\..\inc\btScalar.h" />
+    <ClInclude Include="..\..\inc\btVector3.h" />
+    <ClInclude Include="..\..\inc\vhacdCircularList.h" />
+    <ClInclude Include="..\..\inc\vhacdICHull.h" />
+    <ClInclude Include="..\..\inc\vhacdManifoldMesh.h" />
+    <ClInclude Include="..\..\inc\vhacdMesh.h" />
+    <ClInclude Include="..\..\inc\vhacdMutex.h" />
+    <ClInclude Include="..\..\inc\vhacdSArray.h" />
+    <ClInclude Include="..\..\inc\vhacdTimer.h" />
+    <ClInclude Include="..\..\inc\vhacdVector.h" />
+    <ClInclude Include="..\..\inc\vhacdVHACD.h" />
+    <ClInclude Include="..\..\inc\vhacdVolume.h" />
+    <ClInclude Include="..\..\public\VHACD.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="inc\vhacdCircularList.inl" />
-    <None Include="inc\vhacdVector.inl" />
+    <None Include="..\..\inc\vhacdCircularList.inl" />
+    <None Include="..\..\inc\vhacdVector.inl" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\btAlignedAllocator.cpp" />
-    <ClCompile Include="src\btConvexHullComputer.cpp" />
-    <ClCompile Include="src\VHACD.cpp" />
-    <ClCompile Include="src\vhacdICHull.cpp" />
-    <ClCompile Include="src\vhacdManifoldMesh.cpp" />
-    <ClCompile Include="src\vhacdMesh.cpp" />
-    <ClCompile Include="src\vhacdVolume.cpp" />
+    <ClCompile Include="..\..\src\btAlignedAllocator.cpp" />
+    <ClCompile Include="..\..\src\btConvexHullComputer.cpp" />
+    <ClCompile Include="..\..\src\VHACD.cpp" />
+    <ClCompile Include="..\..\src\vhacdICHull.cpp" />
+    <ClCompile Include="..\..\src\vhacdManifoldMesh.cpp" />
+    <ClCompile Include="..\..\src\vhacdMesh.cpp" />
+    <ClCompile Include="..\..\src\vhacdVolume.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{75EECD63-EE38-4E6A-899D-0D17A70FCB40}</ProjectGuid>
@@ -59,26 +59,26 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v120</PlatformToolset>
+    <PlatformToolset>v140</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v120</PlatformToolset>
+    <PlatformToolset>v140</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v120</PlatformToolset>
+    <PlatformToolset>v140</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v120</PlatformToolset>
+    <PlatformToolset>v140</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -98,13 +98,13 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <OutDir>$(SolutionDir)\lib\win64\vs2013\</OutDir>
-    <IncludePath>$(VCInstallDir)include;$(VCInstallDir)atlmfc\include;$(WindowsSDK_IncludePath);$(SolutionDir)\inc;$(SolutionDir)\public;</IncludePath>
+    <OutDir>$(SolutionDir)\..\..\lib\win64\vs2015\</OutDir>
+    <IncludePath>$(VCInstallDir)include;$(VCInstallDir)atlmfc\include;$(WindowsSDK_IncludePath);$(SolutionDir)\..\..\inc;$(SolutionDir)\..\..\public;</IncludePath>
     <TargetName>$(ProjectName)d</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <OutDir>$(SolutionDir)\lib\win64\vs2013\</OutDir>
-    <IncludePath>$(VCInstallDir)include;$(VCInstallDir)atlmfc\include;$(WindowsSDK_IncludePath);$(SolutionDir)\inc;$(SolutionDir)\public;</IncludePath>
+    <OutDir>$(SolutionDir)\..\..\lib\win64\vs2015\</OutDir>
+    <IncludePath>$(VCInstallDir)include;$(VCInstallDir)atlmfc\include;$(WindowsSDK_IncludePath);$(SolutionDir)\..\..\inc;$(SolutionDir)\..\..\public;</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -113,6 +113,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(UniversalCRT_IncludePath)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -127,6 +128,7 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ProgramDataBaseFileName>$(OutDir)\$(ProjectName)d.pdb</ProgramDataBaseFileName>
+      <AdditionalIncludeDirectories>$(UniversalCRT_IncludePath)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -142,6 +144,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(UniversalCRT_IncludePath)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -160,6 +163,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ProgramDataBaseFileName>$(OutDir)\$(ProjectName).pdb</ProgramDataBaseFileName>
+      <AdditionalIncludeDirectories>$(UniversalCRT_IncludePath)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
