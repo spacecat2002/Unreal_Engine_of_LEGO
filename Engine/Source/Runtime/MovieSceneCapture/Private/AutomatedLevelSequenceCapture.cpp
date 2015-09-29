@@ -1,26 +1,26 @@
 // Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieSceneCapturePCH.h"
-#include "ActorAnimationPlayer.h"
-#include "AutomatedActorAnimationCapture.h"
+#include "LevelSequencePlayer.h"
+#include "AutomatedLevelSequenceCapture.h"
 #include "ErrorCodes.h"
 
-UAutomatedActorAnimationCapture::UAutomatedActorAnimationCapture(const FObjectInitializer& Init)
+UAutomatedLevelSequenceCapture::UAutomatedLevelSequenceCapture(const FObjectInitializer& Init)
 	: Super(Init)
 {
 	PlaybackSettings.LoopCount = 0;
 }
 
-void UAutomatedActorAnimationCapture::Initialize(FViewport* InViewport)
+void UAutomatedLevelSequenceCapture::Initialize(FViewport* InViewport)
 {
-	if (UActorAnimation* ActorAnimationAsset = Cast<UActorAnimation>(ActorAnimation.TryLoad()))
+	if (ULevelSequence* LevelSequenceAsset = Cast<ULevelSequence>(LevelSequence.TryLoad()))
 	{
 		// Set up an instance of the asset for the current world, so we can resolve the bindings
-		AnimationInstance = NewObject<UActorAnimationInstance>(this, "AnimationInstance");
-		AnimationInstance->Initialize(ActorAnimationAsset, GWorld, false);
+		AnimationInstance = NewObject<ULevelSequenceInstance>(this, "AnimationInstance");
+		AnimationInstance->Initialize(LevelSequenceAsset, GWorld, false);
 
 		// Set up an animation player that can play back the instance
-		AnimationPlayback = NewObject<UActorAnimationPlayer>(this, "AnimationPlayer");
+		AnimationPlayback = NewObject<ULevelSequencePlayer>(this, "AnimationPlayer");
 		AnimationPlayback->Initialize(AnimationInstance, GWorld, PlaybackSettings);
 
 		// Immediately play/pause the animation. This ensures that the scene is set up, ready for playing.
@@ -39,7 +39,7 @@ void UAutomatedActorAnimationCapture::Initialize(FViewport* InViewport)
 	Super::Initialize(InViewport);
 }
 
-void UAutomatedActorAnimationCapture::CaptureFrame(float DeltaSeconds)
+void UAutomatedLevelSequenceCapture::CaptureFrame(float DeltaSeconds)
 {
 	if (AnimationPlayback)
 	{

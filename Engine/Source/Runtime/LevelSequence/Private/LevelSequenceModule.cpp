@@ -1,13 +1,13 @@
 // Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
 
-#include "ActorAnimationPrivatePCH.h"
+#include "LevelSequencePCH.h"
 #include "ModuleInterface.h"
 
 
 /**
- * Implements the ActorAnimation module.
+ * Implements the LevelSequence module.
  */
-class FActorAnimationModule
+class FLevelSequenceModule
 	: public IModuleInterface
 {
 public:
@@ -19,4 +19,4 @@ public:
 };
 
 
-IMPLEMENT_MODULE(FActorAnimationModule, ActorAnimation);
+IMPLEMENT_MODULE(FLevelSequenceModule, LevelSequence);

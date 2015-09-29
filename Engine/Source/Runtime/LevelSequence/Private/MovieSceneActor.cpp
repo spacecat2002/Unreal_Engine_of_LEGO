@@ -1,6 +1,6 @@
 // Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
 
-#include "ActorAnimationPrivatePCH.h"
+#include "LevelSequencePCH.h"
 #include "MovieSceneActor.h"
 
 
@@ -50,7 +50,7 @@ void AMovieSceneActor::PostInitProperties()
 	if (!HasAnyFlags(RF_ClassDefaultObject))
 	{
 		// Make an instance of our asset so that we can keep hard references to actors we are using
-		AnimationInstance = NewObject<UActorAnimationInstance>(this, "AnimationInstance");
+		SequenceInstance = NewObject<ULevelSequenceInstance>(this, "AnimationInstance");
 	}
 }
 
@@ -66,7 +66,7 @@ void AMovieSceneActor::PostEditChangeProperty( struct FPropertyChangedEvent& Pro
 {
 	FName PropertyName = PropertyChangedEvent.Property ? PropertyChangedEvent.Property->GetFName() : NAME_None;
 
-	if (PropertyName == GET_MEMBER_NAME_CHECKED(AMovieSceneActor, ActorAnimation))
+	if (PropertyName == GET_MEMBER_NAME_CHECKED(AMovieSceneActor, LevelSequence))
 	{
 		UpdateAnimationInstance();
 	}
@@ -76,7 +76,7 @@ void AMovieSceneActor::PostEditChangeProperty( struct FPropertyChangedEvent& Pro
 
 bool AMovieSceneActor::GetReferencedContentObjects(TArray<UObject*>& Objects) const
 {
-	if (UObject* Asset = AnimationInstance ? AnimationInstance->GetActorAnimation() : nullptr)
+	if (UObject* Asset = SequenceInstance ? SequenceInstance->GetLevelSequence() : nullptr)
 	{
 		// @todo: Enable editing of animation instances
 		Objects.Add(Asset);
@@ -97,11 +97,11 @@ void AMovieSceneActor::Tick(float DeltaSeconds)
 	}
 }
 
-void AMovieSceneActor::SetAnimation(UActorAnimation* InAnimation)
+void AMovieSceneActor::SetAnimation(ULevelSequence* InAnimation)
 {
 	if (!AnimationPlayer || !AnimationPlayer->IsPlaying())
 	{
-		ActorAnimation = InAnimation;
+		LevelSequence = InAnimation;
 		InitializePlayer();
 	}
 }
@@ -112,8 +112,8 @@ void AMovieSceneActor::InitializePlayer()
 
 	if (GetWorld()->IsGameWorld())
 	{
-		AnimationPlayer = NewObject<UActorAnimationPlayer>(this, "AnimationPlayer");
-		AnimationPlayer->Initialize(AnimationInstance, GetWorld(), PlaybackSettings);
+		AnimationPlayer = NewObject<ULevelSequencePlayer>(this, "AnimationPlayer");
+		AnimationPlayer->Initialize(SequenceInstance, GetWorld(), PlaybackSettings);
 
 		if (bAutoPlay)
 		{
@@ -124,6 +124,6 @@ void AMovieSceneActor::InitializePlayer()
 
 void AMovieSceneActor::UpdateAnimationInstance()
 {
-	UActorAnimation* ActorAnimationAsset = Cast<UActorAnimation>(ActorAnimation.TryLoad());
-	AnimationInstance->Initialize(ActorAnimationAsset, GetWorld(), true);
+	ULevelSequence* LevelSequenceAsset = Cast<ULevelSequence>(LevelSequence.TryLoad());
+	SequenceInstance->Initialize(LevelSequenceAsset, GetWorld(), true);
 }

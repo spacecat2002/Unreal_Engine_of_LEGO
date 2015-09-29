@@ -1,24 +1,24 @@
 // Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
 
-#include "ActorAnimationPrivatePCH.h"
-#include "ActorAnimation.h"
-#include "ActorAnimationObject.h"
+#include "LevelSequencePCH.h"
+#include "LevelSequence.h"
+#include "LevelSequenceObject.h"
 #include "MovieScene.h"
 
 
-UActorAnimation::UActorAnimation(const FObjectInitializer& ObjectInitializer)
+ULevelSequence::ULevelSequence(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 	, MovieScene(nullptr)
 {
 }
 
-void UActorAnimation::Initialize()
+void ULevelSequence::Initialize()
 {
 	// @todo sequencer: gmp: fix me
 	MovieScene = NewObject<UMovieScene>(this, NAME_None, RF_Transactional);
 }
 
-void UActorAnimation::ConvertPersistentBindingsToDefault(UObject* FixupContext)
+void ULevelSequence::ConvertPersistentBindingsToDefault(UObject* FixupContext)
 {
 	if (PossessedObjects_DEPRECATED.Num() == 0)
 	{
@@ -39,65 +39,66 @@ void UActorAnimation::ConvertPersistentBindingsToDefault(UObject* FixupContext)
 	PossessedObjects_DEPRECATED.Empty();
 }
 
-void UActorAnimationInstance::Initialize(UActorAnimation* InAnimation, UObject* InContext, bool bInCanRemapBindings)
+void ULevelSequenceInstance::Initialize(ULevelSequence* InSequence, UObject* InContext, bool bInCanRemapBindings)
 {
-	ActorAnimation = InAnimation;
+	LevelSequence = InSequence;
 	bCanRemapBindings = bInCanRemapBindings;
 
 	if (!bCanRemapBindings)
 	{
-		RemappedObjectReferences = FActorAnimationObjectReferenceMap();
+		RemappedObjectReferences = FLevelSequenceObjectReferenceMap();
 	}
 
 	SetContext(InContext);
 }
 
-void UActorAnimationInstance::SetContext(UObject* NewContext)
+void ULevelSequenceInstance::SetContext(UObject* NewContext)
 {
 	ResolutionContext = NewContext;
 	CachedObjectBindings.Reset();
 }
 
-bool UActorAnimationInstance::AllowsSpawnableObjects() const
+bool ULevelSequenceInstance::AllowsSpawnableObjects() const
 {
 	return true;
 }
 
-void UActorAnimationInstance::BindPossessableObject(const FGuid& ObjectId, UObject& PossessedObject)
+void ULevelSequenceInstance::BindPossessableObject(const FGuid& ObjectId, UObject& PossessedObject)
 {
 	UObject* Context = ResolutionContext.Get();
+
 	if (!Context)
 	{
 		return;
 	}
 
-	if (!ActorAnimation)
+	if (!LevelSequence)
 	{
 		RemappedObjectReferences.CreateBinding(ObjectId, &PossessedObject, Context);
 	}
-	else if (bCanRemapBindings && ActorAnimation->DefaultObjectReferences.HasBinding(ObjectId))
+	else if (bCanRemapBindings && LevelSequence->DefaultObjectReferences.HasBinding(ObjectId))
 	{
 		RemappedObjectReferences.CreateBinding(ObjectId, &PossessedObject, Context);
 	}
 	else
 	{
-		ActorAnimation->DefaultObjectReferences.CreateBinding(ObjectId, &PossessedObject, Context);
+		LevelSequence->DefaultObjectReferences.CreateBinding(ObjectId, &PossessedObject, Context);
 	}
 }
 
-bool UActorAnimationInstance::CanPossessObject(UObject& Object) const
+bool ULevelSequenceInstance::CanPossessObject(UObject& Object) const
 {
 	return Object.IsA<AActor>() || Object.IsA<UActorComponent>();
 }
 
-void UActorAnimationInstance::DestroyAllSpawnedObjects()
+void ULevelSequenceInstance::DestroyAllSpawnedObjects()
 {
 	const bool DestroyAll = true;
 	SpawnOrDestroyObjects(DestroyAll);
 	SpawnedActors.Empty();
 }
 
-UObject* UActorAnimationInstance::FindObject(const FGuid& ObjectId) const
+UObject* ULevelSequenceInstance::FindObject(const FGuid& ObjectId) const
 {
 	// If it's already cached, we can just return that
 	if (auto* WeakCachedObject = CachedObjectBindings.Find(ObjectId))
@@ -121,10 +122,10 @@ UObject* UActorAnimationInstance::FindObject(const FGuid& ObjectId) const
 			FoundObject = RemappedObjectReferences.ResolveBinding(ObjectId, Context);
 		}
 		
-		if (ActorAnimation)
+		if (LevelSequence)
 		{
 			// Attempt to resolve the object binding through the defaults
-			FoundObject = ActorAnimation->DefaultObjectReferences.ResolveBinding(ObjectId, Context);
+			FoundObject = LevelSequence->DefaultObjectReferences.ResolveBinding(ObjectId, Context);
 		}
 	}
 
@@ -142,7 +143,7 @@ UObject* UActorAnimationInstance::FindObject(const FGuid& ObjectId) const
 	return FoundObject;
 }
 
-FGuid UActorAnimationInstance::FindObjectId(UObject& Object) const
+FGuid ULevelSequenceInstance::FindObjectId(UObject& Object) const
 {
 	for (auto& Pair : CachedObjectBindings)
 	{
@@ -167,9 +168,9 @@ FGuid UActorAnimationInstance::FindObjectId(UObject& Object) const
 		}
 
 		// Search defaults
-		if (ActorAnimation)
+		if (LevelSequence)
 		{
-			FGuid ObjectId = ActorAnimation->DefaultObjectReferences.FindBindingId(&Object, Context);
+			FGuid ObjectId = LevelSequence->DefaultObjectReferences.FindBindingId(&Object, Context);
 			if (ObjectId.IsValid())
 			{
 				return ObjectId;
@@ -190,12 +191,12 @@ FGuid UActorAnimationInstance::FindObjectId(UObject& Object) const
 	return FGuid();
 }
 
-UMovieScene* UActorAnimationInstance::GetMovieScene() const
+UMovieScene* ULevelSequenceInstance::GetMovieScene() const
 {
-	return ActorAnimation ? ActorAnimation->MovieScene : nullptr;
+	return LevelSequence ? LevelSequence->MovieScene : nullptr;
 }
 
-UObject* UActorAnimationInstance::GetParentObject(UObject* Object) const
+UObject* ULevelSequenceInstance::GetParentObject(UObject* Object) const
 {
 	UActorComponent* Component = Cast<UActorComponent>(Object);
 
@@ -207,7 +208,7 @@ UObject* UActorAnimationInstance::GetParentObject(UObject* Object) const
 	return nullptr;
 }
 
-void UActorAnimationInstance::SpawnOrDestroyObjects(bool DestroyAll)
+void ULevelSequenceInstance::SpawnOrDestroyObjects(bool DestroyAll)
 {
 	bool bAnyLevelActorsChanged = false;
 
@@ -341,7 +342,7 @@ void UActorAnimationInstance::SpawnOrDestroyObjects(bool DestroyAll)
 }
 
 #if WITH_EDITOR
-bool UActorAnimationInstance::TryGetObjectDisplayName(const FGuid& ObjectId, FText& OutDisplayName) const
+bool ULevelSequenceInstance::TryGetObjectDisplayName(const FGuid& ObjectId, FText& OutDisplayName) const
 {
 	UObject* Object = FindObject(ObjectId);
 
@@ -363,21 +364,21 @@ bool UActorAnimationInstance::TryGetObjectDisplayName(const FGuid& ObjectId, FTe
 }
 #endif
 
-void UActorAnimationInstance::UnbindPossessableObjects(const FGuid& ObjectId)
+void ULevelSequenceInstance::UnbindPossessableObjects(const FGuid& ObjectId)
 {
 	if (bCanRemapBindings && RemappedObjectReferences.HasBinding(ObjectId))
 	{
 		RemappedObjectReferences.RemoveBinding(ObjectId);
 	}
-	else if (ActorAnimation)
+	else if (LevelSequence)
 	{
-		ActorAnimation->DefaultObjectReferences.RemoveBinding(ObjectId);
+		LevelSequence->DefaultObjectReferences.RemoveBinding(ObjectId);
 	}
 
 	CachedObjectBindings.Remove(ObjectId);
 }
 
-void UActorAnimationInstance::DeselectAllActors()
+void ULevelSequenceInstance::DeselectAllActors()
 {
 	// @todo sequencer: gmp: fix me
 	/*

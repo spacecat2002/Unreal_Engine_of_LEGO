@@ -2,21 +2,21 @@
 
 #pragma once
 
-#include "ActorAnimationObject.generated.h"
+#include "LevelSequenceObject.generated.h"
 
 
 /**
  * Structure for animated Actor objects.
  */
 USTRUCT()
-struct FActorAnimationObject
+struct FLevelSequenceObject
 {
 	GENERATED_BODY()
 
 public:
 
 	/** Creates and initializes a new instance. */
-	FActorAnimationObject()
+	FLevelSequenceObject()
 		: ObjectOrOwner(nullptr)
 		, CachedComponent(nullptr)
 	{ }
@@ -26,7 +26,7 @@ public:
 	 *
 	 * @param InObject The object to be bound.
 	 */
-	FActorAnimationObject(UObject* InObject)
+	FLevelSequenceObject(UObject* InObject)
 		: ObjectOrOwner(InObject)
 		, CachedComponent(nullptr)
 	{ }
@@ -37,7 +37,7 @@ public:
 	 * @param InOwner The object that owns the component.
 	 * @param InComponentName The component to be bound.
 	 */
-	FActorAnimationObject(UObject* InOwner, FString InComponentName)
+	FLevelSequenceObject(UObject* InOwner, FString InComponentName)
 		: ObjectOrOwner(InOwner)
 		, ComponentName(InComponentName)
 		, CachedComponent(nullptr)
@@ -50,7 +50,7 @@ public:
 	 * @param Y The second binding to compare.
 	 * @return true if the bindings refer to the same object, false otherwise.
 	 */
-	friend bool operator==(const FActorAnimationObject& X, const FActorAnimationObject& Y)
+	friend bool operator==(const FLevelSequenceObject& X, const FLevelSequenceObject& Y)
 	{
 		return (X.ObjectOrOwner == Y.ObjectOrOwner) && (X.ComponentName == Y.ComponentName);
 	}
@@ -60,7 +60,7 @@ public:
 	 *
 	 * @return The object (usually an Actor or an ActorComponent).
 	 */
-	ACTORANIMATION_API UObject* GetObject() const;
+	LEVELSEQUENCE_API UObject* GetObject() const;
 
 private:
 
