@@ -2,18 +2,19 @@
 
 #pragma once
 
-#include "ActorAnimationObjectReference.generated.h"
+#include "LevelSequenceObjectReference.generated.h"
+
 
 /**
- * An external reference to an actor animation object, resolvable through an arbitrary context
+ * An external reference to an level sequence object, resolvable through an arbitrary context.
  */
 USTRUCT()
-struct FActorAnimationObjectReference
+struct FLevelSequenceObjectReference
 {
 	/**
 	 * Default construction to a null reference
 	 */
-	FActorAnimationObjectReference() : ObjectPath() {}
+	FLevelSequenceObjectReference() : ObjectPath() {}
 
 	/**
 	 * Generates a new reference to an object within a given context.
@@ -21,7 +22,7 @@ struct FActorAnimationObjectReference
 	 * @param InObject The object to generate a reference for (e.g. an AActor)
 	 * @param InContext The object to use as a context for the generation (e.g. a UWorld)
 	 */
-	ACTORANIMATION_API FActorAnimationObjectReference(UObject* InObject, UObject* InContext);
+	LEVELSEQUENCE_API FLevelSequenceObjectReference(UObject* InObject, UObject* InContext);
 
 	GENERATED_BODY();
 
@@ -38,12 +39,12 @@ struct FActorAnimationObjectReference
 	 *
 	 * @return The object (usually an Actor or an ActorComponent).
 	 */
-	ACTORANIMATION_API UObject* Resolve(UObject* InContext) const;
+	LEVELSEQUENCE_API UObject* Resolve(UObject* InContext) const;
 
 	/**
 	 * Equality comparator
 	 */
-	friend bool operator==(const FActorAnimationObjectReference& A, const FActorAnimationObjectReference& B)
+	friend bool operator==(const FLevelSequenceObjectReference& A, const FLevelSequenceObjectReference& B)
 	{
 		if (A.ObjectId.IsValid() && A.ObjectId == B.ObjectId)
 		{
@@ -55,7 +56,7 @@ struct FActorAnimationObjectReference
 	/**
 	 * Serialization operator
 	 */
-	friend FArchive& operator<<(FArchive& Ar, FActorAnimationObjectReference& Ref)
+	friend FArchive& operator<<(FArchive& Ar, FLevelSequenceObjectReference& Ref)
 	{
 		Ar << Ref.ObjectId;
 		Ar << Ref.ObjectPath;
@@ -72,7 +73,7 @@ private:
 };
 
 USTRUCT()
-struct FActorAnimationObjectReferenceMap
+struct FLevelSequenceObjectReferenceMap
 {
 	/**
 	 * Check whether this map has a binding for the specified object id
@@ -123,7 +124,7 @@ public:
 	/**
 	 * Equality comparator required for proper UObject serialization (so we can compare against defaults)
 	 */
-	friend bool operator==(const FActorAnimationObjectReferenceMap& A, const FActorAnimationObjectReferenceMap& B)
+	friend bool operator==(const FLevelSequenceObjectReferenceMap& A, const FLevelSequenceObjectReferenceMap& B)
 	{
 		return A.Map.OrderIndependentCompareEqual(B.Map);
 	}
@@ -133,19 +134,19 @@ public:
 	 */
 	bool Serialize(FArchive& Ar);
 
-	typedef TMap<FGuid, FActorAnimationObjectReference> MapType;
-	FORCEINLINE friend MapType::TIterator      begin(      FActorAnimationObjectReferenceMap& Impl) { return begin(Impl.Map); }
-	FORCEINLINE friend MapType::TConstIterator begin(const FActorAnimationObjectReferenceMap& Impl) { return begin(Impl.Map); }
-	FORCEINLINE friend MapType::TIterator      end  (      FActorAnimationObjectReferenceMap& Impl) { return end(Impl.Map); }
-	FORCEINLINE friend MapType::TConstIterator end  (const FActorAnimationObjectReferenceMap& Impl) { return end(Impl.Map); }
+	typedef TMap<FGuid, FLevelSequenceObjectReference> MapType;
+	FORCEINLINE friend MapType::TIterator      begin(      FLevelSequenceObjectReferenceMap& Impl) { return begin(Impl.Map); }
+	FORCEINLINE friend MapType::TConstIterator begin(const FLevelSequenceObjectReferenceMap& Impl) { return begin(Impl.Map); }
+	FORCEINLINE friend MapType::TIterator      end  (      FLevelSequenceObjectReferenceMap& Impl) { return end(Impl.Map); }
+	FORCEINLINE friend MapType::TConstIterator end  (const FLevelSequenceObjectReferenceMap& Impl) { return end(Impl.Map); }
 
 private:
 	
 	// @todo sequencer: need support for UStruct keys in TMap so this can be a UPROPERTY
-	TMap<FGuid, FActorAnimationObjectReference> Map;
+	TMap<FGuid, FLevelSequenceObjectReference> Map;
 };
 
-template<> struct TStructOpsTypeTraits<FActorAnimationObjectReferenceMap> : public TStructOpsTypeTraitsBase
+template<> struct TStructOpsTypeTraits<FLevelSequenceObjectReferenceMap> : public TStructOpsTypeTraitsBase
 {
 	enum { WithSerializer = true, WithIdenticalViaEquality = true };
 };

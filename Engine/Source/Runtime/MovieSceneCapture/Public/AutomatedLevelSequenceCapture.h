@@ -3,21 +3,21 @@
 #pragma once
 
 #include "MovieSceneCapture.h"
-#include "ActorAnimation.h"
-#include "ActorAnimationPlayer.h"
-#include "AutomatedActorAnimationCapture.generated.h"
+#include "LevelSequence.h"
+#include "LevelSequencePlayer.h"
+#include "AutomatedLevelSequenceCapture.generated.h"
 
 UCLASS(config=EditorSettings)
-class MOVIESCENECAPTURE_API UAutomatedActorAnimationCapture : public UMovieSceneCapture
+class MOVIESCENECAPTURE_API UAutomatedLevelSequenceCapture : public UMovieSceneCapture
 {
 public:
-	UAutomatedActorAnimationCapture(const FObjectInitializer&);
+	UAutomatedLevelSequenceCapture(const FObjectInitializer&);
 
 	GENERATED_BODY()
 
-	/** The actor animation to use during capture */
-	UPROPERTY(EditAnywhere, Category=General, meta=(AllowedClasses="ActorAnimation"))
-	FStringAssetReference ActorAnimation;
+	/** The level sequence to use during capture */
+	UPROPERTY(EditAnywhere, Category=General, meta=(AllowedClasses="LevelSequence"))
+	FStringAssetReference LevelSequence;
 
 	/** The level to use for the capture */
 	UPROPERTY(EditAnywhere, Category=General, meta=(AllowedClasses="World"))
@@ -25,7 +25,7 @@ public:
 
 	/** Specific playback settings */
 	UPROPERTY(config, EditAnywhere, Category="Playback Settings", meta=(ShowOnlyInnerProperties))
-	FActorAnimationPlaybackSettings PlaybackSettings;
+	FLevelSequencePlaybackSettings PlaybackSettings;
 
 	/** The amount of time to wait before playback and capture start. Useful for allowing Post Processing effects to settle down before capturing the animation. */
 	UPROPERTY(config, EditAnywhere, Category=CaptureSettings, AdvancedDisplay, meta=(Units=Seconds, ClampMin=0))
@@ -41,11 +41,11 @@ private:
 
 	/** Animation instance created at runtime before we start capturing */
 	UPROPERTY(transient)
-	UActorAnimationInstance* AnimationInstance;
+	ULevelSequenceInstance* AnimationInstance;
 
 	/** Animation player used to playback the animation at runtime */
 	UPROPERTY(transient)
-	UActorAnimationPlayer* AnimationPlayback;
+	ULevelSequencePlayer* AnimationPlayback;
 
 	/** Transient amount of time that has passed since the level was started. When >= Settings.Preroll, playback will start  */
 	TOptional<float> PrerollTime;

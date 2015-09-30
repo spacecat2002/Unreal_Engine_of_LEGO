@@ -3,8 +3,8 @@
 #pragma once
 
 #include "IMovieScenePlayer.h"
-#include "ActorAnimation.h"
-#include "ActorAnimationPlayer.generated.h"
+#include "LevelSequence.h"
+#include "LevelSequencePlayer.generated.h"
 
 
 class FMovieSceneSequenceInstance;
@@ -12,13 +12,16 @@ class ULevel;
 class UMovieSceneBindings;
 
 
+/**
+ * Settings for the level sequence player actor.
+ */
 USTRUCT(BlueprintType)
-struct FActorAnimationPlaybackSettings
+struct FLevelSequencePlaybackSettings
 {
-	FActorAnimationPlaybackSettings()
+	FLevelSequencePlaybackSettings()
 		: LoopCount(0)
 		, PlayRate(1.f)
-	{}
+	{ }
 
 	GENERATED_BODY()
 
@@ -31,42 +34,43 @@ struct FActorAnimationPlaybackSettings
 	float PlayRate;
 };
 
+
 /**
- * UActorAnimationPlayer is used to actually "play" an actor animation asset at runtime.
+ * ULevelSequencePlayer is used to actually "play" an level sequence asset at runtime.
  *
  * This class keeps track of playback state and provides functions for manipulating
- * an actor animation while its playing.
+ * an level sequence while its playing.
  */
 UCLASS(BlueprintType)
-class ACTORANIMATION_API UActorAnimationPlayer
+class LEVELSEQUENCE_API ULevelSequencePlayer
 	: public UObject
 	, public IMovieScenePlayer
 {
 public:
-	UActorAnimationPlayer(const FObjectInitializer&);
+	ULevelSequencePlayer(const FObjectInitializer&);
 
 	GENERATED_BODY()
 
 	/**
 	 * Initialize the player.
 	 *
-	 * @param InActorAnimationInstance The actor animation instance to play.
+	 * @param InLevelSequenceInstance The level sequence instance to play.
 	 * @param InWorld The world that the animation is played in.
 	 * @param Settings The desired playback settings
 	 */
-	void Initialize(UActorAnimationInstance* InActorAnimationInstance, UWorld* InWorld, const FActorAnimationPlaybackSettings& Settings);
+	void Initialize(ULevelSequenceInstance* InLevelSequenceInstance, UWorld* InWorld, const FLevelSequencePlaybackSettings& Settings);
 
 public:
 
 	/**
-	 * Create a new actor animation player.
+	 * Create a new level sequence player.
 	 *
 	 * @param WorldContextObject Context object from which to retrieve a UWorld.
-	 * @param ActorAnimation The actor animation to play.
+	 * @param LevelSequence The level sequence to play.
 	 * @param Settings The desired playback settings
 	 */
 	UFUNCTION(BlueprintCallable, Category="Game|Cinematic", meta=(WorldContext="WorldContextObject"))
-	static UActorAnimationPlayer* CreateActorAnimationPlayer(UObject* WorldContextObject, UActorAnimation* ActorAnimation, FActorAnimationPlaybackSettings Settings);
+	static ULevelSequencePlayer* CreateLevelSequencePlayer(UObject* WorldContextObject, ULevelSequence* LevelSequence, FLevelSequencePlaybackSettings Settings);
 
 	/** Start playback from the current time cursor position, using the current play rate. */
 	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
@@ -144,9 +148,9 @@ private:
 
 private:
 
-	/** The actor animation to play. */
+	/** The level sequence to play. */
 	UPROPERTY()
-	UActorAnimationInstance* ActorAnimationInstance;
+	ULevelSequenceInstance* LevelSequenceInstance;
 
 	/** Whether we're currently playing. If false, then sequence playback is paused or was never started. */
 	UPROPERTY()
@@ -158,7 +162,7 @@ private:
 
 	/** Specific playback settings for the animation. */
 	UPROPERTY()
-	FActorAnimationPlaybackSettings PlaybackSettings;
+	FLevelSequencePlaybackSettings PlaybackSettings;
 
 	/** The number of times we have looped in the current playback */
 	int32 CurrentNumLoops;

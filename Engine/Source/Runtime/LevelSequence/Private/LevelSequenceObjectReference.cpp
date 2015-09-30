@@ -1,9 +1,9 @@
 // Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
 
-#include "ActorAnimationPrivatePCH.h"
-#include "ActorAnimationObjectReference.h"
+#include "LevelSequencePCH.h"
+#include "LevelSequenceObjectReference.h"
 
-FActorAnimationObjectReference::FActorAnimationObjectReference(UObject* InObject, UObject* InContext)
+FLevelSequenceObjectReference::FLevelSequenceObjectReference(UObject* InObject, UObject* InContext)
 {
 	if (InObject->IsA<AActor>() || InObject->IsA<UActorComponent>())
 	{
@@ -12,7 +12,7 @@ FActorAnimationObjectReference::FActorAnimationObjectReference(UObject* InObject
 	}
 }
 
-UObject* FActorAnimationObjectReference::Resolve(UObject* InContext) const
+UObject* FLevelSequenceObjectReference::Resolve(UObject* InContext) const
 {
 #if WITH_EDITOR
 	int32 PIEInstanceID = InContext->GetOutermost()->PIEInstanceID;
@@ -37,7 +37,7 @@ UObject* FActorAnimationObjectReference::Resolve(UObject* InContext) const
 	return nullptr;
 }
 
-bool FActorAnimationObjectReferenceMap::Serialize(FArchive& Ar)
+bool FLevelSequenceObjectReferenceMap::Serialize(FArchive& Ar)
 {
 	int32 Num = Map.Num();
 	Ar << Num;
@@ -49,7 +49,7 @@ bool FActorAnimationObjectReferenceMap::Serialize(FArchive& Ar)
 			FGuid Key;
 			Ar << Key;
 
-			FActorAnimationObjectReference Value;
+			FLevelSequenceObjectReference Value;
 			Ar << Value;
 
 			Map.Add(Key, Value);
@@ -66,18 +66,18 @@ bool FActorAnimationObjectReferenceMap::Serialize(FArchive& Ar)
 	return true;
 }
 
-bool FActorAnimationObjectReferenceMap::HasBinding(const FGuid& ObjectId) const
+bool FLevelSequenceObjectReferenceMap::HasBinding(const FGuid& ObjectId) const
 {
-	if (const FActorAnimationObjectReference* Reference = Map.Find(ObjectId))
+	if (const FLevelSequenceObjectReference* Reference = Map.Find(ObjectId))
 	{
 		return Reference->IsValid();
 	}
 	return false;
 }
 
-void FActorAnimationObjectReferenceMap::CreateBinding(const FGuid& ObjectId, UObject* InObject, UObject* InContext)
+void FLevelSequenceObjectReferenceMap::CreateBinding(const FGuid& ObjectId, UObject* InObject, UObject* InContext)
 {
-	FActorAnimationObjectReference NewReference(InObject, InContext);
+	FLevelSequenceObjectReference NewReference(InObject, InContext);
 
 	if (ensureMsgf(NewReference.IsValid(), TEXT("Unable to generate a reference for the specified object and context")))
 	{
@@ -85,18 +85,18 @@ void FActorAnimationObjectReferenceMap::CreateBinding(const FGuid& ObjectId, UOb
 	}
 }
 
-void FActorAnimationObjectReferenceMap::RemoveBinding(const FGuid& ObjectId)
+void FLevelSequenceObjectReferenceMap::RemoveBinding(const FGuid& ObjectId)
 {
 	Map.Remove(ObjectId);
 }
 
-UObject* FActorAnimationObjectReferenceMap::ResolveBinding(const FGuid& ObjectId, UObject* InContext) const
+UObject* FLevelSequenceObjectReferenceMap::ResolveBinding(const FGuid& ObjectId, UObject* InContext) const
 {
-	const FActorAnimationObjectReference* Reference = Map.Find(ObjectId);
+	const FLevelSequenceObjectReference* Reference = Map.Find(ObjectId);
 	return Reference ? Reference->Resolve(InContext) : nullptr;
 }
 
-FGuid FActorAnimationObjectReferenceMap::FindBindingId(UObject* InObject, UObject* InContext) const
+FGuid FLevelSequenceObjectReferenceMap::FindBindingId(UObject* InObject, UObject* InContext) const
 {
 	for (const auto& Pair : Map)
 	{

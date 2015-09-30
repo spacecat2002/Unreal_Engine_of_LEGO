@@ -3,15 +3,16 @@
 #pragma once
 
 #include "MovieSceneSequence.h"
-#include "ActorAnimationObject.h"
-#include "ActorAnimationObjectReference.h"
-#include "ActorAnimation.generated.h"
+#include "LevelSequenceObject.h"
+#include "LevelSequenceObjectReference.h"
+#include "LevelSequence.generated.h"
+
 
 /**
  * Movie scene animation for Actors.
  */
 UCLASS(BlueprintType)
-class ACTORANIMATION_API UActorAnimation
+class LEVELSEQUENCE_API ULevelSequence
 	: public UObject
 {
 	GENERATED_UCLASS_BODY()
@@ -20,7 +21,7 @@ public:
 
 	/** Collection of possessed objects. */
 	UPROPERTY()
-	FActorAnimationObjectReferenceMap DefaultObjectReferences;
+	FLevelSequenceObjectReferenceMap DefaultObjectReferences;
 
 	/** Pointer to the movie scene that controls this animation. */
 	UPROPERTY()
@@ -28,7 +29,7 @@ public:
 
 public:
 
-	/** Initialize this actor animation. */
+	/** Initialize this level sequence. */
 	void Initialize();
 
 	/** Convert old-style lazy object ptrs to new-style references using the specified context */
@@ -38,14 +39,15 @@ private:
 
 	/** Deprecated property housing old possessed object bindings */
 	UPROPERTY()
-	TMap<FString, FActorAnimationObject> PossessedObjects_DEPRECATED;
+	TMap<FString, FLevelSequenceObject> PossessedObjects_DEPRECATED;
 };
 
+
 /**
- * An instance of a UActorAnimation that supports resolution and remapping of object bindings
+ * An instance of a ULevelSequence that supports resolution and remapping of object bindings.
  */
 UCLASS()
-class ACTORANIMATION_API UActorAnimationInstance
+class LEVELSEQUENCE_API ULevelSequenceInstance
 	: public UMovieSceneSequence
 {
 public:
@@ -53,31 +55,35 @@ public:
 	GENERATED_BODY()
 	
 	/**
-	 * Initialize this instance. Safe to be called multiple times. Does not reset object remappings unless bInCanRemapBindings is false.
+	 * Initialize this instance. Safe to be called multiple times. Does not reset object re-mappings unless bInCanRemapBindings is false.
 	 *
-	 * @param InAnimation			The actor animation to instatiate
-	 * @param InContext				The context to use for object binding resolution
-	 * @param bInCanRemapBindings	Whether this instance is permitted to remap object bindings or not
+	 * @param InSequence The level sequence to instantiate.
+	 * @param InContext The context to use for object binding resolution.
+	 * @param bInCanRemapBindings Whether this instance is permitted to remap object bindings or not.
 	 */
-	void Initialize(UActorAnimation* InAnimation, UObject* InContext, bool bInCanRemapBindings);
+	void Initialize(ULevelSequence* InSequence, UObject* InContext, bool bInCanRemapBindings);
 	
 	/**
-	 * Change this instance's context
+	 * Change this instance's context.
 	 *
-	 * @param NewContext			The new context to use for object binding resolution
+	 * @param NewContext The new context to use for object binding resolution.
 	 */
 	void SetContext(UObject* NewContext);
 
 	/**
-	 * Get the actor animation of which this is an instance
+	 * Get the level sequence of which this is an instance
 	 *
-	 * @return this instance's parent actor animation
+	 * @return this instance's parent level sequence
 	 */
-	UActorAnimation* GetActorAnimation() { return ActorAnimation; }
+	ULevelSequence* GetLevelSequence()
+	{
+		return LevelSequence;
+	}
 
 public:
 
 	// UMovieSceneSequence interface
+
 	virtual bool AllowsSpawnableObjects() const override;
 	virtual void BindPossessableObject(const FGuid& ObjectId, UObject& PossessedObject) override;
 	virtual bool CanPossessObject(UObject& Object) const override;
@@ -88,11 +94,11 @@ public:
 	virtual UObject* GetParentObject(UObject* Object) const override;
 	virtual void SpawnOrDestroyObjects(bool DestroyAll) override;
 	virtual void UnbindPossessableObjects(const FGuid& ObjectId) override;
+
 #if WITH_EDITOR
 	virtual bool TryGetObjectDisplayName(const FGuid& ObjectId, FText& OutDisplayName) const override;
 #endif
 
-	// End UMovieSceneSequence interface
 protected:
 
 	/**
@@ -104,17 +110,17 @@ protected:
 
 private:
 
-	/** The actor animation we are instancing */
+	/** The level sequence we are instancing. */
 	UPROPERTY(transient)
-	UActorAnimation* ActorAnimation;
+	ULevelSequence* LevelSequence;
 
-	/** Flag to specify whether this instance can remap bindings or not */
+	/** Flag to specify whether this instance can remap bindings or not. */
 	UPROPERTY()
 	bool bCanRemapBindings;
 
-	/** Collection of remappings for possessed objects references. */
+	/** Collection of re-mappings for possessed objects references. */
 	UPROPERTY()
-	FActorAnimationObjectReferenceMap RemappedObjectReferences;
+	FLevelSequenceObjectReferenceMap RemappedObjectReferences;
 
 private:
 

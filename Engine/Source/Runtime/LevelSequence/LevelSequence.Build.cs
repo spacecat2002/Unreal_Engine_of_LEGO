@@ -2,11 +2,11 @@
 
 using UnrealBuildTool;
 
-public class ActorAnimation : ModuleRules
+public class LevelSequence : ModuleRules
 {
-	public ActorAnimation(TargetInfo Target)
+	public LevelSequence(TargetInfo Target)
 	{
-		PrivateIncludePaths.Add("Runtime/ActorAnimation/Private");
+		PrivateIncludePaths.Add("Runtime/LevelSequence/Private");
 
 		PublicDependencyModuleNames.AddRange(
             new string[] {

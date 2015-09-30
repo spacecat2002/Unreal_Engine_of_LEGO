@@ -1,10 +1,10 @@
 // Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
 
-#include "ActorAnimationPrivatePCH.h"
-#include "MovieSceneActor.h"
+#include "LevelSequencePCH.h"
+#include "LevelSequenceActor.h"
 
 
-AMovieSceneActor::AMovieSceneActor(const FObjectInitializer& Init)
+ALevelSequenceActor::ALevelSequenceActor(const FObjectInitializer& Init)
 	: Super(Init)
 {
 #if WITH_EDITORONLY_DATA
@@ -37,24 +37,24 @@ AMovieSceneActor::AMovieSceneActor(const FObjectInitializer& Init)
 	bAutoPlay = false;
 }
 
-void AMovieSceneActor::BeginPlay()
+void ALevelSequenceActor::BeginPlay()
 {
 	Super::BeginPlay();
 	InitializePlayer();
 }
 
-void AMovieSceneActor::PostInitProperties()
+void ALevelSequenceActor::PostInitProperties()
 {
 	Super::PostInitProperties();
 
 	if (!HasAnyFlags(RF_ClassDefaultObject))
 	{
 		// Make an instance of our asset so that we can keep hard references to actors we are using
-		AnimationInstance = NewObject<UActorAnimationInstance>(this, "AnimationInstance");
+		SequenceInstance = NewObject<ULevelSequenceInstance>(this, "AnimationInstance");
 	}
 }
 
-void AMovieSceneActor::PostLoad()
+void ALevelSequenceActor::PostLoad()
 {
 	Super::PostLoad();
 	
@@ -62,11 +62,11 @@ void AMovieSceneActor::PostLoad()
 }
 
 #if WITH_EDITOR
-void AMovieSceneActor::PostEditChangeProperty( struct FPropertyChangedEvent& PropertyChangedEvent)
+void ALevelSequenceActor::PostEditChangeProperty( struct FPropertyChangedEvent& PropertyChangedEvent)
 {
 	FName PropertyName = PropertyChangedEvent.Property ? PropertyChangedEvent.Property->GetFName() : NAME_None;
 
-	if (PropertyName == GET_MEMBER_NAME_CHECKED(AMovieSceneActor, ActorAnimation))
+	if (PropertyName == GET_MEMBER_NAME_CHECKED(ALevelSequenceActor, LevelSequence))
 	{
 		UpdateAnimationInstance();
 	}
@@ -74,9 +74,9 @@ void AMovieSceneActor::PostEditChangeProperty( struct FPropertyChangedEvent& Pro
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 }
 
-bool AMovieSceneActor::GetReferencedContentObjects(TArray<UObject*>& Objects) const
+bool ALevelSequenceActor::GetReferencedContentObjects(TArray<UObject*>& Objects) const
 {
-	if (UObject* Asset = AnimationInstance ? AnimationInstance->GetActorAnimation() : nullptr)
+	if (UObject* Asset = SequenceInstance ? SequenceInstance->GetLevelSequence() : nullptr)
 	{
 		// @todo: Enable editing of animation instances
 		Objects.Add(Asset);
@@ -89,41 +89,41 @@ bool AMovieSceneActor::GetReferencedContentObjects(TArray<UObject*>& Objects) co
 
 #endif // WITH_EDITOR
 
-void AMovieSceneActor::Tick(float DeltaSeconds)
+void ALevelSequenceActor::Tick(float DeltaSeconds)
 {
-	if (AnimationPlayer)
+	if (SequencePlayer)
 	{
-		AnimationPlayer->Update(DeltaSeconds);
+		SequencePlayer->Update(DeltaSeconds);
 	}
 }
 
-void AMovieSceneActor::SetAnimation(UActorAnimation* InAnimation)
+void ALevelSequenceActor::SetSequence(ULevelSequence* InSequence)
 {
-	if (!AnimationPlayer || !AnimationPlayer->IsPlaying())
+	if (!SequencePlayer || !SequencePlayer->IsPlaying())
 	{
-		ActorAnimation = InAnimation;
+		LevelSequence = InSequence;
 		InitializePlayer();
 	}
 }
 
-void AMovieSceneActor::InitializePlayer()
+void ALevelSequenceActor::InitializePlayer()
 {
 	UpdateAnimationInstance();
 
 	if (GetWorld()->IsGameWorld())
 	{
-		AnimationPlayer = NewObject<UActorAnimationPlayer>(this, "AnimationPlayer");
-		AnimationPlayer->Initialize(AnimationInstance, GetWorld(), PlaybackSettings);
+		SequencePlayer = NewObject<ULevelSequencePlayer>(this, "AnimationPlayer");
+		SequencePlayer->Initialize(SequenceInstance, GetWorld(), PlaybackSettings);
 
 		if (bAutoPlay)
 		{
-			AnimationPlayer->Play();
+			SequencePlayer->Play();
 		}
 	}
 }
 
-void AMovieSceneActor::UpdateAnimationInstance()
+void ALevelSequenceActor::UpdateAnimationInstance()
 {
-	UActorAnimation* ActorAnimationAsset = Cast<UActorAnimation>(ActorAnimation.TryLoad());
-	AnimationInstance->Initialize(ActorAnimationAsset, GetWorld(), true);
+	ULevelSequence* LevelSequenceAsset = Cast<ULevelSequence>(LevelSequence.TryLoad());
+	SequenceInstance->Initialize(LevelSequenceAsset, GetWorld(), true);
 }
