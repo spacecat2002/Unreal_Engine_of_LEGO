@@ -28,7 +28,6 @@ public:
 	static jmethodID AndroidThunkJava_IsMusicActive;
 	static jmethodID AndroidThunkJava_KeepScreenOn;
 	static jmethodID AndroidThunkJava_InitHMDs;
-	static jmethodID AndroidThunkJava_IsGearVRApplication;
 	static jmethodID AndroidThunkJava_DismissSplashScreen;
 	static jmethodID AndroidThunkJava_GetCurrentVolume;
 	static jmethodID AndroidThunkJava_GetMaximumVolume;
