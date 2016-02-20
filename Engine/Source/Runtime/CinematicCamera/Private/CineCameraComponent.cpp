@@ -1,7 +1,7 @@
 // Copyright 1998-2016 Epic Games, Inc. All Rights Reserved.
 
-#include "EnginePrivate.h"
-#include "Camera/CineCameraComponent.h"
+#include "CinematicCameraPrivate.h"
+#include "CineCameraComponent.h"
 
 #define LOCTEXT_NAMESPACE "CineCameraComponent"
 
@@ -123,11 +123,20 @@ float UCineCameraComponent::GetDesiredFocusDistance(FMinimalViewInfo& DesiredVie
 
 	case ECameraFocusMethod::Tracking:
 		{
-			AActor* const TrackedActor = FocusSettings.TrackingFocusSettings.ActorToTrack;
-			if (TrackedActor && TrackedActor->GetRootComponent())
+			AActor const* const TrackedActor = FocusSettings.TrackingFocusSettings.ActorToTrack;
+
+			FVector FocusPoint;
+			if (TrackedActor)
 			{
-				DesiredFocusDistance = (TrackedActor->GetActorLocation() - DesiredView.Location).Size();
+				FTransform const BaseTransform = TrackedActor->GetActorTransform();
+				FocusPoint = BaseTransform.TransformPosition(FocusSettings.TrackingFocusSettings.RelativeOffset);
 			}
+			else
+			{
+				FocusPoint = FocusSettings.TrackingFocusSettings.RelativeOffset;
+			}
+
+			DesiredFocusDistance = (FocusPoint - DesiredView.Location).Size();
 
 // 			// try to get the position of the tracked object
 // 			UObject* const TrackedObj = FocusSettings.TrackingFocusSettings.ObjectToTrack;
@@ -182,8 +191,13 @@ float UCineCameraComponent::GetDesiredFocusDistance(FMinimalViewInfo& DesiredVie
 		break;
 	}
 	
+	// add in the adjustment offset
+	DesiredFocusDistance += FocusSettings.FocusOffset;
+
 	return DesiredFocusDistance;
 }
+
+static const FColor DebugFocusPlaneColor(64, 32, 128, 64);		// purple
 
 void UCineCameraComponent::GetCameraView(float DeltaTime, FMinimalViewInfo& DesiredView)
 {
@@ -192,6 +206,16 @@ void UCineCameraComponent::GetCameraView(float DeltaTime, FMinimalViewInfo& Desi
 	Super::GetCameraView(DeltaTime, DesiredView);
 
 	UpdateCameraLens(DeltaTime, DesiredView);
+
+	if (FocusSettings.bDrawDebugFocusPlane)
+	{
+		FVector const CamDir = DesiredView.Rotation.Vector();
+		FVector const FocusPoint = DesiredView.Location + CamDir * CurrentFocusDistance;
+
+		FPlane P(FocusPoint, CamDir);
+
+		::DrawDebugSolidPlane(GetWorld(), P, DesiredView.Location, 10000.f, DebugFocusPlaneColor, false, -1, SDPG_World);
+	}
 }
 
 
@@ -221,8 +245,5 @@ void UCineCameraComponent::UpdateCameraLens(float DeltaTime, FMinimalViewInfo& D
 	DesiredView.PostProcessSettings.bOverride_DepthOfFieldFocalDistance = true;
 	DesiredView.PostProcessSettings.DepthOfFieldFocalDistance = CurrentFocusDistance;
 }
-
-#undef LOCTEXT_NAMESPACE
-
 
 #undef LOCTEXT_NAMESPACE

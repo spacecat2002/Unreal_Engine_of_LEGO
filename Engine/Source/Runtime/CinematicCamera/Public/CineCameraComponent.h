@@ -109,16 +109,20 @@ struct FCameraTrackingFocusSettings
 {
 	GENERATED_USTRUCT_BODY()
 
-	UPROPERTY(EditInstanceOnly, BlueprintReadWrite, Category = "Tracking Focus")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tracking Focus")
 	AActor* ActorToTrack;
 
 	// #todo, ability to pick a component and socket/bone?
 
-// 	UPROPERTY(EditInstanceOnly, BlueprintReadWrite, Category = "Tracking Focus")
+// 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tracking Focus")
 // 	USceneComponent* ComponentToTrack;
 // 	
-// 	UPROPERTY(EditInstanceOnly, BlueprintReadWrite, Category = "Tracking Focus")
+// 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tracking Focus")
 // 	FName BoneOrSocketName;
+
+	/** Offset from actor position to look at. Relative to actor if tracking an actor, relative to world otherwise. */
+	UPROPERTY(Interp, EditAnywhere, BlueprintReadWrite, Category = "LookAt")
+	FVector RelativeOffset;
 
 	FCameraTrackingFocusSettings()
 		: ActorToTrack(nullptr)
@@ -134,6 +138,10 @@ struct FCameraFocusSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Focus Settings")
 	TEnumAsByte<ECameraFocusMethod> FocusMethod;
 	
+	/** True to draw a translucent plane at the current focus depth, for easy tweaking when not looking through the camera. */
+	UPROPERTY(Transient, EditAnywhere, BlueprintReadWrite, Category = "Focus Settings")
+	uint8 bDrawDebugFocusPlane : 1;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Focus Settings")
 	uint8 bSmoothFocusChanges : 1;
 	
@@ -152,12 +160,17 @@ struct FCameraFocusSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Focus Settings")
 	float FocusSmoothingInterpSpeed;
 
+	/** Additional focus depth offset, used for manually tweaking if yoour chosen focus method is needs adjustment */
+	UPROPERTY(Interp, EditAnywhere, BlueprintReadWrite, Category = "Focus Settings")
+	float FocusOffset;
+
 	FCameraFocusSettings() : 
 		FocusMethod(ECameraFocusMethod::Manual),
 		bSmoothFocusChanges(0),
 		bSimulateFocusBreathing(0),
-		ManualFocusDistance(0.f),			// #todo better default?
-		FocusSmoothingInterpSpeed(8.f)
+		ManualFocusDistance(100000.f),
+		FocusSmoothingInterpSpeed(8.f),
+		FocusOffset(0.f)
 	{}
 };
 
@@ -172,7 +185,7 @@ UCLASS(
 	meta = (BlueprintSpawnableComponent), 
 	Config = Engine
 	)
-class ENGINE_API UCineCameraComponent : public UCameraComponent
+class CINEMATICCAMERA_API UCineCameraComponent : public UCameraComponent
 {
 	GENERATED_BODY()
 
@@ -182,13 +195,13 @@ public:
 
 	virtual void GetCameraView(float DeltaTime, FMinimalViewInfo& DesiredView) override;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Filmback")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Current Camera Settings")
 	FCameraFilmbackSettings FilmbackSettings;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lens")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Current Camera Settings")
 	FCameraLensSettings LensSettings;
 
-	UPROPERTY(Interp, EditAnywhere, BlueprintReadWrite, Category = "Current Camera Settings")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Current Camera Settings")
 	FCameraFocusSettings FocusSettings;
 
 	UPROPERTY(Interp, EditAnywhere, BlueprintReadWrite, Category = "Current Camera Settings")
