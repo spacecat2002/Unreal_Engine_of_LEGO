@@ -1,13 +1,13 @@
 // Copyright 1998-2016 Epic Games, Inc. All Rights Reserved.
 using UnrealBuildTool;
 
-public class WebSockets : ModuleRules
+public class libWebSockets : ModuleRules
 {
 
-    public WebSockets(TargetInfo Target)
+    public libWebSockets(TargetInfo Target)
 	{
 		Type = ModuleType.External;
-            string WebsocketPath = UEBuildConfiguration.UEThirdPartySourceDirectory + "WebSockets/libwebsockets/";
+            string WebsocketPath = UEBuildConfiguration.UEThirdPartySourceDirectory + "libWebSockets/libwebsockets/";
 		    if (Target.Platform == UnrealTargetPlatform.Win64)
             {
                 PublicIncludePaths.Add(WebsocketPath + "include/");
