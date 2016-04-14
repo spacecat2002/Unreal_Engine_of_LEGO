@@ -1,16 +1,16 @@
 // Copyright 1998-2016 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
-TexelFactorAccuracyRendering.cpp: Contains definitions for rendering the viewmode.
+MeshTexCoordSizeAccuracyRendering.cpp: Contains definitions for rendering the viewmode.
 =============================================================================*/
 
 #include "RendererPrivate.h"
 #include "ScenePrivate.h"
-#include "TexelFactorAccuracyRendering.h"
+#include "MeshTexCoordSizeAccuracyRendering.h"
 
-IMPLEMENT_SHADER_TYPE(,FTexelFactorAccuracyPS,TEXT("TexelFactorAccuracyPixelShader"),TEXT("Main"),SF_Pixel);
+IMPLEMENT_SHADER_TYPE(,FMeshTexCoordSizeAccuracyPS,TEXT("MeshTexCoordSizeAccuracyPixelShader"),TEXT("Main"),SF_Pixel);
 
-void FTexelFactorAccuracyPS::SetParameters(
+void FMeshTexCoordSizeAccuracyPS::SetParameters(
 	FRHICommandList& RHICmdList, 
 	const FShader* OriginalVS, 
 	const FShader* OriginalPS, 
@@ -34,7 +34,7 @@ void FTexelFactorAccuracyPS::SetParameters(
 	}
 }
 
-void FTexelFactorAccuracyPS::SetMesh(
+void FMeshTexCoordSizeAccuracyPS::SetMesh(
 	FRHICommandList& RHICmdList, 
 	const FVertexFactory* VertexFactory,
 	const FSceneView& View,
@@ -46,8 +46,8 @@ void FTexelFactorAccuracyPS::SetMesh(
 {
 	float CPUTexelFactor = -1.f;
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	const bool bUseNewMetrics = CVarStreamingUseNewMetrics.GetValueOnRenderThread() != 0;
-	const FStreamingSectionBuildInfo* SectionData = Proxy ? Proxy->GetStreamingSectionData(bUseNewMetrics ? VisualizeLODIndex : INDEX_NONE, bUseNewMetrics ? BatchElement.VisualizeElementIndex : INDEX_NONE) : nullptr;
+	float DistanceMultiplier = 1.f;
+	const FStreamingSectionBuildInfo* SectionData = Proxy ? Proxy->GetStreamingSectionData(DistanceMultiplier, VisualizeLODIndex, BatchElement.VisualizeElementIndex) : nullptr;
 	if (SectionData)
 	{
 		CPUTexelFactor = SectionData->TexelFactors[0];
@@ -56,7 +56,7 @@ void FTexelFactorAccuracyPS::SetMesh(
 	SetShaderValue(RHICmdList, FGlobalShader::GetPixelShader(), CPUTexelFactorParameter, CPUTexelFactor);
 }
 
-void FTexelFactorAccuracyPS::SetMesh(FRHICommandList& RHICmdList, const FSceneView& View)
+void FMeshTexCoordSizeAccuracyPS::SetMesh(FRHICommandList& RHICmdList, const FSceneView& View)
 {
 	SetShaderValue(RHICmdList, FGlobalShader::GetPixelShader(), CPUTexelFactorParameter, -1.f);
 }

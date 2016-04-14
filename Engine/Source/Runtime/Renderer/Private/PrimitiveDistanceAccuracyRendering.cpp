@@ -1,16 +1,16 @@
 // Copyright 1998-2016 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
-WantedMipsAccuracyRendering.cpp: Contains definitions for rendering the viewmode.
+PrimitiveDistanceAccuracyRendering.cpp: Contains definitions for rendering the viewmode.
 =============================================================================*/
 
 #include "RendererPrivate.h"
 #include "ScenePrivate.h"
-#include "WantedMipsAccuracyRendering.h"
+#include "PrimitiveDistanceAccuracyRendering.h"
 
-IMPLEMENT_SHADER_TYPE(,FWantedMipsAccuracyPS,TEXT("WantedMipsAccuracyPixelShader"),TEXT("Main"),SF_Pixel);
+IMPLEMENT_SHADER_TYPE(,FPrimitiveDistanceAccuracyPS,TEXT("PrimitiveDistanceAccuracyPixelShader"),TEXT("Main"),SF_Pixel);
 
-void FWantedMipsAccuracyPS::SetParameters(
+void FPrimitiveDistanceAccuracyPS::SetParameters(
 	FRHICommandList& RHICmdList, 
 	const FShader* OriginalVS, 
 	const FShader* OriginalPS, 
@@ -29,9 +29,12 @@ void FWantedMipsAccuracyPS::SetParameters(
 	{
 		SetShaderValue(RHICmdList, FGlobalShader::GetPixelShader(), AccuracyColorsParameter, FLinearColor::Black, ColorIndex);
 	}
+
+	// Bind view params
+	FGlobalShader::SetParameters(RHICmdList, FGlobalShader::GetPixelShader(), View);
 }
 
-void FWantedMipsAccuracyPS::SetMesh(
+void FPrimitiveDistanceAccuracyPS::SetMesh(
 	FRHICommandList& RHICmdList, 
 	const FVertexFactory* VertexFactory,
 	const FSceneView& View,
@@ -41,17 +44,17 @@ void FWantedMipsAccuracyPS::SetMesh(
 	const FMeshDrawingRenderState& DrawRenderState
 	)
 {
-	float CPUWantedMips = -1.f;
+	float CPULogDistance = -1.f;
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	const bool bUseNewMetrics = CVarStreamingUseNewMetrics.GetValueOnRenderThread() != 0;
-	const FStreamingSectionBuildInfo* SectionData = Proxy ? Proxy->GetStreamingSectionData(bUseNewMetrics ? VisualizeLODIndex : INDEX_NONE, bUseNewMetrics ? BatchElement.VisualizeElementIndex : INDEX_NONE) : nullptr;
+	float DistanceMultiplier = 1.f;
+	const FStreamingSectionBuildInfo* SectionData = Proxy ? Proxy->GetStreamingSectionData(DistanceMultiplier, VisualizeLODIndex, BatchElement.VisualizeElementIndex) : nullptr;
 	if (SectionData)
 	{
 		FVector ViewToObject = SectionData->BoxOrigin - View.ViewMatrices.ViewOrigin;
 
-		float DistSqMinusRadiusSq = 0;
-		float ViewSize = View.ViewRect.Size().X;
 
+		float DistSqMinusRadiusSq = 0;
 		if (bUseNewMetrics)
 		{
 			ViewToObject = ViewToObject.GetAbs();
@@ -64,18 +67,15 @@ void FWantedMipsAccuracyPS::SetMesh(
 			DistSqMinusRadiusSq = FMath::Square(Distance) - SectionData->BoxExtent.SizeSquared();
 		}
 
-		DistSqMinusRadiusSq = FMath::Max(1.f, DistSqMinusRadiusSq);
-
-		float CoordSize = SectionData->TexelFactors[0] * FMath::InvSqrt(DistSqMinusRadiusSq) * ViewSize;
-
-		CPUWantedMips = FMath::Clamp<float>(FMath::Log2(CoordSize), 0.f, (float)MaxStreamingAccuracyMips);
+		const float OneOverDistanceMultiplier = 1.f / FMath::Max<float>(SMALL_NUMBER, DistanceMultiplier);
+		CPULogDistance =  FMath::Log2(OneOverDistanceMultiplier * FMath::Sqrt(FMath::Max<float>(1.f, DistSqMinusRadiusSq)));
 	}
 #endif
 	// Because the streamer use FMath::FloorToFloat, here we need to use -1 to have a useful result.
-	SetShaderValue(RHICmdList, FGlobalShader::GetPixelShader(), CPUWantedMipsParameter, CPUWantedMips - 1.f);
+	SetShaderValue(RHICmdList, FGlobalShader::GetPixelShader(), CPULogDistanceParameter, CPULogDistance);
 }
 
-void FWantedMipsAccuracyPS::SetMesh(FRHICommandList& RHICmdList, const FSceneView& View)
+void FPrimitiveDistanceAccuracyPS::SetMesh(FRHICommandList& RHICmdList, const FSceneView& View)
 {
-	SetShaderValue(RHICmdList, FGlobalShader::GetPixelShader(), CPUWantedMipsParameter, -1.f);
+	SetShaderValue(RHICmdList, FGlobalShader::GetPixelShader(), CPULogDistanceParameter, -1.f);
 }

@@ -1,45 +1,44 @@
 // Copyright 1998-2016 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
-WantedMipsAccuracyRendering.h: Declarations used for the viewmode.
+MeshTexCoordSizeAccuracyRendering.h: Declarations used for the viewmode.
 =============================================================================*/
 
 #pragma once
 
 /**
-* Pixel shader that renders texture streamer wanted mips accuracy.
+* Pixel shader that renders the accuracy of the texel factor.
 */
-class FWantedMipsAccuracyPS : public FGlobalShader, public IDebugViewModePSInterface
+class FMeshTexCoordSizeAccuracyPS : public FGlobalShader, public IDebugViewModePSInterface
 {
-	DECLARE_SHADER_TYPE(FWantedMipsAccuracyPS,Global);
+	DECLARE_SHADER_TYPE(FMeshTexCoordSizeAccuracyPS,Global);
 
 public:
 
 	static bool ShouldCache(EShaderPlatform Platform)
 	{
-		return AllowDebugViewShaderMode(DVSM_WantedMipsAccuracy, Platform);
+		return AllowDebugViewPS(DVSM_MeshTexCoordSizeAccuracy, Platform);
 	}
 
-	FWantedMipsAccuracyPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer):
+	FMeshTexCoordSizeAccuracyPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer):
 		FGlobalShader(Initializer)
 	{
 		AccuracyColorsParameter.Bind(Initializer.ParameterMap,TEXT("AccuracyColors"));
-		CPUWantedMipsParameter.Bind(Initializer.ParameterMap,TEXT("CPUWantedMips"));
+		CPUTexelFactorParameter.Bind(Initializer.ParameterMap,TEXT("CPUTexelFactor"));
 	}
 
-	FWantedMipsAccuracyPS() {}
+	FMeshTexCoordSizeAccuracyPS() {}
 
 	virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 		Ar << AccuracyColorsParameter;
-		Ar << CPUWantedMipsParameter;
+		Ar << CPUTexelFactorParameter;
 		return bShaderHasOutdatedParameters;
 	}
 
 	static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
 	{
-		OutEnvironment.SetDefine(TEXT("MAX_MIPS"), MaxStreamingAccuracyMips);
 	}
 
 	virtual void SetParameters(
@@ -68,5 +67,5 @@ public:
 private:
 
 	FShaderParameter AccuracyColorsParameter;
-	FShaderParameter CPUWantedMipsParameter;
+	FShaderParameter CPUTexelFactorParameter;
 };
