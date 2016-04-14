@@ -1,7 +1,7 @@
 // Copyright 1998-2016 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
-TexCoordScaleAnalysisRendering.h: Declarations used for the viewmode.
+MaterialTexCoordScalesRendering.h: Declarations used for the viewmode.
 =============================================================================*/
 
 #pragma once
@@ -12,21 +12,21 @@ TexCoordScaleAnalysisRendering.h: Declarations used for the viewmode.
 * Nothing from the factory is actually used, but the shader must still derive from FMeshMaterialShader.
 * This is required to call FMeshMaterialShader::SetMesh and bind primitive related data.
 */
-class FTexCoordScaleAnalysisPS : public FMeshMaterialShader, public IDebugViewModePSInterface
+class FMaterialTexCoordScalePS : public FMeshMaterialShader, public IDebugViewModePSInterface
 {
-	DECLARE_SHADER_TYPE(FTexCoordScaleAnalysisPS,MeshMaterial);
+	DECLARE_SHADER_TYPE(FMaterialTexCoordScalePS,MeshMaterial);
 
 public:
 	enum { MAX_NUM_TEXTURE_REGISTER = FMaterialTexCoordBuildInfo::MAX_NUM_TEXTURE_REGISTER };
 
 	static bool ShouldCache(EShaderPlatform Platform, const FMaterial* Material, const FVertexFactoryType* VertexFactoryType)
 	{
-		return AllowDebugViewShaderMode(DVSM_TexCoordScaleAnalysis, Platform) && 
+		return AllowDebugViewPS(DVSM_MaterialTexCoordScalesAnalysis, Platform) && 
 			Material->GetFriendlyName().Contains(TEXT("FDebugViewModeMaterialProxy")) && 
 			VertexFactoryType == FindVertexFactoryType(FName(TEXT("FLocalVertexFactory"), FNAME_Find));
 	}
 
-	FTexCoordScaleAnalysisPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer):
+	FMaterialTexCoordScalePS(const ShaderMetaType::CompiledShaderInitializerType& Initializer):
 		FMeshMaterialShader(Initializer)
 	{
 		AccuracyColorsParameter.Bind(Initializer.ParameterMap,TEXT("AccuracyColors"));
@@ -35,7 +35,7 @@ public:
 		TexCoordIndicesParameter.Bind(Initializer.ParameterMap,TEXT("TexCoordIndices"));
 	}
 
-	FTexCoordScaleAnalysisPS() {}
+	FMaterialTexCoordScalePS() {}
 
 	virtual bool Serialize(FArchive& Ar) override
 	{

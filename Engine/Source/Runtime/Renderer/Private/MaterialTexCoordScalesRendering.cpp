@@ -1,22 +1,22 @@
 // Copyright 1998-2016 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
-WantedMipsAccuracyRendering.cpp: Contains definitions for rendering the viewmode.
+MaterialTexCoordScalesRendering.cpp: Contains definitions for rendering the viewmode.
 =============================================================================*/
 
 #include "RendererPrivate.h"
 #include "ScenePrivate.h"
-#include "TexCoordScaleAnalysisRendering.h"
+#include "MaterialTexCoordScalesRendering.h"
 
 static TAutoConsoleVariable<int32> CVarStreamingAnalysisIndex(
 	TEXT("r.Streaming.AnalysisIndex"),
-	FTexCoordScaleAnalysisPS::MAX_NUM_TEXTURE_REGISTER,
+	FMaterialTexCoordScalePS::MAX_NUM_TEXTURE_REGISTER,
 	TEXT("Analysis index of the texture coordinate scale accuracy viewmode."),
 	ECVF_Default);
 
-IMPLEMENT_MATERIAL_SHADER_TYPE(,FTexCoordScaleAnalysisPS,TEXT("TexCoordScaleAnalysisPixelShader"),TEXT("Main"),SF_Pixel);
+IMPLEMENT_MATERIAL_SHADER_TYPE(,FMaterialTexCoordScalePS,TEXT("MaterialTexCoordScalesPixelShader"),TEXT("Main"),SF_Pixel);
 
-void FTexCoordScaleAnalysisPS::SetParameters(
+void FMaterialTexCoordScalePS::SetParameters(
 	FRHICommandList& RHICmdList, 
 	const FShader* OriginalVS, 
 	const FShader* OriginalPS, 
@@ -39,7 +39,7 @@ void FTexCoordScaleAnalysisPS::SetParameters(
 	FMeshMaterialShader::SetParameters(RHICmdList, FMeshMaterialShader::GetPixelShader(), MaterialRenderProxy, Material, View, ESceneRenderTargetsMode::DontSet);
 }
 
-void FTexCoordScaleAnalysisPS::SetMesh(
+void FMaterialTexCoordScalePS::SetMesh(
 	FRHICommandList& RHICmdList, 
 	const FVertexFactory* VertexFactory,
 	const FSceneView& View,
@@ -66,8 +66,8 @@ void FTexCoordScaleAnalysisPS::SetMesh(
 	FMemory::Memzero(TexCoordIndices);
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	const bool bUseNewMetrics = CVarStreamingUseNewMetrics.GetValueOnRenderThread() != 0;
-	const FStreamingSectionBuildInfo* SectionData = Proxy ? Proxy->GetStreamingSectionData(bUseNewMetrics ? VisualizeLODIndex : INDEX_NONE, bUseNewMetrics ? BatchElement.VisualizeElementIndex : INDEX_NONE) : nullptr;
+	float DistanceMultiplier = 1.f;
+	const FStreamingSectionBuildInfo* SectionData = Proxy ? Proxy->GetStreamingSectionData(DistanceMultiplier, VisualizeLODIndex, BatchElement.VisualizeElementIndex) : nullptr;
 	if (SectionData)
 	{
 		for (int32 ScaleIndex = 0; ScaleIndex < MAX_NUM_TEXTURE_REGISTER && ScaleIndex < SectionData->TexCoordData.Num(); ++ScaleIndex)
@@ -82,7 +82,7 @@ void FTexCoordScaleAnalysisPS::SetMesh(
 	}
 #endif
 
-	const bool bOutputScales = View.Family->GetDebugViewShaderMode() == DVSM_TexCoordScaleAnalysis;
+	const bool bOutputScales = View.Family->GetDebugViewShaderMode() == DVSM_MaterialTexCoordScalesAnalysis;
 
 	SetShaderValueArray(RHICmdList, FMeshMaterialShader::GetPixelShader(), OneOverCPUTexCoordScalesParameter, OneOverCPUTexCoordScales, ARRAY_COUNT(OneOverCPUTexCoordScales));
 	SetShaderValueArray(RHICmdList, FMeshMaterialShader::GetPixelShader(), TexCoordIndicesParameter, TexCoordIndices, ARRAY_COUNT(TexCoordIndices));

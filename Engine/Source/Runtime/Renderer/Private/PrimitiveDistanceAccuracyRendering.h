@@ -1,44 +1,40 @@
 // Copyright 1998-2016 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
-TexelFactorAccuracyRendering.h: Declarations used for the viewmode.
+PrimitiveDistanceAccuracyRendering.h: Declarations used for the viewmode.
 =============================================================================*/
 
 #pragma once
 
 /**
-* Pixel shader that renders the accuracy of the texel factor.
+* Pixel shader that renders texture streamer wanted mips accuracy.
 */
-class FTexelFactorAccuracyPS : public FGlobalShader, public IDebugViewModePSInterface
+class FPrimitiveDistanceAccuracyPS : public FGlobalShader, public IDebugViewModePSInterface
 {
-	DECLARE_SHADER_TYPE(FTexelFactorAccuracyPS,Global);
+	DECLARE_SHADER_TYPE(FPrimitiveDistanceAccuracyPS,Global);
 
 public:
 
 	static bool ShouldCache(EShaderPlatform Platform)
 	{
-		return AllowDebugViewShaderMode(DVSM_TexelFactorAccuracy, Platform);
+		return AllowDebugViewPS(DVSM_PrimitiveDistanceAccuracy, Platform);
 	}
 
-	FTexelFactorAccuracyPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer):
+	FPrimitiveDistanceAccuracyPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer):
 		FGlobalShader(Initializer)
 	{
 		AccuracyColorsParameter.Bind(Initializer.ParameterMap,TEXT("AccuracyColors"));
-		CPUTexelFactorParameter.Bind(Initializer.ParameterMap,TEXT("CPUTexelFactor"));
+		CPULogDistanceParameter.Bind(Initializer.ParameterMap,TEXT("CPULogDistance"));
 	}
 
-	FTexelFactorAccuracyPS() {}
+	FPrimitiveDistanceAccuracyPS() {}
 
 	virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 		Ar << AccuracyColorsParameter;
-		Ar << CPUTexelFactorParameter;
+		Ar << CPULogDistanceParameter;
 		return bShaderHasOutdatedParameters;
-	}
-
-	static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
-	{
 	}
 
 	virtual void SetParameters(
@@ -67,5 +63,5 @@ public:
 private:
 
 	FShaderParameter AccuracyColorsParameter;
-	FShaderParameter CPUTexelFactorParameter;
+	FShaderParameter CPULogDistanceParameter;
 };
