@@ -5,8 +5,9 @@
 
 #include "IRichTextMarkupParser.h"
 #include "IRichTextMarkupWriter.h"
+#include "Regex.h"
 
-class FDefaultRichTextMarkupParser : public IRichTextMarkupParser
+class SLATE_API FDefaultRichTextMarkupParser : public IRichTextMarkupParser
 {
 public:
 	static TSharedRef< FDefaultRichTextMarkupParser > Create();
@@ -25,7 +26,7 @@ private:
 	FRegexPattern AttributeRegexPattern;
 };
 
-class FDefaultRichTextMarkupWriter : public IRichTextMarkupWriter
+class SLATE_API FDefaultRichTextMarkupWriter : public IRichTextMarkupWriter
 {
 public:
 	static TSharedRef< FDefaultRichTextMarkupWriter > Create();
