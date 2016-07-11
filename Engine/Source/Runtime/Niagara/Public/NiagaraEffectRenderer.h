@@ -131,7 +131,7 @@ private:
 /**
 * NiagaraEffectRendererSprites renders an FNiagaraSimulation as sprite particles
 */
-class ENGINE_API NiagaraEffectRendererSprites : public NiagaraEffectRenderer
+class NIAGARA_API NiagaraEffectRendererSprites : public NiagaraEffectRenderer
 {
 public:	
 
@@ -176,7 +176,7 @@ private:
 * NiagaraEffectRendererRibbon renders an FNiagaraSimulation as a ribbon connecting all particles
 * in order by particle age.
 */
-class ENGINE_API NiagaraEffectRendererRibbon : public NiagaraEffectRenderer
+class NIAGARA_API NiagaraEffectRendererRibbon : public NiagaraEffectRenderer
 {
 public:
 	NiagaraEffectRendererRibbon(ERHIFeatureLevel::Type FeatureLevel, UNiagaraEffectRendererProperties *Props);
@@ -240,7 +240,7 @@ private:
 /**
 * NiagaraEffectRendererSprites renders an FNiagaraSimulation as sprite particles
 */
-class ENGINE_API NiagaraEffectRendererMeshes : public NiagaraEffectRenderer
+class NIAGARA_API NiagaraEffectRendererMeshes : public NiagaraEffectRenderer
 {
 public:
 
