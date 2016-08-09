@@ -2,10 +2,20 @@
 
 #pragma once 
 
+#include "LocTextHelper.h"
+
 class FTextLocalizationResourceGenerator
 {
 public:
-	CORE_API static bool Generate(const FString& SourcePath, const TSharedRef<FInternationalizationManifest>& InternationalizationManifest, const FString& NativeCulture, const FString& CultureToGenerate, FArchive* const DestinationArchive, IInternationalizationArchiveSerializer& ArchiveSerializer);
+	/**
+	 * Given a loc text helper, generate a compiled LocRes file for the given culture into the destination archive.
+	 */
+	INTERNATIONALIZATION_API static bool Generate(const FLocTextHelper& InLocTextHelper, const FString& InCultureToGenerate, const bool bSkipSourceCheck, FArchive& InDestinationArchive);
+
+	/**
+	 * Given a config file, generate a compiled LocRes file for the active culture and use it to update the live-entries in the localization manager.
+	 */
+	INTERNATIONALIZATION_API static bool GenerateAndUpdateLiveEntriesFromConfig(const FString& InConfigFilePath, const bool bSkipSourceCheck);
 
 private:
 
@@ -13,7 +23,6 @@ private:
 	{
 		struct FEntry
 		{
-			FString ArchiveName;
 			uint32 SourceStringHash;
 			FString LocalizedString;
 		};
