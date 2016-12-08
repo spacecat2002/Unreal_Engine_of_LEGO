@@ -1,10 +1,10 @@
 // Copyright 1998-2017 Epic Games, Inc. All Rights Reserved.
 
+#include "Rendering/ColorVertexBuffer.h"
 #include "CoreMinimal.h"
 #include "RHI.h"
 #include "Components.h"
 #include "EngineUtils.h"
-
 #include "StaticMeshVertexData.h"
 
 /*-----------------------------------------------------------------------------

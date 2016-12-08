@@ -42,12 +42,12 @@ float UForceFeedbackEffect::GetDuration()
 	return Duration;
 }
 
-void UForceFeedbackEffect::GetValues(const float EvalTime, FForceFeedbackValues& Values) const
+void UForceFeedbackEffect::GetValues(const float EvalTime, FForceFeedbackValues& Values, const float ValueMultiplier) const
 {
 	for (int32 Index = 0; Index < ChannelDetails.Num(); ++Index)
 	{
 		const FForceFeedbackChannelDetails& Details = ChannelDetails[Index];
-		const float Value = Details.Curve.GetRichCurveConst()->Eval(EvalTime);
+		const float Value = Details.Curve.GetRichCurveConst()->Eval(EvalTime) * ValueMultiplier;
 
 		if (Details.bAffectsLeftLarge)
 		{
@@ -68,9 +68,23 @@ void UForceFeedbackEffect::GetValues(const float EvalTime, FForceFeedbackValues&
 	}
 }
 
+void FActiveForceFeedbackEffect::GetValues(FForceFeedbackValues& Values) const
+{
+	if (ForceFeedbackEffect)
+	{
+		const float Duration = ForceFeedbackEffect->GetDuration();
+		const float EvalTime = PlayTime - Duration * FMath::FloorToFloat(PlayTime / Duration);
+		ForceFeedbackEffect->GetValues(EvalTime, Values);
+	}
+	else
+	{
+		Values = FForceFeedbackValues();
+	}
+}
+
 bool FActiveForceFeedbackEffect::Update(const float DeltaTime, FForceFeedbackValues& Values)
 {
-	if (ForceFeedbackEffect == NULL)
+	if (ForceFeedbackEffect == nullptr)
 	{
 		return false;
 	}
@@ -83,13 +97,7 @@ bool FActiveForceFeedbackEffect::Update(const float DeltaTime, FForceFeedbackVal
 	{
 		return false;
 	}
-
-	float EvalTime = PlayTime;
-	while (EvalTime > Duration)
-	{
-		EvalTime -= Duration;
-	}
-
-	ForceFeedbackEffect->GetValues(EvalTime, Values);
+	
+	GetValues(Values);
 	return true;
 }

@@ -28,8 +28,8 @@
 // Copyright (c) 2001-2004 NovodeX AG. All rights reserved.  
 
 
-#ifndef PXC_THREADCOHERANTCACHE_H
-#define PXC_THREADCOHERANTCACHE_H
+#ifndef PXC_THREADCOHERENTCACHE_H
+#define PXC_THREADCOHERENTCACHE_H
 
 #include "PsMutex.h"
 #include "PsAllocator.h"
@@ -50,19 +50,19 @@ an object is requested, which may be expensive).
 TODO: add thread coherancy.
 */
 template<class T, class Params>
-class PxcThreadCoherantCache : public Ps::AlignedAllocator<16, Ps::ReflectionAllocator<T> >
+class PxcThreadCoherentCache : public Ps::AlignedAllocator<16, Ps::ReflectionAllocator<T> >
 {
 	typedef Ps::AlignedAllocator<16, Ps::ReflectionAllocator<T> > Allocator;
-	PX_NOCOPY(PxcThreadCoherantCache)
+	PX_NOCOPY(PxcThreadCoherentCache)
 public:
 
 	typedef Ps::SListEntry EntryBase;
 
-	PX_INLINE PxcThreadCoherantCache(Params* params, const Allocator& alloc = Allocator()) : Allocator(alloc), mParams(params)
+	PX_INLINE PxcThreadCoherentCache(Params* params, const Allocator& alloc = Allocator()) : Allocator(alloc), mParams(params)
 	{
 	}
 
-	PX_INLINE ~PxcThreadCoherantCache()
+	PX_INLINE ~PxcThreadCoherentCache()
 	{
 		T* np = static_cast<T*>(root.pop());
 
@@ -97,7 +97,7 @@ private:
 	Params* mParams;
 
 	template<class T2, class P2>
-	friend class PxcThreadCoherantCacheIterator;
+	friend class PxcThreadCoherentCacheIterator;
 };
 
 /*!
@@ -107,15 +107,15 @@ Note: The iterator flushes the cache(extracts all items on construction and adds
 destruction so we can iterate the list in a safe manner).
 */
 template<class T, class Params> 
-class PxcThreadCoherantCacheIterator
+class PxcThreadCoherentCacheIterator
 {
 public:
-	PxcThreadCoherantCacheIterator(PxcThreadCoherantCache<T, Params>& cache) : mCache(cache)
+	PxcThreadCoherentCacheIterator(PxcThreadCoherentCache<T, Params>& cache) : mCache(cache)
 	{
 		mNext = cache.root.flush();
 		mFirst = mNext;
 	}
-	~PxcThreadCoherantCacheIterator()
+	~PxcThreadCoherentCacheIterator()
 	{
 		Ps::SListEntry* np = mFirst;
 		while(np != NULL)
@@ -138,8 +138,8 @@ public:
 	}
 private:
 
-	PxcThreadCoherantCacheIterator<T, Params>& operator=(const PxcThreadCoherantCacheIterator<T, Params>&);
-	PxcThreadCoherantCache<T, Params> &mCache;
+	PxcThreadCoherentCacheIterator<T, Params>& operator=(const PxcThreadCoherentCacheIterator<T, Params>&);
+	PxcThreadCoherentCache<T, Params> &mCache;
 	Ps::SListEntry* mNext;
 	Ps::SListEntry* mFirst;
 	
