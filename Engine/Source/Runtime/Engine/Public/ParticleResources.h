@@ -24,7 +24,7 @@ public:
 };
 
 /** Global particle texture coordinate vertex buffer. */
-extern TGlobalResource<FParticleTexCoordVertexBuffer> GParticleTexCoordVertexBuffer;
+extern ENGINE_API TGlobalResource<FParticleTexCoordVertexBuffer> GParticleTexCoordVertexBuffer;
 
 class FParticleEightTexCoordVertexBuffer : public FVertexBuffer
 {
