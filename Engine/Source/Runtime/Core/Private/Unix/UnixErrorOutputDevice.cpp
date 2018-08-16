@@ -11,7 +11,6 @@
 #include "Misc/OutputDeviceRedirector.h"
 #include "Misc/CoreDelegates.h"
 #include "Misc/App.h"
-#include "HAL/PlatformApplicationMisc.h"
 
 FUnixErrorOutputDevice::FUnixErrorOutputDevice()
 :	ErrorPos(0)
@@ -94,6 +93,8 @@ void FUnixErrorOutputDevice::HandleError()
 
 		GLog->Flush();
 
+		HandleErrorRestoreUI();
+
 		FPlatformMisc::SubmitErrorReport(GErrorHist, EErrorReportMode::Interactive);
 		FCoreDelegates::OnShutdownAfterError.Broadcast();
 #if !PLATFORM_EXCEPTIONS_DISABLED
@@ -102,3 +103,8 @@ void FUnixErrorOutputDevice::HandleError()
 	{}
 #endif // !PLATFORM_EXCEPTIONS_DISABLED
 }
+
+void FUnixErrorOutputDevice::HandleErrorRestoreUI()
+{
+}
+
