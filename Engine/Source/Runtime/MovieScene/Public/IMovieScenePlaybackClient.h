@@ -6,12 +6,12 @@
 #include "UObject/ObjectMacros.h"
 
 #include "MovieSceneSequenceID.h"
-#include "MovieSceneBindingOverridesInterface.generated.h"
+#include "IMovieScenePlaybackClient.generated.h"
 
 
 /** Movie scene binding overrides interface */
 UINTERFACE()
-class MOVIESCENE_API UMovieSceneBindingOverridesInterface
+class MOVIESCENE_API UMovieScenePlaybackClient
 	: public UInterface
 {
 public:
@@ -19,7 +19,7 @@ public:
 };
 
 
-class MOVIESCENE_API IMovieSceneBindingOverridesInterface
+class MOVIESCENE_API IMovieScenePlaybackClient
 {
 public:
 	GENERATED_BODY()
@@ -31,5 +31,10 @@ public:
 	 * @param OutObjects 		Array to populate with bound objects
 	 * @return true to prevent default lookup of the binding in the sequence itself, else false
 	 */
-	virtual bool LocateBoundObjects(const FGuid& InBindingId, FMovieSceneSequenceID InSequenceID, TArray<UObject*, TInlineAllocator<1>>& OutObjects) const = 0;
+	virtual bool RetrieveBindingOverrides(const FGuid& InBindingId, FMovieSceneSequenceID InSequenceID, TArray<UObject*, TInlineAllocator<1>>& OutObjects) const = 0;
+
+	/**
+	 * Retrieve the optional instance data that should be used for this evaluation
+	 */
+	virtual UObject* GetInstanceData() const = 0;
 };
