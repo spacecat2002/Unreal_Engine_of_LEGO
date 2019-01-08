@@ -4,9 +4,10 @@
 #include "Misc/Paths.h"
 #include "HAL/ThreadSafeBool.h"
 #include "Misc/ScopeLock.h"
-#include "Core/RingBuffer.h"
 #include "Async/Future.h"
 #include "Async/Async.h"
+#include "Core/RingBuffer.h"
+#include "Common/FileSystem.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogBuildStreamer, Log, All);
 DEFINE_LOG_CATEGORY(LogBuildStreamer);
@@ -64,22 +65,26 @@ namespace BuildPatchServices
 		FThreadSafeBool EndOfStream;
 	};
 
-	class FBuildStreamerImpl
-		: public FBuildStreamer
+	class FDirectoryBuildStreamer
+		: public IDirectoryBuildStreamer
 	{
 
 	public:
-		FBuildStreamerImpl(const FString& BuildRoot, const FString& InputListFile, const FString& IgnoreListFile, const FStatsCollectorRef& StatsCollector, IFileManager* FileManager);
-		virtual ~FBuildStreamerImpl();
+		FDirectoryBuildStreamer(FDirectoryBuildStreamerConfig Config, FDirectoryBuildStreamerDependencies Dependencies);
+		virtual ~FDirectoryBuildStreamer();
 
+		// IBuildStreamer interface begin.
 		virtual uint32 DequeueData(uint8* Buffer, uint32 ReqSize, bool WaitForData = true) override;
+		virtual bool IsEndOfData() const override;
+		// IBuildStreamer interface end.
+
+		// IDirectoryBuildStreamer interface begin.
 		virtual bool GetFileSpan(uint64 StartingIdx, FFileSpan& FileSpan) const override;
 		virtual TArray<FString> GetEmptyFiles() const override;
 		virtual TArray<FString> GetAllFilenames() const override;
-		virtual bool IsEndOfBuild() const override;
-		virtual bool IsEndOfData() const override;
 		virtual uint64 GetBuildSize() const override;
 		virtual TArray<FFileSpan> GetAllFiles() const override;
+		// IDirectoryBuildStreamer interface end.
 
 	private:
 		void ReadData();
@@ -91,11 +96,8 @@ namespace BuildPatchServices
 		void SetEnumeratedFiles(const TArray<FString>& AllFiles);
 
 	private:
-		const FString BuildRoot;
-		const FString InputListFile;
-		const FString IgnoreListFile;
-		FStatsCollectorRef StatsCollector;
-		IFileManager* FileManager;
+		const FDirectoryBuildStreamerConfig Config;
+		const FDirectoryBuildStreamerDependencies Dependencies;
 		FDataStream DataStream;
 		mutable FCriticalSection FilesCS;
 		TMap<uint64, FFileSpan> Files;
@@ -194,12 +196,9 @@ namespace BuildPatchServices
 		EndOfStream = true;
 	}
 
-	FBuildStreamerImpl::FBuildStreamerImpl(const FString& InBuildRoot, const FString& InInputListFile, const FString& InIgnoreListFile, const FStatsCollectorRef& InStatsCollector, IFileManager* InFileManager)
-		: BuildRoot(InBuildRoot)
-		, InputListFile(InInputListFile)
-		, IgnoreListFile(InIgnoreListFile)
-		, StatsCollector(InStatsCollector)
-		, FileManager(InFileManager)
+	FDirectoryBuildStreamer::FDirectoryBuildStreamer(FDirectoryBuildStreamerConfig InConfig, FDirectoryBuildStreamerDependencies InDependencies)
+		: Config(MoveTemp(InConfig))
+		, Dependencies(MoveTemp(InDependencies))
 		, bShouldAbort(false)
 		, bFilesEnumerated(false)
 	{
@@ -208,18 +207,18 @@ namespace BuildPatchServices
 		Future = Async(EAsyncExecution::Thread, MoveTemp(Task));
 	}
 
-	FBuildStreamerImpl::~FBuildStreamerImpl()
+	FDirectoryBuildStreamer::~FDirectoryBuildStreamer()
 	{
 		bShouldAbort = true;
 		Future.Wait();
 	}
 
-	uint32 FBuildStreamerImpl::DequeueData(uint8* Buffer, uint32 ReqSize, bool WaitForData /*= true*/)
+	uint32 FDirectoryBuildStreamer::DequeueData(uint8* Buffer, uint32 ReqSize, bool WaitForData /*= true*/)
 	{
 		return DataStream.DequeueData(Buffer, ReqSize, WaitForData);
 	}
 
-	bool FBuildStreamerImpl::GetFileSpan(uint64 StartingIdx, FFileSpan& FileSpan) const
+	bool FDirectoryBuildStreamer::GetFileSpan(uint64 StartingIdx, FFileSpan& FileSpan) const
 	{
 		FScopeLock ScopeLock(&FilesCS);
 		if (Files.Contains(StartingIdx))
@@ -230,13 +229,13 @@ namespace BuildPatchServices
 		return false;
 	}
 
-	TArray<FString> FBuildStreamerImpl::GetEmptyFiles() const
+	TArray<FString> FDirectoryBuildStreamer::GetEmptyFiles() const
 	{
 		FScopeLock ScopeLock(&FilesCS);
 		return EmptyFiles.Array();
 	}
 
-	TArray<FString> FBuildStreamerImpl::GetAllFilenames() const
+	TArray<FString> FDirectoryBuildStreamer::GetAllFilenames() const
 	{
 		while (!bFilesEnumerated && !bShouldAbort)
 		{
@@ -249,23 +248,18 @@ namespace BuildPatchServices
 		return AllFiles;
 	}
 
-	bool FBuildStreamerImpl::IsEndOfBuild() const
-	{
-		return DataStream.IsEndOfStream();
-	}
-
-	bool FBuildStreamerImpl::IsEndOfData() const
+	bool FDirectoryBuildStreamer::IsEndOfData() const
 	{
 		return DataStream.IsEndOfStream() && DataStream.UsedSpace() == 0;
 	}
 
-	uint64 FBuildStreamerImpl::GetBuildSize() const
+	uint64 FDirectoryBuildStreamer::GetBuildSize() const
 	{
 		check(DataStream.IsEndOfStream());
 		return DataStream.TotalDataPushed();
 	}
 
-	TArray<FFileSpan> FBuildStreamerImpl::GetAllFiles() const
+	TArray<FFileSpan> FDirectoryBuildStreamer::GetAllFiles() const
 	{
 		TArray<FFileSpan> AllFiles;
 		check(DataStream.IsEndOfStream());
@@ -280,16 +274,16 @@ namespace BuildPatchServices
 		return AllFiles;
 	}
 
-	void FBuildStreamerImpl::ReadData()
+	void FDirectoryBuildStreamer::ReadData()
 	{
 		// Stats
-		auto* StatFileOpenTime = StatsCollector->CreateStat(TEXT("Build Stream: Open Time"), EStatFormat::Timer);
-		auto* StatFileReadTime = StatsCollector->CreateStat(TEXT("Build Stream: Read Time"), EStatFormat::Timer);
-		auto* StatFileHashTime = StatsCollector->CreateStat(TEXT("Build Stream: Hash Time"), EStatFormat::Timer);
-		auto* StatDataEnqueueTime = StatsCollector->CreateStat(TEXT("Build Stream: Enqueue Time"), EStatFormat::Timer);
-		auto* StatDataAccessSpeed = StatsCollector->CreateStat(TEXT("Build Stream: Data Access Speed"), EStatFormat::DataSpeed);
-		auto* StatPotentialThroughput = StatsCollector->CreateStat(TEXT("Build Stream: Potential Throughput"), EStatFormat::DataSpeed);
-		auto* StatTotalDataRead = StatsCollector->CreateStat(TEXT("Build Stream: Total Data Read"), EStatFormat::DataSize);
+		volatile int64* StatFileOpenTime = Dependencies.StatsCollector->CreateStat(TEXT("Build Stream: Open Time"), EStatFormat::Timer);
+		volatile int64* StatFileReadTime = Dependencies.StatsCollector->CreateStat(TEXT("Build Stream: Read Time"), EStatFormat::Timer);
+		volatile int64* StatFileHashTime = Dependencies.StatsCollector->CreateStat(TEXT("Build Stream: Hash Time"), EStatFormat::Timer);
+		volatile int64* StatDataEnqueueTime = Dependencies.StatsCollector->CreateStat(TEXT("Build Stream: Enqueue Time"), EStatFormat::Timer);
+		volatile int64* StatDataAccessSpeed = Dependencies.StatsCollector->CreateStat(TEXT("Build Stream: Data Access Speed"), EStatFormat::DataSpeed);
+		volatile int64* StatPotentialThroughput = Dependencies.StatsCollector->CreateStat(TEXT("Build Stream: Potential Throughput"), EStatFormat::DataSpeed);
+		volatile int64* StatTotalDataRead = Dependencies.StatsCollector->CreateStat(TEXT("Build Stream: Total Data Read"), EStatFormat::DataSize);
 		uint64 TempValue;
 
 		// Clear the build stream
@@ -298,9 +292,9 @@ namespace BuildPatchServices
 		// Enumerate build files
 		TArray<FString> AllFiles;
 		uint32 FileEnumerationStart = FStatsCollector::GetCycles();
-		if (InputListFile.IsEmpty())
+		if (Config.InputListFile.IsEmpty())
 		{
-			FileManager->FindFilesRecursive(AllFiles, *BuildRoot, TEXT("*.*"), true, false);
+			Dependencies.FileSystem->FindFilesRecursively(AllFiles, *Config.BuildRoot);
 		}
 		else
 		{
@@ -323,7 +317,7 @@ namespace BuildPatchServices
 		// Allocate our file read buffer
 		uint8* FileReadBuffer = new uint8[BuildPatchServices::FileBufferSize];
 
-		for (auto& SourceFile : AllFiles)
+		for (FString& SourceFile : AllFiles)
 		{
 			if (bShouldAbort)
 			{
@@ -332,14 +326,14 @@ namespace BuildPatchServices
 
 			// Read the file
 			FStatsCollector::AccumulateTimeBegin(TempValue);
-			FArchive* FileReader = FileManager->CreateFileReader(*SourceFile);
+			TUniquePtr<FArchive> FileReader = Dependencies.FileSystem->CreateFileReader(*SourceFile);
 			bool bIsUnixExe = IsUnixExecutable(*SourceFile);
 			FString SymlinkTarget = GetSymlinkTarget(*SourceFile);
 			FStatsCollector::AccumulateTimeEnd(StatFileOpenTime, TempValue);
 			// Not being able to load a required file from the build would be fatal, hard fault.
-			checkf(FileReader != nullptr, TEXT("Could not open file from build! %s"), *SourceFile);
+			checkf(FileReader.IsValid(), TEXT("Could not open file from build! %s"), *SourceFile);
 			// Make SourceFile the format we want it in and start a new file.
-			FPaths::MakePathRelativeTo(SourceFile, *(BuildRoot + TEXT("/")));
+			FPaths::MakePathRelativeTo(SourceFile, *(Config.BuildRoot + TEXT("/")));
 			int64 FileSize = FileReader->TotalSize();
 			// Process files that have bytes.
 			if (FileSize > 0)
@@ -380,7 +374,6 @@ namespace BuildPatchServices
 				AddEmptyFile(SourceFile);
 			}
 			FileReader->Close();
-			delete FileReader;
 		}
 
 		// Mark end of build
@@ -390,28 +383,28 @@ namespace BuildPatchServices
 		delete[] FileReadBuffer;
 	}
 
-	void FBuildStreamerImpl::AddFile(FFileSpan FileSpan)
+	void FDirectoryBuildStreamer::AddFile(FFileSpan FileSpan)
 	{
 		FScopeLock ScopeLock(&FilesCS);
 		Files.Add(FileSpan.StartIdx, MoveTemp(FileSpan));
 	}
 
-	void FBuildStreamerImpl::AddEmptyFile(FString Filename)
+	void FDirectoryBuildStreamer::AddEmptyFile(FString Filename)
 	{
 		FScopeLock ScopeLock(&FilesCS);
 		EmptyFiles.Add(MoveTemp(Filename));
 	}
 
-	void FBuildStreamerImpl::SetFileHash(uint64 StartIdx, FSHA1& FileHash)
+	void FDirectoryBuildStreamer::SetFileHash(uint64 StartIdx, FSHA1& FileHash)
 	{
 		FScopeLock ScopeLock(&FilesCS);
 		FileHash.GetHash(Files[StartIdx].SHAHash.Hash);
 	}
 
-	void FBuildStreamerImpl::ReadInputFileList(TArray<FString>& AllFiles)
+	void FDirectoryBuildStreamer::ReadInputFileList(TArray<FString>& AllFiles)
 	{
 		FString InputFileList;
-		FFileHelper::LoadFileToString(InputFileList, *InputListFile);
+		FFileHelper::LoadFileToString(InputFileList, *Config.InputListFile);
 
 		TArray<FString> InputFiles;
 		InputFileList.ParseIntoArrayLines(InputFiles, true);
@@ -421,14 +414,14 @@ namespace BuildPatchServices
 			InputFile.TrimStartAndEndInline();
 			if (InputFile.Len() > 0)
 			{
-				FString FullInputFile = BuildRoot / InputFile;
+				FString FullInputFile = Config.BuildRoot / InputFile;
 				FPaths::NormalizeFilename(FullInputFile);
 				AllFiles.Add(FullInputFile);
 			}
 		}
 	}
 
-	void FBuildStreamerImpl::StripIgnoredFiles(TArray<FString>& AllFiles)
+	void FDirectoryBuildStreamer::StripIgnoredFiles(TArray<FString>& AllFiles)
 	{
 		struct FRemoveMatchingStrings
 		{
@@ -450,7 +443,7 @@ namespace BuildPatchServices
 		UE_LOG(LogBuildStreamer, Log, TEXT("Stripping ignorable files"));
 		const int32 OriginalNumFiles = AllFiles.Num();
 		FString IgnoreFileList = TEXT("");
-		FFileHelper::LoadFileToString(IgnoreFileList, *IgnoreListFile);
+		FFileHelper::LoadFileToString(IgnoreFileList, *Config.IgnoreListFile);
 		TArray< FString > IgnoreFiles;
 		IgnoreFileList.ParseIntoArrayLines(IgnoreFiles, true);
 
@@ -467,7 +460,7 @@ namespace BuildPatchServices
 				// Strip tab separated timestamp if it exists
 				Filename = Filename.Left(TabLocation);
 			}
-			Filename = BuildRoot / Filename;
+			Filename = Config.BuildRoot / Filename;
 			FPaths::NormalizeFilename(Filename);
 		}
 
@@ -482,16 +475,17 @@ namespace BuildPatchServices
 		UE_LOG(LogBuildStreamer, Log, TEXT("Stripped %d ignorable file(s)"), (OriginalNumFiles - NewNumFiles));
 	}
 
-	void FBuildStreamerImpl::SetEnumeratedFiles(const TArray<FString>& AllFiles)
+	void FDirectoryBuildStreamer::SetEnumeratedFiles(const TArray<FString>& AllFiles)
 	{
 		FScopeLock ScopeLock(&EnumeratedFilesCS);
 		EnumeratedFiles = AllFiles;
 		bFilesEnumerated = true;
 	}
 
-	FBuildStreamerRef FBuildStreamerFactory::Create(const FString& BuildRoot, const FString& InputListFile, const FString& IgnoreListFile, const FStatsCollectorRef& StatsCollector, IFileManager* FileManager)
+	IDirectoryBuildStreamer* FBuildStreamerFactory::Create(FDirectoryBuildStreamerConfig Config, FDirectoryBuildStreamerDependencies Dependencies)
 	{
-		check(FileManager != nullptr);
-		return MakeShareable(new FBuildStreamerImpl(BuildRoot, InputListFile, IgnoreListFile, StatsCollector, FileManager));
+		check(Dependencies.StatsCollector != nullptr);
+		check(Dependencies.FileSystem != nullptr);
+		return new FDirectoryBuildStreamer(MoveTemp(Config), MoveTemp(Dependencies));
 	}
 }
