@@ -2,3 +2,4 @@
 
 #pragma once
 
+#include "Apple/ApplePlatformFile.h"
