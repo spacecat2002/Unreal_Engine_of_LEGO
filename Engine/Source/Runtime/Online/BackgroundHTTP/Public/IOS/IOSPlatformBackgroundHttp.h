@@ -2,3 +2,4 @@
 
 #pragma once
 
+#include "IOS/ApplePlatformBackgroundHttp.h"
