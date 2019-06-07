@@ -12,6 +12,7 @@
 #include "IMediaClock.h"
 #include "IMediaClockSink.h"
 #include "IMediaModule.h"
+#include "Math/UnrealMathUtility.h"
 #include "MediaUtilsPrivate.h"
 #include "Modules/ModuleManager.h"
 #include "Serialization/Archive.h"
@@ -114,6 +115,27 @@ namespace MediaRecorderHelpers
 
 		return MoveTemp(PixelData);
 	};
+
+	TUniquePtr<TImagePixelData<FColor>> ConvertSampleInterpretedAsFloat16ColorToFColor(TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe> InSample, const FIntPoint InSize, int32 InNumChannels)
+	{
+		const int32 NumberOfTexel = InSize.Y * InSize.X;
+		TUniquePtr<TImagePixelData<FColor>> PixelData = MakeUnique<TImagePixelData<FColor>>(InSize);
+		PixelData->Pixels.Reset(NumberOfTexel);
+
+		const FFloat16Color* Buffer = reinterpret_cast<const FFloat16Color*>(InSample->GetBuffer());
+		for (int32 i = 0 ; i < NumberOfTexel; i++)
+		{
+			FColor Output;
+			Output.R = (uint8)(FMath::Clamp<float>(Buffer[0].R, 0.0f, 1.0f) * 255);
+			Output.G = (uint8)(FMath::Clamp<float>(Buffer[0].G, 0.0f, 1.0f) * 255);
+			Output.B = (uint8)(FMath::Clamp<float>(Buffer[0].B, 0.0f, 1.0f) * 255);
+			Output.A = (uint8)(FMath::Clamp<float>(Buffer[0].A, 0.0f, 1.0f) * 255);
+			PixelData->Pixels.Add(Output);
+			Buffer++;
+		}
+
+		return MoveTemp(PixelData);
+	}
 }
 
 /* FMediaRecorder implementation
@@ -230,11 +252,8 @@ void FMediaRecorder::TickRecording()
 				continue;
 			}
 
-			bool bIsGammaCorrectionPreProcessingEnabled = false;
-			if (TargetImageFormat == EImageFormat::EXR && Sample->IsOutputSrgb())
-			{
-				bIsGammaCorrectionPreProcessingEnabled = true;
-			}
+			bool bIsGammaCorrectionPreProcessingEnabled = (TargetImageFormat == EImageFormat::EXR && Sample->IsOutputSrgb());
+			bool IsFloatFormatConversionNeeded = ((Sample->GetFormat() == EMediaTextureSampleFormat::FloatRGBA) && (TargetImageFormat != EImageFormat::EXR));
 
 			TUniquePtr<FImageWriteTask> ImageTask = MakeUnique<FImageWriteTask>();
 
@@ -254,14 +273,21 @@ void FMediaRecorder::TickRecording()
 				}
 
 				// Should we move the color buffer into a raw image data container.
-				bool bUseFMediaImagePixelData = bSetAlpha || (Sample->GetStride() != Size.X * NumChannels) || bIsGammaCorrectionPreProcessingEnabled;
+				bool bUseFMediaImagePixelData = bSetAlpha || (Sample->GetStride() != Size.X * NumChannels) || bIsGammaCorrectionPreProcessingEnabled || IsFloatFormatConversionNeeded;
 
 				if (bUseFMediaImagePixelData)
 				{
 					const int32 NumberOfTexel = Size.Y * Size.X;
 					if (Sample->GetFormat() == EMediaTextureSampleFormat::FloatRGBA)
 					{
-						ImageTask->PixelData = MediaRecorderHelpers::CreatePixelData<FFloat16Color>(Sample, Size, NumChannels);
+						if (IsFloatFormatConversionNeeded)
+						{
+							ImageTask->PixelData = MediaRecorderHelpers::ConvertSampleInterpretedAsFloat16ColorToFColor(Sample, Size, NumChannels);
+						}
+						else
+						{
+							ImageTask->PixelData = MediaRecorderHelpers::CreatePixelData<FFloat16Color>(Sample, Size, NumChannels);
+						}
 					}
 					else
 					{
