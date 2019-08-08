@@ -1,7 +1,7 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RigVMCore/RigVMMemory.h"
-#include "Uobject/AnimObjectVersion.h"
+#include "UObject/AnimObjectVersion.h"
 #include "UObject/PropertyPortFlags.h"
 
 bool FRigVMRegister::Serialize(FArchive& Ar)
