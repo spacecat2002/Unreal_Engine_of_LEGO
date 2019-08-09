@@ -166,21 +166,21 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> Add
 			}
 			case ERigVMOpCode::Zero:
 			{
-				const FRigVMZeroOp& Op = ByteCode.GetOpAt<FRigVMZeroOp>(Instructions[InstructionIndex]);
+				const FRigVMUnaryOp& Op = ByteCode.GetOpAt<FRigVMUnaryOp>(Instructions[InstructionIndex]);
 				Memory[Op.Arg.GetContainerIndex()]->GetRef<int32>(Op.Arg.GetRegisterIndex()) = 0;
 				InstructionIndex++;
 				break;
 			}
 			case ERigVMOpCode::BoolFalse:
 			{
-				const FRigVMFalseOp& Op = ByteCode.GetOpAt<FRigVMFalseOp>(Instructions[InstructionIndex]);
+				const FRigVMUnaryOp& Op = ByteCode.GetOpAt<FRigVMUnaryOp>(Instructions[InstructionIndex]);
 				Memory[Op.Arg.GetContainerIndex()]->GetRef<bool>(Op.Arg.GetRegisterIndex()) = false;
 				InstructionIndex++;
 				break;
 			}
 			case ERigVMOpCode::BoolTrue:
 			{
-				const FRigVMTrueOp& Op = ByteCode.GetOpAt<FRigVMTrueOp>(Instructions[InstructionIndex]);
+				const FRigVMUnaryOp& Op = ByteCode.GetOpAt<FRigVMUnaryOp>(Instructions[InstructionIndex]);
 				Memory[Op.Arg.GetContainerIndex()]->GetRef<bool>(Op.Arg.GetRegisterIndex()) = false;
 				InstructionIndex++;
 				break;
@@ -194,14 +194,14 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> Add
 			}
 			case ERigVMOpCode::Increment:
 			{
-				const FRigVMIncrementOp& Op = ByteCode.GetOpAt<FRigVMIncrementOp>(Instructions[InstructionIndex]);
+				const FRigVMUnaryOp& Op = ByteCode.GetOpAt<FRigVMUnaryOp>(Instructions[InstructionIndex]);
 				Memory[Op.Arg.GetContainerIndex()]->GetRef<int32>(Op.Arg.GetRegisterIndex())++;
 				InstructionIndex++;
 				break;
 			}
 			case ERigVMOpCode::Decrement:
 			{
-				const FRigVMDecrementOp& Op = ByteCode.GetOpAt<FRigVMDecrementOp>(Instructions[InstructionIndex]);
+				const FRigVMUnaryOp& Op = ByteCode.GetOpAt<FRigVMUnaryOp>(Instructions[InstructionIndex]);
 				Memory[Op.Arg.GetContainerIndex()]->GetRef<int32>(Op.Arg.GetRegisterIndex())--;
 				InstructionIndex++;
 				break;
@@ -209,7 +209,7 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> Add
 			case ERigVMOpCode::Equals:
 			case ERigVMOpCode::NotEquals:
 			{
-				const FRigVMEqualsOp& Op = ByteCode.GetOpAt<FRigVMEqualsOp>(Instructions[InstructionIndex]);
+				const FRigVMComparisonOp& Op = ByteCode.GetOpAt<FRigVMComparisonOp>(Instructions[InstructionIndex]);
 				const FRigVMRegister& RegisterA = (*Memory[Op.A.GetContainerIndex()])[Op.A.GetRegisterIndex()];
 				const FRigVMRegister& RegisterB = (*Memory[Op.B.GetContainerIndex()])[Op.B.GetRegisterIndex()];
 				uint16 BytesA = RegisterA.GetNumBytesPerSlice();
@@ -271,7 +271,7 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> Add
 						}
 					}
 				}
-				if (Instructions[InstructionIndex].OpCode == ERigVMOpCode::NotEquals)
+				if (Op.OpCode == ERigVMOpCode::NotEquals)
 				{
 					Result = !Result;
 				}
@@ -300,7 +300,7 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> Add
 			case ERigVMOpCode::JumpAbsoluteIf:
 			{
 				const FRigVMJumpIfOp& Op = ByteCode.GetOpAt<FRigVMJumpIfOp>(Instructions[InstructionIndex]);
-				const bool Condition = Memory[0]->GetRef<bool>(Op.ConditionArg.GetRegisterIndex());
+				const bool Condition = Memory[0]->GetRef<bool>(Op.Arg.GetRegisterIndex());
 				if (Condition == Op.Condition)
 				{
 					InstructionIndex = Op.InstructionIndex;
@@ -314,7 +314,7 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> Add
 			case ERigVMOpCode::JumpForwardIf:
 			{
 				const FRigVMJumpIfOp& Op = ByteCode.GetOpAt<FRigVMJumpIfOp>(Instructions[InstructionIndex]);
-				const bool Condition = Memory[0]->GetRef<bool>(Op.ConditionArg.GetRegisterIndex());
+				const bool Condition = Memory[0]->GetRef<bool>(Op.Arg.GetRegisterIndex());
 				if (Condition == Op.Condition)
 				{
 					InstructionIndex += Op.InstructionIndex;
@@ -328,7 +328,7 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> Add
 			case ERigVMOpCode::JumpBackwardIf:
 			{
 				const FRigVMJumpIfOp& Op = ByteCode.GetOpAt<FRigVMJumpIfOp>(Instructions[InstructionIndex]);
-				const bool Condition = Memory[0]->GetRef<bool>(Op.ConditionArg.GetRegisterIndex());
+				const bool Condition = Memory[0]->GetRef<bool>(Op.Arg.GetRegisterIndex());
 				if (Condition == Op.Condition)
 				{
 					InstructionIndex -= Op.InstructionIndex;

@@ -120,32 +120,17 @@ uint64 FRigVMByteCode::GetOpNumBytesAt(uint64 InByteCodeIndex, bool bIncludeArgu
 			return (uint64)sizeof(FRigVMCopyOp);
 		}
 		case ERigVMOpCode::Zero:
-		{
-			return (uint64)sizeof(FRigVMZeroOp);
-		}
 		case ERigVMOpCode::BoolFalse:
-		{
-			return (uint64)sizeof(FRigVMFalseOp);
-		}
 		case ERigVMOpCode::BoolTrue:
-		{
-			return (uint64)sizeof(FRigVMTrueOp);
-		}
 		case ERigVMOpCode::Increment:
-		{
-			return (uint64)sizeof(FRigVMIncrementOp);
-		}
 		case ERigVMOpCode::Decrement:
 		{
-			return (uint64)sizeof(FRigVMDecrementOp);
+			return (uint64)sizeof(FRigVMUnaryOp);
 		}
 		case ERigVMOpCode::Equals:
-		{
-			return (uint64)sizeof(FRigVMEqualsOp);
-		}
 		case ERigVMOpCode::NotEquals:
 		{
-			return (uint64)sizeof(FRigVMNotEqualsOp);
+			return (uint64)sizeof(FRigVMComparisonOp);
 		}
 		case ERigVMOpCode::JumpAbsolute:
 		case ERigVMOpCode::JumpForward:
@@ -178,19 +163,19 @@ uint64 FRigVMByteCode::GetOpNumBytesAt(uint64 InByteCodeIndex, bool bIncludeArgu
 
 uint64 FRigVMByteCode::AddZeroOp(const FRigVMArgument& InArg)
 {
-	FRigVMZeroOp Op(InArg);
+	FRigVMUnaryOp Op(ERigVMOpCode::Zero, InArg);
 	return AddOp(Op);
 }
 
 uint64 FRigVMByteCode::AddFalseOp(const FRigVMArgument& InArg)
 {
-	FRigVMFalseOp Op(InArg);
+	FRigVMUnaryOp Op(ERigVMOpCode::BoolFalse, InArg);
 	return AddOp(Op);
 }
 
 uint64 FRigVMByteCode::AddTrueOp(const FRigVMArgument& InArg)
 {
-	FRigVMTrueOp Op(InArg);
+	FRigVMUnaryOp Op(ERigVMOpCode::BoolTrue, InArg);
 	return AddOp(Op);
 }
 
@@ -202,25 +187,25 @@ uint64 FRigVMByteCode::AddCopyOp(const FRigVMArgument& InSource, const FRigVMArg
 
 uint64 FRigVMByteCode::AddIncrementOp(const FRigVMArgument& InArg)
 {
-	FRigVMIncrementOp Op(InArg);
+	FRigVMUnaryOp Op(ERigVMOpCode::Increment, InArg);
 	return AddOp(Op);
 }
 
 uint64 FRigVMByteCode::AddDecrementOp(const FRigVMArgument& InArg)
 {
-	FRigVMDecrementOp Op(InArg);
+	FRigVMUnaryOp Op(ERigVMOpCode::Decrement, InArg);
 	return AddOp(Op);
 }
 
 uint64 FRigVMByteCode::AddEqualsOp(const FRigVMArgument& InA, const FRigVMArgument& InB, const FRigVMArgument& InResult)
 {
-	FRigVMEqualsOp Op(InA, InB, InResult);
+	FRigVMComparisonOp Op(ERigVMOpCode::Equals, InA, InB, InResult);
 	return AddOp(Op);
 }
 
 uint64 FRigVMByteCode::AddNotEqualsOp(const FRigVMArgument& InA, const FRigVMArgument& InB, const FRigVMArgument& InResult)
 {
-	FRigVMNotEqualsOp Op(InA, InB, InResult);
+	FRigVMComparisonOp Op(ERigVMOpCode::NotEquals, InA, InB, InResult);
 	return AddOp(Op);
 }
 
@@ -232,7 +217,7 @@ uint64 FRigVMByteCode::AddJumpOp(ERigVMOpCode InOpCode, uint16 InInstructionInde
 
 uint64 FRigVMByteCode::AddJumpIfOp(ERigVMOpCode InOpCode, uint16 InInstructionIndex, const FRigVMArgument& InConditionArg, bool bJumpWhenConditionIs)
 {
-	FRigVMJumpIfOp Op(InOpCode, InInstructionIndex, InConditionArg, bJumpWhenConditionIs);
+	FRigVMJumpIfOp Op(InOpCode, InConditionArg, InInstructionIndex, bJumpWhenConditionIs);
 	return AddOp(Op);
 }
 

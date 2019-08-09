@@ -128,55 +128,29 @@ struct RIGVM_API FRigVMExecuteOp : public FRigVMBaseOp
 	FORCEINLINE uint8 GetArgumentCount() const { return uint8(OpCode) - uint8(ERigVMOpCode::Execute_0_Args); }
 };
 
-// zero the memory of a given register
-struct RIGVM_API FRigVMZeroOp : public FRigVMBaseOp
+// operator used for zero, false, true, increment, decrement
+struct RIGVM_API FRigVMUnaryOp : public FRigVMBaseOp
 {
-	FRigVMZeroOp()
-		: FRigVMBaseOp(ERigVMOpCode::Zero)
+	FRigVMUnaryOp()
+		: FRigVMBaseOp(ERigVMOpCode::Invalid)
 		, Arg()
 	{
 	}
 
-	FRigVMZeroOp(FRigVMArgument InArg)
-		: FRigVMBaseOp(ERigVMOpCode::Zero)
+	FRigVMUnaryOp(ERigVMOpCode InOpCode, FRigVMArgument InArg)
+		: FRigVMBaseOp(InOpCode)
 		, Arg(InArg)
 	{
-	}
-
-	FRigVMArgument Arg;
-};
-
-// set a given register to false
-struct RIGVM_API FRigVMFalseOp : public FRigVMBaseOp
-{
-	FRigVMFalseOp()
-		: FRigVMBaseOp(ERigVMOpCode::BoolFalse)
-		, Arg()
-	{
-	}
-
-	FRigVMFalseOp(FRigVMArgument InArg)
-		: FRigVMBaseOp(ERigVMOpCode::BoolFalse)
-		, Arg(InArg)
-	{
-	}
-
-	FRigVMArgument Arg;
-};
-
-// set a given register to true
-struct RIGVM_API FRigVMTrueOp : public FRigVMBaseOp
-{
-	FRigVMTrueOp()
-		: FRigVMBaseOp(ERigVMOpCode::BoolTrue)
-		, Arg()
-	{
-	}
-
-	FRigVMTrueOp(FRigVMArgument InArg)
-		: FRigVMBaseOp(ERigVMOpCode::BoolTrue)
-		, Arg(InArg)
-	{
+		ensure(
+			uint8(InOpCode) == uint8(ERigVMOpCode::Zero) ||
+			uint8(InOpCode) == uint8(ERigVMOpCode::BoolFalse) ||
+			uint8(InOpCode) == uint8(ERigVMOpCode::BoolTrue) ||
+			uint8(InOpCode) == uint8(ERigVMOpCode::Increment) ||
+			uint8(InOpCode) == uint8(ERigVMOpCode::Decrement) ||
+			uint8(InOpCode) == uint8(ERigVMOpCode::JumpAbsoluteIf) ||
+			uint8(InOpCode) == uint8(ERigVMOpCode::JumpForwardIf) ||
+			uint8(InOpCode) == uint8(ERigVMOpCode::JumpBackwardIf)
+		);
 	}
 
 	FRigVMArgument Arg;
@@ -218,91 +192,32 @@ struct RIGVM_API FRigVMCopyOp : public FRigVMBaseOp
 	int32 NumBytes;
 };
 
-// increment a int32 register
-struct RIGVM_API FRigVMIncrementOp : public FRigVMBaseOp
+// used for equals and not equals comparisons
+struct RIGVM_API FRigVMComparisonOp : public FRigVMBaseOp
 {
-	FRigVMIncrementOp()
-	: FRigVMBaseOp(ERigVMOpCode::Increment)
-	, Arg()
+	FRigVMComparisonOp()
+		: FRigVMBaseOp(ERigVMOpCode::Invalid)
+		, A()
+		, B()
+		, Result()
 	{
 	}
 
-	FRigVMIncrementOp(FRigVMArgument InArg)
-	: FRigVMBaseOp(ERigVMOpCode::Increment)
-	, Arg(InArg)
-	{
-	}
-
-	FRigVMArgument Arg;
-};
-
-// decrement a int32 register
-struct RIGVM_API FRigVMDecrementOp : public FRigVMBaseOp
-{
-	FRigVMDecrementOp()
-	: FRigVMBaseOp(ERigVMOpCode::Decrement)
-	, Arg()
-	{
-	}
-
-	FRigVMDecrementOp(FRigVMArgument InArg)
-	: FRigVMBaseOp(ERigVMOpCode::Decrement)
-	, Arg(InArg)
-	{
-	}
-
-	FRigVMArgument Arg;
-};
-
-// fill a bool register with the result of (A == B)
-struct RIGVM_API FRigVMEqualsOp : public FRigVMBaseOp
-{
-	FRigVMEqualsOp()
-	: FRigVMBaseOp(ERigVMOpCode::Equals)
-	, A()
-	, B()
-	, Result()
-	{
-	}
-
-	FRigVMEqualsOp(
+	FRigVMComparisonOp(
+		ERigVMOpCode InOpCode,
 		FRigVMArgument InA,
 		FRigVMArgument InB,
 		FRigVMArgument InResult
 	)
-	: FRigVMBaseOp(ERigVMOpCode::Equals)
-	, A(InA)
-	, B(InB)
-	, Result(InResult)
+		: FRigVMBaseOp(InOpCode)
+		, A(InA)
+		, B(InB)
+		, Result(InResult)
 	{
-	}
-
-	FRigVMArgument A;
-	FRigVMArgument B;
-	FRigVMArgument Result;
-};
-
-// fill a bool register with the result of (A != B)
-struct RIGVM_API FRigVMNotEqualsOp : public FRigVMBaseOp
-{
-	FRigVMNotEqualsOp()
-	: FRigVMBaseOp(ERigVMOpCode::NotEquals)
-	, A()
-	, B()
-	, Result()
-	{
-	}
-
-	FRigVMNotEqualsOp(
-		FRigVMArgument InA,
-		FRigVMArgument InB,
-		FRigVMArgument InResult
-	)
-	: FRigVMBaseOp(ERigVMOpCode::NotEquals)
-	, A(InA)
-	, B(InB)
-	, Result(InResult)
-	{
+		ensure(
+			uint8(InOpCode) == uint8(ERigVMOpCode::Equals) ||
+			uint8(InOpCode) == uint8(ERigVMOpCode::NotEquals)
+			);
 	}
 
 	FRigVMArgument A;
@@ -335,20 +250,18 @@ struct RIGVM_API FRigVMJumpOp : public FRigVMBaseOp
 // jump to a new instruction index based on a condition.
 // the instruction can be absolute, relative forward or relative backward
 // based on the opcode 
-struct RIGVM_API FRigVMJumpIfOp : public FRigVMBaseOp
+struct RIGVM_API FRigVMJumpIfOp : public FRigVMUnaryOp
 {
 	FRigVMJumpIfOp()
-		: FRigVMBaseOp(ERigVMOpCode::Invalid)
+		: FRigVMUnaryOp()
 		, InstructionIndex(INDEX_NONE)
-		, ConditionArg()
 		, Condition(true)
 	{
 	}
 
-	FRigVMJumpIfOp(ERigVMOpCode InOpCode, int32 InInstructionIndex, FRigVMArgument InConditionArg, bool InCondition = false)
-		: FRigVMBaseOp(InOpCode)
+	FRigVMJumpIfOp(ERigVMOpCode InOpCode, FRigVMArgument InConditionArg, int32 InInstructionIndex, bool InCondition = false)
+		: FRigVMUnaryOp(InOpCode, InConditionArg)
 		, InstructionIndex(InInstructionIndex)
-		, ConditionArg(InConditionArg)
 		, Condition(InCondition)
 	{
 		ensure(uint8(InOpCode) >= uint8(ERigVMOpCode::JumpAbsoluteIf));
@@ -356,7 +269,6 @@ struct RIGVM_API FRigVMJumpIfOp : public FRigVMBaseOp
 	}
 
 	int32 InstructionIndex;
-	FRigVMArgument ConditionArg;
 	bool Condition;
 };
 
