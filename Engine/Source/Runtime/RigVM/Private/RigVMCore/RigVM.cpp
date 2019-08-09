@@ -21,6 +21,8 @@ void URigVM::Reset()
 	Functions.Reset();
 	ByteCode.Reset();
 	Instructions.Reset();
+	Parameters.Reset();
+	ParametersNameMap.Reset();
 }
 
 int32 URigVM::AddRigVMFunction(UScriptStruct* InRigVMStruct, const FName& InMethodName)
