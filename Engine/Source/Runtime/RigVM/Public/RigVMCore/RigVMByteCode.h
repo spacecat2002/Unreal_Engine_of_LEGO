@@ -149,7 +149,8 @@ struct RIGVM_API FRigVMUnaryOp : public FRigVMBaseOp
 			uint8(InOpCode) == uint8(ERigVMOpCode::Decrement) ||
 			uint8(InOpCode) == uint8(ERigVMOpCode::JumpAbsoluteIf) ||
 			uint8(InOpCode) == uint8(ERigVMOpCode::JumpForwardIf) ||
-			uint8(InOpCode) == uint8(ERigVMOpCode::JumpBackwardIf)
+			uint8(InOpCode) == uint8(ERigVMOpCode::JumpBackwardIf) ||
+			uint8(InOpCode) == uint8(ERigVMOpCode::ChangeType)
 		);
 	}
 
@@ -273,11 +274,10 @@ struct RIGVM_API FRigVMJumpIfOp : public FRigVMUnaryOp
 };
 
 // change the type of a register
-struct RIGVM_API FRigVMChangeTypeOp : public FRigVMBaseOp
+struct RIGVM_API FRigVMChangeTypeOp : public FRigVMUnaryOp
 {
 	FRigVMChangeTypeOp()
-		: FRigVMBaseOp(ERigVMOpCode::Invalid)
-		, Arg()
+		: FRigVMUnaryOp()
 		, Type(ERigVMRegisterType::Invalid)
 		, ElementSize(0)
 		, ElementCount(0)
@@ -286,8 +286,7 @@ struct RIGVM_API FRigVMChangeTypeOp : public FRigVMBaseOp
 	}
 
 	FRigVMChangeTypeOp(FRigVMArgument InArg, ERigVMRegisterType InType, uint16 InElementSize, uint16 InElementCount, uint16 InSliceCount)
-		: FRigVMBaseOp(ERigVMOpCode::ChangeType)
-		, Arg(InArg)
+		: FRigVMUnaryOp(ERigVMOpCode::ChangeType, InArg)
 		, Type(InType)
 		, ElementSize(InElementSize)
 		, ElementCount(InElementCount)
@@ -295,20 +294,10 @@ struct RIGVM_API FRigVMChangeTypeOp : public FRigVMBaseOp
 	{
 	}
 
-	FRigVMArgument Arg;
 	ERigVMRegisterType Type;
 	uint16 ElementSize;
 	uint16 ElementCount;
 	uint16 SliceCount;
-};
-
-// exit the execution loop
-struct RIGVM_API FRigVMExitOp : public FRigVMBaseOp
-{
-	FRigVMExitOp()
-	: FRigVMBaseOp(ERigVMOpCode::Exit)
-	{
-	}
 };
 
 /**

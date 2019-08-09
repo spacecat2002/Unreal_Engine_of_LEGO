@@ -150,7 +150,7 @@ uint64 FRigVMByteCode::GetOpNumBytesAt(uint64 InByteCodeIndex, bool bIncludeArgu
 		}
 		case ERigVMOpCode::Exit:
 		{
-			return (uint64)sizeof(FRigVMExitOp);
+			return (uint64)sizeof(FRigVMBaseOp);
 		}
 		case ERigVMOpCode::Invalid:
 		{
@@ -238,7 +238,7 @@ uint64 FRigVMByteCode::AddExecuteOp(uint16 InFunctionIndex, const TArrayView<FRi
 
 uint64 FRigVMByteCode::AddExitOp()
 {
-	FRigVMExitOp Op;
+	FRigVMBaseOp Op(ERigVMOpCode::Exit);
 	return AddOp(Op);
 }
 
