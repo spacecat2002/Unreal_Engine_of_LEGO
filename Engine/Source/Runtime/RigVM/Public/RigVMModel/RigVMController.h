@@ -36,6 +36,9 @@ private:
 	void HandleModifiedEvent(ERigVMGraphNotifType InNotifType, URigVMGraph* InGraph, UObject* InSubject);
 
 	bool IsValidNodeForGraph(URigVMNode* InNode);
+	void AddPinsForStruct(UStruct* InStruct, URigVMNode* InNode, URigVMPin* InParentPin, ERigVMPinDirection InPinDirection = ERigVMPinDirection::Invalid);
+	void ConfigurePinFromProperty(UProperty* InProperty, URigVMPin* InOutPin, ERigVMPinDirection InPinDirection = ERigVMPinDirection::Invalid);
+	virtual bool ShouldStructBeUnfolded(const UStruct* InStruct);
 
 	UPROPERTY()
 	URigVMGraph* Graph;

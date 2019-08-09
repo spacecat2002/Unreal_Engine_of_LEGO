@@ -3,9 +3,36 @@
 #include "RigVMModel/RigVMNode.h"
 #include "RigVMModel/RigVMGraph.h"
 
+FString URigVMNode::GetNodePath() const
+{
+	return GetName();
+}
+
 const TArray<URigVMPin*>& URigVMNode::GetPins() const
 {
 	return Pins;
+}
+
+URigVMPin* URigVMNode::FindPin(const FString& InPinPath) const
+{
+	FString Left, Right;
+	if (!URigVMPin::SplitPinPathAtStart(InPinPath, Left, Right))
+	{
+		Left = InPinPath;
+	}
+
+	for (URigVMPin* Pin : Pins)
+	{
+		if (Pin->GetName() == Left)
+		{
+			if (Right.IsEmpty())
+			{
+				return Pin;
+			}
+			return Pin->FindSubPin(Right);
+		}
+	}
+	return nullptr;
 }
 
 URigVMGraph* URigVMNode::GetGraph() const

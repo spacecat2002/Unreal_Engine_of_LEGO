@@ -14,7 +14,9 @@ class RIGVM_API URigVMGraph : public UObject
 public:
 
 	const TArray<URigVMNode*>& GetNodes() const;
-	URigVMNode* FindNode(const FName& InNodeName);
+	URigVMNode* FindNode(const FName& InNodeName) const;
+	URigVMNode* FindNode(const FString& InNodePath) const;
+	URigVMPin* FindPin(const FString& InPinPath) const;
 
 	bool IsNodeSelected(const FName& InNodeName) const;
 	const TArray<FName>& GetSelectNodes() const;

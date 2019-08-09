@@ -14,7 +14,11 @@ class RIGVM_API URigVMNode : public UObject
 
 public:
 
+	FString GetNodePath() const;
+
 	const TArray<URigVMPin*>& GetPins() const;
+
+	URigVMPin* FindPin(const FString& InPinPath) const;
 
 	URigVMGraph* GetGraph() const;
 

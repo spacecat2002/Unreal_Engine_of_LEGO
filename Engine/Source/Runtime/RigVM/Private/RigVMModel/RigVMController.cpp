@@ -88,6 +88,8 @@ URigVMStructNode* URigVMController::AddStructNode(UScriptStruct* InScriptStruct,
 	Node->MethodName = InMethodName;
 	Node->Position = InPosition;
 
+	AddPinsForStruct(InScriptStruct, Node, nullptr);
+
 	Graph->Nodes.Add(Node);
 	Graph->MarkPackageDirty();
 
@@ -191,6 +193,75 @@ bool URigVMController::IsValidNodeForGraph(URigVMNode* InNode)
 	}
 
 	if (InNode->GetGraph() != Graph)
+	{
+		return false;
+	}
+
+	return true;
+}
+
+void URigVMController::AddPinsForStruct(UStruct* InStruct, URigVMNode* InNode, URigVMPin* InParentPin, ERigVMPinDirection InPinDirection)
+{
+	for (TFieldIterator<UProperty> It(InStruct); It; ++It)
+	{
+		FName PropertyName = It->GetFName();
+
+		URigVMPin* Pin = NewObject<URigVMPin>(InParentPin == nullptr ? Cast<UObject>(InNode) : Cast<UObject>(InParentPin), PropertyName);
+		ConfigurePinFromProperty(*It, Pin, InPinDirection);
+		if (InParentPin)
+		{
+			InParentPin->SubPins.Add(Pin);
+		}
+		else
+		{
+			InNode->Pins.Add(Pin);
+		}
+
+		UStructProperty* StructProperty = Cast<UStructProperty>(*It);
+		if (StructProperty)
+		{
+			if (ShouldStructBeUnfolded(StructProperty->Struct))
+			{
+				AddPinsForStruct(StructProperty->Struct, InNode, Pin, Pin->GetDirection());
+			}
+		}
+	}
+}
+
+void URigVMController::ConfigurePinFromProperty(UProperty* InProperty, URigVMPin* InOutPin, ERigVMPinDirection InPinDirection)
+{
+	if (InPinDirection == ERigVMPinDirection::Invalid)
+	{
+		bool bIsInput = InProperty->HasMetaData(TEXT("Input"));
+		bool bIsOutput = InProperty->HasMetaData(TEXT("Output"));
+
+		if (bIsInput)
+		{
+			InOutPin->Direction = bIsOutput ? ERigVMPinDirection::IO : ERigVMPinDirection::Input;
+		}
+		else
+		{
+			InOutPin->Direction = bIsOutput ? ERigVMPinDirection::Output : ERigVMPinDirection::Hidden;
+		}
+	}
+	else
+	{
+		InOutPin->Direction = InPinDirection;
+	}
+	InOutPin->bIsConstant = InProperty->HasMetaData(TEXT("Constant"));
+
+	FString ExtendedCppType;
+	InOutPin->CPPType = InProperty->GetCPPType(&ExtendedCppType);
+	InOutPin->CPPType += ExtendedCppType;
+}
+
+bool URigVMController::ShouldStructBeUnfolded(const UStruct* Struct)
+{
+	if (Struct == nullptr)
+	{
+		return false;
+	}
+	if (Struct->IsChildOf(UClass::StaticClass()))
 	{
 		return false;
 	}

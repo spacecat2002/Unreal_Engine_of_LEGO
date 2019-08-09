@@ -15,6 +15,7 @@ enum class ERigVMPinDirection : uint8
 	Input,
 	Output,
 	IO,
+	Hidden,
 	Invalid
 };
 
@@ -25,17 +26,25 @@ class RIGVM_API URigVMPin : public UObject
 
 public:
 
+	static bool SplitPinPathAtStart(const FString& InPinPath, FString& LeftMost, FString& Right);
+	static bool SplitPinPathAtEnd(const FString& InPinPath, FString& Left, FString& RightMost);
+	static bool SplitPinPath(const FString& InPinPath, TArray<FString>& Parts);
+	static FString JoinSplitPath(const FString& Left, const FString& Right);
+	static FString JoinSplitPath(const TArray<FString>& InParts);
+
 	URigVMPin();
 
 	FString GetPinPath() const;
 	ERigVMPinDirection GetDirection() const;
 	bool IsConstant() const;
-	int32 IsArray() const;
-	int32 GetArrayIndex() const;
+	bool IsArray() const;
+	bool IsArrayElement() const;
+	int32 GetIndex() const;
 	FString GetCPPType() const;
 
 	URigVMPin* GetParentPin() const;
 	const TArray<URigVMPin*>& GetSubPins() const;
+	URigVMPin* FindSubPin(const FString& InPinPath) const;
 	const TArray<URigVMPin*>& GetConnectedPins() const;
 
 	URigVMNode* GetNode() const;
@@ -50,7 +59,7 @@ private:
 	bool bIsConstant;
 
 	UPROPERTY()
-	int32 ArrayIndex;
+	int32 Index;
 
 	UPROPERTY()
 	FString CPPType;
