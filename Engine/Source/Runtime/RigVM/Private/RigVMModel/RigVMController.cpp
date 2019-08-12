@@ -4,6 +4,7 @@
 #include "RigVMCore/RigVMRegistry.h"
 #include "RigVMModule.h"
 #include "UObject/PropertyPortFlags.h"
+#include "UObject/Package.h"
 
 int32 URigVMController::sRemovedPinIndex = 0;
 
