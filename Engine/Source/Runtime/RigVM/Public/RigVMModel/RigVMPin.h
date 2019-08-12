@@ -42,6 +42,7 @@ public:
 	bool IsArray() const;
 	bool IsArrayElement() const;
 	int32 GetIndex() const;
+	int32 GetArraySize() const;
 	FString GetCPPType() const;
 	FString GetArrayElementCppType() const;
 	bool IsStringType() const;
@@ -58,6 +59,8 @@ public:
 	URigVMGraph* GetGraph() const;
 
 private:
+
+	void SetIndex(int32 InNewIndex);
 
 	UPROPERTY()
 	ERigVMPinDirection Direction;

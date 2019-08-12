@@ -5,6 +5,8 @@
 #include "RigVMModule.h"
 #include "UObject/PropertyPortFlags.h"
 
+int32 URigVMController::sRemovedPinIndex = 0;
+
 URigVMController::~URigVMController()
 {
 	SetGraph(nullptr);
@@ -126,6 +128,7 @@ bool URigVMController::RemoveNode(URigVMNode* InNode, bool bUndo)
 
 	Notify(ERigVMGraphNotifType::NodeRemoved, Graph, InNode);
 
+	InNode->MarkPendingKill();
 	return true;
 }
 
@@ -264,6 +267,7 @@ void URigVMController::SetPinDefaultValue(URigVMPin* InPin, const FString& InDef
 		ensure(InPin->GetSubPins().Num() == 0);;
 		InPin->DefaultValue = InDefaultValue;
 		Graph->Notify(ERigVMGraphNotifType::PinDefaultValueChanged, Graph, InPin);
+		Graph->MarkPackageDirty();
 	}
 }
 
@@ -315,6 +319,189 @@ TArray<FString> URigVMController::SplitDefaultValue(const FString& InDefaultValu
 
 	Parts.Add(Content.Mid(LastPartStartIndex));
 	return Parts;
+}
+
+FString URigVMController::AddArrayPin(const FString& InArrayPinPath, const FString& InDefaultValue)
+{
+	return InsertArrayPin(InArrayPinPath, INDEX_NONE, InDefaultValue);
+}
+
+FString URigVMController::DuplicateArrayPin(const FString& InArrayElementPinPath)
+{
+	if (Graph == nullptr)
+	{
+		return FString();
+	}
+
+	URigVMPin* ElementPin = Graph->FindPin(InArrayElementPinPath);
+	if (ElementPin == nullptr)
+	{
+		return FString();
+	}
+
+	if (!ElementPin->IsArrayElement())
+	{
+		return FString();
+	}
+
+	URigVMPin* ArrayPin = ElementPin->GetParentPin();
+	check(ArrayPin);
+	ensure(ArrayPin->IsArray());
+
+	FString DefaultValue = ElementPin->GetDefaultValue();
+	return InsertArrayPin(ArrayPin->GetPinPath(), ElementPin->Index + 1, DefaultValue);
+}
+
+FString URigVMController::InsertArrayPin(const FString& InArrayPinPath, int32 InIndex, const FString& InDefaultValue)
+{
+	if (Graph == nullptr)
+	{
+		return FString();
+	}
+
+	URigVMPin* ArrayPin = Graph->FindPin(InArrayPinPath);
+	if (ArrayPin == nullptr)
+	{
+		return FString();
+	}
+
+	URigVMPin* ElementPin = InsertArrayPin(ArrayPin, InIndex, InDefaultValue);
+	if (ElementPin)
+	{
+		return ElementPin->GetPinPath();
+	}
+
+	return FString();
+}
+
+URigVMPin* URigVMController::InsertArrayPin(URigVMPin* ArrayPin, int32 InIndex, const FString& InDefaultValue)
+{
+	if (!ArrayPin->IsArray())
+	{
+		return nullptr;
+	}
+
+	if (InIndex == INDEX_NONE)
+	{
+		InIndex = ArrayPin->GetSubPins().Num();
+	}
+
+	for (int32 ExistingIndex = ArrayPin->GetSubPins().Num() - 1; ExistingIndex >= InIndex; ExistingIndex--)
+	{
+		URigVMPin* ExistingPin = ArrayPin->GetSubPins()[ExistingIndex];
+		ExistingPin->Index++;
+		ExistingPin->Rename(*FString::FormatAsNumber(ExistingPin->Index));
+	}
+
+	// todo: undo redo
+
+	URigVMPin* Pin = NewObject<URigVMPin>(ArrayPin, *FString::FormatAsNumber(InIndex));
+	ConfigurePinFromPin(Pin, ArrayPin);
+	Pin->Index = InIndex;
+	Pin->CPPType = ArrayPin->GetArrayElementCppType();
+	ArrayPin->SubPins.Insert(Pin, InIndex);
+
+	if (Pin->IsStruct())
+	{
+		UScriptStruct* ScriptStruct = Pin->GetScriptStruct();
+		if (ScriptStruct)
+		{
+			AddPinsForStruct(ScriptStruct, Pin->GetNode(), Pin, Pin->Direction, InDefaultValue);
+		}
+	}
+	else if (Pin->IsArray())
+	{
+		UArrayProperty * ArrayProperty = Cast<UArrayProperty>(FindPropertyForPin(Pin->GetPinPath()));
+		if (ArrayProperty)
+		{
+			TArray<FString> ElementDefaultValues = SplitDefaultValue(InDefaultValue);
+			AddPinsForArray(ArrayProperty, Pin->GetNode(), Pin, Pin->Direction, ElementDefaultValues);
+		}
+	}
+	else
+	{
+		Pin->DefaultValue = InDefaultValue;
+	}
+
+	Graph->Notify(ERigVMGraphNotifType::PinArraySizeChanged, Graph, ArrayPin);
+	Graph->MarkPackageDirty();
+
+	return Pin;
+}
+
+bool URigVMController::RemoveArrayPin(const FString& InArrayElementPinPath)
+{
+	if (Graph == nullptr)
+	{
+		return false;
+	}
+
+	URigVMPin* ArrayElementPin = Graph->FindPin(InArrayElementPinPath);
+	if (ArrayElementPin == nullptr)
+	{
+		return false;
+	}
+
+	if (!ArrayElementPin->IsArrayElement())
+	{
+		return false;
+	}
+
+	URigVMPin* ArrayPin = ArrayElementPin->GetParentPin();
+	check(ArrayPin);
+	ensure(ArrayPin->IsArray());
+
+	// todo: break all links
+	// todo: undo redo
+
+	int32 IndexToRemove = ArrayElementPin->Index;
+	ArrayPin->SubPins.RemoveAt(IndexToRemove);
+	
+	ArrayElementPin->Rename(*FString::Printf(TEXT("URigVMPin_%d_Removed"), ++sRemovedPinIndex), GetTransientPackage());
+
+	for (int32 ExistingIndex = ArrayPin->GetSubPins().Num() - 1; ExistingIndex >= IndexToRemove; ExistingIndex--)
+	{
+		URigVMPin* ExistingPin = ArrayPin->GetSubPins()[ExistingIndex];
+		ExistingPin->SetIndex(ExistingIndex);
+	}
+
+	Graph->MarkPackageDirty();
+	Graph->Notify(ERigVMGraphNotifType::PinArraySizeChanged, Graph, ArrayPin);
+
+	ArrayElementPin->MarkPendingKill();
+	return true;
+}
+
+bool URigVMController::ClearArrayPin(const FString& InArrayPinPath)
+{
+	if (Graph == nullptr)
+	{
+		return false;
+	}
+
+	URigVMPin* Pin = Graph->FindPin(InArrayPinPath);
+	if (Pin == nullptr)
+	{
+		return false;
+	}
+
+	if (!Pin->IsArray())
+	{
+		return false;
+	}
+
+	// todo: undo redo
+
+	TArray<URigVMPin*> ElementPins = Pin->GetSubPins();
+	for (int32 ElementIndex = ElementPins.Num() - 1; ElementIndex >= 0; ElementIndex--)
+	{
+		if (!RemoveArrayPin(ElementPins[ElementIndex]->GetPinPath()))
+		{
+			return false;
+		}
+	}
+
+	return ElementPins.Num() > 0;
 }
 
 bool URigVMController::IsValidNodeForGraph(URigVMNode* InNode)
@@ -413,6 +600,7 @@ void URigVMController::AddPinsForArray(UArrayProperty* InArrayProperty, URigVMNo
 		FString ElementName = FString::FormatAsNumber(ElementIndex);
 		URigVMPin* Pin = NewObject<URigVMPin>(InParentPin, *ElementName);
 		ConfigurePinFromProperty(InArrayProperty->Inner, Pin, InPinDirection);
+		Pin->Index = ElementIndex;
 
 		InParentPin->SubPins.Add(Pin);
 
@@ -475,6 +663,14 @@ void URigVMController::ConfigurePinFromProperty(UProperty* InProperty, URigVMPin
 	}
 }
 
+void URigVMController::ConfigurePinFromPin(URigVMPin* InOutPin, URigVMPin* InPin)
+{
+	InOutPin->bIsConstant = InPin->bIsConstant;
+	InOutPin->Direction = InPin->Direction;
+	InOutPin->CPPType = InPin->CPPType;
+	InOutPin->DefaultValue = InPin->DefaultValue;
+}
+
 bool URigVMController::ShouldStructBeUnfolded(const UStruct* Struct)
 {
 	if (Struct == nullptr)
@@ -487,4 +683,61 @@ bool URigVMController::ShouldStructBeUnfolded(const UStruct* Struct)
 	}
 
 	return true;
+}
+
+UProperty* URigVMController::FindPropertyForPin(const FString& InPinPath)
+{
+	if (Graph == nullptr)
+	{
+		return nullptr;
+	}
+
+	TArray<FString> Parts;
+	if (!URigVMPin::SplitPinPath(InPinPath, Parts))
+	{
+		return nullptr;
+	}
+
+	URigVMPin* Pin = Graph->FindPin(InPinPath);
+	if (Pin == nullptr)
+	{
+		return nullptr;
+	}
+
+	URigVMNode* Node = Pin->GetNode();
+
+	URigVMStructNode* StructNode = Cast<URigVMStructNode>(Node);
+	if (StructNode)
+	{
+		int32 PartIndex = 1; // cut off the first one since it's the node
+
+		UStruct* Struct = StructNode->ScriptStruct;
+		UProperty* Property = Struct->FindPropertyByName(*Parts[PartIndex++]);
+
+		while (PartIndex < Parts.Num() && Property != nullptr)
+		{
+			if (UArrayProperty* ArrayProperty = Cast<UArrayProperty>(Property))
+			{
+				Property = ArrayProperty->Inner;
+				PartIndex++;
+				continue;
+			}
+
+			if (UStructProperty* StructProperty = Cast<UStructProperty>(Property))
+			{
+				Struct = StructProperty->Struct;
+				Property = Struct->FindPropertyByName(*Parts[PartIndex++]);
+				continue;
+			}
+
+			break;
+		}
+
+		if (PartIndex == Parts.Num())
+		{
+			return Property;
+		}
+	}
+
+	return nullptr;
 }

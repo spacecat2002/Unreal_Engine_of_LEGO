@@ -32,6 +32,12 @@ public:
 	FString GetPinDefaultValue(const FString& InPinPath);
 	void SetPinDefaultValue(const FString& InPinPath, const FString& InDefaultValue);
 
+	FString AddArrayPin(const FString& InArrayPinPath, const FString& InDefaultValue = FString());
+	FString DuplicateArrayPin(const FString& InArrayElementPinPath);
+	FString InsertArrayPin(const FString& InArrayPinPath, int32 InIndex = INDEX_NONE, const FString& InDefaultValue = FString());
+	bool RemoveArrayPin(const FString& InArrayElementPinPath);
+	bool ClearArrayPin(const FString& InArrayPinPath);
+
 private:
 
 	FRigVMGraphModifiedEvent ModifiedEvent;
@@ -42,11 +48,16 @@ private:
 	void AddPinsForStruct(UStruct* InStruct, URigVMNode* InNode, URigVMPin* InParentPin, ERigVMPinDirection InPinDirection, const FString& InDefaultValue);
 	void AddPinsForArray(UArrayProperty* InArrayProperty, URigVMNode* InNode, URigVMPin* InParentPin, ERigVMPinDirection InPinDirection, const TArray<FString>& InDefaultValues);
 	void ConfigurePinFromProperty(UProperty* InProperty, URigVMPin* InOutPin, ERigVMPinDirection InPinDirection = ERigVMPinDirection::Invalid);
+	void ConfigurePinFromPin(URigVMPin* InOutPin, URigVMPin* InPin);
 	virtual bool ShouldStructBeUnfolded(const UStruct* InStruct);
 	void SetPinDefaultValue(URigVMPin* InPin, const FString& InDefaultValue);
 	static TArray<FString> SplitDefaultValue(const FString& InDefaultValue);
+	URigVMPin* InsertArrayPin(URigVMPin* ArrayPin, int32 InIndex, const FString& InDefaultValue);
+	UProperty* FindPropertyForPin(const FString& InPinPath);
 
 	UPROPERTY()
 	URigVMGraph* Graph;
+
+	static int32 sRemovedPinIndex;
 };
 

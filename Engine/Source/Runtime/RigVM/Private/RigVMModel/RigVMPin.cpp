@@ -127,6 +127,17 @@ int32 URigVMPin::GetIndex() const
 	return Index;
 }
 
+void URigVMPin::SetIndex(int32 InNewIndex)
+{
+	LowLevelRename(*FString::FormatAsNumber(InNewIndex));
+	Index = InNewIndex;
+}
+
+int32 URigVMPin::GetArraySize() const
+{
+	return SubPins.Num();
+}
+
 FString URigVMPin::GetCPPType() const
 {
 	return CPPType;
@@ -148,13 +159,13 @@ bool URigVMPin::IsStringType() const
 
 FString URigVMPin::GetDefaultValue() const
 {
-	if (SubPins.Num() == 0)
-	{
-		return DefaultValue;
-	}
-
 	if (IsArray())
 	{
+		if (SubPins.Num() == 0)
+		{
+			return TEXT("()");
+		}
+
 		TArray<FString> ElementDefaultValues;
 		for (URigVMPin* SubPin : SubPins)
 		{
@@ -169,6 +180,11 @@ FString URigVMPin::GetDefaultValue() const
 	}
 	else if (IsStruct())
 	{
+		if (SubPins.Num() == 0)
+		{
+			return TEXT("()");
+		}
+
 		TArray<FString> MemberDefaultValues;
 		for (URigVMPin* SubPin : SubPins)
 		{
@@ -182,7 +198,7 @@ FString URigVMPin::GetDefaultValue() const
 		return FString::Printf(TEXT("(%s)"), *FString::Join(MemberDefaultValues, TEXT(",")));
 	}
 	
-	return FString();
+	return DefaultValue;
 }
 
 UScriptStruct* URigVMPin::GetScriptStruct() const
@@ -237,16 +253,16 @@ const TArray<URigVMPin*>& URigVMPin::GetConnectedPins() const
 
 URigVMNode* URigVMPin::GetNode() const
 {
+	URigVMPin* ParentPin = GetParentPin();
+	if (ParentPin)
+	{
+		return ParentPin->GetNode();
+	}
+
 	URigVMNode* Node = Cast<URigVMNode>(GetOuter());
 	if(Node)
 	{
 		return Node;
-	}
-
-	URigVMPin* ParentPin = GetParentPin();
-	if(ParentPin)
-	{
-		return ParentPin->GetNode();
 	}
 
 	return nullptr;
