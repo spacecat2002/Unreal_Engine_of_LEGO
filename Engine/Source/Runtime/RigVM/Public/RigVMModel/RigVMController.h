@@ -38,6 +38,10 @@ public:
 	bool RemoveArrayPin(const FString& InArrayElementPinPath);
 	bool ClearArrayPin(const FString& InArrayPinPath);
 
+	bool AddLink(const FString& InOutputPinPath, const FString& InInputPinPath);
+	bool BreakLink(const FString& InOutputPinPath, const FString& InInputPinPath);
+	bool BreakAllLinks(const FString& InPinPath, bool bAsInput = true);
+
 private:
 
 	FRigVMGraphModifiedEvent ModifiedEvent;
@@ -55,6 +59,10 @@ private:
 	URigVMPin* InsertArrayPin(URigVMPin* ArrayPin, int32 InIndex, const FString& InDefaultValue);
 	bool RemovePin(URigVMPin* InPinToRemove);
 	UProperty* FindPropertyForPin(const FString& InPinPath);
+	bool AddLink(URigVMPin* OutputPin, URigVMPin* InputPin);
+	bool BreakLink(URigVMPin* OutputPin, URigVMPin* InputPin);
+	bool BreakAllLinks(URigVMPin* Pin, bool bAsInput = true);
+	void BreakAllLinksRecursive(URigVMPin* Pin, bool bAsInput, bool bTowardsParent);
 
 	UPROPERTY()
 	URigVMGraph* Graph;

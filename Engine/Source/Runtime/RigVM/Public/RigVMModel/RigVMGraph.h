@@ -3,6 +3,7 @@
 #pragma once
 
 #include "RigVMNode.h"
+#include "RigVMLink.h"
 #include "RigVMNotifications.h"
 #include "RigVMGraph.generated.h"
 
@@ -14,6 +15,7 @@ class RIGVM_API URigVMGraph : public UObject
 public:
 
 	const TArray<URigVMNode*>& GetNodes() const;
+	const TArray<URigVMLink*>& GetLinks() const;
 	URigVMNode* FindNode(const FName& InNodeName) const;
 	URigVMNode* FindNode(const FString& InNodePath) const;
 	URigVMPin* FindPin(const FString& InPinPath) const;
@@ -30,6 +32,9 @@ private:
 
 	UPROPERTY()
 	TArray<URigVMNode*> Nodes;
+
+	UPROPERTY()
+	TArray<URigVMLink*> Links;
 
 	UPROPERTY()
 	TArray<FName> SelectedNodes;

@@ -54,3 +54,86 @@ bool URigVMNode::IsSelected() const
 	}
 	return false;
 }
+
+bool URigVMNode::IsConnectedTo(URigVMNode* InNode) const
+{
+	if (InNode == nullptr)
+	{
+		return false;
+	}
+	if (InNode == this)
+	{
+		return false;
+	}
+	if (GetGraph() != InNode->GetGraph())
+	{
+		return false;
+	}
+	for (URigVMPin* Pin : Pins)
+	{
+		if (IsConnectedToRecursive(Pin, InNode))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+bool URigVMNode::IsConnectedToRecursive(URigVMPin* InPin, URigVMNode* InNode) const
+{
+	for (URigVMPin* ConnectedPin : InPin->GetConnectedSourcePins())
+	{
+		if (ConnectedPin->GetNode() == InNode)
+		{
+			return true;
+		}
+	}
+	for (URigVMPin* ConnectedPin : InPin->GetConnectedTargetPins())
+	{
+		if (ConnectedPin->GetNode() == InNode)
+		{
+			return true;
+		}
+	}
+	for (URigVMPin* SubPin : InPin->GetSubPins())
+	{
+		if (IsConnectedToRecursive(SubPin, InNode))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+TArray<URigVMNode*> URigVMNode::GetConnectedSourceNodes() const
+{
+	TArray<URigVMNode*> Nodes;
+	for (URigVMPin* Pin : Pins)
+	{
+		GetConnectedNodesRecursive(Pin, true, Nodes);
+	}
+	return Nodes;
+}
+
+TArray<URigVMNode*> URigVMNode::GetConnectedTargetNodes() const
+{
+	TArray<URigVMNode*> Nodes;
+	for (URigVMPin* Pin : Pins)
+	{
+		GetConnectedNodesRecursive(Pin, false, Nodes);
+	}
+	return Nodes;
+}
+
+void URigVMNode::GetConnectedNodesRecursive(URigVMPin* InPin, bool bLookForSources, TArray<URigVMNode*> OutNodes) const
+{
+	const TArray<URigVMPin*> ConnectedPins = bLookForSources ? InPin->GetConnectedSourcePins() : InPin->GetConnectedTargetPins();
+	for (URigVMPin* ConnectedPin : ConnectedPins)
+	{
+		OutNodes.AddUnique(ConnectedPin->GetNode());
+	}
+	for (URigVMPin* SubPin : InPin->GetSubPins())
+	{
+		GetConnectedNodesRecursive(SubPin, bLookForSources, OutNodes);
+	}
+}

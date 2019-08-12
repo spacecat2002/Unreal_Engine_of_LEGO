@@ -8,6 +8,11 @@ const TArray<URigVMNode*>& URigVMGraph::GetNodes() const
 	return Nodes;
 }
 
+const TArray<URigVMLink*>& URigVMGraph::GetLinks() const
+{
+	return Links;
+}
+
 URigVMNode* URigVMGraph::FindNode(const FName& InNodeName) const
 {
 	for (URigVMNode* Node : Nodes)

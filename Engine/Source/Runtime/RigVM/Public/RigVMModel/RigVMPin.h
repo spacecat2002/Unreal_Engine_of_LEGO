@@ -8,6 +8,8 @@
 
 class URigVMGraph;
 class URigVMNode;
+class URigVMPin;
+class URigVMLink;
 
 UENUM()
 enum class ERigVMPinDirection : uint8
@@ -53,13 +55,17 @@ public:
 	URigVMPin* GetParentPin() const;
 	const TArray<URigVMPin*>& GetSubPins() const;
 	URigVMPin* FindSubPin(const FString& InPinPath) const;
-	const TArray<URigVMPin*>& GetConnectedPins() const;
+	bool IsConnectedTo(URigVMPin* InPin) const;
+	const TArray<URigVMLink*>& GetLinks() const;
+	TArray<URigVMPin*> GetConnectedSourcePins() const;
+	TArray<URigVMPin*> GetConnectedTargetPins() const;
 
 	URigVMNode* GetNode() const;
 	URigVMGraph* GetGraph() const;
 
 private:
 
+	static bool CanLink(URigVMPin* InSourcePin, URigVMPin* InTargetPin);
 	void SetIndex(int32 InNewIndex);
 
 	UPROPERTY()
@@ -86,8 +92,8 @@ private:
 	UPROPERTY()
 	TArray<URigVMPin*> SubPins;
 
-	UPROPERTY()
-	TArray<URigVMPin*> ConnectedPins;
+	UPROPERTY(transient)
+	TArray<URigVMLink*> Links;
 
 	friend class URigVMController;
 };

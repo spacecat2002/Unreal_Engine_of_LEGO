@@ -2,6 +2,8 @@
 
 #include "RigVMModel/RigVMPin.h"
 #include "RigVMModel/RigVMNode.h"
+#include "RigVMModel/RigVMGraph.h"
+#include "RigVMModel/RigVMLink.h"
 
 bool URigVMPin::SplitPinPathAtStart(const FString& InPinPath, FString& LeftMost, FString& Right)
 {
@@ -246,9 +248,47 @@ URigVMPin* URigVMPin::FindSubPin(const FString& InPinPath) const
 	return nullptr;
 }
 
-const TArray<URigVMPin*>& URigVMPin::GetConnectedPins() const
+bool URigVMPin::IsConnectedTo(URigVMPin* InPin) const
 {
-	return ConnectedPins;
+	for (URigVMLink* Link : Links)
+	{
+		if (Link->GetSourcePin() == InPin || Link->GetTargetPin() == InPin)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+const TArray<URigVMLink*>& URigVMPin::GetLinks() const
+{
+	return Links;
+}
+
+TArray<URigVMPin*> URigVMPin::GetConnectedSourcePins() const
+{
+	TArray<URigVMPin*> Pins;
+	for (URigVMLink* Link : Links)
+	{
+		if (Link->GetTargetPin() == this)
+		{
+			Pins.AddUnique(Link->GetSourcePin());
+		}
+	}
+	return Pins;
+}
+
+TArray<URigVMPin*> URigVMPin::GetConnectedTargetPins() const
+{
+	TArray<URigVMPin*> Pins;
+	for (URigVMLink* Link : Links)
+	{
+		if (Link->GetSourcePin() == this)
+		{
+			Pins.AddUnique(Link->GetTargetPin());
+		}
+	}
+	return Pins;
 }
 
 URigVMNode* URigVMPin::GetNode() const
@@ -277,4 +317,56 @@ URigVMGraph* URigVMPin::GetGraph() const
 	}
 
 	return nullptr;
+}
+
+bool URigVMPin::CanLink(URigVMPin* InSourcePin, URigVMPin* InTargetPin)
+{
+	if (InSourcePin == nullptr || InTargetPin == nullptr)
+	{
+		return false;
+	}
+
+	if (InSourcePin == InTargetPin)
+	{
+		return false;
+	}
+
+	if (InSourcePin->GetNode() == InTargetPin->GetNode())
+	{
+		return false;
+	}
+
+	if (InSourcePin->GetGraph() != InTargetPin->GetGraph())
+	{
+		return false;
+	}
+
+	if (InSourcePin->Direction != ERigVMPinDirection::Output &&
+		InSourcePin->Direction != ERigVMPinDirection::IO)
+	{
+		return false;
+	}
+
+	if (InTargetPin->Direction != ERigVMPinDirection::Input &&
+		InTargetPin->Direction != ERigVMPinDirection::IO)
+	{
+		return false;
+	}
+
+	if (InTargetPin->bIsConstant && !InSourcePin->bIsConstant)
+	{
+		return false;
+	}
+
+	if (InSourcePin->CPPType != InTargetPin->CPPType)
+	{
+		return false;
+	}
+
+	if (InSourcePin->IsConnectedTo(InTargetPin))
+	{
+		return false;
+	}
+
+	return true;
 }

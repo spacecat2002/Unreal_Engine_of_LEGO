@@ -26,7 +26,14 @@ public:
 
 	bool IsSelected() const;
 
+	bool IsConnectedTo(URigVMNode* InNode) const;
+	TArray<URigVMNode*> GetConnectedSourceNodes() const;
+	TArray<URigVMNode*> GetConnectedTargetNodes() const;
+
 private:
+
+	bool IsConnectedToRecursive(URigVMPin* InPin, URigVMNode* InNode) const;
+	void GetConnectedNodesRecursive(URigVMPin* InPin, bool bLookForSources, TArray<URigVMNode*> OutNodes) const;
 
 	UPROPERTY()
 	TArray<URigVMPin*> Pins;
