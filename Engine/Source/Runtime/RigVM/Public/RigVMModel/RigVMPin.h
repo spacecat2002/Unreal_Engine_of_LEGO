@@ -37,10 +37,17 @@ public:
 	FString GetPinPath() const;
 	ERigVMPinDirection GetDirection() const;
 	bool IsConstant() const;
+	bool IsStruct() const;
+	bool IsStructMember() const;
 	bool IsArray() const;
 	bool IsArrayElement() const;
 	int32 GetIndex() const;
 	FString GetCPPType() const;
+	FString GetArrayElementCppType() const;
+	bool IsStringType() const;
+	FString GetDefaultValue() const;
+
+	UScriptStruct* GetScriptStruct() const;
 
 	URigVMPin* GetParentPin() const;
 	const TArray<URigVMPin*>& GetSubPins() const;
@@ -63,6 +70,15 @@ private:
 
 	UPROPERTY()
 	FString CPPType;
+
+	UPROPERTY(transient)
+	UScriptStruct* ScriptStruct;
+
+	UPROPERTY()
+	FName ScriptStructPath;
+
+	UPROPERTY()
+	FString DefaultValue;
 
 	UPROPERTY()
 	TArray<URigVMPin*> SubPins;

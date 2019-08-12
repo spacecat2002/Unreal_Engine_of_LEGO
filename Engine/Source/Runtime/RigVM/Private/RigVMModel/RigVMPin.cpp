@@ -60,6 +60,9 @@ URigVMPin::URigVMPin()
 	, bIsConstant(false)
 	, Index(INDEX_NONE)
 	, CPPType(FString())
+	, ScriptStruct(nullptr)
+	, ScriptStructPath(NAME_None)
+	, DefaultValue(FString())
 {
 }
 
@@ -85,6 +88,25 @@ bool URigVMPin::IsConstant() const
 	return bIsConstant;
 }
 
+bool URigVMPin::IsStruct() const
+{
+	if (IsArray())
+	{
+		return false;
+	}
+	return ScriptStruct != nullptr;
+}
+
+bool URigVMPin::IsStructMember() const
+{
+	URigVMPin* ParentPin = GetParentPin();
+	if (ParentPin == nullptr)
+	{
+		return false;
+	}
+	return ParentPin->IsStruct();
+}
+
 bool URigVMPin::IsArray() const
 {
 	return CPPType.StartsWith(TEXT("TArray"));
@@ -108,6 +130,72 @@ int32 URigVMPin::GetIndex() const
 FString URigVMPin::GetCPPType() const
 {
 	return CPPType;
+}
+
+FString URigVMPin::GetArrayElementCppType() const
+{
+	if (!IsArray())
+	{
+		return FString();
+	}
+	return CPPType.Mid(7, CPPType.Len() - 8);
+}
+
+bool URigVMPin::IsStringType() const
+{
+	return CPPType.Equals(TEXT("FString")) || CPPType.Equals(TEXT("FName"));
+}
+
+FString URigVMPin::GetDefaultValue() const
+{
+	if (SubPins.Num() == 0)
+	{
+		return DefaultValue;
+	}
+
+	if (IsArray())
+	{
+		TArray<FString> ElementDefaultValues;
+		for (URigVMPin* SubPin : SubPins)
+		{
+			FString ElementDefaultValue = SubPin->GetDefaultValue();
+			if (SubPin->IsStringType())
+			{
+				ElementDefaultValue = TEXT("\"") + ElementDefaultValue + TEXT("\"");
+			}
+			ElementDefaultValues.Add(ElementDefaultValue);
+		}
+		return FString::Printf(TEXT("(%s)"), *FString::Join(ElementDefaultValues, TEXT(",")));
+	}
+	else if (IsStruct())
+	{
+		TArray<FString> MemberDefaultValues;
+		for (URigVMPin* SubPin : SubPins)
+		{
+			FString MemberDefaultValue = SubPin->GetDefaultValue();
+			if (SubPin->IsStringType())
+			{
+				MemberDefaultValue = TEXT("\"") + MemberDefaultValue + TEXT("\"");
+			}
+			MemberDefaultValues.Add(FString::Printf(TEXT("%s=%s"), *SubPin->GetName(), *MemberDefaultValue));
+		}
+		return FString::Printf(TEXT("(%s)"), *FString::Join(MemberDefaultValues, TEXT(",")));
+	}
+	
+	return FString();
+}
+
+UScriptStruct* URigVMPin::GetScriptStruct() const
+{
+	if (ScriptStruct == nullptr)
+	{
+		if (ScriptStructPath != NAME_None)
+		{
+			URigVMPin* MutableThis = (URigVMPin*)this;
+			MutableThis->ScriptStruct = LoadObject<UScriptStruct>(ANY_PACKAGE, *ScriptStructPath.ToString());
+		}
+	}
+	return ScriptStruct;
 }
 
 URigVMPin* URigVMPin::GetParentPin() const
