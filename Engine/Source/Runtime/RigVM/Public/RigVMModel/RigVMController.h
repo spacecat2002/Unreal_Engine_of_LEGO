@@ -53,6 +53,7 @@ private:
 	void SetPinDefaultValue(URigVMPin* InPin, const FString& InDefaultValue);
 	static TArray<FString> SplitDefaultValue(const FString& InDefaultValue);
 	URigVMPin* InsertArrayPin(URigVMPin* ArrayPin, int32 InIndex, const FString& InDefaultValue);
+	bool RemovePin(URigVMPin* InPinToRemove);
 	UProperty* FindPropertyForPin(const FString& InPinPath);
 
 	UPROPERTY()

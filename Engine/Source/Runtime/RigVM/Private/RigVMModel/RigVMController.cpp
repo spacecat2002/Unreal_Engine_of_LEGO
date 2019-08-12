@@ -455,9 +455,10 @@ bool URigVMController::RemoveArrayPin(const FString& InArrayElementPinPath)
 	// todo: undo redo
 
 	int32 IndexToRemove = ArrayElementPin->Index;
-	ArrayPin->SubPins.RemoveAt(IndexToRemove);
-	
-	ArrayElementPin->Rename(*FString::Printf(TEXT("URigVMPin_%d_Removed"), ++sRemovedPinIndex), GetTransientPackage());
+	if (!RemovePin(ArrayElementPin))
+	{
+		return false;
+	}
 
 	for (int32 ExistingIndex = ArrayPin->GetSubPins().Num() - 1; ExistingIndex >= IndexToRemove; ExistingIndex--)
 	{
@@ -467,8 +468,25 @@ bool URigVMController::RemoveArrayPin(const FString& InArrayElementPinPath)
 
 	Graph->MarkPackageDirty();
 	Graph->Notify(ERigVMGraphNotifType::PinArraySizeChanged, Graph, ArrayPin);
+	return true;
+}
 
-	ArrayElementPin->MarkPendingKill();
+bool URigVMController::RemovePin(URigVMPin* InPinToRemove)
+{
+	URigVMPin* ParentPin = InPinToRemove->GetParentPin();
+	ParentPin->SubPins.Remove(InPinToRemove);
+	InPinToRemove->Rename(*FString::Printf(TEXT("URigVMPin_%d_Removed"), ++sRemovedPinIndex), GetTransientPackage());
+
+	TArray<URigVMPin*> SubPins = InPinToRemove->GetSubPins();
+	for (URigVMPin* SubPin : SubPins)
+	{
+		if (!RemovePin(SubPin))
+		{
+			return false;
+		}
+	}
+
+	InPinToRemove->MarkPendingKill();
 	return true;
 }
 
