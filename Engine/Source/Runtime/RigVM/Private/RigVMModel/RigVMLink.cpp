@@ -8,6 +8,22 @@ URigVMGraph* URigVMLink::GetGraph()
 	return Cast<URigVMGraph>(GetOuter());
 }
 
+void URigVMLink::Serialize(FArchive& Ar)
+{
+	if (Ar.IsLoading())
+	{
+		Ar << SourcePinPath;
+		Ar << TargetPinPath;
+	}
+	else
+	{
+		FString SourcePinPathTemp = SourcePin->GetPinPath();
+		FString TargetPinPathTemp = TargetPin->GetPinPath();
+		Ar << SourcePinPathTemp;
+		Ar << TargetPinPathTemp;
+	}
+}
+
 URigVMPin* URigVMLink::GetSourcePin()
 {
 	if (SourcePin == nullptr)

@@ -97,5 +97,6 @@ private:
 	TArray<URigVMLink*> Links;
 
 	friend class URigVMController;
+	friend class URigVMGraph;
 };
 

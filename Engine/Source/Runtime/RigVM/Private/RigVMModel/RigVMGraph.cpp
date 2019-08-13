@@ -1,7 +1,9 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RigVMModel/RigVMGraph.h"
+#include "RigVMModel/RigVMController.h"
 #include "RigVMModel/RigVMStructNode.h"
+#include "UObject/Package.h"
 
 URigVMGraph::URigVMGraph()
 : Utils(this)
@@ -129,3 +131,24 @@ bool URigVMGraph::CanLink(URigVMPin* InSourcePin, URigVMPin* InTargetPin, FStrin
 
 	return true;
 }
+
+#if WITH_EDITORONLY_DATA
+
+void URigVMGraph::PostLoad()
+{
+	Super::PostLoad();
+
+	URigVMController* Controller = NewObject<URigVMController>(GetTransientPackage());
+	Controller->SetGraph(this);
+
+	Controller->DetachLinksFromPinObjects();
+
+	for (URigVMNode* Node : Nodes)
+	{
+		Controller->RepopulatePinsOnNode(Node);
+	}
+
+	Controller->ReattachLinksToPinObjects();
+}
+
+#endif

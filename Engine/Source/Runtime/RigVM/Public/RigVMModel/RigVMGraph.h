@@ -30,11 +30,17 @@ public:
 
 	FRigVMGraphModifiedEvent& OnModified();
 
+#if WITH_EDITORONLY_DATA
+	virtual void PostLoad() override;
+#endif
+
 protected:
 
 	virtual bool CanLink(URigVMPin* InSourcePin, URigVMPin* InTargetPin, FString* OutFailureReason = nullptr);
 
 private:
+
+	void RepopulatePinLinks();
 
 	FRigVMGraphModifiedEvent ModifiedEvent;
 	void Notify(ERigVMGraphNotifType InNotifType, URigVMGraph* InGraph, UObject* InSubject);

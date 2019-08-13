@@ -98,7 +98,6 @@ URigVMStructNode* URigVMController::AddStructNode(UScriptStruct* InScriptStruct,
 	FString ExportedDefaultValue;
 	InScriptStruct->ExportText(ExportedDefaultValue, TempBuffer.GetData(), nullptr, nullptr, PPF_None, nullptr);
 	InScriptStruct->DestroyStruct(TempBuffer.GetData());
-
 	AddPinsForStruct(InScriptStruct, Node, nullptr, ERigVMPinDirection::Invalid, ExportedDefaultValue);
 
 	Graph->Nodes.Add(Node);
@@ -227,7 +226,7 @@ void URigVMController::SetPinDefaultValue(const FString& InPinPath, const FStrin
 	}
 }
 
-void URigVMController::SetPinDefaultValue(URigVMPin* InPin, const FString& InDefaultValue)
+void URigVMController::SetPinDefaultValue(URigVMPin* InPin, const FString& InDefaultValue, bool bResizeArrays)
 {
 	check(InPin);
 	ensure(!InDefaultValue.IsEmpty());
@@ -237,7 +236,23 @@ void URigVMController::SetPinDefaultValue(URigVMPin* InPin, const FString& InDef
 	if (InPin->IsArray())
 	{
 		TArray<FString> Elements = SplitDefaultValue(InDefaultValue);
-		ensure(Elements.Num() == InPin->SubPins.Num());
+
+		if (bResizeArrays)
+		{
+			while (Elements.Num() > InPin->SubPins.Num())
+			{
+				InsertArrayPin(InPin, INDEX_NONE, FString());
+			}
+			while (Elements.Num() < InPin->SubPins.Num())
+			{
+				RemovePin(InPin->SubPins.Last());
+			}
+		}
+		else
+		{
+			ensure(Elements.Num() == InPin->SubPins.Num());
+		}
+
 		for(int32 ElementIndex=0;ElementIndex<Elements.Num();ElementIndex++)
 		{
 			URigVMPin* SubPin = InPin->SubPins[ElementIndex];
@@ -245,13 +260,13 @@ void URigVMController::SetPinDefaultValue(URigVMPin* InPin, const FString& InDef
 			{
 				Elements[ElementIndex].Mid(1, Elements[ElementIndex].Len() - 2);
 			}
-			SetPinDefaultValue(SubPin, Elements[ElementIndex]);
+			SetPinDefaultValue(SubPin, Elements[ElementIndex], bResizeArrays);
 		}
 	}
 	else if (InPin->IsStruct())
 	{
 		TArray<FString> MemberValuePairs = SplitDefaultValue(InDefaultValue);
-		ensure(MemberValuePairs.Num() == InPin->SubPins.Num());
+
 		for (const FString& MemberValuePair : MemberValuePairs)
 		{
 			FString MemberName, MemberValue;
@@ -264,7 +279,7 @@ void URigVMController::SetPinDefaultValue(URigVMPin* InPin, const FString& InDef
 					{
 						MemberValue.Mid(1, MemberValue.Len() - 2);
 					}
-					SetPinDefaultValue(SubPin, MemberValue);
+					SetPinDefaultValue(SubPin, MemberValue, bResizeArrays);
 				}
 			}
 		}
@@ -928,4 +943,103 @@ UProperty* URigVMController::FindPropertyForPin(const FString& InPinPath)
 	}
 
 	return nullptr;
+}
+
+void URigVMController::DetachLinksFromPinObjects()
+{
+	check(Graph);
+
+	for (URigVMLink* Link : Graph->Links)
+	{
+		URigVMPin* SourcePin = Link->GetSourcePin();
+		URigVMPin* TargetPin = Link->GetTargetPin();
+
+		Link->SourcePinPath = SourcePin->GetPinPath();
+		Link->TargetPinPath = TargetPin->GetPinPath();
+		Link->SourcePin = nullptr;
+		Link->TargetPin = nullptr;
+	}
+}
+
+void URigVMController::ReattachLinksToPinObjects()
+{
+	check(Graph);
+
+	// fix up the pin links based on the persisted data
+	TArray<URigVMLink*> NewLinks;
+	for (URigVMLink* Link : Graph->Links)
+	{
+		URigVMPin* SourcePin = Link->GetSourcePin();
+		URigVMPin* TargetPin = Link->GetTargetPin();
+		if (SourcePin == nullptr)
+		{
+			if (TargetPin != nullptr)
+			{
+				TargetPin->Links.Remove(Link);
+			}
+			continue;
+		}
+		if (SourcePin == nullptr)
+		{
+			if (SourcePin != nullptr)
+			{
+				SourcePin->Links.Remove(Link);
+			}
+			continue;
+		}
+
+		SourcePin->Links.AddUnique(Link);
+		TargetPin->Links.AddUnique(Link);
+		NewLinks.Add(Link);
+	}
+	Graph->Links = NewLinks;
+}
+
+void URigVMController::RepopulatePinsOnNode(URigVMNode* InNode)
+{
+	if (InNode == nullptr)
+	{
+		return;
+	}
+
+	check(Graph);
+
+	TMap<FName, FString> DefaultValues;
+	for (URigVMPin* Pin : InNode->Pins)
+	{
+		FString DefaultValue = Pin->GetDefaultValue();
+		if (!DefaultValue.IsEmpty())
+		{
+			DefaultValues.Add(Pin->GetFName(), DefaultValue);
+		}
+	}
+
+	if (URigVMStructNode* StructNode = Cast<URigVMStructNode>(InNode))
+	{
+		StructNode->Pins.Reset();
+
+		UScriptStruct* ScriptStruct = StructNode->GetScriptStruct();
+
+		TArray<uint8> TempBuffer;
+		TempBuffer.AddUninitialized(ScriptStruct->GetStructureSize());
+		ScriptStruct->InitializeDefaultValue(TempBuffer.GetData());
+
+		FString ExportedDefaultValue;
+		ScriptStruct->ExportText(ExportedDefaultValue, TempBuffer.GetData(), nullptr, nullptr, PPF_None, nullptr);
+		ScriptStruct->DestroyStruct(TempBuffer.GetData());
+		AddPinsForStruct(ScriptStruct, StructNode, nullptr, ERigVMPinDirection::Invalid, ExportedDefaultValue);
+	}
+	else
+	{
+		return;
+	}
+
+	for (URigVMPin* Pin : InNode->Pins)
+	{
+		FString* DefaultValue = DefaultValues.Find(Pin->GetFName());
+		if (DefaultValue)
+		{
+			SetPinDefaultValue(Pin, *DefaultValue, true);
+		}
+	}
 }

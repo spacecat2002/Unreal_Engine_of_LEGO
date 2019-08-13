@@ -49,5 +49,6 @@ private:
 	FVector2D Position;
 
 	friend class URigVMController;
+	friend class RigVMGraph;
 };
 

@@ -54,7 +54,7 @@ private:
 	void ConfigurePinFromProperty(UProperty* InProperty, URigVMPin* InOutPin, ERigVMPinDirection InPinDirection = ERigVMPinDirection::Invalid);
 	void ConfigurePinFromPin(URigVMPin* InOutPin, URigVMPin* InPin);
 	virtual bool ShouldStructBeUnfolded(const UStruct* InStruct);
-	void SetPinDefaultValue(URigVMPin* InPin, const FString& InDefaultValue);
+	void SetPinDefaultValue(URigVMPin* InPin, const FString& InDefaultValue, bool bResizeArrays = false);
 	static TArray<FString> SplitDefaultValue(const FString& InDefaultValue);
 	URigVMPin* InsertArrayPin(URigVMPin* ArrayPin, int32 InIndex, const FString& InDefaultValue);
 	bool RemovePin(URigVMPin* InPinToRemove);
@@ -64,9 +64,15 @@ private:
 	bool BreakAllLinks(URigVMPin* Pin, bool bAsInput = true);
 	void BreakAllLinksRecursive(URigVMPin* Pin, bool bAsInput, bool bTowardsParent);
 
+	void DetachLinksFromPinObjects();
+	void ReattachLinksToPinObjects();
+	void RepopulatePinsOnNode(URigVMNode* InNode);
+
 	UPROPERTY()
 	URigVMGraph* Graph;
 
 	static int32 sRemovedPinIndex;
+
+	friend class URigVMGraph;
 };
 

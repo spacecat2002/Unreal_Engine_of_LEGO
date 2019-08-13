@@ -21,6 +21,8 @@ public:
 		SourcePin = TargetPin = nullptr;
 	}
 
+	virtual void Serialize(FArchive& Ar) override;
+
 	URigVMGraph* GetGraph();
 	URigVMPin* GetSourcePin();
 	URigVMPin* GetTargetPin();
