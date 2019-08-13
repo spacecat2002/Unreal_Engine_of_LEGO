@@ -30,13 +30,8 @@ FRigVMGraphUtils::FRigVMGraphUtils(URigVMGraph* InGraph, URigVMPin* InCycleCheck
 				Reset();
 				break;
 			}
-			case ERigVMGraphNotifType::NodeSelected:
-			case ERigVMGraphNotifType::NodeDeselected:
-			case ERigVMGraphNotifType::PinArraySizeChanged:
-			case ERigVMGraphNotifType::PinDefaultValueChanged:
-			case ERigVMGraphNotifType::Invalid:
+			default:
 			{
-				// we don't care about those
 				break;
 			}
 		}

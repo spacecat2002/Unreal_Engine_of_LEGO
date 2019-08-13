@@ -77,15 +77,7 @@ URigVMStructNode* URigVMController::AddStructNode(UScriptStruct* InScriptStruct,
 		return nullptr;
 	}
 
-	FString NamePrefix = InScriptStruct->GetName();
-	int32 NameSuffix = 0;
-	FString Name = NamePrefix;
-
-	while (!Graph->IsNameAvailable(Name))
-	{
-		Name = FString::Printf(TEXT("%s_%d"), *NamePrefix, ++NameSuffix);
-	}
-
+	FString Name = GetValidName(InScriptStruct->GetName());
 	URigVMStructNode* Node = NewObject<URigVMStructNode>(Graph, *Name);
 	Node->ScriptStruct = InScriptStruct;
 	Node->MethodName = InMethodName;
@@ -117,15 +109,7 @@ URigVMCommentNode* URigVMController::AddCommentNode(const FString& InCommentText
 		return nullptr;
 	}
 
-	FString NamePrefix = TEXT("CommentNode");
-	int32 NameSuffix = 0;
-	FString Name = NamePrefix;
-
-	while (!Graph->IsNameAvailable(Name))
-	{
-		Name = FString::Printf(TEXT("%s_%d"), *NamePrefix, ++NameSuffix);
-	}
-
+	FString Name = GetValidName(TEXT("CommentNode"));
 	URigVMCommentNode* Node = NewObject<URigVMCommentNode>(Graph, *Name);
 	Node->Position = InPosition;
 	Node->Size = InSize;
@@ -141,6 +125,85 @@ URigVMCommentNode* URigVMController::AddCommentNode(const FString& InCommentText
 	return Node;
 }
 
+URigVMRerouteNode* URigVMController::AddRerouteNodeOnLink(URigVMLink* InLink, bool bShowAsFullNode, const FVector2D& InPosition, bool bUndo)
+{
+	if(!IsValidLinkForGraph(InLink))
+	{
+		return nullptr;
+	}
+
+	URigVMPin* SourcePin = InLink->GetSourcePin();
+	URigVMPin* TargetPin = InLink->GetTargetPin();
+
+	// todo: undo redo
+
+	URigVMRerouteNode* Node = AddRerouteNodeOnPin(TargetPin->GetPinPath(), true, bShowAsFullNode, InPosition, bUndo);
+	if (Node == nullptr)
+	{
+		return nullptr;
+	}
+
+	URigVMPin* ValuePin = Node->Pins[0];
+	AddLink(SourcePin, ValuePin, bUndo);
+
+	return Node;
+}
+
+URigVMRerouteNode* URigVMController::AddRerouteNodeOnPin(const FString& InPinPath, bool bAsInput, bool bShowAsFullNode, const FVector2D& InPosition, bool bUndo)
+{
+	if (Graph == nullptr)
+	{
+		return nullptr;
+	}
+
+	URigVMPin* Pin = Graph->FindPin(InPinPath);
+	if(Pin == nullptr)
+	{
+		return nullptr;
+	}
+
+	// todo: undo redo
+
+	BreakAllLinks(Pin, bAsInput, bUndo);
+
+	FString Name = GetValidName(TEXT("RerouteNode"));
+	URigVMRerouteNode* Node = NewObject<URigVMRerouteNode>(Graph, *Name);
+	Node->Position = InPosition;
+	Node->bShowAsFullNode = bShowAsFullNode;
+
+	URigVMPin* ValuePin = NewObject<URigVMPin>(Node, TEXT("Value"));
+	ConfigurePinFromPin(ValuePin, Pin);
+	ValuePin->Index = 0;
+	ValuePin->Direction = ERigVMPinDirection::IO;
+	Node->Pins.Add(ValuePin);
+
+	if (ValuePin->IsStruct())
+	{
+		AddPinsForStruct(ValuePin->GetScriptStruct(), Node, ValuePin, ValuePin->Direction, FString());
+	}
+
+	FString DefaultValue = Pin->GetDefaultValue();
+	if (!DefaultValue.IsEmpty())
+	{
+		SetPinDefaultValue(ValuePin, Pin->GetDefaultValue(), true, false);
+	}
+
+	Graph->Nodes.Add(Node);
+	Graph->MarkPackageDirty();
+
+	Notify(ERigVMGraphNotifType::NodeAdded, Graph, Node);
+
+	if (bAsInput)
+	{
+		AddLink(ValuePin, Pin, bUndo);
+	}
+	else
+	{
+		AddLink(Pin, ValuePin, bUndo);
+	}
+
+	return Node;
+}
 
 bool URigVMController::RemoveNode(URigVMNode* InNode, bool bUndo)
 {
@@ -268,6 +331,24 @@ bool URigVMController::SetCommentText(URigVMNode* InNode, const FString& InComme
 		CommentNode->CommentText = InCommentText;
 		// todo: undo redo
 		Notify(ERigVMGraphNotifType::CommentTextChanged, Graph, InNode);
+		return true;
+	}
+
+	return false;
+}
+
+bool URigVMController::SetRerouteCompactness(URigVMNode* InNode, bool bShowAsFullNode, bool bUndo)
+{
+	if (!IsValidNodeForGraph(InNode))
+	{
+		return false;
+	}
+
+	if (URigVMRerouteNode* RerouteNode = Cast<URigVMRerouteNode>(InNode))
+	{
+		RerouteNode->bShowAsFullNode = bShowAsFullNode;
+		// todo: undo redo
+		Notify(ERigVMGraphNotifType::RerouteCompactnessChanged, Graph, InNode);
 		return true;
 	}
 
@@ -782,6 +863,19 @@ void URigVMController::BreakAllLinksRecursive(URigVMPin* Pin, bool bAsInput, boo
 	}
 }
 
+FString URigVMController::GetValidName(const FString& InPrefix)
+{
+	int32 NameSuffix = 0;
+	FString Name = InPrefix;
+
+	while (!Graph->IsNameAvailable(Name))
+	{
+		Name = FString::Printf(TEXT("%s_%d"), *InPrefix, ++NameSuffix);
+	}
+
+	return Name;
+}
+
 bool URigVMController::IsValidNodeForGraph(URigVMNode* InNode)
 {
 	if (Graph == nullptr)
@@ -795,6 +889,36 @@ bool URigVMController::IsValidNodeForGraph(URigVMNode* InNode)
 	}
 
 	if (InNode->GetGraph() != Graph)
+	{
+		return false;
+	}
+
+	return true;
+}
+
+bool URigVMController::IsValidLinkForGraph(URigVMLink* InLink)
+{
+	if (Graph == nullptr)
+	{
+		return false;
+	}
+
+	if (InLink == nullptr)
+	{
+		return false;
+	}
+
+	if (InLink->GetGraph() != Graph)
+	{
+		return false;
+	}
+
+	if(InLink->GetSourcePin() == nullptr)
+	{
+		return false;
+	}
+
+	if(InLink->GetTargetPin() == nullptr)
 	{
 		return false;
 	}
@@ -948,6 +1072,7 @@ void URigVMController::ConfigurePinFromPin(URigVMPin* InOutPin, URigVMPin* InPin
 	InOutPin->bIsConstant = InPin->bIsConstant;
 	InOutPin->Direction = InPin->Direction;
 	InOutPin->CPPType = InPin->CPPType;
+	InOutPin->ScriptStructPath = InPin->ScriptStructPath;
 	InOutPin->DefaultValue = InPin->DefaultValue;
 }
 

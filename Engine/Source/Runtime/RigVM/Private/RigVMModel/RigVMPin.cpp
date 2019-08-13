@@ -97,7 +97,7 @@ bool URigVMPin::IsStruct() const
 	{
 		return false;
 	}
-	return ScriptStruct != nullptr;
+	return GetScriptStruct() != nullptr;
 }
 
 bool URigVMPin::IsStructMember() const
@@ -211,7 +211,7 @@ UScriptStruct* URigVMPin::GetScriptStruct() const
 		if (ScriptStructPath != NAME_None)
 		{
 			URigVMPin* MutableThis = (URigVMPin*)this;
-			MutableThis->ScriptStruct = LoadObject<UScriptStruct>(ANY_PACKAGE, *ScriptStructPath.ToString());
+			MutableThis->ScriptStruct = FindObjectChecked<UScriptStruct>(ANY_PACKAGE, *ScriptStructPath.ToString());
 		}
 	}
 	return ScriptStruct;

@@ -5,6 +5,7 @@
 #include "RigVMGraph.h"
 #include "RigVMModel/RigVMStructNode.h"
 #include "RigVMModel/RigVMCommentNode.h"
+#include "RigVMModel/RigVMRerouteNode.h"
 #include "RigVMController.generated.h"
 
 UCLASS()
@@ -23,6 +24,8 @@ public:
 
 	URigVMStructNode* AddStructNode(UScriptStruct* InScriptStruct, const FName& InMethodName, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
 	URigVMCommentNode* AddCommentNode(const FString& InCommentText, const FVector2D& InPosition = FVector2D::ZeroVector, const FVector2D& InSize = FVector2D(400.f, 300.f), bool bUndo = true);
+	URigVMRerouteNode* AddRerouteNodeOnLink(URigVMLink* InLink, bool bShowAsFullNode, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
+	URigVMRerouteNode* AddRerouteNodeOnPin(const FString& InPinPath, bool bShowAsFullNode, bool bAsInput, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
 
 	bool RemoveNode(URigVMNode* InNode, bool bUndo = true);
 	bool RemoveNode(const FName& InNodeName, bool bUndo = true);
@@ -34,6 +37,7 @@ public:
 	bool SetNodePosition(URigVMNode* InNode, const FVector2D& InPosition, bool bUndo = true);
 	bool SetNodeSize(URigVMNode* InNode, const FVector2D& InSize, bool bUndo = true);
 	bool SetCommentText(URigVMNode* InNode, const FString& InCommentText, bool bUndo = true);
+	bool SetRerouteCompactness(URigVMNode* InNode, bool bShowAsFullNode, bool bUndo = true);
 
 	FString GetPinDefaultValue(const FString& InPinPath);
 	void SetPinDefaultValue(const FString& InPinPath, const FString& InDefaultValue, bool bUndo = true);
@@ -54,7 +58,9 @@ private:
 	void Notify(ERigVMGraphNotifType InNotifType, URigVMGraph* InGraph, UObject* InSubject);
 	void HandleModifiedEvent(ERigVMGraphNotifType InNotifType, URigVMGraph* InGraph, UObject* InSubject);
 
+	FString GetValidName(const FString& InPrefix);
 	bool IsValidNodeForGraph(URigVMNode* InNode);
+	bool IsValidLinkForGraph(URigVMLink* InLink);
 	void AddPinsForStruct(UStruct* InStruct, URigVMNode* InNode, URigVMPin* InParentPin, ERigVMPinDirection InPinDirection, const FString& InDefaultValue);
 	void AddPinsForArray(UArrayProperty* InArrayProperty, URigVMNode* InNode, URigVMPin* InParentPin, ERigVMPinDirection InPinDirection, const TArray<FString>& InDefaultValues);
 	void ConfigurePinFromProperty(UProperty* InProperty, URigVMPin* InOutPin, ERigVMPinDirection InPinDirection = ERigVMPinDirection::Invalid);
