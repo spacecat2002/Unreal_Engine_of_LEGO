@@ -5,6 +5,7 @@
 #include "RigVMNode.h"
 #include "RigVMLink.h"
 #include "RigVMNotifications.h"
+#include "RigVMGraphUtils.h"
 #include "RigVMGraph.generated.h"
 
 UCLASS()
@@ -13,6 +14,8 @@ class RIGVM_API URigVMGraph : public UObject
 	GENERATED_BODY()
 
 public:
+
+	URigVMGraph();
 
 	const TArray<URigVMNode*>& GetNodes() const;
 	const TArray<URigVMLink*>& GetLinks() const;
@@ -23,7 +26,13 @@ public:
 	bool IsNodeSelected(const FName& InNodeName) const;
 	const TArray<FName>& GetSelectNodes() const;
 
+	void PrepareCycleChecking(URigVMPin* InPin, bool bAsInput);
+
 	FRigVMGraphModifiedEvent& OnModified();
+
+protected:
+
+	virtual bool CanLink(URigVMPin* InSourcePin, URigVMPin* InTargetPin, FString* OutFailureReason = nullptr);
 
 private:
 
@@ -38,6 +47,8 @@ private:
 
 	UPROPERTY()
 	TArray<FName> SelectedNodes;
+
+	FRigVMGraphUtils Utils;
 
 	bool IsNameAvailable(const FString& InName);
 

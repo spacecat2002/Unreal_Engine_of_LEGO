@@ -14,10 +14,12 @@ class RIGVM_API URigVMNode : public UObject
 
 public:
 
+	virtual ~URigVMNode() {}
+
 	FString GetNodePath() const;
+	int32 GetNodeIndex() const;
 
 	const TArray<URigVMPin*>& GetPins() const;
-
 	URigVMPin* FindPin(const FString& InPinPath) const;
 
 	URigVMGraph* GetGraph() const;
@@ -26,14 +28,19 @@ public:
 
 	bool IsSelected() const;
 
+	virtual bool IsPure() const { return true; }
+	virtual bool IsMutable() const { return false; }
+	virtual bool IsOutputParameter() const { return false; }
+
 	bool IsConnectedTo(URigVMNode* InNode) const;
+
 	TArray<URigVMNode*> GetConnectedSourceNodes() const;
 	TArray<URigVMNode*> GetConnectedTargetNodes() const;
 
 private:
 
 	bool IsConnectedToRecursive(URigVMPin* InPin, URigVMNode* InNode) const;
-	void GetConnectedNodesRecursive(URigVMPin* InPin, bool bLookForSources, TArray<URigVMNode*> OutNodes) const;
+	void GetConnectedNodesRecursive(URigVMPin* InPin, bool bLookForSources, TArray<URigVMNode*>& OutNodes) const;
 
 	UPROPERTY()
 	TArray<URigVMPin*> Pins;

@@ -320,52 +320,88 @@ URigVMGraph* URigVMPin::GetGraph() const
 	return nullptr;
 }
 
-bool URigVMPin::CanLink(URigVMPin* InSourcePin, URigVMPin* InTargetPin)
+bool URigVMPin::CanLink(URigVMPin* InSourcePin, URigVMPin* InTargetPin, FString* OutFailureReason)
 {
 	if (InSourcePin == nullptr || InTargetPin == nullptr)
 	{
+		if (OutFailureReason)
+		{
+			*OutFailureReason = TEXT("One of the pins is nullptr.");
+		}
 		return false;
 	}
 
 	if (InSourcePin == InTargetPin)
 	{
+		if (OutFailureReason)
+		{
+			*OutFailureReason = TEXT("Source and target pins are the same.");
+		}
 		return false;
 	}
 
 	if (InSourcePin->GetNode() == InTargetPin->GetNode())
 	{
+		if (OutFailureReason)
+		{
+			*OutFailureReason = TEXT("Source and target pins are on the same node.");
+		}
 		return false;
 	}
 
 	if (InSourcePin->GetGraph() != InTargetPin->GetGraph())
 	{
+		if (OutFailureReason)
+		{
+			*OutFailureReason = TEXT("Source and target pins are in different graphs.");
+		}
 		return false;
 	}
 
 	if (InSourcePin->Direction != ERigVMPinDirection::Output &&
 		InSourcePin->Direction != ERigVMPinDirection::IO)
 	{
+		if (OutFailureReason)
+		{
+			*OutFailureReason = TEXT("Source pin is not an output.");
+		}
 		return false;
 	}
 
 	if (InTargetPin->Direction != ERigVMPinDirection::Input &&
 		InTargetPin->Direction != ERigVMPinDirection::IO)
 	{
+		if (OutFailureReason)
+		{
+			*OutFailureReason = TEXT("Target pin is not an input.");
+		}
 		return false;
 	}
 
 	if (InTargetPin->bIsConstant && !InSourcePin->bIsConstant)
 	{
+		if (OutFailureReason)
+		{
+			*OutFailureReason = TEXT("Cannot connect non-constants to constants.");
+		}
 		return false;
 	}
 
 	if (InSourcePin->CPPType != InTargetPin->CPPType)
 	{
+		if (OutFailureReason)
+		{
+			*OutFailureReason = TEXT("Source and target pin types are not compatible.");
+		}
 		return false;
 	}
 
 	if (InSourcePin->IsConnectedTo(InTargetPin))
 	{
+		if (OutFailureReason)
+		{
+			*OutFailureReason = TEXT("Source and target pins are already connected.");
+		}
 		return false;
 	}
 

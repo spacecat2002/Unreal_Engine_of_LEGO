@@ -8,6 +8,17 @@ FString URigVMNode::GetNodePath() const
 	return GetName();
 }
 
+int32 URigVMNode::GetNodeIndex() const
+{
+	int32 Index = INDEX_NONE;
+	URigVMGraph* Graph = GetGraph();
+	if (Graph != nullptr)
+	{
+		Graph->GetNodes().Find((URigVMNode*)this, Index);
+	}
+	return Index;
+}
+
 const TArray<URigVMPin*>& URigVMNode::GetPins() const
 {
 	return Pins;
@@ -125,9 +136,9 @@ TArray<URigVMNode*> URigVMNode::GetConnectedTargetNodes() const
 	return Nodes;
 }
 
-void URigVMNode::GetConnectedNodesRecursive(URigVMPin* InPin, bool bLookForSources, TArray<URigVMNode*> OutNodes) const
+void URigVMNode::GetConnectedNodesRecursive(URigVMPin* InPin, bool bLookForSources, TArray<URigVMNode*>& OutNodes) const
 {
-	const TArray<URigVMPin*> ConnectedPins = bLookForSources ? InPin->GetConnectedSourcePins() : InPin->GetConnectedTargetPins();
+	TArray<URigVMPin*> ConnectedPins = bLookForSources ? InPin->GetConnectedSourcePins() : InPin->GetConnectedTargetPins();
 	for (URigVMPin* ConnectedPin : ConnectedPins)
 	{
 		OutNodes.AddUnique(ConnectedPin->GetNode());

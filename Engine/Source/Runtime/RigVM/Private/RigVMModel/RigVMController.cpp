@@ -553,7 +553,7 @@ bool URigVMController::AddLink(const FString& InOutputPinPath, const FString& In
 
 bool URigVMController::AddLink(URigVMPin* OutputPin, URigVMPin* InputPin)
 {
-	if (!URigVMPin::CanLink(OutputPin, InputPin))
+	if (!Graph->CanLink(OutputPin, InputPin))
 	{
 		return false;
 	}
@@ -733,10 +733,12 @@ void URigVMController::AddPinsForStruct(UStruct* InStruct, URigVMNode* InNode, U
 
 		if (InParentPin)
 		{
+			Pin->Index = InParentPin->SubPins.Num();
 			InParentPin->SubPins.Add(Pin);
 		}
 		else
 		{
+			Pin->Index = InNode->Pins.Num();
 			InNode->Pins.Add(Pin);
 		}
 
@@ -784,10 +786,10 @@ void URigVMController::AddPinsForArray(UArrayProperty* InArrayProperty, URigVMNo
 {
 	for (int32 ElementIndex = 0; ElementIndex < InDefaultValues.Num(); ElementIndex++)
 	{
-		FString ElementName = FString::FormatAsNumber(ElementIndex);
+		FString ElementName = FString::FormatAsNumber(InParentPin->SubPins.Num());
 		URigVMPin* Pin = NewObject<URigVMPin>(InParentPin, *ElementName);
 		ConfigurePinFromProperty(InArrayProperty->Inner, Pin, InPinDirection);
-		Pin->Index = ElementIndex;
+		Pin->Index = InParentPin->SubPins.Num();
 
 		InParentPin->SubPins.Add(Pin);
 

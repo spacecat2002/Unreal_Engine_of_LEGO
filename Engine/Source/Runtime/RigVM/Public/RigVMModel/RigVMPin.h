@@ -63,9 +63,10 @@ public:
 	URigVMNode* GetNode() const;
 	URigVMGraph* GetGraph() const;
 
+	static bool CanLink(URigVMPin* InSourcePin, URigVMPin* InTargetPin, FString* OutFailureReason = nullptr);
+
 private:
 
-	static bool CanLink(URigVMPin* InSourcePin, URigVMPin* InTargetPin);
 	void SetIndex(int32 InNewIndex);
 
 	UPROPERTY()

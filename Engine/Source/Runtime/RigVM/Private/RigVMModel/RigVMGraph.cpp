@@ -3,6 +3,11 @@
 #include "RigVMModel/RigVMGraph.h"
 #include "RigVMModel/RigVMStructNode.h"
 
+URigVMGraph::URigVMGraph()
+: Utils(this)
+{
+}
+
 const TArray<URigVMNode*>& URigVMGraph::GetNodes() const
 {
 	return Nodes;
@@ -78,5 +83,49 @@ bool URigVMGraph::IsNameAvailable(const FString& InName)
 			return false;
 		}
 	}
+	return true;
+}
+
+void URigVMGraph::PrepareCycleChecking(URigVMPin* InPin, bool bAsInput)
+{
+	Utils.PrepareCycleChecking(InPin, bAsInput);
+}
+
+bool URigVMGraph::CanLink(URigVMPin* InSourcePin, URigVMPin* InTargetPin, FString* OutFailureReason)
+{
+	if (!URigVMPin::CanLink(InSourcePin, InTargetPin, OutFailureReason))
+	{
+		return false;
+	}
+
+	if(!((Utils.GetCycleCheckPin() == InSourcePin && Utils.GetCycleCheckPinIsInput() == false) ||
+		(Utils.GetCycleCheckPin() == InTargetPin && Utils.GetCycleCheckPinIsInput() == true)))
+	{
+		PrepareCycleChecking(InTargetPin, true);
+	}
+
+	if (Utils.GetCycleCheckPinIsInput())
+	{
+		if (Utils.IsNodeOnCycle(InSourcePin->GetNode()))
+		{
+			if (OutFailureReason)
+			{
+				*OutFailureReason = TEXT("Cannot create a cycle.");
+			}
+			return false;
+		}
+	}
+	else
+	{
+		if (Utils.IsNodeOnCycle(InTargetPin->GetNode()))
+		{
+			if (OutFailureReason)
+			{
+				*OutFailureReason = TEXT("Cannot create a cycle.");
+			}
+			return false;
+		}
+	}
+
 	return true;
 }
