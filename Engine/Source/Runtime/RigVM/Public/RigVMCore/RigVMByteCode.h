@@ -12,71 +12,71 @@ struct FRigVMByteCode;
 UENUM()
 enum class ERigVMOpCode : uint8
 {
-	Execute_0_Args, // execute a rig function with 0 arguments
-	Execute_1_Args, // execute a rig function with 1 arguments
-	Execute_2_Args, // execute a rig function with 2 arguments
-	Execute_3_Args, // execute a rig function with 3 arguments
-	Execute_4_Args, // execute a rig function with 4 arguments
-	Execute_5_Args, // execute a rig function with 5 arguments
-	Execute_6_Args, // execute a rig function with 6 arguments
-	Execute_7_Args, // execute a rig function with 7 arguments
-	Execute_8_Args, // execute a rig function with 8 arguments
-	Execute_9_Args, // execute a rig function with 9 arguments
-	Execute_10_Args, // execute a rig function with 10 arguments
-	Execute_11_Args, // execute a rig function with 11 arguments
-	Execute_12_Args, // execute a rig function with 12 arguments
-	Execute_13_Args, // execute a rig function with 13 arguments
-	Execute_14_Args, // execute a rig function with 14 arguments
-	Execute_15_Args, // execute a rig function with 15 arguments
-	Execute_16_Args, // execute a rig function with 16 arguments
-	Execute_17_Args, // execute a rig function with 17 arguments
-	Execute_18_Args, // execute a rig function with 18 arguments
-	Execute_19_Args, // execute a rig function with 19 arguments
-	Execute_20_Args, // execute a rig function with 20 arguments
-	Execute_21_Args, // execute a rig function with 21 arguments
-	Execute_22_Args, // execute a rig function with 22 arguments
-	Execute_23_Args, // execute a rig function with 23 arguments
-	Execute_24_Args, // execute a rig function with 24 arguments
-	Execute_25_Args, // execute a rig function with 25 arguments
-	Execute_26_Args, // execute a rig function with 26 arguments
-	Execute_27_Args, // execute a rig function with 27 arguments
-	Execute_28_Args, // execute a rig function with 28 arguments
-	Execute_29_Args, // execute a rig function with 29 arguments
-	Execute_30_Args, // execute a rig function with 30 arguments
-	Execute_31_Args, // execute a rig function with 31 arguments
-	Execute_32_Args, // execute a rig function with 32 arguments
-	Execute_33_Args, // execute a rig function with 33 arguments
-	Execute_34_Args, // execute a rig function with 34 arguments
-	Execute_35_Args, // execute a rig function with 35 arguments
-	Execute_36_Args, // execute a rig function with 36 arguments
-	Execute_37_Args, // execute a rig function with 37 arguments
-	Execute_38_Args, // execute a rig function with 38 arguments
-	Execute_39_Args, // execute a rig function with 39 arguments
-	Execute_40_Args, // execute a rig function with 40 arguments
-	Execute_41_Args, // execute a rig function with 41 arguments
-	Execute_42_Args, // execute a rig function with 42 arguments
-	Execute_43_Args, // execute a rig function with 43 arguments
-	Execute_44_Args, // execute a rig function with 44 arguments
-	Execute_45_Args, // execute a rig function with 45 arguments
-	Execute_46_Args, // execute a rig function with 46 arguments
-	Execute_47_Args, // execute a rig function with 47 arguments
-	Execute_48_Args, // execute a rig function with 48 arguments
-	Execute_49_Args, // execute a rig function with 49 arguments
-	Execute_50_Args, // execute a rig function with 50 arguments
-	Execute_51_Args, // execute a rig function with 51 arguments
-	Execute_52_Args, // execute a rig function with 52 arguments
-	Execute_53_Args, // execute a rig function with 53 arguments
-	Execute_54_Args, // execute a rig function with 54 arguments
-	Execute_55_Args, // execute a rig function with 55 arguments
-	Execute_56_Args, // execute a rig function with 56 arguments
-	Execute_57_Args, // execute a rig function with 57 arguments
-	Execute_58_Args, // execute a rig function with 58 arguments
-	Execute_59_Args, // execute a rig function with 59 arguments
-	Execute_60_Args, // execute a rig function with 60 arguments
-	Execute_61_Args, // execute a rig function with 61 arguments
-	Execute_62_Args, // execute a rig function with 62 arguments
-	Execute_63_Args, // execute a rig function with 63 arguments
-	Execute_64_Args, // execute a rig function with 64 arguments
+	Execute_0_Operands, // execute a rig function with 0 operands
+	Execute_1_Operands, // execute a rig function with 1 operands
+	Execute_2_Operands, // execute a rig function with 2 operands
+	Execute_3_Operands, // execute a rig function with 3 operands
+	Execute_4_Operands, // execute a rig function with 4 operands
+	Execute_5_Operands, // execute a rig function with 5 operands
+	Execute_6_Operands, // execute a rig function with 6 operands
+	Execute_7_Operands, // execute a rig function with 7 operands
+	Execute_8_Operands, // execute a rig function with 8 operands
+	Execute_9_Operands, // execute a rig function with 9 operands
+	Execute_10_Operands, // execute a rig function with 10 operands
+	Execute_11_Operands, // execute a rig function with 11 operands
+	Execute_12_Operands, // execute a rig function with 12 operands
+	Execute_13_Operands, // execute a rig function with 13 operands
+	Execute_14_Operands, // execute a rig function with 14 operands
+	Execute_15_Operands, // execute a rig function with 15 operands
+	Execute_16_Operands, // execute a rig function with 16 operands
+	Execute_17_Operands, // execute a rig function with 17 operands
+	Execute_18_Operands, // execute a rig function with 18 operands
+	Execute_19_Operands, // execute a rig function with 19 operands
+	Execute_20_Operands, // execute a rig function with 20 operands
+	Execute_21_Operands, // execute a rig function with 21 operands
+	Execute_22_Operands, // execute a rig function with 22 operands
+	Execute_23_Operands, // execute a rig function with 23 operands
+	Execute_24_Operands, // execute a rig function with 24 operands
+	Execute_25_Operands, // execute a rig function with 25 operands
+	Execute_26_Operands, // execute a rig function with 26 operands
+	Execute_27_Operands, // execute a rig function with 27 operands
+	Execute_28_Operands, // execute a rig function with 28 operands
+	Execute_29_Operands, // execute a rig function with 29 operands
+	Execute_30_Operands, // execute a rig function with 30 operands
+	Execute_31_Operands, // execute a rig function with 31 operands
+	Execute_32_Operands, // execute a rig function with 32 operands
+	Execute_33_Operands, // execute a rig function with 33 operands
+	Execute_34_Operands, // execute a rig function with 34 operands
+	Execute_35_Operands, // execute a rig function with 35 operands
+	Execute_36_Operands, // execute a rig function with 36 operands
+	Execute_37_Operands, // execute a rig function with 37 operands
+	Execute_38_Operands, // execute a rig function with 38 operands
+	Execute_39_Operands, // execute a rig function with 39 operands
+	Execute_40_Operands, // execute a rig function with 40 operands
+	Execute_41_Operands, // execute a rig function with 41 operands
+	Execute_42_Operands, // execute a rig function with 42 operands
+	Execute_43_Operands, // execute a rig function with 43 operands
+	Execute_44_Operands, // execute a rig function with 44 operands
+	Execute_45_Operands, // execute a rig function with 45 operands
+	Execute_46_Operands, // execute a rig function with 46 operands
+	Execute_47_Operands, // execute a rig function with 47 operands
+	Execute_48_Operands, // execute a rig function with 48 operands
+	Execute_49_Operands, // execute a rig function with 49 operands
+	Execute_50_Operands, // execute a rig function with 50 operands
+	Execute_51_Operands, // execute a rig function with 51 operands
+	Execute_52_Operands, // execute a rig function with 52 operands
+	Execute_53_Operands, // execute a rig function with 53 operands
+	Execute_54_Operands, // execute a rig function with 54 operands
+	Execute_55_Operands, // execute a rig function with 55 operands
+	Execute_56_Operands, // execute a rig function with 56 operands
+	Execute_57_Operands, // execute a rig function with 57 operands
+	Execute_58_Operands, // execute a rig function with 58 operands
+	Execute_59_Operands, // execute a rig function with 59 operands
+	Execute_60_Operands, // execute a rig function with 60 operands
+	Execute_61_Operands, // execute a rig function with 61 operands
+	Execute_62_Operands, // execute a rig function with 62 operands
+	Execute_63_Operands, // execute a rig function with 63 operands
+	Execute_64_Operands, // execute a rig function with 64 operands
 	Zero, // zero the memory of a given register
 	BoolFalse, // set a given register to false
 	BoolTrue, // set a given register to true
@@ -118,14 +118,14 @@ struct RIGVM_API FRigVMExecuteOp : public FRigVMBaseOp
 	}
 
 	FRigVMExecuteOp(uint16 InFunctionIndex, uint8 InArgumentCount)
-	: FRigVMBaseOp((ERigVMOpCode)(uint8(ERigVMOpCode::Execute_0_Args) + InArgumentCount))
+	: FRigVMBaseOp((ERigVMOpCode)(uint8(ERigVMOpCode::Execute_0_Operands) + InArgumentCount))
 	, FunctionIndex(InFunctionIndex)
 	{
 	}
 
 	uint16 FunctionIndex;
 
-	FORCEINLINE uint8 GetArgumentCount() const { return uint8(OpCode) - uint8(ERigVMOpCode::Execute_0_Args); }
+	FORCEINLINE uint8 GetArgumentCount() const { return uint8(OpCode) - uint8(ERigVMOpCode::Execute_0_Operands); }
 };
 
 // operator used for zero, false, true, increment, decrement
@@ -137,7 +137,7 @@ struct RIGVM_API FRigVMUnaryOp : public FRigVMBaseOp
 	{
 	}
 
-	FRigVMUnaryOp(ERigVMOpCode InOpCode, FRigVMArgument InArg)
+	FRigVMUnaryOp(ERigVMOpCode InOpCode, FRigVMOperand InArg)
 		: FRigVMBaseOp(InOpCode)
 		, Arg(InArg)
 	{
@@ -154,7 +154,7 @@ struct RIGVM_API FRigVMUnaryOp : public FRigVMBaseOp
 		);
 	}
 
-	FRigVMArgument Arg;
+	FRigVMOperand Arg;
 };
 
 // copy the content of one register to another
@@ -171,8 +171,8 @@ struct RIGVM_API FRigVMCopyOp : public FRigVMBaseOp
 	}
 
 	FRigVMCopyOp(
-		FRigVMArgument InSource,
-		FRigVMArgument InTarget,
+		FRigVMOperand InSource,
+		FRigVMOperand InTarget,
 		int32 InSourceOffset = INDEX_NONE,
 		int32 InTargetOffset = INDEX_NONE,
 		int32 InNumBytes = INDEX_NONE
@@ -186,8 +186,8 @@ struct RIGVM_API FRigVMCopyOp : public FRigVMBaseOp
 	{
 	}
 
-	FRigVMArgument Source;
-	FRigVMArgument Target;
+	FRigVMOperand Source;
+	FRigVMOperand Target;
 	int32 SourceOffset;
 	int32 TargetOffset;
 	int32 NumBytes;
@@ -206,9 +206,9 @@ struct RIGVM_API FRigVMComparisonOp : public FRigVMBaseOp
 
 	FRigVMComparisonOp(
 		ERigVMOpCode InOpCode,
-		FRigVMArgument InA,
-		FRigVMArgument InB,
-		FRigVMArgument InResult
+		FRigVMOperand InA,
+		FRigVMOperand InB,
+		FRigVMOperand InResult
 	)
 		: FRigVMBaseOp(InOpCode)
 		, A(InA)
@@ -221,9 +221,9 @@ struct RIGVM_API FRigVMComparisonOp : public FRigVMBaseOp
 			);
 	}
 
-	FRigVMArgument A;
-	FRigVMArgument B;
-	FRigVMArgument Result;
+	FRigVMOperand A;
+	FRigVMOperand B;
+	FRigVMOperand Result;
 };
 
 // jump to a new instruction index.
@@ -260,7 +260,7 @@ struct RIGVM_API FRigVMJumpIfOp : public FRigVMUnaryOp
 	{
 	}
 
-	FRigVMJumpIfOp(ERigVMOpCode InOpCode, FRigVMArgument InConditionArg, int32 InInstructionIndex, bool InCondition = false)
+	FRigVMJumpIfOp(ERigVMOpCode InOpCode, FRigVMOperand InConditionArg, int32 InInstructionIndex, bool InCondition = false)
 		: FRigVMUnaryOp(InOpCode, InConditionArg)
 		, InstructionIndex(InInstructionIndex)
 		, Condition(InCondition)
@@ -285,7 +285,7 @@ struct RIGVM_API FRigVMChangeTypeOp : public FRigVMUnaryOp
 	{
 	}
 
-	FRigVMChangeTypeOp(FRigVMArgument InArg, ERigVMRegisterType InType, uint16 InElementSize, uint16 InElementCount, uint16 InSliceCount)
+	FRigVMChangeTypeOp(FRigVMOperand InArg, ERigVMRegisterType InType, uint16 InElementSize, uint16 InElementCount, uint16 InSliceCount)
 		: FRigVMUnaryOp(ERigVMOpCode::ChangeType, InArg)
 		, Type(InType)
 		, ElementSize(InElementSize)
@@ -380,41 +380,41 @@ public:
 	// returns the number of instructions in this container
 	uint64 Num() const;
 
-	// adds an execute operator given its function index arguments
-	uint64 AddExecuteOp(uint16 InFunctionIndex, const TArrayView<FRigVMArgument>& InArguments);
+	// adds an execute operator given its function index operands
+	uint64 AddExecuteOp(uint16 InFunctionIndex, const TArrayView<FRigVMOperand>& InOperands);
 
 	// adds a zero operator to zero the memory of a given argument
-	uint64 AddZeroOp(const FRigVMArgument& InArg);
+	uint64 AddZeroOp(const FRigVMOperand& InArg);
 
 	// adds a false operator to set a given argument to false
-	uint64 AddFalseOp(const FRigVMArgument& InArg);
+	uint64 AddFalseOp(const FRigVMOperand& InArg);
 
 	// adds a true operator to set a given argument to true
-	uint64 AddTrueOp(const FRigVMArgument& InArg);
+	uint64 AddTrueOp(const FRigVMOperand& InArg);
 
 	// adds a copy operator to copy the content of a source argument to a target argument
-	uint64 AddCopyOp(const FRigVMArgument& InSource, const FRigVMArgument& InTarget, int32 InSourceOffset = INDEX_NONE, int32 InTargetOffset = INDEX_NONE, int32 InNumBytes = INDEX_NONE);
+	uint64 AddCopyOp(const FRigVMOperand& InSource, const FRigVMOperand& InTarget, int32 InSourceOffset = INDEX_NONE, int32 InTargetOffset = INDEX_NONE, int32 InNumBytes = INDEX_NONE);
 
 	// adds an increment operator to increment a int32 argument
-	uint64 AddIncrementOp(const FRigVMArgument& InArg);
+	uint64 AddIncrementOp(const FRigVMOperand& InArg);
 
 	// adds an decrement operator to decrement a int32 argument
-	uint64 AddDecrementOp(const FRigVMArgument& InArg);
+	uint64 AddDecrementOp(const FRigVMOperand& InArg);
 
 	// adds an equals operator to store the comparison result of A and B into a Result argument
-	uint64 AddEqualsOp(const FRigVMArgument& InA, const FRigVMArgument& InB, const FRigVMArgument& InResult);
+	uint64 AddEqualsOp(const FRigVMOperand& InA, const FRigVMOperand& InB, const FRigVMOperand& InResult);
 
 	// adds an not-equals operator to store the comparison result of A and B into a Result argument
-	uint64 AddNotEqualsOp(const FRigVMArgument& InA, const FRigVMArgument& InB, const FRigVMArgument& InResult);
+	uint64 AddNotEqualsOp(const FRigVMOperand& InA, const FRigVMOperand& InB, const FRigVMOperand& InResult);
 
 	// adds an absolute, forward or backward jump operator
 	uint64 AddJumpOp(ERigVMOpCode InOpCode, uint16 InInstructionIndex);
 
 	// adds an absolute, forward or backward jump operator based on a condition argument
-	uint64 AddJumpIfOp(ERigVMOpCode InOpCode, uint16 InInstructionIndex, const FRigVMArgument& InConditionArg, bool bJumpWhenConditionIs = false);
+	uint64 AddJumpIfOp(ERigVMOpCode InOpCode, uint16 InInstructionIndex, const FRigVMOperand& InConditionArg, bool bJumpWhenConditionIs = false);
 
 	// adds a change-type operator to reuse a register for a smaller or same size type
-	uint64 AddChangeTypeOp(FRigVMArgument InArg, ERigVMRegisterType InType, uint16 InElementSize, uint16 InElementCount, uint16 InSliceCount = 1);
+	uint64 AddChangeTypeOp(FRigVMOperand InArg, ERigVMRegisterType InType, uint16 InElementSize, uint16 InElementCount, uint16 InSliceCount = 1);
 
 	// adds an exit operator to exit the execution loop
 	uint64 AddExitOp();
@@ -433,7 +433,7 @@ public:
 	}
 
 	// returns the size of the operator in bytes at a given byte index
-	uint64 GetOpNumBytesAt(uint64 InByteCodeIndex, bool bIncludeArguments = true) const;
+	uint64 GetOpNumBytesAt(uint64 InByteCodeIndex, bool bIncludeOperands = true) const;
 
 	// returns an operator at a given byte code index
 	template<class OpType>
@@ -450,25 +450,25 @@ public:
 		return GetOpAt<OpType>(InInstruction.ByteCodeIndex);
 	}
 
-	// returns a list of arguments at a given byte code index
-	FORCEINLINE TArrayView<FRigVMArgument> GetArgumentsAt(uint64 InByteCodeIndex, uint16 InArgumentCount) const
+	// returns a list of operands at a given byte code index
+	FORCEINLINE TArrayView<FRigVMOperand> GetOperandsAt(uint64 InByteCodeIndex, uint16 InArgumentCount) const
 	{
-		ensure(InByteCodeIndex >= 0 && InByteCodeIndex <= ByteCode.Num() - sizeof(FRigVMArgument) * InArgumentCount);
-		return TArrayView<FRigVMArgument>((FRigVMArgument*)(ByteCode.GetData() + InByteCodeIndex), InArgumentCount);
+		ensure(InByteCodeIndex >= 0 && InByteCodeIndex <= ByteCode.Num() - sizeof(FRigVMOperand) * InArgumentCount);
+		return TArrayView<FRigVMOperand>((FRigVMOperand*)(ByteCode.GetData() + InByteCodeIndex), InArgumentCount);
 	}
 
-	// returns the arguments for an execute operator / instruction at a given byte code index
-	FORCEINLINE TArrayView<FRigVMArgument> GetArgumentsForExecuteOp(uint64 InByteCodeIndex) const
+	// returns the operands for an execute operator / instruction at a given byte code index
+	FORCEINLINE TArrayView<FRigVMOperand> GetOperandsForExecuteOp(uint64 InByteCodeIndex) const
 	{
 		const FRigVMExecuteOp& ExecuteOp = GetOpAt<FRigVMExecuteOp>(InByteCodeIndex);
-		return GetArgumentsAt(InByteCodeIndex + sizeof(FRigVMExecuteOp), ExecuteOp.GetArgumentCount());
+		return GetOperandsAt(InByteCodeIndex + sizeof(FRigVMExecuteOp), ExecuteOp.GetArgumentCount());
 	}
 
-	// returns the arguments for a given execute instruction
-	FORCEINLINE TArrayView<FRigVMArgument> GetArgumentsForExecuteOp(const FRigVMInstruction& InInstruction) const
+	// returns the operands for a given execute instruction
+	FORCEINLINE TArrayView<FRigVMOperand> GetOperandsForExecuteOp(const FRigVMInstruction& InInstruction) const
 	{
 		const FRigVMExecuteOp& ExecuteOp = GetOpAt<FRigVMExecuteOp>(InInstruction);
-		return GetArgumentsAt(InInstruction.ByteCodeIndex + sizeof(FRigVMExecuteOp), ExecuteOp.GetArgumentCount());
+		return GetOperandsAt(InInstruction.ByteCodeIndex + sizeof(FRigVMExecuteOp), ExecuteOp.GetArgumentCount());
 	}
 
 	// returns the raw data of the byte code

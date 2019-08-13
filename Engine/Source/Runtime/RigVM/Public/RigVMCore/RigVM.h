@@ -18,7 +18,7 @@ enum class ERigVMParameterType
 };
 
 /**
- * The RigVMParameter defines inputs and outputs of the RigVM.
+ * The RigVMParameter define an input or output of the RigVM.
  * Parameters are mapped to work state memory registers and can be
  * used to set input parameters as well as retrieve output parameters.
  */
@@ -86,8 +86,8 @@ public:
 
 	// Executes the VM.
 	// You can optionally provide external memory to the execution
-	// and provide optional additional arguments.
-	bool Execute(FRigVMMemoryContainerPtrArray Memory = FRigVMMemoryContainerPtrArray(), TArrayView<void*> AdditionalArgs = TArrayView<void*>());
+	// and provide optional additional operands.
+	bool Execute(FRigVMMemoryContainerPtrArray Memory = FRigVMMemoryContainerPtrArray(), TArrayView<void*> AdditionalArguments = TArrayView<void*>());
 
 	// Add a function for execute instructions to this VM.
 	// Execute instructions can then refer to the function by index.

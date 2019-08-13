@@ -19,28 +19,26 @@ enum class ERigVMMemoryType: uint8
 };
 
 /**
- * The FRigVMArgument represents an argument used for an operator
- * within the virtual machine. Arguments provide information about
+ * The FRigVMOperand represents an argument used for an operator
+ * within the virtual machine. Operands provide information about
  * which memory needs to be referred to, which register within the
  * memory all the way to the actual byte address in memory.
- * The FRigVMArgument is a light weight address for a register in
+ * The FRigVMOperand is a light weight address for a register in
  * a FRigVMMemoryContainer.
  */
-struct RIGVM_API FRigVMArgument
+struct RIGVM_API FRigVMOperand
 {
 public:
 
-	FRigVMArgument()
+	FRigVMOperand()
 		: MemoryType(ERigVMMemoryType::Work)
 		, RegisterIndex(INDEX_NONE)
-		, ByteIndex(INDEX_NONE)
 	{
 	}
 
-	FRigVMArgument(ERigVMMemoryType InMemoryType, int32 InRegisterIndex, int32 InByteIndex)
+	FRigVMOperand(ERigVMMemoryType InMemoryType, int32 InRegisterIndex, int32 InByteIndex)
 		: MemoryType(InMemoryType)
 		, RegisterIndex(InRegisterIndex)
-		, ByteIndex(InByteIndex)
 	{
 	}
 
@@ -53,17 +51,13 @@ public:
 	// returns the index of the register of this argument
 	FORCEINLINE uint16 GetRegisterIndex() const { return RegisterIndex; }
 
-	// returns the index of the byte inside of the memory of this argument
-	FORCEINLINE uint64 GetByteIndex() const { return ByteIndex; }
-
 private:
 
 	ERigVMMemoryType MemoryType;
 	uint16 RegisterIndex;
-	uint64 ByteIndex;
 };
 
-typedef TArrayView<FRigVMArgument> FRigVMArgumentArray;
+typedef TArrayView<FRigVMOperand> FRigVMOperandArray;
 
 /**
  * The type of register within the memory.
@@ -214,7 +208,7 @@ typedef TArrayView<FRigVMRegister> FRigVMRegisterArray;
 /**
  * The FRigVMMemoryContainer provides a heterogeneous memory container to store arbitrary
  * data. Each element stored can be referred to using a FRigVMRegister.
- * Elements can be accessed by index (index of the register), FRigVMArgument or by name.
+ * Elements can be accessed by index (index of the register), FRigVMOperand or by name.
  * Name access is optional and is specified upon construction of the container.
  * The memory container provides a series of templated functions to add and get data.
  * Plain types (shallow types without the need for construction) can be added and retrieved
@@ -273,10 +267,10 @@ public:
 	FORCEINLINE FRigVMRegister& operator[](int32 InIndex) { return Registers[InIndex]; }
 
 	// const accessor for a register based on an argument
-	FORCEINLINE const FRigVMRegister& operator[](const FRigVMArgument& InArg) const { return Registers[InArg.GetRegisterIndex()]; }
+	FORCEINLINE const FRigVMRegister& operator[](const FRigVMOperand& InArg) const { return Registers[InArg.GetRegisterIndex()]; }
 
 	// accessor for a register based on an argument
-	FORCEINLINE FRigVMRegister& operator[](const FRigVMArgument& InArg) { return Registers[InArg.GetRegisterIndex()]; }
+	FORCEINLINE FRigVMRegister& operator[](const FRigVMOperand& InArg) { return Registers[InArg.GetRegisterIndex()]; }
 
 	// const accessor for a register based on a a name. note: only works if SupportsNames() == true
 	FORCEINLINE const FRigVMRegister& operator[](const FName& InName) const { return Registers[GetIndex(InName)]; }
@@ -298,10 +292,10 @@ public:
 
 	// Returns an argument for a given register.
 	// This is typically used to store a light weight address for use within a VM.
-	FORCEINLINE FRigVMArgument GetArgument(int32 InRegisterIndex) const
+	FORCEINLINE FRigVMOperand GetArgument(int32 InRegisterIndex) const
 	{
 		ensure(Registers.IsValidIndex(InRegisterIndex));
-		return FRigVMArgument(MemoryType, InRegisterIndex, Registers[InRegisterIndex].ByteIndex);
+		return FRigVMOperand(MemoryType, InRegisterIndex, Registers[InRegisterIndex].ByteIndex);
 	}
 
 	// Returns the current const data pointer for a given register.
@@ -364,7 +358,7 @@ public:
 	// Returns the current const typed pointer for a given argument
 	// Note: This refers to the active slice - and can change over time.
 	template<class T>
-	FORCEINLINE const T* Get(const FRigVMArgument& InArgument) const
+	FORCEINLINE const T* Get(const FRigVMOperand& InArgument) const
 	{
 		return Get<T>(InArgument.GetRegisterIndex());
 	}
@@ -388,7 +382,7 @@ public:
 	// Returns the current const typed reference for a given argument
 	// Note: This refers to the active slice - and can change over time.
 	template<class T>
-	FORCEINLINE const T& GetRef(const FRigVMArgument& InArgument) const
+	FORCEINLINE const T& GetRef(const FRigVMOperand& InArgument) const
 	{
 		return GetRef<T>(InArgument.GetRegisterIndex());
 	}
@@ -419,7 +413,7 @@ public:
 	// Returns the current typed pointer for a given argument
 	// Note: This refers to the active slice - and can change over time.
 	template<class T>
-	FORCEINLINE T* Get(const FRigVMArgument& InArgument, bool bMoveToNextSlice = false)
+	FORCEINLINE T* Get(const FRigVMOperand& InArgument, bool bMoveToNextSlice = false)
 	{
 		return Get<T>(InArgument.GetRegisterIndex(), bMoveToNextSlice);
 	}
@@ -443,7 +437,7 @@ public:
 	// Returns the current typed reference for a given argument
 	// Note: This refers to the active slice - and can change over time.
 	template<class T>
-	FORCEINLINE T& GetRef(const FRigVMArgument& InArgument, bool bMoveToNextSlice = false)
+	FORCEINLINE T& GetRef(const FRigVMOperand& InArgument, bool bMoveToNextSlice = false)
 	{
 		return GetRef<T>(InArgument.GetRegisterIndex(), bMoveToNextSlice);
 	}
@@ -471,7 +465,7 @@ public:
 	
 	// Returns an array view for all elements of the current slice for a given argument.
 	template<class T>
-	FORCEINLINE TArrayView<T> GetArray(const FRigVMArgument& InArgument, bool bMoveToNextSlice = false)
+	FORCEINLINE TArrayView<T> GetArray(const FRigVMOperand& InArgument, bool bMoveToNextSlice = false)
 	{
 		return GetArray<T>(InArgument.GetRegisterIndex(), bMoveToNextSlice);
 	}

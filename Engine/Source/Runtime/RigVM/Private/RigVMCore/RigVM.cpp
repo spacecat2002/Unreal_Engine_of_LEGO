@@ -73,7 +73,7 @@ void URigVM::RefreshInstructionsIfRequired()
 	}
 }
 
-bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> AdditionalArgs)
+bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> AdditionalArguments)
 {
 	ResolveFunctionsIfRequired();
 	RefreshInstructionsIfRequired();
@@ -94,75 +94,75 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> Add
 	{
 		switch (Instructions[InstructionIndex].OpCode)
 		{
-			case ERigVMOpCode::Execute_0_Args:
-			case ERigVMOpCode::Execute_1_Args:
-			case ERigVMOpCode::Execute_2_Args:
-			case ERigVMOpCode::Execute_3_Args:
-			case ERigVMOpCode::Execute_4_Args:
-			case ERigVMOpCode::Execute_5_Args:
-			case ERigVMOpCode::Execute_6_Args:
-			case ERigVMOpCode::Execute_7_Args:
-			case ERigVMOpCode::Execute_8_Args:
-			case ERigVMOpCode::Execute_9_Args:
-			case ERigVMOpCode::Execute_10_Args:
-			case ERigVMOpCode::Execute_11_Args:
-			case ERigVMOpCode::Execute_12_Args:
-			case ERigVMOpCode::Execute_13_Args:
-			case ERigVMOpCode::Execute_14_Args:
-			case ERigVMOpCode::Execute_15_Args:
-			case ERigVMOpCode::Execute_16_Args:
-			case ERigVMOpCode::Execute_17_Args:
-			case ERigVMOpCode::Execute_18_Args:
-			case ERigVMOpCode::Execute_19_Args:
-			case ERigVMOpCode::Execute_20_Args:
-			case ERigVMOpCode::Execute_21_Args:
-			case ERigVMOpCode::Execute_22_Args:
-			case ERigVMOpCode::Execute_23_Args:
-			case ERigVMOpCode::Execute_24_Args:
-			case ERigVMOpCode::Execute_25_Args:
-			case ERigVMOpCode::Execute_26_Args:
-			case ERigVMOpCode::Execute_27_Args:
-			case ERigVMOpCode::Execute_28_Args:
-			case ERigVMOpCode::Execute_29_Args:
-			case ERigVMOpCode::Execute_30_Args:
-			case ERigVMOpCode::Execute_31_Args:
-			case ERigVMOpCode::Execute_32_Args:
-			case ERigVMOpCode::Execute_33_Args:
-			case ERigVMOpCode::Execute_34_Args:
-			case ERigVMOpCode::Execute_35_Args:
-			case ERigVMOpCode::Execute_36_Args:
-			case ERigVMOpCode::Execute_37_Args:
-			case ERigVMOpCode::Execute_38_Args:
-			case ERigVMOpCode::Execute_39_Args:
-			case ERigVMOpCode::Execute_40_Args:
-			case ERigVMOpCode::Execute_41_Args:
-			case ERigVMOpCode::Execute_42_Args:
-			case ERigVMOpCode::Execute_43_Args:
-			case ERigVMOpCode::Execute_44_Args:
-			case ERigVMOpCode::Execute_45_Args:
-			case ERigVMOpCode::Execute_46_Args:
-			case ERigVMOpCode::Execute_47_Args:
-			case ERigVMOpCode::Execute_48_Args:
-			case ERigVMOpCode::Execute_49_Args:
-			case ERigVMOpCode::Execute_50_Args:
-			case ERigVMOpCode::Execute_51_Args:
-			case ERigVMOpCode::Execute_52_Args:
-			case ERigVMOpCode::Execute_53_Args:
-			case ERigVMOpCode::Execute_54_Args:
-			case ERigVMOpCode::Execute_55_Args:
-			case ERigVMOpCode::Execute_56_Args:
-			case ERigVMOpCode::Execute_57_Args:
-			case ERigVMOpCode::Execute_58_Args:
-			case ERigVMOpCode::Execute_59_Args:
-			case ERigVMOpCode::Execute_60_Args:
-			case ERigVMOpCode::Execute_61_Args:
-			case ERigVMOpCode::Execute_62_Args:
-			case ERigVMOpCode::Execute_63_Args:
-			case ERigVMOpCode::Execute_64_Args:
+			case ERigVMOpCode::Execute_0_Operands:
+			case ERigVMOpCode::Execute_1_Operands:
+			case ERigVMOpCode::Execute_2_Operands:
+			case ERigVMOpCode::Execute_3_Operands:
+			case ERigVMOpCode::Execute_4_Operands:
+			case ERigVMOpCode::Execute_5_Operands:
+			case ERigVMOpCode::Execute_6_Operands:
+			case ERigVMOpCode::Execute_7_Operands:
+			case ERigVMOpCode::Execute_8_Operands:
+			case ERigVMOpCode::Execute_9_Operands:
+			case ERigVMOpCode::Execute_10_Operands:
+			case ERigVMOpCode::Execute_11_Operands:
+			case ERigVMOpCode::Execute_12_Operands:
+			case ERigVMOpCode::Execute_13_Operands:
+			case ERigVMOpCode::Execute_14_Operands:
+			case ERigVMOpCode::Execute_15_Operands:
+			case ERigVMOpCode::Execute_16_Operands:
+			case ERigVMOpCode::Execute_17_Operands:
+			case ERigVMOpCode::Execute_18_Operands:
+			case ERigVMOpCode::Execute_19_Operands:
+			case ERigVMOpCode::Execute_20_Operands:
+			case ERigVMOpCode::Execute_21_Operands:
+			case ERigVMOpCode::Execute_22_Operands:
+			case ERigVMOpCode::Execute_23_Operands:
+			case ERigVMOpCode::Execute_24_Operands:
+			case ERigVMOpCode::Execute_25_Operands:
+			case ERigVMOpCode::Execute_26_Operands:
+			case ERigVMOpCode::Execute_27_Operands:
+			case ERigVMOpCode::Execute_28_Operands:
+			case ERigVMOpCode::Execute_29_Operands:
+			case ERigVMOpCode::Execute_30_Operands:
+			case ERigVMOpCode::Execute_31_Operands:
+			case ERigVMOpCode::Execute_32_Operands:
+			case ERigVMOpCode::Execute_33_Operands:
+			case ERigVMOpCode::Execute_34_Operands:
+			case ERigVMOpCode::Execute_35_Operands:
+			case ERigVMOpCode::Execute_36_Operands:
+			case ERigVMOpCode::Execute_37_Operands:
+			case ERigVMOpCode::Execute_38_Operands:
+			case ERigVMOpCode::Execute_39_Operands:
+			case ERigVMOpCode::Execute_40_Operands:
+			case ERigVMOpCode::Execute_41_Operands:
+			case ERigVMOpCode::Execute_42_Operands:
+			case ERigVMOpCode::Execute_43_Operands:
+			case ERigVMOpCode::Execute_44_Operands:
+			case ERigVMOpCode::Execute_45_Operands:
+			case ERigVMOpCode::Execute_46_Operands:
+			case ERigVMOpCode::Execute_47_Operands:
+			case ERigVMOpCode::Execute_48_Operands:
+			case ERigVMOpCode::Execute_49_Operands:
+			case ERigVMOpCode::Execute_50_Operands:
+			case ERigVMOpCode::Execute_51_Operands:
+			case ERigVMOpCode::Execute_52_Operands:
+			case ERigVMOpCode::Execute_53_Operands:
+			case ERigVMOpCode::Execute_54_Operands:
+			case ERigVMOpCode::Execute_55_Operands:
+			case ERigVMOpCode::Execute_56_Operands:
+			case ERigVMOpCode::Execute_57_Operands:
+			case ERigVMOpCode::Execute_58_Operands:
+			case ERigVMOpCode::Execute_59_Operands:
+			case ERigVMOpCode::Execute_60_Operands:
+			case ERigVMOpCode::Execute_61_Operands:
+			case ERigVMOpCode::Execute_62_Operands:
+			case ERigVMOpCode::Execute_63_Operands:
+			case ERigVMOpCode::Execute_64_Operands:
 			{
 				const FRigVMExecuteOp& Op = ByteCode.GetOpAt<FRigVMExecuteOp>(Instructions[InstructionIndex]);
-				FRigVMArgumentArray Args = ByteCode.GetArgumentsForExecuteOp(Instructions[InstructionIndex]);
-				(*Functions[Op.FunctionIndex])(Args, Memory, AdditionalArgs);
+				FRigVMOperandArray Operands = ByteCode.GetOperandsForExecuteOp(Instructions[InstructionIndex]);
+				(*Functions[Op.FunctionIndex])(Operands, Memory, AdditionalArguments);
 				InstructionIndex++;
 				break;
 			}
