@@ -24,6 +24,8 @@ FRigVMGraphUtils::FRigVMGraphUtils(URigVMGraph* InGraph, URigVMPin* InCycleCheck
 			case ERigVMGraphNotifType::NodeRemoved:
 			case ERigVMGraphNotifType::LinkAdded:
 			case ERigVMGraphNotifType::LinkRemoved:
+			case ERigVMGraphNotifType::PinDirectionChanged:
+			case ERigVMGraphNotifType::PinTypeChanged:
 			{
 				Reset();
 				break;

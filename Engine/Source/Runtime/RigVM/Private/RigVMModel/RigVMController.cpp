@@ -53,7 +53,6 @@ void URigVMController::HandleModifiedEvent(ERigVMGraphNotifType InNotifType, URi
 	ModifiedEvent.Broadcast(InNotifType, InGraph, InSubject);
 }
 
-
 URigVMStructNode* URigVMController::AddStructNode(UScriptStruct* InScriptStruct, const FName& InMethodName, const FVector2D& InPosition, bool bUndo)
 {
 	if (Graph == nullptr)
