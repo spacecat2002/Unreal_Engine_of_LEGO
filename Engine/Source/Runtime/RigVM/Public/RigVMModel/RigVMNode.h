@@ -14,7 +14,8 @@ class RIGVM_API URigVMNode : public UObject
 
 public:
 
-	virtual ~URigVMNode() {}
+	URigVMNode();
+	virtual ~URigVMNode();
 
 	FString GetNodePath() const;
 	int32 GetNodeIndex() const;
@@ -25,6 +26,7 @@ public:
 	URigVMGraph* GetGraph() const;
 
 	FVector2D GetPosition() const;
+	FVector2D GetSize() const;
 
 	bool IsSelected() const;
 
@@ -42,11 +44,16 @@ private:
 	bool IsConnectedToRecursive(URigVMPin* InPin, URigVMNode* InNode) const;
 	void GetConnectedNodesRecursive(URigVMPin* InPin, bool bLookForSources, TArray<URigVMNode*>& OutNodes) const;
 
-	UPROPERTY()
-	TArray<URigVMPin*> Pins;
-
+protected:
 	UPROPERTY()
 	FVector2D Position;
+
+	UPROPERTY()
+	FVector2D Size;
+
+private:
+	UPROPERTY()
+	TArray<URigVMPin*> Pins;
 
 	friend class URigVMController;
 	friend class RigVMGraph;

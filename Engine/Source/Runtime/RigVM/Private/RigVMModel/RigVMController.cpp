@@ -110,6 +110,38 @@ URigVMStructNode* URigVMController::AddStructNode(UScriptStruct* InScriptStruct,
 	return Node;
 }
 
+URigVMCommentNode* URigVMController::AddCommentNode(const FString& InCommentText, const FVector2D& InPosition, const FVector2D& InSize, bool bUndo)
+{
+	if (Graph == nullptr)
+	{
+		return nullptr;
+	}
+
+	FString NamePrefix = TEXT("CommentNode");
+	int32 NameSuffix = 0;
+	FString Name = NamePrefix;
+
+	while (!Graph->IsNameAvailable(Name))
+	{
+		Name = FString::Printf(TEXT("%s_%d"), *NamePrefix, ++NameSuffix);
+	}
+
+	URigVMCommentNode* Node = NewObject<URigVMCommentNode>(Graph, *Name);
+	Node->Position = InPosition;
+	Node->Size = InSize;
+	Node->CommentText = InCommentText;
+
+	Graph->Nodes.Add(Node);
+	Graph->MarkPackageDirty();
+
+	// todo: undo redo
+
+	Notify(ERigVMGraphNotifType::NodeAdded, Graph, Node);
+
+	return Node;
+}
+
+
 bool URigVMController::RemoveNode(URigVMNode* InNode, bool bUndo)
 {
 	if (!IsValidNodeForGraph(InNode))
@@ -123,10 +155,10 @@ bool URigVMController::RemoveNode(URigVMNode* InNode, bool bUndo)
 
 	for (URigVMPin* Pin : InNode->Pins)
 	{
-		BreakAllLinks(Pin, true);
-		BreakAllLinks(Pin, false);
-		BreakAllLinksRecursive(Pin, true, false);
-		BreakAllLinksRecursive(Pin, false, false);
+		BreakAllLinks(Pin, true, bUndo);
+		BreakAllLinks(Pin, false, bUndo);
+		BreakAllLinksRecursive(Pin, true, false, bUndo);
+		BreakAllLinksRecursive(Pin, false, false, bUndo);
 	}
 
 	Graph->Nodes.Remove(InNode);
@@ -198,6 +230,50 @@ bool URigVMController::ClearNodeSelection(bool bUndo)
 	return Selection.Num() > 0;
 }
 
+bool URigVMController::SetNodePosition(URigVMNode* InNode, const FVector2D& InPosition, bool bUndo)
+{
+	if (!IsValidNodeForGraph(InNode))
+	{
+		return false;
+	}
+
+	InNode->Position = InPosition;
+	// todo: undo redo
+	Notify(ERigVMGraphNotifType::NodePositionChanged, Graph, InNode);
+	return true;
+}
+
+bool URigVMController::SetNodeSize(URigVMNode* InNode, const FVector2D& InSize, bool bUndo)
+{
+	if (!IsValidNodeForGraph(InNode))
+	{
+		return false;
+	}
+
+	InNode->Size = InSize;
+	// todo: undo redo
+	Notify(ERigVMGraphNotifType::NodeSizeChanged, Graph, InNode);
+	return true;
+}
+
+bool URigVMController::SetCommentText(URigVMNode* InNode, const FString& InCommentText, bool bUndo)
+{
+	if (!IsValidNodeForGraph(InNode))
+	{
+		return false;
+	}
+
+	if (URigVMCommentNode* CommentNode = Cast<URigVMCommentNode>(InNode))
+	{
+		CommentNode->CommentText = InCommentText;
+		// todo: undo redo
+		Notify(ERigVMGraphNotifType::CommentTextChanged, Graph, InNode);
+		return true;
+	}
+
+	return false;
+}
+
 FString URigVMController::GetPinDefaultValue(const FString& InPinPath)
 {
 	if (Graph)
@@ -211,7 +287,7 @@ FString URigVMController::GetPinDefaultValue(const FString& InPinPath)
 	return FString();
 }
 
-void URigVMController::SetPinDefaultValue(const FString& InPinPath, const FString& InDefaultValue)
+void URigVMController::SetPinDefaultValue(const FString& InPinPath, const FString& InDefaultValue, bool bUndo)
 {
 	if (Graph)
 	{
@@ -220,13 +296,13 @@ void URigVMController::SetPinDefaultValue(const FString& InPinPath, const FStrin
 		{
 			if (Pin->Direction == ERigVMPinDirection::Input)
 			{
-				SetPinDefaultValue(Pin, InDefaultValue);
+				SetPinDefaultValue(Pin, InDefaultValue, false, bUndo);
 			}
 		}
 	}
 }
 
-void URigVMController::SetPinDefaultValue(URigVMPin* InPin, const FString& InDefaultValue, bool bResizeArrays)
+void URigVMController::SetPinDefaultValue(URigVMPin* InPin, const FString& InDefaultValue, bool bResizeArrays, bool bUndo)
 {
 	check(InPin);
 	ensure(!InDefaultValue.IsEmpty());
@@ -241,11 +317,11 @@ void URigVMController::SetPinDefaultValue(URigVMPin* InPin, const FString& InDef
 		{
 			while (Elements.Num() > InPin->SubPins.Num())
 			{
-				InsertArrayPin(InPin, INDEX_NONE, FString());
+				InsertArrayPin(InPin, INDEX_NONE, FString(), bUndo);
 			}
 			while (Elements.Num() < InPin->SubPins.Num())
 			{
-				RemovePin(InPin->SubPins.Last());
+				RemovePin(InPin->SubPins.Last(), bUndo);
 			}
 		}
 		else
@@ -260,7 +336,7 @@ void URigVMController::SetPinDefaultValue(URigVMPin* InPin, const FString& InDef
 			{
 				Elements[ElementIndex].Mid(1, Elements[ElementIndex].Len() - 2);
 			}
-			SetPinDefaultValue(SubPin, Elements[ElementIndex], bResizeArrays);
+			SetPinDefaultValue(SubPin, Elements[ElementIndex], bResizeArrays, bUndo);
 		}
 	}
 	else if (InPin->IsStruct())
@@ -279,13 +355,14 @@ void URigVMController::SetPinDefaultValue(URigVMPin* InPin, const FString& InDef
 					{
 						MemberValue.Mid(1, MemberValue.Len() - 2);
 					}
-					SetPinDefaultValue(SubPin, MemberValue, bResizeArrays);
+					SetPinDefaultValue(SubPin, MemberValue, bResizeArrays, bUndo);
 				}
 			}
 		}
 	}
 	else
 	{
+		// todo: undo redo
 		ensure(InPin->GetSubPins().Num() == 0);;
 		InPin->DefaultValue = InDefaultValue;
 		Graph->Notify(ERigVMGraphNotifType::PinDefaultValueChanged, Graph, InPin);
@@ -343,12 +420,12 @@ TArray<FString> URigVMController::SplitDefaultValue(const FString& InDefaultValu
 	return Parts;
 }
 
-FString URigVMController::AddArrayPin(const FString& InArrayPinPath, const FString& InDefaultValue)
+FString URigVMController::AddArrayPin(const FString& InArrayPinPath, const FString& InDefaultValue, bool bUndo)
 {
-	return InsertArrayPin(InArrayPinPath, INDEX_NONE, InDefaultValue);
+	return InsertArrayPin(InArrayPinPath, INDEX_NONE, InDefaultValue, bUndo);
 }
 
-FString URigVMController::DuplicateArrayPin(const FString& InArrayElementPinPath)
+FString URigVMController::DuplicateArrayPin(const FString& InArrayElementPinPath, bool bUndo)
 {
 	if (Graph == nullptr)
 	{
@@ -371,10 +448,10 @@ FString URigVMController::DuplicateArrayPin(const FString& InArrayElementPinPath
 	ensure(ArrayPin->IsArray());
 
 	FString DefaultValue = ElementPin->GetDefaultValue();
-	return InsertArrayPin(ArrayPin->GetPinPath(), ElementPin->Index + 1, DefaultValue);
+	return InsertArrayPin(ArrayPin->GetPinPath(), ElementPin->Index + 1, DefaultValue, bUndo);
 }
 
-FString URigVMController::InsertArrayPin(const FString& InArrayPinPath, int32 InIndex, const FString& InDefaultValue)
+FString URigVMController::InsertArrayPin(const FString& InArrayPinPath, int32 InIndex, const FString& InDefaultValue, bool bUndo)
 {
 	if (Graph == nullptr)
 	{
@@ -387,7 +464,7 @@ FString URigVMController::InsertArrayPin(const FString& InArrayPinPath, int32 In
 		return FString();
 	}
 
-	URigVMPin* ElementPin = InsertArrayPin(ArrayPin, InIndex, InDefaultValue);
+	URigVMPin* ElementPin = InsertArrayPin(ArrayPin, InIndex, InDefaultValue, bUndo);
 	if (ElementPin)
 	{
 		return ElementPin->GetPinPath();
@@ -396,7 +473,7 @@ FString URigVMController::InsertArrayPin(const FString& InArrayPinPath, int32 In
 	return FString();
 }
 
-URigVMPin* URigVMController::InsertArrayPin(URigVMPin* ArrayPin, int32 InIndex, const FString& InDefaultValue)
+URigVMPin* URigVMController::InsertArrayPin(URigVMPin* ArrayPin, int32 InIndex, const FString& InDefaultValue, bool bUndo)
 {
 	if (!ArrayPin->IsArray())
 	{
@@ -451,7 +528,7 @@ URigVMPin* URigVMController::InsertArrayPin(URigVMPin* ArrayPin, int32 InIndex, 
 	return Pin;
 }
 
-bool URigVMController::RemoveArrayPin(const FString& InArrayElementPinPath)
+bool URigVMController::RemoveArrayPin(const FString& InArrayElementPinPath, bool bUndo)
 {
 	if (Graph == nullptr)
 	{
@@ -476,7 +553,7 @@ bool URigVMController::RemoveArrayPin(const FString& InArrayElementPinPath)
 	// todo: undo redo
 
 	int32 IndexToRemove = ArrayElementPin->Index;
-	if (!RemovePin(ArrayElementPin))
+	if (!RemovePin(ArrayElementPin, bUndo))
 	{
 		return false;
 	}
@@ -492,12 +569,12 @@ bool URigVMController::RemoveArrayPin(const FString& InArrayElementPinPath)
 	return true;
 }
 
-bool URigVMController::RemovePin(URigVMPin* InPinToRemove)
+bool URigVMController::RemovePin(URigVMPin* InPinToRemove, bool bUndo)
 {
-	BreakAllLinks(InPinToRemove, true);
-	BreakAllLinks(InPinToRemove, false);
-	BreakAllLinksRecursive(InPinToRemove, true, false);
-	BreakAllLinksRecursive(InPinToRemove, false, false);
+	BreakAllLinks(InPinToRemove, true, bUndo);
+	BreakAllLinks(InPinToRemove, false, bUndo);
+	BreakAllLinksRecursive(InPinToRemove, true, false, bUndo);
+	BreakAllLinksRecursive(InPinToRemove, false, false, bUndo);
 
 	URigVMPin* ParentPin = InPinToRemove->GetParentPin();
 	ParentPin->SubPins.Remove(InPinToRemove);
@@ -506,7 +583,7 @@ bool URigVMController::RemovePin(URigVMPin* InPinToRemove)
 	TArray<URigVMPin*> SubPins = InPinToRemove->GetSubPins();
 	for (URigVMPin* SubPin : SubPins)
 	{
-		if (!RemovePin(SubPin))
+		if (!RemovePin(SubPin, bUndo))
 		{
 			return false;
 		}
@@ -516,7 +593,7 @@ bool URigVMController::RemovePin(URigVMPin* InPinToRemove)
 	return true;
 }
 
-bool URigVMController::ClearArrayPin(const FString& InArrayPinPath)
+bool URigVMController::ClearArrayPin(const FString& InArrayPinPath, bool bUndo)
 {
 	if (Graph == nullptr)
 	{
@@ -539,7 +616,7 @@ bool URigVMController::ClearArrayPin(const FString& InArrayPinPath)
 	TArray<URigVMPin*> ElementPins = Pin->GetSubPins();
 	for (int32 ElementIndex = ElementPins.Num() - 1; ElementIndex >= 0; ElementIndex--)
 	{
-		if (!RemoveArrayPin(ElementPins[ElementIndex]->GetPinPath()))
+		if (!RemoveArrayPin(ElementPins[ElementIndex]->GetPinPath(), bUndo))
 		{
 			return false;
 		}
@@ -548,7 +625,7 @@ bool URigVMController::ClearArrayPin(const FString& InArrayPinPath)
 	return ElementPins.Num() > 0;
 }
 
-bool URigVMController::AddLink(const FString& InOutputPinPath, const FString& InInputPinPath)
+bool URigVMController::AddLink(const FString& InOutputPinPath, const FString& InInputPinPath, bool bUndo)
 {
 	if (Graph == nullptr)
 	{
@@ -562,10 +639,10 @@ bool URigVMController::AddLink(const FString& InOutputPinPath, const FString& In
 		return false;
 	}
 
-	return AddLink(OutputPin, InputPin);
+	return AddLink(OutputPin, InputPin, bUndo);
 }
 
-bool URigVMController::AddLink(URigVMPin* OutputPin, URigVMPin* InputPin)
+bool URigVMController::AddLink(URigVMPin* OutputPin, URigVMPin* InputPin, bool bUndo)
 {
 	if (!Graph->CanLink(OutputPin, InputPin))
 	{
@@ -578,9 +655,9 @@ bool URigVMController::AddLink(URigVMPin* OutputPin, URigVMPin* InputPin)
 	}
 	ensure(!InputPin->IsConnectedTo(OutputPin));
 
-	BreakAllLinks(InputPin, true);
-	BreakAllLinksRecursive(InputPin, true, true);
-	BreakAllLinksRecursive(InputPin, true, false);
+	BreakAllLinks(InputPin, true, bUndo);
+	BreakAllLinksRecursive(InputPin, true, true, bUndo);
+	BreakAllLinksRecursive(InputPin, true, false, bUndo);
 
 	URigVMLink* Link = NewObject<URigVMLink>(Graph);
 	Link->SourcePin = OutputPin;
@@ -599,7 +676,7 @@ bool URigVMController::AddLink(URigVMPin* OutputPin, URigVMPin* InputPin)
 	return true;
 }
 
-bool URigVMController::BreakLink(const FString& InOutputPinPath, const FString& InInputPinPath)
+bool URigVMController::BreakLink(const FString& InOutputPinPath, const FString& InInputPinPath, bool bUndo)
 {
 	if (Graph == nullptr)
 	{
@@ -613,10 +690,10 @@ bool URigVMController::BreakLink(const FString& InOutputPinPath, const FString& 
 		return false;
 	}
 
-	return BreakLink(OutputPin, InputPin);
+	return BreakLink(OutputPin, InputPin, bUndo);
 }
 
-bool URigVMController::BreakLink(URigVMPin* OutputPin, URigVMPin* InputPin)
+bool URigVMController::BreakLink(URigVMPin* OutputPin, URigVMPin* InputPin, bool bUndo)
 {
 	if (!OutputPin->IsConnectedTo(InputPin))
 	{
@@ -646,7 +723,7 @@ bool URigVMController::BreakLink(URigVMPin* OutputPin, URigVMPin* InputPin)
 	return false;
 }
 
-bool URigVMController::BreakAllLinks(const FString& InPinPath, bool bAsInput)
+bool URigVMController::BreakAllLinks(const FString& InPinPath, bool bAsInput, bool bUndo)
 {
 	if (Graph == nullptr)
 	{
@@ -659,10 +736,10 @@ bool URigVMController::BreakAllLinks(const FString& InPinPath, bool bAsInput)
 		return false;
 	}
 
-	return BreakAllLinks(Pin, bAsInput);
+	return BreakAllLinks(Pin, bAsInput, bUndo);
 }
 
-bool URigVMController::BreakAllLinks(URigVMPin* Pin, bool bAsInput)
+bool URigVMController::BreakAllLinks(URigVMPin* Pin, bool bAsInput, bool bUndo)
 {
 	int32 LinksBroken = 0;
 	TArray<URigVMLink*> Links = Pin->GetLinks();
@@ -671,11 +748,11 @@ bool URigVMController::BreakAllLinks(URigVMPin* Pin, bool bAsInput)
 		URigVMLink* Link = Links[LinkIndex];
 		if (bAsInput && Link->GetTargetPin() == Pin)
 		{
-			LinksBroken += BreakLink(Link->GetSourcePin(), Pin) ? 1 : 0;
+			LinksBroken += BreakLink(Link->GetSourcePin(), Pin, bUndo) ? 1 : 0;
 		}
 		else if (!bAsInput && Link->GetSourcePin() == Pin)
 		{
-			LinksBroken += BreakLink(Pin, Link->GetTargetPin()) ? 1 : 0;
+			LinksBroken += BreakLink(Pin, Link->GetTargetPin(), bUndo) ? 1 : 0;
 		}
 	}
 
@@ -684,23 +761,23 @@ bool URigVMController::BreakAllLinks(URigVMPin* Pin, bool bAsInput)
 	return LinksBroken > 0;
 }
 
-void URigVMController::BreakAllLinksRecursive(URigVMPin* Pin, bool bAsInput, bool bTowardsParent)
+void URigVMController::BreakAllLinksRecursive(URigVMPin* Pin, bool bAsInput, bool bTowardsParent, bool bUndo)
 {
 	if (bTowardsParent)
 	{
 		URigVMPin* ParentPin = Pin->GetParentPin();
 		if (ParentPin)
 		{
-			BreakAllLinks(ParentPin, bAsInput);
-			BreakAllLinksRecursive(ParentPin, bAsInput, bTowardsParent);
+			BreakAllLinks(ParentPin, bAsInput, bUndo);
+			BreakAllLinksRecursive(ParentPin, bAsInput, bTowardsParent, bUndo);
 		}
 	}
 	else
 	{
 		for (URigVMPin* SubPin : Pin->SubPins)
 		{
-			BreakAllLinks(SubPin, bAsInput);
-			BreakAllLinksRecursive(SubPin, bAsInput, bTowardsParent);
+			BreakAllLinks(SubPin, bAsInput, bUndo);
+			BreakAllLinksRecursive(SubPin, bAsInput, bTowardsParent, bUndo);
 		}
 	}
 }
@@ -1039,7 +1116,7 @@ void URigVMController::RepopulatePinsOnNode(URigVMNode* InNode)
 		FString* DefaultValue = DefaultValues.Find(Pin->GetFName());
 		if (DefaultValue)
 		{
-			SetPinDefaultValue(Pin, *DefaultValue, true);
+			SetPinDefaultValue(Pin, *DefaultValue, true, false);
 		}
 	}
 }

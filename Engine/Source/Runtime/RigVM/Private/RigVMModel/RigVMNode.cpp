@@ -3,6 +3,18 @@
 #include "RigVMModel/RigVMNode.h"
 #include "RigVMModel/RigVMGraph.h"
 
+URigVMNode::URigVMNode()
+: UObject()
+, Position(FVector2D::ZeroVector)
+, Size(FVector2D::ZeroVector)
+{
+
+}
+
+URigVMNode::~URigVMNode()
+{
+}
+
 FString URigVMNode::GetNodePath() const
 {
 	return GetName();
@@ -54,6 +66,11 @@ URigVMGraph* URigVMNode::GetGraph() const
 FVector2D URigVMNode::GetPosition() const
 {
 	return Position;
+}
+
+FVector2D URigVMNode::GetSize() const
+{
+	return Size;
 }
 
 bool URigVMNode::IsSelected() const
