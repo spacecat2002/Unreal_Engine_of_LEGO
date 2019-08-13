@@ -81,7 +81,7 @@ enum class ERigVMRegisterType : uint8
 // slices / copies of that if needed. Slices can be used to provide 
 // per-invocation memory to functions within the same register.
 // An integrator for example that needs to store a simulated position
-// might want access to a separate memory memory per loop iteration.
+// might want access to a separate memory per loop iteration.
 USTRUCT()
 struct RIGVM_API FRigVMRegister
 {
@@ -129,7 +129,7 @@ struct RIGVM_API FRigVMRegister
 	UPROPERTY()
 	uint8 AlignmentBytes;
 
-	// The numbber of trailing bytes.
+	// The number of trailing bytes.
 	// These originate after shrinking a register.
 	UPROPERTY()
 	uint16 TrailingBytes;
@@ -292,7 +292,7 @@ public:
 
 	// Returns an argument for a given register.
 	// This is typically used to store a light weight address for use within a VM.
-	FORCEINLINE FRigVMOperand GetArgument(int32 InRegisterIndex) const
+	FORCEINLINE FRigVMOperand GetOperand(int32 InRegisterIndex) const
 	{
 		ensure(Registers.IsValidIndex(InRegisterIndex));
 		return FRigVMOperand(MemoryType, InRegisterIndex, Registers[InRegisterIndex].ByteIndex);
@@ -551,50 +551,26 @@ public:
 		return GetIndex(InPotentialNewName) == INDEX_NONE;
 	}
 
-	// Adds a new named register for a plain array from a data pointer.
-	FORCEINLINE int32 AddPlainArray(const FName& InNewName, int32 InElementSize, int32 InCount, const void* InDataPtr = nullptr, int32 InSliceCount = 1)
-	{
-		return Allocate(InNewName, InElementSize, InCount, InSliceCount, InDataPtr);
-	}
-
-	// Adds a new named register for a typed plain array from a data pointer.
+	// Adds a new named register for a typed plain array from an array view (used by compiler)
 	template<class T>
-	FORCEINLINE int32 AddPlainArray(const FName& InNewName, int32 InCount, const T* InDataPtr = nullptr, int32 InSliceCount = 1)
+	FORCEINLINE int32 AddPlainArray(const FName& InNewName, TArrayView<T> InArrayView, int32 InSliceCount = 1)
 	{
-		return Allocate(InNewName, sizeof(T), InCount, InSliceCount, (const void*)InDataPtr);
+		return AddPlainArray(InNewName, sizeof(T), InArrayView.Num(), (const void*)InArrayView.GetData(), InSliceCount);
 	}
 
-	// Adds a new named register for a typed plain array from a TArray.
+	// Adds a new unnamed register for a typed plain array from an array view.
 	template<class T>
-	FORCEINLINE int32 AddPlainArray(const FName& InNewName, const TArray<T>& InArray, int32 InSliceCount = 1)
+	FORCEINLINE int32 AddPlainArray(TArrayView<T> InArrayView, int32 InSliceCount = 1)
 	{
-		return AddPlainArray<T>(InNewName, InArray.Num(), InArray.GetData(), InSliceCount);
-	}
-
-	// Adds a new unnamed register for a typed plain array from a TArray.
-	template<class T>
-	FORCEINLINE int32 AddPlainArray(const TArray<T>& InArray, int32 InSliceCount = 1)
-	{
-		return AddPlainArray<T>(NAME_None, InArray, InSliceCount);
-	}
-
-	// Adds a new named register for a plain value from a data pointer.
-	FORCEINLINE int32 AddPlain(const FName& InNewName, int32 InElementSize, const void* InValuePtr, int32 InSliceCount = 1)
-	{
-		return AddPlainArray(InNewName, InElementSize, 1, InValuePtr, InSliceCount);
-	}
-
-	// Adds a new unnamed register for a  plain value from a data pointer.
-	FORCEINLINE int32 AddPlain(int32 InElementSize, const void* InValuePtr, int32 InSliceCount = 1)
-	{
-		return AddPlain(NAME_None, InElementSize, InValuePtr, InSliceCount);
+		return AddPlainArray<T>(NAME_None, InArrayView, InSliceCount);
 	}
 
 	// Adds a new named register for a typed plain value from a value reference.
 	template<class T>
 	FORCEINLINE int32 AddPlain(const FName& InNewName, const T& InValue, int32 InSliceCount = 1)
 	{
-		return AddPlainArray<T>(InNewName, 1, &InValue, InSliceCount);
+		TArrayView<T> ArrayView((T*)&InValue, 1);
+		return AddPlainArray<T>(InNewName, ArrayView, InSliceCount);
 	}
 
 	// Adds a new unnamed register for a typed plain value from a value reference.
@@ -604,89 +580,31 @@ public:
 		return AddPlain<T>(NAME_None, InValue, InSliceCount);
 	}
 
-	// Adds a new named register for a struct given a scriptstruct and a data pointer.
-	FORCEINLINE int32 AddStructArray(const FName& InNewName, UScriptStruct* InScriptStruct, int32 InCount, const void* InDataPtr = nullptr, int32 InSliceCount = 1)
-	{
-		int32 Register = Allocate(InNewName, InScriptStruct->GetStructureSize(), InCount, InSliceCount, nullptr, false);
-		if (Register == INDEX_NONE)
-		{
-			return INDEX_NONE;
-		}
-
-		Registers[Register].Type = ERigVMRegisterType::Struct;
-		Registers[Register].ScriptStructIndex = FindOrAddScriptStruct(InScriptStruct);
-
-		UpdateRegisters();
-
-		// construct the content
-		Construct(Register);
-
-		// copy values from the provided data
-		if (InDataPtr != nullptr)
-		{
-			Registers[Register].MoveToFirstSlice();
-			for (uint16 SliceIndex = 0; SliceIndex < Registers[Register].SliceCount; SliceIndex++)
-			{
-				InScriptStruct->CopyScriptStruct(GetData(Register), InDataPtr, InCount);
-				Registers[Register].MoveToNextSlice();
-			}
-			Registers[Register].MoveToFirstSlice();
-		}
-
-		return Register;
-	}
-
-	// Adds a new unnamed register for a struct given a scriptstruct and a data pointer.
-	FORCEINLINE int32 AddStructArray(UScriptStruct* InScriptStruct, int32 InCount, const void* InDataPtr = nullptr, int32 InSliceCount = 1)
-	{
-		return AddStructArray(NAME_None, InScriptStruct, InCount, InDataPtr, InSliceCount);
-	}
-
-	// Adds a new named register for a typed struct given a data pointer.
+	// Adds a new named register for a typed struct array given a value reference.
 	template<class T>
-	FORCEINLINE int32 AddStructArray(const FName& InNewName, int32 InCount, const T* InDataPtr = nullptr, int32 InSliceCount = 1)
+	FORCEINLINE int32 AddStructArray(const FName& InNewName, TArrayView<T> InArrayView, int32 InSliceCount = 1)
 	{
-		// if you are hitting this - you might need to use AddPlainArray instead!
 		UScriptStruct* Struct = T::StaticStruct();
 		if (Struct == nullptr)
 		{
 			return INDEX_NONE;
 		}
-	
-		return AddStructArray(InNewName, Struct, InCount, InDataPtr, InSliceCount);
-	}
-
-	// Adds a new named register for a typed struct array given a value reference.
-	template<class T>
-	FORCEINLINE int32 AddStructArray(const FName& InNewName, const TArray<T>& InArray, int32 InSliceCount = 1)
-	{
-		return AddStructArray<T>(InNewName, InArray.Num(), InArray.GetData(), InSliceCount);
+		return AddStructArray(InNewName, Struct, InArrayView.Num(), InArrayView.GetData(), InSliceCount);
 	}
 
 	// Adds a new named register for a typed struct array given a TArray
 	template<class T>
-	FORCEINLINE int32 AddStructArray(const TArray<T>& InArray, int32 InSliceCount = 1)
+	FORCEINLINE int32 AddStructArray(TArrayView<T> InArrayView, int32 InSliceCount = 1)
 	{
-		return AddStructArray<T>(NAME_None, InArray, InSliceCount);
-	}
-
-	// Adds a new named register for a struct given a scriptstruct and a value ptr
-	FORCEINLINE int32 AddStruct(const FName& InNewName, UScriptStruct* InScriptStruct, const void* InValuePtr, int32 InSliceCount = 1)
-	{
-		return AddStructArray(InNewName, InScriptStruct, 1, InValuePtr, InSliceCount);
-	}
-
-	// Adds a new unnamed register for a struct given a scriptstruct and value ptr
-	FORCEINLINE int32 AddStruct(UScriptStruct* InScriptStruct, const void* InValuePtr, int32 InSliceCount = 1)
-	{
-		return AddStruct(NAME_None, InScriptStruct, InValuePtr, InSliceCount);
+		return AddStructArray<T>(NAME_None, InArrayView, InSliceCount);
 	}
 
 	// Adds a new named register for a typed struct given a value reference
 	template<class T>
 	FORCEINLINE int32 AddStruct(const FName& InNewName, const T& InValue, int32 InSliceCount = 1)
 	{
-		return AddStructArray<T>(InNewName, 1, &InValue, InSliceCount);
+		TArrayView<T> ArrayView((T*)&InValue, 1);
+		return AddStructArray<T>(InNewName, ArrayView, InSliceCount);
 	}
 
 	// Adds a new unnamed register for a typed struct given a value reference
@@ -719,12 +637,12 @@ public:
 	bool Resize(const FName& InRegisterName, int32 InNewElementCount, int32 InNewSliceCount = 1);
 
 	// Changes the type of a register provided a new type and a data pointer.
-	// This can be used to store different content a register for re-using the memory,
+	// This can be used to store different content in a register for re-using the memory,
 	// but this only works for new elements smaller or of the same size (since the register can't grow).
 	bool ChangeRegisterType(int32 InRegisterIndex, ERigVMRegisterType InNewType, int32 InElementSize, const void* InDataPtr = nullptr, int32 InNewElementCount = 1, int32 InNewSliceCount = 1);
 
 	// Changes the type of a register provided a new type and a data pointer.
-	// This can be used to store different content a register for re-using the memory,
+	// This can be used to store different content in a register for re-using the memory,
 	// but this only works for new elements smaller or of the same size (since the register can't grow).
 	template<class T>
 	FORCEINLINE bool ChangeRegisterType(int32 InRegisterIndex, const T* InDataPtr = nullptr, int32 InNewElementCount = 1, int32 InNewSliceCount = 1)
@@ -733,6 +651,44 @@ public:
 	}
 
 private:
+
+	// Adds a new named register for a plain array from a data pointer (used by compiler)
+	FORCEINLINE int32 AddPlainArray(const FName& InNewName, int32 InElementSize, int32 InCount, const void* InDataPtr = nullptr, int32 InSliceCount = 1)
+	{
+		return Allocate(InNewName, InElementSize, InCount, InSliceCount, InDataPtr);
+	}
+
+	// Adds a new named register for a struct given a scriptstruct and a data pointer (used by compiler)
+	FORCEINLINE int32 AddStructArray(const FName& InNewName, UScriptStruct* InScriptStruct, int32 InCount, const void* InDataPtr = nullptr, int32 InSliceCount = 1)
+	{
+		int32 Register = Allocate(InNewName, InScriptStruct->GetStructureSize(), InCount, InSliceCount, nullptr, false);
+		if (Register == INDEX_NONE)
+		{
+			return INDEX_NONE;
+		}
+
+		Registers[Register].Type = ERigVMRegisterType::Struct;
+		Registers[Register].ScriptStructIndex = FindOrAddScriptStruct(InScriptStruct);
+
+		UpdateRegisters();
+
+		// construct the content
+		Construct(Register);
+
+		// copy values from the provided data
+		if (InDataPtr != nullptr)
+		{
+			Registers[Register].MoveToFirstSlice();
+			for (uint16 SliceIndex = 0; SliceIndex < Registers[Register].SliceCount; SliceIndex++)
+			{
+				InScriptStruct->CopyScriptStruct(GetData(Register), InDataPtr, InCount);
+				Registers[Register].MoveToNextSlice();
+			}
+			Registers[Register].MoveToFirstSlice();
+		}
+
+		return Register;
+	}
 
 	// Updates internal data for topological changes
 	void UpdateRegisters();
@@ -827,22 +783,22 @@ FORCEINLINE bool FRigVMMemoryContainer::ChangeRegisterType(int32 InRegisterIndex
 }
 
 template<>
-FORCEINLINE int32 FRigVMMemoryContainer::AddPlainArray(const FName& InNewName, int32 InCount, const FName* InDataPtr, int32 InSliceCount)
+FORCEINLINE int32 FRigVMMemoryContainer::AddPlainArray(const FName& InNewName, TArrayView<FName> InArrayView, int32 InSliceCount)
 {
-	int32 Register = Allocate(InNewName, sizeof(FName), InCount, InSliceCount, nullptr);
+	int32 Register = Allocate(InNewName, sizeof(FName), InArrayView.Num(), InSliceCount, nullptr);
 	Registers[Register].Type = ERigVMRegisterType::Name;
 
 	Construct(Register);
 
-	if (InDataPtr)
+	if (InArrayView.Num() > 0)
 	{
 		Registers[Register].MoveToFirstSlice();
 		for (uint16 SliceIndex = 0; SliceIndex < Registers[Register].SliceCount; SliceIndex++)
 		{
 			FName* DataPtr = (FName*)GetData(Register);
-			for (int32 Index = 0; Index < InCount; Index++)
+			for (int32 Index = 0; Index < InArrayView.Num(); Index++)
 			{
-				DataPtr[Index] = InDataPtr[Index];
+				DataPtr[Index] = InArrayView[Index];
 			}
 			Registers[Register].MoveToNextSlice();
 		}
@@ -853,22 +809,22 @@ FORCEINLINE int32 FRigVMMemoryContainer::AddPlainArray(const FName& InNewName, i
 }
 
 template<>
-FORCEINLINE int32 FRigVMMemoryContainer::AddPlainArray(const FName& InNewName, int32 InCount, const FString* InDataPtr, int32 InSliceCount)
+FORCEINLINE int32 FRigVMMemoryContainer::AddPlainArray(const FName& InNewName, TArrayView<FString> InArrayView, int32 InSliceCount)
 {
-	int32 Register = Allocate(InNewName, sizeof(FString), InCount, InSliceCount, nullptr);
+	int32 Register = Allocate(InNewName, sizeof(FString), InArrayView.Num(), InSliceCount, nullptr);
 	Registers[Register].Type = ERigVMRegisterType::String;
 
 	Construct(Register);
 
-	if (InDataPtr)
+	if (InArrayView.Num() > 0)
 	{
 		Registers[Register].MoveToFirstSlice();
 		for (uint16 SliceIndex = 0; SliceIndex < Registers[Register].SliceCount; SliceIndex++)
 		{
 			FString* DataPtr = (FString*)GetData(Register);
-			for (int32 Index = 0; Index < InCount; Index++)
+			for (int32 Index = 0; Index < InArrayView.Num(); Index++)
 			{
-				DataPtr[Index] = InDataPtr[Index];
+				DataPtr[Index] = InArrayView[Index];
 			}
 			Registers[Register].MoveToNextSlice();
 		}
@@ -879,4 +835,4 @@ FORCEINLINE int32 FRigVMMemoryContainer::AddPlainArray(const FName& InNewName, i
 }
 
 typedef FRigVMMemoryContainer* FRigVMMemoryContainerPtr;
-typedef TArrayView<FRigVMMemoryContainerPtr> FRigVMMemoryContainerPtrArray;
+typedef TArrayView<FRigVMMemoryContainer*> FRigVMMemoryContainerPtrArray;

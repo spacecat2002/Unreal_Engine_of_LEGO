@@ -111,7 +111,7 @@ uint64 FRigVMByteCode::GetOpNumBytesAt(uint64 InByteCodeIndex, bool bIncludeOper
 			if(bIncludeOperands)
 			{
 				const FRigVMExecuteOp& ExecuteOp = GetOpAt<FRigVMExecuteOp>(InByteCodeIndex);
-				NumBytes += (uint64)ExecuteOp.GetArgumentCount() * (uint64)sizeof(FRigVMOperand);
+				NumBytes += (uint64)ExecuteOp.GetOperandCount() * (uint64)sizeof(FRigVMOperand);
 			}
 			return NumBytes;
 		}

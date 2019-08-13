@@ -60,9 +60,9 @@ private:
 	// disable default constructor
 	FRigVMRegistry() {}
 	// disable copy constructor
-	FRigVMRegistry(const FRigVMRegistry&) {}
+	FRigVMRegistry(const FRigVMRegistry&) = delete;
 	// disable assignment operator
-	FRigVMRegistry& operator= (const FRigVMRegistry &InOther) { return *this; }
+	FRigVMRegistry& operator= (const FRigVMRegistry &InOther) = delete;
 
 	// memory for all functions
 	TArray<FRigVMFunction> Functions;

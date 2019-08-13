@@ -125,7 +125,7 @@ struct RIGVM_API FRigVMExecuteOp : public FRigVMBaseOp
 
 	uint16 FunctionIndex;
 
-	FORCEINLINE uint8 GetArgumentCount() const { return uint8(OpCode) - uint8(ERigVMOpCode::Execute_0_Operands); }
+	FORCEINLINE uint8 GetOperandCount() const { return uint8(OpCode) - uint8(ERigVMOpCode::Execute_0_Operands); }
 };
 
 // operator used for zero, false, true, increment, decrement
@@ -461,14 +461,14 @@ public:
 	FORCEINLINE TArrayView<FRigVMOperand> GetOperandsForExecuteOp(uint64 InByteCodeIndex) const
 	{
 		const FRigVMExecuteOp& ExecuteOp = GetOpAt<FRigVMExecuteOp>(InByteCodeIndex);
-		return GetOperandsAt(InByteCodeIndex + sizeof(FRigVMExecuteOp), ExecuteOp.GetArgumentCount());
+		return GetOperandsAt(InByteCodeIndex + sizeof(FRigVMExecuteOp), ExecuteOp.GetOperandCount());
 	}
 
 	// returns the operands for a given execute instruction
 	FORCEINLINE TArrayView<FRigVMOperand> GetOperandsForExecuteOp(const FRigVMInstruction& InInstruction) const
 	{
 		const FRigVMExecuteOp& ExecuteOp = GetOpAt<FRigVMExecuteOp>(InInstruction);
-		return GetOperandsAt(InInstruction.ByteCodeIndex + sizeof(FRigVMExecuteOp), ExecuteOp.GetArgumentCount());
+		return GetOperandsAt(InInstruction.ByteCodeIndex + sizeof(FRigVMExecuteOp), ExecuteOp.GetOperandCount());
 	}
 
 	// returns the raw data of the byte code
