@@ -8,7 +8,7 @@
 
 class URigVMGraph;
 
-UENUM()
+UENUM(BlueprintType)
 enum class ERigVMGraphNotifType : uint8
 {
 	GraphChanged,

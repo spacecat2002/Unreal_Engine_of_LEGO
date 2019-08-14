@@ -10,7 +10,7 @@
 #include "Nodes/RigVMParameterNode.h"
 #include "RigVMGraph.generated.h"
 
-UCLASS()
+UCLASS(BlueprintType)
 class RIGVM_API URigVMGraph : public UObject
 {
 	GENERATED_BODY()
@@ -19,16 +19,34 @@ public:
 
 	URigVMGraph();
 
+	UFUNCTION(BlueprintCallable, Category = RigVMGraph)
 	const TArray<URigVMNode*>& GetNodes() const;
+
+	UFUNCTION(BlueprintCallable, Category = RigVMGraph)
 	const TArray<URigVMLink*>& GetLinks() const;
+
+	UFUNCTION(BlueprintCallable, Category = RigVMGraph)
 	TArray<FRigVMGraphVariableDescription> GetVariableDescriptions() const;
+
+	UFUNCTION(BlueprintCallable, Category = RigVMGraph)
 	TArray<FRigVMGraphParameterDescription> GetParameterDescriptions() const;
-	URigVMNode* FindNode(const FName& InNodeName) const;
+
+	UFUNCTION(BlueprintCallable, Category = RigVMGraph)
+	URigVMNode* FindNodeByName(const FName& InNodeName) const;
+
+	UFUNCTION(BlueprintCallable, Category = RigVMGraph)
 	URigVMNode* FindNode(const FString& InNodePath) const;
+
+	UFUNCTION(BlueprintCallable, Category = RigVMGraph)
 	URigVMPin* FindPin(const FString& InPinPath) const;
+
+	UFUNCTION(BlueprintCallable, Category = RigVMGraph)
 	URigVMLink* FindLink(const FString& InLinkPinPathRepresentation) const;
 
+	UFUNCTION(BlueprintCallable, Category = RigVMGraph)
 	bool IsNodeSelected(const FName& InNodeName) const;
+
+	UFUNCTION(BlueprintCallable, Category = RigVMGraph)
 	const TArray<FName>& GetSelectNodes() const;
 
 	void PrepareCycleChecking(URigVMPin* InPin, bool bAsInput);

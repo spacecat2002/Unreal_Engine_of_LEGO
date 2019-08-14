@@ -5,7 +5,7 @@
 #include "RigVMModel/RigVMNode.h"
 #include "RigVMBeginExecuteNode.generated.h"
 
-UCLASS()
+UCLASS(BlueprintType)
 class RIGVM_API URigVMBeginExecuteNode : public URigVMNode
 {
 	GENERATED_BODY()

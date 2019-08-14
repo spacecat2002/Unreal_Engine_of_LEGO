@@ -5,7 +5,7 @@
 #include "RigVMModel/RigVMNode.h"
 #include "RigVMVariableNode.generated.h"
 
-USTRUCT()
+USTRUCT(BlueprintType)
 struct FRigVMGraphVariableDescription
 {
 	GENERATED_BODY()
@@ -17,20 +17,20 @@ public:
 		return Name == Other.Name;
 	}
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly, Category = RigVMGraphVariableDescription)
 	FName Name;
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly, Category = RigVMGraphVariableDescription)
 	FString CPPType;
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly, Category = RigVMGraphVariableDescription)
 	UScriptStruct* ScriptStruct;
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly, Category = RigVMGraphVariableDescription)
 	FString DefaultValue;
 };
 
-UCLASS()
+UCLASS(BlueprintType)
 class RIGVM_API URigVMVariableNode : public URigVMNode
 {
 	GENERATED_BODY()
@@ -40,12 +40,25 @@ public:
 	URigVMVariableNode();
 
 	virtual FString GetNodeTitle() const;
+
+	UFUNCTION(BlueprintCallable, Category = RigVMVariableNode)
 	FName GetVariableName() const;
+
+	UFUNCTION(BlueprintCallable, Category = RigVMVariableNode)
 	bool IsGetter() const;
+
+	UFUNCTION(BlueprintCallable, Category = RigVMVariableNode)
 	FString GetCPPType() const;
+
+	UFUNCTION(BlueprintCallable, Category = RigVMVariableNode)
 	UScriptStruct* GetScriptStruct() const;
+
+	UFUNCTION(BlueprintCallable, Category = RigVMVariableNode)
 	FString GetDefaultValue() const;
+
+	UFUNCTION(BlueprintCallable, Category = RigVMVariableNode)
 	FRigVMGraphVariableDescription GetVariableDescription() const;
+
 	virtual FLinearColor GetNodeColor() const override { return FLinearColor::Blue; }
 
 private:

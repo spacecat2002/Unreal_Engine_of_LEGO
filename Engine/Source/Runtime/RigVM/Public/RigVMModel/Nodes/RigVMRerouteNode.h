@@ -5,7 +5,7 @@
 #include "RigVMModel/RigVMNode.h"
 #include "RigVMRerouteNode.generated.h"
 
-UCLASS()
+UCLASS(BlueprintType)
 class RIGVM_API URigVMRerouteNode : public URigVMNode
 {
 	GENERATED_BODY()
@@ -15,6 +15,8 @@ public:
 	URigVMRerouteNode();
 
 	virtual FString GetNodeTitle() const override { return RerouteName; }
+
+	UFUNCTION(BlueprintCallable, Category = RigVMRerouteNode)
 	bool GetShowsAsFullNode() const;
 
 private:

@@ -364,3 +364,8 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> Add
 
 	return true;
 }
+
+bool URigVM::Execute()
+{
+	return Execute(FRigVMMemoryContainerPtrArray(), TArrayView<void*>());
+}

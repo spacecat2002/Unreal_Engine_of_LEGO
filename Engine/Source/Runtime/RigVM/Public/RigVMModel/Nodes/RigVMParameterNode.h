@@ -5,7 +5,7 @@
 #include "RigVMModel/RigVMNode.h"
 #include "RigVMParameterNode.generated.h"
 
-USTRUCT()
+USTRUCT(BlueprintType)
 struct FRigVMGraphParameterDescription
 {
 	GENERATED_BODY()
@@ -17,23 +17,23 @@ public:
 		return Name == Other.Name;
 	}
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly, Category = RigVMGraphParameterDescription)
 	FName Name;
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly, Category = RigVMGraphParameterDescription)
 	bool bIsInput;
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly, Category = RigVMGraphParameterDescription)
 	FString CPPType;
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly, Category = RigVMGraphParameterDescription)
 	UScriptStruct* ScriptStruct;
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly, Category = RigVMGraphParameterDescription)
 	FString DefaultValue;
 };
 
-UCLASS()
+UCLASS(BlueprintType)
 class RIGVM_API URigVMParameterNode : public URigVMNode
 {
 	GENERATED_BODY()
@@ -43,14 +43,27 @@ public:
 	URigVMParameterNode();
 
 	virtual FString GetNodeTitle() const;
+
+	UFUNCTION(BlueprintCallable, Category = RigVMParameterNode)
 	FName GetParameterName() const;
+
+	UFUNCTION(BlueprintCallable, Category = RigVMParameterNode)
 	bool IsInput() const;
+
+	UFUNCTION(BlueprintCallable, Category = RigVMParameterNode)
 	FString GetCPPType() const;
+
+	UFUNCTION(BlueprintCallable, Category = RigVMParameterNode)
 	UScriptStruct* GetScriptStruct() const;
+
+	UFUNCTION(BlueprintCallable, Category = RigVMParameterNode)
 	FString GetDefaultValue() const;
+
+	UFUNCTION(BlueprintCallable, Category = RigVMParameterNode)
 	FRigVMGraphParameterDescription GetParameterDescription() const;
 
 	virtual FLinearColor GetNodeColor() const override { return FLinearColor::Green; }
+
 	virtual bool ContributesToResult() const override { return !IsInput(); }
 
 private:

@@ -11,7 +11,7 @@
 #include "RigVMModel/Nodes/RigVMRerouteNode.h"
 #include "RigVMController.generated.h"
 
-UCLASS()
+UCLASS(BlueprintType)
 class RIGVM_API URigVMController : public UObject
 {
 	GENERATED_BODY()
@@ -20,52 +20,118 @@ public:
 
 	~URigVMController();
 
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	URigVMGraph* GetGraph() const;
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	void SetGraph(URigVMGraph* InGraph);
 
 	FRigVMGraphModifiedEvent& OnModified();
 
 #if WITH_EDITOR
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	URigVMStructNode* AddStructNode(UScriptStruct* InScriptStruct, const FName& InMethodName, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
-	URigVMStructNode* AddStructNode(const FString& InScriptStructPath, const FName& InMethodName, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
+	URigVMStructNode* AddStructNodeFromStructPath(const FString& InScriptStructPath, const FName& InMethodName, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	URigVMVariableNode* AddVariableNode(const FName& InVariableName, const FString& InCPPType, UScriptStruct* InScriptStruct, bool bIsGetter, const FString& InDefaultValue, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	URigVMParameterNode* AddParameterNode(const FName& InParameterName, const FString& InCPPType, UScriptStruct* InScriptStruct, bool bIsInput, const FString& InDefaultValue, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	URigVMBeginExecuteNode* AddBeginExecuteNode(const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	URigVMCommentNode* AddCommentNode(const FString& InCommentText, const FVector2D& InPosition = FVector2D::ZeroVector, const FVector2D& InSize = FVector2D(400.f, 300.f), bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	URigVMRerouteNode* AddRerouteNodeOnLink(URigVMLink* InLink, bool bShowAsFullNode, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
-	URigVMRerouteNode* AddRerouteNodeOnLink(const FString& InLinkPinPathRepresentation, bool bShowAsFullNode, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
+	URigVMRerouteNode* AddRerouteNodeOnLinkPath(const FString& InLinkPinPathRepresentation, bool bShowAsFullNode, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	URigVMRerouteNode* AddRerouteNodeOnPin(const FString& InPinPath, bool bShowAsFullNode, bool bAsInput, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
+
 #endif
 
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	bool RemoveNode(URigVMNode* InNode, bool bUndo = true);
-	bool RemoveNode(const FName& InNodeName, bool bUndo = true);
 
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
+	bool RemoveNodeByName(const FName& InNodeName, bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	bool SelectNode(URigVMNode* InNode, bool bSelect = true, bool bUndo = true);
-	bool SelectNode(const FName& InNodeName, bool bSelect = true, bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
+	bool SelectNodeByName(const FName& InNodeName, bool bSelect = true, bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	bool ClearNodeSelection(bool bUndo = true);
 
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	bool SetNodePosition(URigVMNode* InNode, const FVector2D& InPosition, bool bUndo = true);
-	bool SetNodePosition(const FName& InNodeName, const FVector2D& InPosition, bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
+	bool SetNodePositionByName(const FName& InNodeName, const FVector2D& InPosition, bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	bool SetNodeSize(URigVMNode* InNode, const FVector2D& InSize, bool bUndo = true);
-	bool SetNodeSize(const FName& InNodeName, const FVector2D& InSize, bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
+	bool SetNodeSizeByName(const FName& InNodeName, const FVector2D& InSize, bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	bool SetCommentText(URigVMNode* InNode, const FString& InCommentText, bool bUndo = true);
-	bool SetCommentText(const FName& InNodeName, const FString& InCommentText, bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
+	bool SetCommentTextByName(const FName& InNodeName, const FString& InCommentText, bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	bool SetRerouteCompactness(URigVMNode* InNode, bool bShowAsFullNode, bool bUndo = true);
-	bool SetRerouteCompactness(const FName& InNodeName, bool bShowAsFullNode, bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
+	bool SetRerouteCompactnessByName(const FName& InNodeName, bool bShowAsFullNode, bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	bool RenameVariable(const FName& InOldName, const FName& InNewName, bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	bool RenameParameter(const FName& InOldName, const FName& InNewName, bool bUndo = true);
 
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	FString GetPinDefaultValue(const FString& InPinPath);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	void SetPinDefaultValue(const FString& InPinPath, const FString& InDefaultValue, bool bUndo = true);
 
-	FString AddArrayPin(const FString& InArrayPinPath, const FString& InDefaultValue = FString(), bool bUndo = true);
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
+	FString AddArrayPin(const FString& InArrayPinPath, const FString& InDefaultValue = TEXT(""), bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	FString DuplicateArrayPin(const FString& InArrayElementPinPath, bool bUndo = true);
-	FString InsertArrayPin(const FString& InArrayPinPath, int32 InIndex = INDEX_NONE, const FString& InDefaultValue = FString(), bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
+	FString InsertArrayPin(const FString& InArrayPinPath, int32 InIndex = -1, const FString& InDefaultValue = TEXT(""), bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	bool RemoveArrayPin(const FString& InArrayElementPinPath, bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	bool ClearArrayPin(const FString& InArrayPinPath, bool bUndo = true);
 
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	bool AddLink(const FString& InOutputPinPath, const FString& InInputPinPath, bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	bool BreakLink(const FString& InOutputPinPath, const FString& InInputPinPath, bool bUndo = true);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	bool BreakAllLinks(const FString& InPinPath, bool bAsInput = true, bool bUndo = true);
 
 private:

@@ -9,7 +9,7 @@
 
 class URigVMGraph;
 
-UCLASS()
+UCLASS(BlueprintType)
 class RIGVM_API URigVMLink : public UObject
 {
 	GENERATED_BODY()
@@ -23,9 +23,16 @@ public:
 
 	virtual void Serialize(FArchive& Ar) override;
 
+	UFUNCTION(BlueprintCallable, Category = RigVMLink)
 	URigVMGraph* GetGraph();
+
+	UFUNCTION(BlueprintCallable, Category = RigVMLink)
 	URigVMPin* GetSourcePin();
+
+	UFUNCTION(BlueprintCallable, Category = RigVMLink)
 	URigVMPin* GetTargetPin();
+
+	UFUNCTION(BlueprintCallable, Category = RigVMLink)
 	FString GetPinPathRepresentation();
 
 private:

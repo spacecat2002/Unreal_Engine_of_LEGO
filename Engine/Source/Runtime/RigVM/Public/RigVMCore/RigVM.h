@@ -9,8 +9,8 @@
 #include "RigVM.generated.h"
 
 // The type of parameter for a VM
-UENUM()
-enum class ERigVMParameterType
+UENUM(BlueprintType)
+enum class ERigVMParameterType : uint8
 {
 	Input,
 	Output,
@@ -22,7 +22,7 @@ enum class ERigVMParameterType
  * Parameters are mapped to work state memory registers and can be
  * used to set input parameters as well as retrieve output parameters.
  */
-USTRUCT()
+USTRUCT(BlueprintType)
 struct FRigVMParameter
 {
 	GENERATED_BODY()
@@ -54,13 +54,13 @@ private:
 	{
 	}
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadonly, Category = RigVMParameter, meta = (AllowPrivateAccess = "true"))
 	ERigVMParameterType Type;
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadonly, Category = RigVMParameter, meta = (AllowPrivateAccess = "true"))
 	FName Name;
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadonly, Category = RigVMParameter, meta = (AllowPrivateAccess = "true"))
 	int32 RegisterIndex;
 
 	friend class URigVM;
@@ -71,7 +71,7 @@ private:
  * It combines the byte code, a list of required function pointers for 
  * execute instructions and required memory in one class.
  */
-UCLASS()
+UCLASS(BlueprintType)
 class RIGVM_API URigVM : public UObject
 {
 	GENERATED_BODY()
@@ -87,7 +87,13 @@ public:
 	// Executes the VM.
 	// You can optionally provide external memory to the execution
 	// and provide optional additional operands.
-	bool Execute(FRigVMMemoryContainerPtrArray Memory = FRigVMMemoryContainerPtrArray(), TArrayView<void*> AdditionalArguments = TArrayView<void*>());
+	bool Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> AdditionalArguments);
+
+	// Executes the VM.
+	// You can optionally provide external memory to the execution
+	// and provide optional additional operands.
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	bool Execute();
 
 	// Add a function for execute instructions to this VM.
 	// Execute instructions can then refer to the function by index.
@@ -143,21 +149,21 @@ public:
 
 	// Retrieve the value of a parameter
 	template<class T>
-	FORCEINLINE const T& GetParameterValue(const FRigVMParameter& InParameter) const
+	const T& GetParameterValue(const FRigVMParameter& InParameter) const
 	{
 		return WorkMemory.GetRef<T>(InParameter.GetRegisterIndex());
 	}
 
 	// Retrieve the value of a parameter given its index
 	template<class T>
-	FORCEINLINE const T& GetParameterValue(int32 InParameterIndex) const
+	const T& GetParameterValue(int32 InParameterIndex) const
 	{
 		return GetParameterValue<T>(Parameters[InParameterIndex]);
 	}
 
 	// Retrieve the value of a parameter given its name
 	template<class T>
-	FORCEINLINE const T& GetParameterValue(const FName& InParameterName) const
+	const T& GetParameterValue(const FName& InParameterName) const
 	{
 		int32 ParameterIndex = ParametersNameMap.FindChecked(InParameterName);
 		return GetParameterValue<T>(ParameterIndex);
@@ -165,24 +171,132 @@ public:
 
 	// Set the value of a parameter
 	template<class T>
-	FORCEINLINE void SetParameterValue(const FRigVMParameter& InParameter, const T& InNewValue)
+	void SetParameterValue(const FRigVMParameter& InParameter, const T& InNewValue)
 	{
 		WorkMemory.GetRef<T>(InParameter.GetRegisterIndex()) = InNewValue;
 	}
 
 	// Set the value of a parameter given its index
 	template<class T>
-	FORCEINLINE void SetParameterValue(int32 ParameterIndex, const T& InNewValue)
+	void SetParameterValue(int32 ParameterIndex, const T& InNewValue)
 	{
 		return SetParameterValue<T>(Parameters[ParameterIndex], InNewValue);
 	}
 
 	// Set the value of a parameter given its name
 	template<class T>
-	FORCEINLINE void SetParameterValue(const FName& InParameterName, const T& InNewValue)
+	void SetParameterValue(const FName& InParameterName, const T& InNewValue)
 	{
 		int32 ParameterIndex = ParametersNameMap.FindChecked(InParameterName);
 		return SetParameterValue<T>(ParameterIndex, InNewValue);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	bool GetParameterValueBool(const FName& InParameterName) const
+	{
+		return GetParameterValue<bool>(InParameterName);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	float GetParameterValueFloat(const FName& InParameterName) const
+	{
+		return GetParameterValue<float>(InParameterName);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	int32 GetParameterValueInt(const FName& InParameterName) const
+	{
+		return GetParameterValue<int32>(InParameterName);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	FName GetParameterValueName(const FName& InParameterName) const
+	{
+		return GetParameterValue<FName>(InParameterName);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	FString GetParameterValueString(const FName& InParameterName) const
+	{
+		return GetParameterValue<FString>(InParameterName);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	FVector2D GetParameterValueVector2D(const FName& InParameterName) const
+	{
+		return GetParameterValue<FVector2D>(InParameterName);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	FVector GetParameterValueVector(const FName& InParameterName) const
+	{
+		return GetParameterValue<FVector>(InParameterName);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	FQuat GetParameterValueQuat(const FName& InParameterName) const
+	{
+		return GetParameterValue<FQuat>(InParameterName);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	FTransform GetParameterValueTransform(const FName& InParameterName) const
+	{
+		return GetParameterValue<FTransform>(InParameterName);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	void SetParameterValueBool(const FName& InParameterName, bool InValue)
+	{
+		SetParameterValue<bool>(InParameterName, InValue);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	void SetParameterValueFloat(const FName& InParameterName, float InValue)
+	{
+		SetParameterValue<float>(InParameterName, InValue);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	void SetParameterValueInt(const FName& InParameterName, int32 InValue)
+	{
+		SetParameterValue<int32>(InParameterName, InValue);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	void SetParameterValueName(const FName& InParameterName, const FName& InValue)
+	{
+		SetParameterValue<FName>(InParameterName, InValue);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	void SetParameterValueString(const FName& InParameterName, const FString& InValue)
+	{
+		SetParameterValue<FString>(InParameterName, InValue);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	void SetParameterValueVector2D(const FName& InParameterName, const FVector2D& InValue)
+	{
+		SetParameterValue<FVector2D>(InParameterName, InValue);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	void SetParameterValueVector(const FName& InParameterName, const FVector& InValue)
+	{
+		SetParameterValue<FVector>(InParameterName, InValue);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	void SetParameterValueQuat(const FName& InParameterName, const FQuat& InValue)
+	{
+		SetParameterValue<FQuat>(InParameterName, InValue);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	void SetParameterValueTransform(const FName& InParameterName, const FTransform& InValue)
+	{
+		SetParameterValue<FTransform>(InParameterName, InValue);
 	}
 
 private:

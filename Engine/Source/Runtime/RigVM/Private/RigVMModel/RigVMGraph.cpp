@@ -45,7 +45,7 @@ TArray<FRigVMGraphParameterDescription> URigVMGraph::GetParameterDescriptions() 
 	return Parameters;
 }
 
-URigVMNode* URigVMGraph::FindNode(const FName& InNodeName) const
+URigVMNode* URigVMGraph::FindNodeByName(const FName& InNodeName) const
 {
 	for (URigVMNode* Node : Nodes)
 	{
@@ -61,7 +61,7 @@ URigVMNode* URigVMGraph::FindNode(const FString& InNodePath) const
 {
 	// for now we don't support encapsulation
 	// so we don't walk recursively
-	return FindNode(FName(*InNodePath));
+	return FindNodeByName(FName(*InNodePath));
 }
 
 URigVMPin* URigVMGraph::FindPin(const FString& InPinPath) const

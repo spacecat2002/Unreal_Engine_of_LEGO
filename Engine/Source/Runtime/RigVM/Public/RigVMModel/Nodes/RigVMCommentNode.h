@@ -5,7 +5,7 @@
 #include "RigVMModel/RigVMNode.h"
 #include "RigVMCommentNode.generated.h"
 
-UCLASS()
+UCLASS(BlueprintType)
 class RIGVM_API URigVMCommentNode : public URigVMNode
 {
 	GENERATED_BODY()
@@ -15,6 +15,8 @@ public:
 	URigVMCommentNode();
 
 	virtual FString GetNodeTitle() const override { return GetCommentText(); }
+
+	UFUNCTION(BlueprintCallable, Category = RigVMCommentNode)
 	FString GetCommentText() const;
 
 private:
