@@ -33,7 +33,7 @@ public:
 
 	virtual bool IsPure() const { return !IsMutable(); }
 	virtual bool IsMutable() const;
-	virtual bool IsOutputParameter() const { return false; }
+	virtual bool ContributesToResult() const { return IsMutable(); }
 
 	bool IsConnectedTo(URigVMNode* InNode) const;
 

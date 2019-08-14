@@ -174,6 +174,64 @@ URigVMVariableNode* URigVMController::AddVariableNode(const FName& InVariableNam
 	return Node;
 }
 
+URigVMParameterNode* URigVMController::AddParameterNode(const FName& InParameterName, const FString& InCPPType, UScriptStruct* InScriptStruct, bool bIsInput, const FString& InDefaultValue, const FVector2D& InPosition, bool bUndo)
+{
+	if (Graph == nullptr)
+	{
+		return nullptr;
+	}
+
+	TArray<FRigVMGraphParameterDescription> ExistingParameters = Graph->GetParameterDescriptions();
+	for (const FRigVMGraphParameterDescription& ExistingParameter : ExistingParameters)
+	{
+		if (ExistingParameter.Name == InParameterName)
+		{
+			if (ExistingParameter.CPPType != InCPPType ||
+				ExistingParameter.ScriptStruct != InScriptStruct ||
+				ExistingParameter.bIsInput != bIsInput)
+			{
+				// todo: report error
+				return nullptr;
+			}
+		}
+	}
+
+	FString Name = GetValidName(TEXT("ParameterNode"));
+	URigVMParameterNode* Node = NewObject<URigVMParameterNode>(Graph, *Name);
+	Node->Position = InPosition;
+	Node->ParameterName = InParameterName;
+
+	URigVMPin* ValuePin = NewObject<URigVMPin>(Node, *URigVMParameterNode::ValueName);
+	ValuePin->Index = Node->Pins.Num();
+	ValuePin->CPPType = InCPPType;
+	if (InScriptStruct)
+	{
+		ValuePin->ScriptStruct = InScriptStruct;
+		ValuePin->ScriptStructPath = *ValuePin->ScriptStruct->GetPathName();
+	}
+	ValuePin->Direction = bIsInput ? ERigVMPinDirection::Output : ERigVMPinDirection::Input;
+	Node->Pins.Add(ValuePin);
+
+	// todo: undo redo
+
+	Graph->Nodes.Add(Node);
+
+	if (ValuePin->IsStruct())
+	{
+		AddPinsForStruct(ValuePin->ScriptStruct, Node, ValuePin, ValuePin->Direction, FString());
+	}
+
+	if (!InDefaultValue.IsEmpty())
+	{
+		SetPinDefaultValue(ValuePin, InDefaultValue, true, false);
+	}
+
+	Graph->MarkPackageDirty();
+	Notify(ERigVMGraphNotifType::NodeAdded, Graph, Node);
+
+	return Node;
+}
+
 URigVMCommentNode* URigVMController::AddCommentNode(const FString& InCommentText, const FVector2D& InPosition, const FVector2D& InSize, bool bUndo)
 {
 	if (Graph == nullptr)
@@ -468,6 +526,51 @@ bool URigVMController::RenameVariable(const FName& InOldName, const FName& InNew
 	for (URigVMNode* RenamedNode : RenamedNodes)
 	{
 		Graph->Notify(ERigVMGraphNotifType::VariableRenamed, Graph, RenamedNode);
+		Graph->MarkPackageDirty();
+	}
+
+	return RenamedNodes.Num() > 0;
+}
+
+bool URigVMController::RenameParameter(const FName& InOldName, const FName& InNewName, bool bUndo)
+{
+	if (Graph == nullptr)
+	{
+		return false;
+	}
+
+	if (InOldName == InNewName)
+	{
+		return false;
+	}
+
+	TArray<FRigVMGraphParameterDescription> ExistingParameters = Graph->GetParameterDescriptions();
+	for (const FRigVMGraphParameterDescription& ExistingParameter : ExistingParameters)
+	{
+		if (ExistingParameter.Name == InNewName)
+		{
+			// todo: report error
+			return false;
+		}
+	}
+
+	TArray<URigVMNode*> RenamedNodes;
+	for (URigVMNode* Node : Graph->Nodes)
+	{
+		if(URigVMParameterNode* ParameterNode = Cast<URigVMParameterNode>(Node))
+		{
+			if (ParameterNode->ParameterName == InOldName)
+			{
+				// todo: undo redo
+				ParameterNode->ParameterName = InNewName;
+				RenamedNodes.Add(Node);
+			}
+		}
+	}
+
+	for (URigVMNode* RenamedNode : RenamedNodes)
+	{
+		Graph->Notify(ERigVMGraphNotifType::ParameterRenamed, Graph, RenamedNode);
 		Graph->MarkPackageDirty();
 	}
 

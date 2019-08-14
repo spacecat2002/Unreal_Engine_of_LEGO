@@ -33,6 +33,19 @@ TArray<FRigVMGraphVariableDescription> URigVMGraph::GetVariableDescriptions() co
 	return Variables;
 }
 
+TArray<FRigVMGraphParameterDescription> URigVMGraph::GetParameterDescriptions() const
+{
+	TArray<FRigVMGraphParameterDescription> Parameters;
+	for (URigVMNode* Node : Nodes)
+	{
+		if (URigVMParameterNode* ParameterNode = Cast<URigVMParameterNode>(Node))
+		{
+			Parameters.AddUnique(ParameterNode->GetParameterDescription());
+		}
+	}
+	return Parameters;
+}
+
 URigVMNode* URigVMGraph::FindNode(const FName& InNodeName) const
 {
 	for (URigVMNode* Node : Nodes)

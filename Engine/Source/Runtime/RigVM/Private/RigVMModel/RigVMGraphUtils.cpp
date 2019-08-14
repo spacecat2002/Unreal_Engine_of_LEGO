@@ -111,17 +111,17 @@ bool FRigVMGraphUtils::TopologicalSort(TArray<URigVMNode*>& OutOrder, TArray<URi
 	TArray<URigVMNode*> OutputParameterNodes;
 	for (URigVMNode* Node : Nodes)
 	{
-		if (Node->IsOutputParameter())
-		{
-			OutputParameterNodes.Add(Node);
-		}
-		else if (Node->IsMutable())
+		if (Node->ContributesToResult())
 		{
 			TArray<URigVMNode*> Inputs = Node->GetConnectedSourceNodes();
 			if (Inputs.Num() == 0)
 			{
 				LeafNodes.Add(Node);
 			}
+		}
+		else if (Node->ContributesToResult())
+		{
+			OutputParameterNodes.Add(Node);
 		}
 	}
 

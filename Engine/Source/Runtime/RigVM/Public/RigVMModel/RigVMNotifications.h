@@ -27,6 +27,7 @@ enum class ERigVMGraphNotifType : uint8
 	CommentTextChanged,
 	RerouteCompactnessChanged,
 	VariableRenamed,
+	ParameterRenamed,
 	Invalid
 };
 

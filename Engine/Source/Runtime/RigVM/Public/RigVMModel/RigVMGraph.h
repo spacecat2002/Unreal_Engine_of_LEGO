@@ -7,6 +7,7 @@
 #include "RigVMNotifications.h"
 #include "RigVMGraphUtils.h"
 #include "RigVMVariableNode.h"
+#include "RigVMParameterNode.h"
 #include "RigVMGraph.generated.h"
 
 UCLASS()
@@ -21,6 +22,7 @@ public:
 	const TArray<URigVMNode*>& GetNodes() const;
 	const TArray<URigVMLink*>& GetLinks() const;
 	TArray<FRigVMGraphVariableDescription> GetVariableDescriptions() const;
+	TArray<FRigVMGraphParameterDescription> GetParameterDescriptions() const;
 	URigVMNode* FindNode(const FName& InNodeName) const;
 	URigVMNode* FindNode(const FString& InNodePath) const;
 	URigVMPin* FindPin(const FString& InPinPath) const;
