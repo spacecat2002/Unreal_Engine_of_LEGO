@@ -17,8 +17,22 @@ void URigVMLink::Serialize(FArchive& Ar)
 	}
 	else
 	{
-		FString SourcePinPathTemp = SourcePin->GetPinPath();
-		FString TargetPinPathTemp = TargetPin->GetPinPath();
+		FString SourcePinPathTemp;
+		if (SourcePin)
+		{
+			if (SourcePin->GetNode())
+			{
+				SourcePinPathTemp = SourcePin->GetPinPath();
+			}
+		}
+		FString TargetPinPathTemp;
+		if (TargetPin)
+		{
+			if (TargetPin->GetNode())
+			{
+				TargetPinPathTemp = TargetPin->GetPinPath();
+			}
+		}
 		Ar << SourcePinPathTemp;
 		Ar << TargetPinPathTemp;
 	}
