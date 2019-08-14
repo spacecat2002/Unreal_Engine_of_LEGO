@@ -27,11 +27,13 @@ public:
 
 #if WITH_EDITOR
 	URigVMStructNode* AddStructNode(UScriptStruct* InScriptStruct, const FName& InMethodName, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
+	URigVMStructNode* AddStructNode(const FString& InScriptStructPath, const FName& InMethodName, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
 	URigVMVariableNode* AddVariableNode(const FName& InVariableName, const FString& InCPPType, UScriptStruct* InScriptStruct, bool bIsGetter, const FString& InDefaultValue, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
 	URigVMParameterNode* AddParameterNode(const FName& InParameterName, const FString& InCPPType, UScriptStruct* InScriptStruct, bool bIsInput, const FString& InDefaultValue, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
 	URigVMBeginExecuteNode* AddBeginExecuteNode(const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
 	URigVMCommentNode* AddCommentNode(const FString& InCommentText, const FVector2D& InPosition = FVector2D::ZeroVector, const FVector2D& InSize = FVector2D(400.f, 300.f), bool bUndo = true);
 	URigVMRerouteNode* AddRerouteNodeOnLink(URigVMLink* InLink, bool bShowAsFullNode, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
+	URigVMRerouteNode* AddRerouteNodeOnLink(const FString& InLinkPinPathRepresentation, bool bShowAsFullNode, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
 	URigVMRerouteNode* AddRerouteNodeOnPin(const FString& InPinPath, bool bShowAsFullNode, bool bAsInput, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
 #endif
 
@@ -43,9 +45,13 @@ public:
 	bool ClearNodeSelection(bool bUndo = true);
 
 	bool SetNodePosition(URigVMNode* InNode, const FVector2D& InPosition, bool bUndo = true);
+	bool SetNodePosition(const FName& InNodeName, const FVector2D& InPosition, bool bUndo = true);
 	bool SetNodeSize(URigVMNode* InNode, const FVector2D& InSize, bool bUndo = true);
+	bool SetNodeSize(const FName& InNodeName, const FVector2D& InSize, bool bUndo = true);
 	bool SetCommentText(URigVMNode* InNode, const FString& InCommentText, bool bUndo = true);
+	bool SetCommentText(const FName& InNodeName, const FString& InCommentText, bool bUndo = true);
 	bool SetRerouteCompactness(URigVMNode* InNode, bool bShowAsFullNode, bool bUndo = true);
+	bool SetRerouteCompactness(const FName& InNodeName, bool bShowAsFullNode, bool bUndo = true);
 	bool RenameVariable(const FName& InOldName, const FName& InNewName, bool bUndo = true);
 	bool RenameParameter(const FName& InOldName, const FName& InNewName, bool bUndo = true);
 

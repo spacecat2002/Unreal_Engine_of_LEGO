@@ -113,6 +113,23 @@ URigVMStructNode* URigVMController::AddStructNode(UScriptStruct* InScriptStruct,
 	return Node;
 }
 
+URigVMStructNode* URigVMController::AddStructNode(const FString& InScriptStructPath, const FName& InMethodName, const FVector2D& InPosition, bool bUndo)
+{
+	if (Graph == nullptr)
+	{
+		return nullptr;
+	}
+
+	UScriptStruct* ScriptStruct = FindObjectChecked<UScriptStruct>(ANY_PACKAGE, *InScriptStructPath);
+	if (ScriptStruct == nullptr)
+	{
+		// todo: log error
+		return nullptr;
+	}
+
+	return AddStructNode(ScriptStruct, InMethodName, InPosition, bUndo);
+}
+
 URigVMVariableNode* URigVMController::AddVariableNode(const FName& InVariableName, const FString& InCPPType, UScriptStruct* InScriptStruct, bool bIsGetter, const FString& InDefaultValue, const FVector2D& InPosition, bool bUndo)
 {
 	if (Graph == nullptr)
@@ -310,6 +327,17 @@ URigVMRerouteNode* URigVMController::AddRerouteNodeOnLink(URigVMLink* InLink, bo
 	return Node;
 }
 
+URigVMRerouteNode* URigVMController::AddRerouteNodeOnLink(const FString& InLinkPinPathRepresentation, bool bShowAsFullNode, const FVector2D& InPosition, bool bUndo)
+{
+	if (Graph == nullptr)
+	{
+		return nullptr;
+	}
+
+	URigVMLink* Link = Graph->FindLink(InLinkPinPathRepresentation);
+	return AddRerouteNodeOnLink(Link, bShowAsFullNode, InPosition, bUndo);
+}
+
 URigVMRerouteNode* URigVMController::AddRerouteNodeOnPin(const FString& InPinPath, bool bAsInput, bool bShowAsFullNode, const FVector2D& InPosition, bool bUndo)
 {
 	if (Graph == nullptr)
@@ -469,6 +497,17 @@ bool URigVMController::SetNodePosition(URigVMNode* InNode, const FVector2D& InPo
 	return true;
 }
 
+bool URigVMController::SetNodePosition(const FName& InNodeName, const FVector2D& InPosition, bool bUndo)
+{
+	if(Graph == nullptr)
+	{
+		return false;
+	}
+
+	URigVMNode* Node = Graph->FindNode(InNodeName);
+	return SetNodePosition(Node, InPosition, bUndo);
+}
+
 bool URigVMController::SetNodeSize(URigVMNode* InNode, const FVector2D& InSize, bool bUndo)
 {
 	if (!IsValidNodeForGraph(InNode))
@@ -480,6 +519,17 @@ bool URigVMController::SetNodeSize(URigVMNode* InNode, const FVector2D& InSize, 
 	// todo: undo redo
 	Notify(ERigVMGraphNotifType::NodeSizeChanged, Graph, InNode);
 	return true;
+}
+
+bool URigVMController::SetNodeSize(const FName& InNodeName, const FVector2D& InSize, bool bUndo)
+{
+	if(Graph == nullptr)
+	{
+		return false;
+	}
+
+	URigVMNode* Node = Graph->FindNode(InNodeName);
+	return SetNodeSize(Node, InSize, bUndo);
 }
 
 bool URigVMController::SetCommentText(URigVMNode* InNode, const FString& InCommentText, bool bUndo)
@@ -500,6 +550,17 @@ bool URigVMController::SetCommentText(URigVMNode* InNode, const FString& InComme
 	return false;
 }
 
+bool URigVMController::SetCommentText(const FName& InNodeName, const FString& InCommentText, bool bUndo)
+{
+	if(Graph == nullptr)
+	{
+		return false;
+	}
+
+	URigVMNode* Node = Graph->FindNode(InNodeName);
+	return SetCommentText(Node, InCommentText, bUndo);
+}
+
 bool URigVMController::SetRerouteCompactness(URigVMNode* InNode, bool bShowAsFullNode, bool bUndo)
 {
 	if (!IsValidNodeForGraph(InNode))
@@ -516,6 +577,17 @@ bool URigVMController::SetRerouteCompactness(URigVMNode* InNode, bool bShowAsFul
 	}
 
 	return false;
+}
+
+bool URigVMController::SetRerouteCompactness(const FName& InNodeName, bool bShowAsFullNode, bool bUndo)
+{
+	if(Graph == nullptr)
+	{
+		return false;
+	}
+
+	URigVMNode* Node = Graph->FindNode(InNodeName);
+	return SetRerouteCompactness(Node, bShowAsFullNode, bUndo);
 }
 
 bool URigVMController::RenameVariable(const FName& InOldName, const FName& InNewName, bool bUndo)

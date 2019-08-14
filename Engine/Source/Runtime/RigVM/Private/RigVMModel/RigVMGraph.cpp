@@ -81,6 +81,18 @@ URigVMPin* URigVMGraph::FindPin(const FString& InPinPath) const
 	return nullptr;
 }
 
+URigVMLink* URigVMGraph::FindLink(const FString& InLinkPinPathRepresentation) const
+{
+	for(URigVMLink* Link : Links)
+	{
+		if(Link->GetPinPathRepresentation() == InLinkPinPathRepresentation)
+		{
+			return Link;
+		}
+	}
+	return nullptr;
+}
+
 bool URigVMGraph::IsNodeSelected(const FName& InNodeName) const
 {
 	return SelectedNodes.Contains(InNodeName);
