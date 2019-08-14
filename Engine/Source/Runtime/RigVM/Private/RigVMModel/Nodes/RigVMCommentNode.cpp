@@ -1,6 +1,6 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-#include "RigVMModel/RigVMCommentNode.h"
+#include "RigVMModel/Nodes/RigVMCommentNode.h"
 
 URigVMCommentNode::URigVMCommentNode()
 {

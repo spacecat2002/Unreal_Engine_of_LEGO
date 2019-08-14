@@ -1,6 +1,6 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-#include "RigVMModel/RigVMParameterNode.h"
+#include "RigVMModel/Nodes/RigVMParameterNode.h"
 
 const FString URigVMParameterNode::ValueName = TEXT("Value");
 

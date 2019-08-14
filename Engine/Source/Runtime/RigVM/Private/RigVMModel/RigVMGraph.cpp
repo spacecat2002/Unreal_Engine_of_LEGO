@@ -2,7 +2,6 @@
 
 #include "RigVMModel/RigVMGraph.h"
 #include "RigVMModel/RigVMController.h"
-#include "RigVMModel/RigVMStructNode.h"
 #include "UObject/Package.h"
 
 URigVMGraph::URigVMGraph()

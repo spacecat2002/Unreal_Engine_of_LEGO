@@ -6,8 +6,8 @@
 #include "RigVMLink.h"
 #include "RigVMNotifications.h"
 #include "RigVMGraphUtils.h"
-#include "RigVMVariableNode.h"
-#include "RigVMParameterNode.h"
+#include "Nodes/RigVMVariableNode.h"
+#include "Nodes/RigVMParameterNode.h"
 #include "RigVMGraph.generated.h"
 
 UCLASS()

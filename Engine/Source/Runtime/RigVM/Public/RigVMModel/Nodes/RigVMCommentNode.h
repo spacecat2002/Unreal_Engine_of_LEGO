@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "RigVMNode.h"
+#include "RigVMModel/RigVMNode.h"
 #include "RigVMCommentNode.generated.h"
 
 UCLASS()

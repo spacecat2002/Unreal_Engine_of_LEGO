@@ -3,11 +3,11 @@
 #pragma once
 
 #include "RigVMGraph.h"
-#include "RigVMModel/RigVMStructNode.h"
-#include "RigVMModel/RigVMVariableNode.h"
-#include "RigVMModel/RigVMParameterNode.h"
-#include "RigVMModel/RigVMCommentNode.h"
-#include "RigVMModel/RigVMRerouteNode.h"
+#include "RigVMModel/Nodes/RigVMStructNode.h"
+#include "RigVMModel/Nodes/RigVMVariableNode.h"
+#include "RigVMModel/Nodes/RigVMParameterNode.h"
+#include "RigVMModel/Nodes/RigVMCommentNode.h"
+#include "RigVMModel/Nodes/RigVMRerouteNode.h"
 #include "RigVMController.generated.h"
 
 UCLASS()

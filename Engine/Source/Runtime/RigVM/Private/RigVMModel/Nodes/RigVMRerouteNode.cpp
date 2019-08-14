@@ -1,6 +1,6 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-#include "RigVMModel/RigVMRerouteNode.h"
+#include "RigVMModel/Nodes/RigVMRerouteNode.h"
 
 const FString URigVMRerouteNode::RerouteName = TEXT("Reroute");
 const FString URigVMRerouteNode::ValueName = TEXT("Value");
