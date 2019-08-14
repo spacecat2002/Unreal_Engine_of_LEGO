@@ -25,13 +25,14 @@ public:
 
 	URigVMGraph* GetGraph() const;
 
+	virtual FString GetNodeTitle() const;
 	FVector2D GetPosition() const;
 	FVector2D GetSize() const;
 
 	bool IsSelected() const;
 
-	virtual bool IsPure() const { return true; }
-	virtual bool IsMutable() const { return false; }
+	virtual bool IsPure() const { return !IsMutable(); }
+	virtual bool IsMutable() const;
 	virtual bool IsOutputParameter() const { return false; }
 
 	bool IsConnectedTo(URigVMNode* InNode) const;
@@ -41,10 +42,16 @@ public:
 
 private:
 
+	static const FString ExecuteName;
+
 	bool IsConnectedToRecursive(URigVMPin* InPin, URigVMNode* InNode) const;
 	void GetConnectedNodesRecursive(URigVMPin* InPin, bool bLookForSources, TArray<URigVMNode*>& OutNodes) const;
 
 protected:
+
+	UPROPERTY()
+	FString NodeTitle;
+
 	UPROPERTY()
 	FVector2D Position;
 

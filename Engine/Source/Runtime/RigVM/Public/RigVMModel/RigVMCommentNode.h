@@ -14,7 +14,7 @@ public:
 
 	URigVMCommentNode();
 
-	UFUNCTION()
+	virtual FString GetNodeTitle() const override { return GetCommentText(); }
 	FString GetCommentText() const;
 
 private:

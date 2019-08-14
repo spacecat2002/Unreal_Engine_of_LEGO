@@ -20,6 +20,19 @@ const TArray<URigVMLink*>& URigVMGraph::GetLinks() const
 	return Links;
 }
 
+TArray<FRigVMGraphVariableDescription> URigVMGraph::GetVariableDescriptions() const
+{
+	TArray<FRigVMGraphVariableDescription> Variables;
+	for (URigVMNode* Node : Nodes)
+	{
+		if (URigVMVariableNode* VariableNode = Cast<URigVMVariableNode>(Node))
+		{
+			Variables.AddUnique(VariableNode->GetVariableDescription());
+		}
+	}
+	return Variables;
+}
+
 URigVMNode* URigVMGraph::FindNode(const FName& InNodeName) const
 {
 	for (URigVMNode* Node : Nodes)

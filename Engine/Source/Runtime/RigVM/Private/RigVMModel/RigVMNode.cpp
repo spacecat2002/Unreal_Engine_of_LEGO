@@ -2,6 +2,9 @@
 
 #include "RigVMModel/RigVMNode.h"
 #include "RigVMModel/RigVMGraph.h"
+#include "RigVMCore/RigVMExecuteContext.h"
+
+const FString URigVMNode::ExecuteName = TEXT("Execute");
 
 URigVMNode::URigVMNode()
 : UObject()
@@ -63,6 +66,15 @@ URigVMGraph* URigVMNode::GetGraph() const
 	return Cast<URigVMGraph>(GetOuter());
 }
 
+FString URigVMNode::GetNodeTitle() const
+{
+	if (!NodeTitle.IsEmpty())
+	{
+		return NodeTitle;
+	}
+	return GetName();
+}
+
 FVector2D URigVMNode::GetPosition() const
 {
 	return Position;
@@ -82,6 +94,20 @@ bool URigVMNode::IsSelected() const
 	}
 	return false;
 }
+
+bool URigVMNode::IsMutable() const
+{
+	URigVMPin* ExecutePin = FindPin(ExecuteName);
+	if (ExecutePin)
+	{
+		if (ExecutePin->GetScriptStruct() == FRigVMExecuteContext::StaticStruct())
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 
 bool URigVMNode::IsConnectedTo(URigVMNode* InNode) const
 {

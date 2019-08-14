@@ -204,6 +204,11 @@ FString URigVMPin::GetDefaultValue() const
 	return DefaultValue;
 }
 
+FName URigVMPin::GetCustomWidgetName() const
+{
+	return CustomWidgetName;
+}
+
 UScriptStruct* URigVMPin::GetScriptStruct() const
 {
 	if (ScriptStruct == nullptr)

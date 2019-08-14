@@ -17,6 +17,7 @@ enum class ERigVMPinDirection : uint8
 	Input,
 	Output,
 	IO,
+	Visible,
 	Hidden,
 	Invalid
 };
@@ -49,6 +50,7 @@ public:
 	FString GetArrayElementCppType() const;
 	bool IsStringType() const;
 	FString GetDefaultValue() const;
+	FName GetCustomWidgetName() const;
 
 	UScriptStruct* GetScriptStruct() const;
 
@@ -89,6 +91,9 @@ private:
 
 	UPROPERTY()
 	FString DefaultValue;
+
+	UPROPERTY()
+	FName CustomWidgetName;
 
 	UPROPERTY()
 	TArray<URigVMPin*> SubPins;

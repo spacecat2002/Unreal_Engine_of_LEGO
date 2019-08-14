@@ -14,9 +14,13 @@ public:
 
 	URigVMRerouteNode();
 
+	virtual FString GetNodeTitle() const override { return RerouteName; }
 	bool GetShowsAsFullNode() const;
 
 private:
+
+	static const FString RerouteName;
+	static const FString ValueName;
 
 	UPROPERTY()
 	bool bShowAsFullNode;

@@ -2,6 +2,7 @@
 
 #include "RigVMModel/RigVMController.h"
 #include "RigVMCore/RigVMRegistry.h"
+#include "RigVMCore/RigVMExecuteContext.h"
 #include "RigVMModule.h"
 #include "UObject/PropertyPortFlags.h"
 #include "UObject/Package.h"
@@ -84,6 +85,7 @@ URigVMStructNode* URigVMController::AddStructNode(UScriptStruct* InScriptStruct,
 	Node->ScriptStruct = InScriptStruct;
 	Node->MethodName = InMethodName;
 	Node->Position = InPosition;
+	Node->NodeTitle = InScriptStruct->GetMetaData(TEXT("DisplayName"));
 	
 	TArray<uint8> TempBuffer;
 	TempBuffer.AddUninitialized(InScriptStruct->GetStructureSize());
@@ -99,6 +101,74 @@ URigVMStructNode* URigVMController::AddStructNode(UScriptStruct* InScriptStruct,
 
 	// todo: undo redo
 
+	Notify(ERigVMGraphNotifType::NodeAdded, Graph, Node);
+
+	return Node;
+}
+
+URigVMVariableNode* URigVMController::AddVariableNode(const FName& InVariableName, const FString& InCPPType, UScriptStruct* InScriptStruct, bool bIsGetter, const FString& InDefaultValue, const FVector2D& InPosition, bool bUndo)
+{
+	if (Graph == nullptr)
+	{
+		return nullptr;
+	}
+
+	TArray<FRigVMGraphVariableDescription> ExistingVariables = Graph->GetVariableDescriptions();
+	for (const FRigVMGraphVariableDescription& ExistingVariable : ExistingVariables)
+	{
+		if (ExistingVariable.Name == InVariableName)
+		{
+			if (ExistingVariable.CPPType != InCPPType ||
+				ExistingVariable.ScriptStruct != InScriptStruct)
+			{
+				// todo: report error
+				return nullptr;
+			}
+		}
+	}
+
+	FString Name = GetValidName(TEXT("VariableNode"));
+	URigVMVariableNode* Node = NewObject<URigVMVariableNode>(Graph, *Name);
+	Node->Position = InPosition;
+	Node->VariableName = InVariableName;
+
+	if (!bIsGetter)
+	{
+		URigVMPin* ExecutePin = NewObject<URigVMPin>(Node, *URigVMNode::ExecuteName);
+		ExecutePin->Index = Node->Pins.Num();
+		ExecutePin->CPPType = TEXT("FRigVMExecuteContext");
+		ExecutePin->ScriptStruct = FRigVMExecuteContext::StaticStruct();
+		ExecutePin->ScriptStructPath = *ExecutePin->ScriptStruct->GetPathName();
+		ExecutePin->Direction = ERigVMPinDirection::IO;
+		Node->Pins.Add(ExecutePin);
+	}
+
+	URigVMPin* ValuePin = NewObject<URigVMPin>(Node, *URigVMVariableNode::ValueName);
+	ValuePin->Index = Node->Pins.Num();
+	ValuePin->CPPType = InCPPType;
+	if (InScriptStruct)
+	{
+		ValuePin->ScriptStruct = InScriptStruct;
+		ValuePin->ScriptStructPath = *ValuePin->ScriptStruct->GetPathName();
+	}
+	ValuePin->Direction = bIsGetter ? ERigVMPinDirection::Output : ERigVMPinDirection::Input;
+	Node->Pins.Add(ValuePin);
+
+	// todo: undo redo
+
+	Graph->Nodes.Add(Node);
+
+	if (ValuePin->IsStruct())
+	{
+		AddPinsForStruct(ValuePin->ScriptStruct, Node, ValuePin, ValuePin->Direction, FString());
+	}
+
+	if (!InDefaultValue.IsEmpty())
+	{
+		SetPinDefaultValue(ValuePin, InDefaultValue, true, false);
+	}
+
+	Graph->MarkPackageDirty();
 	Notify(ERigVMGraphNotifType::NodeAdded, Graph, Node);
 
 	return Node;
@@ -173,7 +243,7 @@ URigVMRerouteNode* URigVMController::AddRerouteNodeOnPin(const FString& InPinPat
 	Node->Position = InPosition;
 	Node->bShowAsFullNode = bShowAsFullNode;
 
-	URigVMPin* ValuePin = NewObject<URigVMPin>(Node, TEXT("Value"));
+	URigVMPin* ValuePin = NewObject<URigVMPin>(Node, *URigVMRerouteNode::ValueName);
 	ConfigurePinFromPin(ValuePin, Pin);
 	ValuePin->Index = 0;
 	ValuePin->Direction = ERigVMPinDirection::IO;
@@ -269,7 +339,7 @@ bool URigVMController::SelectNode(URigVMNode* InNode, bool bSelect, bool bUndo)
 		Notify(ERigVMGraphNotifType::NodeDeselected, Graph, InNode);
 	}
 
-	return true;
+return true;
 }
 
 bool URigVMController::SelectNode(const FName& InNodeName, bool bSelect, bool bUndo)
@@ -357,6 +427,51 @@ bool URigVMController::SetRerouteCompactness(URigVMNode* InNode, bool bShowAsFul
 	}
 
 	return false;
+}
+
+bool URigVMController::RenameVariable(const FName& InOldName, const FName& InNewName, bool bUndo)
+{
+	if (Graph == nullptr)
+	{
+		return false;
+	}
+
+	if (InOldName == InNewName)
+	{
+		return false;
+	}
+
+	TArray<FRigVMGraphVariableDescription> ExistingVariables = Graph->GetVariableDescriptions();
+	for (const FRigVMGraphVariableDescription& ExistingVariable : ExistingVariables)
+	{
+		if (ExistingVariable.Name == InNewName)
+		{
+			// todo: report error
+			return false;
+		}
+	}
+
+	TArray<URigVMNode*> RenamedNodes;
+	for (URigVMNode* Node : Graph->Nodes)
+	{
+		if(URigVMVariableNode* VariableNode = Cast<URigVMVariableNode>(Node))
+		{
+			if (VariableNode->VariableName == InOldName)
+			{
+				// todo: undo redo
+				VariableNode->VariableName = InNewName;
+				RenamedNodes.Add(Node);
+			}
+		}
+	}
+
+	for (URigVMNode* RenamedNode : RenamedNodes)
+	{
+		Graph->Notify(ERigVMGraphNotifType::VariableRenamed, Graph, RenamedNode);
+		Graph->MarkPackageDirty();
+	}
+
+	return RenamedNodes.Num() > 0;
 }
 
 FString URigVMController::GetPinDefaultValue(const FString& InPinPath)
@@ -1062,6 +1177,8 @@ void URigVMController::ConfigurePinFromProperty(UProperty* InProperty, URigVMPin
 
 #if WITH_EDITOR
 	InOutPin->bIsConstant = InProperty->HasMetaData(TEXT("Constant"));
+	FString CustomWidgetName = InProperty->GetMetaData(TEXT("Widget"));
+	InOutPin->CustomWidgetName = CustomWidgetName.IsEmpty() ? FName(NAME_None) : FName(*CustomWidgetName);
 #endif
 
 	FString ExtendedCppType;
@@ -1096,7 +1213,10 @@ bool URigVMController::ShouldStructBeUnfolded(const UStruct* Struct)
 	{
 		return false;
 	}
-
+	if (Struct == FRigVMExecuteContext::StaticStruct())
+	{
+		return false;
+	}
 	return true;
 }
 

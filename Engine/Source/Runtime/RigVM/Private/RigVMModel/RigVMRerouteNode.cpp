@@ -2,6 +2,9 @@
 
 #include "RigVMModel/RigVMRerouteNode.h"
 
+const FString URigVMRerouteNode::RerouteName = TEXT("Reroute");
+const FString URigVMRerouteNode::ValueName = TEXT("Value");
+
 URigVMRerouteNode::URigVMRerouteNode()
 : bShowAsFullNode(true)
 {
