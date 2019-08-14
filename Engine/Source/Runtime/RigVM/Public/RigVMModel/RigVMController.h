@@ -6,6 +6,7 @@
 #include "RigVMModel/Nodes/RigVMStructNode.h"
 #include "RigVMModel/Nodes/RigVMVariableNode.h"
 #include "RigVMModel/Nodes/RigVMParameterNode.h"
+#include "RigVMModel/Nodes/RigVMBeginExecuteNode.h"
 #include "RigVMModel/Nodes/RigVMCommentNode.h"
 #include "RigVMModel/Nodes/RigVMRerouteNode.h"
 #include "RigVMController.generated.h"
@@ -28,6 +29,7 @@ public:
 	URigVMStructNode* AddStructNode(UScriptStruct* InScriptStruct, const FName& InMethodName, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
 	URigVMVariableNode* AddVariableNode(const FName& InVariableName, const FString& InCPPType, UScriptStruct* InScriptStruct, bool bIsGetter, const FString& InDefaultValue, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
 	URigVMParameterNode* AddParameterNode(const FName& InParameterName, const FString& InCPPType, UScriptStruct* InScriptStruct, bool bIsInput, const FString& InDefaultValue, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
+	URigVMBeginExecuteNode* AddBeginExecuteNode(const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
 	URigVMCommentNode* AddCommentNode(const FString& InCommentText, const FVector2D& InPosition = FVector2D::ZeroVector, const FVector2D& InSize = FVector2D(400.f, 300.f), bool bUndo = true);
 	URigVMRerouteNode* AddRerouteNodeOnLink(URigVMLink* InLink, bool bShowAsFullNode, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
 	URigVMRerouteNode* AddRerouteNodeOnPin(const FString& InPinPath, bool bShowAsFullNode, bool bAsInput, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);

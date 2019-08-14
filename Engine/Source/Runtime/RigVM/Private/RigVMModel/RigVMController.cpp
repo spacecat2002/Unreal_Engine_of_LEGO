@@ -239,6 +239,30 @@ URigVMParameterNode* URigVMController::AddParameterNode(const FName& InParameter
 	return Node;
 }
 
+URigVMBeginExecuteNode* URigVMController::AddBeginExecuteNode(const FVector2D& InPosition, bool bUndo)
+{
+	FString Name = GetValidName(TEXT("BeginExecuteNode"));
+	URigVMBeginExecuteNode* Node = NewObject<URigVMBeginExecuteNode>(Graph, *Name);
+	Node->Position = InPosition;
+
+	URigVMPin* ExecutePin = NewObject<URigVMPin>(Node, *URigVMNode::ExecuteName);
+	ExecutePin->Index = Node->Pins.Num();
+	ExecutePin->CPPType = TEXT("FRigVMExecuteContext");
+	ExecutePin->ScriptStruct = FRigVMExecuteContext::StaticStruct();
+	ExecutePin->ScriptStructPath = *ExecutePin->ScriptStruct->GetPathName();
+	ExecutePin->Direction = ERigVMPinDirection::Output;
+	Node->Pins.Add(ExecutePin);
+
+	// todo: undo redo
+
+	Graph->Nodes.Add(Node);
+
+	Graph->MarkPackageDirty();
+	Notify(ERigVMGraphNotifType::NodeAdded, Graph, Node);
+
+	return Node;
+}
+
 URigVMCommentNode* URigVMController::AddCommentNode(const FString& InCommentText, const FVector2D& InPosition, const FVector2D& InSize, bool bUndo)
 {
 	if (Graph == nullptr)
