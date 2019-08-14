@@ -50,6 +50,7 @@ public:
 	FString GetDefaultValue() const;
 	FRigVMGraphParameterDescription GetParameterDescription() const;
 
+	virtual FLinearColor GetNodeColor() const override { return FLinearColor::Green; }
 	virtual bool ContributesToResult() const override { return !IsInput(); }
 
 private:

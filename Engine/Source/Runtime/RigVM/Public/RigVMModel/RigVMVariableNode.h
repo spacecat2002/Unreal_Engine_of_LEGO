@@ -46,6 +46,7 @@ public:
 	UScriptStruct* GetScriptStruct() const;
 	FString GetDefaultValue() const;
 	FRigVMGraphVariableDescription GetVariableDescription() const;
+	virtual FLinearColor GetNodeColor() const override { return FLinearColor::Blue; }
 
 private:
 

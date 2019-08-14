@@ -28,6 +28,7 @@ public:
 	virtual FString GetNodeTitle() const;
 	FVector2D GetPosition() const;
 	FVector2D GetSize() const;
+	virtual FLinearColor GetNodeColor() const;
 
 	bool IsSelected() const;
 
@@ -43,6 +44,7 @@ public:
 private:
 
 	static const FString ExecuteName;
+	static const FString NodeColorName;
 
 	bool IsConnectedToRecursive(URigVMPin* InPin, URigVMNode* InNode) const;
 	void GetConnectedNodesRecursive(URigVMPin* InPin, bool bLookForSources, TArray<URigVMNode*>& OutNodes) const;
@@ -57,6 +59,9 @@ protected:
 
 	UPROPERTY()
 	FVector2D Size;
+
+	UPROPERTY()
+	FLinearColor NodeColor;
 
 private:
 	UPROPERTY()

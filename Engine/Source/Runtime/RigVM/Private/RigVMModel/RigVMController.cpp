@@ -87,6 +87,13 @@ URigVMStructNode* URigVMController::AddStructNode(UScriptStruct* InScriptStruct,
 	Node->Position = InPosition;
 	Node->NodeTitle = InScriptStruct->GetMetaData(TEXT("DisplayName"));
 	
+	FString NodeColorMetadata;
+	InScriptStruct->GetStringMetaDataHierarchical(*URigVMNode::NodeColorName, &NodeColorMetadata);
+	if (!NodeColorMetadata.IsEmpty())
+	{
+		Node->NodeColor = GetColorFromMetadata(NodeColorMetadata);
+	}
+
 	TArray<uint8> TempBuffer;
 	TempBuffer.AddUninitialized(InScriptStruct->GetStructureSize());
 	InScriptStruct->InitializeDefaultValue(TempBuffer.GetData());
@@ -1457,6 +1464,13 @@ void URigVMController::RepopulatePinsOnNode(URigVMNode* InNode)
 
 		UScriptStruct* ScriptStruct = StructNode->GetScriptStruct();
 
+		FString NodeColorMetadata;
+		ScriptStruct->GetStringMetaDataHierarchical(*URigVMNode::NodeColorName, &NodeColorMetadata);
+		if(!NodeColorMetadata.IsEmpty())
+		{
+			StructNode->NodeColor = GetColorFromMetadata(NodeColorMetadata);
+		}
+
 		TArray<uint8> TempBuffer;
 		TempBuffer.AddUninitialized(ScriptStruct->GetStructureSize());
 		ScriptStruct->InitializeDefaultValue(TempBuffer.GetData());
@@ -1482,3 +1496,30 @@ void URigVMController::RepopulatePinsOnNode(URigVMNode* InNode)
 }
 
 #endif
+
+FLinearColor URigVMController::GetColorFromMetadata(const FString& InMetadata)
+{
+	FLinearColor Color = FLinearColor::Black;
+
+	FString Metadata = InMetadata;
+	Metadata.TrimStartAndEnd();
+	FString SplitString(TEXT(" "));
+	FString Red, Green, Blue, GreenAndBlue;
+	if (Metadata.Split(SplitString, &Red, &GreenAndBlue))
+	{
+		Red.TrimEnd();
+		GreenAndBlue.TrimStart();
+		if (GreenAndBlue.Split(SplitString, &Green, &Blue))
+		{
+			Green.TrimEnd();
+			Blue.TrimStart();
+
+			float RedValue = FCString::Atof(*Red);
+			float GreenValue = FCString::Atof(*Green);
+			float BlueValue = FCString::Atof(*Blue);
+			Color = FLinearColor(RedValue, GreenValue, BlueValue);
+		}
+	}
+
+	return Color;
+}

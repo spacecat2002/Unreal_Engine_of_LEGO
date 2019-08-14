@@ -91,6 +91,8 @@ private:
 	void RepopulatePinsOnNode(URigVMNode* InNode);
 #endif
 
+	static FLinearColor GetColorFromMetadata(const FString& InMetadata);
+
 	UPROPERTY()
 	URigVMGraph* Graph;
 

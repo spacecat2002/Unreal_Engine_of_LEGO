@@ -5,11 +5,13 @@
 #include "RigVMCore/RigVMExecuteContext.h"
 
 const FString URigVMNode::ExecuteName = TEXT("Execute");
+const FString URigVMNode::NodeColorName = TEXT("NodeColor");
 
 URigVMNode::URigVMNode()
 : UObject()
 , Position(FVector2D::ZeroVector)
 , Size(FVector2D::ZeroVector)
+, NodeColor(FLinearColor::Black)
 {
 
 }
@@ -83,6 +85,11 @@ FVector2D URigVMNode::GetPosition() const
 FVector2D URigVMNode::GetSize() const
 {
 	return Size;
+}
+
+FLinearColor URigVMNode::GetNodeColor() const
+{
+	return NodeColor;
 }
 
 bool URigVMNode::IsSelected() const
