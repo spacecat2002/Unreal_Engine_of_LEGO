@@ -22,10 +22,12 @@ public:
 
 	FRigVMGraphModifiedEvent& OnModified();
 
+#if WITH_EDITOR
 	URigVMStructNode* AddStructNode(UScriptStruct* InScriptStruct, const FName& InMethodName, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
 	URigVMCommentNode* AddCommentNode(const FString& InCommentText, const FVector2D& InPosition = FVector2D::ZeroVector, const FVector2D& InSize = FVector2D(400.f, 300.f), bool bUndo = true);
 	URigVMRerouteNode* AddRerouteNodeOnLink(URigVMLink* InLink, bool bShowAsFullNode, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
 	URigVMRerouteNode* AddRerouteNodeOnPin(const FString& InPinPath, bool bShowAsFullNode, bool bAsInput, const FVector2D& InPosition = FVector2D::ZeroVector, bool bUndo = true);
+#endif
 
 	bool RemoveNode(URigVMNode* InNode, bool bUndo = true);
 	bool RemoveNode(const FName& InNodeName, bool bUndo = true);
@@ -78,7 +80,10 @@ private:
 
 	void DetachLinksFromPinObjects();
 	void ReattachLinksToPinObjects();
+
+#if WITH_EDITOR
 	void RepopulatePinsOnNode(URigVMNode* InNode);
+#endif
 
 	UPROPERTY()
 	URigVMGraph* Graph;

@@ -53,6 +53,8 @@ void URigVMController::HandleModifiedEvent(ERigVMGraphNotifType InNotifType, URi
 	ModifiedEvent.Broadcast(InNotifType, InGraph, InSubject);
 }
 
+#if WITH_EDITOR
+
 URigVMStructNode* URigVMController::AddStructNode(UScriptStruct* InScriptStruct, const FName& InMethodName, const FVector2D& InPosition, bool bUndo)
 {
 	if (Graph == nullptr)
@@ -204,6 +206,8 @@ URigVMRerouteNode* URigVMController::AddRerouteNodeOnPin(const FString& InPinPat
 
 	return Node;
 }
+
+#endif
 
 bool URigVMController::RemoveNode(URigVMNode* InNode, bool bUndo)
 {
@@ -1037,6 +1041,7 @@ void URigVMController::ConfigurePinFromProperty(UProperty* InProperty, URigVMPin
 {
 	if (InPinDirection == ERigVMPinDirection::Invalid)
 	{
+#if WITH_EDITOR
 		bool bIsInput = InProperty->HasMetaData(TEXT("Input"));
 		bool bIsOutput = InProperty->HasMetaData(TEXT("Output"));
 
@@ -1048,12 +1053,16 @@ void URigVMController::ConfigurePinFromProperty(UProperty* InProperty, URigVMPin
 		{
 			InOutPin->Direction = bIsOutput ? ERigVMPinDirection::Output : ERigVMPinDirection::Hidden;
 		}
+#endif
 	}
 	else
 	{
 		InOutPin->Direction = InPinDirection;
 	}
+
+#if WITH_EDITOR
 	InOutPin->bIsConstant = InProperty->HasMetaData(TEXT("Constant"));
+#endif
 
 	FString ExtendedCppType;
 	InOutPin->CPPType = InProperty->GetCPPType(&ExtendedCppType);
@@ -1073,6 +1082,7 @@ void URigVMController::ConfigurePinFromPin(URigVMPin* InOutPin, URigVMPin* InPin
 	InOutPin->Direction = InPin->Direction;
 	InOutPin->CPPType = InPin->CPPType;
 	InOutPin->ScriptStructPath = InPin->ScriptStructPath;
+	InOutPin->ScriptStruct = InPin->ScriptStruct;
 	InOutPin->DefaultValue = InPin->DefaultValue;
 }
 
@@ -1197,6 +1207,8 @@ void URigVMController::ReattachLinksToPinObjects()
 	Graph->Links = NewLinks;
 }
 
+#if WITH_EDITOR
+
 void URigVMController::RepopulatePinsOnNode(URigVMNode* InNode)
 {
 	if (InNode == nullptr)
@@ -1245,3 +1257,5 @@ void URigVMController::RepopulatePinsOnNode(URigVMNode* InNode)
 		}
 	}
 }
+
+#endif

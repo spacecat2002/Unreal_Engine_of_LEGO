@@ -141,6 +141,8 @@ void URigVMGraph::PostLoad()
 	URigVMController* Controller = NewObject<URigVMController>(GetTransientPackage());
 	Controller->SetGraph(this);
 
+#if WITH_EDITOR
+
 	Controller->DetachLinksFromPinObjects();
 
 	for (URigVMNode* Node : Nodes)
@@ -149,6 +151,9 @@ void URigVMGraph::PostLoad()
 	}
 
 	Controller->ReattachLinksToPinObjects();
+
+#endif
+
 }
 
 #endif
