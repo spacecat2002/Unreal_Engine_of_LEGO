@@ -18,6 +18,7 @@ class RIGVM_API URigVMController : public UObject
 
 public:
 
+	URigVMController();
 	~URigVMController();
 
 	UFUNCTION(BlueprintCallable, Category = RigVMController)
@@ -27,6 +28,9 @@ public:
 	void SetGraph(URigVMGraph* InGraph);
 
 	FRigVMGraphModifiedEvent& OnModified();
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
+	void EnableReporting(bool bEnabled = true) { bReportWarningsAndErrors = bEnabled; }
 
 #if WITH_EDITOR
 
@@ -141,7 +145,9 @@ private:
 	void HandleModifiedEvent(ERigVMGraphNotifType InNotifType, URigVMGraph* InGraph, UObject* InSubject);
 
 	FString GetValidName(const FString& InPrefix);
+	bool IsValidGraph();
 	bool IsValidNodeForGraph(URigVMNode* InNode);
+	bool IsValidPinForGraph(URigVMPin* InPin);
 	bool IsValidLinkForGraph(URigVMLink* InLink);
 	void AddPinsForStruct(UStruct* InStruct, URigVMNode* InNode, URigVMPin* InParentPin, ERigVMPinDirection InPinDirection, const FString& InDefaultValue);
 	void AddPinsForArray(UArrayProperty* InArrayProperty, URigVMNode* InNode, URigVMPin* InParentPin, ERigVMPinDirection InPinDirection, const TArray<FString>& InDefaultValues);
@@ -158,6 +164,21 @@ private:
 	bool BreakAllLinks(URigVMPin* Pin, bool bAsInput, bool bUndo);
 	void BreakAllLinksRecursive(URigVMPin* Pin, bool bAsInput, bool bTowardsParent, bool bUndo);
 
+	void ReportWarning(const FString& InMessage);
+	void ReportError(const FString& InMessage);
+
+	template <typename FmtType, typename... Types>
+	void ReportWarningf(const FmtType& Fmt, Types... Args)
+	{
+		ReportWarning(FString::Printf(Fmt, Args...));
+	}
+
+	template <typename FmtType, typename... Types>
+	void ReportErrorf(const FmtType& Fmt, Types... Args)
+	{
+		ReportError(FString::Printf(Fmt, Args...));
+	}
+
 	void DetachLinksFromPinObjects();
 	void ReattachLinksToPinObjects();
 
@@ -170,6 +191,7 @@ private:
 	UPROPERTY()
 	URigVMGraph* Graph;
 
+	bool bReportWarningsAndErrors;
 	static int32 sRemovedPinIndex;
 
 	friend class URigVMGraph;

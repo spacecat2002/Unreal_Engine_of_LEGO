@@ -6,8 +6,15 @@
 #include "RigVMModule.h"
 #include "UObject/PropertyPortFlags.h"
 #include "UObject/Package.h"
+#include "Misc/CoreMisc.h"
 
 int32 URigVMController::sRemovedPinIndex = 0;
+
+URigVMController::URigVMController()
+	: bReportWarningsAndErrors(true)
+{
+
+}
 
 URigVMController::~URigVMController()
 {
@@ -58,17 +65,18 @@ void URigVMController::HandleModifiedEvent(ERigVMGraphNotifType InNotifType, URi
 
 URigVMStructNode* URigVMController::AddStructNode(UScriptStruct* InScriptStruct, const FName& InMethodName, const FVector2D& InPosition, bool bUndo)
 {
-	if (Graph == nullptr)
+	if(!IsValidGraph())
 	{
 		return nullptr;
 	}
-
 	if (InScriptStruct == nullptr)
 	{
+		ReportError(TEXT("InScriptStruct is null."));
 		return nullptr;
 	}
 	if (InMethodName == NAME_None)
 	{
+		ReportError(TEXT("InMethodName is None."));
 		return nullptr;
 	}
 
@@ -76,7 +84,7 @@ URigVMStructNode* URigVMController::AddStructNode(UScriptStruct* InScriptStruct,
 	FRigVMFunctionPtr Function = FRigVMRegistry::Get().Find(*FunctionName);
 	if (Function == nullptr)
 	{
-		// todo: log error
+		ReportErrorf(TEXT("RIGVM_METHOD '%s' cannot be found. is None."), *FunctionName);
 		return nullptr;
 	}
 
@@ -115,15 +123,16 @@ URigVMStructNode* URigVMController::AddStructNode(UScriptStruct* InScriptStruct,
 
 URigVMStructNode* URigVMController::AddStructNodeFromStructPath(const FString& InScriptStructPath, const FName& InMethodName, const FVector2D& InPosition, bool bUndo)
 {
-	if (Graph == nullptr)
+	if(!IsValidGraph())
 	{
+		ReportError(TEXT("Controller does not have a graph associated - use SetGraph."));
 		return nullptr;
 	}
 
 	UScriptStruct* ScriptStruct = FindObjectChecked<UScriptStruct>(ANY_PACKAGE, *InScriptStructPath);
 	if (ScriptStruct == nullptr)
 	{
-		// todo: log error
+		ReportErrorf(TEXT("Cannot find struct for path '%s'."), *InScriptStructPath);
 		return nullptr;
 	}
 
@@ -132,7 +141,7 @@ URigVMStructNode* URigVMController::AddStructNodeFromStructPath(const FString& I
 
 URigVMVariableNode* URigVMController::AddVariableNode(const FName& InVariableName, const FString& InCPPType, UScriptStruct* InScriptStruct, bool bIsGetter, const FString& InDefaultValue, const FVector2D& InPosition, bool bUndo)
 {
-	if (Graph == nullptr)
+	if (!IsValidGraph())
 	{
 		return nullptr;
 	}
@@ -145,7 +154,7 @@ URigVMVariableNode* URigVMController::AddVariableNode(const FName& InVariableNam
 			if (ExistingVariable.CPPType != InCPPType ||
 				ExistingVariable.ScriptStruct != InScriptStruct)
 			{
-				// todo: report error
+				ReportErrorf(TEXT("Cannot add variable '%s' - variable already exists."), *InVariableName.ToString());
 				return nullptr;
 			}
 		}
@@ -200,7 +209,7 @@ URigVMVariableNode* URigVMController::AddVariableNode(const FName& InVariableNam
 
 URigVMParameterNode* URigVMController::AddParameterNode(const FName& InParameterName, const FString& InCPPType, UScriptStruct* InScriptStruct, bool bIsInput, const FString& InDefaultValue, const FVector2D& InPosition, bool bUndo)
 {
-	if (Graph == nullptr)
+	if (!IsValidGraph())
 	{
 		return nullptr;
 	}
@@ -214,7 +223,7 @@ URigVMParameterNode* URigVMController::AddParameterNode(const FName& InParameter
 				ExistingParameter.ScriptStruct != InScriptStruct ||
 				ExistingParameter.bIsInput != bIsInput)
 			{
-				// todo: report error
+				ReportErrorf(TEXT("Cannot add parameter '%s' - parameter already exists."), *InParameterName.ToString());
 				return nullptr;
 			}
 		}
@@ -282,7 +291,7 @@ URigVMBeginExecuteNode* URigVMController::AddBeginExecuteNode(const FVector2D& I
 
 URigVMCommentNode* URigVMController::AddCommentNode(const FString& InCommentText, const FVector2D& InPosition, const FVector2D& InSize, bool bUndo)
 {
-	if (Graph == nullptr)
+	if (!IsValidGraph())
 	{
 		return nullptr;
 	}
@@ -329,7 +338,7 @@ URigVMRerouteNode* URigVMController::AddRerouteNodeOnLink(URigVMLink* InLink, bo
 
 URigVMRerouteNode* URigVMController::AddRerouteNodeOnLinkPath(const FString& InLinkPinPathRepresentation, bool bShowAsFullNode, const FVector2D& InPosition, bool bUndo)
 {
-	if (Graph == nullptr)
+	if (!IsValidGraph())
 	{
 		return nullptr;
 	}
@@ -340,7 +349,7 @@ URigVMRerouteNode* URigVMController::AddRerouteNodeOnLinkPath(const FString& InL
 
 URigVMRerouteNode* URigVMController::AddRerouteNodeOnPin(const FString& InPinPath, bool bAsInput, bool bShowAsFullNode, const FVector2D& InPosition, bool bUndo)
 {
-	if (Graph == nullptr)
+	if (!IsValidGraph())
 	{
 		return nullptr;
 	}
@@ -426,7 +435,7 @@ bool URigVMController::RemoveNode(URigVMNode* InNode, bool bUndo)
 
 bool URigVMController::RemoveNodeByName(const FName& InNodeName, bool bUndo)
 {
-	if (Graph == nullptr)
+	if (!IsValidGraph())
 	{
 		return false;
 	}
@@ -461,7 +470,7 @@ return true;
 
 bool URigVMController::SelectNodeByName(const FName& InNodeName, bool bSelect, bool bUndo)
 {
-	if (Graph == nullptr)
+	if (!IsValidGraph())
 	{
 		return false;
 	}
@@ -470,7 +479,7 @@ bool URigVMController::SelectNodeByName(const FName& InNodeName, bool bSelect, b
 
 bool URigVMController::ClearNodeSelection(bool bUndo)
 {
-	if (Graph == nullptr)
+	if (!IsValidGraph())
 	{
 		return false;
 	}
@@ -499,7 +508,7 @@ bool URigVMController::SetNodePosition(URigVMNode* InNode, const FVector2D& InPo
 
 bool URigVMController::SetNodePositionByName(const FName& InNodeName, const FVector2D& InPosition, bool bUndo)
 {
-	if(Graph == nullptr)
+	if(!IsValidGraph())
 	{
 		return false;
 	}
@@ -523,7 +532,7 @@ bool URigVMController::SetNodeSize(URigVMNode* InNode, const FVector2D& InSize, 
 
 bool URigVMController::SetNodeSizeByName(const FName& InNodeName, const FVector2D& InSize, bool bUndo)
 {
-	if(Graph == nullptr)
+	if(!IsValidGraph())
 	{
 		return false;
 	}
@@ -552,7 +561,7 @@ bool URigVMController::SetCommentText(URigVMNode* InNode, const FString& InComme
 
 bool URigVMController::SetCommentTextByName(const FName& InNodeName, const FString& InCommentText, bool bUndo)
 {
-	if(Graph == nullptr)
+	if(!IsValidGraph())
 	{
 		return false;
 	}
@@ -581,7 +590,7 @@ bool URigVMController::SetRerouteCompactness(URigVMNode* InNode, bool bShowAsFul
 
 bool URigVMController::SetRerouteCompactnessByName(const FName& InNodeName, bool bShowAsFullNode, bool bUndo)
 {
-	if(Graph == nullptr)
+	if(!IsValidGraph())
 	{
 		return false;
 	}
@@ -592,13 +601,14 @@ bool URigVMController::SetRerouteCompactnessByName(const FName& InNodeName, bool
 
 bool URigVMController::RenameVariable(const FName& InOldName, const FName& InNewName, bool bUndo)
 {
-	if (Graph == nullptr)
+	if(!IsValidGraph())
 	{
 		return false;
 	}
 
 	if (InOldName == InNewName)
 	{
+		ReportWarning(TEXT("RenameVariable: InOldName and InNewName are equal."));
 		return false;
 	}
 
@@ -607,7 +617,7 @@ bool URigVMController::RenameVariable(const FName& InOldName, const FName& InNew
 	{
 		if (ExistingVariable.Name == InNewName)
 		{
-			// todo: report error
+			ReportErrorf(TEXT("Cannot rename variable to '%s' - variable already exists."), *InNewName.ToString());
 			return false;
 		}
 	}
@@ -637,13 +647,14 @@ bool URigVMController::RenameVariable(const FName& InOldName, const FName& InNew
 
 bool URigVMController::RenameParameter(const FName& InOldName, const FName& InNewName, bool bUndo)
 {
-	if (Graph == nullptr)
+	if(!IsValidGraph())
 	{
 		return false;
 	}
 
 	if (InOldName == InNewName)
 	{
+		ReportWarning(TEXT("RenameParameter: InOldName and InNewName are equal."));
 		return false;
 	}
 
@@ -652,7 +663,7 @@ bool URigVMController::RenameParameter(const FName& InOldName, const FName& InNe
 	{
 		if (ExistingParameter.Name == InNewName)
 		{
-			// todo: report error
+			ReportErrorf(TEXT("Cannot rename parameter to '%s' - parameter already exists."), *InNewName.ToString());
 			return false;
 		}
 	}
@@ -682,30 +693,36 @@ bool URigVMController::RenameParameter(const FName& InOldName, const FName& InNe
 
 FString URigVMController::GetPinDefaultValue(const FString& InPinPath)
 {
-	if (Graph)
+	if (!IsValidGraph())
 	{
-		URigVMPin* Pin = Graph->FindPin(InPinPath);
-		if (Pin)
-		{
-			return Pin->GetDefaultValue();
-		}
+		return FString();
 	}
-	return FString();
+
+	URigVMPin* Pin = Graph->FindPin(InPinPath);
+	if (Pin == nullptr)
+	{
+		ReportErrorf(TEXT("Cannot find pin '%s'."), *InPinPath);
+		return FString();
+	}
+
+	return Pin->GetDefaultValue();
 }
 
 void URigVMController::SetPinDefaultValue(const FString& InPinPath, const FString& InDefaultValue, bool bUndo)
 {
-	if (Graph)
+	if (!IsValidGraph())
 	{
-		URigVMPin* Pin = Graph->FindPin(InPinPath);
-		if (Pin)
-		{
-			if (Pin->Direction == ERigVMPinDirection::Input)
-			{
-				SetPinDefaultValue(Pin, InDefaultValue, false, bUndo);
-			}
-		}
+		return;
 	}
+
+	URigVMPin* Pin = Graph->FindPin(InPinPath);
+	if (Pin == nullptr)
+	{
+		ReportErrorf(TEXT("Cannot find pin '%s'."), *InPinPath);
+		return;
+	}
+
+	SetPinDefaultValue(Pin, InDefaultValue, false, bUndo);
 }
 
 void URigVMController::SetPinDefaultValue(URigVMPin* InPin, const FString& InDefaultValue, bool bResizeArrays, bool bUndo)
@@ -833,7 +850,7 @@ FString URigVMController::AddArrayPin(const FString& InArrayPinPath, const FStri
 
 FString URigVMController::DuplicateArrayPin(const FString& InArrayElementPinPath, bool bUndo)
 {
-	if (Graph == nullptr)
+	if (!IsValidGraph())
 	{
 		return FString();
 	}
@@ -841,11 +858,13 @@ FString URigVMController::DuplicateArrayPin(const FString& InArrayElementPinPath
 	URigVMPin* ElementPin = Graph->FindPin(InArrayElementPinPath);
 	if (ElementPin == nullptr)
 	{
+		ReportErrorf(TEXT("Cannot find pin '%s'."), *InArrayElementPinPath);
 		return FString();
 	}
 
 	if (!ElementPin->IsArrayElement())
 	{
+		ReportErrorf(TEXT("Pin '%s' is not an array element."), *InArrayElementPinPath);
 		return FString();
 	}
 
@@ -859,7 +878,7 @@ FString URigVMController::DuplicateArrayPin(const FString& InArrayElementPinPath
 
 FString URigVMController::InsertArrayPin(const FString& InArrayPinPath, int32 InIndex, const FString& InDefaultValue, bool bUndo)
 {
-	if (Graph == nullptr)
+	if (!IsValidGraph())
 	{
 		return FString();
 	}
@@ -867,6 +886,7 @@ FString URigVMController::InsertArrayPin(const FString& InArrayPinPath, int32 In
 	URigVMPin* ArrayPin = Graph->FindPin(InArrayPinPath);
 	if (ArrayPin == nullptr)
 	{
+		ReportErrorf(TEXT("Cannot find pin '%s'."), *InArrayPinPath);
 		return FString();
 	}
 
@@ -883,6 +903,7 @@ URigVMPin* URigVMController::InsertArrayPin(URigVMPin* ArrayPin, int32 InIndex, 
 {
 	if (!ArrayPin->IsArray())
 	{
+		ReportErrorf(TEXT("Pin '%s' is not an array."), *ArrayPin->GetPinPath());
 		return nullptr;
 	}
 
@@ -936,7 +957,7 @@ URigVMPin* URigVMController::InsertArrayPin(URigVMPin* ArrayPin, int32 InIndex, 
 
 bool URigVMController::RemoveArrayPin(const FString& InArrayElementPinPath, bool bUndo)
 {
-	if (Graph == nullptr)
+	if(!IsValidGraph())
 	{
 		return false;
 	}
@@ -944,11 +965,13 @@ bool URigVMController::RemoveArrayPin(const FString& InArrayElementPinPath, bool
 	URigVMPin* ArrayElementPin = Graph->FindPin(InArrayElementPinPath);
 	if (ArrayElementPin == nullptr)
 	{
+		ReportErrorf(TEXT("Cannot find pin '%s'."), *InArrayElementPinPath);
 		return false;
 	}
 
 	if (!ArrayElementPin->IsArrayElement())
 	{
+		ReportErrorf(TEXT("Pin '%s' is not an array element."), *InArrayElementPinPath);
 		return false;
 	}
 
@@ -1001,7 +1024,7 @@ bool URigVMController::RemovePin(URigVMPin* InPinToRemove, bool bUndo)
 
 bool URigVMController::ClearArrayPin(const FString& InArrayPinPath, bool bUndo)
 {
-	if (Graph == nullptr)
+	if(!IsValidGraph())
 	{
 		return false;
 	}
@@ -1009,11 +1032,13 @@ bool URigVMController::ClearArrayPin(const FString& InArrayPinPath, bool bUndo)
 	URigVMPin* Pin = Graph->FindPin(InArrayPinPath);
 	if (Pin == nullptr)
 	{
+		ReportErrorf(TEXT("Cannot find pin '%s'."), *InArrayPinPath);
 		return false;
 	}
 
 	if (!Pin->IsArray())
 	{
+		ReportErrorf(TEXT("Pin '%s' is not an array."), *InArrayPinPath);
 		return false;
 	}
 
@@ -1033,15 +1058,21 @@ bool URigVMController::ClearArrayPin(const FString& InArrayPinPath, bool bUndo)
 
 bool URigVMController::AddLink(const FString& InOutputPinPath, const FString& InInputPinPath, bool bUndo)
 {
-	if (Graph == nullptr)
+	if(!IsValidGraph())
 	{
 		return false;
 	}
 
 	URigVMPin* OutputPin = Graph->FindPin(InOutputPinPath);
-	URigVMPin* InputPin = Graph->FindPin(InInputPinPath);
-	if (OutputPin == nullptr || InputPin == nullptr)
+	if (OutputPin == nullptr)
 	{
+		ReportErrorf(TEXT("Cannot find pin '%s'."), *InOutputPinPath);
+		return false;
+	}
+	URigVMPin* InputPin = Graph->FindPin(InInputPinPath);
+	if (InputPin == nullptr)
+	{
+		ReportErrorf(TEXT("Cannot find pin '%s'."), *InInputPinPath);
 		return false;
 	}
 
@@ -1050,15 +1081,31 @@ bool URigVMController::AddLink(const FString& InOutputPinPath, const FString& In
 
 bool URigVMController::AddLink(URigVMPin* OutputPin, URigVMPin* InputPin, bool bUndo)
 {
-	if (!Graph->CanLink(OutputPin, InputPin))
+	if(OutputPin == nullptr)
+	{
+		ReportError(TEXT("OutputPin is nullptr."));
+		return false;
+	}
+
+	if(InputPin == nullptr)
+	{
+		ReportError(TEXT("InputPin is nullptr."));
+		return false;
+	}
+
+	if(!IsValidPinForGraph(OutputPin) || !IsValidPinForGraph(InputPin))
 	{
 		return false;
 	}
 
-	if (OutputPin->IsConnectedTo(InputPin))
+	FString FailureReason;
+	if (!Graph->CanLink(OutputPin, InputPin, &FailureReason))
 	{
+		ReportErrorf(TEXT("Cannot link '%s' to '%s': %s."), *OutputPin->GetPinPath(), *InputPin->GetPinPath(), *FailureReason);
 		return false;
 	}
+
+	ensure(!OutputPin->IsConnectedTo(InputPin));
 	ensure(!InputPin->IsConnectedTo(OutputPin));
 
 	BreakAllLinks(InputPin, true, bUndo);
@@ -1084,15 +1131,21 @@ bool URigVMController::AddLink(URigVMPin* OutputPin, URigVMPin* InputPin, bool b
 
 bool URigVMController::BreakLink(const FString& InOutputPinPath, const FString& InInputPinPath, bool bUndo)
 {
-	if (Graph == nullptr)
+	if(!IsValidGraph())
 	{
 		return false;
 	}
 
 	URigVMPin* OutputPin = Graph->FindPin(InOutputPinPath);
-	URigVMPin* InputPin = Graph->FindPin(InInputPinPath);
-	if (OutputPin == nullptr || InputPin == nullptr)
+	if (OutputPin == nullptr)
 	{
+		ReportErrorf(TEXT("Cannot find pin '%s'."), *InOutputPinPath);
+		return false;
+	}
+	URigVMPin* InputPin = Graph->FindPin(InInputPinPath);
+	if (InputPin == nullptr)
+	{
+		ReportErrorf(TEXT("Cannot find pin '%s'."), *InInputPinPath);
 		return false;
 	}
 
@@ -1101,6 +1154,11 @@ bool URigVMController::BreakLink(const FString& InOutputPinPath, const FString& 
 
 bool URigVMController::BreakLink(URigVMPin* OutputPin, URigVMPin* InputPin, bool bUndo)
 {
+	if(!IsValidPinForGraph(OutputPin) || !IsValidPinForGraph(InputPin))
+	{
+		return false;
+	}
+
 	if (!OutputPin->IsConnectedTo(InputPin))
 	{
 		return false;
@@ -1131,7 +1189,7 @@ bool URigVMController::BreakLink(URigVMPin* OutputPin, URigVMPin* InputPin, bool
 
 bool URigVMController::BreakAllLinks(const FString& InPinPath, bool bAsInput, bool bUndo)
 {
-	if (Graph == nullptr)
+	if(!IsValidGraph())
 	{
 		return false;
 	}
@@ -1139,6 +1197,7 @@ bool URigVMController::BreakAllLinks(const FString& InPinPath, bool bAsInput, bo
 	URigVMPin* Pin = Graph->FindPin(InPinPath);
 	if (Pin == nullptr)
 	{
+		ReportErrorf(TEXT("Cannot find pin '%s'."), *InPinPath);
 		return false;
 	}
 
@@ -1147,6 +1206,11 @@ bool URigVMController::BreakAllLinks(const FString& InPinPath, bool bAsInput, bo
 
 bool URigVMController::BreakAllLinks(URigVMPin* Pin, bool bAsInput, bool bUndo)
 {
+	if(!IsValidPinForGraph(Pin))
+	{
+		return false;
+	}
+
 	int32 LinksBroken = 0;
 	TArray<URigVMLink*> Links = Pin->GetLinks();
 	for (int32 LinkIndex = Links.Num() - 1; LinkIndex >= 0; LinkIndex--)
@@ -1201,19 +1265,52 @@ FString URigVMController::GetValidName(const FString& InPrefix)
 	return Name;
 }
 
-bool URigVMController::IsValidNodeForGraph(URigVMNode* InNode)
+bool URigVMController::IsValidGraph()
 {
 	if (Graph == nullptr)
+	{
+		ReportError(TEXT("Controller does not have a graph associated - use SetGraph / set_graph."));
+		return false;
+	}
+	return true;
+}
+
+bool URigVMController::IsValidNodeForGraph(URigVMNode* InNode)
+{
+	if(!IsValidGraph())
 	{
 		return false;
 	}
 
 	if (InNode == nullptr)
 	{
+		ReportError(TEXT("InNode is nullptr."));
 		return false;
 	}
 
 	if (InNode->GetGraph() != Graph)
+	{
+		ReportError(TEXT("InNode is on a different graph."));
+		return false;
+	}
+
+	return true;
+}
+
+bool URigVMController::IsValidPinForGraph(URigVMPin* InPin)
+{
+	if(!IsValidGraph())
+	{
+		return false;
+	}
+
+	if (InPin == nullptr)
+	{
+		ReportError(TEXT("InPin is nullptr."));
+		return false;
+	}
+
+	if (!IsValidNodeForGraph(InPin->GetNode()))
 	{
 		return false;
 	}
@@ -1223,27 +1320,41 @@ bool URigVMController::IsValidNodeForGraph(URigVMNode* InNode)
 
 bool URigVMController::IsValidLinkForGraph(URigVMLink* InLink)
 {
-	if (Graph == nullptr)
+	if(!IsValidGraph())
 	{
 		return false;
 	}
 
 	if (InLink == nullptr)
 	{
+		ReportError(TEXT("InLink is nullptr."));
 		return false;
 	}
 
 	if (InLink->GetGraph() != Graph)
 	{
+		ReportError(TEXT("InLink is on a different graph."));
 		return false;
 	}
 
 	if(InLink->GetSourcePin() == nullptr)
 	{
+		ReportError(TEXT("InLink has no source pin."));
 		return false;
 	}
 
 	if(InLink->GetTargetPin() == nullptr)
+	{
+		ReportError(TEXT("InLink has no target pin."));
+		return false;
+	}
+
+	if(!IsValidPinForGraph(InLink->GetSourcePin()))
+	{
+		return false;
+	}
+
+	if(!IsValidPinForGraph(InLink->GetTargetPin()))
 	{
 		return false;
 	}
@@ -1428,7 +1539,7 @@ bool URigVMController::ShouldStructBeUnfolded(const UStruct* Struct)
 
 UProperty* URigVMController::FindPropertyForPin(const FString& InPinPath)
 {
-	if (Graph == nullptr)
+	if(!IsValidGraph())
 	{
 		return nullptr;
 	}
@@ -1442,6 +1553,7 @@ UProperty* URigVMController::FindPropertyForPin(const FString& InPinPath)
 	URigVMPin* Pin = Graph->FindPin(InPinPath);
 	if (Pin == nullptr)
 	{
+		ReportErrorf(TEXT("Cannot find pin '%s'."), *InPinPath);
 		return nullptr;
 	}
 
@@ -1539,6 +1651,7 @@ void URigVMController::RepopulatePinsOnNode(URigVMNode* InNode)
 {
 	if (InNode == nullptr)
 	{
+		ReportError(TEXT("InNode is nullptr."));
 		return;
 	}
 
@@ -1618,4 +1731,22 @@ FLinearColor URigVMController::GetColorFromMetadata(const FString& InMetadata)
 	}
 
 	return Color;
+}
+
+void URigVMController::ReportWarning(const FString& InMessage)
+{
+	if(!bReportWarningsAndErrors)
+	{
+		return;
+	}
+	FScriptExceptionHandler::Get().HandleException(ELogVerbosity::Warning, *InMessage, *FString());
+}
+
+void URigVMController::ReportError(const FString& InMessage)
+{
+	if(!bReportWarningsAndErrors)
+	{
+		return;
+	}
+	FScriptExceptionHandler::Get().HandleException(ELogVerbosity::Error, *InMessage, *FString());
 }
