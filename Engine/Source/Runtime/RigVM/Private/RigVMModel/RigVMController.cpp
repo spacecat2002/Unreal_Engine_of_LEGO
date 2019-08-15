@@ -1,6 +1,7 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RigVMModel/RigVMController.h"
+#include "RigVMModel/RigVMControllerActions.h"
 #include "RigVMCore/RigVMRegistry.h"
 #include "RigVMCore/RigVMExecuteContext.h"
 #include "RigVMModule.h"
@@ -13,7 +14,13 @@ int32 URigVMController::sRemovedPinIndex = 0;
 URigVMController::URigVMController()
 	: bReportWarningsAndErrors(true)
 {
+}
 
+URigVMController::URigVMController(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
+	, bReportWarningsAndErrors(true)
+{
+	ActionStack = CreateDefaultSubobject<URigVMActionStack>(TEXT("ActionStack"));
 }
 
 URigVMController::~URigVMController()
@@ -67,7 +74,7 @@ void URigVMController::HandleModifiedEvent(ERigVMGraphNotifType InNotifType, URi
 
 #if WITH_EDITOR
 
-URigVMStructNode* URigVMController::AddStructNode(UScriptStruct* InScriptStruct, const FName& InMethodName, const FVector2D& InPosition, bool bUndo)
+URigVMStructNode* URigVMController::AddStructNode(UScriptStruct* InScriptStruct, const FName& InMethodName, const FVector2D& InPosition, const FString& InNodeName, bool bUndo)
 {
 	if(!IsValidGraph())
 	{
@@ -92,7 +99,7 @@ URigVMStructNode* URigVMController::AddStructNode(UScriptStruct* InScriptStruct,
 		return nullptr;
 	}
 
-	FString Name = GetValidName(InScriptStruct->GetName());
+	FString Name = GetValidName(InNodeName.IsEmpty() ? InScriptStruct->GetName() : InNodeName);
 	URigVMStructNode* Node = NewObject<URigVMStructNode>(Graph, *Name);
 	Node->ScriptStruct = InScriptStruct;
 	Node->MethodName = InMethodName;
@@ -118,18 +125,27 @@ URigVMStructNode* URigVMController::AddStructNode(UScriptStruct* InScriptStruct,
 	Graph->Nodes.Add(Node);
 	Graph->MarkPackageDirty();
 
-	// todo: undo redo
+	FRigVMAddStructNodeAction Action;
+	if (bUndo)
+	{
+		Action = FRigVMAddStructNodeAction(Node);
+		ActionStack->BeginAction(Action);
+	}
 
 	Notify(ERigVMGraphNotifType::NodeAdded, Graph, Node);
+
+	if (bUndo)
+	{
+		ActionStack->EndAction(Action);
+	}
 
 	return Node;
 }
 
-URigVMStructNode* URigVMController::AddStructNodeFromStructPath(const FString& InScriptStructPath, const FName& InMethodName, const FVector2D& InPosition, bool bUndo)
+URigVMStructNode* URigVMController::AddStructNodeFromStructPath(const FString& InScriptStructPath, const FName& InMethodName, const FVector2D& InPosition, const FString& InNodeName, bool bUndo)
 {
 	if(!IsValidGraph())
 	{
-		ReportError(TEXT("Controller does not have a graph associated - use SetGraph."));
 		return nullptr;
 	}
 
@@ -140,10 +156,10 @@ URigVMStructNode* URigVMController::AddStructNodeFromStructPath(const FString& I
 		return nullptr;
 	}
 
-	return AddStructNode(ScriptStruct, InMethodName, InPosition, bUndo);
+	return AddStructNode(ScriptStruct, InMethodName, InPosition, InNodeName, bUndo);
 }
 
-URigVMVariableNode* URigVMController::AddVariableNode(const FName& InVariableName, const FString& InCPPType, UScriptStruct* InScriptStruct, bool bIsGetter, const FString& InDefaultValue, const FVector2D& InPosition, bool bUndo)
+URigVMVariableNode* URigVMController::AddVariableNode(const FName& InVariableName, const FString& InCPPType, UScriptStruct* InScriptStruct, bool bIsGetter, const FString& InDefaultValue, const FVector2D& InPosition, const FString& InNodeName, bool bUndo)
 {
 	if (!IsValidGraph())
 	{
@@ -164,7 +180,7 @@ URigVMVariableNode* URigVMController::AddVariableNode(const FName& InVariableNam
 		}
 	}
 
-	FString Name = GetValidName(TEXT("VariableNode"));
+	FString Name = GetValidName(InNodeName.IsEmpty() ? FString(TEXT("VariableNode")) : InNodeName);
 	URigVMVariableNode* Node = NewObject<URigVMVariableNode>(Graph, *Name);
 	Node->Position = InPosition;
 	Node->VariableName = InVariableName;
@@ -189,8 +205,6 @@ URigVMVariableNode* URigVMController::AddVariableNode(const FName& InVariableNam
 	ValuePin->Direction = bIsGetter ? ERigVMPinDirection::Output : ERigVMPinDirection::Input;
 	Node->Pins.Add(ValuePin);
 
-	// todo: undo redo
-
 	Graph->Nodes.Add(Node);
 
 	if (ValuePin->IsStruct())
@@ -204,12 +218,46 @@ URigVMVariableNode* URigVMController::AddVariableNode(const FName& InVariableNam
 	}
 
 	Graph->MarkPackageDirty();
+
+	FRigVMAddVariableNodeAction Action;
+	if (bUndo)
+	{
+		Action = FRigVMAddVariableNodeAction(Node);
+		ActionStack->BeginAction(Action);
+	}
+
 	Notify(ERigVMGraphNotifType::NodeAdded, Graph, Node);
+
+	if (bUndo)
+	{
+		ActionStack->EndAction(Action);
+	}
 
 	return Node;
 }
 
-URigVMParameterNode* URigVMController::AddParameterNode(const FName& InParameterName, const FString& InCPPType, UScriptStruct* InScriptStruct, bool bIsInput, const FString& InDefaultValue, const FVector2D& InPosition, bool bUndo)
+URigVMVariableNode* URigVMController::AddVariableNodeFromStructPath(const FName& InVariableName, const FString& InCPPType, const FString& InScriptStructPath, bool bIsGetter, const FString& InDefaultValue, const FVector2D& InPosition, const FString& InNodeName, bool bUndo)
+{
+	if (!IsValidGraph())
+	{
+		return nullptr;
+	}
+
+	UScriptStruct* ScriptStruct = nullptr;
+	if (!InScriptStructPath.IsEmpty())
+	{
+		ScriptStruct = FindObjectChecked<UScriptStruct>(ANY_PACKAGE, *InScriptStructPath);
+		if (ScriptStruct == nullptr)
+		{
+			ReportErrorf(TEXT("Cannot find struct for path '%s'."), *InScriptStructPath);
+			return nullptr;
+		}
+	}
+
+	return AddVariableNode(InVariableName, InCPPType, ScriptStruct, bIsGetter, InDefaultValue, InPosition, InNodeName, bUndo);
+}
+
+URigVMParameterNode* URigVMController::AddParameterNode(const FName& InParameterName, const FString& InCPPType, UScriptStruct* InScriptStruct, bool bIsInput, const FString& InDefaultValue, const FVector2D& InPosition, const FString& InNodeName, bool bUndo)
 {
 	if (!IsValidGraph())
 	{
@@ -231,7 +279,7 @@ URigVMParameterNode* URigVMController::AddParameterNode(const FName& InParameter
 		}
 	}
 
-	FString Name = GetValidName(TEXT("ParameterNode"));
+	FString Name = GetValidName(InNodeName.IsEmpty() ? FString(TEXT("ParameterNode")) : InNodeName);
 	URigVMParameterNode* Node = NewObject<URigVMParameterNode>(Graph, *Name);
 	Node->Position = InPosition;
 	Node->ParameterName = InParameterName;
@@ -246,8 +294,6 @@ URigVMParameterNode* URigVMController::AddParameterNode(const FName& InParameter
 	ValuePin->Direction = bIsInput ? ERigVMPinDirection::Output : ERigVMPinDirection::Input;
 	Node->Pins.Add(ValuePin);
 
-	// todo: undo redo
-
 	Graph->Nodes.Add(Node);
 
 	if (ValuePin->IsStruct())
@@ -261,42 +307,53 @@ URigVMParameterNode* URigVMController::AddParameterNode(const FName& InParameter
 	}
 
 	Graph->MarkPackageDirty();
+
+	FRigVMAddParameterNodeAction Action;
+	if (bUndo)
+	{
+		Action = FRigVMAddParameterNodeAction(Node);
+		ActionStack->BeginAction(Action);
+	}
+
 	Notify(ERigVMGraphNotifType::NodeAdded, Graph, Node);
+
+	if (bUndo)
+	{
+		ActionStack->EndAction(Action);
+	}
 
 	return Node;
 }
 
-URigVMBeginExecuteNode* URigVMController::AddBeginExecuteNode(const FVector2D& InPosition, bool bUndo)
-{
-	FString Name = GetValidName(TEXT("BeginExecuteNode"));
-	URigVMBeginExecuteNode* Node = NewObject<URigVMBeginExecuteNode>(Graph, *Name);
-	Node->Position = InPosition;
-
-	URigVMPin* ExecutePin = NewObject<URigVMPin>(Node, *URigVMNode::ExecuteName);
-	ExecutePin->CPPType = TEXT("FRigVMExecuteContext");
-	ExecutePin->ScriptStruct = FRigVMExecuteContext::StaticStruct();
-	ExecutePin->ScriptStructPath = *ExecutePin->ScriptStruct->GetPathName();
-	ExecutePin->Direction = ERigVMPinDirection::Output;
-	Node->Pins.Add(ExecutePin);
-
-	// todo: undo redo
-
-	Graph->Nodes.Add(Node);
-
-	Graph->MarkPackageDirty();
-	Notify(ERigVMGraphNotifType::NodeAdded, Graph, Node);
-
-	return Node;
-}
-
-URigVMCommentNode* URigVMController::AddCommentNode(const FString& InCommentText, const FVector2D& InPosition, const FVector2D& InSize, bool bUndo)
+URigVMParameterNode* URigVMController::AddParameterNodeFromStructPath(const FName& InParameterName, const FString& InCPPType, const FString& InScriptStructPath, bool bIsInput, const FString& InDefaultValue, const FVector2D& InPosition, const FString& InNodeName, bool bUndo)
 {
 	if (!IsValidGraph())
 	{
 		return nullptr;
 	}
 
-	FString Name = GetValidName(TEXT("CommentNode"));
+	UScriptStruct* ScriptStruct = nullptr;
+	if (!InScriptStructPath.IsEmpty())
+	{
+		ScriptStruct = FindObjectChecked<UScriptStruct>(ANY_PACKAGE, *InScriptStructPath);
+		if (ScriptStruct == nullptr)
+		{
+			ReportErrorf(TEXT("Cannot find struct for path '%s'."), *InScriptStructPath);
+			return nullptr;
+		}
+	}
+
+	return AddParameterNode(InParameterName, InCPPType, ScriptStruct, bIsInput, InDefaultValue, InPosition, InNodeName, bUndo);
+}
+
+URigVMCommentNode* URigVMController::AddCommentNode(const FString& InCommentText, const FVector2D& InPosition, const FVector2D& InSize, const FString& InNodeName, bool bUndo)
+{
+	if (!IsValidGraph())
+	{
+		return nullptr;
+	}
+
+	FString Name = GetValidName(InNodeName.IsEmpty() ? FString(TEXT("CommentNode")) : InNodeName);
 	URigVMCommentNode* Node = NewObject<URigVMCommentNode>(Graph, *Name);
 	Node->Position = InPosition;
 	Node->Size = InSize;
@@ -305,14 +362,24 @@ URigVMCommentNode* URigVMController::AddCommentNode(const FString& InCommentText
 	Graph->Nodes.Add(Node);
 	Graph->MarkPackageDirty();
 
-	// todo: undo redo
+	FRigVMAddCommentNodeAction Action;
+	if (bUndo)
+	{
+		Action = FRigVMAddCommentNodeAction(Node);
+		ActionStack->BeginAction(Action);
+	}
 
 	Notify(ERigVMGraphNotifType::NodeAdded, Graph, Node);
+
+	if (bUndo)
+	{
+		ActionStack->EndAction(Action);
+	}
 
 	return Node;
 }
 
-URigVMRerouteNode* URigVMController::AddRerouteNodeOnLink(URigVMLink* InLink, bool bShowAsFullNode, const FVector2D& InPosition, bool bUndo)
+URigVMRerouteNode* URigVMController::AddRerouteNodeOnLink(URigVMLink* InLink, bool bShowAsFullNode, const FVector2D& InPosition, const FString& InNodeName, bool bUndo)
 {
 	if(!IsValidLinkForGraph(InLink))
 	{
@@ -324,7 +391,7 @@ URigVMRerouteNode* URigVMController::AddRerouteNodeOnLink(URigVMLink* InLink, bo
 
 	// todo: undo redo
 
-	URigVMRerouteNode* Node = AddRerouteNodeOnPin(TargetPin->GetPinPath(), true, bShowAsFullNode, InPosition, bUndo);
+	URigVMRerouteNode* Node = AddRerouteNodeOnPin(TargetPin->GetPinPath(), true, bShowAsFullNode, InPosition, InNodeName, bUndo);
 	if (Node == nullptr)
 	{
 		return nullptr;
@@ -336,7 +403,7 @@ URigVMRerouteNode* URigVMController::AddRerouteNodeOnLink(URigVMLink* InLink, bo
 	return Node;
 }
 
-URigVMRerouteNode* URigVMController::AddRerouteNodeOnLinkPath(const FString& InLinkPinPathRepresentation, bool bShowAsFullNode, const FVector2D& InPosition, bool bUndo)
+URigVMRerouteNode* URigVMController::AddRerouteNodeOnLinkPath(const FString& InLinkPinPathRepresentation, bool bShowAsFullNode, const FVector2D& InPosition, const FString& InNodeName, bool bUndo)
 {
 	if (!IsValidGraph())
 	{
@@ -344,10 +411,10 @@ URigVMRerouteNode* URigVMController::AddRerouteNodeOnLinkPath(const FString& InL
 	}
 
 	URigVMLink* Link = Graph->FindLink(InLinkPinPathRepresentation);
-	return AddRerouteNodeOnLink(Link, bShowAsFullNode, InPosition, bUndo);
+	return AddRerouteNodeOnLink(Link, bShowAsFullNode, InPosition, InNodeName, bUndo);
 }
 
-URigVMRerouteNode* URigVMController::AddRerouteNodeOnPin(const FString& InPinPath, bool bAsInput, bool bShowAsFullNode, const FVector2D& InPosition, bool bUndo)
+URigVMRerouteNode* URigVMController::AddRerouteNodeOnPin(const FString& InPinPath, bool bAsInput, bool bShowAsFullNode, const FVector2D& InPosition, const FString& InNodeName, bool bUndo)
 {
 	if (!IsValidGraph())
 	{
@@ -360,11 +427,15 @@ URigVMRerouteNode* URigVMController::AddRerouteNodeOnPin(const FString& InPinPat
 		return nullptr;
 	}
 
-	// todo: undo redo
+	FRigVMBaseAction Action;
+	if (bUndo)
+	{
+		ActionStack->BeginAction(Action);
+	}
 
 	BreakAllLinks(Pin, bAsInput, bUndo);
 
-	FString Name = GetValidName(TEXT("RerouteNode"));
+	FString Name = GetValidName(InNodeName.IsEmpty() ? FString(TEXT("RerouteNode")) : InNodeName);
 	URigVMRerouteNode* Node = NewObject<URigVMRerouteNode>(Graph, *Name);
 	Node->Position = InPosition;
 	Node->bShowAsFullNode = bShowAsFullNode;
@@ -388,6 +459,11 @@ URigVMRerouteNode* URigVMController::AddRerouteNodeOnPin(const FString& InPinPat
 	Graph->Nodes.Add(Node);
 	Graph->MarkPackageDirty();
 
+	if (bUndo)
+	{
+		ActionStack->AddAction(FRigVMAddRerouteNodeAction(Node, InPinPath, bAsInput));
+	}
+
 	Notify(ERigVMGraphNotifType::NodeAdded, Graph, Node);
 
 	if (bAsInput)
@@ -399,7 +475,30 @@ URigVMRerouteNode* URigVMController::AddRerouteNodeOnPin(const FString& InPinPat
 		AddLink(Pin, ValuePin, bUndo);
 	}
 
+	if (bUndo)
+	{
+		ActionStack->EndAction(Action);
+	}
+
 	return Node;
+}
+
+bool URigVMController::Undo()
+{
+	if (!IsValidGraph())
+	{
+		return false;
+	}
+	return ActionStack->Undo(this);
+}
+
+bool URigVMController::Redo()
+{
+	if (!IsValidGraph())
+	{
+		return false;
+	}
+	return ActionStack->Redo(this);
 }
 
 #endif
