@@ -40,12 +40,12 @@ void URigVMController::SetGraph(URigVMGraph* InGraph)
 		Graph->OnModified().AddUObject(this, &URigVMController::HandleModifiedEvent);
 	}
 
-	ModifiedEvent.Broadcast(ERigVMGraphNotifType::GraphChanged, Graph, nullptr);
+	HandleModifiedEvent(ERigVMGraphNotifType::GraphChanged, Graph, nullptr);
 }
 
 FRigVMGraphModifiedEvent& URigVMController::OnModified()
 {
-	return ModifiedEvent;
+	return ModifiedEventStatic;
 }
 
 void URigVMController::Notify(ERigVMGraphNotifType InNotifType, URigVMGraph* InGraph, UObject* InSubject)
@@ -58,7 +58,11 @@ void URigVMController::Notify(ERigVMGraphNotifType InNotifType, URigVMGraph* InG
 
 void URigVMController::HandleModifiedEvent(ERigVMGraphNotifType InNotifType, URigVMGraph* InGraph, UObject* InSubject)
 {
-	ModifiedEvent.Broadcast(InNotifType, InGraph, InSubject);
+	ModifiedEventStatic.Broadcast(InNotifType, InGraph, InSubject);
+	if (ModifiedEventDynamic.IsBound())
+	{
+		ModifiedEventDynamic.Broadcast(InNotifType, InGraph, InSubject);
+	}
 }
 
 #if WITH_EDITOR

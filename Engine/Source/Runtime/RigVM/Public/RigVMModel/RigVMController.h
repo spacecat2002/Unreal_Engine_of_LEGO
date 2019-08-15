@@ -140,7 +140,10 @@ public:
 
 private:
 
-	FRigVMGraphModifiedEvent ModifiedEvent;
+	UPROPERTY(BlueprintReadOnly, Category = RigVMController, meta = (ScriptName = "ModifiedEvent", AllowPrivateAccess = "true"))
+	FRigVMGraphModifiedDynamicEvent ModifiedEventDynamic;
+
+	FRigVMGraphModifiedEvent ModifiedEventStatic;
 	void Notify(ERigVMGraphNotifType InNotifType, URigVMGraph* InGraph, UObject* InSubject);
 	void HandleModifiedEvent(ERigVMGraphNotifType InNotifType, URigVMGraph* InGraph, UObject* InSubject);
 
