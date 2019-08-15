@@ -24,7 +24,10 @@ public:
 	virtual void Serialize(FArchive& Ar) override;
 
 	UFUNCTION(BlueprintCallable, Category = RigVMLink)
-	URigVMGraph* GetGraph();
+	int32 GetLinkIndex() const;
+
+	UFUNCTION(BlueprintCallable, Category = RigVMLink)
+	URigVMGraph* GetGraph() const;
 
 	UFUNCTION(BlueprintCallable, Category = RigVMLink)
 	URigVMPin* GetSourcePin();

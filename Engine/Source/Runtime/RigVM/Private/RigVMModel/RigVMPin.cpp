@@ -61,7 +61,6 @@ FString URigVMPin::JoinSplitPath(const TArray<FString>& InParts)
 URigVMPin::URigVMPin()
 	: Direction(ERigVMPinDirection::Invalid)
 	, bIsConstant(false)
-	, Index(INDEX_NONE)
 	, CPPType(FString())
 	, ScriptStruct(nullptr)
 	, ScriptStructPath(NAME_None)
@@ -125,15 +124,29 @@ bool URigVMPin::IsArrayElement() const
 	return ParentPin->IsArray();
 }
 
-int32 URigVMPin::GetIndex() const
+int32 URigVMPin::GetPinIndex() const
 {
+	int32 Index = INDEX_NONE;
+
+	URigVMPin* ParentPin = GetParentPin();
+	if (ParentPin != nullptr)
+	{
+		ParentPin->GetSubPins().Find((URigVMPin*)this, Index);
+	}
+	else
+	{
+		URigVMNode* Node = GetNode();
+		if (Node != nullptr)
+		{
+			Node->GetPins().Find((URigVMPin*)this, Index);
+		}
+	}
 	return Index;
 }
 
-void URigVMPin::SetIndex(int32 InNewIndex)
+void URigVMPin::SetNameFromIndex()
 {
-	LowLevelRename(*FString::FormatAsNumber(InNewIndex));
-	Index = InNewIndex;
+	LowLevelRename(*FString::FormatAsNumber(GetPinIndex()));
 }
 
 int32 URigVMPin::GetArraySize() const

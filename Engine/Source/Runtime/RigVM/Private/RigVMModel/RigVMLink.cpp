@@ -3,7 +3,7 @@
 #include "RigVMModel/RigVMLink.h"
 #include "RigVMModel/RigVMGraph.h"
 
-URigVMGraph* URigVMLink::GetGraph()
+URigVMGraph* URigVMLink::GetGraph() const
 {
 	return Cast<URigVMGraph>(GetOuter());
 }
@@ -36,6 +36,18 @@ void URigVMLink::Serialize(FArchive& Ar)
 		Ar << SourcePinPathTemp;
 		Ar << TargetPinPathTemp;
 	}
+}
+
+int32 URigVMLink::GetLinkIndex() const
+{
+	int32 Index = INDEX_NONE;
+	URigVMGraph* Graph = GetGraph();
+	if (Graph != nullptr)
+	{
+		Graph->GetLinks().Find((URigVMLink*)this, Index);
+	}
+	return Index;
+
 }
 
 URigVMPin* URigVMLink::GetSourcePin()

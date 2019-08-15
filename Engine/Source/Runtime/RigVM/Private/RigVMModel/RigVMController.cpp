@@ -168,7 +168,6 @@ URigVMVariableNode* URigVMController::AddVariableNode(const FName& InVariableNam
 	if (!bIsGetter)
 	{
 		URigVMPin* ExecutePin = NewObject<URigVMPin>(Node, *URigVMNode::ExecuteName);
-		ExecutePin->Index = Node->Pins.Num();
 		ExecutePin->CPPType = TEXT("FRigVMExecuteContext");
 		ExecutePin->ScriptStruct = FRigVMExecuteContext::StaticStruct();
 		ExecutePin->ScriptStructPath = *ExecutePin->ScriptStruct->GetPathName();
@@ -177,7 +176,6 @@ URigVMVariableNode* URigVMController::AddVariableNode(const FName& InVariableNam
 	}
 
 	URigVMPin* ValuePin = NewObject<URigVMPin>(Node, *URigVMVariableNode::ValueName);
-	ValuePin->Index = Node->Pins.Num();
 	ValuePin->CPPType = InCPPType;
 	if (InScriptStruct)
 	{
@@ -235,7 +233,6 @@ URigVMParameterNode* URigVMController::AddParameterNode(const FName& InParameter
 	Node->ParameterName = InParameterName;
 
 	URigVMPin* ValuePin = NewObject<URigVMPin>(Node, *URigVMParameterNode::ValueName);
-	ValuePin->Index = Node->Pins.Num();
 	ValuePin->CPPType = InCPPType;
 	if (InScriptStruct)
 	{
@@ -272,7 +269,6 @@ URigVMBeginExecuteNode* URigVMController::AddBeginExecuteNode(const FVector2D& I
 	Node->Position = InPosition;
 
 	URigVMPin* ExecutePin = NewObject<URigVMPin>(Node, *URigVMNode::ExecuteName);
-	ExecutePin->Index = Node->Pins.Num();
 	ExecutePin->CPPType = TEXT("FRigVMExecuteContext");
 	ExecutePin->ScriptStruct = FRigVMExecuteContext::StaticStruct();
 	ExecutePin->ScriptStructPath = *ExecutePin->ScriptStruct->GetPathName();
@@ -371,7 +367,6 @@ URigVMRerouteNode* URigVMController::AddRerouteNodeOnPin(const FString& InPinPat
 
 	URigVMPin* ValuePin = NewObject<URigVMPin>(Node, *URigVMRerouteNode::ValueName);
 	ConfigurePinFromPin(ValuePin, Pin);
-	ValuePin->Index = 0;
 	ValuePin->Direction = ERigVMPinDirection::IO;
 	Node->Pins.Add(ValuePin);
 
@@ -873,7 +868,7 @@ FString URigVMController::DuplicateArrayPin(const FString& InArrayElementPinPath
 	ensure(ArrayPin->IsArray());
 
 	FString DefaultValue = ElementPin->GetDefaultValue();
-	return InsertArrayPin(ArrayPin->GetPinPath(), ElementPin->Index + 1, DefaultValue, bUndo);
+	return InsertArrayPin(ArrayPin->GetPinPath(), ElementPin->GetPinIndex() + 1, DefaultValue, bUndo);
 }
 
 FString URigVMController::InsertArrayPin(const FString& InArrayPinPath, int32 InIndex, const FString& InDefaultValue, bool bUndo)
@@ -915,15 +910,13 @@ URigVMPin* URigVMController::InsertArrayPin(URigVMPin* ArrayPin, int32 InIndex, 
 	for (int32 ExistingIndex = ArrayPin->GetSubPins().Num() - 1; ExistingIndex >= InIndex; ExistingIndex--)
 	{
 		URigVMPin* ExistingPin = ArrayPin->GetSubPins()[ExistingIndex];
-		ExistingPin->Index++;
-		ExistingPin->Rename(*FString::FormatAsNumber(ExistingPin->Index));
+		ExistingPin->Rename(*FString::FormatAsNumber(ExistingIndex + 1));
 	}
 
 	// todo: undo redo
 
 	URigVMPin* Pin = NewObject<URigVMPin>(ArrayPin, *FString::FormatAsNumber(InIndex));
 	ConfigurePinFromPin(Pin, ArrayPin);
-	Pin->Index = InIndex;
 	Pin->CPPType = ArrayPin->GetArrayElementCppType();
 	ArrayPin->SubPins.Insert(Pin, InIndex);
 
@@ -981,7 +974,7 @@ bool URigVMController::RemoveArrayPin(const FString& InArrayElementPinPath, bool
 
 	// todo: undo redo
 
-	int32 IndexToRemove = ArrayElementPin->Index;
+	int32 IndexToRemove = ArrayElementPin->GetPinIndex();
 	if (!RemovePin(ArrayElementPin, bUndo))
 	{
 		return false;
@@ -990,7 +983,7 @@ bool URigVMController::RemoveArrayPin(const FString& InArrayElementPinPath, bool
 	for (int32 ExistingIndex = ArrayPin->GetSubPins().Num() - 1; ExistingIndex >= IndexToRemove; ExistingIndex--)
 	{
 		URigVMPin* ExistingPin = ArrayPin->GetSubPins()[ExistingIndex];
-		ExistingPin->SetIndex(ExistingIndex);
+		ExistingPin->SetNameFromIndex();
 	}
 
 	Graph->MarkPackageDirty();
@@ -1290,8 +1283,13 @@ bool URigVMController::IsValidNodeForGraph(URigVMNode* InNode)
 
 	if (InNode->GetGraph() != Graph)
 	{
-		ReportError(TEXT("InNode is on a different graph."));
+		ReportErrorf(TEXT("InNode '%s' is on a different graph."), *InNode->GetNodePath());
 		return false;
+	}
+
+	if (InNode->GetNodeIndex() == INDEX_NONE)
+	{
+		ReportErrorf(TEXT("InNode '%s' is transient (not yet nested to a graph)."), *InNode->GetName());
 	}
 
 	return true;
@@ -1313,6 +1311,11 @@ bool URigVMController::IsValidPinForGraph(URigVMPin* InPin)
 	if (!IsValidNodeForGraph(InPin->GetNode()))
 	{
 		return false;
+	}
+
+	if (InPin->GetPinIndex() == INDEX_NONE)
+	{
+		ReportErrorf(TEXT("InPin '%s' is transient (not yet nested properly)."), *InPin->GetName());
 	}
 
 	return true;
@@ -1347,6 +1350,11 @@ bool URigVMController::IsValidLinkForGraph(URigVMLink* InLink)
 	{
 		ReportError(TEXT("InLink has no target pin."));
 		return false;
+	}
+
+	if (InLink->GetLinkIndex() == INDEX_NONE)
+	{
+		ReportError(TEXT("InLink is transient (not yet nested properly)."));
 	}
 
 	if(!IsValidPinForGraph(InLink->GetSourcePin()))
@@ -1384,12 +1392,10 @@ void URigVMController::AddPinsForStruct(UStruct* InStruct, URigVMNode* InNode, U
 
 		if (InParentPin)
 		{
-			Pin->Index = InParentPin->SubPins.Num();
 			InParentPin->SubPins.Add(Pin);
 		}
 		else
 		{
-			Pin->Index = InNode->Pins.Num();
 			InNode->Pins.Add(Pin);
 		}
 
@@ -1440,7 +1446,6 @@ void URigVMController::AddPinsForArray(UArrayProperty* InArrayProperty, URigVMNo
 		FString ElementName = FString::FormatAsNumber(InParentPin->SubPins.Num());
 		URigVMPin* Pin = NewObject<URigVMPin>(InParentPin, *ElementName);
 		ConfigurePinFromProperty(InArrayProperty->Inner, Pin, InPinDirection);
-		Pin->Index = InParentPin->SubPins.Num();
 
 		InParentPin->SubPins.Add(Pin);
 

@@ -59,7 +59,7 @@ public:
 	bool IsArrayElement() const;
 
 	UFUNCTION(BlueprintCallable, Category = RigVMPin)
-	int32 GetIndex() const;
+	int32 GetPinIndex() const;
 
 	UFUNCTION(BlueprintCallable, Category = RigVMPin)
 	int32 GetArraySize() const;
@@ -113,16 +113,13 @@ public:
 
 private:
 
-	void SetIndex(int32 InNewIndex);
+	void SetNameFromIndex();
 
 	UPROPERTY()
 	ERigVMPinDirection Direction;
 
 	UPROPERTY()
 	bool bIsConstant;
-
-	UPROPERTY()
-	int32 Index;
 
 	UPROPERTY()
 	FString CPPType;
