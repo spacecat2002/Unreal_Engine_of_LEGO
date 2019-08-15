@@ -389,6 +389,7 @@ FString GetMemoryString( const double Value, const bool bAutoType )
 }
 
 FOnScreenshotRequestProcessed FScreenshotRequest::ScreenshotProcessedDelegate;
+FOnScreenshotCaptured FScreenshotRequest::ScreenshotCapturedDelegate;
 bool FScreenshotRequest::bIsScreenshotRequested = false;
 FString FScreenshotRequest::Filename;
 FString FScreenshotRequest::NextScreenshotName;
