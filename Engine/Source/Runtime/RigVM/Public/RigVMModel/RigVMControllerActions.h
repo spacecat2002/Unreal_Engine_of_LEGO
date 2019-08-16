@@ -4,6 +4,9 @@
 
 #include "UObject/PropertyPortFlags.h"
 #include "RigVMController.h"
+#if WITH_EDITOR
+#include "ScopedTransaction.h"
+#endif
 #include "RigVMControllerActions.generated.h"
 
 struct FRigVMBaseAction;
@@ -52,10 +55,12 @@ struct FRigVMBaseAction
 	GENERATED_BODY()
 
 	FRigVMBaseAction()
+		 : Title(TEXT("ACtion"))
 	{
 	}
 
 	virtual ~FRigVMBaseAction() {};
+	virtual FString GetTitle() const { return Title; }
 	virtual bool Merge(const FRigVMBaseAction* Other);
 	virtual bool Undo(URigVMController* InController);
 	virtual bool Redo(URigVMController* InController);
@@ -67,6 +72,9 @@ struct FRigVMBaseAction
 		Key.Set<ActionType>(InAction);
 		SubActions.Add(Key);
 	}
+
+	UPROPERTY()
+	FString Title;
 
 	UPROPERTY()
 	TArray<FRigVMActionKey> SubActions;
@@ -137,20 +145,25 @@ public:
 			}
 		}
 
-		if (bMergeIfPossible)
-		{
-			// already performed the merge above
-		}
-		else
+		if (!bMergeIfPossible)
 		{
 			FRigVMActionKey Key;
 			Key.Set<ActionType>(InAction);
-			ActionList->Add(Key);
-		}
 
-		if (CurrentActions.Num() == 0)
-		{
-			RedoActions.Reset();
+			ActionList->Add(Key);
+
+			if (CurrentActions.Num() == 0)
+			{
+				RedoActions.Reset();
+			}
+
+#if WITH_EDITOR
+			const FScopedTransaction Transaction(FText::FromString(InAction.GetTitle()));
+			SetFlags(RF_Transactional);
+			Modify();
+#endif
+
+			ActionIndex = ActionIndex + 1;
 		}
 	}
 
@@ -160,7 +173,14 @@ public:
 	UFUNCTION()
 	bool Redo(URigVMController* InController);
 
+#if WITH_EDITOR
+	virtual void PostTransacted(const FTransactionObjectEvent& TransactionEvent) override;
+#endif
+
 private:
+
+	UPROPERTY()
+	int32 ActionIndex;
 
 	UPROPERTY()
 	TArray<FRigVMActionKey> UndoActions;

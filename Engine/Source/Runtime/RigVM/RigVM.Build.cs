@@ -13,5 +13,15 @@ public class RigVM : ModuleRules
                 "Engine",
             }
         );
+
+        if (Target.bBuildEditor == true)
+        {
+            PrivateDependencyModuleNames.AddRange(
+                new string[]
+                {
+                    "UnrealEd",
+                }
+            );
+        }
     }
 }

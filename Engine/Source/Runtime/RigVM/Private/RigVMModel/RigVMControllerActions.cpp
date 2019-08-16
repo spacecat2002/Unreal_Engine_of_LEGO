@@ -73,6 +73,46 @@ bool URigVMActionStack::Redo(URigVMController* InController)
 	return false;
 }
 
+#if WITH_EDITOR
+
+void URigVMActionStack::PostTransacted(const FTransactionObjectEvent& TransactionEvent)
+{
+	if (TransactionEvent.GetEventType() == ETransactionObjectEventType::UndoRedo)
+	{
+		URigVMController* Controller = Cast< URigVMController>(GetOuter());
+		if (Controller == nullptr)
+		{
+			return;
+		}
+
+		while (ActionIndex < UndoActions.Num())
+		{
+			if (UndoActions.Num() == 0)
+			{
+				break;
+			}
+			if (!Undo(Controller))
+			{
+				return;
+			}
+		}
+		while (ActionIndex > UndoActions.Num())
+		{
+			if (RedoActions.Num() == 0)
+			{
+				break;
+			}
+			if (!Redo(Controller))
+			{
+				return;
+			}
+		}
+	}
+}
+
+#endif
+
+
 bool FRigVMBaseAction::Merge(const FRigVMBaseAction* Other)
 {
 	return SubActions.Num() == 0 && Other->SubActions.Num() == 0;

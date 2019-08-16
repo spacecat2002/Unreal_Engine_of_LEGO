@@ -129,6 +129,7 @@ URigVMStructNode* URigVMController::AddStructNode(UScriptStruct* InScriptStruct,
 	if (bUndo)
 	{
 		Action = FRigVMAddStructNodeAction(Node);
+		Action.Title = FString::Printf(TEXT("Add %s Node"), *Node->GetNodeTitle());
 		ActionStack->BeginAction(Action);
 	}
 
@@ -223,6 +224,7 @@ URigVMVariableNode* URigVMController::AddVariableNode(const FName& InVariableNam
 	if (bUndo)
 	{
 		Action = FRigVMAddVariableNodeAction(Node);
+		Action.Title = FString::Printf(TEXT("Add %s Variable"), *InVariableName.ToString());
 		ActionStack->BeginAction(Action);
 	}
 
@@ -312,6 +314,7 @@ URigVMParameterNode* URigVMController::AddParameterNode(const FName& InParameter
 	if (bUndo)
 	{
 		Action = FRigVMAddParameterNodeAction(Node);
+		Action.Title = FString::Printf(TEXT("Add %s Parameter"), *InParameterName.ToString());
 		ActionStack->BeginAction(Action);
 	}
 
@@ -366,6 +369,7 @@ URigVMCommentNode* URigVMController::AddCommentNode(const FString& InCommentText
 	if (bUndo)
 	{
 		Action = FRigVMAddCommentNodeAction(Node);
+		Action.Title = FString::Printf(TEXT("Add Comment"));
 		ActionStack->BeginAction(Action);
 	}
 
@@ -392,6 +396,7 @@ URigVMRerouteNode* URigVMController::AddRerouteNodeOnLink(URigVMLink* InLink, bo
 	FRigVMBaseAction Action;
 	if (bUndo)
 	{
+		Action.Title = FString::Printf(TEXT("Add Reroute"));
 		ActionStack->BeginAction(Action);
 	}
 
@@ -443,6 +448,7 @@ URigVMRerouteNode* URigVMController::AddRerouteNodeOnPin(const FString& InPinPat
 	FRigVMBaseAction Action;
 	if (bUndo)
 	{
+		Action.Title = FString::Printf(TEXT("Add Reroute"));
 		ActionStack->BeginAction(Action);
 	}
 
@@ -527,6 +533,7 @@ bool URigVMController::RemoveNode(URigVMNode* InNode, bool bUndo)
 	if (bUndo)
 	{
 		Action = FRigVMRemoveNodeAction(InNode);
+		Action.Title = FString::Printf(TEXT("Remove %s Node"), *InNode->GetNodeTitle());
 		ActionStack->BeginAction(Action);
 	}
 
@@ -580,6 +587,14 @@ bool URigVMController::SelectNode(URigVMNode* InNode, bool bSelect, bool bUndo)
 	if (bUndo)
 	{
 		Action = FRigVMSelectNodeAction(InNode);
+		if (bSelect)
+		{
+			Action.Title = FString::Printf(TEXT("Select %s Node"), *InNode->GetNodeTitle());
+		}
+		else
+		{
+			Action.Title = FString::Printf(TEXT("Deselect %s Node"), *InNode->GetNodeTitle());
+		}
 		ActionStack->BeginAction(Action);
 	}
 
@@ -621,6 +636,7 @@ bool URigVMController::ClearNodeSelection(bool bUndo)
 	FRigVMBaseAction Action;
 	if (bUndo)
 	{
+		Action.Title = FString::Printf(TEXT("Clear selection"));
 		ActionStack->BeginAction(Action);
 	}
 
@@ -649,6 +665,7 @@ bool URigVMController::SetNodePosition(URigVMNode* InNode, const FVector2D& InPo
 	if (bUndo)
 	{
 		Action = FRigVMSetNodePositionAction(InNode, InPosition);
+		Action.Title = FString::Printf(TEXT("Set Node Position"));
 		ActionStack->BeginAction(Action);
 	}
 
@@ -685,6 +702,7 @@ bool URigVMController::SetNodeSize(URigVMNode* InNode, const FVector2D& InSize, 
 	if (bUndo)
 	{
 		Action = FRigVMSetNodeSizeAction(InNode, InSize);
+		Action.Title = FString::Printf(TEXT("Set Node Size"));
 		ActionStack->BeginAction(Action);
 	}
 
@@ -723,6 +741,7 @@ bool URigVMController::SetCommentText(URigVMNode* InNode, const FString& InComme
 		if (bUndo)
 		{
 			Action = FRigVMSetCommentTextAction(CommentNode, InCommentText);
+			Action.Title = FString::Printf(TEXT("Set Comment Text"));
 			ActionStack->BeginAction(Action);
 		}
 
@@ -764,6 +783,7 @@ bool URigVMController::SetRerouteCompactness(URigVMNode* InNode, bool bShowAsFul
 		if (bUndo)
 		{
 			Action = FRigVMSetRerouteCompactnessAction(RerouteNode, bShowAsFullNode);
+			Action.Title = FString::Printf(TEXT("Set Reroute Size"));
 			ActionStack->BeginAction(Action);
 		}
 
@@ -819,6 +839,7 @@ bool URigVMController::RenameVariable(const FName& InOldName, const FName& InNew
 	if (bUndo)
 	{
 		Action = FRigVMRenameVariableAction(InOldName, InNewName);
+		Action.Title = FString::Printf(TEXT("Rename Variable"));
 		ActionStack->BeginAction(Action);
 	}
 
@@ -883,6 +904,7 @@ bool URigVMController::RenameParameter(const FName& InOldName, const FName& InNe
 	if (bUndo)
 	{
 		Action = FRigVMRenameParameterAction(InOldName, InNewName);
+		Action.Title = FString::Printf(TEXT("Rename Parameter"));
 		ActionStack->BeginAction(Action);
 	}
 
@@ -964,6 +986,7 @@ void URigVMController::SetPinDefaultValue(URigVMPin* InPin, const FString& InDef
 	if (bUndo)
 	{
 		Action = FRigVMSetPinDefaultValueAction(InPin, InDefaultValue);
+		Action.Title = FString::Printf(TEXT("Set Pin Default Value"));
 		ActionStack->BeginAction(Action);
 	}
 
@@ -1155,6 +1178,7 @@ URigVMPin* URigVMController::InsertArrayPin(URigVMPin* ArrayPin, int32 InIndex, 
 	if (bUndo)
 	{
 		Action = FRigVMInsertArrayPinAction(ArrayPin, InIndex, InDefaultValue);
+		Action.Title = FString::Printf(TEXT("Insert Array Pin"));
 		ActionStack->BeginAction(Action);
 	}
 
@@ -1230,6 +1254,7 @@ bool URigVMController::RemoveArrayPin(const FString& InArrayElementPinPath, bool
 	if (bUndo)
 	{
 		Action = FRigVMRemoveArrayPinAction(ArrayElementPin);
+		Action.Title = FString::Printf(TEXT("Remove Array Pin"));
 		ActionStack->BeginAction(Action);
 	}
 
@@ -1312,6 +1337,7 @@ bool URigVMController::ClearArrayPin(const FString& InArrayPinPath, bool bUndo)
 	FRigVMBaseAction Action;
 	if (bUndo)
 	{
+		Action.Title = FString::Printf(TEXT("Clear Array Pin"));
 		ActionStack->BeginAction(Action);
 	}
 
@@ -1387,6 +1413,7 @@ bool URigVMController::AddLink(URigVMPin* OutputPin, URigVMPin* InputPin, bool b
 	if (bUndo)
 	{
 		Action = FRigVMAddLinkAction(OutputPin, InputPin);
+		Action.Title = FString::Printf(TEXT("Add Link"));
 		ActionStack->BeginAction(Action);
 	}
 
@@ -1461,6 +1488,7 @@ bool URigVMController::BreakLink(URigVMPin* OutputPin, URigVMPin* InputPin, bool
 			if (bUndo)
 			{
 				Action = FRigVMBreakLinkAction(OutputPin, InputPin);
+				Action.Title = FString::Printf(TEXT("Break Link"));
 				ActionStack->BeginAction(Action);
 			}
 
@@ -1512,6 +1540,7 @@ bool URigVMController::BreakAllLinks(URigVMPin* Pin, bool bAsInput, bool bUndo)
 	FRigVMBaseAction Action;
 	if (bUndo)
 	{
+		Action.Title = FString::Printf(TEXT("Break All Links"));
 		ActionStack->BeginAction(Action);
 	}
 
