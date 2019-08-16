@@ -3,6 +3,10 @@
 #include "RigVMModel/RigVMControllerActions.h"
 #include "UObject/Package.h"
 
+#if WITH_EDITOR
+#include "Misc/ITransaction.h"
+#endif
+
 FRigVMActionWrapper::FRigVMActionWrapper(const FRigVMActionKey& Key)
 {
 	ScriptStruct = FindObjectChecked<UScriptStruct>(ANY_PACKAGE, *Key.ScriptStructPath);
@@ -298,6 +302,7 @@ FRigVMAddCommentNodeAction::FRigVMAddCommentNodeAction()
 	: CommentText()
 	, Position(FVector2D::ZeroVector)
 	, Size(FVector2D::ZeroVector)
+	, Color(FLinearColor::Black)
 	, NodePath()
 {
 }
@@ -306,6 +311,7 @@ FRigVMAddCommentNodeAction::FRigVMAddCommentNodeAction(URigVMCommentNode* InNode
 	: CommentText(InNode->GetCommentText())
 	, Position(InNode->GetPosition())
 	, Size(InNode->GetSize())
+	, Color(InNode->GetNodeColor())
 	, NodePath(InNode->GetNodePath())
 {
 }
@@ -322,7 +328,7 @@ bool FRigVMAddCommentNodeAction::Undo(URigVMController* InController)
 bool FRigVMAddCommentNodeAction::Redo(URigVMController* InController)
 {
 #if WITH_EDITOR
-	if (URigVMCommentNode* Node = InController->AddCommentNode(CommentText, Position, Size, NodePath, false))
+	if (URigVMCommentNode* Node = InController->AddCommentNode(CommentText, Position, Size, Color, NodePath, false))
 	{
 		return FRigVMBaseAction::Redo(InController);
 	}
@@ -557,6 +563,48 @@ bool FRigVMSetNodeSizeAction::Undo(URigVMController* InController)
 bool FRigVMSetNodeSizeAction::Redo(URigVMController* InController)
 {
 	if(!InController->SetNodeSizeByName(*NodePath, NewSize, false))
+	{
+		return false;
+	}
+	return FRigVMBaseAction::Redo(InController);
+}
+
+FRigVMSetNodeColorAction::FRigVMSetNodeColorAction(URigVMNode* InNode, const FLinearColor& InNewColor)
+: NodePath(InNode->GetNodePath())
+, OldColor(InNode->GetNodeColor())
+, NewColor(InNewColor)
+{
+}
+
+bool FRigVMSetNodeColorAction::Merge(const FRigVMBaseAction* Other)
+{
+	if (!FRigVMBaseAction::Merge(Other))
+	{
+		return false;
+	}
+
+	const FRigVMSetNodeColorAction* Action = (const FRigVMSetNodeColorAction*)Other;
+	if (NodePath != Action->NodePath)
+	{
+		return false;
+	}
+
+	NewColor = Action->NewColor;
+	return true;
+}
+
+bool FRigVMSetNodeColorAction::Undo(URigVMController* InController)
+{
+	if(!FRigVMBaseAction::Undo(InController))
+	{
+		return false;
+	}
+	return InController->SetNodeColorByName(*NodePath, OldColor, false);
+}
+
+bool FRigVMSetNodeColorAction::Redo(URigVMController* InController)
+{
+	if(!InController->SetNodeColorByName(*NodePath, NewColor, false))
 	{
 		return false;
 	}

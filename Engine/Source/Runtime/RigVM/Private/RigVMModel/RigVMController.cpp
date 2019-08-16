@@ -349,7 +349,7 @@ URigVMParameterNode* URigVMController::AddParameterNodeFromStructPath(const FNam
 	return AddParameterNode(InParameterName, InCPPType, ScriptStruct, bIsInput, InDefaultValue, InPosition, InNodeName, bUndo);
 }
 
-URigVMCommentNode* URigVMController::AddCommentNode(const FString& InCommentText, const FVector2D& InPosition, const FVector2D& InSize, const FString& InNodeName, bool bUndo)
+URigVMCommentNode* URigVMController::AddCommentNode(const FString& InCommentText, const FVector2D& InPosition, const FVector2D& InSize, const FLinearColor& InColor, const FString& InNodeName, bool bUndo)
 {
 	if (!IsValidGraph())
 	{
@@ -360,6 +360,7 @@ URigVMCommentNode* URigVMController::AddCommentNode(const FString& InCommentText
 	URigVMCommentNode* Node = NewObject<URigVMCommentNode>(Graph, *Name);
 	Node->Position = InPosition;
 	Node->Size = InSize;
+	Node->NodeColor = InColor;
 	Node->CommentText = InCommentText;
 
 	Graph->Nodes.Add(Node);
@@ -744,6 +745,43 @@ bool URigVMController::SetNodeSizeByName(const FName& InNodeName, const FVector2
 
 	URigVMNode* Node = Graph->FindNodeByName(InNodeName);
 	return SetNodeSize(Node, InSize, bUndo, bMergeUndoAction);
+}
+
+bool URigVMController::SetNodeColor(URigVMNode* InNode, const FLinearColor& InColor, bool bUndo, bool bMergeUndoAction)
+{
+	if (!IsValidNodeForGraph(InNode))
+	{
+		return false;
+	}
+
+	FRigVMSetNodeColorAction Action;
+	if (bUndo)
+	{
+		Action = FRigVMSetNodeColorAction(InNode, InColor);
+		Action.Title = FString::Printf(TEXT("Set Node Color"));
+		ActionStack->BeginAction(Action);
+	}
+
+	InNode->NodeColor = InColor;
+	Notify(ERigVMGraphNotifType::NodeColorChanged, Graph, InNode);
+
+	if (bUndo)
+	{
+		ActionStack->EndAction(Action, bMergeUndoAction);
+	}
+
+	return true;
+}
+
+bool URigVMController::SetNodeColorByName(const FName& InNodeName, const FLinearColor& InColor, bool bUndo, bool bMergeUndoAction)
+{
+	if(!IsValidGraph())
+	{
+		return false;
+	}
+
+	URigVMNode* Node = Graph->FindNodeByName(InNodeName);
+	return SetNodeColor(Node, InColor, bUndo, bMergeUndoAction);
 }
 
 bool URigVMController::SetCommentText(URigVMNode* InNode, const FString& InCommentText, bool bUndo)

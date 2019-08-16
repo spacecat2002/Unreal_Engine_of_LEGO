@@ -18,6 +18,7 @@ enum class ERigVMGraphNotifType : uint8
 	NodeDeselected,
 	NodePositionChanged,
 	NodeSizeChanged,
+	NodeColorChanged,
 	PinArraySizeChanged,
 	PinDefaultValueChanged,
 	PinDirectionChanged,

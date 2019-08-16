@@ -54,7 +54,7 @@ public:
 	URigVMParameterNode* AddParameterNodeFromStructPath(const FName& InParameterName, const FString& InCPPType, const FString& InScriptStructPath, bool bIsInput, const FString& InDefaultValue, const FVector2D& InPosition = FVector2D::ZeroVector, const FString& InNodeName = TEXT(""), bool bUndo = true);
 
 	UFUNCTION(BlueprintCallable, Category = RigVMController)
-	URigVMCommentNode* AddCommentNode(const FString& InCommentText, const FVector2D& InPosition = FVector2D::ZeroVector, const FVector2D& InSize = FVector2D(400.f, 300.f), const FString& InNodeName = TEXT(""), bool bUndo = true);
+	URigVMCommentNode* AddCommentNode(const FString& InCommentText, const FVector2D& InPosition = FVector2D::ZeroVector, const FVector2D& InSize = FVector2D(400.f, 300.f), const FLinearColor& InColor = FLinearColor::Black, const FString& InNodeName = TEXT(""), bool bUndo = true);
 
 	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	URigVMRerouteNode* AddRerouteNodeOnLink(URigVMLink* InLink, bool bShowAsFullNode, const FVector2D& InPosition = FVector2D::ZeroVector, const FString& InNodeName = TEXT(""), bool bUndo = true);
@@ -105,6 +105,12 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	bool SetNodeSizeByName(const FName& InNodeName, const FVector2D& InSize, bool bUndo = true, bool bMergeUndoAction = false);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
+	bool SetNodeColor(URigVMNode* InNode, const FLinearColor& InColor, bool bUndo = true, bool bMergeUndoAction = false);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
+	bool SetNodeColorByName(const FName& InNodeName, const FLinearColor& InColor, bool bUndo = true, bool bMergeUndoAction = false);
 
 	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	bool SetCommentText(URigVMNode* InNode, const FString& InCommentText, bool bUndo = true);

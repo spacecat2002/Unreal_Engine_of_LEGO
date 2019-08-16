@@ -327,6 +327,9 @@ public:
 	FVector2D Size;
 
 	UPROPERTY()
+	FLinearColor Color;
+
+	UPROPERTY()
 	FString NodePath;
 };
 
@@ -449,6 +452,33 @@ public:
 
 	UPROPERTY()
 	FVector2D NewSize;
+};
+
+USTRUCT()
+struct FRigVMSetNodeColorAction : public FRigVMBaseAction
+{
+	GENERATED_BODY()
+
+public:
+
+	FRigVMSetNodeColorAction()
+	{
+		OldColor = NewColor = FLinearColor::Black;
+	}
+	FRigVMSetNodeColorAction(URigVMNode* InNode, const FLinearColor& InNewColor);
+	virtual ~FRigVMSetNodeColorAction() {};
+	virtual bool Merge(const FRigVMBaseAction* Other);
+	virtual bool Undo(URigVMController* InController) override;
+	virtual bool Redo(URigVMController* InController) override;
+
+	UPROPERTY()
+	FString NodePath;
+
+	UPROPERTY()
+	FLinearColor OldColor;
+
+	UPROPERTY()
+	FLinearColor NewColor;
 };
 
 USTRUCT()
