@@ -107,7 +107,7 @@ bool URigVMNode::IsMutable() const
 	URigVMPin* ExecutePin = FindPin(ExecuteName);
 	if (ExecutePin)
 	{
-		if (ExecutePin->GetScriptStruct() == FRigVMExecuteContext::StaticStruct())
+		if (ExecutePin->GetScriptStruct()->IsChildOf(FRigVMExecuteContext::StaticStruct()))
 		{
 			return true;
 		}

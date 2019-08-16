@@ -1941,7 +1941,7 @@ bool URigVMController::ShouldStructBeUnfolded(const UStruct* Struct)
 	{
 		return false;
 	}
-	if (Struct == FRigVMExecuteContext::StaticStruct())
+	if(Struct->IsChildOf(FRigVMExecuteContext::StaticStruct()))
 	{
 		return false;
 	}
