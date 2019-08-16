@@ -71,6 +71,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	bool Redo();
 
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
+	bool OpenUndoBracket(const FString& InTitle);
+
+	UFUNCTION(BlueprintCallable, Category = RigVMController)
+	bool CloseUndoBracket();
+
 #endif
 
 	UFUNCTION(BlueprintCallable, Category = RigVMController)

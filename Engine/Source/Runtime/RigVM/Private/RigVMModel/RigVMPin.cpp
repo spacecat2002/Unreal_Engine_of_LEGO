@@ -229,7 +229,7 @@ UScriptStruct* URigVMPin::GetScriptStruct() const
 		if (ScriptStructPath != NAME_None)
 		{
 			URigVMPin* MutableThis = (URigVMPin*)this;
-			MutableThis->ScriptStruct = FindObjectChecked<UScriptStruct>(ANY_PACKAGE, *ScriptStructPath.ToString());
+			MutableThis->ScriptStruct = FindObject<UScriptStruct>(ANY_PACKAGE, *ScriptStructPath.ToString());
 		}
 	}
 	return ScriptStruct;

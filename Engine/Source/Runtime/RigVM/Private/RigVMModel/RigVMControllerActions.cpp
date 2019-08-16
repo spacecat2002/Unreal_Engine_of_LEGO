@@ -33,6 +33,24 @@ FString FRigVMActionWrapper::ExportText()
 	return ExportedText;
 }
 
+bool URigVMActionStack::OpenUndoBracket(const FString& InTitle)
+{
+	FRigVMBaseAction* Action = new FRigVMBaseAction;
+	Action->Title = InTitle;
+	BracketActions.Add(Action);
+	BeginAction(*Action);
+	return true;
+}
+
+bool URigVMActionStack::CloseUndoBracket()
+{
+	ensure(BracketActions.Num() > 0);
+	FRigVMBaseAction* Action = BracketActions.Pop();
+	EndAction(*Action);
+	delete(Action);
+	return true;
+}
+
 bool URigVMActionStack::Undo(URigVMController* InController)
 {
 	check(InController)

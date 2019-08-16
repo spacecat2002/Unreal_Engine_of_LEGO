@@ -168,6 +168,12 @@ public:
 	}
 
 	UFUNCTION()
+	bool OpenUndoBracket(const FString& InTitle);
+
+	UFUNCTION()
+	bool CloseUndoBracket();
+
+	UFUNCTION()
 	bool Undo(URigVMController* InController);
 
 	UFUNCTION()
@@ -189,6 +195,7 @@ private:
 	TArray<FRigVMActionKey> RedoActions;
 
 	TArray<FRigVMBaseAction*> CurrentActions;
+	TArray<FRigVMBaseAction*> BracketActions;
 };
 
 USTRUCT()

@@ -150,7 +150,7 @@ URigVMStructNode* URigVMController::AddStructNodeFromStructPath(const FString& I
 		return nullptr;
 	}
 
-	UScriptStruct* ScriptStruct = FindObjectChecked<UScriptStruct>(ANY_PACKAGE, *InScriptStructPath);
+	UScriptStruct* ScriptStruct = FindObject<UScriptStruct>(ANY_PACKAGE, *InScriptStructPath);
 	if (ScriptStruct == nullptr)
 	{
 		ReportErrorf(TEXT("Cannot find struct for path '%s'."), *InScriptStructPath);
@@ -248,7 +248,7 @@ URigVMVariableNode* URigVMController::AddVariableNodeFromStructPath(const FName&
 	UScriptStruct* ScriptStruct = nullptr;
 	if (!InScriptStructPath.IsEmpty())
 	{
-		ScriptStruct = FindObjectChecked<UScriptStruct>(ANY_PACKAGE, *InScriptStructPath);
+		ScriptStruct = FindObject<UScriptStruct>(ANY_PACKAGE, *InScriptStructPath);
 		if (ScriptStruct == nullptr)
 		{
 			ReportErrorf(TEXT("Cannot find struct for path '%s'."), *InScriptStructPath);
@@ -338,7 +338,7 @@ URigVMParameterNode* URigVMController::AddParameterNodeFromStructPath(const FNam
 	UScriptStruct* ScriptStruct = nullptr;
 	if (!InScriptStructPath.IsEmpty())
 	{
-		ScriptStruct = FindObjectChecked<UScriptStruct>(ANY_PACKAGE, *InScriptStructPath);
+		ScriptStruct = FindObject<UScriptStruct>(ANY_PACKAGE, *InScriptStructPath);
 		if (ScriptStruct == nullptr)
 		{
 			ReportErrorf(TEXT("Cannot find struct for path '%s'."), *InScriptStructPath);
@@ -518,6 +518,24 @@ bool URigVMController::Redo()
 		return false;
 	}
 	return ActionStack->Redo(this);
+}
+
+bool URigVMController::OpenUndoBracket(const FString& InTitle)
+{
+	if (!IsValidGraph())
+	{
+		return false;
+	}
+	return ActionStack->OpenUndoBracket(InTitle);
+}
+
+bool URigVMController::CloseUndoBracket()
+{
+	if (!IsValidGraph())
+	{
+		return false;
+	}
+	return ActionStack->CloseUndoBracket();
 }
 
 #endif
