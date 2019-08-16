@@ -290,6 +290,29 @@ FRigVMAddRerouteNodeAction::FRigVMAddRerouteNodeAction(URigVMRerouteNode* InNode
 {
 }
 
+FRigVMAddRerouteNodeAction::FRigVMAddRerouteNodeAction(URigVMRerouteNode* InNode)
+	: PinPath()
+	, bShowAsFullNode(InNode->GetShowsAsFullNode())
+	, bAsInput(false)
+	, Position(InNode->GetPosition())
+	, NodePath(InNode->GetNodePath())
+{
+	URigVMPin* ValuePin = InNode->FindPin(TEXT("Value"));
+	check(ValuePin)
+	ensure(ValuePin->GetLinks().Num() > 0);
+
+	for (URigVMLink* Link : ValuePin->GetLinks())
+	{
+		if (Link->GetSourcePin() == ValuePin)
+		{
+			PinPath = Link->GetTargetPin()->GetPinPath();
+			bAsInput = true;
+			break;
+		}
+	}
+}
+
+
 bool FRigVMAddRerouteNodeAction::Undo(URigVMController* InController)
 {
 	if (!FRigVMBaseAction::Undo(InController))
@@ -317,38 +340,41 @@ FRigVMRemoveNodeAction::FRigVMRemoveNodeAction(URigVMNode* InNode)
 	if (URigVMStructNode* StructNode = Cast<URigVMStructNode>(InNode))
 	{
 		InverseAction.AddAction(FRigVMAddStructNodeAction(StructNode));
-		// todo: add all set pin defaults
+		for (URigVMPin* Pin : StructNode->GetPins())
+		{
+			if (Pin->GetDirection() == ERigVMPinDirection::Input ||
+				Pin->GetDirection() == ERigVMPinDirection::Visible)
+			{
+				InverseAction.AddAction(FRigVMSetPinDefaultValueAction(Pin, Pin->GetDefaultValue()));
+			}
+		}
 	}
 	else if (URigVMVariableNode* VariableNode = Cast<URigVMVariableNode>(InNode))
 	{
-		ensure(false);
-		//InverseAction.AddAction(FRigVMAddStructNodeAction(StructNode));
-		// todo: add all set pin defaults
+		InverseAction.AddAction(FRigVMAddVariableNodeAction(VariableNode));
+		URigVMPin* ValuePin = VariableNode->FindPin(TEXT("Value"));
+		InverseAction.AddAction(FRigVMSetPinDefaultValueAction(ValuePin, ValuePin->GetDefaultValue()));
 	}
 	else if (URigVMParameterNode* ParameterNode = Cast<URigVMParameterNode>(InNode))
 	{
-		ensure(false);
-		//InverseAction.AddAction(FRigVMAddStructNodeAction(StructNode));
-		// todo: add all set pin defaults
+		InverseAction.AddAction(FRigVMAddParameterNodeAction(ParameterNode));
+		URigVMPin* ValuePin = ParameterNode->FindPin(TEXT("Value"));
+		InverseAction.AddAction(FRigVMSetPinDefaultValueAction(ValuePin, ValuePin->GetDefaultValue()));
 	}
 	else if (URigVMCommentNode* CommentNode = Cast<URigVMCommentNode>(InNode))
 	{
-		ensure(false);
-		//InverseAction.AddAction(FRigVMAddStructNodeAction(StructNode));
-		// todo: add all set pin defaults
+		InverseAction.AddAction(FRigVMAddCommentNodeAction(CommentNode));
 	}
 	else if (URigVMRerouteNode* RerouteNode = Cast<URigVMRerouteNode>(InNode))
 	{
-		ensure(false);
-		//InverseAction.AddAction(FRigVMAddStructNodeAction(StructNode));
-		// todo: add all set pin defaults
+		InverseAction.AddAction(FRigVMAddRerouteNodeAction(RerouteNode));
 	}
 	else
 	{
 		ensure(false);
 	}
 
-	InverseActionKey.Set(InverseAction);
+	InverseActionKey.Set<FRigVMInverseAction>(InverseAction);
 }
 
 bool FRigVMRemoveNodeAction::Undo(URigVMController* InController)
@@ -613,6 +639,104 @@ bool FRigVMSetPinDefaultValueAction::Undo(URigVMController* InController)
 bool FRigVMSetPinDefaultValueAction::Redo(URigVMController* InController)
 {
 	if(!InController->SetPinDefaultValue(PinPath, NewDefaultValue, true, false))
+	{
+		return false;
+	}
+	return FRigVMBaseAction::Redo(InController);
+}
+
+FRigVMInsertArrayPinAction::FRigVMInsertArrayPinAction(URigVMPin* InArrayPin, int32 InIndex, const FString& InNewDefaultValue)
+: ArrayPinPath(InArrayPin->GetPinPath())
+, Index(InIndex)
+, NewDefaultValue(InNewDefaultValue)
+{
+}
+
+bool FRigVMInsertArrayPinAction::Undo(URigVMController* InController)
+{
+	if(!FRigVMBaseAction::Undo(InController))
+	{
+		return false;
+	}
+	return InController->RemoveArrayPin(FString::Printf(TEXT("%s.%d"), *ArrayPinPath, Index), false);
+}
+
+bool FRigVMInsertArrayPinAction::Redo(URigVMController* InController)
+{
+	if(InController->InsertArrayPin(ArrayPinPath, Index, NewDefaultValue, false).IsEmpty())
+	{
+		return false;
+	}
+	return FRigVMBaseAction::Redo(InController);
+}
+
+FRigVMRemoveArrayPinAction::FRigVMRemoveArrayPinAction(URigVMPin* InArrayElementPin)
+: ArrayPinPath(InArrayElementPin->GetParentPin()->GetPinPath())
+, Index(InArrayElementPin->GetPinIndex())
+, DefaultValue(InArrayElementPin->GetDefaultValue())
+{
+}
+
+bool FRigVMRemoveArrayPinAction::Undo(URigVMController* InController)
+{
+	if (InController->InsertArrayPin(*ArrayPinPath, Index, DefaultValue, false).IsEmpty())
+	{
+		return false;
+	}
+	return FRigVMBaseAction::Undo(InController);
+}
+
+bool FRigVMRemoveArrayPinAction::Redo(URigVMController* InController)
+{
+	if (!FRigVMBaseAction::Redo(InController))
+	{
+		return false;
+	}
+	return InController->RemoveArrayPin(FString::Printf(TEXT("%s.%d"), *ArrayPinPath, Index), false);
+}
+
+FRigVMAddLinkAction::FRigVMAddLinkAction(URigVMPin* InOutputPin, URigVMPin* InInputPin)
+: OutputPinPath(InOutputPin->GetPinPath())
+, InputPinPath(InInputPin->GetPinPath())
+{
+}
+
+bool FRigVMAddLinkAction::Undo(URigVMController* InController)
+{
+	if(!FRigVMBaseAction::Undo(InController))
+	{
+		return false;
+	}
+	return InController->BreakLink(OutputPinPath, InputPinPath, false);
+}
+
+bool FRigVMAddLinkAction::Redo(URigVMController* InController)
+{
+	if(!InController->AddLink(OutputPinPath, InputPinPath, false))
+	{
+		return false;
+	}
+	return FRigVMBaseAction::Redo(InController);
+}
+
+FRigVMBreakLinkAction::FRigVMBreakLinkAction(URigVMPin* InOutputPin, URigVMPin* InInputPin)
+: OutputPinPath(InOutputPin->GetPinPath())
+, InputPinPath(InInputPin->GetPinPath())
+{
+}
+
+bool FRigVMBreakLinkAction::Undo(URigVMController* InController)
+{
+	if(!FRigVMBaseAction::Undo(InController))
+	{
+		return false;
+	}
+	return InController->AddLink(OutputPinPath, InputPinPath, false);
+}
+
+bool FRigVMBreakLinkAction::Redo(URigVMController* InController)
+{
+	if(!InController->BreakLink(OutputPinPath, InputPinPath, false))
 	{
 		return false;
 	}

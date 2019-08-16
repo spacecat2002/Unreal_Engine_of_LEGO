@@ -82,6 +82,11 @@ public:
 	template<class T>
 	void BeginAction(T& InAction)
 	{
+		if (CurrentActions.Num() > 0)
+		{
+			// catch duplicate calls to begin action
+			ensure(CurrentActions.Last() != &InAction);
+		}
 		CurrentActions.Add((FRigVMBaseAction*)&InAction);
 	}
 
@@ -307,6 +312,7 @@ public:
 
 	FRigVMAddRerouteNodeAction();
 	FRigVMAddRerouteNodeAction(URigVMRerouteNode* InNode, const FString& InPinPath, bool bInAsInput);
+	FRigVMAddRerouteNodeAction(URigVMRerouteNode* InNode);
 	virtual ~FRigVMAddRerouteNodeAction() {};
 	virtual bool Undo(URigVMController* InController) override;
 	virtual bool Redo(URigVMController* InController) override;
@@ -526,4 +532,96 @@ public:
 
 	UPROPERTY()
 	FString NewDefaultValue;
+};
+
+USTRUCT()
+struct FRigVMInsertArrayPinAction : public FRigVMBaseAction
+{
+	GENERATED_BODY()
+
+public:
+
+	FRigVMInsertArrayPinAction()
+		: Index(0)
+	{
+	}
+	FRigVMInsertArrayPinAction(URigVMPin* InArrayPin, int32 InIndex, const FString& InNewDefaultValue);
+	virtual ~FRigVMInsertArrayPinAction() {};
+	virtual bool Undo(URigVMController* InController) override;
+	virtual bool Redo(URigVMController* InController) override;
+
+	UPROPERTY()
+	FString ArrayPinPath;
+
+	UPROPERTY()
+	int32 Index;
+
+	UPROPERTY()
+	FString NewDefaultValue;
+};
+
+USTRUCT()
+struct FRigVMRemoveArrayPinAction : public FRigVMBaseAction
+{
+	GENERATED_BODY()
+
+public:
+
+	FRigVMRemoveArrayPinAction()
+		: Index(0)
+	{
+	}
+	FRigVMRemoveArrayPinAction(URigVMPin* InArrayElementPin);
+	virtual ~FRigVMRemoveArrayPinAction() {};
+	virtual bool Undo(URigVMController* InController) override;
+	virtual bool Redo(URigVMController* InController) override;
+
+	UPROPERTY()
+	FString ArrayPinPath;
+
+	UPROPERTY()
+	int32 Index;
+
+	UPROPERTY()
+	FString DefaultValue;
+};
+
+USTRUCT()
+struct FRigVMAddLinkAction : public FRigVMBaseAction
+{
+	GENERATED_BODY()
+
+public:
+
+	FRigVMAddLinkAction() {}
+	FRigVMAddLinkAction(URigVMPin* InOutputPin, URigVMPin* InInputPin);
+	virtual ~FRigVMAddLinkAction() {};
+	virtual bool Undo(URigVMController* InController) override;
+	virtual bool Redo(URigVMController* InController) override;
+
+	UPROPERTY()
+	FString OutputPinPath;
+
+	UPROPERTY()
+	FString InputPinPath;
+};
+
+USTRUCT()
+struct FRigVMBreakLinkAction : public FRigVMBaseAction
+{
+	GENERATED_BODY()
+
+public:
+
+	FRigVMBreakLinkAction() {}
+	FRigVMBreakLinkAction(URigVMPin* InOutputPin, URigVMPin* InInputPin);
+	virtual ~FRigVMBreakLinkAction() {};
+	virtual bool Undo(URigVMController* InController) override;
+	virtual bool Redo(URigVMController* InController) override;
+
+	UPROPERTY()
+	FString OutputPinPath;
+
+	UPROPERTY()
+	FString InputPinPath;
 };

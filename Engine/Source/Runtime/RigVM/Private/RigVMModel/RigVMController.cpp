@@ -523,7 +523,12 @@ bool URigVMController::RemoveNode(URigVMNode* InNode, bool bUndo)
 		return false;
 	}
 
-	// todo: undo redo
+	FRigVMRemoveNodeAction Action;
+	if (bUndo)
+	{
+		Action = FRigVMRemoveNodeAction(InNode);
+		ActionStack->BeginAction(Action);
+	}
 
 	SelectNode(InNode, false, bUndo);
 
@@ -541,6 +546,12 @@ bool URigVMController::RemoveNode(URigVMNode* InNode, bool bUndo)
 	Notify(ERigVMGraphNotifType::NodeRemoved, Graph, InNode);
 
 	InNode->MarkPendingKill();
+
+	if (bUndo)
+	{
+		ActionStack->EndAction(Action);
+	}
+
 	return true;
 }
 
@@ -1140,13 +1151,18 @@ URigVMPin* URigVMController::InsertArrayPin(URigVMPin* ArrayPin, int32 InIndex, 
 		InIndex = ArrayPin->GetSubPins().Num();
 	}
 
+	FRigVMInsertArrayPinAction Action;
+	if (bUndo)
+	{
+		Action = FRigVMInsertArrayPinAction(ArrayPin, InIndex, InDefaultValue);
+		ActionStack->BeginAction(Action);
+	}
+
 	for (int32 ExistingIndex = ArrayPin->GetSubPins().Num() - 1; ExistingIndex >= InIndex; ExistingIndex--)
 	{
 		URigVMPin* ExistingPin = ArrayPin->GetSubPins()[ExistingIndex];
 		ExistingPin->Rename(*FString::FormatAsNumber(ExistingIndex + 1));
 	}
-
-	// todo: undo redo
 
 	URigVMPin* Pin = NewObject<URigVMPin>(ArrayPin, *FString::FormatAsNumber(InIndex));
 	ConfigurePinFromPin(Pin, ArrayPin);
@@ -1178,6 +1194,11 @@ URigVMPin* URigVMController::InsertArrayPin(URigVMPin* ArrayPin, int32 InIndex, 
 	Graph->Notify(ERigVMGraphNotifType::PinArraySizeChanged, Graph, ArrayPin);
 	Graph->MarkPackageDirty();
 
+	if (bUndo)
+	{
+		ActionStack->EndAction(Action);
+	}
+
 	return Pin;
 }
 
@@ -1205,7 +1226,12 @@ bool URigVMController::RemoveArrayPin(const FString& InArrayElementPinPath, bool
 	check(ArrayPin);
 	ensure(ArrayPin->IsArray());
 
-	// todo: undo redo
+	FRigVMRemoveArrayPinAction Action;
+	if (bUndo)
+	{
+		Action = FRigVMRemoveArrayPinAction(ArrayElementPin);
+		ActionStack->BeginAction(Action);
+	}
 
 	int32 IndexToRemove = ArrayElementPin->GetPinIndex();
 	if (!RemovePin(ArrayElementPin, bUndo))
@@ -1221,15 +1247,24 @@ bool URigVMController::RemoveArrayPin(const FString& InArrayElementPinPath, bool
 
 	Graph->MarkPackageDirty();
 	Graph->Notify(ERigVMGraphNotifType::PinArraySizeChanged, Graph, ArrayPin);
+
+	if (bUndo)
+	{
+		ActionStack->EndAction(Action);
+	}
+
 	return true;
 }
 
 bool URigVMController::RemovePin(URigVMPin* InPinToRemove, bool bUndo)
 {
-	BreakAllLinks(InPinToRemove, true, bUndo);
-	BreakAllLinks(InPinToRemove, false, bUndo);
-	BreakAllLinksRecursive(InPinToRemove, true, false, bUndo);
-	BreakAllLinksRecursive(InPinToRemove, false, false, bUndo);
+	if (bUndo)
+	{
+		BreakAllLinks(InPinToRemove, true, bUndo);
+		BreakAllLinks(InPinToRemove, false, bUndo);
+		BreakAllLinksRecursive(InPinToRemove, true, false, bUndo);
+		BreakAllLinksRecursive(InPinToRemove, false, false, bUndo);
+	}
 
 	URigVMPin* ParentPin = InPinToRemove->GetParentPin();
 	ParentPin->SubPins.Remove(InPinToRemove);
@@ -1268,9 +1303,18 @@ bool URigVMController::ClearArrayPin(const FString& InArrayPinPath, bool bUndo)
 		return false;
 	}
 
-	// todo: undo redo
-
 	TArray<URigVMPin*> ElementPins = Pin->GetSubPins();
+	if (ElementPins.Num() == 0)
+	{
+		return false;
+	}
+
+	FRigVMBaseAction Action;
+	if (bUndo)
+	{
+		ActionStack->BeginAction(Action);
+	}
+
 	for (int32 ElementIndex = ElementPins.Num() - 1; ElementIndex >= 0; ElementIndex--)
 	{
 		if (!RemoveArrayPin(ElementPins[ElementIndex]->GetPinPath(), bUndo))
@@ -1279,7 +1323,12 @@ bool URigVMController::ClearArrayPin(const FString& InArrayPinPath, bool bUndo)
 		}
 	}
 
-	return ElementPins.Num() > 0;
+	if (bUndo)
+	{
+		ActionStack->EndAction(Action);
+	}
+
+	return true;
 }
 
 bool URigVMController::AddLink(const FString& InOutputPinPath, const FString& InInputPinPath, bool bUndo)
@@ -1334,9 +1383,19 @@ bool URigVMController::AddLink(URigVMPin* OutputPin, URigVMPin* InputPin, bool b
 	ensure(!OutputPin->IsConnectedTo(InputPin));
 	ensure(!InputPin->IsConnectedTo(OutputPin));
 
+	FRigVMAddLinkAction Action;
+	if (bUndo)
+	{
+		Action = FRigVMAddLinkAction(OutputPin, InputPin);
+		ActionStack->BeginAction(Action);
+	}
+
 	BreakAllLinks(InputPin, true, bUndo);
-	BreakAllLinksRecursive(InputPin, true, true, bUndo);
-	BreakAllLinksRecursive(InputPin, true, false, bUndo);
+	if (bUndo)
+	{
+		BreakAllLinksRecursive(InputPin, true, true, bUndo);
+		BreakAllLinksRecursive(InputPin, true, false, bUndo);
+	}
 
 	URigVMLink* Link = NewObject<URigVMLink>(Graph);
 	Link->SourcePin = OutputPin;
@@ -1350,7 +1409,10 @@ bool URigVMController::AddLink(URigVMPin* OutputPin, URigVMPin* InputPin, bool b
 	Graph->MarkPackageDirty();
 	Graph->Notify(ERigVMGraphNotifType::LinkAdded, Graph, Link);
 
-	// todo: undo redo
+	if (bUndo)
+	{
+		ActionStack->EndAction(Action);
+	}
 
 	return true;
 }
@@ -1395,6 +1457,13 @@ bool URigVMController::BreakLink(URigVMPin* OutputPin, URigVMPin* InputPin, bool
 	{
 		if (Link->SourcePin == OutputPin && Link->TargetPin == InputPin)
 		{
+			FRigVMBreakLinkAction Action;
+			if (bUndo)
+			{
+				Action = FRigVMBreakLinkAction(OutputPin, InputPin);
+				ActionStack->BeginAction(Action);
+			}
+
 			OutputPin->Links.Remove(Link);
 			InputPin->Links.Remove(Link);
 			Graph->Links.Remove(Link);
@@ -1404,7 +1473,10 @@ bool URigVMController::BreakLink(URigVMPin* OutputPin, URigVMPin* InputPin, bool
 
 			Link->MarkPendingKill();
 
-			// todo: undo redo
+			if (bUndo)
+			{
+				ActionStack->EndAction(Action);
+			}
 
 			return true;
 		}
@@ -1437,6 +1509,12 @@ bool URigVMController::BreakAllLinks(URigVMPin* Pin, bool bAsInput, bool bUndo)
 		return false;
 	}
 
+	FRigVMBaseAction Action;
+	if (bUndo)
+	{
+		ActionStack->BeginAction(Action);
+	}
+
 	int32 LinksBroken = 0;
 	TArray<URigVMLink*> Links = Pin->GetLinks();
 	for (int32 LinkIndex = Links.Num() - 1; LinkIndex >= 0; LinkIndex--)
@@ -1452,7 +1530,17 @@ bool URigVMController::BreakAllLinks(URigVMPin* Pin, bool bAsInput, bool bUndo)
 		}
 	}
 
-	// todo: undo redo
+	if (bUndo)
+	{
+		if (LinksBroken > 0)
+		{
+			ActionStack->EndAction(Action);
+		}
+		else
+		{
+			ActionStack->CancelAction(Action);
+		}
+	}
 
 	return LinksBroken > 0;
 }
