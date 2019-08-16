@@ -23,6 +23,16 @@ FRigVMBaseAction* FRigVMActionWrapper::GetAction()
 	return (FRigVMBaseAction*)Data.GetData();
 }
 
+FString FRigVMActionWrapper::ExportText()
+{
+	FString ExportedText;
+	if (Data.Num() > 0 && ScriptStruct != nullptr)
+	{
+		ScriptStruct->ExportText(ExportedText, GetAction(), nullptr, nullptr, PPF_None, nullptr);
+	}
+	return ExportedText;
+}
+
 bool URigVMActionStack::Undo(URigVMController* InController)
 {
 	check(InController)
@@ -61,6 +71,11 @@ bool URigVMActionStack::Redo(URigVMController* InController)
 		return true;
 	}
 	return false;
+}
+
+bool FRigVMBaseAction::Merge(const FRigVMBaseAction* Other)
+{
+	return SubActions.Num() == 0 && Other->SubActions.Num() == 0;
 }
 
 bool FRigVMBaseAction::Undo(URigVMController* InController)
@@ -387,6 +402,23 @@ FRigVMSetNodePositionAction::FRigVMSetNodePositionAction(URigVMNode* InNode, con
 {
 }
 
+bool FRigVMSetNodePositionAction::Merge(const FRigVMBaseAction* Other)
+{
+	if (!FRigVMBaseAction::Merge(Other))
+	{
+		return false;
+	}
+
+	const FRigVMSetNodePositionAction* Action = (const FRigVMSetNodePositionAction*)Other;
+	if (NodePath != Action->NodePath)
+	{
+		return false;
+	}
+
+	NewPosition = Action->NewPosition;
+	return true;
+}
+
 bool FRigVMSetNodePositionAction::Undo(URigVMController* InController)
 {
 	if(!FRigVMBaseAction::Undo(InController))
@@ -410,6 +442,23 @@ FRigVMSetNodeSizeAction::FRigVMSetNodeSizeAction(URigVMNode* InNode, const FVect
 , OldSize(InNode->GetSize())
 , NewSize(InNewSize)
 {
+}
+
+bool FRigVMSetNodeSizeAction::Merge(const FRigVMBaseAction* Other)
+{
+	if (!FRigVMBaseAction::Merge(Other))
+	{
+		return false;
+	}
+
+	const FRigVMSetNodeSizeAction* Action = (const FRigVMSetNodeSizeAction*)Other;
+	if (NodePath != Action->NodePath)
+	{
+		return false;
+	}
+
+	NewSize = Action->NewSize;
+	return true;
 }
 
 bool FRigVMSetNodeSizeAction::Undo(URigVMController* InController)
@@ -533,6 +582,23 @@ FRigVMSetPinDefaultValueAction::FRigVMSetPinDefaultValueAction(URigVMPin* InPin,
 , OldDefaultValue(InPin->GetDefaultValue())
 , NewDefaultValue(InNewDefaultValue)
 {
+}
+
+bool FRigVMSetPinDefaultValueAction::Merge(const FRigVMBaseAction* Other)
+{
+	if (!FRigVMBaseAction::Merge(Other))
+	{
+		return false;
+	}
+
+	const FRigVMSetPinDefaultValueAction* Action = (const FRigVMSetPinDefaultValueAction*)Other;
+	if (PinPath != Action->PinPath)
+	{
+		return false;
+	}
+
+	NewDefaultValue = Action->NewDefaultValue;
+	return true;
 }
 
 bool FRigVMSetPinDefaultValueAction::Undo(URigVMController* InController)

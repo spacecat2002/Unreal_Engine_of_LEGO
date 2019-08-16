@@ -36,6 +36,7 @@ public:
 	~FRigVMActionWrapper();
 
 	FRigVMBaseAction* GetAction();
+	FString ExportText();
 
 private:
 	FRigVMActionWrapper(const FRigVMActionWrapper& Other) = delete;
@@ -50,7 +51,12 @@ struct FRigVMBaseAction
 {
 	GENERATED_BODY()
 
+	FRigVMBaseAction()
+	{
+	}
+
 	virtual ~FRigVMBaseAction() {};
+	virtual bool Merge(const FRigVMBaseAction* Other);
 	virtual bool Undo(URigVMController* InController);
 	virtual bool Redo(URigVMController* InController);
 
@@ -80,12 +86,12 @@ public:
 	}
 
 	template<class ActionType>
-	void EndAction(ActionType& InAction)
+	void EndAction(ActionType& InAction, bool bPerformMerge = false)
 	{
 		ensure(CurrentActions.Num() > 0);
 		ensure((FRigVMBaseAction*)&InAction == CurrentActions.Last());
 		CurrentActions.Pop();
-		AddAction(InAction);
+		AddAction(InAction, bPerformMerge);
 	}
 
 	template<class ActionType>
@@ -97,18 +103,49 @@ public:
 	}
 
 	template<class ActionType>
-	void AddAction(const ActionType& InAction)
+	void AddAction(const ActionType& InAction, bool bPerformMerge = false)
 	{
-		FRigVMActionKey Key;
-		Key.Set<ActionType>(InAction);
-		if(CurrentActions.Num() == 0)
+		TArray<FRigVMActionKey>* ActionList = &UndoActions;
+		if (CurrentActions.Num() > 0)
 		{
-			UndoActions.Add(Key);
-			RedoActions.Reset();
+			ActionList = &CurrentActions[CurrentActions.Num()-1]->SubActions;
+		}
+
+		bool bMergeIfPossible = bPerformMerge;
+		if (bMergeIfPossible)
+		{
+			bMergeIfPossible = false;
+			if (ActionList->Num() > 0 && InAction.SubActions.Num() == 0)
+			{
+				if (ActionList->Last().ScriptStructPath == ActionType::StaticStruct()->GetPathName())
+				{
+					FRigVMActionWrapper Wrapper((*ActionList)[ActionList->Num() - 1]);
+					if (Wrapper.GetAction()->SubActions.Num() == 0)
+					{
+						bMergeIfPossible = Wrapper.GetAction()->Merge(&InAction);
+						if (bMergeIfPossible)
+						{
+							(*ActionList)[ActionList->Num()-1].ExportedText = Wrapper.ExportText();
+						}
+					}
+				}
+			}
+		}
+
+		if (bMergeIfPossible)
+		{
+			// already performed the merge above
 		}
 		else
 		{
-			CurrentActions.Last()->SubActions.Add(Key);
+			FRigVMActionKey Key;
+			Key.Set<ActionType>(InAction);
+			ActionList->Add(Key);
+		}
+
+		if (CurrentActions.Num() == 0)
+		{
+			RedoActions.Reset();
 		}
 	}
 
@@ -340,6 +377,7 @@ public:
 	}
 	FRigVMSetNodePositionAction(URigVMNode* InNode, const FVector2D& InNewPosition);
 	virtual ~FRigVMSetNodePositionAction() {};
+	virtual bool Merge(const FRigVMBaseAction* Other);
 	virtual bool Undo(URigVMController* InController) override;
 	virtual bool Redo(URigVMController* InController) override;
 
@@ -366,6 +404,7 @@ public:
 	}
 	FRigVMSetNodeSizeAction(URigVMNode* InNode, const FVector2D& InNewSize);
 	virtual ~FRigVMSetNodeSizeAction() {};
+	virtual bool Merge(const FRigVMBaseAction* Other);
 	virtual bool Undo(URigVMController* InController) override;
 	virtual bool Redo(URigVMController* InController) override;
 
@@ -475,6 +514,7 @@ public:
 	FRigVMSetPinDefaultValueAction() {}
 	FRigVMSetPinDefaultValueAction(URigVMPin* InPin, const FString& InNewDefaultValue);
 	virtual ~FRigVMSetPinDefaultValueAction() {};
+	virtual bool Merge(const FRigVMBaseAction* Other);
 	virtual bool Undo(URigVMController* InController) override;
 	virtual bool Redo(URigVMController* InController) override;
 

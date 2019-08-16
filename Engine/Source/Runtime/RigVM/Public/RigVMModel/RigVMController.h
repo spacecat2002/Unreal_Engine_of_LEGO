@@ -89,16 +89,16 @@ public:
 	bool ClearNodeSelection(bool bUndo = true);
 
 	UFUNCTION(BlueprintCallable, Category = RigVMController)
-	bool SetNodePosition(URigVMNode* InNode, const FVector2D& InPosition, bool bUndo = true);
+	bool SetNodePosition(URigVMNode* InNode, const FVector2D& InPosition, bool bUndo = true, bool bMergeUndoAction = false);
 
 	UFUNCTION(BlueprintCallable, Category = RigVMController)
-	bool SetNodePositionByName(const FName& InNodeName, const FVector2D& InPosition, bool bUndo = true);
+	bool SetNodePositionByName(const FName& InNodeName, const FVector2D& InPosition, bool bUndo = true, bool bMergeUndoAction = false);
 
 	UFUNCTION(BlueprintCallable, Category = RigVMController)
-	bool SetNodeSize(URigVMNode* InNode, const FVector2D& InSize, bool bUndo = true);
+	bool SetNodeSize(URigVMNode* InNode, const FVector2D& InSize, bool bUndo = true, bool bMergeUndoAction = false);
 
 	UFUNCTION(BlueprintCallable, Category = RigVMController)
-	bool SetNodeSizeByName(const FName& InNodeName, const FVector2D& InSize, bool bUndo = true);
+	bool SetNodeSizeByName(const FName& InNodeName, const FVector2D& InSize, bool bUndo = true, bool bMergeUndoAction = false);
 
 	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	bool SetCommentText(URigVMNode* InNode, const FString& InCommentText, bool bUndo = true);
@@ -122,7 +122,7 @@ public:
 	FString GetPinDefaultValue(const FString& InPinPath);
 
 	UFUNCTION(BlueprintCallable, Category = RigVMController)
-	bool SetPinDefaultValue(const FString& InPinPath, const FString& InDefaultValue, bool bResizeArrays = true, bool bUndo = true);
+	bool SetPinDefaultValue(const FString& InPinPath, const FString& InDefaultValue, bool bResizeArrays = true, bool bUndo = true, bool bMergeUndoAction = false);
 
 	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	FString AddArrayPin(const FString& InArrayPinPath, const FString& InDefaultValue = TEXT(""), bool bUndo = true);
@@ -167,7 +167,7 @@ private:
 	void ConfigurePinFromProperty(UProperty* InProperty, URigVMPin* InOutPin, ERigVMPinDirection InPinDirection = ERigVMPinDirection::Invalid);
 	void ConfigurePinFromPin(URigVMPin* InOutPin, URigVMPin* InPin);
 	virtual bool ShouldStructBeUnfolded(const UStruct* InStruct);
-	void SetPinDefaultValue(URigVMPin* InPin, const FString& InDefaultValue, bool bResizeArrays, bool bUndo);
+	void SetPinDefaultValue(URigVMPin* InPin, const FString& InDefaultValue, bool bResizeArrays, bool bUndo, bool bMergeUndoAction);
 	static TArray<FString> SplitDefaultValue(const FString& InDefaultValue);
 	URigVMPin* InsertArrayPin(URigVMPin* ArrayPin, int32 InIndex, const FString& InDefaultValue, bool bUndo);
 	bool RemovePin(URigVMPin* InPinToRemove, bool bUndo);

@@ -214,7 +214,7 @@ URigVMVariableNode* URigVMController::AddVariableNode(const FName& InVariableNam
 
 	if (!InDefaultValue.IsEmpty())
 	{
-		SetPinDefaultValue(ValuePin, InDefaultValue, true, false);
+		SetPinDefaultValue(ValuePin, InDefaultValue, true, false, false);
 	}
 
 	Graph->MarkPackageDirty();
@@ -303,7 +303,7 @@ URigVMParameterNode* URigVMController::AddParameterNode(const FName& InParameter
 
 	if (!InDefaultValue.IsEmpty())
 	{
-		SetPinDefaultValue(ValuePin, InDefaultValue, true, false);
+		SetPinDefaultValue(ValuePin, InDefaultValue, true, false, false);
 	}
 
 	Graph->MarkPackageDirty();
@@ -466,7 +466,7 @@ URigVMRerouteNode* URigVMController::AddRerouteNodeOnPin(const FString& InPinPat
 	FString DefaultValue = Pin->GetDefaultValue();
 	if (!DefaultValue.IsEmpty())
 	{
-		SetPinDefaultValue(ValuePin, Pin->GetDefaultValue(), true, false);
+		SetPinDefaultValue(ValuePin, Pin->GetDefaultValue(), true, false, false);
 	}
 
 	Graph->Nodes.Add(Node);
@@ -627,7 +627,7 @@ bool URigVMController::ClearNodeSelection(bool bUndo)
 	return Selection.Num() > 0;
 }
 
-bool URigVMController::SetNodePosition(URigVMNode* InNode, const FVector2D& InPosition, bool bUndo)
+bool URigVMController::SetNodePosition(URigVMNode* InNode, const FVector2D& InPosition, bool bUndo, bool bMergeUndoAction)
 {
 	if (!IsValidNodeForGraph(InNode))
 	{
@@ -646,13 +646,13 @@ bool URigVMController::SetNodePosition(URigVMNode* InNode, const FVector2D& InPo
 
 	if (bUndo)
 	{
-		ActionStack->EndAction(Action);
+		ActionStack->EndAction(Action, bMergeUndoAction);
 	}
 
 	return true;
 }
 
-bool URigVMController::SetNodePositionByName(const FName& InNodeName, const FVector2D& InPosition, bool bUndo)
+bool URigVMController::SetNodePositionByName(const FName& InNodeName, const FVector2D& InPosition, bool bUndo, bool bMergeUndoAction)
 {
 	if(!IsValidGraph())
 	{
@@ -660,10 +660,10 @@ bool URigVMController::SetNodePositionByName(const FName& InNodeName, const FVec
 	}
 
 	URigVMNode* Node = Graph->FindNodeByName(InNodeName);
-	return SetNodePosition(Node, InPosition, bUndo);
+	return SetNodePosition(Node, InPosition, bUndo, bMergeUndoAction);
 }
 
-bool URigVMController::SetNodeSize(URigVMNode* InNode, const FVector2D& InSize, bool bUndo)
+bool URigVMController::SetNodeSize(URigVMNode* InNode, const FVector2D& InSize, bool bUndo, bool bMergeUndoAction)
 {
 	if (!IsValidNodeForGraph(InNode))
 	{
@@ -682,13 +682,13 @@ bool URigVMController::SetNodeSize(URigVMNode* InNode, const FVector2D& InSize, 
 
 	if (bUndo)
 	{
-		ActionStack->EndAction(Action);
+		ActionStack->EndAction(Action, bMergeUndoAction);
 	}
 
 	return true;
 }
 
-bool URigVMController::SetNodeSizeByName(const FName& InNodeName, const FVector2D& InSize, bool bUndo)
+bool URigVMController::SetNodeSizeByName(const FName& InNodeName, const FVector2D& InSize, bool bUndo, bool bMergeUndoAction)
 {
 	if(!IsValidGraph())
 	{
@@ -696,7 +696,7 @@ bool URigVMController::SetNodeSizeByName(const FName& InNodeName, const FVector2
 	}
 
 	URigVMNode* Node = Graph->FindNodeByName(InNodeName);
-	return SetNodeSize(Node, InSize, bUndo);
+	return SetNodeSize(Node, InSize, bUndo, bMergeUndoAction);
 }
 
 bool URigVMController::SetCommentText(URigVMNode* InNode, const FString& InCommentText, bool bUndo)
@@ -926,7 +926,7 @@ FString URigVMController::GetPinDefaultValue(const FString& InPinPath)
 	return Pin->GetDefaultValue();
 }
 
-bool URigVMController::SetPinDefaultValue(const FString& InPinPath, const FString& InDefaultValue, bool bResizeArrays, bool bUndo)
+bool URigVMController::SetPinDefaultValue(const FString& InPinPath, const FString& InDefaultValue, bool bResizeArrays, bool bUndo, bool bMergeUndoAction)
 {
 	if (!IsValidGraph())
 	{
@@ -940,11 +940,11 @@ bool URigVMController::SetPinDefaultValue(const FString& InPinPath, const FStrin
 		return false;
 	}
 
-	SetPinDefaultValue(Pin, InDefaultValue, bResizeArrays, bUndo);
+	SetPinDefaultValue(Pin, InDefaultValue, bResizeArrays, bUndo, bMergeUndoAction);
 	return true;
 }
 
-void URigVMController::SetPinDefaultValue(URigVMPin* InPin, const FString& InDefaultValue, bool bResizeArrays, bool bUndo)
+void URigVMController::SetPinDefaultValue(URigVMPin* InPin, const FString& InDefaultValue, bool bResizeArrays, bool bUndo, bool bMergeUndoAction)
 {
 	check(InPin);
 	ensure(!InDefaultValue.IsEmpty());
@@ -983,7 +983,7 @@ void URigVMController::SetPinDefaultValue(URigVMPin* InPin, const FString& InDef
 			{
 				Elements[ElementIndex].Mid(1, Elements[ElementIndex].Len() - 2);
 			}
-			SetPinDefaultValue(SubPin, Elements[ElementIndex], bResizeArrays, false);
+			SetPinDefaultValue(SubPin, Elements[ElementIndex], bResizeArrays, false, false);
 		}
 	}
 	else if (InPin->IsStruct())
@@ -1002,7 +1002,7 @@ void URigVMController::SetPinDefaultValue(URigVMPin* InPin, const FString& InDef
 					{
 						MemberValue.Mid(1, MemberValue.Len() - 2);
 					}
-					SetPinDefaultValue(SubPin, MemberValue, bResizeArrays, false);
+					SetPinDefaultValue(SubPin, MemberValue, bResizeArrays, false, false);
 				}
 			}
 		}
@@ -1017,7 +1017,7 @@ void URigVMController::SetPinDefaultValue(URigVMPin* InPin, const FString& InDef
 
 	if (bUndo)
 	{
-		ActionStack->EndAction(Action);
+		ActionStack->EndAction(Action, bMergeUndoAction);
 	}
 }
 
@@ -1937,7 +1937,7 @@ void URigVMController::RepopulatePinsOnNode(URigVMNode* InNode)
 		FString* DefaultValue = DefaultValues.Find(Pin->GetFName());
 		if (DefaultValue)
 		{
-			SetPinDefaultValue(Pin, *DefaultValue, true, false);
+			SetPinDefaultValue(Pin, *DefaultValue, true, false, false);
 		}
 	}
 }
