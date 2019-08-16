@@ -89,6 +89,14 @@ public:
 	}
 
 	template<class ActionType>
+	void CancelAction(ActionType& InAction)
+	{
+		ensure(CurrentActions.Num() > 0);
+		ensure((FRigVMBaseAction*)&InAction == CurrentActions.Last());
+		CurrentActions.Pop();
+	}
+
+	template<class ActionType>
 	void AddAction(const ActionType& InAction)
 	{
 		FRigVMActionKey Key;
@@ -297,4 +305,185 @@ public:
 
 	UPROPERTY()
 	FRigVMActionKey InverseActionKey;
+};
+
+USTRUCT()
+struct FRigVMSelectNodeAction : public FRigVMBaseAction
+{
+	GENERATED_BODY()
+
+public:
+
+	FRigVMSelectNodeAction() {}
+	FRigVMSelectNodeAction(URigVMNode* InNode);
+	virtual ~FRigVMSelectNodeAction() {};
+	virtual bool Undo(URigVMController* InController) override;
+	virtual bool Redo(URigVMController* InController) override;
+
+	UPROPERTY()
+	FString NodePath;
+
+	UPROPERTY()
+	bool bWasSelected;
+};
+
+USTRUCT()
+struct FRigVMSetNodePositionAction : public FRigVMBaseAction
+{
+	GENERATED_BODY()
+
+public:
+
+	FRigVMSetNodePositionAction()
+	{
+		OldPosition = NewPosition = FVector2D::ZeroVector;
+	}
+	FRigVMSetNodePositionAction(URigVMNode* InNode, const FVector2D& InNewPosition);
+	virtual ~FRigVMSetNodePositionAction() {};
+	virtual bool Undo(URigVMController* InController) override;
+	virtual bool Redo(URigVMController* InController) override;
+
+	UPROPERTY()
+	FString NodePath;
+
+	UPROPERTY()
+	FVector2D OldPosition;
+
+	UPROPERTY()
+	FVector2D NewPosition;
+};
+
+USTRUCT()
+struct FRigVMSetNodeSizeAction : public FRigVMBaseAction
+{
+	GENERATED_BODY()
+
+public:
+
+	FRigVMSetNodeSizeAction()
+	{
+		OldSize = NewSize = FVector2D::ZeroVector;
+	}
+	FRigVMSetNodeSizeAction(URigVMNode* InNode, const FVector2D& InNewSize);
+	virtual ~FRigVMSetNodeSizeAction() {};
+	virtual bool Undo(URigVMController* InController) override;
+	virtual bool Redo(URigVMController* InController) override;
+
+	UPROPERTY()
+	FString NodePath;
+
+	UPROPERTY()
+	FVector2D OldSize;
+
+	UPROPERTY()
+	FVector2D NewSize;
+};
+
+USTRUCT()
+struct FRigVMSetCommentTextAction : public FRigVMBaseAction
+{
+	GENERATED_BODY()
+
+public:
+
+	FRigVMSetCommentTextAction() {}
+	FRigVMSetCommentTextAction(URigVMCommentNode* InNode, const FString& InNewText);
+	virtual ~FRigVMSetCommentTextAction() {};
+	virtual bool Undo(URigVMController* InController) override;
+	virtual bool Redo(URigVMController* InController) override;
+
+	UPROPERTY()
+	FString NodePath;
+
+	UPROPERTY()
+	FString OldText;
+
+	UPROPERTY()
+	FString NewText;
+};
+
+USTRUCT()
+struct FRigVMSetRerouteCompactnessAction : public FRigVMBaseAction
+{
+	GENERATED_BODY()
+
+public:
+
+	FRigVMSetRerouteCompactnessAction() {}
+	FRigVMSetRerouteCompactnessAction(URigVMRerouteNode* InNode, bool InShowAsFullNode);
+	virtual ~FRigVMSetRerouteCompactnessAction() {};
+	virtual bool Undo(URigVMController* InController) override;
+	virtual bool Redo(URigVMController* InController) override;
+
+	UPROPERTY()
+	FString NodePath;
+
+	UPROPERTY()
+	bool OldShowAsFullNode;
+
+	UPROPERTY()
+	bool NewShowAsFullNode;
+};
+
+USTRUCT()
+struct FRigVMRenameVariableAction : public FRigVMBaseAction
+{
+	GENERATED_BODY()
+
+public:
+
+	FRigVMRenameVariableAction() {}
+	FRigVMRenameVariableAction(const FName& InOldVariableName, const FName& InNewVariableName);
+	virtual ~FRigVMRenameVariableAction() {};
+	virtual bool Undo(URigVMController* InController) override;
+	virtual bool Redo(URigVMController* InController) override;
+
+	UPROPERTY()
+	FString OldVariableName;
+
+	UPROPERTY()
+	FString NewVariableName;
+};
+
+USTRUCT()
+struct FRigVMRenameParameterAction : public FRigVMBaseAction
+{
+	GENERATED_BODY()
+
+public:
+
+	FRigVMRenameParameterAction() {}
+	FRigVMRenameParameterAction(const FName& InOldParameterName, const FName& InNewParameterName);
+	virtual ~FRigVMRenameParameterAction() {};
+	virtual bool Undo(URigVMController* InController) override;
+	virtual bool Redo(URigVMController* InController) override;
+
+	UPROPERTY()
+	FString OldParameterName;
+
+	UPROPERTY()
+	FString NewParameterName;
+};
+
+USTRUCT()
+struct FRigVMSetPinDefaultValueAction : public FRigVMBaseAction
+{
+	GENERATED_BODY()
+
+public:
+
+	FRigVMSetPinDefaultValueAction() {}
+	FRigVMSetPinDefaultValueAction(URigVMPin* InPin, const FString& InNewDefaultValue);
+	virtual ~FRigVMSetPinDefaultValueAction() {};
+	virtual bool Undo(URigVMController* InController) override;
+	virtual bool Redo(URigVMController* InController) override;
+
+	UPROPERTY()
+	FString PinPath;
+
+	UPROPERTY()
+	FString OldDefaultValue;
+
+	UPROPERTY()
+	FString NewDefaultValue;
 };

@@ -355,3 +355,200 @@ bool FRigVMRemoveNodeAction::Redo(URigVMController* InController)
 	FRigVMActionWrapper InverseWrapper(InverseActionKey);
 	return InverseWrapper.GetAction()->Redo(InController);
 }
+
+FRigVMSelectNodeAction::FRigVMSelectNodeAction(URigVMNode* InNode)
+: NodePath(InNode->GetNodePath())
+, bWasSelected(InNode->IsSelected())
+{
+}
+
+bool FRigVMSelectNodeAction::Undo(URigVMController* InController)
+{
+	if(!FRigVMBaseAction::Undo(InController))
+	{
+		return false;
+	}
+	return InController->SelectNodeByName(*NodePath, bWasSelected, false);
+}
+
+bool FRigVMSelectNodeAction::Redo(URigVMController* InController)
+{
+	if(!InController->SelectNodeByName(*NodePath, !bWasSelected, false))
+	{
+		return false;
+	}
+	return FRigVMBaseAction::Redo(InController);
+}
+
+FRigVMSetNodePositionAction::FRigVMSetNodePositionAction(URigVMNode* InNode, const FVector2D& InNewPosition)
+: NodePath(InNode->GetNodePath())
+, OldPosition(InNode->GetPosition())
+, NewPosition(InNewPosition)
+{
+}
+
+bool FRigVMSetNodePositionAction::Undo(URigVMController* InController)
+{
+	if(!FRigVMBaseAction::Undo(InController))
+	{
+		return false;
+	}
+	return InController->SetNodePositionByName(*NodePath, OldPosition, false);
+}
+
+bool FRigVMSetNodePositionAction::Redo(URigVMController* InController)
+{
+	if(!InController->SetNodePositionByName(*NodePath, NewPosition, false))
+	{
+		return false;
+	}
+	return FRigVMBaseAction::Redo(InController);
+}
+
+FRigVMSetNodeSizeAction::FRigVMSetNodeSizeAction(URigVMNode* InNode, const FVector2D& InNewSize)
+: NodePath(InNode->GetNodePath())
+, OldSize(InNode->GetSize())
+, NewSize(InNewSize)
+{
+}
+
+bool FRigVMSetNodeSizeAction::Undo(URigVMController* InController)
+{
+	if(!FRigVMBaseAction::Undo(InController))
+	{
+		return false;
+	}
+	return InController->SetNodeSizeByName(*NodePath, OldSize, false);
+}
+
+bool FRigVMSetNodeSizeAction::Redo(URigVMController* InController)
+{
+	if(!InController->SetNodeSizeByName(*NodePath, NewSize, false))
+	{
+		return false;
+	}
+	return FRigVMBaseAction::Redo(InController);
+}
+
+FRigVMSetCommentTextAction::FRigVMSetCommentTextAction(URigVMCommentNode* InNode, const FString& InNewText)
+: NodePath(InNode->GetNodePath())
+, OldText(InNode->GetCommentText())
+, NewText(InNewText)
+{
+}
+
+bool FRigVMSetCommentTextAction::Undo(URigVMController* InController)
+{
+	if(!FRigVMBaseAction::Undo(InController))
+	{
+		return false;
+	}
+	return InController->SetCommentTextByName(*NodePath, OldText, false);
+}
+
+bool FRigVMSetCommentTextAction::Redo(URigVMController* InController)
+{
+	if(!InController->SetCommentTextByName(*NodePath, NewText, false))
+	{
+		return false;
+	}
+	return FRigVMBaseAction::Redo(InController);
+}
+
+FRigVMSetRerouteCompactnessAction::FRigVMSetRerouteCompactnessAction(URigVMRerouteNode* InNode, bool InShowAsFullNode)
+: NodePath(InNode->GetNodePath())
+, OldShowAsFullNode(InNode->GetShowsAsFullNode())
+, NewShowAsFullNode(InShowAsFullNode)
+{
+}
+
+bool FRigVMSetRerouteCompactnessAction::Undo(URigVMController* InController)
+{
+	if(!FRigVMBaseAction::Undo(InController))
+	{
+		return false;
+	}
+	return InController->SetRerouteCompactnessByName(*NodePath, OldShowAsFullNode, false);
+}
+
+bool FRigVMSetRerouteCompactnessAction::Redo(URigVMController* InController)
+{
+	if(!InController->SetRerouteCompactnessByName(*NodePath, NewShowAsFullNode, false))
+	{
+		return false;
+	}
+	return FRigVMBaseAction::Redo(InController);
+}
+
+FRigVMRenameVariableAction::FRigVMRenameVariableAction(const FName& InOldVariableName, const FName& InNewVariableName)
+: OldVariableName(InOldVariableName.ToString())
+, NewVariableName(InNewVariableName.ToString())
+{
+}
+
+bool FRigVMRenameVariableAction::Undo(URigVMController* InController)
+{
+	if(!FRigVMBaseAction::Undo(InController))
+	{
+		return false;
+	}
+	return InController->RenameVariable(*NewVariableName, *OldVariableName, false);
+}
+
+bool FRigVMRenameVariableAction::Redo(URigVMController* InController)
+{
+	if(!InController->RenameVariable(*OldVariableName, *NewVariableName, false))
+	{
+		return false;
+	}
+	return FRigVMBaseAction::Redo(InController);
+}
+
+FRigVMRenameParameterAction::FRigVMRenameParameterAction(const FName& InOldParameterName, const FName& InNewParameterName)
+: OldParameterName(InOldParameterName.ToString())
+, NewParameterName(InNewParameterName.ToString())
+{
+}
+
+bool FRigVMRenameParameterAction::Undo(URigVMController* InController)
+{
+	if(!FRigVMBaseAction::Undo(InController))
+	{
+		return false;
+	}
+	return InController->RenameParameter(*NewParameterName, *OldParameterName, false);
+}
+
+bool FRigVMRenameParameterAction::Redo(URigVMController* InController)
+{
+	if(!InController->RenameParameter(*OldParameterName, *NewParameterName, false))
+	{
+		return false;
+	}
+	return FRigVMBaseAction::Redo(InController);
+}
+
+FRigVMSetPinDefaultValueAction::FRigVMSetPinDefaultValueAction(URigVMPin* InPin, const FString& InNewDefaultValue)
+: PinPath(InPin->GetPinPath())
+, OldDefaultValue(InPin->GetDefaultValue())
+, NewDefaultValue(InNewDefaultValue)
+{
+}
+
+bool FRigVMSetPinDefaultValueAction::Undo(URigVMController* InController)
+{
+	if(!FRigVMBaseAction::Undo(InController))
+	{
+		return false;
+	}
+	return InController->SetPinDefaultValue(PinPath, OldDefaultValue, true, false);
+}
+
+bool FRigVMSetPinDefaultValueAction::Redo(URigVMController* InController)
+{
+	if(!InController->SetPinDefaultValue(PinPath, NewDefaultValue, true, false))
+	{
+		return false;
+	}
+	return FRigVMBaseAction::Redo(InController);
+}

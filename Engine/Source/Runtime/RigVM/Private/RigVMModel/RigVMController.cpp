@@ -389,16 +389,29 @@ URigVMRerouteNode* URigVMController::AddRerouteNodeOnLink(URigVMLink* InLink, bo
 	URigVMPin* SourcePin = InLink->GetSourcePin();
 	URigVMPin* TargetPin = InLink->GetTargetPin();
 
-	// todo: undo redo
+	FRigVMBaseAction Action;
+	if (bUndo)
+	{
+		ActionStack->BeginAction(Action);
+	}
 
 	URigVMRerouteNode* Node = AddRerouteNodeOnPin(TargetPin->GetPinPath(), true, bShowAsFullNode, InPosition, InNodeName, bUndo);
 	if (Node == nullptr)
 	{
+		if (bUndo)
+		{
+			ActionStack->CancelAction(Action);
+		}
 		return nullptr;
 	}
 
 	URigVMPin* ValuePin = Node->Pins[0];
 	AddLink(SourcePin, ValuePin, bUndo);
+
+	if (bUndo)
+	{
+		ActionStack->EndAction(Action);
+	}
 
 	return Node;
 }
@@ -552,6 +565,13 @@ bool URigVMController::SelectNode(URigVMNode* InNode, bool bSelect, bool bUndo)
 		return false;
 	}
 
+	FRigVMSelectNodeAction Action;
+	if (bUndo)
+	{
+		Action = FRigVMSelectNodeAction(InNode);
+		ActionStack->BeginAction(Action);
+	}
+
 	if (bSelect)
 	{
 		Graph->SelectedNodes.Add(InNode->GetFName());
@@ -563,7 +583,12 @@ bool URigVMController::SelectNode(URigVMNode* InNode, bool bSelect, bool bUndo)
 		Notify(ERigVMGraphNotifType::NodeDeselected, Graph, InNode);
 	}
 
-return true;
+	if (bUndo)
+	{
+		ActionStack->EndAction(Action);
+	}
+
+	return true;
 }
 
 bool URigVMController::SelectNodeByName(const FName& InNodeName, bool bSelect, bool bUndo)
@@ -582,10 +607,21 @@ bool URigVMController::ClearNodeSelection(bool bUndo)
 		return false;
 	}
 
+	FRigVMBaseAction Action;
+	if (bUndo)
+	{
+		ActionStack->BeginAction(Action);
+	}
+
 	TArray<FName> Selection = Graph->SelectedNodes;
 	for (const FName& SelectedNode : Selection)
 	{
 		SelectNodeByName(SelectedNode, false, bUndo);
+	}
+
+	if (bUndo)
+	{
+		ActionStack->EndAction(Action);
 	}
 
 	return Selection.Num() > 0;
@@ -598,9 +634,21 @@ bool URigVMController::SetNodePosition(URigVMNode* InNode, const FVector2D& InPo
 		return false;
 	}
 
+	FRigVMSetNodePositionAction Action;
+	if (bUndo)
+	{
+		Action = FRigVMSetNodePositionAction(InNode, InPosition);
+		ActionStack->BeginAction(Action);
+	}
+
 	InNode->Position = InPosition;
-	// todo: undo redo
 	Notify(ERigVMGraphNotifType::NodePositionChanged, Graph, InNode);
+
+	if (bUndo)
+	{
+		ActionStack->EndAction(Action);
+	}
+
 	return true;
 }
 
@@ -622,9 +670,21 @@ bool URigVMController::SetNodeSize(URigVMNode* InNode, const FVector2D& InSize, 
 		return false;
 	}
 
+	FRigVMSetNodeSizeAction Action;
+	if (bUndo)
+	{
+		Action = FRigVMSetNodeSizeAction(InNode, InSize);
+		ActionStack->BeginAction(Action);
+	}
+
 	InNode->Size = InSize;
-	// todo: undo redo
 	Notify(ERigVMGraphNotifType::NodeSizeChanged, Graph, InNode);
+
+	if (bUndo)
+	{
+		ActionStack->EndAction(Action);
+	}
+
 	return true;
 }
 
@@ -648,9 +708,21 @@ bool URigVMController::SetCommentText(URigVMNode* InNode, const FString& InComme
 
 	if (URigVMCommentNode* CommentNode = Cast<URigVMCommentNode>(InNode))
 	{
+		FRigVMSetCommentTextAction Action;
+		if (bUndo)
+		{
+			Action = FRigVMSetCommentTextAction(CommentNode, InCommentText);
+			ActionStack->BeginAction(Action);
+		}
+
 		CommentNode->CommentText = InCommentText;
-		// todo: undo redo
 		Notify(ERigVMGraphNotifType::CommentTextChanged, Graph, InNode);
+
+		if (bUndo)
+		{
+			ActionStack->EndAction(Action);
+		}
+
 		return true;
 	}
 
@@ -677,9 +749,21 @@ bool URigVMController::SetRerouteCompactness(URigVMNode* InNode, bool bShowAsFul
 
 	if (URigVMRerouteNode* RerouteNode = Cast<URigVMRerouteNode>(InNode))
 	{
+		FRigVMSetRerouteCompactnessAction Action;
+		if (bUndo)
+		{
+			Action = FRigVMSetRerouteCompactnessAction(RerouteNode, bShowAsFullNode);
+			ActionStack->BeginAction(Action);
+		}
+
 		RerouteNode->bShowAsFullNode = bShowAsFullNode;
-		// todo: undo redo
 		Notify(ERigVMGraphNotifType::RerouteCompactnessChanged, Graph, InNode);
+
+		if (bUndo)
+		{
+			ActionStack->EndAction(Action);
+		}
+
 		return true;
 	}
 
@@ -720,6 +804,13 @@ bool URigVMController::RenameVariable(const FName& InOldName, const FName& InNew
 		}
 	}
 
+	FRigVMRenameVariableAction Action;
+	if (bUndo)
+	{
+		Action = FRigVMRenameVariableAction(InOldName, InNewName);
+		ActionStack->BeginAction(Action);
+	}
+
 	TArray<URigVMNode*> RenamedNodes;
 	for (URigVMNode* Node : Graph->Nodes)
 	{
@@ -727,7 +818,6 @@ bool URigVMController::RenameVariable(const FName& InOldName, const FName& InNew
 		{
 			if (VariableNode->VariableName == InOldName)
 			{
-				// todo: undo redo
 				VariableNode->VariableName = InNewName;
 				RenamedNodes.Add(Node);
 			}
@@ -738,6 +828,18 @@ bool URigVMController::RenameVariable(const FName& InOldName, const FName& InNew
 	{
 		Graph->Notify(ERigVMGraphNotifType::VariableRenamed, Graph, RenamedNode);
 		Graph->MarkPackageDirty();
+	}
+
+	if (bUndo)
+	{
+		if (RenamedNodes.Num() > 0)
+		{
+			ActionStack->EndAction(Action);
+		}
+		else
+		{
+			ActionStack->CancelAction(Action);
+		}
 	}
 
 	return RenamedNodes.Num() > 0;
@@ -766,6 +868,13 @@ bool URigVMController::RenameParameter(const FName& InOldName, const FName& InNe
 		}
 	}
 
+	FRigVMRenameParameterAction Action;
+	if (bUndo)
+	{
+		Action = FRigVMRenameParameterAction(InOldName, InNewName);
+		ActionStack->BeginAction(Action);
+	}
+
 	TArray<URigVMNode*> RenamedNodes;
 	for (URigVMNode* Node : Graph->Nodes)
 	{
@@ -773,7 +882,6 @@ bool URigVMController::RenameParameter(const FName& InOldName, const FName& InNe
 		{
 			if (ParameterNode->ParameterName == InOldName)
 			{
-				// todo: undo redo
 				ParameterNode->ParameterName = InNewName;
 				RenamedNodes.Add(Node);
 			}
@@ -784,6 +892,18 @@ bool URigVMController::RenameParameter(const FName& InOldName, const FName& InNe
 	{
 		Graph->Notify(ERigVMGraphNotifType::ParameterRenamed, Graph, RenamedNode);
 		Graph->MarkPackageDirty();
+	}
+
+	if (bUndo)
+	{
+		if (RenamedNodes.Num() > 0)
+		{
+			ActionStack->EndAction(Action);
+		}
+		else
+		{
+			ActionStack->CancelAction(Action);
+		}
 	}
 
 	return RenamedNodes.Num() > 0;
@@ -806,21 +926,22 @@ FString URigVMController::GetPinDefaultValue(const FString& InPinPath)
 	return Pin->GetDefaultValue();
 }
 
-void URigVMController::SetPinDefaultValue(const FString& InPinPath, const FString& InDefaultValue, bool bUndo)
+bool URigVMController::SetPinDefaultValue(const FString& InPinPath, const FString& InDefaultValue, bool bResizeArrays, bool bUndo)
 {
 	if (!IsValidGraph())
 	{
-		return;
+		return false;
 	}
 
 	URigVMPin* Pin = Graph->FindPin(InPinPath);
 	if (Pin == nullptr)
 	{
 		ReportErrorf(TEXT("Cannot find pin '%s'."), *InPinPath);
-		return;
+		return false;
 	}
 
-	SetPinDefaultValue(Pin, InDefaultValue, false, bUndo);
+	SetPinDefaultValue(Pin, InDefaultValue, bResizeArrays, bUndo);
+	return true;
 }
 
 void URigVMController::SetPinDefaultValue(URigVMPin* InPin, const FString& InDefaultValue, bool bResizeArrays, bool bUndo)
@@ -828,7 +949,12 @@ void URigVMController::SetPinDefaultValue(URigVMPin* InPin, const FString& InDef
 	check(InPin);
 	ensure(!InDefaultValue.IsEmpty());
 
-	// todo: undo / redo
+	FRigVMSetPinDefaultValueAction Action;
+	if (bUndo)
+	{
+		Action = FRigVMSetPinDefaultValueAction(InPin, InDefaultValue);
+		ActionStack->BeginAction(Action);
+	}
 
 	if (InPin->IsArray())
 	{
@@ -857,7 +983,7 @@ void URigVMController::SetPinDefaultValue(URigVMPin* InPin, const FString& InDef
 			{
 				Elements[ElementIndex].Mid(1, Elements[ElementIndex].Len() - 2);
 			}
-			SetPinDefaultValue(SubPin, Elements[ElementIndex], bResizeArrays, bUndo);
+			SetPinDefaultValue(SubPin, Elements[ElementIndex], bResizeArrays, false);
 		}
 	}
 	else if (InPin->IsStruct())
@@ -876,18 +1002,22 @@ void URigVMController::SetPinDefaultValue(URigVMPin* InPin, const FString& InDef
 					{
 						MemberValue.Mid(1, MemberValue.Len() - 2);
 					}
-					SetPinDefaultValue(SubPin, MemberValue, bResizeArrays, bUndo);
+					SetPinDefaultValue(SubPin, MemberValue, bResizeArrays, false);
 				}
 			}
 		}
 	}
 	else
 	{
-		// todo: undo redo
 		ensure(InPin->GetSubPins().Num() == 0);;
 		InPin->DefaultValue = InDefaultValue;
 		Graph->Notify(ERigVMGraphNotifType::PinDefaultValueChanged, Graph, InPin);
 		Graph->MarkPackageDirty();
+	}
+
+	if (bUndo)
+	{
+		ActionStack->EndAction(Action);
 	}
 }
 

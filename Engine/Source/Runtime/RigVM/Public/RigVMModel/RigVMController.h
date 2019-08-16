@@ -122,7 +122,7 @@ public:
 	FString GetPinDefaultValue(const FString& InPinPath);
 
 	UFUNCTION(BlueprintCallable, Category = RigVMController)
-	void SetPinDefaultValue(const FString& InPinPath, const FString& InDefaultValue, bool bUndo = true);
+	bool SetPinDefaultValue(const FString& InPinPath, const FString& InDefaultValue, bool bResizeArrays = true, bool bUndo = true);
 
 	UFUNCTION(BlueprintCallable, Category = RigVMController)
 	FString AddArrayPin(const FString& InArrayPinPath, const FString& InDefaultValue = TEXT(""), bool bUndo = true);
