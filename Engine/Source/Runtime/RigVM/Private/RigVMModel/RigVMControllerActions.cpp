@@ -461,9 +461,15 @@ bool FRigVMRemoveNodeAction::Redo(URigVMController* InController)
 	return InverseWrapper.GetAction()->Redo(InController);
 }
 
+FRigVMSelectNodeAction::FRigVMSelectNodeAction()
+	: NodePath()
+	, bWasSelected(false)
+{
+
+}
 FRigVMSelectNodeAction::FRigVMSelectNodeAction(URigVMNode* InNode)
-: NodePath(InNode->GetNodePath())
-, bWasSelected(InNode->IsSelected())
+	: NodePath(InNode->GetNodePath())
+	, bWasSelected(InNode->IsSelected())
 {
 }
 
@@ -636,10 +642,17 @@ bool FRigVMSetCommentTextAction::Redo(URigVMController* InController)
 	return FRigVMBaseAction::Redo(InController);
 }
 
+FRigVMSetRerouteCompactnessAction::FRigVMSetRerouteCompactnessAction()
+	: NodePath()
+	, OldShowAsFullNode(false)
+	, NewShowAsFullNode(false)
+{
+
+}
 FRigVMSetRerouteCompactnessAction::FRigVMSetRerouteCompactnessAction(URigVMRerouteNode* InNode, bool InShowAsFullNode)
-: NodePath(InNode->GetNodePath())
-, OldShowAsFullNode(InNode->GetShowsAsFullNode())
-, NewShowAsFullNode(InShowAsFullNode)
+	: NodePath(InNode->GetNodePath())
+	, OldShowAsFullNode(InNode->GetShowsAsFullNode())
+	, NewShowAsFullNode(InShowAsFullNode)
 {
 }
 

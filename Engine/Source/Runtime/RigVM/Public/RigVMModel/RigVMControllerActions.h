@@ -387,7 +387,7 @@ struct FRigVMSelectNodeAction : public FRigVMBaseAction
 
 public:
 
-	FRigVMSelectNodeAction() {}
+	FRigVMSelectNodeAction();
 	FRigVMSelectNodeAction(URigVMNode* InNode);
 	virtual ~FRigVMSelectNodeAction() {};
 	virtual bool Undo(URigVMController* InController) override;
@@ -511,7 +511,7 @@ struct FRigVMSetRerouteCompactnessAction : public FRigVMBaseAction
 
 public:
 
-	FRigVMSetRerouteCompactnessAction() {}
+	FRigVMSetRerouteCompactnessAction();
 	FRigVMSetRerouteCompactnessAction(URigVMRerouteNode* InNode, bool InShowAsFullNode);
 	virtual ~FRigVMSetRerouteCompactnessAction() {};
 	virtual bool Undo(URigVMController* InController) override;
