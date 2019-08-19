@@ -1,7 +1,7 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
-	RigVM.h: Render core module definitions.
+	RigVM.h: Module definitions.
 =============================================================================*/
 
 #pragma once
