@@ -150,7 +150,7 @@ public:
 	template<class T>
 	FORCEINLINE FRigVMParameter AddPlainParameter(ERigVMParameterType InParameterType, const FName& InName, const FString& InCPPType, T DefaultValue)
 	{
-		return AddPlainParameter(InParameterType, InName, InCPPType, &DefaultValue, sizeof(T));
+		return AddPlainParameter(InParameterType, InName, InCPPType, (uint8*)&DefaultValue, sizeof(T));
 	}
 
 	// Adds a new input / output to the VM
@@ -158,7 +158,7 @@ public:
 	FORCEINLINE FRigVMParameter AddStructParameter(ERigVMParameterType InParameterType, const FName& InName, T DefaultValue)
 	{
 		UScriptStruct* ScriptStruct = T::StaticStruct();
-		return AddStructParameter(InParameterType, InName, ScriptStruct, &DefaultValue);
+		return AddStructParameter(InParameterType, InName, ScriptStruct, (uint8*)&DefaultValue);
 	}
 
 	// Retrieve the value of a parameter
@@ -369,7 +369,7 @@ public:
 
 private:
 
-	FORCEINLINE FRigVMParameter AddPlainParameter(ERigVMParameterType InParameterType, const FName& InName, const FString& InCPPType, const void* InPtr, uint16 InSize)
+	FORCEINLINE FRigVMParameter AddPlainParameter(ERigVMParameterType InParameterType, const FName& InName, const FString& InCPPType, const uint8* InPtr, uint16 InSize)
 	{
 		ensure(InParameterType != ERigVMParameterType::Invalid);
 		int32 RegisterIndex = WorkMemory.AddPlainArray(WorkMemory.SupportsNames() ? InName : NAME_None, InSize, 1, InPtr, 1);
@@ -383,7 +383,7 @@ private:
 		return Parameter;
 	}
 
-	FORCEINLINE FRigVMParameter AddStructParameter(ERigVMParameterType InParameterType, const FName& InName, UScriptStruct* InScriptStruct, const void* InPtr)
+	FORCEINLINE FRigVMParameter AddStructParameter(ERigVMParameterType InParameterType, const FName& InName, UScriptStruct* InScriptStruct, const uint8* InPtr)
 	{
 		ensure(InParameterType != ERigVMParameterType::Invalid);
 		int32 RegisterIndex = WorkMemory.AddStructArray(WorkMemory.SupportsNames() ? InName : NAME_None, InScriptStruct, 1, InPtr, 1);
@@ -413,4 +413,5 @@ private:
 
 	UPROPERTY()
 	TMap<FName, int32> ParametersNameMap;
+
 };

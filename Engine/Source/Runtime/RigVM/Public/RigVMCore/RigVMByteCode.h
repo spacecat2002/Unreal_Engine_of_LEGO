@@ -164,8 +164,6 @@ struct RIGVM_API FRigVMCopyOp : public FRigVMBaseOp
 	: FRigVMBaseOp(ERigVMOpCode::Copy)
 	, Source()
 	, Target()
-	, SourceOffset(INDEX_NONE)
-	, TargetOffset(INDEX_NONE)
 	, NumBytes(INDEX_NONE)
 	{
 	}
@@ -173,23 +171,17 @@ struct RIGVM_API FRigVMCopyOp : public FRigVMBaseOp
 	FRigVMCopyOp(
 		FRigVMOperand InSource,
 		FRigVMOperand InTarget,
-		int32 InSourceOffset = INDEX_NONE,
-		int32 InTargetOffset = INDEX_NONE,
 		int32 InNumBytes = INDEX_NONE
 	)
 		: FRigVMBaseOp(ERigVMOpCode::Copy)
 		, Source(InSource)
 		, Target(InTarget)
-		, SourceOffset(InSourceOffset)
-		, TargetOffset(InTargetOffset)
 		, NumBytes(InNumBytes)
 	{
 	}
 
 	FRigVMOperand Source;
 	FRigVMOperand Target;
-	int32 SourceOffset;
-	int32 TargetOffset;
 	int32 NumBytes;
 };
 
@@ -393,7 +385,7 @@ public:
 	uint64 AddTrueOp(const FRigVMOperand& InArg);
 
 	// adds a copy operator to copy the content of a source argument to a target argument
-	uint64 AddCopyOp(const FRigVMOperand& InSource, const FRigVMOperand& InTarget, int32 InSourceOffset = INDEX_NONE, int32 InTargetOffset = INDEX_NONE, int32 InNumBytes = INDEX_NONE);
+	uint64 AddCopyOp(const FRigVMOperand& InSource, const FRigVMOperand& InTarget, int32 InNumBytes = INDEX_NONE);
 
 	// adds an increment operator to increment a int32 argument
 	uint64 AddIncrementOp(const FRigVMOperand& InArg);
