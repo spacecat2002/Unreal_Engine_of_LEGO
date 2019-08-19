@@ -728,6 +728,8 @@ private:
 
 	UPROPERTY(transient)
 	TMap<FName, int32> NameMap;
+
+	friend class URigVM;
 };
 
 template<>

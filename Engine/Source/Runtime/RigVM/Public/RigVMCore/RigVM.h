@@ -33,8 +33,14 @@ public:
 		: Type(ERigVMParameterType::Invalid)
 		, Name(NAME_None)
 		, RegisterIndex(INDEX_NONE)
+		, CPPType()
+		, ScriptStruct(nullptr)
+		, ScriptStructPath()
 	{
 	}
+
+	// returns true if the parameter is valid
+	bool IsValid() const { return Type != ERigVMParameterType::Invalid; }
 
 	// returns the type of this parameter
 	ERigVMParameterType GetType() const { return Type; }
@@ -45,23 +51,45 @@ public:
 	// returns the register index of this parameter in the work memory
 	int32 GetRegisterIndex() const { return RegisterIndex; }
 
+	// returns the cpp type of the parameter
+	FString GetCPPType() const { return CPPType; }
+	
+	// Returns the script struct used by this parameter (in case it is a struct)
+	UScriptStruct* GetScriptStruct() const;
+
 private:
 
-	FRigVMParameter(ERigVMParameterType InType, const FName& InName, int32 InRegisterIndex)
+	FRigVMParameter(ERigVMParameterType InType, const FName& InName, int32 InRegisterIndex, const FString& InCPPType, UScriptStruct* InScriptStruct)
 		: Type(InType)
 		, Name(InName)
 		, RegisterIndex(InRegisterIndex)
+		, CPPType(InCPPType)
+		, ScriptStruct(InScriptStruct)
+		, ScriptStructPath(NAME_None)
 	{
+		if (ScriptStruct)
+		{
+			ScriptStructPath = *ScriptStruct->GetPathName();
+		}
 	}
 
-	UPROPERTY(BlueprintReadonly, Category = RigVMParameter, meta = (AllowPrivateAccess = "true"))
+	UPROPERTY()
 	ERigVMParameterType Type;
 
-	UPROPERTY(BlueprintReadonly, Category = RigVMParameter, meta = (AllowPrivateAccess = "true"))
+	UPROPERTY()
 	FName Name;
 
-	UPROPERTY(BlueprintReadonly, Category = RigVMParameter, meta = (AllowPrivateAccess = "true"))
+	UPROPERTY()
 	int32 RegisterIndex;
+
+	UPROPERTY()
+	FString CPPType;
+
+	UPROPERTY(transient)
+	UScriptStruct* ScriptStruct;
+
+	UPROPERTY()
+	FName ScriptStructPath;
 
 	friend class URigVM;
 };
@@ -115,36 +143,22 @@ public:
 	// Returns the instructions of the VM
 	const FRigVMInstructionArray& GetInstructions();
 
+	// Returns the parameters of the VM
+	const TArray<FRigVMParameter>& GetParameters();
+
 	// Adds a new input / output to the VM
 	template<class T>
-	FORCEINLINE FRigVMParameter AddPlainParameter(ERigVMParameterType InParameterType, const FName& InName, T DefaultValue)
+	FORCEINLINE FRigVMParameter AddPlainParameter(ERigVMParameterType InParameterType, const FName& InName, const FString& InCPPType, T DefaultValue)
 	{
-		ensure(InParameterType != ERigVMParameterType::Invalid);
-		int32 RegisterIndex = WorkMemory.AddPlain<T>(WorkMemory.SupportsNames() ? InName : NAME_None, DefaultValue);
-		if (RegisterIndex == INDEX_NONE)
-		{
-			return FRigVMParameter();
-		}
-		FName Name = WorkMemory.SupportsNames() ? WorkMemory[RegisterIndex].Name : InName;
-		FRigVMParameter Parameter(InParameterType, Name, RegisterIndex);
-		ParametersNameMap.Add(Parameter.Name, Parameters.Add(Parameter));
-		return Parameter;
+		return AddPlainParameter(InParameterType, InName, InCPPType, &DefaultValue, sizeof(T));
 	}
 
 	// Adds a new input / output to the VM
 	template<class T>
 	FORCEINLINE FRigVMParameter AddStructParameter(ERigVMParameterType InParameterType, const FName& InName, T DefaultValue)
 	{
-		ensure(InParameterType != ERigVMParameterType::Invalid);
-		int32 RegisterIndex = WorkMemory.AddStruct<T>(WorkMemory.SupportsNames() ? InName : NAME_None, DefaultValue);
-		if (RegisterIndex == INDEX_NONE)
-		{
-			return FRigVMParameter();
-		}
-		FName Name = WorkMemory.SupportsNames() ? WorkMemory[RegisterIndex].Name : InName;
-		FRigVMParameter Parameter(InParameterType, Name, RegisterIndex);
-		ParametersNameMap.Add(Parameter.Name, Parameters.Add(Parameter));
-		return Parameter;
+		UScriptStruct* ScriptStruct = T::StaticStruct();
+		return AddStructParameter(InParameterType, InName, ScriptStruct, &DefaultValue);
 	}
 
 	// Retrieve the value of a parameter
@@ -189,6 +203,60 @@ public:
 	{
 		int32 ParameterIndex = ParametersNameMap.FindChecked(InParameterName);
 		return SetParameterValue<T>(ParameterIndex, InNewValue);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	FRigVMParameter AddParameterBool(ERigVMParameterType InParameterType, const FName& InParameterName, bool InValue)
+	{
+		return AddPlainParameter<bool>(InParameterType, InParameterName, TEXT("bool"), InValue);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	FRigVMParameter AddParameterFloat(ERigVMParameterType InParameterType, const FName& InParameterName, float InValue)
+	{
+		return AddPlainParameter<float>(InParameterType, InParameterName, TEXT("float"), InValue);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	FRigVMParameter AddParameterInt(ERigVMParameterType InParameterType, const FName& InParameterName, int32 InValue)
+	{
+		return AddPlainParameter<int32>(InParameterType, InParameterName, TEXT("int32"), InValue);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	FRigVMParameter AddParameterName(ERigVMParameterType InParameterType, const FName& InParameterName, const FName& InValue)
+	{
+		return AddPlainParameter<FName>(InParameterType, InParameterName, TEXT("FName"), InValue);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	FRigVMParameter AddParameterString(ERigVMParameterType InParameterType, const FName& InParameterName, const FString& InValue)
+	{
+		return AddPlainParameter<FString>(InParameterType, InParameterName, TEXT("FString"), InValue);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	FRigVMParameter AddParameterVector2D(ERigVMParameterType InParameterType, const FName& InParameterName, const FVector2D& InValue)
+	{
+		return AddPlainParameter<FVector2D>(InParameterType, InParameterName, TEXT("FVector2D"), InValue);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	FRigVMParameter AddParameterVector(ERigVMParameterType InParameterType, const FName& InParameterName, const FVector& InValue)
+	{
+		return AddPlainParameter<FVector>(InParameterType, InParameterName, TEXT("FVector"), InValue);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	FRigVMParameter AddParameterQuat(ERigVMParameterType InParameterType, const FName& InParameterName, const FQuat& InValue)
+	{
+		return AddPlainParameter<FQuat>(InParameterType, InParameterName, TEXT("FQuat"), InValue);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = RigVM)
+	FRigVMParameter AddParameterTransform(ERigVMParameterType InParameterType, const FName& InParameterName, const FTransform& InValue)
+	{
+		return AddPlainParameter<FTransform>(InParameterType, InParameterName, TEXT("FTransform"), InValue);
 	}
 
 	UFUNCTION(BlueprintCallable, Category = RigVM)
@@ -300,6 +368,34 @@ public:
 	}
 
 private:
+
+	FORCEINLINE FRigVMParameter AddPlainParameter(ERigVMParameterType InParameterType, const FName& InName, const FString& InCPPType, const void* InPtr, uint16 InSize)
+	{
+		ensure(InParameterType != ERigVMParameterType::Invalid);
+		int32 RegisterIndex = WorkMemory.AddPlainArray(WorkMemory.SupportsNames() ? InName : NAME_None, InSize, 1, InPtr, 1);
+		if (RegisterIndex == INDEX_NONE)
+		{
+			return FRigVMParameter();
+		}
+		FName Name = WorkMemory.SupportsNames() ? WorkMemory[RegisterIndex].Name : InName;
+		FRigVMParameter Parameter(InParameterType, Name, RegisterIndex, InCPPType, nullptr);
+		ParametersNameMap.Add(Parameter.Name, Parameters.Add(Parameter));
+		return Parameter;
+	}
+
+	FORCEINLINE FRigVMParameter AddStructParameter(ERigVMParameterType InParameterType, const FName& InName, UScriptStruct* InScriptStruct, const void* InPtr)
+	{
+		ensure(InParameterType != ERigVMParameterType::Invalid);
+		int32 RegisterIndex = WorkMemory.AddStructArray(WorkMemory.SupportsNames() ? InName : NAME_None, InScriptStruct, 1, InPtr, 1);
+		if (RegisterIndex == INDEX_NONE)
+		{
+			return FRigVMParameter();
+		}
+		FName Name = WorkMemory.SupportsNames() ? WorkMemory[RegisterIndex].Name : InName;
+		FRigVMParameter Parameter(InParameterType, Name, RegisterIndex, InScriptStruct->GetName(), InScriptStruct);
+		ParametersNameMap.Add(Parameter.Name, Parameters.Add(Parameter));
+		return Parameter;
+	}
 
 	void ResolveFunctionsIfRequired();
 	void RefreshInstructionsIfRequired();

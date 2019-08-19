@@ -1,6 +1,20 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RigVMCore/RigVM.h"
+#include "UObject/Package.h"
+
+UScriptStruct* FRigVMParameter::GetScriptStruct() const
+{
+	if (ScriptStruct == nullptr)
+	{
+		if (ScriptStructPath != NAME_None)
+		{
+			FRigVMParameter* MutableThis = (FRigVMParameter*)this;
+			MutableThis->ScriptStruct = FindObject<UScriptStruct>(ANY_PACKAGE, *ScriptStructPath.ToString());
+		}
+	}
+	return ScriptStruct;
+}
 
 URigVM::URigVM()
 {
@@ -49,6 +63,11 @@ const FRigVMInstructionArray& URigVM::GetInstructions()
 {
 	RefreshInstructionsIfRequired();
 	return Instructions;
+}
+
+const TArray<FRigVMParameter>& URigVM::GetParameters()
+{
+	return Parameters;
 }
 
 void URigVM::ResolveFunctionsIfRequired()
