@@ -209,7 +209,7 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> Add
 			case ERigVMOpCode::Copy:
 			{
 				const FRigVMCopyOp& Op = ByteCode.GetOpAt<FRigVMCopyOp>(Instructions[InstructionIndex]);
-				Memory[Op.Target.GetContainerIndex()]->Copy(Op.Source, Op.Target, Memory[Op.Source.GetContainerIndex()], Op.NumBytes);
+				Memory[Op.Target.GetContainerIndex()]->Copy(Op.Source, Op.Target, Memory[Op.Source.GetContainerIndex()]);
 				InstructionIndex++;
 				break;
 			}

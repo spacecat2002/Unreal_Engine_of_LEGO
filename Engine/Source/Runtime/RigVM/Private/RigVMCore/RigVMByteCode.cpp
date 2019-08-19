@@ -179,9 +179,9 @@ uint64 FRigVMByteCode::AddTrueOp(const FRigVMOperand& InArg)
 	return AddOp(Op);
 }
 
-uint64 FRigVMByteCode::AddCopyOp(const FRigVMOperand& InSource, const FRigVMOperand& InTarget, int32 InNumBytes)
+uint64 FRigVMByteCode::AddCopyOp(const FRigVMOperand& InSource, const FRigVMOperand& InTarget)
 {
-	FRigVMCopyOp Op(InSource, InTarget, InNumBytes);
+	FRigVMCopyOp Op(InSource, InTarget);
 	return AddOp(Op);
 }
 

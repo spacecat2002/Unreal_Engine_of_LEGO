@@ -224,6 +224,11 @@ public:
 	// default constructor
 	FRigVMRegisterPath()
 		: Segments()
+		, Type(ERigVMRegisterType::Invalid)
+		, CPPType(NAME_None)
+		, ScriptStruct(nullptr)
+		, ScriptStructPath(NAME_None)
+		, ElementSize(0)
 	{
 	}
 
@@ -235,7 +240,7 @@ public:
 	}
 
 	// constructs a path given a struct and a segment path
-	FRigVMRegisterPath(UScriptStruct* InScriptStruct, const FString& InSegmentPath, int32 InInitialOffset = 0);
+	FRigVMRegisterPath(UScriptStruct* InScriptStruct, const FString& InSegmentPath, int32 InInitialOffset = 0, uint16 InElementSize = 0);
 
 	// returns the data pointer within a container
 	uint8* GetData(uint8* InContainer) const;
@@ -245,10 +250,32 @@ public:
 
 	bool operator == (const FRigVMRegisterPath& InOther) const;
 
+	FORCEINLINE ERigVMRegisterType GetType() const { return Type; }
+	FORCEINLINE FName GetCPPType() const { return CPPType; }
+	uint16 GetElementSize() const;
+	UScriptStruct* GetScriptStruct() const;
+
 private:
 
 	UPROPERTY()
 	TArray<int32> Segments;
+
+	UPROPERTY()
+	ERigVMRegisterType Type;
+
+	UPROPERTY()
+	FName CPPType;
+
+	UPROPERTY(transient)
+	UScriptStruct* ScriptStruct;
+
+	UPROPERTY()
+	FName ScriptStructPath;
+
+	UPROPERTY()
+	uint16 ElementSize;
+
+	friend struct FRigVMRegisterPathBuilder;
 };
 
 /**
@@ -346,7 +373,7 @@ public:
 
 	// Returns an argument for a given register.
 	// This is typically used to store a light weight address for use within a VM.
-	FORCEINLINE FRigVMOperand GetOperand(int32 InRegisterIndex, const FString& InSegmentPath = FString(), int32 InArrayElement = 0)
+	FORCEINLINE FRigVMOperand GetOperand(int32 InRegisterIndex, const FString& InSegmentPath = FString(), int32 InArrayElement = INDEX_NONE)
 	{
 		ensure(Registers.IsValidIndex(InRegisterIndex));
 		UScriptStruct* ScriptStruct = nullptr;
@@ -354,7 +381,16 @@ public:
 		{
 			ScriptStruct = GetScriptStruct(InRegisterIndex);
 		}
-		return GetOperand(InRegisterIndex, GetOrAddRegisterPath(ScriptStruct, InSegmentPath, InArrayElement * Registers[InRegisterIndex].ElementSize));
+
+		int32 InitialOffset = 0;
+		int32 ElementSize = 0;
+		if (InArrayElement != INDEX_NONE)
+		{
+			InitialOffset = InArrayElement * Registers[InRegisterIndex].ElementSize;
+			ElementSize = Registers[InRegisterIndex].ElementSize;
+		}
+
+		return GetOperand(InRegisterIndex, GetOrAddRegisterPath(InRegisterIndex, ScriptStruct, InSegmentPath, InitialOffset, ElementSize));
 	}
 
 	// Returns the current const data pointer for a given register.
@@ -552,11 +588,17 @@ public:
 	}
 
 	// Returns the script struct used for a given register index (can be nullptr for non-struct-registers).
-	FORCEINLINE UScriptStruct* GetScriptStruct(int32 InRegisterIndex) const
+	FORCEINLINE UScriptStruct* GetScriptStruct(int32 InRegisterIndex, int32 InRegisterPathIndex = INDEX_NONE) const
 	{
-		ensure(Registers.IsValidIndex(InRegisterIndex));
-		const FRigVMRegister& Register = Registers[InRegisterIndex];
-		return GetScriptStruct(Register);
+		if (InRegisterPathIndex == INDEX_NONE)
+		{
+			ensure(Registers.IsValidIndex(InRegisterIndex));
+			const FRigVMRegister& Register = Registers[InRegisterIndex];
+			return GetScriptStruct(Register);
+		}
+		ensure(RegisterPaths.IsValidIndex(InRegisterPathIndex));
+		const FRigVMRegisterPath& Path = RegisterPaths[InRegisterPathIndex];
+		return Path.GetScriptStruct();
 	}
 
 	// Copies the content of a source register to a target register.
@@ -566,8 +608,7 @@ public:
 		int32 InTargetRegisterIndex,
 		const FRigVMMemoryContainer* InSourceMemory = nullptr,
 		int32 InSourceRegisterPathIndex = INDEX_NONE,
-		int32 InTargetRegisterPathIndex = INDEX_NONE,
-		int32 InNumBytes = INDEX_NONE);
+		int32 InTargetRegisterPathIndex = INDEX_NONE);
 
 	// Copies the content of a source register to a target register.
 	// The source register can optionally be referencing a specific source memory container.
@@ -577,16 +618,14 @@ public:
 		const FName& InTargetName,
 		const FRigVMMemoryContainer* InSourceMemory = nullptr,
 		int32 InSourceRegisterPathIndex = INDEX_NONE,
-		int32 InTargetRegisterPathIndex = INDEX_NONE,
-		int32 InNumBytes = INDEX_NONE);
+		int32 InTargetRegisterPathIndex = INDEX_NONE);
 
 	// Copies the content of a source register to a target register.
 	// The source register can optionally be referencing a specific source memory container.
 	bool Copy(
 		const FRigVMOperand& InSourceOperand,
 		const FRigVMOperand& InTargetOperand,
-		const FRigVMMemoryContainer* InSourceMemory = nullptr,
-		int32 InNumBytes = INDEX_NONE);
+		const FRigVMMemoryContainer* InSourceMemory = nullptr);
 
 	// Returns the index of a register based on the register name.
 	// Note: This only works if SupportsNames() == true
@@ -729,10 +768,7 @@ public:
 	}
 
 	// Adds a register path and returns its index
-	int32 GetOrAddRegisterPath(UScriptStruct* InScriptStruct, const FString& InSegmentPath, int32 InInitialOffset = 0);
-
-	// Adds a register path and returns its index
-	int32 GetOrAddRegisterPath(int32 InInitialOffset);
+	int32 GetOrAddRegisterPath(int32 InRegisterIndex, UScriptStruct* InScriptStruct, const FString& InSegmentPath, int32 InInitialOffset = 0, int32 InElementSize = 0);
 
 private:
 
@@ -817,6 +853,7 @@ private:
 	TMap<FName, int32> NameMap;
 
 	friend class URigVM;
+	friend class URigVMCompiler;
 };
 
 template<>

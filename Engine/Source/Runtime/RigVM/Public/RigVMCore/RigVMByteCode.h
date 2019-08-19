@@ -164,25 +164,21 @@ struct RIGVM_API FRigVMCopyOp : public FRigVMBaseOp
 	: FRigVMBaseOp(ERigVMOpCode::Copy)
 	, Source()
 	, Target()
-	, NumBytes(INDEX_NONE)
 	{
 	}
 
 	FRigVMCopyOp(
 		FRigVMOperand InSource,
-		FRigVMOperand InTarget,
-		int32 InNumBytes = INDEX_NONE
+		FRigVMOperand InTarget
 	)
 		: FRigVMBaseOp(ERigVMOpCode::Copy)
 		, Source(InSource)
 		, Target(InTarget)
-		, NumBytes(InNumBytes)
 	{
 	}
 
 	FRigVMOperand Source;
 	FRigVMOperand Target;
-	int32 NumBytes;
 };
 
 // used for equals and not equals comparisons
@@ -385,7 +381,7 @@ public:
 	uint64 AddTrueOp(const FRigVMOperand& InArg);
 
 	// adds a copy operator to copy the content of a source argument to a target argument
-	uint64 AddCopyOp(const FRigVMOperand& InSource, const FRigVMOperand& InTarget, int32 InNumBytes = INDEX_NONE);
+	uint64 AddCopyOp(const FRigVMOperand& InSource, const FRigVMOperand& InTarget);
 
 	// adds an increment operator to increment a int32 argument
 	uint64 AddIncrementOp(const FRigVMOperand& InArg);

@@ -92,6 +92,7 @@ private:
 	FName ScriptStructPath;
 
 	friend class URigVM;
+	friend class URigVMCompiler;
 };
 
 /**
@@ -414,4 +415,5 @@ private:
 	UPROPERTY()
 	TMap<FName, int32> ParametersNameMap;
 
+	friend class URigVMCompiler;
 };
