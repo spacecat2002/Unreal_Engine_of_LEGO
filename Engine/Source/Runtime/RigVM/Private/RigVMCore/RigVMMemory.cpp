@@ -99,6 +99,13 @@ FRigVMRegisterPath::FRigVMRegisterPath(UScriptStruct* InScriptStruct, const FStr
 			{
 				Path.CPPType = *Property->GetCPPType();
 				Path.ElementSize = Property->ElementSize;
+
+				if (UArrayProperty* ArrayProperty = Cast<UArrayProperty>(Property))
+				{
+					Path.Segments.Add(-1);
+					Property = ArrayProperty->Inner;
+				}
+
 				if (UStructProperty* StructProperty = Cast<UStructProperty>(Property))
 				{
 					Path.ScriptStruct = StructProperty->Struct;
@@ -153,6 +160,13 @@ FRigVMRegisterPath::FRigVMRegisterPath(UScriptStruct* InScriptStruct, const FStr
 			{
 				Path.CPPType = *InArrayProperty->Inner->GetCPPType();
 				Path.ElementSize = InArrayProperty->Inner->ElementSize;
+
+				if (UArrayProperty* ArrayProperty = Cast<UArrayProperty>(InArrayProperty->Inner))
+				{
+					Path.Segments.Add(-1);
+					InArrayProperty = ArrayProperty;
+				}
+
 				if (UStructProperty* StructProperty = Cast<UStructProperty>(InArrayProperty->Inner))
 				{
 					Path.ScriptStruct = StructProperty->Struct;
