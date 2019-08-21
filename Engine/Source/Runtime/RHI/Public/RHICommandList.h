@@ -4346,11 +4346,10 @@ public:
 	}
 	
 	//#todo-RemoveStreamOut
-	FORCEINLINE void SetStreamOutTargets(uint32 NumTargets, FRHIVertexBuffer* const* VertexBuffers,const uint32* Offsets)
+	UE_DEPRECATED(4.24, "SetStreamOutTargets API is deprecated.")
+	FORCEINLINE void SetStreamOutTargets(uint32 NumTargets, FRHIVertexBuffer* const* VertexBuffers, const uint32* Offsets)
 	{
-		QUICK_SCOPE_CYCLE_COUNTER(STAT_RHIMETHOD_SetStreamOutTargets_Flush);
-		ImmediateFlush(EImmediateFlushType::FlushRHIThread);  
-		GDynamicRHI->RHISetStreamOutTargets(NumTargets,VertexBuffers,Offsets);
+		checkf(0, TEXT("SetStreamOutTargets() is not supported"));
 	}
 	
 	FORCEINLINE void BlockUntilGPUIdle()
