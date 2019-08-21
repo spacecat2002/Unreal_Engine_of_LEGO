@@ -539,8 +539,7 @@ void FShaderResource::RemoveFromRayTracingLibrary(uint32 Index)
 #endif
 
 FShaderResource::FShaderResource()
-	: SpecificType(NULL)
-	, SpecificPermutationId(0)
+	: SpecificPermutationId(0)
 	, NumRefs(0)
 	, NumInstructions(0)
 #if WITH_EDITORONLY_DATA
@@ -553,9 +552,8 @@ FShaderResource::FShaderResource()
 }
 
 //#todo-RemoveStreamOut
-FShaderResource::FShaderResource(const FShaderCompilerOutput& Output, FShaderType* InSpecificType, int32 InSpecificPermutationId) 
-	: SpecificType(InSpecificType)
-	, SpecificPermutationId(InSpecificPermutationId)
+FShaderResource::FShaderResource(const FShaderCompilerOutput& Output, int32 InSpecificPermutationId) 
+	: SpecificPermutationId(InSpecificPermutationId)
 	, NumRefs(0)
 	, NumInstructions(Output.NumInstructions)
 #if WITH_EDITORONLY_DATA
@@ -567,7 +565,7 @@ FShaderResource::FShaderResource(const FShaderCompilerOutput& Output, FShaderTyp
 {
 	BuildParameterMapInfo(Output.ParameterMap.GetParameterMap());
 
-	check(!(SpecificPermutationId != 0 && SpecificType == nullptr));
+	check(!(SpecificPermutationId != 0));
 
 	Target = Output.Target;
 	CompressCode(Output.ShaderCode.GetReadAccess());
@@ -712,11 +710,12 @@ void FShaderResource::CompressCode(const TArray<uint8>& UncompressedCode)
 // Note: this is derived data.  Bump guid in ShaderVersion.ush if changing the format, no backwards compat is necessary
 void FShaderResource::Serialize(FArchive& Ar, bool bLoadedByCookedMaterial)
 {
-	check(!(SpecificPermutationId != 0 && SpecificType == nullptr));
+	check(!(SpecificPermutationId != 0));
 
 	Ar.UsingCustomVersion(FRenderingObjectVersion::GUID);
 
 	//#todo-RemoveStreamOut
+	FShaderType* SpecificType = nullptr;
 	Ar << SpecificType;
 	if (Ar.CustomVer(FRenderingObjectVersion::GUID) >= FRenderingObjectVersion::ShaderPermutationId)
 	{
@@ -884,16 +883,16 @@ TRefCountPtr<FShaderResource> FShaderResource::FindOrClone(FShaderResource&& Tem
 }
 
 //#todo-RemoveStreamOut
-TRefCountPtr<FShaderResource> FShaderResource::FindOrCreate(const FShaderCompilerOutput& Output, FShaderType* SpecificType, int32 SpecificPermutationId)
+TRefCountPtr<FShaderResource> FShaderResource::FindOrCreate(const FShaderCompilerOutput& Output, int32 InSpecificPermutationId)
 {
-	const FShaderResourceId ResourceId(Output.Target, Output.OutputHash, SpecificType ? SpecificType->GetName() : nullptr, SpecificPermutationId);
+	const FShaderResourceId ResourceId(Output.Target, Output.OutputHash, InSpecificPermutationId);
 
 	if (TRefCountPtr<FShaderResource> ExistingResource = FindById(ResourceId))
 	{
 		return ExistingResource;
 	}
 
-	FShaderResource* NewResource = new FShaderResource(Output, SpecificType, SpecificPermutationId);
+	FShaderResource* NewResource = new FShaderResource(Output, InSpecificPermutationId);
 	return gLoadedShaderResources.AddOrDelete(NewResource);
 }
 
@@ -1093,7 +1092,7 @@ void FShaderResource::InitializeShaderRHI()
 
 FShaderResourceId FShaderResource::GetId() const
 {
-	return FShaderResourceId(Target, OutputHash, SpecificType ? SpecificType->GetName() : nullptr, SpecificPermutationId);
+	return FShaderResourceId(Target, OutputHash, SpecificPermutationId);
 }
 
 FShaderId::FShaderId(const FSHAHash& InMaterialShaderMapHash, const FShaderPipelineType* InShaderPipeline, FVertexFactoryType* InVertexFactoryType, FShaderType* InShaderType, int32 InPermutationId, FShaderTarget InTarget)
@@ -1410,7 +1409,7 @@ bool FShader::SerializeBase(FArchive& Ar, bool bShadersInline, bool bLoadedByCoo
 		if (Ar.IsLoading())
 		{
 			// generate a resource id
-			FShaderResourceId ResourceId(Target, OutputHash, nullptr, 0);
+			FShaderResourceId ResourceId(Target, OutputHash, 0);
 
 			// use it to look up in the registered resource map
 			Resource = FShaderResource::FindById(ResourceId);

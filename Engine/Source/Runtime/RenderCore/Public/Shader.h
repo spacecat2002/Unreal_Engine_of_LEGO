@@ -107,13 +107,12 @@ public:
 	FShaderResourceId() {}
 
 	//#todo-RemoveStreamOut
-	FShaderResourceId(const FShaderTarget& InTarget, const FSHAHash& InOutputHash, const TCHAR* InSpecificShaderTypeName, int32 InSpecificPermutationId) :
+	FShaderResourceId(const FShaderTarget& InTarget, const FSHAHash& InOutputHash, int32 InSpecificPermutationId) :
 		OutputHash(InOutputHash),
 		Target(InTarget),
-		SpecificShaderTypeName(InSpecificShaderTypeName),
 		SpecificPermutationId(InSpecificPermutationId)
 	{
-		check(!(SpecificShaderTypeName == nullptr && InSpecificPermutationId != 0));
+		check(InSpecificPermutationId == 0);
 	}
 
 	friend inline uint32 GetTypeHash( const FShaderResourceId& Id )
@@ -125,9 +124,7 @@ public:
 	{
 		return X.Target == Y.Target 
 			&& X.OutputHash == Y.OutputHash 
-			&& X.SpecificPermutationId == Y.SpecificPermutationId
-			&& ((X.SpecificShaderTypeName == NULL && Y.SpecificShaderTypeName == NULL)
-				|| (FCString::Strcmp(X.SpecificShaderTypeName, Y.SpecificShaderTypeName) == 0));
+			&& X.SpecificPermutationId == Y.SpecificPermutationId;
 	}
 
 	friend bool operator!=(const FShaderResourceId& X, const FShaderResourceId& Y)
@@ -141,27 +138,13 @@ public:
 
 		Ar << Id.Target << Id.OutputHash;
 
-		if (Ar.IsSaving())
-		{
-			Id.SpecificShaderTypeStorage = Id.SpecificShaderTypeName ? Id.SpecificShaderTypeName : TEXT("");
-		}
-
-		Ar << Id.SpecificShaderTypeStorage;
+		//#todo-RemoveStreamOut
+		FString SpecificShaderTypeStorage = TEXT("");
+		Ar << SpecificShaderTypeStorage;
 
 		if (Ar.CustomVer(FRenderingObjectVersion::GUID) >= FRenderingObjectVersion::ShaderPermutationId)
 		{
 			Ar << Id.SpecificPermutationId;
-		}
-
-		if (Ar.IsLoading())
-		{
-			Id.SpecificShaderTypeName = *Id.SpecificShaderTypeStorage;
-
-			if (FCString::Strcmp(Id.SpecificShaderTypeName, TEXT("")) == 0)
-			{
-				// Store NULL for empty string to be consistent with FShaderResourceId's created at compile time
-				Id.SpecificShaderTypeName = NULL;
-			}
 		}
 
 		return Ar;
@@ -170,11 +153,6 @@ public:
 	/** Copy string data that belongs to FShaderResource for cases where this id can outlive the resource. */
 	void MakeSelfContained()
 	{
-		if (SpecificShaderTypeName && SpecificShaderTypeName != *SpecificShaderTypeStorage)
-		{
-			SpecificShaderTypeStorage = SpecificShaderTypeName;
-			SpecificShaderTypeName = *SpecificShaderTypeStorage;
-		}
 	}
 
 	/** Hash of the compiled shader output, which is used to create the FShaderResource. */
@@ -183,13 +161,8 @@ public:
 	/** Target platform and frequency. */
 	FShaderTarget Target;
 
-	/** Stores the memory for SpecificShaderTypeName if this is a standalone Id, otherwise is empty and SpecificShaderTypeName points to an FShaderType name. */
-	FString SpecificShaderTypeStorage;
-
-	/** NULL if type doesn't matter, otherwise the name of the type that this was created specifically for, which is used with geometry shader stream out. */
-	const TCHAR* SpecificShaderTypeName;
-
 	/** Specific permutation identifier of the shader when SpecificShaderTypeName is non null, ignored otherwise. */
+	//#todo-RemoveStreamOut
 	int32 SpecificPermutationId;
 };
 
@@ -296,7 +269,7 @@ public:
 
 	/** Constructor used when creating a new shader resource from compiled output. */
 	//#todo-RemoveStreamOut
-	FShaderResource(const FShaderCompilerOutput& Output, FShaderType* InSpecificType, int32 InSpecificPermutationId);
+	FShaderResource(const FShaderCompilerOutput& Output, int32 InSpecificPermutationId);
 
 	RENDERCORE_API ~FShaderResource();
 
@@ -438,7 +411,7 @@ public:
 
 	//#todo-RemoveStreamOut
 	template<class T>
-	static FShaderResource* FindOrCreateShaderResource(const FShaderCompilerOutput& Output, class FShaderType* SpecificType, T SpecificPermutationId)
+	static FShaderResource* FindOrCreateShaderResource(const FShaderCompilerOutput& Output, T SpecificPermutationId)
 	{
 		static_assert(sizeof(T) == 0, "Deprecated. Please save return value as TRefCountPtr<FShaderResource> and switch to FindById().");
 		return nullptr;
@@ -446,10 +419,9 @@ public:
 
 	/** 
 	 * Finds a matching shader resource in memory or creates a new one with the given compiler output.  
-	 * SpecificType can be NULL
 	 */
 	 //#todo-RemoveStreamOut
-	RENDERCORE_API static TRefCountPtr<FShaderResource> FindOrCreate(const FShaderCompilerOutput& Output, class FShaderType* SpecificType, int32 SpecificPermutationId);
+	RENDERCORE_API static TRefCountPtr<FShaderResource> FindOrCreate(const FShaderCompilerOutput& Output, int32 SpecificPermutationId);
 
 	/** Return a list of all shader Ids currently known */
 	RENDERCORE_API static void GetAllShaderResourceId(TArray<FShaderResourceId>& Ids);
@@ -509,10 +481,6 @@ private:
 
 	/** Original bytecode size, before compression */
 	uint32 UncompressedCodeSize = 0;
-
-	//#todo-RemoveStreamOut
-	/** If not NULL, the shader type this resource must be used with. */
-	class FShaderType* SpecificType;
 
 	//#todo-RemoveStreamOut
 	/** Specific permutation identifier of the shader when SpecificType is non null, ignored otherwise. */
