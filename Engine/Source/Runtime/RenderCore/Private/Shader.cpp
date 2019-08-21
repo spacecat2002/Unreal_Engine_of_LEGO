@@ -146,7 +146,6 @@ FShaderType::FShaderType(
 	uint32 InFrequency,
 	int32 InTotalPermutationCount,
 	ConstructSerializedType InConstructSerializedRef,
-	GetStreamOutElementsType InGetStreamOutElementsRef,
 	const FShaderParametersMetadata* InRootParametersMetadata
 	):
 	ShaderTypeForDynamicCast(InShaderTypeForDynamicCast),
@@ -157,7 +156,6 @@ FShaderType::FShaderType(
 	Frequency(InFrequency),
 	TotalPermutationCount(InTotalPermutationCount),
 	ConstructSerializedRef(InConstructSerializedRef),
-	GetStreamOutElementsRef(InGetStreamOutElementsRef),
 	RootParametersMetadata(InRootParametersMetadata),
 	GlobalListLink(this)
 {
@@ -554,6 +552,7 @@ FShaderResource::FShaderResource()
 	INC_DWORD_STAT_BY(STAT_Shaders_NumShaderResourcesLoaded, 1);
 }
 
+//#todo-RemoveStreamOut
 FShaderResource::FShaderResource(const FShaderCompilerOutput& Output, FShaderType* InSpecificType, int32 InSpecificPermutationId) 
 	: SpecificType(InSpecificType)
 	, SpecificPermutationId(InSpecificPermutationId)
@@ -717,6 +716,7 @@ void FShaderResource::Serialize(FArchive& Ar, bool bLoadedByCookedMaterial)
 
 	Ar.UsingCustomVersion(FRenderingObjectVersion::GUID);
 
+	//#todo-RemoveStreamOut
 	Ar << SpecificType;
 	if (Ar.CustomVer(FRenderingObjectVersion::GUID) >= FRenderingObjectVersion::ShaderPermutationId)
 	{
@@ -883,6 +883,7 @@ TRefCountPtr<FShaderResource> FShaderResource::FindOrClone(FShaderResource&& Tem
 	return gLoadedShaderResources.AddOrDelete(Clone);
 }
 
+//#todo-RemoveStreamOut
 TRefCountPtr<FShaderResource> FShaderResource::FindOrCreate(const FShaderCompilerOutput& Output, FShaderType* SpecificType, int32 SpecificPermutationId)
 {
 	const FShaderResourceId ResourceId(Output.Target, Output.OutputHash, SpecificType ? SpecificType->GetName() : nullptr, SpecificPermutationId);
@@ -1000,26 +1001,7 @@ void FShaderResource::InitRHI()
 	}
 	else if(Target.Frequency == SF_Geometry)
 	{
-		//#todo-RemoveStreamOut
-/*
-		if (SpecificType)
-		{
-			FStreamOutElementList ElementList;
-			TArray<uint32> StreamStrides;
-			int32 RasterizedStream = -1;
-			SpecificType->GetStreamOutElements(ElementList, StreamStrides, RasterizedStream);
-			checkf(ElementList.Num(), TEXT("Shader type %s was given GetStreamOutElements implementation that had no elements!"), SpecificType->GetName());
-
-			//@todo - not using the cache
-			PRAGMA_DISABLE_DEPRECATION_WARNINGS
-			Shader = FShaderCodeLibrary::CreateGeometryShaderWithStreamOutput((EShaderPlatform)Target.Platform, OutputHash, UncompressedCode, ElementList, StreamStrides.Num(), StreamStrides.GetData(), RasterizedStream);
-			PRAGMA_ENABLE_DEPRECATION_WARNINGS
-		}
-		else
-*/
-		{
-			Shader = FShaderCodeLibrary::CreateGeometryShader((EShaderPlatform)Target.Platform, OutputHash, UncompressedCode);
-		}
+		Shader = FShaderCodeLibrary::CreateGeometryShader((EShaderPlatform)Target.Platform, OutputHash, UncompressedCode);
 		UE_CLOG((bCodeInSharedLocation && !IsValidRef(Shader)), LogShaders, Fatal, TEXT("FShaderResource::SerializeShaderCode can't find shader code for: [%s]"), *LegacyShaderPlatformToShaderFormat((EShaderPlatform)Target.Platform).ToString());
 	}
 	else if(Target.Frequency == SF_Compute)
@@ -1047,12 +1029,6 @@ void FShaderResource::InitRHI()
 	else
 	{
 		checkNoEntry(); // Unexpected shader target frequency
-	}
-
-		//#todo-RemoveStreamOut
-	if (Target.Frequency != SF_Geometry)
-	{
-		checkf(!SpecificType, TEXT("Only geometry shaders can use GetStreamOutElements, shader type %s"), SpecificType->GetName());
 	}
 
 	if (!FPlatformProperties::HasEditorOnlyData())
@@ -1434,7 +1410,7 @@ bool FShader::SerializeBase(FArchive& Ar, bool bShadersInline, bool bLoadedByCoo
 		if (Ar.IsLoading())
 		{
 			// generate a resource id
-			FShaderResourceId ResourceId(Target, OutputHash, Type->LimitShaderResourceToThisType() ? Type->GetName() : nullptr, Type->LimitShaderResourceToThisType() ? PermutationId : 0);
+			FShaderResourceId ResourceId(Target, OutputHash, nullptr, 0);
 
 			// use it to look up in the registered resource map
 			Resource = FShaderResource::FindById(ResourceId);

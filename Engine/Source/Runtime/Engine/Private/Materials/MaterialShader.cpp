@@ -1021,17 +1021,9 @@ FShader* FMaterialShaderType::FinishCompileShader(
 {
 	check(CurrentJob.bSucceeded);
 
-	FShaderType* SpecificType = nullptr;
-	int32 SpecificPermutationId = 0;
-	if (CurrentJob.ShaderType->LimitShaderResourceToThisType())
-	{
-		SpecificType = CurrentJob.ShaderType;
-		SpecificPermutationId = CurrentJob.PermutationId;
-	}
-
 	// Reuse an existing resource with the same key or create a new one based on the compile output
 	// This allows FShaders to share compiled bytecode and RHI shader references
-	TRefCountPtr<FShaderResource> Resource = FShaderResource::FindOrCreate(CurrentJob.Output, SpecificType, SpecificPermutationId);
+	TRefCountPtr<FShaderResource> Resource = FShaderResource::FindOrCreate(CurrentJob.Output, nullptr, 0);
 
 	if (ShaderPipelineType && !ShaderPipelineType->ShouldOptimizeUnusedOutputs(CurrentJob.Input.Target.GetPlatform()))
 	{

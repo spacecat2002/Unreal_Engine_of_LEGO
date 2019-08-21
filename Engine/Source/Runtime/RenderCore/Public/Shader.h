@@ -106,6 +106,7 @@ public:
 
 	FShaderResourceId() {}
 
+	//#todo-RemoveStreamOut
 	FShaderResourceId(const FShaderTarget& InTarget, const FSHAHash& InOutputHash, const TCHAR* InSpecificShaderTypeName, int32 InSpecificPermutationId) :
 		OutputHash(InOutputHash),
 		Target(InTarget),
@@ -294,6 +295,7 @@ public:
 	FShaderResource(FShaderResource&&) = default;
 
 	/** Constructor used when creating a new shader resource from compiled output. */
+	//#todo-RemoveStreamOut
 	FShaderResource(const FShaderCompilerOutput& Output, FShaderType* InSpecificType, int32 InSpecificPermutationId);
 
 	RENDERCORE_API ~FShaderResource();
@@ -434,6 +436,7 @@ public:
 	/** Finds a matching shader resource in memory or clone the temporary and register the new resource */
 	RENDERCORE_API static TRefCountPtr<FShaderResource> FindOrClone(FShaderResource&& Temp);
 
+	//#todo-RemoveStreamOut
 	template<class T>
 	static FShaderResource* FindOrCreateShaderResource(const FShaderCompilerOutput& Output, class FShaderType* SpecificType, T SpecificPermutationId)
 	{
@@ -445,6 +448,7 @@ public:
 	 * Finds a matching shader resource in memory or creates a new one with the given compiler output.  
 	 * SpecificType can be NULL
 	 */
+	 //#todo-RemoveStreamOut
 	RENDERCORE_API static TRefCountPtr<FShaderResource> FindOrCreate(const FShaderCompilerOutput& Output, class FShaderType* SpecificType, int32 SpecificPermutationId);
 
 	/** Return a list of all shader Ids currently known */
@@ -1039,9 +1043,6 @@ public:
 
 	void SetResource(FShaderResource* InResource);
 
-	/** Implement for geometry shaders that want to use stream out. */
-	static void GetStreamOutElements(FStreamOutElementList& ElementList, TArray<uint32>& StreamStrides, int32& RasterizedStream) {}
-
 	void BeginInitializeResources()
 	{
 		BeginInitResource(Resource);
@@ -1181,7 +1182,6 @@ public:
 	};
 
 	typedef class FShader* (*ConstructSerializedType)();
-	typedef void (*GetStreamOutElementsType)(FStreamOutElementList& ElementList, TArray<uint32>& StreamStrides, int32& RasterizedStream);
 
 	/** @return The global shader factory list. */
 	static TLinkedList<FShaderType*>*& GetTypeList();
@@ -1213,7 +1213,6 @@ public:
 		uint32 InFrequency,
 		int32 TotalPermutationCount,
 		ConstructSerializedType InConstructSerializedRef,
-		GetStreamOutElementsType InGetStreamOutElementsRef,
 		const FShaderParametersMetadata* InRootParametersMetadata);
 
 	virtual ~FShaderType();
@@ -1350,16 +1349,6 @@ public:
 		ShaderIdMap.Remove(Key);
 	}
 
-	bool LimitShaderResourceToThisType() const
-	{
-		return GetStreamOutElementsRef != &FShader::GetStreamOutElements;
-	}
-
-	void GetStreamOutElements(FStreamOutElementList& ElementList, TArray<uint32>& StreamStrides, int32& RasterizedStream) 
-	{
-		(*GetStreamOutElementsRef)(ElementList, StreamStrides, RasterizedStream);
-	}
-
 	void DumpDebugInfo();
 	void SaveShaderStableKeys(EShaderPlatform TargetShaderPlatform);
 	void GetShaderStableKeyParts(struct FStableShaderKeyAndValue& SaveKeyVal);
@@ -1374,7 +1363,6 @@ private:
 	int32 TotalPermutationCount;
 
 	ConstructSerializedType ConstructSerializedRef;
-	GetStreamOutElementsType GetStreamOutElementsRef;
 	const FShaderParametersMetadata* const RootParametersMetadata;
 
 	/** A map from shader ID to shader.  A shader will be removed from it when deleted, so this doesn't need to use a TRefCountPtr. */
@@ -1444,8 +1432,7 @@ protected:
 		ShaderClass::ConstructCompiledInstance, \
 		ShaderClass::ModifyCompilationEnvironment, \
 		ShaderClass::ShouldCompilePermutation, \
-		ShaderClass::ValidateCompiledResult, \
-		ShaderClass::GetStreamOutElements \
+		ShaderClass::ValidateCompiledResult \
 		);
 
 /** A macro to implement a shader type. Shader name is got from GetDebugName(), which is helpful for templated shaders. */
@@ -1461,8 +1448,7 @@ protected:
 		ShaderClass::ConstructCompiledInstance, \
 		ShaderClass::ModifyCompilationEnvironment, \
 		ShaderClass::ShouldCompilePermutation, \
-		ShaderClass::ValidateCompiledResult, \
-		ShaderClass::GetStreamOutElements \
+		ShaderClass::ValidateCompiledResult \
 		);
 
 /** A macro to implement a templated shader type, the function name and the source filename comes from the class. */
@@ -1478,8 +1464,7 @@ protected:
 	ShaderClass::ConstructCompiledInstance, \
 	ShaderClass::ModifyCompilationEnvironment, \
 	ShaderClass::ShouldCompilePermutation, \
-	ShaderClass::ValidateCompiledResult, \
-	ShaderClass::GetStreamOutElements \
+	ShaderClass::ValidateCompiledResult \
 	);
 
 #define IMPLEMENT_SHADER_TYPE2(ShaderClass,Frequency) \
@@ -1497,8 +1482,7 @@ protected:
 	ShaderClass::ConstructCompiledInstance, \
 	ShaderClass::ModifyCompilationEnvironment, \
 	ShaderClass::ShouldCompilePermutation, \
-	ShaderClass::ValidateCompiledResult, \
-	ShaderClass::GetStreamOutElements \
+	ShaderClass::ValidateCompiledResult \
 	);
 #endif
 
