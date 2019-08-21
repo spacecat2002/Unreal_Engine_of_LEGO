@@ -39,6 +39,7 @@ class FScreenPassTextureViewport
 public:
 	// Creates a viewport that is downscaled by the requested scale factor.
 	static FScreenPassTextureViewport CreateDownscaled(const FScreenPassTextureViewport& Other, uint32 ScaleFactor);
+	static FScreenPassTextureViewport CreateDownscaled(const FScreenPassTextureViewport& Other, FIntPoint ScaleFactor);
 
 	FScreenPassTextureViewport() = default;
 
@@ -69,6 +70,9 @@ public:
 
 	// Returns whether the viewport contains an empty viewport or extent.
 	bool IsEmpty() const;
+
+	// Returns whether the viewport covers the full extent of the texture.
+	bool IsFullscreen() const;
 
 	// The viewport rect, in pixels; defines a sub-set within [0, 0]x(Extent, Extent).
 	FIntRect Rect;

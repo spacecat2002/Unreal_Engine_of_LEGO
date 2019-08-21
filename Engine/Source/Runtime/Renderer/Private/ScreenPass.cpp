@@ -37,9 +37,14 @@ bool IsHMDHiddenAreaMaskActive()
 		GEngine->XRSystem->GetHMDDevice()->HasVisibleAreaMesh();
 }
 
-FScreenPassTextureViewport FScreenPassTextureViewport::CreateDownscaled(const FScreenPassTextureViewport& Other, uint32 ScaleFactor)
+FScreenPassTextureViewport FScreenPassTextureViewport::CreateDownscaled(const FScreenPassTextureViewport& Other, uint32 DownscaleFactor)
 {
-	const auto GetDownscaledSize = [](FIntPoint Size, uint32 InScaleFactor)
+	return CreateDownscaled(Other, FIntPoint(DownscaleFactor, DownscaleFactor));
+}
+
+FScreenPassTextureViewport FScreenPassTextureViewport::CreateDownscaled(const FScreenPassTextureViewport& Other, FIntPoint ScaleFactor)
+{
+	const auto GetDownscaledSize = [](FIntPoint Size, FIntPoint InScaleFactor)
 	{
 		Size = FIntPoint::DivideAndRoundUp(Size, InScaleFactor);
 		Size.X = FMath::Max(1, Size.X);
@@ -67,6 +72,11 @@ bool FScreenPassTextureViewport::operator!=(const FScreenPassTextureViewport& Ot
 bool FScreenPassTextureViewport::IsEmpty() const
 {
 	return Rect.IsEmpty() || Extent == FIntPoint::ZeroValue;
+}
+
+bool FScreenPassTextureViewport::IsFullscreen() const
+{
+	return Rect.Min == FIntPoint::ZeroValue && Rect.Max == Extent;
 }
 
 FScreenPassTextureViewportParameters GetScreenPassTextureViewportParameters(const FScreenPassTextureViewport& InViewport)

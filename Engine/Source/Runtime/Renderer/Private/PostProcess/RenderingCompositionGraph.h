@@ -174,12 +174,29 @@ struct FRenderingCompositePassContext
 		return SceneColorViewRect;
 	}
 
-	FIntRect GetDownsampledSceneColorViewRect(uint32 DownsampleFactor) const
+	FIntPoint GetSceneColorDownscaleFactor(FIntPoint InputExtent) const
+	{
+		const uint32 ScaleFactorX = FMath::RoundUpToPowerOfTwo(FMath::DivideAndRoundUp(ReferenceBufferSize.X, InputExtent.X));
+		const uint32 ScaleFactorY = FMath::RoundUpToPowerOfTwo(FMath::DivideAndRoundUp(ReferenceBufferSize.Y, InputExtent.Y));
+		return FIntPoint(ScaleFactorX, ScaleFactorY);
+	}
+
+	FIntRect GetDownsampledSceneColorViewRect(FIntPoint DownsampleFactor) const
 	{
 		FIntRect Rect = FIntRect::DivideAndRoundUp(SceneColorViewRect, DownsampleFactor);
 		Rect.Max.X = FMath::Max(Rect.Max.X, 1);
 		Rect.Max.Y = FMath::Max(Rect.Max.Y, 1);
 		return Rect;
+	}
+
+	FIntRect GetDownsampledSceneColorViewRect(uint32 DownsampleFactor) const
+	{
+		return GetDownsampledSceneColorViewRect(FIntPoint(DownsampleFactor, DownsampleFactor));
+	}
+
+	FIntRect GetDownsampledSceneColorViewRectFromInputExtent(FIntPoint InputExtent) const
+	{
+		return GetDownsampledSceneColorViewRect(GetSceneColorDownscaleFactor(InputExtent));
 	}
 
 	/** Returns the LoadAction that should be use for a given render target. */

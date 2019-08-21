@@ -71,9 +71,17 @@ bool IsAutoExposureMethodSupported(ERHIFeatureLevel::Type FeatureLevel, EAutoExp
 // Query the view for the auto exposure method, and allow for CVar override.
 EAutoExposureMethod GetAutoExposureMethod(const FViewInfo& View)
 {
-	EAutoExposureMethod AutoExposureMethodId = View.FinalPostProcessSettings.AutoExposureMethod;
+	EAutoExposureMethod AutoExposureMethod = View.FinalPostProcessSettings.AutoExposureMethod;
+
+	// Fallback to basic if the requested mode is not supported by the feature level.
+	if (!IsAutoExposureMethodSupported(View.GetFeatureLevel(), AutoExposureMethod))
+	{
+		AutoExposureMethod = EAutoExposureMethod::AEM_Basic;
+	}
 
 	const int32 EyeOverride = CVarEyeAdaptationMethodOverride.GetValueOnRenderThread();
+
+	EAutoExposureMethod OverrideAutoExposureMethod = AutoExposureMethod;
 
 	if (EyeOverride >= 0)
 	{
@@ -82,36 +90,34 @@ EAutoExposureMethod GetAutoExposureMethod(const FViewInfo& View)
 		{
 		case 1:
 		{
-			// Only override if the platform supports it.
-			if (View.GetFeatureLevel() >= ERHIFeatureLevel::SM5)
-			{
-				AutoExposureMethodId = EAutoExposureMethod::AEM_Histogram;
-			}
+			OverrideAutoExposureMethod = EAutoExposureMethod::AEM_Histogram;
 			break;
 		}
 		case 2:
 		{
-			AutoExposureMethodId = EAutoExposureMethod::AEM_Basic;
+			OverrideAutoExposureMethod = EAutoExposureMethod::AEM_Basic;
 			break;
 		}
 		case 3:
 		{
-			AutoExposureMethodId = EAutoExposureMethod::AEM_Manual;
+			OverrideAutoExposureMethod = EAutoExposureMethod::AEM_Manual;
 			break;
 		}
 		}
+	}
+
+	if (IsAutoExposureMethodSupported(View.GetFeatureLevel(), OverrideAutoExposureMethod))
+	{
+		AutoExposureMethod = OverrideAutoExposureMethod;
 	}
 
 	// If auto exposure is disabled, revert to manual mode which will clamp to a reasonable default.
 	if (!View.Family->EngineShowFlags.EyeAdaptation)
 	{
-		AutoExposureMethodId = AEM_Manual;
+		AutoExposureMethod = AEM_Manual;
 	}
 
-	// We should have a valid exposure method at this stage.
-	check(IsAutoExposureMethodSupported(View.GetFeatureLevel(), AutoExposureMethodId));
-
-	return AutoExposureMethodId;
+	return AutoExposureMethod;
 }
 
 bool IsExtendLuminanceRangeEnabled()

@@ -273,37 +273,6 @@ FBloomDownSampleArray::Ptr CreateDownSampleArray(FPostprocessContext& Context, F
 	return FBloomDownSampleArray::Ptr(new FBloomDownSampleArray(Context, SourceToDownSample, bAddLog2));
 }
 
-// 2 pass Gaussian blur using uni-linear filtering
-// @param CrossCenterWeight see r.Bloom.Cross (positive for X and Y, otherwise for X only)
-static FRenderingCompositeOutputRef RenderGaussianBlur(
-	FPostprocessContext& Context,
-	const TCHAR* DebugNameX,
-	const TCHAR* DebugNameY,
-	const FRenderingCompositeOutputRef& Input,
-	float SizeScale,
-	FLinearColor Tint = FLinearColor::White,
-	const FRenderingCompositeOutputRef Additive = FRenderingCompositeOutputRef(),
-	float CrossCenterWeight = 0.0f)
-{
-	const bool bIsComputePass = ShouldDoComputePostProcessing(Context.View);
-
-	// Gaussian blur in x
-	FRCPassPostProcessWeightedSampleSum* PostProcessBlurX = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessWeightedSampleSum(EFS_Horiz, EFCM_Weighted, SizeScale, bIsComputePass, DebugNameX));
-	PostProcessBlurX->SetInput(ePId_Input0, Input);
-	if(CrossCenterWeight > 0)
-	{
-		PostProcessBlurX->SetCrossCenterWeight(CrossCenterWeight);
-	}
-
-	// Gaussian blur in y
-	FRCPassPostProcessWeightedSampleSum* PostProcessBlurY = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessWeightedSampleSum(EFS_Vert, EFCM_Weighted, SizeScale, bIsComputePass, DebugNameY, Tint));
-	PostProcessBlurY->SetInput(ePId_Input0, FRenderingCompositeOutputRef(PostProcessBlurX));
-	PostProcessBlurY->SetInput(ePId_Input1, Additive);
-	PostProcessBlurY->SetCrossCenterWeight(FMath::Abs(CrossCenterWeight));
-
-	return FRenderingCompositeOutputRef(PostProcessBlurY);
-}
-
 // render one bloom pass and add another optional texture to it
 static FRenderingCompositeOutputRef RenderBloom(
 	FPostprocessContext& Context,
@@ -314,7 +283,9 @@ static FRenderingCompositeOutputRef RenderBloom(
 {
 	const float CrossBloom = CVarBloomCross.GetValueOnRenderThread();
 
-	return RenderGaussianBlur(Context, TEXT("BloomBlurX"), TEXT("BloomBlurY"), PreviousBloom, Size, Tint, Additive,CrossBloom);
+	const FVector2D CrossCenterWeight(FMath::Max(CrossBloom, 0.0f), FMath::Abs(CrossBloom));
+
+	return AddGaussianBlurPass(Context.Graph, TEXT("BloomBlurX"), TEXT("BloomBlurY"), PreviousBloom, Size, Tint, Additive, CrossCenterWeight);
 }
 
 static FRCPassPostProcessTonemap* AddTonemapper(
@@ -426,7 +397,7 @@ static bool AddPostProcessDepthOfFieldGaussian(FPostprocessContext& Context, FDe
 			const TCHAR* BlurDebugX = bFarPass ? TEXT("FarDOFBlurX") : TEXT("NearDOFBlurX");
 			const TCHAR* BlurDebugY = bFarPass ? TEXT("FarDOFBlurY") : TEXT("NearDOFBlurY");
 
-			return RenderGaussianBlur(Context, BlurDebugX, BlurDebugY, DOFSetup, BlurSize);
+			return AddGaussianBlurPass(Context.Graph, BlurDebugX, BlurDebugY, DOFSetup, BlurSize);
 		};
 
 		const bool bFar = FarSize > 0.0f;
