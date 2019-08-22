@@ -44,8 +44,8 @@ namespace
 	TAutoConsoleVariable<int32> CVarSSSHalfRes(
 		TEXT("r.SSS.HalfRes"),
 		1,
-		TEXT(" 0: full quality (not optimized, as reference)\n")
-		TEXT(" 1: parts of the algorithm runs in half resolution which is lower quality but faster (default)"),
+		TEXT(" 0: full quality (Combined Burley and Separable pass. Separable is not optimized, as reference)\n")
+		TEXT(" 1: parts of the algorithm runs in half resolution which is lower quality but faster (default, Separable only)"),
 		ECVF_RenderThreadSafe | ECVF_Scalability);
 
 	TAutoConsoleVariable<int32> CVarSSSQuality(
@@ -390,8 +390,8 @@ public:
 	}
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, RWSeparableGroupBuffer)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, RWBurleyGroupBuffer)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWSeparableGroupBuffer)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWBurleyGroupBuffer)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -418,8 +418,8 @@ public:
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_STRUCT_REF(FSubsurfaceUniformParameters, SubsurfaceUniformParameters)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, RWIndirectDispatchArgsBuffer)
-		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, GroupBuffer)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWIndirectDispatchArgsBuffer)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer<uint>, GroupBuffer)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -449,9 +449,8 @@ public:
 		SHADER_PARAMETER_STRUCT(FSubsurfaceInput, SubsurfaceInput0)
 		SHADER_PARAMETER_SAMPLER(SamplerState, SubsurfaceSampler0)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D, SetupTexture)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D, ProfileEdgeMask)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, RWSeparableGroupBuffer)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, RWBurleyGroupBuffer)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWSeparableGroupBuffer)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWBurleyGroupBuffer)
 		SHADER_PARAMETER_STRUCT_REF(FSubsurfaceUniformParameters, SubsurfaceUniformParameters)
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -482,8 +481,8 @@ public:
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSubsurfaceParameters, Subsurface)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D, SSSColorUAV)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D, HistoryUAV)
-		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, GroupBuffer)
-		SHADER_PARAMETER_RDG_BUFFER(StructuredBuffer<uint>, IndirectDispatchArgsBuffer)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer<uint>, GroupBuffer)
+		SHADER_PARAMETER_RDG_BUFFER(Buffer<uint>, IndirectDispatchArgsBuffer)
 		SHADER_PARAMETER_STRUCT(FSubsurfaceInput, SubsurfaceInput0)
 		SHADER_PARAMETER_SAMPLER(SamplerState, SubsurfaceSampler0)
 		SHADER_PARAMETER_STRUCT(FSubsurfaceInput, SubsurfaceInput1)	// History
@@ -537,12 +536,19 @@ public:
 	class FDimensionHalfRes : SHADER_PERMUTATION_BOOL("SUBSURFACE_HALF_RES");
 	using FPermutationDomain = TShaderPermutationDomain<FSubsurfacePassFunction, FDimensionQuality, FSubsurfaceSamplerType, FSubsurfaceType, FDimensionHalfRes>;
 
-	// Returns the sampler state based on the requested SSS filter CVar setting.
-	static FRHISamplerState* GetSamplerState()
+	// Returns the sampler state based on the requested SSS filter CVar setting and half resolution setting.
+	static FRHISamplerState* GetSamplerState(bool bHalfRes)
 	{
 		if (GetSSSFilter())
-		{	// Trilinear is used for mipmap sampling
-			return TStaticSamplerState<SF_Trilinear, AM_Border, AM_Border, AM_Border>::GetRHI();//SF_Bilinear
+		{	// Trilinear is used for mipmap sampling in full resolution
+			if (bHalfRes)
+			{
+				return TStaticSamplerState<SF_Bilinear, AM_Border, AM_Border, AM_Border>::GetRHI();//SF_Bilinear
+			}
+			else
+			{
+				return TStaticSamplerState<SF_Trilinear, AM_Border, AM_Border, AM_Border>::GetRHI();//SF_Bilinear
+			}
 		}
 		else
 		{
@@ -704,7 +710,8 @@ class FSubsurfaceRecombinePS : public FSubsurfaceShader
 	class FDimensionMode : SHADER_PERMUTATION_ENUM_CLASS("SUBSURFACE_RECOMBINE_MODE", ESubsurfaceMode);
 	class FDimensionQuality : SHADER_PERMUTATION_ENUM_CLASS("SUBSURFACE_RECOMBINE_QUALITY", EQuality);
 	class FDimensionCheckerboard : SHADER_PERMUTATION_BOOL("SUBSURFACE_PROFILE_CHECKERBOARD");
-	using FPermutationDomain = TShaderPermutationDomain<FDimensionMode, FDimensionQuality, FDimensionCheckerboard>;
+	class FDimensionHalfRes : SHADER_PERMUTATION_BOOL("SUBSURFACE_HALF_RES");
+	using FPermutationDomain = TShaderPermutationDomain<FDimensionMode, FDimensionQuality, FDimensionCheckerboard, FDimensionHalfRes>;
 
 	// Returns the Recombine quality level requested by the SSS Quality CVar setting.
 	static EQuality GetQuality(const FViewInfo& View)
@@ -814,31 +821,30 @@ void ComputeSubsurfaceForView(
 	 */
 	if (SubsurfaceMode != ESubsurfaceMode::Bypass)
 	{
-		SetupTexture = GraphBuilder.CreateTexture(SubsurfaceTextureWith6MipsDescriptor, TEXT("SubsurfaceSetupTexture"));
+		// Support mipmaps in full resolution only.
+		SetupTexture = GraphBuilder.CreateTexture(bHalfRes? SubsurfaceTextureDescriptor:SubsurfaceTextureWith6MipsDescriptor, TEXT("SubsurfaceSetupTexture"));
 
-		// Profile masks (between subsurface and non-subsurface) to reduce convergence.
-		// Notes: variance based sampling algorithm samples too many samples at the edge because it has a high variance due to TAA jittering.
-		// we need to identify them and limit the number of samples at the edge.
-		// We also record the profile of the pixel for half resolution usage.
-		const FRDGTextureDesc ProfileEdgeMaskDescriptor = FRDGTextureDesc::Create2DDesc(
-			SubsurfaceViewport.Extent,
-			PF_FloatRGBA,
-			FClearValueBinding(),
-			TexCreate_None,
-			TexCreate_RenderTargetable | TexCreate_ShaderResource | TexCreate_UAV,
-			false);
-
-		FRDGTextureRef ProfileEdgeMask = GraphBuilder.CreateTexture(ProfileEdgeMaskDescriptor, TEXT("ProfileEdgeMask"));
 		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 		FRDGTextureRef VelocityTexture = RegisterExternalRenderTarget(GraphBuilder, &(SceneContext.SceneVelocity), SubsurfaceTextureDescriptor.Extent, TEXT("Velocity")); 
 		FSubsurfaceUniformRef UniformBuffer = CreateUniformBuffer(View, MaxGroupCount);
 		
-		NewQualityHistoryTexture = CreateBlackUAVTexture(GraphBuilder, SubsurfaceTextureDescriptor, TEXT("SubsurfaceQualityHistoryState"),
-			ScreenPassView, SceneViewport);
+		// Pre-allocate black UAV together.
+		{
+			SubsurfaceSubpassOneTex = CreateBlackUAVTexture(GraphBuilder, SubsurfaceTextureWith6MipsDescriptor, TEXT("SubsurfaceSubpassOneTex"),
+				ScreenPassView, SceneViewport);
+			SubsurfaceSubpassTwoTex = CreateBlackUAVTexture(GraphBuilder, SubsurfaceTextureWith6MipsDescriptor, TEXT("SubsurfaceSubpassTwoTex"),
+				ScreenPassView, SceneViewport);
+			// Only clear when we are in full resolution.
+			if (!bHalfRes)
+			{
+				NewQualityHistoryTexture = CreateBlackUAVTexture(GraphBuilder, SubsurfaceTextureDescriptor, TEXT("SubsurfaceQualityHistoryState"),
+					ScreenPassView, SceneViewport);
+			}
+		}
 
 		// Initialize the group buffer
-		FRDGBufferRef SeparableGroupBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 2*(MaxGroupCount + 1)), TEXT("SeparableGroupBuffer"));;
-		FRDGBufferRef BurleyGroupBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 2*(MaxGroupCount + 1)), TEXT("BurleyGroupBuffer"));;
+		FRDGBufferRef SeparableGroupBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), 2*(MaxGroupCount + 1)), TEXT("SeparableGroupBuffer"));;
+		FRDGBufferRef BurleyGroupBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), 2*(MaxGroupCount + 1)), TEXT("BurleyGroupBuffer"));;
 		FRDGBufferRef SeparableIndirectDispatchArgsBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateIndirectDesc(4), TEXT("SeprableIndirectDispatchArgs"));
 		FRDGBufferRef BurleyIndirectDispatchArgsBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateIndirectDesc(4), TEXT("BurleyIndirectDispatchArgs"));
 
@@ -856,14 +862,12 @@ void ComputeSubsurfaceForView(
 		{
 			FRDGTextureSRVDesc SceneTextureSRVDesc = FRDGTextureSRVDesc::Create(SceneTexture);
 			FRDGTextureUAVDesc SetupTextureOutDesc(SetupTexture, 0);
-			FRDGTextureUAVDesc ProfileEdgeMaskDesc(ProfileEdgeMask, 0);
 
 			typedef FSubsurfaceIndirectDispatchSetupCS SHADER;
 			SHADER::FParameters* PassParameters = GraphBuilder.AllocParameters<SHADER::FParameters>();
 			PassParameters->Subsurface = SubsurfaceCommonParameters;
 			PassParameters->SubsurfaceInput0 = GetSubsurfaceInput(SceneTexture, SceneViewportParameters);
 			PassParameters->SubsurfaceSampler0 = PointClampSampler;
-			PassParameters->ProfileEdgeMask = GraphBuilder.CreateUAV(ProfileEdgeMaskDesc);
 			PassParameters->SetupTexture = GraphBuilder.CreateUAV(SetupTextureOutDesc);
 			PassParameters->RWBurleyGroupBuffer = GraphBuilder.CreateUAV(BurleyGroupBuffer, EPixelFormat::PF_R32_UINT);
 			PassParameters->RWSeparableGroupBuffer = GraphBuilder.CreateUAV(SeparableGroupBuffer, EPixelFormat::PF_R32_UINT);
@@ -879,14 +883,16 @@ void ComputeSubsurfaceForView(
 			FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("SubsurfaceSetup"), *ComputeShader, PassParameters, FIntVector(ComputeGroupCount.X, ComputeGroupCount.Y, 1));
 		}
 
+		// In half resolution, only Separable is used. We do not need this mipmap.
+		if(!bHalfRes)
 		{
-			// Generate mipmaps for the diffuse scene color and depth, use bilinear filter
+			// Generate mipmap for the diffuse scene color and depth, use bilinear filter
 			FGenerateMips::Execute(&GraphBuilder, SetupTexture, BilinearBorderSampler);
 		}
 
 		typedef FSubsurfaceIndirectDispatchCS SHADER;
 
-		FRHISamplerState* SubsurfaceSamplerState = SHADER::GetSamplerState();
+		FRHISamplerState* SubsurfaceSamplerState = SHADER::GetSamplerState(bHalfRes);
 		const SHADER::EQuality SubsurfaceQuality = SHADER::GetQuality();
 
 		// Store the buffer
@@ -913,11 +919,6 @@ void ComputeSubsurfaceForView(
 
 		// Major pass to combine Burley and Separable
 		{
-			SubsurfaceSubpassOneTex = CreateBlackUAVTexture(GraphBuilder, SubsurfaceTextureWith6MipsDescriptor, TEXT("SubsurfaceSubpassOneTex"),
-				ScreenPassView, SceneViewport);
-			SubsurfaceSubpassTwoTex = CreateBlackUAVTexture(GraphBuilder, SubsurfaceTextureWith6MipsDescriptor, TEXT("SubsurfaceSubpassTwoTex"),
-				ScreenPassView, SceneViewport);
-
 			struct FSubsurfacePassInfo
 			{
 				FSubsurfacePassInfo(const TCHAR* InName, FRDGTextureRef InInput, FRDGTextureRef InOutput,
@@ -962,25 +963,22 @@ void ComputeSubsurfaceForView(
 				PassParameters->SubsurfaceInput0 = GetSubsurfaceInput(TextureInput, SubsurfaceViewportParameters);
 				PassParameters->SubsurfaceSampler0 = SubsurfaceSamplerState;
 				PassParameters->GroupBuffer = GraphBuilder.CreateSRV(SubsurfaceBufferUsage[SubsurfaceTypeIndex], EPixelFormat::PF_R32_UINT);
-				PassParameters->IndirectDispatchArgsBuffer = SubsurfaceBufferArgs[SubsurfaceTypeIndex]; // need to maintain a reference to the indirect dispatch args.
-
-				if (SubsurfaceType == SHADER::ESubsurfaceType::SEPARABLE)
-				{
-					PassParameters->SubsurfaceInput2 = GetSubsurfaceInput(ProfileEdgeMask, SubsurfaceViewportParameters);
-					PassParameters->SubsurfaceSampler2 = PointClampSampler;
-				}
+				PassParameters->IndirectDispatchArgsBuffer = SubsurfaceBufferArgs[SubsurfaceTypeIndex];
 
 				if (SubsurfacePassFunction == SHADER::ESubsurfacePass::PassOne && SubsurfaceType == SHADER::ESubsurfaceType::BURLEY)
 				{
 					PassParameters->SubsurfaceInput1 = GetSubsurfaceInput(QualityHistoryTexture, SubsurfaceViewportParameters);
 					PassParameters->SubsurfaceSampler1 = PointClampSampler;
-					PassParameters->SubsurfaceInput2 = GetSubsurfaceInput(ProfileEdgeMask, SubsurfaceViewportParameters);
-					PassParameters->SubsurfaceSampler2 = PointClampSampler;
 				}
 
 				if (SubsurfacePassFunction == SHADER::ESubsurfacePass::PassTwo && SubsurfaceType == SHADER::ESubsurfaceType::BURLEY)
 				{
-					PassParameters->HistoryUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(NewQualityHistoryTexture, 0));
+					// we do not write to history in half resolution.
+					if (!bHalfRes)
+					{
+						PassParameters->HistoryUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(NewQualityHistoryTexture, 0));
+					}
+
 					PassParameters->SubsurfaceInput1 = GetSubsurfaceInput(QualityHistoryTexture, SubsurfaceViewportParameters);
 					PassParameters->SubsurfaceSampler1 = PointClampSampler;
 					PassParameters->SubsurfaceInput2 = GetSubsurfaceInput(VelocityTexture, SubsurfaceViewportParameters);
@@ -1021,6 +1019,7 @@ void ComputeSubsurfaceForView(
 		PixelShaderPermutationVector.Set<FSubsurfaceRecombinePS::FDimensionMode>(SubsurfaceMode);
 		PixelShaderPermutationVector.Set<FSubsurfaceRecombinePS::FDimensionQuality>(RecombineQuality);
 		PixelShaderPermutationVector.Set<FSubsurfaceRecombinePS::FDimensionCheckerboard>(bCheckerboard);
+		PixelShaderPermutationVector.Set<FSubsurfaceRecombinePS::FDimensionHalfRes>(bHalfRes);
 		TShaderMapRef<FSubsurfaceRecombinePS> PixelShader(View.ShaderMap, PixelShaderPermutationVector);
 
 		/**
@@ -1030,7 +1029,7 @@ void ComputeSubsurfaceForView(
 		AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("SubsurfaceRecombine"), ScreenPassView, SceneViewport, SceneViewport, *PixelShader, PassParameters);
 	}
 
-	if (SubsurfaceMode != ESubsurfaceMode::Bypass && QualityHistoryState)
+	if (SubsurfaceMode != ESubsurfaceMode::Bypass && QualityHistoryState && !bHalfRes)
 	{
 		GraphBuilder.QueueTextureExtraction(NewQualityHistoryTexture, QualityHistoryState, true);
 	}
