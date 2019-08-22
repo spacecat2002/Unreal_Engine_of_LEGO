@@ -1297,7 +1297,7 @@ namespace
 		const uint32 YGroups = ( DstExtent.Y / YThreadCount ) + ( (DstExtent.Y % YThreadCount == 0) ? 0 : 1 ); //-V547
 
 		const FGPUFFTShaderContext::ShaderMapType& ShaderMap = Context.GetShaderMap();
-		FRHICommandListImmediate& RHICmdList = Context.GetRHICmdList();
+		FRHICommandList& RHICmdList = Context.GetRHICmdList();
 
 		SCOPED_DRAW_EVENTF(RHICmdList, CopyWindowCS, TEXT("FFT Multipass: Copy Subwindow"));
 
@@ -1358,7 +1358,7 @@ namespace
 		const FIntPoint DstExtent = SrcWindow.Size();
 
 		const FGPUFFTShaderContext::ShaderMapType& ShaderMap = Context.GetShaderMap();
-		FRHICommandListImmediate& RHICmdList = Context.GetRHICmdList();
+		FRHICommandList& RHICmdList = Context.GetRHICmdList();
 
 		SCOPED_DRAW_EVENTF(RHICmdList, ComplexMultiplyImagesCS, TEXT("FFT Multipass: Convolution in freq-space"));
 
@@ -1408,7 +1408,7 @@ namespace
 		using namespace GPUFFTComputeShaderUtils;
 
 		const FGPUFFTShaderContext::ShaderMapType& ShaderMap = Context.GetShaderMap();
-		FRHICommandListImmediate& RHICmdList = Context.GetRHICmdList();
+		FRHICommandList& RHICmdList = Context.GetRHICmdList();
 	
 		const uint32 TransformLength = FFTDesc.SignalLength;
 		const FString TransformName = FFTDesc.FFT_TypeName();
@@ -1471,7 +1471,7 @@ namespace
 		using namespace GPUFFTComputeShaderUtils;
 
 		const FGPUFFTShaderContext::ShaderMapType& ShaderMap = Context.GetShaderMap();
-		FRHICommandListImmediate& RHICmdList = Context.GetRHICmdList();
+		FRHICommandList& RHICmdList = Context.GetRHICmdList();
 
 		const uint32 TransformLength = FFTDesc.SignalLength;
 		const FString TransformName = FFTDesc.FFT_TypeName();
@@ -1522,7 +1522,7 @@ namespace
 		using namespace GPUFFTComputeShaderUtils;
 
 		const FGPUFFTShaderContext::ShaderMapType& ShaderMap = Context.GetShaderMap();
-		FRHICommandListImmediate& RHICmdList = Context.GetRHICmdList();
+		FRHICommandList& RHICmdList = Context.GetRHICmdList();
 
 		const uint32 TransformLength = FFTDesc.SignalLength;
 		const FString TransformName = FFTDesc.FFT_TypeName();
@@ -1571,7 +1571,7 @@ namespace
 		using namespace GPUFFTComputeShaderUtils;
 
 		const FGPUFFTShaderContext::ShaderMapType& ShaderMap = Context.GetShaderMap();
-		FRHICommandListImmediate& RHICmdList = Context.GetRHICmdList();
+		FRHICommandList& RHICmdList = Context.GetRHICmdList();
 
 		const uint32 TransformLength = FFTDesc.SignalLength;
 		const FString TransformName = FFTDesc.FFT_TypeName();
@@ -1636,7 +1636,7 @@ namespace
 		using namespace GPUFFTComputeShaderUtils;
 
 		const FGPUFFTShaderContext::ShaderMapType& ShaderMap = Context.GetShaderMap();
-		FRHICommandListImmediate& RHICmdList                 = Context.GetRHICmdList();
+		FRHICommandList& RHICmdList                 = Context.GetRHICmdList();
 
 		const uint32 TransformLength = FFTDesc.SignalLength;
 		const FString TransformName  = FFTDesc.FFT_TypeName();
@@ -1688,7 +1688,7 @@ namespace
 		using namespace GPUFFTComputeShaderUtils;
 
 		const FGPUFFTShaderContext::ShaderMapType& ShaderMap = Context.GetShaderMap();
-		FRHICommandListImmediate& RHICmdList                 = Context.GetRHICmdList();
+		FRHICommandList& RHICmdList                 = Context.GetRHICmdList();
 
 		const uint32 TransformLength = FFTDesc.SignalLength;
 		const FString TransformName  = FFTDesc.FFT_TypeName();
@@ -1739,7 +1739,7 @@ namespace
 		using GPUFFTComputeShaderUtils::FScopedUAVBind;
 
 		const FGPUFFTShaderContext::ShaderMapType& ShaderMap = Context.GetShaderMap();
-		FRHICommandListImmediate& RHICmdList                 = Context.GetRHICmdList();
+		FRHICommandList& RHICmdList                 = Context.GetRHICmdList();
 
 		// Transform particulars
 
@@ -1826,7 +1826,7 @@ bool GPUFFT::ComplexFFTImage1D::MultiPass(FGPUFFTShaderContext& Context, const F
 	check(FMath::IsPowerOfTwo(TransformLength));
 
 	// Command list
-	FRHICommandListImmediate& RHICmdList = Context.GetRHICmdList();
+	FRHICommandList& RHICmdList = Context.GetRHICmdList();
 
 	// The number of iterations required.
 	const uint32 Log2TransformLength = BitSize(TransformLength) - 1;
@@ -2015,7 +2015,7 @@ bool GPUFFT::FFTImage2D(FGPUFFTShaderContext& Context, const FIntPoint& Frequenc
 {
 	using GPUFFT::FFTDescription;
 
-	FRHICommandListImmediate& RHICmdList = Context.GetRHICmdList();
+	FRHICommandList& RHICmdList = Context.GetRHICmdList();
 
 	// This will be for the actual output.
 	const FIntRect FFTResultRect = ROIRect;
@@ -2198,7 +2198,7 @@ bool GPUFFT::ConvolutionWithTextureImage2D(FGPUFFTShaderContext& Context, const 
 
 	using GPUFFT::FFTDescription;
 
-	FRHICommandListImmediate& RHICmdList = Context.GetRHICmdList();
+	FRHICommandList& RHICmdList = Context.GetRHICmdList();
 
 	// This will be for the actual output.
 	const FIntRect FFTResultRect = ROIRect;

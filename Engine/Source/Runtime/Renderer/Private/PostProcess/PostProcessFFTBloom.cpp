@@ -10,34 +10,13 @@ PostProcessFFTBlooom.cpp: Post processing blom using an FFT-based convolution.
 #include "ScenePrivate.h"
 #include "GlobalShader.h"
 #include "Shader.h"
+#include "RendererModule.h"
 
-#include "RendererModule.h" // for log
-
-
-
-class FResizeAndCenterTextureCS : public FGlobalShader
+class FFFTShader : public FGlobalShader
 {
-
 public:
-	DECLARE_SHADER_TYPE(FResizeAndCenterTextureCS, Global);
-
-	FResizeAndCenterTextureCS() {};
-
-	FResizeAndCenterTextureCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
-		: FGlobalShader(Initializer)
-	{
-		using GPUFFTComputeShaderUtils::FComputeParameterBinder;
-
-		FComputeParameterBinder Binder(Initializer.ParameterMap);
-
-		Binder(SrcROTexture,         TEXT("SrcTexture"))
-			  (SrcSampler,           TEXT("SrcSampler"))
-			  (DstRWTexture,         TEXT("DstTexture"))
-		      (DstExtent,            TEXT("DstExtent"))
-			  (ImageExtent,          TEXT("ImageExtent"))
-			  (KernelCenterAndScale, TEXT("KernelCenterAndScale"))
-			  (DstBufferExtent,      TEXT("DstBufferExtent"));
-	}
+	// Determine the number of threads used per scanline when writing the physical space kernel
+	static const uint32 ThreadsPerGroup = 32;
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
@@ -45,341 +24,111 @@ public:
 		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform);
 	}
 
-	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
-	{
-		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-		
-		OutEnvironment.SetDefine(TEXT("INCLUDE_RESIZE_AND_CENTER"), 1);
-		OutEnvironment.SetDefine(TEXT("THREADS_PER_GROUP"), FResizeAndCenterTextureCS::NumThreadsPerGroup());
-		
-	}
-
-
-	// Determine the number of threads used per scanline when writing the physical space kernel
-	static int32 NumThreadsPerGroup() { return 32; }
-	// Method for use with the FScopedUAVBind
-	FShaderResourceParameter& DestinationResourceParameter() { return DstRWTexture; }
-
-	static const TCHAR* GetSourceFilename() { return TEXT("/Engine/Private/PostProcessFFTBloom.usf"); }
-	static const TCHAR* GetFunctionName()   { return TEXT("ResizeAndCenterTextureCS"); }
-
-	void SetCSParamters(FRHICommandList& RHICmdList, const FRenderingCompositePassContext& Context,
-		const FIntPoint& DstExtentValue, const FIntPoint& ImageExtentValue, const float ResizeScaleValue,
-		const FVector2D& KernelUVCenter, const FTextureRHIRef& SrcTexture, const FIntPoint& DstBufferExtentValue,
-		const bool bForceCenterZero)
-	{
-		float CenterScale = bForceCenterZero ? 0.f : 1.f;
-		const FLinearColor KernelCenterAndScaleValue(KernelUVCenter.X, KernelUVCenter.Y, ResizeScaleValue, CenterScale);
-
-		FRHIComputeShader* ShaderRHI = GetComputeShader();
-
-		// Set up the input.  We have to do this explicitly because the FFT dispatches multiple compute shaders and manages their input/output.
-
-		GPUFFTComputeShaderUtils::FComputeParamterValueSetter ParamSetter(RHICmdList, ShaderRHI);
-		
-		ParamSetter.Set<ESamplerFilter::SF_Bilinear, ESamplerAddressMode::AM_Wrap>(SrcROTexture, SrcSampler, SrcTexture);
-		
-		ParamSetter(DstExtent, DstExtentValue)
-			       (ImageExtent, ImageExtentValue)
-				   (KernelCenterAndScale, KernelCenterAndScaleValue)
-				   (DstBufferExtent, DstBufferExtentValue);
-	}
-
-	// FShader interface.
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar  << SrcROTexture
-			<< SrcSampler
-			<< DstRWTexture
-			<< DstExtent
-			<< ImageExtent
-			<< KernelCenterAndScale
-			<< DstBufferExtent;
-		return bShaderHasOutdatedParameters;
-	}
-
-public:
-
-	FShaderResourceParameter SrcROTexture;
-	FShaderResourceParameter SrcSampler;
-	FShaderResourceParameter DstRWTexture;
-	FShaderParameter DstExtent;
-	FShaderParameter ImageExtent;
-	FShaderParameter KernelCenterAndScale;
-	FShaderParameter DstBufferExtent;
+	FFFTShader() = default;
+	FFFTShader(const CompiledShaderInitializerType& Initializer)
+		: FGlobalShader(Initializer)
+	{}
 };
 
-IMPLEMENT_SHADER_TYPE3(FResizeAndCenterTextureCS, SF_Compute);
-
-
-
-class FCaptureKernelWeightsCS : public FGlobalShader
+class FResizeAndCenterTextureCS : public FFFTShader
 {
-
 public:
-	DECLARE_SHADER_TYPE(FCaptureKernelWeightsCS, Global);
+	DECLARE_GLOBAL_SHADER(FResizeAndCenterTextureCS);
+	SHADER_USE_PARAMETER_STRUCT(FResizeAndCenterTextureCS, FFFTShader);
 
-	FCaptureKernelWeightsCS() {};
-
-	FCaptureKernelWeightsCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
-		: FGlobalShader(Initializer)
-	{
-		using GPUFFTComputeShaderUtils::FComputeParameterBinder;
-		FComputeParameterBinder Binder(Initializer.ParameterMap);
-
-		Binder(HalfResKernelSrcROTexture, TEXT("HalfResSrcTexture"))
-			(PhysicalKernelSrcROTexture,  TEXT("PhysicalSrcTexture"))
-			(PhyscalKernelSrcSampler,     TEXT("PhysicalSrcSampler"))
-			(DstRWTexture,                TEXT("DstTexture"))
-			(HalfResSumLocation,          TEXT("HalfResSumLocation"))
-			(UVCenter,                    TEXT("UVCenter"));
-	}
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		// @todo MetalMRT: Metal MRT can't cope with the threadgroup storage requirements for these shaders right now
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform);
-	}
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_TEXTURE(Texture2D, SrcTexture)
+		SHADER_PARAMETER_SAMPLER(SamplerState, SrcSampler)
+		SHADER_PARAMETER_UAV(RWTexture2D<float4>, DstTexture)
+		SHADER_PARAMETER(FIntPoint, DstExtent)
+		SHADER_PARAMETER(FIntPoint, ImageExtent)
+		SHADER_PARAMETER(FVector4, KernelCenterAndScale)
+		SHADER_PARAMETER(FIntPoint, DstBufferExtent)
+	END_SHADER_PARAMETER_STRUCT()
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
-		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		FFFTShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("INCLUDE_RESIZE_AND_CENTER"), 1);
+		OutEnvironment.SetDefine(TEXT("THREADS_PER_GROUP"), ThreadsPerGroup);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FResizeAndCenterTextureCS, "/Engine/Private/PostProcessFFTBloom.usf", "ResizeAndCenterTextureCS", SF_Compute);
+
+class FCaptureKernelWeightsCS : public FFFTShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FCaptureKernelWeightsCS);
+	SHADER_USE_PARAMETER_STRUCT(FCaptureKernelWeightsCS, FFFTShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_TEXTURE(Texture2D, HalfResSrcTexture)
+		SHADER_PARAMETER_TEXTURE(Texture2D, PhysicalSrcTexture)
+		SHADER_PARAMETER_SAMPLER(SamplerState, PhysicalSrcSampler)
+		SHADER_PARAMETER_UAV(RWTexture2D<float4>, DstTexture)
+		SHADER_PARAMETER(FIntPoint, HalfResSumLocation)
+		SHADER_PARAMETER(FVector2D, UVCenter)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FFFTShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 		OutEnvironment.SetDefine(TEXT("INCLUDE_CAPTURE_KERNEL_WEIGHTS"), 1);
 	}
-
-	// Method for use with the FScopedUAVBind
-	FShaderResourceParameter& DestinationResourceParameter() { return DstRWTexture; }
-
-	static const TCHAR* GetSourceFilename() { return TEXT("/Engine/Private/PostProcessFFTBloom.usf"); }
-	static const TCHAR* GetFunctionName()   { return TEXT("CaptureKernelWeightsCS"); }
-
-
-	void SetCSParamters(FRHICommandList& RHICmdList, const FRenderingCompositePassContext& Context,
-		const FTextureRHIRef& HalfResKernelRef,
-		const FIntPoint& HalfResSumLocationValue,
-		const FTextureRHIRef& PhysicalKernelRef,
-		const FVector2D& UVCenterValue)
-	{
-		FRHIComputeShader* ShaderRHI = GetComputeShader();
-
-
-
-		// Set up the input.  We have to do this explicitly because the FFT dispatches multiple compute shaders and manages their input/output.
-		GPUFFTComputeShaderUtils::FComputeParamterValueSetter ParamSetter(RHICmdList, ShaderRHI);
-		ParamSetter.Set<ESamplerFilter::SF_Bilinear, ESamplerAddressMode::AM_Wrap>(PhysicalKernelSrcROTexture, PhyscalKernelSrcSampler, PhysicalKernelRef);
-		
-		ParamSetter(HalfResKernelSrcROTexture, HalfResKernelRef)
-			       (HalfResSumLocation, HalfResSumLocationValue)
-		           (UVCenter, UVCenterValue);
-	}
-
-	// FShader interface.
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar  << HalfResKernelSrcROTexture
-			<< PhysicalKernelSrcROTexture
-			<< PhyscalKernelSrcSampler
-			<< DstRWTexture
-			<< HalfResSumLocation
-			<< UVCenter;
-
-		return bShaderHasOutdatedParameters;
-	}
-
-public:
-
-	FShaderResourceParameter HalfResKernelSrcROTexture;
-	FShaderResourceParameter PhysicalKernelSrcROTexture;
-	FShaderResourceParameter PhyscalKernelSrcSampler;
-	FShaderResourceParameter DstRWTexture;
-	FShaderParameter HalfResSumLocation;
-	FShaderParameter UVCenter;
 };
 
-IMPLEMENT_SHADER_TYPE3(FCaptureKernelWeightsCS, SF_Compute);
+IMPLEMENT_GLOBAL_SHADER(FCaptureKernelWeightsCS, "/Engine/Private/PostProcessFFTBloom.usf", "CaptureKernelWeightsCS", SF_Compute);
 
-
-class FBlendLowResCS : public FGlobalShader
+class FBlendLowResCS : public FFFTShader
 {
-
 public:
-	DECLARE_SHADER_TYPE(FBlendLowResCS, Global);
+	DECLARE_GLOBAL_SHADER(FBlendLowResCS);
+	SHADER_USE_PARAMETER_STRUCT(FBlendLowResCS, FFFTShader);
 
-	FBlendLowResCS() {};
-
-	FBlendLowResCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
-		: FGlobalShader(Initializer)
-	{
-		using GPUFFTComputeShaderUtils::FComputeParameterBinder;
-
-		FComputeParameterBinder Binder(Initializer.ParameterMap);
-		Binder(FullResSrcROTexture, TEXT("SrcTexture"))
-			  (HalfResSrcROTexture, TEXT("HalfResSrcTexture"))
-			  (HalfResSrcSampler,   TEXT("HalfResSrcSampler"))
-			  (CenterWeight,        TEXT("CenterWeightTexture"))
-			  (DstRWTexture,        TEXT("DstTexture"))
-			  (DstRect,             TEXT("DstRect"))
-			  (HalfRect,            TEXT("HalfRect"))
-			  (HalfBufferSize,      TEXT("HalfBufferSize"));
-	}
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		// @todo MetalMRT: Metal MRT can't cope with the threadgroup storage requirements for these shaders right now
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform);
-	}
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_TEXTURE(Texture2D, SrcTexture)
+		SHADER_PARAMETER_TEXTURE(Texture2D, HalfResSrcTexture)
+		SHADER_PARAMETER_SAMPLER(SamplerState, HalfResSrcSampler)
+		SHADER_PARAMETER_TEXTURE(Texture2D, CenterWeightTexture)
+		SHADER_PARAMETER_UAV(RWTexture2D<float4>, DstTexture)
+		SHADER_PARAMETER(FIntRect, DstRect)
+		SHADER_PARAMETER(FIntRect, HalfRect)
+		SHADER_PARAMETER(FIntPoint, HalfBufferSize)
+	END_SHADER_PARAMETER_STRUCT()
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
-		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		FFFTShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 		OutEnvironment.SetDefine(TEXT("INCLUDE_BLEND_LOW_RES"), 1);
-		OutEnvironment.SetDefine(TEXT("THREADS_PER_GROUP"), FBlendLowResCS::NumThreadsPerGroup());
+		OutEnvironment.SetDefine(TEXT("THREADS_PER_GROUP"), ThreadsPerGroup);
 	}
-
-	// Method for use with the FScopedUAVBind
-	FShaderResourceParameter& DestinationResourceParameter() { return DstRWTexture; }
-
-	// Determine the number of threads used per scanline when writing the physical space kernel
-	static int32 NumThreadsPerGroup() { return 32; }
-
-	static const TCHAR* GetSourceFilename() { return TEXT("/Engine/Private/PostProcessFFTBloom.usf"); }
-	static const TCHAR* GetFunctionName()   { return TEXT("BlendLowResCS"); }
-
-
-	void SetCSParamters(FRHICommandList& RHICmdList, const FRenderingCompositePassContext& Context,
-		const FIntRect& TargetRect, const FIntRect& HalfResRect, const FIntPoint& HalfBufferExent, const FTextureRHIRef& CenterWeightTexutreRef,
-		const FTextureRHIRef& FullResTextureRef, const FTextureRHIRef& HalfResTextureRef)
-	{
-
-		using GPUFFTComputeShaderUtils::FComputeParamterValueSetter;
-
-		FRHIComputeShader* ShaderRHI = GetComputeShader();
-
-
-		// Set up the input.  We have to do this explicitly because the FFT dispatches multiple compute shaders and manages their input/output.
-		// We don't need a sampler for this texture ( will use .load)
-		SetTextureParameter(RHICmdList, ShaderRHI, CenterWeight, CenterWeightTexutreRef);
-
-		FComputeParamterValueSetter ParamSetter(RHICmdList, ShaderRHI);
-		
-		ParamSetter.Set<ESamplerFilter::SF_Bilinear, ESamplerAddressMode::AM_Wrap>(HalfResSrcROTexture, HalfResSrcSampler, HalfResTextureRef);
-		
-		ParamSetter(FullResSrcROTexture, FullResTextureRef)
-		           (DstRect,             TargetRect)
-		           (HalfRect,            HalfResRect)
-		           (HalfBufferSize,      HalfBufferExent);
-	}
-
-	// FShader interface.
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar  << FullResSrcROTexture
-			<< HalfResSrcROTexture
-			<< HalfResSrcSampler
-			<< CenterWeight
-			<< DstRWTexture
-			<< DstRect
-			<< HalfRect
-			<< HalfBufferSize;
-
-		return bShaderHasOutdatedParameters;
-	}
-
-public:
-
-	FShaderResourceParameter FullResSrcROTexture;
-	FShaderResourceParameter HalfResSrcROTexture;
-	FShaderResourceParameter HalfResSrcSampler;
-	FShaderResourceParameter CenterWeight;
-	FShaderResourceParameter DstRWTexture;
-	FShaderParameter DstRect;
-	FShaderParameter HalfRect;
-	FShaderParameter HalfBufferSize;
 };
 
-IMPLEMENT_SHADER_TYPE3(FBlendLowResCS, SF_Compute);
+IMPLEMENT_GLOBAL_SHADER(FBlendLowResCS, "/Engine/Private/PostProcessFFTBloom.usf", "BlendLowResCS", SF_Compute);
 
-
-class FPassThroughCS : public FGlobalShader
+class FPassThroughCS : public FFFTShader
 {
-
 public:
-	DECLARE_SHADER_TYPE(FPassThroughCS, Global);
+	DECLARE_GLOBAL_SHADER(FPassThroughCS);
+	SHADER_USE_PARAMETER_STRUCT(FPassThroughCS, FFFTShader);
 
-	FPassThroughCS() {};
-
-	FPassThroughCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
-		: FGlobalShader(Initializer)
-	{
-		using GPUFFTComputeShaderUtils::FComputeParameterBinder;
-		FComputeParameterBinder Binder(Initializer.ParameterMap);
-
-		Binder(SrcROTexture, TEXT("SrcTexture"))
-		      (DstRWTexture, TEXT("DstTexture"))
-		      (DstRect,      TEXT("DstRect"))
-		      (SrcRect,      TEXT("SrcRect"));
-	}
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		// @todo MetalMRT: Metal MRT can't cope with the threadgroup storage requirements for these shaders right now
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform);
-	}
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_TEXTURE(Texture2D, SrcTexture)
+		SHADER_PARAMETER_UAV(RWTexture2D<float4>, DstTexture)
+		SHADER_PARAMETER(FIntRect, SrcRect)
+		SHADER_PARAMETER(FIntRect, DstRect)
+	END_SHADER_PARAMETER_STRUCT()
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
+		FFFTShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 		OutEnvironment.SetDefine(TEXT("INCLUDE_PASSTHROUGH"), 1);
-		OutEnvironment.SetDefine(TEXT("THREADS_PER_GROUP"), FPassThroughCS::NumThreadsPerGroup());
+		OutEnvironment.SetDefine(TEXT("THREADS_PER_GROUP"), ThreadsPerGroup);
 	}
-
-	// Method for use with the FScopedUAVBind
-	FShaderResourceParameter& DestinationResourceParameter() { return DstRWTexture; }
-
-	static int32 NumThreadsPerGroup() { return 32; }
-
-	static const TCHAR* GetSourceFilename() { return TEXT("/Engine/Private/PostProcessFFTBloom.usf"); }
-	static const TCHAR* GetFunctionName()   { return TEXT("PassThroughCS"); }
-
-	void SetCSParamters(FRHICommandList& RHICmdList, const FRenderingCompositePassContext& Context,
-		const FTextureRHIRef& SrcTexture, const FIntRect& SrcRectValue, const FIntRect& DstRectValue)
-	{
-		using GPUFFTComputeShaderUtils::FComputeParamterValueSetter;
-		FRHIComputeShader* ShaderRHI = GetComputeShader();
-
-
-
-		// Set up the input.  We have to do this explicitly because the FFT dispatches multiple compute shaders and manages their input/output.
-
-		FComputeParamterValueSetter ParamSetter(RHICmdList, ShaderRHI);
-		ParamSetter(SrcROTexture, SrcTexture)
-				   (DstRect, DstRectValue)
-			       (SrcRect, SrcRectValue);
-	}
-
-	// FShader interface.
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar  << SrcROTexture
-			<< DstRWTexture
-			<< DstRect
-			<< SrcRect;
-
-		return bShaderHasOutdatedParameters;
-	}
-
-public:
-
-	FShaderResourceParameter SrcROTexture;
-	FShaderResourceParameter DstRWTexture;
-	FShaderParameter SrcRect;
-	FShaderParameter DstRect;
 };
 
-IMPLEMENT_SHADER_TYPE3(FPassThroughCS, SF_Compute);
+IMPLEMENT_GLOBAL_SHADER(FPassThroughCS, "/Engine/Private/PostProcessFFTBloom.usf", "PassThroughCS", SF_Compute);
 
 /**
 * Used to resample the physical space kernel into the correct sized buffer with the 
@@ -388,7 +137,6 @@ IMPLEMENT_SHADER_TYPE3(FPassThroughCS, SF_Compute);
 * Resizes the image, moves the center to to 0,0 and applies periodicity 
 * across the full TargetSize (periods TargetSize.x & TargetSize.y) 
 *
-* @param Context       - container for RHI and ShaderMap
 * @param SrcTexture    - SRV for the physical space kernel supplied by user
 * @param SrcImageSize  - The extent of the src image
 * @param SrcImageCenterUV - The location of the center in src image (e.g. where the kernel center really is).
@@ -398,7 +146,9 @@ IMPLEMENT_SHADER_TYPE3(FPassThroughCS, SF_Compute);
 * @param DstBufferSize - Size of DstBuffer
 * @param bForceCenterZero -  is true only for the experimental 1/2 res version, part of conserving energy
 */
-void ResizeAndCenterTexture(FRenderingCompositePassContext& Context,
+void ResizeAndCenterTexture(
+	FRHICommandList& RHICmdList,
+	const FViewInfo& View,
 	const FTextureRHIRef& SrcTexture,
 	const FIntPoint& SrcImageSize,
 	const FVector2D& SrcImageCenterUV,
@@ -408,42 +158,37 @@ void ResizeAndCenterTexture(FRenderingCompositePassContext& Context,
 	const FIntPoint& DstBufferSize,
 	const bool bForceCenterZero)
 {
-	FRHICommandListImmediate& RHICmdList = Context.RHICmdList;
 	SCOPED_DRAW_EVENTF(RHICmdList, FRCPassFFTBloom, TEXT("FFT: Pre-process the space kernel to %d by %d"), TargetSize.X, TargetSize.Y);
 
 	// Clamp the image center
-
 	FVector2D ClampedImageCenterUV = SrcImageCenterUV;
 	ClampedImageCenterUV.X = FMath::Clamp(SrcImageCenterUV.X, 0.f, 1.f);
 	ClampedImageCenterUV.Y = FMath::Clamp(SrcImageCenterUV.Y, 0.f, 1.f);
 
-	TShaderMap<FGlobalShaderType>& ShaderMap = *Context.GetShaderMap();
-	// Get a pointer to the shader
-	FResizeAndCenterTextureCS* ComputeShader = ShaderMap.GetShader< FResizeAndCenterTextureCS >();
-
-	// #todo-renderpasses remove once everything is renderpasses
-	UnbindRenderTargets(Context.RHICmdList);
-	RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
-
-	// set destination
 	check(DstUAV);
+	UnbindRenderTargets(RHICmdList);
 	RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, DstUAV);
 
 	{
-		GPUFFTComputeShaderUtils::FScopedUAVBind ScopedBindOutput = GPUFFTComputeShaderUtils::FScopedUAVBind::BindOutput(RHICmdList, ComputeShader, DstUAV);
+		TShaderMapRef<FResizeAndCenterTextureCS> ComputeShader(View.ShaderMap);
 
+		float CenterScale = bForceCenterZero ? 0.f : 1.f;
+		const FLinearColor KernelCenterAndScale(ClampedImageCenterUV.X, ClampedImageCenterUV.Y, ResizeScale, CenterScale);
 
-		ComputeShader->SetCSParamters(RHICmdList, Context, TargetSize, SrcImageSize, ResizeScale, ClampedImageCenterUV, SrcTexture, DstBufferSize, bForceCenterZero);
+		FResizeAndCenterTextureCS::FParameters PassParameters;
+		PassParameters.SrcTexture = SrcTexture;
+		PassParameters.SrcSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+		PassParameters.DstTexture = DstUAV;
+		PassParameters.DstExtent = TargetSize;
+		PassParameters.ImageExtent = SrcImageSize;
+		PassParameters.KernelCenterAndScale = KernelCenterAndScale;
+		PassParameters.DstBufferExtent = DstBufferSize;
 
 		// Use multiple threads per scan line to insure memory coalescing during the write
-		const int32 ThreadsPerGroup = ComputeShader->NumThreadsPerGroup();
+		const int32 ThreadsPerGroup = FResizeAndCenterTextureCS::ThreadsPerGroup;
 		const int32 ThreadsGroupsPerScanLine = (DstBufferSize.X % ThreadsPerGroup == 0) ? DstBufferSize.X / ThreadsPerGroup : DstBufferSize.X / ThreadsPerGroup + 1;
-
-		RHICmdList.DispatchComputeShader(ThreadsGroupsPerScanLine, DstBufferSize.Y, 1);
+		FComputeShaderUtils::Dispatch(RHICmdList, *ComputeShader, PassParameters, FIntVector(ThreadsGroupsPerScanLine, DstBufferSize.Y, 1));
 	}
-
-
-	
 }
 
 /**
@@ -459,44 +204,39 @@ void ResizeAndCenterTexture(FRenderingCompositePassContext& Context,
 * @param CenterWeightRT     - 2x1 float4 buffer that on return will hold result:
 *     At  (0,0) the center weight of physical kernel, and (1,0) the sum of the 1/2res kernel weights
 */
-void CaptureKernelWeight(FRenderingCompositePassContext& Context,
+void CaptureKernelWeight(
+	FRHICommandList& RHICmdList,
+	const FViewInfo& View,
 	const FTextureRHIRef& HalfResKernel,
 	const FIntPoint& HalfResSumLocation,
 	const FTextureRHIRef& PhysicalKernel,
 	const FVector2D& CenterUV,
 	TRefCountPtr<IPooledRenderTarget>& CenterWeightRT)
 {
-	FRHICommandListImmediate& RHICmdList = Context.RHICmdList;
-
 	SCOPED_DRAW_EVENTF(RHICmdList, FRCPassFFTBloom, TEXT("FFT: Capture Kernel Weights"));
 
 	FSceneRenderTargetItem& DstTargetItem = CenterWeightRT->GetRenderTargetItem();
 
-	// Get a pointer to the shader
-	TShaderMap<FGlobalShaderType>& ShaderMap = *Context.GetShaderMap();
-	// Get a pointer to the shader
-	FCaptureKernelWeightsCS* ComputeShader = ShaderMap.GetShader< FCaptureKernelWeightsCS >();
-
-	// #todo-renderpasses remove once everything is renderpasses
-	UnbindRenderTargets(Context.RHICmdList);
-	RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
-
-	// set destination
 	check(DstTargetItem.UAV);
+	UnbindRenderTargets(RHICmdList);
 	RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, DstTargetItem.UAV);
+
 	{
-		GPUFFTComputeShaderUtils::FScopedUAVBind ScopedBindOutput = GPUFFTComputeShaderUtils::FScopedUAVBind::BindOutput(Context.RHICmdList, ComputeShader, DstTargetItem.UAV);
-		RHICmdList.SetUAVParameter(ComputeShader->GetComputeShader(), ComputeShader->DstRWTexture.GetBaseIndex(), DstTargetItem.UAV);
+		TShaderMapRef<FCaptureKernelWeightsCS> ComputeShader(View.ShaderMap);
 
-		ComputeShader->SetCSParamters(RHICmdList, Context, HalfResKernel, HalfResSumLocation, PhysicalKernel, CenterUV);
+		FCaptureKernelWeightsCS::FParameters PassParameters;
+		PassParameters.HalfResSrcTexture = HalfResKernel;
+		PassParameters.PhysicalSrcTexture = PhysicalKernel;
+		PassParameters.PhysicalSrcSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+		PassParameters.DstTexture = DstTargetItem.UAV;
+		PassParameters.HalfResSumLocation = HalfResSumLocation;
+		PassParameters.UVCenter = CenterUV;
 
-		RHICmdList.DispatchComputeShader(1, 1, 1);
+		FComputeShaderUtils::Dispatch(RHICmdList, *ComputeShader, PassParameters, FIntVector(1, 1, 1));
 	}
-
 
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, DstTargetItem.UAV);
 
-	// Test.
 	ensureMsgf(DstTargetItem.TargetableTexture == DstTargetItem.ShaderResourceTexture, TEXT("%s should be resolved to a separate SRV"), *DstTargetItem.TargetableTexture->GetName().ToString());
 }
 
@@ -517,7 +257,9 @@ void CaptureKernelWeight(FRenderingCompositePassContext& Context,
 *                                 needed to correctly composite the 1/2 res bloomed result with the full-res image.
 * @param DstUAV                - Destination buffer that will hold the result.
 */
-void BlendLowRes(FRenderingCompositePassContext& Context,
+void BlendLowRes(
+	FRHICommandList& RHICmdList,
+	const FViewInfo& View,
 	const FTextureRHIRef& FullResImage,
 	const FIntRect& FullResImageRect,
 	const FTextureRHIRef& HalfResConvolvedImage,
@@ -526,90 +268,76 @@ void BlendLowRes(FRenderingCompositePassContext& Context,
 	const FTextureRHIRef& CenterWeightTexutre,
 	FUnorderedAccessViewRHIRef& DstUAV)
 {
-	FRHICommandListImmediate& RHICmdList = Context.RHICmdList;
 	SCOPED_DRAW_EVENTF(RHICmdList, FRCPassFFTBloom, TEXT("FFT: Post-process upres and blend"));
-
-
-	// Get a pointer to the shader
-	// Get a pointer to the shader
-	TShaderMap<FGlobalShaderType>& ShaderMap = *Context.GetShaderMap();
-	// Get a pointer to the shader
-	FBlendLowResCS* ComputeShader = ShaderMap.GetShader< FBlendLowResCS>();
-
-	// #todo-renderpasses remove once everything is renderpasses
-	UnbindRenderTargets(Context.RHICmdList);
-	RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
 
 	// set destination
 	check(DstUAV);
+	UnbindRenderTargets(RHICmdList);
 	RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, DstUAV);
-	
-	{
-		GPUFFTComputeShaderUtils::FScopedUAVBind ScopedBindOutput = GPUFFTComputeShaderUtils::FScopedUAVBind::BindOutput(Context.RHICmdList, ComputeShader, DstUAV);
-		ComputeShader->SetCSParamters(RHICmdList, Context, FullResImageRect, HalfResRect, HalfBufferSize, CenterWeightTexutre, FullResImage, HalfResConvolvedImage);
 
-		FIntPoint TargetExtent = FullResImageRect.Size();
+	{
+		TShaderMapRef<FBlendLowResCS> ComputeShader(View.ShaderMap);
+
+		FBlendLowResCS::FParameters PassParameters;
+		PassParameters.SrcTexture = FullResImage;
+		PassParameters.DstTexture = DstUAV;
+		PassParameters.HalfResSrcTexture = HalfResConvolvedImage;
+		PassParameters.HalfResSrcSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+		PassParameters.CenterWeightTexture = CenterWeightTexutre;
+		PassParameters.DstRect = FullResImageRect;
+		PassParameters.HalfRect = HalfResRect;
+		PassParameters.HalfBufferSize = HalfBufferSize;
+
+		const FIntPoint TargetExtent = FullResImageRect.Size();
+
 		// Use multiple threads per scan line to insure memory coalescing during the write
-		const int32 ThreadsPerGroup = ComputeShader->NumThreadsPerGroup();
+		const int32 ThreadsPerGroup = ComputeShader->ThreadsPerGroup;
 		const int32 ThreadsGroupsPerScanLine = (TargetExtent.X % ThreadsPerGroup == 0) ? TargetExtent.X / ThreadsPerGroup : TargetExtent.X / ThreadsPerGroup + 1;
 
-		RHICmdList.DispatchComputeShader(ThreadsGroupsPerScanLine, TargetExtent.Y, 1);
+		FComputeShaderUtils::Dispatch(RHICmdList, *ComputeShader, PassParameters, FIntVector(ThreadsGroupsPerScanLine, TargetExtent.Y, 1));
 	}
 
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, DstUAV);
-
 }
 
 /**
 * Used to copy the input image in the event that it is too large to bloom (i.e. doesn't fit in the FFT group shared memory)
 *
-* @param Context - container for RHI and ShaderMap
 * @param SrcTargetItem  - The SrcBuffer to be copied.
 * @param SrcRect        - The region in the SrcBuffer to copy
 * @param DstUAV         - The target buffer for the copy
 * @param DstRect        - The location and region in the target buffer for the copy
 */
-void CopyImageRect(FRenderingCompositePassContext& Context, const FSceneRenderTargetItem& SrcTargetItem, const FIntRect& SrcRect, FUnorderedAccessViewRHIRef& DstUAV,  const FIntRect& DstRect)
+void CopyImageRect(FRHICommandList& RHICmdList, const FViewInfo& View, const FSceneRenderTargetItem& SrcTargetItem, const FIntRect& SrcRect, FUnorderedAccessViewRHIRef& DstUAV,  const FIntRect& DstRect)
 {
-
-	SCOPED_DRAW_EVENTF(Context.RHICmdList, FRCPassFFTBloom, TEXT("FFT: passthrough "));
-
-	FRHICommandListImmediate& RHICmdList = Context.RHICmdList;
-
-
-	// Get a pointer to the shader
-	// Get a pointer to the shader
-		// Get a pointer to the shader
-	TShaderMap<FGlobalShaderType>& ShaderMap = *Context.GetShaderMap();
-	// Get a pointer to the shader
-	FPassThroughCS* ComputeShader = ShaderMap.GetShader< FPassThroughCS >();
-
-	// #todo-renderpasses remove once everything is renderpasses
-	UnbindRenderTargets(Context.RHICmdList);
-	Context.RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
+	SCOPED_DRAW_EVENTF(RHICmdList, FRCPassFFTBloom, TEXT("FFT: passthrough "));
 
 	// set destination
 	check(DstUAV);
+	UnbindRenderTargets(RHICmdList);
 	RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, DstUAV);
+
 	{
-		GPUFFTComputeShaderUtils::FScopedUAVBind ScopedBindOutput = GPUFFTComputeShaderUtils::FScopedUAVBind::BindOutput(RHICmdList, ComputeShader, DstUAV);
+		TShaderMapRef<FPassThroughCS> ComputeShader(View.ShaderMap);
 
-
-		ComputeShader->SetCSParamters(RHICmdList, Context, SrcTargetItem.ShaderResourceTexture, SrcRect, DstRect);
+		FPassThroughCS::FParameters PassParameters;
+		PassParameters.SrcTexture = SrcTargetItem.ShaderResourceTexture;
+		PassParameters.DstTexture = DstUAV;
+		PassParameters.SrcRect = SrcRect;
+		PassParameters.DstRect = DstRect;
 
 		const FIntPoint DstRectSize = DstRect.Size();
 
 		// Use multiple threads per scan line to insure memory coalescing during the write
-		const int32 ThreadsPerGroup = ComputeShader->NumThreadsPerGroup();
+		const int32 ThreadsPerGroup = ComputeShader->ThreadsPerGroup;
 		const int32 ThreadsGroupsPerScanLine = (DstRectSize.X % ThreadsPerGroup == 0) ? DstRectSize.X / ThreadsPerGroup : DstRectSize.X / ThreadsPerGroup + 1;
 
-		RHICmdList.DispatchComputeShader(ThreadsGroupsPerScanLine, DstRectSize.Y, 1);
+		FComputeShaderUtils::Dispatch(RHICmdList, *ComputeShader, PassParameters, FIntVector(ThreadsGroupsPerScanLine, DstRectSize.Y, 1));
 	}
 }
 
 void FRCPassFFTBloom::InitializeDomainParameters(FRenderingCompositePassContext& Context, const float KernelSupportScale, const float KernelSupportScaleClamp)
 {
-
 	// We padd by 1/2 the number of pixels the kernel needs in the x-direction
 	// so if the kernel is being applied on the edge of the image it will see padding and not periodicity
 	// NB:  If the kernel padding would force a transform buffer that is too big for group shared memory (> 4096)
@@ -634,9 +362,6 @@ void FRCPassFFTBloom::InitializeDomainParameters(FRenderingCompositePassContext&
 		return;
 	}
 
-
-	const FViewInfo& View = Context.View;
-
 	InputBufferSize = InputDesc->Extent;
 
 	// Get the source
@@ -648,8 +373,6 @@ void FRCPassFFTBloom::InitializeDomainParameters(FRenderingCompositePassContext&
 
 	OutputTargetItem = const_cast<FSceneRenderTargetItem*>(&PassOutputs[0].RequestSurface(Context));
 	FIntPoint OutputBufferSize = PassOutputs[0].RenderTargetDesc.Extent;
-
-
 
 	// Determine the region in the source buffer that we want to copy.
 	//
@@ -694,12 +417,9 @@ void FRCPassFFTBloom::InitializeDomainParameters(FRenderingCompositePassContext&
 	bIsInitialized = true;
 }
 
-
-
-bool  FRCPassFFTBloom::TransformKernelFFT(FRenderingCompositePassContext& Context, FSceneRenderTargetItem& KernelTargetItem)
+bool  FRCPassFFTBloom::TransformKernelFFT(FRHICommandList& RHICmdList, const FViewInfo& View, FSceneRenderTargetItem& KernelTargetItem)
 {
-	FRHICommandListImmediate& RHICmdList = Context.RHICmdList;
-	GPUFFT::FGPUFFTShaderContext FFTContext(RHICmdList, *Context.GetShaderMap());
+	GPUFFT::FGPUFFTShaderContext FFTContext(RHICmdList, *View.ShaderMap);
 
 	// Create the tmp buffer
 
@@ -715,7 +435,7 @@ bool  FRCPassFFTBloom::TransformKernelFFT(FRenderingCompositePassContext& Contex
 
 	// Temp buffer used at intermediate buffer when transforming the world space kernel 
 	TRefCountPtr<IPooledRenderTarget> TmpRT;
-	GRenderTargetPool.FindFreeElement(Context.RHICmdList, Desc, TmpRT, TEXT("FFT Tmp Kernel Buffer"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, TmpRT, TEXT("FFT Tmp Kernel Buffer"));
 
 	FIntRect SrcRect(FIntPoint(0, 0), FrequencySize);
 	const FTextureRHIRef& SrcImage = KernelTargetItem.ShaderResourceTexture;
@@ -725,13 +445,11 @@ bool  FRCPassFFTBloom::TransformKernelFFT(FRenderingCompositePassContext& Contex
 
 	// Transition resource
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, ResultBuffer.UAV);
-	//RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, ResultUAV);
 	
 	return SuccessValue;
 }
 
-
-bool FRCPassFFTBloom::ConvolveWithKernel(FRenderingCompositePassContext& Context,
+bool FRCPassFFTBloom::ConvolveWithKernel(FRHICommandList& RHICmdList, const FViewInfo& View,
 	const FTextureRHIRef& SpectralKernelTexture, const FLinearColor& Tint,
 	const FTextureRHIRef& SrcTexture, FUnorderedAccessViewRHIRef& ResultUAV,
 	const FPreFilter& PreFilter)
@@ -743,8 +461,7 @@ bool FRCPassFFTBloom::ConvolveWithKernel(FRenderingCompositePassContext& Context
 		return false;
 	}
 
-	FRHICommandListImmediate& RHICmdList = Context.RHICmdList;
-	GPUFFT::FGPUFFTShaderContext FFTContext(RHICmdList, *Context.GetShaderMap());
+	GPUFFT::FGPUFFTShaderContext FFTContext(RHICmdList, *View.ShaderMap);
 
 	// Get Tmp buffers required for the Convolution
 	
@@ -755,8 +472,8 @@ bool FRCPassFFTBloom::ConvolveWithKernel(FRenderingCompositePassContext& Context
 	FPooledRenderTargetDesc Desc = 
 		FPooledRenderTargetDesc::Create2DDesc(TmpExtent, GPUFFT::PixelFormat(), FClearValueBinding::None, TexCreate_None, TexCreate_RenderTargetable | TexCreate_UAV, false);
 
-	GRenderTargetPool.FindFreeElement(Context.RHICmdList, Desc, TmpTargets[0], TEXT("Tmp FFT Buffer A"));
-	GRenderTargetPool.FindFreeElement(Context.RHICmdList, Desc, TmpTargets[1], TEXT("Tmp FFT Buffer B"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, TmpTargets[0], TEXT("Tmp FFT Buffer A"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, TmpTargets[1], TEXT("Tmp FFT Buffer B"));
 	
 	// Get the source
 	const FTextureRHIRef& InputTexture = SrcTexture;
@@ -774,16 +491,12 @@ bool FRCPassFFTBloom::ConvolveWithKernel(FRenderingCompositePassContext& Context
 	RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToGfx, ResultUAV);
 
 	return SuccessValue;
-
 }
 
 FSceneRenderTargetItem* FRCPassFFTBloom::InitDomainAndGetKernel(FRenderingCompositePassContext& Context)
 {
-
 	const FViewInfo& View = Context.View;
 	FSceneViewState* ViewState = (FSceneViewState*)View.State;
-
-	
 
 	const auto& PPSettings = View.FinalPostProcessSettings;
 
@@ -804,7 +517,6 @@ FSceneRenderTargetItem* FRCPassFFTBloom::InitDomainAndGetKernel(FRenderingCompos
 	// The pre-filter boost parameters for bright pixels. Because the Convolution PP work in pre-exposure space, the min and max needs adjustment.
 	const FVector PreFilter(PPSettings.BloomConvolutionPreFilterMin * View.PreExposure, PPSettings.BloomConvolutionPreFilterMax * View.PreExposure, PPSettings.BloomConvolutionPreFilterMult);
 
-	
 	// Clip the Kernel support (i.e. bloom size) to 100% the screen width 
 	const float MaxBloomSize = 1.f;
 	const float ClampedBloomSizeScale = FMath::Clamp(BloomConvolutionSize, 0.f, MaxBloomSize);
@@ -823,13 +535,6 @@ FSceneRenderTargetItem* FRCPassFFTBloom::InitDomainAndGetKernel(FRenderingCompos
 	// redundant check
 	if (!BloomConvolutionTexture || !BloomConvolutionTexture->Resource)  return nullptr;
 
-
-	// The FFT is much slower if not in group shared memory.
-	bool bFitsInGroupSharedMemory = GPUFFT::FitsInGroupSharedMemory(FrequencySize.X) && GPUFFT::FitsInGroupSharedMemory(FrequencySize.Y);
-	//if (!bFitsInGroupSharedMemory) return nullptr;
-
-
-
 	// Our frequency storage layout adds two elements to the first transform direction. 
 	const FIntPoint FrequencyPadding = (bDoHorizontalFirst) ? FIntPoint(2, 0) : FIntPoint(0, 2);
 	const FIntPoint PaddedFrequencySize = FrequencySize + FrequencyPadding;
@@ -839,7 +544,6 @@ FSceneRenderTargetItem* FRCPassFFTBloom::InitDomainAndGetKernel(FRenderingCompos
 	const EPixelFormat PixelFormat = GPUFFT::PixelFormat();
 	const FPooledRenderTargetDesc TransformDesc = FPooledRenderTargetDesc::Create2DDesc(PaddedFrequencySize, PixelFormat,
 		FClearValueBinding::None, TexCreate_None, TexCreate_RenderTargetable | TexCreate_UAV, false);
-
 
 	auto& FFTKernel = ViewState->BloomFFTKernel;
 	// Get the FFT kernel from the view state (note, this has already been transformed).
@@ -869,11 +573,10 @@ FSceneRenderTargetItem* FRCPassFFTBloom::InitDomainAndGetKernel(FRenderingCompos
 		{
 			bCachedKernelIsDirty = false;
 		}
-
 	}
 
-
 	const bool bIsHalfResolutionFFT = bHalfResolutionFFT();
+
 	// Re-transform the kernel if needed.
 	if (bCachedKernelIsDirty)
 	{
@@ -890,7 +593,7 @@ FSceneRenderTargetItem* FRCPassFFTBloom::InitDomainAndGetKernel(FRenderingCompos
 
 		// Rescale the physical space kernel ( and omit the center if this is a 1/2 resolution fft, it will be added later)
 
-		ResizeAndCenterTexture(Context, PhysicalSpaceKernelTextureRef, ImageSize, CenterUV, ClampedBloomSizeScale,
+		ResizeAndCenterTexture(Context.RHICmdList, Context.View, PhysicalSpaceKernelTextureRef, ImageSize, CenterUV, ClampedBloomSizeScale,
 			FrequencySize, SpectralKernelRTItem.UAV, PaddedFrequencySize, bIsHalfResolutionFFT);
 
 		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, SpectralKernelRTItem.UAV);
@@ -898,9 +601,7 @@ FSceneRenderTargetItem* FRCPassFFTBloom::InitDomainAndGetKernel(FRenderingCompos
 		// Two Dimensional FFT of the physical space kernel.  
 		// Input: SpectralRTItem holds the physical space kernel, on return it will be the spectral space 
 
-		TransformKernelFFT(Context, SpectralKernelRTItem);
-
-
+		TransformKernelFFT(Context.RHICmdList, Context.View, SpectralKernelRTItem);
 
 		if (bIsHalfResolutionFFT)
 		{
@@ -918,7 +619,7 @@ FSceneRenderTargetItem* FRCPassFFTBloom::InitDomainAndGetKernel(FRenderingCompos
 
 			const FIntPoint HalfResSumLocation = (bDoHorizontalFirst) ? FIntPoint(HalfResKernelExtent.X, 0) : FIntPoint(0, HalfResKernelExtent.Y);
 			// Capture the missing center weight from the kernel and the sum of the existing weights.
-			CaptureKernelWeight(Context, HalfResKernelTextureRef, HalfResKernelExtent, PhysicalSpaceKernelTextureRef, CenterUV, CenterWeightRT);
+			CaptureKernelWeight(Context.RHICmdList, Context.View, HalfResKernelTextureRef, HalfResKernelExtent, PhysicalSpaceKernelTextureRef, CenterUV, CenterWeightRT);
 		}
 
 		// Update the data on the ViewState
@@ -933,10 +634,8 @@ FSceneRenderTargetItem* FRCPassFFTBloom::InitDomainAndGetKernel(FRenderingCompos
 	return &(TransformedKernelRT->GetRenderTargetItem());
 }
 
-
 bool FRCPassFFTBloom::ConvolveImageWithKernel(FRenderingCompositePassContext& Context)
 {
-
 	// Init the domain data update the cached kernel if needed.
 	FSceneRenderTargetItem* SpectralKernelRTItem = InitDomainAndGetKernel(Context);
 
@@ -948,7 +647,6 @@ bool FRCPassFFTBloom::ConvolveImageWithKernel(FRenderingCompositePassContext& Co
 	const FTextureRHIRef& SpectralKernelTexture = SpectralKernelRTItem->ShaderResourceTexture;
 
 	const bool bIsHalfResolutionFFT = bHalfResolutionFFT();
-	
 
 	const FViewInfo& View = Context.View;
 	const auto& FinalPPSettings = View.FinalPostProcessSettings;
@@ -973,7 +671,7 @@ bool FRCPassFFTBloom::ConvolveImageWithKernel(FRenderingCompositePassContext& Co
 
 		// The FFT result buffer is also half res.
 	
-		ConvolveWithKernel(Context, SpectralKernelTexture, Tint, InputTargetItem->ShaderResourceTexture , HalfResConvolutionRTItem.UAV, PreFilter);
+		ConvolveWithKernel(Context.RHICmdList, Context.View, SpectralKernelTexture, Tint, InputTargetItem->ShaderResourceTexture , HalfResConvolutionRTItem.UAV, PreFilter);
 
 		// The blend weighting parameters from the View State
 
@@ -994,33 +692,26 @@ bool FRCPassFFTBloom::ConvolveImageWithKernel(FRenderingCompositePassContext& Co
 
 		// Blend with  alpha * SrcBuffer + betta * BloomedBuffer  where alpha = Weights[0], beta = Weights[1]
 		const FIntPoint& HalfResBufferSize = InputBufferSize;
-		BlendLowRes(Context, FullResResourceTexture, Context.SceneColorViewRect, HalfResConvolutionRTItem.ShaderResourceTexture, ImageRect, HalfResBufferSize, CenterWeightTexture, PassOutput.UAV);
-
-	
-
+		BlendLowRes(Context.RHICmdList, Context.View, FullResResourceTexture, Context.SceneColorViewRect, HalfResConvolutionRTItem.ShaderResourceTexture, ImageRect, HalfResBufferSize, CenterWeightTexture, PassOutput.UAV);
 	}
 	else
 	{
 		// Do Convolution directly into the output buffer
 		// NB: In this case there is only one input, and the output has matching resolution
-
-		ConvolveWithKernel(Context, SpectralKernelTexture, Tint, InputTargetItem->ShaderResourceTexture, OutputTargetItem->UAV, PreFilter);
-
+		ConvolveWithKernel(Context.RHICmdList, Context.View, SpectralKernelTexture, Tint, InputTargetItem->ShaderResourceTexture, OutputTargetItem->UAV, PreFilter);
 	}
 
 	return true;
 }
 
-void FRCPassFFTBloom::PassThroughImage(FRenderingCompositePassContext& Context)
+void FRCPassFFTBloom::PassThroughImage(FRHICommandList& RHICmdList, const FViewInfo& View)
 {
 	// Copy the Image content and location
 	const FIntRect& InputRect  = ImageRect;
 	const FIntRect& OutputRect = ImageRect;
-	CopyImageRect(Context, *InputTargetItem, InputRect, OutputTargetItem->UAV, OutputRect);
-	Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, OutputTargetItem->UAV);
+	CopyImageRect(RHICmdList, View, *InputTargetItem, InputRect, OutputTargetItem->UAV, OutputRect);
+	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, OutputTargetItem->UAV);
 }
-
-
 
 void FRCPassFFTBloom::Process(FRenderingCompositePassContext& Context)
 {
@@ -1031,9 +722,8 @@ void FRCPassFFTBloom::Process(FRenderingCompositePassContext& Context)
 	// for group shared memory or if the Context.View.State is invalid.
 	if (!bSucesss)
 	{
-		PassThroughImage(Context);
+		PassThroughImage(Context.RHICmdList, Context.View);
 	}
-
 }
 
 FPooledRenderTargetDesc FRCPassFFTBloom::ComputeOutputDesc(EPassOutputId InPassOutputId) const
@@ -1045,13 +735,8 @@ FPooledRenderTargetDesc FRCPassFFTBloom::ComputeOutputDesc(EPassOutputId InPassO
 
 	const FPooledRenderTargetDesc& SrcRet = GetInput(PassInputId)->GetOutput()->RenderTargetDesc;
 
-	// NB: this only resets a limited number of parameters 
-	//SrcRet.Reset();
-	// PF_FloatRGBA
-	EPixelFormat Format = SrcRet.Format;
-
 	FIntPoint Extent = SrcRet.Extent;
-	FPooledRenderTargetDesc Ret(FPooledRenderTargetDesc::Create2DDesc(Extent, Format, FClearValueBinding::None, TexCreate_None, TexCreate_RenderTargetable | TexCreate_UAV, false));
+	FPooledRenderTargetDesc Ret(FPooledRenderTargetDesc::Create2DDesc(SrcRet.Extent, SrcRet.Format, FClearValueBinding::None, TexCreate_None, TexCreate_RenderTargetable | TexCreate_UAV, false));
 
 	Ret.DebugName = TEXT("FFTBuffer");
 

@@ -84,16 +84,16 @@ namespace GPUFFT
 
 		typedef TShaderMap<FGlobalShaderType>  ShaderMapType;
 
-		FGPUFFTShaderContext(FRHICommandListImmediate& CmdList, const FGPUFFTShaderContext::ShaderMapType& Map)
+		FGPUFFTShaderContext(FRHICommandList& CmdList, const FGPUFFTShaderContext::ShaderMapType& Map)
 			: RHICmdList(&CmdList), ShaderMap(&Map)
 		{}
 
-		FRHICommandListImmediate& GetRHICmdList() { return *RHICmdList; }
+		FRHICommandList& GetRHICmdList() { return *RHICmdList; }
 		const ShaderMapType& GetShaderMap() const { return *ShaderMap; }
 
 	private:
 		FGPUFFTShaderContext();
-		FRHICommandListImmediate* RHICmdList;
+		FRHICommandList* RHICmdList;
 		const ShaderMapType* ShaderMap;
 	};
 
@@ -571,7 +571,7 @@ namespace GPUFFTComputeShaderUtils
 
 		// Factory method.
 		template <typename ComputeShaderT>
-		inline static FScopedUAVBind BindOutput(FRHICommandListImmediate& CmdList, ComputeShaderT* Shader, const FUnorderedAccessViewRHIRef& BufferUAV)
+		inline static FScopedUAVBind BindOutput(FRHICommandList& CmdList, ComputeShaderT* Shader, const FUnorderedAccessViewRHIRef& BufferUAV)
 		{
 			FRHIComputeShader* ShaderRHI = Shader->GetComputeShader();
 			const uint32 BaseIndex = Shader->DestinationResourceParameter().GetBaseIndex();
@@ -589,7 +589,7 @@ namespace GPUFFTComputeShaderUtils
 	private:
 		FScopedUAVBind();
 
-		FScopedUAVBind(FRHICommandListImmediate& CmdList, FRHIComputeShader* ShaderRHI, const uint32 BaseIndex, const FUnorderedAccessViewRHIRef& BufferUAV)
+		FScopedUAVBind(FRHICommandList& CmdList, FRHIComputeShader* ShaderRHI, const uint32 BaseIndex, const FUnorderedAccessViewRHIRef& BufferUAV)
 			:ComputeShader(ShaderRHI), RHICmdList(&CmdList), Index(BaseIndex)
 		{
 			RHICmdList->SetUAVParameter(ComputeShader, Index, BufferUAV);
@@ -597,7 +597,7 @@ namespace GPUFFTComputeShaderUtils
 
 
 		FRHIComputeShader* ComputeShader;
-		FRHICommandListImmediate* RHICmdList;
+		FRHICommandList* RHICmdList;
 		uint32 Index;
 	};
 

@@ -49,7 +49,7 @@ private:
 	* Will simply copy the input image to the output.  
 	* To be called if we discover during Process() that the input image was too large to transform
 	*/
-	void PassThroughImage(FRenderingCompositePassContext& Context);
+	void PassThroughImage(FRHICommandList& RHICmdList, const FViewInfo& View);
 	
 	// -----------------------------------------------------------------------------------
 	
@@ -80,7 +80,7 @@ private:
 	*
 	* @return success code.
 	*/
-	bool TransformKernelFFT(FRenderingCompositePassContext& Context, FSceneRenderTargetItem& KernelTargetItem);
+	bool TransformKernelFFT(FRHICommandList& RHICmdList, const FViewInfo& View, FSceneRenderTargetItem& KernelTargetItem);
 
 	/**
 	* 2D Convolution of the ImageRect region of the SrcTargetItem with the pre-convolved SpectralKernel
@@ -95,7 +95,7 @@ private:
 	* @return success code.
 	*/
 	typedef FVector  FPreFilter;
-	bool ConvolveWithKernel(FRenderingCompositePassContext& Context, const FTextureRHIRef& SpectralKernel, const FLinearColor& Tint,
+	bool ConvolveWithKernel(FRHICommandList& RHICmdList, const FViewInfo& View, const FTextureRHIRef& SpectralKernel, const FLinearColor& Tint,
 		const FTextureRHIRef& SrcTexture, FUnorderedAccessViewRHIRef& ResultUAV,
 		const FPreFilter& PreFilter = FPreFilter(TNumericLimits<float>::Max(), TNumericLimits<float>::Lowest(), 0.f));
 
