@@ -122,11 +122,13 @@ struct FRayTracingGeometrySegment
 struct FRayTracingGeometryInitializer
 {
 	FVertexBufferRHIRef PositionVertexBuffer = nullptr;
-	FIndexBufferRHIRef IndexBuffer = nullptr;
 	uint32 VertexBufferByteOffset = 0;
 	uint32 VertexBufferStride = 0;
 	EVertexElementType VertexBufferElementType = VET_Float3;
-	uint32 BaseVertexIndex = 0;
+
+	FIndexBufferRHIRef IndexBuffer = nullptr;
+	uint32 IndexBufferByteOffset = 0;
+
 	ERayTracingGeometryType GeometryType = RTGT_Triangles;
 	uint32 TotalPrimitiveCount = 0;
 	TArray<FRayTracingGeometrySegment> Segments;

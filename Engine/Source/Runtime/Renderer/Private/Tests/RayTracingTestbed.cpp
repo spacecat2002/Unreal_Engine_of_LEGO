@@ -99,7 +99,6 @@ bool RunRayTracingTestbed_RenderThread(const FString& Parameters)
 	GeometryInitializer.VertexBufferByteOffset = 0;
 	GeometryInitializer.VertexBufferStride = sizeof(FVector);
 	GeometryInitializer.VertexBufferElementType = VET_Float3;
-	GeometryInitializer.BaseVertexIndex = 0;
 	GeometryInitializer.GeometryType = RTGT_Triangles;
 	GeometryInitializer.TotalPrimitiveCount = 1;
 	GeometryInitializer.bFastBuild = false;

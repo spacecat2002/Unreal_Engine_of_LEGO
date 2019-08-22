@@ -380,7 +380,6 @@ void FSkeletalMeshObjectGPUSkin::UpdateDynamicData_RenderThread(FGPUSkinCache* G
 				Initializer.PositionVertexBuffer = RHICreateVertexBuffer(LODModel.GetNumVertices() * sizeof(FVector), BUF_ShaderResource, CreateInfo);
 				FGPUSkinCache::CreateMergedPositionVertexBuffer(RHICmdList, SkinCacheEntry, Initializer.PositionVertexBuffer);
 				Initializer.IndexBuffer = IndexBufferRHI;
-				Initializer.BaseVertexIndex = 0;
 				Initializer.VertexBufferStride = VertexBufferStride;
 				Initializer.VertexBufferByteOffset = 0;
 				Initializer.TotalPrimitiveCount = TrianglesCount;

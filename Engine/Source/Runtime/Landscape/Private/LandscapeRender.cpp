@@ -1051,7 +1051,6 @@ void FLandscapeComponentSceneProxy::CreateRenderThreadResources()
 				FRHIResourceCreateInfo CreateInfo;
 				Initializer.PositionVertexBuffer = RHICreateVertexBuffer(sizeof(FVector4) * NumPrimitives * 3, BUF_UnorderedAccess | BUF_ShaderResource, CreateInfo);
 				Initializer.IndexBuffer = nullptr;
-				Initializer.BaseVertexIndex = 0;
 				Initializer.VertexBufferStride = sizeof(FVector);
 				Initializer.TotalPrimitiveCount = NumPrimitives;
 				Initializer.VertexBufferElementType = VET_Float3;
