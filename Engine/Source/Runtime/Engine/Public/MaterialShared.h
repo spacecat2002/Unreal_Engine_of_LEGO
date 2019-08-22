@@ -1557,10 +1557,9 @@ public:
 	/** Returns whether this material should be considered for casting dynamic shadows. */
 	inline bool ShouldCastDynamicShadows() const
 	{
-		return GetShadingModels().IsLit() &&
-			(GetBlendMode() == BLEND_Opaque ||
-			 GetBlendMode() == BLEND_Masked ||
-			(GetBlendMode() == BLEND_Translucent && GetCastDynamicShadowAsMasked()));
+		return (GetBlendMode() == BLEND_Opaque ||
+		        GetBlendMode() == BLEND_Masked ||
+		       (GetBlendMode() == BLEND_Translucent && GetCastDynamicShadowAsMasked()));
 	}
 
 
