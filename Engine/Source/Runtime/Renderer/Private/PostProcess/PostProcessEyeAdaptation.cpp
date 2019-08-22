@@ -753,8 +753,7 @@ void FSceneViewState::UpdatePreExposure(FViewInfo& View)
 		!ViewFamily.EngineShowFlags.LightComplexity &&
 		!ViewFamily.EngineShowFlags.LODColoration &&
 		!ViewFamily.EngineShowFlags.HLODColoration &&
-		!ViewFamily.EngineShowFlags.LevelColoration &&
-		!ViewFamily.EngineShowFlags.VisualizeBloom;
+		!ViewFamily.EngineShowFlags.LevelColoration;
 
 	PreExposure = 1.f;
 	bUpdateLastExposure = false;

@@ -1,372 +1,63 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-/*=============================================================================
-	PostProcessBloomSetup.cpp: Post processing bloom threshold pass implementation.
-=============================================================================*/
-
 #include "PostProcess/PostProcessBloomSetup.h"
-#include "StaticBoundShaderState.h"
-#include "SceneUtils.h"
-#include "PostProcess/SceneRenderTargets.h"
-#include "PostProcess/SceneFilterRendering.h"
-#include "PostProcess/PostProcessing.h"
-#include "PostProcess/PostProcessEyeAdaptation.h"
-#include "ClearQuad.h"
-#include "PipelineStateCache.h"
 
+namespace
+{
 const int32 GBloomSetupComputeTileSizeX = 8;
 const int32 GBloomSetupComputeTileSizeY = 8;
 
-/** Encapsulates the post processing bloom threshold pixel shader. */
-class FPostProcessBloomSetupPS : public FGlobalShader
+BEGIN_SHADER_PARAMETER_STRUCT(FBloomSetupParameters, )
+	SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
+	SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Input)
+	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, InputTexture)
+	SHADER_PARAMETER_SAMPLER(SamplerState, InputSampler)
+	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, EyeAdaptation)
+	SHADER_PARAMETER(float, BloomThreshold)
+END_SHADER_PARAMETER_STRUCT()
+
+FBloomSetupParameters GetBloomSetupParameters(
+	const FViewInfo& View,
+	const FScreenPassTextureViewport& InputViewport,
+	FRDGTextureRef InputTexture,
+	FRDGTextureRef EyeAdaptationTexture,
+	float BloomThreshold)
 {
-	DECLARE_SHADER_TYPE(FPostProcessBloomSetupPS, Global);
+	FBloomSetupParameters Parameters;
+	Parameters.View = View.ViewUniformBuffer;
+	Parameters.Input = GetScreenPassTextureViewportParameters(InputViewport);
+	Parameters.InputTexture = InputTexture;
+	Parameters.InputSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+	Parameters.EyeAdaptation = EyeAdaptationTexture;
+	Parameters.BloomThreshold = BloomThreshold;
+	return Parameters;
+}
 
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}	
-	
-	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
-	{
-		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-
-		if( !IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) )
-		{
-			//Need to hack in exposure scale for < SM5
-			OutEnvironment.SetDefine(TEXT("NO_EYEADAPTATION_EXPOSURE_FIX"), 1);
-		}
-	}
-
-	/** Default constructor. */
-	FPostProcessBloomSetupPS() {}
-
-public:
-	FPostProcessPassParameters PostprocessParameter;
-	FShaderParameter BloomThreshold;
-
-	/** Initialization constructor. */
-	FPostProcessBloomSetupPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
-		: FGlobalShader(Initializer)
-	{
-		PostprocessParameter.Bind(Initializer.ParameterMap);
-		BloomThreshold.Bind(Initializer.ParameterMap, TEXT("BloomThreshold"));
-	}
-
-	template <typename TRHICmdList>
-	void SetPS(TRHICmdList& RHICmdList, const FRenderingCompositePassContext& Context)
-	{
-		FRHIPixelShader* ShaderRHI = GetPixelShader();
-
-		const FPostProcessSettings& Settings = Context.View.FinalPostProcessSettings;
-
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
-
-		PostprocessParameter.SetPS(RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
-
-		const float FixedExposure = GetEyeAdaptationFixedExposure(Context.View);
-
-		FVector4 BloomThresholdValue(Settings.BloomThreshold, 0, 0, FixedExposure);
-		SetShaderValue(RHICmdList, ShaderRHI, BloomThreshold, BloomThresholdValue);
-	}
-	
-	// FShader interface.
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter << BloomThreshold;
-		return bShaderHasOutdatedParameters;
-	}
-};
-
-IMPLEMENT_SHADER_TYPE(,FPostProcessBloomSetupPS,TEXT("/Engine/Private/PostProcessBloom.usf"),TEXT("MainPS"),SF_Pixel);
-
-
-/** Encapsulates the post processing bloom setup vertex shader. */
-class FPostProcessBloomSetupVS : public FGlobalShader
+class FBloomSetupVS : public FGlobalShader
 {
-	DECLARE_SHADER_TYPE(FPostProcessBloomSetupVS,Global);
+	DECLARE_GLOBAL_SHADER(FBloomSetupVS);
+
+	// FDrawRectangleParameters is filled by DrawScreenPass.
+	SHADER_USE_PARAMETER_STRUCT_WITH_LEGACY_BASE(FBloomSetupVS, FGlobalShader);
+
+	using FParameters = FBloomSetupParameters;
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
 		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
-
-	/** Default constructor. */
-	FPostProcessBloomSetupVS(){}
-
-public:
-	FPostProcessPassParameters PostprocessParameter;
-	FShaderResourceParameter EyeAdaptation;
-
-
-	/** Initialization constructor. */
-	FPostProcessBloomSetupVS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
-		: FGlobalShader(Initializer)
-	{
-		PostprocessParameter.Bind(Initializer.ParameterMap);
-		EyeAdaptation.Bind(Initializer.ParameterMap, TEXT("EyeAdaptation"));
-	}
-	
-	void SetVS(const FRenderingCompositePassContext& Context)
-	{
-		FRHIVertexShader* ShaderRHI = GetVertexShader();
-
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
-
-		PostprocessParameter.SetVS(ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
-
-		if(EyeAdaptation.IsBound())
-		{
-			if (Context.View.HasValidEyeAdaptation())
-			{
-				IPooledRenderTarget* EyeAdaptationRT = Context.View.GetEyeAdaptation(Context.RHICmdList);
-				SetTextureParameter(Context.RHICmdList, ShaderRHI, EyeAdaptation, EyeAdaptationRT->GetRenderTargetItem().TargetableTexture);
-			}
-			else
-			{
-				SetTextureParameter(Context.RHICmdList, ShaderRHI, EyeAdaptation, GWhiteTexture->TextureRHI);
-			}
-		}
-	}
-	
-	// FShader interface.
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter << EyeAdaptation;
-		return bShaderHasOutdatedParameters;
-	}
 };
 
-IMPLEMENT_SHADER_TYPE(,FPostProcessBloomSetupVS,TEXT("/Engine/Private/PostProcessBloom.usf"),TEXT("MainVS"),SF_Vertex);
+IMPLEMENT_GLOBAL_SHADER(FBloomSetupVS, "/Engine/Private/PostProcessBloom.usf", "BloomSetupVS", SF_Vertex);
 
-/** Encapsulates the post processing bloom threshold compute shader. */
-class FPostProcessBloomSetupCS : public FGlobalShader
-{
-	DECLARE_SHADER_TYPE(FPostProcessBloomSetupCS, Global);
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}	
-	
-	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
-	{
-		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZEX"), GBloomSetupComputeTileSizeX);
-		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZEY"), GBloomSetupComputeTileSizeY);
-	}
-
-	/** Default constructor. */
-	FPostProcessBloomSetupCS() {}
-
-public:
-	FPostProcessPassParameters PostprocessParameter;
-	FShaderResourceParameter EyeAdaptation;
-	FShaderParameter BloomSetupComputeParams;
-	FShaderParameter OutComputeTex;
-
-	/** Initialization constructor. */
-	FPostProcessBloomSetupCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
-		: FGlobalShader(Initializer)
-	{
-		PostprocessParameter.Bind(Initializer.ParameterMap);
-		EyeAdaptation.Bind(Initializer.ParameterMap, TEXT("EyeAdaptation"));
-		BloomSetupComputeParams.Bind(Initializer.ParameterMap, TEXT("BloomSetupComputeParams"));
-		OutComputeTex.Bind(Initializer.ParameterMap, TEXT("OutComputeTex"));
-	}
-
-	template <typename TRHICmdList>
-	void SetParameters(TRHICmdList& RHICmdList, const FRenderingCompositePassContext& Context, const FIntPoint& DestSize, FRHIUnorderedAccessView* DestUAV, FRHITexture* EyeAdaptationTex)
-	{
-		FRHIComputeShader* ShaderRHI = GetComputeShader();
-		const FPostProcessSettings& Settings = Context.View.FinalPostProcessSettings;
-
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
-		PostprocessParameter.SetCS(ShaderRHI, Context, RHICmdList, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
-		RHICmdList.SetUAVParameter(ShaderRHI, OutComputeTex.GetBaseIndex(), DestUAV);
-
-		SetTextureParameter(RHICmdList, ShaderRHI, EyeAdaptation, EyeAdaptationTex);
-
-		//float ExposureScale = FRCPassPostProcessEyeAdaptation::ComputeExposureScaleValue(Context.View);
-		FVector4 BloomSetupComputeValues(Settings.BloomThreshold, 0, 1.f / (float)DestSize.X, 1.f / (float)DestSize.Y);
-		SetShaderValue(RHICmdList, ShaderRHI, BloomSetupComputeParams, BloomSetupComputeValues);
-	}
-
-	template <typename TRHICmdList>
-	void UnsetParameters(TRHICmdList& RHICmdList)
-	{
-		FRHIComputeShader* ShaderRHI = GetComputeShader();
-		RHICmdList.SetUAVParameter(ShaderRHI, OutComputeTex.GetBaseIndex(), NULL);
-	}
-	
-	// FShader interface.
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter << EyeAdaptation << BloomSetupComputeParams << OutComputeTex;
-		return bShaderHasOutdatedParameters;
-	}
-};
-
-IMPLEMENT_SHADER_TYPE(,FPostProcessBloomSetupCS,TEXT("/Engine/Private/PostProcessBloom.usf"),TEXT("MainCS"),SF_Compute);
-
-void FRCPassPostProcessBloomSetup::Process(FRenderingCompositePassContext& Context)
-{
-	const FPooledRenderTargetDesc* InputDesc = GetInputDesc(ePId_Input0);
-	AsyncEndFence = FComputeFenceRHIRef();
-
-	if(!InputDesc)
-	{
-		// input is not hooked up correctly
-		return;
-	}
-
-	const FViewInfo& View = Context.View;
-	const FSceneViewFamily& ViewFamily = *(View.Family);
-	
-	FIntPoint SrcSize = InputDesc->Extent;
-	FIntPoint DestSize = PassOutputs[0].RenderTargetDesc.Extent;
-
-	// e.g. 4 means the input texture is 4x smaller than the buffer size
-	uint32 ScaleFactor = FMath::DivideAndRoundUp(Context.ReferenceBufferSize.Y, SrcSize.Y);
-
-	FIntRect SrcRect = FIntRect::DivideAndRoundUp(Context.SceneColorViewRect, ScaleFactor);
-	FIntRect DestRect = SrcRect;
-
-	SCOPED_DRAW_EVENTF(Context.RHICmdList, PostProcessBloomSetup, TEXT("PostProcessBloomSetup%s %dx%d"), bIsComputePass?TEXT("Compute"):TEXT(""), DestRect.Width(), DestRect.Height());
-
-	const FSceneRenderTargetItem& DestRenderTarget = PassOutputs[0].RequestSurface(Context);
-	
-	if (bIsComputePass)
-	{
-		DestRect = {View.ViewRect.Min, View.ViewRect.Min + DestSize};
-	
-		// Common setup
-		// #todo-renderpasses remove once everything is renderpasses
-		UnbindRenderTargets(Context.RHICmdList);
-		Context.SetViewportAndCallRHI(DestRect, 0.0f, 1.0f);
-		
-		static FName AsyncEndFenceName(TEXT("AsyncBloomSetupEndFence"));
-		AsyncEndFence = Context.RHICmdList.CreateComputeFence(AsyncEndFenceName);
-
-		FTextureRHIRef EyeAdaptationTex = GWhiteTexture->TextureRHI;
-		if (Context.View.HasValidEyeAdaptation())
-		{
-			EyeAdaptationTex = Context.View.GetEyeAdaptation(Context.RHICmdList)->GetRenderTargetItem().TargetableTexture;
-		}
-
-		if (IsAsyncComputePass())
-		{
-			// Async path
-			FRHIAsyncComputeCommandListImmediate& RHICmdListComputeImmediate = FRHICommandListExecutor::GetImmediateAsyncComputeCommandList();
-			{
-				SCOPED_COMPUTE_EVENT(RHICmdListComputeImmediate, AsyncBloomSetup);
-				WaitForInputPassComputeFences(RHICmdListComputeImmediate);
-					
-				RHICmdListComputeImmediate.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, DestRenderTarget.UAV);
-				DispatchCS(RHICmdListComputeImmediate, Context, DestRect, DestRenderTarget.UAV, EyeAdaptationTex);
-				RHICmdListComputeImmediate.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, DestRenderTarget.UAV, AsyncEndFence);
-			}
-			FRHIAsyncComputeCommandListImmediate::ImmediateDispatch(RHICmdListComputeImmediate);
-		}
-		else
-		{
-			// Direct path
-			WaitForInputPassComputeFences(Context.RHICmdList);
-
-			Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, DestRenderTarget.UAV);
-			DispatchCS(Context.RHICmdList, Context, DestRect, DestRenderTarget.UAV, EyeAdaptationTex);			
-			Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, DestRenderTarget.UAV, AsyncEndFence);
-		}
-	}
-	else
-	{
-		WaitForInputPassComputeFences(Context.RHICmdList);
-
-		// Set the view family's render target/viewport.
-		FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, ERenderTargetActions::Clear_Store, DestRenderTarget.ShaderResourceTexture);
-		Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("Bloom"));
-		{
-			Context.SetViewportAndCallRHI(0, 0, 0.0f, DestSize.X, DestSize.Y, 1.0f);
-
-			FGraphicsPipelineStateInitializer GraphicsPSOInit;
-			Context.RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
-
-			// set the state
-			GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
-			GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
-			GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
-
-			TShaderMapRef<FPostProcessBloomSetupVS> VertexShader(Context.GetShaderMap());
-			TShaderMapRef<FPostProcessBloomSetupPS> PixelShader(Context.GetShaderMap());
-
-			GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
-			GraphicsPSOInit.PrimitiveType = PT_TriangleList;
-
-			SetGraphicsPipelineState(Context.RHICmdList, GraphicsPSOInit);
-
-			VertexShader->SetVS(Context);
-			PixelShader->SetPS(Context.RHICmdList, Context);
-
-			DrawRectangle(
-				Context.RHICmdList,
-				DestRect.Min.X, DestRect.Min.Y,
-				DestRect.Width(), DestRect.Height(),
-				SrcRect.Min.X, SrcRect.Min.Y,
-				SrcRect.Width(), SrcRect.Height(),
-				DestSize,
-				SrcSize,
-				*VertexShader,
-				EDRF_UseTriangleOptimization);
-		}
-		Context.RHICmdList.EndRenderPass();
-		Context.RHICmdList.CopyToResolveTarget(DestRenderTarget.TargetableTexture, DestRenderTarget.ShaderResourceTexture, FResolveParams());
-	}
-}
-
-template <typename TRHICmdList>
-void FRCPassPostProcessBloomSetup::DispatchCS(TRHICmdList& RHICmdList, FRenderingCompositePassContext& Context, const FIntRect& DestRect, FRHIUnorderedAccessView* DestUAV, FRHITexture* EyeAdaptationTex)
-{
-	auto ShaderMap = Context.GetShaderMap();
-	TShaderMapRef<FPostProcessBloomSetupCS> ComputeShader(ShaderMap);
-	RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
-
-	FIntPoint DestSize(DestRect.Width(), DestRect.Height());
-	ComputeShader->SetParameters(RHICmdList, Context, DestSize, DestUAV, EyeAdaptationTex);
-
-	uint32 GroupSizeX = FMath::DivideAndRoundUp(DestSize.X, GBloomSetupComputeTileSizeX);
-	uint32 GroupSizeY = FMath::DivideAndRoundUp(DestSize.Y, GBloomSetupComputeTileSizeY);
-	DispatchComputeShader(RHICmdList, *ComputeShader, GroupSizeX, GroupSizeY, 1);
-
-	ComputeShader->UnsetParameters(RHICmdList);
-}
-
-FPooledRenderTargetDesc FRCPassPostProcessBloomSetup::ComputeOutputDesc(EPassOutputId InPassOutputId) const
-{
-	FPooledRenderTargetDesc Ret = GetInput(ePId_Input0)->GetOutput()->RenderTargetDesc;
-
-	Ret.Reset();
-	Ret.DebugName = TEXT("BloomSetup");
-	Ret.TargetableFlags &= ~(TexCreate_RenderTargetable | TexCreate_UAV);
-	Ret.TargetableFlags |= bIsComputePass ? TexCreate_UAV : TexCreate_RenderTargetable;
-	Ret.AutoWritable = false;
-	return Ret;
-}
-
-class FVisualizeBloomSetupPS : public FGlobalShader
+class FBloomSetupPS : public FGlobalShader
 {
 public:
-	DECLARE_GLOBAL_SHADER(FVisualizeBloomSetupPS);
-	SHADER_USE_PARAMETER_STRUCT(FVisualizeBloomSetupPS, FGlobalShader);
+	DECLARE_GLOBAL_SHADER(FBloomSetupPS);
+	SHADER_USE_PARAMETER_STRUCT(FBloomSetupPS, FGlobalShader);
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, InputTexture)
-		SHADER_PARAMETER_SAMPLER(SamplerState, InputSampler)
-		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Input)
+		SHADER_PARAMETER_STRUCT_INCLUDE(FBloomSetupParameters, BloomSetup)
 		RENDER_TARGET_BINDING_SLOTS()
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -376,49 +67,18 @@ public:
 	}
 };
 
-IMPLEMENT_GLOBAL_SHADER(FVisualizeBloomSetupPS, "/Engine/Private/PostProcessBloom.usf", "VisualizeBloomSetupPS", SF_Pixel);
+IMPLEMENT_GLOBAL_SHADER(FBloomSetupPS, "/Engine/Private/PostProcessBloom.usf", "BloomSetupPS", SF_Pixel);
 
-FRDGTextureRef AddVisualizeBloomSetupPass(
-	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
-	FRDGTextureRef InputTexture,
-	FIntRect InputViewport)
+class FBloomSetupCS : public FGlobalShader
 {
-	check(InputTexture);
+public:
+	DECLARE_GLOBAL_SHADER(FBloomSetupCS);
+	SHADER_USE_PARAMETER_STRUCT(FBloomSetupCS, FGlobalShader);
 
-	FRDGTextureDesc OutputDesc = InputTexture->Desc;
-	OutputDesc.Reset();
-	OutputDesc.TargetableFlags &= ~TexCreate_UAV;
-	OutputDesc.TargetableFlags |= TexCreate_RenderTargetable;
-
-	FRDGTextureRef OutputTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("VisualizeBloomSetup"));
-
-	const FScreenPassTextureViewport TextureViewport(InputViewport, InputTexture);
-
-	FVisualizeBloomSetupPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FVisualizeBloomSetupPS::FParameters>();
-	PassParameters->Input = GetScreenPassTextureViewportParameters(TextureViewport);
-	PassParameters->InputTexture = InputTexture;
-	PassParameters->InputSampler = TStaticSamplerState<SF_Bilinear, AM_Border, AM_Border, AM_Border>::GetRHI();
-	PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, ERenderTargetLoadAction::ENoAction);
-
-	TShaderMapRef<FVisualizeBloomSetupPS> PixelShader(ScreenPassView.View.ShaderMap);
-
-	AddDrawScreenPass(
-		GraphBuilder,
-		RDG_EVENT_NAME("VisualizeBloomSetup"),
-		ScreenPassView,
-		TextureViewport,
-		TextureViewport,
-		*PixelShader,
-		PassParameters);
-
-	return OutputTexture;
-}
-
-/** Encapsulates the visualize bloom overlay pixel shader. */
-class FPostProcessVisualizeBloomOverlayPS : public FGlobalShader
-{
-	DECLARE_SHADER_TYPE(FPostProcessVisualizeBloomOverlayPS, Global);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_STRUCT_INCLUDE(FBloomSetupParameters, BloomSetup)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RWOutputTexture)
+	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
@@ -427,130 +87,123 @@ class FPostProcessVisualizeBloomOverlayPS : public FGlobalShader
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
-		FGlobalShader::ModifyCompilationEnvironment(Parameters,OutEnvironment);
-	}
-
-	/** Default constructor. */
-	FPostProcessVisualizeBloomOverlayPS() {}
-
-public:
-	FPostProcessPassParameters PostprocessParameter;
-	FShaderParameter ColorScale1;
-
-	/** Initialization constructor. */
-	FPostProcessVisualizeBloomOverlayPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
-		: FGlobalShader(Initializer)
-	{
-		PostprocessParameter.Bind(Initializer.ParameterMap);
-		ColorScale1.Bind(Initializer.ParameterMap, TEXT("ColorScale1"));
-	}
-
-	// FShader interface.
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter << ColorScale1;
-		return bShaderHasOutdatedParameters;
-	}
-
-	void SetParameters(const FRenderingCompositePassContext& Context)
-	{
-		FRHIPixelShader* ShaderRHI = GetPixelShader();
-
-		const FPostProcessSettings& Settings = Context.View.FinalPostProcessSettings;
-
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
-		PostprocessParameter.SetPS(Context.RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Bilinear, AM_Border, AM_Border, AM_Border>::GetRHI());
-
-		{
-			FLinearColor Col = FLinearColor::White * Settings.BloomIntensity;
-			FVector4 ColorScale(Col.R, Col.G, Col.B, 0);
-			SetShaderValue(Context.RHICmdList, ShaderRHI, ColorScale1, ColorScale);
-		}
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZEX"), GBloomSetupComputeTileSizeX);
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZEY"), GBloomSetupComputeTileSizeY);
 	}
 };
 
-IMPLEMENT_SHADER_TYPE(,FPostProcessVisualizeBloomOverlayPS,TEXT("/Engine/Private/PostProcessBloom.usf"),TEXT("VisualizeBloomOverlayPS"),SF_Pixel);
+IMPLEMENT_GLOBAL_SHADER(FBloomSetupCS, "/Engine/Private/PostProcessBloom.usf", "BloomSetupCS", SF_Compute);
+} //!namespace
 
-
-
-
-void FRCPassPostProcessVisualizeBloomOverlay::Process(FRenderingCompositePassContext& Context)
+FRDGTextureRef AddBloomSetupPass(
+	FRDGBuilder& GraphBuilder,
+	const FScreenPassViewInfo& ScreenPassView,
+	FRDGTextureRef SceneColorTexture,
+	FIntRect SceneColorViewRect,
+	FRDGTextureRef EyeAdaptationTexture,
+	float BloomThreshold)
 {
-	SCOPED_DRAW_EVENT(Context.RHICmdList, VisualizeBloomOverlay);
+	check(SceneColorTexture);
+	check(!SceneColorViewRect.IsEmpty());
+	check(EyeAdaptationTexture);
 
-	const FPooledRenderTargetDesc* InputDesc = GetInputDesc(ePId_Input0);
-
-	check(InputDesc && "Input is not hooked up correctly");
-
-	const FViewInfo& View = Context.View;
-	const FSceneViewFamily& ViewFamily = *(View.Family);
-
-	FIntPoint SrcSize = InputDesc->Extent;
-	FIntPoint DestSize = PassOutputs[0].RenderTargetDesc.Extent;
-
-	// e.g. 4 means the input texture is 4x smaller than the buffer size
-	uint32 ScaleFactor = FMath::DivideAndRoundUp(FSceneRenderTargets::Get(Context.RHICmdList).GetBufferSizeXY().Y, SrcSize.Y);
-
-	FIntRect SrcRect = View.ViewRect / ScaleFactor;
-	FIntRect DestRect = SrcRect;
-
-	const FSceneRenderTargetItem& DestRenderTarget = PassOutputs[0].RequestSurface(Context);
-
-	FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, ERenderTargetActions::Load_Store);
-
-	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("VisualizeBloomOverlay"));
+	// A negative or zero threshold just disables the pass.
+	if (BloomThreshold <= 0.0f)
 	{
-		DrawClearQuad(Context.RHICmdList, true, FLinearColor(0, 0, 0, 0), false, 0, false, 0, DestSize, DestRect);
-		Context.SetViewportAndCallRHI(0, 0, 0.0f, DestRect.Width(), DestRect.Height(), 1.0f);
-
-		FGraphicsPipelineStateInitializer GraphicsPSOInit;
-		Context.RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
-
-		// set the state
-		GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
-		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
-		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
-
-		TShaderMapRef<FPostProcessVS> VertexShader(Context.GetShaderMap());
-		TShaderMapRef<FPostProcessVisualizeBloomOverlayPS> PixelShader(Context.GetShaderMap());
-
-		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
-		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
-
-		SetGraphicsPipelineState(Context.RHICmdList, GraphicsPSOInit);
-
-		PixelShader->SetParameters(Context);
-		VertexShader->SetParameters(Context);
-
-		// Draw a quad mapping scene color to the view's render target
-		DrawRectangle(
-			Context.RHICmdList,
-			DestRect.Min.X, DestRect.Min.Y,
-			DestRect.Width(), DestRect.Height(),
-			SrcRect.Min.X, SrcRect.Min.Y,
-			SrcRect.Width(), SrcRect.Height(),
-			DestRect.Size(),
-			SrcSize,
-			*VertexShader,
-			EDRF_UseTriangleOptimization);
+		return SceneColorTexture;
 	}
-	Context.RHICmdList.EndRenderPass();
-	Context.RHICmdList.CopyToResolveTarget(DestRenderTarget.TargetableTexture, DestRenderTarget.ShaderResourceTexture, FResolveParams());
+
+	const FScreenPassTextureViewport Viewport(SceneColorViewRect, SceneColorTexture);
+
+	const bool bIsComputePass = ScreenPassView.bUseComputePasses;
+
+	FRDGTextureDesc OutputTextureDesc = SceneColorTexture->Desc;
+	OutputTextureDesc.Reset();
+	OutputTextureDesc.TargetableFlags |= bIsComputePass ? TexCreate_UAV : TexCreate_RenderTargetable;
+
+	FRDGTextureRef OutputTexture = GraphBuilder.CreateTexture(OutputTextureDesc, TEXT("BloomSetup"));
+
+	if (bIsComputePass)
+	{
+		FBloomSetupCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FBloomSetupCS::FParameters>();
+		PassParameters->BloomSetup = GetBloomSetupParameters(ScreenPassView.View, Viewport, SceneColorTexture, EyeAdaptationTexture, BloomThreshold);
+		PassParameters->RWOutputTexture = GraphBuilder.CreateUAV(OutputTexture);
+
+		TShaderMapRef<FBloomSetupCS> ComputeShader(ScreenPassView.View.ShaderMap);
+
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("BloomSetup %dx%d (CS)", Viewport.Rect.Width(), Viewport.Rect.Height()),
+			*ComputeShader,
+			PassParameters,
+			FComputeShaderUtils::GetGroupCount(Viewport.Rect.Size(), FIntPoint(GBloomSetupComputeTileSizeX, GBloomSetupComputeTileSizeY)));
+	}
+	else
+	{
+		FBloomSetupPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FBloomSetupPS::FParameters>();
+		PassParameters->BloomSetup = GetBloomSetupParameters(ScreenPassView.View, Viewport, SceneColorTexture, EyeAdaptationTexture, BloomThreshold);
+		PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, ScreenPassView.GetOverwriteLoadAction());
+
+		TShaderMapRef<FBloomSetupVS> VertexShader(ScreenPassView.View.ShaderMap);
+		TShaderMapRef<FBloomSetupPS> PixelShader(ScreenPassView.View.ShaderMap);
+
+		const auto SetupFunction = [VertexShader, PixelShader, PassParameters]
+			(FRHICommandListImmediate& RHICmdList)
+		{
+			SetShaderParameters(RHICmdList, *VertexShader, VertexShader->GetVertexShader(), PassParameters->BloomSetup);
+			SetShaderParameters(RHICmdList, *PixelShader, PixelShader->GetPixelShader(), *PassParameters);
+		};
+
+		const FScreenPassDrawInfo ScreenPassDraw(*VertexShader, *PixelShader);
+
+		AddDrawScreenPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("BloomSetup %dx%d (PS)", Viewport.Rect.Width(), Viewport.Rect.Height()),
+			ScreenPassView,
+			Viewport,
+			Viewport,
+			ScreenPassDraw,
+			PassParameters,
+			SetupFunction);
+	}
+
+	return OutputTexture;
 }
 
-
-FPooledRenderTargetDesc FRCPassPostProcessVisualizeBloomOverlay::ComputeOutputDesc(EPassOutputId InPassOutputId) const
+FRenderingCompositeOutputRef AddBloomSetupPass(
+	FRenderingCompositionGraph& Graph,
+	FRenderingCompositeOutputRef SceneColor,
+	FRenderingCompositeOutputRef EyeAdaptation)
 {
-	FPooledRenderTargetDesc Ret = GetInput(ePId_Input0)->GetOutput()->RenderTargetDesc;
+	FRenderingCompositePass* Pass = Graph.RegisterPass(
+		new(FMemStack::Get()) TRCPassForRDG<2, 1>(
+			[](FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
+	{
+		FRDGBuilder GraphBuilder(InContext.RHICmdList);
 
-	Ret.Reset();
-	Ret.TargetableFlags &= ~TexCreate_UAV;
-	Ret.TargetableFlags |= TexCreate_RenderTargetable;
-	Ret.DebugName = TEXT("VisualizeBloomOverlay");
+		FRDGTextureRef SceneColorTexture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor"));
 
-	return Ret;
+		FRDGTextureRef EyeAdaptationTexture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input1, TEXT("EyeAdaptation"));
+
+		const FIntRect SceneColorViewRect = InContext.GetDownsampledSceneColorViewRectFromInputExtent(SceneColorTexture->Desc.Extent);
+
+		const float BloomThreshold = InContext.View.FinalPostProcessSettings.BloomThreshold;
+
+		FRDGTextureRef OutputTexture = AddBloomSetupPass(
+			GraphBuilder,
+			FScreenPassViewInfo(InContext.View),
+			SceneColorTexture,
+			SceneColorViewRect,
+			EyeAdaptationTexture,
+			BloomThreshold);
+
+		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, OutputTexture);
+
+		GraphBuilder.Execute();
+	}));
+
+	Pass->SetInput(ePId_Input0, SceneColor);
+	Pass->SetInput(ePId_Input1, EyeAdaptation);
+	return Pass;
 }
-

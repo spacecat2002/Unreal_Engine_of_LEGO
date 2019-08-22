@@ -373,17 +373,6 @@ static FRenderingCompositeOutputRef AddPostProcessBasicEyeAdaptation(const FView
 	return AddBasicEyeAdaptationPass(Context, PostProcessPriorReduction, BloomAndEyeDownSamples.GetFinalDownsampleFactor());
 }
 
-static void AddVisualizeBloomOverlay(FPostprocessContext& Context, FRenderingCompositeOutputRef& HDRColor, FRenderingCompositeOutputRef& BloomOutputCombined)
-{
-	auto Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessVisualizeBloomOverlay());
-
-	Node->SetInput(ePId_Input0, Context.FinalOutput);
-	Node->SetInput(ePId_Input1, HDRColor);
-	Node->SetInput(ePId_Input2, BloomOutputCombined);
-
-	Context.FinalOutput = FRenderingCompositeOutputRef(Node);
-}
-
 static bool AddPostProcessDepthOfFieldGaussian(FPostprocessContext& Context, FDepthOfFieldStats& Out, FRenderingCompositeOutputRef& VelocityInput, FRenderingCompositeOutputRef& SeparateTranslucencyRef)
 {
 	// GaussianDOFPass performs Gaussian setup, blur and recombine.
@@ -471,7 +460,7 @@ static bool AddPostProcessDepthOfFieldGaussian(FPostprocessContext& Context, FDe
 	}
 }
 
-static FRenderingCompositeOutputRef AddBloom(FBloomDownSampleArray& BloomDownSampleArray, bool bVisualizeBloom)
+static FRenderingCompositeOutputRef AddBloom(FBloomDownSampleArray& BloomDownSampleArray)
 {
 	
 	// Quality level to bloom stages table. Note: 0 is omitted, ensure element count tallys with the range documented with 'r.BloomQuality' definition.
@@ -571,19 +560,6 @@ static FRenderingCompositeOutputRef AddBloom(FBloomDownSampleArray& BloomDownSam
 
 			FLinearColor Tint = (*Op.Tint) * TintScale;
 
-			// Visualize bloom show effect of this modified bloom kernel on a single ray of green at the center of the screen
-			// Note: This bloom visualization is pretty bogus for two reasons.  1) The bloom kernel is really 3 kernels (one for each r,g,b),
-			// and replacing it by a single kernel for visualization isn't very sound.  2) The actual visualizer compares the response to
-			// an arbitrary function..
-			if (bVisualizeBloom)
-			{
-				float LumScale = Tint.ComputeLuminance();
-
-				// R is used to pass down the reference, G is the emulated bloom
-				Tint.R = 0;
-				Tint.G = LumScale;
-				Tint.B = 0;
-			}
 			// Only bloom this down-sampled input if the bloom size is non-zero
 			if (Op.BloomSize > SMALL_NUMBER)
 			{
@@ -622,7 +598,7 @@ static FRenderingCompositeOutputRef AddBloom(FBloomDownSampleArray& BloomDownSam
 		LensFlareQuality = FMath::Clamp(CVar->GetValueOnRenderThread(), 0, MaxLensFlareQuality);
 	}
 
-	if (!LensFlareHDRColor.IsAlmostBlack() && LensFlareQuality > 0 && !bVisualizeBloom)
+	if (!LensFlareHDRColor.IsAlmostBlack() && LensFlareQuality > 0)
 	{
 		float PercentKernelSize = Context.View.FinalPostProcessSettings.LensFlareBokehSize;
 
@@ -956,8 +932,6 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 		const bool bVisualizeHDR = View.Family->EngineShowFlags.VisualizeHDR;
 
-		const bool bVisualizeBloom = View.Family->EngineShowFlags.VisualizeBloom;
-
 		const bool bHDROutputEnabled = GRHISupportsHDROutput && IsHDREnabled();
 
 		// add the passes we want to add to the graph (commenting a line means the pass is not inserted into the graph) ---------
@@ -986,7 +960,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			const bool bMotionBlurEnabled = !bVisualizeMotionBlur && IsMotionBlurEnabled(View);
 
 			// Skip tonemapping for visualizers which overwrite the HDR scene color.
-			const bool bTonemapEnabled = !bVisualizeBloom && !bVisualizeMotionBlur;
+			const bool bTonemapEnabled = !bVisualizeMotionBlur;
 
 			// We don't test for the EyeAdaptation engine show flag here. If disabled, the auto exposure pass is still executes but performs a clamp.
 			const bool bEyeAdaptationEnabled =
@@ -1012,7 +986,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 			FRenderingCompositePass* RDGPass = Context.Graph.RegisterPass(
 				new(FMemStack::Get()) TRCPassForRDG<5, 3>(
-					[&View, &SceneContext, bVisualizeBloom, bMotionBlurEnabled, bVisualizeMotionBlur, bDepthOfFieldEnabled, bHistogramEnabled, DownsampleQuality, DownsampleOverrideFormat]
+					[&View, &SceneContext, bMotionBlurEnabled, bVisualizeMotionBlur, bDepthOfFieldEnabled, bHistogramEnabled, DownsampleQuality, DownsampleOverrideFormat]
 			(FRenderingCompositePass* Pass, FRenderingCompositePassContext& InContext)
 			{
 				FRDGBuilder GraphBuilder(InContext.RHICmdList);
@@ -1098,7 +1072,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 					const bool bAllowSceneDownsample =
 						IsTemporalAASceneDownsampleAllowed(View) &&
 						// We can only merge if the normal downsample pass would happen immediately after.
-						!bMotionBlurEnabled && !bVisualizeMotionBlur && !bVisualizeBloom &&
+						!bMotionBlurEnabled && !bVisualizeMotionBlur &&
 						// TemporalAA is only able to match the low quality mode (box filter).
 						GetDownsampleQuality() == EDownsampleQuality::Low;
 
@@ -1154,11 +1128,6 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 						SceneColorTexture,
 						SceneDepthTexture,
 						VelocityTexture);
-				}
-
-				if (bVisualizeBloom)
-				{
-					SceneColorTexture = AddVisualizeBloomSetupPass(GraphBuilder, ScreenPassView, SceneColorTexture, SecondaryViewRect);
 				}
 
 				// If TAA didn't do it, downsample the scene color texture by half.
@@ -1252,18 +1221,14 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 					if (bBloomThresholdEnabled)
 					{
-						FRenderingCompositePass* PostProcessBloomSetup = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessBloomSetup(bPreferCompute));
-						PostProcessBloomSetup->SetInput(ePId_Input0, SceneColorHalfRes);
-						PostProcessBloomSetup->SetInput(ePId_Input1, EyeAdaptation);
-
-						DownsampleInput = FRenderingCompositeOutputRef(PostProcessBloomSetup);
+						DownsampleInput = AddBloomSetupPass(Context.Graph, SceneColorHalfRes, EyeAdaptation);
 					}
 
 					const bool bGenerageLog2Alpha = false;
 
 					SceneColorDownsampleChain = CreateDownSampleArray(Context, DownsampleInput, bGenerageLog2Alpha);
 				}
-				BloomOutputCombined = AddBloom(*SceneColorDownsampleChain, bVisualizeBloom);
+				BloomOutputCombined = AddBloom(*SceneColorDownsampleChain);
 			}
 
 			PreTonemapHDRColor = Context.FinalOutput;
@@ -1389,7 +1354,6 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 		if ( GIsEditor
 			&& View.Family->EngineShowFlags.SelectionOutline
 			&& !(View.Family->EngineShowFlags.Wireframe)
-			&& !bVisualizeBloom
 			&& !View.Family->EngineShowFlags.VisualizeHDR)
 		{
 			// Selection outline is after bloom, but before AA
@@ -1397,7 +1361,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 		}
 
 		// Composite editor primitives if we had any to draw and compositing is enabled
-		if (FSceneRenderer::ShouldCompositeEditorPrimitives(View) && !bVisualizeBloom)
+		if (FSceneRenderer::ShouldCompositeEditorPrimitives(View))
 		{
 			//ensureMsgf(!bUnscaledFinalOutput, TEXT("Editor primitives should not be composited with already unscaled output."));
 
@@ -1442,13 +1406,6 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
 		}
 #endif //WITH_EDITOR
-
-		if(bVisualizeBloom)
-		{
-			ensureMsgf(!bUnscaledFinalOutput, TEXT("VisualizeBloom is incompatible with unscaled output."));
-
-			AddVisualizeBloomOverlay(Context, PreTonemapHDRColor, BloomOutputCombined);
-		}
 
 		if (View.Family->EngineShowFlags.VisualizeSSS)
 		{

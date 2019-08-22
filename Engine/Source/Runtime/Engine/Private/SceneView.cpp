@@ -825,7 +825,6 @@ void FSceneView::SetupAntiAliasingMethod()
 			// Disable antialiasing in GammaLDR mode to avoid jittering.
 			|| (FeatureLevel <= ERHIFeatureLevel::ES3_1 && MobileHDRCvar->GetValueOnAnyThread() == 0)
 			|| (FeatureLevel <= ERHIFeatureLevel::ES3_1 && (MobileMSAAValue > 1))
-			|| Family->EngineShowFlags.VisualizeBloom
 			|| Family->EngineShowFlags.VisualizeDOF)
 		{
 			AntiAliasingMethod = AAM_None;
