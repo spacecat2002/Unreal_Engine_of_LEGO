@@ -564,6 +564,8 @@ namespace
         case ShadingLanguage::Msl:
             dxcArgStrings.push_back(L"-spirv");
 			dxcArgStrings.push_back(L"-fvk-ue4-layout");
+			if (options.globalsAsPushConstants)
+				dxcArgStrings.push_back(L"-fvk-globals-push-constants");
 			/* UE Change Begin: Proper fix for SV_Position.w being inverted in SPIRV & Metal vs. D3D. */
 			if (targetLanguage != ShadingLanguage::Hlsl)
 				dxcArgStrings.push_back(L"-fvk-use-dx-position-w");

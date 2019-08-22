@@ -155,6 +155,7 @@ namespace ShaderConductor
 			/* UE Change Begin: Specify the Fused-Multiply-Add pass for Metal - we'll define it away later when we can. */
 			bool enableFMAPass = false; // Enable a pass that converts floating point MUL+ADD pairs into FMAs to avoid reassociation
 			/* UE Change End: Specify the Fused-Multiply-Add pass for Metal - we'll define it away later when we can. */
+			bool globalsAsPushConstants = false;
 
             int optimizationLevel = 3; // 0 to 3, no optimization to most optimization
             ShaderModel shaderModel = { 6, 0 };
