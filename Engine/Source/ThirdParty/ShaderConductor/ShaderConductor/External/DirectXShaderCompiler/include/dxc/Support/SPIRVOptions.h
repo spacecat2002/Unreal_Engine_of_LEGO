@@ -57,6 +57,7 @@ struct SpirvCodeGenOptions {
   bool useGlLayout;
   bool useScalarLayout;
   bool ue4Layout;
+  bool globalsAsPushConstants;
   SpirvLayoutRule cBufferLayoutRule;
   SpirvLayoutRule sBufferLayoutRule;
   SpirvLayoutRule tBufferLayoutRule;
