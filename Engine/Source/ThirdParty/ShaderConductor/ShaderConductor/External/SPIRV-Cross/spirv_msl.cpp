@@ -4061,7 +4061,6 @@ void CompilerMSL::emit_instruction(const Instruction &instruction)
 			auto &e = set<SPIRExpression>(id, join(to_expression(ops[2]), ", ", to_expression(ops[3])), result_type, true);
 
 			// When using the pointer, we need to know which variable it is actually loaded from.
-			auto *var = maybe_get_backing_variable(ops[2]);
 			e.loaded_from = var ? var->self : 0;
 		}
 		break;
