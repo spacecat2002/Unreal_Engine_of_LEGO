@@ -29,8 +29,8 @@ struct FGaussianBlurInputs
 	// Controls the cross shape of the blur, in both X / Y directions. See r.Bloom.Cross.
 	FVector2D CrossCenterWeight = FVector2D::ZeroVector;
 
-	// The filter size in percentage of the screen.
-	float FilterPercent = 0.0f;
+	// The filter kernel size in percentage of the screen.
+	float KernelSizePercent = 0.0f;
 };
 
 FRDGTextureRef AddGaussianBlurPass(

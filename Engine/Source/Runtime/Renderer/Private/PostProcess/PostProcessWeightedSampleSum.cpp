@@ -198,13 +198,13 @@ uint32 Compute1DGaussianFilterKernel(FVector2D OutOffsetAndWeight[MAX_FILTER_SAM
 	return SampleCount;
 }
 
-float GetBlurRadius(uint32 TextureWidth, float FilterPercent)
+float GetBlurRadius(uint32 TextureWidth, float KernelSizePercent)
 {
 	const float PercentToScale = 0.01f;
 
 	const float DiameterToRadius = 0.5f;
 
-	return static_cast<float>(TextureWidth) * FilterPercent * PercentToScale * DiameterToRadius;
+	return static_cast<float>(TextureWidth) * KernelSizePercent * PercentToScale * DiameterToRadius;
 }
 
 bool IsFastBlurEnabled(float BlurRadius)
@@ -235,7 +235,7 @@ uint32 GetStaticSampleCount(uint32 RequiredSampleCount)
 class FFilterShader : public FGlobalShader
 {
 public:
-	class FStaticSampleCount : SHADER_PERMUTATION_RANGE_INT("STATIC_SAMPLE_COUNT", 1, MAX_FILTER_COMPILE_TIME_SAMPLES);
+	class FStaticSampleCount : SHADER_PERMUTATION_INT("STATIC_SAMPLE_COUNT", MAX_FILTER_COMPILE_TIME_SAMPLES + 1);
 	class FCombineAdditive : SHADER_PERMUTATION_BOOL("USE_COMBINE_ADDITIVE");
 	class FManualUVBorder : SHADER_PERMUTATION_BOOL("USE_MANUAL_UV_BORDER");
 
@@ -282,7 +282,16 @@ public:
 	{
 		const FPermutationDomain PermutationVector(Parameters.PermutationId);
 
-		return FFilterShader::ShouldCompilePermutation(Parameters.Platform, PermutationVector.Get<FStaticSampleCount>());
+		const uint32 StaticSampleCount = PermutationVector.Get<FStaticSampleCount>();
+
+		if (StaticSampleCount == 0)
+		{
+			return false;
+		}
+		else
+		{
+			return FFilterShader::ShouldCompilePermutation(Parameters.Platform, StaticSampleCount);
+		}
 	}
 };
 
@@ -476,7 +485,7 @@ FRDGTextureRef AddGaussianBlurPass(
 
 	const FScreenPassTextureViewport FilterViewport(Inputs.FilterViewportRect, Inputs.FilterTexture);
 
-	const float BlurRadius = GetBlurRadius(FilterViewport.Extent.X, Inputs.FilterPercent);
+	const float BlurRadius = GetBlurRadius(FilterViewport.Extent.X, Inputs.KernelSizePercent);
 
 	const uint32 SampleCountMax = GetSampleCountMax(View.GetFeatureLevel(), View.GetShaderPlatform());
 
@@ -575,14 +584,14 @@ FRenderingCompositeOutputRef AddGaussianBlurPass(
 	const TCHAR *InNameX,
 	const TCHAR* InNameY,
 	FRenderingCompositeOutputRef FilterInput,
-	float FilterPercent,
+	float KernelSizePercent,
 	FLinearColor TintColor,
 	FRenderingCompositeOutputRef AdditiveInput,
 	FVector2D CrossCenterWeight)
 {
 	FRenderingCompositePass* Pass = Graph.RegisterPass(
 		new(FMemStack::Get()) TRCPassForRDG<2, 1>(
-			[InNameX, InNameY, TintColor, FilterPercent, CrossCenterWeight] (FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
+			[InNameX, InNameY, TintColor, KernelSizePercent, CrossCenterWeight] (FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
 	{
 		FRDGBuilder GraphBuilder(InContext.RHICmdList);
 
@@ -606,7 +615,7 @@ FRenderingCompositeOutputRef AddGaussianBlurPass(
 		PassInputs.AdditiveViewportRect = AdditiveViewportRect;
 		PassInputs.TintColor = TintColor;
 		PassInputs.CrossCenterWeight = CrossCenterWeight;
-		PassInputs.FilterPercent = FilterPercent;
+		PassInputs.KernelSizePercent = KernelSizePercent;
 
 		FRDGTextureRef OutputTexture = AddGaussianBlurPass(GraphBuilder, FScreenPassViewInfo(InContext.View), PassInputs);
 

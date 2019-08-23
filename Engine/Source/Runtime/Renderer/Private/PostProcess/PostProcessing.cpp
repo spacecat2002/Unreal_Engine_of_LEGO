@@ -28,7 +28,6 @@
 #include "PostProcess/PostProcessEyeAdaptation.h"
 #include "PostProcess/PostProcessTonemap.h"
 #include "PostProcess/PostProcessLensFlares.h"
-#include "PostProcess/PostProcessLensBlur.h"
 #include "PostProcess/PostProcessBokehDOF.h"
 #include "PostProcess/PostProcessCombineLUTs.h"
 #include "PostProcess/PostProcessTemporalAA.h"
@@ -588,43 +587,13 @@ static FRenderingCompositeOutputRef AddBloom(FBloomDownSampleArray& BloomDownSam
 		BloomFlareInput = PostProcessDownsamples[0];
 	}
 
-	// Lens Flares
-	FLinearColor LensFlareHDRColor = Context.View.FinalPostProcessSettings.LensFlareTint * Context.View.FinalPostProcessSettings.LensFlareIntensity;
-	static const int32 MaxLensFlareQuality = 3;
-	int32 LensFlareQuality;
+	const bool bCompositeWithBloom = !bUseFFTBloom;
+
+	FRenderingCompositeOutputRef LensFlareOutput = AddLensFlarePass(Context, BloomFlareInput, PostProcessDownsamples, bCompositeWithBloom);
+
+	if (LensFlareOutput.IsValid())
 	{
-		// console variable override
-		static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.LensFlareQuality"));
-		LensFlareQuality = FMath::Clamp(CVar->GetValueOnRenderThread(), 0, MaxLensFlareQuality);
-	}
-
-	if (!LensFlareHDRColor.IsAlmostBlack() && LensFlareQuality > 0)
-	{
-		float PercentKernelSize = Context.View.FinalPostProcessSettings.LensFlareBokehSize;
-
-		bool bLensBlur = PercentKernelSize > 0.3f;
-
-		FRenderingCompositePass* PostProcessFlares = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessLensFlares(bLensBlur ? 2.0f : 1.0f, !bUseFFTBloom));
-
-		PostProcessFlares->SetInput(ePId_Input0, BloomFlareInput);
-
-		FRenderingCompositeOutputRef LensFlareInput = PostProcessDownsamples[MaxLensFlareQuality - LensFlareQuality];
-
-		if (bLensBlur)
-		{
-			float Threshold = Context.View.FinalPostProcessSettings.LensFlareThreshold;
-
-			FRenderingCompositePass* PostProcessLensBlur = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessLensBlur(PercentKernelSize, Threshold));
-			PostProcessLensBlur->SetInput(ePId_Input0, LensFlareInput);
-			PostProcessFlares->SetInput(ePId_Input1, FRenderingCompositeOutputRef(PostProcessLensBlur));
-		}
-		else
-		{
-			// fast: no blurring or blurring shared from bloom
-			PostProcessFlares->SetInput(ePId_Input1, LensFlareInput);
-		}
-
-		BloomOutput = FRenderingCompositeOutputRef(PostProcessFlares);
+		BloomOutput = LensFlareOutput;
 	}
 
 	return BloomOutput;
