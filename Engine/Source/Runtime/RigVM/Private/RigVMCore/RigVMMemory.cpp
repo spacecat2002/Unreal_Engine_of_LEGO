@@ -56,12 +56,12 @@ FRigVMRegisterOffset::FRigVMRegisterOffset(UScriptStruct* InScriptStruct, const 
 {
 	struct FRigVMRegisterOffsetBuilder
 	{
-		static void WalkStruct(UStruct* InStruct, const FString& InSegmentPath, FRigVMRegisterOffset& Offset)
+		static void WalkStruct(UStruct* InStruct, const FString& InPath, FRigVMRegisterOffset& Offset)
 		{
 			FString Left, Right;
-			if (!InSegmentPath.Split(TEXT("."), &Left, &Right))
+			if (!InPath.Split(TEXT("."), &Left, &Right))
 			{
-				Left = InSegmentPath;
+				Left = InPath;
 			}
 
 			UProperty* Property = InStruct->FindPropertyByName(*Left);
@@ -118,12 +118,12 @@ FRigVMRegisterOffset::FRigVMRegisterOffset(UScriptStruct* InScriptStruct, const 
 			}
 		}
 
-		static void WalkArray(UArrayProperty* InArrayProperty, const FString& InSegmentPath, FRigVMRegisterOffset& Offset)
+		static void WalkArray(UArrayProperty* InArrayProperty, const FString& InPath, FRigVMRegisterOffset& Offset)
 		{
 			FString Left, Right;
-			if (!InSegmentPath.Split(TEXT("."), &Left, &Right))
+			if (!InPath.Split(TEXT("."), &Left, &Right))
 			{
-				Left = InSegmentPath;
+				Left = InPath;
 			}
 
 			int32 ArrayIndex = FCString::Atoi(*Left);
