@@ -2397,6 +2397,15 @@ void ShaderMapAppendKeyString(EShaderPlatform Platform, FString& KeyString)
 			}
 		}
 	}
+	
+	if (IsOpenGLPlatform(Platform))
+	{
+		static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.OpenGL.ForceDXC"));
+		if (CVar && CVar->GetInt() != 0)
+		{
+			KeyString += TEXT("_DXC");
+		}
+	}
 
 	if (IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5))
 	{

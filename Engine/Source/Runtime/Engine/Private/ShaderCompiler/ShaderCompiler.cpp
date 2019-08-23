@@ -251,6 +251,14 @@ static TAutoConsoleVariable<int32> CVarMetalForceDXC(
 	TEXT(" 1: Use new compiler for all shaders (Default)"),
 	ECVF_ReadOnly);
 
+static TAutoConsoleVariable<int32> CVarOpenGLForceDXC(
+	TEXT("r.OpenGL.ForceDXC"),
+	0,
+	TEXT("Forces DirectX Shader Compiler (DXC) to be used for all OpenGL shaders instead of hlslcc.\n")
+	TEXT(" 0: Disable (default)\n")
+	TEXT(" 1: Force new compiler for all shaders"),
+	ECVF_ReadOnly);
+
 int32 GCreateShadersOnLoad = 0;
 static FAutoConsoleVariableRef CVarCreateShadersOnLoad(
 	TEXT("r.CreateShadersOnLoad"),
@@ -3247,6 +3255,15 @@ void GlobalBeginCompileShader(
 		}
 	}
 	
+	if (IsOpenGLPlatform((EShaderPlatform)Target.Platform))
+	{
+		static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.OpenGL.ForceDXC"));
+		if (CVar && CVar->GetInt() != 0)
+		{
+			Input.Environment.CompilerFlags.Add(CFLAG_ForceDXC);
+		}
+	}
+
 	if (IsOpenGLPlatform((EShaderPlatform)Target.Platform) && 
 		IsMobilePlatform((EShaderPlatform)Target.Platform))
 	{
