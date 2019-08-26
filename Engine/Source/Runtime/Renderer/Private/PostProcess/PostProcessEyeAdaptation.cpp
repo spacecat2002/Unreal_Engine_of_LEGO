@@ -2,6 +2,7 @@
 
 #include "PostProcess/PostProcessEyeAdaptation.h"
 #include "RHIGPUReadback.h"
+#include "Curves/CurveFloat.h"
 
 RENDERCORE_API bool UsePreExposure(EShaderPlatform Platform);
 
