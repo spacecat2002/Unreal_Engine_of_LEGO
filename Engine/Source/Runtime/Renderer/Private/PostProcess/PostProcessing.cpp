@@ -403,12 +403,12 @@ FBloomOutputs AddBloomPass(
 
 			const uint32 BloomQualityToSceneDownsampleStage[] =
 			{
-				-1, // Disabled (sentinel entry to preserve indices)
-				 3, // Q1
-				 3, // Q2
-				 4, // Q3
-				 5, // Q4
-				 6  // Q5
+				static_cast<uint32>(-1), // Disabled (sentinel entry to preserve indices)
+				3, // Q1
+				3, // Q2
+				4, // Q3
+				5, // Q4
+				6  // Q5
 			};
 
 			static_assert(ARRAY_COUNT(BloomStages) == BloomQualityCountMax, "Array must be one less than the number of bloom quality entries.");
