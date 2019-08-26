@@ -13,8 +13,8 @@ class FViewInfo;
 class FLightSceneInfoCompact;
 class FLightSceneInfo;
 
-// be sure to also update the definition in the `RayTracingPrimaryVisibility.usf`
-enum class ERayTracingPrimaryVisibilityFlag: uint32 
+// be sure to also update the definition in the `RayTracingPrimaryRays.usf`
+enum class ERayTracingPrimaryRaysFlag: uint32 
 {
 	None                      =      0,
 	UseGBufferForMaxDistance  = 1 << 0,
@@ -22,10 +22,28 @@ enum class ERayTracingPrimaryVisibilityFlag: uint32
 	AllowSkipSkySample		  = 1 << 2,
 };
 
-ENUM_CLASS_FLAGS(ERayTracingPrimaryVisibilityFlag);
+ENUM_CLASS_FLAGS(ERayTracingPrimaryRaysFlag);
+
+struct FRayTracingPrimaryRaysOptions
+{
+	int32 IsEnabled;
+	int32 SamplerPerPixel;
+	int32 ApplyHeightFog;
+	float PrimaryRayBias;
+	float MaxRoughness;
+	int32 MaxRefractionRays;
+	int32 EnableEmmissiveAndIndirectLighting;
+	int32 EnableDirectLighting;
+	int32 EnableShadows;
+	float MinRayDistance;
+	float MaxRayDistance;
+	int32 EnableRefraction;
+};
+
 
 #if RHI_RAYTRACING
 extern int32 GetForceRayTracingEffectsCVarValue();
+extern FRayTracingPrimaryRaysOptions GetRayTracingTranslucencyOptions();
 
 extern bool ShouldRenderRayTracingSkyLight(const FSkyLightSceneProxy* SkyLightSceneProxy);
 extern bool ShouldRenderRayTracingAmbientOcclusion(const FViewInfo& View);

@@ -16,6 +16,10 @@
 #include "DepthRendering.h"
 #include "ScreenSpaceDenoise.h"
 
+#if RHI_RAYTRACING
+enum class ERayTracingPrimaryRaysFlag : uint32;
+#endif
+
 class FSceneTextureParameters;
 
 class FDistanceFieldAOParameters;
@@ -536,7 +540,16 @@ private:
 	void GenerateSkyLightVisibilityRays(FRDGBuilder& GraphBuilder, FRDGBufferRef& SkyLightVisibilityRays, FIntVector& Dimensions);
 	void VisualizeSkyLightMipTree(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FRWBuffer& SkyLightMipTreePosX, FRWBuffer& SkyLightMipTreePosY, FRWBuffer& SkyLightMipTreePosZ, FRWBuffer& SkyLightMipTreeNegX, FRWBuffer& SkyLightMipTreeNegY, FRWBuffer& SkyLightMipTreeNegZ, const FIntVector& SkyLightMipDimensions);
 	void RenderRayTracingSkyLight(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget>& SkyLightRT, TRefCountPtr<IPooledRenderTarget>& HitDistanceRT);
-	
+
+	void RenderRayTracingPrimaryRaysView(
+		FRDGBuilder& GraphBuilder,
+		const FViewInfo& View,
+		FRDGTextureRef* InOutColorTexture,
+		FRDGTextureRef* InOutRayHitDistanceTexture,
+		int32 SamplePerPixel,
+		int32 HeightFog,
+		float ResolutionFraction,
+		ERayTracingPrimaryRaysFlag Flags);
 	void RenderRayTracingTranslucency(FRHICommandListImmediate& RHICmdList);
 	void RenderRayTracingTranslucencyView(
 		FRDGBuilder& GraphBuilder,
