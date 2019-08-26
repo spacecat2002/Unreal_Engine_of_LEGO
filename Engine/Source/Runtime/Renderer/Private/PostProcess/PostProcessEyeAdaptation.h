@@ -1,16 +1,8 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-/*=============================================================================
-	PostProcessEyeAdaptation.h: Post processing eye adaptation implementation.
-=============================================================================*/
-
 #pragma once
 
-#include "CoreMinimal.h"
-#include "HAL/IConsoleManager.h"
-#include "RendererInterface.h"
-#include "SceneRendering.h"
-#include "PostProcess/RenderingCompositionGraph.h"
+#include "ScreenPass.h"
 
 FORCEINLINE float EV100ToLuminance(float EV100)
 {
@@ -54,19 +46,28 @@ BEGIN_SHADER_PARAMETER_STRUCT(FEyeAdaptationParameters, )
 	SHADER_PARAMETER(float, WeightSlope)
 END_SHADER_PARAMETER_STRUCT()
 
-FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& ViewInfo, ERHIFeatureLevel::Type MinFeatureLevel = ERHIFeatureLevel::SM5);
+FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& ViewInfo, ERHIFeatureLevel::Type MinFeatureLevel);
 
 // Computes the a fixed exposure to be used to replace the dynamic exposure when it's not supported (< SM5).
 float GetEyeAdaptationFixedExposure(const FViewInfo& View);
 
-FRenderingCompositeOutputRef AddBasicEyeAdaptationSetupPass(
-	FPostprocessContext& Context,
-	FRenderingCompositeOutputRef SceneColor,
-	uint32 SceneColorDownsampleFactor);
+FRDGTextureRef AddHistogramEyeAdaptationPass(
+	FRDGBuilder& GraphBuilder,
+	const FScreenPassViewInfo& ScreenPassView,
+	const FEyeAdaptationParameters& EyeAdaptationParameters,
+	FRDGTextureRef HistogramTexture);
 
-FRenderingCompositeOutputRef AddBasicEyeAdaptationPass(
-	FPostprocessContext& Context,
-	FRenderingCompositeOutputRef SceneColor,
-	uint32 SceneColorDownsampleFactor);
+FRDGTextureRef AddBasicEyeAdaptationSetupPass(
+	FRDGBuilder& GraphBuilder,
+	const FScreenPassViewInfo& ScreenPassView,
+	const FEyeAdaptationParameters& EyeAdaptationParameters,
+	FRDGTextureRef SceneColorTexture,
+	FIntRect SceneColorViewRect);
 
-FRenderingCompositeOutputRef AddHistogramEyeAdaptationPass(FPostprocessContext& Context, FRenderingCompositeOutputRef Histogram);
+FRDGTextureRef AddBasicEyeAdaptationPass(
+	FRDGBuilder& GraphBuilder,
+	const FScreenPassViewInfo& ScreenPassView,
+	const FEyeAdaptationParameters& EyeAdaptationParameters,
+	FRDGTextureRef SceneColorTexture,
+	FIntRect SceneColorViewRect,
+	FRDGTextureRef EyeAdaptationTexture);

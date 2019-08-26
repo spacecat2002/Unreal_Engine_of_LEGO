@@ -1,18 +1,6 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-/*=============================================================================
-	PostProcessEyeAdaptation.cpp: Post processing eye adaptation implementation.
-=============================================================================*/
-
 #include "PostProcess/PostProcessEyeAdaptation.h"
-#include "PostProcess/SceneFilterRendering.h"
-#include "PostProcess/PostProcessing.h"
-#include "SceneTextureParameters.h"
-#include "ClearQuad.h"
-#include "PipelineStateCache.h"
-#include "Math/UnrealMathUtility.h"
-#include "ScenePrivate.h"
-#include "Curves/CurveFloat.h"
 #include "RHIGPUReadback.h"
 
 RENDERCORE_API bool UsePreExposure(EShaderPlatform Platform);
@@ -53,6 +41,8 @@ TAutoConsoleVariable<int32> CVarEyeAdaptationBasicCompute(
 	TEXT("= 0 : Pixel Shader\n")
 	TEXT("> 0 : Compute Shader (default) \n"),
 	ECVF_Scalability | ECVF_RenderThreadSafe);
+
+const ERHIFeatureLevel::Type BasicEyeAdaptationMinFeatureLevel = ERHIFeatureLevel::ES3_1;
 }
 
 bool IsAutoExposureMethodSupported(ERHIFeatureLevel::Type FeatureLevel, EAutoExposureMethod AutoExposureMethodId)
@@ -253,7 +243,7 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 
 float GetEyeAdaptationFixedExposure(const FViewInfo& View)
 {
-	const FEyeAdaptationParameters Parameters = GetEyeAdaptationParameters(View);
+	const FEyeAdaptationParameters Parameters = GetEyeAdaptationParameters(View, BasicEyeAdaptationMinFeatureLevel);
 
 	const float Exposure = (Parameters.MinAverageLuminance + Parameters.MaxAverageLuminance) * 0.5f;
 
@@ -337,7 +327,7 @@ FRDGTextureRef AddHistogramEyeAdaptationPass(
 	FRDGTextureRef OutputTexture = GraphBuilder.RegisterExternalTexture(View.GetEyeAdaptation(GraphBuilder.RHICmdList), TEXT("EyeAdaptation"), ERDGResourceFlags::MultiFrame);
 
 	FEyeAdaptationShader::FParameters PassBaseParameters;
-	PassBaseParameters.EyeAdaptation = GetEyeAdaptationParameters(View);
+	PassBaseParameters.EyeAdaptation = GetEyeAdaptationParameters(View, ERHIFeatureLevel::SM5);
 	PassBaseParameters.HistogramTexture = HistogramTexture;
 
 	if (ScreenPassView.bUseComputePasses)
@@ -376,42 +366,9 @@ FRDGTextureRef AddHistogramEyeAdaptationPass(
 	return OutputTexture;
 }
 
-FRenderingCompositeOutputRef AddHistogramEyeAdaptationPass(FPostprocessContext& Context, FRenderingCompositeOutputRef Histogram)
-{
-	const FViewInfo& View = Context.View;
-
-	FRenderingCompositePass* EyeAdaptationPass = Context.Graph.RegisterPass(
-		new(FMemStack::Get()) TRCPassForRDG<1, 1>(
-			[&View](FRenderingCompositePass* Pass, FRenderingCompositePassContext& InContext)
-	{
-		FRDGBuilder GraphBuilder(InContext.RHICmdList);
-
-		FRDGTextureRef HistogramTexture = Pass->CreateRDGTextureForOptionalInput(GraphBuilder, ePId_Input0, TEXT("Histogram"));
-
-		if (!HistogramTexture)
-		{
-			HistogramTexture = GraphBuilder.RegisterExternalTexture(GSystemTextures.BlackDummy);
-		}
-
-		const FEyeAdaptationParameters EyeAdaptationParameters = GetEyeAdaptationParameters(View);
-
-		FRDGTextureRef OutputTexture = AddHistogramEyeAdaptationPass(GraphBuilder, FScreenPassViewInfo(View), EyeAdaptationParameters, HistogramTexture);
-
-		Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, OutputTexture);
-
-		GraphBuilder.Execute();
-	}));
-
-	EyeAdaptationPass->SetInput(ePId_Input0, Histogram);
-
-	return FRenderingCompositeOutputRef(EyeAdaptationPass);
-}
-
 //////////////////////////////////////////////////////////////////////////
 //! Basic Eye Adaptation
 //////////////////////////////////////////////////////////////////////////
-
-const ERHIFeatureLevel::Type BasicEyeAdaptationMinFeatureLevel = ERHIFeatureLevel::ES3_1;
 
 /** Computes scaled and biased luma for the input scene color and puts it in the alpha channel. */
 class FBasicEyeAdaptationSetupPS : public FGlobalShader
@@ -456,7 +413,7 @@ FRDGTextureRef AddBasicEyeAdaptationSetupPass(
 	const FScreenPassTextureViewport Viewport(SceneColorViewRect, OutputTexture);
 
 	FBasicEyeAdaptationSetupPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FBasicEyeAdaptationSetupPS::FParameters>();
-	PassParameters->EyeAdaptation = GetEyeAdaptationParameters(ScreenPassView.View, BasicEyeAdaptationMinFeatureLevel);
+	PassParameters->EyeAdaptation = EyeAdaptationParameters;
 	PassParameters->ColorTexture = SceneColorTexture;
 	PassParameters->ColorSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, ScreenPassView.GetOverwriteLoadAction());
@@ -473,37 +430,6 @@ FRDGTextureRef AddBasicEyeAdaptationSetupPass(
 		PassParameters);
 
 	return OutputTexture;
-}
-
-FRenderingCompositeOutputRef AddBasicEyeAdaptationSetupPass(
-	FPostprocessContext& Context,
-	FRenderingCompositeOutputRef SceneColor,
-	uint32 SceneColorDownsampleFactor)
-{
-	const FViewInfo& View = Context.View;
-
-	FRenderingCompositePass* Pass = Context.Graph.RegisterPass(
-		new(FMemStack::Get()) TRCPassForRDG<1, 1>(
-			[&View, SceneColorDownsampleFactor](FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
-	{
-		FRDGBuilder GraphBuilder(InContext.RHICmdList);
-
-		const FEyeAdaptationParameters EyeAdaptationParameters = GetEyeAdaptationParameters(View);
-
-		const FIntRect SceneColorViewRect = InContext.GetDownsampledSceneColorViewRect(SceneColorDownsampleFactor);
-
-		FRDGTextureRef SceneColorTexture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor"));
-
-		FRDGTextureRef OutputTexture = AddBasicEyeAdaptationSetupPass(GraphBuilder, FScreenPassViewInfo(View), EyeAdaptationParameters, SceneColorTexture, SceneColorViewRect);
-
-		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, OutputTexture);
-
-		GraphBuilder.Execute();
-	}));
-
-	Pass->SetInput(ePId_Input0, SceneColor);
-
-	return FRenderingCompositeOutputRef(Pass);
 }
 
 class FBasicEyeAdaptationShader : public FGlobalShader
@@ -590,7 +516,7 @@ FRDGTextureRef AddBasicEyeAdaptationPass(
 
 	FBasicEyeAdaptationShader::FParameters PassBaseParameters;
 	PassBaseParameters.View = ScreenPassView.View.ViewUniformBuffer;
-	PassBaseParameters.EyeAdaptation = GetEyeAdaptationParameters(View);
+	PassBaseParameters.EyeAdaptation = EyeAdaptationParameters;
 	PassBaseParameters.Color = GetScreenPassTextureViewportParameters(SceneColorViewport);
 	PassBaseParameters.ColorTexture = SceneColorTexture;
 	PassBaseParameters.EyeAdaptationTexture = EyeAdaptationTexture;
@@ -631,45 +557,6 @@ FRDGTextureRef AddBasicEyeAdaptationPass(
 	}
 
 	return OutputTexture;
-}
-
-FRenderingCompositeOutputRef AddBasicEyeAdaptationPass(
-	FPostprocessContext& Context,
-	FRenderingCompositeOutputRef SceneColor,
-	uint32 SceneColorDownsampleFactor)
-{
-	const FViewInfo& View = Context.View;
-
-	FRenderingCompositePass* Pass = Context.Graph.RegisterPass(
-		new(FMemStack::Get()) TRCPassForRDG<1, 1>(
-			[&View, SceneColorDownsampleFactor](FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
-	{
-		FRDGBuilder GraphBuilder(InContext.RHICmdList);
-
-		const FEyeAdaptationParameters EyeAdaptationParameters = GetEyeAdaptationParameters(View);
-
-		const FIntRect SceneColorViewRect = InContext.GetDownsampledSceneColorViewRect(SceneColorDownsampleFactor);
-
-		FRDGTextureRef SceneColorTexture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor"));
-
-		FRDGTextureRef EyeAdaptationTexture = GetEyeAdaptationTexture(GraphBuilder, View);
-
-		FRDGTextureRef OutputTexture = AddBasicEyeAdaptationPass(
-			GraphBuilder,
-			FScreenPassViewInfo(View),
-			EyeAdaptationParameters,
-			SceneColorTexture,
-			SceneColorViewRect,
-			EyeAdaptationTexture);
-
-		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, OutputTexture);
-
-		GraphBuilder.Execute();
-	}));
-
-	Pass->SetInput(ePId_Input0, SceneColor);
-
-	return FRenderingCompositeOutputRef(Pass);
 }
 
 FSceneViewState::FEyeAdaptationRTManager::~FEyeAdaptationRTManager() {}

@@ -1,17 +1,6 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-/*=============================================================================
-	PostProcessLensFlares.cpp: Post processing lens fares implementation.
-=============================================================================*/
-
-#include "PostProcess/PostProcessLensFlares.h"
-#include "StaticBoundShaderState.h"
-#include "SceneUtils.h"
-#include "PostProcess/SceneRenderTargets.h"
-#include "PostProcess/SceneFilterRendering.h"
-#include "PostProcess/PostProcessing.h"
-#include "ClearQuad.h"
-#include "PipelineStateCache.h"
+#include "PostProcessLensFlares.h"
 
 namespace
 {
@@ -108,14 +97,6 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FLensFlareCompositePS, "/Engine/Private/PostProcessLensFlares.usf", "LensFlareCompositePS", SF_Pixel);
 } //!namespace
 
-enum class ELensFlareQuality : uint32
-{
-	Disabled,
-	Low,
-	High,
-	MAX
-};
-
 ELensFlareQuality GetLensFlareQuality()
 {
 	return static_cast<ELensFlareQuality>(FMath::Clamp(
@@ -123,46 +104,6 @@ ELensFlareQuality GetLensFlareQuality()
 		static_cast<int32>(ELensFlareQuality::Disabled),
 		static_cast<int32>(ELensFlareQuality::MAX) - 1));
 }
-
-struct FLensFlareInputs
-{
-	static const uint32 LensFlareCountMax = 8;
-
-	// [Required] The bloom convolution texture. If enabled, this will be composited with lens flares. Otherwise,
-	// a transparent black texture is used instead. Either way, the final output texture will use the this texture
-	// descriptor and viewport.
-	FRDGTextureRef BloomTexture = nullptr;
-	FIntRect BloomViewRect;
-
-	// [Required] The scene color input, before bloom, which is used as the source of lens flares.
-	// This can be a downsampled input based on the desired quality level.
-	FRDGTextureRef FlareTexture = nullptr;
-	FIntRect FlareViewRect;
-
-	// [Required] The bokeh shape texture to use to blur the lens flares.
-	FRHITexture* BokehShapeTexture = nullptr;
-
-	// The number of lens flares to render.
-	uint32 LensFlareCount = LensFlareCountMax;
-
-	// The array of per-flare tint colors. Length must be equal to LensFlareCount.
-	TArrayView<const FLinearColor> TintColorsPerFlare;
-
-	// The lens flare tint color to apply to all lens flares.
-	FLinearColor TintColor;
-
-	// The size of the bokeh shape in screen percentage.
-	float BokehSizePercent = 0.0f;
-
-	// Brightness scale of the lens flares.
-	float Intensity = 1.0f;
-
-	// Brightness threshold at which lens flares begin having an effect.
-	float Threshold = 1.0f;
-
-	// Whether to composite lens flares with the scene color input. If false, the result is composited on transparent black.
-	bool bCompositeWithBloom = true;
-};
 
 FRDGTextureRef AddLensFlaresPass(
 	FRDGBuilder& GraphBuilder,
@@ -176,11 +117,9 @@ FRDGTextureRef AddLensFlaresPass(
 	check(Inputs.BokehShapeTexture);
 	check(Inputs.LensFlareCount <= FLensFlareInputs::LensFlareCountMax);
 	check(Inputs.TintColorsPerFlare.Num() == Inputs.LensFlareCount);
-
-	if (Inputs.BokehSizePercent <= 0.0f || Inputs.Intensity <= 0.0f || Inputs.LensFlareCount == 0)
-	{
-		return nullptr;
-	}
+	check(Inputs.BokehSizePercent > 0.0f);
+	check(Inputs.Intensity > 0.0f);
+	check(Inputs.LensFlareCount > 0);
 
 	RDG_EVENT_SCOPE(GraphBuilder, "LensFlares");
 
@@ -378,86 +317,4 @@ FRDGTextureRef AddLensFlaresPass(
 	}
 
 	return LensFlareTexture;
-}
-
-FRenderingCompositeOutputRef AddLensFlarePass(
-	FPostprocessContext& Context,
-	FRenderingCompositeOutputRef BloomInput,
-	TArrayView<FRenderingCompositeOutputRef> SceneColorDownsampleChain,
-	bool bCompositeWithBloom)
-{
-	// Lens Flares
-	const FLinearColor LensFlareHDRColor = Context.View.FinalPostProcessSettings.LensFlareTint * Context.View.FinalPostProcessSettings.LensFlareIntensity;
-
-	const ELensFlareQuality LensFlareQuality = GetLensFlareQuality();
-
-	if (LensFlareHDRColor.IsAlmostBlack() || LensFlareQuality == ELensFlareQuality::Disabled)
-	{
-		return FRenderingCompositeOutputRef();
-	}
-
-	FRenderingCompositeOutputRef LensFlareInput = SceneColorDownsampleChain[static_cast<uint32>(ELensFlareQuality::High) - static_cast<uint32>(LensFlareQuality)];
-
-	FRenderingCompositePass* Pass = Context.Graph.RegisterPass(
-		new(FMemStack::Get()) TRCPassForRDG<2, 1>(
-			[bCompositeWithBloom](FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
-	{
-		const FFinalPostProcessSettings& PostProcessSettings = InContext.View.FinalPostProcessSettings;
-
-		FRDGBuilder GraphBuilder(InContext.RHICmdList);
-
-		FRDGTextureRef BloomTexture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("BloomInput"));
-		const FIntRect BloomViewRect = InContext.GetDownsampledSceneColorViewRectFromInputExtent(BloomTexture->Desc.Extent);
-
-		FRDGTextureRef FlareTexture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input1, TEXT("FlareInput"));
-		const FIntRect FlareViewRect = InContext.GetDownsampledSceneColorViewRectFromInputExtent(FlareTexture->Desc.Extent);
-
-		FRHITexture* BokehTextureRHI = GWhiteTexture->TextureRHI;
-
-		if (GEngine->DefaultBokehTexture)
-		{
-			FTextureResource* BokehTextureResource = GEngine->DefaultBokehTexture->Resource;
-
-			if (BokehTextureResource && BokehTextureResource->TextureRHI)
-			{
-				BokehTextureRHI = BokehTextureResource->TextureRHI;
-			}
-		}
-
-		if (PostProcessSettings.LensFlareBokehShape)
-		{
-			FTextureResource* BokehTextureResource = PostProcessSettings.LensFlareBokehShape->Resource;
-
-			if (BokehTextureResource && BokehTextureResource->TextureRHI)
-			{
-				BokehTextureRHI = BokehTextureResource->TextureRHI;
-			}
-		}
-
-		FLensFlareInputs Inputs;
-		Inputs.BloomTexture = BloomTexture;
-		Inputs.BloomViewRect = BloomViewRect;
-		Inputs.FlareTexture = FlareTexture;
-		Inputs.FlareViewRect = FlareViewRect;
-		Inputs.BokehShapeTexture = BokehTextureRHI;
-		Inputs.TintColorsPerFlare = PostProcessSettings.LensFlareTints;
-		Inputs.TintColor = PostProcessSettings.LensFlareTint;
-		Inputs.BokehSizePercent = PostProcessSettings.LensFlareBokehSize;
-		Inputs.Intensity = PostProcessSettings.LensFlareIntensity;
-		Inputs.Threshold = PostProcessSettings.LensFlareThreshold;
-		Inputs.bCompositeWithBloom = bCompositeWithBloom;
-
-		FRDGTextureRef OutputTexture = AddLensFlaresPass(GraphBuilder, FScreenPassViewInfo(InContext.View), Inputs);
-
-		if (OutputTexture)
-		{
-			InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, OutputTexture);
-		}
-
-		GraphBuilder.Execute();
-	}));
-
-	Pass->SetInput(ePId_Input0, BloomInput);
-	Pass->SetInput(ePId_Input1, LensFlareInput);
-	return Pass;
 }

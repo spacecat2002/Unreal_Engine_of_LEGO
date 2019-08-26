@@ -146,14 +146,6 @@ static TAutoConsoleVariable<int32> CVarPostProcessingForceAsyncDispatch(
 	ECVF_RenderThreadSafe);
 #endif
 
-TAutoConsoleVariable<int32> CVarHalfResFFTBloom(
-	TEXT("r.Bloom.HalfResoluionFFT"),
-	0,
-	TEXT("Experimental half-resolution FFT Bloom convolution. \n")
-	TEXT(" 0: Standard full resolution convolution bloom.")
-	TEXT(" 1: Half-resolution convoltuion that excludes the center of the kernel.\n"),
-	ECVF_Scalability | ECVF_RenderThreadSafe);
-
 static TAutoConsoleVariable<int32> CVarTemporalAAAllowDownsampling(
 	TEXT("r.TemporalAA.AllowDownsampling"),
 	1,
@@ -186,9 +178,337 @@ bool IsBufferVisualizationDumpFramesInHDREnabled()
 
 int32 GetPostProcessAAQuality()
 {
-	static const auto PostProcessAAQualityCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.PostProcessAAQuality"));
+	static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.PostProcessAAQuality"));
 
-	return FMath::Clamp(PostProcessAAQualityCVar->GetValueOnAnyThread(), 0, 6);
+	return FMath::Clamp(CVar->GetValueOnAnyThread(), 0, 6);
+}
+
+class FSceneDownsampleChain
+{
+public:
+	// The number of total stages in the chain.
+	static const uint32 StageCount = 6;
+
+	FSceneDownsampleChain() = default;
+
+	void Init(
+		FRDGBuilder& GraphBuilder,
+		const FScreenPassViewInfo& ScreenPassView,
+		const FEyeAdaptationParameters& EyeAdaptationParameters,
+		FRDGTextureRef HalfResolutionSceneTexture,
+		FIntRect HalfResolutionSceneViewport,
+		EDownsampleQuality DownsampleQuality,
+		bool bLogLumaInAlpha)
+	{
+		check(HalfResolutionSceneTexture);
+		check(!HalfResolutionSceneViewport.IsEmpty());
+
+		RDG_EVENT_SCOPE(GraphBuilder, "SceneDownsample");
+
+		static const TCHAR* PassNames[StageCount] =
+		{
+			nullptr,
+			TEXT("Scene(1/4)"),
+			TEXT("Scene(1/8)"),
+			TEXT("Scene(1/16)"),
+			TEXT("Scene(1/32)"),
+			TEXT("Scene(1/64)")
+		};
+		static_assert(ARRAY_COUNT(PassNames) == StageCount, "PassNames size must equal StageCount");
+
+		// The first stage is the input.
+		Textures[0] = HalfResolutionSceneTexture;
+		Viewports[0] = HalfResolutionSceneViewport;
+
+		for (uint32 StageIndex = 1; StageIndex < StageCount; StageIndex++)
+		{
+			const uint32 PreviousStageIndex = StageIndex - 1;
+
+			FDownsamplePassInputs PassInputs;
+			PassInputs.Name = PassNames[StageIndex];
+			PassInputs.Texture = Textures[PreviousStageIndex];
+			PassInputs.Viewport = Viewports[PreviousStageIndex];
+			PassInputs.Quality = DownsampleQuality;
+
+			FDownsamplePassOutputs PassOutputs = AddDownsamplePass(GraphBuilder, ScreenPassView, PassInputs);
+			Textures[StageIndex] = PassOutputs.Texture;
+			Viewports[StageIndex] = PassOutputs.Viewport;
+
+			if (bLogLumaInAlpha)
+			{
+				bLogLumaInAlpha = false;
+
+				Textures[StageIndex] = AddBasicEyeAdaptationSetupPass(
+					GraphBuilder,
+					ScreenPassView,
+					EyeAdaptationParameters,
+					Textures[StageIndex],
+					Viewports[StageIndex]);
+			}
+		}
+
+		bInitialized = true;
+	}
+
+	bool IsInitialized() const
+	{
+		return bInitialized;
+	}
+
+	FRDGTextureRef GetTexture(uint32 StageIndex) const
+	{
+		return Textures[StageIndex];
+	}
+
+	FRDGTextureRef GetFirstTexture() const
+	{
+		return Textures[0];
+	}
+
+	FRDGTextureRef GetLastTexture() const
+	{
+		return Textures[StageCount - 1];
+	}
+
+	FIntRect GetViewport(uint32 StageIndex) const
+	{
+		return Viewports[StageIndex];
+	}
+
+	FIntRect GetFirstViewport() const
+	{
+		return Viewports[0];
+	}
+
+	FIntRect GetLastViewport() const
+	{
+		return Viewports[StageCount - 1];
+	}
+
+private:
+	TStaticArray<FRDGTextureRef, StageCount> Textures;
+	TStaticArray<FIntRect, StageCount> Viewports;
+	bool bInitialized = false;
+};
+
+enum class EBloomQuality : uint32
+{
+	Disabled,
+	Q1,
+	Q2,
+	Q3,
+	Q4,
+	Q5,
+	MAX
+};
+
+static_assert(
+	static_cast<uint32>(EBloomQuality::MAX) == FSceneDownsampleChain::StageCount,
+	"The total number of stages in the scene downsample chain and the number of bloom quality levels must match.");
+
+EBloomQuality GetBloomQuality()
+{
+	static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.BloomQuality"));
+
+	return static_cast<EBloomQuality>(FMath::Clamp(
+		CVar->GetValueOnRenderThread(),
+		static_cast<int32>(EBloomQuality::Disabled),
+		static_cast<int32>(EBloomQuality::MAX)));
+}
+
+struct FBloomInputs
+{
+	FRDGTextureRef SceneColorTexture = nullptr;
+
+	FIntRect SceneColorViewRect;
+
+	const FSceneDownsampleChain* SceneDownsampleChain = nullptr;
+};
+
+struct FBloomOutputs
+{
+	FRDGTextureRef SceneColorTexture = nullptr;
+
+	FRDGTextureRef BloomTexture = nullptr;
+
+	FIntRect BloomViewRect;
+};
+
+FBloomOutputs AddBloomPass(
+	FRDGBuilder& GraphBuilder,
+	const FScreenPassViewInfo& ScreenPassView,
+	const FBloomInputs& Inputs)
+{
+	check(Inputs.SceneColorTexture);
+	check(!Inputs.SceneColorViewRect.IsEmpty());
+	check(Inputs.SceneDownsampleChain);
+
+	const FFinalPostProcessSettings& Settings = ScreenPassView.View.FinalPostProcessSettings;
+
+	const EBloomQuality BloomQuality = GetBloomQuality();
+
+	FRDGTextureRef SceneColorTexture = Inputs.SceneColorTexture;
+
+	FRDGTextureRef BloomOutputTexture = nullptr;
+
+	FIntRect BloomOutputViewRect;
+
+	if (BloomQuality != EBloomQuality::Disabled)
+	{
+		const bool bFFTBloomEnabled = IsFFTBloomEnabled(ScreenPassView.View);
+
+		if (bFFTBloomEnabled)
+		{
+			FRDGTextureRef FullResolutionTexture = Inputs.SceneColorTexture;
+			const FIntRect FullResolutionViewRect = Inputs.SceneColorViewRect;
+
+			FRDGTextureRef HalfResolutionTexture = Inputs.SceneDownsampleChain->GetFirstTexture();
+			const FIntRect HalfResolutionViewRect = Inputs.SceneDownsampleChain->GetFirstViewport();
+
+			FFFTBloomInputs PassInputs;
+			PassInputs.FullResolutionTexture = FullResolutionTexture;
+			PassInputs.FullResolutionViewRect = FullResolutionViewRect;
+			PassInputs.HalfResolutionTexture = HalfResolutionTexture;
+			PassInputs.HalfResolutionViewRect = HalfResolutionViewRect;
+
+			SceneColorTexture = AddFFTBloomPass(GraphBuilder, ScreenPassView.View, PassInputs);
+		}
+		else
+		{
+			RDG_EVENT_SCOPE(GraphBuilder, "Bloom");
+
+			const float CrossBloom = CVarBloomCross.GetValueOnRenderThread();
+
+			const FVector2D CrossCenterWeight(FMath::Max(CrossBloom, 0.0f), FMath::Abs(CrossBloom));
+
+			check(BloomQuality != EBloomQuality::Disabled);
+			const uint32 BloomQualityIndex = static_cast<uint32>(BloomQuality);
+			const uint32 BloomQualityCountMax = static_cast<uint32>(EBloomQuality::MAX);
+
+			struct FBloomStage
+			{
+				const float Size;
+				const FLinearColor& Tint;
+			};
+
+			FBloomStage BloomStages[] =
+			{
+				{ Settings.Bloom6Size, Settings.Bloom6Tint },
+				{ Settings.Bloom5Size, Settings.Bloom5Tint },
+				{ Settings.Bloom4Size, Settings.Bloom4Tint },
+				{ Settings.Bloom3Size, Settings.Bloom3Tint },
+				{ Settings.Bloom2Size, Settings.Bloom2Tint },
+				{ Settings.Bloom1Size, Settings.Bloom1Tint }
+			};
+
+			const uint32 BloomQualityToSceneDownsampleStage[] =
+			{
+				-1, // Disabled (sentinel entry to preserve indices)
+				 3, // Q1
+				 3, // Q2
+				 4, // Q3
+				 5, // Q4
+				 6  // Q5
+			};
+
+			static_assert(ARRAY_COUNT(BloomStages) == BloomQualityCountMax, "Array must be one less than the number of bloom quality entries.");
+			static_assert(ARRAY_COUNT(BloomQualityToSceneDownsampleStage) == BloomQualityCountMax, "Array must be one less than the number of bloom quality entries.");
+
+			// Use bloom quality to select the number of downsample stages to use for bloom.
+			const uint32 BloomStageCount = BloomQualityToSceneDownsampleStage[BloomQualityIndex];
+
+			const float TintScale = 1.0f / BloomQualityCountMax;
+
+			for (uint32 StageIndex = 0, SourceIndex = BloomQualityCountMax - 1; StageIndex < BloomStageCount; ++StageIndex, --SourceIndex)
+			{
+				const FBloomStage& BloomStage = BloomStages[StageIndex];
+
+				if (BloomStage.Size > SMALL_NUMBER)
+				{
+					FGaussianBlurInputs PassInputs;
+					PassInputs.NameX = TEXT("BloomX");
+					PassInputs.NameY = TEXT("BloomY");
+					PassInputs.FilterTexture = Inputs.SceneDownsampleChain->GetTexture(SourceIndex);
+					PassInputs.FilterViewportRect = Inputs.SceneDownsampleChain->GetViewport(SourceIndex);
+					PassInputs.AdditiveTexture = BloomOutputTexture;
+					PassInputs.AdditiveViewportRect = BloomOutputViewRect;
+					PassInputs.CrossCenterWeight = CrossCenterWeight;
+					PassInputs.KernelSizePercent = BloomStage.Size * Settings.BloomSizeScale;
+					PassInputs.TintColor = BloomStage.Tint * TintScale;
+
+					BloomOutputTexture = AddGaussianBlurPass(GraphBuilder, ScreenPassView, PassInputs);
+					BloomOutputViewRect = PassInputs.FilterViewportRect;
+				}
+			}
+		}
+	}
+
+	const ELensFlareQuality LensFlareQuality = GetLensFlareQuality();
+
+	if (LensFlareQuality != ELensFlareQuality::Disabled &&
+		!Settings.LensFlareTint.IsAlmostBlack() &&
+		Settings.LensFlareBokehSize > SMALL_NUMBER &&
+		Settings.LensFlareIntensity > SMALL_NUMBER)
+	{
+		FRHITexture* BokehTextureRHI = GWhiteTexture->TextureRHI;
+
+		if (GEngine->DefaultBokehTexture)
+		{
+			FTextureResource* BokehTextureResource = GEngine->DefaultBokehTexture->Resource;
+
+			if (BokehTextureResource && BokehTextureResource->TextureRHI)
+			{
+				BokehTextureRHI = BokehTextureResource->TextureRHI;
+			}
+		}
+
+		if (Settings.LensFlareBokehShape)
+		{
+			FTextureResource* BokehTextureResource = Settings.LensFlareBokehShape->Resource;
+
+			if (BokehTextureResource && BokehTextureResource->TextureRHI)
+			{
+				BokehTextureRHI = BokehTextureResource->TextureRHI;
+			}
+		}
+
+		// The quality level controls which downsample stage we use as the flare input texture.
+		const uint32 LensFlareDownsampleStageIndex = static_cast<uint32>(ELensFlareQuality::High) - static_cast<uint32>(LensFlareQuality);
+
+		FLensFlareInputs LensFlareInputs;
+		LensFlareInputs.BloomTexture = BloomOutputTexture;
+		LensFlareInputs.BloomViewRect = BloomOutputViewRect;
+		LensFlareInputs.FlareTexture = Inputs.SceneDownsampleChain->GetTexture(LensFlareDownsampleStageIndex);
+		LensFlareInputs.FlareViewRect = Inputs.SceneDownsampleChain->GetViewport(LensFlareDownsampleStageIndex);
+		LensFlareInputs.BokehShapeTexture = BokehTextureRHI;
+		LensFlareInputs.TintColorsPerFlare = Settings.LensFlareTints;
+		LensFlareInputs.TintColor = Settings.LensFlareTint;
+		LensFlareInputs.BokehSizePercent = Settings.LensFlareBokehSize;
+		LensFlareInputs.Intensity = Settings.LensFlareIntensity;
+		LensFlareInputs.Threshold = Settings.LensFlareThreshold;
+
+		// If a bloom output texture isn't available, substitute the half resolution scene color instead, but disable bloom
+		// composition. The pass needs a primary input in order to access the image descriptor and viewport for output.
+		if (!LensFlareInputs.BloomTexture)
+		{
+			LensFlareInputs.BloomTexture = Inputs.SceneDownsampleChain->GetFirstTexture();
+			LensFlareInputs.BloomViewRect = Inputs.SceneDownsampleChain->GetFirstViewport();
+			LensFlareInputs.bCompositeWithBloom = false;
+		}
+
+		FRDGTextureRef LensFlareOutputTexture = AddLensFlaresPass(GraphBuilder, ScreenPassView, LensFlareInputs);
+
+		if (LensFlareOutputTexture)
+		{
+			BloomOutputTexture = LensFlareOutputTexture;
+		}
+	}
+
+	FBloomOutputs Outputs;
+	Outputs.BloomTexture = BloomOutputTexture;
+	Outputs.BloomViewRect = BloomOutputViewRect;
+	Outputs.SceneColorTexture = SceneColorTexture;
+	return Outputs;
 }
 
 FPostprocessContext::FPostprocessContext(FRHICommandListImmediate& InRHICmdList, FRenderingCompositionGraph& InGraph, const FViewInfo& InView)
@@ -207,84 +527,6 @@ FPostprocessContext::FPostprocessContext(FRHICommandListImmediate& InRHICmdList,
 	SceneDepth = Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessInput(SceneContext.SceneDepthZ));
 
 	FinalOutput = FRenderingCompositeOutputRef(SceneColor);
-}
-
-// Array of downsampled color with optional log2 luminance stored in alpha
-template <int32 DownSampleStages>
-class TBloomDownSampleArray
-{
-public:
-	// Convenience typedefs
-	typedef FRenderingCompositeOutputRef         FRenderingRefArray[DownSampleStages];
-	typedef TSharedPtr<TBloomDownSampleArray>    Ptr;
-
-	// Constructor: Generates and registers the downsamples with the Context Graph.
-	TBloomDownSampleArray(FPostprocessContext& InContext, FRenderingCompositeOutputRef SourceDownsample, bool bGenerateLog2Alpha) :
-		bHasLog2Alpha(bGenerateLog2Alpha), Context(InContext)
-	{
-
-		static const TCHAR* PassLabels[] =
-		{ NULL, TEXT("BloomDownsample1"), TEXT("BloomDownsample2"), TEXT("BloomDownsample3"), TEXT("BloomDownsample4"), TEXT("BloomDownsample5") };
-		static_assert(ARRAY_COUNT(PassLabels) == DownSampleStages, "PassLabel count must be equal to DownSampleStages.");
-
-		// The first down sample is the input
-		PostProcessDownsamples[0] = SourceDownsample;
-
-		const EDownsampleQuality DownsampleQuality = GetDownsampleQuality();
-
-		// Queue the down samples. 
-		for (int i = 1; i < DownSampleStages; i++)
-		{
-			uint32 DownsampleFactor = 1 << i;
-
-			PostProcessDownsamples[i] = AddDownsamplePass(Context.Graph, PassLabels[i], PostProcessDownsamples[i - 1], DownsampleFactor, DownsampleQuality);
-
-			// Add log2 data to the alpha channel after doing the 1st (i==1) down sample pass
-			if (bHasLog2Alpha && i == 1 )
-			{
-				DownsampleFactor <<= 1;
-
-				PostProcessDownsamples[i] = AddBasicEyeAdaptationSetupPass(InContext, PostProcessDownsamples[i], DownsampleFactor);
-			}
-		}
-	}
-
-	// The number of elements in the array.
-	inline static int32 Num() { return DownSampleStages; }
-
-	inline static uint32 GetFinalDownsampleFactor() { return 1 << DownSampleStages; }
-
-	// Member data kept public for simplicity
-	bool bHasLog2Alpha;
-	FPostprocessContext& Context;
-	FRenderingRefArray PostProcessDownsamples;
-
-private:
-	// no default constructor.
-	TBloomDownSampleArray() {};
-};
-
-// Standard DownsampleArray shared by Bloom, Tint, and Eye-Adaptation. 
-typedef TBloomDownSampleArray<6/*DownSampleStages*/>   FBloomDownSampleArray;  
-
-FBloomDownSampleArray::Ptr CreateDownSampleArray(FPostprocessContext& Context, FRenderingCompositeOutputRef SourceToDownSample, bool bAddLog2)
-{
-	return FBloomDownSampleArray::Ptr(new FBloomDownSampleArray(Context, SourceToDownSample, bAddLog2));
-}
-
-// render one bloom pass and add another optional texture to it
-static FRenderingCompositeOutputRef RenderBloom(
-	FPostprocessContext& Context,
-	const FRenderingCompositeOutputRef& PreviousBloom,
-	float Size,
-	FLinearColor Tint = FLinearColor::White,
-	const FRenderingCompositeOutputRef Additive = FRenderingCompositeOutputRef())
-{
-	const float CrossBloom = CVarBloomCross.GetValueOnRenderThread();
-
-	const FVector2D CrossCenterWeight(FMath::Max(CrossBloom, 0.0f), FMath::Abs(CrossBloom));
-
-	return AddGaussianBlurPass(Context.Graph, TEXT("BloomBlurX"), TEXT("BloomBlurY"), PreviousBloom, Size, Tint, Additive, CrossCenterWeight);
 }
 
 static FRCPassPostProcessTonemap* AddTonemapper(
@@ -357,19 +599,6 @@ static void AddPostProcessAA(FPostprocessContext& Context)
 	Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
 
 	Context.FinalOutput = FRenderingCompositeOutputRef(Node);
-}
-
-
-static FRenderingCompositeOutputRef AddPostProcessBasicEyeAdaptation(const FViewInfo& View, FBloomDownSampleArray& BloomAndEyeDownSamples)
-{
-	// Extract the context
-	FPostprocessContext& Context = BloomAndEyeDownSamples.Context;
-
-	// Extract the last (i.e. smallest) down sample
-	static const int32 FinalDSIdx = FBloomDownSampleArray::Num() - 1;
-	FRenderingCompositeOutputRef PostProcessPriorReduction = BloomAndEyeDownSamples.PostProcessDownsamples[FinalDSIdx];
-
-	return AddBasicEyeAdaptationPass(Context, PostProcessPriorReduction, BloomAndEyeDownSamples.GetFinalDownsampleFactor());
 }
 
 static bool AddPostProcessDepthOfFieldGaussian(FPostprocessContext& Context, FDepthOfFieldStats& Out, FRenderingCompositeOutputRef& VelocityInput, FRenderingCompositeOutputRef& SeparateTranslucencyRef)
@@ -457,146 +686,6 @@ static bool AddPostProcessDepthOfFieldGaussian(FPostprocessContext& Context, FDe
 	{
 		return false;
 	}
-}
-
-static FRenderingCompositeOutputRef AddBloom(FBloomDownSampleArray& BloomDownSampleArray)
-{
-	
-	// Quality level to bloom stages table. Note: 0 is omitted, ensure element count tallys with the range documented with 'r.BloomQuality' definition.
-	const static uint32 BloomQualityStages[] =
-	{
-		3,// Q1
-		3,// Q2
-		4,// Q3
-		5,// Q4
-		6,// Q5
-	};
-
-	int32 BloomQuality;
-	{
-		// console variable override
-		static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.BloomQuality"));
-		BloomQuality = FMath::Clamp(CVar->GetValueOnRenderThread(), 0, (int32)ARRAY_COUNT(BloomQualityStages));
-	}
-
-	// Extract the Context
-	FPostprocessContext& Context = BloomDownSampleArray.Context;
-
-	const bool bOldMetalNoFFT = IsMetalPlatform(Context.View.GetShaderPlatform()) && (RHIGetShaderLanguageVersion(Context.View.GetShaderPlatform()) < 4);
-	const bool bUseFFTBloom = (Context.View.FinalPostProcessSettings.BloomMethod == EBloomMethod::BM_FFT
-		&& Context.View.FeatureLevel >= ERHIFeatureLevel::SM5);
-		
-	static bool bWarnAboutOldMetalFFTOnce = false;
-	if (bOldMetalNoFFT && bUseFFTBloom && !bWarnAboutOldMetalFFTOnce)
-	{
-		UE_LOG(LogRenderer, Error, TEXT("FFT Bloom is only supported on Metal 2.1 and later."));
-		bWarnAboutOldMetalFFTOnce = true;
-	}
-
-	// Extract the downsample array.
-	FBloomDownSampleArray::FRenderingRefArray& PostProcessDownsamples = BloomDownSampleArray.PostProcessDownsamples;
-
-	FRenderingCompositeOutputRef BloomOutput;  
-	if (BloomQuality == 0)
-	{
-		// No bloom, provide substitute source for lens flare.
-		BloomOutput = PostProcessDownsamples[0];
-	}
-	else if (bUseFFTBloom && !bOldMetalNoFFT)
-	{
-		
-		// verify the physical kernel is valid, or fail gracefully by skipping bloom 
-		if (FRCPassFFTBloom::HasValidPhysicalKernel(Context))
-		{
-
-			// Use the first down sample as the source:
-			const uint32 DownSampleIndex = 0;
-			FRenderingCompositeOutputRef HalfResolutionRef = PostProcessDownsamples[DownSampleIndex];
-			FRenderingCompositeOutputRef FullResolutionRef = Context.FinalOutput;
-
-			FRenderingCompositePass* FFTPass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassFFTBloom());
-			const bool bDoFullResBloom = (CVarHalfResFFTBloom.GetValueOnRenderThread() != 1);
-			if (bDoFullResBloom)
-			{
-				FFTPass->SetInput(ePId_Input0, FRenderingCompositeOutputRef(FullResolutionRef));
-			}
-			else
-			{
-				FFTPass->SetInput(ePId_Input0, FRenderingCompositeOutputRef(HalfResolutionRef));
-				FFTPass->SetInput(ePId_Input1, FRenderingCompositeOutputRef(FullResolutionRef));
-			}
-
-			Context.FinalOutput = FRenderingCompositeOutputRef(FFTPass);
-		}
-	}
-	else
-	{
-		// Perform bloom blur + accumulate.
-		struct FBloomStage
-		{
-			float BloomSize;
-			const FLinearColor* Tint;
-		};
-		const FFinalPostProcessSettings& Settings = Context.View.FinalPostProcessSettings;
-
-		FBloomStage BloomStages[] =
-		{
-			{ Settings.Bloom6Size, &Settings.Bloom6Tint },
-			{ Settings.Bloom5Size, &Settings.Bloom5Tint },
-			{ Settings.Bloom4Size, &Settings.Bloom4Tint },
-			{ Settings.Bloom3Size, &Settings.Bloom3Tint },
-			{ Settings.Bloom2Size, &Settings.Bloom2Tint },
-			{ Settings.Bloom1Size, &Settings.Bloom1Tint },
-		};
-		static const uint32 NumBloomStages = ARRAY_COUNT(BloomStages);
-
-		const uint32 BloomStageCount = BloomQualityStages[BloomQuality - 1];
-		check(BloomStageCount <= NumBloomStages);
-		float TintScale = 1.0f / NumBloomStages;
-		for (uint32 i = 0, SourceIndex = NumBloomStages - 1; i < BloomStageCount; i++, SourceIndex--)
-		{
-			FBloomStage& Op = BloomStages[i];
-
-			FLinearColor Tint = (*Op.Tint) * TintScale;
-
-			// Only bloom this down-sampled input if the bloom size is non-zero
-			if (Op.BloomSize > SMALL_NUMBER)
-			{
-
-				BloomOutput = RenderBloom(Context, PostProcessDownsamples[SourceIndex], Op.BloomSize * Settings.BloomSizeScale, Tint, BloomOutput);
-			}
-		}
-
-		if (!BloomOutput.IsValid())
-		{
-			// Bloom was disabled by setting bloom size to zero in the post process.
-			// No bloom, provide substitute source for lens flare.
-			BloomOutput = PostProcessDownsamples[0];
-		}
-	}
-
-	//do not default bloomoutput to PostProcessDownsamples[0] or you will get crazy overbloom with some FFT settings
-	//however flares require an input.
-	FRenderingCompositeOutputRef BloomFlareInput;
-	if (BloomOutput.IsValid())
-	{
-		BloomFlareInput = BloomOutput;
-	}
-	else
-	{
-		BloomFlareInput = PostProcessDownsamples[0];
-	}
-
-	const bool bCompositeWithBloom = !bUseFFTBloom;
-
-	FRenderingCompositeOutputRef LensFlareOutput = AddLensFlarePass(Context, BloomFlareInput, PostProcessDownsamples, bCompositeWithBloom);
-
-	if (LensFlareOutput.IsValid())
-	{
-		BloomOutput = LensFlareOutput;
-	}
-
-	return BloomOutput;
 }
 
 static void AddGBufferVisualizationOverview(
@@ -866,16 +955,13 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 		FPostprocessContext Context(RHICmdList, CompositeContext.Graph, View);
 
-		FRenderingCompositeOutputRef HistogramOverScreen;
-		FRenderingCompositeOutputRef Histogram;
 		FRenderingCompositeOutputRef PreTonemapHDRColor;
 		FRenderingCompositeOutputRef PostTonemapHDRColor;
 		FRenderingCompositeOutputRef PreFlattenVelocity;
 		FRenderingCompositeOutputRef SeparateTranslucency;
 		FRenderingCompositeOutputRef BloomOutputCombined;
-		FRenderingCompositeOutputRef CustomDepth;
-		FRenderingCompositeOutputRef SceneColorHalfRes;
 		FRenderingCompositeOutputRef EyeAdaptation;
+		FRenderingCompositeOutputRef Histogram;
 
 		FRCPassPostProcessTonemap* Tonemapper = nullptr;
 
@@ -954,8 +1040,8 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			SceneContext.AdjustGBufferRefCount(RHICmdList, 1);
 
 			FRenderingCompositePass* RDGPass = Context.Graph.RegisterPass(
-				new(FMemStack::Get()) TRCPassForRDG<5, 3>(
-					[&View, &SceneContext, bMotionBlurEnabled, bVisualizeMotionBlur, bDepthOfFieldEnabled, bHistogramEnabled, DownsampleQuality, DownsampleOverrideFormat]
+				new(FMemStack::Get()) TRCPassForRDG<3, 4>(
+					[&View, &SceneContext, bMotionBlurEnabled, bVisualizeMotionBlur, bDepthOfFieldEnabled, bHistogramEnabled, bEyeAdaptationEnabled, bBloomEnabled, AutoExposureMethod, DownsampleQuality, DownsampleOverrideFormat]
 			(FRenderingCompositePass* Pass, FRenderingCompositePassContext& InContext)
 			{
 				FRDGBuilder GraphBuilder(InContext.RHICmdList);
@@ -966,28 +1052,32 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 				FRDGTextureRef CustomDepthTexture = GraphBuilder.TryRegisterExternalTexture(SceneContext.CustomDepth, TEXT("CustomDepth"));
 
+				FRDGTextureRef BlackTexture = GraphBuilder.RegisterExternalTexture(GSystemTextures.BlackDummy, TEXT("BlackDummy"));
+				const FIntRect BlackViewRect(FIntPoint::ZeroValue, FIntPoint(1, 1));
+
 				FSceneTextureParameters SceneTextures;
 				SetupSceneTextureParameters(GraphBuilder, &SceneTextures);
 
-				FRDGTextureRef VelocityTexture = SceneTextures.SceneVelocityBuffer;
-
 				// Fallback to a black texture if no velocity.
-				if (!VelocityTexture)
+				if (!SceneTextures.SceneVelocityBuffer)
 				{
-					VelocityTexture = GraphBuilder.RegisterExternalTexture(GSystemTextures.BlackDummy, TEXT("BlackDummy"));
-					SceneTextures.SceneVelocityBuffer = VelocityTexture;
+					SceneTextures.SceneVelocityBuffer = BlackTexture;
 				}
+
+				FRDGTextureRef VelocityTexture = SceneTextures.SceneVelocityBuffer;
 
 				const FScreenPassViewInfo& ScreenPassView(View);
 
 				const FIntRect PrimaryViewRect = View.ViewRect;
 
+				FIntRect SceneColorViewRect = PrimaryViewRect;
+
 				// Post Process Material Chain - Before Translucency
 				{
 					FPostProcessMaterialInputs Inputs;
-					Inputs.SetInput(EPostProcessMaterialInput::SceneColor, SceneColorTexture, PrimaryViewRect);
-					Inputs.SetInput(EPostProcessMaterialInput::SeparateTranslucency, SeparateTranslucencyTexture, PrimaryViewRect);
-					Inputs.SetInput(EPostProcessMaterialInput::Velocity, VelocityTexture, PrimaryViewRect);
+					Inputs.SetInput(EPostProcessMaterialInput::SceneColor, SceneColorTexture, SceneColorViewRect);
+					Inputs.SetInput(EPostProcessMaterialInput::SeparateTranslucency, SeparateTranslucencyTexture, SceneColorViewRect);
+					Inputs.SetInput(EPostProcessMaterialInput::Velocity, VelocityTexture, SceneColorViewRect);
 					Inputs.CustomDepthTexture = CustomDepthTexture;
 
 					SceneColorTexture = AddPostProcessMaterialChain(GraphBuilder, ScreenPassView, Inputs, BL_BeforeTranslucency);
@@ -1019,16 +1109,16 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				// Post Process Material Chain - Before Tonemapping
 				{
 					FPostProcessMaterialInputs Inputs;
-					Inputs.SetInput(EPostProcessMaterialInput::SceneColor, SceneColorTexture, PrimaryViewRect);
-					Inputs.SetInput(EPostProcessMaterialInput::SeparateTranslucency, SeparateTranslucencyTexture, PrimaryViewRect);
-					Inputs.SetInput(EPostProcessMaterialInput::Velocity, VelocityTexture, PrimaryViewRect);
+					Inputs.SetInput(EPostProcessMaterialInput::SceneColor, SceneColorTexture, SceneColorViewRect);
+					Inputs.SetInput(EPostProcessMaterialInput::SeparateTranslucency, SeparateTranslucencyTexture, SceneColorViewRect);
+					Inputs.SetInput(EPostProcessMaterialInput::Velocity, VelocityTexture, SceneColorViewRect);
 					Inputs.CustomDepthTexture = CustomDepthTexture;
 
 					SceneColorTexture = AddPostProcessMaterialChain(GraphBuilder, ScreenPassView, Inputs, BL_BeforeTonemapping);
 				}
 
-				FRDGTextureRef SceneColorHalfResTexture = nullptr;
-				FIntRect SceneColorHalfResViewRect;
+				FRDGTextureRef HalfResolutionSceneColorTexture = nullptr;
+				FIntRect HalfResolutionSceneColorViewRect;
 
 				// Scene color view rectangle after temporal AA upscale to secondary screen percentage.
 				FIntRect SecondaryViewRect = PrimaryViewRect;
@@ -1054,17 +1144,18 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 						SceneColorTexture,
 						&SceneColorTexture,
 						&SecondaryViewRect,
-						&SceneColorHalfResTexture,
-						&SceneColorHalfResViewRect);
+						&HalfResolutionSceneColorTexture,
+						&HalfResolutionSceneColorViewRect);
 				}
 
 				//! SceneColorTexture is now upsampled to the SecondaryViewRect. Use SecondaryViewRect for input / output.
+				SceneColorViewRect = SecondaryViewRect;
 
 				// Post Process Material Chain - SSR Input
 				if (View.ViewState && !View.bStatePrevViewInfoIsReadOnly)
 				{
 					FPostProcessMaterialInputs Inputs;
-					Inputs.SetInput(EPostProcessMaterialInput::SceneColor, SceneColorTexture, SecondaryViewRect);
+					Inputs.SetInput(EPostProcessMaterialInput::SceneColor, SceneColorTexture, SceneColorViewRect);
 					Inputs.CustomDepthTexture = CustomDepthTexture;
 
 					FRDGTextureRef SSRInputTexture = AddPostProcessMaterialChain(GraphBuilder, ScreenPassView, Inputs, BL_SSRInput);
@@ -1076,12 +1167,13 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 					}
 				}
 
+				// Motion blur visualization replaces motion blur when enabled.
 				if (bVisualizeMotionBlur)
 				{
 					SceneColorTexture = AddVisualizeMotionBlurPass(
 						GraphBuilder,
 						ScreenPassView,
-						SecondaryViewRect,
+						SceneColorViewRect,
 						PrimaryViewRect,
 						SceneColorTexture,
 						SceneDepthTexture,
@@ -1092,7 +1184,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 					SceneColorTexture = AddMotionBlurPass(
 						GraphBuilder,
 						ScreenPassView,
-						SecondaryViewRect,
+						SceneColorViewRect,
 						PrimaryViewRect,
 						SceneColorTexture,
 						SceneDepthTexture,
@@ -1100,38 +1192,145 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				}
 
 				// If TAA didn't do it, downsample the scene color texture by half.
-				if (!SceneColorHalfResTexture)
+				if (!HalfResolutionSceneColorTexture)
 				{
 					FDownsamplePassInputs Inputs;
-					Inputs.Name = TEXT("SceneColorHalfRes");
+					Inputs.Name = TEXT("HalfResolutionSceneColor");
 					Inputs.Texture = SceneColorTexture;
-					Inputs.Viewport = SecondaryViewRect;
+					Inputs.Viewport = SceneColorViewRect;
 					Inputs.Quality = DownsampleQuality;
 					Inputs.FormatOverride = DownsampleOverrideFormat;
 
 					FDownsamplePassOutputs Outputs = AddDownsamplePass(GraphBuilder, ScreenPassView, Inputs);
-
-					SceneColorHalfResTexture = Outputs.Texture;
-					SceneColorHalfResViewRect = Outputs.Viewport;
+					HalfResolutionSceneColorTexture = Outputs.Texture;
+					HalfResolutionSceneColorViewRect = Outputs.Viewport;
 				}
+
+				FEyeAdaptationParameters EyeAdaptationParameters = GetEyeAdaptationParameters(View, ERHIFeatureLevel::SM5);
+
+				// Default the new eye adaptation to the last one in case it's not generated this frame.
+				FRDGTextureRef LastEyeAdaptationTexture = GetEyeAdaptationTexture(GraphBuilder, View);
+				FRDGTextureRef EyeAdaptationTexture = LastEyeAdaptationTexture;
+
+				// Histogram defaults to black because the histogram eye adaptation pass is used for the manual metering mode.
+				FRDGTextureRef HistogramTexture = BlackTexture;
+
+				FSceneDownsampleChain SceneDownsampleChain;
 
 				if (bHistogramEnabled)
 				{
-					FRDGTextureRef HistogramTexture = AddHistogramPass(
+					HistogramTexture = AddHistogramPass(
 						GraphBuilder,
 						ScreenPassView,
-						SceneColorHalfResViewRect,
-						SceneColorHalfResTexture,
-						GetEyeAdaptationTexture(GraphBuilder, View));
+						EyeAdaptationParameters,
+						HalfResolutionSceneColorViewRect,
+						HalfResolutionSceneColorTexture,
+						LastEyeAdaptationTexture);
+				}
 
-					Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output2, HistogramTexture);
+				const bool bBasicEyeAdaptationEnabled = bEyeAdaptationEnabled && (AutoExposureMethod == EAutoExposureMethod::AEM_Basic);
+
+				const bool bBloomThresholdEnabled = View.FinalPostProcessSettings.BloomThreshold > 0.0f;
+
+				if (bEyeAdaptationEnabled)
+				{
+					if (bBasicEyeAdaptationEnabled)
+					{
+						const bool bLogLumaInAlpha = true;
+
+						SceneDownsampleChain.Init(
+							GraphBuilder,
+							ScreenPassView,
+							EyeAdaptationParameters,
+							HalfResolutionSceneColorTexture,
+							HalfResolutionSceneColorViewRect,
+							DownsampleQuality,
+							bLogLumaInAlpha);
+
+						// Use the alpha channel in the last downsample (smallest) to compute eye adaptations values.
+						EyeAdaptationTexture = AddBasicEyeAdaptationPass(
+							GraphBuilder,
+							ScreenPassView,
+							EyeAdaptationParameters,
+							SceneDownsampleChain.GetLastTexture(),
+							SceneDownsampleChain.GetLastViewport(),
+							LastEyeAdaptationTexture);
+					}
+					// Add histogram eye adaptation pass even if no histogram exists to support the manual clamping mode.
+					else
+					{
+						EyeAdaptationTexture = AddHistogramEyeAdaptationPass(
+							GraphBuilder,
+							ScreenPassView,
+							EyeAdaptationParameters,
+							HistogramTexture);
+					}
+				}
+
+				FRDGTextureRef BloomTexture = BlackTexture;
+				FIntRect BloomViewRect = BlackViewRect;
+
+				if (bBloomEnabled)
+				{
+					FSceneDownsampleChain BloomDownsampleChain;
+
+					FBloomInputs PassInputs;
+					PassInputs.SceneColorTexture = SceneColorTexture;
+					PassInputs.SceneColorViewRect = SceneColorViewRect;
+
+					// Reuse the main scene downsample chain if a threshold isn't required for bloom. 
+					if (SceneDownsampleChain.IsInitialized() && !bBloomThresholdEnabled)
+					{
+						PassInputs.SceneDownsampleChain = &SceneDownsampleChain;
+					}
+					else
+					{
+						FRDGTextureRef DownsampleInputTexture = HalfResolutionSceneColorTexture;
+
+						if (bBloomThresholdEnabled)
+						{
+							const float BloomThreshold = View.FinalPostProcessSettings.BloomThreshold;
+
+							DownsampleInputTexture = AddBloomSetupPass(
+								GraphBuilder,
+								ScreenPassView,
+								DownsampleInputTexture,
+								HalfResolutionSceneColorViewRect,
+								EyeAdaptationTexture,
+								BloomThreshold);
+						}
+
+						const bool bLogLumaInAlpha = false;
+
+						BloomDownsampleChain.Init(
+							GraphBuilder,
+							ScreenPassView,
+							EyeAdaptationParameters,
+							DownsampleInputTexture,
+							HalfResolutionSceneColorViewRect,
+							DownsampleQuality,
+							bLogLumaInAlpha);
+
+						PassInputs.SceneDownsampleChain = &BloomDownsampleChain;
+					}
+
+					FBloomOutputs PassOutputs = AddBloomPass(GraphBuilder, ScreenPassView, PassInputs);
+					SceneColorTexture = PassOutputs.SceneColorTexture;
+
+					if (PassOutputs.BloomTexture)
+					{
+						BloomTexture = PassOutputs.BloomTexture;
+						BloomViewRect = PassOutputs.BloomViewRect;
+					}
 				}
 
 				// Release held GBuffer reference taken during composition graph setup. Passes will take their own references during RDG setup.
 				SceneContext.AdjustGBufferRefCount(InContext.RHICmdList, -1);
 
 				Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, SceneColorTexture);
-				Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output1, SceneColorHalfResTexture);
+				Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output1, HistogramTexture);
+				Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output2, EyeAdaptationTexture);
+				Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output3, BloomTexture);
 
 				GraphBuilder.Execute();
 
@@ -1144,61 +1343,9 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			RDGPass->SetInput(ePId_Input2, SeparateTranslucency);
 
 			Context.FinalOutput = FRenderingCompositeOutputRef(RDGPass, ePId_Output0);
-
-			SceneColorHalfRes = FRenderingCompositeOutputRef(RDGPass, ePId_Output1);
-
-			if (bHistogramEnabled)
-			{
-				Histogram = FRenderingCompositeOutputRef(RDGPass, ePId_Output2);
-			}
-
-			const bool bBasicEyeAdaptationEnabled = bEyeAdaptationEnabled && (AutoExposureMethod == EAutoExposureMethod::AEM_Basic);
-
-			const bool bBloomThresholdEnabled = Context.View.FinalPostProcessSettings.BloomThreshold > 0.0f;
-
-			FBloomDownSampleArray::Ptr SceneColorDownsampleChain;
-
-			if (bEyeAdaptationEnabled)
-			{
-				if (bBasicEyeAdaptationEnabled)
-				{
-					const bool bGenerageLog2Alpha = true;
-
-					FBloomDownSampleArray::Ptr EyeAdaptationDownsampleChain = CreateDownSampleArray(Context, SceneColorHalfRes, bGenerageLog2Alpha);
-
-					// Use the alpha channel in the last downsample (smallest) to compute eye adaptations values.
-					EyeAdaptation = AddPostProcessBasicEyeAdaptation(View, *EyeAdaptationDownsampleChain);
-
-					// We can reuse the same downsample chain on bloom, but only if we aren't doing thresholding.
-					if (!bBloomThresholdEnabled)
-					{
-						SceneColorDownsampleChain = EyeAdaptationDownsampleChain;
-					}
-				}
-				// We run histogram eye adaptation even if no histogram exists to support the manual clamping mode.
-				else
-				{
-					EyeAdaptation = AddHistogramEyeAdaptationPass(Context, Histogram);
-				}
-			}
-
-			if (bBloomEnabled)
-			{
-				if (!SceneColorDownsampleChain.IsValid())
-				{
-					FRenderingCompositeOutputRef DownsampleInput = SceneColorHalfRes;
-
-					if (bBloomThresholdEnabled)
-					{
-						DownsampleInput = AddBloomSetupPass(Context.Graph, SceneColorHalfRes, EyeAdaptation);
-					}
-
-					const bool bGenerageLog2Alpha = false;
-
-					SceneColorDownsampleChain = CreateDownSampleArray(Context, DownsampleInput, bGenerageLog2Alpha);
-				}
-				BloomOutputCombined = AddBloom(*SceneColorDownsampleChain);
-			}
+			Histogram = FRenderingCompositeOutputRef(RDGPass, ePId_Output1);
+			EyeAdaptation = FRenderingCompositeOutputRef(RDGPass, ePId_Output2);
+			BloomOutputCombined = FRenderingCompositeOutputRef(RDGPass, ePId_Output3);
 
 			PreTonemapHDRColor = Context.FinalOutput;
 
@@ -1392,7 +1539,6 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
 			Node->SetInput(ePId_Input1, Histogram);
 			Node->SetInput(ePId_Input2, PreTonemapHDRColor);
-			Node->AddDependency(EyeAdaptation);
 
 			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
 		}

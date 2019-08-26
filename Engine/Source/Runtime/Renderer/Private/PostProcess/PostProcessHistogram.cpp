@@ -102,6 +102,7 @@ IMPLEMENT_GLOBAL_SHADER(FHistogramReducePS, "/Engine/Private/PostProcessHistogra
 FRDGTextureRef AddHistogramPass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
+	const FEyeAdaptationParameters& EyeAdaptationParameters,
 	const FIntRect SceneColorViewportRect,
 	FRDGTextureRef SceneColorTexture,
 	FRDGTextureRef EyeAdaptationTexture)
@@ -114,6 +115,8 @@ FRDGTextureRef AddHistogramPass(
 	const uint32 HistogramThreadGroupCountTotal = HistogramThreadGroupCount.X * HistogramThreadGroupCount.Y;
 
 	FRDGTextureRef HistogramTexture = nullptr;
+
+	RDG_EVENT_SCOPE(GraphBuilder, "Histogram");
 
 	// First pass outputs one flattened histogram per group.
 	{
@@ -135,7 +138,7 @@ FRDGTextureRef AddHistogramPass(
 		PassParameters->InputTexture = SceneColorTexture;
 		PassParameters->HistogramRWTexture = GraphBuilder.CreateUAV(HistogramTexture);
 		PassParameters->ThreadGroupCount = HistogramThreadGroupCount;
-		PassParameters->EyeAdaptation = GetEyeAdaptationParameters(ScreenPassView.View);
+		PassParameters->EyeAdaptation = EyeAdaptationParameters;
 
 		TShaderMapRef<FHistogramCS> ComputeShader(ScreenPassView.View.ShaderMap);
 

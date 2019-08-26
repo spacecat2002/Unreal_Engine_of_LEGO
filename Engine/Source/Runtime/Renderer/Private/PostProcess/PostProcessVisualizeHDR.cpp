@@ -109,7 +109,7 @@ public:
 
 		{
 			FParameters PassParameters;
-			PassParameters.EyeAdaptation = GetEyeAdaptationParameters(Context.View);
+			PassParameters.EyeAdaptation = GetEyeAdaptationParameters(Context.View, ERHIFeatureLevel::SM5);
 			SetShaderParameters(RHICmdList, this, ShaderRHI, PassParameters);
 		}
 
