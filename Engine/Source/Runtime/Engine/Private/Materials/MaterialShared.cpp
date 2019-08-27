@@ -569,6 +569,14 @@ void FMaterial::GetShaderMapId(EShaderPlatform Platform, FMaterialShaderMapId& O
 	}
 }
 
+
+void FMaterial::GetStaticParameterSet(EShaderPlatform Platform, FStaticParameterSet& OutSet) const
+{
+	// Clear the set in default implementation
+	OutSet = FStaticParameterSet();
+}
+
+
 EMaterialTessellationMode FMaterial::GetTessellationMode() const 
 { 
 	return MTM_NoTessellation; 
@@ -1739,14 +1747,16 @@ bool FMaterial::CacheShaders(EShaderPlatform Platform, const ITargetPlatform* Ta
 {
 	FMaterialShaderMapId NoStaticParametersId;
 	GetShaderMapId(Platform, NoStaticParametersId);
-	return CacheShaders(NoStaticParametersId, Platform, TargetPlatform);
+	FStaticParameterSet StaticParameterSet;
+	GetStaticParameterSet(Platform, StaticParameterSet);
+	return CacheShaders(NoStaticParametersId, StaticParameterSet, Platform, TargetPlatform);
 }
 
 /**
  * Caches the material shaders for the given static parameter set and platform.
  * This is used by material resources of UMaterialInstances.
  */
-bool FMaterial::CacheShaders(const FMaterialShaderMapId& ShaderMapId, EShaderPlatform Platform, const ITargetPlatform* TargetPlatform)
+bool FMaterial::CacheShaders(const FMaterialShaderMapId& ShaderMapId, const FStaticParameterSet &StaticParameterSet, EShaderPlatform Platform, const ITargetPlatform* TargetPlatform)
 {
 	bool bSucceeded = false;
 	UE_CLOG(!ShaderMapId.IsValid(), LogMaterial, Warning, TEXT("Invalid shader map ID caching shaders for '%s', will use default material."), *GetFriendlyName());
@@ -1786,7 +1796,9 @@ bool FMaterial::CacheShaders(const FMaterialShaderMapId& ShaderMapId, EShaderPla
 			// Attempt to load from the derived data cache if we are uncooked
 			if ((!ShaderMap || !ShaderMap->IsComplete(this, true)) && !FPlatformProperties::RequiresCookedData())
 			{
-				FMaterialShaderMap::LoadFromDerivedDataCache(this, ShaderMapId, Platform, ShaderMap);
+				TRefCountPtr<FMaterialShaderMap> LoadedShaderMap;
+				FMaterialShaderMap::LoadFromDerivedDataCache(this, ShaderMapId, Platform, LoadedShaderMap);
+				ShaderMap = LoadedShaderMap;
 			}
 		}
 
@@ -1868,7 +1880,7 @@ bool FMaterial::CacheShaders(const FMaterialShaderMapId& ShaderMapId, EShaderPla
 
 			// If there's no cached shader map for this material, compile a new one.
 			// This is just kicking off the async compile, GameThreadShaderMap will not be complete yet
-			bSucceeded = BeginCompileShaderMap(ShaderMapId, Platform, ShaderMap, TargetPlatform);
+			bSucceeded = BeginCompileShaderMap(ShaderMapId, StaticParameterSet, Platform, ShaderMap, TargetPlatform);
 
 			if (!bSucceeded)
 			{
@@ -1913,11 +1925,13 @@ bool FMaterial::CacheShaders(const FMaterialShaderMapId& ShaderMapId, EShaderPla
 *
 * @param ShaderMapId - the set of static parameters to compile
 * @param Platform - the platform to compile for
+* @param StaticParameterSet - static parameters
 * @param OutShaderMap - the shader map to compile
 * @return - true if compile succeeded or was not necessary (shader map for ShaderMapId was found and was complete)
 */
 bool FMaterial::BeginCompileShaderMap(
 	const FMaterialShaderMapId& ShaderMapId, 
+	const FStaticParameterSet &StaticParameterSet,
 	EShaderPlatform Platform, 
 	TRefCountPtr<FMaterialShaderMap>& OutShaderMap,
 	const ITargetPlatform* TargetPlatform)
@@ -1933,7 +1947,7 @@ bool FMaterial::BeginCompileShaderMap(
 
 	// Generate the material shader code.
 	FMaterialCompilationOutput NewCompilationOutput;
-	FHLSLMaterialTranslator MaterialTranslator(this,NewCompilationOutput,ShaderMapId.GetParameterSet(),Platform,GetQualityLevel(),ShaderMapId.FeatureLevel, TargetPlatform);
+	FHLSLMaterialTranslator MaterialTranslator(this, NewCompilationOutput, StaticParameterSet, Platform,GetQualityLevel(), ShaderMapId.FeatureLevel, TargetPlatform);
 	bSuccess = MaterialTranslator.Translate();
 
 	if(bSuccess)
@@ -2939,7 +2953,10 @@ bool FMaterial::GetMaterialExpressionSource( FString& OutSource )
 	FMaterialCompilationOutput TempOutput;
 	FMaterialShaderMapId ShaderMapID;
 	GetShaderMapId(GMaxRHIShaderPlatform, ShaderMapID);
-	FViewSourceMaterialTranslator MaterialTranslator(this, TempOutput, ShaderMapID.GetParameterSet(), GMaxRHIShaderPlatform, GetQualityLevel(), GetFeatureLevel());
+	FStaticParameterSet StaticParamSet;
+	GetStaticParameterSet(GMaxRHIShaderPlatform, StaticParamSet);
+
+	FViewSourceMaterialTranslator MaterialTranslator(this, TempOutput, StaticParamSet, GMaxRHIShaderPlatform, GetQualityLevel(), GetFeatureLevel());
 	bool bSuccess = MaterialTranslator.Translate();
 
 	if( bSuccess )
@@ -3322,7 +3339,9 @@ void UMaterialInterface::AnalyzeMaterialProperty(EMaterialProperty InProperty, i
 	FMaterialResource* MaterialResource = GetMaterialResource(GMaxRHIFeatureLevel);
 	FMaterialShaderMapId ShaderMapID;
 	MaterialResource->GetShaderMapId(GMaxRHIShaderPlatform, ShaderMapID);
-	FMaterialAnalyzer MaterialTranslator(MaterialResource, TempOutput, ShaderMapID.GetParameterSet(), GMaxRHIShaderPlatform, MaterialResource->GetQualityLevel(), GMaxRHIFeatureLevel);	
+	FStaticParameterSet StaticParamSet;
+	MaterialResource->GetStaticParameterSet(GMaxRHIShaderPlatform, StaticParamSet);
+	FMaterialAnalyzer MaterialTranslator(MaterialResource, TempOutput, StaticParamSet, GMaxRHIShaderPlatform, MaterialResource->GetQualityLevel(), GMaxRHIFeatureLevel);
 	
 	static_cast<FMaterialCompiler*>(&MaterialTranslator)->SetMaterialProperty(InProperty); // FHLSLMaterialTranslator hides this interface, so cast to parent
 	CompileProperty(&MaterialTranslator, InProperty);
@@ -3358,7 +3377,9 @@ bool UMaterialInterface::IsTextureReferencedByProperty(EMaterialProperty InPrope
 	FMaterialResource* MaterialResource = GetMaterialResource(GMaxRHIFeatureLevel);
 	FMaterialShaderMapId ShaderMapID;
 	MaterialResource->GetShaderMapId(GMaxRHIShaderPlatform, ShaderMapID);
-	FHLSLMaterialTranslator MaterialTranslator(MaterialResource, TempOutput, ShaderMapID.GetParameterSet(), GMaxRHIShaderPlatform, MaterialResource->GetQualityLevel(), GMaxRHIFeatureLevel);
+	FStaticParameterSet StaticParamSet;
+	MaterialResource->GetStaticParameterSet(GMaxRHIShaderPlatform, StaticParamSet);
+	FHLSLMaterialTranslator MaterialTranslator(MaterialResource, TempOutput, StaticParamSet, GMaxRHIShaderPlatform, MaterialResource->GetQualityLevel(), GMaxRHIFeatureLevel);
 
 	FFindTextureVisitor Visitor(InTexture);
 	MaterialTranslator.VisitExpressionsForProperty(InProperty, Visitor);

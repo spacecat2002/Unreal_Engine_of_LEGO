@@ -11956,9 +11956,85 @@ bool UMaterialFunctionInstance::OverrideNamedStaticComponentMaskParameter(const 
 	return false;
 }
 
+
+///////////////////////////////////////////////////////////////////////////////
+// FMaterialLayersFunctions::ID
+///////////////////////////////////////////////////////////////////////////////
+
+bool FMaterialLayersFunctions::ID::operator==(const ID& Reference) const
+{
+	return LayerIDs == Reference.LayerIDs && BlendIDs == Reference.BlendIDs && LayerStates == Reference.LayerStates;
+}
+
+
+void FMaterialLayersFunctions::ID::SerializeForDDC(FArchive& Ar)
+{
+	Ar << LayerIDs;
+	Ar << BlendIDs;
+	Ar << LayerStates;
+}
+
+
+void FMaterialLayersFunctions::ID::UpdateHash(FSHA1& HashState) const
+{
+	for (const FGuid &Guid : LayerIDs)
+	{
+		HashState.Update((const uint8*)&Guid, sizeof(FGuid));
+	}
+	for (const FGuid &Guid : BlendIDs)
+	{
+		HashState.Update((const uint8*)&Guid, sizeof(FGuid));
+	}
+	HashState.Update((const uint8*)LayerStates.GetData(), LayerStates.Num()*LayerStates.GetTypeSize());
+}
+
+
+void FMaterialLayersFunctions::ID::AppendKeyString(FString& KeyString) const
+{
+	for (const FGuid &Guid : LayerIDs)
+	{
+		KeyString += Guid.ToString();
+	}
+	for (const FGuid &Guid : BlendIDs)
+	{
+		KeyString += Guid.ToString();
+	}
+	for (bool State : LayerStates)
+	{
+		KeyString += FString::FromInt(State);
+	}
+}
+
+
 ///////////////////////////////////////////////////////////////////////////////
 // FMaterialLayersFunctions
 ///////////////////////////////////////////////////////////////////////////////
+
+const FMaterialLayersFunctions::ID FMaterialLayersFunctions::GetID() const
+{
+	FMaterialLayersFunctions::ID Result;
+
+	// Store the layer IDs in following format - stateID per function
+	Result.LayerIDs.SetNum(Layers.Num());
+	for (int i=0; i<Layers.Num(); ++i)
+	{
+		const UMaterialFunctionInterface* Layer = Layers[i];
+		Result.LayerIDs[i] = (Layer) ? Layer->StateId : FGuid();
+	}
+
+	// Store the blend IDs in following format - stateID per function
+	Result.BlendIDs.SetNum(Blends.Num());
+	for (int i = 0; i < Blends.Num(); ++i)
+	{
+		const UMaterialFunctionInterface* Blend = Blends[i];
+		Result.BlendIDs[i] = (Blend) ? Blend->StateId : FGuid();
+	}
+
+	// Store the states copy
+	Result.LayerStates = LayerStates;
+
+	return Result;
+}
 
 FString FMaterialLayersFunctions::GetStaticPermutationString() const
 {
@@ -12005,9 +12081,9 @@ void FMaterialLayersFunctions::SerializeForDDC(FArchive& Ar)
 {
 	if (!Ar.IsCooking())
 	{
-		KeyString = GetStaticPermutationString();
+		KeyString_DEPRECATED = GetStaticPermutationString();
 	}
-	Ar << KeyString;
+	Ar << KeyString_DEPRECATED;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

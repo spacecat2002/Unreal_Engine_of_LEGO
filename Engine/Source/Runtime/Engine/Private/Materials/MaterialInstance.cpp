@@ -2751,10 +2751,7 @@ void UMaterialInstance::CacheShadersForResources(EShaderPlatform ShaderPlatform,
 	{
 		FMaterialResource* CurrentResource = ResourcesToCache[ResourceIndex];
 
-		FMaterialShaderMapId ShaderMapId;
-		CurrentResource->GetShaderMapId(ShaderPlatform, ShaderMapId);
-
-		const bool bSuccess = CurrentResource->CacheShaders(ShaderMapId, ShaderPlatform, TargetPlatform);
+		const bool bSuccess = CurrentResource->CacheShaders(ShaderPlatform, TargetPlatform);
 
 		if (!bSuccess)
 		{
@@ -2964,7 +2961,6 @@ bool UMaterialInstance::UpdateMaterialLayersParameterValue(const FMaterialParame
 				// @TODO: This should properly respect the override state
 				Param.Value = LayersValue;
 				Param.bOverride = true;//bOverridden;
-				Param.Value.UpdateStaticPermutationString();
 				return true;
 			}
 #if WITH_EDITOR
@@ -2974,7 +2970,6 @@ bool UMaterialInstance::UpdateMaterialLayersParameterValue(const FMaterialParame
 				{
 					Param.Value = LayersValue;
 					Param.bOverride = true;//bOverridden;
-					Param.Value.UpdateStaticPermutationString();
 					return true;
 				}
 			}
@@ -3146,10 +3141,9 @@ void UMaterialInstance::Serialize(FArchive& Ar)
 			FMaterialShaderMapId LegacyId;
 			LegacyId.Serialize(Ar, bLoadedByCookedMaterial);
 
-			const FStaticParameterSet& IdParameterSet = LegacyId.GetParameterSet();
-			StaticParameters.StaticSwitchParameters = IdParameterSet.StaticSwitchParameters;
-			StaticParameters.StaticComponentMaskParameters = IdParameterSet.StaticComponentMaskParameters;
-			StaticParameters.TerrainLayerWeightParameters = IdParameterSet.TerrainLayerWeightParameters;
+			StaticParameters.StaticSwitchParameters = LegacyId.GetStaticSwitchParameters();
+			StaticParameters.StaticComponentMaskParameters = LegacyId.GetStaticComponentMaskParameters();
+			StaticParameters.TerrainLayerWeightParameters = LegacyId.GetTerrainLayerWeightParameters();
 
 			TrimToOverriddenOnly(StaticParameters.StaticSwitchParameters);
 			TrimToOverriddenOnly(StaticParameters.StaticComponentMaskParameters);

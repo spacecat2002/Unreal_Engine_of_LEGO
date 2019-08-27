@@ -248,9 +248,21 @@ void FMaterialResource::GetShaderMapId(EShaderPlatform Platform, FMaterialShader
 
 		FStaticParameterSet CompositedStaticParameters;
 		MaterialInstance->GetStaticParameterValues(CompositedStaticParameters);
-		OutId.UpdateParameterSet(CompositedStaticParameters);		
+		OutId.UpdateFromParameterSet(CompositedStaticParameters);
 	}
 #endif // WITH_EDITOR
+}
+
+
+void FMaterialResource::GetStaticParameterSet(EShaderPlatform Platform, FStaticParameterSet& OutSet) const
+{
+	FMaterial::GetStaticParameterSet(Platform, OutSet);
+
+	// Get the set from instance
+	if (MaterialInstance)
+	{
+		MaterialInstance->GetStaticParameterValues(OutSet);
+	}
 }
 
 /**
@@ -3718,6 +3730,7 @@ void UMaterial::PostLoad()
 				case TC_Normalmap:
 					TextureExpression->SamplerType = SAMPLERTYPE_Normal;
 					break;
+					
 				case TC_Grayscale:
 					TextureExpression->SamplerType = TextureExpression->Texture->SRGB ? SAMPLERTYPE_Grayscale : SAMPLERTYPE_LinearGrayscale;
 					break;
