@@ -1177,39 +1177,9 @@ static FAutoConsoleVariableRef CVarWarningOnRedundantTransformUpdate(
 
 void FScene::UpdatePrimitiveTransform_RenderThread(FPrimitiveSceneProxy* PrimitiveSceneProxy, const FBoxSphereBounds& WorldBounds, const FBoxSphereBounds& LocalBounds, const FMatrix& LocalToWorld, const FVector& AttachmentRootPosition, const TOptional<FTransform>& PreviousTransform)
 {
->>>> ORIGINAL //UE4/Dev-RenderPlat-Staging/Engine/Source/Runtime/Renderer/Private/RendererScene.cpp#1
 	SCOPE_CYCLE_COUNTER(STAT_UpdatePrimitiveTransformRenderThreadTime);
-
-	FPrimitiveSceneInfo* PrimitiveSceneInfo = PrimitiveSceneProxy->GetPrimitiveSceneInfo();
-
-	const bool bUpdateStaticDrawLists = !PrimitiveSceneProxy->StaticElementsAlwaysUseProxyPrimitiveUniformBuffer();
-
-	PrimitiveSceneInfo->FlushRuntimeVirtualTexture();
-
-	// Remove the primitive from the scene at its old location
-	// (note that the octree update relies on the bounds not being modified yet).
-	PrimitiveSceneInfo->RemoveFromScene(bUpdateStaticDrawLists);
-
-	if (PrimitiveSceneInfo->Proxy->IsMovable() && GetFeatureLevel() > ERHIFeatureLevel::ES3_1)
-==== THEIRS //UE4/Dev-RenderPlat-Staging/Engine/Source/Runtime/Renderer/Private/RendererScene.cpp#2
-	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(UpdatePrimitiveTransform);
-	SCOPE_CYCLE_COUNTER(STAT_UpdatePrimitiveTransformRenderThreadTime);
-
-	FPrimitiveSceneInfo* PrimitiveSceneInfo = PrimitiveSceneProxy->GetPrimitiveSceneInfo();
-
-	const bool bUpdateStaticDrawLists = !PrimitiveSceneProxy->StaticElementsAlwaysUseProxyPrimitiveUniformBuffer();
-
-	PrimitiveSceneInfo->FlushRuntimeVirtualTexture();
-
-	// Remove the primitive from the scene at its old location
-	// (note that the octree update relies on the bounds not being modified yet).
-	PrimitiveSceneInfo->RemoveFromScene(bUpdateStaticDrawLists);
-
-	if (PrimitiveSceneInfo->Proxy->IsMovable() && GetFeatureLevel() > ERHIFeatureLevel::ES3_1)
-==== YOURS //Rolando.Caloca_I9_DevRenderingMerge/Engine/Source/Runtime/Renderer/Private/RendererScene.cpp
 	check(IsInRenderingThread());
 	if (GWarningOnRedundantTransformUpdate && PrimitiveSceneProxy->WouldSetTransformBeRedundant(LocalToWorld, WorldBounds, LocalBounds, AttachmentRootPosition))
-<<<<
 	{
 		UE_LOG(LogRenderer, Warning, TEXT("Redundant UpdatePrimitiveTransform_RenderThread Owner: %s, Resource: %s, Level: %s"), *PrimitiveSceneProxy->GetOwnerName().ToString(), *PrimitiveSceneProxy->GetResourceName().ToString(), *PrimitiveSceneProxy->GetLevelName().ToString());
 	}

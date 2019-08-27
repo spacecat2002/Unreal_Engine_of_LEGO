@@ -1664,10 +1664,10 @@ void FSlateEndDrawingWindowsCommand::EndDrawingWindows(FRHICommandListImmediate&
 }
 
 
-struct FClearCachedRenderingDataCommand final : public FRHICommand < FClearCachedRenderingDataCommand >
+struct FClearCachedRenderingDataCommand2 final : public FRHICommand < FClearCachedRenderingDataCommand2 >
 {
 public:
-	FClearCachedRenderingDataCommand(FFastPathRenderingDataCleanupList* InCleanupList)
+	FClearCachedRenderingDataCommand2(FFastPathRenderingDataCleanupList* InCleanupList)
 		: CleanupList(InCleanupList)
 	{
 
@@ -1700,11 +1700,11 @@ void FFastPathRenderingDataCleanupList::Cleanup()
 	{
 		if (!RHICmdList.Bypass())
 		{
-			new (RHICmdList.AllocCommand<FClearCachedRenderingDataCommand>()) FClearCachedRenderingDataCommand(CleanupList);
+			new (RHICmdList.AllocCommand<FClearCachedRenderingDataCommand2>()) FClearCachedRenderingDataCommand2(CleanupList);
 		}
 		else
 		{
-			FClearCachedRenderingDataCommand Cmd(CleanupList);
+			FClearCachedRenderingDataCommand2 Cmd(CleanupList);
 			Cmd.Execute(RHICmdList);
 		}
 	});
