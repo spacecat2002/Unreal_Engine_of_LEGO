@@ -113,7 +113,7 @@ void FVulkanCommandListContext::RHIDispatchComputeShader(uint32 ThreadGroupCount
 
 	if (FVulkanPlatform::RegisterGPUWork() && IsImmediate())
 	{
-		GpuProfiler.RegisterGPUWork(1);
+		GpuProfiler.RegisterGPUDispatch(FIntVector(ThreadGroupCountX, ThreadGroupCountY, ThreadGroupCountZ));	
 	}
 
 	//#todo-rco: Temp workaround
@@ -144,7 +144,7 @@ void FVulkanCommandListContext::RHIDispatchIndirectComputeShader(FRHIVertexBuffe
 
 	if (FVulkanPlatform::RegisterGPUWork()/* && IsImmediate()*/)
 	{
-		GpuProfiler.RegisterGPUWork(1);
+		GpuProfiler.RegisterGPUDispatch(FIntVector(1, 1, 1));	
 	}
 
 	//#todo-rco: Temp workaround

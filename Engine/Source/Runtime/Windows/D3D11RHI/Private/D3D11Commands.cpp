@@ -190,7 +190,7 @@ void FD3D11DynamicRHI::RHIDispatchComputeShader(uint32 ThreadGroupCountX, uint32
 
 	StateCache.SetComputeShader(ComputeShader->Resource);
 
-	GPUProfilingData.RegisterGPUWork(1);	
+	GPUProfilingData.RegisterGPUDispatch(FIntVector(ThreadGroupCountX, ThreadGroupCountY, ThreadGroupCountZ));	
 
 	if (ComputeShader->bShaderNeedsGlobalConstantBuffer)
 	{
@@ -208,7 +208,7 @@ void FD3D11DynamicRHI::RHIDispatchIndirectComputeShader(FRHIVertexBuffer* Argume
 	FD3D11ComputeShader* ComputeShader = ResourceCast(ComputeShaderRHI);
 	FD3D11VertexBuffer* ArgumentBuffer = ResourceCast(ArgumentBufferRHI);
 
-	GPUProfilingData.RegisterGPUWork(1);
+	GPUProfilingData.RegisterGPUDispatch(FIntVector(1, 1, 1));
 
 	StateCache.SetComputeShader(ComputeShader->Resource);
 	

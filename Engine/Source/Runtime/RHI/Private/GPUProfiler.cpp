@@ -114,7 +114,7 @@ struct FNodeStatsCompare
 /** Recursively generates a histogram of nodes and stores their timing in TimingResult. */
 static void GatherStatsEventNode(FGPUProfilerEventNode* Node, int32 Depth, TMap<FString, FGPUProfilerEventNodeStats>& EventHistogram)
 {
-	if (Node->NumDraws > 0 || Node->Children.Num() > 0)
+	if (Node->NumDraws > 0 || Node->NumDispatches > 0 || Node->Children.Num() > 0)
 	{
 		Node->TimingResult = Node->GetTiming() * 1000.0f;
 		Node->NumTotalDraws = Node->NumDraws;
@@ -286,7 +286,7 @@ static void DumpStatsEventNode(FGPUProfilerEventNode* Node, float RootResult, in
 	Summary.TotalNumNodes++;
 	ReportedTiming = 0;
 
-	if (Node->NumDraws > 0 || Node->Children.Num() > 0 || Summary.bDumpEventLeafNodes)
+	if (Node->NumDraws > 0 || Node->NumDispatches > 0 || Node->Children.Num() > 0 || Summary.bDumpEventLeafNodes)
 	{
 		Summary.TotalNumDraws += Node->NumDraws;
 		// Percent that this node was of the total frame time
@@ -297,15 +297,43 @@ static void DumpStatsEventNode(FGPUProfilerEventNode* Node, float RootResult, in
 
 		if (bDisplayEvent)
 		{
+			FString NodeStats = TEXT("");
+
+			if (Node->NumTotalDraws > 0)
+			{
+				NodeStats = FString::Printf(TEXT("%u %s %u prims %u verts "), Node->NumTotalDraws, Node->NumTotalDraws == 1 ? TEXT("draw") : TEXT("draws"), Node->NumTotalPrimitives, Node->NumTotalVertices);
+			}
+
+			// Cumulative dispatch stats are not meaningful, only include dispatch stats if there was one in the current node
+			if (Node->NumDispatches > 0)
+			{
+				NodeStats += FString::Printf(TEXT("%u %s"), Node->NumDispatches, Node->NumDispatches == 1 ? TEXT("dispatch") : TEXT("dispatches"));
+			
+				if (Node->GroupCount.X > 0 && Node->NumDispatches == 1)
+				{
+					NodeStats += FString::Printf(TEXT(" %u"), Node->GroupCount.X);
+
+					if (Node->GroupCount.Y > 1)
+					{
+						NodeStats += FString::Printf(TEXT("x%u"), Node->GroupCount.Y);
+					}
+
+					if (Node->GroupCount.Z > 1)
+					{
+						NodeStats += FString::Printf(TEXT("x%u"), Node->GroupCount.Z);
+					}
+
+					NodeStats += TEXT(" groups");
+				}
+			}
+
 			// Print information about this node, padded to its depth in the tree
-			UE_LOG(LogRHI, Log, TEXT("%s%4.1f%%%5.2fms   %s %u draws %u prims %u verts"), 
+			UE_LOG(LogRHI, Log, TEXT("%s%4.1f%%%5.2fms   %s %s"), 
 				*FString(TEXT("")).LeftPad(EffectiveDepth * 3), 
 				Percent,
 				Node->TimingResult,
 				*Node->Name,
-				Node->NumTotalDraws,
-				Node->NumTotalPrimitives,
-				Node->NumTotalVertices
+				*NodeStats
 				);
 
 			ReportedTiming = Node->TimingResult;

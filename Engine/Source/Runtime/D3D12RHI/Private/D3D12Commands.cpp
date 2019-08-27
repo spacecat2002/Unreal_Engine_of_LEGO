@@ -126,7 +126,7 @@ void FD3D12CommandContext::RHIDispatchComputeShader(uint32 ThreadGroupCountX, ui
 
 	if (IsDefaultContext())
 	{
-		GetParentDevice()->RegisterGPUWork(1);
+		GetParentDevice()->RegisterGPUDispatch(FIntVector(ThreadGroupCountX, ThreadGroupCountY, ThreadGroupCountZ));	
 	}
 
 	if (ComputeShader->ResourceCounts.bGlobalUniformBufferUsed)
@@ -148,7 +148,7 @@ void FD3D12CommandContext::RHIDispatchIndirectComputeShader(FRHIVertexBuffer* Ar
 
 	if (IsDefaultContext())
 	{
-		GetParentDevice()->RegisterGPUWork(1);
+		GetParentDevice()->RegisterGPUDispatch(FIntVector(1, 1, 1));	
 	}
 
 	FD3D12ComputeShader* ComputeShader = nullptr;

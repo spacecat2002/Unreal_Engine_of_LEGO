@@ -3217,7 +3217,7 @@ void FOpenGLDynamicRHI::RHIDispatchComputeShader(uint32 ThreadGroupCountX, uint3
 
 		FOpenGLContextState& ContextState = GetContextStateForCurrentContext();
 
-		GPUProfilingData.RegisterGPUWork(1);
+		GPUProfilingData.RegisterGPUDispatch(FIntVector(ThreadGroupCountX, ThreadGroupCountY, ThreadGroupCountZ));	
 
 		BindPendingComputeShaderState(ContextState, ComputeShader);
 		CommitComputeResourceTables(ComputeShader);
@@ -3249,7 +3249,7 @@ void FOpenGLDynamicRHI::RHIDispatchIndirectComputeShader(FRHIVertexBuffer* Argum
 
 		FOpenGLContextState& ContextState = GetContextStateForCurrentContext();
 
-		GPUProfilingData.RegisterGPUWork(1);
+		GPUProfilingData.RegisterGPUDispatch(FIntVector(1, 1, 1));	
 
 		BindPendingComputeShaderState(ContextState, ComputeShader);
 
