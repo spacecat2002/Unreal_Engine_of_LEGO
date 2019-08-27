@@ -656,16 +656,16 @@ void FRDGBuilder::ExecutePass(const FRDGPass* Pass)
 	IF_RDG_ENABLE_DEBUG(Validation.ValidateExecutePassBegin(Pass));
 
 	FRHIRenderPassInfo RPInfo;
-	bool bHasRenderTargets = false;
+	bool bOutHasGraphicsOutputs = false;
 
-	PrepareResourcesForExecute(Pass, &RPInfo, &bHasRenderTargets);
+	PrepareResourcesForExecute(Pass, &RPInfo, &bOutHasGraphicsOutputs);
 	
 	EventScopeStack.BeginExecutePass(Pass);
 	StatScopeStack.BeginExecutePass(Pass);
 
 	if (Pass->IsRaster())
 	{
-		check(bHasRenderTargets);
+		check(bOutHasGraphicsOutputs);
 		RHICmdList.BeginRenderPass( RPInfo, Pass->GetName() );
 	}
 	else
@@ -675,7 +675,7 @@ void FRDGBuilder::ExecutePass(const FRDGPass* Pass)
 
 	Pass->Execute(RHICmdList);
 
-	if (bHasRenderTargets)
+	if (Pass->IsRaster())
 	{
 		RHICmdList.EndRenderPass();
 	}
@@ -691,7 +691,7 @@ void FRDGBuilder::ExecutePass(const FRDGPass* Pass)
 	}
 }
 
-void FRDGBuilder::PrepareResourcesForExecute(const FRDGPass* Pass, struct FRHIRenderPassInfo* OutRPInfo, bool* bOutHasRenderTargets)
+void FRDGBuilder::PrepareResourcesForExecute(const FRDGPass* Pass, struct FRHIRenderPassInfo* OutRPInfo, bool* bOutHasGraphicsOutputs)
 {
 	check(Pass);
 
@@ -917,7 +917,8 @@ void FRDGBuilder::PrepareResourcesForExecute(const FRDGPass* Pass, struct FRHIRe
 
 			OutRPInfo->bIsMSAA = SampleCount > 1;
 
-			*bOutHasRenderTargets = ValidRenderTargetCount + ValidDepthStencilCount > 0;
+			// Note: relying on UBMT_RENDER_TARGET_BINDING_SLOTS case being handled last here by reading from OutRPInfo->NumUAVs
+			*bOutHasGraphicsOutputs = ValidRenderTargetCount + ValidDepthStencilCount + OutRPInfo->NumUAVs > 0;
 		}
 		break;
 		default:

@@ -229,7 +229,7 @@ private:
 	void AllocateRHIBufferUAVIfNeeded(FRDGBufferUAV* UAV);
 
 	void ExecutePass(const FRDGPass* Pass);
-	void PrepareResourcesForExecute(const FRDGPass* Pass, struct FRHIRenderPassInfo* OutRPInfo, bool* bOutHasRenderTargets);
+	void PrepareResourcesForExecute(const FRDGPass* Pass, struct FRHIRenderPassInfo* OutRPInfo, bool* bOutHasGraphicsOutputs);
 
 	void ReleaseRHITextureIfUnreferenced(FRDGTexture* Texture);
 	void ReleaseRHIBufferIfUnreferenced(FRDGBuffer* Buffer);
