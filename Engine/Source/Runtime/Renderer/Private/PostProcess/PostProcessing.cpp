@@ -546,11 +546,7 @@ static FRCPassPostProcessTonemap* AddTonemapper(
 	FRenderingCompositeOutputRef TonemapperCombinedLUTOutputRef;
 	if (IStereoRendering::IsAPrimaryView(StereoPass, GEngine->StereoRenderingDevice))
 	{
-		bool bNeedFloatOutput = View.Family->SceneCaptureSource == SCS_FinalColorHDR;
-		bool bAllocateOutput = View.State == nullptr;
-
-		FRenderingCompositePass* CombinedLUT = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessCombineLUTs(View.GetShaderPlatform(), bAllocateOutput, bIsComputePass, bNeedFloatOutput));
-		TonemapperCombinedLUTOutputRef =  FRenderingCompositeOutputRef(CombinedLUT);
+		TonemapperCombinedLUTOutputRef = AddCombineLUTPass(Context.Graph);
 	}
 
 	const bool bDoEyeAdaptation = IsAutoExposureMethodSupported(View.GetFeatureLevel(), EyeAdapationMethodId);
@@ -928,7 +924,6 @@ FRDGTextureRef AddSeparateTranslucencyCompositionPass(FRDGBuilder& GraphBuilder,
 }
 
 } // namespace
-
 
 void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, TRefCountPtr<IPooledRenderTarget>& VelocityRT)
 {
@@ -1545,9 +1540,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 		if(View.Family->EngineShowFlags.TestImage)
 		{
-			FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessTestImage());
-			Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
+			Context.FinalOutput = AddTestImagePass(Context.Graph, Context.FinalOutput);
 		}
 
 		if (FRCPassPostProcessShaderPrint::IsEnabled(View))

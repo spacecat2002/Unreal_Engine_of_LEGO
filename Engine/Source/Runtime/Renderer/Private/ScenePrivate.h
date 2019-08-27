@@ -1202,7 +1202,7 @@ public:
 	}
 
 	// Returns a reference to the render target used for the LUT.  Allocated on the first request.
-	FSceneRenderTargetItem& GetTonemappingLUTRenderTarget(FRHICommandList& RHICmdList, const int32 LUTSize, const bool bUseVolumeLUT, const bool bNeedUAV, const bool bNeedFloatOutput)
+	IPooledRenderTarget* GetTonemappingLUTRenderTarget(FRHICommandList& RHICmdList, const int32 LUTSize, const bool bUseVolumeLUT, const bool bNeedUAV, const bool bNeedFloatOutput)
 	{
 		if (CombinedLUTRenderTarget.IsValid() == false || 
 			CombinedLUTRenderTarget->GetDesc().Extent.Y != LUTSize ||
@@ -1215,11 +1215,11 @@ public:
 			GRenderTargetPool.FindFreeElement(RHICmdList, Desc, CombinedLUTRenderTarget, Desc.DebugName);
 		}
 
-		FSceneRenderTargetItem& RenderTarget = CombinedLUTRenderTarget.GetReference()->GetRenderTargetItem();
-		return RenderTarget;
+		return CombinedLUTRenderTarget.GetReference();
 	}
 
-	const FTextureRHIRef* GetTonemappingLUTTexture() const {
+	const FTextureRHIRef* GetTonemappingLUTTexture() const
+	{
 		const FTextureRHIRef* ShaderResourceTexture = NULL;
 
 		if (CombinedLUTRenderTarget.IsValid()) {
