@@ -786,12 +786,16 @@ void FRDGBuilder::PrepareResourcesForExecute(const FRDGPass* Pass, struct FRHIRe
 
 				AllocateRHIBufferSRVIfNeeded(SRV);
 
-				// TODO(RDG): super hacky, find the UAV and transition it. Hopefully there is one...
 				check(Buffer->PooledBuffer);
-				check(Buffer->PooledBuffer->UAVs.Num() == 1);
-				FRHIUnorderedAccessView* UAVRHI = Buffer->PooledBuffer->UAVs.CreateIterator().Value();
 
-				BarrierBatcher.QueueTransitionUAV(UAVRHI, Buffer, FRDGResourceState::EAccess::Read);
+				// TODO(RDG): super hacky, find the UAV and transition it. Hopefully there is one...
+				if (Buffer->PooledBuffer->UAVs.Num() > 0)
+				{
+					check(Buffer->PooledBuffer->UAVs.Num() == 1);
+					FRHIUnorderedAccessView* UAVRHI = Buffer->PooledBuffer->UAVs.CreateIterator().Value();
+
+					BarrierBatcher.QueueTransitionUAV(UAVRHI, Buffer, FRDGResourceState::EAccess::Read);
+				}
 			}
 		}
 		break;

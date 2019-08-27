@@ -893,6 +893,15 @@ extern RENDERCORE_API FShaderParametersMetadata* FindUniformBufferStructByFName(
 #define SHADER_PARAMETER_RDG_BUFFER_ARRAY(ShaderType,MemberName, ArrayDecl) \
 	INTERNAL_SHADER_PARAMETER_EXPLICIT(UBMT_RDG_BUFFER, TShaderResourceParameterTypeInfo<FRDGBufferRef ArrayDecl>, FRDGBufferRef,MemberName,ArrayDecl,,EShaderPrecisionModifier::Float,TEXT(#ShaderType),false)
 
+/** Adds a render graph tracked buffer upload.
+ *
+ * Example:
+ *	SHADER_PARAMETER_RDG_BUFFER_UPLOAD(Buffer<float4>, MyBuffer)
+ */
+// TODO: ShaderType is unnecessary, because the RHI does not support binding a buffer as a shader parameter.
+#define SHADER_PARAMETER_RDG_BUFFER_UPLOAD(ShaderType,MemberName) \
+	INTERNAL_SHADER_PARAMETER_EXPLICIT(UBMT_RDG_BUFFER_COPY_DEST, TShaderResourceParameterTypeInfo<FRDGBufferRef>, FRDGBufferRef,MemberName,, = nullptr,EShaderPrecisionModifier::Float,TEXT(#ShaderType),false)
+
 /** Adds a shader resource view for a render graph tracked buffer.
  *
  * Example:

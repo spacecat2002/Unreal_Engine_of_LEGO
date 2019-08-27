@@ -549,6 +549,16 @@ struct FRDGBufferDesc
 		return Desc;
 	}
 
+	static FRDGBufferDesc CreateUploadDesc(uint32 BytesPerElement, uint32 NumElements)
+	{
+		FRDGBufferDesc Desc;
+		Desc.UnderlyingType = EUnderlyingType::VertexBuffer;
+		Desc.Usage = EBufferUsageFlags(BUF_Static | BUF_ShaderResource);
+		Desc.BytesPerElement = BytesPerElement;
+		Desc.NumElements = NumElements;
+		return Desc;
+	}
+
 	/** Returns the total number of bytes allocated for a such buffer. */
 	uint32 GetTotalNumBytes() const
 	{
@@ -734,6 +744,16 @@ public:
 		check(PooledBuffer);
 		checkf(Desc.UnderlyingType == FRDGBufferDesc::EUnderlyingType::VertexBuffer, TEXT("Indirect buffers needs to be underlying vertex buffer."));
 		checkf(Desc.Usage & BUF_DrawIndirect, TEXT("The buffer %s was not flagged for indirect draw call"), Name);
+		check(PooledBuffer->VertexBuffer.IsValid());
+		return PooledBuffer->VertexBuffer;
+	}
+
+	/** Returns the buffer to use for RHI calls, eg RHILockVertexBuffer. */
+	FRHIVertexBuffer* GetRHIVertexBuffer() const
+	{
+		ValidateRHIAccess();
+		checkf(PooledBuffer, TEXT("RDG buffer had null PooledBuffer.  Make sure your pass's shader parameter table has a SHADER_PARAMETER_RDG_BUFFER_UPLOAD() entry for this buffer so the graph knows to allocate it."));
+		checkf(Desc.UnderlyingType == FRDGBufferDesc::EUnderlyingType::VertexBuffer, TEXT("This function only works on underlying vertex buffer."));
 		check(PooledBuffer->VertexBuffer.IsValid());
 		return PooledBuffer->VertexBuffer;
 	}
