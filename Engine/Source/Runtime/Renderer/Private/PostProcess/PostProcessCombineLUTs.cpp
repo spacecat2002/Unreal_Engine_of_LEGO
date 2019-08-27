@@ -527,6 +527,8 @@ FRDGTextureRef AddCombineLUTPass(FRDGBuilder& GraphBuilder, const FScreenPassVie
 					*ScreenPassView.ScreenPassVS,
 					EDRF_UseTriangleOptimization);
 			}
+
+			ScreenPassView.View.SetValidTonemappingLUT();
 		});
 	}
 
