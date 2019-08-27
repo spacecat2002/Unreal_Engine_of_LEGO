@@ -20,6 +20,7 @@ public:
 		NumVertices(0),
 		NumDispatches(0),
 		GroupCount(FIntVector(0, 0, 0)),
+		NumTotalDispatches(0),
 		NumTotalDraws(0),
 		NumTotalPrimitives(0),
 		NumTotalVertices(0),
@@ -40,6 +41,7 @@ public:
 	/** Compute stats */
 	uint32 NumDispatches;
 	FIntVector GroupCount;
+	uint32 NumTotalDispatches;
 
 	/** Inclusive number of draw calls rendered in this event and children. */
 	uint32 NumTotalDraws;
@@ -62,8 +64,7 @@ public:
 		NumPrimitives += rhs.NumPrimitives;
 		NumVertices += rhs.NumVertices;
 		NumDispatches += rhs.NumDispatches;
-		// Cumulative group counts are not meaningful
-		//GroupCount = rhs.GroupCount;
+		NumTotalDispatches += rhs.NumTotalDispatches;
 		NumTotalDraws += rhs.NumDraws;
 		NumTotalPrimitives += rhs.NumPrimitives;
 		NumTotalVertices += rhs.NumVertices;

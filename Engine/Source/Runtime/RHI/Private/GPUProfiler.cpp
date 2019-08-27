@@ -118,6 +118,7 @@ static void GatherStatsEventNode(FGPUProfilerEventNode* Node, int32 Depth, TMap<
 	{
 		Node->TimingResult = Node->GetTiming() * 1000.0f;
 		Node->NumTotalDraws = Node->NumDraws;
+		Node->NumTotalDispatches = Node->NumDispatches;
 		Node->NumTotalPrimitives = Node->NumPrimitives;
 		Node->NumTotalVertices = Node->NumVertices;
 
@@ -125,6 +126,7 @@ static void GatherStatsEventNode(FGPUProfilerEventNode* Node, int32 Depth, TMap<
 		while (Parent)
 		{
 			Parent->NumTotalDraws += Node->NumDraws;
+			Parent->NumTotalDispatches += Node->NumDispatches;
 			Parent->NumTotalPrimitives += Node->NumPrimitives;
 			Parent->NumTotalVertices += Node->NumVertices;
 
@@ -304,11 +306,11 @@ static void DumpStatsEventNode(FGPUProfilerEventNode* Node, float RootResult, in
 				NodeStats = FString::Printf(TEXT("%u %s %u prims %u verts "), Node->NumTotalDraws, Node->NumTotalDraws == 1 ? TEXT("draw") : TEXT("draws"), Node->NumTotalPrimitives, Node->NumTotalVertices);
 			}
 
-			// Cumulative dispatch stats are not meaningful, only include dispatch stats if there was one in the current node
-			if (Node->NumDispatches > 0)
+			if (Node->NumTotalDispatches > 0)
 			{
-				NodeStats += FString::Printf(TEXT("%u %s"), Node->NumDispatches, Node->NumDispatches == 1 ? TEXT("dispatch") : TEXT("dispatches"));
+				NodeStats += FString::Printf(TEXT("%u %s"), Node->NumTotalDispatches, Node->NumTotalDispatches == 1 ? TEXT("dispatch") : TEXT("dispatches"));
 			
+				// Cumulative group stats are not meaningful, only include dispatch stats if there was one in the current node
 				if (Node->GroupCount.X > 0 && Node->NumDispatches == 1)
 				{
 					NodeStats += FString::Printf(TEXT(" %u"), Node->GroupCount.X);
