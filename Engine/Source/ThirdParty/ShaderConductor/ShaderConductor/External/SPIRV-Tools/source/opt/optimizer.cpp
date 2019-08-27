@@ -185,7 +185,8 @@ Optimizer& Optimizer::RegisterPerformancePasses() {
       .RegisterPass(CreateRedundancyEliminationPass())
       .RegisterPass(CreateDeadBranchElimPass())
       .RegisterPass(CreateBlockMergePass())
-      .RegisterPass(CreateSimplificationPass());
+      .RegisterPass(CreateSimplificationPass())
+      .RegisterPass(CreateEliminateDeadMembersPass());
   // Currently exposing driver bugs resulting in crashes (#946)
   // .RegisterPass(CreateCommonUniformElimPass())
 }
@@ -217,7 +218,8 @@ Optimizer& Optimizer::RegisterSizePasses() {
       .RegisterPass(CreateCFGCleanupPass())
       // Currently exposing driver bugs resulting in crashes (#946)
       // .RegisterPass(CreateCommonUniformElimPass())
-      .RegisterPass(CreateAggressiveDCEPass());
+      .RegisterPass(CreateAggressiveDCEPass())
+      .RegisterPass(CreateEliminateDeadMembersPass());
 }
 
 Optimizer& Optimizer::RegisterVulkanToWebGPUPasses() {
