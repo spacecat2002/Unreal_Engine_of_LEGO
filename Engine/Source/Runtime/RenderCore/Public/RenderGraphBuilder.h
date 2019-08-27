@@ -136,7 +136,7 @@ public:
 	 *  Note: even when the render graph uses the immediate debugging mode (executing passes as they get added), the buffer extractions
 	 *  will still happen in the Execute(), to ensure there is no bug caused in code outside the render graph on whether this mode is used or not.
 	 */
-	void QueueBufferExtraction(FRDGBufferRef Buffer, TRefCountPtr<FPooledRDGBuffer>* OutBufferPtr);
+	void QueueBufferExtraction(FRDGBufferRef Buffer, TRefCountPtr<FPooledRDGBuffer>* OutBufferPtr, FRDGResourceState::EAccess DestinationAccess, FRDGResourceState::EPipeline DestinationPipeline);
 
 	/** Flag a texture that is produced by a pass but never used or extracted to not emit an 'unused' warning. */
 	void RemoveUnusedTextureWarning(FRDGTextureRef Texture);
@@ -196,6 +196,8 @@ private:
 	{
 		FRDGBuffer* Buffer;
 		TRefCountPtr<FPooledRDGBuffer>* OutBufferPtr;
+		FRDGResourceState::EAccess DestinationAccess;
+		FRDGResourceState::EPipeline DestinationPipeline;
 	};
 	TArray<FDeferredInternalBufferQuery, SceneRenderingAllocator> DeferredInternalBufferQueries;
 

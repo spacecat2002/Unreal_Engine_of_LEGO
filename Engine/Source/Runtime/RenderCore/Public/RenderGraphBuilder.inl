@@ -251,7 +251,7 @@ inline void FRDGBuilder::QueueTextureExtraction(
 	DeferredInternalTextureQueries.Emplace(Query);
 }
 
-inline void FRDGBuilder::QueueBufferExtraction(FRDGBufferRef Buffer, TRefCountPtr<FPooledRDGBuffer>* OutBufferPtr)
+inline void FRDGBuilder::QueueBufferExtraction(FRDGBufferRef Buffer, TRefCountPtr<FPooledRDGBuffer>* OutBufferPtr, FRDGResourceState::EAccess DestinationAccess, FRDGResourceState::EPipeline DestinationPipeline)
 {
 	IF_RDG_ENABLE_DEBUG(Validation.ValidateExtractResource(Buffer));
 
@@ -260,6 +260,8 @@ inline void FRDGBuilder::QueueBufferExtraction(FRDGBufferRef Buffer, TRefCountPt
 	FDeferredInternalBufferQuery Query;
 	Query.Buffer = Buffer;
 	Query.OutBufferPtr = OutBufferPtr;
+	Query.DestinationAccess = DestinationAccess;
+	Query.DestinationPipeline = DestinationPipeline;
 	DeferredInternalBufferQueries.Emplace(Query);
 }
 

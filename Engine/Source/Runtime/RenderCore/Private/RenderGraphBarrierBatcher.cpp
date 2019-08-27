@@ -162,13 +162,14 @@ void FRDGBarrierBatcher::QueueTransitionTexture(FRDGTexture* Texture, FRDGResour
 void FRDGBarrierBatcher::QueueTransitionUAV(
 	FRHIUnorderedAccessView* UAV,
 	FRDGParentResource* ParentResource,
-	FRDGResourceState::EAccess AccessAfter)
+	FRDGResourceState::EAccess AccessAfter,
+	FRDGResourceState::EPipeline PipelineAfter)
 {
 	check(UAV);
 	check(ParentResource);
 
 	const FRDGResourceState StateBefore = ParentResource->State;
-	const FRDGResourceState StateAfter(Pass, Pipeline, AccessAfter);
+	const FRDGResourceState StateAfter(Pass, PipelineAfter == FRDGResourceState::EPipeline::MAX ? Pipeline : PipelineAfter, AccessAfter);
 
 	ValidateTransition(ParentResource, StateBefore, StateAfter);
 

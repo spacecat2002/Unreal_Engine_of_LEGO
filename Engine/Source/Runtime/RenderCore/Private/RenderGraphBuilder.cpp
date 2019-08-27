@@ -1071,6 +1071,13 @@ void FRDGBuilder::ProcessDeferredInternalResourceQueries()
 
 	for (const auto& Query : DeferredInternalBufferQueries)
 	{
+		check(Query.Buffer->PooledBuffer);
+
+		for (TMap<FRDGBufferUAVDesc, FUnorderedAccessViewRHIRef, FDefaultSetAllocator, TMapRDGBufferUAVFuncs<FRDGBufferUAVDesc, FUnorderedAccessViewRHIRef>>::TIterator It(Query.Buffer->PooledBuffer->UAVs); It; ++It)
+		{
+			BarrierBatcher.QueueTransitionUAV(It.Value(), Query.Buffer, Query.DestinationAccess, Query.DestinationPipeline);
+		}
+
 		*Query.OutBufferPtr = AllocatedBuffers.FindChecked(Query.Buffer);
 
 		// No need to manually release in immediate mode, since it is done directly when emptying AllocatedBuffer in DestructPasses().

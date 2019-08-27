@@ -24,7 +24,8 @@ public:
 	void QueueTransitionUAV(
 		FRHIUnorderedAccessView* UAV,
 		FRDGParentResource* ParentResource,
-		FRDGResourceState::EAccess AccessAfter);
+		FRDGResourceState::EAccess AccessAfter,
+		FRDGResourceState::EPipeline PipelineAfter = FRDGResourceState::EPipeline::MAX);
 
 private:
 	struct FTransitionParameters
