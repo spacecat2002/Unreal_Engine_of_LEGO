@@ -88,20 +88,7 @@ void FRDGEventScopeStack::BeginExecutePass(const FRDGPass* Pass)
 	{
 		ScopeStack.BeginExecutePass(Pass->GetEventScope());
 
-		// Push the pass event with some color.
-		FColor Color(0, 0, 0);
-
-		if (Pass->IsCompute())
-		{
-			// Green for compute.
-			Color = FColor(128, 255, 128);
-		}
-		else
-		{
-			// Red for rasterizer.
-			Color = FColor(255, 128, 128);
-		}
-
+		FColor Color(255, 255, 255);
 		ScopeStack.RHICmdList.PushEvent(Pass->GetName(), Color);
 	}
 }
