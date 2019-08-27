@@ -338,8 +338,8 @@ void FRDGUserValidation::ValidateAddPass(const FRDGPass* Pass, bool bSkipPassAcc
 			{
 				PassResourceValidator.Read(Texture);
 
-				checkf(Texture->HasBeenProduced(),
-					TEXT("Pass %s has a dependency over the texture %s that has never been produced."),
+				ensureMsgf(Texture->HasBeenProduced(),
+					TEXT("Pass %s has a dependency on the texture %s that has never been produced."),
 					PassName, Texture->Name);
 
 				MarkAsConsumed(Texture);
@@ -354,8 +354,8 @@ void FRDGUserValidation::ValidateAddPass(const FRDGPass* Pass, bool bSkipPassAcc
 
 				PassResourceValidator.Read(Texture, SRV->Desc.MipLevel);
 
-				checkf(Texture->HasBeenProduced(),
-					TEXT("Pass %s has a dependency over the texture %s that has never been produced."),
+				ensureMsgf(Texture->HasBeenProduced(),
+					TEXT("Pass %s has a dependency on the texture %s that has never been produced."),
 					PassName, Texture->Name);
 
 				MarkAsConsumed(Texture);
@@ -380,8 +380,8 @@ void FRDGUserValidation::ValidateAddPass(const FRDGPass* Pass, bool bSkipPassAcc
 			{
 				PassResourceValidator.Read(Buffer);
 
-				checkf(Buffer->HasBeenProduced(),
-					TEXT("Pass %s has a dependency over the buffer %s that has never been produced."),
+				ensureMsgf(Buffer->HasBeenProduced(),
+					TEXT("Pass %s has a dependency on the buffer %s that has never been produced."),
 					PassName, Buffer->Name);
 
 				MarkAsConsumed(Buffer);
@@ -396,8 +396,8 @@ void FRDGUserValidation::ValidateAddPass(const FRDGPass* Pass, bool bSkipPassAcc
 
 				PassResourceValidator.Read(Buffer);
 
-				checkf(Buffer->HasBeenProduced(),
-					TEXT("Pass %s has a dependency over the buffer %s that has never been produced."),
+				ensureMsgf(Buffer->HasBeenProduced(),
+					TEXT("Pass %s has a dependency on the buffer %s that has never been produced."),
 					PassName, SRV->Desc.Buffer->Name);
 
 				MarkAsConsumed(Buffer);
