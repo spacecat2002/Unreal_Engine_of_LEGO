@@ -659,13 +659,6 @@ void FDeferredShadingSceneRenderer::ComputeLightGrid(FRHICommandListImmediate& R
 
 			RHICmdList.TransitionResources(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToCompute, OutUAVs.GetData(), OutUAVs.Num());
 			{
-				SCOPED_DRAW_EVENTF(RHICmdList, CullLights, TEXT("CullLights %ux%ux%u NumLights %u NumCaptures %u"),
-					ForwardLightData.CulledGridSize.X,
-					ForwardLightData.CulledGridSize.Y,
-					ForwardLightData.CulledGridSize.Z,
-					ForwardLightData.NumLocalLights,
-					ForwardLightData.NumReflectionCaptures);
-
 				FRDGBuilder GraphBuilder(RHICmdList);
 				{
 					RDG_EVENT_SCOPE(GraphBuilder, "CullLights %ux%ux%u NumLights %u NumCaptures %u",

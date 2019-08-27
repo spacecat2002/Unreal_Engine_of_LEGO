@@ -978,6 +978,7 @@ void FDeferredShadingSceneRenderer::ComputeVolumetricFog(FRHICommandListImmediat
 		SCOPED_GPU_STAT(RHICmdListImmediate, VolumetricFog);
 
 		const FExponentialHeightFogSceneInfo& FogInfo = Scene->ExponentialFogs[0];
+		FRDGBuilder GraphBuilder(RHICmdListImmediate);
 
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{
@@ -986,9 +987,6 @@ void FDeferredShadingSceneRenderer::ComputeVolumetricFog(FRHICommandListImmediat
 			int32 VolumetricFogGridPixelSize;
 			const FIntVector VolumetricFogGridSize = GetVolumetricFogGridSize(View.ViewRect.Size(), VolumetricFogGridPixelSize);
 			const FVector GridZParams = GetVolumetricFogGridZParams(View.NearClippingDistance, FogInfo.VolumetricFogDistance, VolumetricFogGridSize.Z);
-
-			//@DW - graph todo
-			//SCOPED_DRAW_EVENT(RHICmdList, VolumetricFog);
 
 			const FVector FrameJitterOffsetValue = VolumetricFogTemporalRandom(View.Family->FrameNumber);
 
@@ -1015,9 +1013,8 @@ void FDeferredShadingSceneRenderer::ComputeVolumetricFog(FRHICommandListImmediat
 
 			FMatrix LightFunctionWorldToShadow;
 
-			FRDGBuilder GraphBuilder(RHICmdListImmediate);
+			RDG_EVENT_SCOPE(GraphBuilder, "VolumetricFog");
 
-			//@DW - register GWhiteTexture as a graph external for when there's no light function - later a shader is going to bind it whether we rendered to it or not
 			FRDGTexture* LightFunctionTexture = GraphBuilder.RegisterExternalTexture(GSystemTextures.WhiteDummy);
 			bool bUseDirectionalLightShadowing;
 
@@ -1035,8 +1032,6 @@ void FDeferredShadingSceneRenderer::ComputeVolumetricFog(FRHICommandListImmediat
 			FPooledRenderTargetDesc VolumeDescFastVRAM = VolumeDesc;
 			VolumeDescFastVRAM.Flags |= GFastVRamConfig.VolumetricFog;
 
-			//@DW - Explicit creation of graph resource handles
-			//@DW - Passing these around in a struct to ease manual wiring
 			IntegrationData.VBufferA = GraphBuilder.CreateTexture(VolumeDescFastVRAM, TEXT("VBufferA"));
 			IntegrationData.VBufferB = GraphBuilder.CreateTexture(VolumeDescFastVRAM, TEXT("VBufferB"));
 			IntegrationData.VBufferA_UAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(IntegrationData.VBufferA));
@@ -1059,7 +1054,6 @@ void FDeferredShadingSceneRenderer::ComputeVolumetricFog(FRHICommandListImmediat
 				auto ComputeShader = View.ShaderMap->GetShader< FVolumetricFogMaterialSetupCS >();
 				ClearUnusedGraphResources(ComputeShader, PassParameters);
 
-				//@DW - this pass only reads external textures, we don't have any graph inputs
 				GraphBuilder.AddPass(
 					RDG_EVENT_NAME("InitializeVolumeAttributes"),
 					PassParameters,
@@ -1185,8 +1179,8 @@ void FDeferredShadingSceneRenderer::ComputeVolumetricFog(FRHICommandListImmediat
 			{
 				View.ViewState->LightScatteringHistory = NULL;
 			}
-
-			GraphBuilder.Execute();
 		}
+
+		GraphBuilder.Execute();
 	}
 }
