@@ -599,11 +599,27 @@ static_assert(ARRAY_COUNT(kDenoiserOutputResourceNames) == int32(ESignalProcessi
 /** Returns whether should compole pipeline for a given shader platform.*/
 bool ShouldCompileSignalPipeline(ESignalProcessing SignalProcessing, EShaderPlatform Platform)
 {
+>>>> ORIGINAL //UE4/Dev-RenderPlat-Staging/Engine/Source/Runtime/Renderer/Private/ScreenSpaceDenoise.cpp#1
+==== THEIRS //UE4/Dev-RenderPlat-Staging/Engine/Source/Runtime/Renderer/Private/ScreenSpaceDenoise.cpp#2
+	// Only denoise for project that have ray tracing.
+	if (!ShouldCompileRayTracingShadersForProject(Platform))
+==== YOURS //Rolando.Caloca_I9_DevRenderingMerge/Engine/Source/Runtime/Renderer/Private/ScreenSpaceDenoise.cpp
 	if (SignalProcessing == ESignalProcessing::Reflections ||
 		SignalProcessing == ESignalProcessing::DiffuseSphericalHarmonic)
+<<<<
+	{
+		return false;
+	}
+
 	{
 		// Ray traced reflection and SSR.
+>>>> ORIGINAL //UE4/Dev-RenderPlat-Staging/Engine/Source/Runtime/Renderer/Private/ScreenSpaceDenoise.cpp#1
+		return Platform == SP_PCD3D_SM5 || Platform == SP_XBOXONE_D3D12;
+==== THEIRS //UE4/Dev-RenderPlat-Staging/Engine/Source/Runtime/Renderer/Private/ScreenSpaceDenoise.cpp#2
+		return Platform == SP_PCD3D_SM5;
+==== YOURS //Rolando.Caloca_I9_DevRenderingMerge/Engine/Source/Runtime/Renderer/Private/ScreenSpaceDenoise.cpp
 		return Platform == SP_PCD3D_SM5 || Platform == SP_XBOXONE_D3D12 || Platform == SP_PS4;
+<<<<
 	}
 	else if (
 		SignalProcessing == ESignalProcessing::MonochromaticPenumbra ||

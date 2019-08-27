@@ -317,7 +317,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingGlobalIllumination(
 
 	// Ray generation pass
 	{
-		uint32 IterationCount = RayTracingGISamplesPerPixel;
+		uint32 IterationCount = FMath::Max(RayTracingGISamplesPerPixel, 1);
 		uint32 SequenceCount = 1;
 		uint32 DimensionCount = 24;
 		FHaltonSequenceIteration HaltonSequenceIteration(Scene->HaltonSequence, IterationCount, SequenceCount, DimensionCount, View.ViewState ? (View.ViewState->FrameIndex % 1024) : 0);
@@ -396,6 +396,23 @@ void FDeferredShadingSceneRenderer::RenderRayTracingGlobalIllumination(
 				ERDGPassFlags::Compute,
 				[PassParameters, this, &View, RayGenerationShader, RayTracingResolution](FRHICommandList& RHICmdList)
 			{
+				FRayTracingShaderBindingsWriter GlobalResources;
+				SetShaderParameters(GlobalResources, *RayGenerationShader, *PassParameters);
+
+				FRHIRayTracingScene* RayTracingSceneRHI = View.RayTracingScene.RayTracingSceneRHI;
+				RHICmdList.RayTraceDispatch(View.RayTracingMaterialPipeline, RayGenerationShader->GetRayTracingShader(), RayTracingSceneRHI, GlobalResources, RayTracingResolution.X, RayTracingResolution.Y);
+			});
+		}
+		else
+
+		if (GRayTracingGlobalIlluminationTileSize <= 0)
+		{
+			GraphBuilder.AddPass(
+				RDG_EVENT_NAME("GlobalIlluminationRayTracing %dx%d", RayTracingResolution.X, RayTracingResolution.Y),
+				PassParameters,
+				ERDGPassFlags::Compute,
+				[PassParameters, this, &View, RayGenerationShader, RayTracingResolution](FRHICommandList& RHICmdList)
+			{
 				FRHIRayTracingScene* RayTracingSceneRHI = View.RayTracingScene.RayTracingSceneRHI;
 
 				FRayTracingShaderBindingsWriter GlobalResources;
@@ -409,6 +426,41 @@ void FDeferredShadingSceneRenderer::RenderRayTracingGlobalIllumination(
 			int32 NumTilesX = FMath::DivideAndRoundUp(RayTracingResolution.X, TileSize);
 			int32 NumTilesY = FMath::DivideAndRoundUp(RayTracingResolution.Y, TileSize);
 			for (int32 Y = 0; Y < NumTilesY; ++Y)
+			{
+				for (int32 X = 0; X < NumTilesX; ++X)
+				{
+					FGlobalIlluminationRGS::FParameters* TilePassParameters = PassParameters;
+
+					if (X > 0 || Y > 0)
+					{
+						TilePassParameters = GraphBuilder.AllocParameters<FGlobalIlluminationRGS::FParameters>();
+						*TilePassParameters = *PassParameters;
+
+						TilePassParameters->TileOffsetX = X * TileSize;
+						TilePassParameters->TileOffsetY = Y * TileSize;
+					}
+
+					int32 DispatchSizeX = FMath::Min<int32>(TileSize, RayTracingResolution.X - TilePassParameters->TileOffsetX);
+					int32 DispatchSizeY = FMath::Min<int32>(TileSize, RayTracingResolution.Y - TilePassParameters->TileOffsetY);
+
+					GraphBuilder.AddPass(
+						RDG_EVENT_NAME("GlobalIlluminationRayTracing %dx%d (tile %dx%d)", DispatchSizeX, DispatchSizeY, X, Y),
+						TilePassParameters,
+						ERDGPassFlags::Compute,
+						[TilePassParameters, this, &View, RayGenerationShader, DispatchSizeX, DispatchSizeY](FRHICommandList& RHICmdList)
+					{
+						FRHIRayTracingScene* RayTracingSceneRHI = View.RayTracingScene.RayTracingSceneRHI;
+
+						FRayTracingShaderBindingsWriter GlobalResources;
+						SetShaderParameters(GlobalResources, *RayGenerationShader, *TilePassParameters);
+						RHICmdList.RayTraceDispatch(View.RayTracingMaterialPipeline, RayGenerationShader->GetRayTracingShader(), RayTracingSceneRHI, 
+							GlobalResources, DispatchSizeX, DispatchSizeY);
+						RHICmdList.SubmitCommandsHint();
+					});
+				}
+			}
+		}
+
 			{
 				for (int32 X = 0; X < NumTilesX; ++X)
 				{

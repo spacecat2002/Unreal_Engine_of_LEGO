@@ -163,6 +163,8 @@ void FGlobalComponentRecreateRenderStateContext::UpdateAllPrimitiveSceneInfos()
 FActorComponentGlobalCreatePhysicsSignature UActorComponent::GlobalCreatePhysicsDelegate;
 // Destroy Physics global delegate
 FActorComponentGlobalDestroyPhysicsSignature UActorComponent::GlobalDestroyPhysicsDelegate;
+// Render state dirty global delegate
+UActorComponent::FOnMarkRenderStateDirty UActorComponent::MarkRenderStateDirtyEvent;
 
 const FString UActorComponent::ComponentTemplateNameSuffix(TEXT("_GEN_VARIABLE"));
 
@@ -1477,6 +1479,8 @@ void UActorComponent::MarkRenderStateDirty()
 		// Flag as dirty
 		bRenderStateDirty = true;
 		MarkForNeededEndOfFrameRecreate();
+
+		MarkRenderStateDirtyEvent.Broadcast(*this);
 	}
 }
 

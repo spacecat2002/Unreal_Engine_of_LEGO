@@ -127,6 +127,7 @@ void SetupSkyLightParameters(
 	SkyLightData->SamplesPerPixel = -1;
 	SkyLightData->SamplingStopLevel = 0;
 	SkyLightData->MaxRayDistance = 1.0e27;
+	SkyLightData->MaxShadowThickness = 1.0e3;
 	SkyLightData->MaxNormalBias = GetRaytracingMaxNormalBias();
 
 	if (Scene.SkyLight && Scene.SkyLight->ProcessedTexture)
@@ -863,7 +864,8 @@ void FDeferredShadingSceneRenderer::GenerateSkyLightVisibilityRays(
 	// SkyLight data setup
 	FSkyLightData SkyLightData;
 	SetupSkyLightParameters(*Scene, &SkyLightData);
-	uint32 SamplesPerPixel = GRayTracingSkyLightSamplesPerPixel >= 0 ? GRayTracingSkyLightSamplesPerPixel : Scene->SkyLight->SamplesPerPixel;
+	int32 SamplesPerPixel = GRayTracingSkyLightSamplesPerPixel >= 0 ? GRayTracingSkyLightSamplesPerPixel : Scene->SkyLight->SamplesPerPixel;
+	ensure(SamplesPerPixel > 0);
 	SkyLightData.SamplesPerPixel = SamplesPerPixel;
 	SkyLightData.MaxRayDistance = GRayTracingSkyLightMaxRayDistance;
 	SkyLightData.MaxShadowThickness = GRayTracingSkyLightMaxShadowThickness;
@@ -878,7 +880,7 @@ void FDeferredShadingSceneRenderer::GenerateSkyLightVisibilityRays(
 	Dimensions = FIntVector(BlueNoise.Dimensions.X, BlueNoise.Dimensions.Y, 0);
 
 	// Halton iteration
-	uint32 IterationCount = FMath::Max(SamplesPerPixel, 1u);
+	uint32 IterationCount = FMath::Max(SamplesPerPixel, 1);
 	uint32 SequenceCount = 1;
 	uint32 DimensionCount = 3;
 	FHaltonSequenceIteration HaltonSequenceIteration(Scene->HaltonSequence, IterationCount, SequenceCount, DimensionCount, Views[0].ViewState ? (Views[0].ViewState->FrameIndex % 1024) : 0);
@@ -920,6 +922,12 @@ void FDeferredShadingSceneRenderer::RenderRayTracingSkyLight(
 	SCOPED_GPU_STAT(RHICmdList, RayTracingSkyLight);
 
 	if (!ShouldRenderRayTracingSkyLight(Scene->SkyLight))
+	{
+		return;
+	}
+
+	int32 SamplesPerPixel = GRayTracingSkyLightSamplesPerPixel >= 0 ? GRayTracingSkyLightSamplesPerPixel : Scene->SkyLight->SamplesPerPixel;
+	if (SamplesPerPixel <= 0)
 	{
 		return;
 	}
@@ -984,7 +992,6 @@ void FDeferredShadingSceneRenderer::RenderRayTracingSkyLight(
 	// Fill SkyLight parameters
 	FSkyLightData SkyLightData;
 	SetupSkyLightParameters(*Scene, &SkyLightData);
-	uint32 SamplesPerPixel = GRayTracingSkyLightSamplesPerPixel >= 0 ? GRayTracingSkyLightSamplesPerPixel : Scene->SkyLight->SamplesPerPixel;
 	SkyLightData.SamplesPerPixel = SamplesPerPixel;
 	SkyLightData.MaxRayDistance = GRayTracingSkyLightMaxRayDistance;
 	SkyLightData.SamplingStopLevel = GRayTracingSkyLightSamplingStopLevel;
@@ -1019,7 +1026,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingSkyLight(
 		FViewInfo& View = Views[ViewIndex];
 
 		// Halton iteration
-		uint32 IterationCount = FMath::Max(SamplesPerPixel, 1u);
+		uint32 IterationCount = SamplesPerPixel;
 		uint32 SequenceCount = 1;
 		uint32 DimensionCount = 3;
 		FHaltonSequenceIteration HaltonSequenceIteration(Scene->HaltonSequence, IterationCount, SequenceCount, DimensionCount, View.ViewState ? (View.ViewState->FrameIndex % 1024) : 0);
@@ -1070,7 +1077,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingSkyLight(
 		});
 
 		// Denoising
-		if (GRayTracingSkyLightDenoiser != 0 && SamplesPerPixel > 0)
+		if (GRayTracingSkyLightDenoiser != 0)
 		{
 			const IScreenSpaceDenoiser* DefaultDenoiser = IScreenSpaceDenoiser::GetDefaultDenoiser();
 			const IScreenSpaceDenoiser* DenoiserToUse = DefaultDenoiser;// GRayTracingGlobalIlluminationDenoiser == 1 ? DefaultDenoiser : GScreenSpaceDenoiser;

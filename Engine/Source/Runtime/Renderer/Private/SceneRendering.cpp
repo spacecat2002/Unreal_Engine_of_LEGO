@@ -1248,6 +1248,20 @@ void FViewInfo::SetupUniformBufferParameters(
 				ViewUniformShaderParameters.AtmosphereLightDirection[Index] = DefaultSunDirection;
 			}
 		}
+
+		// The constants below should match the one in SkyAtmosphereCommon.ush
+		const float SkyUnitToCm = 1.0f / 0.00001f;
+		const float PlanetRadiusOffset = 0.001f;
+
+		const float Offset = PlanetRadiusOffset * SkyUnitToCm;
+		const float BottomRadiusWorld = AtmosphereSetup.BottomRadius * SkyUnitToCm;
+		const FVector PlanetCenterWorld = FVector(0.0f, 0.0f, -BottomRadiusWorld);
+		const FVector PlanetCenterToCameraWorld = ViewUniformShaderParameters.WorldCameraOrigin - PlanetCenterWorld;
+		const float DistanceToPlanetCenterWorld = PlanetCenterToCameraWorld.Size();
+
+		// If the camera is below the planet surface, we snap it back onto the surface.
+		// This is to make sure the sky is always visible even if the camera is inside the virtual planet.
+		ViewUniformShaderParameters.SkyWorldCameraOrigin = DistanceToPlanetCenterWorld < (BottomRadiusWorld + Offset) ? PlanetCenterWorld + (BottomRadiusWorld + Offset) * (PlanetCenterToCameraWorld / DistanceToPlanetCenterWorld) : ViewUniformShaderParameters.WorldCameraOrigin;
 	}
 	else
 	{
@@ -1260,6 +1274,7 @@ void FViewInfo::SetupUniformBufferParameters(
 		ViewUniformShaderParameters.SkyAtmosphereCameraAerialPerspectiveVolumeDepthSliceLength = 1.0f;
 		ViewUniformShaderParameters.SkyAtmosphereCameraAerialPerspectiveVolumeDepthSliceLengthInv = 1.0f;
 		ViewUniformShaderParameters.SkyAtmosphereApplyCameraAerialPerspectiveVolume = 1.0f;
+		ViewUniformShaderParameters.SkyWorldCameraOrigin = ViewUniformShaderParameters.WorldCameraOrigin;
 	}
 
 	ViewUniformShaderParameters.TransmittanceLutTexture = OrWhite2DIfNull(TransmittanceLutTextureFound);
@@ -3236,7 +3251,9 @@ static void ViewExtensionPreRender_RenderThread(FRHICommandListImmediate& RHICmd
 	FMemMark MemStackMark(FMemStack::Get());
 
 	{
+		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(PreRender);
 		SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_ViewExtensionPreRenderView);
+
 		for (int ViewExt = 0; ViewExt < SceneRenderer->ViewFamily.ViewExtensions.Num(); ViewExt++)
 		{
 			SceneRenderer->ViewFamily.ViewExtensions[ViewExt]->PreRenderViewFamily_RenderThread(RHICmdList, SceneRenderer->ViewFamily);
