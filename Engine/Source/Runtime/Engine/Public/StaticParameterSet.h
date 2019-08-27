@@ -66,7 +66,7 @@ struct FStaticParameterBase
 		const FString ParameterName = ParameterInfo.ToString();
 		HashState.Update((const uint8*)*ParameterName, ParameterName.Len() * sizeof(TCHAR));
 		HashState.Update((const uint8*)&ExpressionGUID, sizeof(ExpressionGUID));
-		uint8 Override = bOverride ? 1 : 0;
+		uint8 Override = bOverride;
 		HashState.Update((const uint8*)&Override, sizeof(Override));
 	}
 
@@ -121,7 +121,7 @@ struct FStaticSwitchParameter : public FStaticParameterBase
 	void UpdateHash(FSHA1& HashState) const
 	{
 		FStaticParameterBase::UpdateHash(HashState);
-		uint8 HashValue = Value ? 1 : 0;
+		uint8 HashValue = Value;
 		HashState.Update((const uint8*)&HashValue, sizeof(HashValue));
 	}
 
@@ -191,7 +191,11 @@ struct FStaticComponentMaskParameter : public FStaticParameterBase
 	void UpdateHash(FSHA1& HashState) const
 	{
 		FStaticParameterBase::UpdateHash(HashState);
-		uint8 Values[4] = { R ? 1 : 0, G ? 1 : 0 , B ? 1 : 0 , A ? 1 : 0 };
+		uint8 Values[4];
+		Values[0] = R;
+		Values[1] = G;
+		Values[2] = B;
+		Values[3] = A;
 		HashState.Update((const uint8*)&Values, sizeof(Values));
 	}
 
@@ -259,7 +263,9 @@ struct FStaticTerrainLayerWeightParameter : public FStaticParameterBase
 	void UpdateHash(FSHA1& HashState) const
 	{
 		FStaticParameterBase::UpdateHash(HashState);
-		uint32 Values[2] = { WeightmapIndex, bWeightBasedBlend ? 1 : 0 };
+		int32 Values[2];
+		Values[0] = WeightmapIndex;
+		Values[1] = bWeightBasedBlend;
 		HashState.Update((const uint8*)&Values, sizeof(Values));
 	}
 
