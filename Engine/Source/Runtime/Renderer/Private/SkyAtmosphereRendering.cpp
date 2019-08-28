@@ -15,7 +15,7 @@
 #include "ScenePrivate.h"
 #include "SceneRenderTargetParameters.h"
 
-#pragma optimize( "", off )
+//#pragma optimize( "", off )
 
 
 // The runtime ON/OFF toggle
