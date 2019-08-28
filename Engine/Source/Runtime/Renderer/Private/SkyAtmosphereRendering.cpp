@@ -1227,8 +1227,10 @@ void FSceneRenderer::RenderSkyAtmosphere(FRHICommandListImmediate& RHICmdList)
 				const FMatrix ViewProjectionMatrix = View.ViewMatrices.GetProjectionMatrix();
 				float HalfHorizontalFOV = FMath::Atan(1.0f / ViewProjectionMatrix.M[0][0]);
 				float HalfVerticalFOV = FMath::Atan(1.0f / ViewProjectionMatrix.M[1][1]);
-				const float StartDepthViewCm = FMath::Cos(FMath::Max(HalfHorizontalFOV, HalfVerticalFOV)) * AerialPerspectiveStartDepthInCm;
-				const FVector4 Projected = ViewProjectionMatrix.TransformFVector4(FVector4(0.0f, 0.0f, StartDepthViewCm, 1.0f));
+				// For sky reflection capture, the start depth can be super large. Se we max it to make sure the triangle is never in front the NearClippingDistance.
+				float StartDepthInKm = FMath::Max(AerialPerspectiveStartDepthInCm, View.NearClippingDistance) * KM_TO_CM;
+				const float StartDepthViewKm = FMath::Cos(FMath::Max(HalfHorizontalFOV, HalfVerticalFOV)) * StartDepthInKm;
+				const FVector4 Projected = ViewProjectionMatrix.TransformFVector4(FVector4(0.0f, 0.0f, StartDepthViewKm, 1.0f));
 				StartDepthZ = Projected.Z / Projected.W;
 			}
 
