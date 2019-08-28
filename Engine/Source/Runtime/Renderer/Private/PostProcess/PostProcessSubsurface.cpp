@@ -76,9 +76,9 @@ namespace
 
 	TAutoConsoleVariable<int32> CVarSSSBurleyUpdateParameter(
 		TEXT("r.SSS.Burley.AlwaysUpdateParametersFromSeparable"),
-		1,
-		TEXT("0: Will not update parameters when the program loads.")
-		TEXT("1: Always update from the separable when the program loads. (default)"),
+		0,
+		TEXT("0: Will not update parameters when the program loads. (default)")
+		TEXT("1: Always update from the separable when the program loads. (Correct only when Subsurface color is 1)."),
 		ECVF_RenderThreadSafe | ECVF_Scalability
 	);
 
@@ -91,12 +91,20 @@ namespace
 		TEXT(" 1: Enabled (low quality). Surface lighting will be at reduced resolution.\n")
 		TEXT(" 2: Automatic. Non-checkerboard lighting will be applied if we have a suitable rendertarget format\n"),
 		ECVF_RenderThreadSafe);
+
+	TAutoConsoleVariable<int32> CVarSSSBurleyQuality(
+		TEXT("r.SSS.Burley.Quality"),
+		1,
+		TEXT("0: Fallback mode. Burley falls back to run scattering in Separable with transmission in Burley for better performance. Separable parameters are automatically fitted.")
+		TEXT("1: Automatic. The subsurface will only switch to separable in half resolution. (default)"),
+		ECVF_RenderThreadSafe | ECVF_Scalability
+	);
 }
 
 // Define to use a custom ps to clear UAV.
 #define USE_CUSTOM_CLEAR_UAV
 
-// Define the size of subsurface group. Set to 16 to use LDS.
+// Define the size of subsurface group. @TODO: Set to 16 to use LDS.
 const uint32 kSubsurfaceGroupSize = 8;
 
 ENGINE_API IPooledRenderTarget* GetSubsufaceProfileTexture_RT(FRHICommandListImmediate& RHICmdList);
@@ -456,7 +464,8 @@ public:
 
 	class FDimensionHalfRes : SHADER_PERMUTATION_BOOL("SUBSURFACE_HALF_RES");
 	class FDimensionCheckerboard : SHADER_PERMUTATION_BOOL("SUBSURFACE_PROFILE_CHECKERBOARD");
-	using FPermutationDomain = TShaderPermutationDomain<FDimensionHalfRes, FDimensionCheckerboard>;
+	class FRunningInSeparable : SHADER_PERMUTATION_BOOL("SUBSURFACE_FORCE_SEPARABLE");
+	using FPermutationDomain = TShaderPermutationDomain<FDimensionHalfRes, FDimensionCheckerboard, FRunningInSeparable>;
 };
 
 IMPLEMENT_GLOBAL_SHADER(FSubsurfaceIndirectDispatchSetupCS, "/Engine/Private/PostProcessSubsurface.usf", "SetupIndirectCS", SF_Compute);
@@ -534,7 +543,8 @@ public:
 	class FSubsurfaceSamplerType : SHADER_PERMUTATION_ENUM_CLASS("SUBSURFACE_SAMPLER_TYPE", ESubsurfaceSamplerType);
 	class FSubsurfaceType : SHADER_PERMUTATION_ENUM_CLASS("SUBSURFACE_TYPE", ESubsurfaceType);
 	class FDimensionHalfRes : SHADER_PERMUTATION_BOOL("SUBSURFACE_HALF_RES");
-	using FPermutationDomain = TShaderPermutationDomain<FSubsurfacePassFunction, FDimensionQuality, FSubsurfaceSamplerType, FSubsurfaceType, FDimensionHalfRes>;
+	class FRunningInSeparable : SHADER_PERMUTATION_BOOL("SUBSURFACE_FORCE_SEPARABLE");
+	using FPermutationDomain = TShaderPermutationDomain<FSubsurfacePassFunction, FDimensionQuality, FSubsurfaceSamplerType, FSubsurfaceType, FDimensionHalfRes, FRunningInSeparable>;
 
 	// Returns the sampler state based on the requested SSS filter CVar setting and half resolution setting.
 	static FRHISamplerState* GetSamplerState(bool bHalfRes)
@@ -711,7 +721,8 @@ class FSubsurfaceRecombinePS : public FSubsurfaceShader
 	class FDimensionQuality : SHADER_PERMUTATION_ENUM_CLASS("SUBSURFACE_RECOMBINE_QUALITY", EQuality);
 	class FDimensionCheckerboard : SHADER_PERMUTATION_BOOL("SUBSURFACE_PROFILE_CHECKERBOARD");
 	class FDimensionHalfRes : SHADER_PERMUTATION_BOOL("SUBSURFACE_HALF_RES");
-	using FPermutationDomain = TShaderPermutationDomain<FDimensionMode, FDimensionQuality, FDimensionCheckerboard, FDimensionHalfRes>;
+	class FRunningInSeparable : SHADER_PERMUTATION_BOOL("SUBSURFACE_FORCE_SEPARABLE");
+	using FPermutationDomain = TShaderPermutationDomain<FDimensionMode, FDimensionQuality, FDimensionCheckerboard, FDimensionHalfRes, FRunningInSeparable>;
 
 	// Returns the Recombine quality level requested by the SSS Quality CVar setting.
 	static EQuality GetQuality(const FViewInfo& View)
@@ -761,6 +772,9 @@ void ComputeSubsurfaceForView(
 	const bool bCheckerboard = IsSubsurfaceCheckerboardFormat(SceneTextureDesc.Format);
 
 	const uint32 ScaleFactor = bHalfRes ? 2 : 1;
+	
+	//We run in separable mode under two conditions: 1) Run Burley fallback mode. 2) when the screen is in half resolution.
+	const bool bForceRunningInSeparable = CVarSSSBurleyQuality.GetValueOnRenderThread() == 0|| bHalfRes;
 
 	/**
 	 * All subsurface passes within the screen-space subsurface effect can operate at half or full resolution,
@@ -822,7 +836,7 @@ void ComputeSubsurfaceForView(
 	if (SubsurfaceMode != ESubsurfaceMode::Bypass)
 	{
 		// Support mipmaps in full resolution only.
-		SetupTexture = GraphBuilder.CreateTexture(bHalfRes? SubsurfaceTextureDescriptor:SubsurfaceTextureWith6MipsDescriptor, TEXT("SubsurfaceSetupTexture"));
+		SetupTexture = GraphBuilder.CreateTexture(bForceRunningInSeparable ? SubsurfaceTextureDescriptor:SubsurfaceTextureWith6MipsDescriptor, TEXT("SubsurfaceSetupTexture"));
 
 		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 		FRDGTextureRef VelocityTexture = RegisterExternalRenderTarget(GraphBuilder, &(SceneContext.SceneVelocity), SubsurfaceTextureDescriptor.Extent, TEXT("Velocity")); 
@@ -835,7 +849,7 @@ void ComputeSubsurfaceForView(
 			SubsurfaceSubpassTwoTex = CreateBlackUAVTexture(GraphBuilder, SubsurfaceTextureWith6MipsDescriptor, TEXT("SubsurfaceSubpassTwoTex"),
 				ScreenPassView, SceneViewport);
 			// Only clear when we are in full resolution.
-			if (!bHalfRes)
+			if (!bForceRunningInSeparable)
 			{
 				NewQualityHistoryTexture = CreateBlackUAVTexture(GraphBuilder, SubsurfaceTextureDescriptor, TEXT("SubsurfaceQualityHistoryState"),
 					ScreenPassView, SceneViewport);
@@ -876,6 +890,7 @@ void ComputeSubsurfaceForView(
 			SHADER::FPermutationDomain ComputeShaderPermutationVector;
 			ComputeShaderPermutationVector.Set<SHADER::FDimensionHalfRes>(bHalfRes);
 			ComputeShaderPermutationVector.Set<SHADER::FDimensionCheckerboard>(bCheckerboard);
+			ComputeShaderPermutationVector.Set<SHADER::FRunningInSeparable>(bForceRunningInSeparable);
 			TShaderMapRef<SHADER> ComputeShader(View.ShaderMap, ComputeShaderPermutationVector);
 
 			FIntPoint ComputeGroupCount = FIntPoint::DivideAndRoundUp(SubsurfaceViewport.Extent, kSubsurfaceGroupSize);
@@ -884,7 +899,7 @@ void ComputeSubsurfaceForView(
 		}
 
 		// In half resolution, only Separable is used. We do not need this mipmap.
-		if(!bHalfRes)
+		if(!bForceRunningInSeparable)
 		{
 			// Generate mipmap for the diffuse scene color and depth, use bilinear filter
 			FGenerateMips::Execute(&GraphBuilder, SetupTexture, BilinearBorderSampler);
@@ -973,8 +988,8 @@ void ComputeSubsurfaceForView(
 
 				if (SubsurfacePassFunction == SHADER::ESubsurfacePass::PassTwo && SubsurfaceType == SHADER::ESubsurfaceType::BURLEY)
 				{
-					// we do not write to history in half resolution.
-					if (!bHalfRes)
+					// we do not write to history in separable mode.
+					if (!bForceRunningInSeparable)
 					{
 						PassParameters->HistoryUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(NewQualityHistoryTexture, 0));
 					}
@@ -991,6 +1006,7 @@ void ComputeSubsurfaceForView(
 				ComputeShaderPermutationVector.Set<SHADER::FSubsurfaceSamplerType>(SHADER::GetSamplerType());
 				ComputeShaderPermutationVector.Set<SHADER::FSubsurfaceType>(SubsurfaceType);
 				ComputeShaderPermutationVector.Set<SHADER::FDimensionHalfRes>(bHalfRes);
+				ComputeShaderPermutationVector.Set<SHADER::FRunningInSeparable>(bForceRunningInSeparable);
 				TShaderMapRef<SHADER> ComputeShader(View.ShaderMap, ComputeShaderPermutationVector);
 
 				FComputeShaderUtils::AddPass(GraphBuilder, FRDGEventName(PassInfo.Name), *ComputeShader, PassParameters, SubsurfaceBufferArgs[SubsurfaceTypeIndex], 0);
@@ -1020,6 +1036,8 @@ void ComputeSubsurfaceForView(
 		PixelShaderPermutationVector.Set<FSubsurfaceRecombinePS::FDimensionQuality>(RecombineQuality);
 		PixelShaderPermutationVector.Set<FSubsurfaceRecombinePS::FDimensionCheckerboard>(bCheckerboard);
 		PixelShaderPermutationVector.Set<FSubsurfaceRecombinePS::FDimensionHalfRes>(bHalfRes);
+		PixelShaderPermutationVector.Set<FSubsurfaceRecombinePS::FRunningInSeparable>(bForceRunningInSeparable);
+
 		TShaderMapRef<FSubsurfaceRecombinePS> PixelShader(View.ShaderMap, PixelShaderPermutationVector);
 
 		/**
@@ -1029,7 +1047,7 @@ void ComputeSubsurfaceForView(
 		AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("SubsurfaceRecombine"), ScreenPassView, SceneViewport, SceneViewport, *PixelShader, PassParameters);
 	}
 
-	if (SubsurfaceMode != ESubsurfaceMode::Bypass && QualityHistoryState && !bHalfRes)
+	if (SubsurfaceMode != ESubsurfaceMode::Bypass && QualityHistoryState && !bForceRunningInSeparable)
 	{
 		GraphBuilder.QueueTextureExtraction(NewQualityHistoryTexture, QualityHistoryState, true);
 	}

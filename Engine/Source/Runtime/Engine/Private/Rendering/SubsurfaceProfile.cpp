@@ -249,7 +249,9 @@ void FSubsurfaceProfileTexture::CreateTexture(FRHICommandListImmediate& RHICmdLi
 		Data.SubsurfaceColor = Data.SubsurfaceColor.GetClamped();
 		Data.FalloffColor = Data.FalloffColor.GetClamped(Bias);
 		Data.MeanFreePathColor = Data.MeanFreePathColor.GetClamped(Bias);
-		
+		Data.TransmissionTintColor = Data.TransmissionTintColor.GetClamped(Bias);
+		Data.SurfaceAlbedo = Data.SurfaceAlbedo.GetClamped(Bias);
+
 		// to allow blending of the Subsurface with fullres in the shader
 		TextureRow[SSSS_SUBSURFACE_COLOR_OFFSET] = Data.SubsurfaceColor;
 		TextureRow[SSSS_SUBSURFACE_COLOR_OFFSET].A = EncodeWorldUnitScale(Data.WorldUnitScale);
@@ -278,14 +280,46 @@ void FSubsurfaceProfileTexture::CreateTexture(FRHICommandListImmediate& RHICmdLi
 		TextureRow[SSSS_TRANSMISSION_OFFSET].B = Data.ScatteringDistribution;
 		TextureRow[SSSS_TRANSMISSION_OFFSET].A = 1.0f / Data.IOR;
 
-		ComputeMirroredSSSKernel(&TextureRow[SSSS_KERNEL0_OFFSET], SSSS_KERNEL0_SIZE, Data.SubsurfaceColor, Data.FalloffColor);
-		ComputeMirroredSSSKernel(&TextureRow[SSSS_KERNEL1_OFFSET], SSSS_KERNEL1_SIZE, Data.SubsurfaceColor, Data.FalloffColor);
-		ComputeMirroredSSSKernel(&TextureRow[SSSS_KERNEL2_OFFSET], SSSS_KERNEL2_SIZE, Data.SubsurfaceColor, Data.FalloffColor);
+		if (Data.bEnableBurley)
+		{
+
+			// When we need performance, we fallback Burley to Separable. In order to achieve that, we estimate Separable parameters
+			// from Burley. This fallback has two two advantages:
+			// 1. Burley Fallback is more expressive than Separable. It can use Burley's scattering profile with hdr dmfp. The original
+			//    separable can only use a fixed dmfp around 2.24 based on the fitting. Because of this, the fallback Separable can be
+			//    used to express any materials. Since we have Burley parameters set, the transmittance profile can also go physically
+			//    more expressive. We can have better transmittance.
+			// 2. It runs faster than Burley. Burley has already been optimized. However, under extreme and rare conditions, it can go slow. 
+			//    If fps is critical even under extreme conditions, we can use Burley Fallback. Under normal setting, it does not have too
+			//    much visual difference. And it looks more appealing than the original one.
+
+			// Estimate the scatter radius based on the mean free path distance and the path color. 0.1f is the minimal value shown in the GUI.
+			Data.ScatterRadius = FMath::Max(Data.MeanFreePathDistance*Data.MeanFreePathColor.GetMax(), 0.1f);
+
+			ComputeMirroredBSSSKernel(&TextureRow[SSSS_KERNEL0_OFFSET], SSSS_KERNEL0_SIZE, Data.SurfaceAlbedo, 
+				DifffuseMeanFreePath, Data.WorldUnitScale, Data.ScatterRadius);
+			ComputeMirroredBSSSKernel(&TextureRow[SSSS_KERNEL1_OFFSET], SSSS_KERNEL1_SIZE, Data.SurfaceAlbedo, 
+				DifffuseMeanFreePath, Data.WorldUnitScale, Data.ScatterRadius);
+			ComputeMirroredBSSSKernel(&TextureRow[SSSS_KERNEL2_OFFSET], SSSS_KERNEL2_SIZE, Data.SurfaceAlbedo, 
+				DifffuseMeanFreePath, Data.WorldUnitScale, Data.ScatterRadius);
+			
+			// Reset subsurface rgb component to 1. So in the combine pass, we will directly use the subsurface scattering result
+			// in Burley fallback and Burley mode.
+			TextureRow[SSSS_SUBSURFACE_COLOR_OFFSET].R = 1; 
+			TextureRow[SSSS_SUBSURFACE_COLOR_OFFSET].G = 1; 
+			TextureRow[SSSS_SUBSURFACE_COLOR_OFFSET].B = 1; 
+		}
+		else
+		{
+			ComputeMirroredSSSKernel(&TextureRow[SSSS_KERNEL0_OFFSET], SSSS_KERNEL0_SIZE, Data.SubsurfaceColor, Data.FalloffColor);
+			ComputeMirroredSSSKernel(&TextureRow[SSSS_KERNEL1_OFFSET], SSSS_KERNEL1_SIZE, Data.SubsurfaceColor, Data.FalloffColor);
+			ComputeMirroredSSSKernel(&TextureRow[SSSS_KERNEL2_OFFSET], SSSS_KERNEL2_SIZE, Data.SubsurfaceColor, Data.FalloffColor);
+		}
 
 		ComputeTransmissionProfile(&TextureRow[SSSS_TRANSMISSION_PROFILE_OFFSET], SSSS_TRANSMISSION_PROFILE_SIZE, Data.SubsurfaceColor, Data.FalloffColor, Data.ExtinctionScale);
 
 		ComputeTransmissionProfileBurley(&TextureRow[BSSS_TRANSMISSION_PROFILE_OFFSET], BSSS_TRANSMISSION_PROFILE_SIZE,
-			Data.SubsurfaceColor, Data.FalloffColor, Data.ExtinctionScale, Data.SurfaceAlbedo, DifffuseMeanFreePath);
+			Data.SubsurfaceColor, Data.FalloffColor, Data.ExtinctionScale, Data.SurfaceAlbedo, DifffuseMeanFreePath,Data.WorldUnitScale * 10.0f/*cm to mm*/,Data.TransmissionTintColor);
 
 		// could be lower than 1 (but higher than 0) to range compress for better quality (for 8 bit)
 		const float TableMaxRGB = 1.0f;
@@ -373,7 +407,8 @@ bool FSubsurfaceProfileTexture::GetEntryString(uint32 Index, FString& Out) const
 
 
 	Out = FString::Printf(TEXT(" %c. %p ScatterRadius=%.1f, SubsurfaceColor=%.1f %.1f %.1f, FalloffColor=%.1f %.1f %.1f, \
-								SurfaceAlbedo=%.1f %.1f %.1f, MeanFreePathColor=%.1f %.1f %.1f, MeanFreePathDistance=%.1f, WorldUnitScale=%.1f"), 
+								SurfaceAlbedo=%.1f %.1f %.1f, MeanFreePathColor=%.1f %.1f %.1f, MeanFreePathDistance=%.1f, WorldUnitScale=%.1f,\
+								TransmissionTintColor=%.1f %.1f %.1f, EnableBurley=%.1f"), 
 		MiniFontCharFromIndex(Index), 
 		SubsurfaceProfileEntries[Index].Profile,
 		ref.ScatterRadius,
@@ -382,7 +417,9 @@ bool FSubsurfaceProfileTexture::GetEntryString(uint32 Index, FString& Out) const
 		ref.SurfaceAlbedo.R, ref.SurfaceAlbedo.G, ref.SurfaceAlbedo.B,
 		ref.MeanFreePathColor.R, ref.MeanFreePathColor.G, ref.MeanFreePathColor.B,
 		ref.MeanFreePathDistance,
-		ref.WorldUnitScale);
+		ref.WorldUnitScale,
+		ref.TransmissionTintColor.R, ref.TransmissionTintColor.G, ref.TransmissionTintColor.B,
+		ref.bEnableBurley?1.0f:0.0f);
 
 	return true;
 }
@@ -427,6 +464,10 @@ void FSubsurfaceProfileTexture::Dump()
 				SubsurfaceProfileEntries[i].Settings.MeanFreePathDistance);
 			UE_LOG(LogSubsurfaceProfile, Log, TEXT("     WorldUnitScale=%f"),
 				SubsurfaceProfileEntries[i].Settings.WorldUnitScale);
+			UE_LOG(LogSubsurfaceProfile, Log, TEXT("     TransmissionTintColor=%f %f %f"),
+				SubsurfaceProfileEntries[i].Settings.TransmissionTintColor.R, SubsurfaceProfileEntries[i].Settings.TransmissionTintColor.G, SubsurfaceProfileEntries[i].Settings.TransmissionTintColor.B);
+			UE_LOG(LogSubsurfaceProfile, Log, TEXT("     EnableBurley=%.1f"),
+				SubsurfaceProfileEntries[i].Settings.bEnableBurley?1.0f:0.0f);
 		}
 	}
 
@@ -489,5 +530,13 @@ void USubsurfaceProfile::PostLoad()
 		MapFallOffColor2SurfaceAlbedoAndDiffuseMeanFreePath(Settings.FalloffColor.R, Settings.SurfaceAlbedo.R, Settings.MeanFreePathColor.R);
 		MapFallOffColor2SurfaceAlbedoAndDiffuseMeanFreePath(Settings.FalloffColor.G, Settings.SurfaceAlbedo.G, Settings.MeanFreePathColor.G);
 		MapFallOffColor2SurfaceAlbedoAndDiffuseMeanFreePath(Settings.FalloffColor.B, Settings.SurfaceAlbedo.B, Settings.MeanFreePathColor.B);
+
+		//Normalize mean free path color and set the corresponding dfmp
+		float MaxMeanFreePathColor = FMath::Max3(Settings.MeanFreePathColor.R, Settings.MeanFreePathColor.G, Settings.MeanFreePathColor.B);
+		if (MaxMeanFreePathColor > 1)
+		{
+			Settings.MeanFreePathColor /= MaxMeanFreePathColor;
+			Settings.MeanFreePathDistance = FMath::Clamp(Settings.ScatterRadius*MaxMeanFreePathColor,0.1f,50.0f);	// 50.0f is the ClampMax of MeanFreePathDistance.
+		}
 	}
 }

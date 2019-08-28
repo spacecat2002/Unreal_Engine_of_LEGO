@@ -87,6 +87,12 @@ struct FSubsurfaceProfileStruct
 	UPROPERTY(Category = "Dual Specular", EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0.1", UIMax = "0.9", ClampMax = "0.9"))
 	float LobeMix;
 
+	/**
+	* Transmission tint control. It is multiplied on the transmission results. Works only when Burley is enabled.
+	*/
+	UPROPERTY(Category = "Transmission", EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0.001", UIMax = "1.0", ClampMax = "1.0", HideAlphaChannel))
+		FLinearColor TransmissionTintColor;
+
 	// constructor
 	FSubsurfaceProfileStruct()
 	{
@@ -104,10 +110,11 @@ struct FSubsurfaceProfileStruct
 		LobeMix = 0.85f;
 		bEnableBurley = false;
 		//match FalloffColor exactly for the default setting
-		SurfaceAlbedo = FLinearColor(0.1447f,0.0535f,0.0432f);
-		MeanFreePathColor = FLinearColor(0.5963f,0.2679f,0.2253f);
-		MeanFreePathDistance = 1.2f;
+		SurfaceAlbedo = FLinearColor(0.91058f,0.338275f,0.2718f);
+		MeanFreePathColor = FLinearColor(1.0f,0.1983f/2.229f,0.1607f/2.229f);
+		MeanFreePathDistance = 1.2f*2.229f;
 		WorldUnitScale = 0.1f;
+		TransmissionTintColor = FLinearColor(1.0f, 1.0f, 1.0f);
 	}
 
 	void Invalidate()
@@ -129,6 +136,7 @@ struct FSubsurfaceProfileStruct
 		MeanFreePathColor = FLinearColor(0, 0, 0);
 		MeanFreePathDistance = 0.0f;
 		WorldUnitScale = 0.0f;
+		TransmissionTintColor = FLinearColor(0, 0, 0);
 	}
 };
 
