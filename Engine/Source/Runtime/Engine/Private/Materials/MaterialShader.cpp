@@ -2240,7 +2240,7 @@ void FMaterialShaderMap::Release()
 			else
 			{
 				//sanity check - the map has not been registered and therefore should not appear in the cache
-				check(GIdToMaterialShaderMap[GetShaderPlatform()].FindRef(ShaderMapId) != this);
+				check(GetShaderPlatform()>= EShaderPlatform::SP_NumPlatforms || GIdToMaterialShaderMap[GetShaderPlatform()].FindRef(ShaderMapId) != this);
 			}
 
 			check(!bDeletedThroughDeferredCleanup);
