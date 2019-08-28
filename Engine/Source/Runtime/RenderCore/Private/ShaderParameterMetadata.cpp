@@ -225,8 +225,7 @@ void FShaderParametersMetadata::InitializeLayout()
 			const bool bTypeCanBeArray = (bAllowResourceArrays && (bIsRHIResource || bIsRDGResource)) || bIsVariableNativeType || BaseType == UBMT_NESTED_STRUCT;
 			if (bIsArray && !bTypeCanBeArray)
 			{
-				// Arrays are allowed.
-				//UE_LOG(LogRendererCore, Fatal, TEXT("Shader parameter %s error: Not allowed to be an array."), *CppName);
+				UE_LOG(LogRendererCore, Fatal, TEXT("Shader parameter %s error: Not allowed to be an array."), *CppName);
 			}
 		}
 
