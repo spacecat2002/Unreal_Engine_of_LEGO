@@ -127,7 +127,7 @@ void EmitRDGWarning(const FString& WarningMessage)
 
 	static TSet<FString> GAlreadyEmittedWarnings;
 
-	const bool bEnableBreakpoint = CVarRDGEnableBreakpoint.GetValueOnRenderThread();
+	const bool bEnableBreakpoint = CVarRDGEnableBreakpoint.GetValueOnRenderThread() != 0;
 
 	if (GRDGDebug == kRDGEmitWarningsOnce)
 	{
