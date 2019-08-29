@@ -14,6 +14,7 @@
 
 
 class FScene;
+class FViewInfo;
 class FLightSceneInfo;
 class USkyAtmosphereComponent;
 
