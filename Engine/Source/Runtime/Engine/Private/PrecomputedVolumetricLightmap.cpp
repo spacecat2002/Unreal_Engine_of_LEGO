@@ -472,7 +472,7 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::HandleDataMovementInAtlas(in
 	}
 }
 
-FIntVector ComputeBrickLayoutPosition(int32 BrickLayoutAllocation, FIntVector BrickLayoutDimensions)
+inline FIntVector ComputeBrickLayoutPosition(int32 BrickLayoutAllocation, FIntVector BrickLayoutDimensions)
 {
 	const FIntVector BrickPosition(
 		BrickLayoutAllocation % BrickLayoutDimensions.X,
