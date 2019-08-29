@@ -103,7 +103,7 @@ private:
 	FVector OverrideAtmosphericLightDirection[NUM_ATMOSPHERE_LIGHTS];
 };
 
-bool ShouldRenderSkyAtmosphere(const FScene* Scene);
+bool ShouldRenderSkyAtmosphere(const FScene* Scene, const FEngineShowFlags& EngineShowFlags);
 
 void InitSkyAtmosphereForScene(FRHICommandListImmediate& RHICmdList, FScene* Scene);
 void InitSkyAtmosphereForView(FRHICommandListImmediate& RHICmdList, const FScene* Scene, FViewInfo& View);

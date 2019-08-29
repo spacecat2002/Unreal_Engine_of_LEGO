@@ -424,7 +424,7 @@ void EngineShowFlagOverride(EShowFlagInitMode ShowFlagInitMode, EViewModeIndex V
 		if (ViewModeIndex == VMI_Unlit)
 		{
 			EngineShowFlags.SetLighting(false);
-			EngineShowFlags.AtmosphericFog = 0;
+			EngineShowFlags.Atmosphere = 0;
 		}
 
 		if( ViewModeIndex == VMI_Wireframe ||
@@ -440,7 +440,7 @@ void EngineShowFlagOverride(EShowFlagInitMode ShowFlagInitMode, EViewModeIndex V
 			ViewModeIndex == VMI_LightmapDensity)
 		{
 			EngineShowFlags.SetLighting(false);
-			EngineShowFlags.AtmosphericFog = 0;
+			EngineShowFlags.Atmosphere = 0;
 			EngineShowFlags.Fog = 0;
 		}
 
@@ -462,14 +462,14 @@ void EngineShowFlagOverride(EShowFlagInitMode ShowFlagInitMode, EViewModeIndex V
 		{
 			EngineShowFlags.Translucency = 0;
 			EngineShowFlags.Fog = 0;
-			EngineShowFlags.AtmosphericFog = 0;
+			EngineShowFlags.Atmosphere = 0;
 		}
 
 		if (ViewModeIndex == VMI_LODColoration || ViewModeIndex == VMI_HLODColoration)
 		{
 			EngineShowFlags.SetLighting(true);	// Best currently otherwise the image becomes hard to read.
 			EngineShowFlags.Fog = 0;			// Removed fog to improve color readability.
-			EngineShowFlags.AtmosphericFog = 0;
+			EngineShowFlags.Atmosphere = 0;
 			EngineShowFlags.Translucency = 0;	// Translucent are off because there are no color override shader currently for translucency.
 		}
 
