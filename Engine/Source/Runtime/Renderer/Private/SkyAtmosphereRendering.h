@@ -18,6 +18,7 @@ class FViewInfo;
 class FLightSceneInfo;
 class USkyAtmosphereComponent;
 
+struct FEngineShowFlags;
 
 
 // Use as a global shader parameter struct and also the CPU structure representing the atmosphere it self.
