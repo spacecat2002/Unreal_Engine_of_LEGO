@@ -147,7 +147,7 @@ void ComputeMirroredBSSSKernel(FLinearColor* TargetBuffer, uint32 TargetBufferSi
 			float w0 = i > 0 ? FMath::Abs(kernel[i].A - kernel[i - 1].A) : 0.0f;
 			float w1 = i < nTotalSamples - 1 ? FMath::Abs(kernel[i].A - kernel[i + 1].A) : 0.0f;
 			float area = (w0 + w1) / 2.0f;
-			FVector t = area * Burley_ScatteringProfile(abs(kernel[i].A)*SpaceScale, SurfaceAlbedo, ScalingFactor,DiffuseMeanFreePath);
+			FVector t = area * Burley_ScatteringProfile(FMath::Abs(kernel[i].A)*SpaceScale, SurfaceAlbedo, ScalingFactor,DiffuseMeanFreePath);
 			kernel[i].R = t.X;
 			kernel[i].G = t.Y;
 			kernel[i].B = t.Z;
