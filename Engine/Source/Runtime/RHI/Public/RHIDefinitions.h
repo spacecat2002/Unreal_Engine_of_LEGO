@@ -1290,7 +1290,7 @@ inline bool IsShaderParameterTypeIgnoredByRHI(EUniformBufferBaseType BaseType)
 
 inline EGpuVendorId RHIConvertToGpuVendorId(uint32 VendorId)
 {
-	switch (VendorId)
+	switch ((EGpuVendorId)VendorId)
 	{
 	case EGpuVendorId::NotQueried:
 		return EGpuVendorId::NotQueried;
