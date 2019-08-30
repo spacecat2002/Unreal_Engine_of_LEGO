@@ -20,18 +20,31 @@ class FOLDVulkanQueryPool;
 
 struct FOptionalVulkanDeviceExtensions
 {
-	uint32 HasKHRMaintenance1 : 1;
-	uint32 HasKHRMaintenance2 : 1;
-	//uint32 HasMirrorClampToEdge : 1;
-	uint32 HasKHRExternalMemoryCapabilities : 1;
-	uint32 HasKHRGetPhysicalDeviceProperties2 : 1;
-	uint32 HasKHRDedicatedAllocation : 1;
-	uint32 HasEXTValidationCache : 1;
-	uint32 HasAMDBufferMarker : 1;
-	uint32 HasNVDiagnosticCheckpoints : 1;
-	uint32 HasGoogleDisplayTiming : 1;
-	uint32 HasYcbcrSampler : 1;
-	uint32 HasMemoryPriority : 1;
+	union
+	{
+		struct
+		{
+			uint32 HasKHRMaintenance1 : 1;
+			uint32 HasKHRMaintenance2 : 1;
+			//uint32 HasMirrorClampToEdge : 1;
+			uint32 HasKHRExternalMemoryCapabilities : 1;
+			uint32 HasKHRGetPhysicalDeviceProperties2 : 1;
+			uint32 HasKHRDedicatedAllocation : 1;
+			uint32 HasEXTValidationCache : 1;
+			uint32 HasAMDBufferMarker : 1;
+			uint32 HasNVDiagnosticCheckpoints : 1;
+			uint32 HasGoogleDisplayTiming : 1;
+			uint32 HasYcbcrSampler : 1;
+			uint32 HasMemoryPriority : 1;
+		};
+		uint32 Data;
+	};
+
+	FOptionalVulkanDeviceExtensions()
+	{
+		static_assert(sizeof(Data) == sizeof(FOptionalVulkanDeviceExtensions), "More bits needed!");
+		Data = 0;
+	}
 
 	inline bool HasGPUCrashDumpExtensions() const
 	{
@@ -387,9 +400,13 @@ private:
 	TMap<uint32, VkSamplerYcbcrConversion> SamplerColorConversionMap;
 #endif
 
-	void GetDeviceExtensionsAndLayers(TArray<const ANSICHAR*>& OutDeviceExtensions, TArray<const ANSICHAR*>& OutDeviceLayers, bool& bOutDebugMarkers);
+	bool bDebugMarkersFound = false;
+	TArray<const ANSICHAR*> DeviceExtensions;
+	TArray<const ANSICHAR*> ValidationLayers;
 
-	void ParseOptionalDeviceExtensions(const TArray<const ANSICHAR*>& DeviceExtensions);
+	static void GetDeviceExtensionsAndLayers(VkPhysicalDevice Gpu, TArray<const ANSICHAR*>& OutDeviceExtensions, TArray<const ANSICHAR*>& OutDeviceLayers, bool& bOutDebugMarkers);
+
+	void ParseOptionalDeviceExtensions();
 	FOptionalVulkanDeviceExtensions OptionalDeviceExtensions;
 
 	void SetupFormats();
@@ -413,6 +430,7 @@ private:
 	} DebugMarkers;
 	friend class FVulkanCommandListContext;
 #endif
+	void SetupDrawMarkers();
 
 	class FVulkanPipelineStateCacheManager* PipelineStateCache;
 	friend class FVulkanDynamicRHI;

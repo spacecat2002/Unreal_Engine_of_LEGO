@@ -459,11 +459,6 @@ void FVulkanDynamicRHI::CreateInstance()
 
 #if VULKAN_HAS_DEBUGGING_ENABLED
 	SetupDebugLayerCallback();
-
-	if (GRenderDocFound)
-	{
-		EnableIdealGPUCaptureOptions(true);
-	}
 #endif
 }
 
@@ -673,6 +668,12 @@ void FVulkanDynamicRHI::InitInstance()
 		CreateInstance();
 		SelectAndInitDevice();
 
+#if VULKAN_HAS_DEBUGGING_ENABLED
+		if (GRenderDocFound)
+		{
+			EnableIdealGPUCaptureOptions(true);
+		}
+#endif
 		//bool bDeviceSupportsTessellation = Device->GetPhysicalFeatures().tessellationShader != 0;
 
 		const VkPhysicalDeviceProperties& Props = Device->GetDeviceProperties();

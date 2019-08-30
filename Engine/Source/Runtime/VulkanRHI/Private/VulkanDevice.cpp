@@ -177,6 +177,29 @@ FVulkanDevice::~FVulkanDevice()
 	}
 }
 
+static inline FString GetQueueInfoString(const VkQueueFamilyProperties& Props)
+{
+	FString Info;
+	if ((Props.queueFlags & VK_QUEUE_GRAPHICS_BIT) == VK_QUEUE_GRAPHICS_BIT)
+	{
+		Info += TEXT(" Gfx");
+	}
+	if ((Props.queueFlags & VK_QUEUE_COMPUTE_BIT) == VK_QUEUE_COMPUTE_BIT)
+	{
+		Info += TEXT(" Compute");
+	}
+	if ((Props.queueFlags & VK_QUEUE_TRANSFER_BIT) == VK_QUEUE_TRANSFER_BIT)
+	{
+		Info += TEXT(" Xfer");
+	}
+	if ((Props.queueFlags & VK_QUEUE_SPARSE_BINDING_BIT) == VK_QUEUE_SPARSE_BINDING_BIT)
+	{
+		Info += TEXT(" Sparse");
+	}
+
+	return Info;
+};
+
 void FVulkanDevice::CreateDevice()
 {
 	LLM_SCOPE_VULKAN(ELLMTagVulkan::VulkanMisc);
@@ -185,14 +208,7 @@ void FVulkanDevice::CreateDevice()
 	// Setup extension and layer info
 	VkDeviceCreateInfo DeviceInfo;
 	ZeroVulkanStruct(DeviceInfo, VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO);
-
-	bool bDebugMarkersFound = false;
-	TArray<const ANSICHAR*> DeviceExtensions;
-	TArray<const ANSICHAR*> ValidationLayers;
-	GetDeviceExtensionsAndLayers(DeviceExtensions, ValidationLayers, bDebugMarkersFound);
-
-	ParseOptionalDeviceExtensions(DeviceExtensions);
-
+	
 	DeviceInfo.enabledExtensionCount = DeviceExtensions.Num();
 	DeviceInfo.ppEnabledExtensionNames = DeviceExtensions.GetData();
 
@@ -243,29 +259,6 @@ void FVulkanDevice::CreateDevice()
 				bIsValidQueue = true;
 			}
 		}
-
-		auto GetQueueInfoString = [](const VkQueueFamilyProperties& Props)
-		{
-			FString Info;
-			if ((Props.queueFlags & VK_QUEUE_GRAPHICS_BIT) == VK_QUEUE_GRAPHICS_BIT)
-			{
-				Info += TEXT(" Gfx");
-			}
-			if ((Props.queueFlags & VK_QUEUE_COMPUTE_BIT) == VK_QUEUE_COMPUTE_BIT)
-			{
-				Info += TEXT(" Compute");
-			}
-			if ((Props.queueFlags & VK_QUEUE_TRANSFER_BIT) == VK_QUEUE_TRANSFER_BIT)
-			{
-				Info += TEXT(" Xfer");
-			}
-			if ((Props.queueFlags & VK_QUEUE_SPARSE_BINDING_BIT) == VK_QUEUE_SPARSE_BINDING_BIT)
-			{
-				Info += TEXT(" Sparse");
-			}
-
-			return Info;
-		};
 
 		if (!bIsValidQueue)
 		{
@@ -354,6 +347,25 @@ void FVulkanDevice::CreateDevice()
 		}
 	}
 
+	UE_LOG(LogVulkanRHI, Display, TEXT("Using device layers"));
+	for (const ANSICHAR* Layer : ValidationLayers)
+	{
+		UE_LOG(LogVulkanRHI, Display, TEXT("* %s"), ANSI_TO_TCHAR(Layer));
+	}
+
+	UE_LOG(LogVulkanRHI, Display, TEXT("Using device extensions"));
+	for (const ANSICHAR* Extension : DeviceExtensions)
+	{
+		UE_LOG(LogVulkanRHI, Display, TEXT("* %s"), ANSI_TO_TCHAR(Extension));
+	}
+
+	GVulkanDelayAcquireImage = DelayAcquireBackBuffer();
+
+	SetupDrawMarkers();
+}
+
+void FVulkanDevice::SetupDrawMarkers()
+{
 #if VULKAN_ENABLE_DRAW_MARKERS
 #if 0//VULKAN_SUPPORTS_DEBUG_UTILS
 	FVulkanDynamicRHI* RHI = GVulkanRHI;
@@ -408,8 +420,6 @@ void FVulkanDevice::CreateDevice()
 #if VULKAN_ENABLE_DUMP_LAYER
 	EnableDrawMarkers();
 #endif
-	
-	GVulkanDelayAcquireImage = DelayAcquireBackBuffer();
 }
 
 void FVulkanDevice::SetupFormats()
@@ -725,16 +735,6 @@ bool FVulkanDevice::QueryGPU(int32 DeviceIndex)
 	bool bDiscrete = false;
 
 	VulkanRHI::vkGetPhysicalDeviceProperties(Gpu, &GpuProps);
-#if VULKAN_ENABLE_DESKTOP_HMD_SUPPORT
-	if (GetOptionalExtensions().HasKHRGetPhysicalDeviceProperties2)
-	{
-		VkPhysicalDeviceProperties2KHR GpuProps2;
-		ZeroVulkanStruct(GpuProps2, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR);
-		GpuProps2.pNext = &GpuIdProps;
-		ZeroVulkanStruct(GpuIdProps, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES_KHR);
-		VulkanRHI::vkGetPhysicalDeviceProperties2KHR(Gpu, &GpuProps2);
-	}
-#endif
 	auto GetDeviceTypeString = [&]()
 	{
 		FString Info;
@@ -774,6 +774,19 @@ bool FVulkanDevice::QueryGPU(int32 DeviceIndex)
 
 	QueueFamilyProps.AddUninitialized(QueueCount);
 	VulkanRHI::vkGetPhysicalDeviceQueueFamilyProperties(Gpu, &QueueCount, QueueFamilyProps.GetData());
+
+#if VULKAN_ENABLE_DESKTOP_HMD_SUPPORT
+	if (GetOptionalExtensions().HasKHRGetPhysicalDeviceProperties2)
+	{
+		VkPhysicalDeviceProperties2KHR GpuProps2;
+		ZeroVulkanStruct(GpuProps2, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR);
+		GpuProps2.pNext = &GpuIdProps;
+		ZeroVulkanStruct(GpuIdProps, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES_KHR);
+		VulkanRHI::vkGetPhysicalDeviceProperties2KHR(Gpu, &GpuProps2);
+	}
+#endif
+	GetDeviceExtensionsAndLayers(Gpu, DeviceExtensions, ValidationLayers, bDebugMarkersFound);
+	ParseOptionalDeviceExtensions();
 
 	return bDiscrete;
 }
