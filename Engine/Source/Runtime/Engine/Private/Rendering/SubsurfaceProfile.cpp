@@ -294,8 +294,7 @@ void FSubsurfaceProfileTexture::CreateTexture(FRHICommandListImmediate& RHICmdLi
 			//    much visual difference. And it looks more appealing than the original one.
 
 			// Estimate the scatter radius based on the mean free path distance and the path color. 0.1f is the minimal value shown in the GUI.
-			// 2.229f is divided because of fitting relationship between falloff color and dmfp that has a scale of 2.229.
-			Data.ScatterRadius = FMath::Max(Data.MeanFreePathDistance*Data.MeanFreePathColor.GetMax()/2.229f, 0.1f);
+			Data.ScatterRadius = FMath::Max(Data.MeanFreePathDistance*Data.MeanFreePathColor.GetMax(), 0.1f);
 
 			ComputeMirroredBSSSKernel(&TextureRow[SSSS_KERNEL0_OFFSET], SSSS_KERNEL0_SIZE, Data.SurfaceAlbedo, 
 				DifffuseMeanFreePath, Data.WorldUnitScale, Data.ScatterRadius);
