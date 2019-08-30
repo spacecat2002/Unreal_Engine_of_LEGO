@@ -30,6 +30,7 @@ extern bool GIsMetalInitialized;
 const uint32 BufferOffsetAlignment = 256;
 #else
 const uint32 BufferOffsetAlignment = 16;
+const uint32 BufferBackedLinearTextureOffsetAlignment = 64;
 #endif
 
 // The maximum buffer page size that can be uploaded in a set*Bytes call
