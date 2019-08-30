@@ -144,7 +144,7 @@ static void LoadValidationCache(VkDevice Device, VkValidationCacheEXT& OutValida
 #endif
 
 
-FVulkanDevice::FVulkanDevice(VkPhysicalDevice InGpu)
+FVulkanDevice::FVulkanDevice(FVulkanDynamicRHI* InRHI, VkPhysicalDevice InGpu)
 	: Device(VK_NULL_HANDLE)
 	, ResourceHeapManager(this)
 	, DeferredDeletionQueue(this)
@@ -159,8 +159,9 @@ FVulkanDevice::FVulkanDevice(VkPhysicalDevice InGpu)
 	, ComputeContext(nullptr)
 	, PipelineStateCache(nullptr)
 {
+	RHI = InRHI;
 	FMemory::Memzero(GpuProps);
-#if VULKAN_ENABLE_DESKTOP_HMD_SUPPORT
+#if VULKAN_SUPPORTS_EXTERNAL_MEMORY
 	FMemory::Memzero(GpuIdProps);
 #endif
 	FMemory::Memzero(PhysicalFeatures);
@@ -734,6 +735,34 @@ bool FVulkanDevice::QueryGPU(int32 DeviceIndex)
 {
 	bool bDiscrete = false;
 
+	// Always do this first!
+	GetDeviceExtensionsAndLayers(Gpu, DeviceExtensions, ValidationLayers, bDebugMarkersFound);
+	OptionalDeviceExtensions.Setup(DeviceExtensions);
+
+#if VULKAN_SUPPORTS_DRIVER_PROPERTIES
+	VkPhysicalDeviceDriverPropertiesKHR PhysicalDeviceProperties;
+	ZeroVulkanStruct(PhysicalDeviceProperties, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR);
+#endif
+
+#if VULKAN_SUPPORTS_PHYSICAL_DEVICE_PROPERTIES2
+	if (RHI->GetOptionalExtensions().HasKHRGetPhysicalDeviceProperties2)
+	{
+		VkPhysicalDeviceProperties2KHR GpuProps2;
+		ZeroVulkanStruct(GpuProps2, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR);
+		GpuProps2.pNext = &GpuIdProps;
+		ZeroVulkanStruct(GpuIdProps, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES_KHR);
+
+#if VULKAN_SUPPORTS_DRIVER_PROPERTIES
+		if (GetOptionalExtensions().HasDriverProperties)
+		{
+			GpuIdProps.pNext = &PhysicalDeviceProperties;
+		}
+#endif
+
+		VulkanRHI::vkGetPhysicalDeviceProperties2KHR(Gpu, &GpuProps2);
+	}
+#endif
+
 	VulkanRHI::vkGetPhysicalDeviceProperties(Gpu, &GpuProps);
 	auto GetDeviceTypeString = [&]()
 	{
@@ -768,25 +797,20 @@ bool FVulkanDevice::QueryGPU(int32 DeviceIndex)
 	UE_LOG(LogVulkanRHI, Display, TEXT("- DeviceID 0x%x Type %s"), GpuProps.deviceID, *GetDeviceTypeString());
 	UE_LOG(LogVulkanRHI, Display, TEXT("- Max Descriptor Sets Bound %d Timestamps %d"), GpuProps.limits.maxBoundDescriptorSets, GpuProps.limits.timestampComputeAndGraphics);
 
+#if VULKAN_SUPPORTS_DRIVER_PROPERTIES
+	if (OptionalDeviceExtensions.HasDriverProperties)
+	{
+		UE_LOG(LogVulkanRHI, Display, TEXT("- Device Properties driverName: %s"), ANSI_TO_TCHAR(PhysicalDeviceProperties.driverName));
+		UE_LOG(LogVulkanRHI, Display, TEXT("- Device Properties driverInfo: %s"), ANSI_TO_TCHAR(PhysicalDeviceProperties.driverInfo));
+	}
+#endif
+
 	uint32 QueueCount = 0;
 	VulkanRHI::vkGetPhysicalDeviceQueueFamilyProperties(Gpu, &QueueCount, nullptr);
 	check(QueueCount >= 1);
 
 	QueueFamilyProps.AddUninitialized(QueueCount);
 	VulkanRHI::vkGetPhysicalDeviceQueueFamilyProperties(Gpu, &QueueCount, QueueFamilyProps.GetData());
-
-#if VULKAN_ENABLE_DESKTOP_HMD_SUPPORT
-	if (GetOptionalExtensions().HasKHRGetPhysicalDeviceProperties2)
-	{
-		VkPhysicalDeviceProperties2KHR GpuProps2;
-		ZeroVulkanStruct(GpuProps2, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR);
-		GpuProps2.pNext = &GpuIdProps;
-		ZeroVulkanStruct(GpuIdProps, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES_KHR);
-		VulkanRHI::vkGetPhysicalDeviceProperties2KHR(Gpu, &GpuProps2);
-	}
-#endif
-	GetDeviceExtensionsAndLayers(Gpu, DeviceExtensions, ValidationLayers, bDebugMarkersFound);
-	ParseOptionalDeviceExtensions();
 
 	return bDiscrete;
 }

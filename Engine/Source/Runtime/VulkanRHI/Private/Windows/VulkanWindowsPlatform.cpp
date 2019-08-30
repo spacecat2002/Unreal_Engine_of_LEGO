@@ -119,6 +119,10 @@ void FVulkanWindowsPlatform::GetInstanceExtensions(TArray<const ANSICHAR*>& OutE
 
 void FVulkanWindowsPlatform::GetDeviceExtensions(TArray<const ANSICHAR*>& OutExtensions)
 {
+#if VULKAN_SUPPORTS_DRIVER_PROPERTIES
+	OutExtensions.Add(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME);
+#endif
+
 #if VULKAN_SUPPORTS_DEDICATED_ALLOCATION
 	OutExtensions.Add(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
 	OutExtensions.Add(VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME);

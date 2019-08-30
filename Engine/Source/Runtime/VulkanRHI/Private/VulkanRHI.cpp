@@ -460,6 +460,8 @@ void FVulkanDynamicRHI::CreateInstance()
 #if VULKAN_HAS_DEBUGGING_ENABLED
 	SetupDebugLayerCallback();
 #endif
+
+	OptionalInstanceExtensions.Setup(InstanceExtensions);
 }
 
 //#todo-rco: Common RHI should handle this...
@@ -522,7 +524,7 @@ void FVulkanDynamicRHI::SelectAndInitDevice()
 	UE_LOG(LogVulkanRHI, Display, TEXT("Found %d device(s)"), GpuCount);
 	for (uint32 Index = 0; Index < GpuCount; ++Index)
 	{
-		FVulkanDevice* NewDevice = new FVulkanDevice(PhysicalDevices[Index]);
+		FVulkanDevice* NewDevice = new FVulkanDevice(this, PhysicalDevices[Index]);
 		Devices.Add(NewDevice);
 
 		bool bIsDiscrete = NewDevice->QueryGPU(Index);

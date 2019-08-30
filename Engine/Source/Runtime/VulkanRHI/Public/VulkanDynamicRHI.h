@@ -17,6 +17,29 @@ class IHeadMountedDisplayVulkanExtensions;
 // TODO: fix Lock/Unlock Vertex/Index buffer
 #define VULKAN_BUFFER_LOCK_THREADSAFE 0
 
+struct FOptionalVulkanInstanceExtensions
+{
+	union
+	{
+		struct
+		{
+			uint32 HasKHRExternalMemoryCapabilities : 1;
+			uint32 HasKHRGetPhysicalDeviceProperties2 : 1;
+		};
+		uint32 Packed;
+	};
+
+	FOptionalVulkanInstanceExtensions()
+	{
+		static_assert(sizeof(Packed) == sizeof(FOptionalVulkanInstanceExtensions), "More bits needed!");
+		Packed = 0;
+	}
+
+	void Setup(const TArray<const ANSICHAR*>& InInstanceExtensions);
+};
+
+
+
 /** The interface which is implemented by the dynamically bound RHI. */
 class FVulkanDynamicRHI : public FDynamicRHI
 {
@@ -362,6 +385,11 @@ public:
 		return bSupportsDebugUtilsExt;
 	}
 
+	inline const FOptionalVulkanInstanceExtensions& GetOptionalExtensions() const
+	{
+		return OptionalInstanceExtensions;
+	}
+
 	virtual void VulkanSetImageLayout( VkCommandBuffer CmdBuffer, VkImage Image, VkImageLayout OldLayout, VkImageLayout NewLayout, const VkImageSubresourceRange& SubresourceRange );
 	
 	virtual void* RHILockStagingBuffer(FRHIStagingBuffer* StagingBuffer, uint32 Offset, uint32 SizeRHI) final override;
@@ -446,6 +474,8 @@ protected:
 	void UpdateUniformBuffer(FVulkanUniformBuffer* UniformBuffer, const void* Contents);
 
 	static void SetupValidationRequests();
+
+	FOptionalVulkanInstanceExtensions OptionalInstanceExtensions;
 
 public:
 	static TSharedPtr< IHeadMountedDisplayVulkanExtensions, ESPMode::ThreadSafe > HMDVulkanExtensions;

@@ -27,8 +27,6 @@ struct FOptionalVulkanDeviceExtensions
 			uint32 HasKHRMaintenance1 : 1;
 			uint32 HasKHRMaintenance2 : 1;
 			//uint32 HasMirrorClampToEdge : 1;
-			uint32 HasKHRExternalMemoryCapabilities : 1;
-			uint32 HasKHRGetPhysicalDeviceProperties2 : 1;
 			uint32 HasKHRDedicatedAllocation : 1;
 			uint32 HasEXTValidationCache : 1;
 			uint32 HasAMDBufferMarker : 1;
@@ -36,15 +34,18 @@ struct FOptionalVulkanDeviceExtensions
 			uint32 HasGoogleDisplayTiming : 1;
 			uint32 HasYcbcrSampler : 1;
 			uint32 HasMemoryPriority : 1;
+			uint32 HasDriverProperties : 1;
 		};
-		uint32 Data;
+		uint32 Packed;
 	};
 
 	FOptionalVulkanDeviceExtensions()
 	{
-		static_assert(sizeof(Data) == sizeof(FOptionalVulkanDeviceExtensions), "More bits needed!");
-		Data = 0;
+		static_assert(sizeof(Packed) == sizeof(FOptionalVulkanDeviceExtensions), "More bits needed!");
+		Packed = 0;
 	}
+
+	void Setup(const TArray<const ANSICHAR*>& InDeviceExtensions);
 
 	inline bool HasGPUCrashDumpExtensions() const
 	{
@@ -55,7 +56,7 @@ struct FOptionalVulkanDeviceExtensions
 class FVulkanDevice
 {
 public:
-	FVulkanDevice(VkPhysicalDevice Gpu);
+	FVulkanDevice(FVulkanDynamicRHI* InRHI, VkPhysicalDevice Gpu);
 
 	~FVulkanDevice();
 
@@ -127,10 +128,10 @@ public:
 		return GpuProps.limits;
 	}
 
-#if VULKAN_ENABLE_DESKTOP_HMD_SUPPORT
+#if VULKAN_SUPPORTS_PHYSICAL_DEVICE_PROPERTIES2
 	inline const VkPhysicalDeviceIDPropertiesKHR& GetDeviceIdProperties() const
 	{
-		check(GetOptionalExtensions().HasKHRGetPhysicalDeviceProperties2);
+		check(RHI->GetOptionalExtensions().HasKHRGetPhysicalDeviceProperties2);
 		return GpuIdProps;
 	}
 #endif
@@ -359,7 +360,7 @@ private:
 
 	VkPhysicalDevice Gpu;
 	VkPhysicalDeviceProperties GpuProps;
-#if VULKAN_ENABLE_DESKTOP_HMD_SUPPORT
+#if VULKAN_SUPPORTS_PHYSICAL_DEVICE_PROPERTIES2
 	VkPhysicalDeviceIDPropertiesKHR GpuIdProps;
 #endif
 	VkPhysicalDeviceFeatures PhysicalFeatures;
@@ -400,13 +401,13 @@ private:
 	TMap<uint32, VkSamplerYcbcrConversion> SamplerColorConversionMap;
 #endif
 
+	FVulkanDynamicRHI* RHI = nullptr;
 	bool bDebugMarkersFound = false;
 	TArray<const ANSICHAR*> DeviceExtensions;
 	TArray<const ANSICHAR*> ValidationLayers;
 
 	static void GetDeviceExtensionsAndLayers(VkPhysicalDevice Gpu, TArray<const ANSICHAR*>& OutDeviceExtensions, TArray<const ANSICHAR*>& OutDeviceLayers, bool& bOutDebugMarkers);
 
-	void ParseOptionalDeviceExtensions();
 	FOptionalVulkanDeviceExtensions OptionalDeviceExtensions;
 
 	void SetupFormats();

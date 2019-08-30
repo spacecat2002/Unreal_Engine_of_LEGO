@@ -60,8 +60,10 @@ static const ANSICHAR* GIndividualValidationLayers[] =
 // Instance Extensions to enable for all platforms
 static const ANSICHAR* GInstanceExtensions[] =
 {
-#if VULKAN_ENABLE_DESKTOP_HMD_SUPPORT
+#if VULKAN_SUPPORTS_EXTERNAL_MEMORY
 	VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME,
+#endif
+#if VULKAN_SUPPORTS_PHYSICAL_DEVICE_PROPERTIES2
 	VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
 #endif
 #if VULKAN_SUPPORTS_VALIDATION_CACHE
@@ -668,54 +670,63 @@ void FVulkanDevice::GetDeviceExtensionsAndLayers(VkPhysicalDevice Gpu, TArray<co
 	}
 }
 
-void FVulkanDevice::ParseOptionalDeviceExtensions()
+static inline bool HasExtension(const TArray<const ANSICHAR*> InExtensions, const ANSICHAR* InName)
 {
-	check(OptionalDeviceExtensions.Data == 0);
+	return InExtensions.ContainsByPredicate(
+		[&InName](const ANSICHAR* Extension) -> bool
+		{
+			return FCStringAnsi::Strcmp(Extension, InName) == 0;
+		}
+	);
+};
 
-	auto HasExtension = [](const TArray<const ANSICHAR*> InDeviceExtensions, const ANSICHAR* InName) -> bool
-	{
-		return InDeviceExtensions.ContainsByPredicate(
-			[&InName](const ANSICHAR* InExtension) -> bool
-			{
-				return FCStringAnsi::Strcmp(InExtension, InName) == 0;
-			}
-		);
-	};
+void FOptionalVulkanInstanceExtensions::Setup(const TArray<const ANSICHAR*>& InstanceExtensions)
+{
+	check(Packed == 0);
+
+#if VULKAN_SUPPORTS_EXTERNAL_MEMORY
+	HasKHRExternalMemoryCapabilities = HasExtension(InstanceExtensions, VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME);
+#endif
+
+#if VULKAN_SUPPORTS_PHYSICAL_DEVICE_PROPERTIES2
+	HasKHRGetPhysicalDeviceProperties2 = HasExtension(InstanceExtensions, VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+#endif
+}
+
+void FOptionalVulkanDeviceExtensions::Setup(const TArray<const ANSICHAR*>& DeviceExtensions)
+{
+	check(Packed == 0);
+
 #if VULKAN_SUPPORTS_MAINTENANCE_LAYER1
-	OptionalDeviceExtensions.HasKHRMaintenance1 = HasExtension(DeviceExtensions, VK_KHR_MAINTENANCE1_EXTENSION_NAME);
+	HasKHRMaintenance1 = HasExtension(DeviceExtensions, VK_KHR_MAINTENANCE1_EXTENSION_NAME);
 #endif
 #if VULKAN_SUPPORTS_MAINTENANCE_LAYER2
-	OptionalDeviceExtensions.HasKHRMaintenance2 = HasExtension(DeviceExtensions, VK_KHR_MAINTENANCE2_EXTENSION_NAME);
+	HasKHRMaintenance2 = HasExtension(DeviceExtensions, VK_KHR_MAINTENANCE2_EXTENSION_NAME);
 #endif
-	//OptionalDeviceExtensions.HasMirrorClampToEdge = HasExtension(VK_KHR_SAMPLER_MIRROR_CLAMP_TO_EDGE_EXTENSION_NAME);
+	//HasMirrorClampToEdge = HasExtension(VK_KHR_SAMPLER_MIRROR_CLAMP_TO_EDGE_EXTENSION_NAME);
 
 #if VULKAN_SUPPORTS_DEDICATED_ALLOCATION
-	OptionalDeviceExtensions.HasKHRDedicatedAllocation = HasExtension(DeviceExtensions, VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME) && HasExtension(DeviceExtensions, VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME);
-#endif
-
-#if VULKAN_ENABLE_DESKTOP_HMD_SUPPORT
-	OptionalDeviceExtensions.HasKHRExternalMemoryCapabilities = HasExtension(DeviceExtensions, VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME);
-	OptionalDeviceExtensions.HasKHRGetPhysicalDeviceProperties2 = HasExtension(DeviceExtensions, VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+	HasKHRDedicatedAllocation = HasExtension(DeviceExtensions, VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME) && HasExtension(DeviceExtensions, VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME);
 #endif
 
 #if VULKAN_SUPPORTS_VALIDATION_CACHE
-	OptionalDeviceExtensions.HasEXTValidationCache = HasExtension(DeviceExtensions, VK_EXT_VALIDATION_CACHE_EXTENSION_NAME);
+	HasEXTValidationCache = HasExtension(DeviceExtensions, VK_EXT_VALIDATION_CACHE_EXTENSION_NAME);
 #endif
 
 	bool bHasAnyCrashExtension = false;
 #if VULKAN_SUPPORTS_AMD_BUFFER_MARKER
 	if (GGPUCrashDebuggingEnabled)
 	{
-		OptionalDeviceExtensions.HasAMDBufferMarker = HasExtension(DeviceExtensions, VK_AMD_BUFFER_MARKER_EXTENSION_NAME);
-		bHasAnyCrashExtension = bHasAnyCrashExtension || !OptionalDeviceExtensions.HasAMDBufferMarker;
+		HasAMDBufferMarker = HasExtension(DeviceExtensions, VK_AMD_BUFFER_MARKER_EXTENSION_NAME);
+		bHasAnyCrashExtension = bHasAnyCrashExtension || !HasAMDBufferMarker;
 	}
 #endif
 
 #if VULKAN_SUPPORTS_NV_DIAGNOSTIC_CHECKPOINT
 	if (GGPUCrashDebuggingEnabled)
 	{
-		OptionalDeviceExtensions.HasNVDiagnosticCheckpoints = HasExtension(DeviceExtensions, VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME);
-		bHasAnyCrashExtension = bHasAnyCrashExtension || !OptionalDeviceExtensions.HasNVDiagnosticCheckpoints;
+		HasNVDiagnosticCheckpoints = HasExtension(DeviceExtensions, VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME);
+		bHasAnyCrashExtension = bHasAnyCrashExtension || !HasNVDiagnosticCheckpoints;
 	}
 #endif
 
@@ -725,21 +736,25 @@ void FVulkanDevice::ParseOptionalDeviceExtensions()
 	}
 
 #if VULKAN_SUPPORTS_GOOGLE_DISPLAY_TIMING
-	OptionalDeviceExtensions.HasGoogleDisplayTiming = HasExtension(DeviceExtensions, VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME);
+	HasGoogleDisplayTiming = HasExtension(DeviceExtensions, VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME);
 #endif
 
 #if VULKAN_SUPPORTS_COLOR_CONVERSIONS
-	OptionalDeviceExtensions.HasYcbcrSampler = HasExtension(DeviceExtensions, VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME) && HasExtension(DeviceExtensions, VK_KHR_BIND_MEMORY_2_EXTENSION_NAME) && HasExtension(DeviceExtensions, VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
+	HasYcbcrSampler = HasExtension(DeviceExtensions, VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME) && HasExtension(DeviceExtensions, VK_KHR_BIND_MEMORY_2_EXTENSION_NAME) && HasExtension(DeviceExtensions, VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
 #endif
 
 #if VULKAN_SUPPORTS_MEMORY_PRIORITY
-	OptionalDeviceExtensions.HasMemoryPriority = HasExtension(DeviceExtensions, VK_EXT_MEMORY_PRIORITY_EXTENSION_NAME);
+	HasMemoryPriority = HasExtension(DeviceExtensions, VK_EXT_MEMORY_PRIORITY_EXTENSION_NAME);
 	if (FParse::Param(FCommandLine::Get(), TEXT("disablememorypriority")))
 	{
-		OptionalDeviceExtensions.HasMemoryPriority = 0;
+		HasMemoryPriority = 0;
 	}
 #else
-	OptionalDeviceExtensions.HasMemoryPriority = 0;
+	HasMemoryPriority = 0;
+#endif
+
+#if VULKAN_SUPPORTS_DRIVER_PROPERTIES
+	HasDriverProperties = HasExtension(DeviceExtensions, VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME);
 #endif
 }
 
