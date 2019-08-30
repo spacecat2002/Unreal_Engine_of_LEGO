@@ -463,7 +463,7 @@ void FVulkanDynamicRHI::GetInstanceLayersAndExtensions(TArray<const ANSICHAR*>& 
 	}
 }
 
-void FVulkanDevice::GetDeviceExtensionsAndLayers(VkPhysicalDevice Gpu, TArray<const ANSICHAR*>& OutDeviceExtensions, TArray<const ANSICHAR*>& OutDeviceLayers, bool& bOutDebugMarkers)
+void FVulkanDevice::GetDeviceExtensionsAndLayers(VkPhysicalDevice Gpu, EGpuVendorId VendorId, TArray<const ANSICHAR*>& OutDeviceExtensions, TArray<const ANSICHAR*>& OutDeviceLayers, TArray<FString>& OutAllDeviceExtensions, TArray<FString>& OutAllDeviceLayers, bool& bOutDebugMarkers)
 {
 	bOutDebugMarkers = false;
 
@@ -502,16 +502,10 @@ void FVulkanDevice::GetDeviceExtensionsAndLayers(VkPhysicalDevice Gpu, TArray<co
 	}
 
 	FoundUniqueLayers.Sort();
-	for (const FString& Name : FoundUniqueLayers)
-	{
-		UE_LOG(LogVulkanRHI, Display, TEXT("-    Found device layer %s"), *Name);
-	}
+	OutAllDeviceLayers = FoundUniqueLayers;
 
 	FoundUniqueExtensions.Sort();
-	for (const FString& Name : FoundUniqueExtensions)
-	{
-		UE_LOG(LogVulkanRHI, Display, TEXT("-    Found device extension %s"), *Name);
-	}
+	OutAllDeviceExtensions = FoundUniqueExtensions;
 
 	FVulkanPlatform::NotifyFoundDeviceLayersAndExtensions(Gpu, FoundUniqueLayers, FoundUniqueExtensions);
 
@@ -630,7 +624,7 @@ void FVulkanDevice::GetDeviceExtensionsAndLayers(VkPhysicalDevice Gpu, TArray<co
 
 	// Now go through the actual requested lists
 	TArray<const ANSICHAR*> PlatformExtensions;
-	FVulkanPlatform::GetDeviceExtensions(PlatformExtensions);
+	FVulkanPlatform::GetDeviceExtensions(VendorId, PlatformExtensions);
 	for (const ANSICHAR* PlatformExtension : PlatformExtensions)
 	{
 		if (ListContains(AvailableExtensions, PlatformExtension))

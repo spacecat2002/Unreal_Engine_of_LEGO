@@ -724,6 +724,19 @@ enum EBufferUsageFlags
 	BUF_AnyDynamic = (BUF_Dynamic | BUF_Volatile),
 };
 
+enum class EGpuVendorId
+{
+	Unknown		= -1,
+	NotQueried	= 0,
+
+	Amd			= 0x1002,
+	ImgTec		= 0x1010,
+	Nvidia		= 0x10DE, 
+	Arm			= 0x13B5, 
+	Qualcomm	= 0x5143,
+	Intel		= 0x8086,
+};
+
 /** An enumeration of the different RHI reference types. */
 enum ERHIResourceType
 {
@@ -1275,6 +1288,28 @@ inline bool IsShaderParameterTypeIgnoredByRHI(EUniformBufferBaseType BaseType)
 
 		// #yuriy_todo: RHI is able to dereference uniform buffer in root shader parameter structures
 		BaseType == UBMT_REFERENCED_STRUCT;
+}
+
+inline EGpuVendorId RHIConvertToGpuVendorId(uint32 VendorId)
+{
+	switch (VendorId)
+	{
+	case EGpuVendorId::NotQueried:
+		return EGpuVendorId::NotQueried;
+
+	case EGpuVendorId::Amd:
+	case EGpuVendorId::ImgTec:
+	case EGpuVendorId::Nvidia:
+	case EGpuVendorId::Arm:
+	case EGpuVendorId::Qualcomm:
+	case EGpuVendorId::Intel:
+		return (EGpuVendorId)VendorId;
+
+	default:
+		break;
+	}
+
+	return EGpuVendorId::Unknown;
 }
 
 inline const TCHAR* GetShaderFrequencyString(EShaderFrequency Frequency, bool bIncludePrefix = true)

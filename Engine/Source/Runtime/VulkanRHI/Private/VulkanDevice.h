@@ -72,6 +72,11 @@ public:
 
 	void WaitUntilIdle();
 
+	inline EGpuVendorId GetVendorId() const
+	{
+		return VendorId;
+	}
+
 	inline bool HasAsyncComputeQueue() const
 	{
 		return bAsyncComputeQueue;
@@ -382,6 +387,8 @@ private:
 	bool bAsyncComputeQueue = false;
 	bool bPresentOnComputeQueue = false;
 
+	EGpuVendorId VendorId = EGpuVendorId::NotQueried;
+
 #if VULKAN_SUPPORTS_GPU_CRASH_DUMPS
 	struct
 	{
@@ -406,7 +413,7 @@ private:
 	TArray<const ANSICHAR*> DeviceExtensions;
 	TArray<const ANSICHAR*> ValidationLayers;
 
-	static void GetDeviceExtensionsAndLayers(VkPhysicalDevice Gpu, TArray<const ANSICHAR*>& OutDeviceExtensions, TArray<const ANSICHAR*>& OutDeviceLayers, bool& bOutDebugMarkers);
+	static void GetDeviceExtensionsAndLayers(VkPhysicalDevice Gpu, EGpuVendorId VendorId, TArray<const ANSICHAR*>& OutDeviceExtensions, TArray<const ANSICHAR*>& OutDeviceLayers, TArray<FString>& OutAllDeviceExtensions, TArray<FString>& OutAllDeviceLayers, bool& bOutDebugMarkers);
 
 	FOptionalVulkanDeviceExtensions OptionalDeviceExtensions;
 

@@ -733,10 +733,10 @@ void FVulkanDevice::MapFormatSupport(EPixelFormat UEFormat, VkFormat VulkanForma
 
 bool FVulkanDevice::QueryGPU(int32 DeviceIndex)
 {
-	bool bDiscrete = false;
-
-	// Always do this first!
-	GetDeviceExtensionsAndLayers(Gpu, DeviceExtensions, ValidationLayers, bDebugMarkersFound);
+	// Always get the extensions/layers first!
+	TArray<FString> AllDeviceExtensions;
+	TArray<FString> AllValidationLayers;
+	GetDeviceExtensionsAndLayers(Gpu, VendorId, DeviceExtensions, ValidationLayers, AllDeviceExtensions, AllValidationLayers, bDebugMarkersFound);
 	OptionalDeviceExtensions.Setup(DeviceExtensions);
 
 #if VULKAN_SUPPORTS_DRIVER_PROPERTIES
@@ -764,6 +764,7 @@ bool FVulkanDevice::QueryGPU(int32 DeviceIndex)
 #endif
 
 	VulkanRHI::vkGetPhysicalDeviceProperties(Gpu, &GpuProps);
+	bool bDiscrete = false;
 	auto GetDeviceTypeString = [&]()
 	{
 		FString Info;
@@ -797,6 +798,8 @@ bool FVulkanDevice::QueryGPU(int32 DeviceIndex)
 	UE_LOG(LogVulkanRHI, Display, TEXT("- DeviceID 0x%x Type %s"), GpuProps.deviceID, *GetDeviceTypeString());
 	UE_LOG(LogVulkanRHI, Display, TEXT("- Max Descriptor Sets Bound %d Timestamps %d"), GpuProps.limits.maxBoundDescriptorSets, GpuProps.limits.timestampComputeAndGraphics);
 
+	VendorId = RHIConvertToGpuVendorId(GpuProps.vendorID);
+
 #if VULKAN_SUPPORTS_DRIVER_PROPERTIES
 	if (OptionalDeviceExtensions.HasDriverProperties)
 	{
@@ -804,6 +807,16 @@ bool FVulkanDevice::QueryGPU(int32 DeviceIndex)
 		UE_LOG(LogVulkanRHI, Display, TEXT("- Device Properties driverInfo: %s"), ANSI_TO_TCHAR(PhysicalDeviceProperties.driverInfo));
 	}
 #endif
+
+	for (const FString& Name : AllValidationLayers)
+	{
+		UE_LOG(LogVulkanRHI, Display, TEXT("-    Found device layer %s"), *Name);
+	}
+
+	for (const FString& Name : AllDeviceExtensions)
+	{
+		UE_LOG(LogVulkanRHI, Display, TEXT("-    Found device extension %s"), *Name);
+	}
 
 	uint32 QueueCount = 0;
 	VulkanRHI::vkGetPhysicalDeviceQueueFamilyProperties(Gpu, &QueueCount, nullptr);

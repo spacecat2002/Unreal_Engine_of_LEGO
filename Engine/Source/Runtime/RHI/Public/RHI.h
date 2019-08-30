@@ -109,6 +109,9 @@ RHI_API bool IsRHIDeviceNVIDIA();
 // helper to convert GRHIVendorId into a printable string, or "Unknown" if unknown.
 RHI_API const TCHAR* RHIVendorIdToString();
 
+// helper to convert VendorId into a printable string, or "Unknown" if unknown.
+RHI_API const TCHAR* RHIVendorIdToString(EGpuVendorId VendorId);
+
 // helper to return the shader language version for the given shader platform.
 RHI_API uint32 RHIGetShaderLanguageVersion(const EShaderPlatform Platform);
 

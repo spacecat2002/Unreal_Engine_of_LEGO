@@ -789,6 +789,24 @@ RHI_API const TCHAR* RHIVendorIdToString()
 	}
 }
 
+RHI_API const TCHAR* RHIVendorIdToString(EGpuVendorId VendorId)
+{
+	switch (VendorId)
+	{
+	case EGpuVendorId::Amd: return TEXT("AMD");
+	case EGpuVendorId::ImgTec: return TEXT("ImgTec");
+	case EGpuVendorId::Nvidia: return TEXT("NVIDIA");
+	case EGpuVendorId::Arm: return TEXT("ARM");
+	case EGpuVendorId::Qualcomm: return TEXT("Qualcomm");
+	case EGpuVendorId::Intel: return TEXT("Intel");
+	case EGpuVendorId::NotQueried: return TEXT("Not Queried");
+	default:
+		break;
+	}
+
+	return TEXT("Unknown");
+}
+
 RHI_API uint32 RHIGetShaderLanguageVersion(const EShaderPlatform Platform)
 {
 	uint32 Version = 0;

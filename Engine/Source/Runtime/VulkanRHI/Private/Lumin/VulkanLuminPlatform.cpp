@@ -120,7 +120,7 @@ void FVulkanLuminPlatform::GetInstanceExtensions(TArray<const ANSICHAR*>& OutExt
 	}
 }
 
-void FVulkanLuminPlatform::GetDeviceExtensions(TArray<const ANSICHAR*>& OutExtensions)
+void FVulkanLuminPlatform::GetDeviceExtensions(EGpuVendorId VendorId, TArray<const ANSICHAR*>& OutExtensions)
 {
 	if (GFoundTegraGfxDebugger)
 	{

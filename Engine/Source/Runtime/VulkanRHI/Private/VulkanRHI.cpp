@@ -624,7 +624,7 @@ void FVulkanDynamicRHI::SelectAndInitDevice()
 	GRHIVendorId = Props.vendorID;
 	GRHIAdapterName = ANSI_TO_TCHAR(Props.deviceName);
 
-	FVulkanPlatform::CheckDeviceDriver(DeviceIndex, Props);
+	FVulkanPlatform::CheckDeviceDriver(DeviceIndex, Device->GetVendorId(), Props);
 
 	Device->InitGPU(DeviceIndex);
 
@@ -633,7 +633,7 @@ void FVulkanDynamicRHI::SelectAndInitDevice()
 		GRHIAdapterName.Append(TEXT(" Vulkan"));
 		GRHIAdapterInternalDriverVersion = FString::Printf(TEXT("%d.%d.%d"), VK_VERSION_MAJOR(Props.apiVersion), VK_VERSION_MINOR(Props.apiVersion), VK_VERSION_PATCH(Props.apiVersion));
 	}
-	else if (IsRHIDeviceNVIDIA())
+	else if (Device->GetVendorId() == EGpuVendorId::Nvidia)
 	{
 		UNvidiaDriverVersion NvidiaVersion;
 		static_assert(sizeof(NvidiaVersion) == sizeof(Props.driverVersion), "Mismatched Nvidia pack driver version!");
@@ -699,7 +699,7 @@ void FVulkanDynamicRHI::InitInstance()
 		GSupportsParallelRenderingTasksWithSeparateRHIThread = GRHISupportsRHIThread ? FVulkanPlatform::SupportParallelRenderingTasks() : false;
 
 		//#todo-rco: Add newer Nvidia also
-		GSupportsEfficientAsyncCompute = IsRHIDeviceAMD() && (GRHIAllowAsyncComputeCvar.GetValueOnAnyThread() > 0) && (Device->ComputeContext != Device->ImmediateContext);
+		GSupportsEfficientAsyncCompute = (Device->GetVendorId() == EGpuVendorId::Amd) && (GRHIAllowAsyncComputeCvar.GetValueOnAnyThread() > 0) && (Device->ComputeContext != Device->ImmediateContext);
 
 		GSupportsVolumeTextureRendering = true;
 
@@ -1274,11 +1274,9 @@ void FVulkanDescriptorSetsLayout::Compile(FVulkanDescriptorSetLayoutMap& DSetLay
 			<	Limits.maxDescriptorSetUniformBuffers);
 
 	// Check for maxDescriptorSetUniformBuffersDynamic
-	if (!IsRHIDeviceAMD())
-	{
-		check(LayoutTypes[VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC]
+	check(Device->GetVendorId() == EGpuVendorId::Amd ||
+				LayoutTypes[VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC]
 			<	Limits.maxDescriptorSetUniformBuffersDynamic);
-	}
 
 	// Check for maxDescriptorSetStorageBuffers
 	check(		LayoutTypes[VK_DESCRIPTOR_TYPE_STORAGE_BUFFER]
