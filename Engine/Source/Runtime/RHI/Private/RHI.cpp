@@ -720,7 +720,6 @@ FName ShaderPlatformToPlatformName(EShaderPlatform Platform)
 		return NAME_PLATFORM_ANDROID;
 	case SP_OPENGL_ES2_WEBGL:
 		return NAME_PLATFORM_HTML5;
-	case SP_OPENGL_ES2_IOS:
 	case SP_METAL:
 	case SP_METAL_MRT:
 		return NAME_PLATFORM_IOS;
@@ -1109,7 +1108,6 @@ FString LexToString(EShaderPlatform Platform)
 	case SP_OPENGL_PCES3_1: return TEXT("OPENGL_PCES3_1");
 	case SP_OPENGL_ES2_ANDROID: return TEXT("OPENGL_ES2_ANDROID");
 	case SP_OPENGL_ES2_WEBGL: return TEXT("OPENGL_ES2_WEBGL");
-	case SP_OPENGL_ES2_IOS: return TEXT("OPENGL_ES2_IOS");
 	case SP_OPENGL_ES31_EXT: return TEXT("OPENGL_ES31_EXT");
 	case SP_OPENGL_ES3_1_ANDROID: return TEXT("OPENGL_ES3_1_ANDROID");
 	case SP_PS4: return TEXT("PS4");

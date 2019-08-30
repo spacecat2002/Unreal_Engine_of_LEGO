@@ -144,10 +144,9 @@ inline bool RHISupportsMultiView(const EShaderPlatform Platform)
 inline bool RHISupportsMSAA(EShaderPlatform Platform)
 {
 	return 
-		//@todo-rco: Fix when iOS OpenGL supports MSAA
-		(Platform != SP_OPENGL_ES2_IOS
+		(
 		// @todo optimise MSAA for XboxOne, currently uses significant eRAM.
-		&& Platform != SP_XBOXONE_D3D12)
+		Platform != SP_XBOXONE_D3D12)
 		// @todo platplug: Maybe this should become bDisallowMSAA to default of 0 is a better default (since now MSAA is opt-out more than opt-in) 
 		|| FDataDrivenShaderPlatformInfo::GetInfo(Platform).bSupportsMSAA;
 }

@@ -134,13 +134,6 @@ static const FText& GetFriendlyShaderPlatformName(const EShaderPlatform InShader
 	}
 	break;
 
-	case SP_OPENGL_ES2_IOS:
-	{
-		static const FText Description = NSLOCTEXT("FriendlyShaderPlatformNames", "iOS_ES2_loc", "iOS ES2");
-		return Description;
-	}
-	break;
-
 	case SP_METAL_MACES2:
 	{
 		static const FText Description = NSLOCTEXT("FriendlyShaderPlatformNames", "iOS_Metal_Mace_2_loc", "iOS Metal ES2");

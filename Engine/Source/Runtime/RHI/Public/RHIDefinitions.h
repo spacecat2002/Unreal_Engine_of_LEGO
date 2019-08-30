@@ -44,19 +44,19 @@ static_assert(SF_NumFrequencies <= (1 << SF_NumBits), "SF_NumFrequencies will no
 /** @warning: update *LegacyShaderPlatform* when the below changes */
 enum EShaderPlatform
 {
-	SP_PCD3D_SM5 = 0,
-	SP_OPENGL_SM4 = 1,
-	SP_PS4 = 2,
+	SP_PCD3D_SM5			= 0,
+	SP_OPENGL_SM4			= 1,	// SUPPORT FOR THIS FEATURE LEVEL HAS BEEN ENTIRELY REMOVED.
+	SP_PS4					= 2,
 	/** Used when running in Feature Level ES2 in OpenGL. */
 	SP_OPENGL_PCES2			= 3,
 	SP_XBOXONE_D3D12		= 4,
-	SP_PCD3D_SM4			= 5,
+	SP_PCD3D_SM4			= 5,	// SUPPORT FOR THIS FEATURE LEVEL HAS BEEN ENTIRELY REMOVED.
 	SP_OPENGL_SM5			= 6,
 	/** Used when running in Feature Level ES2 in D3D11. */
 	SP_PCD3D_ES2			= 7,
 	SP_OPENGL_ES2_ANDROID	= 8,
 	SP_OPENGL_ES2_WEBGL		= 9, 
-	SP_OPENGL_ES2_IOS		= 10,
+	SP_OPENGL_ES2_IOS_DEPRECATED = 10,	// SUPPORT FOR THIS FEATURE LEVEL HAS BEEN ENTIRELY REMOVED.
 	SP_METAL				= 11,
 	SP_METAL_MRT			= 12,
 	SP_OPENGL_ES31_EXT		= 13,
@@ -67,7 +67,7 @@ enum EShaderPlatform
 	SP_METAL_SM5			= 16,
 	SP_VULKAN_PCES3_1		= 17,
 	SP_METAL_SM5_NOTESS		= 18,
-	SP_VULKAN_SM4			= 19,
+	SP_VULKAN_SM4			 = 19,	// SUPPORT FOR THIS FEATURE LEVEL HAS BEEN ENTIRELY REMOVED.
 	SP_VULKAN_SM5			= 20,
 	SP_VULKAN_ES3_1_ANDROID	= 21,
 	SP_METAL_MACES3_1 		= 22,
@@ -940,7 +940,7 @@ inline bool IsPCPlatform(const EShaderPlatform Platform)
 /** Whether the shader platform corresponds to the ES2 feature level. */
 inline bool IsES2Platform(const EShaderPlatform Platform)
 {
-	return Platform == SP_PCD3D_ES2 || Platform == SP_OPENGL_PCES2 || Platform == SP_OPENGL_ES2_ANDROID || Platform == SP_OPENGL_ES2_WEBGL || Platform == SP_OPENGL_ES2_IOS || Platform == SP_METAL_MACES2
+	return Platform == SP_PCD3D_ES2 || Platform == SP_OPENGL_PCES2 || Platform == SP_OPENGL_ES2_ANDROID || Platform == SP_OPENGL_ES2_WEBGL || Platform == SP_METAL_MACES2
 		|| FDataDrivenShaderPlatformInfo::GetInfo(Platform).MaxFeatureLevel == ERHIFeatureLevel::ES2;
 }
 
@@ -959,7 +959,7 @@ inline bool IsMobilePlatform(const EShaderPlatform Platform)
 inline bool IsOpenGLPlatform(const EShaderPlatform Platform)
 {
 	return Platform == SP_OPENGL_SM4 || Platform == SP_OPENGL_SM5 || Platform == SP_OPENGL_PCES2 || Platform == SP_OPENGL_PCES3_1
-		|| Platform == SP_OPENGL_ES2_ANDROID || Platform == SP_OPENGL_ES2_WEBGL || Platform == SP_OPENGL_ES2_IOS || Platform == SP_OPENGL_ES31_EXT
+		|| Platform == SP_OPENGL_ES2_ANDROID || Platform == SP_OPENGL_ES2_WEBGL || Platform == SP_OPENGL_ES31_EXT
 		|| Platform == SP_OPENGL_ES3_1_ANDROID
 		|| FDataDrivenShaderPlatformInfo::GetInfo(Platform).Language == LANGUAGE_OpenGL;
 }
@@ -1079,7 +1079,6 @@ inline ERHIFeatureLevel::Type GetMaxSupportedFeatureLevel(EShaderPlatform InShad
 	case SP_OPENGL_PCES2:
 	case SP_OPENGL_ES2_ANDROID:
 	case SP_OPENGL_ES2_WEBGL:
-	case SP_OPENGL_ES2_IOS:
 	case SP_METAL_MACES2:
 		return ERHIFeatureLevel::ES2;
 	case SP_METAL:
@@ -1185,7 +1184,7 @@ inline bool RHIHasTiledGPU(const EShaderPlatform Platform)
 {
 	// @todo MetalMRT Technically we should include (Platform == SP_METAL_MRT) but this would disable depth-pre-pass which is currently required.
 	return Platform == SP_METAL || Platform == SP_METAL_TVOS
-		|| Platform == SP_OPENGL_ES2_IOS || Platform == SP_OPENGL_ES2_ANDROID || Platform == SP_OPENGL_ES3_1_ANDROID
+		|| Platform == SP_OPENGL_ES2_ANDROID || Platform == SP_OPENGL_ES3_1_ANDROID
 		|| Platform == SP_VULKAN_ES3_1_ANDROID
 		|| FDataDrivenShaderPlatformInfo::GetInfo(Platform).bTargetsTiledGPU;
 }
