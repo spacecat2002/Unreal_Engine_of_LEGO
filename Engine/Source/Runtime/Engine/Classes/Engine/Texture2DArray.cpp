@@ -312,7 +312,6 @@ bool UTexture2DArray::ShaderPlatformSupportsCompression(EShaderPlatform ShaderPl
 	case SP_PS4:
 	case SP_XBOXONE_D3D12:
 	case SP_VULKAN_SM5:
-	case SP_VULKAN_SM4:
 	case SP_VULKAN_SM5_LUMIN:
 		return true;
 

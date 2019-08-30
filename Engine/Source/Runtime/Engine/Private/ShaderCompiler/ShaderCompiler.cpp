@@ -4479,7 +4479,7 @@ void RecompileShadersForRemote(
 			{
 				// These platforms are deprecated and we should warn about their use
 				if (ShaderPlatform == SP_OPENGL_SM5 || ShaderPlatform == SP_PCD3D_SM4 || ShaderPlatform == SP_OPENGL_ES2_IOS_DEPRECATED ||
-					ShaderPlatform == SP_VULKAN_SM4)
+					ShaderPlatform == SP_VULKAN_SM4_DEPRECATED)
 				{
 					UE_LOG(LogShaderCompilers, Warning, TEXT("You are compiling shaders for a deprecated platform '%s'"), *LegacyShaderPlatformToShaderFormat(ShaderPlatform).ToString());
 				}

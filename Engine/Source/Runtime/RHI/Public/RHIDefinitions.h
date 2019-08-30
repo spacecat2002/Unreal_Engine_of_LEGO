@@ -67,7 +67,7 @@ enum EShaderPlatform
 	SP_METAL_SM5			= 16,
 	SP_VULKAN_PCES3_1		= 17,
 	SP_METAL_SM5_NOTESS		= 18,
-	SP_VULKAN_SM4			 = 19,	// SUPPORT FOR THIS FEATURE LEVEL HAS BEEN ENTIRELY REMOVED.
+	SP_VULKAN_SM4_DEPRECATED = 19,	// SUPPORT FOR THIS FEATURE LEVEL HAS BEEN ENTIRELY REMOVED.
 	SP_VULKAN_SM5			= 20,
 	SP_VULKAN_ES3_1_ANDROID	= 21,
 	SP_METAL_MACES3_1 		= 22,
@@ -933,7 +933,7 @@ inline bool IsPCPlatform(const EShaderPlatform Platform)
 	return Platform == SP_PCD3D_SM5 || Platform == SP_PCD3D_SM4 || Platform == SP_PCD3D_ES2 || Platform == SP_PCD3D_ES3_1 ||
 		Platform == SP_OPENGL_SM4 || Platform == SP_OPENGL_SM5 || Platform == SP_OPENGL_PCES2 || Platform == SP_OPENGL_PCES3_1 ||
 		Platform == SP_METAL_SM5_NOTESS || Platform == SP_METAL_SM5 ||
-		Platform == SP_VULKAN_PCES3_1 || Platform == SP_VULKAN_SM4 || Platform == SP_VULKAN_SM5 || Platform == SP_METAL_MACES3_1 || Platform == SP_METAL_MACES2 || Platform == SP_METAL_MRT_MAC 
+		Platform == SP_VULKAN_PCES3_1 || Platform == SP_VULKAN_SM5 || Platform == SP_METAL_MACES3_1 || Platform == SP_METAL_MACES2 || Platform == SP_METAL_MRT_MAC 
 		|| FDataDrivenShaderPlatformInfo::GetInfo(Platform).bIsPC;
 }
 
@@ -1008,7 +1008,7 @@ inline bool IsPS4Platform(const EShaderPlatform Platform)
 
 inline bool IsVulkanPlatform(const EShaderPlatform Platform)
 {
-	return Platform == SP_VULKAN_SM5 || Platform == SP_VULKAN_SM5_LUMIN || Platform == SP_VULKAN_SM4 || Platform == SP_VULKAN_PCES3_1 || Platform == SP_VULKAN_ES3_1_ANDROID || Platform == SP_VULKAN_ES3_1_LUMIN
+	return Platform == SP_VULKAN_SM5 || Platform == SP_VULKAN_SM5_LUMIN || Platform == SP_VULKAN_PCES3_1 || Platform == SP_VULKAN_ES3_1_ANDROID || Platform == SP_VULKAN_ES3_1_LUMIN
 		|| FDataDrivenShaderPlatformInfo::GetInfo(Platform).Language == LANGUAGE_Vulkan;
 }
 
@@ -1071,7 +1071,6 @@ inline ERHIFeatureLevel::Type GetMaxSupportedFeatureLevel(EShaderPlatform InShad
 	case SP_VULKAN_SM5_LUMIN:
 	case SP_SWITCH:
 		return ERHIFeatureLevel::SM5;
-	case SP_VULKAN_SM4:
 	case SP_PCD3D_SM4:
 	case SP_OPENGL_SM4:
 		return ERHIFeatureLevel::SM4_REMOVED;

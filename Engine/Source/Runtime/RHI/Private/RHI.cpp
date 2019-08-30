@@ -706,7 +706,6 @@ FName ShaderPlatformToPlatformName(EShaderPlatform Platform)
 	case SP_PCD3D_ES3_1:
 	case SP_OPENGL_PCES3_1:
 	case SP_VULKAN_PCES3_1:
-	case SP_VULKAN_SM4:
 	case SP_VULKAN_SM5:
 		return NAME_PLATFORM_WINDOWS;
 	case SP_PS4:
@@ -1126,7 +1125,6 @@ FString LexToString(EShaderPlatform Platform)
 	case SP_VULKAN_ES3_1_ANDROID: return TEXT("VULKAN_ES3_1_ANDROID");
 	case SP_VULKAN_ES3_1_LUMIN: return TEXT("VULKAN_ES3_1_LUMIN");
 	case SP_VULKAN_PCES3_1: return TEXT("VULKAN_PCES3_1");
-	case SP_VULKAN_SM4:	return TEXT("VULKAN_SM4");
 	case SP_VULKAN_SM5: return TEXT("VULKAN_SM5");
 	case SP_VULKAN_SM5_LUMIN: return TEXT("VULKAN_SM5_LUMIN");
 
