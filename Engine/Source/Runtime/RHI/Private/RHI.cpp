@@ -1132,6 +1132,10 @@ FString LexToString(EShaderPlatform Platform)
 		DDPI_EXTRA_SHADERPLATFORM_LEXTOSTRING
 #endif
 
+	case SP_OPENGL_ES2_IOS_DEPRECATED:
+	case SP_VULKAN_SM4_DEPRECATED:
+		return TEXT("");
+
 	default:
 		checkf(0, TEXT("Unknown EShaderPlatform %d!"), (int32)Platform);
 		return TEXT("");
