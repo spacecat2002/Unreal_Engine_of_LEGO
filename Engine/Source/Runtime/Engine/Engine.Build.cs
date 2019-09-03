@@ -13,7 +13,7 @@ public class Engine : ModuleRules
 
 		SharedPCHHeaderFile = "Public/EngineSharedPCH.h";
 
-		PublicIncludePathModuleNames.AddRange(new string[] { "Renderer", "PacketHandler", "AudioMixer", "AnimationCore" });
+		PublicIncludePathModuleNames.AddRange(new string[] { "Renderer", "PacketHandler", "AudioMixer", "AudioMixerCore", "AnimationCore" });
 
 		PrivateIncludePaths.AddRange(
 			new string[] {
@@ -84,6 +84,7 @@ public class Engine : ModuleRules
 				"PakFile",
                 "NetworkReplayStreaming",
 				"PhysicsCore",
+                "SignalProcessing"
 			}
 		);
 
@@ -99,6 +100,8 @@ public class Engine : ModuleRules
 				"Analytics",
 				"AnalyticsET",
 				"AudioMixer",
+				"AudioMixerCore",
+				"SignalProcessing",
                 "CrunchCompression"
             }
 		);

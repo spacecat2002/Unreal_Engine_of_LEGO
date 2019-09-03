@@ -25,10 +25,10 @@ public class AudioMixerSDL : ModuleRules
 				"Core",
 				"CoreUObject",
 				"Engine",
+				"AudioMixer",
+				"AudioMixerCore"
 			}
 			);
-
-		PrivateDependencyModuleNames.Add("AudioMixer");
 
 		AddEngineThirdPartyPrivateStaticDependencies(Target, 
 			"UEOgg",
