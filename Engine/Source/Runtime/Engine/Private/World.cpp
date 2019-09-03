@@ -2307,7 +2307,9 @@ void UWorld::AddToWorld( ULevel* Level, const FTransform& LevelTransform, bool b
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_AddToWorldTime_MoveActors);
 		SCOPE_TIME_TO_VAR(&MoveActorTime);
 
-		FLevelUtils::ApplyLevelTransform( Level, LevelTransform, false );
+		FLevelUtils::FApplyLevelTransformParams TransformParams(Level, LevelTransform);
+		TransformParams.bSetRelativeTransformDirectly = true;
+		FLevelUtils::ApplyLevelTransform(TransformParams);
 
 		Level->bAlreadyMovedActors = true;
 		bExecuteNextStep = (!bConsiderTimeLimit || !IsTimeLimitExceeded( TEXT("moving actors"), StartTime, Level, TimeLimit));
@@ -2374,21 +2376,25 @@ void UWorld::AddToWorld( ULevel* Level, const FTransform& LevelTransform, bool b
 		TGuardValue<bool> IsEditorLoadingPackage(GIsEditorLoadingPackage, (GIsEditor ? true : GIsEditorLoadingPackage));
 #endif
 
+		bool bRerunConstructionScript = !FPlatformProperties::RequiresCookedData();
+		if (bRerunConstructionScript)
+		{
 		// Config bool that allows disabling all construction scripts during PIE level streaming.
 		bool bRerunConstructionDuringEditorStreaming = true;
 		GConfig->GetBool(TEXT("Kismet"), TEXT("bRerunConstructionDuringEditorStreaming"), /*out*/ bRerunConstructionDuringEditorStreaming, GEngineIni);
 
 		// We don't need to rerun construction scripts if we have cooked data or we are playing in editor unless the PIE world was loaded
 		// from disk rather than duplicated
-		const bool bRerunConstructionScript = !(FPlatformProperties::RequiresCookedData() || (IsGameWorld() && (Level->bHasRerunConstructionScripts || !bRerunConstructionDuringEditorStreaming)));
+			bRerunConstructionScript = !(IsGameWorld() && (Level->bHasRerunConstructionScripts || !bRerunConstructionDuringEditorStreaming));
+		}
 		
 		// Incrementally update components.
-		int32 NumComponentsToUpdate = GLevelStreamingComponentsRegistrationGranularity;
+		int32 NumComponentsToUpdate = (!bConsiderTimeLimit || !IsGameWorld() || IsRunningCommandlet() ? 0 : GLevelStreamingComponentsRegistrationGranularity);
 		do
 		{
-			Level->IncrementalUpdateComponents( (!IsGameWorld() || IsRunningCommandlet()) ? 0 : NumComponentsToUpdate, bRerunConstructionScript );
+			Level->IncrementalUpdateComponents( NumComponentsToUpdate, bRerunConstructionScript );
 		}
-		while( !Level->bAreComponentsCurrentlyRegistered && (!bConsiderTimeLimit || !IsTimeLimitExceeded( TEXT("updating components"), StartTime, Level, TimeLimit )));
+		while (!Level->bAreComponentsCurrentlyRegistered && !IsTimeLimitExceeded(TEXT("updating components"), StartTime, Level, TimeLimit));
 
 		// We are done once all components are attached.
 		Level->bAlreadyUpdatedComponents	= Level->bAreComponentsCurrentlyRegistered;
