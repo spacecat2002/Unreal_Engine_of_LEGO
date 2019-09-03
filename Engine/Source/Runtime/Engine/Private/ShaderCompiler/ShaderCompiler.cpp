@@ -2667,7 +2667,6 @@ static void GenerateUniformBufferStructMember(FString& Result, const FShaderPara
 	FString BaseTypeName;
 	switch (Member.GetBaseType())
 	{
-		case UBMT_BOOL:    BaseTypeName = TEXT("bool"); break;
 		case UBMT_INT32:   BaseTypeName = TEXT("int"); break;
 		case UBMT_UINT32:  BaseTypeName = TEXT("uint"); break;
 		case UBMT_FLOAT32:
@@ -2818,7 +2817,6 @@ static void PullRootShaderParametersLayout(FShaderCompilerInput& CompileInput, c
 			}
 		}
 		else if (
-			BaseType == UBMT_BOOL ||
 			BaseType == UBMT_INT32 ||
 			BaseType == UBMT_UINT32 ||
 			BaseType == UBMT_FLOAT32)

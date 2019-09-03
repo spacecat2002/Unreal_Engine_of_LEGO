@@ -75,10 +75,11 @@ struct FShaderParameterStructBindingContext
 				BaseType != UBMT_RDG_TEXTURE_COPY_DEST;
 
 			const bool bIsVariableNativeType = (
-				BaseType == UBMT_BOOL ||
 				BaseType == UBMT_INT32 ||
 				BaseType == UBMT_UINT32 ||
 				BaseType == UBMT_FLOAT32);
+
+			checkf(BaseType != UBMT_BOOL, TEXT("Should have failed in FShaderParametersMetadata::InitializeLayout()"));
 
 			if (BaseType == UBMT_INCLUDED_STRUCT)
 			{
