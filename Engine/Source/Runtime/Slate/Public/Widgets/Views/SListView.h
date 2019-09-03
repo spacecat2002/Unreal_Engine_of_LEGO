@@ -1077,8 +1077,8 @@ public:
 
 				// Note: To account for accrued error from floating point truncation and addition in our sum of dimensions used, 
 				//	we pad the allotted axis just a little to be sure we have filled the available space.
-				const float FloatingPointPrecisionOffset = 0.001f;
-				bHasFilledAvailableArea = ViewLengthUsedSoFar >= MyDimensions.ScrollAxis + FloatingPointPrecisionOffset;
+				const float FloatPrecisionOffset = 0.001f;
+				bHasFilledAvailableArea = ViewLengthUsedSoFar >= MyDimensions.ScrollAxis + FloatPrecisionOffset;
 			}
 
 			// Handle scenario b.
@@ -1408,7 +1408,7 @@ public:
 	}
 
 private:
-	void Private_RequestNavigateToItem(ItemType Item, const uint32 UserIndex = 0)
+	void Private_RequestNavigateToItem(ItemType Item, const uint32 UserIndex)
 	{
 		bNavigateOnScrollIntoView = true;
 		RequestScrollIntoView(Item, UserIndex);
@@ -1435,11 +1435,11 @@ public:
 	void SetSelection(ItemType SoleSelectedItem, ESelectInfo::Type SelectInfo = ESelectInfo::Direct)
 	{
 		SoleSelectedItem = Private_FindNextSelectableOrNavigable(SoleSelectedItem);
-		Private_SetSelection(SoleSelectedItem);
+		Private_SetSelection(SoleSelectedItem, SelectInfo);
 	}
 
 private:
-	void Private_SetSelection(ItemType SoleSelectedItem, ESelectInfo::Type SelectInfo = ESelectInfo::Direct)
+	void Private_SetSelection(ItemType SoleSelectedItem, ESelectInfo::Type SelectInfo)
 	{
 		SelectedItems.Empty();
 		SetItemSelection( SoleSelectedItem, true, SelectInfo );

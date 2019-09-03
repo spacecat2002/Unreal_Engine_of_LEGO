@@ -4145,6 +4145,8 @@ void UWorld::CleanupWorld(bool bSessionEnded, bool bCleanupResources, UWorld* Ne
 
 	FWorldDelegates::OnWorldCleanup.Broadcast(this, bSessionEnded, bCleanupResources);
 
+	GetRendererModule().OnWorldCleanup(this, bSessionEnded, bCleanupResources);
+
 	if (AISystem != nullptr)
 	{
 		AISystem->CleanupWorld(bSessionEnded, bCleanupResources, NewWorld);
