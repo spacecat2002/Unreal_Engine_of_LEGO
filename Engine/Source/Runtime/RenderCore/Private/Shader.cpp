@@ -910,12 +910,10 @@ bool FShaderResource::ArePlatformsCompatible(EShaderPlatform CurrentPlatform, ES
 		bFeatureLevelCompatible = GetMaxSupportedFeatureLevel(CurrentPlatform) >= GetMaxSupportedFeatureLevel(TargetPlatform);
 		
 		bool const bIsTargetD3D = TargetPlatform == SP_PCD3D_SM5 ||
-		TargetPlatform == SP_PCD3D_SM4 ||
 		TargetPlatform == SP_PCD3D_ES3_1 ||
 		TargetPlatform == SP_PCD3D_ES2;
 		
 		bool const bIsCurrentPlatformD3D = CurrentPlatform == SP_PCD3D_SM5 ||
-		CurrentPlatform == SP_PCD3D_SM4 ||
 		TargetPlatform == SP_PCD3D_ES3_1 ||
 		CurrentPlatform == SP_PCD3D_ES2;
 		

@@ -240,10 +240,6 @@ public:
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = Rendering, meta = (DisplayName = "Cook ASTC texture data for Metal on A8 or later devices"))
 	bool bCookASTCTextures;
 	
-	// Whether or not to add support for OpenGL ES2 (if this is false, then your game should specify minimum IOS8 version)
-	UPROPERTY(GlobalConfig)
-	bool bSupportsOpenGLES2;
-	
 	// Remotely compile shaders offline
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = Build)
 	bool EnableRemoteShaderCompile;

@@ -72,13 +72,6 @@ FDynamicRHI* PlatformCreateDynamicRHI()
 			TargetedShaderFormats.Add(LegacyShaderPlatformToShaderFormat(SP_METAL).ToString());
 #endif
 		}
-	
-		bool bSupportsOpenGLES2 = false;
-		GConfig->GetBool(TEXT("/Script/IOSRuntimeSettings.IOSRuntimeSettings"), TEXT("bSupportsOpenGLES2"), bSupportsOpenGLES2, GEngineIni);
-		if (bSupportsOpenGLES2)
-		{
-			TargetedShaderFormats.Add(LegacyShaderPlatformToShaderFormat(SP_OPENGL_ES2_IOS).ToString());
-		}
 #endif
 		// Metal is not always available, so don't assume that we can use the first platform
 		for (FString Name : TargetedShaderFormats)

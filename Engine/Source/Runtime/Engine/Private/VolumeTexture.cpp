@@ -611,7 +611,6 @@ bool UVolumeTexture::ShaderPlatformSupportsCompression(EShaderPlatform ShaderPla
 {
 	switch (ShaderPlatform)
 	{
-	case SP_PCD3D_SM4:
 	case SP_PCD3D_SM5:
 	case SP_PS4:
 	case SP_XBOXONE_D3D12:

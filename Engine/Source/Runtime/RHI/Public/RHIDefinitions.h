@@ -50,7 +50,7 @@ enum EShaderPlatform
 	/** Used when running in Feature Level ES2 in OpenGL. */
 	SP_OPENGL_PCES2			= 3,
 	SP_XBOXONE_D3D12		= 4,
-	SP_PCD3D_SM4			= 5,	// SUPPORT FOR THIS FEATURE LEVEL HAS BEEN ENTIRELY REMOVED.
+	SP_PCD3D_SM4_DEPRECATED	= 5,	// SUPPORT FOR THIS FEATURE LEVEL HAS BEEN ENTIRELY REMOVED.
 	SP_OPENGL_SM5			= 6,
 	/** Used when running in Feature Level ES2 in D3D11. */
 	SP_PCD3D_ES2			= 7,
@@ -930,7 +930,7 @@ enum class EAsyncComputeBudget
 
 inline bool IsPCPlatform(const EShaderPlatform Platform)
 {
-	return Platform == SP_PCD3D_SM5 || Platform == SP_PCD3D_SM4 || Platform == SP_PCD3D_ES2 || Platform == SP_PCD3D_ES3_1 ||
+	return Platform == SP_PCD3D_SM5 || Platform == SP_PCD3D_ES2 || Platform == SP_PCD3D_ES3_1 ||
 		Platform == SP_OPENGL_SM4 || Platform == SP_OPENGL_SM5 || Platform == SP_OPENGL_PCES2 || Platform == SP_OPENGL_PCES3_1 ||
 		Platform == SP_METAL_SM5_NOTESS || Platform == SP_METAL_SM5 ||
 		Platform == SP_VULKAN_PCES3_1 || Platform == SP_VULKAN_SM5 || Platform == SP_METAL_MACES3_1 || Platform == SP_METAL_MACES2 || Platform == SP_METAL_MRT_MAC 
@@ -1035,7 +1035,6 @@ inline bool IsD3DPlatform(const EShaderPlatform Platform, bool bIncludeXboxOne)
 	switch (Platform)
 	{
 	case SP_PCD3D_SM5:
-	case SP_PCD3D_SM4:
 	case SP_PCD3D_ES3_1:
 	case SP_PCD3D_ES2:
 		return true;
@@ -1071,7 +1070,7 @@ inline ERHIFeatureLevel::Type GetMaxSupportedFeatureLevel(EShaderPlatform InShad
 	case SP_VULKAN_SM5_LUMIN:
 	case SP_SWITCH:
 		return ERHIFeatureLevel::SM5;
-	case SP_PCD3D_SM4:
+	case SP_PCD3D_SM4_DEPRECATED:
 	case SP_OPENGL_SM4:
 		return ERHIFeatureLevel::SM4_REMOVED;
 	case SP_PCD3D_ES2:

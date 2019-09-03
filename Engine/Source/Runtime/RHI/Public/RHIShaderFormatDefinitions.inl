@@ -9,7 +9,6 @@
 
 
 static FName NAME_PCD3D_SM5(TEXT("PCD3D_SM5"));
-static FName NAME_PCD3D_SM4(TEXT("PCD3D_SM4"));
 static FName NAME_PCD3D_ES3_1(TEXT("PCD3D_ES31"));
 static FName NAME_PCD3D_ES2(TEXT("PCD3D_ES2"));
 
@@ -62,8 +61,6 @@ static FName ShaderPlatformToShaderFormatName(EShaderPlatform Platform)
 	{
 	case SP_PCD3D_SM5:
 		return NAME_PCD3D_SM5;
-	case SP_PCD3D_SM4:
-		return NAME_PCD3D_SM4;
 	case SP_PCD3D_ES3_1:
 		return NAME_PCD3D_ES3_1;
 	case SP_PCD3D_ES2:
@@ -158,7 +155,6 @@ static FName ShaderPlatformToShaderFormatName(EShaderPlatform Platform)
 static EShaderPlatform ShaderFormatNameToShaderPlatform(FName ShaderFormat)
 {
 	if (ShaderFormat == NAME_PCD3D_SM5)					return SP_PCD3D_SM5;
-	if (ShaderFormat == NAME_PCD3D_SM4)					return SP_PCD3D_SM4;
 	if (ShaderFormat == NAME_PCD3D_ES3_1)				return SP_PCD3D_ES3_1;
 	if (ShaderFormat == NAME_PCD3D_ES2)					return SP_PCD3D_ES2;
 
