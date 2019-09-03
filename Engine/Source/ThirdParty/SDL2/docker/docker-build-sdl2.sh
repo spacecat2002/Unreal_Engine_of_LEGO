@@ -31,6 +31,8 @@ fi
 export VULKAN_SDK=/Vulkan
 export SDL_DIR=/SDL-gui-backend
 
+export ARCH=$(uname -m)
+
 # Get num of cores
 export CORES=$(getconf _NPROCESSORS_ONLN)
 echo Using ${CORES} cores for building
@@ -47,7 +49,16 @@ BuildWithOptions()
 	mkdir -p $BuildDir
 	pushd $BuildDir
 
+	# Building with OGL breaks SDL_CreateWindow() on embedded devices w/o proper GL libraries
+	#   http://lists.libsdl.org/pipermail/commits-libsdl.org/2017-September/001967.html
+	if [[ ${ARCH} == 'aarch64' ]]; then
+		Options+=' -DVIDEO_OPENGL=OFF'
+	fi
+
+	set -x
 	cmake $Options ${SDL_DIR}
+	set +x
+
 	make -j${CORES}
 
 	mv $StaticLibName ../$SdlLibName
