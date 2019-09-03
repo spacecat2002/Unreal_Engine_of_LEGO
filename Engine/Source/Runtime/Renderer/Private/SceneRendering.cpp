@@ -1211,19 +1211,7 @@ void FViewInfo::SetupUniformBufferParameters(
 		ViewUniformShaderParameters.AtmosphericFogRenderMask = EAtmosphereRenderFlag::E_EnableAll;
 		ViewUniformShaderParameters.AtmosphericFogInscatterAltitudeSampleNum = 0;
 		AtmosphereLightDataClearStartIndex = 0; // Clear every atmosphere light data
-	}
-
-	auto ClearAtmosphereLightData = [&](uint32 Index)
-	{
-		check(Index < NUM_ATMOSPHERE_LIGHTS);
-		ViewUniformShaderParameters.AtmosphereLightDiscCosHalfApexAngle[Index] = FVector4(1.0f);
-		ViewUniformShaderParameters.AtmosphereLightDiscLuminance[Index] = FLinearColor::Black;
-		ViewUniformShaderParameters.AtmosphereLightColor[Index] = FLinearColor::Black;
-		ViewUniformShaderParameters.AtmosphereLightColor[Index].A = 0.0f;
-		ViewUniformShaderParameters.AtmosphereLightColorGlobalPostTransmittance[Index] = FLinearColor::Black;
-		ViewUniformShaderParameters.AtmosphereLightColorGlobalPostTransmittance[Index].A = 0.0f;
-		ViewUniformShaderParameters.AtmosphereLightDirection[Index] = DefaultSunDirection;
-	};
+	}	
 
 	FRHITexture* TransmittanceLutTextureFound = nullptr;
 	FRHITexture* SkyViewLutTextureFound = nullptr;
