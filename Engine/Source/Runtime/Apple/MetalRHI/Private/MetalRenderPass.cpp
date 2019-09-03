@@ -1002,21 +1002,21 @@ void FMetalRenderPass::DrawPatches(uint32 PrimitiveType,FMetalBuffer const& Inde
 		FMetalBuffer hullShaderOutputBuffer = nil;
 		if(hullShaderOutputBufferSize)
 		{
-            hullShaderOutputBuffer = deviceContext.CreatePooledBuffer(FMetalPooledBufferArgs(device, hullShaderOutputBufferSize, BUF_Dynamic, mtlpp::StorageMode::Private));
+			hullShaderOutputBuffer = deviceContext.GetResourceHeap().CreateBuffer(hullShaderOutputBufferSize, 16, BUF_Dynamic, FMetalCommandQueue::GetCompatibleResourceOptions((mtlpp::ResourceOptions)( mtlpp::ResourceOptions::HazardTrackingModeUntracked | ((NSUInteger)mtlpp::StorageMode::Private << mtlpp::ResourceStorageModeShift))), true);
 			FMetalCommandBufferDebugHelpers::TrackResource(CurrentEncoder.GetCommandBuffer().GetPtr(), hullShaderOutputBuffer.GetPtr());
 		}
 		
 		FMetalBuffer hullConstShaderOutputBuffer = nil;
 		if(hullConstShaderOutputBufferSize)
 		{
-            hullConstShaderOutputBuffer = deviceContext.CreatePooledBuffer(FMetalPooledBufferArgs(device, hullConstShaderOutputBufferSize, BUF_Dynamic, mtlpp::StorageMode::Private));
+			hullConstShaderOutputBuffer = deviceContext.GetResourceHeap().CreateBuffer(hullConstShaderOutputBufferSize, 16, BUF_Dynamic, FMetalCommandQueue::GetCompatibleResourceOptions((mtlpp::ResourceOptions)( mtlpp::ResourceOptions::HazardTrackingModeUntracked | ((NSUInteger)mtlpp::StorageMode::Private << mtlpp::ResourceStorageModeShift))), true);
 			FMetalCommandBufferDebugHelpers::TrackResource(CurrentEncoder.GetCommandBuffer().GetPtr(), hullConstShaderOutputBuffer.GetPtr());
 		}
 		
 		FMetalBuffer tessellationFactorBuffer = nil;
 		if(tessellationFactorBufferSize)
 		{
-            tessellationFactorBuffer = deviceContext.CreatePooledBuffer(FMetalPooledBufferArgs(device, tessellationFactorBufferSize, BUF_Dynamic, mtlpp::StorageMode::Private));
+			tessellationFactorBuffer = deviceContext.GetResourceHeap().CreateBuffer(tessellationFactorBufferSize, 16, BUF_Dynamic, FMetalCommandQueue::GetCompatibleResourceOptions((mtlpp::ResourceOptions)( mtlpp::ResourceOptions::HazardTrackingModeUntracked | ((NSUInteger)mtlpp::StorageMode::Private << mtlpp::ResourceStorageModeShift))), true);
 			FMetalCommandBufferDebugHelpers::TrackResource(CurrentEncoder.GetCommandBuffer().GetPtr(), tessellationFactorBuffer.GetPtr());
 		}
 	
@@ -1522,6 +1522,11 @@ bool FMetalRenderPass::AsyncCopyFromTextureToTexture(FMetalTexture const& Textur
 	METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, Debugging.Copy(Texture, sourceSlice, sourceLevel, sourceOrigin, sourceSize, toTexture, destinationSlice, destinationLevel, destinationOrigin));
 	
 	return bAsync;
+}
+
+bool FMetalRenderPass::CanAsyncCopyToBuffer(FMetalBuffer const& DestinationBuffer)
+{
+	return !CurrentEncoder.HasBufferBindingHistory(DestinationBuffer);
 }
 
 void FMetalRenderPass::AsyncCopyFromBufferToBuffer(FMetalBuffer const& SourceBuffer, NSUInteger SourceOffset, FMetalBuffer const& DestinationBuffer, NSUInteger DestinationOffset, NSUInteger Size)

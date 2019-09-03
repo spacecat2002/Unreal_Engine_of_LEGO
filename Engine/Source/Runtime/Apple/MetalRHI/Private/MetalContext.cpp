@@ -1573,6 +1573,11 @@ bool FMetalContext::AsyncCopyFromTextureToTexture(FMetalTexture const& Texture, 
 	return RenderPass.AsyncCopyFromTextureToTexture(Texture, sourceSlice, sourceLevel, sourceOrigin, sourceSize, toTexture, destinationSlice, destinationLevel, destinationOrigin);
 }
 
+bool FMetalContext::CanAsyncCopyToBuffer(FMetalBuffer const& DestinationBuffer)
+{
+	return RenderPass.CanAsyncCopyToBuffer(DestinationBuffer);
+}
+
 void FMetalContext::AsyncCopyFromBufferToBuffer(FMetalBuffer const& SourceBuffer, NSUInteger SourceOffset, FMetalBuffer const& DestinationBuffer, NSUInteger DestinationOffset, NSUInteger Size)
 {
 	RenderPass.AsyncCopyFromBufferToBuffer(SourceBuffer, SourceOffset, DestinationBuffer, DestinationOffset, Size);

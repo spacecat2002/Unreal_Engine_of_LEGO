@@ -451,7 +451,16 @@ void* FMetalRHIBuffer::Lock(bool bIsOnRHIThread, EResourceLockMode LockMode, uin
 			Buffer = nil;
 		}
 	}
-    
+	
+	// When writing to a private buffer, make sure that we can perform an async copy so we don't introduce order of operation bugs
+	// When we can't we have to reallocate the backing store
+	if (LockMode != RLM_ReadOnly && Mode == mtlpp::StorageMode::Private && Buffer && !GetMetalDeviceContext().CanAsyncCopyToBuffer(Buffer))
+	{
+		METAL_INC_DWORD_STAT_BY(Type, MemFreed, Len);
+		SafeReleaseMetalBuffer(Buffer);
+		Buffer = nil;
+	}
+	
     Alloc(Len, LockMode);
 	AllocTransferBuffer(bIsOnRHIThread, Len, LockMode);
 	
