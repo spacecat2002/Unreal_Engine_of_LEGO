@@ -900,6 +900,10 @@ namespace ShaderConductor
 				{
 					mslOpts.invariant_float_math = (std::stoi(Define.value) != 0);
 				}
+				if (!strcmp(Define.name, "emulate_cube_array"))
+				{
+					mslOpts.emulate_cube_array = (std::stoi(Define.value) != 0);
+				}
 			}
 			
 			mslCompiler->set_msl_options(mslOpts);

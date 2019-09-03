@@ -816,6 +816,42 @@ void CompilerMSL::preprocess_op_codes()
 			add_header_line("}");
 		}
 		
+		if (msl_options.emulate_cube_array)
+		{
+			add_header_line("static inline __attribute__((always_inline)) float3 CubemapTo2DArrayFace(float3 P)");
+			add_header_line("{");
+			add_header_line("	float3 Coords = metal::abs(P.xyz);");
+			add_header_line("	float CubeFace = 0;");
+			add_header_line("	float ProjectionAxis = 0;");
+			add_header_line("	float u = 0;");
+			add_header_line("	float v = 0;");
+			add_header_line("	if(Coords.x >= Coords.y && Coords.x >= Coords.z)");
+			add_header_line("	{");
+			add_header_line("		CubeFace = P.x >= 0 ? 0 : 1;");
+			add_header_line("		ProjectionAxis = Coords.x;");
+			add_header_line("		u = P.x >= 0 ? -P.z : P.z;");
+			add_header_line("		v = -P.y;");
+			add_header_line("	}");
+			add_header_line("	else if(Coords.y >= Coords.x && Coords.y >= Coords.z)");
+			add_header_line("	{");
+			add_header_line("		CubeFace = P.y >= 0 ? 2 : 3;");
+			add_header_line("		ProjectionAxis = Coords.y;");
+			add_header_line("		u = P.x;");
+			add_header_line("		v = P.y >= 0 ? P.z : -P.z;");
+			add_header_line("	}");
+			add_header_line("	else");
+			add_header_line("	{");
+			add_header_line("		CubeFace = P.z >= 0 ? 4 : 5;");
+			add_header_line("		ProjectionAxis = Coords.z;");
+			add_header_line("		u = P.z >= 0 ? P.x : -P.x;");
+			add_header_line("		v = -P.y;");
+			add_header_line("	}");
+			add_header_line("	u = 0.5 * (u/ProjectionAxis + 1);");
+			add_header_line("	v = 0.5 * (v/ProjectionAxis + 1);");
+			add_header_line("	return float3(u, v, CubeFace);");
+			add_header_line("}");
+		}
+		
 		add_header_line("template <typename T, size_t Num>");
 		add_header_line("struct unsafe_array");
 		add_header_line("{");
@@ -4162,7 +4198,13 @@ void CompilerMSL::emit_instruction(const Instruction &instruction)
 			expr += ", " + img_exp + ".get_depth(" + lod + ")";
 
 		if (img_is_array)
+		{
 			expr += ", " + img_exp + ".get_array_size()";
+			if (img_dim == DimCube && msl_options.emulate_cube_array)
+			{
+				expr += "/ 6";
+			}
+		}
 
 		expr += ")";
 
@@ -5140,7 +5182,14 @@ string CompilerMSL::to_function_name(uint32_t img, const SPIRType &imgtype, bool
 				fname += ", int2";
 			break;
 		case DimCube:
-			fname += ", float3";
+			if (imgtype.image.arrayed && msl_options.emulate_cube_array)
+			{
+				fname += ", float2";
+			}
+			else
+			{
+				fname += ", float3";
+			}
 			if (imgtype.image.arrayed)
 				fname += ", uint";
 			if (imgtype.image.depth)
@@ -5324,28 +5373,41 @@ string CompilerMSL::to_function_args(uint32_t img, const SPIRType &imgtype, bool
 
 	if (!farg_str.empty())
 		farg_str += ", ";
-	farg_str += tex_coords;
-
-	// If fetch from cube, add face explicitly
-	if (is_cube_fetch)
+	
+	if (imgtype.image.arrayed && msl_options.emulate_cube_array)
 	{
-		// Special case for cube arrays, face and layer are packed in one dimension.
-		if (imgtype.image.arrayed)
-			farg_str += ", uint(" + to_extract_component_expression(coord, 2) + ") % 6u";
+		farg_str += "CubemapTo2DArrayFace(" + tex_coords + ").xy";
+		
+		if (is_cube_fetch)
+			farg_str += ", uint(" + to_extract_component_expression(coord, 2) + ")";
 		else
-			farg_str += ", uint(" + round_fp_tex_coords(to_extract_component_expression(coord, 2), coord_is_fp) + ")";
+			farg_str += ", uint(CubemapTo2DArrayFace(" + tex_coords + ").z) + (uint(" + to_extract_component_expression(coord, 2) + ") * 6u)";
 	}
-
-	// If array, use alt coord
-	if (imgtype.image.arrayed)
+	else
 	{
-		// Special case for cube arrays, face and layer are packed in one dimension.
-		if (imgtype.image.dim == DimCube && is_fetch)
-			farg_str += ", uint(" + to_extract_component_expression(coord, 2) + ") / 6u";
-		else
-			farg_str += ", uint(" +
-			            round_fp_tex_coords(to_extract_component_expression(coord, alt_coord_component), coord_is_fp) +
-			            ")";
+		farg_str += tex_coords;
+
+		// If fetch from cube, add face explicitly
+		if (is_cube_fetch)
+		{
+			// Special case for cube arrays, face and layer are packed in one dimension.
+			if (imgtype.image.arrayed)
+				farg_str += ", uint(" + to_extract_component_expression(coord, 2) + ") % 6u";
+			else
+				farg_str += ", uint(" + round_fp_tex_coords(to_extract_component_expression(coord, 2), coord_is_fp) + ")";
+		}
+
+		// If array, use alt coord
+		if (imgtype.image.arrayed)
+		{
+			// Special case for cube arrays, face and layer are packed in one dimension.
+			if (imgtype.image.dim == DimCube && is_fetch)
+				farg_str += ", uint(" + to_extract_component_expression(coord, 2) + ") / 6u";
+			else
+				farg_str += ", uint(" +
+							round_fp_tex_coords(to_extract_component_expression(coord, alt_coord_component), coord_is_fp) +
+							")";
+		}
 	}
 
 	// Depth compare reference value
@@ -5442,7 +5504,10 @@ string CompilerMSL::to_function_args(uint32_t img, const SPIRType &imgtype, bool
 			grad_opt = "3d";
 			break;
 		case DimCube:
-			grad_opt = "cube";
+			if (imgtype.image.arrayed && msl_options.emulate_cube_array)
+				grad_opt = "2d";
+			else
+				grad_opt = "cube";
 			break;
 		default:
 			grad_opt = "unsupported_gradient_dimension";
@@ -7801,7 +7866,10 @@ string CompilerMSL::image_type_glsl(const SPIRType &type, uint32_t id)
 			img_type_name += "depth3d_unsupported_by_metal";
 			break;
 		case DimCube:
-			img_type_name += (img_type.arrayed ? "depthcube_array" : "depthcube");
+			if (!msl_options.emulate_cube_array)
+				img_type_name += (img_type.arrayed ? "depthcube_array" : "depthcube");
+			else
+				img_type_name += (img_type.arrayed ? "depth2d_array" : "depthcube");
 			break;
 		default:
 			img_type_name += "unknown_depth_texture_type";
@@ -7851,7 +7919,10 @@ string CompilerMSL::image_type_glsl(const SPIRType &type, uint32_t id)
 			img_type_name += "texture3d";
 			break;
 		case DimCube:
-			img_type_name += (img_type.arrayed ? "texturecube_array" : "texturecube");
+			if (!msl_options.emulate_cube_array)
+				img_type_name += (img_type.arrayed ? "texturecube_array" : "texturecube");
+			else
+				img_type_name += (img_type.arrayed ? "texture2d_array" : "texturecube");
 			break;
 		default:
 			img_type_name += "unknown_texture_type";
