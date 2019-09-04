@@ -119,14 +119,6 @@ public:
 		// Denoiser is unable to denoise that configuration.
 		Bailout,
 
-		// Denoiser only need ray hit distance for 1spp.
-		// FShadowPenumbraInputs::Penumbra: non generated
-		// FShadowPenumbraInputs::ClosestOccluder:
-		//   -2: invalid sample,
-		//   -1: miss
-		//   >0: hit distance of occluding geometry
-		ClosestOccluder,
-
 		// Denoiser only need ray hit distance and the diffuse mask of the penumbra.
 		// FShadowPenumbraInputs::Penumbra: average diffuse penumbra mask in [0; 1]
 		// FShadowPenumbraInputs::ClosestOccluder:

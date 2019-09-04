@@ -20,11 +20,6 @@
 // ---------------------------------------------------- Cvars
 
 
-static TAutoConsoleVariable<int32> CVarShadowUse1SPPCodePath(
-	TEXT("r.Shadow.Denoiser.Use1SPPCodePath"), 0,
-	TEXT("Whether to use the 1spp code path."),
-	ECVF_RenderThreadSafe);
-
 static TAutoConsoleVariable<int32> CVarShadowReconstructionSampleCount(
 	TEXT("r.Shadow.Denoiser.ReconstructionSamples"), 8,
 	TEXT("Maximum number of samples for the reconstruction pass (default = 16)."),
@@ -255,7 +250,6 @@ static int32 SignalMaxBatchSize(ESignalProcessing SignalProcessing)
 static bool SignalSupport1SPP(ESignalProcessing SignalProcessing)
 {
 	return (
-		SignalProcessing == ESignalProcessing::ShadowVisibilityMask ||
 		SignalProcessing == ESignalProcessing::Reflections ||
 		SignalProcessing == ESignalProcessing::DiffuseAndAmbientOcclusion);
 }
@@ -717,7 +711,26 @@ class FSSDInjestCS : public FGlobalShader
 			return false;
 		}
 
+		// Compile out the shader if this permutation gets remapped.
+		if (RemapPermutationVector(PermutationVector) != PermutationVector)
+		{
+			return false;
+		}
+
 		return ShouldCompileSignalPipeline(SignalProcessing, Parameters.Platform);
+	}
+
+	static FPermutationDomain RemapPermutationVector(FPermutationDomain PermutationVector)
+	{
+		ESignalProcessing SignalProcessing = PermutationVector.Get<FSignalProcessingDim>();
+
+		// force use the multi sample per pixel code path.
+		if (!SignalSupport1SPP(SignalProcessing))
+		{
+			PermutationVector.Set<FMultiSPPDim>(true);
+		}
+
+		return PermutationVector;
 	}
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
@@ -1060,9 +1073,7 @@ static void DenoiseSignalAtConstantPixelDensity(
 		return ResourceNames + (int32(Settings.SignalProcessing) * kMaxBufferProcessingCount);
 	};
 
-	const bool bUseMultiInputSPPShaderPath = (
-		Settings.MaxInputSPP > 1 || 
-		(CVarShadowUse1SPPCodePath.GetValueOnRenderThread() == 0 && Settings.SignalProcessing == ESignalProcessing::ShadowVisibilityMask));
+	const bool bUseMultiInputSPPShaderPath = Settings.MaxInputSPP > 1;
 
 	FIntPoint BufferExtent = SceneTextures.SceneDepthBuffer->Desc.Extent;
 	const FIntPoint DenoiseResolution = Settings.Viewport.Size();
@@ -1118,19 +1129,10 @@ static void DenoiseSignalAtConstantPixelDensity(
 		if (Settings.SignalProcessing == ESignalProcessing::ShadowVisibilityMask)
 		{
 			check(Settings.SignalBatchSize >= 1 && Settings.SignalBatchSize <= IScreenSpaceDenoiser::kMaxBatchSize);
-			if (!bUseMultiInputSPPShaderPath)
-			{
-				InjestDescs[0].Format = PixelFormatPerChannel[Settings.SignalBatchSize];
-				InjestTextureCount = 1;
-			}
-
 			for (int32 BatchedSignalId = 0; BatchedSignalId < Settings.SignalBatchSize; BatchedSignalId++)
 			{
-				if (bUseMultiInputSPPShaderPath)
-				{
-					InjestDescs[BatchedSignalId / 2].Format = (BatchedSignalId % 2) ? PF_FloatRGBA :  PF_G16R16F;
-					InjestTextureCount = BatchedSignalId / 2 + 1;
-				}
+				InjestDescs[BatchedSignalId / 2].Format = (BatchedSignalId % 2) ? PF_FloatRGBA : PF_G16R16F;
+				InjestTextureCount = BatchedSignalId / 2 + 1;
 				ReconstructionDescs[BatchedSignalId].Format = PF_FloatRGBA;
 				HistoryDescs[BatchedSignalId].Format = PF_FloatRGBA;
 			}
@@ -1301,6 +1303,7 @@ static void DenoiseSignalAtConstantPixelDensity(
 		PermutationVector.Set<FSignalProcessingDim>(Settings.SignalProcessing);
 		PermutationVector.Set<FSignalBatchSizeDim>(Settings.SignalBatchSize);
 		PermutationVector.Set<FMultiSPPDim>(bUseMultiInputSPPShaderPath);
+		PermutationVector = FSSDInjestCS::RemapPermutationVector(PermutationVector);
 
 		TShaderMapRef<FSSDInjestCS> ComputeShader(View.ShaderMap, PermutationVector);
 		FComputeShaderUtils::AddPass(
@@ -1760,12 +1763,8 @@ public:
 		const FLightSceneInfo& LightSceneInfo,
 		const FShadowRayTracingConfig& RayTracingConfig) const override
 	{
-		if (RayTracingConfig.RayCountPerPixel != 1 || CVarShadowUse1SPPCodePath.GetValueOnRenderThread() == 0)
-		{
-			check(SignalSupportMultiSPP(ESignalProcessing::ShadowVisibilityMask));
-			return IScreenSpaceDenoiser::EShadowRequirements::PenumbraAndClosestOccluder;
-		}
-		return IScreenSpaceDenoiser::EShadowRequirements::ClosestOccluder;
+		check(SignalSupportMultiSPP(ESignalProcessing::ShadowVisibilityMask));
+		return IScreenSpaceDenoiser::EShadowRequirements::PenumbraAndClosestOccluder;
 	}
 
 	virtual void DenoiseShadowVisibilityMasks(
@@ -1829,16 +1828,8 @@ public:
 			ensure(IsSupportedLightType(ELightComponentType(Proxy->GetLightType())));
 
 			Settings.LightSceneInfo[BatchedSignalId] = Parameters.LightSceneInfo;
-			if (Settings.MaxInputSPP == 1 && CVarShadowUse1SPPCodePath.GetValueOnRenderThread() != 0)
-			{
-				// Only have it distance in ClosestOccluder.
-				InputSignal.Textures[BatchedSignalId] = Parameters.InputTextures.ClosestOccluder;
-			}
-			else
-			{
-				// Get the packed penumbra and hit distance in Penumbra texture.
-				InputSignal.Textures[BatchedSignalId] = Parameters.InputTextures.Mask;
-			}
+			// Get the packed penumbra and hit distance in Penumbra texture.
+			InputSignal.Textures[BatchedSignalId] = Parameters.InputTextures.Mask;
 			PrevHistories[BatchedSignalId] = PreviousViewInfos->ShadowHistories.Find(Settings.LightSceneInfo[BatchedSignalId]->Proxy->GetLightComponent());
 			NewHistories[BatchedSignalId] = nullptr;
 				
