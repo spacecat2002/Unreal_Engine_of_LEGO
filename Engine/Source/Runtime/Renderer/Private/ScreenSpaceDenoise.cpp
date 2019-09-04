@@ -137,7 +137,7 @@ namespace
 enum class ESignalProcessing
 {
 	// Denoise a shadow mask.
-	MonochromaticPenumbra,
+	ShadowVisibilityMask,
 
 	// Denoise one lighting harmonic when denoising multiple light's penumbra.
 	PolychromaticPenumbraHarmonic,
@@ -169,7 +169,7 @@ static bool IsSupportedLightType(ELightComponentType LightType)
 static bool UsesConstantPixelDensityPassLayout(ESignalProcessing SignalProcessing)
 {
 	return (
-		SignalProcessing == ESignalProcessing::MonochromaticPenumbra ||
+		SignalProcessing == ESignalProcessing::ShadowVisibilityMask ||
 		SignalProcessing == ESignalProcessing::PolychromaticPenumbraHarmonic ||
 		SignalProcessing == ESignalProcessing::Reflections ||
 		SignalProcessing == ESignalProcessing::AmbientOcclusion ||
@@ -189,7 +189,7 @@ static bool SignalSupportsUpscaling(ESignalProcessing SignalProcessing)
 /** Returns whether a signal processing uses an injestion pass. */
 static bool SignalUsesInjestion(ESignalProcessing SignalProcessing)
 {
-	return SignalProcessing == ESignalProcessing::MonochromaticPenumbra;
+	return SignalProcessing == ESignalProcessing::ShadowVisibilityMask;
 }
 
 /** Returns whether a signal processing uses a reduction pass before the reconstruction. */
@@ -202,7 +202,7 @@ static bool SignalUsesReduction(ESignalProcessing SignalProcessing)
 static bool SignalUsesPreConvolution(ESignalProcessing SignalProcessing)
 {
 	return
-		SignalProcessing == ESignalProcessing::MonochromaticPenumbra ||
+		SignalProcessing == ESignalProcessing::ShadowVisibilityMask ||
 		SignalProcessing == ESignalProcessing::DiffuseAndAmbientOcclusion;
 }
 
@@ -210,7 +210,7 @@ static bool SignalUsesPreConvolution(ESignalProcessing SignalProcessing)
 static bool SignalUsesRejectionPreConvolution(ESignalProcessing SignalProcessing)
 {
 	return (
-		//SignalProcessing == ESignalProcessing::MonochromaticPenumbra ||
+		//SignalProcessing == ESignalProcessing::ShadowVisibilityMask ||
 		SignalProcessing == ESignalProcessing::Reflections ||
 		SignalProcessing == ESignalProcessing::AmbientOcclusion);
 }
@@ -219,7 +219,7 @@ static bool SignalUsesRejectionPreConvolution(ESignalProcessing SignalProcessing
 static bool SignalUsesPostConvolution(ESignalProcessing SignalProcessing)
 {
 	return (
-		SignalProcessing == ESignalProcessing::MonochromaticPenumbra ||
+		SignalProcessing == ESignalProcessing::ShadowVisibilityMask ||
 		SignalProcessing == ESignalProcessing::Reflections ||
 		SignalProcessing == ESignalProcessing::AmbientOcclusion ||
 		SignalProcessing == ESignalProcessing::DiffuseAndAmbientOcclusion);
@@ -228,13 +228,13 @@ static bool SignalUsesPostConvolution(ESignalProcessing SignalProcessing)
 /** Returns whether a signal processing uses a history rejection pre convolution pass. */
 static bool SignalUsesFinalConvolution(ESignalProcessing SignalProcessing)
 {
-	return SignalProcessing == ESignalProcessing::MonochromaticPenumbra;
+	return SignalProcessing == ESignalProcessing::ShadowVisibilityMask;
 }
 
 /** Returns the number of signal that might be batched at the same time. */
 static int32 SignalMaxBatchSize(ESignalProcessing SignalProcessing)
 {
-	if (SignalProcessing == ESignalProcessing::MonochromaticPenumbra)
+	if (SignalProcessing == ESignalProcessing::ShadowVisibilityMask)
 	{
 		return IScreenSpaceDenoiser::kMaxBatchSize;
 	}
@@ -255,7 +255,7 @@ static int32 SignalMaxBatchSize(ESignalProcessing SignalProcessing)
 static bool SignalSupport1SPP(ESignalProcessing SignalProcessing)
 {
 	return (
-		SignalProcessing == ESignalProcessing::MonochromaticPenumbra ||
+		SignalProcessing == ESignalProcessing::ShadowVisibilityMask ||
 		SignalProcessing == ESignalProcessing::Reflections ||
 		SignalProcessing == ESignalProcessing::DiffuseAndAmbientOcclusion);
 }
@@ -264,7 +264,7 @@ static bool SignalSupport1SPP(ESignalProcessing SignalProcessing)
 static bool SignalSupportMultiSPP(ESignalProcessing SignalProcessing)
 {
 	return (
-		SignalProcessing == ESignalProcessing::MonochromaticPenumbra ||
+		SignalProcessing == ESignalProcessing::ShadowVisibilityMask ||
 		SignalProcessing == ESignalProcessing::PolychromaticPenumbraHarmonic ||
 		SignalProcessing == ESignalProcessing::Reflections ||
 		SignalProcessing == ESignalProcessing::AmbientOcclusion ||
@@ -286,7 +286,7 @@ class FMultiSPPDim : SHADER_PERMUTATION_BOOL("DIM_MULTI_SPP");
 
 
 const TCHAR* const kInjestResourceNames[] = {
-	// Penumbra
+	// ShadowVisibilityMask
 	TEXT("ShadowDenoiserInjest0"),
 	TEXT("ShadowDenoiserInjest1"),
 	nullptr,
@@ -324,7 +324,7 @@ const TCHAR* const kInjestResourceNames[] = {
 };
 
 const TCHAR* const kReduceResourceNames[] = {
-	// Penumbra
+	// ShadowVisibilityMask
 	nullptr,
 	nullptr,
 	nullptr,
@@ -362,7 +362,7 @@ const TCHAR* const kReduceResourceNames[] = {
 };
 
 const TCHAR* const kReconstructionResourceNames[] = {
-	// Penumbra
+	// ShadowVisibilityMask
 	TEXT("ShadowReconstruction0"),
 	TEXT("ShadowReconstruction1"),
 	TEXT("ShadowReconstruction2"),
@@ -400,7 +400,7 @@ const TCHAR* const kReconstructionResourceNames[] = {
 };
 
 const TCHAR* const kPreConvolutionResourceNames[] = {
-	// Penumbra
+	// ShadowVisibilityMask
 	TEXT("ShadowPreConvolution0"),
 	TEXT("ShadowPreConvolution1"),
 	TEXT("ShadowPreConvolution2"),
@@ -438,7 +438,7 @@ const TCHAR* const kPreConvolutionResourceNames[] = {
 };
 
 const TCHAR* const kRejectionPreConvolutionResourceNames[] = {
-	// Penumbra
+	// ShadowVisibilityMask
 	TEXT("ShadowRejectionPreConvolution0"),
 	TEXT("ShadowRejectionPreConvolution1"),
 	TEXT("ShadowRejectionPreConvolution2"),
@@ -476,7 +476,7 @@ const TCHAR* const kRejectionPreConvolutionResourceNames[] = {
 };
 
 const TCHAR* const kTemporalAccumulationResourceNames[] = {
-	// Penumbra
+	// ShadowVisibilityMask
 	TEXT("ShadowTemporalAccumulation0"),
 	TEXT("ShadowTemporalAccumulation1"),
 	TEXT("ShadowTemporalAccumulation2"),
@@ -514,7 +514,7 @@ const TCHAR* const kTemporalAccumulationResourceNames[] = {
 };
 
 const TCHAR* const kHistoryConvolutionResourceNames[] = {
-	// Penumbra
+	// ShadowVisibilityMask
 	TEXT("ShadowHistoryConvolution0"),
 	TEXT("ShadowHistoryConvolution1"),
 	TEXT("ShadowHistoryConvolution2"),
@@ -552,7 +552,7 @@ const TCHAR* const kHistoryConvolutionResourceNames[] = {
 };
 
 const TCHAR* const kDenoiserOutputResourceNames[] = {
-	// Penumbra
+	// ShadowVisibilityMask
 	TEXT("ShadowDenoiserOutput0"),
 	TEXT("ShadowDenoiserOutput1"),
 	TEXT("ShadowDenoiserOutput2"),
@@ -610,7 +610,7 @@ bool ShouldCompileSignalPipeline(ESignalProcessing SignalProcessing, EShaderPlat
 		return Platform == SP_PCD3D_SM5;
 	}
 	else if (
-		SignalProcessing == ESignalProcessing::MonochromaticPenumbra ||
+		SignalProcessing == ESignalProcessing::ShadowVisibilityMask ||
 		SignalProcessing == ESignalProcessing::PolychromaticPenumbraHarmonic ||
 		SignalProcessing == ESignalProcessing::AmbientOcclusion ||
 		SignalProcessing == ESignalProcessing::DiffuseAndAmbientOcclusion)
@@ -1062,7 +1062,7 @@ static void DenoiseSignalAtConstantPixelDensity(
 
 	const bool bUseMultiInputSPPShaderPath = (
 		Settings.MaxInputSPP > 1 || 
-		(CVarShadowUse1SPPCodePath.GetValueOnRenderThread() == 0 && Settings.SignalProcessing == ESignalProcessing::MonochromaticPenumbra));
+		(CVarShadowUse1SPPCodePath.GetValueOnRenderThread() == 0 && Settings.SignalProcessing == ESignalProcessing::ShadowVisibilityMask));
 
 	FIntPoint BufferExtent = SceneTextures.SceneDepthBuffer->Desc.Extent;
 	const FIntPoint DenoiseResolution = Settings.Viewport.Size();
@@ -1115,7 +1115,7 @@ static void DenoiseSignalAtConstantPixelDensity(
 			HistoryDescs[i] = RefDesc;
 		}
 
-		if (Settings.SignalProcessing == ESignalProcessing::MonochromaticPenumbra)
+		if (Settings.SignalProcessing == ESignalProcessing::ShadowVisibilityMask)
 		{
 			check(Settings.SignalBatchSize >= 1 && Settings.SignalBatchSize <= IScreenSpaceDenoiser::kMaxBatchSize);
 			if (!bUseMultiInputSPPShaderPath)
@@ -1262,7 +1262,7 @@ static void DenoiseSignalAtConstantPixelDensity(
 
 	// Setup all the metadata to do spatial convolution.
 	FSSDConvolutionMetaData ConvolutionMetaData;
-	if (Settings.SignalProcessing == ESignalProcessing::MonochromaticPenumbra)
+	if (Settings.SignalProcessing == ESignalProcessing::ShadowVisibilityMask)
 	{
 		for (int32 BatchedSignalId = 0; BatchedSignalId < Settings.SignalBatchSize; BatchedSignalId++)
 		{
@@ -1455,7 +1455,7 @@ static void DenoiseSignalAtConstantPixelDensity(
 					RejectionSignalProcessingDescs[i] = HistoryDescs[i];
 				}
 
-				if (Settings.SignalProcessing == ESignalProcessing::MonochromaticPenumbra)
+				if (Settings.SignalProcessing == ESignalProcessing::ShadowVisibilityMask)
 				{
 					for (int32 BatchedSignalId = 0; BatchedSignalId < Settings.SignalBatchSize; BatchedSignalId++)
 					{
@@ -1622,7 +1622,7 @@ static void DenoiseSignalAtConstantPixelDensity(
 			GraphBuilder.QueueTextureExtraction(SceneTextures.SceneDepthBuffer, &View.ViewState->PrevFrameViewInfo.DepthBuffer);
 
 			// Requires the normal that are in GBuffer A.
-			if (Settings.SignalProcessing == ESignalProcessing::MonochromaticPenumbra ||
+			if (Settings.SignalProcessing == ESignalProcessing::ShadowVisibilityMask ||
 				Settings.SignalProcessing == ESignalProcessing::PolychromaticPenumbraHarmonic ||
 				Settings.SignalProcessing == ESignalProcessing::Reflections ||
 				Settings.SignalProcessing == ESignalProcessing::AmbientOcclusion ||
@@ -1674,7 +1674,7 @@ static void DenoiseSignalAtConstantPixelDensity(
 			OutputDescs[i] = HistoryDescs[i];
 		}
 
-		if (Settings.SignalProcessing == ESignalProcessing::MonochromaticPenumbra)
+		if (Settings.SignalProcessing == ESignalProcessing::ShadowVisibilityMask)
 		{
 			for (int32 BatchedSignalId = 0; BatchedSignalId < Settings.SignalBatchSize; BatchedSignalId++)
 			{
@@ -1762,27 +1762,27 @@ public:
 	{
 		if (RayTracingConfig.RayCountPerPixel != 1 || CVarShadowUse1SPPCodePath.GetValueOnRenderThread() == 0)
 		{
-			check(SignalSupportMultiSPP(ESignalProcessing::MonochromaticPenumbra));
+			check(SignalSupportMultiSPP(ESignalProcessing::ShadowVisibilityMask));
 			return IScreenSpaceDenoiser::EShadowRequirements::PenumbraAndClosestOccluder;
 		}
 		return IScreenSpaceDenoiser::EShadowRequirements::ClosestOccluder;
 	}
 
-	void DenoiseMonochromaticShadows(
+	virtual void DenoiseShadowVisibilityMasks(
 		FRDGBuilder& GraphBuilder,
 		const FViewInfo& View,
 		FPreviousViewInfo* PreviousViewInfos,
 		const FSceneTextureParameters& SceneTextures,
-		const TStaticArray<FShadowParameters, IScreenSpaceDenoiser::kMaxBatchSize>& InputParameters,
+		const TStaticArray<FShadowVisibilityParameters, IScreenSpaceDenoiser::kMaxBatchSize>& InputParameters,
 		const int32 InputParameterCount,
-		TStaticArray<FShadowPenumbraOutputs, IScreenSpaceDenoiser::kMaxBatchSize>& Outputs) const override
+		TStaticArray<FShadowVisibilityOutputs, IScreenSpaceDenoiser::kMaxBatchSize>& Outputs) const
 	{
 		RDG_GPU_STAT_SCOPE(GraphBuilder, ShadowsDenoiser);
 
 		FSSDSignalTextures InputSignal;
 
 		FSSDConstantPixelDensitySettings Settings;
-		Settings.SignalProcessing = ESignalProcessing::MonochromaticPenumbra;
+		Settings.SignalProcessing = ESignalProcessing::ShadowVisibilityMask;
 		Settings.InputResolutionFraction = 1.0f;
 		Settings.ReconstructionSamples = CVarShadowReconstructionSampleCount.GetValueOnRenderThread();
 		Settings.PreConvolutionCount = CVarShadowPreConvolutionCount.GetValueOnRenderThread();
@@ -1799,7 +1799,7 @@ public:
 		TStaticArray<FScreenSpaceDenoiserHistory*, IScreenSpaceDenoiser::kMaxBatchSize> NewHistories;
 		for (int32 BatchedSignalId = 0; BatchedSignalId < InputParameterCount; BatchedSignalId++)
 		{
-			const FShadowParameters& Parameters = InputParameters[BatchedSignalId];
+			const FShadowVisibilityParameters& Parameters = InputParameters[BatchedSignalId];
 			const FLightSceneProxy* Proxy = Parameters.LightSceneInfo->Proxy;
 			
 			// Scissor the denoiser.
@@ -1837,7 +1837,7 @@ public:
 			else
 			{
 				// Get the packed penumbra and hit distance in Penumbra texture.
-				InputSignal.Textures[BatchedSignalId] = Parameters.InputTextures.Penumbra;
+				InputSignal.Textures[BatchedSignalId] = Parameters.InputTextures.Mask;
 			}
 			PrevHistories[BatchedSignalId] = PreviousViewInfos->ShadowHistories.Find(Settings.LightSceneInfo[BatchedSignalId]->Proxy->GetLightComponent());
 			NewHistories[BatchedSignalId] = nullptr;
@@ -1865,8 +1865,7 @@ public:
 
 		for (int32 BatchedSignalId = 0; BatchedSignalId < InputParameterCount; BatchedSignalId++)
 		{
-			Outputs[BatchedSignalId].DiffusePenumbra = SignalOutput.Textures[BatchedSignalId];
-			Outputs[BatchedSignalId].SpecularPenumbra = SignalOutput.Textures[BatchedSignalId];
+			Outputs[BatchedSignalId].Mask = SignalOutput.Textures[BatchedSignalId];
 		}
 	}
 
