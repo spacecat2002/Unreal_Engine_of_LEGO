@@ -147,10 +147,7 @@ void FDeferredShadingSceneRenderer::RenderDiffuseIndirectAndAmbientOcclusion(FRH
 				bWarnExperimental = true;
 			}
 
-			RenderScreenSpaceDiffuseIndirect(GraphBuilder, SceneTextures, SceneColor, View, /* out */ &DenoiserInputs);
-			
-			// TODO: Denoise.
-			DenoiseMode = 0;
+			RenderScreenSpaceDiffuseIndirect(GraphBuilder, SceneTextures, SceneColor, View, /* out */ &RayTracingConfig, /* out */ &DenoiserInputs);
 		}
 		else
 		{
@@ -169,13 +166,26 @@ void FDeferredShadingSceneRenderer::RenderDiffuseIndirectAndAmbientOcclusion(FRH
 				DenoiserToUse->GetDebugName(),
 				View.ViewRect.Width(), View.ViewRect.Height());
 
-			DenoiserOutputs = DenoiserToUse->DenoiseDiffuseIndirect(
-				GraphBuilder,
-				View,
-				&View.PrevViewInfo,
-				SceneTextures,
-				DenoiserInputs,
-				RayTracingConfig);
+			if (bApplyRTGI)
+			{
+				DenoiserOutputs = DenoiserToUse->DenoiseDiffuseIndirect(
+					GraphBuilder,
+					View,
+					&View.PrevViewInfo,
+					SceneTextures,
+					DenoiserInputs,
+					RayTracingConfig);
+			}
+			else
+			{
+				DenoiserOutputs = DenoiserToUse->DenoiseScreenSpaceDiffuseIndirect(
+					GraphBuilder,
+					View,
+					&View.PrevViewInfo,
+					SceneTextures,
+					DenoiserInputs,
+					RayTracingConfig);
+			}
 		}
 		else
 		{

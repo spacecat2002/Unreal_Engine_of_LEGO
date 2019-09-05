@@ -35,6 +35,11 @@ static TAutoConsoleVariable<int32> CVarSSRStencil(
 	TEXT(" 0 is off (default), 1 is on"),
 	ECVF_RenderThreadSafe);
 
+static TAutoConsoleVariable<int32> CVarSSGIHalfResolution(
+	TEXT("r.SSGI.HalfRes"), 0,
+	TEXT("Whether to do SSGI at half resolution.\n"),
+	ECVF_Scalability | ECVF_RenderThreadSafe);
+
 static TAutoConsoleVariable<int32> CVarSSGIQuality(
 	TEXT("r.SSGI.Quality"),
 	0,
@@ -351,6 +356,8 @@ class FScreenSpaceDiffuseIndirectCS : public FGlobalShader
 		SHADER_PARAMETER( FVector4,		HZBUvFactorAndInvFactor )
 		SHADER_PARAMETER( FVector4,		PrevScreenPositionScaleBias )
 		SHADER_PARAMETER( float,		PrevSceneColorPreExposureCorrection )
+		SHADER_PARAMETER(float, PixelPositionToFullResPixel)
+		SHADER_PARAMETER(FVector2D, FullResPixelOffset)
 		
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, FurthestHZBTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, FurthestHZBTextureSampler)
@@ -698,6 +705,7 @@ void RenderScreenSpaceDiffuseIndirect(
 	const FSceneTextureParameters& SceneTextures,
 	const FRDGTextureRef CurrentSceneColor,
 	const FViewInfo& View,
+	IScreenSpaceDenoiser::FAmbientOcclusionRayTracingConfig* OutRayTracingConfig,
 	IScreenSpaceDenoiser::FDiffuseIndirectInputs* OutDenoiserInputs)
 {
 	check(ShouldRenderScreenSpaceDiffuseIndirect(View));
@@ -707,9 +715,19 @@ void RenderScreenSpaceDiffuseIndirect(
 	
 	const int32 Quality = FMath::Clamp( CVarSSGIQuality.GetValueOnRenderThread(), 1, 4 );
 
+	bool bHalfResolution = CVarSSGIHalfResolution.GetValueOnRenderThread() != 0;
+
 	FIntPoint GroupSize;
 	int32 RayCountPerPixel;
 	GetSSRTGIShaderOptionsForQuality(Quality, &GroupSize, &RayCountPerPixel);
+
+	FIntRect Viewport = View.ViewRect;
+	if (bHalfResolution)
+	{
+		Viewport = FIntRect::DivideAndRoundUp(Viewport, 2);
+	}
+
+	RDG_EVENT_SCOPE(GraphBuilder, "SSGI %dx%d", Viewport.Width(), Viewport.Height());
 
 	FRDGTexture* FurthestHZBTexture = GraphBuilder.RegisterExternalTexture(View.HZB);
 	FRDGTexture* ClosestHZBTexture = GraphBuilder.RegisterExternalTexture(View.ClosestHZB);
@@ -801,9 +819,9 @@ void RenderScreenSpaceDiffuseIndirect(
 			RDG_EVENT_NAME("PrevFrameReduction %dx%d", View.ViewRect.Width() / Divisor, View.ViewRect.Height() / Divisor),
 			PassParameters,
 			ERDGPassFlags::Compute | ERDGPassFlags::GenerateMips,
-			[PassParameters, ComputeShader, &View](FRHICommandList& RHICmdList)
+			[PassParameters, ComputeShader, Viewport](FRHICommandList& RHICmdList)
 		{
-			FComputeShaderUtils::Dispatch(RHICmdList, *ComputeShader, *PassParameters, FComputeShaderUtils::GetGroupCount(View.ViewRect.Size(), 32));
+			FComputeShaderUtils::Dispatch(RHICmdList, *ComputeShader, *PassParameters, FComputeShaderUtils::GetGroupCount(Viewport.Size(), 32));
 		});
 	}
 
@@ -858,7 +876,7 @@ void RenderScreenSpaceDiffuseIndirect(
 		// Allocate outputs.
 		{
 			FRDGTextureDesc Desc = FRDGTextureDesc::Create2DDesc(
-				SceneTextures.SceneDepthBuffer->Desc.Extent,
+				SceneTextures.SceneDepthBuffer->Desc.Extent / (bHalfResolution ? 2 : 1),
 				PF_FloatRGBA,
 				FClearValueBinding::Transparent,
 				/* InFlags = */ TexCreate_None,
@@ -872,6 +890,17 @@ void RenderScreenSpaceDiffuseIndirect(
 		}
 
 		FScreenSpaceDiffuseIndirectCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FScreenSpaceDiffuseIndirectCS::FParameters>();
+		
+		if (bHalfResolution)
+		{
+			PassParameters->PixelPositionToFullResPixel = 2.0f;
+			PassParameters->FullResPixelOffset = FVector2D(0.5f, 0.5f); // TODO.
+		}
+		else
+		{
+			PassParameters->PixelPositionToFullResPixel = 1.0f;
+			PassParameters->FullResPixelOffset = FVector2D(0.5f, 0.5f);
+		}
 
 		PassParameters->FurthestHZBTexture = FurthestHZBTexture;
 		PassParameters->FurthestHZBTextureSampler = TStaticSamplerState<SF_Point>::GetRHI();
@@ -918,9 +947,12 @@ void RenderScreenSpaceDiffuseIndirect(
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
 			RDG_EVENT_NAME("ScreenSpaceDiffuseIndirect(Quality=%d RayPerPixel=%d) %dx%d",
-				Quality, RayCountPerPixel, View.ViewRect.Width(), View.ViewRect.Height()),
+				Quality, RayCountPerPixel, Viewport.Width(), Viewport.Height()),
 			*ComputeShader,
 			PassParameters,
-			FComputeShaderUtils::GetGroupCount(View.ViewRect.Size(), GroupSize));
+			FComputeShaderUtils::GetGroupCount(Viewport.Size(), GroupSize));
 	}
+
+	OutRayTracingConfig->ResolutionFraction = bHalfResolution ? 0.5f : 1.0f;
+	OutRayTracingConfig->RayCountPerPixel = RayCountPerPixel;
 } // RenderScreenSpaceDiffuseIndirect()

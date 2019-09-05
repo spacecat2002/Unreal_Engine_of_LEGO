@@ -245,6 +245,15 @@ public:
 		const FDiffuseIndirectHarmonic& Inputs,
 		const FAmbientOcclusionRayTracingConfig Config) const = 0;
 
+	/** Entry point to denoise SSGI. */
+	virtual FDiffuseIndirectOutputs DenoiseScreenSpaceDiffuseIndirect(
+		FRDGBuilder& GraphBuilder,
+		const FViewInfo& View,
+		FPreviousViewInfo* PreviousViewInfos,
+		const FSceneTextureParameters& SceneTextures,
+		const FDiffuseIndirectInputs& Inputs,
+		const FAmbientOcclusionRayTracingConfig Config) const = 0;
+
 
 	/** Returns the interface of the default denoiser of the renderer. */
 	static const IScreenSpaceDenoiser* GetDefaultDenoiser();
