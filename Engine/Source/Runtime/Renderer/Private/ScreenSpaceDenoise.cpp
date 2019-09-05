@@ -1229,7 +1229,7 @@ static void DenoiseSignalAtConstantPixelDensity(
 			ReconstructionTextureCount = HistoryTextureCountPerSignal = 1;
 			bHasReconstructionLayoutDifferentFromHistory = false;
 		}
-		else if (Settings.SignalProcessing == ESignalProcessing::DiffuseAndAmbientOcclusion || Settings.SignalProcessing == ESignalProcessing::ScreenSpaceDiffuseIndirect)
+		else if (Settings.SignalProcessing == ESignalProcessing::DiffuseAndAmbientOcclusion)
 		{
 			ReconstructionDescs[0].Format = PF_FloatRGBA;
 			ReconstructionDescs[1].Format = PF_R16F;
@@ -1258,6 +1258,17 @@ static void DenoiseSignalAtConstantPixelDensity(
 			bHasReconstructionLayoutDifferentFromHistory = false;
 
 			InjestTextureCount = 4;
+		}
+		else if (Settings.SignalProcessing == ESignalProcessing::ScreenSpaceDiffuseIndirect)
+		{
+			ReconstructionDescs[0].Format = PF_FloatR11G11B10;
+			ReconstructionDescs[1].Format = PF_R8G8;
+			ReconstructionTextureCount = 2;
+
+			HistoryDescs[0].Format = PF_FloatR11G11B10;
+			HistoryDescs[1].Format = PF_R8G8;
+			HistoryTextureCountPerSignal = 2;
+			bHasReconstructionLayoutDifferentFromHistory = false;
 		}
 		else
 		{
