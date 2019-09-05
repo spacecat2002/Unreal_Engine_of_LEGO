@@ -1211,11 +1211,11 @@ public:
 
 	/** Gets the tonemapping LUT texture, previously computed by the CombineLUTS post process,
 	* for stereo rendering, this will force the post-processing to use the same texture for both eyes*/
-	const FTextureRHIRef* GetTonemappingLUTTexture() const;
+	IPooledRenderTarget* GetTonemappingLUT() const;
 
 	/** Gets the rendertarget that will be populated by CombineLUTS post process 
 	* for stereo rendering, this will force the post-processing to use the same render target for both eyes*/
-	IPooledRenderTarget* GetTonemappingLUTRenderTarget(FRHICommandList& RHICmdList, const int32 LUTSize, const bool bUseVolumeLUT, const bool bNeedUAV, const bool bNeedFloatOutput) const;
+	IPooledRenderTarget* GetTonemappingLUT(FRHICommandList& RHICmdList, const int32 LUTSize, const bool bUseVolumeLUT, const bool bNeedUAV, const bool bNeedFloatOutput) const;
 	
 	/** Returns whether this view is the last in the family. */
 	bool IsLastInFamily() const

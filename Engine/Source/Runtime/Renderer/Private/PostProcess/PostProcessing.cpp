@@ -473,7 +473,7 @@ FBloomOutputs AddBloomPass(
 		}
 
 		// The quality level controls which downsample stage we use as the flare input texture.
-		const uint32 LensFlareDownsampleStageIndex = static_cast<uint32>(ELensFlareQuality::High) - static_cast<uint32>(LensFlareQuality);
+		const uint32 LensFlareDownsampleStageIndex = static_cast<uint32>(ELensFlareQuality::MAX) - static_cast<uint32>(LensFlareQuality) - 1;
 
 		FLensFlareInputs LensFlareInputs;
 		LensFlareInputs.BloomTexture = BloomOutputTexture;
@@ -540,9 +540,6 @@ static FRCPassPostProcessTonemap* AddTonemapper(
 	const FViewInfo& View = Context.View;
 	const EStereoscopicPass StereoPass = View.StereoPass;
 
-	const FEngineShowFlags& EngineShowFlags = View.Family->EngineShowFlags;
-	const bool bIsComputePass = ShouldDoComputePostProcessing(View);
-
 	FRenderingCompositeOutputRef TonemapperCombinedLUTOutputRef;
 	if (IStereoRendering::IsAPrimaryView(StereoPass, GEngine->StereoRenderingDevice))
 	{
@@ -550,7 +547,7 @@ static FRCPassPostProcessTonemap* AddTonemapper(
 	}
 
 	const bool bDoEyeAdaptation = IsAutoExposureMethodSupported(View.GetFeatureLevel(), EyeAdapationMethodId);
-	FRCPassPostProcessTonemap* PostProcessTonemap =	Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessTonemap(View, bDoGammaOnly, bDoEyeAdaptation, bHDRTonemapperOutput, bIsComputePass));
+	FRCPassPostProcessTonemap* PostProcessTonemap =	Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessTonemap(bDoGammaOnly, bDoEyeAdaptation, bHDRTonemapperOutput));
 
 	PostProcessTonemap->SetInput(ePId_Input0, Context.FinalOutput);
 	PostProcessTonemap->SetInput(ePId_Input1, BloomOutputCombined);
@@ -578,8 +575,7 @@ void FPostProcessing::AddSelectionOutline(FPostprocessContext& Context)
 
 void FPostProcessing::AddGammaOnlyTonemapper(FPostprocessContext& Context)
 {
-	const bool bIsComputePass = ShouldDoComputePostProcessing(Context.View);
-	FRenderingCompositePass* PostProcessTonemap = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessTonemap(Context.View, true, false/*eye*/, false, bIsComputePass));
+	FRenderingCompositePass* PostProcessTonemap = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessTonemap(true, false/*eye*/, false));
 
 	PostProcessTonemap->SetInput(ePId_Input0, Context.FinalOutput);
 

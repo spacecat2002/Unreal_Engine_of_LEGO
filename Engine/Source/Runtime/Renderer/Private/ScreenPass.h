@@ -141,6 +141,18 @@ FScreenPassTextureViewportTransform GetScreenPassTextureViewportTransform(
 	FVector2D DestinationUVOffset,
 	FVector2D DestinationUVExtent);
 
+// A utility shader parameter struct containing the viewport, texture, and sampler for a unique texture input to a shader.
+BEGIN_SHADER_PARAMETER_STRUCT(FScreenPassTextureInput, )
+	SHADER_PARAMETER_STRUCT_INCLUDE(FScreenPassTextureViewportParameters, Viewport)
+	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, Texture)
+	SHADER_PARAMETER_SAMPLER(SamplerState, Sampler)
+END_SHADER_PARAMETER_STRUCT()
+
+FScreenPassTextureInput GetScreenPassTextureInput(
+	const FScreenPassTextureViewport& Viewport,
+	FRDGTextureRef Texture,
+	FRHISamplerState* Sampler);
+
 // View information cached off for use by screen passes.
 class FScreenPassViewInfo
 {
@@ -177,7 +189,7 @@ struct FScreenPassDrawInfo
 		None,
 
 		// Flips the Y axis of the rendered quad. Used by mobile rendering.
-		FlipYAxis = 0x1
+		FlipYAxis = 0x1,
 	};
 
 	using FDefaultBlendState = TStaticBlendState<>;

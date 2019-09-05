@@ -1891,27 +1891,28 @@ float FViewInfo::GetLastAverageSceneLuminance() const
 
 void FViewInfo::SetValidTonemappingLUT() const
 {
-	FSceneViewState* EffectiveViewState = GetEffectiveViewState();
-	if (EffectiveViewState) EffectiveViewState->SetValidTonemappingLUT();
+	if (FSceneViewState* EffectiveViewState = GetEffectiveViewState())
+	{
+		EffectiveViewState->SetValidTonemappingLUT();
+	}
 }
 
-const FTextureRHIRef* FViewInfo::GetTonemappingLUTTexture() const
+IPooledRenderTarget* FViewInfo::GetTonemappingLUT() const
 {
-	const FTextureRHIRef* TextureRHIRef = NULL;
 	FSceneViewState* EffectiveViewState = GetEffectiveViewState();
 	if (EffectiveViewState && EffectiveViewState->HasValidTonemappingLUT())
 	{
-		TextureRHIRef = EffectiveViewState->GetTonemappingLUTTexture();
+		return EffectiveViewState->GetTonemappingLUT();
 	}
-	return TextureRHIRef;
+	return nullptr;
 };
 
-IPooledRenderTarget* FViewInfo::GetTonemappingLUTRenderTarget(FRHICommandList& RHICmdList, const int32 LUTSize, const bool bUseVolumeLUT, const bool bNeedUAV, const bool bNeedFloatOutput) const 
+IPooledRenderTarget* FViewInfo::GetTonemappingLUT(FRHICommandList& RHICmdList, const int32 LUTSize, const bool bUseVolumeLUT, const bool bNeedUAV, const bool bNeedFloatOutput) const 
 {
 	FSceneViewState* EffectiveViewState = GetEffectiveViewState();
 	if (EffectiveViewState)
 	{
-		return EffectiveViewState->GetTonemappingLUTRenderTarget(RHICmdList, LUTSize, bUseVolumeLUT, bNeedUAV, bNeedFloatOutput);
+		return EffectiveViewState->GetTonemappingLUT(RHICmdList, LUTSize, bUseVolumeLUT, bNeedUAV, bNeedFloatOutput);
 	}
 	return nullptr;
 }

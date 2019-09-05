@@ -1,6 +1,7 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PostProcess/PostProcessCombineLUTs.h"
+#include "PostProcess/PostProcessTonemap.h"
 
 namespace
 {
@@ -30,12 +31,6 @@ FAutoConsoleVariableRef CVarLUTSize(
 	TEXT("r.LUT.Size"),
 	GLUTSize,
 	TEXT("Size of film LUT"),
-	ECVF_RenderThreadSafe);
-
-TAutoConsoleVariable<int32> CVarMobileTonemapperFilm(
-	TEXT("r.Mobile.TonemapperFilm"),
-	0,
-	TEXT("Whether mobile platforms should use new film tone mapper"),
 	ECVF_RenderThreadSafe);
 
 // Including the neutral one at index 0
@@ -70,17 +65,6 @@ bool PipelineVolumeTextureLUTSupportGuaranteedAtRuntime(EShaderPlatform Platform
 	return RHIVolumeTextureRenderingSupportGuaranteed(Platform) && (RHISupportsGeometryShaders(Platform) || RHISupportsVertexShaderLayer(Platform));
 }
 
-FFilmTonemapParameters GetFilmTonemapParameters(const FPostProcessSettings& Settings)
-{
-	FFilmTonemapParameters Parameters;
-	Parameters.FilmSlope = Settings.FilmSlope;
-	Parameters.FilmToe = Settings.FilmToe;
-	Parameters.FilmShoulder = Settings.FilmShoulder;
-	Parameters.FilmBlackClip = Settings.FilmBlackClip;
-	Parameters.FilmWhiteClip = Settings.FilmWhiteClip;
-	return Parameters;
-}
-
 FColorRemapParameters GetColorRemapParameters()
 {
 	FColorTransform ColorTransform;
@@ -105,9 +89,6 @@ BEGIN_SHADER_PARAMETER_STRUCT(FCombineLUTParameters, )
 	SHADER_PARAMETER_ARRAY(float, LUTWeights, [GMaxLUTBlendCount])
 	SHADER_PARAMETER(FVector4, OverlayColor)
 	SHADER_PARAMETER(FVector, ColorScale)
-	SHADER_PARAMETER(float, WhiteTemp)
-	SHADER_PARAMETER(FVector, InverseGamma)
-	SHADER_PARAMETER(float, WhiteTint)
 	SHADER_PARAMETER(FVector4, ColorSaturation)
 	SHADER_PARAMETER(FVector4, ColorContrast)
 	SHADER_PARAMETER(FVector4, ColorGamma)
@@ -128,14 +109,19 @@ BEGIN_SHADER_PARAMETER_STRUCT(FCombineLUTParameters, )
 	SHADER_PARAMETER(FVector4, ColorGammaHighlights)
 	SHADER_PARAMETER(FVector4, ColorGainHighlights)
 	SHADER_PARAMETER(FVector4, ColorOffsetHighlights)
+	SHADER_PARAMETER(float, WhiteTemp)
+	SHADER_PARAMETER(float, WhiteTint)
 	SHADER_PARAMETER(float, ColorCorrectionShadowsMax)
 	SHADER_PARAMETER(float, ColorCorrectionHighlightsMin)
 	SHADER_PARAMETER(float, BlueCorrection)
 	SHADER_PARAMETER(float, ExpandGamut)
-	SHADER_PARAMETER(uint32, OutputDevice)
-	SHADER_PARAMETER(uint32, OutputGamut)
+	SHADER_PARAMETER(float, FilmSlope)
+	SHADER_PARAMETER(float, FilmToe)
+	SHADER_PARAMETER(float, FilmShoulder)
+	SHADER_PARAMETER(float, FilmBlackClip)
+	SHADER_PARAMETER(float, FilmWhiteClip)
 	SHADER_PARAMETER_STRUCT_INCLUDE(FColorRemapParameters, ColorRemap)
-	SHADER_PARAMETER_STRUCT_INCLUDE(FFilmTonemapParameters, FilmTonemap)
+	SHADER_PARAMETER_STRUCT_INCLUDE(FTonemapperOutputDeviceParameters, OutputDevice)
 END_SHADER_PARAMETER_STRUCT()
 
 void GetCombineLUTParameters(
@@ -205,47 +191,13 @@ void GetCombineLUTParameters(
 	Parameters.BlueCorrection = Settings.BlueCorrection;
 	Parameters.ExpandGamut = Settings.ExpandGamut;
 
-	Parameters.FilmTonemap = GetFilmTonemapParameters(Settings);
+	Parameters.FilmSlope = Settings.FilmSlope;
+	Parameters.FilmToe = Settings.FilmToe;
+	Parameters.FilmShoulder = Settings.FilmShoulder;
+	Parameters.FilmBlackClip = Settings.FilmBlackClip;
+	Parameters.FilmWhiteClip = Settings.FilmWhiteClip;
 
-	{
-		static TConsoleVariableData<int32>* CVarOutputGamut = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.HDR.Display.ColorGamut"));
-		static TConsoleVariableData<int32>* CVarOutputDevice = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.HDR.Display.OutputDevice"));
-		static TConsoleVariableData<float>* CVarOutputGamma = IConsoleManager::Get().FindTConsoleVariableDataFloat(TEXT("r.TonemapperGamma"));
-
-		int32 OutputDeviceValue;
-
-		if (ViewFamily.SceneCaptureSource == SCS_FinalColorHDR)
-		{
-			OutputDeviceValue = 8; //LinearNoToneCurve from FTonemapperOutputDevice
-		}
-		else
-		{
-			OutputDeviceValue = CVarOutputDevice->GetValueOnRenderThread();
-		}
-
-		float Gamma = CVarOutputGamma->GetValueOnRenderThread();
-
-		if (PLATFORM_APPLE && Gamma == 0.0f)
-		{
-			Gamma = 2.2f;
-		}
-
-		if (Gamma > 0.0f)
-		{
-			// Enforce user-controlled ramp over sRGB or Rec709
-			OutputDeviceValue = FMath::Max(OutputDeviceValue, 2);
-		}
-
-		Parameters.OutputDevice = OutputDeviceValue;
-
-		Parameters.OutputGamut = CVarOutputGamut->GetValueOnRenderThread();
-
-		FVector InvDisplayGammaValue;
-		InvDisplayGammaValue.X = 1.0f / ViewFamily.RenderTarget->GetDisplayGamma();
-		InvDisplayGammaValue.Y = 2.2f / ViewFamily.RenderTarget->GetDisplayGamma();
-		InvDisplayGammaValue.Z = 1.0f / FMath::Max(Gamma, 1.0f);
-		Parameters.InverseGamma = InvDisplayGammaValue;
-	}
+	Parameters.OutputDevice = GetTonemapperOutputDeviceParameters(ViewFamily);
 }
 
 class FLUTBlenderShader : public FGlobalShader
@@ -255,11 +207,6 @@ public:
 
 	class FBlendCount : SHADER_PERMUTATION_RANGE_INT("BLENDCOUNT", 1, 5);
 	using FPermutationDomain = TShaderPermutationDomain<FBlendCount>;
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
@@ -286,6 +233,11 @@ public:
 		SHADER_PARAMETER_STRUCT_INCLUDE(FCombineLUTParameters, CombineLUT)
 		RENDER_TARGET_BINDING_SLOTS()
 	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return true;
+	}
 };
 
 IMPLEMENT_GLOBAL_SHADER(FLUTBlenderPS, "/Engine/Private/PostProcessCombineLUTs.usf", "MainPS", SF_Pixel);
@@ -301,6 +253,11 @@ public:
 		SHADER_PARAMETER(FVector2D, OutputExtentInverse)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RWOutputTexture)
 	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
 };
 
 IMPLEMENT_GLOBAL_SHADER(FLUTBlenderCS, "/Engine/Private/PostProcessCombineLUTs.usf", "MainCS", SF_Compute);
@@ -429,7 +386,7 @@ FRDGTextureRef AddCombineLUTPass(FRDGBuilder& GraphBuilder, const FScreenPassVie
 
 	// Attempt to register the persistent view LUT texture.
 	FRDGTextureRef OutputTexture = GraphBuilder.TryRegisterExternalTexture(
-		View.GetTonemappingLUTRenderTarget(GraphBuilder.RHICmdList, GLUTSize, bUseVolumeTextureLUT, bUseComputePass, bUseFloatOutput));
+		View.GetTonemappingLUT(GraphBuilder.RHICmdList, GLUTSize, bUseVolumeTextureLUT, bUseComputePass, bUseFloatOutput));
 
 	// View doesn't support a persistent LUT, so create a temporary one.
 	if (!OutputTexture)

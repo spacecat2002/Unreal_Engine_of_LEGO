@@ -819,7 +819,7 @@ private:
 	TRefCountPtr<IPooledRenderTarget> CombinedLUTRenderTarget;
 
 	// LUT is only valid after it has been computed, not on allocation of the RT
-	bool bValidTonemappingLUT;
+	bool bValidTonemappingLUT = false;
 
 
 	// used by the Postprocess Material Blending system to avoid recreation and garbage collection of MIDs
@@ -1202,7 +1202,7 @@ public:
 	}
 
 	// Returns a reference to the render target used for the LUT.  Allocated on the first request.
-	IPooledRenderTarget* GetTonemappingLUTRenderTarget(FRHICommandList& RHICmdList, const int32 LUTSize, const bool bUseVolumeLUT, const bool bNeedUAV, const bool bNeedFloatOutput)
+	IPooledRenderTarget* GetTonemappingLUT(FRHICommandList& RHICmdList, const int32 LUTSize, const bool bUseVolumeLUT, const bool bNeedUAV, const bool bNeedFloatOutput)
 	{
 		if (CombinedLUTRenderTarget.IsValid() == false || 
 			CombinedLUTRenderTarget->GetDesc().Extent.Y != LUTSize ||
@@ -1218,14 +1218,9 @@ public:
 		return CombinedLUTRenderTarget.GetReference();
 	}
 
-	const FTextureRHIRef* GetTonemappingLUTTexture() const
+	IPooledRenderTarget* GetTonemappingLUT() const
 	{
-		const FTextureRHIRef* ShaderResourceTexture = NULL;
-
-		if (CombinedLUTRenderTarget.IsValid()) {
-			ShaderResourceTexture = &CombinedLUTRenderTarget->GetRenderTargetItem().ShaderResourceTexture;
-		}
-		return ShaderResourceTexture;
+		return CombinedLUTRenderTarget.GetReference();
 	}
 
 	// FRenderResource interface.
