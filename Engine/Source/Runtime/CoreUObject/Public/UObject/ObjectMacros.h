@@ -1666,7 +1666,8 @@ public: \
 			&TClass::AddReferencedObjects, \
 			&TClass::Super::StaticClass, \
 			&TClass::WithinClass::StaticClass, \
-			true \
+			true, \
+			&TClass::__CustomDynamicClassInitialization \
 			); \
 		} \
 		return PrivateStaticClass; \
