@@ -98,6 +98,13 @@ static FAutoConsoleVariableRef CVarRayTracingGlobalIlluminationScreenPercentage(
 	TEXT("Screen percentage for ray tracing global illumination (default = 50)")
 );
 
+static TAutoConsoleVariable<int32> CVarRayTracingGlobalIlluminationEnableLightAttenuation(
+	TEXT("r.RayTracing.GlobalIllumination.EnableLightAttenuation"),
+	1,
+	TEXT("Enables light attenuation when calculating irradiance during next-event estimation (default = 1)"),
+	ECVF_RenderThreadSafe
+);
+
 static TAutoConsoleVariable<int32> CVarRayTracingGlobalIlluminationEnableTwoSidedGeometry(
 	TEXT("r.RayTracing.GlobalIllumination.EnableTwoSidedGeometry"),
 	1,
@@ -266,7 +273,7 @@ void FDeferredShadingSceneRenderer::PrepareRayTracingGlobalIllumination(const FV
 		for (int EnableTwoSidedGeometry = 0; EnableTwoSidedGeometry < 2; ++EnableTwoSidedGeometry)
 		{
 			FGlobalIlluminationRGS::FPermutationDomain PermutationVector;
-			PermutationVector.Set<FGlobalIlluminationRGS::FUseAttenuationTermDim>(UseAttenuationTerm == 1);
+			PermutationVector.Set<FGlobalIlluminationRGS::FUseAttenuationTermDim>(CVarRayTracingGlobalIlluminationEnableLightAttenuation.GetValueOnRenderThread() != 0);
 			PermutationVector.Set<FGlobalIlluminationRGS::FEnableTwoSidedGeometryDim>(EnableTwoSidedGeometry == 1);
 			TShaderMapRef<FGlobalIlluminationRGS> RayGenerationShader(View.ShaderMap, PermutationVector);
 			OutRayGenShaders.Add(RayGenerationShader->GetRayTracingShader());
