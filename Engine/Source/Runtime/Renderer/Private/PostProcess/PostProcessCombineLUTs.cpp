@@ -499,8 +499,9 @@ FRenderingCompositeOutputRef AddCombineLUTPass(FRenderingCompositionGraph& Graph
 			[](FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
 	{
 		FRDGBuilder GraphBuilder(InContext.RHICmdList);
+		FScreenPassViewInfo ScreenPassView(InContext.View);
 
-		FRDGTextureRef OutputTexture = AddCombineLUTPass(GraphBuilder, FScreenPassViewInfo(InContext.View));
+		FRDGTextureRef OutputTexture = AddCombineLUTPass(GraphBuilder, ScreenPassView);
 
 		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, OutputTexture);
 
