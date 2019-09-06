@@ -21,6 +21,7 @@
 #include "Raytracing/RaytracingOptions.h"
 #include "BlueNoise.h"
 #include "SceneTextureParameters.h"
+#include "RayTracingDefinitions.h"
 
 static int32 GRayTracingGlobalIllumination = -1;
 static FAutoConsoleVariableRef CVarRayTracingGlobalIllumination(
@@ -119,7 +120,12 @@ static FAutoConsoleVariableRef CVarRayTracingGlobalIlluminationTileSize(
 	TEXT("Render ray traced global illumination in NxN piel tiles, where each tile is submitted as separate GPU command buffer, allowing high quality rendering without triggering timeout detection. (default = 0, tiling disabled)")
 );
 
-static const int32 GLightCountMax = 64;
+static TAutoConsoleVariable<int32> CVarRayTracingGlobalIlluminationMaxLightCount(
+	TEXT("r.RayTracing.GlobalIllumination.MaxLightCount"),
+	RAY_TRACING_LIGHT_COUNT_MAXIMUM,
+	TEXT("Enables two-sided geometry when tracing GI rays (default = 256)"),
+	ECVF_RenderThreadSafe
+);
 
 DECLARE_GPU_STAT_NAMED(RayTracingGlobalIllumination, TEXT("Ray Tracing Global Illumination"));
 
@@ -137,9 +143,10 @@ void SetupLightParameters(
 	LightParameters->Color[SkyLightIndex] = FVector(1.0);
 	LightParameters->Count++;
 
+	uint32 MaxLightCount = FMath::Min(CVarRayTracingGlobalIlluminationMaxLightCount.GetValueOnRenderThread(), RAY_TRACING_LIGHT_COUNT_MAXIMUM);
 	for (auto Light : Lights)
 	{
-		if (LightParameters->Count >= GLightCountMax) break;
+		if (LightParameters->Count >= MaxLightCount) break;
 
 		if (Light.LightSceneInfo->Proxy->HasStaticLighting() && Light.LightSceneInfo->IsPrecomputedLightingValid()) continue;
 
