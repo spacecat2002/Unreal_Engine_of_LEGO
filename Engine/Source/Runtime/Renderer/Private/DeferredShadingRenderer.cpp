@@ -738,7 +738,8 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 							Scene,
 							&ReferenceView,
 							SceneProxy,
-							DynamicRayTracingGeometryUpdate
+							DynamicRayTracingGeometryUpdate,
+							PrimitiveIndex
 						);
 					}
 

@@ -2399,6 +2399,7 @@ struct FMeshComputeDispatchCommand
 	uint32 NumMaxVertices;
 	uint32 NumCPUVertices;
 	uint32 MinVertexIndex;
+	uint32 PrimitiveId;
 	FRWBuffer* TargetBuffer;
 };
 #endif

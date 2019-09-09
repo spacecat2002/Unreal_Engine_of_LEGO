@@ -13,7 +13,9 @@ public:
 		const FScene* Scene, 
 		const FSceneView* View, 
 		const FPrimitiveSceneProxy* PrimitiveSceneProxy, 
-		FRayTracingDynamicGeometryUpdateParams Params);
+		FRayTracingDynamicGeometryUpdateParams Params,
+		uint32 PrimitiveId 
+	);
 
 	void DispatchUpdates(FRHICommandListImmediate& RHICmdList);
 	void Clear();

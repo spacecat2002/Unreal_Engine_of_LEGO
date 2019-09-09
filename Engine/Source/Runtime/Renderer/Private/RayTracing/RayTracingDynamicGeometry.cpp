@@ -12,6 +12,7 @@ static bool IsSupportedDynamicVertexFactoryType(const FVertexFactoryType* Vertex
 {
 	return VertexFactoryType == FindVertexFactoryType(FName(TEXT("FNiagaraSpriteVertexFactory"), FNAME_Find))
 		|| VertexFactoryType == FindVertexFactoryType(FName(TEXT("FNiagaraRibbonVertexFactory"), FNAME_Find))
+		|| VertexFactoryType == FindVertexFactoryType(FName(TEXT("FLocalVertexFactory"), FNAME_Find))
 		|| VertexFactoryType == FindVertexFactoryType(FName(TEXT("FLandscapeVertexFactory"), FNAME_Find))
 		|| VertexFactoryType == FindVertexFactoryType(FName(TEXT("FLandscapeXYOffsetVertexFactory"), FNAME_Find))
 		|| VertexFactoryType == FindVertexFactoryType(FName(TEXT("FGPUSkinPassthroughVertexFactory"), FNAME_Find));
@@ -30,6 +31,7 @@ public:
 		VertexBufferSize.Bind(Initializer.ParameterMap, TEXT("VertexBufferSize"));
 		NumVertices.Bind(Initializer.ParameterMap, TEXT("NumVertices"));
 		MinVertexIndex.Bind(Initializer.ParameterMap, TEXT("MinVertexIndex"));
+		PrimitiveId.Bind(Initializer.ParameterMap, TEXT("PrimitiveId"));
 	}
 
 	FRayTracingDynamicGeometryConverterCS() = default;
@@ -46,6 +48,7 @@ public:
 		Ar << VertexBufferSize;
 		Ar << NumVertices;
 		Ar << MinVertexIndex;
+		Ar << PrimitiveId;
 		return bShaderHasOutdatedParameters;
 	}
 
@@ -82,6 +85,7 @@ public:
 	FShaderParameter VertexBufferSize;
 	FShaderParameter NumVertices;
 	FShaderParameter MinVertexIndex;
+	FShaderParameter PrimitiveId;
 };
 
 IMPLEMENT_MATERIAL_SHADER_TYPE(, FRayTracingDynamicGeometryConverterCS, TEXT("/Engine/Private/RayTracing/RayTracingDynamicMesh.usf"), TEXT("RayTracingDynamicGeometryConverterCS"), SF_Compute);
@@ -95,7 +99,8 @@ void FRayTracingDynamicGeometryCollection::AddDynamicMeshBatchForGeometryUpdate(
 	const FScene* Scene, 
 	const FSceneView* View, 
 	const FPrimitiveSceneProxy* PrimitiveSceneProxy, 
-	FRayTracingDynamicGeometryUpdateParams UpdateParams
+	FRayTracingDynamicGeometryUpdateParams UpdateParams,
+	uint32 PrimitiveId
 )
 {
 	FRayTracingGeometry& Geometry = *UpdateParams.Geometry;
@@ -107,7 +112,7 @@ void FRayTracingDynamicGeometryCollection::AddDynamicMeshBatchForGeometryUpdate(
 	{
 		const FMaterialRenderProxy* FallbackMaterialRenderProxyPtr = nullptr;
 		const FMaterial& Material = MeshBatch.MaterialRenderProxy->GetMaterialWithFallback(Scene->GetFeatureLevel(), FallbackMaterialRenderProxyPtr);
-
+		auto* MaterialInterface = Material.GetMaterialInterface();
 		const FMaterialRenderProxy& MaterialRenderProxy = FallbackMaterialRenderProxyPtr ? *FallbackMaterialRenderProxyPtr : *MeshBatch.MaterialRenderProxy;
 
 		TMeshProcessorShaders<
@@ -141,6 +146,7 @@ void FRayTracingDynamicGeometryCollection::AddDynamicMeshBatchForGeometryUpdate(
 		DispatchCmd.TargetBuffer = &Buffer;
 		DispatchCmd.NumMaxVertices = UpdateParams.NumVertices;
 		DispatchCmd.NumCPUVertices = !bUsingIndirectDraw ? UpdateParams.NumVertices : 0;
+		DispatchCmd.PrimitiveId = PrimitiveId;
 		if (MeshBatch.Elements[0].MinVertexIndex < MeshBatch.Elements[0].MaxVertexIndex)
 		{
 			DispatchCmd.NumCPUVertices = MeshBatch.Elements[0].MaxVertexIndex - MeshBatch.Elements[0].MinVertexIndex;
@@ -211,8 +217,8 @@ void FRayTracingDynamicGeometryCollection::DispatchUpdates(FRHICommandListImmedi
 					SetShaderValue(RHICmdList, Shader->GetComputeShader(), Shader->VertexBufferSize, Cmd.TargetBuffer->NumBytes / sizeof(FVector));
 					SetShaderValue(RHICmdList, Shader->GetComputeShader(), Shader->NumVertices, Cmd.NumCPUVertices);
 					SetShaderValue(RHICmdList, Shader->GetComputeShader(), Shader->MinVertexIndex, Cmd.MinVertexIndex);
-
-					RHICmdList.DispatchComputeShader(FMath::DivideAndRoundUp<uint32>(Cmd.NumMaxVertices, 256), 1, 1);
+					SetShaderValue(RHICmdList, Shader->GetComputeShader(), Shader->PrimitiveId, Cmd.PrimitiveId);
+					RHICmdList.DispatchComputeShader(FMath::DivideAndRoundUp<uint32>(Cmd.NumMaxVertices, 64), 1, 1);
 
 					Shader->RWVertexPositions.UnsetUAV(RHICmdList, Shader->GetComputeShader());
 				}
