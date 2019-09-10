@@ -1538,7 +1538,7 @@ void FStaticMeshSceneProxy::GetDynamicRayTracingInstances(FRayTracingMaterialGat
 				RayTracingInstance.Materials,
 				false,
 				(uint32)LODModel.GetNumVertices(),
-				(uint32)LODModel.GetNumVertices() * sizeof(FVector),
+				uint32((SIZE_T)LODModel.GetNumVertices() * sizeof(FVector)),
 				Geometry.Initializer.TotalPrimitiveCount,
 				&Geometry,
 				&DynamicRayTracingGeometryVertexBuffers[LODIndex]

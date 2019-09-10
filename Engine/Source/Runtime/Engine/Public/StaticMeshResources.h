@@ -929,7 +929,7 @@ protected:
 
 	const FDistanceFieldVolumeData* DistanceFieldData;	
 
-#ifdef RHI_RAYTRACING
+#if RHI_RAYTRACING
 	TArray<FRayTracingGeometry, TInlineAllocator<MAX_MESH_LOD_COUNT>> DynamicRayTracingGeometries;
 	TArray<FRWBuffer, TInlineAllocator<MAX_MESH_LOD_COUNT>> DynamicRayTracingGeometryVertexBuffers;
 #endif
