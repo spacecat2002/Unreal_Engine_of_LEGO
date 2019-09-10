@@ -1503,6 +1503,7 @@ void FStaticMeshSceneProxy::GetDynamicMeshElements(const TArray<const FSceneView
 #endif // STATICMESH_ENABLE_DEBUG_RENDERING
 }
 
+#if RHI_RAYTRACING
 void FStaticMeshSceneProxy::GetDynamicRayTracingInstances(FRayTracingMaterialGatheringContext& Context, TArray<FRayTracingInstance>& OutRayTracingInstances )
 {
 	uint8 PrimitiveDPG = GetStaticDepthPriorityGroup();
@@ -1551,7 +1552,7 @@ void FStaticMeshSceneProxy::GetDynamicRayTracingInstances(FRayTracingMaterialGat
 		OutRayTracingInstances.Add(RayTracingInstance);
 	}
 }
-
+#endif
 void FStaticMeshSceneProxy::GetLCIs(FLCIArray& LCIs)
 {
 	for (int32 LODIndex = 0; LODIndex < LODs.Num(); ++LODIndex)
