@@ -111,6 +111,9 @@ static const int32 kStackowiakMaxSampleCountPerSet = 56;
 /** The maximum number of buffers. */
 static const int32 kMaxBufferProcessingCount = IScreenSpaceDenoiser::kMaxBatchSize;
 
+/** Number of texture to store compressed metadata. */
+static const int32 kCompressedMetadataTextures = 1;
+
 static_assert(IScreenSpaceDenoiser::kMaxBatchSize <= kMaxBufferProcessingCount, "Can't batch more signal than there is internal buffer in the denoiser.");
 
 
@@ -127,6 +130,18 @@ namespace
 {
 
 // ---------------------------------------------------- Enums
+
+/** Layout for compressed meta data. */
+enum class ECompressedMetadataLayout
+{
+	// The signal denoiser use directly depth buffer and gbuffer.
+	Disabled,
+
+	// Compress scene depth and normal into same render target.
+	DepthAndNormal,
+
+	MAX,
+};
 
 /** Different signals to denoise. */
 enum class ESignalProcessing
@@ -228,6 +243,16 @@ static bool SignalUsesPostConvolution(ESignalProcessing SignalProcessing)
 static bool SignalUsesFinalConvolution(ESignalProcessing SignalProcessing)
 {
 	return SignalProcessing == ESignalProcessing::ShadowVisibilityMask;
+}
+
+/** Returns what meta data compression should be used when denoising a signal. */
+static ECompressedMetadataLayout GetSignalCompressedMetadata(ESignalProcessing SignalProcessing)
+{
+	if (SignalProcessing == ESignalProcessing::ScreenSpaceDiffuseIndirect)
+	{
+		return ECompressedMetadataLayout::DepthAndNormal;
+	}
+	return ECompressedMetadataLayout::Disabled;
 }
 
 /** Returns the number of signal that might be batched at the same time. */
@@ -680,6 +705,9 @@ BEGIN_SHADER_PARAMETER_STRUCT(FSSDCommonParameters, )
 	SHADER_PARAMETER(FVector2D, BufferUVToOutputPixelPosition)
 
 	SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
+
+	SHADER_PARAMETER_RDG_TEXTURE_ARRAY(Texture2D<uint>, CompressedMetadata, [kCompressedMetadataTextures])
+
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, EyeAdaptation)
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, TileClassificationTexture)
 	SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
@@ -735,6 +763,31 @@ FSSDSignalUAVs CreateMultiplexedUAVs(FRDGBuilder& GraphBuilder, const FSSDSignal
 	return UAVs;
 }
 
+class FSSDCompressMetadataCS : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FSSDCompressMetadataCS);
+	SHADER_USE_PARAMETER_STRUCT(FSSDCompressMetadataCS, FGlobalShader);
+
+	class FMetadataLayoutDim : SHADER_PERMUTATION_ENUM_CLASS("DIM_METADATA_LAYOUT", ECompressedMetadataLayout);
+	using FPermutationDomain = TShaderPermutationDomain<FMetadataLayoutDim>;
+
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		FPermutationDomain PermutationVector(Parameters.PermutationId);
+		if (PermutationVector.Get<FMetadataLayoutDim>() == ECompressedMetadataLayout::Disabled)
+		{
+			return false;
+		}
+
+		return Parameters.Platform == SP_PCD3D_SM5 || Parameters.Platform == SP_PS4;
+	}
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_STRUCT_INCLUDE(FSSDCommonParameters, CommonParameters)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV_ARRAY(RWTexture2D<uint>, CompressedMetadataOutput, [kCompressedMetadataTextures])
+	END_SHADER_PARAMETER_STRUCT()
+};
 
 // TOOD: collapse within reduce pass.
 class FSSDInjestCS : public FGlobalShader
@@ -1074,6 +1127,7 @@ class FSSDComposeHarmonicsCS : public FGlobalShader
 	END_SHADER_PARAMETER_STRUCT()
 };
 
+IMPLEMENT_GLOBAL_SHADER(FSSDCompressMetadataCS, "/Engine/Private/ScreenSpaceDenoise/SSDCompressMetadata.usf", "MainCS", SF_Compute);
 IMPLEMENT_GLOBAL_SHADER(FSSDInjestCS, "/Engine/Private/ScreenSpaceDenoise/SSDInjest.usf", "MainCS", SF_Compute);
 IMPLEMENT_GLOBAL_SHADER(FSSDReduceCS, "/Engine/Private/ScreenSpaceDenoise/SSDReduce.usf", "MainCS", SF_Compute);
 IMPLEMENT_GLOBAL_SHADER(FSSDSpatialAccumulationCS, "/Engine/Private/ScreenSpaceDenoise/SSDSpatialAccumulation.usf", "MainCS", SF_Compute);
@@ -1367,6 +1421,45 @@ static void DenoiseSignalAtConstantPixelDensity(
 			ConvolutionMetaData.LightType[BatchedSignalId] = LightSceneProxy->GetLightType();
 		}
 	}
+
+	// Compress the meta data for lower memory bandwidth, half res for coherent memory access, and lower VGPR footprint.
+	ECompressedMetadataLayout CompressedMetadataLayout = GetSignalCompressedMetadata(Settings.SignalProcessing);
+	if (CompressedMetadataLayout != ECompressedMetadataLayout::Disabled)
+	{
+		if (CompressedMetadataLayout == ECompressedMetadataLayout::DepthAndNormal)
+		{
+			FRDGTextureDesc Desc = FRDGTextureDesc::Create2DDesc(
+				BufferExtent,
+				PF_R32_UINT,
+				FClearValueBinding::Black,
+				/* InFlags = */ TexCreate_None,
+				/* InTargetableFlags = */ TexCreate_ShaderResource | TexCreate_RenderTargetable | TexCreate_UAV,
+				/* bInForceSeparateTargetAndShaderResource = */ false);
+
+			CommonParameters.CompressedMetadata[0] = GraphBuilder.CreateTexture(Desc, TEXT("DenoiserMetadata0"));
+		}
+		else
+		{
+			check(0);
+		}
+
+		FSSDCompressMetadataCS::FPermutationDomain PermutationVector;
+		PermutationVector.Set<FSSDCompressMetadataCS::FMetadataLayoutDim>(CompressedMetadataLayout);
+
+		FSSDCompressMetadataCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FSSDCompressMetadataCS::FParameters>();
+		PassParameters->CommonParameters = CommonParameters;
+		for (int32 i = 0; i < kCompressedMetadataTextures; i++)
+			PassParameters->CompressedMetadataOutput[i] = GraphBuilder.CreateUAV(CommonParameters.CompressedMetadata[i]);
+
+		TShaderMapRef<FSSDCompressMetadataCS> ComputeShader(View.ShaderMap, PermutationVector);
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("SSD CompressMetadata %dx%d", Viewport.Width(), Viewport.Height()),
+			*ComputeShader,
+			PassParameters,
+			FComputeShaderUtils::GetGroupCount(Viewport.Size(), FComputeShaderUtils::kGolden2DGroupSize));
+	}
+
 
 	FSSDSignalTextures SignalHistory = InputSignal;
 
