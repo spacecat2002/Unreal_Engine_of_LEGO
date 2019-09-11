@@ -1003,6 +1003,14 @@ public:
 	*/
 	virtual void GetInstanceActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const {}
 
+	/**
+	 * Allows child classes to override the undo behaviour on undo / redo.
+	 * Normally blueprints are marked as dirty / structurally modified on undo,
+	 * which might not be required for specialized classes.
+	 * @return True if the blueprint should be marked as structurally modified on undo redo.
+	 */
+	virtual bool RequiresMarkAsStructurallyModifiedOnUndo() const { return true; }
+
 #if WITH_EDITOR
 private:
 
