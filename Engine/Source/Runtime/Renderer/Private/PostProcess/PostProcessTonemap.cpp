@@ -634,62 +634,58 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(FTonemapCS, "/Engine/Private/PostProcessTonemap.usf", "MainCS", SF_Compute);
 
-struct FTonemapInputs
-{
-	// [Required] The texture / viewport to write the tonemapped output.
-	FRDGTextureRef OutputTexture = nullptr;
-	FIntRect OutputViewRect;
-
-	// [Required] HDR scene color to tonemap.
-	FRDGTextureRef SceneColorTexture = nullptr;
-	FIntRect SceneColorViewRect;
-
-	// [Required] Filtered bloom texture to composite with tonemapped scene color. This should be transparent black for no bloom.
-	FRDGTextureRef BloomTexture = nullptr;
-	FIntRect BloomViewRect;
-
-	// [Required] Color grading texture used to remap colors.
-	FRDGTextureRef ColorGradingTexture = nullptr;
-
-	// [Optional] Eye adaptation texture used to compute exposure. If this is null, a default exposure value is used instead.
-	FRDGTextureRef EyeAdaptationTexture = nullptr;
-
-	// [Raster Only] Specifies the load action to use when rendering to the output texture.
-	ERenderTargetLoadAction OutputLoadAction = ERenderTargetLoadAction::ENoAction;
-
-	// [Raster Only, Mobile] Flips the image vertically on output.
-	bool bFlipYAxis = false;
-
-	// [Raster Only] Controls whether the alpha channel of the scene texture should be written to the output texture.
-	bool bWriteAlphaChannel = false;
-
-	// Configures the tonemapper to only perform gamma correction.
-	bool bGammaOnly = false;
-};
-
-void AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FTonemapInputs& Inputs)
+FRDGTextureRef AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FTonemapInputs& Inputs)
 {
 	check(Inputs.SceneColorTexture);
 	check(!Inputs.SceneColorViewRect.IsEmpty());
 	check(Inputs.BloomTexture);
 	check(!Inputs.BloomViewRect.IsEmpty());
 	check(Inputs.ColorGradingTexture || Inputs.bGammaOnly);
-	check(Inputs.OutputTexture);
-	check(!Inputs.OutputViewRect.IsEmpty());
 
 	const FViewInfo& View = ScreenPassView.View;
 	const FSceneViewFamily& ViewFamily = *(View.Family);
 	const FPostProcessSettings& PostProcessSettings = View.FinalPostProcessSettings;
 
-	const bool bOutputSupportsCompute = (Inputs.OutputTexture->Desc.TargetableFlags & TexCreate_UAV) == TexCreate_UAV;
-
-	const bool bComputePass = ScreenPassView.bUseComputePasses && bOutputSupportsCompute;
+	const bool bComputePass = ScreenPassView.bUseComputePasses;
 
 	const bool bEyeAdaptation = Inputs.EyeAdaptationTexture != nullptr;
 
 	const FScreenPassTextureViewport SceneColorViewport(Inputs.SceneColorViewRect, Inputs.SceneColorTexture);
 	const FScreenPassTextureViewport BloomViewport(Inputs.BloomViewRect, Inputs.BloomTexture);
-	const FScreenPassTextureViewport OutputViewport(Inputs.OutputViewRect, Inputs.OutputTexture);
+
+	FRDGTextureRef OutputTexture = nullptr;
+	FScreenPassTextureViewport OutputViewport = SceneColorViewport;
+
+	if (Inputs.OverrideOutputTexture)
+	{
+		OutputTexture = Inputs.OverrideOutputTexture;
+		OutputViewport = FScreenPassTextureViewport(Inputs.OverrideOutputViewRect, Inputs.OverrideOutputTexture);
+	}
+	else
+	{
+		FRDGTextureDesc OutputDesc = Inputs.SceneColorTexture->Desc;
+		OutputDesc.Reset();
+		OutputDesc.TargetableFlags |= bComputePass ? TexCreate_UAV : TexCreate_RenderTargetable;
+		// RGB is the color in LDR, A is the luminance for PostprocessAA
+		OutputDesc.Format = Inputs.bOutputInHDR ? GRHIHDRDisplayOutputFormat : PF_R8G8B8A8;
+		OutputDesc.ClearValue = FClearValueBinding(FLinearColor(0, 0, 0, 0));
+		OutputDesc.Flags |= GFastVRamConfig.Tonemap;
+
+		const FTonemapperOutputDeviceParameters OutputDeviceParameters = GetTonemapperOutputDeviceParameters(*View.Family);
+
+		const ETonemapperOutputDevice OutputDevice = static_cast<ETonemapperOutputDevice>(OutputDeviceParameters.OutputDevice);
+
+		if (OutputDevice == ETonemapperOutputDevice::LinearEXR)
+		{
+			OutputDesc.Format = PF_A32B32G32R32F;
+		}
+		if (OutputDevice == ETonemapperOutputDevice::LinearNoToneCurve)
+		{
+			OutputDesc.Format = PF_FloatRGBA;
+		}
+
+		OutputTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("Tonemap"));
+	}
 
 	FRHITexture* NoiseTexture = nullptr;
 
@@ -812,7 +808,7 @@ void AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& Screen
 	{
 		FTonemapCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FTonemapCS::FParameters>();
 		PassParameters->Tonemap = CommonParameters;
-		PassParameters->RWOutputTexture = GraphBuilder.CreateUAV(Inputs.OutputTexture);
+		PassParameters->RWOutputTexture = GraphBuilder.CreateUAV(OutputTexture);
 
 		FTonemapCS::FPermutationDomain PermutationVector;
 		PermutationVector.Set<TonemapperPermutation::FDesktopDomain>(DesktopPermutationVector);
@@ -822,16 +818,16 @@ void AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& Screen
 
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
-			RDG_EVENT_NAME("Tonemap %dx%d (CS GammaOnly=%d)", Inputs.OutputViewRect.Width(), Inputs.OutputViewRect.Height(), Inputs.bGammaOnly),
+			RDG_EVENT_NAME("Tonemap %dx%d (CS GammaOnly=%d)", OutputViewport.Rect.Width(), OutputViewport.Rect.Height(), Inputs.bGammaOnly),
 			*ComputeShader,
 			PassParameters,
-			FComputeShaderUtils::GetGroupCount(Inputs.OutputViewRect.Size(), FIntPoint(GTonemapComputeTileSizeX, GTonemapComputeTileSizeY)));
+			FComputeShaderUtils::GetGroupCount(OutputViewport.Rect.Size(), FIntPoint(GTonemapComputeTileSizeX, GTonemapComputeTileSizeY)));
 	}
 	else
 	{
 		FTonemapPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FTonemapPS::FParameters>();
 		PassParameters->Tonemap = CommonParameters;
-		PassParameters->RenderTargets[0] = FRenderTargetBinding(Inputs.OutputTexture, Inputs.OutputLoadAction);
+		PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, Inputs.OutputLoadAction);
 
 		FTonemapVS::FPermutationDomain VertexPermutationVector;
 		VertexPermutationVector.Set<TonemapperPermutation::FTonemapperSwitchAxis>(Inputs.bFlipYAxis);
@@ -848,7 +844,7 @@ void AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& Screen
 
 		AddDrawScreenPass(
 			GraphBuilder,
-			RDG_EVENT_NAME("Tonemap %dx%d (PS GammaOnly=%d)", Inputs.OutputViewRect.Width(), Inputs.OutputViewRect.Height(), Inputs.bGammaOnly),
+			RDG_EVENT_NAME("Tonemap %dx%d (PS GammaOnly=%d)", OutputViewport.Rect.Width(), OutputViewport.Rect.Height(), Inputs.bGammaOnly),
 			ScreenPassView,
 			OutputViewport,
 			SceneColorViewport,
@@ -860,7 +856,12 @@ void AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& Screen
 			SetShaderParameters(RHICmdList, *PixelShader, PixelShader->GetPixelShader(), *PassParameters);
 		});
 	}
+
+	return OutputTexture;
 }
+
+//////////////////////////////////////////////////////////////////////////
+//! DEPRECATED: This is only used by mobile until fully ported to RDG.
 
 FRCPassPostProcessTonemap::FRCPassPostProcessTonemap(bool bInDoGammaOnly, bool bInDoEyeAdaptation, bool bInHDROutput)
 	: bDoGammaOnly(bInDoGammaOnly)
@@ -871,6 +872,9 @@ FRCPassPostProcessTonemap::FRCPassPostProcessTonemap(bool bInDoGammaOnly, bool b
 
 void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 {
+	// This code path is only used for mobile.
+	check(IsMobilePlatform(Context.GetShaderPlatform()));
+
 	const FViewInfo& View = Context.View;
 
 	const FScreenPassViewInfo ScreenPassView(View);
@@ -944,11 +948,10 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 	Inputs.BloomViewRect = BloomViewRect;
 	Inputs.EyeAdaptationTexture = EyeAdaptationTexture;
 	Inputs.ColorGradingTexture = ColorGradingTexture;
-	Inputs.OutputTexture = OutputTexture;
-	Inputs.OutputViewRect = OutputViewRect;
+	Inputs.OverrideOutputTexture = OutputTexture;
+	Inputs.OverrideOutputViewRect = OutputViewRect;
 	Inputs.bWriteAlphaChannel = View.AntiAliasingMethod == AAM_FXAA || FPostProcessing::HasAlphaChannelSupport();
 
-	if (IsMobilePlatform(Context.GetShaderPlatform()))
 	{
 		// Clear target when processing first view in case of splitscreen
 		const bool bFirstView = (&View == View.Family->Views[0]);
@@ -962,15 +965,6 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 		{
 			Inputs.OutputLoadAction = ERenderTargetLoadAction::ELoad;
 		}
-	}
-	else if (View.AntiAliasingMethod == AAM_FXAA)
-	{
-		// needed to not have PostProcessAA leaking in content (e.g. Matinee black borders).
-		Inputs.OutputLoadAction = ERenderTargetLoadAction::EClear;
-	}
-	else
-	{
-		Inputs.OutputLoadAction = ScreenPassView.GetOverwriteLoadAction();
 	}
 
 	Inputs.bFlipYAxis = RHINeedsToSwitchVerticalAxis(GShaderPlatformForFeatureLevel[Context.GetFeatureLevel()]) && ShouldMobilePassFlipVerticalAxis(this);

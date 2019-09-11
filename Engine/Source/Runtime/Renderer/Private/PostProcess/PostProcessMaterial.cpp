@@ -541,10 +541,7 @@ FRDGTextureRef AddPostProcessMaterialChain(
 
 	if (!IsPostProcessMaterialsEnabledForView(View))
 	{
-		FIntRect Viewport;
-		FRDGTextureRef Texture;
-		Inputs.GetInput(EPostProcessMaterialInput::SceneColor, Texture, Viewport);
-		return Texture;
+		return nullptr;
 	}
 
 	const FSceneViewFamily& ViewFamily = *View.Family;
@@ -582,20 +579,25 @@ FRDGTextureRef AddPostProcessMaterialChain(
 		Nodes[NodeCount] = *Data;
 	}
 
+	if (!NodeCount)
+	{
+		return nullptr;
+	}
+
 	::Sort(Nodes, NodeCount, FPostProcessMaterialNode::FCompare());
 
 	const bool bBasePassCanOutputVelocity = FVelocityRendering::BasePassCanOutputVelocity(View.GetFeatureLevel());
 
 	FRDGTextureRef LastSceneColor = nullptr;
-	FIntRect SceneColorViewport;
-	Inputs.GetInput(EPostProcessMaterialInput::SceneColor, LastSceneColor, SceneColorViewport);
+	FIntRect SceneColorViewRect;
+	Inputs.GetInput(EPostProcessMaterialInput::SceneColor, LastSceneColor, SceneColorViewRect);
 
-	for (uint32 i = 0; i < NodeCount; ++i)
+	for (uint32 NodeIndex = 0; NodeIndex < NodeCount; ++NodeIndex)
 	{
-		const UMaterialInterface* MaterialInterface = Nodes[i].GetMaterialInterface();
+		const UMaterialInterface* MaterialInterface = Nodes[NodeIndex].GetMaterialInterface();
 
 		FPostProcessMaterialInputs LocalInputs = Inputs;
-		LocalInputs.SetInput(EPostProcessMaterialInput::SceneColor, LastSceneColor, SceneColorViewport);
+		LocalInputs.SetInput(EPostProcessMaterialInput::SceneColor, LastSceneColor, SceneColorViewRect);
 
 		// This input is only needed for visualization and frame dumping
 		if (!bVisualizingBuffer)
@@ -683,19 +685,22 @@ FRenderingCompositePass* AddPostProcessMaterialPass(
 	}));
 }
 
-FRenderingCompositeOutputRef AddPostProcessMaterialReplaceTonemapPass(
-	FPostprocessContext& Context,
-	FRenderingCompositeOutputRef SeparateTranslucency,
-	FRenderingCompositeOutputRef CombinedBloom)
+FRDGTextureRef AddPostProcessMaterialReplaceTonemapPass(
+	FRDGBuilder& GraphBuilder,
+	const FScreenPassViewInfo& ScreenPassView,
+	const FPostProcessMaterialInputs& Inputs)
 {
-	if (!Context.View.Family->EngineShowFlags.PostProcessing || !Context.View.Family->EngineShowFlags.PostProcessMaterial)
+	const FViewInfo& View = ScreenPassView.View;
+	const FSceneViewFamily& Family = *View.Family;
+
+	if (!IsPostProcessMaterialsEnabledForView(View))
 	{
-		return Context.FinalOutput;
+		return nullptr;
 	}
 
 	FBlendableEntry* Iterator = nullptr;
 	FPostProcessMaterialNode PPNode;
-	while (FPostProcessMaterialNode* Data = IteratePostProcessMaterialNodes(Context.View.FinalPostProcessSettings, BL_ReplacingTonemapper, Iterator))
+	while (FPostProcessMaterialNode* Data = IteratePostProcessMaterialNodes(View.FinalPostProcessSettings, BL_ReplacingTonemapper, Iterator))
 	{
 		check(Data->GetMaterialInterface());
 
@@ -715,15 +720,12 @@ FRenderingCompositeOutputRef AddPostProcessMaterialReplaceTonemapPass(
 
 	if (UMaterialInterface* MaterialInterface = PPNode.GetMaterialInterface())
 	{
-		FRenderingCompositePass* Pass = AddPostProcessMaterialPass(Context, MaterialInterface);
-		Pass->SetInput(EPassInputId(EPostProcessMaterialInput::SceneColor), Context.FinalOutput);
-		Pass->SetInput(EPassInputId(EPostProcessMaterialInput::SeparateTranslucency), SeparateTranslucency);
-		Pass->SetInput(EPassInputId(EPostProcessMaterialInput::CombinedBloom), CombinedBloom);
-
-		return FRenderingCompositeOutputRef(Pass);
+		return ComputePostProcessMaterial(GraphBuilder, ScreenPassView, MaterialInterface, Inputs);
 	}
-
-	return Context.FinalOutput;
+	else
+	{
+		return nullptr;
+	}
 }
 
 FRenderingCompositeOutputRef AddPostProcessMaterialChain(

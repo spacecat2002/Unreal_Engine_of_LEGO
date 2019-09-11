@@ -582,17 +582,6 @@ void FPostProcessing::AddGammaOnlyTonemapper(FPostprocessContext& Context)
 	Context.FinalOutput = FRenderingCompositeOutputRef(PostProcessTonemap);
 }
 
-static void AddPostProcessAA(FPostprocessContext& Context)
-{
-	const uint32 Quality = GetPostProcessAAQuality();
-
-	FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessAA(Quality));
-
-	Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-
-	Context.FinalOutput = FRenderingCompositeOutputRef(Node);
-}
-
 static bool AddPostProcessDepthOfFieldGaussian(FPostprocessContext& Context, FDepthOfFieldStats& Out, FRenderingCompositeOutputRef& VelocityInput, FRenderingCompositeOutputRef& SeparateTranslucencyRef)
 {
 	// GaussianDOFPass performs Gaussian setup, blur and recombine.
@@ -950,9 +939,8 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 		FRenderingCompositeOutputRef PostTonemapHDRColor;
 		FRenderingCompositeOutputRef PreFlattenVelocity;
 		FRenderingCompositeOutputRef SeparateTranslucency;
-		FRenderingCompositeOutputRef BloomOutputCombined;
-		FRenderingCompositeOutputRef EyeAdaptation;
 		FRenderingCompositeOutputRef Histogram;
+		FRenderingCompositeOutputRef FinalOutputFromRDG;
 
 		FRCPassPostProcessTonemap* Tonemapper = nullptr;
 
@@ -999,6 +987,8 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 			const bool bPreferCompute = ShouldDoComputePostProcessing(View);
 
+			const bool bPrimaryView = IStereoRendering::IsAPrimaryView(View.StereoPass, GEngine->StereoRenderingDevice);
+
 			const bool bHasViewState = View.ViewState != nullptr;
 
 			const bool bDepthOfFieldEnabled = DiaphragmDOF::IsEnabled(View);
@@ -1013,12 +1003,18 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			// Skip tonemapping for visualizers which overwrite the HDR scene color.
 			const bool bTonemapEnabled = !bVisualizeMotionBlur;
 
+			const bool bTonemapOutputInHDR =
+				View.Family->SceneCaptureSource == SCS_FinalColorHDR ||
+				GetHighResScreenshotConfig().bCaptureHDR ||
+				IsBufferVisualizationDumpFramesInHDREnabled() ||
+				bHDROutputEnabled;
+
 			// We don't test for the EyeAdaptation engine show flag here. If disabled, the auto exposure pass is still executes but performs a clamp.
 			const bool bEyeAdaptationEnabled =
 				// Skip for transient views.
 				bHasViewState &&
 				// Skip for secondary views in a stereo setup.
-				IStereoRendering::IsAPrimaryView(View.StereoPass, GEngine->StereoRenderingDevice);
+				bPrimaryView;
 
 			const bool bHistogramEnabled =
 				// Force the histogram on when we are visualizing HDR.
@@ -1037,7 +1033,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 			FRenderingCompositePass* RDGPass = Context.Graph.RegisterPass(
 				new(FMemStack::Get()) TRCPassForRDG<3, 4>(
-					[&View, &SceneContext, bMotionBlurEnabled, bVisualizeMotionBlur, bDepthOfFieldEnabled, bHistogramEnabled, bEyeAdaptationEnabled, bBloomEnabled, AutoExposureMethod, DownsampleQuality, DownsampleOverrideFormat]
+					[&View, &SceneContext, bMotionBlurEnabled, bVisualizeMotionBlur, bDepthOfFieldEnabled, bHistogramEnabled, bEyeAdaptationEnabled, bBloomEnabled, AutoExposureMethod, DownsampleQuality, DownsampleOverrideFormat, bTonemapEnabled, bTonemapOutputInHDR, bPrimaryView]
 			(FRenderingCompositePass* Pass, FRenderingCompositePassContext& InContext)
 			{
 				FRDGBuilder GraphBuilder(InContext.RHICmdList);
@@ -1076,7 +1072,10 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 					Inputs.SetInput(EPostProcessMaterialInput::Velocity, VelocityTexture, SceneColorViewRect);
 					Inputs.CustomDepthTexture = CustomDepthTexture;
 
-					SceneColorTexture = AddPostProcessMaterialChain(GraphBuilder, ScreenPassView, Inputs, BL_BeforeTranslucency);
+					if (FRDGTextureRef OutputTexture = AddPostProcessMaterialChain(GraphBuilder, ScreenPassView, Inputs, BL_BeforeTranslucency))
+					{
+						SceneColorTexture = OutputTexture;
+					}
 				}
 
 				// Diaphragm Depth of Field
@@ -1110,7 +1109,10 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 					Inputs.SetInput(EPostProcessMaterialInput::Velocity, VelocityTexture, SceneColorViewRect);
 					Inputs.CustomDepthTexture = CustomDepthTexture;
 
-					SceneColorTexture = AddPostProcessMaterialChain(GraphBuilder, ScreenPassView, Inputs, BL_BeforeTonemapping);
+					if (FRDGTextureRef OutputTexture = AddPostProcessMaterialChain(GraphBuilder, ScreenPassView, Inputs, BL_BeforeTonemapping))
+					{
+						SceneColorTexture = OutputTexture;
+					}
 				}
 
 				FRDGTextureRef HalfResolutionSceneColorTexture = nullptr;
@@ -1154,12 +1156,10 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 					Inputs.SetInput(EPostProcessMaterialInput::SceneColor, SceneColorTexture, SceneColorViewRect);
 					Inputs.CustomDepthTexture = CustomDepthTexture;
 
-					FRDGTextureRef SSRInputTexture = AddPostProcessMaterialChain(GraphBuilder, ScreenPassView, Inputs, BL_SSRInput);
-
 					// Save off SSR post process output for the next frame.
-					if (SSRInputTexture != SceneColorTexture)
+					if (FRDGTextureRef OutputTexture = AddPostProcessMaterialChain(GraphBuilder, ScreenPassView, Inputs, BL_SSRInput))
 					{
-						GraphBuilder.QueueTextureExtraction(SSRInputTexture, &View.ViewState->PrevFrameViewInfo.CustomSSRInput);
+						GraphBuilder.QueueTextureExtraction(OutputTexture, &View.ViewState->PrevFrameViewInfo.CustomSSRInput);
 					}
 				}
 
@@ -1320,13 +1320,88 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 					}
 				}
 
+				FRDGTextureRef SceneColorBeforeTonemapTexture = SceneColorTexture;
+
+				if (bTonemapEnabled)
+				{
+					FRDGTextureRef TonemapOutputTexture = nullptr;
+
+					FPostProcessMaterialInputs Inputs;
+					Inputs.SetInput(EPostProcessMaterialInput::SceneColor, SceneColorTexture, SceneColorViewRect);
+					Inputs.SetInput(EPostProcessMaterialInput::SeparateTranslucency, SeparateTranslucencyTexture, SceneColorViewRect);
+					Inputs.SetInput(EPostProcessMaterialInput::CombinedBloom, BloomTexture, BloomViewRect);
+					Inputs.CustomDepthTexture = CustomDepthTexture;
+
+					TonemapOutputTexture = AddPostProcessMaterialReplaceTonemapPass(GraphBuilder, ScreenPassView, Inputs);
+
+					// No-op from post process material pass; run built-in tonemapper instead.
+					if (!TonemapOutputTexture)
+					{
+						FRDGTextureRef ColorGradingTexture = nullptr;
+
+						if (bPrimaryView)
+						{
+							ColorGradingTexture = AddCombineLUTPass(GraphBuilder, ScreenPassView);
+						}
+						else
+						{
+							ColorGradingTexture = GraphBuilder.TryRegisterExternalTexture(View.GetTonemappingLUT());
+						}
+
+						FTonemapInputs PassInputs;
+						PassInputs.SceneColorTexture = SceneColorTexture;
+						PassInputs.SceneColorViewRect = SceneColorViewRect;
+						PassInputs.BloomTexture = BloomTexture;
+						PassInputs.BloomViewRect = BloomViewRect;
+						PassInputs.EyeAdaptationTexture = EyeAdaptationTexture;
+						PassInputs.ColorGradingTexture = ColorGradingTexture;
+						PassInputs.bWriteAlphaChannel = View.AntiAliasingMethod == AAM_FXAA || FPostProcessing::HasAlphaChannelSupport();
+						PassInputs.bOutputInHDR = bTonemapOutputInHDR;
+
+						if (View.AntiAliasingMethod == AAM_FXAA)
+						{
+							// Needed to not have PostProcessAA leaking in content (e.g. Matinee black borders).
+							PassInputs.OutputLoadAction = ERenderTargetLoadAction::EClear;
+						}
+						else
+						{
+							PassInputs.OutputLoadAction = ScreenPassView.GetOverwriteLoadAction();
+						}
+
+						TonemapOutputTexture = AddTonemapPass(GraphBuilder, ScreenPassView, PassInputs);
+					}
+
+					check(TonemapOutputTexture);
+					SceneColorTexture = TonemapOutputTexture;
+				}
+
+				FRDGTextureRef SceneColorAfterTonemapTexture = SceneColorTexture;
+
+				if (View.AntiAliasingMethod == AAM_FXAA)
+				{
+					SceneColorTexture = AddFXAAPass(
+						GraphBuilder,
+						ScreenPassView,
+						SceneColorTexture,
+						SceneColorViewRect,
+						GetFXAAQuality());
+				}
+
 				// Release held GBuffer reference taken during composition graph setup. Passes will take their own references during RDG setup.
 				SceneContext.AdjustGBufferRefCount(InContext.RHICmdList, -1);
 
+				// We only release the SceneColor after the last view was processed (SplitScreen)
+				if (View.IsLastInFamily() && !GIsEditor)
+				{
+					// The RT should be released as early as possible to allow sharing of that memory for other purposes.
+					// This becomes even more important with some limited VRam (XBoxOne).
+					FSceneRenderTargets::Get(InContext.RHICmdList).SetSceneColor(nullptr);
+				}
+
 				Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, SceneColorTexture);
-				Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output1, HistogramTexture);
-				Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output2, EyeAdaptationTexture);
-				Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output3, BloomTexture);
+				Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output1, SceneColorBeforeTonemapTexture);
+				Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output2, SceneColorAfterTonemapTexture);
+				Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output3, HistogramTexture);
 
 				GraphBuilder.Execute();
 
@@ -1338,47 +1413,12 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			RDGPass->SetInput(ePId_Input1, Context.SceneDepth);
 			RDGPass->SetInput(ePId_Input2, SeparateTranslucency);
 
-			Context.FinalOutput = FRenderingCompositeOutputRef(RDGPass, ePId_Output0);
-			Histogram = FRenderingCompositeOutputRef(RDGPass, ePId_Output1);
-			EyeAdaptation = FRenderingCompositeOutputRef(RDGPass, ePId_Output2);
-			BloomOutputCombined = FRenderingCompositeOutputRef(RDGPass, ePId_Output3);
+			FinalOutputFromRDG = FRenderingCompositeOutputRef(RDGPass, ePId_Output0);
+			PreTonemapHDRColor = FRenderingCompositeOutputRef(RDGPass, ePId_Output1);
+			PostTonemapHDRColor = FRenderingCompositeOutputRef(RDGPass, ePId_Output2);
+			Histogram = FRenderingCompositeOutputRef(RDGPass, ePId_Output3);
 
-			PreTonemapHDRColor = Context.FinalOutput;
-
-			if(bTonemapEnabled)
-			{
-				const bool bTonemapOutputInHDR = (View.Family->SceneCaptureSource == SCS_FinalColorHDR || GetHighResScreenshotConfig().bCaptureHDR || IsBufferVisualizationDumpFramesInHDREnabled() || bHDROutputEnabled);
-
-				{
-					FRenderingCompositeOutputRef FinalOutputPrev = Context.FinalOutput;
-
-					Context.FinalOutput = AddPostProcessMaterialReplaceTonemapPass(Context, SeparateTranslucency, BloomOutputCombined);
-
-					// No-op from post process material pass; run built-in tonemapper instead.
-					if (Context.FinalOutput == FinalOutputPrev)
-					{
-						Tonemapper = AddTonemapper(Context, BloomOutputCombined, EyeAdaptation, AutoExposureMethod, false, bTonemapOutputInHDR);
-					}
-				}
-
-				PostTonemapHDRColor = Context.FinalOutput;
-
-				// The composition graph will substitute the hardware backbuffer in place of the last render target, which
-				// we don't want to do when outputting HDR from the tonemapper. Instead, to be safe, we perform a copy
-				// which will truncate HDR values to LDR. If this isn't the last pass, we end up eating the copy and the
-				// result will still be in HDR.
-				if (bTonemapOutputInHDR && !bHDROutputEnabled)
-				{
-					FRenderingCompositePass* PassthroughNode = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessPassThrough(nullptr));
-					PassthroughNode->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-					Context.FinalOutput = FRenderingCompositeOutputRef(PassthroughNode);
-				}
-			}
-
-			if(AntiAliasingMethod == AAM_FXAA)
-			{
-				AddPostProcessAA(Context);
-			}
+			Context.FinalOutput = FinalOutputFromRDG;
 
 			if(bVisualizeDepthOfField)
 			{
@@ -1624,8 +1664,8 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			FSceneRenderTargets::Get(RHICmdList).AdjustGBufferRefCount(RHICmdList, -1);
 		}
 
-		// Add a pass-through for the final step if a backbuffer UAV is required but unsupported by this RHI
-		if (Context.FinalOutput.IsComputePass() && !View.Family->RenderTarget->GetRenderTargetUAV().IsValid())
+		// Disable render target overriding for RDG passes until we have a better solution.
+		if (Context.FinalOutput == FinalOutputFromRDG)
 		{
 			FRenderingCompositePass* PassthroughNode = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessPassThrough(nullptr));
 			PassthroughNode->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));

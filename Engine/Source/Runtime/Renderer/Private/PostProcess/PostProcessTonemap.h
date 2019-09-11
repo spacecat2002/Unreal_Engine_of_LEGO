@@ -61,6 +61,43 @@ END_SHADER_PARAMETER_STRUCT()
 
 FMobileFilmTonemapParameters GetMobileFilmTonemapParameters(const FPostProcessSettings& PostProcessSettings, bool bUseColorMatrix, bool bUseShadowTint, bool bUseContrast);
 
+struct FTonemapInputs
+{
+	FRDGTextureRef OverrideOutputTexture = nullptr;
+	FIntRect OverrideOutputViewRect;
+
+	// [Required] HDR scene color to tonemap.
+	FRDGTextureRef SceneColorTexture = nullptr;
+	FIntRect SceneColorViewRect;
+
+	// [Required] Filtered bloom texture to composite with tonemapped scene color. This should be transparent black for no bloom.
+	FRDGTextureRef BloomTexture = nullptr;
+	FIntRect BloomViewRect;
+
+	// [Required] Color grading texture used to remap colors.
+	FRDGTextureRef ColorGradingTexture = nullptr;
+
+	// [Optional] Eye adaptation texture used to compute exposure. If this is null, a default exposure value is used instead.
+	FRDGTextureRef EyeAdaptationTexture = nullptr;
+
+	// [Raster Only] Specifies the load action to use when rendering to the output texture.
+	ERenderTargetLoadAction OutputLoadAction = ERenderTargetLoadAction::ENoAction;
+
+	// [Raster Only, Mobile] Flips the image vertically on output.
+	bool bFlipYAxis = false;
+
+	// [Raster Only] Controls whether the alpha channel of the scene texture should be written to the output texture.
+	bool bWriteAlphaChannel = false;
+
+	// Configures the tonemapper to only perform gamma correction.
+	bool bGammaOnly = false;
+
+	// Whether to leave the final output in HDR.
+	bool bOutputInHDR = false;
+};
+
+FRDGTextureRef AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FTonemapInputs& Inputs);
+
 // derives from TRenderingCompositePassBase<InputCount, OutputCount>
 // ePId_Input0: SceneColor
 // ePId_Input1: BloomCombined (not needed for bDoGammaOnly)

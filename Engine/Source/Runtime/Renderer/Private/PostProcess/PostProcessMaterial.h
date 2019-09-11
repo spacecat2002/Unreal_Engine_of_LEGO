@@ -109,6 +109,11 @@ FRDGTextureRef ComputePostProcessMaterial(
 	const UMaterialInterface* MaterialInterface,
 	const FPostProcessMaterialInputs& Inputs);
 
+FRDGTextureRef AddPostProcessMaterialReplaceTonemapPass(
+	FRDGBuilder& GraphBuilder,
+	const FScreenPassViewInfo& ScreenPassView,
+	const FPostProcessMaterialInputs& Inputs);
+
 BEGIN_SHADER_PARAMETER_STRUCT(FPostProcessMaterialInput, )
 	SHADER_PARAMETER_STRUCT_INCLUDE(FScreenPassTextureViewportParameters, Viewport)
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, Texture)
@@ -133,11 +138,6 @@ FRenderingCompositePass* AddPostProcessMaterialPass(
 	const FPostprocessContext& Context,
 	const UMaterialInterface* MaterialInterface,
 	EPixelFormat OutputFormat = PF_Unknown);
-
-FRenderingCompositeOutputRef AddPostProcessMaterialReplaceTonemapPass(
-	FPostprocessContext& Context,
-	FRenderingCompositeOutputRef SeparateTranslucency,
-	FRenderingCompositeOutputRef CombinedBloom);
 
 FRenderingCompositeOutputRef AddPostProcessMaterialChain(
 	FPostprocessContext& Context,
