@@ -582,10 +582,10 @@ void FPostProcessing::AddGammaOnlyTonemapper(FPostprocessContext& Context)
 	Context.FinalOutput = FRenderingCompositeOutputRef(PostProcessTonemap);
 }
 
-static bool AddPostProcessDepthOfFieldGaussian(FPostprocessContext& Context, FDepthOfFieldStats& Out, FRenderingCompositeOutputRef& VelocityInput, FRenderingCompositeOutputRef& SeparateTranslucencyRef)
+static bool AddPostProcessDepthOfFieldGaussian(FPostprocessContext& Context, FRenderingCompositeOutputRef& VelocityInput, FRenderingCompositeOutputRef& SeparateTranslucencyRef)
 {
 	// GaussianDOFPass performs Gaussian setup, blur and recombine.
-	auto GaussianDOFPass = [&Context, &Out, &VelocityInput](FRenderingCompositeOutputRef& SeparateTranslucency, float FarSize, float NearSize)
+	auto GaussianDOFPass = [&Context, &VelocityInput](FRenderingCompositeOutputRef& SeparateTranslucency, float FarSize, float NearSize)
 	{
 		// GenerateGaussianDOFBlur produces a blurred image from setup or potentially from taa result.
 		auto GenerateGaussianDOFBlur = [&Context, &VelocityInput](FRenderingCompositeOutputRef& DOFSetup, bool bFarPass, float BlurSize)
@@ -642,23 +642,24 @@ static bool AddPostProcessDepthOfFieldGaussian(FPostprocessContext& Context, FDe
 	const float MaxSize = CVarDepthOfFieldMaxSize.GetValueOnRenderThread();
 	FarSize = FMath::Min(FarSize, MaxSize);
 	NearSize = FMath::Min(NearSize, MaxSize);
-	Out.bFar = FarSize >= 0.01f;
+	bool bFar = FarSize >= 0.01f;
+	bool bNear = false;
 
 	{
 		const float CVarThreshold = CVarDepthOfFieldNearBlurSizeThreshold.GetValueOnRenderThread();
-		Out.bNear = (NearSize >= CVarThreshold);
+		bNear = (NearSize >= CVarThreshold);
 	}
 
 	if (Context.View.Family->EngineShowFlags.VisualizeDOF)
 	{
 		// no need for this pass
-		Out.bFar = false;
-		Out.bNear = false;
+		bFar = false;
+		bNear = false;
 	}
 
-	if (Out.bFar || Out.bNear)
+	if (bFar || bNear)
 	{
-		GaussianDOFPass(SeparateTranslucencyRef, Out.bFar ? FarSize : 0, Out.bNear ? NearSize : 0);
+		GaussianDOFPass(SeparateTranslucencyRef, bFar ? FarSize : 0, bNear ? NearSize : 0);
 
 		const bool bMobileQuality = Context.View.FeatureLevel < ERHIFeatureLevel::SM5;
 		return SeparateTranslucencyRef.IsValid() && !bMobileQuality;
@@ -1033,7 +1034,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 			FRenderingCompositePass* RDGPass = Context.Graph.RegisterPass(
 				new(FMemStack::Get()) TRCPassForRDG<3, 4>(
-					[&View, &SceneContext, bMotionBlurEnabled, bVisualizeMotionBlur, bDepthOfFieldEnabled, bHistogramEnabled, bEyeAdaptationEnabled, bBloomEnabled, AutoExposureMethod, DownsampleQuality, DownsampleOverrideFormat, bTonemapEnabled, bTonemapOutputInHDR, bPrimaryView]
+					[&View, &SceneContext, bMotionBlurEnabled, bVisualizeMotionBlur, bDepthOfFieldEnabled, bHistogramEnabled, bEyeAdaptationEnabled, bBloomEnabled, AutoExposureMethod, DownsampleQuality, DownsampleOverrideFormat, bTonemapEnabled, bTonemapOutputInHDR, bPrimaryView, bVisualizeDepthOfField]
 			(FRenderingCompositePass* Pass, FRenderingCompositePassContext& InContext)
 			{
 				FRDGBuilder GraphBuilder(InContext.RHICmdList);
@@ -1387,6 +1388,17 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 						GetFXAAQuality());
 				}
 
+				if (bVisualizeDepthOfField)
+				{
+					// Only the primary view rect is supported. Temporal AA should be disabled when DOF visualization is on.
+					SceneColorTexture = AddVisualizeDOFPass(
+						GraphBuilder,
+						ScreenPassView,
+						SceneColorTexture,
+						SceneTextures.SceneDepthBuffer,
+						PrimaryViewRect);
+				}
+
 				// Release held GBuffer reference taken during composition graph setup. Passes will take their own references during RDG setup.
 				SceneContext.AdjustGBufferRefCount(InContext.RHICmdList, -1);
 
@@ -1419,16 +1431,6 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			Histogram = FRenderingCompositeOutputRef(RDGPass, ePId_Output3);
 
 			Context.FinalOutput = FinalOutputFromRDG;
-
-			if(bVisualizeDepthOfField)
-			{
-				FDepthOfFieldStats DepthOfFieldStat;
-
-				FRenderingCompositePass* VisualizeNode = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessVisualizeDOF(DepthOfFieldStat));
-				VisualizeNode->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-
-				Context.FinalOutput = FRenderingCompositeOutputRef(VisualizeNode);
-			}
 		}
 		else
 		{
@@ -1930,9 +1932,8 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 
 						if(bDepthOfField)
 						{
-							FDepthOfFieldStats DepthOfFieldStat;
 							FRenderingCompositeOutputRef DummySeparateTranslucency;
-							AddPostProcessDepthOfFieldGaussian(Context, DepthOfFieldStat, NoVelocityRef, DummySeparateTranslucency);
+							AddPostProcessDepthOfFieldGaussian(Context, NoVelocityRef, DummySeparateTranslucency);
 						}
 					}
 				}

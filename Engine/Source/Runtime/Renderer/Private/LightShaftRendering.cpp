@@ -751,7 +751,6 @@ bool DoesViewFamilyAllowLightShafts(const FSceneViewFamily& ViewFamily)
 		&& ViewFamily.EngineShowFlags.LightShafts
 		&& ViewFamily.EngineShowFlags.Lighting
 		&& !ViewFamily.UseDebugViewPS()
-		&& !(ViewFamily.EngineShowFlags.VisualizeAdaptiveDOF)
 		&& !(ViewFamily.EngineShowFlags.VisualizeDOF)
 		&& !(ViewFamily.EngineShowFlags.VisualizeBuffer)
 		&& !(ViewFamily.EngineShowFlags.VisualizeHDR)
