@@ -454,6 +454,7 @@ public:
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSubsurfaceParameters, Subsurface)
+		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Output)
 		SHADER_PARAMETER_STRUCT(FSubsurfaceInput, SubsurfaceInput0)
 		SHADER_PARAMETER_SAMPLER(SamplerState, SubsurfaceSampler0)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D, SetupTexture)
@@ -488,6 +489,7 @@ public:
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSubsurfaceParameters, Subsurface)
+		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Output)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D, SSSColorUAV)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D, HistoryUAV)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer<uint>, GroupBuffer)
@@ -845,14 +847,14 @@ void ComputeSubsurfaceForView(
 		// Pre-allocate black UAV together.
 		{
 			SubsurfaceSubpassOneTex = CreateBlackUAVTexture(GraphBuilder, SubsurfaceTextureWith6MipsDescriptor, TEXT("SubsurfaceSubpassOneTex"),
-				ScreenPassView, SceneViewport);
+				ScreenPassView, SubsurfaceViewport);
 			SubsurfaceSubpassTwoTex = CreateBlackUAVTexture(GraphBuilder, SubsurfaceTextureWith6MipsDescriptor, TEXT("SubsurfaceSubpassTwoTex"),
-				ScreenPassView, SceneViewport);
+				ScreenPassView, SubsurfaceViewport);
 			// Only clear when we are in full resolution.
 			if (!bForceRunningInSeparable)
 			{
 				NewQualityHistoryTexture = CreateBlackUAVTexture(GraphBuilder, SubsurfaceTextureDescriptor, TEXT("SubsurfaceQualityHistoryState"),
-					ScreenPassView, SceneViewport);
+					ScreenPassView, SubsurfaceViewport);
 			}
 		}
 
@@ -880,6 +882,7 @@ void ComputeSubsurfaceForView(
 			typedef FSubsurfaceIndirectDispatchSetupCS SHADER;
 			SHADER::FParameters* PassParameters = GraphBuilder.AllocParameters<SHADER::FParameters>();
 			PassParameters->Subsurface = SubsurfaceCommonParameters;
+			PassParameters->Output = SubsurfaceViewportParameters;
 			PassParameters->SubsurfaceInput0 = GetSubsurfaceInput(SceneTexture, SceneViewportParameters);
 			PassParameters->SubsurfaceSampler0 = PointClampSampler;
 			PassParameters->SetupTexture = GraphBuilder.CreateUAV(SetupTextureOutDesc);
@@ -974,6 +977,7 @@ void ComputeSubsurfaceForView(
 
 				SHADER::FParameters* PassParameters = GraphBuilder.AllocParameters<SHADER::FParameters>();
 				PassParameters->Subsurface = SubsurfaceCommonParameters;
+				PassParameters->Output = SubsurfaceViewportParameters;
 				PassParameters->SSSColorUAV = GraphBuilder.CreateUAV(SSSColorUAVDesc);
 				PassParameters->SubsurfaceInput0 = GetSubsurfaceInput(TextureInput, SubsurfaceViewportParameters);
 				PassParameters->SubsurfaceSampler0 = SubsurfaceSamplerState;
