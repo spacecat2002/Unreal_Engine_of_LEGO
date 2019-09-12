@@ -439,72 +439,73 @@ FPooledRenderTargetDesc FRCPassPostProcessLpvIndirect::ComputeOutputDesc(EPassOu
 	return Ret;
 }
 
-void FRCPassPostProcessVisualizeLPV::Process(FRenderingCompositePassContext& Context)
+void AddVisualizeLPVPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, FRDGTextureRef OutputTexture)
 {
-	SCOPED_DRAW_EVENT(Context.RHICmdList, VisualizeLPV);
+	FRenderTargetParameters* PassParameters = GraphBuilder.AllocParameters<FRenderTargetParameters>();
+	PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, ERenderTargetLoadAction::ELoad);
 
-	const FViewInfo& View = Context.View;
-	const FSceneViewFamily& ViewFamily = *(View.Family);
-	
-//	const FSceneRenderTargetItem& DestRenderTarget = PassOutputs[0].RequestSurface(Context);
-	const TRefCountPtr<IPooledRenderTarget> RenderTarget = GetInput(ePId_Input0)->GetOutput()->PooledRenderTarget;
-	const FSceneRenderTargetItem& DestRenderTarget = RenderTarget->GetRenderTargetItem();
-
-	// Set the view family's render target/viewport.
+	GraphBuilder.AddPass(
+		RDG_EVENT_NAME("VisualizeLPV"),
+		PassParameters,
+		ERDGPassFlags::Raster,
+		[OutputTexture, &View](FRHICommandListImmediate& RHICmdList)
 	{
-		FRenderTargetTemp TempRenderTarget(View, (const FTexture2DRHIRef&)DestRenderTarget.TargetableTexture);
-		FCanvas Canvas(&TempRenderTarget, NULL, ViewFamily.CurrentRealTime, ViewFamily.CurrentWorldTime, ViewFamily.DeltaWorldTime, View.GetFeatureLevel());
+		const FSceneViewFamily& ViewFamily = *View.Family;
+		FRenderTargetTemp TempRenderTarget(static_cast<FRHITexture2D*>(OutputTexture->GetRHI()), OutputTexture->Desc.Extent);
+		FCanvas Canvas(&TempRenderTarget, nullptr, ViewFamily.CurrentRealTime, ViewFamily.CurrentWorldTime, ViewFamily.DeltaWorldTime, View.GetFeatureLevel());
 
 		float X = 30;
 		float Y = 28;
 		const float YStep = 14;
 		const float ColumnWidth = 250;
 
-		Canvas.DrawShadowedString( X, Y += YStep, TEXT("VisualizeLightPropagationVolume"), GetStatsFont(), FLinearColor(0.2f, 0.2f, 1));
+		Canvas.DrawShadowedString(X, Y += YStep, TEXT("VisualizeLightPropagationVolume"), GetStatsFont(), FLinearColor(0.2f, 0.2f, 1));
 
 		Y += YStep;
 
 		const FLightPropagationVolumeSettings& Dest = View.FinalPostProcessSettings.BlendableManager.GetSingleFinalDataConst<FLightPropagationVolumeSettings>();
 
 #define ENTRY(name)\
-		Canvas.DrawShadowedString( X, Y += YStep, TEXT(#name) TEXT(":"), GetStatsFont(), FLinearColor(1, 1, 1));\
-		Canvas.DrawShadowedString( X + ColumnWidth, Y, *FString::Printf(TEXT("%g"), Dest.name), GetStatsFont(), FLinearColor(1, 1, 1));
+	Canvas.DrawShadowedString( X, Y += YStep, TEXT(#name) TEXT(":"), GetStatsFont(), FLinearColor(1, 1, 1));\
+	Canvas.DrawShadowedString( X + ColumnWidth, Y, *FString::Printf(TEXT("%g"), Dest.name), GetStatsFont(), FLinearColor(1, 1, 1));
 
 		ENTRY(LPVIntensity)
-		ENTRY(LPVVplInjectionBias)
-		ENTRY(LPVSize)
-		ENTRY(LPVSecondaryOcclusionIntensity)
-		ENTRY(LPVSecondaryBounceIntensity)
-		ENTRY(LPVGeometryVolumeBias)
-		ENTRY(LPVEmissiveInjectionIntensity)
-		ENTRY(LPVDirectionalOcclusionIntensity)
-		ENTRY(LPVDirectionalOcclusionRadius)
-		ENTRY(LPVDiffuseOcclusionExponent)
-		ENTRY(LPVSpecularOcclusionExponent)
-		ENTRY(LPVDiffuseOcclusionIntensity)
-		ENTRY(LPVSpecularOcclusionIntensity)
+			ENTRY(LPVVplInjectionBias)
+			ENTRY(LPVSize)
+			ENTRY(LPVSecondaryOcclusionIntensity)
+			ENTRY(LPVSecondaryBounceIntensity)
+			ENTRY(LPVGeometryVolumeBias)
+			ENTRY(LPVEmissiveInjectionIntensity)
+			ENTRY(LPVDirectionalOcclusionIntensity)
+			ENTRY(LPVDirectionalOcclusionRadius)
+			ENTRY(LPVDiffuseOcclusionExponent)
+			ENTRY(LPVSpecularOcclusionExponent)
+			ENTRY(LPVDiffuseOcclusionIntensity)
+			ENTRY(LPVSpecularOcclusionIntensity)
 #undef ENTRY
 
-		Canvas.Flush_RenderThread(Context.RHICmdList);
-	}
-	Context.RHICmdList.CopyToResolveTarget(DestRenderTarget.TargetableTexture, DestRenderTarget.ShaderResourceTexture, FResolveParams());
-	
-	// to satify following passws
-	FRenderingCompositeOutput* Output = GetOutput(ePId_Output0);
-	
-	Output->PooledRenderTarget = RenderTarget;
+		const bool bFlush = false;
+		const bool bInsideRenderPass = true;
+		Canvas.Flush_RenderThread(RHICmdList, bFlush, bInsideRenderPass);
+	});
 }
 
-FPooledRenderTargetDesc FRCPassPostProcessVisualizeLPV::ComputeOutputDesc(EPassOutputId InPassOutputId) const
+FRenderingCompositeOutputRef AddVisualizeLPVPass(FRenderingCompositionGraph& Graph, FRenderingCompositeOutputRef Input)
 {
-	FPooledRenderTargetDesc Ret = GetInput(ePId_Input0)->GetOutput()->RenderTargetDesc;
+	FRenderingCompositePass* Pass = Graph.RegisterPass(
+		new(FMemStack::Get()) TRCPassForRDG<1, 1>(
+			[](FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
+	{
+		FRDGBuilder GraphBuilder(InContext.RHICmdList);
 
-	Ret.Reset();
+		FRDGTextureRef OutputTexture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor"));
+		
+		AddVisualizeLPVPass(GraphBuilder, InContext.View, OutputTexture);
 
-	// we assume this pass is additively blended with the scene color so this data is not needed
-//	FPooledRenderTargetDesc Ret;
+		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, OutputTexture);
 
-	Ret.DebugName = TEXT("VisualizeLPV");
-
-	return Ret;
+		GraphBuilder.Execute();
+	}));
+	Pass->SetInput(ePId_Input0, Input);
+	return Pass;
 }

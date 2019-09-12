@@ -85,18 +85,24 @@ void FDeferredShadingSceneRenderer::DoDebugViewModePostProcessing(FRHICommandLis
 		case DVSM_QuadComplexity:
 		{
 			float ComplexityScale = 1.f / (float)(GEngine->QuadComplexityColors.Num() - 1) / NormalizedQuadComplexityValue; // .1f comes from the values used in LightAccumulator_GetResult
-			FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessVisualizeComplexity(GEngine->QuadComplexityColors, FVisualizeComplexityApplyPS::CS_STAIR, ComplexityScale, true));
-			Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
+			Context.FinalOutput = AddVisualizeComplexityPass(
+				Context.Graph,
+				Context.FinalOutput,
+				GEngine->QuadComplexityColors,
+				FVisualizeComplexityInputs::EColorSamplingMethod::Stair,
+				ComplexityScale, true);
 			break;
 		}
 		case DVSM_ShaderComplexity:
 		case DVSM_ShaderComplexityContainedQuadOverhead:
 		case DVSM_ShaderComplexityBleedingQuadOverhead:
 		{
-			FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessVisualizeComplexity(GEngine->ShaderComplexityColors, FVisualizeComplexityApplyPS::CS_RAMP, 1.f, true));
-			Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
+			Context.FinalOutput = AddVisualizeComplexityPass(
+				Context.Graph,
+				Context.FinalOutput,
+				GEngine->ShaderComplexityColors,
+				FVisualizeComplexityInputs::EColorSamplingMethod::Ramp,
+				1.0f, true);
 			break;
 		}
 		case DVSM_PrimitiveDistanceAccuracy:

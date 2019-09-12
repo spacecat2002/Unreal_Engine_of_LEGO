@@ -973,6 +973,8 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			FRDGTextureRef BlackTexture = GraphBuilder.RegisterExternalTexture(GSystemTextures.BlackDummy, TEXT("BlackDummy"));
 			const FIntRect BlackViewRect(FIntPoint::ZeroValue, FIntPoint(1, 1));
 
+			FRDGTextureRef UnprocessedSceneColorTexture = SceneColorTexture;
+
 			FSceneTextureParameters SceneTextures;
 			SetupSceneTextureParameters(GraphBuilder, &SceneTextures);
 
@@ -1400,6 +1402,38 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				}
 			}
 
+			if (View.Family->EngineShowFlags.StationaryLightOverlap)
+			{
+				ensureMsgf(View.PrimaryScreenPercentageMethod != EPrimaryScreenPercentageMethod::TemporalUpscale, TEXT("TAAU should be disabled when visualizing stationary light overlap."));
+
+				FVisualizeComplexityInputs PassInputs;
+				PassInputs.SceneColorTexture = UnprocessedSceneColorTexture;
+				PassInputs.SceneColorViewRect = SceneColorViewRect;
+				PassInputs.Colors = GEngine->StationaryLightOverlapColors;
+				PassInputs.ColorSamplingMethod = FVisualizeComplexityInputs::EColorSamplingMethod::Ramp;
+
+				SceneColorTexture = AddVisualizeComplexityPass(GraphBuilder, ScreenPassView, PassInputs);
+			}
+
+			if (View.Family->EngineShowFlags.VisualizeLightCulling)
+			{
+				ensureMsgf(View.PrimaryScreenPercentageMethod != EPrimaryScreenPercentageMethod::TemporalUpscale, TEXT("TAAU should be disabled when visualizing shader complexity."));
+
+				const float ComplexityScale = 1.f / (float)(GEngine->LightComplexityColors.Num() - 1) / .1f; // .1f comes from the values used in LightAccumulator_GetResult
+
+				FVisualizeComplexityInputs PassInputs;
+				PassInputs.SceneColorTexture = UnprocessedSceneColorTexture;
+				PassInputs.SceneColorViewRect = SceneColorViewRect;
+				PassInputs.Colors = GEngine->LightComplexityColors;
+				PassInputs.ColorSamplingMethod = FVisualizeComplexityInputs::EColorSamplingMethod::Linear;
+				PassInputs.ComplexityScale = ComplexityScale;
+			}
+
+			if (View.Family->EngineShowFlags.VisualizeLPV)
+			{
+				AddVisualizeLPVPass(GraphBuilder, ScreenPassView.View, SceneColorTexture);
+			}
+
 			// Release held GBuffer reference taken during composition graph setup. Passes will take their own references during RDG setup.
 			SceneContext.AdjustGBufferRefCount(InContext.RHICmdList, -1);
 
@@ -1433,35 +1467,6 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 		// Whether Context.FinalOutput is already unscaled.
 		// If doing temporal upsampling, the final output is already unscaled in TAA pass.
 		bool bUnscaledFinalOutput = Context.View.PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::TemporalUpscale;
-
-		if(View.Family->EngineShowFlags.StationaryLightOverlap)
-		{
-			ensureMsgf(!bUnscaledFinalOutput, TEXT("Should not unscale final output multiple times."));
-
-			FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessVisualizeComplexity(GEngine->StationaryLightOverlapColors, FVisualizeComplexityApplyPS::CS_RAMP, 1.f, false));
-			Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.SceneColor));
-			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
-		}
-
-		if(View.Family->EngineShowFlags.VisualizeLightCulling) 
-		{
-			ensureMsgf(!bUnscaledFinalOutput, TEXT("Should not unscale final output multiple times."));
-
-			float ComplexityScale = 1.f / (float)(GEngine->LightComplexityColors.Num() - 1) / .1f; // .1f comes from the values used in LightAccumulator_GetResult
-			FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessVisualizeComplexity(GEngine->LightComplexityColors, FVisualizeComplexityApplyPS::CS_LINEAR,  ComplexityScale, false));
-			Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.SceneColor));
-			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
-		}
-
-		if(View.Family->EngineShowFlags.VisualizeLPV)
-		{
-			ensureMsgf(!bUnscaledFinalOutput, TEXT("Should not unscale final output multiple times."));
-			bUnscaledFinalOutput = true;
-
-			FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessVisualizeLPV());
-			Node->SetInput(ePId_Input0, Context.FinalOutput);
-			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
-		}
 
 #if WITH_EDITOR
 		// Show the selection outline if it is in the editor and we aren't in wireframe 
@@ -2168,16 +2173,22 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 
 		if(DebugViewShaderMode == DVSM_QuadComplexity)
 		{
-			FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessVisualizeComplexity(GEngine->QuadComplexityColors, FVisualizeComplexityApplyPS::CS_STAIR,  1.f, bES2Legend));
-			Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
+			Context.FinalOutput = AddVisualizeComplexityPass(
+				Context.Graph,
+				Context.FinalOutput,
+				GEngine->QuadComplexityColors,
+				FVisualizeComplexityInputs::EColorSamplingMethod::Stair,
+				1.0f, bES2Legend);
 		}
 
 		if(DebugViewShaderMode == DVSM_ShaderComplexity || DebugViewShaderMode == DVSM_ShaderComplexityContainedQuadOverhead || DebugViewShaderMode == DVSM_ShaderComplexityBleedingQuadOverhead)
 		{
-			FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessVisualizeComplexity(GEngine->ShaderComplexityColors, FVisualizeComplexityApplyPS::CS_RAMP,  1.f, bES2Legend));
-			Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
+			Context.FinalOutput = AddVisualizeComplexityPass(
+				Context.Graph,
+				Context.FinalOutput,
+				GEngine->ShaderComplexityColors,
+				FVisualizeComplexityInputs::EColorSamplingMethod::Ramp,
+				1.0f, bES2Legend);
 		}
 
 		RegisterHMDPostprocessPass(Context, View.Family->EngineShowFlags);
