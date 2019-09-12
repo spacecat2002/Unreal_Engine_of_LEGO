@@ -638,9 +638,12 @@ FRDGTextureRef AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewIn
 {
 	check(Inputs.SceneColorTexture);
 	check(!Inputs.SceneColorViewRect.IsEmpty());
-	check(Inputs.BloomTexture);
-	check(!Inputs.BloomViewRect.IsEmpty());
-	check(Inputs.ColorGradingTexture || Inputs.bGammaOnly);
+	if (!Inputs.bGammaOnly)
+	{
+		check(Inputs.BloomTexture);
+		check(!Inputs.BloomViewRect.IsEmpty());
+		check(Inputs.ColorGradingTexture);
+	}
 
 	const FViewInfo& View = ScreenPassView.View;
 	const FSceneViewFamily& ViewFamily = *(View.Family);
@@ -651,7 +654,6 @@ FRDGTextureRef AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewIn
 	const bool bEyeAdaptation = Inputs.EyeAdaptationTexture != nullptr;
 
 	const FScreenPassTextureViewport SceneColorViewport(Inputs.SceneColorViewRect, Inputs.SceneColorTexture);
-	const FScreenPassTextureViewport BloomViewport(Inputs.BloomViewRect, Inputs.BloomTexture);
 
 	FRDGTextureRef OutputTexture = nullptr;
 	FScreenPassTextureViewport OutputViewport = SceneColorViewport;
@@ -757,7 +759,11 @@ FRDGTextureRef AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewIn
 	CommonParameters.FilmGrain = GetFilmGrainParameters(View);
 	CommonParameters.OutputDevice = GetTonemapperOutputDeviceParameters(ViewFamily);
 	CommonParameters.Color = GetScreenPassTextureViewportParameters(SceneColorViewport);
-	CommonParameters.Bloom = GetScreenPassTextureViewportParameters(BloomViewport);
+	if (Inputs.BloomTexture)
+	{
+		const FScreenPassTextureViewport BloomViewport(Inputs.BloomViewRect, Inputs.BloomTexture);
+		CommonParameters.Bloom = GetScreenPassTextureViewportParameters(BloomViewport);
+	}
 	CommonParameters.Output = GetScreenPassTextureViewportParameters(OutputViewport);
 	CommonParameters.ColorTexture = Inputs.SceneColorTexture;
 	CommonParameters.BloomTexture = Inputs.BloomTexture;
