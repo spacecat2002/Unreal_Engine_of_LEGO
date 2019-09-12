@@ -619,7 +619,7 @@ TRefCountPtr<IPooledRenderTarget>& FSceneViewState::FEyeAdaptationRTManager::Get
 	if (!PooledRenderTarget[BufferNumber].IsValid() && RHICmdList)
 	{
 		// Create the texture needed for EyeAdaptation
-		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(FIntPoint(1, 1), PF_A32B32G32R32F, FClearValueBinding::None, TexCreate_None, TexCreate_RenderTargetable, false));
+		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(FIntPoint(1, 1), PF_A32B32G32R32F, FClearValueBinding::None, TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource, false));
 		if (GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5)
 		{
 			Desc.TargetableFlags |= TexCreate_UAV;

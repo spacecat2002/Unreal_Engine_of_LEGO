@@ -1966,11 +1966,13 @@ FRDGTextureRef DiaphragmDOF::AddPasses(
 			TEXT("DOFGatherBokehLUT"),
 		};
 
-		FRDGTextureDesc BokehLUTDesc;
-		BokehLUTDesc.NumMips = 1;
-		BokehLUTDesc.Format = LUTFormat == EDiaphragmDOFBokehLUTFormat::GatherSamplePos ? PF_G16R16F : PF_R16F;
-		BokehLUTDesc.Extent = FIntPoint(32, 32);
-		BokehLUTDesc.TargetableFlags |= TexCreate_UAV;
+		FRDGTextureDesc BokehLUTDesc = FRDGTextureDesc::Create2DDesc(
+			FIntPoint(32, 32),
+			LUTFormat == EDiaphragmDOFBokehLUTFormat::GatherSamplePos ? PF_G16R16F : PF_R16F,
+			FClearValueBinding::None,
+			/* InFlags = */ TexCreate_None,
+			/* InTargetableFlags = */ TexCreate_ShaderResource | TexCreate_UAV,
+			/* bInForceSeparateTargetAndShaderResource = */ false);
 
 		FRDGTextureRef BokehLUT = GraphBuilder.CreateTexture(BokehLUTDesc, DebugNames[int32(LUTFormat)]);
 

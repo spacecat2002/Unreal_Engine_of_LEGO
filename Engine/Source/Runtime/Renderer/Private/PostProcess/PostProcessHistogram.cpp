@@ -127,7 +127,7 @@ FRDGTextureRef AddHistogramPass(
 			PF_FloatRGBA,
 			FClearValueBinding::None,
 			GFastVRamConfig.Histogram,
-			TexCreate_RenderTargetable | TexCreate_UAV,
+			TexCreate_RenderTargetable | TexCreate_UAV | TexCreate_ShaderResource,
 			false);
 
 		HistogramTexture = GraphBuilder.CreateTexture(TextureDesc, TEXT("Histogram"));
@@ -161,7 +161,7 @@ FRDGTextureRef AddHistogramPass(
 			FHistogramReducePS::OutputFormat,
 			FClearValueBinding::None,
 			GFastVRamConfig.HistogramReduce,
-			TexCreate_RenderTargetable,
+			TexCreate_RenderTargetable | TexCreate_ShaderResource,
 			false);
 
 		HistogramReduceTexture = GraphBuilder.CreateTexture(TextureDesc, TEXT("HistogramReduce"));
