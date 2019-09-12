@@ -6,7 +6,6 @@
 
 #if RHI_RAYTRACING
 
-DECLARE_GPU_STAT_NAMED(RayTracingDynamicGeom, TEXT("Ray Tracing Dynamic Geometry Update"));
 
 static bool IsSupportedDynamicVertexFactoryType(const FVertexFactoryType* VertexFactoryType)
 {
@@ -196,15 +195,40 @@ void FRayTracingDynamicGeometryCollection::AddDynamicMeshBatchForGeometryUpdate(
 	}
 }
 
-void FRayTracingDynamicGeometryCollection::DispatchUpdates(FRHICommandListImmediate& RHICmdList)
+
+template<typename C>
+struct TAutoCmdListType
 {
+	using Type = C;
+};
+
+template<>
+struct TAutoCmdListType<FRHIAsyncComputeCommandListImmediate>
+{
+	using Type = FRHIAsyncComputeCommandList;
+};
+
+template<>
+struct TAutoCmdListType<FRHICommandListImmediate>
+{
+	using Type = FRHICommandList;
+};
+
+
+
+template<typename CmdListType>
+void FRayTracingDynamicGeometryCollection::DispatchUpdates(CmdListType& RHICmdList)
+{
+	using BaseCmdListType = typename TAutoCmdListType<CmdListType>::Type;
+	
+#define SCOPED_DRAW_OR_COMPUTE_EVENT(RHICmdList, Name) TDrawEvent<BaseCmdListType> PREPROCESSOR_JOIN(Event_##Name,__LINE__); if(GetEmitDrawEvents()) PREPROCESSOR_JOIN(Event_##Name,__LINE__).Start(RHICmdList, FColor(0), TEXT(#Name));
+	
 	if (DispatchCommands->Num() > 0)
 	{
-		SCOPED_DRAW_EVENT(RHICmdList, RayTracingDynamicGeometryUpdate);
-		SCOPED_GPU_STAT(RHICmdList, RayTracingDynamicGeom);
+		SCOPED_DRAW_OR_COMPUTE_EVENT(RHICmdList, RayTracingDynamicGeometryUpdate)
 
 		{
-			SCOPED_DRAW_EVENT(RHICmdList, VSinCSComputeDispatch);
+			SCOPED_DRAW_OR_COMPUTE_EVENT(RHICmdList, VSinCSComputeDispatch)
 			for (auto& Cmd : *DispatchCommands)
 			{
 				{
@@ -226,18 +250,22 @@ void FRayTracingDynamicGeometryCollection::DispatchUpdates(FRHICommandListImmedi
 		}
 
 		{
-			SCOPED_DRAW_EVENT(RHICmdList, Build);
+			SCOPED_DRAW_OR_COMPUTE_EVENT(RHICmdList, Build)
 			RHICmdList.BuildAccelerationStructures(BuildParams);
 		}
 
 		{
-			SCOPED_DRAW_EVENT(RHICmdList, Refit);
+			SCOPED_DRAW_OR_COMPUTE_EVENT(RHICmdList, Refit)
 			RHICmdList.UpdateAccelerationStructures(RefitParams);
 		}
 
 		Clear();
 	}
 }
+
+template void FRayTracingDynamicGeometryCollection::DispatchUpdates<FRHICommandListImmediate>(FRHICommandListImmediate& RHICmdList);
+
+template void FRayTracingDynamicGeometryCollection::DispatchUpdates<FRHIAsyncComputeCommandListImmediate>(FRHIAsyncComputeCommandListImmediate& RHICmdList);
 
 void FRayTracingDynamicGeometryCollection::Clear()
 {

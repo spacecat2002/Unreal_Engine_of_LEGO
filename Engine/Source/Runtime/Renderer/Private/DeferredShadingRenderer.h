@@ -576,6 +576,8 @@ private:
 
 	void ComputeRayCount(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FRHITexture* RayCountPerPixelTexture);
 
+	void WaitForRayTracingScene(FRHICommandListImmediate& RHICmdList);
+
 	/** Debug ray tracing functions. */
 	void RenderRayTracingDebug(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 	void RenderRayTracingBarycentrics(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
@@ -595,6 +597,9 @@ private:
 	static void PrepareRayTracingTranslucency(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
 	static void PrepareRayTracingDebug(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
 	static void PreparePathTracing(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
+
+	FComputeFenceRHIRef RayTracingDynamicGeometryUpdateBeginFence; // Signalled when ray tracing AS can start building
+	FComputeFenceRHIRef RayTracingDynamicGeometryUpdateEndFence; // Signalled when all AS for this frame are built
 
 #endif // RHI_RAYTRACING
 

@@ -132,6 +132,13 @@ static FAutoConsoleVariableRef CRayTracingExcludeDecals(
 	TEXT(" 1: Decals excluded from the ray tracing BVH"),
 	ECVF_RenderThreadSafe);
 
+static TAutoConsoleVariable<int32> CVarRayTracingAsyncBuild(
+	TEXT("r.RayTracing.AsyncBuild"),
+	0,
+	TEXT("Whether to build ray tracing acceleration structures on async compute queue.\n"),
+	ECVF_RenderThreadSafe
+);
+
 #if !UE_BUILD_SHIPPING
 static TAutoConsoleVariable<int32> CVarForceBlackVelocityBuffer(
 	TEXT("r.Test.ForceBlackVelocityBuffer"), 0,
@@ -166,7 +173,9 @@ DECLARE_CYCLE_STAT(TEXT("DeferredShadingSceneRenderer RenderLightShaftBloom"), S
 DECLARE_CYCLE_STAT(TEXT("DeferredShadingSceneRenderer RenderFinish"), STAT_FDeferredShadingSceneRenderer_RenderFinish, STATGROUP_SceneRendering);
 DECLARE_CYCLE_STAT(TEXT("DeferredShadingSceneRenderer ViewExtensionPostRenderBasePass"), STAT_FDeferredShadingSceneRenderer_ViewExtensionPostRenderBasePass, STATGROUP_SceneRendering);
 
-DECLARE_GPU_STAT_NAMED(RayTracingTLAS, TEXT("Ray Tracing Top Level Acceleration Structure"));
+DECLARE_GPU_STAT_NAMED(RayTracingAS, TEXT("Ray Tracing Acceleration Structure Update/Refit"));
+DECLARE_GPU_STAT_NAMED(RayTracingDynamicGeom, TEXT("Ray Tracing Dynamic Geometry Update"));
+
 DECLARE_GPU_STAT(Postprocessing);
 DECLARE_GPU_STAT(VisibilityCommands);
 DECLARE_GPU_STAT(RenderDeferredLighting);
@@ -793,20 +802,75 @@ bool FDeferredShadingSceneRenderer::DispatchRayTracingWorldUpdates(FRHICommandLi
 		return false;
 	}
 
-	SCOPED_GPU_STAT(RHICmdList, RayTracingTLAS);
+	bool bAsyncUpdateGeometry = CVarRayTracingAsyncBuild.GetValueOnRenderThread();
 
-	Scene->GetRayTracingDynamicGeometryCollection()->DispatchUpdates(RHICmdList);
+	TArrayView<FAccelerationStructureUpdateParams> BuildParams, RefitParams;
+
+
+	if (!bAsyncUpdateGeometry)
+	{
+		SCOPED_GPU_STAT(RHICmdList, RayTracingAS);
+		SCOPED_GPU_STAT(RHICmdList, RayTracingDynamicGeom);
+
+		Scene->GetRayTracingDynamicGeometryCollection()->DispatchUpdates(RHICmdList);
+
+		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
+		{
+			FViewInfo& View = Views[ViewIndex];
+			SET_DWORD_STAT(STAT_RayTracingInstances, View.RayTracingGeometryInstances.Num());
+			FRayTracingSceneInitializer Initializer;
+			Initializer.Instances = View.RayTracingGeometryInstances;
+			Initializer.ShaderSlotsPerGeometrySegment = RAY_TRACING_NUM_SHADER_SLOTS;
+			View.RayTracingScene.RayTracingSceneRHI = RHICreateRayTracingScene(Initializer);
+			RHICmdList.BuildAccelerationStructure(View.RayTracingScene.RayTracingSceneRHI);
+		}
+	}
+	else
+	{
+		FRHIAsyncComputeCommandListImmediate& RHIAsyncCmdList = FRHICommandListExecutor::GetImmediateAsyncComputeCommandList();
+		RayTracingDynamicGeometryUpdateBeginFence = RHICmdList.CreateComputeFence(FName(TEXT("RayTracingDynamicGeometryUpdateBeginFence")));
+		RayTracingDynamicGeometryUpdateEndFence = RHICmdList.CreateComputeFence(FName(TEXT("RayTracingDynamicGeometryUpdateEndFence")));
+
+		// TArray<FRHIUnorderedAccessView*> VertexBuffers;
+		// Scene->GetRayTracingDynamicGeometryCollection()->GetVertexBufferUAVs(VertexBuffers);
+
+		RHICmdList.TransitionResource(EResourceTransitionAccess::ERWNoBarrier, EResourceTransitionPipeline::EGfxToCompute, nullptr, RayTracingDynamicGeometryUpdateBeginFence);
+
+		RHIAsyncCmdList.WaitComputeFence(RayTracingDynamicGeometryUpdateBeginFence);
+		Scene->GetRayTracingDynamicGeometryCollection()->DispatchUpdates(RHIAsyncCmdList);
+
+
+		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
+		{
+			FViewInfo& View = Views[ViewIndex];
+			SET_DWORD_STAT(STAT_RayTracingInstances, View.RayTracingGeometryInstances.Num());
+			FRayTracingSceneInitializer Initializer;
+			Initializer.Instances = View.RayTracingGeometryInstances;
+			Initializer.ShaderSlotsPerGeometrySegment = RAY_TRACING_NUM_SHADER_SLOTS;
+			View.RayTracingScene.RayTracingSceneRHI = RHICreateRayTracingScene(Initializer);
+			RHIAsyncCmdList.BuildAccelerationStructure(View.RayTracingScene.RayTracingSceneRHI);
+		}
+
+		RHIAsyncCmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToGfx, nullptr, RayTracingDynamicGeometryUpdateEndFence);
+		FRHIAsyncComputeCommandListImmediate::ImmediateDispatch(RHIAsyncCmdList);
+	}
+
+	return true;
+}
+
+
+void FDeferredShadingSceneRenderer::WaitForRayTracingScene(FRHICommandListImmediate& RHICmdList)
+{
+	if (RayTracingDynamicGeometryUpdateEndFence)
+	{
+		RHICmdList.WaitComputeFence(RayTracingDynamicGeometryUpdateEndFence);
+		RayTracingDynamicGeometryUpdateBeginFence = nullptr;
+		RayTracingDynamicGeometryUpdateEndFence = nullptr;
+	}
 
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
 	{
 		FViewInfo& View = Views[ViewIndex];
-		SET_DWORD_STAT(STAT_RayTracingInstances, View.RayTracingGeometryInstances.Num());
-		FRayTracingSceneInitializer Initializer;
-		Initializer.Instances = View.RayTracingGeometryInstances;
-		Initializer.ShaderSlotsPerGeometrySegment = RAY_TRACING_NUM_SHADER_SLOTS;
-		View.RayTracingScene.RayTracingSceneRHI = RHICreateRayTracingScene(Initializer);
-		RHICmdList.BuildAccelerationStructure(View.RayTracingScene.RayTracingSceneRHI);
-
 		// #dxr_todo: UE-72565: refactor ray tracing effects to not be member functions of DeferredShadingRenderer. register each effect at startup and just loop over them automatically to gather all required shaders
 		TArray<FRHIRayTracingShader*> RayGenShaders;
 		PrepareRayTracingReflections(View, RayGenShaders);
@@ -829,9 +893,8 @@ bool FDeferredShadingSceneRenderer::DispatchRayTracingWorldUpdates(FRHICommandLi
 			);
 		}
 	}
-
-	return true;
 }
+
 
 #endif // RHI_RAYTRACING
 
@@ -1599,6 +1662,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 #endif
 	checkSlow(RHICmdList.IsOutsideRenderPass());
 #if RHI_RAYTRACING
+	WaitForRayTracingScene(RHICmdList);
 	TRefCountPtr<IPooledRenderTarget> SkyLightRT;
 	TRefCountPtr<IPooledRenderTarget> SkyLightHitDistanceRT;
 
