@@ -426,3 +426,20 @@ void FShaderParametersMetadata::FindMemberFromOffset(uint16 MemberOffset, const 
 
 	checkf(0, TEXT("Looks like this offset is invalid."));
 }
+
+FString FShaderParametersMetadata::GetFullMemberCodeName(uint16 MemberOffset) const
+{
+	const FShaderParametersMetadata* MemberContainingStruct = nullptr;
+	const FShaderParametersMetadata::FMember* Member = nullptr;
+	int32 ArrayElementId = 0;
+	FString NamePrefix;
+	FindMemberFromOffset(MemberOffset, &MemberContainingStruct, &Member, &ArrayElementId, &NamePrefix);
+
+	FString MemberName = FString::Printf(TEXT("%s%s"), *NamePrefix, Member->GetName());
+	if (Member->GetNumElements() > 0)
+	{
+		MemberName = FString::Printf(TEXT("%s%s[%d]"), *NamePrefix, Member->GetName(), ArrayElementId);
+	}
+
+	return MemberName;
+}

@@ -168,6 +168,9 @@ public:
 		const FShaderParametersMetadata::FMember** OutMember,
 		int32* ArrayElementId, FString* NamePrefix) const;
 
+	/** Returns the full C++ member name from it's byte offset in the structure. */
+	FString GetFullMemberCodeName(uint16 MemberOffset) const;
+
 	static TLinkedList<FShaderParametersMetadata*>*& GetStructList();
 	/** Speed up finding the uniform buffer by its name */
 	static TMap<FName, FShaderParametersMetadata*>& GetNameStructMap();

@@ -407,17 +407,7 @@ bool FDepthStencilBinding::Validate() const
 
 void EmitNullShaderParameterFatalError(const FShader* Shader, const FShaderParametersMetadata* ParametersMetadata, uint16 MemberOffset)
 {
-	const FShaderParametersMetadata* MemberContainingStruct = nullptr;
-	const FShaderParametersMetadata::FMember* Member = nullptr;
-	int32 ArrayElementId = 0;
-	FString NamePrefix;
-	ParametersMetadata->FindMemberFromOffset(MemberOffset, &MemberContainingStruct, &Member, &ArrayElementId, &NamePrefix);
-	
-	FString MemberName = FString::Printf(TEXT("%s%s"), *NamePrefix, Member->GetName());
-	if (Member->GetNumElements() > 0)
-	{
-		MemberName = FString::Printf(TEXT("%s%s[%d]"), *NamePrefix, Member->GetName(), ArrayElementId); 
-	}
+	FString MemberName = ParametersMetadata->GetFullMemberCodeName(MemberOffset);
 
 	const TCHAR* ShaderClassName = Shader->GetType()->GetName();
 
@@ -434,6 +424,9 @@ void ValidateShaderParameters(const FShader* Shader, const FShaderParametersMeta
 {
 	const FShaderParameterBindings& Bindings = Shader->Bindings;
 	const uint8* Base = reinterpret_cast<const uint8*>(Parameters);
+
+	const TCHAR* ShaderClassName = Shader->GetType()->GetName();
+	const TCHAR* ShaderParemeterStructName = ParametersMetadata->GetStructTypeName();
 
 	// Textures
 	for (const FShaderParameterBindings::FResourceParameter& ParameterBinding : Bindings.Textures)
@@ -472,6 +465,14 @@ void ValidateShaderParameters(const FShader* Shader, const FShaderParametersMeta
 		if (!GraphTexture)
 		{
 			EmitNullShaderParameterFatalError(Shader, ParametersMetadata, ParameterBinding.ByteOffset);
+		}
+		else if ((GraphTexture->Desc.TargetableFlags & TexCreate_ShaderResource) == 0)
+		{
+			FString MemberName = ParametersMetadata->GetFullMemberCodeName(ParameterBinding.ByteOffset);
+
+			UE_LOG(LogShaders, Fatal,
+				TEXT("Attempting to set shader %s parameter %s::%s with the RDG texture %s which was not created with TexCreate_ShaderResource"),
+				ShaderClassName, ShaderParemeterStructName, *MemberName, GraphTexture->Name);
 		}
 	}
 
