@@ -1963,7 +1963,8 @@ FRHICOMMAND_MACRO(FRHICommandCopyBufferRegions)
 	RHI_API void Execute(FRHICommandListBase& CmdList);
 };
 
-FRHICOMMAND_MACRO(FRHICommandBuildAccelerationStructure)
+template <ECmdList CmdListType>
+struct FRHICommandBuildAccelerationStructure final : public FRHICommand<FRHICommandBuildAccelerationStructure<CmdListType>>
 {
 	FRHIRayTracingGeometry* Geometry;
 	FRHIRayTracingScene* Scene;
@@ -1981,6 +1982,9 @@ FRHICOMMAND_MACRO(FRHICommandBuildAccelerationStructure)
 	RHI_API void Execute(FRHICommandListBase& CmdList);
 };
 
+void FRHICommandBuildAccelerationStructure<ECmdList::EGfx>::Execute(FRHICommandListBase& CmdList);
+void FRHICommandBuildAccelerationStructure<ECmdList::ECompute>::Execute(FRHICommandListBase& CmdList);
+
 FRHICOMMAND_MACRO(FRHICommandClearRayTracingBindings)
 {
 	FRHIRayTracingScene* Scene;
@@ -1992,8 +1996,8 @@ FRHICOMMAND_MACRO(FRHICommandClearRayTracingBindings)
 	RHI_API void Execute(FRHICommandListBase& CmdList);
 };
 
-
-FRHICOMMAND_MACRO(FRHICommandUpdateAccelerationStructures)
+template <ECmdList CmdListType>
+struct FRHICommandUpdateAccelerationStructures final : public FRHICommand<FRHICommandUpdateAccelerationStructures<CmdListType>>
 {
 	const TArrayView<const FAccelerationStructureUpdateParams> UpdateParams;
 
@@ -2004,7 +2008,11 @@ FRHICOMMAND_MACRO(FRHICommandUpdateAccelerationStructures)
 	RHI_API void Execute(FRHICommandListBase& CmdList);
 };
 
-FRHICOMMAND_MACRO(FRHICommandBuildAccelerationStructures)
+void FRHICommandUpdateAccelerationStructures<ECmdList::EGfx>::Execute(FRHICommandListBase& CmdList);
+void FRHICommandUpdateAccelerationStructures<ECmdList::ECompute>::Execute(FRHICommandListBase& CmdList);
+
+template <ECmdList CmdListType>
+struct FRHICommandBuildAccelerationStructures final : public FRHICommand<FRHICommandBuildAccelerationStructures<CmdListType>>
 {
 	const TArrayView<const FAccelerationStructureUpdateParams> UpdateParams;
 
@@ -2014,6 +2022,9 @@ FRHICOMMAND_MACRO(FRHICommandBuildAccelerationStructures)
 
 	RHI_API void Execute(FRHICommandListBase& CmdList);
 };
+
+void FRHICommandBuildAccelerationStructures<ECmdList::EGfx>::Execute(FRHICommandListBase& CmdList);
+void FRHICommandBuildAccelerationStructures<ECmdList::ECompute>::Execute(FRHICommandListBase& CmdList);
 
 FRHICOMMAND_MACRO(FRHICommandRayTraceOcclusion)
 {
@@ -3098,7 +3109,7 @@ public:
 		}
 		else
 		{
-			ALLOC_COMMAND(FRHICommandBuildAccelerationStructure)(Geometry);
+			ALLOC_COMMAND(FRHICommandBuildAccelerationStructure<ECmdList::EGfx>)(Geometry);
 		}
 	}
 
@@ -3110,7 +3121,7 @@ public:
 		}
 		else
 		{
-			ALLOC_COMMAND(FRHICommandUpdateAccelerationStructures)(AllocArray(Params));
+			ALLOC_COMMAND(FRHICommandUpdateAccelerationStructures<ECmdList::EGfx>)(AllocArray(Params));
 		}
 	}
 
@@ -3122,7 +3133,7 @@ public:
 		}
 		else
 		{
-			ALLOC_COMMAND(FRHICommandBuildAccelerationStructures)(AllocArray(Params));
+			ALLOC_COMMAND(FRHICommandBuildAccelerationStructures<ECmdList::EGfx>)(AllocArray(Params));
 		}
 	}
 
@@ -3134,7 +3145,7 @@ public:
 		}
 		else
 		{
-			ALLOC_COMMAND(FRHICommandBuildAccelerationStructure)(Scene);
+			ALLOC_COMMAND(FRHICommandBuildAccelerationStructure<ECmdList::EGfx>)(Scene);
 		}
 	}
 
@@ -3543,6 +3554,57 @@ public:
 		}
 		ALLOC_COMMAND(FRHICommandWriteGPUFence<ECmdList::ECompute>)(Fence);
 	}
+
+
+#if RHI_RAYTRACING
+	FORCEINLINE_DEBUGGABLE void BuildAccelerationStructure(FRHIRayTracingGeometry* Geometry)
+	{
+		if (Bypass())
+		{
+			GetComputeContext().RHIBuildAccelerationStructure(Geometry);
+		}
+		else
+		{
+			ALLOC_COMMAND(FRHICommandBuildAccelerationStructure<ECmdList::ECompute>)(Geometry);
+		}
+	}
+
+	FORCEINLINE_DEBUGGABLE void UpdateAccelerationStructures(const TArrayView<const FAccelerationStructureUpdateParams> Params)
+	{
+		if (Bypass())
+		{
+			GetComputeContext().RHIUpdateAccelerationStructures(Params);
+		}
+		else
+		{
+			ALLOC_COMMAND(FRHICommandUpdateAccelerationStructures<ECmdList::ECompute>)(AllocArray(Params));
+		}
+	}
+
+	FORCEINLINE_DEBUGGABLE void BuildAccelerationStructures(const TArrayView<const FAccelerationStructureUpdateParams> Params)
+	{
+		if (Bypass())
+		{
+			GetComputeContext().RHIBuildAccelerationStructures(Params);
+		}
+		else
+		{
+			ALLOC_COMMAND(FRHICommandBuildAccelerationStructures<ECmdList::ECompute>)(AllocArray(Params));
+		}
+	}
+
+	FORCEINLINE_DEBUGGABLE void BuildAccelerationStructure(FRHIRayTracingScene* Scene)
+	{
+		if (Bypass())
+		{
+			GetComputeContext().RHIBuildAccelerationStructure(Scene);
+		}
+		else
+		{
+			ALLOC_COMMAND(FRHICommandBuildAccelerationStructure<ECmdList::ECompute>)(Scene);
+		}
+	}
+#endif
 };
 
 namespace EImmediateFlushType

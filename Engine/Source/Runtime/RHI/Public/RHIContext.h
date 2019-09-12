@@ -24,6 +24,7 @@ struct FResolveParams;
 struct FViewportBounds;
 struct FRayTracingGeometryInstance;
 struct FRayTracingShaderBindings;
+struct FAccelerationStructureUpdateParams;
 enum class EAsyncComputeBudget;
 enum class EResourceTransitionAccess;
 enum class EResourceTransitionPipeline;
@@ -138,6 +139,26 @@ public:
 	virtual void RHIWriteGPUFence(FRHIGPUFence* FenceRHI)
 	{
 		check(false);
+	}
+
+	virtual void RHIBuildAccelerationStructure(FRHIRayTracingGeometry* Geometry)
+	{
+		checkNoEntry();
+	}
+
+	virtual void RHIUpdateAccelerationStructures(const TArrayView<const FAccelerationStructureUpdateParams> Params)
+	{
+		checkNoEntry();
+	}
+
+	virtual void RHIBuildAccelerationStructures(const TArrayView<const FAccelerationStructureUpdateParams> Params)
+	{
+		checkNoEntry();
+	}
+
+	virtual void RHIBuildAccelerationStructure(FRHIRayTracingScene* Scene)
+	{
+		checkNoEntry();
 	}
 };
 
