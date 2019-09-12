@@ -1590,7 +1590,7 @@ static void DenoiseSignalAtConstantPixelDensity(
 		PassParameters->CommonParameters = CommonParameters;
 		PassParameters->ConvolutionMetaData = ConvolutionMetaData;
 		PassParameters->SignalInput = SignalHistory;
-		PassParameters->SignalInputUint = CreateMultiplexedUintSRVs(GraphBuilder, SignalHistory);
+		//PassParameters->SignalInputUint = CreateMultiplexedUintSRVs(GraphBuilder, SignalHistory);
 		PassParameters->SignalOutput = CreateMultiplexedUAVs(GraphBuilder, NewSignalOutput);
 		
 		PassParameters->DebugOutput = CreateDebugUAV(TEXT("DebugDenoiserReconstruction"));
