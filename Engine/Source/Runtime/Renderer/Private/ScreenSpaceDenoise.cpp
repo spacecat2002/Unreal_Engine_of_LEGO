@@ -722,7 +722,10 @@ BEGIN_SHADER_PARAMETER_STRUCT(FSSDSignalTextures, )
 	SHADER_PARAMETER_RDG_TEXTURE_ARRAY(Texture2D, Textures, [kMaxBufferProcessingCount])
 END_SHADER_PARAMETER_STRUCT()
 
-/** Shader parameter structure use to bind all signal generically. */
+BEGIN_SHADER_PARAMETER_STRUCT(FSSDSignalSRVs, )
+	SHADER_PARAMETER_RDG_TEXTURE_SRV_ARRAY(Texture2D, Textures, [kMaxBufferProcessingCount])
+END_SHADER_PARAMETER_STRUCT()
+
 BEGIN_SHADER_PARAMETER_STRUCT(FSSDSignalUAVs, )
 	SHADER_PARAMETER_RDG_TEXTURE_UAV_ARRAY(Texture2D, UAVs, [kMaxBufferProcessingCount])
 END_SHADER_PARAMETER_STRUCT()
@@ -750,6 +753,38 @@ FSSDSignalTextures CreateMultiplexedTextures(
 		SignalTextures.Textures[i] = GraphBuilder.CreateTexture(DescArray[i], TextureName);
 	}
 	return SignalTextures;
+}
+
+FSSDSignalSRVs CreateMultiplexedUintSRVs(FRDGBuilder& GraphBuilder, const FSSDSignalTextures& SignalTextures)
+{
+	FSSDSignalSRVs SRVs;
+	for (int32 i = 0; i < kMaxBufferProcessingCount; i++)
+	{
+		if (SignalTextures.Textures[i])
+		{
+			EPixelFormat Format = SignalTextures.Textures[i]->Desc.Format;
+			int32 Bytes = GPixelFormats[Format].BlockBytes;
+
+			EPixelFormat UIntFormat = PF_Unknown;
+			if (Bytes == 1)
+				UIntFormat = PF_R8_UINT;
+			else if (Bytes == 2)
+				UIntFormat = PF_R16_UINT;
+			else if (Bytes == 4)
+				UIntFormat = PF_R32_UINT;
+			else if (Bytes == 8)
+				UIntFormat = PF_R32G32_UINT;
+			else if (Bytes == 16)
+				UIntFormat = PF_R32G32B32A32_UINT;
+			else
+			{
+				check(0);
+			}
+
+			SRVs.Textures[i] = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::CreateWithPixelFormat(SignalTextures.Textures[i], UIntFormat));
+		}
+	}
+	return SRVs;
 }
 
 FSSDSignalUAVs CreateMultiplexedUAVs(FRDGBuilder& GraphBuilder, const FSSDSignalTextures& SignalTextures, int32 MipLevel = 0)
@@ -1051,6 +1086,7 @@ class FSSDSpatialAccumulationCS : public FGlobalShader
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSSDConvolutionMetaData, ConvolutionMetaData)
 
 		SHADER_PARAMETER_STRUCT(FSSDSignalTextures, SignalInput)
+		SHADER_PARAMETER_STRUCT(FSSDSignalSRVs, SignalInputUint)
 		SHADER_PARAMETER_STRUCT(FSSDSignalUAVs, SignalOutput)
 
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D, DebugOutput) // TODO: remove
@@ -1554,6 +1590,7 @@ static void DenoiseSignalAtConstantPixelDensity(
 		PassParameters->CommonParameters = CommonParameters;
 		PassParameters->ConvolutionMetaData = ConvolutionMetaData;
 		PassParameters->SignalInput = SignalHistory;
+		PassParameters->SignalInputUint = CreateMultiplexedUintSRVs(GraphBuilder, SignalHistory);
 		PassParameters->SignalOutput = CreateMultiplexedUAVs(GraphBuilder, NewSignalOutput);
 		
 		PassParameters->DebugOutput = CreateDebugUAV(TEXT("DebugDenoiserReconstruction"));
