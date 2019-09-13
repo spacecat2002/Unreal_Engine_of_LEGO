@@ -220,9 +220,13 @@ template<typename CmdListType>
 void FRayTracingDynamicGeometryCollection::DispatchUpdates(CmdListType& RHICmdList)
 {
 	using BaseCmdListType = typename TAutoCmdListType<CmdListType>::Type;
-	
+
+#if WANTS_DRAW_MESH_EVENTS
 #define SCOPED_DRAW_OR_COMPUTE_EVENT(RHICmdList, Name) TDrawEvent<BaseCmdListType> PREPROCESSOR_JOIN(Event_##Name,__LINE__); if(GetEmitDrawEvents()) PREPROCESSOR_JOIN(Event_##Name,__LINE__).Start(RHICmdList, FColor(0), TEXT(#Name));
-	
+#else
+#define SCOPED_DRAW_OR_COMPUTE_EVENT(...)
+#endif
+
 	if (DispatchCommands->Num() > 0)
 	{
 		SCOPED_DRAW_OR_COMPUTE_EVENT(RHICmdList, RayTracingDynamicGeometryUpdate)

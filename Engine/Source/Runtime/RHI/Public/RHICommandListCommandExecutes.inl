@@ -532,9 +532,6 @@ void FRHICommandCopyBufferRegions::Execute(FRHICommandListBase& CmdList)
 	INTERNAL_DECORATOR(RHICopyBufferRegions)(Params);
 }
 
-template struct FRHICommandBuildAccelerationStructure<ECmdList::EGfx>;
-template struct FRHICommandBuildAccelerationStructure<ECmdList::ECompute>;
-
 template<ECmdList CmdListType>
 void FRHICommandBuildAccelerationStructure<CmdListType>::Execute(FRHICommandListBase& CmdList)
 {
@@ -549,14 +546,14 @@ void FRHICommandBuildAccelerationStructure<CmdListType>::Execute(FRHICommandList
 	}
 }
 
+template struct FRHICommandBuildAccelerationStructure<ECmdList::EGfx>;
+template struct FRHICommandBuildAccelerationStructure<ECmdList::ECompute>;
+
 void FRHICommandClearRayTracingBindings::Execute(FRHICommandListBase& CmdList)
 {
 	RHISTAT(ClearRayTracingBindings);
 	INTERNAL_DECORATOR(RHIClearRayTracingBindings)(Scene);
 }
-
-template struct FRHICommandUpdateAccelerationStructures<ECmdList::EGfx>;
-template struct FRHICommandUpdateAccelerationStructures<ECmdList::ECompute>;
 
 template<ECmdList CmdListType>
 void FRHICommandUpdateAccelerationStructures<CmdListType>::Execute(FRHICommandListBase& CmdList)
@@ -565,8 +562,8 @@ void FRHICommandUpdateAccelerationStructures<CmdListType>::Execute(FRHICommandLi
 	INTERNAL_DECORATOR_CONTEXT(RHIUpdateAccelerationStructures)(UpdateParams);
 }
 
-template struct FRHICommandBuildAccelerationStructures<ECmdList::EGfx>;
-template struct FRHICommandBuildAccelerationStructures<ECmdList::ECompute>;
+template struct FRHICommandUpdateAccelerationStructures<ECmdList::EGfx>;
+template struct FRHICommandUpdateAccelerationStructures<ECmdList::ECompute>;
 
 template<ECmdList CmdListType>
 void FRHICommandBuildAccelerationStructures<CmdListType>::Execute(FRHICommandListBase& CmdList)
@@ -574,6 +571,9 @@ void FRHICommandBuildAccelerationStructures<CmdListType>::Execute(FRHICommandLis
 	RHISTAT(BuildAccelerationStructure);
 	INTERNAL_DECORATOR_CONTEXT(RHIBuildAccelerationStructures)(UpdateParams);
 }
+
+template struct FRHICommandBuildAccelerationStructures<ECmdList::EGfx>;
+template struct FRHICommandBuildAccelerationStructures<ECmdList::ECompute>;
 
 void FRHICommandRayTraceOcclusion::Execute(FRHICommandListBase& CmdList)
 {

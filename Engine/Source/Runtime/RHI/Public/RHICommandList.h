@@ -1982,9 +1982,6 @@ struct FRHICommandBuildAccelerationStructure final : public FRHICommand<FRHIComm
 	RHI_API void Execute(FRHICommandListBase& CmdList);
 };
 
-template<> void FRHICommandBuildAccelerationStructure<ECmdList::EGfx>::Execute(FRHICommandListBase& CmdList);
-template<> void FRHICommandBuildAccelerationStructure<ECmdList::ECompute>::Execute(FRHICommandListBase& CmdList);
-
 FRHICOMMAND_MACRO(FRHICommandClearRayTracingBindings)
 {
 	FRHIRayTracingScene* Scene;
@@ -2008,9 +2005,6 @@ struct FRHICommandUpdateAccelerationStructures final : public FRHICommand<FRHICo
 	RHI_API void Execute(FRHICommandListBase& CmdList);
 };
 
-template<> void FRHICommandUpdateAccelerationStructures<ECmdList::EGfx>::Execute(FRHICommandListBase& CmdList);
-template<> void FRHICommandUpdateAccelerationStructures<ECmdList::ECompute>::Execute(FRHICommandListBase& CmdList);
-
 template <ECmdList CmdListType>
 struct FRHICommandBuildAccelerationStructures final : public FRHICommand<FRHICommandBuildAccelerationStructures<CmdListType>>
 {
@@ -2022,9 +2016,6 @@ struct FRHICommandBuildAccelerationStructures final : public FRHICommand<FRHICom
 
 	RHI_API void Execute(FRHICommandListBase& CmdList);
 };
-
-template<> void FRHICommandBuildAccelerationStructures<ECmdList::EGfx>::Execute(FRHICommandListBase& CmdList);
-template<> void FRHICommandBuildAccelerationStructures<ECmdList::ECompute>::Execute(FRHICommandListBase& CmdList);
 
 FRHICOMMAND_MACRO(FRHICommandRayTraceOcclusion)
 {
