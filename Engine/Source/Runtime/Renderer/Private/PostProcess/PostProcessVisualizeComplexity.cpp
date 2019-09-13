@@ -204,7 +204,17 @@ FRenderingCompositeOutputRef AddVisualizeComplexityPass(
 
 		FRDGTextureRef OutputTexture = AddVisualizeComplexityPass(GraphBuilder, ScreenPassView, PassInputs);
 
-		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, OutputTexture);
+		// The frame buffer texture can be overridden in this pass.
+		FRDGTextureRef OverrideOutputTexture = InPass->FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("FrameBuffer"));
+
+		if (OverrideOutputTexture)
+		{
+			AddDrawTexturePass(GraphBuilder, ScreenPassView, OutputTexture, OverrideOutputTexture, InContext.SceneColorViewRect);
+		}
+		else
+		{
+			InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, OutputTexture);
+		}
 
 		GraphBuilder.Execute();
 	}));

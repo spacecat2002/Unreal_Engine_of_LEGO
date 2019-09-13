@@ -539,20 +539,6 @@ static FRCPassPostProcessTonemap* AddTonemapper(
 	return PostProcessTonemap;
 }
 
-#if WITH_EDITOR
-void FPostProcessing::AddSelectionOutline(FPostprocessContext& Context)
-{
-	FRenderingCompositePass* SelectionColorPass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessSelectionOutlineColor());
-	SelectionColorPass->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-
-	FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessSelectionOutline());
-	Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-	Node->SetInput(ePId_Input1, FRenderingCompositeOutputRef(FRenderingCompositeOutputRef(SelectionColorPass)));
-
-	Context.FinalOutput = FRenderingCompositeOutputRef(Node);
-}
-#endif
-
 void FPostProcessing::AddGammaOnlyTonemapper(FPostprocessContext& Context)
 {
 	FRenderingCompositePass* PostProcessTonemap = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessTonemap(true, false/*eye*/, false));
@@ -1434,6 +1420,22 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				AddVisualizeLPVPass(GraphBuilder, ScreenPassView.View, SceneColorTexture);
 			}
 
+#if WITH_EDITOR
+			if (GIsEditor
+				&& View.Family->EngineShowFlags.SelectionOutline
+				&& !View.Family->EngineShowFlags.Wireframe
+				&& !View.Family->EngineShowFlags.VisualizeHDR)
+			{
+				SceneColorTexture = AddSelectionOutlinePass(
+					GraphBuilder,
+					ScreenPassView,
+					SceneColorTexture,
+					SceneColorViewRect,
+					SceneDepthTexture,
+					PrimaryViewRect);
+			}
+#endif
+
 			// Release held GBuffer reference taken during composition graph setup. Passes will take their own references during RDG setup.
 			SceneContext.AdjustGBufferRefCount(InContext.RHICmdList, -1);
 
@@ -1469,17 +1471,6 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 		bool bUnscaledFinalOutput = Context.View.PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::TemporalUpscale;
 
 #if WITH_EDITOR
-		// Show the selection outline if it is in the editor and we aren't in wireframe 
-		// If the engine is in demo mode and game view is on we also do not show the selection outline
-		if ( GIsEditor
-			&& View.Family->EngineShowFlags.SelectionOutline
-			&& !(View.Family->EngineShowFlags.Wireframe)
-			&& !View.Family->EngineShowFlags.VisualizeHDR)
-		{
-			// Selection outline is after bloom, but before AA
-			AddSelectionOutline(Context);
-		}
-
 		// Composite editor primitives if we had any to draw and compositing is enabled
 		if (FSceneRenderer::ShouldCompositeEditorPrimitives(View))
 		{
@@ -2136,8 +2127,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 			&& !(View.Family->EngineShowFlags.Wireframe)
 			)
 		{
-			// Editor selection outline
-			AddSelectionOutline(Context);
+			Context.FinalOutput = AddSelectionOutlinePass(Context.Graph, Context.FinalOutput);
 		}
 
 		if (FSceneRenderer::ShouldCompositeEditorPrimitives(View))
@@ -2218,6 +2208,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 			Desc.Format = PF_B8G8R8A8;
 			Desc.NumMips = 1;
 			Desc.DebugName = TEXT("OverriddenRenderTarget");
+			Desc.TargetableFlags |= TexCreate_RenderTargetable;
 
 			GRenderTargetPool.CreateUntrackedElement(Desc, Temp, Item);
 

@@ -1,39 +1,20 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-/*=============================================================================
-	PostProcessSelectionOutline.h: Post processing outline effect.
-=============================================================================*/
-
 #pragma once
-
-#include "CoreMinimal.h"
-#include "RendererInterface.h"
-#include "PostProcess/RenderingCompositionGraph.h"
 
 #if WITH_EDITOR
 
+#include "ScreenPass.h"
+#include "PostProcess/RenderingCompositionGraph.h"
 
-// derives from TRenderingCompositePassBase<InputCount, OutputCount>
-// ePId_Input0: SceneColor
-class FRCPassPostProcessSelectionOutlineColor : public TRenderingCompositePassBase<1, 1>
-{
-public:
-	// interface FRenderingCompositePass ---------
-	virtual void Process(FRenderingCompositePassContext& Context) override;
-	virtual void Release() override { delete this; }
-	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
-};
+FRDGTextureRef AddSelectionOutlinePass(
+	FRDGBuilder& GraphBuilder,
+	const FScreenPassViewInfo& ScreenPassView,
+	FRDGTextureRef SceneColorTexture,
+	FIntRect SceneColorViewRect,
+	FRDGTextureRef SceneDepthTexture,
+	FIntRect SceneDepthViewRect);
 
-// derives from TRenderingCompositePassBase<InputCount, OutputCount>
-// ePId_Input0: SceneColor
-// ePId_Input1: SelectionColor
-class FRCPassPostProcessSelectionOutline : public TRenderingCompositePassBase<2, 1>
-{
-public:
-	// interface FRenderingCompositePass ---------
-	virtual void Process(FRenderingCompositePassContext& Context) override;
-	virtual void Release() override { delete this; }
-	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
-};
+FRenderingCompositeOutputRef AddSelectionOutlinePass(FRenderingCompositionGraph& Graph, FRenderingCompositeOutputRef Input);
 
 #endif

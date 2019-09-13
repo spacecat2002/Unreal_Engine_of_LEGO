@@ -17,6 +17,7 @@ DebugViewModeRendering.cpp: Contains definitions for rendering debug viewmodes.
 #include "PostProcess/PostProcessVisualizeComplexity.h"
 #include "PostProcess/PostProcessStreamingAccuracyLegend.h"
 #include "CompositionLighting/PostProcessPassThrough.h"
+#include "PostProcess/PostProcessSelectionOutline.h"
 #include "PostProcess/PostProcessCompositeEditorPrimitives.h"
 #include "PostProcess/PostProcessUpscale.h"
 #include "PostProcess/PostProcessTemporalAA.h"
@@ -134,7 +135,7 @@ void FDeferredShadingSceneRenderer::DoDebugViewModePostProcessing(FRHICommandLis
 #if WITH_EDITOR
 	if (GIsEditor)
 	{
-		GPostProcessing.AddSelectionOutline(Context);
+		Context.FinalOutput = AddSelectionOutlinePass(Context.Graph, Context.FinalOutput);
 	}
 #endif
 

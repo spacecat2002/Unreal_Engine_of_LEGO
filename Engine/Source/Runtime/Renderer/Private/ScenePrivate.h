@@ -927,10 +927,6 @@ public:
 	FIESLightProfileResource IESLightProfileResources;
 #endif
 
-	// cache for stencil reads to a avoid reallocations of the SRV, Key is to detect if the object has changed
-	FTextureRHIRef SelectionOutlineCacheKey;
-	TRefCountPtr<FRHIShaderResourceView> SelectionOutlineCacheValue;
-
 	TUniquePtr<FForwardLightingViewResources> ForwardLightingResources;
 
 	FForwardLightingCullingResources ForwardLightingCullingResources;
