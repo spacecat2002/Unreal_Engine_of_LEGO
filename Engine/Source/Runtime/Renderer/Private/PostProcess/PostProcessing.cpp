@@ -978,6 +978,11 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 			FIntRect SceneColorViewRect = PrimaryViewRect;
 
+			const bool bSelectionOutlinesEnabled = GIsEditor
+				&& View.Family->EngineShowFlags.SelectionOutline
+				&& !View.Family->EngineShowFlags.Wireframe
+				&& !bVisualizeHDR;
+
 			if (AllowFullPostProcessing(View, View.GetFeatureLevel()))
 			{
 				const EAutoExposureMethod AutoExposureMethod = GetAutoExposureMethod(View);
@@ -1421,10 +1426,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			}
 
 #if WITH_EDITOR
-			if (GIsEditor
-				&& View.Family->EngineShowFlags.SelectionOutline
-				&& !View.Family->EngineShowFlags.Wireframe
-				&& !View.Family->EngineShowFlags.VisualizeHDR)
+			if (bSelectionOutlinesEnabled)
 			{
 				SceneColorTexture = AddSelectionOutlinePass(
 					GraphBuilder,
@@ -1579,6 +1581,14 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
 		}
 
+		// Disable render target overriding for RDG passes until we have a better solution.
+		if (Context.FinalOutput == FinalOutputFromRDG)
+		{
+			FRenderingCompositePass* PassthroughNode = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessPassThrough(nullptr));
+			PassthroughNode->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
+			Context.FinalOutput = FRenderingCompositeOutputRef(PassthroughNode);
+		}
+
 		// After the graph is built but before the graph is processed.
 		// If a postprocess material is using a GBuffer it adds the refcount int FRCPassPostProcessMaterial::Process()
 		// and when it gets processed it removes the refcount
@@ -1588,14 +1598,6 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			// Generally we no longer need the GBuffers, anyone that wants to keep the GBuffers for longer should have called AdjustGBufferRefCount(1) to keep it for longer
 			// and call AdjustGBufferRefCount(-1) once it's consumed. This needs to happen each frame. PostProcessMaterial do that automatically
 			FSceneRenderTargets::Get(RHICmdList).AdjustGBufferRefCount(RHICmdList, -1);
-		}
-
-		// Disable render target overriding for RDG passes until we have a better solution.
-		if (Context.FinalOutput == FinalOutputFromRDG)
-		{
-			FRenderingCompositePass* PassthroughNode = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessPassThrough(nullptr));
-			PassthroughNode->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-			Context.FinalOutput = FRenderingCompositeOutputRef(PassthroughNode);
 		}
 
 		// The graph setup should be finished before this line ----------------------------------------

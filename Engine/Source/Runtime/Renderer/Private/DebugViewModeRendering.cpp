@@ -74,7 +74,7 @@ void FDeferredShadingSceneRenderer::DoDebugViewModePostProcessing(FRHICommandLis
 
 	const bool bHDROutputEnabled = GRHISupportsHDROutput && IsHDREnabled();
 	
-	// Some view modes do not actually output a color so they should not be tonemapped	
+	// Some view modes do not actually output a color so they should not be tonemapped.
 	const bool bAllowTonemapper = !View.Family->EngineShowFlags.ShaderComplexity && !View.Family->EngineShowFlags.RayTracingDebug;
 	if (bAllowTonemapper)
 	{
@@ -141,9 +141,13 @@ void FDeferredShadingSceneRenderer::DoDebugViewModePostProcessing(FRHICommandLis
 
 	FIntPoint PrimaryUpscaleViewSize = Context.View.GetSecondaryViewRectSize();
 
+	bool bNeedsFinalPassthrough = true;
+
 	// Adds primary spatial upscale regardless of using temporal upsample, so screen percentage preview can work.
 	if (View.ViewRect.Size() != PrimaryUpscaleViewSize)
 	{
+		bNeedsFinalPassthrough = false;
+
 		int32 UpscaleQuality = 1;
 		FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessUpscale(
 			View, UpscaleQuality, FRCPassPostProcessUpscale::PaniniParams::Default, /* bIsSecondaryUpscale = */ false));
@@ -155,6 +159,8 @@ void FDeferredShadingSceneRenderer::DoDebugViewModePostProcessing(FRHICommandLis
 	// Adds secondary spatial upscale for OS DPI to work correctly in editor.
 	if (View.RequiresSecondaryUpscale())
 	{
+		bNeedsFinalPassthrough = false;
+
 		int32 UpscaleQuality = View.Family->SecondaryScreenPercentageMethod == ESecondaryScreenPercentageMethod::LowerPixelDensitySimulation ? 6 : 0;
 
 		FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessUpscale(
@@ -162,6 +168,14 @@ void FDeferredShadingSceneRenderer::DoDebugViewModePostProcessing(FRHICommandLis
 		Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
 		Node->SetInput(ePId_Input1, FRenderingCompositeOutputRef(Context.FinalOutput));
 		Context.FinalOutput = FRenderingCompositeOutputRef(Node);
+	}
+
+	// Disable render target overriding for RDG passes until we have a better solution.
+	if (bNeedsFinalPassthrough)
+	{
+		FRenderingCompositePass* PassthroughNode = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessPassThrough(nullptr));
+		PassthroughNode->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
+		Context.FinalOutput = FRenderingCompositeOutputRef(PassthroughNode);
 	}
 
 	// After the graph is built but before the graph is processed.
