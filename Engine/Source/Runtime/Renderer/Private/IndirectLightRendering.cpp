@@ -136,7 +136,11 @@ void FDeferredShadingSceneRenderer::RenderDiffuseIndirectAndAmbientOcclusion(FRH
 		IScreenSpaceDenoiser::FDiffuseIndirectInputs DenoiserInputs;
 		if (bApplyRTGI)
 		{
-			RenderRayTracingGlobalIllumination(GraphBuilder, SceneTextures, View, /* out */ &RayTracingConfig, /* out */ &DenoiserInputs);
+			bool bIsValid = RenderRayTracingGlobalIllumination(GraphBuilder, SceneTextures, View, /* out */ &RayTracingConfig, /* out */ &DenoiserInputs);
+			if (!bIsValid)
+			{
+				DenoiseMode = 0;
+			}
 		}
 		else if (bApplySSGI)
 		{

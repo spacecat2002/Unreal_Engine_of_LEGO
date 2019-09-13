@@ -174,6 +174,11 @@ public:
 	 */
 	virtual UMaterialInstanceDynamic* GetReusableMID(class UMaterialInterface* InSource) = 0;
 
+	/**
+	 * Clears the pool of mids being referenced by this view state 
+	 */
+	virtual void ClearMIDPool() = 0;
+
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	/** If frozen view matrices are available, set those as active on the SceneView */
 	virtual void ActivateFrozenViewMatrices(FSceneView& SceneView) = 0;
@@ -1358,6 +1363,7 @@ public:
 	inline bool CastsVolumetricShadow() const { return bCastVolumetricShadow; }
 	inline bool CastsRaytracedShadow() const { return bCastRaytracedShadow; }
 	inline bool AffectReflection() const { return bAffectReflection; }
+	inline bool AffectGlobalIllumination() const { return bAffectGlobalIllumination; }
 	inline bool CastsShadowsFromCinematicObjectsOnly() const { return bCastShadowsFromCinematicObjectsOnly; }
 	inline bool CastsModulatedShadows() const { return bCastModulatedShadows; }
 	inline const FLinearColor& GetModulatedShadowColor() const { return ModulatedShadowColor; }
@@ -1531,6 +1537,9 @@ protected:
 
 	/** Whether the light affects objects in reflections, when ray-traced reflection is enabled. */
 	const uint8 bAffectReflection : 1;
+
+	/** Whether the light affects objects in reflections, when ray-traced global illumination is enabled. */
+	const uint8 bAffectGlobalIllumination : 1;
 
 	/** Whether the light affects translucency or not.  Disabling this can save GPU time when there are many small lights. */
 	const uint8 bAffectTranslucentLighting : 1;

@@ -925,6 +925,9 @@ public:
 
 	// IES light profiles
 	FIESLightProfileResource IESLightProfileResources;
+
+	TRefCountPtr<FPooledRDGBuffer> GatherPointsBuffer;
+	FIntPoint GatherPointsResolution;
 #endif
 
 	TUniquePtr<FForwardLightingViewResources> ForwardLightingResources;
@@ -1327,6 +1330,12 @@ public:
 		check(NewMID->GetRenderProxy());
 		MIDUsedCount++;
 		return NewMID;
+	}
+
+	virtual void ClearMIDPool() override
+	{
+		check(IsInGameThread());
+		MIDPool.Empty();
 	}
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)

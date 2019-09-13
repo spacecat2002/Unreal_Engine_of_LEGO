@@ -39,6 +39,8 @@ TAutoConsoleVariable<int32> CVarTonemapperFilm(
 	TEXT("Use new film tone mapper"),
 	ECVF_RenderThreadSafe);
 
+	ECVF_RenderThreadSafe);
+
 // Including the neutral one at index 0
 const uint32 GMaxLUTBlendCount = 5;
 
@@ -204,6 +206,14 @@ void GetCombineLUTParameters(
 	Parameters.FilmShoulder = Settings.FilmShoulder;
 	Parameters.FilmBlackClip = Settings.FilmBlackClip;
 	Parameters.FilmWhiteClip = Settings.FilmWhiteClip;
+	Parameters.bUseMobileTonemapper = CVarTonemapperFilm.GetValueOnRenderThread() == 0;
+
+
+	Parameters.MobileFilmTonemap = GetMobileFilmTonemapParameters(
+		Settings,
+		/* UseColorMatrix = */ true,
+		/* UseShadowTint = */ true,
+		/* UseContrast = */ true);
 
 	Parameters.bUseMobileTonemapper = CVarTonemapperFilm.GetValueOnRenderThread() == 0;
 
@@ -515,6 +525,7 @@ FRenderingCompositeOutputRef AddCombineLUTPass(FRenderingCompositionGraph& Graph
 			[](FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
 	{
 		FRDGBuilder GraphBuilder(InContext.RHICmdList);
+
 		FScreenPassViewInfo ScreenPassView(InContext.View);
 
 		FRDGTextureRef OutputTexture = AddCombineLUTPass(GraphBuilder, ScreenPassView);

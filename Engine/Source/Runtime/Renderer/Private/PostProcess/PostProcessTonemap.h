@@ -48,6 +48,7 @@ static void GrainRandomFromFrame(FVector* RESTRICT const Constant, uint32 FrameN
 	Constant->Y = Halton(FrameNumber & 1023, 3);
 }
 
+
 BEGIN_SHADER_PARAMETER_STRUCT(FMobileFilmTonemapParameters, )
 	SHADER_PARAMETER(FVector4, ColorMatrixR_ColorCurveCd1)
 	SHADER_PARAMETER(FVector4, ColorMatrixG_ColorCurveCd3Cm3)
@@ -88,7 +89,6 @@ struct FTonemapInputs
 
 	// [Raster Only] Controls whether the alpha channel of the scene texture should be written to the output texture.
 	bool bWriteAlphaChannel = false;
-
 	// Configures the tonemapper to only perform gamma correction.
 	bool bGammaOnly = false;
 

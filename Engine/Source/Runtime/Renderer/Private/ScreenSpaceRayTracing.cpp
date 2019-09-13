@@ -264,7 +264,7 @@ class FSSRTDiffuseTileClassificationCS : public FGlobalShader
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+		return false; // Parameters.Platform == SP_PCD3D_SM5;
 	}
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
@@ -828,6 +828,7 @@ void RenderScreenSpaceDiffuseIndirect(
 	// Tile classify.
 	FSSRTTileClassificationParameters ClassificationParameters;
 	FSSRTTileClassificationResources ClassificationResources;
+	#if 0
 	{
 		ClassificationResources = CreateTileClassificationResources(GraphBuilder, View, SceneTextures.SceneDepthBuffer->Desc.Extent, &ClassificationParameters);
 
@@ -871,6 +872,7 @@ void RenderScreenSpaceDiffuseIndirect(
 			PassParameters,
 			FComputeShaderUtils::GetGroupCount(ThreadCount, 8));
 	}
+	#endif
 
 	{
 		// Allocate outputs.
@@ -932,8 +934,8 @@ void RenderScreenSpaceDiffuseIndirect(
 		SetupSceneTextureSamplers(&PassParameters->SceneTextureSamplers);
 		PassParameters->View = View.ViewUniformBuffer;
 	
-		PassParameters->ClassificationParameters = ClassificationParameters;
-		PassParameters->ClassificationSRVs = CreateSRVs(GraphBuilder, ClassificationResources);
+		//PassParameters->ClassificationParameters = ClassificationParameters;
+		//PassParameters->ClassificationSRVs = CreateSRVs(GraphBuilder, ClassificationResources);
 
 		PassParameters->IndirectDiffuseOutput = GraphBuilder.CreateUAV(OutDenoiserInputs->Color);
 		PassParameters->AmbientOcclusionOutput = GraphBuilder.CreateUAV(OutDenoiserInputs->AmbientOcclusionMask);
