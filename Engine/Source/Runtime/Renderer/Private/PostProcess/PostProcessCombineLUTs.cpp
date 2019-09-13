@@ -39,8 +39,6 @@ TAutoConsoleVariable<int32> CVarTonemapperFilm(
 	TEXT("Use new film tone mapper"),
 	ECVF_RenderThreadSafe);
 
-	ECVF_RenderThreadSafe);
-
 // Including the neutral one at index 0
 const uint32 GMaxLUTBlendCount = 5;
 

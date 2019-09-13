@@ -552,34 +552,6 @@ void FDeferredShadingSceneRenderer::RayTracingGlobalIlluminationCreateGatherPoin
 	PassParameters->TileOffsetX = 0;
 	PassParameters->TileOffsetY = 0;
 
->>>> ORIGINAL //UE4/Dev-RenderPlat-Staging/Engine/Source/Runtime/Renderer/Private/RayTracing/RayTracingGlobalIllumination.cpp#3
-		if (GRayTracingGlobalIlluminationTileSize <= 0)
-		{
-			GraphBuilder.AddPass(
-				RDG_EVENT_NAME("GlobalIlluminationRayTracing %dx%d", RayTracingResolution.X, RayTracingResolution.Y),
-				PassParameters,
-				ERDGPassFlags::Compute,
-				[PassParameters, this, &View, RayGenerationShader, RayTracingResolution](FRHICommandList& RHICmdList)
-			{
-				FRayTracingShaderBindingsWriter GlobalResources;
-				SetShaderParameters(GlobalResources, *RayGenerationShader, *PassParameters);
-
-				FRHIRayTracingScene* RayTracingSceneRHI = View.RayTracingScene.RayTracingSceneRHI;
-				RHICmdList.RayTraceDispatch(View.RayTracingMaterialPipeline, RayGenerationShader->GetRayTracingShader(), RayTracingSceneRHI, GlobalResources, RayTracingResolution.X, RayTracingResolution.Y);
-			});
-		}
-		else
-
-		if (GRayTracingGlobalIlluminationTileSize <= 0)
-		{
-			GraphBuilder.AddPass(
-				RDG_EVENT_NAME("GlobalIlluminationRayTracing %dx%d", RayTracingResolution.X, RayTracingResolution.Y),
-				PassParameters,
-				ERDGPassFlags::Compute,
-				[PassParameters, this, &View, RayGenerationShader, RayTracingResolution](FRHICommandList& RHICmdList)
-			{
-				FRHIRayTracingScene* RayTracingSceneRHI = View.RayTracingScene.RayTracingSceneRHI;
-==== THEIRS //UE4/Dev-RenderPlat-Staging/Engine/Source/Runtime/Renderer/Private/RayTracing/RayTracingGlobalIllumination.cpp#6
 	// Global
 	PassParameters->TLAS = View.RayTracingScene.RayTracingSceneRHI->GetShaderResourceView();
 	PassParameters->ViewUniformBuffer = View.ViewUniformBuffer;
