@@ -861,6 +861,8 @@ bool FDeferredShadingSceneRenderer::DispatchRayTracingWorldUpdates(FRHICommandLi
 
 void FDeferredShadingSceneRenderer::WaitForRayTracingScene(FRHICommandListImmediate& RHICmdList)
 {
+	if (!IsRayTracingEnabled()) return;
+
 	if (RayTracingDynamicGeometryUpdateEndFence)
 	{
 		RHICmdList.WaitComputeFence(RayTracingDynamicGeometryUpdateEndFence);
