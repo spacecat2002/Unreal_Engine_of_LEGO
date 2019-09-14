@@ -137,8 +137,13 @@ enum class ECompressedMetadataLayout
 	// The signal denoiser use directly depth buffer and gbuffer.
 	Disabled,
 
-	// Compress scene depth and normal into same render target.
+	// Compress scene depth and world space normal into same render target.
 	DepthAndNormal,
+
+	// Compress scene depth and view space normal into same render target The advantage of having the normal
+	// in the view space is to use much faster ScreenToView than ScreenToTranslatedWorld. But doesn't
+	// support history bilateral rejection.
+	DepthAndViewNormal,
 
 	MAX,
 };
@@ -250,7 +255,7 @@ static ECompressedMetadataLayout GetSignalCompressedMetadata(ESignalProcessing S
 {
 	if (SignalProcessing == ESignalProcessing::ScreenSpaceDiffuseIndirect)
 	{
-		return ECompressedMetadataLayout::DepthAndNormal;
+		return ECompressedMetadataLayout::DepthAndViewNormal;
 	}
 	return ECompressedMetadataLayout::Disabled;
 }
@@ -703,6 +708,8 @@ BEGIN_SHADER_PARAMETER_STRUCT(FSSDCommonParameters, )
 	SHADER_PARAMETER(FVector4, ThreadIdToBufferUV)
 	SHADER_PARAMETER(FVector4, BufferBilinearUVMinMax)
 	SHADER_PARAMETER(FVector2D, BufferUVToOutputPixelPosition)
+	SHADER_PARAMETER(FVector4, BufferUVToScreenPosition)
+	SHADER_PARAMETER(FMatrix, ScreenToView)
 
 	SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
 
@@ -1410,6 +1417,13 @@ static void DenoiseSignalAtConstantPixelDensity(
 
 		CommonParameters.BufferUVToOutputPixelPosition.X = BufferExtent.X;
 		CommonParameters.BufferUVToOutputPixelPosition.Y = BufferExtent.Y;
+
+		CommonParameters.ScreenToView = FMatrix(
+			FPlane(1, 0, 0, 0),
+			FPlane(0, 1, 0, 0),
+			FPlane(0, 0, View.ProjectionMatrixUnadjustedForRHI.M[2][2], 1),
+			FPlane(0, 0, View.ProjectionMatrixUnadjustedForRHI.M[3][2], 0))
+			* View.ViewMatrices.GetInvProjectionMatrix();
 	}
 
 	#if RHI_RAYTRACING
@@ -1462,7 +1476,8 @@ static void DenoiseSignalAtConstantPixelDensity(
 	ECompressedMetadataLayout CompressedMetadataLayout = GetSignalCompressedMetadata(Settings.SignalProcessing);
 	if (CompressedMetadataLayout != ECompressedMetadataLayout::Disabled)
 	{
-		if (CompressedMetadataLayout == ECompressedMetadataLayout::DepthAndNormal)
+		if (CompressedMetadataLayout == ECompressedMetadataLayout::DepthAndNormal ||
+			CompressedMetadataLayout == ECompressedMetadataLayout::DepthAndViewNormal)
 		{
 			FRDGTextureDesc Desc = FRDGTextureDesc::Create2DDesc(
 				BufferExtent,
@@ -1654,6 +1669,10 @@ static void DenoiseSignalAtConstantPixelDensity(
 		SignalHistory = NewSignalOutput;
 	}
 
+	bool bExtractSceneDepth = false;
+	bool bExtractSceneGBufferA = false;
+	bool bExtractSceneGBufferB = false;
+
 	// Temporal pass.
 	//
 	// Note: always done even if there is no ViewState, because it is already not an idea case for the denoiser quality, therefore not really
@@ -1785,6 +1804,15 @@ static void DenoiseSignalAtConstantPixelDensity(
 
 		PassParameters->DebugOutput = CreateDebugUAV(TEXT("DebugDenoiserTemporalAccumulation"));
 
+		// Manually cleans the unused resource, to find out what the shader is actually going to need for next frame.
+		{
+			ClearUnusedGraphResources(*ComputeShader, PassParameters);
+
+			bExtractSceneDepth = PassParameters->PrevDepthBuffer != nullptr;
+			bExtractSceneGBufferA = PassParameters->PrevGBufferA != nullptr;
+			bExtractSceneGBufferB = PassParameters->PrevGBufferB != nullptr;
+		}
+
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
 			RDG_EVENT_NAME("SSD TemporalAccumulation"),
@@ -1835,23 +1863,22 @@ static void DenoiseSignalAtConstantPixelDensity(
 	{
 		check(View.ViewState);
 
-		// Keep depth buffer and GBuffer around for next frame.
+		// Keep depth buffer and GBuffer around for next frame if the temporal accumulation needs it.
 		{
-			GraphBuilder.QueueTextureExtraction(SceneTextures.SceneDepthBuffer, &View.ViewState->PrevFrameViewInfo.DepthBuffer);
+			// Might requires the depth.
+			if (bExtractSceneDepth)
+			{
+				GraphBuilder.QueueTextureExtraction(SceneTextures.SceneDepthBuffer, &View.ViewState->PrevFrameViewInfo.DepthBuffer);
+			}
 
-			// Requires the normal that are in GBuffer A.
-			if (Settings.SignalProcessing == ESignalProcessing::ShadowVisibilityMask ||
-				Settings.SignalProcessing == ESignalProcessing::PolychromaticPenumbraHarmonic ||
-				Settings.SignalProcessing == ESignalProcessing::Reflections ||
-				Settings.SignalProcessing == ESignalProcessing::AmbientOcclusion ||
-				Settings.SignalProcessing == ESignalProcessing::DiffuseAndAmbientOcclusion)
+			// Might requires the world normal that are in GBuffer A.
+			if (bExtractSceneGBufferA)
 			{
 				GraphBuilder.QueueTextureExtraction(SceneTextures.SceneGBufferA, &View.ViewState->PrevFrameViewInfo.GBufferA);
 			}
 
-			// Requires the roughness that is in GBuffer B.
-			if (Settings.SignalProcessing == ESignalProcessing::PolychromaticPenumbraHarmonic || 
-				Settings.SignalProcessing == ESignalProcessing::Reflections)
+			// Might need the roughness that is in GBuffer B.
+			if (bExtractSceneGBufferB)
 			{
 				GraphBuilder.QueueTextureExtraction(SceneTextures.SceneGBufferB, &View.ViewState->PrevFrameViewInfo.GBufferB);
 			}
