@@ -1418,6 +1418,11 @@ static void DenoiseSignalAtConstantPixelDensity(
 		CommonParameters.BufferUVToOutputPixelPosition.X = BufferExtent.X;
 		CommonParameters.BufferUVToOutputPixelPosition.Y = BufferExtent.Y;
 
+		CommonParameters.BufferUVToScreenPosition.X = float(FullResBufferExtent.X) / float(View.ViewRect.Width()) * 2.0f;
+		CommonParameters.BufferUVToScreenPosition.Y = - float(FullResBufferExtent.Y) / float(View.ViewRect.Height()) * 2.0f;
+		CommonParameters.BufferUVToScreenPosition.Z = float(View.ViewRect.Min.X) / float(View.ViewRect.Width()) * 2.0f - 1.0f;
+		CommonParameters.BufferUVToScreenPosition.W = - float(View.ViewRect.Min.Y) / float(View.ViewRect.Height()) * 2.0f + 1.0f;
+
 		CommonParameters.ScreenToView = FMatrix(
 			FPlane(1, 0, 0, 0),
 			FPlane(0, 1, 0, 0),
