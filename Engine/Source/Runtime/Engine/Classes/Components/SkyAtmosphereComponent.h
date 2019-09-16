@@ -164,7 +164,7 @@ class USkyAtmosphereComponent : public USceneComponent
 	UFUNCTION(BlueprintCallable, Category = "Rendering")
 	ENGINE_API void SetAerialPespectiveViewDistanceScale(float NewValue);
 	UFUNCTION(BlueprintCallable, Category = "Rendering")
-	void SetHeightFogContribution(float NewValue);
+	ENGINE_API void SetHeightFogContribution(float NewValue);
 
 
 

@@ -1287,7 +1287,7 @@ void FStaticMeshSceneProxy::GetDynamicMeshElements(const TArray<const FSceneView
 									{
 										const FLODInfo::FSectionInfo& Section = LODs[LODIndex].Sections[SectionIndex];
 
-										bSectionIsSelected = Section.bSelected;
+										bSectionIsSelected = Section.bSelected || (bIsWireframeView && bProxyIsSelected);
 										MeshElement.BatchHitProxyId = Section.HitProxy ? Section.HitProxy->Id : FHitProxyId();
 									}
 	#endif // WITH_EDITOR
