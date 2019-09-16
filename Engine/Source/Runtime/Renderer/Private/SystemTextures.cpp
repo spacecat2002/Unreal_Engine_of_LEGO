@@ -611,3 +611,83 @@ void FSystemTextures::ReleaseDynamicRHI()
 	// Indicate that textures will need to be reinitialized.
 	FeatureLevelInitializedTo = ERHIFeatureLevel::Num;
 }
+
+FRDGTextureRef FSystemTextures::GetBlackDummy(FRDGBuilder& GraphBuilder) const
+{
+	return GraphBuilder.RegisterExternalTexture(BlackDummy, TEXT("BlackDummy"));
+}
+
+FRDGTextureRef FSystemTextures::GetBlackAlphaOneDummy(FRDGBuilder& GraphBuilder) const
+{
+	return GraphBuilder.RegisterExternalTexture(BlackAlphaOneDummy, TEXT("BlackAlphaOneDummy"));
+}
+
+FRDGTextureRef FSystemTextures::GetWhiteDummy(FRDGBuilder& GraphBuilder) const
+{
+	return GraphBuilder.RegisterExternalTexture(WhiteDummy, TEXT("WhiteDummy"));
+}
+
+FRDGTextureRef FSystemTextures::GetPerlinNoiseGradient(FRDGBuilder& GraphBuilder) const
+{
+	return GraphBuilder.RegisterExternalTexture(PerlinNoiseGradient, TEXT("PerlinNoiseGradient"));
+}
+
+FRDGTextureRef FSystemTextures::GetPerlinNoise3D(FRDGBuilder& GraphBuilder) const
+{
+	return GraphBuilder.RegisterExternalTexture(PerlinNoise3D, TEXT("PerlinNoise3D"));
+}
+
+FRDGTextureRef FSystemTextures::GetSobolSampling(FRDGBuilder& GraphBuilder) const
+{
+	return GraphBuilder.RegisterExternalTexture(SobolSampling, TEXT("SobolSampling"));
+}
+
+FRDGTextureRef FSystemTextures::GetSSAORandomization(FRDGBuilder& GraphBuilder) const
+{
+	return GraphBuilder.RegisterExternalTexture(SSAORandomization, TEXT("SSAORandomization"));
+}
+
+FRDGTextureRef FSystemTextures::GetPreintegratedGF(FRDGBuilder& GraphBuilder) const
+{
+	return GraphBuilder.RegisterExternalTexture(PreintegratedGF, TEXT("PreintegratedGF"));
+}
+
+FRDGTextureRef FSystemTextures::GetLTCMat(FRDGBuilder& GraphBuilder) const
+{
+	return GraphBuilder.RegisterExternalTexture(LTCMat, TEXT("LTCMat"));
+}
+
+FRDGTextureRef FSystemTextures::GetLTCAmp(FRDGBuilder& GraphBuilder) const
+{
+	return GraphBuilder.RegisterExternalTexture(LTCAmp, TEXT("LTCAmp"));
+}
+
+FRDGTextureRef FSystemTextures::GetMaxFP16Depth(FRDGBuilder& GraphBuilder) const
+{
+	return GraphBuilder.RegisterExternalTexture(MaxFP16Depth, TEXT("MaxFP16Depth"));
+}
+
+FRDGTextureRef FSystemTextures::GetDepthDummy(FRDGBuilder& GraphBuilder) const
+{
+	return GraphBuilder.RegisterExternalTexture(DepthDummy, TEXT("DepthDummy"));
+}
+
+FRDGTextureRef FSystemTextures::GetGreenDummy(FRDGBuilder& GraphBuilder) const
+{
+	return GraphBuilder.RegisterExternalTexture(GreenDummy, TEXT("GreenDummy"));
+}
+
+FRDGTextureRef FSystemTextures::GetDefaultNormal8Bit(FRDGBuilder& GraphBuilder) const
+{
+	return GraphBuilder.RegisterExternalTexture(DefaultNormal8Bit, TEXT("DefaultNormal8Bit"));
+}
+
+FRDGTextureRef FSystemTextures::GetMidGreyDummy(FRDGBuilder& GraphBuilder) const
+{
+	return GraphBuilder.RegisterExternalTexture(MidGreyDummy, TEXT("MidGreyDummy"));
+}
+
+FRDGTextureRef FSystemTextures::GetVolumetricBlackDummy(FRDGBuilder& GraphBuilder) const
+{
+	return GraphBuilder.RegisterExternalTexture(VolumetricBlackDummy, TEXT("VolumetricBlackDummy"));
+}
