@@ -1046,6 +1046,46 @@ protected:
 	 */
 	virtual void LoadModulesRequiredForCompilation();
 #endif
+
+#if WITH_EDITOR
+
+public:
+	/**
+	 * Returns true if this blueprint supports global variables
+	 */
+	virtual bool SupportsGlobalVariables() const { return true; }
+
+	/**
+	 * Returns true if this blueprint supports lobal variables
+	 */
+	virtual bool SupportsLocalVariables() const { return true; }
+
+	/**
+	 * Returns true if this blueprint supports functions
+	 */
+	virtual bool SupportsFunctions() const { return true; }
+
+	/**
+	 * Returns true if this blueprint supports macros
+	 */
+	virtual bool SupportsMacros() const { return true; }
+
+	/**
+	 * Returns true if this blueprint supports delegates
+	 */
+	virtual bool SupportsDelegates() const { return true; }
+
+	/**
+	 * Returns true if this blueprint supports event graphs
+	 */
+	virtual bool SupportsEventGraphs() const { return true; }
+
+	/**
+	 * Returns true if this blueprint supports animation layers
+	 */
+	virtual bool SupportsAnimLayers() const { return true; }
+
+#endif
 };
 
 
