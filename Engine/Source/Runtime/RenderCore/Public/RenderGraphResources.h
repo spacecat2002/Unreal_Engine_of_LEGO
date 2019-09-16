@@ -47,6 +47,27 @@ using FRDGBufferSRVRef = FRDGBufferSRV*;
 class FRDGBufferUAV;
 using FRDGBufferUAVRef = FRDGBufferUAV*;
 
+/** A simple helper struct representing a texture and a view rectangle. */
+struct FRDGTextureViewRectPair
+{
+	FRDGTextureViewRectPair() = default;
+
+	explicit FRDGTextureViewRectPair(FRDGTextureRef InTexture);
+
+	FRDGTextureViewRectPair(FRDGTextureRef InTexture, FIntRect InViewRect)
+		: Texture(InTexture)
+		, ViewRect(InViewRect)
+	{}
+
+	bool IsValid() const
+	{
+		return Texture != nullptr && !ViewRect.IsEmpty();
+	}
+
+	FRDGTextureRef Texture = nullptr;
+	FIntRect ViewRect;
+};
+
 /** Used for tracking resource state during execution. */
 struct FRDGResourceState
 {
@@ -845,5 +866,14 @@ inline FRDGBufferUAVDesc::FRDGBufferUAVDesc(FRDGBufferRef InBuffer)
 	else
 	{
 		checkf(Buffer->Desc.UnderlyingType != FRDGBufferDesc::EUnderlyingType::VertexBuffer, TEXT("VertexBuffer %s requires a type when creating a UAV."), Buffer->Name);
+	}
+}
+
+inline FRDGTextureViewRectPair::FRDGTextureViewRectPair(FRDGTextureRef InTexture)
+	: Texture(InTexture)
+{
+	if (InTexture)
+	{
+		ViewRect.Max = InTexture->Desc.Extent;
 	}
 }
