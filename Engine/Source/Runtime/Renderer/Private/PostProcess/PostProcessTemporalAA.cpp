@@ -720,9 +720,6 @@ void AddTemporalAAPass(
 			TAAParameters.OutputViewRect.Width() * HistoryUpscaleFactor,
 			TAAParameters.OutputViewRect.Height() * HistoryUpscaleFactor);
 
-		FIntPoint QuantizedMinHistorySize;
-		QuantizeSceneBufferSize(HistoryViewSize, QuantizedMinHistorySize);
-
 		TAAParameters.Pass = ETAAPassConfig::MainSuperSampling;
 		TAAParameters.bUseFast = false;
 
