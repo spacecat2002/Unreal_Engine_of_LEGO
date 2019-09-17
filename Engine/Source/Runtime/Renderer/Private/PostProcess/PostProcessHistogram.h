@@ -10,6 +10,5 @@ FRDGTextureRef AddHistogramPass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
 	const FEyeAdaptationParameters& EyeAdaptationParameters,
-	const FIntRect SceneColorViewportRect,
-	FRDGTextureRef SceneColorTexture,
+	FRDGTextureViewRectPair SceneColor,
 	FRDGTextureRef EyeAdaptationTexture);

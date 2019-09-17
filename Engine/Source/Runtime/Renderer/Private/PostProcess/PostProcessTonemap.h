@@ -1,21 +1,11 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-/*=============================================================================
-	PostProcessTonemap.h: Post processing tone mapping implementation, can add bloom.
-=============================================================================*/
-
 #pragma once
 
-#include "CoreMinimal.h"
-#include "RHI.h"
-#include "RendererInterface.h"
-#include "ShaderParameters.h"
-#include "Shader.h"
-#include "RHIStaticStates.h"
-#include "GlobalShader.h"
-#include "PostProcessParameters.h"
 #include "PostProcess/RenderingCompositionGraph.h"
 #include "PostProcess/PostProcessEyeAdaptation.h"
+#include "ScreenPass.h"
+#include "OverridePassSequence.h"
 #include "Math/Halton.h"
 
 // You must update values in PostProcessTonemap.usf when changing this enum.
@@ -61,18 +51,13 @@ END_SHADER_PARAMETER_STRUCT()
 
 FMobileFilmTonemapParameters GetMobileFilmTonemapParameters(const FPostProcessSettings& PostProcessSettings, bool bUseColorMatrix, bool bUseShadowTint, bool bUseContrast);
 
-struct FTonemapInputs
+struct FTonemapInputs : public FOverridePassInputs
 {
-	FRDGTextureRef OverrideOutputTexture = nullptr;
-	FIntRect OverrideOutputViewRect;
-
 	// [Required] HDR scene color to tonemap.
-	FRDGTextureRef SceneColorTexture = nullptr;
-	FIntRect SceneColorViewRect;
+	FRDGTextureViewRectPair SceneColor;
 
 	// [Required] Filtered bloom texture to composite with tonemapped scene color. This should be transparent black for no bloom.
-	FRDGTextureRef BloomTexture = nullptr;
-	FIntRect BloomViewRect;
+	FRDGTextureViewRectPair Bloom;
 
 	// [Required] Color grading texture used to remap colors.
 	FRDGTextureRef ColorGradingTexture = nullptr;
@@ -96,7 +81,9 @@ struct FTonemapInputs
 	bool bOutputInHDR = false;
 };
 
-FRDGTextureRef AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FTonemapInputs& Inputs);
+using FTonemapOutputs = FRDGTextureViewRectPair;
+
+FTonemapOutputs AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FTonemapInputs& Inputs);
 
 // derives from TRenderingCompositePassBase<InputCount, OutputCount>
 // ePId_Input0: SceneColor

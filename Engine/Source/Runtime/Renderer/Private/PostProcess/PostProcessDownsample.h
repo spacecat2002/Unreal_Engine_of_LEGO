@@ -40,11 +40,8 @@ struct FDownsamplePassInputs
 	// Friendly name of the pass. Used for logging and profiling.
 	const TCHAR* Name = nullptr;
 
-	// Input RDG texture. Must not be null.
-	FRDGTextureRef Texture = nullptr;
-
-	// Input viewport to sample from.
-	FIntRect Viewport;
+	// Input scene color RDG texture / view rect. Must not be null.
+	FRDGTextureViewRectPair SceneColor;
 
 	// The downsample method to use.
 	EDownsampleQuality Quality = EDownsampleQuality::Low;
@@ -56,16 +53,7 @@ struct FDownsamplePassInputs
 	EPixelFormat FormatOverride = PF_Unknown;
 };
 
-struct FDownsamplePassOutputs
-{
-	FDownsamplePassOutputs() = default;
-
-	// Half-resolution texture.
-	FRDGTextureRef Texture = nullptr;
-
-	// Half-resolution viewport.
-	FIntRect Viewport;
-};
+using FDownsamplePassOutputs = FRDGTextureViewRectPair;
 
 FDownsamplePassOutputs AddDownsamplePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FDownsamplePassInputs& Inputs);
 

@@ -103,14 +103,13 @@ FRDGTextureRef AddHistogramPass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
 	const FEyeAdaptationParameters& EyeAdaptationParameters,
-	const FIntRect SceneColorViewportRect,
-	FRDGTextureRef SceneColorTexture,
+	FRDGTextureViewRectPair SceneColor,
 	FRDGTextureRef EyeAdaptationTexture)
 {
-	check(SceneColorTexture);
+	check(SceneColor.IsValid());
 	check(EyeAdaptationTexture);
 
-	const FIntPoint HistogramThreadGroupCount = FIntPoint::DivideAndRoundUp(SceneColorViewportRect.Size(), FHistogramCS::TexelsPerThreadGroup);
+	const FIntPoint HistogramThreadGroupCount = FIntPoint::DivideAndRoundUp(SceneColor.ViewRect.Size(), FHistogramCS::TexelsPerThreadGroup);
 
 	const uint32 HistogramThreadGroupCountTotal = HistogramThreadGroupCount.X * HistogramThreadGroupCount.Y;
 
@@ -134,8 +133,8 @@ FRDGTextureRef AddHistogramPass(
 
 		FHistogramCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FHistogramCS::FParameters>();
 		PassParameters->View = ScreenPassView.View.ViewUniformBuffer;
-		PassParameters->Input = GetScreenPassTextureViewportParameters(FScreenPassTextureViewport(SceneColorViewportRect, SceneColorTexture));
-		PassParameters->InputTexture = SceneColorTexture;
+		PassParameters->Input = GetScreenPassTextureViewportParameters(FScreenPassTextureViewport(SceneColor));
+		PassParameters->InputTexture = SceneColor.Texture;
 		PassParameters->HistogramRWTexture = GraphBuilder.CreateUAV(HistogramTexture);
 		PassParameters->ThreadGroupCount = HistogramThreadGroupCount;
 		PassParameters->EyeAdaptation = EyeAdaptationParameters;
@@ -144,7 +143,7 @@ FRDGTextureRef AddHistogramPass(
 
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
-			RDG_EVENT_NAME("Histogram %dx%d (CS)", SceneColorViewportRect.Width(), SceneColorViewportRect.Height()),
+			RDG_EVENT_NAME("Histogram %dx%d (CS)", SceneColor.ViewRect.Width(), SceneColor.ViewRect.Height()),
 			*ComputeShader,
 			PassParameters,
 			FIntVector(HistogramThreadGroupCount.X, HistogramThreadGroupCount.Y, 1));

@@ -33,44 +33,41 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(FVisualizeDOFPS, "/Engine/Private/PostProcessVisualizeDOF.usf", "VisualizeDOFPS", SF_Pixel);
 
-FRDGTextureRef AddVisualizeDOFPass(
-	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
-	FRDGTextureRef ColorTexture,
-	FRDGTextureRef DepthTexture,
-	FIntRect ViewRect)
+FVisualizeDOFOutputs AddVisualizeDOFPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeDOFInputs& Inputs)
 {
-	check(ColorTexture);
-	check(DepthTexture);
-	check(!ViewRect.IsEmpty());
+	check(Inputs.SceneColor.IsValid());
+	check(Inputs.SceneDepth.IsValid());
+	checkf(Inputs.SceneColor.ViewRect == Inputs.SceneDepth.ViewRect, TEXT("VisualizeDOF requires that the scene and depth view rects match."));
 
 	const FViewInfo& View = ScreenPassView.View;
 
-	const FScreenPassTextureViewport Viewport(ViewRect, ColorTexture);
+	FRDGTextureViewRectPair Output = Inputs.OverrideOutput;
 
-	FRDGTextureRef OutputTexture = nullptr;
-
+	if (!Output.Texture)
 	{
-		FRDGTextureDesc OutputDesc = ColorTexture->Desc;
+		FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
 		OutputDesc.Reset();
 		OutputDesc.Format = PF_R8G8B8A8;
 
-		OutputTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("VisualizeDOF"));
+		Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("VisualizeDOF"));
+		Output.ViewRect = Inputs.SceneColor.ViewRect;
 	}
+
+	const FScreenPassTextureViewport InputViewport(Inputs.SceneColor);
 
 	FRHISamplerState* PointClampSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 
 	FVisualizeDOFPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FVisualizeDOFPS::FParameters>();
 	PassParameters->View = View.ViewUniformBuffer;
-	PassParameters->Input = GetScreenPassTextureViewportParameters(Viewport);
-	PassParameters->ColorTexture = ColorTexture;
-	PassParameters->DepthTexture = DepthTexture;
+	PassParameters->Input = GetScreenPassTextureViewportParameters(InputViewport);
+	PassParameters->ColorTexture = Inputs.SceneColor.Texture;
+	PassParameters->DepthTexture = Inputs.SceneDepth.Texture;
 	PassParameters->ColorSampler = PointClampSampler;
 	PassParameters->DepthSampler = PointClampSampler;
 	PassParameters->DepthOfFieldParams = GetDepthOfFieldParameters(View.FinalPostProcessSettings);
 	PassParameters->NearColor = FLinearColor(0, 0.8f, 0, 0);
 	PassParameters->FarColor = FLinearColor(0, 0, 0.8f, 0);
-	PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, ScreenPassView.GetOverwriteLoadAction());
+	PassParameters->RenderTargets[0] = FRenderTargetBinding(Output.Texture, ScreenPassView.GetOverwriteLoadAction());
 
 	TShaderMapRef<FVisualizeDOFPS> PixelShader(ScreenPassView.View.ShaderMap);
 
@@ -78,15 +75,15 @@ FRDGTextureRef AddVisualizeDOFPass(
 		RDG_EVENT_NAME("SubsurfaceVisualize"),
 		PassParameters,
 		ERDGPassFlags::Raster,
-		[ScreenPassView, Viewport, PixelShader, PassParameters, OutputTexture](FRHICommandListImmediate& RHICmdList)
+		[ScreenPassView, InputViewport, PixelShader, PassParameters, Output](FRHICommandListImmediate& RHICmdList)
 	{
-		DrawScreenPass(RHICmdList, ScreenPassView, Viewport, Viewport, *PixelShader, *PassParameters);
+		DrawScreenPass(RHICmdList, ScreenPassView, FScreenPassTextureViewport(Output), InputViewport, *PixelShader, *PassParameters);
 
 		// Draw debug text
 		{
 			const FViewInfo& LocalView = ScreenPassView.View;
 			const FSceneViewFamily& ViewFamily = *LocalView.Family;
-			FRenderTargetTemp TempRenderTarget(static_cast<FRHITexture2D*>(OutputTexture->GetRHI()), OutputTexture->Desc.Extent);
+			FRenderTargetTemp TempRenderTarget(static_cast<FRHITexture2D*>(Output.Texture->GetRHI()), Output.Texture->Desc.Extent);
 			FCanvas Canvas(&TempRenderTarget, nullptr, ViewFamily.CurrentRealTime, ViewFamily.CurrentWorldTime, ViewFamily.DeltaWorldTime, LocalView.GetFeatureLevel());
 
 			float X = 30;
@@ -135,5 +132,5 @@ FRDGTextureRef AddVisualizeDOFPass(
 		}
 	});
 
-	return OutputTexture;
+	return Output;
 }

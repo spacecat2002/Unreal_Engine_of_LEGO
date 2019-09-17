@@ -3,10 +3,14 @@
 #pragma once
 
 #include "ScreenPass.h"
+#include "OverridePassSequence.h"
 
-FRDGTextureRef AddVisualizeDOFPass(
-	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
-	FRDGTextureRef ColorTexture,
-	FRDGTextureRef DepthTexture,
-	FIntRect ViewRect);
+struct FVisualizeDOFInputs : public FOverridePassInputs
+{
+	FRDGTextureViewRectPair SceneColor;
+	FRDGTextureViewRectPair SceneDepth;
+};
+
+using FVisualizeDOFOutputs = FRDGTextureViewRectPair;
+
+FVisualizeDOFOutputs AddVisualizeDOFPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeDOFInputs& Inputs);

@@ -11,6 +11,5 @@
 FRDGTextureRef ComputeMitchellNetravaliDownsample(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
-	FRDGTextureRef InputTexture,
-	const FIntRect InputViewport,
+	FRDGTextureViewRectPair Input,
 	const FScreenPassTextureViewport OutputViewport);

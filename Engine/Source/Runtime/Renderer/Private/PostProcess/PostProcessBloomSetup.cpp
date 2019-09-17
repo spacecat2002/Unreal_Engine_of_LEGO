@@ -96,29 +96,27 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FBloomSetupCS, "/Engine/Private/PostProcessBloom.usf", "BloomSetupCS", SF_Compute);
 } //!namespace
 
-FRDGTextureRef AddBloomSetupPass(
+FRDGTextureViewRectPair AddBloomSetupPass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
-	FRDGTextureRef SceneColorTexture,
-	FIntRect SceneColorViewRect,
+	FRDGTextureViewRectPair SceneColor,
 	FRDGTextureRef EyeAdaptationTexture,
 	float BloomThreshold)
 {
-	check(SceneColorTexture);
-	check(!SceneColorViewRect.IsEmpty());
+	check(SceneColor.IsValid());
 	check(EyeAdaptationTexture);
 
 	// A negative or zero threshold just disables the pass.
 	if (BloomThreshold <= 0.0f)
 	{
-		return SceneColorTexture;
+		return SceneColor;
 	}
 
-	const FScreenPassTextureViewport Viewport(SceneColorViewRect, SceneColorTexture);
+	const FScreenPassTextureViewport Viewport(SceneColor);
 
 	const bool bIsComputePass = ScreenPassView.bUseComputePasses;
 
-	FRDGTextureDesc OutputTextureDesc = SceneColorTexture->Desc;
+	FRDGTextureDesc OutputTextureDesc = SceneColor.Texture->Desc;
 	OutputTextureDesc.Reset();
 	OutputTextureDesc.TargetableFlags |= bIsComputePass ? TexCreate_UAV : TexCreate_RenderTargetable;
 
@@ -127,7 +125,7 @@ FRDGTextureRef AddBloomSetupPass(
 	if (bIsComputePass)
 	{
 		FBloomSetupCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FBloomSetupCS::FParameters>();
-		PassParameters->BloomSetup = GetBloomSetupParameters(ScreenPassView.View, Viewport, SceneColorTexture, EyeAdaptationTexture, BloomThreshold);
+		PassParameters->BloomSetup = GetBloomSetupParameters(ScreenPassView.View, Viewport, SceneColor.Texture, EyeAdaptationTexture, BloomThreshold);
 		PassParameters->RWOutputTexture = GraphBuilder.CreateUAV(OutputTexture);
 
 		TShaderMapRef<FBloomSetupCS> ComputeShader(ScreenPassView.View.ShaderMap);
@@ -142,7 +140,7 @@ FRDGTextureRef AddBloomSetupPass(
 	else
 	{
 		FBloomSetupPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FBloomSetupPS::FParameters>();
-		PassParameters->BloomSetup = GetBloomSetupParameters(ScreenPassView.View, Viewport, SceneColorTexture, EyeAdaptationTexture, BloomThreshold);
+		PassParameters->BloomSetup = GetBloomSetupParameters(ScreenPassView.View, Viewport, SceneColor.Texture, EyeAdaptationTexture, BloomThreshold);
 		PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, ScreenPassView.GetOverwriteLoadAction());
 
 		TShaderMapRef<FBloomSetupVS> VertexShader(ScreenPassView.View.ShaderMap);
@@ -168,5 +166,5 @@ FRDGTextureRef AddBloomSetupPass(
 			SetupFunction);
 	}
 
-	return OutputTexture;
+	return FRDGTextureViewRectPair(OutputTexture, Viewport.Rect);
 }

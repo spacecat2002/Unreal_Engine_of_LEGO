@@ -399,16 +399,15 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(FBasicEyeAdaptationSetupPS, "/Engine/Private/PostProcessEyeAdaptation.usf", "BasicEyeAdaptationSetupPS", SF_Pixel);
 
-FRDGTextureRef AddBasicEyeAdaptationSetupPass(
+FRDGTextureViewRectPair AddBasicEyeAdaptationSetupPass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
 	const FEyeAdaptationParameters& EyeAdaptationParameters,
-	FRDGTextureRef SceneColorTexture,
-	FIntRect SceneColorViewRect)
+	FRDGTextureViewRectPair SceneColor)
 {
-	check(SceneColorTexture);
+	check(SceneColor.IsValid());
 
-	FRDGTextureDesc OutputDesc = SceneColorTexture->Desc;
+	FRDGTextureDesc OutputDesc = SceneColor.Texture->Desc;
 	OutputDesc.Reset();
 	OutputDesc.DebugName = TEXT("EyeAdaptationBasicSetup");
 	// Require alpha channel for log2 information.
@@ -417,11 +416,11 @@ FRDGTextureRef AddBasicEyeAdaptationSetupPass(
 
 	FRDGTextureRef OutputTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("BasicEyeAdaptationSetup"));
 
-	const FScreenPassTextureViewport Viewport(SceneColorViewRect, OutputTexture);
+	const FScreenPassTextureViewport Viewport(SceneColor);
 
 	FBasicEyeAdaptationSetupPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FBasicEyeAdaptationSetupPS::FParameters>();
 	PassParameters->EyeAdaptation = EyeAdaptationParameters;
-	PassParameters->ColorTexture = SceneColorTexture;
+	PassParameters->ColorTexture = SceneColor.Texture;
 	PassParameters->ColorSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, ScreenPassView.GetOverwriteLoadAction());
 
@@ -436,7 +435,7 @@ FRDGTextureRef AddBasicEyeAdaptationSetupPass(
 		*PixelShader,
 		PassParameters);
 
-	return OutputTexture;
+	return FRDGTextureViewRectPair(OutputTexture, SceneColor.ViewRect);
 }
 
 class FBasicEyeAdaptationShader : public FGlobalShader
@@ -508,8 +507,7 @@ FRDGTextureRef AddBasicEyeAdaptationPass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
 	const FEyeAdaptationParameters& EyeAdaptationParameters,
-	FRDGTextureRef SceneColorTexture,
-	FIntRect SceneColorViewRect,
+	FRDGTextureViewRectPair SceneColor,
 	FRDGTextureRef EyeAdaptationTexture)
 {
 	const FViewInfo& View = ScreenPassView.View;
@@ -517,7 +515,7 @@ FRDGTextureRef AddBasicEyeAdaptationPass(
 	View.SwapEyeAdaptationRTs(GraphBuilder.RHICmdList);
 	View.SetValidEyeAdaptation();
 
-	const FScreenPassTextureViewport SceneColorViewport(SceneColorViewRect, SceneColorTexture);
+	const FScreenPassTextureViewport SceneColorViewport(SceneColor);
 
 	FRDGTextureRef OutputTexture = GraphBuilder.RegisterExternalTexture(View.GetEyeAdaptation(GraphBuilder.RHICmdList), TEXT("EyeAdaptation"), ERDGResourceFlags::MultiFrame);
 
@@ -525,7 +523,7 @@ FRDGTextureRef AddBasicEyeAdaptationPass(
 	PassBaseParameters.View = ScreenPassView.View.ViewUniformBuffer;
 	PassBaseParameters.EyeAdaptation = EyeAdaptationParameters;
 	PassBaseParameters.Color = GetScreenPassTextureViewportParameters(SceneColorViewport);
-	PassBaseParameters.ColorTexture = SceneColorTexture;
+	PassBaseParameters.ColorTexture = SceneColor.Texture;
 	PassBaseParameters.EyeAdaptationTexture = EyeAdaptationTexture;
 
 	if (ScreenPassView.bUseComputePasses)

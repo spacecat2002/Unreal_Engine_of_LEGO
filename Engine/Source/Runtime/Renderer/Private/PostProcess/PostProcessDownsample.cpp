@@ -29,18 +29,17 @@ END_SHADER_PARAMETER_STRUCT()
 
 FDownsampleParameters GetDownsampleParameters(
 	const FViewInfo& View,
-	const FIntRect InputViewport,
-	FRDGTextureRef InputTexture,
+	FRDGTextureViewRectPair TexturePair,
 	EDownsampleQuality DownsampleMethod)
 {
-	check(InputTexture);
+	check(TexturePair.Texture);
 
-	const FScreenPassTextureViewportParameters InputParameters = GetScreenPassTextureViewportParameters(FScreenPassTextureViewport(InputViewport, InputTexture));
+	const FScreenPassTextureViewportParameters InputParameters = GetScreenPassTextureViewportParameters(FScreenPassTextureViewport(TexturePair));
 
 	FDownsampleParameters Parameters;
 	Parameters.ViewUniformBuffer = View.ViewUniformBuffer;
 	Parameters.Input = InputParameters;
-	Parameters.InputTexture = InputTexture;
+	Parameters.InputTexture = TexturePair.Texture;
 	Parameters.InputSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	return Parameters;
 }
@@ -112,7 +111,7 @@ FDownsamplePassOutputs AddDownsamplePass(
 	const FScreenPassViewInfo& ScreenPassView,
 	const FDownsamplePassInputs& Inputs)
 {
-	check(Inputs.Texture);
+	check(Inputs.SceneColor.Texture);
 
 	bool bIsComputePass = ScreenPassView.bUseComputePasses;
 
@@ -121,11 +120,11 @@ FDownsamplePassOutputs AddDownsamplePass(
 		bIsComputePass = false;
 	}
 
-	FRDGTextureRef OutputTexture = nullptr;
+	FRDGTextureViewRectPair Output;
 
 	// Construct the output texture to be half resolution (rounded up to even) with an optional format override.
 	{
-		FRDGTextureDesc Desc = Inputs.Texture->Desc;
+		FRDGTextureDesc Desc = Inputs.SceneColor.Texture->Desc;
 		Desc.Reset();
 		Desc.Extent = FIntPoint::DivideAndRoundUp(Desc.Extent, 2);
 		Desc.Extent.X = FMath::Max(1, Desc.Extent.X);
@@ -142,52 +141,51 @@ FDownsamplePassOutputs AddDownsamplePass(
 			Desc.Format = Inputs.FormatOverride;
 		}
 
-		OutputTexture = GraphBuilder.CreateTexture(Desc, Inputs.Name);
+		Output.Texture = GraphBuilder.CreateTexture(Desc, Inputs.Name);
+		Output.ViewRect = FIntRect::DivideAndRoundUp(Inputs.SceneColor.ViewRect, 2);
 	}
 
 	FDownsamplePermutationDomain PermutationVector;
 	PermutationVector.Set<FDownsampleQualityDimension>(Inputs.Quality);
 
-	const FIntRect OutputViewport = FIntRect::DivideAndRoundUp(Inputs.Viewport, 2);
+	const FScreenPassTextureViewport SceneColorViewport(Inputs.SceneColor);
+	const FScreenPassTextureViewport OutputViewport(Output);
 
 	if (bIsComputePass)
 	{
 		FDownsampleCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FDownsampleCS::FParameters>();
-		PassParameters->Common = GetDownsampleParameters(ScreenPassView.View, Inputs.Viewport, Inputs.Texture, Inputs.Quality);
-		PassParameters->Output = GetScreenPassTextureViewportParameters(FScreenPassTextureViewport(OutputViewport, OutputTexture));
-		PassParameters->OutComputeTexture = GraphBuilder.CreateUAV(OutputTexture);
+		PassParameters->Common = GetDownsampleParameters(ScreenPassView.View, Inputs.SceneColor, Inputs.Quality);
+		PassParameters->Output = GetScreenPassTextureViewportParameters(OutputViewport);
+		PassParameters->OutComputeTexture = GraphBuilder.CreateUAV(Output.Texture);
 
 		TShaderMapRef<FDownsampleCS> ComputeShader(ScreenPassView.View.ShaderMap, PermutationVector);
 
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
-			RDG_EVENT_NAME("Downsample.%s %dx%d (CS)", Inputs.Name, Inputs.Viewport.Width(), Inputs.Viewport.Height()),
+			RDG_EVENT_NAME("Downsample.%s %dx%d (CS)", Inputs.Name, Inputs.SceneColor.ViewRect.Width(), Inputs.SceneColor.ViewRect.Height()),
 			*ComputeShader,
 			PassParameters,
-			FComputeShaderUtils::GetGroupCount(OutputViewport.Size(), FIntPoint(GDownsampleTileSizeX, GDownsampleTileSizeY)));
+			FComputeShaderUtils::GetGroupCount(OutputViewport.Rect.Size(), FIntPoint(GDownsampleTileSizeX, GDownsampleTileSizeY)));
 	}
 	else
 	{
 		FDownsamplePS::FParameters* PassParameters = GraphBuilder.AllocParameters<FDownsamplePS::FParameters>();
-		PassParameters->Common = GetDownsampleParameters(ScreenPassView.View, Inputs.Viewport, Inputs.Texture, Inputs.Quality);
-		PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, ERenderTargetLoadAction::ENoAction);
+		PassParameters->Common = GetDownsampleParameters(ScreenPassView.View, Inputs.SceneColor, Inputs.Quality);
+		PassParameters->RenderTargets[0] = FRenderTargetBinding(Output.Texture, ERenderTargetLoadAction::ENoAction);
 
 		TShaderMapRef<FDownsamplePS> PixelShader(ScreenPassView.View.ShaderMap, PermutationVector);
 
 		AddDrawScreenPass(
 			GraphBuilder,
-			RDG_EVENT_NAME("Downsample.%s %dx%d (PS)", Inputs.Name, Inputs.Viewport.Width(), Inputs.Viewport.Height()),
+			RDG_EVENT_NAME("Downsample.%s %dx%d (PS)", Inputs.Name, Inputs.SceneColor.ViewRect.Width(), Inputs.SceneColor.ViewRect.Height()),
 			ScreenPassView,
-			FScreenPassTextureViewport(OutputViewport, OutputTexture),
-			FScreenPassTextureViewport(Inputs.Viewport, Inputs.Texture),
+			OutputViewport,
+			SceneColorViewport,
 			*PixelShader,
 			PassParameters);
 	}
 
-	FDownsamplePassOutputs Outputs;
-	Outputs.Texture = OutputTexture;
-	Outputs.Viewport = OutputViewport;
-	return Outputs;
+	return Output;
 }
 
 FRenderingCompositeOutputRef AddDownsamplePass(
@@ -211,8 +209,8 @@ FRenderingCompositeOutputRef AddDownsamplePass(
 
 		FDownsamplePassInputs PassInputs;
 		PassInputs.Name = InName;
-		PassInputs.Texture = InputTexture;
-		PassInputs.Viewport = SceneColorViewRect;
+		PassInputs.SceneColor.Texture = InputTexture;
+		PassInputs.SceneColor.ViewRect = SceneColorViewRect;
 		PassInputs.FormatOverride = InFormatOverride;
 		PassInputs.Quality = InQuality;
 		PassInputs.Flags = InFlags;

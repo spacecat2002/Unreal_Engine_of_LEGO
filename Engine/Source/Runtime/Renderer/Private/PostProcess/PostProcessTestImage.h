@@ -5,6 +5,6 @@
 #include "ScreenPass.h"
 #include "PostProcess/RenderingCompositionGraph.h"
 
-void AddTestImagePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, FRDGTextureRef OutputTexture, FIntRect OutputViewRect);
+void AddTestImagePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, FRDGTextureViewRectPair Output);
 
 FRenderingCompositeOutputRef AddTestImagePass(FRenderingCompositionGraph& Graph, FRenderingCompositeOutputRef Input);

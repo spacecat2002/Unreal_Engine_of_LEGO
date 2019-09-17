@@ -57,47 +57,40 @@ EFXAAQuality GetFXAAQuality()
 	return (EFXAAQuality)FMath::Clamp(CVar->GetValueOnAnyThread(), (int32)EFXAAQuality::Q0, (int32)EFXAAQuality::Q5);
 }
 
-FRDGTextureRef AddFXAAPass(
-	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
-	FRDGTextureRef SceneColorTexture,
-	FIntRect SceneColorViewRect,
-	EFXAAQuality Quality)
+FFXAAOutputs AddFXAAPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FFXAAInputs& Inputs)
 {
-	check(SceneColorTexture);
-	check(!SceneColorViewRect.IsEmpty());
-	check(Quality != EFXAAQuality::MAX);
+	check(Inputs.SceneColor.IsValid());
+	check(Inputs.Quality != EFXAAQuality::MAX);
 
 	const FViewInfo& View = ScreenPassView.View;
 
-	FRDGTextureRef OutputTexture = nullptr;
-	FVector2D InverseExtent;
+	FRDGTextureViewRectPair Output = Inputs.OverrideOutput;
 
+	if (!Output.Texture)
 	{
-		FRDGTextureDesc OutputDesc = SceneColorTexture->Desc;
+		FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
 		OutputDesc.Reset();
-		OutputTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("FXAA"));
-
-		InverseExtent = FVector2D(1.0f / (float)OutputDesc.Extent.X, 1.0f / (float)OutputDesc.Extent.Y);
+		Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("FXAA"));
+		Output.ViewRect = Inputs.SceneColor.ViewRect;
 	}
 
-	const FScreenPassTextureViewport Viewport(SceneColorViewRect, SceneColorTexture);
+	const FVector2D OutputExtentInverse = FVector2D(1.0f / (float)Output.Texture->Desc.Extent.X, 1.0f / (float)Output.Texture->Desc.Extent.Y);
 
 	FRHISamplerState* BilinearClampSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 
 	FFXAAParameters* PassParameters = GraphBuilder.AllocParameters<FFXAAParameters>();
-	PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, ScreenPassView.GetOverwriteLoadAction());
-	PassParameters->Input = GetScreenPassTextureInput(Viewport, SceneColorTexture, BilinearClampSampler);
+	PassParameters->RenderTargets[0] = FRenderTargetBinding(Output.Texture, ScreenPassView.GetOverwriteLoadAction());
+	PassParameters->Input = GetScreenPassTextureInput(Inputs.SceneColor, BilinearClampSampler);
 
 	{
 		float N = 0.5f;
-		FVector4 Value(-N * InverseExtent.X, -N * InverseExtent.Y, N * InverseExtent.X, N * InverseExtent.Y);
+		FVector4 Value(-N * OutputExtentInverse.X, -N * OutputExtentInverse.Y, N * OutputExtentInverse.X, N * OutputExtentInverse.Y);
 		PassParameters->fxaaConsoleRcpFrameOpt = Value;
 	}
 
 	{
 		float N = 2.0f;
-		FVector4 Value(-N * InverseExtent.X, -N * InverseExtent.Y, N * InverseExtent.X, N * InverseExtent.Y);
+		FVector4 Value(-N * OutputExtentInverse.X, -N * OutputExtentInverse.Y, N * OutputExtentInverse.X, N * OutputExtentInverse.Y);
 		PassParameters->fxaaConsoleRcpFrameOpt2 = Value;
 	}
 
@@ -109,19 +102,22 @@ FRDGTextureRef AddFXAAPass(
 	PassParameters->fxaaConsoleEdgeThresholdMin = 0.05f;
 
 	FFXAAPS::FPermutationDomain PixelPermutationVector;
-	PixelPermutationVector.Set<FFXAAPS::FQualityDimension>(Quality);
+	PixelPermutationVector.Set<FFXAAPS::FQualityDimension>(Inputs.Quality);
 
 	TShaderMapRef<FFXAAVS> VertexShader(View.ShaderMap);
 	TShaderMapRef<FFXAAPS> PixelShader(View.ShaderMap, PixelPermutationVector);
 
 	const FScreenPassDrawInfo ScreenPassDraw(*VertexShader, *PixelShader);
 
+	const FScreenPassTextureViewport InputViewport(Inputs.SceneColor);
+	const FScreenPassTextureViewport OutputViewport(Output);
+
 	AddDrawScreenPass(
 		GraphBuilder,
-		RDG_EVENT_NAME("FXAA %dx%d (PS)", Viewport.Rect.Width(), Viewport.Rect.Height()),
+		RDG_EVENT_NAME("FXAA %dx%d (PS)", OutputViewport.Rect.Width(), OutputViewport.Rect.Height()),
 		ScreenPassView,
-		Viewport,
-		Viewport,
+		OutputViewport,
+		InputViewport,
 		ScreenPassDraw,
 		PassParameters,
 		[VertexShader, PixelShader, PassParameters](FRHICommandList& RHICmdList)
@@ -130,5 +126,5 @@ FRDGTextureRef AddFXAAPass(
 		SetShaderParameters(RHICmdList, *PixelShader, PixelShader->GetPixelShader(), *PassParameters);
 	});
 
-	return OutputTexture;
+	return Output;
 }

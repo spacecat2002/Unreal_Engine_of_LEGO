@@ -70,18 +70,10 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FSelectionOutlinePS, "/Engine/Private/PostProcessSelectionOutline.usf", "MainPS", SF_Pixel);
 } //! namespace
 
-FRDGTextureRef AddSelectionOutlinePass(
-	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
-	FRDGTextureRef SceneColorTexture,
-	FIntRect SceneColorViewRect,
-	FRDGTextureRef SceneDepthTexture,
-	FIntRect SceneDepthViewRect)
+FSelectionOutlineOutputs AddSelectionOutlinePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FSelectionOutlineInputs& Inputs)
 {
-	check(SceneColorTexture);
-	check(!SceneColorViewRect.IsEmpty());
-	check(SceneDepthTexture);
-	check(!SceneDepthViewRect.IsEmpty());
+	check(Inputs.SceneColor.IsValid());
+	check(Inputs.SceneDepth.IsValid());
 
 	RDG_EVENT_SCOPE(GraphBuilder, "EditorSelectionOutlines");
 
@@ -98,7 +90,7 @@ FRDGTextureRef AddSelectionOutlinePass(
 		FViewInfo& EditorView = *View.CreateSnapshot();
 
 		// Patch view rect.
-		EditorView.ViewRect = SceneColorViewRect;
+		EditorView.ViewRect = Inputs.SceneColor.ViewRect;
 
 		// Override pre-exposure to 1.0f, because rendering after tonemapper.
 		EditorView.PreExposure = 1.0f;
@@ -128,7 +120,7 @@ FRDGTextureRef AddSelectionOutlinePass(
 	// Generate custom depth / stencil for outline shapes.
 	{
 		{
-			FRDGTextureDesc DepthStencilDesc = SceneColorTexture->Desc;
+			FRDGTextureDesc DepthStencilDesc = Inputs.SceneColor.Texture->Desc;
 			DepthStencilDesc.Reset();
 			DepthStencilDesc.Format = PF_DepthStencil;
 			DepthStencilDesc.Flags = TexCreate_None;
@@ -151,68 +143,71 @@ FRDGTextureRef AddSelectionOutlinePass(
 			ERenderTargetLoadAction::EClear,
 			FExclusiveDepthStencil::DepthWrite_StencilWrite);
 
-		const FIntPoint SceneColorTextureExtent = SceneColorTexture->Desc.Extent;
+		const FScreenPassTextureViewport SceneColorViewport(Inputs.SceneColor);
 
 		GraphBuilder.AddPass(
-			RDG_EVENT_NAME("OutlineDepth %dx%d", SceneColorViewRect.Width(), SceneColorViewRect.Height()),
+			RDG_EVENT_NAME("OutlineDepth %dx%d", SceneColorViewport.Rect.Width(), SceneColorViewport.Rect.Height()),
 			PassParameters,
 			ERDGPassFlags::Raster,
-			[&View, SceneColorViewRect, SceneColorTextureExtent](FRHICommandList& RHICmdList)
+			[&View, SceneColorViewport](FRHICommandList& RHICmdList)
 		{
-			RHICmdList.SetViewport(SceneColorViewRect.Min.X, SceneColorViewRect.Min.Y, 0.0f, SceneColorViewRect.Max.X, SceneColorViewRect.Max.Y, 1.0f);
+			RHICmdList.SetViewport(SceneColorViewport.Rect.Min.X, SceneColorViewport.Rect.Min.Y, 0.0f, SceneColorViewport.Rect.Max.X, SceneColorViewport.Rect.Max.Y, 1.0f);
 
 			// Run selection pass on static elements
 			View.ParallelMeshDrawCommandPasses[EMeshPass::EditorSelection].DispatchDraw(nullptr, RHICmdList);
 
 			// to get an outline around the objects if it's partly outside of the screen
 			{
-				FIntRect InnerRect = SceneColorViewRect;
+				FIntRect InnerRect = SceneColorViewport.Rect;
 
 				// 1 as we have an outline that is that thick
 				InnerRect.InflateRect(-1);
 
 				// top
-				RHICmdList.SetScissorRect(true, SceneColorViewRect.Min.X, SceneColorViewRect.Min.Y, SceneColorViewRect.Max.X, InnerRect.Min.Y);
-				DrawClearQuad(RHICmdList, false, FLinearColor(), true, (float)ERHIZBuffer::FarPlane, true, 0, SceneColorTextureExtent, FIntRect());
+				RHICmdList.SetScissorRect(true, SceneColorViewport.Rect.Min.X, SceneColorViewport.Rect.Min.Y, SceneColorViewport.Rect.Max.X, InnerRect.Min.Y);
+				DrawClearQuad(RHICmdList, false, FLinearColor(), true, (float)ERHIZBuffer::FarPlane, true, 0, SceneColorViewport.Extent, FIntRect());
 				// bottom
-				RHICmdList.SetScissorRect(true, SceneColorViewRect.Min.X, InnerRect.Max.Y, SceneColorViewRect.Max.X, SceneColorViewRect.Max.Y);
-				DrawClearQuad(RHICmdList, false, FLinearColor(), true, (float)ERHIZBuffer::FarPlane, true, 0, SceneColorTextureExtent, FIntRect());
+				RHICmdList.SetScissorRect(true, SceneColorViewport.Rect.Min.X, InnerRect.Max.Y, SceneColorViewport.Rect.Max.X, SceneColorViewport.Rect.Max.Y);
+				DrawClearQuad(RHICmdList, false, FLinearColor(), true, (float)ERHIZBuffer::FarPlane, true, 0, SceneColorViewport.Extent, FIntRect());
 				// left
-				RHICmdList.SetScissorRect(true, SceneColorViewRect.Min.X, SceneColorViewRect.Min.Y, InnerRect.Min.X, SceneColorViewRect.Max.Y);
-				DrawClearQuad(RHICmdList, false, FLinearColor(), true, (float)ERHIZBuffer::FarPlane, true, 0, SceneColorTextureExtent, FIntRect());
+				RHICmdList.SetScissorRect(true, SceneColorViewport.Rect.Min.X, SceneColorViewport.Rect.Min.Y, InnerRect.Min.X, SceneColorViewport.Rect.Max.Y);
+				DrawClearQuad(RHICmdList, false, FLinearColor(), true, (float)ERHIZBuffer::FarPlane, true, 0, SceneColorViewport.Extent, FIntRect());
 				// right
-				RHICmdList.SetScissorRect(true, InnerRect.Max.X, SceneColorViewRect.Min.Y, SceneColorViewRect.Max.X, SceneColorViewRect.Max.Y);
-				DrawClearQuad(RHICmdList, false, FLinearColor(), true, (float)ERHIZBuffer::FarPlane, true, 0, SceneColorTextureExtent, FIntRect());
+				RHICmdList.SetScissorRect(true, InnerRect.Max.X, SceneColorViewport.Rect.Min.Y, SceneColorViewport.Rect.Max.X, SceneColorViewport.Rect.Max.Y);
+				DrawClearQuad(RHICmdList, false, FLinearColor(), true, (float)ERHIZBuffer::FarPlane, true, 0, SceneColorViewport.Extent, FIntRect());
 
 				RHICmdList.SetScissorRect(false, 0, 0, 0, 0);
 			}
 		});
 	}
 
-	FRDGTextureRef OutputTexture = nullptr;
+	FRDGTextureViewRectPair Output = Inputs.OverrideOutput;
 
 	// Render selection outlines.
 	{
+		if (!Output.Texture)
 		{
-			FRDGTextureDesc OutputDesc = SceneColorTexture->Desc;
+			FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
 			OutputDesc.Reset();
-			OutputTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("SelectionOutlineColor"));
+			Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("SelectionOutlineColor"));
+			Output.ViewRect = Inputs.SceneColor.ViewRect;
 		}
 
-		const FScreenPassTextureViewport ColorViewport(SceneColorViewRect, SceneColorTexture);
-		const FScreenPassTextureViewport DepthViewport(SceneDepthViewRect, SceneDepthTexture);
+		const FScreenPassTextureViewport OutputViewport(Output);
+		const FScreenPassTextureViewport ColorViewport(Inputs.SceneColor);
+		const FScreenPassTextureViewport DepthViewport(Inputs.SceneDepth);
 
 		FRHISamplerState* PointClampSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 
 		FSelectionOutlinePS::FParameters* PassParameters = GraphBuilder.AllocParameters<FSelectionOutlinePS::FParameters>();
-		PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, ScreenPassView.GetOverwriteLoadAction());
+		PassParameters->RenderTargets[0] = FRenderTargetBinding(Output.Texture, ScreenPassView.GetOverwriteLoadAction());
 		PassParameters->View = View.ViewUniformBuffer;
 		PassParameters->Color = GetScreenPassTextureViewportParameters(ColorViewport);
 		PassParameters->Depth = GetScreenPassTextureViewportParameters(DepthViewport);
 		PassParameters->ColorToDepth = GetScreenPassTextureViewportTransform(PassParameters->Color, PassParameters->Depth);
-		PassParameters->ColorTexture = SceneColorTexture;
+		PassParameters->ColorTexture = Inputs.SceneColor.Texture;
 		PassParameters->ColorSampler = PointClampSampler;
-		PassParameters->DepthTexture = SceneDepthTexture;
+		PassParameters->DepthTexture = Inputs.SceneDepth.Texture;
 		PassParameters->DepthSampler = PointClampSampler;
 		PassParameters->EditorPrimitivesDepth = DepthStencilTexture;
 		PassParameters->EditorPrimitivesStencil = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::CreateWithPixelFormat(DepthStencilTexture, PF_X24_G8));
@@ -228,15 +223,15 @@ FRDGTextureRef AddSelectionOutlinePass(
 
 		AddDrawScreenPass(
 			GraphBuilder,
-			RDG_EVENT_NAME("OutlineColor %dx%d", SceneColorViewRect.Width(), SceneColorViewRect.Height()),
+			RDG_EVENT_NAME("OutlineColor %dx%d", OutputViewport.Rect.Width(), OutputViewport.Rect.Height()),
 			ScreenPassView,
-			ColorViewport,
+			OutputViewport,
 			ColorViewport,
 			*PixelShader,
 			PassParameters);
 	}
 
-	return OutputTexture;
+	return Output;
 }
 
 FRenderingCompositeOutputRef AddSelectionOutlinePass(FRenderingCompositionGraph& Graph, FRenderingCompositeOutputRef Input)
@@ -249,20 +244,26 @@ FRenderingCompositeOutputRef AddSelectionOutlinePass(FRenderingCompositionGraph&
 		const FScreenPassViewInfo ScreenPassView(InContext.View);
 
 		FRDGTextureRef SceneColorTexture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor"));
-		const FIntRect SceneColorViewRect = InContext.SceneColorViewRect;
+		const FIntRect SceneColorViewRect = InContext.GetSceneColorDestRect(InPass);
 
 		const FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 		FRDGTextureRef SceneDepthTexture = GraphBuilder.RegisterExternalTexture(SceneContext.SceneDepthZ, TEXT("SceneDepthZ"));
 
-		FRDGTextureRef OutputTexture = AddSelectionOutlinePass(
-			GraphBuilder,
-			ScreenPassView,
-			SceneColorTexture,
-			SceneColorViewRect,
-			SceneDepthTexture,
-			InContext.View.ViewRect);
+		FSelectionOutlineInputs Inputs;
+		Inputs.SceneColor.Texture = SceneColorTexture;
+		Inputs.SceneColor.ViewRect = SceneColorViewRect;
+		Inputs.SceneDepth.Texture = SceneDepthTexture;
+		Inputs.SceneDepth.ViewRect = InContext.View.ViewRect;
 
-		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, OutputTexture);
+		if (FRDGTextureRef OutputTexture = InPass->FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("BackBuffer")))
+		{
+			Inputs.OverrideOutput.Texture = OutputTexture;
+			Inputs.OverrideOutput.ViewRect = InContext.GetSceneColorDestRect(InPass->GetOutput(ePId_Output0)->PooledRenderTarget->GetRenderTargetItem());
+		}
+
+		FSelectionOutlineOutputs Outputs = AddSelectionOutlinePass(GraphBuilder, ScreenPassView, Inputs);
+
+		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, Outputs.Texture);
 
 		GraphBuilder.Execute();
 	}));

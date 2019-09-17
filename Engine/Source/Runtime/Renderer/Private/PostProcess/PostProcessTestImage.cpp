@@ -27,16 +27,12 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(FTestImagePS, "/Engine/Private/PostProcessTestImage.usf", "MainPS", SF_Pixel);
 
-void AddTestImagePass(
-	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
-	FRDGTextureRef OutputTexture,
-	FIntRect OutputViewRect)
+void AddTestImagePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, FRDGTextureViewRectPair Output)
 {
-	check(OutputTexture);
-	check(!OutputViewRect.IsEmpty());
+	check(Output.IsValid());
 
-	const FScreenPassTextureViewport OutputViewport(OutputViewRect, OutputTexture);
+	FRDGTextureRef OutputTexture = Output.Texture;
+	const FScreenPassTextureViewport OutputViewport(Output);
 
 	const FViewInfo& View = ScreenPassView.View;
 	const FSceneViewFamily& ViewFamily = *(View.Family);
@@ -46,7 +42,7 @@ void AddTestImagePass(
 	PassParameters->ColorRemap = GetColorRemapParameters();
 	PassParameters->FrameNumber = ViewFamily.FrameNumber;
 	PassParameters->FrameTime = ViewFamily.CurrentRealTime;
-	PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, ERenderTargetLoadAction::ELoad);
+	PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, ERenderTargetLoadAction::EClear);
 
 	TShaderMapRef<FTestImagePS> PixelShader(View.ShaderMap);
 
@@ -120,13 +116,15 @@ FRenderingCompositeOutputRef AddTestImagePass(FRenderingCompositionGraph& Graph,
 		FRDGBuilder GraphBuilder(InContext.RHICmdList);
 
 		const FRDGTextureDesc OutputTextureDesc = FRDGTextureDesc::Create2DDesc(
-			InContext.ReferenceBufferSize, PF_B8G8R8A8, FClearValueBinding::None, TexCreate_None, TexCreate_RenderTargetable, false);
+			InContext.ReferenceBufferSize, PF_R8G8B8A8, FClearValueBinding::Black, TexCreate_None, TexCreate_RenderTargetable, false);
 
 		FRDGTextureRef SceneTextureOutput = InPass->FindOrCreateRDGTextureForOutput(GraphBuilder, ePId_Output0, OutputTextureDesc, TEXT("TestImage"));
 
-		FScreenPassViewInfo ScreenPassView(InContext.View);
+		const FScreenPassViewInfo ScreenPassView(InContext.View);
 
-		AddTestImagePass(GraphBuilder, ScreenPassView, SceneTextureOutput, InContext.SceneColorViewRect);
+		const FRDGTextureViewRectPair Output(SceneTextureOutput, InContext.SceneColorViewRect);
+
+		AddTestImagePass(GraphBuilder, ScreenPassView, Output);
 
 		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, SceneTextureOutput);
 

@@ -1134,7 +1134,7 @@ FRDGTextureRef ComputeSubsurface(
 
 			const FViewInfo& View = Views[ViewIndex];
 			const FScreenPassViewInfo ScreenPassView(View);
-			const FScreenPassTextureViewport SceneViewport(View.ViewRect, SceneTexture);
+			const FScreenPassTextureViewport SceneViewport(View.ViewRect, SceneTexture->Desc.Extent);
 
 			ComputeSubsurfaceForView(GraphBuilder, ScreenPassView, SceneViewport, SceneTexture, SceneTextureOutput, SceneTextureLoadAction);
 

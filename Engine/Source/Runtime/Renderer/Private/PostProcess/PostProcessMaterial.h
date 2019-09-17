@@ -1,19 +1,18 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-/*=============================================================================
-	PostProcessMaterial.h: Post processing Material
-=============================================================================*/
-
 #pragma once
 
-#include "CoreMinimal.h"
-#include "RendererInterface.h"
 #include "PostProcess/RenderingCompositionGraph.h"
 #include "ScreenPass.h"
+#include "OverridePassSequence.h"
 
 class UMaterialInterface;
 
 const uint32 kPostProcessMaterialInputCountMax = 5;
+
+using FPostProcessMaterialChain = TArray<const UMaterialInterface*, TInlineAllocator<10>>;
+
+FPostProcessMaterialChain GetPostProcessMaterialChain(const FViewInfo& View, EBlendableLocation Location);
 
 /** Named post process material slots. Inputs are aliased and have different semantics
  *  based on the post process material blend point, which is documented with the input.
@@ -37,18 +36,25 @@ enum class EPostProcessMaterialInput : uint32
 	Velocity = 4
 };
 
-struct FPostProcessMaterialInputs
+BEGIN_SHADER_PARAMETER_STRUCT(FPostProcessMaterialParameters, )
+	SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, PostProcessOutput)
+	SHADER_PARAMETER_STRUCT_ARRAY(FScreenPassTextureInput, PostProcessInput, [kPostProcessMaterialInputCountMax])
+	SHADER_PARAMETER_SAMPLER(SamplerState, PostProcessInput_BilinearSampler)
+	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, CustomDepth)
+	SHADER_PARAMETER(uint32, bFlipYAxis)
+	RENDER_TARGET_BINDING_SLOTS()
+END_SHADER_PARAMETER_STRUCT()
+
+struct FPostProcessMaterialInputs : public FOverridePassInputs
 {
-	inline void SetInput(EPostProcessMaterialInput Input, FRDGTextureRef InTexture, FIntRect InViewport)
+	inline void SetInput(EPostProcessMaterialInput Input, FRDGTextureViewRectPair Texture)
 	{
-		Textures[(uint32)Input] = InTexture;
-		Viewports[(uint32)Input] = InViewport;
+		Textures[(uint32)Input] = Texture;
 	}
 
-	inline void GetInput(EPostProcessMaterialInput Input, FRDGTextureRef& OutTexture, FIntRect& OutViewport) const
+	inline FRDGTextureViewRectPair GetInput(EPostProcessMaterialInput Input) const
 	{
-		OutTexture = Textures[(uint32)Input];
-		OutViewport = Viewports[(uint32)Input];
+		return Textures[(uint32)Input];
 	}
 
 	inline void Validate() const
@@ -59,9 +65,9 @@ struct FPostProcessMaterialInputs
 		// Either override output format is valid or the override output texture is; not both.
 		if (OverrideOutputFormat != PF_Unknown)
 		{
-			check(OverrideOutputTexture == nullptr);
+			check(OverrideOutput.Texture == nullptr);
 		}
-		if (OverrideOutputTexture)
+		if (OverrideOutput.Texture)
 		{
 			check(OverrideOutputFormat == PF_Unknown);
 		}
@@ -69,23 +75,15 @@ struct FPostProcessMaterialInputs
 
 	inline void ValidateInputExists(EPostProcessMaterialInput Input) const
 	{
-		FRDGTextureRef Texture = nullptr;
-		FIntRect Viewport;
-		GetInput(EPostProcessMaterialInput::SceneColor, Texture, Viewport);
-		check(Texture);
-		check(!Viewport.IsEmpty());
+		const FRDGTextureViewRectPair Pair = GetInput(EPostProcessMaterialInput::SceneColor);
+		check(Pair.Texture);
+		check(!Pair.ViewRect.IsEmpty());
 	}
 
 	/** Array of input textures bound to the material. The first element represents the output from
 	 *  the previous post process and is required. All other inputs are optional.
 	 */
-	TStaticArray<FRDGTextureRef, kPostProcessMaterialInputCountMax> Textures;
-
-	/** Array of post process input viewports corresponding to @ref Textures */
-	TStaticArray<FIntRect, kPostProcessMaterialInputCountMax> Viewports;
-
-	/** The override output texture to use. If this is null, a new texture is created. */
-	FRDGTextureRef OverrideOutputTexture = nullptr;
+	TStaticArray<FRDGTextureViewRectPair, kPostProcessMaterialInputCountMax> Textures;
 
 	/** The override output texture format to use if a new texture is created. */
 	EPixelFormat OverrideOutputFormat = PF_Unknown;
@@ -97,39 +95,19 @@ struct FPostProcessMaterialInputs
 	bool bFlipYAxis = false;
 };
 
-FRDGTextureRef AddPostProcessMaterialChain(
+using FPostProcessMaterialOutputs = FRDGTextureViewRectPair;
+
+FPostProcessMaterialOutputs AddPostProcessMaterialPass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
 	const FPostProcessMaterialInputs& Inputs,
-	EBlendableLocation Location);
+	const UMaterialInterface* MaterialInterface);
 
-FRDGTextureRef ComputePostProcessMaterial(
+FPostProcessMaterialOutputs AddPostProcessMaterialChain(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
-	const UMaterialInterface* MaterialInterface,
-	const FPostProcessMaterialInputs& Inputs);
-
-FRDGTextureRef AddPostProcessMaterialReplaceTonemapPass(
-	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
-	const FPostProcessMaterialInputs& Inputs);
-
-BEGIN_SHADER_PARAMETER_STRUCT(FPostProcessMaterialInput, )
-	SHADER_PARAMETER_STRUCT_INCLUDE(FScreenPassTextureViewportParameters, Viewport)
-	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, Texture)
-	SHADER_PARAMETER_SAMPLER(SamplerState, Sampler)
-END_SHADER_PARAMETER_STRUCT()
-
-FPostProcessMaterialInput GetPostProcessMaterialInput(FIntRect ViewportRect, FRDGTextureRef Texture, FRHISamplerState* Sampler);
-
-BEGIN_SHADER_PARAMETER_STRUCT(FPostProcessMaterialParameters, )
-	SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, PostProcessOutput)
-	SHADER_PARAMETER_STRUCT_ARRAY(FPostProcessMaterialInput, PostProcessInput, [kPostProcessMaterialInputCountMax])
-	SHADER_PARAMETER_SAMPLER(SamplerState, PostProcessInput_BilinearSampler)
-	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, CustomDepth)
-	SHADER_PARAMETER(uint32, bFlipYAxis)
-	RENDER_TARGET_BINDING_SLOTS()
-END_SHADER_PARAMETER_STRUCT()
+	const FPostProcessMaterialInputs& Inputs,
+	const FPostProcessMaterialChain& MaterialChain);
 
 //////////////////////////////////////////////////////////////////////////
 //! Legacy Composition Graph Methods

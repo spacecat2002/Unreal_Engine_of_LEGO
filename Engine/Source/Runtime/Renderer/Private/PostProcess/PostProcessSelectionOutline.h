@@ -5,15 +5,18 @@
 #if WITH_EDITOR
 
 #include "ScreenPass.h"
+#include "OverridePassSequence.h"
 #include "PostProcess/RenderingCompositionGraph.h"
 
-FRDGTextureRef AddSelectionOutlinePass(
-	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
-	FRDGTextureRef SceneColorTexture,
-	FIntRect SceneColorViewRect,
-	FRDGTextureRef SceneDepthTexture,
-	FIntRect SceneDepthViewRect);
+struct FSelectionOutlineInputs : public FOverridePassInputs
+{
+	FRDGTextureViewRectPair SceneColor;
+	FRDGTextureViewRectPair SceneDepth;
+};
+
+using FSelectionOutlineOutputs = FRDGTextureViewRectPair;
+
+FSelectionOutlineOutputs AddSelectionOutlinePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FSelectionOutlineInputs& Inputs);
 
 FRenderingCompositeOutputRef AddSelectionOutlinePass(FRenderingCompositionGraph& Graph, FRenderingCompositeOutputRef Input);
 

@@ -43,7 +43,7 @@ public:
 
 	FScreenPassTextureViewport() = default;
 
-	FScreenPassTextureViewport(FIntRect InRect)
+	explicit FScreenPassTextureViewport(FIntRect InRect)
 		: Rect(InRect)
 		, Extent(InRect.Max)
 	{}
@@ -53,14 +53,22 @@ public:
 		, Extent(InExtent)
 	{}
 
-	FScreenPassTextureViewport(FIntRect InRect, FRDGTextureRef InTexture)
-		: Rect(InRect)
-		, Extent(InTexture->Desc.Extent)
-	{}
+	explicit FScreenPassTextureViewport(FRDGTextureViewRectPair InPair)
+	{
+		check(InPair.Texture);
+		Rect = InPair.ViewRect;
+		Extent = InPair.Texture->Desc.Extent;
+	}
 
-	FScreenPassTextureViewport(FRDGTextureRef InTexture)
-		: Rect(FIntPoint::ZeroValue, InTexture->Desc.Extent)
-		, Extent(InTexture->Desc.Extent)
+	explicit FScreenPassTextureViewport(FRDGTextureRef InTexture)
+	{
+		check(InTexture);
+		Extent = InTexture->Desc.Extent;
+		Rect = FIntRect(FIntPoint::ZeroValue, Extent);
+	}
+
+	FScreenPassTextureViewport(FRDGTextureRef InTexture, FIntRect InRect)
+		: FScreenPassTextureViewport(FRDGTextureViewRectPair(InTexture, InRect))
 	{}
 
 	FScreenPassTextureViewport(const FScreenPassTextureViewport&) = default;
@@ -148,10 +156,7 @@ BEGIN_SHADER_PARAMETER_STRUCT(FScreenPassTextureInput, )
 	SHADER_PARAMETER_SAMPLER(SamplerState, Sampler)
 END_SHADER_PARAMETER_STRUCT()
 
-FScreenPassTextureInput GetScreenPassTextureInput(
-	const FScreenPassTextureViewport& Viewport,
-	FRDGTextureRef Texture,
-	FRHISamplerState* Sampler);
+FScreenPassTextureInput GetScreenPassTextureInput(FRDGTextureViewRectPair Input, FRHISamplerState* Sampler);
 
 // View information cached off for use by screen passes.
 class FScreenPassViewInfo

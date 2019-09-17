@@ -139,14 +139,11 @@ FScreenPassTextureViewportTransform GetScreenPassTextureViewportTransform(
 	return GetScreenPassTextureViewportTransform(SourceUVOffset, SourceUVExtent, DestinationUVOffset, DestinationUVExtent);
 }
 
-FScreenPassTextureInput GetScreenPassTextureInput(
-	const FScreenPassTextureViewport& Viewport,
-	FRDGTextureRef Texture,
-	FRHISamplerState* Sampler)
+FScreenPassTextureInput GetScreenPassTextureInput(FRDGTextureViewRectPair TexturePair, FRHISamplerState* Sampler)
 {
 	FScreenPassTextureInput Input;
-	Input.Viewport = GetScreenPassTextureViewportParameters(Viewport);
-	Input.Texture = Texture;
+	Input.Viewport = GetScreenPassTextureViewportParameters(FScreenPassTextureViewport(TexturePair));
+	Input.Texture = TexturePair.Texture;
 	Input.Sampler = Sampler;
 	return Input;
 }
@@ -211,8 +208,8 @@ void AddDrawTexturePass(
 		? ERenderTargetLoadAction::ENoAction
 		: ERenderTargetLoadAction::ELoad;
 
-	const FScreenPassTextureViewport InputViewport(FIntRect(InputPosition, InputPosition + Size), InputTexture);
-	const FScreenPassTextureViewport OutputViewport(FIntRect(OutputPosition, OutputPosition + Size), OutputTexture);
+	const FScreenPassTextureViewport InputViewport(FIntRect(InputPosition, InputPosition + Size), InputDesc.Extent);
+	const FScreenPassTextureViewport OutputViewport(FIntRect(OutputPosition, OutputPosition + Size), OutputDesc.Extent);
 
 	TShaderMapRef<FCopyRectPS> PixelShader(ScreenPassView.View.ShaderMap);
 

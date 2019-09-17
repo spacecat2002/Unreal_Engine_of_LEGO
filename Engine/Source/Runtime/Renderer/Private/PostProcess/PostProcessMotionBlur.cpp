@@ -745,8 +745,8 @@ FRDGTextureRef AddVisualizeMotionBlurPass(
 {
 	const FViewInfo& View = ScreenPassView.View;
 
-	const FScreenPassTextureViewport ColorViewport(ColorViewportRect, ColorTexture);
-	const FScreenPassTextureViewport VelocityViewport(VelocityViewportRect, VelocityTexture);
+	const FScreenPassTextureViewport ColorViewport(ColorTexture, ColorViewportRect);
+	const FScreenPassTextureViewport VelocityViewport(VelocityTexture, VelocityViewportRect);
 	const FMotionBlurViewports Viewports(ColorViewport, VelocityViewport);
 
 	FRDGTextureDesc ColorTextureDesc = ColorTexture->Desc;
@@ -844,8 +844,8 @@ FRDGTextureRef AddMotionBlurPass(
 	check(VelocityTexture);
 
 	const FMotionBlurViewports Viewports(
-		FScreenPassTextureViewport(ColorViewportRect, ColorTexture),
-		FScreenPassTextureViewport(VelocityViewportRect, VelocityTexture));
+		FScreenPassTextureViewport(ColorTexture, ColorViewportRect),
+		FScreenPassTextureViewport(VelocityTexture, VelocityViewportRect));
 
 	RDG_EVENT_SCOPE(GraphBuilder, "MotionBlur");
 

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "ScreenPass.h"
+#include "OverridePassSequence.h"
 
 enum class EFXAAQuality : uint32
 {
@@ -19,9 +20,13 @@ enum class EFXAAQuality : uint32
 
 EFXAAQuality GetFXAAQuality();
 
-FRDGTextureRef AddFXAAPass(
-	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
-	FRDGTextureRef SceneColorTexture,
-	FIntRect SceneColorViewRect,
-	EFXAAQuality Quality);
+struct FFXAAInputs : public FOverridePassInputs
+{
+	FRDGTextureViewRectPair SceneColor;
+
+	EFXAAQuality Quality = EFXAAQuality::MAX;
+};
+
+using FFXAAOutputs = FRDGTextureViewRectPair;
+
+FFXAAOutputs AddFXAAPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FFXAAInputs& Inputs);

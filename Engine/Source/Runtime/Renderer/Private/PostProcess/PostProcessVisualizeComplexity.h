@@ -5,6 +5,7 @@
 #include "ScreenPass.h"
 #include "PostProcess/RenderingCompositionGraph.h"
 #include "DebugViewModeHelpers.h"
+#include "OverridePassSequence.h"
 
 /**
 * The number of shader complexity colors from the engine ini that will be passed to the shader. 
@@ -16,7 +17,7 @@ const float NormalizedQuadComplexityValue = 1.f / 16.f;
 // Gets the maximum shader complexity count from the ini settings.
 float GetMaxShaderComplexityCount(ERHIFeatureLevel::Type InFeatureType);
 
-struct FVisualizeComplexityInputs
+struct FVisualizeComplexityInputs : public FOverridePassInputs
 {
 	enum class EColorSamplingMethod : uint32
 	{
@@ -26,8 +27,7 @@ struct FVisualizeComplexityInputs
 	};
 
 	// The input scene color and view rect.
-	FRDGTextureRef SceneColorTexture = nullptr;
-	FIntRect SceneColorViewRect;
+	FRDGTextureViewRectPair SceneColor;
 
 	// The table of colors used for visualization, ordered by least to most complex.
 	TArrayView<const FLinearColor> Colors;
@@ -42,7 +42,9 @@ struct FVisualizeComplexityInputs
 	bool bDrawLegend = false;
 };
 
-FRDGTextureRef AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeComplexityInputs& Inputs);
+using FVisualizeComplexityOutputs = FRDGTextureViewRectPair;
+
+FVisualizeComplexityOutputs AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeComplexityInputs& Inputs);
 
 FRenderingCompositeOutputRef AddVisualizeComplexityPass(
 	FRenderingCompositionGraph& Graph,

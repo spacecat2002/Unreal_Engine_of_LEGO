@@ -105,15 +105,13 @@ ELensFlareQuality GetLensFlareQuality()
 		static_cast<int32>(ELensFlareQuality::MAX) - 1));
 }
 
-FRDGTextureRef AddLensFlaresPass(
+FRDGTextureViewRectPair AddLensFlaresPass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
 	const FLensFlareInputs& Inputs)
 {
-	check(Inputs.FlareTexture);
-	check(!Inputs.FlareViewRect.IsEmpty());
-	check(Inputs.BloomTexture);
-	check(!Inputs.BloomViewRect.IsEmpty());
+	check(Inputs.Flare.IsValid());
+	check(Inputs.Bloom.IsValid());
 	check(Inputs.BokehShapeTexture);
 	check(Inputs.LensFlareCount <= FLensFlareInputs::LensFlareCountMax);
 	check(Inputs.TintColorsPerFlare.Num() == Inputs.LensFlareCount);
@@ -131,9 +129,9 @@ FRDGTextureRef AddLensFlaresPass(
 	// behavior is also affected by this constant.
 	const float GuardBandScale = 2.0f;
 
-	const FScreenPassTextureViewport BloomViewport(Inputs.BloomViewRect, Inputs.BloomTexture);
+	const FScreenPassTextureViewport BloomViewport(Inputs.Bloom);
 	const FIntPoint BloomViewportSize(BloomViewport.Rect.Size());
-	const FScreenPassTextureViewport FlareViewport(Inputs.FlareViewRect, Inputs.FlareTexture);
+	const FScreenPassTextureViewport FlareViewport(Inputs.Flare);
 	const FIntPoint FlareViewSize = FlareViewport.Rect.Size();
 
 	FRHIBlendState* AdditiveBlendState = TStaticBlendState<CW_RGB, BO_Add, BF_One, BF_One>::GetRHI();
@@ -143,7 +141,7 @@ FRDGTextureRef AddLensFlaresPass(
 
 	// Initialize the blur output texture.
 	{
-		FRDGTextureDesc BlurOutputDesc = Inputs.FlareTexture->Desc;
+		FRDGTextureDesc BlurOutputDesc = Inputs.Flare.Texture->Desc;
 		BlurOutputDesc.Reset();
 
 		// More precision for additive blend.
@@ -162,7 +160,7 @@ FRDGTextureRef AddLensFlaresPass(
 		const float KernelSize = (Inputs.BokehSizePercent * static_cast<float>(FlareViewSize.X)) * PercentToScale;
 
 		FLensFlarePassParameters* PassParameters = GraphBuilder.AllocParameters<FLensFlarePassParameters>();
-		PassParameters->InputTexture = Inputs.FlareTexture;
+		PassParameters->InputTexture = Inputs.Flare.Texture;
 		PassParameters->RenderTargets[0] = FRenderTargetBinding(BlurOutputTexture, ERenderTargetLoadAction::EClear);
 
 		// Setup vertex shader parameters.
@@ -226,7 +224,7 @@ FRDGTextureRef AddLensFlaresPass(
 
 	// Initialize the lens flare output texture.
 	{
-		FRDGTextureDesc LensFlareTextureDesc = Inputs.BloomTexture->Desc;
+		FRDGTextureDesc LensFlareTextureDesc = Inputs.Bloom.Texture->Desc;
 		LensFlareTextureDesc.Reset();
 		LensFlareTextureDesc.ClearValue = FClearValueBinding(FLinearColor::Transparent);
 
@@ -239,11 +237,11 @@ FRDGTextureRef AddLensFlaresPass(
 	{
 		AddCopyTexturePass(
 			GraphBuilder,
-			Inputs.BloomTexture,
+			Inputs.Bloom.Texture,
 			LensFlareTexture,
-			Inputs.BloomViewRect.Min,
-			Inputs.BloomViewRect.Min,
-			Inputs.BloomViewRect.Size());
+			Inputs.Bloom.ViewRect.Min,
+			Inputs.Bloom.ViewRect.Min,
+			Inputs.Bloom.ViewRect.Size());
 	}
 	else
 	{
@@ -319,5 +317,5 @@ FRDGTextureRef AddLensFlaresPass(
 		LensFlareLoadAction = ERenderTargetLoadAction::ELoad;
 	}
 
-	return LensFlareTexture;
+	return FRDGTextureViewRectPair(LensFlareTexture, OutputViewRect);
 }

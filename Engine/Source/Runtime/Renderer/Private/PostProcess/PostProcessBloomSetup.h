@@ -4,10 +4,9 @@
 
 #include "ScreenPass.h"
 
-FRDGTextureRef AddBloomSetupPass(
+FRDGTextureViewRectPair AddBloomSetupPass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
-	FRDGTextureRef SceneColorTexture,
-	FIntRect SceneColorViewRect,
+	FRDGTextureViewRectPair SceneColor,
 	FRDGTextureRef EyeAdaptationTexture,
 	float BloomThreshold);

@@ -65,29 +65,30 @@ float GetMaxShaderComplexityCount(ERHIFeatureLevel::Type FeatureLevel)
 	}
 }
 
-FRDGTextureRef AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView,	const FVisualizeComplexityInputs& Inputs)
+FVisualizeComplexityOutputs AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeComplexityInputs& Inputs)
 {
-	check(Inputs.SceneColorTexture);
-	check(!Inputs.SceneColorViewRect.IsEmpty());
+	check(Inputs.SceneColor.IsValid());
 
 	const FViewInfo& View = ScreenPassView.View;
 
-	FRDGTextureRef OutputTexture = nullptr;
+	FRDGTextureViewRectPair Output = Inputs.OverrideOutput;
 
+	if (!Output.Texture)
 	{
-		FRDGTextureDesc OutputDesc = Inputs.SceneColorTexture->Desc;
+		FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
 		OutputDesc.Reset();
-		OutputTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("VisualizeComplexity"));
+		Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("VisualizeComplexity"));
+		Output.ViewRect = Inputs.SceneColor.ViewRect;
 	}
 
-	const FScreenPassTextureViewport Viewport(Inputs.SceneColorViewRect, Inputs.SceneColorTexture);
+	const FScreenPassTextureViewport InputViewport(Inputs.SceneColor);
 
 	FRHISamplerState* BilinearClampSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 
 	FVisualizeComplexityApplyPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FVisualizeComplexityApplyPS::FParameters>();
-	PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, ScreenPassView.GetOverwriteLoadAction());
-	PassParameters->Input = GetScreenPassTextureViewportParameters(Viewport);
-	PassParameters->InputTexture = Inputs.SceneColorTexture;
+	PassParameters->RenderTargets[0] = FRenderTargetBinding(Output.Texture, ScreenPassView.GetOverwriteLoadAction());
+	PassParameters->Input = GetScreenPassTextureViewportParameters(InputViewport);
+	PassParameters->InputTexture = Inputs.SceneColor.Texture;
 	PassParameters->InputSampler = BilinearClampSampler;
 
 	{
@@ -134,40 +135,40 @@ FRDGTextureRef AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder, const FScre
 		RDG_EVENT_NAME("SubsurfaceVisualize"),
 		PassParameters,
 		ERDGPassFlags::Raster,
-		[ScreenPassView, Viewport, PixelShader, PassParameters, OutputTexture](FRHICommandListImmediate& RHICmdList)
+		[ScreenPassView, InputViewport, PixelShader, PassParameters, Output](FRHICommandListImmediate& RHICmdList)
 	{
-		DrawScreenPass(RHICmdList, ScreenPassView, Viewport, Viewport, *PixelShader, *PassParameters);
+		DrawScreenPass(RHICmdList, ScreenPassView, FScreenPassTextureViewport(Output), InputViewport, *PixelShader, *PassParameters);
 
 		// Draw debug text
 		{
 			const FViewInfo& LocalView = ScreenPassView.View;
 			const FSceneViewFamily& ViewFamily = *LocalView.Family;
-			FRenderTargetTemp TempRenderTarget(static_cast<FRHITexture2D*>(OutputTexture->GetRHI()), OutputTexture->Desc.Extent);
+			FRenderTargetTemp TempRenderTarget(static_cast<FRHITexture2D*>(Output.Texture->GetRHI()), Output.Texture->Desc.Extent);
 			FCanvas Canvas(&TempRenderTarget, nullptr, ViewFamily.CurrentRealTime, ViewFamily.CurrentWorldTime, ViewFamily.DeltaWorldTime, LocalView.GetFeatureLevel());
 
 			if (ViewFamily.GetDebugViewShaderMode() == DVSM_QuadComplexity)
 			{
-				int32 StartX = Viewport.Rect.Min.X + 62;
-				int32 EndX = Viewport.Rect.Max.X - 66;
+				int32 StartX = Output.ViewRect.Min.X + 62;
+				int32 EndX = Output.ViewRect.Max.X - 66;
 				int32 NumOffset = (EndX - StartX) / (PassParameters->ShaderComplexityColorCount - 1);
 				for (int32 PosX = StartX, Number = 0; PosX <= EndX; PosX += NumOffset, ++Number)
 				{
 					FString Line;
 					Line = FString::Printf(TEXT("%d"), Number);
-					Canvas.DrawShadowedString(PosX, Viewport.Rect.Max.Y - 87, *Line, GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
+					Canvas.DrawShadowedString(PosX, Output.ViewRect.Max.Y - 87, *Line, GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
 				}
 			}
 			else
 			{
-				Canvas.DrawShadowedString(Viewport.Rect.Min.X + 63, Viewport.Rect.Max.Y - 51, TEXT("Good"), GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
-				Canvas.DrawShadowedString(Viewport.Rect.Min.X + 63 + (int32)(Viewport.Rect.Width() * 107.0f / 397.0f), Viewport.Rect.Max.Y - 51, TEXT("Bad"), GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
-				Canvas.DrawShadowedString(Viewport.Rect.Max.X - 162, Viewport.Rect.Max.Y - 51, TEXT("Extremely bad"), GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
+				Canvas.DrawShadowedString(Output.ViewRect.Min.X + 63, Output.ViewRect.Max.Y - 51, TEXT("Good"), GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
+				Canvas.DrawShadowedString(Output.ViewRect.Min.X + 63 + (int32)(Output.ViewRect.Width() * 107.0f / 397.0f), Output.ViewRect.Max.Y - 51, TEXT("Bad"), GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
+				Canvas.DrawShadowedString(Output.ViewRect.Max.X - 162, Output.ViewRect.Max.Y - 51, TEXT("Extremely bad"), GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
 
-				Canvas.DrawShadowedString(Viewport.Rect.Min.X + 62, Viewport.Rect.Max.Y - 87, TEXT("0"), GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
+				Canvas.DrawShadowedString(Output.ViewRect.Min.X + 62, Output.ViewRect.Max.Y - 87, TEXT("0"), GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
 
 				FString Line;
 				Line = FString::Printf(TEXT("MaxShaderComplexityCount=%d"), (int32)GetMaxShaderComplexityCount(LocalView.GetFeatureLevel()));
-				Canvas.DrawShadowedString(Viewport.Rect.Max.X - 260, Viewport.Rect.Max.Y - 88, *Line, GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
+				Canvas.DrawShadowedString(Output.ViewRect.Max.X - 260, Output.ViewRect.Max.Y - 88, *Line, GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
 			}
 
 			const bool bFlush = false;
@@ -176,7 +177,7 @@ FRDGTextureRef AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder, const FScre
 		}
 	});
 
-	return OutputTexture;
+	return Output;
 }
 
 FRenderingCompositeOutputRef AddVisualizeComplexityPass(
@@ -195,26 +196,22 @@ FRenderingCompositeOutputRef AddVisualizeComplexityPass(
 		const FScreenPassViewInfo ScreenPassView(InContext.View);
 
 		FVisualizeComplexityInputs PassInputs;
-		PassInputs.SceneColorTexture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor"));
-		PassInputs.SceneColorViewRect = InContext.SceneColorViewRect;
+		PassInputs.SceneColor.Texture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor"));
+		PassInputs.SceneColor.ViewRect = InContext.SceneColorViewRect;
 		PassInputs.Colors = InColors;
 		PassInputs.ColorSamplingMethod = InColorSampling;
 		PassInputs.ComplexityScale = InComplexityScale;
 		PassInputs.bDrawLegend = bInLegend;
 
-		FRDGTextureRef OutputTexture = AddVisualizeComplexityPass(GraphBuilder, ScreenPassView, PassInputs);
-
-		// The frame buffer texture can be overridden in this pass.
-		FRDGTextureRef OverrideOutputTexture = InPass->FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("FrameBuffer"));
-
-		if (OverrideOutputTexture)
+		if (FRDGTextureRef OverrideOutputTexture = InPass->FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("FrameBuffer")))
 		{
-			AddDrawTexturePass(GraphBuilder, ScreenPassView, OutputTexture, OverrideOutputTexture, InContext.SceneColorViewRect);
+			PassInputs.OverrideOutput.Texture = OverrideOutputTexture;
+			PassInputs.OverrideOutput.ViewRect = InContext.GetSceneColorDestRect(InPass);
 		}
-		else
-		{
-			InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, OutputTexture);
-		}
+
+		FVisualizeComplexityOutputs PassOutputs = AddVisualizeComplexityPass(GraphBuilder, ScreenPassView, PassInputs);
+
+		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, PassOutputs.Texture);
 
 		GraphBuilder.Execute();
 	}));

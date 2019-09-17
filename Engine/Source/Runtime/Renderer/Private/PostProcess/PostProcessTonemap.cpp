@@ -634,38 +634,37 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(FTonemapCS, "/Engine/Private/PostProcessTonemap.usf", "MainCS", SF_Compute);
 
-FRDGTextureRef AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FTonemapInputs& Inputs)
+FTonemapOutputs AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FTonemapInputs& Inputs)
 {
-	check(Inputs.SceneColorTexture);
-	check(!Inputs.SceneColorViewRect.IsEmpty());
 	if (!Inputs.bGammaOnly)
 	{
-		check(Inputs.BloomTexture);
-		check(!Inputs.BloomViewRect.IsEmpty());
+		check(Inputs.Bloom.IsValid());
 		check(Inputs.ColorGradingTexture);
 	}
+	check(Inputs.SceneColor.IsValid());
 
 	const FViewInfo& View = ScreenPassView.View;
 	const FSceneViewFamily& ViewFamily = *(View.Family);
 	const FPostProcessSettings& PostProcessSettings = View.FinalPostProcessSettings;
 
-	const bool bComputePass = ScreenPassView.bUseComputePasses;
-
 	const bool bEyeAdaptation = Inputs.EyeAdaptationTexture != nullptr;
 
-	const FScreenPassTextureViewport SceneColorViewport(Inputs.SceneColorViewRect, Inputs.SceneColorTexture);
+	const FScreenPassTextureViewport SceneColorViewport(Inputs.SceneColor);
 
-	FRDGTextureRef OutputTexture = nullptr;
-	FScreenPassTextureViewport OutputViewport = SceneColorViewport;
+	FRDGTextureViewRectPair Output;
+	FScreenPassTextureViewport OutputViewport;
 
-	if (Inputs.OverrideOutputTexture)
+	bool bComputePass = ScreenPassView.bUseComputePasses;
+
+	if (Inputs.OverrideOutput.Texture)
 	{
-		OutputTexture = Inputs.OverrideOutputTexture;
-		OutputViewport = FScreenPassTextureViewport(Inputs.OverrideOutputViewRect, Inputs.OverrideOutputTexture);
+		Output = Inputs.OverrideOutput;
+		OutputViewport = FScreenPassTextureViewport(Inputs.OverrideOutput);
+		bComputePass &= (Output.Texture->Desc.TargetableFlags & TexCreate_UAV) == TexCreate_UAV;
 	}
 	else
 	{
-		FRDGTextureDesc OutputDesc = Inputs.SceneColorTexture->Desc;
+		FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
 		OutputDesc.Reset();
 		OutputDesc.TargetableFlags |= bComputePass ? TexCreate_UAV : TexCreate_RenderTargetable;
 		// RGB is the color in LDR, A is the luminance for PostprocessAA
@@ -686,7 +685,9 @@ FRDGTextureRef AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewIn
 			OutputDesc.Format = PF_FloatRGBA;
 		}
 
-		OutputTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("Tonemap"));
+		Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("Tonemap"));
+		Output.ViewRect = Inputs.SceneColor.ViewRect;
+		OutputViewport = FScreenPassTextureViewport(Inputs.SceneColor);
 	}
 
 	FRHITexture* NoiseTexture = nullptr;
@@ -759,14 +760,14 @@ FRDGTextureRef AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewIn
 	CommonParameters.FilmGrain = GetFilmGrainParameters(View);
 	CommonParameters.OutputDevice = GetTonemapperOutputDeviceParameters(ViewFamily);
 	CommonParameters.Color = GetScreenPassTextureViewportParameters(SceneColorViewport);
-	if (Inputs.BloomTexture)
+	if (Inputs.Bloom.Texture)
 	{
-		const FScreenPassTextureViewport BloomViewport(Inputs.BloomViewRect, Inputs.BloomTexture);
+		const FScreenPassTextureViewport BloomViewport(Inputs.Bloom);
 		CommonParameters.Bloom = GetScreenPassTextureViewportParameters(BloomViewport);
 	}
 	CommonParameters.Output = GetScreenPassTextureViewportParameters(OutputViewport);
-	CommonParameters.ColorTexture = Inputs.SceneColorTexture;
-	CommonParameters.BloomTexture = Inputs.BloomTexture;
+	CommonParameters.ColorTexture = Inputs.SceneColor.Texture;
+	CommonParameters.BloomTexture = Inputs.Bloom.Texture;
 	CommonParameters.EyeAdaptation = Inputs.EyeAdaptationTexture;
 	CommonParameters.ColorGradingLUT = Inputs.ColorGradingTexture;
 	CommonParameters.NoiseTexture = NoiseTexture;
@@ -814,7 +815,7 @@ FRDGTextureRef AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewIn
 	{
 		FTonemapCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FTonemapCS::FParameters>();
 		PassParameters->Tonemap = CommonParameters;
-		PassParameters->RWOutputTexture = GraphBuilder.CreateUAV(OutputTexture);
+		PassParameters->RWOutputTexture = GraphBuilder.CreateUAV(Output.Texture);
 
 		FTonemapCS::FPermutationDomain PermutationVector;
 		PermutationVector.Set<TonemapperPermutation::FDesktopDomain>(DesktopPermutationVector);
@@ -833,7 +834,7 @@ FRDGTextureRef AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewIn
 	{
 		FTonemapPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FTonemapPS::FParameters>();
 		PassParameters->Tonemap = CommonParameters;
-		PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, Inputs.OutputLoadAction);
+		PassParameters->RenderTargets[0] = FRenderTargetBinding(Output.Texture, Inputs.OutputLoadAction);
 
 		FTonemapVS::FPermutationDomain VertexPermutationVector;
 		VertexPermutationVector.Set<TonemapperPermutation::FTonemapperSwitchAxis>(Inputs.bFlipYAxis);
@@ -863,7 +864,7 @@ FRDGTextureRef AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewIn
 		});
 	}
 
-	return OutputTexture;
+	return Output;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -878,9 +879,6 @@ FRCPassPostProcessTonemap::FRCPassPostProcessTonemap(bool bInDoGammaOnly, bool b
 
 void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 {
-	// This code path is only used for mobile.
-	check(IsMobilePlatform(Context.GetShaderPlatform()));
-
 	const FViewInfo& View = Context.View;
 
 	const FScreenPassViewInfo ScreenPassView(View);
@@ -948,14 +946,14 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 	}
 
 	FTonemapInputs Inputs;
-	Inputs.SceneColorTexture = SceneColorTexture;
-	Inputs.SceneColorViewRect = SceneColorViewRect;
-	Inputs.BloomTexture = BloomTexture;
-	Inputs.BloomViewRect = BloomViewRect;
+	Inputs.SceneColor.Texture = SceneColorTexture;
+	Inputs.SceneColor.ViewRect = SceneColorViewRect;
+	Inputs.Bloom.Texture = BloomTexture;
+	Inputs.Bloom.ViewRect = BloomViewRect;
 	Inputs.EyeAdaptationTexture = EyeAdaptationTexture;
 	Inputs.ColorGradingTexture = ColorGradingTexture;
-	Inputs.OverrideOutputTexture = OutputTexture;
-	Inputs.OverrideOutputViewRect = OutputViewRect;
+	Inputs.OverrideOutput.Texture = OutputTexture;
+	Inputs.OverrideOutput.ViewRect = OutputViewRect;
 	Inputs.bWriteAlphaChannel = View.AntiAliasingMethod == AAM_FXAA || FPostProcessing::HasAlphaChannelSupport();
 
 	{
