@@ -736,93 +736,98 @@ void RenderScreenSpaceDiffuseIndirect(
 	// Reproject and reduce previous frame color.
 	FRDGTexture* ReducedSceneColor;
 	{
+		// Number of mip skipped at the begining of the mip chain.
+		const int32 DownSamplingMip = 1;
+
 		// Allocate ReducedSceneColor.
 		{
 			FRDGTextureDesc Desc = FRDGTextureDesc::Create2DDesc(
-				SceneTextures.SceneDepthBuffer->Desc.Extent,
-				PF_FloatRGBA, // TODO: might be worth using FloatRGB + R8
+				SceneTextures.SceneDepthBuffer->Desc.Extent / (1 << DownSamplingMip),
+				PF_FloatR11G11B10,
 				FClearValueBinding::None,
 				/* InFlags = */ TexCreate_None,
 				/* InTargetableFlags = */ TexCreate_ShaderResource | TexCreate_UAV,
 				/* bInForceSeparateTargetAndShaderResource = */ false);
-			Desc.NumMips = 9;
+			Desc.NumMips = 5;
 
 			ReducedSceneColor = GraphBuilder.CreateTexture(Desc, TEXT("SSRTReducedSceneColor"));
 		}
 
-		FSSRTPrevFrameReductionCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FSSRTPrevFrameReductionCS::FParameters>();
-
-		FIntPoint ViewportOffset = TemporalAAHistory.ViewportRect.Min;
-		FIntPoint ViewportExtent = TemporalAAHistory.ViewportRect.Size();
-		FIntPoint BufferSize = TemporalAAHistory.ReferenceBufferSize;
-
-		PassParameters->PrevScreenPositionScaleBias = FVector4(
-			ViewportExtent.X * 0.5f / BufferSize.X,
-			-ViewportExtent.Y * 0.5f / BufferSize.Y,
-			(ViewportExtent.X * 0.5f + ViewportOffset.X) / BufferSize.X,
-			(ViewportExtent.Y * 0.5f + ViewportOffset.Y) / BufferSize.Y);
-
-		PassParameters->PrevSceneColorPreExposureCorrection = View.PreExposure / View.PrevViewInfo.SceneColorPreExposure;
-		PassParameters->MinimumLuminance = CVarSSGIMinimumLuminance.GetValueOnRenderThread();
-
-		PassParameters->bIsTemporalAAHistory = true;
-		PassParameters->PrevTemporalAAHistory = ColorTexture;
-		PassParameters->PrevTemporalAAHistorySampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
-
-		PassParameters->SceneTextures = SceneTextures;
-		SetupSceneTextureSamplers(&PassParameters->SceneTextureSamplers);
-		PassParameters->View = View.ViewUniformBuffer;
-
-		for (int32 MipLevel = 0; MipLevel < PassParameters->ReducedSceneColorOutput.Num(); MipLevel++)
 		{
-			PassParameters->ReducedSceneColorOutput[MipLevel] = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(ReducedSceneColor, MipLevel));
+			FSSRTPrevFrameReductionCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FSSRTPrevFrameReductionCS::FParameters>();
+
+			FIntPoint ViewportOffset = TemporalAAHistory.ViewportRect.Min;
+			FIntPoint ViewportExtent = TemporalAAHistory.ViewportRect.Size();
+			FIntPoint BufferSize = TemporalAAHistory.ReferenceBufferSize;
+
+			PassParameters->PrevScreenPositionScaleBias = FVector4(
+				ViewportExtent.X * 0.5f / BufferSize.X,
+				-ViewportExtent.Y * 0.5f / BufferSize.Y,
+				(ViewportExtent.X * 0.5f + ViewportOffset.X) / BufferSize.X,
+				(ViewportExtent.Y * 0.5f + ViewportOffset.Y) / BufferSize.Y);
+
+			PassParameters->PrevSceneColorPreExposureCorrection = View.PreExposure / View.PrevViewInfo.SceneColorPreExposure;
+			PassParameters->MinimumLuminance = CVarSSGIMinimumLuminance.GetValueOnRenderThread();
+
+			PassParameters->bIsTemporalAAHistory = true;
+			PassParameters->PrevTemporalAAHistory = ColorTexture;
+			PassParameters->PrevTemporalAAHistorySampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
+
+			PassParameters->SceneTextures = SceneTextures;
+			SetupSceneTextureSamplers(&PassParameters->SceneTextureSamplers);
+			PassParameters->View = View.ViewUniformBuffer;
+
+			for (int32 MipLevel = 0; MipLevel < (PassParameters->ReducedSceneColorOutput.Num() - DownSamplingMip); MipLevel++)
+			{
+				PassParameters->ReducedSceneColorOutput[DownSamplingMip + MipLevel] = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(ReducedSceneColor, MipLevel));
+			}
+
+			FSSRTPrevFrameReductionCS::FPermutationDomain PermutationVector;
+			PermutationVector.Set<FSSRTPrevFrameReductionCS::FLowerMips>(false);
+
+			TShaderMapRef<FSSRTPrevFrameReductionCS> ComputeShader(View.ShaderMap, PermutationVector);
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("PrevFrameReduction %dx%d", View.ViewRect.Width(), View.ViewRect.Height()),
+				*ComputeShader,
+				PassParameters,
+				FComputeShaderUtils::GetGroupCount(View.ViewRect.Size(), 8));
 		}
 
-		FSSRTPrevFrameReductionCS::FPermutationDomain PermutationVector;
-		PermutationVector.Set<FSSRTPrevFrameReductionCS::FLowerMips>(false);
-
-		TShaderMapRef<FSSRTPrevFrameReductionCS> ComputeShader(View.ShaderMap, PermutationVector);
-		FComputeShaderUtils::AddPass(
-			GraphBuilder,
-			RDG_EVENT_NAME("PrevFrameReduction %dx%d", View.ViewRect.Width(), View.ViewRect.Height()),
-			*ComputeShader,
-			PassParameters,
-			FComputeShaderUtils::GetGroupCount(View.ViewRect.Size(), 8));
-	}
-
-	for (int32 i = 0; i < 2; i++)
-	{
-		int32 SrcMip = i * 3 + 2;
-		int32 StartDestMip = SrcMip + 1;
-		int32 Divisor = 1 << StartDestMip;
-
-		FSSRTPrevFrameReductionCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FSSRTPrevFrameReductionCS::FParameters>();
-		PassParameters->HigherMipTexture = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::CreateForMipLevel(ReducedSceneColor, SrcMip));
-		PassParameters->HigherMipTextureSampler = TStaticSamplerState<SF_Point>::GetRHI();
-		PassParameters->TexelSize = Divisor;
-
-		PassParameters->SceneTextures = SceneTextures;
-		SetupSceneTextureSamplers(&PassParameters->SceneTextureSamplers);
-		PassParameters->View = View.ViewUniformBuffer;
-
-		for (int32 MipLevel = 0; MipLevel < PassParameters->ReducedSceneColorOutput.Num(); MipLevel++)
+		for (int32 i = 0; i < 1; i++)
 		{
-			PassParameters->ReducedSceneColorOutput[MipLevel] = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(ReducedSceneColor, StartDestMip + MipLevel));
+			int32 SrcMip = i * 3 + 2 - DownSamplingMip;
+			int32 StartDestMip = SrcMip + 1;
+			int32 Divisor = 1 << (StartDestMip + DownSamplingMip);
+
+			FSSRTPrevFrameReductionCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FSSRTPrevFrameReductionCS::FParameters>();
+			PassParameters->HigherMipTexture = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::CreateForMipLevel(ReducedSceneColor, SrcMip));
+			PassParameters->HigherMipTextureSampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
+			PassParameters->TexelSize = Divisor;
+
+			PassParameters->SceneTextures = SceneTextures;
+			SetupSceneTextureSamplers(&PassParameters->SceneTextureSamplers);
+			PassParameters->View = View.ViewUniformBuffer;
+
+			for (int32 MipLevel = 0; MipLevel < PassParameters->ReducedSceneColorOutput.Num(); MipLevel++)
+			{
+				PassParameters->ReducedSceneColorOutput[MipLevel] = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(ReducedSceneColor, StartDestMip + MipLevel));
+			}
+
+			FSSRTPrevFrameReductionCS::FPermutationDomain PermutationVector;
+			PermutationVector.Set<FSSRTPrevFrameReductionCS::FLowerMips>(true);
+
+			TShaderMapRef<FSSRTPrevFrameReductionCS> ComputeShader(View.ShaderMap, PermutationVector);
+			ClearUnusedGraphResources(*ComputeShader, PassParameters);
+			GraphBuilder.AddPass(
+				RDG_EVENT_NAME("PrevFrameReduction %dx%d", View.ViewRect.Width() / Divisor, View.ViewRect.Height() / Divisor),
+				PassParameters,
+				ERDGPassFlags::Compute | ERDGPassFlags::GenerateMips,
+				[PassParameters, ComputeShader, &View, Divisor](FRHICommandList& RHICmdList)
+			{
+				FComputeShaderUtils::Dispatch(RHICmdList, *ComputeShader, *PassParameters, FComputeShaderUtils::GetGroupCount(View.ViewRect.Size(), 8 * Divisor));
+			});
 		}
-
-		FSSRTPrevFrameReductionCS::FPermutationDomain PermutationVector;
-		PermutationVector.Set<FSSRTPrevFrameReductionCS::FLowerMips>(true);
-
-		TShaderMapRef<FSSRTPrevFrameReductionCS> ComputeShader(View.ShaderMap, PermutationVector);
-		ClearUnusedGraphResources(*ComputeShader, PassParameters);
-		GraphBuilder.AddPass(
-			RDG_EVENT_NAME("PrevFrameReduction %dx%d", View.ViewRect.Width() / Divisor, View.ViewRect.Height() / Divisor),
-			PassParameters,
-			ERDGPassFlags::Compute | ERDGPassFlags::GenerateMips,
-			[PassParameters, ComputeShader, Viewport](FRHICommandList& RHICmdList)
-		{
-			FComputeShaderUtils::Dispatch(RHICmdList, *ComputeShader, *PassParameters, FComputeShaderUtils::GetGroupCount(Viewport.Size(), 32));
-		});
 	}
 
 	// Tile classify.
