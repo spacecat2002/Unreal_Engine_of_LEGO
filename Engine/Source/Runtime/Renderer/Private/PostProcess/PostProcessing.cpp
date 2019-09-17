@@ -939,6 +939,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			{
 				Tonemap,
 				FXAA,
+				PostProcessMaterialAfterTonemapping,
 				VisualizeDepthOfField,
 				VisualizeStationaryLightOverlap,
 				VisualizeLightCulling,
@@ -950,14 +951,22 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			{
 				TEXT("Tonemap"),
 				TEXT("FXAA"),
+				TEXT("PostProcessMaterial (AfterTonemapping)"),
 				TEXT("VisualizeDepthOfField"),
 				TEXT("VisualizeStationaryLightOverlap"),
 				TEXT("VisualizeLightCulling"),
 				TEXT("SelectionOutline")
 			};
 
-			static_assert(static_cast<uint32>(EPass::MAX) == ARRAY_COUNT(PassNames), "EPass does not match PassNames");
+			static_assert(static_cast<uint32>(EPass::MAX) == ARRAY_COUNT(PassNames), "EPass does not match PassNames.");
 
+			/**
+			 * The override pass sequence represents the final set of passes which can receive a view family render target override.
+			 * This is necessary to avoid a copy at the end of the chain. The pass sequence helper will compute the final pass and
+			 * seamlessly handle the override. To do so, the order of passes and whether they are enabled needs to be calculated up
+			 * front. When adding a new pass, make sure to preserve ordering and respect the enable flag during execution. The pass
+			 * sequence helper will validate correctness at runtime.
+			 */
 			FOverridePassSequence<EPass> PassSequence(ViewFamilyOutput);
 			PassSequence.SetNames(PassNames, ARRAY_COUNT(PassNames));
 			PassSequence.SetEnabled(EPass::VisualizeStationaryLightOverlap, View.Family->EngineShowFlags.StationaryLightOverlap);
@@ -966,6 +975,16 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 			if (AllowFullPostProcessing(View, View.GetFeatureLevel()))
 			{
+				const auto GetPostProcessMaterialInputs = [CustomDepth, SeparateTranslucency, Velocity] (FRDGTextureViewRectPair SceneColor)
+				{
+					FPostProcessMaterialInputs Inputs;
+					Inputs.SetInput(EPostProcessMaterialInput::SceneColor, SceneColor);
+					Inputs.SetInput(EPostProcessMaterialInput::SeparateTranslucency, SeparateTranslucency);
+					Inputs.SetInput(EPostProcessMaterialInput::Velocity, Velocity);
+					Inputs.CustomDepthTexture = CustomDepth.Texture;
+					return Inputs;
+				};
+
 				const EAutoExposureMethod AutoExposureMethod = GetAutoExposureMethod(View);
 
 				const EDownsampleQuality DownsampleQuality = GetDownsampleQuality();
@@ -1015,8 +1034,11 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 				const bool bBloomEnabled = View.FinalPostProcessSettings.BloomIntensity > 0.0f;
 
+				const FPostProcessMaterialChain PostProcessMaterialAfterTonemappingChain = GetPostProcessMaterialChain(View, BL_AfterTonemapping);
+
 				PassSequence.SetEnabled(EPass::Tonemap, bTonemapEnabled);
 				PassSequence.SetEnabled(EPass::FXAA, AntiAliasingMethod == AAM_FXAA);
+				PassSequence.SetEnabled(EPass::PostProcessMaterialAfterTonemapping, PostProcessMaterialAfterTonemappingChain.Num() != 0);
 				PassSequence.SetEnabled(EPass::VisualizeDepthOfField, bVisualizeDepthOfField);
 				PassSequence.Finalize();
 
@@ -1026,13 +1048,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 					if (MaterialChain.Num())
 					{
-						FPostProcessMaterialInputs Inputs;
-						Inputs.SetInput(EPostProcessMaterialInput::SceneColor, SceneColor);
-						Inputs.SetInput(EPostProcessMaterialInput::SeparateTranslucency, SeparateTranslucency);
-						Inputs.SetInput(EPostProcessMaterialInput::Velocity, Velocity);
-						Inputs.CustomDepthTexture = CustomDepth.Texture;
-
-						SceneColor = AddPostProcessMaterialChain(GraphBuilder, ScreenPassView, Inputs, MaterialChain);
+						SceneColor = AddPostProcessMaterialChain(GraphBuilder, ScreenPassView, GetPostProcessMaterialInputs(SceneColor), MaterialChain);
 					}
 				}
 
@@ -1065,13 +1081,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 					if (MaterialChain.Num())
 					{
-						FPostProcessMaterialInputs PassInputs;
-						PassInputs.SetInput(EPostProcessMaterialInput::SceneColor, SceneColor);
-						PassInputs.SetInput(EPostProcessMaterialInput::SeparateTranslucency, SeparateTranslucency);
-						PassInputs.SetInput(EPostProcessMaterialInput::Velocity, Velocity);
-						PassInputs.CustomDepthTexture = CustomDepth.Texture;
-
-						SceneColor = AddPostProcessMaterialChain(GraphBuilder, ScreenPassView, PassInputs, MaterialChain);
+						SceneColor = AddPostProcessMaterialChain(GraphBuilder, ScreenPassView, GetPostProcessMaterialInputs(SceneColor), MaterialChain);
 					}
 				}
 
@@ -1115,12 +1125,8 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 					if (MaterialChain.Num())
 					{
-						FPostProcessMaterialInputs PassInputs;
-						PassInputs.SetInput(EPostProcessMaterialInput::SceneColor, SceneColor);
-						PassInputs.CustomDepthTexture = CustomDepth.Texture;
-
 						// Save off SSR post process output for the next frame.
-						FPostProcessMaterialOutputs PassOutputs = AddPostProcessMaterialChain(GraphBuilder, ScreenPassView, PassInputs, MaterialChain);
+						FPostProcessMaterialOutputs PassOutputs = AddPostProcessMaterialChain(GraphBuilder, ScreenPassView, GetPostProcessMaterialInputs(SceneColor), MaterialChain);
 						GraphBuilder.QueueTextureExtraction(PassOutputs.Texture, &View.ViewState->PrevFrameViewInfo.CustomSSRInput);
 					}
 				}
@@ -1338,6 +1344,15 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 					SceneColor = AddFXAAPass(GraphBuilder, ScreenPassView, PassInputs);
 				}
 
+				// Post Process Material Chain - After Tonemapping
+				if (PassSequence.IsEnabled(EPass::PostProcessMaterialAfterTonemapping))
+				{
+					FPostProcessMaterialInputs PassInputs = GetPostProcessMaterialInputs(SceneColor);
+					PassSequence.AcceptOverrideIfLastPass(EPass::PostProcessMaterialAfterTonemapping, PassInputs);
+
+					SceneColor = AddPostProcessMaterialChain(GraphBuilder, ScreenPassView, PassInputs, PostProcessMaterialAfterTonemappingChain);
+				}
+
 				if (PassSequence.IsEnabled(EPass::VisualizeDepthOfField))
 				{
 					FVisualizeDOFInputs PassInputs;
@@ -1356,6 +1371,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			{
 				PassSequence.SetEnabled(EPass::Tonemap, !View.Family->EngineShowFlags.ShaderComplexity);
 				PassSequence.SetEnabled(EPass::FXAA, false);
+				PassSequence.SetEnabled(EPass::PostProcessMaterialAfterTonemapping, false);
 				PassSequence.SetEnabled(EPass::VisualizeDepthOfField, false);
 				PassSequence.Finalize();
 
@@ -1488,8 +1504,6 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			Node->SetInput(ePId_Input1, FRenderingCompositeOutputRef(Context.SceneColor));
 			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
 		}
-		
-		Context.FinalOutput = AddPostProcessMaterialChain(Context, BL_AfterTonemapping, SeparateTranslucency, PreTonemapHDRColor, PostTonemapHDRColor, PreFlattenVelocity);
 
 #if WITH_EDITOR
 		//Inspect the Final color, GBuffer and HDR

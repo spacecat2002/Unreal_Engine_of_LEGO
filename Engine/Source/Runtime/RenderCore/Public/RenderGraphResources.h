@@ -64,6 +64,16 @@ struct FRDGTextureViewRectPair
 		return Texture != nullptr && !ViewRect.IsEmpty();
 	}
 
+	bool operator==(FRDGTextureViewRectPair Other) const
+	{
+		return Texture == Other.Texture && ViewRect == Other.ViewRect;
+	}
+
+	bool operator!=(FRDGTextureViewRectPair Other) const
+	{
+		return !(*this == Other);
+	}
+
 	FRDGTextureRef Texture = nullptr;
 	FIntRect ViewRect;
 };
