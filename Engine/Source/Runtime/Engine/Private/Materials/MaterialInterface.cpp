@@ -19,6 +19,7 @@
 #include "Algo/BinarySearch.h"
 #include "Interfaces/ITargetPlatform.h"
 #include "Components.h"
+#include "ContentStreaming.h"
 
 /**
  * This is used to deprecate data that has been built with older versions.
@@ -195,7 +196,7 @@ int32 UMaterialInterface::GetHeight() const
 }
 
 
-void UMaterialInterface::SetForceMipLevelsToBeResident( bool OverrideForceMiplevelsToBeResident, bool bForceMiplevelsToBeResidentValue, float ForceDuration, int32 CinematicTextureGroups )
+void UMaterialInterface::SetForceMipLevelsToBeResident( bool OverrideForceMiplevelsToBeResident, bool bForceMiplevelsToBeResidentValue, float ForceDuration, int32 CinematicTextureGroups, bool bFastResponse )
 {
 	TArray<UTexture*> Textures;
 	
@@ -209,6 +210,14 @@ void UMaterialInterface::SetForceMipLevelsToBeResident( bool OverrideForceMiplev
 			if (OverrideForceMiplevelsToBeResident)
 			{
 				Texture->bForceMiplevelsToBeResident = bForceMiplevelsToBeResidentValue;
+			}
+
+			if (bFastResponse && (ForceDuration > 0.f || Texture->bForceMiplevelsToBeResident))
+			{
+				static IConsoleVariable* CVarAllowFastForceResident = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Streaming.AllowFastForceResident"));
+
+				Texture->bIgnoreStreamingMipBias = CVarAllowFastForceResident && CVarAllowFastForceResident->GetInt();
+				IStreamingManager::Get().GetRenderAssetStreamingManager().FastForceFullyResident(Texture);
 			}
 		}
 	}

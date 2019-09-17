@@ -397,7 +397,7 @@ public:
 	}
 	virtual void Serialize(const TCHAR* V, ELogVerbosity::Type Verbosity, const class FName& Category) override
 	{
-		if (!GIsRequestingExit)
+		if (!IsEngineExitRequested())
 		{
 			for (auto& Phrase : ExitPhrases)
 			{
@@ -1288,7 +1288,7 @@ int32 FEngineLoop::PreInit(const TCHAR* CmdLine)
 		// Tell Launcher to run us instead
 		ILauncherCheckModule::Get().RunLauncher(ELauncherAction::AppLaunch);
 		// We wish to exit
-		GIsRequestingExit = true;
+		RequestEngineExit(TEXT("Run outside of launcher; restarting via launcher"));
 		return 0;
 	}
 #endif
@@ -2335,7 +2335,7 @@ int32 FEngineLoop::PreInit(const TCHAR* CmdLine)
 			LLM_SCOPE(ELLMTag::Shaders);
 			SCOPED_BOOT_TIMING("CompileGlobalShaderMap");
 			CompileGlobalShaderMap(false);
-			if (GIsRequestingExit)
+			if (IsEngineExitRequested())
 			{
 				// This means we can't continue without the global shader map.
 				return 1;
@@ -2829,7 +2829,7 @@ int32 FEngineLoop::PreInit(const TCHAR* CmdLine)
 					GLogConsole->Show(true);
 				}
 				UE_LOG(LogInit, Error, TEXT("%s looked like a commandlet, but we could not find the class."), *Token);
-				GIsRequestingExit = true;
+				RequestEngineExit(FString::Printf(TEXT("Failed to find commandlet class %s"), *Token));
 				return 1;
 			}
 
@@ -2862,9 +2862,9 @@ int32 FEngineLoop::PreInit(const TCHAR* CmdLine)
 			// Allow commandlets to individually override those settings.
 			UCommandlet* Default = CastChecked<UCommandlet>(CommandletClass->GetDefaultObject());
 
-			if ( GIsRequestingExit )
+			if ( IsEngineExitRequested() )
 			{
-				// commandlet set GIsRequestingExit during construction
+				// commandlet set IsEngineExitRequested() during construction
 				return 1;
 			}
 
@@ -2876,7 +2876,7 @@ int32 FEngineLoop::PreInit(const TCHAR* CmdLine)
 			if (Default->IsEditor)
 			{
 				UE_LOG(LogInit, Error, TEXT("Cannot run editor commandlet %s with game executable."), *CommandletClass->GetFullName());
-				GIsRequestingExit = true;
+				RequestEngineExit(TEXT("Tried to run commandlet in non-editor build"));
 				return 1;
 			}
 #endif
@@ -2963,7 +2963,7 @@ int32 FEngineLoop::PreInit(const TCHAR* CmdLine)
 			int32 ErrorLevel = Commandlet->Main( CommandletCommandLine );
 			FStats::TickCommandletStats();
 
-			GIsRequestingExit = true;
+			RequestEngineExit(FString::Printf(TEXT("Commandlet %s finished execution (result %d)"), *Commandlet->GetName(), ErrorLevel));
 
 			// Log warning/ error summary.
 			if( Commandlet->ShowErrorCount )
@@ -3078,7 +3078,7 @@ int32 FEngineLoop::PreInit(const TCHAR* CmdLine)
 	}
 
 	// exit if wanted.
-	if( GIsRequestingExit )
+	if( IsEngineExitRequested() )
 	{
 		if ( GEngine != nullptr )
 		{
@@ -3567,7 +3567,7 @@ int32 FEngineLoop::Init()
 		// Load all the post-engine init modules
 		if (!IProjectManager::Get().LoadModulesForProject(ELoadingPhase::PostEngineInit) || !IPluginManager::Get().LoadModulesForEnabledPlugins(ELoadingPhase::PostEngineInit))
 		{
-			GIsRequestingExit = true;
+			RequestEngineExit(TEXT("One or more modules failed PostEngineInit"));
 			return 1;
 		}
 	}
@@ -3856,6 +3856,7 @@ void DumpEarlyReads(bool bDumpEarlyConfigReads, bool bDumpEarlyPakFileReads, boo
 
 	if (bForceQuitAfterEarlyReads)
 	{
+		GLog->Flush();
 		GEngine->DeferredCommands.Emplace(TEXT("Quit force"));
 	}
 }
@@ -4138,7 +4139,7 @@ void FEngineLoop::Tick()
 		#if WITH_PROFILEGPU && !UE_BUILD_SHIPPING
 			// Issue the measurement of the execution time of a basic LongGPUTask unit on the very first frame
 			// The results will be retrived on the first call of IssueScalableLongGPUTask
-			if (GFrameCounter == 0 && IsFeatureLevelSupported(GMaxRHIShaderPlatform, ERHIFeatureLevel::SM4) && FApp::CanEverRender())
+			if (GFrameCounter == 0 && IsFeatureLevelSupported(GMaxRHIShaderPlatform, ERHIFeatureLevel::SM5) && FApp::CanEverRender())
 			{
 				FlushRenderingCommands();
 
@@ -4169,6 +4170,20 @@ void FEngineLoop::Tick()
 		{
 			QUICK_SCOPE_CYCLE_COUNTER(STAT_FEngineLoop_UpdateTimeAndHandleMaxTickRate);
 			GEngine->UpdateTimeAndHandleMaxTickRate();
+		}
+
+		for (const FWorldContext& Context : GEngine->GetWorldContexts())
+		{
+			UWorld* CurrentWorld = Context.World();
+			if (CurrentWorld)
+			{
+				FSceneInterface* Scene = CurrentWorld->Scene;
+				ENQUEUE_RENDER_COMMAND(UpdateScenePrimitives)(
+					[Scene](FRHICommandListImmediate& RHICmdList)
+				{
+					Scene->UpdateAllPrimitiveSceneInfos(RHICmdList);
+				});
+			}
 		}
 
 		// beginning of RHI frame

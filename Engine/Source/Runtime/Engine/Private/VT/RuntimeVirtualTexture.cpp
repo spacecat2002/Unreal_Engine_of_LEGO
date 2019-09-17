@@ -363,8 +363,15 @@ void URuntimeVirtualTexture::Initialize(IVirtualTexture* InProducer, FTransform 
 	WorldToUVTransformParameters[0] = VolumeToWorld.GetTranslation();
 	WorldToUVTransformParameters[1] = VolumeToWorld.GetUnitAxis(EAxis::X) * 1.f / VolumeToWorld.GetScale3D().X;
 	WorldToUVTransformParameters[2] = VolumeToWorld.GetUnitAxis(EAxis::Y) * 1.f / VolumeToWorld.GetScale3D().Y;
-
-	InitResource(InProducer, VolumeToWorld);
+	
+	if (UseVirtualTexturing(GMaxRHIFeatureLevel))
+	{
+		InitResource(InProducer, VolumeToWorld);
+	}
+	else
+	{
+		InitNullResource();		
+	}
 }
 
 void URuntimeVirtualTexture::Release()
@@ -500,7 +507,8 @@ IVirtualTexture* URuntimeVirtualTexture::CreateStreamingTextureProducer(IVirtual
 		FTexturePlatformData** StreamingTextureData = StreamingTexture->GetRunningPlatformData();
 		if (StreamingTextureData != nullptr && *StreamingTextureData != nullptr)
 		{
-			OutTransitionLevel = FMath::Max(InMaxLevel - GetStreamLowMips() + 1, 0);
+			int32 NumStreamMips = FMath::Min(GetStreamLowMips(), (*StreamingTextureData)->GetNumVTMips()); // Min() is a hack while we fix crash due to data breakage
+			OutTransitionLevel = FMath::Max(InMaxLevel - NumStreamMips + 1, 0);
 			IVirtualTexture* StreamingProducer = new FUploadingVirtualTexture((*StreamingTextureData)->VTData, 0);
 			return new FVirtualTextureLevelRedirector(InProducer, StreamingProducer, OutTransitionLevel);
 		}

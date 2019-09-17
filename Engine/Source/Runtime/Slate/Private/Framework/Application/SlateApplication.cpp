@@ -868,7 +868,7 @@ void FSlateApplication::DestroyRenderer()
  */
 static void OnRequestExit()
 {
-	GIsRequestingExit = true;
+	RequestEngineExit(TEXT("Normal Slate Window Closed"));
 }
 
 void FSlateApplication::PlaySound( const FSlateSound& SoundToPlay, int32 UserIndex ) const
@@ -3330,6 +3330,11 @@ void FSlateApplication::SetUnhandledKeyDownEventHandler( const FOnKeyEvent& NewH
 	UnhandledKeyDownEventHandler = NewHandler;
 }
 
+void FSlateApplication::SetUnhandledKeyUpEventHandler(const FOnKeyEvent& NewHandler)
+{
+	UnhandledKeyUpEventHandler = NewHandler;
+}
+
 float FSlateApplication::GetDragTriggerDistance() const
 {
 	return DragTriggerDistance;
@@ -4209,6 +4214,12 @@ bool FSlateApplication::ProcessKeyUpEvent( const FKeyEvent& InKeyEvent )
 
 			return FReply::Unhandled();
 		});
+
+		// If the key event was not processed by any widget...
+		if (!Reply.IsEventHandled() && UnhandledKeyUpEventHandler.IsBound())
+		{
+			Reply = UnhandledKeyUpEventHandler.Execute(InKeyEvent);
+		}
 
 	return Reply.IsEventHandled();
 }
@@ -6417,13 +6428,18 @@ TSharedRef<FSlateApplication> FSlateApplication::InitializeAsStandaloneApplicati
 
 TSharedRef<FSlateApplication> FSlateApplication::InitializeAsStandaloneApplication(const TSharedRef< class FSlateRenderer >& PlatformRenderer, const TSharedRef<class GenericApplication>& InPlatformApplication)
 {
+	// Initialise High DPI mode. This must be called before any window (including the splash screen is created).
+	// We don't need to use the force flag which was added for PIE.
+	const bool bForceEnable = false;
+	FSlateApplication::InitHighDPI(bForceEnable);
+
 	// create the platform slate application (what FSlateApplication::Get() returns)
 	TSharedRef<FSlateApplication> Slate = FSlateApplication::Create(InPlatformApplication);
 
 	// initialize renderer
 	FSlateApplication::Get().InitializeRenderer(PlatformRenderer);
 
-	// set the normal UE4 GIsRequestingExit when outer frame is closed
+	// set the normal UE4 IsEngineExitRequested() when outer frame is closed
 	FSlateApplication::Get().SetExitRequestedHandler(FSimpleDelegate::CreateStatic(&OnRequestExit));
 
 	return Slate;

@@ -14,7 +14,7 @@ void FAnimNode_BlendListBase::Initialize_AnyThread(const FAnimationInitializeCon
 	DECLARE_SCOPE_HIERARCHICAL_COUNTER_ANIMNODE(Initialize_AnyThread)
 	FAnimNode_Base::Initialize_AnyThread(Context);
 
-	const int NumPoses = BlendPose.Num();
+	const int32 NumPoses = BlendPose.Num();
 	checkSlow(BlendTime.Num() == NumPoses);
 
 	BlendWeights.Reset(NumPoses);
@@ -80,7 +80,7 @@ void FAnimNode_BlendListBase::Update_AnyThread(const FAnimationUpdateContext& Co
 	DECLARE_SCOPE_HIERARCHICAL_COUNTER_ANIMNODE(Update_AnyThread)
 	GetEvaluateGraphExposedInputs().Execute(Context);
 
-	const int NumPoses = BlendPose.Num();
+	const int32 NumPoses = BlendPose.Num();
 	checkSlow((BlendTime.Num() == NumPoses) && (BlendWeights.Num() == NumPoses));
 
 	PosesToEvaluate.Empty(NumPoses);
@@ -276,7 +276,7 @@ void FAnimNode_BlendListBase::Evaluate_AnyThread(FPoseContext& Output)
 void FAnimNode_BlendListBase::GatherDebugData(FNodeDebugData& DebugData)
 {
 	DECLARE_SCOPE_HIERARCHICAL_COUNTER_ANIMNODE(GatherDebugData)
-	const int NumPoses = BlendPose.Num();
+	const int32 NumPoses = BlendPose.Num();
 	const int32 ChildIndex = GetActiveChildIndex();
 
 	FString DebugLine = GetNodeName(DebugData);

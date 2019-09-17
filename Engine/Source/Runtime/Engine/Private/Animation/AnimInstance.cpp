@@ -168,7 +168,7 @@ UWorld* UAnimInstance::GetWorld() const
 	return (HasAnyFlags(RF_ClassDefaultObject) ? nullptr : GetSkelMeshComponent()->GetWorld());
 }
 
-void UAnimInstance::InitializeAnimation()
+void UAnimInstance::InitializeAnimation(bool bInDeferRootNodeInitialization)
 {
 	FScopeCycleCounterUObject ContextScope(this);
 	SCOPE_CYCLE_COUNTER(STAT_AnimInitTime);
@@ -213,7 +213,7 @@ void UAnimInstance::InitializeAnimation()
 	NativeInitializeAnimation();
 	BlueprintInitializeAnimation();
 
-	GetProxyOnGameThread<FAnimInstanceProxy>().InitializeRootNode();
+	GetProxyOnGameThread<FAnimInstanceProxy>().InitializeRootNode(bInDeferRootNodeInitialization);
 
 	// we can bind rules & events now the graph has been initialized
 	GetProxyOnGameThread<FAnimInstanceProxy>().BindNativeDelegates();
@@ -2568,6 +2568,18 @@ void UAnimInstance::PerformLayerOverlayOperation(TSubclassOf<UAnimInstance> InCl
 			}
 		}
 
+		USkeletalMeshComponent* MeshComp = GetSkelMeshComponent();
+
+		auto UnlinkLayerNodesInInstance = [](UAnimInstance* InAnimInstance)
+		{
+			const IAnimClassInterface* NewSubInstanceClass = IAnimClassInterface::GetFromClass(InAnimInstance->GetClass());
+			for(const UStructProperty* LayerNodeProperty : NewSubInstanceClass->GetLayerNodeProperties())
+			{
+				FAnimNode_Layer* SubInstanceLayerNode = LayerNodeProperty->ContainerPtrToValuePtr<FAnimNode_Layer>(InAnimInstance);
+				SubInstanceLayerNode->DynamicUnlink(InAnimInstance);
+			}
+		};
+
 		for(TPair<FName, TArray<FAnimNode_Layer*, TInlineAllocator<4>>> LayerPair : LayerNodesToSet)
 		{
 			if (LayerPair.Key == NAME_None)
@@ -2585,13 +2597,13 @@ void UAnimInstance::PerformLayerOverlayOperation(TSubclassOf<UAnimInstance> InCl
 						// Skip setting if the class is the same
 						if (TargetInstance == nullptr || ClassToSet != TargetInstance->GetClass())
 						{
-							USkeletalMeshComponent* MeshComp = GetSkelMeshComponent();
 							UAnimInstance* NewSubInstance = NewObject<UAnimInstance>(MeshComp, ClassToSet);
+							NewSubInstance->InitializeAnimation();
+
+							// Unlink any layer nodes in the new sub instance, as they may have been hooked up to self in InitializeAnimation above.
+							UnlinkLayerNodesInInstance(NewSubInstance);
 
 							LayerNode->SetLayerOverlaySubInstance(this, NewSubInstance);
-
-							// Init after we link in the new graph segments, so propagation happens correctly
-							NewSubInstance->InitializeAnimation();
 
 							// Initialize the correct parts of the sub instance
 							if(LayerNode->LinkedRoot)
@@ -2599,6 +2611,7 @@ void UAnimInstance::PerformLayerOverlayOperation(TSubclassOf<UAnimInstance> InCl
 								FAnimInstanceProxy& Proxy = NewSubInstance->GetProxyOnAnyThread<FAnimInstanceProxy>();
 								Proxy.InitializeObjects(NewSubInstance);
 								Proxy.InitializeRootNode_WithRoot(LayerNode->LinkedRoot);
+								Proxy.CacheBones_WithRoot(LayerNode->LinkedRoot);
 								Proxy.ClearObjects();
 							}
 
@@ -2627,16 +2640,16 @@ void UAnimInstance::PerformLayerOverlayOperation(TSubclassOf<UAnimInstance> InCl
 					if (TargetInstance == nullptr || ClassToSet != TargetInstance->GetClass())
 					{
 						// Create and add one sub-instance for this group
-						USkeletalMeshComponent* MeshComp = GetSkelMeshComponent();
 						UAnimInstance* NewSubInstance = NewObject<UAnimInstance>(MeshComp, ClassToSet);
+						NewSubInstance->InitializeAnimation();
+
+						// Unlink any layer nodes in the new sub instance, as they may have been hooked up to self in InitializeAnimation above.
+						UnlinkLayerNodesInInstance(NewSubInstance);
 
 						for(FAnimNode_Layer* LayerNode : LayerPair.Value)
 						{
 							LayerNode->SetLayerOverlaySubInstance(this, NewSubInstance);
 						}
-
-						// Init after we link in the new graph segments, so propagation happens correctly
-						NewSubInstance->InitializeAnimation();
 
 						FAnimInstanceProxy& Proxy = NewSubInstance->GetProxyOnAnyThread<FAnimInstanceProxy>();
 
@@ -2647,6 +2660,7 @@ void UAnimInstance::PerformLayerOverlayOperation(TSubclassOf<UAnimInstance> InCl
 							{
 								Proxy.InitializeObjects(NewSubInstance);
 								Proxy.InitializeRootNode_WithRoot(LayerNode->LinkedRoot);
+								Proxy.CacheBones_WithRoot(LayerNode->LinkedRoot);
 								Proxy.ClearObjects();
 							}
 						}
@@ -2664,8 +2678,6 @@ void UAnimInstance::PerformLayerOverlayOperation(TSubclassOf<UAnimInstance> InCl
 				}
 			}
 		}
-
-		RecalcRequiredBones();
 	}
 }
 
