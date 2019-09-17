@@ -10,9 +10,20 @@ namespace
 		TEXT("Logs resource transitions to the console.\n"),
 		ECVF_RenderThreadSafe);
 
+	TAutoConsoleVariable<int32> CVarRDGTransitionLogEnableBreakpoint(
+		TEXT("r.RDG.TransitionLog.EnableBreakpoint"), 0,
+		TEXT("Breaks on a transition log event (set filters first!).\n"),
+		ECVF_RenderThreadSafe);
+
+	// TODO: String CVars don't support ECVF_RenderThreadSafe. Use with caution.
 	TAutoConsoleVariable<FString> CVarRDGLogTransitionsPassFilter(
 		TEXT("r.RDG.TransitionLog.PassFilter"), TEXT(""),
 		TEXT("Filters logs to passes with names containing the filter string.\n"),
+		ECVF_Default);
+
+	TAutoConsoleVariable<FString> CVarRDGLogTransitionsResourceFilter(
+		TEXT("r.RDG.TransitionLog.ResourceFilter"), TEXT(""),
+		TEXT("Filters logs to resources with names containing the filter string.\n"),
 		ECVF_Default);
 
 	/** Number of entries to reserve in the batch array. */
@@ -285,13 +296,24 @@ void FRDGBarrierBatcher::LogTransition(const FRDGParentResource* Resource, FTran
 	if (CVarRDGTransitionLogEnable.GetValueOnRenderThread() != 0)
 	{
 		const FString PassName = Pass ? Pass->GetName() : TEXT("None");
-		const FString FilterText = CVarRDGLogTransitionsPassFilter.GetValueOnRenderThread();
+		const FString PassFilterText = CVarRDGLogTransitionsPassFilter.GetValueOnRenderThread();
 
-		if (FilterText.IsEmpty() || PassName.Contains(*FilterText))
+		if (PassFilterText.IsEmpty() || PassName.Contains(*PassFilterText))
 		{
-			const TCHAR* PipeName = GetTransitionPipelineName(Parameters.TransitionPipeline);
-			const TCHAR* AccessName = GetTransitionAccessName(Parameters.TransitionAccess);
-			UE_LOG(LogRendererCore, Display, TEXT("RDG Transition:\tPass('%s'), Resource('%s'), Access(%s), Pipe(%s)"), *PassName, Resource->Name, AccessName, PipeName);
+			const FString ResourceName = Resource->Name;
+			const FString ResourceFilterText = CVarRDGLogTransitionsResourceFilter.GetValueOnRenderThread();
+
+			if (ResourceFilterText.IsEmpty() || ResourceName.Contains(*ResourceFilterText))
+			{
+				const TCHAR* PipeName = GetTransitionPipelineName(Parameters.TransitionPipeline);
+				const TCHAR* AccessName = GetTransitionAccessName(Parameters.TransitionAccess);
+				UE_LOG(LogRendererCore, Display, TEXT("RDG Transition:\tPass('%s'), Resource('%s'), Access(%s), Pipe(%s)"), *PassName, *ResourceName, AccessName, PipeName);
+
+				if (CVarRDGTransitionLogEnableBreakpoint.GetValueOnRenderThread() != 0)
+				{
+					UE_DEBUG_BREAK();
+				}
+			}
 		}
 	}
 #endif
