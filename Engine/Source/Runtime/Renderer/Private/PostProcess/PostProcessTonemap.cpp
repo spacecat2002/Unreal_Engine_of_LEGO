@@ -651,7 +651,7 @@ FTonemapOutputs AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewI
 
 	const FScreenPassTextureViewport SceneColorViewport(Inputs.SceneColor);
 
-	FRDGTextureViewRectPair Output;
+	FScreenPassTexture Output;
 	ERenderTargetLoadAction OutputLoadAction = ERenderTargetLoadAction::ENoAction;
 	FScreenPassTextureViewport OutputViewport;
 

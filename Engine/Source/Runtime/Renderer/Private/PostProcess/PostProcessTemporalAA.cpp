@@ -761,7 +761,7 @@ void AddTemporalAAPass(
 		OutputViewport.Extent.X = FMath::Max(InSceneColorTexture->Desc.Extent.X, QuantizedOutputSize.X);
 		OutputViewport.Extent.Y = FMath::Max(InSceneColorTexture->Desc.Extent.Y, QuantizedOutputSize.Y);
 
-		SceneColorTexture = ComputeMitchellNetravaliDownsample(GraphBuilder, ScreenPassView, FRDGTextureViewRectPair(SceneColorTexture, InputViewport), OutputViewport);
+		SceneColorTexture = ComputeMitchellNetravaliDownsample(GraphBuilder, ScreenPassView, FScreenPassTexture(SceneColorTexture, InputViewport), OutputViewport);
 	}
 
 	*OutSceneColorTexture = SceneColorTexture;

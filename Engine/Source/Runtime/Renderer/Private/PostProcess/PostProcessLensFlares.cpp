@@ -105,7 +105,7 @@ ELensFlareQuality GetLensFlareQuality()
 		static_cast<int32>(ELensFlareQuality::MAX) - 1));
 }
 
-FRDGTextureViewRectPair AddLensFlaresPass(
+FScreenPassTexture AddLensFlaresPass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
 	const FLensFlareInputs& Inputs)
@@ -317,5 +317,5 @@ FRDGTextureViewRectPair AddLensFlaresPass(
 		LensFlareLoadAction = ERenderTargetLoadAction::ELoad;
 	}
 
-	return FRDGTextureViewRectPair(LensFlareTexture, OutputViewRect);
+	return FScreenPassTexture(LensFlareTexture, OutputViewRect);
 }

@@ -380,7 +380,7 @@ FEditorPrimitiveOutputs AddEditorPrimitivePass(
 		});
 	}
 
-	FRDGTextureViewRectPair Output = Inputs.OverrideOutput;
+	FScreenPassTexture Output = Inputs.OverrideOutput;
 	ERenderTargetLoadAction OutputLoadAction = Inputs.OverrideOutputLoadAction;
 
 	{

@@ -131,7 +131,7 @@ FSelectionOutlineOutputs AddSelectionOutlinePass(FRDGBuilder& GraphBuilder, cons
 		});
 	}
 
-	FRDGTextureViewRectPair Output = Inputs.OverrideOutput;
+	FScreenPassTexture Output = Inputs.OverrideOutput;
 	ERenderTargetLoadAction OutputLoadAction = Inputs.OverrideOutputLoadAction;
 
 	// Render selection outlines.

@@ -60,13 +60,13 @@ struct FEditorPrimitiveInputs : public FOverridePassInputs
 		MAX
 	};
 
-	FRDGTextureViewRectPair SceneColor;
-	FRDGTextureViewRectPair SceneDepth;
+	FScreenPassTexture SceneColor;
+	FScreenPassTexture SceneDepth;
 
 	EBasePassType BasePassType = EBasePassType::MAX;
 };
 
-using FEditorPrimitiveOutputs = FRDGTextureViewRectPair;
+using FEditorPrimitiveOutputs = FScreenPassTexture;
 
 FEditorPrimitiveOutputs AddEditorPrimitivePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FEditorPrimitiveInputs& Inputs);
 

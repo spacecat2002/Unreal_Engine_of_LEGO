@@ -41,7 +41,7 @@ FVisualizeDOFOutputs AddVisualizeDOFPass(FRDGBuilder& GraphBuilder, const FScree
 
 	const FViewInfo& View = ScreenPassView.View;
 
-	FRDGTextureViewRectPair Output = Inputs.OverrideOutput;
+	FScreenPassTexture Output = Inputs.OverrideOutput;
 	ERenderTargetLoadAction OutputLoadAction = Inputs.OverrideOutputLoadAction;
 
 	if (!Output.Texture)

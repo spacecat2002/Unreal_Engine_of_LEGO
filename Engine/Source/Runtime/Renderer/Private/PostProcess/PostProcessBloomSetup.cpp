@@ -96,10 +96,10 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FBloomSetupCS, "/Engine/Private/PostProcessBloom.usf", "BloomSetupCS", SF_Compute);
 } //!namespace
 
-FRDGTextureViewRectPair AddBloomSetupPass(
+FScreenPassTexture AddBloomSetupPass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
-	FRDGTextureViewRectPair SceneColor,
+	FScreenPassTexture SceneColor,
 	FRDGTextureRef EyeAdaptationTexture,
 	float BloomThreshold)
 {
@@ -166,5 +166,5 @@ FRDGTextureViewRectPair AddBloomSetupPass(
 			SetupFunction);
 	}
 
-	return FRDGTextureViewRectPair(OutputTexture, Viewport.Rect);
+	return FScreenPassTexture(OutputTexture, Viewport.Rect);
 }

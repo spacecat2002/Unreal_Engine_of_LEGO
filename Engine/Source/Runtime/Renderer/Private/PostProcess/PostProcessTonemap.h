@@ -54,10 +54,10 @@ FMobileFilmTonemapParameters GetMobileFilmTonemapParameters(const FPostProcessSe
 struct FTonemapInputs : public FOverridePassInputs
 {
 	// [Required] HDR scene color to tonemap.
-	FRDGTextureViewRectPair SceneColor;
+	FScreenPassTexture SceneColor;
 
 	// [Required] Filtered bloom texture to composite with tonemapped scene color. This should be transparent black for no bloom.
-	FRDGTextureViewRectPair Bloom;
+	FScreenPassTexture Bloom;
 
 	// [Required] Color grading texture used to remap colors.
 	FRDGTextureRef ColorGradingTexture = nullptr;
@@ -81,7 +81,7 @@ struct FTonemapInputs : public FOverridePassInputs
 	bool bOutputInHDR = false;
 };
 
-using FTonemapOutputs = FRDGTextureViewRectPair;
+using FTonemapOutputs = FScreenPassTexture;
 
 FTonemapOutputs AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FTonemapInputs& Inputs);
 

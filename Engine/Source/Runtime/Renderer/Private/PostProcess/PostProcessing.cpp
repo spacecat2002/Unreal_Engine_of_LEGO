@@ -175,7 +175,7 @@ public:
 		FRDGBuilder& GraphBuilder,
 		const FScreenPassViewInfo& ScreenPassView,
 		const FEyeAdaptationParameters& EyeAdaptationParameters,
-		FRDGTextureViewRectPair HalfResolutionSceneColor,
+		FScreenPassTexture HalfResolutionSceneColor,
 		EDownsampleQuality DownsampleQuality,
 		bool bLogLumaInAlpha)
 	{
@@ -224,23 +224,23 @@ public:
 		return bInitialized;
 	}
 
-	FRDGTextureViewRectPair GetTexture(uint32 StageIndex) const
+	FScreenPassTexture GetTexture(uint32 StageIndex) const
 	{
 		return Textures[StageIndex];
 	}
 
-	FRDGTextureViewRectPair GetFirstTexture() const
+	FScreenPassTexture GetFirstTexture() const
 	{
 		return Textures[0];
 	}
 
-	FRDGTextureViewRectPair GetLastTexture() const
+	FScreenPassTexture GetLastTexture() const
 	{
 		return Textures[StageCount - 1];
 	}
 
 private:
-	TStaticArray<FRDGTextureViewRectPair, StageCount> Textures;
+	TStaticArray<FScreenPassTexture, StageCount> Textures;
 	bool bInitialized = false;
 };
 
@@ -271,15 +271,15 @@ EBloomQuality GetBloomQuality()
 
 struct FBloomInputs
 {
-	FRDGTextureViewRectPair SceneColor;
+	FScreenPassTexture SceneColor;
 
 	const FSceneDownsampleChain* SceneDownsampleChain = nullptr;
 };
 
 struct FBloomOutputs
 {
-	FRDGTextureViewRectPair SceneColor;
-	FRDGTextureViewRectPair Bloom;
+	FScreenPassTexture SceneColor;
+	FScreenPassTexture Bloom;
 };
 
 FBloomOutputs AddBloomPass(
@@ -294,8 +294,8 @@ FBloomOutputs AddBloomPass(
 
 	const EBloomQuality BloomQuality = GetBloomQuality();
 
-	FRDGTextureViewRectPair SceneColor = Inputs.SceneColor;
-	FRDGTextureViewRectPair Bloom;
+	FScreenPassTexture SceneColor = Inputs.SceneColor;
+	FScreenPassTexture Bloom;
 
 	if (BloomQuality != EBloomQuality::Disabled)
 	{
@@ -303,8 +303,8 @@ FBloomOutputs AddBloomPass(
 
 		if (bFFTBloomEnabled)
 		{
-			FRDGTextureViewRectPair FullResolution = Inputs.SceneColor;
-			FRDGTextureViewRectPair HalfResolution = Inputs.SceneDownsampleChain->GetFirstTexture();
+			FScreenPassTexture FullResolution = Inputs.SceneColor;
+			FScreenPassTexture HalfResolution = Inputs.SceneDownsampleChain->GetFirstTexture();
 
 			FFFTBloomInputs PassInputs;
 			PassInputs.FullResolutionTexture = FullResolution.Texture;
@@ -431,7 +431,7 @@ FBloomOutputs AddBloomPass(
 			LensFlareInputs.bCompositeWithBloom = false;
 		}
 
-		FRDGTextureViewRectPair LensFlare = AddLensFlaresPass(GraphBuilder, ScreenPassView, LensFlareInputs);
+		FScreenPassTexture LensFlare = AddLensFlaresPass(GraphBuilder, ScreenPassView, LensFlareInputs);
 
 		if (LensFlare.Texture)
 		{
@@ -909,20 +909,20 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			const FIntRect PrimaryViewRect = View.ViewRect;
 
 			// Scene color is updated incrementally through the post process pipeline.
-			FRDGTextureViewRectPair SceneColor(Pass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor")), PrimaryViewRect);
+			FScreenPassTexture SceneColor(Pass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor")), PrimaryViewRect);
 
 			// Unprocessed scene color stores the original input.
-			const FRDGTextureViewRectPair UnprocessedSceneColor = SceneColor;
+			const FScreenPassTexture UnprocessedSceneColor = SceneColor;
 
-			const FRDGTextureViewRectPair SceneDepth(Pass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input1, TEXT("SceneDepth")), PrimaryViewRect);
+			const FScreenPassTexture SceneDepth(Pass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input1, TEXT("SceneDepth")), PrimaryViewRect);
 
-			const FRDGTextureViewRectPair SeparateTranslucency(Pass->CreateRDGTextureForOptionalInput(GraphBuilder, ePId_Input2, TEXT("SeparateTranslucency")), PrimaryViewRect);
+			const FScreenPassTexture SeparateTranslucency(Pass->CreateRDGTextureForOptionalInput(GraphBuilder, ePId_Input2, TEXT("SeparateTranslucency")), PrimaryViewRect);
 
-			const FRDGTextureViewRectPair CustomDepth(GraphBuilder.TryRegisterExternalTexture(SceneContext.CustomDepth, TEXT("CustomDepth")), PrimaryViewRect);
+			const FScreenPassTexture CustomDepth(GraphBuilder.TryRegisterExternalTexture(SceneContext.CustomDepth, TEXT("CustomDepth")), PrimaryViewRect);
 
-			const FRDGTextureViewRectPair ViewFamilyOutput(Pass->FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("ViewFamilyTexture")), View.UnscaledViewRect);
+			const FScreenPassTexture ViewFamilyOutput(Pass->FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("ViewFamilyTexture")), View.UnscaledViewRect);
 
-			const FRDGTextureViewRectPair BlackDummy(GSystemTextures.GetBlackDummy(GraphBuilder), FIntRect(0, 0, 1, 1));
+			const FScreenPassTexture BlackDummy(GSystemTextures.GetBlackDummy(GraphBuilder), FIntRect(0, 0, 1, 1));
 
 			FSceneTextureParameters SceneTextures;
 			SetupSceneTextureParameters(GraphBuilder, &SceneTextures);
@@ -933,7 +933,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				SceneTextures.SceneVelocityBuffer = BlackDummy.Texture;
 			}
 
-			const FRDGTextureViewRectPair Velocity(SceneTextures.SceneVelocityBuffer, PrimaryViewRect);
+			const FScreenPassTexture Velocity(SceneTextures.SceneVelocityBuffer, PrimaryViewRect);
 
 			enum class EPass : uint32
 			{
@@ -987,7 +987,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 			if (AllowFullPostProcessing(View, View.GetFeatureLevel()))
 			{
-				const auto GetPostProcessMaterialInputs = [CustomDepth, SeparateTranslucency, Velocity] (FRDGTextureViewRectPair SceneColor)
+				const auto GetPostProcessMaterialInputs = [CustomDepth, SeparateTranslucency, Velocity] (FScreenPassTexture SceneColor)
 				{
 					FPostProcessMaterialInputs Inputs;
 					Inputs.SetInput(EPostProcessMaterialInput::SceneColor, SceneColor);
@@ -1097,7 +1097,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 					}
 				}
 
-				FRDGTextureViewRectPair HalfResolutionSceneColor;
+				FScreenPassTexture HalfResolutionSceneColor;
 
 				// Scene color view rectangle after temporal AA upscale to secondary screen percentage.
 				FIntRect SecondaryViewRect = PrimaryViewRect;
@@ -1241,7 +1241,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 					}
 				}
 
-				FRDGTextureViewRectPair Bloom = BlackDummy;
+				FScreenPassTexture Bloom = BlackDummy;
 
 				if (bBloomEnabled)
 				{
@@ -1257,7 +1257,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 					}
 					else
 					{
-						FRDGTextureViewRectPair DownsampleInput = HalfResolutionSceneColor;
+						FScreenPassTexture DownsampleInput = HalfResolutionSceneColor;
 
 						if (bBloomThresholdEnabled)
 						{
@@ -1289,7 +1289,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 					Bloom = PassOutputs.Bloom;
 				}
 
-				const FRDGTextureViewRectPair SceneColorBeforeTonemap = SceneColor;
+				const FScreenPassTexture SceneColorBeforeTonemap = SceneColor;
 
 				if (PassSequence.IsEnabled(EPass::Tonemap))
 				{
@@ -1334,7 +1334,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 					}
 				}
 
-				const FRDGTextureViewRectPair SceneColorAfterTonemap = SceneColor;
+				const FScreenPassTexture SceneColorAfterTonemap = SceneColor;
 
 				if (PassSequence.IsEnabled(EPass::FXAA))
 				{

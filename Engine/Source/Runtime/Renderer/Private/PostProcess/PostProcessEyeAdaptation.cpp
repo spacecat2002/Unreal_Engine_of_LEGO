@@ -399,11 +399,11 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(FBasicEyeAdaptationSetupPS, "/Engine/Private/PostProcessEyeAdaptation.usf", "BasicEyeAdaptationSetupPS", SF_Pixel);
 
-FRDGTextureViewRectPair AddBasicEyeAdaptationSetupPass(
+FScreenPassTexture AddBasicEyeAdaptationSetupPass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
 	const FEyeAdaptationParameters& EyeAdaptationParameters,
-	FRDGTextureViewRectPair SceneColor)
+	FScreenPassTexture SceneColor)
 {
 	check(SceneColor.IsValid());
 
@@ -435,7 +435,7 @@ FRDGTextureViewRectPair AddBasicEyeAdaptationSetupPass(
 		*PixelShader,
 		PassParameters);
 
-	return FRDGTextureViewRectPair(OutputTexture, SceneColor.ViewRect);
+	return FScreenPassTexture(OutputTexture, SceneColor.ViewRect);
 }
 
 class FBasicEyeAdaptationShader : public FGlobalShader
@@ -507,7 +507,7 @@ FRDGTextureRef AddBasicEyeAdaptationPass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
 	const FEyeAdaptationParameters& EyeAdaptationParameters,
-	FRDGTextureViewRectPair SceneColor,
+	FScreenPassTexture SceneColor,
 	FRDGTextureRef EyeAdaptationTexture)
 {
 	const FViewInfo& View = ScreenPassView.View;

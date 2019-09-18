@@ -47,12 +47,12 @@ END_SHADER_PARAMETER_STRUCT()
 
 struct FPostProcessMaterialInputs : public FOverridePassInputs
 {
-	inline void SetInput(EPostProcessMaterialInput Input, FRDGTextureViewRectPair Texture)
+	inline void SetInput(EPostProcessMaterialInput Input, FScreenPassTexture Texture)
 	{
 		Textures[(uint32)Input] = Texture;
 	}
 
-	inline FRDGTextureViewRectPair GetInput(EPostProcessMaterialInput Input) const
+	inline FScreenPassTexture GetInput(EPostProcessMaterialInput Input) const
 	{
 		return Textures[(uint32)Input];
 	}
@@ -75,15 +75,15 @@ struct FPostProcessMaterialInputs : public FOverridePassInputs
 
 	inline void ValidateInputExists(EPostProcessMaterialInput Input) const
 	{
-		const FRDGTextureViewRectPair Pair = GetInput(EPostProcessMaterialInput::SceneColor);
-		check(Pair.Texture);
-		check(!Pair.ViewRect.IsEmpty());
+		const FScreenPassTexture Texture = GetInput(EPostProcessMaterialInput::SceneColor);
+		check(Texture.Texture);
+		check(!Texture.ViewRect.IsEmpty());
 	}
 
 	/** Array of input textures bound to the material. The first element represents the output from
 	 *  the previous post process and is required. All other inputs are optional.
 	 */
-	TStaticArray<FRDGTextureViewRectPair, kPostProcessMaterialInputCountMax> Textures;
+	TStaticArray<FScreenPassTexture, kPostProcessMaterialInputCountMax> Textures;
 
 	/** The output texture format to use if a new texture is created. Uses the input format if left unknown. */
 	EPixelFormat OutputFormat = PF_Unknown;
@@ -95,7 +95,7 @@ struct FPostProcessMaterialInputs : public FOverridePassInputs
 	bool bFlipYAxis = false;
 };
 
-using FPostProcessMaterialOutputs = FRDGTextureViewRectPair;
+using FPostProcessMaterialOutputs = FScreenPassTexture;
 
 FPostProcessMaterialOutputs AddPostProcessMaterialPass(
 	FRDGBuilder& GraphBuilder,

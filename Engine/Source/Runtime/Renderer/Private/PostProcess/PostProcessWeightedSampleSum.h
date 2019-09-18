@@ -12,10 +12,10 @@ struct FGaussianBlurInputs
 	const TCHAR* NameY = nullptr;
 
 	// The input texture to be filtered.
-	FRDGTextureViewRectPair Filter;
+	FScreenPassTexture Filter;
 
 	// The input texture to be added after filtering.
-	FRDGTextureViewRectPair Additive;
+	FScreenPassTexture Additive;
 
 	// The color to tint when filtering.
 	FLinearColor TintColor;
@@ -27,7 +27,7 @@ struct FGaussianBlurInputs
 	float KernelSizePercent = 0.0f;
 };
 
-using FGaussianBlurOutputs = FRDGTextureViewRectPair;
+using FGaussianBlurOutputs = FScreenPassTexture;
 
 FGaussianBlurOutputs AddGaussianBlurPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FGaussianBlurInputs& Inputs);
 

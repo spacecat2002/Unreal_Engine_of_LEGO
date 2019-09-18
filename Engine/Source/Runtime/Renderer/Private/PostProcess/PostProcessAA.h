@@ -22,11 +22,11 @@ EFXAAQuality GetFXAAQuality();
 
 struct FFXAAInputs : public FOverridePassInputs
 {
-	FRDGTextureViewRectPair SceneColor;
+	FScreenPassTexture SceneColor;
 
 	EFXAAQuality Quality = EFXAAQuality::MAX;
 };
 
-using FFXAAOutputs = FRDGTextureViewRectPair;
+using FFXAAOutputs = FScreenPassTexture;
 
 FFXAAOutputs AddFXAAPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FFXAAInputs& Inputs);

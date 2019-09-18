@@ -139,7 +139,7 @@ FScreenPassTextureViewportTransform GetScreenPassTextureViewportTransform(
 	return GetScreenPassTextureViewportTransform(SourceUVOffset, SourceUVExtent, DestinationUVOffset, DestinationUVExtent);
 }
 
-FScreenPassTextureInput GetScreenPassTextureInput(FRDGTextureViewRectPair TexturePair, FRHISamplerState* Sampler)
+FScreenPassTextureInput GetScreenPassTextureInput(FScreenPassTexture TexturePair, FRHISamplerState* Sampler)
 {
 	FScreenPassTextureInput Input;
 	Input.Viewport = GetScreenPassTextureViewportParameters(FScreenPassTextureViewport(TexturePair));

@@ -293,7 +293,7 @@ FPostProcessMaterialOutputs AddPostProcessMaterialPass(
 {
 	Inputs.Validate();
 
-	const FRDGTextureViewRectPair SceneColor = Inputs.GetInput(EPostProcessMaterialInput::SceneColor);
+	const FScreenPassTexture SceneColor = Inputs.GetInput(EPostProcessMaterialInput::SceneColor);
 
 	const ERHIFeatureLevel::Type FeatureLevel = ScreenPassView.View.GetFeatureLevel();
 
@@ -329,7 +329,7 @@ FPostProcessMaterialOutputs AddPostProcessMaterialPass(
 	// or we need to retain previously rendered views.
 	const bool bPrimeOutputColor = bIsCompositeWithInput || !View.IsFirstInFamily();
 
-	FRDGTextureViewRectPair Output = Inputs.OverrideOutput;
+	FScreenPassTexture Output = Inputs.OverrideOutput;
 	ERenderTargetLoadAction OutputLoadAction = Inputs.OverrideOutputLoadAction;
 
 	// We can re-use the scene color texture as the render target if we're not simultaneously reading from it.
@@ -390,7 +390,7 @@ FPostProcessMaterialOutputs AddPostProcessMaterialPass(
 
 	PostProcessMaterialParameters->PostProcessInput_BilinearSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();;
 
-	const FRDGTextureViewRectPair BlackDummy(GSystemTextures.GetBlackDummy(GraphBuilder));
+	const FScreenPassTexture BlackDummy(GSystemTextures.GetBlackDummy(GraphBuilder));
 
     // This gets passed in whether or not it's used.
 	GraphBuilder.RemoveUnusedTextureWarning(BlackDummy.Texture);
@@ -399,7 +399,7 @@ FPostProcessMaterialOutputs AddPostProcessMaterialPass(
 
 	for (uint32 InputIndex = 0; InputIndex < kPostProcessMaterialInputCountMax; ++InputIndex)
 	{
-		FRDGTextureViewRectPair Input = Inputs.GetInput((EPostProcessMaterialInput)InputIndex);
+		FScreenPassTexture Input = Inputs.GetInput((EPostProcessMaterialInput)InputIndex);
 
 		// Need to provide valid textures for when shader compilation doesn't cull unused parameters.
 		if (!Input.Texture || !MaterialShaderMap->UsesSceneTexture(PPI_PostProcessInput0 + InputIndex))
@@ -552,7 +552,7 @@ FPostProcessMaterialOutputs AddPostProcessMaterialChain(
 	const FPostProcessMaterialInputs& InputsTemplate,
 	const FPostProcessMaterialChain& Materials)
 {
-	FRDGTextureViewRectPair Outputs = InputsTemplate.GetInput(EPostProcessMaterialInput::SceneColor);
+	FScreenPassTexture Outputs = InputsTemplate.GetInput(EPostProcessMaterialInput::SceneColor);
 
 	for (const UMaterialInterface* MaterialInterface : Materials)
 	{
@@ -562,7 +562,7 @@ FPostProcessMaterialOutputs AddPostProcessMaterialChain(
 		// Certain inputs are only respected by the final post process material in the chain.
 		if (MaterialInterface != Materials.Last())
 		{
-			Inputs.OverrideOutput = FRDGTextureViewRectPair();
+			Inputs.OverrideOutput = FScreenPassTexture();
 			Inputs.bFlipYAxis = false;
 		}
 
@@ -602,7 +602,7 @@ FRenderingCompositePass* AddPostProcessMaterialPass(
 		// Either finds the overridden frame buffer target or returns null.
 		if (FRDGTextureRef OutputTexture = Pass->FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("FrameBufferOverride")))
 		{
-			Inputs.OverrideOutput = FRDGTextureViewRectPair(OutputTexture, InContext.GetSceneColorDestRect(Pass));
+			Inputs.OverrideOutput = FScreenPassTexture(OutputTexture, InContext.GetSceneColorDestRect(Pass));
 			Inputs.OverrideOutputLoadAction = InContext.View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
 		}
 
@@ -618,7 +618,7 @@ FRenderingCompositePass* AddPostProcessMaterialPass(
 			 */
 			const FIntRect InputViewportRect = (InputIndex == 0) ? InContext.SceneColorViewRect : InContext.View.ViewRect;
 
-			Inputs.SetInput((EPostProcessMaterialInput)InputIndex, FRDGTextureViewRectPair(InputTexture, InputViewportRect));
+			Inputs.SetInput((EPostProcessMaterialInput)InputIndex, FScreenPassTexture(InputTexture, InputViewportRect));
 		}
 
 		Inputs.bFlipYAxis = ShouldMobilePassFlipVerticalAxis(Pass);

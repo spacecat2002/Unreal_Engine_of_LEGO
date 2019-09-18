@@ -7,7 +7,7 @@
 /** The pass input structure should derive from this class. */
 struct FOverridePassInputs
 {
-	FRDGTextureViewRectPair OverrideOutput;
+	FScreenPassTexture OverrideOutput;
 	ERenderTargetLoadAction OverrideOutputLoadAction = ERenderTargetLoadAction::ENoAction;
 };
 

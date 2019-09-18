@@ -27,7 +27,7 @@ struct FVisualizeComplexityInputs : public FOverridePassInputs
 	};
 
 	// The input scene color and view rect.
-	FRDGTextureViewRectPair SceneColor;
+	FScreenPassTexture SceneColor;
 
 	// The table of colors used for visualization, ordered by least to most complex.
 	TArrayView<const FLinearColor> Colors;
@@ -42,7 +42,7 @@ struct FVisualizeComplexityInputs : public FOverridePassInputs
 	bool bDrawLegend = false;
 };
 
-using FVisualizeComplexityOutputs = FRDGTextureViewRectPair;
+using FVisualizeComplexityOutputs = FScreenPassTexture;
 
 FVisualizeComplexityOutputs AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeComplexityInputs& Inputs);
 

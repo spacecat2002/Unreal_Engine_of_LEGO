@@ -7,10 +7,10 @@
 
 struct FVisualizeDOFInputs : public FOverridePassInputs
 {
-	FRDGTextureViewRectPair SceneColor;
-	FRDGTextureViewRectPair SceneDepth;
+	FScreenPassTexture SceneColor;
+	FScreenPassTexture SceneDepth;
 };
 
-using FVisualizeDOFOutputs = FRDGTextureViewRectPair;
+using FVisualizeDOFOutputs = FScreenPassTexture;
 
 FVisualizeDOFOutputs AddVisualizeDOFPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeDOFInputs& Inputs);

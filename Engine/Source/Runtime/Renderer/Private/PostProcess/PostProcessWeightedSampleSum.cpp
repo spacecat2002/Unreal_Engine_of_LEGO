@@ -334,13 +334,13 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FFilterCS, "/Engine/Private/FilterPixelShader.usf", "MainCS", SF_Compute);
 } //! namespace
 
-FRDGTextureViewRectPair AddGaussianBlurPass(
+FScreenPassTexture AddGaussianBlurPass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
 	const TCHAR* Name,
 	FScreenPassTextureViewport OutputViewport,
-	FRDGTextureViewRectPair Filter,
-	FRDGTextureViewRectPair Additive,
+	FScreenPassTexture Filter,
+	FScreenPassTexture Additive,
 	TArrayView<const FVector2D> SampleOffsets,
 	TArrayView<const FLinearColor> SampleWeights)
 {
@@ -453,10 +453,10 @@ FRDGTextureViewRectPair AddGaussianBlurPass(
 		}
 	}
 
-	return FRDGTextureViewRectPair(OutputTexture, OutputViewport.Rect);
+	return FScreenPassTexture(OutputTexture, OutputViewport.Rect);
 }
 
-FRDGTextureViewRectPair AddGaussianBlurPass(
+FScreenPassTexture AddGaussianBlurPass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
 	const FGaussianBlurInputs& Inputs)
@@ -482,7 +482,7 @@ FRDGTextureViewRectPair AddGaussianBlurPass(
 		? FScreenPassTextureViewport::CreateDownscaled(FilterViewport, FIntPoint(2, 1))
 		: FilterViewport;
 
-	FRDGTextureViewRectPair HorizontalOutput;
+	FScreenPassTexture HorizontalOutput;
 
 	// Horizontal Pass
 	{
@@ -508,7 +508,7 @@ FRDGTextureViewRectPair AddGaussianBlurPass(
 		}
 
 		// Horizontal pass doesn't use additive combine.
-		FRDGTextureViewRectPair Additive;
+		FScreenPassTexture Additive;
 
 		HorizontalOutput = AddGaussianBlurPass(
 			GraphBuilder,

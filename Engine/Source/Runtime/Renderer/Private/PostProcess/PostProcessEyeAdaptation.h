@@ -59,16 +59,16 @@ FRDGTextureRef AddHistogramEyeAdaptationPass(
 	FRDGTextureRef HistogramTexture);
 
 // Computes luma of scene color stores in Alpha.
-FRDGTextureViewRectPair AddBasicEyeAdaptationSetupPass(
+FScreenPassTexture AddBasicEyeAdaptationSetupPass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
 	const FEyeAdaptationParameters& EyeAdaptationParameters,
-	FRDGTextureViewRectPair SceneColor);
+	FScreenPassTexture SceneColor);
 
 // Returns the updated 1x1 eye adaptation texture.
 FRDGTextureRef AddBasicEyeAdaptationPass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
 	const FEyeAdaptationParameters& EyeAdaptationParameters,
-	FRDGTextureViewRectPair SceneColor,
+	FScreenPassTexture SceneColor,
 	FRDGTextureRef EyeAdaptationTexture);

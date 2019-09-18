@@ -41,7 +41,7 @@ struct FDownsamplePassInputs
 	const TCHAR* Name = nullptr;
 
 	// Input scene color RDG texture / view rect. Must not be null.
-	FRDGTextureViewRectPair SceneColor;
+	FScreenPassTexture SceneColor;
 
 	// The downsample method to use.
 	EDownsampleQuality Quality = EDownsampleQuality::Low;
@@ -53,7 +53,7 @@ struct FDownsamplePassInputs
 	EPixelFormat FormatOverride = PF_Unknown;
 };
 
-using FDownsamplePassOutputs = FRDGTextureViewRectPair;
+using FDownsamplePassOutputs = FScreenPassTexture;
 
 FDownsamplePassOutputs AddDownsamplePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FDownsamplePassInputs& Inputs);
 

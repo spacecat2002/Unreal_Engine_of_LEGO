@@ -10,11 +10,11 @@
 
 struct FSelectionOutlineInputs : public FOverridePassInputs
 {
-	FRDGTextureViewRectPair SceneColor;
-	FRDGTextureViewRectPair SceneDepth;
+	FScreenPassTexture SceneColor;
+	FScreenPassTexture SceneDepth;
 };
 
-using FSelectionOutlineOutputs = FRDGTextureViewRectPair;
+using FSelectionOutlineOutputs = FScreenPassTexture;
 
 FSelectionOutlineOutputs AddSelectionOutlinePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FSelectionOutlineInputs& Inputs);
 

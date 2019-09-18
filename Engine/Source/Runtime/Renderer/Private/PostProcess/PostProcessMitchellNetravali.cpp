@@ -38,7 +38,7 @@ IMPLEMENT_GLOBAL_SHADER(FMitchellNetravaliDownsampleCS, "/Engine/Private/PostPro
 FRDGTextureRef ComputeMitchellNetravaliDownsample(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
-	FRDGTextureViewRectPair Input,
+	FScreenPassTexture Input,
 	const FScreenPassTextureViewport OutputViewport)
 {
 	const FRDGTextureDesc OutputTextureDesc = FRDGTextureDesc::Create2DDesc(

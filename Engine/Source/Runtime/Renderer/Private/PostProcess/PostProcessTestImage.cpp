@@ -27,7 +27,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(FTestImagePS, "/Engine/Private/PostProcessTestImage.usf", "MainPS", SF_Pixel);
 
-void AddTestImagePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, FRDGTextureViewRectPair Output)
+void AddTestImagePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, FScreenPassTexture Output)
 {
 	check(Output.IsValid());
 
@@ -122,7 +122,7 @@ FRenderingCompositeOutputRef AddTestImagePass(FRenderingCompositionGraph& Graph,
 
 		const FScreenPassViewInfo ScreenPassView(InContext.View);
 
-		const FRDGTextureViewRectPair Output(SceneTextureOutput, InContext.SceneColorViewRect);
+		const FScreenPassTexture Output(SceneTextureOutput, InContext.SceneColorViewRect);
 
 		AddTestImagePass(GraphBuilder, ScreenPassView, Output);
 

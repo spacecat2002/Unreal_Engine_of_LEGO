@@ -71,7 +71,7 @@ struct FScreenPassTexture
 };
 
 // TODO: Global rename
-using FRDGTextureViewRectPair = FScreenPassTexture;
+using FScreenPassTexture = FScreenPassTexture;
 
 // Describes a viewport rect oriented within a texture.
 class FScreenPassTextureViewport
@@ -93,11 +93,11 @@ public:
 		, Extent(InExtent)
 	{}
 
-	explicit FScreenPassTextureViewport(FRDGTextureViewRectPair InPair)
+	explicit FScreenPassTextureViewport(FScreenPassTexture InTexture)
 	{
-		check(InPair.Texture);
-		Rect = InPair.ViewRect;
-		Extent = InPair.Texture->Desc.Extent;
+		check(InTexture.IsValid());
+		Rect = InTexture.ViewRect;
+		Extent = InTexture.Texture->Desc.Extent;
 	}
 
 	explicit FScreenPassTextureViewport(FRDGTextureRef InTexture)
@@ -108,7 +108,7 @@ public:
 	}
 
 	FScreenPassTextureViewport(FRDGTextureRef InTexture, FIntRect InRect)
-		: FScreenPassTextureViewport(FRDGTextureViewRectPair(InTexture, InRect))
+		: FScreenPassTextureViewport(FScreenPassTexture(InTexture, InRect))
 	{}
 
 	FScreenPassTextureViewport(const FScreenPassTextureViewport&) = default;
@@ -196,7 +196,7 @@ BEGIN_SHADER_PARAMETER_STRUCT(FScreenPassTextureInput, )
 	SHADER_PARAMETER_SAMPLER(SamplerState, Sampler)
 END_SHADER_PARAMETER_STRUCT()
 
-FScreenPassTextureInput GetScreenPassTextureInput(FRDGTextureViewRectPair Input, FRHISamplerState* Sampler);
+FScreenPassTextureInput GetScreenPassTextureInput(FScreenPassTexture Input, FRHISamplerState* Sampler);
 
 // View information cached off for use by screen passes.
 class FScreenPassViewInfo

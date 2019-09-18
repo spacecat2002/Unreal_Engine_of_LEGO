@@ -29,17 +29,17 @@ END_SHADER_PARAMETER_STRUCT()
 
 FDownsampleParameters GetDownsampleParameters(
 	const FViewInfo& View,
-	FRDGTextureViewRectPair TexturePair,
+	FScreenPassTexture Texture,
 	EDownsampleQuality DownsampleMethod)
 {
-	check(TexturePair.Texture);
+	check(Texture.Texture);
 
-	const FScreenPassTextureViewportParameters InputParameters = GetScreenPassTextureViewportParameters(FScreenPassTextureViewport(TexturePair));
+	const FScreenPassTextureViewportParameters InputParameters = GetScreenPassTextureViewportParameters(FScreenPassTextureViewport(Texture));
 
 	FDownsampleParameters Parameters;
 	Parameters.ViewUniformBuffer = View.ViewUniformBuffer;
 	Parameters.Input = InputParameters;
-	Parameters.InputTexture = TexturePair.Texture;
+	Parameters.InputTexture = Texture.Texture;
 	Parameters.InputSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	return Parameters;
 }
@@ -120,7 +120,7 @@ FDownsamplePassOutputs AddDownsamplePass(
 		bIsComputePass = false;
 	}
 
-	FRDGTextureViewRectPair Output;
+	FScreenPassTexture Output;
 
 	// Construct the output texture to be half resolution (rounded up to even) with an optional format override.
 	{

@@ -64,7 +64,7 @@ FFXAAOutputs AddFXAAPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& S
 
 	const FViewInfo& View = ScreenPassView.View;
 
-	FRDGTextureViewRectPair Output = Inputs.OverrideOutput;
+	FScreenPassTexture Output = Inputs.OverrideOutput;
 	ERenderTargetLoadAction OutputLoadAction = Inputs.OverrideOutputLoadAction;
 
 	if (!Output.Texture)
