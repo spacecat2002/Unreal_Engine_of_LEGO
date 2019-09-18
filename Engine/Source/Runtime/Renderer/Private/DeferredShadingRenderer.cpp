@@ -1277,7 +1277,6 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	const bool bUseSelectiveBasePassOutputs = IsUsingSelectiveBasePassOutputs(ShaderPlatform);
 
 	SceneContext.ResolveSceneDepthTexture(RHICmdList, FResolveRect(0, 0, FamilySize.X, FamilySize.Y));
-	SceneContext.ResolveSceneDepthToAuxiliaryTexture(RHICmdList);
 
 	// NOTE: The ordering of the lights is used to select sub-sets for different purposes, e.g., those that support clustered deferred.
 	FSortedLightSetSceneInfo SortedLightSet;
@@ -1564,7 +1563,6 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	if (!bAllowReadonlyDepthBasePass)
 	{
 		SceneContext.ResolveSceneDepthTexture(RHICmdList, FResolveRect(0, 0, FamilySize.X, FamilySize.Y));
-		SceneContext.ResolveSceneDepthToAuxiliaryTexture(RHICmdList);
 	}
 
 	// BASE PASS ENDS HERE.
@@ -1591,8 +1589,6 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	// #todo-renderpass Zfar clear was here. where should it really go?
 	
 	VisualizeVolumetricLightmap(RHICmdList);
-
-	SceneContext.ResolveSceneDepthToAuxiliaryTexture(RHICmdList);
 
 	// Occlusion after base pass
 	if (!bOcclusionBeforeBasePass)
@@ -1723,7 +1719,6 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		if (!IsForwardShadingEnabled(ShaderPlatform))
 		{
 			SceneContext.ResolveSceneDepthTexture(RHICmdList, FResolveRect(0, 0, FamilySize.X, FamilySize.Y));
-			SceneContext.ResolveSceneDepthToAuxiliaryTexture(RHICmdList);
 		}
 
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)

@@ -867,7 +867,6 @@ bool FMobileSceneRenderer::RequiresTranslucencyPass(FRHICommandListImmediate& RH
 void FMobileSceneRenderer::ConditionalResolveSceneDepth(FRHICommandListImmediate& RHICmdList, const FViewInfo& View)
 {
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-	SceneContext.ResolveSceneDepthToAuxiliaryTexture(RHICmdList);
 	
 	if (IsSimulatedPlatform(ShaderPlatform)) // mobile emulation on PC
 	{

@@ -236,7 +236,6 @@ FSceneRenderTargets::FSceneRenderTargets(const FViewInfo& View, const FSceneRend
 	, SceneVelocity(GRenderTargetPool.MakeSnapshot(SnapshotSource.SceneVelocity))
 	, LightingChannels(GRenderTargetPool.MakeSnapshot(SnapshotSource.LightingChannels))
 	, SceneAlphaCopy(GRenderTargetPool.MakeSnapshot(SnapshotSource.SceneAlphaCopy))
-	, AuxiliarySceneDepthZ(GRenderTargetPool.MakeSnapshot(SnapshotSource.AuxiliarySceneDepthZ))
 	, SmallDepthZ(GRenderTargetPool.MakeSnapshot(SnapshotSource.SmallDepthZ))
 	, GBufferA(GRenderTargetPool.MakeSnapshot(SnapshotSource.GBufferA))
 	, GBufferB(GRenderTargetPool.MakeSnapshot(SnapshotSource.GBufferB))
@@ -1901,18 +1900,6 @@ void FSceneRenderTargets::ResolveSceneDepthTexture(FRHICommandList& RHICmdList, 
 	}
 }
 
-void FSceneRenderTargets::ResolveSceneDepthToAuxiliaryTexture(FRHICommandList& RHICmdList)
-{
-	// Resolve the scene depth to an auxiliary texture when SM3/SM4 is in use. This needs to happen so the auxiliary texture can be bound as a shader parameter
-	// while the primary scene depth texture can be bound as the target. Simultaneously binding a single DepthStencil resource as a parameter and target
-	// is unsupported in d3d feature level 10.
-	if(!GSupportsDepthFetchDuringDepthTest)
-	{
-		SCOPED_DRAW_EVENT(RHICmdList, ResolveSceneDepthToAuxiliaryTexture);
-		RHICmdList.CopyToResolveTarget(GetSceneDepthSurface(), GetAuxiliarySceneDepthTexture(), FResolveParams());
-	}
-}
-
 void FSceneRenderTargets::CleanUpEditorPrimitiveTargets()
 {
 	EditorPrimitivesDepth.SafeRelease();
@@ -2249,14 +2236,6 @@ void FSceneRenderTargets::AllocateCommonDepthTargets(FRHICommandList& RHICmdList
 	if (SceneDepthZ && !SceneStencilSRV)
 	{
 		SceneStencilSRV = RHICreateShaderResourceView((FTexture2DRHIRef&)SceneDepthZ->GetRenderTargetItem().TargetableTexture, 0, 1, PF_X24_G8);
-	}
-
-	// When targeting DX Feature Level 10, create an auxiliary texture to store the resolved scene depth, and a render-targetable surface to hold the unresolved scene depth.
-	if (!AuxiliarySceneDepthZ && !GSupportsDepthFetchDuringDepthTest)
-	{
-		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, PF_DepthStencil, DefaultDepthClear, TexCreate_None, TexCreate_DepthStencilTargetable, false));
-		Desc.AutoWritable = false;
-		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, AuxiliarySceneDepthZ, TEXT("AuxiliarySceneDepthZ"), true, ERenderTargetTransience::NonTransient);
 	}
 }
 
@@ -2682,7 +2661,6 @@ void FSceneRenderTargets::ReleaseAllTargets()
 	SceneDepthZ.SafeRelease();
 	SceneStencilSRV.SafeRelease();
 	LightingChannels.SafeRelease();
-	AuxiliarySceneDepthZ.SafeRelease();
 	SmallDepthZ.SafeRelease();
 	DBufferA.SafeRelease();
 	DBufferB.SafeRelease();
@@ -2801,42 +2779,6 @@ const FUnorderedAccessViewRHIRef& FSceneRenderTargets::GetSceneColorTextureUAV()
 	check(GetSceneColorForCurrentShadingPath());
 
 	return (const FUnorderedAccessViewRHIRef&)GetSceneColor()->GetRenderTargetItem().UAV;
-}
-
-const FTexture2DRHIRef* FSceneRenderTargets::GetActualDepthTexture() const
-{
-	const FTexture2DRHIRef* DepthTexture = NULL;
-	if((CurrentFeatureLevel >= ERHIFeatureLevel::SM5) || IsPCPlatform(GShaderPlatformForFeatureLevel[CurrentFeatureLevel]))
-	{
-		if(GSupportsDepthFetchDuringDepthTest)
-		{
-			DepthTexture = &GetSceneDepthTexture();
-		}
-		else
-		{
-			DepthTexture = &GetAuxiliarySceneDepthSurface();
-		}
-	}
-	else if (IsMobilePlatform(GShaderPlatformForFeatureLevel[CurrentFeatureLevel]))
-	{
-		// TODO: avoid depth texture fetch when shader needs fragment previous depth and device supports framebuffer fetch
-
-		//bool bSceneDepthInAlpha = (GetSceneColor()->GetDesc().Format == PF_FloatRGBA);
-		//bool bOnChipDepthFetch = (GSupportsShaderDepthStencilFetch || (bSceneDepthInAlpha && GSupportsShaderFramebufferFetch));
-		//
-		//if (bOnChipDepthFetch)
-		//{
-		//	DepthTexture = (const FTexture2DRHIRef*)(&GSystemTextures.DepthDummy->GetRenderTargetItem().ShaderResourceTexture);
-		//}
-		//else
-		{
-			DepthTexture = &GetSceneDepthTexture();
-		}
-	}
-
-	check(DepthTexture != NULL);
-
-	return DepthTexture;
 }
 
 IPooledRenderTarget* FSceneRenderTargets::RequestCustomDepth(FRHICommandListImmediate& RHICmdList, bool bPrimitives)
@@ -3012,8 +2954,9 @@ void SetupSceneTextureUniformParameters(
 		const bool bSetupDepth = (SetupMode & ESceneTextureSetupMode::SceneDepth) != ESceneTextureSetupMode::None;
 		SceneTextureParameters.SceneColorTexture = bSetupDepth ? SceneContext.GetSceneColorTexture().GetReference() : BlackDefault2D;
 		SceneTextureParameters.SceneColorTextureSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
-		const FTexture2DRHIRef* ActualDepthTexture = SceneContext.GetActualDepthTexture();
-		SceneTextureParameters.SceneDepthTexture = bSetupDepth && ActualDepthTexture ? (*ActualDepthTexture).GetReference() : DepthDefault;
+
+		const FTexture2DRHIRef& SceneDepthTexture = SceneContext.GetSceneDepthTexture();
+		SceneTextureParameters.SceneDepthTexture = bSetupDepth && SceneDepthTexture.IsValid() ? SceneDepthTexture.GetReference() : DepthDefault;
 
 		if (bSetupDepth && SceneContext.IsSeparateTranslucencyPass() && SceneContext.IsDownsampledTranslucencyDepthValid())
 		{
@@ -3029,7 +2972,7 @@ void SetupSceneTextureUniformParameters(
 
 		if (bSetupDepth)
 		{
-			SceneTextureParameters.SceneDepthTextureNonMS = GSupportsDepthFetchDuringDepthTest ? SceneContext.GetSceneDepthTexture() : SceneContext.GetAuxiliarySceneDepthSurface();
+			SceneTextureParameters.SceneDepthTextureNonMS = SceneContext.GetSceneDepthTexture();
 		}
 		else
 		{
@@ -3163,8 +3106,8 @@ void SetupMobileSceneTextureUniformParameters(
 	SceneTextureParameters.SceneColorTexture = bSceneTexturesValid ? SceneContext.GetSceneColorTexture().GetReference() : BlackDefault2D;
 	SceneTextureParameters.SceneColorTextureSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 
-	const FTexture2DRHIRef* ActualDepthTexture = SceneContext.GetActualDepthTexture();
-	SceneTextureParameters.SceneDepthTexture = bSceneTexturesValid && ActualDepthTexture ? (*ActualDepthTexture).GetReference() : DepthDefault;
+	const FTexture2DRHIRef& SceneDepthTexture = SceneContext.GetSceneDepthTexture();
+	SceneTextureParameters.SceneDepthTexture = bSceneTexturesValid && SceneDepthTexture ? SceneDepthTexture.GetReference() : DepthDefault;
 	SceneTextureParameters.SceneDepthTextureSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 
 	SceneTextureParameters.SceneAlphaCopyTexture = bSceneTexturesValid && SceneContext.HasSceneAlphaCopyTexture() ? SceneContext.GetSceneAlphaCopyTexture() : BlackDefault2D;

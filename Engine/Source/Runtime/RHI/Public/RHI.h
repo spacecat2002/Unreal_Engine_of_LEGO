@@ -71,9 +71,6 @@ extern RHI_API bool GSupportsQuadBufferStereo;
 /** true if the RHI supports textures that may be bound as both a render target and a shader resource. */
 extern RHI_API bool GSupportsRenderDepthTargetableShaderResources;
 
-/** true if the RHI supports binding depth as a texture when testing against depth */
-extern RHI_API bool GSupportsDepthFetchDuringDepthTest;
-
 // The maximum feature level and shader platform available on this system
 // GRHIFeatureLevel and GRHIShaderPlatform have been deprecated. There is no longer a current featurelevel/shaderplatform that
 // should be used for all rendering, rather a specific set for each view.

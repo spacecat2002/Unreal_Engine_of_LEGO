@@ -85,14 +85,13 @@ public:
 
 		if (FilteredSceneDepthTexture.IsBound())
 		{
-			const FTexture2DRHIRef* DepthTexture = SceneContext.GetActualDepthTexture();
 			SetTextureParameter(
 				Context.RHICmdList,
 				ShaderRHI,
 				FilteredSceneDepthTexture,
 				FilteredSceneDepthTextureSampler,
 				TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(),
-				*DepthTexture
+				SceneContext.GetSceneDepthTexture().GetReference()
 			);
 		}
 	}
@@ -218,15 +217,13 @@ public:
 
 		if(FilteredSceneDepthTexture.IsBound())
 		{
-			const FTexture2DRHIRef* DepthTexture = SceneContext.GetActualDepthTexture();
 			SetTextureParameter(
 				Context.RHICmdList,
 				ShaderRHI,
 				FilteredSceneDepthTexture,
 				FilteredSceneDepthTextureSampler,
 				TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI(),
-				*DepthTexture
-				);
+				SceneContext.GetSceneDepthTexture().GetReference());
 		}
 	}
 
