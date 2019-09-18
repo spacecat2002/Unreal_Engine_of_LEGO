@@ -285,7 +285,7 @@ TGlobalResource<FPostProcessMaterialVertexDeclaration> GPostProcessMaterialVerte
 
 } //! namespace
 
-FPostProcessMaterialOutputs AddPostProcessMaterialPass(
+FScreenPassTexture AddPostProcessMaterialPass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
 	const FPostProcessMaterialInputs& Inputs,
@@ -329,16 +329,14 @@ FPostProcessMaterialOutputs AddPostProcessMaterialPass(
 	// or we need to retain previously rendered views.
 	const bool bPrimeOutputColor = bIsCompositeWithInput || !View.IsFirstInFamily();
 
-	FScreenPassTexture Output = Inputs.OverrideOutput;
-	ERenderTargetLoadAction OutputLoadAction = Inputs.OverrideOutputLoadAction;
+	FScreenPassRenderTarget Output = Inputs.OverrideOutput;
 
 	// We can re-use the scene color texture as the render target if we're not simultaneously reading from it.
 	// This is only necessary to do if we're going to be priming content from the render target since it avoids
 	// the copy. Otherwise, we just allocate a new render target.
-	if (!Output.Texture && !MaterialShaderMap->UsesSceneTexture(PPI_PostProcessInput0) && bPrimeOutputColor)
+	if (!Output.IsValid() && !MaterialShaderMap->UsesSceneTexture(PPI_PostProcessInput0) && bPrimeOutputColor)
 	{
-		Output = SceneColor;
-		OutputLoadAction = ERenderTargetLoadAction::ELoad;
+		Output = FScreenPassRenderTarget(SceneColor, ERenderTargetLoadAction::ELoad);
 	}
 	else
 	{
@@ -356,17 +354,16 @@ FPostProcessMaterialOutputs AddPostProcessMaterialPass(
 
 			Output.Texture = GraphBuilder.CreateTexture(OutputTextureDesc, TEXT("PostProcessMaterial"));
 			Output.ViewRect = SceneColor.ViewRect;
-			OutputLoadAction = ScreenPassView.GetOverwriteLoadAction();
+			Output.LoadAction = ScreenPassView.GetOverwriteLoadAction();
 		}
 
 		if (bPrimeOutputColor)
 		{
 			// Copy existing contents to new output and use load-action to preserve untouched pixels.
 			AddDrawTexturePass(GraphBuilder, ScreenPassView, SceneColor.Texture, Output.Texture);
-			OutputLoadAction = ERenderTargetLoadAction::ELoad;
+			Output.LoadAction = ERenderTargetLoadAction::ELoad;
 		}
 	}
-	
 
 	const FScreenPassTextureViewport SceneColorViewport(SceneColor);
 	const FScreenPassTextureViewport OutputViewport(Output);
@@ -377,7 +374,7 @@ FPostProcessMaterialOutputs AddPostProcessMaterialPass(
 
 	PostProcessMaterialParameters->PostProcessOutput = GetScreenPassTextureViewportParameters(SceneColorViewport);
 	PostProcessMaterialParameters->CustomDepth = DepthStencilTexture;
-	PostProcessMaterialParameters->RenderTargets[0] = FRenderTargetBinding(Output.Texture, OutputLoadAction);
+	PostProcessMaterialParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
 
 	if (DepthStencilTexture)
 	{
@@ -546,7 +543,7 @@ FPostProcessMaterialChain GetPostProcessMaterialChain(const FViewInfo& View, EBl
 	return OutputChain;
 }
 
-FPostProcessMaterialOutputs AddPostProcessMaterialChain(
+FScreenPassTexture AddPostProcessMaterialChain(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
 	const FPostProcessMaterialInputs& InputsTemplate,
@@ -562,7 +559,7 @@ FPostProcessMaterialOutputs AddPostProcessMaterialChain(
 		// Certain inputs are only respected by the final post process material in the chain.
 		if (MaterialInterface != Materials.Last())
 		{
-			Inputs.OverrideOutput = FScreenPassTexture();
+			Inputs.OverrideOutput = FScreenPassRenderTarget();
 			Inputs.bFlipYAxis = false;
 		}
 
@@ -602,8 +599,9 @@ FRenderingCompositePass* AddPostProcessMaterialPass(
 		// Either finds the overridden frame buffer target or returns null.
 		if (FRDGTextureRef OutputTexture = Pass->FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("FrameBufferOverride")))
 		{
-			Inputs.OverrideOutput = FScreenPassTexture(OutputTexture, InContext.GetSceneColorDestRect(Pass));
-			Inputs.OverrideOutputLoadAction = InContext.View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
+			Inputs.OverrideOutput.Texture = OutputTexture;
+			Inputs.OverrideOutput.ViewRect = InContext.GetSceneColorDestRect(Pass);
+			Inputs.OverrideOutput.LoadAction = InContext.View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
 		}
 
 		for (uint32 InputIndex = 0; InputIndex < kPostProcessMaterialInputCountMax; ++InputIndex)
@@ -630,7 +628,7 @@ FRenderingCompositePass* AddPostProcessMaterialPass(
 
 		FScreenPassViewInfo ScreenPassView(InContext.View);
 
-		FPostProcessMaterialOutputs Outputs = AddPostProcessMaterialPass(GraphBuilder, ScreenPassView, Inputs, MaterialInterface);
+		FScreenPassTexture Outputs = AddPostProcessMaterialPass(GraphBuilder, ScreenPassView, Inputs, MaterialInterface);
 
 		Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, Outputs.Texture);
 

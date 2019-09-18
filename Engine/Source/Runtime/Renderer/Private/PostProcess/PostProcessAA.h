@@ -20,10 +20,15 @@ enum class EFXAAQuality : uint32
 
 EFXAAQuality GetFXAAQuality();
 
-struct FFXAAInputs : public FOverridePassInputs
+struct FFXAAInputs
 {
+	// [Optional] Render to the specified output. If invalid, a new texture is created and returned.
+	FScreenPassRenderTarget OverrideOutput;
+
+	// [Required] HDR scene color to filter.
 	FScreenPassTexture SceneColor;
 
+	// FXAA filter quality.
 	EFXAAQuality Quality = EFXAAQuality::MAX;
 };
 

@@ -4,18 +4,11 @@
 
 #include "ScreenPass.h"
 
-/** The pass input structure should derive from this class. */
-struct FOverridePassInputs
-{
-	FScreenPassTexture OverrideOutput;
-	ERenderTargetLoadAction OverrideOutputLoadAction = ERenderTargetLoadAction::ENoAction;
-};
-
 /** This class provides a solution for overriding the final render target / view rect in a chain of render graph passes.
  *  RDG pass setup is immediate, which makes it difficult to determine the final pass in a chain in order to swap a final
  *  texture target (e.g. the view family target). This class helps by providing some utilities to mark passes as enabled
  *  prior to setup, then seamlessly assign the override texture to the correct last pass. It assumes that all passes adhere
- *  to the pattern of using an input struct that derives from FOverridePassInputs (though this is not strictly required).
+ *  to the pattern of using an input struct that derives from FScreenPassRenderTarget (though this is not strictly required).
  *
  *  The user provides a custom enum class that is the set of ordered passes. The user can enable them in any order, but
  *  all passes must be assigned (i.e. have SetEnabled called on them). After enabling / disabling all passes. Call Finalize
@@ -27,8 +20,8 @@ template <typename EPass>
 class FOverridePassSequence final
 {
 public:
-	FOverridePassSequence(const FOverridePassInputs& InOverridePassInputs)
-		: OverridePassInputs(InOverridePassInputs)
+	FOverridePassSequence(const FScreenPassRenderTarget& InOverrideOutput)
+		: OverrideOutput(InOverrideOutput)
 	{}
 
 	~FOverridePassSequence()
@@ -118,13 +111,13 @@ public:
 #endif
 	}
 
-	bool AcceptOverrideIfLastPass(EPass Pass, FOverridePassInputs& OutPassInputs)
+	bool AcceptOverrideIfLastPass(EPass Pass, FScreenPassRenderTarget& OutTargetToOverride)
 	{
 		AcceptPass(Pass);
 
 		if (IsLastPass(Pass))
 		{
-			OutPassInputs = OverridePassInputs;
+			OutTargetToOverride = OverrideOutput;
 			return true;
 		}
 		return false;
@@ -171,7 +164,7 @@ private:
 		bool bEnabled = false;
 	};
 
-	FOverridePassInputs OverridePassInputs;
+	FScreenPassRenderTarget OverrideOutput;
 	TStaticArray<FPassInfo, PassCountMax> Passes;
 	EPass LastPass = EPass::MAX;
 

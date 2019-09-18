@@ -71,7 +71,45 @@ struct FScreenPassTexture
 	FIntRect ViewRect;
 };
 
-// Describes a viewport rect oriented within the extent of a texture.
+// Describes a texture with a load action for usage as a render target.
+struct FScreenPassRenderTarget : public FScreenPassTexture
+{
+	FScreenPassRenderTarget() = default;
+
+	FScreenPassRenderTarget(FScreenPassTexture InTexture, ERenderTargetLoadAction InLoadAction)
+		: FScreenPassTexture(InTexture)
+		, LoadAction(InLoadAction)
+	{}
+
+	FScreenPassRenderTarget(FRDGTextureRef InTexture, ERenderTargetLoadAction InLoadAction)
+		: FScreenPassTexture(InTexture)
+		, LoadAction(InLoadAction)
+	{}
+
+	FScreenPassRenderTarget(FRDGTextureRef InTexture, FIntRect InViewRect, ERenderTargetLoadAction InLoadAction)
+		: FScreenPassTexture(InTexture, InViewRect)
+		, LoadAction(InLoadAction)
+	{}
+
+	bool operator==(FScreenPassRenderTarget Other) const
+	{
+		return FScreenPassTexture::operator==(Other) && LoadAction == Other.LoadAction;
+	}
+
+	bool operator!=(FScreenPassRenderTarget Other) const
+	{
+		return !(*this == Other);
+	}
+
+	FRenderTargetBinding GetRenderTargetBinding() const
+	{
+		return FRenderTargetBinding(Texture, LoadAction);
+	}
+
+	ERenderTargetLoadAction LoadAction = ERenderTargetLoadAction::ENoAction;
+};
+
+// Describes a view rect contained within the extent of a texture. Used to derive texture coordinate transformations.
 class FScreenPassTextureViewport
 {
 public:

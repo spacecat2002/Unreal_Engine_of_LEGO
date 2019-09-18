@@ -17,7 +17,7 @@ const float NormalizedQuadComplexityValue = 1.f / 16.f;
 // Gets the maximum shader complexity count from the ini settings.
 float GetMaxShaderComplexityCount(ERHIFeatureLevel::Type InFeatureType);
 
-struct FVisualizeComplexityInputs : public FOverridePassInputs
+struct FVisualizeComplexityInputs
 {
 	enum class EColorSamplingMethod : uint32
 	{
@@ -26,10 +26,13 @@ struct FVisualizeComplexityInputs : public FOverridePassInputs
 		Stair
 	};
 
-	// The input scene color and view rect.
+	// [Optional] Render to the specified output. If invalid, a new texture is created and returned.
+	FScreenPassRenderTarget OverrideOutput;
+
+	// [Required] The input scene color and view rect.
 	FScreenPassTexture SceneColor;
 
-	// The table of colors used for visualization, ordered by least to most complex.
+	// [Required] The table of colors used for visualization, ordered by least to most complex.
 	TArrayView<const FLinearColor> Colors;
 
 	// The method used to derive a color from the sampled complexity value.

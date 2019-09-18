@@ -239,7 +239,7 @@ const FViewInfo* UpdateEditorPrimitiveView(
 	return EditorView;
 }
 
-FEditorPrimitiveOutputs AddEditorPrimitivePass(
+FScreenPassTexture AddEditorPrimitivePass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
 	const FEditorPrimitiveInputs& Inputs)
@@ -380,17 +380,17 @@ FEditorPrimitiveOutputs AddEditorPrimitivePass(
 		});
 	}
 
-	FScreenPassTexture Output = Inputs.OverrideOutput;
-	ERenderTargetLoadAction OutputLoadAction = Inputs.OverrideOutputLoadAction;
+	FScreenPassRenderTarget Output = Inputs.OverrideOutput;
 
 	{
-		if (!Output.Texture)
+		if (!Output.IsValid())
 		{
 			FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
 			OutputDesc.Reset();
+
 			Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("EditorPrimitives"));
 			Output.ViewRect = Inputs.SceneColor.ViewRect;
-			OutputLoadAction = ScreenPassView.GetOverwriteLoadAction();
+			Output.LoadAction = ScreenPassView.GetOverwriteLoadAction();
 		}
 
 		const FScreenPassTextureViewport OutputViewport(Output);
@@ -402,7 +402,7 @@ FEditorPrimitiveOutputs AddEditorPrimitivePass(
 		const bool bOpaqueEditorGizmo = CVarEditorOpaqueGizmo.GetValueOnRenderThread() != 0 || View.Family->EngineShowFlags.Wireframe;
 
 		FCompositeEditorPrimitivesPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FCompositeEditorPrimitivesPS::FParameters>();
-		PassParameters->RenderTargets[0] = FRenderTargetBinding(Output.Texture, OutputLoadAction);
+		PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
 		PassParameters->View = View.ViewUniformBuffer;
 		PassParameters->Color = GetScreenPassTextureViewportParameters(ColorViewport);
 		PassParameters->Depth = GetScreenPassTextureViewportParameters(DepthViewport);
@@ -462,9 +462,10 @@ FRenderingCompositeOutputRef AddEditorPrimitivePass(
 		{
 			Inputs.OverrideOutput.Texture = OutputTexture;
 			Inputs.OverrideOutput.ViewRect = InContext.GetSceneColorDestRect(InPass->GetOutput(ePId_Output0)->PooledRenderTarget->GetRenderTargetItem());
+			Inputs.OverrideOutput.LoadAction = InContext.View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
 		}
 
-		FEditorPrimitiveOutputs Outputs = AddEditorPrimitivePass(GraphBuilder, ScreenPassView, Inputs);
+		FScreenPassTexture Outputs = AddEditorPrimitivePass(GraphBuilder, ScreenPassView, Inputs);
 
 		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, Outputs.Texture);
 

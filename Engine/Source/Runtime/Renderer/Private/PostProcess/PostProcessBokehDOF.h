@@ -5,12 +5,16 @@
 #include "ScreenPass.h"
 #include "OverridePassSequence.h"
 
-struct FVisualizeDOFInputs : public FOverridePassInputs
+struct FVisualizeDOFInputs
 {
+	// [Optional] Render to the specified output. If invalid, a new texture is created and returned.
+	FScreenPassRenderTarget OverrideOutput;
+
+	// [Required] The scene color to composite with DOF visualization.
 	FScreenPassTexture SceneColor;
+
+	// [Required] The scene depth to derive depth of field parameters.
 	FScreenPassTexture SceneDepth;
 };
 
-using FVisualizeDOFOutputs = FScreenPassTexture;
-
-FVisualizeDOFOutputs AddVisualizeDOFPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeDOFInputs& Inputs);
+FScreenPassTexture AddVisualizeDOFPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeDOFInputs& Inputs);

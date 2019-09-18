@@ -71,16 +71,16 @@ FVisualizeComplexityOutputs AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder
 
 	const FViewInfo& View = ScreenPassView.View;
 
-	FScreenPassTexture Output = Inputs.OverrideOutput;
-	ERenderTargetLoadAction OutputLoadAction = Inputs.OverrideOutputLoadAction;
+	FScreenPassRenderTarget Output = Inputs.OverrideOutput;
 
-	if (!Output.Texture)
+	if (!Output.IsValid())
 	{
 		FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
 		OutputDesc.Reset();
+
 		Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("VisualizeComplexity"));
 		Output.ViewRect = Inputs.SceneColor.ViewRect;
-		OutputLoadAction = ScreenPassView.GetOverwriteLoadAction();
+		Output.LoadAction = ScreenPassView.GetOverwriteLoadAction();
 	}
 
 	const FScreenPassTextureViewport InputViewport(Inputs.SceneColor);
@@ -88,7 +88,7 @@ FVisualizeComplexityOutputs AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder
 	FRHISamplerState* BilinearClampSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 
 	FVisualizeComplexityApplyPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FVisualizeComplexityApplyPS::FParameters>();
-	PassParameters->RenderTargets[0] = FRenderTargetBinding(Output.Texture, OutputLoadAction);
+	PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
 	PassParameters->Input = GetScreenPassTextureViewportParameters(InputViewport);
 	PassParameters->InputTexture = Inputs.SceneColor.Texture;
 	PassParameters->InputSampler = BilinearClampSampler;

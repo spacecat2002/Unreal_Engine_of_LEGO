@@ -8,15 +8,19 @@
 #include "OverridePassSequence.h"
 #include "PostProcess/RenderingCompositionGraph.h"
 
-struct FSelectionOutlineInputs : public FOverridePassInputs
+struct FSelectionOutlineInputs
 {
+	// [Optional] Render to the specified output. If invalid, a new texture is created and returned.
+	FScreenPassRenderTarget OverrideOutput;
+
+	// [Required] The scene color to composite with selection outlines.
 	FScreenPassTexture SceneColor;
+
+	// [Required] The scene depth to composite with selection outlines.
 	FScreenPassTexture SceneDepth;
 };
 
-using FSelectionOutlineOutputs = FScreenPassTexture;
-
-FSelectionOutlineOutputs AddSelectionOutlinePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FSelectionOutlineInputs& Inputs);
+FScreenPassTexture AddSelectionOutlinePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FSelectionOutlineInputs& Inputs);
 
 FRenderingCompositeOutputRef AddSelectionOutlinePass(FRenderingCompositionGraph& Graph, FRenderingCompositeOutputRef Input);
 

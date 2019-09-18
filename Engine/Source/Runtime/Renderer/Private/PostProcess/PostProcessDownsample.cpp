@@ -106,7 +106,7 @@ EDownsampleQuality GetDownsampleQuality()
 	return static_cast<EDownsampleQuality>(DownsampleQuality);
 }
 
-FDownsamplePassOutputs AddDownsamplePass(
+FScreenPassTexture AddDownsamplePass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
 	const FDownsamplePassInputs& Inputs)
@@ -209,17 +209,16 @@ FRenderingCompositeOutputRef AddDownsamplePass(
 
 		FDownsamplePassInputs PassInputs;
 		PassInputs.Name = InName;
-		PassInputs.SceneColor.Texture = InputTexture;
-		PassInputs.SceneColor.ViewRect = SceneColorViewRect;
+		PassInputs.SceneColor = FScreenPassTexture(InputTexture, SceneColorViewRect);
 		PassInputs.FormatOverride = InFormatOverride;
 		PassInputs.Quality = InQuality;
 		PassInputs.Flags = InFlags;
 
 		FScreenPassViewInfo ScreenPassView(InContext.View);
 
-		FDownsamplePassOutputs PassOutputs = AddDownsamplePass(GraphBuilder, ScreenPassView, PassInputs);
+		FScreenPassTexture PassOutput = AddDownsamplePass(GraphBuilder, ScreenPassView, PassInputs);
 
-		Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, PassOutputs.Texture);
+		Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, PassOutput.Texture);
 
 		GraphBuilder.Execute();
 	}));

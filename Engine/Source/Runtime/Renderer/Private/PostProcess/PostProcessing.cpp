@@ -908,6 +908,8 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 			const FIntRect PrimaryViewRect = View.ViewRect;
 
+			FRDGTextureRef ViewFamilyTexture = Pass->FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("ViewFamilyTexture"));
+
 			// Scene color is updated incrementally through the post process pipeline.
 			FScreenPassTexture SceneColor(Pass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor")), PrimaryViewRect);
 
@@ -919,8 +921,6 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			const FScreenPassTexture SeparateTranslucency(Pass->CreateRDGTextureForOptionalInput(GraphBuilder, ePId_Input2, TEXT("SeparateTranslucency")), PrimaryViewRect);
 
 			const FScreenPassTexture CustomDepth(GraphBuilder.TryRegisterExternalTexture(SceneContext.CustomDepth, TEXT("CustomDepth")), PrimaryViewRect);
-
-			const FScreenPassTexture ViewFamilyOutput(Pass->FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("ViewFamilyTexture")), View.UnscaledViewRect);
 
 			const FScreenPassTexture BlackDummy(GSystemTextures.GetBlackDummy(GraphBuilder), FIntRect(0, 0, 1, 1));
 
@@ -962,6 +962,13 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 			static_assert(static_cast<uint32>(EPass::MAX) == ARRAY_COUNT(PassNames), "EPass does not match PassNames.");
 
+			const FScreenPassRenderTarget ViewFamilyOutput(
+				ViewFamilyTexture,
+				// Raw output mode uses the original view rect. Otherwise the final unscaled rect is used.
+				View.PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::RawOutput ? View.ViewRect : View.UnscaledViewRect,
+				// First view clears the view family texture; all remaining views load.
+				View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad);
+
 			/**
 			 * The override pass sequence represents the final set of passes which can receive a view family render target override.
 			 * This is necessary to avoid a copy at the end of the chain. The pass sequence helper will compute the final pass and
@@ -969,11 +976,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			 * front. When adding a new pass, make sure to preserve ordering and respect the enable flag during execution. The pass
 			 * sequence helper will validate correctness at runtime.
 			 */
-			FOverridePassInputs OverridePassInputs;
-			OverridePassInputs.OverrideOutput = ViewFamilyOutput;
-			OverridePassInputs.OverrideOutputLoadAction = View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
-
-			FOverridePassSequence<EPass> PassSequence(OverridePassInputs);
+			FOverridePassSequence<EPass> PassSequence(ViewFamilyOutput);
 			PassSequence.SetNames(PassNames, ARRAY_COUNT(PassNames));
 			PassSequence.SetEnabled(EPass::VisualizeStationaryLightOverlap, View.Family->EngineShowFlags.StationaryLightOverlap);
 			PassSequence.SetEnabled(EPass::VisualizeLightCulling, View.Family->EngineShowFlags.VisualizeLightCulling);
@@ -1041,8 +1044,8 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 					bVisualizeHDR ||
 					// Skip if not using histogram eye adaptation.
 					(bEyeAdaptationEnabled && AutoExposureMethod == EAutoExposureMethod::AEM_Histogram &&
-						// Skip if we don't have any exposure range to generate (eye adaptation will clamp).
-						View.FinalPostProcessSettings.AutoExposureMinBrightness < View.FinalPostProcessSettings.AutoExposureMaxBrightness);
+					// Skip if we don't have any exposure range to generate (eye adaptation will clamp).
+					View.FinalPostProcessSettings.AutoExposureMinBrightness < View.FinalPostProcessSettings.AutoExposureMaxBrightness);
 
 				const bool bBloomEnabled = View.FinalPostProcessSettings.BloomIntensity > 0.0f;
 
@@ -1138,8 +1141,8 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 					if (MaterialChain.Num())
 					{
 						// Save off SSR post process output for the next frame.
-						FPostProcessMaterialOutputs PassOutputs = AddPostProcessMaterialChain(GraphBuilder, ScreenPassView, GetPostProcessMaterialInputs(SceneColor), MaterialChain);
-						GraphBuilder.QueueTextureExtraction(PassOutputs.Texture, &View.ViewState->PrevFrameViewInfo.CustomSSRInput);
+						FScreenPassTexture PassOutput = AddPostProcessMaterialChain(GraphBuilder, ScreenPassView, GetPostProcessMaterialInputs(SceneColor), MaterialChain);
+						GraphBuilder.QueueTextureExtraction(PassOutput.Texture, &View.ViewState->PrevFrameViewInfo.CustomSSRInput);
 					}
 				}
 
@@ -1300,7 +1303,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 						const UMaterialInterface* HighestPriorityMaterial = MaterialChain[0];
 
 						FPostProcessMaterialInputs PassInputs;
-						PassSequence.AcceptOverrideIfLastPass(EPass::Tonemap, PassInputs);
+						PassSequence.AcceptOverrideIfLastPass(EPass::Tonemap, PassInputs.OverrideOutput);
 						PassInputs.SetInput(EPostProcessMaterialInput::SceneColor, SceneColor);
 						PassInputs.SetInput(EPostProcessMaterialInput::SeparateTranslucency, SeparateTranslucency);
 						PassInputs.SetInput(EPostProcessMaterialInput::CombinedBloom, Bloom);
@@ -1322,7 +1325,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 						}
 
 						FTonemapInputs PassInputs;
-						PassSequence.AcceptOverrideIfLastPass(EPass::Tonemap, PassInputs);
+						PassSequence.AcceptOverrideIfLastPass(EPass::Tonemap, PassInputs.OverrideOutput);
 						PassInputs.SceneColor = SceneColor;
 						PassInputs.Bloom = Bloom;
 						PassInputs.EyeAdaptationTexture = EyeAdaptationTexture;
@@ -1339,7 +1342,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				if (PassSequence.IsEnabled(EPass::FXAA))
 				{
 					FFXAAInputs PassInputs;
-					PassSequence.AcceptOverrideIfLastPass(EPass::FXAA, PassInputs);
+					PassSequence.AcceptOverrideIfLastPass(EPass::FXAA, PassInputs.OverrideOutput);
 					PassInputs.SceneColor = SceneColor;
 					PassInputs.Quality = GetFXAAQuality();
 
@@ -1350,7 +1353,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				if (PassSequence.IsEnabled(EPass::PostProcessMaterialAfterTonemapping))
 				{
 					FPostProcessMaterialInputs PassInputs = GetPostProcessMaterialInputs(SceneColor);
-					PassSequence.AcceptOverrideIfLastPass(EPass::PostProcessMaterialAfterTonemapping, PassInputs);
+					PassSequence.AcceptOverrideIfLastPass(EPass::PostProcessMaterialAfterTonemapping, PassInputs.OverrideOutput);
 
 					SceneColor = AddPostProcessMaterialChain(GraphBuilder, ScreenPassView, PassInputs, PostProcessMaterialAfterTonemappingChain);
 				}
@@ -1358,7 +1361,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				if (PassSequence.IsEnabled(EPass::VisualizeDepthOfField))
 				{
 					FVisualizeDOFInputs PassInputs;
-					PassSequence.AcceptOverrideIfLastPass(EPass::VisualizeDepthOfField, PassInputs);
+					PassSequence.AcceptOverrideIfLastPass(EPass::VisualizeDepthOfField, PassInputs.OverrideOutput);
 					PassInputs.SceneColor = SceneColor;
 					PassInputs.SceneDepth = SceneDepth;
 
@@ -1385,7 +1388,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				if (PassSequence.IsEnabled(EPass::Tonemap))
 				{
 					FTonemapInputs PassInputs;
-					PassSequence.AcceptOverrideIfLastPass(EPass::Tonemap, PassInputs);
+					PassSequence.AcceptOverrideIfLastPass(EPass::Tonemap, PassInputs.OverrideOutput);
 					PassInputs.SceneColor = SceneColor;
 					PassInputs.bOutputInHDR = bHDROutputEnabled;
 					PassInputs.bGammaOnly = true;
@@ -1399,7 +1402,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				ensureMsgf(View.PrimaryScreenPercentageMethod != EPrimaryScreenPercentageMethod::TemporalUpscale, TEXT("TAAU should be disabled when visualizing stationary light overlap."));
 
 				FVisualizeComplexityInputs PassInputs;
-				PassSequence.AcceptOverrideIfLastPass(EPass::VisualizeStationaryLightOverlap, PassInputs);
+				PassSequence.AcceptOverrideIfLastPass(EPass::VisualizeStationaryLightOverlap, PassInputs.OverrideOutput);
 				PassInputs.SceneColor = UnprocessedSceneColor;
 				PassInputs.Colors = GEngine->StationaryLightOverlapColors;
 				PassInputs.ColorSamplingMethod = FVisualizeComplexityInputs::EColorSamplingMethod::Ramp;
@@ -1411,10 +1414,11 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			{
 				ensureMsgf(View.PrimaryScreenPercentageMethod != EPrimaryScreenPercentageMethod::TemporalUpscale, TEXT("TAAU should be disabled when visualizing shader complexity."));
 
-				const float ComplexityScale = 1.f / (float)(GEngine->LightComplexityColors.Num() - 1) / .1f; // .1f comes from the values used in LightAccumulator_GetResult
+				// 0.1f comes from the values used in LightAccumulator_GetResult
+				const float ComplexityScale = 1.0f / (float)(GEngine->LightComplexityColors.Num() - 1) / 0.1f;
 
 				FVisualizeComplexityInputs PassInputs;
-				PassSequence.AcceptOverrideIfLastPass(EPass::VisualizeLightCulling, PassInputs);
+				PassSequence.AcceptOverrideIfLastPass(EPass::VisualizeLightCulling, PassInputs.OverrideOutput);
 				PassInputs.SceneColor = UnprocessedSceneColor;
 				PassInputs.Colors = GEngine->LightComplexityColors;
 				PassInputs.ColorSamplingMethod = FVisualizeComplexityInputs::EColorSamplingMethod::Linear;
@@ -1433,7 +1437,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			if (PassSequence.IsEnabled(EPass::SelectionOutline))
 			{
 				FSelectionOutlineInputs PassInputs;
-				PassSequence.AcceptOverrideIfLastPass(EPass::SelectionOutline, PassInputs);
+				PassSequence.AcceptOverrideIfLastPass(EPass::SelectionOutline, PassInputs.OverrideOutput);
 				PassInputs.SceneColor = SceneColor;
 				PassInputs.SceneDepth = SceneDepth;
 
@@ -1443,7 +1447,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			if (PassSequence.IsEnabled(EPass::EditorPrimitive))
 			{
 				FEditorPrimitiveInputs PassInputs;
-				PassSequence.AcceptOverrideIfLastPass(EPass::EditorPrimitive, PassInputs);
+				PassSequence.AcceptOverrideIfLastPass(EPass::EditorPrimitive, PassInputs.OverrideOutput);
 				PassInputs.SceneColor = SceneColor;
 				PassInputs.SceneDepth = SceneDepth;
 				PassInputs.BasePassType = FEditorPrimitiveInputs::EBasePassType::Deferred;

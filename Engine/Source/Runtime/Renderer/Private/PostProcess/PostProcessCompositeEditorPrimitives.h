@@ -51,7 +51,7 @@ const FViewInfo* UpdateEditorPrimitiveView(
 	const FViewInfo& ParentView,
 	FIntRect ViewRect);
 
-struct FEditorPrimitiveInputs : public FOverridePassInputs
+struct FEditorPrimitiveInputs
 {
 	enum class EBasePassType : uint32
 	{
@@ -60,15 +60,20 @@ struct FEditorPrimitiveInputs : public FOverridePassInputs
 		MAX
 	};
 
+	// [Optional] Render to the specified output. If invalid, a new texture is created and returned.
+	FScreenPassRenderTarget OverrideOutput;
+
+	// [Required] The scene color to composite with editor primitives.
 	FScreenPassTexture SceneColor;
+
+	// [Required] The scene depth to composite with editor primitives.
 	FScreenPassTexture SceneDepth;
 
+	// [Required] The type of base pass to use for rendering editor primitives.
 	EBasePassType BasePassType = EBasePassType::MAX;
 };
 
-using FEditorPrimitiveOutputs = FScreenPassTexture;
-
-FEditorPrimitiveOutputs AddEditorPrimitivePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FEditorPrimitiveInputs& Inputs);
+FScreenPassTexture AddEditorPrimitivePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FEditorPrimitiveInputs& Inputs);
 
 FRenderingCompositeOutputRef AddEditorPrimitivePass(
 	FRenderingCompositionGraph& Graph,

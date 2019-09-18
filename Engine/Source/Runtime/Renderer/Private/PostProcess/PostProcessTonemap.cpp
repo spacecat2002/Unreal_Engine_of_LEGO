@@ -634,7 +634,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(FTonemapCS, "/Engine/Private/PostProcessTonemap.usf", "MainCS", SF_Compute);
 
-FTonemapOutputs AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FTonemapInputs& Inputs)
+FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FTonemapInputs& Inputs)
 {
 	if (!Inputs.bGammaOnly)
 	{
@@ -651,17 +651,12 @@ FTonemapOutputs AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewI
 
 	const FScreenPassTextureViewport SceneColorViewport(Inputs.SceneColor);
 
-	FScreenPassTexture Output;
-	ERenderTargetLoadAction OutputLoadAction = ERenderTargetLoadAction::ENoAction;
-	FScreenPassTextureViewport OutputViewport;
+	FScreenPassRenderTarget Output = Inputs.OverrideOutput;
 
 	bool bComputePass = ScreenPassView.bUseComputePasses;
 
-	if (Inputs.OverrideOutput.Texture)
+	if (Output.IsValid())
 	{
-		Output = Inputs.OverrideOutput;
-		OutputLoadAction = Inputs.OverrideOutputLoadAction;
-		OutputViewport = FScreenPassTextureViewport(Inputs.OverrideOutput);
 		bComputePass &= (Output.Texture->Desc.TargetableFlags & TexCreate_UAV) == TexCreate_UAV;
 	}
 	else
@@ -689,9 +684,10 @@ FTonemapOutputs AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewI
 
 		Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("Tonemap"));
 		Output.ViewRect = Inputs.SceneColor.ViewRect;
-		OutputLoadAction = ScreenPassView.GetOverwriteLoadAction();
-		OutputViewport = FScreenPassTextureViewport(Inputs.SceneColor);
+		Output.LoadAction = ScreenPassView.GetOverwriteLoadAction();
 	}
+
+	const FScreenPassTextureViewport OutputViewport(Output);
 
 	FRHITexture* NoiseTexture = nullptr;
 
@@ -837,7 +833,7 @@ FTonemapOutputs AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewI
 	{
 		FTonemapPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FTonemapPS::FParameters>();
 		PassParameters->Tonemap = CommonParameters;
-		PassParameters->RenderTargets[0] = FRenderTargetBinding(Output.Texture, OutputLoadAction);
+		PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
 
 		FTonemapVS::FPermutationDomain VertexPermutationVector;
 		VertexPermutationVector.Set<TonemapperPermutation::FTonemapperSwitchAxis>(Inputs.bFlipYAxis);
@@ -960,7 +956,7 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 	Inputs.ColorGradingTexture = ColorGradingTexture;
 	Inputs.OverrideOutput.Texture = OutputTexture;
 	Inputs.OverrideOutput.ViewRect = OutputViewRect;
-	Inputs.OverrideOutputLoadAction = OutputLoadAction;
+	Inputs.OverrideOutput.LoadAction = OutputLoadAction;
 	Inputs.bWriteAlphaChannel = View.AntiAliasingMethod == AAM_FXAA || FPostProcessing::HasAlphaChannelSupport();
 	Inputs.bFlipYAxis = RHINeedsToSwitchVerticalAxis(GShaderPlatformForFeatureLevel[Context.GetFeatureLevel()]) && ShouldMobilePassFlipVerticalAxis(this);
 	Inputs.bGammaOnly = bDoGammaOnly;

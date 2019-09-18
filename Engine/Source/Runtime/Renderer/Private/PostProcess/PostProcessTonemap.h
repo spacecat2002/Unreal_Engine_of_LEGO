@@ -51,8 +51,11 @@ END_SHADER_PARAMETER_STRUCT()
 
 FMobileFilmTonemapParameters GetMobileFilmTonemapParameters(const FPostProcessSettings& PostProcessSettings, bool bUseColorMatrix, bool bUseShadowTint, bool bUseContrast);
 
-struct FTonemapInputs : public FOverridePassInputs
+struct FTonemapInputs
 {
+	// [Optional] Render to the specified output. If invalid, a new texture is created and returned.
+	FScreenPassRenderTarget OverrideOutput;
+
 	// [Required] HDR scene color to tonemap.
 	FScreenPassTexture SceneColor;
 
@@ -64,9 +67,6 @@ struct FTonemapInputs : public FOverridePassInputs
 
 	// [Optional] Eye adaptation texture used to compute exposure. If this is null, a default exposure value is used instead.
 	FRDGTextureRef EyeAdaptationTexture = nullptr;
-
-	// [Raster Only] Specifies the load action to use when rendering to the output texture.
-	ERenderTargetLoadAction OutputLoadAction = ERenderTargetLoadAction::ENoAction;
 
 	// [Raster Only, Mobile] Flips the image vertically on output.
 	bool bFlipYAxis = false;
@@ -81,9 +81,7 @@ struct FTonemapInputs : public FOverridePassInputs
 	bool bOutputInHDR = false;
 };
 
-using FTonemapOutputs = FScreenPassTexture;
-
-FTonemapOutputs AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FTonemapInputs& Inputs);
+FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FTonemapInputs& Inputs);
 
 // derives from TRenderingCompositePassBase<InputCount, OutputCount>
 // ePId_Input0: SceneColor

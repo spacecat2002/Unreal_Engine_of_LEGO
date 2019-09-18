@@ -45,7 +45,7 @@ BEGIN_SHADER_PARAMETER_STRUCT(FPostProcessMaterialParameters, )
 	RENDER_TARGET_BINDING_SLOTS()
 END_SHADER_PARAMETER_STRUCT()
 
-struct FPostProcessMaterialInputs : public FOverridePassInputs
+struct FPostProcessMaterialInputs
 {
 	inline void SetInput(EPostProcessMaterialInput Input, FScreenPassTexture Texture)
 	{
@@ -80,6 +80,9 @@ struct FPostProcessMaterialInputs : public FOverridePassInputs
 		check(!Texture.ViewRect.IsEmpty());
 	}
 
+	// [Optional] Render to the specified output. If invalid, a new texture is created and returned.
+	FScreenPassRenderTarget OverrideOutput;
+
 	/** Array of input textures bound to the material. The first element represents the output from
 	 *  the previous post process and is required. All other inputs are optional.
 	 */
@@ -95,15 +98,13 @@ struct FPostProcessMaterialInputs : public FOverridePassInputs
 	bool bFlipYAxis = false;
 };
 
-using FPostProcessMaterialOutputs = FScreenPassTexture;
-
-FPostProcessMaterialOutputs AddPostProcessMaterialPass(
+FScreenPassTexture AddPostProcessMaterialPass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
 	const FPostProcessMaterialInputs& Inputs,
 	const UMaterialInterface* MaterialInterface);
 
-FPostProcessMaterialOutputs AddPostProcessMaterialChain(
+FScreenPassTexture AddPostProcessMaterialChain(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
 	const FPostProcessMaterialInputs& Inputs,

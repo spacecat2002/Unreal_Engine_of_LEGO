@@ -33,7 +33,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(FVisualizeDOFPS, "/Engine/Private/PostProcessVisualizeDOF.usf", "VisualizeDOFPS", SF_Pixel);
 
-FVisualizeDOFOutputs AddVisualizeDOFPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeDOFInputs& Inputs)
+FScreenPassTexture AddVisualizeDOFPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeDOFInputs& Inputs)
 {
 	check(Inputs.SceneColor.IsValid());
 	check(Inputs.SceneDepth.IsValid());
@@ -41,10 +41,9 @@ FVisualizeDOFOutputs AddVisualizeDOFPass(FRDGBuilder& GraphBuilder, const FScree
 
 	const FViewInfo& View = ScreenPassView.View;
 
-	FScreenPassTexture Output = Inputs.OverrideOutput;
-	ERenderTargetLoadAction OutputLoadAction = Inputs.OverrideOutputLoadAction;
+	FScreenPassRenderTarget Output = Inputs.OverrideOutput;
 
-	if (!Output.Texture)
+	if (!Output.IsValid())
 	{
 		FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
 		OutputDesc.Reset();
@@ -52,7 +51,7 @@ FVisualizeDOFOutputs AddVisualizeDOFPass(FRDGBuilder& GraphBuilder, const FScree
 
 		Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("VisualizeDOF"));
 		Output.ViewRect = Inputs.SceneColor.ViewRect;
-		OutputLoadAction = ScreenPassView.GetOverwriteLoadAction();
+		Output.LoadAction = ScreenPassView.GetOverwriteLoadAction();
 	}
 
 	const FScreenPassTextureViewport InputViewport(Inputs.SceneColor);
@@ -69,7 +68,7 @@ FVisualizeDOFOutputs AddVisualizeDOFPass(FRDGBuilder& GraphBuilder, const FScree
 	PassParameters->DepthOfFieldParams = GetDepthOfFieldParameters(View.FinalPostProcessSettings);
 	PassParameters->NearColor = FLinearColor(0, 0.8f, 0, 0);
 	PassParameters->FarColor = FLinearColor(0, 0, 0.8f, 0);
-	PassParameters->RenderTargets[0] = FRenderTargetBinding(Output.Texture, OutputLoadAction);
+	PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
 
 	TShaderMapRef<FVisualizeDOFPS> PixelShader(ScreenPassView.View.ShaderMap);
 

@@ -53,9 +53,7 @@ struct FDownsamplePassInputs
 	EPixelFormat FormatOverride = PF_Unknown;
 };
 
-using FDownsamplePassOutputs = FScreenPassTexture;
-
-FDownsamplePassOutputs AddDownsamplePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FDownsamplePassInputs& Inputs);
+FScreenPassTexture AddDownsamplePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FDownsamplePassInputs& Inputs);
 
 FRenderingCompositeOutputRef AddDownsamplePass(
 	FRenderingCompositionGraph& Graph,
