@@ -1093,13 +1093,11 @@ FRDGTextureRef ComputeSubsurface(
 
 		TShaderMapRef<FSubsurfaceViewportCopyPS> PixelShader(Views[0].ShaderMap);
 
-		const FIntPoint InputTextureSize = SceneTexture->Desc.Extent;
-
 		GraphBuilder.AddPass(
 			RDG_EVENT_NAME("SubsurfaceViewportCopy"),
 			PassParameters,
 			ERDGPassFlags::Raster,
-			[&Views, ViewMask, ViewCount, PixelShader, InputTextureSize, PassParameters](FRHICommandListImmediate& RHICmdList)
+			[&Views, ViewMask, ViewCount, PixelShader, SceneTexture, PassParameters](FRHICommandListImmediate& RHICmdList)
 		{
 			for (uint32 ViewIndex = 0; ViewIndex < ViewCount; ++ViewIndex)
 			{
@@ -1111,7 +1109,7 @@ FRDGTextureRef ComputeSubsurface(
 				{
 					const FViewInfo& View = Views[ViewIndex];
 					const FScreenPassViewInfo ScreenPassView(View);
-					const FScreenPassTextureViewport TextureViewport(View.ViewRect, InputTextureSize);
+					const FScreenPassTextureViewport TextureViewport(SceneTexture, View.ViewRect);
 
 					DrawScreenPass(RHICmdList, ScreenPassView, TextureViewport, TextureViewport, *PixelShader, *PassParameters);
 				}
@@ -1134,7 +1132,7 @@ FRDGTextureRef ComputeSubsurface(
 
 			const FViewInfo& View = Views[ViewIndex];
 			const FScreenPassViewInfo ScreenPassView(View);
-			const FScreenPassTextureViewport SceneViewport(View.ViewRect, SceneTexture->Desc.Extent);
+			const FScreenPassTextureViewport SceneViewport(SceneTexture, View.ViewRect);
 
 			ComputeSubsurfaceForView(GraphBuilder, ScreenPassView, SceneViewport, SceneTexture, SceneTextureOutput, SceneTextureLoadAction);
 
@@ -1248,7 +1246,7 @@ FRenderingCompositeOutputRef VisualizeSubsurfaceShim(
 		FRDGTextureRef SceneTextureOutput = Pass->FindOrCreateRDGTextureForOutput(GraphBuilder, ePId_Output0, SceneTexture->Desc, TEXT("SubsurfaceVisualize"));
 
 		const FScreenPassViewInfo ScreenPassView(CompositePassContext.View);
-		const FScreenPassTextureViewport SceneViewport(CompositePassContext.View.ViewRect, SceneTexture->Desc.Extent);
+		const FScreenPassTextureViewport SceneViewport(SceneTexture, CompositePassContext.View.ViewRect);
 		VisualizeSubsurface(GraphBuilder, ScreenPassView, SceneViewport, SceneTexture, SceneTextureOutput);
 
 		Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, SceneTextureOutput);

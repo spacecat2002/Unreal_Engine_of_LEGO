@@ -33,11 +33,12 @@ public:
 	{}
 };
 
+// Describes a texture with a paired viewport rect.
 struct FScreenPassTexture
 {
 	FScreenPassTexture() = default;
 
-	FScreenPassTexture(FRDGTextureRef InTexture)
+	explicit FScreenPassTexture(FRDGTextureRef InTexture)
 		: Texture(InTexture)
 	{
 		if (InTexture)
@@ -70,10 +71,7 @@ struct FScreenPassTexture
 	FIntRect ViewRect;
 };
 
-// TODO: Global rename
-using FScreenPassTexture = FScreenPassTexture;
-
-// Describes a viewport rect oriented within a texture.
+// Describes a viewport rect oriented within the extent of a texture.
 class FScreenPassTextureViewport
 {
 public:
@@ -84,28 +82,25 @@ public:
 	FScreenPassTextureViewport() = default;
 
 	explicit FScreenPassTextureViewport(FIntRect InRect)
-		: Rect(InRect)
-		, Extent(InRect.Max)
-	{}
-
-	FScreenPassTextureViewport(FIntRect InRect, FIntPoint InExtent)
-		: Rect(InRect)
-		, Extent(InExtent)
+		: Extent(InRect.Max)
+		, Rect(InRect)
 	{}
 
 	explicit FScreenPassTextureViewport(FScreenPassTexture InTexture)
 	{
 		check(InTexture.IsValid());
-		Rect = InTexture.ViewRect;
 		Extent = InTexture.Texture->Desc.Extent;
+		Rect = InTexture.ViewRect;
 	}
 
 	explicit FScreenPassTextureViewport(FRDGTextureRef InTexture)
-	{
-		check(InTexture);
-		Extent = InTexture->Desc.Extent;
-		Rect = FIntRect(FIntPoint::ZeroValue, Extent);
-	}
+		: FScreenPassTextureViewport(FScreenPassTexture(InTexture))
+	{}
+
+	FScreenPassTextureViewport(FIntPoint InExtent, FIntRect InRect)
+		: Extent(InExtent)
+		, Rect(InRect)
+	{}
 
 	FScreenPassTextureViewport(FRDGTextureRef InTexture, FIntRect InRect)
 		: FScreenPassTextureViewport(FScreenPassTexture(InTexture, InRect))
@@ -122,11 +117,11 @@ public:
 	// Returns whether the viewport covers the full extent of the texture.
 	bool IsFullscreen() const;
 
-	// The viewport rect, in pixels; defines a sub-set within [0, 0]x(Extent, Extent).
-	FIntRect Rect;
-
 	// The texture extent, in pixels; defines a super-set [0, 0]x(Extent, Extent).
 	FIntPoint Extent = FIntPoint::ZeroValue;
+
+	// The viewport rect, in pixels; defines a sub-set within [0, 0]x(Extent, Extent).
+	FIntRect Rect;
 };
 
 // Describes the set of shader parameters for a screen pass texture viewport.

@@ -61,17 +61,17 @@ FScreenPassTextureViewport FScreenPassTextureViewport::CreateDownscaled(const FS
 
 bool FScreenPassTextureViewport::operator==(const FScreenPassTextureViewport& Other) const
 {
-	return Rect == Other.Rect && Extent == Other.Extent;
+	return Extent == Other.Extent && Rect == Other.Rect;
 }
 
 bool FScreenPassTextureViewport::operator!=(const FScreenPassTextureViewport& Other) const
 {
-	return Rect != Other.Rect || Extent != Other.Extent;
+	return Extent != Other.Extent || Rect != Other.Rect;
 }
 
 bool FScreenPassTextureViewport::IsEmpty() const
 {
-	return Rect.IsEmpty() || Extent == FIntPoint::ZeroValue;
+	return Extent == FIntPoint::ZeroValue || Rect.IsEmpty();
 }
 
 bool FScreenPassTextureViewport::IsFullscreen() const
@@ -208,8 +208,8 @@ void AddDrawTexturePass(
 		? ERenderTargetLoadAction::ENoAction
 		: ERenderTargetLoadAction::ELoad;
 
-	const FScreenPassTextureViewport InputViewport(FIntRect(InputPosition, InputPosition + Size), InputDesc.Extent);
-	const FScreenPassTextureViewport OutputViewport(FIntRect(OutputPosition, OutputPosition + Size), OutputDesc.Extent);
+	const FScreenPassTextureViewport InputViewport(InputDesc.Extent, FIntRect(InputPosition, InputPosition + Size));
+	const FScreenPassTextureViewport OutputViewport(OutputDesc.Extent, FIntRect(OutputPosition, OutputPosition + Size));
 
 	TShaderMapRef<FCopyRectPS> PixelShader(ScreenPassView.View.ShaderMap);
 
