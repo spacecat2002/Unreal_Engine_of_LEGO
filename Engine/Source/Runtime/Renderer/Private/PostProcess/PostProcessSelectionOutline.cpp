@@ -3,6 +3,7 @@
 #if WITH_EDITOR
 
 #include "PostProcess/PostProcessSelectionOutline.h"
+#include "PostProcess/PostProcessCompositeEditorPrimitives.h"
 #include "SceneTextureParameters.h"
 #include "CanvasTypes.h"
 #include "RenderTargetTemp.h"
@@ -10,13 +11,11 @@
 
 namespace
 {
-const uint32 MsaaSampleCountMax = 8;
-
-class FSelectionOutlinePS : public FGlobalShader
+class FSelectionOutlinePS : public FEditorPrimitiveShader
 {
 public:
 	DECLARE_GLOBAL_SHADER(FSelectionOutlinePS);
-	SHADER_USE_PARAMETER_STRUCT(FSelectionOutlinePS, FGlobalShader);
+	SHADER_USE_PARAMETER_STRUCT(FSelectionOutlinePS, FEditorPrimitiveShader);
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
@@ -35,36 +34,6 @@ public:
 		SHADER_PARAMETER(float, BSPSelectionIntensity)
 		RENDER_TARGET_BINDING_SLOTS()
 	END_SHADER_PARAMETER_STRUCT()
-
-	class FSampleCountDimension : SHADER_PERMUTATION_INT("MSAA_SAMPLE_COUNT", MsaaSampleCountMax);
-	using FPermutationDomain = TShaderPermutationDomain<FSampleCountDimension>;
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		const FPermutationDomain PermutationVector(Parameters.PermutationId);
-
-		const int32 SampleCount = PermutationVector.Get<FSampleCountDimension>();
-
-		if (!IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5))
-		{
-			if(SampleCount > 1)
-			{
-				return false;
-			}
-		}
-
-		// Only compile valid sample counts.
-		switch (SampleCount)
-		{
-		case 1:
-		case 2:
-		case 4:
-		case 8:
-			return IsPCPlatform(Parameters.Platform);
-		}
-
-		return false;
-	}
 };
 
 IMPLEMENT_GLOBAL_SHADER(FSelectionOutlinePS, "/Engine/Private/PostProcessSelectionOutline.usf", "MainPS", SF_Pixel);
@@ -83,36 +52,17 @@ FSelectionOutlineOutputs AddSelectionOutlinePass(FRDGBuilder& GraphBuilder, cons
 
 	// Patch uniform buffers with updated state for rendering the outline mesh draw commands.
 	{
+		FScene* Scene = View.Family->Scene->GetRenderScene();
+
 		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 
 		MsaaSampleCount = SceneContext.GetEditorMSAACompositingSampleCount();
 
-		FViewInfo& EditorView = *View.CreateSnapshot();
-
-		// Patch view rect.
-		EditorView.ViewRect = Inputs.SceneColor.ViewRect;
-
-		// Override pre-exposure to 1.0f, because rendering after tonemapper.
-		EditorView.PreExposure = 1.0f;
-
-		// Kills material texture mip-bias because after TAA.
-		EditorView.MaterialTextureMipBias = 0.0f;
-
-		if (EditorView.AntiAliasingMethod == AAM_TemporalAA)
-		{
-			EditorView.ViewMatrices.HackRemoveTemporalAAProjectionJitter();
-		}
-
-		FScene* Scene = View.Family->Scene->GetRenderScene();
+		UpdateEditorPrimitiveView(Scene->UniformBuffers, SceneContext, View, Inputs.SceneColor.ViewRect);
 
 		FSceneTexturesUniformParameters SceneTextureParameters;
 		SetupSceneTextureUniformParameters(SceneContext, View.FeatureLevel, ESceneTextureSetupMode::None, SceneTextureParameters);
 		Scene->UniformBuffers.EditorSelectionPassUniformBuffer.UpdateUniformBufferImmediate(SceneTextureParameters);
-
-		FBox VolumeBounds[TVC_MAX];
-		FViewUniformShaderParameters ViewUniformShaderParameters;
-		EditorView.SetupUniformBufferParameters(SceneContext, VolumeBounds, TVC_MAX, ViewUniformShaderParameters);
-		Scene->UniformBuffers.UpdateViewUniformBufferImmediate(ViewUniformShaderParameters);
 	}
 
 	FRDGTextureRef DepthStencilTexture = nullptr;

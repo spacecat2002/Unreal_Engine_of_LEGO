@@ -4,16 +4,8 @@
 #include "StaticBoundShaderState.h"
 #include "CanvasTypes.h"
 #include "RenderTargetTemp.h"
-#include "SceneUtils.h"
-#include "SceneRenderTargetParameters.h"
-#include "ScenePrivate.h"
-#include "PostProcess/SceneFilterRendering.h"
-#include "PostProcess/PostProcessing.h"
-#include "CompositionLighting/PostProcessAmbientOcclusion.h"
-#include "DeferredShadingRenderer.h"
-#include "ClearQuad.h"
-#include "PipelineStateCache.h"
 #include "SpriteIndexBuffer.h"
+#include "PostProcessing.h"
 
 namespace
 {

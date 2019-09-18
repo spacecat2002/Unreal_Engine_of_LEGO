@@ -717,10 +717,7 @@ void FMobileSceneRenderer::BasicPostProcess(FRHICommandListImmediate& RHICmdList
 	// Composite editor primitives if we had any to draw and compositing is enabled
 	if (bDoEditorPrimitives)
 	{
-		FRenderingCompositePass* EditorCompNode = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessCompositeEditorPrimitives(false));
-		EditorCompNode->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-		//Node->SetInput(ePId_Input1, FRenderingCompositeOutputRef(Context.SceneDepth));
-		Context.FinalOutput = FRenderingCompositeOutputRef(EditorCompNode);
+		Context.FinalOutput = AddEditorPrimitivePass(Context.Graph, Context.FinalOutput, FEditorPrimitiveInputs::EBasePassType::Mobile);
 	}
 #endif
 

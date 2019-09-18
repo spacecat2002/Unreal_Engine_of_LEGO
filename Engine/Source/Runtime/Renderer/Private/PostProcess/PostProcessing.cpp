@@ -944,6 +944,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				VisualizeStationaryLightOverlap,
 				VisualizeLightCulling,
 				SelectionOutline,
+				EditorPrimitive,
 				MAX
 			};
 
@@ -955,7 +956,8 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				TEXT("VisualizeDepthOfField"),
 				TEXT("VisualizeStationaryLightOverlap"),
 				TEXT("VisualizeLightCulling"),
-				TEXT("SelectionOutline")
+				TEXT("SelectionOutline"),
+				TEXT("EditorPrimitive")
 			};
 
 			static_assert(static_cast<uint32>(EPass::MAX) == ARRAY_COUNT(PassNames), "EPass does not match PassNames.");
@@ -971,7 +973,13 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			PassSequence.SetNames(PassNames, ARRAY_COUNT(PassNames));
 			PassSequence.SetEnabled(EPass::VisualizeStationaryLightOverlap, View.Family->EngineShowFlags.StationaryLightOverlap);
 			PassSequence.SetEnabled(EPass::VisualizeLightCulling, View.Family->EngineShowFlags.VisualizeLightCulling);
+#if WITH_EDITOR
 			PassSequence.SetEnabled(EPass::SelectionOutline, GIsEditor && View.Family->EngineShowFlags.SelectionOutline && !View.Family->EngineShowFlags.Wireframe && !bVisualizeHDR);
+			PassSequence.SetEnabled(EPass::EditorPrimitive, FSceneRenderer::ShouldCompositeEditorPrimitives(View));
+#else
+			PassSequence.SetEnabled(EPass::SelectionOutline, false);
+			PassSequence.SetEnabled(EPass::EditorPrimitive, false);
+#endif
 
 			if (AllowFullPostProcessing(View, View.GetFeatureLevel()))
 			{
@@ -1369,7 +1377,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			}
 			else
 			{
-				PassSequence.SetEnabled(EPass::Tonemap, !View.Family->EngineShowFlags.ShaderComplexity);
+				PassSequence.SetEnabled(EPass::Tonemap, true);
 				PassSequence.SetEnabled(EPass::FXAA, false);
 				PassSequence.SetEnabled(EPass::PostProcessMaterialAfterTonemapping, false);
 				PassSequence.SetEnabled(EPass::VisualizeDepthOfField, false);
@@ -1425,6 +1433,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 			if (View.Family->EngineShowFlags.VisualizeLPV)
 			{
+				// NOTE: This pass has no inputs. Therefore, it doesn't need to be in the override pass sequence.
 				AddVisualizeLPVPass(GraphBuilder, ScreenPassView.View, SceneColor.Texture);
 			}
 
@@ -1437,6 +1446,17 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				PassInputs.SceneDepth = SceneDepth;
 
 				SceneColor = AddSelectionOutlinePass(GraphBuilder, ScreenPassView, PassInputs);
+			}
+
+			if (PassSequence.IsEnabled(EPass::EditorPrimitive))
+			{
+				FEditorPrimitiveInputs PassInputs;
+				PassSequence.AcceptOverrideIfLastPass(EPass::EditorPrimitive, PassInputs);
+				PassInputs.SceneColor = SceneColor;
+				PassInputs.SceneDepth = SceneDepth;
+				PassInputs.BasePassType = FEditorPrimitiveInputs::EBasePassType::Deferred;
+
+				SceneColor = AddEditorPrimitivePass(GraphBuilder, ScreenPassView, PassInputs);
 			}
 #endif
 
@@ -1474,17 +1494,6 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 		// If doing temporal upsampling, the final output is already unscaled in TAA pass.
 		bool bUnscaledFinalOutput = Context.View.PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::TemporalUpscale;
 
-#if WITH_EDITOR
-		// Composite editor primitives if we had any to draw and compositing is enabled
-		if (FSceneRenderer::ShouldCompositeEditorPrimitives(View))
-		{
-			//ensureMsgf(!bUnscaledFinalOutput, TEXT("Editor primitives should not be composited with already unscaled output."));
-
-			FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessCompositeEditorPrimitives(true));
-			Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
-		}
-#endif
 		if(View.Family->EngineShowFlags.VisualizeShadingModels)
 		{
 			ensureMsgf(!bUnscaledFinalOutput, TEXT("VisualizeShadingModels is incompatible with unscaled output."));
@@ -2134,9 +2143,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 
 		if (FSceneRenderer::ShouldCompositeEditorPrimitives(View))
 		{
-			FRenderingCompositePass* EditorCompNode = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessCompositeEditorPrimitives(false));
-			EditorCompNode->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-			Context.FinalOutput = FRenderingCompositeOutputRef(EditorCompNode);
+			Context.FinalOutput = AddEditorPrimitivePass(Context.Graph, Context.FinalOutput, FEditorPrimitiveInputs::EBasePassType::Mobile);
 		}
 #endif
 

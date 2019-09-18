@@ -1974,6 +1974,8 @@ void FSceneRenderTargets::InitEditorPrimitivesColor(FRHICommandList& RHICmdList)
 		TexCreate_ShaderResource | TexCreate_RenderTargetable,
 		false));
 
+	Desc.bForceSharedTargetAndShaderResource = true;
+
 	Desc.NumSamples = GetEditorMSAACompositingSampleCount();
 
 	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, EditorPrimitivesColor, TEXT("EditorPrimitivesColor"));
@@ -1987,6 +1989,8 @@ void FSceneRenderTargets::InitEditorPrimitivesDepth(FRHICommandList& RHICmdList)
 		TexCreate_None, 
 		TexCreate_ShaderResource | TexCreate_DepthStencilTargetable,
 		false));
+
+	Desc.bForceSharedTargetAndShaderResource = true;
 
 	Desc.NumSamples = GetEditorMSAACompositingSampleCount();
 
