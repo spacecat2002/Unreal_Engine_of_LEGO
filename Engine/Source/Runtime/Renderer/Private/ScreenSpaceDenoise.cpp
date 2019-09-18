@@ -1145,7 +1145,8 @@ class FSSDTemporalAccumulationCS : public FGlobalShader
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, PrevDepthBuffer)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, PrevGBufferA)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, PrevGBufferB)
-		
+		SHADER_PARAMETER_RDG_TEXTURE_ARRAY(Texture2D<uint>, PrevCompressedMetadata, [kCompressedMetadataTextures])
+
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D, DebugOutput) // TODO: remove
 	END_SHADER_PARAMETER_STRUCT()
 };
@@ -1683,6 +1684,10 @@ static void DenoiseSignalAtConstantPixelDensity(
 	bool bExtractSceneGBufferA = false;
 	bool bExtractSceneGBufferB = false;
 
+	TStaticArray<bool, kCompressedMetadataTextures> bExtractCompressedMetadata;
+	for (int32 i = 0; i < kCompressedMetadataTextures; i++)
+		bExtractCompressedMetadata[i] = false;
+
 	// Temporal pass.
 	//
 	// Note: always done even if there is no ViewState, because it is already not an idea case for the denoiser quality, therefore not really
@@ -1780,6 +1785,12 @@ static void DenoiseSignalAtConstantPixelDensity(
 		PassParameters->PrevGBufferA = RegisterExternalTextureWithFallback(GraphBuilder, View.PrevViewInfo.GBufferA, GSystemTextures.BlackDummy);
 		PassParameters->PrevGBufferB = RegisterExternalTextureWithFallback(GraphBuilder, View.PrevViewInfo.GBufferB, GSystemTextures.BlackDummy);
 
+		if (CompressedMetadataLayout == ECompressedMetadataLayout::DepthAndViewNormal)
+		{
+			PassParameters->PrevCompressedMetadata[0] = RegisterExternalTextureWithFallback(
+				GraphBuilder, View.PrevViewInfo.CompressedDepthViewNormal, GSystemTextures.BlackDummy);
+		}
+
 		FScreenSpaceDenoiserHistory DummyPrevFrameHistory;
 
 		// Setup signals' previous frame historu buffers.
@@ -1820,6 +1831,9 @@ static void DenoiseSignalAtConstantPixelDensity(
 			bExtractSceneDepth = PassParameters->PrevDepthBuffer != nullptr;
 			bExtractSceneGBufferA = PassParameters->PrevGBufferA != nullptr;
 			bExtractSceneGBufferB = PassParameters->PrevGBufferB != nullptr;
+
+			for (int32 i = 0; i < kCompressedMetadataTextures; i++)
+				bExtractCompressedMetadata[i] = PassParameters->PrevCompressedMetadata[i] != nullptr;
 		}
 
 		FComputeShaderUtils::AddPass(
@@ -1890,6 +1904,27 @@ static void DenoiseSignalAtConstantPixelDensity(
 			if (bExtractSceneGBufferB)
 			{
 				GraphBuilder.QueueTextureExtraction(SceneTextures.SceneGBufferB, &View.ViewState->PrevFrameViewInfo.GBufferB);
+			}
+
+			// Extract the compressed scene texture to make te history re-projection faster.
+			for (int32 i = 0; i < kCompressedMetadataTextures; i++)
+			{
+				TRefCountPtr<IPooledRenderTarget>* Dest = nullptr;
+
+				if (CompressedMetadataLayout == ECompressedMetadataLayout::DepthAndViewNormal)
+				{
+					if (i == 0)
+						Dest = &View.ViewState->PrevFrameViewInfo.CompressedDepthViewNormal;
+				}
+
+				check((CommonParameters.CompressedMetadata[i] != nullptr) == (Dest != nullptr));
+
+				if (bExtractCompressedMetadata[i])
+				{
+					check(CommonParameters.CompressedMetadata[i]);
+					check(Dest);
+					GraphBuilder.QueueTextureExtraction(CommonParameters.CompressedMetadata[i], Dest);
+				}
 			}
 		}
 
