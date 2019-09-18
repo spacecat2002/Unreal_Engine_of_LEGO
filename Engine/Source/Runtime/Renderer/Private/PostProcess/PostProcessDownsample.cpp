@@ -171,7 +171,7 @@ FDownsamplePassOutputs AddDownsamplePass(
 	{
 		FDownsamplePS::FParameters* PassParameters = GraphBuilder.AllocParameters<FDownsamplePS::FParameters>();
 		PassParameters->Common = GetDownsampleParameters(ScreenPassView.View, Inputs.SceneColor, Inputs.Quality);
-		PassParameters->RenderTargets[0] = FRenderTargetBinding(Output.Texture, ERenderTargetLoadAction::ENoAction);
+		PassParameters->RenderTargets[0] = FRenderTargetBinding(Output.Texture, ScreenPassView.GetOverwriteLoadAction());
 
 		TShaderMapRef<FDownsamplePS> PixelShader(ScreenPassView.View.ShaderMap, PermutationVector);
 

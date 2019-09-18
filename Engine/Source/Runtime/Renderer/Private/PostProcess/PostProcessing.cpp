@@ -969,7 +969,11 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			 * front. When adding a new pass, make sure to preserve ordering and respect the enable flag during execution. The pass
 			 * sequence helper will validate correctness at runtime.
 			 */
-			FOverridePassSequence<EPass> PassSequence(ViewFamilyOutput);
+			FOverridePassInputs OverridePassInputs;
+			OverridePassInputs.OverrideOutput = ViewFamilyOutput;
+			OverridePassInputs.OverrideOutputLoadAction = View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
+
+			FOverridePassSequence<EPass> PassSequence(OverridePassInputs);
 			PassSequence.SetNames(PassNames, ARRAY_COUNT(PassNames));
 			PassSequence.SetEnabled(EPass::VisualizeStationaryLightOverlap, View.Family->EngineShowFlags.StationaryLightOverlap);
 			PassSequence.SetEnabled(EPass::VisualizeLightCulling, View.Family->EngineShowFlags.VisualizeLightCulling);
@@ -1326,16 +1330,6 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 						PassInputs.bWriteAlphaChannel = AntiAliasingMethod == AAM_FXAA || FPostProcessing::HasAlphaChannelSupport();
 						PassInputs.bOutputInHDR = bTonemapOutputInHDR;
 
-						if (AntiAliasingMethod == AAM_FXAA)
-						{
-							// Needed to not have PostProcessAA leaking in content (e.g. Matinee black borders).
-							PassInputs.OutputLoadAction = ERenderTargetLoadAction::EClear;
-						}
-						else
-						{
-							PassInputs.OutputLoadAction = ScreenPassView.GetOverwriteLoadAction();
-						}
-
 						SceneColor = AddTonemapPass(GraphBuilder, ScreenPassView, PassInputs);
 					}
 				}
@@ -1388,14 +1382,12 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 					SceneColor.Texture = AddSeparateTranslucencyCompositionPass(GraphBuilder, View, SceneColor.Texture, SeparateTranslucency.Texture);
 				}
 
-				// Shader complexity does not actually output a color
 				if (PassSequence.IsEnabled(EPass::Tonemap))
 				{
 					FTonemapInputs PassInputs;
 					PassSequence.AcceptOverrideIfLastPass(EPass::Tonemap, PassInputs);
 					PassInputs.SceneColor = SceneColor;
 					PassInputs.bOutputInHDR = bHDROutputEnabled;
-					PassInputs.OutputLoadAction = ScreenPassView.GetOverwriteLoadAction();
 					PassInputs.bGammaOnly = true;
 				
 					SceneColor = AddTonemapPass(GraphBuilder, ScreenPassView, PassInputs);

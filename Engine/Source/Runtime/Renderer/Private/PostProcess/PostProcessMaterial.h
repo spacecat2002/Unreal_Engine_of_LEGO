@@ -63,13 +63,13 @@ struct FPostProcessMaterialInputs : public FOverridePassInputs
 		ValidateInputExists(EPostProcessMaterialInput::SeparateTranslucency);
 
 		// Either override output format is valid or the override output texture is; not both.
-		if (OverrideOutputFormat != PF_Unknown)
+		if (OutputFormat != PF_Unknown)
 		{
 			check(OverrideOutput.Texture == nullptr);
 		}
 		if (OverrideOutput.Texture)
 		{
-			check(OverrideOutputFormat == PF_Unknown);
+			check(OutputFormat == PF_Unknown);
 		}
 	}
 
@@ -85,8 +85,8 @@ struct FPostProcessMaterialInputs : public FOverridePassInputs
 	 */
 	TStaticArray<FRDGTextureViewRectPair, kPostProcessMaterialInputCountMax> Textures;
 
-	/** The override output texture format to use if a new texture is created. */
-	EPixelFormat OverrideOutputFormat = PF_Unknown;
+	/** The output texture format to use if a new texture is created. Uses the input format if left unknown. */
+	EPixelFormat OutputFormat = PF_Unknown;
 
 	/** Custom stencil texture used for stencil operations. */
 	FRDGTextureRef CustomDepthTexture = nullptr;

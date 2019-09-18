@@ -1216,8 +1216,12 @@ public:
 	/** Gets the rendertarget that will be populated by CombineLUTS post process 
 	* for stereo rendering, this will force the post-processing to use the same render target for both eyes*/
 	IPooledRenderTarget* GetTonemappingLUT(FRHICommandList& RHICmdList, const int32 LUTSize, const bool bUseVolumeLUT, const bool bNeedUAV, const bool bNeedFloatOutput) const;
-	
-	/** Returns whether this view is the last in the family. */
+
+	bool IsFirstInFamily() const
+	{
+		return Family->Views[0] == this;
+	}
+
 	bool IsLastInFamily() const
 	{
 		return Family->Views.Last() == this;

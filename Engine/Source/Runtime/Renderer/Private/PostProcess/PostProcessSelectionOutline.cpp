@@ -132,6 +132,7 @@ FSelectionOutlineOutputs AddSelectionOutlinePass(FRDGBuilder& GraphBuilder, cons
 	}
 
 	FRDGTextureViewRectPair Output = Inputs.OverrideOutput;
+	ERenderTargetLoadAction OutputLoadAction = Inputs.OverrideOutputLoadAction;
 
 	// Render selection outlines.
 	{
@@ -141,6 +142,7 @@ FSelectionOutlineOutputs AddSelectionOutlinePass(FRDGBuilder& GraphBuilder, cons
 			OutputDesc.Reset();
 			Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("SelectionOutlineColor"));
 			Output.ViewRect = Inputs.SceneColor.ViewRect;
+			OutputLoadAction = ScreenPassView.GetOverwriteLoadAction();
 		}
 
 		const FScreenPassTextureViewport OutputViewport(Output);
@@ -150,7 +152,7 @@ FSelectionOutlineOutputs AddSelectionOutlinePass(FRDGBuilder& GraphBuilder, cons
 		FRHISamplerState* PointClampSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 
 		FSelectionOutlinePS::FParameters* PassParameters = GraphBuilder.AllocParameters<FSelectionOutlinePS::FParameters>();
-		PassParameters->RenderTargets[0] = FRenderTargetBinding(Output.Texture, ScreenPassView.GetOverwriteLoadAction());
+		PassParameters->RenderTargets[0] = FRenderTargetBinding(Output.Texture, OutputLoadAction);
 		PassParameters->View = View.ViewUniformBuffer;
 		PassParameters->Color = GetScreenPassTextureViewportParameters(ColorViewport);
 		PassParameters->Depth = GetScreenPassTextureViewportParameters(DepthViewport);

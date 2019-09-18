@@ -652,6 +652,7 @@ FTonemapOutputs AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewI
 	const FScreenPassTextureViewport SceneColorViewport(Inputs.SceneColor);
 
 	FRDGTextureViewRectPair Output;
+	ERenderTargetLoadAction OutputLoadAction = ERenderTargetLoadAction::ENoAction;
 	FScreenPassTextureViewport OutputViewport;
 
 	bool bComputePass = ScreenPassView.bUseComputePasses;
@@ -659,6 +660,7 @@ FTonemapOutputs AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewI
 	if (Inputs.OverrideOutput.Texture)
 	{
 		Output = Inputs.OverrideOutput;
+		OutputLoadAction = Inputs.OverrideOutputLoadAction;
 		OutputViewport = FScreenPassTextureViewport(Inputs.OverrideOutput);
 		bComputePass &= (Output.Texture->Desc.TargetableFlags & TexCreate_UAV) == TexCreate_UAV;
 	}
@@ -687,6 +689,7 @@ FTonemapOutputs AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewI
 
 		Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("Tonemap"));
 		Output.ViewRect = Inputs.SceneColor.ViewRect;
+		OutputLoadAction = ScreenPassView.GetOverwriteLoadAction();
 		OutputViewport = FScreenPassTextureViewport(Inputs.SceneColor);
 	}
 
@@ -834,7 +837,7 @@ FTonemapOutputs AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewI
 	{
 		FTonemapPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FTonemapPS::FParameters>();
 		PassParameters->Tonemap = CommonParameters;
-		PassParameters->RenderTargets[0] = FRenderTargetBinding(Output.Texture, Inputs.OutputLoadAction);
+		PassParameters->RenderTargets[0] = FRenderTargetBinding(Output.Texture, OutputLoadAction);
 
 		FTonemapVS::FPermutationDomain VertexPermutationVector;
 		VertexPermutationVector.Set<TonemapperPermutation::FTonemapperSwitchAxis>(Inputs.bFlipYAxis);
@@ -902,6 +905,7 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 	}
 
 	FRDGTextureRef OutputTexture = FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("OutputTexture"));
+	ERenderTargetLoadAction OutputLoadAction = ERenderTargetLoadAction::ENoAction;
 	FIntRect OutputViewRect;
 
 	// This is the view family render target.
@@ -915,6 +919,7 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 		{
 			OutputViewRect = View.UnscaledViewRect;
 		}
+		OutputLoadAction = View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
 	}
 	else
 	{
@@ -942,6 +947,7 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 		}
 
 		OutputTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("Tonemap"));
+		OutputLoadAction = ScreenPassView.GetOverwriteLoadAction();
 		OutputViewRect = SceneColorViewRect;
 	}
 
@@ -954,23 +960,8 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 	Inputs.ColorGradingTexture = ColorGradingTexture;
 	Inputs.OverrideOutput.Texture = OutputTexture;
 	Inputs.OverrideOutput.ViewRect = OutputViewRect;
+	Inputs.OverrideOutputLoadAction = OutputLoadAction;
 	Inputs.bWriteAlphaChannel = View.AntiAliasingMethod == AAM_FXAA || FPostProcessing::HasAlphaChannelSupport();
-
-	{
-		// Clear target when processing first view in case of splitscreen
-		const bool bFirstView = (&View == View.Family->Views[0]);
-
-		// Full clear to avoid restore
-		if ((View.StereoPass == eSSP_FULL && bFirstView) || View.StereoPass == eSSP_LEFT_EYE)
-		{
-			Inputs.OutputLoadAction = ERenderTargetLoadAction::EClear;
-		}
-		else
-		{
-			Inputs.OutputLoadAction = ERenderTargetLoadAction::ELoad;
-		}
-	}
-
 	Inputs.bFlipYAxis = RHINeedsToSwitchVerticalAxis(GShaderPlatformForFeatureLevel[Context.GetFeatureLevel()]) && ShouldMobilePassFlipVerticalAxis(this);
 	Inputs.bGammaOnly = bDoGammaOnly;
 

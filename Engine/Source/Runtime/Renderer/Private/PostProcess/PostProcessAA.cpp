@@ -65,6 +65,7 @@ FFXAAOutputs AddFXAAPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& S
 	const FViewInfo& View = ScreenPassView.View;
 
 	FRDGTextureViewRectPair Output = Inputs.OverrideOutput;
+	ERenderTargetLoadAction OutputLoadAction = Inputs.OverrideOutputLoadAction;
 
 	if (!Output.Texture)
 	{
@@ -72,6 +73,7 @@ FFXAAOutputs AddFXAAPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& S
 		OutputDesc.Reset();
 		Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("FXAA"));
 		Output.ViewRect = Inputs.SceneColor.ViewRect;
+		OutputLoadAction = Inputs.OverrideOutputLoadAction;
 	}
 
 	const FVector2D OutputExtentInverse = FVector2D(1.0f / (float)Output.Texture->Desc.Extent.X, 1.0f / (float)Output.Texture->Desc.Extent.Y);
@@ -79,7 +81,7 @@ FFXAAOutputs AddFXAAPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& S
 	FRHISamplerState* BilinearClampSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 
 	FFXAAParameters* PassParameters = GraphBuilder.AllocParameters<FFXAAParameters>();
-	PassParameters->RenderTargets[0] = FRenderTargetBinding(Output.Texture, ScreenPassView.GetOverwriteLoadAction());
+	PassParameters->RenderTargets[0] = FRenderTargetBinding(Output.Texture, OutputLoadAction);
 	PassParameters->Input = GetScreenPassTextureInput(Inputs.SceneColor, BilinearClampSampler);
 
 	{

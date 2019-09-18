@@ -8,6 +8,7 @@
 struct FOverridePassInputs
 {
 	FRDGTextureViewRectPair OverrideOutput;
+	ERenderTargetLoadAction OverrideOutputLoadAction = ERenderTargetLoadAction::ENoAction;
 };
 
 /** This class attempts to solve the problem of overriding the final render target / view rect in a chain of RDG passes.
@@ -26,8 +27,8 @@ template <typename EPass>
 class FOverridePassSequence final
 {
 public:
-	FOverridePassSequence(FRDGTextureViewRectPair InOverrideOutput)
-		: OverrideOutput(InOverrideOutput)
+	FOverridePassSequence(const FOverridePassInputs& InOverridePassInputs)
+		: OverridePassInputs(InOverridePassInputs)
 	{}
 
 	~FOverridePassSequence()
@@ -117,13 +118,13 @@ public:
 #endif
 	}
 
-	bool AcceptOverrideIfLastPass(EPass Pass, FOverridePassInputs& PassInputs)
+	bool AcceptOverrideIfLastPass(EPass Pass, FOverridePassInputs& OutPassInputs)
 	{
 		AcceptPass(Pass);
 
 		if (IsLastPass(Pass))
 		{
-			PassInputs.OverrideOutput = OverrideOutput;
+			OutPassInputs = OverridePassInputs;
 			return true;
 		}
 		return false;
@@ -170,7 +171,7 @@ private:
 		bool bEnabled = false;
 	};
 
-	FRDGTextureViewRectPair OverrideOutput;
+	FOverridePassInputs OverridePassInputs;
 	TStaticArray<FPassInfo, PassCountMax> Passes;
 	EPass LastPass = EPass::MAX;
 

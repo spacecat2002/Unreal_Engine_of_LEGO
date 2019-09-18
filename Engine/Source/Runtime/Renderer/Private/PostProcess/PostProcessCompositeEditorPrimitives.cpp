@@ -381,6 +381,7 @@ FEditorPrimitiveOutputs AddEditorPrimitivePass(
 	}
 
 	FRDGTextureViewRectPair Output = Inputs.OverrideOutput;
+	ERenderTargetLoadAction OutputLoadAction = Inputs.OverrideOutputLoadAction;
 
 	{
 		if (!Output.Texture)
@@ -389,6 +390,7 @@ FEditorPrimitiveOutputs AddEditorPrimitivePass(
 			OutputDesc.Reset();
 			Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("EditorPrimitives"));
 			Output.ViewRect = Inputs.SceneColor.ViewRect;
+			OutputLoadAction = ScreenPassView.GetOverwriteLoadAction();
 		}
 
 		const FScreenPassTextureViewport OutputViewport(Output);
@@ -400,7 +402,7 @@ FEditorPrimitiveOutputs AddEditorPrimitivePass(
 		const bool bOpaqueEditorGizmo = CVarEditorOpaqueGizmo.GetValueOnRenderThread() != 0 || View.Family->EngineShowFlags.Wireframe;
 
 		FCompositeEditorPrimitivesPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FCompositeEditorPrimitivesPS::FParameters>();
-		PassParameters->RenderTargets[0] = FRenderTargetBinding(Output.Texture, ScreenPassView.GetOverwriteLoadAction());
+		PassParameters->RenderTargets[0] = FRenderTargetBinding(Output.Texture, OutputLoadAction);
 		PassParameters->View = View.ViewUniformBuffer;
 		PassParameters->Color = GetScreenPassTextureViewportParameters(ColorViewport);
 		PassParameters->Depth = GetScreenPassTextureViewportParameters(DepthViewport);

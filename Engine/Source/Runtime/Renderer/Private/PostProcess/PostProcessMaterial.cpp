@@ -300,7 +300,7 @@ FPostProcessMaterialOutputs AddPostProcessMaterialPass(
 	const FMaterial* Material = nullptr;
 	const FMaterialRenderProxy* MaterialRenderProxy = nullptr;
 	const FMaterialShaderMap* MaterialShaderMap = nullptr;
-	GetMaterialInfo(MaterialInterface, FeatureLevel, Inputs.OverrideOutputFormat, Material, MaterialRenderProxy, MaterialShaderMap);
+	GetMaterialInfo(MaterialInterface, FeatureLevel, Inputs.OutputFormat, Material, MaterialRenderProxy, MaterialShaderMap);
 
 	FRHIDepthStencilState* DefaultDepthStencilState = FScreenPassDrawInfo::FDefaultDepthStencilState::GetRHI();
 	FRHIDepthStencilState* DepthStencilState = DefaultDepthStencilState;
@@ -325,14 +325,12 @@ FPostProcessMaterialOutputs AddPostProcessMaterialPass(
 	// Blend / Depth Stencil usage requires that the render target have primed color data.
 	const bool bIsCompositeWithInput = DepthStencilState != DefaultDepthStencilState || BlendState != DefaultBlendState;
 
-	// Multiple views are composited onto the same target.
-	const bool bIsNotPrimaryView = (&View != View.Family->Views[0]);
-
 	// We only prime color on the output texture if we are using fixed function Blend / Depth-Stencil,
 	// or we need to retain previously rendered views.
-	const bool bPrimeOutputColor = bIsCompositeWithInput || bIsNotPrimaryView;
+	const bool bPrimeOutputColor = bIsCompositeWithInput || !View.IsFirstInFamily();
 
 	FRDGTextureViewRectPair Output = Inputs.OverrideOutput;
+	ERenderTargetLoadAction OutputLoadAction = Inputs.OverrideOutputLoadAction;
 
 	// We can re-use the scene color texture as the render target if we're not simultaneously reading from it.
 	// This is only necessary to do if we're going to be priming content from the render target since it avoids
@@ -340,52 +338,35 @@ FPostProcessMaterialOutputs AddPostProcessMaterialPass(
 	if (!Output.Texture && !MaterialShaderMap->UsesSceneTexture(PPI_PostProcessInput0) && bPrimeOutputColor)
 	{
 		Output = SceneColor;
+		OutputLoadAction = ERenderTargetLoadAction::ELoad;
 	}
 	else
 	{
 		// Allocate new transient output texture if none exists.
 		if (!Output.Texture)
 		{
-			const EPixelFormat OverrideOutputFormat = Inputs.OverrideOutputFormat;
-
 			FRDGTextureDesc OutputTextureDesc = SceneColor.Texture->Desc;
-			if (OverrideOutputFormat != PF_Unknown)
+			if (Inputs.OutputFormat != PF_Unknown)
 			{
-				OutputTextureDesc.Format = OverrideOutputFormat;
+				OutputTextureDesc.Format = Inputs.OutputFormat;
 			}
 			OutputTextureDesc.Reset();
 			OutputTextureDesc.ClearValue = FClearValueBinding(FLinearColor::Black);
 			OutputTextureDesc.Flags |= GFastVRamConfig.PostProcessMaterial;
 
-			Output.Texture = GraphBuilder.CreateTexture(OutputTextureDesc, TEXT("PostProcessMaterialOutput"));
+			Output.Texture = GraphBuilder.CreateTexture(OutputTextureDesc, TEXT("PostProcessMaterial"));
 			Output.ViewRect = SceneColor.ViewRect;
+			OutputLoadAction = ScreenPassView.GetOverwriteLoadAction();
 		}
 
 		if (bPrimeOutputColor)
 		{
 			// Copy existing contents to new output and use load-action to preserve untouched pixels.
 			AddDrawTexturePass(GraphBuilder, ScreenPassView, SceneColor.Texture, Output.Texture);
+			OutputLoadAction = ERenderTargetLoadAction::ELoad;
 		}
 	}
-
-	ERenderTargetLoadAction OutputLoadAction = ERenderTargetLoadAction::ENoAction;
-
-	// We have color data that needs to be loaded.
-	if (bPrimeOutputColor)
-	{
-		OutputLoadAction = ERenderTargetLoadAction::ELoad;
-	}
-	// HMD masks leave unrendered pixels; perform a clear instead.
-	else if (ScreenPassView.bHasHMDMask)
-	{
-		OutputLoadAction = ERenderTargetLoadAction::EClear;
-	}
-
-	if (Output.Texture == SceneColor.Texture)
-	{
-		ensureMsgf(OutputLoadAction == ERenderTargetLoadAction::ELoad,
-			TEXT("We only want to re-use the input texture if we're going to load its contents. Otherwise RDG will emit a warning."));
-	}
+	
 
 	const FScreenPassTextureViewport SceneColorViewport(SceneColor);
 	const FScreenPassTextureViewport OutputViewport(Output);
@@ -616,12 +597,13 @@ FRenderingCompositePass* AddPostProcessMaterialPass(
 		FRDGBuilder GraphBuilder(InContext.RHICmdList);
 
 		FPostProcessMaterialInputs Inputs;
-		Inputs.OverrideOutputFormat = OverrideOutputFormat;
+		Inputs.OutputFormat = OverrideOutputFormat;
 
 		// Either finds the overridden frame buffer target or returns null.
 		if (FRDGTextureRef OutputTexture = Pass->FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("FrameBufferOverride")))
 		{
 			Inputs.OverrideOutput = FRDGTextureViewRectPair(OutputTexture, InContext.GetSceneColorDestRect(Pass));
+			Inputs.OverrideOutputLoadAction = InContext.View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
 		}
 
 		for (uint32 InputIndex = 0; InputIndex < kPostProcessMaterialInputCountMax; ++InputIndex)

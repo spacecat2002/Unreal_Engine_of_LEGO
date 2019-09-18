@@ -427,7 +427,7 @@ struct FMotionBlurViewports
 	FScreenPassTextureViewportTransform ColorToVelocityTileTransform;
 };
 
-void ComputeMotionBlurVelocity(
+void AddMotionBlurVelocityPass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,
 	const FMotionBlurViewports& Viewports,
@@ -709,7 +709,7 @@ FRDGTextureRef AddMotionBlurFilterPass(
 	{
 		FMotionBlurFilterPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FMotionBlurFilterPS::FParameters>();
 		PassParameters->Filter = MotionBlurFilterParameters;
-		PassParameters->RenderTargets[0] = FRenderTargetBinding(ColorTextureOutput, ERenderTargetLoadAction::ENoAction);
+		PassParameters->RenderTargets[0] = FRenderTargetBinding(ColorTextureOutput, ScreenPassView.GetOverwriteLoadAction());
 
 		TShaderMapRef<FMotionBlurFilterPS> PixelShader(View.ShaderMap, PermutationVector);
 
@@ -759,7 +759,7 @@ FRDGTextureRef AddVisualizeMotionBlurPass(
 	PassParameters->ColorSampler = GetMotionBlurColorSampler();
 	PassParameters->VelocitySampler = GetMotionBlurVelocitySampler();
 	PassParameters->DepthSampler = GetMotionBlurVelocitySampler();
-	PassParameters->RenderTargets[0] = FRenderTargetBinding(ColorTextureOutput, ERenderTargetLoadAction::ENoAction);
+	PassParameters->RenderTargets[0] = FRenderTargetBinding(ColorTextureOutput, ScreenPassView.GetOverwriteLoadAction());
 
 	TShaderMapRef<FMotionBlurVisualizePS> PixelShader(View.ShaderMap);
 
@@ -843,7 +843,7 @@ FRDGTextureRef AddMotionBlurPass(
 
 	FRDGTextureRef VelocityFlatTexture = nullptr;
 	FRDGTextureRef VelocityTileTexture = nullptr;
-	ComputeMotionBlurVelocity(
+	AddMotionBlurVelocityPass(
 		GraphBuilder,
 		ScreenPassView,
 		Viewports,
