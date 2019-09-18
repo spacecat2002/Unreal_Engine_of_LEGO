@@ -430,7 +430,7 @@ FScreenPassTexture AddEditorPrimitivePass(
 			PassParameters);
 	}
 
-	return Output;
+	return MoveTemp(Output);
 }
 
 FRenderingCompositeOutputRef AddEditorPrimitivePass(

@@ -863,7 +863,7 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassVi
 		});
 	}
 
-	return Output;
+	return MoveTemp(Output);
 }
 
 //////////////////////////////////////////////////////////////////////////

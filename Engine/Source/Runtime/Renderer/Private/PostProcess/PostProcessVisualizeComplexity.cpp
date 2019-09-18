@@ -179,7 +179,7 @@ FVisualizeComplexityOutputs AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder
 		}
 	});
 
-	return Output;
+	return MoveTemp(Output);
 }
 
 FRenderingCompositeOutputRef AddVisualizeComplexityPass(

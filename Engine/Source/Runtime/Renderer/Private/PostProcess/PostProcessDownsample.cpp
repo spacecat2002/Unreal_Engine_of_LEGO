@@ -185,7 +185,7 @@ FScreenPassTexture AddDownsamplePass(
 			PassParameters);
 	}
 
-	return Output;
+	return FScreenPassTexture(Output);
 }
 
 FRenderingCompositeOutputRef AddDownsamplePass(

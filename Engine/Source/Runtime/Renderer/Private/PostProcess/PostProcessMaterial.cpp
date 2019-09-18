@@ -468,7 +468,7 @@ FScreenPassTexture AddPostProcessMaterialPass(
 		}
 	});
 
-	return Output;
+	return MoveTemp(Output);
 }
 
 static bool IsPostProcessMaterialsEnabledForView(const FViewInfo& View)

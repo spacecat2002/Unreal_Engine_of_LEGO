@@ -133,5 +133,5 @@ FScreenPassTexture AddVisualizeDOFPass(FRDGBuilder& GraphBuilder, const FScreenP
 		}
 	});
 
-	return Output;
+	return MoveTemp(Output);
 }

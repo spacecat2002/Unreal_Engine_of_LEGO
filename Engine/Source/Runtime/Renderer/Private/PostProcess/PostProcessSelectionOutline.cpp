@@ -182,7 +182,7 @@ FScreenPassTexture AddSelectionOutlinePass(FRDGBuilder& GraphBuilder, const FScr
 			PassParameters);
 	}
 
-	return Output;
+	return MoveTemp(Output);
 }
 
 FRenderingCompositeOutputRef AddSelectionOutlinePass(FRenderingCompositionGraph& Graph, FRenderingCompositeOutputRef Input)
