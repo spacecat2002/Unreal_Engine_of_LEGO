@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "RenderGraphResources.h"
+#include "ScreenPass.h"
 
 /** The pass input structure should derive from this class. */
 struct FOverridePassInputs
@@ -11,7 +11,7 @@ struct FOverridePassInputs
 	ERenderTargetLoadAction OverrideOutputLoadAction = ERenderTargetLoadAction::ENoAction;
 };
 
-/** This class attempts to solve the problem of overriding the final render target / view rect in a chain of RDG passes.
+/** This class provides a solution for overriding the final render target / view rect in a chain of render graph passes.
  *  RDG pass setup is immediate, which makes it difficult to determine the final pass in a chain in order to swap a final
  *  texture target (e.g. the view family target). This class helps by providing some utilities to mark passes as enabled
  *  prior to setup, then seamlessly assign the override texture to the correct last pass. It assumes that all passes adhere

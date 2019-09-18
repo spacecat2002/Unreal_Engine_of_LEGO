@@ -33,6 +33,46 @@ public:
 	{}
 };
 
+struct FScreenPassTexture
+{
+	FScreenPassTexture() = default;
+
+	FScreenPassTexture(FRDGTextureRef InTexture)
+		: Texture(InTexture)
+	{
+		if (InTexture)
+		{
+			ViewRect.Max = InTexture->Desc.Extent;
+		}
+	}
+
+	FScreenPassTexture(FRDGTextureRef InTexture, FIntRect InViewRect)
+		: Texture(InTexture)
+		, ViewRect(InViewRect)
+	{}
+
+	bool IsValid() const
+	{
+		return Texture != nullptr && !ViewRect.IsEmpty();
+	}
+
+	bool operator==(FScreenPassTexture Other) const
+	{
+		return Texture == Other.Texture && ViewRect == Other.ViewRect;
+	}
+
+	bool operator!=(FScreenPassTexture Other) const
+	{
+		return !(*this == Other);
+	}
+
+	FRDGTextureRef Texture = nullptr;
+	FIntRect ViewRect;
+};
+
+// TODO: Global rename
+using FRDGTextureViewRectPair = FScreenPassTexture;
+
 // Describes a viewport rect oriented within a texture.
 class FScreenPassTextureViewport
 {
