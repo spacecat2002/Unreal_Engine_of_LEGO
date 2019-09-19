@@ -183,13 +183,13 @@ uint32 Compute1DGaussianFilterKernel(FVector2D OutOffsetAndWeight[MAX_FILTER_SAM
 	return SampleCount;
 }
 
-float GetBlurRadius(uint32 TextureWidth, float KernelSizePercent)
+float GetBlurRadius(uint32 ViewSize, float KernelSizePercent)
 {
 	const float PercentToScale = 0.01f;
 
 	const float DiameterToRadius = 0.5f;
 
-	return static_cast<float>(TextureWidth) * KernelSizePercent * PercentToScale * DiameterToRadius;
+	return static_cast<float>(ViewSize) * KernelSizePercent * PercentToScale * DiameterToRadius;
 }
 
 bool IsFastBlurEnabled(float BlurRadius)
@@ -469,7 +469,7 @@ FScreenPassTexture AddGaussianBlurPass(
 
 	const FScreenPassTextureViewport FilterViewport(Inputs.Filter);
 
-	const float BlurRadius = GetBlurRadius(FilterViewport.Extent.X, Inputs.KernelSizePercent);
+	const float BlurRadius = GetBlurRadius(FilterViewport.Rect.Width(), Inputs.KernelSizePercent);
 
 	const uint32 SampleCountMax = GetSampleCountMax(View.GetFeatureLevel(), View.GetShaderPlatform());
 
