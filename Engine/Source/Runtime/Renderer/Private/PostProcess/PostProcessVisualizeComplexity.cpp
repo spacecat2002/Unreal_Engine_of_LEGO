@@ -75,12 +75,7 @@ FScreenPassTexture AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder, const F
 
 	if (!Output.IsValid())
 	{
-		FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
-		OutputDesc.Reset();
-
-		Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("VisualizeComplexity"));
-		Output.ViewRect = Inputs.SceneColor.ViewRect;
-		Output.LoadAction = ScreenPassView.GetOverwriteLoadAction();
+		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, ScreenPassView.GetOverwriteLoadAction(), TEXT("VisualizeComplexity"));
 	}
 
 	const FScreenPassTextureViewport InputViewport(Inputs.SceneColor);
@@ -135,14 +130,7 @@ FScreenPassTexture AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder, const F
 
 	RDG_EVENT_SCOPE(GraphBuilder, "VisualizeComplexity");
 
-	AddDrawScreenPass(
-		GraphBuilder,
-		RDG_EVENT_NAME("Visualizer"),
-		ScreenPassView,
-		FScreenPassTextureViewport(Output),
-		InputViewport,
-		*PixelShader,
-		PassParameters);
+	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("Visualizer"), ScreenPassView, FScreenPassTextureViewport(Output), InputViewport, *PixelShader, PassParameters);
 
 	Output.LoadAction = ERenderTargetLoadAction::ELoad;
 

@@ -133,17 +133,13 @@ FScreenPassTexture AddSelectionOutlinePass(FRDGBuilder& GraphBuilder, const FScr
 
 	FScreenPassRenderTarget Output = Inputs.OverrideOutput;
 
+	if (!Output.IsValid())
+	{
+		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, ScreenPassView.GetOverwriteLoadAction(), TEXT("SelectionOutlineColor"));
+	}
+
 	// Render selection outlines.
 	{
-		if (!Output.IsValid())
-		{
-			FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
-			OutputDesc.Reset();
-			Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("SelectionOutlineColor"));
-			Output.ViewRect = Inputs.SceneColor.ViewRect;
-			Output.LoadAction = ScreenPassView.GetOverwriteLoadAction();
-		}
-
 		const FScreenPassTextureViewport OutputViewport(Output);
 		const FScreenPassTextureViewport ColorViewport(Inputs.SceneColor);
 		const FScreenPassTextureViewport DepthViewport(Inputs.SceneDepth);

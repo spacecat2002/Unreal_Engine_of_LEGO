@@ -1154,16 +1154,10 @@ FScreenPassTexture AddVisualizeSubsurfacePass(FRDGBuilder& GraphBuilder, const F
 
 	if (!Output.IsValid())
 	{
-		FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
-		OutputDesc.Reset();
-
-		Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("VisualizeShadingModel"));
-		Output.ViewRect = Inputs.SceneColor.ViewRect;
-		Output.LoadAction = ScreenPassView.GetOverwriteLoadAction();
+		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, ScreenPassView.GetOverwriteLoadAction(), TEXT("VisualizeSubsurface"));
 	}
 
 	const FScreenPassTextureViewport InputViewport(Inputs.SceneColor);
-	const FScreenPassTextureViewport OutputViewport(Output);
 
 	FSubsurfaceVisualizePS::FParameters* PassParameters = GraphBuilder.AllocParameters<FSubsurfaceVisualizePS::FParameters>();
 	PassParameters->Subsurface = GetSubsurfaceCommonParameters(GraphBuilder.RHICmdList, View);
@@ -1177,14 +1171,7 @@ FScreenPassTexture AddVisualizeSubsurfacePass(FRDGBuilder& GraphBuilder, const F
 
 	RDG_EVENT_SCOPE(GraphBuilder, "VisualizeSubsurface");
 
-	AddDrawScreenPass(
-		GraphBuilder,
-		RDG_EVENT_NAME("Visualizer"),
-		ScreenPassView,
-		OutputViewport,
-		InputViewport,
-		*PixelShader,
-		PassParameters);
+	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("Visualizer"), ScreenPassView, FScreenPassTextureViewport(Output), InputViewport, *PixelShader, PassParameters);
 
 	Output.LoadAction = ERenderTargetLoadAction::ELoad;
 

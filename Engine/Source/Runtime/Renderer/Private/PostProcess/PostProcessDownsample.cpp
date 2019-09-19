@@ -111,7 +111,7 @@ FScreenPassTexture AddDownsamplePass(
 	const FScreenPassViewInfo& ScreenPassView,
 	const FDownsamplePassInputs& Inputs)
 {
-	check(Inputs.SceneColor.Texture);
+	check(Inputs.SceneColor.IsValid());
 
 	bool bIsComputePass = ScreenPassView.bUseComputePasses;
 
@@ -120,7 +120,7 @@ FScreenPassTexture AddDownsamplePass(
 		bIsComputePass = false;
 	}
 
-	FScreenPassTexture Output;
+	FScreenPassRenderTarget Output;
 
 	// Construct the output texture to be half resolution (rounded up to even) with an optional format override.
 	{
@@ -132,7 +132,6 @@ FScreenPassTexture AddDownsamplePass(
 		Desc.TargetableFlags &= ~(TexCreate_RenderTargetable | TexCreate_UAV);
 		Desc.TargetableFlags |= bIsComputePass ? TexCreate_UAV : TexCreate_RenderTargetable;
 		Desc.Flags |= GFastVRamConfig.Downsample;
-		Desc.AutoWritable = false;
 		Desc.DebugName = Inputs.Name;
 		Desc.ClearValue = FClearValueBinding(FLinearColor(0, 0, 0, 0));
 
@@ -143,6 +142,7 @@ FScreenPassTexture AddDownsamplePass(
 
 		Output.Texture = GraphBuilder.CreateTexture(Desc, Inputs.Name);
 		Output.ViewRect = FIntRect::DivideAndRoundUp(Inputs.SceneColor.ViewRect, 2);
+		Output.LoadAction = ScreenPassView.GetOverwriteLoadAction();
 	}
 
 	FDownsamplePermutationDomain PermutationVector;
@@ -171,7 +171,7 @@ FScreenPassTexture AddDownsamplePass(
 	{
 		FDownsamplePS::FParameters* PassParameters = GraphBuilder.AllocParameters<FDownsamplePS::FParameters>();
 		PassParameters->Common = GetDownsampleParameters(ScreenPassView.View, Inputs.SceneColor, Inputs.Quality);
-		PassParameters->RenderTargets[0] = FRenderTargetBinding(Output.Texture, ScreenPassView.GetOverwriteLoadAction());
+		PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
 
 		TShaderMapRef<FDownsamplePS> PixelShader(ScreenPassView.View.ShaderMap, PermutationVector);
 
@@ -185,7 +185,7 @@ FScreenPassTexture AddDownsamplePass(
 			PassParameters);
 	}
 
-	return FScreenPassTexture(Output);
+	return MoveTemp(Output);
 }
 
 FRenderingCompositeOutputRef AddDownsamplePass(

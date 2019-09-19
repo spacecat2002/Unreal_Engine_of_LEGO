@@ -37,78 +37,6 @@ bool IsHMDHiddenAreaMaskActive()
 		GEngine->XRSystem->GetHMDDevice()->HasVisibleAreaMesh();
 }
 
-FScreenPassTextureViewport FScreenPassTextureViewport::CreateDownscaled(const FScreenPassTextureViewport& Other, uint32 DownscaleFactor)
-{
-	return CreateDownscaled(Other, FIntPoint(DownscaleFactor, DownscaleFactor));
-}
-
-FScreenPassTextureViewport FScreenPassTextureViewport::CreateDownscaled(const FScreenPassTextureViewport& Other, FIntPoint ScaleFactor)
-{
-	const auto GetDownscaledSize = [](FIntPoint Size, FIntPoint InScaleFactor)
-	{
-		Size = FIntPoint::DivideAndRoundUp(Size, InScaleFactor);
-		Size.X = FMath::Max(1, Size.X);
-		Size.Y = FMath::Max(1, Size.Y);
-		return Size;
-	};
-
-	FScreenPassTextureViewport Viewport;
-	Viewport.Rect.Min = Other.Rect.Min / ScaleFactor;
-	Viewport.Rect.Max = GetDownscaledSize(Other.Rect.Max, ScaleFactor);
-	Viewport.Extent = GetDownscaledSize(Other.Extent, ScaleFactor);
-	return Viewport;
-}
-
-bool FScreenPassTexture::IsValid() const
-{
-	return Texture != nullptr && !ViewRect.IsEmpty();
-}
-
-bool FScreenPassTexture::operator==(FScreenPassTexture Other) const
-{
-	return Texture == Other.Texture && ViewRect == Other.ViewRect;
-}
-
-bool FScreenPassTexture::operator!=(FScreenPassTexture Other) const
-{
-	return !(*this == Other);
-}
-
-bool FScreenPassRenderTarget::operator==(FScreenPassRenderTarget Other) const
-{
-	return FScreenPassTexture::operator==(Other) && LoadAction == Other.LoadAction;
-}
-
-bool FScreenPassRenderTarget::operator!=(FScreenPassRenderTarget Other) const
-{
-	return !(*this == Other);
-}
-
-FRenderTargetBinding FScreenPassRenderTarget::GetRenderTargetBinding() const
-{
-	return FRenderTargetBinding(Texture, LoadAction);
-}
-
-bool FScreenPassTextureViewport::operator==(const FScreenPassTextureViewport& Other) const
-{
-	return Extent == Other.Extent && Rect == Other.Rect;
-}
-
-bool FScreenPassTextureViewport::operator!=(const FScreenPassTextureViewport& Other) const
-{
-	return Extent != Other.Extent || Rect != Other.Rect;
-}
-
-bool FScreenPassTextureViewport::IsEmpty() const
-{
-	return Extent == FIntPoint::ZeroValue || Rect.IsEmpty();
-}
-
-bool FScreenPassTextureViewport::IsFullscreen() const
-{
-	return Rect.Min == FIntPoint::ZeroValue && Rect.Max == Extent;
-}
-
 FScreenPassTextureViewportParameters GetScreenPassTextureViewportParameters(const FScreenPassTextureViewport& InViewport)
 {
 	const FVector2D Extent(InViewport.Extent);
@@ -145,39 +73,6 @@ FScreenPassTextureViewportParameters GetScreenPassTextureViewportParameters(cons
 	return Parameters;
 }
 
-FScreenPassTextureViewportTransform GetScreenPassTextureViewportTransform(
-	FVector2D SourceOffset,
-	FVector2D SourceExtent,
-	FVector2D DestinationOffset,
-	FVector2D DestinationExtent)
-{
-	FScreenPassTextureViewportTransform Transform;
-	Transform.Scale = DestinationExtent / SourceExtent;
-	Transform.Bias = DestinationOffset - Transform.Scale * SourceOffset;
-	return Transform;
-}
-
-FScreenPassTextureViewportTransform GetScreenPassTextureViewportTransform(
-	const FScreenPassTextureViewportParameters& Source,
-	const FScreenPassTextureViewportParameters& Destination)
-{
-	const FVector2D SourceUVOffset = Source.UVViewportMin;
-	const FVector2D SourceUVExtent = Source.UVViewportSize;
-	const FVector2D DestinationUVOffset = Destination.UVViewportMin;
-	const FVector2D DestinationUVExtent = Destination.UVViewportSize;
-
-	return GetScreenPassTextureViewportTransform(SourceUVOffset, SourceUVExtent, DestinationUVOffset, DestinationUVExtent);
-}
-
-FScreenPassTextureInput GetScreenPassTextureInput(FScreenPassTexture TexturePair, FRHISamplerState* Sampler)
-{
-	FScreenPassTextureInput Input;
-	Input.Viewport = GetScreenPassTextureViewportParameters(FScreenPassTextureViewport(TexturePair));
-	Input.Texture = TexturePair.Texture;
-	Input.Sampler = Sampler;
-	return Input;
-}
-
 FScreenPassViewInfo::FScreenPassViewInfo(const FViewInfo& InView)
 	: View(InView)
 	, ScreenPassVS(View.ShaderMap)
@@ -185,11 +80,6 @@ FScreenPassViewInfo::FScreenPassViewInfo(const FViewInfo& InView)
 	, bHasHMDMask(IsHMDHiddenAreaMaskActive())
 	, bUseComputePasses(ShouldDoComputePostProcessing(InView))
 {}
-
-ERenderTargetLoadAction FScreenPassViewInfo::GetOverwriteLoadAction() const
-{
-	return bHasHMDMask ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ENoAction;
-}
 
 void SetScreenPassPipelineState(FRHICommandListImmediate& RHICmdList, const FScreenPassDrawInfo& ScreenPassDraw)
 {

@@ -45,12 +45,7 @@ FScreenPassTexture AddVisualizeDOFPass(FRDGBuilder& GraphBuilder, const FScreenP
 
 	if (!Output.IsValid())
 	{
-		FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
-		OutputDesc.Reset();
-
-		Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("VisualizeDOF"));
-		Output.ViewRect = Inputs.SceneColor.ViewRect;
-		Output.LoadAction = ScreenPassView.GetOverwriteLoadAction();
+		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, ScreenPassView.GetOverwriteLoadAction(), TEXT("VisualizeDOF"));
 	}
 
 	const FScreenPassTextureViewport InputViewport(Inputs.SceneColor);
@@ -73,14 +68,7 @@ FScreenPassTexture AddVisualizeDOFPass(FRDGBuilder& GraphBuilder, const FScreenP
 
 	RDG_EVENT_SCOPE(GraphBuilder, "VisualizeDOF");
 
-	AddDrawScreenPass(
-		GraphBuilder,
-		RDG_EVENT_NAME("Visualizer"),
-		ScreenPassView,
-		FScreenPassTextureViewport(Output),
-		InputViewport,
-		*PixelShader,
-		PassParameters);
+	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("Visualizer"), ScreenPassView, FScreenPassTextureViewport(Output), InputViewport, *PixelShader, PassParameters);
 
 	Output.LoadAction = ERenderTargetLoadAction::ELoad;
 
@@ -115,9 +103,9 @@ FScreenPassTexture AddVisualizeDOFPass(FRDGBuilder& GraphBuilder, const FScreenP
 		Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), FLinearColor(1, 1, 1));
 		Y += YStep;
 
-		FVector2D Fov = View.ViewMatrices.ComputeHalfFieldOfViewPerAxis();
+		const FVector2D Fov = View.ViewMatrices.ComputeHalfFieldOfViewPerAxis();
 
-		float FocalLength = DiaphragmDOF::ComputeFocalLengthFromFov(View);
+		const float FocalLength = DiaphragmDOF::ComputeFocalLengthFromFov(View);
 
 		Line = FString::Printf(TEXT("Field Of View in deg. (computed): %.1f x %.1f"), FMath::RadiansToDegrees(Fov.X) * 2.0f, FMath::RadiansToDegrees(Fov.Y) * 2.0f);
 		Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), FLinearColor(0.5, 0.5, 1));

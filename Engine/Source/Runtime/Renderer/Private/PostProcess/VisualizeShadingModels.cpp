@@ -45,16 +45,11 @@ FScreenPassTexture AddVisualizeShadingModelPass(FRDGBuilder& GraphBuilder, const
 
 	if (!Output.IsValid())
 	{
-		FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
-		OutputDesc.Reset();
-		OutputDesc.Format = PF_R8G8B8A8;
-
-		Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("VisualizeShadingModel"));
-		Output.ViewRect = Inputs.SceneColor.ViewRect;
-		Output.LoadAction = ScreenPassView.GetOverwriteLoadAction();
+		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, ScreenPassView.GetOverwriteLoadAction(), TEXT("VisualizeShadingModel"));
 	}
 
 	const FScreenPassTextureViewport InputViewport(Inputs.SceneColor);
+	const FScreenPassTextureViewport OutputViewport(Output);
 
 	FVisualizeShadingModelPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FVisualizeShadingModelPS::FParameters>();
 	PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
@@ -74,22 +69,11 @@ FScreenPassTexture AddVisualizeShadingModelPass(FRDGBuilder& GraphBuilder, const
 
 	RDG_EVENT_SCOPE(GraphBuilder, "VisualizeShadingModels");
 
-	AddDrawScreenPass(
-		GraphBuilder,
-		RDG_EVENT_NAME("Visualizer"),
-		ScreenPassView,
-		FScreenPassTextureViewport(Output),
-		InputViewport,
-		*PixelShader,
-		PassParameters);
+	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("Visualizer"), ScreenPassView, OutputViewport, InputViewport, *PixelShader, PassParameters);
 
 	Output.LoadAction = ERenderTargetLoadAction::ELoad;
 
-	AddDrawCanvasPass(GraphBuilder,
-		RDG_EVENT_NAME("Overlay"),
-		ScreenPassView.View,
-		Output,
-		[&View](FCanvas& Canvas)
+	AddDrawCanvasPass(GraphBuilder, RDG_EVENT_NAME("Overlay"), ScreenPassView.View, Output, [&View](FCanvas& Canvas)
 	{
 		float X = 30;
 		float Y = 28;

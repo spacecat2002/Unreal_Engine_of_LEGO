@@ -39,14 +39,7 @@ struct FScreenPassTexture
 {
 	FScreenPassTexture() = default;
 
-	explicit FScreenPassTexture(FRDGTextureRef InTexture)
-		: Texture(InTexture)
-	{
-		if (InTexture)
-		{
-			ViewRect.Max = InTexture->Desc.Extent;
-		}
-	}
+	explicit FScreenPassTexture(FRDGTextureRef InTexture);
 
 	FScreenPassTexture(FRDGTextureRef InTexture, FIntRect InViewRect)
 		: Texture(InTexture)
@@ -65,6 +58,20 @@ struct FScreenPassTexture
 // Describes a texture with a load action for usage as a render target.
 struct FScreenPassRenderTarget : public FScreenPassTexture
 {
+	template <typename TSetupFunction>
+	static FScreenPassRenderTarget CreateFromInput(
+		FRDGBuilder& GraphBuilder,
+		FScreenPassTexture Input,
+		ERenderTargetLoadAction OutputLoadAction,
+		const TCHAR* OutputName,
+		TSetupFunction SetupFunction);
+
+	static FScreenPassRenderTarget CreateFromInput(
+		FRDGBuilder& GraphBuilder,
+		FScreenPassTexture Input,
+		ERenderTargetLoadAction OutputLoadAction,
+		const TCHAR* OutputName);
+
 	FScreenPassRenderTarget() = default;
 
 	FScreenPassRenderTarget(FScreenPassTexture InTexture, ERenderTargetLoadAction InLoadAction)
@@ -105,12 +112,7 @@ public:
 		, Rect(InRect)
 	{}
 
-	explicit FScreenPassTextureViewport(FScreenPassTexture InTexture)
-	{
-		check(InTexture.IsValid());
-		Extent = InTexture.Texture->Desc.Extent;
-		Rect = InTexture.ViewRect;
-	}
+	explicit FScreenPassTextureViewport(FScreenPassTexture InTexture);
 
 	explicit FScreenPassTextureViewport(FRDGTextureRef InTexture)
 		: FScreenPassTextureViewport(FScreenPassTexture(InTexture))
@@ -525,3 +527,5 @@ void AddDrawCanvasPass(
 		DrawCanvasPass(RHICmdList, View, Output, Function);
 	});
 }
+
+#include "ScreenPass.inl"

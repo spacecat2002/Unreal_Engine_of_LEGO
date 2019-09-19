@@ -653,38 +653,30 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassVi
 
 	FScreenPassRenderTarget Output = Inputs.OverrideOutput;
 
-	bool bComputePass = ScreenPassView.bUseComputePasses;
-
-	if (Output.IsValid())
+	if (!Output.IsValid())
 	{
-		bComputePass &= (Output.Texture->Desc.TargetableFlags & TexCreate_UAV) == TexCreate_UAV;
-	}
-	else
-	{
-		FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
-		OutputDesc.Reset();
-		OutputDesc.TargetableFlags |= bComputePass ? TexCreate_UAV : TexCreate_RenderTargetable;
-		// RGB is the color in LDR, A is the luminance for PostprocessAA
-		OutputDesc.Format = Inputs.bOutputInHDR ? GRHIHDRDisplayOutputFormat : PF_R8G8B8A8;
-		OutputDesc.ClearValue = FClearValueBinding(FLinearColor(0, 0, 0, 0));
-		OutputDesc.Flags |= GFastVRamConfig.Tonemap;
-
-		const FTonemapperOutputDeviceParameters OutputDeviceParameters = GetTonemapperOutputDeviceParameters(*View.Family);
-
-		const ETonemapperOutputDevice OutputDevice = static_cast<ETonemapperOutputDevice>(OutputDeviceParameters.OutputDevice);
-
-		if (OutputDevice == ETonemapperOutputDevice::LinearEXR)
+		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, ScreenPassView.GetOverwriteLoadAction(), TEXT("Tonemap"),
+			[&](FRDGTextureDesc& OutputDesc)
 		{
-			OutputDesc.Format = PF_A32B32G32R32F;
-		}
-		if (OutputDevice == ETonemapperOutputDevice::LinearNoToneCurve)
-		{
-			OutputDesc.Format = PF_FloatRGBA;
-		}
+			OutputDesc.TargetableFlags |= ScreenPassView.bUseComputePasses ? TexCreate_UAV : TexCreate_RenderTargetable;
+			// RGB is the color in LDR, A is the luminance for PostprocessAA
+			OutputDesc.Format = Inputs.bOutputInHDR ? GRHIHDRDisplayOutputFormat : PF_R8G8B8A8;
+			OutputDesc.ClearValue = FClearValueBinding(FLinearColor(0, 0, 0, 0));
+			OutputDesc.Flags |= GFastVRamConfig.Tonemap;
 
-		Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("Tonemap"));
-		Output.ViewRect = Inputs.SceneColor.ViewRect;
-		Output.LoadAction = ScreenPassView.GetOverwriteLoadAction();
+			const FTonemapperOutputDeviceParameters OutputDeviceParameters = GetTonemapperOutputDeviceParameters(*View.Family);
+
+			const ETonemapperOutputDevice OutputDevice = static_cast<ETonemapperOutputDevice>(OutputDeviceParameters.OutputDevice);
+
+			if (OutputDevice == ETonemapperOutputDevice::LinearEXR)
+			{
+				OutputDesc.Format = PF_A32B32G32R32F;
+			}
+			if (OutputDevice == ETonemapperOutputDevice::LinearNoToneCurve)
+			{
+				OutputDesc.Format = PF_FloatRGBA;
+			}
+		});
 	}
 
 	const FScreenPassTextureViewport OutputViewport(Output);
@@ -809,6 +801,9 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassVi
 
 		DesktopPermutationVector = TonemapperPermutation::RemapPermutation(DesktopPermutationVector, View.GetFeatureLevel());
 	}
+
+	// Override output might not support UAVs.
+	const bool bComputePass = (Output.Texture->Desc.TargetableFlags & TexCreate_UAV) == TexCreate_UAV ? ScreenPassView.bUseComputePasses : false;
 
 	if (bComputePass)
 	{

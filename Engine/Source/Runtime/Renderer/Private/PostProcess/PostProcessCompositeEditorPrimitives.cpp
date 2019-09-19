@@ -382,17 +382,12 @@ FScreenPassTexture AddEditorPrimitivePass(
 
 	FScreenPassRenderTarget Output = Inputs.OverrideOutput;
 
+	if (!Output.IsValid())
 	{
-		if (!Output.IsValid())
-		{
-			FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
-			OutputDesc.Reset();
+		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, ScreenPassView.GetOverwriteLoadAction(), TEXT("EditorPrimitives"));
+	}
 
-			Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("EditorPrimitives"));
-			Output.ViewRect = Inputs.SceneColor.ViewRect;
-			Output.LoadAction = ScreenPassView.GetOverwriteLoadAction();
-		}
-
+	{
 		const FScreenPassTextureViewport OutputViewport(Output);
 		const FScreenPassTextureViewport ColorViewport(Inputs.SceneColor);
 		const FScreenPassTextureViewport DepthViewport(Inputs.SceneDepth);

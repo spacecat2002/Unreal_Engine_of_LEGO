@@ -341,20 +341,18 @@ FScreenPassTexture AddPostProcessMaterialPass(
 	else
 	{
 		// Allocate new transient output texture if none exists.
-		if (!Output.Texture)
+		if (!Output.IsValid())
 		{
-			FRDGTextureDesc OutputTextureDesc = SceneColor.Texture->Desc;
-			if (Inputs.OutputFormat != PF_Unknown)
+			Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, SceneColor, ScreenPassView.GetOverwriteLoadAction(), TEXT("PostProcessMaterial"),
+				[&](FRDGTextureDesc& OutputDesc)
 			{
-				OutputTextureDesc.Format = Inputs.OutputFormat;
-			}
-			OutputTextureDesc.Reset();
-			OutputTextureDesc.ClearValue = FClearValueBinding(FLinearColor::Black);
-			OutputTextureDesc.Flags |= GFastVRamConfig.PostProcessMaterial;
-
-			Output.Texture = GraphBuilder.CreateTexture(OutputTextureDesc, TEXT("PostProcessMaterial"));
-			Output.ViewRect = SceneColor.ViewRect;
-			Output.LoadAction = ScreenPassView.GetOverwriteLoadAction();
+				if (Inputs.OutputFormat != PF_Unknown)
+				{
+					OutputDesc.Format = Inputs.OutputFormat;
+				}
+				OutputDesc.ClearValue = FClearValueBinding(FLinearColor::Black);
+				OutputDesc.Flags |= GFastVRamConfig.PostProcessMaterial;
+			});
 		}
 
 		if (bPrimeOutputColor)
@@ -421,8 +419,7 @@ FScreenPassTexture AddPostProcessMaterialPass(
 
 	const uint32 MaterialStencilRef = Material->GetStencilRefValue();
 
-	const auto SetupFunction = [VertexShader, PixelShader, &ScreenPassView, MaterialRenderProxy, PostProcessMaterialParameters, MaterialStencilRef]
-		(FRHICommandListImmediate& RHICmdList)
+	const auto SetupFunction = [VertexShader, PixelShader, &ScreenPassView, MaterialRenderProxy, PostProcessMaterialParameters, MaterialStencilRef] (FRHICommandListImmediate& RHICmdList)
 	{
 		VertexShader->SetParameters(RHICmdList, ScreenPassView.View, MaterialRenderProxy, *PostProcessMaterialParameters);
 		PixelShader->SetParameters(RHICmdList, ScreenPassView.View, MaterialRenderProxy, *PostProcessMaterialParameters);
@@ -449,18 +446,11 @@ FScreenPassTexture AddPostProcessMaterialPass(
 		RDG_EVENT_NAME("PostProcessMaterial"),
 		PostProcessMaterialParameters,
 		ERDGPassFlags::Raster,
-		[ScreenPassView, OutputViewport, SceneColorViewport, ScreenPassDraw, PostProcessMaterialParameters, DepthStencilTexture, SetupFunction, bFlipYAxis, bNeedsGBuffer]
-	(FRHICommandListImmediate& RHICmdList)
+		[ScreenPassView, OutputViewport, SceneColorViewport, ScreenPassDraw, PostProcessMaterialParameters, DepthStencilTexture, SetupFunction, bFlipYAxis, bNeedsGBuffer] (FRHICommandListImmediate& RHICmdList)
 	{
 		FSceneRenderTargets& SceneRenderTargets = FSceneRenderTargets::Get(RHICmdList);
 
-		DrawScreenPass<decltype(SetupFunction)>(
-			RHICmdList,
-			ScreenPassView,
-			OutputViewport,
-			SceneColorViewport,
-			ScreenPassDraw,
-			SetupFunction);
+		DrawScreenPass<decltype(SetupFunction)>(RHICmdList, ScreenPassView, OutputViewport, SceneColorViewport, ScreenPassDraw, SetupFunction);
 
 		if (bNeedsGBuffer)
 		{

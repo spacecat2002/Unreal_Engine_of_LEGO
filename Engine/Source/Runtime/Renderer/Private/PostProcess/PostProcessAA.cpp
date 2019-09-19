@@ -68,12 +68,7 @@ FScreenPassTexture AddFXAAPass(FRDGBuilder& GraphBuilder, const FScreenPassViewI
 
 	if (!Output.IsValid())
 	{
-		FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
-		OutputDesc.Reset();
-
-		Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("FXAA"));
-		Output.ViewRect = Inputs.SceneColor.ViewRect;
-		Output.LoadAction = ScreenPassView.GetOverwriteLoadAction();
+		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, ScreenPassView.GetOverwriteLoadAction(), TEXT("FXAA"));
 	}
 
 	const FVector2D OutputExtentInverse = FVector2D(1.0f / (float)Output.Texture->Desc.Extent.X, 1.0f / (float)Output.Texture->Desc.Extent.Y);

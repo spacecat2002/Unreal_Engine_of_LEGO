@@ -1076,12 +1076,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 					if (bDepthOfFieldEnabled)
 					{
-						LocalSceneColorTexture = DiaphragmDOF::AddPasses(
-							GraphBuilder,
-							SceneTextures,
-							View,
-							SceneColor.Texture,
-							SeparateTranslucency.Texture);
+						LocalSceneColorTexture = DiaphragmDOF::AddPasses(GraphBuilder, SceneTextures, View, SceneColor.Texture, SeparateTranslucency.Texture);
 					}
 
 					// DOF passes were not added, therefore need to compose Separate translucency manually.
@@ -1202,12 +1197,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 				if (bHistogramEnabled)
 				{
-					HistogramTexture = AddHistogramPass(
-						GraphBuilder,
-						ScreenPassView,
-						EyeAdaptationParameters,
-						HalfResolutionSceneColor,
-						LastEyeAdaptationTexture);
+					HistogramTexture = AddHistogramPass(GraphBuilder, ScreenPassView, EyeAdaptationParameters, HalfResolutionSceneColor, LastEyeAdaptationTexture);
 				}
 
 				const bool bBasicEyeAdaptationEnabled = bEyeAdaptationEnabled && (AutoExposureMethod == EAutoExposureMethod::AEM_Basic);
@@ -1229,21 +1219,12 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 							bLogLumaInAlpha);
 
 						// Use the alpha channel in the last downsample (smallest) to compute eye adaptations values.
-						EyeAdaptationTexture = AddBasicEyeAdaptationPass(
-							GraphBuilder,
-							ScreenPassView,
-							EyeAdaptationParameters,
-							SceneDownsampleChain.GetLastTexture(),
-							LastEyeAdaptationTexture);
+						EyeAdaptationTexture = AddBasicEyeAdaptationPass(GraphBuilder, ScreenPassView, EyeAdaptationParameters, SceneDownsampleChain.GetLastTexture(), LastEyeAdaptationTexture);
 					}
 					// Add histogram eye adaptation pass even if no histogram exists to support the manual clamping mode.
 					else
 					{
-						EyeAdaptationTexture = AddHistogramEyeAdaptationPass(
-							GraphBuilder,
-							ScreenPassView,
-							EyeAdaptationParameters,
-							HistogramTexture);
+						EyeAdaptationTexture = AddHistogramEyeAdaptationPass(GraphBuilder, ScreenPassView, EyeAdaptationParameters, HistogramTexture);
 					}
 				}
 
@@ -1269,12 +1250,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 						{
 							const float BloomThreshold = View.FinalPostProcessSettings.BloomThreshold;
 
-							DownsampleInput = AddBloomSetupPass(
-								GraphBuilder,
-								ScreenPassView,
-								DownsampleInput,
-								EyeAdaptationTexture,
-								BloomThreshold);
+							DownsampleInput = AddBloomSetupPass(GraphBuilder, ScreenPassView, DownsampleInput, EyeAdaptationTexture, BloomThreshold);
 						}
 
 						const bool bLogLumaInAlpha = false;
