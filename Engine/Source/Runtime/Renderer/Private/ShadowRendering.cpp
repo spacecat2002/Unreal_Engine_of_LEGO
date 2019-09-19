@@ -1002,11 +1002,11 @@ void FProjectedShadowInfo::RenderProjection(FRHICommandListImmediate& RHICmdList
 }
 
 
-template <uint32 Quality>
+template <uint32 Quality, bool bUseTransmission>
 static void SetPointLightShaderTempl(FRHICommandList& RHICmdList, FGraphicsPipelineStateInitializer& GraphicsPSOInit, int32 ViewIndex, const FViewInfo& View, const FProjectedShadowInfo* ShadowInfo)
 {
 	TShaderMapRef<FShadowVolumeBoundProjectionVS> VertexShader(View.ShaderMap);
-	TShaderMapRef<TOnePassPointShadowProjectionPS<Quality> > PixelShader(View.ShaderMap);
+	TShaderMapRef<TOnePassPointShadowProjectionPS<Quality,bUseTransmission> > PixelShader(View.ShaderMap);
 
 	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GetVertexDeclarationFVector4();
 	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
@@ -1026,6 +1026,8 @@ void FProjectedShadowInfo::RenderOnePassPointLightProjection(FRHICommandListImme
 	checkSlow(bOnePassPointLightShadow);
 	
 	const FSphere LightBounds = LightSceneInfo->Proxy->GetBoundingSphere();
+
+	bool bUseTransmission = LightSceneInfo->Proxy->Transmission();
 
 	FGraphicsPipelineStateInitializer GraphicsPSOInit;
 	RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -1067,15 +1069,31 @@ void FProjectedShadowInfo::RenderOnePassPointLightProjection(FRHICommandListImme
 			}
 		}
 
-		switch(LocalQuality)
+		if (bUseTransmission)
 		{
-			case 1: SetPointLightShaderTempl<1>(RHICmdList, GraphicsPSOInit, ViewIndex, View, this); break;
-			case 2: SetPointLightShaderTempl<2>(RHICmdList, GraphicsPSOInit, ViewIndex, View, this); break;
-			case 3: SetPointLightShaderTempl<3>(RHICmdList, GraphicsPSOInit, ViewIndex, View, this); break;
-			case 4: SetPointLightShaderTempl<4>(RHICmdList, GraphicsPSOInit, ViewIndex, View, this); break;
-			case 5: SetPointLightShaderTempl<5>(RHICmdList, GraphicsPSOInit, ViewIndex, View, this); break;
-			default:
-				check(0);
+			switch (LocalQuality)
+			{
+				case 1: SetPointLightShaderTempl<1, true>(RHICmdList, GraphicsPSOInit, ViewIndex, View, this); break;
+				case 2: SetPointLightShaderTempl<2, true>(RHICmdList, GraphicsPSOInit, ViewIndex, View, this); break;
+				case 3: SetPointLightShaderTempl<3, true>(RHICmdList, GraphicsPSOInit, ViewIndex, View, this); break;
+				case 4: SetPointLightShaderTempl<4, true>(RHICmdList, GraphicsPSOInit, ViewIndex, View, this); break;
+				case 5: SetPointLightShaderTempl<5, true>(RHICmdList, GraphicsPSOInit, ViewIndex, View, this); break;
+				default:
+					check(0);
+			}
+		}
+		else
+		{
+			switch (LocalQuality)
+			{
+				case 1: SetPointLightShaderTempl<1, false>(RHICmdList, GraphicsPSOInit, ViewIndex, View, this); break;
+				case 2: SetPointLightShaderTempl<2, false>(RHICmdList, GraphicsPSOInit, ViewIndex, View, this); break;
+				case 3: SetPointLightShaderTempl<3, false>(RHICmdList, GraphicsPSOInit, ViewIndex, View, this); break;
+				case 4: SetPointLightShaderTempl<4, false>(RHICmdList, GraphicsPSOInit, ViewIndex, View, this); break;
+				case 5: SetPointLightShaderTempl<5, false>(RHICmdList, GraphicsPSOInit, ViewIndex, View, this); break;
+				default:
+					check(0);
+			}
 		}
 	}
 
