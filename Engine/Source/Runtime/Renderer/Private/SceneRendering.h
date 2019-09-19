@@ -759,6 +759,10 @@ struct FPreviousViewInfo
 	TRefCountPtr<IPooledRenderTarget> GBufferB;
 	TRefCountPtr<IPooledRenderTarget> GBufferC;
 
+	// Compressed scene textures for bandwidth efficient bilateral kernel rejection.
+	// DeviceZ as float16, and normal in view space.
+	TRefCountPtr<IPooledRenderTarget> CompressedDepthViewNormal;
+
 	// Temporal AA result of last frame
 	FTemporalAAHistory TemporalAAHistory;
 
