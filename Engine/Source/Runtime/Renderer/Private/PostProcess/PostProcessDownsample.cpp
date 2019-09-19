@@ -137,7 +137,7 @@ FScreenPassTexture AddDownsamplePass(
 
 		Output.Texture = GraphBuilder.CreateTexture(Desc, Inputs.Name);
 		Output.ViewRect = FIntRect::DivideAndRoundUp(Inputs.SceneColor.ViewRect, 2);
-		Output.LoadAction = ScreenPassView.GetOverwriteLoadAction();
+		Output.LoadAction = ERenderTargetLoadAction::ENoAction;
 	}
 
 	FDownsamplePermutationDomain PermutationVector;
