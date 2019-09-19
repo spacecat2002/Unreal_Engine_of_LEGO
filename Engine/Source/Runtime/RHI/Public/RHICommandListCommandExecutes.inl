@@ -95,6 +95,25 @@ void FRHICommandEndUpdateMultiFrameUAV::Execute(FRHICommandListBase& CmdList)
 	INTERNAL_DECORATOR(RHIEndUpdateMultiFrameResource)(UAV);
 }
 
+#if WITH_MGPU
+void FRHICommandSetGPUMask::Execute(FRHICommandListBase& CmdList)
+{
+	RHISTAT(SetGPUMask);
+	INTERNAL_DECORATOR(RHISetGPUMask)(GPUMask);
+}
+void FRHICommandWaitForTemporalEffect::Execute(FRHICommandListBase& CmdList)
+{
+	RHISTAT(WaitForTemporalEffect);
+	INTERNAL_DECORATOR(RHIWaitForTemporalEffect)(EffectName);
+}
+
+void FRHICommandBroadcastTemporalEffect::Execute(FRHICommandListBase& CmdList)
+{
+	RHISTAT(BroadcastTemporalEffect);
+	INTERNAL_DECORATOR(RHIBroadcastTemporalEffect)(EffectName, { Textures, NumTextures });
+}
+#endif // WITH_MGPU
+
 void FRHICommandSetStencilRef::Execute(FRHICommandListBase& CmdList)
 {
 	RHISTAT(SetStencilRef);

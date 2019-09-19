@@ -1217,6 +1217,7 @@ struct FRHIResourceCreateInfo
 		: BulkData(nullptr)
 		, ResourceArray(nullptr)
 		, ClearValueBinding(FLinearColor::Transparent)
+		, GPUMask(FRHIGPUMask::All())
 		, bWithoutNativeResource(false)
 		, DebugName(nullptr)
 	{}
@@ -1226,6 +1227,7 @@ struct FRHIResourceCreateInfo
 		: BulkData(InBulkData)
 		, ResourceArray(nullptr)
 		, ClearValueBinding(FLinearColor::Transparent)
+		, GPUMask(FRHIGPUMask::All())
 		, bWithoutNativeResource(false)
 		, DebugName(nullptr)
 	{}
@@ -1235,6 +1237,7 @@ struct FRHIResourceCreateInfo
 		: BulkData(nullptr)
 		, ResourceArray(InResourceArray)
 		, ClearValueBinding(FLinearColor::Transparent)
+		, GPUMask(FRHIGPUMask::All())
 		, bWithoutNativeResource(false)
 		, DebugName(nullptr)
 	{}
@@ -1243,6 +1246,7 @@ struct FRHIResourceCreateInfo
 		: BulkData(nullptr)
 		, ResourceArray(nullptr)
 		, ClearValueBinding(InClearValueBinding)
+		, GPUMask(FRHIGPUMask::All())
 		, bWithoutNativeResource(false)
 		, DebugName(nullptr)
 	{
@@ -1252,6 +1256,7 @@ struct FRHIResourceCreateInfo
 		: BulkData(nullptr)
 		, ResourceArray(nullptr)
 		, ClearValueBinding(FLinearColor::Transparent)
+		, GPUMask(FRHIGPUMask::All())
 		, bWithoutNativeResource(false)
 		, DebugName(InDebugName)
 	{
@@ -1264,6 +1269,10 @@ struct FRHIResourceCreateInfo
 
 	// for binding clear colors to rendertargets.
 	FClearValueBinding ClearValueBinding;
+
+	// set of GPUs on which to create the resource
+	FRHIGPUMask GPUMask;
+
 	// whether to create an RHI object with no underlying resource
 	bool bWithoutNativeResource;
 	const TCHAR* DebugName;

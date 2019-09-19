@@ -905,16 +905,16 @@ public:
 
 	/** Watch out for OutData to be 0 (can happen on DXGI_ERROR_DEVICE_REMOVED), don't call RHIUnmapStagingSurface in that case. */
 	// FlushType: Flush Immediate (seems wrong)
-	virtual void RHIMapStagingSurface(FRHITexture* Texture, void*& OutData, int32& OutWidth, int32& OutHeight) override final
+	virtual void RHIMapStagingSurface(FRHITexture* Texture, void*& OutData, int32& OutWidth, int32& OutHeight, uint32 GPUIndex = 0) override final
 	{
-		RHI->RHIMapStagingSurface(Texture, OutData, OutWidth, OutHeight);
+		RHI->RHIMapStagingSurface(Texture, OutData, OutWidth, OutHeight, GPUIndex);
 	}
 
 	/** call after a succesful RHIMapStagingSurface() call */
 	// FlushType: Flush Immediate (seems wrong)
-	virtual void RHIUnmapStagingSurface(FRHITexture* Texture) override final
+	virtual void RHIUnmapStagingSurface(FRHITexture* Texture, uint32 GPUIndex = 0) override final
 	{
-		RHI->RHIUnmapStagingSurface(Texture);
+		RHI->RHIUnmapStagingSurface(Texture, GPUIndex);
 	}
 
 	// FlushType: Flush Immediate (seems wrong)
@@ -1164,17 +1164,6 @@ public:
 	}
 
 #if WITH_MGPU
-	/** Returns a context for sending commands to the given GPU mask. Default implementation is only valid when not using multi-gpu. */
-	virtual IRHICommandContext* RHIGetDefaultContext(FRHIGPUMask GPUMask) override final
-	{
-		return RHI->RHIGetDefaultContext(GPUMask);
-	}
-
-	virtual IRHIComputeContext* RHIGetDefaultAsyncComputeContext(FRHIGPUMask GPUMask) override final
-	{
-		return RHI->RHIGetDefaultAsyncComputeContext(GPUMask);
-	}
-
 	virtual IRHICommandContextContainer* RHIGetCommandContextContainer(int32 Index, int32 Num, FRHIGPUMask GPUMask) override final
 	{
 		return RHI->RHIGetCommandContextContainer(Index, Num, GPUMask);

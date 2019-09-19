@@ -1045,6 +1045,7 @@ public:
 	void WriteInternal(ED3D12CommandQueueType QueueType);
 	virtual void Clear() final override;
 	virtual bool Poll() const final override;
+	virtual bool Poll(FRHIGPUMask GPUMask) const final override;
 
 protected:
 

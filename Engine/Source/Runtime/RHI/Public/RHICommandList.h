@@ -512,7 +512,6 @@ public:
 	void CopyContext(FRHICommandListBase& ParentCommandList)
 	{
 		check(Context);
-		ensure(GPUMask == ParentCommandList.GPUMask);
 		Context = ParentCommandList.Context;
 		ComputeContext = ParentCommandList.ComputeContext;
 	}
@@ -527,6 +526,10 @@ public:
 	void MaybeDispatchToRHIThreadInner();
 
 	FORCEINLINE const FRHIGPUMask& GetGPUMask() const { return GPUMask; }
+
+protected:
+	void SetGPUMaskOnContext();
+	void SetGPUMaskOnComputeContext();
 
 private:
 	FRHICommandBase* Root;
@@ -546,6 +549,11 @@ private:
 protected:
 	bool bAsyncPSOCompileAllowed;
 	FRHIGPUMask GPUMask;
+	// GPUMask that was set at the time the command list was last Reset. We set
+    // this mask on the command contexts immediately before executing the
+    // command list. This way we don't need to worry about having any initial
+    // FRHICommandSetGPUMask at the root of the list.
+	FRHIGPUMask InitialGPUMask;
 	void Reset();
 
 public:
@@ -744,6 +752,42 @@ FRHICOMMAND_MACRO(FRHICommandEndUpdateMultiFrameUAV)
 	}
 	RHI_API void Execute(FRHICommandListBase& CmdList);
 };
+
+#if WITH_MGPU
+FRHICOMMAND_MACRO(FRHICommandSetGPUMask)
+{
+	FRHIGPUMask GPUMask;
+	FORCEINLINE_DEBUGGABLE FRHICommandSetGPUMask(FRHIGPUMask InGPUMask)
+		: GPUMask(InGPUMask)
+	{
+	}
+	RHI_API void Execute(FRHICommandListBase& CmdList);
+};
+
+FRHICOMMAND_MACRO(FRHICommandWaitForTemporalEffect)
+{
+	FName EffectName;
+	FORCEINLINE_DEBUGGABLE FRHICommandWaitForTemporalEffect(const FName& InEffectName)
+		: EffectName(InEffectName)
+	{
+	}
+	RHI_API void Execute(FRHICommandListBase& CmdList);
+};
+
+FRHICOMMAND_MACRO(FRHICommandBroadcastTemporalEffect)
+{
+	FName EffectName;
+	FRHITexture** Textures;
+	int32 NumTextures;
+	FORCEINLINE_DEBUGGABLE FRHICommandBroadcastTemporalEffect(const FName& InEffectName, FRHITexture** InTextures, int32 InNumTextures)
+		: EffectName(InEffectName)
+		, Textures(InTextures)
+		, NumTextures(InNumTextures)
+	{
+	}
+	RHI_API void Execute(FRHICommandListBase& CmdList);
+};
+#endif // WITH_MGPU
 
 FRHICOMMAND_MACRO(FRHICommandSetStencilRef)
 {
@@ -2211,6 +2255,39 @@ public:
 		ALLOC_COMMAND(FRHICommandEndUpdateMultiFrameUAV)(UAV);
 	}
 
+#if WITH_MGPU
+	FORCEINLINE_DEBUGGABLE void WaitForTemporalEffect(const FName& EffectName)
+	{
+		//check(IsOutsideRenderPass());
+		if (Bypass())
+		{
+			GetContext().RHIWaitForTemporalEffect(EffectName);
+			return;
+		}
+		ALLOC_COMMAND(FRHICommandWaitForTemporalEffect)(EffectName);
+	}
+
+	FORCEINLINE_DEBUGGABLE void BroadcastTemporalEffect(const FName& EffectName, const TArrayView<FRHITexture*> Textures)
+	{
+		//check(IsOutsideRenderPass());
+		if (Bypass())
+		{
+			GetContext().RHIBroadcastTemporalEffect(EffectName, Textures);
+			return;
+		}
+
+		// Allocate space to hold the list of textures inline in the command list itself.
+		const int32 NumTextures = Textures.Num();
+		FRHITexture** InlineTextureArray = (FRHITexture**)Alloc(sizeof(FRHITexture*) * NumTextures, alignof(FRHITexture*));
+		for (int32 Index = 0; Index < NumTextures; ++Index)
+		{
+			InlineTextureArray[Index] = Textures[Index];
+		}
+
+		ALLOC_COMMAND(FRHICommandBroadcastTemporalEffect)(EffectName, InlineTextureArray, NumTextures);
+	}
+#endif // WITH_MGPU
+
 	FORCEINLINE_DEBUGGABLE FLocalUniformBuffer BuildLocalUniformBuffer(const void* Contents, uint32 ContentsSize, const FRHIUniformBufferLayout& Layout)
 	{
 		//check(IsOutsideRenderPass());
@@ -3273,6 +3350,22 @@ public:
 	}
 
 #endif // RHI_RAYTRACING
+
+	FORCEINLINE_DEBUGGABLE void SetGPUMask(FRHIGPUMask InGPUMask)
+	{
+		if (GPUMask != InGPUMask)
+		{
+			GPUMask = InGPUMask;
+			if (HasCommands())
+			{
+				SetGPUMaskOnContext();
+			}
+			else
+			{
+				InitialGPUMask = GPUMask;
+			}
+		}
+	}
 };
 
 class RHI_API FRHIAsyncComputeCommandList : public FRHICommandListBase
@@ -3546,6 +3639,21 @@ public:
 		ALLOC_COMMAND(FRHICommandWriteGPUFence<ECmdList::ECompute>)(Fence);
 	}
 
+	FORCEINLINE_DEBUGGABLE void SetGPUMask(FRHIGPUMask InGPUMask)
+	{
+		if (GPUMask != InGPUMask)
+		{
+			GPUMask = InGPUMask;
+			if (HasCommands())
+			{
+				SetGPUMaskOnComputeContext();
+			}
+			else
+			{
+				InitialGPUMask = GPUMask;
+			}
+		}
+	}
 
 #if RHI_RAYTRACING
 	FORCEINLINE_DEBUGGABLE void BuildAccelerationStructure(FRHIRayTracingGeometry* Geometry)
@@ -3663,9 +3771,6 @@ public:
 	static bool IsStalled();
 
 	void SetCurrentStat(TStatId Stat);
-
-	/** Dispatch current work and change the GPUMask. */
-	void SetGPUMask(FRHIGPUMask InGPUMask);
 
 	static FGraphEventRef RenderThreadTaskFence();
 	static FGraphEventArray& GetRenderThreadTaskArray();
@@ -4528,21 +4633,37 @@ public:
 	}
 };
 
-struct FScopedGPUMask
+template <typename T>
+struct TScopedGPUMask
 {
-	FRHICommandListImmediate& RHICmdList;
+	T* RHICmdList;
 	FRHIGPUMask PrevGPUMask;
-	FORCEINLINE FScopedGPUMask(FRHICommandListImmediate& InRHICmdList, FRHIGPUMask InGPUMask)
-		: RHICmdList(InRHICmdList)
+	FORCEINLINE TScopedGPUMask(T& InRHICmdList, FRHIGPUMask InGPUMask)
+		: RHICmdList(&InRHICmdList)
 		, PrevGPUMask(InRHICmdList.GetGPUMask())
 	{
 		InRHICmdList.SetGPUMask(InGPUMask);
 	}
-	FORCEINLINE ~FScopedGPUMask() { RHICmdList.SetGPUMask(PrevGPUMask); }
+	FORCEINLINE TScopedGPUMask(TScopedGPUMask&& Other)
+		: RHICmdList(Other.RHICmdList)
+		, PrevGPUMask(Other.PrevGPUMask)
+	{
+		Other.RHICmdList = nullptr;
+	}
+	FORCEINLINE ~TScopedGPUMask()
+	{
+		if (RHICmdList != nullptr)
+		{
+			RHICmdList->SetGPUMask(PrevGPUMask);
+		}
+	}
 };
 
+FORCEINLINE TScopedGPUMask<FRHICommandList> MakeScopedGPUMask(FRHICommandList& RHICmdList, FRHIGPUMask GPUMask) { return TScopedGPUMask<FRHICommandList>(RHICmdList, GPUMask); }
+FORCEINLINE TScopedGPUMask<FRHIAsyncComputeCommandList> MakeScopedGPUMask(FRHIAsyncComputeCommandList& RHICmdList, FRHIGPUMask GPUMask) { return TScopedGPUMask<FRHIAsyncComputeCommandList>(RHICmdList, GPUMask); }
+
 #if WITH_MGPU
-	#define SCOPED_GPU_MASK(RHICmdList, GPUMask) FScopedGPUMask ScopedGPUMask(RHICmdList, GPUMask);
+	#define SCOPED_GPU_MASK(RHICmdList, GPUMask) auto PREPROCESSOR_JOIN(ScopedGPUMask, __LINE__){ MakeScopedGPUMask(RHICmdList, GPUMask) }
 #else
 	#define SCOPED_GPU_MASK(RHICmdList, GPUMask)
 #endif // WITH_MGPU
@@ -4558,8 +4679,6 @@ public:
 	//This also queues a GPU Submission command as the final command in the dispatch.
 	static void ImmediateDispatch(FRHIAsyncComputeCommandListImmediate& RHIComputeCmdList);
 
-	/** Dispatch current work and change the GPUMask. */
-	void SetGPUMask(FRHIGPUMask InGPUMask);
 private:
 };
 
@@ -4567,14 +4686,9 @@ private:
 
 class RHI_API FRHICommandList_RecursiveHazardous : public FRHICommandList
 {
-	FRHICommandList_RecursiveHazardous()
-		: FRHICommandList(FRHIGPUMask::All())
-	{
-		bAsyncPSOCompileAllowed = false;
-	}
 public:
-	FRHICommandList_RecursiveHazardous(IRHICommandContext *Context)
-		: FRHICommandList(FRHIGPUMask::All())
+	FRHICommandList_RecursiveHazardous(IRHICommandContext *Context, FRHIGPUMask InGPUMask = FRHIGPUMask::All())
+		: FRHICommandList(InGPUMask)
 	{
 		SetContext(Context);
 		bAsyncPSOCompileAllowed = false;

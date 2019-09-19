@@ -904,6 +904,11 @@ public:
 	 */
 	virtual bool Poll() const = 0;
 
+	/**
+	 * Poll on a subset of the GPUs that this fence supports.
+	 */
+	virtual bool Poll(FRHIGPUMask GPUMask) const { return Poll(); }
+
 	const FName& GetFName() const { return FenceName; }
 
 protected:

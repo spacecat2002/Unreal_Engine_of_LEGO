@@ -141,6 +141,23 @@ public:
 		check(false);
 	}
 
+	virtual void RHISetGPUMask(FRHIGPUMask GPUMask)
+	{
+		ensure(GPUMask == FRHIGPUMask::GPU0());
+	}
+
+#if WITH_MGPU
+	virtual void RHIWaitForTemporalEffect(const FName& InEffectName)
+	{
+		/* empty default implementation */
+	}
+
+	virtual void RHIBroadcastTemporalEffect(const FName& InEffectName, const TArrayView<FRHITexture*> InTextures)
+	{
+		/* empty default implementation */
+	}
+#endif // WITH_MGPU
+
 	virtual void RHIBuildAccelerationStructure(FRHIRayTracingGeometry* Geometry)
 	{
 		checkNoEntry();
