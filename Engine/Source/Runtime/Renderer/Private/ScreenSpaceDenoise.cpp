@@ -1785,11 +1785,13 @@ static void DenoiseSignalAtConstantPixelDensity(
 		PassParameters->PrevGBufferA = RegisterExternalTextureWithFallback(GraphBuilder, View.PrevViewInfo.GBufferA, GSystemTextures.BlackDummy);
 		PassParameters->PrevGBufferB = RegisterExternalTextureWithFallback(GraphBuilder, View.PrevViewInfo.GBufferB, GSystemTextures.BlackDummy);
 
+/*
 		if (CompressedMetadataLayout == ECompressedMetadataLayout::DepthAndViewNormal)
 		{
 			PassParameters->PrevCompressedMetadata[0] = RegisterExternalTextureWithFallback(
 				GraphBuilder, View.PrevViewInfo.CompressedDepthViewNormal, GSystemTextures.BlackDummy);
 		}
+*/
 
 		FScreenSpaceDenoiserHistory DummyPrevFrameHistory;
 
@@ -1913,8 +1915,12 @@ static void DenoiseSignalAtConstantPixelDensity(
 
 				if (CompressedMetadataLayout == ECompressedMetadataLayout::DepthAndViewNormal)
 				{
+/*
 					if (i == 0)
+					{
 						Dest = &View.ViewState->PrevFrameViewInfo.CompressedDepthViewNormal;
+					}
+*/
 				}
 
 				check((CommonParameters.CompressedMetadata[i] != nullptr) == (Dest != nullptr));
