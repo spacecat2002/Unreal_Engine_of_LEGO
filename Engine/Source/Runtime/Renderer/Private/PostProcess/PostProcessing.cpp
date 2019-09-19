@@ -914,7 +914,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			FScreenPassTexture SceneColor(Pass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor")), PrimaryViewRect);
 
 			// Unprocessed scene color stores the original input.
-			const FScreenPassTexture UnprocessedSceneColor = SceneColor;
+			const FScreenPassTexture OriginalSceneColor = SceneColor;
 
 			const FScreenPassTexture SceneDepth(Pass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input1, TEXT("SceneDepth")), PrimaryViewRect);
 
@@ -946,6 +946,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				SelectionOutline,
 				EditorPrimitive,
 				VisualizeShadingModels,
+				VisualizeGBufferHints,
 				MAX
 			};
 
@@ -959,7 +960,8 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				TEXT("VisualizeLightCulling"),
 				TEXT("SelectionOutline"),
 				TEXT("EditorPrimitive"),
-				TEXT("VisualizeShadingModels")
+				TEXT("VisualizeShadingModels"),
+				TEXT("VisualizeGBufferHints")
 			};
 
 			static_assert(static_cast<uint32>(EPass::MAX) == ARRAY_COUNT(PassNames), "EPass does not match PassNames.");
@@ -990,6 +992,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			PassSequence.SetEnabled(EPass::EditorPrimitive, false);
 #endif
 			PassSequence.SetEnabled(EPass::VisualizeShadingModels, View.Family->EngineShowFlags.VisualizeShadingModels);
+			PassSequence.SetEnabled(EPass::VisualizeGBufferHints, View.Family->EngineShowFlags.GBufferHints);
 
 			if (AllowFullPostProcessing(View, View.GetFeatureLevel()))
 			{
@@ -1382,7 +1385,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 				FVisualizeComplexityInputs PassInputs;
 				PassSequence.AcceptOverrideIfLastPass(EPass::VisualizeStationaryLightOverlap, PassInputs.OverrideOutput);
-				PassInputs.SceneColor = UnprocessedSceneColor;
+				PassInputs.SceneColor = OriginalSceneColor;
 				PassInputs.Colors = GEngine->StationaryLightOverlapColors;
 				PassInputs.ColorSamplingMethod = FVisualizeComplexityInputs::EColorSamplingMethod::Ramp;
 
@@ -1398,7 +1401,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 				FVisualizeComplexityInputs PassInputs;
 				PassSequence.AcceptOverrideIfLastPass(EPass::VisualizeLightCulling, PassInputs.OverrideOutput);
-				PassInputs.SceneColor = UnprocessedSceneColor;
+				PassInputs.SceneColor = OriginalSceneColor;
 				PassInputs.Colors = GEngine->LightComplexityColors;
 				PassInputs.ColorSamplingMethod = FVisualizeComplexityInputs::EColorSamplingMethod::Linear;
 				PassInputs.ComplexityScale = ComplexityScale;
@@ -1446,6 +1449,19 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				SceneColor = AddVisualizeShadingModelPass(GraphBuilder, ScreenPassView, PassInputs);
 			}
 
+			if (PassSequence.IsEnabled(EPass::VisualizeGBufferHints))
+			{
+				ensureMsgf(View.PrimaryScreenPercentageMethod != EPrimaryScreenPercentageMethod::TemporalUpscale, TEXT("TAAU should be disabled when visualizing shader models."));
+
+				FVisualizeGBufferHintsInputs PassInputs;
+				PassSequence.AcceptOverrideIfLastPass(EPass::VisualizeGBufferHints, PassInputs.OverrideOutput);
+				PassInputs.SceneColor = SceneColor;
+				PassInputs.OriginalSceneColor = OriginalSceneColor;
+				PassInputs.SceneTextures = &SceneTextures;
+
+				SceneColor = AddVisualizeGBufferHintsPass(GraphBuilder, ScreenPassView, PassInputs);
+			}
+
 			// Release held GBuffer reference taken during composition graph setup. Passes will take their own references during RDG setup.
 			SceneContext.AdjustGBufferRefCount(InContext.RHICmdList, -1);
 
@@ -1479,17 +1495,6 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 		// Whether Context.FinalOutput is already unscaled.
 		// If doing temporal upsampling, the final output is already unscaled in TAA pass.
 		bool bUnscaledFinalOutput = Context.View.PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::TemporalUpscale;
-
-		if (View.Family->EngineShowFlags.GBufferHints)
-		{
-			ensureMsgf(!bUnscaledFinalOutput, TEXT("GBufferHints is incompatible with unscaled output."));
-
-			FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessGBufferHints(RHICmdList));
-			Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-			// Ideally without lighting as we want the emissive, we should do that later.
-			Node->SetInput(ePId_Input1, FRenderingCompositeOutputRef(Context.SceneColor));
-			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
-		}
 
 #if WITH_EDITOR
 		//Inspect the Final color, GBuffer and HDR
