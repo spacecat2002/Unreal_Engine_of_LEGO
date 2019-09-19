@@ -433,7 +433,8 @@ FScreenPassTexture AddBasicEyeAdaptationSetupPass(
 		Viewport,
 		Viewport,
 		*PixelShader,
-		PassParameters);
+		PassParameters,
+		EScreenPassDrawFlags::AllowHMDHiddenAreaMask);
 
 	return FScreenPassTexture(OutputTexture, SceneColor.ViewRect);
 }

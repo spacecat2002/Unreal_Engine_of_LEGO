@@ -665,7 +665,6 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassVi
 			OutputDesc.Flags |= GFastVRamConfig.Tonemap;
 
 			const FTonemapperOutputDeviceParameters OutputDeviceParameters = GetTonemapperOutputDeviceParameters(*View.Family);
-
 			const ETonemapperOutputDevice OutputDevice = static_cast<ETonemapperOutputDevice>(OutputDeviceParameters.OutputDevice);
 
 			if (OutputDevice == ETonemapperOutputDevice::LinearEXR)
@@ -837,11 +836,15 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassVi
 		TShaderMapRef<FTonemapVS> VertexShader(View.ShaderMap, VertexPermutationVector);
 		TShaderMapRef<FTonemapPS> PixelShader(View.ShaderMap, DesktopPermutationVector);
 
-		FRHIBlendState* BlendState = Inputs.bWriteAlphaChannel ? FScreenPassDrawInfo::FDefaultBlendState::GetRHI() : TStaticBlendStateWriteMask<CW_RGB>::GetRHI();
-		FRHIDepthStencilState* DepthStencilState = FScreenPassDrawInfo::FDefaultDepthStencilState::GetRHI();
-		const FScreenPassDrawInfo::EFlags Flags = Inputs.bFlipYAxis ? FScreenPassDrawInfo::EFlags::FlipYAxis : FScreenPassDrawInfo::EFlags::None;
+		FRHIBlendState* BlendState = Inputs.bWriteAlphaChannel ? FScreenPassPipelineState::FDefaultBlendState::GetRHI() : TStaticBlendStateWriteMask<CW_RGB>::GetRHI();
+		FRHIDepthStencilState* DepthStencilState = FScreenPassPipelineState::FDefaultDepthStencilState::GetRHI();
 
-		const FScreenPassDrawInfo ScreenPassDraw(*VertexShader, *PixelShader, BlendState, DepthStencilState, Flags);
+		EScreenPassDrawFlags DrawFlags = EScreenPassDrawFlags::AllowHMDHiddenAreaMask;
+
+		if (Inputs.bFlipYAxis)
+		{
+			DrawFlags |= EScreenPassDrawFlags::FlipYAxis;
+		}
 
 		AddDrawScreenPass(
 			GraphBuilder,
@@ -849,7 +852,8 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassVi
 			ScreenPassView,
 			OutputViewport,
 			SceneColorViewport,
-			ScreenPassDraw,
+			FScreenPassPipelineState(*VertexShader, *PixelShader, BlendState, DepthStencilState),
+			DrawFlags,
 			PassParameters,
 			[VertexShader, PixelShader, PassParameters](FRHICommandList& RHICmdList)
 		{

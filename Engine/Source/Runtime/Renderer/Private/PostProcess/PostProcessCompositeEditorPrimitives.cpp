@@ -306,33 +306,28 @@ FScreenPassTexture AddEditorPrimitivePass(
 		PermutationVector.Set<FPopulateEditorDepthPS::FUseMSAADimension>(MSAASampleCount > 1);
 		TShaderMapRef<FPopulateEditorDepthPS> PopulateDepthPixelShader(View.ShaderMap, PermutationVector);
 
-		const auto PopulateDepthPixelShaderSetupFunction = [PassParameters, PopulateDepthPixelShader](FRHICommandList& RHICmdList)
-		{
-			SetShaderParameters(RHICmdList, *PopulateDepthPixelShader, PopulateDepthPixelShader->GetPixelShader(), *PassParameters);
-		};
-
 		const FEditorPrimitiveInputs::EBasePassType BasePassType = Inputs.BasePassType;
 
 		GraphBuilder.AddPass(
 			RDG_EVENT_NAME("EditorPrimitives"),
 			PassParameters,
 			ERDGPassFlags::Raster,
-			[ScreenPassView, EditorView, EditorPrimitivesViewport, SceneDepthViewport, bPopulateEditorDepth, PopulateDepthPixelShader, PopulateDepthPixelShaderSetupFunction, BasePassType, MSAASampleCount]
-			(FRHICommandListBase& RHICmdListBase)
+			[ScreenPassView, PassParameters, EditorView, EditorPrimitivesViewport, SceneDepthViewport, bPopulateEditorDepth, PopulateDepthPixelShader, BasePassType, MSAASampleCount] (FRHICommandListImmediate& RHICmdList)
 		{
-			check(RHICmdListBase.IsImmediate());
-			FRHICommandListImmediate& RHICmdList = static_cast<FRHICommandListImmediate&>(RHICmdListBase);
-
 			if (bPopulateEditorDepth)
 			{
-				// TODO(RDG): Move this into its own RDG pass once render pass merging is supported.
-				const FScreenPassDrawInfo ScreenPassDraw(
-					*ScreenPassView.ScreenPassVS,
-					*PopulateDepthPixelShader,
-					FScreenPassDrawInfo::FDefaultBlendState::GetRHI(),
-					TStaticDepthStencilState<true, CF_Always>::GetRHI());
-
-				DrawScreenPass(RHICmdList, ScreenPassView, EditorPrimitivesViewport, SceneDepthViewport, ScreenPassDraw, PopulateDepthPixelShaderSetupFunction);
+				TShaderMapRef<FScreenPassVS> PopulateDepthVertexShader(ScreenPassView.View.ShaderMap);
+				DrawScreenPass(
+					RHICmdList,
+					ScreenPassView,
+					EditorPrimitivesViewport,
+					SceneDepthViewport,
+					FScreenPassPipelineState(*PopulateDepthVertexShader, *PopulateDepthPixelShader, FScreenPassPipelineState::FDefaultBlendState::GetRHI(), TStaticDepthStencilState<true, CF_Always>::GetRHI()),
+					EScreenPassDrawFlags::None,
+					[&](FRHICommandList&)
+				{
+					SetShaderParameters(RHICmdList, *PopulateDepthPixelShader, PopulateDepthPixelShader->GetPixelShader(), *PassParameters);
+				});
 			}
 			else
 			{
@@ -387,43 +382,41 @@ FScreenPassTexture AddEditorPrimitivePass(
 		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, ScreenPassView.GetOverwriteLoadAction(), TEXT("EditorPrimitives"));
 	}
 
-	{
-		const FScreenPassTextureViewport OutputViewport(Output);
-		const FScreenPassTextureViewport ColorViewport(Inputs.SceneColor);
-		const FScreenPassTextureViewport DepthViewport(Inputs.SceneDepth);
+	const FScreenPassTextureViewport OutputViewport(Output);
+	const FScreenPassTextureViewport ColorViewport(Inputs.SceneColor);
+	const FScreenPassTextureViewport DepthViewport(Inputs.SceneDepth);
 
-		FRHISamplerState* PointClampSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+	FRHISamplerState* PointClampSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 
-		const bool bOpaqueEditorGizmo = CVarEditorOpaqueGizmo.GetValueOnRenderThread() != 0 || View.Family->EngineShowFlags.Wireframe;
+	const bool bOpaqueEditorGizmo = CVarEditorOpaqueGizmo.GetValueOnRenderThread() != 0 || View.Family->EngineShowFlags.Wireframe;
 
-		FCompositeEditorPrimitivesPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FCompositeEditorPrimitivesPS::FParameters>();
-		PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
-		PassParameters->View = View.ViewUniformBuffer;
-		PassParameters->Color = GetScreenPassTextureViewportParameters(ColorViewport);
-		PassParameters->Depth = GetScreenPassTextureViewportParameters(DepthViewport);
-		PassParameters->ColorToDepth = GetScreenPassTextureViewportTransform(PassParameters->Color, PassParameters->Depth);
-		PassParameters->ColorTexture = Inputs.SceneColor.Texture;
-		PassParameters->ColorSampler = PointClampSampler;
-		PassParameters->DepthTexture = Inputs.SceneDepth.Texture;
-		PassParameters->DepthSampler = PointClampSampler;
-		PassParameters->EditorPrimitivesDepth = EditorPrimitivesDepth;
-		PassParameters->EditorPrimitivesColor = EditorPrimitivesColor;
-		PassParameters->bOpaqueEditorGizmo = bOpaqueEditorGizmo;
-		PassParameters->bCompositeAnyNonNullDepth = CompositeLoadAction != ERenderTargetLoadAction::EClear;
+	FCompositeEditorPrimitivesPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FCompositeEditorPrimitivesPS::FParameters>();
+	PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
+	PassParameters->View = View.ViewUniformBuffer;
+	PassParameters->Color = GetScreenPassTextureViewportParameters(ColorViewport);
+	PassParameters->Depth = GetScreenPassTextureViewportParameters(DepthViewport);
+	PassParameters->ColorToDepth = GetScreenPassTextureViewportTransform(PassParameters->Color, PassParameters->Depth);
+	PassParameters->ColorTexture = Inputs.SceneColor.Texture;
+	PassParameters->ColorSampler = PointClampSampler;
+	PassParameters->DepthTexture = Inputs.SceneDepth.Texture;
+	PassParameters->DepthSampler = PointClampSampler;
+	PassParameters->EditorPrimitivesDepth = EditorPrimitivesDepth;
+	PassParameters->EditorPrimitivesColor = EditorPrimitivesColor;
+	PassParameters->bOpaqueEditorGizmo = bOpaqueEditorGizmo;
+	PassParameters->bCompositeAnyNonNullDepth = CompositeLoadAction != ERenderTargetLoadAction::EClear;
 
-		FCompositeEditorPrimitivesPS::FPermutationDomain PermutationVector;
-		PermutationVector.Set<FCompositeEditorPrimitivesPS::FSampleCountDimension>(MSAASampleCount);
+	FCompositeEditorPrimitivesPS::FPermutationDomain PermutationVector;
+	PermutationVector.Set<FCompositeEditorPrimitivesPS::FSampleCountDimension>(MSAASampleCount);
 
-		TShaderMapRef<FCompositeEditorPrimitivesPS> PixelShader(View.ShaderMap, PermutationVector);
-		AddDrawScreenPass(
-			GraphBuilder,
-			RDG_EVENT_NAME("Composite %dx%d msaa=%d", OutputViewport.Rect.Width(), OutputViewport.Rect.Height(), MSAASampleCount),
-			ScreenPassView,
-			OutputViewport,
-			ColorViewport,
-			*PixelShader,
-			PassParameters);
-	}
+	TShaderMapRef<FCompositeEditorPrimitivesPS> PixelShader(View.ShaderMap, PermutationVector);
+	AddDrawScreenPass(
+		GraphBuilder,
+		RDG_EVENT_NAME("Composite %dx%d msaa=%d", OutputViewport.Rect.Width(), OutputViewport.Rect.Height(), MSAASampleCount),
+		ScreenPassView,
+		OutputViewport,
+		ColorViewport,
+		*PixelShader,
+		PassParameters);
 
 	return MoveTemp(Output);
 }

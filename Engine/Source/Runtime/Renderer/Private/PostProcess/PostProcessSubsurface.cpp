@@ -1048,7 +1048,15 @@ void ComputeSubsurfaceForView(
 		 * See the related comment above in the prepare pass. The scene viewport is used as both the target and
 		 * texture viewport in order to ensure that the correct pixel is sampled for checkerboard rendering.
 		 */
-		AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("SubsurfaceRecombine"), ScreenPassView, SceneViewport, SceneViewport, *PixelShader, PassParameters);
+		AddDrawScreenPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("SubsurfaceRecombine"),
+			ScreenPassView,
+			SceneViewport,
+			SceneViewport,
+			*PixelShader,
+			PassParameters,
+			EScreenPassDrawFlags::AllowHMDHiddenAreaMask);
 	}
 
 	if (SubsurfaceMode != ESubsurfaceMode::Bypass && QualityHistoryState && !bForceRunningInSeparable)

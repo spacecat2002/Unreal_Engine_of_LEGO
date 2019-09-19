@@ -104,9 +104,6 @@ FScreenPassTexture AddFXAAPass(FRDGBuilder& GraphBuilder, const FScreenPassViewI
 	TShaderMapRef<FFXAAVS> VertexShader(View.ShaderMap);
 	TShaderMapRef<FFXAAPS> PixelShader(View.ShaderMap, PixelPermutationVector);
 
-	const FScreenPassDrawInfo ScreenPassDraw(*VertexShader, *PixelShader);
-
-	const FScreenPassTextureViewport InputViewport(Inputs.SceneColor);
 	const FScreenPassTextureViewport OutputViewport(Output);
 
 	AddDrawScreenPass(
@@ -114,8 +111,9 @@ FScreenPassTexture AddFXAAPass(FRDGBuilder& GraphBuilder, const FScreenPassViewI
 		RDG_EVENT_NAME("FXAA %dx%d (PS)", OutputViewport.Rect.Width(), OutputViewport.Rect.Height()),
 		ScreenPassView,
 		OutputViewport,
-		InputViewport,
-		ScreenPassDraw,
+		FScreenPassTextureViewport(Inputs.SceneColor),
+		FScreenPassPipelineState(*VertexShader, *PixelShader),
+		EScreenPassDrawFlags::AllowHMDHiddenAreaMask,
 		PassParameters,
 		[VertexShader, PixelShader, PassParameters](FRHICommandList& RHICmdList)
 	{

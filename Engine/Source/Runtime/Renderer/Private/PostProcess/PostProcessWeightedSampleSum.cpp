@@ -350,29 +350,26 @@ FScreenPassTexture AddGaussianBlurPass(
 	check(SampleOffsets.Num() == SampleWeights.Num());
 	check(SampleOffsets.Num() != 0);
 
-	const uint32 SampleCount = SampleOffsets.Num();
-
 	const FViewInfo& View = ScreenPassView.View;
 
 	const bool bIsComputePass = ScreenPassView.bUseComputePasses;
 
-	const bool bCombineAdditive = Additive.Texture != nullptr;
+	const bool bCombineAdditive = Additive.IsValid();
 
 	const bool bManualUVBorder = !OutputViewport.IsFullscreen();
+
+	const uint32 SampleCount = SampleOffsets.Num();
 
 	const uint32 StaticSampleCount = GetStaticSampleCount(SampleCount);
 
 	FRHISamplerState* SamplerState = TStaticSamplerState<SF_Bilinear, AM_Border, AM_Border, AM_Clamp>::GetRHI();
 
-	const FScreenPassTextureViewport FilterViewport(Filter);
 	const FScreenPassTextureInput FilterInput = GetScreenPassTextureInput(Filter, SamplerState);
 
-	FScreenPassTextureViewport AdditiveViewport;
 	FScreenPassTextureInput AdditiveInput;
 
 	if (bCombineAdditive)
 	{
-		AdditiveViewport = FScreenPassTextureViewport(Additive);
 		AdditiveInput = GetScreenPassTextureInput(Additive, SamplerState);
 	}
 
@@ -423,24 +420,20 @@ FScreenPassTexture AddGaussianBlurPass(
 			VertexPermutationVector.Set<FFilterVS::FStaticSampleCount>(StaticSampleCount);
 			TShaderMapRef<FFilterVS> VertexShader(View.ShaderMap, VertexPermutationVector);
 
-			const auto SetupFunction = [VertexShader, PixelShader, PassParameters]
-				(FRHICommandListImmediate& RHICmdList)
-			{
-				SetShaderParameters(RHICmdList, *VertexShader, VertexShader->GetVertexShader(), PassParameters->Filter);
-				SetShaderParameters(RHICmdList, *PixelShader, PixelShader->GetPixelShader(), *PassParameters);
-			};
-
-			const FScreenPassDrawInfo ScreenPassDraw(*VertexShader, *PixelShader);
-
 			AddDrawScreenPass(
 				GraphBuilder,
 				RDG_EVENT_NAME("GaussianBlur.%s %dx%d (PS, Static)", Name, OutputViewport.Rect.Width(), OutputViewport.Rect.Height()),
 				ScreenPassView,
 				OutputViewport,
-				FilterViewport,
-				ScreenPassDraw,
+				FScreenPassTextureViewport(Filter),
+				FScreenPassPipelineState(*VertexShader, *PixelShader),
+				EScreenPassDrawFlags::None,
 				PassParameters,
-				SetupFunction);
+				[VertexShader, PixelShader, PassParameters] (FRHICommandListImmediate& RHICmdList)
+			{
+				SetShaderParameters(RHICmdList, *VertexShader, VertexShader->GetVertexShader(), PassParameters->Filter);
+				SetShaderParameters(RHICmdList, *PixelShader, PixelShader->GetPixelShader(), *PassParameters);
+			});
 		}
 		else
 		{
@@ -449,7 +442,7 @@ FScreenPassTexture AddGaussianBlurPass(
 				RDG_EVENT_NAME("GaussianBlur.%s %dx%d (PS, Dynamic)", Name, OutputViewport.Rect.Width(), OutputViewport.Rect.Height()),
 				ScreenPassView,
 				OutputViewport,
-				FilterViewport,
+				FScreenPassTextureViewport(Filter),
 				*PixelShader,
 				PassParameters);
 		}

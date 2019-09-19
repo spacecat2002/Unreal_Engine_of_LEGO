@@ -187,8 +187,7 @@ FScreenPassTexture AddLensFlaresPass(
 			RDG_EVENT_NAME("LensFlareBlur %dx%d", FlareViewSize.X, FlareViewSize.Y),
 			PassParameters,
 			ERDGPassFlags::Raster,
-			[VertexShader, PixelShader, VertexParameters, PixelParameters, AdditiveBlendState, FlareViewport, TileCount]
-		(FRHICommandListImmediate& RHICmdList)
+			[VertexShader, PixelShader, VertexParameters, PixelParameters, AdditiveBlendState, FlareViewport, TileCount] (FRHICommandListImmediate& RHICmdList)
 		{
 			// Viewport is the same as the input.
 			RHICmdList.SetViewport(
@@ -280,20 +279,21 @@ FScreenPassTexture AddLensFlaresPass(
 
 		const FVector2D QuadOffset = OutputCenter - 0.5f * QuadSize;
 
+		TShaderMapRef<FScreenPassVS> VertexShader(ScreenPassView.View.ShaderMap);
 		TShaderMapRef<FLensFlareCompositePS> PixelShader(ScreenPassView.View.ShaderMap);
 
-		const FScreenPassDrawInfo ScreenPassDraw(*ScreenPassView.ScreenPassVS, *PixelShader, AdditiveBlendState);
+		const FScreenPassPipelineState PipelineState(*VertexShader, *PixelShader, AdditiveBlendState);
 
 		// This pass rasterizes the lens flare quad scaled and centered within the viewport.
 		GraphBuilder.AddPass(
 			RDG_EVENT_NAME("LensFlare%d", LensFlareIndex),
 			PassParameters,
 			ERDGPassFlags::Raster,
-			[PixelShader, PassParameters, OutputViewRect, FlareViewport, QuadSize, QuadOffset, ScreenPassDraw] (FRHICommandListImmediate& RHICmdList)
+			[PixelShader, PassParameters, OutputViewRect, FlareViewport, QuadSize, QuadOffset, PipelineState] (FRHICommandListImmediate& RHICmdList)
 		{
 			RHICmdList.SetViewport(OutputViewRect.Min.X, OutputViewRect.Min.Y, 0.0f, OutputViewRect.Max.X, OutputViewRect.Max.Y, 1.0f);
 
-			SetScreenPassPipelineState(RHICmdList, ScreenPassDraw);
+			SetScreenPassPipelineState(RHICmdList, PipelineState);
 
 			SetShaderParameters(RHICmdList, *PixelShader, PixelShader->GetPixelShader(), *PassParameters);
 
@@ -309,7 +309,7 @@ FScreenPassTexture AddLensFlaresPass(
 				FlareViewport.Rect.Height(),
 				OutputViewRect.Size(),
 				FlareViewport.Extent,
-				ScreenPassDraw.VertexShader,
+				PipelineState.VertexShader,
 				EDRF_Default);
 		});
 

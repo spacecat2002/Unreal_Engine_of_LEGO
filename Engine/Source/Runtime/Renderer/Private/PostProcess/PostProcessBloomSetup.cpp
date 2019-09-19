@@ -116,11 +116,11 @@ FScreenPassTexture AddBloomSetupPass(
 
 	const bool bIsComputePass = ScreenPassView.bUseComputePasses;
 
-	FRDGTextureDesc OutputTextureDesc = SceneColor.Texture->Desc;
-	OutputTextureDesc.Reset();
-	OutputTextureDesc.TargetableFlags |= bIsComputePass ? TexCreate_UAV : TexCreate_RenderTargetable;
+	FRDGTextureDesc OutputDesc = SceneColor.Texture->Desc;
+	OutputDesc.Reset();
+	OutputDesc.TargetableFlags |= bIsComputePass ? TexCreate_UAV : TexCreate_RenderTargetable;
 
-	FRDGTextureRef OutputTexture = GraphBuilder.CreateTexture(OutputTextureDesc, TEXT("BloomSetup"));
+	FRDGTextureRef OutputTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("BloomSetup"));
 
 	if (bIsComputePass)
 	{
@@ -146,24 +146,20 @@ FScreenPassTexture AddBloomSetupPass(
 		TShaderMapRef<FBloomSetupVS> VertexShader(ScreenPassView.View.ShaderMap);
 		TShaderMapRef<FBloomSetupPS> PixelShader(ScreenPassView.View.ShaderMap);
 
-		const auto SetupFunction = [VertexShader, PixelShader, PassParameters]
-			(FRHICommandListImmediate& RHICmdList)
-		{
-			SetShaderParameters(RHICmdList, *VertexShader, VertexShader->GetVertexShader(), PassParameters->BloomSetup);
-			SetShaderParameters(RHICmdList, *PixelShader, PixelShader->GetPixelShader(), *PassParameters);
-		};
-
-		const FScreenPassDrawInfo ScreenPassDraw(*VertexShader, *PixelShader);
-
 		AddDrawScreenPass(
 			GraphBuilder,
 			RDG_EVENT_NAME("BloomSetup %dx%d (PS)", Viewport.Rect.Width(), Viewport.Rect.Height()),
 			ScreenPassView,
 			Viewport,
 			Viewport,
-			ScreenPassDraw,
+			FScreenPassPipelineState(*VertexShader, *PixelShader),
+			EScreenPassDrawFlags::None,
 			PassParameters,
-			SetupFunction);
+			[VertexShader, PixelShader, PassParameters] (FRHICommandListImmediate& RHICmdList)
+		{
+			SetShaderParameters(RHICmdList, *VertexShader, VertexShader->GetVertexShader(), PassParameters->BloomSetup);
+			SetShaderParameters(RHICmdList, *PixelShader, PixelShader->GetPixelShader(), *PassParameters);
+		});
 	}
 
 	return FScreenPassTexture(OutputTexture, Viewport.Rect);

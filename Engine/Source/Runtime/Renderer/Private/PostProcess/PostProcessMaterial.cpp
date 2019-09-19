@@ -302,7 +302,7 @@ FScreenPassTexture AddPostProcessMaterialPass(
 	const FMaterialShaderMap* MaterialShaderMap = nullptr;
 	GetMaterialInfo(MaterialInterface, FeatureLevel, Inputs.OutputFormat, Material, MaterialRenderProxy, MaterialShaderMap);
 
-	FRHIDepthStencilState* DefaultDepthStencilState = FScreenPassDrawInfo::FDefaultDepthStencilState::GetRHI();
+	FRHIDepthStencilState* DefaultDepthStencilState = FScreenPassPipelineState::FDefaultDepthStencilState::GetRHI();
 	FRHIDepthStencilState* DepthStencilState = DefaultDepthStencilState;
 
 	FRDGTextureRef DepthStencilTexture = nullptr;
@@ -317,7 +317,7 @@ FScreenPassTexture AddPostProcessMaterialPass(
 		DepthStencilState = GetMaterialStencilState(Material);
 	}
 
-	FRHIBlendState* DefaultBlendState = FScreenPassDrawInfo::FDefaultBlendState::GetRHI();
+	FRHIBlendState* DefaultBlendState = FScreenPassPipelineState::FDefaultBlendState::GetRHI();
 	FRHIBlendState* BlendState = GetMaterialBlendState(Material);
 
 	const FViewInfo& View = ScreenPassView.View;
@@ -407,9 +407,7 @@ FScreenPassTexture AddPostProcessMaterialPass(
 
 	const bool bIsMobile = FeatureLevel <= ERHIFeatureLevel::ES3_1;
 
-	const bool bFlipYAxis = Inputs.bFlipYAxis && RHINeedsToSwitchVerticalAxis(GShaderPlatformForFeatureLevel[FeatureLevel]);
-
-	PostProcessMaterialParameters->bFlipYAxis = bFlipYAxis;
+	PostProcessMaterialParameters->bFlipYAxis = Inputs.bFlipYAxis;
 
 	FPostProcessMaterialShader::FPermutationDomain PermutationVector;
 	PermutationVector.Set<FPostProcessMaterialShader::FMobileDimension>(bIsMobile);
@@ -419,21 +417,12 @@ FScreenPassTexture AddPostProcessMaterialPass(
 
 	const uint32 MaterialStencilRef = Material->GetStencilRefValue();
 
-	const auto SetupFunction = [VertexShader, PixelShader, &ScreenPassView, MaterialRenderProxy, PostProcessMaterialParameters, MaterialStencilRef] (FRHICommandListImmediate& RHICmdList)
+	EScreenPassDrawFlags ScreenPassFlags = EScreenPassDrawFlags::AllowHMDHiddenAreaMask;
+
+	if (Inputs.bFlipYAxis)
 	{
-		VertexShader->SetParameters(RHICmdList, ScreenPassView.View, MaterialRenderProxy, *PostProcessMaterialParameters);
-		PixelShader->SetParameters(RHICmdList, ScreenPassView.View, MaterialRenderProxy, *PostProcessMaterialParameters);
-		RHICmdList.SetStencilRef(MaterialStencilRef);
-	};
-
-	const FScreenPassDrawInfo ScreenPassDraw(
-		VertexShader,
-		PixelShader,
-		BlendState,
-		DepthStencilState,
-		bFlipYAxis ? FScreenPassDrawInfo::EFlags::FlipYAxis : FScreenPassDrawInfo::EFlags::None);
-
-	ScreenPassDraw.Validate();
+		ScreenPassFlags |= EScreenPassDrawFlags::FlipYAxis;
+	}
 
 	const bool bNeedsGBuffer = Material->NeedsGBuffer();
 
@@ -446,15 +435,25 @@ FScreenPassTexture AddPostProcessMaterialPass(
 		RDG_EVENT_NAME("PostProcessMaterial"),
 		PostProcessMaterialParameters,
 		ERDGPassFlags::Raster,
-		[ScreenPassView, OutputViewport, SceneColorViewport, ScreenPassDraw, PostProcessMaterialParameters, DepthStencilTexture, SetupFunction, bFlipYAxis, bNeedsGBuffer] (FRHICommandListImmediate& RHICmdList)
+		[ScreenPassView, OutputViewport, SceneColorViewport, VertexShader, PixelShader, BlendState, DepthStencilState, ScreenPassFlags, MaterialRenderProxy, PostProcessMaterialParameters, MaterialStencilRef, bNeedsGBuffer] (FRHICommandListImmediate& RHICmdList)
 	{
-		FSceneRenderTargets& SceneRenderTargets = FSceneRenderTargets::Get(RHICmdList);
-
-		DrawScreenPass<decltype(SetupFunction)>(RHICmdList, ScreenPassView, OutputViewport, SceneColorViewport, ScreenPassDraw, SetupFunction);
+		DrawScreenPass(
+			RHICmdList,
+			ScreenPassView,
+			OutputViewport,
+			SceneColorViewport,
+			FScreenPassPipelineState(VertexShader, PixelShader, BlendState, DepthStencilState),
+			ScreenPassFlags,
+			[&](FRHICommandListImmediate&)
+		{
+			VertexShader->SetParameters(RHICmdList, ScreenPassView.View, MaterialRenderProxy, *PostProcessMaterialParameters);
+			PixelShader->SetParameters(RHICmdList, ScreenPassView.View, MaterialRenderProxy, *PostProcessMaterialParameters);
+			RHICmdList.SetStencilRef(MaterialStencilRef);
+		});
 
 		if (bNeedsGBuffer)
 		{
-			SceneRenderTargets.AdjustGBufferRefCount(RHICmdList, -1);
+			FSceneRenderTargets::Get(RHICmdList).AdjustGBufferRefCount(RHICmdList, -1);
 		}
 	});
 

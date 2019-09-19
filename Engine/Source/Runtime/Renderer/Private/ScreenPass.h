@@ -228,14 +228,8 @@ public:
 
 	const FViewInfo& View;
 
-	// The vertex shader used by draw screen pass. Cached here to avoid many lookups.
-	const TShaderMapRef<FScreenPassVS> ScreenPassVS;
-
-	// VR - Which stereo pass is being rendered.
-	const EStereoscopicPass StereoPass;
-
 	// VR - Whether a HMD hidden area mask is being used for VR.
-	const bool bHasHMDMask;
+	const bool bHMDHiddenAreaMaskActive;
 
 	// Whether screen passes should use compute.
 	const bool bUseComputePasses;
@@ -244,32 +238,22 @@ public:
 /** Draw information for the more advanced DrawScreenPass variant. Allows customizing the blend / depth stencil state,
  *  providing a custom vertex shader, and more fine-grained control of the underlying draw call.
  */
-struct FScreenPassDrawInfo
+struct FScreenPassPipelineState
 {
-	enum class EFlags : uint8
-	{
-		None,
-
-		// Flips the Y axis of the rendered quad. Used by mobile rendering.
-		FlipYAxis = 0x1,
-	};
-
 	using FDefaultBlendState = TStaticBlendState<>;
 	using FDefaultDepthStencilState = TStaticDepthStencilState<false, CF_Always>;
 
-	FScreenPassDrawInfo() = default;
+	FScreenPassPipelineState() = default;
 
-	FScreenPassDrawInfo(
+	FScreenPassPipelineState(
 		FShader* InVertexShader,
 		FShader* InPixelShader,
 		FRHIBlendState* InBlendState = FDefaultBlendState::GetRHI(),
-		FRHIDepthStencilState* InDepthStencilState = FDefaultDepthStencilState::GetRHI(),
-		EFlags InFlags = EFlags::None)
+		FRHIDepthStencilState* InDepthStencilState = FDefaultDepthStencilState::GetRHI())
 		: VertexShader(InVertexShader)
 		, PixelShader(InPixelShader)
 		, BlendState(InBlendState)
 		, DepthStencilState(InDepthStencilState)
-		, Flags(InFlags)
 	{}
 
 	void Validate() const
@@ -284,13 +268,22 @@ struct FScreenPassDrawInfo
 	FShader* PixelShader = nullptr;
 	FRHIBlendState* BlendState = nullptr;
 	FRHIDepthStencilState* DepthStencilState = nullptr;
-	EFlags Flags = EFlags::None;
 };
 
-ENUM_CLASS_FLAGS(FScreenPassDrawInfo::EFlags);
-
 // Helper function which sets the pipeline state object on the command list prior to invoking a screen pass.
-void SetScreenPassPipelineState(FRHICommandListImmediate& RHICmdList, const FScreenPassDrawInfo& ScreenPassDraw);
+void SetScreenPassPipelineState(FRHICommandListImmediate& RHICmdList, const FScreenPassPipelineState& ScreenPassDraw);
+
+enum class EScreenPassDrawFlags : uint8
+{
+	None,
+
+	// Flips the Y axis of the rendered quad. Used by mobile rendering.
+	FlipYAxis = 0x1,
+
+	// Allows the screen pass to use a HMD hidden area mask if one is available. Used for VR.
+	AllowHMDHiddenAreaMask = 0x2
+};
+ENUM_CLASS_FLAGS(EScreenPassDrawFlags);
 
 /** Draws a full-viewport triangle with the provided pixel shader type. The destination full-viewport triangle
  *  and interpolated source UV coordinates are derived from the viewport and texture rectangles, respectively.
@@ -306,29 +299,22 @@ void DrawScreenPass(
 	const FScreenPassTextureViewport& OutputViewport,
 	const FScreenPassTextureViewport& InputViewport,
 	TPixelShaderType* PixelShader,
-	const typename TPixelShaderType::FParameters& PixelShaderParameters)
+	const typename TPixelShaderType::FParameters& PixelShaderParameters,
+	EScreenPassDrawFlags Flags = EScreenPassDrawFlags::None)
 {
-	const FIntRect InputRect = InputViewport.Rect;
-	const FIntPoint InputSize = InputViewport.Extent;
-	const FIntRect OutputRect = OutputViewport.Rect;
-	const FIntPoint OutputSize = OutputRect.Size();
+	TShaderMapRef<FScreenPassVS> ScreenPassVS(ScreenPassView.View.ShaderMap);
 
-	RHICmdList.SetViewport(OutputRect.Min.X, OutputRect.Min.Y, 0.0f, OutputRect.Max.X, OutputRect.Max.Y, 1.0f);
-
-	SetScreenPassPipelineState(RHICmdList, FScreenPassDrawInfo(*ScreenPassView.ScreenPassVS, PixelShader));
-
-	SetShaderParameters(RHICmdList, PixelShader, PixelShader->GetPixelShader(), PixelShaderParameters);
-
-	DrawPostProcessPass(
+	DrawScreenPass(
 		RHICmdList,
-		0, 0, OutputSize.X, OutputSize.Y,
-		InputRect.Min.X, InputRect.Min.Y, InputRect.Width(), InputRect.Height(),
-		OutputSize,
-		InputSize,
-		*ScreenPassView.ScreenPassVS,
-		ScreenPassView.StereoPass,
-		ScreenPassView.bHasHMDMask,
-		EDRF_UseTriangleOptimization);
+		ScreenPassView,
+		OutputViewport,
+		InputViewport,
+		FScreenPassPipelineState(*ScreenPassVS, PixelShader),
+		Flags,
+		[&](FRHICommandListImmediate&)
+	{
+		SetShaderParameters(RHICmdList, PixelShader, PixelShader->GetPixelShader(), PixelShaderParameters);
+	});
 }
 
 /** More advanced variant of screen pass drawing. Supports overriding blend / depth stencil
@@ -342,10 +328,11 @@ void DrawScreenPass(
 	const FScreenPassViewInfo& ScreenPassView,
 	const FScreenPassTextureViewport& OutputViewport,
 	const FScreenPassTextureViewport& InputViewport,
-	const FScreenPassDrawInfo& ScreenPassDraw,
+	const FScreenPassPipelineState& PipelineState,
+	EScreenPassDrawFlags Flags,
 	TSetupFunction SetupFunction)
 {
-	ScreenPassDraw.Validate();
+	PipelineState.Validate();
 
 	const FIntRect InputRect = InputViewport.Rect;
 	const FIntPoint InputSize = InputViewport.Extent;
@@ -354,12 +341,17 @@ void DrawScreenPass(
 
 	RHICmdList.SetViewport(OutputRect.Min.X, OutputRect.Min.Y, 0.0f, OutputRect.Max.X, OutputRect.Max.Y, 1.0f);
 
-	EDrawRectangleFlags DrawRectangleFlags = EDRF_UseTriangleOptimization;
+	SetScreenPassPipelineState(RHICmdList, PipelineState);
+
+	SetupFunction(RHICmdList);
 
 	FIntPoint LocalOutputPos(FIntPoint::ZeroValue);
 	FIntPoint LocalOutputSize(OutputSize);
+	EDrawRectangleFlags DrawRectangleFlags = EDRF_UseTriangleOptimization;
 
-	if ((ScreenPassDraw.Flags & FScreenPassDrawInfo::EFlags::FlipYAxis) == FScreenPassDrawInfo::EFlags::FlipYAxis)
+	const bool bFlipYAxis = (Flags & EScreenPassDrawFlags::FlipYAxis) == EScreenPassDrawFlags::FlipYAxis;
+
+	if (bFlipYAxis)
 	{
 		// Draw the quad flipped. Requires that the cull mode be disabled.
 		LocalOutputPos.Y = OutputSize.Y;
@@ -369,9 +361,9 @@ void DrawScreenPass(
 		DrawRectangleFlags = EDRF_Default;
 	}
 
-	SetScreenPassPipelineState(RHICmdList, ScreenPassDraw);
-
-	SetupFunction(RHICmdList);
+	const bool bUseHMDHiddenAreaMask = (Flags & EScreenPassDrawFlags::AllowHMDHiddenAreaMask) == EScreenPassDrawFlags::AllowHMDHiddenAreaMask
+		? ScreenPassView.bHMDHiddenAreaMaskActive
+		: false;
 
 	DrawPostProcessPass(
 		RHICmdList,
@@ -379,9 +371,9 @@ void DrawScreenPass(
 		InputRect.Min.X, InputRect.Min.Y, InputRect.Width(), InputRect.Height(),
 		OutputSize,
 		InputSize,
-		ScreenPassDraw.VertexShader,
-		ScreenPassView.StereoPass,
-		ScreenPassView.bHasHMDMask,
+		PipelineState.VertexShader,
+		ScreenPassView.View.StereoPass,
+		bUseHMDHiddenAreaMask,
 		DrawRectangleFlags);
 }
 
@@ -396,7 +388,8 @@ void AddDrawScreenPass(
 	const FScreenPassTextureViewport& OutputViewport,
 	const FScreenPassTextureViewport& InputViewport,
 	TPixelShaderType* PixelShader,
-	typename TPixelShaderType::FParameters* PixelShaderParameters)
+	typename TPixelShaderType::FParameters* PixelShaderParameters,
+	EScreenPassDrawFlags Flags = EScreenPassDrawFlags::None)
 {
 	check(PixelShader);
 	check(PixelShaderParameters);
@@ -407,16 +400,9 @@ void AddDrawScreenPass(
 		Forward<FRDGEventName>(PassName),
 		PixelShaderParameters,
 		ERDGPassFlags::Raster,
-		[ScreenPassView, OutputViewport, InputViewport, PixelShader, PixelShaderParameters]
-	(FRHICommandListImmediate& RHICmdList)
+		[ScreenPassView, OutputViewport, InputViewport, PixelShader, PixelShaderParameters, Flags] (FRHICommandListImmediate& RHICmdList)
 	{
-		DrawScreenPass(
-			RHICmdList,
-			ScreenPassView,
-			OutputViewport,
-			InputViewport,
-			PixelShader,
-			*PixelShaderParameters);
+		DrawScreenPass(RHICmdList, ScreenPassView, OutputViewport, InputViewport, PixelShader, *PixelShaderParameters, Flags);
 	});
 }
 
@@ -430,27 +416,21 @@ void AddDrawScreenPass(
 	const FScreenPassViewInfo& ScreenPassView,
 	const FScreenPassTextureViewport& OutputViewport,
 	const FScreenPassTextureViewport& InputViewport,
-	const FScreenPassDrawInfo& ScreenPassDraw,
+	const FScreenPassPipelineState& PipelineState,
+	EScreenPassDrawFlags Flags,
 	TPassParameterStruct* PassParameterStruct,
 	TSetupFunction SetupFunction)
 {
-	ScreenPassDraw.Validate();
+	PipelineState.Validate();
 	check(PassParameterStruct);
 
 	GraphBuilder.AddPass(
 		Forward<FRDGEventName>(PassName),
 		PassParameterStruct,
 		ERDGPassFlags::Raster,
-		[ScreenPassView, OutputViewport, InputViewport, ScreenPassDraw, SetupFunction]
-		(FRHICommandListImmediate& RHICmdList)
+		[ScreenPassView, OutputViewport, InputViewport, PipelineState, SetupFunction, Flags] (FRHICommandListImmediate& RHICmdList)
 	{
-		DrawScreenPass(
-			RHICmdList,
-			ScreenPassView,
-			OutputViewport,
-			InputViewport,
-			ScreenPassDraw,
-			SetupFunction);
+		DrawScreenPass(RHICmdList, ScreenPassView, OutputViewport, InputViewport, PipelineState, Flags, SetupFunction);
 	});
 }
 
@@ -476,14 +456,7 @@ inline void AddDrawTexturePass(
 	FRDGTextureRef OutputTexture,
 	FIntRect ViewportRect)
 {
-	AddDrawTexturePass(
-		GraphBuilder,
-		ScreenPassView,
-		InputTexture,
-		OutputTexture,
-		ViewportRect.Min,
-		ViewportRect.Min,
-		ViewportRect.Size());
+	AddDrawTexturePass(GraphBuilder, ScreenPassView, InputTexture, OutputTexture, ViewportRect.Min, ViewportRect.Min, ViewportRect.Size());
 }
 
 /** Helper function render a canvas to an output texture. Must be called within a render pass with Output as the render target. */

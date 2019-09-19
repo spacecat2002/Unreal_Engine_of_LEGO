@@ -153,5 +153,5 @@ inline FScreenPassTextureInput GetScreenPassTextureInput(FScreenPassTexture Text
 
 inline ERenderTargetLoadAction FScreenPassViewInfo::GetOverwriteLoadAction() const
 {
-	return bHasHMDMask ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ENoAction;
+	return bHMDHiddenAreaMaskActive ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ENoAction;
 }

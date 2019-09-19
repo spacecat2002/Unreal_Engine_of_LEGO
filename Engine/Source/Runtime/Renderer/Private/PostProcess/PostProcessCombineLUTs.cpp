@@ -459,7 +459,7 @@ FRDGTextureRef AddCombineLUTPass(FRDGBuilder& GraphBuilder, const FScreenPassVie
 			RDG_EVENT_NAME("CombineLUTS (PS)"),
 			PassParameters,
 			ERDGPassFlags::Raster,
-			[&ScreenPassView, PixelShader, PassParameters, bUseVolumeTextureLUT] (FRHICommandList& RHICmdList)
+			[ScreenPassView, PixelShader, PassParameters, bUseVolumeTextureLUT] (FRHICommandList& RHICmdList)
 		{
 			FGraphicsPipelineStateInitializer GraphicsPSOInit;
 			RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -489,9 +489,11 @@ FRDGTextureRef AddCombineLUTPass(FRDGBuilder& GraphBuilder, const FScreenPassVie
 			}
 			else
 			{
+				TShaderMapRef<FScreenPassVS> VertexShader(ScreenPassView.View.ShaderMap);
+
 				GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 				GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*ScreenPassView.ScreenPassVS);
+				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
 				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 				SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
@@ -505,7 +507,7 @@ FRDGTextureRef AddCombineLUTPass(FRDGBuilder& GraphBuilder, const FScreenPassVie
 					GLUTSize * GLUTSize, GLUTSize,				// SizeUV
 					FIntPoint(GLUTSize * GLUTSize, GLUTSize),	// TargetSize
 					FIntPoint(GLUTSize * GLUTSize, GLUTSize),	// TextureSize
-					*ScreenPassView.ScreenPassVS,
+					*VertexShader,
 					EDRF_UseTriangleOptimization);
 			}
 
