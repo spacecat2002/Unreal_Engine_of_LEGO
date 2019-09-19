@@ -1,12 +1,9 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-/*=============================================================================
-	PostProcessSubsurface.h: Screenspace subsurface scattering implementation
-=============================================================================*/
-
 #pragma once
 
 #include "ScreenPass.h"
+#include "OverridePassSequence.h"
 #include "RenderingCompositionGraph.h"
 
 // Returns whether subsurface scattering is globally enabled.
@@ -17,6 +14,17 @@ bool IsSubsurfaceRequiredForView(const FViewInfo& View);
 	
 // Returns whether checkerboard rendering is enabled for the provided format.
 bool IsSubsurfaceCheckerboardFormat(EPixelFormat SceneColorFormat);
+
+struct FVisualizeSubsurfaceInputs
+{
+	// [Optional] Render to the specified output. If invalid, a new texture is created and returned.
+	FScreenPassRenderTarget OverrideOutput;
+
+	// [Required] The scene color to composite with the shading model visualization.
+	FScreenPassTexture SceneColor;
+};
+
+FScreenPassTexture AddVisualizeSubsurfacePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeSubsurfaceInputs& Inputs);
 
 //////////////////////////////////////////////////////////////////////////
 //! Shim methods to hook into the legacy pipeline until the full RDG conversion is complete.

@@ -45,9 +45,7 @@ struct FVisualizeComplexityInputs
 	bool bDrawLegend = false;
 };
 
-using FVisualizeComplexityOutputs = FScreenPassTexture;
-
-FVisualizeComplexityOutputs AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeComplexityInputs& Inputs);
+FScreenPassTexture AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeComplexityInputs& Inputs);
 
 FRenderingCompositeOutputRef AddVisualizeComplexityPass(
 	FRenderingCompositionGraph& Graph,

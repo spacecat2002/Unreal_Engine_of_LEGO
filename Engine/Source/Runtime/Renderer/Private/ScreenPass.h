@@ -52,20 +52,10 @@ struct FScreenPassTexture
 		, ViewRect(InViewRect)
 	{}
 
-	bool IsValid() const
-	{
-		return Texture != nullptr && !ViewRect.IsEmpty();
-	}
+	bool IsValid() const;
 
-	bool operator==(FScreenPassTexture Other) const
-	{
-		return Texture == Other.Texture && ViewRect == Other.ViewRect;
-	}
-
-	bool operator!=(FScreenPassTexture Other) const
-	{
-		return !(*this == Other);
-	}
+	bool operator==(FScreenPassTexture Other) const;
+	bool operator!=(FScreenPassTexture Other) const;
 
 	FRDGTextureRef Texture = nullptr;
 	FIntRect ViewRect;
@@ -91,20 +81,10 @@ struct FScreenPassRenderTarget : public FScreenPassTexture
 		, LoadAction(InLoadAction)
 	{}
 
-	bool operator==(FScreenPassRenderTarget Other) const
-	{
-		return FScreenPassTexture::operator==(Other) && LoadAction == Other.LoadAction;
-	}
+	bool operator==(FScreenPassRenderTarget Other) const;
+	bool operator!=(FScreenPassRenderTarget Other) const;
 
-	bool operator!=(FScreenPassRenderTarget Other) const
-	{
-		return !(*this == Other);
-	}
-
-	FRenderTargetBinding GetRenderTargetBinding() const
-	{
-		return FRenderTargetBinding(Texture, LoadAction);
-	}
+	FRenderTargetBinding GetRenderTargetBinding() const;
 
 	ERenderTargetLoadAction LoadAction = ERenderTargetLoadAction::ENoAction;
 };
@@ -500,4 +480,47 @@ inline void AddDrawTexturePass(
 		ViewportRect.Min,
 		ViewportRect.Min,
 		ViewportRect.Size());
+}
+
+/** Helper function render a canvas to an output texture. Must be called within a render pass with Output as the render target. */
+template <typename TFunction>
+void DrawCanvasPass(
+	FRHICommandListImmediate& RHICmdList,
+	const FViewInfo& View,
+	FScreenPassTexture Output,
+	TFunction Function)
+{
+	check(Output.IsValid());
+
+	const FSceneViewFamily& ViewFamily = *View.Family;
+	FRenderTargetTemp TempRenderTarget(static_cast<FRHITexture2D*>(Output.Texture->GetRHI()), Output.ViewRect.Size());
+	FCanvas Canvas(&TempRenderTarget, nullptr, ViewFamily.CurrentRealTime, ViewFamily.CurrentWorldTime, ViewFamily.DeltaWorldTime, View.GetFeatureLevel());
+	Canvas.SetRenderTargetRect(Output.ViewRect);
+
+	Function(Canvas);
+
+	const bool bFlush = false;
+	const bool bInsideRenderPass = true;
+	Canvas.Flush_RenderThread(RHICmdList, bFlush, bInsideRenderPass);
+}
+
+template <typename TFunction>
+void AddDrawCanvasPass(
+	FRDGBuilder& GraphBuilder,
+	FRDGEventName&& PassName,
+	const FViewInfo& View,
+	FScreenPassRenderTarget Output,
+	TFunction Function)
+{
+	FRenderTargetParameters* PassParameters = GraphBuilder.AllocParameters<FRenderTargetParameters>();
+	PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
+
+	GraphBuilder.AddPass(
+		MoveTemp(PassName),
+		PassParameters,
+		ERDGPassFlags::Raster,
+		[Output, &View, Function](FRHICommandListImmediate& RHICmdList)
+	{
+		DrawCanvasPass(RHICmdList, View, Output, Function);
+	});
 }

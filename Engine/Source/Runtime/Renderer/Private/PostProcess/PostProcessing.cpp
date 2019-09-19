@@ -945,6 +945,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				VisualizeLightCulling,
 				SelectionOutline,
 				EditorPrimitive,
+				VisualizeShadingModels,
 				MAX
 			};
 
@@ -957,7 +958,8 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				TEXT("VisualizeStationaryLightOverlap"),
 				TEXT("VisualizeLightCulling"),
 				TEXT("SelectionOutline"),
-				TEXT("EditorPrimitive")
+				TEXT("EditorPrimitive"),
+				TEXT("VisualizeShadingModels")
 			};
 
 			static_assert(static_cast<uint32>(EPass::MAX) == ARRAY_COUNT(PassNames), "EPass does not match PassNames.");
@@ -987,6 +989,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			PassSequence.SetEnabled(EPass::SelectionOutline, false);
 			PassSequence.SetEnabled(EPass::EditorPrimitive, false);
 #endif
+			PassSequence.SetEnabled(EPass::VisualizeShadingModels, View.Family->EngineShowFlags.VisualizeShadingModels);
 
 			if (AllowFullPostProcessing(View, View.GetFeatureLevel()))
 			{
@@ -1429,8 +1432,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 			if (View.Family->EngineShowFlags.VisualizeLPV)
 			{
-				// NOTE: This pass has no inputs. Therefore, it doesn't need to be in the override pass sequence.
-				AddVisualizeLPVPass(GraphBuilder, ScreenPassView.View, SceneColor.Texture);
+				AddVisualizeLPVPass(GraphBuilder, ScreenPassView.View, SceneColor);
 			}
 
 #if WITH_EDITOR
@@ -1455,6 +1457,18 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				SceneColor = AddEditorPrimitivePass(GraphBuilder, ScreenPassView, PassInputs);
 			}
 #endif
+
+			if (PassSequence.IsEnabled(EPass::VisualizeShadingModels))
+			{
+				ensureMsgf(View.PrimaryScreenPercentageMethod != EPrimaryScreenPercentageMethod::TemporalUpscale, TEXT("TAAU should be disabled when visualizing shader models."));
+
+				FVisualizeShadingModelInputs PassInputs;
+				PassSequence.AcceptOverrideIfLastPass(EPass::VisualizeShadingModels, PassInputs.OverrideOutput);
+				PassInputs.SceneColor = SceneColor;
+				PassInputs.SceneTextures = &SceneTextures;
+
+				SceneColor = AddVisualizeShadingModelPass(GraphBuilder, ScreenPassView, PassInputs);
+			}
 
 			// Release held GBuffer reference taken during composition graph setup. Passes will take their own references during RDG setup.
 			SceneContext.AdjustGBufferRefCount(InContext.RHICmdList, -1);
@@ -1489,15 +1503,6 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 		// Whether Context.FinalOutput is already unscaled.
 		// If doing temporal upsampling, the final output is already unscaled in TAA pass.
 		bool bUnscaledFinalOutput = Context.View.PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::TemporalUpscale;
-
-		if(View.Family->EngineShowFlags.VisualizeShadingModels)
-		{
-			ensureMsgf(!bUnscaledFinalOutput, TEXT("VisualizeShadingModels is incompatible with unscaled output."));
-
-			FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessVisualizeShadingModels(RHICmdList));
-			Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
-		}
 
 		if (View.Family->EngineShowFlags.GBufferHints)
 		{

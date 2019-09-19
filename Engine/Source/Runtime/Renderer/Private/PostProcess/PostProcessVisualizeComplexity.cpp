@@ -65,7 +65,7 @@ float GetMaxShaderComplexityCount(ERHIFeatureLevel::Type FeatureLevel)
 	}
 }
 
-FVisualizeComplexityOutputs AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeComplexityInputs& Inputs)
+FScreenPassTexture AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeComplexityInputs& Inputs)
 {
 	check(Inputs.SceneColor.IsValid());
 
@@ -85,13 +85,11 @@ FVisualizeComplexityOutputs AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder
 
 	const FScreenPassTextureViewport InputViewport(Inputs.SceneColor);
 
-	FRHISamplerState* BilinearClampSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
-
 	FVisualizeComplexityApplyPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FVisualizeComplexityApplyPS::FParameters>();
 	PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
 	PassParameters->Input = GetScreenPassTextureViewportParameters(InputViewport);
 	PassParameters->InputTexture = Inputs.SceneColor.Texture;
-	PassParameters->InputSampler = BilinearClampSampler;
+	PassParameters->InputSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 
 	{
 		const int32 ClampedColorCount = FMath::Min<int32>(Inputs.Colors.Num(), MaxNumShaderComplexityColors);
@@ -109,6 +107,8 @@ FVisualizeComplexityOutputs AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder
 			PassParameters->ShaderComplexityColorCount = 1;
 		}
 	}
+
+	const uint32 ShaderComplexityColorCount = PassParameters->ShaderComplexityColorCount;
 
 	PassParameters->MiniFontTexture = GEngine->MiniFontTexture ? GEngine->MiniFontTexture->Resource->TextureRHI : GSystemTextures.WhiteDummy->GetRenderTargetItem().TargetableTexture;
 
@@ -133,49 +133,45 @@ FVisualizeComplexityOutputs AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder
 
 	TShaderMapRef<FVisualizeComplexityApplyPS> PixelShader(View.ShaderMap);
 
-	GraphBuilder.AddPass(
-		RDG_EVENT_NAME("SubsurfaceVisualize"),
-		PassParameters,
-		ERDGPassFlags::Raster,
-		[ScreenPassView, InputViewport, PixelShader, PassParameters, Output](FRHICommandListImmediate& RHICmdList)
+	RDG_EVENT_SCOPE(GraphBuilder, "VisualizeComplexity");
+
+	AddDrawScreenPass(
+		GraphBuilder,
+		RDG_EVENT_NAME("Visualizer"),
+		ScreenPassView,
+		FScreenPassTextureViewport(Output),
+		InputViewport,
+		*PixelShader,
+		PassParameters);
+
+	Output.LoadAction = ERenderTargetLoadAction::ELoad;
+
+	AddDrawCanvasPass(GraphBuilder, RDG_EVENT_NAME("Overlay"), View, Output,
+		[Output, &View, ShaderComplexityColorCount](FCanvas& Canvas)
 	{
-		DrawScreenPass(RHICmdList, ScreenPassView, FScreenPassTextureViewport(Output), InputViewport, *PixelShader, *PassParameters);
-
-		// Draw debug text
+		if (View.Family->GetDebugViewShaderMode() == DVSM_QuadComplexity)
 		{
-			const FViewInfo& LocalView = ScreenPassView.View;
-			const FSceneViewFamily& ViewFamily = *LocalView.Family;
-			FRenderTargetTemp TempRenderTarget(static_cast<FRHITexture2D*>(Output.Texture->GetRHI()), Output.Texture->Desc.Extent);
-			FCanvas Canvas(&TempRenderTarget, nullptr, ViewFamily.CurrentRealTime, ViewFamily.CurrentWorldTime, ViewFamily.DeltaWorldTime, LocalView.GetFeatureLevel());
-
-			if (ViewFamily.GetDebugViewShaderMode() == DVSM_QuadComplexity)
+			int32 StartX = Output.ViewRect.Min.X + 62;
+			int32 EndX = Output.ViewRect.Max.X - 66;
+			int32 NumOffset = (EndX - StartX) / (ShaderComplexityColorCount - 1);
+			for (int32 PosX = StartX, Number = 0; PosX <= EndX; PosX += NumOffset, ++Number)
 			{
-				int32 StartX = Output.ViewRect.Min.X + 62;
-				int32 EndX = Output.ViewRect.Max.X - 66;
-				int32 NumOffset = (EndX - StartX) / (PassParameters->ShaderComplexityColorCount - 1);
-				for (int32 PosX = StartX, Number = 0; PosX <= EndX; PosX += NumOffset, ++Number)
-				{
-					FString Line;
-					Line = FString::Printf(TEXT("%d"), Number);
-					Canvas.DrawShadowedString(PosX, Output.ViewRect.Max.Y - 87, *Line, GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
-				}
-			}
-			else
-			{
-				Canvas.DrawShadowedString(Output.ViewRect.Min.X + 63, Output.ViewRect.Max.Y - 51, TEXT("Good"), GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
-				Canvas.DrawShadowedString(Output.ViewRect.Min.X + 63 + (int32)(Output.ViewRect.Width() * 107.0f / 397.0f), Output.ViewRect.Max.Y - 51, TEXT("Bad"), GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
-				Canvas.DrawShadowedString(Output.ViewRect.Max.X - 162, Output.ViewRect.Max.Y - 51, TEXT("Extremely bad"), GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
-
-				Canvas.DrawShadowedString(Output.ViewRect.Min.X + 62, Output.ViewRect.Max.Y - 87, TEXT("0"), GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
-
 				FString Line;
-				Line = FString::Printf(TEXT("MaxShaderComplexityCount=%d"), (int32)GetMaxShaderComplexityCount(LocalView.GetFeatureLevel()));
-				Canvas.DrawShadowedString(Output.ViewRect.Max.X - 260, Output.ViewRect.Max.Y - 88, *Line, GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
+				Line = FString::Printf(TEXT("%d"), Number);
+				Canvas.DrawShadowedString(PosX, Output.ViewRect.Max.Y - 87, *Line, GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
 			}
+		}
+		else
+		{
+			Canvas.DrawShadowedString(Output.ViewRect.Min.X + 63, Output.ViewRect.Max.Y - 51, TEXT("Good"), GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
+			Canvas.DrawShadowedString(Output.ViewRect.Min.X + 63 + (int32)(Output.ViewRect.Width() * 107.0f / 397.0f), Output.ViewRect.Max.Y - 51, TEXT("Bad"), GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
+			Canvas.DrawShadowedString(Output.ViewRect.Max.X - 162, Output.ViewRect.Max.Y - 51, TEXT("Extremely bad"), GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
 
-			const bool bFlush = false;
-			const bool bInsideRenderPass = true;
-			Canvas.Flush_RenderThread(RHICmdList, bFlush, bInsideRenderPass);
+			Canvas.DrawShadowedString(Output.ViewRect.Min.X + 62, Output.ViewRect.Max.Y - 87, TEXT("0"), GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
+
+			FString Line;
+			Line = FString::Printf(TEXT("MaxShaderComplexityCount=%d"), (int32)GetMaxShaderComplexityCount(View.GetFeatureLevel()));
+			Canvas.DrawShadowedString(Output.ViewRect.Max.X - 260, Output.ViewRect.Max.Y - 88, *Line, GetStatsFont(), FLinearColor(0.5f, 0.5f, 0.5f));
 		}
 	});
 
@@ -209,11 +205,12 @@ FRenderingCompositeOutputRef AddVisualizeComplexityPass(
 		{
 			PassInputs.OverrideOutput.Texture = OverrideOutputTexture;
 			PassInputs.OverrideOutput.ViewRect = InContext.GetSceneColorDestRect(InPass);
+			PassInputs.OverrideOutput.LoadAction = InContext.View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
 		}
 
-		FVisualizeComplexityOutputs PassOutputs = AddVisualizeComplexityPass(GraphBuilder, ScreenPassView, PassInputs);
+		FScreenPassTexture PassOutput = AddVisualizeComplexityPass(GraphBuilder, ScreenPassView, PassInputs);
 
-		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, PassOutputs.Texture);
+		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, PassOutput.Texture);
 
 		GraphBuilder.Execute();
 	}));

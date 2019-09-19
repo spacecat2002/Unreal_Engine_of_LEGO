@@ -12,7 +12,7 @@
 
 #pragma once
 
-#include "RenderGraph.h"
+#include "ScreenPass.h"
 #include "PostProcess/RenderingCompositionGraph.h"
 
 // ePId_Input0: SceneColor
@@ -31,6 +31,4 @@ private:
 	void DoDirectionalOcclusionPass(FRenderingCompositePassContext& Context) const;
 };
 
-void AddVisualizeLPVPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, FRDGTextureRef OutputTexture);
-
-FRenderingCompositeOutputRef AddVisualizeLPVPass(FRenderingCompositionGraph& Graph, FRenderingCompositeOutputRef Input);
+void AddVisualizeLPVPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, FScreenPassTexture Output);

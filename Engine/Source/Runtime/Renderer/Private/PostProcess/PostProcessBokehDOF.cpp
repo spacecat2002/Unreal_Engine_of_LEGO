@@ -47,7 +47,6 @@ FScreenPassTexture AddVisualizeDOFPass(FRDGBuilder& GraphBuilder, const FScreenP
 	{
 		FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
 		OutputDesc.Reset();
-		OutputDesc.Format = PF_R8G8B8A8;
 
 		Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("VisualizeDOF"));
 		Output.ViewRect = Inputs.SceneColor.ViewRect;
@@ -72,65 +71,60 @@ FScreenPassTexture AddVisualizeDOFPass(FRDGBuilder& GraphBuilder, const FScreenP
 
 	TShaderMapRef<FVisualizeDOFPS> PixelShader(ScreenPassView.View.ShaderMap);
 
-	GraphBuilder.AddPass(
-		RDG_EVENT_NAME("SubsurfaceVisualize"),
-		PassParameters,
-		ERDGPassFlags::Raster,
-		[ScreenPassView, InputViewport, PixelShader, PassParameters, Output](FRHICommandListImmediate& RHICmdList)
+	RDG_EVENT_SCOPE(GraphBuilder, "VisualizeDOF");
+
+	AddDrawScreenPass(
+		GraphBuilder,
+		RDG_EVENT_NAME("Visualizer"),
+		ScreenPassView,
+		FScreenPassTextureViewport(Output),
+		InputViewport,
+		*PixelShader,
+		PassParameters);
+
+	Output.LoadAction = ERenderTargetLoadAction::ELoad;
+
+	AddDrawCanvasPass(GraphBuilder, RDG_EVENT_NAME("Overlay"), View, Output, [&View](FCanvas& Canvas)
 	{
-		DrawScreenPass(RHICmdList, ScreenPassView, FScreenPassTextureViewport(Output), InputViewport, *PixelShader, *PassParameters);
+		float X = 30;
+		float Y = 18;
+		const float YStep = 14;
+		const float ColumnWidth = 250;
 
-		// Draw debug text
-		{
-			const FViewInfo& LocalView = ScreenPassView.View;
-			const FSceneViewFamily& ViewFamily = *LocalView.Family;
-			FRenderTargetTemp TempRenderTarget(static_cast<FRHITexture2D*>(Output.Texture->GetRHI()), Output.Texture->Desc.Extent);
-			FCanvas Canvas(&TempRenderTarget, nullptr, ViewFamily.CurrentRealTime, ViewFamily.CurrentWorldTime, ViewFamily.DeltaWorldTime, LocalView.GetFeatureLevel());
+		FString Line;
 
-			float X = 30;
-			float Y = 18;
-			const float YStep = 14;
-			const float ColumnWidth = 250;
+		Line = FString::Printf(TEXT("Visualize Depth of Field"));
+		Canvas.DrawShadowedString(20, Y += YStep, *Line, GetStatsFont(), FLinearColor(1, 1, 0));
+		Y += YStep;
 
-			FString Line;
+		Line = FString::Printf(TEXT("Cinematic DOF (blue is far, green is near, black is in focus, cross hair shows Depth and CoC radius in pixel)"));
+		Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), FLinearColor(1, 1, 1));
+		Y += YStep;
+		Line = FString::Printf(TEXT("FocalDistance: %.2f"), View.FinalPostProcessSettings.DepthOfFieldFocalDistance);
+		Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), FLinearColor(1, 1, 1));
+		Line = FString::Printf(TEXT("Aperture F-stop: %.2f"), View.FinalPostProcessSettings.DepthOfFieldFstop);
+		Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), FLinearColor(1, 1, 1));
+		Line = FString::Printf(TEXT("Aperture: f/%.2f"), View.FinalPostProcessSettings.DepthOfFieldFstop);
+		Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), FLinearColor(1, 1, 1));
+		Y += YStep;
+		Line = FString::Printf(TEXT("DepthBlur (not related to Depth of Field, due to light traveling long distances in atmosphere)"));
+		Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), FLinearColor(1, 1, 1));
+		Line = FString::Printf(TEXT("  km for 50%: %.2f"), View.FinalPostProcessSettings.DepthOfFieldDepthBlurAmount);
+		Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), FLinearColor(1, 1, 1));
+		Line = FString::Printf(TEXT("  Radius (pixels in 1920x): %.2f"), View.FinalPostProcessSettings.DepthOfFieldDepthBlurRadius);
+		Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), FLinearColor(1, 1, 1));
+		Y += YStep;
 
-			Line = FString::Printf(TEXT("Visualize Depth of Field"));
-			Canvas.DrawShadowedString(20, Y += YStep, *Line, GetStatsFont(), FLinearColor(1, 1, 0));
-			Y += YStep;
+		FVector2D Fov = View.ViewMatrices.ComputeHalfFieldOfViewPerAxis();
 
-			Line = FString::Printf(TEXT("Cinematic DOF (blue is far, green is near, black is in focus, cross hair shows Depth and CoC radius in pixel)"));
-			Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), FLinearColor(1, 1, 1));
-			Y += YStep;
-			Line = FString::Printf(TEXT("FocalDistance: %.2f"), LocalView.FinalPostProcessSettings.DepthOfFieldFocalDistance);
-			Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), FLinearColor(1, 1, 1));
-			Line = FString::Printf(TEXT("Aperture F-stop: %.2f"), LocalView.FinalPostProcessSettings.DepthOfFieldFstop);
-			Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), FLinearColor(1, 1, 1));
-			Line = FString::Printf(TEXT("Aperture: f/%.2f"), LocalView.FinalPostProcessSettings.DepthOfFieldFstop);
-			Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), FLinearColor(1, 1, 1));
-			Y += YStep;
-			Line = FString::Printf(TEXT("DepthBlur (not related to Depth of Field, due to light traveling long distances in atmosphere)"));
-			Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), FLinearColor(1, 1, 1));
-			Line = FString::Printf(TEXT("  km for 50%: %.2f"), LocalView.FinalPostProcessSettings.DepthOfFieldDepthBlurAmount);
-			Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), FLinearColor(1, 1, 1));
-			Line = FString::Printf(TEXT("  Radius (pixels in 1920x): %.2f"), LocalView.FinalPostProcessSettings.DepthOfFieldDepthBlurRadius);
-			Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), FLinearColor(1, 1, 1));
-			Y += YStep;
+		float FocalLength = DiaphragmDOF::ComputeFocalLengthFromFov(View);
 
-			FVector2D Fov = LocalView.ViewMatrices.ComputeHalfFieldOfViewPerAxis();
-
-			float FocalLength = DiaphragmDOF::ComputeFocalLengthFromFov(LocalView);
-
-			Line = FString::Printf(TEXT("Field Of View in deg. (computed): %.1f x %.1f"), FMath::RadiansToDegrees(Fov.X) * 2.0f, FMath::RadiansToDegrees(Fov.Y) * 2.0f);
-			Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), FLinearColor(0.5, 0.5, 1));
-			Line = FString::Printf(TEXT("Focal Length (computed): %.1f"), FocalLength);
-			Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), FLinearColor(0.5, 0.5, 10));
-			Line = FString::Printf(TEXT("Sensor: APS-C 24.576 mm sensor, crop-factor 1.61x"));
-			Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), FLinearColor(0.5, 0.5, 1));
-
-			const bool bFlush = false;
-			const bool bInsideRenderPass = true;
-			Canvas.Flush_RenderThread(RHICmdList, bFlush, bInsideRenderPass);
-		}
+		Line = FString::Printf(TEXT("Field Of View in deg. (computed): %.1f x %.1f"), FMath::RadiansToDegrees(Fov.X) * 2.0f, FMath::RadiansToDegrees(Fov.Y) * 2.0f);
+		Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), FLinearColor(0.5, 0.5, 1));
+		Line = FString::Printf(TEXT("Focal Length (computed): %.1f"), FocalLength);
+		Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), FLinearColor(0.5, 0.5, 10));
+		Line = FString::Printf(TEXT("Sensor: APS-C 24.576 mm sensor, crop-factor 1.61x"));
+		Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), FLinearColor(0.5, 0.5, 1));
 	});
 
 	return MoveTemp(Output);

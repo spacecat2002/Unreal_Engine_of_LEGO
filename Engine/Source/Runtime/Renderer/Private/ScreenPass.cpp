@@ -59,6 +59,36 @@ FScreenPassTextureViewport FScreenPassTextureViewport::CreateDownscaled(const FS
 	return Viewport;
 }
 
+bool FScreenPassTexture::IsValid() const
+{
+	return Texture != nullptr && !ViewRect.IsEmpty();
+}
+
+bool FScreenPassTexture::operator==(FScreenPassTexture Other) const
+{
+	return Texture == Other.Texture && ViewRect == Other.ViewRect;
+}
+
+bool FScreenPassTexture::operator!=(FScreenPassTexture Other) const
+{
+	return !(*this == Other);
+}
+
+bool FScreenPassRenderTarget::operator==(FScreenPassRenderTarget Other) const
+{
+	return FScreenPassTexture::operator==(Other) && LoadAction == Other.LoadAction;
+}
+
+bool FScreenPassRenderTarget::operator!=(FScreenPassRenderTarget Other) const
+{
+	return !(*this == Other);
+}
+
+FRenderTargetBinding FScreenPassRenderTarget::GetRenderTargetBinding() const
+{
+	return FRenderTargetBinding(Texture, LoadAction);
+}
+
 bool FScreenPassTextureViewport::operator==(const FScreenPassTextureViewport& Other) const
 {
 	return Extent == Other.Extent && Rect == Other.Rect;
