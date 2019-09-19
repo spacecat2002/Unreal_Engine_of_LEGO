@@ -265,7 +265,6 @@ void UMovieSceneParameterSection::AddTransformParameterKey(FName InParameterName
 
 		ReconstructChannelProxy();
 	}
-	//todo lot's here 
 	FVector Translation = InValue.GetTranslation();
 	FRotator Rotator = InValue.GetRotation().Rotator();
 	FVector Scale = InValue.GetScale3D();

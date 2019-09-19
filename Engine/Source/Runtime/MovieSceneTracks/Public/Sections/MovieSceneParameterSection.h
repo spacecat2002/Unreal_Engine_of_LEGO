@@ -191,7 +191,7 @@ struct MOVIESCENETRACKS_API FTransformParameterNameAndCurves
 {
 	GENERATED_USTRUCT_BODY()
 
-		FTransformParameterNameAndCurves()
+	FTransformParameterNameAndCurves()
 	{}
 
 	/** Creates a new FVectorParameterNameAndCurve for a specific color parameter. */
