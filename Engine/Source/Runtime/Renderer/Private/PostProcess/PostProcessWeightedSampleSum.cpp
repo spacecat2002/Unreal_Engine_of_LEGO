@@ -315,6 +315,7 @@ public:
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_STRUCT_INCLUDE(FFilterParameters, Filter)
+		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Output)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D, RWOutputTexture)
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -375,20 +376,21 @@ FScreenPassTexture AddGaussianBlurPass(
 		AdditiveInput = GetScreenPassTextureInput(Additive, SamplerState);
 	}
 
-	FRDGTextureDesc OutputTextureDesc = Filter.Texture->Desc;
-	OutputTextureDesc.Reset();
-	OutputTextureDesc.Extent = OutputViewport.Extent;
-	OutputTextureDesc.TargetableFlags |= bIsComputePass ? TexCreate_UAV : TexCreate_None;
-	OutputTextureDesc.Flags &= TexCreate_FastVRAM;
-	OutputTextureDesc.ClearValue = FClearValueBinding(FLinearColor::Transparent);
-
-	FRDGTextureRef OutputTexture = GraphBuilder.CreateTexture(OutputTextureDesc, Name);
+	const FScreenPassRenderTarget Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Filter, ERenderTargetLoadAction::ENoAction, Name,
+		[&](FRDGTextureDesc& OutputDesc)
+	{
+		OutputDesc.Extent = OutputViewport.Extent;
+		OutputDesc.TargetableFlags |= bIsComputePass ? TexCreate_UAV : TexCreate_None;
+		OutputDesc.Flags &= TexCreate_FastVRAM;
+		OutputDesc.ClearValue = FClearValueBinding(FLinearColor::Transparent);
+	});
 
 	if (bIsComputePass)
 	{
 		FFilterCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FFilterCS::FParameters>();
 		GetFilterParameters(PassParameters->Filter, FilterInput, AdditiveInput, SampleOffsets, SampleWeights);
-		PassParameters->RWOutputTexture = GraphBuilder.CreateUAV(OutputTexture);
+		PassParameters->Output = GetScreenPassTextureViewportParameters(FScreenPassTextureViewport(Output));
+		PassParameters->RWOutputTexture = GraphBuilder.CreateUAV(Output.Texture);
 
 		FFilterCS::FPermutationDomain PermutationVector;
 		PermutationVector.Set<FFilterCS::FCombineAdditive>(bCombineAdditive);
@@ -407,7 +409,7 @@ FScreenPassTexture AddGaussianBlurPass(
 	{
 		FFilterPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FFilterPS::FParameters>();
 		GetFilterParameters(PassParameters->Filter, FilterInput, AdditiveInput, SampleOffsets, SampleWeights);
-		PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, ScreenPassView.GetOverwriteLoadAction());
+		PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
 
 		FFilterPS::FPermutationDomain PixelPermutationVector;
 		PixelPermutationVector.Set<FFilterPS::FCombineAdditive>(bCombineAdditive);
@@ -453,7 +455,7 @@ FScreenPassTexture AddGaussianBlurPass(
 		}
 	}
 
-	return FScreenPassTexture(OutputTexture, OutputViewport.Rect);
+	return FScreenPassTexture(Output);
 }
 
 FScreenPassTexture AddGaussianBlurPass(
