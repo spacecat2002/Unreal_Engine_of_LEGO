@@ -762,6 +762,8 @@ void FRDGBuilder::PrepareResourcesForExecute(const FRDGPass* Pass, struct FRHIRe
 			if (FRDGTextureRef Texture = Parameter.GetAsTexture())
 			{
 				AllocateRHITextureIfNeeded(Texture);
+
+				BarrierBatcher.QueueTransitionTexture(Texture, FRDGResourceState::EAccess::Write);
 			}
 		}
 		break;
