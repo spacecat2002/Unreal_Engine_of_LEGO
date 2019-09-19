@@ -46,14 +46,23 @@ static FAutoConsoleVariableRef CVarDownsampledOcclusionQueries(
 	ECVF_RenderThreadSafe
 	);
 
-static TAutoConsoleVariable<int32> CVarSceneTargetsResizingMethod(
+static TAutoConsoleVariable<int32> CVarSceneTargetsResizeMethod(
 	TEXT("r.SceneRenderTargetResizeMethod"),
 	0,
 	TEXT("Control the scene render target resize method:\n")
-	TEXT("(This value is only used in game mode and on windowing platforms.)\n")
+	TEXT("(This value is only used in game mode and on windowing platforms unless 'r.SceneRenderTargetsResizingMethodForceOverride' is enabled.)\n")
 	TEXT("0: Resize to match requested render size (Default) (Least memory use, can cause stalls when size changes e.g. ScreenPercentage)\n")
 	TEXT("1: Fixed to screen resolution.\n")
 	TEXT("2: Expands to encompass the largest requested render dimension. (Most memory use, least prone to allocation stalls.)"),	
+	ECVF_RenderThreadSafe
+	);
+
+static TAutoConsoleVariable<int32> CVarSceneTargetsResizeMethodForceOverride(
+	TEXT("r.SceneRenderTargetResizeMethodForceOverride"),
+	0,
+	TEXT("Forces 'r.SceneRenderTargetResizeMethod' to be respected on all configurations.\n")
+	TEXT("0: Disabled.\n")
+	TEXT("1: Enabled.\n"),
 	ECVF_RenderThreadSafe
 	);
 
@@ -379,20 +388,30 @@ FIntPoint FSceneRenderTargets::ComputeDesiredSize(const FSceneViewFamily& ViewFa
 		bIsVRScene |= View->StereoPass != EStereoscopicPass::eSSP_FULL;
 	}
 
-	if(!FPlatformProperties::SupportsWindowedMode() || (bIsVRScene && !bIsSceneCapture))
 	{
-		// Force ScreenRes on non windowed platforms.
-		SceneTargetsSizingMethod = RequestedSize;
-	}
-	else if (GIsEditor)
-	{
-		// Always grow scene render targets in the editor.
-		SceneTargetsSizingMethod = Grow;
-	}	
-	else
-	{
-		// Otherwise use the setting specified by the console variable.
-		SceneTargetsSizingMethod = (ESizingMethods) FMath::Clamp(CVarSceneTargetsResizingMethod.GetValueOnRenderThread(), 0, (int32)VisibleSizingMethodsCount);
+		bool bUseResizeMethodCVar = true;
+
+		if (CVarSceneTargetsResizeMethodForceOverride.GetValueOnRenderThread() != 1)
+		{
+			if (!FPlatformProperties::SupportsWindowedMode() || (bIsVRScene && !bIsSceneCapture))
+			{
+				// Force ScreenRes on non windowed platforms.
+				SceneTargetsSizingMethod = RequestedSize;
+				bUseResizeMethodCVar = false;
+			}
+			else if (GIsEditor)
+			{
+				// Always grow scene render targets in the editor.
+				SceneTargetsSizingMethod = Grow;
+				bUseResizeMethodCVar = false;
+			}
+		}
+
+		if (bUseResizeMethodCVar)
+		{
+			// Otherwise use the setting specified by the console variable.
+			SceneTargetsSizingMethod = (ESizingMethods)FMath::Clamp(CVarSceneTargetsResizeMethod.GetValueOnRenderThread(), 0, (int32)VisibleSizingMethodsCount);
+		}
 	}
 
 	FIntPoint DesiredBufferSize = FIntPoint::ZeroValue;
