@@ -364,11 +364,7 @@ public:
 
 	// Lighting flags
 	
-	/**
-	 * Controls whether the primitive component should cast a shadow or not.
-	 *
-	 * This flag is ignored (no shadows will be generated) if all materials on this component have an Unlit shading model.
-	 */
+	/** Controls whether the primitive component should cast a shadow or not. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Lighting)
 	uint8 CastShadow:1;
 
@@ -446,6 +442,12 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category=Lighting)
 	uint8 bLightAttachmentsAsGroup:1;
+
+	/** 
+	 * If set, then it overrides any bLightAttachmentsAsGroup set in a parent.
+	 */
+	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category=Lighting)
+	uint8 bExcludeFromLightAttachmentGroup :1;
 
 	/**
 	* Mobile only:
@@ -542,7 +544,7 @@ public:
 
 private:
 	/** Custom data that can be read by a material through a material parameter expression. Set data using SetCustomPrimitiveData* functions */
-	UPROPERTY()
+	UPROPERTY(EditAnywhere, AdvancedDisplay, Category=Rendering)
 	FCustomPrimitiveData CustomPrimitiveData;
 
 public:
@@ -571,23 +573,23 @@ public:
 	TArray<URuntimeVirtualTexture*> RuntimeVirtualTextures;
 
 	/** Bias to the LOD selected for rendering to runtime virtual textures. */
-	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category = VirtualTexture, meta = (DisplayName = "Virtual Texture LOD Bias", UIMin = "0", UIMax = "7"))
-	int32 VirtualTextureLodBias = 0;
+	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = VirtualTexture, meta = (DisplayName = "Virtual Texture LOD Bias", UIMin = "0", UIMax = "7"))
+	int8 VirtualTextureLodBias = 0;
 
 	/**
 	 * Number of lower mips in the runtime virtual texture to skip for rendering this primitive.
 	 * Larger values reduce the effective draw distance in the runtime virtual texture.
 	 * This culling method doesn't take into account primitive size or virtual texture size.
 	 */
-	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category = VirtualTexture, meta = (DisplayName = "Virtual Texture Skip Mips", UIMin = "0", UIMax = "15"))
-	int32 VirtualTextureCullMips = 0;
+	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = VirtualTexture, meta = (DisplayName = "Virtual Texture Skip Mips", UIMin = "0", UIMax = "15"))
+	int8 VirtualTextureCullMips = 0;
 
 	/**
 	 * Set the minimum pixel coverage before culling from the runtime virtual texture.
 	 * Larger values reduce the effective draw distance in the runtime virtual texture.
 	 */
-	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category = VirtualTexture, meta = (UIMin = "0", UIMax = "7"))
-	int32 VirtualTextureMinCoverage = 0;
+	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = VirtualTexture, meta = (UIMin = "0", UIMax = "7"))
+	int8 VirtualTextureMinCoverage = 0;
 
 	/** Render to the main pass based on the virtual texture settings. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = VirtualTexture, meta = (DisplayName = "Virtual Texture Pass Type"))
@@ -762,15 +764,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Rendering|Material")
 	void SetCustomPrimitiveDataFloat(int32 DataIndex, float Value);
 
-	/** Set custom primitive data, two floats at once, from index DataIndex to index DataIndex + 2. */
+	/** Set custom primitive data, two floats at once, from index DataIndex to index DataIndex + 1. */
 	UFUNCTION(BlueprintCallable, Category="Rendering|Material")
 	void SetCustomPrimitiveDataVector2(int32 DataIndex, FVector2D Value);
 
-	/** Set custom primitive data, three floats at once, from index DataIndex to index DataIndex + 3. */
+	/** Set custom primitive data, three floats at once, from index DataIndex to index DataIndex + 2. */
 	UFUNCTION(BlueprintCallable, Category="Rendering|Material")
 	void SetCustomPrimitiveDataVector3(int32 DataIndex, FVector Value);
 
-	/** Set custom primitive data, four floats at once, from index DataIndex to index DataIndex + 4. */
+	/** Set custom primitive data, four floats at once, from index DataIndex to index DataIndex + 3. */
 	UFUNCTION(BlueprintCallable, Category="Rendering|Material")
 	void SetCustomPrimitiveDataVector4(int32 DataIndex, FVector4 Value);
 
@@ -1436,6 +1438,10 @@ public:
 	/** Changes the value of LightAttachmentsAsGroup. */
 	UFUNCTION(BlueprintCallable, Category="Rendering")
 	void SetLightAttachmentsAsGroup(UPARAM(DisplayName="LightAttachmentsAsGroup") bool bInLightAttachmentsAsGroup);
+
+	/** Changes the value of ExcludeFromLightAttachmentGroup. */
+	UFUNCTION(BlueprintCallable, Category="Rendering")
+	void SetExcludeFromLightAttachmentGroup(UPARAM(DisplayName = "ExcludeFromLightAttachmentGroup") bool bInExcludeFromLightAttachmentGroup);
 
 	/** Changes the value of bSingleSampleShadowFromStationaryLights. */
 	UFUNCTION(BlueprintCallable, Category="Rendering")
@@ -2166,7 +2172,7 @@ public:
 	
 protected:
 	/** Called when the BodyInstance ResponseToChannels, CollisionEnabled or bNotifyRigidBodyCollision changes, in case subclasses want to use that information. */
-	virtual void OnComponentCollisionSettingsChanged();
+	virtual void OnComponentCollisionSettingsChanged(bool bDeferUpdateOverlaps = false);
 
 	/** Ends all current component overlaps. Generally used when destroying this component or when it can no longer generate overlaps. */
 	void ClearComponentOverlaps(bool bDoNotifies, bool bSkipNotifySelf);

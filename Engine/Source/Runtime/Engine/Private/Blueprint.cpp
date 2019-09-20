@@ -462,6 +462,7 @@ void UBlueprint::Serialize(FArchive& Ar)
 
 		if (Ar.IsLoading())
 		{
+#if WITH_EDITORONLY_DATA
 			if (bNativize_DEPRECATED)
 			{
 				// Migrate to the new transient flag.
@@ -472,6 +473,7 @@ void UBlueprint::Serialize(FArchive& Ar)
 				bSettingsChanged |= PackagingSettings->AddBlueprintAssetToNativizationList(this);
 			}
 			else
+#endif
 			{
 				// Cache whether or not this Blueprint asset was selected for exclusive nativization in the Project Settings.
 				for (int AssetIndex = 0; AssetIndex < PackagingSettings->NativizeBlueprintAssets.Num(); ++AssetIndex)
@@ -971,7 +973,7 @@ void UBlueprint::GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const
 			FAssetRegistryTag::TT_Alphabetical ) );
 
 	// Only add the FiB tags in the editor, this now gets run for standalone uncooked games
-	if ( ParentClass && GIsEditor)
+	if ( ParentClass && GIsEditor && !GetOutermost()->HasAnyPackageFlags(PKG_ForDiffing))
 	{
 		FString Value;
 		const bool bRebuildSearchData = false;
@@ -1880,11 +1882,13 @@ void UBlueprint::PostLoadSubobjects(FObjectInstancingGraph* OuterInstanceGraph)
 	ConformNativeComponents(this);
 }
 
+#if WITH_EDITOR
 bool UBlueprint::Modify(bool bAlwaysMarkDirty)
 {
 	bCachedDependenciesUpToDate = false;
 	return Super::Modify(bAlwaysMarkDirty);
 }
+#endif
 
 void UBlueprint::GatherDependencies(TSet<TWeakObjectPtr<UBlueprint>>& InDependencies) const
 {

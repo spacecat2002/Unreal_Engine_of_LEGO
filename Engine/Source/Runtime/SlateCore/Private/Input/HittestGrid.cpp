@@ -259,7 +259,7 @@ TArray<FWidgetAndPointer> FHittestGrid::GetBubblePath(FVector2D DesktopSpaceCoor
 				{
 					if (BestHitWidgetData.CustomPath.IsValid())
 					{
-						const TArray<FWidgetAndPointer> BubblePathExtension = BestHitWidgetData.CustomPath.Pin()->GetBubblePathAndVirtualCursors(FirstHitWidget->GetPaintSpaceGeometry(), DesktopSpaceCoordinate, bIgnoreEnabledStatus);
+						const TArray<FWidgetAndPointer> BubblePathExtension = BestHitWidgetData.CustomPath.Pin()->GetBubblePathAndVirtualCursors(FirstHitWidget->GetTickSpaceGeometry(), DesktopSpaceCoordinate, bIgnoreEnabledStatus);
 						Path.Append(BubblePathExtension);
 					}
 				}
@@ -283,16 +283,13 @@ bool FHittestGrid::SetHittestArea(const FVector2D& HittestPositionInDesktop, con
 		NumCells = FIntPoint(FMath::CeilToInt(GridSize.X / CellSize.X), FMath::CeilToInt(GridSize.Y / CellSize.Y));
 		
 		const int32 NewTotalCells = NumCells.X * NumCells.Y;
-		if (NewTotalCells != Cells.Num())
-		{
-			Cells.Reset(NewTotalCells);
-			Cells.SetNum(NewTotalCells);
+		Cells.Reset(NewTotalCells);
+		Cells.SetNum(NewTotalCells);
 
-			WidgetMap.Reset();
-			WidgetArray.Reset();
+		WidgetMap.Reset();
+		WidgetArray.Reset();
 
-			bWasCleared = true;
-		}
+		bWasCleared = true;
 	}
 
 	GridOrigin = HittestPositionInDesktop;
@@ -463,6 +460,11 @@ TSharedPtr<SWidget> FHittestGrid::FindFocusableWidget(FSlateRect WidgetRect, con
 		{
 			if (NavigationReply.GetBoundaryRule() == EUINavigationRule::Wrap)
 			{
+				if (bWrapped)
+				{
+					// If we've already wrapped, unfortunately it must be that the starting widget wasn't within the boundary
+					break;
+				}
 				CurrentSourceSide = DestSideFunc(SweptRect);
 				FVector2D SampleSpot = WidgetRect.GetCenter();
 				SampleSpot[AxisIndex] = CurrentSourceSide;

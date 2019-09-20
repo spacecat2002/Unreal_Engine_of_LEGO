@@ -132,19 +132,39 @@ FGlobalComponentRecreateRenderStateContext::FGlobalComponentRecreateRenderStateC
 	// recreate render state for all components.
 	for (UActorComponent* Component : TObjectRange<UActorComponent>())
 	{
-		ComponentContexts.Add(new FComponentRecreateRenderStateContext(Component));
+		ComponentContexts.Add(new FComponentRecreateRenderStateContext(Component, &ScenesToUpdateAllPrimitiveSceneInfos));
 	}
+
+	UpdateAllPrimitiveSceneInfos();
 }
 
 FGlobalComponentRecreateRenderStateContext::~FGlobalComponentRecreateRenderStateContext()
 {
 	ComponentContexts.Empty();
+
+	UpdateAllPrimitiveSceneInfos();
+}
+
+void FGlobalComponentRecreateRenderStateContext::UpdateAllPrimitiveSceneInfos()
+{
+	ENQUEUE_RENDER_COMMAND(UpdateAllPrimitiveSceneInfosCmd)(
+		[ScenesToUpdateAllPrimitiveSceneInfos = MoveTemp(ScenesToUpdateAllPrimitiveSceneInfos)](FRHICommandListImmediate& RHICmdList)
+		{
+			for (FSceneInterface* Scene : ScenesToUpdateAllPrimitiveSceneInfos)
+			{
+				Scene->UpdateAllPrimitiveSceneInfos(RHICmdList);
+			}
+		});
+
+	check(ScenesToUpdateAllPrimitiveSceneInfos.Num() == 0);
 }
 
 // Create Physics global delegate
 FActorComponentGlobalCreatePhysicsSignature UActorComponent::GlobalCreatePhysicsDelegate;
 // Destroy Physics global delegate
 FActorComponentGlobalDestroyPhysicsSignature UActorComponent::GlobalDestroyPhysicsDelegate;
+// Render state dirty global delegate
+UActorComponent::FOnMarkRenderStateDirty UActorComponent::MarkRenderStateDirtyEvent;
 
 const FString UActorComponent::ComponentTemplateNameSuffix(TEXT("_GEN_VARIABLE"));
 
@@ -802,7 +822,7 @@ void UActorComponent::BeginPlay()
 	check(!bHasBegunPlay);
 	checkSlow(bTickFunctionsRegistered); // If this fails, someone called BeginPlay() without first calling RegisterAllComponentTickFunctions().
 
-	if (GetClass()->HasAnyClassFlags(CLASS_CompiledFromBlueprint))
+	if (GetClass()->HasAnyClassFlags(CLASS_CompiledFromBlueprint) || !GetClass()->HasAnyClassFlags(CLASS_Native))
 	{
 		ReceiveBeginPlay();
 	}
@@ -815,7 +835,7 @@ void UActorComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	check(bHasBegunPlay);
 
 	// If we're in the process of being garbage collected it is unsafe to call out to blueprints
-	if (!HasAnyFlags(RF_BeginDestroyed) && !IsUnreachable() && GetClass()->HasAnyClassFlags(CLASS_CompiledFromBlueprint))
+	if (!HasAnyFlags(RF_BeginDestroyed) && !IsUnreachable() && (GetClass()->HasAnyClassFlags(CLASS_CompiledFromBlueprint) || !GetClass()->HasAnyClassFlags(CLASS_Native)))
 	{
 		ReceiveEndPlay(EndPlayReason);
 	}
@@ -955,7 +975,7 @@ void UActorComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, F
 {
 	check(bRegistered);
 
-	if (GetClass()->HasAnyClassFlags(CLASS_CompiledFromBlueprint))
+	if (GetClass()->HasAnyClassFlags(CLASS_CompiledFromBlueprint) || !GetClass()->HasAnyClassFlags(CLASS_Native))
 	{
 		ReceiveTick(DeltaTime);
 
@@ -1459,6 +1479,8 @@ void UActorComponent::MarkRenderStateDirty()
 		// Flag as dirty
 		bRenderStateDirty = true;
 		MarkForNeededEndOfFrameRecreate();
+
+		MarkRenderStateDirtyEvent.Broadcast(*this);
 	}
 }
 

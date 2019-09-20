@@ -61,6 +61,7 @@ APawn::APawn(const FObjectInitializer& ObjectInitializer)
 	BlendedReplayViewPitch = 0.0f;
 	bCollideWhenPlacing = true;
 	SpawnCollisionHandlingMethod = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButDontSpawnIfColliding;
+	bGenerateOverlapEventsDuringLevelStreaming = true;
 	bProcessingOutsideWorldBounds = false;
 
 	bUseControllerRotationPitch = false;
@@ -443,6 +444,11 @@ bool APawn::IsControlled() const
 	return(PC != nullptr);
 }
 
+bool APawn::IsPawnControlled() const
+{
+	return (Controller != nullptr);
+}
+
 FRotator APawn::GetControlRotation() const
 {
 	return Controller ? Controller->GetControlRotation() : FRotator::ZeroRotator;
@@ -488,6 +494,8 @@ void APawn::SetPlayerState(APlayerState* NewPlayerState)
 
 void APawn::PossessedBy(AController* NewController)
 {
+	SetOwner(NewController);
+	
 	AController* const OldController = Controller;
 
 	Controller = NewController;

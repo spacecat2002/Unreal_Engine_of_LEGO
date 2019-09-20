@@ -686,6 +686,10 @@ class ENGINE_API UKismetMathLibrary : public UBlueprintFunctionLibrary
 	UFUNCTION(BlueprintPure, meta=(DisplayName = "Clamp (float)", Min="0.0", Max="1.0"), Category="Math|Float")
 	static float FClamp(float Value, float Min, float Max);
 
+	/** This functions returns 0 if B (the denominator) is zero */
+	UFUNCTION(BlueprintPure, Category = "Math|Float", meta = (Keywords = "percent"))
+	static float SafeDivide(float A, float B);
+
 	/** Returns max of all array entries and the index at which it was found. Returns value of 0 and index of -1 if the supplied array is empty. */
 	UFUNCTION(BlueprintPure, Category="Math|Integer")
 	static void MaxOfIntArray(const TArray<int32>& IntArray, int32& IndexOfMaxValue, int32& MaxValue);
@@ -1161,7 +1165,7 @@ class ENGINE_API UKismetMathLibrary : public UBlueprintFunctionLibrary
 	UFUNCTION(BlueprintPure, meta=(DisplayName = "ToTransform (Vector)", CompactNodeTitle = "->", ScriptMethod = "Transform", Keywords="cast convert", BlueprintAutocast), Category="Math|Conversions")
 	static FTransform Conv_VectorToTransform(FVector InLocation);
 	
-	/** Convert a Vector to a Vector2D */
+	/** Convert a Vector to a Vector2D using the Vector's (X, Y) coordinates */
 	UFUNCTION(BlueprintPure, meta=(DisplayName = "ToVector2D (Vector)", CompactNodeTitle = "->", ScriptMethod = "Vector2D", Keywords="cast convert", BlueprintAutocast), Category="Math|Conversions")
 	static FVector2D Conv_VectorToVector2D(FVector InVector);
 
@@ -2660,7 +2664,7 @@ class ENGINE_API UKismetMathLibrary : public UBlueprintFunctionLibrary
 	static FDateTime MakeDateTime(int32 Year, int32 Month, int32 Day, int32 Hour = 0, int32 Minute = 0, int32 Second = 0, int32 Millisecond = 0);
 
 	/** Breaks a DateTime into its components */
-	UFUNCTION(BlueprintPure, Category="Math|DateTime", meta=(NativeBreakFunc))
+	UFUNCTION(BlueprintPure, Category="Math|DateTime", meta=(NativeBreakFunc, AdvancedDisplay = "4"))
 	static void BreakDateTime(FDateTime InDateTime, int32& Year, int32& Month, int32& Day, int32& Hour, int32& Minute, int32& Second, int32& Millisecond);
 
 	/** Addition (A + B) */
@@ -2670,6 +2674,10 @@ class ENGINE_API UKismetMathLibrary : public UBlueprintFunctionLibrary
 	/** Subtraction (A - B) */
 	UFUNCTION(BlueprintPure, meta=(DisplayName="DateTime - Timespan", CompactNodeTitle="-", Keywords="- subtract minus"), Category="Math|DateTime")
 	static FDateTime Subtract_DateTimeTimespan(FDateTime A, FTimespan B);
+
+	/** Addition (A + B) */
+	UFUNCTION(BlueprintPure, meta = (DisplayName = "DateTime + DateTime", CompactNodeTitle = "+", Keywords = "+ add plus"), Category = "Math|DateTime")
+	static FDateTime Add_DateTimeDateTime(FDateTime A, FDateTime B);
 
 	/** Subtraction (A - B) */
 	UFUNCTION(BlueprintPure, meta = (DisplayName = "DateTime - DateTime", CompactNodeTitle = "-", Keywords = "- subtract minus"), Category = "Math|DateTime")
@@ -3261,11 +3269,11 @@ class ENGINE_API UKismetMathLibrary : public UBlueprintFunctionLibrary
 
 	/**
 	 * Tries to reach Target based on distance from Current position, giving a nice smooth feeling when tracking a position.
-	 *
+	 * 
 	 * @param		Current			Actual position
 	 * @param		Target			Target position
 	 * @param		DeltaTime		Time since last tick
-	 * @param		InterpSpeed		Interpolation speed
+	 * @param		InterpSpeed		Interpolation speed, if the speed given is 0, then jump to the target.
 	 * @return		New interpolated position
 	 */
 	UFUNCTION(BlueprintPure, Category="Math|Interpolation")
@@ -3289,7 +3297,7 @@ class ENGINE_API UKismetMathLibrary : public UBlueprintFunctionLibrary
 	 * @param		Current			Actual rotation
 	 * @param		Target			Target rotation
 	 * @param		DeltaTime		Time since last tick
-	 * @param		InterpSpeed		Interpolation speed
+	 * @param		InterpSpeed		Interpolation speed, if the speed given is 0, then jump to the target.
 	 * @return		New interpolated position
 	 */
 	UFUNCTION(BlueprintPure, Category="Math|Interpolation", meta=(Keywords="rotation rotate"))

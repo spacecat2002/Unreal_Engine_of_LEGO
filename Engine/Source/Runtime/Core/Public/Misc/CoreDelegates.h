@@ -131,6 +131,10 @@ public:
 	DECLARE_MULTICAST_DELEGATE_OneParam(FOnSyncLoadPackage, const FString&);
 	static FOnSyncLoadPackage OnSyncLoadPackage;
 
+	// Callback for when the initial loading screen is shown during PreInit
+	DECLARE_MULTICAST_DELEGATE(FOnInitialLoadingScreenShown);
+	static FOnInitialLoadingScreenShown OnInitialLoadingScreenShown;
+
 	// get a hotfix delegate
 	static FHotFixDelegate& GetHotfixDelegate(EHotfixDelegates::Type HotFix);
 
@@ -184,10 +188,6 @@ public:
 
 	// Callback when an error (crash) has occurred
 	static FOnHandleSystemError OnHandleSystemError;
-
-	// Callback when an error (crash) has occurred. Runs before the crash reporter.
-	// This should be used very carefully.
-	static FOnHandleSystemError OnBeforeHandleSystemError;
 
 	// Called when an actor label is changed
 	static FOnActorLabelChanged OnActorLabelChanged;

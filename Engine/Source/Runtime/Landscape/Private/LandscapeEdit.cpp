@@ -363,7 +363,7 @@ void ULandscapeComponent::UpdateMaterialInstances_Internal(FMaterialUpdateContex
 		if (CombinationMaterialInstance != nullptr)
 		{
 			// Create the instance for this component, that will use the layer combination instance.
-			UMaterialInstanceConstant* MaterialInstance = NewObject<ULandscapeMaterialInstanceConstant>(this);
+			UMaterialInstanceConstant* MaterialInstance = NewObject<ULandscapeMaterialInstanceConstant>(GetOuter());
 			MaterialInstances[MaterialIndex] = MaterialInstance;
 
 			// Material Instances don't support Undo/Redo (the shader map goes out of sync and crashes happen)
@@ -592,10 +592,6 @@ void ULandscapeComponent::PostEditUndo()
 		
 	if (GetLandscapeProxy()->HasLayersContent())
 	{
-		TArray<ULandscapeComponent*> SingleComponent;
-		SingleComponent.Add(this);
-		GetLandscapeProxy()->InvalidateGeneratedComponentData(SingleComponent);
-		
 		const bool bUpdateAll = true;
 		RequestHeightmapUpdate(bUpdateAll);
 		RequestWeightmapUpdate(bUpdateAll);
@@ -609,13 +605,6 @@ void ULandscapeComponent::PostEditUndo()
 		TSet<ULandscapeComponent*> Components;
 		Components.Add(this);
 		GetLandscapeProxy()->FlushGrassComponents(&Components);
-	}
-
-	if (GetLandscapeProxy()->RuntimeVirtualTextures.Num() > 0)
-	{
-		//todo[vt]: Only flush this specific virtual textures
-		//todo[vt]: Only flush Bounds 
-		GetRendererModule().FlushVirtualTextureCache();
 	}
 }
 
@@ -1025,9 +1014,9 @@ void ULandscapeComponent::DestroyCollisionData()
 
 void ULandscapeComponent::UpdateCollisionData(bool bInUpdateHeightfieldRegion)
 {
-	TArray<uint8> CollisionMipData;
-	TArray<uint8> SimpleCollisionMipData;
-	TArray<uint8> XYOffsetMipData;
+	TArray64<uint8> CollisionMipData;
+	TArray64<uint8> SimpleCollisionMipData;
+	TArray64<uint8> XYOffsetMipData;
 
 	GetHeightmap()->Source.GetMipData(CollisionMipData, CollisionMipLevel);
 	if (SimpleCollisionMipLevel > CollisionMipLevel)
@@ -1331,8 +1320,8 @@ void ULandscapeComponent::UpdateCollisionLayerData(const FColor* const* const We
 		bool bExistingLayerMismatch = false;
 		int32 DataLayerIdx = INDEX_NONE;
 
-		TArray<FWeightmapLayerAllocationInfo>& ComponentWeightmapLayerAllocations = GetWeightmapLayerAllocations(true);
-		TArray<UTexture2D*>& ComponentWeightmapsTexture = GetWeightmapTextures(true);
+		TArray<FWeightmapLayerAllocationInfo>& ComponentWeightmapLayerAllocations = GetWeightmapLayerAllocations(false);
+		TArray<UTexture2D*>& ComponentWeightmapsTexture = GetWeightmapTextures(false);
 
 		// Find the layers we're interested in
 		for (int32 AllocIdx = 0; AllocIdx < ComponentWeightmapLayerAllocations.Num(); AllocIdx++)
@@ -1424,27 +1413,32 @@ void ULandscapeComponent::UpdateCollisionLayerData()
 	TArray<UTexture2D*>& ComponentWeightmapsTexture = GetWeightmapTextures();
 
 	// Generate the dominant layer data
-	TArray<FColor*> WeightmapTextureMipData;
-	WeightmapTextureMipData.Empty(ComponentWeightmapsTexture.Num());
+	TArray<TArray64<uint8>> WeightmapTextureMipData;
+	TArray<FColor*> WeightmapTextureMipDataParam;
+	WeightmapTextureMipData.Reserve(ComponentWeightmapsTexture.Num());
+	WeightmapTextureMipDataParam.Reserve(ComponentWeightmapsTexture.Num());
 	for (int32 WeightmapIdx = 0; WeightmapIdx < ComponentWeightmapsTexture.Num(); ++WeightmapIdx)
 	{
-		TArray<uint8> MipData;
+		TArray64<uint8>& MipData = WeightmapTextureMipData.AddDefaulted_GetRef();
 		ComponentWeightmapsTexture[WeightmapIdx]->Source.GetMipData(MipData, CollisionMipLevel);
-		WeightmapTextureMipData.Add((FColor*)MipData.GetData());
+		WeightmapTextureMipDataParam.Add((FColor*)MipData.GetData());
 	}
 
-	TArray<FColor*> SimpleCollisionWeightmapMipData;
+	TArray<TArray64<uint8>> SimpleCollisionWeightmapMipData;
+	TArray<FColor*> SimpleCollisionWeightmapMipDataParam;
 	if (SimpleCollisionMipLevel > CollisionMipLevel)
 	{
+		SimpleCollisionWeightmapMipData.Reserve(ComponentWeightmapsTexture.Num());
+		SimpleCollisionWeightmapMipDataParam.Reserve(ComponentWeightmapsTexture.Num());
 		for (int32 WeightmapIdx = 0; WeightmapIdx < ComponentWeightmapsTexture.Num(); ++WeightmapIdx)
 		{
-			TArray<uint8> MipData;
+			TArray64<uint8>& MipData = SimpleCollisionWeightmapMipData.AddDefaulted_GetRef();
 			ComponentWeightmapsTexture[WeightmapIdx]->Source.GetMipData(MipData, SimpleCollisionMipLevel);
-			SimpleCollisionWeightmapMipData.Add((FColor*)MipData.GetData());
+			SimpleCollisionWeightmapMipDataParam.Add((FColor*)MipData.GetData());
 		}
 	}
 
-	UpdateCollisionLayerData(WeightmapTextureMipData.GetData(), SimpleCollisionWeightmapMipData.GetData());
+	UpdateCollisionLayerData(WeightmapTextureMipDataParam.GetData(), SimpleCollisionWeightmapMipDataParam.GetData());
 }
 
 
@@ -1711,7 +1705,7 @@ void ULandscapeComponent::CreateEmptyTextureMips(UTexture2D* Texture, bool bClea
 	}
 	else
 	{
-		TArray<uint8> TopMipData;
+		TArray64<uint8> TopMipData;
 		Texture->Source.GetMipData(TopMipData, 0);
 		Texture->Source.Init2DWithMipChain(SizeU, SizeV, Format);
 		int32 NumMips = Texture->Source.GetNumMips();
@@ -3216,9 +3210,6 @@ bool ALandscapeProxy::ExportToRawMesh(int32 InExportLOD, FMeshDescription& OutRa
 									EdgeHardnesses[NewEdgeID] = false;
 									EdgeCreaseSharpnesses[NewEdgeID] = 0.0f;
 								}
-								//Triangulate the polygon
-								FMeshPolygon& Polygon = OutRawMesh.GetPolygon(NewPolygonID);
-								OutRawMesh.ComputePolygonTriangulation(NewPolygonID, Polygon.Triangles);
 							};
 							AddTriangle(0);
 							AddTriangle(3);
@@ -3286,10 +3277,16 @@ bool ULandscapeInfo::GetLandscapeExtent(int32& MinX, int32& MinY, int32& MaxX, i
 
 LANDSCAPE_API void ULandscapeInfo::ForAllLandscapeComponents(TFunctionRef<void(ULandscapeComponent*)> Fn) const
 {
-	for (auto& XYComponentPair : XYtoComponentMap)
+	ForAllLandscapeProxies([&](ALandscapeProxy* Proxy)
 	{
-		Fn(XYComponentPair.Value);
-	}
+		for (ULandscapeComponent* Component : Proxy->LandscapeComponents)
+		{
+			if (Component->IsRegistered())
+			{
+				Fn(Component);
+			}
+		}
+	});
 }
 
 bool ULandscapeInfo::GetSelectedExtent(int32& MinX, int32& MinY, int32& MaxX, int32& MaxY) const
@@ -3733,6 +3730,11 @@ ULandscapeLayerInfoObject::ULandscapeLayerInfoObject(const FObjectInitializer& O
 	Hardness = 0.5f;
 #if WITH_EDITORONLY_DATA
 	bNoWeightBlend = false;
+	SplineFalloffModulationTexture = nullptr;
+	SplineFalloffModulationColorMask = ESplineModulationColorMask::Red;
+	SplineFalloffModulationTiling = 1.0f;
+	SplineFalloffModulationBias = 0.5;
+	SplineFalloffModulationScale = 1.0f;
 #endif // WITH_EDITORONLY_DATA
 
 	// Assign initial LayerUsageDebugColor
@@ -3797,6 +3799,20 @@ void ULandscapeLayerInfoObject::PostEditChangeProperty(FPropertyChangedEvent& Pr
 				if (Proxy->GetWorld() && !Proxy->GetWorld()->IsPlayInEditor())
 				{
 					Proxy->MarkComponentsRenderStateDirty();
+				}
+			}
+		}
+		else if (PropertyName == GET_MEMBER_NAME_CHECKED(ULandscapeLayerInfoObject, SplineFalloffModulationTexture) ||
+				PropertyName == GET_MEMBER_NAME_CHECKED(ULandscapeLayerInfoObject, SplineFalloffModulationColorMask) ||
+				PropertyName == GET_MEMBER_NAME_CHECKED(ULandscapeLayerInfoObject, SplineFalloffModulationBias) ||
+				PropertyName == GET_MEMBER_NAME_CHECKED(ULandscapeLayerInfoObject, SplineFalloffModulationScale) ||
+				PropertyName == GET_MEMBER_NAME_CHECKED(ULandscapeLayerInfoObject, SplineFalloffModulationTiling))
+		{
+			for (TObjectIterator<ULandscapeInfo> It; It; ++It)
+			{
+				if(ALandscape* Landscape = It->LandscapeActor.Get())
+				{
+					Landscape->OnLayerInfoSplineFalloffModulationChanged(this);
 				}
 			}
 		}
@@ -4145,12 +4161,15 @@ void ALandscapeProxy::PostEditChangeProperty(FPropertyChangedEvent& PropertyChan
 	}
 	if (bRemovedAnyLayers)
 	{
-		ALandscapeProxy::InvalidateGeneratedComponentData(LandscapeComponents);
 		ALandscape* LandscapeActor = GetLandscapeActor();
 
 		if(LandscapeActor != nullptr && LandscapeActor->HasLayersContent())
 		{
 			LandscapeActor->RequestLayersContentUpdate(ELandscapeLayerUpdateMode::Update_All);
+		}
+		else
+		{
+			ALandscapeProxy::InvalidateGeneratedComponentData(LandscapeComponents);
 		}
 	}
 
@@ -4778,10 +4797,11 @@ void ULandscapeComponent::ReallocateWeightmaps(FLandscapeEditDataInterface* Data
 		}
 	}
 
+	bool bMarkPackageDirty = DataInterface == nullptr ? true : DataInterface->GetShouldDirtyPackage();
 	if (InSaveToTransactionBuffer)
 	{
-		Modify();
-		TargetProxy->Modify();
+		Modify(bMarkPackageDirty);
+		TargetProxy->Modify(bMarkPackageDirty);
 	}
 
 	if (!InForceReallocate)
@@ -4843,7 +4863,7 @@ void ULandscapeComponent::ReallocateWeightmaps(FLandscapeEditDataInterface* Data
 
 						if (InSaveToTransactionBuffer)
 						{
-							Usage->Modify();
+							Usage->Modify(bMarkPackageDirty);
 						}
 						Usage->ChannelUsage[ChanIdx] = this;
 
@@ -4949,7 +4969,7 @@ void ULandscapeComponent::ReallocateWeightmaps(FLandscapeEditDataInterface* Data
 			CurrentWeightmapUsage = TargetProxy->WeightmapUsageMap.Add(CurrentWeightmapTexture, TargetProxy->CreateWeightmapUsage());
 			if (InSaveToTransactionBuffer)
 			{
-				CurrentWeightmapUsage->Modify();
+				CurrentWeightmapUsage->Modify(bMarkPackageDirty);
 			}
 
 			CurrentWeightmapUsage->LayerGuid = TargetLayerGuid;
@@ -4993,7 +5013,7 @@ void ULandscapeComponent::ReallocateWeightmaps(FLandscapeEditDataInterface* Data
 					ULandscapeWeightmapUsage* OldWeightmapUsage = ComponentWeightmapTexturesUsage[AllocInfo.WeightmapTextureIndex];
 					if (InSaveToTransactionBuffer)
 					{
-						OldWeightmapUsage->Modify();
+						OldWeightmapUsage->Modify(bMarkPackageDirty);
 					}
 					OldWeightmapUsage->ChannelUsage[AllocInfo.WeightmapTextureChannel] = nullptr;
 				}
@@ -5001,7 +5021,7 @@ void ULandscapeComponent::ReallocateWeightmaps(FLandscapeEditDataInterface* Data
 				// Assign the new allocation
 				if (InSaveToTransactionBuffer)
 				{
-					CurrentWeightmapUsage->Modify();
+					CurrentWeightmapUsage->Modify(bMarkPackageDirty);
 				}
 				CurrentWeightmapUsage->ChannelUsage[ChanIdx] = this;
 				AllocInfo.WeightmapTextureIndex = NewWeightmapTextures.Num() - 1;
@@ -5266,7 +5286,8 @@ void ULandscapeComponent::InitWeightmapData(TArray<ULandscapeLayerInfoObject*>& 
 	{
 		UTexture2D* WeightmapTexture = WeightmapTextures[Idx];
 		{
-			FLandscapeTextureDataInfo WeightmapDataInfo(WeightmapTexture);
+			const bool bShouldDirtyPackage = true;
+			FLandscapeTextureDataInfo WeightmapDataInfo(WeightmapTexture, bShouldDirtyPackage);
 
 			int32 NumMips = WeightmapTexture->Source.GetNumMips();
 			TArray<FColor*> WeightmapTextureMipData;
@@ -5295,19 +5316,6 @@ void ULandscapeComponent::InitWeightmapData(TArray<ULandscapeLayerInfoObject*>& 
 
 #define MAX_LANDSCAPE_EXPORT_COMPONENTS_NUM		16
 #define MAX_LANDSCAPE_PROP_TEXT_LENGTH			1024*1024*16
-
-
-bool ALandscapeProxy::Modify(bool bAlwaysMarkDirty)
-{
-	for (auto& Pair : WeightmapUsageMap)
-	{
-		if (Pair.Value)
-		{
-			Pair.Value->Modify(bAlwaysMarkDirty);
-		}
-	}
-	return Super::Modify(bAlwaysMarkDirty);
-}
 
 bool ALandscapeProxy::ShouldExport()
 {
@@ -5803,14 +5811,14 @@ void ULandscapeComponent::GeneratePlatformVertexData(const ITargetPlatform* Targ
 	float HeightmapSubsectionOffsetV = (float)(SubsectionSizeVerts) / (float)GetHeightmap()->Source.GetSizeY();
 	
 	// Get the required mip data
-	TArray<TArray<uint8>> HeightmapMipRawData;
-	TArray<FColor*> HeightmapMipData;
+	TArray<TArray64<uint8>> HeightmapMipRawData;
+	TArray64<FColor*> HeightmapMipData;
 	for (int32 MipIdx = 0; MipIdx < FMath::Min(LANDSCAPE_MAX_ES_LOD, GetHeightmap()->Source.GetNumMips()); MipIdx++)
 	{
 		int32 MipSubsectionSizeVerts = (SubsectionSizeVerts) >> MipIdx;
 		if (MipSubsectionSizeVerts > 1)
 		{
-			new(HeightmapMipRawData) TArray<uint8>();
+			new(HeightmapMipRawData) TArray64<uint8>();
 			GetHeightmap()->Source.GetMipData(HeightmapMipRawData.Last(), MipIdx);
 			HeightmapMipData.Add((FColor*)HeightmapMipRawData.Last().GetData());
 		}

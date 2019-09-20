@@ -120,10 +120,12 @@ public:
 		, SyncGroupWriteIndex(0)
 		, RootMotionMode(ERootMotionMode::NoRootMotionExtraction)
 		, FrameCounterForUpdate(0)
+		, FrameCounterForNodeUpdate(0)
 		, CacheBonesRecursionCounter(0)
 		, bUpdatingRoot(false)
 		, bBoneCachesInvalidated(false)
 		, bShouldExtractRootMotion(false)
+		, bDeferRootNodeInitialization(false)
 #if WITH_EDITORONLY_DATA
 		, bIsBeingDebugged(false)
 #endif
@@ -142,10 +144,12 @@ public:
 		, SyncGroupWriteIndex(0)
 		, RootMotionMode(ERootMotionMode::NoRootMotionExtraction)
 		, FrameCounterForUpdate(0)
+		, FrameCounterForNodeUpdate(0)
 		, CacheBonesRecursionCounter(0)
 		, bUpdatingRoot(false)
 		, bBoneCachesInvalidated(false)
 		, bShouldExtractRootMotion(false)
+		, bDeferRootNodeInitialization(false)
 #if WITH_EDITORONLY_DATA
 		, bIsBeingDebugged(false)
 #endif
@@ -438,6 +442,9 @@ public:
 	/** Reset any dynamics running simulation-style updates (e.g. on teleport, time skip etc.) */
 	void ResetDynamics(ETeleportType InTeleportType);
 
+	/** Returns all Animation Nodes of FAnimNode_AssetPlayerBase class within the specified (named) Animation Graph */
+	TArray<FAnimNode_AssetPlayerBase*> GetInstanceAssetPlayers(const FName& GraphName);
+
 	UE_DEPRECATED(4.20, "Please use ResetDynamics with a ETeleportType argument")
 	void ResetDynamics();
 
@@ -728,7 +735,7 @@ protected:
 	void GetStateMachineIndexAndDescription(FName InMachineName, int32& OutMachineIndex, const FBakedAnimationStateMachine** OutMachineDescription);
 
 	/** Initialize the root node - split into a separate function for backwards compatibility (initialization order) reasons */
-	void InitializeRootNode();
+	void InitializeRootNode(bool bInDeferRootNodeInitialization = false);
 
 	/** Initialize the specified root node */
 	void InitializeRootNode_WithRoot(FAnimNode_Base* InRootNode);
@@ -759,6 +766,9 @@ protected:
 	void AddCurveValue(const FSmartNameMapping& Mapping, const FName& CurveName, float Value);
 
 private:
+	/** Get the debug data for this instance's anim bp */
+	FAnimBlueprintDebugData* GetAnimBlueprintDebugData() const;
+
 	/** The component to world transform of the component we are running on */
 	FTransform ComponentTransform;
 
@@ -855,6 +865,7 @@ protected:
 
 	// Sync counter
 	uint64 FrameCounterForUpdate;
+	uint64 FrameCounterForNodeUpdate;
 
 private:
 	// Root motion extracted from animation since the last time ConsumeExtractedRootMotion was called
@@ -927,6 +938,9 @@ private:
 
 	// Diplicate of bool result of ShouldExtractRootMotion()
 	uint8 bShouldExtractRootMotion : 1;
+
+	/** We can defer initialization until first update */
+	uint8 bDeferRootNodeInitialization : 1;
 
 #if WITH_EDITORONLY_DATA
 	/** Whether this UAnimInstance is currently being debugged in the editor */

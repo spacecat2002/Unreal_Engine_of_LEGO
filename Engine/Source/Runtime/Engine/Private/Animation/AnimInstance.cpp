@@ -168,7 +168,7 @@ UWorld* UAnimInstance::GetWorld() const
 	return (HasAnyFlags(RF_ClassDefaultObject) ? nullptr : GetSkelMeshComponent()->GetWorld());
 }
 
-void UAnimInstance::InitializeAnimation()
+void UAnimInstance::InitializeAnimation(bool bInDeferRootNodeInitialization)
 {
 	FScopeCycleCounterUObject ContextScope(this);
 	SCOPE_CYCLE_COUNTER(STAT_AnimInitTime);
@@ -213,7 +213,7 @@ void UAnimInstance::InitializeAnimation()
 	NativeInitializeAnimation();
 	BlueprintInitializeAnimation();
 
-	GetProxyOnGameThread<FAnimInstanceProxy>().InitializeRootNode();
+	GetProxyOnGameThread<FAnimInstanceProxy>().InitializeRootNode(bInDeferRootNodeInitialization);
 
 	// we can bind rules & events now the graph has been initialized
 	GetProxyOnGameThread<FAnimInstanceProxy>().BindNativeDelegates();
@@ -1217,7 +1217,7 @@ void UAnimInstance::UpdateCurvesToComponents(USkeletalMeshComponent* Component /
 		// this is only any thread because EndOfFrameUpdate update can restart render state
 		// and this needs to restart from worker thread
 		// EndOfFrameUpdate is done after all tick is updated, so in theory you shouldn't have 
-		FAnimInstanceProxy& Proxy = GetProxyOnAnyThread<FAnimInstanceProxy>();
+		FAnimInstanceProxy& Proxy = GetProxyOnGameThread<FAnimInstanceProxy>();
 		Component->ApplyAnimationCurvesToComponent(&Proxy.GetAnimationCurves(EAnimCurveType::MaterialCurve), &Proxy.GetAnimationCurves(EAnimCurveType::MorphTargetCurve));
 	}
 }
@@ -2515,7 +2515,7 @@ void UAnimInstance::SetSubInstanceClassByTag(FName InTag, TSubclassOf<UAnimInsta
 	}
 }
 
-void UAnimInstance::SetLayerOverlay(TSubclassOf<UAnimInstance> InClass)
+void UAnimInstance::PerformLayerOverlayOperation(TSubclassOf<UAnimInstance> InClass, TFunctionRef<UClass*(UClass* InClass, FAnimNode_Layer*)> InClassSelectorFunction)
 {
 	if (IAnimClassInterface* AnimBlueprintClass = IAnimClassInterface::GetFromClass(GetClass()))
 	{
@@ -2532,6 +2532,9 @@ void UAnimInstance::SetLayerOverlay(TSubclassOf<UAnimInstance> InClass)
 				return;
 			}
 		}
+
+		// Make sure we have valid objects as initialization can route back out of sub-instances into this outer graph
+		GetProxyOnAnyThread<FAnimInstanceProxy>().InitializeObjects(this);
 
 		// Map of group name->nodes to run under that group instance
 		TMap<FName, TArray<FAnimNode_Layer*, TInlineAllocator<4>>, TInlineSetAllocator<4>> LayerNodesToSet;
@@ -2565,36 +2568,105 @@ void UAnimInstance::SetLayerOverlay(TSubclassOf<UAnimInstance> InClass)
 			}
 		}
 
-		if(LayerNodesToSet.Num() > 0)
+		USkeletalMeshComponent* MeshComp = GetSkelMeshComponent();
+
+		auto UnlinkLayerNodesInInstance = [](UAnimInstance* InAnimInstance)
 		{
-			for(TPair<FName, TArray<FAnimNode_Layer*, TInlineAllocator<4>>> LayerPair : LayerNodesToSet)
+			const IAnimClassInterface* NewSubInstanceClass = IAnimClassInterface::GetFromClass(InAnimInstance->GetClass());
+			for(const UStructProperty* LayerNodeProperty : NewSubInstanceClass->GetLayerNodeProperties())
 			{
-				// If the class is null, then reset to default (which can be null)
-				UClass* ClassToSet = NewClass != nullptr ? NewClass : LayerPair.Value[0]->InstanceClass.Get();
-				if(ClassToSet != nullptr && ClassToSet != GetClass())
+				FAnimNode_Layer* SubInstanceLayerNode = LayerNodeProperty->ContainerPtrToValuePtr<FAnimNode_Layer>(InAnimInstance);
+				SubInstanceLayerNode->DynamicUnlink(InAnimInstance);
+			}
+		};
+
+		for(TPair<FName, TArray<FAnimNode_Layer*, TInlineAllocator<4>>> LayerPair : LayerNodesToSet)
+		{
+			if (LayerPair.Key == NAME_None)
+			{
+				// Ungrouped path - each layer gets a separate instance
+				for(FAnimNode_Layer* LayerNode : LayerPair.Value)
 				{
-					// Create and add one sub-instance for this group
-					USkeletalMeshComponent* MeshComp = GetSkelMeshComponent();
-					UAnimInstance* NewSubInstance = NewObject<UAnimInstance>(MeshComp, ClassToSet);
+					UClass* ClassToSet = InClassSelectorFunction(NewClass, LayerNode);
 
-					for(FAnimNode_Layer* LayerNode : LayerPair.Value)
+					// Disallow setting the same class as this instance, which would create infinite recursion
+					if (ClassToSet != nullptr && ClassToSet != GetClass())
 					{
-						LayerNode->SetLayerOverlaySubInstance(this, NewSubInstance);
-					}
+						UAnimInstance* TargetInstance = LayerNode->GetTargetInstance<UAnimInstance>();
 
-					// Init after we link in the new graph segments, so propagation happens correctly
-					NewSubInstance->InitializeAnimation();
-
-					// Initialize the correct parts of the sub instance
-					for(FAnimNode_Layer* LayerNode : LayerPair.Value)
-					{
-						if(LayerNode->LinkedRoot)
+						// Skip setting if the class is the same
+						if (TargetInstance == nullptr || ClassToSet != TargetInstance->GetClass())
 						{
-							NewSubInstance->GetProxyOnAnyThread<FAnimInstanceProxy>().InitializeRootNode_WithRoot(LayerNode->LinkedRoot);
+							UAnimInstance* NewSubInstance = NewObject<UAnimInstance>(MeshComp, ClassToSet);
+							NewSubInstance->InitializeAnimation();
+
+							// Unlink any layer nodes in the new sub instance, as they may have been hooked up to self in InitializeAnimation above.
+							UnlinkLayerNodesInInstance(NewSubInstance);
+
+							LayerNode->SetLayerOverlaySubInstance(this, NewSubInstance);
+
+							// Initialize the correct parts of the sub instance
+							if(LayerNode->LinkedRoot)
+							{
+								FAnimInstanceProxy& Proxy = NewSubInstance->GetProxyOnAnyThread<FAnimInstanceProxy>();
+								Proxy.InitializeObjects(NewSubInstance);
+								Proxy.InitializeRootNode_WithRoot(LayerNode->LinkedRoot);
+								Proxy.CacheBones_WithRoot(LayerNode->LinkedRoot);
+								Proxy.ClearObjects();
+							}
+
+							MeshComp->SubInstances.Add(NewSubInstance);
 						}
 					}
+					else
+					{
+						LayerNode->SetLayerOverlaySubInstance(this, nullptr);
+					}
+				}
+			}
+			else
+			{		
+				// Grouped path - each group gets an instance
+				// If the class is null, then reset to default (which can be null)
+				FAnimNode_Layer* FirstLayerNode = LayerPair.Value[0];
+				UClass* ClassToSet = InClassSelectorFunction(NewClass, FirstLayerNode);
 
-					MeshComp->SubInstances.Add(NewSubInstance);
+				// Disallow setting the same class as this instance, which would create infinite recursion
+				if(ClassToSet != nullptr && ClassToSet != GetClass())
+				{
+					UAnimInstance* TargetInstance = FirstLayerNode->GetTargetInstance<UAnimInstance>();
+
+					// Skip setting if the class is the same
+					if (TargetInstance == nullptr || ClassToSet != TargetInstance->GetClass())
+					{
+						// Create and add one sub-instance for this group
+						UAnimInstance* NewSubInstance = NewObject<UAnimInstance>(MeshComp, ClassToSet);
+						NewSubInstance->InitializeAnimation();
+
+						// Unlink any layer nodes in the new sub instance, as they may have been hooked up to self in InitializeAnimation above.
+						UnlinkLayerNodesInInstance(NewSubInstance);
+
+						for(FAnimNode_Layer* LayerNode : LayerPair.Value)
+						{
+							LayerNode->SetLayerOverlaySubInstance(this, NewSubInstance);
+						}
+
+						FAnimInstanceProxy& Proxy = NewSubInstance->GetProxyOnAnyThread<FAnimInstanceProxy>();
+
+						// Initialize the correct parts of the sub instance
+						for(FAnimNode_Layer* LayerNode : LayerPair.Value)
+						{
+							if(LayerNode->LinkedRoot)
+							{
+								Proxy.InitializeObjects(NewSubInstance);
+								Proxy.InitializeRootNode_WithRoot(LayerNode->LinkedRoot);
+								Proxy.CacheBones_WithRoot(LayerNode->LinkedRoot);
+								Proxy.ClearObjects();
+							}
+						}
+
+						MeshComp->SubInstances.Add(NewSubInstance);
+					}
 				}
 				else
 				{
@@ -2607,6 +2679,44 @@ void UAnimInstance::SetLayerOverlay(TSubclassOf<UAnimInstance> InClass)
 			}
 		}
 	}
+}
+
+void UAnimInstance::SetLayerOverlay(TSubclassOf<UAnimInstance> InClass)
+{
+	auto SelectResolvedClassIfValid = [](UClass* InResolvedClass, FAnimNode_Layer* InLayerNode)
+	{
+		if(InResolvedClass != nullptr)
+		{
+			// If we have a valid resolved class, use that as an overlay
+			return InResolvedClass;
+		}
+		else
+		{
+			// Otherwise use the default (which can be null)
+			return InLayerNode->InstanceClass.Get();
+		}
+	};
+
+	PerformLayerOverlayOperation(InClass, SelectResolvedClassIfValid);
+}
+
+void UAnimInstance::ClearLayerOverlay(TSubclassOf<UAnimInstance> InClass)
+{
+	auto ConditionallySelectDefaultClass = [](UClass* InResolvedClass, FAnimNode_Layer* InLayerNode)
+	{
+		if (InResolvedClass != nullptr && InLayerNode->GetTargetInstance<UAnimInstance>()->GetClass() == InResolvedClass)
+		{
+			// Reset to default if the classes match
+			return InLayerNode->InstanceClass.Get();
+		}
+		else
+		{
+			// No change
+			return InLayerNode->GetTargetInstance<UAnimInstance>()->GetClass();
+		}
+	};
+
+	PerformLayerOverlayOperation(InClass, ConditionallySelectDefaultClass);
 }
 
 void UAnimInstance::InitializeGroupedLayers()
@@ -2640,6 +2750,25 @@ UAnimInstance* UAnimInstance::GetLayerSubInstanceByGroup(FName InGroup) const
 				{
 					return Layer->GetTargetInstance<UAnimInstance>();
 				}
+			}
+		}
+	}
+
+	return nullptr;
+}
+
+UAnimInstance* UAnimInstance::GetLayerSubInstanceByClass(TSubclassOf<UAnimInstance> InClass) const
+{
+	if (IAnimClassInterface* AnimBlueprintClass = IAnimClassInterface::GetFromClass(GetClass()))
+	{
+		const TArray<UStructProperty*>& LayerNodeProperties = AnimBlueprintClass->GetLayerNodeProperties();
+		for(UStructProperty* LayerNodeProperty : LayerNodeProperties)
+		{
+			const FAnimNode_Layer* Layer = LayerNodeProperty->ContainerPtrToValuePtr<FAnimNode_Layer>(this);
+			UAnimInstance* TargetInstance = Layer->GetTargetInstance<UAnimInstance>();
+			if (TargetInstance && TargetInstance->GetClass() == InClass.Get())
+			{
+				return TargetInstance;
 			}
 		}
 	}
@@ -2936,6 +3065,11 @@ const FBakedAnimationStateMachine* UAnimInstance::GetMachineDescription(IAnimCla
 int32 UAnimInstance::GetInstanceAssetPlayerIndex(FName MachineName, FName StateName, FName AssetName)
 {
 	return GetProxyOnGameThread<FAnimInstanceProxy>().GetInstanceAssetPlayerIndex(MachineName, StateName, AssetName);
+}
+
+TArray<FAnimNode_AssetPlayerBase*> UAnimInstance::GetInstanceAssetPlayers(const FName& GraphName)
+{
+	return GetProxyOnAnyThread<FAnimInstanceProxy>().GetInstanceAssetPlayers(GraphName);
 }
 
 FAnimNode_AssetPlayerBase* UAnimInstance::GetRelevantAssetPlayerFromState(int32 MachineIndex, int32 StateIndex)

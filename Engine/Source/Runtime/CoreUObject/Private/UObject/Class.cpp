@@ -305,19 +305,75 @@ FText UField::GetToolTipText(bool bShortTooltip) const
 		{
 			NativeToolTip = FName::NameToDisplayString(FDisplayNameHelper::Get(*this), IsA<UBoolProperty>());
 		}
-		else
+		else if (!bShortTooltip && IsNative())
 		{
-			static const FString DoxygenSee(TEXT("@see"));
-			static const FString TooltipSee(TEXT("See:"));
-			if (NativeToolTip.ReplaceInline(*DoxygenSee, *TooltipSee) > 0)
-			{
-				NativeToolTip.TrimEndInline();
-			}
+			FormatNativeToolTip(NativeToolTip, true);
 		}
 		LocalizedToolTip = FText::FromString(NativeToolTip);
 	}
 
 	return LocalizedToolTip;
+}
+
+void UField::FormatNativeToolTip(FString& ToolTipString, bool bRemoveExtraSections)
+{
+	// First do doxygen replace
+	static const FString DoxygenSee(TEXT("@see"));
+	static const FString TooltipSee(TEXT("See:"));
+	ToolTipString.ReplaceInline(*DoxygenSee, *TooltipSee);
+
+	bool bCurrentLineIsEmpty = true;
+	int32 EmptyLineCount = 0;
+	int32 LastContentIndex = INDEX_NONE;
+	const int32 ToolTipLength = ToolTipString.Len();
+		
+	// Start looking for empty lines and whitespace to strip
+	for (int32 StrIndex = 0; StrIndex < ToolTipLength; StrIndex++)
+	{
+		TCHAR CurrentChar = ToolTipString[StrIndex];
+
+		if (!FChar::IsWhitespace(CurrentChar))
+		{
+			if (FChar::IsPunct(CurrentChar))
+			{
+				// Punctuation is considered content if it's on a line with alphanumeric text
+				if (!bCurrentLineIsEmpty)
+				{
+					LastContentIndex = StrIndex;
+				}
+			}
+			else
+			{
+				// This is something alphanumeric, this is always content and mark line as not empty
+				bCurrentLineIsEmpty = false;
+				LastContentIndex = StrIndex;
+			}
+		}
+		else if (CurrentChar == TEXT('\n'))
+		{
+			if (bCurrentLineIsEmpty)
+			{
+				EmptyLineCount++;
+				if (bRemoveExtraSections && EmptyLineCount >= 2)
+				{
+					// If we get two empty or punctuation/separator lines in a row, cut off the string if requested
+					break;
+				}
+			}
+			else
+			{
+				EmptyLineCount = 0;
+			}
+
+			bCurrentLineIsEmpty = true;
+		}
+	}
+
+	// Trim string to last content character, this strips trailing whitespace as well as extra sections if needed
+	if (LastContentIndex >= 0 && LastContentIndex != ToolTipLength - 1)
+	{
+		ToolTipString.RemoveAt(LastContentIndex + 1, ToolTipLength - (LastContentIndex + 1));
+	}
 }
 
 /**
@@ -2207,6 +2263,11 @@ void UScriptStruct::SerializeItem(FStructuredArchive::FSlot Slot, void* Value, v
 
 const TCHAR* UScriptStruct::ImportText(const TCHAR* InBuffer, void* Value, UObject* OwnerObject, int32 PortFlags, FOutputDevice* ErrorText, const FString& StructName, bool bAllowNativeOverride)
 {
+	return ImportText(InBuffer, Value, OwnerObject, PortFlags, ErrorText, [&StructName](){return StructName;}, bAllowNativeOverride);
+}
+
+const TCHAR* UScriptStruct::ImportText(const TCHAR* InBuffer, void* Value, UObject* OwnerObject, int32 PortFlags, FOutputDevice* ErrorText, const TFunctionRef<FString()>& StructNameGetter, bool bAllowNativeOverride)
+{
 	if (bAllowNativeOverride && StructFlags & STRUCT_ImportTextItemNative)
 	{
 		UScriptStruct::ICppStructOps* TheCppStructOps = GetCppStructOps();
@@ -2245,7 +2306,7 @@ const TCHAR* UScriptStruct::ImportText(const TCHAR* InBuffer, void* Value, UObje
 
 					if (*Buffer != TCHAR('\"'))
 					{
-						ErrorText->Logf(TEXT("%sImportText (%s): Bad quoted string at: %s"), ErrorCount++ > 0 ? LINE_TERMINATOR : TEXT(""), *StructName, Buffer);
+						ErrorText->Logf(TEXT("%sImportText (%s): Bad quoted string at: %s"), ErrorCount++ > 0 ? LINE_TERMINATOR : TEXT(""), *StructNameGetter(), Buffer);
 						return nullptr;
 					}
 				}
@@ -2258,7 +2319,7 @@ const TCHAR* UScriptStruct::ImportText(const TCHAR* InBuffer, void* Value, UObje
 					SubCount--;
 					if (SubCount < 0)
 					{
-						ErrorText->Logf(TEXT("%sImportText (%s): Too many closing parenthesis in: %s"), ErrorCount++ > 0 ? LINE_TERMINATOR : TEXT(""), *StructName, InBuffer);
+						ErrorText->Logf(TEXT("%sImportText (%s): Too many closing parenthesis in: %s"), ErrorCount++ > 0 ? LINE_TERMINATOR : TEXT(""), *StructNameGetter(), InBuffer);
 						return nullptr;
 					}
 				}
@@ -2266,7 +2327,7 @@ const TCHAR* UScriptStruct::ImportText(const TCHAR* InBuffer, void* Value, UObje
 			}
 			if (SubCount > 0)
 			{
-				ErrorText->Logf(TEXT("%sImportText(%s): Not enough closing parenthesis in: %s"), ErrorCount++ > 0 ? LINE_TERMINATOR : TEXT(""), *StructName, InBuffer);
+				ErrorText->Logf(TEXT("%sImportText(%s): Not enough closing parenthesis in: %s"), ErrorCount++ > 0 ? LINE_TERMINATOR : TEXT(""), *StructNameGetter(), InBuffer);
 				return nullptr;
 			}
 
@@ -2278,7 +2339,7 @@ const TCHAR* UScriptStruct::ImportText(const TCHAR* InBuffer, void* Value, UObje
 			}
 			else if (*Buffer != TCHAR(')'))
 			{
-				ErrorText->Logf(TEXT("%sImportText (%s): Missing closing parenthesis: %s"), ErrorCount++ > 0 ? LINE_TERMINATOR : TEXT(""), *StructName, InBuffer);
+				ErrorText->Logf(TEXT("%sImportText (%s): Missing closing parenthesis: %s"), ErrorCount++ > 0 ? LINE_TERMINATOR : TEXT(""), *StructNameGetter(), InBuffer);
 				return nullptr;
 			}
 
@@ -2290,7 +2351,7 @@ const TCHAR* UScriptStruct::ImportText(const TCHAR* InBuffer, void* Value, UObje
 	}
 	else
 	{
-		ErrorText->Logf(TEXT("%sImportText (%s): Missing opening parenthesis: %s"), ErrorCount++ > 0 ? LINE_TERMINATOR : TEXT(""), *StructName, InBuffer); //-V547
+		ErrorText->Logf(TEXT("%sImportText (%s): Missing opening parenthesis: %s"), ErrorCount++ > 0 ? LINE_TERMINATOR : TEXT(""), *StructNameGetter(), InBuffer); //-V547
 		return nullptr;
 	}
 	return Buffer;
@@ -3081,6 +3142,13 @@ UObject* UClass::CreateDefaultObject()
 					USparseDelegateFunction* SparseDelegateFunction = CastChecked<USparseDelegateFunction>(SparseDelegateIt->SignatureFunction);
 					FSparseDelegateStorage::RegisterDelegateOffset(ClassDefaultObject, SparseDelegateFunction->DelegateName, (size_t)&SparseDelegate - (size_t)ClassDefaultObject);
 				}
+				if (HasAnyClassFlags(CLASS_CompiledFromBlueprint))
+				{
+					if (UDynamicClass* DynamicClass = Cast<UDynamicClass>(this))
+					{
+						(*(DynamicClass->DynamicClassInitializer))(DynamicClass);
+					}
+				}
 				(*ClassConstructor)(FObjectInitializer(ClassDefaultObject, ParentDefaultObject, false, bShouldInitializeProperties));
 				if (bDoNotify)
 				{
@@ -3165,7 +3233,7 @@ FFeedbackContext& UClass::GetDefaultPropertiesFeedbackContext()
 * Get the name of the CDO for the this class
 * @return The name of the CDO
 */
-FName UClass::GetDefaultObjectName()
+FName UClass::GetDefaultObjectName() const
 {
 	FString DefaultName;
 	DefaultName.Reserve(NAME_SIZE);
@@ -4556,7 +4624,8 @@ void GetPrivateStaticClassBody(
 	UClass::ClassAddReferencedObjectsType InClassAddReferencedObjects,
 	UClass::StaticClassFunctionType InSuperClassFn,
 	UClass::StaticClassFunctionType InWithinClassFn,
-	bool bIsDynamic /*= false*/
+	bool bIsDynamic /*= false*/,
+	UDynamicClass::DynamicClassInitializerType InDynamicClassInitializerFn /*= nullptr*/
 	)
 {
 #if WITH_HOT_RELOAD
@@ -4634,7 +4703,8 @@ void GetPrivateStaticClassBody(
 			EObjectFlags(RF_Public | RF_Standalone | RF_Transient | RF_Dynamic | (GIsInitialLoad ? RF_MarkAsRootSet : RF_NoFlags)),
 			InClassConstructor,
 			InClassVTableHelperCtorCaller,
-			InClassAddReferencedObjects
+			InClassAddReferencedObjects,
+			InDynamicClassInitializerFn
 			);
 		check(ReturnClass);
 	}
@@ -5221,7 +5291,8 @@ UDynamicClass::UDynamicClass(
 	EObjectFlags	InFlags,
 	ClassConstructorType InClassConstructor,
 	ClassVTableHelperCtorCallerType InClassVTableHelperCtorCaller,
-	ClassAddReferencedObjectsType InClassAddReferencedObjects)
+	ClassAddReferencedObjectsType InClassAddReferencedObjects,
+	DynamicClassInitializerType InDynamicClassInitializer)
 : UClass(
   EC_StaticConstructor
 , InName
@@ -5235,6 +5306,7 @@ UDynamicClass::UDynamicClass(
 , InClassVTableHelperCtorCaller
 , InClassAddReferencedObjects)
 , AnimClassImplementation(nullptr)
+, DynamicClassInitializer(InDynamicClassInitializer)
 {
 }
 
@@ -5248,6 +5320,11 @@ void UDynamicClass::AddReferencedObjects(UObject* InThis, FReferenceCollector& C
 	Collector.AddReferencedObjects(This->DynamicBindingObjects, This);
 	Collector.AddReferencedObjects(This->ComponentTemplates, This);
 	Collector.AddReferencedObjects(This->Timelines, This);
+
+	for (TPair<FName, UClass*>& Override : This->ComponentClassOverrides)
+	{
+		Collector.AddReferencedObject(Override.Value);
+	}
 
 	Collector.AddReferencedObject(This->AnimClassImplementation, This);
 
@@ -5276,14 +5353,14 @@ void UDynamicClass::PurgeClass(bool bRecompilingOnLoad)
 	DynamicBindingObjects.Empty();
 	ComponentTemplates.Empty();
 	Timelines.Empty();
+	ComponentClassOverrides.Empty();
 
 	AnimClassImplementation = nullptr;
 }
 
-UObject* UDynamicClass::FindArchetype(UClass* ArchetypeClass, const FName ArchetypeName) const
+UObject* UDynamicClass::FindArchetype(const UClass* ArchetypeClass, const FName ArchetypeName) const
 {
-	UDynamicClass* ThisClass = const_cast<UDynamicClass*>(this);
-	UObject* Archetype = static_cast<UObject*>(FindObjectWithOuter(ThisClass, ArchetypeClass, ArchetypeName));
+	UObject* Archetype = static_cast<UObject*>(FindObjectWithOuter(this, ArchetypeClass, ArchetypeName));
 	if (!Archetype)
 	{
 		// See UBlueprintGeneratedClass::FindArchetype, UE-35259, UE-37480
@@ -5301,6 +5378,17 @@ UObject* UDynamicClass::FindArchetype(UClass* ArchetypeClass, const FName Archet
 	return Archetype ? Archetype :
 		(SuperClass ? SuperClass->FindArchetype(ArchetypeClass, ArchetypeName) : nullptr);
 }
+
+void UDynamicClass::SetupObjectInitializer(FObjectInitializer& ObjectInitializer) const
+{
+	for (const TPair<FName, UClass*>& Override : ComponentClassOverrides)
+	{
+		ObjectInitializer.SetDefaultSubobjectClass(Override.Key, Override.Value);
+	}
+
+	GetSuperClass()->SetupObjectInitializer(ObjectInitializer);
+}
+
 
 UStructProperty* UDynamicClass::FindStructPropertyChecked(const TCHAR* PropertyName) const
 {

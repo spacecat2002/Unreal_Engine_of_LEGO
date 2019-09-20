@@ -268,14 +268,14 @@ struct CORE_API FGenericPlatformProcess
 	 * Generates the path to the specified application or game.
 	 *
 	 * The application must reside in the Engine's binaries directory. The returned path is relative to this
-	 * executable's directory.For example, calling this method with "UE4" and EBuildConfigurations::Debug
+	 * executable's directory.For example, calling this method with "UE4" and EBuildConfiguration::Debug
 	 * on Windows 64-bit will generate the path "../Win64/UE4Editor-Win64-Debug.exe"
 	 *
 	 * @param AppName The name of the application or game.
 	 * @param BuildConfiguration The build configuration of the game.
 	 * @return The generated application path.
 	 */
-	static FString GenerateApplicationPath( const FString& AppName, EBuildConfigurations::Type BuildConfiguration);
+	static FString GenerateApplicationPath( const FString& AppName, EBuildConfiguration BuildConfiguration);
 
 	/**
 	 * Return the prefix of dynamic library (e.g. lib)
@@ -391,7 +391,7 @@ struct CORE_API FGenericPlatformProcess
 	 *
 	 * WaitAndFork stalls the invoking process and forks child processes when signals are sent to it from an external source.
 	 * Forked child processes will provide a return value of EWaitAndForkResult::Child, while the parent process
-	 * will not return until GIsRequestingExit is true (EWaitAndForkResult::Parent) or there was an error (EWaitAndForkResult::Error)
+	 * will not return until IsEngineExitRequested() is true (EWaitAndForkResult::Parent) or there was an error (EWaitAndForkResult::Error)
 	 * The signal the parent process expects is platform-specific (i.e. SIGRTMIN+1 on Linux). 
 	 */
 	static EWaitAndForkResult WaitAndFork();
@@ -601,6 +601,11 @@ struct CORE_API FGenericPlatformProcess
 	 * Checks if we're the first instance. An instance can become first if the previous first instance quits before it.
 	 */
 	static bool IsFirstInstance();
+
+	/**
+	 * Tears down allocated process resources.
+	 */
+	static void TearDown();
 };
 
 

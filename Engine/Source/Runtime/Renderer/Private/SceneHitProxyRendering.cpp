@@ -163,7 +163,7 @@ public:
 	FHitProxyPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer):
 		FMeshMaterialShader(Initializer)
 	{
-		HitProxyId.Bind(Initializer.ParameterMap,TEXT("HitProxyId"), SPF_Mandatory);
+		HitProxyId.Bind(Initializer.ParameterMap,TEXT("HitProxyId"), SPF_Optional); // There is no way to guarantee that this parameter will be preserved in a material that kill()s all fragments as the optimiser can remove the global - this happens in various projects.
 		PassUniformBuffer.Bind(Initializer.ParameterMap, FSceneTexturesUniformParameters::StaticStructMetadata.GetShaderVariableName());
 	}
 
@@ -338,11 +338,7 @@ static void DoRenderHitProxies(FRHICommandListImmediate& RHICmdList, const FScen
 			for (int32 MeshIndex = 0; MeshIndex < View.DynamicEditorMeshElements.Num(); MeshIndex++)
 			{
 				const FMeshBatchAndRelevance& MeshBatchAndRelevance = View.DynamicEditorMeshElements[MeshIndex];
-
-				if (MeshBatchAndRelevance.Mesh->bSelectable)
-				{
-					PassMeshProcessor.AddMeshBatch(*MeshBatchAndRelevance.Mesh, DefaultBatchElementMask, MeshBatchAndRelevance.PrimitiveSceneProxy);
-				}
+				PassMeshProcessor.AddMeshBatch(*MeshBatchAndRelevance.Mesh, DefaultBatchElementMask, MeshBatchAndRelevance.PrimitiveSceneProxy);
 			}
 		});
 
@@ -559,6 +555,8 @@ void FMobileSceneRenderer::RenderHitProxies(FRHICommandListImmediate& RHICmdList
 
 void FDeferredShadingSceneRenderer::RenderHitProxies(FRHICommandListImmediate& RHICmdList)
 {
+	Scene->UpdateAllPrimitiveSceneInfos(RHICmdList);
+
 	PrepareViewRectsForRendering();
 
 #if WITH_EDITOR
@@ -608,11 +606,6 @@ void FDeferredShadingSceneRenderer::RenderHitProxies(FRHICommandListImmediate& R
 
 void FHitProxyMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshBatch, uint64 BatchElementMask, const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy, int32 StaticMeshId)
 {
-	if (ViewIfDynamicMeshCommand && ViewIfDynamicMeshCommand->bAllowTranslucentPrimitivesInHitProxy != bAllowTranslucentPrimitivesInHitProxy)
-	{
-		return;
-	}
-
 	if (MeshBatch.bUseForMaterial && MeshBatch.bSelectable && Scene->RequiresHitProxies() && (!PrimitiveSceneProxy || PrimitiveSceneProxy->IsSelectable()))
 	{
 		// Determine the mesh's material and blend mode.
@@ -636,7 +629,29 @@ void FHitProxyMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshBatch, 
 
 		check(Material && MaterialRenderProxy);
 
-		if (bAllowTranslucentPrimitivesInHitProxy || !IsTranslucentBlendMode(BlendMode))
+		bool bAddTranslucentPrimitive = bAllowTranslucentPrimitivesInHitProxy;
+
+		// Check whether the primitive overrides the pass to force translucent hit proxies.
+		if (!bAddTranslucentPrimitive)
+		{
+			FHitProxyId HitProxyId = MeshBatch.BatchHitProxyId;
+
+			// Fallback to the primitive default hit proxy id if the mesh batch doesn't have one.
+			if (MeshBatch.BatchHitProxyId == FHitProxyId() && PrimitiveSceneProxy)
+			{
+				if (const FPrimitiveSceneInfo* PrimitiveSceneInfo = PrimitiveSceneProxy->GetPrimitiveSceneInfo())
+				{
+					HitProxyId = PrimitiveSceneInfo->DefaultDynamicHitProxyId;
+				}
+			}
+
+			if (const HHitProxy* HitProxy = GetHitProxyById(HitProxyId))
+			{
+				bAddTranslucentPrimitive = HitProxy->AlwaysAllowsTranslucentPrimitives();
+			}
+		}
+
+		if (bAddTranslucentPrimitive || !IsTranslucentBlendMode(BlendMode))
 		{
 			Process(MeshBatch, BatchElementMask, StaticMeshId, PrimitiveSceneProxy, *MaterialRenderProxy, *Material, MeshFillMode, MeshCullMode);
 		}

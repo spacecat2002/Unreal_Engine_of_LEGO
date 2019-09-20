@@ -4,12 +4,15 @@
 #include "Modules/ModuleManager.h"
 #include "AudioMixer.h"
 #include "AudioMixerDevice.h"
-#include "AudioPluginUtilities.h"
 #include "CoreGlobals.h"
 #include "Misc/ConfigCacheIni.h"
+
+#if WITH_ENGINE
+#include "AudioPluginUtilities.h"
 #include "OpusAudioInfo.h"
 #include "VorbisAudioInfo.h"
 #include "ADPCMAudioInfo.h"
+#endif // WITH_ENGINE
 
 DECLARE_LOG_CATEGORY_EXTERN(LogAudioMixerSDL, Log, All);
 DEFINE_LOG_CATEGORY(LogAudioMixerSDL);
@@ -114,7 +117,7 @@ namespace Audio
 		DesiredSpec.format = AUDIO_S16;
 		DesiredSpec.channels = 2;
 #endif
-		
+
 		DesiredSpec.samples = PlatformSettings.CallbackBufferFrameSize;
 		DesiredSpec.callback = OnBufferEnd;
 		DesiredSpec.userdata = (void*)this;
@@ -213,7 +216,15 @@ namespace Audio
 			DeviceName = SDL_GetAudioDeviceName(OpenStreamParams.OutputDeviceIndex, 0);
 		}
 
-		AudioDeviceID = SDL_OpenAudioDevice(DeviceName, 0, &AudioSpecPrefered, &AudioSpecReceived, 0);
+		FString CurrentDeviceName = GetCurrentDeviceName();
+		if (CurrentDeviceName.Len() <= 0)
+		{
+			AudioDeviceID = SDL_OpenAudioDevice(DeviceName, 0, &AudioSpecPrefered, &AudioSpecReceived, 0);
+		}
+		else
+		{
+			AudioDeviceID = SDL_OpenAudioDevice(TCHAR_TO_ANSI(*CurrentDeviceName), 0, &AudioSpecPrefered, &AudioSpecReceived, 0);
+		}
 
 		if (!AudioDeviceID)
 		{
@@ -240,6 +251,11 @@ namespace Audio
 		return true;
 	}
 
+	FString FMixerPlatformSDL::GetCurrentDeviceName() const
+	{
+		return {};
+	}
+
 	bool FMixerPlatformSDL::CloseAudioStream()
 	{
 		if (AudioStreamInfo.StreamState == EAudioOutputStreamState::Closed)
@@ -254,7 +270,12 @@ namespace Audio
 
 		if (AudioDeviceID != INDEX_NONE)
 		{
+			FScopeLock ScopedLock(&OutputBufferMutex);
+
 			SDL_CloseAudioDevice(AudioDeviceID);
+
+			OutputBuffer = nullptr;
+			OutputBufferByteLength = 0;
 		}
 
 		AudioStreamInfo.StreamState = EAudioOutputStreamState::Closed;
@@ -304,6 +325,9 @@ namespace Audio
 
 	void FMixerPlatformSDL::SubmitBuffer(const uint8* Buffer)
 	{
+		// Need to prevent the case in which we close down the audio stream leaving this point to potentially corrupt the free'ed pointer
+		FScopeLock ScopedLock(&OutputBufferMutex);
+
 		if (OutputBuffer)
 		{
 			FMemory::Memcpy(OutputBuffer, Buffer, OutputBufferByteLength);
@@ -325,6 +349,7 @@ namespace Audio
 
 	FName FMixerPlatformSDL::GetRuntimeFormat(USoundWave* InSoundWave)
 	{
+#if WITH_ENGINE
 		static FName NAME_OGG(TEXT("OGG"));
 		static FName NAME_OPUS(TEXT("OPUS"));
 		static FName NAME_ADPCM(TEXT("ADPCM"));
@@ -339,6 +364,10 @@ namespace Audio
 			return NAME_OPUS;
 		}
 		return NAME_OGG;
+#else
+		checkNoEntry();
+		return FName();
+#endif // WITH_ENGINE
 	}
 
 	bool FMixerPlatformSDL::HasCompressedAudioInfoClass(USoundWave* InSoundWave)
@@ -348,6 +377,7 @@ namespace Audio
 
 	ICompressedAudioInfo* FMixerPlatformSDL::CreateCompressedAudioInfo(USoundWave* InSoundWave)
 	{
+#if WITH_ENGINE
 		check(InSoundWave);
 
 		if (InSoundWave->IsStreaming())
@@ -367,6 +397,10 @@ namespace Audio
 		}
 
 		return new FADPCMAudioInfo();
+#else
+		checkNoEntry();
+		return nullptr;
+#endif // WITH_ENGINE
 	}
 
 	FString FMixerPlatformSDL::GetDefaultDeviceName()

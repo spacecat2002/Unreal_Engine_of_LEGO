@@ -8,6 +8,7 @@
 #include "D3D12RHIPrivate.h"
 #include "D3D12Allocation.h"
 #include "Misc/BufferedOutputDevice.h"
+#include "HAL/PlatformStackWalk.h"
 
 #if D3D12RHI_SEGREGATED_TEXTURE_ALLOC
 static int32 GD3D12ReadOnlyTextureAllocatorMinPoolSize = 4 * 1024 * 1024;
@@ -32,6 +33,23 @@ static FAutoConsoleVariableRef CVarD3D12ReadOnlyTextureAllocatorMaxPoolSize(
 	TEXT("Maximum allocation granularity (in bytes) of each size list"),
 	ECVF_ReadOnly);
 #endif
+
+
+#if D3D12RHI_SEGLIST_ALLOC_TRACK_WASTAGE
+static int32 GD3D12SegListTrackLeaks = 0;
+static FAutoConsoleVariableRef CVarD3D12SegListTrackLeaks(
+	TEXT("d3d12.SegListTrackLeaks"),
+	GD3D12SegListTrackLeaks,
+	TEXT("1: Enable leak tracking in d3d12 seglist's"),
+	ECVF_ReadOnly);
+#endif
+
+static int32 GD3D12FastAllocatorMinPagesToRetain = 5;
+static FAutoConsoleVariableRef CVarD3D12FastAllocatorMinPagesToRetain(
+	TEXT("d3d12.FastAllocator.MinPagesToRetain"),
+	GD3D12FastAllocatorMinPagesToRetain,
+	TEXT("Minimum number of pages to retain. Pages below this limit will never be released. Pages above can be released after being unused for a certain number of frames."),
+	ECVF_Default);
 
 namespace ED3D12AllocatorID
 {
@@ -117,8 +135,8 @@ void FD3D12BuddyAllocator::Initialize()
 	if (AllocationStrategy == eBuddyAllocationStrategy::kPlacedResourceStrategy)
 	{
 		D3D12_HEAP_PROPERTIES HeapProps = CD3DX12_HEAP_PROPERTIES(HeapType);
-		HeapProps.CreationNodeMask = (uint32)GetGPUMask();
-		HeapProps.VisibleNodeMask = (uint32)GetVisibilityMask();
+		HeapProps.CreationNodeMask = GetGPUMask().GetNative();
+		HeapProps.VisibleNodeMask = GetVisibilityMask().GetNative();
 
 		D3D12_HEAP_DESC Desc = {};
 		Desc.SizeInBytes = MaxBlockSize;
@@ -269,6 +287,7 @@ void FD3D12BuddyAllocator::Allocate(uint32 SizeInBytes, uint32 Alignment, FD3D12
 	}
 #endif
 	const uint32 AlignedOffsetFromResourceBase = AllocationBlockOffset + Padding;
+	check((AlignedOffsetFromResourceBase % Alignment) == 0);
 
 	// Setup the info that this allocator
 	FD3D12BuddyAllocatorPrivateData& PrivateData = ResourceLocation.GetBuddyAllocatorPrivateData();
@@ -293,12 +312,6 @@ void FD3D12BuddyAllocator::Allocate(uint32 SizeInBytes, uint32 Alignment, FD3D12
 	else
 	{
 		// Place resources are intialized elsewhere
-	}
-
-	if (Alignment != 0)
-	{
-		check(uint64(ResourceLocation.GetMappedBaseAddress()) % Alignment == 0);
-		check(uint64(ResourceLocation.GetGPUVirtualAddress()) % Alignment == 0);
 	}
 
 	// track the allocation
@@ -1173,9 +1186,9 @@ HRESULT FD3D12TextureAllocatorPool::AllocateTexture(
 		}
 	}
 
-	const D3D12_HEAP_PROPERTIES HeapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT, (uint32)GetGPUMask(), (uint32)GetVisibilityMask());
+	const D3D12_HEAP_PROPERTIES HeapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT, GetGPUMask().GetNative(), GetVisibilityMask().GetNative());
 	Desc.Alignment = 0;
-	RetCode = Adapter->CreateCommittedResource(Desc, HeapProps, InitialState, ClearValue, &NewResource, Name);
+	RetCode = Adapter->CreateCommittedResource(Desc, GetGPUMask(), HeapProps, InitialState, ClearValue, &NewResource, Name);
 
 	TextureLocation.SetType(FD3D12ResourceLocation::ResourceLocationType::eStandAlone);
 	TextureLocation.SetResource(NewResource);
@@ -1238,9 +1251,9 @@ HRESULT FD3D12TextureAllocator::AllocateTexture(D3D12_RESOURCE_DESC Desc, const 
 
 	// Request default alignment for stand alone textures
 	Desc.Alignment = 0;
-	const D3D12_HEAP_PROPERTIES HeapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT, (uint32)GetGPUMask(), (uint32)GetVisibilityMask());
+	const D3D12_HEAP_PROPERTIES HeapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT, GetGPUMask().GetNative(), (uint32)GetVisibilityMask().GetNative());
 
-	hr = Adapter->CreateCommittedResource(Desc, HeapProps, InitialState, ClearValue, &NewResource, Name);
+	hr = Adapter->CreateCommittedResource(Desc, GetGPUMask(), HeapProps, InitialState, ClearValue, &NewResource, Name);
 
 	TextureLocation.SetType(FD3D12ResourceLocation::ResourceLocationType::eStandAlone);
 	TextureLocation.SetResource(NewResource);
@@ -1273,8 +1286,8 @@ HRESULT FD3D12TextureAllocatorPool::AllocateTexture(D3D12_RESOURCE_DESC Desc, co
 	FD3D12Adapter* Adapter = GetParentDevice()->GetParentAdapter();
 	FD3D12Resource* Resource = nullptr;
 
-	const D3D12_HEAP_PROPERTIES HeapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT, (uint32)GetGPUMask(), (uint32)GetVisibilityMask());
-	HRESULT hr = Adapter->CreateCommittedResource(Desc, HeapProps, InitialState, ClearValue, &Resource, Name);
+	const D3D12_HEAP_PROPERTIES HeapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT, GetGPUMask().GetNative(), GetVisibilityMask().GetNative());
+	HRESULT hr = Adapter->CreateCommittedResource(Desc, GetGPUMask(), HeapProps, InitialState, ClearValue, &Resource, Name);
 
 	TextureLocation.SetType(FD3D12ResourceLocation::ResourceLocationType::eStandAlone);
 	TextureLocation.SetResource(Resource);
@@ -1286,15 +1299,6 @@ HRESULT FD3D12TextureAllocatorPool::AllocateTexture(D3D12_RESOURCE_DESC Desc, co
 //-----------------------------------------------------------------------------
 //	Fast Allocation
 //-----------------------------------------------------------------------------
-
-template void* FD3D12FastAllocator::Allocate<FD3D12ScopeLock>(uint32 Size, uint32 Alignment, class FD3D12ResourceLocation* ResourceLocation, bool bMultiFrame);
-template void* FD3D12FastAllocator::Allocate<FD3D12ScopeNoLock>(uint32 Size, uint32 Alignment, class FD3D12ResourceLocation* ResourceLocation, bool bMultiFrame);
-
-template void FD3D12FastAllocator::CleanupPages<FD3D12ScopeLock>(uint64 FrameLag);
-template void FD3D12FastAllocator::CleanupPages<FD3D12ScopeNoLock>(uint64 FrameLag);
-
-template void FD3D12FastAllocator::Destroy<FD3D12ScopeLock>();
-template void FD3D12FastAllocator::Destroy<FD3D12ScopeNoLock>();
 
 FD3D12FastAllocator::FD3D12FastAllocator(FD3D12Device* Parent, FRHIGPUMask VisibiltyMask, D3D12_HEAP_TYPE InHeapType, uint32 PageSize)
 	: FD3D12DeviceChild(Parent)
@@ -1310,11 +1314,8 @@ FD3D12FastAllocator::FD3D12FastAllocator(FD3D12Device* Parent, FRHIGPUMask Visib
 	, CurrentAllocatorPage(nullptr)
 {}
 
-template<typename LockType>
-void* FD3D12FastAllocator::Allocate(uint32 Size, uint32 Alignment, class FD3D12ResourceLocation* ResourceLocation, bool bMultiFrame)
+void* FD3D12FastAllocator::Allocate(uint32 Size, uint32 Alignment, class FD3D12ResourceLocation* ResourceLocation)
 {
-	LockType Lock(&CS);
-
 	// Check to make sure our assumption that we don't need a ResourceLocation->Clear() here is valid.
 	checkf(!ResourceLocation->IsValid(), TEXT("The supplied resource location already has a valid resource. You should Clear() it first or it may leak."));
 
@@ -1342,6 +1343,8 @@ void* FD3D12FastAllocator::Allocate(uint32 Size, uint32 Alignment, class FD3D12R
 	}
 	else
 	{
+		FD3D12ScopeLock Lock(&CS);
+
 		const uint32 Offset = (CurrentAllocatorPage) ? CurrentAllocatorPage->NextFastAllocOffset : 0;
 		uint32 CurrentOffset = AlignArbitrary(Offset, Alignment);
 
@@ -1364,8 +1367,7 @@ void* FD3D12FastAllocator::Allocate(uint32 Size, uint32 Alignment, class FD3D12R
 			Size,
 			CurrentAllocatorPage->FastAllocBuffer->GetGPUVirtualAddress(),
 			CurrentAllocatorPage->FastAllocData,
-			CurrentOffset,
-			bMultiFrame);
+			CurrentOffset);
 
 		CurrentAllocatorPage->NextFastAllocOffset = CurrentOffset + Size;
 
@@ -1374,18 +1376,15 @@ void* FD3D12FastAllocator::Allocate(uint32 Size, uint32 Alignment, class FD3D12R
 	}
 }
 
-template<typename LockType>
 void FD3D12FastAllocator::CleanupPages(uint64 FrameLag)
 {
-	LockType Lock(&CS);
+	FD3D12ScopeLock Lock(&CS);
 	PagePool.CleanupPages(FrameLag);
 }
 
-template<typename LockType>
 void FD3D12FastAllocator::Destroy()
 {
-	LockType Lock(&CS);
-
+	FD3D12ScopeLock Lock(&CS);
 	if (CurrentAllocatorPage)
 	{
 		PagePool.ReturnFastAllocatorPage(CurrentAllocatorPage);
@@ -1399,7 +1398,7 @@ FD3D12FastAllocatorPagePool::FD3D12FastAllocatorPagePool(FD3D12Device* Parent, F
 	: FD3D12DeviceChild(Parent)
 	, FD3D12MultiNodeGPUObject(Parent->GetGPUMask(), VisibiltyMask)
 	, PageSize(Size)
-	, HeapProperties(CD3DX12_HEAP_PROPERTIES(InHeapType, (uint32)Parent->GetGPUMask(), (uint32)VisibiltyMask))
+	, HeapProperties(CD3DX12_HEAP_PROPERTIES(InHeapType, Parent->GetGPUMask().GetNative(), VisibiltyMask.GetNative()))
 {};
 
 FD3D12FastAllocatorPagePool::FD3D12FastAllocatorPagePool(FD3D12Device* Parent, FRHIGPUMask VisibiltyMask, const D3D12_HEAP_PROPERTIES& InHeapProperties, uint32 Size)
@@ -1436,9 +1435,10 @@ FD3D12FastAllocatorPage* FD3D12FastAllocatorPagePool::RequestFastAllocatorPage()
 	Page = new FD3D12FastAllocatorPage(PageSize);
 
 	const D3D12_RESOURCE_STATES InitialState = DetermineInitialResourceState(HeapProperties.Type, &HeapProperties);
-	VERIFYD3D12RESULT(Adapter->CreateBuffer(HeapProperties, InitialState, PageSize, Page->FastAllocBuffer.GetInitReference(), TEXT("Fast Allocator Page")));
+	VERIFYD3D12RESULT(Adapter->CreateBuffer(HeapProperties, GetGPUMask(), InitialState, PageSize, Page->FastAllocBuffer.GetInitReference(), TEXT("Fast Allocator Page")));
 
 	Page->FastAllocData = Page->FastAllocBuffer->Map();
+
 	return Page;
 }
 
@@ -1454,36 +1454,30 @@ void FD3D12FastAllocatorPagePool::ReturnFastAllocatorPage(FD3D12FastAllocatorPag
 
 void FD3D12FastAllocatorPagePool::CleanupPages(uint64 FrameLag)
 {
+	if (Pool.Num() <= GD3D12FastAllocatorMinPagesToRetain)
+	{
+		return;
+	}
+
 	FD3D12Adapter* Adapter = GetParentDevice()->GetParentAdapter();
 	FD3D12Fence& FrameFence = Adapter->GetFrameFence();
 
 	const uint64 CompletedFence = FrameFence.UpdateLastCompletedFence();
 
-	bool Found = false;
-
-	int32 Index = 0;
-	while (Index < Pool.Num())
+	// Pages get returned to end of list, so we'll look for pages to delete, starting from the LRU
+	for (int32 Index = 0; Index < Pool.Num(); Index++)
 	{
 		//If the GPU is done with it and no-one has a lock on it
 		if (Pool[Index]->FastAllocBuffer->GetRefCount() == 1 &&
 			Pool[Index]->FrameFence + FrameLag <= CompletedFence)
 		{
-			// Always keep one to avoid a recurring delete/create dance
-			if (Found)
-			{
-				FD3D12FastAllocatorPage* Page = Pool[Index];
-				Pool.RemoveAt(Index);
-				delete(Page);
+			FD3D12FastAllocatorPage* Page = Pool[Index];
+			Pool.RemoveAt(Index);
+			delete(Page);
 
-				continue;
-			}
-			else
-			{
-				Found = true;
-			}
+			// Only release at most one page per frame			
+			return;
 		}
-
-		++Index;
 	}
 }
 
@@ -1625,7 +1619,7 @@ FD3D12SegHeap* FD3D12SegList::CreateBackingHeap(
 	ID3D12Heap* D3DHeap;
 	D3D12_HEAP_DESC Desc = {};
 	Desc.SizeInBytes = HeapSize;
-	Desc.Properties = CD3DX12_HEAP_PROPERTIES(HeapType, (uint32)Parent->GetGPUMask(), (uint32)VisibleNodeMask);
+	Desc.Properties = CD3DX12_HEAP_PROPERTIES(HeapType, Parent->GetGPUMask().GetNative(), VisibleNodeMask.GetNative());
 	Desc.Flags = HeapFlags;
 
 	VERIFYD3D12RESULT(Parent->GetDevice()->CreateHeap(&Desc, IID_PPV_ARGS(&D3DHeap)));
@@ -1695,9 +1689,7 @@ void FD3D12SegListAllocator::FreeRetiredBlocks(TArray<TArray<FRetiredBlock, Allo
 			FD3D12SegList* Owner = BackingHeap->OwnerList;
 			check(!!Owner);
 			Owner->FreeBlock(BackingHeap, Block.Offset);
-#if D3D12RHI_SEGLIST_ALLOC_TRACK_WASTAGE
-			TotalBytesRequested -= Block.ResourceSize;
-#endif
+			OnFree(Block.Offset, BackingHeap, Block.ResourceSize);
 		}
 	}
 }
@@ -1742,9 +1734,7 @@ void FD3D12SegListAllocator::Destroy()
 		FreeRetiredBlocks(DeferredDeletionQueue);
 		FenceValues.Empty();
 		DeferredDeletionQueue.Empty();
-#if D3D12RHI_SEGLIST_ALLOC_TRACK_WASTAGE
-		check(!TotalBytesRequested);
-#endif
+		VerifyEmpty();
 	}
 	{
 		FRWScopeLock Lock(SegListsRWLock, SLT_Write);
@@ -1758,3 +1748,73 @@ void FD3D12SegListAllocator::Destroy()
 		SegLists.Empty();
 	}
 }
+#if D3D12RHI_SEGLIST_ALLOC_TRACK_WASTAGE
+void FD3D12SegListAllocator::VerifyEmpty()
+{
+	FScopeLock Lock(&SegListTrackedAllocationCS);
+	if(SegListTrackedAllocations.Num() != 0)
+	{
+		UE_LOG(LogD3D12RHI, Warning, TEXT("Dumping leaked SegListAllocations\n"));
+		for (FD3D12SegListAllocatorLeakTrack& LeakTrack : SegListTrackedAllocations)
+		{
+			DumpStack(LeakTrack);
+		}
+	}
+	check(TotalBytesRequested == 0); //SegList was not properly freed. Run with d3d12.SegListTrackLeaks=1 to print callstacks of offending allocations
+}
+
+
+void FD3D12SegListAllocator::DumpStack(const FD3D12SegListAllocatorLeakTrack& LeakTrack)
+{
+	UE_LOG(LogD3D12RHI, Warning, TEXT("Leaking Allocation Heap %p Offset %d\nStack Dump\n"), LeakTrack.Heap, LeakTrack.Offset);
+	for(uint32 Index = 0; Index < LeakTrack.StackDepth; ++Index)
+	{
+		const size_t STRING_SIZE = 16 * 1024;
+		ANSICHAR StackTrace[STRING_SIZE];
+		StackTrace[0] = 0;
+		FPlatformStackWalk::ProgramCounterToHumanReadableString(Index, LeakTrack.Stack[Index], StackTrace, STRING_SIZE, 0);
+		UE_LOG(LogD3D12RHI, Warning, TEXT("%d %S\n"), Index, StackTrace);
+	}
+}
+
+void FD3D12SegListAllocator::OnAlloc(uint32 Offset, void* Heap, uint32 Size)
+{
+	TotalBytesRequested += Size;
+
+	if(GD3D12SegListTrackLeaks == 0)
+		return;
+	FD3D12SegListAllocatorLeakTrack LeakTrack;
+	LeakTrack.Offset = Offset;
+	LeakTrack.Heap = Heap;
+	LeakTrack.Size = Size;
+	LeakTrack.StackDepth = FPlatformStackWalk::CaptureStackBackTrace(&LeakTrack.Stack[0], D3D12RHI_SEGLIST_ALLOC_TRACK_LEAK_STACK_DEPTH);
+
+	FScopeLock Lock(&SegListTrackedAllocationCS);
+	check(!SegListTrackedAllocations.Contains(LeakTrack));
+	SegListTrackedAllocations.Add(LeakTrack);
+}
+void FD3D12SegListAllocator::OnFree(uint32 Offset, void* Heap, uint32 Size)
+{
+	TotalBytesRequested -= Size;
+	if (GD3D12SegListTrackLeaks == 0)
+		return;
+
+	FD3D12SegListAllocatorLeakTrack LeakTrack;
+	LeakTrack.Offset = Offset;
+	LeakTrack.Heap = Heap;
+	FScopeLock Lock(&SegListTrackedAllocationCS);
+	FD3D12SegListAllocatorLeakTrack* Element = SegListTrackedAllocations.Find(LeakTrack);
+	check(Element); // element being freed was not found.
+	if(Element->Size != Size)
+	{
+		UE_LOG(LogD3D12RHI, Warning, TEXT("Mismatched alloc/free size %d != %d, %p/%08x"), Element->Size, Size, Element->Heap, Element->Offset);
+		DumpStack(*Element);
+		check(0); //element being freed had incorrect size. 
+	}
+	SegListTrackedAllocations.Remove(LeakTrack);
+	check(!SegListTrackedAllocations.Contains(LeakTrack));
+}
+#endif
+
+
+

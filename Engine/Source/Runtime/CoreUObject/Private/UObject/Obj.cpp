@@ -1168,6 +1168,7 @@ void UObject::PreSave(const class ITargetPlatform* TargetPlatform)
 #endif
 }
 
+#if WITH_EDITOR
 bool UObject::CanModify() const
 {
 	return (!HasAnyFlags(RF_NeedInitialization) && !IsGarbageCollecting() && !GExitPurge && !IsUnreachable());
@@ -1196,13 +1197,12 @@ bool UObject::Modify( bool bAlwaysMarkDirty/*=true*/ )
 				MarkPackageDirty();
 			}
 		}
-#if WITH_EDITOR
 		FCoreUObjectDelegates::BroadcastOnObjectModified(this);
-#endif
 	}
 
 	return bSavedToTransactionBuffer;
 }
+#endif
 
 bool UObject::IsSelected() const
 {
@@ -1546,7 +1546,6 @@ protected:
 };
 
 
-#define ALLOW_SUB_SUB_OBJECTS (1)
 // if this is set to fatal, then we don't run any testing since it is time consuming.
 DEFINE_LOG_CATEGORY_STATIC(LogCheckSubobjects, Fatal, All);
 
@@ -1626,16 +1625,6 @@ bool UObject::CheckDefaultSubobjectsInternal() const
 		CompCheck(GetFName() == ObjClass->GetDefaultObjectName());
 	}
 
-
-	TArray<UObject *> AllCollectedComponents;
-	CollectDefaultSubobjects(AllCollectedComponents, true);
-	TArray<UObject *> DirectCollectedComponents;
-	CollectDefaultSubobjects(DirectCollectedComponents, false);
-		
-	AllCollectedComponents.Sort();
-	DirectCollectedComponents.Sort();
-
-	CompCheck(ALLOW_SUB_SUB_OBJECTS || AllCollectedComponents == DirectCollectedComponents); // just say no to subobjects of subobjects
 
 	return Result;
 }
@@ -2018,7 +2007,7 @@ void UObject::LoadConfig( UClass* ConfigClass/*=NULL*/, const TCHAR* InFilename/
 	checkf(ConfigClass->PropertyLink != nullptr
 		|| (ConfigClass->GetSuperStruct() && HaveSameProperties(ConfigClass, ConfigClass->GetSuperStruct()))
 		|| ConfigClass->PropertiesSize == 0
-		|| GIsRequestingExit, // Ignore this check when exiting as we may have requested exit during init when not everything is initialized
+		|| IsEngineExitRequested(), // Ignore this check when exiting as we may have requested exit during init when not everything is initialized
 		TEXT("class %s has uninitialized properties. Accessed too early?"), *ConfigClass->GetName());
 #endif
 
@@ -2549,7 +2538,7 @@ FString UObject::GetDefaultConfigFilename() const
 	if (OverridePlatform.Len())
 	{
 		// use platform extension path if it exists
-		FString PlatformExtPath = FString::Printf(TEXT("%s%s/Config/%s%s.ini"), *FPaths::PlatformExtensionsDir(), FApp::GetProjectName(), *OverridePlatform, *GetClass()->ClassConfigName.ToString());
+		FString PlatformExtPath = FString::Printf(TEXT("%s%s/Config/%s%s.ini"), *FPaths::ProjectPlatformExtensionsDir(), *OverridePlatform, *OverridePlatform, *GetClass()->ClassConfigName.ToString());
 		return FPaths::FileExists(*PlatformExtPath) ? PlatformExtPath : 
 			FString::Printf(TEXT("%s%s/%s%s.ini"), *FPaths::SourceConfigDir(), *OverridePlatform, *OverridePlatform, *GetClass()->ClassConfigName.ToString());
 	}

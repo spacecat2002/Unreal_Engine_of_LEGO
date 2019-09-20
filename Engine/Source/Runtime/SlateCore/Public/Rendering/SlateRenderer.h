@@ -9,8 +9,10 @@
 #include "Templates/RefCounting.h"
 
 class FRHITexture2D;
+class FRenderTarget;
 class FSlateDrawBuffer;
 class FSlateUpdatableTexture;
+class ISlate3DRenderer;
 class ISlateAtlasProvider;
 class ISlateStyle;
 class SWindow;
@@ -29,8 +31,8 @@ struct FRenderThreadUpdateContext
 	float WorldTimeSeconds;
 	float DeltaTimeSeconds;
 	float RealTimeSeconds;
-	void* RenderTargetResource;
-	void* Renderer;
+	FRenderTarget* RenderTarget;
+	ISlate3DRenderer* Renderer;
 	bool bClearTarget;
 };
 
@@ -306,6 +308,9 @@ public:
 	/** Called when a window is destroyed to give the renderer a chance to free resources */
 	virtual void OnWindowDestroyed( const TSharedRef<SWindow>& InWindow ) = 0;
 	
+	/** Called when a window is finished being reshaped */
+	virtual void OnWindowFinishReshaped(const TSharedPtr<SWindow>& InWindow) {};
+
 	/**
 	 * Returns the viewport rendering resource (backbuffer) for the provided window
 	 *

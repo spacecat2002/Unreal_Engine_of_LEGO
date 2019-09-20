@@ -13,6 +13,7 @@
 #elif PLATFORM_MAC
 #include "Mac/MacApplication.h"
 #include "HAL/PlatformApplicationMisc.h"
+#include "GenericPlatform/GenericPlatformFile.h"
 #endif
 #include "MetalProfiler.h"
 #include "GenericPlatform/GenericPlatformDriver.h"
@@ -155,7 +156,7 @@ FMetalDynamicRHI::FMetalDynamicRHI(ERHIFeatureLevel::Type RequestedFeatureLevel)
     bool bProjectSupportsMRTs = false;
     GConfig->GetBool(TEXT("/Script/IOSRuntimeSettings.IOSRuntimeSettings"), TEXT("bSupportsMetalMRT"), bProjectSupportsMRTs, GEngineIni);
 
-	bool const bRequestedMetalMRT = ((RequestedFeatureLevel >= ERHIFeatureLevel::SM4) || (!bRequestedFeatureLevel && FParse::Param(FCommandLine::Get(),TEXT("metalmrt"))));
+	bool const bRequestedMetalMRT = ((RequestedFeatureLevel >= ERHIFeatureLevel::SM5) || (!bRequestedFeatureLevel && FParse::Param(FCommandLine::Get(),TEXT("metalmrt"))));
 	bSupportsRHIThread = FParse::Param(FCommandLine::Get(),TEXT("rhithread"));
 
     // only allow GBuffers, etc on A8s (A7s are just not going to cut it)
@@ -201,8 +202,8 @@ FMetalDynamicRHI::FMetalDynamicRHI(ERHIFeatureLevel::Type RequestedFeatureLevel)
 	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::ES2] = SP_METAL;
 	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::ES3_1] = SP_METAL;
 #endif
-	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::SM4] = (GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM4) ? GMaxRHIShaderPlatform : SP_NumPlatforms;
-	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::SM5] = (GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM4) ? GMaxRHIShaderPlatform : SP_NumPlatforms;
+	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::SM4_REMOVED] = SP_NumPlatforms;
+	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::SM5] = (GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5) ? GMaxRHIShaderPlatform : SP_NumPlatforms;
 
 #else // @todo zebra
 	uint32 DeviceIndex = ((FMetalDeviceContext*)ImmediateContext.Context)->GetDeviceIndex();
@@ -304,7 +305,7 @@ FMetalDynamicRHI::FMetalDynamicRHI(ERHIFeatureLevel::Type RequestedFeatureLevel)
 	
 	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::ES2] = SP_METAL_MACES2;
 	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::ES3_1] = (GMaxRHIFeatureLevel >= ERHIFeatureLevel::ES3_1) ? SP_METAL_MACES3_1 : SP_NumPlatforms;
-	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::SM4] = SP_NumPlatforms;
+	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::SM4_REMOVED] = SP_NumPlatforms;
 	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::SM5] = (GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5) ? GMaxRHIShaderPlatform : SP_NumPlatforms;
 	
 	// Mac GPUs support layer indexing.
@@ -470,13 +471,13 @@ FMetalDynamicRHI::FMetalDynamicRHI(ERHIFeatureLevel::Type RequestedFeatureLevel)
 	SetEmitDrawEvents(GetEmitDrawEvents() | ENABLE_METAL_GPUEVENTS);
 #endif
 
-	GSupportsShaderFramebufferFetch = !PLATFORM_MAC;
+	GSupportsShaderFramebufferFetch = !PLATFORM_MAC && GMaxRHIShaderPlatform != SP_METAL_MRT && GMaxRHIShaderPlatform != SP_METAL_MRT_TVOS;
 	GHardwareHiddenSurfaceRemoval = true;
 	GSupportsRenderTargetFormat_PF_G8 = false;
 	GRHISupportsTextureStreaming = true;
 	GSupportsWideMRT = bCanUseWideMRTs;
 	// GSupportsTransientResourceAliasing = FMetalCommandQueue::SupportsFeature(EMetalFeaturesHeaps) && FMetalCommandQueue::SupportsFeature(EMetalFeaturesFences);
-	GSupportsSeparateRenderTargetBlendState = (GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM4);
+	GSupportsSeparateRenderTargetBlendState = (GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5);
 
 #if PLATFORM_MAC
 	check(Device.SupportsFeatureSet(mtlpp::FeatureSet::macOS_GPUFamily1_v1));
@@ -798,48 +799,11 @@ FMetalDynamicRHI::FMetalDynamicRHI(ERHIFeatureLevel::Type RequestedFeatureLevel)
 	}
 
 #if PLATFORM_MAC
-	if(!FPlatformProcess::IsSandboxedApplication())
+	if (!FPlatformProcess::IsSandboxedApplication())
 	{
-		FString Version;
-		if (GRHIAdapterUserDriverVersion.Len())	
-		{
-			Version = GRHIAdapterUserDriverVersion;
-		}
-		else
-		{
-			auto OSVersion = [[NSProcessInfo processInfo] operatingSystemVersion];
-			Version = FString::Printf(TEXT("%ld.%ld.%ld"), OSVersion.majorVersion, OSVersion.minorVersion, OSVersion.patchVersion);
-		}
-
-		NSString* DstPath = [NSString stringWithFormat:@"%@/BinaryPSOs/%@/com.apple.metal", FPaths::ProjectSavedDir().GetNSString(), Version.GetNSString()];
-		if([[NSFileManager defaultManager] fileExistsAtPath:DstPath])
-		{
-			NSString* TempDir = [NSString stringWithFormat:@"%@/../C/%@/com.apple.metal", NSTemporaryDirectory(), [NSBundle mainBundle].bundleIdentifier];
-
-			NSError* Err = nil;
-			if(![[NSFileManager defaultManager] fileExistsAtPath:TempDir])
-			{
-				[[NSFileManager defaultManager] createDirectoryAtPath:TempDir
-											withIntermediateDirectories:YES
-															 attributes:nil
-																  error:&Err];
-			}
-			
-			NSDirectoryEnumerator<NSString *> * Enum = [[NSFileManager defaultManager] enumeratorAtPath:DstPath];
-			for (NSString* Path in Enum)
-			{
-				[Enum skipDescendents];
-
-				NSString* Dest = [NSString stringWithFormat:@"%@/%@", TempDir, Path];
-				if(![[NSFileManager defaultManager] fileExistsAtPath:Dest])
-				{
-					NSString* Src = [NSString stringWithFormat:@"%@/%@", DstPath, Path];
-					[[NSFileManager defaultManager] copyItemAtPath:Src
-																   toPath:Dest
-																	error:&Err];
-				}
-			}
-		}
+		// Cleanup local BinaryPSOs folder as it's not used anymore.
+		const FString BinaryPSOsDir = FPaths::ProjectSavedDir() / TEXT("BinaryPSOs");
+		IPlatformFile::GetPlatformPhysical().DeleteDirectoryRecursively(*BinaryPSOsDir);
 	}
 #endif
 
@@ -871,39 +835,6 @@ FMetalDynamicRHI::~FMetalDynamicRHI()
 {
 	check(IsInGameThread() && IsInRenderingThread());
 	
-#if PLATFORM_MAC
-	if(!FPlatformProcess::IsSandboxedApplication())
-	{
-		NSString* TempDir = [NSString stringWithFormat:@"%@/../C/%@/com.apple.metal", NSTemporaryDirectory(), [NSBundle mainBundle].bundleIdentifier];
-
-		FString Version;
-		if (GRHIAdapterUserDriverVersion.Len())	
-		{
-			Version = GRHIAdapterUserDriverVersion;
-		}
-		else
-		{
-			auto OSVersion = [[NSProcessInfo processInfo] operatingSystemVersion];
-			Version = FString::Printf(TEXT("%ld.%ld.%ld"), OSVersion.majorVersion, OSVersion.minorVersion, OSVersion.patchVersion);
-		}
-
-		NSString* DstPath = [NSString stringWithFormat:@"%@/BinaryPSOs/%@/com.apple.metal", FPaths::ProjectSavedDir().GetNSString(), Version.GetNSString()];
-
-		NSError* Err = nil;
-		BOOL bOK = [[NSFileManager defaultManager] removeItemAtPath:[NSString stringWithFormat:@"%@/BinaryPSOs", FPaths::ProjectSavedDir().GetNSString()]
-					error:&Err];
-
-		bOK = [[NSFileManager defaultManager] createDirectoryAtPath:[NSString stringWithFormat:@"%@/BinaryPSOs/%@", FPaths::ProjectSavedDir().GetNSString(), Version.GetNSString()]
-					withIntermediateDirectories:YES
-					attributes:nil
-							error:&Err];
-
-		bOK = [[NSFileManager defaultManager] copyItemAtPath:TempDir
-					toPath:DstPath 
-					error:&Err];
-	}
-#endif
-
 	// Ask all initialized FRenderResources to release their RHI resources.
 	for (TLinkedList<FRenderResource*>::TIterator ResourceIt(FRenderResource::GetResourceList()); ResourceIt; ResourceIt.Next())
 	{

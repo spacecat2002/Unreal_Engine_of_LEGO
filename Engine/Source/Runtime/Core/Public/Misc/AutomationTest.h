@@ -793,6 +793,11 @@ public:
 	void LoadTestModules();
 
 	/**
+	 * Load the test Blacklist from the config.
+	 */
+	void BuildTestBlacklistFromConfig();
+
+	/**
 	 * Populates the provided array with the names of all tests in the framework that are valid to run for the current
 	 * application settings.
 	 *
@@ -904,7 +909,20 @@ private:
 		class FAutomationTestBase* CurTest;
 	};
 
-	 friend class FAutomationTestFeedbackContext;
+	//** Store information about blacklisted test */
+	struct FBlacklistEntry
+	{
+		FBlacklistEntry() :
+			bWarn(false) {}
+
+		FString Map;
+		FString Test;
+		FString Reason;
+		TArray<FString> RHIs;
+		bool bWarn;
+	};
+
+	friend class FAutomationTestFeedbackContext;
 	/** Helper method called to prepare settings for automation testing to follow */
 	void PrepForAutomationTests();
 
@@ -935,6 +953,16 @@ private:
 	 */
 	bool InternalStopTest(FAutomationTestExecutionInfo& OutExecutionInfo);
 
+
+	/**
+	 * Internal helper method that verify if a test is black listed.
+	 *
+	 * @param	TestName		Beautified test name to be checked
+	 * @param	OutReason		Output the reason for the test being blacklisted
+	 * @param	OutWarn			Output true if the config ask for a warning message
+	 * @return	true if the TestName is part of the blacklist.
+	 */
+	bool IsBlacklisted(const FString& TestName, FString* OutReason = nullptr, bool* OutWarn = nullptr) const;
 
 	/** Constructor */
 	FAutomationTestFramework();
@@ -986,6 +1014,8 @@ private:
 	bool bForceSmokeTests;
 
 	bool bCaptureStack;
+
+	TMap<FString, FBlacklistEntry> TestBlacklist;
 };
 
 
@@ -1022,6 +1052,9 @@ public:
 
 	/** Gets the C++ name of the test. */
 	FString GetTestName() const { return TestName; }
+
+	/** Gets the parameter context of the test. */
+	FString GetTestContext() const { return TestParameterContext; }
 
 	/**
 	 * Pure virtual method; returns the number of participants for this test
@@ -1533,6 +1566,9 @@ protected:
 	 */
 	virtual FString GetBeautifiedTestName() const = 0;
 
+	/** Sets the parameter context of the test. */
+	virtual void SetTestContext(FString Context) { TestParameterContext = Context; }
+
 protected:
 
 	//Flag to indicate if this is a complex task
@@ -1546,6 +1582,9 @@ protected:
 
 	/** Name of the test */
 	FString TestName;
+
+	/** Context of the test */
+	FString TestParameterContext;
 
 	/** Info related to the last execution of this test */
 	FAutomationTestExecutionInfo ExecutionInfo;

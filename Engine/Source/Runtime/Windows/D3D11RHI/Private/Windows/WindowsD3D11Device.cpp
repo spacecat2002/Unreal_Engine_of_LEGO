@@ -77,24 +77,6 @@ struct AmdAgsInfo
 static AmdAgsInfo AmdInfo;
 #endif
 
-static TAutoConsoleVariable<int32> CVarForceAMDToSM4(
-	TEXT("r.ForceAMDToSM4"),
-	0,
-	TEXT("Forces AMD devices to use SM4.0/D3D10.0 feature level."),
-	ECVF_RenderThreadSafe);
-
-static TAutoConsoleVariable<int32> CVarForceIntelToSM4(
-	TEXT("r.ForceIntelToSM4"),
-	0,
-	TEXT("Forces Intel devices to use SM4.0/D3D10.0 feature level."),
-	ECVF_RenderThreadSafe);
-
-static TAutoConsoleVariable<int32> CVarForceNvidiaToSM4(
-	TEXT("r.ForceNvidiaToSM4"),
-	0,
-	TEXT("Forces Nvidia devices to use SM4.0/D3D10.0 feature level."),
-	ECVF_RenderThreadSafe);
-
 static TAutoConsoleVariable<int32> CVarAMDUseMultiThreadedDevice(
 	TEXT("r.AMDD3D11MultiThreadedDevice"),
 	0,
@@ -128,13 +110,6 @@ static FAutoConsoleVariableRef CVarDX11NumGPUs(
  */
 namespace RHIConsoleVariables
 {
-	int32 MinFeatureSetLimit = -1;
-	static FAutoConsoleVariableRef CVarMinFeatureSetLimit(
-		TEXT("RHI.MinFeatureSetLimit"),
-		MinFeatureSetLimit,
-		TEXT("If set to 11, limit D3D RHI to D3D11 and 11.1 feature levels, disallowing 10. Otherwise, it will use default. Changing this at run-time has no effect. (default is -1)")
-		);
-
 	int32 MaxFeatureSetLimit = -1;
 	static FAutoConsoleVariableRef CVarMaxFeatureSetLimit(
 		TEXT("RHI.FeatureSetLimit"),
@@ -250,14 +225,8 @@ static void SafeCreateDXGIFactory(IDXGIFactory1** DXGIFactory1)
  */
 static D3D_FEATURE_LEVEL GetMinAllowedD3DFeatureLevel()
 {
-	// Default to 10.0
-	D3D_FEATURE_LEVEL AllowedFeatureLevel = D3D_FEATURE_LEVEL_10_0;
-
-	if (RHIConsoleVariables::MinFeatureSetLimit == 11)
-	{
-		AllowedFeatureLevel = D3D_FEATURE_LEVEL_11_0;
-	}
-
+	// Default to 11.0
+	D3D_FEATURE_LEVEL AllowedFeatureLevel = D3D_FEATURE_LEVEL_11_0;
 	return AllowedFeatureLevel;
 }
 
@@ -269,82 +238,7 @@ static D3D_FEATURE_LEVEL GetMaxAllowedD3DFeatureLevel()
 {
 	// Default to 11.0
 	D3D_FEATURE_LEVEL AllowedFeatureLevel = D3D_FEATURE_LEVEL_11_0;
-
-	// Use a feature level 10 if specified on the command line.
-	if(FParse::Param(FCommandLine::Get(),TEXT("d3d10")) || 
-		FParse::Param(FCommandLine::Get(),TEXT("dx10")) ||
-		FParse::Param(FCommandLine::Get(),TEXT("sm4")) ||
-		RHIConsoleVariables::MaxFeatureSetLimit == 10)
-	{
-		AllowedFeatureLevel = D3D_FEATURE_LEVEL_10_0;
-	}
-
-	if (bIsQuadBufferStereoEnabled)
-	{
-		if (AllowedFeatureLevel == D3D_FEATURE_LEVEL_10_0)
-		{
-			UE_LOG(LogD3D11RHI, Warning, TEXT("D3D Feature Level overriden from 10.0 to 11.1 due to quad_buffer_stereo"));
-		}
-		AllowedFeatureLevel = D3D_FEATURE_LEVEL_11_1;
-	}
 	return AllowedFeatureLevel;
-}
-
-/**
-* Attempts to create a D3D11 device to test if optional debugging features are installed.
-*/
-static void SafeTestForOptionalGraphicsTools(IDXGIAdapter* Adapter, D3D_FEATURE_LEVEL& FeatureLevel, uint32& DeviceFlags, D3D_FEATURE_LEVEL& OutFeatureLevel, int32 NumAllowedFeatureLevels)
-{
-	if((DeviceFlags & D3D11_CREATE_DEVICE_DEBUG) != D3D11_CREATE_DEVICE_DEBUG)
-	{
-		return;
-	}
-
-	ID3D11Device* D3DDevice = NULL;
-	ID3D11DeviceContext* D3DDeviceContext = NULL;
-
-#if PLATFORM_HOLOLENS
-	static bool bIsWin10 = true;
-#else
-	static bool bIsWin10 = FWindowsPlatformMisc::VerifyWindowsVersion(10, 0);
-#endif
-	static bool bPrintErrorMessage = true;
-
-	// Test device creation.
-	HRESULT Result = D3D11CreateDevice(
-		Adapter,
-		D3D_DRIVER_TYPE_UNKNOWN,
-		NULL,
-		DeviceFlags,
-		& FeatureLevel,
-		NumAllowedFeatureLevels,
-		D3D11_SDK_VERSION,
-		&D3DDevice,
-		&OutFeatureLevel,
-		&D3DDeviceContext
-	);
-
-	// If Optional Graphics tools were enabled then return true.
-	if (SUCCEEDED(Result))
-	{
-		D3DDevice->Release();
-		D3DDeviceContext->Release();
-		return;
-	}
-	// If creation failed due to missing Optional Features in Windows 10.
-	else if (DXGI_ERROR_SDK_COMPONENT_MISSING == Result && bIsWin10)
-	{
-		// Only print the debug error message once and don't clutter the log.
-		if (bPrintErrorMessage) 
-		{
-			UE_LOG(LogD3D11RHI, Warning,
-				TEXT("-d3ddebug was ignored as optional Graphics Tools still need to be installed. Install them through the Manage Optional Features in windows."));
-			bPrintErrorMessage = false;
-		}
-
-		// Remove the debug option from the device flag.
-		DeviceFlags = DeviceFlags & (~D3D11_CREATE_DEVICE_DEBUG);
-	}
 }
 
 /**
@@ -370,7 +264,6 @@ static bool SafeTestD3D11CreateDevice(IDXGIAdapter* Adapter,D3D_FEATURE_LEVEL Mi
 	{
 		D3D_FEATURE_LEVEL_11_1,
 		D3D_FEATURE_LEVEL_11_0,
-		D3D_FEATURE_LEVEL_10_0
 	};
 	
 	// Trim to allowed feature levels
@@ -402,14 +295,12 @@ static bool SafeTestD3D11CreateDevice(IDXGIAdapter* Adapter,D3D_FEATURE_LEVEL Mi
 		return false;
 	}
 
-	SafeTestForOptionalGraphicsTools(Adapter, RequestedFeatureLevels[FirstAllowedFeatureLevel], DeviceFlags, *OutFeatureLevel, NumAllowedFeatureLevels);
-
 	__try
 	{
 		// We don't want software renderer. Ideally we specify D3D_DRIVER_TYPE_HARDWARE on creation but
 		// when we specify an adapter we need to specify D3D_DRIVER_TYPE_UNKNOWN (otherwise the call fails).
 		// We cannot check the device type later (seems this is missing functionality in D3D).
-		if(SUCCEEDED(D3D11CreateDevice(
+		HRESULT Result = D3D11CreateDevice(
 			Adapter,
 			D3D_DRIVER_TYPE_UNKNOWN,
 			nullptr,
@@ -419,12 +310,28 @@ static bool SafeTestD3D11CreateDevice(IDXGIAdapter* Adapter,D3D_FEATURE_LEVEL Mi
 			D3D11_SDK_VERSION,
 			&D3DDevice,
 			OutFeatureLevel,
-			&D3DDeviceContext
-		))) 
+			&D3DDeviceContext);
+
+		if (SUCCEEDED(Result))
 		{
 			D3DDevice->Release();
 			D3DDeviceContext->Release();
 			return true;
+		}
+
+		// Log any reason for failure to create test device. Extra debug help.
+		VERIFYD3D11RESULT_NOEXIT(Result);
+
+#if PLATFORM_HOLOLENS
+		bool bIsWin10 = true;
+#else
+		bool bIsWin10 = FWindowsPlatformMisc::VerifyWindowsVersion(10, 0);
+#endif
+
+		// Fatal error on 0x887A002D
+		if (DXGI_ERROR_SDK_COMPONENT_MISSING == Result && bIsWin10)
+		{
+			UE_LOG(LogD3D11RHI, Fatal, TEXT("-d3ddebug was used but optional Graphics Tools were not found. Install them through the Manage Optional Features in windows. See: https://docs.microsoft.com/en-us/windows/uwp/gaming/use-the-directx-runtime-and-visual-studio-graphics-diagnostic-features"));
 		}
 	}
 	__except(IsDelayLoadException(GetExceptionInformation()))
@@ -436,7 +343,7 @@ static bool SafeTestD3D11CreateDevice(IDXGIAdapter* Adapter,D3D_FEATURE_LEVEL Mi
 	return false;
 }
 
-// Display gamut and chromacities
+// Display gamut and chromaticities
 // Note: Must be kept in sync with CVars and Tonemapping shaders
 enum EDisplayGamut
 {
@@ -986,27 +893,6 @@ void FD3D11DynamicRHIModule::FindAdapter()
 	else
 	{
 		UE_LOG(LogD3D11RHI, Error, TEXT("Failed to choose a D3D11 Adapter."));
-	}
-
-	// Workaround to force specific IHVs to SM4.0
-	if (ChosenAdapter.IsValid() && ChosenAdapter.MaxSupportedFeatureLevel != D3D_FEATURE_LEVEL_10_0)
-	{
-		DXGI_ADAPTER_DESC AdapterDesc;
-		ZeroMemory(&AdapterDesc, sizeof(DXGI_ADAPTER_DESC));
-
-		DXGIFactory1->EnumAdapters(ChosenAdapter.AdapterIndex, TempAdapter.GetInitReference());
-		VERIFYD3D11RESULT(TempAdapter->GetDesc(&AdapterDesc));	
-
-		const bool bIsAMD = AdapterDesc.VendorId == 0x1002;
-		const bool bIsIntel = AdapterDesc.VendorId == 0x8086;
-		const bool bIsNVIDIA = AdapterDesc.VendorId == 0x10DE;
-
-		if ((bIsAMD && CVarForceAMDToSM4.GetValueOnGameThread() > 0) ||
-			(bIsIntel && CVarForceIntelToSM4.GetValueOnGameThread() > 0) ||
-			(bIsNVIDIA && CVarForceNvidiaToSM4.GetValueOnGameThread() > 0))
-		{
-			ChosenAdapter.MaxSupportedFeatureLevel = D3D_FEATURE_LEVEL_10_0;
-		}
 	}
 }
 
@@ -1609,11 +1495,9 @@ void FD3D11DynamicRHI::InitD3DDevice()
 			CreateIntelMetricsDiscovery();
 		}
 #endif
-		
+
 		if (!bDeviceCreated)
 		{
-			SafeTestForOptionalGraphicsTools(Adapter, FeatureLevel, DeviceFlags, ActualFeatureLevel, 1);
-			
 			// Creating the Direct3D device.
 			VERIFYD3D11RESULT(D3D11CreateDevice(
 				Adapter,
@@ -1647,7 +1531,7 @@ void FD3D11DynamicRHI::InitD3DDevice()
 
 		GShaderPlatformForFeatureLevel[ERHIFeatureLevel::ES2] = SP_PCD3D_ES2;
 		GShaderPlatformForFeatureLevel[ERHIFeatureLevel::ES3_1] = SP_PCD3D_ES3_1;
-		GShaderPlatformForFeatureLevel[ERHIFeatureLevel::SM4] = SP_PCD3D_SM4;
+		GShaderPlatformForFeatureLevel[ERHIFeatureLevel::SM4_REMOVED] = SP_NumPlatforms;
 		GShaderPlatformForFeatureLevel[ERHIFeatureLevel::SM5] = SP_PCD3D_SM5;
 
 		if (IsRHIDeviceAMD() && CVarAMDDisableAsyncTextureCreation.GetValueOnAnyThread())
@@ -1656,6 +1540,25 @@ void FD3D11DynamicRHI::InitD3DDevice()
 		}
 
 #ifdef NVAPI_INTERFACE
+
+		if (IsRHIDeviceNVIDIA() && bAllowVendorDevice)
+		{
+			NvAPI_Status NvStatus;
+			NvStatus = NvAPI_Initialize();
+			if (NvStatus == NVAPI_OK)
+			{
+				NvStatus = NvAPI_D3D11_IsNvShaderExtnOpCodeSupported(Direct3DDevice, NV_EXTN_OP_UINT64_ATOMIC, &GRHISupportsAtomicUInt64);
+				if (NvStatus != NVAPI_OK)
+				{
+					UE_LOG(LogD3D11RHI, Warning, TEXT("Failed to query support for 64 bit atomics"));
+				}
+			}
+			else
+			{
+				UE_LOG(LogD3D11RHI, Warning, TEXT("Failed to initialize NVAPI"));
+			}
+		}
+
 		if( IsRHIDeviceNVIDIA() && CVarNVidiaTimestampWorkaround.GetValueOnAnyThread() )
 		{
 			// Workaround for pre-maxwell TDRs with realtime GPU stats (timestamp queries)
@@ -1670,6 +1573,15 @@ void FD3D11DynamicRHI::InitD3DDevice()
 #endif //NVAPI_INTERFACE
 
 		CACHE_NV_AFTERMATH_ENABLED();
+
+		if (GRHISupportsAtomicUInt64)
+		{
+			UE_LOG(LogD3D11RHI, Log, TEXT("RHI has support for 64 bit atomics"));
+		}
+		else
+		{
+			UE_LOG(LogD3D11RHI, Log, TEXT("RHI does not have support for 64 bit atomics"));
+		}
 
 #if PLATFORM_WINDOWS
 		IUnknown* RenderDoc;

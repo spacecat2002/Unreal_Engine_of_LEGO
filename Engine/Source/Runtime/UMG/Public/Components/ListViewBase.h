@@ -236,6 +236,7 @@ protected:
 			.Orientation(Args.Orientation)
 			.OnGenerateRow_UObject(Implementer, &UListViewBaseT::HandleGenerateRow)
 			.OnSelectionChanged_UObject(Implementer, &UListViewBaseT::HandleSelectionChanged)
+			.OnIsSelectableOrNavigable_UObject(Implementer, &UListViewBaseT::HandleIsSelectableOrNavigable)
 			.OnRowReleased_UObject(Implementer, &UListViewBaseT::HandleRowReleased)
 			.OnItemScrolledIntoView_UObject(Implementer, &UListViewBaseT::HandleItemScrolledIntoView)
 			.OnListViewScrolled_UObject(Implementer, &UListViewBaseT::HandleListViewScrolled)
@@ -272,6 +273,7 @@ protected:
 			.OnGenerateTile_UObject(Implementer, &UListViewBaseT::HandleGenerateRow)
 			.OnTileReleased_UObject(Implementer, &UListViewBaseT::HandleRowReleased)
 			.OnSelectionChanged_UObject(Implementer, &UListViewBaseT::HandleSelectionChanged)
+			.OnIsSelectableOrNavigable_UObject(Implementer, &UListViewBaseT::HandleIsSelectableOrNavigable)
 			.OnItemScrolledIntoView_UObject(Implementer, &UListViewBaseT::HandleItemScrolledIntoView)
 			.OnTileViewScrolled_UObject(Implementer, &UListViewBaseT::HandleListViewScrolled)
 			.OnMouseButtonClick_UObject(Implementer, &UListViewBaseT::HandleItemClicked)
@@ -299,6 +301,7 @@ protected:
 			.SelectionMode(Args.SelectionMode)
 			.OnGenerateRow_UObject(Implementer, &UListViewBaseT::HandleGenerateRow)
 			.OnSelectionChanged_UObject(Implementer, &UListViewBaseT::HandleSelectionChanged)
+			.OnIsSelectableOrNavigable_UObject(Implementer, &UListViewBaseT::HandleIsSelectableOrNavigable)
 			.OnRowReleased_UObject(Implementer, &UListViewBaseT::HandleRowReleased)
 			.OnItemScrolledIntoView_UObject(Implementer, &UListViewBaseT::HandleItemScrolledIntoView)
 			.OnTreeViewScrolled_UObject(Implementer, &UListViewBaseT::HandleListViewScrolled)
@@ -403,6 +406,7 @@ protected:
 	virtual void OnItemClickedInternal(ItemType Item) {}
 	virtual void OnItemDoubleClickedInternal(ItemType Item) {}
 	virtual void OnSelectionChangedInternal(NullableItemType FirstSelectedItem) {}
+	virtual bool OnIsSelectableOrNavigableInternal(ItemType FirstSelectedItem) { return true; }
 	virtual void OnItemScrolledIntoViewInternal(ItemType Item, UUserWidget& EntryWidget) {}
 	virtual void OnListViewScrolledInternal(float ItemOffset, float DistanceRemaining) {}
 	virtual void OnItemExpansionChangedInternal(ItemType Item, bool bIsExpanded) {}
@@ -413,7 +417,11 @@ private:
 		TSubclassOf<UUserWidget> DesiredEntryClass = GetDesiredEntryClassForItem(Item);
 
 		UUserWidget& EntryWidget = OnGenerateEntryWidgetInternal(Item, DesiredEntryClass, OwnerTable);
-		EntryWidget.SetPadding(GetDesiredEntryPadding(Item));
+		
+		// Combine the desired entry padding with the padding the widget wants natively on the CDO.
+		const FMargin DefaultPadding = EntryWidget.GetClass()->GetDefaultObject<UUserWidget>()->Padding;
+		EntryWidget.SetPadding(DefaultPadding + GetDesiredEntryPadding(Item));
+		
 		TSharedPtr<SWidget> CachedWidget = EntryWidget.GetCachedWidget();
 		CachedWidget->SetCanTick(true); // this is a hack to force ticking to true so selection works (which should NOT require ticking! but currently does)
 		return StaticCastSharedPtr<SObjectTableRow<ItemType>>(CachedWidget).ToSharedRef();
@@ -437,6 +445,11 @@ private:
 		//		It only works for single selection lists, and even then only broadcasts at the end - you don't get anything for de-selection
 		OnSelectionChangedInternal(Item);
 		OnItemSelectionChanged().Broadcast(Item);
+	}
+
+	bool HandleIsSelectableOrNavigable(ItemType Item)
+	{
+		return OnIsSelectableOrNavigableInternal(Item);
 	}
 
 	void HandleListViewScrolled(double OffsetInItems)
@@ -658,7 +671,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Scrolling)
 	bool bEnableScrollAnimation = false;
 
-	UPROPERTY()
+	UPROPERTY(EditAnywhere, Category = Scrolling)
 	bool bEnableFixedLineOffset = false;
 
 	/** 

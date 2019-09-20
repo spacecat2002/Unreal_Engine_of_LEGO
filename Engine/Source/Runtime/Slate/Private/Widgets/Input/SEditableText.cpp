@@ -387,12 +387,17 @@ void SEditableText::GoTo(const FTextLocation& NewLocation)
 	EditableTextLayout->GoTo(NewLocation);
 }
 
-void SEditableText::GoTo(ETextLocation GoToLocation)
+void SEditableText::GoTo(const ETextLocation NewLocation)
 {
-	EditableTextLayout->GoTo(GoToLocation);
+	EditableTextLayout->GoTo(NewLocation);
 }
 
 void SEditableText::ScrollTo(const FTextLocation& NewLocation)
+{
+	EditableTextLayout->ScrollTo(NewLocation);
+}
+
+void SEditableText::ScrollTo(const ETextLocation NewLocation)
 {
 	EditableTextLayout->ScrollTo(NewLocation);
 }
@@ -593,6 +598,7 @@ void SEditableText::OnTextCommitted(const FText& InText, const ETextCommit::Type
 
 void SEditableText::OnCursorMoved(const FTextLocation& InLocation)
 {
+	Invalidate(EInvalidateWidgetReason::Layout);
 }
 
 float SEditableText::UpdateAndClampHorizontalScrollBar(const float InViewOffset, const float InViewFraction, const EVisibility InVisiblityOverride)

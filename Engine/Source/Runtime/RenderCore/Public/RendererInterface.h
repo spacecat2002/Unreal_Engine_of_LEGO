@@ -65,6 +65,7 @@ public:
 		, Flags(TexCreate_None)
 		, TargetableFlags(TexCreate_None)
 		, bForceSeparateTargetAndShaderResource(false)
+		, bForceSharedTargetAndShaderResource(false)
 		, DebugName(TEXT("UnknownTexture"))
 		, AutoWritable(true)
 		, bCreateRenderTargetWriteMask(false)
@@ -209,6 +210,7 @@ public:
 			&& LhsFlags == RhsFlags
 			&& TargetableFlags == rhs.TargetableFlags
 			&& bForceSeparateTargetAndShaderResource == rhs.bForceSeparateTargetAndShaderResource
+			&& bForceSharedTargetAndShaderResource == rhs.bForceSharedTargetAndShaderResource
 			&& ClearValue == rhs.ClearValue
 			&& AutoWritable == rhs.AutoWritable;
 	}
@@ -251,7 +253,7 @@ public:
 		}
 
 		return Extent.X != 0 && NumMips != 0 && NumSamples >=1 && NumSamples <=16 && Format != PF_Unknown
-			&& ((TargetableFlags & TexCreate_UAV) == 0 || GMaxRHIFeatureLevel == ERHIFeatureLevel::SM5);
+			&& ((TargetableFlags & TexCreate_UAV) == 0 || GMaxRHIFeatureLevel == ERHIFeatureLevel::SM5 || GMaxRHIFeatureLevel == ERHIFeatureLevel::ES3_1);
 	}
 
 	FIntVector GetSize() const
@@ -330,6 +332,7 @@ public:
 		NumSamples = 1;
 
 		bForceSeparateTargetAndShaderResource = false;
+		bForceSharedTargetAndShaderResource = false;
 		AutoWritable = true;
 
 		// Remove UAV flag for rendertargets that don't need it (some formats are incompatible)
@@ -363,6 +366,8 @@ public:
 	uint32 TargetableFlags;
 	/** Whether the shader-resource and targetable texture must be separate textures. */
 	bool bForceSeparateTargetAndShaderResource;
+	/** Whether the shader-resource and targetable texture must be the same resource. */
+	bool bForceSharedTargetAndShaderResource;
 	/** only set a pointer to memory that never gets released */
 	const TCHAR* DebugName;
 	/** automatically set to writable via barrier during */
@@ -387,20 +392,13 @@ struct FSceneRenderTargetItem
 		,	UAV(InUAV)
 	{}
 
-	/** */
 	void SafeRelease()
 	{
 		TargetableTexture.SafeRelease();
 		ShaderResourceTexture.SafeRelease();
 		UAV.SafeRelease();
-		for (int32 i = 0; i < MipUAVs.Num(); i++)
-		{
-			MipUAVs[i].SafeRelease();
-		}
-		for( int32 i = 0; i < MipSRVs.Num(); i++ )
-		{
-			MipSRVs[i].SafeRelease();
-		}
+		MipUAVs.Empty();
+		SRVs.Empty();
 	}
 
 	bool IsValid() const
@@ -419,8 +417,8 @@ struct FSceneRenderTargetItem
 	FUnorderedAccessViewRHIRef UAV;
 	/** only created if requested through the flag  */
 	TArray< FUnorderedAccessViewRHIRef, TInlineAllocator<1> > MipUAVs;
-	/** only created if requested through the flag  */
-	TArray< FShaderResourceViewRHIRef > MipSRVs;
+	/** All SRVs that has been created on for that ShaderResourceTexture.  */
+	TMap<FRHITextureSRVCreateInfo, FShaderResourceViewRHIRef> SRVs;
 
 	FShaderResourceViewRHIRef RTWriteMaskBufferRHI_SRV;
 	FStructuredBufferRHIRef RTWriteMaskDataBufferRHI;
@@ -614,6 +612,8 @@ public:
 	/** Forces reallocation of scene render targets. */
 	virtual void ReallocateSceneRenderTargets() = 0;
 
+	virtual void OnWorldCleanup(UWorld* World, bool bSessionEnded, bool bCleanupResources) = 0;
+
 	/** Sets the buffer size of the render targets. */
 	virtual void SceneRenderTargetsSetBufferSize(uint32 SizeX, uint32 SizeY) = 0;
 
@@ -695,6 +695,7 @@ public:
 	virtual uint32 RemoveAllVirtualTextureProducerDestroyedCallbacks(const void* Baton) = 0;
 
 	/**	Provided a list of packed virtual texture tile ids, let the VT system request them. Note this should be called as long as the tiles are needed.*/
+	virtual void RequestVirtualTextureTiles(const FVector2D& InScreenSpaceSize, int32 InMipLevel) = 0;
 	virtual void RequestVirtualTextureTilesForRegion(IAllocatedVirtualTexture* AllocatedVT, const FVector2D& InScreenSpaceSize, const FIntRect& InTextureRegion, int32 InMipLevel) = 0;
 
 	/** Ensure that any tiles requested by 'RequestVirtualTextureTilesForRegion' are loaded, must be called from render thread */

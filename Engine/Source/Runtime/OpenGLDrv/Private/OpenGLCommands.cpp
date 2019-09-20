@@ -282,11 +282,6 @@ void FOpenGLDynamicRHI::RHISetStreamSource(uint32 StreamIndex, FRHIVertexBuffer*
 	PendingState.Streams[StreamIndex].Offset = Offset;
 }
 
-void FOpenGLDynamicRHI::RHISetStreamOutTargets(uint32 NumTargets, FRHIVertexBuffer* const* VertexBuffers, const uint32* Offsets)
-{
-	check(0);
-}
-
 // Rasterizer state.
 void FOpenGLDynamicRHI::RHISetRasterizerState(FRHIRasterizerState* NewStateRHI)
 {
@@ -795,7 +790,7 @@ void FOpenGLDynamicRHI::UpdateSRV(FOpenGLShaderResourceView* SRV)
 	check(SRV);
 	// For Depth/Stencil textures whose Stencil component we wish to sample we must blit the stencil component out to an intermediate texture when we 'Store' the texture.
 #if PLATFORM_DESKTOP || PLATFORM_ANDROIDESDEFERRED || PLATFORM_LUMINGL4
-	if (FOpenGL::GetFeatureLevel() >= ERHIFeatureLevel::SM4 && FOpenGL::SupportsPixelBuffers() && IsValidRef(SRV->Texture2D))
+	if (FOpenGL::GetFeatureLevel() >= ERHIFeatureLevel::SM5 && FOpenGL::SupportsPixelBuffers() && IsValidRef(SRV->Texture2D))
 	{
 		FOpenGLTexture2D* Texture2D = ResourceCast(SRV->Texture2D.GetReference());
 		
@@ -1104,7 +1099,7 @@ void FOpenGLDynamicRHI::RHISetShaderSampler(FRHIGeometryShader* GeometryShaderRH
 
 void FOpenGLDynamicRHI::RHISetShaderTexture(FRHIComputeShader* ComputeShaderRHI,uint32 TextureIndex, FRHITexture* NewTextureRHI)
 {
-	check(GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5);
+	check(FOpenGL::SupportsComputeShaders());
 	VERIFY_GL_SCOPE();
 	FOpenGLTextureBase* NewTexture = GetOpenGLTextureFromRHITexture(NewTextureRHI);
 	ensureMsgf((int32)TextureIndex < FOpenGL::GetMaxComputeTextureImageUnits(), TEXT("Using more compute texture units (%d) than allowed (%d)!"), TextureIndex, FOpenGL::GetMaxComputeTextureImageUnits());
@@ -1192,7 +1187,7 @@ void FOpenGLDynamicRHI::RHISetShaderUniformBuffer(FRHIPixelShader* PixelShaderRH
 void FOpenGLDynamicRHI::RHISetShaderUniformBuffer(FRHIComputeShader* ComputeShaderRHI,uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
 {
 	VERIFY_GL_SCOPE();
-	check(GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5);
+	check(FOpenGL::SupportsComputeShaders());
 	PendingState.BoundUniformBuffers[SF_Compute][BufferIndex] = BufferRHI;
 	PendingState.DirtyUniformBuffers[SF_Compute] |= 1 << BufferIndex;
 }
@@ -1770,34 +1765,47 @@ void FOpenGLDynamicRHI::RHIDiscardRenderTargets(bool Depth, bool Stencil, uint32
 	if (FOpenGL::SupportsDiscardFrameBuffer())
 	{
 		VERIFY_GL_SCOPE();
+		const bool bDefaultFramebuffer = (PendingState.Framebuffer == 0);
 		uint32 ColorBitMask = ColorBitMaskIn;
 		// 8 Color + Depth + Stencil = 10
 		GLenum Attachments[MaxSimultaneousRenderTargets + 2];
 		uint32 I = 0;
 		if (Depth)
 		{
-			Attachments[I] = GL_DEPTH_ATTACHMENT;
+			Attachments[I] = bDefaultFramebuffer ? GL_DEPTH : GL_DEPTH_ATTACHMENT;
 			I++;
 		}
 		if (Stencil)
 		{
-			Attachments[I] = GL_STENCIL_ATTACHMENT;
+			Attachments[I] = bDefaultFramebuffer ? GL_STENCIL : GL_STENCIL_ATTACHMENT;
 			I++;
 		}
 
-		ColorBitMask &= (1 << MaxSimultaneousRenderTargets) - 1;
-		uint32 J = 0;
-		while (ColorBitMask)
+		if (bDefaultFramebuffer)
 		{
-			if (ColorBitMask & 1)
+			if (ColorBitMask)
 			{
-				Attachments[I] = GL_COLOR_ATTACHMENT0 + J;
+				Attachments[I] = GL_COLOR;
 				I++;
 			}
-
-			ColorBitMask >>= 1;
-			++J;
 		}
+		else
+		{
+			ColorBitMask &= (1 << MaxSimultaneousRenderTargets) - 1;
+			uint32 J = 0;
+			while (ColorBitMask)
+			{
+				if (ColorBitMask & 1)
+				{
+					Attachments[I] = GL_COLOR_ATTACHMENT0 + J;
+					I++;
+				}
+
+				ColorBitMask >>= 1;
+				++J;
+			}
+		}
+
 		FOpenGL::DiscardFramebufferEXT(GL_FRAMEBUFFER, I, Attachments);
 	}
 }
@@ -3209,7 +3217,7 @@ void FOpenGLDynamicRHI::RHIDispatchComputeShader(uint32 ThreadGroupCountX, uint3
 
 		FOpenGLContextState& ContextState = GetContextStateForCurrentContext();
 
-		GPUProfilingData.RegisterGPUWork(1);
+		GPUProfilingData.RegisterGPUDispatch(FIntVector(ThreadGroupCountX, ThreadGroupCountY, ThreadGroupCountZ));	
 
 		BindPendingComputeShaderState(ContextState, ComputeShader);
 		CommitComputeResourceTables(ComputeShader);
@@ -3241,7 +3249,7 @@ void FOpenGLDynamicRHI::RHIDispatchIndirectComputeShader(FRHIVertexBuffer* Argum
 
 		FOpenGLContextState& ContextState = GetContextStateForCurrentContext();
 
-		GPUProfilingData.RegisterGPUWork(1);
+		GPUProfilingData.RegisterGPUDispatch(FIntVector(1, 1, 1));	
 
 		BindPendingComputeShaderState(ContextState, ComputeShader);
 

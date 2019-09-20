@@ -50,6 +50,26 @@ public:
 	UPROPERTY()
 	TArray<UStructProperty*> LayerNodeProperties;
 
+	// Array of nodes that need a PreUpdate() call
+	UPROPERTY()
+	TArray<UStructProperty*> PreUpdateNodeProperties;
+
+	// Array of nodes that need a DynamicReset() call
+	UPROPERTY()
+	TArray<UStructProperty*> DynamicResetNodeProperties;
+
+	// Array of state machine nodes
+	UPROPERTY()
+	TArray<UStructProperty*> StateMachineNodeProperties;
+
+	// Array of nodes that need an OnInitializeAnimInstance call
+	UPROPERTY()
+	TArray<UStructProperty*> InitializationNodeProperties;
+
+	// Indices for any Asset Player found within a specific (named) Anim Layer Graph, or implemented Anim Interface Graph
+	UPROPERTY()
+	TMap<FName, FGraphAssetPlayerInformation> GraphNameAssetPlayers;
+
 	// Array of sync group names in the order that they are requested during compile
 	UPROPERTY()
 	TArray<FName> SyncGroupNames;
@@ -68,9 +88,14 @@ public:
 	virtual const TArray<UStructProperty*>& GetAnimNodeProperties() const override { return AnimNodeProperties; }
 	virtual const TArray<UStructProperty*>& GetSubInstanceNodeProperties() const override { return SubInstanceNodeProperties; }
 	virtual const TArray<UStructProperty*>& GetLayerNodeProperties() const override { return LayerNodeProperties; }
+	virtual const TArray<UStructProperty*>& GetPreUpdateNodeProperties() const override { return PreUpdateNodeProperties; }
+	virtual const TArray<UStructProperty*>& GetDynamicResetNodeProperties() const override { return DynamicResetNodeProperties; }
+	virtual const TArray<UStructProperty*>& GetStateMachineNodeProperties() const override { return StateMachineNodeProperties; }
+	virtual const TArray<UStructProperty*>& GetInitializationNodeProperties() const override { return InitializationNodeProperties; }
 	virtual const TArray<FName>& GetSyncGroupNames() const override { return SyncGroupNames; }
 	virtual int32 GetSyncGroupIndex(FName SyncGroupName) const override { return SyncGroupNames.IndexOfByKey(SyncGroupName); }
 	virtual const TArray<FExposedValueHandler>& GetExposedValueHandlers() const { return EvaluateGraphExposedInputs; }
+	virtual const TMap<FName, FGraphAssetPlayerInformation>& GetGraphAssetPlayerInformation() const { return GraphNameAssetPlayers; }
 
 #if WITH_EDITOR
 	void CopyFrom(IAnimClassInterface* AnimClass)
@@ -84,8 +109,13 @@ public:
 		AnimNodeProperties = AnimClass->GetAnimNodeProperties();
 		SubInstanceNodeProperties = AnimClass->GetSubInstanceNodeProperties();
 		LayerNodeProperties = AnimClass->GetLayerNodeProperties();
+		PreUpdateNodeProperties = AnimClass->GetPreUpdateNodeProperties();
+		DynamicResetNodeProperties = AnimClass->GetDynamicResetNodeProperties();
+		StateMachineNodeProperties = AnimClass->GetStateMachineNodeProperties();
+		InitializationNodeProperties = AnimClass->GetInitializationNodeProperties();
 		SyncGroupNames = AnimClass->GetSyncGroupNames();
 		EvaluateGraphExposedInputs = AnimClass->GetExposedValueHandlers();
+		GraphNameAssetPlayers = AnimClass->GetGraphAssetPlayerInformation();
 	}
 #endif // WITH_EDITOR
 };

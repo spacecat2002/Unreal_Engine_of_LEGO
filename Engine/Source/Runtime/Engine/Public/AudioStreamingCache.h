@@ -36,7 +36,7 @@ public:
 		}
 	};
 
-	FAudioChunkCache(uint32 InMaxChunkSize, uint32 NumChunks);
+	FAudioChunkCache(uint32 InMaxChunkSize, uint32 NumChunks, uint64 InMemoryLimitInBytes);
 	
 	~FAudioChunkCache();
 
@@ -104,16 +104,25 @@ private:
 		// Amount of time spent loading the audio file.
 		double TimeToLoad;
 
-		// This allows every call to AddOrTouchChunk to report how far down the cache
-		// it was when it was needed, or INDEX_NONE if it wasn't in the cache when it was needed.
-		TArray<int32> PreviousLocationsBeforeBeingTouched;
+		// This is a cumulative moving average of a chunks location before it was 
+		float AverageLocationInCacheWhenNeeded;
 
 		FCacheElementDebugInfo()
 			: NumTotalChunks(0)
 			, NumTimesTouched(0)
 			, TimeLoadStarted(0.0)
 			, TimeToLoad(0.0)
+			, AverageLocationInCacheWhenNeeded(0.0f)
 		{
+		}
+
+		void Reset()
+		{
+			NumTotalChunks = 0;
+			NumTimesTouched = 0;
+			TimeLoadStarted = 0;
+
+			AverageLocationInCacheWhenNeeded = 0.0f;
 		}
 	};
 #endif
@@ -203,8 +212,12 @@ private:
 	FCacheElement* MostRecentElement;
 	FCacheElement* LeastRecentElement;
 
-	// This is incremented on every call of InsertChunk until we hit CachePool.Num().
+	// This is incremented on every call of InsertChunk until we hit CachePool.Num() or MemoryCounterBytes hits MemoryLimitBytes.
 	int32 ChunksInUse;
+
+	// This counter is used to start evicting chunks before we hit CachePool.Num().
+	TAtomic<uint64> MemoryCounterBytes;
+	uint64 MemoryLimitBytes;
 
 	// Number of async load operations we have currently in flight.
 	FThreadSafeCounter NumberOfLoadsInFlight;
@@ -212,7 +225,7 @@ private:
 	// Critical section: only used when we are modifying element positions in the cache. This only happens in TouchElement, EvictLeastRecentChunk, and TrimMemory.
 	// Individual cache elements should be thread safe to access.
 	FCriticalSection CacheMutationCriticalSection;
-
+	 
 	// This struct is used for logging cache misses.
 	struct FCacheMissInfo
 	{
@@ -240,10 +253,15 @@ private:
 	// This is called once we have more than one chunk in our cache:
 	void SetUpLeastRecentChunk();
 
+	// This is called in InsertChunk. it determines whether we should add a new chunk at the tail of the linked list or
+	// evict the least recent chunk.
+	bool ShouldAddNewChunk() const;
+
 	// Returns the least recent chunk and fixes up the linked list accordingly.
 	FCacheElement* EvictLeastRecentChunk();
 
 	void KickOffAsyncLoad(FCacheElement* CacheElement, const FChunkKey& InKey, TFunction<void(EAudioChunkLoadResult)> OnLoadCompleted);
+	EAsyncIOPriorityAndFlags GetAsyncPriorityForChunk(const FChunkKey& InKey);
 };
 
 // This is used to sort the cache array from smallest chunk size to biggest.
@@ -264,6 +282,11 @@ struct FCachedAudioStreamingManagerParams
 		// At runtime, this will be clamped to ensure that it is greater than the amount of
 		// sources that can be playing simultaneously.
 		int32 NumElements;
+
+		// The maximum number of elements stored in a single cache before it is evicted.
+		// At runtime, this will be clamped to ensure that it is greater than the amount of
+		// sources that can be playing simultaneously.
+		uint64 MaxMemoryInBytes;
 	};
 
 	// Most use cases will only use a single cache, but applications can optionally
@@ -325,6 +348,7 @@ protected:
 	 * or nullptr if MemoryLoadOnDemand is disabled.
 	 */
 	FAudioChunkCache* GetCacheForWave(const USoundWave* InSoundWave) const;
+	FAudioChunkCache* GetCacheForChunkSize(uint32 InChunkSize) const;
 
 	/**
 	 * Returns the next chunk to kick off a load for, or INDEX_NONE if there is only one chunk to cache.

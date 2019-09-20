@@ -36,6 +36,13 @@ static TAutoConsoleVariable<int32> CVarCompositionGraphOrder(
 	TEXT(" 1: RegisterPass() call order, unless the dependencies (input and additional) require a different order (might become new default as it provides more control, executes all registered nodes)"),
 	ECVF_RenderThreadSafe);
 
+static TAutoConsoleVariable<int32> CVarCompositionForceRenderTargetLoad(
+	TEXT("r.CompositionForceRenderTargetLoad"),
+	0,
+	TEXT("0: default engine behaviour\n")
+	TEXT("1: force ERenderTargetLoadAction::ELoad for all render targets"),
+	ECVF_RenderThreadSafe);
+
 #if !UE_BUILD_SHIPPING
 FAutoConsoleCommand CmdCompositionGraphDebug(
 	TEXT("r.CompositionGraphDebug"),
@@ -285,6 +292,33 @@ void FRenderingCompositePassContext::Process(const TArray<FRenderingCompositePas
 		GGMLFileWriter.CloseGMLFile();
 	}
 }
+
+ERenderTargetLoadAction FRenderingCompositePassContext::GetLoadActionForRenderTarget(const FSceneRenderTargetItem& DestRenderTarget) const
+{
+	ERenderTargetLoadAction LoadAction = ERenderTargetLoadAction::ENoAction;
+
+	if (IsViewFamilyRenderTarget(DestRenderTarget))
+	{
+		const bool bForceLoad = !!CVarCompositionForceRenderTargetLoad.GetValueOnAnyThread();
+		if (bForceLoad)
+		{
+			LoadAction = ERenderTargetLoadAction::ELoad;
+		}
+		else
+		{
+			// If rendering the final view family's render target, must clear first view, and load subsequent views.
+			LoadAction = (&View != View.Family->Views[0]) ? ERenderTargetLoadAction::ELoad : ERenderTargetLoadAction::EClear;
+		}
+	}
+	else if (HasHmdMesh())
+	{
+		// Clears render target because going to have unrendered pixels inside view rect.
+		LoadAction = ERenderTargetLoadAction::EClear;
+	}
+
+	return LoadAction;
+}
+
 
 // --------------------------------------------------------------------------
 
@@ -1186,6 +1220,8 @@ FRDGTextureRef FRenderingCompositePass::CreateRDGTextureForInputWithFallback(
 
 void FRenderingCompositePass::ExtractRDGTextureForOutput(FRDGBuilder& GraphBuilder, EPassOutputId OutputId, FRDGTextureRef Texture)
 {
+	check(Texture);
+
 	if (FRenderingCompositeOutput* Output = GetOutput(OutputId))
 	{
 		Output->RenderTargetDesc = Texture->Desc;
@@ -1199,19 +1235,24 @@ FRDGTextureRef FRenderingCompositePass::FindOrCreateRDGTextureForOutput(
 	const FRDGTextureDesc& TextureDesc,
 	const TCHAR* TextureName)
 {
+	if (FRDGTextureRef OutputTexture = FindRDGTextureForOutput(GraphBuilder, OutputId, TextureName))
+	{
+		return OutputTexture;
+	}
+	return GraphBuilder.CreateTexture(TextureDesc, TextureName);
+}
+
+FRDGTextureRef FRenderingCompositePass::FindRDGTextureForOutput(
+	FRDGBuilder& GraphBuilder,
+	EPassOutputId OutputId,
+	const TCHAR* TextureName)
+{
 	if (FRenderingCompositeOutput* Output = GetOutput(OutputId))
 	{
-		const TRefCountPtr<IPooledRenderTarget>& ExistingTarget = Output->PooledRenderTarget;
-
-		if (ExistingTarget)
+		if (const TRefCountPtr<IPooledRenderTarget>& ExistingTarget = Output->PooledRenderTarget)
 		{
 			return GraphBuilder.RegisterExternalTexture(ExistingTarget, TextureName);
 		}
-		else
-		{
-			return GraphBuilder.CreateTexture(TextureDesc, TextureName);
-		}
 	}
-
 	return nullptr;
 }

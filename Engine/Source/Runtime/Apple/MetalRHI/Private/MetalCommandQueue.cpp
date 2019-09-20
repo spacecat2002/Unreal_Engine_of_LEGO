@@ -33,6 +33,7 @@ FMetalCommandQueue::FMetalCommandQueue(mtlpp::Device InDevice, uint32 const MaxN
 , RuntimeDebuggingLevel(EMetalDebugLevelOff)
 {
 	int32 MaxShaderVersion = 0;
+	int32 IndirectArgumentTier = 0;
 #if PLATFORM_MAC
 	int32 DefaultMaxShaderVersion = 3;
 	int32 MinShaderVersion = 3;
@@ -46,6 +47,10 @@ FMetalCommandQueue::FMetalCommandQueue(mtlpp::Device InDevice, uint32 const MaxN
     {
         MaxShaderVersion = DefaultMaxShaderVersion;
     }
+	if(!GConfig->GetInt(Settings, TEXT("IndirectArgumentTier"), IndirectArgumentTier, GEngineIni))
+	{
+		IndirectArgumentTier = 0;
+	}
 	MaxShaderVersion = FMath::Max(MinShaderVersion, MaxShaderVersion);
 	ValidateVersion(MaxShaderVersion);
 
@@ -239,9 +244,14 @@ FMetalCommandQueue::FMetalCommandQueue(mtlpp::Device InDevice, uint32 const MaxN
 			{
 				Features |= EMetalFeaturesTextureBuffers;
             }
-            if (MaxShaderVersion == 5)
+            if (IndirectArgumentTier >= 1)
             {
                 Features |= EMetalFeaturesIABs;
+				
+				if (IndirectArgumentTier >= 2)
+				{
+					Features |= EMetalFeaturesTier2IABs;
+				}
             }
             
             IConsoleVariable* GPUCrashDebuggingCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.GPUCrashDebugging"));
@@ -275,6 +285,12 @@ FMetalCommandQueue::FMetalCommandQueue(mtlpp::Device InDevice, uint32 const MaxN
     if(Device.SupportsFeatureSet(mtlpp::FeatureSet::macOS_GPUFamily1_v3) && FPlatformMisc::MacOSXVersionCompare(10,13,0) >= 0)
     {
         Features |= EMetalFeaturesMultipleViewports | EMetalFeaturesPipelineBufferMutability | EMetalFeaturesGPUCaptureManager;
+		
+		static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Metal.ForceDXC"));
+		if (CVar && CVar->GetInt() != 0)
+		{
+			Features |= EMetalFeaturesSeparateTessellation;
+		}
 		
 		if (FParse::Param(FCommandLine::Get(),TEXT("metalfence")))
 		{
@@ -365,7 +381,7 @@ mtlpp::CommandBuffer FMetalCommandQueue::CreateCommandBuffer(void)
 	static bool bUnretainedRefs = FParse::Param(FCommandLine::Get(),TEXT("metalunretained"))
 	|| (!FParse::Param(FCommandLine::Get(),TEXT("metalretainrefs"))
 		&& ([Device.GetName() rangeOfString:@"Nvidia" options:NSCaseInsensitiveSearch].location == NSNotFound)
-		&& ([Device.GetName() rangeOfString:@"Intel" options:NSCaseInsensitiveSearch].location == NSNotFound || FPlatformMisc::MacOSXVersionCompare(10,13,0) >= 0));
+		&& ([Device.GetName() rangeOfString:@"Intel" options:NSCaseInsensitiveSearch].location == NSNotFound));
 #else
 	static bool bUnretainedRefs = !FParse::Param(FCommandLine::Get(),TEXT("metalretainrefs"));
 #endif

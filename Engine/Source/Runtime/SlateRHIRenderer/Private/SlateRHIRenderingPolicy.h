@@ -29,6 +29,7 @@ struct FSlateRenderingParams
 	float CurrentRealTime;
 	bool bAllowSwitchVerticalAxis;
 	bool bWireFrame;
+	bool bIsHDR;
 
 	FSlateRenderingParams(const FMatrix& InViewProjectionMatrix, float InCurrentWorldTime, float InDeltaTimeSeconds, float InCurrentRealTime)
 		: ViewProjectionMatrix(InViewProjectionMatrix)
@@ -38,6 +39,7 @@ struct FSlateRenderingParams
 		, CurrentRealTime(InCurrentRealTime)
 		, bAllowSwitchVerticalAxis(true)
 		, bWireFrame(false)
+		, bIsHDR(false)
 	{
 	}
 };
@@ -79,7 +81,7 @@ private:
 	 * @return The pixel shader for use with the shader type and draw effects
 	 */
 	class FSlateElementPS* GetTexturePixelShader( TShaderMap<FGlobalShaderType>* ShaderMap, ESlateShader ShaderType, ESlateDrawEffect DrawEffects );
-	class FSlateMaterialShaderPS* GetMaterialPixelShader( const class FMaterial* Material, ESlateShader ShaderType, ESlateDrawEffect DrawEffects );
+	class FSlateMaterialShaderPS* GetMaterialPixelShader( const class FMaterial* Material, ESlateShader ShaderType);
 	class FSlateMaterialShaderVS* GetMaterialVertexShader( const class FMaterial* Material, bool bUseInstancing );
 
 	/** @return The RHI primitive type from the Slate primitive type */

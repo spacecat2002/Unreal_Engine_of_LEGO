@@ -371,7 +371,7 @@ int32 ReportCrashUsingCrashReportClient(FWindowsPlatformCrashContext& InContext,
 			// Save mindump
 			if (ExceptionInfo != nullptr)
 			{
-				const FString MinidumpFileName = FPaths::Combine(*CrashFolderAbsolute, *FGenericCrashContext::UE4MinidumpName);
+				const FString MinidumpFileName = FPaths::Combine(*CrashFolderAbsolute, FGenericCrashContext::UE4MinidumpName);
 				WriteMinidump(InContext, *MinidumpFileName, ExceptionInfo);
 			}
 
@@ -822,7 +822,8 @@ private:
 
 		GLog->PanicFlushThreadedLogs();
 
-		FCoreDelegates::OnBeforeHandleSystemError.Broadcast();
+		// Then try run time crash processing and broadcast information about a crash.
+		FCoreDelegates::OnHandleSystemError.Broadcast();
 
 		// Get the default settings for the crash context
 		ECrashContextType Type = ECrashContextType::Crash;
@@ -871,9 +872,6 @@ private:
 			WriteMinidump(CrashContext, MiniDumpFilenameW, ExceptionInfo);
 		}
 
-		// Then try run time crash processing and broadcast information about a crash.
-		FCoreDelegates::OnHandleSystemError.Broadcast();
-
 		const bool bGenerateRuntimeCallstack =
 #if UE_LOG_CRASH_CALLSTACK
 			true;
@@ -920,11 +918,18 @@ private:
 
 #include "Windows/HideWindowsPlatformTypes.h"
 
-TUniquePtr<FCrashReportingThread> GCrashReportingThread = MakeUnique<FCrashReportingThread>();
+#ifndef NOINITCRASHREPORTER
+#define NOINITCRASHREPORTER 0
+#endif
+
+#if !NOINITCRASHREPORTER
+TOptional<FCrashReportingThread> GCrashReportingThread(InPlace);
+#endif
 
 // #CrashReport: 2015-05-28 This should be named EngineCrashHandler
 int32 ReportCrash( LPEXCEPTION_POINTERS ExceptionInfo )
 {
+#if !NOINITCRASHREPORTER
 	// Only create a minidump the first time this function is called.
 	// (Can be called the first time from the RenderThread, then a second time from the MainThread.)
 	if (GCrashReportingThread)
@@ -937,6 +942,7 @@ int32 ReportCrash( LPEXCEPTION_POINTERS ExceptionInfo )
 		// Wait 60s for the crash reporting thread to process the message
 		GCrashReportingThread->WaitUntilCrashIsHandled();
 	}
+#endif
 
 	return EXCEPTION_EXECUTE_HANDLER;
 }

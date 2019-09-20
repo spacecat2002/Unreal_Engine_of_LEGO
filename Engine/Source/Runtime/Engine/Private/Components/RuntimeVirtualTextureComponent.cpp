@@ -14,6 +14,11 @@ URuntimeVirtualTextureComponent::URuntimeVirtualTextureComponent(const FObjectIn
 	bTickInEditor = true;
 }
 
+bool URuntimeVirtualTextureComponent::IsVisible() const
+{
+	return Super::IsVisible() && UseVirtualTexturing(GetScene()->GetFeatureLevel());
+}
+
 void URuntimeVirtualTextureComponent::CreateRenderState_Concurrent()
 {
 	if (ShouldRender() && VirtualTexture != nullptr)
@@ -44,6 +49,21 @@ void URuntimeVirtualTextureComponent::DestroyRenderState_Concurrent()
 	Super::DestroyRenderState_Concurrent();
 }
 
+FTransform URuntimeVirtualTextureComponent::GetVirtualTextureTransform() const
+{
+	// Transform is based on bottom left of the URuntimeVirtualTextureComponent unit box (which is centered on the origin)
+	return FTransform(FVector(-0.5f, -0.5f, 0.f)) * GetComponentTransform();
+}
+
+bool URuntimeVirtualTextureComponent::IsStreamingLowMips() const
+{
+#if WITH_EDITOR
+	return bUseStreamingLowMipsInEditor;
+#else
+	return true;
+#endif
+}
+
 #if WITH_EDITOR
 
 void URuntimeVirtualTextureComponent::SetRotation()
@@ -63,10 +83,9 @@ void URuntimeVirtualTextureComponent::SetTransformToBounds()
 		// Calculate the bounds in our local rotation space translated to the BoundsSourceActor center
 		const FQuat TargetRotation = GetComponentToWorld().GetRotation();
 		const FVector InitialPosition = BoundsSourceActor->GetComponentsBoundingBox().GetCenter();
-		const FVector InitialScale = FVector(0.5f, 0.5, 1.f);
 
 		FTransform LocalTransform;
-		LocalTransform.SetComponents(TargetRotation, InitialPosition, InitialScale);
+		LocalTransform.SetComponents(TargetRotation, InitialPosition, FVector::OneVector);
 		FTransform WorldToLocal = LocalTransform.Inverse();
 
 		FBox BoundBox(ForceInit);
@@ -88,6 +107,7 @@ void URuntimeVirtualTextureComponent::SetTransformToBounds()
 		BoundBox.GetCenterAndExtents(Origin, Extent);
 
 		Origin = LocalTransform.TransformPosition(Origin);
+		Extent *= FVector(2.f, 2.f, 1.f); // Account for ARuntimeVirtualTextureVolume:Box offset which centers it on origin
 
 		FTransform Transform;
 		Transform.SetComponents(TargetRotation, Origin, Extent);

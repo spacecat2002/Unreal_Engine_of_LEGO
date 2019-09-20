@@ -10,7 +10,6 @@
 #include "Sound/SoundWave.h"
 #include "Sound/SoundNodeAttenuation.h"
 #include "SubtitleManager.h"
-#include "DSP/Dsp.h"
 
 static int32 AudioOcclusionDisabledCvar = 0;
 FAutoConsoleVariableRef CVarAudioOcclusionEnabled(
@@ -76,29 +75,27 @@ FActiveSound::FActiveSound()
 	, FadeOut(EFadeOut::None)
 	, bIsOccluded(false)
 	, bAsyncOcclusionPending(false)
-	, PlaybackTime(0.f)
+	, PlaybackTime(0.0f)
+	, PlaybackTimeNonVirtualized(0.0f)
 	, MinCurrentPitch(1.0f)
-	, RequestedStartTime(0.f)
-	, CurrentAdjustVolumeMultiplier(1.f)
-	, TargetAdjustVolumeMultiplier(1.f)
-	, TargetAdjustVolumeStopTime(-1.f)
-	, VolumeMultiplier(1.f)
-	, PitchMultiplier(1.f)
+	, RequestedStartTime(0.0f)
+	, VolumeMultiplier(1.0f)
+	, PitchMultiplier(1.0f)
 	, LowPassFilterFrequency(MAX_FILTER_FREQUENCY)
 	, CurrentOcclusionFilterFrequency(MAX_FILTER_FREQUENCY)
 	, CurrentOcclusionVolumeAttenuation(1.0f)
 	, SubtitlePriority(DEFAULT_SUBTITLE_PRIORITY)
 	, Priority(1.0f)
 	, VolumeConcurrency(0.0f)
-	, OcclusionCheckInterval(0.f)
+	, OcclusionCheckInterval(0.0f)
 	, LastOcclusionCheckTime(TNumericLimits<float>::Lowest())
 	, MaxDistance(WORLD_MAX)
 	, LastLocation(FVector::ZeroVector)
 	, AudioVolumeID(0)
-	, LastUpdateTime(0.f)
-	, SourceInteriorVolume(1.f)
+	, LastUpdateTime(0.0f)
+	, SourceInteriorVolume(1.0f)
 	, SourceInteriorLPF(MAX_FILTER_FREQUENCY)
-	, CurrentInteriorVolume(1.f)
+	, CurrentInteriorVolume(1.0f)
 	, CurrentInteriorLPF(MAX_FILTER_FREQUENCY)
 	, EnvelopeFollowerAttackTime(10)
 	, EnvelopeFollowerReleaseTime(100)
@@ -128,10 +125,16 @@ FActiveSound* FActiveSound::CreateVirtualCopy(const FActiveSound& InActiveSoundT
 	ActiveSound->bAsyncOcclusionPending = false;
 	ActiveSound->bHasVirtualized = true;
 	ActiveSound->bIsPlayingAudio = false;
-
+	ActiveSound->bShouldStopDueToMaxConcurrency = false;
 	ActiveSound->AudioDevice = &InAudioDevice;
+	ActiveSound->PlaybackTimeNonVirtualized = 0.0f;
 
-	ActiveSound->VolumeConcurrency = 1.0f;
+	// If volume concurrency tracking is enabled, reset the value,
+	// otherwise keep disabled
+	if (InActiveSoundToCopy.VolumeConcurrency >= 0.0f)
+	{
+		ActiveSound->VolumeConcurrency = 1.0f;
+	}
 
 	ActiveSound->ConcurrencyGroupData.Reset();
 	ActiveSound->WaveInstances.Reset();
@@ -191,6 +194,21 @@ void FActiveSound::AddReferencedObjects( FReferenceCollector& Collector)
 			Collector.AddReferencedObject(Param.SoundWaveParam);
 		}
 	}
+}
+
+int32 FActiveSound::GetPlayCount() const
+{
+	if (!Sound || !AudioDevice)
+	{
+		return 0;
+	}
+
+	if (const int32* PlayCount = Sound->CurrentPlayCount.Find(AudioDevice->DeviceHandle))
+	{
+		return *PlayCount;
+	}
+
+	return 0;
 }
 
 void FActiveSound::SetPitch(float Value)
@@ -354,6 +372,14 @@ void FActiveSound::SetSourceBusSend(EBusSendType BusSendType, const FSoundSource
 	SoundSourceBusSendsOverride[(int32)BusSendType].Add(SourceBusSendInfo);
 }
 
+void FActiveSound::Stop()
+{
+	if (AudioDevice)
+	{
+		AudioDevice->AddSoundToStop(this);
+	}
+}
+
 void FActiveSound::GetSoundSubmixSends(TArray<FSoundSubmixSendInfo>& OutSends) const
 {
 	if (Sound)
@@ -458,12 +484,24 @@ bool FActiveSound::GetConcurrencyFadeDuration(float& OutFadeDuration) const
 	GetConcurrencyHandles(Handles);
 	for (FConcurrencyHandle& Handle : Handles)
 	{
+		// StopQuietest can spam if a looping ActiveSound isn't active longer than a virtualization update period, which
+		// can happen when a concurrency group is maxed and constantly evicting.  If the voice steal fade time is particularly
+		// long, this can flood the active sound count. Therefore, only use the voice steal fade time if the sound has been
+		// active for a sufficient period of time.
+		const bool bStopQuietest = Handle.Settings.ResolutionRule == EMaxConcurrentResolutionRule::StopQuietest;
+		if (bStopQuietest && IsLooping() && FMath::IsNearlyZero(PlaybackTimeNonVirtualized, 0.1f))
+		{
+			OutFadeDuration = 0.0f;
+			return false;
+		}
+
 		OutFadeDuration = OutFadeDuration < 0.0f
 			? Handle.Settings.VoiceStealReleaseTime
 			: FMath::Min(Handle.Settings.VoiceStealReleaseTime, OutFadeDuration);
 	}
 
-	if (OutFadeDuration < 0.0f)
+	// Negative if no handles are found, so return no fade required.
+	if (OutFadeDuration <= 0.0f)
 	{
 		OutFadeDuration = 0.0f;
 		return false;
@@ -509,15 +547,7 @@ void FActiveSound::UpdateWaveInstances(TArray<FWaveInstance*> &InWaveInstances, 
 	ParseParams.Transform = Transform;
 	ParseParams.StartTime = RequestedStartTime;
 
-	// Default values.
-	// It's all Multiplicative!  So now people are all modifying the multiplier values via various means
-	// (even after the Sound has started playing, and this line takes them all into account and gives us
-	// final value that is correct
-	UpdateAdjustVolumeMultiplier(DeltaTime);
-
-	// Update concurrency volume scalars. Must be done prior to getting collective volume and applying below
-	// in parse params.
-	UpdateConcurrencyVolumeScalars(DeltaTime);
+	ComponentVolumeFader.Update(DeltaTime);
 
 	ParseParams.VolumeMultiplier = GetVolume();
 
@@ -563,17 +593,25 @@ void FActiveSound::UpdateWaveInstances(TArray<FWaveInstance*> &InWaveInstances, 
 
 	// Recurse nodes, have SoundWave's create new wave instances and update bFinished unless we finished fading out.
 	bFinished = true;
-	if (FadeOut == EFadeOut::None || (PlaybackTime <= TargetAdjustVolumeStopTime))
+	if (FadeOut == EFadeOut::None || ComponentVolumeFader.IsActive())
 	{
+		bool bReverbSendLevelWasSet = false;
 		if (bHasAttenuationSettings)
 		{
 			UpdateAttenuation(DeltaTime, ParseParams, *ClosestListenerPtr);
+			bReverbSendLevelWasSet = true;
 		}
 		else
 		{
-			// In the case of no attenuation settings, we still want to setup a default send reverb level
-			ParseParams.ReverbSendMethod = EReverbSendMethod::Manual;
-			ParseParams.ManualReverbSendLevel = AudioDevice->GetDefaultReverbSendLevel();
+			ParseParams.ReverbSendMethod = EReverbSendMethod::Manual;		
+			if (ParseParams.SoundClass)
+			{
+				ParseParams.ManualReverbSendLevel = ParseParams.SoundClass->Properties.Default2DReverbSendAmount;
+			}
+			else
+			{
+				ParseParams.ManualReverbSendLevel = AudioDevice->GetDefaultReverbSendLevel();
+			}
 		}
 
 		ParseParams.ModulationPluginSettings = FindModulationSettings();
@@ -619,11 +657,23 @@ void FActiveSound::UpdateWaveInstances(TArray<FWaveInstance*> &InWaveInstances, 
 			{
 				check(WaveInstance);
 
-				const float WaveInstanceVolume = WaveInstance->GetVolumeWithDistanceAttenuation();
+				float WaveInstanceVolume = WaveInstance->GetVolumeWithDistanceAttenuation();
 				if (WaveInstanceVolume > VolumeConcurrency)
 				{
 					VolumeConcurrency = WaveInstanceVolume;
 				}
+			}
+
+			// Remove concurrency volume scalars as this can cause ping-ponging to occur with virtualization and loops
+			// utilizing concurrency with StopQuietest.
+			const float VolumeScale = GetTotalConcurrencyVolumeScale();
+			if (VolumeScale > SMALL_NUMBER)
+			{
+				VolumeConcurrency /= VolumeScale;
+			}
+			else
+			{
+				VolumeConcurrency = 0.0f;
 			}
 		}
 
@@ -702,7 +752,7 @@ void FActiveSound::UpdateWaveInstances(TArray<FWaveInstance*> &InWaveInstances, 
 	{
 		DebugColor = FColor::MakeRandomColor();
 	}
-	FAudioDebugger::DrawDebugInfo(*this, ThisSoundsWaveInstances);
+	FAudioDebugger::DrawDebugInfo(*this, ThisSoundsWaveInstances, DeltaTime);
 #endif // ENABLE_AUDIO_DEBUG
 
 	InWaveInstances.Append(ThisSoundsWaveInstances);
@@ -712,9 +762,17 @@ USoundModulationPluginSourceSettingsBase* FActiveSound::FindModulationSettings()
 {
 	if (UClass* PluginClass = GetAudioPluginCustomSettingsClass(EAudioPlugin::MODULATION))
 	{
-		if (Sound->Modulation.Settings.Num() > 0)
+		for (USoundModulationPluginSourceSettingsBase* Settings : Sound->Modulation.Settings)
 		{
-			for (USoundModulationPluginSourceSettingsBase* Settings : Sound->Modulation.Settings)
+			if (Settings && Settings->IsA(PluginClass))
+			{
+				return Settings;
+			}
+		}
+
+		if (UAudioComponent* AudioComponent = UAudioComponent::GetAudioComponentFromID(AudioComponentID))
+		{
+			for (USoundModulationPluginSourceSettingsBase* Settings : AudioComponent->Modulation.Settings)
 			{
 				if (Settings && Settings->IsA(PluginClass))
 				{
@@ -722,9 +780,10 @@ USoundModulationPluginSourceSettingsBase* FActiveSound::FindModulationSettings()
 				}
 			}
 		}
-		else if (UAudioComponent* AudioComponent = UAudioComponent::GetAudioComponentFromID(AudioComponentID))
+
+		if (USoundClass* SoundClass = Sound->GetSoundClass())
 		{
-			for (USoundModulationPluginSourceSettingsBase* Settings : AudioComponent->Modulation.Settings)
+			for (USoundModulationPluginSourceSettingsBase* Settings : SoundClass->Modulation.Settings)
 			{
 				if (Settings && Settings->IsA(PluginClass))
 				{
@@ -737,7 +796,7 @@ USoundModulationPluginSourceSettingsBase* FActiveSound::FindModulationSettings()
 	return nullptr;
 }
 
-void FActiveSound::Stop(bool bStopNow)
+void FActiveSound::MarkPendingDestroy(bool bDestroyNow)
 {
 	check(AudioDevice);
 
@@ -745,7 +804,23 @@ void FActiveSound::Stop(bool bStopNow)
 
 	if (Sound && !bIsStopping)
 	{
-		Sound->CurrentPlayCount = FMath::Max(Sound->CurrentPlayCount - 1, 0);
+		int32* PlayCount = AudioDevice ? Sound->CurrentPlayCount.Find(AudioDevice->DeviceHandle) : nullptr;
+		if (PlayCount)
+		{
+			*PlayCount = FMath::Max(*PlayCount - 1, 0);
+			if (*PlayCount == 0)
+			{
+				Sound->CurrentPlayCount.Remove(AudioDevice->DeviceHandle);
+			}
+		}
+
+		if (AudioDevice->IsModulationPluginEnabled() && AudioDevice->ModulationInterface.IsValid())
+		{
+			if (USoundModulationPluginSourceSettingsBase* ModulationSettings = FindModulationSettings())
+			{
+				AudioDevice->ModulationInterface->OnReleaseSound(static_cast<ISoundModulatable&>(*this));
+			}
+		}
 	}
 
 	TArray<FWaveInstance*> ToDelete;
@@ -760,7 +835,7 @@ void FActiveSound::Stop(bool bStopNow)
 			bool bStopped = false;
 			if (AudioDevice->IsAudioMixerEnabled() && AudioDevice->IsStoppingVoicesEnabled())
 			{
-				if (bStopNow || !AudioDevice->GetNumFreeSources())
+				if (bDestroyNow || !AudioDevice->GetNumFreeSources())
 				{
 					Source->StopNow();
 					bStopped = true;
@@ -810,7 +885,7 @@ void FActiveSound::Stop(bool bStopNow)
 		RemoveWaveInstance(WaveInstance->WaveInstanceHash);
 	}
 
-	if (bStopNow)
+	if (bDestroyNow)
 	{
 		bIsStopping = false;
 	}
@@ -898,38 +973,6 @@ void FActiveSound::RemoveWaveInstance(const UPTRINT WaveInstanceHash)
 		WaveInstances.Remove(WaveInstanceHash);
 		delete WaveInstance;
 	}
-}
-
-void FActiveSound::UpdateAdjustVolumeMultiplier(const float DeltaTime)
-{
-	// Choose min/max bound and clamp dt to prevent unwanted spikes in volume
-	float MinValue = 0.0f;
-	float MaxValue = 0.0f;
-	if (CurrentAdjustVolumeMultiplier < TargetAdjustVolumeMultiplier)
-	{
-		MinValue = CurrentAdjustVolumeMultiplier;
-		MaxValue = TargetAdjustVolumeMultiplier;
-	}
-	else
-	{
-		MinValue = TargetAdjustVolumeMultiplier;
-		MaxValue = CurrentAdjustVolumeMultiplier;
-	}
-
-	float DeltaTimeValue = FMath::Min(DeltaTime, 0.5f);
-
-	// keep stepping towards our target until we hit our stop time
-	if (PlaybackTime < TargetAdjustVolumeStopTime)
-	{
-		CurrentAdjustVolumeMultiplier += (TargetAdjustVolumeMultiplier - CurrentAdjustVolumeMultiplier) * DeltaTimeValue / (TargetAdjustVolumeStopTime - PlaybackTime);
-	}
-	else
-	{
-		CurrentAdjustVolumeMultiplier = TargetAdjustVolumeMultiplier;
-	}
-
-	// Apply final clamp
-	CurrentAdjustVolumeMultiplier = FMath::Clamp(CurrentAdjustVolumeMultiplier, MinValue, MaxValue);
 }
 
 void FActiveSound::OcclusionTraceDone(const FTraceHandle& TraceHandle, FTraceDatum& TraceDatum)
@@ -1176,7 +1219,7 @@ bool FActiveSound::GetFloatParameter( const FName InName, float& OutFloat ) cons
 
 float FActiveSound::GetVolume() const
 {
-	const float Volume = VolumeMultiplier * CurrentAdjustVolumeMultiplier * GetTotalConcurrencyVolumeScale();
+	const float Volume = VolumeMultiplier * ComponentVolumeFader.GetVolume() * GetTotalConcurrencyVolumeScale();
 	return Sound ? Volume * Sound->GetVolumeMultiplier() : Volume;
 }
 

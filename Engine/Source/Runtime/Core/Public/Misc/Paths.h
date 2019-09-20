@@ -62,6 +62,13 @@ public:
 	static FString EngineConfigDir();
 
 	/**
+	 * Returns the Editor Settings directory of the engine
+	 *
+	 * @return Editor Settings directory.
+	 */
+	static FString EngineEditorSettingsDir();
+
+	/**
 	 * Returns the intermediate directory of the engine
 	 *
 	 * @return content directory
@@ -81,6 +88,20 @@ public:
 	 * @return Plugins directory.
 	 */
 	static FString EnginePluginsDir();
+
+	/**
+	 * Returns the directory for default Editor UI Layout files of the engine
+	 *
+	 * @return Directory for default Editor UI Layout files.
+	 */
+	static FString EngineDefaultLayoutDir();
+
+	/**
+	 * Returns the directory for user-generated Editor UI Layout files of the engine
+	 *
+	 * @return Directory for user-generated Editor UI Layout files.
+	 */
+	static FString EngineUserLayoutDir();
 
 	/** 
 	* Returns the base directory enterprise directory.
@@ -104,11 +125,18 @@ public:
 	static FString EnterpriseFeaturePackDir();
 
 	/**
-	 * Returns the directory where platform extensions reside
+	 * Returns the directory where engine platform extensions reside
 	 *
-	 * @return root config directory
+	 * @return engine platform extensions directory
 	 */
-	static FString PlatformExtensionsDir();
+	static FString EnginePlatformExtensionsDir();
+
+	/**
+	 * Returns the directory where the project's platform extensions reside
+	 *
+	 * @return project platform extensions directory
+	 */
+	static FString ProjectPlatformExtensionsDir();
 
 	/**
 	 * Returns the root directory of the engine directory tree
@@ -288,6 +316,9 @@ public:
 
 	/** Returns the directory that contains subfolders for developer-specific content */
 	static FString GameDevelopersDir();
+
+	/** Returns The folder name for the developer-specific directory for the current user */
+	static FString GameUserDeveloperFolderName();
 
 	/** Returns The directory that contains developer-specific content for the current user */
 	static FString GameUserDeveloperDir();
@@ -534,7 +565,7 @@ public:
 	/**
 	* Returns a string containing all invalid characters as dictated by the operating system
 	*/
-	static const FString& GetInvalidFileSystemChars();
+	static FString GetInvalidFileSystemChars();
 
 	/**
 	*	Returns a string that is safe to use as a filename because all items in
@@ -573,11 +604,18 @@ public:
 		return Out;
 	}
 
+	/**
+	 * Frees any memory retained by FPaths.
+	 */
+	static void TearDown();
+
 protected:
 
 	static void CombineInternal(FString& OutPath, const TCHAR** Paths, int32 NumPaths);
 
 private:
+	struct FStaticData;
+
 	FORCEINLINE static const TCHAR* GetTCharPtr(const TCHAR* Ptr)
 	{
 		return Ptr;
@@ -588,13 +626,9 @@ private:
 		return *Str;
 	}
 
-	/** Holds the path to the currently loaded game project file. */
-	static FString GameProjectFilePath;
+	/** Returns, if any, the value of the -userdir command line argument. This can be used to sandbox artifacts to a desired location */
+	static const FString& CustomUserDirArgument();
 
-	/** Thread protection for above path */
-	FORCEINLINE static FCriticalSection* GameProjectFilePathLock() 
-	{
-		static FCriticalSection Lock;
-		return &Lock; 
-	}
+	/** Returns, if any, the value of the -shaderworkingdir command line argument. This can be used to sandbox shader working files to a desired location */
+	static const FString& CustomShaderDirArgument();
 };

@@ -78,6 +78,14 @@ FAutoConsoleVariableRef CVarAllowAudioSpatializationCVar(
 	TEXT("0: Disable, >0: Enable"),
 	ECVF_Default);
 
+static int32 AllowReverbForMultichannelSources = 1;
+FAutoConsoleVariableRef CvarAllowReverbForMultichannelSources(
+	TEXT("au.AllowReverbForMultichannelSources"),
+	AllowReverbForMultichannelSources,
+	TEXT("Controls if we allow Reverb processing for sources with channel counts > 2.\n")
+	TEXT("0: Disable, >0: Enable"),
+	ECVF_Default);
+
 
 bool IsAudioPluginEnabled(EAudioPlugin PluginType)
 {
@@ -314,7 +322,7 @@ bool FSoundSource::SetReverbApplied(bool bHardwareAvailable)
 	}
 
 	// Do not apply reverb to multichannel sounds
-	if (WaveInstance->WaveData->NumChannels > 2)
+	if (!AllowReverbForMultichannelSources && (WaveInstance->WaveData->NumChannels > 2))
 	{
 		bReverbApplied = false;
 	}
@@ -376,6 +384,7 @@ void FSoundSource::SetFilterFrequency()
 			LPFFrequency = FMath::Min(LPFFrequency, WaveInstance->AmbientZoneFilterFrequency);
 			LPFFrequency = FMath::Min(LPFFrequency, WaveInstance->AttenuationLowpassFilterFrequency);
 			LPFFrequency = FMath::Min(LPFFrequency, WaveInstance->SoundModulationControls.Lowpass);
+			LPFFrequency = FMath::Min(LPFFrequency, WaveInstance->SoundClassFilterFrequency);
 		}
 		break;
 	}
@@ -794,6 +803,7 @@ FWaveInstance::FWaveInstance(const UPTRINT InWaveInstanceHash, FActiveSound& InA
 	, ReverbPluginSettings(nullptr)
 	, OutputTarget(EAudioOutputTarget::Speaker)
 	, LowPassFilterFrequency(MAX_FILTER_FREQUENCY)
+	, SoundClassFilterFrequency(MAX_FILTER_FREQUENCY)
 	, OcclusionFilterFrequency(MAX_FILTER_FREQUENCY)
 	, AmbientZoneFilterFrequency(MAX_FILTER_FREQUENCY)
 	, AttenuationLowpassFilterFrequency(MAX_FILTER_FREQUENCY)
@@ -906,17 +916,23 @@ float FWaveInstance::GetDistanceAttenuation() const
 float FWaveInstance::GetDynamicVolume() const
 {
 	float OutVolume = 1.0f;
-	if (FAudioDeviceManager* DeviceManager = GEngine->GetAudioDeviceManager())
-	{
-		if (WaveData)
-		{
-			OutVolume *= DeviceManager->GetDynamicSoundVolume(ESoundType::Wave, WaveData->GetFName());
-		}
 
-		check(ActiveSound);
-		if (const USoundCue* Sound = Cast<USoundCue>(ActiveSound->GetSound()))
+	if (GEngine)
+	{
+		if (FAudioDeviceManager* DeviceManager = GEngine->GetAudioDeviceManager())
 		{
-			OutVolume *= DeviceManager->GetDynamicSoundVolume(ESoundType::Cue, Sound->GetFName());
+			if (WaveData)
+			{
+				OutVolume *= DeviceManager->GetDynamicSoundVolume(ESoundType::Wave, WaveData->GetFName());
+			}
+
+			if (ActiveSound)
+			{
+				if (const USoundCue* Sound = Cast<USoundCue>(ActiveSound->GetSound()))
+				{
+					OutVolume *= DeviceManager->GetDynamicSoundVolume(ESoundType::Cue, Sound->GetFName());
+				}
+			}
 		}
 	}
 

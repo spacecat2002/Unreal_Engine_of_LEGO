@@ -185,6 +185,17 @@ void CreateCubeMips( FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Typ
 
 	auto* ShaderMap = GetGlobalShaderMap(FeatureLevel);
 
+	for (int32 MipIndex = 0; MipIndex < NumMips; MipIndex++)
+	{
+		FRHITextureSRVCreateInfo SRVDesc;
+		SRVDesc.MipLevel = MipIndex;
+
+		if (!Cubemap.SRVs.Contains(SRVDesc))
+		{
+			Cubemap.SRVs.Add(SRVDesc, RHICreateShaderResourceView(Cubemap.ShaderResourceTexture, SRVDesc));
+		}
+	}
+
 	FGraphicsPipelineStateInitializer GraphicsPSOInit;
 	GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
 	GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
@@ -224,7 +235,10 @@ void CreateCubeMips( FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Typ
 
 				SetShaderValue(RHICmdList, ShaderRHI, PixelShader->NumMips, NumMips);
 
-				SetSRVParameter(RHICmdList, ShaderRHI, PixelShader->SourceTexture, Cubemap.MipSRVs[MipIndex - 1]);
+				FRHITextureSRVCreateInfo SrcSRVDesc;
+				SrcSRVDesc.MipLevel = MipIndex - 1;
+
+				SetSRVParameter(RHICmdList, ShaderRHI, PixelShader->SourceTexture, Cubemap.SRVs[SrcSRVDesc]);
 				SetSamplerParameter(RHICmdList, ShaderRHI, PixelShader->SourceTextureSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 			}
 
@@ -1494,37 +1508,16 @@ void FScene::CaptureOrUploadReflectionCapture(UReflectionCaptureComponent* Captu
 
 			const int32 ReflectionCaptureSize = UReflectionCaptureComponent::GetReflectionCaptureSize();
 
-			// prefetch VT textures so we have sensible content available
+			// Prefetch all virtual textures so that we have content available
 			if (UseVirtualTexturing(GetFeatureLevel()))
 			{
 				const ERHIFeatureLevel::Type InFeatureLevel = FeatureLevel;
-				const FVector2D InScreenSpaceSize(ReflectionCaptureSize, ReflectionCaptureSize);
-
-				for (TObjectIterator<UMaterialInterface> MaterialIt; MaterialIt; ++MaterialIt)
-				{
-					const FMaterialRenderProxy* MaterialProxy = MaterialIt->GetRenderProxy();
-					if (MaterialProxy)
-					{
-						const FUniformExpressionCache& UniformExpressionCache = MaterialProxy->UniformExpressionCache[InFeatureLevel];
-						for (IAllocatedVirtualTexture* AllocatedVT : UniformExpressionCache.AllocatedVTs)
-						{
-							//todo[vt]: 
-							// It's possible to get here before a RuntimeVT material has been initialized by its virtual texture actor.
-							// In that case AllocatedVT will be nullptr. We can skip the update but it means the VT won't be filled before the capture.
-							if (AllocatedVT)
-							{
-								GetRendererModule().RequestVirtualTextureTilesForRegion(AllocatedVT, InScreenSpaceSize, FIntRect(), -1);
-							}
-						}
-					}
-				}
-
-				//todo[vt]: 
-				// Need to request lightmap VTs as well
+				const FVector2D ScreenSpaceSize(ReflectionCaptureSize, ReflectionCaptureSize);
 
 				ENQUEUE_RENDER_COMMAND(LoadTiles)(
-					[InFeatureLevel](FRHICommandListImmediate& RHICmdList)
+					[InFeatureLevel, ScreenSpaceSize](FRHICommandListImmediate& RHICmdList)
 				{
+					GetRendererModule().RequestVirtualTextureTiles(ScreenSpaceSize, -1);
 					GetRendererModule().LoadPendingVirtualTextureTiles(RHICmdList, InFeatureLevel);
 				});
 
@@ -1655,7 +1648,7 @@ void FScene::UpdateSkyCaptureContents(
 	FSHVectorRGB3& OutIrradianceEnvironmentMap,
 	TArray<FFloat16Color>* OutRadianceMap)
 {	
-	if (GSupportsRenderTargetFormat_PF_FloatRGBA || GetFeatureLevel() >= ERHIFeatureLevel::SM4)
+	if (GSupportsRenderTargetFormat_PF_FloatRGBA || GetFeatureLevel() >= ERHIFeatureLevel::SM5)
 	{
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_UpdateSkyCaptureContents);
 		{

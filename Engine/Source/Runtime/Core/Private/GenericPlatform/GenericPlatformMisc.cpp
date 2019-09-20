@@ -26,11 +26,11 @@
 #include "HAL/ExceptionHandling.h"
 #include "GenericPlatform/GenericPlatformCrashContext.h"
 #include "GenericPlatform/GenericPlatformDriver.h"
-#include "GenericPlatform/GenericPlatformInstallBundleManager.h"
 #include "ProfilingDebugging/ExternalProfiler.h"
 #include "HAL/LowLevelMemTracker.h"
 #include "Templates/Function.h"
 #include "Modules/ModuleManager.h"
+#include "Misc/LazySingleton.h"
 
 #include "Misc/UProjectInfo.h"
 #include "Internationalization/Culture.h"
@@ -53,75 +53,95 @@ CORE_API void (*ClipboardPasteShim)(FString& Dest) = nullptr;
 /* EBuildConfigurations interface
  *****************************************************************************/
 
+bool LexTryParseString(EBuildConfiguration& OutConfiguration, const TCHAR* Configuration)
+{
+	if (FCString::Stricmp(Configuration, TEXT("Debug")) == 0)
+	{
+		OutConfiguration = EBuildConfiguration::Debug;
+		return true;
+	}
+	else if (FCString::Stricmp(Configuration, TEXT("DebugGame")) == 0)
+	{
+		OutConfiguration = EBuildConfiguration::DebugGame;
+		return true;
+	}
+	else if (FCString::Stricmp(Configuration, TEXT("Development")) == 0)
+	{
+		OutConfiguration = EBuildConfiguration::Development;
+		return true;
+	}
+	else if (FCString::Stricmp(Configuration, TEXT("Shipping")) == 0)
+	{
+		OutConfiguration = EBuildConfiguration::Shipping;
+		return true;
+	}
+	else if(FCString::Stricmp(Configuration, TEXT("Test")) == 0)
+	{
+		OutConfiguration = EBuildConfiguration::Test;
+		return true;
+	}
+	else if(FCString::Stricmp(Configuration, TEXT("Unknown")) == 0)
+	{
+		OutConfiguration = EBuildConfiguration::Unknown;
+		return true;
+	}
+	else
+	{
+		OutConfiguration = EBuildConfiguration::Unknown;
+		return false;
+	}
+}
+
+const TCHAR* LexToString( EBuildConfiguration Configuration )
+{
+	switch (Configuration)
+	{
+	case EBuildConfiguration::Debug:
+		return TEXT("Debug");
+	case EBuildConfiguration::DebugGame:
+		return TEXT("DebugGame");
+	case EBuildConfiguration::Development:
+		return TEXT("Development");
+	case EBuildConfiguration::Shipping:
+		return TEXT("Shipping");
+	case EBuildConfiguration::Test:
+		return TEXT("Test");
+	default:
+		return TEXT("Unknown");
+	}
+}
+
 namespace EBuildConfigurations
 {
-	EBuildConfigurations::Type FromString( const FString& Configuration )
+	EBuildConfiguration FromString( const FString& Configuration )
 	{
-		if (FCString::Strcmp(*Configuration, TEXT("Debug")) == 0)
-		{
-			return Debug;
-		}
-		else if (FCString::Strcmp(*Configuration, TEXT("DebugGame")) == 0)
-		{
-			return DebugGame;
-		}
-		else if (FCString::Strcmp(*Configuration, TEXT("Development")) == 0)
-		{
-			return Development;
-		}
-		else if (FCString::Strcmp(*Configuration, TEXT("Shipping")) == 0)
-		{
-			return Shipping;
-		}
-		else if(FCString::Strcmp(*Configuration, TEXT("Test")) == 0)
-		{
-			return Test;
-		}
-
-		return Unknown;
+		EBuildConfiguration Result;
+		LexTryParseString(Result, *Configuration);
+		return Result;
 	}
 
-	const TCHAR* ToString( EBuildConfigurations::Type Configuration )
+	const TCHAR* ToString( EBuildConfiguration Configuration )
+	{
+		return LexToString(Configuration);
+	}
+
+	FText ToText( EBuildConfiguration Configuration )
 	{
 		switch (Configuration)
 		{
-			case Debug:
-				return TEXT("Debug");
-
-			case DebugGame:
-				return TEXT("DebugGame");
-
-			case Development:
-				return TEXT("Development");
-
-			case Shipping:
-				return TEXT("Shipping");
-
-			case Test:
-				return TEXT("Test");
-
-			default:
-				return TEXT("Unknown");
-		}
-	}
-
-	FText ToText( EBuildConfigurations::Type Configuration )
-	{
-		switch (Configuration)
-		{
-		case Debug:
+		case EBuildConfiguration::Debug:
 			return NSLOCTEXT("UnrealBuildConfigurations", "DebugName", "Debug");
 
-		case DebugGame:
+		case EBuildConfiguration::DebugGame:
 			return NSLOCTEXT("UnrealBuildConfigurations", "DebugGameName", "DebugGame");
 
-		case Development:
+		case EBuildConfiguration::Development:
 			return NSLOCTEXT("UnrealBuildConfigurations", "DevelopmentName", "Development");
 
-		case Shipping:
+		case EBuildConfiguration::Shipping:
 			return NSLOCTEXT("UnrealBuildConfigurations", "ShippingName", "Shipping");
 
-		case Test:
+		case EBuildConfiguration::Test:
 			return NSLOCTEXT("UnrealBuildConfigurations", "TestName", "Test");
 
 		default:
@@ -131,46 +151,77 @@ namespace EBuildConfigurations
 }
 
 
-/* EBuildConfigurations interface
+/* EBuildTargetType functions
  *****************************************************************************/
 
-namespace EBuildTargets
+bool LexTryParseString(EBuildTargetType& OutType, const TCHAR* Type)
 {
-	EBuildTargets::Type FromString( const FString& Target )
+	if (FCString::Strcmp(Type, TEXT("Editor")) == 0)
 	{
-		if (FCString::Strcmp(*Target, TEXT("Editor")) == 0)
-		{
-			return Editor;
-		}
-		else if (FCString::Strcmp(*Target, TEXT("Game")) == 0)
-		{
-			return Game;
-		}
-		else if (FCString::Strcmp(*Target, TEXT("Server")) == 0)
-		{
-			return Server;
-		}
-
-		return Unknown;
+		OutType = EBuildTargetType::Editor;
+		return true;
 	}
-
-	const TCHAR* ToString( EBuildTargets::Type Target )
+	else if (FCString::Strcmp(Type, TEXT("Game")) == 0)
 	{
-		switch (Target)
-		{
-			case Editor:
-				return TEXT("Editor");
-
-			case Game:
-				return TEXT("Game");
-
-			case Server:
-				return TEXT("Server");
-
-			default:
-				return TEXT("Unknown");
-		}
+		OutType = EBuildTargetType::Game;
+		return true;
 	}
+	else if (FCString::Strcmp(Type, TEXT("Server")) == 0)
+	{
+		OutType = EBuildTargetType::Server;
+		return true;
+	}
+	else if (FCString::Strcmp(Type, TEXT("Client")) == 0)
+	{
+		OutType = EBuildTargetType::Client;
+		return true;
+	}
+	else if (FCString::Strcmp(Type, TEXT("Program")) == 0)
+	{
+		OutType = EBuildTargetType::Program;
+		return true;
+	}
+	else if (FCString::Strcmp(Type, TEXT("Unknown")) == 0)
+	{
+		OutType = EBuildTargetType::Unknown;
+		return true;
+	}
+	else
+	{
+		OutType = EBuildTargetType::Unknown;
+		return false;
+	}
+}
+
+const TCHAR* LexToString(EBuildTargetType Type)
+{
+	switch (Type)
+	{
+	case EBuildTargetType::Editor:
+		return TEXT("Editor");
+	case EBuildTargetType::Game:
+		return TEXT("Game");
+	case EBuildTargetType::Server:
+		return TEXT("Server");
+	case EBuildTargetType::Client:
+		return TEXT("Client");
+	case EBuildTargetType::Program:
+		return TEXT("Program");
+	default:
+		return TEXT("Unknown");
+	}
+}
+
+EBuildTargetType EBuildTargets::FromString(const FString& Target)
+{
+	EBuildTargetType Type;
+	LexTryParseString(Type, *Target);
+	return Type;
+}
+
+const TCHAR* EBuildTargets::ToString(EBuildTargetType Target)
+{
+	return LexToString(Target);
 }
 
 FString FSHA256Signature::ToString() const
@@ -223,6 +274,16 @@ FString FSHA256Signature::ToString() const
 	bool FGenericPlatformMisc::bShouldPromptForRemoteDebugging = false;
 	bool FGenericPlatformMisc::bPromptForRemoteDebugOnEnsure = false;
 #endif	//#if !UE_BUILD_SHIPPING
+
+struct FGenericPlatformMisc::FStaticData
+{
+	FString         RootDir;
+	TArray<FString> AdditionalRootDirectories;
+	FString         EngineDirectory;
+	FString         LaunchDir;
+	FString         ProjectDir;
+	FString         GamePersistentDownloadDir;
+};
 
 FString FGenericPlatformMisc::GetEnvironmentVariable(const TCHAR* VariableName)
 {
@@ -569,7 +630,7 @@ void FGenericPlatformMisc::RequestExit( bool Force )
 	else
 	{
 		// Tell the platform specific code we want to exit cleanly from the main loop.
-		GIsRequestingExit = 1;
+		RequestEngineExit(TEXT("GenericPlatform RequestExit"));
 	}
 }
 
@@ -686,7 +747,7 @@ EAppReturnType::Type FGenericPlatformMisc::MessageBoxExt( EAppMsgType::Type MsgT
 
 const TCHAR* FGenericPlatformMisc::RootDir()
 {
-	static FString Path;
+	FString& Path = TLazySingleton<FStaticData>::Get().RootDir;
 	if (Path.Len() == 0)
 	{
 		FString TempPath = FPaths::EngineDir();
@@ -740,37 +801,35 @@ const TCHAR* FGenericPlatformMisc::RootDir()
 
 const TArray<FString>& FGenericPlatformMisc::GetAdditionalRootDirectories()
 {
-	return Internal_GetAdditionalRootDirectories();
+	return TLazySingleton<FStaticData>::Get().AdditionalRootDirectories;
 }
 
 void FGenericPlatformMisc::AddAdditionalRootDirectory(const FString& RootDir)
 {
-	TArray<FString>& RootDirectories = Internal_GetAdditionalRootDirectories();
-	RootDirectories.Add(RootDir);
-}
-
-TArray<FString>& FGenericPlatformMisc::Internal_GetAdditionalRootDirectories() 
-{
-	static TArray<FString> AdditionalRootDirectories;
-	return AdditionalRootDirectories;
+	TArray<FString>& RootDirectories = TLazySingleton<FStaticData>::Get().AdditionalRootDirectories;
+	FString NewRootDirectory = RootDir;
+	FPaths::MakePlatformFilename(NewRootDirectory);
+	RootDirectories.Add(NewRootDirectory);
 }
 
 const TCHAR* FGenericPlatformMisc::EngineDir()
 {
-	static FString EngineDirectory = TEXT("");
+	FString& EngineDirectory = TLazySingleton<FStaticData>::Get().EngineDirectory;
 	if (EngineDirectory.Len() == 0)
 	{
 		// See if we are a root-level project
 		FString DefaultEngineDir = TEXT("../../../Engine/");
 #if PLATFORM_DESKTOP
+#if !defined(DISABLE_CWD_CHANGES) || DISABLE_CWD_CHANGES == 0
 		FPlatformProcess::SetCurrentWorkingDirectoryToBaseDir();
+#endif
 
 		//@todo. Need to have a define specific for this scenario??
-		if (FPlatformFileManager::Get().GetPlatformFile().DirectoryExists(*(DefaultEngineDir / TEXT("Binaries"))))
+		if (FPlatformFileManager::Get().GetPlatformFile().DirectoryExists(*(FPlatformProcess::BaseDir() / DefaultEngineDir / TEXT("Binaries"))))
 		{
 			EngineDirectory = DefaultEngineDir;
 		}
-		else if (GForeignEngineDir != NULL && FPlatformFileManager::Get().GetPlatformFile().DirectoryExists(*(FString(GForeignEngineDir) / TEXT("Binaries"))))
+		else if (GForeignEngineDir != NULL && FPlatformFileManager::Get().GetPlatformFile().DirectoryExists(*(FPlatformProcess::BaseDir() / FString(GForeignEngineDir) / TEXT("Binaries"))))
 		{
 			EngineDirectory = GForeignEngineDir;
 		}
@@ -788,29 +847,22 @@ const TCHAR* FGenericPlatformMisc::EngineDir()
 	return *EngineDirectory;
 }
 
-// wrap the LaunchDir variable in a function to work around static/global initialization order
-static FString& GetWrappedLaunchDir()
-{
-	static FString LaunchDir;
-	return LaunchDir;
-}
-
 void FGenericPlatformMisc::CacheLaunchDir()
 {
+	FString& LaunchDir = TLazySingleton<FStaticData>::Get().LaunchDir;
+
 	// we can only cache this ONCE
-	static bool bOneTime = false;
-	if (bOneTime)
+	if (LaunchDir.Len() != 0)
 	{
 		return;
 	}
-	bOneTime = true;
 	
-	GetWrappedLaunchDir() = FPlatformProcess::GetCurrentWorkingDirectory() + TEXT("/");
+	LaunchDir = FPlatformProcess::GetCurrentWorkingDirectory() + TEXT("/");
 }
 
 const TCHAR* FGenericPlatformMisc::LaunchDir()
 {
-	return *GetWrappedLaunchDir();
+	return *TLazySingleton<FStaticData>::Get().LaunchDir;
 }
 
 
@@ -825,36 +877,6 @@ IPlatformChunkInstall* FGenericPlatformMisc::GetPlatformChunkInstall()
 	return &Singleton;
 }
 
-IPlatformInstallBundleManager* FGenericPlatformMisc::GetPlatformInstallBundleManager()
-{
-	static IPlatformInstallBundleManager* Manager = nullptr;
-	static bool bCheckedIni = false;
-
-	if (Manager)
-		return Manager;
-
-	if (!bCheckedIni && !GEngineIni.IsEmpty())
-	{
-		FString ModuleName;
-		IPlatformInstallBundleManagerModule* Module = nullptr;
-		GConfig->GetString(TEXT("InstallBundleManager"), TEXT("ModuleName"), ModuleName, GEngineIni);
-
-		if (FModuleManager::Get().ModuleExists(*ModuleName))
-		{
-			FModuleStatus Status;
-			Module = FModuleManager::LoadModulePtr<IPlatformInstallBundleManagerModule>(*ModuleName);
-			if (Module)
-			{
-				Manager = Module->GetInstallBundleManager();
-			}
-		}
-
-		bCheckedIni = true;
-	}
-
-	return Manager;
-}
-
 void GenericPlatformMisc_GetProjectFilePathProjectDir(FString& OutGameDir)
 {
 	// Here we derive the game path from the project file location.
@@ -867,7 +889,7 @@ void GenericPlatformMisc_GetProjectFilePathProjectDir(FString& OutGameDir)
 
 const TCHAR* FGenericPlatformMisc::ProjectDir()
 {
-	static FString ProjectDir = TEXT("");
+	FString& ProjectDir = TLazySingleton<FStaticData>::Get().ProjectDir;
 
 	// track if last time we called this function the .ini was ready and had fixed the GameName case
 	static bool bWasIniReady = false;
@@ -981,7 +1003,7 @@ FString FGenericPlatformMisc::CloudDir()
 
 const TCHAR* FGenericPlatformMisc::GamePersistentDownloadDir()
 {
-	static FString GamePersistentDownloadDir = TEXT("");
+	FString& GamePersistentDownloadDir = TLazySingleton<FStaticData>::Get().GamePersistentDownloadDir;
 
 	if (GamePersistentDownloadDir.Len() == 0)
 	{
@@ -1163,7 +1185,7 @@ void FGenericPlatformMisc::UpdateHotfixableEnsureSettings()
 	else
 	{
 		float HandleEnsurePercentOnCmdLine = 100.0f;
-		if (FParse::Value(FCommandLine::Get(), TEXT("handleensurepercent="), HandleEnsurePercentOnCmdLine))
+		if (!FCommandLine::IsInitialized() && FParse::Value(FCommandLine::Get(), TEXT("handleensurepercent="), HandleEnsurePercentOnCmdLine))
 		{
 			GenericPlatformMisc::GEnsureChance = HandleEnsurePercentOnCmdLine / 100.0;
 		}
@@ -1354,6 +1376,11 @@ bool FGenericPlatformMisc::FileExitsInPlatformPackage(const FString& RelativePat
 {
 	FString Path = RootDir() / RelativePath;
 	return IFileManager::Get().FileExists(*Path);
+}
+
+void FGenericPlatformMisc::TearDown()
+{
+	TLazySingleton<FStaticData>::TearDown();
 }
 
 void FGenericPlatformMisc::ParseChunkIdPakchunkIndexMapping(TArray<FString> ChunkIndexMappingData, TMap<int32, int32>& OutMapping)

@@ -31,6 +31,7 @@ struct FAnimNode_SubInput;
 struct FBakedAnimationStateMachine;
 class FCompilerResultsLog;
 struct FBoneContainer;
+struct FAnimNode_Layer;
 
 typedef TArray<FTransform> FTransformArrayA2;
 
@@ -718,19 +719,36 @@ public:
 	void SetSubInstanceClassByTag(FName InTag, TSubclassOf<UAnimInstance> InClass);
 
 	/** 
-	 * Runs through all layer nodes, attempting to layer nodes that are implemented by the specified class, then sets up a sub instance of the class for each.
-	 * Allocates one sub instance to run each of the groups specified in the class, so state is shared.
-	 * If InClass is null, then layers are reset to their defaults.
+	 * Runs through all layer nodes, attempting to find layer nodes that are implemented by the specified class, then sets up a sub instance of the class for each.
+	 * Allocates one sub instance to run each of the groups specified in the class, so state is shared. If a layer is not grouped (ie. NAME_None), then state is not shared
+	 * and a separate sub-instance is allocated for each layer node.
+	 * If InClass is null, then all layers are reset to their defaults.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Layers")
 	void SetLayerOverlay(TSubclassOf<UAnimInstance> InClass);
 
-	/** Gets the sub instance corresponding to the specified group */
+	/** 
+	 * Runs through all layer nodes, attempting to find layer nodes that are currently running the specified class, then resets each to its default value.
+	 * State sharing rules are as with SetLayerOverlay.
+	 * If InClass is null, does nothing.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Layers")
+	void ClearLayerOverlay(TSubclassOf<UAnimInstance> InClass);
+
+	/** Gets the layer sub instance corresponding to the specified group */
 	UFUNCTION(BlueprintCallable, Category = "Layers")
 	UAnimInstance* GetLayerSubInstanceByGroup(FName InGroup) const;
 
+	/** Gets the first layer sub instance corresponding to the specified class */
+	UFUNCTION(BlueprintCallable, Category = "Layers")
+	UAnimInstance* GetLayerSubInstanceByClass(TSubclassOf<UAnimInstance> InClass) const;
+
 	/** Sets up initial layer groupings */
 	void InitializeGroupedLayers();
+
+private:
+	/** Helper function to perform layer overlay actions (set, clear) */
+	void PerformLayerOverlayOperation(TSubclassOf<UAnimInstance> InClass, TFunctionRef<UClass*(UClass*, FAnimNode_Layer*)> InClassSelectorFunction);
 
 protected:
 	/** Map between Active Montages and their FAnimMontageInstance */
@@ -887,6 +905,9 @@ public:
 	 */
 	int32 GetInstanceAssetPlayerIndex(FName MachineName, FName StateName, FName InstanceName = NAME_None);
 
+	/** Returns all Animation Nodes of FAnimNode_AssetPlayerBase class within the specified (named) Animation Graph */
+	TArray<FAnimNode_AssetPlayerBase*> GetInstanceAssetPlayers(const FName& GraphName);
+
 	/** Gets the runtime instance desc of the state machine specified by name */
 	const FBakedAnimationStateMachine* GetStateMachineInstanceDesc(FName MachineName);
 
@@ -1005,7 +1026,8 @@ public:
 	// evaluate happens when condition is met - i.e. depending on your skeletalmeshcomponent update flag
 	// post eval happens after evaluation is done
 	// uninitialize happens when owner is unregistered
-	void InitializeAnimation();
+	// @param	bInDeferRootNodeInitialization	When set to true, defer init of the blend tree until the first Update() call
+	void InitializeAnimation(bool bInDeferRootNodeInitialization = false);
 
 	/** Update Animation code-paths, updates and advances animation state, returns whether or not the actual update should have been called immediately */
 	bool UpdateAnimation(float DeltaSeconds, bool bNeedsValidRootMotion, EUpdateAnimationFlag UpdateFlag = EUpdateAnimationFlag::Default );

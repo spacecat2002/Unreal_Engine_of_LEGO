@@ -183,7 +183,7 @@ struct FTextureSource
 #if WITH_EDITOR
 
 	ENGINE_API static int32 GetBytesPerPixel(ETextureSourceFormat Format);
-	FORCEINLINE static bool IsHDR(ETextureSourceFormat Format) { return Format == TSF_BGRE8 || Format == TSF_RGBA16F; }
+	FORCEINLINE static bool IsHDR(ETextureSourceFormat Format) { return (Format == TSF_BGRE8 || Format == TSF_RGBA16F); }
 
 	ENGINE_API void InitBlocked(const ETextureSourceFormat* InLayerFormats,
 		const FTextureSourceBlock* InBlocks,
@@ -263,7 +263,7 @@ struct FTextureSource
 	ENGINE_API void UnlockMip(int32 BlockIndex, int32 LayerIndex, int32 MipIndex);
 
 	/** Retrieve a copy of the data for a particular mip. */
-	ENGINE_API bool GetMipData(TArray<uint8>& OutMipData, int32 BlockIndex, int32 LayerIndex, int32 MipIndex, class IImageWrapperModule* ImageWrapperModule = nullptr);
+	ENGINE_API bool GetMipData(TArray64<uint8>& OutMipData, int32 BlockIndex, int32 LayerIndex, int32 MipIndex, class IImageWrapperModule* ImageWrapperModule = nullptr);
 
 	/** Computes the size of a single mip. */
 	ENGINE_API int32 CalcMipSize(int32 BlockIndex, int32 LayerIndex, int32 MipIndex) const;
@@ -308,7 +308,7 @@ struct FTextureSource
 	ENGINE_API void SetId(const FGuid& InId, bool bInGuidIsHash);
 
 	/** Legacy API that defaults to LayerIndex 0 */
-	FORCEINLINE bool GetMipData(TArray<uint8>& OutMipData, int32 MipIndex, class IImageWrapperModule* ImageWrapperModule = nullptr)
+	FORCEINLINE bool GetMipData(TArray64<uint8>& OutMipData, int32 MipIndex, class IImageWrapperModule* ImageWrapperModule = nullptr)
 	{
 		return GetMipData(OutMipData, 0, 0, MipIndex, ImageWrapperModule);
 	}
@@ -325,6 +325,7 @@ private:
 	friend class UTexture2D;
 	friend class UTextureCube;
 	friend class UVolumeTexture;
+	friend class UTexture2DArray;
 
 	/** The bulk source data. */
 	FByteBulkData BulkData;
@@ -792,6 +793,9 @@ public:
 	{
 		return false;
 	}
+
+	/** Returns the virtual texture build settings. */
+	ENGINE_API virtual void GetVirtualTextureBuildSettings(struct FVirtualTextureBuildSettings& OutSettings) const;
 
 	/**
 	 * Textures that use the derived data cache must override this function and

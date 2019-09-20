@@ -537,9 +537,11 @@ FConfigSection* FConfigFile::FindOrAddSection(const FString& SectionName)
 
 bool FConfigFile::Combine(const FString& Filename)
 {
-	FString Text;
+	FString FinalFileName = Filename;
+	OverrideFileFromCommandline(FinalFileName);
 
-	if (LoadConfigFileWrapper(*Filename, Text))
+	FString Text;
+	if (LoadConfigFileWrapper(*FinalFileName, Text))
 	{
 		if (Text.StartsWith("#!"))
 		{
@@ -848,7 +850,10 @@ void FConfigFile::Read( const FString& Filename )
 		Empty();
 		FString Text;
 
-		if (LoadConfigFileWrapper(*Filename, Text))
+		FString FinalFileName = Filename;
+		OverrideFileFromCommandline(FinalFileName);
+	
+		if (LoadConfigFileWrapper(*FinalFileName, Text))
 		{
 			// process the contents of the string
 			ProcessInputFileContents(Text);
@@ -936,14 +941,50 @@ FString FConfigFile::GenerateExportedPropertyLine(const FString& PropertyName, c
 namespace CommandlineOverrideSpecifiers
 {
 	// -ini:IniName:[Section1]:Key1=Value1,[Section2]:Key2=Value2
-	FString	IniSwitchIdentifier		= TEXT("-ini:");
-	FString	IniNameEndIdentifier	= TEXT(":[");
-	FString	SectionStartIdentifier	= TEXT("[");
-	FString PropertyStartIdentifier	= TEXT("]:");
-	FString	PropertySeperator		= TEXT(",");
+	const TCHAR	IniFileOverrideIdentifier[] = TEXT("-iniFile=");
+	const TCHAR IniSwitchIdentifier[]     = TEXT("-ini:");
+	const TCHAR IniNameEndIdentifier[]    = TEXT(":[");
+	const TCHAR SectionStartIdentifier[]  = TEXT("[");
+	const TCHAR PropertyStartIdentifier[] = TEXT("]:");
+	const TCHAR PropertySeperator[]       = TEXT(",");
 }
 
 #endif
+void FConfigFile::OverrideFileFromCommandline(FString& Filename)
+{
+#if ALLOW_INI_OVERRIDE_FROM_COMMANDLINE
+	// look for this filename on the commandline in the format:
+	//		-iniFile=<hostPatFile1>,<hostPatFile2>,<hostPatFile3>
+	// for example:
+	//		-iniFile=/host/D:\FN-Main\FortniteGame\Config\PS4\PS4DeviceProfiles.ini
+	//       
+	//		Description: 
+	//          The FortniteGame\Config\PS4\PS4DeviceProfiles.ini contained in the pak file will
+	//          be replace with /host/D:\FN-Main\FortniteGame\Config\PS4\PS4DeviceProfiles.ini.
+
+	//			Note: You will need the same base file path for this to work. If you
+	//                want to override Engine/Config/BaseEngine.ini, you will need to place the override file 
+	//                under the same folder structure. 
+	//          Ex1: D:\<some_folder>\Engine\Config\BaseEngine.ini.
+	//			Ex2: D:\<some_folder>\FortniteGame\Config\PS4\PS4Engine.ini.ini.
+	FString StagedFilePaths;
+	if(FParse::Value(FCommandLine::Get(), CommandlineOverrideSpecifiers::IniFileOverrideIdentifier, StagedFilePaths, false))
+	{ 
+		FString BaseFileName = FPaths::GetBaseFilename(Filename);
+		TArray<FString> Files;
+		StagedFilePaths.ParseIntoArray(Files, TEXT(","), true);
+		for (int32 Index = 0; Index < Files.Num(); Index++)
+		{
+			if (Files[Index].Contains(BaseFileName))
+			{
+				Filename = Files[Index];
+				UE_LOG(LogConfig, Warning, TEXT("Loading override ini file: %s "), *Files[Index]);
+				break;
+			}
+		}
+	}
+#endif
+}
 /**
 * Looks for any overrides on the commandline for this file
 *
@@ -959,11 +1000,11 @@ void FConfigFile::OverrideFromCommandline(FConfigFile* File, const FString& File
 	// for example:
 	//		-ini:Engine:[/Script/Engine.Engine]:bSmoothFrameRate=False,[TextureStreaming]:PoolSize=100
 	//			(will update the cache after the final combined engine.ini)
-	if (FParse::Value(FCommandLine::Get(), *FString::Printf(TEXT("%s%s"), *CommandlineOverrideSpecifiers::IniSwitchIdentifier, *FPaths::GetBaseFilename(Filename)), Settings, false))
+	if (FParse::Value(FCommandLine::Get(), *FString::Printf(TEXT("%s%s"), CommandlineOverrideSpecifiers::IniSwitchIdentifier, *FPaths::GetBaseFilename(Filename)), Settings, false))
 	{
 		// break apart on the commas
 		TArray<FString> SettingPairs;
-		Settings.ParseIntoArray(SettingPairs, *CommandlineOverrideSpecifiers::PropertySeperator, true);
+		Settings.ParseIntoArray(SettingPairs, CommandlineOverrideSpecifiers::PropertySeperator, true);
 		for (int32 Index = 0; Index < SettingPairs.Num(); Index++)
 		{
 			// set each one, by splitting on the =
@@ -984,11 +1025,11 @@ void FConfigFile::OverrideFromCommandline(FConfigFile* File, const FString& File
 				CommandlineOption.Section = SectionAndKey.Left(SectionNameEndIndex);
 				
 				// Remove commandline syntax from the section name.
-				CommandlineOption.Section = CommandlineOption.Section.Replace(*CommandlineOverrideSpecifiers::IniNameEndIdentifier, TEXT(""));
-				CommandlineOption.Section = CommandlineOption.Section.Replace(*CommandlineOverrideSpecifiers::PropertyStartIdentifier, TEXT(""));
-				CommandlineOption.Section = CommandlineOption.Section.Replace(*CommandlineOverrideSpecifiers::SectionStartIdentifier, TEXT(""));
+				CommandlineOption.Section = CommandlineOption.Section.Replace(CommandlineOverrideSpecifiers::IniNameEndIdentifier, TEXT(""));
+				CommandlineOption.Section = CommandlineOption.Section.Replace(CommandlineOverrideSpecifiers::PropertyStartIdentifier, TEXT(""));
+				CommandlineOption.Section = CommandlineOption.Section.Replace(CommandlineOverrideSpecifiers::SectionStartIdentifier, TEXT(""));
 
-				CommandlineOption.PropertyKey = SectionAndKey.Mid(SectionNameEndIndex + CommandlineOverrideSpecifiers::PropertyStartIdentifier.Len());
+				CommandlineOption.PropertyKey = SectionAndKey.Mid(SectionNameEndIndex + ARRAY_COUNT(CommandlineOverrideSpecifiers::PropertyStartIdentifier) - 1);
 				CommandlineOption.PropertyValue = Value;
 
 				// now put it into this into the cache
@@ -3133,7 +3174,7 @@ static void ConditionalOverrideIniFilename(FString& IniFilename, const TCHAR* Ba
 
 const int Flag_Required = 1;
 const int Flag_AllowCommandLineOverride = 2;
-const int Flag_DedicatedServerOnly = 4; // replaces Default, Base, and (NOT {PLATFORM} yet) with DedicatedServer
+const int Flag_DedicatedServerOnly = 4; // replaces Default, Base, and (NOT {PLATFORM} yet) with an empty string
 const int Flag_GenerateCacheKey = 8;
 
 
@@ -3146,9 +3187,9 @@ struct FConfigLayer
 	// Used by the editor to display in the ini-editor
 	const TCHAR* EditorName;
 	// Path to the ini file (with variables)
-	FString Path;
+	const TCHAR* Path;
 	// Path to the platform extension version
-	FString PlatformExtensionPath;
+	const TCHAR* PlatformExtensionPath;
 	// Special flag
 	int32  Flag;
 
@@ -3240,8 +3281,8 @@ static void GetSourceIniHierarchyFilenames(const TCHAR* InBaseIniName, const TCH
 	const FString PlatformName(InPlatformName ? InPlatformName : ANSI_TO_TCHAR(FPlatformProperties::IniPlatformName()));
 
 	// cache some platform extension information that can be used inside the loops
-	FString PlatformExtensionEngineConfigDir = FPaths::Combine(*FPaths::PlatformExtensionsDir(), *PlatformName, TEXT("Engine"), TEXT("Config"));
-	FString PlatformExtensionProjectConfigDir = FPaths::Combine(*FPaths::PlatformExtensionsDir(), *PlatformName, FApp::GetProjectName(), TEXT("Config"));
+	FString PlatformExtensionEngineConfigDir = FPaths::Combine(*FPaths::EnginePlatformExtensionsDir(), *PlatformName, TEXT("Config"));
+	FString PlatformExtensionProjectConfigDir = FPaths::Combine(*FPaths::ProjectPlatformExtensionsDir(), *PlatformName, TEXT("Config"));
 	bool bHasPlatformExtensionEngineConfigDir = FPaths::DirectoryExists(*PlatformExtensionEngineConfigDir);
 	bool bHasPlatformExtensionProjectConfigDir = FPaths::DirectoryExists(*PlatformExtensionProjectConfigDir);
 
@@ -3249,8 +3290,8 @@ static void GetSourceIniHierarchyFilenames(const TCHAR* InBaseIniName, const TCH
 	for (int32 LayerIndex = 0; LayerIndex < ARRAY_COUNT(GConfigLayers); LayerIndex++)
 	{
 		const FConfigLayer& Layer = GConfigLayers[LayerIndex];
-		bool bHasPlatformTag = Layer.Path.Contains(TEXT("{PLATFORM}"));
-		bool bHasProjectTag = Layer.Path.Contains(TEXT("{PROJECT}"));
+		const bool bHasPlatformTag = FCString::Strstr(Layer.Path, TEXT("{PLATFORM}")) != nullptr;
+		const bool bHasProjectTag = FCString::Strstr(Layer.Path, TEXT("{PROJECT}")) != nullptr;
 
 		// calculate a increasing-by-layer index
 		int32 ConfigFileIndex = LayerIndex * 10000;
@@ -3262,22 +3303,22 @@ static void GetSourceIniHierarchyFilenames(const TCHAR* InBaseIniName, const TCH
 		{
 			if (bHasPlatformTag && bHasPlatformExtensionProjectConfigDir)
 			{
-				LayerPath = Layer.PlatformExtensionPath.Replace(TEXT("{EXTPROJECT}"), *PlatformExtensionProjectConfigDir);
+				LayerPath = FString(Layer.PlatformExtensionPath).Replace(TEXT("{EXTPROJECT}"), *PlatformExtensionProjectConfigDir);
 			}
 			else
 			{
-				LayerPath = Layer.Path.Replace(TEXT("{PROJECT}"), SourceConfigDir);
+				LayerPath = FString(Layer.Path).Replace(TEXT("{PROJECT}"), SourceConfigDir);
 			}
 		}
 		else
 		{
 			if (bHasPlatformTag && bHasPlatformExtensionEngineConfigDir)
 			{
-				LayerPath = Layer.PlatformExtensionPath.Replace(TEXT("{EXTENGINE}"), *PlatformExtensionEngineConfigDir);
+				LayerPath = FString(Layer.PlatformExtensionPath).Replace(TEXT("{EXTENGINE}"), *PlatformExtensionEngineConfigDir);
 			}
 			else
 			{
-				LayerPath = Layer.Path.Replace(TEXT("{ENGINE}"), EngineConfigDir);
+				LayerPath = FString(Layer.Path).Replace(TEXT("{ENGINE}"), EngineConfigDir);
 			}
 		}
 
@@ -3293,10 +3334,10 @@ static void GetSourceIniHierarchyFilenames(const TCHAR* InBaseIniName, const TCH
 #endif
 
 		// expand if it it has {ED} or {EF} expansion tags
-		if (FCString::Strstr(*Layer.Path, TEXT("{ED}")) || FCString::Strstr(*Layer.Path, TEXT("{EF}")))
+		if (FCString::Strstr(Layer.Path, TEXT("{ED}")) || FCString::Strstr(Layer.Path, TEXT("{EF}")))
 		{
 			// we assume none of the more special tags in expanded ones
-			checkfSlow(FCString::Strstr(*Layer.Path, TEXT("{USERSETTINGS}")) == nullptr && FCString::Strstr(*Layer.Path, TEXT("{USER}")) == nullptr, TEXT("Expanded config %s shouldn't have a {USER*} tags in it"), *Layer.Path);
+			checkfSlow(FCString::Strstr(Layer.Path, TEXT("{USERSETTINGS}")) == nullptr && FCString::Strstr(Layer.Path, TEXT("{USER}")) == nullptr, TEXT("Expanded config %s shouldn't have a {USER*} tags in it"), *Layer.Path);
 			// last layer is expected to not be expanded
 			checkfSlow(LayerIndex < ARRAY_COUNT(GConfigLayers) - 1, TEXT("Final layer %s shouldn't be an expansion layer, as it needs to generate the  hierarchy cache key"), *Layer.Path);
 
@@ -3322,9 +3363,9 @@ static void GetSourceIniHierarchyFilenames(const TCHAR* InBaseIniName, const TCH
 					}
 					if (IsRunningDedicatedServer())
 					{
-						ExpansionPath = ExpansionPath.Replace(TEXT("Base"), TEXT("DedicatedServer"));
-						ExpansionPath = ExpansionPath.Replace(TEXT("Default"), TEXT("DedicatedServer"));
-						// ExpansionPath = ExpansionPath.Replace(TEXT("{PLATFORM}"), TEXT("DedicatedServer"));
+						ExpansionPath = ExpansionPath.Replace(TEXT("Base"), TEXT(""));
+						ExpansionPath = ExpansionPath.Replace(TEXT("Default"), TEXT(""));
+						// ExpansionPath = ExpansionPath.Replace(TEXT("{PLATFORM}"), TEXT(""));
 					}
 					else
 					{
@@ -3452,10 +3493,10 @@ void FConfigCacheIni::InitializeConfigSystem()
 	FConfigCacheIni::LoadGlobalIniFile(GEditorPerProjectIni, TEXT("EditorPerProjectUserSettings"));
 
 	// Project agnostic editor ini files
-	static const FString EditorSettingsDir = FPaths::Combine(*FPaths::GameAgnosticSavedDir(), TEXT("Config")) + TEXT("/");
+	const FString EditorSettingsDir = FPaths::EngineEditorSettingsDir();
 	FConfigCacheIni::LoadGlobalIniFile(GEditorSettingsIni, TEXT("EditorSettings"), nullptr, false, false, true, *EditorSettingsDir);
-	FConfigCacheIni::LoadGlobalIniFile(GEditorLayoutIni, TEXT("EditorLayout"), nullptr, false, false, true, *EditorSettingsDir);
 	FConfigCacheIni::LoadGlobalIniFile(GEditorKeyBindingsIni, TEXT("EditorKeyBindings"), nullptr, false, false, true, *EditorSettingsDir);
+	FConfigCacheIni::LoadGlobalIniFile(GEditorLayoutIni, TEXT("EditorLayout"), nullptr, false, false, true, *EditorSettingsDir);
 
 #endif
 #if PLATFORM_DESKTOP

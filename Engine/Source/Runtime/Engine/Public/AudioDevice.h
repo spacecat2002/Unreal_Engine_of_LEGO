@@ -9,7 +9,6 @@
 #include "Engine/Engine.h"
 #include "EngineGlobals.h"
 #include "IAudioExtensionPlugin.h"
-#include "Modules/ModuleInterface.h"
 #include "AudioDynamicParameter.h"
 #include "Sound/AudioSettings.h"
 #include "Sound/AudioVolume.h"
@@ -19,7 +18,7 @@
 #include "Sound/SoundMix.h"
 #include "Sound/SoundSourceBus.h"
 #include "AudioVirtualLoop.h"
-
+#include "AudioMixer.h"
 
 /**
  * Forward declares
@@ -535,6 +534,13 @@ public:
 	 */
 	virtual void Precache(USoundWave* SoundWave, bool bSynchronous = false, bool bTrackMemory = true, bool bForceFullDecompression = false);
 
+	float GetCompressionDurationThreshold(const FSoundGroup &SoundGroup);
+
+	/**
+	 * Returns true if a sound wave should be decompressed.
+	 */
+	bool ShouldUseRealtimeDecompression(bool bForceFullDecompression, const FSoundGroup &SoundGroup, USoundWave* SoundWave, float CompressedDurationThreshold) const;
+
 	/**
 	 * Precaches all existing sounds. Called when audio setup is complete
 	 */
@@ -556,6 +562,11 @@ public:
 	/** Returns the maximum sources used by the audio device set on initialization,
 	  * including the number of stopping voices reserved. */
 	int32 GetMaxSources() const;
+
+	/**
+	 * Returns global pitch range
+	 */
+	TRange<float> GetGlobalPitchRange() const;
 
 	/**
 	* Stops any sound sources which are using the given buffer.
@@ -1014,6 +1025,9 @@ public:
 	static int32 FindClosestListenerIndex(const FTransform& SoundTransform, const TArray<FListener>& InListeners);
 	int32 FindClosestListenerIndex(const FTransform& SoundTransform) const;
 
+	/** Disables ActiveSound from responding to calls from its associated AudioComponent. */
+	void UnlinkActiveSoundFromComponent(const FActiveSound& InActiveSound);
+
 	/** Return the audio stream time */
 	virtual double GetAudioTime() const
 	{
@@ -1139,6 +1153,18 @@ public:
 
 	/** Returns the current source effect chain entries set dynamically from BP or elsewhere. */
 	virtual bool GetCurrentSourceEffectChain(const uint32 SourceEffectChainId, TArray<FSourceEffectChainEntry>& OutCurrentSourceEffectChainEntries) { return false; }
+
+	/** Updates the submix properties of any playing submix instances. Allows editor to make changes to submix properties and hear them propagate live.*/
+	virtual void UpdateSubmixProperties(USoundSubmix* InSubmix)
+	{
+		UE_LOG(LogAudio, Error, TEXT("Submixes are only supported in audio mixer."));
+	}
+
+	/** Sets the dynamic volume of the given submix. */
+	virtual void SetSubmixOutputVolume(USoundSubmix* InSubmix, float NewVolume)
+	{
+		UE_LOG(LogAudio, Error, TEXT("Submixes are only supported in audio mixer."));
+	}
 
 	/** This is called by a USoundSubmix to start recording a submix instance on this device. */
 	virtual void StartRecording(USoundSubmix* InSubmix, float ExpectedRecordingDuration)
@@ -1347,6 +1373,9 @@ private:
 	{
 		return Adjuster * InterpValue + 1.0f - InterpValue;
 	}
+
+	/** Retrieve the filter frequency to use. Takes into account logarithmic nature of frequency. */
+	float GetInterpolatedFrequency(const float InFrequency, const float InterpValue) const;
 
 	/** Allow platforms to optionally specify low-level audio platform settings. */
 	virtual FAudioPlatformSettings GetPlatformSettings() const { return FAudioPlatformSettings(); }
@@ -1609,7 +1638,7 @@ public:
 	int32 CommonAudioPoolFreeBytes;
 
 	/** The handle for this audio device used in the audio device manager. */
-	uint32 DeviceHandle;
+	Audio::FDeviceId DeviceHandle;
 
 	/** 3rd party audio spatialization interface. */
 	TAudioSpatializationPtr SpatializationPluginInterface;
@@ -1812,7 +1841,13 @@ private:
 	TArray<FActiveSound*> ActiveSounds;
 	/** Array of sound waves to add references to avoid GC until guaranteed to be done with precache or decodes. */
 	TArray<USoundWave*> ReferencedSoundWaves;
+
+	void UpdateReferencedSoundWaves();
+	TArray<USoundWave*> ReferencedSoundWaves_AudioThread;
+	FCriticalSection ReferencedSoundWaveCritSec;
+
 	TArray<USoundWave*> PrecachingSoundWaves;
+
 	TArray<FWaveInstance*> ActiveWaveInstances;
 
 	/** Array of dormant loops stopped due to proximity/applicable concurrency rules
@@ -1856,21 +1891,6 @@ private:
 	// Global min and max pitch scale, derived from audio settings
 	float GlobalMinPitch;
 	float GlobalMaxPitch;
-};
-
-
-/**
- * Interface for audio device modules
- */
-
-/** Defines the interface of a module implementing an audio device and associated classes. */
-class IAudioDeviceModule : public IModuleInterface
-{
-public:
-
-	/** Creates a new instance of the audio device implemented by the module. */
-	virtual bool IsAudioMixerModule() const { return false; }
-	virtual FAudioDevice* CreateAudioDevice() = 0;
 };
 
 

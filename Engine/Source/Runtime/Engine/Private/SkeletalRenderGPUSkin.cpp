@@ -380,7 +380,6 @@ void FSkeletalMeshObjectGPUSkin::UpdateDynamicData_RenderThread(FGPUSkinCache* G
 				Initializer.PositionVertexBuffer = RHICreateVertexBuffer(LODModel.GetNumVertices() * sizeof(FVector), BUF_ShaderResource, CreateInfo);
 				FGPUSkinCache::CreateMergedPositionVertexBuffer(RHICmdList, SkinCacheEntry, Initializer.PositionVertexBuffer);
 				Initializer.IndexBuffer = IndexBufferRHI;
-				Initializer.BaseVertexIndex = 0;
 				Initializer.VertexBufferStride = VertexBufferStride;
 				Initializer.VertexBufferByteOffset = 0;
 				Initializer.TotalPrimitiveCount = TrianglesCount;
@@ -485,6 +484,9 @@ void FSkeletalMeshObjectGPUSkin::ProcessUpdatedDynamicData(FGPUSkinCache* GPUSki
 			QUICK_SCOPE_CYCLE_COUNTER(STAT_FSkeletalMeshObjectGPUSkin_ProcessUpdatedDynamicData_UpdateMorphBuffer);
 			if (UseGPUMorphTargets(GMaxRHIShaderPlatform))
 			{
+				// sometimes this goes out of bound, we'll ensure here
+				ensureAlways(DynamicData->MorphTargetWeights.Num() == LODData.MorphTargetVertexInfoBuffers.GetNumMorphs());
+
 				// update the morph data for the lod (before SkinCache)
 				TArray<float> MorphTargetWeights;
 				MorphTargetWeights.Reserve(LODData.MorphTargetVertexInfoBuffers.GetNumMorphs());
@@ -495,7 +497,6 @@ void FSkeletalMeshObjectGPUSkin::ProcessUpdatedDynamicData(FGPUSkinCache* GPUSki
 						MorphTargetWeights.Add(DynamicData->MorphTargetWeights[i]);
 					}
 				}
-				ensureAlways(MorphTargetWeights.Num() == LODData.MorphTargetVertexInfoBuffers.GetNumMorphs());
 				LOD.UpdateMorphVertexBufferGPU(RHICmdList, MorphTargetWeights, LODData.MorphTargetVertexInfoBuffers, DynamicData->SectionIdsUseByActiveMorphTargets);
 			}
 			else
@@ -517,7 +518,7 @@ void FSkeletalMeshObjectGPUSkin::ProcessUpdatedDynamicData(FGPUSkinCache* GPUSki
 		{
 			const FSkelMeshRenderSection& Section = Sections[SectionIdx];
 
-			bool bClothFactory = (FeatureLevel >= ERHIFeatureLevel::SM4) && (DynamicData->ClothingSimData.Num() > 0) && Section.HasClothingData();
+			bool bClothFactory = (FeatureLevel >= ERHIFeatureLevel::SM5) && (DynamicData->ClothingSimData.Num() > 0) && Section.HasClothingData();
 
 			FGPUBaseSkinVertexFactory* VertexFactory;
 			{
@@ -1120,7 +1121,7 @@ void FSkeletalMeshObjectGPUSkin::RefreshClothingTransforms(const FMatrix& InNewL
 
 					if(FClothSimulData* SimData = DynamicData->ClothingSimData.Find(ActorIdx))
 					{
-						ClothShaderData.GetClothLocalToWorldForWriting(FrameNumber) = InNewLocalToWorld * SimData->ComponentRelativeTransform.ToMatrixWithScale();
+						ClothShaderData.GetClothLocalToWorldForWriting(FrameNumber) = SimData->ComponentRelativeTransform.ToMatrixWithScale() * InNewLocalToWorld;
 					}
 				}
 			}
@@ -1546,7 +1547,7 @@ void FSkeletalMeshObjectGPUSkin::FVertexFactoryData::InitAPEXClothVertexFactorie
 	ClothVertexFactories.Empty(Sections.Num());
 	for( int32 FactoryIdx=0; FactoryIdx < Sections.Num(); FactoryIdx++ )
 	{
-		if (Sections[FactoryIdx].HasClothingData() && InFeatureLevel >= ERHIFeatureLevel::SM4)
+		if (Sections[FactoryIdx].HasClothingData() && InFeatureLevel >= ERHIFeatureLevel::SM5)
 		{
 			if (VertexBuffers.SkinWeightVertexBuffer->HasExtraBoneInfluences())
 			{

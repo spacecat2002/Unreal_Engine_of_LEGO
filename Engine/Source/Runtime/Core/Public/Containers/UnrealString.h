@@ -1756,8 +1756,8 @@ public:
 
 	/**
 	 * Converts a string into a boolean value
-	 *   1, "True", "Yes", GTrue, GYes, and non-zero integers become true
-	 *   0, "False", "No", GFalse, GNo, and unparsable values become false
+	 *   1, "True", "Yes", FCoreTexts::True, FCoreTexts::Yes, and non-zero integers become true
+	 *   0, "False", "No", FCoreTexts::False, FCoreTexts::No, and unparsable values become false
 	 *
 	 * @return The boolean value
 	 */
@@ -2236,6 +2236,12 @@ FORCEINLINE const TCHAR* ToCStr(const TCHAR* Ptr)
 FORCEINLINE const TCHAR* ToCStr(const FString& Str)
 {
 	return *Str;
+}
+
+namespace StringConv
+{
+	/** Inline combine any UTF-16 surrogate pairs in the given string */
+	CORE_API void InlineCombineSurrogates(FString& Str);
 }
 
 /*----------------------------------------------------------------------------

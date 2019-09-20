@@ -58,8 +58,9 @@ public:
 	using FOnGenerateRow            = typename TSlateDelegates< ItemType >::FOnGenerateRow;
 	using FOnItemScrolledIntoView   = typename TSlateDelegates< ItemType >::FOnItemScrolledIntoView;
 	using FOnSelectionChanged       = typename TSlateDelegates< NullableItemType >::FOnSelectionChanged;
-	using FOnMouseButtonClick       = typename TSlateDelegates< ItemType >::FOnMouseButtonClick ;
-	using FOnMouseButtonDoubleClick = typename TSlateDelegates< ItemType >::FOnMouseButtonDoubleClick ;
+	using FIsSelectableOrNavigable	= typename TSlateDelegates< ItemType >::FIsSelectableOrNavigable;
+	using FOnMouseButtonClick       = typename TSlateDelegates< ItemType >::FOnMouseButtonClick;
+	using FOnMouseButtonDoubleClick = typename TSlateDelegates< ItemType >::FOnMouseButtonDoubleClick;
 
 	typedef typename TSlateDelegates< ItemType >::FOnItemToString_Debug FOnItemToString_Debug;
 
@@ -78,6 +79,7 @@ public:
 		, _OnMouseButtonClick()
 		, _OnMouseButtonDoubleClick()
 		, _OnSelectionChanged()
+		, _OnIsSelectableOrNavigable()
 		, _SelectionMode(ESelectionMode::Multi)
 		, _ClearSelectionOnClick(true)
 		, _ExternalScrollbar()
@@ -118,6 +120,8 @@ public:
 		SLATE_EVENT( FOnMouseButtonDoubleClick, OnMouseButtonDoubleClick )
 
 		SLATE_EVENT( FOnSelectionChanged, OnSelectionChanged )
+
+		SLATE_EVENT( FIsSelectableOrNavigable, OnIsSelectableOrNavigable)
 
 		SLATE_ATTRIBUTE( ESelectionMode::Type, SelectionMode )
 
@@ -177,6 +181,7 @@ public:
 		this->OnClick = InArgs._OnMouseButtonClick;
 		this->OnDoubleClick = InArgs._OnMouseButtonDoubleClick;
 		this->OnSelectionChanged = InArgs._OnSelectionChanged;
+		this->OnIsSelectableOrNavigable = InArgs._OnIsSelectableOrNavigable;
 		this->SelectionMode = InArgs._SelectionMode;
 
 		this->bClearSelectionOnClick = InArgs._ClearSelectionOnClick;
@@ -419,22 +424,22 @@ public:
 				AttemptSelectIndex = CurSelectionIndex - NumItemsPerLine;
 			}
 			else if ((Orientation == Orient_Vertical && NavType == EUINavigation::Down) ||
-				(Orientation == Orient_Horizontal && NavType == EUINavigation::Right))
+					 (Orientation == Orient_Horizontal && NavType == EUINavigation::Right))
 			{
 				AttemptSelectIndex = CurSelectionIndex + NumItemsPerLine;
 
 				// The list might be jagged so attempt to determine if there's a partially filled row we can move to
 				if (!ItemsSourceRef.IsValidIndex(AttemptSelectIndex))
 				{
-					int32 NumItems = ItemsSourceRef.Num();
+					const int32 NumItems = ItemsSourceRef.Num();
 					if (NumItems > 0)
 					{
 						// NumItemsWide should never be 0, ensuring for sanity
 						ensure(NumItemsPerLine > 0);
 
 						// calculate total number of rows and row of current index (1 index)
-						int32 NumLines = NumItems / NumItemsPerLine + (NumItems % NumItemsPerLine != 0 ? 1 : 0);
-						int32 CurLine = CurSelectionIndex / NumItems + 1;
+						const int32 NumLines = FMath::CeilToInt(NumItems / (float)NumItemsPerLine);
+						const int32 CurLine = FMath::CeilToInt((CurSelectionIndex + 1) / (float)NumItemsPerLine);
 
 						// if not on final row, assume a jagged list and select the final item
 						if (CurLine < NumLines)
@@ -1068,15 +1073,12 @@ public:
 					? ItemLength * ItemsInView	// For the first item, ItemsInView <= 1.0f
 					: ItemLength;
 
-				if (ItemIndex >= ItemsSource->Num() - 1)
-				{
-					bAtEndOfList = true;
-				}
+				bAtEndOfList = ItemIndex >= ItemsSource->Num() - 1;
 
-				if (ViewLengthUsedSoFar >= MyDimensions.ScrollAxis)
-				{
-					bHasFilledAvailableArea = true;
-				}
+				// Note: To account for accrued error from floating point truncation and addition in our sum of dimensions used, 
+				//	we pad the allotted axis just a little to be sure we have filled the available space.
+				const float FloatPrecisionOffset = 0.001f;
+				bHasFilledAvailableArea = ViewLengthUsedSoFar >= MyDimensions.ScrollAxis + FloatPrecisionOffset;
 			}
 
 			// Handle scenario b.
@@ -1134,6 +1136,7 @@ public:
 
 		// We rely on the widgets desired size in order to determine how many will fit on screen.
 		const TSharedRef<SWidget> NewlyGeneratedWidget = WidgetForItem->AsWidget();
+		NewlyGeneratedWidget->InvalidatePrepass();
 		NewlyGeneratedWidget->SlatePrepass(LayoutScaleMultiplier);
 
 		// We have a widget for this item; add it to the panel so that it is part of the UI.
@@ -1246,7 +1249,7 @@ public:
 			return;
 		}
 
-		Private_SetItemSelection( InItem, bSelected, SelectInfo != ESelectInfo::Direct);
+		Private_SetItemSelection(InItem, bSelected, SelectInfo != ESelectInfo::Direct);
 		Private_SignalSelectionChanged(SelectInfo);
 	}
 
@@ -1400,9 +1403,18 @@ public:
 	 */
 	void RequestNavigateToItem(ItemType Item, const uint32 UserIndex = 0)
 	{
+		Item = Private_FindNextSelectableOrNavigable(Item);
+		Private_RequestNavigateToItem(Item, UserIndex);
+	}
+
+private:
+	void Private_RequestNavigateToItem(ItemType Item, const uint32 UserIndex)
+	{
 		bNavigateOnScrollIntoView = true;
 		RequestScrollIntoView(Item, UserIndex);
 	}
+
+public:
 
 	/**
 	 * Cancels a previous request to scroll an item into view (cancels navigation requests as well).
@@ -1420,11 +1432,20 @@ public:
 	 * @param SoleSelectedItem   Sole item that should be selected.
 	 * @param SelectInfo Provides context on how the selection changed
 	 */
-	void SetSelection( ItemType SoleSelectedItem, ESelectInfo::Type SelectInfo = ESelectInfo::Direct  )
+	void SetSelection(ItemType SoleSelectedItem, ESelectInfo::Type SelectInfo = ESelectInfo::Direct)
+	{
+		SoleSelectedItem = Private_FindNextSelectableOrNavigable(SoleSelectedItem);
+		Private_SetSelection(SoleSelectedItem, SelectInfo);
+	}
+
+private:
+	void Private_SetSelection(ItemType SoleSelectedItem, ESelectInfo::Type SelectInfo)
 	{
 		SelectedItems.Empty();
 		SetItemSelection( SoleSelectedItem, true, SelectInfo );
 	}
+
+public:
 
 	/** 
 	 * Set the current selection mode of the list.
@@ -1624,6 +1645,12 @@ protected:
 			TListTypeTraits<ItemType>::ResetPtr(ItemToScrollIntoView);
 		}
 
+		if (this->bEnableAnimatedScrolling && TListTypeTraits<ItemType>::IsPtrValid(ItemToNotifyWhenInView))
+		{
+			// When we have a target item we're shooting for, we haven't succeeded with the scroll until a widget for it exists
+			const bool bHasWidgetForItem = WidgetFromItem(TListTypeTraits<ItemType>::NullableItemTypeConvertToItemType(ItemToNotifyWhenInView)).IsValid();
+			return bHasWidgetForItem ? EScrollIntoViewResult::Success : EScrollIntoViewResult::Deferred;
+		}
 		return EScrollIntoViewResult::Success;
 	}
 
@@ -1797,14 +1824,57 @@ protected:
 
 protected:
 
+	ItemType Private_FindNextSelectableOrNavigable(const ItemType& InItemToSelect)
+	{
+		ItemType ItemToSelect = InItemToSelect;
+
+		if (OnIsSelectableOrNavigable.IsBound())
+		{
+			NullableItemType LastSelectedItem = nullptr;
+			if (SelectedItems.Num() == 1)
+			{
+				LastSelectedItem = *SelectedItems.CreateIterator();
+			}
+
+			bool bSelectNextItem = true;
+			while (!OnIsSelectableOrNavigable.Execute(ItemToSelect))
+			{
+				const int32 PendingItemIndex = ItemsSource->Find(ItemToSelect);
+				if (TListTypeTraits<ItemType>::IsPtrValid(LastSelectedItem) && PendingItemIndex > 0)
+				{
+					ItemType NonNullLastSelectedItem = TListTypeTraits<ItemType>::NullableItemTypeConvertToItemType(LastSelectedItem);
+					const int32 LastSelectedItemIdx = ItemsSource->Find(NonNullLastSelectedItem);
+
+					// If the previously selected item was before the header, assume we're navigating down and want to select the next item
+					// Otherwise, assume the opposite and navigate to the previous item
+					bSelectNextItem = LastSelectedItemIdx < PendingItemIndex;
+				}
+
+				const int32 NewSelectionIdx = PendingItemIndex + (bSelectNextItem ? 1 : -1);
+				if (ItemsSource->IsValidIndex(NewSelectionIdx))
+				{
+					ItemToSelect = (*ItemsSource)[NewSelectionIdx];
+				}
+				else
+				{
+					break;
+				}
+			}
+		}
+
+		return ItemToSelect;
+	}
+
 	/**
 	 * Selects the specified item and scrolls it into view. If shift is held, it will be a range select.
 	 * 
 	 * @param ItemToSelect		The item that was selected by a keystroke
 	 * @param InInputEvent	The key event that caused this selection
 	 */
-	virtual void NavigationSelect(const ItemType& ItemToSelect, const FInputEvent& InInputEvent)
+	virtual void NavigationSelect(const ItemType& InItemToSelect, const FInputEvent& InInputEvent)
 	{
+		ItemType ItemToSelect = Private_FindNextSelectableOrNavigable(InItemToSelect);
+
 		const ESelectionMode::Type CurrentSelectionMode = SelectionMode.Get();
 
 		if (CurrentSelectionMode != ESelectionMode::None)
@@ -1813,7 +1883,7 @@ protected:
 			SelectorItem = ItemToSelect;
 
 			// Always request scroll into view, otherwise partially visible items will be selected - also do this before signaling selection for similar stomp-allowing reasons
-			RequestNavigateToItem(ItemToSelect, InInputEvent.GetUserIndex());
+			Private_RequestNavigateToItem(ItemToSelect, InInputEvent.GetUserIndex());
 
 			if (CurrentSelectionMode == ESelectionMode::Multi && (InInputEvent.IsShiftDown() || InInputEvent.IsControlDown()))
 			{
@@ -1834,7 +1904,7 @@ protected:
 			else
 			{
 				// Single select.
-				this->SetSelection(ItemToSelect, ESelectInfo::OnNavigation);;
+				this->Private_SetSelection(ItemToSelect, ESelectInfo::OnNavigation);
 			}
 		}
 	}
@@ -1887,6 +1957,9 @@ protected:
 
 	/** Delegate to invoke when selection changes. */
 	FOnSelectionChanged OnSelectionChanged;
+
+	/** Delegate to invoke to see if we can navigate or select item. */
+	FIsSelectableOrNavigable OnIsSelectableOrNavigable;
 
 	/** Called when the user clicks on an element int he list view with the left mouse button */
 	FOnMouseButtonClick OnClick;

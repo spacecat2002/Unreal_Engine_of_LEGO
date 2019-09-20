@@ -18,6 +18,7 @@
 #include "Misc/App.h"
 #include "Sound/AudioSettings.h"
 #include "ProfilingDebugging/CsvProfiler.h"
+#include "Async/Async.h"
 
 #if WITH_EDITOR
 #include "AudioEditorModule.h"
@@ -32,7 +33,7 @@ FAutoConsoleVariableRef CVarDisableSubmixEQ(
 	ECVF_Default);
 
 // Link to "Audio" profiling category
-CSV_DECLARE_CATEGORY_MODULE_EXTERN(AUDIOMIXER_API, Audio);
+CSV_DECLARE_CATEGORY_MODULE_EXTERN(AUDIOMIXERCORE_API, Audio);
 
 namespace Audio
 {
@@ -685,7 +686,7 @@ namespace Audio
 				}
 				else
 				{
-					ReverbPreset = NewObject<USubmixEffectReverbFastPreset>(MasterReverbSoundSubmix, TEXT("Master Reverb Effect Preset"));
+					ReverbPreset = NewObject<USubmixEffectReverbFastPreset>(MasterReverbSoundSubmix, TEXT("Master Reverb Effect Fast Preset"));
 				}
 				
 				ReverbPreset->AddToRoot();
@@ -840,7 +841,7 @@ namespace Audio
 		UE_LOG(LogAudioMixer, Display, TEXT("Audio Mixer Platform Settings:"));
 		UE_LOG(LogAudioMixer, Display, TEXT("	Sample Rate:						  %d"), Settings.SampleRate);
 		UE_LOG(LogAudioMixer, Display, TEXT("	Callback Buffer Frame Size Requested: %d"), Settings.CallbackBufferFrameSize);
-		UE_LOG(LogAudioMixer, Display, TEXT("	Callback Buffer Frame Size To Use:	  %d"), AudioMixerPlatform->GetNumFrames(PlatformSettings.CallbackBufferFrameSize));
+		UE_LOG(LogAudioMixer, Display, TEXT("	Callback Buffer Frame Size To Use:	  %d"), AudioMixerPlatform->GetNumFrames(Settings.CallbackBufferFrameSize));
 		UE_LOG(LogAudioMixer, Display, TEXT("	Number of buffers to queue:			  %d"), Settings.NumBuffers);
 		UE_LOG(LogAudioMixer, Display, TEXT("	Max Channels (voices):				  %d"), Settings.MaxChannels);
 		UE_LOG(LogAudioMixer, Display, TEXT("	Number of Async Source Workers:		  %d"), Settings.NumSourceWorkers);
@@ -910,6 +911,50 @@ namespace Audio
 		}
 
 		SourceManager.UpdateSourceEffectChain(SourceEffectChainId, SourceEffectChain, bPlayEffectChainTails);
+	}
+
+	void FMixerDevice::UpdateSubmixProperties(USoundSubmix* InSoundSubmix)
+	{
+		check(InSoundSubmix);
+
+#if WITH_EDITOR
+		check(IsInAudioThread());
+
+		FMixerSubmixPtr* MixerSubmix = Submixes.Find(InSoundSubmix);
+		if (MixerSubmix)
+		{
+			float NewVolume = InSoundSubmix->OutputVolume;
+			AudioRenderThreadCommand([MixerSubmix, NewVolume]()
+			{
+				(*MixerSubmix)->SetOutputVolume(NewVolume);
+			});
+		}
+#endif // WITH_EDITOR
+	}
+
+	void FMixerDevice::SetSubmixOutputVolume(USoundSubmix* InSoundSubmix, float NewVolume)
+	{
+		if (!IsInAudioThread())
+		{
+			DECLARE_CYCLE_STAT(TEXT("FAudioThreadTask.SetSubmixOutputVolume"), STAT_AudioSetSubmixOutputVolume, STATGROUP_AudioThreadCommands);
+
+			FMixerDevice* MixerDevice = this;
+			FAudioThread::RunCommandOnAudioThread([MixerDevice, InSoundSubmix, NewVolume]()
+			{
+				CSV_SCOPED_TIMING_STAT(Audio, SetSubmixOutputVolume);
+				MixerDevice->SetSubmixOutputVolume(InSoundSubmix, NewVolume);
+			}, GET_STATID(STAT_AudioSetSubmixOutputVolume));
+			return;
+		}
+
+		FMixerSubmixPtr* MixerSubmix = Submixes.Find(InSoundSubmix);
+		if (MixerSubmix)
+		{
+			AudioRenderThreadCommand([MixerSubmix, NewVolume]()
+			{
+				(*MixerSubmix)->SetDynamicOutputVolume(NewVolume);
+			});
+		}
 	}
 
 	bool FMixerDevice::GetCurrentSourceEffectChain(const uint32 SourceEffectChainId, TArray<FSourceEffectChainEntry>& OutCurrentSourceEffectChainEntries)
@@ -1290,6 +1335,18 @@ namespace Audio
 
 	void FMixerDevice::StartRecording(USoundSubmix* InSubmix, float ExpectedRecordingDuration)
 	{
+		if (!IsInAudioThread())
+		{
+			DECLARE_CYCLE_STAT(TEXT("FAudioThreadTask.PauseRecording"), STAT_StartRecording, STATGROUP_AudioThreadCommands);
+
+			FAudioThread::RunCommandOnAudioThread([this, InSubmix, ExpectedRecordingDuration]()
+			{
+				CSV_SCOPED_TIMING_STAT(Audio, StartRecording);
+				StartRecording(InSubmix, ExpectedRecordingDuration);
+			}, GET_STATID(STAT_StartRecording));
+			return;
+		}
+
 		// if we can find the submix here, record that submix. Otherwise, just record the master submix.
 		Audio::FMixerSubmixPtr* FoundSubmix = Submixes.Find(InSubmix);
 		if (FoundSubmix)
@@ -1326,6 +1383,18 @@ namespace Audio
 
 	void FMixerDevice::PauseRecording(USoundSubmix* InSubmix)
 	{
+		if (!IsInAudioThread())
+		{
+			DECLARE_CYCLE_STAT(TEXT("FAudioThreadTask.PauseRecording"), STAT_PauseRecording, STATGROUP_AudioThreadCommands);
+
+			FAudioThread::RunCommandOnAudioThread([this, InSubmix]()
+			{
+				CSV_SCOPED_TIMING_STAT(Audio, PauseRecording);
+				PauseRecording(InSubmix);
+			}, GET_STATID(STAT_PauseRecording));
+			return;
+		}
+
 		// if we can find the submix here, pause that submix. Otherwise, just pause the master submix.
 		Audio::FMixerSubmixPtr* FoundSubmix = Submixes.Find(InSubmix);
 		if (FoundSubmix)
@@ -1344,6 +1413,18 @@ namespace Audio
 
 	void FMixerDevice::ResumeRecording(USoundSubmix* InSubmix)
 	{
+		if (!IsInAudioThread())
+		{
+			DECLARE_CYCLE_STAT(TEXT("FAudioThreadTask.ResumeRecording"), STAT_ResumeRecording, STATGROUP_AudioThreadCommands);
+
+			FAudioThread::RunCommandOnAudioThread([this, InSubmix]()
+			{
+				CSV_SCOPED_TIMING_STAT(Audio, ResumeRecording);
+				ResumeRecording(InSubmix);
+			}, GET_STATID(STAT_ResumeRecording));
+			return;
+		}
+
 		// if we can find the submix here, resume that submix. Otherwise, just resume the master submix.
 		Audio::FMixerSubmixPtr* FoundSubmix = Submixes.Find(InSubmix);
 		if (FoundSubmix)
@@ -1362,6 +1443,18 @@ namespace Audio
 
 	void FMixerDevice::StartEnvelopeFollowing(USoundSubmix* InSubmix)
 	{
+		if (!IsInAudioThread())
+		{
+			DECLARE_CYCLE_STAT(TEXT("FAudioThreadTask.StartEnvelopeFollowing"), STAT_StartEnvelopeFollowing, STATGROUP_AudioThreadCommands);
+
+			FAudioThread::RunCommandOnAudioThread([this, InSubmix]()
+			{
+				CSV_SCOPED_TIMING_STAT(Audio, StartEnvelopeFollowing);
+				StartEnvelopeFollowing(InSubmix);
+			}, GET_STATID(STAT_StartEnvelopeFollowing));
+			return;
+		}
+
 		// if we can find the submix here, record that submix. Otherwise, just record the master submix.
 		Audio::FMixerSubmixPtr* FoundSubmix = Submixes.Find(InSubmix);
 		if (FoundSubmix)
@@ -1382,6 +1475,18 @@ namespace Audio
 
 	void FMixerDevice::StopEnvelopeFollowing(USoundSubmix* InSubmix)
 	{
+		if (!IsInAudioThread())
+		{
+			DECLARE_CYCLE_STAT(TEXT("FAudioThreadTask.StopEnvelopeFollowing"), STAT_StopEnvelopeFollowing, STATGROUP_AudioThreadCommands);
+
+			FAudioThread::RunCommandOnAudioThread([this, InSubmix]()
+			{
+				CSV_SCOPED_TIMING_STAT(Audio, StopEnvelopeFollowing);
+				StopEnvelopeFollowing(InSubmix);
+			}, GET_STATID(STAT_StopEnvelopeFollowing));
+			return;
+		}
+
 		// if we can find the submix here, record that submix. Otherwise, just record the master submix.
 		Audio::FMixerSubmixPtr* FoundSubmix = Submixes.Find(InSubmix);
 		if (FoundSubmix)
@@ -1402,6 +1507,18 @@ namespace Audio
 
 	void FMixerDevice::AddEnvelopeFollowerDelegate(USoundSubmix* InSubmix, const FOnSubmixEnvelopeBP& OnSubmixEnvelopeBP)
 	{
+		if (!IsInAudioThread())
+		{
+			DECLARE_CYCLE_STAT(TEXT("FAudioThreadTask.AddEnvelopeFollowerDelegate"), STAT_AddEnvelopeFollowerDelegate, STATGROUP_AudioThreadCommands);
+
+			FAudioThread::RunCommandOnAudioThread([this, InSubmix, OnSubmixEnvelopeBP]()
+			{
+				CSV_SCOPED_TIMING_STAT(Audio, AddEnvelopeFollowerDelegate);
+				AddEnvelopeFollowerDelegate(InSubmix, OnSubmixEnvelopeBP);
+			}, GET_STATID(STAT_AddEnvelopeFollowerDelegate));
+			return;
+		}
+
 		// if we can find the submix here, record that submix. Otherwise, just record the master submix.
 		Audio::FMixerSubmixPtr* FoundSubmix = Submixes.Find(InSubmix);
 		if (FoundSubmix)
@@ -1421,6 +1538,18 @@ namespace Audio
 
 	void FMixerDevice::StartSpectrumAnalysis(USoundSubmix* InSubmix, const Audio::FSpectrumAnalyzerSettings& InSettings)
 	{
+		if (!IsInAudioThread())
+		{
+			DECLARE_CYCLE_STAT(TEXT("FAudioThreadTask.StartSpectrumAnalysis"), STAT_StartSpectrumAnalysis, STATGROUP_AudioThreadCommands);
+
+			FAudioThread::RunCommandOnAudioThread([this, InSubmix, InSettings]()
+			{
+				CSV_SCOPED_TIMING_STAT(Audio, StartSpectrumAnalysis);
+				StartSpectrumAnalysis(InSubmix, InSettings);
+			}, GET_STATID(STAT_StartSpectrumAnalysis));
+			return;
+		}
+
 		Audio::FMixerSubmixPtr* FoundSubmix = Submixes.Find(InSubmix);
 		if (FoundSubmix)
 		{
@@ -1438,6 +1567,18 @@ namespace Audio
 
 	void FMixerDevice::StopSpectrumAnalysis(USoundSubmix* InSubmix)
 	{
+		if (!IsInAudioThread())
+		{
+			DECLARE_CYCLE_STAT(TEXT("FAudioThreadTask.StopSpectrumAnalysis"), STAT_StopSpectrumAnalysis, STATGROUP_AudioThreadCommands);
+
+			FAudioThread::RunCommandOnAudioThread([this, InSubmix]()
+			{
+				CSV_SCOPED_TIMING_STAT(Audio, StopSpectrumAnalysis);
+				StopSpectrumAnalysis(InSubmix);
+			}, GET_STATID(STAT_StopSpectrumAnalysis));
+			return;
+		}
+
 		Audio::FMixerSubmixPtr* FoundSubmix = Submixes.Find(InSubmix);
 		if (FoundSubmix)
 		{
@@ -1489,6 +1630,28 @@ namespace Audio
 
 	void FMixerDevice::RegisterSubmixBufferListener(ISubmixBufferListener* InSubmixBufferListener, USoundSubmix* InSubmix)
 	{
+		if (!IsInAudioThread())
+		{
+			DECLARE_CYCLE_STAT(TEXT("FAudioThreadTask.RegisterSubmixBufferListener"), STAT_RegisterSubmixBufferListener, STATGROUP_AudioThreadCommands);
+			auto AudioThreadCommand = [this, InSubmixBufferListener, InSubmix]()
+			{
+				CSV_SCOPED_TIMING_STAT(Audio, StopSpectrumAnalysis);
+				RegisterSubmixBufferListener(InSubmixBufferListener, InSubmix);
+			};
+
+			if (IsInGameThread())
+			{
+				FAudioThread::RunCommandOnAudioThread(AudioThreadCommand, GET_STATID(STAT_RegisterSubmixBufferListener));
+			}
+			else
+			{
+				AsyncTask(ENamedThreads::GameThread, [AudioThreadCommand]() {
+					FAudioThread::RunCommandOnAudioThread(AudioThreadCommand, GET_STATID(STAT_RegisterSubmixBufferListener));
+				});
+			}
+			return;
+		}
+
 		Audio::FMixerSubmixPtr* FoundSubmix = Submixes.Find(InSubmix);
 		if (FoundSubmix)
 		{
@@ -1506,6 +1669,30 @@ namespace Audio
 
 	void FMixerDevice::UnregisterSubmixBufferListener(ISubmixBufferListener* InSubmixBufferListener, USoundSubmix* InSubmix)
 	{
+		if (!IsInAudioThread())
+		{
+			DECLARE_CYCLE_STAT(TEXT("FAudioThreadTask.UnregisterSubmixBufferListener"), STAT_UnregisterSubmixBufferListener, STATGROUP_AudioThreadCommands);
+
+			auto AudioThreadCommand = [this, InSubmixBufferListener, InSubmix]()
+			{
+				CSV_SCOPED_TIMING_STAT(Audio, UnregisterSubmixBufferListener);
+				UnregisterSubmixBufferListener(InSubmixBufferListener, InSubmix);
+			};
+
+			if (IsInGameThread())
+			{
+				FAudioThread::RunCommandOnAudioThread(AudioThreadCommand, GET_STATID(STAT_UnregisterSubmixBufferListener));
+			}
+			else
+			{
+				AsyncTask(ENamedThreads::GameThread, [AudioThreadCommand]() {
+					FAudioThread::RunCommandOnAudioThread(AudioThreadCommand, GET_STATID(STAT_UnregisterSubmixBufferListener));
+				});
+			}
+
+			return;
+		}
+
 		Audio::FMixerSubmixPtr* FoundSubmix = Submixes.Find(InSubmix);
 		if (FoundSubmix)
 		{

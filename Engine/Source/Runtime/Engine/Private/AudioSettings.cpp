@@ -14,40 +14,6 @@
 
 #define LOCTEXT_NAMESPACE "AudioSettings"
 
-FAudioPlatformSettings FAudioPlatformSettings::GetPlatformSettings(const TCHAR* PlatformSettingsConfigFile)
-{
-	FAudioPlatformSettings Settings;
-
-	FString TempString;
-
-	if (GConfig->GetString(PlatformSettingsConfigFile, TEXT("AudioSampleRate"), TempString, GEngineIni))
-	{
-		Settings.SampleRate = FMath::Max(FCString::Atoi(*TempString), 8000);
-	}
-
-	if (GConfig->GetString(PlatformSettingsConfigFile, TEXT("AudioCallbackBufferFrameSize"), TempString, GEngineIni))
-	{
-		Settings.CallbackBufferFrameSize = FMath::Max(FCString::Atoi(*TempString), 256);
-	}
-
-	if (GConfig->GetString(PlatformSettingsConfigFile, TEXT("AudioNumBuffersToEnqueue"), TempString, GEngineIni))
-	{
-		Settings.NumBuffers = FMath::Max(FCString::Atoi(*TempString), 1);
-	}
-
-	if (GConfig->GetString(PlatformSettingsConfigFile, TEXT("AudioMaxChannels"), TempString, GEngineIni))
-	{
-		Settings.MaxChannels = FMath::Max(FCString::Atoi(*TempString), 0);
-	}
-
-	if (GConfig->GetString(PlatformSettingsConfigFile, TEXT("AudioNumSourceWorkers"), TempString, GEngineIni))
-	{
-		Settings.NumSourceWorkers = FMath::Max(FCString::Atoi(*TempString), 0);
-	}
-
-	return Settings;
-}
-
 UAudioSettings::UAudioSettings(const FObjectInitializer& ObjectInitializer)
 : Super(ObjectInitializer)
 {
@@ -67,7 +33,7 @@ void UAudioSettings::AddDefaultSettings()
 	DefaultSettings.DisplayName = LOCTEXT("DefaultSettingsName", "Default");
 	QualityLevels.Add(DefaultSettings);
 	bAllowPlayWhenSilent = true;
-	DefaultReverbSendLevel = 0.0f;
+	DefaultReverbSendLevel_DEPRECATED = 0.0f;
 	bEnableLegacyReverb = false;
 	VoiPSampleRate = EVoiceSampleRate::Low16000Hz;
 	VoipBufferingDelay = 0.2f;
@@ -144,15 +110,6 @@ void UAudioSettings::PostEditChangeChainProperty(FPropertyChangedChainEvent& Pro
 void UAudioSettings::Serialize(FArchive& Ar)
 {
 	Super::Serialize(Ar);
-
-	if (Ar.IsLoading() || Ar.IsSaving())
-	{
-		if (bAllowVirtualizedSounds_DEPRECATED)
-		{
-			bAllowVirtualizedSounds_DEPRECATED = 0;
-			bAllowPlayWhenSilent = 1;
-		}
-	}
 }
 
 const FAudioQualitySettings& UAudioSettings::GetQualityLevelSettings(int32 QualityLevel) const

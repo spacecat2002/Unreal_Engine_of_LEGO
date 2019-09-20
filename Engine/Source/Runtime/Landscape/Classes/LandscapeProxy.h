@@ -356,6 +356,7 @@ public:
 		, SizeY(InSizeY)
 		, Format(InFormat)
 		, NumMips(InNumMips)
+		, Hash(0)
 	{}
 
 	virtual uint32 GetSizeX() const override
@@ -377,11 +378,22 @@ public:
 		TextureRHI = RHICreateTexture2D(SizeX, SizeY, Format, NumMips, 1, TexCreate_CPUReadback, CreateInfo);
 	}
 
+	bool UpdateHashFromTextureSource(const uint8* MipData)
+	{
+		uint32 LocalHash = FCrc::MemCrc32(MipData, SizeX * SizeY * sizeof(FColor));
+		bool bChanged = (LocalHash != Hash);
+		Hash = LocalHash;
+		return bChanged;
+	}
+	   
+	uint32 GetHash() const { return Hash; }
+
 private:
 	uint32 SizeX;
 	uint32 SizeY;
 	EPixelFormat Format;
 	uint32 NumMips;
+	uint32 Hash;
 };
 
 UCLASS(Abstract, MinimalAPI, NotBlueprintable, hidecategories=(Display, Attachment, Physics, Debug, Lighting, LOD), showcategories=(Lighting, Rendering, "Utilities|Transformation"), hidecategories=(Mobility))
@@ -403,6 +415,8 @@ protected:
 	FGuid LandscapeGuid;
 
 public:
+	LANDSCAPE_API TOptional<float> GetHeightAtLocation(FVector Location) const;
+
 	/** Offset in quads from global components grid origin (in quads) **/
 	UPROPERTY()
 	FIntPoint LandscapeSectionOffset;
@@ -790,7 +804,6 @@ public:
 	virtual void PostEditMove(bool bFinished) override;
 	virtual bool ShouldImport(FString* ActorPropString, bool IsMovingLevel) override;
 	virtual bool ShouldExport() override;
-	virtual bool Modify(bool bAlwaysMarkDirty = true) override;
 	//~ End AActor Interface
 #endif	//WITH_EDITOR
 
@@ -855,6 +868,9 @@ public:
 	static void AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector);
 	virtual void PostLoad() override;
 
+	LANDSCAPE_API ULandscapeInfo* CreateLandscapeInfo();
+	LANDSCAPE_API ULandscapeInfo* GetLandscapeInfo() const;
+
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 	virtual void PostEditImport() override;
@@ -866,9 +882,6 @@ public:
 	LANDSCAPE_API TArray<FName> GetLayersFromMaterial() const;
 	LANDSCAPE_API static ULandscapeLayerInfoObject* CreateLayerInfo(const TCHAR* LayerName, ULevel* Level);
 	LANDSCAPE_API ULandscapeLayerInfoObject* CreateLayerInfo(const TCHAR* LayerName);
-
-	LANDSCAPE_API ULandscapeInfo* CreateLandscapeInfo();
-	LANDSCAPE_API ULandscapeInfo* GetLandscapeInfo() const;
 
 	// Get Landscape Material assigned to this Landscape
 	virtual UMaterialInterface* GetLandscapeMaterial(int8 InLODIndex = INDEX_NONE) const;

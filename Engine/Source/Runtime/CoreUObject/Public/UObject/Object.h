@@ -223,10 +223,14 @@ public:
 	 *								currently recording an active undo/redo transaction
 	 * @return true if the object was saved to the transaction buffer
 	 */
+#if WITH_EDITOR
 	virtual bool Modify( bool bAlwaysMarkDirty=true );
 
 	/** Utility to allow overrides of Modify to avoid doing work if this object cannot be safely modified */
 	bool CanModify() const;
+#else
+	FORCEINLINE bool Modify(bool bAlwaysMarkDirty = true) { return false; }
+#endif
 
 #if WITH_EDITOR
 	/** 
@@ -1116,7 +1120,7 @@ public:
 	 * 
 	 * @return the archetype for this object
 	 */
-	static UObject* GetArchetypeFromRequiredInfo(UClass* Class, UObject* Outer, FName Name, EObjectFlags ObjectFlags);
+	static UObject* GetArchetypeFromRequiredInfo(const UClass* Class, const UObject* Outer, FName Name, EObjectFlags ObjectFlags);
 
 	/**
 	 * Return the template this object is based on. 

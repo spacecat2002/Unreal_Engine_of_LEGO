@@ -426,6 +426,21 @@ namespace VulkanRHI
 		}
 
 		static void JoinConsecutiveRanges(TArray<FRange>& Ranges);
+
+		/** Tries to insert the item so it has index ProposedIndex, but may end up merging it with neighbors */
+		static int32 InsertAndTryToMerge(TArray<FRange>& Ranges, const FRange& Item, int32 ProposedIndex);
+
+		/** Tries to append the item to the end but may end up merging it with the neighbor */
+		static int32 AppendAndTryToMerge(TArray<FRange>& Ranges, const FRange& Item);
+
+		/** Attempts to allocate from an entry - can remove it if it was used up*/
+		static void AllocateFromEntry(TArray<FRange>& Ranges, int32 Index, uint32 SizeToAllocate);
+
+		/** Sanity checks an array of ranges */
+		static void SanityCheck(TArray<FRange>& Ranges);
+
+		/** Adds to the array while maintaing the sort. */
+		static int32 Add(TArray<FRange>& Ranges, const FRange& Item);
 	};
 
 	// One device allocation that is shared amongst different resources
@@ -735,7 +750,7 @@ namespace VulkanRHI
 		TArray<FOldResourceHeapPage*> FreePages;
 #endif
 
-		FOldResourceAllocation* AllocateResource(EType Type, uint32 Size, uint32 Alignment, bool bMapAllocation, const char* File, uint32 Line);
+		FOldResourceAllocation* AllocateResource(EType Type, uint32 Size, uint32 Alignment, bool bMapAllocation, bool bForceSeparateAllocation, const char* File, uint32 Line);
 
 #if VULKAN_SUPPORTS_DEDICATED_ALLOCATION
 		TArray<FOldResourceHeapPage*> UsedDedicatedImagePages;
@@ -774,19 +789,32 @@ namespace VulkanRHI
 
 		inline FOldResourceAllocation* AllocateImageMemory(const VkMemoryRequirements& MemoryReqs, VkMemoryPropertyFlags MemoryPropertyFlags, const char* File, uint32 Line)
 		{
-			uint32 TypeIndex = 0;
-			VERIFYVULKANRESULT(DeviceMemoryManager->GetMemoryTypeFromProperties(MemoryReqs.memoryTypeBits, MemoryPropertyFlags, &TypeIndex));
 			bool bMapped = (MemoryPropertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) == VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+			uint32 TypeIndex = 0;
+			if (DeviceMemoryManager->GetMemoryTypeFromProperties(MemoryReqs.memoryTypeBits, MemoryPropertyFlags, &TypeIndex) != VK_SUCCESS)
+			{
+				if ((MemoryPropertyFlags & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT) == VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT)
+				{
+					// If lazy allocations are not supported, we can fall back to real allocations.
+					MemoryPropertyFlags = MemoryPropertyFlags & ~VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT;
+					VERIFYVULKANRESULT(DeviceMemoryManager->GetMemoryTypeFromProperties(MemoryReqs.memoryTypeBits, MemoryPropertyFlags, &TypeIndex));
+				}
+				else
+				{
+					UE_LOG(LogVulkanRHI, Fatal, TEXT("Cannot find memory type for MemSize %d, MemPropTypeBits %u, MemPropertyFlags %u, %s(%d)"), (uint32)MemoryReqs.size, (uint32)MemoryReqs.memoryTypeBits, (uint32)MemoryPropertyFlags, ANSI_TO_TCHAR(File), Line);
+				}
+			}
 			if (!ResourceTypeHeaps[TypeIndex])
 			{
 				UE_LOG(LogVulkanRHI, Fatal, TEXT("Missing memory type index %d, MemSize %d, MemPropTypeBits %u, MemPropertyFlags %u, %s(%d)"), TypeIndex, (uint32)MemoryReqs.size, (uint32)MemoryReqs.memoryTypeBits, (uint32)MemoryPropertyFlags, ANSI_TO_TCHAR(File), Line);
 			}
-			FOldResourceAllocation* Allocation = ResourceTypeHeaps[TypeIndex]->AllocateResource(FOldResourceHeap::EType::Image, MemoryReqs.size, MemoryReqs.alignment, bMapped, File, Line);
+			const bool bForceSeparateAllocation = (MemoryPropertyFlags & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT) == VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT;
+			FOldResourceAllocation* Allocation = ResourceTypeHeaps[TypeIndex]->AllocateResource(FOldResourceHeap::EType::Image, MemoryReqs.size, MemoryReqs.alignment, bMapped, bForceSeparateAllocation, File, Line);
 			if (!Allocation)
 			{
 				VERIFYVULKANRESULT(DeviceMemoryManager->GetMemoryTypeFromPropertiesExcluding(MemoryReqs.memoryTypeBits, MemoryPropertyFlags, TypeIndex, &TypeIndex));
 				bMapped = (MemoryPropertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) == VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-				Allocation = ResourceTypeHeaps[TypeIndex]->AllocateResource(FOldResourceHeap::EType::Image, MemoryReqs.size, MemoryReqs.alignment, bMapped, File, Line);
+				Allocation = ResourceTypeHeaps[TypeIndex]->AllocateResource(FOldResourceHeap::EType::Image, MemoryReqs.size, MemoryReqs.alignment, bMapped, bForceSeparateAllocation, File, Line);
 			}
 			return Allocation;
 		}
@@ -826,7 +854,7 @@ namespace VulkanRHI
 				}
 			}
 
-			FOldResourceAllocation* Allocation = ResourceTypeHeaps[TypeIndex]->AllocateResource(FOldResourceHeap::EType::Buffer, MemoryReqs.size, MemoryReqs.alignment, bMapped, File, Line); //-V595
+			FOldResourceAllocation* Allocation = ResourceTypeHeaps[TypeIndex]->AllocateResource(FOldResourceHeap::EType::Buffer, MemoryReqs.size, MemoryReqs.alignment, bMapped, false, File, Line); //-V595
 			if (!Allocation)
 			{
 				// Try another memory type if the allocation failed
@@ -836,7 +864,7 @@ namespace VulkanRHI
 				{
 					UE_LOG(LogVulkanRHI, Fatal, TEXT("Missing memory type index %d, MemSize %d, MemPropTypeBits %u, MemPropertyFlags %u, %s(%d)"), TypeIndex, (uint32)MemoryReqs.size, (uint32)MemoryReqs.memoryTypeBits, (uint32)MemoryPropertyFlags, ANSI_TO_TCHAR(File), Line);
 				}
-				Allocation = ResourceTypeHeaps[TypeIndex]->AllocateResource(FOldResourceHeap::EType::Buffer, MemoryReqs.size, MemoryReqs.alignment, bMapped, File, Line);
+				Allocation = ResourceTypeHeaps[TypeIndex]->AllocateResource(FOldResourceHeap::EType::Buffer, MemoryReqs.size, MemoryReqs.alignment, bMapped, false, File, Line);
 			}
 			return Allocation;
 		}

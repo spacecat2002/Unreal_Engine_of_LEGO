@@ -18,11 +18,14 @@
 #include "TextureResource.h"
 #include "Engine/Texture.h"
 #include "Engine/Texture2D.h"
+#include "Engine/TextureCube.h"
+#include "Engine/Texture2DArray.h"
 #include "DeviceProfiles/DeviceProfile.h"
 #include "DeviceProfiles/DeviceProfileManager.h"
 #include "TextureDerivedDataTask.h"
 #include "Streaming/TextureStreamingHelpers.h"
 #include "Engine/VolumeTexture.h"
+#include "VT/VirtualTextureBuildSettings.h"
 #include "VT/VirtualTextureBuiltData.h"
 
 #if WITH_EDITOR
@@ -31,33 +34,8 @@
 #include "Interfaces/ITargetPlatform.h"
 #include "Interfaces/ITargetPlatformManagerModule.h"
 #include "Interfaces/ITextureFormat.h"
-#include "Engine/TextureCube.h"
 #include "ProfilingDebugging/CookStats.h"
 #include "VT/VirtualTextureDataBuilder.h"
-
-static TAutoConsoleVariable<int32> CVarVTCompressCrunch(
-	TEXT("r.VT.EnableCompressCrunch"),
-	1,
-	TEXT("Enable Crunch compression for virtual textures, for supported formats")
-);
-
-static TAutoConsoleVariable<int32> CVarVTCompressZlib(
-	TEXT("r.VT.EnableCompressZlib"),
-	1,
-	TEXT("Enables Zlib compression for virtual textures, if no compression is enabled/supported")
-);
-
-static TAutoConsoleVariable<int32> CVarVTTileSize(
-	TEXT("r.VT.TileSize"),
-	128,
-	TEXT("Size in pixels to use for virtual texture tiles (rounded to next power-of-2)")
-);
-
-static TAutoConsoleVariable<int32> CVarVTTileBorderSize(
-	TEXT("r.VT.TileBorderSize"),
-	4,
-	TEXT("Size in pixels to use for virtual texture tiles borders (rounded to next power-of-2)")
-);
 
 /*------------------------------------------------------------------------------
 	Versioning for texture derived data.
@@ -118,6 +96,7 @@ static void SerializeForKey(FArchive& Ar, const FTextureBuildSettings& Settings)
 	// NOTE: bHDRSource is not stored in the key here.
 	TempByte = Settings.MipGenSettings; Ar << TempByte;
 	TempByte = Settings.bCubemap; Ar << TempByte;
+	TempByte = Settings.bTextureArray; Ar << TempByte;
 	TempByte = Settings.bSRGB ? (Settings.bSRGB | ( Settings.bUseLegacyGamma ? 0 : 0x2 )) : 0; Ar << TempByte;
 	TempByte = Settings.bPreserveBorder; Ar << TempByte;
 	TempByte = Settings.bDitherMipMapAlpha; Ar << TempByte;
@@ -372,6 +351,7 @@ static void GetTextureBuildSettings(
 	OutBuildSettings.bReplicateRed = false;
 	OutBuildSettings.bVolume = false;
 	OutBuildSettings.bCubemap = false;
+	OutBuildSettings.bTextureArray = false;
 
 	if (Texture.MaxTextureSize > 0)
 	{
@@ -389,6 +369,12 @@ static void GetTextureBuildSettings(
 			// long/lat source use 512 as default
 			OutBuildSettings.MaxTextureResolution = 512;
 		}
+	}
+	else if (Texture.IsA(UTexture2DArray::StaticClass()))
+	{
+		OutBuildSettings.bTextureArray = true;
+		OutBuildSettings.DiffuseConvolveMipLevel = 0;
+		OutBuildSettings.bLongLatSource = false;
 	}
 	else if (Texture.IsA(UVolumeTexture::StaticClass()))
 	{
@@ -444,19 +430,24 @@ static void GetTextureBuildSettings(
 	if (OutBuildSettings.bVirtualStreamable)
 	{
 		const UTexture2D *Texture2D = Cast<UTexture2D>(&Texture);
-		checkf(Texture2D, TEXT("Virtual texturing is only supported on 2D textures")); 
+		checkf(Texture2D, TEXT("Virtual texturing is only supported on 2D textures"));
 		OutBuildSettings.VirtualAddressingModeX = Texture2D->AddressX;
 		OutBuildSettings.VirtualAddressingModeY = Texture2D->AddressY;
-		OutBuildSettings.bVirtualTextureEnableCompressZlib = CVarVTCompressZlib.GetValueOnAnyThread() != 0;
-		OutBuildSettings.bVirtualTextureEnableCompressCrunch = CVarVTCompressCrunch.GetValueOnAnyThread() != 0;
-		OutBuildSettings.VirtualTextureTileSize = FMath::RoundUpToPowerOfTwo(CVarVTTileSize.GetValueOnAnyThread());
-		
+
+		FVirtualTextureBuildSettings VirtualTextureBuildSettings;
+		Texture.GetVirtualTextureBuildSettings(VirtualTextureBuildSettings);
+		OutBuildSettings.bVirtualTextureEnableCompressZlib = VirtualTextureBuildSettings.bEnableCompressZlib;
+		OutBuildSettings.bVirtualTextureEnableCompressCrunch = VirtualTextureBuildSettings.bEnableCompressCrunch;
+		OutBuildSettings.VirtualTextureTileSize = FMath::RoundUpToPowerOfTwo(VirtualTextureBuildSettings.TileSize);
+
+		// don't all max resolution to be less than VT tile size
+		OutBuildSettings.MaxTextureResolution = FMath::Max<uint32>(OutBuildSettings.MaxTextureResolution, OutBuildSettings.VirtualTextureTileSize);
+
 		// 0 is a valid value for border size
 		// 1 would be OK in some cases, but breaks BC compressed formats, since it will result in physical tiles that aren't divisible by block size (4)
 		// Could allow border size of 1 for non BC compressed virtual textures, but somewhat complicated to get that correct, especially with multiple layers
 		// Doesn't seem worth the complexity for now, so clamp the size to be at least 2
-		const int32 TileBorderSize = CVarVTTileBorderSize.GetValueOnAnyThread();
-		OutBuildSettings.VirtualTextureBorderSize = (TileBorderSize > 0) ? FMath::RoundUpToPowerOfTwo(FMath::Max(TileBorderSize, 2)) : 0;
+		OutBuildSettings.VirtualTextureBorderSize = (VirtualTextureBuildSettings.TileBorderSize > 0) ? FMath::RoundUpToPowerOfTwo(FMath::Max(VirtualTextureBuildSettings.TileBorderSize, 2)) : 0;
 	}
 	else
 	{
@@ -578,8 +569,8 @@ uint32 PutDerivedDataInCache(FTexturePlatformData* DerivedData, const FString& D
 
 	// Write out individual mips to the derived data cache.
 	const int32 MipCount = DerivedData->Mips.Num();
-	const bool bCubemap = (DerivedData->NumSlices == 6);
-	const int32 FirstInlineMip = bCubemap ? 0 : FMath::Max(0, MipCount - NUM_INLINE_DERIVED_MIPS);
+	const bool bIsCubemap = (DerivedData->NumSlices > 0);
+	const int32 FirstInlineMip = bIsCubemap ? 0 : FMath::Max(0, MipCount - NUM_INLINE_DERIVED_MIPS);
 	for (int32 MipIndex = 0; MipIndex < MipCount; ++MipIndex)
 	{
 		FString MipDerivedDataKey;
@@ -1488,6 +1479,26 @@ void UTexture2D::GetMipData(int32 FirstMipToLoad, void** OutMipData)
 	}
 }
 
+void UTextureCube::GetMipData(int32 FirstMipToLoad, void** OutMipData)
+{
+	if (PlatformData->TryLoadMips(FirstMipToLoad, OutMipData) == false)
+	{
+		// Unable to load mips from the cache. Rebuild the texture and try again.
+		UE_LOG(LogTexture,Warning,TEXT("GetMipData failed for %s (%s)"),
+			*GetPathName(), GPixelFormats[GetPixelFormat()].Name);
+#if WITH_EDITOR
+		if (!GetOutermost()->bIsCookedForEditor)
+		{
+			ForceRebuildPlatformData();
+			if (PlatformData->TryLoadMips(FirstMipToLoad, OutMipData) == false)
+			{
+				UE_LOG(LogTexture, Error, TEXT("Failed to build texture %s."), *GetPathName());
+			}
+		}
+#endif // #if WITH_EDITOR
+	}
+}
+
 void UTexture::UpdateCachedLODBias()
 {
 	CachedCombinedLODBias = UDeviceProfileManager::Get().GetActiveProfile()->GetTextureLODSettings()->CalculateLODBias(this);
@@ -1880,6 +1891,11 @@ void UTexture::MarkPlatformDataTransient()
 	}
 }
 #endif // #if WITH_EDITOR
+
+void UTexture::GetVirtualTextureBuildSettings(FVirtualTextureBuildSettings& OutSettings) const
+{
+	OutSettings.Init();
+}
 
 void UTexture::CleanupCachedRunningPlatformData()
 {

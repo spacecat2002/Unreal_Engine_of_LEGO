@@ -107,8 +107,8 @@ void FVulkanBackBuffer::AcquireBackBufferImage(FVulkanCommandListContext& Contex
 			LayoutMgr.EndEmulatedRenderPass(CmdBuffer);
 		}
 			
-		// Add a dependency with the acquired semaphore
-		CmdBuffer->AddWaitSemaphore(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, Viewport->AcquiredSemaphore);
+		// Wait for semaphore signal before writing to backbuffer image
+		CmdBuffer->AddWaitSemaphore(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, Viewport->AcquiredSemaphore);
 	}
 }
 
@@ -141,7 +141,7 @@ FVulkanViewport::FVulkanViewport(FVulkanDynamicRHI* InRHI, FVulkanDevice* InDevi
 	// Make sure Instance is created
 	RHI->InitInstance();
 
-	CreateSwapchain();
+	CreateSwapchain(nullptr);
 
 	if (FVulkanPlatform::SupportsStandardSwapchain())
 	{
@@ -177,7 +177,7 @@ FVulkanViewport::~FVulkanViewport()
 			BackBufferImages[Index] = VK_NULL_HANDLE;
 		}
 
-		SwapChain->Destroy();
+		SwapChain->Destroy(nullptr);
 		delete SwapChain;
 		SwapChain = nullptr;
 	}
@@ -521,9 +521,12 @@ void FVulkanViewport::RecreateSwapchain(void* NewNativeWindow)
 {
 	FScopeLock LockSwapchain(&RecreatingSwapchain);
 
-	DestroySwapchain();
+	FVulkanSwapChainRecreateInfo RecreateInfo = { VK_NULL_HANDLE, VK_NULL_HANDLE };
+	DestroySwapchain(&RecreateInfo);
 	WindowHandle = NewNativeWindow;
-	CreateSwapchain();
+	CreateSwapchain(&RecreateInfo);
+	check(RecreateInfo.Surface == VK_NULL_HANDLE);
+	check(RecreateInfo.SwapChain == VK_NULL_HANDLE);
 }
 
 void FVulkanViewport::Tick(float DeltaTime)
@@ -557,12 +560,15 @@ void FVulkanViewport::RecreateSwapchainFromRT(EPixelFormat PreferredPixelFormat)
 
 	// TODO: should flush RHIT commands here?
 	
-	DestroySwapchain();
+	FVulkanSwapChainRecreateInfo RecreateInfo = { VK_NULL_HANDLE, VK_NULL_HANDLE};
+	DestroySwapchain(&RecreateInfo);
 	PixelFormat = PreferredPixelFormat;
-	CreateSwapchain();
+	CreateSwapchain(&RecreateInfo);
+	check(RecreateInfo.Surface == VK_NULL_HANDLE);
+	check(RecreateInfo.SwapChain == VK_NULL_HANDLE);
 }
 
-void FVulkanViewport::CreateSwapchain()
+void FVulkanViewport::CreateSwapchain(FVulkanSwapChainRecreateInfo* RecreateInfo)
 {
 	if (FVulkanPlatform::SupportsStandardSwapchain())
 	{
@@ -574,7 +580,8 @@ void FVulkanViewport::CreateSwapchain()
 			PixelFormat, SizeX, SizeY,
 			&DesiredNumBackBuffers,
 			Images,
-			LockToVsync
+			LockToVsync,
+			RecreateInfo
 		);
 
 		checkf(Images.Num() == NUM_BUFFERS, TEXT("Actual Num: %i"), Images.Num());
@@ -619,6 +626,19 @@ void FVulkanViewport::CreateSwapchain()
 	else
 	{
 		PixelFormat = FVulkanPlatform::GetPixelFormatForNonDefaultSwapchain();
+		if (RecreateInfo != nullptr)
+		{
+			if(RecreateInfo->SwapChain)
+			{
+				VulkanRHI::vkDestroySwapchainKHR(Device->GetInstanceHandle(), RecreateInfo->SwapChain, VULKAN_CPU_ALLOCATOR);
+				RecreateInfo->SwapChain = VK_NULL_HANDLE;
+			}
+			if (RecreateInfo->Surface)
+			{
+				VulkanRHI::vkDestroySurfaceKHR(RHI->Instance, RecreateInfo->Surface, VULKAN_CPU_ALLOCATOR);
+				RecreateInfo->Surface = VK_NULL_HANDLE;
+			}
+		}
 	}
 
 	if (!FVulkanPlatform::SupportsStandardSwapchain() || GVulkanDelayAcquireImage == EDelayAcquireImageType::DelayAcquire)
@@ -635,7 +655,7 @@ void FVulkanViewport::CreateSwapchain()
 	AcquiredImageIndex = -1;
 }
 
-void FVulkanViewport::DestroySwapchain()
+void FVulkanViewport::DestroySwapchain(FVulkanSwapChainRecreateInfo* RecreateInfo)
 {
 	// Submit all command buffers here
 	Device->SubmitCommandsAndFlushGPU();
@@ -649,7 +669,7 @@ void FVulkanViewport::DestroySwapchain()
 		RHIBackBuffer = nullptr;
 	}
 		
-	if (FVulkanPlatform::SupportsStandardSwapchain())
+	if (FVulkanPlatform::SupportsStandardSwapchain() && SwapChain)
 	{
 		for (int32 Index = 0; Index < NUM_BUFFERS; ++Index)
 		{
@@ -661,7 +681,7 @@ void FVulkanViewport::DestroySwapchain()
 		
 		Device->GetDeferredDeletionQueue().ReleaseResources(true);
 
-		SwapChain->Destroy();
+		SwapChain->Destroy(RecreateInfo);
 		delete SwapChain;
 		SwapChain = nullptr;
 

@@ -739,6 +739,12 @@ void UPrimitiveComponent::OnCreatePhysicsState()
 			{
 				BodyTransform.SetScale3D(FVector(KINDA_SMALL_NUMBER));
 			}
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+			if ((BodyInstance.GetCollisionEnabled() != ECollisionEnabled::NoCollision) && (FMath::IsNearlyZero(BodyScale.X) || FMath::IsNearlyZero(BodyScale.Y) || FMath::IsNearlyZero(BodyScale.Z)))
+			{
+				UE_LOG(LogPhysics, Warning, TEXT("Scale for %s has a component set to zero, which will result in a bad body instance. Scale:%s"), *GetPathNameSafe(this), *BodyScale.ToString());
+			}
+#endif
 
 			// Create the body.
 			BodyInstance.InitBody(BodySetup, BodyTransform, this, GetWorld()->GetPhysicsScene());		
@@ -916,6 +922,18 @@ void UPrimitiveComponent::PostEditChangeProperty(FPropertyChangedEvent& Property
 		{
 			MarkRenderStateDirty();
 		}
+
+	}
+
+	if (UProperty* MemberPropertyThatChanged = PropertyChangedEvent.MemberProperty)
+	{
+		const FName MemberPropertyName = MemberPropertyThatChanged->GetFName();
+
+		// Reregister to get the custom primitive data to the proxy
+		if (MemberPropertyName == GET_MEMBER_NAME_CHECKED(UPrimitiveComponent, CustomPrimitiveData))
+		{
+			MarkRenderStateDirty();
+		}
 	}
 
 	if (LightmapType == ELightmapType::ForceSurface && GetStaticLightingType() == LMIT_None)
@@ -1014,34 +1032,6 @@ bool UPrimitiveComponent::CanEditChange(const UProperty* InProperty) const
 		if (PropertyName == CastInsetShadowName)
 		{
 			return !bSelfShadowOnly;
-		}
-
-		if (PropertyName == CastShadowName)
-		{
-			// Look for any lit materials
-			bool bHasAnyLitMaterials = false;
-			const int32 NumMaterials = GetNumMaterials();
-			for (int32 MaterialIndex = 0; (MaterialIndex < NumMaterials) && !bHasAnyLitMaterials; ++MaterialIndex)
-			{
-				UMaterialInterface* Material = GetMaterial(MaterialIndex);
-
-				if (Material)
-				{
-					if (Material->GetShadingModels().IsLit())
-					{
-						bHasAnyLitMaterials = true;
-					}
-				}
-				else
-				{
-					// Default material is lit
-					bHasAnyLitMaterials = true;
-				}
-			}
-
-			// If there's at least one lit section it could cast shadows, so let the property be edited.
-			// The 0 materials catch is in case any components aren't properly implementing the GetMaterial API, they might or might not work with shadows.
-			return (NumMaterials == 0) || bHasAnyLitMaterials;
 		}
 	}
 
@@ -1407,6 +1397,15 @@ void UPrimitiveComponent::SetLightAttachmentsAsGroup(bool bInLightAttachmentsAsG
 	if(bInLightAttachmentsAsGroup != bLightAttachmentsAsGroup)
 	{
 		bLightAttachmentsAsGroup = bInLightAttachmentsAsGroup;
+		MarkRenderStateDirty();
+	}
+}
+
+void UPrimitiveComponent::SetExcludeFromLightAttachmentGroup(bool bInExcludeFromLightAttachmentGroup)
+{
+	if (bExcludeFromLightAttachmentGroup != bInExcludeFromLightAttachmentGroup)
+	{
+		bExcludeFromLightAttachmentGroup = bInExcludeFromLightAttachmentGroup;
 		MarkRenderStateDirty();
 	}
 }
@@ -1953,6 +1952,7 @@ FCollisionShape UPrimitiveComponent::GetCollisionShape(float Inflation) const
 bool UPrimitiveComponent::MoveComponentImpl( const FVector& Delta, const FQuat& NewRotationQuat, bool bSweep, FHitResult* OutHit, EMoveComponentFlags MoveFlags, ETeleportType Teleport)
 {
 	SCOPE_CYCLE_COUNTER(STAT_MoveComponentTime);
+	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(MoveComponentTime);
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST) && PERF_MOVECOMPONENT_STATS
 	FScopedMoveCompTimer MoveTimer(this, Delta);
@@ -2567,13 +2567,15 @@ void UPrimitiveComponent::BeginComponentOverlap(const FOverlapInfo& OtherOverlap
 			AActor* const OtherActor = OtherComp->GetOwner();
 			AActor* const MyActor = GetOwner();
 
-			const bool bNotifyActorTouch = bDoNotifies && !AreActorsOverlapping(*MyActor, *OtherActor);
+			const bool bSameActor = (MyActor == OtherActor);
+			const bool bNotifyActorTouch = bDoNotifies && !bSameActor && !AreActorsOverlapping(*MyActor, *OtherActor);
 
 			// Perform reflexive touch.
 			OverlappingComponents.Add(OtherOverlap);												// already verified uniqueness above
 			AddUniqueOverlapFast(OtherComp->OverlappingComponents, FOverlapInfo(this, INDEX_NONE));	// uniqueness unverified, so addunique
 			
-			if (bDoNotifies)
+			const UWorld* World = GetWorld();
+			if (bDoNotifies && World && World->HasBegunPlay())
 			{
 				// first execute component delegates
 				if (!IsPendingKill())
@@ -2641,7 +2643,8 @@ void UPrimitiveComponent::EndComponentOverlap(const FOverlapInfo& OtherOverlap, 
 		GlobalOverlapEventsCounter++;
 		OverlappingComponents.RemoveAtSwap(OverlapIdx, 1, false);
 
-		if (bDoNotifies)
+		const UWorld* World = GetWorld();
+		if (bDoNotifies && World && World->HasBegunPlay())
 		{
 			AActor* const OtherActor = OtherComp->GetOwner();
 			AActor* const MyActor = GetOwner();
@@ -2658,7 +2661,8 @@ void UPrimitiveComponent::EndComponentOverlap(const FOverlapInfo& OtherOverlap, 
 				}
 	
 				// if this was the last touch on the other actor by this actor, notify that we've untouched the actor as well
-				if (MyActor && !AreActorsOverlapping(*MyActor, *OtherActor))
+				const bool bSameActor = (MyActor == OtherActor);
+				if (MyActor && !bSameActor && !AreActorsOverlapping(*MyActor, *OtherActor))
 				{			
 					if (IsActorValidToNotify(MyActor))
 					{
@@ -3236,6 +3240,12 @@ bool UPrimitiveComponent::ComponentOverlapMultiImpl(TArray<struct FOverlapResult
 
 const UPrimitiveComponent* UPrimitiveComponent::GetLightingAttachmentRoot() const
 {
+	// Exclude  from light attachment group whatever the parent says
+	if (bExcludeFromLightAttachmentGroup)
+	{
+		return nullptr;
+	}
+
 	const USceneComponent* CurrentHead = this;
 
 	while (CurrentHead)

@@ -15,6 +15,8 @@
 	#endif
 #include "Windows/HideWindowsPlatformTypes.h"
 
+#include "dxgi1_5.h"
+
 
 bool D3D11RHI_ShouldCreateWithD3DDebug()
 {
@@ -89,11 +91,18 @@ FD3D11DynamicRHI::FD3D11DynamicRHI(IDXGIFactory1* InDXGIFactory1,D3D_FEATURE_LEV
 	GConfig->GetInt( TEXT( "TextureStreaming" ), TEXT( "PoolSizeVRAMPercentage" ), GPoolSizeVRAMPercentage, GEngineIni );	
 
 	// Initialize the RHI capabilities.
-	check(FeatureLevel == D3D_FEATURE_LEVEL_11_1 || FeatureLevel == D3D_FEATURE_LEVEL_11_0 || FeatureLevel == D3D_FEATURE_LEVEL_10_0 );
+	check(FeatureLevel == D3D_FEATURE_LEVEL_11_1 || FeatureLevel == D3D_FEATURE_LEVEL_11_0);
 
-	if(FeatureLevel == D3D_FEATURE_LEVEL_10_0)
+   	
+	TRefCountPtr<IDXGIFactory5> Factory5;
+	HRESULT HResult = DXGIFactory1->QueryInterface(IID_PPV_ARGS(Factory5.GetInitReference()));
+	if (SUCCEEDED(HResult))
 	{
-		GSupportsDepthFetchDuringDepthTest = false;
+		bDXGISupportsHDR = true;
+	}
+	else
+	{
+		bDXGISupportsHDR = false;
 	}
 
 	ERHIFeatureLevel::Type PreviewFeatureLevel;
@@ -114,11 +123,6 @@ FD3D11DynamicRHI::FD3D11DynamicRHI(IDXGIFactory1* InDXGIFactory1,D3D_FEATURE_LEV
 	{
 		GMaxRHIFeatureLevel = ERHIFeatureLevel::SM5;
 		GMaxRHIShaderPlatform = SP_PCD3D_SM5;
-	}
-	else if(FeatureLevel == D3D_FEATURE_LEVEL_10_0)
-	{
-		GMaxRHIFeatureLevel = ERHIFeatureLevel::SM4;
-		GMaxRHIShaderPlatform = SP_PCD3D_SM4;
 	}
 
 	// Initialize the platform pixel format map.
@@ -148,6 +152,7 @@ FD3D11DynamicRHI::FD3D11DynamicRHI(IDXGIFactory1* InDXGIFactory1,D3D_FEATURE_LEV
 	}
 	GPixelFormats[ PF_ShadowDepth	].PlatformFormat	= DXGI_FORMAT_R16_TYPELESS;
 	GPixelFormats[ PF_ShadowDepth	].BlockBytes		= 2;
+	GPixelFormats[ PF_ShadowDepth	].Supported			= true;
 	GPixelFormats[ PF_R32_FLOAT		].PlatformFormat	= DXGI_FORMAT_R32_FLOAT;
 	GPixelFormats[ PF_G16R16		].PlatformFormat	= DXGI_FORMAT_R16G16_UNORM;
 	GPixelFormats[ PF_G16R16F		].PlatformFormat	= DXGI_FORMAT_R16G16_FLOAT;
@@ -207,12 +212,6 @@ FD3D11DynamicRHI::FD3D11DynamicRHI(IDXGIFactory1* InDXGIFactory1,D3D_FEATURE_LEV
 		GMaxTextureArrayLayers = D3D11_REQ_TEXTURE2D_ARRAY_AXIS_DIMENSION;
 		GRHISupportsMSAADepthSampleAccess = true;
 		GRHISupportsRHIThread = !!EXPERIMENTAL_D3D11_RHITHREAD;
-	}
-	else if (FeatureLevel >= D3D_FEATURE_LEVEL_10_0)
-	{
-		GMaxTextureDimensions = D3D10_REQ_TEXTURE2D_U_OR_V_DIMENSION;
-		GMaxCubeTextureDimensions = D3D10_REQ_TEXTURECUBE_DIMENSION;
-		GMaxTextureArrayLayers = D3D10_REQ_TEXTURE2D_ARRAY_AXIS_DIMENSION;
 	}
 
 	GMaxTextureMipCount = FMath::CeilLogTwo( GMaxTextureDimensions ) + 1;
@@ -364,14 +363,6 @@ void FD3D11DynamicRHI::RHIGetSupportedResolution( uint32 &Width, uint32 &Height 
 
 void FD3D11DynamicRHI::GetBestSupportedMSAASetting( DXGI_FORMAT PlatformFormat, uint32 MSAACount, uint32& OutBestMSAACount, uint32& OutMSAAQualityLevels )
 {
-	//  We disable MSAA for Feature level 10
-	if (GMaxRHIFeatureLevel == ERHIFeatureLevel::SM4)
-	{
-		OutBestMSAACount = 1;
-		OutMSAAQualityLevels = 0;
-		return;
-	}
-
 	// start counting down from current setting (indicated the current "best" count) and move down looking for support
 	for(uint32 IndexCount = MSAACount;IndexCount > 0;IndexCount--)
 	{

@@ -22,6 +22,7 @@
 #define NUM_SAFE_FRAMES 4
 
 class FMetalRHICommandContext;
+class FMetalPipelineStateCacheManager;
 
 class FMetalContext
 {
@@ -92,7 +93,9 @@ public:
     bool AsyncCopyFromBufferToTexture(FMetalBuffer const& Buffer, uint32 sourceOffset, uint32 sourceBytesPerRow, uint32 sourceBytesPerImage, mtlpp::Size sourceSize, FMetalTexture const& toTexture, uint32 destinationSlice, uint32 destinationLevel, mtlpp::Origin destinationOrigin, mtlpp::BlitOption options);
     
     bool AsyncCopyFromTextureToTexture(FMetalTexture const& Texture, uint32 sourceSlice, uint32 sourceLevel, mtlpp::Origin sourceOrigin, mtlpp::Size sourceSize, FMetalTexture const& toTexture, uint32 destinationSlice, uint32 destinationLevel, mtlpp::Origin destinationOrigin);
-    
+	
+	bool CanAsyncCopyToBuffer(FMetalBuffer const& DestinationBuffer);
+	
     void AsyncCopyFromBufferToBuffer(FMetalBuffer const& SourceBuffer, NSUInteger SourceOffset, FMetalBuffer const& DestinationBuffer, NSUInteger DestinationOffset, NSUInteger Size);
 	
     void AsyncGenerateMipmapsForTexture(FMetalTexture const& Texture);
@@ -303,4 +306,7 @@ private:
 	
 	/** Whether we presented this frame - only used to track when to introduce debug markers */
 	bool bPresented;
+	
+	/** PSO cache manager */
+	FMetalPipelineStateCacheManager* PSOManager;
 };

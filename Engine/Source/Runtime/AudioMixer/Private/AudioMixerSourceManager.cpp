@@ -1,6 +1,7 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AudioMixerSourceManager.h"
+#include "AudioMixerSourceBuffer.h"
 #include "AudioMixerSource.h"
 #include "AudioMixerDevice.h"
 #include "AudioMixerSourceVoice.h"
@@ -10,8 +11,7 @@
 #include "ProfilingDebugging/CsvProfiler.h"
 
 // Link to "Audio" profiling category
-CSV_DECLARE_CATEGORY_MODULE_EXTERN(AUDIOMIXER_API, Audio);
-
+CSV_DECLARE_CATEGORY_MODULE_EXTERN(AUDIOMIXERCORE_API, Audio);
 static int32 DisableParallelSourceProcessingCvar = 1;
 FAutoConsoleVariableRef CVarDisableParallelSourceProcessing(
 	TEXT("au.DisableParallelSourceProcessing"),
@@ -76,6 +76,14 @@ FAutoConsoleVariableRef CVarFlushCommandBufferOnTimeout(
 	TEXT("0: Not Disabled, 1: Disabled"),
 	ECVF_Default);
 
+static int32 CommandBufferFlushWaitTimeMsCvar = 1000;
+FAutoConsoleVariableRef CVarCommandBufferFlushWaitTimeMs(
+	TEXT("au.CommandBufferFlushWaitTimeMs"),
+	CommandBufferFlushWaitTimeMsCvar,
+	TEXT("How long to wait for the command buffer flush to complete.\n"),
+	ECVF_Default);
+
+
 #define ONEOVERSHORTMAX (3.0517578125e-5f) // 1/32768
 #define ENVELOPE_TAIL_THRESHOLD (1.58489e-5f) // -96 dB
 
@@ -116,6 +124,7 @@ namespace Audio
 		, NumSourceWorkers(4)
 		, bInitialized(false)
 		, bUsingSpatializationPlugin(false)
+		, MaxChannelsSupportedBySpatializationPlugin(1)
 	{
 		// Get a manual resetable event
 		const bool bIsManualReset = true;
@@ -218,7 +227,6 @@ namespace Audio
 			SourceInfo.bUseHRTFSpatializer = false;
 			SourceInfo.bUseOcclusionPlugin = false;
 			SourceInfo.bUseReverbPlugin = false;
-			SourceInfo.bUseModulationPlugin = false;
 			SourceInfo.bHasStarted = false;
 			SourceInfo.bOutputToBusOnly = false;
 			SourceInfo.bIsVorbis = false;
@@ -275,6 +283,7 @@ namespace Audio
 		if (SpatializationPlugin.IsValid())
 		{
 			bUsingSpatializationPlugin = true;
+			MaxChannelsSupportedBySpatializationPlugin = MixerDevice->MaxChannelsSupportedBySpatializationPlugin;
 		}
 
 		bInitialized = true;
@@ -347,7 +356,10 @@ namespace Audio
 				const int32 NextIndex = !CurrentGameIndex;
 
 				// Make sure we've actually emptied the command queue from the render thread before writing to it
-				check(CommandBuffers[NextIndex].SourceCommandQueue.Num() == 0);
+				if (CommandBuffers[NextIndex].SourceCommandQueue.Num() != 0)
+				{
+					UE_LOG(LogAudioMixer, Warning, TEXT("Source command queue not empty: %d"), CommandBuffers[NextIndex].SourceCommandQueue.Num());
+				}
 				bPumpQueue = true;
 			}
 		}
@@ -444,11 +456,6 @@ namespace Audio
 			MixerDevice->ReverbPluginInterface->OnReleaseSource(SourceId);
 		}
 
-		if (SourceInfo.bUseModulationPlugin)
-		{
-			MixerDevice->ModulationInterface->OnReleaseSource(SourceId);
-		}
-
 		// Delete the source effects
 		SourceInfo.SourceEffectChainId = INDEX_NONE;
 		ResetSourceEffectChain(SourceId);
@@ -499,7 +506,6 @@ namespace Audio
 		SourceInfo.bIsExternalSend = false;
 		SourceInfo.bUseOcclusionPlugin = false;
 		SourceInfo.bUseReverbPlugin = false;
-		SourceInfo.bUseModulationPlugin = false;
 		SourceInfo.bHasStarted = false;
 		SourceInfo.bOutputToBusOnly = false;
 		SourceInfo.bIsBypassingLPF = false;
@@ -612,6 +618,12 @@ namespace Audio
 		// Make sure we flag that this source needs a speaker map to at least get one
 		GameThreadInfo.bNeedsSpeakerMap[SourceId] = true;
 
+		// Create the modulation plugin source effect
+		if (InitParams.ModulationPluginSettings != nullptr)
+		{
+			MixerDevice->ModulationInterface->OnInitSource(SourceId, InitParams.AudioComponentUserID, InitParams.NumInputChannels, *InitParams.ModulationPluginSettings);
+		}
+
 		AudioMixerThreadCommand([this, SourceId, InitParams]()
 		{
 			AUDIO_MIXER_CHECK_AUDIO_PLAT_THREAD(MixerDevice);
@@ -668,13 +680,6 @@ namespace Audio
 			{
 				MixerDevice->ReverbPluginInterface->OnInitSource(SourceId, InitParams.AudioComponentUserID, InitParams.NumInputChannels, InitParams.ReverbPluginSettings);
 				SourceInfo.bUseReverbPlugin = true;
-			}
-
-			// Create the modulation plugin source effect
-			if (InitParams.ModulationPluginSettings != nullptr)
-			{
-				MixerDevice->ModulationInterface->OnInitSource(SourceId, InitParams.AudioComponentUserID, InitParams.NumInputChannels, InitParams.ModulationPluginSettings);
-				SourceInfo.bUseModulationPlugin = true;
 			}
 
 			// Default all sounds to not consider effect chain tails when playing
@@ -828,6 +833,11 @@ namespace Audio
 		GameThreadInfo.FreeSourceIndices.Push(SourceId);
 
 		AUDIO_MIXER_CHECK(GameThreadInfo.FreeSourceIndices.Contains(SourceId));
+
+		if (MixerDevice->ModulationInterface)
+		{
+			MixerDevice->ModulationInterface->OnReleaseSource(SourceId);
+		}
 
 		AudioMixerThreadCommand([this, SourceId]()
 		{
@@ -1630,7 +1640,7 @@ namespace Audio
 			CSV_SCOPED_TIMING_STAT(Audio, HRTF);
 
 			AUDIO_MIXER_CHECK(SpatializationPlugin.IsValid());
-			AUDIO_MIXER_CHECK(SourceInfo.NumInputChannels == 1);
+			AUDIO_MIXER_CHECK(SourceInfo.NumInputChannels <= MaxChannelsSupportedBySpatializationPlugin);
 
 			FAudioPluginSourceInputData AudioPluginInputData;
 			AudioPluginInputData.AudioBuffer = &SourceInfo.SourceBuffer;
@@ -2533,7 +2543,7 @@ namespace Audio
 
 		// Make sure current current executing 
 		bool bTimedOut = false;
-		if (!CommandsProcessedEvent->Wait(1000))
+		if (!CommandsProcessedEvent->Wait(CommandBufferFlushWaitTimeMsCvar))
 		{
 			CommandsProcessedEvent->Trigger();
 			bTimedOut = true;
@@ -2566,37 +2576,6 @@ namespace Audio
 
 	void FMixerSourceManager::UpdatePendingReleaseData(bool bForceWait)
 	{
-		// Check for any pending delete procedural sound waves
-		for (int32 SourceId = 0; SourceId < NumTotalSources; ++SourceId)
-		{
-			FSourceInfo& SourceInfo = SourceInfos[SourceId];
-			if (SourceInfo.MixerSourceBuffer.IsValid())
-			{
-				// If we've been flagged to begin destroy
-				if (SourceInfo.MixerSourceBuffer->IsBeginDestroy())
-				{
-					SourceInfo.MixerSourceBuffer->ClearSoundWave();
-						
-					if (!SourceInfo.bIsDone)
-					{
-						SourceInfo.bIsDone = true;
-						SourceInfo.SourceListener->OnDone();
-					}
-
-					// Clear out the mixer source buffer
-					SourceInfo.MixerSourceBuffer.Reset();
-
-					// Set the sound to be done playing
-					// This will flag the sound to be released
-					SourceInfo.bIsPlaying = false;
-					SourceInfo.bIsPaused = false;
-					SourceInfo.bIsActive = false;
-					SourceInfo.bIsStopping = false;
-				}
-			}
-		}
-
-
 		// Don't block, but let tasks finish naturally
 		for (int32 i = PendingSourceBuffers.Num() - 1; i >= 0; --i)
 		{

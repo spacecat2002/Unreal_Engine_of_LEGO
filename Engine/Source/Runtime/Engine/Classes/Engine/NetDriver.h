@@ -367,7 +367,7 @@ DECLARE_DELEGATE_SevenParams(FOnSendRPC, AActor* /*Actor*/, UFunction* /*Functio
 //
 // Whether to support net lag and packet loss testing.
 //
-#define DO_ENABLE_NET_TEST !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+#define DO_ENABLE_NET_TEST !(UE_BUILD_SHIPPING)
 
 
 /** Holds the packet simulation settings in one place */
@@ -489,11 +489,6 @@ struct ENGINE_API FPacketSimulationSettings
 	 * Force new emulation settings and ignore config or cmdline values
 	 */
 	void ApplySettings(const FPacketSimulationSettings& NewSettings);
-
-	/**
-	 * Registers commands for auto-completion, etc.
-	 */
-	void RegisterCommands();
 
 	/**
 	 * Ensure that settings have proper values
@@ -631,13 +626,6 @@ struct FDisconnectedClient
 	double						DisconnectTime;
 
 	FDisconnectedClient(TSharedRef<const FInternetAddr>& InAddress, double InDisconnectTime)
-		: Address(InAddress)
-		, DisconnectTime(InDisconnectTime)
-	{
-	}
-
-	UE_DEPRECATED(4.23, "This object does not update address information, and should have const addresses passed in")
-	FDisconnectedClient(TSharedRef<FInternetAddr>& InAddress, double InDisconnectTime)
 		: Address(InAddress)
 		, DisconnectTime(InDisconnectTime)
 	{
@@ -801,10 +789,6 @@ public:
 	UPROPERTY(Config)
 	FName NetDriverName;
 
-	/** The UChannel classes that should be used under this net driver */
-	UE_DEPRECATED(4.22, "Use ChannelDefinitions instead")
-	UClass* ChannelClasses[CHTYPE_MAX];
-
 	/** Used to specify available channel types and their associated UClass */
 	UPROPERTY(Config)
 	TArray<FChannelDefinition> ChannelDefinitions;
@@ -812,10 +796,6 @@ public:
 	/** Used for faster lookup of channel definitions by name. */
 	UPROPERTY()
 	TMap<FName, FChannelDefinition> ChannelDefinitionMap;
-
-	/** @return true if the specified channel type exists. */
-	UE_DEPRECATED(4.22, "Use IsKnownChannelName")
-	bool IsKnownChannelType(int32 Type);
 
 	/** @return true if the specified channel definition exists. */
 	FORCEINLINE bool IsKnownChannelName(const FName& ChName)
@@ -837,10 +817,6 @@ private:
 
 public:
 
-	/** Creates a new channel of the specified type. If the type is pooled, it will return a pre-created channel */
-	UE_DEPRECATED(4.22, "Use GetOrCreateChannelByName")
-	UChannel* GetOrCreateChannel(EChannelType ChType);
-
 	/** Creates a new channel of the specified type name. If the type is pooled, it will return a pre-created channel */
 	UChannel* GetOrCreateChannelByName(const FName& ChName);
 
@@ -853,7 +829,9 @@ public:
 	void InitPacketSimulationSettings();
 
 	/** Returns true during the duration of a packet loss burst triggered by the net.pktlossburst command. */
+#if DO_ENABLE_NET_TEST
 	bool IsSimulatingPacketLossBurst() const;
+#endif
 
 	/** Interface for communication network state to others (ie World usually, but anything that implements FNetworkNotify) */
 	class FNetworkNotify*		Notify;
@@ -1267,18 +1245,6 @@ public:
 	/** PostTick actions */
 	ENGINE_API virtual void PostTickFlush();
 
-	UE_DEPRECATED(4.21, "Please use the LowLevelSend that requires packet traits for analytics and packet modifiers.")
-	ENGINE_API virtual void LowLevelSend(FString Address, void* Data, int32 CountBits)
-	{
-		FOutPacketTraits EmptyTraits;
-		PRAGMA_DISABLE_DEPRECATION_WARNINGS
-		LowLevelSend(Address, Data, CountBits, EmptyTraits);
-		PRAGMA_ENABLE_DEPRECATION_WARNINGS
-	}
-
-	UE_DEPRECATED(4.22, "Change arguments to support FInternetAddr instead")
-	ENGINE_API virtual void LowLevelSend(FString Address, void* Data, int32 CountBits, FOutPacketTraits& Traits);
-
 	/**
 	 * Sends a 'connectionless' (not associated with a UNetConection) packet, to the specified address.
 	 * NOTE: Address is an abstract format defined by subclasses. Anything calling this, must use an address supplied by the net driver.
@@ -1335,6 +1301,8 @@ public:
 	// ---------------------------------------------------------------
 
 	ENGINE_API virtual void ForceNetUpdate(AActor* Actor);
+
+	ENGINE_API void ForceAllActorsNetUpdateTime(float NetUpdateTimeOffset, TFunctionRef<bool(const AActor* const)> ValidActorTestFunc);
 
 	/** Flushes actor from NetDriver's dormancy list, but does not change any state on the Actor itself */
 	ENGINE_API void FlushActorDormancy(AActor *Actor, bool bWasDormInitial=false);
@@ -1549,10 +1517,6 @@ protected:
 	ENGINE_API void RegisterTickEvents(class UWorld* InWorld);
 	/** Unregister all TickDispatch, TickFlush, PostTickFlush to tick in World */
 	ENGINE_API void UnregisterTickEvents(class UWorld* InWorld);
-
-	UE_DEPRECATED(4.22, "Use InternalCreateChannelByName")
-	/** Subclasses may override this to customize channel creation. Called by GetOrCreateChannel if the pool is exhausted and a new channel must be allocated. */
-	ENGINE_API virtual UChannel* InternalCreateChannel(EChannelType ChType);
 
 	/** Subclasses may override this to customize channel creation. Called by GetOrCreateChannel if the pool is exhausted and a new channel must be allocated. */
 	ENGINE_API virtual UChannel* InternalCreateChannelByName(const FName& ChName);

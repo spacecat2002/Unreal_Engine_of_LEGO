@@ -407,9 +407,9 @@ int32 UAssetManager::ScanPathsForPrimaryAssets(FPrimaryAssetType PrimaryAssetTyp
 		int32 DotIndex = INDEX_NONE;
 		if (Path.FindChar('.', DotIndex))
 		{
-			FString PackageName = FPackageName::ObjectPathToPackageName(Path);
+			FString PackageName = Path.Mid(0, DotIndex); //avoid re-searching for index inside FPackageName::ObjectPathToPackageName
 
-			PackageNames.AddUnique(PackageName);
+			PackageNames.AddUnique(MoveTemp(PackageName));
 		}
 		else
 		{
@@ -524,14 +524,15 @@ int32 UAssetManager::ScanPathsForPrimaryAssets(FPrimaryAssetType PrimaryAssetTyp
 			else
 			{
 				// Warn that 'Foo' conflicts with 'Bar', but only once per conflict
-				static TSet<FString> IssuedWarnings;
+				static TSet<TPair<FPrimaryAssetType, FPrimaryAssetType>> IssuedWarnings;
 
-				FString ConflictMsg = FString::Printf(TEXT("Ignoring PrimaryAssetType %s - Conflicts with %s"), *PrimaryAssetType.ToString(), *PrimaryAssetId.PrimaryAssetType.ToString());
-
-				if (!IssuedWarnings.Contains(ConflictMsg))
+				TTuple<FPrimaryAssetType, FPrimaryAssetType> ConflictPair(PrimaryAssetType, PrimaryAssetId.PrimaryAssetType);
+				if (!IssuedWarnings.Contains(ConflictPair))
 				{
+					FString ConflictMsg = FString::Printf(TEXT("Ignoring PrimaryAssetType %s - Conflicts with %s"), *PrimaryAssetType.ToString(), *PrimaryAssetId.PrimaryAssetType.ToString());
+
 					UE_LOG(LogAssetManager, Display, TEXT("%s"), *ConflictMsg);
-					IssuedWarnings.Add(ConflictMsg);
+					IssuedWarnings.Add(ConflictPair);
 				}
 			}
 			continue;
@@ -2463,6 +2464,55 @@ void UAssetManager::DumpLoadedAssetState()
 	}
 }
 
+static FAutoConsoleCommand CVarDumpBundlesForAsset(
+	TEXT("AssetManager.DumpBundlesForAsset"),
+	TEXT("Shows a list of all bundles for the specified primary asset by primary asset id (i.e. Map:Entry)"),
+	FConsoleCommandWithArgsDelegate::CreateStatic(UAssetManager::DumpBundlesForAsset),
+	ECVF_Cheat);
+
+void UAssetManager::DumpBundlesForAsset(const TArray<FString>& Args)
+{
+	if (Args.Num() < 1)
+	{
+		UE_LOG(LogAssetManager, Warning, TEXT("Too few arguments for DumpBundlesForAsset. Include the primary asset id (i.e. Map:Entry)"));
+		return;
+	}
+
+	FString PrimaryAssetIdString = Args[0];
+	if (!PrimaryAssetIdString.Contains(TEXT(":")))
+	{
+		UE_LOG(LogAssetManager, Warning, TEXT("Incorrect argument for DumpBundlesForAsset. Arg should be the primary asset id (i.e. Map:Entry)"));
+		return;
+	}
+
+	if (!UAssetManager::IsValid())
+	{
+		UE_LOG(LogAssetManager, Warning, TEXT("DumpBundlesForAsset Failed. Invalid asset manager."));
+		return;
+	}
+
+	UAssetManager& Manager = Get();
+
+	FPrimaryAssetId PrimaryAssetId(PrimaryAssetIdString);
+	const TMap<FName, FAssetBundleEntry>* FoundMap = Manager.CachedAssetBundles.Find(PrimaryAssetId);
+	if (!FoundMap)
+	{
+		UE_LOG(LogAssetManager, Display, TEXT("Could not find bundles for primary asset %s."), *PrimaryAssetIdString);
+		return;
+	}
+
+	UE_LOG(LogAssetManager, Display, TEXT("Dumping bundles for primary asset %s..."), *PrimaryAssetIdString);
+	for (auto MapIt = FoundMap->CreateConstIterator(); MapIt; ++MapIt)
+	{
+		const FAssetBundleEntry& Entry = MapIt.Value();
+		UE_LOG(LogAssetManager, Display, TEXT("  Bundle: %s (%d assets)"), *Entry.BundleName.ToString(), Entry.BundleAssets.Num());
+		for (const FSoftObjectPath& Path : Entry.BundleAssets)
+		{
+			UE_LOG(LogAssetManager, Display, TEXT("    %s"), *Path.ToString());
+		}
+	}
+}
+
 static FAutoConsoleCommand CVarDumpAssetRegistryInfo(
 	TEXT("AssetManager.DumpAssetRegistryInfo"),
 	TEXT("Dumps extended info about asset registry to log"),
@@ -2579,6 +2629,8 @@ void UAssetManager::ScanPrimaryAssetTypesFromConfig()
 		{
 			continue;
 		}
+
+		UE_CLOG(AssetTypeMap.Find(TypeInfo.PrimaryAssetType), LogAssetManager, Error, TEXT("Found multiple \"%s\" Primary Asset Type entries in \"Primary Asset Types To Scan\" config. Only a single entry per type is supported."), *TypeInfo.PrimaryAssetType.ToString());
 
 		ScanPathsForPrimaryAssets(TypeInfo.PrimaryAssetType, TypeInfo.AssetScanPaths, TypeInfo.AssetBaseClassLoaded, TypeInfo.bHasBlueprintClasses, TypeInfo.bIsEditorOnly, false);
 
@@ -2747,7 +2799,7 @@ bool UAssetManager::IsPathExcludedFromScan(const FString& Path) const
 {
 	const UAssetManagerSettings& Settings = GetSettings();
 
-	for (const FDirectoryPath& ExcludedPath : GetSettings().DirectoriesToExclude)
+	for (const FDirectoryPath& ExcludedPath : Settings.DirectoriesToExclude)
 	{
 		if (Path.Contains(ExcludedPath.Path))
 		{
@@ -2790,7 +2842,27 @@ EAssetSetManagerResult::Type UAssetManager::ShouldSetManager(const FAssetIdentif
 			return EAssetSetManagerResult::DoNotSet;
 		}
 	}
-	
+	else if (Flags & EAssetSetManagerFlags::TargetHasDirectManager)
+	{
+		// If target has another direct manager being set in this run, never recurse and set manager if we think this is an "owner" reference and not a back reference
+
+		bool bIsOwnershipReference = Flags & EAssetSetManagerFlags::IsDirectSet;
+
+		if (ManagerPrimaryAssetId.PrimaryAssetType == MapType)
+		{
+			// References made by maps are ownership references, because there is no way to distinguish between sublevels and top level maps we "include" sublevels in parent maps via reference
+			bIsOwnershipReference = true;
+		}
+
+		if (bIsOwnershipReference)
+		{
+			return EAssetSetManagerResult::SetButDoNotRecurse;
+		}
+		else
+		{
+			return EAssetSetManagerResult::DoNotSet;
+		}
+	}
 	return EAssetSetManagerResult::SetAndRecurse;
 }
 

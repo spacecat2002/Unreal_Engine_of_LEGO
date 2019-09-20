@@ -117,10 +117,18 @@ void FWidgetRenderer::DrawWidget(
 	TSharedRef<SVirtualWindow> Window = SNew(SVirtualWindow).Size(DrawSize);
 	TUniquePtr<FHittestGrid> HitTestGrid = MakeUnique<FHittestGrid>();
 
+	TSharedPtr<SWidget> OldParent = Widget->GetParentWidget();
 	Window->SetContent(Widget);
 	Window->Resize(DrawSize);
 
 	DrawWindow(RenderTarget, *HitTestGrid, Window, Scale, DrawSize, DeltaTime, bDeferRenderTargetUpdate);
+
+	// Calling Window->SetContent will set Widget's parent to the Window, so we need to reset to the original parent.
+	// A better solution would be to have a way to render widgets without assigning them to a widget first.
+	if (OldParent.IsValid())
+	{
+		Widget->AssignParentWidget(OldParent);
+	}
 }
 
 void FWidgetRenderer::DrawWidget(
@@ -311,7 +319,7 @@ bool FWidgetRenderer::DrawInvalidationRoot(TSharedRef<SVirtualWindow>& VirtualWi
 				static_cast<float>(FApp::GetCurrentTime() - GStartTime),
 				static_cast<float>(FApp::GetDeltaTime()),
 				static_cast<float>(FPlatformTime::Seconds() - GStartTime),
-				RenderTarget->GameThread_GetRenderTargetResource(),
+				(FRenderTarget*)RenderTarget->GameThread_GetRenderTargetResource(),
 				Renderer.Get(),
 				bClearTarget
 			};

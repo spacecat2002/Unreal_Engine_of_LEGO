@@ -183,7 +183,7 @@ public:
 
 #if INCLUDE_CHAOS
 	TSharedPtr<FPhysScene_Chaos> GetPhysicsScene() const { return PhysScene; }
-	Chaos::FPBDRigidsSolver* GetSolver() const { return Solver; }
+	Chaos::FPhysicsSolver* GetSolver() const { return Solver; }
 #endif
 
 #if WITH_EDITOR
@@ -192,12 +192,12 @@ public:
 	virtual void PostRegisterAllComponents() override;
 	
 	virtual void BeginPlay() override;
-	virtual void EndPlay(EEndPlayReason::Type ReasonEnd) override;
+	virtual void EndPlay(const EEndPlayReason::Type ReasonEnd) override;
 
 private:
 #if INCLUDE_CHAOS
 	TSharedPtr<FPhysScene_Chaos> PhysScene;
-	Chaos::FPBDRigidsSolver* Solver;
+	Chaos::FPhysicsSolver* Solver;
 #endif
 
 	/** Component responsible for harvesting and triggering physics-related gameplay events (hits, breaks, etc) */

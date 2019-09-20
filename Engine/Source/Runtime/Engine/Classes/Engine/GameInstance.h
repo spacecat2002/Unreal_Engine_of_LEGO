@@ -220,6 +220,9 @@ public:
 	struct FWorldContext* GetWorldContext() const { return WorldContext; };
 	class UGameViewportClient* GetGameViewportClient() const;
 
+	/** Callback from the world context when the world changes */
+	virtual void OnWorldChanged(UWorld* OldWorld, UWorld* NewWorld) {}
+
 	/** Starts the GameInstance state machine running */
 	virtual void StartGameInstance();
 	virtual bool JoinSession(ULocalPlayer* LocalPlayer, int32 SessionIndexInSearchResults) { return false; }
@@ -268,7 +271,7 @@ public:
 	 * @param Player - The player to remove.
 	 * @return whether the player was successfully removed. Removal is not allowed while connected to a server.
 	 */
-	bool					RemoveLocalPlayer(ULocalPlayer * ExistingPlayer);
+	virtual bool			RemoveLocalPlayer(ULocalPlayer * ExistingPlayer);
 
 	int32					GetNumLocalPlayers() const;
 	ULocalPlayer*			GetLocalPlayerByIndex(const int32 Index) const;

@@ -13,7 +13,7 @@ public class Engine : ModuleRules
 
 		SharedPCHHeaderFile = "Public/EngineSharedPCH.h";
 
-		PublicIncludePathModuleNames.AddRange(new string[] { "Renderer", "PacketHandler", "AudioMixer", "AnimationCore" });
+		PublicIncludePathModuleNames.AddRange(new string[] { "Renderer", "PacketHandler", "AudioMixer", "AudioMixerCore", "AnimationCore" });
 
 		PrivateIncludePaths.AddRange(
 			new string[] {
@@ -36,7 +36,7 @@ public class Engine : ModuleRules
 				"AutomationWorker",
 				"MovieSceneCapture",
 				"DesktopPlatform",
-			}
+            }
 		);
 
 		if (Target.Configuration != UnrealTargetConfiguration.Shipping)
@@ -73,7 +73,6 @@ public class Engine : ModuleRules
 				"RenderCore",
 				"RHI",
 				"Sockets",
-				"UtilityShaders",
 				"AssetRegistry", // Here until FAssetData is moved to engine
 				"EngineMessages",
 				"EngineSettings",
@@ -85,8 +84,7 @@ public class Engine : ModuleRules
 				"PakFile",
                 "NetworkReplayStreaming",
 				"PhysicsCore",
-				"PhysicsSQ",
-				"ChaosSolvers"
+                "SignalProcessing"
 			}
 		);
 
@@ -102,6 +100,8 @@ public class Engine : ModuleRules
 				"Analytics",
 				"AnalyticsET",
 				"AudioMixer",
+				"AudioMixerCore",
+				"SignalProcessing",
                 "CrunchCompression"
             }
 		);
@@ -186,10 +186,15 @@ public class Engine : ModuleRules
 
 		CircularlyReferencedDependentModules.Add("GameplayTags");
 		CircularlyReferencedDependentModules.Add("Landscape");
-		CircularlyReferencedDependentModules.Add("UMG");
+        CircularlyReferencedDependentModules.Add("UMG");
 		CircularlyReferencedDependentModules.Add("MaterialShaderQualitySettings");
 		CircularlyReferencedDependentModules.Add("CinematicCamera");
 		CircularlyReferencedDependentModules.Add("AudioMixer");
+
+		if (Target.Type == TargetType.Editor)
+		{
+			PrivateIncludePathModuleNames.Add("Foliage");
+		}
 
 		// The AnimGraphRuntime module is not needed by Engine proper, but it is loaded in LaunchEngineLoop.cpp,
 		// and needs to be listed in an always-included module in order to be compiled into standalone games
@@ -294,6 +299,7 @@ public class Engine : ModuleRules
 					new string[] {
 						"LinuxTargetPlatform",
 						"LinuxNoEditorTargetPlatform",
+						"LinuxAArch64NoEditorTargetPlatform",
 						"LinuxServerTargetPlatform",
 						"LinuxClientTargetPlatform",
 						"AllDesktopTargetPlatform",
@@ -376,15 +382,25 @@ public class Engine : ModuleRules
 			DynamicallyLoadedModuleNames.Add("PhysXCooking");
 		}
 
-			// Engine public headers need to know about some types (enums etc.)
-			PublicIncludePathModuleNames.Add("ClothingSystemRuntimeInterface");
-			PublicDependencyModuleNames.Add("ClothingSystemRuntimeInterface");
+		if (Target.bCompileChaos || Target.bUseChaos)
+        {
+            PublicDependencyModuleNames.AddRange(
+				new string[] {
+					"PhysicsSQ",
+					"ChaosSolvers"
+				}
+			);
+        }
 
-			if (Target.bBuildEditor)
-			{
-				PrivateDependencyModuleNames.Add("ClothingSystemEditorInterface");
-				PrivateIncludePathModuleNames.Add("ClothingSystemEditorInterface");
-			}
+        // Engine public headers need to know about some types (enums etc.)
+        PublicIncludePathModuleNames.Add("ClothingSystemRuntimeInterface");
+		PublicDependencyModuleNames.Add("ClothingSystemRuntimeInterface");
+
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.Add("ClothingSystemEditorInterface");
+			PrivateIncludePathModuleNames.Add("ClothingSystemEditorInterface");
+		}
 
 		if ((Target.Platform == UnrealTargetPlatform.Win64) ||
 			(Target.Platform == UnrealTargetPlatform.Win32))

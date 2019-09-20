@@ -439,8 +439,6 @@ public:
 
 	void SetupMeshDrawCommandsForProjectionStenciling(FSceneRenderer& Renderer);
 
-	void ApplyViewOverridesToMeshDrawCommands(const FViewInfo& View, FMeshCommandOneFrameArray& VisibleMeshDrawCommands);
-
 	/** 
 	 * @param View view to check visibility in
 	 * @return true if this shadow info has any subject prims visible in the view
@@ -514,6 +512,11 @@ public:
 	* Setup uniformbuffers and update Primitive Shader Data
 	*/
 	void SetupShadowUniformBuffers(FRHICommandListImmediate& RHICmdList, FScene* Scene);
+
+	/**
+	* Ensure Cached Shadowmap is in EReadable state
+	*/
+	void TransitionCachedShadowmap(FRHICommandListImmediate& RHICmdList, FScene* Scene);
 
 
 private:
@@ -933,7 +936,7 @@ public:
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM4);
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
 	/**
@@ -1120,7 +1123,7 @@ public:
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM4) && TShadowProjectionPS<Quality>::ShouldCompilePermutation(Parameters);
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && TShadowProjectionPS<Quality>::ShouldCompilePermutation(Parameters);
 	}
 
 	TShadowProjectionFromTranslucencyPS() {}
@@ -1296,7 +1299,7 @@ public:
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM4);
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
 	void SetParameters(

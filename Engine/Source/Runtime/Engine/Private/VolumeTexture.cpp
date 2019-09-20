@@ -46,7 +46,7 @@ bool UVolumeTexture::UpdateSourceFromSourceTexture()
 			const int32 FormatDataSize = InitialSource.GetBytesPerPixel();
 			if (FormatDataSize > 0)
 			{
-				TArray<uint8> Ref2DData;
+				TArray64<uint8> Ref2DData;
 				if (InitialSource.GetMipData(Ref2DData, 0))
 				{
 					uint8* NewData = (uint8*)FMemory::Malloc(Source2DTileSizeX * Source2DTileSizeY * TileSizeZ * FormatDataSize);
@@ -611,12 +611,10 @@ bool UVolumeTexture::ShaderPlatformSupportsCompression(EShaderPlatform ShaderPla
 {
 	switch (ShaderPlatform)
 	{
-	case SP_PCD3D_SM4:
 	case SP_PCD3D_SM5:
 	case SP_PS4:
 	case SP_XBOXONE_D3D12:
 	case SP_VULKAN_SM5:
-	case SP_VULKAN_SM4:
 	case SP_VULKAN_SM5_LUMIN:
 		return true;
 

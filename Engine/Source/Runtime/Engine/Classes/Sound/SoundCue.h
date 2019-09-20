@@ -77,13 +77,9 @@ class ENGINE_API USoundCue : public USoundBase
 {
 	GENERATED_UCLASS_BODY()
 
-	/* Indicates whether attenuation should use the Attenuation Overrides or the Attenuation Settings asset */
-	UPROPERTY(EditAnywhere, Category=Attenuation)
-	uint32 bOverrideAttenuation:1;
-
-	/* Makes this sound cue ignore per-platform random node culling for memory purposes */
-	UPROPERTY(EditAnywhere, Category=Culling)
-	uint32 bExcludeFromRandomNodeBranchCulling:1;
+	/* Makes this sound cue automatically load any sound waves it can play into the cache when it is loaded. */
+	UPROPERTY(EditAnywhere, Category = Caching)
+	uint32 bPrimeOnLoad : 1;
 
 	UPROPERTY()
 	USoundNode* FirstNode;
@@ -116,6 +112,16 @@ protected:
 private:
 	float MaxAudibleDistance;
 
+public:
+	/* Indicates whether attenuation should use the Attenuation Overrides or the Attenuation Settings asset */
+	UPROPERTY(EditAnywhere, Category=Attenuation)
+	uint8 bOverrideAttenuation : 1;
+
+	/* Makes this sound cue ignore per-platform random node culling for memory purposes */
+	UPROPERTY(EditAnywhere, Category=Culling)
+	uint8 bExcludeFromRandomNodeBranchCulling : 1;
+
+private:
 	/** Whether a sound has play when silent enabled (i.e. for a sound cue, if any sound wave player has it enabled). */
 	UPROPERTY()
 	uint8 bHasPlayWhenSilent : 1;
@@ -235,6 +241,9 @@ public:
 
 	/** Call to cache any values which need to be computed from the sound cue graph. e.g. MaxDistance, Duration, etc. */
 	void CacheAggregateValues();
+
+	/** Call this when stream caching is enabled to prime all SoundWave assets referenced by this Sound Cue. */
+	void PrimeSoundCue();
 
 protected:
 	bool RecursiveFindPathToNode(USoundNode* CurrentNode, const UPTRINT CurrentHash, const UPTRINT NodeHashToFind, TArray<USoundNode*>& OutPath) const;

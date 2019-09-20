@@ -19,11 +19,13 @@
 #include "PostProcess/PostProcessing.h"
 #include "PostProcess/SceneFilterRendering.h"
 
-static int32 GRayTracingAmbientOcclusion = 1;
+static int32 GRayTracingAmbientOcclusion = -1;
 static FAutoConsoleVariableRef CVarRayTracingAmbientOcclusion(
 	TEXT("r.RayTracing.AmbientOcclusion"),
 	GRayTracingAmbientOcclusion,
-	TEXT("Enables ray tracing ambient occlusion (default = 1)")
+	TEXT("-1: Value driven by postprocess volume (default) \n")
+	TEXT(" 0: ray tracing ambient occlusion off \n")
+	TEXT(" 1: ray tracing ambient occlusion enabled")
 );
 
 static TAutoConsoleVariable<int32> CVarUseAODenoiser(
@@ -58,11 +60,22 @@ static TAutoConsoleVariable<int32> CVarRayTracingAmbientOcclusionEnableMaterials
 
 bool ShouldRenderRayTracingAmbientOcclusion(const FViewInfo& View)
 {
-	const int32 ForceAllRayTracingEffects = GetForceRayTracingEffectsCVarValue();
-	const bool bRTAOEnabled = (ForceAllRayTracingEffects > 0 || (GRayTracingAmbientOcclusion > 0 && ForceAllRayTracingEffects < 0));
-
-	//#dxr_todo: add option to enable RTAO in View.FinalPostProcessSettings
-	return IsRayTracingEnabled() && !ShouldRenderRayTracingGlobalIllumination(View) && bRTAOEnabled;
+	if (!IsRayTracingEnabled())
+	{
+		return (false);
+	}
+	else if (GetForceRayTracingEffectsCVarValue() >= 0)
+	{
+		return GetForceRayTracingEffectsCVarValue() > 0;
+	}
+	else if (GRayTracingAmbientOcclusion >= 0)
+	{
+		return (GRayTracingAmbientOcclusion > 0);
+	}
+	else
+	{
+		return View.FinalPostProcessSettings.RayTracingAO > 0;
+	}
 }
 
 DECLARE_GPU_STAT_NAMED(RayTracingAmbientOcclusion, TEXT("Ray Tracing Ambient Occlusion"));
@@ -114,82 +127,45 @@ void FDeferredShadingSceneRenderer::PrepareRayTracingAmbientOcclusion(const FVie
 	}
 }
 
-void FDeferredShadingSceneRenderer::RenderRayTracingAmbientOcclusion(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget>& AmbientOcclusionRT)
-{
-	bool bAnyViewWithRTAO = false;
-	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
-	{
-		FViewInfo& View = Views[ViewIndex];
-		bAnyViewWithRTAO = bAnyViewWithRTAO || ShouldRenderRayTracingAmbientOcclusion(View);
-	}
-
-	if (!bAnyViewWithRTAO)
-	{
-		return;
-	}
-
-	FRDGBuilder GraphBuilder(RHICmdList);
-	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-
-	// Define RDG targets
-	FRDGTextureRef AmbientOcclusionTexture;
-	{
-		FRDGTextureDesc Desc = SceneContext.GetSceneColor()->GetDesc();
-		Desc.Format = PF_R16F;
-		Desc.Flags &= ~(TexCreate_FastVRAM | TexCreate_Transient);
-		AmbientOcclusionTexture = GraphBuilder.CreateTexture(Desc, TEXT("RayTracingAmbientOcclusion"));
-	}
-
-	FRDGTextureRef RayDistanceTexture;
-	{
-		FRDGTextureDesc Desc = SceneContext.GetSceneColor()->GetDesc();
-		Desc.Format = PF_R16F;
-		Desc.Flags &= ~(TexCreate_FastVRAM | TexCreate_Transient);
-		RayDistanceTexture = GraphBuilder.CreateTexture(Desc, TEXT("RayTracingAmbientOcclusionHitDistance"));
-	}
-
-	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
-	{	
-		FViewInfo& View = Views[ViewIndex];
-		if (ShouldRenderRayTracingAmbientOcclusion(View))
-		{
-			RenderRayTracingAmbientOcclusion(RHICmdList, GraphBuilder, View, AmbientOcclusionTexture, RayDistanceTexture, AmbientOcclusionRT);
-		}
-	}
-
-	GraphBuilder.Execute();
-	SceneContext.bScreenSpaceAOIsValid = true;
-	AmbientOcclusionRT->SetDebugName(TEXT("RayTracingAmbientOcclusion"));
-	GVisualizeTexture.SetCheckPoint(RHICmdList, AmbientOcclusionRT);
-}
+#endif // RHI_RAYTRACING
 
 void FDeferredShadingSceneRenderer::RenderRayTracingAmbientOcclusion(
-	FRHICommandListImmediate& RHICmdList,
 	FRDGBuilder& GraphBuilder,
 	FViewInfo& View,
-	FRDGTextureRef AmbientOcclusionTexture,
-	FRDGTextureRef RayDistanceTexture,
-	TRefCountPtr<IPooledRenderTarget>& AmbientOcclusionMaskRT
-)
+	const FSceneTextureParameters& SceneTextures,
+	FRDGTextureRef* OutAmbientOcclusionTexture)
+#if RHI_RAYTRACING
 {
 	RDG_GPU_STAT_SCOPE(GraphBuilder, RayTracingAmbientOcclusion);
 	RDG_EVENT_SCOPE(GraphBuilder, "Ray Tracing Ambient Occlusion");
 
-	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+	// Allocates denoiser inputs.
+	IScreenSpaceDenoiser::FAmbientOcclusionInputs DenoiserInputs;
+	{
+		FRDGTextureDesc Desc = FRDGTextureDesc::Create2DDesc(
+			SceneTextures.SceneDepthBuffer->Desc.Extent,
+			PF_R16F,
+			FClearValueBinding::None,
+			/* InFlags = */ TexCreate_None,
+			/* InTargetableFlags = */ TexCreate_ShaderResource | TexCreate_RenderTargetable | TexCreate_UAV,
+			/* bInForceSeparateTargetAndShaderResource = */ false);
+		DenoiserInputs.Mask = GraphBuilder.CreateTexture(Desc, TEXT("RayTracingAmbientOcclusion"));
+		DenoiserInputs.RayHitDistance = GraphBuilder.CreateTexture(Desc, TEXT("RayTracingAmbientOcclusionHitDistance"));
+	}
+	
+	IScreenSpaceDenoiser::FAmbientOcclusionRayTracingConfig RayTracingConfig;
+	RayTracingConfig.RayCountPerPixel =  GRayTracingAmbientOcclusionSamplesPerPixel >= 0 ? GRayTracingAmbientOcclusionSamplesPerPixel : View.FinalPostProcessSettings.RayTracingAOSamplesPerPixel;
 
 	// Build RTAO parameters
 	FRayTracingAmbientOcclusionRGS::FParameters *PassParameters = GraphBuilder.AllocParameters<FRayTracingAmbientOcclusionRGS::FParameters>();
-	PassParameters->SamplesPerPixel = GRayTracingAmbientOcclusionSamplesPerPixel >= 0 ? GRayTracingAmbientOcclusionSamplesPerPixel : View.FinalPostProcessSettings.RayTracingAOSamplesPerPixel;
+	PassParameters->SamplesPerPixel = RayTracingConfig.RayCountPerPixel;
 	PassParameters->MaxRayDistance = View.FinalPostProcessSettings.AmbientOcclusionRadius;
 	PassParameters->Intensity = View.FinalPostProcessSettings.AmbientOcclusionIntensity;
 	PassParameters->MaxNormalBias = GetRaytracingMaxNormalBias();
 	PassParameters->TLAS = View.RayTracingScene.RayTracingSceneRHI->GetShaderResourceView();
-	PassParameters->RWOcclusionMaskUAV = GraphBuilder.CreateUAV(AmbientOcclusionTexture);
-	PassParameters->RWHitDistanceUAV = GraphBuilder.CreateUAV(RayDistanceTexture);
+	PassParameters->RWOcclusionMaskUAV = GraphBuilder.CreateUAV(DenoiserInputs.Mask);
+	PassParameters->RWHitDistanceUAV = GraphBuilder.CreateUAV(DenoiserInputs.RayHitDistance);
 	PassParameters->ViewUniformBuffer = View.ViewUniformBuffer;
-
-	FSceneTextureParameters SceneTextures;
-	SetupSceneTextureParameters(GraphBuilder, &SceneTextures);
 	PassParameters->SceneTextures = SceneTextures;
 
 	FRayTracingAmbientOcclusionRGS::FPermutationDomain PermutationVector;
@@ -238,33 +214,28 @@ void FDeferredShadingSceneRenderer::RenderRayTracingAmbientOcclusion(
 		const IScreenSpaceDenoiser* DefaultDenoiser = IScreenSpaceDenoiser::GetDefaultDenoiser();
 		const IScreenSpaceDenoiser* DenoiserToUse = DenoiserMode == 1 ? DefaultDenoiser : GScreenSpaceDenoiser;
 
-		IScreenSpaceDenoiser::FAmbientOcclusionRayTracingConfig RayTracingConfig;
+		RDG_EVENT_SCOPE(GraphBuilder, "%s%s(AmbientOcclusion) %dx%d",
+			DenoiserToUse != DefaultDenoiser ? TEXT("ThirdParty ") : TEXT(""),
+			DenoiserToUse->GetDebugName(),
+			View.ViewRect.Width(), View.ViewRect.Height());
 
-		IScreenSpaceDenoiser::FAmbientOcclusionInputs DenoiserInputs;
-		DenoiserInputs.Mask = AmbientOcclusionTexture;
-		DenoiserInputs.RayHitDistance = RayDistanceTexture;
+		IScreenSpaceDenoiser::FAmbientOcclusionOutputs DenoiserOutputs = DenoiserToUse->DenoiseAmbientOcclusion(
+			GraphBuilder,
+			View,
+			&View.PrevViewInfo,
+			SceneTextureParams,
+			DenoiserInputs,
+			RayTracingConfig);
 
-		{
-			RDG_EVENT_SCOPE(GraphBuilder, "%s%s(AmbientOcclusion) %dx%d",
-				DenoiserToUse != DefaultDenoiser ? TEXT("ThirdParty ") : TEXT(""),
-				DenoiserToUse->GetDebugName(),
-				View.ViewRect.Width(), View.ViewRect.Height());
-
-			IScreenSpaceDenoiser::FAmbientOcclusionOutputs DenoiserOutputs = DenoiserToUse->DenoiseAmbientOcclusion(
-				GraphBuilder,
-				View,
-				&View.PrevViewInfo,
-				SceneTextureParams,
-				DenoiserInputs,
-				RayTracingConfig);
-
-			GraphBuilder.QueueTextureExtraction(DenoiserOutputs.AmbientOcclusionMask, &AmbientOcclusionMaskRT);
-		}
+		*OutAmbientOcclusionTexture = DenoiserOutputs.AmbientOcclusionMask;
 	}
 	else
 	{
-		GraphBuilder.QueueTextureExtraction(AmbientOcclusionTexture, &AmbientOcclusionMaskRT);
+		*OutAmbientOcclusionTexture = DenoiserInputs.Mask;
 	}
 }
-
-#endif // RHI_RAYTRACING
+#else
+{
+	unimplemented();
+}
+#endif

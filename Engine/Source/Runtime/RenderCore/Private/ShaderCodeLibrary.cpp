@@ -23,6 +23,7 @@ ShaderCodeLibrary.cpp: Bound shader state cache implementation.
 #include "ShaderPipelineCache.h"
 #include "Misc/FileHelper.h"
 #include "Misc/ConfigCacheIni.h"
+#include "Misc/CommandLine.h"
 
 #if WITH_EDITORONLY_DATA
 #include "Modules/ModuleManager.h"
@@ -51,6 +52,14 @@ static FAutoConsoleVariableRef CVarShaderCodeLibraryAsyncLoadingPriority(
 	TEXT("r.ShaderCodeLibrary.DefaultAsyncIOPriority"),
 	GShaderCodeLibraryAsyncLoadingPriority,
 	TEXT(""),
+	ECVF_Default
+);
+
+int32 GShaderCodeLibrarySeperateLoadingCache = 0;
+static FAutoConsoleVariableRef CVarShaderCodeLibrarySeperateLoadingCache(
+	TEXT("r.ShaderCodeLibrary.SeperateLoadingCache"),
+	GShaderCodeLibraryAsyncLoadingPriority,
+	TEXT("if > 0, each shader code library has it's own loading cache."),
 	ECVF_Default
 );
 
@@ -433,6 +442,17 @@ public:
 			Ar->Close();
 			delete Ar;
 
+
+			bool ShaderCodeLibrarySeperateLoadingCacheCommandLineOverride = FParse::Param(FCommandLine::Get(), TEXT("ShaderCodeLibrarySeperateLoadingCache"));;
+			if (GShaderCodeLibrarySeperateLoadingCache || ShaderCodeLibrarySeperateLoadingCacheCommandLineOverride)
+			{
+
+				TArray<TArray<FString>> FilesToMakeUnique;
+				FilesToMakeUnique.AddDefaulted(1);
+				FilesToMakeUnique[0].Add(DestFilePath);
+				FPlatformFileManager::Get().GetPlatformFile().MakeUniquePakFilesForTheseFiles(FilesToMakeUnique);
+			}
+
 			// Open library for async reads
 			LibraryAsyncFileHandle = FPlatformFileManager::Get().GetPlatformFile().OpenAsyncRead(*DestFilePath);
 
@@ -698,29 +718,6 @@ public:
 			TArray<uint8> UCode;
 			TArray<uint8>& UncompressedCode = FShaderLibraryHelperUncompressCode(Platform, Size, *Code, UCode);
 			Shader = RHICreateGeometryShader(UncompressedCode);
-			CheckShaderCreation(Shader.GetReference(), Hash);
-			if (bWasSync)
-			{
-				ReleaseShaderCode(Hash);
-			}
-		}
-		return Shader;
-	}
-
-	FGeometryShaderRHIRef CreateGeometryShaderWithStreamOutput(const FSHAHash& Hash, const FStreamOutElementList& ElementList, uint32 NumStrides, const uint32* Strides, int32 RasterizedStream) override final
-	{
-		FGeometryShaderRHIRef Shader;
-
-		int32 Size = 0;
-		bool bWasSync = false;
-		TArray<uint8>* Code = LookupShaderCode(Hash, Size, bWasSync);
-		if (Code)
-		{
-			TArray<uint8> UCode;
-			TArray<uint8>& UncompressedCode = FShaderLibraryHelperUncompressCode(Platform, Size, *Code, UCode);
-			PRAGMA_DISABLE_DEPRECATION_WARNINGS
-			Shader = RHICreateGeometryShaderWithStreamOutput(UncompressedCode, ElementList, NumStrides, Strides, RasterizedStream);
-			PRAGMA_ENABLE_DEPRECATION_WARNINGS
 			CheckShaderCreation(Shader.GetReference(), Hash);
 			if (bWasSync)
 			{
@@ -1811,28 +1808,6 @@ public:
 		return Result;
 	}
 
-	FGeometryShaderRHIRef CreateGeometryShaderWithStreamOutput(EShaderPlatform Platform, FSHAHash Hash, const FStreamOutElementList& ElementList, uint32 NumStrides, const uint32* Strides, int32 RasterizedStream)
-	{
-		checkSlow(Platform == GetRuntimeShaderPlatform());
-
-		FGeometryShaderRHIRef Result;
-		FRHIShaderLibrary* ShaderCodeArchive = FindShaderLibrary(Hash);
-		if (ShaderCodeArchive)
-		{
-			PRAGMA_DISABLE_DEPRECATION_WARNINGS
-			if (bNativeFormat || GRHILazyShaderCodeLoading)
-			{
-				Result = RHICreateGeometryShaderWithStreamOutput(ElementList, NumStrides, Strides, RasterizedStream, ShaderCodeArchive, Hash);
-			}
-			else
-			{
-				Result = ((FShaderCodeArchive*)ShaderCodeArchive)->CreateGeometryShaderWithStreamOutput(Hash, ElementList, NumStrides, Strides, RasterizedStream);
-			}
-			PRAGMA_ENABLE_DEPRECATION_WARNINGS
-		}
-		return Result;
-	}
-
 	FHullShaderRHIRef CreateHullShader(EShaderPlatform Platform, FSHAHash Hash)
 	{
 		checkSlow(Platform == GetRuntimeShaderPlatform());
@@ -1922,19 +1897,16 @@ public:
 	FRHIShaderLibrary* FindShaderLibrary(const FSHAHash& Hash)
 	{
 		FRWScopeLock(LibraryMutex, SLT_ReadOnly);
-		FRHIShaderLibrary* Result = nullptr;
 
 		// Search in library opened order
-		for (int32 i = 0; i < ShaderCodeArchiveStack.Num(); ++i)
+		for (FRHIShaderLibrary* ShaderCodeArchive : ShaderCodeArchiveStack)
 		{
-			FRHIShaderLibrary* ShaderCodeArchive = ShaderCodeArchiveStack[i];
 			if (ShaderCodeArchive->ContainsEntry(Hash))
 			{
-				Result = ShaderCodeArchive;
-				break;
+				return ShaderCodeArchive;
 			}
 		}
-		return Result;
+		return nullptr;
 	}
 
 	bool ContainsShaderCode(const FSHAHash& Hash)
@@ -2342,23 +2314,6 @@ FGeometryShaderRHIRef FShaderCodeLibrary::CreateGeometryShader(EShaderPlatform P
 	if (!IsValidRef(Shader))
 	{
 		Shader = RHICreateGeometryShader(Code);
-	}
-	SafeAssignHash(Shader, Hash);
-	return Shader;
-}
-
-FGeometryShaderRHIRef FShaderCodeLibrary::CreateGeometryShaderWithStreamOutput(EShaderPlatform Platform, FSHAHash Hash, const TArray<uint8>& Code, const FStreamOutElementList& ElementList, uint32 NumStrides, const uint32* Strides, int32 RasterizedStream)
-{
-	FGeometryShaderRHIRef Shader;
-	if (FShaderCodeLibraryImpl::Impl && FPlatformProperties::RequiresCookedData())
-	{
-		Shader = FShaderCodeLibraryImpl::Impl->CreateGeometryShaderWithStreamOutput(Platform, Hash, ElementList, NumStrides, Strides, RasterizedStream);
-	}
-	if (!IsValidRef(Shader))
-	{
-		PRAGMA_DISABLE_DEPRECATION_WARNINGS
-		Shader = RHICreateGeometryShaderWithStreamOutput(Code, ElementList, NumStrides, Strides, RasterizedStream);
-		PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	}
 	SafeAssignHash(Shader, Hash);
 	return Shader;

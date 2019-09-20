@@ -1319,58 +1319,13 @@ void FProjectedShadowInfo::SetupMeshDrawCommandsForProjectionStenciling(FSceneRe
 				}
 			}
 
-			ApplyViewOverridesToMeshDrawCommands(View, ProjectionStencilingPass.VisibleMeshDrawCommands);
+			ApplyViewOverridesToMeshDrawCommands(View, ProjectionStencilingPass.VisibleMeshDrawCommands, DynamicMeshDrawCommandStorage, GraphicsMinimalPipelineStateSet);
 
 			// If instanced stereo is enabled, we need to render each view of the stereo pair using the instanced stereo transform to avoid bias issues.
 			// TODO: Support instanced stereo properly in the projection stenciling pass.
 			const uint32 InstanceFactor = View.bIsInstancedStereoEnabled && !View.bIsMultiViewEnabled && View.StereoPass != eSSP_FULL ? 2 : 1;
 			SortAndMergeDynamicPassMeshDrawCommands(Renderer.FeatureLevel, ProjectionStencilingPass.VisibleMeshDrawCommands, DynamicMeshDrawCommandStorage, ProjectionStencilingPass.PrimitiveIdVertexBuffer, InstanceFactor);
 		}
-	}
-}
-
-void FProjectedShadowInfo::ApplyViewOverridesToMeshDrawCommands(const FViewInfo& View, FMeshCommandOneFrameArray& VisibleMeshDrawCommands)
-{
-	if (View.bReverseCulling || View.bRenderSceneTwoSided)
-	{
-		const FMeshCommandOneFrameArray& PassVisibleMeshDrawCommands = VisibleMeshDrawCommands;
-
-		FMeshCommandOneFrameArray ViewOverriddenMeshCommands;
-		ViewOverriddenMeshCommands.Empty(PassVisibleMeshDrawCommands.Num());
-
-		for (int32 MeshCommandIndex = 0; MeshCommandIndex < PassVisibleMeshDrawCommands.Num(); MeshCommandIndex++)
-		{
-			DynamicMeshDrawCommandStorage.MeshDrawCommands.Add(1);
-			FMeshDrawCommand& NewMeshCommand = DynamicMeshDrawCommandStorage.MeshDrawCommands[DynamicMeshDrawCommandStorage.MeshDrawCommands.Num() - 1];
-
-			const FVisibleMeshDrawCommand& VisibleMeshDrawCommand = PassVisibleMeshDrawCommands[MeshCommandIndex];
-			const FMeshDrawCommand& MeshCommand = *VisibleMeshDrawCommand.MeshDrawCommand;
-			NewMeshCommand = MeshCommand;
-
-			const ERasterizerCullMode LocalCullMode = View.bRenderSceneTwoSided ? CM_None : View.bReverseCulling ? FMeshPassProcessor::InverseCullMode(VisibleMeshDrawCommand.MeshCullMode) : VisibleMeshDrawCommand.MeshCullMode;
-
-			FGraphicsMinimalPipelineStateInitializer PipelineState = MeshCommand.CachedPipelineId.GetPipelineState(GraphicsMinimalPipelineStateSet);
-			PipelineState.RasterizerState = GetStaticRasterizerState<true>(VisibleMeshDrawCommand.MeshFillMode, LocalCullMode);
-
-			const FGraphicsMinimalPipelineStateId PipelineId = FGraphicsMinimalPipelineStateId::GetPipelineStateId(PipelineState, GraphicsMinimalPipelineStateSet);
-			NewMeshCommand.Finalize(PipelineId, nullptr);
-
-			FVisibleMeshDrawCommand NewVisibleMeshDrawCommand;
-
-			NewVisibleMeshDrawCommand.Setup(
-				&NewMeshCommand,
-				VisibleMeshDrawCommand.DrawPrimitiveId,
-				VisibleMeshDrawCommand.ScenePrimitiveId,
-				VisibleMeshDrawCommand.StateBucketId,
-				VisibleMeshDrawCommand.MeshFillMode,
-				VisibleMeshDrawCommand.MeshCullMode,
-				VisibleMeshDrawCommand.SortKey);
-
-			ViewOverriddenMeshCommands.Add(NewVisibleMeshDrawCommand);
-		}
-
-		// Replace VisibleMeshDrawCommands
-		FMemory::Memswap(&VisibleMeshDrawCommands, &ViewOverriddenMeshCommands, sizeof(ViewOverriddenMeshCommands));
 	}
 }
 
@@ -1900,11 +1855,11 @@ void FSceneRenderer::CreatePerObjectProjectedShadow(
 
 		// Calculate fading based on resolution
 		// Compute FadeAlpha before ShadowResolutionScale contribution (artists want to modify the softness of the shadow, not change the fade ranges)
-		const float ViewSpecificAlpha = CalculateShadowFadeAlpha( UnclampedResolution, ShadowFadeResolution, MinShadowResolution );
+		const float ViewSpecificAlpha = CalculateShadowFadeAlpha(UnclampedResolution, ShadowFadeResolution, MinShadowResolution) * LightSceneInfo->Proxy->GetShadowAmount();
 		MaxResolutionFadeAlpha = FMath::Max(MaxResolutionFadeAlpha, ViewSpecificAlpha);
 		ResolutionFadeAlphas.Add(ViewSpecificAlpha);
 
-		const float ViewSpecificPreShadowAlpha = CalculateShadowFadeAlpha(UnclampedResolution * CVarPreShadowResolutionFactor.GetValueOnRenderThread(), PreShadowFadeResolution, MinPreShadowResolution);
+		const float ViewSpecificPreShadowAlpha = CalculateShadowFadeAlpha(UnclampedResolution * CVarPreShadowResolutionFactor.GetValueOnRenderThread(), PreShadowFadeResolution, MinPreShadowResolution) * LightSceneInfo->Proxy->GetShadowAmount();
 		MaxResolutionPreShadowFadeAlpha = FMath::Max(MaxResolutionPreShadowFadeAlpha, ViewSpecificPreShadowAlpha);
 		ResolutionPreShadowFadeAlphas.Add(ViewSpecificPreShadowAlpha);
 
@@ -2011,7 +1966,7 @@ void FSceneRenderer::CreatePerObjectProjectedShadow(
 			}
 
 			if (bTranslucentRelevance
-				&& Scene->GetFeatureLevel() >= ERHIFeatureLevel::SM4
+				&& Scene->GetFeatureLevel() >= ERHIFeatureLevel::SM5
 				&& bCreateTranslucentObjectShadow 
 				&& (bTranslucentShadowIsVisibleThisFrame || bShadowIsPotentiallyVisibleNextFrame))
 			{
@@ -2057,7 +2012,7 @@ void FSceneRenderer::CreatePerObjectProjectedShadow(
 		if (MaxPreFadeAlpha > 1.0f / 256.0f 
 			&& bRenderPreShadow
 			&& bOpaqueRelevance
-			&& Scene->GetFeatureLevel() >= ERHIFeatureLevel::SM4)
+			&& Scene->GetFeatureLevel() >= ERHIFeatureLevel::SM5)
 		{
 			// Round down to the nearest power of two so that resolution changes are always doubling or halving the resolution, which increases filtering stability.
 			int32 PreshadowSizeX = 1 << (FMath::CeilLogTwo(FMath::TruncToInt(MaxDesiredResolution * CVarPreShadowResolutionFactor.GetValueOnRenderThread())) - 1);
@@ -2496,7 +2451,7 @@ void FSceneRenderer::CreateWholeSceneProjectedShadow(
 			}
 
 			// Compute FadeAlpha before ShadowResolutionScale contribution (artists want to modify the softness of the shadow, not change the fade ranges)
-			const float FadeAlpha = CalculateShadowFadeAlpha( UnclampedResolution, ShadowFadeResolution, MinShadowResolution );
+			const float FadeAlpha = CalculateShadowFadeAlpha( UnclampedResolution, ShadowFadeResolution, MinShadowResolution ) * LightSceneInfo->Proxy->GetShadowAmount();
 			MaxFadeAlpha = FMath::Max(MaxFadeAlpha, FadeAlpha);
 			FadeAlphas.Add(FadeAlpha);
 
@@ -3121,6 +3076,14 @@ struct FGatherShadowPrimitivesPacket
 					bScreenSpaceSizeCulled = FMath::Square(PrimitiveBounds.SphereRadius) < FMath::Square(MinScreenRadiusForShadowCaster) * DistanceSquared * ProjectedShadowInfo->DependentView->LODDistanceFactorSquared;
 				}
 
+				bool bCastsInsetShadows = PrimitiveProxy->CastsInsetShadow();
+				// If light attachment root is valid, we're in a group and need to get the flag from the root.
+				if (PrimitiveSceneInfo->LightingAttachmentRoot.IsValid())
+				{
+					FAttachmentGroupSceneInfo& AttachmentGroup = PrimitiveSceneInfo->Scene->AttachmentGroups.FindChecked(PrimitiveSceneInfo->LightingAttachmentRoot);
+					bCastsInsetShadows = AttachmentGroup.ParentSceneInfo && AttachmentGroup.ParentSceneInfo->Proxy->CastsInsetShadow();
+				}
+
 				if (!bScreenSpaceSizeCulled
 					&& ProjectedShadowInfo->GetLightSceneInfoCompact().AffectsPrimitive(PrimitiveBounds, PrimitiveProxy)
 					// Include all primitives for movable lights, but only statically shadowed primitives from a light with static shadowing,
@@ -3129,7 +3092,7 @@ struct FGatherShadowPrimitivesPacket
 					// Only render primitives into a reflective shadowmap that are supposed to affect indirect lighting
 					&& !(ProjectedShadowInfo->bReflectiveShadowmap && !PrimitiveProxy->AffectsDynamicIndirectLighting())
 					// Exclude primitives that will create their own per-object shadow, except when rendering RSMs
-					&& (!PrimitiveProxy->CastsInsetShadow() || ProjectedShadowInfo->bReflectiveShadowmap)
+					&& (!bCastsInsetShadows || ProjectedShadowInfo->bReflectiveShadowmap)
 					// Exclude primitives that will create a per-object shadow from a stationary light
 					&& !ShouldCreateObjectShadowForStationaryLight(&LightSceneInfo, PrimitiveProxy, true)
 					// Only render shadows from objects that use static lighting during a reflection capture, since the reflection capture doesn't update at runtime
@@ -3319,7 +3282,7 @@ void FSceneRenderer::GatherShadowPrimitives(
 static bool NeedsUnatlasedCSMDepthsWorkaround(ERHIFeatureLevel::Type FeatureLevel)
 {
 	// UE-42131: Excluding mobile from this, mobile renderer relies on the depth texture border.
-	return GRHINeedsUnatlasedCSMDepthsWorkaround && (FeatureLevel >= ERHIFeatureLevel::SM4);
+	return GRHINeedsUnatlasedCSMDepthsWorkaround && (FeatureLevel >= ERHIFeatureLevel::SM5);
 }
 
 void FSceneRenderer::AddViewDependentWholeSceneShadowsForView(
@@ -3335,19 +3298,20 @@ void FSceneRenderer::AddViewDependentWholeSceneShadowsForView(
 	{
 		FViewInfo& View = Views[ViewIndex];
 
+		const float LightShadowAmount = LightSceneInfo.Proxy->GetShadowAmount();
 		TArray<float, TInlineAllocator<2> > FadeAlphas;
 		FadeAlphas.Init(0.0f, Views.Num());
-		FadeAlphas[ViewIndex] = 1.0f;
+		FadeAlphas[ViewIndex] = LightShadowAmount;
 
-		if (View.StereoPass == eSSP_LEFT_EYE
+		if (IStereoRendering::IsAPrimaryView(View.StereoPass, GEngine->StereoRenderingDevice)
 			&& Views.IsValidIndex(ViewIndex + 1)
-			&& Views[ViewIndex + 1].StereoPass == eSSP_RIGHT_EYE)
+			&& IStereoRendering::IsASecondaryView(Views[ViewIndex + 1].StereoPass, GEngine->StereoRenderingDevice))
 		{
-			FadeAlphas[ViewIndex + 1] = 1.0f;
+			FadeAlphas[ViewIndex + 1] = LightShadowAmount;
 		}		
-
+		
 		// If rendering in stereo mode we render shadow depths only for the left eye, but project for both eyes!
-		if (View.StereoPass != eSSP_RIGHT_EYE)
+		if (IStereoRendering::IsAPrimaryView(View.StereoPass, GEngine->StereoRenderingDevice))
 		{
 			const bool bExtraDistanceFieldCascade = LightSceneInfo.Proxy->ShouldCreateRayTracedCascade(View.GetFeatureLevel(), LightSceneInfo.IsPrecomputedLightingValid(), View.MaxShadowCascades);
 
@@ -3523,7 +3487,7 @@ void FSceneRenderer::AllocateShadowDepthTargets(FRHICommandListImmediate& RHICmd
 				}
 			}
 
-			if (FeatureLevel < ERHIFeatureLevel::SM4 
+			if (FeatureLevel < ERHIFeatureLevel::SM5
 				// Mobile renderer only supports opaque per-object shadows or CSM
 				&& (!ProjectedShadowInfo->bPerObjectOpaqueShadow && !(ProjectedShadowInfo->bDirectionalLight && ProjectedShadowInfo->bWholeSceneShadow)))
 			{
@@ -3564,7 +3528,7 @@ void FSceneRenderer::AllocateShadowDepthTargets(FRHICommandListImmediate& RHICmd
 
 				bool bNeedsProjection = ProjectedShadowInfo->CacheMode != SDCM_StaticPrimitivesOnly
 					// Mobile rendering only projects opaque per object shadows.
-					&& (FeatureLevel >= ERHIFeatureLevel::SM4 || ProjectedShadowInfo->bPerObjectOpaqueShadow);
+					&& (FeatureLevel >= ERHIFeatureLevel::SM5 || ProjectedShadowInfo->bPerObjectOpaqueShadow);
 
 				if (bNeedsProjection)
 				{
@@ -3964,7 +3928,7 @@ void FSceneRenderer::AllocateRSMDepthTargets(FRHICommandListImmediate& RHICmdLis
 
 void FSceneRenderer::AllocateOnePassPointLightDepthTargets(FRHICommandListImmediate& RHICmdList, const TArray<FProjectedShadowInfo*, SceneRenderingAllocator>& WholeScenePointShadows)
 {
-	if (FeatureLevel >= ERHIFeatureLevel::SM4)
+	if (FeatureLevel >= ERHIFeatureLevel::SM5)
 	{
 		for (int32 ShadowIndex = 0; ShadowIndex < WholeScenePointShadows.Num(); ShadowIndex++)
 		{
@@ -4023,7 +3987,7 @@ TCHAR* const GetTranslucencyShadowTransmissionName(uint32 Id)
 
 void FSceneRenderer::AllocateTranslucentShadowDepthTargets(FRHICommandListImmediate& RHICmdList, TArray<FProjectedShadowInfo*, SceneRenderingAllocator>& TranslucentShadows)
 {
-	if (TranslucentShadows.Num() > 0 && FeatureLevel >= ERHIFeatureLevel::SM4)
+	if (TranslucentShadows.Num() > 0 && FeatureLevel >= ERHIFeatureLevel::SM5)
 	{
 		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 		const FIntPoint TranslucentShadowBufferResolution = SceneContext.GetTranslucentShadowDepthTextureResolution();
@@ -4102,9 +4066,10 @@ void FSceneRenderer::AllocateTranslucentShadowDepthTargets(FRHICommandListImmedi
 void FSceneRenderer::InitDynamicShadows(FRHICommandListImmediate& RHICmdList, FGlobalDynamicIndexBuffer& DynamicIndexBuffer, FGlobalDynamicVertexBuffer& DynamicVertexBuffer, FGlobalDynamicReadBuffer& DynamicReadBuffer)
 {
 	SCOPE_CYCLE_COUNTER(STAT_DynamicShadowSetupTime);
+	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(InitViews_Shadows);
 	SCOPED_NAMED_EVENT(FSceneRenderer_InitDynamicShadows, FColor::Magenta);
 
-	const bool bMobile = FeatureLevel < ERHIFeatureLevel::SM4;
+	const bool bMobile = FeatureLevel < ERHIFeatureLevel::SM5;
 
 	bool bStaticSceneOnly = false;
 
@@ -4122,7 +4087,6 @@ void FSceneRenderer::InitDynamicShadows(FRHICommandListImmediate& RHICmdList, FG
 	TArray<FProjectedShadowInfo*,SceneRenderingAllocator> ViewDependentWholeSceneShadows;
 	TArray<FProjectedShadowInfo*,SceneRenderingAllocator> ViewDependentWholeSceneShadowsThatNeedCulling;
 	{
-		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(InitViews_Shadows);
 		SCOPE_CYCLE_COUNTER(STAT_InitDynamicShadowsTime);
 
 		for (TSparseArray<FLightSceneInfoCompact>::TConstIterator LightIt(Scene->Lights); LightIt; ++LightIt)

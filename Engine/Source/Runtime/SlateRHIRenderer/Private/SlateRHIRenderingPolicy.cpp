@@ -30,6 +30,7 @@
 extern void UpdateNoiseTextureParameters(FViewUniformShaderParameters& ViewUniformShaderParameters);
 
 DECLARE_CYCLE_STAT(TEXT("Update Buffers RT"), STAT_SlateUpdateBufferRTTime, STATGROUP_Slate);
+DECLARE_CYCLE_STAT(TEXT("Update Buffers RT"), STAT_SlateUpdateBufferRTTimeLambda, STATGROUP_Slate);
 
 
 DECLARE_DWORD_COUNTER_STAT(TEXT("Num Layers"), STAT_SlateNumLayers, STATGROUP_Slate);
@@ -131,59 +132,6 @@ void FSlateRHIRenderingPolicy::EndDrawingWindows()
 	check( IsInParallelRenderingThread() );
 }
 
-struct FSlateUpdateVertexAndIndexBuffers final : public FRHICommand<FSlateUpdateVertexAndIndexBuffers>
-{
-	TSlateElementVertexBuffer<FSlateVertex>& VertexBuffer;
-	FSlateElementIndexBuffer& IndexBuffer;
-	FSlateBatchData& BatchData;
-	bool bAbsoluteIndices;
-
-	FSlateUpdateVertexAndIndexBuffers(TSlateElementVertexBuffer<FSlateVertex>& InVertexBuffer, FSlateElementIndexBuffer& InIndexBuffer, FSlateBatchData& InBatchData, bool bInAbsoluteIndices)
-		: VertexBuffer(InVertexBuffer)
-		, IndexBuffer(InIndexBuffer)
-		, BatchData(InBatchData)
-		, bAbsoluteIndices(bInAbsoluteIndices)
-	{
-		check(IsInRenderingThread());
-	}
-
-	void Execute(FRHICommandListBase& CmdList)
-	{
-		SCOPE_CYCLE_COUNTER(STAT_SlateUpdateBufferRTTime);
-
-		const bool bIsInRenderingThread = !IsRunningRHIInSeparateThread() || CmdList.Bypass();
-
-		const FSlateVertexArray& FinalVertexData = BatchData.GetFinalVertexData();
-		const FSlateIndexArray& FinalIndexData = BatchData.GetFinalIndexData();
-
-		const int32 NumBatchedVertices = FinalVertexData.Num();
-		const int32 NumBatchedIndices = FinalIndexData.Num();
-
-		//int32 RequiredVertexBufferSize = NumBatchedVertices*sizeof(FSlateVertex);
-		uint8* VertexBufferData = (uint8*)VertexBuffer.LockBuffer(NumBatchedVertices, bIsInRenderingThread);
-
-		//uint32 RequiredIndexBufferSize = NumBatchedIndices*sizeof(SlateIndex);		
-		uint8* IndexBufferData = (uint8*)IndexBuffer.LockBuffer(NumBatchedIndices, bIsInRenderingThread);
-
-		//Early out if we have an invalid buffer (might have lost context and now have invalid buffers)
-		if ((nullptr != VertexBufferData) && (nullptr != IndexBufferData))
-		{
-			FMemory::Memcpy(VertexBufferData, FinalVertexData.GetData(), FinalVertexData.Num() * sizeof(FSlateVertex));
-			FMemory::Memcpy(IndexBufferData, FinalIndexData.GetData(), FinalIndexData.Num() * sizeof(SlateIndex));
-		}
-
-		if (nullptr != VertexBufferData)
-		{
-			VertexBuffer.UnlockBuffer(bIsInRenderingThread);
-		}
-
-		if (nullptr != IndexBufferData)
-		{
-			IndexBuffer.UnlockBuffer(bIsInRenderingThread);
-		}
-	}
-};
-
 void FSlateRHIRenderingPolicy::BuildRenderingBuffers(FRHICommandListImmediate& RHICmdList, FSlateBatchData& InBatchData)
 {
 	SCOPE_CYCLE_COUNTER(STAT_SlateUpdateBufferRTTime);
@@ -208,16 +156,36 @@ void FSlateRHIRenderingPolicy::BuildRenderingBuffers(FRHICommandListImmediate& R
 		MasterVertexBuffer.PreFillBuffer(NumVertices, bShouldShrinkResources);
 		MasterIndexBuffer.PreFillBuffer(NumIndices, bShouldShrinkResources);
 
-		if (!IsRunningRHIInSeparateThread() || RHICmdList.Bypass())
+		RHICmdList.EnqueueLambda([
+			VertexBuffer = MasterVertexBuffer.VertexBufferRHI.GetReference(),
+			IndexBuffer = MasterIndexBuffer.IndexBufferRHI.GetReference(),
+			&InBatchData,
+			bAbsoluteIndices
+		](FRHICommandListImmediate& InRHICmdList)
 		{
-			FSlateUpdateVertexAndIndexBuffers UpdateBufferCommand(MasterVertexBuffer, MasterIndexBuffer, InBatchData, bAbsoluteIndices);
+			SCOPE_CYCLE_COUNTER(STAT_SlateUpdateBufferRTTimeLambda);
 
-			UpdateBufferCommand.Execute(RHICmdList);
-		}
-		else
-		{
-			ALLOC_COMMAND_CL(RHICmdList, FSlateUpdateVertexAndIndexBuffers)(MasterVertexBuffer, MasterIndexBuffer, InBatchData, bAbsoluteIndices);
-		}
+			// Note: Use "Lambda" prefix to prevent clang/gcc warnings of '-Wshadow' warning
+			const FSlateVertexArray& LambdaFinalVertexData = InBatchData.GetFinalVertexData();
+			const FSlateIndexArray& LambdaFinalIndexData = InBatchData.GetFinalIndexData();
+
+			const int32 NumBatchedVertices = LambdaFinalVertexData.Num();
+			const int32 NumBatchedIndices = LambdaFinalIndexData.Num();
+
+			uint32 RequiredVertexBufferSize = NumBatchedVertices * sizeof(FSlateVertex);
+			uint8* VertexBufferData = (uint8*)InRHICmdList.LockVertexBuffer(VertexBuffer, 0, RequiredVertexBufferSize, RLM_WriteOnly);
+
+			uint32 RequiredIndexBufferSize = NumBatchedIndices * sizeof(SlateIndex);
+			uint8* IndexBufferData = (uint8*)InRHICmdList.LockIndexBuffer(IndexBuffer, 0, RequiredIndexBufferSize, RLM_WriteOnly);
+
+			FMemory::Memcpy(VertexBufferData, LambdaFinalVertexData.GetData(), RequiredVertexBufferSize);
+			FMemory::Memcpy(IndexBufferData, LambdaFinalIndexData.GetData(), RequiredIndexBufferSize);
+
+			InRHICmdList.UnlockVertexBuffer(VertexBuffer);
+			InRHICmdList.UnlockIndexBuffer(IndexBuffer);
+		});
+
+		RHICmdList.RHIThreadFence(true);
 	}
 
 	checkSlow(MasterVertexBuffer.GetBufferUsageSize() <= MasterVertexBuffer.GetBufferSize());
@@ -340,12 +308,15 @@ static bool UpdateScissorRect(
 
 				const FSlateClippingZone& ScissorRect = ClipState.ScissorRect.GetValue();
 
-				const FVector2D TopLeft = ScissorRect.TopLeft + ViewTranslation2D;
-				const FVector2D BottomRight = ScissorRect.BottomRight + ViewTranslation2D;
+				const FIntPoint SizeXY = BackBuffer.GetSizeXY();
+				const FVector2D ViewSize((float) SizeXY.X, (float) SizeXY.Y);
 
+				// Clamp scissor rect to BackBuffer size
+				const FVector2D TopLeft     = FMath::Min(FMath::Max(ScissorRect.TopLeft     + ViewTranslation2D, FVector2D(0.0f, 0.0f)), ViewSize);
+				const FVector2D BottomRight = FMath::Min(FMath::Max(ScissorRect.BottomRight + ViewTranslation2D, FVector2D(0.0f, 0.0f)), ViewSize);
+				
 				if (bSwitchVerticalAxis)
 				{
-					const FIntPoint ViewSize = BackBuffer.GetSizeXY();
 					const int32 MinY = (ViewSize.Y - BottomRight.Y);
 					const int32 MaxY = (ViewSize.Y - TopLeft.Y);
 					RHICmdList.SetScissorRect(true, TopLeft.X, MinY, BottomRight.X, MaxY);
@@ -611,7 +582,9 @@ void FSlateRHIRenderingPolicy::DrawElements(
 	// Note that the final editor rendering won't compare 1:1 with 8/10 bit RGBA since blending
 	// of "manually" gammatized values is wrong as there is no de-gammatization of the destination buffer
 	// and re-gammatization of the resulting blending operation in the 8/10 bit RGBA path.
-	const float EngineGamma = (BackBuffer.GetRenderTargetTexture()->GetFormat() == PF_FloatRGBA) ? 1.0 : GEngine ? GEngine->GetDisplayGamma() : 2.2f;
+	// For Editor running in HDR then the gamma needs to be 2.2 and have a float back buffer format.
+
+	const float EngineGamma = ((BackBuffer.GetRenderTargetTexture()->GetFormat() == PF_FloatRGBA)&&(Params.bIsHDR==false)) ? 1.0 : GEngine ? GEngine->GetDisplayGamma() : 2.2f;
 	const float DisplayGamma = bGammaCorrect ? EngineGamma : 1.0f;
 	const float DisplayContrast = GSlateContrast;
 
@@ -1054,7 +1027,7 @@ void FSlateRHIRenderingPolicy::DrawElements(
 
 					const FMaterial* Material = MaterialRenderProxy->GetMaterial(ActiveSceneView.GetFeatureLevel());
 
-					FSlateMaterialShaderPS* PixelShader = GetMaterialPixelShader(Material, ShaderType, DrawEffects);
+					FSlateMaterialShaderPS* PixelShader = GetMaterialPixelShader(Material, ShaderType);
 
 					const bool bUseInstancing = RenderBatch.InstanceCount > 0 && RenderBatch.InstanceData != nullptr;
 					FSlateMaterialShaderVS* VertexShader = GetMaterialVertexShader(Material, bUseInstancing);
@@ -1112,6 +1085,8 @@ void FSlateRHIRenderingPolicy::DrawElements(
 								const float FinalGamma = EnumHasAnyFlags(DrawFlags, ESlateBatchDrawFlag::ReverseGamma) ? 1.0f / EngineGamma : EnumHasAnyFlags(DrawFlags, ESlateBatchDrawFlag::NoGamma) ? 1.0f : DisplayGamma;
 								const float FinalContrast = EnumHasAnyFlags(DrawFlags, ESlateBatchDrawFlag::NoGamma) ? 1 : DisplayContrast;
 								PixelShader->SetDisplayGammaAndContrast(RHICmdList, FinalGamma, FinalContrast);
+								const bool bDrawDisabled = EnumHasAllFlags(DrawEffects, ESlateDrawEffect::DisabledEffect);
+								PixelShader->SetDrawFlags(RHICmdList, bDrawDisabled);
 
 								if (MaskResource)
 								{
@@ -1131,8 +1106,7 @@ void FSlateRHIRenderingPolicy::DrawElements(
 
 								if (GRHISupportsInstancing)
 								{
-									FSlateUpdatableInstanceBuffer* InstanceBuffer = (FSlateUpdatableInstanceBuffer*)RenderBatch.InstanceData;
-									InstanceBuffer->BindStreamSource(RHICmdList, 1, RenderBatch.InstanceOffset);
+									RenderBatch.InstanceData->BindStreamSource(RHICmdList, 1, RenderBatch.InstanceOffset);
 
 									// for RHIs that can't handle VertexOffset, we need to offset the stream source each time
 									if (1 || (!GRHISupportsBaseVertexIndex && !bAbsoluteIndices))
@@ -1361,8 +1335,11 @@ FSlateElementPS* FSlateRHIRenderingPolicy::GetTexturePixelShader( TShaderMap<FGl
 				PixelShader = *TShaderMapRef<TSlateElementPS<ESlateShader::Border, true, false> >(ShaderMap);
 			}
 			break;
-		case ESlateShader::Font:
-			PixelShader = *TShaderMapRef<TSlateElementPS<ESlateShader::Font, true> >(ShaderMap);
+		case ESlateShader::GrayscaleFont:
+			PixelShader = *TShaderMapRef<TSlateElementPS<ESlateShader::GrayscaleFont, true> >(ShaderMap);
+			break;
+		case ESlateShader::ColorFont:
+			PixelShader = *TShaderMapRef<TSlateElementPS<ESlateShader::ColorFont, true> >(ShaderMap);
 			break;
 		case ESlateShader::LineSegment:
 			PixelShader = *TShaderMapRef<TSlateElementPS<ESlateShader::LineSegment, true> >(ShaderMap);
@@ -1394,8 +1371,11 @@ FSlateElementPS* FSlateRHIRenderingPolicy::GetTexturePixelShader( TShaderMap<FGl
 				PixelShader = *TShaderMapRef<TSlateElementPS<ESlateShader::Border, false, false> >(ShaderMap);
 			}
 			break;
-		case ESlateShader::Font:
-			PixelShader = *TShaderMapRef<TSlateElementPS<ESlateShader::Font, false> >(ShaderMap);
+		case ESlateShader::GrayscaleFont:
+			PixelShader = *TShaderMapRef<TSlateElementPS<ESlateShader::GrayscaleFont, false> >(ShaderMap);
+			break;
+		case ESlateShader::ColorFont:
+			PixelShader = *TShaderMapRef<TSlateElementPS<ESlateShader::ColorFont, false> >(ShaderMap);
 			break;
 		case ESlateShader::LineSegment:
 			PixelShader = *TShaderMapRef<TSlateElementPS<ESlateShader::LineSegment, false> >(ShaderMap);
@@ -1409,50 +1389,27 @@ FSlateElementPS* FSlateRHIRenderingPolicy::GetTexturePixelShader( TShaderMap<FGl
 	return PixelShader;
 }
 
-FSlateMaterialShaderPS* FSlateRHIRenderingPolicy::GetMaterialPixelShader( const FMaterial* Material, ESlateShader ShaderType, ESlateDrawEffect DrawEffects )
+FSlateMaterialShaderPS* FSlateRHIRenderingPolicy::GetMaterialPixelShader( const FMaterial* Material, ESlateShader ShaderType)
 {
 	const FMaterialShaderMap* MaterialShaderMap = Material->GetRenderingThreadShaderMap();
-
-	const bool bDrawDisabled = EnumHasAllFlags(DrawEffects, ESlateDrawEffect::DisabledEffect);
-	const bool bUseTextureAlpha = !EnumHasAllFlags(DrawEffects, ESlateDrawEffect::IgnoreTextureAlpha);
 
 	FShader* FoundShader = nullptr;
 	switch (ShaderType)
 	{
 	case ESlateShader::Default:
-		if (bDrawDisabled)
-		{
-			FoundShader = MaterialShaderMap->GetShader(&TSlateMaterialShaderPS<ESlateShader::Default, true>::StaticType);
-		}
-		else
-		{
-			FoundShader = MaterialShaderMap->GetShader(&TSlateMaterialShaderPS<ESlateShader::Default, false>::StaticType);
-		}
+		FoundShader = MaterialShaderMap->GetShader(&TSlateMaterialShaderPS<ESlateShader::Default>::StaticType);
 		break;
 	case ESlateShader::Border:
-		if (bDrawDisabled)
-		{
-			FoundShader = MaterialShaderMap->GetShader(&TSlateMaterialShaderPS<ESlateShader::Border, true>::StaticType);
-		}
-		else
-		{
-			FoundShader = MaterialShaderMap->GetShader(&TSlateMaterialShaderPS<ESlateShader::Border, false>::StaticType);
-		}
+		FoundShader = MaterialShaderMap->GetShader(&TSlateMaterialShaderPS<ESlateShader::Border>::StaticType);
 		break;
-	case ESlateShader::Font:
-		if(bDrawDisabled)
-		{
-			FoundShader = MaterialShaderMap->GetShader(&TSlateMaterialShaderPS<ESlateShader::Font, true>::StaticType);
-		}
-		else
-		{
-			FoundShader = MaterialShaderMap->GetShader(&TSlateMaterialShaderPS<ESlateShader::Font, false>::StaticType);
-		}
+	case ESlateShader::GrayscaleFont:
+		FoundShader = MaterialShaderMap->GetShader(&TSlateMaterialShaderPS<ESlateShader::GrayscaleFont>::StaticType);
+		break;
+	case ESlateShader::ColorFont:
+		FoundShader = MaterialShaderMap->GetShader(&TSlateMaterialShaderPS<ESlateShader::ColorFont>::StaticType);
 		break;
 	case ESlateShader::Custom:
-		{
-			FoundShader = MaterialShaderMap->GetShader(&TSlateMaterialShaderPS<ESlateShader::Custom, false>::StaticType);
-		}
+		FoundShader = MaterialShaderMap->GetShader(&TSlateMaterialShaderPS<ESlateShader::Custom>::StaticType);
 		break;
 	default:
 		checkf(false, TEXT("Unsupported Slate shader type for use with materials"));

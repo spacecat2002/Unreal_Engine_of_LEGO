@@ -16,7 +16,7 @@ namespace ERawImageFormat
 	/**
 	 * Enumerates supported raw image formats.
 	 */
-	enum Type
+	enum Type : uint8
 	{
 		G8,
 		BGRA8,
@@ -34,7 +34,7 @@ namespace ERawImageFormat
 struct FImage
 {
 	/** Raw image data. */
-	TArray<uint8> RawData;
+	TArray64<uint8> RawData;
 
 	/** Width of the image. */
 	int32 SizeX;

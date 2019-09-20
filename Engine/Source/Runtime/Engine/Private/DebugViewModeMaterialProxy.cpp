@@ -66,6 +66,9 @@ FDebugViewModeMaterialProxy::FDebugViewModeMaterialProxy(
 		FMaterialShaderMapId ResourceId;
 		Resource->GetShaderMapId(ShaderPlatform, ResourceId);
 
+		FStaticParameterSet StaticParamSet;
+		Resource->GetStaticParameterSet(ShaderPlatform, StaticParamSet);
+
 		{
 			TArray<FShaderType*> ShaderTypes;
 			TArray<FVertexFactoryType*> VFTypes;
@@ -79,7 +82,7 @@ FDebugViewModeMaterialProxy::FDebugViewModeMaterialProxy(
 
 		ResourceId.Usage = Usage;
 
-		CacheShaders(ResourceId, ShaderPlatform);
+		CacheShaders(ResourceId, StaticParamSet, ShaderPlatform);
 	}
 	else
 	{
@@ -118,6 +121,11 @@ bool FDebugViewModeMaterialProxy::GetScalarValue(const FMaterialParameterInfo& P
 bool FDebugViewModeMaterialProxy::GetTextureValue(const FMaterialParameterInfo& ParameterInfo,const UTexture** OutValue, const FMaterialRenderContext& Context) const
 {
 	return MaterialInterface->GetRenderProxy()->GetTextureValue(ParameterInfo,OutValue,Context);
+}
+
+bool FDebugViewModeMaterialProxy::GetTextureValue(const FMaterialParameterInfo& ParameterInfo, const URuntimeVirtualTexture** OutValue, const FMaterialRenderContext& Context) const
+{
+	return MaterialInterface->GetRenderProxy()->GetTextureValue(ParameterInfo, OutValue, Context);
 }
 
 EMaterialDomain FDebugViewModeMaterialProxy::GetMaterialDomain() const

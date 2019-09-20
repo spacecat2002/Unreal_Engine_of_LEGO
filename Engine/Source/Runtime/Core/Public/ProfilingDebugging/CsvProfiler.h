@@ -199,8 +199,6 @@ class FCsvProfiler
 	friend class FCsvProfilerProcessingThread;
 	friend class FCsvProfilerThreadData;
 	friend struct FCsvCategory;
-private:
-	static TUniquePtr<FCsvProfiler> Instance;		
 public:
 	FCsvProfiler();
 	~FCsvProfiler();
@@ -274,6 +272,12 @@ public:
 
 	CORE_API FString GetOutputFilename() const { return OutputFilename; }
 
+	DECLARE_MULTICAST_DELEGATE(FOnCSVProfileStart);
+	FOnCSVProfileStart& OnCSVProfileStart() { return OnCSVProfileStartDelegate; }
+
+	DECLARE_MULTICAST_DELEGATE(FOnCSVProfileEnd);
+	FOnCSVProfileEnd& OnCSVProfileEnd() { return OnCSVProfileEndDelegate; }
+	
 	DECLARE_MULTICAST_DELEGATE_OneParam(FOnCSVProfileFinished, const FString& /*Filename */);
 	FOnCSVProfileFinished& OnCSVProfileFinished() { return OnCSVProfileFinishedDelegate; }
 
@@ -312,6 +316,9 @@ private:
 
 	ECsvProfilerFlags CurrentFlags;
 
+	FOnCSVProfileStart OnCSVProfileStartDelegate;
+	FOnCSVProfileEnd OnCSVProfileEndDelegate;
+	
 	FOnCSVProfileFinished OnCSVProfileFinishedDelegate;
 };
 
@@ -408,10 +415,13 @@ public:
 
 	~FScopedCsvWaitConditional()
 	{
+		if (bCondition)
+		{
 #if CSV_EXCLUSIVE_TIMING_STATS_EMIT_NAMED_EVENTS
-		FPlatformMisc::EndNamedEvent();
+			FPlatformMisc::EndNamedEvent();
 #endif
-		FCsvProfiler::EndWait();
+			FCsvProfiler::EndWait();
+		}
 	}
 	bool bCondition;
 };
@@ -432,7 +442,7 @@ public:
 	const char * StatName;
 };
 
-struct FCsvCategory
+struct CORE_API FCsvCategory
 {
 	FCsvCategory() : Index(-1) {}
 	FCsvCategory(const TCHAR* CategoryString, bool bDefaultValue, bool bIsGlobal = false)

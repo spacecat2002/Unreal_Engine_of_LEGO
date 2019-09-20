@@ -27,7 +27,7 @@
 
 // Page protection to catch FNameEntry stomps
 #ifndef FNAME_WRITE_PROTECT_PAGES
-#define FNAME_WRITE_PROTECT_PAGES 1
+#define FNAME_WRITE_PROTECT_PAGES 0
 #endif
 
 DEFINE_LOG_CATEGORY_STATIC(LogUnrealNames, Log, All);
@@ -266,6 +266,14 @@ public:
 	FNameEntryAllocator()
 	{
 		Blocks[0] = (uint8*)FMemory::Malloc(BlockSizeBytes, FPlatformMemory::GetConstants().PageSize);
+	}
+
+	~FNameEntryAllocator()
+	{
+		for (uint32 Index = 0; Index <= CurrentBlock; ++Index)
+		{
+			FMemory::Free(Blocks[Index]);
+		}
 	}
 
 	/**
@@ -545,6 +553,16 @@ public:
 		Slots = (FNameSlot*)FMemory::Malloc(FNamePoolInitialSlotsPerShard * sizeof(FNameSlot), alignof(FNameSlot));
 		memset(Slots, 0, FNamePoolInitialSlotsPerShard * sizeof(FNameSlot));
 		CapacityMask = FNamePoolInitialSlotsPerShard - 1;
+	}
+
+	// This and ~FNamePool() is not called during normal shutdown
+	// but only via explicit FName::TearDown() call
+	~FNamePoolShardBase()
+	{
+		FMemory::Free(Slots);
+		UsedSlots = 0;
+		CapacityMask = 0;
+		Slots = nullptr;
 	}
 
 	uint32 Capacity() const { return CapacityMask + 1; }
@@ -1162,7 +1180,7 @@ int32 FNameEntry::GetSize(const TCHAR* Name)
 
 int32 FNameEntry::GetSize(int32 Length, bool bIsPureAnsi)
 {
-	int32 Bytes = GetDataOffset() + (Length + 1) * (bIsPureAnsi ? sizeof(ANSICHAR) : sizeof(TCHAR));
+	int32 Bytes = GetDataOffset() + Length * (bIsPureAnsi ? sizeof(ANSICHAR) : sizeof(WIDECHAR));
 	return Align(Bytes, alignof(FNameEntry));
 }
 
@@ -1293,6 +1311,17 @@ FString FName::NameToDisplayString( const FString& InDisplayName, const bool bIs
 		if( bLowerCase )
 		{
 			bInARun = false;
+		}
+
+		// We were running on uppercase letters before and still do, but the next character is a lowercase letter,
+		// so we should break the run here, like "3DWidget" should be "3D Widget"
+		if (bInARun && !bWasSpace && !bWasOpenParen && CharIndex < Chars.Num() - 1 && FChar::IsLower(Chars[CharIndex + 1]))
+		{
+			if (!bWasSpace && OutDisplayName.Len() > 0)
+			{
+				OutDisplayName += TEXT(' ');
+				bWasSpace = true;
+			}
 		}
 
 		// An underscore denotes a space, so replace it and continue the run
@@ -2114,6 +2143,8 @@ void FNameEntry::Write(FStructuredArchive::FSlot Slot) const
 	Slot << EntrySerialized;
 }
 
+static_assert(PLATFORM_LITTLE_ENDIAN, "FNameEntrySerialized serialization needs updating to support big-endian platforms!");
+
 FArchive& operator<<(FArchive& Ar, FNameEntrySerialized& E)
 {
 	if (Ar.IsLoading())
@@ -2153,12 +2184,15 @@ FArchive& operator<<(FArchive& Ar, FNameEntrySerialized& E)
 			// get the pointer to the wide array 
 			WIDECHAR* WideName = const_cast<WIDECHAR*>(E.GetWideName());
 
-			// read in the UCS2CHAR string and byteswap it, etc
+			// read in the UCS2CHAR string
 			auto Sink = StringMemoryPassthru<UCS2CHAR>(WideName, StringLen, StringLen);
 			Ar.Serialize(Sink.Get(), StringLen * sizeof(UCS2CHAR));
 			Sink.Apply();
 
-			INTEL_ORDER_TCHARARRAY(WideName)
+#if PLATFORM_TCHAR_IS_4_BYTES
+			// Inline combine any surrogate pairs in the data when loading into a UTF-32 string
+			StringLen = StringConv::InlineCombineSurrogates_Buffer(WideName, StringLen);
+#endif	// PLATFORM_TCHAR_IS_4_BYTES
 		}
 		else
 		{
@@ -2221,6 +2255,17 @@ void operator<<(FStructuredArchive::FSlot Slot, FNameEntrySerialized& E)
 	}
 }
 
+void FName::TearDown()
+{
+	check(IsInGameThread());
+
+	if (bNamePoolInitialized)
+	{
+		GetNamePoolPostInit().~FNamePool();
+		bNamePoolInitialized = false;
+	
+	}
+}
 
 #if !UE_BUILD_SHIPPING && !UE_BUILD_TEST
 

@@ -109,7 +109,8 @@ static const uint32 ValidGamepadKeyCodesList[] =
 	AKEYCODE_DPAD_UP,
 	AKEYCODE_DPAD_DOWN,
 	AKEYCODE_DPAD_LEFT,
-	AKEYCODE_DPAD_RIGHT
+	AKEYCODE_DPAD_RIGHT,
+	3002  // touchpad
 };
 
 // map of gamepad keycodes that should be passed forward
@@ -505,7 +506,7 @@ int32 AndroidMain(struct android_app* state)
 	BootTimingPoint("Tick loop starting");
 	DumpBootTiming();
 	// tick until done
-	while (!GIsRequestingExit)
+	while (!IsEngineExitRequested())
 	{
 		FAndroidStats::UpdateAndroidStats();
 
@@ -691,7 +692,7 @@ static void* AndroidEventThreadWorker( void* param )
 	GAndroidWindowLock.Lock();
 
 	//continue to process events until the engine is shutting down
-	while (!GIsRequestingExit)
+	while (!IsEngineExitRequested())
 	{
 //		FPlatformMisc::LowLevelOutputDebugString(TEXT("AndroidEventThreadWorker"));
 
@@ -1192,6 +1193,8 @@ static void SuspendApp_EventThread()
 		EMDoneTrigger->Trigger();
 	}));
 
+	FEmbeddedCommunication::WakeGameThread();
+
 	FPreLoadScreenManager::EnableRendering(false);
 
 	// wait for a period of time before blocking rendering
@@ -1446,7 +1449,9 @@ static void OnAppCommandCB(struct android_app* app, int32_t cmd)
 				FCoreDelegates::ApplicationWillTerminateDelegate.Broadcast();
 			}, TStatId(), NULL, ENamedThreads::GameThread);
 			FTaskGraphInterface::Get().WaitUntilTaskCompletes(WillTerminateTask);
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 			GIsRequestingExit = true; //destroy immediately. Game will shutdown.
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		}));
 
 

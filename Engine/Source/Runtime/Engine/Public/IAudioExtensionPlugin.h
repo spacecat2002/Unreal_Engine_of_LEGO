@@ -472,11 +472,42 @@ public:
 	TArray<USoundModulationPluginSourceSettingsBase*> Settings;
 };
 
+class ISoundModulatable
+{
+public:
+	virtual ~ISoundModulatable() = default;
+
+	/**
+	 * Returns the modulation settings of the sound
+	 */
+	virtual USoundModulationPluginSourceSettingsBase* FindModulationSettings() const = 0;
+
+	/**
+	 * Gets the object definition id of the given playing sound's instance
+	 */
+	virtual uint32 GetObjectId() const = 0;
+
+	/**
+	 * Returns number of actively instances of sound playing (including virtualized instances)
+	 */
+	virtual int32 GetPlayCount() const = 0;
+
+	/**
+	 * Returns whether or not sound is an editor preview sound
+	 */
+	virtual bool IsPreviewSound() const = 0;
+
+	/**
+	 * Stops sound.
+	 */
+	virtual void Stop() = 0;
+};
+
 /************************************************************************/
 /* IAudioModulationFactory                                              */
 /*                                                                      */
 /************************************************************************/
-class IAudioModulationFactory : public IAudioPluginFactory, public IModularFeature
+class IAudioModulationFactory : public IModularFeature
 {
 public:
 	/** Virtual destructor */
@@ -491,13 +522,7 @@ public:
 		return AudioExtFeatureName;
 	}
 
-	/* Begin IAudioPluginWithMetadata implementation */
-	virtual FString GetDisplayName() override
-	{
-		static FString DisplayName = FString(TEXT("Generic Audio Modulation Plugin"));
-		return DisplayName;
-	}
-	/* End IAudioPluginWithMetadata implementation */
+	virtual const FName& GetDisplayName() const = 0;
 
 	virtual TAudioModulationPtr CreateNewModulationPlugin(FAudioDevice* OwningDevice) = 0;
 
@@ -533,18 +558,24 @@ public:
 	/** Virtual destructor */
 	virtual ~IAudioModulation() { }
 
-	/** Initialize the modulation plugin with the same rate and number of sources. */
+	/** Initialize the modulation plugin with the same rate and number of sources */
 	virtual void Initialize(const FAudioPluginInitializationParams& InitializationParams) { }
 
-	/** Called when a source is assigned to a voice. */
-	virtual void OnInitSource(const uint32 SourceId, const FName& AudioComponentUserId, const uint32 NumChannels, USoundModulationPluginSourceSettingsBase* Settings) { }
+	/** Called when a USoundBase type begins playing a sound */
+	virtual void OnInitSound(ISoundModulatable& Sound, const USoundModulationPluginSourceSettingsBase& Settings) { }
 
-	/** Called when a source is done playing and is released. */
+	/** Called when a source is assigned to a voice */
+	virtual void OnInitSource(const uint32 SourceId, const FName& AudioComponentUserId, const uint32 NumChannels, const USoundModulationPluginSourceSettingsBase& Settings) { }
+
+	/** Called when a source is done playing and is released */
 	virtual void OnReleaseSource(const uint32 SourceId) { }
+
+	/** Called when a USoundBase type stops playing any sounds */
+	virtual void OnReleaseSound(ISoundModulatable& Sound) { }
 
 #if !UE_BUILD_SHIPPING
 	/** Request to post help from active plugin (non-shipping builds only) */
-	virtual bool OnPostHelp(FCommonViewportClient* ViewportClient, const TCHAR* Stream) { return false;  };
+	virtual bool OnPostHelp(FCommonViewportClient* ViewportClient, const TCHAR* Stream) { return false; };
 
 	/** Render stats pertaining to modulation (non-shipping builds only) */
 	virtual int32 OnRenderStat(FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const UFont& Font, const FVector* ViewLocation, const FRotator* ViewRotation) { return Y; }

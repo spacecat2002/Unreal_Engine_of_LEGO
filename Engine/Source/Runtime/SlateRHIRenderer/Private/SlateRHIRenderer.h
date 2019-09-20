@@ -20,7 +20,7 @@ class ISlateStyle;
 class SWindow;
 struct Rect;
 
-template<typename TCmd> struct FRHICommand;
+template<typename TCmd, typename NameType> struct FRHICommand;
 
 typedef TArray<FRenderThreadUpdateContext, TInlineAllocator<2>> FDeferredUpdateContextList;
 
@@ -98,6 +98,9 @@ struct FViewportInfo : public FRenderResource
 
 	IViewportRenderTargetProvider* RTProvider;
 	
+	/** Whether is in a HDR Color Space */
+	bool bHDREnabled;
+	
 	/** FRenderResource interface */
 	virtual void InitRHI() override;
 	virtual void ReleaseRHI() override;
@@ -115,7 +118,8 @@ struct FViewportInfo : public FRenderResource
 			bFullscreen(false),
 			PixelFormat(EPixelFormat::PF_Unknown),
 			SDRPixelFormat(EPixelFormat::PF_Unknown),
-			RTProvider(nullptr)
+			RTProvider(nullptr),
+			bHDREnabled(false)
 	{
 	}
 
@@ -144,6 +148,14 @@ struct FViewportInfo : public FRenderResource
 	}	
 };
 
+struct FFastPathRenderingDataCleanupList
+{
+	TArray<FSlateCachedFastPathRenderingData*, TInlineAllocator<20>> FastPathRenderingDataToRemove;
+
+	~FFastPathRenderingDataCleanupList();
+	void Cleanup();
+};
+
 /** A Slate rendering implementation for Unreal engine */
 class FSlateRHIRenderer : public FSlateRenderer
 {
@@ -165,6 +177,7 @@ public:
 	virtual void Destroy() override;
 	virtual FSlateDrawBuffer& GetDrawBuffer() override;
 	virtual void OnWindowDestroyed( const TSharedRef<SWindow>& InWindow ) override;
+	virtual void OnWindowFinishReshaped(const TSharedPtr<SWindow>& InWindow) override;
 	virtual void RequestResize( const TSharedPtr<SWindow>& Window, uint32 NewWidth, uint32 NewHeight ) override;
 	virtual void CreateViewport( const TSharedRef<SWindow> Window ) override;
 	virtual void UpdateFullscreenState( const TSharedRef<SWindow> Window, uint32 OverrideResX, uint32 OverrideResY ) override;
@@ -273,7 +286,9 @@ private:
 	/** Drawing policy */
 	TSharedPtr<FSlateRHIRenderingPolicy> RenderingPolicy;
 
-	TArray< TSharedPtr<FSlateDynamicImageBrush> > DynamicBrushesToRemove[NumDrawBuffers];
+	TArray<TSharedPtr<FSlateDynamicImageBrush>> DynamicBrushesToRemove[NumDrawBuffers];
+
+	FFastPathRenderingDataCleanupList* FastPathRenderingDataCleanupList;
 
 	FDeferredUpdateContextList DeferredUpdateContexts;
 
@@ -289,7 +304,11 @@ private:
 	uint32 ResourceVersion;
 };
 
-struct FSlateEndDrawingWindowsCommand final : public FRHICommand < FSlateEndDrawingWindowsCommand >
+struct FSlateEndDrawingWindowsCommandString
+{
+	static const TCHAR* TStr() { return TEXT("FSlateEndDrawingWindowsCommand"); }
+};
+struct FSlateEndDrawingWindowsCommand final : public FRHICommand < FSlateEndDrawingWindowsCommand, FSlateEndDrawingWindowsCommandString >
 {
 	FSlateRHIRenderingPolicy& Policy;
 	FSlateDrawBuffer* DrawBuffer;

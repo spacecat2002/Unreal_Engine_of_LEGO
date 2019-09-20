@@ -892,15 +892,9 @@ FReply SScrollBox::OnTouchEnded(const FGeometry& MyGeometry, const FPointerEvent
 
 	if ( HasMouseCaptureByUser(InTouchEvent.GetUserIndex(), InTouchEvent.GetPointerIndex()) )
 	{
-		AmountScrolledWhileRightMouseDown = 0;
-		PendingScrollTriggerAmount = 0;
-		bFingerOwningTouchInteraction.Reset();
-		bTouchPanningCapture = false;
-
 		ScrollBar->EndScrolling();
-
 		Invalidate(EInvalidateWidget::Layout);
-
+		
 		BeginInertialScrolling();
 
 		return FReply::Handled().ReleaseMouseCapture();
@@ -912,6 +906,11 @@ FReply SScrollBox::OnTouchEnded(const FGeometry& MyGeometry, const FPointerEvent
 void SScrollBox::OnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent)
 {
 	SCompoundWidget::OnMouseCaptureLost(CaptureLostEvent);
+	AmountScrolledWhileRightMouseDown = 0;
+	PendingScrollTriggerAmount = 0;
+	bFingerOwningTouchInteraction.Reset();
+	bTouchPanningCapture = false;
+
 }
 
 FNavigationReply SScrollBox::OnNavigation(const FGeometry& MyGeometry, const FNavigationEvent& InNavigationEvent)
@@ -999,7 +998,7 @@ FNavigationReply SScrollBox::OnNavigation(const FGeometry& MyGeometry, const FNa
 
 TSharedPtr<SWidget> SScrollBox::GetKeyboardFocusableWidget(TSharedPtr<SWidget> InWidget)
 {
-	if (InWidget->SupportsKeyboardFocus())
+	if (InWidget->SupportsKeyboardFocus() && EVisibility::DoesVisibilityPassFilter(InWidget->GetVisibility(), EVisibility::Visible))
 	{
 		return InWidget;
 	}
@@ -1010,7 +1009,7 @@ TSharedPtr<SWidget> SScrollBox::GetKeyboardFocusableWidget(TSharedPtr<SWidget> I
 		{
 			TSharedPtr<SWidget> ChildWidget = Children->GetChildAt(i);
 			TSharedPtr<SWidget> FoucusableWidget = GetKeyboardFocusableWidget(ChildWidget);
-			if (FoucusableWidget.IsValid())
+			if (FoucusableWidget.IsValid() && EVisibility::DoesVisibilityPassFilter(FoucusableWidget->GetVisibility(), EVisibility::Visible))
 			{
 				return FoucusableWidget;
 			}

@@ -95,6 +95,17 @@ struct ENGINE_API FCachedPoseIndices
 	}
 };
 
+/** Contains indices for any Asset Player nodes found for a specific Name Anim Graph (only and specifically harvested for Anim Graph Layers and Implemented Anim Layer Graphs) */
+USTRUCT()
+struct FGraphAssetPlayerInformation
+{
+	GENERATED_USTRUCT_BODY()
+
+	UPROPERTY()
+	TArray<int32> PlayerNodeIndices;
+};
+
+
 UINTERFACE()
 class ENGINE_API UAnimClassInterface : public UInterface
 {
@@ -110,11 +121,15 @@ public:
 	virtual const TArray<UStructProperty*>& GetAnimNodeProperties() const = 0;
 	virtual const TArray<UStructProperty*>& GetSubInstanceNodeProperties() const = 0;
 	virtual const TArray<UStructProperty*>& GetLayerNodeProperties() const = 0;
+	virtual const TArray<UStructProperty*>& GetPreUpdateNodeProperties() const = 0;
+	virtual const TArray<UStructProperty*>& GetDynamicResetNodeProperties() const = 0;
+	virtual const TArray<UStructProperty*>& GetStateMachineNodeProperties() const = 0;
+	virtual const TArray<UStructProperty*>& GetInitializationNodeProperties() const = 0;
 	virtual const TArray<FExposedValueHandler>& GetExposedValueHandlers() const = 0;
 	virtual const TArray<FName>& GetSyncGroupNames() const = 0;
 	virtual const TMap<FName, FCachedPoseIndices>& GetOrderedSavedPoseNodeIndicesMap() const = 0;
 	virtual const TArray<FAnimBlueprintFunction>& GetAnimBlueprintFunctions() const = 0;
-
+	virtual const TMap<FName, FGraphAssetPlayerInformation>& GetGraphAssetPlayerInformation() const = 0;
 	virtual USkeleton* GetTargetSkeleton() const = 0;
 
 	virtual int32 GetSyncGroupIndex(FName SyncGroupName) const = 0;

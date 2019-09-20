@@ -38,6 +38,7 @@ UnrealEngine.cpp: Implements the UEngine class and helpers.
 #include "Misc/TimeGuard.h"
 #include "Modules/ModuleManager.h"
 #include "UObject/UObjectIterator.h"
+#include "UObject/StrongObjectPtr.h"
 #include "UObject/Package.h"
 #include "UObject/MetaData.h"
 #include "UObject/ObjectMemoryAnalyzer.h"
@@ -655,16 +656,16 @@ void HDRSettingChangedSinkCallback()
 			}
 #endif
 		}
-
+		
 		if (bNewValuesSet)
 		{
-			static IConsoleVariable* CVarHDROutputDevice = IConsoleManager::Get().FindConsoleVariable(TEXT("r.HDR.Display.OutputDevice"));
-			static IConsoleVariable* CVarHDRColorGamut = IConsoleManager::Get().FindConsoleVariable(TEXT("r.HDR.Display.ColorGamut"));
-			check(CVarHDROutputDevice);
-			check(CVarHDRColorGamut);
-
-			CVarHDROutputDevice->Set(OutputDevice, ECVF_SetByDeviceProfile);
-			CVarHDRColorGamut->Set(ColorGamut, ECVF_SetByDeviceProfile);
+		static IConsoleVariable* CVarHDROutputDevice = IConsoleManager::Get().FindConsoleVariable(TEXT("r.HDR.Display.OutputDevice"));
+		static IConsoleVariable* CVarHDRColorGamut = IConsoleManager::Get().FindConsoleVariable(TEXT("r.HDR.Display.ColorGamut"));
+		check(CVarHDROutputDevice);
+		check(CVarHDRColorGamut);
+		
+		CVarHDROutputDevice->Set(OutputDevice, ECVF_SetByDeviceProfile);
+		CVarHDRColorGamut->Set(ColorGamut, ECVF_SetByDeviceProfile);
 		}
 		
 		// Now set the HDR setting.
@@ -1046,7 +1047,13 @@ void FWorldContext::SetCurrentWorld(UWorld* World)
 		}
 	}
 
+	UWorld* OldWorld = ThisCurrentWorld;
 	ThisCurrentWorld = World;
+
+	if (OwningGameInstance)
+	{
+		OwningGameInstance->OnWorldChanged(OldWorld, ThisCurrentWorld);
+	}
 }
 
 void FWorldContext::AddReferencedObjects(FReferenceCollector& Collector, const UObject* ReferencingObject)
@@ -1097,7 +1104,7 @@ Engine init and exit.
 /** Callback from OS when we get a low memory warning.
 * Note: might not be called from the game thread
 */
-void EngineMemoryWarningHandler(const FGenericMemoryWarningContext& GenericContext)
+static void EngineMemoryWarningHandler(const FGenericMemoryWarningContext& GenericContext)
 {
 	FPlatformMemoryStats Stats = FPlatformMemory::GetStats();
 
@@ -1389,14 +1396,17 @@ void UEngine::Init(IEngineLoop* InEngineLoop)
 #endif
 
 	// Set the memory warning handler
-	FPlatformMisc::SetMemoryWarningHandler(EngineMemoryWarningHandler);
+	if (!FPlatformMisc::HasMemoryWarningHandler())
+	{
+		FPlatformMisc::SetMemoryWarningHandler(EngineMemoryWarningHandler);
+	}
 
 	EngineLoop = InEngineLoop;
 
 	// Subsystems.
 	FURL::StaticInit();
 	FLinkerLoad::StaticInit(UTexture2D::StaticClass());
-	EngineSubsystemCollection.Initialize();
+	EngineSubsystemCollection.Initialize(this);
 
 #if !UE_BUILD_SHIPPING
 	// Check for overrides to the default map on the command line
@@ -1491,11 +1501,6 @@ void UEngine::Init(IEngineLoop* InEngineLoop)
 
 	// Initialize the audio device after a world context is setup
 	InitializeAudioDeviceManager();
-
-	if ( IsConsoleBuild() )
-	{
-		bUseConsoleInput = true;
-	}
 
 	// Make sure networking checksum has access to project version
 	const UGeneralProjectSettings& ProjectSettings = *GetDefault<UGeneralProjectSettings>();
@@ -2475,27 +2480,64 @@ void UEngine::InitializeObjectReferences()
 	// set the font object pointers, unless on server
 	if (!IsRunningDedicatedServer())
 	{
-		auto ConditionalLoadEngineFont = [](UFont*& FontPtr, const FString& FontName)
+		auto CreateFontObjectFromDefaultFont = [](const FName InObjectName, const FName InLegacyFontName, const int32 InLegacyFontSize) -> UFont*
 		{
-			if (!FontPtr && FontName.Len() > 0)
+			UFont* FontPtr = NewObject<UFont>(GetTransientPackage(), InObjectName, RF_Transient);
+			FontPtr->FontCacheType = EFontCacheType::Runtime;
+			FontPtr->LegacyFontName = InLegacyFontName;
+			FontPtr->LegacyFontSize = InLegacyFontSize;
+			FontPtr->CompositeFont = *FCoreStyle::GetDefaultFont();
+			return FontPtr;
+		};
+
+		TStrongObjectPtr<UFont> DefaultTinyFont;
+		auto GetDefaultTinyFont = [&DefaultTinyFont, &CreateFontObjectFromDefaultFont]() -> UFont*
+		{
+			if (!DefaultTinyFont)
 			{
-				FontPtr = LoadObject<UFont>(nullptr, *FontName, nullptr, LOAD_None, nullptr);
+				DefaultTinyFont.Reset(CreateFontObjectFromDefaultFont(FName("DefaultTinyFont"), FName("Light"), 8));
+			}
+			return DefaultTinyFont.Get();
+		};
+
+		TStrongObjectPtr<UFont> DefaultRegularFont;
+		auto GetDefaultRegularFont = [&DefaultRegularFont, &CreateFontObjectFromDefaultFont]() -> UFont*
+		{
+			if (!DefaultRegularFont)
+			{
+				DefaultRegularFont.Reset(CreateFontObjectFromDefaultFont(FName("DefaultRegularFont"), FName("Regular"), 10));
+			}
+			return DefaultRegularFont.Get();
+		};
+
+		auto ConditionalLoadEngineFont = [](UFont*& FontPtr, const FString& FontName, TFunctionRef<UFont*()> FallbackFontFactory)
+		{
+			if (!FontPtr)
+			{
+				if (FontName.Len() > 0)
+				{
+					FontPtr = LoadObject<UFont>(nullptr, *FontName, nullptr, LOAD_None, nullptr);
+				}
+				if (!FontPtr)
+				{
+					FontPtr = FallbackFontFactory();
+				}
 			}
 		};
 
 		// Standard fonts.
-		ConditionalLoadEngineFont(TinyFont, TinyFontName.ToString());
-		ConditionalLoadEngineFont(SmallFont, SmallFontName.ToString());
-		ConditionalLoadEngineFont(MediumFont, MediumFontName.ToString());
-		ConditionalLoadEngineFont(LargeFont, LargeFontName.ToString());
-		ConditionalLoadEngineFont(SubtitleFont, SubtitleFontName.ToString());
+		ConditionalLoadEngineFont(TinyFont, TinyFontName.ToString(), GetDefaultTinyFont);
+		ConditionalLoadEngineFont(SmallFont, SmallFontName.ToString(), GetDefaultRegularFont);
+		ConditionalLoadEngineFont(MediumFont, MediumFontName.ToString(), GetDefaultRegularFont);
+		ConditionalLoadEngineFont(LargeFont, LargeFontName.ToString(), GetDefaultRegularFont);
+		ConditionalLoadEngineFont(SubtitleFont, SubtitleFontName.ToString(), GetDefaultRegularFont);
 
 		// Additional fonts.
 		AdditionalFonts.Empty(AdditionalFontNames.Num());
 		for (const FString& FontName : AdditionalFontNames)
 		{
 			UFont* NewFont = nullptr;
-			ConditionalLoadEngineFont(NewFont, FontName);
+			ConditionalLoadEngineFont(NewFont, FontName, GetDefaultRegularFont);
 			AdditionalFonts.Add(NewFont);
 		}
 	}
@@ -3209,7 +3251,7 @@ void UEngine::SwapControllerId(ULocalPlayer *NewPlayer, const int32 CurrentContr
 			// This is the world context that NewPlayer belongs to, see if anyone is using his CurrentControllerId
 			for (ULocalPlayer* LocalPlayer : LocalPlayers)
 			{
-				if(LocalPlayer && LocalPlayer->GetControllerId() == NewControllerID)
+				if (LocalPlayer && LocalPlayer != NewPlayer && LocalPlayer->GetControllerId() == NewControllerID)
 				{
 					LocalPlayer->SetControllerId( CurrentControllerId);
 					return;
@@ -4175,7 +4217,7 @@ bool UEngine::HandleFlushLogCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 bool UEngine::HandleGameVerCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 {
 	FString VersionString = FString::Printf( TEXT( "GameVersion Branch: %s, Configuration: %s, Build: %s, CommandLine: %s" ),
-		*FApp::GetBranchName(), EBuildConfigurations::ToString( FApp::GetBuildConfiguration() ), FApp::GetBuildVersion(), FCommandLine::Get() );
+		*FApp::GetBranchName(), LexToString( FApp::GetBuildConfiguration() ), FApp::GetBuildVersion(), FCommandLine::Get() );
 
 	Ar.Logf( TEXT("%s"), *VersionString );
 	FPlatformApplicationMisc::ClipboardCopy( *VersionString );
@@ -8775,7 +8817,7 @@ void UEngine::SetMaxFPS(const float MaxFPS)
 void UEngine::EnableScreenSaver( bool bEnable )
 {
 #if PLATFORM_DESKTOP
-	if (GIsRequestingExit)
+	if (IsEngineExitRequested())
 	{
 		return;
 	}
@@ -8868,29 +8910,6 @@ FGuid UEngine::GetPackageGuid(FName PackageName, bool bForPIE)
 	}
 
 	return Result;
-}
-
-/** 
-* Returns whether we are running on a console platform or on the PC.
-*
-* @return true if we're on a console, false if we're running on a PC
-*/
-bool UEngine::IsConsoleBuild(EConsoleType ConsoleType) const
-{
-	switch (ConsoleType)
-	{
-	case EConsoleType::Any:
-#if !PLATFORM_DESKTOP
-		return true;
-#else
-		return false;
-#endif
-	case EConsoleType::Mobile:
-		return false;
-	default:
-		UE_LOG(LogEngine, Warning, TEXT("Unknown ConsoleType passed to IsConsoleBuild()"));
-		return false;
-	}
 }
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
@@ -9010,7 +9029,7 @@ bool UEngine::FErrorsAndWarningsCollector::Tick(float Seconds)
 		// Remove any dupes and count them
 		do 
 		{
-			uint32 ThisHash = FCrc::StrCrc32(*BufferedLines[DupeCount].Data);
+			uint32 ThisHash = FCrc::StrCrc32(BufferedLines[DupeCount].Data);
 
 			if (CurrentHash && ThisHash != CurrentHash)
 			{
@@ -9143,7 +9162,7 @@ void UEngine::LogPerformanceCapture(UWorld* World, const FString& MapName, const
 
 		FAutomationPerformanceSnapshot PerfSnapshot;
 		PerfSnapshot.Changelist = FString::FromInt(ChangeList);
-		PerfSnapshot.BuildConfiguration = EBuildConfigurations::ToString(FApp::GetBuildConfiguration());
+		PerfSnapshot.BuildConfiguration = LexToString(FApp::GetBuildConfiguration());
 		PerfSnapshot.MapName = MapName;
 		PerfSnapshot.MatineeName = MatineeName;
 		PerfSnapshot.AverageFPS = FString::Printf(TEXT("%0.2f"), GAverageFPS);
@@ -14980,7 +14999,7 @@ static void TickAssetLoadTest(bool bInfinite = false)
 	static FRandomStream RNG(FPlatformTime::Cycles());
 	static int32 RequestsOutstanding = 0;
 	static int32 NumProcessed = 0;
-	if (!GIsRequestingExit)
+	if (!IsEngineExitRequested())
 	{
 		if (RequestsOutstanding < 100)
 		{
@@ -15472,7 +15491,7 @@ static void PakFileTest(const TArray<FString>& Args)
 
 				delete IORequestHandle;
 			}
-			if (!GIsRequestingExit)
+			if (!IsEngineExitRequested())
 			{
 				switch (RNG.RandRange(0, 2))
 				{

@@ -172,7 +172,16 @@ BufferType* FD3D12Adapter::CreateRHIBuffer(FRHICommandListImmediate* RHICmdList,
 
 			// Get an upload heap and initialize data
 			FD3D12ResourceLocation SrcResourceLoc(BufferOut->GetParentDevice());
-			void* pData = SrcResourceLoc.GetParentDevice()->GetDefaultFastAllocator().Allocate<FD3D12ScopeLock>(Size, 4UL, &SrcResourceLoc, bOnAsyncThread);
+			void* pData;
+			if (bOnAsyncThread)
+			{
+				const uint32 GPUIdx = SrcResourceLoc.GetParentDevice()->GetGPUIndex();
+				pData = GetUploadHeapAllocator(GPUIdx).AllocUploadResource(Size, 4u, SrcResourceLoc);
+			}
+			else
+			{
+				pData = SrcResourceLoc.GetParentDevice()->GetDefaultFastAllocator().Allocate(Size, 4UL, &SrcResourceLoc);
+			}
 			check(pData);
 			FMemory::Memcpy(pData, CreateInfo.ResourceArray->GetResourceData(), Size);
 
@@ -291,7 +300,7 @@ void* FD3D12DynamicRHI::LockBuffer(FRHICommandListImmediate* RHICmdList, BufferT
 
 	if (bIsDynamic)
 	{
-		check(LockMode == RLM_WriteOnly);
+		check(LockMode == RLM_WriteOnly || LockMode == RLM_WriteOnly_NoOverwrite);
 
 		if (LockedData.bHasNeverBeenLocked)
 		{
@@ -304,7 +313,7 @@ void* FD3D12DynamicRHI::LockBuffer(FRHICommandListImmediate* RHICmdList, BufferT
 			FD3D12Device* Device = Buffer->GetParentDevice();
 
 			// If on the RenderThread, queue up a command on the RHIThread to rename this buffer at the correct time
-			if (ShouldDeferBufferLockOperation(RHICmdList))
+			if (ShouldDeferBufferLockOperation(RHICmdList) && LockMode == RLM_WriteOnly)
 			{
 				FRHICommandRenameUploadBuffer<BufferType>* Command = ALLOC_COMMAND_CL(*RHICmdList, FRHICommandRenameUploadBuffer<BufferType>)(Buffer, Device);
 
@@ -382,7 +391,7 @@ void* FD3D12DynamicRHI::LockBuffer(FRHICommandListImmediate* RHICmdList, BufferT
 		else
 		{
 			// If the static buffer is being locked for writing, allocate memory for the contents to be written to.
-			Data = Device->GetDefaultFastAllocator().Allocate<FD3D12ScopeLock>(Size, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT, &LockedData.ResourceLocation);
+			Data = Device->GetDefaultFastAllocator().Allocate(Size, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT, &LockedData.ResourceLocation);
 		}
 	}
 

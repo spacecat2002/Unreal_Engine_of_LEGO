@@ -198,6 +198,11 @@ USkeletalMeshComponent::USkeletalMeshComponent(const FObjectInitializer& ObjectI
 
 #endif//#if WITH_APEX_CLOTHING
 
+	MassMode = EClothMassMode::Density;
+	UniformMass = 1.f;
+	TotalMass = 100.0f;
+	Density = 0.1f;
+	MinPerParticleMass = 0.0001f;
 	EdgeStiffness = 1.f;
 	BendingStiffness = 1.f;
 	AreaStiffness = 1.f;
@@ -644,7 +649,13 @@ void USkeletalMeshComponent::InitAnim(bool bForceReinit)
 		// this has to be called before Initialize Animation because it will required RequiredBones list when InitializeAnimScript
 		RecalcRequiredBones(PredictedLODLevel);
 
-		const bool bInitializedAnimInstance = InitializeAnimScriptInstance(bForceReinit);
+		// In Editor, animations won't get ticked. So Update once to get accurate representation instead of T-Pose.
+		// Also allow this to be an option to support pre-4.19 games that might need it..
+		const bool bTickAnimationNow =
+			((GetWorld()->WorldType == EWorldType::Editor) && !bUseRefPoseOnInitAnim)
+			|| UAnimationSettings::Get()->bTickAnimationOnSkeletalMeshInit;
+
+		const bool bInitializedAnimInstance = InitializeAnimScriptInstance(bForceReinit, !bTickAnimationNow);
 
 		// Make sure we have a valid pose.
 		// We don't allocate transform data when using MasterPoseComponent, so we have nothing to render.
@@ -652,12 +663,6 @@ void USkeletalMeshComponent::InitAnim(bool bForceReinit)
 		{	
 			if (bInitializedAnimInstance || (AnimScriptInstance == nullptr))
 			{ 
-				// In Editor, animations won't get ticked. So Update once to get accurate representation instead of T-Pose.
-				// Also allow this to be an option to support pre-4.19 games that might need it..
-				const bool bTickAnimationNow =
-					((GetWorld()->WorldType == EWorldType::Editor) && !bUseRefPoseOnInitAnim)
-					|| UAnimationSettings::Get()->bTickAnimationOnSkeletalMeshInit;
-
 				if (bTickAnimationNow)
 				{
 					TickAnimation(0.f, false);
@@ -685,7 +690,7 @@ void USkeletalMeshComponent::InitAnim(bool bForceReinit)
 	}
 }
 
-bool USkeletalMeshComponent::InitializeAnimScriptInstance(bool bForceReinit)
+bool USkeletalMeshComponent::InitializeAnimScriptInstance(bool bForceReinit, bool bInDeferRootNodeInitialization)
 {
 	bool bInitializedMainInstance = false;
 	bool bInitializedPostInstance = false;
@@ -704,7 +709,7 @@ bool USkeletalMeshComponent::InitializeAnimScriptInstance(bool bForceReinit)
 				// If we have any sub-instances left we need to clear them out now, we're about to have a new master instance
 				SubInstances.Empty();
 
-				AnimScriptInstance->InitializeAnimation();
+				AnimScriptInstance->InitializeAnimation(bInDeferRootNodeInitialization);
 				bInitializedMainInstance = true;
 			}
 		}
@@ -725,7 +730,7 @@ bool USkeletalMeshComponent::InitializeAnimScriptInstance(bool bForceReinit)
 
 				if (AnimScriptInstance)
 				{
-					AnimScriptInstance->InitializeAnimation();
+					AnimScriptInstance->InitializeAnimation(bInDeferRootNodeInitialization);
 					bInitializedMainInstance = true;
 				}
 
@@ -779,7 +784,7 @@ bool USkeletalMeshComponent::InitializeAnimScriptInstance(bool bForceReinit)
 
 		if (AnimScriptInstance && !bInitializedMainInstance && bForceReinit)
 		{
-			AnimScriptInstance->InitializeAnimation();
+			AnimScriptInstance->InitializeAnimation(bInDeferRootNodeInitialization);
 			bInitializedMainInstance = true;
 		}
 
@@ -2520,11 +2525,12 @@ FBoxSphereBounds USkeletalMeshComponent::CalcBounds(const FTransform& LocalToWor
 		if (bIncludeComponentLocationIntoBounds)
 		{
 			const FVector ComponentLocation = GetComponentLocation();
-			return CachedLocalBounds.TransformBy(LocalToWorld) + FBoxSphereBounds(ComponentLocation, FVector(1.0f), 1.0f);
+			return CachedWorldSpaceBounds.TransformBy(CachedWorldToLocalTransform * LocalToWorld.ToMatrixWithScale()) 
+			        + FBoxSphereBounds(ComponentLocation, FVector(1.0f), 1.0f);
 		}
 		else
 		{
-			return CachedLocalBounds.TransformBy(LocalToWorld);
+			return CachedWorldSpaceBounds.TransformBy(CachedWorldToLocalTransform * LocalToWorld.ToMatrixWithScale());
 		}
 	}
 	// Calculate new bounds
@@ -2560,7 +2566,8 @@ FBoxSphereBounds USkeletalMeshComponent::CalcBounds(const FTransform& LocalToWor
 #endif// #if WITH_APEX_CLOTHING
 
 		bCachedLocalBoundsUpToDate = true;
-		CachedLocalBounds = NewBounds.TransformBy(LocalToWorld.ToInverseMatrixWithScale());
+		CachedWorldSpaceBounds = NewBounds;
+		CachedWorldToLocalTransform = LocalToWorld.ToInverseMatrixWithScale();
 
 		return NewBounds;
 	}
@@ -2754,6 +2761,14 @@ void USkeletalMeshComponent::GetSubInstancesByTag(FName InTag, TArray<UAnimInsta
 	}
 }
 
+void USkeletalMeshComponent::SetSubInstanceClassByTag(FName InTag, TSubclassOf<UAnimInstance> InClass)
+{
+	if(AnimScriptInstance)
+	{
+		AnimScriptInstance->SetSubInstanceClassByTag(InTag, InClass);
+	}
+}
+
 void USkeletalMeshComponent::SetLayerOverlay(TSubclassOf<UAnimInstance> InClass)
 {
 	if(AnimScriptInstance)
@@ -2762,11 +2777,28 @@ void USkeletalMeshComponent::SetLayerOverlay(TSubclassOf<UAnimInstance> InClass)
 	}
 }
 
+void USkeletalMeshComponent::ClearLayerOverlay(TSubclassOf<UAnimInstance> InClass)
+{
+	if(AnimScriptInstance)
+	{
+		AnimScriptInstance->ClearLayerOverlay(InClass);
+	}
+}
+
 UAnimInstance* USkeletalMeshComponent::GetLayerSubInstanceByGroup(FName InGroup) const
 {
 	if(AnimScriptInstance)
 	{
 		return AnimScriptInstance->GetLayerSubInstanceByGroup(InGroup);
+	}
+	return nullptr;
+}
+
+UAnimInstance* USkeletalMeshComponent::GetLayerSubInstanceByClass(TSubclassOf<UAnimInstance> InClass) const
+{
+	if(AnimScriptInstance)
+	{
+		return AnimScriptInstance->GetLayerSubInstanceByClass(InClass);
 	}
 	return nullptr;
 }

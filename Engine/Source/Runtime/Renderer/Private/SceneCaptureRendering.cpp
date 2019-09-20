@@ -76,7 +76,7 @@ public:
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters) 
 	{ 
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM4);
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
@@ -461,7 +461,9 @@ static void UpdateSceneCaptureContent_RenderThread(
 		default:
 			checkNoEntry();
 			break;
-		}
+	}
+	// Unbind everything in case FX has to read.
+	UnbindRenderTargets(RHICmdList);
 }
 
 void BuildProjectionMatrix(FIntPoint RenderTargetSize, ECameraProjectionMode::Type ProjectionType, float FOV, float InOrthoWidth, float InNearClippingPlane, FMatrix& ProjectionMatrix)
@@ -562,6 +564,8 @@ void SetupViewVamilyForSceneCapture(
 		View->bIsSceneCapture = true;
 		// Note: this has to be set before EndFinalPostprocessSettings
 		View->bIsPlanarReflection = bIsPlanarReflection;
+        // Needs to be reconfigured now that bIsPlanarReflection has changed.
+		View->SetupAntiAliasingMethod();
 
 		check(SceneCaptureComponent);
 		for (auto It = SceneCaptureComponent->HiddenComponents.CreateConstIterator(); It; ++It)

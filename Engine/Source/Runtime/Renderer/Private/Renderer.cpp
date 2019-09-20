@@ -45,6 +45,11 @@ IMPLEMENT_MODULE(FRendererModule, Renderer);
 	FSystemSettings* GSystemSettingsForVisualizers = &GSystemSettings;
 #endif
 
+static int32 bFlushRenderTargetsOnWorldCleanup = 1;
+FAutoConsoleVariableRef CVarFlushRenderTargetsOnWorldCleanup(TEXT("r.bFlushRenderTargetsOnWorldCleanup"), bFlushRenderTargetsOnWorldCleanup, TEXT(""));
+
+
+
 void FRendererModule::StartupModule()
 {
 	GScreenSpaceDenoiser = IScreenSpaceDenoiser::GetDefaultDenoiser();
@@ -64,6 +69,18 @@ void FRendererModule::ReallocateSceneRenderTargets()
 {
 	FLightPrimitiveInteraction::InitializeMemoryPool();
 	FSceneRenderTargets::GetGlobalUnsafe().UpdateRHI();
+}
+
+void FRendererModule::OnWorldCleanup(UWorld* World, bool bSessionEnded, bool bCleanupResources)
+{
+	if (bFlushRenderTargetsOnWorldCleanup > 0)
+	{
+		ENQUEUE_RENDER_COMMAND(OnWorldCleanup)(
+			[](FRHICommandListImmediate& RHICmdList)
+		{
+			GRenderTargetPool.FreeUnusedResources();
+		});
+	}
 }
 
 void FRendererModule::SceneRenderTargetsSetBufferSize(uint32 SizeX, uint32 SizeY)
@@ -89,7 +106,7 @@ void FRendererModule::DrawTileMesh(FRHICommandListImmediate& RHICmdList, FMeshPa
 		const auto FeatureLevel = View.GetFeatureLevel();
 		const EShadingPath ShadingPath = FSceneInterface::GetShadingPath(FeatureLevel);
 		const FSceneViewFamily* ViewFamily = View.Family;
-		const FScene* Scene = nullptr;
+		FScene* Scene = nullptr;
 
 		if (ViewFamily->Scene)
 		{
@@ -135,7 +152,7 @@ void FRendererModule::DrawTileMesh(FRHICommandListImmediate& RHICmdList, FMeshPa
 				View.LightmapSceneDataOverrideSRV = SinglePrimitiveStructuredBuffer.LightmapSceneDataBufferSRV;
 			}
 		}
-		
+
 		View.InitRHIResources();
 		DrawRenderState.SetViewUniformBuffer(View.ViewUniformBuffer);
 

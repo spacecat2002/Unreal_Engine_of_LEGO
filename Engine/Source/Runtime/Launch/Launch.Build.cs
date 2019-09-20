@@ -33,12 +33,12 @@ public class Launch : ModuleRules
 				"Sockets",
 				"TraceLog",
 				"Overlay",
-				"UtilityShaders",
-				"PreLoadScreen"
+				"PreLoadScreen",
+				"InstallBundleManager"
 			});
 
 		// Set a macro allowing us to switch between debuggame/development configuration
-		if(Target.Configuration == UnrealTargetConfiguration.DebugGame)
+		if (Target.Configuration == UnrealTargetConfiguration.DebugGame)
 		{
 			PrivateDefinitions.Add("UE_BUILD_DEVELOPMENT_WITH_DEBUGGAME=1");
 		}
@@ -91,7 +91,7 @@ public class Launch : ModuleRules
 			else if (Target.Platform == UnrealTargetPlatform.Mac)
 			{
 				DynamicallyLoadedModuleNames.AddRange(new string[] {
-					"AudioMixerAudioUnit",
+					"AudioMixerCoreAudio",
 					"CoreAudio",
 				});
 			}
@@ -248,19 +248,13 @@ public class Launch : ModuleRules
 				"IOSRuntimeSettings",
 			});
 
-			// no longer build GL for apps requiring iOS 12 or later
-			if (Target.IOSPlatform.RuntimeVersion < 12.0)
-			{
-				PublicFrameworks.Add("OpenGLES");
-				PrivateDependencyModuleNames.Add("OpenGLDrv");
-			}
 			// needed for Metal layer
 			PublicFrameworks.Add("QuartzCore");
 		}
 
 		if ((Target.Platform == UnrealTargetPlatform.Win32) ||
 			(Target.Platform == UnrealTargetPlatform.Win64) ||
-			(Target.Platform == UnrealTargetPlatform.Linux && Target.Type != TargetType.Server))
+			(Target.IsInPlatformGroup(UnrealPlatformGroup.Linux) && Target.Type != TargetType.Server))
 		{
 			// TODO: re-enable after implementing resource tables for OpenGL.
 			DynamicallyLoadedModuleNames.Add("OpenGLDrv");
@@ -282,7 +276,7 @@ public class Launch : ModuleRules
 		// @todo ps4 clang bug: this works around a PS4/clang compiler bug (optimizations)
 		if (Target.Platform == UnrealTargetPlatform.PS4)
 		{
-			bFasterWithoutUnity = true;
+			bUseUnity = true;
 		}
 
 		if (Target.IsInPlatformGroup(UnrealPlatformGroup.Unix))

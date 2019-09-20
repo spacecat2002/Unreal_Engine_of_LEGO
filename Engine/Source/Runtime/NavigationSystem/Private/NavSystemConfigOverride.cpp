@@ -4,6 +4,7 @@
 #include "Engine/World.h"
 #include "GameFramework/WorldSettings.h"
 #include "AI/NavigationSystemBase.h"
+#include "NavigationSystem.h"
 #include "TimerManager.h"
 
 #if WITH_EDITORONLY_DATA
@@ -62,63 +63,96 @@ ANavSystemConfigOverride::ANavSystemConfigOverride(const FObjectInitializer& Obj
 void ANavSystemConfigOverride::PostLoad()
 {
 	Super::PostLoad();
-
+	
 	UWorld* World = GetWorld();
-	if (World && NavigationSystemConfig)
+	if (World != nullptr)
 	{
-		AWorldSettings* WorldSetting = World->GetWorldSettings();
-		if (WorldSetting)
+		if (World->bInTick)
 		{
-			WorldSetting->SetNavigationSystemConfigOverride(NavigationSystemConfig);
+			World->GetTimerManager().SetTimerForNextTick(this, &ANavSystemConfigOverride::ApplyConfig);
 		}
-
-		if (World->bIsWorldInitialized
-			&& NavigationSystemConfig
-#if WITH_EDITOR
-			&& (GIsEditorLoadingPackage == false || World->IsGameWorld())
-#endif // WITH_EDITOR
-			)
+		else
 		{
-			
-			UNavigationSystemBase* PrevNavSysBase = World->GetNavigationSystem();
-			World->SetNavigationSystem(nullptr);
-
-			const FNavigationSystemRunMode RunMode = World->WorldType == EWorldType::Editor
-				? FNavigationSystemRunMode::EditorMode
-				: (World->WorldType == EWorldType::PIE
-					? FNavigationSystemRunMode::PIEMode
-					: FNavigationSystemRunMode::GameMode)
-				;
-
-			if (RunMode == FNavigationSystemRunMode::EditorMode)
-			{
-				FNavigationSystem::AddNavigationSystemToWorld(*World, RunMode, NavigationSystemConfig, /*bInitializeForWorld=*/false);
-#if WITH_EDITOR
-				UNavigationSystemBase* NewNavSys = World->GetNavigationSystem();
-				if (NewNavSys)
-				{
-					GEditor->GetTimerManager()->SetTimerForNextTick(FTimerDelegate::CreateUObject(this
-						, &ANavSystemConfigOverride::InitializeForWorld, NewNavSys, World, RunMode));
-				}
-#endif // WITH_EDITOR
-			}
-			else
-			{
-				FNavigationSystem::AddNavigationSystemToWorld(*World, RunMode, NavigationSystemConfig, /*bInitializeForWorld=*/true);
-			}
-
-			UNavigationSystemBase* NewNavSys = World->GetNavigationSystem();
-			if (NewNavSys && PrevNavSysBase)
-			{
-				NewNavSys->OnNavSystemOverriden(PrevNavSysBase);
-			}
+			ApplyConfig();
 		}
+	}
+}
+
+void ANavSystemConfigOverride::ApplyConfig()
+{
+	UWorld* World = GetWorld();
+	if (World)
+	{
+		UNavigationSystemBase* PrevNavSys = World->GetNavigationSystem();
+
+		if (PrevNavSys == nullptr || OverridePolicy == ENavSystemOverridePolicy::Override)
+		{
+			OverrideNavSystem();
+		}
+		// PrevNavSys != null at this point
+		else if (OverridePolicy == ENavSystemOverridePolicy::Append)
+		{
+			// take the prev nav system and append data to it
+			AppendToNavSystem(*PrevNavSys);
+		}
+		// else PrevNavSys != null AND OverridePolicy == ENavSystemOverridePolicy::Skip, so ignoring the override
 	}
 }
 
 void ANavSystemConfigOverride::PostInitProperties()
 {
 	Super::PostInitProperties();
+}
+
+void ANavSystemConfigOverride::AppendToNavSystem(UNavigationSystemBase& PrevNavSys)
+{
+	if (NavigationSystemConfig)
+	{
+		PrevNavSys.AppendConfig(*NavigationSystemConfig);
+	}
+}
+
+void ANavSystemConfigOverride::OverrideNavSystem()
+{
+	UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		return;
+	}
+
+	AWorldSettings* WorldSetting = World->GetWorldSettings();
+	if (WorldSetting)
+	{
+		WorldSetting->SetNavigationSystemConfigOverride(NavigationSystemConfig);
+	}
+
+	if (World->bIsWorldInitialized
+		&& NavigationSystemConfig)
+	{
+		const FNavigationSystemRunMode RunMode = World->WorldType == EWorldType::Editor
+			? FNavigationSystemRunMode::EditorMode
+			: (World->WorldType == EWorldType::PIE
+				? FNavigationSystemRunMode::PIEMode
+				: FNavigationSystemRunMode::GameMode)
+			;
+
+		if (RunMode == FNavigationSystemRunMode::EditorMode)
+		{
+			FNavigationSystem::AddNavigationSystemToWorld(*World, RunMode, NavigationSystemConfig, /*bInitializeForWorld=*/false, /*bOverridePreviousNavSys=*/true);
+#if WITH_EDITOR
+			UNavigationSystemBase* NewNavSys = World->GetNavigationSystem();
+			if (NewNavSys)
+			{
+				GEditor->GetTimerManager()->SetTimerForNextTick(FTimerDelegate::CreateUObject(this
+					, &ANavSystemConfigOverride::InitializeForWorld, NewNavSys, World, RunMode));
+			}
+#endif // WITH_EDITOR
+		}
+		else
+		{
+			FNavigationSystem::AddNavigationSystemToWorld(*World, RunMode, NavigationSystemConfig, /*bInitializeForWorld=*/true, /*bOverridePreviousNavSys=*/true);
+		}
+	}
 }
 
 #if WITH_EDITOR

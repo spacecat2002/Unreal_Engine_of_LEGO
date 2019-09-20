@@ -58,22 +58,7 @@
 
 	namespace LLMPrivate
 	{
-		static inline bool HandleAssert(bool bLog, const TCHAR* Format, ...)
-		{
-			if (bLog)
-			{
-				TCHAR DescriptionString[4096];
-				GET_VARARGS(DescriptionString, ARRAY_COUNT(DescriptionString), ARRAY_COUNT(DescriptionString) - 1, Format, Format);
-
-				FPlatformMisc::LowLevelOutputDebugString(DescriptionString);
-
-				if (FPlatformMisc::IsDebuggerPresent())
-					FPlatformMisc::PromptForRemoteDebugging(true);
-
-				UE_DEBUG_BREAK();
-			}
-			return false;
-		}
+		bool HandleAssert(bool bLog, const TCHAR* Format, ...);
 
 		// This is used by ensure to generate a bool per instance
 		// by passing a lambda which will uniquely instantiate the template.
@@ -94,7 +79,7 @@
 #endif
 
 #define LLMCheckMessage(expr)          TEXT("LLM check failed: %s [File:%s] [Line: %d]\r\n"),             TEXT(#expr), TEXT(__FILE__), __LINE__
-#define LLMCheckfMessage(expr, format) TEXT("LLM check failed: %s [File:%s] [Line: %d]\r\n") format,      TEXT(#expr), TEXT(__FILE__), __LINE__
+#define LLMCheckfMessage(expr, format) TEXT("LLM check failed: %s [File:%s] [Line: %d]\r\n") format TEXT("\r\n"),      TEXT(#expr), TEXT(__FILE__), __LINE__
 #define LLMEnsureMessage(expr)         TEXT("LLM ensure failed: %s [File:%s] [Line: %d]\r\n"),            TEXT(#expr), TEXT(__FILE__), __LINE__
 
 #define LLMCheck(expr)					do { if (UNLIKELY(!(expr))) { LLMPrivate::HandleAssert(true, LLMCheckMessage(expr));                         FPlatformMisc::RaiseException(1); } } while(false)
@@ -218,6 +203,8 @@ enum class ELLMTagSet : uint8
 	macro(Landscape,							"Landscape",					GET_STATFNAME(STAT_LandscapeLLM),							GET_STATFNAME(STAT_EngineSummaryLLM),			ELLMTag::Meshes)\
 	macro(CsvProfiler,							"CsvProfiler",					GET_STATFNAME(STAT_CsvProfilerLLM),							GET_STATFNAME(STAT_EngineSummaryLLM),			-1)\
 	macro(VideoStreaming,						"VideoStreaming",				GET_STATFNAME(STAT_VideoStreamingLLM),						GET_STATFNAME(STAT_EngineSummaryLLM),			-1)\
+	macro(PlatformMMIO,							"MMIO",							GET_STATFNAME(STAT_PlatformMMIOLLM),						NAME_None,										-1)\
+	macro(PlatformVM,							"Virtual Memory",				GET_STATFNAME(STAT_PlatformVMLLM),							NAME_None,										-1)\
 
 /*
  * Enum values to be passed in to LLM_SCOPE() macro

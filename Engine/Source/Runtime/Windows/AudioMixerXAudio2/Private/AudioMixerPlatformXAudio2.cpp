@@ -8,42 +8,46 @@
 
 #include "AudioMixerPlatformXAudio2.h"
 #include "AudioMixer.h"
-#include "AudioMixerDevice.h"
-#include "AudioPluginUtilities.h"
 #include "HAL/PlatformAffinity.h"
 
 #ifndef WITH_XMA2
 #define WITH_XMA2 0
 #endif
 
+#if WITH_ENGINE
 #if WITH_XMA2
 #include "XMAAudioInfo.h"
 #endif  //#if WITH_XMA2
 #include "OpusAudioInfo.h"
 #include "VorbisAudioInfo.h"
 #include "ADPCMAudioInfo.h"
+#include "AudioPluginUtilities.h"
+#endif //WITH_ENGINE
 
 #include "CoreGlobals.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/MessageDialog.h"
-#include "AudioCompressionSettingsUtils.h"
+#include "Misc/ScopeLock.h"
+#include "HAL/Event.h"
+#include "CoreMinimal.h"
+#include "Logging/LogMacros.h"
 
 // Macro to check result code for XAudio2 failure, get the string version, log, and goto a cleanup
-#define XAUDIO2_CLEANUP_ON_FAIL(Result)						\
-	if (FAILED(Result))										\
-	{														\
-		const TCHAR* ErrorString = GetErrorString(Result);	\
-		AUDIO_PLATFORM_ERROR(ErrorString);					\
-		goto Cleanup;										\
+#define XAUDIO2_CLEANUP_ON_FAIL(Result)																\
+	if (FAILED(Result))																				\
+	{																								\
+		FString ErrorString = FString::Printf(TEXT("0x%X: %s"), Result, GetErrorString(Result));	\
+		AUDIO_PLATFORM_ERROR(*ErrorString);															\
+		goto Cleanup;																				\
 	}
 
 // Macro to check result for XAudio2 failure, get string version, log, and return false
-#define XAUDIO2_RETURN_ON_FAIL(Result)						\
-	if (FAILED(Result))										\
-	{														\
-		const TCHAR* ErrorString = GetErrorString(Result);	\
-		AUDIO_PLATFORM_ERROR(ErrorString);					\
-		return false;										\
+#define XAUDIO2_RETURN_ON_FAIL(Result)																\
+	if (FAILED(Result))																				\
+	{																								\
+		FString ErrorString = FString::Printf(TEXT("0x%X: %s"), Result, GetErrorString(Result));	\
+		AUDIO_PLATFORM_ERROR(*ErrorString);															\
+		return false;																				\
 	}
 
 
@@ -116,7 +120,7 @@ namespace Audio
 			case E_INVALIDARG:								return TEXT("E_INVALIDARG");
 			case E_OUTOFMEMORY:								return TEXT("E_OUTOFMEMORY");
 #endif
-			default:										return TEXT("UKNOWN");
+			default:										return TEXT("UNKNOWN");
 		}
 	}
 
@@ -223,8 +227,10 @@ namespace Audio
 		//Initialize our XMA2 decoder context
 		FXMAAudioInfo::Initialize();
 #endif //#if WITH_XMA2
+#if WITH_ENGINE
 		// Load ogg and vorbis dlls if they haven't been loaded yet
 		LoadVorbisLibraries();
+#endif // WITH_ENGINE
 
 		bIsInitialized = true;
 
@@ -248,7 +254,7 @@ namespace Audio
 #if PLATFORM_WINDOWS || PLATFORM_HOLOLENS
 
 #if PLATFORM_64BITS && !PLATFORM_HOLOLENS
-		if (XAudio2Dll != nullptr && GIsRequestingExit)
+		if (XAudio2Dll != nullptr && IsEngineExitRequested())
 		{
 			if (!FreeLibrary(XAudio2Dll))
 			{
@@ -534,12 +540,13 @@ namespace Audio
 
 		OpenStreamParams = Params;
 
+#if !PLATFORM_HOLOLENS
 		// On windows, default device index is 0
 		if (Params.OutputDeviceIndex == AUDIO_MIXER_DEFAULT_DEVICE_INDEX)
 		{
 			OpenStreamParams.OutputDeviceIndex = 0;
 		}
-
+#endif
 		AudioStreamInfo.Reset();
 
 		AudioStreamInfo.OutputDeviceIndex = OpenStreamParams.OutputDeviceIndex;
@@ -552,10 +559,41 @@ namespace Audio
 
 		if (GetNumOutputDevices(NumOutputDevices) && NumOutputDevices > 0)
 		{
+#if PLATFORM_HOLOLENS
+			// On windows, default device index is 0
+			// But if that device cannot be configured try to find one that can be.  This happens in the hololens emulator.
+			if (AudioStreamInfo.OutputDeviceIndex == AUDIO_MIXER_DEFAULT_DEVICE_INDEX)
+			{
+				bool bFoundUsefulDevice = false;
+				for (uint32 i = 0; i < NumOutputDevices; ++i)
+				{
+					OpenStreamParams.OutputDeviceIndex = i;
+					AudioStreamInfo.OutputDeviceIndex = OpenStreamParams.OutputDeviceIndex;
+					if (GetOutputDeviceInfo(AudioStreamInfo.OutputDeviceIndex, AudioStreamInfo.DeviceInfo))
+					{
+						bFoundUsefulDevice = true;
+						break;
+					}
+				}
+				if (!bFoundUsefulDevice)
+				{
+					return false;
+				}
+			}
+			else
+			{
+				if (!GetOutputDeviceInfo(AudioStreamInfo.OutputDeviceIndex, AudioStreamInfo.DeviceInfo))
+				{
+					return false;
+				}
+			}
+#else
 			if (!GetOutputDeviceInfo(AudioStreamInfo.OutputDeviceIndex, AudioStreamInfo.DeviceInfo))
 			{
 				return false;
 			}
+#endif
+
 
 			// Store the device ID here in case it is removed. We can switch back if the device comes back.
 			if (Params.bRestoreIfRemoved)
@@ -899,6 +937,7 @@ namespace Audio
 		static FName NAME_XMA(TEXT("XMA"));
 		static FName NAME_ADPCM(TEXT("ADPCM"));
 
+#if WITH_ENGINE
 		if (InSoundWave->IsStreaming())
 		{
 			if (InSoundWave->IsSeekableStreaming())
@@ -911,11 +950,11 @@ namespace Audio
 			{
 				return NAME_XMA;
 			}
-#endif
+#endif // WITH_XMA2 && USE_XMA2_FOR_STREAMING
 
 #if USE_VORBIS_FOR_STREAMING
 			return NAME_OGG;
-#endif
+#endif // USE_VORBIS_FOR_STREAMING
 		}
 
 #if WITH_XMA2
@@ -923,8 +962,8 @@ namespace Audio
 		{
 			return NAME_XMA;
 		}
-#endif //#if WITH_XMA2
-
+#endif // WITH_XMA2
+#endif // WITH_ENGINE
 		return NAME_OGG;
 	}
 
@@ -935,6 +974,7 @@ namespace Audio
 
 	ICompressedAudioInfo* FMixerPlatformXAudio2::CreateCompressedAudioInfo(USoundWave* InSoundWave)
 	{
+#if WITH_ENGINE
 		check(InSoundWave);
 
 		if (InSoundWave->IsStreaming())
@@ -958,7 +998,7 @@ namespace Audio
 			return new FVorbisAudioInfo();
 #else
 			return new FOpusAudioInfo();
-#endif
+#endif // USE_VORBIS_FOR_STREAMING
 		}
 
 		static const FName NAME_OGG(TEXT("OGG"));
@@ -973,8 +1013,8 @@ namespace Audio
 		{
 			return new FXMAAudioInfo();
 		}
-#endif
-
+#endif // WITH_XMA2
+#endif // WITH_ENGINE
 		return nullptr;
 	}
 
@@ -986,8 +1026,12 @@ namespace Audio
 
 	FAudioPlatformSettings FMixerPlatformXAudio2::GetPlatformSettings() const
 	{
+#if WITH_ENGINE
 		const TCHAR* ConfigSection = AudioPluginUtilities::GetPlatformConfigSection(EAudioPlatform::Windows);
 		return FAudioPlatformSettings::GetPlatformSettings(TEXT("/Script/WindowsTargetPlatform.WindowsTargetSettings"));
+#else
+		return FAudioPlatformSettings();
+#endif // WITH_ENGINE
 	}
 
 	void FMixerPlatformXAudio2::OnHardwareUpdate()

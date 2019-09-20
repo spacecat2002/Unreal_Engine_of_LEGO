@@ -42,7 +42,9 @@ CSV_DECLARE_CATEGORY_MODULE_EXTERN(CORE_API, FileIO);
 #ifndef DISABLE_NONUFS_INI_WHEN_COOKED
 #define DISABLE_NONUFS_INI_WHEN_COOKED 0
 #endif
-
+#ifndef ALLOW_INI_OVERRIDE_FROM_COMMANDLINE
+#define ALLOW_INI_OVERRIDE_FROM_COMMANDLINE 0
+#endif
 #ifndef ALL_PAKS_WILDCARD
 #define ALL_PAKS_WILDCARD "*.pak"
 #endif 
@@ -50,6 +52,8 @@ CSV_DECLARE_CATEGORY_MODULE_EXTERN(CORE_API, FileIO);
 #ifndef MOUNT_STARTUP_PAKS_WILDCARD
 #define MOUNT_STARTUP_PAKS_WILDCARD ALL_PAKS_WILDCARD
 #endif
+
+static FString GMountStartupPaksWildCard = TEXT(MOUNT_STARTUP_PAKS_WILDCARD);
 
 int32 ParseChunkIDFromFilename(const FString& InFilename)
 {
@@ -347,6 +351,13 @@ static_assert((PAK_CACHE_GRANULARITY % FPakInfo::MaxChunkDataSize) == 0, "PAK_CA
 
 DECLARE_MEMORY_STAT(TEXT("PakCache Current"), STAT_PakCacheMem, STATGROUP_Memory);
 DECLARE_MEMORY_STAT(TEXT("PakCache High Water"), STAT_PakCacheHighWater, STATGROUP_Memory);
+
+#if CSV_PROFILER
+volatile int64 GPreCacheHotBlocksCount = 0;
+volatile int64 GPreCacheColdBlocksCount = 0;
+volatile int64 GPreCacheTotalLoaded = 0;
+int64 GPreCacheTotalLoadedLastTick = 0;
+#endif
 
 DECLARE_FLOAT_ACCUMULATOR_STAT(TEXT("PakCache Signing Chunk Hash Time"), STAT_PakCache_SigningChunkHashTime, STATGROUP_PakFile);
 DECLARE_MEMORY_STAT(TEXT("PakCache Signing Chunk Hash Size"), STAT_PakCache_SigningChunkHashSize, STATGROUP_PakFile);
@@ -1249,16 +1260,16 @@ class FPakPrecacher
 	uint32 Loads;
 	uint32 Frees;
 	uint64 LoadSize;
-	FRSA::TKeyPtr SigningKey;
 	EAsyncIOPriorityAndFlags AsyncMinPriority;
 	FCriticalSection SetAsyncMinimumPriorityScopeLock;
+	bool bEnableSignatureChecks;
 public:
 
-	static void Init(IPlatformFile* InLowerLevel, FRSA::TKeyPtr InSigningKey)
+	static void Init(IPlatformFile* InLowerLevel, bool bInEnableSignatureChecks) 
 	{
 		if (!PakPrecacherSingleton)
 		{
-			verify(!FPlatformAtomics::InterlockedCompareExchangePointer((void**)&PakPrecacherSingleton, new FPakPrecacher(InLowerLevel, InSigningKey), nullptr));
+			verify(!FPlatformAtomics::InterlockedCompareExchangePointer((void**)& PakPrecacherSingleton, new FPakPrecacher(InLowerLevel, bInEnableSignatureChecks), nullptr));
 		}
 		check(PakPrecacherSingleton);
 	}
@@ -1294,7 +1305,7 @@ public:
 		return *PakPrecacherSingleton;
 	}
 
-	FPakPrecacher(IPlatformFile* InLowerLevel, FRSA::TKeyPtr InSigningKey)
+	FPakPrecacher(IPlatformFile* InLowerLevel, bool bInEnableSignatureChecks) 
 		: LowerLevel(InLowerLevel)
 		, LastReadRequest(0)
 		, NextUniqueID(1)
@@ -1304,8 +1315,8 @@ public:
 		, Loads(0)
 		, Frees(0)
 		, LoadSize(0)
-		, SigningKey(InSigningKey)
 		, AsyncMinPriority(AIOP_MIN)
+		, bEnableSignatureChecks(bInEnableSignatureChecks)
 	{
 		check(LowerLevel && FPlatformProcess::SupportsMultithreading());
 		GPakCache_MaxRequestsToLowerLevel = FMath::Max(FMath::Min(FPlatformMisc::NumberOfIOWorkerThreadsToSpawn(), GPakCache_MaxRequestsToLowerLevel), 1);
@@ -1378,11 +1389,11 @@ public:
 
 			UE_LOG(LogPakFile, Log, TEXT("New pak file %s added to pak precacher."), *PakFilename);
 
-			if (SigningKey.IsValid())
+			// Load signature data
+			Pak.Signatures = FPakPlatformFile::GetPakSignatureFile(*PakFilename);
+
+			if (Pak.Signatures.IsValid())
 			{
-				// Load signature data
-				Pak.Signatures = FPakPlatformFile::GetPakSignatureFile(*PakFilename);
-				
 				// We should never get here unless the signature file exists and is validated. The original FPakFile creation
 				// on the main thread would have failed and the pak would never have been mounted otherwise, and then we would
 				// never have issued read requests to the pak precacher.
@@ -2290,6 +2301,10 @@ private: // below here we assume CachedFilesScopeLock until we get to the next s
 		RequestsToLower[IndexToFill].Memory = nullptr;
 		check(&CacheBlockAllocator.Get(RequestsToLower[IndexToFill].BlockIndex) == &Block);
 
+#if USE_PAK_PRECACHE && CSV_PROFILER
+		FPlatformAtomics::InterlockedAdd(&GPreCacheTotalLoaded, Block.Size);
+#endif
+
         // FORT HACK
         // DO NOT BRING BACK
         // FORT HACK
@@ -2307,7 +2322,7 @@ private: // below here we assume CachedFilesScopeLock until we get to the next s
 		FAsyncFileCallBack CallbackFromLower =
 			[this, IndexToFill, bDoCheck](bool bWasCanceled, IAsyncReadRequest* Request)
 		{
-			if (SigningKey.IsValid() && bDoCheck)
+			if (bEnableSignatureChecks && bDoCheck)
 			{
 				StartSignatureCheck(bWasCanceled, Request, IndexToFill);
 			}
@@ -2565,14 +2580,22 @@ public:
 		check(!OutstandingRequests.Contains(Request.UniqueID));
 		OutstandingRequests.Add(Request.UniqueID, RequestIndex);
 		RequestCounter.Increment();
+
 		if (AddRequest(RequestIndex))
 		{
+#if USE_PAK_PRECACHE && CSV_PROFILER
+			FPlatformAtomics::InterlockedIncrement(&GPreCacheHotBlocksCount);
+#endif
 			UE_LOG(LogPakFile, Verbose, TEXT("FPakReadRequest[%016llX, %016llX) QueueRequest HOT"), RequestOffsetAndPakIndex, RequestOffsetAndPakIndex + Request.Size);
 		}
 		else
 		{
+#if USE_PAK_PRECACHE && CSV_PROFILER
+			FPlatformAtomics::InterlockedIncrement(&GPreCacheColdBlocksCount);
+#endif
 			UE_LOG(LogPakFile, Verbose, TEXT("FPakReadRequest[%016llX, %016llX) QueueRequest COLD"), RequestOffsetAndPakIndex, RequestOffsetAndPakIndex + Request.Size);
 		}
+
 		TrimCache();
 		return true;
 	}
@@ -4080,7 +4103,18 @@ void FPakPlatformFile::Tick()
 	if (PakPrecacherSingleton != nullptr)
 	{
 		CSV_CUSTOM_STAT(FileIO, PakPrecacherRequests, FPakPrecacher::Get().GetRequestCount(), ECsvCustomStatOp::Set);
-	}
+		CSV_CUSTOM_STAT(FileIO, PakPrecacherHotBlocksCount, (int32)GPreCacheHotBlocksCount, ECsvCustomStatOp::Set);
+		CSV_CUSTOM_STAT(FileIO, PakPrecacherColdBlocksCount, (int32)GPreCacheColdBlocksCount, ECsvCustomStatOp::Set);
+		CSV_CUSTOM_STAT(FileIO, PakPrecacherTotalLoadedMB, (int32)(GPreCacheTotalLoaded/(1024*1024)), ECsvCustomStatOp::Set);
+
+		if (GPreCacheTotalLoadedLastTick != 0)
+		{
+			int64 diff = GPreCacheTotalLoaded - GPreCacheTotalLoadedLastTick;
+			diff /= 1024;
+			CSV_CUSTOM_STAT(FileIO, PakPrecacherPerFrameKB, (int32)diff, ECsvCustomStatOp::Set);
+		}
+		GPreCacheTotalLoadedLastTick = GPreCacheTotalLoaded;
+}
 #endif
 }
 
@@ -4482,10 +4516,29 @@ bool FPakPlatformFile::IsNonPakFilenameAllowed(const FString& InFilename)
 	}
 #endif
 
+	bool bIsIniFile = InFilename.EndsWith(IniFileExtension);
 #if DISABLE_NONUFS_INI_WHEN_COOKED
-	if (FPlatformProperties::RequiresCookedData() && InFilename.EndsWith(IniFileExtension) && !InFilename.EndsWith(GameUserSettingsIniFilename))
+	bool bSkipIniFile = bIsIniFile && !InFilename.EndsWith(GameUserSettingsIniFilename);
+	if (FPlatformProperties::RequiresCookedData() && bSkipIniFile)
 	{
 		bAllowed = false;
+	}
+#endif
+#if ALLOW_INI_OVERRIDE_FROM_COMMANDLINE
+	FString FileList;
+	if (bIsIniFile && FParse::Value(FCommandLine::Get(), TEXT("-iniFile="), FileList, false))
+	{
+		TArray<FString> Files;
+		FileList.ParseIntoArray(Files, TEXT(","), true);
+		for (int32 Index = 0; Index < Files.Num(); Index++)
+		{
+			if (InFilename == Files[Index])
+			{
+				bAllowed = true;
+				UE_LOG(LogPakFile, Log, TEXT(" Override -inifile: %s"), *InFilename);
+				break;
+			}
+		}
 	}
 #endif
 
@@ -5937,10 +5990,15 @@ bool FPakPlatformFile::Initialize(IPlatformFile* Inner, const TCHAR* CmdLine)
 	// Signed if we have keys, and are not running with fileopenlog (currently results in a deadlock).
 	bSigned = FCoreDelegates::GetPakSigningKeysDelegate().IsBound() && !FParse::Param(FCommandLine::Get(), TEXT("fileopenlog"));
 
+	FString StartupPaksWildcard = GMountStartupPaksWildCard;
+#if !UE_BUILD_SHIPPING
+	FParse::Value(FCommandLine::Get(), TEXT("StartupPaksWildcard="), StartupPaksWildcard);
+#endif
+
 	// Find and mount pak files from the specified directories.
 	TArray<FString> PakFolders;
 	GetPakFolders(FCommandLine::Get(), PakFolders);
-	MountAllPakFiles(PakFolders, TEXT(MOUNT_STARTUP_PAKS_WILDCARD));
+	MountAllPakFiles(PakFolders, *StartupPaksWildcard);
 
 #if !UE_BUILD_SHIPPING
 	GPakExec = MakeUnique<FPakExec>(*this);
@@ -5962,7 +6020,7 @@ void FPakPlatformFile::InitializeNewAsyncIO()
 #if !WITH_EDITOR
 	if (FPlatformProcess::SupportsMultithreading() && !FParse::Param(FCommandLine::Get(), TEXT("FileOpenLog")))
 	{
-		FPakPrecacher::Init(LowerLevel, GetPakSigningKey());
+		FPakPrecacher::Init(LowerLevel, FCoreDelegates::GetPakSigningKeysDelegate().IsBound());
 	}
 	else
 #endif
@@ -6396,8 +6454,14 @@ IFileHandle* FPakPlatformFile::OpenRead(const TCHAR* Filename, bool bAllowWrite)
 
 const TCHAR* FPakPlatformFile::GetMountStartupPaksWildCard()
 {
-	return TEXT(MOUNT_STARTUP_PAKS_WILDCARD);
+	return *GMountStartupPaksWildCard;
 }
+
+void FPakPlatformFile::SetMountStartupPaksWildCard(const FString& WildCard)
+{
+	GMountStartupPaksWildCard = WildCard;
+}
+
 
 EChunkLocation::Type FPakPlatformFile::GetPakChunkLocation(int32 InChunkID) const
 {

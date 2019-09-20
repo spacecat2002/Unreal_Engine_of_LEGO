@@ -225,7 +225,7 @@ struct FMacApplicationInfo
 		// Cache & create the crash report folder.
 		FString ReportPath = FPaths::ConvertRelativePathToFull(FString::Printf(TEXT("%s"), *(FPaths::GameAgnosticSavedDir() / TEXT("Crashes"))));
 		FCStringAnsi::Strcpy(CrashReportPath, PATH_MAX+1, TCHAR_TO_UTF8(*ReportPath));
-		FString ReportClient = FPaths::ConvertRelativePathToFull(FPlatformProcess::GenerateApplicationPath(TEXT("CrashReportClient"), EBuildConfigurations::Development));
+		FString ReportClient = FPaths::ConvertRelativePathToFull(FPlatformProcess::GenerateApplicationPath(TEXT("CrashReportClient"), EBuildConfiguration::Development));
 		FCStringAnsi::Strcpy(CrashReportClient, PATH_MAX+1, TCHAR_TO_UTF8(*ReportClient));
 		IFileManager::Get().MakeDirectory(*ReportPath, true);
 		
@@ -615,7 +615,7 @@ void FMacPlatformMisc::RequestExit( bool Force )
 	else
 	{
 		// Tell the platform specific code we want to exit cleanly from the main loop.
-		GIsRequestingExit = 1;
+		RequestEngineExit(TEXT("Mac RequestExit"));
 	}
 }
 
@@ -1621,9 +1621,9 @@ static void GracefulTerminationHandler(int32 Signal, siginfo_t* Info, void* Cont
 		GError->Flush();
 	}
 	
-	if( !GIsRequestingExit )
+	if( !IsEngineExitRequested() )
 	{
-		GIsRequestingExit = 1;
+		RequestEngineExit(TEXT("Mac GracefulTerminationHandler"));
 	}
 	else
 	{
@@ -2050,7 +2050,7 @@ void FMacCrashContext::GenerateEnsureInfoAndLaunchReporter() const
 			Arguments += TEXT(" -NoAnalytics");
 		}
 
-		FString ReportClient = FPaths::ConvertRelativePathToFull(FPlatformProcess::GenerateApplicationPath(TEXT("CrashReportClient"), EBuildConfigurations::Development));
+		FString ReportClient = FPaths::ConvertRelativePathToFull(FPlatformProcess::GenerateApplicationPath(TEXT("CrashReportClient"), EBuildConfiguration::Development));
 		FPlatformProcess::ExecProcess(*ReportClient, *Arguments, nullptr, nullptr, nullptr);
 	}
 }

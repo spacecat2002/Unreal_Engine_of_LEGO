@@ -11,6 +11,7 @@
 #include "MeshPassProcessor.inl"
 #include "EditorPrimitivesRendering.h"
 #include "TranslucentRendering.h"
+#include "Rendering/SkyAtmosphereCommonData.h"
 
 // Changing this causes a full shader recompile
 static TAutoConsoleVariable<int32> CVarSelectiveBasePassOutputs(
@@ -134,8 +135,9 @@ void SetBasePassDitheredLODTransitionState(const FSceneView* SceneView, const FM
 
 		if (ViewInfo->bAllowStencilDither)
 		{
-			if (ViewInfo->StaticMeshFadeOutDitheredLODMap[StaticMeshId])
+			if (ViewInfo->StaticMeshFadeOutDitheredLODMap[StaticMeshId] || ViewInfo->StaticMeshFadeInDitheredLODMap[StaticMeshId])
 			{
+				const uint32 RestoreStencilRef = DrawRenderState.GetStencilRef();
 				DrawRenderState.SetDepthStencilState(
 					TStaticDepthStencilState<
 					false, CF_Equal,
@@ -143,16 +145,7 @@ void SetBasePassDitheredLODTransitionState(const FSceneView* SceneView, const FM
 					false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
 					0xFF, GET_STENCIL_BIT_MASK(RECEIVE_DECAL, 1) | STENCIL_LIGHTING_CHANNELS_MASK(0x7)
 					>::GetRHI());
-			}
-			else if (ViewInfo->StaticMeshFadeInDitheredLODMap[StaticMeshId])
-			{
-				DrawRenderState.SetDepthStencilState(
-					TStaticDepthStencilState<
-					false, CF_Equal,
-					true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
-					false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
-					0xFF, GET_STENCIL_BIT_MASK(RECEIVE_DECAL, 1) | STENCIL_LIGHTING_CHANNELS_MASK(0x7)
-					>::GetRHI());
+				DrawRenderState.SetStencilRef(RestoreStencilRef);
 			}
 		}
 	}
@@ -630,6 +623,7 @@ bool FDeferredShadingSceneRenderer::RenderBasePass(FRHICommandListImmediate& RHI
 		SCOPE_CYCLE_COUNTER(STAT_BasePassDrawTime);
 		SCOPED_GPU_STAT(RHICmdList, Basepass);
 
+		FExclusiveDepthStencil::Type BasePassDepthStencilAccess_NoDepthWrite = FExclusiveDepthStencil::Type(BasePassDepthStencilAccess & ~FExclusiveDepthStencil::DepthWrite);
 		if (bParallelBasePass)
 		{
 			check(RHICmdList.IsOutsideRenderPass());
@@ -648,7 +642,8 @@ bool FDeferredShadingSceneRenderer::RenderBasePass(FRHICommandListImmediate& RHI
 
 				SetupBasePassState(BasePassDepthStencilAccess, ViewFamily.EngineShowFlags.ShaderComplexity, DrawRenderState);
 
-				if (View.ShouldRenderView())
+				const bool bShouldRenderView = View.ShouldRenderView();
+				if (bShouldRenderView)
 				{
 					Scene->UniformBuffers.UpdateViewUniformBuffer(View);
 
@@ -660,6 +655,12 @@ bool FDeferredShadingSceneRenderer::RenderBasePass(FRHICommandListImmediate& RHI
 				FSceneRenderTargets::Get(RHICmdList).BeginRenderingGBuffer(RHICmdList, ERenderTargetLoadAction::ELoad, ERenderTargetLoadAction::ELoad, BasePassDepthStencilAccess, this->ViewFamily.EngineShowFlags.ShaderComplexity);
 				RenderEditorPrimitives(RHICmdList, View, BasePassDepthStencilAccess, DrawRenderState, bDirty);
 				RHICmdList.EndRenderPass();
+
+				if (bShouldRenderView && View.Family->EngineShowFlags.Atmosphere)
+				{
+					SetupBasePassState(BasePassDepthStencilAccess_NoDepthWrite, ViewFamily.EngineShowFlags.ShaderComplexity, DrawRenderState);
+					RenderSkyPassViewParallel(RHICmdList, View, BasePassDepthStencilAccess_NoDepthWrite, DrawRenderState);
+				}
 			}
 
 			bDirty = true; // assume dirty since we are not going to wait
@@ -682,7 +683,8 @@ bool FDeferredShadingSceneRenderer::RenderBasePass(FRHICommandListImmediate& RHI
 
 				SetupBasePassState(BasePassDepthStencilAccess, ViewFamily.EngineShowFlags.ShaderComplexity, DrawRenderState);
 
-				if (View.ShouldRenderView())
+				const bool bShouldRenderView = View.ShouldRenderView();
+				if (bShouldRenderView)
 				{
 					Scene->UniformBuffers.UpdateViewUniformBuffer(View);
 
@@ -690,6 +692,12 @@ bool FDeferredShadingSceneRenderer::RenderBasePass(FRHICommandListImmediate& RHI
 				}
 
 				RenderEditorPrimitives(RHICmdList, View, BasePassDepthStencilAccess, DrawRenderState, bDirty);
+
+				if (bShouldRenderView && View.Family->EngineShowFlags.Atmosphere)
+				{
+					SetupBasePassState(BasePassDepthStencilAccess_NoDepthWrite, ViewFamily.EngineShowFlags.ShaderComplexity, DrawRenderState);
+					bDirty |= RenderSkyPassView(RHICmdList, View, BasePassDepthStencilAccess_NoDepthWrite, DrawRenderState);
+				}
 			}
 		}	
 	}
@@ -700,7 +708,7 @@ bool FDeferredShadingSceneRenderer::RenderBasePass(FRHICommandListImmediate& RHI
 	return bDirty;
 }
 
-static void SetupBasePassView(FRHICommandList& RHICmdList, const FViewInfo& View, const FSceneRenderer* SceneRenderer, const bool bIsEditorPrimitivePass = false)
+void SetupBasePassView(FRHICommandList& RHICmdList, const FViewInfo& View, const FSceneRenderer* SceneRenderer, const bool bIsEditorPrimitivePass)
 {
 	if (!View.IsInstancedStereoPass() || bIsEditorPrimitivePass)
 	{
@@ -774,6 +782,22 @@ void FDeferredShadingSceneRenderer::RenderBasePassViewParallel(FViewInfo& View, 
 	// enqueue RHIThread command that blocks on prereq, lock / unlock vertex buffer upload
 
 	View.ParallelMeshDrawCommandPasses[EMeshPass::BasePass].DispatchDraw(&ParallelSet, ParentCmdList);
+}
+
+void FDeferredShadingSceneRenderer::RenderSkyPassViewParallel(FRHICommandListImmediate& ParentCmdList, FViewInfo& View, FExclusiveDepthStencil::Type BasePassDepthStencilAccess, const FMeshPassProcessorRenderState& InDrawRenderState)
+{
+	check(ParentCmdList.IsOutsideRenderPass());
+
+	FBasePassParallelCommandListSet ParallelSet(View, ParentCmdList,
+		CVarRHICmdBasePassDeferredContexts.GetValueOnRenderThread() > 0,
+		CVarRHICmdFlushRenderThreadTasksBasePass.GetValueOnRenderThread() == 0 && CVarRHICmdFlushRenderThreadTasks.GetValueOnRenderThread() == 0,
+		this,
+		BasePassDepthStencilAccess,
+		InDrawRenderState);
+
+	// enqueue RHIThread command that blocks on prereq, lock / unlock vertex buffer upload
+
+	View.ParallelMeshDrawCommandPasses[EMeshPass::SkyPass].DispatchDraw(&ParallelSet, ParentCmdList);
 }
 
 bool HasEditorPrimitivesForDPG(const FViewInfo& View, ESceneDepthPriorityGroup DepthPriorityGroup)
@@ -898,6 +922,17 @@ bool FDeferredShadingSceneRenderer::RenderBasePassView(FRHICommandListImmediate&
 	SetupBasePassView(RHICmdList, View, this);
 
 	View.ParallelMeshDrawCommandPasses[EMeshPass::BasePass].DispatchDraw(nullptr, RHICmdList);
+
+	return bDirty;
+}
+
+bool FDeferredShadingSceneRenderer::RenderSkyPassView(FRHICommandListImmediate& RHICmdList, FViewInfo& View, FExclusiveDepthStencil::Type BasePassDepthStencilAccess, const FMeshPassProcessorRenderState& InDrawRenderState)
+{
+	bool bDirty = false;
+	FMeshPassProcessorRenderState DrawRenderState(InDrawRenderState);
+	SetupBasePassView(RHICmdList, View, this);
+
+	View.ParallelMeshDrawCommandPasses[EMeshPass::SkyPass].DispatchDraw(nullptr, RHICmdList);
 
 	return bDirty;
 }
@@ -1190,7 +1225,8 @@ void FBasePassMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshBatch, 
 		// Only draw opaque materials.
 		if (bShouldDraw
 			&& (!PrimitiveSceneProxy || PrimitiveSceneProxy->ShouldRenderInMainPass())
-			&& ShouldIncludeDomainInMeshPass(Material.GetMaterialDomain()))
+			&& ShouldIncludeDomainInMeshPass(Material.GetMaterialDomain())
+			&& !Material.IsSky())
 		{
 			// Check for a cached light-map.
 			const bool bIsLitMaterial = ShadingModels.IsLit();

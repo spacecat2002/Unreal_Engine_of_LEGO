@@ -1,6 +1,7 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AudioMixerSource.h"
+#include "AudioMixerSourceBuffer.h"
 #include "AudioMixerDevice.h"
 #include "AudioMixerSourceVoice.h"
 #include "ActiveSound.h"
@@ -10,7 +11,7 @@
 #include "ProfilingDebugging/CsvProfiler.h"
 
 // Link to "Audio" profiling category
-CSV_DECLARE_CATEGORY_MODULE_EXTERN(AUDIOMIXER_API, Audio);
+CSV_DECLARE_CATEGORY_MODULE_EXTERN(AUDIOMIXERCORE_API, Audio);
 
 static int32 UseListenerOverrideForSpreadCVar = 0;
 FAutoConsoleVariableRef CVarUseListenerOverrideForSpread(
@@ -30,6 +31,7 @@ namespace Audio
 		, MixerSourceBuffer(nullptr)
 		, MixerSourceVoice(nullptr)
 		, PreviousAzimuth(-1.0f)
+		, PreviousPlaybackPercent(0.0f)
 		, InitializationState(EMixerSourceInitializationState::NotInitialized)
 		, bPlayedCachedBuffer(false)
 		, bPlaying(false)
@@ -719,19 +721,19 @@ namespace Audio
 	{
 		if (InitializationState != EMixerSourceInitializationState::Initialized)
 		{
-			return 0.f;
+			return PreviousPlaybackPercent;
 		}
 
 		if (MixerSourceVoice && NumTotalFrames > 0)
 		{
 			int64 NumFrames = MixerSourceVoice->GetNumFramesPlayed();
 			AUDIO_MIXER_CHECK(NumTotalFrames > 0);
-			float PlaybackPercent = (float)NumFrames / NumTotalFrames;
+			PreviousPlaybackPercent = (float)NumFrames / NumTotalFrames;
 			if (WaveInstance->LoopingMode == LOOP_Never)
 			{
-				PlaybackPercent = FMath::Min(PlaybackPercent, 1.0f);
+				PreviousPlaybackPercent = FMath::Min(PreviousPlaybackPercent, 1.0f);
 			}
-			return PlaybackPercent;
+			return PreviousPlaybackPercent;
 		}
 		else
 		{

@@ -268,6 +268,20 @@ class ENGINE_API UGameplayStatics : public UBlueprintFunctionLibrary
 	static bool IsGamePaused(const UObject* WorldContextObject);
 
 	/**
+	 * Enables split screen
+	 * @param	bDisable		Whether the viewport should split screen between local players or not
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Viewport", meta = (WorldContext = "WorldContextObject"))
+	static void SetForceDisableSplitscreen(const UObject* WorldContextObject, bool bDisable);
+
+	/**
+	 * Returns the split screen state
+	 * @return	Whether the game viewport is split screen or not
+	 */
+	UFUNCTION(BlueprintPure, Category = "Viewport", meta = (WorldContext = "WorldContextObject"))
+	static bool IsSplitscreenForceDisabled(const UObject* WorldContextObject);
+
+	/**
 	 * Enabled rendering of the world
 	 * @param	bEnable		Whether the world should be rendered or not
 	 */
@@ -806,7 +820,7 @@ public:
 	 * @param HitItem		Primitive-specific data recording which item in the primitive was hit
 	 * @param FaceIndex		If colliding with trimesh or landscape, index of face that was hit.
 	 */
-	UFUNCTION(BlueprintPure, Category = "Collision", meta=(NativeBreakFunc))
+	UFUNCTION(BlueprintPure, Category = "Collision", meta=(NativeBreakFunc, AdvancedDisplay="3"))
 	static void BreakHitResult(const struct FHitResult& Hit, bool& bBlockingHit, bool& bInitialOverlap, float& Time, float& Distance, FVector& Location, FVector& ImpactPoint, FVector& Normal, FVector& ImpactNormal, class UPhysicalMaterial*& PhysMat, class AActor*& HitActor, class UPrimitiveComponent*& HitComponent, FName& HitBoneName, int32& HitItem, int32& FaceIndex, FVector& TraceStart, FVector& TraceEnd);
 
 	/** 
@@ -827,7 +841,7 @@ public:
 	 * @param HitItem		Primitive-specific data recording which item in the primitive was hit
 	 * @param FaceIndex		If colliding with trimesh or landscape, index of face that was hit.
 	 */
-	UFUNCTION(BlueprintPure, Category = "Collision", meta = (NativeMakeFunc, Normal="0,0,1", ImpactNormal="0,0,1"))
+	UFUNCTION(BlueprintPure, Category = "Collision", meta = (NativeMakeFunc, AdvancedDisplay="2", Normal="0,0,1", ImpactNormal="0,0,1"))
 	static FHitResult MakeHitResult(bool bBlockingHit, bool bInitialOverlap, float Time, float Distance, FVector Location, FVector ImpactPoint, FVector Normal, FVector ImpactNormal, class UPhysicalMaterial* PhysMat, class AActor* HitActor, class UPrimitiveComponent* HitComponent, FName HitBoneName, int32 HitItem, int32 FaceIndex, FVector TraceStart, FVector TraceEnd);
 
 

@@ -812,6 +812,7 @@ void FViewInfo::Init()
 	bDisableQuerySubmissions = false;
 	bDisableDistanceBasedFadeTransitions = false;	
 	ShadingModelMaskInView = 0;
+	bSceneHasSkyMaterial = 0;
 
 	NumVisibleStaticMeshElements = 0;
 	PrecomputedVisibilityData = 0;
@@ -819,7 +820,7 @@ void FViewInfo::Init()
 
 	bIsViewInfo = true;
 	
-	bViewStateIsReadOnly = true;
+	bStatePrevViewInfoIsReadOnly = true;
 	bUsesGlobalDistanceField = false;
 	bUsesLightingChannels = false;
 	bTranslucentSurfaceLighting = false;
@@ -835,6 +836,9 @@ void FViewInfo::Init()
 	FogInscatteringColorCubemap = NULL;
 	FogInscatteringTextureParameters = FVector::ZeroVector;
 
+	SkyAtmosphereCameraAerialPerspectiveVolume = nullptr;
+	SkyAtmosphereUniformShaderParameters = nullptr;
+
 	bUseDirectionalInscattering = false;
 	DirectionalInscatteringExponent = 0;
 	DirectionalInscatteringStartDistance = 0;
@@ -849,7 +853,7 @@ void FViewInfo::Init()
 	}
 
 	const int32 MaxMobileShadowCascadeCount = FMath::Clamp(CVarMaxMobileShadowCascades.GetValueOnAnyThread(), 0, MAX_MOBILE_SHADOWCASCADES);
-	const int32 MaxShadowCascadeCountUpperBound = GetFeatureLevel() >= ERHIFeatureLevel::SM4 ? 10 : MaxMobileShadowCascadeCount;
+	const int32 MaxShadowCascadeCountUpperBound = GetFeatureLevel() >= ERHIFeatureLevel::SM5 ? 10 : MaxMobileShadowCascadeCount;
 
 	MaxShadowCascades = FMath::Clamp<int32>(CVarMaxShadowCascades.GetValueOnAnyThread(), 0, MaxShadowCascadeCountUpperBound);
 
@@ -928,15 +932,7 @@ bool FViewInfo::VerifyMembersChecks() const
 {
 	FSceneView::VerifyMembersChecks();
 
-	// ------------------------------------------- Screen percentage checks.
-	checkf(
-		!(PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::TemporalUpscale && AntiAliasingMethod != AAM_TemporalAA),
-		TEXT("ScreenPercentageMethod == EPrimaryScreenPercentageMethod::TemporalUpscale requires AntiAliasingMethod == AAM_TemporalAA"));
-
-	if (PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::TemporalUpscale)
-	{
-		checkf(GetFeatureLevel() >= ERHIFeatureLevel::SM5, TEXT("Temporal upsample is SM5 only."));
-	}
+	check(ViewState == State);
 
 	return true;
 }
@@ -1120,6 +1116,19 @@ void FViewInfo::SetupUniformBufferParameters(
 	}
 
 	const FVector DefaultSunDirection(0.0f, 0.0f, 1.0f); // Up vector so that the AtmosphericLightVector node always output a valid direction.
+	auto ClearAtmosphereLightData = [&](uint32 Index)
+	{
+		check(Index < NUM_ATMOSPHERE_LIGHTS);
+		ViewUniformShaderParameters.AtmosphereLightDiscCosHalfApexAngle[Index] = FVector4(1.0f);
+		ViewUniformShaderParameters.AtmosphereLightDiscLuminance[Index] = FLinearColor::Black;
+		ViewUniformShaderParameters.AtmosphereLightColor[Index] = FLinearColor::Black;
+		ViewUniformShaderParameters.AtmosphereLightColor[Index].A = 0.0f;
+		ViewUniformShaderParameters.AtmosphereLightColorGlobalPostTransmittance[Index] = FLinearColor::Black;
+		ViewUniformShaderParameters.AtmosphereLightColorGlobalPostTransmittance[Index].A = 0.0f;
+		ViewUniformShaderParameters.AtmosphereLightDirection[Index] = DefaultSunDirection;
+	};
+
+	uint32 AtmosphereLightDataClearStartIndex = 0;
 	if (Scene)
 	{
 		if (Scene->SimpleDirectionalLight)
@@ -1134,7 +1143,8 @@ void FViewInfo::SetupUniformBufferParameters(
 		}
 
 		// Atmospheric fog parameters
-		const float SunLightDiskHalfApexAngleRadian = Scene->SunLight ? Scene->SunLight->Proxy->GetSunLightHalfApexAngleRadian() : FLightSceneProxy::GetSunOnEarthHalfApexAngleRadian();
+		FLightSceneInfo* SunLight = Scene->AtmosphereLights[0];	// Atmospheric fog only takes into account the a single sun light with index 0.
+		const float SunLightDiskHalfApexAngleRadian = SunLight ? SunLight->Proxy->GetSunLightHalfApexAngleRadian() : FLightSceneProxy::GetSunOnEarthHalfApexAngleRadian();
 		if (ShouldRenderAtmosphere(*Family) && Scene->AtmosphericFog)
 		{
 			ViewUniformShaderParameters.AtmosphericFogSunPower = Scene->AtmosphericFog->SunMultiplier;
@@ -1148,12 +1158,15 @@ void FViewInfo::SetupUniformBufferParameters(
 			ViewUniformShaderParameters.AtmosphericFogStartDistance = Scene->AtmosphericFog->StartDistance;
 			ViewUniformShaderParameters.AtmosphericFogDistanceOffset = Scene->AtmosphericFog->DistanceOffset;
 			ViewUniformShaderParameters.AtmosphericFogSunDiscScale = Scene->AtmosphericFog->SunDiscScale;
-			ViewUniformShaderParameters.AtmosphericFogSunDiscHalfApexAngleRadian = Scene->AtmosphericFog->SunDiscScale * SunLightDiskHalfApexAngleRadian;
-			ViewUniformShaderParameters.AtmosphericFogSunDiscLuminance = Scene->SunLight ? Scene->SunLight->Proxy->GetOuterSpaceLuminance() : FLinearColor::White;
-			ViewUniformShaderParameters.AtmosphericFogSunColor = Scene->SunLight ? Scene->SunLight->Proxy->GetColor() : Scene->AtmosphericFog->DefaultSunColor; // Sun light color unaffected by atmosphere transmittance
-			ViewUniformShaderParameters.AtmosphericFogSunDirection = Scene->SunLight ? -Scene->SunLight->Proxy->GetDirection() : -Scene->AtmosphericFog->DefaultSunDirection;
 			ViewUniformShaderParameters.AtmosphericFogRenderMask = Scene->AtmosphericFog->RenderFlag & (EAtmosphereRenderFlag::E_DisableGroundScattering | EAtmosphereRenderFlag::E_DisableSunDisk);
 			ViewUniformShaderParameters.AtmosphericFogInscatterAltitudeSampleNum = Scene->AtmosphericFog->InscatterAltitudeSampleNum;
+			ViewUniformShaderParameters.AtmosphereLightDiscCosHalfApexAngle[0] = FVector4(FMath::Cos(Scene->AtmosphericFog->SunDiscScale * SunLightDiskHalfApexAngleRadian));
+			ViewUniformShaderParameters.AtmosphereLightDiscLuminance[0] = SunLight ? SunLight->Proxy->GetOuterSpaceLuminance() : FLinearColor::White;
+			ViewUniformShaderParameters.AtmosphereLightColor[0] = SunLight ? SunLight->Proxy->GetColor() : Scene->AtmosphericFog->DefaultSunColor; // Sun light color unaffected by atmosphere transmittance
+			ViewUniformShaderParameters.AtmosphereLightColor[0].A = 1.0f;
+			ViewUniformShaderParameters.AtmosphereLightColorGlobalPostTransmittance[0] = FLinearColor::Black;
+			ViewUniformShaderParameters.AtmosphereLightColorGlobalPostTransmittance[0].A = 0.0f;
+			ViewUniformShaderParameters.AtmosphereLightDirection[0] = SunLight ? -SunLight->Proxy->GetDirection() : -Scene->AtmosphericFog->DefaultSunDirection;
 		}
 		else
 		{
@@ -1168,13 +1181,18 @@ void FViewInfo::SetupUniformBufferParameters(
 			ViewUniformShaderParameters.AtmosphericFogStartDistance = FLT_MAX;
 			ViewUniformShaderParameters.AtmosphericFogDistanceOffset = 0.f;
 			ViewUniformShaderParameters.AtmosphericFogSunDiscScale = 1.f;
-			ViewUniformShaderParameters.AtmosphericFogSunDiscHalfApexAngleRadian = SunLightDiskHalfApexAngleRadian;
-			//Added check so atmospheric light color and vector can use a directional light without needing an atmospheric fog actor in the scene
-			ViewUniformShaderParameters.AtmosphericFogSunColor = Scene->SunLight ? Scene->SunLight->Proxy->GetColor() : FLinearColor::Black;
-			ViewUniformShaderParameters.AtmosphericFogSunDirection = Scene->SunLight ? -Scene->SunLight->Proxy->GetDirection() : DefaultSunDirection;
 			ViewUniformShaderParameters.AtmosphericFogRenderMask = EAtmosphereRenderFlag::E_EnableAll;
 			ViewUniformShaderParameters.AtmosphericFogInscatterAltitudeSampleNum = 0;
+			ViewUniformShaderParameters.AtmosphereLightDiscCosHalfApexAngle[0] = FVector4(FMath::Cos(SunLightDiskHalfApexAngleRadian));
+			//Added check so atmospheric light color and vector can use a directional light without needing an atmospheric fog actor in the scene
+			ViewUniformShaderParameters.AtmosphereLightDiscLuminance[0] = SunLight ? SunLight->Proxy->GetOuterSpaceLuminance() : FLinearColor::Black;
+			ViewUniformShaderParameters.AtmosphereLightColor[0] = SunLight ? SunLight->Proxy->GetColor() : FLinearColor::Black;
+			ViewUniformShaderParameters.AtmosphereLightColor[0].A = 1.0f;
+			ViewUniformShaderParameters.AtmosphereLightColorGlobalPostTransmittance[0] = FLinearColor::Black;
+			ViewUniformShaderParameters.AtmosphereLightColorGlobalPostTransmittance[0].A = 0.0f;
+			ViewUniformShaderParameters.AtmosphereLightDirection[0] = SunLight ? -SunLight->Proxy->GetDirection() : DefaultSunDirection;
 		}
+		AtmosphereLightDataClearStartIndex = 1; // Do not clear the first atmosphere light data
 	}
 	else
 	{
@@ -1190,13 +1208,133 @@ void FViewInfo::SetupUniformBufferParameters(
 		ViewUniformShaderParameters.AtmosphericFogStartDistance = FLT_MAX;
 		ViewUniformShaderParameters.AtmosphericFogDistanceOffset = 0.f;
 		ViewUniformShaderParameters.AtmosphericFogSunDiscScale = 1.f;
-		ViewUniformShaderParameters.AtmosphericFogSunDiscHalfApexAngleRadian = 0.f;
-		ViewUniformShaderParameters.AtmosphericFogSunDiscLuminance = FLinearColor::Black;
-		ViewUniformShaderParameters.AtmosphericFogSunColor = FLinearColor::Black;
-		ViewUniformShaderParameters.AtmosphericFogSunDirection = DefaultSunDirection;
 		ViewUniformShaderParameters.AtmosphericFogRenderMask = EAtmosphereRenderFlag::E_EnableAll;
 		ViewUniformShaderParameters.AtmosphericFogInscatterAltitudeSampleNum = 0;
+		AtmosphereLightDataClearStartIndex = 0; // Clear every atmosphere light data
 	}
+
+	FRHITexture* TransmittanceLutTextureFound = nullptr;
+	FRHITexture* SkyViewLutTextureFound = nullptr;
+	FRHITexture* CameraAerialPerspectiveVolumeFound = nullptr;
+	FRHITexture* DistantSkyLightLutTextureFound = nullptr;
+	if (ShouldRenderSkyAtmosphere(Scene, Family->EngineShowFlags))
+	{
+		FSkyAtmosphereRenderSceneInfo* SkyAtmosphere = Scene->SkyAtmosphere;
+		const FSkyAtmosphereSceneProxy& SkyAtmosphereSceneProxy = SkyAtmosphere->GetSkyAtmosphereSceneProxy();
+
+		// Get access to texture resource if we have valid pointer.
+		// (Valid pointer checks are needed because some resources might not have been initialized when coming from FCanvasTileRendererItem or FCanvasTriangleRendererItem)
+
+		const TRefCountPtr<IPooledRenderTarget>& PooledTransmittanceLutTexture = SkyAtmosphere->GetTransmittanceLutTexture();
+		if (PooledTransmittanceLutTexture.IsValid())
+		{
+			TransmittanceLutTextureFound = PooledTransmittanceLutTexture->GetRenderTargetItem().ShaderResourceTexture;
+		}
+		const TRefCountPtr<IPooledRenderTarget>& PooledDistantSkyLightLutTexture = SkyAtmosphere->GetDistantSkyLightLutTexture();
+		if (PooledDistantSkyLightLutTexture.IsValid())
+		{
+			DistantSkyLightLutTextureFound = PooledDistantSkyLightLutTexture->GetRenderTargetItem().ShaderResourceTexture;
+		}
+
+		if (this->SkyAtmosphereCameraAerialPerspectiveVolume.IsValid())
+		{
+			CameraAerialPerspectiveVolumeFound = this->SkyAtmosphereCameraAerialPerspectiveVolume->GetRenderTargetItem().ShaderResourceTexture;
+		}
+
+		float SkyViewLutWidth = 1.0f;
+		float SkyViewLutHeight = 1.0f;
+		if (this->SkyAtmosphereViewLutTexture.IsValid())
+		{
+			SkyViewLutTextureFound = this->SkyAtmosphereViewLutTexture->GetRenderTargetItem().ShaderResourceTexture;
+			SkyViewLutWidth = float(this->SkyAtmosphereViewLutTexture->GetDesc().GetSize().X);
+			SkyViewLutHeight = float(this->SkyAtmosphereViewLutTexture->GetDesc().GetSize().Y);
+		}
+		ViewUniformShaderParameters.SkyViewLutSizeAndInvSize = FVector4(SkyViewLutWidth, SkyViewLutHeight, 1.0f / SkyViewLutWidth, 1.0f / SkyViewLutHeight);
+
+		//DistantSkyLightLutTextureFound = SkyAtmosphere->GetDistantSkyLightLutTextureRHI();
+		//ViewUniformShaderParameters.SkyAtmosphereSkyLuminanceFactor = SkyAtmosphere->GetSkyLuminanceFactor();
+
+		// Now initialize remaining view parameters.
+
+		const FAtmosphereSetup& AtmosphereSetup = SkyAtmosphereSceneProxy.GetAtmosphereSetup();
+		ViewUniformShaderParameters.SkyAtmosphereBottomRadius = AtmosphereSetup.BottomRadius;
+		ViewUniformShaderParameters.SkyAtmosphereTopRadius = AtmosphereSetup.TopRadius;
+
+		FSkyAtmosphereViewSharedUniformShaderParameters OutParameters;
+		SetupSkyAtmosphereViewSharedUniformShaderParameters(*this, OutParameters);
+		ViewUniformShaderParameters.SkyAtmosphereAerialPerspectiveStartDepth = OutParameters.AerialPerspectiveStartDepth;
+		ViewUniformShaderParameters.SkyAtmosphereCameraAerialPerspectiveVolumeDepthResolution = OutParameters.CameraAerialPerspectiveVolumeDepthResolution;
+		ViewUniformShaderParameters.SkyAtmosphereCameraAerialPerspectiveVolumeDepthResolutionInv = OutParameters.CameraAerialPerspectiveVolumeDepthResolutionInv;
+		ViewUniformShaderParameters.SkyAtmosphereCameraAerialPerspectiveVolumeDepthSliceLength = OutParameters.CameraAerialPerspectiveVolumeDepthSliceLength;
+		ViewUniformShaderParameters.SkyAtmosphereCameraAerialPerspectiveVolumeDepthSliceLengthInv = OutParameters.CameraAerialPerspectiveVolumeDepthSliceLengthInv;
+		ViewUniformShaderParameters.SkyAtmosphereApplyCameraAerialPerspectiveVolume = OutParameters.ApplyCameraAerialPerspectiveVolume;
+		ViewUniformShaderParameters.SkyAtmosphereSkyLuminanceFactor = SkyAtmosphereSceneProxy.GetSkyLuminanceFactor();
+		ViewUniformShaderParameters.SkyAtmosphereHeightFogContribution = SkyAtmosphereSceneProxy.GetHeightFogContribution();
+
+		// Fill atmosphere lights shader parameters
+		for (uint8 Index = 0; Index < NUM_ATMOSPHERE_LIGHTS; ++Index)
+		{
+			FLightSceneInfo* Light = Scene->AtmosphereLights[Index];
+			if (Light)
+			{
+				ViewUniformShaderParameters.AtmosphereLightDiscCosHalfApexAngle[Index] = FVector4(FMath::Cos(Light->Proxy->GetSunLightHalfApexAngleRadian()));
+				ViewUniformShaderParameters.AtmosphereLightDiscLuminance[Index] = Light->Proxy->GetOuterSpaceLuminance();
+				ViewUniformShaderParameters.AtmosphereLightColor[Index] = Light->Proxy->GetColor();
+				ViewUniformShaderParameters.AtmosphereLightColor[Index].A = 1.0f;
+				ViewUniformShaderParameters.AtmosphereLightColorGlobalPostTransmittance[Index] = Light->Proxy->GetColor() * Light->Proxy->GetTransmittanceFactor();
+				ViewUniformShaderParameters.AtmosphereLightColorGlobalPostTransmittance[Index].A = 1.0f;
+				ViewUniformShaderParameters.AtmosphereLightDirection[Index] = SkyAtmosphereSceneProxy.GetAtmosphereLightDirection(Index, -Light->Proxy->GetDirection());
+			}
+			else
+			{
+				ClearAtmosphereLightData(Index);
+			}
+		}
+		AtmosphereLightDataClearStartIndex = NUM_ATMOSPHERE_LIGHTS;	// Do not clear any atmosphere light data, this component sets everything it needs
+
+		// The constants below should match the one in SkyAtmosphereCommon.ush
+		const float SkyUnitToCm = 1.0f / 0.00001f;
+		const float PlanetRadiusOffset = 0.001f;
+
+		const float Offset = PlanetRadiusOffset * SkyUnitToCm;
+		const float BottomRadiusWorld = AtmosphereSetup.BottomRadius * SkyUnitToCm;
+		const FVector PlanetCenterWorld = FVector(0.0f, 0.0f, -BottomRadiusWorld);
+		const FVector PlanetCenterToCameraWorld = ViewUniformShaderParameters.WorldCameraOrigin - PlanetCenterWorld;
+		const float DistanceToPlanetCenterWorld = PlanetCenterToCameraWorld.Size();
+
+		// If the camera is below the planet surface, we snap it back onto the surface.
+		// This is to make sure the sky is always visible even if the camera is inside the virtual planet.
+		ViewUniformShaderParameters.SkyWorldCameraOrigin = DistanceToPlanetCenterWorld < (BottomRadiusWorld + Offset) ? PlanetCenterWorld + (BottomRadiusWorld + Offset) * (PlanetCenterToCameraWorld / DistanceToPlanetCenterWorld) : ViewUniformShaderParameters.WorldCameraOrigin;
+	}
+	else
+	{
+		ViewUniformShaderParameters.SkyAtmosphereHeightFogContribution = 0.0f;
+		ViewUniformShaderParameters.SkyViewLutSizeAndInvSize = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+		ViewUniformShaderParameters.SkyAtmosphereBottomRadius = 1.0f;
+		ViewUniformShaderParameters.SkyAtmosphereTopRadius = 1.0f;
+		ViewUniformShaderParameters.SkyAtmosphereSkyLuminanceFactor = FLinearColor::White;
+		ViewUniformShaderParameters.SkyAtmosphereAerialPerspectiveStartDepth = 1.0f;
+		ViewUniformShaderParameters.SkyAtmosphereCameraAerialPerspectiveVolumeDepthResolution = 1.0f;
+		ViewUniformShaderParameters.SkyAtmosphereCameraAerialPerspectiveVolumeDepthResolutionInv = 1.0f;
+		ViewUniformShaderParameters.SkyAtmosphereCameraAerialPerspectiveVolumeDepthSliceLength = 1.0f;
+		ViewUniformShaderParameters.SkyAtmosphereCameraAerialPerspectiveVolumeDepthSliceLengthInv = 1.0f;
+		ViewUniformShaderParameters.SkyAtmosphereApplyCameraAerialPerspectiveVolume = 1.0f;
+		ViewUniformShaderParameters.SkyWorldCameraOrigin = ViewUniformShaderParameters.WorldCameraOrigin;
+	}
+
+	for (uint8 Index = AtmosphereLightDataClearStartIndex; Index < NUM_ATMOSPHERE_LIGHTS; ++Index)
+	{
+		ClearAtmosphereLightData(Index);
+	}
+
+	ViewUniformShaderParameters.TransmittanceLutTexture = OrWhite2DIfNull(TransmittanceLutTextureFound);
+	ViewUniformShaderParameters.TransmittanceLutTextureSampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
+	ViewUniformShaderParameters.DistantSkyLightLutTexture = OrBlack2DIfNull(DistantSkyLightLutTextureFound);
+	ViewUniformShaderParameters.DistantSkyLightLutTextureSampler = TStaticSamplerState<SF_Point, AM_Wrap, AM_Wrap>::GetRHI();
+	ViewUniformShaderParameters.SkyViewLutTexture = OrBlack2DIfNull(SkyViewLutTextureFound);
+	ViewUniformShaderParameters.SkyViewLutTextureSampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
+	ViewUniformShaderParameters.CameraAerialPerspectiveVolume = OrBlack3DAlpha1IfNull(CameraAerialPerspectiveVolumeFound);
+	ViewUniformShaderParameters.CameraAerialPerspectiveVolumeSampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
 
 	ViewUniformShaderParameters.AtmosphereTransmittanceTexture = OrBlack2DIfNull(AtmosphereTransmittanceTexture);
 	ViewUniformShaderParameters.AtmosphereIrradianceTexture = OrBlack2DIfNull(AtmosphereIrradianceTexture);
@@ -1291,7 +1429,7 @@ void FViewInfo::SetupUniformBufferParameters(
 	{
 		// If rendering in stereo, the other stereo passes uses the left eye's translucency lighting volume.
 		const FViewInfo* PrimaryView = this;
-		if (IStereoRendering::IsASecondaryView(StereoPass))
+		if (IStereoRendering::IsASecondaryView(StereoPass, GEngine->StereoRenderingDevice))
 		{
 			if (Family->Views.IsValidIndex(0))
 			{
@@ -1641,7 +1779,7 @@ FSceneViewState* FViewInfo::GetEffectiveViewState() const
 	FSceneViewState* EffectiveViewState = ViewState;
 
 	// When rendering in stereo we want to use the same exposure for both eyes.
-	if (IStereoRendering::IsASecondaryView(StereoPass))
+	if (IStereoRendering::IsASecondaryView(StereoPass, GEngine->StereoRenderingDevice))
 	{
 		int32 ViewIndex = Family->Views.Find(this);
 		if (Family->Views.IsValidIndex(ViewIndex))
@@ -1768,15 +1906,14 @@ const FTextureRHIRef* FViewInfo::GetTonemappingLUTTexture() const
 	return TextureRHIRef;
 };
 
-FSceneRenderTargetItem* FViewInfo::GetTonemappingLUTRenderTarget(FRHICommandList& RHICmdList, const int32 LUTSize, const bool bUseVolumeLUT, const bool bNeedUAV, const bool bNeedFloatOutput) const 
+IPooledRenderTarget* FViewInfo::GetTonemappingLUTRenderTarget(FRHICommandList& RHICmdList, const int32 LUTSize, const bool bUseVolumeLUT, const bool bNeedUAV, const bool bNeedFloatOutput) const 
 {
-	FSceneRenderTargetItem* TargetItem = NULL;
 	FSceneViewState* EffectiveViewState = GetEffectiveViewState();
 	if (EffectiveViewState)
 	{
-		TargetItem = &(EffectiveViewState->GetTonemappingLUTRenderTarget(RHICmdList, LUTSize, bUseVolumeLUT, bNeedUAV, bNeedFloatOutput));
+		return EffectiveViewState->GetTonemappingLUTRenderTarget(RHICmdList, LUTSize, bUseVolumeLUT, bNeedUAV, bNeedFloatOutput);
 	}
-	return TargetItem;
+	return nullptr;
 }
 
 void FViewInfo::SetCustomData(const FPrimitiveSceneInfo* InPrimitiveSceneInfo, void* InCustomData)
@@ -2093,7 +2230,7 @@ void FSceneRenderer::PrepareViewRectsForRendering()
 
 		// Fallback to no anti aliasing.
 		{
-			const bool bWillApplyTemporalAA = GPostProcessing.AllowFullPostProcessing(View, FeatureLevel) || (View.bIsPlanarReflection && FeatureLevel >= ERHIFeatureLevel::SM4);
+			const bool bWillApplyTemporalAA = GPostProcessing.AllowFullPostProcessing(View, FeatureLevel) || (View.bIsPlanarReflection && FeatureLevel >= ERHIFeatureLevel::SM5);
 
 			if (!bWillApplyTemporalAA)
 			{
@@ -2365,7 +2502,7 @@ void FSceneRenderer::ComputeFamilySize()
 		MaxFamilyX = FMath::Max(MaxFamilyX, FinalViewMaxX);
 		MaxFamilyY = FMath::Max(MaxFamilyY, FinalViewMaxY);
 
-		if (!IStereoRendering::IsAnAdditionalView(View.StereoPass))
+		if (!IStereoRendering::IsAnAdditionalView(View.StereoPass, GEngine->StereoRenderingDevice))
 		{
 		InstancedStereoWidth = FPlatformMath::Max(InstancedStereoWidth, static_cast<uint32>(View.ViewRect.Max.X));
 	}
@@ -3163,7 +3300,9 @@ static void ViewExtensionPreRender_RenderThread(FRHICommandListImmediate& RHICmd
 	FMemMark MemStackMark(FMemStack::Get());
 
 	{
+		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(PreRender);
 		SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_ViewExtensionPreRenderView);
+
 		for (int ViewExt = 0; ViewExt < SceneRenderer->ViewFamily.ViewExtensions.Num(); ViewExt++)
 		{
 			SceneRenderer->ViewFamily.ViewExtensions[ViewExt]->PreRenderViewFamily_RenderThread(RHICmdList, SceneRenderer->ViewFamily);
@@ -3366,9 +3505,12 @@ void FRendererModule::CreateAndInitSingleView(FRHICommandListImmediate& RHICmdLi
 
 void FRendererModule::BeginRenderingViewFamily(FCanvas* Canvas, FSceneViewFamily* ViewFamily)
 {
-	UWorld* World = nullptr; 
+	check(Canvas);
+	check(ViewFamily);
 	check(ViewFamily->Scene);
 	check(ViewFamily->GetScreenPercentageInterface());
+
+	UWorld* World = nullptr;
 
 	FScene* const Scene = ViewFamily->Scene->GetRenderScene();
 	if (Scene)
@@ -3389,9 +3531,9 @@ void FRendererModule::BeginRenderingViewFamily(FCanvas* Canvas, FSceneViewFamily
 
 	ENQUEUE_RENDER_COMMAND(UpdateFastVRamConfig)(
 		[](FRHICommandList& RHICmdList)
-	{
-		GFastVRamConfig.Update();
-	});
+		{
+			GFastVRamConfig.Update();
+		});
 
 	// Flush the canvas first.
 	Canvas->Flush_GameThread();
@@ -3404,8 +3546,8 @@ void FRendererModule::BeginRenderingViewFamily(FCanvas* Canvas, FSceneViewFamily
 	}
 	else
 	{
-	// this is passes to the render thread, better access that than GFrameNumberRenderThread
-	ViewFamily->FrameNumber = GFrameNumber;
+		// this is passes to the render thread, better access that than GFrameNumberRenderThread
+		ViewFamily->FrameNumber = GFrameNumber;
 	}
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
@@ -3422,7 +3564,7 @@ void FRendererModule::BeginRenderingViewFamily(FCanvas* Canvas, FSceneViewFamily
 	}
 
 	if (Scene)
-	{		
+	{
 		// Set the world's "needs full lighting rebuild" flag if the scene has any uncached static lighting interactions.
 		if(World)
 		{
@@ -3577,6 +3719,11 @@ void FRendererModule::AddVirtualTextureProducerDestroyedCallback(const FVirtualT
 uint32 FRendererModule::RemoveAllVirtualTextureProducerDestroyedCallbacks(const void* Baton)
 {
 	return FVirtualTextureSystem::Get().RemoveAllProducerDestroyedCallbacks(Baton);
+}
+
+void FRendererModule::RequestVirtualTextureTiles(const FVector2D& InScreenSpaceSize, int32 InMipLevel)
+{
+	FVirtualTextureSystem::Get().RequestTiles(InScreenSpaceSize, InMipLevel);
 }
 
 void FRendererModule::RequestVirtualTextureTilesForRegion(IAllocatedVirtualTexture* AllocatedVT, const FVector2D& InScreenSpaceSize, const FIntRect& InTextureRegion, int32 InMipLevel)

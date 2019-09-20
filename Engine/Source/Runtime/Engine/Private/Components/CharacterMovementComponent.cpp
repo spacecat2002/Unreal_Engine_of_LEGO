@@ -864,6 +864,14 @@ bool UCharacterMovementComponent::DoJump(bool bReplayingMoves)
 	return false;
 }
 
+bool UCharacterMovementComponent::CanAttemptJump() const
+{
+	return IsJumpAllowed() &&
+		   !bWantsToCrouch &&
+		   (IsMovingOnGround() || IsFalling()); // Falling included for double-jump and non-zero jump hold time, but validated by character.
+}
+
+
 FVector UCharacterMovementComponent::GetImpartedMovementBaseVelocity() const
 {
 	FVector Result = FVector::ZeroVector;
@@ -4142,6 +4150,7 @@ float UCharacterMovementComponent::BoostAirControl(float DeltaTime, float TickAi
 void UCharacterMovementComponent::PhysFalling(float deltaTime, int32 Iterations)
 {
 	SCOPE_CYCLE_COUNTER(STAT_CharPhysFalling);
+	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(CharPhysFalling);
 
 	if (deltaTime < MIN_TICK_TIME)
 	{
@@ -4767,7 +4776,7 @@ void UCharacterMovementComponent::MaintainHorizontalGroundVelocity()
 void UCharacterMovementComponent::PhysWalking(float deltaTime, int32 Iterations)
 {
 	SCOPE_CYCLE_COUNTER(STAT_CharPhysWalking);
-
+	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(CharPhysWalking);
 
 	if (deltaTime < MIN_TICK_TIME)
 	{
@@ -5036,6 +5045,7 @@ void UCharacterMovementComponent::PhysNavWalking(float deltaTime, int32 Iteratio
 
 	const FVector OldLocation = GetActorFeetLocation();
 	const FVector DeltaMove = DesiredMove * deltaTime;
+	const bool bDeltaMoveNearlyZero = DeltaMove.IsNearlyZero();
 
 	FVector AdjustedDest = OldLocation + DeltaMove;
 	FNavLocation DestNavLocation;
@@ -5058,10 +5068,21 @@ void UCharacterMovementComponent::PhysNavWalking(float deltaTime, int32 Iteratio
 		{
 			bSameNavLocation = CachedNavLocation.Location.Equals(OldLocation);
 		}
-	}
-		
 
-	if (DeltaMove.IsNearlyZero() && bSameNavLocation)
+		if (bDeltaMoveNearlyZero && bSameNavLocation)
+		{
+			if (const INavigationDataInterface* NavData = GetNavData())
+			{
+				if (!NavData->IsNodeRefValid(CachedNavLocation.NodeRef))
+				{
+					CachedNavLocation.NodeRef = INVALID_NAVNODEREF;
+					bSameNavLocation = false;
+				}
+			}
+		}
+	}
+
+	if (bDeltaMoveNearlyZero && bSameNavLocation)
 	{
 		DestNavLocation = CachedNavLocation;
 		UE_LOG(LogNavMeshMovement, VeryVerbose, TEXT("%s using cached navmesh location! (bProjectNavMeshWalking = %d)"), *GetNameSafe(CharacterOwner), bProjectNavMeshWalking);
@@ -6368,7 +6389,7 @@ float UCharacterMovementComponent::GetValidPerchRadius() const
 	if (CharacterOwner)
 	{
 		const float PawnRadius = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius();
-		return FMath::Clamp(PawnRadius - GetPerchRadiusThreshold(), 0.1f, PawnRadius);
+		return FMath::Clamp(PawnRadius - GetPerchRadiusThreshold(), 0.11f, PawnRadius);
 	}
 	return 0.f;
 }
@@ -6845,17 +6866,18 @@ void UCharacterMovementComponent::DisplayDebug(UCanvas* Canvas, const FDebugDisp
 	DisplayDebugManager.DrawString(T);
 }
 
-void UCharacterMovementComponent::VisualizeMovement() const
+float UCharacterMovementComponent::VisualizeMovement() const
 {
+	float HeightOffset = 0.f;
+	const float OffsetPerElement = 10.0f;
 	if (CharacterOwner == nullptr)
 	{
-		return;
+		return HeightOffset;
 	}
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	const FVector TopOfCapsule = GetActorLocation() + FVector(0.f, 0.f, CharacterOwner->GetSimpleCollisionHalfHeight());
-	float HeightOffset = 0.f;
-
+	
 	// Position
 	{
 		const FColor DebugColor = FColor::White;
@@ -6867,37 +6889,54 @@ void UCharacterMovementComponent::VisualizeMovement() const
 	// Velocity
 	{
 		const FColor DebugColor = FColor::Green;
-		HeightOffset += 15.f;
+		HeightOffset += OffsetPerElement;
 		const FVector DebugLocation = TopOfCapsule + FVector(0.f,0.f,HeightOffset);
-		DrawDebugDirectionalArrow(GetWorld(), DebugLocation, DebugLocation + Velocity, 
+		DrawDebugDirectionalArrow(GetWorld(), DebugLocation - FVector(0.f, 0.f, 5.0f), DebugLocation - FVector(0.f, 0.f, 5.0f) + Velocity,
 			100.f, DebugColor, false, -1.f, (uint8)'\000', 10.f);
 
 		FString DebugText = FString::Printf(TEXT("Velocity: %s (Speed: %.2f) (Max: %.2f)"), *Velocity.ToCompactString(), Velocity.Size(), GetMaxSpeed());
-		DrawDebugString(GetWorld(), DebugLocation + FVector(0.f,0.f,5.f), DebugText, nullptr, DebugColor, 0.f, true);
+		DrawDebugString(GetWorld(), DebugLocation, DebugText, nullptr, DebugColor, 0.f, true);
 	}
 
 	// Acceleration
 	{
 		const FColor DebugColor = FColor::Yellow;
-		HeightOffset += 15.f;
+		HeightOffset += OffsetPerElement;
 		const float MaxAccelerationLineLength = 200.f;
 		const float CurrentMaxAccel = GetMaxAcceleration();
 		const float CurrentAccelAsPercentOfMaxAccel = CurrentMaxAccel > 0.f ? Acceleration.Size() / CurrentMaxAccel : 1.f;
 		const FVector DebugLocation = TopOfCapsule + FVector(0.f,0.f,HeightOffset);
-		DrawDebugDirectionalArrow(GetWorld(), DebugLocation, 
-			DebugLocation + Acceleration.GetSafeNormal(SMALL_NUMBER) * CurrentAccelAsPercentOfMaxAccel * MaxAccelerationLineLength, 
+		DrawDebugDirectionalArrow(GetWorld(), DebugLocation - FVector(0.f, 0.f, 5.0f), 
+			DebugLocation - FVector(0.f, 0.f, 5.0f) + Acceleration.GetSafeNormal(SMALL_NUMBER) * CurrentAccelAsPercentOfMaxAccel * MaxAccelerationLineLength,
 			25.f, DebugColor, false, -1.f, (uint8)'\000', 8.f);
 
 		FString DebugText = FString::Printf(TEXT("Acceleration: %s"), *Acceleration.ToCompactString());
-		DrawDebugString(GetWorld(), DebugLocation + FVector(0.f,0.f,5.f), DebugText, nullptr, DebugColor, 0.f, true);
+		DrawDebugString(GetWorld(), DebugLocation, DebugText, nullptr, DebugColor, 0.f, true);
 	}
 
 	// Movement Mode
 	{
 		const FColor DebugColor = FColor::Blue;
-		HeightOffset += 20.f;
-		const FVector DebugLocation = TopOfCapsule + FVector(0.f,0.f,HeightOffset);
+		HeightOffset += OffsetPerElement;
+		FVector DebugLocation = TopOfCapsule + FVector(0.f,0.f,HeightOffset);
 		FString DebugText = FString::Printf(TEXT("MovementMode: %s"), *GetMovementName());
+		DrawDebugString(GetWorld(), DebugLocation, DebugText, nullptr, DebugColor, 0.f, true);
+
+		if (IsInWater())
+		{
+			HeightOffset += OffsetPerElement;
+			DebugLocation = TopOfCapsule + FVector(0.f, 0.f, HeightOffset);
+			DebugText = FString::Printf(TEXT("ImmersionDepth: %.2f"), ImmersionDepth());
+			DrawDebugString(GetWorld(), DebugLocation, DebugText, nullptr, DebugColor, 0.f, true);
+		}
+	}
+
+	// Jump
+	{
+		const FColor DebugColor = FColor::Blue;
+		HeightOffset += OffsetPerElement;
+		FVector DebugLocation = TopOfCapsule + FVector(0.f, 0.f, HeightOffset);
+		FString DebugText = FString::Printf(TEXT("bIsJumping: %d Count: %d HoldTime: %.2f"), CharacterOwner->bPressedJump, CharacterOwner->JumpCurrentCount, CharacterOwner->JumpKeyHoldTime);
 		DrawDebugString(GetWorld(), DebugLocation, DebugText, nullptr, DebugColor, 0.f, true);
 	}
 
@@ -6905,7 +6944,7 @@ void UCharacterMovementComponent::VisualizeMovement() const
 	if (CurrentRootMotion.HasAdditiveVelocity())
 	{
 		const FColor DebugColor = FColor::Cyan;
-		HeightOffset += 15.f;
+		HeightOffset += OffsetPerElement;
 		const FVector DebugLocation = TopOfCapsule + FVector(0.f,0.f,HeightOffset);
 
 		FVector CurrentAdditiveVelocity(FVector::ZeroVector);
@@ -6923,12 +6962,14 @@ void UCharacterMovementComponent::VisualizeMovement() const
 	if (CurrentRootMotion.HasOverrideVelocity())
 	{
 		const FColor DebugColor = FColor::Green;
-		HeightOffset += 15.f;
+		HeightOffset += OffsetPerElement;
 		const FVector DebugLocation = TopOfCapsule + FVector(0.f,0.f,HeightOffset);
 		FString DebugText = FString::Printf(TEXT("Has Override RootMotion"));
 		DrawDebugString(GetWorld(), DebugLocation, DebugText, nullptr, DebugColor, 0.f, true);
 	}
 #endif // !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+
+	return HeightOffset;
 }
 
 void UCharacterMovementComponent::ForceReplicationUpdate()

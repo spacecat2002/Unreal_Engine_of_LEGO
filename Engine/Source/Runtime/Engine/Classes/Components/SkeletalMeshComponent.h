@@ -64,6 +64,15 @@ enum class EAnimCurveType : uint8
 	MaxAnimCurveType UMETA(Hidden)
 };
 
+UENUM()
+enum class EClothMassMode : uint8
+{
+	UniformMass,
+	TotalMass,
+	Density,
+	MaxClothMassMode UMETA(Hidden)
+};
+
 struct FAnimationEvaluationContext
 {
 	// The anim instance we are evaluating
@@ -275,14 +284,14 @@ struct ENGINE_API FClosestPointOnPhysicsAsset
  * @see https://docs.unrealengine.com/latest/INT/Engine/Content/Types/SkeletalMeshes/
  * @see USkeletalMesh
  */
-UCLASS(ClassGroup=(Rendering, Common), hidecategories=Object, config=Engine, editinlinenew, meta=(BlueprintSpawnableComponent))
+UCLASS(Blueprintable, ClassGroup=(Rendering, Common), hidecategories=Object, config=Engine, editinlinenew, meta=(BlueprintSpawnableComponent))
 class ENGINE_API USkeletalMeshComponent : public USkinnedMeshComponent, public IInterface_CollisionDataProvider
 {
 	GENERATED_UCLASS_BODY()
 
 	friend class FSkinnedMeshComponentRecreateRenderStateContext;
 	friend class FParallelAnimationCompletionTask;
-	
+	friend class USkeletalMesh; 
 	/**
 	 * Animation 
 	 */
@@ -614,6 +623,28 @@ public:
 	UPROPERTY(transient)
 	uint16 CachedAnimCurveUidVersion;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
+	EClothMassMode MassMode;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
+	float UniformMass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
+	float TotalMass;
+	
+	/**
+	 * Water: 1.0
+	 * Cotton: 0.155
+	 * Wool: 0.13
+	 * Silk: 0.133
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
+	float Density;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
+	float MinPerParticleMass;
+
+
 	/**
 	 * weight to blend between simulated results and key-framed positions
 	 * if weight is 1.0, shows only cloth simulation results and 0.0 will show only skinned results
@@ -746,26 +777,43 @@ public:
 	 * Returns the a tagged sub-instance node. If no sub instances are found or none are tagged with the
 	 * supplied name, this will return NULL.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Components|SkeletalMesh", meta = (Keywords = "AnimBlueprint"))
+	UFUNCTION(BlueprintCallable, Category = "Components|SkeletalMesh|Sub-Instances", meta = (Keywords = "AnimBlueprint"))
 	UAnimInstance* GetSubInstanceByTag(FName InTag) const;
 
 	/**
 	 * Returns all tagged sub-instance nodes that match the tag.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Components|SkeletalMesh", meta = (Keywords = "AnimBlueprint"))
+	UFUNCTION(BlueprintCallable, Category = "Components|SkeletalMesh|Sub-Instances", meta = (Keywords = "AnimBlueprint"))
 	void GetSubInstancesByTag(FName InTag, TArray<UAnimInstance*>& OutSubInstances) const;
 
+	/** Runs through all nodes, attempting to find sub-instance by name/tag, then sets the class of each node if the tag matches */
+	UFUNCTION(BlueprintCallable, Category = "Components|SkeletalMesh|Sub-Instances", meta = (Keywords = "AnimBlueprint"))
+	void SetSubInstanceClassByTag(FName InTag, TSubclassOf<UAnimInstance> InClass);
+
 	/** 
-	 * Runs through all layer nodes, attempting to find nodes that are implemented by the specified class, then sets up a sub instance of the class for each.
-	 * Allocates one sub instance to run each of the groups specified in the class, so state is shared.
-	 * If InClass is null, then layers are reset to their defaults.
+	 * Runs through all layer nodes, attempting to find layer nodes that are implemented by the specified class, then sets up a sub instance of the class for each.
+	 * Allocates one sub instance to run each of the groups specified in the class, so state is shared. If a layer is not grouped (ie. NAME_None), then state is not shared
+	 * and a separate sub-instance is allocated for each layer node.
+	 * If InClass is null, then all layers are reset to their defaults.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Components|SkeletalMesh|Layers")
 	void SetLayerOverlay(TSubclassOf<UAnimInstance> InClass);
 
-	/** Gets the sub instance corresponding to the specified group */
+	/** 
+	 * Runs through all layer nodes, attempting to find layer nodes that are currently running the specified class, then resets each to its default value.
+	 * State sharing rules are as with SetLayerOverlay.
+	 * If InClass is null, does nothing.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Components|SkeletalMesh|Layers")
+	void ClearLayerOverlay(TSubclassOf<UAnimInstance> InClass);
+
+	/** Gets the layer sub instance corresponding to the specified group */
 	UFUNCTION(BlueprintCallable, Category = "Components|SkeletalMesh|Layers")
 	UAnimInstance* GetLayerSubInstanceByGroup(FName InGroup) const;
+
+	/** Gets the first layer sub instance corresponding to the specified class */
+	UFUNCTION(BlueprintCallable, Category = "Components|SkeletalMesh|Layers")
+	UAnimInstance* GetLayerSubInstanceByClass(TSubclassOf<UAnimInstance> InClass) const;
 
 	/** 
 	 * Returns whether there are any valid instances to run, currently this means whether we have
@@ -1016,7 +1064,7 @@ public:
 	virtual void SkelMeshCompOnParticleSystemFinished( class UParticleSystemComponent* PSC );
 
 	class UAnimSingleNodeInstance * GetSingleNodeInstance() const;
-	bool InitializeAnimScriptInstance(bool bForceReinit=true);
+	bool InitializeAnimScriptInstance(bool bForceReinit = true, bool bInDeferRootNodeInitialization = false);
 
 	/** @return true if wind is enabled */
 	virtual bool IsWindEnabled() const;
@@ -1421,7 +1469,7 @@ public:
 	virtual bool IsAnyRigidBodyAwake() override;
 	virtual void SetEnableGravity(bool bGravityEnabled);
 	virtual bool IsGravityEnabled() const override;
-	virtual void OnComponentCollisionSettingsChanged() override;
+	virtual void OnComponentCollisionSettingsChanged(bool bDeferUpdateOverlaps = false) override;
 	virtual void SetPhysMaterialOverride(UPhysicalMaterial* NewPhysMaterial) override;
 	virtual bool GetSquaredDistanceToCollision(const FVector& Point, float& OutSquaredDistance, FVector& OutClosestPointOnCollision) const override;
 
@@ -2068,6 +2116,7 @@ private:
 	 * Update MorphTargetCurves from mesh - these are not animation curves, but SetMorphTarget and similar functions that can set to this mesh component
 	 */
 	void UpdateMorphTargetOverrideCurves();
+
 	/*
 	 * Reset MorphTarget Curves - Reset all morphtarget curves
 	 */

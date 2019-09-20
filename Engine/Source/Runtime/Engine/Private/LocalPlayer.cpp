@@ -227,7 +227,6 @@ bool FLocalPlayerContext::IsFromLocalPlayer(const AActor* ActorToTest) const
 
 ULocalPlayer::ULocalPlayer(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
-	, SubsystemCollection(this)
 	, SlateOperations( FReply::Unhandled() )
 {
 	PendingLevelPlayerControllerClass = APlayerController::StaticClass();
@@ -256,10 +255,10 @@ void ULocalPlayer::PostInitProperties()
 
 void ULocalPlayer::PlayerAdded(UGameViewportClient* InViewportClient, int32 InControllerID)
 {
-	ViewportClient		= InViewportClient;
-	ControllerId		= InControllerID;
+	ViewportClient = InViewportClient;
+	ControllerId = InControllerID;
 
-	SubsystemCollection.Initialize();
+	SubsystemCollection.Initialize(this);
 }
 
 void ULocalPlayer::InitOnlineSession()
@@ -871,6 +870,17 @@ FSceneView* ULocalPlayer::CalcSceneView( class FSceneViewFamily* ViewFamily,
 			PlayerController->PlayerCameraManager->UpdatePhotographyPostProcessing(View->FinalPostProcessSettings);
 		}
 
+		if (GEngine->StereoRenderingDevice.IsValid())
+		{
+			FPostProcessSettings StereoDeviceOverridePostProcessinSettings;
+			float BlendWeight = 1.0f;
+			bool StereoSettingsAvailable = GEngine->StereoRenderingDevice->OverrideFinalPostprocessSettings(&StereoDeviceOverridePostProcessinSettings, StereoPass, BlendWeight);
+			if (StereoSettingsAvailable)
+			{
+				View->OverridePostProcessSettings(StereoDeviceOverridePostProcessinSettings, BlendWeight);
+			}
+		}
+
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 		ADebugCameraController* DebugCameraController = Cast<ADebugCameraController>(PlayerController);
 		if (DebugCameraController != nullptr)
@@ -1112,7 +1122,7 @@ bool ULocalPlayer::GetProjectionData(FViewport* Viewport, EStereoscopicPass Ster
 	if (!bNeedStereo)
 	{
 		// Create the projection matrix (and possibly constrain the view rectangle)
-		FMinimalViewInfo::CalculateProjectionMatrixGivenView(ViewInfo, AspectRatioAxisConstraint, ViewportClient->Viewport, /*inout*/ ProjectionData);
+		FMinimalViewInfo::CalculateProjectionMatrixGivenView(ViewInfo, AspectRatioAxisConstraint, Viewport, /*inout*/ ProjectionData);
 
 		for (auto& ViewExt : GEngine->ViewExtensions->GatherActiveExtensions())
         {

@@ -31,7 +31,7 @@
 
 static TAutoConsoleVariable<int32> CVarVirtualTextures(
 	TEXT("r.VirtualTextures"),
-	1,
+	0,
 	TEXT("Is virtual texture streaming enabled?"),
 	ECVF_RenderThreadSafe | ECVF_ReadOnly);
 
@@ -334,11 +334,11 @@ void UTexture::Serialize(FArchive& Ar)
 		bUseLegacyGamma = true;
 	}
 
-	if (Ar.IsCooking())
+	if (Ar.IsCooking() && VirtualTextureStreaming)
 	{
-		if (VirtualTextureStreaming && UseVirtualTexturing(GMaxRHIFeatureLevel, Ar.CookingTarget()) == false)
+		if (UseVirtualTexturing(GMaxRHIFeatureLevel, Ar.CookingTarget()) == false)
 		{
-			UE_LOG(LogTexture, Warning, TEXT("%s is marked for virtual streaming but virtual texture streaming is not available."), *GetName());
+			UE_LOG(LogTexture, Display, TEXT("%s is marked for virtual streaming but virtual texture streaming is not available."), *GetPathName());
 		}
 	}
 
@@ -917,7 +917,7 @@ void FTextureSource::UnlockMip(int32 BlockIndex, int32 LayerIndex, int32 MipInde
 	}
 }
 
-bool FTextureSource::GetMipData(TArray<uint8>& OutMipData, int32 BlockIndex, int32 LayerIndex, int32 MipIndex, IImageWrapperModule* ImageWrapperModule)
+bool FTextureSource::GetMipData(TArray64<uint8>& OutMipData, int32 BlockIndex, int32 LayerIndex, int32 MipIndex, IImageWrapperModule* ImageWrapperModule)
 {
 	bool bSuccess = false;
 	if (BlockIndex < GetNumBlocks() && LayerIndex < NumLayers && MipIndex < NumMips && BulkData.GetBulkDataSize() > 0)

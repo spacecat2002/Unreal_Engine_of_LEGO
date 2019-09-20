@@ -175,7 +175,7 @@ public:
 	*/
 	virtual bool RequiresAudioSyncAfterDropouts() const
 	{
-#if PLATFORM_PS4 || PLATFORM_SWITCH || PLATFORM_XBOXONE
+#if PLATFORM_PS4 || PLATFORM_XBOXONE
 		return true;
 #else
 		return false;
@@ -310,6 +310,15 @@ public:
 	virtual bool FlushOnSeekCompleted() const
 	{
 		return true;
+	}
+
+	/**
+	 * Any extra processing that the player should do when FMediaPlayerFacade::ProcessVideoSamples
+	 * is run should be put here.
+	 */
+	virtual void ProcessVideoSamples()
+	{
+		// Override in child class if needed.
 	}
 
 public:

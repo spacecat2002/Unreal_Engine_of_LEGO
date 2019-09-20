@@ -88,7 +88,7 @@ struct FStreamingViewInfo
  * This structure allows audio chunk data to be accessed, and guarantees that the chunk in question will not be deleted
  * during it's lifecycle.
  */
-class FAudioChunkHandle
+class ENGINE_API FAudioChunkHandle
 {
 public:
 	FAudioChunkHandle();
@@ -397,6 +397,9 @@ struct IRenderAssetStreamingManager : public IStreamingManager
 	* @param RenderAsset		Texture or mesh to update
 	*/
 	virtual void UpdateIndividualRenderAsset(UStreamableRenderAsset* RenderAsset) = 0;
+
+	/** Stream in non-resident mips for an asset ASAP. */
+	virtual void FastForceFullyResident(UStreamableRenderAsset* RenderAsset) = 0;
 
 	/**
 	* Temporarily boosts the streaming distance factor by the specified number.

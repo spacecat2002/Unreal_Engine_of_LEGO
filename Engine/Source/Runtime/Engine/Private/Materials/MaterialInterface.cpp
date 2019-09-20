@@ -19,6 +19,7 @@
 #include "Algo/BinarySearch.h"
 #include "Interfaces/ITargetPlatform.h"
 #include "Components.h"
+#include "ContentStreaming.h"
 
 /**
  * This is used to deprecate data that has been built with older versions.
@@ -50,6 +51,7 @@ void FMaterialRelevance::SetPrimitiveViewRelevance(FPrimitiveViewRelevance& OutV
 	OutViewRelevance.bDecal = bDecal;
 	OutViewRelevance.bTranslucentSurfaceLighting = bTranslucentSurfaceLighting;
 	OutViewRelevance.bUsesSceneDepth = bUsesSceneDepth;
+	OutViewRelevance.bUsesSkyMaterial = bUsesSkyMaterial;
 	OutViewRelevance.bHasVolumeMaterialDomain = bHasVolumeMaterialDomain;
 }
 
@@ -158,6 +160,7 @@ FMaterialRelevance UMaterialInterface::GetRelevance_Internal(const UMaterial* Ma
 			MaterialRelevance.bUsesSceneDepth = MaterialResource->MaterialUsesSceneDepthLookup_GameThread();
 			MaterialRelevance.bHasVolumeMaterialDomain = MaterialResource->IsVolumetricPrimitive();
 			MaterialRelevance.bUsesDistanceCullFade = MaterialResource->MaterialUsesDistanceCullFade_GameThread();
+			MaterialRelevance.bUsesSkyMaterial = Material->bIsSky;
 		}
 		return MaterialRelevance;
 	}
@@ -193,7 +196,7 @@ int32 UMaterialInterface::GetHeight() const
 }
 
 
-void UMaterialInterface::SetForceMipLevelsToBeResident( bool OverrideForceMiplevelsToBeResident, bool bForceMiplevelsToBeResidentValue, float ForceDuration, int32 CinematicTextureGroups )
+void UMaterialInterface::SetForceMipLevelsToBeResident( bool OverrideForceMiplevelsToBeResident, bool bForceMiplevelsToBeResidentValue, float ForceDuration, int32 CinematicTextureGroups, bool bFastResponse )
 {
 	TArray<UTexture*> Textures;
 	
@@ -207,6 +210,14 @@ void UMaterialInterface::SetForceMipLevelsToBeResident( bool OverrideForceMiplev
 			if (OverrideForceMiplevelsToBeResident)
 			{
 				Texture->bForceMiplevelsToBeResident = bForceMiplevelsToBeResidentValue;
+			}
+
+			if (bFastResponse && (ForceDuration > 0.f || Texture->bForceMiplevelsToBeResident))
+			{
+				static IConsoleVariable* CVarAllowFastForceResident = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Streaming.AllowFastForceResident"));
+
+				Texture->bIgnoreStreamingMipBias = CVarAllowFastForceResident && CVarAllowFastForceResident->GetInt();
+				IStreamingManager::Get().GetRenderAssetStreamingManager().FastForceFullyResident(Texture);
 			}
 		}
 	}
@@ -297,6 +308,11 @@ bool UMaterialInterface::IsVectorParameterUsedAsChannelMask(const FMaterialParam
 }
 
 #if WITH_EDITOR
+bool UMaterialInterface::GetVectorParameterChannelNames(const FMaterialParameterInfo& ParameterInfo, FParameterChannelNames& OutValue) const
+{
+	return false;
+}
+
 bool UMaterialInterface::GetScalarParameterSliderMinMax(const FMaterialParameterInfo& ParameterInfo, float& OutSliderMin, float& OutSliderMax) const
 {
 	return false;
@@ -338,6 +354,18 @@ bool UMaterialInterface::GetTextureParameterValue(const FMaterialParameterInfo& 
 {
 	return false;
 }
+
+bool UMaterialInterface::GetRuntimeVirtualTextureParameterValue(const FMaterialParameterInfo& ParameterInfo, URuntimeVirtualTexture*& OutValue, bool bOveriddenOnly) const
+{
+	return false;
+}
+
+#if WITH_EDITOR
+bool UMaterialInterface::GetTextureParameterChannelNames(const FMaterialParameterInfo& ParameterInfo, FParameterChannelNames& OutValue) const
+{
+	return false;
+}
+#endif
 
 bool UMaterialInterface::GetFontParameterValue(const FMaterialParameterInfo& ParameterInfo, class UFont*& OutFontValue, int32& OutFontPage, bool bOveriddenOnly) const
 {

@@ -27,7 +27,7 @@
 #include "DSP/EnvelopeFollower.h"
 #include "DSP/BufferVectorOperations.h"
 #include "Misc/OutputDeviceArchiveWrapper.h"
-#include "Sound/SampleBuffer.h"
+#include "SampleBuffer.h"
 
 #include "Misc/CommandLine.h"
 
@@ -309,8 +309,6 @@ void USoundWave::Serialize( FArchive& Ar )
 
 	bool bShouldStreamSound = false;
 
-	if (Ar.IsSaving() || Ar.IsCooking())
-	{
 #if WITH_EDITORONLY_DATA
 		if (bVirtualizeWhenSilent_DEPRECATED)
 		{
@@ -319,6 +317,8 @@ void USoundWave::Serialize( FArchive& Ar )
 		}
 #endif // WITH_EDITORONLY_DATA
 
+	if (Ar.IsSaving() || Ar.IsCooking())
+	{
 #if WITH_ENGINE
 		// If there is an AutoStreamingThreshold set for the platform we're cooking to,
 		// we use it to determine whether this USoundWave should be streaming:
@@ -866,9 +866,6 @@ uint32 USoundWave::GetSizeOfChunk(uint32 ChunkIndex)
 void USoundWave::BeginDestroy()
 {
 	Super::BeginDestroy();
-
-	// Flag that this sound wave is beginning destroying. This will ensure that all sounds using this in the audio renderer are stopped before GC finishes.
-	bIsBeginDestroy = true;
 
 #if WITH_EDITOR
 	// Flush any async results so we dont leak them in the DDC
@@ -1522,7 +1519,7 @@ bool USoundWave::IsReadyForFinishDestroy()
 			}, GET_STATID(STAT_AudioFreeResources));
 		}
 
-	return NumSourcesPlaying.GetValue() == 0 && ResourceState == ESoundWaveResourceState::Freed;
+	return ResourceState == ESoundWaveResourceState::Freed;
 }
 
 
@@ -1566,7 +1563,7 @@ void USoundWave::Parse(FAudioDevice* AudioDevice, const UPTRINT NodeWaveInstance
 	{
 		WaveInstance->bIsFinished = false;
 #if !(NO_LOGGING || UE_BUILD_SHIPPING || UE_BUILD_TEST)
-		if (!ActiveSound.bWarnedAboutOrphanedLooping && ActiveSound.GetAudioComponentID() == 0)
+		if (!ActiveSound.bWarnedAboutOrphanedLooping && ActiveSound.GetAudioComponentID() == 0 && ActiveSound.FadeOut == FActiveSound::EFadeOut::None)
 		{
 			UE_LOG(LogAudio, Warning, TEXT("Detected orphaned looping sound '%s'."), *ActiveSound.GetSound()->GetName());
 			ActiveSound.bWarnedAboutOrphanedLooping = true;
@@ -1618,8 +1615,8 @@ void USoundWave::Parse(FAudioDevice* AudioDevice, const UPTRINT NodeWaveInstance
 		float VolumeMultiplier = WaveInstance->GetVolumeMultiplier();
 		WaveInstance->SetVolumeMultiplier(VolumeMultiplier* SoundClassProperties->Volume);
 		WaveInstance->SetPitch(WaveInstance->Pitch * SoundClassProperties->Pitch);
-		//TODO: Add in HighFrequencyGainMultiplier property to sound classes
 
+		WaveInstance->SoundClassFilterFrequency = SoundClassProperties->LowPassFilterFrequency;
 		WaveInstance->VoiceCenterChannelVolume = SoundClassProperties->VoiceCenterChannelVolume;
 		WaveInstance->RadioFilterVolume = SoundClassProperties->RadioFilterVolume * ParseParams.VolumeMultiplier;
 		WaveInstance->RadioFilterVolumeThreshold = SoundClassProperties->RadioFilterVolumeThreshold * ParseParams.VolumeMultiplier;
@@ -1672,18 +1669,37 @@ void USoundWave::Parse(FAudioDevice* AudioDevice, const UPTRINT NodeWaveInstance
 	WaveInstance->Location = ParseParams.Transform.GetTranslation();
 	WaveInstance->bIsStarted = true;
 	WaveInstance->bAlreadyNotifiedHook = false;
-	WaveInstance->SetUseSpatialization(ParseParams.bUseSpatialization);
-	WaveInstance->SpatializationMethod = ParseParams.SpatializationMethod;
+
 	WaveInstance->WaveData = this;
 	WaveInstance->NotifyBufferFinishedHooks = ParseParams.NotifyBufferFinishedHooks;
 	WaveInstance->LoopingMode = ((bLooping || ParseParams.bLooping) ? LOOP_Forever : LOOP_Never);
 	WaveInstance->bIsPaused = ParseParams.bIsPaused;
 
 	// If we're normalizing 3d stereo spatialized sounds, we need to scale by -6 dB
-	if (WaveInstance->GetUseSpatialization() && ParseParams.bApplyNormalizationToStereoSounds && NumChannels == 2)
+	WaveInstance->SetUseSpatialization(ParseParams.bUseSpatialization);
+
+	// Setup the spat method if we're actually spatializing (note a cvar can turn this off so we use the getter here)
+	if (WaveInstance->GetUseSpatialization())
 	{
-		float WaveInstanceVolume = WaveInstance->GetVolume();
-		WaveInstance->SetVolume(WaveInstanceVolume * 0.5f);
+		WaveInstance->SpatializationMethod = ParseParams.SpatializationMethod;
+
+		// Check for possible HRTF-enforcement if this is a spatialized sound
+		if (AudioDevice->IsHRTFEnabledForAll() && ParseParams.SpatializationMethod == ESoundSpatializationAlgorithm::SPATIALIZATION_Default)
+		{
+			WaveInstance->SpatializationMethod = ESoundSpatializationAlgorithm::SPATIALIZATION_HRTF;
+		}
+		else
+		{
+			WaveInstance->SpatializationMethod = ParseParams.SpatializationMethod;
+		}
+
+		// Apply stereo normalization to wave instances if enabled
+		if (ParseParams.bApplyNormalizationToStereoSounds && NumChannels == 2)
+		{
+			const float ThisVolumeMultiplier = WaveInstance->GetVolumeMultiplier();
+			WaveInstance->SetVolumeMultiplier(ThisVolumeMultiplier * 0.5f);
+		}
+
 	}
 
 	// Copy reverb send settings
@@ -1712,15 +1728,6 @@ void USoundWave::Parse(FAudioDevice* AudioDevice, const UPTRINT NodeWaveInstance
 		WaveInstance->SoundSourceBusSends[BusSendType] = ParseParams.SoundSourceBusSends[BusSendType];
 	}
 
-	if (AudioDevice->IsHRTFEnabledForAll() && ParseParams.SpatializationMethod == ESoundSpatializationAlgorithm::SPATIALIZATION_Default)
-	{
-		WaveInstance->SpatializationMethod = ESoundSpatializationAlgorithm::SPATIALIZATION_HRTF;
-	}
-	else
-	{
-		WaveInstance->SpatializationMethod = ParseParams.SpatializationMethod;
-	}
-
 	// Pass along plugin settings to the wave instance
 	WaveInstance->SpatializationPluginSettings = ParseParams.SpatializationPluginSettings;
 	WaveInstance->OcclusionPluginSettings = ParseParams.OcclusionPluginSettings;
@@ -1729,14 +1736,13 @@ void USoundWave::Parse(FAudioDevice* AudioDevice, const UPTRINT NodeWaveInstance
 
 	WaveInstance->bIsAmbisonics = bIsAmbisonics;
 
-	// Recompute the virtualizability here even though we did it up-front in the active sound parse.
-	// This is because an active sound can generate multiple sound waves, not all of them are necessarily virtualizable.
-	bool bHasSubtitles = ActiveSound.bHandleSubtitles && (ActiveSound.bHasExternalSubtitles || (Subtitles.Num() > 0));
+	const float WaveInstanceVolume = WaveInstance->GetVolumeWithDistanceAttenuation() * WaveInstance->GetDynamicVolume();
 
 	// When the BypassVirtualizeWhenSilent cvar is enabled, we should only honor bVirtualizeWhenSilent for procedural sounds:
+	const bool bHasSubtitles = ActiveSound.bHandleSubtitles && (ActiveSound.bHasExternalSubtitles || (Subtitles.Num() > 0));
+	const bool bStarted = WaveInstanceVolume > KINDA_SMALL_NUMBER || ActiveSound.ComponentVolumeFader.IsFadingIn();
 	const bool bCanPlayWhenSilent = IsPlayWhenSilent() && (!BypassPlayWhenSilentCVar || bProcedural);
-	const float WaveInstanceVolume = WaveInstance->GetVolumeWithDistanceAttenuation() * WaveInstance->GetDynamicVolume();
-	if (WaveInstanceVolume > KINDA_SMALL_NUMBER || (bCanPlayWhenSilent || bHasSubtitles))
+	if (bStarted || bCanPlayWhenSilent || bHasSubtitles)
 	{
 		WaveInstances.Add(WaveInstance);
 		ActiveSound.bFinished = false;

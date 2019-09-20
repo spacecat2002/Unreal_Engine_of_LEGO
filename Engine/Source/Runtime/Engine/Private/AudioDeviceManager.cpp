@@ -3,6 +3,7 @@
 
 #include "Audio/AudioDebug.h"
 #include "AudioDevice.h"
+#include "AudioMixerDevice.h"
 #include "Sound/AudioSettings.h"
 #include "Sound/SoundWave.h"
 #include "GameFramework/GameUserSettings.h"
@@ -184,6 +185,15 @@ void FAudioDeviceManager::ToggleAudioMixer()
 
 					// Make a new audio device using the new audio device module
 					AudioDevice = AudioDeviceModule->CreateAudioDevice();
+
+					// Some AudioDeviceModules override CreteAudioMixerPlatformInterface, which means we can create a Audio::FMixerDevice.
+					if (AudioDevice == nullptr)
+					{
+						checkf(AudioDeviceModule->IsAudioMixerModule(), TEXT("Please override AudioDeviceModule->CreateAudioDevice()"))
+						AudioDevice = new Audio::FMixerDevice(AudioDeviceModule->CreateAudioMixerPlatformInterface());
+					}
+
+					check(AudioDevice);
 
 					// Set the new audio device into the slot of the old audio device in the manager
 					Devices[DeviceIndex] = AudioDevice;
@@ -405,6 +415,14 @@ bool FAudioDeviceManager::CreateAudioDevice(bool bCreateNewDevice, FCreateAudioD
 		{
 			// Create the new audio device and make sure it succeeded
 			OutResults.AudioDevice = AudioDeviceModule->CreateAudioDevice();
+
+			// Some AudioDeviceModules override CreteAudioMixerPlatformInterface, which means we can create a Audio::FMixerDevice.
+			if (OutResults.AudioDevice == nullptr)
+			{
+				checkf(AudioDeviceModule->IsAudioMixerModule(), TEXT("Please override AudioDeviceModule->CreateAudioDevice()"))
+					OutResults.AudioDevice = new Audio::FMixerDevice(AudioDeviceModule->CreateAudioMixerPlatformInterface());
+			}
+
 			if (OutResults.AudioDevice == nullptr)
 			{
 				return false;
@@ -484,7 +502,7 @@ bool FAudioDeviceManager::CreateAudioDevice(bool bCreateNewDevice, FCreateAudioD
 	return (OutResults.AudioDevice != nullptr);
 }
 
-bool FAudioDeviceManager::IsValidAudioDeviceHandle(uint32 Handle) const
+bool FAudioDeviceManager::IsValidAudioDeviceHandle(Audio::FDeviceId Handle) const
 {
 	if (AudioDeviceModule == nullptr || Handle == INDEX_NONE)
 	{
@@ -501,7 +519,7 @@ bool FAudioDeviceManager::IsValidAudioDeviceHandle(uint32 Handle) const
 	return Generations[Index] == Generation;
 }
 
-bool FAudioDeviceManager::ShutdownAudioDevice(uint32 Handle)
+bool FAudioDeviceManager::ShutdownAudioDevice(Audio::FDeviceId Handle)
 {
 	if (!IsValidAudioDeviceHandle(Handle))
 	{
@@ -579,7 +597,7 @@ bool FAudioDeviceManager::ShutdownAllAudioDevices()
 	return true;
 }
 
-FAudioDevice* FAudioDeviceManager::GetAudioDevice(uint32 Handle)
+FAudioDevice* FAudioDeviceManager::GetAudioDevice(Audio::FDeviceId Handle)
 {
 	if (!IsValidAudioDeviceHandle(Handle))
 	{
@@ -751,6 +769,17 @@ void FAudioDeviceManager::UpdateSourceEffectChain(const uint32 SourceEffectChain
 	}
 }
 
+void FAudioDeviceManager::UpdateSubmix(USoundSubmix* SoundSubmix)
+{
+	for (FAudioDevice* AudioDevice : Devices)
+	{
+		if (AudioDevice)
+		{
+			AudioDevice->UpdateSubmixProperties(SoundSubmix);
+		}
+	}
+}
+
 void FAudioDeviceManager::SetActiveDevice(uint32 InAudioDeviceHandle)
 {
 	// Only change the active device if there are no solo'd audio devices
@@ -774,7 +803,7 @@ void FAudioDeviceManager::SetActiveDevice(uint32 InAudioDeviceHandle)
 	}
 }
 
-void FAudioDeviceManager::SetSoloDevice(uint32 InAudioDeviceHandle)
+void FAudioDeviceManager::SetSoloDevice(Audio::FDeviceId InAudioDeviceHandle)
 {
 	SoloDeviceHandle = InAudioDeviceHandle;
 	if (SoloDeviceHandle != INDEX_NONE)
@@ -1064,6 +1093,8 @@ bool FAudioDeviceManager::GetAudioDebugSound(FString& OutDebugSound)
 
 float FAudioDeviceManager::GetDynamicSoundVolume(ESoundType SoundType, const FName& SoundName) const
 {
+	check(IsInAudioThread());
+
 	TTuple<ESoundType, FName> SoundKey(SoundType, SoundName);
 	if (const float* Volume = DynamicSoundVolumes.Find(SoundKey))
 	{

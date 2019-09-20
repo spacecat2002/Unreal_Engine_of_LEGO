@@ -189,16 +189,6 @@ void AWorldSettings::PreInitializeComponents()
 	}
 }
 
-void AWorldSettings::PostInitializeComponents()
-{
-	Super::PostInitializeComponents();
-
-	if (GEngine->IsConsoleBuild())
-	{
-		GEngine->bUseConsoleInput = true;
-	}
-}
-
 void AWorldSettings::PostRegisterAllComponents()
 {
 	Super::PostRegisterAllComponents();
@@ -252,7 +242,8 @@ void AWorldSettings::NotifyBeginPlay()
 		for (FActorIterator It(World); It; ++It)
 		{
 			SCOPE_CYCLE_COUNTER(STAT_ActorBeginPlay);
-			It->DispatchBeginPlay();
+			const bool bFromLevelLoad = true;
+			It->DispatchBeginPlay(bFromLevelLoad);
 		}
 		World->bBegunPlay = true;
 	}
@@ -671,7 +662,7 @@ void AWorldSettings::InternalPostPropertyChanged(FName PropertyName)
 			UpdateBookmarkClass();
 		}
 
-	if (GetWorld() != nullptr && GetWorld()->PersistentLevel->GetWorldSettings() == this)
+	if (GetWorld() != nullptr && GetWorld()->PersistentLevel && GetWorld()->PersistentLevel->GetWorldSettings() == this)
 	{
 		if (PropertyName == GET_MEMBER_NAME_CHECKED(FHierarchicalSimplification, TransitionScreenSize))
 		{

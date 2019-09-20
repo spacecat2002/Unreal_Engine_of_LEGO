@@ -2,7 +2,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GenericPlatform/GenericPlatformInstallBundleManager.h"
+#include "InstallBundleManagerInterface.h"
 
 //Handles calculating the bundle status by combining progress from all of its
 //Prerequisites. Allows you to display one progress percent that is weighted based on all
@@ -23,20 +23,12 @@ public:
 			,Finished
 		};
 		
-		float ProgressPercent;
-		ECombinedBundleStateEnum CombinedState;
-		bool bIsPaused;
-		bool bDoesCurrentStateSupportPausing;
-		bool bBundleRequiresUpdate;
-		
-		FCombinedBundleStatus()
-		: ProgressPercent(0.f)
-		, CombinedState(ECombinedBundleStateEnum::Unknown)
-		, bIsPaused(false)
-		, bDoesCurrentStateSupportPausing(false)
-		, bBundleRequiresUpdate(false)
-		{
-		}
+		float ProgressPercent = 0.0f;
+		ECombinedBundleStateEnum CombinedState = ECombinedBundleStateEnum::Unknown;
+		EInstallBundlePauseFlags CombinedPauseFlags = EInstallBundlePauseFlags::None;
+		bool bIsPaused = false;
+		bool bDoesCurrentStateSupportPausing = false;
+		bool bBundleRequiresUpdate = false;
 	};
 	
 public:
@@ -50,7 +42,7 @@ public:
 	FBundlePrereqCombinedStatusHelper& operator=(FBundlePrereqCombinedStatusHelper&& Other);
 	
 	//Setup tracking for all bundles required in the supplied BundleContentState
-	void SetBundlesToTrackFromContentState(FInstallBundleContentState& BundleContentState);
+	void SetBundlesToTrackFromContentState(const FInstallBundleContentState& BundleContentState);
 	
 	//Get current CombinedBundleStatus for everything setup to track
 	const FCombinedBundleStatus& GetCurrentCombinedState() const;
@@ -88,6 +80,6 @@ private:
 	
 	bool bBundleNeedsUpdate;
 	
-	IPlatformInstallBundleManager* InstallBundleManager;
+	IInstallBundleManager* InstallBundleManager;
 	FDelegateHandle TickHandle;
 };

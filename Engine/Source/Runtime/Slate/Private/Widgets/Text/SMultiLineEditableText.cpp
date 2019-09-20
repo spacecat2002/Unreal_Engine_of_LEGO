@@ -373,6 +373,7 @@ void SMultiLineEditableText::OnTextCommitted(const FText& InText, const ETextCom
 void SMultiLineEditableText::OnCursorMoved(const FTextLocation& InLocation)
 {
 	OnCursorMovedCallback.ExecuteIfBound(InLocation);
+	Invalidate(EInvalidateWidget::Layout);
 }
 
 float SMultiLineEditableText::UpdateAndClampHorizontalScrollBar(const float InViewOffset, const float InViewFraction, const EVisibility InVisiblityOverride)
@@ -459,12 +460,17 @@ void SMultiLineEditableText::GoTo(const FTextLocation& NewLocation)
 	EditableTextLayout->GoTo(NewLocation);
 }
 
-void SMultiLineEditableText::GoTo(ETextLocation GoToLocation)
+void SMultiLineEditableText::GoTo(const ETextLocation NewLocation)
 {
-	EditableTextLayout->GoTo(GoToLocation);
+	EditableTextLayout->GoTo(NewLocation);
 }
 
 void SMultiLineEditableText::ScrollTo(const FTextLocation& NewLocation)
+{
+	EditableTextLayout->ScrollTo(NewLocation);
+}
+
+void SMultiLineEditableText::ScrollTo(const ETextLocation NewLocation)
 {
 	EditableTextLayout->ScrollTo(NewLocation);
 }

@@ -38,6 +38,8 @@
 
 static TAutoConsoleVariable<int32> CVarPingExcludeFrameTime( TEXT( "net.PingExcludeFrameTime" ), 0, TEXT( "Calculate RTT time between NIC's of server and client." ) );
 
+static TAutoConsoleVariable<int32> CVarPingUsePacketRecvTime(TEXT("net.PingUsePacketRecvTime"), 0, TEXT("Use OS or Receive Thread packet receive time, for calculating the ping. Excludes frame time."));
+
 #if !UE_BUILD_SHIPPING
 static TAutoConsoleVariable<int32> CVarPingDisplayServerTime( TEXT( "net.PingDisplayServerTime" ), 0, TEXT( "Show server frame time" ) );
 #endif
@@ -62,12 +64,55 @@ static TAutoConsoleVariable<int32> CVarNetPacketOrderMaxCachedPackets(TEXT("net.
 
 TAutoConsoleVariable<int32> CVarNetEnableDetailedScopeCounters(TEXT("net.EnableDetailedScopeCounters"), 1, TEXT("Enables detailed networking scope cycle counters. There are often lots of these which can negatively impact performance."));
 
+#if !UE_BUILD_SHIPPING
+static TAutoConsoleVariable<int32> CVarDisableBandwithThrottling( TEXT( "net.DisableBandwithThrottling" ), 0, TEXT( "Forces IsNetReady to always return true. Not available in shipping builds." ) );
+#endif
+
 extern int32 GNetDormancyValidate;
 
 DECLARE_CYCLE_STAT(TEXT("NetConnection SendAcks"), Stat_NetConnectionSendAck, STATGROUP_Net);
 DECLARE_CYCLE_STAT(TEXT("NetConnection Tick"), Stat_NetConnectionTick, STATGROUP_Net);
 DECLARE_CYCLE_STAT(TEXT("NetConnection ReceivedNak"), Stat_NetConnectionReceivedNak, STATGROUP_Net);
 DECLARE_CYCLE_STAT(TEXT("NetConnection NetConnectionReceivedAcks"), Stat_NetConnectionReceivedAcks, STATGROUP_Net);
+
+namespace UE4_NetConnectionPrivate
+{
+	struct FValidateLevelVisibilityResult
+	{
+		bool bLevelExists = false;
+		UPackage* Package = nullptr;
+		FLinkerLoad* Linker = nullptr;
+	};
+
+	const FValidateLevelVisibilityResult ValidateLevelVisibility(UWorld* World, const FUpdateLevelVisibilityLevelInfo& LevelVisibility)
+	{
+		// Verify that we were passed a valid level name
+		// If we have a linker we know it has been loaded off disk successfully
+		// If we have a file it is fine too
+		// If its in our own streaming level list, its good
+
+		auto IsInLevelList = [&World](FName InPackageName)
+		{
+			for (ULevelStreaming* StreamingLevel : World->GetStreamingLevels())
+			{
+				if (StreamingLevel && (StreamingLevel->GetWorldAssetPackageFName() == InPackageName))
+				{
+					return true;
+				}
+			}
+			return false;
+		};
+
+		FValidateLevelVisibilityResult Result;
+		Result.Package = FindPackage(nullptr, *LevelVisibility.PackageName.ToString());
+		Result.Linker = FLinkerLoad::FindExistingLinkerForPackage(Result.Package);
+		Result.bLevelExists = Result.Linker ||
+			FPackageName::DoesPackageExist(LevelVisibility.FileName.ToString()) ||
+			IsInLevelList(LevelVisibility.PackageName);
+
+		return Result;
+	}
+}
 
 // ChannelRecord Implementation
 namespace FChannelRecordImpl
@@ -120,6 +165,8 @@ UNetConnection::UNetConnection(const FObjectInitializer& ObjectInitializer)
 ,	TickCount			( 0 )
 ,	LastProcessedFrame	( 0 )
 ,	ConnectTime			( 0.0 )
+,	LastOSReceiveTime	()
+,	bIsOSReceiveTimeLocal(false)
 
 ,	AllowMerge			( false )
 ,	TimeSensitive		( false )
@@ -164,9 +211,6 @@ UNetConnection::UNetConnection(const FObjectInitializer& ObjectInitializer)
 ,	InitInReliable		( 0 )
 ,	EngineNetworkProtocolVersion( FNetworkVersion::GetEngineNetworkProtocolVersion() )
 ,	GameNetworkProtocolVersion( FNetworkVersion::GetGameNetworkProtocolVersion() )
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-,	bResendAllDataSinceOpen( false )
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 ,	ResendAllDataState( EResendAllDataState::None )
 #if !UE_BUILD_SHIPPING
 ,	ReceivedRawPacketDel()
@@ -546,11 +590,6 @@ void UNetConnection::Serialize( FArchive& Ar )
 		GRANULAR_NETWORK_MEMORY_TRACKING_TRACK("ClientResponse", ClientResponse.CountBytes(Ar));
 		GRANULAR_NETWORK_MEMORY_TRACKING_TRACK("RequestURL", RequestURL.CountBytes(Ar));
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-		GRANULAR_NETWORK_MEMORY_TRACKING_TRACK("CDKeyHash", CDKeyHash.CountBytes(Ar));
-		GRANULAR_NETWORK_MEMORY_TRACKING_TRACK("CDKeyResponse", CDKeyResponse.CountBytes(Ar));
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
-
 		GRANULAR_NETWORK_MEMORY_TRACKING_TRACK("SendBuffer", SendBuffer.CountMemory(Ar));
 
 		GRANULAR_NETWORK_MEMORY_TRACKING_TRACK("Channels", Channels.CountBytes(Ar));
@@ -608,6 +647,14 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 			for (const FDelayedPacket& Packet : Delayed)
 			{
 				Packet.CountBytes(Ar);
+			}
+		);
+
+		GRANULAR_NETWORK_MEMORY_TRACKING_TRACK("DelayedIncoming", 
+			DelayedIncomingPackets.CountBytes(Ar);
+			for (const FDelayedIncomingPacket& DelayedPacket : DelayedIncomingPackets)
+			{
+				DelayedPacket.CountBytes(Ar);
 			}
 		);
 #endif
@@ -902,39 +949,30 @@ void UNetConnection::UpdateAllCachedLevelVisibility() const
 
 void UNetConnection::UpdateLevelVisibility(const FName& PackageName, bool bIsVisible)
 {
+	FUpdateLevelVisibilityLevelInfo LevelVisibility;
+	LevelVisibility.PackageName = PackageName;
+	LevelVisibility.FileName = PackageName;
+	LevelVisibility.bIsVisible = bIsVisible;
+
+	UpdateLevelVisibility(LevelVisibility);
+}
+
+void UNetConnection::UpdateLevelVisibility(const FUpdateLevelVisibilityLevelInfo& LevelVisibility)
+{
+	using namespace UE4_NetConnectionPrivate;
+
 	GNumClientUpdateLevelVisibility++;
 
 	// add or remove the level package name from the list, as requested
-	if (bIsVisible)
+	if (LevelVisibility.bIsVisible)
 	{
 		// verify that we were passed a valid level name
-		FString Filename;
-		UPackage* TempPkg = FindPackage(nullptr, *PackageName.ToString());
-		FLinkerLoad* Linker = FLinkerLoad::FindExistingLinkerForPackage(TempPkg);
+		FValidateLevelVisibilityResult VisibilityResult = ValidateLevelVisibility(GetWorld(), LevelVisibility);
 
-		// If we have a linker we know it has been loaded off disk successfully
-		// If we have a file it is fine too
-		// If its in our own streaming level list, its good
-
-		struct Local
+		if (VisibilityResult.bLevelExists)
 		{
-			static bool IsInLevelList(UWorld* World, FName InPackageName)
-			{
-				for (ULevelStreaming* StreamingLevel : World->GetStreamingLevels())
-				{
-					if (StreamingLevel && (StreamingLevel->GetWorldAssetPackageFName() == InPackageName ))
-					{
-						return true;
-					}
-				}
-				return false;
-			}
-		};
-
-		if ( Linker || FPackageName::DoesPackageExist(PackageName.ToString(), nullptr, &Filename ) || Local::IsInLevelList(GetWorld(), PackageName ) )
-		{
-			ClientVisibleLevelNames.Add(PackageName);
-			UE_LOG( LogPlayerController, Verbose, TEXT("ServerUpdateLevelVisibility() Added '%s'"), *PackageName.ToString() );
+			ClientVisibleLevelNames.Add(LevelVisibility.PackageName);
+			UE_LOG(LogPlayerController, Verbose, TEXT("ServerUpdateLevelVisibility() Added '%s'"), *LevelVisibility.PackageName.ToString());
 
 			QUICK_USE_CYCLE_STAT(NetUpdateLevelVisibility_UpdateDormantActors, STATGROUP_Net);
 
@@ -942,7 +980,7 @@ void UNetConnection::UpdateLevelVisibility(const FName& PackageName, bool bIsVis
 			// destroyed actors list when the level is reloaded, so seek them out and add in
 			for (const auto& DestroyedPair : Driver->DestroyedStartupOrDormantActors)
 			{
-				if (DestroyedPair.Value->StreamingLevelName == PackageName)
+				if (DestroyedPair.Value->StreamingLevelName == LevelVisibility.PackageName)
 				{
 					AddDestructionInfo(DestroyedPair.Value.Get());
 				}
@@ -951,9 +989,9 @@ void UNetConnection::UpdateLevelVisibility(const FName& PackageName, bool bIsVis
 			// Any dormant actor that has changes flushed or made before going dormant needs to be updated on the client 
 			// when the streaming level is loaded, so mark them active for this connection
 			UWorld* LevelWorld = nullptr;
-			if (TempPkg)
+			if (VisibilityResult.Package)
 			{
-				LevelWorld = (UWorld*)FindObjectWithOuter(TempPkg, UWorld::StaticClass());
+				LevelWorld = (UWorld*)FindObjectWithOuter(VisibilityResult.Package, UWorld::StaticClass());
 				if (LevelWorld)
 				{
 					if (LevelWorld->PersistentLevel)
@@ -965,7 +1003,7 @@ void UNetConnection::UpdateLevelVisibility(const FName& PackageName, bool bIsVis
 							// to mark Dormant All Actors as (temporarily) active to get the update sent over
 							if (Actor && Actor->GetIsReplicated() && (Actor->NetDormancy == DORM_DormantAll))
 							{
-								NetworkObjectList.MarkActive( Actor, this, Driver );
+								NetworkObjectList.MarkActive(Actor, this, Driver);
 							}
 						}
 					}
@@ -974,33 +1012,33 @@ void UNetConnection::UpdateLevelVisibility(const FName& PackageName, bool bIsVis
 
 			if (ReplicationConnectionDriver)
 			{
-				ReplicationConnectionDriver->NotifyClientVisibleLevelNamesAdd(PackageName, LevelWorld);
+				ReplicationConnectionDriver->NotifyClientVisibleLevelNamesAdd(LevelVisibility.PackageName, LevelWorld);
 			}
 
 		}
 		else
 		{
-			UE_LOG( LogPlayerController, Warning, TEXT("ServerUpdateLevelVisibility() ignored non-existant package '%s'"), *PackageName.ToString() );
+			UE_LOG(LogPlayerController, Warning, TEXT("ServerUpdateLevelVisibility() ignored non-existant package. PackageName='%s', FileName='%s'"), *LevelVisibility.PackageName.ToString(), *LevelVisibility.FileName.ToString());
 			Close();
 		}
 	}
 	else
 	{
-		ClientVisibleLevelNames.Remove(PackageName);
-		UE_LOG( LogPlayerController, Verbose, TEXT("ServerUpdateLevelVisibility() Removed '%s'"), *PackageName.ToString() );
+		ClientVisibleLevelNames.Remove(LevelVisibility.PackageName);
+		UE_LOG(LogPlayerController, Verbose, TEXT("ServerUpdateLevelVisibility() Removed '%s'"), *LevelVisibility.PackageName.ToString());
 		if (ReplicationConnectionDriver)
 		{
-			ReplicationConnectionDriver->NotifyClientVisibleLevelNamesRemove(PackageName);
+			ReplicationConnectionDriver->NotifyClientVisibleLevelNamesRemove(LevelVisibility.PackageName);
 		}
 			
 		// Close any channels now that have actors that were apart of the level the client just unloaded
-		for ( auto It = ActorChannels.CreateIterator(); It; ++It )
+		for (auto It = ActorChannels.CreateIterator(); It; ++It)
 		{
-			UActorChannel* Channel = It.Value();					
+			UActorChannel* Channel = It.Value();
 
-			check( Channel->OpenedLocally );
+			check(Channel->OpenedLocally);
 
-			if ( Channel->Actor && Channel->Actor->GetLevel()->GetOutermost()->GetFName() == PackageName )
+			if (Channel->Actor && Channel->Actor->GetLevel()->GetOutermost()->GetFName() == LevelVisibility.PackageName)
 			{
 				Channel->Close(EChannelCloseReason::LevelUnloaded);
 			}
@@ -1062,11 +1100,13 @@ void UNetConnection::ReceivedRawPacket( void* InData, int32 Count )
 	}
 #endif
 
+#if DO_ENABLE_NET_TEST
 	// Opportunity for packet loss burst simulation to drop the incoming packet.
 	if (Driver && Driver->IsSimulatingPacketLossBurst())
 	{
 		return;
 	}
+#endif
 
 	uint8* Data = (uint8*)InData;
 
@@ -1227,24 +1267,27 @@ void UNetConnection::FlushPacketOrderCache(bool bFlushWholeCache/*=false*/)
 #if DO_ENABLE_NET_TEST
 void UNetConnection::ReinjectDelayedPackets()
 {
-	const double CurrentTime = FPlatformTime::Seconds();
-
-	TGuardValue<bool> ReinjectingGuard(bIsReinjectingDelayedPackets, true);
-
-	uint32 NbReinjected(0);
-	for (const FDelayedIncomingPacket& DelayedPacket : DelayedIncomingPackets)
+	if (DelayedIncomingPackets.Num() > 0)
 	{
-		if (DelayedPacket.ReinjectionTime > CurrentTime)
-		{
-			break;
-		}
-		
-		++NbReinjected;
-		ReceivedPacket(*DelayedPacket.PacketData.Get());
-	}
+		const double CurrentTime = FPlatformTime::Seconds();
 
-	// Delete processed packets
-	DelayedIncomingPackets.RemoveAt(0, NbReinjected, false);
+		TGuardValue<bool> ReinjectingGuard(bIsReinjectingDelayedPackets, true);
+
+		uint32 NbReinjected(0);
+		for (const FDelayedIncomingPacket& DelayedPacket : DelayedIncomingPackets)
+		{
+			if (DelayedPacket.ReinjectionTime > CurrentTime)
+			{
+				break;
+			}
+
+			++NbReinjected;
+			ReceivedPacket(*DelayedPacket.PacketData.Get());
+		}
+
+		// Delete processed packets
+		DelayedIncomingPackets.RemoveAt(0, NbReinjected, false);
+	}
 }
 #endif //#if DO_ENABLE_NET_TEST
 
@@ -1450,17 +1493,15 @@ bool UNetConnection::CheckOutgoingPacketEmulation(FOutPacketTraits& Traits)
 }
 #endif
 
+#if DO_ENABLE_NET_TEST
 bool UNetConnection::ShouldDropOutgoingPacketForLossSimulation(int64 NumBits) const
 {
-#if DO_ENABLE_NET_TEST
 	return Driver->IsSimulatingPacketLossBurst() || 
 		(PacketSimulationSettings.PktLoss > 0 && 
          PacketSimulationSettings.ShouldDropPacketOfSize(NumBits) && 
          FMath::FRand() * 100.f < PacketSimulationSettings.PktLoss);
-#else
-	return false;
-#endif
 }
+#endif
 
 int32 UNetConnection::IsNetReady( bool Saturate )
 {
@@ -1469,6 +1510,13 @@ int32 UNetConnection::IsNetReady( bool Saturate )
 	{
 		QueuedBits = -SendBuffer.GetNumBits();
 	}
+
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+	if (CVarDisableBandwithThrottling.GetValueOnAnyThread() > 0)
+	{
+		return true;
+	}
+#endif
 
 	return QueuedBits + SendBuffer.GetNumBits() <= 0;
 }
@@ -1558,6 +1606,7 @@ void UNetConnection::ReceivedNak( int32 NakPacketId )
 	// Stats
 	++OutPacketsLost;
 	++OutTotalPacketsLost;
+	++Driver->OutPacketsLost;
 	++Driver->OutTotalPacketsLost;
 }
 
@@ -1651,8 +1700,24 @@ bool UNetConnection::ReadPacketInfo(FBitReader& Reader)
 		}
 #endif
 
+		double PacketReceiveTime = 0.0;
+		FTimespan& RecvTimespan = LastOSReceiveTime.Timestamp;
+
+		if (!RecvTimespan.IsZero() && Driver != nullptr && CVarPingUsePacketRecvTime.GetValueOnAnyThread())
+		{
+			if (bIsOSReceiveTimeLocal)
+			{
+				PacketReceiveTime = RecvTimespan.GetTotalSeconds();
+			}
+			else if (ISocketSubsystem* SocketSubsystem = Driver->GetSocketSubsystem())
+			{
+				PacketReceiveTime = SocketSubsystem->TranslatePacketTimestamp(LastOSReceiveTime);
+			}
+		}
+
+
 		// use FApp's time because it is set closer to the beginning of the frame - we don't care about the time so far of the current frame to process the packet
-		const double CurrentTime = FApp::GetCurrentTime();
+		const double CurrentTime = (PacketReceiveTime != 0.0 ? PacketReceiveTime : FApp::GetCurrentTime());
 		const double GameTime	 = ServerFrameTime;
 		const double RTT		 = (CurrentTime - OutLagTime[Index] ) - ( CVarPingExcludeFrameTime.GetValueOnAnyThread() ? GameTime : 0.0 );
 		const double NewLag		 = FMath::Max( RTT, 0.0 );
@@ -1734,16 +1799,17 @@ void UNetConnection::ReceivedPacket( FBitReader& Reader )
 		}
 		if (PacketSimulationSettings.PktIncomingLagMin > 0 || PacketSimulationSettings.PktIncomingLagMax > 0)
 		{
-			const double LagVariance = FMath::FRand() * double(PacketSimulationSettings.PktIncomingLagMax - PacketSimulationSettings.PktIncomingLagMin);
-			const double ExtraLag = (double(PacketSimulationSettings.PktIncomingLagMin) + LagVariance) / 1000.f;
+			// ExtraLagInSec goes from [PktIncomingLagMin, PktIncomingLagMax]
+			const double LagVarianceInMS = FMath::FRand() * double(PacketSimulationSettings.PktIncomingLagMax - PacketSimulationSettings.PktIncomingLagMin);
+			const double ExtraLagInSec = (double(PacketSimulationSettings.PktIncomingLagMin) + LagVarianceInMS) / 1000.f;
 
 			FDelayedIncomingPacket DelayedPacket;
 			DelayedPacket.PacketData = MakeUnique<FBitReader>(Reader);
-			DelayedPacket.ReinjectionTime = FPlatformTime::Seconds() + ExtraLag;
+			DelayedPacket.ReinjectionTime = FPlatformTime::Seconds() + ExtraLagInSec;
 
 			DelayedIncomingPackets.Emplace(MoveTemp(DelayedPacket));
 
-			UE_LOG(LogNet, VeryVerbose, TEXT("Delaying incoming packet for %f seconds"), ExtraLag);
+			UE_LOG(LogNet, VeryVerbose, TEXT("Delaying incoming packet for %f seconds"), ExtraLagInSec);
 			return;
 		}
 	}
@@ -2534,14 +2600,6 @@ TSharedPtr<FObjectReplicator> UNetConnection::CreateReplicatorForNewActorChannel
 	return NewReplicator;
 }
 
-void UNetConnection::PurgeAcks()
-{
-}
-
-void UNetConnection::SendAck(int32 AckPacketId, bool FirstTime/*=1*/)
-{
-}
-
 int32 UNetConnection::SendRawBunch( FOutBunch& Bunch, bool InAllowMerge )
 {
 	ValidateSendBuffer();
@@ -2629,27 +2687,6 @@ int32 UNetConnection::SendRawBunch( FOutBunch& Bunch, bool InAllowMerge )
 	}
 
 	return Bunch.PacketId;
-}
-
-UChannel* UNetConnection::CreateChannel( EChannelType Type, bool bOpenedLocally, int32 ChannelIndex )
-{
-	const EChannelCreateFlags ChannelCreateFlags = (bOpenedLocally ? EChannelCreateFlags::OpenedLocally : EChannelCreateFlags::None);
-	FName ChName = NAME_None;
-
-	switch (Type)
-	{
-	case CHTYPE_Control:
-		ChName = NAME_Control;
-		break;
-	case CHTYPE_Actor:
-		ChName = NAME_Actor;
-		break;
-	case CHTYPE_Voice:
-		ChName = NAME_Voice;
-		break;
-	}
-
-	return CreateChannelByName(ChName, ChannelCreateFlags, ChannelIndex);
 }
 
 UChannel* UNetConnection::CreateChannelByName( const FName& ChName, EChannelCreateFlags CreateFlags, int32 ChIndex )
@@ -2770,17 +2807,20 @@ void UNetConnection::Tick()
 
 	AssertValid();
 
+	// Get frame time.
+	const double CurrentRealtimeSeconds = FPlatformTime::Seconds();
+
 	// Lag simulation.
 #if DO_ENABLE_NET_TEST
-	if(Delayed.Num() > 0)
+	if (Delayed.Num() > 0)
 	{
-		for( int32 i=0; i < Delayed.Num(); i++ )
+		uint32 NbPacketsSent(0);
+		for( FDelayedPacket& DelayedPacket : Delayed )
 		{
-			if( FPlatformTime::Seconds() > Delayed[i].SendTime )
+			if( CurrentRealtimeSeconds > DelayedPacket.SendTime )
 			{
-				LowLevelSend((char*)&Delayed[i].Data[0], Delayed[i].SizeBits, Delayed[i].Traits);
-				Delayed.RemoveAt( i );
-				i--;
+				LowLevelSend((char*)&DelayedPacket.Data[0], DelayedPacket.SizeBits, DelayedPacket.Traits);
+				++NbPacketsSent;
 			}
 			else
 			{
@@ -2788,11 +2828,10 @@ void UNetConnection::Tick()
 				break;
 			}
 		}
+
+		Delayed.RemoveAt(0, NbPacketsSent, false);
 	}
 #endif
-
-	// Get frame time.
-	const double CurrentRealtimeSeconds = FPlatformTime::Seconds();
 
 	// if this is 0 it's our first tick since init, so start our real-time tracking from here
 	if (LastTime == 0.0)
@@ -3156,9 +3195,8 @@ void UNetConnection::HandleClientPlayer( APlayerController *PC, UNetConnection* 
 				const ULevel* Level = LevelStreaming->GetLoadedLevel();
 				if ( Level && Level->bIsVisible && !Level->bClientOnlyVisible )
 				{
-					FUpdateLevelVisibilityLevelInfo& LevelVisibility = *new( LevelVisibilities ) FUpdateLevelVisibilityLevelInfo();
-					LevelVisibility.PackageName = PC->NetworkRemapPath(Level->GetOutermost()->GetFName(), false);
-					LevelVisibility.bIsVisible = true;
+					FUpdateLevelVisibilityLevelInfo& LevelVisibility = *new( LevelVisibilities ) FUpdateLevelVisibilityLevelInfo(Level, true);
+					LevelVisibility.PackageName = PC->NetworkRemapPath(LevelVisibility.PackageName, false);
 				}
 			}
 		}
@@ -3249,7 +3287,6 @@ void UChildConnection::HandleClientPlayer(APlayerController* PC, UNetConnection*
 }
 
 #if DO_ENABLE_NET_TEST
-
 void UNetConnection::UpdatePacketSimulationSettings(void)
 {
 	check(Driver);

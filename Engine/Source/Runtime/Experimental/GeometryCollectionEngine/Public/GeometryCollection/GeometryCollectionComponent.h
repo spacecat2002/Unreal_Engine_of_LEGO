@@ -15,9 +15,9 @@
 #include "GeometryCollection/GeometryCollectionSimulationTypes.h"
 #include "GeometryCollection/GeometryCollectionSimulationCoreTypes.h"
 #include "Physics/Experimental/PhysScene_Chaos.h"
-#include "Physics/Experimental/PhysScene_LLImmediate.h"
 #include "GeometryCollection/GeometryDynamicCollection.h"
 #include "GeometryCollectionObject.h"
+#include "GeometryCollectionEditorSelection.h"
 #include "GeometryCollection/RecordedTransformTrack.h"
 #include "Templates/UniquePtr.h"
 #include "PhysicalMaterials/Experimental/ChaosPhysicalMaterial.h"
@@ -27,13 +27,9 @@
 
 #include "GeometryCollectionComponent.generated.h"
 
-#ifndef GEOMETRYCOLLECTION_EDITOR_SELECTION
-#define GEOMETRYCOLLECTION_EDITOR_SELECTION WITH_EDITOR
-#endif
-
 struct FGeometryCollectionConstantData;
 struct FGeometryCollectionDynamicData;
-class FGeometryCollectionPhysicsObject;
+class FGeometryCollectionPhysicsProxy;
 class UGeometryCollectionComponent;
 class UBoxComponent;
 class UGeometryCollectionCache;
@@ -279,7 +275,7 @@ public:
 	virtual void SendRenderDynamicData_Concurrent() override;
 	FORCEINLINE void SetRenderStateDirty() { bRenderStateDirty = true; }
 	virtual void BeginPlay() override;
-	virtual void EndPlay(EEndPlayReason::Type ReasonEnd) override;
+	virtual void EndPlay(const EEndPlayReason::Type ReasonEnd) override;
 
 	//~ Begin UActorComponent Interface. 
 
@@ -495,7 +491,7 @@ public:
 #if INCLUDE_CHAOS
 	const TSharedPtr<FPhysScene_Chaos> GetPhysicsScene() const;
 	AChaosSolverActor* GetPhysicsSolverActor() const;
-	const FGeometryCollectionPhysicsObject* GetPhysicsObject() const { return PhysicsObject; }
+	const FGeometryCollectionPhysicsProxy* GetPhysicsProxy() const { return PhysicsProxy; }
 #endif  // #if INCLUDE_CHAOS
 
 #if GEOMETRYCOLLECTION_EDITOR_SELECTION
@@ -615,7 +611,7 @@ private:
 	//@todo(mlentine): Don't have one per geo collection
 	TUniquePtr<Chaos::TChaosPhysicsMaterial<float>> ChaosMaterial;
 
-	FGeometryCollectionPhysicsObject* PhysicsObject;
+	FGeometryCollectionPhysicsProxy* PhysicsProxy;
 	TUniquePtr<FGeometryDynamicCollection> DynamicCollection;
 	TArray<FManagedArrayBase**> CopyOnWriteAttributeList;
 

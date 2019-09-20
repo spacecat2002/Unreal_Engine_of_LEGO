@@ -34,7 +34,7 @@ public class ApplicationCore : ModuleRules
 				);
             if (Target.bCompileWithAccessibilitySupport && !Target.bIsBuildingConsoleApplication)
             {
-                PublicAdditionalLibraries.Add("uiautomationcore.lib");
+                PublicSystemLibraries.Add("uiautomationcore.lib");
             }
 		}
 		else if (Target.Platform == UnrealTargetPlatform.Mac)
@@ -47,7 +47,7 @@ public class ApplicationCore : ModuleRules
 				PublicAdditionalLibraries.Add("/System/Library/PrivateFrameworks/MultitouchSupport.framework/Versions/Current/MultitouchSupport");
 			}
 		}
-		else if (Target.Platform == UnrealTargetPlatform.Linux)
+		else if (Target.IsInPlatformGroup(UnrealPlatformGroup.Linux))
 		{
 			AddEngineThirdPartyPrivateStaticDependencies(Target, 
 				"SDL2"

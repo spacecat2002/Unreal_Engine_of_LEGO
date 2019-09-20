@@ -43,13 +43,13 @@ static FAutoConsoleVariableRef CVarCullingSlackFillPercent(TEXT("Slate.CullingSl
 
 #if WITH_SLATE_DEBUGGING
 
-int32 GShowClipping = 0;
+bool GShowClipping = false;
 static FAutoConsoleVariableRef CVarSlateShowClipRects(TEXT("Slate.ShowClipping"), GShowClipping, TEXT("Controls whether we should render a clipping zone outline.  Yellow = Axis Scissor Rect Clipping (cheap).  Red = Stencil Clipping (expensive)."), ECVF_Default);
 
-int32 GDebugCulling = 0;
+bool GDebugCulling = false;
 static FAutoConsoleVariableRef CVarSlateDebugCulling(TEXT("Slate.DebugCulling"), GDebugCulling, TEXT("Controls whether we should ignore clip rects, and just use culling."), ECVF_Default);
 
-int32 GSlateEnsureAllVisibleWidgetsPaint = 0;
+bool GSlateEnsureAllVisibleWidgetsPaint = false;
 static FAutoConsoleVariableRef CVarSlateEnsureAllVisibleWidgetsPaint(TEXT("Slate.EnsureAllVisibleWidgetsPaint"), GSlateEnsureAllVisibleWidgetsPaint, TEXT("Ensures that if a child widget is visible before OnPaint, that it was painted this frame after OnPaint, if still marked as visible.  Only works if we're on the FastPaintPath."), ECVF_Default);
 
 #endif
@@ -574,11 +574,12 @@ void SWidget::SlatePrepass(float InLayoutScaleMultiplier)
 
 		Prepass_Internal(InLayoutScaleMultiplier);
 	}
-
 }
 
 void SWidget::InvalidatePrepass()
 {
+	SLATE_CROSS_THREAD_CHECK();
+
 	bNeedsPrepass = true;
 }
 
@@ -587,7 +588,7 @@ void SWidget::InvalidateChildRemovedFromTree(SWidget& Child)
 	if (Child.FastPathProxyHandle.IsValid())
 	{
 		SCOPED_NAMED_EVENT(SWidget_InvalidateChildRemovedFromTree, FColor::Red);
-		Child.UpdateFastPathVisibility(false, true);
+		Child.UpdateFastPathVisibility(false, true, Child.FastPathProxyHandle.GetInvalidationRoot()->GetHittestGrid());
 	}
 }
 
@@ -595,7 +596,6 @@ FVector2D SWidget::GetDesiredSize() const
 {
 	return DesiredSize.Get(FVector2D::ZeroVector);
 }
-
 
 void SWidget::AssignParentWidget(TSharedPtr<SWidget> InParent)
 {
@@ -649,8 +649,20 @@ bool SWidget::ConditionallyDetatchParentWidget(SWidget* InExpectedParent)
 	return false;
 }
 
-void SWidget::AssignIndicesToChildren(FSlateInvalidationRoot& Root, int32 ParentIndex, TArray<FWidgetProxy, TMemStackAllocator<>>& FastPathList, bool bParentVisible, bool bParentVolatile)
+bool SWidget::AssignIndicesToChildren(FSlateInvalidationRoot& Root, int32 ParentIndex, TArray<FWidgetProxy, TMemStackAllocator<>>& FastPathList, bool bParentVisible, bool bParentVolatile)
 {
+	// Because null widgets are a shared static widget they are not valid for the fast path and are treated as non-existent
+	if (this == &SNullWidget::NullWidget.Get())
+	{
+		return false;
+	}
+
+	if (FastPathProxyHandle.IsValid())
+	{
+		ensureAlwaysMsgf(!FastPathProxyHandle.IsValid(), TEXT("Widget %s was already assigned a proxy handle. If this is being hit this widget is in the active slate tree more than once.  This is illegal and at best will result in UI corruption."), *FReflectionMetaData::GetWidgetDebugInfo(*this));
+		return false;
+	}
+
 	FWidgetProxy MyProxy(this);
 	MyProxy.Index = FastPathList.Num();
 	MyProxy.ParentIndex = ParentIndex;
@@ -669,7 +681,6 @@ void SWidget::AssignIndicesToChildren(FSlateInvalidationRoot& Root, int32 Parent
 	bInheritedVolatility = bParentVolatile;
 
 	FastPathProxyHandle = FWidgetProxyHandle(Root, MyProxy.Index);
-
 
 	if (bInvisibleDueToParentOrSelfVisibility&& PersistentState.CachedElementListNode != nullptr)
 	{
@@ -692,10 +703,9 @@ void SWidget::AssignIndicesToChildren(FSlateInvalidationRoot& Root, int32 Parent
 		{
 			// Because null widgets are a shared static widget they are not valid for the fast path and are treated as non-existent
 			const TSharedRef<SWidget>& Child = MyChildren->GetChildAt(ChildIndex);
-			if (Child != SNullWidget::NullWidget)
+			if (Child->AssignIndicesToChildren(Root, MyProxy.Index, FastPathList, bParentAndSelfVisible, bParentVolatile || IsVolatile()))
 			{
-				++NumChildrenValidForFastPath;
-				Child->AssignIndicesToChildren(Root, MyProxy.Index, FastPathList, bParentAndSelfVisible, bParentVolatile || IsVolatile());
+				NumChildrenValidForFastPath++;
 			}
 		}
 
@@ -705,11 +715,12 @@ void SWidget::AssignIndicesToChildren(FSlateInvalidationRoot& Root, int32 Parent
 			int32 LastIndex = FastPathList.Num() - 1;
 			MyProxyRef.LeafMostChildIndex = LastIndex != MyProxy.Index ? LastIndex : INDEX_NONE;
 		}
-
 	}
+
+	return true;
 }
 
-void SWidget::UpdateFastPathVisibility(bool bParentVisible, bool bWidgetRemoved)
+void SWidget::UpdateFastPathVisibility(bool bParentVisible, bool bWidgetRemoved, FHittestGrid* ParentHittestGrid)
 {
 	const EVisibility CurrentVisibility = GetVisibility();
 	const bool bParentAndSelfVisible = bParentVisible && CurrentVisibility.IsVisible();
@@ -717,9 +728,11 @@ void SWidget::UpdateFastPathVisibility(bool bParentVisible, bool bWidgetRemoved)
 	bInvisibleDueToParentOrSelfVisibility = !bParentAndSelfVisible;
 	const bool bVisibilityChanged = bWasInvisible != bInvisibleDueToParentOrSelfVisibility;
 
+	FHittestGrid* HittestGridToRemoveFrom = ParentHittestGrid;
 	if (FastPathProxyHandle.IsValid())
-	{
-		FastPathProxyHandle.GetInvalidationRoot()->GetHittestGrid()->RemoveWidget(SharedThis(this));
+	{	
+		// Try and remove this from the current handles hit test grid.  If we are in a nested invalidation situation the hittest grid may have changed
+		HittestGridToRemoveFrom = FastPathProxyHandle.GetInvalidationRoot()->GetHittestGrid();
 		FWidgetProxy& Proxy = FastPathProxyHandle.GetProxy();
 		Proxy.Visibility = CurrentVisibility;
 		Proxy.bInvisibleDueToParentOrSelfVisibility = bInvisibleDueToParentOrSelfVisibility;
@@ -734,6 +747,11 @@ void SWidget::UpdateFastPathVisibility(bool bParentVisible, bool bWidgetRemoved)
 		ensure(FastPathProxyHandle.GetIndex() == INDEX_NONE);
 	}
 
+	if (HittestGridToRemoveFrom)
+	{
+		HittestGridToRemoveFrom->RemoveWidget(SharedThis(this));
+	}
+
 	if (PersistentState.CachedElementListNode)
 	{
 		PersistentState.CachedElementListNode->GetValue().GetOwningData()->RemoveCache(PersistentState.CachedElementListNode);
@@ -744,7 +762,7 @@ void SWidget::UpdateFastPathVisibility(bool bParentVisible, bool bWidgetRemoved)
 	for (int32 ChildIndex = 0; ChildIndex < NumChildren; ++ChildIndex)
 	{
 		const TSharedRef<SWidget>& Child = MyChildren->GetChildAt(ChildIndex);
-		Child->UpdateFastPathVisibility(bParentAndSelfVisible, bWidgetRemoved);
+		Child->UpdateFastPathVisibility(bParentAndSelfVisible, bWidgetRemoved, HittestGridToRemoveFrom);
 	}
 }
 
@@ -1013,7 +1031,7 @@ void SWidget::SetVisibility(TAttribute<EVisibility> InVisibility)
 	SetAttribute(Visibility, InVisibility, EInvalidateWidgetReason::Visibility);
 }
 
-void SWidget::Invalidate(EInvalidateWidget InvalidateReason)
+void SWidget::Invalidate(EInvalidateWidgetReason InvalidateReason)
 {
 	SLATE_CROSS_THREAD_CHECK();
 
@@ -1040,8 +1058,7 @@ void SWidget::Invalidate(EInvalidateWidget InvalidateReason)
 		{
 			SCOPED_NAMED_EVENT(SWidget_UpdateFastPathVisibility, FColor::Red);
 			TSharedPtr<SWidget> ParentWidget = GetParentWidget();
-
-			UpdateFastPathVisibility(ParentWidget.IsValid() ? !ParentWidget->bInvisibleDueToParentOrSelfVisibility : false, false);
+			UpdateFastPathVisibility(ParentWidget.IsValid() ? !ParentWidget->bInvisibleDueToParentOrSelfVisibility : false, false, FastPathProxyHandle.GetInvalidationRoot()->GetHittestGrid());
 		}
 
 		if (bVolatilityChanged)

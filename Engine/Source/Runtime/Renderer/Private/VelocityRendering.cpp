@@ -82,7 +82,7 @@ public:
 			|| (Material->IsTwoSided() && !IsTranslucentBlendMode(Material->GetBlendMode()))
 			// or if the material modifies meshes
 			|| Material->MaterialMayModifyMeshPosition()))
-			&& IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM4) 
+			&& IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5) 
 			&& !FVelocityRendering::VertexFactoryOnlyOutputsVelocityInBasePass(Platform, Parameters.VertexFactoryType->SupportsStaticLighting());
 	}
 
@@ -183,7 +183,7 @@ public:
 			|| (Material->IsTwoSided() && !IsTranslucentBlendMode(Material->GetBlendMode()))
 			// or if the material modifies meshes
 			|| Material->MaterialMayModifyMeshPosition()))
-			&& IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM4) && 
+			&& IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5) && 
 			!FVelocityRendering::VertexFactoryOnlyOutputsVelocityInBasePass(Platform, Parameters.VertexFactoryType->SupportsStaticLighting());
 	}
 
@@ -409,7 +409,7 @@ void FDeferredShadingSceneRenderer::RenderVelocities(FRHICommandListImmediate& R
 {
 	SCOPED_NAMED_EVENT(FDeferredShadingSceneRenderer_RenderVelocities, FColor::Emerald);
 
-	check(FeatureLevel >= ERHIFeatureLevel::SM4);
+	check(FeatureLevel >= ERHIFeatureLevel::SM5);
 	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(RenderVelocities);
 	SCOPE_CYCLE_COUNTER(STAT_RenderVelocities);
 
@@ -572,7 +572,8 @@ void FVelocityMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshBatch, 
 		const ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, *Material);
 		const ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, *Material);
 
-		if (BlendMode == BLEND_Opaque || BlendMode == BLEND_Masked)
+		if ((BlendMode == BLEND_Opaque || BlendMode == BLEND_Masked)
+			&& !Material->IsSky())
 		{
 			if (Material->WritesEveryPixel() && !Material->IsTwoSided() && !Material->MaterialModifiesMeshPosition_RenderThread())
 			{

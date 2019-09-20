@@ -335,9 +335,13 @@ namespace WindowsMixedReality
 		bool GetDisplayDimensions(int& width, int& height);
 		const wchar_t* GetDisplayName();
 
+		bool IsActiveAndValid();
+
+		void BlockUntilNextFrame();
+		bool UpdateRenderThreadFrame();
+
 		// Get the latest pose information from our tracking frame.
-		bool UpdateCurrentFrame();
-		bool GetCurrentPose(DirectX::XMMATRIX& leftView, DirectX::XMMATRIX& rightView, HMDTrackingOrigin& trackingOrigin);
+		bool GetCurrentPoseRenderThread(DirectX::XMMATRIX& leftView, DirectX::XMMATRIX& rightView, HMDTrackingOrigin& trackingOrigin);
 		bool QueryCoordinateSystem(ABI::Windows::Perception::Spatial::ISpatialCoordinateSystem *& pCoordinateSystem, HMDTrackingOrigin& trackingOrigin);
 		
 		DirectX::XMFLOAT4X4 GetProjectionMatrix(HMDEye eye);
@@ -361,11 +365,14 @@ namespace WindowsMixedReality
 
 		void RemoveQuadLayer(uint32 Id);
 
-		// Use double-width stereo texture for the depth texture or nullptr to ignore.
-		bool CreateRenderingParameters(ID3D11Texture2D* depthTexture);
+		bool CreateRenderingParameters();
+		bool CommitDepthBuffer(ID3D11Texture2D* depthTexture);
+
+		void SetFocusPointForFrame(DirectX::XMFLOAT3 position);
 
 		// Use double-width stereo texture for the viewport texture.
-		bool Present(ID3D11DeviceContext* context, ID3D11Texture2D* viewportTexture);
+		bool CopyResources(ID3D11DeviceContext* context, ID3D11Texture2D* viewportTexture);
+		bool Present();
 
 		// Spatial Input
 		bool SupportsSpatialInput();
