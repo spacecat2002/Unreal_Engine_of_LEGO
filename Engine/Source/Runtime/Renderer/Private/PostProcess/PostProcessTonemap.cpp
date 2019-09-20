@@ -638,7 +638,6 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassVi
 {
 	if (!Inputs.bGammaOnly)
 	{
-		check(Inputs.Bloom.IsValid());
 		check(Inputs.ColorGradingTexture);
 	}
 	check(Inputs.SceneColor.IsValid());
