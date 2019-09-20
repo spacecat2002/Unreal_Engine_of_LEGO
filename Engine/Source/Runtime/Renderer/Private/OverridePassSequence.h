@@ -143,7 +143,9 @@ public:
 			{
 				if (bFirstPass)
 				{
+#if RDG_ENABLE_DEBUG
 					NextPass = (EPass)PassIndex;
+#endif
 					bFirstPass = false;
 				}
 				LastPass = (EPass)PassIndex;
