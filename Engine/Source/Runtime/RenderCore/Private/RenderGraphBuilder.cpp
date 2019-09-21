@@ -525,8 +525,19 @@ void FRDGBuilder::AllocateRHITextureSRVIfNeeded(FRDGTextureSRV* SRV)
 
 	FRDGTextureRef Texture = SRV->Desc.Texture;
 	check(Texture->PooledRenderTarget);
-
 	FSceneRenderTargetItem& RenderTarget = Texture->PooledRenderTarget->GetRenderTargetItem();
+
+	if (SRV->Desc.MetaData == ERDGTextureMetaDataAccess::HTile)
+	{
+		check(GRHISupportsExplicitHTile);
+		if (!RenderTarget.HTileSRV)
+		{
+			RenderTarget.HTileSRV = RHICreateShaderResourceViewHTile((FTexture2DRHIRef&)RenderTarget.TargetableTexture);
+		}
+		SRV->ResourceRHI = RenderTarget.HTileSRV;
+		check(SRV->ResourceRHI);
+		return;
+	}
 
 	if (RenderTarget.SRVs.Contains(SRV->Desc))
 	{
@@ -550,6 +561,22 @@ void FRDGBuilder::AllocateRHITextureUAVIfNeeded(FRDGTextureUAV* UAV)
 	}
 
 	AllocateRHITextureIfNeeded(UAV->Desc.Texture);
+
+	FRDGTextureRef Texture = UAV->Desc.Texture;
+	check(Texture->PooledRenderTarget);
+	FSceneRenderTargetItem& RenderTarget = Texture->PooledRenderTarget->GetRenderTargetItem();
+
+	if (UAV->Desc.MetaData == ERDGTextureMetaDataAccess::HTile)
+	{
+		check(GRHISupportsExplicitHTile);
+		if (!RenderTarget.HTileUAV)
+		{
+			RenderTarget.HTileUAV = RHICreateUnorderedAccessViewHTile((FTexture2DRHIRef&)RenderTarget.TargetableTexture);
+		}
+		UAV->ResourceRHI = RenderTarget.HTileUAV;
+		check(UAV->ResourceRHI);
+		return;
+	}
 
 	UAV->ResourceRHI = UAV->Desc.Texture->PooledRenderTarget->GetRenderTargetItem().MipUAVs[UAV->Desc.MipLevel];
 }

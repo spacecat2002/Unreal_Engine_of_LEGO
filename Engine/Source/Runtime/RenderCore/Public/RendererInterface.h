@@ -399,6 +399,8 @@ struct FSceneRenderTargetItem
 		UAV.SafeRelease();
 		MipUAVs.Empty();
 		SRVs.Empty();
+		HTileUAV.SafeRelease();
+		HTileSRV.SafeRelease();
 	}
 
 	bool IsValid() const
@@ -426,6 +428,10 @@ struct FSceneRenderTargetItem
 
 	FShaderResourceViewRHIRef RTWriteMaskBufferRHI_SRV;
 	FStructuredBufferRHIRef RTWriteMaskDataBufferRHI;
+
+	/** only created if requested through meta data access flags */
+	FUnorderedAccessViewRHIRef HTileUAV;
+	FShaderResourceViewRHIRef  HTileSRV;
 };
 
 /**
