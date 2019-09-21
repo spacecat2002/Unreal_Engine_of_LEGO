@@ -231,18 +231,18 @@ public:
 
 	/**
 	* Resolves from one texture to another.
-	* @param SourceTexture - texture to resolve from, 0 is silenty ignored
-	* @param DestTexture - texture to resolve to, 0 is silenty ignored
+	* @param SourceTexture - texture to resolve from, 0 is silently ignored
+	* @param DestTexture - texture to resolve to, 0 is silently ignored
 	* @param ResolveParams - optional resolve params
 	* @param Fence - optional fence, will be set once copy is completed by GPU
 	*/
 	virtual void RHICopyToResolveTarget(FRHITexture* SourceTexture, FRHITexture* DestTexture, const FResolveParams& ResolveParams) = 0;
 
 	/**
-	* Rebuilds the depth target acceleration meta data (on supported platforms).
+	* Rebuilds the depth target HTILE meta data (on supported platforms).
 	* @param DepthTexture - the depth surface to resummarize.
 	*/
-	virtual void RHIResummarizeDepth(FRHITexture2D* DepthTexture)
+	virtual void RHIResummarizeHTILE(FRHITexture2D* DepthTexture)
 	{
 		/* empty default implementation */
 	}
@@ -502,7 +502,7 @@ public:
 
 	virtual void RHISetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo) = 0;
 
-	// Bind the clear state of the currently set rendertargets.  This is used by platforms which
+	// Bind the clear state of the currently set render targets. This is used by platforms which
 	// need the state of the target when finalizing a hardware clear or a resource transition to SRV
 	// The explicit bind is needed to support parallel rendering (propagate state between contexts).
 	virtual void RHIBindClearMRTValues(bool bClearColor, bool bClearDepth, bool bClearStencil) {}

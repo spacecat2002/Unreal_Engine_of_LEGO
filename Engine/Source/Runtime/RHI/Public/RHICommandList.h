@@ -1441,11 +1441,11 @@ FRHICOMMAND_MACRO(FRHICommandCopyTexture)
 	RHI_API void Execute(FRHICommandListBase& CmdList);
 };
 
-FRHICOMMAND_MACRO(FRHICommandResummarizeDepth)
+FRHICOMMAND_MACRO(FRHICommandResummarizeHTILE)
 {
 	FRHITexture2D* DepthTexture;
 
-	FORCEINLINE_DEBUGGABLE FRHICommandResummarizeDepth(FRHITexture2D* InDepthTexture)
+	FORCEINLINE_DEBUGGABLE FRHICommandResummarizeHTILE(FRHITexture2D* InDepthTexture)
 	: DepthTexture(InDepthTexture)
 	{
 	}
@@ -2825,14 +2825,14 @@ public:
 		}
 	}
 
-	FORCEINLINE_DEBUGGABLE void ResummarizeDepth(FRHITexture2D* DepthTexture)
+	FORCEINLINE_DEBUGGABLE void ResummarizeHTILE(FRHITexture2D* DepthTexture)
 	{
 		if (Bypass())
 		{
-			GetContext().RHIResummarizeDepth(DepthTexture);
+			GetContext().RHIResummarizeHTILE(DepthTexture);
 			return;
 		}
-		ALLOC_COMMAND(FRHICommandResummarizeDepth)(DepthTexture);
+		ALLOC_COMMAND(FRHICommandResummarizeHTILE)(DepthTexture);
 	}
 
 	FORCEINLINE_DEBUGGABLE void ClearTinyUAV(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const uint32(&Values)[4])
