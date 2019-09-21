@@ -349,7 +349,7 @@ extern RHI_API bool GSupportsDepthBoundsTest;
 /** True if the RHI and current hardware supports a render target write mask */
 extern RHI_API bool GSupportsRenderTargetWriteMask;
 
-/** True if the RHIsupports explicit access to depth target HTile meta data. */
+/** True if the RHI supports explicit access to depth target HTile meta data. */
 extern RHI_API bool GRHISupportsExplicitHTile;
 
 /** True if the RHI supports resummarizing depth target HTile meta data. */
