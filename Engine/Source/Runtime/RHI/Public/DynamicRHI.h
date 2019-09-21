@@ -940,7 +940,7 @@ public:
 		return nullptr;
 	}
 
-	virtual FStructuredBufferRHIRef RHIGetHTileBuffer(FRHITexture* SourceTextureRHI)
+	virtual FShaderResourceViewRHIRef RHICreateShaderResourceViewHTile(FRHITexture2D* RenderTarget)
 	{
 		return nullptr;
 	}
@@ -1390,9 +1390,9 @@ FORCEINLINE FTexture2DRHIRef RHIGetFMaskTexture(FRHITexture* SourceTextureRHI)
 	return GDynamicRHI->RHIGetFMaskTexture(SourceTextureRHI);
 }
 
-FORCEINLINE FStructuredBufferRHIRef RHIGetHTileBuffer(FRHITexture* SourceTextureRHI)
+FORCEINLINE FShaderResourceViewRHIRef RHICreateShaderResourceViewHTile(FRHITexture2D* RenderTarget)
 {
-	return GDynamicRHI->RHIGetHTileBuffer(SourceTextureRHI);
+	return GDynamicRHI->RHICreateShaderResourceViewHTile(RenderTarget);
 }
 
 FORCEINLINE void RHIAdvanceFrameForGetViewportBackBuffer(FRHIViewport* Viewport)

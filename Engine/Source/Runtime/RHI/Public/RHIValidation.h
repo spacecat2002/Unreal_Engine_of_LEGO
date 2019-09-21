@@ -965,9 +965,9 @@ public:
 		return RHI->RHIGetFMaskTexture(SourceTextureRHI);
 	}
 
-	virtual FStructuredBufferRHIRef RHIGetHTileBuffer(FRHITexture* SourceTextureRHI) override final
+	virtual FShaderResourceViewRHIRef RHICreateShaderResourceViewHTile(FRHITexture2D* RenderTarget) override final
 	{
-		return RHI->RHIGetHTileBuffer(SourceTextureRHI);
+		return RHI->RHICreateShaderResourceViewHTile(RenderTarget);
 	}
 
 	// Only relevant with an RHI thread, this advances the backbuffer for the purpose of GetViewportBackBuffer
