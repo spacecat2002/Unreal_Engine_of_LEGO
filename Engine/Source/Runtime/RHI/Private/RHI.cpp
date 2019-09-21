@@ -472,6 +472,7 @@ bool GRHISupportsAsyncTextureCreation = false;
 bool GRHISupportsQuadTopology = false;
 bool GRHISupportsRectTopology = false;
 bool GRHISupportsAtomicUInt64 = false;
+bool GRHISupportsDepthResummarize = false;
 bool GSupportsParallelRenderingTasksWithSeparateRHIThread = true;
 bool GRHIThreadNeedsKicking = false;
 int32 GRHIMaximumReccommendedOustandingOcclusionQueries = MAX_int32;

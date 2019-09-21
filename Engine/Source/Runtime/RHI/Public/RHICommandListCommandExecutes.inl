@@ -421,6 +421,12 @@ void FRHICommandCopyTexture::Execute(FRHICommandListBase& CmdList)
 	INTERNAL_DECORATOR(RHICopyTexture)(SourceTexture, DestTexture, CopyInfo);
 }
 
+void FRHICommandResummarizeDepth::Execute(FRHICommandListBase& CmdList)
+{
+	RHISTAT(ResummarizeDepth);
+	INTERNAL_DECORATOR(RHIResummarizeDepth)(DepthTexture);
+}
+
 void FRHICommandTransitionTextures::Execute(FRHICommandListBase& CmdList)
 {
 	RHISTAT(TransitionTextures);

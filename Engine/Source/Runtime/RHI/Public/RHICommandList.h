@@ -1441,6 +1441,17 @@ FRHICOMMAND_MACRO(FRHICommandCopyTexture)
 	RHI_API void Execute(FRHICommandListBase& CmdList);
 };
 
+FRHICOMMAND_MACRO(FRHICommandResummarizeDepth)
+{
+	FRHITexture2D* DepthTexture;
+
+	FORCEINLINE_DEBUGGABLE FRHICommandResummarizeDepth(FRHITexture2D* InDepthTexture)
+	: DepthTexture(InDepthTexture)
+	{
+	}
+	RHI_API void Execute(FRHICommandListBase& CmdList);
+};
+
 FRHICOMMAND_MACRO(FRHICommandTransitionTextures)
 {
 	int32 NumTextures;
@@ -2812,6 +2823,16 @@ public:
 				PerMipInfo.Size.Y = FMath::Max(1, PerMipInfo.Size.Y / 2);
 			}
 		}
+	}
+
+	FORCEINLINE_DEBUGGABLE void ResummarizeDepth(FRHITexture2D* DepthTexture)
+	{
+		if (Bypass())
+		{
+			GetContext().RHIResummarizeDepth(DepthTexture);
+			return;
+		}
+		ALLOC_COMMAND(FRHICommandResummarizeDepth)(DepthTexture);
 	}
 
 	FORCEINLINE_DEBUGGABLE void ClearTinyUAV(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const uint32(&Values)[4])

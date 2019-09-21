@@ -239,8 +239,17 @@ public:
 	virtual void RHICopyToResolveTarget(FRHITexture* SourceTexture, FRHITexture* DestTexture, const FResolveParams& ResolveParams) = 0;
 
 	/**
+	* Rebuilds the depth target acceleration meta data (on supported platforms).
+	* @param DepthTexture - the depth surface to resummarize.
+	*/
+	virtual void RHIResummarizeDepth(FRHITexture2D* DepthTexture)
+	{
+		/* empty default implementation */
+	}
+
+	/**
 	* Explicitly transition a texture resource from readable -> writable by the GPU or vice versa.
-	* We know rendertargets are only used as rendered targets on the Gfx pipeline, so these transitions are assumed to be implemented such
+	* We know render targets are only used as rendered targets on the Gfx pipeline, so these transitions are assumed to be implemented such
 	* Gfx->Gfx and Gfx->Compute pipeline transitions are both handled by this call by the RHI implementation.  Hence, no pipeline parameter on this call.
 	*
 	* @param TransitionType - direction of the transition

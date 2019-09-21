@@ -940,6 +940,11 @@ public:
 		return nullptr;
 	}
 
+	virtual FStructuredBufferRHIRef RHIGetHTileBuffer(FRHITexture* SourceTextureRHI)
+	{
+		return nullptr;
+	}
+
 	virtual void RHIAliasTextureResources(FRHITexture* DestTexture, FRHITexture* SrcTexture)
 	{
 		checkNoEntry();
@@ -1383,6 +1388,11 @@ FORCEINLINE FTexture2DRHIRef RHIGetViewportBackBuffer(FRHIViewport* Viewport)
 FORCEINLINE FTexture2DRHIRef RHIGetFMaskTexture(FRHITexture* SourceTextureRHI)
 {
 	return GDynamicRHI->RHIGetFMaskTexture(SourceTextureRHI);
+}
+
+FORCEINLINE FStructuredBufferRHIRef RHIGetHTileBuffer(FRHITexture* SourceTextureRHI)
+{
+	return GDynamicRHI->RHIGetHTileBuffer(SourceTextureRHI);
 }
 
 FORCEINLINE void RHIAdvanceFrameForGetViewportBackBuffer(FRHIViewport* Viewport)

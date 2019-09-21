@@ -965,6 +965,11 @@ public:
 		return RHI->RHIGetFMaskTexture(SourceTextureRHI);
 	}
 
+	virtual FStructuredBufferRHIRef RHIGetHTileBuffer(FRHITexture* SourceTextureRHI) override final
+	{
+		return RHI->RHIGetHTileBuffer(SourceTextureRHI);
+	}
+
 	// Only relevant with an RHI thread, this advances the backbuffer for the purpose of GetViewportBackBuffer
 	// FlushType: Thread safe
 	virtual void RHIAdvanceFrameForGetViewportBackBuffer(FRHIViewport* Viewport) override final
