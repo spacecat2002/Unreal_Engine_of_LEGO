@@ -242,7 +242,7 @@ public:
 	* Rebuilds the depth target HTILE meta data (on supported platforms).
 	* @param DepthTexture - the depth surface to resummarize.
 	*/
-	virtual void RHIResummarizeHTILE(FRHITexture2D* DepthTexture)
+	virtual void RHIResummarizeHTile(FRHITexture2D* DepthTexture)
 	{
 		/* empty default implementation */
 	}

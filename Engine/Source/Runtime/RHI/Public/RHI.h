@@ -304,9 +304,6 @@ extern RHI_API bool GRHISupportsRectTopology;
 /** true if the RHI supports 64 bit uint atomics. */
 extern RHI_API bool GRHISupportsAtomicUInt64;
 
-/** true if the RHI supports resummarizing HTILE meta data. */
-extern RHI_API bool GRHISupportsResummarizeHTILE;
-
 /** Temporary. When OpenGL is running in a separate thread, it cannot yet do things like initialize shaders that are first discovered in a rendering task. It is doable, it just isn't done. */
 extern RHI_API bool GSupportsParallelRenderingTasksWithSeparateRHIThread;
 
@@ -349,8 +346,14 @@ extern RHI_API bool GSupportsWideMRT;
 /** True if the RHI and current hardware supports supports depth bounds testing */
 extern RHI_API bool GSupportsDepthBoundsTest;
 
-/** True if the RHI and current hardware support a render target write mask */
+/** True if the RHI and current hardware supports a render target write mask */
 extern RHI_API bool GSupportsRenderTargetWriteMask;
+
+/** True if the RHIsupports explicit access to depth target HTile meta data. */
+extern RHI_API bool GRHISupportsExplicitHTile;
+
+/** True if the RHI supports resummarizing depth target HTile meta data. */
+extern RHI_API bool GRHISupportsResummarizeHTile;
 
 /** True if the RHI and current hardware supports efficient AsyncCompute (by default we assume false and later we can enable this for more hardware) */
 extern RHI_API bool GSupportsEfficientAsyncCompute;
@@ -358,7 +361,7 @@ extern RHI_API bool GSupportsEfficientAsyncCompute;
 /** True if the RHI supports 'GetHDR32bppEncodeModeES2' shader intrinsic. */
 extern RHI_API bool GSupportsHDR32bppEncodeModeIntrinsic;
 
-/** True if the RHI supports getting the result of occlusion queries when on a thread other than the renderthread */
+/** True if the RHI supports getting the result of occlusion queries when on a thread other than the render thread */
 extern RHI_API bool GSupportsParallelOcclusionQueries;
 
 /** true if the RHI supports aliasing of transient resources */
@@ -1270,7 +1273,7 @@ struct FRHIResourceCreateInfo
 	// for CreateVertexBuffer/CreateStructuredBuffer calls
 	FResourceArrayInterface* ResourceArray;
 
-	// for binding clear colors to rendertargets.
+	// for binding clear colors to render targets.
 	FClearValueBinding ClearValueBinding;
 
 	// set of GPUs on which to create the resource
@@ -1325,7 +1328,6 @@ struct FRHITextureSRVCreateInfo
 
 	/** Specify number of array slices. If FirstArraySlice and NumArraySlices are both zero, the SRV is created for all array slices. By default 0. */
 	uint32 NumArraySlices;
-
 
 	FORCEINLINE bool operator==(const FRHITextureSRVCreateInfo& Other)const
 	{

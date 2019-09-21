@@ -970,6 +970,11 @@ public:
 		return RHI->RHICreateShaderResourceViewHTile(RenderTarget);
 	}
 
+	virtual FUnorderedAccessViewRHIRef RHICreateUnorderedAccessViewHTile(FRHITexture2D* RenderTarget) override final
+	{
+		return RHI->RHICreateUnorderedAccessViewHTile(RenderTarget);
+	}
+
 	// Only relevant with an RHI thread, this advances the backbuffer for the purpose of GetViewportBackBuffer
 	// FlushType: Thread safe
 	virtual void RHIAdvanceFrameForGetViewportBackBuffer(FRHIViewport* Viewport) override final

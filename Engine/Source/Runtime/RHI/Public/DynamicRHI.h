@@ -945,6 +945,11 @@ public:
 		return nullptr;
 	}
 
+	virtual FUnorderedAccessViewRHIRef RHICreateUnorderedAccessViewHTile(FRHITexture2D* RenderTarget)
+	{
+		return nullptr;
+	}
+
 	virtual void RHIAliasTextureResources(FRHITexture* DestTexture, FRHITexture* SrcTexture)
 	{
 		checkNoEntry();
@@ -1393,6 +1398,11 @@ FORCEINLINE FTexture2DRHIRef RHIGetFMaskTexture(FRHITexture* SourceTextureRHI)
 FORCEINLINE FShaderResourceViewRHIRef RHICreateShaderResourceViewHTile(FRHITexture2D* RenderTarget)
 {
 	return GDynamicRHI->RHICreateShaderResourceViewHTile(RenderTarget);
+}
+
+FORCEINLINE FUnorderedAccessViewRHIRef RHICreateUnorderedAccessViewHTile(FRHITexture2D* RenderTarget)
+{
+	return GDynamicRHI->RHICreateUnorderedAccessViewHTile(RenderTarget);
 }
 
 FORCEINLINE void RHIAdvanceFrameForGetViewportBackBuffer(FRHIViewport* Viewport)
