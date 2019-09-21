@@ -578,7 +578,7 @@ void FRDGBuilder::AllocateRHITextureUAVIfNeeded(FRDGTextureUAV* UAV)
 		return;
 	}
 
-	UAV->ResourceRHI = UAV->Desc.Texture->PooledRenderTarget->GetRenderTargetItem().MipUAVs[UAV->Desc.MipLevel];
+	UAV->ResourceRHI = RenderTarget.MipUAVs[UAV->Desc.MipLevel];
 }
 
 void FRDGBuilder::AllocateRHIBufferIfNeeded(FRDGBuffer* Buffer)
