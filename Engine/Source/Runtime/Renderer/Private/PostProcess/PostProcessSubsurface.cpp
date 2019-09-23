@@ -1229,43 +1229,4 @@ void ComputeSubsurfaceShim(FRHICommandListImmediate& RHICmdList, const TArray<FV
 	SceneRenderTargets.SetLightAttenuation(nullptr);
 }
 
-FRenderingCompositeOutputRef VisualizeSubsurfaceShim(
-	FRHICommandListImmediate& InRHICmdList,
-	FRenderingCompositionGraph& Graph,
-	FRenderingCompositeOutputRef Input)
-{
-	// we need the GBuffer, we release it Process()
-	FSceneRenderTargets::Get(InRHICmdList).AdjustGBufferRefCount(InRHICmdList, 1);
-
-	FRenderingCompositePass* SubsurfaceVisualizePass = Graph.RegisterPass(new(FMemStack::Get()) TRCPassForRDG<1, 1>(
-		[](FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
-	{
-		FRDGBuilder GraphBuilder(InContext.RHICmdList);
-		const FScreenPassViewInfo ScreenPassView(InContext.View);
-
-		FVisualizeSubsurfaceInputs PassInputs;
-		PassInputs.SceneColor.Texture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor"));
-		PassInputs.SceneColor.ViewRect = InContext.SceneColorViewRect;
-
-		if (FRDGTextureRef OverrideOutputTexture = InPass->FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("FrameBuffer")))
-		{
-			PassInputs.OverrideOutput.Texture = OverrideOutputTexture;
-			PassInputs.OverrideOutput.ViewRect = InContext.GetSceneColorDestRect(InPass);
-			PassInputs.OverrideOutput.LoadAction = InContext.View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
-		}
-
-		FScreenPassTexture PassOutput = AddVisualizeSubsurfacePass(GraphBuilder, ScreenPassView, PassInputs);
-
-		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, PassOutput.Texture);
-
-		GraphBuilder.Execute();
-
-		FRHICommandListImmediate& RHICmdList = GraphBuilder.RHICmdList;
-		FSceneRenderTargets::Get(RHICmdList).AdjustGBufferRefCount(RHICmdList, -1);
-	}));
-
-	SubsurfaceVisualizePass->SetInput(ePId_Input0, Input);
-	return FRenderingCompositeOutputRef(SubsurfaceVisualizePass);
-}
-
 //////////////////////////////////////////////////////////////////////////

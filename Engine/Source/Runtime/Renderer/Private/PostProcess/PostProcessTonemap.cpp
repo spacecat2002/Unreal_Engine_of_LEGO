@@ -659,7 +659,7 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassVi
 		{
 			OutputDesc.TargetableFlags |= ScreenPassView.bUseComputePasses ? TexCreate_UAV : TexCreate_RenderTargetable;
 			// RGB is the color in LDR, A is the luminance for PostprocessAA
-			OutputDesc.Format = Inputs.bOutputInHDR ? GRHIHDRDisplayOutputFormat : PF_R8G8B8A8;
+			OutputDesc.Format = Inputs.bOutputInHDR ? GRHIHDRDisplayOutputFormat : PF_B8G8R8A8;
 			OutputDesc.ClearValue = FClearValueBinding(FLinearColor(0, 0, 0, 0));
 			OutputDesc.Flags |= GFastVRamConfig.Tonemap;
 
@@ -920,7 +920,7 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 		FRDGTextureDesc OutputDesc = SceneColorTexture->Desc;
 		OutputDesc.Reset();
 		OutputDesc.TargetableFlags |= ScreenPassView.bUseComputePasses ? TexCreate_UAV : TexCreate_RenderTargetable;
-		OutputDesc.Format = PF_R8G8B8A8;
+		OutputDesc.Format = PF_B8G8R8A8;
 
 		// RGB is the color in LDR, A is the luminance for PostprocessAA
 		OutputDesc.Format = bHDROutput ? GRHIHDRDisplayOutputFormat : OutputDesc.Format;

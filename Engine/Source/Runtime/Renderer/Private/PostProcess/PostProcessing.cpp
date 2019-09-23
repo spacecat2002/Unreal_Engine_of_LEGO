@@ -924,6 +924,8 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 			const FScreenPassTexture BlackDummy(GSystemTextures.GetBlackDummy(GraphBuilder), FIntRect(0, 0, 1, 1));
 
+			FScreenPassTexture SceneColorBeforeTonemap;
+
 			FSceneTextureParameters SceneTextures;
 			SetupSceneTextureParameters(GraphBuilder, &SceneTextures);
 
@@ -947,6 +949,8 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				EditorPrimitive,
 				VisualizeShadingModels,
 				VisualizeGBufferHints,
+				VisualizeSubsurface,
+				PixelInspector,
 				MAX
 			};
 
@@ -961,7 +965,9 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				TEXT("SelectionOutline"),
 				TEXT("EditorPrimitive"),
 				TEXT("VisualizeShadingModels"),
-				TEXT("VisualizeGBufferHints")
+				TEXT("VisualizeGBufferHints"),
+				TEXT("VisualizeSubsurface"),
+				TEXT("PixelInspector")
 			};
 
 			static_assert(static_cast<uint32>(EPass::MAX) == ARRAY_COUNT(PassNames), "EPass does not match PassNames.");
@@ -993,6 +999,8 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 #endif
 			PassSequence.SetEnabled(EPass::VisualizeShadingModels, View.Family->EngineShowFlags.VisualizeShadingModels);
 			PassSequence.SetEnabled(EPass::VisualizeGBufferHints, View.Family->EngineShowFlags.GBufferHints);
+			PassSequence.SetEnabled(EPass::VisualizeSubsurface, View.Family->EngineShowFlags.VisualizeSSS);
+			PassSequence.SetEnabled(EPass::PixelInspector, View.bUsePixelInspector);
 
 			if (AllowFullPostProcessing(View, View.GetFeatureLevel()))
 			{
@@ -1274,7 +1282,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 					Bloom = PassOutputs.Bloom;
 				}
 
-				const FScreenPassTexture SceneColorBeforeTonemap = SceneColor;
+				SceneColorBeforeTonemap = SceneColor;
 
 				if (PassSequence.IsEnabled(EPass::Tonemap))
 				{
@@ -1394,7 +1402,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 			if (PassSequence.IsEnabled(EPass::VisualizeLightCulling))
 			{
-				ensureMsgf(View.PrimaryScreenPercentageMethod != EPrimaryScreenPercentageMethod::TemporalUpscale, TEXT("TAAU should be disabled when visualizing shader complexity."));
+				ensureMsgf(View.PrimaryScreenPercentageMethod != EPrimaryScreenPercentageMethod::TemporalUpscale, TEXT("TAAU should be disabled when visualizing light culling."));
 
 				// 0.1f comes from the values used in LightAccumulator_GetResult
 				const float ComplexityScale = 1.0f / (float)(GEngine->LightComplexityColors.Num() - 1) / 0.1f;
@@ -1439,7 +1447,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 			if (PassSequence.IsEnabled(EPass::VisualizeShadingModels))
 			{
-				ensureMsgf(View.PrimaryScreenPercentageMethod != EPrimaryScreenPercentageMethod::TemporalUpscale, TEXT("TAAU should be disabled when visualizing shader models."));
+				ensureMsgf(View.PrimaryScreenPercentageMethod != EPrimaryScreenPercentageMethod::TemporalUpscale, TEXT("TAAU should be disabled when visualizing shading models."));
 
 				FVisualizeShadingModelInputs PassInputs;
 				PassSequence.AcceptOverrideIfLastPass(EPass::VisualizeShadingModels, PassInputs.OverrideOutput);
@@ -1451,7 +1459,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 			if (PassSequence.IsEnabled(EPass::VisualizeGBufferHints))
 			{
-				ensureMsgf(View.PrimaryScreenPercentageMethod != EPrimaryScreenPercentageMethod::TemporalUpscale, TEXT("TAAU should be disabled when visualizing shader models."));
+				ensureMsgf(View.PrimaryScreenPercentageMethod != EPrimaryScreenPercentageMethod::TemporalUpscale, TEXT("TAAU should be disabled when visualizing gbuffer hints."));
 
 				FVisualizeGBufferHintsInputs PassInputs;
 				PassSequence.AcceptOverrideIfLastPass(EPass::VisualizeGBufferHints, PassInputs.OverrideOutput);
@@ -1461,6 +1469,32 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 				SceneColor = AddVisualizeGBufferHintsPass(GraphBuilder, ScreenPassView, PassInputs);
 			}
+
+			if (PassSequence.IsEnabled(EPass::VisualizeSubsurface))
+			{
+				ensureMsgf(View.PrimaryScreenPercentageMethod != EPrimaryScreenPercentageMethod::TemporalUpscale, TEXT("TAAU should be disabled when visualizing subsurface."));
+
+				FVisualizeSubsurfaceInputs PassInputs;
+				PassSequence.AcceptOverrideIfLastPass(EPass::VisualizeSubsurface, PassInputs.OverrideOutput);
+				PassInputs.SceneColor = SceneColor;
+				PassInputs.SceneTextures = &SceneTextures;
+
+				SceneColor = AddVisualizeSubsurfacePass(GraphBuilder, ScreenPassView, PassInputs);
+			}
+
+#if WITH_EDITOR
+			if (PassSequence.IsEnabled(EPass::PixelInspector))
+			{
+				FPixelInspectorInputs PassInputs;
+				PassSequence.AcceptOverrideIfLastPass(EPass::PixelInspector, PassInputs.OverrideOutput);
+				PassInputs.SceneColor = SceneColor;
+				PassInputs.SceneColorBeforeTonemap = SceneColorBeforeTonemap;
+				PassInputs.OriginalSceneColor = OriginalSceneColor;
+				PassInputs.SceneTextures = &SceneTextures;
+
+				SceneColor = AddPixelInspectorPass(GraphBuilder, View, PassInputs);
+			}
+#endif
 
 			// Release held GBuffer reference taken during composition graph setup. Passes will take their own references during RDG setup.
 			SceneContext.AdjustGBufferRefCount(InContext.RHICmdList, -1);
@@ -1495,27 +1529,6 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 		// Whether Context.FinalOutput is already unscaled.
 		// If doing temporal upsampling, the final output is already unscaled in TAA pass.
 		bool bUnscaledFinalOutput = Context.View.PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::TemporalUpscale;
-
-#if WITH_EDITOR
-		//Inspect the Final color, GBuffer and HDR
-		//No more postprocess Final color should be the real one
-		//The HDR was save before the tonemapping
-		//GBuffer should not be change during post process 
-		if (View.bUsePixelInspector)
-		{
-			FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessBufferInspector(RHICmdList));
-			Node->SetInput(ePId_Input0, Context.FinalOutput);
-			Node->SetInput(ePId_Input1, PreTonemapHDRColor);
-			Node->SetInput(ePId_Input2, Context.SceneColor);
-			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
-		}
-#endif //WITH_EDITOR
-
-		if (View.Family->EngineShowFlags.VisualizeSSS)
-		{
-			ensureMsgf(!bUnscaledFinalOutput, TEXT("VisualizeSSS is incompatible with unscaled output."));
-			Context.FinalOutput = VisualizeSubsurfaceShim(RHICmdList, Context.Graph, Context.FinalOutput);
-		}
 
 		AddGBufferVisualizationOverview(Context, SeparateTranslucency, PreTonemapHDRColor, PostTonemapHDRColor, PreFlattenVelocity);
 
