@@ -144,16 +144,11 @@ bool IsTemporalAASceneDownsampleAllowed(const FViewInfo& View)
 	return CVarTemporalAAAllowDownsampling.GetValueOnRenderThread() != 0;
 }
 
-bool IsBufferVisualizationDumpFramesEnabled()
-{
-	static const auto CVarDumpFrames = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.BufferVisualizationDumpFrames"));
-	return CVarDumpFrames->GetValueOnRenderThread() != 0;
-}
-
-bool IsBufferVisualizationDumpFramesInHDREnabled()
+bool IsPostProcessOutputInHDR()
 {
 	static const auto CVarDumpFramesAsHDR = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.BufferVisualizationDumpFramesAsHDR"));
-	return CVarDumpFramesAsHDR->GetValueOnRenderThread() != 0;
+
+	return CVarDumpFramesAsHDR->GetValueOnRenderThread() != 0 || GetHighResScreenshotConfig().bCaptureHDR;
 }
 
 int32 GetPostProcessAAQuality()
@@ -590,120 +585,6 @@ static bool AddPostProcessDepthOfFieldGaussian(FPostprocessContext& Context, FRe
 	}
 }
 
-static void AddGBufferVisualizationOverview(
-	FPostprocessContext& Context,
-	FRenderingCompositeOutputRef SeparateTranslucencyInput,
-	FRenderingCompositeOutputRef PreTonemapHDRColorInput,
-	FRenderingCompositeOutputRef PostTonemapHDRColorInput,
-	FRenderingCompositeOutputRef PreFlattenVelocity)
-{
-	const bool bVisualizationEnabled = Context.View.Family->EngineShowFlags.VisualizeBuffer;
-	const bool bOverviewModeEnabled = bVisualizationEnabled && (Context.View.CurrentBufferVisualizationMode == NAME_None);
-	const bool bHighResBufferVisualizationDumpRequried = GIsHighResScreenshot && GetHighResScreenshotConfig().bDumpBufferVisualizationTargets;
-	bool bDumpFrames = Context.View.FinalPostProcessSettings.bBufferVisualizationDumpRequired && (IsBufferVisualizationDumpFramesEnabled() || bHighResBufferVisualizationDumpRequried);
-	const bool bCaptureAsHDR = IsBufferVisualizationDumpFramesInHDREnabled() || GetHighResScreenshotConfig().bCaptureHDR;
-	FString BaseFilename;
-
-	if (!bDumpFrames)
-	{
-		// We always do this work if there are any buffer visualization pipes
-		bDumpFrames = Context.View.FinalPostProcessSettings.BufferVisualizationPipes.Num() > 0;
-	}
-
-	if (bDumpFrames)
-	{
-		BaseFilename = FString(Context.View.FinalPostProcessSettings.BufferVisualizationDumpBaseFilename);
-	}
-	
-	if (bDumpFrames || bVisualizationEnabled)
-	{
-		FRenderingCompositeOutputRef IncomingStage = Context.FinalOutput;
-
-		if (bDumpFrames || bOverviewModeEnabled)
-		{
-			FRenderingCompositePass* CompositePass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessVisualizeBuffer());
-			CompositePass->SetInput(ePId_Input0, FRenderingCompositeOutputRef(IncomingStage));
-			Context.FinalOutput = FRenderingCompositeOutputRef(CompositePass);
-			EPixelFormat OutputFormat = bCaptureAsHDR ? PF_FloatRGBA : PF_Unknown;
-
-			// Loop over materials, creating stages for generation and downsampling of the tiles.			
-			for (TArray<UMaterialInterface*>::TConstIterator It = Context.View.FinalPostProcessSettings.BufferVisualizationOverviewMaterials.CreateConstIterator(); It; ++It)
-			{
-				const UMaterialInterface* MaterialInterface = *It;
-				if (MaterialInterface)
-				{
-					// Apply requested material
-					FRenderingCompositePass* MaterialPass = AddPostProcessMaterialPass(Context, MaterialInterface, OutputFormat);
-					MaterialPass->SetInput(EPassInputId(EPostProcessMaterialInput::SceneColor), IncomingStage);
-					MaterialPass->SetInput(EPassInputId(EPostProcessMaterialInput::SeparateTranslucency), SeparateTranslucencyInput);
-					MaterialPass->SetInput(EPassInputId(EPostProcessMaterialInput::PreTonemapHDRColor), PreTonemapHDRColorInput);
-					MaterialPass->SetInput(EPassInputId(EPostProcessMaterialInput::PostTonemapHDRColor), PostTonemapHDRColorInput);
-					MaterialPass->SetInput(EPassInputId(EPostProcessMaterialInput::Velocity), PreFlattenVelocity);
-
-					FString VisualizationName = MaterialInterface->GetName();
-
-					const TSharedPtr<FImagePixelPipe, ESPMode::ThreadSafe>* OutputPipe = Context.View.FinalPostProcessSettings.BufferVisualizationPipes.Find(MaterialInterface->GetFName());
-					if (OutputPipe && OutputPipe->IsValid())
-					{
-						MaterialPass->SetOutputDumpPipe(ePId_Output0, *OutputPipe);
-					}
-
-					if (BaseFilename.Len())
-					{
-						// First off, allow the user to specify the pass as a format arg (using {material})
-						TMap<FString, FStringFormatArg> FormatMappings;
-						FormatMappings.Add(TEXT("material"), VisualizationName);
-
-						FString MaterialFilename = FString::Format(*BaseFilename, FormatMappings);
-
-						// If the format made no change to the string, we add the name of the material to ensure uniqueness
-						if (MaterialFilename == BaseFilename)
-						{
-							MaterialFilename = BaseFilename + TEXT("_") + VisualizationName;
-						}
-
-						MaterialFilename.Append(TEXT(".png"));
-						MaterialPass->SetOutputDumpFilename(ePId_Output0, *MaterialFilename);
-					}
-
-					// If the overview mode is activated, downsample the material pass to quarter size
-					if (bOverviewModeEnabled)
-					{
-						// Down-sample to 1/2 size
-						FRenderingCompositeOutputRef HalfSize = AddDownsamplePass(Context.Graph, TEXT("MaterialHalfSize"), MaterialPass, 1, EDownsampleQuality::Low, EDownsampleFlags::ForceRaster);
-
-						// Down-sample to 1/4 size
-						FRenderingCompositeOutputRef QuarterSize = AddDownsamplePass(Context.Graph, TEXT("MaterialQuarterSize"), HalfSize, 2, EDownsampleQuality::Low, EDownsampleFlags::ForceRaster);
-
-						// Set whether current buffer is selected
-						bool bIsSelected = false;
-
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-						bIsSelected = (Context.View.FinalPostProcessSettings.bBufferVisualizationOverviewTargetIsSelected &&
-							VisualizationName == Context.View.FinalPostProcessSettings.BufferVisualizationOverviewSelectedTargetMaterialName);
-#endif
-
-						// Mark the quarter size target as the dependency for the composite pass
-						((FRCPassPostProcessVisualizeBuffer*)CompositePass)->AddVisualizationBuffer(FRenderingCompositeOutputRef(QuarterSize), VisualizationName, bIsSelected);
-					}
-					else
-					{
-						// We are just dumping the frames, so the material pass is the dependency of the composite
-						CompositePass->AddDependency(MaterialPass);
-					}
-				}
-				else
-				{
-					if (bOverviewModeEnabled)
-					{
-						((FRCPassPostProcessVisualizeBuffer*)CompositePass)->AddVisualizationBuffer(FRenderingCompositeOutputRef(), FString());
-					}
-				}
-			}
-		}
-	}
-}
-
 // could be moved into the graph
 // allows for Framebuffer blending optimization with the composition graph
 void FPostProcessing::OverrideRenderTarget(FRenderingCompositeOutputRef It, TRefCountPtr<IPooledRenderTarget>& RT, FPooledRenderTargetDesc& Desc)
@@ -890,7 +771,13 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 		const bool bVisualizeHDR = View.Family->EngineShowFlags.VisualizeHDR;
 
-		const bool bHDROutputEnabled = GRHISupportsHDROutput && IsHDREnabled();
+		const bool bViewFamilyOutputInHDR = GRHISupportsHDROutput && IsHDREnabled();
+
+		const bool bVisualizeGBufferOverview = IsVisualizeGBufferOverviewEnabled(View);
+
+		const bool bVisualizeGBufferDumpToFile = IsVisualizeGBufferDumpToFileEnabled(View);
+
+		const bool bOutputInHDR = IsPostProcessOutputInHDR();
 
 		// GBuffers are released prior to executing the composition graph. We take a reference here
 		// and then release the reference inside of RDGPass. This allows RDGPass to control lifetime
@@ -899,7 +786,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 		FRenderingCompositePass* RDGPass = Context.Graph.RegisterPass(
 			new(FMemStack::Get()) TRCPassForRDG<3, 4>(
-				[this, &View, &SceneContext, bVisualizeHDR, bHDROutputEnabled]
+				[this, &View, &SceneContext, bVisualizeHDR, bViewFamilyOutputInHDR, bOutputInHDR, bVisualizeGBufferOverview, bVisualizeGBufferDumpToFile]
 		(FRenderingCompositePass* Pass, FRenderingCompositePassContext& InContext)
 		{
 			FRDGBuilder GraphBuilder(InContext.RHICmdList);
@@ -925,6 +812,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			const FScreenPassTexture BlackDummy(GSystemTextures.GetBlackDummy(GraphBuilder), FIntRect(0, 0, 1, 1));
 
 			FScreenPassTexture SceneColorBeforeTonemap;
+			FScreenPassTexture SceneColorAfterTonemap;
 
 			FSceneTextureParameters SceneTextures;
 			SetupSceneTextureParameters(GraphBuilder, &SceneTextures);
@@ -950,6 +838,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				VisualizeShadingModels,
 				VisualizeGBufferHints,
 				VisualizeSubsurface,
+				VisualizeGBufferOverview,
 				PixelInspector,
 				MAX
 			};
@@ -967,6 +856,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				TEXT("VisualizeShadingModels"),
 				TEXT("VisualizeGBufferHints"),
 				TEXT("VisualizeSubsurface"),
+				TEXT("VisualizeGBufferOverview"),
 				TEXT("PixelInspector")
 			};
 
@@ -1000,6 +890,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			PassSequence.SetEnabled(EPass::VisualizeShadingModels, View.Family->EngineShowFlags.VisualizeShadingModels);
 			PassSequence.SetEnabled(EPass::VisualizeGBufferHints, View.Family->EngineShowFlags.GBufferHints);
 			PassSequence.SetEnabled(EPass::VisualizeSubsurface, View.Family->EngineShowFlags.VisualizeSSS);
+			PassSequence.SetEnabled(EPass::VisualizeGBufferOverview, bVisualizeGBufferOverview || bVisualizeGBufferDumpToFile);
 			PassSequence.SetEnabled(EPass::PixelInspector, View.bUsePixelInspector);
 
 			if (AllowFullPostProcessing(View, View.GetFeatureLevel()))
@@ -1040,11 +931,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				// Skip tonemapping for visualizers which overwrite the HDR scene color.
 				const bool bTonemapEnabled = !bVisualizeMotionBlur;
 
-				const bool bTonemapOutputInHDR =
-					View.Family->SceneCaptureSource == SCS_FinalColorHDR ||
-					GetHighResScreenshotConfig().bCaptureHDR ||
-					IsBufferVisualizationDumpFramesInHDREnabled() ||
-					bHDROutputEnabled;
+				const bool bTonemapOutputInHDR = View.Family->SceneCaptureSource == SCS_FinalColorHDR || bOutputInHDR || bViewFamilyOutputInHDR;
 
 				// We don't test for the EyeAdaptation engine show flag here. If disabled, the auto exposure pass is still executes but performs a clamp.
 				const bool bEyeAdaptationEnabled =
@@ -1327,7 +1214,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 					}
 				}
 
-				const FScreenPassTexture SceneColorAfterTonemap = SceneColor;
+				SceneColorAfterTonemap = SceneColor;
 
 				if (PassSequence.IsEnabled(EPass::FXAA))
 				{
@@ -1375,16 +1262,20 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 					SceneColor.Texture = AddSeparateTranslucencyCompositionPass(GraphBuilder, View, SceneColor.Texture, SeparateTranslucency.Texture);
 				}
 
+				SceneColorBeforeTonemap = SceneColor;
+
 				if (PassSequence.IsEnabled(EPass::Tonemap))
 				{
 					FTonemapInputs PassInputs;
 					PassSequence.AcceptOverrideIfLastPass(EPass::Tonemap, PassInputs.OverrideOutput);
 					PassInputs.SceneColor = SceneColor;
-					PassInputs.bOutputInHDR = bHDROutputEnabled;
+					PassInputs.bOutputInHDR = bViewFamilyOutputInHDR;
 					PassInputs.bGammaOnly = true;
 				
 					SceneColor = AddTonemapPass(GraphBuilder, ScreenPassView, PassInputs);
 				}
+
+				SceneColorAfterTonemap = SceneColor;
 			}
 
 			if (PassSequence.IsEnabled(EPass::VisualizeStationaryLightOverlap))
@@ -1482,6 +1373,22 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				SceneColor = AddVisualizeSubsurfacePass(GraphBuilder, ScreenPassView, PassInputs);
 			}
 
+			if (PassSequence.IsEnabled(EPass::VisualizeGBufferOverview))
+			{
+				FVisualizeGBufferOverviewInputs PassInputs;
+				PassSequence.AcceptOverrideIfLastPass(EPass::VisualizeGBufferOverview, PassInputs.OverrideOutput);
+				PassInputs.SceneColor = SceneColor;
+				PassInputs.SceneColorBeforeTonemap = SceneColorBeforeTonemap;
+				PassInputs.SceneColorAfterTonemap = SceneColorAfterTonemap;
+				PassInputs.SeparateTranslucency = SeparateTranslucency;
+				PassInputs.Velocity = Velocity;
+				PassInputs.bOverview = bVisualizeGBufferOverview;
+				PassInputs.bDumpToFile = bVisualizeGBufferDumpToFile;
+				PassInputs.bOutputInHDR = bOutputInHDR;
+
+				SceneColor = AddVisualizeGBufferOverviewPass(GraphBuilder, ScreenPassView, PassInputs);
+			}
+
 #if WITH_EDITOR
 			if (PassSequence.IsEnabled(EPass::PixelInspector))
 			{
@@ -1529,8 +1436,6 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 		// Whether Context.FinalOutput is already unscaled.
 		// If doing temporal upsampling, the final output is already unscaled in TAA pass.
 		bool bUnscaledFinalOutput = Context.View.PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::TemporalUpscale;
-
-		AddGBufferVisualizationOverview(Context, SeparateTranslucency, PreTonemapHDRColor, PostTonemapHDRColor, PreFlattenVelocity);
 
 		RegisterHMDPostprocessPass(Context, View.Family->EngineShowFlags);
 
@@ -1631,7 +1536,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			Desc.Format = bIsFinalOutputComputePass ? PF_R8G8B8A8 : PF_B8G8R8A8;
 
 			// todo: this should come from View.Family->RenderTarget
-			Desc.Format = bHDROutputEnabled ? GRHIHDRDisplayOutputFormat : Desc.Format;
+			Desc.Format = bViewFamilyOutputInHDR ? GRHIHDRDisplayOutputFormat : Desc.Format;
 			if (View.Family->SceneCaptureSource == SCS_FinalColorHDR) Desc.Format = PF_FloatRGBA;
 			Desc.NumMips = 1;
 			Desc.DebugName = TEXT("FinalPostProcessColor");
