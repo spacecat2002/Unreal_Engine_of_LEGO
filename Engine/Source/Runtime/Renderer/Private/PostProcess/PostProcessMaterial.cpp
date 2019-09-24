@@ -664,38 +664,103 @@ FRenderingCompositeOutputRef AddPostProcessMaterialChain(
 	return LastOutput;
 }
 
+extern void AddDumpToColorArrayPass(FRDGBuilder& GraphBuilder, FScreenPassTexture Input, TArray<FColor>* OutputColorArray);
+
+bool IsHighResolutionScreenshotMaskEnabled(const FViewInfo& View)
+{
+	return View.Family->EngineShowFlags.HighResScreenshotMask || View.FinalPostProcessSettings.HighResScreenshotCaptureRegionMaterial;
+}
+
+FScreenPassTexture AddHighResolutionScreenshotMaskPass(
+	FRDGBuilder& GraphBuilder,
+	const FScreenPassViewInfo& ScreenPassView,
+	const FHighResolutionScreenshotMaskInputs& Inputs)
+{
+	check(Inputs.Material || Inputs.MaskMaterial || Inputs.CaptureRegionMaterial);
+
+	enum class EPass
+	{
+		Material,
+		MaskMaterial,
+		CaptureRegionMaterial,
+		MAX
+	};
+
+	const TCHAR* PassNames[]
+	{
+		TEXT("Material"),
+		TEXT("MaskMaterial"),
+		TEXT("CaptureRegionMaterial")
+	};
+
+	static_assert(ARRAY_COUNT(PassNames) == static_cast<uint32>(EPass::MAX), "Pass names array doesn't match pass enum");
+
+	TOverridePassSequence<EPass> PassSequence(Inputs.OverrideOutput);
+	PassSequence.SetEnabled(EPass::Material, Inputs.Material != nullptr);
+	PassSequence.SetEnabled(EPass::MaskMaterial, Inputs.MaskMaterial != nullptr && GIsHighResScreenshot);
+	PassSequence.SetEnabled(EPass::CaptureRegionMaterial, Inputs.CaptureRegionMaterial != nullptr);
+	PassSequence.Finalize();
+
+	FScreenPassTexture Output = Inputs.SceneColor;
+
+	if (PassSequence.IsEnabled(EPass::Material))
+	{
+		FPostProcessMaterialInputs PassInputs;
+		PassSequence.AcceptOverrideIfLastPass(EPass::Material, PassInputs.OverrideOutput);
+		PassInputs.SetInput(EPostProcessMaterialInput::SceneColor, Output);
+
+		Output = AddPostProcessMaterialPass(GraphBuilder, ScreenPassView, PassInputs, Inputs.Material);
+	}
+
+	if (PassSequence.IsEnabled(EPass::MaskMaterial))
+	{
+		FPostProcessMaterialInputs PassInputs;
+		PassSequence.AcceptOverrideIfLastPass(EPass::MaskMaterial, PassInputs.OverrideOutput);
+		PassInputs.SetInput(EPostProcessMaterialInput::SceneColor, Output);
+
+		Output = AddPostProcessMaterialPass(GraphBuilder, ScreenPassView, PassInputs, Inputs.MaskMaterial);
+
+		AddDumpToColorArrayPass(GraphBuilder, Output, FScreenshotRequest::GetHighresScreenshotMaskColorArray());
+	}
+
+	if (PassSequence.IsEnabled(EPass::CaptureRegionMaterial))
+	{
+		FPostProcessMaterialInputs PassInputs;
+		PassSequence.AcceptOverrideIfLastPass(EPass::CaptureRegionMaterial, PassInputs.OverrideOutput);
+		PassInputs.SetInput(EPostProcessMaterialInput::SceneColor, Output);
+
+		Output = AddPostProcessMaterialPass(GraphBuilder, ScreenPassView, PassInputs, Inputs.CaptureRegionMaterial);
+	}
+
+	return Output;
+}
+
 void AddHighResScreenshotMask(FPostprocessContext& Context)
 {
-	if (Context.View.Family->EngineShowFlags.HighResScreenshotMask != 0)
+	FRenderingCompositePass* Pass = Context.Graph.RegisterPass(
+		new(FMemStack::Get()) TRCPassForRDG<1, 1>(
+			[](FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
 	{
-		check(Context.View.FinalPostProcessSettings.HighResScreenshotMaterial);
+		FRDGBuilder GraphBuilder(InContext.RHICmdList);
+		const FScreenPassViewInfo ScreenPassView(InContext.View);
 
-		FRenderingCompositeOutputRef Input = Context.FinalOutput;
+		FHighResolutionScreenshotMaskInputs PassInputs;
+		PassInputs.SceneColor.Texture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor"));
+		PassInputs.SceneColor.ViewRect = InContext.SceneColorViewRect;
 
-		FRenderingCompositePass* CompositePass = AddPostProcessMaterialPass(Context, Context.View.FinalPostProcessSettings.HighResScreenshotMaterial);
-		CompositePass->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Input));
-		Context.FinalOutput = FRenderingCompositeOutputRef(CompositePass);
-
-		if (GIsHighResScreenshot)
+		if (FRDGTextureRef OverrideOutputTexture = InPass->FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("FrameBuffer")))
 		{
-			check(Context.View.FinalPostProcessSettings.HighResScreenshotMaskMaterial);
-
-			FRenderingCompositePass* MaskPass = AddPostProcessMaterialPass(Context, Context.View.FinalPostProcessSettings.HighResScreenshotMaskMaterial);
-			MaskPass->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Input));
-			CompositePass->AddDependency(MaskPass);
-
-			FString BaseFilename = FString(Context.View.FinalPostProcessSettings.BufferVisualizationDumpBaseFilename);
-			MaskPass->SetOutputColorArray(ePId_Output0, FScreenshotRequest::GetHighresScreenshotMaskColorArray());
+			PassInputs.OverrideOutput.Texture = OverrideOutputTexture;
+			PassInputs.OverrideOutput.ViewRect = InContext.GetSceneColorDestRect(InPass);
+			PassInputs.OverrideOutput.LoadAction = InContext.View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
 		}
-	}
 
-	// Draw the capture region if a material was supplied
-	if (Context.View.FinalPostProcessSettings.HighResScreenshotCaptureRegionMaterial)
-	{
-		auto Material = Context.View.FinalPostProcessSettings.HighResScreenshotCaptureRegionMaterial;
+		FScreenPassTexture PassOutput = AddHighResolutionScreenshotMaskPass(GraphBuilder, ScreenPassView, PassInputs);
 
-		FRenderingCompositePass* CaptureRegionVisualizationPass = AddPostProcessMaterialPass(Context, Material);
-		CaptureRegionVisualizationPass->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-		Context.FinalOutput = FRenderingCompositeOutputRef(CaptureRegionVisualizationPass);
-	}
+		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, PassOutput.Texture);
+
+		GraphBuilder.Execute();
+	}));
+	Pass->SetInput(ePId_Input0, Context.FinalOutput);
+	Context.FinalOutput = Pass;
 }

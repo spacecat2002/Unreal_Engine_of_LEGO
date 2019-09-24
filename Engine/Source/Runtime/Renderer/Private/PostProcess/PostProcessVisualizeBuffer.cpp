@@ -322,6 +322,24 @@ void AddDumpToFilePass(FRDGBuilder& GraphBuilder, FScreenPassTexture Input, cons
 	});
 }
 
+void AddDumpToColorArrayPass(FRDGBuilder& GraphBuilder, FScreenPassTexture Input, TArray<FColor>* OutputColorArray)
+{
+	check(Input.IsValid());
+	check(OutputColorArray);
+
+	FReadbackParameters* PassParameters = GraphBuilder.AllocParameters<FReadbackParameters>();
+	PassParameters->Texture = Input.Texture;
+
+	GraphBuilder.AddPass(
+		RDG_EVENT_NAME("DumpToPipe(%s)", Input.Texture->Name),
+		PassParameters,
+		ERDGPassFlags::Copy,
+		[Input, OutputColorArray](FRHICommandListImmediate& RHICmdList)
+	{
+		RHICmdList.ReadSurfaceData(Input.Texture->GetRHI(), Input.ViewRect, *OutputColorArray, FReadSurfaceDataFlags());
+	});
+}
+
 FScreenPassTexture AddVisualizeGBufferOverviewPass(
 	FRDGBuilder& GraphBuilder,
 	const FScreenPassViewInfo& ScreenPassView,

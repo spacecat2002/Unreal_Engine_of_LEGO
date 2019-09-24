@@ -17,14 +17,14 @@
  *  the pass is the last one, and then accept the pass.
  */
 template <typename EPass>
-class FOverridePassSequence final
+class TOverridePassSequence final
 {
 public:
-	FOverridePassSequence(const FScreenPassRenderTarget& InOverrideOutput)
+	TOverridePassSequence(const FScreenPassRenderTarget& InOverrideOutput)
 		: OverrideOutput(InOverrideOutput)
 	{}
 
-	~FOverridePassSequence()
+	~TOverridePassSequence()
 	{
 #if RDG_ENABLE_DEBUG
 		if (bFinalized)

@@ -110,6 +110,25 @@ FScreenPassTexture AddPostProcessMaterialChain(
 	const FPostProcessMaterialInputs& Inputs,
 	const FPostProcessMaterialChain& MaterialChain);
 
+struct FHighResolutionScreenshotMaskInputs
+{
+	// [Optional] Render to the specified output. If invalid, a new texture is created and returned.
+	FScreenPassRenderTarget OverrideOutput;
+
+	FScreenPassTexture SceneColor;
+
+	UMaterialInterface* Material = nullptr;
+	UMaterialInterface* MaskMaterial = nullptr;
+	UMaterialInterface* CaptureRegionMaterial = nullptr;
+};
+
+bool IsHighResolutionScreenshotMaskEnabled(const FViewInfo& View);
+
+FScreenPassTexture AddHighResolutionScreenshotMaskPass(
+	FRDGBuilder& GraphBuilder,
+	const FScreenPassViewInfo& ScreenPassView,
+	const FHighResolutionScreenshotMaskInputs& Inputs);
+
 //////////////////////////////////////////////////////////////////////////
 //! Legacy Composition Graph Methods
 

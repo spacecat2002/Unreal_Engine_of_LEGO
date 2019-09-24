@@ -37,7 +37,6 @@
 #include "PostProcess/PostProcessHMD.h"
 #include "PostProcess/PostProcessVisualizeComplexity.h"
 #include "PostProcess/PostProcessCompositeEditorPrimitives.h"
-#include "PostProcess/PostProcessShaderPrint.h"
 #include "PostProcess/PostProcessTestImage.h"
 #include "PostProcess/PostProcessFFTBloom.h"
 #include "PostProcess/PostProcessStreamingAccuracyLegend.h"
@@ -45,6 +44,7 @@
 #include "PostProcess/PostProcessMorpheus.h"
 #include "CompositionLighting/PostProcessPassThrough.h"
 #include "CompositionLighting/PostProcessLpvIndirect.h"
+#include "ShaderPrint.h"
 #include "HighResScreenshot.h"
 #include "IHeadMountedDisplay.h"
 #include "IXRTrackingSystem.h"
@@ -703,11 +703,8 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 		FPostprocessContext Context(RHICmdList, CompositeContext.Graph, View);
 
-		FRenderingCompositeOutputRef PreTonemapHDRColor;
-		FRenderingCompositeOutputRef PostTonemapHDRColor;
 		FRenderingCompositeOutputRef PreFlattenVelocity;
 		FRenderingCompositeOutputRef SeparateTranslucency;
-		FRenderingCompositeOutputRef Histogram;
 		FRenderingCompositeOutputRef FinalOutputFromRDG;
 
 		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
@@ -793,6 +790,15 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 			const FScreenPassTexture Velocity(SceneTextures.SceneVelocityBuffer, PrimaryViewRect);
 
+			// Histogram defaults to black because the histogram eye adaptation pass is used for the manual metering mode.
+			FRDGTextureRef HistogramTexture = BlackDummy.Texture;
+
+			FEyeAdaptationParameters EyeAdaptationParameters = GetEyeAdaptationParameters(View, ERHIFeatureLevel::SM5);
+
+			// Default the new eye adaptation to the last one in case it's not generated this frame.
+			FRDGTextureRef LastEyeAdaptationTexture = GetEyeAdaptationTexture(GraphBuilder, View);
+			FRDGTextureRef EyeAdaptationTexture = LastEyeAdaptationTexture;
+
 			enum class EPass : uint32
 			{
 				Tonemap,
@@ -807,8 +813,10 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				VisualizeGBufferHints,
 				VisualizeSubsurface,
 				VisualizeGBufferOverview,
+				VisualizeHDR,
 				PixelInspector,
 				HMDDistortion,
+				HighResolutionScreenshotMask,
 				MAX
 			};
 
@@ -826,8 +834,10 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				TEXT("VisualizeGBufferHints"),
 				TEXT("VisualizeSubsurface"),
 				TEXT("VisualizeGBufferOverview"),
+				TEXT("VisualizeHDR"),
 				TEXT("PixelInspector"),
-				TEXT("HMDDistortion")
+				TEXT("HMDDistortion"),
+				TEXT("HighResolutionScreenshotMask")
 			};
 
 			static_assert(static_cast<uint32>(EPass::MAX) == ARRAY_COUNT(PassNames), "EPass does not match PassNames.");
@@ -846,7 +856,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			 * front. When adding a new pass, make sure to preserve ordering and respect the enable flag during execution. The pass
 			 * sequence helper will validate correctness at runtime.
 			 */
-			FOverridePassSequence<EPass> PassSequence(ViewFamilyOutput);
+			TOverridePassSequence<EPass> PassSequence(ViewFamilyOutput);
 			PassSequence.SetNames(PassNames, ARRAY_COUNT(PassNames));
 			PassSequence.SetEnabled(EPass::VisualizeStationaryLightOverlap, EngineShowFlags.StationaryLightOverlap);
 			PassSequence.SetEnabled(EPass::VisualizeLightCulling, EngineShowFlags.VisualizeLightCulling);
@@ -861,8 +871,14 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			PassSequence.SetEnabled(EPass::VisualizeGBufferHints, EngineShowFlags.GBufferHints);
 			PassSequence.SetEnabled(EPass::VisualizeSubsurface, EngineShowFlags.VisualizeSSS);
 			PassSequence.SetEnabled(EPass::VisualizeGBufferOverview, bVisualizeGBufferOverview || bVisualizeGBufferDumpToFile);
+			PassSequence.SetEnabled(EPass::VisualizeHDR, EngineShowFlags.VisualizeHDR);
+#if WITH_EDITOR
 			PassSequence.SetEnabled(EPass::PixelInspector, View.bUsePixelInspector);
+#else
+			PassSequence.SetEnabled(EPass::PixelInspector, false);
+#endif
 			PassSequence.SetEnabled(EPass::HMDDistortion, EngineShowFlags.StereoRendering && EngineShowFlags.HMDDistortion);
+			PassSequence.SetEnabled(EPass::HighResolutionScreenshotMask, IsHighResolutionScreenshotMaskEnabled(View));
 
 			if (AllowFullPostProcessing(View, View.GetFeatureLevel()))
 			{
@@ -1053,15 +1069,6 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 					HalfResolutionSceneColor = AddDownsamplePass(GraphBuilder, ScreenPassView, PassInputs);
 				}
 
-				FEyeAdaptationParameters EyeAdaptationParameters = GetEyeAdaptationParameters(View, ERHIFeatureLevel::SM5);
-
-				// Default the new eye adaptation to the last one in case it's not generated this frame.
-				FRDGTextureRef LastEyeAdaptationTexture = GetEyeAdaptationTexture(GraphBuilder, View);
-				FRDGTextureRef EyeAdaptationTexture = LastEyeAdaptationTexture;
-
-				// Histogram defaults to black because the histogram eye adaptation pass is used for the manual metering mode.
-				FRDGTextureRef HistogramTexture = BlackDummy.Texture;
-
 				FSceneDownsampleChain SceneDownsampleChain;
 
 				if (bHistogramEnabled)
@@ -1215,10 +1222,6 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 					SceneColor = AddVisualizeDOFPass(GraphBuilder, ScreenPassView, PassInputs);
 				}
-
-				Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output1, SceneColorBeforeTonemap.Texture);
-				Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output2, SceneColorAfterTonemap.Texture);
-				Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output3, HistogramTexture);
 			}
 			else
 			{
@@ -1360,6 +1363,19 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				SceneColor = AddVisualizeGBufferOverviewPass(GraphBuilder, ScreenPassView, PassInputs);
 			}
 
+			if (PassSequence.IsEnabled(EPass::VisualizeHDR))
+			{
+				FVisualizeHDRInputs PassInputs;
+				PassSequence.AcceptOverrideIfLastPass(EPass::VisualizeHDR, PassInputs.OverrideOutput);
+				PassInputs.SceneColor = SceneColor;
+				PassInputs.SceneColorBeforeTonemap = SceneColorBeforeTonemap;
+				PassInputs.HistogramTexture = HistogramTexture;
+				PassInputs.EyeAdaptationTexture = EyeAdaptationTexture;
+				PassInputs.EyeAdaptationParameters = &EyeAdaptationParameters;
+
+				SceneColor = AddVisualizeHDRPass(GraphBuilder, ScreenPassView, PassInputs);
+			}
+
 #if WITH_EDITOR
 			if (PassSequence.IsEnabled(EPass::PixelInspector))
 			{
@@ -1381,6 +1397,28 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				PassInputs.SceneColor = SceneColor;
 
 				SceneColor = AddHMDDistortionPass(GraphBuilder, ScreenPassView, PassInputs);
+			}
+
+			if (EngineShowFlags.TestImage)
+			{
+				AddTestImagePass(GraphBuilder, ScreenPassView, SceneColor);
+			}
+
+			if (ShaderPrint::IsEnabled() && ShaderPrint::IsSupported(View))
+			{
+				ShaderPrint::DrawView(GraphBuilder, View, SceneColor.Texture);
+			}
+
+			if (PassSequence.IsEnabled(EPass::HighResolutionScreenshotMask))
+			{
+				FHighResolutionScreenshotMaskInputs PassInputs;
+				PassSequence.AcceptOverrideIfLastPass(EPass::HighResolutionScreenshotMask, PassInputs.OverrideOutput);
+				PassInputs.SceneColor = SceneColor;
+				PassInputs.Material = View.FinalPostProcessSettings.HighResScreenshotMaterial;
+				PassInputs.MaskMaterial = View.FinalPostProcessSettings.HighResScreenshotMaskMaterial;
+				PassInputs.CaptureRegionMaterial = View.FinalPostProcessSettings.HighResScreenshotCaptureRegionMaterial;
+
+				SceneColor = AddHighResolutionScreenshotMaskPass(GraphBuilder, ScreenPassView, PassInputs);
 			}
 
 			// Release held GBuffer reference taken during composition graph setup. Passes will take their own references during RDG setup.
@@ -1407,39 +1445,12 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 		RDGPass->SetInput(ePId_Input2, SeparateTranslucency);
 
 		FinalOutputFromRDG = FRenderingCompositeOutputRef(RDGPass, ePId_Output0);
-		PreTonemapHDRColor = FRenderingCompositeOutputRef(RDGPass, ePId_Output1);
-		PostTonemapHDRColor = FRenderingCompositeOutputRef(RDGPass, ePId_Output2);
-		Histogram = FRenderingCompositeOutputRef(RDGPass, ePId_Output3);
 
 		Context.FinalOutput = FinalOutputFromRDG;
 		
 		// Whether Context.FinalOutput is already unscaled.
 		// If doing temporal upsampling, the final output is already unscaled in TAA pass.
 		bool bUnscaledFinalOutput = Context.View.PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::TemporalUpscale;
-
-		if(bVisualizeHDR)
-		{
-			FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessVisualizeHDR());
-			Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-			Node->SetInput(ePId_Input1, Histogram);
-			Node->SetInput(ePId_Input2, PreTonemapHDRColor);
-
-			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
-		}
-
-		if(View.Family->EngineShowFlags.TestImage)
-		{
-			Context.FinalOutput = AddTestImagePass(Context.Graph, Context.FinalOutput);
-		}
-
-		if (FRCPassPostProcessShaderPrint::IsEnabled(View))
-		{
-			FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessShaderPrint());
-			Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
-		}
-
-		AddHighResScreenshotMask(Context);
 
 		const FIntPoint PrimaryUpscaleViewSize = Context.View.GetSecondaryViewRectSize();
 
