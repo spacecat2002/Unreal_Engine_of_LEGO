@@ -623,40 +623,6 @@ bool FPostProcessing::AllowFullPostProcessing(const FViewInfo& View, ERHIFeature
 	}
 }
 
-void FPostProcessing::RegisterHMDPostprocessPass(FPostprocessContext& Context, const FEngineShowFlags& EngineShowFlags) const
-{
-	if (EngineShowFlags.StereoRendering && EngineShowFlags.HMDDistortion)
-	{
-		check(GEngine && GEngine->XRSystem.IsValid());
-		FRenderingCompositePass* Node = nullptr;
-
-		const IHeadMountedDisplay* HMD = GEngine->XRSystem->GetHMDDevice();
-		checkf(HMD, TEXT("EngineShowFlags.HMDDistortion can not be true when IXRTrackingSystem::GetHMDDevice returns null"));
-
-		static const FName MorpheusName(TEXT("PSVR"));
-#if defined(MORPHEUS_ENGINE_DISTORTION) && MORPHEUS_ENGINE_DISTORTION
-		if (GEngine->XRSystem->GetSystemName() == MorpheusName)
-		{
-
-			FRCPassPostProcessMorpheus* MorpheusPass = new FRCPassPostProcessMorpheus();
-			MorpheusPass->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-			Node = Context.Graph.RegisterPass(MorpheusPass);
-		}
-		else
-#endif
-		{
-			Node = Context.Graph.RegisterPass(new FRCPassPostProcessHMD());
-		}
-
-		if (Node)
-		{
-			Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
-		}
-	}
-}
-
-
 namespace
 {
 
@@ -769,7 +735,9 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			PreFlattenVelocity = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessInput(VelocityRT));
 		}
 
-		const bool bVisualizeHDR = View.Family->EngineShowFlags.VisualizeHDR;
+		const FEngineShowFlags& EngineShowFlags = View.Family->EngineShowFlags;
+
+		const bool bVisualizeHDR = EngineShowFlags.VisualizeHDR;
 
 		const bool bViewFamilyOutputInHDR = GRHISupportsHDROutput && IsHDREnabled();
 
@@ -786,7 +754,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 		FRenderingCompositePass* RDGPass = Context.Graph.RegisterPass(
 			new(FMemStack::Get()) TRCPassForRDG<3, 4>(
-				[this, &View, &SceneContext, bVisualizeHDR, bViewFamilyOutputInHDR, bOutputInHDR, bVisualizeGBufferOverview, bVisualizeGBufferDumpToFile]
+				[this, &View, &EngineShowFlags, &SceneContext, bVisualizeHDR, bViewFamilyOutputInHDR, bOutputInHDR, bVisualizeGBufferOverview, bVisualizeGBufferDumpToFile]
 		(FRenderingCompositePass* Pass, FRenderingCompositePassContext& InContext)
 		{
 			FRDGBuilder GraphBuilder(InContext.RHICmdList);
@@ -840,6 +808,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				VisualizeSubsurface,
 				VisualizeGBufferOverview,
 				PixelInspector,
+				HMDDistortion,
 				MAX
 			};
 
@@ -857,7 +826,8 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				TEXT("VisualizeGBufferHints"),
 				TEXT("VisualizeSubsurface"),
 				TEXT("VisualizeGBufferOverview"),
-				TEXT("PixelInspector")
+				TEXT("PixelInspector"),
+				TEXT("HMDDistortion")
 			};
 
 			static_assert(static_cast<uint32>(EPass::MAX) == ARRAY_COUNT(PassNames), "EPass does not match PassNames.");
@@ -878,20 +848,21 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			 */
 			FOverridePassSequence<EPass> PassSequence(ViewFamilyOutput);
 			PassSequence.SetNames(PassNames, ARRAY_COUNT(PassNames));
-			PassSequence.SetEnabled(EPass::VisualizeStationaryLightOverlap, View.Family->EngineShowFlags.StationaryLightOverlap);
-			PassSequence.SetEnabled(EPass::VisualizeLightCulling, View.Family->EngineShowFlags.VisualizeLightCulling);
+			PassSequence.SetEnabled(EPass::VisualizeStationaryLightOverlap, EngineShowFlags.StationaryLightOverlap);
+			PassSequence.SetEnabled(EPass::VisualizeLightCulling, EngineShowFlags.VisualizeLightCulling);
 #if WITH_EDITOR
-			PassSequence.SetEnabled(EPass::SelectionOutline, GIsEditor && View.Family->EngineShowFlags.SelectionOutline && !View.Family->EngineShowFlags.Wireframe && !bVisualizeHDR);
+			PassSequence.SetEnabled(EPass::SelectionOutline, GIsEditor && EngineShowFlags.SelectionOutline && !EngineShowFlags.Wireframe && !bVisualizeHDR);
 			PassSequence.SetEnabled(EPass::EditorPrimitive, FSceneRenderer::ShouldCompositeEditorPrimitives(View));
 #else
 			PassSequence.SetEnabled(EPass::SelectionOutline, false);
 			PassSequence.SetEnabled(EPass::EditorPrimitive, false);
 #endif
-			PassSequence.SetEnabled(EPass::VisualizeShadingModels, View.Family->EngineShowFlags.VisualizeShadingModels);
-			PassSequence.SetEnabled(EPass::VisualizeGBufferHints, View.Family->EngineShowFlags.GBufferHints);
-			PassSequence.SetEnabled(EPass::VisualizeSubsurface, View.Family->EngineShowFlags.VisualizeSSS);
+			PassSequence.SetEnabled(EPass::VisualizeShadingModels, EngineShowFlags.VisualizeShadingModels);
+			PassSequence.SetEnabled(EPass::VisualizeGBufferHints, EngineShowFlags.GBufferHints);
+			PassSequence.SetEnabled(EPass::VisualizeSubsurface, EngineShowFlags.VisualizeSSS);
 			PassSequence.SetEnabled(EPass::VisualizeGBufferOverview, bVisualizeGBufferOverview || bVisualizeGBufferDumpToFile);
 			PassSequence.SetEnabled(EPass::PixelInspector, View.bUsePixelInspector);
+			PassSequence.SetEnabled(EPass::HMDDistortion, EngineShowFlags.StereoRendering && EngineShowFlags.HMDDistortion);
 
 			if (AllowFullPostProcessing(View, View.GetFeatureLevel()))
 			{
@@ -919,7 +890,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 				const bool bDepthOfFieldEnabled = DiaphragmDOF::IsEnabled(View);
 
-				const bool bVisualizeDepthOfField = bDepthOfFieldEnabled && View.Family->EngineShowFlags.VisualizeDOF;
+				const bool bVisualizeDepthOfField = bDepthOfFieldEnabled && EngineShowFlags.VisualizeDOF;
 
 				const bool bVisualizeMotionBlur = IsVisualizeMotionBlurEnabled(View);
 
@@ -1308,7 +1279,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				SceneColor = AddVisualizeComplexityPass(GraphBuilder, ScreenPassView, PassInputs);
 			}
 
-			if (View.Family->EngineShowFlags.VisualizeLPV)
+			if (EngineShowFlags.VisualizeLPV)
 			{
 				AddVisualizeLPVPass(GraphBuilder, ScreenPassView.View, SceneColor);
 			}
@@ -1403,6 +1374,15 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 			}
 #endif
 
+			if (PassSequence.IsEnabled(EPass::HMDDistortion))
+			{
+				FHMDDistortionInputs PassInputs;
+				PassSequence.AcceptOverrideIfLastPass(EPass::HMDDistortion, PassInputs.OverrideOutput);
+				PassInputs.SceneColor = SceneColor;
+
+				SceneColor = AddHMDDistortionPass(GraphBuilder, ScreenPassView, PassInputs);
+			}
+
 			// Release held GBuffer reference taken during composition graph setup. Passes will take their own references during RDG setup.
 			SceneContext.AdjustGBufferRefCount(InContext.RHICmdList, -1);
 
@@ -1436,8 +1416,6 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 		// Whether Context.FinalOutput is already unscaled.
 		// If doing temporal upsampling, the final output is already unscaled in TAA pass.
 		bool bUnscaledFinalOutput = Context.View.PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::TemporalUpscale;
-
-		RegisterHMDPostprocessPass(Context, View.Family->EngineShowFlags);
 
 		if(bVisualizeHDR)
 		{
@@ -2090,7 +2068,10 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 				1.0f, bES2Legend);
 		}
 
-		RegisterHMDPostprocessPass(Context, View.Family->EngineShowFlags);
+		if (View.Family->EngineShowFlags.StereoRendering && View.Family->EngineShowFlags.HMDDistortion)
+		{
+			Context.FinalOutput = AddHMDDistortionPass(Context.Graph, Context.FinalOutput);
+		}
 
 		// The graph setup should be finished before this line ----------------------------------------
 

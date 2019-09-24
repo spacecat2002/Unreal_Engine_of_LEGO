@@ -79,7 +79,7 @@ FScreenPassViewInfo::FScreenPassViewInfo(const FViewInfo& InView)
 	, bUseComputePasses(ShouldDoComputePostProcessing(InView))
 {}
 
-void SetScreenPassPipelineState(FRHICommandListImmediate& RHICmdList, const FScreenPassPipelineState& ScreenPassDraw)
+void SetScreenPassPipelineState(FRHICommandList& RHICmdList, const FScreenPassPipelineState& ScreenPassDraw)
 {
 	FRHIPixelShader* PixelShaderRHI = GETSAFERHISHADER_PIXEL(ScreenPassDraw.PixelShader);
 	FRHIVertexShader* VertexShaderRHI = GETSAFERHISHADER_VERTEX(ScreenPassDraw.VertexShader);
