@@ -80,18 +80,6 @@ static TAutoConsoleVariable<int32> CVarRenderTargetSwitchWorkaround(
 	TEXT("We want this enabled (1) on all 32 bit iOS devices (implemented through DeviceProfiles)."),
 	ECVF_RenderThreadSafe);
 
-static TAutoConsoleVariable<int32> CVarUpscaleQuality(
-	TEXT("r.Upscale.Quality"),
-	3,
-	TEXT("Defines the quality in which ScreenPercentage and WindowedFullscreen scales the 3d rendering.\n")
-	TEXT(" 0: Nearest filtering\n")
-	TEXT(" 1: Simple Bilinear\n")
-	TEXT(" 2: Directional blur with unsharp mask upsample.\n")
-	TEXT(" 3: 5-tap Catmull-Rom bicubic, approximating Lanczos 2. (default)\n")
-	TEXT(" 4: 13-tap Lanczos 3.\n")
-	TEXT(" 5: 36-tap Gaussian-filtered unsharp mask (very expensive, but good for extreme upsampling).\n"),
-	ECVF_Scalability | ECVF_RenderThreadSafe);
-
 static TAutoConsoleVariable<float> CVarBloomCross(
 	TEXT("r.Bloom.Cross"),
 	0.0f,
@@ -290,7 +278,7 @@ FBloomOutputs AddBloomPass(
 	const EBloomQuality BloomQuality = GetBloomQuality();
 
 	FScreenPassTexture SceneColor = Inputs.SceneColor;
-	FScreenPassTexture Bloom;
+	FScreenPassTexture Bloom(GSystemTextures.GetBlackDummy(GraphBuilder));
 
 	if (BloomQuality != EBloomQuality::Disabled)
 	{
@@ -705,7 +693,6 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 		FRenderingCompositeOutputRef PreFlattenVelocity;
 		FRenderingCompositeOutputRef SeparateTranslucency;
-		FRenderingCompositeOutputRef FinalOutputFromRDG;
 
 		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 
@@ -744,6 +731,8 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 		const bool bOutputInHDR = IsPostProcessOutputInHDR();
 
+		const FPaniniProjectionConfig PaniniConfig(View);
+
 		// GBuffers are released prior to executing the composition graph. We take a reference here
 		// and then release the reference inside of RDGPass. This allows RDGPass to control lifetime
 		// of the GBuffers internally.
@@ -751,7 +740,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 
 		FRenderingCompositePass* RDGPass = Context.Graph.RegisterPass(
 			new(FMemStack::Get()) TRCPassForRDG<3, 4>(
-				[this, &View, &EngineShowFlags, &SceneContext, bVisualizeHDR, bViewFamilyOutputInHDR, bOutputInHDR, bVisualizeGBufferOverview, bVisualizeGBufferDumpToFile]
+				[this, &View, &EngineShowFlags, &SceneContext, bVisualizeHDR, bViewFamilyOutputInHDR, bOutputInHDR, bVisualizeGBufferOverview, bVisualizeGBufferDumpToFile, PaniniConfig]
 		(FRenderingCompositePass* Pass, FRenderingCompositePassContext& InContext)
 		{
 			FRDGBuilder GraphBuilder(InContext.RHICmdList);
@@ -817,6 +806,8 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				PixelInspector,
 				HMDDistortion,
 				HighResolutionScreenshotMask,
+				PrimaryUpscale,
+				SecondaryUpscale,
 				MAX
 			};
 
@@ -837,7 +828,9 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				TEXT("VisualizeHDR"),
 				TEXT("PixelInspector"),
 				TEXT("HMDDistortion"),
-				TEXT("HighResolutionScreenshotMask")
+				TEXT("HighResolutionScreenshotMask"),
+				TEXT("PrimaryUpscale"),
+				TEXT("SecondaryUpscale")
 			};
 
 			static_assert(static_cast<uint32>(EPass::MAX) == ARRAY_COUNT(PassNames), "EPass does not match PassNames.");
@@ -879,6 +872,8 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 #endif
 			PassSequence.SetEnabled(EPass::HMDDistortion, EngineShowFlags.StereoRendering && EngineShowFlags.HMDDistortion);
 			PassSequence.SetEnabled(EPass::HighResolutionScreenshotMask, IsHighResolutionScreenshotMaskEnabled(View));
+			PassSequence.SetEnabled(EPass::PrimaryUpscale, PaniniConfig.IsEnabled() || (View.PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::SpatialUpscale && PrimaryViewRect.Size() != View.GetSecondaryViewRectSize()));
+			PassSequence.SetEnabled(EPass::SecondaryUpscale, View.RequiresSecondaryUpscale());
 
 			if (AllowFullPostProcessing(View, View.GetFeatureLevel()))
 			{
@@ -1223,6 +1218,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 					SceneColor = AddVisualizeDOFPass(GraphBuilder, ScreenPassView, PassInputs);
 				}
 			}
+			// Minimal PostProcessing - Separate translucency composition and gamma-correction only.
 			else
 			{
 				PassSequence.SetEnabled(EPass::Tonemap, true);
@@ -1421,6 +1417,31 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 				SceneColor = AddHighResolutionScreenshotMaskPass(GraphBuilder, ScreenPassView, PassInputs);
 			}
 
+			if (PassSequence.IsEnabled(EPass::PrimaryUpscale))
+			{
+				FUpscaleInputs PassInputs;
+				PassSequence.AcceptOverrideIfLastPass(EPass::PrimaryUpscale, PassInputs.OverrideOutput);
+				PassInputs.SceneColor = SceneColor;
+				PassInputs.Method = GetUpscaleMethod();
+				PassInputs.Stage = PassSequence.IsEnabled(EPass::SecondaryUpscale) ? EUpscaleStage::PrimaryToSecondary : EUpscaleStage::PrimaryToOutput;
+
+				// Panini projection is handled by the primary upscale pass.
+				PassInputs.PaniniConfig = PaniniConfig;
+
+				SceneColor = AddUpscalePass(GraphBuilder, ScreenPassView, PassInputs);
+			}
+
+			if (PassSequence.IsEnabled(EPass::SecondaryUpscale))
+			{
+				FUpscaleInputs PassInputs;
+				PassSequence.AcceptOverrideIfLastPass(EPass::SecondaryUpscale, PassInputs.OverrideOutput);
+				PassInputs.SceneColor = SceneColor;
+				PassInputs.Method = View.Family->SecondaryScreenPercentageMethod == ESecondaryScreenPercentageMethod::LowerPixelDensitySimulation ? EUpscaleMethod::SmoothStep : EUpscaleMethod::Nearest;
+				PassInputs.Stage = EUpscaleStage::SecondaryToOutput;
+
+				SceneColor = AddUpscalePass(GraphBuilder, ScreenPassView, PassInputs);
+			}
+
 			// Release held GBuffer reference taken during composition graph setup. Passes will take their own references during RDG setup.
 			SceneContext.AdjustGBufferRefCount(InContext.RHICmdList, -1);
 
@@ -1444,40 +1465,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, const FViewI
 		RDGPass->SetInput(ePId_Input1, Context.SceneDepth);
 		RDGPass->SetInput(ePId_Input2, SeparateTranslucency);
 
-		FinalOutputFromRDG = FRenderingCompositeOutputRef(RDGPass, ePId_Output0);
-
-		Context.FinalOutput = FinalOutputFromRDG;
-		
-		// Whether Context.FinalOutput is already unscaled.
-		// If doing temporal upsampling, the final output is already unscaled in TAA pass.
-		bool bUnscaledFinalOutput = Context.View.PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::TemporalUpscale;
-
-		const FIntPoint PrimaryUpscaleViewSize = Context.View.GetSecondaryViewRectSize();
-
-		const FRCPassPostProcessUpscale::PaniniParams PaniniConfig(View);
-
-		// If the final output is still not unscaled, therefore add Upscale pass.
-		if ((!bUnscaledFinalOutput && View.PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::SpatialUpscale && View.ViewRect.Size() != PrimaryUpscaleViewSize) || PaniniConfig.IsEnabled())
-		{
-			int32 UpscaleQuality = CVarUpscaleQuality.GetValueOnRenderThread();
-			UpscaleQuality = FMath::Clamp(UpscaleQuality, 0, 5);
-			FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessUpscale(View, UpscaleQuality, PaniniConfig));
-			Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput)); // Bilinear sampling.
-			Node->SetInput(ePId_Input1, FRenderingCompositeOutputRef(Context.FinalOutput)); // Point sampling.
-			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
-		}
-
-		// Adds secondary upscale.
-		if (Context.View.RequiresSecondaryUpscale())
-		{
-			int32 UpscaleQuality = View.Family->SecondaryScreenPercentageMethod == ESecondaryScreenPercentageMethod::LowerPixelDensitySimulation ? 6 : 0;
-
-			FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessUpscale(
-				View, UpscaleQuality, FRCPassPostProcessUpscale::PaniniParams::Default, /* bIsSecondaryUpscale = */ true));
-			Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-			Node->SetInput(ePId_Input1, FRenderingCompositeOutputRef(Context.FinalOutput));
-			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
-		}
+		Context.FinalOutput = FRenderingCompositeOutputRef(RDGPass, ePId_Output0);
 
 		// Add a pass-through for the final step if a backbuffer UAV is required but unsupported by this RHI
 		if (Context.FinalOutput.IsComputePass() && !View.Family->RenderTarget->GetRenderTargetUAV().IsValid())
@@ -2017,7 +2005,10 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 			}
 		}
 
-		AddHighResScreenshotMask(Context);
+		if (IsHighResolutionScreenshotMaskEnabled(View))
+		{
+			AddHighResScreenshotMask(Context);
+		}
 
 #if WITH_EDITOR
 		// Show the selection outline if it is in the editor and we aren't in wireframe 
@@ -2041,10 +2032,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 		{
 			if (bDisableUpscaleInTonemapper || Context.FinalOutput.GetPass() != TonemapperPass)
 			{
-				FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessUpscaleES2(View));
-				Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput)); // Bilinear sampling.
-				Node->SetInput(ePId_Input1, FRenderingCompositeOutputRef(Context.FinalOutput)); // Point sampling.
-				Context.FinalOutput = FRenderingCompositeOutputRef(Node);
+				Context.FinalOutput = AddUpscalePass(Context.Graph, Context.FinalOutput, EUpscaleMethod::Bilinear, EUpscaleStage::PrimaryToOutput);
 			}
 			else if (DoScreenPercentageInTonemapperPtr)
 			{
