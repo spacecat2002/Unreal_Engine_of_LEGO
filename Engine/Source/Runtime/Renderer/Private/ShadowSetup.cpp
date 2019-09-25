@@ -908,6 +908,21 @@ bool FProjectedShadowInfo::ShouldDrawStaticMeshes(FViewInfo& InCurrentView, bool
 			}
 		}
 
+		if (CascadeSettings.bFarShadowCascade)
+		{
+			extern ENGINE_API int32 GFarShadowStaticMeshLODBias;
+			int8 LODToRenderScan = ShadowLODToRender.DitheredLODIndices[0] + GFarShadowStaticMeshLODBias;
+
+			for (int32 Index = InPrimitiveSceneInfo->StaticMeshRelevances.Num() - 1; Index >= 0; Index--)
+			{
+				if (LODToRenderScan == InPrimitiveSceneInfo->StaticMeshRelevances[Index].LODIndex)
+				{
+					ShadowLODToRender.SetLOD(LODToRenderScan);
+					break;
+				}
+			}
+		}
+
 		if (WholeSceneDirectionalShadow)
 		{
 			if (InPrimitiveSceneInfo->bIsUsingCustomWholeSceneShadowLODRules)
@@ -1349,6 +1364,11 @@ void FProjectedShadowInfo::GatherDynamicMeshElements(FSceneRenderer& Renderer, F
 		if (bPreShadow && GPreshadowsForceLowestLOD)
 		{
 			ShadowDepthView->DrawDynamicFlags = EDrawDynamicFlags::ForceLowestLOD;
+		}
+
+		if (CascadeSettings.bFarShadowCascade)
+		{
+			(int32&)ShadowDepthView->DrawDynamicFlags |= (int32)EDrawDynamicFlags::FarShadowCascade;
 		}
 
 		if (IsWholeSceneDirectionalShadow())
@@ -4066,6 +4086,7 @@ void FSceneRenderer::AllocateTranslucentShadowDepthTargets(FRHICommandListImmedi
 void FSceneRenderer::InitDynamicShadows(FRHICommandListImmediate& RHICmdList, FGlobalDynamicIndexBuffer& DynamicIndexBuffer, FGlobalDynamicVertexBuffer& DynamicVertexBuffer, FGlobalDynamicReadBuffer& DynamicReadBuffer)
 {
 	SCOPE_CYCLE_COUNTER(STAT_DynamicShadowSetupTime);
+	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(InitViews_Shadows);
 	SCOPED_NAMED_EVENT(FSceneRenderer_InitDynamicShadows, FColor::Magenta);
 
 	const bool bMobile = FeatureLevel < ERHIFeatureLevel::SM5;
@@ -4086,7 +4107,6 @@ void FSceneRenderer::InitDynamicShadows(FRHICommandListImmediate& RHICmdList, FG
 	TArray<FProjectedShadowInfo*,SceneRenderingAllocator> ViewDependentWholeSceneShadows;
 	TArray<FProjectedShadowInfo*,SceneRenderingAllocator> ViewDependentWholeSceneShadowsThatNeedCulling;
 	{
-		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(InitViews_Shadows);
 		SCOPE_CYCLE_COUNTER(STAT_InitDynamicShadowsTime);
 
 		for (TSparseArray<FLightSceneInfoCompact>::TConstIterator LightIt(Scene->Lights); LightIt; ++LightIt)

@@ -25,7 +25,7 @@ struct FAnimNode_AssetPlayerBase;
 struct FAnimNode_Base;
 struct FAnimNode_SaveCachedPose;
 struct FAnimNode_StateMachine;
-struct FAnimNode_SubInput;
+struct FAnimNode_LinkedInputPose;
 struct FNodeDebugData;
 struct FPoseContext;
 
@@ -116,7 +116,7 @@ public:
 		, CurrentDeltaSeconds(0.0f)
 		, CurrentTimeDilation(1.0f)
 		, RootNode(nullptr)
-		, DefaultSubInstanceInputNode(nullptr)
+		, DefaultLinkedInstanceInputNode(nullptr)
 		, SyncGroupWriteIndex(0)
 		, RootMotionMode(ERootMotionMode::NoRootMotionExtraction)
 		, FrameCounterForUpdate(0)
@@ -125,6 +125,7 @@ public:
 		, bUpdatingRoot(false)
 		, bBoneCachesInvalidated(false)
 		, bShouldExtractRootMotion(false)
+		, bDeferRootNodeInitialization(false)
 #if WITH_EDITORONLY_DATA
 		, bIsBeingDebugged(false)
 #endif
@@ -139,7 +140,7 @@ public:
 		, CurrentDeltaSeconds(0.0f)
 		, CurrentTimeDilation(1.0f)
 		, RootNode(nullptr)
-		, DefaultSubInstanceInputNode(nullptr)
+		, DefaultLinkedInstanceInputNode(nullptr)
 		, SyncGroupWriteIndex(0)
 		, RootMotionMode(ERootMotionMode::NoRootMotionExtraction)
 		, FrameCounterForUpdate(0)
@@ -148,6 +149,7 @@ public:
 		, bUpdatingRoot(false)
 		, bBoneCachesInvalidated(false)
 		, bShouldExtractRootMotion(false)
+		, bDeferRootNodeInitialization(false)
 #if WITH_EDITORONLY_DATA
 		, bIsBeingDebugged(false)
 #endif
@@ -459,7 +461,7 @@ public:
 	friend class UAnimInstance;
 	friend class UAnimSingleNodeInstance;
 	friend class USkeletalMeshComponent;
-	friend struct FAnimNode_SubInstance;
+	friend struct FAnimNode_LinkedAnimGraph;
 	friend struct FAnimationBaseContext;
 
 protected:
@@ -733,7 +735,7 @@ protected:
 	void GetStateMachineIndexAndDescription(FName InMachineName, int32& OutMachineIndex, const FBakedAnimationStateMachine** OutMachineDescription);
 
 	/** Initialize the root node - split into a separate function for backwards compatibility (initialization order) reasons */
-	void InitializeRootNode();
+	void InitializeRootNode(bool bInDeferRootNodeInitialization = false);
 
 	/** Initialize the specified root node */
 	void InitializeRootNode_WithRoot(FAnimNode_Base* InRootNode);
@@ -813,8 +815,8 @@ private:
 	/** Anim graph */
 	FAnimNode_Base* RootNode;
 
-	/** Default sub-instance input node if available */
-	FAnimNode_SubInput* DefaultSubInstanceInputNode;
+	/** Default linked instance input node if available */
+	FAnimNode_LinkedInputPose* DefaultLinkedInstanceInputNode;
 
 	/** Map of layer name to saved pose nodes to process after the graph has been updated */
 	TMap<FName, TArray<FAnimNode_SaveCachedPose*>> SavedPoseQueueMap;
@@ -936,6 +938,9 @@ private:
 
 	// Diplicate of bool result of ShouldExtractRootMotion()
 	uint8 bShouldExtractRootMotion : 1;
+
+	/** We can defer initialization until first update */
+	uint8 bDeferRootNodeInitialization : 1;
 
 #if WITH_EDITORONLY_DATA
 	/** Whether this UAnimInstance is currently being debugged in the editor */

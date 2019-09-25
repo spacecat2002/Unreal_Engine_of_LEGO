@@ -1791,6 +1791,7 @@ public:
 		, DepthStencilState(InMinimalState.DepthStencilState)
 		, ImmutableSamplerState(InMinimalState.ImmutableSamplerState)
 		, bDepthBounds(InMinimalState.bDepthBounds)
+		, bMultiView(InMinimalState.bMultiView)
 		, PrimitiveType(InMinimalState.PrimitiveType)
 	{
 	}
