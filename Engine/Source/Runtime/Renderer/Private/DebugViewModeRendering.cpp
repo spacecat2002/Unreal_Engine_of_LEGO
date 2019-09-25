@@ -142,32 +142,26 @@ void FDeferredShadingSceneRenderer::DoDebugViewModePostProcessing(FRHICommandLis
 	FIntPoint PrimaryUpscaleViewSize = Context.View.GetSecondaryViewRectSize();
 
 	bool bNeedsFinalPassthrough = true;
+	const bool bNeedsSecondaryUpscale = View.RequiresSecondaryUpscale();
 
 	// Adds primary spatial upscale regardless of using temporal upsample, so screen percentage preview can work.
 	if (View.ViewRect.Size() != PrimaryUpscaleViewSize)
 	{
 		bNeedsFinalPassthrough = false;
 
-		int32 UpscaleQuality = 1;
-		FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessUpscale(
-			View, UpscaleQuality, FRCPassPostProcessUpscale::PaniniParams::Default, /* bIsSecondaryUpscale = */ false));
-		Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput)); // Bilinear sampling.
-		Node->SetInput(ePId_Input1, FRenderingCompositeOutputRef(Context.FinalOutput)); // Point sampling.
-		Context.FinalOutput = FRenderingCompositeOutputRef(Node);
+		const EUpscaleStage UpscaleStage = bNeedsSecondaryUpscale ? EUpscaleStage::PrimaryToSecondary : EUpscaleStage::PrimaryToOutput;
+
+		Context.FinalOutput = AddUpscalePass(Context.Graph, Context.FinalOutput, EUpscaleMethod::Bilinear, UpscaleStage);
 	}
 
 	// Adds secondary spatial upscale for OS DPI to work correctly in editor.
-	if (View.RequiresSecondaryUpscale())
+	if (bNeedsSecondaryUpscale)
 	{
 		bNeedsFinalPassthrough = false;
 
-		int32 UpscaleQuality = View.Family->SecondaryScreenPercentageMethod == ESecondaryScreenPercentageMethod::LowerPixelDensitySimulation ? 6 : 0;
+		const EUpscaleMethod UpscaleMethod = View.Family->SecondaryScreenPercentageMethod == ESecondaryScreenPercentageMethod::LowerPixelDensitySimulation ? EUpscaleMethod::SmoothStep : EUpscaleMethod::Nearest;
 
-		FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessUpscale(
-			View, UpscaleQuality, FRCPassPostProcessUpscale::PaniniParams::Default, /* bIsSecondaryUpscale = */ true));
-		Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-		Node->SetInput(ePId_Input1, FRenderingCompositeOutputRef(Context.FinalOutput));
-		Context.FinalOutput = FRenderingCompositeOutputRef(Node);
+		Context.FinalOutput = AddUpscalePass(Context.Graph, Context.FinalOutput, UpscaleMethod, EUpscaleStage::SecondaryToOutput);
 	}
 
 	// Disable render target overriding for RDG passes until we have a better solution.

@@ -703,14 +703,10 @@ void FMobileSceneRenderer::BasicPostProcess(FRHICommandListImmediate& RHICmdList
 	const bool bBlitRequired = !bDoUpscale && !bDoEditorPrimitives;
 
 	if (bDoUpscale || bBlitRequired)
-	{	// blit from sceneRT to view family target, simple bilinear if upscaling otherwise point filtered.
-		uint32 UpscaleQuality = bDoUpscale ? 1 : 0;
-		FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessUpscaleES2(View, UpscaleQuality, false));
+	{
+		const EUpscaleMethod UpscaleMethod = bDoUpscale ? EUpscaleMethod::Bilinear : EUpscaleMethod::Nearest;
 
-		Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
-		Node->SetInput(ePId_Input1, FRenderingCompositeOutputRef(Context.FinalOutput));
-
-		Context.FinalOutput = FRenderingCompositeOutputRef(Node);
+		Context.FinalOutput = AddUpscalePass(Context.Graph, Context.FinalOutput, UpscaleMethod, EUpscaleStage::PrimaryToOutput);
 	}
 
 #if WITH_EDITOR
