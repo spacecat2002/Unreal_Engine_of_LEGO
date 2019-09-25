@@ -340,7 +340,7 @@ FScreenPassTexture AddEditorPrimitivePass(
 
 			if (BasePassType == FEditorPrimitiveInputs::EBasePassType::Deferred)
 			{
-				CreateOpaqueBasePassUniformBuffer(RHICmdList, *EditorView, nullptr, OpaqueBasePassUniformBuffer);
+				CreateOpaqueBasePassUniformBuffer(RHICmdList, *EditorView, nullptr, nullptr, nullptr, OpaqueBasePassUniformBuffer);
 				BasePassUniformBuffer = OpaqueBasePassUniformBuffer;
 			}
 			else
