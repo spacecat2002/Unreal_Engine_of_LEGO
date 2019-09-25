@@ -343,16 +343,15 @@ FScreenPassTexture AddPostProcessMaterialPass(
 		// Allocate new transient output texture if none exists.
 		if (!Output.IsValid())
 		{
-			Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, SceneColor, ScreenPassView.GetOverwriteLoadAction(), TEXT("PostProcessMaterial"),
-				[&](FRDGTextureDesc& OutputDesc)
+			FRDGTextureDesc OutputDesc = SceneColor.Texture->Desc;
+			if (Inputs.OutputFormat != PF_Unknown)
 			{
-				if (Inputs.OutputFormat != PF_Unknown)
-				{
-					OutputDesc.Format = Inputs.OutputFormat;
-				}
-				OutputDesc.ClearValue = FClearValueBinding(FLinearColor::Black);
-				OutputDesc.Flags |= GFastVRamConfig.PostProcessMaterial;
-			});
+				OutputDesc.Format = Inputs.OutputFormat;
+			}
+			OutputDesc.ClearValue = FClearValueBinding(FLinearColor::Black);
+			OutputDesc.Flags |= GFastVRamConfig.PostProcessMaterial;
+
+			Output = FScreenPassRenderTarget(GraphBuilder.CreateTexture(OutputDesc, TEXT("PostProcessMaterial")), SceneColor.ViewRect, ScreenPassView.GetOverwriteLoadAction());
 		}
 
 		if (bPrimeOutputColor)

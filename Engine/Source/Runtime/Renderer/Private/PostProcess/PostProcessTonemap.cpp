@@ -654,27 +654,30 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassVi
 
 	if (!Output.IsValid())
 	{
-		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, ScreenPassView.GetOverwriteLoadAction(), TEXT("Tonemap"),
-			[&](FRDGTextureDesc& OutputDesc)
+		FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
+		OutputDesc.Reset();
+		OutputDesc.TargetableFlags |= ScreenPassView.bUseComputePasses ? TexCreate_UAV : TexCreate_RenderTargetable;
+		// RGB is the color in LDR, A is the luminance for PostprocessAA
+		OutputDesc.Format = Inputs.bOutputInHDR ? GRHIHDRDisplayOutputFormat : PF_B8G8R8A8;
+		OutputDesc.ClearValue = FClearValueBinding(FLinearColor(0, 0, 0, 0));
+		OutputDesc.Flags |= GFastVRamConfig.Tonemap;
+
+		const FTonemapperOutputDeviceParameters OutputDeviceParameters = GetTonemapperOutputDeviceParameters(*View.Family);
+		const ETonemapperOutputDevice OutputDevice = static_cast<ETonemapperOutputDevice>(OutputDeviceParameters.OutputDevice);
+
+		if (OutputDevice == ETonemapperOutputDevice::LinearEXR)
 		{
-			OutputDesc.TargetableFlags |= ScreenPassView.bUseComputePasses ? TexCreate_UAV : TexCreate_RenderTargetable;
-			// RGB is the color in LDR, A is the luminance for PostprocessAA
-			OutputDesc.Format = Inputs.bOutputInHDR ? GRHIHDRDisplayOutputFormat : PF_B8G8R8A8;
-			OutputDesc.ClearValue = FClearValueBinding(FLinearColor(0, 0, 0, 0));
-			OutputDesc.Flags |= GFastVRamConfig.Tonemap;
+			OutputDesc.Format = PF_A32B32G32R32F;
+		}
+		if (OutputDevice == ETonemapperOutputDevice::LinearNoToneCurve)
+		{
+			OutputDesc.Format = PF_FloatRGBA;
+		}
 
-			const FTonemapperOutputDeviceParameters OutputDeviceParameters = GetTonemapperOutputDeviceParameters(*View.Family);
-			const ETonemapperOutputDevice OutputDevice = static_cast<ETonemapperOutputDevice>(OutputDeviceParameters.OutputDevice);
-
-			if (OutputDevice == ETonemapperOutputDevice::LinearEXR)
-			{
-				OutputDesc.Format = PF_A32B32G32R32F;
-			}
-			if (OutputDevice == ETonemapperOutputDevice::LinearNoToneCurve)
-			{
-				OutputDesc.Format = PF_FloatRGBA;
-			}
-		});
+		Output = FScreenPassRenderTarget(
+			GraphBuilder.CreateTexture(OutputDesc, TEXT("Tonemap")),
+			Inputs.SceneColor.ViewRect,
+			ScreenPassView.GetOverwriteLoadAction());
 	}
 
 	const FScreenPassTextureViewport OutputViewport(Output);

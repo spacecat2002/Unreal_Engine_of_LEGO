@@ -373,14 +373,14 @@ FScreenPassTexture AddGaussianBlurPass(
 		AdditiveInput = GetScreenPassTextureInput(Additive, SamplerState);
 	}
 
-	const FScreenPassRenderTarget Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Filter, ERenderTargetLoadAction::ENoAction, Name,
-		[&](FRDGTextureDesc& OutputDesc)
-	{
-		OutputDesc.Extent = OutputViewport.Extent;
-		OutputDesc.TargetableFlags |= bIsComputePass ? TexCreate_UAV : TexCreate_None;
-		OutputDesc.Flags &= TexCreate_FastVRAM;
-		OutputDesc.ClearValue = FClearValueBinding(FLinearColor::Transparent);
-	});
+	FRDGTextureDesc OutputDesc = Filter.Texture->Desc;
+	OutputDesc.Reset();
+	OutputDesc.Extent = OutputViewport.Extent;
+	OutputDesc.TargetableFlags |= bIsComputePass ? TexCreate_UAV : TexCreate_None;
+	OutputDesc.Flags &= TexCreate_FastVRAM;
+	OutputDesc.ClearValue = FClearValueBinding(FLinearColor::Transparent);
+
+	const FScreenPassRenderTarget Output(GraphBuilder.CreateTexture(OutputDesc, Name), Filter.ViewRect, ERenderTargetLoadAction::ENoAction);
 
 	if (bIsComputePass)
 	{

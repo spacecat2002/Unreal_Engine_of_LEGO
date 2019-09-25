@@ -59,19 +59,13 @@ struct FScreenPassTexture
 // Describes a texture with a load action for usage as a render target.
 struct FScreenPassRenderTarget : public FScreenPassTexture
 {
-	template <typename TSetupFunction>
-	static FScreenPassRenderTarget CreateFromInput(
-		FRDGBuilder& GraphBuilder,
-		FScreenPassTexture Input,
-		ERenderTargetLoadAction OutputLoadAction,
-		const TCHAR* OutputName,
-		TSetupFunction SetupFunction);
-
 	static FScreenPassRenderTarget CreateFromInput(
 		FRDGBuilder& GraphBuilder,
 		FScreenPassTexture Input,
 		ERenderTargetLoadAction OutputLoadAction,
 		const TCHAR* OutputName);
+
+	static FScreenPassRenderTarget CreateFromViewFamily(FRDGBuilder& GraphBuilder, const FViewInfo& View);
 
 	FScreenPassRenderTarget() = default;
 

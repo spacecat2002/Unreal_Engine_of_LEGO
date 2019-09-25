@@ -2,32 +2,18 @@
 
 #pragma once
 
-template <typename TSetupFunction>
-FScreenPassRenderTarget FScreenPassRenderTarget::CreateFromInput(
-	FRDGBuilder& GraphBuilder,
-	FScreenPassTexture Input,
-	ERenderTargetLoadAction OutputLoadAction,
-	const TCHAR* OutputName,
-	TSetupFunction SetupFunction)
-{
-	check(Input.IsValid());
-
-	FRDGTextureDesc OutputDesc = Input.Texture->Desc;
-	OutputDesc.Reset();
-	OutputDesc.DebugName = OutputName;
-
-	SetupFunction(OutputDesc);
-
-	return FScreenPassRenderTarget(GraphBuilder.CreateTexture(OutputDesc, OutputName), Input.ViewRect, OutputLoadAction);
-}
-
 inline FScreenPassRenderTarget FScreenPassRenderTarget::CreateFromInput(
 	FRDGBuilder& GraphBuilder,
 	FScreenPassTexture Input,
 	ERenderTargetLoadAction OutputLoadAction,
 	const TCHAR* OutputName)
 {
-	return CreateFromInput(GraphBuilder, Input, OutputLoadAction, OutputName, [](FRDGTextureDesc&) {});
+	check(Input.IsValid());
+
+	FRDGTextureDesc OutputDesc = Input.Texture->Desc;
+	OutputDesc.Reset();
+
+	return FScreenPassRenderTarget(GraphBuilder.CreateTexture(OutputDesc, OutputName), Input.ViewRect, OutputLoadAction);
 }
 
 inline FScreenPassTextureViewport FScreenPassTextureViewport::CreateDownscaled(const FScreenPassTextureViewport& Other, uint32 DownscaleFactor)
