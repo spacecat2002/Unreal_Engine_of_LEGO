@@ -683,7 +683,7 @@ FRDGTextureRef AddMotionBlurFilterPass(
 	OutColorDesc.TargetableFlags |= bUseCompute ? TexCreate_UAV : TexCreate_RenderTargetable;
 	OutColorDesc.Flags |= GFastVRamConfig.MotionBlur;
 	OutColorDesc.AutoWritable = false;
-	OutColorDesc.Format = FPostProcessing::HasAlphaChannelSupport() ? PF_FloatRGBA : PF_FloatRGB;
+	OutColorDesc.Format =  IsPostProcessingWithAlphaChannelSupported() ? PF_FloatRGBA : PF_FloatRGB;
 
 	FRDGTextureRef ColorTextureOutput = GraphBuilder.CreateTexture(OutColorDesc, TEXT("MotionBlur"));
 

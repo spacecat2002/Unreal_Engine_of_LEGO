@@ -2167,25 +2167,53 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		SCOPE_CYCLE_COUNTER(STAT_FinishRenderViewTargetTime);
 
 		RHICmdList.SetCurrentStat(GET_STATID(STAT_CLM_PostProcessing));
-		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
-		{
-			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("View%d"), ViewIndex);
 
-			if (ViewFamily.UseDebugViewPS())
+		if (ViewFamily.UseDebugViewPS())
+		{
+			for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 			{
+				SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("View%d"), ViewIndex);
 				DoDebugViewModePostProcessing(RHICmdList, Views[ViewIndex], SceneContext.SceneVelocity);
 			}
-			else
+		}
+		else
+		{
+			GRenderTargetPool.AddPhaseEvent(TEXT("PostProcessing"));
+
+			FRDGBuilder GraphBuilder(RHICmdList);
+
+			FSceneTextureParameters SceneTextures;
+			SetupSceneTextureParameters(GraphBuilder, &SceneTextures);
+
+			// Fallback to a black texture if no velocity.
+			if (!SceneTextures.SceneVelocityBuffer)
 			{
-				GPostProcessing.Process(RHICmdList, Views[ ViewIndex ], SceneContext.SceneVelocity);
+				SceneTextures.SceneVelocityBuffer = GSystemTextures.GetBlackDummy(GraphBuilder);
 			}
+
+			FPostProcessingInputs PostProcessingInputs;
+			PostProcessingInputs.SceneTextures = &SceneTextures;
+			PostProcessingInputs.SceneColor = GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor(), TEXT("SceneColor"));
+			PostProcessingInputs.CustomDepth = GraphBuilder.TryRegisterExternalTexture(SceneContext.CustomDepth, TEXT("CustomDepth"));
+			PostProcessingInputs.SeparateTranslucency = RegisterExternalTextureWithFallback(GraphBuilder, SceneContext.SeparateTranslucencyRT, SceneContext.GetSeparateTranslucencyDummy(), TEXT("SeparateTranslucency"));
+
+			SceneContext.FreeSeparateTranslucency();
+			SceneContext.SetSceneColor(nullptr);
+			SceneContext.AdjustGBufferRefCount(GraphBuilder.RHICmdList, -1);
+
+			for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+			{
+				SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("View%d"), ViewIndex);
+				AddPostProcessingPasses(GraphBuilder, Views[ViewIndex], PostProcessingInputs);
+			}
+
+			GraphBuilder.Execute();
+
+			GRenderTargetPool.AddPhaseEvent(TEXT("AfterPostprocessing"));
 		}
 
-		// End of frame, we don't need it anymore
+		// End of frame, we don't need it anymore.
 		FSceneRenderTargets::Get(RHICmdList).FreeDownsampledTranslucencyDepth();
-
-		// we rendered to it during the frame, seems we haven't made use of it, because it should be released
-		check(!FSceneRenderTargets::Get(RHICmdList).SeparateTranslucencyRT);
 	}
 	else
 	{

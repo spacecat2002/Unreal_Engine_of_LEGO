@@ -4,6 +4,8 @@
 
 #include "ScreenPass.h"
 
+class FSceneDownsampleChain;
+
 enum class ELensFlareQuality : uint32
 {
 	Disabled,
@@ -56,3 +58,10 @@ struct FLensFlareInputs
 using FLensFlareOutputs = FScreenPassTexture;
 
 FLensFlareOutputs AddLensFlaresPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FLensFlareInputs& Inputs);
+
+// Helper function which pulls inputs from the post process settings of the view.
+FScreenPassTexture AddLensFlaresPass(
+	FRDGBuilder& GraphBuilder,
+	const FScreenPassViewInfo& ScreenPassView,
+	FScreenPassTexture Bloom,
+	const FSceneDownsampleChain& SceneDownsampleChain);

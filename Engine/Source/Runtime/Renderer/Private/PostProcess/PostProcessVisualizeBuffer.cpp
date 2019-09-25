@@ -188,10 +188,12 @@ bool IsVisualizeGBufferDumpToFileEnabled(const FViewInfo& View)
 
 	const bool bFrameDumpRequested = View.FinalPostProcessSettings.bBufferVisualizationDumpRequired;
 
-	// We always do this work if there are any buffer visualization pipes.
-	const bool bHasVisualizationPipes = View.FinalPostProcessSettings.BufferVisualizationPipes.Num() > 0;
+	return (bFrameDumpRequested && bFrameDumpAllowed);
+}
 
-	return (bFrameDumpRequested && bFrameDumpAllowed) || bHasVisualizationPipes;
+bool IsVisualizeGBufferDumpToPipeEnabled(const FViewInfo& View)
+{
+	return View.FinalPostProcessSettings.BufferVisualizationPipes.Num() > 0;
 }
 
 TUniquePtr<FImagePixelData> ReadbackPixelData(FRHICommandListImmediate& RHICmdList, FRHITexture* Texture, FIntRect SourceRect)

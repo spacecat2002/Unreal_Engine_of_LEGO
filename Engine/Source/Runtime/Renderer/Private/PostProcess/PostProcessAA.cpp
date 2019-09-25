@@ -1,6 +1,7 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PostProcess/PostProcessAA.h"
+#include "PostProcess/PostProcessing.h"
 
 BEGIN_SHADER_PARAMETER_STRUCT(FFXAAParameters, )
 	SHADER_PARAMETER_STRUCT(FScreenPassTextureInput, Input)
@@ -52,9 +53,9 @@ IMPLEMENT_GLOBAL_SHADER(FFXAAPS, "/Engine/Private/FXAAShader.usf", "FxaaPS", SF_
 
 EFXAAQuality GetFXAAQuality()
 {
-	static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.PostProcessAAQuality"));
-
-	return (EFXAAQuality)FMath::Clamp(CVar->GetValueOnAnyThread(), (int32)EFXAAQuality::Q0, (int32)EFXAAQuality::Q5);
+	const EPostProcessAAQuality PostProcessAAQuality = GetPostProcessAAQuality();
+	static_assert(uint32(EPostProcessAAQuality::MAX) == uint32(EFXAAQuality::MAX), "FXAA quality levels don't match post process AA quality levels. Can't trivially convert.");
+	return static_cast<EFXAAQuality>(PostProcessAAQuality);
 }
 
 FScreenPassTexture AddFXAAPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FFXAAInputs& Inputs)

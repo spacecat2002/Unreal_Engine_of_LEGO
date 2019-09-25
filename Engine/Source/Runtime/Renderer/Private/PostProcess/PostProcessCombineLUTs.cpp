@@ -412,6 +412,8 @@ FRDGTextureRef AddCombineLUTPass(FRDGBuilder& GraphBuilder, const FScreenPassVie
 	FRDGTextureRef OutputTexture = GraphBuilder.TryRegisterExternalTexture(
 		View.GetTonemappingLUT(GraphBuilder.RHICmdList, GLUTSize, bUseVolumeTextureLUT, bUseComputePass, bUseFloatOutput));
 
+	ScreenPassView.View.SetValidTonemappingLUT();
+
 	// View doesn't support a persistent LUT, so create a temporary one.
 	if (!OutputTexture)
 	{
@@ -510,8 +512,6 @@ FRDGTextureRef AddCombineLUTPass(FRDGBuilder& GraphBuilder, const FScreenPassVie
 					*VertexShader,
 					EDRF_UseTriangleOptimization);
 			}
-
-			ScreenPassView.View.SetValidTonemappingLUT();
 		});
 	}
 

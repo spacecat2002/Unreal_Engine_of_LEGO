@@ -10,6 +10,9 @@ bool IsVisualizeGBufferOverviewEnabled(const FViewInfo& View);
 // Returns whether the gubffer visualization pass needs to dump targets to files.
 bool IsVisualizeGBufferDumpToFileEnabled(const FViewInfo& View);
 
+// Returns whether the gbuffer visualization pass needs to dump to a pipe.
+bool IsVisualizeGBufferDumpToPipeEnabled(const FViewInfo& View);
+
 // Returns whether the gbuffer visualization pass should output in floating point format.
 bool IsVisualizeGBufferInFloatFormat();
 

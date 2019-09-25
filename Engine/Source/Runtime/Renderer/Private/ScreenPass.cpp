@@ -8,7 +8,7 @@
 #include "IHeadMountedDisplay.h"
 #include "RenderGraphUtils.h"
 
-extern bool ShouldDoComputePostProcessing(const FViewInfo& View);
+extern bool IsPostProcessingWithComputeEnabled(const FViewInfo& View);
 
 IMPLEMENT_GLOBAL_SHADER(FScreenPassVS, "/Engine/Private/ScreenPass.usf", "ScreenPassVS", SF_Vertex);
 
@@ -119,7 +119,7 @@ FScreenPassRenderTarget FScreenPassRenderTarget::CreateFromViewFamily(FRDGBuilde
 FScreenPassViewInfo::FScreenPassViewInfo(const FViewInfo& InView)
 	: View(InView)
 	, bHMDHiddenAreaMaskActive(IsHMDHiddenAreaMaskActive())
-	, bUseComputePasses(ShouldDoComputePostProcessing(InView))
+	, bUseComputePasses(IsPostProcessingWithComputeEnabled(InView))
 {}
 
 void SetScreenPassPipelineState(FRHICommandList& RHICmdList, const FScreenPassPipelineState& ScreenPassDraw)

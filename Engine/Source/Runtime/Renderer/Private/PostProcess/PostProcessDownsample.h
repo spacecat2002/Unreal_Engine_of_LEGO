@@ -1,13 +1,11 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-/*=============================================================================
-	PostProcessDownsample.h: Post processing down sample implementation.
-=============================================================================*/
-
 #pragma once
 
 #include "PostProcess/RenderingCompositionGraph.h"
 #include "ScreenPass.h"
+
+class FEyeAdaptationParameters;
 
 enum class EDownsampleFlags : uint8
 {
@@ -54,6 +52,47 @@ struct FDownsamplePassInputs
 };
 
 FScreenPassTexture AddDownsamplePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FDownsamplePassInputs& Inputs);
+
+class FSceneDownsampleChain
+{
+public:
+	// The number of total stages in the chain. 1/64 reduction.
+	static const uint32 StageCount = 6;
+
+	FSceneDownsampleChain() = default;
+
+	void Init(
+		FRDGBuilder& GraphBuilder,
+		const FScreenPassViewInfo& ScreenPassView,
+		const FEyeAdaptationParameters& EyeAdaptationParameters,
+		FScreenPassTexture HalfResolutionSceneColor,
+		EDownsampleQuality DownsampleQuality,
+		bool bLogLumaInAlpha);
+
+	bool IsInitialized() const
+	{
+		return bInitialized;
+	}
+
+	FScreenPassTexture GetTexture(uint32 StageIndex) const
+	{
+		return Textures[StageIndex];
+	}
+
+	FScreenPassTexture GetFirstTexture() const
+	{
+		return Textures[0];
+	}
+
+	FScreenPassTexture GetLastTexture() const
+	{
+		return Textures[StageCount - 1];
+	}
+
+private:
+	TStaticArray<FScreenPassTexture, StageCount> Textures;
+	bool bInitialized = false;
+};
 
 FRenderingCompositeOutputRef AddDownsamplePass(
 	FRenderingCompositionGraph& Graph,

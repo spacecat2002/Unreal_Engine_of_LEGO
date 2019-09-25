@@ -1,6 +1,7 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PostProcess/PostProcessDownsample.h"
+#include "PostProcess/PostProcessEyeAdaptation.h"
 #include "PixelShaderUtils.h"
 
 namespace
@@ -181,6 +182,54 @@ FScreenPassTexture AddDownsamplePass(
 	return MoveTemp(Output);
 }
 
+void FSceneDownsampleChain::Init(
+	FRDGBuilder& GraphBuilder,
+	const FScreenPassViewInfo& ScreenPassView,
+	const FEyeAdaptationParameters& EyeAdaptationParameters,
+	FScreenPassTexture HalfResolutionSceneColor,
+	EDownsampleQuality DownsampleQuality,
+	bool bLogLumaInAlpha)
+{
+	check(HalfResolutionSceneColor.IsValid());
+
+	RDG_EVENT_SCOPE(GraphBuilder, "SceneDownsample");
+
+	static const TCHAR* PassNames[StageCount] =
+	{
+		nullptr,
+		TEXT("Scene(1/4)"),
+		TEXT("Scene(1/8)"),
+		TEXT("Scene(1/16)"),
+		TEXT("Scene(1/32)"),
+		TEXT("Scene(1/64)")
+	};
+	static_assert(ARRAY_COUNT(PassNames) == StageCount, "PassNames size must equal StageCount");
+
+	// The first stage is the input.
+	Textures[0] = HalfResolutionSceneColor;
+
+	for (uint32 StageIndex = 1; StageIndex < StageCount; StageIndex++)
+	{
+		const uint32 PreviousStageIndex = StageIndex - 1;
+
+		FDownsamplePassInputs PassInputs;
+		PassInputs.Name = PassNames[StageIndex];
+		PassInputs.SceneColor = Textures[PreviousStageIndex];
+		PassInputs.Quality = DownsampleQuality;
+
+		Textures[StageIndex] = AddDownsamplePass(GraphBuilder, ScreenPassView, PassInputs);
+
+		if (bLogLumaInAlpha)
+		{
+			bLogLumaInAlpha = false;
+
+			Textures[StageIndex] = AddBasicEyeAdaptationSetupPass(GraphBuilder, ScreenPassView, EyeAdaptationParameters, Textures[StageIndex]);
+		}
+	}
+
+	bInitialized = true;
+}
+
 FRenderingCompositeOutputRef AddDownsamplePass(
 	FRenderingCompositionGraph& Graph,
 	const TCHAR *InName,
@@ -192,7 +241,7 @@ FRenderingCompositeOutputRef AddDownsamplePass(
 {
 	FRenderingCompositePass* DownsamplePass = Graph.RegisterPass(
 		new(FMemStack::Get()) TRCPassForRDG<1, 1>(
-			[InFormatOverride, InQuality, SceneColorDownsampleFactor, InFlags, InName] (FRenderingCompositePass* Pass, FRenderingCompositePassContext& InContext)
+			[InFormatOverride, InQuality, SceneColorDownsampleFactor, InFlags, InName](FRenderingCompositePass* Pass, FRenderingCompositePassContext& InContext)
 	{
 		FRDGBuilder GraphBuilder(InContext.RHICmdList);
 

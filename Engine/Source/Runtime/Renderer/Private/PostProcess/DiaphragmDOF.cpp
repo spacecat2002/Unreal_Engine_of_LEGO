@@ -653,7 +653,7 @@ static FORCEINLINE bool SupportsBokehSimmulation(EShaderPlatform ShaderPlatform)
 static FORCEINLINE bool SupportsRGBColorBuffer(EShaderPlatform ShaderPlatform)
 {
 	// There is no point when alpha channel is supported because needs 4 channel anyway for fast gathering tiles.
-	if (FPostProcessing::HasAlphaChannelSupport())
+	if (IsPostProcessingWithAlphaChannelSupported())
 	{
 		return false;
 	}
@@ -1274,7 +1274,7 @@ FRDGTextureRef DiaphragmDOF::AddPasses(
 	EPixelFormat SceneColorFormat = InputSceneColor->Desc.Format;
 	
 	// Whether should process alpha channel of the scene or not.
-	const bool bProcessSceneAlpha = FPostProcessing::HasAlphaChannelSupport();
+	const bool bProcessSceneAlpha = IsPostProcessingWithAlphaChannelSupported();
 
 	const EShaderPlatform ShaderPlatform = View.GetShaderPlatform();
 

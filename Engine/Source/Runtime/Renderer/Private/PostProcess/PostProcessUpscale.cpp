@@ -232,7 +232,7 @@ FScreenPassTexture AddUpscalePass(FRDGBuilder& GraphBuilder, const FScreenPassVi
 		ERDGPassFlags::Raster,
 		[&View, bUsePaniniProjection, PixelShader, PassParameters, InputViewport, OutputViewport](FRHICommandList& RHICmdList)
 	{
-		RHICmdList.SetViewport(OutputViewport.Rect.Min.Y, OutputViewport.Rect.Min.Y, 0.0f, OutputViewport.Rect.Max.X, OutputViewport.Rect.Max.Y, 1.0f);
+		RHICmdList.SetViewport(OutputViewport.Rect.Min.X, OutputViewport.Rect.Min.Y, 0.0f, OutputViewport.Rect.Max.X, OutputViewport.Rect.Max.Y, 1.0f);
 
 		FShader* VertexShader = nullptr;
 

@@ -958,7 +958,7 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 	Inputs.OverrideOutput.Texture = OutputTexture;
 	Inputs.OverrideOutput.ViewRect = OutputViewRect;
 	Inputs.OverrideOutput.LoadAction = OutputLoadAction;
-	Inputs.bWriteAlphaChannel = View.AntiAliasingMethod == AAM_FXAA || FPostProcessing::HasAlphaChannelSupport();
+	Inputs.bWriteAlphaChannel = View.AntiAliasingMethod == AAM_FXAA || IsPostProcessingWithAlphaChannelSupported();
 	Inputs.bFlipYAxis = RHINeedsToSwitchVerticalAxis(GShaderPlatformForFeatureLevel[Context.GetFeatureLevel()]) && ShouldMobilePassFlipVerticalAxis(this);
 	Inputs.bGammaOnly = bDoGammaOnly;
 

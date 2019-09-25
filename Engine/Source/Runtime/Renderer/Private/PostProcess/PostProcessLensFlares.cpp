@@ -1,6 +1,7 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PostProcessLensFlares.h"
+#include "PostProcessDownsample.h"
 
 namespace
 {
@@ -318,4 +319,68 @@ FScreenPassTexture AddLensFlaresPass(
 	}
 
 	return FScreenPassTexture(LensFlareTexture, OutputViewRect);
+}
+
+FScreenPassTexture AddLensFlaresPass(
+	FRDGBuilder& GraphBuilder,
+	const FScreenPassViewInfo& ScreenPassView,
+	FScreenPassTexture Bloom,
+	const FSceneDownsampleChain& SceneDownsampleChain)
+{
+	const ELensFlareQuality LensFlareQuality = GetLensFlareQuality();
+
+	const FPostProcessSettings& Settings = ScreenPassView.View.FinalPostProcessSettings;
+
+	if (LensFlareQuality != ELensFlareQuality::Disabled &&
+		!Settings.LensFlareTint.IsAlmostBlack() &&
+		Settings.LensFlareBokehSize > SMALL_NUMBER &&
+		Settings.LensFlareIntensity > SMALL_NUMBER)
+	{
+		FRHITexture* BokehTextureRHI = GWhiteTexture->TextureRHI;
+
+		if (GEngine->DefaultBokehTexture)
+		{
+			FTextureResource* BokehTextureResource = GEngine->DefaultBokehTexture->Resource;
+
+			if (BokehTextureResource && BokehTextureResource->TextureRHI)
+			{
+				BokehTextureRHI = BokehTextureResource->TextureRHI;
+			}
+		}
+
+		if (Settings.LensFlareBokehShape)
+		{
+			FTextureResource* BokehTextureResource = Settings.LensFlareBokehShape->Resource;
+
+			if (BokehTextureResource && BokehTextureResource->TextureRHI)
+			{
+				BokehTextureRHI = BokehTextureResource->TextureRHI;
+			}
+		}
+
+		// The quality level controls which downsample stage we use as the flare input texture.
+		const uint32 LensFlareDownsampleStageIndex = static_cast<uint32>(ELensFlareQuality::MAX) - static_cast<uint32>(LensFlareQuality) - 1;
+
+		FLensFlareInputs LensFlareInputs;
+		LensFlareInputs.Bloom = Bloom;
+		LensFlareInputs.Flare = SceneDownsampleChain.GetTexture(LensFlareDownsampleStageIndex);
+		LensFlareInputs.BokehShapeTexture = BokehTextureRHI;
+		LensFlareInputs.TintColorsPerFlare = Settings.LensFlareTints;
+		LensFlareInputs.TintColor = Settings.LensFlareTint;
+		LensFlareInputs.BokehSizePercent = Settings.LensFlareBokehSize;
+		LensFlareInputs.Intensity = Settings.LensFlareIntensity;
+		LensFlareInputs.Threshold = Settings.LensFlareThreshold;
+
+		// If a bloom output texture isn't available, substitute the half resolution scene color instead, but disable bloom
+		// composition. The pass needs a primary input in order to access the image descriptor and viewport for output.
+		if (!Bloom.IsValid())
+		{
+			LensFlareInputs.Bloom = SceneDownsampleChain.GetFirstTexture();
+			LensFlareInputs.bCompositeWithBloom = false;
+		}
+
+		return AddLensFlaresPass(GraphBuilder, ScreenPassView, LensFlareInputs);
+	}
+
+	return FScreenPassTexture();
 }
