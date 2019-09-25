@@ -775,8 +775,8 @@ void ComputeSubsurfaceForView(
 
 	const uint32 ScaleFactor = bHalfRes ? 2 : 1;
 	
-	//We run in separable mode under two conditions: 1) Run Burley fallback mode. 2) when the screen is in half resolution.
-	const bool bForceRunningInSeparable = CVarSSSBurleyQuality.GetValueOnRenderThread() == 0|| bHalfRes;
+	//We run in separable mode under three conditions: 1) Run Burley fallback mode. 2) when the screen is in half resolution. 3) OpenGL
+	const bool bForceRunningInSeparable = CVarSSSBurleyQuality.GetValueOnRenderThread() == 0|| bHalfRes || ScreenPassView.View.GetShaderPlatform() == SP_OPENGL_SM5;
 
 	/**
 	 * All subsurface passes within the screen-space subsurface effect can operate at half or full resolution,
