@@ -318,12 +318,12 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 	{
 		const auto GetPostProcessMaterialInputs = [CustomDepth, SeparateTranslucency, Velocity] (FScreenPassTexture SceneColor)
 		{
-			FPostProcessMaterialInputs Inputs;
-			Inputs.SetInput(EPostProcessMaterialInput::SceneColor, SceneColor);
-			Inputs.SetInput(EPostProcessMaterialInput::SeparateTranslucency, SeparateTranslucency);
-			Inputs.SetInput(EPostProcessMaterialInput::Velocity, Velocity);
-			Inputs.CustomDepthTexture = CustomDepth.Texture;
-			return Inputs;
+			FPostProcessMaterialInputs PostProcessMaterialInputs;
+			PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::SceneColor, SceneColor);
+			PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::SeparateTranslucency, SeparateTranslucency);
+			PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::Velocity, Velocity);
+			PostProcessMaterialInputs.CustomDepthTexture = CustomDepth.Texture;
+			return PostProcessMaterialInputs;
 		};
 
 		const bool bPreferCompute = IsPostProcessingWithComputeEnabled(View);
