@@ -34,12 +34,23 @@ bool IsPostProcessingWithAlphaChannelSupported();
 struct FPostProcessingInputs
 {
 	const FSceneTextureParameters* SceneTextures = nullptr;
+	FRDGTextureRef ViewFamilyTexture = nullptr;
 	FRDGTextureRef SceneColor = nullptr;
 	FRDGTextureRef SeparateTranslucency = nullptr;
 	FRDGTextureRef CustomDepth = nullptr;
+
+	void Validate() const
+	{
+		check(ViewFamilyTexture);
+		check(SceneTextures);
+		check(SceneColor);
+		check(SeparateTranslucency);
+	}
 };
 
 void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FPostProcessingInputs& Inputs);
+
+void AddDebugPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FPostProcessingInputs& Inputs);
 
 // For compatibility with composition graph passes until they are ported to Render Graph.
 class FPostProcessVS : public FScreenPassVS

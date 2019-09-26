@@ -286,21 +286,7 @@ FScreenPassTexture AddPixelInspectorPass(FRDGBuilder& GraphBuilder, const FScree
 	// When an output is specified, copy scene color to output before compositing the debug text.
 	if (Output.IsValid())
 	{
-		TShaderMapRef<FCopyRectPS> PixelShader(ScreenPassView.View.ShaderMap);
-
-		FCopyRectPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FCopyRectPS::FParameters>();
-		PassParameters->InputTexture = Inputs.SceneColor.Texture;
-		PassParameters->InputSampler = TStaticSamplerState<>::GetRHI();
-		PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
-
-		AddDrawScreenPass(
-			GraphBuilder,
-			RDG_EVENT_NAME("Overlay"),
-			ScreenPassView,
-			FScreenPassTextureViewport(Output),
-			FScreenPassTextureViewport(Inputs.SceneColor),
-			*PixelShader,
-			PassParameters);
+		AddDrawTexturePass(GraphBuilder, ScreenPassView, Inputs.SceneColor, Output);
 	}
 	// Otherwise, re-use the scene color as the output.
 	else

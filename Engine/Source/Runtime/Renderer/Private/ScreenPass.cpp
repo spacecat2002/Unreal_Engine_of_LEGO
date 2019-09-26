@@ -24,6 +24,44 @@ const FTextureRHIRef& GetMiniFontTexture()
 	}
 }
 
+FRDGTextureRef CreateViewFamilyTexture(FRDGBuilder& GraphBuilder, const FSceneViewFamily& ViewFamily)
+{
+	const FRenderTarget* RenderTarget = ViewFamily.RenderTarget;
+	const FTexture2DRHIRef& Texture = RenderTarget->GetRenderTargetTexture();
+	ensure(Texture.IsValid());
+
+	FSceneRenderTargetItem Item;
+	Item.TargetableTexture = Texture;
+	Item.ShaderResourceTexture = Texture;
+
+	FPooledRenderTargetDesc Desc;
+
+	if (Texture)
+	{
+		Desc.Extent = Texture->GetSizeXY();
+		Desc.Format = Texture->GetFormat();
+		Desc.NumMips = Texture->GetNumMips();
+	}
+	else
+	{
+		Desc.Extent = RenderTarget->GetSizeXY();
+		Desc.NumMips = 1;
+	}
+
+	Desc.DebugName = TEXT("ViewFamilyTarget");
+	Desc.TargetableFlags |= TexCreate_RenderTargetable;
+
+	if (RenderTarget->GetRenderTargetUAV().IsValid())
+	{
+		Desc.TargetableFlags |= TexCreate_UAV;
+	}
+
+	TRefCountPtr<IPooledRenderTarget> PooledRenderTarget;
+	GRenderTargetPool.CreateUntrackedElement(Desc, PooledRenderTarget, Item);
+
+	return GraphBuilder.RegisterExternalTexture(PooledRenderTarget, TEXT("ViewFamilyTarget"));
+}
+
 bool IsHMDHiddenAreaMaskActive()
 {
 	// Query if we have a custom HMD post process mesh to use
@@ -71,49 +109,6 @@ FScreenPassTextureViewportParameters GetScreenPassTextureViewportParameters(cons
 	}
 
 	return Parameters;
-}
-
-FScreenPassRenderTarget FScreenPassRenderTarget::CreateFromViewFamily(FRDGBuilder& GraphBuilder, const FViewInfo& View)
-{
-	const FRenderTarget* RenderTarget = View.Family->RenderTarget;
-	const FTexture2DRHIRef& Texture = RenderTarget->GetRenderTargetTexture();
-	ensure(Texture.IsValid());
-
-	FSceneRenderTargetItem Item;
-	Item.TargetableTexture = Texture;
-	Item.ShaderResourceTexture = Texture;
-
-	FPooledRenderTargetDesc Desc;
-
-	if (Texture)
-	{
-		Desc.Extent = Texture->GetSizeXY();
-		Desc.Format = Texture->GetFormat();
-		Desc.NumMips = Texture->GetNumMips();
-	}
-	else
-	{
-		Desc.Extent = RenderTarget->GetSizeXY();
-		Desc.NumMips = 1;
-	}
-
-	Desc.DebugName = TEXT("ViewFamilyTarget");
-	Desc.TargetableFlags |= TexCreate_RenderTargetable;
-
-	if (RenderTarget->GetRenderTargetUAV().IsValid())
-	{
-		Desc.TargetableFlags |= TexCreate_UAV;
-	}
-
-	TRefCountPtr<IPooledRenderTarget> PooledRenderTarget;
-	GRenderTargetPool.CreateUntrackedElement(Desc, PooledRenderTarget, Item);
-
-	return FScreenPassRenderTarget(
-		GraphBuilder.RegisterExternalTexture(PooledRenderTarget, TEXT("ViewFamilyTarget")),
-		// Raw output mode uses the original view rect. Otherwise the final unscaled rect is used.
-		View.PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::RawOutput ? View.ViewRect : View.UnscaledViewRect,
-		// First view clears the view family texture; all remaining views load.
-		View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad);
 }
 
 FScreenPassViewInfo::FScreenPassViewInfo(const FViewInfo& InView)
@@ -179,5 +174,24 @@ void AddDrawTexturePass(
 	Parameters->InputSampler = TStaticSamplerState<>::GetRHI();
 	Parameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, LoadAction);
 
-	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("DrawTexturePass"), ScreenPassView, OutputViewport, InputViewport, *PixelShader, Parameters);
+	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("DrawTexture"), ScreenPassView, OutputViewport, InputViewport, *PixelShader, Parameters);
+}
+
+void AddDrawTexturePass(
+	FRDGBuilder& GraphBuilder,
+	const FScreenPassViewInfo& ScreenPassView,
+	FScreenPassTexture Input,
+	FScreenPassRenderTarget Output)
+{
+	const FScreenPassTextureViewport InputViewport(Input);
+	const FScreenPassTextureViewport OutputViewport(Output);
+
+	TShaderMapRef<FCopyRectPS> PixelShader(ScreenPassView.View.ShaderMap);
+
+	FCopyRectPS::FParameters* Parameters = GraphBuilder.AllocParameters<FCopyRectPS::FParameters>();
+	Parameters->InputTexture = Input.Texture;
+	Parameters->InputSampler = TStaticSamplerState<>::GetRHI();
+	Parameters->RenderTargets[0] = Output.GetRenderTargetBinding();
+
+	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("DrawTexture"), ScreenPassView, OutputViewport, InputViewport, *PixelShader, Parameters);
 }

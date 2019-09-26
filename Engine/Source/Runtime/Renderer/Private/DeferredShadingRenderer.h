@@ -135,10 +135,7 @@ public:
 	virtual void RenderHitProxies(FRHICommandListImmediate& RHICmdList) override;
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	void DoDebugViewModePostProcessing(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, TRefCountPtr<IPooledRenderTarget>& VelocityRT);
 	void RenderVisualizeTexturePool(FRHICommandListImmediate& RHICmdList);
-#else
-	FORCEINLINE void DoDebugViewModePostProcessing(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, TRefCountPtr<IPooledRenderTarget>& VelocityRT) {}
 #endif
 
 private:

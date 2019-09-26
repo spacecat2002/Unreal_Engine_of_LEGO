@@ -18,6 +18,9 @@ bool IsHMDHiddenAreaMaskActive();
 // Returns the global engine mini font texture.
 const FTextureRHIRef& GetMiniFontTexture();
 
+// Creates and returns an RDG texture for the view family output.
+FRDGTextureRef CreateViewFamilyTexture(FRDGBuilder& GraphBuilder, const FSceneViewFamily& ViewFamily);
+
 // The vertex shader used by DrawScreenPass to draw a rectangle.
 class FScreenPassVS : public FGlobalShader
 {
@@ -65,7 +68,7 @@ struct FScreenPassRenderTarget : public FScreenPassTexture
 		ERenderTargetLoadAction OutputLoadAction,
 		const TCHAR* OutputName);
 
-	static FScreenPassRenderTarget CreateFromViewFamily(FRDGBuilder& GraphBuilder, const FViewInfo& View);
+	static FScreenPassRenderTarget CreateViewFamilyOutput(FRDGTextureRef ViewFamilyTexture, const FViewInfo& View);
 
 	FScreenPassRenderTarget() = default;
 
@@ -452,6 +455,12 @@ inline void AddDrawTexturePass(
 {
 	AddDrawTexturePass(GraphBuilder, ScreenPassView, InputTexture, OutputTexture, ViewportRect.Min, ViewportRect.Min, ViewportRect.Size());
 }
+
+void AddDrawTexturePass(
+	FRDGBuilder& GraphBuilder,
+	const FScreenPassViewInfo& ScreenPassView,
+	FScreenPassTexture Input,
+	FScreenPassRenderTarget Output);
 
 /** Helper function render a canvas to an output texture. Must be called within a render pass with Output as the render target. */
 template <typename TFunction>

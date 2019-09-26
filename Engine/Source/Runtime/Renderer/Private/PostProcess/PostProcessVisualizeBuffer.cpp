@@ -68,21 +68,7 @@ FScreenPassTexture AddVisualizeBufferPass(FRDGBuilder& GraphBuilder, const FScre
 	// Re-use the scene color as the output if no override was provided.
 	if (Output.IsValid())
 	{
-		TShaderMapRef<FCopyRectPS> PixelShader(ScreenPassView.View.ShaderMap);
-
-		FCopyRectPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FCopyRectPS::FParameters>();
-		PassParameters->InputTexture = Inputs.SceneColor.Texture;
-		PassParameters->InputSampler = TStaticSamplerState<>::GetRHI();
-		PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
-
-		AddDrawScreenPass(
-			GraphBuilder,
-			RDG_EVENT_NAME("CopySceneColor"),
-			ScreenPassView,
-			FScreenPassTextureViewport(Output),
-			FScreenPassTextureViewport(Inputs.SceneColor),
-			*PixelShader,
-			PassParameters);
+		AddDrawTexturePass(GraphBuilder, ScreenPassView, Inputs.SceneColor, Output);
 
 		// All remaining passes are load.
 		Output.LoadAction = ERenderTargetLoadAction::ELoad;

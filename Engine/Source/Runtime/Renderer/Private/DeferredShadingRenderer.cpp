@@ -2168,49 +2168,50 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 		RHICmdList.SetCurrentStat(GET_STATID(STAT_CLM_PostProcessing));
 
+		GRenderTargetPool.AddPhaseEvent(TEXT("PostProcessing"));
+
+		FRDGBuilder GraphBuilder(RHICmdList);
+
+		FSceneTextureParameters SceneTextures;
+		SetupSceneTextureParameters(GraphBuilder, &SceneTextures);
+
+		// Fallback to a black texture if no velocity.
+		if (!SceneTextures.SceneVelocityBuffer)
+		{
+			SceneTextures.SceneVelocityBuffer = GSystemTextures.GetBlackDummy(GraphBuilder);
+		}
+
+		FPostProcessingInputs PostProcessingInputs;
+		PostProcessingInputs.SceneTextures = &SceneTextures;
+		PostProcessingInputs.ViewFamilyTexture = CreateViewFamilyTexture(GraphBuilder, ViewFamily);
+		PostProcessingInputs.SceneColor = GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor(), TEXT("SceneColor"));
+		PostProcessingInputs.CustomDepth = GraphBuilder.TryRegisterExternalTexture(SceneContext.CustomDepth, TEXT("CustomDepth"));
+		PostProcessingInputs.SeparateTranslucency = RegisterExternalTextureWithFallback(GraphBuilder, SceneContext.SeparateTranslucencyRT, SceneContext.GetSeparateTranslucencyDummy(), TEXT("SeparateTranslucency"));
+
+		SceneContext.FreeSeparateTranslucency();
+		SceneContext.SetSceneColor(nullptr);
+		SceneContext.AdjustGBufferRefCount(GraphBuilder.RHICmdList, -1);
+
 		if (ViewFamily.UseDebugViewPS())
 		{
 			for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 			{
-				SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("View%d"), ViewIndex);
-				DoDebugViewModePostProcessing(RHICmdList, Views[ViewIndex], SceneContext.SceneVelocity);
+				RDG_EVENT_SCOPE_CONDITIONAL(GraphBuilder, Views.Num() > 1, "View%d", ViewIndex);
+				AddDebugPostProcessingPasses(GraphBuilder, Views[ViewIndex], PostProcessingInputs);
 			}
 		}
 		else
 		{
-			GRenderTargetPool.AddPhaseEvent(TEXT("PostProcessing"));
-
-			FRDGBuilder GraphBuilder(RHICmdList);
-
-			FSceneTextureParameters SceneTextures;
-			SetupSceneTextureParameters(GraphBuilder, &SceneTextures);
-
-			// Fallback to a black texture if no velocity.
-			if (!SceneTextures.SceneVelocityBuffer)
-			{
-				SceneTextures.SceneVelocityBuffer = GSystemTextures.GetBlackDummy(GraphBuilder);
-			}
-
-			FPostProcessingInputs PostProcessingInputs;
-			PostProcessingInputs.SceneTextures = &SceneTextures;
-			PostProcessingInputs.SceneColor = GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor(), TEXT("SceneColor"));
-			PostProcessingInputs.CustomDepth = GraphBuilder.TryRegisterExternalTexture(SceneContext.CustomDepth, TEXT("CustomDepth"));
-			PostProcessingInputs.SeparateTranslucency = RegisterExternalTextureWithFallback(GraphBuilder, SceneContext.SeparateTranslucencyRT, SceneContext.GetSeparateTranslucencyDummy(), TEXT("SeparateTranslucency"));
-
-			SceneContext.FreeSeparateTranslucency();
-			SceneContext.SetSceneColor(nullptr);
-			SceneContext.AdjustGBufferRefCount(GraphBuilder.RHICmdList, -1);
-
 			for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 			{
-				SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("View%d"), ViewIndex);
+				RDG_EVENT_SCOPE_CONDITIONAL(GraphBuilder, Views.Num() > 1, "View%d", ViewIndex);
 				AddPostProcessingPasses(GraphBuilder, Views[ViewIndex], PostProcessingInputs);
 			}
-
-			GraphBuilder.Execute();
-
-			GRenderTargetPool.AddPhaseEvent(TEXT("AfterPostprocessing"));
 		}
+
+		GraphBuilder.Execute();
+
+		GRenderTargetPool.AddPhaseEvent(TEXT("AfterPostprocessing"));
 
 		// End of frame, we don't need it anymore.
 		FSceneRenderTargets::Get(RHICmdList).FreeDownsampledTranslucencyDepth();
