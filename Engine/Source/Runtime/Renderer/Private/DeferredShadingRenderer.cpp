@@ -303,9 +303,10 @@ void FDeferredShadingSceneRenderer::ClearGBufferAtMaxZ(FRHICommandList& RHICmdLi
 	// Clear each viewport by drawing background color at MaxZ depth
 	for(int32 ViewIndex = 0;ViewIndex < Views.Num();ViewIndex++)
 	{
-		SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("ClearView%d"), ViewIndex);
-
 		FViewInfo& View = Views[ViewIndex];
+
+		SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+		SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("ClearView%d"), ViewIndex);
 
 		// Set viewport for this view
 		RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1);
@@ -435,6 +436,9 @@ bool FDeferredShadingSceneRenderer::RenderHzb(FRHICommandListImmediate& RHICmdLi
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
 		FViewInfo& View = Views[ViewIndex];
+
+		SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+
 		FSceneViewState* ViewState = (FSceneViewState*)View.State;
 
 		const bool bSSR  = ShouldRenderScreenSpaceReflections(View);
@@ -529,7 +533,11 @@ void FDeferredShadingSceneRenderer::PrepareDistanceFieldScene(FRHICommandListImm
 		}
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{
-			Views[ViewIndex].HeightfieldLightingViewInfo.SetupVisibleHeightfields(Views[ViewIndex], RHICmdList);
+			FViewInfo& View = Views[ViewIndex];
+
+			SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+
+			View.HeightfieldLightingViewInfo.SetupVisibleHeightfields(View, RHICmdList);
 
 			if (ShouldPrepareGlobalDistanceField())
 			{
@@ -957,6 +965,10 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	ComputeViewGPUMasks(RenderTargetGPUMask);
 #endif // WITH_MGPU
 
+	// By default, limit our GPU usage to only GPUs specified in the view masks.
+	SCOPED_GPU_MASK(RHICmdList, AllViewsGPUMask);
+	SCOPED_GPU_MASK(FRHICommandListExecutor::GetImmediateAsyncComputeCommandList(), AllViewsGPUMask);
+
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 	
 	//make sure all the targets we're going to use will be safely writable.
@@ -1048,7 +1060,9 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		// there are dynamic attempts to get this target during parallel rendering
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{
-			Views[ViewIndex].GetEyeAdaptation(RHICmdList);
+			FViewInfo& View = Views[ViewIndex];
+			SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+			View.GetEyeAdaptation(RHICmdList);
 		}	
 	}
 
@@ -1069,12 +1083,16 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
-		ShaderPrint::BeginView(RHICmdList, Views[ViewIndex]);
+		FViewInfo& View = Views[ViewIndex];
+		SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+		ShaderPrint::BeginView(RHICmdList, View);
 	}
 
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
-		UploadDynamicPrimitiveShaderDataForView(RHICmdList, *Scene, Views[ViewIndex]);
+		FViewInfo& View = Views[ViewIndex];
+		SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+		UploadDynamicPrimitiveShaderDataForView(RHICmdList, *Scene, View);
 	}	
 	
 	if (!bDoInitViewAftersPrepass)
@@ -1388,8 +1406,10 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		// e.g. DBuffer deferred decals
 		for(int32 ViewIndex = 0;ViewIndex < Views.Num();ViewIndex++)
 		{	
-			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView,Views.Num() > 1, TEXT("View%d"), ViewIndex);
 			FViewInfo& View = Views[ViewIndex];
+
+			SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView,Views.Num() > 1, TEXT("View%d"), ViewIndex);
 
 			Scene->UniformBuffers.UpdateViewUniformBuffer(View);
 
@@ -1540,7 +1560,9 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		{
 			for (int32 ViewIndex = 0; ViewIndex < ViewFamily.Views.Num(); ++ViewIndex)
 			{
-				ViewFamily.ViewExtensions[ViewExt]->PostRenderBasePass_RenderThread(RHICmdList, Views[ViewIndex]);
+				FViewInfo& View = Views[ViewIndex];
+				SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+				ViewFamily.ViewExtensions[ViewExt]->PostRenderBasePass_RenderThread(RHICmdList, View);
 			}
 		}
 	}
@@ -1726,11 +1748,14 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{
+			FViewInfo& View = Views[ViewIndex];
+
+			SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
 			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("View%d"), ViewIndex);
 
-			Scene->UniformBuffers.UpdateViewUniformBuffer(Views[ViewIndex]);
+			Scene->UniformBuffers.UpdateViewUniformBuffer(View);
 
-			GCompositionLighting.ProcessAfterBasePass(RHICmdList, Views[ViewIndex]);
+			GCompositionLighting.ProcessAfterBasePass(RHICmdList, View);
 		}
 		ServiceLocalQueue();
 	}
@@ -1777,6 +1802,8 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		{
 			for(int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
 			{
+				FViewInfo& View = Views[ViewIndex];
+				SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
 				ClearTranslucentVolumeLighting(RHICmdList, ViewIndex);
 			}
 			
@@ -1793,14 +1820,19 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 		for(int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
 		{
+			FViewInfo& View = Views[ViewIndex];
+			SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
 			InjectAmbientCubemapTranslucentVolumeLighting(RHICmdList, Views[ViewIndex], ViewIndex);
 		}
 		ServiceLocalQueue();
 
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
 		{
+			FViewInfo& View = Views[ViewIndex];
+			SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+
 			// Filter the translucency lighting volume now that it is complete
-			FilterTranslucentVolumeLighting(RHICmdList, Views[ViewIndex], ViewIndex);
+			FilterTranslucentVolumeLighting(RHICmdList, View, ViewIndex);
 		}
 		ServiceLocalQueue();
 
@@ -1814,6 +1846,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 			if(IsLpvIndirectPassRequired(View))
 			{
+				SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
 				SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView,Views.Num() > 1, TEXT("View%d"), ViewIndex);
 
 				GCompositionLighting.ProcessLpvIndirect(RHICmdList, View);
@@ -1953,6 +1986,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
 		{
 			const FViewInfo& View = Views[ViewIndex];
+			SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
 			RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
 			RendererModule.RenderPostOpaqueExtensions(View, RHICmdList, SceneContext, SceneTextureUniformBuffer);
 		}
@@ -2121,6 +2155,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
 	{
 		const FViewInfo& View = Views[ViewIndex];
+		SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
 		RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
 		RendererModule.RenderOverlayExtensions(View, RHICmdList, SceneContext);
 	}
@@ -2196,16 +2231,22 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		{
 			for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 			{
+				FViewInfo& View = Views[ViewIndex];
+
+				SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
 				RDG_EVENT_SCOPE_CONDITIONAL(GraphBuilder, Views.Num() > 1, "View%d", ViewIndex);
-				AddDebugPostProcessingPasses(GraphBuilder, Views[ViewIndex], PostProcessingInputs);
+				AddDebugPostProcessingPasses(GraphBuilder, View, PostProcessingInputs);
 			}
 		}
 		else
 		{
 			for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 			{
+				FViewInfo& View = Views[ViewIndex];
+
+				SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
 				RDG_EVENT_SCOPE_CONDITIONAL(GraphBuilder, Views.Num() > 1, "View%d", ViewIndex);
-				AddPostProcessingPasses(GraphBuilder, Views[ViewIndex], PostProcessingInputs);
+				AddPostProcessingPasses(GraphBuilder, View, PostProcessingInputs);
 			}
 		}
 
@@ -2344,6 +2385,7 @@ void FDeferredShadingSceneRenderer::UpdateDownsampledDepthSurface(FRHICommandLis
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{
 			const FViewInfo& View = Views[ViewIndex];
+			SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
 			DownsampleDepthSurface(RHICmdList, SceneContext.GetSmallDepthSurface(), View, 1.0f / SceneContext.GetSmallColorDepthDownsampleFactor(), true);
 		}
 	}
@@ -2485,6 +2527,8 @@ void FDeferredShadingSceneRenderer::CopyStencilToLightingChannelTexture(FRHIComm
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{
 			const FViewInfo& View = Views[ViewIndex];
+			SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+
 			// Set shaders and texture
 			TShaderMapRef<FScreenVS> ScreenVertexShader(View.ShaderMap);
 			TShaderMapRef<FCopyStencilToLightingChannelsPS> PixelShader(View.ShaderMap);

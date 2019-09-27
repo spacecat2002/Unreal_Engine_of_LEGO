@@ -830,6 +830,7 @@ void FDeferredShadingSceneRenderer::RenderLightShaftOcclusion(FRHICommandListImm
 						{
 							FViewInfo& View = Views[ViewIndex];
 							
+							SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
 							SCOPED_DRAW_EVENTF(RHICmdList, RenderLightShaftOcclusion, TEXT("RenderLightShaftOcclusion %dx%d (multiple passes)"), View.ViewRect.Width(), View.ViewRect.Height());
 		
 							if (ShouldRenderLightShaftsForLight(View, LightSceneInfo))
@@ -1061,6 +1062,7 @@ void FDeferredShadingSceneRenderer::RenderLightShaftBloom(FRHICommandListImmedia
 					{
 						FViewInfo& View = Views[ViewIndex];
 
+						SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
 						SCOPED_DRAW_EVENTF(RHICmdList, RenderLightShaftBloom, TEXT("RenderLightShaftBloom %dx%d"), View.ViewRect.Width(), View.ViewRect.Height());
 
 						if (ShouldRenderLightShaftsForLight(View, LightSceneInfo))

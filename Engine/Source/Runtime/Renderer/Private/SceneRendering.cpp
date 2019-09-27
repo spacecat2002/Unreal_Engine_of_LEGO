@@ -597,7 +597,6 @@ FParallelCommandListSet::FParallelCommandListSet(
 	, SceneRenderer(InSceneRenderer)
 	, DrawRenderState(InDrawRenderState)
 	, ParentCmdList(InParentCmdList)
-	, GPUMask(ParentCmdList.GetGPUMask())
 	, Snapshot(nullptr)
 	, ExecuteStat(InExecuteStat)
 	, NumAlloc(0)
@@ -618,9 +617,6 @@ FParallelCommandListSet::FParallelCommandListSet(
 
 FRHICommandList* FParallelCommandListSet::AllocCommandList()
 {
-	// We don't support the mask changing while the parallel commandlists are being generated.
-	ensure(GPUMask == ParentCmdList.GetGPUMask());
-
 	NumAlloc++;
 	return new FRHICommandList(ParentCmdList.GetGPUMask());
 }
@@ -636,9 +632,6 @@ void FParallelCommandListSet::Dispatch(bool bHighPriority)
 	// This is a bit weird since we will (likely) end up opening one in the parallel translate case but until we have
 	// a cleaner way for the RHI to specify parallel passes this is what we've got.
 	check(ParentCmdList.IsOutsideRenderPass());
-
-	// We don't support the mask changing while the parallel commandlists are being processed.
-	ensure(GPUMask == ParentCmdList.GetGPUMask());
 
 	ENamedThreads::Type RenderThread_Local = ENamedThreads::GetRenderThread_Local();
 	if (bSpewBalance)
@@ -780,7 +773,6 @@ void FParallelCommandListSet::WaitForTasksInternal()
  */
 FViewInfo::FViewInfo(const FSceneViewInitOptions& InitOptions)
 	:	FSceneView(InitOptions)
-	,	GPUMask(FRHIGPUMask::GPU0())
 	,	IndividualOcclusionQueries((FSceneViewState*)InitOptions.SceneViewStateInterface, 1)	
 	,	GroupedOcclusionQueries((FSceneViewState*)InitOptions.SceneViewStateInterface, FOcclusionQueryBatcher::OccludedPrimitiveQueryBatchSize)
 {
@@ -793,7 +785,6 @@ FViewInfo::FViewInfo(const FSceneViewInitOptions& InitOptions)
  */
 FViewInfo::FViewInfo(const FSceneView* InView)
 	:	FSceneView(*InView)
-	,	GPUMask(FRHIGPUMask::GPU0())
 	,	IndividualOcclusionQueries((FSceneViewState*)InView->State,1)	
 	,	GroupedOcclusionQueries((FSceneViewState*)InView->State,FOcclusionQueryBatcher::OccludedPrimitiveQueryBatchSize)
 	,	CustomVisibilityQuery(nullptr)
@@ -2393,49 +2384,46 @@ void FSceneRenderer::PrepareViewRectsForRendering()
 	}
 }
 
+#if WITH_MGPU
 void FSceneRenderer::ComputeViewGPUMasks(FRHIGPUMask RenderTargetGPUMask)
 {
-#if WITH_MGPU
 	// First check whether we are in multi-GPU and if fork and join cross-gpu transfers are enabled.
 	// Otherwise fallback on rendering the whole view family on each relevant GPU using broadcast logic.
 	if (GNumExplicitGPUsForRendering > 1 && CVarEnableMultiGPUForkAndJoin.GetValueOnAnyThread() != 0)
 	{
 		// Check whether this looks like an AFR setup (note that the logic also applies when there is only one AFR group).
-		FRHIGPUMask UsableGPUMask = RenderTargetGPUMask;
-		if (RenderTargetGPUMask.HasSingleIndex() && RenderTargetGPUMask.ToIndex() < GNumAlternateFrameRenderingGroups)
-		{
 			// Each AFR group uses multiple GPU. AFRGroup(i) = { i, NumAFRGroups + i,  2 * NumAFRGroups + i, ... } up to NumGPUs.
 			// Each view rendered gets assigned to the next GPU in that group. 
-			for (uint32 GPUIndex = RenderTargetGPUMask.ToIndex() + GNumAlternateFrameRenderingGroups; GPUIndex < GNumExplicitGPUsForRendering; GPUIndex += GNumAlternateFrameRenderingGroups)
-			{
-				UsableGPUMask |= FRHIGPUMask::FromIndex(GPUIndex);
-			}
-		}
-
+		FRHIGPUMask UsableGPUMask = AFRUtils::GetGPUMaskForGroup(RenderTargetGPUMask);
 		FRHIGPUMask::FIterator GPUIterator(UsableGPUMask);
 		for (FViewInfo& ViewInfo : Views)
 		{
 			// Only handle views that are to be rendered (this excludes instance stereo).
 			if (ViewInfo.ShouldRenderView())
 			{
-				ViewInfo.GPUMask = FRHIGPUMask::FromIndex(*GPUIterator);
-				ViewFamily.bMultiGPUForkAndJoin |= (ViewInfo.GPUMask != RenderTargetGPUMask);
-					
-				// Increment and wrap around if we reach the last index.
-				++GPUIterator;
-				if (!GPUIterator)
+				// Multi-GPU support : This is inefficient for AFR if the reflection capture
+				// updates every frame. Work is wasted on the GPUs that are not involved in
+				// rendering the current frame.
+				if (ViewInfo.bIsReflectionCapture || ViewInfo.bIsPlanarReflection)
 				{
-					GPUIterator = FRHIGPUMask::FIterator(UsableGPUMask);
+					ViewInfo.GPUMask = FRHIGPUMask::All();
 				}
-			}
-			else
-			{
-				ViewInfo.GPUMask = RenderTargetGPUMask;
+				else
+				{
+					ViewInfo.GPUMask = FRHIGPUMask::FromIndex(*GPUIterator);
+					ViewFamily.bMultiGPUForkAndJoin |= (ViewInfo.GPUMask != RenderTargetGPUMask);
+
+					// Increment and wrap around if we reach the last index.
+					++GPUIterator;
+					if (!GPUIterator)
+					{
+						GPUIterator = FRHIGPUMask::FIterator(UsableGPUMask);
+					}
+				}
 			}
 		}
 	}
 	else
-#endif
 	{
 		for (FViewInfo& ViewInfo : Views)
 		{
@@ -2445,7 +2433,14 @@ void FSceneRenderer::ComputeViewGPUMasks(FRHIGPUMask RenderTargetGPUMask)
 			}
 		}
 	}
+
+	AllViewsGPUMask = Views[0].GPUMask;
+	for (int32 ViewIndex = 1; ViewIndex < Views.Num(); ++ViewIndex)
+	{
+		AllViewsGPUMask |= Views[ViewIndex].GPUMask;
+	}
 }
+#endif // WITH_MGPU
 
 void FSceneRenderer::DoCrossGPUTransfers(FRHICommandListImmediate& RHICmdList, FRHIGPUMask RenderTargetGPUMask)
 {

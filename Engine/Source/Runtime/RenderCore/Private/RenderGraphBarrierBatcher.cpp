@@ -120,6 +120,16 @@ FRDGBarrierBatcher::FRDGBarrierBatcher(FRHICommandList& InRHICmdList, const FRDG
 
 FRDGBarrierBatcher::~FRDGBarrierBatcher()
 {
+#if WITH_MGPU
+	// Wait for the temporal effect before executing the first pass in the graph. This
+	// will be a no-op for every pass after the first since we don't broadcast in
+	// between passes.
+	if (Pass != nullptr && NameForTemporalEffect != NAME_None)
+	{
+		RHICmdList.WaitForTemporalEffect(NameForTemporalEffect);
+	}
+#endif
+
 	for (FRHITexture* RHITexture : TextureUpdateMultiFrameBegins)
 	{
 		RHICmdList.BeginUpdateMultiFrameResource(RHITexture);
@@ -153,6 +163,14 @@ FRDGBarrierBatcher::~FRDGBarrierBatcher()
 	{
 		RHICmdList.EndUpdateMultiFrameResource(RHIUAV);
 	}
+
+#if WITH_MGPU
+	// Broadcast all multi-frame resources when processing deferred resource queries.
+	if (Pass == nullptr && NameForTemporalEffect != NAME_None)
+	{
+		RHICmdList.BroadcastTemporalEffect(NameForTemporalEffect, TexturesToCopyForTemporalEffect);
+	}
+#endif
 }
 
 void FRDGBarrierBatcher::QueueTransitionTexture(FRDGTexture* Texture, FRDGResourceState::EAccess AccessAfter)
@@ -213,6 +231,14 @@ void FRDGBarrierBatcher::QueueTransitionTexture(FRDGTexture* Texture, FRDGResour
 		{
 			TextureUpdateMultiFrameEnds.AddUnique(RHITexture);
 		}
+
+#if WITH_MGPU
+		// Broadcast all multi-frame resources when processing deferred resource queries.
+		if (bIsMultiFrameResource && Pass == nullptr)
+		{
+			TexturesToCopyForTemporalEffect.AddUnique(RHITexture);
+		}
+#endif
 
 		Texture->State = StateAfter;
 	}

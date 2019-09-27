@@ -438,7 +438,6 @@ public:
 	const FSceneRenderer* SceneRenderer;
 	FMeshPassProcessorRenderState DrawRenderState;
 	FRHICommandListImmediate& ParentCmdList;
-	const FRHIGPUMask GPUMask; // Copy of the Parent GPUMask at creation (since it could change).
 	FSceneRenderTargets* Snapshot;
 	TStatId	ExecuteStat;
 	int32 Width;
@@ -1039,9 +1038,6 @@ public:
 	/** Informations from the previous frame to use for this view. */
 	FPreviousViewInfo PrevViewInfo;
 
-	/** The GPU nodes on which to render this view. */
-	FRHIGPUMask GPUMask;
-
 	/** An intermediate number of visible static meshes.  Doesn't account for occlusion until after FinishOcclusionQueries is called. */
 	int32 NumVisibleStaticMeshElements;
 
@@ -1494,8 +1490,10 @@ public:
 	/** Setups FViewInfo::ViewRect according to ViewFamilly's ScreenPercentageInterface. */
 	void PrepareViewRectsForRendering();
 
+#if WITH_MGPU
 	/** Setups each FViewInfo::GPUMask. */
 	void ComputeViewGPUMasks(FRHIGPUMask RenderTargetGPUMask);
+#endif
 
 	/** Update the rendertarget with each view results.*/
 	void DoCrossGPUTransfers(FRHICommandListImmediate& RHICmdList, FRHIGPUMask RenderTargetGPUMask);
@@ -1554,7 +1552,12 @@ protected:
 
 	/** Size of the family. */
 	FIntPoint FamilySize;
-	
+
+#if WITH_MGPU
+	FRHIGPUMask AllViewsGPUMask;
+	FRHIGPUMask GetGPUMaskForShadow(FProjectedShadowInfo* ProjectedShadowInfo) const;
+#endif
+
 	bool bDumpMeshDrawCommandInstancingStats;
 
 	// Shared functionality between all scene renderers

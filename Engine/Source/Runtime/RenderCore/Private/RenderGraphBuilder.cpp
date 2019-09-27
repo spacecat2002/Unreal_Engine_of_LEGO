@@ -729,6 +729,10 @@ void FRDGBuilder::PrepareResourcesForExecute(const FRDGPass* Pass, struct FRHIRe
 
 	FRDGBarrierBatcher BarrierBatcher(RHICmdList, Pass);
 
+#if WITH_MGPU
+	BarrierBatcher.SetNameForTemporalEffect(NameForTemporalEffect);
+#endif
+
 	// NOTE: When generating mips, we don't perform any transitions on textures. They are done implicitly by the RHI.
 	const bool bGeneratingMips = Pass->IsGenerateMips();
 
@@ -1082,6 +1086,10 @@ void FRDGBuilder::ReleaseUnreferencedResources(const FRDGPass* Pass)
 void FRDGBuilder::ProcessDeferredInternalResourceQueries()
 {
 	FRDGBarrierBatcher BarrierBatcher(RHICmdList, nullptr);
+
+#if WITH_MGPU
+	BarrierBatcher.SetNameForTemporalEffect(NameForTemporalEffect);
+#endif
 
 	for (const auto& Query : DeferredInternalTextureQueries)
 	{

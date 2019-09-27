@@ -525,6 +525,9 @@ void FCompositionLighting::ProcessAsyncSSAO(FRHICommandListImmediate& RHICmdList
 			uint32 Levels = FSSAOHelper::ComputeAmbientOcclusionPassCount(View);		
 			if (FSSAOHelper::IsAmbientOcclusionAsyncCompute(View, Levels))
 			{
+				SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+				SCOPED_GPU_MASK(FRHICommandListExecutor::GetImmediateAsyncComputeCommandList(), View.GPUMask);
+
 				FPostprocessContext Context(RHICmdList, CompositeContext.Graph, View);
 
 				if (FSSAOHelper::GetGTAOPassType(View) == EGTAOType::ESplitAsync)
@@ -556,6 +559,8 @@ void FCompositionLighting::ProcessAsyncSSAO(FRHICommandListImmediate& RHICmdList
 			// Add the passes we want to add to the graph (commenting a line means the pass is not inserted into the graph) ----------		
 			if (FSSAOHelper::IsAmbientOcclusionCompute(View))
 			{
+				SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+
 				FPostprocessContext Context(RHICmdList, CompositeContext.Graph, View);
 
 				FRenderingCompositeOutputRef AmbientOcclusion = AddPostProcessingAmbientOcclusion(RHICmdList, Context, 1);
