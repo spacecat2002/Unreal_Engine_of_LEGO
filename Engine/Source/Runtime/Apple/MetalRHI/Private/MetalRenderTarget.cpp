@@ -359,9 +359,9 @@ void FMetalDynamicRHI::RHIMapStagingSurface(FRHITexture* TextureRHI,void*& OutDa
 void FMetalDynamicRHI::RHIUnmapStagingSurface(FRHITexture* TextureRHI, uint32 GPUIndex)
 {
 	@autoreleasepool {
-    FMetalSurface* Surface = GetMetalSurfaceFromRHITexture(TextureRHI);
+    	FMetalSurface* Surface = GetMetalSurfaceFromRHITexture(TextureRHI);
 	
-    Surface->Unlock(0, 0);
+    	Surface->Unlock(0, 0, false);
 	}
 }
 
