@@ -789,6 +789,10 @@ public:
 		FTAAPassParameters Parameters = SavedParameters;
 		Parameters.SceneColorInput = CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor"));
 
+#if WITH_MGPU
+		static const FName NameForTemporalEffect("RCPassPostProcessTemporalAA");
+		GraphBuilder.SetNameForTemporalEffect(FName(NameForTemporalEffect, Context.View.ViewState->UniqueID));
+#endif
 		FTAAOutputs Outputs = AddTemporalAAPass(
 			GraphBuilder,
 			SceneTextures,

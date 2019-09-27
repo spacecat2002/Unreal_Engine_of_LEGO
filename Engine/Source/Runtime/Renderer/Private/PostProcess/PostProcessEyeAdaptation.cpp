@@ -337,6 +337,11 @@ FRDGTextureRef AddHistogramEyeAdaptationPass(
 	PassBaseParameters.EyeAdaptation = GetEyeAdaptationParameters(View, ERHIFeatureLevel::SM5);
 	PassBaseParameters.HistogramTexture = HistogramTexture;
 
+#if WITH_MGPU
+	static const FName NameForTemporalEffect("HistogramEyeAdaptationPass");
+	GraphBuilder.SetNameForTemporalEffect(FName(NameForTemporalEffect, ScreenPassView.View.ViewState ? ScreenPassView.View.ViewState->UniqueID : 0));
+#endif
+
 	if (ScreenPassView.bUseComputePasses)
 	{
 		FEyeAdaptationCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FEyeAdaptationCS::FParameters>();
@@ -526,6 +531,11 @@ FRDGTextureRef AddBasicEyeAdaptationPass(
 	PassBaseParameters.Color = GetScreenPassTextureViewportParameters(SceneColorViewport);
 	PassBaseParameters.ColorTexture = SceneColor.Texture;
 	PassBaseParameters.EyeAdaptationTexture = EyeAdaptationTexture;
+
+#if WITH_MGPU
+	static const FName NameForTemporalEffect("BasicEyeAdaptationPass");
+	GraphBuilder.SetNameForTemporalEffect(FName(NameForTemporalEffect, ScreenPassView.View.ViewState ? ScreenPassView.View.ViewState->UniqueID : 0));
+#endif
 
 	if (ScreenPassView.bUseComputePasses)
 	{
