@@ -228,7 +228,14 @@ struct FD3D12RHICommandInitializeTexture final : public FRHICommand<FD3D12RHICom
 
 			hCommandList.UpdateResidency(Resource);
 
-			hCommandList.AddTransitionBarrier(Resource, D3D12_RESOURCE_STATE_COPY_DEST, DestinationState, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
+			if (!Resource->RequiresResourceStateTracking())
+			{
+				hCommandList.AddTransitionBarrier(Resource, D3D12_RESOURCE_STATE_COPY_DEST, DestinationState, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
+			}
+			else
+			{
+				FD3D12DynamicRHI::TransitionResource(hCommandList, Resource, DestinationState, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
+			}
 
 			CurrentTexture = CurrentTexture->GetNextObject();
 		}

@@ -577,11 +577,13 @@ void FD3D12Adapter::Cleanup()
 	}
 #endif // D3D12_RHI_RAYTRACING
 
+#if WITH_MGPU
 	// Manually destroy the effects as we can't do it in their destructor.
 	for (auto& Effect : TemporalEffectMap)
 	{
 		Effect.Value.Destroy();
 	}
+#endif
 
 	// Ask all initialized FRenderResources to release their RHI resources.
 	for (TLinkedList<FRenderResource*>::TIterator ResourceIt(FRenderResource::GetResourceList()); ResourceIt; ResourceIt.Next())
@@ -657,6 +659,7 @@ void FD3D12Adapter::EndFrame()
 	GetDeferredDeletionQueue().ReleaseResources();
 }
 
+#if WITH_MGPU
 FD3D12TemporalEffect* FD3D12Adapter::GetTemporalEffect(const FName& EffectName)
 {
 	FD3D12TemporalEffect* Effect = TemporalEffectMap.Find(EffectName);
@@ -670,6 +673,7 @@ FD3D12TemporalEffect* FD3D12Adapter::GetTemporalEffect(const FName& EffectName)
 	check(Effect);
 	return Effect;
 }
+#endif // WITH_MGPU
 
 FD3D12FastConstantAllocator& FD3D12Adapter::GetTransientUniformBufferAllocator()
 {
