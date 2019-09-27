@@ -156,9 +156,9 @@ FVector CommonAnimationLibrary::RetargetSingleLocation(
 }
 
 FQuat CommonAnimationLibrary::RetargetSingleRotation(
-	FQuat Rotation,
-	FTransform Source,
-	FTransform Target,
+	const FQuat& RotationIn,
+	const FTransform& Source,
+	const FTransform& Target,
 	const FRuntimeFloatCurve& CustomCurve,
 	EEasingFuncType EasingType,
 	bool bFlipEasing,
@@ -172,6 +172,8 @@ FQuat CommonAnimationLibrary::RetargetSingleRotation(
 	float TargetMaximum
 )
 {
+	FQuat Rotation = RotationIn;
+
 	float SourceDelta = SourceMaximum - SourceMinimum;
 	float TargetDelta = TargetMaximum - TargetMinimum;
 	if (FMath::IsNearlyEqual(SourceDelta, 0.f) || FMath::IsNearlyEqual(TargetDelta, 0.f))
