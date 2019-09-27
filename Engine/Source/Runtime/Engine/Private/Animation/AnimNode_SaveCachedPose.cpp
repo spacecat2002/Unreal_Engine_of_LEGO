@@ -47,6 +47,7 @@ void FAnimNode_SaveCachedPose::Update_AnyThread(const FAnimationUpdateContext& C
 	{
 		CachedUpdate.SharedContext = MakeShared<FAnimationUpdateSharedContext>();
 		CachedUpdate.SharedContext->CopyForCachedUpdate(*SharedContext);
+
 	}
 
 	// Store this context for the post update
