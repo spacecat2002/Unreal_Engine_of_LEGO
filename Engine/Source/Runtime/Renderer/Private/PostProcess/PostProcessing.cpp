@@ -316,10 +316,10 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 
 	if (IsPostProcessingEnabled(View))
 	{
-		const auto GetPostProcessMaterialInputs = [CustomDepth, SeparateTranslucency, Velocity] (FScreenPassTexture SceneColor)
+		const auto GetPostProcessMaterialInputs = [CustomDepth, SeparateTranslucency, Velocity] (FScreenPassTexture InSceneColor)
 		{
 			FPostProcessMaterialInputs PostProcessMaterialInputs;
-			PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::SceneColor, SceneColor);
+			PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::SceneColor, InSceneColor);
 			PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::SeparateTranslucency, SeparateTranslucency);
 			PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::Velocity, Velocity);
 			PostProcessMaterialInputs.CustomDepthTexture = CustomDepth.Texture;
