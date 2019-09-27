@@ -109,8 +109,8 @@ float CommonAnimationLibrary::ScalarEasing(float Value, const FRuntimeFloatCurve
 
 FVector CommonAnimationLibrary::RetargetSingleLocation(
 	FVector Location,
-	FTransform Source,
-	FTransform Target,
+	const FTransform& Source,
+	const FTransform& Target,
 	const FRuntimeFloatCurve& CustomCurve,
 	EEasingFuncType EasingType,
 	bool bFlipEasing,
