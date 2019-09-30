@@ -187,6 +187,9 @@ FD3D12DynamicRHI::FD3D12DynamicRHI(const TArray<TSharedPtr<FD3D12Adapter>>& Chos
 
 	// Enable async compute by default
 	GEnableAsyncCompute = true;
+
+	// Manually enable Async BVH build for D3D12 RHI
+	GSupportAsyncComputeRaytracingBuildBVH = true;
 }
 
 FD3D12DynamicRHI::~FD3D12DynamicRHI()

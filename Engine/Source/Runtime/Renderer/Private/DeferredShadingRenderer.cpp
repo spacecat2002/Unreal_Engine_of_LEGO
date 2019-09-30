@@ -823,7 +823,8 @@ bool FDeferredShadingSceneRenderer::DispatchRayTracingWorldUpdates(FRHICommandLi
 		return false;
 	}
 
-	bool bAsyncUpdateGeometry = CVarRayTracingAsyncBuild.GetValueOnRenderThread() != 0;
+	bool bAsyncUpdateGeometry = (CVarRayTracingAsyncBuild.GetValueOnRenderThread() != 0)
+							  && GSupportAsyncComputeRaytracingBuildBVH;
 
 	TArrayView<FAccelerationStructureUpdateParams> BuildParams, RefitParams;
 
