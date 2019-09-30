@@ -634,7 +634,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(FTonemapCS, "/Engine/Private/PostProcessTonemap.usf", "MainCS", SF_Compute);
 
-FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FTonemapInputs& Inputs)
+FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FTonemapInputs& Inputs)
 {
 	if (!Inputs.bGammaOnly)
 	{
@@ -642,7 +642,6 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassVi
 	}
 	check(Inputs.SceneColor.IsValid());
 
-	const FViewInfo& View = ScreenPassView.View;
 	const FSceneViewFamily& ViewFamily = *(View.Family);
 	const FPostProcessSettings& PostProcessSettings = View.FinalPostProcessSettings;
 
@@ -656,7 +655,7 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassVi
 	{
 		FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
 		OutputDesc.Reset();
-		OutputDesc.TargetableFlags |= ScreenPassView.bUseComputePasses ? TexCreate_UAV : TexCreate_RenderTargetable;
+		OutputDesc.TargetableFlags |= View.bUseComputePasses ? TexCreate_UAV : TexCreate_RenderTargetable;
 		// RGB is the color in LDR, A is the luminance for PostprocessAA
 		OutputDesc.Format = Inputs.bOutputInHDR ? GRHIHDRDisplayOutputFormat : PF_B8G8R8A8;
 		OutputDesc.ClearValue = FClearValueBinding(FLinearColor(0, 0, 0, 0));
@@ -677,7 +676,7 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassVi
 		Output = FScreenPassRenderTarget(
 			GraphBuilder.CreateTexture(OutputDesc, TEXT("Tonemap")),
 			Inputs.SceneColor.ViewRect,
-			ScreenPassView.GetOverwriteLoadAction());
+			View.GetOverwriteLoadAction());
 	}
 
 	const FScreenPassTextureViewport OutputViewport(Output);
@@ -804,7 +803,7 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassVi
 	}
 
 	// Override output might not support UAVs.
-	const bool bComputePass = (Output.Texture->Desc.TargetableFlags & TexCreate_UAV) == TexCreate_UAV ? ScreenPassView.bUseComputePasses : false;
+	const bool bComputePass = (Output.Texture->Desc.TargetableFlags & TexCreate_UAV) == TexCreate_UAV ? View.bUseComputePasses : false;
 
 	if (bComputePass)
 	{
@@ -851,7 +850,7 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassVi
 		AddDrawScreenPass(
 			GraphBuilder,
 			RDG_EVENT_NAME("Tonemap %dx%d (PS GammaOnly=%d)", OutputViewport.Rect.Width(), OutputViewport.Rect.Height(), Inputs.bGammaOnly),
-			ScreenPassView,
+			View,
 			OutputViewport,
 			SceneColorViewport,
 			FScreenPassPipelineState(*VertexShader, *PixelShader, BlendState, DepthStencilState),
@@ -880,8 +879,6 @@ FRCPassPostProcessTonemap::FRCPassPostProcessTonemap(bool bInDoGammaOnly, bool b
 void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 {
 	const FViewInfo& View = Context.View;
-
-	const FScreenPassViewInfo ScreenPassView(View);
 
 	FRDGBuilder GraphBuilder(Context.RHICmdList);
 
@@ -922,7 +919,7 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 	{
 		FRDGTextureDesc OutputDesc = SceneColorTexture->Desc;
 		OutputDesc.Reset();
-		OutputDesc.TargetableFlags |= ScreenPassView.bUseComputePasses ? TexCreate_UAV : TexCreate_RenderTargetable;
+		OutputDesc.TargetableFlags |= View.bUseComputePasses ? TexCreate_UAV : TexCreate_RenderTargetable;
 		OutputDesc.Format = PF_B8G8R8A8;
 
 		// RGB is the color in LDR, A is the luminance for PostprocessAA
@@ -944,7 +941,7 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 		}
 
 		OutputTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("Tonemap"));
-		OutputLoadAction = ScreenPassView.GetOverwriteLoadAction();
+		OutputLoadAction = View.GetOverwriteLoadAction();
 		OutputViewRect = SceneColorViewRect;
 	}
 
@@ -962,7 +959,7 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 	Inputs.bFlipYAxis = RHINeedsToSwitchVerticalAxis(GShaderPlatformForFeatureLevel[Context.GetFeatureLevel()]) && ShouldMobilePassFlipVerticalAxis(this);
 	Inputs.bGammaOnly = bDoGammaOnly;
 
-	AddTonemapPass(GraphBuilder, ScreenPassView, Inputs);
+	AddTonemapPass(GraphBuilder, View, Inputs);
 
 	ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, OutputTexture);
 

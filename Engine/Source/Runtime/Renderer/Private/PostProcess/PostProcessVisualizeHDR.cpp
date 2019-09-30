@@ -48,7 +48,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(FVisualizeHDRPS, "/Engine/Private/PostProcessVisualizeHDR.usf", "MainPS", SF_Pixel);
 
-FScreenPassTexture AddVisualizeHDRPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeHDRInputs& Inputs)
+FScreenPassTexture AddVisualizeHDRPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FVisualizeHDRInputs& Inputs)
 {
 	check(Inputs.SceneColor.IsValid());
 	check(Inputs.SceneColorBeforeTonemap.IsValid());
@@ -56,13 +56,11 @@ FScreenPassTexture AddVisualizeHDRPass(FRDGBuilder& GraphBuilder, const FScreenP
 	check(Inputs.EyeAdaptationTexture);
 	check(Inputs.EyeAdaptationParameters);
 
-	const FViewInfo& View = ScreenPassView.View;
-
 	FScreenPassRenderTarget Output = Inputs.OverrideOutput;
 
 	if (!Output.IsValid())
 	{
-		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, ScreenPassView.GetOverwriteLoadAction(), TEXT("VisualizeHDR"));
+		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, View.GetOverwriteLoadAction(), TEXT("VisualizeHDR"));
 	}
 
 	const FScreenPassTextureViewport InputViewport(Inputs.SceneColor);
@@ -94,7 +92,7 @@ FScreenPassTexture AddVisualizeHDRPass(FRDGBuilder& GraphBuilder, const FScreenP
 
 	RDG_EVENT_SCOPE(GraphBuilder, "VisualizeComplexity");
 
-	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("Visualizer"), ScreenPassView, OutputViewport, InputViewport, *PixelShader, PassParameters);
+	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("Visualizer"), View, OutputViewport, InputViewport, *PixelShader, PassParameters);
 
 	Output.LoadAction = ERenderTargetLoadAction::ELoad;
 

@@ -58,18 +58,16 @@ EFXAAQuality GetFXAAQuality()
 	return static_cast<EFXAAQuality>(PostProcessAAQuality);
 }
 
-FScreenPassTexture AddFXAAPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FFXAAInputs& Inputs)
+FScreenPassTexture AddFXAAPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FFXAAInputs& Inputs)
 {
 	check(Inputs.SceneColor.IsValid());
 	check(Inputs.Quality != EFXAAQuality::MAX);
-
-	const FViewInfo& View = ScreenPassView.View;
 
 	FScreenPassRenderTarget Output = Inputs.OverrideOutput;
 
 	if (!Output.IsValid())
 	{
-		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, ScreenPassView.GetOverwriteLoadAction(), TEXT("FXAA"));
+		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, View.GetOverwriteLoadAction(), TEXT("FXAA"));
 	}
 
 	const FVector2D OutputExtentInverse = FVector2D(1.0f / (float)Output.Texture->Desc.Extent.X, 1.0f / (float)Output.Texture->Desc.Extent.Y);
@@ -110,7 +108,7 @@ FScreenPassTexture AddFXAAPass(FRDGBuilder& GraphBuilder, const FScreenPassViewI
 	AddDrawScreenPass(
 		GraphBuilder,
 		RDG_EVENT_NAME("FXAA %dx%d (PS)", OutputViewport.Rect.Width(), OutputViewport.Rect.Height()),
-		ScreenPassView,
+		View,
 		OutputViewport,
 		FScreenPassTextureViewport(Inputs.SceneColor),
 		FScreenPassPipelineState(*VertexShader, *PixelShader),

@@ -22,4 +22,4 @@ struct FVisualizeGBufferHintsInputs
 	const FSceneTextureParameters* SceneTextures = nullptr;
 };
 
-FScreenPassTexture AddVisualizeGBufferHintsPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeGBufferHintsInputs& Inputs);
+FScreenPassTexture AddVisualizeGBufferHintsPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FVisualizeGBufferHintsInputs& Inputs);

@@ -27,14 +27,13 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(FTestImagePS, "/Engine/Private/PostProcessTestImage.usf", "MainPS", SF_Pixel);
 
-void AddTestImagePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, FScreenPassTexture Output)
+void AddTestImagePass(FRDGBuilder& GraphBuilder, const FViewInfo& View, FScreenPassTexture Output)
 {
 	check(Output.IsValid());
 
 	FRDGTextureRef OutputTexture = Output.Texture;
 	const FScreenPassTextureViewport OutputViewport(Output);
 
-	const FViewInfo& View = ScreenPassView.View;
 	const FSceneViewFamily& ViewFamily = *(View.Family);
 
 	FTestImagePS::FParameters* PassParameters = GraphBuilder.AllocParameters<FTestImagePS::FParameters>();
@@ -50,13 +49,13 @@ void AddTestImagePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& Scre
 		RDG_EVENT_NAME("TestImage %dx%d (PS)", OutputViewport.Rect.Width(), OutputViewport.Rect.Height()),
 		PassParameters,
 		ERDGPassFlags::Raster,
-		[ScreenPassView, OutputTexture, OutputViewport, PixelShader, PassParameters](FRHICommandListImmediate& RHICmdList)
+		[&View, OutputTexture, OutputViewport, PixelShader, PassParameters](FRHICommandListImmediate& RHICmdList)
 	{
-		DrawScreenPass(RHICmdList, ScreenPassView, OutputViewport, OutputViewport, *PixelShader, *PassParameters);
+		DrawScreenPass(RHICmdList, View, OutputViewport, OutputViewport, *PixelShader, *PassParameters);
 
 		// Draw debug text
 		{
-			const FViewInfo& LocalView = ScreenPassView.View;
+			const FViewInfo& LocalView = View;
 			const FSceneViewFamily& LocalViewFamily = *LocalView.Family;
 			FRenderTargetTemp TempRenderTarget(static_cast<FRHITexture2D*>(OutputTexture->GetRHI()), OutputTexture->Desc.Extent);
 			FCanvas Canvas(&TempRenderTarget, nullptr, LocalViewFamily.CurrentRealTime, LocalViewFamily.CurrentWorldTime, LocalViewFamily.DeltaWorldTime, LocalView.GetFeatureLevel());
@@ -106,30 +105,4 @@ void AddTestImagePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& Scre
 			Canvas.Flush_RenderThread(RHICmdList, bForce, bInsideRenderPass);
 		}
 	});
-}
-
-FRenderingCompositeOutputRef AddTestImagePass(FRenderingCompositionGraph& Graph, FRenderingCompositeOutputRef Input)
-{
-	FRenderingCompositePass* Pass = Graph.RegisterPass(new(FMemStack::Get()) TRCPassForRDG<1, 1>(
-		[](FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
-	{
-		FRDGBuilder GraphBuilder(InContext.RHICmdList);
-
-		const FRDGTextureDesc OutputTextureDesc = FRDGTextureDesc::Create2DDesc(
-			InContext.ReferenceBufferSize, PF_R8G8B8A8, FClearValueBinding::Black, TexCreate_None, TexCreate_RenderTargetable, false);
-
-		FRDGTextureRef SceneTextureOutput = InPass->FindOrCreateRDGTextureForOutput(GraphBuilder, ePId_Output0, OutputTextureDesc, TEXT("TestImage"));
-
-		const FScreenPassViewInfo ScreenPassView(InContext.View);
-
-		const FScreenPassTexture Output(SceneTextureOutput, InContext.SceneColorViewRect);
-
-		AddTestImagePass(GraphBuilder, ScreenPassView, Output);
-
-		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, SceneTextureOutput);
-
-		GraphBuilder.Execute();
-	}));
-	Pass->SetInput(ePId_Input0, Input);
-	return FRenderingCompositeOutputRef(Pass);
 }

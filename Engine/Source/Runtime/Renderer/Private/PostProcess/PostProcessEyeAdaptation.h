@@ -54,21 +54,21 @@ float GetEyeAdaptationFixedExposure(const FViewInfo& View);
 // Returns the updated 1x1 eye adaptation texture.
 FRDGTextureRef AddHistogramEyeAdaptationPass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const FEyeAdaptationParameters& EyeAdaptationParameters,
 	FRDGTextureRef HistogramTexture);
 
 // Computes luma of scene color stores in Alpha.
 FScreenPassTexture AddBasicEyeAdaptationSetupPass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const FEyeAdaptationParameters& EyeAdaptationParameters,
 	FScreenPassTexture SceneColor);
 
 // Returns the updated 1x1 eye adaptation texture.
 FRDGTextureRef AddBasicEyeAdaptationPass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const FEyeAdaptationParameters& EyeAdaptationParameters,
 	FScreenPassTexture SceneColor,
 	FRDGTextureRef EyeAdaptationTexture);

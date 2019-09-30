@@ -32,7 +32,7 @@ struct FBloomOutputs
 	FScreenPassTexture Bloom;
 };
 
-FBloomOutputs AddBloomPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FBloomInputs& Inputs);
+FBloomOutputs AddBloomPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FBloomInputs& Inputs);
 
 struct FBloomSetupInputs
 {
@@ -46,4 +46,4 @@ struct FBloomSetupInputs
 	float Threshold = 0.0f;
 };
 
-FScreenPassTexture AddBloomSetupPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FBloomSetupInputs& Inputs);
+FScreenPassTexture AddBloomSetupPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FBloomSetupInputs& Inputs);

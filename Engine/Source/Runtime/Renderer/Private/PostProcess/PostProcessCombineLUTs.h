@@ -13,6 +13,6 @@ FColorRemapParameters GetColorRemapParameters();
 
 bool PipelineVolumeTextureLUTSupportGuaranteedAtRuntime(EShaderPlatform Platform);
 
-FRDGTextureRef AddCombineLUTPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView);
+FRDGTextureRef AddCombineLUTPass(FRDGBuilder& GraphBuilder, const FViewInfo& View);
 
 FRenderingCompositeOutputRef AddCombineLUTPass(FRenderingCompositionGraph& Graph);

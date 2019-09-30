@@ -248,10 +248,8 @@ void ProcessPixelInspectorRequests(
 	}
 }
 
-FScreenPassTexture AddPixelInspectorPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FPixelInspectorInputs& Inputs)
+FScreenPassTexture AddPixelInspectorPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FPixelInspectorInputs& Inputs)
 {
-	const FViewInfo& View = ScreenPassView.View;
-
 	check(Inputs.SceneColor.IsValid());
 	check(Inputs.SceneColor.ViewRect == Inputs.SceneColorBeforeTonemap.ViewRect);
 	check(Inputs.OriginalSceneColor.IsValid());
@@ -286,7 +284,7 @@ FScreenPassTexture AddPixelInspectorPass(FRDGBuilder& GraphBuilder, const FScree
 	// When an output is specified, copy scene color to output before compositing the debug text.
 	if (Output.IsValid())
 	{
-		AddDrawTexturePass(GraphBuilder, ScreenPassView, Inputs.SceneColor, Output);
+		AddDrawTexturePass(GraphBuilder, View, Inputs.SceneColor, Output);
 	}
 	// Otherwise, re-use the scene color as the output.
 	else

@@ -64,11 +64,9 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(FMorpheusVS, "/Engine/Private/PostProcessHMDMorpheus.usf", "MainVS", SF_Vertex);
 
-FScreenPassTexture AddMorpheusDistortionPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FHMDDistortionInputs& Inputs)
+FScreenPassTexture AddMorpheusDistortionPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FHMDDistortionInputs& Inputs)
 {
 	check(Inputs.SceneColor.IsValid());
-
-	const FViewInfo& View = ScreenPassView.View;
 
 	FScreenPassRenderTarget Output = Inputs.OverrideOutput;
 
@@ -134,7 +132,7 @@ FScreenPassTexture AddMorpheusDistortionPass(FRDGBuilder& GraphBuilder, const FS
 	AddDrawScreenPass(
 		GraphBuilder,
 		RDG_EVENT_NAME("Morpheus"),
-		ScreenPassView,
+		View,
 		FScreenPassTextureViewport(Output),
 		FScreenPassTextureViewport(Inputs.SceneColor),
 		FScreenPassPipelineState(*VertexShader, *PixelShader),

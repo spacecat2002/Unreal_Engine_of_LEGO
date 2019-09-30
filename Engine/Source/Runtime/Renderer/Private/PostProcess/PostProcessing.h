@@ -28,6 +28,9 @@ EPostProcessAAQuality GetPostProcessAAQuality();
 // Returns whether the full post process pipeline is enabled. Otherwise, the minimal set of operations are performed.
 bool IsPostProcessingEnabled(const FViewInfo& View);
 
+// Returns whether the post process pipeline supports using compute passes.
+bool IsPostProcessingWithComputeEnabled(ERHIFeatureLevel::Type FeatureLevel);
+
 // Returns whether the post process pipeline supports propagating the alpha channel.
 bool IsPostProcessingWithAlphaChannelSupported();
 

@@ -92,9 +92,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingDebug(FRHICommandListImmedia
 				GraphBuilder, View, &OutputColor, &HitDistanceTexture, 1, 1, 1,
 			ERayTracingPrimaryRaysFlag::ConsiderSurfaceScatter);
 
-		FScreenPassViewInfo ScreenPassView(View);
-
-		AddDrawTexturePass(GraphBuilder, ScreenPassView, OutputColor, SceneColor, View.ViewRect.Min, View.ViewRect.Min, View.ViewRect.Size());
+		AddDrawTexturePass(GraphBuilder, View, OutputColor, SceneColor, View.ViewRect.Min, View.ViewRect.Min, View.ViewRect.Size());
 
 		GraphBuilder.Execute();
 		return;

@@ -8,7 +8,7 @@ class FEyeAdaptationParameters;
 
 FRDGTextureRef AddHistogramPass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const FEyeAdaptationParameters& EyeAdaptationParameters,
 	FScreenPassTexture SceneColor,
 	FRDGTextureRef EyeAdaptationTexture);

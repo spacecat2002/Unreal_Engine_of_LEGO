@@ -646,23 +646,12 @@ bool FDeferredShadingSceneRenderer::RenderPrePass(FRHICommandListImmediate& RHIC
 	return bDepthWasCleared;
 }
 
-/**
- * Returns true if there's a hidden area mask available
- */
-static FORCEINLINE bool HasHiddenAreaMask()
-{
-	static const auto* const HiddenAreaMaskCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.HiddenAreaMask"));
-	return (HiddenAreaMaskCVar != nullptr &&
-		HiddenAreaMaskCVar->GetValueOnRenderThread() == 1 &&
-		GEngine &&
-		GEngine->XRSystem.IsValid() && GEngine->XRSystem->GetHMDDevice() &&
-		GEngine->XRSystem->GetHMDDevice()->HasHiddenAreaMesh());
-}
+extern bool IsHMDHiddenAreaMaskActive();
 
 bool FDeferredShadingSceneRenderer::RenderPrePassHMD(FRHICommandListImmediate& RHICmdList)
 {
 	// Early out before we change any state if there's not a mask to render
-	if (!HasHiddenAreaMask())
+	if (!IsHMDHiddenAreaMaskActive())
 	{
 		return false;
 	}

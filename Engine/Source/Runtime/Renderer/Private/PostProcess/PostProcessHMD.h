@@ -25,8 +25,8 @@ struct FHMDDistortionInputs
 	FScreenPassTexture SceneColor;
 };
 
-FScreenPassTexture AddDefaultHMDDistortionPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FHMDDistortionInputs& Inputs);
+FScreenPassTexture AddDefaultHMDDistortionPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FHMDDistortionInputs& Inputs);
 
-FScreenPassTexture AddHMDDistortionPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FHMDDistortionInputs& Inputs);
+FScreenPassTexture AddHMDDistortionPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FHMDDistortionInputs& Inputs);
 
 FRenderingCompositeOutputRef AddHMDDistortionPass(FRenderingCompositionGraph& Graph, FRenderingCompositeOutputRef Input);

@@ -29,7 +29,7 @@ struct FGaussianBlurInputs
 
 using FGaussianBlurOutputs = FScreenPassTexture;
 
-FGaussianBlurOutputs AddGaussianBlurPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FGaussianBlurInputs& Inputs);
+FGaussianBlurOutputs AddGaussianBlurPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FGaussianBlurInputs& Inputs);
 
 FRenderingCompositeOutputRef AddGaussianBlurPass(
 	FRenderingCompositionGraph& Graph,

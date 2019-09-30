@@ -79,6 +79,6 @@ struct FUpscaleInputs
 	EUpscaleStage Stage = EUpscaleStage::MAX;
 };
 
-FScreenPassTexture AddUpscalePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FUpscaleInputs& Inputs);
+FScreenPassTexture AddUpscalePass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FUpscaleInputs& Inputs);
 
 FRenderingCompositeOutputRef AddUpscalePass(FRenderingCompositionGraph& Graph, FRenderingCompositeOutputRef Input, EUpscaleMethod Method, EUpscaleStage Stage);

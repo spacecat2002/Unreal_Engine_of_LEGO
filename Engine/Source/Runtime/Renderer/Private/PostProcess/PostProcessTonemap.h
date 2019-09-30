@@ -81,7 +81,7 @@ struct FTonemapInputs
 	bool bOutputInHDR = false;
 };
 
-FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FTonemapInputs& Inputs);
+FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FTonemapInputs& Inputs);
 
 // derives from TRenderingCompositePassBase<InputCount, OutputCount>
 // ePId_Input0: SceneColor

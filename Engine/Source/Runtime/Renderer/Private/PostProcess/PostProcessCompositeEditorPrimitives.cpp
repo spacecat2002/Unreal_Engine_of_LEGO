@@ -241,7 +241,7 @@ const FViewInfo* UpdateEditorPrimitiveView(
 
 FScreenPassTexture AddEditorPrimitivePass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const FEditorPrimitiveInputs& Inputs)
 {
 	check(Inputs.SceneColor.IsValid());
@@ -251,8 +251,6 @@ FScreenPassTexture AddEditorPrimitivePass(
 	RDG_EVENT_SCOPE(GraphBuilder, "CompositeEditorPrimitives");
 
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
-
-	const FViewInfo& View = ScreenPassView.View;
 
 	FScene* Scene = View.Family->Scene->GetRenderScene();
 
@@ -312,14 +310,14 @@ FScreenPassTexture AddEditorPrimitivePass(
 			RDG_EVENT_NAME("EditorPrimitives"),
 			PassParameters,
 			ERDGPassFlags::Raster,
-			[ScreenPassView, PassParameters, EditorView, EditorPrimitivesViewport, SceneDepthViewport, bPopulateEditorDepth, PopulateDepthPixelShader, BasePassType, MSAASampleCount] (FRHICommandListImmediate& RHICmdList)
+			[&View, PassParameters, EditorView, EditorPrimitivesViewport, SceneDepthViewport, bPopulateEditorDepth, PopulateDepthPixelShader, BasePassType, MSAASampleCount] (FRHICommandListImmediate& RHICmdList)
 		{
 			if (bPopulateEditorDepth)
 			{
-				TShaderMapRef<FScreenPassVS> PopulateDepthVertexShader(ScreenPassView.View.ShaderMap);
+				TShaderMapRef<FScreenPassVS> PopulateDepthVertexShader(View.ShaderMap);
 				DrawScreenPass(
 					RHICmdList,
-					ScreenPassView,
+					View,
 					EditorPrimitivesViewport,
 					SceneDepthViewport,
 					FScreenPassPipelineState(*PopulateDepthVertexShader, *PopulateDepthPixelShader, FScreenPassPipelineState::FDefaultBlendState::GetRHI(), TStaticDepthStencilState<true, CF_Always>::GetRHI()),
@@ -379,7 +377,7 @@ FScreenPassTexture AddEditorPrimitivePass(
 
 	if (!Output.IsValid())
 	{
-		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, ScreenPassView.GetOverwriteLoadAction(), TEXT("EditorPrimitives"));
+		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, View.GetOverwriteLoadAction(), TEXT("EditorPrimitives"));
 	}
 
 	const FScreenPassTextureViewport OutputViewport(Output);
@@ -412,7 +410,7 @@ FScreenPassTexture AddEditorPrimitivePass(
 	AddDrawScreenPass(
 		GraphBuilder,
 		RDG_EVENT_NAME("Composite %dx%d msaa=%d", OutputViewport.Rect.Width(), OutputViewport.Rect.Height(), MSAASampleCount),
-		ScreenPassView,
+		View,
 		OutputViewport,
 		ColorViewport,
 		*PixelShader,
@@ -431,7 +429,6 @@ FRenderingCompositeOutputRef AddEditorPrimitivePass(
 			[BasePassType](FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
 	{
 		FRDGBuilder GraphBuilder(InContext.RHICmdList);
-		const FScreenPassViewInfo ScreenPassView(InContext.View);
 
 		FRDGTextureRef SceneColorTexture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor"));
 		const FIntRect SceneColorViewRect = InContext.GetSceneColorDestRect(InPass);
@@ -453,7 +450,7 @@ FRenderingCompositeOutputRef AddEditorPrimitivePass(
 			Inputs.OverrideOutput.LoadAction = InContext.View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
 		}
 
-		FScreenPassTexture Outputs = AddEditorPrimitivePass(GraphBuilder, ScreenPassView, Inputs);
+		FScreenPassTexture Outputs = AddEditorPrimitivePass(GraphBuilder, InContext.View, Inputs);
 
 		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, Outputs.Texture);
 

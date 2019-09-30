@@ -35,18 +35,16 @@ static_assert(
 
 IMPLEMENT_GLOBAL_SHADER(FVisualizeShadingModelPS, "/Engine/Private/VisualizeShadingModels.usf", "MainPS", SF_Pixel);
 
-FScreenPassTexture AddVisualizeShadingModelPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeShadingModelInputs& Inputs)
+FScreenPassTexture AddVisualizeShadingModelPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FVisualizeShadingModelInputs& Inputs)
 {
 	check(Inputs.SceneTextures);
 	check(Inputs.SceneColor.IsValid());
-
-	const FViewInfo& View = ScreenPassView.View;
 
 	FScreenPassRenderTarget Output = Inputs.OverrideOutput;
 
 	if (!Output.IsValid())
 	{
-		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, ScreenPassView.GetOverwriteLoadAction(), TEXT("VisualizeShadingModel"));
+		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, View.GetOverwriteLoadAction(), TEXT("VisualizeShadingModel"));
 	}
 
 	const FScreenPassTextureViewport InputViewport(Inputs.SceneColor);
@@ -67,15 +65,15 @@ FScreenPassTexture AddVisualizeShadingModelPass(FRDGBuilder& GraphBuilder, const
 		PassParameters->ShadingModelMaskInView[BitIndex] = (View.ShadingModelMaskInView & BitMask) != 0;
 	}
 
-	TShaderMapRef<FVisualizeShadingModelPS> PixelShader(ScreenPassView.View.ShaderMap);
+	TShaderMapRef<FVisualizeShadingModelPS> PixelShader(View.ShaderMap);
 
 	RDG_EVENT_SCOPE(GraphBuilder, "VisualizeShadingModels");
 
-	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("Visualizer"), ScreenPassView, OutputViewport, InputViewport, *PixelShader, PassParameters);
+	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("Visualizer"), View, OutputViewport, InputViewport, *PixelShader, PassParameters);
 
 	Output.LoadAction = ERenderTargetLoadAction::ELoad;
 
-	AddDrawCanvasPass(GraphBuilder, RDG_EVENT_NAME("Overlay"), ScreenPassView.View, Output, [&View](FCanvas& Canvas)
+	AddDrawCanvasPass(GraphBuilder, RDG_EVENT_NAME("Overlay"), View, Output, [&View](FCanvas& Canvas)
 	{
 		float X = 30;
 		float Y = 28;

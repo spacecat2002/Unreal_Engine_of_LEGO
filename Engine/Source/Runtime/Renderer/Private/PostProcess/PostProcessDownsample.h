@@ -51,7 +51,7 @@ struct FDownsamplePassInputs
 	EPixelFormat FormatOverride = PF_Unknown;
 };
 
-FScreenPassTexture AddDownsamplePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FDownsamplePassInputs& Inputs);
+FScreenPassTexture AddDownsamplePass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FDownsamplePassInputs& Inputs);
 
 class FSceneDownsampleChain
 {
@@ -63,7 +63,7 @@ public:
 
 	void Init(
 		FRDGBuilder& GraphBuilder,
-		const FScreenPassViewInfo& ScreenPassView,
+		const FViewInfo& View,
 		const FEyeAdaptationParameters& EyeAdaptationParameters,
 		FScreenPassTexture HalfResolutionSceneColor,
 		EDownsampleQuality DownsampleQuality,

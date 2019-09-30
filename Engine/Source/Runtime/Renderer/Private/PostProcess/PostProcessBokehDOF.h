@@ -17,4 +17,4 @@ struct FVisualizeDOFInputs
 	FScreenPassTexture SceneDepth;
 };
 
-FScreenPassTexture AddVisualizeDOFPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeDOFInputs& Inputs);
+FScreenPassTexture AddVisualizeDOFPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FVisualizeDOFInputs& Inputs);

@@ -337,7 +337,7 @@ IMPLEMENT_GLOBAL_SHADER(FFilterCS, "/Engine/Private/FilterPixelShader.usf", "Mai
 
 FScreenPassTexture AddGaussianBlurPass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const TCHAR* Name,
 	FScreenPassTextureViewport OutputViewport,
 	FScreenPassTexture Filter,
@@ -350,9 +350,7 @@ FScreenPassTexture AddGaussianBlurPass(
 	check(SampleOffsets.Num() == SampleWeights.Num());
 	check(SampleOffsets.Num() != 0);
 
-	const FViewInfo& View = ScreenPassView.View;
-
-	const bool bIsComputePass = ScreenPassView.bUseComputePasses;
+	const bool bIsComputePass = View.bUseComputePasses;
 
 	const bool bCombineAdditive = Additive.IsValid();
 
@@ -423,7 +421,7 @@ FScreenPassTexture AddGaussianBlurPass(
 			AddDrawScreenPass(
 				GraphBuilder,
 				RDG_EVENT_NAME("GaussianBlur.%s %dx%d (PS, Static)", Name, OutputViewport.Rect.Width(), OutputViewport.Rect.Height()),
-				ScreenPassView,
+				View,
 				OutputViewport,
 				FScreenPassTextureViewport(Filter),
 				FScreenPassPipelineState(*VertexShader, *PixelShader),
@@ -440,7 +438,7 @@ FScreenPassTexture AddGaussianBlurPass(
 			AddDrawScreenPass(
 				GraphBuilder,
 				RDG_EVENT_NAME("GaussianBlur.%s %dx%d (PS, Dynamic)", Name, OutputViewport.Rect.Width(), OutputViewport.Rect.Height()),
-				ScreenPassView,
+				View,
 				OutputViewport,
 				FScreenPassTextureViewport(Filter),
 				*PixelShader,
@@ -453,12 +451,10 @@ FScreenPassTexture AddGaussianBlurPass(
 
 FScreenPassTexture AddGaussianBlurPass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const FGaussianBlurInputs& Inputs)
 {
 	check(Inputs.Filter.IsValid());
-
-	const FViewInfo& View = ScreenPassView.View;
 
 	const FScreenPassTextureViewport FilterViewport(Inputs.Filter);
 
@@ -507,7 +503,7 @@ FScreenPassTexture AddGaussianBlurPass(
 
 		HorizontalOutput = AddGaussianBlurPass(
 			GraphBuilder,
-			ScreenPassView,
+			View,
 			Inputs.NameX,
 			HorizontalOutputViewport,
 			Inputs.Filter,
@@ -541,7 +537,7 @@ FScreenPassTexture AddGaussianBlurPass(
 
 		return AddGaussianBlurPass(
 			GraphBuilder,
-			ScreenPassView,
+			View,
 			Inputs.NameY,
 			FilterViewport,
 			HorizontalOutput,
@@ -589,9 +585,7 @@ FRenderingCompositeOutputRef AddGaussianBlurPass(
 		PassInputs.CrossCenterWeight = CrossCenterWeight;
 		PassInputs.KernelSizePercent = KernelSizePercent;
 
-		FScreenPassViewInfo ScreenPassView(InContext.View);
-
-		FRDGTextureRef OutputTexture = AddGaussianBlurPass(GraphBuilder, ScreenPassView, PassInputs).Texture;
+		FRDGTextureRef OutputTexture = AddGaussianBlurPass(GraphBuilder, InContext.View, PassInputs).Texture;
 
 		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, OutputTexture);
 

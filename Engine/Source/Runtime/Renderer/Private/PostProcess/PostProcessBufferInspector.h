@@ -26,6 +26,6 @@ struct FPixelInspectorInputs
 	const FSceneTextureParameters* SceneTextures = nullptr;
 };
 
-FScreenPassTexture AddPixelInspectorPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FPixelInspectorInputs& Inputs);
+FScreenPassTexture AddPixelInspectorPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FPixelInspectorInputs& Inputs);
 
 #endif

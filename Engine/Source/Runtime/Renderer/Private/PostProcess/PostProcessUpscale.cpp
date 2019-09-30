@@ -165,13 +165,11 @@ EUpscaleMethod GetUpscaleMethod()
 	return static_cast<EUpscaleMethod>(FMath::Clamp(Value, 0, static_cast<int32>(EUpscaleMethod::Gaussian)));
 }
 
-FScreenPassTexture AddUpscalePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FUpscaleInputs& Inputs)
+FScreenPassTexture AddUpscalePass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FUpscaleInputs& Inputs)
 {
 	check(Inputs.SceneColor.IsValid());
 	check(Inputs.Method != EUpscaleMethod::MAX);
 	check(Inputs.Stage != EUpscaleStage::MAX);
-
-	const FViewInfo& View = ScreenPassView.View;
 
 	FScreenPassRenderTarget Output = Inputs.OverrideOutput;
 
@@ -274,7 +272,6 @@ FRenderingCompositeOutputRef AddUpscalePass(FRenderingCompositionGraph& Graph, F
 			[Method, Stage](FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
 	{
 		FRDGBuilder GraphBuilder(InContext.RHICmdList);
-		const FScreenPassViewInfo ScreenPassView(InContext.View);
 
 		FUpscaleInputs PassInputs;
 		PassInputs.Method = Method;
@@ -289,7 +286,7 @@ FRenderingCompositeOutputRef AddUpscalePass(FRenderingCompositionGraph& Graph, F
 			PassInputs.OverrideOutput.LoadAction = InContext.View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
 		}
 
-		FScreenPassTexture PassOutput = AddUpscalePass(GraphBuilder, ScreenPassView, PassInputs);
+		FScreenPassTexture PassOutput = AddUpscalePass(GraphBuilder, InContext.View, PassInputs);
 
 		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, PassOutput.Texture);
 

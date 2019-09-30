@@ -287,7 +287,7 @@ TGlobalResource<FPostProcessMaterialVertexDeclaration> GPostProcessMaterialVerte
 
 FScreenPassTexture AddPostProcessMaterialPass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const FPostProcessMaterialInputs& Inputs,
 	const UMaterialInterface* MaterialInterface)
 {
@@ -295,7 +295,7 @@ FScreenPassTexture AddPostProcessMaterialPass(
 
 	const FScreenPassTexture SceneColor = Inputs.GetInput(EPostProcessMaterialInput::SceneColor);
 
-	const ERHIFeatureLevel::Type FeatureLevel = ScreenPassView.View.GetFeatureLevel();
+	const ERHIFeatureLevel::Type FeatureLevel = View.GetFeatureLevel();
 
 	const FMaterial* Material = nullptr;
 	const FMaterialRenderProxy* MaterialRenderProxy = nullptr;
@@ -319,8 +319,6 @@ FScreenPassTexture AddPostProcessMaterialPass(
 
 	FRHIBlendState* DefaultBlendState = FScreenPassPipelineState::FDefaultBlendState::GetRHI();
 	FRHIBlendState* BlendState = GetMaterialBlendState(Material);
-
-	const FViewInfo& View = ScreenPassView.View;
 
 	// Blend / Depth Stencil usage requires that the render target have primed color data.
 	const bool bIsCompositeWithInput = DepthStencilState != DefaultDepthStencilState || BlendState != DefaultBlendState;
@@ -351,13 +349,13 @@ FScreenPassTexture AddPostProcessMaterialPass(
 			OutputDesc.ClearValue = FClearValueBinding(FLinearColor::Black);
 			OutputDesc.Flags |= GFastVRamConfig.PostProcessMaterial;
 
-			Output = FScreenPassRenderTarget(GraphBuilder.CreateTexture(OutputDesc, TEXT("PostProcessMaterial")), SceneColor.ViewRect, ScreenPassView.GetOverwriteLoadAction());
+			Output = FScreenPassRenderTarget(GraphBuilder.CreateTexture(OutputDesc, TEXT("PostProcessMaterial")), SceneColor.ViewRect, View.GetOverwriteLoadAction());
 		}
 
 		if (bPrimeOutputColor)
 		{
 			// Copy existing contents to new output and use load-action to preserve untouched pixels.
-			AddDrawTexturePass(GraphBuilder, ScreenPassView, SceneColor.Texture, Output.Texture);
+			AddDrawTexturePass(GraphBuilder, View, SceneColor.Texture, Output.Texture);
 			Output.LoadAction = ERenderTargetLoadAction::ELoad;
 		}
 	}
@@ -434,19 +432,19 @@ FScreenPassTexture AddPostProcessMaterialPass(
 		RDG_EVENT_NAME("PostProcessMaterial"),
 		PostProcessMaterialParameters,
 		ERDGPassFlags::Raster,
-		[ScreenPassView, OutputViewport, SceneColorViewport, VertexShader, PixelShader, BlendState, DepthStencilState, ScreenPassFlags, MaterialRenderProxy, PostProcessMaterialParameters, MaterialStencilRef, bNeedsGBuffer] (FRHICommandListImmediate& RHICmdList)
+		[&View, OutputViewport, SceneColorViewport, VertexShader, PixelShader, BlendState, DepthStencilState, ScreenPassFlags, MaterialRenderProxy, PostProcessMaterialParameters, MaterialStencilRef, bNeedsGBuffer] (FRHICommandListImmediate& RHICmdList)
 	{
 		DrawScreenPass(
 			RHICmdList,
-			ScreenPassView,
+			View,
 			OutputViewport,
 			SceneColorViewport,
 			FScreenPassPipelineState(VertexShader, PixelShader, BlendState, DepthStencilState),
 			ScreenPassFlags,
 			[&](FRHICommandListImmediate&)
 		{
-			VertexShader->SetParameters(RHICmdList, ScreenPassView.View, MaterialRenderProxy, *PostProcessMaterialParameters);
-			PixelShader->SetParameters(RHICmdList, ScreenPassView.View, MaterialRenderProxy, *PostProcessMaterialParameters);
+			VertexShader->SetParameters(RHICmdList, View, MaterialRenderProxy, *PostProcessMaterialParameters);
+			PixelShader->SetParameters(RHICmdList, View, MaterialRenderProxy, *PostProcessMaterialParameters);
 			RHICmdList.SetStencilRef(MaterialStencilRef);
 		});
 
@@ -533,7 +531,7 @@ FPostProcessMaterialChain GetPostProcessMaterialChain(const FViewInfo& View, EBl
 
 FScreenPassTexture AddPostProcessMaterialChain(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const FPostProcessMaterialInputs& InputsTemplate,
 	const FPostProcessMaterialChain& Materials)
 {
@@ -551,7 +549,7 @@ FScreenPassTexture AddPostProcessMaterialChain(
 			Inputs.bFlipYAxis = false;
 		}
 
-		Outputs = AddPostProcessMaterialPass(GraphBuilder, ScreenPassView, Inputs, MaterialInterface);
+		Outputs = AddPostProcessMaterialPass(GraphBuilder, View, Inputs, MaterialInterface);
 	}
 
 	return Outputs;
@@ -614,9 +612,7 @@ FRenderingCompositePass* AddPostProcessMaterialPass(
 			Inputs.CustomDepthTexture = GraphBuilder.RegisterExternalTexture(CustomDepthTarget, TEXT("CustomDepth"));
 		}
 
-		FScreenPassViewInfo ScreenPassView(InContext.View);
-
-		FScreenPassTexture Outputs = AddPostProcessMaterialPass(GraphBuilder, ScreenPassView, Inputs, MaterialInterface);
+		FScreenPassTexture Outputs = AddPostProcessMaterialPass(GraphBuilder, InContext.View, Inputs, MaterialInterface);
 
 		Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, Outputs.Texture);
 
@@ -672,7 +668,7 @@ bool IsHighResolutionScreenshotMaskEnabled(const FViewInfo& View)
 
 FScreenPassTexture AddHighResolutionScreenshotMaskPass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const FHighResolutionScreenshotMaskInputs& Inputs)
 {
 	check(Inputs.Material || Inputs.MaskMaterial || Inputs.CaptureRegionMaterial);
@@ -708,7 +704,7 @@ FScreenPassTexture AddHighResolutionScreenshotMaskPass(
 		PassSequence.AcceptOverrideIfLastPass(EPass::Material, PassInputs.OverrideOutput);
 		PassInputs.SetInput(EPostProcessMaterialInput::SceneColor, Output);
 
-		Output = AddPostProcessMaterialPass(GraphBuilder, ScreenPassView, PassInputs, Inputs.Material);
+		Output = AddPostProcessMaterialPass(GraphBuilder, View, PassInputs, Inputs.Material);
 	}
 
 	if (PassSequence.IsEnabled(EPass::MaskMaterial))
@@ -717,7 +713,7 @@ FScreenPassTexture AddHighResolutionScreenshotMaskPass(
 		PassSequence.AcceptOverrideIfLastPass(EPass::MaskMaterial, PassInputs.OverrideOutput);
 		PassInputs.SetInput(EPostProcessMaterialInput::SceneColor, Output);
 
-		Output = AddPostProcessMaterialPass(GraphBuilder, ScreenPassView, PassInputs, Inputs.MaskMaterial);
+		Output = AddPostProcessMaterialPass(GraphBuilder, View, PassInputs, Inputs.MaskMaterial);
 
 		AddDumpToColorArrayPass(GraphBuilder, Output, FScreenshotRequest::GetHighresScreenshotMaskColorArray());
 	}
@@ -728,7 +724,7 @@ FScreenPassTexture AddHighResolutionScreenshotMaskPass(
 		PassSequence.AcceptOverrideIfLastPass(EPass::CaptureRegionMaterial, PassInputs.OverrideOutput);
 		PassInputs.SetInput(EPostProcessMaterialInput::SceneColor, Output);
 
-		Output = AddPostProcessMaterialPass(GraphBuilder, ScreenPassView, PassInputs, Inputs.CaptureRegionMaterial);
+		Output = AddPostProcessMaterialPass(GraphBuilder, View, PassInputs, Inputs.CaptureRegionMaterial);
 	}
 
 	return Output;
@@ -741,7 +737,6 @@ void AddHighResScreenshotMask(FPostprocessContext& Context)
 			[](FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
 	{
 		FRDGBuilder GraphBuilder(InContext.RHICmdList);
-		const FScreenPassViewInfo ScreenPassView(InContext.View);
 
 		FHighResolutionScreenshotMaskInputs PassInputs;
 		PassInputs.SceneColor.Texture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor"));
@@ -754,7 +749,7 @@ void AddHighResScreenshotMask(FPostprocessContext& Context)
 			PassInputs.OverrideOutput.LoadAction = InContext.View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
 		}
 
-		FScreenPassTexture PassOutput = AddHighResolutionScreenshotMaskPass(GraphBuilder, ScreenPassView, PassInputs);
+		FScreenPassTexture PassOutput = AddHighResolutionScreenshotMaskPass(GraphBuilder, InContext.View, PassInputs);
 
 		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, PassOutput.Texture);
 

@@ -55,11 +55,9 @@ struct FVisualizeBufferInputs
 	TArrayView<const FVisualizeBufferTile> Tiles;
 };
 
-FScreenPassTexture AddVisualizeBufferPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeBufferInputs& Inputs)
+FScreenPassTexture AddVisualizeBufferPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FVisualizeBufferInputs& Inputs)
 {
 	check(Inputs.SceneColor.IsValid());
-
-	const FViewInfo& View = ScreenPassView.View;
 
 	FScreenPassRenderTarget Output = Inputs.OverrideOutput;
 
@@ -68,7 +66,7 @@ FScreenPassTexture AddVisualizeBufferPass(FRDGBuilder& GraphBuilder, const FScre
 	// Re-use the scene color as the output if no override was provided.
 	if (Output.IsValid())
 	{
-		AddDrawTexturePass(GraphBuilder, ScreenPassView, Inputs.SceneColor, Output);
+		AddDrawTexturePass(GraphBuilder, View, Inputs.SceneColor, Output);
 
 		// All remaining passes are load.
 		Output.LoadAction = ERenderTargetLoadAction::ELoad;
@@ -121,15 +119,15 @@ FScreenPassTexture AddVisualizeBufferPass(FRDGBuilder& GraphBuilder, const FScre
 		PassParameters->InputSampler = BilinearClampSampler;
 		PassParameters->SelectionColor = SelectionColor;
 
-		TShaderMapRef<FScreenPassVS> VertexShader(ScreenPassView.View.ShaderMap);
-		TShaderMapRef<FVisualizeBufferPS> PixelShader(ScreenPassView.View.ShaderMap);
+		TShaderMapRef<FScreenPassVS> VertexShader(View.ShaderMap);
+		TShaderMapRef<FVisualizeBufferPS> PixelShader(View.ShaderMap);
 
 		FRHIBlendState* BlendState = TStaticBlendState<CW_RGB, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha>::GetRHI();
 
 		AddDrawScreenPass(
 			GraphBuilder,
 			RDG_EVENT_NAME("Tile: %s", *Tile.Label),
-			ScreenPassView,
+			View,
 			OutputViewport,
 			FScreenPassTextureViewport(Tile.Input),
 			FScreenPassPipelineState(*VertexShader, *PixelShader, BlendState),
@@ -147,7 +145,7 @@ FScreenPassTexture AddVisualizeBufferPass(FRDGBuilder& GraphBuilder, const FScre
 		TileLabels.Add(TileLabel);
 	}
 
-	AddDrawCanvasPass(GraphBuilder, RDG_EVENT_NAME("Labels"), ScreenPassView.View, Output, [LocalTileLabels = MoveTemp(TileLabels)](FCanvas& Canvas)
+	AddDrawCanvasPass(GraphBuilder, RDG_EVENT_NAME("Labels"), View, Output, [LocalTileLabels = MoveTemp(TileLabels)](FCanvas& Canvas)
 	{
 		const FLinearColor LabelColor(1, 1, 0);
 		for (const FTileLabel& TileLabel : LocalTileLabels)
@@ -330,13 +328,12 @@ void AddDumpToColorArrayPass(FRDGBuilder& GraphBuilder, FScreenPassTexture Input
 
 FScreenPassTexture AddVisualizeGBufferOverviewPass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const FVisualizeGBufferOverviewInputs& Inputs)
 {
 	check(Inputs.SceneColor.IsValid());
 	check(Inputs.bDumpToFile || Inputs.bOverview);
 
-	const FViewInfo& View = ScreenPassView.View;
 	const FFinalPostProcessSettings& PostProcessSettings = View.FinalPostProcessSettings;
 
 	FScreenPassTexture Output;
@@ -367,7 +364,7 @@ FScreenPassTexture AddVisualizeGBufferOverviewPass(
 		PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::Velocity, Inputs.Velocity);
 		PostProcessMaterialInputs.OutputFormat = OutputFormat;
 
-		Output = AddPostProcessMaterialPass(GraphBuilder, ScreenPassView, PostProcessMaterialInputs, MaterialInterface);
+		Output = AddPostProcessMaterialPass(GraphBuilder, View, PostProcessMaterialInputs, MaterialInterface);
 
 		const TSharedPtr<FImagePixelPipe, ESPMode::ThreadSafe>* OutputPipe = PostProcessSettings.BufferVisualizationPipes.Find(MaterialInterface->GetFName());
 
@@ -403,13 +400,13 @@ FScreenPassTexture AddVisualizeGBufferOverviewPass(
 			DownsampleInputs.Flags = EDownsampleFlags::ForceRaster;
 			DownsampleInputs.Quality = EDownsampleQuality::Low;
 
-			FScreenPassTexture HalfSize = AddDownsamplePass(GraphBuilder, ScreenPassView, DownsampleInputs);
+			FScreenPassTexture HalfSize = AddDownsamplePass(GraphBuilder, View, DownsampleInputs);
 
 			DownsampleInputs.Name = TEXT("MaterialQuarterSize");
 			DownsampleInputs.SceneColor = HalfSize;
 
 			FVisualizeBufferTile Tile;
-			Tile.Input = AddDownsamplePass(GraphBuilder, ScreenPassView, DownsampleInputs);
+			Tile.Input = AddDownsamplePass(GraphBuilder, View, DownsampleInputs);
 			Tile.Label = MaterialName;
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 			Tile.bSelected = 
@@ -427,7 +424,7 @@ FScreenPassTexture AddVisualizeGBufferOverviewPass(
 		PassInputs.SceneColor = Inputs.SceneColor;
 		PassInputs.Tiles = Tiles;
 
-		return AddVisualizeBufferPass(GraphBuilder, ScreenPassView, PassInputs);
+		return AddVisualizeBufferPass(GraphBuilder, View, PassInputs);
 	}
 	else
 	{

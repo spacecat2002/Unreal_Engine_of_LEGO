@@ -77,11 +77,9 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(FHMDDistortionVS, "/Engine/Private/PostProcessHMD.usf", "MainVS", SF_Vertex);
 
-FScreenPassTexture AddDefaultHMDDistortionPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FHMDDistortionInputs& Inputs)
+FScreenPassTexture AddDefaultHMDDistortionPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FHMDDistortionInputs& Inputs)
 {
 	check(Inputs.SceneColor.IsValid());
-
-	const FViewInfo& View = ScreenPassView.View;
 
 	FScreenPassRenderTarget Output = Inputs.OverrideOutput;
 
@@ -132,30 +130,30 @@ FScreenPassTexture AddDefaultHMDDistortionPass(FRDGBuilder& GraphBuilder, const 
 	return MoveTemp(Output);
 }
 
-FScreenPassTexture AddExtensionHMDDistortionPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FHMDDistortionInputs& Inputs)
+FScreenPassTexture AddExtensionHMDDistortionPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FHMDDistortionInputs& Inputs)
 {
 	// TODO: Move this method into IHeadMountedDisplay.
 	static const FName MorpheusName(TEXT("PSVR"));
 #if defined(MORPHEUS_ENGINE_DISTORTION) && MORPHEUS_ENGINE_DISTORTION
 	if (GEngine->XRSystem->GetSystemName() == MorpheusName)
 	{
-		return AddMorpheusDistortionPass(GraphBuilder, ScreenPassView, Inputs);
+		return AddMorpheusDistortionPass(GraphBuilder, View, Inputs);
 	}
 #endif
 	return FScreenPassTexture();
 }
 
-FScreenPassTexture AddHMDDistortionPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FHMDDistortionInputs& Inputs)
+FScreenPassTexture AddHMDDistortionPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FHMDDistortionInputs& Inputs)
 {
 	check(GEngine && GEngine->XRSystem.IsValid());
 	checkf(GEngine->XRSystem->GetHMDDevice(), TEXT("EngineShowFlags.HMDDistortion can not be true when IXRTrackingSystem::GetHMDDevice returns null"));
 
 	// First attempt to use a pass from the HMD system.
-	FScreenPassTexture Output = AddExtensionHMDDistortionPass(GraphBuilder, ScreenPassView, Inputs);
+	FScreenPassTexture Output = AddExtensionHMDDistortionPass(GraphBuilder, View, Inputs);
 
 	if (!Output.IsValid())
 	{
-		Output = AddDefaultHMDDistortionPass(GraphBuilder, ScreenPassView, Inputs);
+		Output = AddDefaultHMDDistortionPass(GraphBuilder, View, Inputs);
 	}
 
 	return Output;
@@ -168,7 +166,6 @@ FRenderingCompositeOutputRef AddHMDDistortionPass(FRenderingCompositionGraph& Gr
 			[](FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
 	{
 		FRDGBuilder GraphBuilder(InContext.RHICmdList);
-		const FScreenPassViewInfo ScreenPassView(InContext.View);
 
 		FHMDDistortionInputs PassInputs;
 		PassInputs.SceneColor.Texture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor"));
@@ -181,7 +178,7 @@ FRenderingCompositeOutputRef AddHMDDistortionPass(FRenderingCompositionGraph& Gr
 			PassInputs.OverrideOutput.LoadAction = InContext.View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
 		}
 
-		FScreenPassTexture PassOutput = AddHMDDistortionPass(GraphBuilder, ScreenPassView, PassInputs);
+		FScreenPassTexture PassOutput = AddHMDDistortionPass(GraphBuilder, InContext.View, PassInputs);
 
 		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, PassOutput.Texture);
 

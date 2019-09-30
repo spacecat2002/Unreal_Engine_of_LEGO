@@ -3,8 +3,5 @@
 #pragma once
 
 #include "ScreenPass.h"
-#include "PostProcess/RenderingCompositionGraph.h"
 
-void AddTestImagePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, FScreenPassTexture Output);
-
-FRenderingCompositeOutputRef AddTestImagePass(FRenderingCompositionGraph& Graph, FRenderingCompositeOutputRef Input);
+void AddTestImagePass(FRDGBuilder& GraphBuilder, const FViewInfo& View, FScreenPassTexture Output);

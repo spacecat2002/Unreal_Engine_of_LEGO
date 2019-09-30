@@ -39,14 +39,12 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FSelectionOutlinePS, "/Engine/Private/PostProcessSelectionOutline.usf", "MainPS", SF_Pixel);
 } //! namespace
 
-FScreenPassTexture AddSelectionOutlinePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FSelectionOutlineInputs& Inputs)
+FScreenPassTexture AddSelectionOutlinePass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FSelectionOutlineInputs& Inputs)
 {
 	check(Inputs.SceneColor.IsValid());
 	check(Inputs.SceneDepth.IsValid());
 
 	RDG_EVENT_SCOPE(GraphBuilder, "EditorSelectionOutlines");
-
-	const FViewInfo& View = ScreenPassView.View;
 
 	uint32 MsaaSampleCount = 0;
 
@@ -135,7 +133,7 @@ FScreenPassTexture AddSelectionOutlinePass(FRDGBuilder& GraphBuilder, const FScr
 
 	if (!Output.IsValid())
 	{
-		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, ScreenPassView.GetOverwriteLoadAction(), TEXT("SelectionOutlineColor"));
+		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, View.GetOverwriteLoadAction(), TEXT("SelectionOutlineColor"));
 	}
 
 	// Render selection outlines.
@@ -171,7 +169,7 @@ FScreenPassTexture AddSelectionOutlinePass(FRDGBuilder& GraphBuilder, const FScr
 		AddDrawScreenPass(
 			GraphBuilder,
 			RDG_EVENT_NAME("OutlineColor %dx%d", OutputViewport.Rect.Width(), OutputViewport.Rect.Height()),
-			ScreenPassView,
+			View,
 			OutputViewport,
 			ColorViewport,
 			*PixelShader,
@@ -188,7 +186,6 @@ FRenderingCompositeOutputRef AddSelectionOutlinePass(FRenderingCompositionGraph&
 			[](FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
 	{
 		FRDGBuilder GraphBuilder(InContext.RHICmdList);
-		const FScreenPassViewInfo ScreenPassView(InContext.View);
 
 		FRDGTextureRef SceneColorTexture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor"));
 		const FIntRect SceneColorViewRect = InContext.GetSceneColorDestRect(InPass);
@@ -209,7 +206,7 @@ FRenderingCompositeOutputRef AddSelectionOutlinePass(FRenderingCompositionGraph&
 			Inputs.OverrideOutput.LoadAction = InContext.View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
 		}
 
-		FScreenPassTexture Outputs = AddSelectionOutlinePass(GraphBuilder, ScreenPassView, Inputs);
+		FScreenPassTexture Outputs = AddSelectionOutlinePass(GraphBuilder, InContext.View, Inputs);
 
 		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, Outputs.Texture);
 

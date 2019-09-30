@@ -617,10 +617,9 @@ IMPLEMENT_GLOBAL_SHADER(FSubsurfaceSRVResolvePS, "/Engine/Private/PostProcessSub
 //-------------------------------------------------------------------------------------------
 // End indirect dispatch class
 //-------------------------------------------------------------------------------------------
-FRDGTextureRef ResolveTextureToSRV(FRDGBuilder& GraphBuilder, FRDGTextureRef InputTexture, const FScreenPassViewInfo& ScreenPassView,
+FRDGTextureRef ResolveTextureToSRV(FRDGBuilder& GraphBuilder, FRDGTextureRef InputTexture, const FViewInfo& View,
 	const FScreenPassTextureViewport& SceneViewport)
 {
-	const FViewInfo& View = ScreenPassView.View;
 	FRDGTextureDesc SRVDesc = InputTexture->Desc;
 
 	// if this texture can be used as SRV, we ignore this function call.
@@ -639,17 +638,15 @@ FRDGTextureRef ResolveTextureToSRV(FRDGBuilder& GraphBuilder, FRDGTextureRef Inp
 
 	TShaderMapRef<FSubsurfaceSRVResolvePS> PixelShader(View.ShaderMap);
 
-	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("SubsurfaceTextureResolve"), ScreenPassView, SceneViewport, SceneViewport, *PixelShader, PassParameters);
+	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("SubsurfaceTextureResolve"), View, SceneViewport, SceneViewport, *PixelShader, PassParameters);
 
 	return SRVTextureOutput;
 }
 
-FRDGTextureRef CreateBlackUAVTexture(FRDGBuilder& GraphBuilder, FRDGTextureDesc SRVDesc, const TCHAR* Name, const FScreenPassViewInfo& ScreenPassView,
+FRDGTextureRef CreateBlackUAVTexture(FRDGBuilder& GraphBuilder, FRDGTextureDesc SRVDesc, const TCHAR* Name, const FViewInfo& View,
 	const FScreenPassTextureViewport& SceneViewport)
 {
 #ifdef USE_CUSTOM_CLEAR_UAV
-	const FViewInfo& View = ScreenPassView.View;
-
 	SRVDesc.TargetableFlags |= TexCreate_ShaderResource | TexCreate_UAV;
 	FRDGTextureRef SRVTextureOutput = GraphBuilder.CreateTexture(SRVDesc, Name);
 
@@ -660,7 +657,7 @@ FRDGTextureRef CreateBlackUAVTexture(FRDGBuilder& GraphBuilder, FRDGTextureDesc 
 
 	TShaderMapRef<FSubsurfaceSRVResolvePS> PixelShader(View.ShaderMap);
 
-	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("ClearUAV"), ScreenPassView, SceneViewport, SceneViewport, *PixelShader, PassParameters);
+	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("ClearUAV"), View, SceneViewport, SceneViewport, *PixelShader, PassParameters);
 #else
 	FRDGTextureRef SRVTextureOutput = GraphBuilder.CreateTexture(SRVDesc, Name);
 	FRDGTextureUAVDesc UAVClearDesc(SRVTextureOutput, 0);
@@ -751,7 +748,7 @@ IMPLEMENT_GLOBAL_SHADER(FSubsurfaceRecombinePS, "/Engine/Private/PostProcessSubs
 
 void ComputeSubsurfaceForView(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const FScreenPassTextureViewport& SceneViewport,
 	FRDGTextureRef SceneTexture,
 	FRDGTextureRef SceneTextureOutput,
@@ -760,8 +757,6 @@ void ComputeSubsurfaceForView(
 	check(SceneTexture);
 	check(SceneTextureOutput);
 	check(SceneViewport.Extent == SceneTexture->Desc.Extent);
-
-	const FViewInfo& View = ScreenPassView.View;
 
 	const FSceneViewFamily* ViewFamily = View.Family;
 
@@ -776,7 +771,7 @@ void ComputeSubsurfaceForView(
 	const uint32 ScaleFactor = bHalfRes ? 2 : 1;
 	
 	//We run in separable mode under three conditions: 1) Run Burley fallback mode. 2) when the screen is in half resolution. 3) OpenGL
-	const bool bForceRunningInSeparable = CVarSSSBurleyQuality.GetValueOnRenderThread() == 0|| bHalfRes || ScreenPassView.View.GetShaderPlatform() == SP_OPENGL_SM5;
+	const bool bForceRunningInSeparable = CVarSSSBurleyQuality.GetValueOnRenderThread() == 0|| bHalfRes || View.GetShaderPlatform() == SP_OPENGL_SM5;
 
 	/**
 	 * All subsurface passes within the screen-space subsurface effect can operate at half or full resolution,
@@ -847,14 +842,14 @@ void ComputeSubsurfaceForView(
 		// Pre-allocate black UAV together.
 		{
 			SubsurfaceSubpassOneTex = CreateBlackUAVTexture(GraphBuilder, SubsurfaceTextureWith6MipsDescriptor, TEXT("SubsurfaceSubpassOneTex"),
-				ScreenPassView, SubsurfaceViewport);
+				View, SubsurfaceViewport);
 			SubsurfaceSubpassTwoTex = CreateBlackUAVTexture(GraphBuilder, SubsurfaceTextureWith6MipsDescriptor, TEXT("SubsurfaceSubpassTwoTex"),
-				ScreenPassView, SubsurfaceViewport);
+				View, SubsurfaceViewport);
 			// Only clear when we are in full resolution.
 			if (!bForceRunningInSeparable)
 			{
 				NewQualityHistoryTexture = CreateBlackUAVTexture(GraphBuilder, SubsurfaceTextureDescriptor, TEXT("SubsurfaceQualityHistoryState"),
-					ScreenPassView, SubsurfaceViewport);
+					View, SubsurfaceViewport);
 			}
 		}
 
@@ -1051,7 +1046,7 @@ void ComputeSubsurfaceForView(
 		AddDrawScreenPass(
 			GraphBuilder,
 			RDG_EVENT_NAME("SubsurfaceRecombine"),
-			ScreenPassView,
+			View,
 			SceneViewport,
 			SceneViewport,
 			*PixelShader,
@@ -1116,10 +1111,9 @@ FRDGTextureRef ComputeSubsurface(
 				if (bIsNonSubsurfaceView)
 				{
 					const FViewInfo& View = Views[ViewIndex];
-					const FScreenPassViewInfo ScreenPassView(View);
 					const FScreenPassTextureViewport TextureViewport(SceneTexture, View.ViewRect);
 
-					DrawScreenPass(RHICmdList, ScreenPassView, TextureViewport, TextureViewport, *PixelShader, *PassParameters);
+					DrawScreenPass(RHICmdList, View, TextureViewport, TextureViewport, *PixelShader, *PassParameters);
 				}
 			}
 		});
@@ -1139,10 +1133,9 @@ FRDGTextureRef ComputeSubsurface(
 			RDG_EVENT_SCOPE(GraphBuilder, "SubsurfaceScattering(ViewId=%d)", ViewIndex);
 
 			const FViewInfo& View = Views[ViewIndex];
-			const FScreenPassViewInfo ScreenPassView(View);
 			const FScreenPassTextureViewport SceneViewport(SceneTexture, View.ViewRect);
 
-			ComputeSubsurfaceForView(GraphBuilder, ScreenPassView, SceneViewport, SceneTexture, SceneTextureOutput, SceneTextureLoadAction);
+			ComputeSubsurfaceForView(GraphBuilder, View, SceneViewport, SceneTexture, SceneTextureOutput, SceneTextureLoadAction);
 
 			// Subsequent render passes should load the texture contents.
 			SceneTextureLoadAction = ERenderTargetLoadAction::ELoad;
@@ -1152,17 +1145,15 @@ FRDGTextureRef ComputeSubsurface(
 	return SceneTextureOutput;
 }
 
-FScreenPassTexture AddVisualizeSubsurfacePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeSubsurfaceInputs& Inputs)
+FScreenPassTexture AddVisualizeSubsurfacePass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FVisualizeSubsurfaceInputs& Inputs)
 {
 	check(Inputs.SceneColor.IsValid());
-
-	const FViewInfo& View = ScreenPassView.View;
 
 	FScreenPassRenderTarget Output = Inputs.OverrideOutput;
 
 	if (!Output.IsValid())
 	{
-		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, ScreenPassView.GetOverwriteLoadAction(), TEXT("VisualizeSubsurface"));
+		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, View.GetOverwriteLoadAction(), TEXT("VisualizeSubsurface"));
 	}
 
 	const FScreenPassTextureViewport InputViewport(Inputs.SceneColor);
@@ -1179,7 +1170,7 @@ FScreenPassTexture AddVisualizeSubsurfacePass(FRDGBuilder& GraphBuilder, const F
 
 	RDG_EVENT_SCOPE(GraphBuilder, "VisualizeSubsurface");
 
-	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("Visualizer"), ScreenPassView, FScreenPassTextureViewport(Output), InputViewport, *PixelShader, PassParameters);
+	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("Visualizer"), View, FScreenPassTextureViewport(Output), InputViewport, *PixelShader, PassParameters);
 
 	Output.LoadAction = ERenderTargetLoadAction::ELoad;
 

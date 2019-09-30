@@ -322,12 +322,10 @@ IMPLEMENT_GLOBAL_SHADER(FEyeAdaptationCS, "/Engine/Private/PostProcessEyeAdaptat
 
 FRDGTextureRef AddHistogramEyeAdaptationPass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const FEyeAdaptationParameters& EyeAdaptationParameters,
 	FRDGTextureRef HistogramTexture)
 {
-	const FViewInfo& View = ScreenPassView.View;
-
 	View.SwapEyeAdaptationRTs(GraphBuilder.RHICmdList);
 	View.SetValidEyeAdaptation();
 
@@ -339,16 +337,16 @@ FRDGTextureRef AddHistogramEyeAdaptationPass(
 
 #if WITH_MGPU
 	static const FName NameForTemporalEffect("HistogramEyeAdaptationPass");
-	GraphBuilder.SetNameForTemporalEffect(FName(NameForTemporalEffect, ScreenPassView.View.ViewState ? ScreenPassView.View.ViewState->UniqueID : 0));
+	GraphBuilder.SetNameForTemporalEffect(FName(NameForTemporalEffect, View.ViewState ? View.ViewState->UniqueID : 0));
 #endif
 
-	if (ScreenPassView.bUseComputePasses)
+	if (View.bUseComputePasses)
 	{
 		FEyeAdaptationCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FEyeAdaptationCS::FParameters>();
 		PassParameters->Base = PassBaseParameters;
 		PassParameters->RWEyeAdaptationTexture = GraphBuilder.CreateUAV(OutputTexture);
 
-		TShaderMapRef<FEyeAdaptationCS> ComputeShader(ScreenPassView.View.ShaderMap);
+		TShaderMapRef<FEyeAdaptationCS> ComputeShader(View.ShaderMap);
 
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
@@ -363,12 +361,12 @@ FRDGTextureRef AddHistogramEyeAdaptationPass(
 		PassParameters->Base = PassBaseParameters;
 		PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, ERenderTargetLoadAction::ENoAction);
 
-		TShaderMapRef<FEyeAdaptationPS> PixelShader(ScreenPassView.View.ShaderMap);
+		TShaderMapRef<FEyeAdaptationPS> PixelShader(View.ShaderMap);
 
 		AddDrawScreenPass(
 			GraphBuilder,
 			RDG_EVENT_NAME("HistogramEyeAdaptation (PS)"),
-			ScreenPassView,
+			View,
 			FScreenPassTextureViewport(OutputTexture),
 			FScreenPassTextureViewport(HistogramTexture),
 			*PixelShader,
@@ -406,7 +404,7 @@ IMPLEMENT_GLOBAL_SHADER(FBasicEyeAdaptationSetupPS, "/Engine/Private/PostProcess
 
 FScreenPassTexture AddBasicEyeAdaptationSetupPass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const FEyeAdaptationParameters& EyeAdaptationParameters,
 	FScreenPassTexture SceneColor)
 {
@@ -427,14 +425,14 @@ FScreenPassTexture AddBasicEyeAdaptationSetupPass(
 	PassParameters->EyeAdaptation = EyeAdaptationParameters;
 	PassParameters->ColorTexture = SceneColor.Texture;
 	PassParameters->ColorSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
-	PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, ScreenPassView.GetOverwriteLoadAction());
+	PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, View.GetOverwriteLoadAction());
 
-	TShaderMapRef<FBasicEyeAdaptationSetupPS> PixelShader(ScreenPassView.View.ShaderMap);
+	TShaderMapRef<FBasicEyeAdaptationSetupPS> PixelShader(View.ShaderMap);
 
 	AddDrawScreenPass(
 		GraphBuilder,
 		RDG_EVENT_NAME("BasicEyeAdaptationSetup (PS) %dx%d", Viewport.Rect.Width(), Viewport.Rect.Height()),
-		ScreenPassView,
+		View,
 		Viewport,
 		Viewport,
 		*PixelShader,
@@ -511,13 +509,11 @@ IMPLEMENT_GLOBAL_SHADER(FBasicEyeAdaptationCS, "/Engine/Private/PostProcessEyeAd
 
 FRDGTextureRef AddBasicEyeAdaptationPass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const FEyeAdaptationParameters& EyeAdaptationParameters,
 	FScreenPassTexture SceneColor,
 	FRDGTextureRef EyeAdaptationTexture)
 {
-	const FViewInfo& View = ScreenPassView.View;
-
 	View.SwapEyeAdaptationRTs(GraphBuilder.RHICmdList);
 	View.SetValidEyeAdaptation();
 
@@ -526,7 +522,7 @@ FRDGTextureRef AddBasicEyeAdaptationPass(
 	FRDGTextureRef OutputTexture = GraphBuilder.RegisterExternalTexture(View.GetEyeAdaptation(GraphBuilder.RHICmdList), TEXT("EyeAdaptation"), ERDGResourceFlags::MultiFrame);
 
 	FBasicEyeAdaptationShader::FParameters PassBaseParameters;
-	PassBaseParameters.View = ScreenPassView.View.ViewUniformBuffer;
+	PassBaseParameters.View = View.ViewUniformBuffer;
 	PassBaseParameters.EyeAdaptation = EyeAdaptationParameters;
 	PassBaseParameters.Color = GetScreenPassTextureViewportParameters(SceneColorViewport);
 	PassBaseParameters.ColorTexture = SceneColor.Texture;
@@ -534,16 +530,16 @@ FRDGTextureRef AddBasicEyeAdaptationPass(
 
 #if WITH_MGPU
 	static const FName NameForTemporalEffect("BasicEyeAdaptationPass");
-	GraphBuilder.SetNameForTemporalEffect(FName(NameForTemporalEffect, ScreenPassView.View.ViewState ? ScreenPassView.View.ViewState->UniqueID : 0));
+	GraphBuilder.SetNameForTemporalEffect(FName(NameForTemporalEffect, View.ViewState ? View.ViewState->UniqueID : 0));
 #endif
 
-	if (ScreenPassView.bUseComputePasses)
+	if (View.bUseComputePasses)
 	{
 		FBasicEyeAdaptationCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FBasicEyeAdaptationCS::FParameters>();
 		PassParameters->Base = PassBaseParameters;
 		PassParameters->RWEyeAdaptationTexture = GraphBuilder.CreateUAV(OutputTexture);
 
-		TShaderMapRef<FBasicEyeAdaptationCS> ComputeShader(ScreenPassView.View.ShaderMap);
+		TShaderMapRef<FBasicEyeAdaptationCS> ComputeShader(View.ShaderMap);
 
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
@@ -558,14 +554,14 @@ FRDGTextureRef AddBasicEyeAdaptationPass(
 		PassParameters->Base = PassBaseParameters;
 		PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, ERenderTargetLoadAction::ENoAction);
 
-		TShaderMapRef<FBasicEyeAdaptationPS> PixelShader(ScreenPassView.View.ShaderMap);
+		TShaderMapRef<FBasicEyeAdaptationPS> PixelShader(View.ShaderMap);
 
 		const FScreenPassTextureViewport OutputViewport(OutputTexture);
 
 		AddDrawScreenPass(
 			GraphBuilder,
 			RDG_EVENT_NAME("BasicEyeAdaptation (PS)"),
-			ScreenPassView,
+			View,
 			OutputViewport,
 			OutputViewport,
 			*PixelShader,

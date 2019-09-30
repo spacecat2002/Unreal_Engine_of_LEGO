@@ -665,7 +665,7 @@ FTAAOutputs AddTemporalAAPass(
 void AddTemporalAAPass(
 	FRDGBuilder& GraphBuilder,
 	const FSceneTextureParameters& SceneTextures,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const bool bAllowDownsampleSceneColor,
 	const EPixelFormat DownsampleOverrideFormat,
 	FRDGTextureRef InSceneColorTexture,
@@ -674,8 +674,6 @@ void AddTemporalAAPass(
 	FRDGTextureRef* OutSceneColorHalfResTexture,
 	FIntRect* OutSceneColorHalfResViewRect)
 {
-	const FViewInfo& View = ScreenPassView.View;
-
 	check(View.AntiAliasingMethod == AAM_TemporalAA && View.ViewState);
 
 	FTAAPassParameters TAAParameters(View);
@@ -744,7 +742,7 @@ void AddTemporalAAPass(
 		OutputViewport.Extent.X = FMath::Max(InSceneColorTexture->Desc.Extent.X, QuantizedOutputSize.X);
 		OutputViewport.Extent.Y = FMath::Max(InSceneColorTexture->Desc.Extent.Y, QuantizedOutputSize.Y);
 
-		SceneColorTexture = ComputeMitchellNetravaliDownsample(GraphBuilder, ScreenPassView, FScreenPassTexture(SceneColorTexture, InputViewport), OutputViewport);
+		SceneColorTexture = ComputeMitchellNetravaliDownsample(GraphBuilder, View, FScreenPassTexture(SceneColorTexture, InputViewport), OutputViewport);
 	}
 
 	*OutSceneColorTexture = SceneColorTexture;

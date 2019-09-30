@@ -28,15 +28,13 @@ void DrawCheckerBoard(FCanvas& Canvas, float PosX, float PosY, const FLinearColo
 
 #define LOCTEXT_NAMESPACE "TextureStreamingBuild"
 
-FScreenPassTexture AddStreamingAccuracyLegendPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FStreamingAccuracyLegendInputs& Inputs)
+FScreenPassTexture AddStreamingAccuracyLegendPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FStreamingAccuracyLegendInputs& Inputs)
 {
-	const FViewInfo& View = ScreenPassView.View;
-
 	FScreenPassRenderTarget Output = Inputs.OverrideOutput;
 
 	if (Output.IsValid())
 	{
-		AddDrawTexturePass(GraphBuilder, ScreenPassView, Inputs.SceneColor, Output);
+		AddDrawTexturePass(GraphBuilder, View, Inputs.SceneColor, Output);
 	}
 	else
 	{

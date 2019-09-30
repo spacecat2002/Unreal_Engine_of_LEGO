@@ -11,4 +11,4 @@ struct FStreamingAccuracyLegendInputs
 	TArrayView<const FLinearColor> Colors;
 };
 
-FScreenPassTexture AddStreamingAccuracyLegendPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FStreamingAccuracyLegendInputs& Inputs);
+FScreenPassTexture AddStreamingAccuracyLegendPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FStreamingAccuracyLegendInputs& Inputs);

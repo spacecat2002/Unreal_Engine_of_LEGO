@@ -108,7 +108,7 @@ ELensFlareQuality GetLensFlareQuality()
 
 FScreenPassTexture AddLensFlaresPass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const FLensFlareInputs& Inputs)
 {
 	check(Inputs.Flare.IsValid());
@@ -181,8 +181,8 @@ FScreenPassTexture AddLensFlaresPass(
 		PixelParameters.BokehTexture = Inputs.BokehShapeTexture;
 		PixelParameters.BokehSampler = BilinearClampSampler;
 
-		TShaderMapRef<FLensFlareBlurVS> VertexShader(ScreenPassView.View.ShaderMap);
-		TShaderMapRef<FLensFlareBlurPS> PixelShader(ScreenPassView.View.ShaderMap);
+		TShaderMapRef<FLensFlareBlurVS> VertexShader(View.ShaderMap);
+		TShaderMapRef<FLensFlareBlurPS> PixelShader(View.ShaderMap);
 
 		GraphBuilder.AddPass(
 			RDG_EVENT_NAME("LensFlareBlur %dx%d", FlareViewSize.X, FlareViewSize.Y),
@@ -280,8 +280,8 @@ FScreenPassTexture AddLensFlaresPass(
 
 		const FVector2D QuadOffset = OutputCenter - 0.5f * QuadSize;
 
-		TShaderMapRef<FScreenPassVS> VertexShader(ScreenPassView.View.ShaderMap);
-		TShaderMapRef<FLensFlareCompositePS> PixelShader(ScreenPassView.View.ShaderMap);
+		TShaderMapRef<FScreenPassVS> VertexShader(View.ShaderMap);
+		TShaderMapRef<FLensFlareCompositePS> PixelShader(View.ShaderMap);
 
 		const FScreenPassPipelineState PipelineState(*VertexShader, *PixelShader, AdditiveBlendState);
 
@@ -323,13 +323,13 @@ FScreenPassTexture AddLensFlaresPass(
 
 FScreenPassTexture AddLensFlaresPass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	FScreenPassTexture Bloom,
 	const FSceneDownsampleChain& SceneDownsampleChain)
 {
 	const ELensFlareQuality LensFlareQuality = GetLensFlareQuality();
 
-	const FPostProcessSettings& Settings = ScreenPassView.View.FinalPostProcessSettings;
+	const FPostProcessSettings& Settings = View.FinalPostProcessSettings;
 
 	if (LensFlareQuality != ELensFlareQuality::Disabled &&
 		!Settings.LensFlareTint.IsAlmostBlack() &&
@@ -379,7 +379,7 @@ FScreenPassTexture AddLensFlaresPass(
 			LensFlareInputs.bCompositeWithBloom = false;
 		}
 
-		return AddLensFlaresPass(GraphBuilder, ScreenPassView, LensFlareInputs);
+		return AddLensFlaresPass(GraphBuilder, View, LensFlareInputs);
 	}
 
 	return FScreenPassTexture();

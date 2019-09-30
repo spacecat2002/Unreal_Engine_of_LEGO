@@ -23,6 +23,7 @@
 #include "PostProcess/RenderingCompositionGraph.h"
 #include "PostProcess/PostProcessEyeAdaptation.h"
 #include "PostProcess/PostProcessSubsurface.h"
+#include "PostProcess/PostProcessing.h"
 #include "CompositionLighting/CompositionLighting.h"
 #include "LegacyScreenPercentageDriver.h"
 #include "SceneViewExtension.h"
@@ -54,6 +55,7 @@
 #include "IXRTrackingSystem.h"
 #include "IXRCamera.h"
 #include "IXRCamera.h"
+#include "IHeadMountedDisplay.h"
 #include "DiaphragmDOF.h" 
 #include "SingleLayerWaterRendering.h" 
 
@@ -762,7 +764,19 @@ void FParallelCommandListSet::WaitForTasksInternal()
 	}
 }
 
+bool IsHMDHiddenAreaMaskActive()
+{
+	// Query if we have a custom HMD post process mesh to use
+	static const auto* const HiddenAreaMaskCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.HiddenAreaMask"));
 
+	return
+		HiddenAreaMaskCVar != nullptr &&
+		// Any thread is used due to FViewInfo initialization.
+		HiddenAreaMaskCVar->GetValueOnAnyThread() == 1 &&
+		GEngine &&
+		GEngine->XRSystem.IsValid() && GEngine->XRSystem->GetHMDDevice() &&
+		GEngine->XRSystem->GetHMDDevice()->HasVisibleAreaMesh();
+}
 
 /*-----------------------------------------------------------------------------
 	FViewInfo
@@ -854,6 +868,8 @@ void FViewInfo::Init()
 
 	ViewState = (FSceneViewState*)State;
 	bIsSnapshot = false;
+	bHMDHiddenAreaMaskActive = IsHMDHiddenAreaMaskActive();
+	bUseComputePasses = IsPostProcessingWithComputeEnabled(FeatureLevel);
 	bHasCustomDepthPrimitives = false;
 	bHasDistortionPrimitives = false;
 	bAllowStencilDither = false;
@@ -1893,6 +1909,11 @@ float FViewInfo::GetLastAverageSceneLuminance() const
 		return EffectiveViewState->GetLastAverageSceneLuminance();
 	}
 	return 0.f; // Invalid scene luminance
+}
+
+ERenderTargetLoadAction FViewInfo::GetOverwriteLoadAction() const
+{
+	return bHMDHiddenAreaMaskActive ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ENoAction;
 }
 
 void FViewInfo::SetValidTonemappingLUT() const

@@ -20,4 +20,4 @@ struct FVisualizeHDRInputs
 	const FEyeAdaptationParameters* EyeAdaptationParameters = nullptr;
 };
 
-FScreenPassTexture AddVisualizeHDRPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeHDRInputs& Inputs);
+FScreenPassTexture AddVisualizeHDRPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FVisualizeHDRInputs& Inputs);

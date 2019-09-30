@@ -429,7 +429,7 @@ struct FMotionBlurViewports
 
 void AddMotionBlurVelocityPass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const FMotionBlurViewports& Viewports,
 	FRDGTextureRef ColorTexture,
 	FRDGTextureRef DepthTexture,
@@ -442,8 +442,6 @@ void AddMotionBlurVelocityPass(
 	check(VelocityTexture);
 	check(VelocityFlatTextureOutput);
 	check(VelocityTileTextureOutput);
-
-	const FViewInfo& View = ScreenPassView.View;
 
 	const FIntPoint VelocityTileCount = Viewports.VelocityTile.Extent;
 
@@ -613,7 +611,7 @@ void AddMotionBlurVelocityPass(
 
 FRDGTextureRef AddMotionBlurFilterPass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const FMotionBlurViewports& Viewports,
 	FRDGTextureRef ColorTexture,
 	FRDGTextureRef VelocityFlatTexture,
@@ -627,11 +625,9 @@ FRDGTextureRef AddMotionBlurFilterPass(
 	check(MotionBlurFilterPass != EMotionBlurFilterPass::MAX);
 	check(MotionBlurQuality != EMotionBlurQuality::MAX);
 
-	const FViewInfo& View = ScreenPassView.View;
-
 	const float MotionBlur2ndScale = CVarMotionBlur2ndScale.GetValueOnRenderThread();
 
-	const bool bUseCompute = ScreenPassView.bUseComputePasses;
+	const bool bUseCompute = View.bUseComputePasses;
 
 	const float BlurScaleLUT[static_cast<uint32>(EMotionBlurFilterPass::MAX)][static_cast<uint32>(EMotionBlurQuality::MAX)] =
 	{
@@ -709,14 +705,14 @@ FRDGTextureRef AddMotionBlurFilterPass(
 	{
 		FMotionBlurFilterPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FMotionBlurFilterPS::FParameters>();
 		PassParameters->Filter = MotionBlurFilterParameters;
-		PassParameters->RenderTargets[0] = FRenderTargetBinding(ColorTextureOutput, ScreenPassView.GetOverwriteLoadAction());
+		PassParameters->RenderTargets[0] = FRenderTargetBinding(ColorTextureOutput, View.GetOverwriteLoadAction());
 
 		TShaderMapRef<FMotionBlurFilterPS> PixelShader(View.ShaderMap, PermutationVector);
 
 		AddDrawScreenPass(
 			GraphBuilder,
 			RDG_EVENT_NAME("Motion Blur %dx%d (PS)", Viewports.Color.Rect.Width(), Viewports.Color.Rect.Height()),
-			ScreenPassView,
+			View,
 			Viewports.Color,
 			Viewports.Color,
 			*PixelShader,
@@ -729,15 +725,13 @@ FRDGTextureRef AddMotionBlurFilterPass(
 
 FRDGTextureRef AddVisualizeMotionBlurPass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	FIntRect ColorViewportRect,
 	FIntRect VelocityViewportRect,
 	FRDGTextureRef ColorTexture,
 	FRDGTextureRef DepthTexture,
 	FRDGTextureRef VelocityTexture)
 {
-	const FViewInfo& View = ScreenPassView.View;
-
 	const FScreenPassTextureViewport ColorViewport(ColorTexture, ColorViewportRect);
 	const FScreenPassTextureViewport VelocityViewport(VelocityTexture, VelocityViewportRect);
 	const FMotionBlurViewports Viewports(ColorViewport, VelocityViewport);
@@ -749,7 +743,7 @@ FRDGTextureRef AddVisualizeMotionBlurPass(
 	FScreenPassRenderTarget Output;
 	Output.Texture = GraphBuilder.CreateTexture(OutputDesc, TEXT("MotionBlurVisualize"));
 	Output.ViewRect = ColorViewport.Rect;
-	Output.LoadAction = ScreenPassView.GetOverwriteLoadAction();
+	Output.LoadAction = View.GetOverwriteLoadAction();
 
 	FMotionBlurVisualizePS::FParameters* PassParameters = GraphBuilder.AllocParameters<FMotionBlurVisualizePS::FParameters>();
 	PassParameters->WorldToClipPrev = GetPreviousWorldToClipMatrix(View);
@@ -767,11 +761,11 @@ FRDGTextureRef AddVisualizeMotionBlurPass(
 
 	TShaderMapRef<FMotionBlurVisualizePS> PixelShader(View.ShaderMap);
 
-	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("Visualizer"), ScreenPassView, ColorViewport, ColorViewport, *PixelShader, PassParameters);
+	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("Visualizer"), View, ColorViewport, ColorViewport, *PixelShader, PassParameters);
 
 	Output.LoadAction = ERenderTargetLoadAction::ELoad;
 
-	AddDrawCanvasPass(GraphBuilder, RDG_EVENT_NAME("Overlay"), ScreenPassView.View, Output,
+	AddDrawCanvasPass(GraphBuilder, RDG_EVENT_NAME("Overlay"), View, Output,
 		[&View](FCanvas& Canvas)
 	{
 		float X = 20;
@@ -815,7 +809,7 @@ FRDGTextureRef AddVisualizeMotionBlurPass(
 
 FRDGTextureRef AddMotionBlurPass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	FIntRect ColorViewportRect,
 	FIntRect VelocityViewportRect,
 	FRDGTextureRef ColorTexture,
@@ -836,7 +830,7 @@ FRDGTextureRef AddMotionBlurPass(
 	FRDGTextureRef VelocityTileTexture = nullptr;
 	AddMotionBlurVelocityPass(
 		GraphBuilder,
-		ScreenPassView,
+		View,
 		Viewports,
 		ColorTexture,
 		DepthTexture,
@@ -852,7 +846,7 @@ FRDGTextureRef AddMotionBlurPass(
 	{
 		FRDGTextureRef MotionBlurFilterTexture = AddMotionBlurFilterPass(
 			GraphBuilder,
-			ScreenPassView,
+			View,
 			Viewports,
 			ColorTexture,
 			VelocityFlatTexture,
@@ -862,7 +856,7 @@ FRDGTextureRef AddMotionBlurPass(
 
 		return AddMotionBlurFilterPass(
 			GraphBuilder,
-			ScreenPassView,
+			View,
 			Viewports,
 			MotionBlurFilterTexture,
 			VelocityFlatTexture,
@@ -874,7 +868,7 @@ FRDGTextureRef AddMotionBlurPass(
 	{
 		return AddMotionBlurFilterPass(
 			GraphBuilder,
-			ScreenPassView,
+			View,
 			Viewports,
 			ColorTexture,
 			VelocityFlatTexture,

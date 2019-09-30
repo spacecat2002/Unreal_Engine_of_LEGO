@@ -109,28 +109,28 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FBloomSetupCS, "/Engine/Private/PostProcessBloom.usf", "BloomSetupCS", SF_Compute);
 } //!namespace
 
-FScreenPassTexture AddBloomSetupPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FBloomSetupInputs& Inputs)
+FScreenPassTexture AddBloomSetupPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FBloomSetupInputs& Inputs)
 {
 	check(Inputs.SceneColor.IsValid());
 	check(Inputs.EyeAdaptationTexture);
 	check(Inputs.Threshold > 0.0f);
 
-	const bool bIsComputePass = ScreenPassView.bUseComputePasses;
+	const bool bIsComputePass = View.bUseComputePasses;
 
 	FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
 	OutputDesc.Reset();
 	OutputDesc.TargetableFlags |= bIsComputePass ? TexCreate_UAV : TexCreate_RenderTargetable;
 
 	const FScreenPassTextureViewport Viewport(Inputs.SceneColor);
-	const FScreenPassRenderTarget Output(GraphBuilder.CreateTexture(OutputDesc, TEXT("BloomSetup")), Viewport.Rect, ScreenPassView.GetOverwriteLoadAction());
+	const FScreenPassRenderTarget Output(GraphBuilder.CreateTexture(OutputDesc, TEXT("BloomSetup")), Viewport.Rect, View.GetOverwriteLoadAction());
 
 	if (bIsComputePass)
 	{
 		FBloomSetupCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FBloomSetupCS::FParameters>();
-		PassParameters->BloomSetup = GetBloomSetupParameters(ScreenPassView.View, Viewport, Inputs.SceneColor.Texture, Inputs.EyeAdaptationTexture, Inputs.Threshold);
+		PassParameters->BloomSetup = GetBloomSetupParameters(View, Viewport, Inputs.SceneColor.Texture, Inputs.EyeAdaptationTexture, Inputs.Threshold);
 		PassParameters->RWOutputTexture = GraphBuilder.CreateUAV(Output.Texture);
 
-		TShaderMapRef<FBloomSetupCS> ComputeShader(ScreenPassView.View.ShaderMap);
+		TShaderMapRef<FBloomSetupCS> ComputeShader(View.ShaderMap);
 
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
@@ -142,16 +142,16 @@ FScreenPassTexture AddBloomSetupPass(FRDGBuilder& GraphBuilder, const FScreenPas
 	else
 	{
 		FBloomSetupPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FBloomSetupPS::FParameters>();
-		PassParameters->BloomSetup = GetBloomSetupParameters(ScreenPassView.View, Viewport, Inputs.SceneColor.Texture, Inputs.EyeAdaptationTexture, Inputs.Threshold);
+		PassParameters->BloomSetup = GetBloomSetupParameters(View, Viewport, Inputs.SceneColor.Texture, Inputs.EyeAdaptationTexture, Inputs.Threshold);
 		PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
 
-		TShaderMapRef<FBloomSetupVS> VertexShader(ScreenPassView.View.ShaderMap);
-		TShaderMapRef<FBloomSetupPS> PixelShader(ScreenPassView.View.ShaderMap);
+		TShaderMapRef<FBloomSetupVS> VertexShader(View.ShaderMap);
+		TShaderMapRef<FBloomSetupPS> PixelShader(View.ShaderMap);
 
 		AddDrawScreenPass(
 			GraphBuilder,
 			RDG_EVENT_NAME("BloomSetup %dx%d (PS)", Viewport.Rect.Width(), Viewport.Rect.Height()),
-			ScreenPassView,
+			View,
 			Viewport,
 			Viewport,
 			FScreenPassPipelineState(*VertexShader, *PixelShader),
@@ -181,12 +181,12 @@ static_assert(
 	static_cast<uint32>(EBloomQuality::MAX) == FSceneDownsampleChain::StageCount,
 	"The total number of stages in the scene downsample chain and the number of bloom quality levels must match.");
 
-FBloomOutputs AddBloomPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FBloomInputs& Inputs)
+FBloomOutputs AddBloomPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FBloomInputs& Inputs)
 {
 	check(Inputs.SceneColor.IsValid());
 	check(Inputs.SceneDownsampleChain);
 
-	const FFinalPostProcessSettings& Settings = ScreenPassView.View.FinalPostProcessSettings;
+	const FFinalPostProcessSettings& Settings = View.FinalPostProcessSettings;
 
 	const EBloomQuality BloomQuality = GetBloomQuality();
 
@@ -195,7 +195,7 @@ FBloomOutputs AddBloomPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo&
 
 	if (BloomQuality != EBloomQuality::Disabled)
 	{
-		const bool bFFTBloomEnabled = IsFFTBloomEnabled(ScreenPassView.View);
+		const bool bFFTBloomEnabled = IsFFTBloomEnabled(View);
 
 		if (bFFTBloomEnabled)
 		{
@@ -208,7 +208,7 @@ FBloomOutputs AddBloomPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo&
 			PassInputs.HalfResolutionTexture = HalfResolution.Texture;
 			PassInputs.HalfResolutionViewRect = HalfResolution.ViewRect;
 
-			SceneColor.Texture = AddFFTBloomPass(GraphBuilder, ScreenPassView.View, PassInputs);
+			SceneColor.Texture = AddFFTBloomPass(GraphBuilder, View, PassInputs);
 		}
 		else
 		{
@@ -271,7 +271,7 @@ FBloomOutputs AddBloomPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo&
 					PassInputs.KernelSizePercent = BloomStage.Size * Settings.BloomSizeScale;
 					PassInputs.TintColor = BloomStage.Tint * TintScale;
 
-					Bloom = AddGaussianBlurPass(GraphBuilder, ScreenPassView, PassInputs);
+					Bloom = AddGaussianBlurPass(GraphBuilder, View, PassInputs);
 				}
 			}
 		}

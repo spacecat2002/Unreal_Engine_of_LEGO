@@ -1133,6 +1133,12 @@ public:
 
 	bool bIsSnapshot;
 
+	// Whether this view should use an HMD hidden area mask where appropriate.
+	bool bHMDHiddenAreaMaskActive = false;
+
+	// Whether this view should use compute passes where appropriate.
+	bool bUseComputePasses = false;
+
 	// Optional stencil dithering optimization during prepasses
 	bool bAllowStencilDither;
 
@@ -1251,6 +1257,9 @@ public:
 
 	/** Get the last valid average scene luminange for eye adapation (exposure compensation curve). */
 	float GetLastAverageSceneLuminance() const;
+
+	/** Returns the load action to use when overwriting all pixels of a target that you intend to read from. Takes into account the HMD hidden area mesh. */
+	ERenderTargetLoadAction GetOverwriteLoadAction() const;
 
 	/** Informs sceneinfo that tonemapping LUT has queued commands to compute it at least once */
 	void SetValidTonemappingLUT() const;

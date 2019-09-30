@@ -45,4 +45,4 @@ struct FVisualizeGBufferOverviewInputs
 	bool bOutputInHDR = false;
 };
 
-FScreenPassTexture AddVisualizeGBufferOverviewPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeGBufferOverviewInputs& Inputs);
+FScreenPassTexture AddVisualizeGBufferOverviewPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FVisualizeGBufferOverviewInputs& Inputs);

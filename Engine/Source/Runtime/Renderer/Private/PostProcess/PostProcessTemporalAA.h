@@ -148,7 +148,7 @@ FTAAOutputs AddTemporalAAPass(
 void AddTemporalAAPass(
 	FRDGBuilder& GraphBuilder,
 	const FSceneTextureParameters& SceneTextures,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const bool bAllowDownsampleSceneColor,
 	const EPixelFormat DownsampleOverrideFormat,
 	FRDGTextureRef InSceneColorTexture,

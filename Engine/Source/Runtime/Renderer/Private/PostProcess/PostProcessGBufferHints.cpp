@@ -31,19 +31,17 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(FVisualizeGBufferHintsPS, "/Engine/Private/PostProcessGBufferHints.usf", "MainPS", SF_Pixel);
 
-FScreenPassTexture AddVisualizeGBufferHintsPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeGBufferHintsInputs& Inputs)
+FScreenPassTexture AddVisualizeGBufferHintsPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FVisualizeGBufferHintsInputs& Inputs)
 {
 	check(Inputs.SceneTextures);
 	check(Inputs.SceneColor.IsValid());
 	check(Inputs.OriginalSceneColor.IsValid());
 
-	const FViewInfo& View = ScreenPassView.View;
-
 	FScreenPassRenderTarget Output = Inputs.OverrideOutput;
 
 	if (!Output.IsValid())
 	{
-		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, ScreenPassView.GetOverwriteLoadAction(), TEXT("VisualizeGBufferHints"));
+		Output = FScreenPassRenderTarget::CreateFromInput(GraphBuilder, Inputs.SceneColor, View.GetOverwriteLoadAction(), TEXT("VisualizeGBufferHints"));
 	}
 
 	const FScreenPassTextureViewport InputViewport(Inputs.SceneColor);
@@ -62,15 +60,15 @@ FScreenPassTexture AddVisualizeGBufferHintsPass(FRDGBuilder& GraphBuilder, const
 	PassParameters->OriginalSceneColorSampler = PointClampSampler;
 	SetupSceneTextureSamplers(&PassParameters->SceneTextureSamplers);
 
-	TShaderMapRef<FVisualizeGBufferHintsPS> PixelShader(ScreenPassView.View.ShaderMap);
+	TShaderMapRef<FVisualizeGBufferHintsPS> PixelShader(View.ShaderMap);
 
 	RDG_EVENT_SCOPE(GraphBuilder, "VisualizeGBufferHints");
 
-	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("Visualizer"), ScreenPassView, OutputViewport, InputViewport, *PixelShader, PassParameters);
+	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("Visualizer"), View, OutputViewport, InputViewport, *PixelShader, PassParameters);
 
 	Output.LoadAction = ERenderTargetLoadAction::ELoad;
 
-	AddDrawCanvasPass(GraphBuilder, RDG_EVENT_NAME("Overlay"), ScreenPassView.View, Output, [&View](FCanvas& Canvas)
+	AddDrawCanvasPass(GraphBuilder, RDG_EVENT_NAME("Overlay"), View, Output, [&View](FCanvas& Canvas)
 	{
 		float X = 30;
 		float Y = 8;

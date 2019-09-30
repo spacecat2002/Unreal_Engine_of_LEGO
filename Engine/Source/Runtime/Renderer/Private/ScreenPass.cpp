@@ -4,11 +4,7 @@
 #include "EngineGlobals.h"
 #include "ScenePrivate.h"
 #include "RendererModule.h"
-#include "IXRTrackingSystem.h"
-#include "IHeadMountedDisplay.h"
 #include "RenderGraphUtils.h"
-
-extern bool IsPostProcessingWithComputeEnabled(const FViewInfo& View);
 
 IMPLEMENT_GLOBAL_SHADER(FScreenPassVS, "/Engine/Private/ScreenPass.usf", "ScreenPassVS", SF_Vertex);
 
@@ -62,19 +58,6 @@ FRDGTextureRef CreateViewFamilyTexture(FRDGBuilder& GraphBuilder, const FSceneVi
 	return GraphBuilder.RegisterExternalTexture(PooledRenderTarget, TEXT("ViewFamilyTarget"));
 }
 
-bool IsHMDHiddenAreaMaskActive()
-{
-	// Query if we have a custom HMD post process mesh to use
-	static const auto* const HiddenAreaMaskCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.HiddenAreaMask"));
-
-	return
-		HiddenAreaMaskCVar != nullptr &&
-		HiddenAreaMaskCVar->GetValueOnRenderThread() == 1 &&
-		GEngine &&
-		GEngine->XRSystem.IsValid() && GEngine->XRSystem->GetHMDDevice() &&
-		GEngine->XRSystem->GetHMDDevice()->HasVisibleAreaMesh();
-}
-
 FScreenPassTextureViewportParameters GetScreenPassTextureViewportParameters(const FScreenPassTextureViewport& InViewport)
 {
 	const FVector2D Extent(InViewport.Extent);
@@ -111,12 +94,6 @@ FScreenPassTextureViewportParameters GetScreenPassTextureViewportParameters(cons
 	return Parameters;
 }
 
-FScreenPassViewInfo::FScreenPassViewInfo(const FViewInfo& InView)
-	: View(InView)
-	, bHMDHiddenAreaMaskActive(IsHMDHiddenAreaMaskActive())
-	, bUseComputePasses(IsPostProcessingWithComputeEnabled(InView))
-{}
-
 void SetScreenPassPipelineState(FRHICommandList& RHICmdList, const FScreenPassPipelineState& ScreenPassDraw)
 {
 	FRHIPixelShader* PixelShaderRHI = GETSAFERHISHADER_PIXEL(ScreenPassDraw.PixelShader);
@@ -137,7 +114,7 @@ void SetScreenPassPipelineState(FRHICommandList& RHICmdList, const FScreenPassPi
 
 void AddDrawTexturePass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	FRDGTextureRef InputTexture,
 	FRDGTextureRef OutputTexture,
 	FIntPoint InputPosition,
@@ -167,31 +144,31 @@ void AddDrawTexturePass(
 	const FScreenPassTextureViewport InputViewport(InputDesc.Extent, FIntRect(InputPosition, InputPosition + Size));
 	const FScreenPassTextureViewport OutputViewport(OutputDesc.Extent, FIntRect(OutputPosition, OutputPosition + Size));
 
-	TShaderMapRef<FCopyRectPS> PixelShader(ScreenPassView.View.ShaderMap);
+	TShaderMapRef<FCopyRectPS> PixelShader(View.ShaderMap);
 
 	FCopyRectPS::FParameters* Parameters = GraphBuilder.AllocParameters<FCopyRectPS::FParameters>();
 	Parameters->InputTexture = InputTexture;
 	Parameters->InputSampler = TStaticSamplerState<>::GetRHI();
 	Parameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, LoadAction);
 
-	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("DrawTexture"), ScreenPassView, OutputViewport, InputViewport, *PixelShader, Parameters);
+	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("DrawTexture"), View, OutputViewport, InputViewport, *PixelShader, Parameters);
 }
 
 void AddDrawTexturePass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	FScreenPassTexture Input,
 	FScreenPassRenderTarget Output)
 {
 	const FScreenPassTextureViewport InputViewport(Input);
 	const FScreenPassTextureViewport OutputViewport(Output);
 
-	TShaderMapRef<FCopyRectPS> PixelShader(ScreenPassView.View.ShaderMap);
+	TShaderMapRef<FCopyRectPS> PixelShader(View.ShaderMap);
 
 	FCopyRectPS::FParameters* Parameters = GraphBuilder.AllocParameters<FCopyRectPS::FParameters>();
 	Parameters->InputTexture = Input.Texture;
 	Parameters->InputSampler = TStaticSamplerState<>::GetRHI();
 	Parameters->RenderTargets[0] = Output.GetRenderTargetBinding();
 
-	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("DrawTexture"), ScreenPassView, OutputViewport, InputViewport, *PixelShader, Parameters);
+	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("DrawTexture"), View, OutputViewport, InputViewport, *PixelShader, Parameters);
 }

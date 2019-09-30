@@ -29,7 +29,7 @@ struct FVisualizeSubsurfaceInputs
 	const FSceneTextureParameters* SceneTextures = nullptr;
 };
 
-FScreenPassTexture AddVisualizeSubsurfacePass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeSubsurfaceInputs& Inputs);
+FScreenPassTexture AddVisualizeSubsurfacePass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FVisualizeSubsurfaceInputs& Inputs);
 
 //////////////////////////////////////////////////////////////////////////
 //! Shim methods to hook into the legacy pipeline until the full RDG conversion is complete.

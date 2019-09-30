@@ -19,4 +19,4 @@ struct FVisualizeShadingModelInputs
 	const FSceneTextureParameters* SceneTextures = nullptr;
 };
 
-FScreenPassTexture AddVisualizeShadingModelPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FVisualizeShadingModelInputs& Inputs);
+FScreenPassTexture AddVisualizeShadingModelPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FVisualizeShadingModelInputs& Inputs);

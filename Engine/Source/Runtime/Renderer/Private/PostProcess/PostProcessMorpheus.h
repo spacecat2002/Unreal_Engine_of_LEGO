@@ -8,6 +8,6 @@
 
 struct FHMDDistortionInputs;
 
-FScreenPassTexture AddMorpheusDistortionPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView, const FHMDDistortionInputs& Inputs);
+FScreenPassTexture AddMorpheusDistortionPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FHMDDistortionInputs& Inputs);
 
 #endif

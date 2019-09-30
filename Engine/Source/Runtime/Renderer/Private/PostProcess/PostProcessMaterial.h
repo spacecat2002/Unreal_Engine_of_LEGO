@@ -100,13 +100,13 @@ struct FPostProcessMaterialInputs
 
 FScreenPassTexture AddPostProcessMaterialPass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const FPostProcessMaterialInputs& Inputs,
 	const UMaterialInterface* MaterialInterface);
 
 FScreenPassTexture AddPostProcessMaterialChain(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const FPostProcessMaterialInputs& Inputs,
 	const FPostProcessMaterialChain& MaterialChain);
 
@@ -126,7 +126,7 @@ bool IsHighResolutionScreenshotMaskEnabled(const FViewInfo& View);
 
 FScreenPassTexture AddHighResolutionScreenshotMaskPass(
 	FRDGBuilder& GraphBuilder,
-	const FScreenPassViewInfo& ScreenPassView,
+	const FViewInfo& View,
 	const FHighResolutionScreenshotMaskInputs& Inputs);
 
 //////////////////////////////////////////////////////////////////////////

@@ -385,9 +385,8 @@ uint32 GenerateFinalTable(const FFinalPostProcessSettings& Settings, const FText
 	return LocalCount;
 }
 
-FRDGTextureRef AddCombineLUTPass(FRDGBuilder& GraphBuilder, const FScreenPassViewInfo& ScreenPassView)
+FRDGTextureRef AddCombineLUTPass(FRDGBuilder& GraphBuilder, const FViewInfo& View)
 {
-	const FViewInfo& View = ScreenPassView.View;
 	const FSceneViewFamily& ViewFamily = *(View.Family);
 	const FTexture* LocalTextures[GMaxLUTBlendCount];
 	float LocalWeights[GMaxLUTBlendCount];
@@ -402,7 +401,7 @@ FRDGTextureRef AddCombineLUTPass(FRDGBuilder& GraphBuilder, const FScreenPassVie
 		LocalCount = GenerateFinalTable(View.FinalPostProcessSettings, LocalTextures, LocalWeights, GMaxLUTBlendCount);
 	}
 
-	const bool bUseComputePass = ScreenPassView.bUseComputePasses;
+	const bool bUseComputePass = View.bUseComputePasses;
 
 	const bool bUseVolumeTextureLUT = PipelineVolumeTextureLUTSupportGuaranteedAtRuntime(View.GetShaderPlatform());
 
@@ -412,7 +411,7 @@ FRDGTextureRef AddCombineLUTPass(FRDGBuilder& GraphBuilder, const FScreenPassVie
 	FRDGTextureRef OutputTexture = GraphBuilder.TryRegisterExternalTexture(
 		View.GetTonemappingLUT(GraphBuilder.RHICmdList, GLUTSize, bUseVolumeTextureLUT, bUseComputePass, bUseFloatOutput));
 
-	ScreenPassView.View.SetValidTonemappingLUT();
+	View.SetValidTonemappingLUT();
 
 	// View doesn't support a persistent LUT, so create a temporary one.
 	if (!OutputTexture)
@@ -437,7 +436,7 @@ FRDGTextureRef AddCombineLUTPass(FRDGBuilder& GraphBuilder, const FScreenPassVie
 		PassParameters->OutputExtentInverse = FVector2D(1.0f, 1.0f) / FVector2D(OutputViewSize);
 		PassParameters->RWOutputTexture = GraphBuilder.CreateUAV(OutputTexture);
 
-		TShaderMapRef<FLUTBlenderCS> ComputeShader(ScreenPassView.View.ShaderMap, PermutationVector);
+		TShaderMapRef<FLUTBlenderCS> ComputeShader(View.ShaderMap, PermutationVector);
 
 		const uint32 GroupSizeXY = FMath::DivideAndRoundUp(OutputViewSize.X, FLUTBlenderCS::GroupSize);
 		const uint32 GroupSizeZ = bUseVolumeTextureLUT ? GroupSizeXY : 1;
@@ -455,13 +454,13 @@ FRDGTextureRef AddCombineLUTPass(FRDGBuilder& GraphBuilder, const FScreenPassVie
 		GetCombineLUTParameters(PassParameters->CombineLUT, View, LocalTextures, LocalWeights, LocalCount);
 		PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, ERenderTargetLoadAction::ENoAction);
 
-		TShaderMapRef<FLUTBlenderPS> PixelShader(ScreenPassView.View.ShaderMap, PermutationVector);
+		TShaderMapRef<FLUTBlenderPS> PixelShader(View.ShaderMap, PermutationVector);
 
 		GraphBuilder.AddPass(
 			RDG_EVENT_NAME("CombineLUTS (PS)"),
 			PassParameters,
 			ERDGPassFlags::Raster,
-			[ScreenPassView, PixelShader, PassParameters, bUseVolumeTextureLUT] (FRHICommandList& RHICmdList)
+			[&View, PixelShader, PassParameters, bUseVolumeTextureLUT] (FRHICommandList& RHICmdList)
 		{
 			FGraphicsPipelineStateInitializer GraphicsPSOInit;
 			RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -473,8 +472,8 @@ FRDGTextureRef AddCombineLUTPass(FRDGBuilder& GraphBuilder, const FScreenPassVie
 			{
 				const FVolumeBounds VolumeBounds(GLUTSize);
 
-				TShaderMapRef<FWriteToSliceVS> VertexShader(ScreenPassView.View.ShaderMap);
-				TOptionalShaderMapRef<FWriteToSliceGS> GeometryShader(ScreenPassView.View.ShaderMap);
+				TShaderMapRef<FWriteToSliceVS> VertexShader(View.ShaderMap);
+				TOptionalShaderMapRef<FWriteToSliceGS> GeometryShader(View.ShaderMap);
 
 				GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
 				GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GScreenVertexDeclaration.VertexDeclarationRHI;
@@ -491,7 +490,7 @@ FRDGTextureRef AddCombineLUTPass(FRDGBuilder& GraphBuilder, const FScreenPassVie
 			}
 			else
 			{
-				TShaderMapRef<FScreenPassVS> VertexShader(ScreenPassView.View.ShaderMap);
+				TShaderMapRef<FScreenPassVS> VertexShader(View.ShaderMap);
 
 				GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 				GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
@@ -526,9 +525,7 @@ FRenderingCompositeOutputRef AddCombineLUTPass(FRenderingCompositionGraph& Graph
 	{
 		FRDGBuilder GraphBuilder(InContext.RHICmdList);
 
-		FScreenPassViewInfo ScreenPassView(InContext.View);
-
-		FRDGTextureRef OutputTexture = AddCombineLUTPass(GraphBuilder, ScreenPassView);
+		FRDGTextureRef OutputTexture = AddCombineLUTPass(GraphBuilder, InContext.View);
 
 		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, OutputTexture);
 
