@@ -2250,10 +2250,6 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		PostProcessingInputs.CustomDepth = GraphBuilder.TryRegisterExternalTexture(SceneContext.CustomDepth, TEXT("CustomDepth"));
 		PostProcessingInputs.SeparateTranslucency = RegisterExternalTextureWithFallback(GraphBuilder, SceneContext.SeparateTranslucencyRT, SceneContext.GetSeparateTranslucencyDummy(), TEXT("SeparateTranslucency"));
 
-		SceneContext.FreeSeparateTranslucency();
-		SceneContext.SetSceneColor(nullptr);
-		SceneContext.AdjustGBufferRefCount(GraphBuilder.RHICmdList, -1);
-
 		if (ViewFamily.UseDebugViewPS())
 		{
 			for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
@@ -2276,6 +2272,10 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 				AddPostProcessingPasses(GraphBuilder, View, PostProcessingInputs);
 			}
 		}
+
+		SceneContext.FreeSeparateTranslucency();
+		SceneContext.SetSceneColor(nullptr);
+		SceneContext.AdjustGBufferRefCount(GraphBuilder.RHICmdList, -1);
 
 		GraphBuilder.Execute();
 
