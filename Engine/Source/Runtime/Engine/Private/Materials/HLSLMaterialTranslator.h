@@ -1167,11 +1167,6 @@ ResourcesString = TEXT("");
 				}
 			}
 
-			if (IsTranslucentBlendMode(BlendMode) && Material->IsTranslucencyUnderWaterEnabled() && (Material->IsMobileSeparateTranslucencyEnabled() || Material->IsTranslucencyAfterDOFEnabled()))
-			{
-				Errorf(TEXT("A material cannot be sent to a separate translucent pass and under water at the same time."));
-			}
-
 			bool bDBufferAllowed = IsUsingDBuffers(Platform);
 			bool bDBufferBlendMode = IsDBufferDecalBlendMode((EDecalBlendMode)Material->GetDecalBlendMode());
 
@@ -1526,6 +1521,12 @@ ResourcesString = TEXT("");
 			{
 				OutEnvironment.SetDefine(TEXT("MATERIAL_SHADINGMODEL_SINGLELAYERWATER"), TEXT("1"));
 				NumSetMaterials++;
+			}
+
+			// This is to have switch use the simple single layer water shading similar to mobile: no dynamic lights, only sun and sky, no distortion, no colored transmittance on background, no custom depth read.
+			if (IsSwitchPlatform(Platform))
+			{
+				OutEnvironment.SetDefine(TEXT("FORWARD_SIMPLE_SINGLE_LAYER_WATER"), TEXT("1"));
 			}
 
 			if (NumSetMaterials == 1)
@@ -6604,6 +6605,31 @@ protected:
 		}
 
 		return AddCodeChunk( MCT_Float3, TEXT("MaterialExpressionBlackBody(%s)"), *GetParameterCode(Temp) );
+	}
+
+	virtual int32 GetHairUV() override
+	{
+		return AddCodeChunk(MCT_Float2, TEXT("MaterialExpressionGetHairUV(Parameters)"));
+	}
+
+	virtual int32 GetHairDimensions() override
+	{
+		return AddCodeChunk(MCT_Float2, TEXT("MaterialExpressionGetHairDimensions(Parameters)"));
+	}
+
+	virtual int32 GetHairSeed() override
+	{
+		return AddCodeChunk(MCT_Float1, TEXT("MaterialExpressionGetHairSeed(Parameters)"));
+	}
+
+	virtual int32 GetHairTangent() override
+	{
+		return AddCodeChunk(MCT_Float3, TEXT("MaterialExpressionGetHairTangent(Parameters)"));
+	}
+
+	virtual int32 GetHairRootUV() override
+	{
+		return AddCodeChunk(MCT_Float2, TEXT("MaterialExpressionGetHairRootUV(Parameters)"));
 	}
 
 	virtual int32 DistanceToNearestSurface(int32 PositionArg) override

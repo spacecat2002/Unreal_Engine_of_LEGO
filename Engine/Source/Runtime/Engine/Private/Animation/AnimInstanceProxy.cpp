@@ -33,12 +33,12 @@ const FName NAME_Evaluate(TEXT("Evaluate"));
 const FName NAME_Update(TEXT("Update"));
 const FName NAME_AnimGraph(TEXT("AnimGraph"));
 
-void FAnimInstanceProxy::UpdateAnimationNode(float DeltaSeconds)
+void FAnimInstanceProxy::UpdateAnimationNode(const FAnimationUpdateContext& InContext)
 {
-	UpdateAnimationNode_WithRoot(DeltaSeconds, RootNode, NAME_AnimGraph);
+	UpdateAnimationNode_WithRoot(InContext, RootNode, NAME_AnimGraph);
 }
 
-void FAnimInstanceProxy::UpdateAnimationNode_WithRoot(float DeltaSeconds, FAnimNode_Base* InRootNode, FName InLayerName)
+void FAnimInstanceProxy::UpdateAnimationNode_WithRoot(const FAnimationUpdateContext& InContext, FAnimNode_Base* InRootNode, FName InLayerName)
 {
 	DECLARE_SCOPE_HIERARCHICAL_COUNTER_FUNC()
 	if(InRootNode != nullptr)
@@ -48,9 +48,7 @@ void FAnimInstanceProxy::UpdateAnimationNode_WithRoot(float DeltaSeconds, FAnimN
 			UpdateCounter.Increment();
 		}
 		
-		FAnimationUpdateSharedContext SharedContext;
-		FAnimationUpdateContext UpdateContext(this, DeltaSeconds, &SharedContext);
-		InRootNode->Update_AnyThread(UpdateContext);
+		InRootNode->Update_AnyThread(InContext);
 
 		// We've updated the graph, now update the fractured saved pose sections
 		TArray<FAnimNode_SaveCachedPose*>& SavedPoseQueue = SavedPoseQueueMap.FindChecked(InLayerName);
@@ -192,6 +190,13 @@ void FAnimInstanceProxy::InitializeRootNode(bool bInDeferRootNodeInitialization)
 
 	if(AnimClassInterface)
 	{
+		// cache any state machine descriptions we have
+		for (UStructProperty* Property : AnimClassInterface->GetStateMachineNodeProperties())
+		{
+			FAnimNode_StateMachine* StateMachine = Property->ContainerPtrToValuePtr<FAnimNode_StateMachine>(AnimInstanceObject);
+			StateMachine->CacheMachineDescription(AnimClassInterface);
+		}
+
 		// Init any nodes that need non-relevancy based initialization
 		UAnimInstance* AnimInstance = CastChecked<UAnimInstance>(GetAnimInstanceObject());
 		for (UStructProperty* Property : AnimClassInterface->GetInitializationNodeProperties())
@@ -212,13 +217,6 @@ void FAnimInstanceProxy::InitializeRootNode(bool bInDeferRootNodeInitialization)
 		{
 			FAnimNode_Base* AnimNode = Property->ContainerPtrToValuePtr<FAnimNode_Base>(AnimInstanceObject);
 			DynamicResetNodes.Add(AnimNode);
-		}
-
-		// cache any state machine descriptions we have
-		for (UStructProperty* Property : AnimClassInterface->GetStateMachineNodeProperties())
-		{
-			FAnimNode_StateMachine* StateMachine = Property->ContainerPtrToValuePtr<FAnimNode_StateMachine>(AnimInstanceObject);
-			StateMachine->CacheMachineDescription(AnimClassInterface);
 		}
 
 		// Cache default linked input pose 
@@ -1183,10 +1181,12 @@ void FAnimInstanceProxy::UpdateAnimation()
 	UpdatedNodesThisFrame.Reset();
 #endif
 
-	UpdateAnimation_WithRoot(RootNode, NAME_AnimGraph);
+	FAnimationUpdateSharedContext SharedContext;
+	FAnimationUpdateContext Context(this, CurrentDeltaSeconds, &SharedContext);
+	UpdateAnimation_WithRoot(Context, RootNode, NAME_AnimGraph);
 }
 
-void FAnimInstanceProxy::UpdateAnimation_WithRoot(FAnimNode_Base* InRootNode, FName InLayerName)
+void FAnimInstanceProxy::UpdateAnimation_WithRoot(const FAnimationUpdateContext& InContext, FAnimNode_Base* InRootNode, FName InLayerName)
 {
 	DECLARE_SCOPE_HIERARCHICAL_COUNTER_FUNC()
 
@@ -1233,11 +1233,11 @@ void FAnimInstanceProxy::UpdateAnimation_WithRoot(FAnimNode_Base* InRootNode, FN
 		if(InRootNode == RootNode)
 		{
 			// Call the correct override point if this is the root node
-			UpdateAnimationNode(CurrentDeltaSeconds);
+			UpdateAnimationNode(InContext);
 		}
 		else
 		{
-			UpdateAnimationNode_WithRoot(CurrentDeltaSeconds, InRootNode, InLayerName);
+			UpdateAnimationNode_WithRoot(InContext, InRootNode, InLayerName);
 		}
 	}
 }

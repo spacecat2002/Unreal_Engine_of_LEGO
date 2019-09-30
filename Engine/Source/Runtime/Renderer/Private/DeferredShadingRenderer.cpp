@@ -39,6 +39,7 @@
 #include "RayTracingDefinitions.h"
 #include "RayTracingInstance.h"
 #include "ShaderPrint.h"
+#include "HairStrands/HairStrandsRendering.h"
 
 static TAutoConsoleVariable<int32> CVarStencilForLODDither(
 	TEXT("r.StencilForLODDither"),
@@ -102,6 +103,13 @@ static TAutoConsoleVariable<int32> CVarParallelBasePass(
 	TEXT("r.ParallelBasePass"),
 	1,
 	TEXT("Toggles parallel base pass rendering. Parallel rendering must be enabled for this to have an effect."),
+	ECVF_RenderThreadSafe
+);
+
+static TAutoConsoleVariable<int32> CVarParallelSingleLayerWaterPass(
+	TEXT("r.ParallelSingleLayerWaterPass"),
+	1,
+	TEXT("Toggles parallel single layer water pass rendering. Parallel rendering must be enabled for this to have an effect."),
 	ECVF_RenderThreadSafe
 );
 
@@ -1218,6 +1226,11 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		Scene->FXSystem->PreRender(RHICmdList, &Views[0].GlobalDistanceFieldInfo.ParameterData, Views[0].AllowGPUParticleUpdate());
 	}
 
+	if (IsHairStrandsEnable(Scene->GetShaderPlatform()))
+	{
+		RunHairStrandsInterpolation(RHICmdList);
+	}
+
 	bool bDidAfterTaskWork = false;
 	auto AfterTasksAreStarted = [&bDidAfterTaskWork, bDoInitViewAftersPrepass, this, &RHICmdList, &ILCTaskData, &UpdateViewCustomDataEvents]()
 	{
@@ -1777,6 +1790,19 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	checkSlow(RHICmdList.IsOutsideRenderPass());
 
+	FHairStrandsDatas* HairDatas = nullptr;
+	FHairStrandsDatas HairDatasStorage;
+	if (IsHairStrandsEnable(Scene->GetShaderPlatform()))
+	{
+		HairDatasStorage.HairClusterPerViews = CreateHairStrandsClusters(RHICmdList, Scene, Views);
+		VoxelizeHairStrands(RHICmdList, Scene, Views, HairDatasStorage.HairClusterPerViews);
+		HairDatasStorage.DeepShadowViews = RenderHairStrandsDeepShadows(RHICmdList, Scene, Views, HairDatasStorage.HairClusterPerViews);
+		HairDatasStorage.HairVisibilityViews = RenderHairStrandsVisibilityBuffer(RHICmdList, Scene, Views, SceneContext.GBufferB, SceneContext.GetSceneColor(), SceneContext.SceneDepthZ, SceneContext.SceneVelocity, HairDatasStorage.HairClusterPerViews);
+		ServiceLocalQueue();
+
+		HairDatas = &HairDatasStorage;
+	}
+
 	// Render lighting.
 	if (bRenderDeferredLighting)
 	{
@@ -1811,7 +1837,9 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		}
 
 		RHICmdList.SetCurrentStat(GET_STATID(STAT_CLM_Lighting));
-		RenderLights(RHICmdList, SortedLightSet);
+		{
+			RenderLights(RHICmdList, SortedLightSet, HairDatas);
+		}
 		RHICmdList.SetCurrentStat(GET_STATID(STAT_CLM_AfterLighting));
 		ServiceLocalQueue();
 
@@ -1858,7 +1886,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		checkSlow(RHICmdList.IsOutsideRenderPass());
 
 		// Render diffuse sky lighting and reflections that only operate on opaque pixels
-		RenderDeferredReflectionsAndSkyLighting(RHICmdList, DynamicBentNormalAO, SceneContext.SceneVelocity);
+		RenderDeferredReflectionsAndSkyLighting(RHICmdList, DynamicBentNormalAO, SceneContext.SceneVelocity, HairDatas);
 
 		DynamicBentNormalAO = NULL;
 
@@ -1888,11 +1916,6 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		SCOPED_DRAW_EVENTF(RHICmdList, WaterRendering, TEXT("WaterRendering"));
 		SCOPED_GPU_STAT(RHICmdList, WaterRendering);
 
-		// First render the under water particles. We only support a black readable scene color for now.
-		// TODO: this should be done after the water GBuffer pass when the camera is under water.
-		IPooledRenderTarget* DummyReadBackSceneTexture = GSystemTextures.BlackDummy;
-		RenderTranslucency(RHICmdList, ETranslucencyPass::TPT_TranslucencyUnderWater, DummyReadBackSceneTexture);
-
 		// Copy the texture to be available for the water surface to refrace
 		FSingleLayerWaterPassData SingleLayerWaterPassData;
 		CopySingleLayerWaterTextures(RHICmdList, SingleLayerWaterPassData);
@@ -1902,9 +1925,18 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 		// Render the GBuffer pass, updating the GBuffer and also writing lit water in the scene.
 		const FExclusiveDepthStencil::Type WaterPassDepthStencilAccess = FExclusiveDepthStencil::DepthWrite_StencilWrite;
-		BeginRenderingWaterGBuffer(RHICmdList, SingleLayerWaterPassData, WaterPassDepthStencilAccess, ViewFamily.EngineShowFlags.ShaderComplexity);
-		RenderSingleLayerWaterPass(RHICmdList, SingleLayerWaterPassData, WaterPassDepthStencilAccess);
-		FinishWaterGBufferPassAndResolve(RHICmdList);
+		const bool bDoParallelSingleLayerWater = GRHICommandList.UseParallelAlgorithms() && CVarParallelSingleLayerWaterPass.GetValueOnRenderThread()==1;
+		if (!bDoParallelSingleLayerWater)
+		{
+			BeginRenderingWaterGBuffer(RHICmdList, WaterPassDepthStencilAccess, ViewFamily.EngineShowFlags.ShaderComplexity, ShaderPlatform);
+		}
+		
+		RenderSingleLayerWaterPass(RHICmdList, SingleLayerWaterPassData, WaterPassDepthStencilAccess, bDoParallelSingleLayerWater);
+		if (bDoParallelSingleLayerWater)
+		{
+			BeginRenderingWaterGBuffer(RHICmdList, WaterPassDepthStencilAccess, ViewFamily.EngineShowFlags.ShaderComplexity, ShaderPlatform);
+		}
+        FinishWaterGBufferPassAndResolve(RHICmdList);
 
 		// Resolves the depth texture back to readable for SSR and later passes.1
 		SceneContext.ResolveSceneDepthTexture(RHICmdList, FResolveRect(0, 0, FamilySize.X, FamilySize.Y));
@@ -2063,18 +2095,6 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 			// Disable UAV cache flushing so we have optimal VT feedback performance.
 			RHICmdList.AutomaticCacheFlushAfterComputeShader(false);
 
-			if (!bShouldRenderSingleLayerWater)
-			{
-				// We render under water transparent separately even when water is disabled (simple, and avoid checking if water is enabled everywhere)
-				// This translucency pass is cheap and fast to render but could be improved 
-				//  - it is always full screen todya.
-				//  - particles do not have correct under water fog apply on them. it is the backgroung fog that is applied on them.
-				//  - particle are not cut out by the top part of the depth layer
-				// This could be resolved by rendering particles in an offscreenbuffer with corret fog and applied in the SingleLayerWater gbuffer pass.
-				// A depth buffer from previous frame could also be sampled to clip particle.
-				RenderTranslucency(RHICmdList, ETranslucencyPass::TPT_TranslucencyUnderWater, SceneColorCopy);
-			}
-
 			if (ViewFamily.AllowTranslucencyAfterDOF())
 			{
 				RenderTranslucency(RHICmdList, ETranslucencyPass::TPT_StandardTranslucency, SceneColorCopy);
@@ -2118,6 +2138,12 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 		checkSlow(RHICmdList.IsOutsideRenderPass());
 
+	}
+
+	if (HairDatas)
+	{
+		RenderHairComposeSubPixel(RHICmdList, Views, HairDatas);
+		RenderHairStrandsDebugInfo(RHICmdList, Views, HairDatas);
 	}
 
 	checkSlow(RHICmdList.IsOutsideRenderPass());

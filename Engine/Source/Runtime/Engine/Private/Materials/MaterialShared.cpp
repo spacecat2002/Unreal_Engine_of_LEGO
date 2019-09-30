@@ -1131,6 +1131,11 @@ bool FMaterialResource::IsUsedWithWater() const
 	return Material->bUsedWithWater;
 }
 
+bool FMaterialResource::IsUsedWithHairStrands() const
+{
+	return Material->bUsedWithHairStrands;
+}
+
 bool FMaterialResource::IsUsedWithLandscape() const
 {
 	return false;
@@ -1214,11 +1219,6 @@ bool FMaterialResource::IsCrackFreeDisplacementEnabled() const
 bool FMaterialResource::IsTranslucencyAfterDOFEnabled() const 
 { 
 	return Material->bEnableSeparateTranslucency && !IsUIMaterial() && !IsDeferredDecal();
-}
-
-bool FMaterialResource::IsTranslucencyUnderWaterEnabled() const
-{
-	return Material->bEnableRenderUnderWater && !IsUIMaterial() && !IsDeferredDecal();
 }
 
 bool FMaterialResource::IsMobileSeparateTranslucencyEnabled() const

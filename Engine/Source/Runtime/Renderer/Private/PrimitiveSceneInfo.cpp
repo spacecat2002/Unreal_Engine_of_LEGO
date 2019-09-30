@@ -85,7 +85,8 @@ public:
 				ScreenSize, 
 				bSupportsCachingMeshDrawCommands,
 				bUseSkyMaterial,
-				bUseSingleLayerWaterMaterial
+				bUseSingleLayerWaterMaterial,
+				FeatureLevel
 			);
 		}
 	}
@@ -216,7 +217,7 @@ void FPrimitiveSceneInfo::CacheMeshDrawCommands(FRHICommandListImmediate& RHICmd
 	}
 
 #if RHI_RAYTRACING
-	if (IsRayTracingEnabled())
+	if (IsRayTracingEnabled() && Proxy->IsRayTracingStaticRelevant())
 	{
 		int MaxLOD = -1;
 
@@ -319,7 +320,7 @@ void FPrimitiveSceneInfo::CacheMeshDrawCommands(FRHICommandListImmediate& RHICmd
 				}
 
 			#if RHI_RAYTRACING
-				if (IsRayTracingEnabled())
+				if (IsRayTracingEnabled() && Proxy->IsRayTracingStaticRelevant())
 				{
 					FCachedRayTracingMeshCommandContext CommandContext(Scene->CachedRayTracingMeshCommands);
 					FRayTracingMeshProcessor RayTracingMeshProcessor(&CommandContext, Scene, nullptr);
