@@ -1514,8 +1514,6 @@ bool FSceneRenderer::RenderShadowProjections(FRHICommandListImmediate& RHICmdLis
 				SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
 				SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("View%d"), ViewIndex);
 
-				const FViewInfo& View = Views[ViewIndex];
-
 				const FHairStrandsVisibilityData* HairVisibilityData = nullptr;
 				if (HairVisibilityViews)
 				{

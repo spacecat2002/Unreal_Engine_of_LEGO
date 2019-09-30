@@ -1458,7 +1458,7 @@ void FDeferredShadingSceneRenderer::RenderLights(FRHICommandListImmediate& RHICm
 								InputParameterCount,
 								View.ViewRect.Width(), View.ViewRect.Height());
 
-							DenoiserToUse->>DenoiseShadowVisibilityMasks(
+							DenoiserToUse->DenoiseShadowVisibilityMasks(
 								GraphBuilder,
 								View,
 								&View.PrevViewInfo,
