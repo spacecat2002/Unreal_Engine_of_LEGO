@@ -342,6 +342,7 @@ FScreenPassTexture AddPostProcessMaterialPass(
 		if (!Output.IsValid())
 		{
 			FRDGTextureDesc OutputDesc = SceneColor.Texture->Desc;
+			OutputDesc.Reset();
 			if (Inputs.OutputFormat != PF_Unknown)
 			{
 				OutputDesc.Format = Inputs.OutputFormat;
