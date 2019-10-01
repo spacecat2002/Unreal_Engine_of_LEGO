@@ -217,7 +217,7 @@ void FPrimitiveSceneInfo::CacheMeshDrawCommands(FRHICommandListImmediate& RHICmd
 	}
 
 #if RHI_RAYTRACING
-	if (IsRayTracingEnabled() && Proxy->IsRayTracingStaticRelevant())
+	if (IsRayTracingEnabled())
 	{
 		int MaxLOD = -1;
 
@@ -320,7 +320,7 @@ void FPrimitiveSceneInfo::CacheMeshDrawCommands(FRHICommandListImmediate& RHICmd
 				}
 
 			#if RHI_RAYTRACING
-				if (IsRayTracingEnabled() && Proxy->IsRayTracingStaticRelevant())
+				if (IsRayTracingEnabled())
 				{
 					FCachedRayTracingMeshCommandContext CommandContext(Scene->CachedRayTracingMeshCommands);
 					FRayTracingMeshProcessor RayTracingMeshProcessor(&CommandContext, Scene, nullptr);
