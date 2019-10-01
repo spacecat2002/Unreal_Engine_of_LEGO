@@ -95,10 +95,6 @@ void FD3D12CommandContext::RHISetStreamSource(uint32 StreamIndex, FRHIVertexBuff
 
 void FD3D12CommandContext::RHISetComputeShader(FRHIComputeShader* ComputeShaderRHI)
 {
-#if D3D12_RHI_RAYTRACING
-	StateCache.TransitionComputeState(D3D12PT_Compute);
-#endif
-
 	// TODO: Eventually the high-level should just use RHISetComputePipelineState() directly similar to how graphics PSOs are handled.
 	FD3D12ComputePipelineState* const ComputePipelineState = FD3D12DynamicRHI::ResourceCast(RHICreateComputePipelineState(ComputeShaderRHI).GetReference());
 	RHISetComputePipelineState(ComputePipelineState);
@@ -570,6 +566,10 @@ void FD3D12CommandContext::RHISetGraphicsPipelineState(FRHIGraphicsPipelineState
 
 void FD3D12CommandContext::RHISetComputePipelineState(FRHIComputePipelineState* ComputeState)
 {
+#if D3D12_RHI_RAYTRACING
+	StateCache.TransitionComputeState(D3D12PT_Compute);
+#endif
+
 	FD3D12ComputePipelineState* ComputePipelineState = FD3D12DynamicRHI::ResourceCast(ComputeState);
 
 	// TODO: [PSO API] Every thing inside this scope is only necessary to keep the PSO shadow in sync while we convert the high level to only use PSOs
