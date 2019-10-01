@@ -315,8 +315,8 @@ const TCHAR* const kTAAPassNames[] = {
 	TEXT("DOFUpsampling"),
 };
 
-static_assert(ARRAY_COUNT(kTAAOutputNames) == int32(ETAAPassConfig::MAX), "Missing TAA output name.");
-static_assert(ARRAY_COUNT(kTAAPassNames) == int32(ETAAPassConfig::MAX), "Missing TAA pass name.");
+static_assert(UE_ARRAY_COUNT(kTAAOutputNames) == int32(ETAAPassConfig::MAX), "Missing TAA output name.");
+static_assert(UE_ARRAY_COUNT(kTAAPassNames) == int32(ETAAPassConfig::MAX), "Missing TAA pass name.");
 } //! namespace
 
 bool IsTemporalAASceneDownsampleAllowed(const FViewInfo& View)

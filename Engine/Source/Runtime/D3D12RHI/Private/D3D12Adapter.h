@@ -221,9 +221,6 @@ public:
 		uint32 Alignment, uint32 Stride, uint32 Size, uint32 InUsage,
 		FRHIResourceCreateInfo& CreateInfo);
 
-	// Queue up a command to signal the frame fence on the command list. This should only be called from the rendering thread.
-	void SignalFrameFence_RenderThread(FRHICommandListImmediate& RHICmdList);
-
 	template<typename ObjectType, typename CreationCoreFunction>
 	inline ObjectType* CreateLinkedObject(FRHIGPUMask GPUMask, const CreationCoreFunction& pfnCreationCore)
 	{

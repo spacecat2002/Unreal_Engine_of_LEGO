@@ -1077,6 +1077,12 @@ void FLandscapeComponentSceneProxy::CreateRenderThreadResources()
 #endif
 }
 
+void FLandscapeComponentSceneProxy::DestroyRenderThreadResources()
+{
+	FPrimitiveSceneProxy::DestroyRenderThreadResources();
+	UnregisterNeighbors();
+}
+
 void FLandscapeComponentSceneProxy::OnLevelAddedToWorld()
 {
 	RegisterNeighbors();
@@ -1084,8 +1090,6 @@ void FLandscapeComponentSceneProxy::OnLevelAddedToWorld()
 
 FLandscapeComponentSceneProxy::~FLandscapeComponentSceneProxy()
 {
-	UnregisterNeighbors();
-
 	// Free the subsection uniform buffer
 	LandscapeUniformShaderParameters.ReleaseResource();
 
@@ -4269,7 +4273,7 @@ public:
 		if (bIsLayerThumbnail || bDisableTessellation)
 		{
 			FSHA1 Hash;
-			Hash.Update(OutId.BasePropertyOverridesHash.Hash, ARRAY_COUNT(OutId.BasePropertyOverridesHash.Hash));
+			Hash.Update(OutId.BasePropertyOverridesHash.Hash, UE_ARRAY_COUNT(OutId.BasePropertyOverridesHash.Hash));
 
 			const FString HashString = TEXT("bOverride_TessellationMode");
 			Hash.UpdateWithString(*HashString, HashString.Len());
@@ -4686,7 +4690,7 @@ void ULandscapeComponent::GetStreamingRenderAssetInfo(FStreamingTextureLevelCont
 	if (Proxy)
 	{
 		LocalStreamingDistanceMultiplier = FMath::Max(0.0f, Proxy->StreamingDistanceMultiplier);
-		TexelFactor = 0.75f * LocalStreamingDistanceMultiplier * ComponentSizeQuads * FMath::Abs(Proxy->GetRootComponent()->RelativeScale3D.X);
+		TexelFactor = 0.75f * LocalStreamingDistanceMultiplier * ComponentSizeQuads * FMath::Abs(Proxy->GetRootComponent()->GetRelativeScale3D().X);
 	}
 
 	ERHIFeatureLevel::Type FeatureLevel = LevelContext.GetFeatureLevel();
@@ -5157,8 +5161,10 @@ void FLandscapeMeshProxySceneProxy::OnLevelAddedToWorld()
 	}
 }
 
-FLandscapeMeshProxySceneProxy::~FLandscapeMeshProxySceneProxy()
+void FLandscapeMeshProxySceneProxy::DestroyRenderThreadResources()
 {
+	FStaticMeshSceneProxy::DestroyRenderThreadResources();
+
 	for (FLandscapeNeighborInfo& Info : ProxyNeighborInfos)
 	{
 		Info.UnregisterNeighbors();
