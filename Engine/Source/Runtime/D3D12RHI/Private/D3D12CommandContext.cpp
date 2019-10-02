@@ -461,18 +461,12 @@ void FD3D12CommandContextBase::RHIEndFrame()
 		Device->GetCommandListManager().ReleaseResourceBarrierCommandListAllocator();
 	}
 
-		UpdateMemoryStats();
+	UpdateMemoryStats();
 
-	    // Stop Timing at the very last moment
+	// Stop Timing at the very last moment
     
-	    ParentAdapter->GetGPUProfiler().EndFrame(ParentAdapter->GetOwningRHI());
-    
-    
-	    // Advance frame fence
-    
-	    FD3D12ManualFence& FrameFence = ParentAdapter->GetFrameFence();
-	    FrameFence.Signal(ED3D12CommandQueueType::Default, FrameFence.IncrementCurrentFence());
-	}
+	ParentAdapter->GetGPUProfiler().EndFrame(ParentAdapter->GetOwningRHI());
+}
 
 void FD3D12CommandContextBase::UpdateMemoryStats()
 {
