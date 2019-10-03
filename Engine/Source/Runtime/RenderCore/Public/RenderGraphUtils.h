@@ -32,23 +32,52 @@ extern RENDERCORE_API void ClearUnusedGraphResourcesImpl(
 	const FShaderParameterBindings& ShaderBindings,
 	const FShaderParametersMetadata* ParametersMetadata,
 	void* InoutParameters,
-	std::initializer_list< FRDGResourceRef > ExcludeList);
+	std::initializer_list<FRDGResourceRef> ExcludeList);
 
-template<typename TShaderClass>
+/** Similar to the function above, but takes a list of shader bindings and only clears if none of the shaders contain the resource. */
+extern RENDERCORE_API void ClearUnusedGraphResourcesImpl(
+	TArrayView<const FShaderParameterBindings*> ShaderBindingsList,
+	const FShaderParametersMetadata* ParametersMetadata,
+	void* InoutParameters,
+	std::initializer_list<FRDGResourceRef> ExcludeList);
+
+template <typename TShaderClass>
 void ClearUnusedGraphResources(
 	const TShaderClass* Shader,
 	typename TShaderClass::FParameters* InoutParameters,
-	std::initializer_list< FRDGResourceRef > ExcludeList = {})
+	std::initializer_list<FRDGResourceRef> ExcludeList = {})
 {
 	const FShaderParametersMetadata* ParametersMetadata = TShaderClass::FParameters::FTypeInfo::GetStructMetadata();
 
 	// Verify the shader have all the parameters it needs. This is done before the
-	// ClearUnusedGraphResourcesImpl() to not misslead user on why some resource are misseing
+	// ClearUnusedGraphResourcesImpl() to not mislead user on why some resource are missing
 	// when debugging a validation failure.
 	ValidateShaderParameters(Shader, ParametersMetadata, InoutParameters);
 
 	// Clear the resources the shader won't need.
 	return ClearUnusedGraphResourcesImpl(Shader->Bindings, ParametersMetadata, InoutParameters, ExcludeList);
+}
+
+template <typename TShaderClassA, typename TShaderClassB, typename TPassParameterStruct>
+void ClearUnusedGraphResources(
+	const TShaderClassA* ShaderA,
+	const TShaderClassB* ShaderB,
+	typename TPassParameterStruct* InoutParameters,
+	std::initializer_list<FRDGResourceRef> ExcludeList = {})
+{
+	static_assert(TIsSame<TShaderClassA::FParameters, TPassParameterStruct>::Value, "First shader FParameter type must match pass parameters.");
+	static_assert(TIsSame<TShaderClassB::FParameters, TPassParameterStruct>::Value, "Second shader FParameter type must match pass parameters.");
+	const FShaderParametersMetadata* ParametersMetadata = TPassParameterStruct::FTypeInfo::GetStructMetadata();
+
+	// Verify the shader have all the parameters it needs. This is done before the
+	// ClearUnusedGraphResourcesImpl() to not mislead user on why some resource are missing
+	// when debugging a validation failure.
+	ValidateShaderParameters(ShaderA, ParametersMetadata, InoutParameters);
+	ValidateShaderParameters(ShaderB, ParametersMetadata, InoutParameters);
+
+	// Clear the resources the shader won't need.
+	const FShaderParameterBindings* ShaderBindings[] = { &ShaderA->Bindings, &ShaderB->Bindings };
+	return ClearUnusedGraphResourcesImpl(ShaderBindings, ParametersMetadata, InoutParameters, ExcludeList);
 }
 
 /**
