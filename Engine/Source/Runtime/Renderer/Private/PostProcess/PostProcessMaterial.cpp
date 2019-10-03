@@ -211,6 +211,9 @@ public:
 		FMaterialShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 		OutEnvironment.SetDefine(TEXT("POST_PROCESS_MATERIAL"), 1);
 
+		EBlendableLocation Location = EBlendableLocation(Parameters.Material->GetBlendableLocation());
+		OutEnvironment.SetDefine(TEXT("POST_PROCESS_MATERIAL_BEFORE_TONEMAP"), (Location == BL_AfterTonemapping || Location == BL_ReplacingTonemapper) ? 0 : 1);
+
 		FPermutationDomain PermutationVector(Parameters.PermutationId);
 		if (PermutationVector.Get<FMobileDimension>())
 		{
@@ -412,6 +415,7 @@ FScreenPassTexture AddPostProcessMaterialPass(
 
 	FPostProcessMaterialVS* VertexShader = MaterialShaderMap->GetShader<FPostProcessMaterialVS>(PermutationVector);
 	FPostProcessMaterialPS* PixelShader = MaterialShaderMap->GetShader<FPostProcessMaterialPS>(PermutationVector);
+	ClearUnusedGraphResources(VertexShader, PixelShader, PostProcessMaterialParameters);
 
 	const uint32 MaterialStencilRef = Material->GetStencilRefValue();
 

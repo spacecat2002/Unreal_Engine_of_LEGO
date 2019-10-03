@@ -2301,8 +2301,7 @@ FRDGTextureRef DiaphragmDOF::AddPasses(
 			PassParameters->RenderTargets[0] = FRenderTargetBinding(
 				ConvolutionTextures->SceneColor, ERenderTargetLoadAction::ELoad);
 
-			ValidateShaderParameters(*VertexShader, *PassParameters);
-			ValidateShaderParameters(*PixelShader, *PassParameters);
+			ClearUnusedGraphResources(*VertexShader, *PixelShader, PassParameters);
 
 			GraphBuilder.AddPass(
 				RDG_EVENT_NAME("DOF IndirectScatter(%s Bokeh=%s Occlusion=%s) %dx%d",
