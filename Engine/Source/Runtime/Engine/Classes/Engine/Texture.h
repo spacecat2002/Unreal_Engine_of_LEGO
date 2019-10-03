@@ -431,6 +431,8 @@ struct FTexturePlatformData
 	int32 NumSlices;
 	/** Format in which mip data is stored. */
 	EPixelFormat PixelFormat;
+	/** Is Cubemap texture */
+	bool bCubemap;
 	/** Mip data or VT data. one or the other. */
 	TIndirectArray<struct FTexture2DMipMap> Mips;
 	struct FVirtualTextureBuiltData* VTData;

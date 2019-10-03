@@ -47,7 +47,8 @@
 // In case of merge conflicts with DDC versions, you MUST generate a new GUID and set this new
 // guid as version
 
-#define TEXTURE_DERIVEDDATA_VER		TEXT("68A083899C6F4316B8CE0E2958EDE2C2")
+#define TEXTURE_DERIVEDDATA_VER		TEXT("AACC30B035FD42EA9309250EF91027EA")
+
 
 // This GUID is mixed into DDC version for virtual textures only, this allows updating DDC version for VT without invalidating DDC for all textures
 // This is useful during development, but once large numbers of VT are present in shipped content, it will have the same problem as TEXTURE_DERIVEDDATA_VER
@@ -569,7 +570,7 @@ uint32 PutDerivedDataInCache(FTexturePlatformData* DerivedData, const FString& D
 
 	// Write out individual mips to the derived data cache.
 	const int32 MipCount = DerivedData->Mips.Num();
-	const bool bIsCubemap = (DerivedData->NumSlices > 0);
+	const bool bIsCubemap = DerivedData->bCubemap;
 	const int32 FirstInlineMip = bIsCubemap ? 0 : FMath::Max(0, MipCount - NUM_INLINE_DERIVED_MIPS);
 	for (int32 MipIndex = 0; MipIndex < MipCount; ++MipIndex)
 	{
@@ -1009,6 +1010,7 @@ FTexturePlatformData::FTexturePlatformData()
 	, SizeY(0)
 	, NumSlices(0)
 	, PixelFormat(PF_Unknown)
+	, bCubemap(false)
 	, VTData(nullptr)
 #if WITH_EDITORONLY_DATA
 	, AsyncTask(NULL)
