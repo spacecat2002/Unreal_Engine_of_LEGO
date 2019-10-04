@@ -2159,7 +2159,6 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		}
 
 		checkSlow(RHICmdList.IsOutsideRenderPass());
-		checkSlow(RHICmdList.IsOutsideRenderPass());
 	}
 
 	if (HairDatas)

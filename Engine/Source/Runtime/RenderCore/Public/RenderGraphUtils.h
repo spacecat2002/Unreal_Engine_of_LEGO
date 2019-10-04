@@ -62,7 +62,7 @@ template <typename TShaderClassA, typename TShaderClassB, typename TPassParamete
 void ClearUnusedGraphResources(
 	const TShaderClassA* ShaderA,
 	const TShaderClassB* ShaderB,
-	typename TPassParameterStruct* InoutParameters,
+	TPassParameterStruct* InoutParameters,
 	std::initializer_list<FRDGResourceRef> ExcludeList = {})
 {
 	static_assert(TIsSame<typename TShaderClassA::FParameters, TPassParameterStruct>::Value, "First shader FParameter type must match pass parameters.");
