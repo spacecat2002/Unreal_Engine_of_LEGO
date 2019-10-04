@@ -71,9 +71,13 @@ public:
 	void CacheBonesSubGraph_AnyThread(const FAnimationCacheBonesContext& Context);
 
 protected:
+
 	virtual void OnInitializeAnimInstance(const FAnimInstanceProxy* InProxy, const UAnimInstance* InAnimInstance) override;
 	virtual bool NeedsOnInitializeAnimInstance() const override { return true; }
 	// End of FAnimNode_Base interface
+
+	// Inertial blending duration to request next update
+	float PendingBlendDuration;
 
 	// Re-create the linked instances for this node
 	void ReinitializeLinkedAnimInstance(const UAnimInstance* InOwningAnimInstance, UAnimInstance* InNewAnimInstance = nullptr);
