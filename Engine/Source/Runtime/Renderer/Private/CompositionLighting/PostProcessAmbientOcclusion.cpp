@@ -360,6 +360,7 @@ class FPostProcessAmbientOcclusionSetupPS : public FGlobalShader
 public:
 	FPostProcessPassParameters PostprocessParameter;
 	FSceneTextureShaderParameters SceneTextureParameters;
+	FScreenSpaceAOParameters ScreenSpaceAOParams;
 	FShaderParameter AmbientOcclusionSetupParams;
 
 	/** Initialization constructor. */
@@ -368,6 +369,7 @@ public:
 	{
 		PostprocessParameter.Bind(Initializer.ParameterMap);
 		SceneTextureParameters.Bind(Initializer);
+		ScreenSpaceAOParams.Bind(Initializer.ParameterMap);
 		AmbientOcclusionSetupParams.Bind(Initializer.ParameterMap, TEXT("AmbientOcclusionSetupParams"));
 	}
 
@@ -381,6 +383,9 @@ public:
 		PostprocessParameter.SetPS(Context.RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 		SceneTextureParameters.Set(Context.RHICmdList, ShaderRHI, Context.View.FeatureLevel, ESceneTextureSetupMode::All);
 
+		FIntPoint TexSize = FSceneRenderTargets::Get(Context.RHICmdList).GetBufferSizeXY();
+		ScreenSpaceAOParams.Set(Context.RHICmdList, Context.View, ShaderRHI, TexSize);
+
 		// e.g. 4 means the input texture is 4x smaller than the buffer size
 		uint32 ScaleToFullRes = FSceneRenderTargets::Get(Context.RHICmdList).GetBufferSizeXY().X / Context.Pass->GetOutput(ePId_Output0)->RenderTargetDesc.Extent.X;
 
@@ -393,7 +398,7 @@ public:
 	virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter << SceneTextureParameters << AmbientOcclusionSetupParams;
+		Ar << PostprocessParameter << SceneTextureParameters << ScreenSpaceAOParams << AmbientOcclusionSetupParams;
 		return bShaderHasOutdatedParameters;
 	}
 
