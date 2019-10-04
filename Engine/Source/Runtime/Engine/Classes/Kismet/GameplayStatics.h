@@ -671,7 +671,7 @@ public:
 	 * @param bAutoDestroy - Whether the returned force feedback component will be automatically cleaned up when the feedback patern finishes (by completing or stopping) or whether it can be reactivated
 	 * @return Force Feedback Component to manipulate the playing feedback effect with
 	 */
-	UFUNCTION(BlueprintCallable, Category="ForceFeedback", meta=(WorldContext="WorldContextObject", AdvancedDisplay = "3", UnsafeDuringActorConsturction = "true", Keywords = "play"))
+	UFUNCTION(BlueprintCallable, Category="ForceFeedback", meta=(WorldContext="WorldContextObject", AdvancedDisplay = "3", UnsafeDuringActorConstruction = "true", Keywords = "play"))
 	static UForceFeedbackComponent* SpawnForceFeedbackAtLocation(const UObject* WorldContextObject, UForceFeedbackEffect* ForceFeedbackEffect, FVector Location, FRotator Rotation = FRotator::ZeroRotator, bool bLooping = false, float IntensityMultiplier = 1.f, float StartTime = 0.f, UForceFeedbackAttenuation* AttenuationSettings = nullptr, bool bAutoDestroy = true);
 
 	/** Plays a force feedback effect attached to and following the specified component. This is a fire and forget effect. Replication is also not handled at this point.
@@ -709,6 +709,10 @@ public:
 	/** Set the sound mix of the audio system for special EQing **/
 	UFUNCTION(BlueprintCallable, Category="Audio", meta=(WorldContext = "WorldContextObject"))
 	static void SetBaseSoundMix(const UObject* WorldContextObject, class USoundMix* InSoundMix);
+
+	/** Primes the sound, caching the first chunk of streamed audio. **/
+	UFUNCTION(BlueprintCallable, Category = "Audio")
+	static void PrimeSound(USoundBase* InSound);
 
 	/** Overrides the sound class adjuster in the given sound mix. If the sound class does not exist in the input sound mix, the sound class adjustment will be added to the sound mix.
 	 * @param InSoundMixModifier The sound mix to modify.

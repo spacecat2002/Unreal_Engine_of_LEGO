@@ -12,7 +12,6 @@
 #include "Stats/Stats.h"
 #include "RHI.h"
 #include "RenderResource.h"
-#include "Templates/ScopedPointer.h"
 #include "UniformBuffer.h"
 #include "GlobalDistanceFieldParameters.h"
 #include "SceneView.h"
@@ -1047,7 +1046,7 @@ public:
 	uint32 bTranslucentSurfaceLighting : 1;
 	/** Whether the view has any materials that read from scene depth. */
 	uint32 bUsesSceneDepth : 1;
-
+	uint32 bUsesCustomDepthStencil : 1;
 
 	/** Whether fog should only be computed on rendered opaque pixels or not. */
 	uint32 bFogOnlyOnRenderedOpaque : 1;

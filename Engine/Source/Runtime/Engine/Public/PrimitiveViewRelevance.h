@@ -53,6 +53,8 @@ struct FPrimitiveViewRelevance
 	uint32 bVelocityRelevance : 1;
 	/** The primitive should render to the custom depth pass. */
 	uint32 bRenderCustomDepth : 1;
+	/** The primitive should render to the depth prepass even if it's not rendered in the main pass. */
+	uint32 bRenderInDepthPass : 1;
 	/** The primitive should render to the base pass / normal depth / velocity rendering. */
 	uint32 bRenderInMainPass : 1;
 	/** The primitive has materials using the volume domain. */
@@ -83,6 +85,8 @@ struct FPrimitiveViewRelevance
 	uint32 bUsesSingleLayerWaterMaterial : 1;
 	/** Whether the view use custom data. */
 	uint32 bUseCustomViewData : 1;
+	/** Whether the primitive has materials that read the custom depth or custom stencil */
+	uint32 bUsesCustomDepthStencil : 1;
 
 	/** 
 	 * Whether this primitive view relevance has been initialized this frame.  

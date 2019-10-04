@@ -11,7 +11,6 @@
 #include "Misc/Guid.h"
 #include "Engine/EngineTypes.h"
 #include "Templates/RefCounting.h"
-#include "Templates/ScopedPointer.h"
 #include "Templates/UniquePtr.h"
 #include "Misc/SecureHash.h"
 #include "RHI.h"
@@ -1561,9 +1560,10 @@ public:
 	/** Returns whether this material should be considered for casting dynamic shadows. */
 	inline bool ShouldCastDynamicShadows() const
 	{
-		return (GetBlendMode() == BLEND_Opaque ||
-		        GetBlendMode() == BLEND_Masked ||
-		       (GetBlendMode() == BLEND_Translucent && GetCastDynamicShadowAsMasked()));
+		return !GetShadingModels().HasOnlyShadingModel(MSM_SingleLayerWater) &&
+				(GetBlendMode() == BLEND_Opaque
+ 				 || GetBlendMode() == BLEND_Masked
+  				 || (GetBlendMode() == BLEND_Translucent && GetCastDynamicShadowAsMasked()));
 	}
 
 
@@ -1618,6 +1618,9 @@ public:
 
 	/** Does the material have a runtime virtual texture output node. */
 	ENGINE_API bool HasRuntimeVirtualTextureOutput_RenderThread() const;
+
+	/** Does the material use CustomDepth or CustomStencil lookup */
+	ENGINE_API bool UsesCustomDepthStencil_GameThread() const;
 
 	/** Note: This function is only intended for use in deciding whether or not shader permutations are required before material translation occurs. */
 	ENGINE_API bool MaterialMayModifyMeshPosition() const;

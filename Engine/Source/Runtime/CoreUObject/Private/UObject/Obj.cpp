@@ -52,6 +52,7 @@
 #include "Serialization/DeferredMessageLog.h"
 #include "UObject/CoreRedirects.h"
 #include "HAL/LowLevelMemTracker.h"
+#include "HAL/LowLevelMemStats.h"
 
 DEFINE_LOG_CATEGORY(LogObj);
 
@@ -1151,6 +1152,16 @@ void UObject::PostLoadSubobjects( FObjectInstancingGraph* OuterInstanceGraph/*=N
 	}
 }
 
+void* UObject::CreateSparseClassData()
+{
+	return nullptr;
+}
+
+UScriptStruct* UObject::GetSparseClassDataStruct() const
+{
+	UClass* Class = GetClass();
+	return Class ? Class->GetSparseClassDataStruct() : nullptr;
+}
 
 void UObject::ConditionalPostLoadSubobjects( FObjectInstancingGraph* OuterInstanceGraph/*=NULL*/ )
 {
@@ -1282,14 +1293,14 @@ void UObject::Serialize(FStructuredArchive::FRecord Record)
 		// Special info.
 		if ((!UnderlyingArchive.IsLoading() && !UnderlyingArchive.IsSaving() && !UnderlyingArchive.IsObjectReferenceCollector()))
 		{
-			Record << NAMED_FIELD(LoadName);
+			Record << SA_VALUE(TEXT("LoadName"), LoadName);
 			if (!UnderlyingArchive.IsIgnoringOuterRef())
 			{
-				Record << NAMED_FIELD(LoadOuter);
+				Record << SA_VALUE(TEXT("LoadOuter"), LoadOuter);
 			}
 			if (!UnderlyingArchive.IsIgnoringClassRef())
 			{
-				Record << NAMED_FIELD(ObjClass);
+				Record << SA_VALUE(TEXT("ObjClass"), ObjClass);
 			}
 		}
 		// Special support for supporting undo/redo of renaming and changing Archetype.
@@ -1299,7 +1310,7 @@ void UObject::Serialize(FStructuredArchive::FRecord Record)
 			{
 				if (UnderlyingArchive.IsLoading())
 				{
-					Record << NAMED_FIELD(LoadName) << NAMED_FIELD(LoadOuter);
+					Record << SA_VALUE(TEXT("LoadName"), LoadName) << SA_VALUE(TEXT("LoadOuter"), LoadOuter);
 
 					// If the name we loaded is different from the current one,
 					// unhash the object, change the name and hash it again.
@@ -1312,7 +1323,7 @@ void UObject::Serialize(FStructuredArchive::FRecord Record)
 				}
 				else
 				{
-					Record << NAMED_FIELD(LoadName) << NAMED_FIELD(LoadOuter);
+					Record << SA_VALUE(TEXT("LoadName"), LoadName) << SA_VALUE(TEXT("LoadOuter"), LoadOuter);
 				}
 			}
 		}
@@ -1321,7 +1332,7 @@ void UObject::Serialize(FStructuredArchive::FRecord Record)
 		// Handle derived UClass objects (exact UClass objects are native only and shouldn't be touched)
 		if (ObjClass != UClass::StaticClass())
 		{
-			SerializeScriptProperties(Record.EnterField(FIELD_NAME_TEXT("Properties")));
+			SerializeScriptProperties(Record.EnterField(SA_FIELD_NAME(TEXT("Properties"))));
 		}
 
 		// Keep track of pending kill
@@ -1330,7 +1341,7 @@ void UObject::Serialize(FStructuredArchive::FRecord Record)
 			bool WasKill = IsPendingKill();
 			if (UnderlyingArchive.IsLoading())
 			{
-				Record << NAMED_FIELD(WasKill);
+				Record << SA_VALUE(TEXT("WasKill"), WasKill);
 				if (WasKill)
 				{
 					MarkPendingKill();
@@ -1342,7 +1353,7 @@ void UObject::Serialize(FStructuredArchive::FRecord Record)
 			}
 			else if (UnderlyingArchive.IsSaving())
 			{
-				Record << NAMED_FIELD(WasKill);
+				Record << SA_VALUE(TEXT("WasKill"), WasKill);
 			}
 		}
 
@@ -1405,7 +1416,7 @@ void UObject::SerializeScriptProperties( FStructuredArchive::FSlot Slot ) const
 		FArchive::FScopeAddDebugData S(UnderlyingArchive, ObjClass->GetFName());
 #endif
 
-		ObjClass->SerializeTaggedProperties(Slot, (uint8*)this, HasAnyFlags(RF_ClassDefaultObject) ? ObjClass->GetSuperClass() : ObjClass, (uint8*)DiffObject, bBreakSerializationRecursion ? this : NULL);
+		ObjClass->SerializeTaggedProperties(Slot, (uint8*)this, HasAnyFlags(RF_ClassDefaultObject) ? ObjClass->GetSuperClass() : ObjClass, (uint8*)DiffObject, bBreakSerializationRecursion ? this : nullptr);
 	}
 	else if (UnderlyingArchive.GetPortFlags() != 0 && !UnderlyingArchive.ArUseCustomPropertyList )
 	{
@@ -1422,7 +1433,7 @@ void UObject::SerializeScriptProperties( FStructuredArchive::FSlot Slot ) const
 		ObjClass->SerializeBin(Slot, const_cast<UObject *>(this));
 	}
 
-	if( HasAnyFlags(RF_ClassDefaultObject) )
+	if (HasAnyFlags(RF_ClassDefaultObject))
 	{
 		UnderlyingArchive.StopSerializingDefaults();
 	}
@@ -2184,6 +2195,10 @@ void UObject::LoadConfig( UClass* ConfigClass/*=NULL*/, const TCHAR* InFilename/
 
 	for ( UProperty* Property = ConfigClass->PropertyLink; Property; Property = Property->PropertyLinkNext )
 	{
+#if WITH_EDITOR
+		FSoftObjectPathSerializationScope SerializationScope(NAME_None, Property->GetFName(), Property->IsEditorOnlyProperty() ? ESoftObjectPathCollectType::EditorOnlyCollect : ESoftObjectPathCollectType::AlwaysCollect, ESoftObjectPathSerializeType::AlwaysSerialize);
+#endif
+
 		if ( !Property->HasAnyPropertyFlags(CPF_Config) )
 		{
 			continue;

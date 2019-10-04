@@ -525,6 +525,7 @@ bool GSupportsParallelOcclusionQueries = false;
 bool GSupportsRenderTargetWriteMask = false;
 bool GSupportsTransientResourceAliasing = false;
 bool GRHIRequiresRenderTargetForPixelShaderUAVs = false;
+bool GRHISupportsUAVFormatAliasing = false;
 
 bool GRHISupportsMSAADepthSampleAccess = false;
 bool GRHISupportsResolveCubemapFaces = false;
@@ -946,6 +947,8 @@ void FRHIRenderPassInfo::ConvertToRenderTargetsInfo(FRHISetRenderTargetsInfo& Ou
 		DepthStencilRenderTarget.ExclusiveDepthStencil);
 	OutRTInfo.bClearDepth = (DepthLoadAction == ERenderTargetLoadAction::EClear);
 	OutRTInfo.bClearStencil = (StencilLoadAction == ERenderTargetLoadAction::EClear);
+
+	OutRTInfo.FoveationTexture = FoveationTexture;
 
 	if (NumUAVs > 0)
 	{

@@ -111,7 +111,7 @@ static bool UsesCustomDepthStencilLookup(const FViewInfo& View)
 	}
 
 	//TODO: check if translucency uses CustomDepth
-	return bPPUsesCustomDepth || bPPUsesCustomStencil;
+	return bPPUsesCustomDepth || bPPUsesCustomStencil || View.bUsesCustomDepthStencil;
 }
 
 
@@ -282,17 +282,12 @@ void FMobileSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdList)
 
 	// update buffers used in cached mesh path
 	// in case there are multiple views, these buffers will be updated before rendering each view
+	// OpaqueBasePassUniformBuffer, TranslucentBasePassUniformBuffer and DistortionPassUniformBuffer may depend on custom depth render target, so they should be updated after custom depth rendering 
 	if (Views.Num() > 0)
 	{
 		const FViewInfo& View = Views[0];
 		Scene->UniformBuffers.UpdateViewUniformBuffer(View);
-		UpdateOpaqueBasePassUniformBuffer(RHICmdList, View);
-		UpdateTranslucentBasePassUniformBuffer(RHICmdList, View);
 		UpdateDirectionalLightUniformBuffers(RHICmdList, View);
-
-		FMobileDistortionPassUniformParameters DistortionPassParameters;
-		SetupMobileDistortionPassUniformBuffer(RHICmdList, View, DistortionPassParameters);
-		Scene->UniformBuffers.MobileDistortionPassUniformBuffer.UpdateUniformBufferImmediate(DistortionPassParameters);
 	}
 	UpdateSkyReflectionUniformBuffer();
 
@@ -300,6 +295,16 @@ void FMobileSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdList)
 	UpdatePrimitiveIndirectLightingCacheBuffers();
 	
 	OnStartRender(RHICmdList);
+
+	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+	{
+		extern TSet<IPersistentViewUniformBufferExtension*> PersistentViewUniformBufferExtensions;
+
+		for (IPersistentViewUniformBufferExtension* Extension : PersistentViewUniformBufferExtensions)
+		{
+			Extension->PrepareView(&Views[ViewIndex]);
+		}
+	}
 }
 
 /** 
@@ -448,6 +453,16 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 			RenderCustomDepthPass(RHICmdList);
 		}
 	}
+
+	// Update OpaqueBasePassUniformBuffer, TranslucentBasePassUniformBuffer and DistortionUniformBuffer right after CustomDepthPass and before BeginRenderPass of MobileBasePass
+	{
+		UpdateOpaqueBasePassUniformBuffer(RHICmdList, View);
+		UpdateTranslucentBasePassUniformBuffer(RHICmdList, View);
+
+		FMobileDistortionPassUniformParameters DistortionPassParameters;
+		SetupMobileDistortionPassUniformBuffer(RHICmdList, View, DistortionPassParameters);
+		Scene->UniformBuffers.MobileDistortionPassUniformBuffer.UpdateUniformBufferImmediate(DistortionPassParameters);
+	}
 		
 	//
 	FRHITexture* SceneColor = nullptr;
@@ -496,13 +511,21 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		}
 	}
 
+	FRHITexture* FoveationTexture = nullptr;
+	
+	if (SceneContext.IsFoveationTextureAllocated())
+	{
+		FoveationTexture = SceneContext.GetFoveationTexture();
+	}
+
 	FRHIRenderPassInfo SceneColorRenderPassInfo(
 		SceneColor,
 		ColorTargetAction,
 		SceneColorResolve,
 		SceneDepth,
-		DepthTargetAction, 
+		DepthTargetAction,
 		nullptr, // we never resolve scene depth on mobile
+		FoveationTexture,
 		FExclusiveDepthStencil::DepthWrite_StencilWrite
 	);
 	SceneColorRenderPassInfo.SubpassHint = ESubpassHint::DepthReadSubpass;
@@ -593,6 +616,7 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 			SceneDepth,
 			DepthTargetAction, 
 			nullptr,
+			FoveationTexture,
 			ExclusiveDepthStencil
 		);
 		TranslucentRenderPassInfo.NumOcclusionQueries = 0;
