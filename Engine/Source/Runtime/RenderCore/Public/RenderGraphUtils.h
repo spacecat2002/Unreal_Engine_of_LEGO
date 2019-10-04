@@ -65,8 +65,8 @@ void ClearUnusedGraphResources(
 	typename TPassParameterStruct* InoutParameters,
 	std::initializer_list<FRDGResourceRef> ExcludeList = {})
 {
-	static_assert(TIsSame<TShaderClassA::FParameters, TPassParameterStruct>::Value, "First shader FParameter type must match pass parameters.");
-	static_assert(TIsSame<TShaderClassB::FParameters, TPassParameterStruct>::Value, "Second shader FParameter type must match pass parameters.");
+	static_assert(TIsSame<typename TShaderClassA::FParameters, TPassParameterStruct>::Value, "First shader FParameter type must match pass parameters.");
+	static_assert(TIsSame<typename TShaderClassB::FParameters, TPassParameterStruct>::Value, "Second shader FParameter type must match pass parameters.");
 	const FShaderParametersMetadata* ParametersMetadata = TPassParameterStruct::FTypeInfo::GetStructMetadata();
 
 	// Verify the shader have all the parameters it needs. This is done before the
