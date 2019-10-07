@@ -1179,9 +1179,6 @@ private:
 	/** Uniform expressions generated from the material compile. */
 	FMaterialCompilationOutput MaterialCompilationOutput;
 
-	/** Next value for CompilingId. */
-	static uint32 NextCompilingId;
-
 	/** Tracks material resources and their shader maps that need to be compiled but whose compilation is being deferred. */
 	static TMap<TRefCountPtr<FMaterialShaderMap>, TArray<FMaterial*> > ShaderMapsBeingCompiled;
 

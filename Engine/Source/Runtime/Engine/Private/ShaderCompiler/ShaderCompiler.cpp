@@ -79,6 +79,19 @@ FString GetMaterialShaderMapDDCKey()
 	return FString(MATERIALSHADERMAP_DERIVEDDATA_VER);
 }
 
+// The Id of 0 is reserved for global shaders
+FThreadSafeCounter FShaderCommonCompileJob::JobIdCounter(2);
+
+uint32 FShaderCommonCompileJob::GetNextJobId()
+{
+	uint32 Id = JobIdCounter.Increment();
+	if (Id == UINT_MAX)
+	{
+		JobIdCounter.Set(2);
+	}
+	return Id;
+}
+
 // this is for the protocol, not the data, bump if FShaderCompilerInput or ProcessInputFromArchive changes (also search for the second one with the same name, todo: put into one header file)
 const int32 ShaderCompileWorkerInputVersion = 10;
 // this is for the protocol, not the data, bump if FShaderCompilerOutput or WriteToOutputArchive changes (also search for the second one with the same name, todo: put into one header file)
@@ -1687,7 +1700,7 @@ bool FShaderCompilingManager::GetDumpShaderDebugInfo() const
 	return GDumpShaderDebugInfo != 0;
 }
 
-void FShaderCompilingManager::AddJobs(TArray<FShaderCommonCompileJob*>& NewJobs, bool bOptimizeForLowLatency, bool bRecreateComponentRenderStateOnCompletion)
+void FShaderCompilingManager::AddJobs(TArray<FShaderCommonCompileJob*>& NewJobs, bool bOptimizeForLowLatency, bool bRecreateComponentRenderStateOnCompletion, bool bSkipResultProcessing)
 {
 	check(!FPlatformProperties::RequiresCookedData());
 
@@ -1729,6 +1742,7 @@ void FShaderCompilingManager::AddJobs(TArray<FShaderCommonCompileJob*>& NewJobs,
 		NewJobs[JobIndex]->bOptimizeForLowLatency = bOptimizeForLowLatency;
 		FShaderMapCompileResults& ShaderMapInfo = ShaderMapJobs.FindOrAdd(NewJobs[JobIndex]->Id);
 		ShaderMapInfo.bRecreateComponentRenderStateOnCompletion = bRecreateComponentRenderStateOnCompletion;
+		ShaderMapInfo.bSkipResultProcessing = bSkipResultProcessing;
 		auto* PipelineJob = NewJobs[JobIndex]->GetShaderPipelineJob();
 		if (PipelineJob)
 		{
@@ -1976,12 +1990,21 @@ void FShaderCompilingManager::ProcessCompiledShaderMaps(
 	// Which can happen if a material is edited while a background compile is going on
 	for (TMap<int32, FShaderMapFinalizeResults>::TIterator ProcessIt(CompiledShaderMaps); ProcessIt; ++ProcessIt)
 	{
+		int32 ShaderMapId = ProcessIt.Key();
+		FShaderMapFinalizeResults& CompileResults = ProcessIt.Value();
 		TRefCountPtr<FMaterialShaderMap> ShaderMap = NULL;
 		TArray<FMaterial*>* Materials = NULL;
 
+		if (CompileResults.bSkipResultProcessing)
+		{
+			ProcessIt.RemoveCurrent();
+			continue;
+		}
+
 		for (TMap<TRefCountPtr<FMaterialShaderMap>, TArray<FMaterial*> >::TIterator ShaderMapIt(FMaterialShaderMap::ShaderMapsBeingCompiled); ShaderMapIt; ++ShaderMapIt)
 		{
-			if (ShaderMapIt.Key()->CompilingId == ProcessIt.Key())
+			int32 CompileId = ShaderMapIt.Key()->CompilingId;
+			if (CompileId == ShaderMapId)
 			{
 				ShaderMap = ShaderMapIt.Key();
 				Materials = &ShaderMapIt.Value();
@@ -1994,7 +2017,6 @@ void FShaderCompilingManager::ProcessCompiledShaderMaps(
 		if (ShaderMap && Materials)
 		{
 			TArray<FString> Errors;
-			FShaderMapFinalizeResults& CompileResults = ProcessIt.Value();
 			const TArray<FShaderCommonCompileJob*>& ResultArray = CompileResults.FinishedJobs;
 
 			// Make a copy of the array as this entry of FMaterialShaderMap::ShaderMapsBeingCompiled will be removed below
@@ -2115,7 +2137,7 @@ void FShaderCompilingManager::ProcessCompiledShaderMaps(
 					delete ResultArray[JobIndex];
 				}
 
-				CompiledShaderMaps.Remove(ShaderMap->CompilingId);
+				ProcessIt.RemoveCurrent();
 			}
 
 			if (TimeBudget < 0)
@@ -2138,7 +2160,7 @@ void FShaderCompilingManager::ProcessCompiledShaderMaps(
 					delete CompilationResults[ResultIndex];
 				}
 
-				CompiledShaderMaps.Remove(GlobalShaderMapId);
+				ProcessIt.RemoveCurrent();
 			}
 		}
 	}
@@ -2169,7 +2191,6 @@ void FShaderCompilingManager::ProcessCompiledShaderMaps(
 	}
 #endif // WITH_EDITOR
 }
-
 
 
 

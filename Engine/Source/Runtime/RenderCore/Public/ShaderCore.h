@@ -193,6 +193,7 @@ enum ECompilerFlags
 	CFLAG_WaveOperations,
 	// Use DirectX Shader Compiler (DXC) to compile all shaders, intended for compatibility testing.
 	CFLAG_ForceDXC,
+	CFLAG_SkipOptimizations,
 };
 
 enum class EShaderParameterType : uint8
