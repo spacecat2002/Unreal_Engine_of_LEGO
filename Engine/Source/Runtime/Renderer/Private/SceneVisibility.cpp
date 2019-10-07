@@ -2723,9 +2723,12 @@ void ComputeDynamicMeshRelevance(EShadingPath ShadingPath, bool bAddLightmapDens
 				View.NumVisibleDynamicMeshElements[EMeshPass::HitProxyOpaqueOnly] += NumElements;
 			}
 #endif
-		}
 
 			if (ViewRelevance.bVelocityRelevance)
+			{
+				PassMask.Set(EMeshPass::Velocity);
+				View.NumVisibleDynamicMeshElements[EMeshPass::Velocity] += NumElements;
+			}
 
 			if (ViewRelevance.bTranslucentVelocityRelevance)
 			{
