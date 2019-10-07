@@ -2725,22 +2725,19 @@ void ComputeDynamicMeshRelevance(EShadingPath ShadingPath, bool bAddLightmapDens
 #endif
 		}
 
-		if (ViewRelevance.bVelocityRelevance)
-		{
-			PassMask.Set(EMeshPass::Velocity);
-			View.NumVisibleDynamicMeshElements[EMeshPass::Velocity] += NumElements;
-		}
+			if (ViewRelevance.bVelocityRelevance)
 
-		if (ViewRelevance.bTranslucentVelocityRelevance)
-		{
-			PassMask.Set(EMeshPass::TranslucentVelocity);
-			View.NumVisibleDynamicMeshElements[EMeshPass::TranslucentVelocity] += NumElements;
-		}
+			if (ViewRelevance.bTranslucentVelocityRelevance)
+			{
+				PassMask.Set(EMeshPass::TranslucentVelocity);
+				View.NumVisibleDynamicMeshElements[EMeshPass::TranslucentVelocity] += NumElements;
+			}
 
-		if (ViewRelevance.bUsesSingleLayerWaterMaterial)
-		{
-			PassMask.Set(EMeshPass::SingleLayerWaterPass);
-			View.NumVisibleDynamicMeshElements[EMeshPass::SingleLayerWaterPass] += NumElements;
+			if (ViewRelevance.bUsesSingleLayerWaterMaterial)
+			{
+				PassMask.Set(EMeshPass::SingleLayerWaterPass);
+				View.NumVisibleDynamicMeshElements[EMeshPass::SingleLayerWaterPass] += NumElements;
+			}
 		}
 	}
 
