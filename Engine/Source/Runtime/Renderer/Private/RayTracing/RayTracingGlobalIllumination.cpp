@@ -536,6 +536,11 @@ void FDeferredShadingSceneRenderer::RayTracingGlobalIlluminationCreateGatherPoin
 	FPathTracingLightData LightParameters;
 	SetupLightParameters(Scene->Lights, View, &LightParameters);
 
+	if (Scene->SkyLight && Scene->SkyLight->ShouldRebuildCdf())
+	{
+		// TODO: should be converted to RDG.
+		BuildSkyLightCdfs(GraphBuilder.RHICmdList, Scene->SkyLight);
+	}
 	FSkyLightData SkyLightParameters;
 	SetupSkyLightParameters(*Scene, &SkyLightParameters);
 
