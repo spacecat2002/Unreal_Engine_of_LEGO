@@ -2088,7 +2088,7 @@ void FD3D12RayTracingGeometry::BuildAccelerationStructure(FD3D12CommandContext& 
 		Desc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_NONE;
 		Desc.Type = GeometryType;
 
-		if (!Segment.bAllowAnyHitShader)
+		if (Segment.bForceOpaque)
 		{
 			// Deny anyhit shader invocations when this segment is hit
 			Desc.Flags |= D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;

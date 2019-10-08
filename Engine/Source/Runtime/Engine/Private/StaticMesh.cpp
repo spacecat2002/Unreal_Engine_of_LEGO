@@ -235,6 +235,14 @@ FArchive& operator<<(FArchive& Ar, FStaticMeshSection& Section)
 	Ar << Section.bEnableCollision;
 	Ar << Section.bCastShadow;
 
+	if(
+		!(Ar.IsLoading() && 
+		  Ar.CustomVer(FRenderingObjectVersion::GUID) < FRenderingObjectVersion::StaticMeshSectionForceOpaqueField)
+	  )
+	{
+		Ar << Section.bForceOpaque;
+	}
+
 #if WITH_EDITORONLY_DATA
 	if((!Ar.IsCooking() && !Ar.IsFilterEditorOnly()) || (Ar.IsCooking() && Ar.CookingTarget()->HasEditorOnlyData()))
 	{
@@ -1194,6 +1202,7 @@ void FStaticMeshLODResources::InitResources(UStaticMesh* Parent)
 					FRayTracingGeometrySegment Segment;
 					Segment.FirstPrimitive = Section.FirstIndex / 3;
 					Segment.NumPrimitives = Section.NumTriangles;
+					Segment.bForceOpaque = Section.bForceOpaque;
 					GeometrySections.Add(Segment);
 					Initializer.TotalPrimitiveCount += Section.NumTriangles;
 				}
@@ -1640,6 +1649,7 @@ void FStaticMeshRenderData::ResolveSectionInfo(UStaticMesh* Owner)
 			Section.MaterialIndex = Info.MaterialIndex;
 			Section.bEnableCollision = Info.bEnableCollision;
 			Section.bCastShadow = Info.bCastShadow;
+			Section.bForceOpaque = Info.bForceOpaque;
 		}
 
 		// Arbitrary constant used as a base in Pow(K, LODIndex) that achieves much the same progression as a
@@ -2051,7 +2061,7 @@ static void SerializeBuildSettingsForDDC(FArchive& Ar, FMeshBuildSettings& Build
 // differences, etc.) replace the version GUID below with a new one.
 // In case of merge conflicts with DDC versions, you MUST generate a new GUID
 // and set this new GUID as the version.                                       
-#define STATICMESH_DERIVEDDATA_VER TEXT("7D08EB504D3A42A4AAFAE139899C44E7")
+#define STATICMESH_DERIVEDDATA_VER TEXT("37FAD71227724F30B9440EB8A4F2BADF")
 
 static const FString& GetStaticMeshDerivedDataVersion()
 {

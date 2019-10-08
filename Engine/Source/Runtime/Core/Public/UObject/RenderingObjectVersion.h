@@ -100,6 +100,9 @@ struct CORE_API FRenderingObjectVersion
 		// Deterministic ShaderMapID serialization
 		MaterialShaderMapIdSerialization,
 
+		// Add force opaque flag for static mesh
+		StaticMeshSectionForceOpaqueField,
+
 		// -----<new versions can be added above this line>-------------------------------------------------
 		VersionPlusOne,
 		LatestVersion = VersionPlusOne - 1
