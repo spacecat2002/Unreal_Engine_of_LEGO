@@ -110,7 +110,6 @@ bool FORCEINLINE IsRunningRHIInTaskThread()
 
 
 extern RHI_API bool GEnableAsyncCompute;
-extern RHI_API bool GSupportAsyncComputeRaytracingBuildBVH;
 extern RHI_API TAutoConsoleVariable<int32> CVarRHICmdWidth;
 extern RHI_API TAutoConsoleVariable<int32> CVarRHICmdFlushRenderThreadTasks;
 

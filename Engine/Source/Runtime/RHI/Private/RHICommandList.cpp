@@ -132,7 +132,6 @@ uint32 GWorkingRHIThreadStartCycles = 0;
 uint64 GInputLatencyTime = 0;
 
 RHI_API bool GEnableAsyncCompute = true;
-RHI_API bool GSupportAsyncComputeRaytracingBuildBVH = false;
 RHI_API FRHICommandListExecutor GRHICommandList;
 
 static FGraphEventArray AllOutstandingTasks;
