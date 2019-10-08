@@ -504,7 +504,7 @@ void FD3D12StateCacheBase::ApplyState()
 		for (uint32 Stage = StartStage; Stage < EndStage; ++Stage)
 		{
 			// Note this code assumes the starting register is index 0.
-			const SRVSlotMask CurrentShaderSRVRegisterMask = ((SRVSlotMask)1 << PipelineState.Common.CurrentShaderSRVCounts[Stage]) - (SRVSlotMask)1;
+			const SRVSlotMask CurrentShaderSRVRegisterMask = BitMask<SRVSlotMask>(PipelineState.Common.CurrentShaderSRVCounts[Stage]);
 			CurrentShaderDirtySRVSlots[Stage] = CurrentShaderSRVRegisterMask & PipelineState.Common.SRVCache.DirtySlotMask[Stage];
 			if (CurrentShaderDirtySRVSlots[Stage])
 			{
@@ -522,7 +522,7 @@ void FD3D12StateCacheBase::ApplyState()
 				NumViews += NumSRVs[Stage];
 			}
 
-			const CBVSlotMask CurrentShaderCBVRegisterMask = ((CBVSlotMask)1 << PipelineState.Common.CurrentShaderCBCounts[Stage]) - (CBVSlotMask)1;
+			const CBVSlotMask CurrentShaderCBVRegisterMask = BitMask<CBVSlotMask>(PipelineState.Common.CurrentShaderCBCounts[Stage]);
 			CurrentShaderDirtyCBVSlots[Stage] = CurrentShaderCBVRegisterMask & PipelineState.Common.CBVCache.DirtySlotMask[Stage];
 #if USE_STATIC_ROOT_SIGNATURE
 			if (CurrentShaderDirtyCBVSlots[Stage])
