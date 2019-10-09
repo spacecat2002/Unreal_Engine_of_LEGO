@@ -818,7 +818,7 @@ void FTextureSource::Compress()
 		ERGBFormat RawFormat = (Format == TSF_G8 || Format == TSF_G16) ? ERGBFormat::Gray : ERGBFormat::RGBA;
 		if ( ImageWrapper.IsValid() && ImageWrapper->SetRaw( BulkDataPtr, BulkData.GetBulkDataSize(), SizeX, SizeY, RawFormat, (Format == TSF_G16 || Format == TSF_RGBA16) ? 16 : 8 ) )
 		{
-			const TArray<uint8>& CompressedData = ImageWrapper->GetCompressed();
+			const TArray64<uint8>& CompressedData = ImageWrapper->GetCompressed();
 			if ( CompressedData.Num() > 0 )
 			{
 				BulkDataPtr = (uint8*)BulkData.Realloc(CompressedData.Num());
@@ -860,20 +860,15 @@ uint8* FTextureSource::LockMip(int32 BlockIndex, int32 LayerIndex, int32 MipInde
 				{
 					check( ImageWrapper->GetWidth() == SizeX );
 					check( ImageWrapper->GetHeight() == SizeY );
-					const TArray<uint8>* RawData = NULL;
+					TArray64<uint8> RawData;
 					// TODO: TSF_BGRA8 is stored as RGBA, so the R and B channels are swapped in the internal png. Should we fix this?
 					ERGBFormat RawFormat = (Format == TSF_G8 || Format == TSF_G16) ? ERGBFormat::Gray : ERGBFormat::RGBA;
-					if (ImageWrapper->GetRaw( RawFormat, (Format == TSF_G16 || Format == TSF_RGBA16) ? 16 : 8, RawData ))
+					if (ImageWrapper->GetRaw( RawFormat, (Format == TSF_G16 || Format == TSF_RGBA16) ? 16 : 8, RawData ) && RawData.Num() > 0)
 					{
-						if (RawData->Num() > 0)
-						{
-							LockedMipData = (uint8*)FMemory::Malloc(RawData->Num());
-							// PVS-Studio does not understand that IImageWrapper::GetRaw's return value validates the pointer, so we disable
-							// the warning that we are using the RawData pointer before checking for null:
-							FMemory::Memcpy(LockedMipData, RawData->GetData(), RawData->Num()); //-V595
-						}
+						LockedMipData = (uint8*)FMemory::Malloc(RawData.Num());
+						FMemory::Memcpy(LockedMipData, RawData.GetData(), RawData.Num());
 					}
-					if (RawData == NULL || RawData->Num() == 0)
+					else
 					{
 						UE_LOG(LogTexture, Warning, TEXT("PNG decompression of source art failed"));
 					}
@@ -941,12 +936,10 @@ bool FTextureSource::GetMipData(TArray64<uint8>& OutMipData, int32 BlockIndex, i
 					if (ImageWrapper->GetWidth() == SizeX
 						&& ImageWrapper->GetHeight() == SizeY)
 					{
-						const TArray<uint8>* RawData = NULL;
 						// TODO: TSF_BGRA8 is stored as RGBA, so the R and B channels are swapped in the internal png. Should we fix this?
 						ERGBFormat RawFormat = (Format == TSF_G8 || Format == TSF_G16) ? ERGBFormat::Gray : ERGBFormat::RGBA;
-						if (ImageWrapper->GetRaw( RawFormat, (Format == TSF_G16 || Format == TSF_RGBA16) ? 16 : 8, RawData ))
+						if (ImageWrapper->GetRaw( RawFormat, (Format == TSF_G16 || Format == TSF_RGBA16) ? 16 : 8, OutMipData ))
 						{
-							OutMipData = *RawData;
 							bSuccess = true;
 						}
 						else
