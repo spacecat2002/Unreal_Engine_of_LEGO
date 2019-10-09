@@ -506,7 +506,7 @@ extern RHI_API bool GRHISupportsDynamicResolution;
 /** Whether or not the RHI supports ray tracing on current hardware (acceleration structure building and new ray tracing-specific shader types). */
 extern RHI_API bool GRHISupportsRayTracing;
 
-/** Whether or not the RHI supports async build of ray tracing acceleration structures. */
+/** Whether or not the RHI supports async building ray tracing acceleration structures. */
 extern RHI_API bool GRHISupportsRayTracingAsyncBuildAccelerationStructure;
 
 /** Whether or not the RHI supports shader wave operations (shader model 6.0). */
