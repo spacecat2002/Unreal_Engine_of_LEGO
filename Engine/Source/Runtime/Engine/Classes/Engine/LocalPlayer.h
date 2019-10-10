@@ -23,7 +23,7 @@
 #include "LocalPlayer.generated.h"
 
 
-#define INVALID_CONTROLLERID 255
+#define INVALID_CONTROLLERID (-1)
 
 class AActor;
 class FSceneView;
@@ -204,8 +204,7 @@ public:
 	FOnControllerIdChanged& OnControllerIdChanged() const { return OnControllerIdChangedEvent; }
 
 private:
-	FSceneViewStateReference ViewState;
-	TArray<FSceneViewStateReference> StereoViewStates;
+	TArray<FSceneViewStateReference> ViewStates;
 
 	/** The controller ID which this player accepts input from. */
 	UPROPERTY()
