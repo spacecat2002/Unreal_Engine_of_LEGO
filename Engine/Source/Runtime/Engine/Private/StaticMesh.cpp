@@ -1186,12 +1186,9 @@ void FStaticMeshLODResources::InitResources(UStaticMesh* Parent)
 			[this](FRHICommandListImmediate& RHICmdList)
 			{
 				FRayTracingGeometryInitializer Initializer;
-				Initializer.PositionVertexBuffer = VertexBuffers.PositionVertexBuffer.VertexBufferRHI;
+				
 				Initializer.IndexBuffer = IndexBuffer.IndexBufferRHI;
-				Initializer.VertexBufferStride = VertexBuffers.PositionVertexBuffer.GetStride();
-				Initializer.VertexBufferByteOffset = 0;
 				Initializer.TotalPrimitiveCount = 0; // This is calculated below based on static mesh section data
-				Initializer.VertexBufferElementType = VET_Float3;
 				Initializer.GeometryType = RTGT_Triangles;
 				Initializer.bFastBuild = false;
 				
@@ -1200,6 +1197,10 @@ void FStaticMeshLODResources::InitResources(UStaticMesh* Parent)
 				for (const FStaticMeshSection& Section : Sections)
 				{
 					FRayTracingGeometrySegment Segment;
+					Segment.VertexBuffer = VertexBuffers.PositionVertexBuffer.VertexBufferRHI;
+					Segment.VertexBufferElementType = VET_Float3;
+					Segment.VertexBufferStride = VertexBuffers.PositionVertexBuffer.GetStride();
+					Segment.VertexBufferOffset = 0;
 					Segment.FirstPrimitive = Section.FirstIndex / 3;
 					Segment.NumPrimitives = Section.NumTriangles;
 					Segment.bForceOpaque = Section.bForceOpaque;
