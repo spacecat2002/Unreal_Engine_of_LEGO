@@ -601,6 +601,8 @@ void USkeletalMeshComponent::OnUnregister()
 		}
 	}
 
+	RequiredBones.Reset();
+
 	Super::OnUnregister();
 }
 
