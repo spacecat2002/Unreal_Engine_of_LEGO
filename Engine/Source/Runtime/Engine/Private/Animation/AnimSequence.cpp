@@ -3090,7 +3090,8 @@ void UAnimSequence::RemapTracksToNewSkeleton( USkeleton* NewSkeleton, bool bConv
 			SetSkeleton(NewSkeleton);
 
 			// convert back to animated data with new skeleton
-			ConvertRiggingDataToAnimationData(RiggingAnimationData);
+			const bool bPerformPostProcess = false; //Don't do PostProcess during Remap as any animations we reference may not have been updated yet
+			ConvertRiggingDataToAnimationData(RiggingAnimationData, bPerformPostProcess);
 		}
 		// @todo end rig testing
 		// @IMPORTANT: now otherwise this will try to do bone to bone mapping
@@ -4018,7 +4019,7 @@ bool UAnimSequence::ConvertAnimationDataToRiggingData(FAnimSequenceTrackContaine
 	return false;
 }
 
-bool UAnimSequence::ConvertRiggingDataToAnimationData(FAnimSequenceTrackContainer& RiggingAnimationData)
+bool UAnimSequence::ConvertRiggingDataToAnimationData(FAnimSequenceTrackContainer& RiggingAnimationData, bool bPerformPostProcess)
 {
 	if (RiggingAnimationData.GetNum() > 0)
 	{
@@ -4112,7 +4113,11 @@ bool UAnimSequence::ConvertRiggingDataToAnimationData(FAnimSequenceTrackContaine
 		{
 			TrackToSkeletonMapTable[TrackIdx++].BoneTreeIndex = MySkeleton->GetReferenceSkeleton().FindBoneIndex(TrackName);
 		}
-		PostProcessSequence();
+
+		if (bPerformPostProcess)
+		{
+			PostProcessSequence();
+		}
 
 		return true;
 	}
