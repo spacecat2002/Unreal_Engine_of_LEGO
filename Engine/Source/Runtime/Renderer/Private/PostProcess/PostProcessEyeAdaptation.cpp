@@ -231,6 +231,9 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	const float HistogramBias = -HistogramLogMin * HistogramScale;
 	const float LuminanceMin = FMath::Exp2(HistogramLogMin);
 
+	// if we had a camera cut, then instead of slowly lerping to the target exposure we will just jump to it
+	const float ForceClampInfluence = View.bCameraCut ? 1.0f : 0.0f;
+
 	FEyeAdaptationParameters Parameters;
 	Parameters.ExposureLowPercent = ExposureLowPercent;
 	Parameters.ExposureHighPercent = ExposureHighPercent;
@@ -245,6 +248,7 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	Parameters.LuminanceMin = LuminanceMin;
 	Parameters.CalibrationConstantInverse = 1.0f / CalibrationConstant;
 	Parameters.WeightSlope = WeightSlope;
+	Parameters.ForceClampInfluence = ForceClampInfluence;
 	return Parameters;
 }
 
