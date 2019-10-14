@@ -45,6 +45,17 @@ void OnUpdateSkylights(UWorld* InWorld)
 	USkyLightComponent::UpdateSkyCaptureContents(InWorld);
 }
 
+static bool SkipStaticSkyLightCapture(USkyLightComponent& SkyLight)
+{
+	// We do the following because capture is a heavy operation that can time out on some platforms at launch. But it is not needed for a static sky light.
+	// According to mobility, we remove sky light from capture update queue if Mobility==Static==StaticLighting. The render side proxy will never be created.
+	// We do not even need to check if lighting as been built because the skylight does not generate reflection in the static mobility case.
+	// and Lightmass will capture the scene in any case independently using CaptureEmissiveRadianceEnvironmentCubeMap.
+	// This is also fine in editor because a static sky light will not contribute to any lighting when drag and drop in a level and captured. 
+	// In this case only a "lighting build" will result in usable lighting on any objects.
+	return SkyLight.HasStaticLighting();
+}
+
 FAutoConsoleCommandWithWorld CaptureConsoleCommand(
 	TEXT("r.SkylightRecapture"),
 	TEXT("Updates all stationary and movable skylights, useful for debugging the capture pipeline"),
@@ -258,7 +269,7 @@ FSkyLightSceneProxy* USkyLightComponent::CreateSceneProxy() const
 
 void USkyLightComponent::SetCaptureIsDirty()
 { 
-	if (GetVisibleFlag() && bAffectsWorld)
+	if (GetVisibleFlag() && bAffectsWorld && !SkipStaticSkyLightCapture(*this))
 	{
 		FScopeLock Lock(&SkyCapturesToUpdateLock);
 
@@ -377,8 +388,8 @@ void USkyLightComponent::PostLoad()
 
 	SanitizeCubemapSize();
 
-	// All components are queued for update on creation by default, remove if needed
-	if (!GetVisibleFlag() || HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject))
+	// All components are queued for update on creation by default. But we do not want this top happen in some cases.
+	if (!GetVisibleFlag() || HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject) || SkipStaticSkyLightCapture(*this))
 	{
 		FScopeLock Lock(&SkyCapturesToUpdateLock);
 		SkyCapturesToUpdate.Remove(this);
