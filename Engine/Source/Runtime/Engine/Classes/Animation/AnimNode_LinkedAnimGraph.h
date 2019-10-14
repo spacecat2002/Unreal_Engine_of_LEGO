@@ -100,6 +100,9 @@ protected:
 	/** Helper function for finding function inputs when linking/unlinking */
 	int32 FindFunctionInputIndex(const FAnimBlueprintFunction& AnimBlueprintFunction, const FName& InInputName);
 
+	/** Request a blend when the active instance changes */
+	void RequestBlend(const IAnimClassInterface* PriorAnimBPClass, const IAnimClassInterface* NewAnimBPClass);
+
 	friend class UAnimInstance;
 };
 
