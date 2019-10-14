@@ -87,11 +87,17 @@ void CacheCurrentPlatformAudioCookOverrides(FPlatformAudioCookOverrides& OutOver
 #elif PLATFORM_PS4
 	const TCHAR* CategoryName = TEXT("/Script/PS4PlatformEditor.PS4TargetSettings");
 #elif PLATFORM_XBOXONE
-	const TCHAR* CategoryName = TEXT("/Script/XboxOneTargetPlatform.XboxOneTargetSettings");
+	const TCHAR* CategoryName = TEXT("/Script/XboxOnePlatformEditor.XboxOneTargetSettings");
 #else
 	const TCHAR* CategoryName = TEXT("");
 #endif
 
+	int32 SoundCueCookQualityIndex = INDEX_NONE;
+	if (GConfig->GetInt(CategoryName, TEXT("SoundCueCookQualityIndex"), SoundCueCookQualityIndex, GEngineIni))
+	{
+		OutOverrides.SoundCueCookQualityIndex = SoundCueCookQualityIndex;
+	}
+	
 	GConfig->GetBool(CategoryName, TEXT("bResampleForDevice"), OutOverrides.bResampleForDevice, GEngineIni);
 
 	GConfig->GetFloat(CategoryName, TEXT("CompressionQualityModifier"), OutOverrides.CompressionQualityModifier, GEngineIni);

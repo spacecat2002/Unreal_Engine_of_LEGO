@@ -1617,12 +1617,12 @@ void FRHICommandList::EndFrame()
 	if (Bypass())
 	{
 		GetContext().RHIEndFrame();
+		GDynamicRHI->RHIAdvanceFrameFence();
 		return;
 	}
 
 	ALLOC_COMMAND(FRHICommandEndFrame)();
-
-	FRHICommandListExecutor::GetImmediateCommandList().AdvanceFrameFence();
+	GDynamicRHI->RHIAdvanceFrameFence();
 
 	if (!IsRunningRHIInSeparateThread())
 	{
@@ -2590,21 +2590,22 @@ void FDynamicRHI::RHIUnlockTextureCubeFace_RenderThread(class FRHICommandListImm
 }
 
 
-void FDynamicRHI::RHIMapStagingSurface_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHITexture* Texture, void*& OutData, int32& OutWidth, int32& OutHeight)
+void FDynamicRHI::RHIMapStagingSurface_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHITexture* Texture, FRHIGPUFence* Fence, void*& OutData, int32& OutWidth, int32& OutHeight)
 {
+	if (Fence == nullptr || !Fence->Poll())
 	{
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_RHIMETHOD_MapStagingSurface_Flush);
 		RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThread);
 	}
-	GDynamicRHI->RHIMapStagingSurface(Texture, OutData, OutWidth, OutHeight, RHICmdList.GetGPUMask().ToIndex());
+	{
+		FScopedRHIThreadStaller StallRHIThread(RHICmdList);
+		GDynamicRHI->RHIMapStagingSurface(Texture, Fence, OutData, OutWidth, OutHeight, RHICmdList.GetGPUMask().ToIndex());
+	}
 }
 
 void FDynamicRHI::RHIUnmapStagingSurface_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHITexture* Texture)
 {
-	{
-		QUICK_SCOPE_CYCLE_COUNTER(STAT_RHIMETHOD_MapStagingSurface_Flush);
-		RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThread);
-	}
+	FScopedRHIThreadStaller StallRHIThread(RHICmdList);
 	GDynamicRHI->RHIUnmapStagingSurface(Texture, RHICmdList.GetGPUMask().ToIndex());
 }
 

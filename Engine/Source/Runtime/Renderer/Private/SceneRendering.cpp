@@ -194,6 +194,11 @@ static TAutoConsoleVariable<int32> CVarViewRectUseScreenBottom(
 	ECVF_RenderThreadSafe
 );
 
+static TAutoConsoleVariable<float> CVarConstantWaterDepth(
+	TEXT("r.Water.ConstantWaterDepth"),
+	-1.0f,
+	TEXT("Setting this to a negative value means disabled and reading from scene depth texture. Specified in unreal units."),
+	ECVF_Scalability | ECVF_RenderThreadSafe);
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 static TAutoConsoleVariable<float> CVarGeneralPurposeTweak(
@@ -1310,8 +1315,8 @@ void FViewInfo::SetupUniformBufferParameters(
 		AtmosphereLightDataClearStartIndex = NUM_ATMOSPHERE_LIGHTS;	// Do not clear any atmosphere light data, this component sets everything it needs
 
 		// The constants below should match the one in SkyAtmosphereCommon.ush
-		const float SkyUnitToCm = 1.0f / 0.00001f;
-		const float PlanetRadiusOffset = 0.001f;
+		const float SkyUnitToCm = 1.0f / 0.00001f;	// Kilometers to Centimeters
+		const float PlanetRadiusOffset = 0.01f;		// Always force to be 10 meters above the ground/sea level (to always see the sky and not be under the virtual planet occluding ray tracing)
 
 		const float Offset = PlanetRadiusOffset * SkyUnitToCm;
 		const float BottomRadiusWorld = AtmosphereSetup.BottomRadius * SkyUnitToCm;
@@ -1496,6 +1501,8 @@ void FViewInfo::SetupUniformBufferParameters(
 
 		ViewUniformShaderParameters.GeneralPurposeTweak = Value;
 	}
+
+	ViewUniformShaderParameters.ConstantWaterDepth = CVarConstantWaterDepth.GetValueOnRenderThread();
 
 	ViewUniformShaderParameters.DemosaicVposOffset = 0.0f;
 	{
@@ -2583,6 +2590,13 @@ FSceneRenderer::~FSceneRenderer()
 	// Manually release references to TRefCountPtrs that are allocated on the mem stack, which doesn't call dtors
 	SortedShadowsForShadowDepthPass.Release();
 
+	extern TSet<IPersistentViewUniformBufferExtension*> PersistentViewUniformBufferExtensions;
+
+	for (IPersistentViewUniformBufferExtension* Extension : PersistentViewUniformBufferExtensions)
+	{
+		Extension->EndFrame();
+	}
+
 	Views.Empty();
 }
 
@@ -3165,13 +3179,6 @@ void FSceneRenderer::OnStartRender(FRHICommandListImmediate& RHICmdList)
 		{
 			View.ViewState->OnStartRender(View, ViewFamily);
 		}
-	}
-
-	extern TSet<IPersistentViewUniformBufferExtension*> PersistentViewUniformBufferExtensions;
-
-	for (IPersistentViewUniformBufferExtension* Extension : PersistentViewUniformBufferExtensions)
-	{
-		Extension->BeginFrame();
 	}
 }
 

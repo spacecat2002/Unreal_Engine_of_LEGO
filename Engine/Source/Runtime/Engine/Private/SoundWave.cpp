@@ -31,14 +31,6 @@
 
 #include "Misc/CommandLine.h"
 
-static int32 BypassPlayWhenSilentCVar = 0;
-FAutoConsoleVariableRef CVarBypassPlayWhenSilent(
-	TEXT("au.BypassPlayWhenSilent"),
-	BypassPlayWhenSilentCVar,
-	TEXT("When set to 1, ignores the Play When Silent flag for non-procedural sources.\n")
-	TEXT("0: Honor the Play When Silent flag, 1: stop all silent non-procedural sources."),
-	ECVF_Default);
-
 static int32 LoadIntoCacheOnPostLoadCVar = 0;
 FAutoConsoleVariableRef CVarLoadIntoCacheOnPostLoad(
 	TEXT("au.streamcache.LoadIntoCacheOnPostLoad"),
@@ -206,6 +198,9 @@ USoundWave::USoundWave(const FObjectInitializer& ObjectInitializer)
 	bCachedSampleRateFromPlatformSettings = false;
 	bSampleRateManuallyReset = false;
 	CachedSampleRateOverride = 0.0f;
+#else
+	bWasStreamCachingEnabledOnLastCook = FPlatformCompressionUtilities::IsCurrentPlatformUsingStreamCaching();
+	RunningPlatformData = nullptr;
 #endif //!WITH_EDITOR
 }
 
@@ -632,6 +627,9 @@ void USoundWave::BeginGetCompressedData(FName Format, const FPlatformAudioCookOv
 		return;
 	}
 
+	// If stream caching has been enabled or disabled since the previous DDC operation, we need to invalidate the current
+	InvalidateSoundWaveIfNeccessary();
+
 	FName PlatformSpecificFormat = GetPlatformSpecificFormat(Format, CompressionOverrides);
 
 	if (!CompressedFormatData.Contains(PlatformSpecificFormat) && !AsyncLoadingDataFormats.Contains(PlatformSpecificFormat))
@@ -704,10 +702,21 @@ FByteBulkData* USoundWave::GetCompressedData(FName Format, const FPlatformAudioC
 	return Result->GetBulkDataSize() > 0 ? Result : NULL; // we don't return empty bulk data...but we save it to avoid thrashing the DDC
 }
 
-void USoundWave::InvalidateCompressedData()
+void USoundWave::InvalidateCompressedData(bool bFreeResources)
 {
 	CompressedDataGuid = FGuid::NewGuid();
+	ZerothChunkData.Reset();
 	CompressedFormatData.FlushData();
+
+	if (bFreeResources)
+	{
+		FreeResources(false);
+	}
+}
+
+bool USoundWave::HasStreamingChunks()
+{
+	return RunningPlatformData != NULL && RunningPlatformData->Chunks.Num() > 0;
 }
 
 void USoundWave::PostLoad()
@@ -735,8 +744,10 @@ void USoundWave::PostLoad()
 		return;
 	}
 
+#if !WITH_EDITOR
 	// In case any code accesses bStreaming directly, we fix up bStreaming based on the current platform's cook overrides.
 	bStreaming = IsStreaming();
+#endif
 
 	// Compress to whatever formats the active target platforms want
 	// static here as an optimization
@@ -779,14 +790,16 @@ void USoundWave::PostLoad()
 		IStreamingManager::Get().GetAudioStreamingManager().AddStreamingSoundWave(this);
 	}
 
-	if (ShouldUseStreamCaching() && IsStreaming())
+	const bool bDoesSoundWaveHaveStreamingAudioData = HasStreamingChunks();
+
+	if (ShouldUseStreamCaching() && IsStreaming() && bDoesSoundWaveHaveStreamingAudioData)
 	{
 		EnsureZerothChunkIsLoaded();
 	}
 
 	const bool bShouldPrimeSound = LoadIntoCacheOnPostLoadCVar || bLoadCompressedAudioWhenSoundWaveIsLoaded;
 
-	if (bShouldPrimeSound && FPlatformCompressionUtilities::IsCurrentPlatformUsingStreamCaching())
+	if (bShouldPrimeSound && FPlatformCompressionUtilities::IsCurrentPlatformUsingStreamCaching() && bDoesSoundWaveHaveStreamingAudioData)
 	{
 		// Load rest of the audio into cache.
 		IStreamingManager::Get().GetAudioStreamingManager().RequestChunk(this, 1, [](EAudioChunkLoadResult) {});
@@ -970,7 +983,31 @@ void USoundWave::RemoveAudioResource()
 #endif
 }
 
+
+
 #if WITH_EDITOR
+
+void USoundWave::InvalidateSoundWaveIfNeccessary()
+{
+	if (bProcedural)
+	{
+		return;
+	}
+
+	// if stream caching was enabled since the last time we invalidated the compressed audio, force a re-cook.
+	const bool bIsStreamCachingEnabled = FPlatformCompressionUtilities::IsCurrentPlatformUsingStreamCaching();
+	if (bWasStreamCachingEnabledOnLastCook != bIsStreamCachingEnabled)
+	{
+		InvalidateCompressedData(true);
+		bWasStreamCachingEnabledOnLastCook = bIsStreamCachingEnabled;
+		
+		// If stream caching is now turned on, recook the streaming audio if neccessary.
+		if(bIsStreamCachingEnabled && IsStreaming())
+		{
+			EnsureZerothChunkIsLoaded();
+		}
+	}
+}
 
 float USoundWave::GetSampleRateForTargetPlatform(const ITargetPlatform* TargetPlatform)
 {
@@ -1404,7 +1441,7 @@ void USoundWave::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEv
 }
 #endif // WITH_EDITOR
 
-void USoundWave::FreeResources()
+void USoundWave::FreeResources(bool bStopSoundsUsingThisResource)
 {
 	check(IsInAudioThread());
 
@@ -1418,7 +1455,7 @@ void USoundWave::FreeResources()
 	{
 		// Notify the audio device to free the bulk data associated with this wave.
 		FAudioDeviceManager* AudioDeviceManager = GEngine->GetAudioDeviceManager();
-		if (AudioDeviceManager)
+		if (bStopSoundsUsingThisResource && AudioDeviceManager)
 		{
 			AudioDeviceManager->StopSoundsUsingResource(this);
 			AudioDeviceManager->FreeResource(this);
@@ -1750,13 +1787,7 @@ void USoundWave::Parse(FAudioDevice* AudioDevice, const UPTRINT NodeWaveInstance
 
 	WaveInstance->bIsAmbisonics = bIsAmbisonics;
 
-	const float WaveInstanceVolume = WaveInstance->GetVolumeWithDistanceAttenuation() * WaveInstance->GetDynamicVolume();
-
-	// When the BypassVirtualizeWhenSilent cvar is enabled, we should only honor bVirtualizeWhenSilent for procedural sounds:
-	const bool bHasSubtitles = ActiveSound.bHandleSubtitles && (ActiveSound.bHasExternalSubtitles || (Subtitles.Num() > 0));
-	const bool bStarted = WaveInstanceVolume > KINDA_SMALL_NUMBER || ActiveSound.ComponentVolumeFader.IsFadingIn();
-	const bool bCanPlayWhenSilent = ActiveSound.IsPlayWhenSilent() && (!BypassPlayWhenSilentCVar || bProcedural);
-	if (bStarted || bCanPlayWhenSilent || bHasSubtitles)
+	if (WaveInstance->IsPlaying())
 	{
 		WaveInstances.Add(WaveInstance);
 		ActiveSound.bFinished = false;

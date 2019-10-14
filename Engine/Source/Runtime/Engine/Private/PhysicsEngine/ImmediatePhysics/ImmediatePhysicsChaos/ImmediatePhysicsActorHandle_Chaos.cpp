@@ -24,7 +24,7 @@ namespace ImmediatePhysics_Chaos
 	//
 
 	template<typename T, int d>
-	Chaos::PMatrix<T, d, d> CalculateInertia_Solid(T Mass, const FKSphereElem& SphereElem)
+	Chaos::PMatrix<T, d, d> CalculateInertia_Solid(const T Mass, const FKSphereElem& SphereElem)
 	{
 		return Chaos::PMatrix<T, d, d>(
 			((T)2 / (T)5) * Mass * SphereElem.Radius * SphereElem.Radius,
@@ -34,7 +34,7 @@ namespace ImmediatePhysics_Chaos
 	}
 
 	template<typename T, int d>
-	Chaos::PMatrix<T, d, d> CalculateInertia_Solid(T Mass, const FKSphylElem& SphylElem)
+	Chaos::PMatrix<T, d, d> CalculateInertia_Solid(const T Mass, const FKSphylElem& SphylElem)
 	{
 		return Chaos::PMatrix<T, d, d>(
 			((T)1 / (T)12) * Mass * ((T)3 * SphylElem.Radius + SphylElem.Length),
@@ -44,7 +44,7 @@ namespace ImmediatePhysics_Chaos
 	}
 
 	template<typename T, int d>
-	Chaos::PMatrix<T, d, d> CalculateInertia_Solid(T Mass, const FKBoxElem& BoxElem)
+	Chaos::PMatrix<T, d, d> CalculateInertia_Solid(const T Mass, const FKBoxElem& BoxElem)
 	{
 		return Chaos::PMatrix<T, d, d>(
 			((T)1 / (T)12) * Mass * (BoxElem.Y * BoxElem.Y + BoxElem.Z * BoxElem.Z),
@@ -54,43 +54,34 @@ namespace ImmediatePhysics_Chaos
 	}
 
 	template<typename T, int d>
-	void CalculateMassProperties(T Density, const FVector& Scale, const FTransform& LocalTransform, const FKAggregateGeom& AggGeom, T& OutMass, Chaos::TMassProperties<T, d>& OutMassProperties)
+	void CalculateMassProperties(const FVector& Scale, const FTransform& LocalTransform, const FKAggregateGeom& AggGeom, Chaos::TMassProperties<T, d>& OutMassProperties)
 	{
 		using namespace Chaos;
 		TArray<TMassProperties<T, d>> AllMassProperties;
-		T AllMass = 0;
 
 		for (uint32 i = 0; i < static_cast<uint32>(AggGeom.SphereElems.Num()); ++i)
 		{
 			const FKSphereElem ScaledSphereElem = AggGeom.SphereElems[i].GetFinalScaled(Scale, LocalTransform);
 
-			T Volume = ScaledSphereElem.GetVolume(FVector::OneVector);
-			T Mass = Density * Volume;
-
 			TMassProperties<T, d> MassProperties;
 			MassProperties.CenterOfMass = LocalTransform.GetTranslation() + ScaledSphereElem.Center;
 			MassProperties.RotationOfMass = TRotation<T, d>::FromIdentity();
-			MassProperties.Volume = Volume;
-			MassProperties.InertiaTensor = CalculateInertia_Solid<T, d>(Mass, ScaledSphereElem);
+			MassProperties.Volume = ScaledSphereElem.GetVolume(FVector::OneVector);
+			MassProperties.InertiaTensor = CalculateInertia_Solid<T, d>(MassProperties.Volume, ScaledSphereElem);
 
 			AllMassProperties.Add(MassProperties);
-			AllMass += Mass;
 		}
 		for (uint32 i = 0; i < static_cast<uint32>(AggGeom.BoxElems.Num()); ++i)
 		{
 			const auto& BoxElem = AggGeom.BoxElems[i];
 
-			T Volume = BoxElem.GetVolume(Scale);
-			T Mass = Density * Volume;
-
 			TMassProperties<T, d> MassProperties;
 			MassProperties.CenterOfMass = LocalTransform.GetTranslation() + BoxElem.Center;
 			MassProperties.RotationOfMass = LocalTransform.GetRotation() * TRotation<T, d>(FQuat(BoxElem.Rotation));
-			MassProperties.Volume = Volume;
-			MassProperties.InertiaTensor = CalculateInertia_Solid<T, d>(Mass, BoxElem);
+			MassProperties.Volume = BoxElem.GetVolume(Scale);
+			MassProperties.InertiaTensor = CalculateInertia_Solid<T, d>(MassProperties.Volume, BoxElem);
 
 			AllMassProperties.Add(MassProperties);
-			AllMass += Mass;
 		}
 		for (uint32 i = 0; i < static_cast<uint32>(AggGeom.SphylElems.Num()); ++i)
 		{
@@ -103,31 +94,23 @@ namespace ImmediatePhysics_Chaos
 				//not a capsule just use a sphere
 				const FKSphereElem ScaledSphereElem = FKSphereElem(Radius);
 
-				T Volume = ScaledSphereElem.GetVolume(FVector::OneVector);
-				T Mass = Density * Volume;
-
 				TMassProperties<T, d> MassProperties;
 				MassProperties.CenterOfMass = LocalTransform.GetTranslation() + ScaledSphereElem.Center;
 				MassProperties.RotationOfMass = TRotation<T, d>::FromIdentity();
-				MassProperties.Volume = Volume;
-				MassProperties.InertiaTensor = CalculateInertia_Solid<T, d>(Mass, ScaledSphereElem);
+				MassProperties.Volume = ScaledSphereElem.GetVolume(FVector::OneVector);
+				MassProperties.InertiaTensor = CalculateInertia_Solid<T, d>(MassProperties.Volume, ScaledSphereElem);
 
 				AllMassProperties.Add(MassProperties);
-				AllMass += Mass;
 			}
 			else
 			{
-				T Volume = ScaledSphylElem.GetVolume(FVector::OneVector);
-				T Mass = Density * Volume;
-
 				TMassProperties<T, d> MassProperties;
 				MassProperties.CenterOfMass = LocalTransform.GetTranslation() + ScaledSphylElem.Center;
 				MassProperties.RotationOfMass = LocalTransform.GetRotation() * TRotation<T, d>(FQuat(ScaledSphylElem.Rotation));
-				MassProperties.Volume = Volume;
-				MassProperties.InertiaTensor = CalculateInertia_Solid<T, d>(Mass, ScaledSphylElem);
+				MassProperties.Volume = ScaledSphylElem.GetVolume(FVector::OneVector);
+				MassProperties.InertiaTensor = CalculateInertia_Solid<T, d>(MassProperties.Volume, ScaledSphylElem);
 
 				AllMassProperties.Add(MassProperties);
-				AllMass += Mass;
 			}
 		}
 #if WITH_CHAOS && !PHYSICS_INTERFACE_PHYSX
@@ -152,7 +135,6 @@ namespace ImmediatePhysics_Chaos
 		}
 
 		OutMassProperties = Combine(AllMassProperties);
-		OutMass = AllMass;
 	}
 
 
@@ -163,8 +145,9 @@ namespace ImmediatePhysics_Chaos
 #if WITH_CHAOS && !PHYSICS_INTERFACE_PHYSX
 		float Density = 1.e-3f;	// 1g/cm3
 		Chaos::TMassProperties<float, 3> MassProperties;
-		CalculateMassProperties<float, 3>(Density, Scale, FTransform::Identity, BodySetup->AggGeom, OutMass, MassProperties);
-		OutInertia = Chaos::TVector<float, 3>(MassProperties.InertiaTensor.M[0][0], MassProperties.InertiaTensor.M[1][1], MassProperties.InertiaTensor.M[2][2]);
+		CalculateMassProperties<float, 3>(Scale, FTransform::Identity, BodySetup->AggGeom, MassProperties);
+		OutMass = Density * MassProperties.Volume;
+		OutInertia = Density * Chaos::TVector<float, 3>(MassProperties.InertiaTensor.M[0][0], MassProperties.InertiaTensor.M[1][1], MassProperties.InertiaTensor.M[2][2]);
 		OutCoMTransform = FTransform(MassProperties.RotationOfMass, MassProperties.CenterOfMass);
 #else
 		OutMass = BodyInstance->GetBodyMass();
@@ -325,6 +308,7 @@ namespace ImmediatePhysics_Chaos
 	void FActorHandle::SetIsKinematic(bool bKinematic)
 	{
 #if IMMEDIATEPHYSICS_CHAOS_TODO
+		// This needs to destroy and recreate the particle
 #endif
 	}
 
@@ -333,44 +317,40 @@ namespace ImmediatePhysics_Chaos
 		return Handle()->IsKinematic();
 	}
 
-
-#if IMMEDIATEPHYSICS_CHAOS_TODO
-	FImmediateKinematicTarget& FActorHandle::GetKinematicTarget()
+	const FKinematicTarget& FActorHandle::GetKinematicTarget() const
 	{
+		check(ParticleHandle->AsKinematic());
+		return ParticleHandle->AsKinematic()->KinematicTarget();
 	}
-#endif
+
+	FKinematicTarget& FActorHandle::GetKinematicTarget()
+	{
+		check(ParticleHandle->AsKinematic());
+		return ParticleHandle->AsKinematic()->KinematicTarget();
+	}
 
 	void FActorHandle::SetKinematicTarget(const FTransform& WorldTM)
 	{
-		using namespace Chaos;
-
-#if IMMEDIATEPHYSICS_CHAOS_TODO
-		// Proper kinematic targets
-#endif
-		if (TKinematicGeometryParticleHandle<FReal, Dimensions>* KinematicParticleHandle = ParticleHandle->AsKinematic())
+		if (ensure(GetIsKinematic()))
 		{
 			FTransform ParticleTransform = ActorToCoMTransform * WorldTM;
-
-			FMatrix AxesW = FRotationMatrix::Make(WorldTM.GetRotation());
-			FMatrix AxesP = FRotationMatrix::Make(ParticleTransform.GetRotation());
-
-			ParticleHandle->SetX(ParticleTransform.GetTranslation());
-			ParticleHandle->SetR(ParticleTransform.GetRotation());
+			GetKinematicTarget().SetTargetMode(ParticleTransform);
 		}
+
 	}
 
 	bool FActorHandle::HasKinematicTarget() const
 	{
-#if IMMEDIATEPHYSICS_CHAOS_TODO
-#endif
+		if (GetIsKinematic())
+		{
+			return GetKinematicTarget().GetMode() == Chaos::EKinematicTargetMode::Position;
+		}
 		return false;
 	}
 
 	bool FActorHandle::IsSimulated() const
 	{
-#if IMMEDIATEPHYSICS_CHAOS_TODO
-#endif
-		return true;
+		return ParticleHandle->AsDynamic() != nullptr;
 	}
 
 	FTransform FActorHandle::GetWorldTransform() const

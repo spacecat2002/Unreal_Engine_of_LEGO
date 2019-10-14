@@ -20,8 +20,8 @@
 // @todo(ccaulfield): remove when finished
 float ChaosImmediate_Evolution_DeltaTime = 0.03f;
 int32 ChaosImmediate_Evolution_Iterations = 10;
-int32 ChaosImmediate_Collision_Enabled = 0;
-int32 ChaosImmediate_Collision_ApplyEnabled = 0;
+int32 ChaosImmediate_Collision_Enabled = 1;
+int32 ChaosImmediate_Collision_ApplyEnabled = 1;
 int32 ChaosImmediate_Collision_PushOutIterations = 5;
 int32 ChaosImmediate_Collision_PushOutPairIterations = 2;
 float ChaosImmediate_Collision_Thickness = 0;
@@ -35,6 +35,7 @@ FAutoConsoleVariableRef CVarCollisionPushOutPairIterations(TEXT("p.Chaos.ImmPhys
 FAutoConsoleVariableRef CVarChaosImmPhysThickness(TEXT("p.Chaos.ImmPhys.CollisionThickness"), ChaosImmediate_Collision_Thickness, TEXT("ChaosImmediateThickness"));
 
 float ChaosImmediate_Joint_SwingTwistAngleTolerance = 1.0e-6f;
+int32 ChaosImmediate_Joint_EnableLinearLimits = 1;
 int32 ChaosImmediate_Joint_EnableTwistLimits = 1;
 int32 ChaosImmediate_Joint_EnableSwingLimits = 1;
 int32 ChaosImmediate_Joint_EnableDrives = 1;
@@ -44,6 +45,7 @@ float ChaosImmediate_Joint_PBDDriveStiffness = 0.0f;
 float ChaosImmediate_Joint_PBDMinParentMassRatio = 0.5f;
 float ChaosImmediate_Joint_PBDMaxInertiaRatio = 5.0f;
 FAutoConsoleVariableRef CVarSwingTwistAngleTolerance(TEXT("p.Chaos.ImmPhys.Joint.SwingTwistAngleTolerance"), ChaosImmediate_Joint_SwingTwistAngleTolerance, TEXT("SwingTwistAngleTolerance."));
+FAutoConsoleVariableRef CVarEnableLinearLimits(TEXT("p.Chaos.ImmPhys.Joint.EnableLinearLimits"), ChaosImmediate_Joint_EnableLinearLimits, TEXT("EnableLinearLimits."));
 FAutoConsoleVariableRef CVarEnableTwistLimits(TEXT("p.Chaos.ImmPhys.Joint.EnableTwistLimits"), ChaosImmediate_Joint_EnableTwistLimits, TEXT("EnableTwistLimits."));
 FAutoConsoleVariableRef CVarEnableSwingLimits(TEXT("p.Chaos.ImmPhys.Joint.EnableSwingLimits"), ChaosImmediate_Joint_EnableSwingLimits, TEXT("EnableSwingLimits."));
 FAutoConsoleVariableRef CVarEnableDrives(TEXT("p.Chaos.ImmPhys.Joint.EnableDrives"), ChaosImmediate_Joint_EnableDrives, TEXT("EnableDrives."));
@@ -66,10 +68,10 @@ int32 ChaosImmediate_DebugDrawCollisions = 0;
 int32 ChaosImmediate_DebugDrawJoints = 0;
 #endif
 
-FAutoConsoleVariableRef CVarDebugDrawParticles(TEXT("p.Chaos.ImmPhys.DebugDrawParticles"), ChaosImmediate_DebugDrawParticles, TEXT("Draw Particle Transforms (0 = never; 1 = end of frame; 2 = begin and end of frame; 3 = each evolution phase)."));
-FAutoConsoleVariableRef CVarDebugDrawShapes(TEXT("p.Chaos.ImmPhys.DebugDrawShapes"), ChaosImmediate_DebugDrawShapes, TEXT("Draw Shapes (0 = never; 1 = end of frame; 2 = begin and end of frame; 3 = each evolution phase."));
-FAutoConsoleVariableRef CVarDebugDrawCollisions(TEXT("p.Chaos.ImmPhys.DebugDrawCollisions"), ChaosImmediate_DebugDrawCollisions, TEXT("Draw Collisions (0 = never; 1 = end of frame; 2 = begin and end of frame; 3 = each evolution phase)"));
-FAutoConsoleVariableRef CVarDebugDrawJoints(TEXT("p.Chaos.ImmPhys.DebugDrawJoints"), ChaosImmediate_DebugDrawJoints, TEXT("Draw Joints. (0 = never; 1 = end of frame; 2 = begin and end of frame; 3 = each evolution phase; 4 = each Apply step)."));
+FAutoConsoleVariableRef CVarDebugDrawParticles(TEXT("p.Chaos.ImmPhys.DebugDrawParticles"), ChaosImmediate_DebugDrawParticles, TEXT("Draw Particle Transforms (0 = never; 1 = end of frame; 2 = begin and end of frame; 3 = post-integate, post-apply and post-applypushout;)."));
+FAutoConsoleVariableRef CVarDebugDrawShapes(TEXT("p.Chaos.ImmPhys.DebugDrawShapes"), ChaosImmediate_DebugDrawShapes, TEXT("Draw Shapes (0 = never; 1 = end of frame; 2 = begin and end of frame; 3 = post-integate, post-apply and post-applypushout;"));
+FAutoConsoleVariableRef CVarDebugDrawCollisions(TEXT("p.Chaos.ImmPhys.DebugDrawCollisions"), ChaosImmediate_DebugDrawCollisions, TEXT("Draw Collisions (0 = never; 1 = end of frame; 2 = begin and end of frame; 3 = post-integate, post-apply and post-applypushout;)"));
+FAutoConsoleVariableRef CVarDebugDrawJoints(TEXT("p.Chaos.ImmPhys.DebugDrawJoints"), ChaosImmediate_DebugDrawJoints, TEXT("Draw Joints. (0 = never; 1 = end of frame; 2 = begin and end of frame; 3 = post-integate, post-apply and post-applypushout; 4 = each Apply step)."));
 
 namespace ImmediatePhysics_Chaos
 {
@@ -96,25 +98,6 @@ namespace ImmediatePhysics_Chaos
 		return false;
 	}
 
-	template<typename T, int d>
-	void FilterCollisionConstraints(
-		TArray<Chaos::TRigidBodyContactConstraint<T, d>>& Constraints, 
-		const TMap<const Chaos::TGeometryParticleHandle<T, d>*, TSet<const Chaos::TGeometryParticleHandle<T, d>*>>& IgnoreSetMap)
-	{
-		using namespace Chaos;
-
-		for (int ConstraintIndex = 0; ConstraintIndex < Constraints.Num(); ++ConstraintIndex)
-		{
-			if (ShouldIgnoreCollisionConstraint(Constraints[ConstraintIndex].Particle, Constraints[ConstraintIndex].Levelset, IgnoreSetMap))
-			{
-				Constraints.RemoveAtSwap(ConstraintIndex);
-				--ConstraintIndex;
-				continue;
-			}
-		}
-	}
-
-
 	//
 	//
 	//
@@ -133,27 +116,43 @@ namespace ImmediatePhysics_Chaos
 
 		Evolution->AddConstraintRule(JointsRule.Get());
 
+		// Filter collisions after detection
+		// @todo(ccaulfield): Eventually we will build lists of potentially colliding pairs and won't need this
 		Collisions.SetPostComputeCallback(
-			[this](TArray<TRigidBodyContactConstraint<FReal, Dimensions>>& Constraints)
+			[this]()
 			{
-				FilterCollisionConstraints(Constraints, IgnoreCollisionParticlePairTable);
+				Evolution->GetCollisionConstraints().ApplyCollisionModifier(
+					[this](TRigidBodyContactConstraint<float, 3>& Constraint)
+					{
+						if (ShouldIgnoreCollisionConstraint(Constraint.Particle, Constraint.Levelset, IgnoreCollisionParticlePairTable))
+						{
+							return ECollisionModifierResult::Disabled;
+						}
+						return ECollisionModifierResult::Unchanged;
+					});
 			});
 		
 #if CHAOS_DEBUG_DRAW
 		Evolution->SetPostIntegrateCallback(
 			[this]()
 			{
-				DebugDrawElementsAll(3, 3, 0.3f);
+				// Dynamic only - Kinematics get drawn once at the end of frame
+				//DebugDrawIslandParticles(Island, 3, 3, 0.3f, false, true);
+				//DebugDrawIslandConstraints(Island, 3, 3, 0.3f);
 			});
 		Evolution->SetPostApplyCallback(
 			[this](int32 Island)
 			{
-				DebugDrawElementsIsland(Island, 3, 3, 0.3f);
+				// Dynamic only - Kinematics get drawn once at the end of frame
+				DebugDrawIslandParticles(Island, 3, 3, 0.3f, false, true);
+				DebugDrawIslandConstraints(Island, 3, 3, 0.3f);
 			});
 		Evolution->SetPostApplyPushOutCallback(
 			[this](int32 Island)
 			{
-				DebugDrawElementsIsland(Island, 3, 3, 0.3f);
+				// Dynamic only - Kinematics get drawn once at the end of frame
+				DebugDrawIslandParticles(Island, 3, 3, 1.0f, false, true);
+				DebugDrawIslandConstraints(Island, 3, 3, 1.0f);
 			});
 		Collisions.SetPostApplyCallback(
 			[this](const float Dt, const TArray<TPBDCollisionConstraintHandle<float, 3>*>& InConstraintHandles)
@@ -168,7 +167,7 @@ namespace ImmediatePhysics_Chaos
 			{
 				if (ChaosImmediate_DebugDrawCollisions == 4)
 				{
-					DebugDraw::DrawCollisions(SimulationSpaceTransform, InConstraintHandles, 0.3f);
+					DebugDraw::DrawCollisions(SimulationSpaceTransform, InConstraintHandles, 0.6f);
 				}
 			});
 		Joints->SetPreApplyCallback(
@@ -184,7 +183,7 @@ namespace ImmediatePhysics_Chaos
 			{
 				if (ChaosImmediate_DebugDrawJoints == 4)
 				{
-					DebugDraw::DrawJointConstraints(SimulationSpaceTransform, InConstraintHandles, 1.0f);
+					DebugDraw::DrawJointConstraints(SimulationSpaceTransform, InConstraintHandles, 0.6f);
 				}
 			});
 #endif
@@ -397,9 +396,10 @@ namespace ImmediatePhysics_Chaos
 			JointsSettings.PBDMaxInertiaRatio = ChaosImmediate_Joint_PBDMaxInertiaRatio;
 			JointsSettings.FreezeIterations = ChaosImmediate_Joint_FreezeIterations;
 			JointsSettings.FrozenIterations = ChaosImmediate_Joint_FrozenIterations;
-			JointsSettings.bEnableTwistLimits = ChaosImmediate_Joint_EnableTwistLimits > 0;
-			JointsSettings.bEnableSwingLimits = ChaosImmediate_Joint_EnableSwingLimits > 0;
-			JointsSettings.bEnableDrives = ChaosImmediate_Joint_EnableDrives > 0;
+			JointsSettings.bEnableLinearLimits = ChaosImmediate_Joint_EnableLinearLimits != 0;
+			JointsSettings.bEnableTwistLimits = ChaosImmediate_Joint_EnableTwistLimits != 0;
+			JointsSettings.bEnableSwingLimits = ChaosImmediate_Joint_EnableSwingLimits != 0;
+			JointsSettings.bEnableDrives = ChaosImmediate_Joint_EnableDrives != 0;
 			JointsSettings.PBDDriveStiffness = ChaosImmediate_Joint_PBDDriveStiffness;
 			Joints->SetSettings(JointsSettings);
 
@@ -414,18 +414,23 @@ namespace ImmediatePhysics_Chaos
 			Evolution->GetCollisionConstraints().SetCollisionsEnabled(ChaosImmediate_Collision_Enabled != 0);
 		}
 
-		DebugDrawElementsAll(2, 2, 0.7f);
+		DebugDrawParticles(2, 2, 0.7f, true, true);
+		DebugDrawConstraints(2, 2, 0.7f);
 
 		ConditionConstraints();
 
 		Evolution->GetGravityForces().SetAcceleration(InGravity);
+		
 		Evolution->AdvanceOneTimeStep(DeltaTime);
+		
 		Evolution->EndFrame(DeltaTime);
 
-		DebugDrawElementsAll(1, 3, 1.0f);
+		DebugDrawParticles(1, 2, 1.0f, true, true);
+		DebugDrawConstraints(1, 2, 1.0f);
+		DebugDrawParticles(3, 3, 1.0f, true, false);	// Kinematics only
 	}
 
-	void FSimulation::DebugDrawElementsAll(const int32 MinDebugLevel, const int32 MaxDebugLevel, const float ColorScale)
+	void FSimulation::DebugDrawParticles(const int32 MinDebugLevel, const int32 MaxDebugLevel, const float ColorScale, bool bDrawKinematic, bool bDrawDynamic)
 	{
 #if CHAOS_DEBUG_DRAW
 		using namespace Chaos;
@@ -433,12 +438,22 @@ namespace ImmediatePhysics_Chaos
 		{
 			if ((ChaosImmediate_DebugDrawParticles >= MinDebugLevel) && (ChaosImmediate_DebugDrawParticles <= MaxDebugLevel))
 			{
-				DebugDraw::DrawParticleTransforms(SimulationSpaceTransform, Evolution->GetParticles().GetAllParticlesView(), ColorScale);
+				DebugDraw::DrawParticleTransforms(SimulationSpaceTransform, Evolution->GetParticles().GetAllParticlesView(), ColorScale, bDrawKinematic, bDrawDynamic);
 			}
 			if ((ChaosImmediate_DebugDrawShapes >= MinDebugLevel) && (ChaosImmediate_DebugDrawShapes <= MaxDebugLevel))
 			{
-				DebugDraw::DrawParticleShapes(SimulationSpaceTransform, Evolution->GetParticles().GetAllParticlesView(), ColorScale);
+				DebugDraw::DrawParticleShapes(SimulationSpaceTransform, Evolution->GetParticles().GetAllParticlesView(), ColorScale, bDrawKinematic, bDrawDynamic);
 			}
+		}
+#endif
+	}
+
+	void FSimulation::DebugDrawConstraints(const int32 MinDebugLevel, const int32 MaxDebugLevel, const float ColorScale)
+	{
+#if CHAOS_DEBUG_DRAW
+		using namespace Chaos;
+		if (FDebugDrawQueue::IsDebugDrawingEnabled())
+		{
 			if ((ChaosImmediate_DebugDrawCollisions >= MinDebugLevel) && (ChaosImmediate_DebugDrawCollisions <= MaxDebugLevel))
 			{
 				DebugDraw::DrawCollisions(SimulationSpaceTransform, Evolution->GetCollisionConstraints(), ColorScale);
@@ -451,7 +466,7 @@ namespace ImmediatePhysics_Chaos
 #endif
 	}
 
-	void FSimulation::DebugDrawElementsIsland(const int32 Island, const int32 MinDebugLevel, const int32 MaxDebugLevel, const float ColorScale)
+	void FSimulation::DebugDrawIslandParticles(const int32 Island, const int32 MinDebugLevel, const int32 MaxDebugLevel, const float ColorScale, bool bDrawKinematic, bool bDrawDynamic)
 	{
 #if CHAOS_DEBUG_DRAW
 		using namespace Chaos;
@@ -459,12 +474,22 @@ namespace ImmediatePhysics_Chaos
 		{
 			if ((ChaosImmediate_DebugDrawParticles >= MinDebugLevel) && (ChaosImmediate_DebugDrawParticles <= MaxDebugLevel))
 			{
-				DebugDraw::DrawParticleTransforms(SimulationSpaceTransform, Evolution->GetIslandParticles(Island), ColorScale);
+				DebugDraw::DrawParticleTransforms(SimulationSpaceTransform, Evolution->GetIslandParticles(Island), ColorScale, bDrawKinematic, bDrawDynamic);
 			}
 			if ((ChaosImmediate_DebugDrawShapes >= MinDebugLevel) && (ChaosImmediate_DebugDrawShapes <= MaxDebugLevel))
 			{
-				DebugDraw::DrawParticleShapes(SimulationSpaceTransform, Evolution->GetIslandParticles(Island), ColorScale);
+				DebugDraw::DrawParticleShapes(SimulationSpaceTransform, Evolution->GetIslandParticles(Island), ColorScale, bDrawKinematic, bDrawDynamic);
 			}
+		}
+#endif
+	}
+
+	void FSimulation::DebugDrawIslandConstraints(const int32 Island, const int32 MinDebugLevel, const int32 MaxDebugLevel, const float ColorScale)
+	{
+#if CHAOS_DEBUG_DRAW
+		using namespace Chaos;
+		if (FDebugDrawQueue::IsDebugDrawingEnabled())
+		{
 			if ((ChaosImmediate_DebugDrawCollisions >= MinDebugLevel) && (ChaosImmediate_DebugDrawCollisions <= MaxDebugLevel))
 			{
 				Evolution->GetCollisionConstraintsRule().VisitIslandConstraints(Island,
