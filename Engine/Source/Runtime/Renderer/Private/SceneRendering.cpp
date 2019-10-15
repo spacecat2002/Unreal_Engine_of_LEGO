@@ -1665,6 +1665,8 @@ void FViewInfo::SetupUniformBufferParameters(
 			ViewUniformShaderParameters.LightmapSceneData = Scene->GPUScene.LightmapDataBuffer.SRV;
 		}
 	}
+	ViewUniformShaderParameters.VTFeedbackBuffer = SceneContext.GetVirtualTextureFeedbackUAV();
+	ViewUniformShaderParameters.QuadOverdraw = SceneContext.GetQuadOverdrawBufferUAV();
 }
 
 void FViewInfo::InitRHIResources()
@@ -3566,7 +3568,7 @@ void FRendererModule::CreateAndInitSingleView(FRHICommandListImmediate& RHICmdLi
 	ViewFamily->Views.Add(NewView);
 	PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	FRHIRenderTargetView RTV(ViewFamily->RenderTarget->GetRenderTargetTexture(), ERenderTargetLoadAction::EClear);
-	RHICmdList.SetRenderTargets(1, &RTV, nullptr, 0, nullptr);
+	RHICmdList.SetRenderTargets(1, &RTV, nullptr);
 	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	FViewInfo* View = (FViewInfo*)ViewFamily->Views[0];
 	View->ViewRect = View->UnscaledViewRect;

@@ -529,7 +529,7 @@ inline void UnbindRenderTargets(FRHICommandList& RHICmdList)
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	FRHIRenderTargetView RTV(nullptr, ERenderTargetLoadAction::ENoAction);
 	FRHIDepthRenderTargetView DepthRTV(nullptr, ERenderTargetLoadAction::ENoAction, ERenderTargetStoreAction::ENoAction);
-	RHICmdList.SetRenderTargets(1, &RTV, &DepthRTV, 0, nullptr);
+	RHICmdList.SetRenderTargets(1, &RTV, &DepthRTV);
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 

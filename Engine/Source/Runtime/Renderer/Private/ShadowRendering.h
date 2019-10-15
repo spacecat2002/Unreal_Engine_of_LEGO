@@ -178,6 +178,11 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FShadowDepthPassUniformParameters,)
 	SHADER_PARAMETER(float, bClampToNearPlane)
 	SHADER_PARAMETER_ARRAY(FMatrix, ShadowViewProjectionMatrices, [6])
 	SHADER_PARAMETER_ARRAY(FMatrix, ShadowViewMatrices, [6])
+
+	SHADER_PARAMETER_UAV(RWStructuredBuffer<VplListEntry>, RWGvListBuffer)
+	SHADER_PARAMETER_UAV(RWByteAddressBuffer, RWGvListHeadBuffer)
+	SHADER_PARAMETER_UAV(RWStructuredBuffer<VplListEntry>, RWVplListBuffer)
+	SHADER_PARAMETER_UAV(RWByteAddressBuffer, RWVplListHeadBuffer)
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
 BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileShadowDepthPassUniformParameters,)
@@ -515,7 +520,7 @@ public:
 	/**
 	* Setup uniformbuffers and update Primitive Shader Data
 	*/
-	void SetupShadowUniformBuffers(FRHICommandListImmediate& RHICmdList, FScene* Scene);
+	void SetupShadowUniformBuffers(FRHICommandListImmediate& RHICmdList, FScene* Scene, FLightPropagationVolume* LPV = nullptr);
 
 	/**
 	* Ensure Cached Shadowmap is in EReadable state

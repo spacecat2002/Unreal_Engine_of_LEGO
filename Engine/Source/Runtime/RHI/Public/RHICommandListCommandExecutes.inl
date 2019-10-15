@@ -199,8 +199,18 @@ void FRHICommandSetUAVParameter<TRHIShader, CmdListType>::Execute(FRHICommandLis
 	RHISTAT(SetUAVParameter);
 	INTERNAL_DECORATOR_CONTEXT(RHISetUAVParameter)(Shader, UAVIndex, UAV);
 }
+
+template <>
+void FRHICommandSetUAVParameter<FRHIPixelShader, ECmdList::EGfx>::Execute(FRHICommandListBase& CmdList)
+{
+	RHISTAT(SetUAVParameter);
+	INTERNAL_DECORATOR(RHISetUAVParameter)(Shader, UAVIndex, UAV);
+}
+
+
 template struct FRHICommandSetUAVParameter<FRHIComputeShader, ECmdList::EGfx>;
 template struct FRHICommandSetUAVParameter<FRHIComputeShader, ECmdList::ECompute>;
+template struct FRHICommandSetUAVParameter<FRHIPixelShader, ECmdList::EGfx>;
 
 template <typename TRHIShader, ECmdList CmdListType>
 void FRHICommandSetUAVParameter_IntialCount<TRHIShader, CmdListType>::Execute(FRHICommandListBase& CmdList)
@@ -307,9 +317,7 @@ void FRHICommandSetRenderTargets::Execute(FRHICommandListBase& CmdList)
 	INTERNAL_DECORATOR(RHISetRenderTargets)(
 		NewNumSimultaneousRenderTargets,
 		NewRenderTargetsRHI,
-		&NewDepthStencilTarget,
-		NewNumUAVs,
-		UAVs);
+		&NewDepthStencilTarget);
 }
 
 void FRHICommandBindClearMRTValues::Execute(FRHICommandListBase& CmdList)

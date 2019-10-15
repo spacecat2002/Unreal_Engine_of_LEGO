@@ -291,16 +291,7 @@ static void RenderVoxelization(
 	}
 
 	FRHIRenderPassInfo RPInfo(DummyTexture->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Load_Store);
-	RPInfo.UAVIndex = 0;
-	RPInfo.NumUAVs = bVoxelizeMaterial ? 5 : 1;
-	RPInfo.UAVs[0] = VoxelResources.DensityTexture->GetRenderTargetItem().UAV;
-	if (bVoxelizeMaterial)
-	{
-		RPInfo.UAVs[1] = VoxelResources.TangentXTexture->GetRenderTargetItem().UAV;
-		RPInfo.UAVs[2] = VoxelResources.TangentYTexture->GetRenderTargetItem().UAV;
-		RPInfo.UAVs[3] = VoxelResources.TangentZTexture->GetRenderTargetItem().UAV;
-		RPInfo.UAVs[4] = VoxelResources.MaterialTexture->GetRenderTargetItem().UAV;
-	}
+	checkNoEntry(); //todo: not yet implemented.
 
 	const FIntRect ViewportRect(0, 0, ResolutionDim, ResolutionDim);
 

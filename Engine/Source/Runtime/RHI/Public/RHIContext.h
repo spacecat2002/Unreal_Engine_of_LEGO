@@ -470,6 +470,15 @@ public:
 	virtual void RHISetShaderSampler(FRHIPixelShader* PixelShader, uint32 SamplerIndex, FRHISamplerState* NewState) = 0;
 
 	/**
+	* Sets a pixel shader UAV parameter.
+	* @param PixelShader		The pixel shader to set the UAV for.
+	* @param UAVIndex		The index of the UAVIndex.
+	* @param UAV			The new UAV.
+	*/
+	virtual void RHISetUAVParameter(FRHIPixelShader* PixelShader, uint32 UAVIndex, FRHIUnorderedAccessView* UAV) = 0;
+
+
+	/**
 	* Sets a compute shader UAV parameter.
 	* @param ComputeShader	The compute shader to set the UAV for.
 	* @param UAVIndex		The index of the UAVIndex.
@@ -526,7 +535,7 @@ public:
 
 	virtual void RHISetBlendFactor(const FLinearColor& BlendFactor) {}
 
-	virtual void RHISetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, const FRHIDepthRenderTargetView* NewDepthStencilTarget, uint32 NumUAVs, FRHIUnorderedAccessView* const* UAVs) = 0;
+	virtual void RHISetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, const FRHIDepthRenderTargetView* NewDepthStencilTarget) = 0;
 
 	virtual void RHISetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo) = 0;
 
@@ -614,7 +623,7 @@ public:
 
 	virtual void RHIBeginComputePass(const TCHAR* InName)
 	{
-		RHISetRenderTargets(0, nullptr, nullptr, 0, nullptr);
+		RHISetRenderTargets(0, nullptr, nullptr);
 	}
 
 	virtual void RHIEndComputePass()

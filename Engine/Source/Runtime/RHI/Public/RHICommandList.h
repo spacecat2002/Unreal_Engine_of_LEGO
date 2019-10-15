@@ -1079,28 +1079,19 @@ FRHICOMMAND_MACRO(FRHICommandSetRenderTargets)
 	uint32 NewNumSimultaneousRenderTargets;
 	FRHIRenderTargetView NewRenderTargetsRHI[MaxSimultaneousRenderTargets];
 	FRHIDepthRenderTargetView NewDepthStencilTarget;
-	uint32 NewNumUAVs;
-	FRHIUnorderedAccessView* UAVs[MaxSimultaneousUAVs];
 
 	FORCEINLINE_DEBUGGABLE FRHICommandSetRenderTargets(
 		uint32 InNewNumSimultaneousRenderTargets,
 		const FRHIRenderTargetView* InNewRenderTargetsRHI,
-		const FRHIDepthRenderTargetView* InNewDepthStencilTargetRHI,
-		uint32 InNewNumUAVs,
-		FRHIUnorderedAccessView* const* InUAVs
+		const FRHIDepthRenderTargetView* InNewDepthStencilTargetRHI
 		)
 		: NewNumSimultaneousRenderTargets(InNewNumSimultaneousRenderTargets)
-		, NewNumUAVs(InNewNumUAVs)
 
 	{
-		check(InNewNumSimultaneousRenderTargets <= MaxSimultaneousRenderTargets && InNewNumUAVs <= MaxSimultaneousUAVs);
+		check(InNewNumSimultaneousRenderTargets <= MaxSimultaneousRenderTargets);
 		for (uint32 Index = 0; Index < NewNumSimultaneousRenderTargets; Index++)
 		{
 			NewRenderTargetsRHI[Index] = InNewRenderTargetsRHI[Index];
-		}
-		for (uint32 Index = 0; Index < NewNumUAVs; Index++)
-		{
-			UAVs[Index] = InUAVs[Index];
 		}
 		if (InNewDepthStencilTargetRHI)
 		{
@@ -2442,6 +2433,22 @@ public:
 		SetShaderSampler(Shader.GetReference(), SamplerIndex, State);
 	}
 
+	FORCEINLINE_DEBUGGABLE void SetUAVParameter(FRHIPixelShader* Shader, uint32 UAVIndex, FRHIUnorderedAccessView* UAV)
+	{
+		if (Bypass())
+		{
+			GetContext().RHISetUAVParameter(Shader, UAVIndex, UAV);
+			return;
+		}
+		ALLOC_COMMAND(FRHICommandSetUAVParameter<FRHIPixelShader, ECmdList::EGfx>)(Shader, UAVIndex, UAV);
+	}
+
+	FORCEINLINE_DEBUGGABLE void SetUAVParameter(const TRefCountPtr<FRHIPixelShader>& Shader, uint32 UAVIndex, FRHIUnorderedAccessView* UAV)
+	{
+		SetUAVParameter(Shader.GetReference(), UAVIndex, UAV);
+	}
+
+
 	FORCEINLINE_DEBUGGABLE void SetUAVParameter(FRHIComputeShader* Shader, uint32 UAVIndex, FRHIUnorderedAccessView* UAV)
 	{
 		if (Bypass())
@@ -2622,10 +2629,7 @@ public:
 	FORCEINLINE_DEBUGGABLE void SetRenderTargets(
 		uint32 NewNumSimultaneousRenderTargets,
 		const FRHIRenderTargetView* NewRenderTargetsRHI,
-		const FRHIDepthRenderTargetView* NewDepthStencilTargetRHI,
-		uint32 NewNumUAVs,
-		FRHIUnorderedAccessView* const* UAVs
-		)
+		const FRHIDepthRenderTargetView* NewDepthStencilTargetRHI)
 	{
 		check(IsOutsideRenderPass());
 		CacheActiveRenderTargets(
@@ -2639,17 +2643,13 @@ public:
 			GetContext().RHISetRenderTargets(
 				NewNumSimultaneousRenderTargets,
 				NewRenderTargetsRHI,
-				NewDepthStencilTargetRHI,
-				NewNumUAVs,
-				UAVs);
+				NewDepthStencilTargetRHI);
 			return;
 		}
 		ALLOC_COMMAND(FRHICommandSetRenderTargets)(
 			NewNumSimultaneousRenderTargets,
 			NewRenderTargetsRHI,
-			NewDepthStencilTargetRHI,
-			NewNumUAVs,
-			UAVs);
+			NewDepthStencilTargetRHI);
 	}
 
 	FORCEINLINE_DEBUGGABLE void BindClearMRTValues(bool bClearColor, bool bClearDepth, bool bClearStencil)

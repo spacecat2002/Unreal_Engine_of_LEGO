@@ -559,7 +559,7 @@ void ScatterTilesToObjects(FRHICommandListImmediate& RHICmdList, const FViewInfo
 	PixelShader->GetUAVs(View, UAVs);
 	RHICmdList.TransitionResources(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToGfx, UAVs.GetData(), UAVs.Num());
 
-	FRHIRenderPassInfo RPInfo(UAVs.Num(), UAVs.GetData());
+	FRHIRenderPassInfo RPInfo(FRHIRenderPassInfo::NoRenderTargets);
 	if (GRHIRequiresRenderTargetForPixelShaderUAVs)
 	{
 		TRefCountPtr<IPooledRenderTarget> Dummy;

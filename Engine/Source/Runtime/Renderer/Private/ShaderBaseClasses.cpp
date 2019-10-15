@@ -84,7 +84,6 @@ FMaterialShader::FMaterialShader(const FMaterialShaderType::CompiledShaderInitia
 
 	SceneTextureParameters.Bind(Initializer);
 	
-	VTFeedbackBuffer.Bind(Initializer.ParameterMap, TEXT("VTFeedbackBuffer"));
 }
 
 FRHIUniformBuffer* FMaterialShader::GetParameterCollectionBuffer(const FGuid& Id, const FSceneInterface* SceneInterface) const
@@ -540,7 +539,6 @@ bool FMaterialShader::Serialize(FArchive& Ar)
 		Ar << ResourceTypes;
 	}
 	Ar << DebugDescription;
-	Ar << VTFeedbackBuffer;
 
 	return bShaderHasOutdatedParameters;
 }

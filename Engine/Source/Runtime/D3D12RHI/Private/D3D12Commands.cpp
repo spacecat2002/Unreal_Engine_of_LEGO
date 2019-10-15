@@ -547,6 +547,22 @@ void FD3D12CommandContext::RHISetShaderTexture(FRHIComputeShader* ComputeShaderR
 	StateCache.SetShaderResourceView<SF_Compute>(NewTexture ? NewTexture->GetShaderResourceView() : nullptr, TextureIndex);
 }
 
+void FD3D12CommandContext::RHISetUAVParameter(FRHIPixelShader* PixelShaderRHI, uint32 UAVIndex, FRHIUnorderedAccessView* UAVRHI)
+{
+	FD3D12UnorderedAccessView* UAV = RetrieveObject<FD3D12UnorderedAccessView>(UAVRHI);
+
+	if (UAV)
+	{
+		ConditionalClearShaderResource(UAV->GetResourceLocation());
+	}
+
+	uint32 InitialCount = -1;
+
+	// Actually set the UAV
+	StateCache.SetUAVs<SF_Pixel>(UAVIndex, 1, &UAV, &InitialCount);
+}
+
+
 void FD3D12CommandContext::RHISetUAVParameter(FRHIComputeShader* ComputeShaderRHI, uint32 UAVIndex, FRHIUnorderedAccessView* UAVRHI)
 {
 	//VALIDATE_BOUND_SHADER(ComputeShaderRHI);
@@ -838,18 +854,7 @@ void FD3D12CommandContext::RHISetBlendFactor(const FLinearColor& BlendFactor)
 void FD3D12CommandContext::CommitRenderTargetsAndUAVs()
 {
 	StateCache.SetRenderTargets(NumSimultaneousRenderTargets, CurrentRenderTargets, CurrentDepthStencilTarget);
-
-	if (NumUAVs > 0)
-	{
-		uint32 UAVInitialCountArray[MAX_UAVS];
-		for (uint32 UAVIndex = 0; UAVIndex < NumUAVs; ++UAVIndex)
-		{
-			// Using the value that indicates to keep the current UAV counter
-			UAVInitialCountArray[UAVIndex] = -1;
-		}
-
-		StateCache.SetUAVs<SF_Pixel>(NumSimultaneousRenderTargets, NumUAVs, CurrentUAVs, UAVInitialCountArray);
-	}
+	StateCache.ClearUAVs<SF_Pixel>();
 }
 
 struct FRTVDesc
@@ -912,14 +917,12 @@ FRTVDesc GetRenderTargetViewDesc(FD3D12RenderTargetView* RenderTargetView)
 void FD3D12CommandContext::RHISetRenderTargets(
 	uint32 NewNumSimultaneousRenderTargets,
 	const FRHIRenderTargetView* NewRenderTargetsRHI,
-	const FRHIDepthRenderTargetView* NewDepthStencilTargetRHI,
-	uint32 NewNumUAVs,
-	FRHIUnorderedAccessView* const* UAVs
+	const FRHIDepthRenderTargetView* NewDepthStencilTargetRHI
 	)
 {
 	FD3D12TextureBase* NewDepthStencilTarget = RetrieveTextureBase(NewDepthStencilTargetRHI ? NewDepthStencilTargetRHI->Texture : nullptr);
 
-	check(NewNumSimultaneousRenderTargets + NewNumUAVs <= MaxSimultaneousRenderTargets);
+	check(NewNumSimultaneousRenderTargets <= MaxSimultaneousRenderTargets);
 
 	bool bTargetChanged = false;
 
@@ -975,31 +978,6 @@ void FD3D12CommandContext::RHISetRenderTargets(
 		bTargetChanged = true;
 	}
 
-	// Gather the new UAVs.
-	for (uint32 UAVIndex = 0;UAVIndex < MaxSimultaneousUAVs;++UAVIndex)
-	{
-		FD3D12UnorderedAccessView* RHIUAV = NULL;
-		if (UAVIndex < NewNumUAVs && UAVs[UAVIndex] != NULL)
-		{
-			RHIUAV = RetrieveObject<FD3D12UnorderedAccessView>(UAVs[UAVIndex]);
-			FD3D12DynamicRHI::TransitionResource(CommandListHandle, RHIUAV, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-
-			// Unbind any shader views of the UAV's resource.
-			ConditionalClearShaderResource(RHIUAV->GetResourceLocation());
-		}
-
-		if (CurrentUAVs[UAVIndex] != RHIUAV)
-		{
-			CurrentUAVs[UAVIndex] = RHIUAV;
-			bTargetChanged = true;
-		}
-	}
-	if (NumUAVs != NewNumUAVs)
-	{
-		NumUAVs = NewNumUAVs;
-		bTargetChanged = true;
-	}
-
 	// Only make the D3D call to change render targets if something actually changed.
 	if (bTargetChanged)
 	{
@@ -1025,17 +1003,10 @@ void FD3D12CommandContext::RHISetRenderTargets(
 void FD3D12CommandContext::RHISetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo)
 {
 	FRHIUnorderedAccessView* UAVs[MaxSimultaneousUAVs] = {};
-	check(RenderTargetsInfo.NumUAVs <= MaxSimultaneousUAVs);
-	for (int32 UAVIndex = 0; UAVIndex < RenderTargetsInfo.NumUAVs; ++UAVIndex)
-	{
-		UAVs[UAVIndex] = RenderTargetsInfo.UnorderedAccessView[UAVIndex].GetReference();
-	}
 
 	this->RHISetRenderTargets(RenderTargetsInfo.NumColorRenderTargets,
 		RenderTargetsInfo.ColorRenderTarget,
-		&RenderTargetsInfo.DepthStencilRenderTarget,
-		RenderTargetsInfo.NumUAVs,
-		UAVs);
+		&RenderTargetsInfo.DepthStencilRenderTarget);
 
 	if (RenderTargetsInfo.bClearColor || RenderTargetsInfo.bClearStencil || RenderTargetsInfo.bClearDepth)
 	{
@@ -1182,6 +1153,15 @@ FORCEINLINE void SetResource(FD3D12CommandContext& CmdContext, uint32 BindIndex,
 	CmdContext.StateCache.SetSamplerState<Frequency>(SamplerState, BindIndex);
 }
 
+template <EShaderFrequency Frequency>
+FORCEINLINE void SetResource(FD3D12CommandContext& CmdContext, uint32 BindIndex, FD3D12UnorderedAccessView* RESTRICT UAV)
+{
+	uint32 InitialCount = -1;
+
+	// Actually set the UAV
+	CmdContext.StateCache.SetUAVs<SF_Pixel>(BindIndex, 1, &UAV, &InitialCount);
+}
+
 template <EShaderFrequency ShaderFrequency>
 inline int32 SetShaderResourcesFromBuffer_Surface(FD3D12CommandContext& CmdContext, FD3D12UniformBuffer* RESTRICT Buffer, const uint32 * RESTRICT ResourceMap, int32 BufferIndex)
 {
@@ -1299,6 +1279,66 @@ void FD3D12CommandContext::SetResourcesFromTables(const ShaderType* RESTRICT Sha
 	DirtyUniformBuffers[ShaderType::StaticFrequency] = 0;
 }
 
+
+template <EShaderFrequency ShaderFrequency>
+inline int32 SetShaderResourcesFromBuffer_UAVPS(FD3D12CommandContext& CmdContext, FD3D12UniformBuffer* RESTRICT Buffer, const uint32 * RESTRICT ResourceMap, int32 BufferIndex)
+{
+	const TRefCountPtr<FRHIResource>* RESTRICT Resources = Buffer->ResourceTable.GetData();
+	int32 NumSetCalls = 0;
+	const uint32 BufferOffset = ResourceMap[BufferIndex];
+	if (BufferOffset > 0)
+	{
+		const uint32* RESTRICT ResourceInfos = &ResourceMap[BufferOffset];
+		uint32 ResourceInfo = *ResourceInfos++;
+		do
+		{
+			checkSlow(FRHIResourceTableEntry::GetUniformBufferIndex(ResourceInfo) == BufferIndex);
+			const uint16 ResourceIndex = FRHIResourceTableEntry::GetResourceIndex(ResourceInfo);
+			const uint8 BindIndex = FRHIResourceTableEntry::GetBindIndex(ResourceInfo);
+
+			FRHIUnorderedAccessView* RHIUAV = (FRHIUnorderedAccessView*)(Resources[ResourceIndex].GetReference());
+
+			FD3D12UnorderedAccessView* D3D12Resource = CmdContext.RetrieveObject<FD3D12UnorderedAccessView>(RHIUAV);
+			SetResource<ShaderFrequency>(CmdContext, BindIndex, D3D12Resource);
+
+			NumSetCalls++;
+			ResourceInfo = *ResourceInfos++;
+		} while (FRHIResourceTableEntry::GetUniformBufferIndex(ResourceInfo) == BufferIndex);
+	}
+
+	INC_DWORD_STAT_BY(STAT_D3D12SetTextureInTableCalls, NumSetCalls);
+	return NumSetCalls;
+}
+
+
+template <class ShaderType>
+uint32 FD3D12CommandContext::SetUAVPSResourcesFromTables(const ShaderType* RESTRICT Shader)
+{
+	checkSlow(Shader);
+
+	int32 NumChanged = 0;
+	// Mask the dirty bits by those buffers from which the shader has bound resources.
+	uint32 DirtyBits = Shader->ShaderResourceTable.ResourceTableBits & DirtyUniformBuffers[ShaderType::StaticFrequency];
+	while (DirtyBits)
+	{
+		// Scan for the lowest set bit, compute its index, clear it in the set of dirty bits.
+		const uint32 LowestBitMask = (DirtyBits)& (-(int32)DirtyBits);
+		const int32 BufferIndex = FMath::FloorLog2(LowestBitMask); // todo: This has a branch on zero, we know it could never be zero...
+		DirtyBits ^= LowestBitMask;
+		FD3D12UniformBuffer* Buffer = BoundUniformBuffers[ShaderType::StaticFrequency][BufferIndex];
+		check(Buffer);
+		check(BufferIndex < Shader->ShaderResourceTable.ResourceTableLayoutHashes.Num());
+		check(Buffer->GetLayout().GetHash() == Shader->ShaderResourceTable.ResourceTableLayoutHashes[BufferIndex]);
+
+		if ((EShaderFrequency)ShaderType::StaticFrequency == SF_Pixel)
+		{
+			NumChanged += SetShaderResourcesFromBuffer_UAVPS<(EShaderFrequency)ShaderType::StaticFrequency>(*this, Buffer, Shader->ShaderResourceTable.UnorderedAccessViewMap.GetData(), BufferIndex);
+		}
+	}
+	return NumChanged;
+
+}
+
 void FD3D12CommandContext::CommitGraphicsResourceTables()
 {
 	//SCOPE_CYCLE_COUNTER(STAT_D3D12CommitResourceTables);
@@ -1306,13 +1346,18 @@ void FD3D12CommandContext::CommitGraphicsResourceTables()
 	const FD3D12GraphicsPipelineState* const RESTRICT GraphicPSO = StateCache.GetGraphicsPipelineState();
 	check(GraphicPSO);
 
+	auto* PixelShader = GraphicPSO->GetPixelShader();
+	if (PixelShader)
+	{
+		SetUAVPSResourcesFromTables(PixelShader);
+	}
 	if (auto* Shader = GraphicPSO->GetVertexShader())
 	{
 		SetResourcesFromTables(Shader);
 	}
-	if (auto* Shader = GraphicPSO->GetPixelShader())
+	if (PixelShader)
 	{
-		SetResourcesFromTables(Shader);
+		SetResourcesFromTables(PixelShader);
 	}
 	if (auto* Shader = GraphicPSO->GetHullShader())
 	{

@@ -368,6 +368,28 @@ FORCEINLINE void SetUAVParameter(
 	}
 }
 
+/**
+ * Sets the value of a unordered access view parameter
+ */
+template<typename TRHICmdList>
+FORCEINLINE void SetUAVParameter(
+	TRHICmdList& RHICmdList,
+	FRHIPixelShader* PixelShader,
+	const FShaderResourceParameter& Parameter,
+	FRHIUnorderedAccessView* NewUnorderedAccessViewRHI
+)
+{
+	if (Parameter.IsBound())
+	{
+		RHICmdList.SetUAVParameter(
+			PixelShader,
+			Parameter.GetBaseIndex(),
+			NewUnorderedAccessViewRHI
+		);
+	}
+}
+
+
 
 template<typename TRHICmdList>
 inline bool SetUAVParameterIfCS(TRHICmdList& RHICmdList, FRHIVertexShader* Shader, const FShaderResourceParameter& UAVParameter, FRHIUnorderedAccessView* UAV)
@@ -378,7 +400,8 @@ inline bool SetUAVParameterIfCS(TRHICmdList& RHICmdList, FRHIVertexShader* Shade
 template<typename TRHICmdList>
 inline bool SetUAVParameterIfCS(TRHICmdList& RHICmdList, FRHIPixelShader* Shader, const FShaderResourceParameter& UAVParameter, FRHIUnorderedAccessView* UAV)
 {
-	return false;
+	SetUAVParameter(RHICmdList, Shader, UAVParameter, UAV);
+	return UAVParameter.IsBound();
 }
 
 template<typename TRHICmdList>

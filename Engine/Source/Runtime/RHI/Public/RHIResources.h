@@ -1569,18 +1569,12 @@ public:
 
 	FRHITexture* FoveationTexture;
 
-	// UAVs info.
-	FUnorderedAccessViewRHIRef UnorderedAccessView[MaxSimultaneousUAVs];
-	int32 NumUAVs;
-
 	FRHISetRenderTargetsInfo() :
 		NumColorRenderTargets(0),
 		bClearColor(false),
 		bHasResolveAttachments(false),
 		bClearDepth(false),
-		bClearStencil(false),
-		FoveationTexture(nullptr),
-		NumUAVs(0)
+		FoveationTexture(nullptr)
 	{}
 
 	FRHISetRenderTargetsInfo(int32 InNumColorRenderTargets, const FRHIRenderTargetView* InColorRenderTargets, const FRHIDepthRenderTargetView& InDepthStencilRenderTarget) :
@@ -1589,9 +1583,7 @@ public:
 		bHasResolveAttachments(false),
 		DepthStencilRenderTarget(InDepthStencilRenderTarget),		
 		bClearDepth(InDepthStencilRenderTarget.Texture && InDepthStencilRenderTarget.DepthLoadAction == ERenderTargetLoadAction::EClear),
-		bClearStencil(InDepthStencilRenderTarget.Texture && InDepthStencilRenderTarget.StencilLoadAction == ERenderTargetLoadAction::EClear),
-		FoveationTexture(nullptr),
-		NumUAVs(0)
+		FoveationTexture(nullptr)
 	{
 		check(InNumColorRenderTargets <= 0 || InColorRenderTargets);
 		for (int32 Index = 0; Index < InNumColorRenderTargets; ++Index)
@@ -1664,10 +1656,6 @@ public:
 				bClearColor = RTInfo.bClearColor;
 				bHasResolveAttachments = RTInfo.bHasResolveAttachments;
 
-				for (int32 Index = 0; Index < MaxSimultaneousUAVs; ++Index)
-				{
-					UnorderedAccessView[Index] = RTInfo.UnorderedAccessView[Index];
-				}
 			}
 		};
 
@@ -2494,10 +2482,6 @@ struct FRHIRenderPassInfo
 	// TODO: Remove once FORT-162640 is solved
 	bool bTooManyUAVs = false;
 
-	//#RenderPasses
-	int32 UAVIndex = -1;
-	int32 NumUAVs = 0;
-	FUnorderedAccessViewRHIRef UAVs[MaxSimultaneousUAVs];
 
 	// Color, no depth, optional resolve, optional mip, optional array slice
 	explicit FRHIRenderPassInfo(FRHITexture* ColorRT, ERenderTargetActions ColorAction, FRHITexture* ResolveRT = nullptr, uint32 InMipIndex = 0, int32 InArraySlice = -1)
@@ -2696,20 +2680,14 @@ struct FRHIRenderPassInfo
 		FMemory::Memzero(&ColorRenderTargets[1], sizeof(FColorEntry) * (MaxSimultaneousRenderTargets - 1));
 	}
 
-	explicit FRHIRenderPassInfo(int32 InNumUAVs, FRHIUnorderedAccessView** InUAVs)
+	enum ENoRenderTargets
 	{
-		if (InNumUAVs > MaxSimultaneousUAVs)
-		{
-			OnVerifyNumUAVsFailed(InNumUAVs);
-			InNumUAVs = MaxSimultaneousUAVs;
-		}
-
+		NoRenderTargets,
+	};
+	explicit FRHIRenderPassInfo(ENoRenderTargets Dummy)
+	{
+		(void)Dummy;
 		FMemory::Memzero(*this);
-		NumUAVs = InNumUAVs;
-		for (int32 Index = 0; Index < InNumUAVs; Index++)
-		{
-			UAVs[Index] = InUAVs[Index];
-		}
 	}
 
 	inline int32 GetNumColorRenderTargets() const

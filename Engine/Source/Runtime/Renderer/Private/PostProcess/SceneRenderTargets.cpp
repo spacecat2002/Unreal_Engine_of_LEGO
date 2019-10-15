@@ -870,12 +870,6 @@ void FSceneRenderTargets::SetQuadOverdrawUAV(FRHICommandList& RHICmdList, bool b
 		if (QuadOverdrawBuffer.IsValid() && QuadOverdrawBuffer->GetRenderTargetItem().UAV.IsValid())
 		{
 			QuadOverdrawIndex = GetQuadOverdrawUAVIndex(ShaderPlatform, CurrentFeatureLevel);
-
-			// Increase the rendertarget count in order to control the bound slot of the UAV.
-			check(OutInfo.GetNumColorRenderTargets() <= QuadOverdrawIndex);
-			OutInfo.UAVIndex = QuadOverdrawIndex;
-			OutInfo.UAVs[OutInfo.NumUAVs++] = QuadOverdrawBuffer->GetRenderTargetItem().UAV;
-
 			if (bClearQuadOverdrawBuffers)
 			{
 				// Clear to default value
@@ -887,16 +881,36 @@ void FSceneRenderTargets::SetQuadOverdrawUAV(FRHICommandList& RHICmdList, bool b
 	}
 #endif // !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
+FUnorderedAccessViewRHIRef FSceneRenderTargets::GetQuadOverdrawBufferUAV()
+{
+	const EShaderPlatform ShaderPlatform = GetFeatureLevelShaderPlatform(CurrentFeatureLevel);
+	bool bBindQuadOverdrawBuffers = true;
+	if (bBindQuadOverdrawBuffers && AllowDebugViewShaderMode(DVSM_QuadComplexity, ShaderPlatform, CurrentFeatureLevel))
+	{
+		if (QuadOverdrawBuffer.IsValid() && QuadOverdrawBuffer->GetRenderTargetItem().UAV.IsValid())
+		{
+			return QuadOverdrawBuffer->GetRenderTargetItem().UAV;
+		}
+	}
+	return GBlackTextureWithUAV->UnorderedAccessViewRHI;
+}
+
+
+
+FUnorderedAccessViewRHIRef FSceneRenderTargets::GetVirtualTextureFeedbackUAV()
+{
+	TRefCountPtr< IPooledRenderTarget > RenderTarget = VirtualTextureFeedback.FeedbackTextureGPU;
+	if(!RenderTarget)
+	{
+		return GBlackTextureWithUAV->UnorderedAccessViewRHI;
+	}
+	
+	return RenderTarget->GetRenderTargetItem().UAV;
+}
 
 void FSceneRenderTargets::BindVirtualTextureFeedbackUAV(FRHIRenderPassInfo& RPInfo)
 {
-	// must match VT_FEEDBACK_REGISTER in VirtualTextureCommon.ush
-	static const int32 VT_FEEDBACK_REGISTER = 7;
-
-	checkf(VirtualTextureFeedback.FeedbackTextureGPU, TEXT("Invalid attempt to render VT feedback after it has already been transferred to CPU, need to adjust location of TransferGPUToCPU"));
-	check(RPInfo.GetNumColorRenderTargets() <= VT_FEEDBACK_REGISTER);
-	RPInfo.UAVIndex = VT_FEEDBACK_REGISTER;
-	RPInfo.UAVs[RPInfo.NumUAVs++] = VirtualTextureFeedback.FeedbackTextureGPU->GetRenderTargetItem().UAV;
+	return;
 }
 
 void FSceneRenderTargets::BeginRenderingGBuffer(FRHICommandList& RHICmdList, ERenderTargetLoadAction ColorLoadAction, ERenderTargetLoadAction DepthLoadAction, FExclusiveDepthStencil DepthStencilAccess, bool bBindQuadOverdrawBuffers, bool bClearQuadOverdrawBuffers, const FLinearColor& ClearColor/*=(0,0,0,1)*/, bool bIsWireframe)

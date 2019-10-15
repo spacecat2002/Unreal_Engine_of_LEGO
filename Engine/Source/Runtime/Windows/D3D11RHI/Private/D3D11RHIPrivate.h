@@ -117,6 +117,11 @@ DECLARE_DWORD_COUNTER_STAT_EXTERN(TEXT("Textures Allocated"),STAT_D3D11TexturesA
 DECLARE_DWORD_COUNTER_STAT_EXTERN(TEXT("Textures Released"),STAT_D3D11TexturesReleased,STATGROUP_D3D11RHI, );
 DECLARE_MEMORY_STAT_EXTERN(TEXT("Texture object pool memory"),STAT_D3D11TexturePoolMemory,STATGROUP_D3D11RHI, );
 
+
+DECLARE_CYCLE_STAT_EXTERN(TEXT("RenderTargetCommit"), STAT_D3D11RenderTargetCommits, STATGROUP_D3D11RHI, );
+DECLARE_CYCLE_STAT_EXTERN(TEXT("RenderTargetCommitUAV"), STAT_D3D11RenderTargetCommitsUAV, STATGROUP_D3D11RHI, );
+
+
 struct FD3D11GlobalStats
 {
 	// in bytes, never change after RHI, needed to scale game features
@@ -546,6 +551,7 @@ public:
 	virtual void RHISetShaderSampler(FRHIDomainShader* DomainShader, uint32 SamplerIndex, FRHISamplerState* NewState) final override;
 	virtual void RHISetShaderSampler(FRHIHullShader* HullShader, uint32 SamplerIndex, FRHISamplerState* NewState) final override;
 	virtual void RHISetShaderSampler(FRHIPixelShader* PixelShader, uint32 SamplerIndex, FRHISamplerState* NewState) final override;
+	virtual void RHISetUAVParameter(FRHIPixelShader* PixelShader, uint32 UAVIndex, FRHIUnorderedAccessView* UAVRHI) final override;
 	virtual void RHISetUAVParameter(FRHIComputeShader* ComputeShader, uint32 UAVIndex, FRHIUnorderedAccessView* UAV) final override;
 	virtual void RHISetUAVParameter(FRHIComputeShader* ComputeShader, uint32 UAVIndex, FRHIUnorderedAccessView* UAV, uint32 InitialCount) final override;
 	virtual void RHISetShaderResourceViewParameter(FRHIPixelShader* PixelShader, uint32 SamplerIndex, FRHIShaderResourceView* SRV) final override;
@@ -570,7 +576,8 @@ public:
 	virtual void RHISetStencilRef(uint32 StencilRef) final override;
 	virtual void RHISetBlendState(FRHIBlendState* NewState, const FLinearColor& BlendFactor) final override;
 	virtual void RHISetBlendFactor(const FLinearColor& BlendFactor) final override;
-	virtual void RHISetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, const FRHIDepthRenderTargetView* NewDepthStencilTarget, uint32 NumUAVs, FRHIUnorderedAccessView* const* UAVs) final override;
+	virtual void RHISetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, const FRHIDepthRenderTargetView* NewDepthStencilTarget) final override;
+	void InternalSetUAVPS(uint32 BindIndex, FD3D11UnorderedAccessView* UnorderedAccessViewRHI);
 	virtual void RHISetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo) final override;
 	virtual void RHIBindClearMRTValues(bool bClearColor, bool bClearDepth, bool bClearStencil) final override;
 	virtual void RHIDrawPrimitive(uint32 BaseVertexIndex, uint32 NumPrimitives, uint32 NumInstances) final override;
@@ -835,7 +842,12 @@ protected:
 	EPrimitiveType PrimitiveType;
 
 	TRefCountPtr<ID3D11RenderTargetView> CurrentRenderTargets[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT];
-	TRefCountPtr<ID3D11UnorderedAccessView> CurrentUAVs[D3D11_PS_CS_UAV_REGISTER_COUNT];
+	TRefCountPtr<FD3D11UnorderedAccessView> CurrentUAVs[D3D11_PS_CS_UAV_REGISTER_COUNT];
+	ID3D11UnorderedAccessView* UAVBound[D3D11_PS_CS_UAV_REGISTER_COUNT];
+	uint32 UAVBindFirst;
+	uint32 UAVBindCount;
+	uint32 UAVSChanged;
+
 	TRefCountPtr<ID3D11DepthStencilView> CurrentDepthStencilTarget;
 	TRefCountPtr<FD3D11TextureBase> CurrentDepthTexture;
 	FD3D11BaseShaderResource* CurrentResourcesBoundAsSRVs[SF_NumStandardFrequencies][D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT];
@@ -958,6 +970,7 @@ protected:
 	virtual void CommitComputeShaderConstants();
 
 	template <class ShaderType> void SetResourcesFromTables(const ShaderType* RESTRICT);
+	template <class ShaderType> int32 SetUAVPSResourcesFromTables(const ShaderType* RESTRICT);
 	void CommitGraphicsResourceTables();
 	void CommitComputeResourceTables(FD3D11ComputeShader* ComputeShader);
 
@@ -984,6 +997,8 @@ protected:
 	uint32 GetMaxMSAAQuality(uint32 SampleCount);
 
 	void CommitRenderTargetsAndUAVs();
+	void CommitRenderTargets(bool bClearUAVS);
+	void CommitUAVs();
 
 	/**
 	 * Cleanup the D3D device.

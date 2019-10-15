@@ -56,6 +56,11 @@ void FEmptyDynamicRHI::RHISetBoundShaderState(FRHIBoundShaderState* BoundShaderS
 
 }
 
+void FEmptyDynamicRHI::RHISetUAVParameter(FRHIPixelShader* PixelShaderRHI, uint32 UAVIndex, FRHIUnorderedAccessView* UAVRHI)
+{
+	FEmptyUnorderedAccessView* UAV = ResourceCast(UAVRHI);
+
+}
 
 void FEmptyDynamicRHI::RHISetUAVParameter(FRHIComputeShader* ComputeShaderRHI, uint32 UAVIndex, FRHIUnorderedAccessView* UAVRHI)
 {
@@ -247,7 +252,7 @@ void FEmptyDynamicRHI::RHISetBlendState(FRHIBlendState* NewStateRHI, const FLine
 
 
 void FEmptyDynamicRHI::RHISetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, 
-	FRHITexture* NewDepthStencilTargetRHI, uint32 NumUAVs, FRHIUnorderedAccessView* const* UAVs)
+	FRHITexture* NewDepthStencilTargetRHI)
 {
 
 }

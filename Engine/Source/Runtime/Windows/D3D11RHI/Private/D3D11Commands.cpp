@@ -433,6 +433,30 @@ void FD3D11DynamicRHI::RHISetShaderTexture(FRHIComputeShader* ComputeShaderRHI,u
 	}
 }
 
+
+void FD3D11DynamicRHI::RHISetUAVParameter(FRHIPixelShader* ComputeShaderRHI, uint32 UAVIndex, FRHIUnorderedAccessView* UAVRHI)
+{
+	FD3D11UnorderedAccessView* UAV = ResourceCast(UAVRHI);
+
+	if (UAV)
+	{
+		ConditionalClearShaderResource(UAV->Resource, true);
+
+		//check it's safe for r/w for this UAV
+		const EResourceTransitionAccess CurrentUAVAccess = UAV->Resource->GetCurrentGPUAccess();
+		const bool UAVDirty = UAV->Resource->IsDirty();
+		ensureMsgf((GEnableDX11TransitionChecks == 0) || !UAVDirty || (CurrentUAVAccess == EResourceTransitionAccess::ERWNoBarrier), TEXT("UAV: %i is in unsafe state for GPU R/W: %s, Dirty: %i"), UAVIndex, *FResourceTransitionUtility::ResourceTransitionAccessStrings[(int32)CurrentUAVAccess], (int32)UAVDirty);
+
+		//UAVs always dirty themselves. If a shader wanted to just read, it should use an SRV.
+		UAV->Resource->SetDirty(true, PresentCounter);
+	}
+	if (CurrentUAVs[UAVIndex] != UAV)
+	{
+		CurrentUAVs[UAVIndex] = UAV;
+		UAVSChanged = 1;
+	}
+}
+
 void FD3D11DynamicRHI::RHISetUAVParameter(FRHIComputeShader* ComputeShaderRHI,uint32 UAVIndex, FRHIUnorderedAccessView* UAVRHI)
 {
 	//VALIDATE_BOUND_SHADER(ComputeShaderRHI);
@@ -835,44 +859,116 @@ void FD3D11DynamicRHI::RHISetBlendFactor(const FLinearColor& BlendFactor)
 {
 	StateCache.SetBlendFactor((const float*)&BlendFactor, 0xffffffff);
 }
-
 void FD3D11DynamicRHI::CommitRenderTargetsAndUAVs()
 {
+	CommitRenderTargets(false);
+	FMemory::Memset(UAVBound, 0); //force to be rebound if any is set
+	UAVSChanged = 1;
+	CommitUAVs();
+
+}
+void FD3D11DynamicRHI::CommitRenderTargets(bool bClearUAVs)
+{
+	SCOPE_CYCLE_COUNTER(STAT_D3D11RenderTargetCommits);
 	ID3D11RenderTargetView* RTArray[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT];
-	for(uint32 RenderTargetIndex = 0;RenderTargetIndex < NumSimultaneousRenderTargets;++RenderTargetIndex)
+	for (uint32 RenderTargetIndex = 0; RenderTargetIndex < NumSimultaneousRenderTargets; ++RenderTargetIndex)
 	{
 		RTArray[RenderTargetIndex] = CurrentRenderTargets[RenderTargetIndex];
 	}
-	ID3D11UnorderedAccessView* UAVArray[D3D11_PS_CS_UAV_REGISTER_COUNT];
-	uint32 UAVInitialCountArray[D3D11_PS_CS_UAV_REGISTER_COUNT];
-	for(uint32 UAVIndex = 0;UAVIndex < NumUAVs;++UAVIndex)
+
+	
+	Direct3DDeviceIMContext->OMSetRenderTargets(
+		NumSimultaneousRenderTargets,
+		RTArray,
+		CurrentDepthStencilTarget
+	);
+
+	if(bClearUAVs)
 	{
-		UAVArray[UAVIndex] = CurrentUAVs[UAVIndex];
-		// Using the value that indicates to keep the current UAV counter
-		UAVInitialCountArray[UAVIndex] = -1;
+		for(uint32 i = 0; i < D3D11_PS_CS_UAV_REGISTER_COUNT; ++i)
+		{
+			CurrentUAVs[i] = nullptr;
+			UAVBound[i] = nullptr;
+		}
+		UAVBindFirst = 0;
+		UAVBindCount = 0;
+		UAVSChanged = 0;
+	}
+}
+
+void FD3D11DynamicRHI::InternalSetUAVPS(uint32 BindIndex, FD3D11UnorderedAccessView* UnorderedAccessViewRHI)
+{
+	check(BindIndex < D3D11_PS_CS_UAV_REGISTER_COUNT);
+	if(CurrentUAVs[BindIndex] != UnorderedAccessViewRHI)
+	{
+		CurrentUAVs[BindIndex] = UnorderedAccessViewRHI;
+		UAVSChanged = 1;
+
+	}
+	ConditionalClearShaderResource(UnorderedAccessViewRHI->Resource, true);
+}
+
+void FD3D11DynamicRHI::CommitUAVs()
+{
+	if(!UAVSChanged)
+	{
+		return;
+	}
+	int32 First = -1;
+	int32 Count = 0;
+	for(int32 i = 0; i < D3D11_PS_CS_UAV_REGISTER_COUNT; ++i)
+	{
+		if(CurrentUAVs[i] != nullptr)
+		{
+			First = i;
+			break;
+		}
 	}
 
-	if (NumUAVs > 0)
+	FD3D11UnorderedAccessView* RHIUAVs[D3D11_PS_CS_UAV_REGISTER_COUNT];
+	ID3D11UnorderedAccessView* UAVs[D3D11_PS_CS_UAV_REGISTER_COUNT];
+	FMemory::Memset(UAVs, 0);
+	for(int32 i = First; i < D3D11_PS_CS_UAV_REGISTER_COUNT; ++i)
 	{
-		Direct3DDeviceIMContext->OMSetRenderTargetsAndUnorderedAccessViews(
-			NumSimultaneousRenderTargets,
-			RTArray,
-			CurrentDepthStencilTarget,
-			NumSimultaneousRenderTargets,
-			NumUAVs,
-			UAVArray,
-			UAVInitialCountArray
-			);
+		if(CurrentUAVs[i] == nullptr)
+			break;
+		RHIUAVs[i] = CurrentUAVs[i].GetReference();
+		UAVs[i] = RHIUAVs[i]->View;
+		Count++;
 	}
-	else
+
+	if(First != -1 && (First != UAVBindFirst || Count != UAVBindCount || 0 != FMemory::Memcmp(UAVs[First], UAVBound[First], sizeof(UAVs[0]) * Count)))
 	{
-		// Use OMSetRenderTargets if there are no UAVs, works around a crash in PIX
-		Direct3DDeviceIMContext->OMSetRenderTargets(
-			NumSimultaneousRenderTargets,
-			RTArray,
-			CurrentDepthStencilTarget
-			);
+		SCOPE_CYCLE_COUNTER(STAT_D3D11RenderTargetCommitsUAV);
+		for (int32 i = First; i < First + Count; ++i)
+		{
+			if(UAVs[i] != UAVBound[i])
+			{
+				FD3D11UnorderedAccessView* RHIUAV = RHIUAVs[i];
+				ID3D11UnorderedAccessView* UAV = UAVs[i];
+				if (UAV)
+				{
+					//check it's safe for r/w for this UAV
+					const EResourceTransitionAccess CurrentUAVAccess = RHIUAV->Resource->GetCurrentGPUAccess();
+					const bool UAVDirty = RHIUAV->Resource->IsDirty();
+					const bool bAccessPass = (CurrentUAVAccess == EResourceTransitionAccess::ERWBarrier && !UAVDirty) || (CurrentUAVAccess == EResourceTransitionAccess::ERWNoBarrier);
+					ensureMsgf((GEnableDX11TransitionChecks == 0) || bAccessPass, TEXT("UAV: %i is in unsafe state for GPU R/W: %s"), i, *FResourceTransitionUtility::ResourceTransitionAccessStrings[(int32)CurrentUAVAccess]);
+
+					//UAVs get set to dirty.  If the shader just wanted to read it should have used an SRV.
+					RHIUAV->Resource->SetDirty(true, PresentCounter);
+				}
+
+				// Unbind any shader views of the UAV's resource.
+				ConditionalClearShaderResource(RHIUAV->Resource, true);
+				UAVBound[i] = UAV;
+			}
+		}
+		static const uint32 UAVInitialCountArray[D3D11_PS_CS_UAV_REGISTER_COUNT] = {-1, -1, -1, -1,-1, -1, -1, -1 };
+		Direct3DDeviceIMContext->OMSetRenderTargetsAndUnorderedAccessViews(D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL, 0, 0, First, Count, &UAVs[First], &UAVInitialCountArray[0]);
 	}
+	UAVBindFirst = First;
+	UAVBindCount = Count;
+	UAVSChanged = 0;
 }
 
 struct FRTVDesc
@@ -939,10 +1035,7 @@ FRTVDesc GetRenderTargetViewDesc(ID3D11RenderTargetView* RenderTargetView)
 void FD3D11DynamicRHI::RHISetRenderTargets(
 	uint32 NewNumSimultaneousRenderTargets,
 	const FRHIRenderTargetView* NewRenderTargetsRHI,
-	const FRHIDepthRenderTargetView* NewDepthStencilTargetRHI,
-	uint32 NewNumUAVs,
-	FRHIUnorderedAccessView* const* UAVs
-	)
+	const FRHIDepthRenderTargetView* NewDepthStencilTargetRHI)
 {
 	FD3D11TextureBase* NewDepthStencilTarget = GetD3D11TextureFromRHITexture(NewDepthStencilTargetRHI ? NewDepthStencilTargetRHI->Texture : nullptr);
 
@@ -956,7 +1049,7 @@ void FD3D11DynamicRHI::RHISetRenderTargets(
 	}
 #endif
 
-	check(NewNumSimultaneousRenderTargets + NewNumUAVs <= MaxSimultaneousRenderTargets);
+	check(NewNumSimultaneousRenderTargets <= MaxSimultaneousRenderTargets);
 
 	bool bTargetChanged = false;
 
@@ -1093,49 +1186,12 @@ void FD3D11DynamicRHI::RHISetRenderTargets(
 		bTargetChanged = true;
 	}
 
-	// Gather the new UAVs.
-	for(uint32 UAVIndex = 0;UAVIndex < MaxSimultaneousUAVs;++UAVIndex)
-	{
-		ID3D11UnorderedAccessView* UAV = NULL;
-		if(UAVIndex < NewNumUAVs && UAVs[UAVIndex] != NULL)
-		{
-			FD3D11UnorderedAccessView* RHIUAV = (FD3D11UnorderedAccessView*)UAVs[UAVIndex];
-			UAV = RHIUAV->View;
-
-			if (UAV)
-			{
-				//check it's safe for r/w for this UAV
-				const EResourceTransitionAccess CurrentUAVAccess = RHIUAV->Resource->GetCurrentGPUAccess();
-				const bool UAVDirty = RHIUAV->Resource->IsDirty();
-				const bool bAccessPass = (CurrentUAVAccess == EResourceTransitionAccess::ERWBarrier && !UAVDirty) || (CurrentUAVAccess == EResourceTransitionAccess::ERWNoBarrier);
-				ensureMsgf((GEnableDX11TransitionChecks == 0) || bAccessPass, TEXT("UAV: %i is in unsafe state for GPU R/W: %s"), UAVIndex, *FResourceTransitionUtility::ResourceTransitionAccessStrings[(int32)CurrentUAVAccess]);
-
-				//UAVs get set to dirty.  If the shader just wanted to read it should have used an SRV.
-				RHIUAV->Resource->SetDirty(true, PresentCounter);
-			}
-
-			// Unbind any shader views of the UAV's resource.
-			ConditionalClearShaderResource(RHIUAV->Resource, true);
-		}
-
-		if(CurrentUAVs[UAVIndex] != UAV)
-		{
-			CurrentUAVs[UAVIndex] = UAV;
-			bTargetChanged = true;
-		}
-	}
-	if(NumUAVs != NewNumUAVs)
-	{
-		NumUAVs = NewNumUAVs;
-		bTargetChanged = true;
-	}
-
 	// Only make the D3D call to change render targets if something actually changed.
 	if(bTargetChanged)
 	{
-		CommitRenderTargetsAndUAVs();
+		CommitRenderTargets(true);
 	}
-	
+
 	// Set the viewport to the full size of render target 0.
 	if (NewRenderTargetViews[0])
 	{
@@ -1157,19 +1213,11 @@ void FD3D11DynamicRHI::RHISetRenderTargets(
 
 void FD3D11DynamicRHI::RHISetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo)
 {
-	// Here convert to FRHIUnorderedAccessView** in order to call RHISetRenderTargets
-	FRHIUnorderedAccessView* UAVs[MaxSimultaneousUAVs] = {};
-	for (int32 UAVIndex = 0; UAVIndex < RenderTargetsInfo.NumUAVs; ++UAVIndex)
-	{
-		UAVs[UAVIndex] = RenderTargetsInfo.UnorderedAccessView[UAVIndex].GetReference();
-	}
 
 	this->RHISetRenderTargets(RenderTargetsInfo.NumColorRenderTargets,
 		RenderTargetsInfo.ColorRenderTarget,
-		&RenderTargetsInfo.DepthStencilRenderTarget,
-		RenderTargetsInfo.NumUAVs,
-		UAVs);
-
+		&RenderTargetsInfo.DepthStencilRenderTarget);
+	
 	if (RenderTargetsInfo.bClearColor || RenderTargetsInfo.bClearStencil || RenderTargetsInfo.bClearDepth)
 	{
 		FLinearColor ClearColors[MaxSimultaneousRenderTargets];
@@ -1193,7 +1241,7 @@ void FD3D11DynamicRHI::RHISetRenderTargetsAndClear(const FRHISetRenderTargetsInf
 			const FClearValueBinding& ClearValue = RenderTargetsInfo.DepthStencilRenderTarget.Texture->GetClearBinding();
 			checkf(ClearValue.ColorBinding == EClearBinding::EDepthStencilBound, TEXT("Texture: %s does not have a DS value bound for fast clears"), *RenderTargetsInfo.DepthStencilRenderTarget.Texture->GetName().GetPlainNameString());
 			ClearValue.GetDepthStencil(DepthClear, StencilClear);
-		}
+	}
 
 		this->RHIClearMRTImpl(RenderTargetsInfo.bClearColor, RenderTargetsInfo.NumColorRenderTargets, ClearColors, RenderTargetsInfo.bClearDepth, DepthClear, RenderTargetsInfo.bClearStencil, StencilClear);
 	}
@@ -1411,6 +1459,37 @@ inline int32 SetShaderResourcesFromBuffer_Surface(FD3D11DynamicRHI* RESTRICT D3D
 
 
 template <EShaderFrequency ShaderFrequency>
+inline int32 SetShaderResourcesFromBufferUAVPS(FD3D11DynamicRHI* RESTRICT D3D11RHI, FD3D11StateCache* RESTRICT StateCache, FD3D11UniformBuffer* RESTRICT Buffer, const uint32* RESTRICT ResourceMap, int32 BufferIndex, FName LayoutName)
+{
+	const TRefCountPtr<FRHIResource>* RESTRICT Resources = Buffer->ResourceTable.GetData();
+	float CurrentTime = FApp::GetCurrentTime();
+	int32 NumSetCalls = 0;
+	uint32 BufferOffset = ResourceMap[BufferIndex];
+	if (BufferOffset > 0)
+	{
+		const uint32* RESTRICT ResourceInfos = &ResourceMap[BufferOffset];
+		uint32 ResourceInfo = *ResourceInfos++;
+		do
+		{
+			checkSlow(FRHIResourceTableEntry::GetUniformBufferIndex(ResourceInfo) == BufferIndex);
+			const uint16 ResourceIndex = FRHIResourceTableEntry::GetResourceIndex(ResourceInfo);
+			const uint8 BindIndex = FRHIResourceTableEntry::GetBindIndex(ResourceInfo);
+
+			FD3D11UnorderedAccessView* UnorderedAccessViewRHI = (FD3D11UnorderedAccessView*)Resources[ResourceIndex].GetReference();
+			if (!UnorderedAccessViewRHI)
+			{
+				UE_LOG(LogD3D11RHI, Fatal, TEXT("Null UAV (resource %d bind %d) on UB Layout %s"), ResourceIndex, BindIndex, *LayoutName.ToString());
+			}
+			D3D11RHI->InternalSetUAVPS(BindIndex, UnorderedAccessViewRHI);
+			NumSetCalls++;
+			ResourceInfo = *ResourceInfos++;
+		} while (FRHIResourceTableEntry::GetUniformBufferIndex(ResourceInfo) == BufferIndex);
+	}
+	return NumSetCalls;
+}
+
+
+template <EShaderFrequency ShaderFrequency>
 inline int32 SetShaderResourcesFromBuffer_SRV(FD3D11DynamicRHI* RESTRICT D3D11RHI, FD3D11StateCache* RESTRICT StateCache, FD3D11UniformBuffer* RESTRICT Buffer, const uint32* RESTRICT ResourceMap, int32 BufferIndex, FName LayoutName)
 {
 	const TRefCountPtr<FRHIResource>* RESTRICT Resources = Buffer->ResourceTable.GetData();
@@ -1541,20 +1620,54 @@ void FD3D11DynamicRHI::SetResourcesFromTables(const ShaderType* RESTRICT Shader)
 	DirtyUniformBuffers[ShaderType::StaticFrequency] = 0;
 }
 
+template <class ShaderType>
+int32 FD3D11DynamicRHI::SetUAVPSResourcesFromTables(const ShaderType* RESTRICT Shader)
+{
+	checkSlow(Shader);
+	int32 NumChanged = 0;
+	// Mask the dirty bits by those buffers from which the shader has bound resources.
+	uint32 DirtyBits = Shader->ShaderResourceTable.ResourceTableBits & DirtyUniformBuffers[ShaderType::StaticFrequency];
+	while (DirtyBits)
+	{
+		// Scan for the lowest set bit, compute its index, clear it in the set of dirty bits.
+		const uint32 LowestBitMask = (DirtyBits) & (-(int32)DirtyBits);
+		const int32 BufferIndex = FMath::FloorLog2(LowestBitMask); // todo: This has a branch on zero, we know it could never be zero...
+		DirtyBits ^= LowestBitMask;
+		FD3D11UniformBuffer* Buffer = (FD3D11UniformBuffer*)BoundUniformBuffers[ShaderType::StaticFrequency][BufferIndex].GetReference();
+
+		check(BufferIndex < Shader->ShaderResourceTable.ResourceTableLayoutHashes.Num());
+		FName LayoutName = Buffer->GetLayout().GetDebugName();
+
+		if ((EShaderFrequency)ShaderType::StaticFrequency == SF_Pixel)
+		{
+			NumChanged += SetShaderResourcesFromBufferUAVPS<(EShaderFrequency)ShaderType::StaticFrequency>(this, &StateCache, Buffer, Shader->ShaderResourceTable.UnorderedAccessViewMap.GetData(), BufferIndex, LayoutName);
+		}
+	}
+	return NumChanged;
+}
+
 static int32 PeriodicCheck = 0;
 
 void FD3D11DynamicRHI::CommitGraphicsResourceTables()
 {
 	FD3D11BoundShaderState* RESTRICT CurrentBoundShaderState = (FD3D11BoundShaderState*)BoundShaderStateHistory.GetLast();
 	check(CurrentBoundShaderState);
+	auto* PixelShader = CurrentBoundShaderState->GetPixelShader();
+	if(PixelShader)
+	{
+		if(SetUAVPSResourcesFromTables(PixelShader)|| UAVSChanged)
+		{
+			CommitUAVs();
+		}
+	}
 
 	if (auto* Shader = CurrentBoundShaderState->GetVertexShader())
 	{
 		SetResourcesFromTables(Shader);
 	}
-	if (auto* Shader = CurrentBoundShaderState->GetPixelShader())
+	if (PixelShader)
 	{
-		SetResourcesFromTables(Shader);
+		SetResourcesFromTables(PixelShader);
 	}
 	if (auto* Shader = CurrentBoundShaderState->GetHullShader())
 	{

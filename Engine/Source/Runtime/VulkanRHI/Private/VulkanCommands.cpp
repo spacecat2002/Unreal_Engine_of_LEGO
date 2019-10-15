@@ -151,6 +151,13 @@ void FVulkanCommandListContext::RHIDispatchIndirectComputeShader(FRHIVertexBuffe
 	VulkanRHI::/*Debug*/HeavyWeightBarrier(CmdBuffer/*, 2*/);
 }
 
+void FVulkanCommandListContext::RHISetUAVParameter(FRHIPixelShader* PixelShaderRHI, uint32 UAVIndex, FRHIUnorderedAccessView* UAVRHI)
+{
+
+	FVulkanUnorderedAccessView* UAV = ResourceCast(UAVRHI);
+	PendingGfxState->SetUAVForStage(ShaderStage::Pixel, UAVIndex, UAV);
+}
+
 void FVulkanCommandListContext::RHISetUAVParameter(FRHIComputeShader* ComputeShaderRHI, uint32 UAVIndex, FRHIUnorderedAccessView* UAVRHI)
 {
 	check(PendingComputeState->GetCurrentShader() == ResourceCast(ComputeShaderRHI));
@@ -491,6 +498,38 @@ inline void /*FVulkanCommandListContext::*/SetShaderUniformBufferResources(FVulk
 		const FVulkanShaderHeader::FUBResourceInfo& ResourceInfo = HeaderUBInfo.ResourceEntries[Index];
 		switch (ResourceInfo.UBBaseType)
 		{
+		case UBMT_UAV:
+		{
+			const VkDescriptorType DescriptorType = DescriptorTypes[GlobalInfos[ResourceInfo.GlobalIndex].TypeIndex];
+			
+			FVulkanUnorderedAccessView* UAV = (FVulkanUnorderedAccessView*)(ResourceArray[ResourceInfo.SourceUBResourceIndex].GetReference());
+			if (UAV)
+			{
+				ensure(DescriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+				FRHITexture* SourceTexture = UAV->SourceTexture.GetReference();
+				if(SourceTexture)
+				{
+					const FVulkanTextureBase* BaseTexture = FVulkanTextureBase::Cast(SourceTexture);
+					VkImageLayout Layout = Context->GetLayoutForDescriptor(BaseTexture->Surface);
+					State->SetUAVForUBResource(GlobalRemappingInfo[ResourceInfo.GlobalIndex].NewDescriptorSet, GlobalRemappingInfo[ResourceInfo.GlobalIndex].NewBindingIndex, UAV);
+					SourceTexture->SetLastRenderTime(CurrentTime);
+				}
+				else
+				{
+					checkNoEntry();
+				}
+			}
+			else
+			{
+#if VULKAN_ENABLE_SHADER_DEBUG_NAMES
+				UE_LOG(LogVulkanRHI, Warning, TEXT("Invalid texture in SRT table for shader '%s'"), *Shader->GetDebugName());
+#else
+				UE_LOG(LogVulkanRHI, Warning, TEXT("Invalid texture in SRT table"));
+#endif
+				checkNoEntry();
+			}
+		}
+		break;
 		case UBMT_SAMPLER:
 		{
 			uint16 CombinedAlias = GlobalInfos[ResourceInfo.GlobalIndex].CombinedSamplerStateAliasIndex;

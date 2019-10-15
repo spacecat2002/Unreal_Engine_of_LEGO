@@ -440,6 +440,12 @@ void FOpenGLDynamicRHI::RHISetBoundShaderState(FRHIBoundShaderState* BoundShader
 	BoundShaderStateHistory.Add(BoundShaderState);
 }
 
+void FOpenGLDynamicRHI::RHISetUAVParameter(FRHIPixelShader* PixelShaderRHI, uint32 UAVIndex, FRHIUnorderedAccessView* UnorderedAccessViewRHI)
+{
+	checkNoEntry();//UAV-PS port: not yet implemented
+}
+
+
 void FOpenGLDynamicRHI::RHISetUAVParameter(FRHIComputeShader* ComputeShaderRHI,uint32 UAVIndex, FRHIUnorderedAccessView* UnorderedAccessViewRHI)
 {
 	check(FOpenGL::SupportsComputeShaders());
@@ -1617,14 +1623,10 @@ void FOpenGLDynamicRHI::RHISetBlendState(FRHIBlendState* NewStateRHI,const FLine
 void FOpenGLDynamicRHI::RHISetRenderTargets(
 	uint32 NumSimultaneousRenderTargets,
 	const FRHIRenderTargetView* NewRenderTargetsRHI,
-	const FRHIDepthRenderTargetView* NewDepthStencilTargetRHI,
-	uint32 NumUAVs,
-	FRHIUnorderedAccessView* const* UAVs
-	)
+	const FRHIDepthRenderTargetView* NewDepthStencilTargetRHI)
 {
 	VERIFY_GL_SCOPE();
 	check(NumSimultaneousRenderTargets <= MaxSimultaneousRenderTargets);
-	check(NumUAVs == 0);
 
 	FMemory::Memset(PendingState.RenderTargets,0,sizeof(PendingState.RenderTargets));
 	FMemory::Memset(PendingState.RenderTargetMipmapLevels,0,sizeof(PendingState.RenderTargetMipmapLevels));
@@ -1818,9 +1820,7 @@ void FOpenGLDynamicRHI::RHISetRenderTargetsAndClear(const FRHISetRenderTargetsIn
 	VERIFY_GL_SCOPE();
 	this->RHISetRenderTargets(RenderTargetsInfo.NumColorRenderTargets,
 		RenderTargetsInfo.ColorRenderTarget,
-		&RenderTargetsInfo.DepthStencilRenderTarget,
-		0,
-		nullptr);
+		&RenderTargetsInfo.DepthStencilRenderTarget);
 	if (RenderTargetsInfo.bClearColor || RenderTargetsInfo.bClearStencil || RenderTargetsInfo.bClearDepth)
 	{
 		FLinearColor ClearColors[MaxSimultaneousRenderTargets];

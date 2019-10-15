@@ -689,7 +689,7 @@ void ScatterObjectsToShadowTiles(
 	PixelShader->GetUAVs(View, TileIntersectionResources, UAVs);
 	RHICmdList.TransitionResources(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToGfx, UAVs.GetData(), UAVs.Num());
 
-	FRHIRenderPassInfo RPInfo(UAVs.Num(), UAVs.GetData());
+	FRHIRenderPassInfo RPInfo(FRHIRenderPassInfo::NoRenderTargets);
 	if (GRHIRequiresRenderTargetForPixelShaderUAVs)
 	{
 		TRefCountPtr<IPooledRenderTarget> Dummy;

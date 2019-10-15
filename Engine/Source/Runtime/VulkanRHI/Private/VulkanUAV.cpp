@@ -105,26 +105,27 @@ void FVulkanShaderResourceView::UpdateView()
 	}
 	else
 	{
-		ensure(SRGBOverride == SRGBO_Default); // TODO - handle other cases
-
 		if (TextureView.View == VK_NULL_HANDLE)
 		{
+			const bool bBaseSRGB = (SourceTexture->GetFlags() & TexCreate_SRGB) != 0;
+			const bool bSRGB = (SRGBOverride == SRGBO_ForceEnable) || (SRGBOverride == SRGBO_Default && bBaseSRGB);
+
 			EPixelFormat Format = (BufferViewFormat == PF_Unknown) ? SourceTexture->GetFormat() : BufferViewFormat;
 			if (FRHITexture2D* Tex2D = SourceTexture->GetTexture2D())
 			{
 				FVulkanTexture2D* VTex2D = ResourceCast(Tex2D);
 				EPixelFormat OriginalFormat = Format;
-				TextureView.Create(*Device, VTex2D->Surface.Image, VK_IMAGE_VIEW_TYPE_2D, VTex2D->Surface.GetPartialAspectMask(), Format, UEToVkTextureFormat(Format, false), MipLevel, NumMips, 0, 1);
+				TextureView.Create(*Device, VTex2D->Surface.Image, VK_IMAGE_VIEW_TYPE_2D, VTex2D->Surface.GetPartialAspectMask(), Format, UEToVkTextureFormat(Format, bSRGB), MipLevel, NumMips, 0, 1);
 			}
 			else if (FRHITextureCube* TexCube = SourceTexture->GetTextureCube())
 			{
 				FVulkanTextureCube* VTexCube = ResourceCast(TexCube);
-				TextureView.Create(*Device, VTexCube->Surface.Image, VK_IMAGE_VIEW_TYPE_CUBE, VTexCube->Surface.GetPartialAspectMask(), Format, UEToVkTextureFormat(Format, false), MipLevel, NumMips, 0, 1);
+				TextureView.Create(*Device, VTexCube->Surface.Image, VK_IMAGE_VIEW_TYPE_CUBE, VTexCube->Surface.GetPartialAspectMask(), Format, UEToVkTextureFormat(Format, bSRGB), MipLevel, NumMips, 0, 1);
 			}
 			else if (FRHITexture3D* Tex3D = SourceTexture->GetTexture3D())
 			{
 				FVulkanTexture3D* VTex3D = ResourceCast(Tex3D);
-				TextureView.Create(*Device, VTex3D->Surface.Image, VK_IMAGE_VIEW_TYPE_3D, VTex3D->Surface.GetPartialAspectMask(), Format, UEToVkTextureFormat(Format, false), MipLevel, NumMips, 0, 1);
+				TextureView.Create(*Device, VTex3D->Surface.Image, VK_IMAGE_VIEW_TYPE_3D, VTex3D->Surface.GetPartialAspectMask(), Format, UEToVkTextureFormat(Format, bSRGB), MipLevel, NumMips, 0, 1);
 			}
 			else if (FRHITexture2DArray* Tex2DArray = SourceTexture->GetTexture2DArray())
 			{
@@ -135,7 +136,7 @@ void FVulkanShaderResourceView::UpdateView()
 					VK_IMAGE_VIEW_TYPE_2D_ARRAY,
 					VTex2DArray->Surface.GetPartialAspectMask(),
 					Format,
-					UEToVkTextureFormat(Format, false),
+					UEToVkTextureFormat(Format, bSRGB),
 					MipLevel,
 					NumMips,
 					FirstArraySlice,

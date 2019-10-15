@@ -50,6 +50,9 @@ template void FD3D12StateCacheBase::SetShaderResourceView<SF_Compute>(FD3D12Shad
 template void FD3D12StateCacheBase::SetUAVs<SF_Pixel>(uint32 UAVStartSlot, uint32 NumSimultaneousUAVs, FD3D12UnorderedAccessView** UAVArray, uint32* UAVInitialCountArray);
 template void FD3D12StateCacheBase::SetUAVs<SF_Compute>(uint32 UAVStartSlot, uint32 NumSimultaneousUAVs, FD3D12UnorderedAccessView** UAVArray, uint32* UAVInitialCountArray);
 
+
+template void FD3D12StateCacheBase::ClearUAVs<SF_Pixel>();
+
 template void FD3D12StateCacheBase::ApplyState<D3D12PT_Graphics>();
 template void FD3D12StateCacheBase::ApplyState<D3D12PT_Compute>();
 
@@ -976,6 +979,22 @@ bool FD3D12StateCacheBase::AssertResourceStates(ED3D12PipelineType PipelineType)
 }
 
 template <EShaderFrequency ShaderStage>
+void FD3D12StateCacheBase::ClearUAVs()
+{
+	FD3D12UnorderedAccessViewCache& Cache = PipelineState.Common.UAVCache;
+	const bool bIsCompute = ShaderStage == SF_Compute;
+
+	for (uint32 i = 0; i < MAX_UAVS; ++i)
+	{
+		if(Cache.Views[ShaderStage][i] != nullptr)
+		{
+			FD3D12UnorderedAccessViewCache::DirtySlot(Cache.DirtySlotMask[ShaderStage], i);
+		}
+		Cache.Views[ShaderStage][i] = nullptr;
+	}
+}
+
+template <EShaderFrequency ShaderStage>
 void FD3D12StateCacheBase::SetUAVs(uint32 UAVStartSlot, uint32 NumSimultaneousUAVs, FD3D12UnorderedAccessView** UAVArray, uint32* UAVInitialCountArray)
 {
 	SCOPE_CYCLE_COUNTER(STAT_D3D12SetUnorderedAccessViewTime);
@@ -985,7 +1004,7 @@ void FD3D12StateCacheBase::SetUAVs(uint32 UAVStartSlot, uint32 NumSimultaneousUA
 
 	// When setting UAV's for Graphics, it wipes out all existing bound resources.
 	const bool bIsCompute = ShaderStage == SF_Compute;
-	Cache.StartSlot[ShaderStage] = bIsCompute ? FMath::Min(UAVStartSlot, Cache.StartSlot[ShaderStage]) : UAVStartSlot;
+	Cache.StartSlot[ShaderStage] = bIsCompute ? FMath::Min(UAVStartSlot, Cache.StartSlot[ShaderStage]) : 0;
 
 	for (uint32 i = 0; i < NumSimultaneousUAVs; ++i)
 	{

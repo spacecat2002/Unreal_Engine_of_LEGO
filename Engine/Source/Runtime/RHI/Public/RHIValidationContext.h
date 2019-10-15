@@ -530,6 +530,21 @@ public:
 	}
 
 	/**
+	* Sets a pixel shader UAV parameter.
+	* @param Shader	The pixel shader to set the UAV for.
+	* @param UAVIndex		The index of the UAVIndex.
+	* @param UAV			The new UAV.
+	*/
+	virtual void RHISetUAVParameter(FRHIPixelShader* Shader, uint32 UAVIndex, FRHIUnorderedAccessView* UAV) override final
+	{
+		checkf(State.bGfxPSOSet, TEXT("A Compute shader has to be set to set resources into a shader!"));
+		RHIContext->RHISetUAVParameter(Shader, UAVIndex, UAV);
+	}
+
+
+
+
+	/**
 	* Sets a compute shader UAV parameter.
 	* @param Shader	The compute shader to set the UAV for.
 	* @param UAVIndex		The index of the UAVIndex.
@@ -674,9 +689,9 @@ public:
 		RHIContext->RHISetBlendFactor(BlendFactor);
 	}
 
-	virtual void RHISetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, const FRHIDepthRenderTargetView* NewDepthStencilTarget, uint32 NumUAVs, FRHIUnorderedAccessView* const* UAVs) override final
+	virtual void RHISetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, const FRHIDepthRenderTargetView* NewDepthStencilTarget) override final
 	{
-		RHIContext->RHISetRenderTargets(NumSimultaneousRenderTargets, NewRenderTargets, NewDepthStencilTarget, NumUAVs, UAVs);
+		RHIContext->RHISetRenderTargets(NumSimultaneousRenderTargets, NewRenderTargets, NewDepthStencilTarget);
 	}
 
 	virtual void RHISetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo) override final
