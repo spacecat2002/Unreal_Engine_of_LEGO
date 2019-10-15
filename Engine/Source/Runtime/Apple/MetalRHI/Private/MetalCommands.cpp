@@ -234,6 +234,14 @@ void FMetalRHICommandContext::RHISetGraphicsPipelineState(FRHIGraphicsPipelineSt
 	}
 }
 
+void FMetalRHICommandContext::RHISetUAVParameter(FRHIPixelShader* PixelShaderRHI, uint32 UAVIndex, FRHIUnorderedAccessView* UAVRHI)
+{
+	@autoreleasepool {
+		FMetalUnorderedAccessView* UAV = ResourceCast(UAVRHI);
+		Context->GetCurrentState().SetShaderUnorderedAccessView(EMetalShaderStages::Pixel, UAVIndex, UAV);
+	}
+}
+
 void FMetalRHICommandContext::RHISetUAVParameter(FRHIComputeShader* ComputeShaderRHI, uint32 UAVIndex, FRHIUnorderedAccessView* UAVRHI)
 {
 	@autoreleasepool {
@@ -666,7 +674,7 @@ void FMetalRHICommandContext::RHISetBlendFactor(const FLinearColor& BlendFactor)
 }
 
 void FMetalRHICommandContext::RHISetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets,
-	const FRHIDepthRenderTargetView* NewDepthStencilTargetRHI, uint32 NumUAVs, FRHIUnorderedAccessView* const* UAVs)
+	const FRHIDepthRenderTargetView* NewDepthStencilTargetRHI)
 {
 	@autoreleasepool {
 	FMetalContext* Manager = Context;
@@ -681,11 +689,6 @@ void FMetalRHICommandContext::RHISetRenderTargets(uint32 NumSimultaneousRenderTa
 	}
 
 	FRHISetRenderTargetsInfo Info(NumSimultaneousRenderTargets, NewRenderTargets, DepthView);
-	Info.NumUAVs = NumUAVs;
-	for (uint32 i = 0; i < NumUAVs; i++)
-	{
-		Info.UnorderedAccessView[i] = UAVs[i];
-	}
 	RHISetRenderTargetsAndClear(Info);
 	}
 }
@@ -697,17 +700,6 @@ void FMetalRHICommandContext::RHISetRenderTargetsAndClear(const FRHISetRenderTar
 	FRHIRenderPassInfo PassInfo;
 	bool bHasTarget = (RenderTargetsInfo.DepthStencilRenderTarget.Texture != nullptr);
 	FMetalContext* Manager = Context;
-	{
-		PassInfo.NumUAVs = RenderTargetsInfo.NumUAVs;
-		for (uint32 i = 0; i < RenderTargetsInfo.NumUAVs; i++)
-		{
-			if (IsValidRef(RenderTargetsInfo.UnorderedAccessView[i]))
-			{
-				PassInfo.UAVs[i] = RenderTargetsInfo.UnorderedAccessView[i];
-				bHasTarget = true;
-			}
-		}
-	}
 	
 	for (uint32 i = 0; i < RenderTargetsInfo.NumColorRenderTargets; i++)
 	{
