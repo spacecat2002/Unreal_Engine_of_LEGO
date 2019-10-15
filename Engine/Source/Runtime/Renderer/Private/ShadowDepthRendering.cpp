@@ -303,7 +303,7 @@ public:
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
 	{
 		static const auto SupportLPV = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.LightPropagationVolume"));
-		if (SupportLPV && SupportLPV->GetValueOnAnyThread() == 0)
+		if (bRenderReflectiveShadowMap && SupportLPV && SupportLPV->GetValueOnAnyThread() == 0)
 		{
 			return false;
 		}
@@ -353,7 +353,7 @@ public:
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
 	{
 		static const auto SupportLPV = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.LightPropagationVolume"));
-		if (SupportLPV && SupportLPV->GetValueOnAnyThread() == 0)
+		if (bRenderReflectiveShadowMap && SupportLPV && SupportLPV->GetValueOnAnyThread() == 0)
 		{
 			return false;
 		}
