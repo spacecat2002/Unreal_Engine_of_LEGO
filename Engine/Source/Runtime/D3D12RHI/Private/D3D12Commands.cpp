@@ -729,6 +729,7 @@ void FD3D12CommandContext::RHISetShaderUniformBuffer(FRHIGraphicsShader* ShaderR
 		FRHIHullShader* HullShaderRHI = static_cast<FRHIHullShader*>(ShaderRHI);
 		VALIDATE_BOUND_SHADER(HullShaderRHI);
 		StateCache.SetConstantsFromUniformBuffer<SF_Hull>(BufferIndex, Buffer);
+		Stage = SF_Hull;
 	}
 	break;
 	case FRHIShader::EType::Domain:
@@ -736,6 +737,7 @@ void FD3D12CommandContext::RHISetShaderUniformBuffer(FRHIGraphicsShader* ShaderR
 		FRHIDomainShader* DomainShaderRHI = static_cast<FRHIDomainShader*>(ShaderRHI);
 		VALIDATE_BOUND_SHADER(DomainShaderRHI);
 		StateCache.SetConstantsFromUniformBuffer<SF_Domain>(BufferIndex, Buffer);
+		Stage = SF_Domain;
 	}
 	break;
 	case FRHIShader::EType::Geometry:
@@ -743,6 +745,7 @@ void FD3D12CommandContext::RHISetShaderUniformBuffer(FRHIGraphicsShader* ShaderR
 		FRHIGeometryShader* GeometryShaderRHI = static_cast<FRHIGeometryShader*>(ShaderRHI);
 		VALIDATE_BOUND_SHADER(GeometryShaderRHI);
 		StateCache.SetConstantsFromUniformBuffer<SF_Geometry>(BufferIndex, Buffer);
+		Stage = SF_Geometry;
 	}
 	break;
 	case FRHIShader::EType::Pixel:
@@ -750,6 +753,7 @@ void FD3D12CommandContext::RHISetShaderUniformBuffer(FRHIGraphicsShader* ShaderR
 		FRHIPixelShader* PixelShaderRHI = static_cast<FRHIPixelShader*>(ShaderRHI);
 		VALIDATE_BOUND_SHADER(PixelShaderRHI);
 		StateCache.SetConstantsFromUniformBuffer<SF_Pixel>(BufferIndex, Buffer);
+		Stage = SF_Pixel;
 	}
 	break;
 	default:
