@@ -1750,21 +1750,21 @@ FVulkanRHIGraphicsPipelineState* FVulkanPipelineStateCacheManager::FindInRuntime
 			uint64 TempUInt64 = 0;
 			int32 TempEnumValue = 0;
 
-			TempUInt64 = GetShaderKey(PSI.BoundShaderState.VertexShaderRHI);
+			TempUInt64 = GetShaderKey<FVulkanVertexShader>(PSI.BoundShaderState.VertexShaderRHI);
 			Ar << TempUInt64;
 
-			TempUInt64 = GetShaderKey(PSI.BoundShaderState.PixelShaderRHI);
+			TempUInt64 = GetShaderKey<FVulkanPixelShader>(PSI.BoundShaderState.PixelShaderRHI);
 			Ar << TempUInt64;
 
 	#if VULKAN_SUPPORTS_GEOMETRY_SHADERS
-			TempUInt64 = GetShaderKey(PSI.BoundShaderState.GeometryShaderRHI);
+			TempUInt64 = GetShaderKey<FVulkanGeometryShader>(PSI.BoundShaderState.GeometryShaderRHI);
 			Ar << TempUInt64;
 	#endif
 	
 	#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
-			TempUInt64 = GetShaderKey(PSI.BoundShaderState.HullShaderRHI);
+			TempUInt64 = GetShaderKey<FVulkanHullShader>(PSI.BoundShaderState.HullShaderRHI);
 			Ar << TempUInt64;
-			TempUInt64 = GetShaderKey(PSI.BoundShaderState.DomainShaderRHI);
+			TempUInt64 = GetShaderKey<FVulkanDomainShader>(PSI.BoundShaderState.DomainShaderRHI);
 			Ar << TempUInt64;
 	#endif
 			Ar << ResourceCast(PSI.BoundShaderState.VertexDeclarationRHI)->Elements;

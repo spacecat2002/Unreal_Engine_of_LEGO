@@ -106,27 +106,7 @@ void FEmptyDynamicRHI::RHISetShaderTexture(FRHIComputeShader* ComputeShader, uin
 }
 
 
-void FEmptyDynamicRHI::RHISetShaderResourceViewParameter(FRHIVertexShader* VertexShaderRHI, uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
-{
-
-}
-
-void FEmptyDynamicRHI::RHISetShaderResourceViewParameter(FRHIHullShader* HullShaderRHI,uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
-{
-
-}
-
-void FEmptyDynamicRHI::RHISetShaderResourceViewParameter(FRHIDomainShader* DomainShaderRHI,uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
-{
-
-}
-
-void FEmptyDynamicRHI::RHISetShaderResourceViewParameter(FRHIGeometryShader* GeometryShaderRHI,uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
-{
-
-}
-
-void FEmptyDynamicRHI::RHISetShaderResourceViewParameter(FRHIPixelShader* PixelShaderRHI,uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
+void FEmptyDynamicRHI::RHISetShaderResourceViewParameter(FRHIGraphicsShader* ShaderRHI, uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
 {
 
 }
@@ -137,35 +117,9 @@ void FEmptyDynamicRHI::RHISetShaderResourceViewParameter(FRHIComputeShader* Comp
 }
 
 
-void FEmptyDynamicRHI::RHISetShaderSampler(FRHIVertexShader* VertexShaderRHI, uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
+void FEmptyDynamicRHI::RHISetShaderSampler(FRHIGraphicsShader* ShaderRHI, uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
 {
 	FEmptySamplerState* NewState = ResourceCast(NewStateRHI);
-	FEmptyVertexShader* VertexShader = ResourceCast(VertexShaderRHI);
-
-}
-
-void FEmptyDynamicRHI::RHISetShaderSampler(FRHIHullShader* HullShader, uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
-{
-	FEmptySamplerState* NewState = ResourceCast(NewStateRHI);
-
-}
-
-void FEmptyDynamicRHI::RHISetShaderSampler(FRHIDomainShader* DomainShader, uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
-{
-	FEmptySamplerState* NewState = ResourceCast(NewStateRHI);
-
-}
-
-void FEmptyDynamicRHI::RHISetShaderSampler(FRHIGeometryShader* GeometryShader, uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
-{
-	FEmptySamplerState* NewState = ResourceCast(NewStateRHI);
-
-}
-
-void FEmptyDynamicRHI::RHISetShaderSampler(FRHIPixelShader* PixelShader, uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
-{
-	FEmptySamplerState* NewState = ResourceCast(NewStateRHI);
-
 }
 
 void FEmptyDynamicRHI::RHISetShaderSampler(FRHIComputeShader* ComputeShader, uint32 SamplerIndex, FRHISamplerState* NewStateRHI)

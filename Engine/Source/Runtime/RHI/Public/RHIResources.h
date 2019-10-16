@@ -198,21 +198,100 @@ public:
 	FString ShaderName;
 #endif
 
+	enum class EType : uint8
+	{
+		Vertex,
+		Hull,
+		Domain,
+		Pixel,
+		Geometry,
+		RayTracing,
+		Compute,
+	};
+
+	FRHIShader(EType InType)
+		: Type(InType)
+	{
+	}
+
+	inline EType GetType() const
+	{
+		return Type;
+	}
+
+	static inline EShaderFrequency ConvertTypeToShaderFrequency(EType Type)
+	{
+		switch (Type)
+		{
+		case EType::Vertex:		return SF_Vertex;
+		case EType::Hull:		return SF_Hull;
+		case EType::Domain:		return SF_Domain;
+		case EType::Pixel:		return SF_Pixel;
+		case EType::Geometry:	return SF_Geometry;
+		case EType::RayTracing:	return SF_RayGen;	// Not really supported in this API...
+		case EType::Compute:	return SF_Compute;
+		default: break;
+		}
+
+		return SF_NumFrequencies;
+	}
+
+	inline EShaderFrequency GetShaderFrequency() const
+	{
+		return ConvertTypeToShaderFrequency(Type);
+	}
+
 private:
 	FSHAHash Hash;
+	EType Type;
 };
 
-class RHI_VTABLE FRHIVertexShader : public FRHIShader {};
-class RHI_VTABLE FRHIHullShader : public FRHIShader {};
-class RHI_VTABLE FRHIDomainShader : public FRHIShader {};
-class RHI_VTABLE FRHIPixelShader : public FRHIShader {};
-class RHI_VTABLE FRHIGeometryShader : public FRHIShader {};
-class RHI_VTABLE FRHIRayTracingShader : public FRHIShader {};
+class RHI_VTABLE FRHIGraphicsShader : public FRHIShader
+{
+public:
+	FRHIGraphicsShader(FRHIShader::EType InType) : FRHIShader(InType) {}
+};
+
+class RHI_VTABLE FRHIVertexShader : public FRHIGraphicsShader
+{
+public:
+	FRHIVertexShader() : FRHIGraphicsShader(FRHIShader::EType::Vertex) {}
+};
+
+class RHI_VTABLE FRHIHullShader : public FRHIGraphicsShader
+{
+public:
+	FRHIHullShader() : FRHIGraphicsShader(FRHIShader::EType::Hull) {}
+};
+
+class RHI_VTABLE FRHIDomainShader : public FRHIGraphicsShader
+{
+public:
+	FRHIDomainShader() : FRHIGraphicsShader(FRHIShader::EType::Domain) {}
+};
+
+class RHI_VTABLE FRHIPixelShader : public FRHIGraphicsShader
+{
+public:
+	FRHIPixelShader() : FRHIGraphicsShader(FRHIShader::EType::Pixel) {}
+};
+
+class RHI_VTABLE FRHIGeometryShader : public FRHIGraphicsShader
+{
+public:
+	FRHIGeometryShader() : FRHIGraphicsShader(FRHIShader::EType::Geometry) {}
+};
+
+class RHI_VTABLE FRHIRayTracingShader : public FRHIShader
+{
+public:
+	FRHIRayTracingShader() : FRHIShader(FRHIShader::EType::RayTracing) {}
+};
 
 class RHI_API FRHIComputeShader : public FRHIShader
 {
 public:
-	FRHIComputeShader() : Stats(nullptr) {}
+	FRHIComputeShader() : FRHIShader(FRHIShader::EType::Compute), Stats(nullptr) {}
 	
 	inline void SetStats(struct FPipelineStateStats* Ptr) { Stats = Ptr; }
 	void UpdateStats();

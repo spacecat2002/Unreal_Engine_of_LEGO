@@ -505,39 +505,49 @@ void FD3D12CommandContext::RHISetComputePipelineState(FRHIComputePipelineState* 
 	StateCache.SetComputePipelineState(ComputePipelineState);
 }
 
-void FD3D12CommandContext::RHISetShaderTexture(FRHIVertexShader* VertexShaderRHI, uint32 TextureIndex, FRHITexture* NewTextureRHI)
+void FD3D12CommandContext::RHISetShaderTexture(FRHIGraphicsShader* ShaderRHI, uint32 TextureIndex, FRHITexture* NewTextureRHI)
 {
-	VALIDATE_BOUND_SHADER(VertexShaderRHI);
 	FD3D12TextureBase* const NewTexture = RetrieveTextureBase(NewTextureRHI);
-	StateCache.SetShaderResourceView<SF_Vertex>(NewTexture ? NewTexture->GetShaderResourceView() : nullptr, TextureIndex);
-}
-
-void FD3D12CommandContext::RHISetShaderTexture(FRHIHullShader* HullShaderRHI, uint32 TextureIndex, FRHITexture* NewTextureRHI)
-{
-	VALIDATE_BOUND_SHADER(HullShaderRHI);
-	FD3D12TextureBase* const NewTexture = RetrieveTextureBase(NewTextureRHI);
-	StateCache.SetShaderResourceView<SF_Hull>(NewTexture ? NewTexture->GetShaderResourceView() : nullptr, TextureIndex);
-}
-
-void FD3D12CommandContext::RHISetShaderTexture(FRHIDomainShader* DomainShaderRHI, uint32 TextureIndex, FRHITexture* NewTextureRHI)
-{
-	VALIDATE_BOUND_SHADER(DomainShaderRHI);
-	FD3D12TextureBase* const NewTexture = RetrieveTextureBase(NewTextureRHI);
-	StateCache.SetShaderResourceView<SF_Domain>(NewTexture ? NewTexture->GetShaderResourceView() : nullptr, TextureIndex);
-}
-
-void FD3D12CommandContext::RHISetShaderTexture(FRHIGeometryShader* GeometryShaderRHI, uint32 TextureIndex, FRHITexture* NewTextureRHI)
-{
-	VALIDATE_BOUND_SHADER(GeometryShaderRHI);
-	FD3D12TextureBase* const NewTexture = RetrieveTextureBase(NewTextureRHI);
-	StateCache.SetShaderResourceView<SF_Geometry>(NewTexture ? NewTexture->GetShaderResourceView() : nullptr, TextureIndex);
-}
-
-void FD3D12CommandContext::RHISetShaderTexture(FRHIPixelShader* PixelShaderRHI, uint32 TextureIndex, FRHITexture* NewTextureRHI)
-{
-	VALIDATE_BOUND_SHADER(PixelShaderRHI);
-	FD3D12TextureBase* const NewTexture = RetrieveTextureBase(NewTextureRHI);
-	StateCache.SetShaderResourceView<SF_Pixel>(NewTexture ? NewTexture->GetShaderResourceView() : nullptr, TextureIndex);
+	switch (ShaderRHI->GetType())
+	{
+	case FRHIShader::EType::Vertex:
+	{
+		FRHIVertexShader* VertexShaderRHI = static_cast<FRHIVertexShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(VertexShaderRHI);
+		StateCache.SetShaderResourceView<SF_Vertex>(NewTexture ? NewTexture->GetShaderResourceView() : nullptr, TextureIndex);
+	}
+	break;
+	case FRHIShader::EType::Hull:
+	{
+		FRHIHullShader* HullShaderRHI = static_cast<FRHIHullShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(HullShaderRHI);
+		StateCache.SetShaderResourceView<SF_Hull>(NewTexture ? NewTexture->GetShaderResourceView() : nullptr, TextureIndex);
+	}
+	break;
+	case FRHIShader::EType::Domain:
+	{
+		FRHIDomainShader* DomainShaderRHI = static_cast<FRHIDomainShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(DomainShaderRHI);
+		StateCache.SetShaderResourceView<SF_Domain>(NewTexture ? NewTexture->GetShaderResourceView() : nullptr, TextureIndex);
+	}
+	break;
+	case FRHIShader::EType::Geometry:
+	{
+		FRHIGeometryShader* GeometryShaderRHI = static_cast<FRHIGeometryShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(GeometryShaderRHI);
+		StateCache.SetShaderResourceView<SF_Geometry>(NewTexture ? NewTexture->GetShaderResourceView() : nullptr, TextureIndex);
+	}
+	break;
+	case FRHIShader::EType::Pixel:
+	{
+		FRHIPixelShader* PixelShaderRHI = static_cast<FRHIPixelShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(PixelShaderRHI);
+		StateCache.SetShaderResourceView<SF_Pixel>(NewTexture ? NewTexture->GetShaderResourceView() : nullptr, TextureIndex);
+	}
+	break;
+	default:
+		checkf(0, TEXT("Undefined FRHIShader Type %d!"), (int32)ShaderRHI->GetType());
+	}
 }
 
 void FD3D12CommandContext::RHISetShaderTexture(FRHIComputeShader* ComputeShaderRHI, uint32 TextureIndex, FRHITexture* NewTextureRHI)
@@ -594,18 +604,50 @@ void FD3D12CommandContext::RHISetUAVParameter(FRHIComputeShader* ComputeShaderRH
 	StateCache.SetUAVs<SF_Compute>(UAVIndex, 1, &UAV, &InitialCount);
 }
 
-void FD3D12CommandContext::RHISetShaderResourceViewParameter(FRHIPixelShader* PixelShaderRHI, uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
+void FD3D12CommandContext::RHISetShaderResourceViewParameter(FRHIGraphicsShader* ShaderRHI, uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
 {
-	VALIDATE_BOUND_SHADER(PixelShaderRHI);
 	FD3D12ShaderResourceView* const SRV = RetrieveObject<FD3D12ShaderResourceView>(SRVRHI);
-	StateCache.SetShaderResourceView<SF_Pixel>(SRV, TextureIndex);
-}
+	switch (ShaderRHI->GetType())
+	{
+	case FRHIShader::EType::Vertex:
+	{
+		FRHIVertexShader* VertexShaderRHI = static_cast<FRHIVertexShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(VertexShaderRHI);
+		StateCache.SetShaderResourceView<SF_Vertex>(SRV, TextureIndex);
+	}
+	break;
+	case FRHIShader::EType::Hull:
+	{
+		FRHIHullShader* HullShaderRHI = static_cast<FRHIHullShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(HullShaderRHI);
+		StateCache.SetShaderResourceView<SF_Hull>(SRV, TextureIndex);
+	}
+	break;
+	case FRHIShader::EType::Domain:
+	{
+		FRHIDomainShader* DomainShaderRHI = static_cast<FRHIDomainShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(DomainShaderRHI);
+		StateCache.SetShaderResourceView<SF_Domain>(SRV, TextureIndex);
+	}
+	break;
+	case FRHIShader::EType::Geometry:
+	{
+		FRHIGeometryShader* GeometryShaderRHI = static_cast<FRHIGeometryShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(GeometryShaderRHI);
+		StateCache.SetShaderResourceView<SF_Geometry>(SRV, TextureIndex);
+	}
+	break;
+	case FRHIShader::EType::Pixel:
+	{
+		FRHIPixelShader* PixelShaderRHI = static_cast<FRHIPixelShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(PixelShaderRHI);
+		StateCache.SetShaderResourceView<SF_Pixel>(SRV, TextureIndex);
+	}
+	break;
+	default:
+		checkf(0, TEXT("Undefined FRHIShader Type %d!"), (int32)ShaderRHI->GetType());
+	}
 
-void FD3D12CommandContext::RHISetShaderResourceViewParameter(FRHIVertexShader* VertexShaderRHI, uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
-{
-	VALIDATE_BOUND_SHADER(VertexShaderRHI);
-	FD3D12ShaderResourceView* const SRV = RetrieveObject<FD3D12ShaderResourceView>(SRVRHI);
-	StateCache.SetShaderResourceView<SF_Vertex>(SRV, TextureIndex);
 }
 
 void FD3D12CommandContext::RHISetShaderResourceViewParameter(FRHIComputeShader* ComputeShaderRHI, uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
@@ -615,60 +657,49 @@ void FD3D12CommandContext::RHISetShaderResourceViewParameter(FRHIComputeShader* 
 	StateCache.SetShaderResourceView<SF_Compute>(SRV, TextureIndex);
 }
 
-void FD3D12CommandContext::RHISetShaderResourceViewParameter(FRHIHullShader* HullShaderRHI, uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
+void FD3D12CommandContext::RHISetShaderSampler(FRHIGraphicsShader* ShaderRHI, uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
 {
-	VALIDATE_BOUND_SHADER(HullShaderRHI);
-	FD3D12ShaderResourceView* const SRV = RetrieveObject<FD3D12ShaderResourceView>(SRVRHI);
-	StateCache.SetShaderResourceView<SF_Hull>(SRV, TextureIndex);
-}
-
-void FD3D12CommandContext::RHISetShaderResourceViewParameter(FRHIDomainShader* DomainShaderRHI, uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
-{
-	VALIDATE_BOUND_SHADER(DomainShaderRHI);
-	FD3D12ShaderResourceView* const SRV = RetrieveObject<FD3D12ShaderResourceView>(SRVRHI);
-	StateCache.SetShaderResourceView<SF_Domain>(SRV, TextureIndex);
-}
-
-void FD3D12CommandContext::RHISetShaderResourceViewParameter(FRHIGeometryShader* GeometryShaderRHI, uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
-{
-	VALIDATE_BOUND_SHADER(GeometryShaderRHI);
-	FD3D12ShaderResourceView* const SRV = RetrieveObject<FD3D12ShaderResourceView>(SRVRHI);
-	StateCache.SetShaderResourceView<SF_Geometry>(SRV, TextureIndex);
-}
-
-void FD3D12CommandContext::RHISetShaderSampler(FRHIVertexShader* VertexShaderRHI, uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
-{
-	VALIDATE_BOUND_SHADER(VertexShaderRHI);
 	FD3D12SamplerState* NewState = RetrieveObject<FD3D12SamplerState>(NewStateRHI);
-	StateCache.SetSamplerState<SF_Vertex>(NewState, SamplerIndex);
-}
-
-void FD3D12CommandContext::RHISetShaderSampler(FRHIHullShader* HullShaderRHI, uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
-{
-	VALIDATE_BOUND_SHADER(HullShaderRHI);
-	FD3D12SamplerState* NewState = RetrieveObject<FD3D12SamplerState>(NewStateRHI);
-	StateCache.SetSamplerState<SF_Hull>(NewState, SamplerIndex);
-}
-
-void FD3D12CommandContext::RHISetShaderSampler(FRHIDomainShader* DomainShaderRHI, uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
-{
-	VALIDATE_BOUND_SHADER(DomainShaderRHI);
-	FD3D12SamplerState* NewState = RetrieveObject<FD3D12SamplerState>(NewStateRHI);
-	StateCache.SetSamplerState<SF_Domain>(NewState, SamplerIndex);
-}
-
-void FD3D12CommandContext::RHISetShaderSampler(FRHIGeometryShader* GeometryShaderRHI, uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
-{
-	VALIDATE_BOUND_SHADER(GeometryShaderRHI);
-	FD3D12SamplerState* NewState = RetrieveObject<FD3D12SamplerState>(NewStateRHI);
-	StateCache.SetSamplerState<SF_Geometry>(NewState, SamplerIndex);
-}
-
-void FD3D12CommandContext::RHISetShaderSampler(FRHIPixelShader* PixelShaderRHI, uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
-{
-	VALIDATE_BOUND_SHADER(PixelShaderRHI);
-	FD3D12SamplerState* NewState = RetrieveObject<FD3D12SamplerState>(NewStateRHI);
-	StateCache.SetSamplerState<SF_Pixel>(NewState, SamplerIndex);
+	switch (ShaderRHI->GetType())
+	{
+	case FRHIShader::EType::Vertex:
+	{
+		FRHIVertexShader* VertexShaderRHI = static_cast<FRHIVertexShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(VertexShaderRHI);
+		StateCache.SetSamplerState<SF_Vertex>(NewState, SamplerIndex);
+	}
+	break;
+	case FRHIShader::EType::Hull:
+	{
+		FRHIHullShader* HullShaderRHI = static_cast<FRHIHullShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(HullShaderRHI);
+		StateCache.SetSamplerState<SF_Hull>(NewState, SamplerIndex);
+	}
+	break;
+	case FRHIShader::EType::Domain:
+	{
+		FRHIDomainShader* DomainShaderRHI = static_cast<FRHIDomainShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(DomainShaderRHI);
+		StateCache.SetSamplerState<SF_Domain>(NewState, SamplerIndex);
+	}
+	break;
+	case FRHIShader::EType::Geometry:
+	{
+		FRHIGeometryShader* GeometryShaderRHI = static_cast<FRHIGeometryShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(GeometryShaderRHI);
+		StateCache.SetSamplerState<SF_Geometry>(NewState, SamplerIndex);
+	}
+	break;
+	case FRHIShader::EType::Pixel:
+	{
+		FRHIPixelShader* PixelShaderRHI = static_cast<FRHIPixelShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(PixelShaderRHI);
+		StateCache.SetSamplerState<SF_Pixel>(NewState, SamplerIndex);
+	}
+	break;
+	default:
+		checkf(0, TEXT("Undefined FRHIShader Type %d!"), (int32)ShaderRHI->GetType());
+	}
 }
 
 void FD3D12CommandContext::RHISetShaderSampler(FRHIComputeShader* ComputeShaderRHI, uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
@@ -678,89 +709,61 @@ void FD3D12CommandContext::RHISetShaderSampler(FRHIComputeShader* ComputeShaderR
 	StateCache.SetSamplerState<SF_Compute>(NewState, SamplerIndex);
 }
 
-void FD3D12CommandContext::RHISetShaderUniformBuffer(FRHIVertexShader* VertexShader, uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
+void FD3D12CommandContext::RHISetShaderUniformBuffer(FRHIGraphicsShader* ShaderRHI, uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
 {
 	//SCOPE_CYCLE_COUNTER(STAT_D3D12SetShaderUniformBuffer);
-	VALIDATE_BOUND_SHADER(VertexShader);
 	FD3D12UniformBuffer* Buffer = RetrieveObject<FD3D12UniformBuffer>(BufferRHI);
-
-	StateCache.SetConstantsFromUniformBuffer<SF_Vertex>(BufferIndex, Buffer);
+	EShaderFrequency Stage = SF_NumFrequencies;
+	switch (ShaderRHI->GetType())
+	{
+	case FRHIShader::EType::Vertex:
+	{
+		FRHIVertexShader* VertexShaderRHI = static_cast<FRHIVertexShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(VertexShaderRHI);
+		StateCache.SetConstantsFromUniformBuffer<SF_Vertex>(BufferIndex, Buffer);
+		Stage = SF_Vertex;
+	}
+	break;
+	case FRHIShader::EType::Hull:
+	{
+		FRHIHullShader* HullShaderRHI = static_cast<FRHIHullShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(HullShaderRHI);
+		StateCache.SetConstantsFromUniformBuffer<SF_Hull>(BufferIndex, Buffer);
+	}
+	break;
+	case FRHIShader::EType::Domain:
+	{
+		FRHIDomainShader* DomainShaderRHI = static_cast<FRHIDomainShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(DomainShaderRHI);
+		StateCache.SetConstantsFromUniformBuffer<SF_Domain>(BufferIndex, Buffer);
+	}
+	break;
+	case FRHIShader::EType::Geometry:
+	{
+		FRHIGeometryShader* GeometryShaderRHI = static_cast<FRHIGeometryShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(GeometryShaderRHI);
+		StateCache.SetConstantsFromUniformBuffer<SF_Geometry>(BufferIndex, Buffer);
+	}
+	break;
+	case FRHIShader::EType::Pixel:
+	{
+		FRHIPixelShader* PixelShaderRHI = static_cast<FRHIPixelShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(PixelShaderRHI);
+		StateCache.SetConstantsFromUniformBuffer<SF_Pixel>(BufferIndex, Buffer);
+	}
+	break;
+	default:
+		checkf(0, TEXT("Undefined FRHIShader Type %d!"), (int32)ShaderRHI->GetType());
+		return;
+	}
 
 	if (!GRHINeedsExtraDeletionLatency)
 	{
-		BoundUniformBufferRefs[SF_Vertex][BufferIndex] = BufferRHI;
+		BoundUniformBufferRefs[Stage][BufferIndex] = BufferRHI;
 	}
 
-	BoundUniformBuffers[SF_Vertex][BufferIndex] = Buffer;
-	DirtyUniformBuffers[SF_Vertex] |= (1 << BufferIndex);
-}
-
-void FD3D12CommandContext::RHISetShaderUniformBuffer(FRHIHullShader* HullShader, uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
-{
-	//SCOPE_CYCLE_COUNTER(STAT_D3D12SetShaderUniformBuffer);
-	VALIDATE_BOUND_SHADER(HullShader);
-	FD3D12UniformBuffer* Buffer = RetrieveObject<FD3D12UniformBuffer>(BufferRHI);
-
-	StateCache.SetConstantsFromUniformBuffer<SF_Hull>(BufferIndex, Buffer);
-
-	if (!GRHINeedsExtraDeletionLatency)
-	{
-		BoundUniformBufferRefs[SF_Hull][BufferIndex] = BufferRHI;
-	}
-	
-	BoundUniformBuffers[SF_Hull][BufferIndex] = Buffer;
-	DirtyUniformBuffers[SF_Hull] |= (1 << BufferIndex);
-}
-
-void FD3D12CommandContext::RHISetShaderUniformBuffer(FRHIDomainShader* DomainShader, uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
-{
-	//SCOPE_CYCLE_COUNTER(STAT_D3D12SetShaderUniformBuffer);
-	VALIDATE_BOUND_SHADER(DomainShader);
-	FD3D12UniformBuffer* Buffer = RetrieveObject<FD3D12UniformBuffer>(BufferRHI);
-	
-	StateCache.SetConstantsFromUniformBuffer<SF_Domain>(BufferIndex, Buffer);
-
-	if (!GRHINeedsExtraDeletionLatency)
-	{
-		BoundUniformBufferRefs[SF_Domain][BufferIndex] = BufferRHI;
-	}
-
-	BoundUniformBuffers[SF_Domain][BufferIndex] = Buffer;
-	DirtyUniformBuffers[SF_Domain] |= (1 << BufferIndex);
-}
-
-void FD3D12CommandContext::RHISetShaderUniformBuffer(FRHIGeometryShader* GeometryShader, uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
-{
-	//SCOPE_CYCLE_COUNTER(STAT_D3D12SetShaderUniformBuffer);
-	VALIDATE_BOUND_SHADER(GeometryShader);
-	FD3D12UniformBuffer* Buffer = RetrieveObject<FD3D12UniformBuffer>(BufferRHI);
-
-	StateCache.SetConstantsFromUniformBuffer<SF_Geometry>(BufferIndex, Buffer);
-
-	if (!GRHINeedsExtraDeletionLatency)
-	{
-		BoundUniformBufferRefs[SF_Geometry][BufferIndex] = BufferRHI;
-	}
-
-	BoundUniformBuffers[SF_Geometry][BufferIndex] = Buffer;
-	DirtyUniformBuffers[SF_Geometry] |= (1 << BufferIndex);
-}
-
-void FD3D12CommandContext::RHISetShaderUniformBuffer(FRHIPixelShader* PixelShader, uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
-{
-	//SCOPE_CYCLE_COUNTER(STAT_D3D12SetShaderUniformBuffer);
-	VALIDATE_BOUND_SHADER(PixelShader);
-	FD3D12UniformBuffer* Buffer = RetrieveObject<FD3D12UniformBuffer>(BufferRHI);
-
-	StateCache.SetConstantsFromUniformBuffer<SF_Pixel>(BufferIndex, Buffer);
-
-	if (!GRHINeedsExtraDeletionLatency)
-	{
-		BoundUniformBufferRefs[SF_Pixel][BufferIndex] = BufferRHI;
-	}
-
-	BoundUniformBuffers[SF_Pixel][BufferIndex] = Buffer;
-	DirtyUniformBuffers[SF_Pixel] |= (1 << BufferIndex);
+	BoundUniformBuffers[Stage][BufferIndex] = Buffer;
+	DirtyUniformBuffers[Stage] |= (1 << BufferIndex);
 }
 
 void FD3D12CommandContext::RHISetShaderUniformBuffer(FRHIComputeShader* ComputeShader, uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
@@ -780,39 +783,50 @@ void FD3D12CommandContext::RHISetShaderUniformBuffer(FRHIComputeShader* ComputeS
 	DirtyUniformBuffers[SF_Compute] |= (1 << BufferIndex);
 }
 
-void FD3D12CommandContext::RHISetShaderParameter(FRHIHullShader* HullShaderRHI, uint32 BufferIndex, uint32 BaseIndex, uint32 NumBytes, const void* NewValue)
+void FD3D12CommandContext::RHISetShaderParameter(FRHIGraphicsShader* ShaderRHI, uint32 BufferIndex, uint32 BaseIndex, uint32 NumBytes, const void* NewValue)
 {
-	VALIDATE_BOUND_SHADER(HullShaderRHI);
 	checkSlow(BufferIndex == 0);
-	HSConstantBuffer.UpdateConstant((const uint8*)NewValue, BaseIndex, NumBytes);
-}
 
-void FD3D12CommandContext::RHISetShaderParameter(FRHIDomainShader* DomainShaderRHI, uint32 BufferIndex, uint32 BaseIndex, uint32 NumBytes, const void* NewValue)
-{
-	VALIDATE_BOUND_SHADER(DomainShaderRHI);
-	checkSlow(BufferIndex == 0);
-	DSConstantBuffer.UpdateConstant((const uint8*)NewValue, BaseIndex, NumBytes);
-}
-
-void FD3D12CommandContext::RHISetShaderParameter(FRHIVertexShader* VertexShaderRHI, uint32 BufferIndex, uint32 BaseIndex, uint32 NumBytes, const void* NewValue)
-{
-	VALIDATE_BOUND_SHADER(VertexShaderRHI);
-	checkSlow(BufferIndex == 0);
-	VSConstantBuffer.UpdateConstant((const uint8*)NewValue, BaseIndex, NumBytes);
-}
-
-void FD3D12CommandContext::RHISetShaderParameter(FRHIPixelShader* PixelShaderRHI, uint32 BufferIndex, uint32 BaseIndex, uint32 NumBytes, const void* NewValue)
-{
-	VALIDATE_BOUND_SHADER(PixelShaderRHI);
-	checkSlow(BufferIndex == 0);
-	PSConstantBuffer.UpdateConstant((const uint8*)NewValue, BaseIndex, NumBytes);
-}
-
-void FD3D12CommandContext::RHISetShaderParameter(FRHIGeometryShader* GeometryShaderRHI, uint32 BufferIndex, uint32 BaseIndex, uint32 NumBytes, const void* NewValue)
-{
-	VALIDATE_BOUND_SHADER(GeometryShaderRHI);
-	checkSlow(BufferIndex == 0);
-	GSConstantBuffer.UpdateConstant((const uint8*)NewValue, BaseIndex, NumBytes);
+	switch (ShaderRHI->GetType())
+	{
+	case FRHIShader::EType::Vertex:
+	{
+		FRHIVertexShader* VertexShaderRHI = static_cast<FRHIVertexShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(VertexShaderRHI);
+		VSConstantBuffer.UpdateConstant((const uint8*)NewValue, BaseIndex, NumBytes);
+	}
+	break;
+	case FRHIShader::EType::Hull:
+	{
+		FRHIHullShader* HullShaderRHI = static_cast<FRHIHullShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(HullShaderRHI);
+		HSConstantBuffer.UpdateConstant((const uint8*)NewValue, BaseIndex, NumBytes);
+	}
+	break;
+	case FRHIShader::EType::Domain:
+	{
+		FRHIDomainShader* DomainShaderRHI = static_cast<FRHIDomainShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(DomainShaderRHI);
+		DSConstantBuffer.UpdateConstant((const uint8*)NewValue, BaseIndex, NumBytes);
+	}
+	break;
+	case FRHIShader::EType::Geometry:
+	{
+		FRHIGeometryShader* GeometryShaderRHI = static_cast<FRHIGeometryShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(GeometryShaderRHI);
+		GSConstantBuffer.UpdateConstant((const uint8*)NewValue, BaseIndex, NumBytes);
+	}
+	break;
+	case FRHIShader::EType::Pixel:
+	{
+		FRHIPixelShader* PixelShaderRHI = static_cast<FRHIPixelShader*>(ShaderRHI);
+		VALIDATE_BOUND_SHADER(PixelShaderRHI);
+		PSConstantBuffer.UpdateConstant((const uint8*)NewValue, BaseIndex, NumBytes);
+	}
+	break;
+	default:
+		checkf(0, TEXT("Undefined FRHIShader Type %d!"), (int32)ShaderRHI->GetType());
+	}
 }
 
 void FD3D12CommandContext::RHISetShaderParameter(FRHIComputeShader* ComputeShaderRHI, uint32 BufferIndex, uint32 BaseIndex, uint32 NumBytes, const void* NewValue)
