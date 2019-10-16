@@ -4,6 +4,7 @@
 #include "Misc/CoreMisc.h"
 #include "Containers/List.h"
 #include "RenderResource.h"
+#include "RenderUtils.h"
 
 
 FNullDynamicRHI::FNullDynamicRHI()
@@ -65,7 +66,7 @@ void FNullDynamicRHI::Shutdown()
  * Return a shared large static buffer that can be used to return from any 
  * function that needs to return a valid pointer (but can be garbage data)
  */
-void* FNullDynamicRHI::GetStaticBuffer()
+void* FNullDynamicRHI::GetStaticBuffer(size_t Size)
 {
 #if !WITH_EDITOR
 	static bool bLogOnce = false;
@@ -77,16 +78,16 @@ void* FNullDynamicRHI::GetStaticBuffer()
 	}
 #endif
 
-	static void* Buffer = nullptr;
-	if (!Buffer)
-	{
-		// allocate an 64 meg buffer, should be big enough for any texture/surface
-		Buffer = FMemory::Malloc(64 * 1024 * 1024);
-	}
-
-	return Buffer;
+	MemoryBuffer.Reserve(Size);
+	return MemoryBuffer.GetData();
 }
 
+void* FNullDynamicRHI::GetStaticTextureBuffer(int32 SizeX, int32 SizeY, EPixelFormat Format, uint32& DestStride)
+{
+	size_t Size = CalculateImageBytes(SizeX, SizeY, 0, Format);
+	DestStride = Size / SizeY;
+	return GetStaticBuffer(Size);
+}
 
 /** Value between 0-100 that determines the percentage of the vertical scan that is allowed to pass while still allowing us to swap when VSYNC'ed.
 This is used to get the same behavior as the old *_OR_IMMEDIATE present modes. */

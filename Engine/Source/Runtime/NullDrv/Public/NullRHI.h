@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Containers/ResourceArray.h"
+#include "Serialization/LargeMemoryData.h"
 #include "RHI.h"
 
 struct Rect;
@@ -128,7 +129,7 @@ public:
 
 	virtual void* LockIndexBuffer_BottomOfPipe(FRHICommandListImmediate& RHICmdList, FRHIIndexBuffer* IndexBuffer, uint32 Offset, uint32 Size, EResourceLockMode LockMode) final override
 	{ 
-		return GetStaticBuffer(); 
+		return GetStaticBuffer(Size);
 	}
 	virtual void UnlockIndexBuffer_BottomOfPipe(FRHICommandListImmediate& RHICmdList, FRHIIndexBuffer* IndexBuffer) final override
 	{
@@ -151,7 +152,7 @@ public:
 
 	virtual void* LockVertexBuffer_BottomOfPipe(FRHICommandListImmediate& RHICmdList, FRHIVertexBuffer* VertexBuffer, uint32 Offset, uint32 SizeRHI, EResourceLockMode LockMode) final override
 	{ 
-		return GetStaticBuffer(); 
+		return GetStaticBuffer(VertexBuffer->GetSize());
 	}
 
 	virtual void UnlockVertexBuffer_BottomOfPipe(FRHICommandListImmediate& RHICmdList, FRHIVertexBuffer* VertexBuffer) final override
@@ -181,7 +182,7 @@ public:
 
 	virtual void* LockStructuredBuffer_BottomOfPipe(FRHICommandListImmediate& RHICmdList, FRHIStructuredBuffer* StructuredBuffer, uint32 Offset, uint32 SizeRHI, EResourceLockMode LockMode) final override
 	{ 
-		return GetStaticBuffer(); 
+		return GetStaticBuffer(StructuredBuffer->GetSize());
 	}
 	virtual void UnlockStructuredBuffer_BottomOfPipe(FRHICommandListImmediate& RHICmdList, FRHIStructuredBuffer* StructuredBuffer) final override
 	{
@@ -329,7 +330,7 @@ public:
 	virtual void* RHILockTexture2D(FRHITexture2D* Texture, uint32 MipIndex, EResourceLockMode LockMode, uint32& DestStride, bool bLockWithinMiptail) final override
 	{ 
 		DestStride = 0; 
-		return GetStaticBuffer(); 
+		return GetStaticTextureBuffer(Texture->GetSizeX(), Texture->GetSizeY(), Texture->GetFormat(), DestStride);
 	}
 	virtual void RHIUnlockTexture2D(FRHITexture2D* Texture, uint32 MipIndex, bool bLockWithinMiptail) final override
 	{
@@ -338,7 +339,7 @@ public:
 	virtual void* RHILockTexture2DArray(FRHITexture2DArray* Texture, uint32 TextureIndex, uint32 MipIndex, EResourceLockMode LockMode, uint32& DestStride, bool bLockWithinMiptail) final override
 	{ 
 		DestStride = 0; 
-		return GetStaticBuffer(); 
+		return GetStaticTextureBuffer(Texture->GetSizeX(), Texture->GetSizeY(), Texture->GetFormat(), DestStride);
 	}
 	virtual void RHIUnlockTexture2DArray(FRHITexture2DArray* Texture, uint32 TextureIndex, uint32 MipIndex, bool bLockWithinMiptail) final override
 	{
@@ -363,7 +364,7 @@ public:
 	virtual void* RHILockTextureCubeFace(FRHITextureCube* Texture, uint32 FaceIndex, uint32 ArrayIndex, uint32 MipIndex, EResourceLockMode LockMode, uint32& DestStride, bool bLockWithinMiptail) final override
 	{ 
 		DestStride = 0; 
-		return GetStaticBuffer(); 
+		return GetStaticTextureBuffer(Texture->GetSize(), Texture->GetSize(), Texture->GetFormat(), DestStride);
 	}
 	virtual void RHIUnlockTextureCubeFace(FRHITextureCube* Texture, uint32 FaceIndex, uint32 ArrayIndex, uint32 MipIndex, bool bLockWithinMiptail) final override
 	{
@@ -813,7 +814,9 @@ public:
 	}
 
 private:
+	FLargeMemoryData MemoryBuffer;
 
 	/** Allocates a static buffer for RHI functions to return as a write destination. */
-	static void* GetStaticBuffer();
+	void* GetStaticBuffer(size_t Size);
+	void* GetStaticTextureBuffer(int32 SizeX, int32 SizeY, EPixelFormat Format, uint32& DestStride);
 };
