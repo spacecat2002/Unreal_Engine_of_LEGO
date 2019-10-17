@@ -722,7 +722,6 @@ void FRDGBuilder::PrepareResourcesForExecute(const FRDGPass* Pass, struct FRHIRe
 {
 	check(Pass);
 
-
 	const bool bIsCompute = Pass->IsCompute();
 
 	FRDGBarrierBatcher BarrierBatcher(RHICmdList, Pass);
@@ -776,11 +775,6 @@ void FRDGBuilder::PrepareResourcesForExecute(const FRDGPass* Pass, struct FRHIRe
 				AllocateRHITextureUAVIfNeeded(UAV);
 
 				FRHIUnorderedAccessView* UAVRHI = UAV->GetRHI();
-
-				if (!bIsCompute)
-				{
-					checkNoEntry();
-				}
 
 				BarrierBatcher.QueueTransitionUAV(UAVRHI, Texture, FRDGResourceState::EAccess::Write);
 			}
@@ -839,11 +833,6 @@ void FRDGBuilder::PrepareResourcesForExecute(const FRDGPass* Pass, struct FRHIRe
 				AllocateRHIBufferUAVIfNeeded(UAV);
 
 				FRHIUnorderedAccessView* UAVRHI = UAV->GetRHI();
-
-				if (!bIsCompute)
-				{
-					checkNoEntry();
-				}
 
 				BarrierBatcher.QueueTransitionUAV(UAVRHI, Buffer, FRDGResourceState::EAccess::Write);
 			}
@@ -917,7 +906,6 @@ void FRDGBuilder::PrepareResourcesForExecute(const FRDGPass* Pass, struct FRHIRe
 				}
 			}
 
-
 			if (FRDGTextureRef Texture = DepthStencil.GetTexture())
 			{
 				AllocateRHITextureIfNeeded(Texture);
@@ -947,7 +935,6 @@ void FRDGBuilder::PrepareResourcesForExecute(const FRDGPass* Pass, struct FRHIRe
 
 			OutRPInfo->bIsMSAA = SampleCount > 1;
 
-			// Note: relying on UBMT_RENDER_TARGET_BINDING_SLOTS case being handled last here by reading from OutRPInfo->NumUAVs
 			*bOutHasGraphicsOutputs = ValidRenderTargetCount + ValidDepthStencilCount > 0;
 		}
 		break;
