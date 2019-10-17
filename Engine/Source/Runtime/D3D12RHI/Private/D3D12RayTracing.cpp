@@ -2518,6 +2518,10 @@ FD3D12RayTracingShaderTable* FD3D12RayTracingScene::FindOrCreateShaderTable(cons
 		checkf(CreatedShaderTable->LocalShaderTableOffset == CreatedShaderTable->HitGroupShaderTableOffset,
 			TEXT("Hit shader records are assumed to be at the beginning of local shader table"));
 
+		// Sum of number of transforms in ray tracing instances before current.
+		// Used to emulate SV_InstanceID in hit shaders.
+		uint32 BaseInstanceIndex = 0;
+
 		const uint32 NumInstances = Instances.Num();
 		for (uint32 InstanceIndex = 0; InstanceIndex < NumInstances; ++InstanceIndex)
 		{
@@ -2567,12 +2571,15 @@ FD3D12RayTracingShaderTable* FD3D12RayTracingScene::FindOrCreateShaderTable(cons
 
 				SystemParameters.RootConstants.SetVertexAndIndexStride(Segment.VertexBufferStride, IndexStride);
 				SystemParameters.RootConstants.IndexBufferOffsetInBytes = IndexStride * Segment.FirstPrimitive * IndicesPerPrimitive + Geometry->IndexOffsetInBytes;
+				SystemParameters.RootConstants.BaseInstanceIndex = BaseInstanceIndex;
 
 				for (uint32 SlotIndex = 0; SlotIndex < ShaderSlotsPerGeometrySegment; ++SlotIndex)
 				{
 					CreatedShaderTable->SetLocalShaderParameters(RecordBaseIndex + SlotIndex, 0, SystemParameters);
 				}
 			}
+
+			BaseInstanceIndex += Instance.Transforms.Num();
 		}
 	}
 
