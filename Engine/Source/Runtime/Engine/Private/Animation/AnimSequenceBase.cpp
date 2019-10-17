@@ -522,7 +522,7 @@ int32 UAnimSequenceBase::GetNumberOfFrames() const
 {
 	static float DefaultSampleRateInterval = 1.f / DEFAULT_SAMPLERATE;
 	// because of float error, add small margin at the end, so it can clamp correctly
-	return (SequenceLength / DefaultSampleRateInterval + KINDA_SMALL_NUMBER);
+	return (int32)(SequenceLength / DefaultSampleRateInterval + KINDA_SMALL_NUMBER) + 1;
 }
 
 #if WITH_EDITOR
