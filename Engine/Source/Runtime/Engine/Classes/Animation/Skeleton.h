@@ -231,7 +231,7 @@ public:
 
 namespace VirtualBoneNameHelpers
 {
-	const FString VirtualBonePrefix(TEXT("VB "));
+	extern ENGINE_API const FString VirtualBonePrefix;
 
 	ENGINE_API FString AddVirtualBonePrefix(const FString& InName);
 	ENGINE_API FName RemoveVirtualBonePrefix(const FString& InName);

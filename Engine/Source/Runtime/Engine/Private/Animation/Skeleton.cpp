@@ -89,14 +89,19 @@ const TCHAR* SkipPrefix(const FString& InName)
 	return &InName[PrefixLength];
 }
 
-FString VirtualBoneNameHelpers::AddVirtualBonePrefix(const FString& InName)
+namespace VirtualBoneNameHelpers
 {
-	return VirtualBoneNameHelpers::VirtualBonePrefix + InName;
-}
+	const FString VirtualBonePrefix(TEXT("VB "));
 
-FName VirtualBoneNameHelpers::RemoveVirtualBonePrefix(const FString& InName)
-{
-	return FName(SkipPrefix(InName));
+	FString AddVirtualBonePrefix(const FString& InName)
+	{
+		return VirtualBonePrefix + InName;
+	}
+
+	FName RemoveVirtualBonePrefix(const FString& InName)
+	{
+		return FName(SkipPrefix(InName));
+	}
 }
 
 USkeleton::USkeleton(const FObjectInitializer& ObjectInitializer)
