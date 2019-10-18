@@ -3074,12 +3074,7 @@ void FScene::Release()
 	ENQUEUE_RENDER_COMMAND(FReleaseCommand)(
 		[Scene](FRHICommandListImmediate& RHICmdList)
 		{
->>>> ORIGINAL //UE4/Dev-RenderPlat-Staging/Engine/Source/Runtime/Renderer/Private/RendererScene.cpp#14
-==== THEIRS //UE4/Dev-RenderPlat-Staging/Engine/Source/Runtime/Renderer/Private/RendererScene.cpp#15
-			// Update one more time to clear RemovedPrimitiveSceneInfos and prevent leaking FPrimitiveSceneInfo instances.
-==== YOURS //Juan.Canada_DevRendering_MERGES_ONLY/Engine/Source/Runtime/Renderer/Private/RendererScene.cpp
 			// Flush any remaining batched primitive update commands before deleting the scene.
-<<<<
 			Scene->UpdateAllPrimitiveSceneInfos(RHICmdList);
 			delete Scene;
 		});
