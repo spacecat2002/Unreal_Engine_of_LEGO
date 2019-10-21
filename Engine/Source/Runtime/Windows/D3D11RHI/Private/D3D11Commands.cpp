@@ -884,7 +884,7 @@ void FD3D11DynamicRHI::CommitUAVs()
 				UAVBound[i] = UAV;
 			}
 		}
-		static const uint32 UAVInitialCountArray[D3D11_PS_CS_UAV_REGISTER_COUNT] = {-1, -1, -1, -1,-1, -1, -1, -1 };
+		static const uint32 UAVInitialCountArray[D3D11_PS_CS_UAV_REGISTER_COUNT] = {~0u, ~0u, ~0u, ~0u, ~0u, ~0u, ~0u, ~0u};
 		Direct3DDeviceIMContext->OMSetRenderTargetsAndUnorderedAccessViews(D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL, 0, 0, First, Count, &UAVs[First], &UAVInitialCountArray[0]);
 	}
 	UAVBindFirst = First;
