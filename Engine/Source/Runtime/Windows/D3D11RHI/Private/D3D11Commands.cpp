@@ -858,7 +858,7 @@ void FD3D11DynamicRHI::CommitUAVs()
 		Count++;
 	}
 
-	if(First != -1 && (First != UAVBindFirst || Count != UAVBindCount || 0 != FMemory::Memcmp(UAVs[First], UAVBound[First], sizeof(UAVs[0]) * Count)))
+	if(First != -1 && (First != UAVBindFirst || Count != UAVBindCount || 0 != FMemory::Memcmp(&UAVs[First], &UAVBound[First], sizeof(UAVs[0]) * Count)))
 	{
 		SCOPE_CYCLE_COUNTER(STAT_D3D11RenderTargetCommitsUAV);
 		for (int32 i = First; i < First + Count; ++i)
