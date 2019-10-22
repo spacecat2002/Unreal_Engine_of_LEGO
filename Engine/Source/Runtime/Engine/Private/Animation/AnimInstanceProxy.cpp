@@ -2594,4 +2594,44 @@ FAnimBlueprintDebugData* FAnimInstanceProxy::GetAnimBlueprintDebugData() const
 	return nullptr;
 }
 
+void FAnimInstanceProxy::InitializeCustomProxy(FAnimInstanceProxy* InputProxy, UAnimInstance* InAnimInstance)
+{
+	if (InAnimInstance && InputProxy)
+	{
+		InputProxy->Initialize(InAnimInstance);
+	}
+}
+
+void FAnimInstanceProxy::GatherCustomProxyDebugData(FAnimInstanceProxy* InputProxy, FNodeDebugData& DebugData)
+{
+	if (InputProxy)
+	{
+		InputProxy->GatherDebugData(DebugData);
+	}
+}
+
+void FAnimInstanceProxy::CacheBonesCustomProxy(FAnimInstanceProxy* InputProxy)
+{
+	if (InputProxy)
+	{
+		InputProxy->CacheBones();
+	}
+}
+
+void FAnimInstanceProxy::UpdateCustomProxy(FAnimInstanceProxy* InputProxy, const FAnimationUpdateContext& Context)
+{
+	if (InputProxy)
+	{
+		InputProxy->UpdateAnimationNode(Context);
+	}
+}
+
+void FAnimInstanceProxy::EvaluateCustomProxy(FAnimInstanceProxy* InputProxy, FPoseContext& Output)
+{
+	if (InputProxy)
+	{
+		InputProxy->Evaluate(Output);
+	}
+}
+
 #undef LOCTEXT_NAMESPACE
