@@ -9,17 +9,16 @@
 FAllocatedVirtualTexture::FAllocatedVirtualTexture(FVirtualTextureSystem* InSystem,
 	uint32 InFrame,
 	const FAllocatedVTDescription& InDesc,
-	FVirtualTextureSpace* InSpace,
 	FVirtualTextureProducer* const* InProducers,
 	uint32 InBlockWidthInTiles,
 	uint32 InBlockHeightInTiles,
 	uint32 InWidthInBlocks,
 	uint32 InHeightInBlocks,
 	uint32 InDepthInTiles)
-	: IAllocatedVirtualTexture(InDesc, InSpace->GetID(), InSpace->GetPageTableFormat(), InBlockWidthInTiles, InBlockHeightInTiles, InWidthInBlocks, InHeightInBlocks, InDepthInTiles)
+	: IAllocatedVirtualTexture(InDesc, InBlockWidthInTiles, InBlockHeightInTiles, InWidthInBlocks, InHeightInBlocks, InDepthInTiles)
 	, RefCount(1)
 	, FrameAllocated(InFrame)
-	, Space(InSpace)
+	, Space(nullptr)
 {
 	check(IsInRenderingThread());
 	FMemory::Memzero(TextureLayers);
@@ -45,12 +44,12 @@ FAllocatedVirtualTexture::FAllocatedVirtualTexture(FVirtualTextureSystem* InSyst
 
 	// Must have at least 1 valid layer/producer
 	check(UniqueProducers.Num() > 0u);
-	// Layout should match the FVirtualTextureSpace
-	check(UniquePageTableLayers.Num() == Space->GetNumPageTableLayers());
 
 	// Max level of overall allocated VT is limited by size in tiles
 	// With multiple layers of different sizes, some layers may have mips smaller than a single tile
 	MaxLevel = FMath::Min(MaxLevel, FMath::CeilLogTwo(FMath::Max(GetWidthInTiles(), GetHeightInTiles())));
+
+	MaxLevel = FMath::Min(MaxLevel, VIRTUALTEXTURE_LOG2_MAX_PAGETABLE_SIZE - 1u);
 
 	// Lock lowest resolution mip from each producer
 	// Depending on the block dimensions of the producers that make up this allocated VT, different allocated VTs may need to lock different low resolution mips from the same producer
@@ -66,8 +65,9 @@ FAllocatedVirtualTexture::FAllocatedVirtualTexture(FVirtualTextureSystem* InSyst
 			const uint32 Local_vLevel = MaxLevel - MipBias;
 			check(Local_vLevel <= Producer->GetMaxLevel());
 
-			const uint32 RootWidthInTiles = FMath::Max(Producer->GetWidthInTiles() >> Local_vLevel, 1u);
-			const uint32 RootHeightInTiles = FMath::Max(Producer->GetHeightInTiles() >> Local_vLevel, 1u);
+			const uint32 MipScaleFactor = (1u << Local_vLevel);
+			const uint32 RootWidthInTiles = FMath::DivideAndRoundUp(Producer->GetWidthInTiles(), MipScaleFactor);
+			const uint32 RootHeightInTiles = FMath::DivideAndRoundUp(Producer->GetHeightInTiles(), MipScaleFactor);
 			for (uint32 TileY = 0u; TileY < RootHeightInTiles; ++TileY)
 			{
 				for (uint32 TileX = 0u; TileX < RootWidthInTiles; ++TileX)
@@ -80,7 +80,16 @@ FAllocatedVirtualTexture::FAllocatedVirtualTexture(FVirtualTextureSystem* InSyst
 		}
 	}
 
-	VirtualAddress = Space->AllocateVirtualTexture(this);
+	FVTSpaceDescription SpaceDesc;
+	SpaceDesc.Dimensions = InDesc.Dimensions;
+	SpaceDesc.NumPageTableLayers = UniquePageTableLayers.Num();
+	SpaceDesc.TileSize = InDesc.TileSize;
+	SpaceDesc.TileBorderSize = InDesc.TileBorderSize;
+	SpaceDesc.bPrivateSpace = InDesc.bPrivateSpace;
+	SpaceDesc.PageTableFormat = EVTPageTableFormat::UInt32;
+	Space = InSystem->AcquireSpace(SpaceDesc, this);
+	SpaceID = Space->GetID();
+	PageTableFormat = Space->GetPageTableFormat();
 }
 
 FAllocatedVirtualTexture::~FAllocatedVirtualTexture()
@@ -114,8 +123,9 @@ void FAllocatedVirtualTexture::Release(FVirtualTextureSystem* System)
 			const uint32 Local_vLevel = MaxLevel - MipBias;
 			check(Local_vLevel <= Producer->GetMaxLevel());
 
-			const uint32 RootWidthInTiles = FMath::Max(Producer->GetWidthInTiles() >> Local_vLevel, 1u);
-			const uint32 RootHeightInTiles = FMath::Max(Producer->GetHeightInTiles() >> Local_vLevel, 1u);
+			const uint32 MipScaleFactor = (1u << Local_vLevel);
+			const uint32 RootWidthInTiles = FMath::DivideAndRoundUp(Producer->GetWidthInTiles(), MipScaleFactor);
+			const uint32 RootHeightInTiles = FMath::DivideAndRoundUp(Producer->GetHeightInTiles(), MipScaleFactor);
 			for (uint32 TileY = 0u; TileY < RootHeightInTiles; ++TileY)
 			{
 				for (uint32 TileX = 0u; TileX < RootWidthInTiles; ++TileX)
