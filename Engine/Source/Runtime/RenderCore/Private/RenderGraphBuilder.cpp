@@ -683,17 +683,14 @@ void FRDGBuilder::ExecutePass(const FRDGPass* Pass)
 	IF_RDG_ENABLE_DEBUG(Validation.ValidateExecutePassBegin(Pass));
 
 	FRHIRenderPassInfo RPInfo;
-	bool bOutHasGraphicsOutputs = false;
-
-	PrepareResourcesForExecute(Pass, &RPInfo, &bOutHasGraphicsOutputs);
+	PrepareResourcesForExecute(Pass, &RPInfo);
 	
 	EventScopeStack.BeginExecutePass(Pass);
 	StatScopeStack.BeginExecutePass(Pass);
 
 	if (Pass->IsRaster())
 	{
-		check(bOutHasGraphicsOutputs);
-		RHICmdList.BeginRenderPass( RPInfo, Pass->GetName() );
+		RHICmdList.BeginRenderPass(RPInfo, Pass->GetName());
 	}
 	else
 	{
@@ -718,7 +715,7 @@ void FRDGBuilder::ExecutePass(const FRDGPass* Pass)
 	}
 }
 
-void FRDGBuilder::PrepareResourcesForExecute(const FRDGPass* Pass, struct FRHIRenderPassInfo* OutRPInfo, bool* bOutHasGraphicsOutputs)
+void FRDGBuilder::PrepareResourcesForExecute(const FRDGPass* Pass, struct FRHIRenderPassInfo* OutRPInfo)
 {
 	check(Pass);
 
@@ -934,8 +931,6 @@ void FRDGBuilder::PrepareResourcesForExecute(const FRDGPass* Pass, struct FRHIRe
 			}
 
 			OutRPInfo->bIsMSAA = SampleCount > 1;
-
-			*bOutHasGraphicsOutputs = ValidRenderTargetCount + ValidDepthStencilCount > 0;
 		}
 		break;
 		default:
