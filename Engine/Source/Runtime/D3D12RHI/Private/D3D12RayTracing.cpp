@@ -3039,6 +3039,19 @@ static void SetRayTracingShaderResources(
 	FD3D12RayTracingDescriptorCache& DescriptorCache,
 	ResourceBinderType& Binder)
 {
+	static_assert(
+		sizeof(ResourceBindings.SRVs) / sizeof(*ResourceBindings.SRVs) == MAX_SRVS,
+		"Ray Tracing Shader Bindings SRV array size must match D3D12 RHI Limit");
+	static_assert(
+		sizeof(ResourceBindings.UniformBuffers) / sizeof(*ResourceBindings.UniformBuffers) == MAX_CBS,
+		"Ray Tracing Shader Bindings Uniform Buffer array size must match D3D12 RHI Limit");
+	static_assert(
+		sizeof(ResourceBindings.Samplers) / sizeof(*ResourceBindings.Samplers) == MAX_SAMPLERS,
+		"Ray Tracing Shader Bindings Sampler array size must match D3D12 RHI Limit");
+	static_assert(
+		sizeof(ResourceBindings.UAVs) / sizeof(*ResourceBindings.UAVs) == MAX_UAVS,
+		"Ray Tracing Shader Bindings UAV array size must match D3D12 RHI Limit");
+
 	SetRayTracingShaderResources(CommandContext, Shader,
 		UE_ARRAY_COUNT(ResourceBindings.Textures), ResourceBindings.Textures,
 		UE_ARRAY_COUNT(ResourceBindings.SRVs), ResourceBindings.SRVs,

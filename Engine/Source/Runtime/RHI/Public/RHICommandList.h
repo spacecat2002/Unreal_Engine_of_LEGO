@@ -117,10 +117,10 @@ extern RHI_API TAutoConsoleVariable<int32> CVarRHICmdFlushRenderThreadTasks;
 struct FRayTracingShaderBindings
 {
 	FRHITexture* Textures[32] = {};
-	FRHIShaderResourceView* SRVs[32] = {};
-	FRHIUniformBuffer* UniformBuffers[8] = {};
+	FRHIShaderResourceView* SRVs[48] = {};
+	FRHIUniformBuffer* UniformBuffers[16] = {};
 	FRHISamplerState* Samplers[16] = {};
-	FRHIUnorderedAccessView* UAVs[8] = {};
+	FRHIUnorderedAccessView* UAVs[16] = {};
 };
 
 // C++ counter-part of FBasicRayData declared in RayTracingCommon.ush
