@@ -357,6 +357,25 @@ void URigVM::CacheMemoryPointersIfRequired(FRigVMMemoryContainerPtrArray InMemor
 				CachedMemoryPointers.Add(CachedMemory[Arg.GetContainerIndex()]->GetData(Arg.GetRegisterIndex(), Arg.GetRegisterOffset()));
 				Arg = Op.Target;
 				CachedMemoryPointers.Add(CachedMemory[Arg.GetContainerIndex()]->GetData(Arg.GetRegisterIndex(), Arg.GetRegisterOffset()));
+
+				const FRigVMRegister& TargetRegister = CachedMemory[Arg.GetContainerIndex()]->Registers[Arg.GetRegisterIndex()];
+				uint16 NumBytes = TargetRegister.GetNumBytesPerSlice();
+
+				ERigVMRegisterType TargetType = TargetRegister.Type;
+				if (Arg.GetRegisterOffset() != INDEX_NONE)
+				{
+					TargetType = CachedMemory[Arg.GetContainerIndex()]->RegisterOffsets[Arg.GetRegisterOffset()].GetType();
+					NumBytes = CachedMemory[Arg.GetContainerIndex()]->RegisterOffsets[Arg.GetRegisterOffset()].GetElementSize();
+				}
+
+				CachedMemoryPointers.Add(reinterpret_cast<void*>(NumBytes));
+				CachedMemoryPointers.Add(reinterpret_cast<void*>((uint16)TargetType));
+
+				if (TargetType == ERigVMRegisterType::Struct)
+				{
+					CachedMemoryPointers.Add(CachedMemory[Arg.GetContainerIndex()]->GetScriptStruct(Arg.GetRegisterIndex(), Arg.GetRegisterOffset()));
+				}
+
 				InstructionIndex++;
 				break;
 			}
@@ -539,9 +558,57 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> Add
 			}
 			case ERigVMOpCode::Copy:
 			{
-				// todo: we might want to take a look at what's slow here as well
 				const FRigVMCopyOp& Op = ByteCode.GetOpAt<FRigVMCopyOp>(Instructions[InstructionIndex]);
-				Memory[Op.Target.GetContainerIndex()]->Copy(Op.Source, Op.Target, Memory[Op.Source.GetContainerIndex()]);
+
+				void * SourcePtr = CachedMemoryPointers[FirstPointerForInstruction[InstructionIndex]];
+				void * TargetPtr = CachedMemoryPointers[FirstPointerForInstruction[InstructionIndex] + 1];
+				uint64 NumBytes = reinterpret_cast<uint64>(CachedMemoryPointers[FirstPointerForInstruction[InstructionIndex] + 2]);
+				ERigVMRegisterType MemoryType = (ERigVMRegisterType)reinterpret_cast<uint64>(CachedMemoryPointers[FirstPointerForInstruction[InstructionIndex] + 3]);
+
+				switch (MemoryType)
+				{
+					case ERigVMRegisterType::Plain:
+					{
+						FMemory::Memcpy(TargetPtr, SourcePtr, NumBytes);
+						break;
+					}
+					case ERigVMRegisterType::Name:
+					{
+						int32 NumNames = NumBytes / sizeof(FName);
+						TArrayView<FName> TargetNames((FName*)TargetPtr, NumNames);
+						TArrayView<FName> SourceNames((FName*)SourcePtr, NumNames);
+						for (int32 Index = 0; Index < NumNames; Index++)
+						{
+							TargetNames[Index] = SourceNames[Index];
+						}
+						break;
+					}
+					case ERigVMRegisterType::String:
+					{
+						int32 NumStrings = NumBytes / sizeof(FString);
+						TArrayView<FString> TargetStrings((FString*)TargetPtr, NumStrings);
+						TArrayView<FString> SourceStrings((FString*)SourcePtr, NumStrings);
+						for (int32 Index = 0; Index < NumStrings; Index++)
+						{
+							TargetStrings[Index] = SourceStrings[Index];
+						}
+						break;
+					}
+					case ERigVMRegisterType::Struct:
+					{
+						UScriptStruct* ScriptStruct = (UScriptStruct*)CachedMemoryPointers[FirstPointerForInstruction[InstructionIndex] + 4];
+						int32 NumStructs = NumBytes / ScriptStruct->GetStructureSize();
+						ScriptStruct->CopyScriptStruct(TargetPtr, SourcePtr, NumStructs);
+						break;
+					}
+					default:
+					{
+						// the default pass for any complex memory
+						Memory[Op.Target.GetContainerIndex()]->Copy(Op.Source, Op.Target, Memory[Op.Source.GetContainerIndex()]);
+						break;
+					}
+				}
+
 				InstructionIndex++;
 				break;
 			}
