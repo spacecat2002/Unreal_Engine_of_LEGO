@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
+#include "RigVMStatistics.h"
 #include "RigVMMemory.generated.h"
 
 /**
@@ -26,8 +27,11 @@ enum class ERigVMMemoryType: uint8
  * The FRigVMOperand is a light weight address for a register in
  * a FRigVMMemoryContainer.
  */
+USTRUCT()
 struct RIGVM_API FRigVMOperand
 {
+	GENERATED_BODY()
+
 public:
 
 	FRigVMOperand()
@@ -44,6 +48,21 @@ public:
 	{
 	}
 
+	FORCEINLINE bool operator == (const FRigVMOperand& InOther) const
+	{
+		return MemoryType == InOther.MemoryType &&
+			RegisterIndex == InOther.RegisterIndex &&
+			RegisterOffset == InOther.RegisterOffset;
+	}
+
+	FORCEINLINE bool operator != (const FRigVMOperand& InOther) const
+	{
+		return !(*this == InOther);
+	}
+
+	// returns the memory type of this argument
+	FORCEINLINE bool IsValid() const { return RegisterIndex != UINT16_MAX; }
+
 	// returns the memory type of this argument
 	FORCEINLINE ERigVMMemoryType GetMemoryType() const { return MemoryType; }
 
@@ -58,8 +77,13 @@ public:
 
 private:
 
+	UPROPERTY()
 	ERigVMMemoryType MemoryType;
+
+	UPROPERTY()
 	uint16 RegisterIndex;
+	
+	UPROPERTY()
 	uint16 RegisterOffset;
 };
 
@@ -769,6 +793,19 @@ public:
 
 	// Adds a register path and returns its index
 	int32 GetOrAddRegisterOffset(int32 InRegisterIndex, UScriptStruct* InScriptStruct, const FString& InSegmentPath, int32 InInitialOffset = 0, int32 InElementSize = 0);
+
+	void SetRegisterValueFromString(const FRigVMOperand& InOperand, const FString& InCPPType, const UObject* InCPPTypeObject, const TArray<FString>& InDefaultValues);
+	TArray<FString> GetRegisterValueAsString(const FRigVMOperand& InOperand, const FString& InCPPType, const UObject* InCPPTypeObject);
+
+	// returns the statistics information
+	FRigVMMemoryStatistics GetStatistics() const
+	{
+		FRigVMMemoryStatistics Statistics;
+		Statistics.RegisterCount = Registers.Num();
+		Statistics.DataBytes = Data.GetAllocatedSize();
+		Statistics.TotalBytes = Data.GetAllocatedSize() + Registers.GetAllocatedSize() + RegisterOffsets.GetAllocatedSize();
+		return Statistics;
+	}
 
 private:
 

@@ -295,6 +295,7 @@ FRigVMMemoryContainer& FRigVMMemoryContainer::operator= (const FRigVMMemoryConta
 	bUseNameMap = InOther.bUseNameMap;
 	Data.Append(InOther.Data);
 	Registers.Append(InOther.Registers);
+	RegisterOffsets.Append(InOther.RegisterOffsets);
 	ScriptStructs.Append(InOther.ScriptStructs);
 
 	UpdateRegisters();
@@ -481,13 +482,17 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 
 void FRigVMMemoryContainer::Reset()
 {
-	for (int32 Index = 0; Index < Registers.Num(); Index++)
+	if (Data.Num() > 0)
 	{
-		Destroy(Index);
+		for (int32 Index = 0; Index < Registers.Num(); Index++)
+		{
+			Destroy(Index);
+		}
 	}
 
 	Data.Reset();
 	Registers.Reset();
+	RegisterOffsets.Reset();
 	ScriptStructs.Reset();
 	NameMap.Reset();
 }
@@ -963,6 +968,131 @@ int32 FRigVMMemoryContainer::GetOrAddRegisterOffset(int32 InRegisterIndex, UScri
 		return RegisterOffsets.Add(Offset);
 	}
 	return ExistingIndex;
+}
+
+void FRigVMMemoryContainer::SetRegisterValueFromString(const FRigVMOperand& InOperand, const FString& InCPPType, const UObject* InCPPTypeObject, const TArray<FString>& InDefaultValues)
+{
+	if (InOperand.GetRegisterIndex() < 0 || InOperand.GetRegisterIndex() >= Registers.Num())
+	{
+		return;
+	}
+
+	FRigVMRegister& Register = Registers[InOperand.GetRegisterIndex()];
+
+	if (Register.ElementCount != InDefaultValues.Num())
+	{
+		return;
+	}
+
+	for (int32 Index = 0; Index < InDefaultValues.Num(); Index++)
+	{
+		FString DefaultValue = InDefaultValues[Index];
+
+		if (Register.ScriptStructIndex != INDEX_NONE)
+		{
+			UScriptStruct* ScriptStruct = ScriptStructs[Register.ScriptStructIndex];
+			if (ScriptStruct == InCPPTypeObject)
+			{
+				uint8* DataPtr = (uint8*)GetData(Register);
+				DataPtr += Index * ScriptStruct->GetStructureSize();
+				ScriptStruct->ImportText(*DefaultValue, DataPtr, nullptr, PPF_None, nullptr, ScriptStruct->GetName());
+			}
+		}
+		else if (const UEnum* Enum = Cast<const UEnum>(InCPPTypeObject))
+		{
+			if (FCString::IsNumeric(*DefaultValue))
+			{
+				GetArray<uint8>(Register)[Index] = (uint8)FCString::Atoi(*DefaultValue);
+			}
+			else
+			{
+				GetArray<uint8>(Register)[Index] = (uint8)Enum->GetValueByNameString(DefaultValue);
+			}
+		}
+		else if (InCPPType == TEXT("bool") && Register.GetNumBytesPerSlice() == sizeof(bool))
+		{
+			GetArray<bool>(Register)[Index] = (DefaultValue == TEXT("True")) || (DefaultValue == TEXT("true")) || (DefaultValue == TEXT("1"));
+		}
+		else if (InCPPType == TEXT("int32") && Register.GetNumBytesPerSlice() == sizeof(int32))
+		{
+			GetArray<int32>(Register)[Index] = FCString::Atoi(*DefaultValue);
+		}
+		else if (InCPPType == TEXT("float") && Register.GetNumBytesPerSlice() == sizeof(float))
+		{
+			GetArray<float>(Register)[Index] = FCString::Atof(*DefaultValue);
+		}
+		else if (InCPPType == TEXT("FName") && Register.GetNumBytesPerSlice() == sizeof(FName))
+		{
+			GetArray<FName>(Register)[Index] = *DefaultValue;
+		}
+		else if (InCPPType == TEXT("FString") && Register.GetNumBytesPerSlice() == sizeof(FString))
+		{
+			GetArray<FString>(Register)[Index] = *DefaultValue;
+		}
+		else
+		{
+			ensure(false);
+		}
+	}
+}
+
+TArray<FString> FRigVMMemoryContainer::GetRegisterValueAsString(const FRigVMOperand& InOperand, const FString& InCPPType, const UObject* InCPPTypeObject)
+{
+	TArray<FString> DefaultValues;
+
+	if (InOperand.GetRegisterIndex() < 0 || InOperand.GetRegisterIndex() >= Registers.Num())
+	{
+		return DefaultValues;
+	}
+
+	FRigVMRegister& Register = Registers[InOperand.GetRegisterIndex()];
+	for (int32 Index = 0; Index < Register.ElementCount; Index++)
+	{
+		FString DefaultValue;
+
+		if (Register.ScriptStructIndex != INDEX_NONE)
+		{
+			UScriptStruct* ScriptStruct = ScriptStructs[Register.ScriptStructIndex];
+			if (ScriptStruct == InCPPTypeObject)
+			{
+				uint8* DataPtr = (uint8*)GetData(Register);
+				DataPtr += Index * ScriptStruct->GetStructureSize();
+				ScriptStruct->ExportText(DefaultValue, DataPtr, nullptr, nullptr, PPF_None, nullptr);
+			}
+		}
+		else if (const UEnum* Enum = Cast<const UEnum>(InCPPTypeObject))
+		{
+			DefaultValue = Enum->GetNameStringByValue((int64)GetArray<int32>(Register)[Index]);
+		}
+		else if (InCPPType == TEXT("bool") && Register.GetNumBytesPerSlice() == sizeof(bool))
+		{
+			DefaultValue = GetArray<bool>(Register)[Index] ? TEXT("True") : TEXT("False");
+		}
+		else if (InCPPType == TEXT("int32") && Register.GetNumBytesPerSlice() == sizeof(int32))
+		{
+			DefaultValue = FString::FromInt(GetArray<int32>(Register)[Index]);
+		}
+		else if (InCPPType == TEXT("float") && Register.GetNumBytesPerSlice() == sizeof(float))
+		{
+			DefaultValue = FString::Printf(TEXT("%f"), GetArray<float>(Register)[Index]);
+		}
+		else if (InCPPType == TEXT("FName") && Register.GetNumBytesPerSlice() == sizeof(FName))
+		{
+			DefaultValue = GetArray<FName>(Register)[Index].ToString();
+		}
+		else if (InCPPType == TEXT("FString") && Register.GetNumBytesPerSlice() == sizeof(FString))
+		{
+			DefaultValue  = GetArray<FString>(Register)[Index];
+		}
+		else
+		{
+			ensure(false);
+		}
+
+		DefaultValues.Add(DefaultValue);
+	}
+
+	return DefaultValues;
 }
 
 void FRigVMMemoryContainer::UpdateRegisters()

@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "RigVMRegistry.h"
+#include "RigVMStatistics.h"
 #include "RigVMByteCode.generated.h"
 
 struct FRigVMByteCode;
@@ -362,6 +363,13 @@ public:
 
 	FRigVMByteCode();
 
+	bool Serialize(FArchive& Ar);
+	FORCEINLINE friend FArchive& operator<<(FArchive& Ar, FRigVMByteCode& P)
+	{
+		P.Serialize(Ar);
+		return Ar;
+	}
+
 	// resets the container and removes all memory
 	void Reset();
 
@@ -464,6 +472,15 @@ public:
 	{
 		const uint8* Data = ByteCode.GetData();
 		return TArrayView<uint8>((uint8*)Data, ByteCode.Num());
+	}
+
+	// returns the statistics information
+	FRigVMByteCodeStatistics GetStatistics() const
+	{
+		FRigVMByteCodeStatistics Statistics;
+		Statistics.InstructionCount = GetInstructions().Num();
+		Statistics.DataBytes = ByteCode.GetAllocatedSize();
+		return Statistics;
 	}
 
 private:
