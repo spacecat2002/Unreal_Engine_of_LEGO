@@ -56,7 +56,7 @@ public:
 		UAnimInstance* CurrentAnimInstance = InSkeletalMeshComponent->AnimScriptInstance;
 		// See if we have SequencerInterface from current instance
 		ISequencerAnimationSupport* CurrentSequencerInterface = Cast<ISequencerAnimationSupport>(CurrentAnimInstance);
-		const bool bCurrentlySequencerInterface = CurrentSequencerInterface;
+		const bool bCurrentlySequencerInterface = CurrentSequencerInterface != nullptr;
 		const bool bCreateSequencerInterface = InstanceClassType::StaticClass()->ImplementsInterface(USequencerAnimationSupport::StaticClass());
 		bool bSupportDifferentSourceAnimInstance = false;
 
