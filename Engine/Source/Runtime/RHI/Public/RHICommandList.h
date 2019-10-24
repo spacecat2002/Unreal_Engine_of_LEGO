@@ -2147,6 +2147,7 @@ FRHICOMMAND_MACRO(FRHICommandSetRayTracingBindings)
 	{
 		EBindingType_HitGroup,
 		EBindingType_CallableShader,
+		EBindingType_MissShader,
 	};
 
 	FRHIRayTracingScene* Scene;
@@ -2182,11 +2183,11 @@ FRHICOMMAND_MACRO(FRHICommandSetRayTracingBindings)
 	{
 	}
 
-	// Callable shader bindings
+	// Callable and Miss shader bindings
 	FRHICommandSetRayTracingBindings(FRHIRayTracingScene* InScene, uint32 InShaderSlot,
 		FRayTracingPipelineState* InPipeline, uint32 InShaderIndex,
 		uint32 InNumUniformBuffers, FRHIUniformBuffer* const* InUniformBuffers,
-		uint32 InUserData)
+		uint32 InUserData, EBindingType InBindingType)
 		: Scene(InScene)
 		, InstanceIndex(0)
 		, SegmentIndex(0)
@@ -2196,7 +2197,7 @@ FRHICOMMAND_MACRO(FRHICommandSetRayTracingBindings)
 		, NumUniformBuffers(InNumUniformBuffers)
 		, UniformBuffers(InUniformBuffers)
 		, UserData(InUserData)
-		, BindingType(EBindingType_CallableShader)
+		, BindingType(InBindingType)
 	{
 	}
 
@@ -3379,7 +3380,34 @@ public:
 				}
 			}
 
-			ALLOC_COMMAND(FRHICommandSetRayTracingBindings)(Scene, ShaderSlotInScene, Pipeline, ShaderIndexInPipeline, NumUniformBuffers, InlineUniformBuffers, UserData);
+			ALLOC_COMMAND(FRHICommandSetRayTracingBindings)(Scene, ShaderSlotInScene, Pipeline, ShaderIndexInPipeline, NumUniformBuffers, InlineUniformBuffers, UserData, FRHICommandSetRayTracingBindings::EBindingType::EBindingType_CallableShader);
+		}
+	}
+
+	FORCEINLINE_DEBUGGABLE void SetRayTracingMissShader(
+		FRHIRayTracingScene* Scene, uint32 ShaderSlotInScene,
+		FRayTracingPipelineState* Pipeline, uint32 ShaderIndexInPipeline,
+		uint32 NumUniformBuffers, FRHIUniformBuffer* const* UniformBuffers,
+		uint32 UserData)
+	{
+		if (Bypass())
+		{
+			extern RHI_API FRHIRayTracingPipelineState* GetRHIRayTracingPipelineState(FRayTracingPipelineState*);
+			GetContext().RHISetRayTracingMissShader(Scene, ShaderSlotInScene, GetRHIRayTracingPipelineState(Pipeline), ShaderIndexInPipeline, NumUniformBuffers, UniformBuffers, UserData);
+		}
+		else
+		{
+			FRHIUniformBuffer** InlineUniformBuffers = nullptr;
+			if (NumUniformBuffers)
+			{
+				InlineUniformBuffers = (FRHIUniformBuffer**)Alloc(sizeof(FRHIUniformBuffer*) * NumUniformBuffers, alignof(FRHIUniformBuffer*));
+				for (uint32 Index = 0; Index < NumUniformBuffers; ++Index)
+				{
+					InlineUniformBuffers[Index] = UniformBuffers[Index];
+				}
+			}
+
+			ALLOC_COMMAND(FRHICommandSetRayTracingBindings)(Scene, ShaderSlotInScene, Pipeline, ShaderIndexInPipeline, NumUniformBuffers, InlineUniformBuffers, UserData, FRHICommandSetRayTracingBindings::EBindingType::EBindingType_MissShader);
 		}
 	}
 

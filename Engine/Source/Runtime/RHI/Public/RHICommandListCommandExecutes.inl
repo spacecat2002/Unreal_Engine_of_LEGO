@@ -628,9 +628,13 @@ void FRHICommandSetRayTracingBindings::Execute(FRHICommandListBase& CmdList)
 			LooseParameterDataSize, LooseParameterData,
 			UserData);
 	}
-	else
+	else if (BindingType == EBindingType_CallableShader)
 	{
 		INTERNAL_DECORATOR(RHISetRayTracingCallableShader)(Scene, ShaderSlot, GetRHIRayTracingPipelineState(Pipeline), ShaderIndex, NumUniformBuffers, UniformBuffers, UserData);
+	}
+	else 
+	{
+		INTERNAL_DECORATOR(RHISetRayTracingMissShader)(Scene, ShaderSlot, GetRHIRayTracingPipelineState(Pipeline), ShaderIndex, NumUniformBuffers, UniformBuffers, UserData);
 	}
 }
 

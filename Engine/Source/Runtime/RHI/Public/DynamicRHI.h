@@ -186,6 +186,11 @@ struct FRayTracingSceneInitializer
 	// Shaders and resources are assigned to slots in the scene using SetRayTracingCallableShader().
 	uint32 NumCallableShaderSlots = 0;
 
+	// At least one miss shader must be present in a ray tracing scene.
+	// Default miss shader is always in slot 0. Default shader must not use local resources.
+	// Custom miss shaders can be bound to other slots using SetRayTracingMissShader().
+	uint32 NumMissShaderSlots = 1;
+
 	// Defines whether data in this scene should persist between frames.
 	// Currently only single-frame lifetime is supported.
 	ERayTracingSceneLifetime Lifetime = RTSL_SingleFrame;

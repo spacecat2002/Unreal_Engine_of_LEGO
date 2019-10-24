@@ -669,6 +669,15 @@ public:
 		checkNoEntry();
 	}
 
+	virtual void RHISetRayTracingMissShader(
+		FRHIRayTracingScene* Scene, uint32 ShaderSlotInScene,
+		FRHIRayTracingPipelineState* Pipeline, uint32 ShaderIndexInPipeline,
+		uint32 NumUniformBuffers, FRHIUniformBuffer* const* UniformBuffers,
+		uint32 UserData)
+	{
+		checkNoEntry();
+	}
+
 	protected:
 		FRHIRenderPassInfo RenderPassInfo;
 };

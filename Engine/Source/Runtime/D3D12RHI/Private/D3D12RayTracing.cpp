@@ -605,15 +605,15 @@ public:
 		const uint64 ShaderHash = GetShaderHash64(Shader);
 
 		ID3D12RootSignature* LocalRootSignature = nullptr;
-		if (CollectionType == ECollectionType::HitGroup || CollectionType == ECollectionType::Callable)
+		if (CollectionType == ECollectionType::RayGen)
 		{
-			// Only hit group and callable shaders have a local root signature
-			LocalRootSignature = Shader->pRootSignature->GetRootSignature();
+			// RayGen shaders use a default empty local root signature as all their resources bound via global RS.
+			LocalRootSignature = DefaultLocalRootSignature.GetRootSignature();
 		}
 		else
 		{
-			// ... all other shaders share a default empty local root signature
-			LocalRootSignature = DefaultLocalRootSignature.GetRootSignature();
+			// All other shaders (hit groups, miss, callable) use custom root signatures.
+			LocalRootSignature = Shader->pRootSignature->GetRootSignature();
 		}
 
 		FKey CacheKey;
@@ -1111,10 +1111,6 @@ public:
 		TotalDataSize += NumRayGenShaders * RayGenRecordStride;
 		TotalDataSize = RoundUpToNextMultiple(TotalDataSize, D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT);
 
-		MissShaderTableOffset = TotalDataSize;
-		TotalDataSize += NumMissShaders * MissRecordStride;
-		TotalDataSize = RoundUpToNextMultiple(TotalDataSize, D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT);
-
 		DefaultHitGroupShaderTableOffset = TotalDataSize;
 		TotalDataSize += ShaderIdentifierSize;
 		TotalDataSize = RoundUpToNextMultiple(TotalDataSize, D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT);
@@ -1127,9 +1123,14 @@ public:
 		TotalDataSize += Initializer.NumCallableRecords * LocalRecordStride;
 		TotalDataSize = RoundUpToNextMultiple(TotalDataSize, D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT);
 
+		MissShaderTableOffset = TotalDataSize;
+		TotalDataSize += NumMissShaders * LocalRecordStride;
+		TotalDataSize = RoundUpToNextMultiple(TotalDataSize, D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT);
+
 		// Hit groups and callable shaders are stored in a consecutive memory block and are accessed using common local record indices.
 		LocalShaderTableOffset = HitGroupShaderTableOffset;
 		CallableShaderRecordIndexOffset = (CallableShaderTableOffset - LocalShaderTableOffset) / LocalRecordStride;
+		MissShaderRecordIndexOffset = (MissShaderTableOffset - LocalShaderTableOffset) / LocalRecordStride;
 		NumLocalRecords = (TotalDataSize - LocalShaderTableOffset) / LocalRecordStride;
 
 		Data.SetNumZeroed(TotalDataSize);
@@ -1180,7 +1181,7 @@ public:
 
 	void SetMissIdentifier(uint32 RecordIndex, const FD3D12ShaderIdentifier& ShaderIdentifier)
 	{
-		const uint32 WriteOffset = MissShaderTableOffset + RecordIndex * MissRecordStride;
+		const uint32 WriteOffset = MissShaderTableOffset + RecordIndex * LocalRecordStride;
 		WriteData(WriteOffset, ShaderIdentifier.Data, ShaderIdentifierSize);
 	}
 
@@ -1209,10 +1210,11 @@ public:
 
 	void SetMissIdentifiers(const TArrayView<const FD3D12ShaderIdentifier>& Identifiers)
 	{
-		check(Identifiers.Num() == NumMissShaders);
-		for (int32 Index = 0; Index < Identifiers.Num(); ++Index)
+		// Set all to the default
+		check(Identifiers.Num());
+		for (uint32 Index = 0; Index < NumMissShaders; ++Index)
 		{
-			SetMissIdentifier(Index, Identifiers[Index]);
+			SetMissIdentifier(Index, Identifiers[0]);
 		}
 	}
 
@@ -1263,9 +1265,10 @@ public:
 		Desc.RayGenerationShaderRecord.StartAddress = ShaderTableAddress + RayGenShaderTableOffset + RayGenShaderIndex * RayGenRecordStride;
 		Desc.RayGenerationShaderRecord.SizeInBytes = RayGenRecordStride;
 
-		Desc.MissShaderTable.StartAddress = ShaderTableAddress + MissShaderTableOffset + MissShaderBaseIndex * MissRecordStride;
-		Desc.MissShaderTable.StrideInBytes = MissRecordStride;
-		Desc.MissShaderTable.SizeInBytes = MissRecordStride;
+		Desc.MissShaderTable.StartAddress = ShaderTableAddress + MissShaderTableOffset;
+		Desc.MissShaderTable.StrideInBytes = LocalRecordStride;
+		Desc.MissShaderTable.SizeInBytes = LocalRecordStride * NumMissShaders;
+
 
 		if (NumCallableRecords)
 		{
@@ -1304,11 +1307,11 @@ public:
 	uint32 CallableShaderTableOffset = 0;
 	uint32 LocalShaderTableOffset = 0;
 	uint32 CallableShaderRecordIndexOffset = 0;
+	uint32 MissShaderRecordIndexOffset = 0;
 
 	// Note: TABLE_BYTE_ALIGNMENT is used instead of RECORD_BYTE_ALIGNMENT to allow arbitrary switching 
 	// between multiple RayGen and Miss shaders within the same underlying table.
 	static constexpr uint32 RayGenRecordStride = D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT;
-	static constexpr uint32 MissRecordStride = D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT;
 
 	uint32 LocalRecordSizeUnaligned = 0; // size of the shader identifier + local root parameters, not aligned to SHADER_RECORD_BYTE_ALIGNMENT (used for out-of-bounds access checks)
 	uint32 LocalRecordStride = 0; // size of shader identifier + local root parameters, aligned to SHADER_RECORD_BYTE_ALIGNMENT (same for hit groups and callable shaders)
@@ -1477,7 +1480,7 @@ public:
 
 		const uint32 MaxTotalShaders = InitializerRayGenShaders.Num() + InitializerMissShaders.Num() + InitializerHitGroups.Num() + InitializerCallableShaders.Num();
 
-		// All raygen and miss shaders must share the same global root signature, so take the first one and validate the rest
+		// All raygen shaders must share the same global root signature, so take the first one and validate the rest
 
 		GlobalRootSignature = FD3D12DynamicRHI::ResourceCast(InitializerRayGenShaders[0])->pRootSignature->GetRootSignature();
 
@@ -1548,6 +1551,10 @@ public:
 			RayGenShaders.Shaders.Add(Shader);
 		}
 
+		MaxHitGroupViewDescriptors = 0;
+		MaxLocalRootSignatureSize = 0;
+
+
 		// Add miss shaders
 
 		TArray<LPCWSTR> MissShaderNames;
@@ -1557,8 +1564,13 @@ public:
 		for (FRHIRayTracingShader* ShaderRHI : InitializerMissShaders)
 		{
 			FD3D12RayTracingShader* Shader = FD3D12DynamicRHI::ResourceCast(ShaderRHI);
-			checkf(Shader->pRootSignature->GetRootSignature() == GlobalRootSignature, TEXT("All raygen and miss shaders must share the same root signature"));
+
+			checkf(Shader, TEXT("A valid ray tracing shader must be provided for all elements in the FRayTracingPipelineStateInitializer miss shader table."));
 			checkf(!Shader->ResourceCounts.bGlobalUniformBufferUsed, TEXT("Global uniform buffers are not implemented for ray tracing miss shaders"));
+
+			const uint32 ShaderViewDescriptors = Shader->ResourceCounts.NumSRVs + Shader->ResourceCounts.NumUAVs;
+			MaxHitGroupViewDescriptors = FMath::Max(MaxHitGroupViewDescriptors, ShaderViewDescriptors);
+			MaxLocalRootSignatureSize = FMath::Max(MaxLocalRootSignatureSize, Shader->pRootSignature->GetTotalRootSignatureSizeInBytes());
 
 			FD3D12RayTracingPipelineCache::FEntry* ShaderCacheEntry = AddShaderCollection(Shader, FD3D12RayTracingPipelineCache::ECollectionType::Miss);
 
@@ -1566,10 +1578,16 @@ public:
 			MissShaders.Shaders.Add(Shader);
 		}
 
-		// Add hit groups
+		// Ensure miss shader 0 (default) requires no parameters
+		{
+			FD3D12RayTracingShader* Shader = FD3D12DynamicRHI::ResourceCast(InitializerMissShaders[0]);
 
-		MaxHitGroupViewDescriptors = 0;
-		MaxLocalRootSignatureSize = 0;
+			const uint32 ShaderViewDescriptors = Shader->ResourceCounts.NumSRVs + Shader->ResourceCounts.NumUAVs;
+			
+			checkf(ShaderViewDescriptors == 0, TEXT("Default miss shader (miss shader 0) must take no parameters"));
+		}
+
+		// Add hit groups
 
 		TArray<LPCWSTR> HitGroupNames;
 		HitGroupShaders.Reserve(InitializerHitGroups.Num());
@@ -1966,6 +1984,7 @@ FRayTracingSceneRHIRef FD3D12DynamicRHI::RHICreateRayTracingScene(const FRayTrac
 	Result->NumTotalSegments = NumTotalSegments;
 
 	Result->NumCallableShaderSlots = Initializer.NumCallableShaderSlots;
+	Result->NumMissShaderSlots = FMath::Max<uint32>(1, Initializer.NumMissShaderSlots);
 
 	return Result;
 }
@@ -2500,7 +2519,7 @@ FD3D12RayTracingShaderTable* FD3D12RayTracingScene::FindOrCreateShaderTable(cons
 
 	FD3D12RayTracingShaderTable::FInitializer SBTInitializer = {};
 	SBTInitializer.NumRayGenShaders = Pipeline->RayGenShaders.Identifiers.Num();
-	SBTInitializer.NumMissShaders = Pipeline->MissShaders.Identifiers.Num();
+	SBTInitializer.NumMissShaders = NumMissShaderSlots;
 	SBTInitializer.NumHitRecords = NumHitGroupSlots;
 	SBTInitializer.NumCallableRecords = NumCallableShaderSlots;
 	SBTInitializer.LocalRootDataSize = Pipeline->MaxLocalRootSignatureSize;
@@ -3328,4 +3347,37 @@ void FD3D12CommandContext::RHISetRayTracingCallableShader(
 		*(ShaderTable->DescriptorCache), ResourceBinder);
 }
 
+void FD3D12CommandContext::RHISetRayTracingMissShader(
+	FRHIRayTracingScene* InScene, uint32 ShaderSlotInScene,
+	FRHIRayTracingPipelineState* InPipeline, uint32 ShaderIndexInPipeline,
+	uint32 NumUniformBuffers, FRHIUniformBuffer* const* UniformBuffers,
+	uint32 UserData)
+{
+	FD3D12RayTracingScene* Scene = FD3D12DynamicRHI::ResourceCast(InScene);
+	FD3D12RayTracingPipelineState* Pipeline = FD3D12DynamicRHI::ResourceCast(InPipeline);
+
+	checkf(ShaderSlotInScene < Scene->NumMissShaderSlots, TEXT("Shader slot is invalid. Make sure that NumMissShaderSlots is correct on FRayTracingSceneInitializer."));
+	checkf(ShaderSlotInScene > 0, TEXT("Shader slot 0 is reserved for the default MissShader."));
+
+	FD3D12RayTracingShaderTable* ShaderTable = Scene->FindOrCreateShaderTable(Pipeline, GetParentDevice());
+
+	const uint32 RecordIndex = ShaderTable->MissShaderRecordIndexOffset + ShaderSlotInScene;
+	ShaderTable->SetLocalShaderIdentifier(RecordIndex, Pipeline->MissShaders.Identifiers[ShaderIndexInPipeline]);
+
+	const uint32 UserDataOffset = offsetof(FHitGroupSystemParameters, RootConstants) + offsetof(FHitGroupSystemRootConstants, UserData);
+	ShaderTable->SetLocalShaderParameters(RecordIndex, UserDataOffset, UserData);
+
+	const FD3D12RayTracingShader* Shader = Pipeline->MissShaders.Shaders[ShaderIndexInPipeline];
+
+	FD3D12RayTracingLocalResourceBinder ResourceBinder(*this, ShaderTable, Shader->pRootSignature, RecordIndex);
+	check(ShaderTable->DescriptorCache);
+	SetRayTracingShaderResources(*this, Shader,
+		0, nullptr, // Textures
+		0, nullptr, // SRVs
+		NumUniformBuffers, UniformBuffers,
+		0, nullptr, // Samplers
+		0, nullptr, // UAVs
+		0, nullptr, // Loose parameters
+		*(ShaderTable->DescriptorCache), ResourceBinder);
+}
 #endif // D3D12_RHI_RAYTRACING
