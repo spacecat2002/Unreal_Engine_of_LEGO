@@ -24,6 +24,7 @@ bool FRigVMRegister::Serialize(FArchive& Ar)
 	Ar << TrailingBytes;
 	Ar << Name;
 	Ar << ScriptStructIndex;
+	Ar << bIsArray;
 
 	return true;
 }

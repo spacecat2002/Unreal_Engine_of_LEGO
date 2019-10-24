@@ -128,6 +128,7 @@ struct RIGVM_API FRigVMRegister
 		, TrailingBytes(0)
 		, Name(NAME_None)
 		, ScriptStructIndex(INDEX_NONE)
+		, bIsArray(false)
 	{
 	}
 
@@ -173,6 +174,10 @@ struct RIGVM_API FRigVMRegister
 	UPROPERTY()
 	int32 ScriptStructIndex;
 
+	// If true defines this register as an array
+	UPROPERTY()
+	bool bIsArray;
+
 	bool Serialize(FArchive& Ar);
 	FORCEINLINE friend FArchive& operator<<(FArchive& Ar, FRigVMRegister& P)
 	{
@@ -192,7 +197,7 @@ struct RIGVM_API FRigVMRegister
 	FORCEINLINE uint8 GetAlignmentBytes() const { return AlignmentBytes; }
 
 	// Returns true if the register stores more than one element
-	FORCEINLINE bool IsArray() const { return ElementCount > 1; }
+	FORCEINLINE bool IsArray() const { return bIsArray || (ElementCount > 1); }
 
 	// Returns true if the register stores plain / shallow memory
 	FORCEINLINE bool IsPlain() const { return ScriptStructIndex == INDEX_NONE; }
