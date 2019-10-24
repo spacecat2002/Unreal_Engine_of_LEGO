@@ -62,7 +62,7 @@ public:
 
 		if (bCreateSequencerInterface)
 		{
-			InstanceClassType* DefaultObject = InstanceClassType::StaticClass()->GetDefaultObject<InstanceClassType>();
+			InstanceClassType* DefaultObject = InstanceClassType::StaticClass()->template GetDefaultObject<InstanceClassType>();
 			ISequencerAnimationSupport* SequencerSupporter = Cast<ISequencerAnimationSupport>(DefaultObject);
 			bSupportDifferentSourceAnimInstance = SequencerSupporter && SequencerSupporter->DoesSupportDifferentSourceAnimInstance();
 		}

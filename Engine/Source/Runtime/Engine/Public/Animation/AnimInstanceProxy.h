@@ -787,11 +787,11 @@ protected:
 	void AddCurveValue(const FSmartNameMapping& Mapping, const FName& CurveName, float Value);
 
 	/** Custom proxy Init/Cache/Update/Evaluate functions */
-	static void InitializeCustomProxy(FAnimInstanceProxy* InputProxy, UAnimInstance* InAnimInstance);
-	static void GatherCustomProxyDebugData(FAnimInstanceProxy* InputProxy, FNodeDebugData& DebugData);
-	static void CacheBonesCustomProxy(FAnimInstanceProxy* InputProxy);
-	static void UpdateCustomProxy(FAnimInstanceProxy* InputProxy, const FAnimationUpdateContext& Context);
-	static void EvaluateCustomProxy(FAnimInstanceProxy* InputProxy, FPoseContext& Output);
+	static void InitializeInputProxy(FAnimInstanceProxy* InputProxy, UAnimInstance* InAnimInstance);
+	static void GatherInputProxyDebugData(FAnimInstanceProxy* InputProxy, FNodeDebugData& DebugData);
+	static void CacheBonesInputProxy(FAnimInstanceProxy* InputProxy);
+	static void UpdateInputProxy(FAnimInstanceProxy* InputProxy, const FAnimationUpdateContext& Context);
+	static void EvaluateInputProxy(FAnimInstanceProxy* InputProxy, FPoseContext& Output);
 
 private:
 	/** Get the debug data for this instance's anim bp */

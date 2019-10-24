@@ -2594,7 +2594,7 @@ FAnimBlueprintDebugData* FAnimInstanceProxy::GetAnimBlueprintDebugData() const
 	return nullptr;
 }
 
-void FAnimInstanceProxy::InitializeCustomProxy(FAnimInstanceProxy* InputProxy, UAnimInstance* InAnimInstance)
+void FAnimInstanceProxy::InitializeInputProxy(FAnimInstanceProxy* InputProxy, UAnimInstance* InAnimInstance)
 {
 	if (InAnimInstance && InputProxy)
 	{
@@ -2602,7 +2602,7 @@ void FAnimInstanceProxy::InitializeCustomProxy(FAnimInstanceProxy* InputProxy, U
 	}
 }
 
-void FAnimInstanceProxy::GatherCustomProxyDebugData(FAnimInstanceProxy* InputProxy, FNodeDebugData& DebugData)
+void FAnimInstanceProxy::GatherInputProxyDebugData(FAnimInstanceProxy* InputProxy, FNodeDebugData& DebugData)
 {
 	if (InputProxy)
 	{
@@ -2610,7 +2610,7 @@ void FAnimInstanceProxy::GatherCustomProxyDebugData(FAnimInstanceProxy* InputPro
 	}
 }
 
-void FAnimInstanceProxy::CacheBonesCustomProxy(FAnimInstanceProxy* InputProxy)
+void FAnimInstanceProxy::CacheBonesInputProxy(FAnimInstanceProxy* InputProxy)
 {
 	if (InputProxy)
 	{
@@ -2618,7 +2618,7 @@ void FAnimInstanceProxy::CacheBonesCustomProxy(FAnimInstanceProxy* InputProxy)
 	}
 }
 
-void FAnimInstanceProxy::UpdateCustomProxy(FAnimInstanceProxy* InputProxy, const FAnimationUpdateContext& Context)
+void FAnimInstanceProxy::UpdateInputProxy(FAnimInstanceProxy* InputProxy, const FAnimationUpdateContext& Context)
 {
 	if (InputProxy)
 	{
@@ -2626,7 +2626,7 @@ void FAnimInstanceProxy::UpdateCustomProxy(FAnimInstanceProxy* InputProxy, const
 	}
 }
 
-void FAnimInstanceProxy::EvaluateCustomProxy(FAnimInstanceProxy* InputProxy, FPoseContext& Output)
+void FAnimInstanceProxy::EvaluateInputProxy(FAnimInstanceProxy* InputProxy, FPoseContext& Output)
 {
 	if (InputProxy)
 	{
