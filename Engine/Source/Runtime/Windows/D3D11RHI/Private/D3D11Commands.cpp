@@ -831,62 +831,75 @@ void FD3D11DynamicRHI::InternalSetUAVPS(uint32 BindIndex, FD3D11UnorderedAccessV
 
 void FD3D11DynamicRHI::CommitUAVs()
 {
-	if(!UAVSChanged)
+	if (!UAVSChanged)
 	{
 		return;
 	}
 	int32 First = -1;
 	int32 Count = 0;
-	for(int32 i = 0; i < D3D11_PS_CS_UAV_REGISTER_COUNT; ++i)
+	for (int32 i = 0; i < D3D11_PS_CS_UAV_REGISTER_COUNT; ++i)
 	{
-		if(CurrentUAVs[i] != nullptr)
+		if (CurrentUAVs[i] != nullptr)
 		{
 			First = i;
 			break;
 		}
 	}
 
-	FD3D11UnorderedAccessView* RHIUAVs[D3D11_PS_CS_UAV_REGISTER_COUNT];
-	ID3D11UnorderedAccessView* UAVs[D3D11_PS_CS_UAV_REGISTER_COUNT];
-	FMemory::Memset(UAVs, 0);
-	for(int32 i = First; i < D3D11_PS_CS_UAV_REGISTER_COUNT; ++i)
+	if (First != -1)
 	{
-		if(CurrentUAVs[i] == nullptr)
-			break;
-		RHIUAVs[i] = CurrentUAVs[i].GetReference();
-		UAVs[i] = RHIUAVs[i]->View;
-		Count++;
-	}
+		FD3D11UnorderedAccessView* RHIUAVs[D3D11_PS_CS_UAV_REGISTER_COUNT];
+		ID3D11UnorderedAccessView* UAVs[D3D11_PS_CS_UAV_REGISTER_COUNT];
+		FMemory::Memset(UAVs, 0);
 
-	if(First != -1 && (First != UAVBindFirst || Count != UAVBindCount || 0 != FMemory::Memcmp(&UAVs[First], &UAVBound[First], sizeof(UAVs[0]) * Count)))
-	{
-		SCOPE_CYCLE_COUNTER(STAT_D3D11RenderTargetCommitsUAV);
-		for (int32 i = First; i < First + Count; ++i)
+		for (int32 i = First; i < D3D11_PS_CS_UAV_REGISTER_COUNT; ++i)
 		{
-			if(UAVs[i] != UAVBound[i])
-			{
-				FD3D11UnorderedAccessView* RHIUAV = RHIUAVs[i];
-				ID3D11UnorderedAccessView* UAV = UAVs[i];
-				if (UAV)
-				{
-					//check it's safe for r/w for this UAV
-					const EResourceTransitionAccess CurrentUAVAccess = RHIUAV->Resource->GetCurrentGPUAccess();
-					const bool UAVDirty = RHIUAV->Resource->IsDirty();
-					const bool bAccessPass = (CurrentUAVAccess == EResourceTransitionAccess::ERWBarrier && !UAVDirty) || (CurrentUAVAccess == EResourceTransitionAccess::ERWNoBarrier);
-					ensureMsgf((GEnableDX11TransitionChecks == 0) || bAccessPass, TEXT("UAV: %i is in unsafe state for GPU R/W: %s"), i, *FResourceTransitionUtility::ResourceTransitionAccessStrings[(int32)CurrentUAVAccess]);
-
-					//UAVs get set to dirty.  If the shader just wanted to read it should have used an SRV.
-					RHIUAV->Resource->SetDirty(true, PresentCounter);
-				}
-
-				// Unbind any shader views of the UAV's resource.
-				ConditionalClearShaderResource(RHIUAV->Resource, true);
-				UAVBound[i] = UAV;
-			}
+			if (CurrentUAVs[i] == nullptr)
+				break;
+			RHIUAVs[i] = CurrentUAVs[i].GetReference();
+			UAVs[i] = RHIUAVs[i]->View;
+			Count++;
 		}
-		static const uint32 UAVInitialCountArray[D3D11_PS_CS_UAV_REGISTER_COUNT] = {~0u, ~0u, ~0u, ~0u, ~0u, ~0u, ~0u, ~0u};
-		Direct3DDeviceIMContext->OMSetRenderTargetsAndUnorderedAccessViews(D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL, 0, 0, First, Count, &UAVs[First], &UAVInitialCountArray[0]);
+
+		if (First != UAVBindFirst || Count != UAVBindCount || 0 != FMemory::Memcmp(&UAVs[First], &UAVBound[First], sizeof(UAVs[0]) * Count))
+		{
+			SCOPE_CYCLE_COUNTER(STAT_D3D11RenderTargetCommitsUAV);
+			for (int32 i = First; i < First + Count; ++i)
+			{
+				if (UAVs[i] != UAVBound[i])
+				{
+					FD3D11UnorderedAccessView* RHIUAV = RHIUAVs[i];
+					ID3D11UnorderedAccessView* UAV = UAVs[i];
+					if (UAV)
+					{
+						//check it's safe for r/w for this UAV
+						const EResourceTransitionAccess CurrentUAVAccess = RHIUAV->Resource->GetCurrentGPUAccess();
+						const bool UAVDirty = RHIUAV->Resource->IsDirty();
+						const bool bAccessPass = (CurrentUAVAccess == EResourceTransitionAccess::ERWBarrier && !UAVDirty) || (CurrentUAVAccess == EResourceTransitionAccess::ERWNoBarrier);
+						ensureMsgf((GEnableDX11TransitionChecks == 0) || bAccessPass, TEXT("UAV: %i is in unsafe state for GPU R/W: %s"), i, *FResourceTransitionUtility::ResourceTransitionAccessStrings[(int32)CurrentUAVAccess]);
+
+						//UAVs get set to dirty.  If the shader just wanted to read it should have used an SRV.
+						RHIUAV->Resource->SetDirty(true, PresentCounter);
+					}
+
+					// Unbind any shader views of the UAV's resource.
+					ConditionalClearShaderResource(RHIUAV->Resource, true);
+					UAVBound[i] = UAV;
+				}
+			}
+			static const uint32 UAVInitialCountArray[D3D11_PS_CS_UAV_REGISTER_COUNT] = { ~0u, ~0u, ~0u, ~0u, ~0u, ~0u, ~0u, ~0u };
+			Direct3DDeviceIMContext->OMSetRenderTargetsAndUnorderedAccessViews(D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL, 0, 0, First, Count, &UAVs[First], &UAVInitialCountArray[0]);
+		}
+
 	}
+	else
+	{
+		if (First != UAVBindFirst)
+		{
+			Direct3DDeviceIMContext->OMSetRenderTargetsAndUnorderedAccessViews(D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL, 0, 0, 0, 0, nullptr, nullptr);
+		}
+	}
+
 	UAVBindFirst = First;
 	UAVBindCount = Count;
 	UAVSChanged = 0;
