@@ -61,6 +61,10 @@ FD3D11DynamicRHI::FD3D11DynamicRHI(IDXGIFactory1* InDXGIFactory1,D3D_FEATURE_LEV
 #endif
 	FeatureLevel(InFeatureLevel),
 	AmdAgsContext(NULL),
+#if INTEL_EXTENSIONS
+	IntelExtensionContext(nullptr),
+	IntelD3D11ExtensionFuncs(nullptr),
+#endif
 	bCurrentDepthStencilStateIsReadOnly(false),
 	CurrentDepthTexture(NULL),
 	NumSimultaneousRenderTargets(0),
@@ -526,6 +530,14 @@ void FD3D11DynamicRHI::CleanupD3DDevice()
 			GRHIDeviceIsAMDPreGCNArchitecture = false;
 			AmdAgsContext = NULL;
 		}
+#endif //AMD_AGS_API
+
+#if INTEL_EXTENSIONS
+		if (IsRHIDeviceIntel())
+		{
+			StopIntelExtensions();
+		}
+#endif // INTEL_EXTENSIONS
 
 #if INTEL_METRICSDISCOVERY
 		if (GDX11IntelMetricsDiscoveryEnabled)
@@ -533,8 +545,6 @@ void FD3D11DynamicRHI::CleanupD3DDevice()
 			StopIntelMetricsDiscovery();
 		}
 #endif // INTEL_METRICSDISCOVERY
-
-#endif //AMD_AGS_API
 
 		// When running with D3D debug, clear state and flush the device to get rid of spurious live objects in D3D11's report.
 		if (D3D11RHI_ShouldCreateWithD3DDebug())

@@ -77,6 +77,22 @@ struct AmdAgsInfo
 static AmdAgsInfo AmdInfo;
 #endif
 
+#if INTEL_EXTENSIONS
+// Filled in during InitD3DDevice if IsRHIDeviceIntel
+struct IntelD3D11Extensions
+{
+	INTC::D3D11_EXTENSION_FUNCS_01000001 D3D11ExtensionFuncs;
+
+	INTC::ExtensionInfo ExtensionInfo;
+	INTC::ExtensionAppInfo ExtensionAppInfo;
+
+	INTC::PFNINTCDX11EXT_D3D11CREATEDEVICEEXTENSIONCONTEXT1 CreateDeviceExtensionContext;
+	INTC::PFNINTCDX11EXT_D3D11DESTROYDEVICEEXTENSIONCONTEXT DestroyDeviceExtensionContext;
+	INTC::PFNINTCDX11EXT_D3D11GETSUPPORTEDVERSIONS GetSupportedVersions;
+};
+static IntelD3D11Extensions IntelExtensions;
+#endif // INTEL_EXTENSIONS
+
 static TAutoConsoleVariable<int32> CVarAMDUseMultiThreadedDevice(
 	TEXT("r.AMDD3D11MultiThreadedDevice"),
 	0,
@@ -1080,6 +1096,136 @@ void FD3D11DynamicRHI::StopNVAftermath()
 
 #endif
 
+#if INTEL_EXTENSIONS
+void FD3D11DynamicRHI::StartIntelExtensions()
+{
+	HMODULE IntelDriverDLL = LoadLibraryA(ID3D11_UMD_DLL);
+
+	if (IntelDriverDLL)
+	{
+		HMODULE IntelExtensionDLL = INTC::D3D11LoadIntelExtensionsLibrary(true);
+
+		if (IntelExtensionDLL)
+		{
+#pragma warning(push)
+#pragma warning(disable: 4191) // disable the "unsafe conversion from 'FARPROC' to 'blah'" warning
+			IntelExtensions.CreateDeviceExtensionContext = (INTC::PFNINTCDX11EXT_D3D11CREATEDEVICEEXTENSIONCONTEXT1)(GetProcAddress(IntelExtensionDLL, "D3D11CreateDeviceExtensionContext1"));
+			IntelExtensions.DestroyDeviceExtensionContext = (INTC::PFNINTCDX11EXT_D3D11DESTROYDEVICEEXTENSIONCONTEXT)(GetProcAddress(IntelExtensionDLL, "D3D11DestroyDeviceExtensionContext"));
+			IntelExtensions.GetSupportedVersions = (INTC::PFNINTCDX11EXT_D3D11GETSUPPORTEDVERSIONS)(GetProcAddress(IntelExtensionDLL, "D3D11GetSupportedVersions"));
+#pragma warning(pop)
+
+			if (IntelExtensions.CreateDeviceExtensionContext && IntelExtensions.DestroyDeviceExtensionContext && IntelExtensions.GetSupportedVersions)
+			{
+				bool bRequiredVersionFound = false;
+				bool bEnabled = false;
+
+				uint32 SupportedVersionCount = 0;
+				uint32* SupportedVersions = nullptr;
+
+				IntelExtensions.ExtensionInfo.requestedExtensionVersion.Version.Major = 1;
+				IntelExtensions.ExtensionInfo.requestedExtensionVersion.Version.Minor = 0;
+				IntelExtensions.ExtensionInfo.requestedExtensionVersion.Version.Revision = 1;
+
+				if (SUCCEEDED(IntelExtensions.GetSupportedVersions(Direct3DDevice, &SupportedVersionCount, SupportedVersions)))
+				{
+					SupportedVersions = new uint32[SupportedVersionCount];
+					if (SUCCEEDED(IntelExtensions.GetSupportedVersions(Direct3DDevice, &SupportedVersionCount, SupportedVersions)))
+					{
+						for (uint32 i = 0; i < SupportedVersionCount; i++)
+						{
+							INTC::ExtensionVersion* SupportedVersion = (INTC::ExtensionVersion*)&SupportedVersions[i];
+
+							UE_LOG(LogD3D11RHI, Log, TEXT("Intel Extensions support version Full=%d, Major=%d, Minor=%d, Revision=%d"), SupportedVersion->FullVersion, SupportedVersion->Version.Major, SupportedVersion->Version.Minor, SupportedVersion->Version.Revision);
+
+							if (IntelExtensions.ExtensionInfo.requestedExtensionVersion.FullVersion == SupportedVersion->FullVersion)
+							{
+								bRequiredVersionFound = true;
+								break;
+							}
+						}
+					}
+				}
+
+				if (SupportedVersions)
+				{
+					delete[] SupportedVersions;
+				}
+
+				if (!bRequiredVersionFound)
+				{
+					UE_LOG(LogD3D11RHI, Log, TEXT("Intel Extensions Framework version required is not supported"));
+					return;
+				}
+
+				IntelExtensions.ExtensionAppInfo.pEngineName = L"Unreal Engine";
+				IntelExtensions.ExtensionAppInfo.engineVersion = 4;
+
+				FMemory::Memset(&IntelExtensions.D3D11ExtensionFuncs, 0, sizeof(INTC::D3D11_EXTENSION_FUNCS_01000001));
+				IntelD3D11ExtensionFuncs = &IntelExtensions.D3D11ExtensionFuncs;
+
+				HRESULT hr = IntelExtensions.CreateDeviceExtensionContext(
+					Direct3DDevice,
+					&IntelExtensionContext,
+					(void**)&IntelD3D11ExtensionFuncs,
+					sizeof(INTC::D3D11_EXTENSION_FUNCS_01000001),
+					&IntelExtensions.ExtensionInfo,
+					&IntelExtensions.ExtensionAppInfo);
+
+				if (hr == S_OK)
+				{
+					if (IntelExtensions.ExtensionInfo.returnedExtensionVersion.FullVersion == IntelExtensions.ExtensionInfo.requestedExtensionVersion.FullVersion)
+					{
+						bEnabled = true;
+						UE_LOG(LogD3D11RHI, Log, TEXT("Intel Extensions Framework enabled"));
+					}
+					else
+					{
+						UE_LOG(LogD3D11RHI, Log, TEXT("Intel Extensions Framework version required is not supported"));
+					}
+				}
+				else if (hr == E_OUTOFMEMORY)
+				{
+					UE_LOG(LogD3D11RHI, Log, TEXT("Intel Extensions Framework not supported by driver"));
+				}
+				else if (hr == E_INVALIDARG)
+				{
+					UE_LOG(LogD3D11RHI, Log, TEXT("Intel Extensions Framework passed invalid creation arguments"));
+				}
+
+				if (!bEnabled)
+				{
+					StopIntelExtensions();
+				}
+			}
+		}
+		else
+		{
+			UE_LOG(LogD3D11RHI, Log, TEXT("Intel Extensions Framework not found"));
+		}
+	}
+}
+
+void FD3D11DynamicRHI::StopIntelExtensions()
+{
+	if(IntelExtensionContext && IntelExtensions.DestroyDeviceExtensionContext)
+	{
+		HRESULT hr = IntelExtensions.DestroyDeviceExtensionContext(&IntelExtensionContext);
+
+		if (hr == S_OK)
+		{
+			UE_LOG(LogD3D11RHI, Log, TEXT("Intel Extensions Framework unloaded"));
+		}
+		else if (hr == E_INVALIDARG)
+		{
+			UE_LOG(LogD3D11RHI, Log, TEXT("Intel Extensions Framework error when unloading"));
+		}
+
+		IntelExtensionContext = nullptr;
+		IntelD3D11ExtensionFuncs = nullptr;
+	}
+}
+#endif // INTEL_EXTENSIONS
+
 #if INTEL_METRICSDISCOVERY
 static int32 GetIntelDriverBuildNumber(const FString& VerStr)
 {
@@ -1654,6 +1800,13 @@ void FD3D11DynamicRHI::InitD3DDevice()
 			UE_LOG(LogD3D11RHI, Log, TEXT("r.DX11NumForcedGPUs forcing GNumAlternateFrameRenderingGroups to: %i "), GDX11ForcedGPUs);
 		}
 #endif // WITH_SLI
+
+#if INTEL_EXTENSIONS
+		if (IsRHIDeviceIntel())
+		{
+			StartIntelExtensions();
+		}
+#endif // INTEL_EXTENSIONS
 
 #if INTEL_METRICSDISCOVERY
 		if (IsRHIDeviceIntel())

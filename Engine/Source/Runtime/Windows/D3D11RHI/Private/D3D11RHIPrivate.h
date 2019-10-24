@@ -75,6 +75,12 @@ struct Intel_MetricsDiscovery_ContextData
 };
 #endif
 
+#if INTEL_EXTENSIONS
+THIRD_PARTY_INCLUDES_START
+#include "igd11ext.h"
+THIRD_PARTY_INCLUDES_END
+#endif // INTEL_EXTENSIONS
+
 #if UE_BUILD_SHIPPING || UE_BUILD_TEST
 #define CHECK_SRV_TRANSITIONS 0
 #else
@@ -810,6 +816,12 @@ protected:
 	 */
 	AGSContext* AmdAgsContext;
 
+#if INTEL_EXTENSIONS
+	// Context and functions for Intel extension framework utility library
+	INTC::ExtensionContext* IntelExtensionContext;
+	INTC::D3D11_EXTENSION_FUNCS_01000001* IntelD3D11ExtensionFuncs;
+#endif // INTEL_EXTENSIONS
+
 	// set by UpdateMSAASettings(), get by GetMSAAQuality()
 	// [SampleCount] = Quality, 0xffffffff if not supported
 	uint32 AvailableMSAAQualities[DX_MAX_MSAA_COUNT + 1];
@@ -1025,6 +1037,11 @@ protected:
 
 	void StopNVAftermath();
 #endif
+
+#if INTEL_EXTENSIONS
+	void StartIntelExtensions();
+	void StopIntelExtensions();
+#endif // INTEL_EXTENSIONS
 
 	void BeginUAVOverlap();
 	void EndUAVOverlap();

@@ -20,6 +20,9 @@
 #include "Windows/AllowWindowsPlatformTypes.h"
 	#include "nvapi.h"
 	#include "amd_ags.h"
+#if INTEL_EXTENSIONS
+	#include "igd11ext.h"
+#endif
 #include "Windows/HideWindowsPlatformTypes.h"
 #endif
 
@@ -1980,9 +1983,9 @@ void FD3D11DynamicRHI::RHITransitionResources(EResourceTransitionAccess Transiti
 }
 
 static TAutoConsoleVariable<int32> CVarAllowUAVFlushExt(
-	TEXT("r.D3D11.NVAutoFlushUAV"),
+	TEXT("r.D3D11.AutoFlushUAV"),
 	1,
-	TEXT("If enabled, use NVAPI (Nvidia) or AGS (AMD) to not flush between dispatches/draw calls")
+	TEXT("If enabled, use NVAPI (Nvidia), AGS (AMD) or Intel Extensions (Intel) to not flush between dispatches/draw calls")
 	TEXT(" 1: on (default)\n")
 	TEXT(" 0: off"),
 	ECVF_RenderThreadSafe);
@@ -1990,26 +1993,29 @@ static TAutoConsoleVariable<int32> CVarAllowUAVFlushExt(
 static bool GAllowUAVFlushExt = true;
 static bool GOverlapUAVOBegin = false;
 
-// Enable this to test if NvAPI/AGS returned an error during UAV overlap enabling/disabling.
+// Enable this to test if NvAPI/AGS/Intel returned an error during UAV overlap enabling/disabling.
 // By default we do not test because this is an optimalisation (if overlapping is not enabled, GPU execution is slower)
 // Enable it here to validate if overlapping is actually used.
 #if 0
 	#define CHECK_AGS(x) {AGSReturnCode err = (x); check(err == AGS_SUCCESS);}
 	#define CHECK_NVAPI(x) {NvAPI_Status err = (x); check(err == NVAPI_OK);}
+	#define CHECK_INTEL(x) { HRESULT err = (x); check(err == S_OK);}
 #else
 	#define CHECK_AGS(x) {(x);}
 	#define CHECK_NVAPI(x) {(x);}
+	#define CHECK_INTEL(x) {(x);}
 #endif
 
 static bool IsUAVOverlapSupported()
 {
 	if (!GAllowUAVFlushExt ||
 		(!IsRHIDeviceNVIDIA() &&
-		!IsRHIDeviceAMD()))
+		!IsRHIDeviceAMD() &&
+		!IsRHIDeviceIntel()))
 	{
-		return false;
+		return true;
 	}
-	return true;
+	return false;
 }
 
 void FD3D11DynamicRHI::BeginUAVOverlap()
@@ -2024,6 +2030,15 @@ void FD3D11DynamicRHI::BeginUAVOverlap()
 		else if (IsRHIDeviceAMD())
 		{
 			CHECK_AGS(agsDriverExtensionsDX11_BeginUAVOverlap(AmdAgsContext));
+		}
+		else if (IsRHIDeviceIntel())
+		{
+#if INTEL_EXTENSIONS
+			if (IntelD3D11ExtensionFuncs && IntelD3D11ExtensionFuncs->D3D11BeginUAVOverlap)
+			{
+				CHECK_INTEL(IntelD3D11ExtensionFuncs->D3D11BeginUAVOverlap(IntelExtensionContext));
+			}
+#endif
 		}
 		else ensure(false);
 
@@ -2043,6 +2058,15 @@ void FD3D11DynamicRHI::EndUAVOverlap()
 		else if (IsRHIDeviceAMD())
 		{
 			CHECK_AGS(agsDriverExtensionsDX11_EndUAVOverlap(AmdAgsContext));
+		}
+		else if (IsRHIDeviceIntel())
+		{
+#if INTEL_EXTENSIONS
+			if (IntelD3D11ExtensionFuncs && IntelD3D11ExtensionFuncs->D3D11EndUAVOverlap)
+			{
+				CHECK_INTEL(IntelD3D11ExtensionFuncs->D3D11EndUAVOverlap(IntelExtensionContext));
+			}
+#endif
 		}
 		else ensure(false);
 
