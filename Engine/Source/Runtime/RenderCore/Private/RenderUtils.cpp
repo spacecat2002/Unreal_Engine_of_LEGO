@@ -208,7 +208,8 @@ public:
 		{
 			CreateFlags |= TexCreate_UAV;
 		}
-		FTexture2DRHIRef Texture2D = RHICreateTexture2D(1, 1, PF_B8G8R8A8, 1, 1, CreateFlags, CreateInfo);
+		// BGRA typed UAV is unsupported per D3D spec, use RGBA here.
+		FTexture2DRHIRef Texture2D = RHICreateTexture2D(1, 1, PF_R8G8B8A8, 1, 1, CreateFlags, CreateInfo);
 		TextureRHI = Texture2D;
 
 		// Write the contents of the texture.
