@@ -24,7 +24,22 @@ bool FRigVMRegister::Serialize(FArchive& Ar)
 	Ar << TrailingBytes;
 	Ar << Name;
 	Ar << ScriptStructIndex;
-	Ar << bIsArray;
+
+	if (Ar.IsLoading())
+	{
+		if (Ar.CustomVer(FAnimObjectVersion::GUID) >= FAnimObjectVersion::SerializeRigVMRegisterArrayState)
+		{
+			Ar << bIsArray;
+		}
+		else
+		{
+			bIsArray = false;
+		}
+	}
+	else
+	{
+		Ar << bIsArray;
+	}
 
 	return true;
 }

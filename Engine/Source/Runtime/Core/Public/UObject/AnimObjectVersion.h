@@ -18,6 +18,9 @@ struct CORE_API FAnimObjectVersion
 		// Cached marker sync names on skeleton for editor
 		StoreMarkerNamesOnSkeleton,
 
+		// Serialized register array state for RigVM
+		SerializeRigVMRegisterArrayState,
+
 		// -----<new versions can be added above this line>-------------------------------------------------
 		VersionPlusOne,
 		LatestVersion = VersionPlusOne - 1
