@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "RigVMCore\RigVMRegistry.h"
+#include "RigVMCore/RigVMRegistry.h"
 #include "RigVMStruct.generated.h"
 
 /**
