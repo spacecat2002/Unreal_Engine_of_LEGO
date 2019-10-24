@@ -443,6 +443,7 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 			// If we need SSR, and TAA is not enable, then we just need to extract the history.
 			if (!View.bStatePrevViewInfoIsReadOnly)
 			{
+				check(View.ViewState);
 				FTemporalAAHistory& OutputHistory = View.ViewState->PrevFrameViewInfo.TemporalAAHistory;
 				GraphBuilder.QueueTextureExtraction(SceneColor.Texture, &OutputHistory.RT[0]);
 			}
