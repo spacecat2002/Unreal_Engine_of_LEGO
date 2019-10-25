@@ -1058,6 +1058,7 @@ public:
 	{
 		uint32 NumRayGenShaders = 0;
 		uint32 NumMissShaders = 0;
+		uint32 NumMissRecords = 0;
 		uint32 NumHitRecords = 0;
 		uint32 NumCallableRecords = 0;
 		uint32 LocalRootDataSize = 0;
@@ -1083,7 +1084,7 @@ public:
 
 		// Custom descriptor cache is only required when local resources may be bound.
 		// If only global resources are used, then transient descriptor cache can be used.
-		const bool bNeedsDescriptorCache = (Initializer.NumHitRecords + Initializer.NumCallableRecords) * Initializer.LocalRootDataSize != 0;
+		const bool bNeedsDescriptorCache = (Initializer.NumHitRecords + Initializer.NumCallableRecords + Initializer.NumMissRecords) * Initializer.LocalRootDataSize != 0;
 
 		if (bNeedsDescriptorCache)
 		{
@@ -1101,7 +1102,7 @@ public:
 		}
 
 		NumRayGenShaders = Initializer.NumRayGenShaders;
-		NumMissShaders = Initializer.NumMissShaders;
+		NumMissRecords = Initializer.NumMissRecords;
 		NumHitRecords = Initializer.NumHitRecords;
 		NumCallableRecords = Initializer.NumCallableRecords;
 
@@ -1124,7 +1125,7 @@ public:
 		TotalDataSize = RoundUpToNextMultiple(TotalDataSize, D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT);
 
 		MissShaderTableOffset = TotalDataSize;
-		TotalDataSize += NumMissShaders * LocalRecordStride;
+		TotalDataSize += Initializer.NumMissRecords * LocalRecordStride;
 		TotalDataSize = RoundUpToNextMultiple(TotalDataSize, D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT);
 
 		// Hit groups and callable shaders are stored in a consecutive memory block and are accessed using common local record indices.
@@ -1212,7 +1213,7 @@ public:
 	{
 		// Set all to the default
 		check(Identifiers.Num());
-		for (uint32 Index = 0; Index < NumMissShaders; ++Index)
+		for (uint32 Index = 0; Index < NumMissRecords; ++Index)
 		{
 			SetMissIdentifier(Index, Identifiers[0]);
 		}
@@ -1298,6 +1299,7 @@ public:
 	uint32 NumRayGenShaders = 0;
 	uint32 NumMissShaders = 0;
 	uint32 NumCallableRecords = 0;
+	uint32 NumMissRecords = 0;
 	uint32 NumLocalRecords = 0;
 
 	uint32 RayGenShaderTableOffset = 0;
@@ -1722,6 +1724,7 @@ public:
 		SBTInitializer.NumRayGenShaders = RayGenShaders.Identifiers.Num();
 		SBTInitializer.NumMissShaders = MissShaders.Identifiers.Num();
 		SBTInitializer.NumCallableRecords = 0; // Default SBT does not support callable shaders
+		SBTInitializer.NumMissRecords = 1;
 		SBTInitializer.NumHitRecords = 0; // Default SBT does not support indexable hit shaders
 		SBTInitializer.LocalRootDataSize = 0; // Shaders in default SBT are not allowed to access any local resources
 
@@ -2519,7 +2522,8 @@ FD3D12RayTracingShaderTable* FD3D12RayTracingScene::FindOrCreateShaderTable(cons
 
 	FD3D12RayTracingShaderTable::FInitializer SBTInitializer = {};
 	SBTInitializer.NumRayGenShaders = Pipeline->RayGenShaders.Identifiers.Num();
-	SBTInitializer.NumMissShaders = NumMissShaderSlots;
+	SBTInitializer.NumMissShaders = Pipeline->MissShaders.Identifiers.Num();
+	SBTInitializer.NumMissRecords = NumMissShaderSlots;
 	SBTInitializer.NumHitRecords = NumHitGroupSlots;
 	SBTInitializer.NumCallableRecords = NumCallableShaderSlots;
 	SBTInitializer.LocalRootDataSize = Pipeline->MaxLocalRootSignatureSize;
