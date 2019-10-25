@@ -291,7 +291,7 @@ protected:
 	//~ UMovieSceneSection interface
 	virtual void Serialize(FArchive& Ar) override;
 	virtual void PostEditImport() override;
-	virtual void ReconstructChannelProxy();
+	virtual void ReconstructChannelProxy(bool bForce);
 
 protected:
 
