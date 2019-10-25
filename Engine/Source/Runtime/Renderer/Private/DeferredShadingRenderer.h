@@ -16,17 +16,15 @@
 #include "DepthRendering.h"
 #include "ScreenSpaceDenoise.h"
 
-#if RHI_RAYTRACING
-enum class ERayTracingPrimaryRaysFlag : uint32;
-#endif
 
+enum class ERayTracingPrimaryRaysFlag : uint32;
 enum class EVelocityPass : uint32;
 
 class FSceneTextureParameters;
 class FDistanceFieldAOParameters;
 class UStaticMeshComponent;
 class FExponentialHeightFogSceneInfo;
-
+class FRaytracingLightDataPacked;
 struct FSingleLayerWaterPassData;
 
 class FLightShaftsOutput
@@ -609,6 +607,9 @@ private:
 		int32 HeightFog,
 		float ResolutionFraction);
 
+	/** Lighting Evaluation shader setup (used by ray traced reflections and translucency) */
+	void SetupRayTracingLightingMissShader(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
+
 	/** Path tracing functions. */
 	void RenderPathTracing(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 
@@ -633,7 +634,7 @@ private:
 
 	bool GatherRayTracingWorldInstances(FRHICommandListImmediate& RHICmdList);
 	bool DispatchRayTracingWorldUpdates(FRHICommandListImmediate& RHICmdList);
-	FRayTracingPipelineState* BindRayTracingMaterialPipeline(FRHICommandList& RHICmdList, const FViewInfo& View, const TArrayView<FRHIRayTracingShader*>& RayGenShaderTable, FRHIRayTracingShader* DefaultClosestHitShader);
+	FRayTracingPipelineState* BindRayTracingMaterialPipeline(FRHICommandList& RHICmdList, FViewInfo& View, const TArrayView<FRHIRayTracingShader*>& RayGenShaderTable, FRHIRayTracingShader* DefaultClosestHitShader);
 	FRayTracingPipelineState* BindRayTracingDeferredMaterialGatherPipeline(FRHICommandList& RHICmdList, const FViewInfo& View, FRHIRayTracingShader* RayGenShader);
 
 	// #dxr_todo: UE-72565: refactor ray tracing effects to not be member functions of DeferredShadingRenderer. Register each effect at startup and just loop over them automatically
@@ -646,6 +647,9 @@ private:
 	static void PrepareRayTracingTranslucency(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
 	static void PrepareRayTracingDebug(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
 	static void PreparePathTracing(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
+
+	/** Lighting evaluation shader registration */
+	static FRHIRayTracingShader* GetRayTracingLightingMissShader(FViewInfo& View);
 
 	FComputeFenceRHIRef RayTracingDynamicGeometryUpdateBeginFence; // Signalled when ray tracing AS can start building
 	FComputeFenceRHIRef RayTracingDynamicGeometryUpdateEndFence; // Signalled when all AS for this frame are built

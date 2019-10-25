@@ -31,6 +31,7 @@
 #include "VT/VirtualTextureSystem.h"
 #include "GPUScene.h"
 #include "RayTracing/RayTracingMaterialHitShaders.h"
+#include "RayTracing/RayTracingLighting.h"
 #include "RayTracingDynamicGeometryCollection.h"
 #include "SceneTextureParameters.h"
 #include "ScreenSpaceDenoise.h"
@@ -861,6 +862,61 @@ bool FDeferredShadingSceneRenderer::DispatchRayTracingWorldUpdates(FRHICommandLi
 	bool bAsyncUpdateGeometry = (CVarRayTracingAsyncBuild.GetValueOnRenderThread() != 0)
 							  && GRHISupportsRayTracingAsyncBuildAccelerationStructure;
 
+	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
+	{
+		FViewInfo& View = Views[ViewIndex];
+		SET_DWORD_STAT(STAT_RayTracingInstances, View.RayTracingGeometryInstances.Num());
+
+		FRayTracingSceneInitializer SceneInitializer;
+		SceneInitializer.Instances = View.RayTracingGeometryInstances;
+		SceneInitializer.ShaderSlotsPerGeometrySegment = RAY_TRACING_NUM_SHADER_SLOTS;
+		SceneInitializer.NumMissShaderSlots = RAY_TRACING_NUM_MISS_SHADER_SLOTS;
+
+		// #dxr_todo: UE-72565: refactor ray tracing effects to not be member functions of DeferredShadingRenderer. register each effect at startup and just loop over them automatically to gather all required shaders
+		TArray<FRHIRayTracingShader*> RayGenShaders;
+		PrepareRayTracingReflections(View, RayGenShaders);
+		PrepareRayTracingShadows(View, RayGenShaders);
+		PrepareRayTracingAmbientOcclusion(View, RayGenShaders);
+		PrepareRayTracingSkyLight(View, RayGenShaders);
+		PrepareRayTracingRectLight(View, RayGenShaders);
+		PrepareRayTracingGlobalIllumination(View, RayGenShaders);
+		PrepareRayTracingTranslucency(View, RayGenShaders);
+		PrepareRayTracingDebug(View, RayGenShaders);
+		PreparePathTracing(View, RayGenShaders);
+
+		View.RayTracingScene.RayTracingSceneRHI = RHICreateRayTracingScene(SceneInitializer);
+
+		if (RayGenShaders.Num())
+		{
+			auto DefaultHitShader = View.ShaderMap->GetShader<FOpaqueShadowHitGroup>()->GetRayTracingShader();
+
+			View.RayTracingMaterialPipeline = BindRayTracingMaterialPipeline(RHICmdList, View,
+				RayGenShaders,
+				DefaultHitShader
+			);
+		}
+
+		// Initialize common resources used for lighting in ray tracing effects
+
+		View.RayTracingSubSurfaceProfileTexture = GetSubsufaceProfileTexture_RT(RHICmdList);
+		if (!View.RayTracingSubSurfaceProfileTexture)
+		{
+			View.RayTracingSubSurfaceProfileTexture = GSystemTextures.BlackDummy;
+		}
+
+		View.RayTracingSubSurfaceProfileSRV = RHICreateShaderResourceView(View.RayTracingSubSurfaceProfileTexture->GetRenderTargetItem().ShaderResourceTexture, 0);
+
+		View.RayTracingLightingDataUniformBuffer = CreateLightDataPackedUniformBuffer(Scene->Lights, View,
+			EUniformBufferUsage::UniformBuffer_SingleFrame,
+			View.RayTracingLightingDataBuffer,
+			View.RayTracingLightingDataSRV);
+
+		if (CanUseRayTracingLightingMissShader(View.GetShaderPlatform()))
+		{
+			SetupRayTracingLightingMissShader(RHICmdList, View);
+		}
+	}
+
 	if (!bAsyncUpdateGeometry)
 	{
 		SCOPED_GPU_STAT(RHICmdList, RayTracingAS);
@@ -871,11 +927,6 @@ bool FDeferredShadingSceneRenderer::DispatchRayTracingWorldUpdates(FRHICommandLi
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
 		{
 			FViewInfo& View = Views[ViewIndex];
-			SET_DWORD_STAT(STAT_RayTracingInstances, View.RayTracingGeometryInstances.Num());
-			FRayTracingSceneInitializer Initializer;
-			Initializer.Instances = View.RayTracingGeometryInstances;
-			Initializer.ShaderSlotsPerGeometrySegment = RAY_TRACING_NUM_SHADER_SLOTS;
-			View.RayTracingScene.RayTracingSceneRHI = RHICreateRayTracingScene(Initializer);
 			RHICmdList.BuildAccelerationStructure(View.RayTracingScene.RayTracingSceneRHI);
 		}
 	}
@@ -893,15 +944,9 @@ bool FDeferredShadingSceneRenderer::DispatchRayTracingWorldUpdates(FRHICommandLi
 		RHIAsyncCmdList.WaitComputeFence(RayTracingDynamicGeometryUpdateBeginFence);
 		Scene->GetRayTracingDynamicGeometryCollection()->DispatchUpdates(RHIAsyncCmdList);
 
-
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
 		{
 			FViewInfo& View = Views[ViewIndex];
-			SET_DWORD_STAT(STAT_RayTracingInstances, View.RayTracingGeometryInstances.Num());
-			FRayTracingSceneInitializer Initializer;
-			Initializer.Instances = View.RayTracingGeometryInstances;
-			Initializer.ShaderSlotsPerGeometrySegment = RAY_TRACING_NUM_SHADER_SLOTS;
-			View.RayTracingScene.RayTracingSceneRHI = RHICreateRayTracingScene(Initializer);
 			RHIAsyncCmdList.BuildAccelerationStructure(View.RayTracingScene.RayTracingSceneRHI);
 		}
 
@@ -922,32 +967,6 @@ void FDeferredShadingSceneRenderer::WaitForRayTracingScene(FRHICommandListImmedi
 		RHICmdList.WaitComputeFence(RayTracingDynamicGeometryUpdateEndFence);
 		RayTracingDynamicGeometryUpdateBeginFence = nullptr;
 		RayTracingDynamicGeometryUpdateEndFence = nullptr;
-	}
-
-	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
-	{
-		FViewInfo& View = Views[ViewIndex];
-		// #dxr_todo: UE-72565: refactor ray tracing effects to not be member functions of DeferredShadingRenderer. register each effect at startup and just loop over them automatically to gather all required shaders
-		TArray<FRHIRayTracingShader*> RayGenShaders;
-		PrepareRayTracingReflections(View, RayGenShaders);
-		PrepareRayTracingShadows(View, RayGenShaders);
-		PrepareRayTracingAmbientOcclusion(View, RayGenShaders);
-		PrepareRayTracingSkyLight(View, RayGenShaders);
-		PrepareRayTracingRectLight(View, RayGenShaders);
-		PrepareRayTracingGlobalIllumination(View, RayGenShaders);
-		PrepareRayTracingTranslucency(View, RayGenShaders);
-		PrepareRayTracingDebug(View, RayGenShaders);
-		PreparePathTracing(View, RayGenShaders);
-
-		if (RayGenShaders.Num())
-		{
-			auto DefaultHitShader = View.ShaderMap->GetShader<FOpaqueShadowHitGroup>()->GetRayTracingShader();
-
-			View.RayTracingMaterialPipeline = BindRayTracingMaterialPipeline(RHICmdList, View,
-				RayGenShaders,
-				DefaultHitShader
-			);
-		}
 	}
 }
 
@@ -2433,6 +2452,13 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		{
 			RHICmdList.ClearRayTracingBindings(View.RayTracingScene.RayTracingSceneRHI);
 			View.RayTracingScene.RayTracingSceneRHI.SafeRelease();
+
+			// Release common lighting resources
+			View.RayTracingLightingDataSRV.SafeRelease();
+			View.RayTracingSubSurfaceProfileSRV.SafeRelease();
+			View.RayTracingSubSurfaceProfileTexture.SafeRelease();
+			View.RayTracingLightingDataBuffer.SafeRelease();
+			View.RayTracingLightingDataUniformBuffer.SafeRelease();
 		}
 	}
 #endif //  RHI_RAYTRACING

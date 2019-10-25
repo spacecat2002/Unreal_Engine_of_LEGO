@@ -7,6 +7,8 @@
 #if RHI_RAYTRACING
 #include "RayTracingDefinitions.h"
 #include "RayTracingInstance.h"
+#include "BuiltInRayTracingShaders.h"
+#include "RaytracingOptions.h"
 
 int32 GEnableRayTracingMaterials = 1;
 static FAutoConsoleVariableRef CVarEnableRayTracingMaterials(
@@ -452,7 +454,7 @@ void FRayTracingMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshBatch
 
 FRayTracingPipelineState* FDeferredShadingSceneRenderer::BindRayTracingMaterialPipeline(
 	FRHICommandList& RHICmdList,
-	const FViewInfo& View,
+	FViewInfo& View,
 	const TArrayView<FRHIRayTracingShader*>& RayGenShaderTable,
 	FRHIRayTracingShader* DefaultClosestHitShader
 )
@@ -465,6 +467,15 @@ FRayTracingPipelineState* FDeferredShadingSceneRenderer::BindRayTracingMaterialP
 
 	Initializer.MaxPayloadSizeInBytes = 52; // sizeof(FPackedMaterialClosestHitPayload)
 	Initializer.bAllowHitGroupIndexing = true;
+
+	const bool bLightingMissShader = CanUseRayTracingLightingMissShader(View.GetShaderPlatform());
+
+	FRHIRayTracingShader* DefaultMissShader = View.ShaderMap->GetShader<FDefaultMainMS>()->GetRayTracingShader();
+
+	FRHIRayTracingShader* RayTracingMissShaderLibrary[RAY_TRACING_NUM_MISS_SHADER_SLOTS];
+	RayTracingMissShaderLibrary[RAY_TRACING_MISS_SHADER_SLOT_DEFAULT] = DefaultMissShader;
+	RayTracingMissShaderLibrary[RAY_TRACING_MISS_SHADER_SLOT_LIGHTING] = bLightingMissShader ? GetRayTracingLightingMissShader(View) : DefaultMissShader;
+	Initializer.SetMissShaderTable(RayTracingMissShaderLibrary);
 
 	Initializer.SetRayGenShaderTable(RayGenShaderTable);
 
