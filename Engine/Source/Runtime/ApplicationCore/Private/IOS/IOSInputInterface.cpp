@@ -13,7 +13,7 @@
 DECLARE_LOG_CATEGORY_EXTERN(LogIOSInput, Log, All);
 
 @interface GCExtendedGamepad()
-#if (__IPHONE_OS_VERSION_MAX_ALLOWED < 121000 || __APPLETV_OS_VERSION_MAX_ALLOWED < 121000 || __MAC_OS_VERSION_MAX_ALLOWED < 1401000)
+#if (__IPHONE_OS_VERSION_MAX_ALLOWED < 121000 || __MAC_OS_VERSION_MAX_ALLOWED < 1401000)
 @property (nonatomic, readwrite, nullable) GCControllerButtonInput *leftThumbstickButton;
 @property (nonatomic, readwrite, nullable) GCControllerButtonInput *rightThumbstickButton;
 #endif
