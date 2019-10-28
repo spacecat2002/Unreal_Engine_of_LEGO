@@ -962,6 +962,8 @@ protected:
 	}
 
 	HANDLE FlipEvent;
+
+	const bool bAllowVendorDevice;
 };
 
 /** Implements the D3D12RHI module as a dynamic RHI providing module. */

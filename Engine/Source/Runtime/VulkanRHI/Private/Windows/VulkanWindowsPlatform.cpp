@@ -142,6 +142,8 @@ void FVulkanWindowsPlatform::GetInstanceExtensions(TArray<const ANSICHAR*>& OutE
 
 void FVulkanWindowsPlatform::GetDeviceExtensions(EGpuVendorId VendorId, TArray<const ANSICHAR*>& OutExtensions)
 {
+	const bool bAllowVendorDevice = !FParse::Param(FCommandLine::Get(), TEXT("novendordevice"));
+
 #if VULKAN_SUPPORTS_DRIVER_PROPERTIES
 	OutExtensions.Add(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME);
 #endif
@@ -153,13 +155,13 @@ void FVulkanWindowsPlatform::GetDeviceExtensions(EGpuVendorId VendorId, TArray<c
 	if (GGPUCrashDebuggingEnabled)
 	{
 #if VULKAN_SUPPORTS_AMD_BUFFER_MARKER
-		if (VendorId == EGpuVendorId::Amd)
+		if (VendorId == EGpuVendorId::Amd && bAllowVendorDevice)
 		{
 			OutExtensions.Add(VK_AMD_BUFFER_MARKER_EXTENSION_NAME);
 		}
 #endif
 #if VULKAN_SUPPORTS_NV_DIAGNOSTIC_CHECKPOINT
-		if (VendorId == EGpuVendorId::Nvidia)
+		if (VendorId == EGpuVendorId::Nvidia && bAllowVendorDevice)
 		{
 			OutExtensions.Add(VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME);
 		}

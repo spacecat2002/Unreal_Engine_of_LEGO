@@ -67,6 +67,8 @@ void FD3D12Adapter::Initialize(FD3D12DynamicRHI* RHI)
 
 void FD3D12Adapter::CreateRootDevice(bool bWithDebug)
 {
+	const bool bAllowVendorDevice = !FParse::Param(FCommandLine::Get(), TEXT("novendordevice"));
+
 	CreateDXGIFactory();
 
 	// QI for the Adapter
@@ -196,7 +198,7 @@ void FD3D12Adapter::CreateRootDevice(bool bWithDebug)
 
 	if (GDX12NVAfterMathEnabled)
 	{
-		if (IsRHIDeviceNVIDIA())
+		if (IsRHIDeviceNVIDIA() && bAllowVendorDevice)
 		{
 			GFSDK_Aftermath_Result Result = GFSDK_Aftermath_DX12_Initialize(GFSDK_Aftermath_Version_API, GFSDK_Aftermath_FeatureFlags_Maximum, RootDevice);
 			if (Result == GFSDK_Aftermath_Result_Success)

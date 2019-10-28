@@ -533,11 +533,9 @@ void FD3D12DynamicRHI::Init()
 	// Need to set GRHIVendorId before calling IsRHIDevice* functions
 	GRHIVendorId = AdapterDesc.VendorId;
 
-	const bool bAllowVendorDevice = !FParse::Param(FCommandLine::Get(), TEXT("novendordevice"));
-
 #if !PLATFORM_CPU_ARM_FAMILY
 	// Initialize the AMD AGS utility library, when running on an AMD device
-	if (IsRHIDeviceAMD())
+	if (IsRHIDeviceAMD() && bAllowVendorDevice)
 	{
 		check(AmdAgsContext == nullptr);
 		// agsInit should be called before D3D device creation
@@ -556,7 +554,7 @@ void FD3D12DynamicRHI::Init()
 	uint32 AmdSupportedExtensionFlags = 0;
 
 #if !PLATFORM_CPU_ARM_FAMILY
-	if (AmdAgsContext)
+	if (AmdAgsContext && bAllowVendorDevice)
 	{
 		// Initialize AMD driver extensions
 		agsDriverExtensionsDX12_Init(AmdAgsContext, GetAdapter().GetD3DDevice(), &AmdSupportedExtensionFlags);

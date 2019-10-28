@@ -674,22 +674,29 @@ static bool SupportsHDROutput(FD3D11DynamicRHI* D3DRHI)
 }
 
 void FD3D11DynamicRHIModule::StartupModule()
-{	
+{
 #if NV_AFTERMATH
-	// Note - can't check device type here, we'll check for that before actually initializing Aftermath
-
-	FString AftermathBinariesRoot = FPaths::EngineDir() / TEXT("Binaries/ThirdParty/NVIDIA/NVaftermath/Win64/");
-	if (LoadLibraryW(*(AftermathBinariesRoot + "GFSDK_Aftermath_Lib.x64.dll")) == nullptr)
+	const bool bAllowVendorDevice = !FParse::Param(FCommandLine::Get(), TEXT("novendordevice"));
+	if (bAllowVendorDevice)
 	{
-		UE_LOG(LogD3D11RHI, Warning, TEXT("Failed to load GFSDK_Aftermath_Lib.x64.dll"));
-		GNVAftermathModuleLoaded = false;
+		// Note - can't check device type here, we'll check for that before actually initializing Aftermath
+
+		FString AftermathBinariesRoot = FPaths::EngineDir() / TEXT("Binaries/ThirdParty/NVIDIA/NVaftermath/Win64/");
+		if (LoadLibraryW(*(AftermathBinariesRoot + "GFSDK_Aftermath_Lib.x64.dll")) == nullptr)
+		{
+			UE_LOG(LogD3D11RHI, Warning, TEXT("Failed to load GFSDK_Aftermath_Lib.x64.dll"));
+			GNVAftermathModuleLoaded = false;
+		}
+		else
+		{
+			UE_LOG(LogD3D11RHI, Log, TEXT("Loaded GFSDK_Aftermath_Lib.x64.dll"));
+			GNVAftermathModuleLoaded = true;
+		}
 	}
 	else
 	{
-		UE_LOG(LogD3D11RHI, Log, TEXT("Loaded GFSDK_Aftermath_Lib.x64.dll"));
-		GNVAftermathModuleLoaded = true;
+		UE_LOG(LogD3D11RHI, Log, TEXT("-novendordevice enabled, so won't load GFSDK_Aftermath_Lib.x64.dll"));
 	}
-
 #endif
 }
 
@@ -1028,7 +1035,8 @@ void FD3D11DynamicRHI::StartNVAftermath()
 	bool bShouldStart = GDX11NVAfterMathEnabled
 		&& Direct3DDevice
 		&& Direct3DDeviceIMContext
-		&& !NVAftermathIMContextHandle;
+		&& !NVAftermathIMContextHandle
+		&& bAllowVendorDevice;
 
 	if (bShouldStart)
 	{
@@ -1062,7 +1070,8 @@ void FD3D11DynamicRHI::StartNVAftermath()
 void FD3D11DynamicRHI::StopNVAftermath()
 {
 	bool bShouldStop = GDX11NVAfterMathEnabled
-		&& NVAftermathIMContextHandle;
+		&& NVAftermathIMContextHandle
+		&& bAllowVendorDevice;
 
 	if (bShouldStop)
 	{
@@ -1099,6 +1108,11 @@ void FD3D11DynamicRHI::StopNVAftermath()
 #if INTEL_EXTENSIONS
 void FD3D11DynamicRHI::StartIntelExtensions()
 {
+	if (!bAllowVendorDevice)
+	{
+		return;
+	}
+
 	HMODULE IntelDriverDLL = LoadLibraryA(ID3D11_UMD_DLL);
 
 	if (IntelDriverDLL)
@@ -1207,7 +1221,7 @@ void FD3D11DynamicRHI::StartIntelExtensions()
 
 void FD3D11DynamicRHI::StopIntelExtensions()
 {
-	if(IntelExtensionContext && IntelExtensions.DestroyDeviceExtensionContext)
+	if(IntelExtensionContext && IntelExtensions.DestroyDeviceExtensionContext && bAllowVendorDevice)
 	{
 		HRESULT hr = IntelExtensions.DestroyDeviceExtensionContext(&IntelExtensionContext);
 
@@ -1522,7 +1536,6 @@ void FD3D11DynamicRHI::InitD3DDevice()
 		}
 
 #ifdef AMD_AGS_API
-		const bool bAllowVendorDevice = !FParse::Param(FCommandLine::Get(), TEXT("novendordevice"));
 		if (IsRHIDeviceAMD() && bAllowVendorDevice)
 		{
 			check(AmdAgsContext == NULL);
@@ -1570,7 +1583,7 @@ void FD3D11DynamicRHI::InitD3DDevice()
 		uint32 AmdSupportedExtensionFlags = 0;
 		bool bDeviceCreated = false;
 #ifdef AMD_AGS_API
-		if (IsRHIDeviceAMD() && AmdAgsContext)
+		if (IsRHIDeviceAMD() && AmdAgsContext && bAllowVendorDevice)
 		{
 			AGSDX11DeviceCreationParams DeviceCreationParams = 
 			{
@@ -1635,7 +1648,7 @@ void FD3D11DynamicRHI::InitD3DDevice()
 #endif //AMD_AGS_API
 
 #if INTEL_METRICSDISCOVERY
-		if (IsRHIDeviceIntel())
+		if (IsRHIDeviceIntel() && bAllowVendorDevice)
 		{
 			// Needs to be done before device creation
 			CreateIntelMetricsDiscovery();
@@ -1802,14 +1815,14 @@ void FD3D11DynamicRHI::InitD3DDevice()
 #endif // WITH_SLI
 
 #if INTEL_EXTENSIONS
-		if (IsRHIDeviceIntel())
+		if (IsRHIDeviceIntel() && bAllowVendorDevice)
 		{
 			StartIntelExtensions();
 		}
 #endif // INTEL_EXTENSIONS
 
 #if INTEL_METRICSDISCOVERY
-		if (IsRHIDeviceIntel())
+		if (IsRHIDeviceIntel() && bAllowVendorDevice)
 		{
 			StartIntelMetricsDiscovery();
 

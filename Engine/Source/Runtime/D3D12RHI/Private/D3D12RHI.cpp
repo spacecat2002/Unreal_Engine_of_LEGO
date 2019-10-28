@@ -43,7 +43,8 @@ using namespace D3D12RHI;
 FD3D12DynamicRHI::FD3D12DynamicRHI(const TArray<TSharedPtr<FD3D12Adapter>>& ChosenAdaptersIn) :
 	ChosenAdapters(ChosenAdaptersIn),
 	AmdAgsContext(nullptr),
-	FlipEvent(INVALID_HANDLE_VALUE)
+	FlipEvent(INVALID_HANDLE_VALUE),
+	bAllowVendorDevice(!FParse::Param(FCommandLine::Get(), TEXT("novendordevice")))
 {
 	// The FD3D12DynamicRHI must be a singleton
 	check(SingleD3DRHI == nullptr);
