@@ -929,6 +929,11 @@ public:
 	// IES light profiles
 	FIESLightProfileResource IESLightProfileResources;
 
+	// Ray Traced Sky Light Sample Direction Data
+	TRefCountPtr<FPooledRDGBuffer> SkyLightVisibilityRaysBuffer;
+	FIntVector SkyLightVisibilityRaysDimensions;
+
+	// Ray Traced Global Illumination Gather Point Data
 	TRefCountPtr<FPooledRDGBuffer> GatherPointsBuffer;
 	FIntPoint GatherPointsResolution;
 #endif
