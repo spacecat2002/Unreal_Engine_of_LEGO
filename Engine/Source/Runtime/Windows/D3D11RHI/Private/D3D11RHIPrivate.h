@@ -944,7 +944,7 @@ protected:
 	DXGI_ADAPTER_DESC ChosenDescription;
 
 	// If this is false, disable any IHV optimization/libs
-	const bool bAllowVendorDevice;
+	bool bAllowVendorDevice;
 
 	template<typename BaseResourceType>
 	TD3D11Texture2D<BaseResourceType>* CreateD3D11Texture2D(uint32 SizeX,uint32 SizeY,uint32 SizeZ,bool bTextureArray,bool CubeTexture,uint8 Format,
