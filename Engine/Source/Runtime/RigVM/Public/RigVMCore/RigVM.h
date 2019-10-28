@@ -121,8 +121,11 @@ public:
 	// UObject interface
 	void Serialize(FArchive& Ar);
 
-	// resets the container and removes all memory
+	// resets the container and maintains all memory
 	void Reset();
+
+	// resets the container and removes all memory
+	void Empty();
 
 	// resets the container and clones the input VM
 	void CopyFrom(URigVM* InVM);
@@ -382,10 +385,12 @@ public:
 		Statistics.LiteralMemory = LiteralMemory.GetStatistics();
 		Statistics.WorkMemory = WorkMemory.GetStatistics();
 		Statistics.ByteCode = ByteCode.GetStatistics();
-		Statistics.BytesForCDO = 
+		Statistics.BytesForCaching = FirstPointerForInstruction.GetAllocatedSize() + CachedMemoryPointers.GetAllocatedSize();
+		Statistics.BytesForCDO =
 			Statistics.LiteralMemory.TotalBytes +
-			Statistics.WorkMemory.TotalBytes + 
-			Statistics.ByteCode.DataBytes;
+			Statistics.WorkMemory.TotalBytes +
+			Statistics.ByteCode.DataBytes +
+			Statistics.BytesForCaching;
 		// Statistics.BytesPerInstance = Statistics.WorkMemory.DataBytes;
 		Statistics.BytesPerInstance = Statistics.BytesForCDO;
 		return Statistics;

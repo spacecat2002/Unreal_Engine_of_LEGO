@@ -100,6 +100,24 @@ void URigVM::Reset()
 	InvalidateCachedMemory();
 }
 
+void URigVM::Empty()
+{
+	WorkMemory.Empty();
+	LiteralMemory.Empty();
+	FunctionNames.Empty();
+	Functions.Empty();
+	ByteCode.Empty();
+	Instructions.Empty();
+	Parameters.Empty();
+	ParametersNameMap.Empty();
+
+	InvalidateCachedMemory();
+
+	CachedMemory.Empty();
+	FirstPointerForInstruction.Empty();
+	CachedMemoryPointers.Empty();
+}
+
 void URigVM::CopyFrom(URigVM* InVM)
 {
 	check(InVM);

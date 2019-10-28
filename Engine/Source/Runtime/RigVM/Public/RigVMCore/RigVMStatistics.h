@@ -56,5 +56,8 @@ public:
 	FRigVMMemoryStatistics WorkMemory;
 
 	UPROPERTY(VisibleAnywhere, Category = "Statistics")
+	uint32 BytesForCaching;
+
+	UPROPERTY(VisibleAnywhere, Category = "Statistics")
 	FRigVMByteCodeStatistics ByteCode;
 };

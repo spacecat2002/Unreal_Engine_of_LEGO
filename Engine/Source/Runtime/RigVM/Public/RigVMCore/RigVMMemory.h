@@ -129,6 +129,7 @@ struct RIGVM_API FRigVMRegister
 		, Name(NAME_None)
 		, ScriptStructIndex(INDEX_NONE)
 		, bIsArray(false)
+		, ReferenceCount(0)
 	{
 	}
 
@@ -177,6 +178,9 @@ struct RIGVM_API FRigVMRegister
 	// If true defines this register as an array
 	UPROPERTY()
 	bool bIsArray;
+
+	UPROPERTY(transient)
+	int32 ReferenceCount;
 
 	bool Serialize(FArchive& Ar);
 	FORCEINLINE friend FArchive& operator<<(FArchive& Ar, FRigVMRegister& P)
@@ -359,8 +363,11 @@ public:
 	// returns the number of registers in this container
 	FORCEINLINE int32 Num() const { return Registers.Num(); }
 
-	// resets the container and removes all storage.
+	// resets the container but maintains storage.
 	void Reset();
+
+	// resets the container and removes all storage.
+	void Empty();
 
 	// const accessor for a register based on index
 	FORCEINLINE const FRigVMRegister& operator[](int32 InIndex) const { return Registers[InIndex]; }

@@ -23,6 +23,11 @@ void FRigVMInstructionArray::Reset()
 	Instructions.Reset();
 }
 
+void FRigVMInstructionArray::Empty()
+{
+	Instructions.Empty();
+}
+
 FRigVMByteCode::FRigVMByteCode()
 {
 }
@@ -43,6 +48,11 @@ bool FRigVMByteCode::Serialize(FArchive& Ar)
 void FRigVMByteCode::Reset()
 {
 	ByteCode.Reset();
+}
+
+void FRigVMByteCode::Empty()
+{
+	ByteCode.Empty();
 }
 
 uint64 FRigVMByteCode::Num() const

@@ -513,6 +513,15 @@ void FRigVMMemoryContainer::Reset()
 	NameMap.Reset();
 }
 
+void FRigVMMemoryContainer::Empty()
+{
+	Data.Empty();
+	Registers.Empty();
+	RegisterOffsets.Empty();
+	ScriptStructs.Empty();
+	NameMap.Empty();
+}
+
 bool FRigVMMemoryContainer::Copy(
 	int32 InSourceRegisterIndex,
 	int32 InTargetRegisterIndex,

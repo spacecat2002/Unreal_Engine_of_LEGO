@@ -325,8 +325,11 @@ public:
 
 	FRigVMInstructionArray();
 
-	// Resets the data structure and removes all storage.
+	// Resets the data structure and maintains all storage.
 	void Reset();
+
+	// Resets the data structure and removes all storage.
+	void Empty();
 
 	// Returns true if a given instruction index is valid.
 	FORCEINLINE bool IsValidIndex(int32 InIndex) const { return Instructions.IsValidIndex(InIndex); }
@@ -370,8 +373,11 @@ public:
 		return Ar;
 	}
 
-	// resets the container and removes all memory
+	// resets the container and maintains all memory
 	void Reset();
+
+	// resets the container and removes all memory
+	void Empty();
 
 	// returns the number of instructions in this container
 	uint64 Num() const;
