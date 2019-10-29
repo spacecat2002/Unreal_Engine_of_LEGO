@@ -98,7 +98,7 @@ int32 GetRayTracingSkyLightDecoupleSampleGenerationCVarValue()
 
 int32 GetSkyLightSamplesPerPixel(const FSkyLightSceneProxy* SkyLightSceneProxy)
 {
-	ensure(SkyLightSceneProxy != nullptr);
+	check(SkyLightSceneProxy != nullptr);
 
 	return GRayTracingSkyLightSamplesPerPixel >= 0 ? GRayTracingSkyLightSamplesPerPixel : SkyLightSceneProxy->SamplesPerPixel;
 }
