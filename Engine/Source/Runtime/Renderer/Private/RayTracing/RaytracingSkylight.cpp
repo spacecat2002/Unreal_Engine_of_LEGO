@@ -140,7 +140,11 @@ void SetupSkyLightParameters(
 	const FScene& Scene,
 	FSkyLightData* SkyLightData)
 {
-	if (ShouldRenderRayTracingSkyLight(Scene.SkyLight))
+	// Check if parameters should be set based on if the sky light's texture has been processed and if its mip tree has been built yet
+	if (
+		Scene.SkyLight &&
+		Scene.SkyLight->ProcessedTexture &&
+		!Scene.SkyLight->IsDirtyImportanceSamplingData)
 	{
 		SkyLightData->SamplesPerPixel = GetSkyLightSamplesPerPixel(Scene.SkyLight);
 		SkyLightData->SamplingStopLevel = GRayTracingSkyLightSamplingStopLevel;
@@ -211,7 +215,7 @@ void SetupSkyLightQuasiRandomParameters(
 	uint32 IterationCount;
 
 	// Choose to set the iteration count to the sky light samples per pixel or a dummy value depending on its presence
-	if (ShouldRenderRayTracingSkyLight(Scene.SkyLight))
+	if (Scene.SkyLight != nullptr)
 	{
 		IterationCount = FMath::Max(GetSkyLightSamplesPerPixel(Scene.SkyLight), 1);
 	}
