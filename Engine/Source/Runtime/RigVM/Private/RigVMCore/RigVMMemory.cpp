@@ -642,7 +642,7 @@ int32 FRigVMMemoryContainer::Allocate(const FName& InNewName, int32 InElementSiz
 		} while (!IsNameAvailable(Name));
 	}
 
-	ensure(InElementSize > 0 && InElementCount > 0 && InSliceCount > 0);
+	ensure(InElementSize > 0 && InElementCount >= 0 && InSliceCount > 0);
 
 	if (bUseNameMap)
 	{

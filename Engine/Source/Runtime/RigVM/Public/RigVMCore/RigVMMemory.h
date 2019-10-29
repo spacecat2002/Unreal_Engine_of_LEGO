@@ -433,7 +433,6 @@ public:
 	// Note: This refers to the active slice - and can change over time.
 	FORCEINLINE const uint8* GetData(const FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE) const
 	{
-		ensure(Register.ElementCount > 0);
 		uint8* Ptr = (uint8*)&Data[Register.GetWorkByteIndex()];
 		if (InRegisterOffset != INDEX_NONE)
 		{
@@ -455,7 +454,11 @@ public:
 	// Note: This refers to the active slice - and can change over time.
 	FORCEINLINE uint8* GetData(FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE, bool bMoveToNextSlice = false)
 	{
-		ensure(Register.ElementCount > 0);
+		if (Register.ElementCount <= 0)
+		{
+			return nullptr;
+		}
+
 		if(bMoveToNextSlice)
 		{
 			Register.MoveToNextSlice();
@@ -482,7 +485,6 @@ public:
 	template<class T>
 	FORCEINLINE const T* Get(const FRigVMRegister& InRegister, int32 InRegisterOffset = INDEX_NONE) const
 	{
-		ensure(InRegister.ElementCount > 0);
 		return (const T*)GetData(InRegister, InRegisterOffset);
 	}
 
@@ -533,7 +535,6 @@ public:
 	template<class T>
 	FORCEINLINE T* Get(FRigVMRegister& InRegister, int32 InRegisterOffset = INDEX_NONE, bool bMoveToNextSlice = false)
 	{
-		ensure(InRegister.ElementCount > 0);
 		if(bMoveToNextSlice)
 		{
 			InRegister.MoveToNextSlice();
@@ -587,7 +588,6 @@ public:
 	template<class T>
 	FORCEINLINE TArrayView<T> GetArray(FRigVMRegister& InRegister, int32 InRegisterOffset = INDEX_NONE, bool bMoveToNextSlice = false)
 	{
-		ensure(InRegister.ElementCount > 0);
 		if (InRegisterOffset == INDEX_NONE)
 		{
 			return TArrayView<T>((T*)GetData(InRegister, INDEX_NONE, bMoveToNextSlice), InRegister.ElementCount);
