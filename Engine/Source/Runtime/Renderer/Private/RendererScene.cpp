@@ -1448,6 +1448,15 @@ void FScene::RemovePrimitive( UPrimitiveComponent* Primitive )
 		// Disassociate the primitive's scene proxy.
 		Primitive->SceneProxy = NULL;
 
+		// Delete the PrimitiveSceneInfo on the game thread after the rendering thread has processed its removal.
+		// This must be done on the game thread because the hit proxy references (and possibly other members) need to be freed on the game thread.
+		struct DeferDeleteHitProxies : FDeferredCleanupInterface
+		{
+			DeferDeleteHitProxies(TArray<TRefCountPtr<HHitProxy>>&& InHitProxies) : HitProxies(MoveTemp(InHitProxies)) {}
+			TArray<TRefCountPtr<HHitProxy>> HitProxies;
+		};
+		BeginCleanup(new DeferDeleteHitProxies(MoveTemp(PrimitiveSceneInfo->HitProxies)));
+
 		// Send a command to the rendering thread to remove the primitive from the scene.
 		FScene* Scene = this;
 		FThreadSafeCounter* AttachmentCounter = &Primitive->AttachmentCounter;
@@ -1538,7 +1547,10 @@ void FScene::AddLightSceneInfo_RenderThread(FLightSceneInfo* LightSceneInfo)
 
 	if (bDirectionalLight &&
 		// Only use a stationary or movable light
-		!LightSceneInfo->Proxy->HasStaticLighting())
+		!(LightSceneInfo->Proxy->HasStaticLighting() 
+		// if it is a Static DirectionalLight and the light has not been built, add it to MobileDirectionalLights for mobile preview.
+		&& LightSceneInfo->IsPrecomputedLightingValid())
+		)
 	{
 		// Set SimpleDirectionalLight
 		if(!SimpleDirectionalLight)
@@ -3926,14 +3938,6 @@ void FScene::UpdateAllPrimitiveSceneInfos(FRHICommandListImmediate& RHICmdList)
 		{
 			// free the primitive scene proxy.
 			delete PrimitiveSceneInfo->Proxy;
-			// Delete the PrimitiveSceneInfo on the game thread after the rendering thread has processed its removal.
-			// This must be done on the game thread because the hit proxy references (and possibly other members) need to be freed on the game thread.
-			struct DeferDeleteHitProxies : FDeferredCleanupInterface
-			{
-				DeferDeleteHitProxies(TArray<TRefCountPtr<HHitProxy>>&& InHitProxies) : HitProxies(MoveTemp(InHitProxies)) {}
-				TArray<TRefCountPtr<HHitProxy>> HitProxies;
-			};
-			BeginCleanup(new DeferDeleteHitProxies(MoveTemp(PrimitiveSceneInfo->HitProxies)));
 			delete PrimitiveSceneInfo;
 		}
 	}

@@ -344,6 +344,10 @@ public:
 	FComputeFenceRHIRef RayTracedShadowsEndFence;
 	TRefCountPtr<IPooledRenderTarget> RayTracedShadowsRT;
 
+	/** Controls fading out of per-object shadows in the distance to avoid casting super-sharp shadows far away. */
+	float PerObjectShadowFadeStart;
+	float InvPerObjectShadowFadeLength;
+
 public:
 
 	// default constructor
@@ -789,6 +793,8 @@ public:
 		ShadowTileOffsetAndSizeParam.Bind(ParameterMap, TEXT("ShadowTileOffsetAndSize"));
 		LightPositionOrDirection.Bind(ParameterMap, TEXT("LightPositionOrDirection"));
 		HairCategorizationTexture.Bind(ParameterMap, TEXT("HairCategorizationTexture"));
+		PerObjectShadowFadeStart.Bind(ParameterMap, TEXT("PerObjectShadowFadeStart"));
+		InvPerObjectShadowFadeLength.Bind(ParameterMap, TEXT("InvPerObjectShadowFadeLength"));
 	}
 
 	void Set(FRHICommandList& RHICmdList, FShader* Shader, const FSceneView& View, const FProjectedShadowInfo* ShadowInfo, const FHairStrandsVisibilityData* HairVisibilityData)
@@ -884,6 +890,9 @@ public:
 		{
 			SetTextureParameter(RHICmdList, ShaderRHI, HairCategorizationTexture, HairVisibilityData->CategorizationTexture->GetRenderTargetItem().ShaderResourceTexture);
 		}
+
+		SetShaderValue(RHICmdList, ShaderRHI, PerObjectShadowFadeStart, ShadowInfo->PerObjectShadowFadeStart);
+		SetShaderValue(RHICmdList, ShaderRHI, InvPerObjectShadowFadeLength, ShadowInfo->InvPerObjectShadowFadeLength);
 	}
 
 	/** Serializer. */
@@ -901,6 +910,8 @@ public:
 		Ar << P.ShadowTileOffsetAndSizeParam;
 		Ar << P.LightPositionOrDirection;
 		Ar << P.HairCategorizationTexture;
+		Ar << P.PerObjectShadowFadeStart;
+		Ar << P.InvPerObjectShadowFadeLength;
 		return Ar;
 	}
 
@@ -918,6 +929,8 @@ private:
 	FShaderParameter ShadowTileOffsetAndSizeParam;
 	FShaderParameter LightPositionOrDirection;
 	FShaderResourceParameter HairCategorizationTexture;
+	FShaderParameter PerObjectShadowFadeStart;
+	FShaderParameter InvPerObjectShadowFadeLength;
 };
 
 /**

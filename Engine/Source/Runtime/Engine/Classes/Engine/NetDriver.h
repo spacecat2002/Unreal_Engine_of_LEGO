@@ -1332,6 +1332,9 @@ public:
 
 	ENGINE_API virtual void NotifyActorTearOff(AActor* Actor);
 
+	/** Set whether this actor should swap roles before replicating properties. */
+	ENGINE_API void SetRoleSwapOnReplicate(AActor* Actor, bool bSwapRoles);
+
 	// ---------------------------------------------------------------
 	//
 	// ---------------------------------------------------------------	
@@ -1495,10 +1498,12 @@ public:
 	ENGINE_API virtual bool ShouldClientDestroyActor(AActor* Actor) const;
 
 	/** Called when an actor channel is remotely opened for an actor. */
-	ENGINE_API virtual void NotifyActorChannelOpen(UActorChannel* Channel, AActor* Actor) {}
+	ENGINE_API virtual void NotifyActorChannelOpen(UActorChannel* Channel, AActor* Actor);
 	
 	/** Called when an actor channel is cleaned up foor an actor. */
-	ENGINE_API virtual void NotifyActorChannelCleanedUp(UActorChannel* Channel, EChannelCloseReason CloseReason) {}
+	ENGINE_API virtual void NotifyActorChannelCleanedUp(UActorChannel* Channel, EChannelCloseReason CloseReason);
+
+	ENGINE_API virtual void NotifyActorTornOff(AActor* Actor);
 
 	/**
 	 * Returns the current delinquency analytics and resets them.

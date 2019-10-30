@@ -70,7 +70,7 @@ namespace Chaos
 			return FCrc::MemCrc32(Bytes.GetData(), Bytes.GetAllocatedSize());
 		}
 
-		static ImplicitObjectType GetType()
+		static EImplicitObjectType StaticType()
 		{
 			return ImplicitObjectType::HeightField;
 		}
@@ -99,6 +99,7 @@ namespace Chaos
 			if(Ar.IsLoading())
 			{
 				BuildQueryData();
+				BoundingBox();	//temp hack to initialize cache
 			}
 		}
 

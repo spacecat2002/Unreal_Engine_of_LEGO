@@ -1041,9 +1041,9 @@ ALandscapeProxy::ALandscapeProxy(const FObjectInitializer& ObjectInitializer)
 	ComponentScreenSizeToUseSubSections = 0.65f;
 	UseTessellationComponentScreenSizeFalloff = true;
 	TessellationComponentScreenSizeFalloff = 0.75f;
-	LOD0ScreenSize = 1.0f;
-	LOD0DistributionSetting = 1.75f;
-	LODDistributionSetting = 2.0f;
+	LOD0ScreenSize = 0.5f;
+	LOD0DistributionSetting = 1.25f;
+	LODDistributionSetting = 3.0f;
 	bCastStaticShadow = true;
 	bCastShadowAsTwoSided = false;
 	bUsedForNavigation = true;
@@ -2366,7 +2366,8 @@ void ALandscapeProxy::PostLoad()
 		ULandscapeInfo* LandscapeInfo = CreateLandscapeInfo();
 
 		// Cache the value at this point as RegisterActor might create/destroy layers content if there was a mismatch between landscape & proxy
-		const bool bNeedOldDataMigration = !HasLayersContent() && CanHaveLayersContent();
+		// Check the actual flag here not HasLayersContent() which could return true if the LandscapeActor is valid.
+		const bool bNeedOldDataMigration = !bHasLayersContent && CanHaveLayersContent();
 				
 		LandscapeInfo->RegisterActor(this, true);
 

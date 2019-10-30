@@ -75,6 +75,37 @@ FUObjectAnnotationSparseBool GSelectedComponentAnnotation;
 /** Static var indicating activity of reregister context */
 int32 FGlobalComponentReregisterContext::ActiveGlobalReregisterContextCount = 0;
 
+void UpdateAllPrimitiveSceneInfosForSingleComponent(UActorComponent* InComponent, TSet<FSceneInterface*>* InScenesToUpdateAllPrimitiveSceneInfosForBatching /* = nullptr*/)
+{
+	if (FSceneInterface* Scene = InComponent->GetScene())
+	{
+		if (InScenesToUpdateAllPrimitiveSceneInfosForBatching == nullptr)
+		{
+			// If no batching is available (this ComponentReregisterContext is not created by a FGlobalComponentReregisterContext), issue one update per component
+			ENQUEUE_RENDER_COMMAND(UpdateAllPrimitiveSceneInfosCmd)([Scene](FRHICommandListImmediate& RHICmdList) {
+				Scene->UpdateAllPrimitiveSceneInfos(RHICmdList);
+			});
+		}
+		else
+		{
+			// Try to batch the updates inside FGlobalComponentReregisterContext
+			InScenesToUpdateAllPrimitiveSceneInfosForBatching->Add(Scene);
+		}
+	}
+}
+
+void UpdateAllPrimitiveSceneInfosForScenes(TSet<FSceneInterface*> ScenesToUpdateAllPrimitiveSceneInfos)
+{
+	ENQUEUE_RENDER_COMMAND(UpdateAllPrimitiveSceneInfosCmd)(
+		[ScenesToUpdateAllPrimitiveSceneInfos](FRHICommandListImmediate& RHICmdList)
+	{
+		for (FSceneInterface* Scene : ScenesToUpdateAllPrimitiveSceneInfos)
+		{
+			Scene->UpdateAllPrimitiveSceneInfos(RHICmdList);
+		}
+	});
+}
+
 FGlobalComponentReregisterContext::FGlobalComponentReregisterContext()
 {
 	ActiveGlobalReregisterContextCount++;
@@ -85,8 +116,10 @@ FGlobalComponentReregisterContext::FGlobalComponentReregisterContext()
 	// Detach all actor components.
 	for(UActorComponent* Component : TObjectRange<UActorComponent>())
 	{
-		ComponentContexts.Add(new FComponentReregisterContext(Component));
+		ComponentContexts.Add(new FComponentReregisterContext(Component, &ScenesToUpdateAllPrimitiveSceneInfos));
 	}
+
+	UpdateAllPrimitiveSceneInfos();
 }
 
 FGlobalComponentReregisterContext::FGlobalComponentReregisterContext(const TArray<UClass*>& ExcludeComponents)
@@ -111,9 +144,11 @@ FGlobalComponentReregisterContext::FGlobalComponentReregisterContext(const TArra
 		}
 		if( bShouldReregister )
 		{
-			ComponentContexts.Add(new FComponentReregisterContext(Component));
+			ComponentContexts.Add(new FComponentReregisterContext(Component, &ScenesToUpdateAllPrimitiveSceneInfos));
 		}
 	}
+
+	UpdateAllPrimitiveSceneInfos();
 }
 
 FGlobalComponentReregisterContext::~FGlobalComponentReregisterContext()
@@ -122,6 +157,15 @@ FGlobalComponentReregisterContext::~FGlobalComponentReregisterContext()
 	// We empty the array now, to ensure that the FComponentReregisterContext destructors are called while ActiveGlobalReregisterContextCount still indicates activity
 	ComponentContexts.Empty();
 	ActiveGlobalReregisterContextCount--;
+
+	UpdateAllPrimitiveSceneInfos();
+}
+
+void FGlobalComponentReregisterContext::UpdateAllPrimitiveSceneInfos()
+{
+	UpdateAllPrimitiveSceneInfosForScenes(MoveTemp(ScenesToUpdateAllPrimitiveSceneInfos));
+
+	check(ScenesToUpdateAllPrimitiveSceneInfos.Num() == 0);
 }
 
 FGlobalComponentRecreateRenderStateContext::FGlobalComponentRecreateRenderStateContext()
@@ -147,14 +191,7 @@ FGlobalComponentRecreateRenderStateContext::~FGlobalComponentRecreateRenderState
 
 void FGlobalComponentRecreateRenderStateContext::UpdateAllPrimitiveSceneInfos()
 {
-	ENQUEUE_RENDER_COMMAND(UpdateAllPrimitiveSceneInfosCmd)(
-		[ScenesToUpdateAllPrimitiveSceneInfos = MoveTemp(ScenesToUpdateAllPrimitiveSceneInfos)](FRHICommandListImmediate& RHICmdList)
-		{
-			for (FSceneInterface* Scene : ScenesToUpdateAllPrimitiveSceneInfos)
-			{
-				Scene->UpdateAllPrimitiveSceneInfos(RHICmdList);
-			}
-		});
+	UpdateAllPrimitiveSceneInfosForScenes(MoveTemp(ScenesToUpdateAllPrimitiveSceneInfos));
 
 	check(ScenesToUpdateAllPrimitiveSceneInfos.Num() == 0);
 }

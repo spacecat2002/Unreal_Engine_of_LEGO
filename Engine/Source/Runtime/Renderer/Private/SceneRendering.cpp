@@ -58,6 +58,7 @@
 #include "IHeadMountedDisplay.h"
 #include "DiaphragmDOF.h" 
 #include "SingleLayerWaterRendering.h" 
+#include "HairStrands/HairStrandsUtils.h"
 
 /*-----------------------------------------------------------------------------
 	Globals
@@ -327,6 +328,11 @@ TAutoConsoleVariable<int32> CVarTransientResourceAliasing_Buffers(
 	1,
 	TEXT("Enables transient resource aliasing for specified buffers. Used only if GSupportsTransientResourceAliasing is true.\n"),
 	ECVF_ReadOnly);
+
+static TAutoConsoleVariable<int32> CVarHairVelocityMagnitudeScale(
+	TEXT("r.HairStrands.VelocityMagnitudeScale"), 
+	100,  // Tuned by eye, based on heavy motion (strong head shack)
+	TEXT("Velocity magnitude (in pixel) at which a hair will reach its pic velocity-rasterization-scale under motion to reduce aliasing. Default is 100."));
 
 #if !UE_BUILD_SHIPPING
 
@@ -908,6 +914,7 @@ void FViewInfo::Init()
 	}
 
 	PrimitiveSceneDataOverrideSRV = nullptr;
+	PrimitiveSceneDataTextureOverrideRHI = nullptr;
 	LightmapSceneDataOverrideSRV = nullptr;
 
 	DitherFadeInUniformBuffer = nullptr;
@@ -1656,6 +1663,16 @@ void FViewInfo::SetupUniformBufferParameters(
 			}
 		}
 
+		if (PrimitiveSceneDataTextureOverrideRHI)
+		{
+			ViewUniformShaderParameters.PrimitiveSceneDataTexture = PrimitiveSceneDataTextureOverrideRHI;
+		}
+		else
+		{
+			const FTextureRWBuffer2D& ViewPrimitiveShaderDataTexture = ViewState ? ViewState->PrimitiveShaderDataTexture : OneFramePrimitiveShaderDataTexture;
+			ViewUniformShaderParameters.PrimitiveSceneDataTexture = OrBlack2DIfNull(ViewPrimitiveShaderDataTexture.Buffer);
+		}
+		
 		if (LightmapSceneDataOverrideSRV)
 		{
 			ViewUniformShaderParameters.LightmapSceneData = LightmapSceneDataOverrideSRV;
@@ -1665,6 +1682,21 @@ void FViewInfo::SetupUniformBufferParameters(
 			ViewUniformShaderParameters.LightmapSceneData = Scene->GPUScene.LightmapDataBuffer.SRV;
 		}
 	}
+
+	// Deep opacity maps info
+	{
+		const FMinHairRadiusAtDepth1 MinRadiusAtDepth1 = ComputeMinStrandRadiusAtDepth1(
+			FIntPoint(UnconstrainedViewRect.Width(), UnconstrainedViewRect.Height()), FOV, GetHairVisibilitySampleCount(), 0.0f);
+
+		FVector2D PixelVelocity(1.f / (ViewRect.Width() * 2), 1.f / (ViewRect.Height() * 2));
+		const float VelocityMagnitudeScale = FMath::Clamp(CVarHairVelocityMagnitudeScale.GetValueOnAnyThread(), 0, 512) * FMath::Min(PixelVelocity.X, PixelVelocity.Y);
+
+		ViewUniformShaderParameters.HairRenderInfo.X = MinRadiusAtDepth1.Primary;
+		ViewUniformShaderParameters.HairRenderInfo.Y = MinRadiusAtDepth1.Velocity;
+		ViewUniformShaderParameters.HairRenderInfo.Z = IsPerspectiveProjection() ? 0.0f : 1.0f;
+		ViewUniformShaderParameters.HairRenderInfo.W = VelocityMagnitudeScale;
+	}
+
 	ViewUniformShaderParameters.VTFeedbackBuffer = SceneContext.GetVirtualTextureFeedbackUAV();
 	ViewUniformShaderParameters.QuadOverdraw = SceneContext.GetQuadOverdrawBufferUAV();
 }
@@ -1750,6 +1782,9 @@ FViewInfo* FViewInfo::CreateSnapshot() const
 
 	FRWBufferStructured NullOneFramePrimitiveShaderDataBuffer;
 	FMemory::Memcpy(Result->OneFramePrimitiveShaderDataBuffer, NullOneFramePrimitiveShaderDataBuffer);
+	
+	FTextureRWBuffer2D NullOneFramePrimitiveShaderDataTexture;
+	FMemory::Memcpy(Result->OneFramePrimitiveShaderDataTexture, NullOneFramePrimitiveShaderDataTexture);
 
 	TStaticArray<FParallelMeshDrawCommandPass, EMeshPass::Num> NullParallelMeshDrawCommandPasses;
 	FMemory::Memcpy(Result->ParallelMeshDrawCommandPasses, NullParallelMeshDrawCommandPasses);
@@ -1780,6 +1815,7 @@ void FViewInfo::DestroyAllSnapshots()
 		Snapshot->CachedViewUniformShaderParameters.Reset();
 		Snapshot->DynamicPrimitiveShaderData.Empty();
 		Snapshot->OneFramePrimitiveShaderDataBuffer.Release();
+		Snapshot->OneFramePrimitiveShaderDataTexture.Release();
 
 		for (int32 Index = 0; Index < Snapshot->ParallelMeshDrawCommandPasses.Num(); ++Index)
 		{
@@ -3058,7 +3094,7 @@ void FSceneRenderer::RenderCustomDepthPass(FRHICommandListImmediate& RHICmdList)
 				if (FSceneInterface::GetShadingPath(View.FeatureLevel) == EShadingPath::Mobile)
 				{
 					FMobileSceneTextureUniformParameters SceneTextureParameters;
-					SetupMobileSceneTextureUniformParameters(SceneContext, View.FeatureLevel, false, SceneTextureParameters);
+					SetupMobileSceneTextureUniformParameters(SceneContext, View.FeatureLevel, false, false, SceneTextureParameters);
 					Scene->UniformBuffers.MobileCustomDepthPassUniformBuffer.UpdateUniformBufferImmediate(SceneTextureParameters);
 					PassUniformBuffer = Scene->UniformBuffers.MobileCustomDepthPassUniformBuffer;
 				}

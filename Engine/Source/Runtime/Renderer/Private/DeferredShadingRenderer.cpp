@@ -214,6 +214,8 @@ DECLARE_GPU_STAT(PostRenderOpsFX);
 DECLARE_GPU_STAT(HZB);
 DECLARE_GPU_STAT_NAMED(Unaccounted, TEXT("[unaccounted]"));
 DECLARE_GPU_STAT(WaterRendering);
+DECLARE_GPU_STAT(HairRendering);
+DECLARE_GPU_STAT(VirtualTextureFeedback);
 
 const TCHAR* GetDepthPassReason(bool bDitheredLODTransitionsUseStencil, EShaderPlatform ShaderPlatform)
 {
@@ -1910,10 +1912,13 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	checkSlow(RHICmdList.IsOutsideRenderPass());
 
+	// #hair_todo: Add multi-view
 	FHairStrandsDatas* HairDatas = nullptr;
 	FHairStrandsDatas HairDatasStorage;
-	if (IsHairStrandsEnable(Scene->GetShaderPlatform()))
+	const bool bIsViewCompatible = Views.Num() > 0 && Views[0].Family->ViewMode == VMI_Lit; 
+	if (IsHairStrandsEnable(Scene->GetShaderPlatform()) && bIsViewCompatible)
 	{
+		SCOPED_GPU_STAT(RHICmdList, HairRendering);
 		HairDatasStorage.HairClusterPerViews = CreateHairStrandsClusters(RHICmdList, Scene, Views);
 		VoxelizeHairStrands(RHICmdList, Scene, Views, HairDatasStorage.HairClusterPerViews);
 		HairDatasStorage.DeepShadowViews = RenderHairStrandsDeepShadows(RHICmdList, Scene, Views, HairDatasStorage.HairClusterPerViews);
@@ -2047,6 +2052,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 		// Copy the texture to be available for the water surface to refrace
 		FSingleLayerWaterPassData SingleLayerWaterPassData;
+		SingleLayerWaterPassData.ViewData.SetNum(Views.Num());
 		CopySingleLayerWaterTextures(RHICmdList, SingleLayerWaterPassData);
 
 		// Make the Depth texture writable since the water GBuffer pass will update it
@@ -2273,14 +2279,17 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		checkSlow(RHICmdList.IsOutsideRenderPass());
 	}
 
-	if (HairDatas)
 	{
-		RenderHairComposeSubPixel(RHICmdList, Views, HairDatas);
-	}
+		SCOPED_GPU_STAT(RHICmdList, HairRendering);
+		if (HairDatas)
+		{
+			RenderHairComposeSubPixel(RHICmdList, Views, HairDatas);
+		}
 
-	if (IsHairStrandsEnable(Scene->GetShaderPlatform()))
-	{
-		RenderHairStrandsDebugInfo(RHICmdList, Views, HairDatas);
+		if (IsHairStrandsEnable(Scene->GetShaderPlatform()))
+		{
+			RenderHairStrandsDebugInfo(RHICmdList, Views, HairDatas);
+		}
 	}
 
 	checkSlow(RHICmdList.IsOutsideRenderPass());
@@ -2295,6 +2304,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	if (bUseVirtualTexturing)
 	{
+		SCOPED_GPU_STAT(RHICmdList, VirtualTextureFeedback);
 		// No pass after this can make VT page requests
 		SceneContext.VirtualTextureFeedback.TransferGPUToCPU(RHICmdList, Views[0].ViewRect);
 	}

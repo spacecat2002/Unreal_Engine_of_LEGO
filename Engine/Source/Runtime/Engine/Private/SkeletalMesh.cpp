@@ -492,11 +492,11 @@ bool USkeletalMesh::IsReductionActive(int32 LODIndex) const
 				{
 					//Make sure the count fit in a uint32
 					LODVertexNumber += Section.NumVertices < 0 ? 0 : Section.NumVertices;
-					LODTriNumber += Section.NumTriangles < 0 ? 0 : Section.NumTriangles;
+					LODTriNumber += Section.NumTriangles;
 				}
 			}
 		}
-		else if(GetImportedModel()->OriginalReductionSourceMeshData.IsValidIndex(LODIndex)
+		else if (GetImportedModel()->OriginalReductionSourceMeshData.IsValidIndex(LODIndex)
 			&& !GetImportedModel()->OriginalReductionSourceMeshData[LODIndex]->IsEmpty())
 		{
 			//In this case we have to use the stored reduction source data to know how many vertices/triangles we have before the reduction
@@ -3847,19 +3847,17 @@ FGuid FSkeletalMeshLODInfo::ComputeDeriveDataCacheKey(const FSkeletalMeshLODGrou
 	FArchive_Serialize_BitfieldBool(Ar, bSupportUniformlyDistributedSampling);
 
 	//Use the LOD settings asset if there is one
-	FSkeletalMeshBuildSettings RealBuildSettings = BuildSettings;
 	FSkeletalMeshOptimizationSettings RealReductionSettings = ReductionSettings;
 	if (SkeletalMeshLODGroupSettings != nullptr)
 	{
-		RealBuildSettings = SkeletalMeshLODGroupSettings->GetBuildSettings();
 		RealReductionSettings = SkeletalMeshLODGroupSettings->GetReductionSettings();
 	}
 
-	if (!RealBuildSettings.bUseFullPrecisionUVs && !bIs16BitfloatBufferSupported)
+	if (!BuildSettings.bUseFullPrecisionUVs && !bIs16BitfloatBufferSupported)
 	{
-		RealBuildSettings.bUseFullPrecisionUVs = true;
+		BuildSettings.bUseFullPrecisionUVs = true;
 	}
-	SerializeBuildSettingsForDDC(Ar, RealBuildSettings);
+	SerializeBuildSettingsForDDC(Ar, BuildSettings);
 	SerializeReductionSettingsForDDC(Ar, RealReductionSettings);
 
 	FSHA1 Sha;

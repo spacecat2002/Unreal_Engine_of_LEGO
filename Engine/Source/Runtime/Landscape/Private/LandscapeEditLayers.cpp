@@ -37,6 +37,8 @@ LandscapeEditLayers.cpp: Landscape editing layers mode
 #include "UObject/UObjectThreadContext.h"
 #include "LandscapeSplinesComponent.h"
 #include "Misc/FileHelper.h"
+#include "Misc/MapErrors.h"
+#include "Misc/UObjectToken.h"
 #endif
 
 #define LOCTEXT_NAMESPACE "Landscape"
@@ -2802,16 +2804,7 @@ int32 ALandscape::RegenerateLayersHeightmaps(const TArray<ULandscapeComponent*>&
 	{
 		return 0;
 	}
-
-	const bool bHeightmapTexturesReady = PrepareLayersHeightmapTextureResources(bInWaitForStreaming);
-	const bool bHeightmap = true;
-	const bool bBrushTexturesReady = PrepareLayersBrushTextureResources(bInWaitForStreaming, bHeightmap);
-
-	if (!(bHeightmapTexturesReady && bBrushTexturesReady))
-	{
-		return 0;
-	}
-
+		
 	// Nothing to do (return that we did the processing)
 	if (InLandscapeComponentsToResolve.Num() == 0)
 	{
@@ -3738,16 +3731,7 @@ int32 ALandscape::RegenerateLayersWeightmaps(const TArray<ULandscapeComponent*>&
 	{
 		return 0;
 	}
-
-	const bool bWeightmapTexturesReady = PrepareLayersWeightmapTextureResources(bInWaitForStreaming);
-	const bool bHeightmap = false;
-	const bool bBrushTexturesReady = PrepareLayersBrushTextureResources(bInWaitForStreaming, bHeightmap);
-
-	if (!(bWeightmapTexturesReady && bBrushTexturesReady))
-	{
-		return 0;
-	}
-
+		
 	if (InLandscapeComponentsToResolve.Num() == 0)
 	{
 		return WeightmapUpdateModes;
@@ -4751,6 +4735,15 @@ void ALandscape::GetLandscapeComponentWeightmapsToRender(ULandscapeComponent* La
 	}
 }
 
+bool ALandscape::AreLayersTextureResourcesReady(bool bInWaitForStreaming) const
+{
+	const bool bHeightmapReady = PrepareLayersHeightmapTextureResources(bInWaitForStreaming);
+	const bool bWeightmapReady = PrepareLayersWeightmapTextureResources(bInWaitForStreaming);
+	const bool bBrushHeightmapbReady = PrepareLayersBrushTextureResources(bInWaitForStreaming, true);
+	const bool bBrushWeightmapReady = PrepareLayersBrushTextureResources(bInWaitForStreaming, false);
+	return bHeightmapReady && bWeightmapReady && bBrushHeightmapbReady && bBrushWeightmapReady;
+}
+
 void ALandscape::UpdateLayersContent(bool bInWaitForStreaming, bool bInSkipMonitorLandscapeEdModeChanges)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE("UpdateLayersContent");
@@ -4783,6 +4776,11 @@ void ALandscape::UpdateLayersContent(bool bInWaitForStreaming, bool bInSkipMonit
 		bSplineLayerUpdateRequested = false;
 	}
 
+	if (!AreLayersTextureResourcesReady(bInWaitForStreaming))
+	{
+		return;
+	}
+	
 	const bool bForceRender = CVarOutputLayersDebugDrawCallName.GetValueOnAnyThread() == 1;
 
 	if (LayerContentUpdateModes == 0 && !bForceRender)
@@ -5172,7 +5170,7 @@ bool ALandscapeProxy::CanHaveLayersContent() const
 
 bool ALandscapeProxy::HasLayersContent() const
 {
-	return bHasLayersContent;
+	return bHasLayersContent || (GetLandscapeActor() != nullptr && GetLandscapeActor()->HasLayersContent());
 }
 
 void ALandscapeProxy::UpdateCachedHasLayersContent(bool InCheckComponentDataIntegrity)
@@ -5203,8 +5201,15 @@ bool ALandscapeProxy::RemoveObsoleteLayers(const TSet<FGuid>& InExistingLayers)
 	{
 		if (!InExistingLayers.Contains(LayerGuid))
 		{
-			UE_LOG(LogLandscape, Warning, TEXT("Layer '%s' was removed from LandscapeProxy '%s' because it doesn't match any of the LandscapeActor Layers. Possible loss of data."), 
-				*LayerGuid.ToString(EGuidFormats::HexValuesInBraces), *GetPathName());
+			FFormatNamedArguments Arguments;
+			Arguments.Add(TEXT("LayerGuid"), FText::FromString(LayerGuid.ToString(EGuidFormats::HexValuesInBraces)));
+			Arguments.Add(TEXT("ProxyPackage"), FText::FromString(GetOutermost()->GetName()));
+
+			FMessageLog("MapCheck").Warning()
+				->AddToken(FUObjectToken::Create(this))
+				->AddToken(FTextToken::Create(FText::Format(LOCTEXT("MapCheck_Message_LandscapeProxyObsoleteLayer","Layer '{LayerGuid}' was removed from LandscapeProxy because it doesn't match any of the LandscapeActor Layers. Please resave '{ProxyPackage}'."), Arguments)))
+				->AddToken(FMapErrorToken::Create(FMapErrors::LandscapeComponentPostLoad_Warning));
+
 			DeleteLayer(LayerGuid);
 			bModified = true;
 		}

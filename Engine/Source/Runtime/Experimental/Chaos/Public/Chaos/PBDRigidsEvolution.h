@@ -80,6 +80,7 @@ public:
 		, MBounds(MoveTemp(Other.MBounds))
 		, MPayloads(MoveTemp(Other.MPayloads))
 	{
+		ResizeHelper(Other.MSize);
 		Other.MSize = 0;
 
 		AddArray(&MHasBoundingBoxes);
@@ -97,6 +98,7 @@ public:
 			MHasBoundingBoxes = MoveTemp(Other.MHasBoundingBoxes);
 			MBounds = MoveTemp(Other.MBounds);
 			MPayloads = MoveTemp(Other.MPayloads);
+			ResizeHelper(Other.MSize);
 			Other.MSize = 0;
 #if PARTICLE_ITERATOR_RANGED_FOR_CHECK
 			MDirtyValidationCount = 0;
@@ -213,7 +215,7 @@ class TPBDRigidsEvolutionBase
 {
   public:
 	typedef TFunction<void(TTransientPBDRigidParticleHandle<T,d>& Particle, const T)> FForceRule;
-	typedef TFunction<void(const TParticleView<TPBDRigidParticles<T, d>>&, const T)> FUpdateVelocityRule;
+	typedef TFunction<void(const TArray<TGeometryParticleHandle<T, d>*>&, const T)> FUpdateVelocityRule;
 	typedef TFunction<void(const TParticleView<TPBDRigidParticles<T, d>>&, const T)> FUpdatePositionRule;
 	typedef TFunction<void(TPBDRigidParticles<T, d>&, const T, const T, const int32)> FKinematicUpdateRule;
 
@@ -309,7 +311,11 @@ class TPBDRigidsEvolutionBase
 		SpatialData.bUpdate = true;
 		SpatialData.UpdatedSpatialIdx = Particle.SpatialIdx();
 
-		AsyncAccelerationQueue.FindOrAdd(Particle.Handle()) = SpatialData;
+		auto& AsyncSpatialData = AsyncAccelerationQueue.FindOrAdd(Particle.Handle());
+		AsyncSpatialData.AccelerationHandle = TAccelerationStructureHandle<T, d>(Particle);
+		AsyncSpatialData.bUpdate = true;
+		AsyncSpatialData.UpdatedSpatialIdx = Particle.SpatialIdx();
+		//question: is it safe to reuse for external? Should probably avoid it
 		ExternalAccelerationQueue.FindOrAdd(Particle.Handle()) = SpatialData;
 	}
 
@@ -414,8 +420,11 @@ class TPBDRigidsEvolutionBase
 		}
 	}
 
-	void ApplyKinematicTargets(T Dt)
+	void ApplyKinematicTargets(const T Dt, const T StepFraction)
 	{
+		check(StepFraction > (T)0);
+		check(StepFraction <= (T)1);
+
 		// @todo(ccaulfield): optimize. Depending on the number of kinematics relative to the number that have 
 		// targets set, it may be faster to process a command list rather than iterate over them all each frame. 
 		const T MinDt = 1e-6f;
@@ -441,17 +450,29 @@ class TPBDRigidsEvolutionBase
 			{
 				// Move to kinematic target and update velocities to match
 				// Target positions only need to be processed once, and we reset the velocity next frame (if no new target is set)
+				TVector<T, d> TargetPos;
+				TRotation<T, d> TargetRot;
+				if (FMath::IsNearlyEqual(StepFraction, (T)1, KINDA_SMALL_NUMBER))
+				{
+					TargetPos = KinematicTarget.GetTarget().GetLocation();
+					TargetRot = KinematicTarget.GetTarget().GetRotation();
+					KinematicTarget.SetMode(EKinematicTargetMode::Zero);
+				}
+				else
+				{
+					TargetPos = TVector<T, d>::Lerp(Particle.X(), KinematicTarget.GetTarget().GetLocation(), StepFraction);
+					TargetRot = TRotation<T, d>::Slerp(Particle.R(), KinematicTarget.GetTarget().GetRotation(), StepFraction);
+				}
 				if (Dt > MinDt)
 				{
-					TVector<float, 3> V = TVector<float, 3>::CalculateVelocity(Particle.X(), KinematicTarget.GetTarget().GetLocation(), Dt);
+					TVector<float, 3> V = TVector<float, 3>::CalculateVelocity(Particle.X(), TargetPos, Dt);
 					Particle.V() = V;
 
-					TVector<float, 3> W = TRotation<float, 3>::CalculateAngularVelocity(Particle.R(), KinematicTarget.GetTarget().GetRotation(), Dt);
+					TVector<float, 3> W = TRotation<float, 3>::CalculateAngularVelocity(Particle.R(), TargetRot, Dt);
 					Particle.W() = W;
 				}
-				Particle.X() = KinematicTarget.GetTarget().GetTranslation();
-				Particle.R() = KinematicTarget.GetTarget().GetRotation();
-				KinematicTarget.SetMode(EKinematicTargetMode::Zero);
+				Particle.X() = TargetPos;
+				Particle.R() = TargetRot;
 				break;
 			}
 
@@ -472,6 +493,9 @@ class TPBDRigidsEvolutionBase
 
 	/** Perform a blocking flush of the spatial acceleration structure for situations where we aren't simulating but must have an up to date structure */
 	CHAOS_API void FlushSpatialAcceleration();
+
+	/** Rebuilds the spatial acceleration from scratch. This should only be used for perf testing */
+	CHAOS_API void RebuildSpatialAccelerationForPerfTest();
 
 	const auto& GetRigidClustering() const { return Clustering; }
 	auto& GetRigidClustering() { return Clustering; }
@@ -542,7 +566,7 @@ protected:
 	
 	void UpdateVelocities(const T Dt, int32 Island)
 	{
-		ParticleUpdateVelocity(Particles.GetActiveParticlesView(), Dt);
+		ParticleUpdateVelocity(ConstraintGraph.GetIslandParticles(Island), Dt);
 	}
 
 	void ApplyPushOut(const T Dt, int32 Island)
@@ -633,15 +657,15 @@ protected:
 	/** Used for async acceleration rebuild */
 	TMap<TGeometryParticleHandle<T, d>*, uint32> ParticleToCacheInnerIdx;
 
-	TMap<FSpatialAccelerationIdx, TSpatialAccelerationCache<T, d>> SpatialAccelerationCache;
+	TMap<FSpatialAccelerationIdx, TUniquePtr<TSpatialAccelerationCache<T, d>>> SpatialAccelerationCache;
 
-	FORCEINLINE_DEBUGGABLE void ApplyParticlePendingData(TGeometryParticleHandle<T, d>* Particle, const FPendingSpatialData& PendingData, FAccelerationStructure& SpatialAcceleration, bool bAsync);
+	FORCEINLINE_DEBUGGABLE void ApplyParticlePendingData(TGeometryParticleHandle<T, d>* Particle, const FPendingSpatialData& PendingData, FAccelerationStructure& SpatialAcceleration, bool bUpdateCache);
 
 	class FChaosAccelerationStructureTask
 	{
 	public:
 		FChaosAccelerationStructureTask(ISpatialAccelerationCollectionFactory<T,d>& InSpatialCollectionFactory
-			, const TMap<FSpatialAccelerationIdx, TSpatialAccelerationCache<T,d>>& InSpatialAccelerationCache
+			, const TMap<FSpatialAccelerationIdx, TUniquePtr<TSpatialAccelerationCache<T,d>>>& InSpatialAccelerationCache
 			, TUniquePtr<FAccelerationStructure>& InAccelerationStructure
 			, TUniquePtr<FAccelerationStructure>& InAccelerationStructureCopy);
 		static FORCEINLINE TStatId GetStatId();
@@ -650,7 +674,7 @@ protected:
 		void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent);
 
 		ISpatialAccelerationCollectionFactory<T, d>& SpatialCollectionFactory;
-		const TMap<FSpatialAccelerationIdx, TSpatialAccelerationCache<T, d>>& SpatialAccelerationCache;
+		const TMap<FSpatialAccelerationIdx, TUniquePtr<TSpatialAccelerationCache<T, d>>>& SpatialAccelerationCache;
 		TUniquePtr<FAccelerationStructure>& AccelerationStructure;
 		TUniquePtr<FAccelerationStructure>& AccelerationStructureCopy;
 	};

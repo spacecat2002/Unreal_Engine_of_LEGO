@@ -1967,9 +1967,16 @@ void UEngine::UpdateTimeAndHandleMaxTickRate()
 
 		// Did we just switch from a fixed time step to real-time?  If so, then we'll update our
 		// cached 'last time' so our current interval isn't huge (or negative!)
-		if( bTimeWasManipulated && !bUseFixedFrameRate )
+		if( bTimeWasManipulated )
 		{
-			LastRealTime = CurrentRealTime - FApp::GetDeltaTime();
+			if ( bUseFixedFrameRate )
+			{
+				LastRealTime = CurrentRealTime - (1.0/FixedFrameRate);
+			}
+			else
+			{
+				LastRealTime = CurrentRealTime - FApp::GetDeltaTime();
+			}
 			bTimeWasManipulated = false;
 		}
 
@@ -10334,9 +10341,17 @@ void DrawStatsHUD( UWorld* World, FViewport* Viewport, FCanvas* Canvas, UCanvas*
 		{
 			UWorld* ServerWorld = *It;
 			if (ServerWorld->WorldType == EWorldType::PIE && ServerWorld->GetNetMode() == NM_DedicatedServer)
-			{				
+			{
+				FString WorldDesc = TEXT("[Server]");
+
+				FWorldContext& WorldContext = GEngine->GetWorldContextFromWorldChecked(ServerWorld);
+				if (!WorldContext.CustomDescription.IsEmpty())
+				{
+					WorldDesc += TEXT("[") + WorldContext.CustomDescription + TEXT("]");
+				}
+
 				Y += 20;
-				Y += Canvas->DrawShadowedString( X, Y, TEXT("[Server]"), GEngine->GetSmallFont(), FLinearColor::Gray);
+				Y += Canvas->DrawShadowedString( X, Y, *WorldDesc, GEngine->GetSmallFont(), FLinearColor::Gray);
 				DrawDebugPropertiesForWorld(ServerWorld, X, Y);
 			}
 		}

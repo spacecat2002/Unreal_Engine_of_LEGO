@@ -22,6 +22,7 @@
 #include "UObject/PropertyPortFlags.h"
 #include "Components/SplineMeshComponent.h"
 #include "ChaosCheck.h"
+#include "Chaos/Convex.h"
 
 #include "PhysXCookHelper.h"
 
@@ -530,7 +531,7 @@ void UBodySetup::FinishCreatingPhysicsMeshes_PhysX(const TArray<PxConvexMesh*>& 
 {
 	ClearPhysicsMeshes();
 
-	FPhysxSharedData::Get().LockAccess();
+	FPhysxSharedData::LockAccess();
 
 	const FString FullName = GetFullName();
 	if (GetCollisionTraceFlag() != CTF_UseComplexAsSimple)
@@ -571,7 +572,7 @@ void UBodySetup::FinishCreatingPhysicsMeshes_PhysX(const TArray<PxConvexMesh*>& 
 		}
 	}
 
-	FPhysxSharedData::Get().UnlockAccess();
+	FPhysxSharedData::UnlockAccess();
 
 	// Clear the cooked data
 	if (!GIsEditor && !bSharedCookedData)
@@ -733,7 +734,7 @@ void UBodySetup::ClearPhysicsMeshes()
 {
 #if WITH_PHYSX && PHYSICS_INTERFACE_PHYSX
 
-	FPhysxSharedData::Get().LockAccess();
+	FPhysxSharedData::LockAccess();
 
 	for(int32 i=0; i<AggGeom.ConvexElems.Num(); i++)
 	{
@@ -763,7 +764,7 @@ void UBodySetup::ClearPhysicsMeshes()
 		TriMeshes[ElementIndex] = NULL;
 	}
 
-	FPhysxSharedData::Get().UnlockAccess();
+	FPhysxSharedData::UnlockAccess();
 
 	TriMeshes.Empty();
 
@@ -1667,12 +1668,12 @@ float FKConvexElem::GetVolume(const FVector& Scale) const
 }
 
 #if WITH_CHAOS
-const TUniquePtr<Chaos::TImplicitObject<float, 3>>& FKConvexElem::GetChaosConvexMesh() const
+const TUniquePtr<Chaos::TConvex<float, 3>>& FKConvexElem::GetChaosConvexMesh() const
 {
 	return ChaosConvex;
 }
 
-void FKConvexElem::SetChaosConvexMesh(TUniquePtr<Chaos::TImplicitObject<float, 3>>&& InChaosConvex)
+void FKConvexElem::SetChaosConvexMesh(TUniquePtr<Chaos::TConvex<float, 3>>&& InChaosConvex)
 {
 	ChaosConvex = MoveTemp(InChaosConvex);
 }

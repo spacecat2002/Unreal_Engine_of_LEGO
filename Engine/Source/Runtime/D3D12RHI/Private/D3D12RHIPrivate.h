@@ -1042,7 +1042,7 @@ private:
 	D3D12_RESOURCE_STATES Current;
 	const D3D12_RESOURCE_STATES Desired;
 	const uint32 Subresource;
-	const bool bUseTracking;
+	bool bRestoreDefaultState;
 
 public:
 	explicit FConditionalScopeResourceBarrier(FD3D12CommandListHandle& hInCommandList, FD3D12Resource* pInResource, const D3D12_RESOURCE_STATES InDesired, const uint32 InSubresource)
@@ -1051,12 +1051,18 @@ public:
 		, Current(D3D12_RESOURCE_STATE_TBD)
 		, Desired(InDesired)
 		, Subresource(InSubresource)
-		, bUseTracking(pResource->RequiresResourceStateTracking())
+		, bRestoreDefaultState(false)
 	{
-		if (!bUseTracking)
+		// when we don't use resource state tracking, transition the resource (only if necessary)
+		if (!pResource->RequiresResourceStateTracking())
 		{
 			Current = pResource->GetDefaultResourceState();
-			hCommandList.AddTransitionBarrier(pResource, Current, Desired, Subresource);
+			if (Current != Desired)
+			{
+				// we will add a transition, we need to transition back to the default state when the scoped object dies : 
+				bRestoreDefaultState = true;
+				hCommandList.AddTransitionBarrier(pResource, Current, Desired, Subresource);
+			}
 		}
 		else
 		{
@@ -1066,8 +1072,8 @@ public:
 
 	~FConditionalScopeResourceBarrier()
 	{
-		// Return the resource to it's default state if it doesn't use tracking
-		if (!bUseTracking)
+		// Return the resource to it's default state if necessary : 
+		if (bRestoreDefaultState)
 		{
 			hCommandList.AddTransitionBarrier(pResource, Desired, Current, Subresource);
 		}

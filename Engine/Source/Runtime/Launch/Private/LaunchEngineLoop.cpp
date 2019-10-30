@@ -926,7 +926,7 @@ void LaunchUpdateMostRecentProjectFile()
 }
 
 #if WITH_ENGINE
-void OnStartupContentMounted(FInstallBundleResultInfo Result, bool bDumpEarlyConfigReads, bool bDumpEarlyPakFileReads, bool bReloadConfig, bool bForceQuitAfterEarlyReads);
+void OnStartupContentMounted(FInstallBundleRequestResultInfo Result, bool bDumpEarlyConfigReads, bool bDumpEarlyPakFileReads, bool bReloadConfig, bool bForceQuitAfterEarlyReads);
 #endif
 void DumpEarlyReads(bool bDumpEarlyConfigReads, bool bDumpEarlyPakFileReads, bool bForceQuitAfterEarlyReads);
 void HandleConfigReload(bool bReloadConfig);
@@ -2246,7 +2246,8 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 
 	FEmbeddedCommunication::ForceTick(3);
 
-	FScopedSlowTask SlowTask(50, NSLOCTEXT("EngineLoop", "EngineLoop_Initializing_PreInitPreStartupScreen", "PreInitPreStartupScreen..."));
+	PreInitContext.SlowTaskPtr = new FScopedSlowTask(100, NSLOCTEXT("EngineLoop", "EngineLoop_Initializing", "Initializing..."));
+	FScopedSlowTask& SlowTask = *PreInitContext.SlowTaskPtr;
 
 	SlowTask.EnterProgressFrame(10);
 
@@ -2486,7 +2487,6 @@ int32 FEngineLoop::PreInitPostStartupScreen(const TCHAR* CmdLine)
 		return 0;
 	}
 
-	FScopedSlowTask SlowTask(50, NSLOCTEXT("EngineLoop", "EngineLoop_Initializing", "PreInitPostStartupScreen..."));
 	FScopeCycleCounter CycleCount_AfterStats(GET_STATID(STAT_FEngineLoop_PreInitPostStartupScreen_AfterStats));
 
 	// Restore PreInitContext
@@ -2505,6 +2505,7 @@ int32 FEngineLoop::PreInitPostStartupScreen(const TCHAR* CmdLine)
 	const TCHAR* CommandletCommandLine = PreInitContext.CommandletCommandLine;
 #endif // UE_EDITOR || WITH_ENGINE
 	TCHAR* CommandLineCopy = PreInitContext.CommandLineCopy;
+	FScopedSlowTask& SlowTask = *PreInitContext.SlowTaskPtr;
 
 #if WITH_ENGINE
 	{
@@ -3223,8 +3224,6 @@ int32 FEngineLoop::PreInitPostStartupScreen(const TCHAR* CmdLine)
 	}
 #endif // !UE_BUILD_SHIPPING
 
-	delete [] CommandLineCopy;
-
 	// initialize the pointer, as it is deleted before being assigned in the first frame
 	PendingCleanupObjects = nullptr;
 
@@ -3280,12 +3279,14 @@ int32 FEngineLoop::PreInit(const TCHAR* CmdLine)
 	const int32 rv1 = PreInitPreStartupScreen(CmdLine);
 	if (rv1 != 0)
 	{
+		PreInitContext.Cleanup();
 		return rv1;
 	}
 
 	const int32 rv2 = PreInitPostStartupScreen(CmdLine);
 	if (rv2 != 0)
 	{
+		PreInitContext.Cleanup();
 		return rv2;
 	}
 
@@ -3890,9 +3891,12 @@ void FEngineLoop::Exit()
 
 	// Stop the rendering thread.
 	StopRenderingThread();
-
+	
 	// Disable the PSO cache
 	FShaderPipelineCache::Shutdown();
+
+	// Close shader code map, if any
+	FShaderCodeLibrary::Shutdown();
 
 #if !PLATFORM_ANDROID || PLATFORM_LUMIN // UnloadModules doesn't work on Android
 #if WITH_ENGINE
@@ -3909,9 +3913,6 @@ void FEngineLoop::Exit()
 	// order they were loaded in, so that systems can unregister and perform general clean up.
 	FModuleManager::Get().UnloadModulesAtShutdown();
 #endif // !ANDROID
-
-	// Close shader code map, if any
-	FShaderCodeLibrary::Shutdown();
 
 	// Tear down the RHI.
 	RHIExitAndStopRHIThread();
@@ -3974,7 +3975,7 @@ void FEngineLoop::ProcessLocalPlayerSlateOperations() const
 }
 
 #if WITH_ENGINE
-void OnStartupContentMounted(FInstallBundleResultInfo Result, bool bDumpEarlyConfigReads, bool bDumpEarlyPakFileReads, bool bReloadConfig, bool bForceQuitAfterEarlyReads)
+void OnStartupContentMounted(FInstallBundleRequestResultInfo Result, bool bDumpEarlyConfigReads, bool bDumpEarlyPakFileReads, bool bReloadConfig, bool bForceQuitAfterEarlyReads)
 {
 	if (Result.bIsStartup && Result.Result == EInstallBundleResult::OK)
 	{
@@ -4228,8 +4229,8 @@ static inline void EndFrameRenderThread(FRHICommandListImmediate& RHICmdList)
 
 void FEngineLoop::Tick()
 {
-	// make sure to catch any FMemStack uses outside of UWorld::Tick
-	FMemMark MemStackMark(FMemStack::Get());
+    // make sure to catch any FMemStack uses outside of UWorld::Tick
+    FMemMark MemStackMark(FMemStack::Get());
 
 #if !UE_BUILD_SHIPPING && !UE_BUILD_TEST && MALLOC_GT_HOOKS
 	FScopedSampleMallocChurn ChurnTracker;
@@ -4238,8 +4239,6 @@ void FEngineLoop::Tick()
 	LLM(FLowLevelMemTracker::Get().UpdateStatsPerFrame());
 
 	LLM_SCOPE(ELLMTag::EngineMisc);
-
-	HandleRequestExitIfSetDuringTick();
 
 	// Send a heartbeat for the diagnostics thread
 	FThreadHeartBeat::Get().HeartBeat(true);
@@ -5494,6 +5493,20 @@ void FEngineLoop::PreInitHMDDevice()
 		// Note we do not disable or warn here if no HMD modules matched ExplicitHMDName, as not all HMD plugins have been loaded yet.
 	}
 #endif // #if WITH_ENGINE && !UE_SERVER
+}
+
+void FPreInitContext::Cleanup()
+{
+#if WITH_ENGINE && !UE_SERVER
+	SlateRenderer = nullptr;
+#endif // WITH_ENGINE && !UE_SERVER
+	CommandletCommandLine = nullptr;
+
+	delete[] CommandLineCopy;
+	CommandLineCopy = nullptr;
+
+	delete SlowTaskPtr;
+	SlowTaskPtr = nullptr;
 }
 
 #undef LOCTEXT_NAMESPACE

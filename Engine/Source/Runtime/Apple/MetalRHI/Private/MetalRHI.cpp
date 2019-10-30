@@ -770,6 +770,11 @@ FMetalDynamicRHI::FMetalDynamicRHI(ERHIFeatureLevel::Type RequestedFeatureLevel)
 	GPixelFormats[PF_ETC2_R11_EAC		].Supported			= false;
 	GPixelFormats[PF_ETC2_RG11_EAC		].Supported			= false;
 
+	GPixelFormats[PF_ETC2_R11_EAC	  	].PlatformFormat	= (uint32)mtlpp::PixelFormat::Invalid;
+	GPixelFormats[PF_ETC2_R11_EAC		].Supported			= false;
+	GPixelFormats[PF_ETC2_RG11_EAC		].PlatformFormat	= (uint32)mtlpp::PixelFormat::Invalid;
+	GPixelFormats[PF_ETC2_RG11_EAC		].Supported			= false;
+	
 #if METAL_DEBUG_OPTIONS
 	for (uint32 i = 0; i < PF_MAX; i++)
 	{

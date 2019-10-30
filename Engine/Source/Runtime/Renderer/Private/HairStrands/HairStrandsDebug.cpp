@@ -35,6 +35,18 @@ static FAutoConsoleVariableRef CVarDeepShadowStats(TEXT("r.HairStrands.DebugMode
 static int32 GHairStrandsDebugStrandsMode = 0;
 static FAutoConsoleVariableRef CVarDebugPhysicsStrand(TEXT("r.HairStrands.StrandsMode"), GHairStrandsDebugStrandsMode, TEXT("Render debug mode for hair strands. 0:off, 1:simulation strands, 2:render strands with colored simulation strands influence, 3:hair UV, 4:hair root UV, 5: hair seed, 6: dimensions"));
 
+static int32 GHairStrandsDebugPlotBsdf = 0;
+static FAutoConsoleVariableRef CVarHairStrandsDebugBSDF(TEXT("r.HairStrands.PlotBsdf"), GHairStrandsDebugPlotBsdf, TEXT("Debug view for visualizing hair BSDF."));
+
+static float GHairStrandsDebugPlotBsdfRoughness = 0.3f;
+static FAutoConsoleVariableRef CVarHairStrandsDebugBSDFRoughness(TEXT("r.HairStrands.PlotBsdf.Roughness"), GHairStrandsDebugPlotBsdfRoughness, TEXT("Change the roughness of the debug BSDF plot."));
+
+static float GHairStrandsDebugPlotBsdfBaseColor = 1;
+static FAutoConsoleVariableRef CVarHairStrandsDebugBSDFAbsorption(TEXT("r.HairStrands.PlotBsdf.BaseColor"), GHairStrandsDebugPlotBsdfBaseColor, TEXT("Change the base color / absorption of the debug BSDF plot."));
+
+static float GHairStrandsDebugPlotBsdfExposure = 1.1f;
+static FAutoConsoleVariableRef CVarHairStrandsDebugBSDFExposure(TEXT("r.HairStrands.PlotBsdf.Exposure"), GHairStrandsDebugPlotBsdfExposure, TEXT("Change the exposure of the plot."));
+
 static int32 GHairDebugMeshProjection_SkinCacheMesh = 0;
 
 static int32 GHairDebugMeshProjection_Sim_HairRestTriangles = 0;
@@ -131,14 +143,17 @@ EHairStrandsDebugMode GetHairStrandsDebugStrandsMode()
 {
 	switch (GHairStrandsDebugStrandsMode)
 	{
-	case 0:  return EHairStrandsDebugMode::None;
-	case 1:  return EHairStrandsDebugMode::SimHairStrands;
-	case 2:  return EHairStrandsDebugMode::RenderHairStrands;
-	case 3:  return EHairStrandsDebugMode::RenderHairRootUV;
-	case 4:  return EHairStrandsDebugMode::RenderHairUV;
-	case 5:  return EHairStrandsDebugMode::RenderHairSeed;
-	case 6:  return EHairStrandsDebugMode::RenderHairDimension;
-	case 7:  return EHairStrandsDebugMode::RenderHairRadiusVariation;
+	case  0:  return EHairStrandsDebugMode::None;
+	case  1:  return EHairStrandsDebugMode::SimHairStrands;
+	case  2:  return EHairStrandsDebugMode::RenderHairStrands;
+	case  3:  return EHairStrandsDebugMode::RenderHairRootUV;
+	case  4:  return EHairStrandsDebugMode::RenderHairRootUDIM;
+	case  5:  return EHairStrandsDebugMode::RenderHairUV;
+	case  6:  return EHairStrandsDebugMode::RenderHairSeed;
+	case  7:  return EHairStrandsDebugMode::RenderHairDimension;
+	case  8:  return EHairStrandsDebugMode::RenderHairRadiusVariation;
+	case  9:  return EHairStrandsDebugMode::RenderHairBaseColor;
+	case 10:  return EHairStrandsDebugMode::RenderHairRoughness;
 	default: return EHairStrandsDebugMode::None;
 	};
 }
@@ -151,10 +166,13 @@ static const TCHAR* ToString(EHairStrandsDebugMode DebugMode)
 	case EHairStrandsDebugMode::SimHairStrands				: return TEXT("Simulation strands");
 	case EHairStrandsDebugMode::RenderHairStrands			: return TEXT("Rendering strands influences");
 	case EHairStrandsDebugMode::RenderHairRootUV			: return TEXT("Roots UV");
+	case EHairStrandsDebugMode::RenderHairRootUDIM			: return TEXT("Roots UV UDIM texture index");
 	case EHairStrandsDebugMode::RenderHairUV				: return TEXT("Hair UV");
 	case EHairStrandsDebugMode::RenderHairSeed				: return TEXT("Hair seed");
 	case EHairStrandsDebugMode::RenderHairDimension			: return TEXT("Hair dimensions");
 	case EHairStrandsDebugMode::RenderHairRadiusVariation	: return TEXT("Hair radius variation");
+	case EHairStrandsDebugMode::RenderHairBaseColor			: return TEXT("Hair vertices color");
+	case EHairStrandsDebugMode::RenderHairRoughness			: return TEXT("Hair vertices roughness");
 	default													: return TEXT("None");
 	};
 }
@@ -582,6 +600,95 @@ static void AddVoxelRaymarchingPass(
 }
 	
 ///////////////////////////////////////////////////////////////////////////////////////////////////
+class FHairStrandsBSDFPlotPS : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FHairStrandsBSDFPlotPS);
+	SHADER_USE_PARAMETER_STRUCT(FHairStrandsBSDFPlotPS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, InputCoord)
+		SHADER_PARAMETER(FIntPoint, OutputOffset)
+		SHADER_PARAMETER(FIntPoint, OutputResolution)
+		SHADER_PARAMETER(FIntPoint, MaxResolution)
+		SHADER_PARAMETER(uint32, HairComponents)
+		SHADER_PARAMETER(float, Roughness)
+		SHADER_PARAMETER(float, BaseColor)
+		SHADER_PARAMETER(float, Exposure)
+		RENDER_TARGET_BINDING_SLOTS()
+	END_SHADER_PARAMETER_STRUCT()
+
+public:
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters) { return IsHairStrandsSupported(Parameters.Platform); }
+};
+
+IMPLEMENT_GLOBAL_SHADER(FHairStrandsBSDFPlotPS, "/Engine/Private/HairStrands/HairStrandsBsdfPlot.usf", "MainPS", SF_Pixel);
+
+static void AddPlotBSDFPass(
+	FRDGBuilder& GraphBuilder,
+	const FViewInfo& View,
+	FRDGTextureRef& OutputTexture)
+{
+	
+	FSceneTextureParameters SceneTextures;
+	SetupSceneTextureParameters(GraphBuilder, &SceneTextures);
+
+	const FIntPoint Resolution(OutputTexture->Desc.Extent);
+	FHairStrandsBSDFPlotPS::FParameters* Parameters = GraphBuilder.AllocParameters<FHairStrandsBSDFPlotPS::FParameters>();
+	Parameters->InputCoord = View.CursorPos;
+	Parameters->OutputOffset = FIntPoint(100,100);
+	Parameters->OutputResolution = FIntPoint(256, 256);
+	Parameters->MaxResolution = OutputTexture->Desc.Extent;
+	Parameters->HairComponents = ToBitfield(GetHairComponents());
+	Parameters->Roughness = GHairStrandsDebugPlotBsdfRoughness;
+	Parameters->BaseColor = GHairStrandsDebugPlotBsdfBaseColor;
+	Parameters->Exposure = GHairStrandsDebugPlotBsdfExposure;
+	Parameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, ERenderTargetLoadAction::ELoad);
+
+	const FIntPoint OutputResolution = SceneTextures.SceneDepthBuffer->Desc.Extent;
+	TShaderMapRef<FPostProcessVS> VertexShader(View.ShaderMap);
+	TShaderMapRef<FHairStrandsBSDFPlotPS> PixelShader(View.ShaderMap);
+	const TShaderMap<FGlobalShaderType>* GlobalShaderMap = View.ShaderMap;
+	const FIntRect Viewport = View.ViewRect;
+	const FViewInfo* CapturedView = &View;
+
+	ClearUnusedGraphResources(*PixelShader, Parameters);
+
+	GraphBuilder.AddPass(
+		RDG_EVENT_NAME("HairStrandsBsdfPlot"),
+		Parameters,
+		ERDGPassFlags::Raster,
+		[Parameters, VertexShader, PixelShader, Viewport, Resolution, CapturedView](FRHICommandList& RHICmdList)
+	{
+		FGraphicsPipelineStateInitializer GraphicsPSOInit;
+		RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+		GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_Zero, BO_Add, BF_One, BF_Zero>::GetRHI();
+		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
+		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+
+		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
+		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
+		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+
+		VertexShader->SetParameters(RHICmdList, CapturedView->ViewUniformBuffer);
+		RHICmdList.SetViewport(Viewport.Min.X, Viewport.Min.Y, 0.0f, Viewport.Max.X, Viewport.Max.Y, 1.0f);
+		SetShaderParameters(RHICmdList, *PixelShader, PixelShader->GetPixelShader(), *Parameters);
+
+		DrawRectangle(
+			RHICmdList,
+			0, 0,
+			Viewport.Width(), Viewport.Height(),
+			Viewport.Min.X, Viewport.Min.Y,
+			Viewport.Width(), Viewport.Height(),
+			Viewport.Size(),
+			Resolution,
+			*VertexShader,
+			EDRF_UseTriangleOptimization);
+	});
+}
+	
+///////////////////////////////////////////////////////////////////////////////////////////////////
 BEGIN_SHADER_PARAMETER_STRUCT(FHairProjectionMeshDebugParameters, )
 	SHADER_PARAMETER(FMatrix, LocalToWorld)
 	SHADER_PARAMETER(uint32, VertexOffset)
@@ -925,6 +1032,14 @@ void RenderHairStrandsDebugInfo(FRHICommandListImmediate& RHICmdList, TArray<FVi
 	const EHairStrandsDebugMode StrandsDebugMode = GetHairStrandsDebugStrandsMode();
 	const EHairDebugMode HairDebugMode = GetHairDebugMode();
 
+	if (GHairStrandsDebugPlotBsdf > 0)
+	{
+		FRDGBuilder GraphBuilder(RHICmdList);
+		FRDGTextureRef SceneColorTexture = GraphBuilder.RegisterExternalTexture(SceneTargets.GetSceneColor(), TEXT("SceneColorTexture"));
+		AddPlotBSDFPass(GraphBuilder, View, SceneColorTexture);
+		GraphBuilder.Execute();		
+	}
+
 	float ClusterY = 38;
 	if (HairDebugMode == EHairDebugMode::ClusterData)
 	{
@@ -1247,14 +1362,8 @@ void RenderHairStrandsDebugInfo(FRHICommandListImmediate& RHICmdList, TArray<FVi
 		FLinearColor DebugColor(1, 1, 0);
 		FString Line;
 
-		const FVector4 HairComponent = GetHairComponents();
-		const uint32 bHairR = HairComponent.X > 0 ? 1 : 0;
-		const uint32 bHairTT = HairComponent.Y > 0 ? 1 : 0;
-		const uint32 bHairTRT = HairComponent.Z > 0 ? 1 : 0;
-		const uint32 bHairGlobalScattering = FMath::FloorToInt(HairComponent.W / 10.0f) > 0 ? 1 : 0;
-		const uint32 bHairLocalScattering  = FMath::Frac(HairComponent.W / 10.0f)*10.f > 0 ? 1 : 0;
-
-		Line = FString::Printf(TEXT("Hair Components : (R=%d, TT=%d, TRT=%d, GS=%d, LS=%d)"), bHairR, bHairTT, bHairTRT, bHairGlobalScattering, bHairLocalScattering);
+		const FHairComponent HairComponent = GetHairComponents();
+		Line = FString::Printf(TEXT("Hair Components : (R=%d, TT=%d, TRT=%d, GS=%d, LS=%d)"), HairComponent.R, HairComponent.TT, HairComponent.TRT, HairComponent.GlobalScattering, HairComponent.LocalScattering);
 		Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), DebugColor);
 		Line = FString::Printf(TEXT("----------------------------------------------------------------"));				Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), DebugColor);
 		Line = FString::Printf(TEXT("Debug strands mode : %s"), ToString(StrandsDebugMode));							Canvas.DrawShadowedString(X, Y += YStep, *Line, GetStatsFont(), DebugColor);
