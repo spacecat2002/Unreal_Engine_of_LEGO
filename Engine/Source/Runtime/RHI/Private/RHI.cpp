@@ -706,9 +706,7 @@ FName ShaderPlatformToPlatformName(EShaderPlatform Platform)
 	switch (Platform)
 	{
 	case SP_PCD3D_SM5:
-	case SP_OPENGL_PCES2:
 	case SP_OPENGL_SM5:
-	case SP_PCD3D_ES2:
 	case SP_PCD3D_ES3_1:
 	case SP_OPENGL_PCES3_1:
 	case SP_VULKAN_PCES3_1:
@@ -731,7 +729,6 @@ FName ShaderPlatformToPlatformName(EShaderPlatform Platform)
 	case SP_METAL_SM5:
 	case SP_METAL_SM5_NOTESS:
 	case SP_METAL_MACES3_1:
-	case SP_METAL_MACES2:
 	case SP_METAL_MRT_MAC:
 		return NAME_PLATFORM_MAC;
 	case SP_SWITCH:
@@ -1117,9 +1114,7 @@ FString LexToString(EShaderPlatform Platform)
 	{
 	case SP_PCD3D_SM5: return TEXT("PCD3D_SM5");
 	case SP_PCD3D_ES3_1: return TEXT("PCD3D_ES3_1");
-	case SP_PCD3D_ES2: return TEXT("PCD3D_ES2");
 	case SP_OPENGL_SM5: return TEXT("OPENGL_SM5");
-	case SP_OPENGL_PCES2: return TEXT("OPENGL_PCES2");
 	case SP_OPENGL_PCES3_1: return TEXT("OPENGL_PCES3_1");
 	case SP_OPENGL_ES2_ANDROID: return TEXT("OPENGL_ES2_ANDROID");
 	case SP_OPENGL_ES2_WEBGL: return TEXT("OPENGL_ES2_WEBGL");
@@ -1137,7 +1132,6 @@ FString LexToString(EShaderPlatform Platform)
 	case SP_METAL_SM5: return TEXT("METAL_SM5");
 	case SP_METAL_SM5_NOTESS: return TEXT("METAL_SM5_NOTESS");
 	case SP_METAL_MACES3_1: return TEXT("METAL_MACES3_1");
-	case SP_METAL_MACES2: return TEXT("METAL_MACES2");
 	case SP_VULKAN_ES3_1_ANDROID: return TEXT("VULKAN_ES3_1_ANDROID");
 	case SP_VULKAN_ES3_1_LUMIN: return TEXT("VULKAN_ES3_1_LUMIN");
 	case SP_VULKAN_PCES3_1: return TEXT("VULKAN_PCES3_1");
@@ -1148,6 +1142,9 @@ FString LexToString(EShaderPlatform Platform)
 	case SP_VULKAN_SM4_REMOVED:
 	case SP_PCD3D_SM4_REMOVED:
 	case SP_OPENGL_SM4_REMOVED:
+	case SP_PCD3D_ES2_DEPRECATED:
+	case SP_OPENGL_PCES2_DEPRECATED:
+	case SP_METAL_MACES2_DEPRECATED:
 		return TEXT("");
 
 	default:

@@ -711,7 +711,7 @@ inline void RHICreateTargetableShaderResourceCube(
 	check(TargetableTextureFlags & (TexCreate_RenderTargetable | TexCreate_DepthStencilTargetable));
 
 	// ES2 doesn't support resolve operations.
-	bForceSeparateTargetAndShaderResource &= (GMaxRHIFeatureLevel > ERHIFeatureLevel::ES2);
+	bForceSeparateTargetAndShaderResource &= (GMaxRHIFeatureLevel >= ERHIFeatureLevel::ES3_1);
 
 	if(!bForceSeparateTargetAndShaderResource/* && GSupportsRenderDepthTargetableShaderResources*/)
 	{

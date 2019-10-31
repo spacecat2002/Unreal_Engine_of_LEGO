@@ -445,13 +445,9 @@ FDynamicRHI* FD3D12DynamicRHIModule::CreateRHI(ERHIFeatureLevel::Type RequestedF
 	{
 		check(PreviewFeatureLevel == ERHIFeatureLevel::ES2 || PreviewFeatureLevel == ERHIFeatureLevel::ES3_1);
 
-		// ES2/3.1 feature level emulation in D3D
+		// ES3.1 feature level emulation in D3D
 		GMaxRHIFeatureLevel = PreviewFeatureLevel;
-		if (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES2)
-		{
-			GMaxRHIShaderPlatform = SP_PCD3D_ES2;
-		}
-		else if (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES3_1)
+		if (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES3_1)
 		{
 			GMaxRHIShaderPlatform = SP_PCD3D_ES3_1;
 		}
@@ -681,7 +677,7 @@ void FD3D12DynamicRHI::Init()
 		UE_LOG(LogD3D12RHI, Log, TEXT("RHI does not have support for 64 bit atomics"));
 	}
 
-	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::ES2] = SP_PCD3D_ES2;
+	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::ES2] = SP_NumPlatforms;
 	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::ES3_1] = SP_PCD3D_ES3_1;
 	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::SM4_REMOVED] = SP_NumPlatforms;
 	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::SM5] = SP_PCD3D_SM5;

@@ -1763,7 +1763,7 @@ void FD3D11DynamicRHI::InitD3DDevice()
 		GRHISupportsAsyncTextureCreation = !!ThreadingSupport.DriverConcurrentCreates
 			&& (DeviceFlags & D3D11_CREATE_DEVICE_SINGLETHREADED) == 0;
 
-		GShaderPlatformForFeatureLevel[ERHIFeatureLevel::ES2] = SP_PCD3D_ES2;
+		GShaderPlatformForFeatureLevel[ERHIFeatureLevel::ES2] = SP_NumPlatforms;
 		GShaderPlatformForFeatureLevel[ERHIFeatureLevel::ES3_1] = SP_PCD3D_ES3_1;
 		GShaderPlatformForFeatureLevel[ERHIFeatureLevel::SM4_REMOVED] = SP_NumPlatforms;
 		GShaderPlatformForFeatureLevel[ERHIFeatureLevel::SM5] = SP_PCD3D_SM5;

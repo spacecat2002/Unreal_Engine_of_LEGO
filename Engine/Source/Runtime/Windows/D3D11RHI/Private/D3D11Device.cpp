@@ -77,7 +77,8 @@ FD3D11DynamicRHI::FD3D11DynamicRHI(IDXGIFactory1* InDXGIFactory1,D3D_FEATURE_LEV
 	bUsingTessellation(false),
 	GPUProfilingData(this),
 	ChosenAdapter(InChosenAdapter),
-	ChosenDescription(InChosenDescription)
+	ChosenDescription(InChosenDescription),
+	bAllowVendorDevice(!FParse::Param(FCommandLine::Get(), TEXT("novendordevice")))
 {
 	// This should be called once at the start 
 	check(ChosenAdapter >= 0);
@@ -112,13 +113,9 @@ FD3D11DynamicRHI::FD3D11DynamicRHI(IDXGIFactory1* InDXGIFactory1,D3D_FEATURE_LEV
 	ERHIFeatureLevel::Type PreviewFeatureLevel;
 	if (RHIGetPreviewFeatureLevel(PreviewFeatureLevel))
 	{
-		// ES2/3.1 feature level emulation in D3D11
+		// ES3.1 feature level emulation in D3D11
 		GMaxRHIFeatureLevel = PreviewFeatureLevel;
-		if (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES2)
-		{
-			GMaxRHIShaderPlatform = SP_PCD3D_ES2;
-		}
-		else if (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES3_1)
+		if (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES3_1)
 		{
 			GMaxRHIShaderPlatform = SP_PCD3D_ES3_1;
 		}
@@ -523,6 +520,8 @@ void FD3D11DynamicRHI::CleanupD3DDevice()
 		// Clean up the AMD extensions and shut down the AMD AGS utility library
 		if (AmdAgsContext != NULL)
 		{
+			check(bAllowVendorDevice);
+
 			// AGS is holding an extra reference to the immediate context. Release it before calling DestroyDevice.
 			Direct3DDeviceIMContext->Release();
 			agsDriverExtensionsDX11_DestroyDevice(AmdAgsContext, Direct3DDevice, NULL);
@@ -533,14 +532,14 @@ void FD3D11DynamicRHI::CleanupD3DDevice()
 #endif //AMD_AGS_API
 
 #if INTEL_EXTENSIONS
-		if (IsRHIDeviceIntel())
+		if (IsRHIDeviceIntel() && bAllowVendorDevice)
 		{
 			StopIntelExtensions();
 		}
 #endif // INTEL_EXTENSIONS
 
 #if INTEL_METRICSDISCOVERY
-		if (GDX11IntelMetricsDiscoveryEnabled)
+		if (GDX11IntelMetricsDiscoveryEnabled && bAllowVendorDevice)
 		{
 			StopIntelMetricsDiscovery();
 		}

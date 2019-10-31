@@ -4522,7 +4522,7 @@ void RecompileShadersForRemote(
 			{
 				// These platforms are deprecated and we should warn about their use
 				if (ShaderPlatform == SP_OPENGL_SM5 ||
-					ShaderPlatform == SP_PCD3D_ES2 || ShaderPlatform == SP_METAL_MACES2 || ShaderPlatform == SP_OPENGL_PCES2 ||
+					ShaderPlatform == SP_PCD3D_ES2_DEPRECATED || ShaderPlatform == SP_METAL_MACES2_DEPRECATED || ShaderPlatform == SP_OPENGL_PCES2_DEPRECATED ||
 					ShaderPlatform == SP_OPENGL_ES2_ANDROID || ShaderPlatform == SP_OPENGL_ES2_WEBGL)
 				{
 					UE_LOG(LogShaderCompilers, Warning, TEXT("You are compiling shaders for a deprecated platform '%s'"), *LegacyShaderPlatformToShaderFormat(ShaderPlatform).ToString());

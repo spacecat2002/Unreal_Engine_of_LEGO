@@ -289,13 +289,9 @@ FMetalDynamicRHI::FMetalDynamicRHI(ERHIFeatureLevel::Type RequestedFeatureLevel)
 	{
 		check(PreviewFeatureLevel == ERHIFeatureLevel::ES2 || PreviewFeatureLevel == ERHIFeatureLevel::ES3_1);
 
-		// ES2/3.1 feature level emulation
+		// ES3.1 feature level emulation
 		GMaxRHIFeatureLevel = PreviewFeatureLevel;
-		if (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES2)
-		{
-			GMaxRHIShaderPlatform = SP_METAL_MACES2;
-		}
-		else if (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES3_1)
+		if (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES3_1)
 		{
 			GMaxRHIShaderPlatform = SP_METAL_MACES3_1;
 		}
@@ -303,7 +299,7 @@ FMetalDynamicRHI::FMetalDynamicRHI(ERHIFeatureLevel::Type RequestedFeatureLevel)
 
 	ValidateTargetedRHIFeatureLevelExists(GMaxRHIShaderPlatform);
 	
-	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::ES2] = SP_METAL_MACES2;
+	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::ES2] = SP_NumPlatforms;
 	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::ES3_1] = (GMaxRHIFeatureLevel >= ERHIFeatureLevel::ES3_1) ? SP_METAL_MACES3_1 : SP_NumPlatforms;
 	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::SM4_REMOVED] = SP_NumPlatforms;
 	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::SM5] = (GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5) ? GMaxRHIShaderPlatform : SP_NumPlatforms;
