@@ -53,7 +53,8 @@ static bool SkipStaticSkyLightCapture(USkyLightComponent& SkyLight)
 	// and Lightmass will capture the scene in any case independently using CaptureEmissiveRadianceEnvironmentCubeMap.
 	// This is also fine in editor because a static sky light will not contribute to any lighting when drag and drop in a level and captured. 
 	// In this case only a "lighting build" will result in usable lighting on any objects.
-	return SkyLight.HasStaticLighting();
+	// One exception however is when ray tracing is enabled as light mobility is not relevant to ray tracing effects, many still requiring information from the sky light even if it is static.
+	return SkyLight.HasStaticLighting() && !IsRayTracingEnabled();
 }
 
 FAutoConsoleCommandWithWorld CaptureConsoleCommand(
