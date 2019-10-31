@@ -1144,6 +1144,12 @@ FString LexToString(EShaderPlatform Platform)
 	case SP_VULKAN_SM5: return TEXT("VULKAN_SM5");
 	case SP_VULKAN_SM5_LUMIN: return TEXT("VULKAN_SM5_LUMIN");
 
+	case SP_OPENGL_ES2_IOS_REMOVED:
+	case SP_VULKAN_SM4_REMOVED:
+	case SP_PCD3D_SM4_REMOVED:
+	case SP_OPENGL_SM4_REMOVED:
+		return TEXT("");
+
 	default:
 		if (Platform >= SP_StaticPlatform_First && Platform <= SP_StaticPlatform_Last)
 		{
