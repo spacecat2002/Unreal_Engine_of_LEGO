@@ -787,11 +787,11 @@ struct FOpenGL3 : public FOpenGLBase
 		switch(GetMajorVersion())
 		{
 		case 3:
-			return SP_OPENGL_SM4;
+			return SP_OPENGL_SM4_REMOVED;
 		case 4:
-			return GetMinorVersion() > 2 ? SP_OPENGL_SM5 : SP_OPENGL_SM4;
+			return GetMinorVersion() > 2 ? SP_OPENGL_SM5 : SP_OPENGL_SM4_REMOVED;
 		default:
-			return SP_OPENGL_SM4;
+			return SP_OPENGL_SM4_REMOVED;
 		}
 	}
 

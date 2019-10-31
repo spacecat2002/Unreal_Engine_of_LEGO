@@ -706,7 +706,6 @@ FName ShaderPlatformToPlatformName(EShaderPlatform Platform)
 	switch (Platform)
 	{
 	case SP_PCD3D_SM5:
-	case SP_OPENGL_SM4:
 	case SP_OPENGL_PCES2:
 	case SP_OPENGL_SM5:
 	case SP_PCD3D_ES2:
@@ -1119,7 +1118,6 @@ FString LexToString(EShaderPlatform Platform)
 	case SP_PCD3D_SM5: return TEXT("PCD3D_SM5");
 	case SP_PCD3D_ES3_1: return TEXT("PCD3D_ES3_1");
 	case SP_PCD3D_ES2: return TEXT("PCD3D_ES2");
-	case SP_OPENGL_SM4: return TEXT("OPENGL_SM4");
 	case SP_OPENGL_SM5: return TEXT("OPENGL_SM5");
 	case SP_OPENGL_PCES2: return TEXT("OPENGL_PCES2");
 	case SP_OPENGL_PCES3_1: return TEXT("OPENGL_PCES3_1");
@@ -1145,11 +1143,6 @@ FString LexToString(EShaderPlatform Platform)
 	case SP_VULKAN_PCES3_1: return TEXT("VULKAN_PCES3_1");
 	case SP_VULKAN_SM5: return TEXT("VULKAN_SM5");
 	case SP_VULKAN_SM5_LUMIN: return TEXT("VULKAN_SM5_LUMIN");
-
-	case SP_OPENGL_ES2_IOS_DEPRECATED:
-	case SP_VULKAN_SM4_DEPRECATED:
-	case SP_PCD3D_SM4_DEPRECATED:
-		return TEXT("");
 
 	default:
 		if (Platform >= SP_StaticPlatform_First && Platform <= SP_StaticPlatform_Last)

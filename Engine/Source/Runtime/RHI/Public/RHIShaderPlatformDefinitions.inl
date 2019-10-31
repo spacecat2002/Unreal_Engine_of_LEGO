@@ -30,13 +30,6 @@ static const FText& GetFriendlyShaderPlatformName(const EShaderPlatform InShader
 	}
 	break;
 
-	case SP_OPENGL_SM4:
-	{
-		static const FText Description = NSLOCTEXT("FriendlyShaderPlatformNames", "Generic_SM4_loc", "SM4");
-		return Description;
-	}
-	break;
-
 	case SP_PS4:
 	{
 		static const FText Description = NSLOCTEXT("FriendlyShaderPlatformNames", "Playstation_4_loc", "PlayStation 4");

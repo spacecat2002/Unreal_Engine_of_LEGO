@@ -12,7 +12,6 @@ static FName NAME_PCD3D_SM5(TEXT("PCD3D_SM5"));
 static FName NAME_PCD3D_ES3_1(TEXT("PCD3D_ES31"));
 static FName NAME_PCD3D_ES2(TEXT("PCD3D_ES2"));
 
-static FName NAME_GLSL_150(TEXT("GLSL_150"));
 static FName NAME_GLSL_430(TEXT("GLSL_430"));
 static FName NAME_GLSL_150_ES2(TEXT("GLSL_150_ES2"));
 static FName NAME_GLSL_150_ES2_NOUB(TEXT("GLSL_150_ES2_NOUB"));
@@ -62,8 +61,6 @@ static FName ShaderPlatformToShaderFormatName(EShaderPlatform Platform)
 	case SP_PCD3D_ES2:
 		return NAME_PCD3D_ES2;
 
-	case SP_OPENGL_SM4:
-		return NAME_GLSL_150;
 	case SP_OPENGL_SM5:
 		return NAME_GLSL_430;
 	case SP_OPENGL_PCES2:
@@ -157,7 +154,6 @@ static EShaderPlatform ShaderFormatNameToShaderPlatform(FName ShaderFormat)
 	if (ShaderFormat == NAME_PCD3D_ES3_1)				return SP_PCD3D_ES3_1;
 	if (ShaderFormat == NAME_PCD3D_ES2)					return SP_PCD3D_ES2;
 
-	if (ShaderFormat == NAME_GLSL_150)					return SP_OPENGL_SM4;
 	if (ShaderFormat == NAME_GLSL_430)					return SP_OPENGL_SM5;
 	if (ShaderFormat == NAME_GLSL_150_ES2)				return SP_OPENGL_PCES2;
 	if (ShaderFormat == NAME_GLSL_150_ES2_NOUB)			return SP_OPENGL_PCES2;
