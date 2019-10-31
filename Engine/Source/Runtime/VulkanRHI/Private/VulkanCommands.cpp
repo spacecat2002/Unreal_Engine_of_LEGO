@@ -53,11 +53,11 @@ static FORCEINLINE ShaderStage::EStage GetAndVerifyShaderStage(FRHIGraphicsShade
 	switch (ShaderRHI->GetType())
 	{
 	case FRHIShader::EType::Vertex:
-		//check(PendingGfxState->GetCurrentShaderKey(ShaderStage::Vertex) == GetShaderKey<FVulkanVertexShader>(ShaderRHI));
+		check(PendingGfxState->GetCurrentShaderKey(ShaderStage::Vertex) == GetShaderKey<FVulkanVertexShader>(ShaderRHI));
 		return ShaderStage::Vertex;
 	case FRHIShader::EType::Hull:
 #if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
-		//check(PendingGfxState->GetCurrentShaderKey(ShaderStage::Hull) == GetShaderKey<FVulkanHullShader>(ShaderRHI));
+		check(PendingGfxState->GetCurrentShaderKey(ShaderStage::Hull) == GetShaderKey<FVulkanHullShader>(ShaderRHI));
 		return ShaderStage::Hull;
 #else
 		checkf(0, TEXT("Tessellation (Hull) not supported on this platform!"));
@@ -66,7 +66,7 @@ static FORCEINLINE ShaderStage::EStage GetAndVerifyShaderStage(FRHIGraphicsShade
 #endif
 	case FRHIShader::EType::Domain:
 #if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
-		//check(PendingGfxState->GetCurrentShaderKey(ShaderStage::Domain) == GetShaderKey<FVulkanDomainShader>(ShaderRHI));
+		check(PendingGfxState->GetCurrentShaderKey(ShaderStage::Domain) == GetShaderKey<FVulkanDomainShader>(ShaderRHI));
 		return ShaderStage::Domain;
 #else
 		checkf(0, TEXT("Tessellation (Domain) not supported on this platform!"));
@@ -75,7 +75,7 @@ static FORCEINLINE ShaderStage::EStage GetAndVerifyShaderStage(FRHIGraphicsShade
 #endif
 	case FRHIShader::EType::Geometry:
 #if VULKAN_SUPPORTS_GEOMETRY_SHADERS
-		//check(PendingGfxState->GetCurrentShaderKey(ShaderStage::Geometry) == GetShaderKey<FVulkanGeometryShader>(ShaderRHI));
+		check(PendingGfxState->GetCurrentShaderKey(ShaderStage::Geometry) == GetShaderKey<FVulkanGeometryShader>(ShaderRHI));
 		return ShaderStage::Geometry;
 #else
 		checkf(0, TEXT("Geometry shaders not supported on this platform!"));
@@ -83,7 +83,7 @@ static FORCEINLINE ShaderStage::EStage GetAndVerifyShaderStage(FRHIGraphicsShade
 		break;
 #endif
 	case FRHIShader::EType::Pixel:
-		//check(PendingGfxState->GetCurrentShaderKey(ShaderStage::Pixel) == GetShaderKey<FVulkanPixelShader>(ShaderRHI));
+		check(PendingGfxState->GetCurrentShaderKey(ShaderStage::Pixel) == GetShaderKey<FVulkanPixelShader>(ShaderRHI));
 		return ShaderStage::Pixel;
 	default:
 		checkf(0, TEXT("Undefined FRHIShader Type %d!"), (int32)ShaderRHI->GetType());
