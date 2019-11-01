@@ -938,7 +938,7 @@ void FD3D12CommandContext::RHISetRenderTargets(
 	const FRHIDepthRenderTargetView* NewDepthStencilTargetRHI
 	)
 {
-	FD3D12TextureBase* NewDepthStencilTarget = RetrieveTextureBase(NewDepthStencilTargetRHI ? NewDepthStencilTargetRHI->Texture : nullptr);
+	FD3D12TextureBase* NewDepthStencilTarget = NewDepthStencilTargetRHI ? RetrieveTextureBase(NewDepthStencilTargetRHI->Texture) : nullptr;
 
 	check(NewNumSimultaneousRenderTargets <= MaxSimultaneousRenderTargets);
 
@@ -948,6 +948,7 @@ void FD3D12CommandContext::RHISetRenderTargets(
 	FD3D12DepthStencilView* DepthStencilView = NULL;
 	if (NewDepthStencilTarget)
 	{
+		check(NewDepthStencilTargetRHI);	// Calm down static analysis
 		CurrentDSVAccessType = NewDepthStencilTargetRHI->GetDepthStencilAccess();
 		DepthStencilView = NewDepthStencilTarget->GetDepthStencilView(CurrentDSVAccessType);
 
