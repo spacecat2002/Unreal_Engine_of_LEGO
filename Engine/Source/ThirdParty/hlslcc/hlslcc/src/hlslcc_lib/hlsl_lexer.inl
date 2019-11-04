@@ -1711,7 +1711,7 @@ return INT_TOK;
 case 26:
 YY_RULE_SETUP
 #line 234 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(130, 130, UINT_TOK);
+return UINT_TOK;
 	YY_BREAK
 case 27:
 YY_RULE_SETUP
@@ -1791,17 +1791,17 @@ return IVEC4;
 case 42:
 YY_RULE_SETUP
 #line 252 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(130, 130, UVEC2);
+return UVEC2;
 	YY_BREAK
 case 43:
 YY_RULE_SETUP
 #line 253 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(130, 130, UVEC3);
+return UVEC3;
 	YY_BREAK
 case 44:
 YY_RULE_SETUP
 #line 254 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(130, 130, UVEC4);
+return UVEC4;
 	YY_BREAK
 case 45:
 YY_RULE_SETUP
@@ -1821,47 +1821,47 @@ return VEC4;
 case 48:
 YY_RULE_SETUP
 #line 258 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(120, 120, MAT2X2);
+return MAT2X2;
 	YY_BREAK
 case 49:
 YY_RULE_SETUP
 #line 259 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(120, 120, MAT2X3);
+return MAT2X3;
 	YY_BREAK
 case 50:
 YY_RULE_SETUP
 #line 260 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(120, 120, MAT2X4);
+return MAT2X4;
 	YY_BREAK
 case 51:
 YY_RULE_SETUP
 #line 261 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(120, 120, MAT3X2);
+return MAT3X2;
 	YY_BREAK
 case 52:
 YY_RULE_SETUP
 #line 262 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(120, 120, MAT3X3);
+return MAT3X3;
 	YY_BREAK
 case 53:
 YY_RULE_SETUP
 #line 263 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(120, 120, MAT3X4);
+return MAT3X4;
 	YY_BREAK
 case 54:
 YY_RULE_SETUP
 #line 264 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(120, 120, MAT4X2);
+return MAT4X2;
 	YY_BREAK
 case 55:
 YY_RULE_SETUP
 #line 265 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(120, 120, MAT4X3);
+return MAT4X3;
 	YY_BREAK
 case 56:
 YY_RULE_SETUP
 #line 266 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(120, 120, MAT4X4);
+return MAT4X4;
 	YY_BREAK
 case 57:
 YY_RULE_SETUP
@@ -1941,37 +1941,37 @@ return VARYING;
 case 72:
 YY_RULE_SETUP
 #line 285 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(120, 120, CENTROID);
+return CENTROID;
 	YY_BREAK
 case 73:
 YY_RULE_SETUP
 #line 286 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(120 || ES, 120 || ES, INVARIANT);
+return INVARIANT;
 	YY_BREAK
 case 74:
 YY_RULE_SETUP
 #line 287 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(130 || ES, 130, NOINTERPOLATION);
+return NOINTERPOLATION;
 	YY_BREAK
 case 75:
 YY_RULE_SETUP
 #line 288 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(130, 130, LINEAR);
+return LINEAR;
 	YY_BREAK
 case 76:
 YY_RULE_SETUP
 #line 289 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(130, 130, NOPERSPECTIVE);
+return NOPERSPECTIVE;
 	YY_BREAK
 case 77:
 YY_RULE_SETUP
 #line 290 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(100, 310, GLOBALLYCOHERENT);
+return GLOBALLYCOHERENT;
 	YY_BREAK
 case 78:
 YY_RULE_SETUP
 #line 291 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(100, 310, SHARED);
+return SHARED;
 	YY_BREAK
 case 79:
 YY_RULE_SETUP
@@ -2046,7 +2046,7 @@ return TEXTURECUBE;
 case 93:
 YY_RULE_SETUP
 #line 308 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(100, 310, TEXTURECUBE_ARRAY);
+return TEXTURECUBE_ARRAY;
 	YY_BREAK
 case 94:
 YY_RULE_SETUP
@@ -2061,42 +2061,42 @@ return SAMPLERSTATE_CMP;
 case 96:
 YY_RULE_SETUP
 #line 312 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(100, 310, RWBUFFER);
+return RWBUFFER;
 	YY_BREAK
 case 97:
 YY_RULE_SETUP
 #line 313 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(100, 310, RWSTRUCTUREDBUFFER);
+return RWSTRUCTUREDBUFFER;
 	YY_BREAK
 case 98:
 YY_RULE_SETUP
 #line 314 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(100, 430, RWBYTEADDRESSBUFFER);
+return RWBYTEADDRESSBUFFER;
 	YY_BREAK
 case 99:
 YY_RULE_SETUP
 #line 315 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(100, 310, RWTEXTURE1D);
+return RWTEXTURE1D;
 	YY_BREAK
 case 100:
 YY_RULE_SETUP
 #line 316 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(100, 310, RWTEXTURE1D_ARRAY);
+return RWTEXTURE1D_ARRAY;
 	YY_BREAK
 case 101:
 YY_RULE_SETUP
 #line 317 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(100, 310, RWTEXTURE2D);
+return RWTEXTURE2D;
 	YY_BREAK
 case 102:
 YY_RULE_SETUP
 #line 318 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(100, 310, RWTEXTURE2D_ARRAY);
+return RWTEXTURE2D_ARRAY;
 	YY_BREAK
 case 103:
 YY_RULE_SETUP
 #line 319 "../../../Source/ThirdParty/hlslcc/hlslcc/src/hlslcc_lib/hlsl_lexer.ll"
-KEYWORD(100, 310, RWTEXTURE3D);
+return RWTEXTURE3D;
 	YY_BREAK
 case 104:
 YY_RULE_SETUP
