@@ -225,7 +225,32 @@ public:
 		RHIUnlockVertexBuffer(VertexBufferRHI);
 	}
 };
+
 extern RENDERCORE_API TGlobalResource<FScreenSpaceVertexBuffer> GScreenSpaceVertexBuffer;
+
+class FTileVertexDeclaration : public FRenderResource
+{
+public:
+	FVertexDeclarationRHIRef VertexDeclarationRHI;
+
+	/** Destructor. */
+	virtual ~FTileVertexDeclaration() {}
+
+	virtual void InitRHI()
+	{
+		FVertexDeclarationElementList Elements;
+		uint32 Stride = sizeof(FVector2D);
+		Elements.Add(FVertexElement(0, 0, VET_Float2, 0, Stride, false));
+		VertexDeclarationRHI = RHICreateVertexDeclaration(Elements);
+	}
+
+	virtual void ReleaseRHI()
+	{
+		VertexDeclarationRHI.SafeRelease();
+	}
+};
+
+extern RENDERCORE_API TGlobalResource<FTileVertexDeclaration> GTileVertexDeclaration;
 
 /**
  * Maps from an X,Y,Z cube vertex coordinate to the corresponding vertex index.

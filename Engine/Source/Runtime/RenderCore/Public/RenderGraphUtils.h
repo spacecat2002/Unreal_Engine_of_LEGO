@@ -157,6 +157,22 @@ struct RENDERCORE_API FComputeShaderUtils
 		UnsetShaderUAVs(RHICmdList, ComputeShader, ShaderRHI);
 	}
 
+	/** Dispatch a compute shader to rhi command list with its parameters and indirect args. */
+	template<typename TShaderClass>
+	static FORCEINLINE_DEBUGGABLE void DispatchIndirect(
+		FRHICommandList& RHICmdList,
+		const TShaderClass* ComputeShader,
+		const typename TShaderClass::FParameters& Parameters,
+		FRDGBufferRef IndirectArgsBuffer,
+		uint32 IndirectArgOffset)
+	{
+		FRHIComputeShader* ShaderRHI = ComputeShader->GetComputeShader();
+		RHICmdList.SetComputeShader(ShaderRHI);
+		SetShaderParameters(RHICmdList, ComputeShader, ShaderRHI, Parameters);
+		RHICmdList.DispatchIndirectComputeShader(IndirectArgsBuffer->GetIndirectRHICallBuffer(), IndirectArgOffset);
+		UnsetShaderUAVs(RHICmdList, ComputeShader, ShaderRHI);
+	}
+
 	/** Dispatch a compute shader to render graph builder with its parameters. */
 	template<typename TShaderClass>
 	static void AddPass(
@@ -205,6 +221,9 @@ struct RENDERCORE_API FComputeShaderUtils
 			FComputeShaderUtils::DispatchIndirect(RHICmdList, ComputeShader, *Parameters, IndirectArgsBuffer->GetIndirectRHICallBuffer(), IndirectArgOffset);
 		});
 	}
+
+	static void ClearUAV(FRDGBuilder& GraphBuilder, TShaderMap<FGlobalShaderType>* ShaderMap, FRDGBufferUAVRef UAV, uint32 ClearValue);
+	static void ClearUAV(FRDGBuilder& GraphBuilder, TShaderMap<FGlobalShaderType>* ShaderMap, FRDGBufferUAVRef UAV, FVector4 ClearValue);
 };
 
 /** Adds a render graph pass to copy a region from one texture to another. Uses RHICopyTexture under the hood.
@@ -259,6 +278,9 @@ RENDERCORE_API void AddClearUAVPass(FRDGBuilder& GraphBuilder, FRDGTextureUAVRef
 RENDERCORE_API void AddClearUAVPass(FRDGBuilder& GraphBuilder, FRDGTextureUAVRef TextureUAV, const uint32(&ClearValues)[4]);
 
 RENDERCORE_API void AddClearUAVPass(FRDGBuilder& GraphBuilder, FRDGTextureUAVRef TextureUAV, const FLinearColor& ClearColor);
+
+/** Clears parts of UAV specified by an array of screen rects. If no rects are specific, then it falls back to a standard UAV clear. */
+RENDERCORE_API void AddClearUAVPass(FRDGBuilder& GraphBuilder, FRDGTextureUAVRef TextureUAV, const uint32(&ClearValues)[4], FRDGBufferSRVRef RectMinMaxBufferSRV, uint32 NumRects);
 
 /** Adds a render graph pass to clear a render target. Prefer to use clear actions if possible. */
 RENDERCORE_API void AddClearRenderTargetPass(FRDGBuilder& GraphBuilder, FRDGTextureRef Texture, const FLinearColor& ClearColor);

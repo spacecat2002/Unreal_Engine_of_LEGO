@@ -33,6 +33,7 @@ const uint16 GCubeIndices[12*3] =
 TGlobalResource<FCubeIndexBuffer> GCubeIndexBuffer;
 TGlobalResource<FTwoTrianglesIndexBuffer> GTwoTrianglesIndexBuffer;
 TGlobalResource<FScreenSpaceVertexBuffer> GScreenSpaceVertexBuffer;
+TGlobalResource<FTileVertexDeclaration> GTileVertexDeclaration;
 
 //
 // FPackedNormal serializer

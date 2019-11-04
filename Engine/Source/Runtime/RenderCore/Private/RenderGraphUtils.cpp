@@ -5,6 +5,8 @@
 #include "ClearReplacementShaders.h"
 #include "ShaderParameterUtils.h"
 #include <initializer_list>
+#include "GlobalShader.h"
+#include "PixelShaderUtils.h"
 
 /** Adds a render graph tracked buffer suitable for use as a copy destination. */
 #define RDG_BUFFER_COPY_DEST(MemberName) \
@@ -201,7 +203,10 @@ void AddCopyTexturePass(
 	Parameters->Input = InputTexture;
 	Parameters->Output = OutputTexture;
 
-	GraphBuilder.AddPass(RDG_EVENT_NAME("CopyTexture"), Parameters, ERDGPassFlags::Copy,
+	GraphBuilder.AddPass(
+		RDG_EVENT_NAME("CopyTexture(%s -> %s)", InputTexture->Name, OutputTexture->Name),
+		Parameters,
+		ERDGPassFlags::Copy,
 		[InputTexture, OutputTexture, CopyInfo](FRHICommandList& RHICmdList)
 	{
         // Manually mark as used since we aren't invoking any shaders.
@@ -248,7 +253,7 @@ void AddClearUAVPass(FRDGBuilder& GraphBuilder, FRDGBufferUAVRef BufferUAV, uint
 	Parameters->BufferUAV = BufferUAV;
 
 	GraphBuilder.AddPass(
-		RDG_EVENT_NAME("ClearBuffer(%s)", BufferUAV->GetParent()->Name),
+		RDG_EVENT_NAME("ClearBuffer(%s Size=%ubytes)", BufferUAV->GetParent()->Name, BufferUAV->GetParent()->Desc.GetTotalNumBytes()),
 		Parameters,
 		ERDGPassFlags::Compute,
 		[&Parameters, BufferUAV, Value](FRHICommandList& RHICmdList)
@@ -272,10 +277,14 @@ void AddClearUAVPass_T(FRDGBuilder& GraphBuilder, FRDGTextureUAVRef TextureUAV, 
 	FClearTextureUAVParameters* Parameters = GraphBuilder.AllocParameters<FClearTextureUAVParameters>();
 	Parameters->TextureUAV = TextureUAV;
 
-	const FRDGTextureDesc& TextureDesc = TextureUAV->GetParent()->Desc;
+	FRDGTextureRef Texture = TextureUAV->GetParent();
 
 	GraphBuilder.AddPass(
-		RDG_EVENT_NAME("ClearTexture(%s) %dx%d", TextureUAV->GetParent()->Name, TextureDesc.Extent.X, TextureDesc.Extent.Y),
+		RDG_EVENT_NAME("ClearTexture(%s %s %dx%d Mip=%d)",
+			Texture->Name,
+			GPixelFormats[Texture->Desc.Format].Name,
+			Texture->Desc.Extent.X, Texture->Desc.Extent.Y,
+			int32(TextureUAV->Desc.MipLevel)),
 		Parameters,
 		ERDGPassFlags::Compute,
 		[&Parameters, TextureUAV, ClearValues](FRHICommandList& RHICmdList)
@@ -382,6 +391,81 @@ void AddClearUAVPass(FRDGBuilder& GraphBuilder, FRDGTextureUAVRef TextureUAV, co
 	AddClearUAVPass_T(GraphBuilder, TextureUAV, reinterpret_cast<const float(&)[4]>(ClearColor));
 }
 
+class FClearUAVRectsPS : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FClearUAVRectsPS);
+	SHADER_USE_PARAMETER_STRUCT(FClearUAVRectsPS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FUintVector4, ClearValue)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D, ClearResource)
+	END_SHADER_PARAMETER_STRUCT()
+
+	using FPermutationDomain = TShaderPermutationDomain<>;
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("ENABLE_CLEAR_VALUE"), 1);
+		OutEnvironment.SetDefine(TEXT("RESOURCE_TYPE"), 1);
+		OutEnvironment.SetDefine(TEXT("VALUE_TYPE"), TEXT("uint4"));
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FClearUAVRectsPS, "/Engine/Private/ClearReplacementShaders.usf", "ClearTextureRWPS", SF_Pixel);
+
+BEGIN_SHADER_PARAMETER_STRUCT(FClearUAVRectsParameters, )
+	SHADER_PARAMETER_STRUCT_INCLUDE(FPixelShaderUtils::FRasterizeToRectsVS::FParameters, VS)
+	SHADER_PARAMETER_STRUCT_INCLUDE(FClearUAVRectsPS::FParameters, PS)
+	RENDER_TARGET_BINDING_SLOTS()
+END_SHADER_PARAMETER_STRUCT()
+
+void AddClearUAVPass(FRDGBuilder& GraphBuilder, FRDGTextureUAVRef TextureUAV, const uint32(&ClearValues)[4], FRDGBufferSRVRef RectMinMaxBufferSRV, uint32 NumRects)
+{
+	if (NumRects == 0)
+	{
+		AddClearUAVPass(GraphBuilder, TextureUAV, ClearValues);
+		return;
+	}
+
+	check(TextureUAV && RectMinMaxBufferSRV);
+
+	FClearUAVRectsParameters* PassParameters = GraphBuilder.AllocParameters<FClearUAVRectsParameters>();
+
+	PassParameters->PS.ClearValue.X = ClearValues[0];
+	PassParameters->PS.ClearValue.Y = ClearValues[1];
+	PassParameters->PS.ClearValue.Z = ClearValues[2];
+	PassParameters->PS.ClearValue.W = ClearValues[3];
+	PassParameters->PS.ClearResource = TextureUAV;
+
+	auto* ShaderMap = GetGlobalShaderMap(GMaxRHIFeatureLevel);
+	auto PixelShader = ShaderMap->GetShader<FClearUAVRectsPS>();
+
+	const FRDGTextureRef Texture = TextureUAV->GetParent();
+	const FIntPoint TextureSize = Texture->Desc.Extent;
+
+	FPixelShaderUtils::AddRasterizeToRectsPass<FClearUAVRectsPS>(GraphBuilder,
+		ShaderMap,
+		RDG_EVENT_NAME("ClearTextureRects(%s %s %dx%d Mip=%d)",
+			Texture->Name,
+			GPixelFormats[Texture->Desc.Format].Name,
+			Texture->Desc.Extent.X, Texture->Desc.Extent.Y,
+			int32(TextureUAV->Desc.MipLevel)),
+		PixelShader,
+		PassParameters,
+		TextureSize,
+		RectMinMaxBufferSRV,
+		NumRects,
+		TStaticBlendState<>::GetRHI(),
+		TStaticRasterizerState<>::GetRHI(),
+		TStaticDepthStencilState<false, CF_Always>::GetRHI());
+}
+
 void AddClearRenderTargetPass(FRDGBuilder& GraphBuilder, FRDGTextureRef Texture, const FLinearColor& ClearColor)
 {
 	check(Texture);
@@ -449,4 +533,107 @@ void AddClearDepthStencilPass(
 	{
 		DrawClearQuad(RHICmdList, false, FLinearColor(), bClearDepth, Depth, bClearStencil, Stencil);
 	});
+}
+
+
+class FClearUAVUIntCS : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FClearUAVUIntCS)
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, UAV)
+		SHADER_PARAMETER(uint32, ClearValue)
+		SHADER_PARAMETER(uint32, NumEntries)
+	END_SHADER_PARAMETER_STRUCT()
+
+	using FPermutationDomain = TShaderPermutationDomain<>;
+
+public:
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return GetMaxSupportedFeatureLevel(Parameters.Platform) >= ERHIFeatureLevel::SM5;
+	}
+
+	FClearUAVUIntCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+		: FGlobalShader(Initializer)
+	{
+		Bindings.BindForLegacyShaderParameters(this, Initializer.ParameterMap, *FParameters::FTypeInfo::GetStructMetadata());
+	}
+
+	FClearUAVUIntCS()
+	{
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FClearUAVUIntCS, "/Engine/Private/Tools/ClearUAV.usf", "ClearUAVUIntCS", SF_Compute);
+
+void FComputeShaderUtils::ClearUAV(FRDGBuilder& GraphBuilder, TShaderMap<FGlobalShaderType>* ShaderMap, FRDGBufferUAVRef UAV, uint32 ClearValue)
+{
+	FClearUAVUIntCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FClearUAVUIntCS::FParameters>();
+	PassParameters->UAV = UAV;
+	PassParameters->ClearValue = ClearValue;
+	check(UAV->Desc.Format == PF_R32_UINT);
+	PassParameters->NumEntries = UAV->Desc.Buffer->Desc.NumElements;
+	check(PassParameters->NumEntries > 0);
+
+	auto ComputeShader = ShaderMap->GetShader<FClearUAVUIntCS>();
+
+	FComputeShaderUtils::AddPass(
+		GraphBuilder,
+		RDG_EVENT_NAME("ClearUAV"),
+		ComputeShader,
+		PassParameters,
+		FIntVector(FMath::DivideAndRoundUp<int32>(PassParameters->NumEntries, 64), 1, 1));
+}
+
+class FClearUAVFloatCS : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FClearUAVFloatCS)
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<float4>, UAVFloat)
+		SHADER_PARAMETER(FVector4, ClearValueFloat)
+		SHADER_PARAMETER(uint32, NumEntries)
+	END_SHADER_PARAMETER_STRUCT()
+
+	using FPermutationDomain = TShaderPermutationDomain<>;
+
+public:
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return GetMaxSupportedFeatureLevel(Parameters.Platform) >= ERHIFeatureLevel::SM5;
+	}
+
+	FClearUAVFloatCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+		: FGlobalShader(Initializer)
+	{
+		Bindings.BindForLegacyShaderParameters(this, Initializer.ParameterMap, *FParameters::FTypeInfo::GetStructMetadata());
+	}
+
+	FClearUAVFloatCS()
+	{
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FClearUAVFloatCS, "/Engine/Private/Tools/ClearUAV.usf", "ClearUAVFloatCS", SF_Compute);
+
+void FComputeShaderUtils::ClearUAV(FRDGBuilder& GraphBuilder, TShaderMap<FGlobalShaderType>* ShaderMap, FRDGBufferUAVRef UAV, FVector4 ClearValue)
+{
+	FClearUAVFloatCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FClearUAVFloatCS::FParameters>();
+	PassParameters->UAVFloat = UAV;
+	PassParameters->ClearValueFloat = ClearValue;
+	check(UAV->Desc.Format == PF_A32B32G32R32F || UAV->Desc.Format == PF_FloatRGBA);
+	PassParameters->NumEntries = UAV->Desc.Buffer->Desc.NumElements;
+	check(PassParameters->NumEntries > 0);
+
+	auto ComputeShader = ShaderMap->GetShader<FClearUAVFloatCS>();
+
+	FComputeShaderUtils::AddPass(
+		GraphBuilder,
+		RDG_EVENT_NAME("ClearUAV"),
+		ComputeShader,
+		PassParameters,
+		FIntVector(FMath::DivideAndRoundUp<int32>(PassParameters->NumEntries, 64), 1, 1));
 }
