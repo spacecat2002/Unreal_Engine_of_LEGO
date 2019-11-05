@@ -147,8 +147,8 @@ public:
 protected:
 	TArray<FVulkanUnorderedAccessView*> UAVListForAutoFlush;
 
-	FVulkanComputePipeline* CurrentPipeline;
-	FVulkanComputePipelineDescriptorState* CurrentState;
+	FVulkanComputePipeline* CurrentPipeline = nullptr;
+	FVulkanComputePipelineDescriptorState* CurrentState = nullptr;
 
 	TMap<FVulkanComputePipeline*, FVulkanComputePipelineDescriptorState*> PipelineStates;
 
