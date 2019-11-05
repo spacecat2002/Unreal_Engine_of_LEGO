@@ -711,11 +711,16 @@ void FShaderCompileUtilities::DoReadTaskResults(const TArray<FShaderCommonCompil
 						String += FString::Printf(TEXT(" '%s' Entry '%s' Permutation %i "), *SingleJob->Input.VirtualSourceFilePath, *SingleJob->Input.EntryPointName, SingleJob->PermutationId);
 						return String;
 					};
-					UE_LOG(LogShaderCompilers, Error, TEXT("SCW %d Queued Jobs, Finished %d single jobs"), QueuedJobs.Num(), NumProcessedJobs);
+					UE_LOG(LogShaderCompilers, Error, TEXT("SCW %d Queued Jobs, Finished %d single job(s)"), QueuedJobs.Num(), NumProcessedJobs);
 					for (int32 Index = 0; Index < QueuedJobs.Num(); ++Index)
 					{
 						FShaderCommonCompileJob* CommonJob = QueuedJobs[Index];
 						FShaderCompileJob* SingleJob = CommonJob->GetSingleShaderJob();
+						if (Index == NumProcessedJobs)
+						{
+							UE_LOG(LogShaderCompilers, Error, TEXT("-------"));
+							UE_LOG(LogShaderCompilers, Error, TEXT("FAILED!"));
+						}
 						if (SingleJob)
 						{
 							UE_LOG(LogShaderCompilers, Error, TEXT("Job %d [Single] %s"), Index, *DumpSingleJob(SingleJob));
@@ -723,7 +728,7 @@ void FShaderCompileUtilities::DoReadTaskResults(const TArray<FShaderCommonCompil
 						else
 						{
 							FShaderPipelineCompileJob* PipelineJob = CommonJob->GetShaderPipelineJob();
-							UE_LOG(LogShaderCompilers, Error, TEXT("Job %d: Pipeline %s "), Index, PipelineJob->ShaderPipeline->GetName());
+							UE_LOG(LogShaderCompilers, Error, TEXT("Job %d: Pipeline %s"), Index, PipelineJob->ShaderPipeline->GetName());
 							for (int32 Job = 0; Job < PipelineJob->StageJobs.Num(); ++Job)
 							{
 								UE_LOG(LogShaderCompilers, Error, TEXT("PipelineJob %d %s"), Job, *DumpSingleJob(PipelineJob->StageJobs[Job]->GetSingleShaderJob()));
