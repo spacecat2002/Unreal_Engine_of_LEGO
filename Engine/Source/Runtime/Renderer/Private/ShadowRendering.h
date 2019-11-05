@@ -150,7 +150,7 @@ public:
 	IPooledRenderTarget* DepthTarget;
 
 	FShadowMapRenderTargets() :
-		DepthTarget(NULL)
+		DepthTarget(nullptr)
 	{}
 
 	FIntPoint GetSize() const
@@ -164,6 +164,19 @@ public:
 			check(ColorTargets.Num() > 0);
 			return ColorTargets[0]->GetDesc().Extent;
 		}
+	}
+
+	void CopyReferencesFromRenderTargets(const FShadowMapRenderTargetsRefCounted& SourceTargets)
+	{
+		int32 ColorTargetsCount = SourceTargets.ColorTargets.Num();
+		ColorTargets.Empty(ColorTargetsCount);
+		ColorTargets.AddDefaulted(ColorTargetsCount);
+		for (int32 TargetIndex = 0; TargetIndex < ColorTargetsCount; TargetIndex++)
+		{
+			ColorTargets[TargetIndex] = SourceTargets.ColorTargets[TargetIndex].GetReference();
+		}
+
+		DepthTarget = SourceTargets.DepthTarget.GetReference();
 	}
 };
 

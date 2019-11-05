@@ -1363,7 +1363,8 @@ typedef TArray<uint8, SceneRenderingAllocator> FPrimitiveViewMasks;
 class FShadowMapRenderTargetsRefCounted
 {
 public:
-	TArray<TRefCountPtr<IPooledRenderTarget>, SceneRenderingAllocator> ColorTargets;
+	// This structure gets included in FCachedShadowMapData, so avoid SceneRenderingAllocator use!
+	TArray<TRefCountPtr<IPooledRenderTarget>, TInlineAllocator<4>> ColorTargets;
 	TRefCountPtr<IPooledRenderTarget> DepthTarget;
 
 	bool IsValid() const
