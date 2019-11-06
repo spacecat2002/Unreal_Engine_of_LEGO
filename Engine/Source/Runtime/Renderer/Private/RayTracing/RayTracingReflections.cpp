@@ -173,8 +173,15 @@ class FRayTracingReflectionsRGS : public FGlobalShader
 	class FHybrid : SHADER_PERMUTATION_BOOL("DIM_HYBRID");
 	class FEnableTwoSidedGeometryForShadowDim : SHADER_PERMUTATION_BOOL("ENABLE_TWO_SIDED_GEOMETRY");
 	class FMissShaderLighting : SHADER_PERMUTATION_BOOL("DIM_MISS_SHADER_LIGHTING");
+	class FRayTraceSkyLightContribution : SHADER_PERMUTATION_BOOL("DIM_RAY_TRACE_SKY_LIGHT_CONTRIBUTION");
 
-	using FPermutationDomain = TShaderPermutationDomain<FDenoiserOutput, FDeferredMaterialMode, FHybrid, FEnableTwoSidedGeometryForShadowDim, FMissShaderLighting>;
+	using FPermutationDomain = TShaderPermutationDomain<
+		FDenoiserOutput,
+		FDeferredMaterialMode,
+		FHybrid,
+		FEnableTwoSidedGeometryForShadowDim,
+		FMissShaderLighting,
+		FRayTraceSkyLightContribution>;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(int32, SamplesPerPixel)
@@ -198,7 +205,6 @@ class FRayTracingReflectionsRGS : public FGlobalShader
 		SHADER_PARAMETER(uint32, RenderTileOffsetX)
 		SHADER_PARAMETER(uint32, RenderTileOffsetY)
 		SHADER_PARAMETER(uint32, EnableTranslucency)
-		SHADER_PARAMETER(int32, RayTraceSkyLightContribution)
 		SHADER_PARAMETER(int32, SkyLightDecoupleSampleGeneration) 
 
 		SHADER_PARAMETER_SRV(RaytracingAccelerationStructure, TLAS)
@@ -234,13 +240,15 @@ class FRayTracingReflectionsRGS : public FGlobalShader
 
 IMPLEMENT_GLOBAL_SHADER(FRayTracingReflectionsRGS, "/Engine/Private/RayTracing/RayTracingReflections.usf", "RayTracingReflectionsRGS", SF_RayGen);
 
-void FDeferredShadingSceneRenderer::PrepareRayTracingReflections(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders)
+void FDeferredShadingSceneRenderer::PrepareRayTracingReflections(const FViewInfo& View, const FScene& Scene, TArray<FRHIRayTracingShader*>& OutRayGenShaders)
 {
 	// Declare all RayGen shaders that require material closest hit shaders to be bound
 
 	const bool bHybridReflections = CVarRayTracingReflectionsHybrid.GetValueOnRenderThread() != 0;
 	const bool bSortMaterials = bHybridReflections || CVarRayTracingReflectionsSortMaterials.GetValueOnRenderThread() != 0;
 	const bool bMissShaderLighting = CanUseRayTracingLightingMissShader(View.GetShaderPlatform());
+	// Only ray trace sky light contribution when the ray traced sky light should be rendered in normal conditions (sky light exists, ray traced shadows enabled)
+	const bool bRayTraceSkyLightContribution = CVarRayTracingReflectionsRayTraceSkyLightContribution.GetValueOnRenderThread() && ShouldRenderRayTracingSkyLight(Scene.SkyLight);
 
 	if (bSortMaterials)
 	{
@@ -250,6 +258,7 @@ void FDeferredShadingSceneRenderer::PrepareRayTracingReflections(const FViewInfo
 			PermutationVector.Set<FRayTracingReflectionsRGS::FDeferredMaterialMode>(EDeferredMaterialMode::Gather);
 			PermutationVector.Set<FRayTracingReflectionsRGS::FHybrid>(bHybridReflections);
 			PermutationVector.Set<FRayTracingReflectionsRGS::FMissShaderLighting>(bMissShaderLighting);
+			PermutationVector.Set<FRayTracingReflectionsRGS::FRayTraceSkyLightContribution>(bRayTraceSkyLightContribution);
 			auto RayGenShader = View.ShaderMap->GetShader<FRayTracingReflectionsRGS>(PermutationVector);
 			OutRayGenShaders.Add(RayGenShader->GetRayTracingShader());
 		}
@@ -260,6 +269,7 @@ void FDeferredShadingSceneRenderer::PrepareRayTracingReflections(const FViewInfo
 			PermutationVector.Set<FRayTracingReflectionsRGS::FDeferredMaterialMode>(EDeferredMaterialMode::Shade);
 			PermutationVector.Set<FRayTracingReflectionsRGS::FHybrid>(bHybridReflections);
 			PermutationVector.Set<FRayTracingReflectionsRGS::FMissShaderLighting>(bMissShaderLighting);
+			PermutationVector.Set<FRayTracingReflectionsRGS::FRayTraceSkyLightContribution>(bRayTraceSkyLightContribution);
 			auto RayGenShader = View.ShaderMap->GetShader<FRayTracingReflectionsRGS>(PermutationVector);
 			OutRayGenShaders.Add(RayGenShader->GetRayTracingShader());
 		}
@@ -270,6 +280,7 @@ void FDeferredShadingSceneRenderer::PrepareRayTracingReflections(const FViewInfo
 		PermutationVector.Set<FRayTracingReflectionsRGS::FEnableTwoSidedGeometryForShadowDim>(EnableRayTracingShadowTwoSidedGeometry());
 		PermutationVector.Set<FRayTracingReflectionsRGS::FDeferredMaterialMode>(EDeferredMaterialMode::None);
 		PermutationVector.Set<FRayTracingReflectionsRGS::FMissShaderLighting>(bMissShaderLighting);
+		PermutationVector.Set<FRayTracingReflectionsRGS::FRayTraceSkyLightContribution>(bRayTraceSkyLightContribution);
 		auto RayGenShader = View.ShaderMap->GetShader<FRayTracingReflectionsRGS>(PermutationVector);
 		OutRayGenShaders.Add(RayGenShader->GetRayTracingShader());
 	}
@@ -291,10 +302,12 @@ void FDeferredShadingSceneRenderer::RenderRayTracingReflections(
 #if RHI_RAYTRACING
 {
 	const uint32 SortTileSize = CVarRayTracingReflectionsSortTileSize.GetValueOnRenderThread();
+	const uint32 EnableTranslucency = GRayTracingReflectionsTranslucency > -1 ? (uint32)GRayTracingReflectionsTranslucency : (uint32)View.FinalPostProcessSettings.RayTracingReflectionsTranslucency;
 
 	const bool bHybridReflections = CVarRayTracingReflectionsHybrid.GetValueOnRenderThread() != 0;
 	const bool bSortMaterials = bHybridReflections || CVarRayTracingReflectionsSortMaterials.GetValueOnRenderThread() != 0;
-	const uint32 EnableTranslucency = GRayTracingReflectionsTranslucency > -1 ? (uint32)GRayTracingReflectionsTranslucency : (uint32) View.FinalPostProcessSettings.RayTracingReflectionsTranslucency;
+	const bool bLightingMissShader = CanUseRayTracingLightingMissShader(View.GetShaderPlatform());
+	const bool bRayTraceSkyLightContribution = CVarRayTracingReflectionsRayTraceSkyLightContribution.GetValueOnRenderThread() && ShouldRenderRayTracingSkyLight(Scene->SkyLight);
 
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 
@@ -346,8 +359,6 @@ void FDeferredShadingSceneRenderer::RenderRayTracingReflections(
 	CommonParameters.RenderTileOffsetX = 0;
 	CommonParameters.RenderTileOffsetY = 0;
 	CommonParameters.EnableTranslucency = EnableTranslucency; 
-	// Only ray trace sky light contribution when the ray traced sky light should be rendered in normal conditions (sky light exists, ray traced shadows enabled)
-	CommonParameters.RayTraceSkyLightContribution = CVarRayTracingReflectionsRayTraceSkyLightContribution.GetValueOnRenderThread() && ShouldRenderRayTracingSkyLight(Scene->SkyLight);
 	CommonParameters.SkyLightDecoupleSampleGeneration = GetRayTracingSkyLightDecoupleSampleGenerationCVarValue();
 
 	CommonParameters.TLAS = View.RayTracingScene.RayTracingSceneRHI->GetShaderResourceView();
@@ -380,8 +391,6 @@ void FDeferredShadingSceneRenderer::RenderRayTracingReflections(
 
 	CommonParameters.SkyLightData = CreateUniformBufferImmediate(SkyLightData, EUniformBufferUsage::UniformBuffer_SingleDraw);
 
-	const bool bLightingMissShader = CanUseRayTracingLightingMissShader(View.GetShaderPlatform());
-
 	for (uint32 PassIndex = 0; PassIndex < NumPasses; ++PassIndex)
 	{
 		FRayTracingReflectionsRGS::FParameters* PassParameters = GraphBuilder.AllocParameters<FRayTracingReflectionsRGS::FParameters>();
@@ -405,6 +414,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingReflections(
 		PermutationVector.Set<FRayTracingReflectionsRGS::FHybrid>(bHybridReflections);
 		PermutationVector.Set<FRayTracingReflectionsRGS::FEnableTwoSidedGeometryForShadowDim>(EnableRayTracingShadowTwoSidedGeometry());
 		PermutationVector.Set<FRayTracingReflectionsRGS::FMissShaderLighting>(bLightingMissShader);
+		PermutationVector.Set<FRayTracingReflectionsRGS::FRayTraceSkyLightContribution>(bRayTraceSkyLightContribution);
 		auto RayGenShader = View.ShaderMap->GetShader<FRayTracingReflectionsRGS>(PermutationVector);
 
 		ClearUnusedGraphResources(RayGenShader, PassParameters);

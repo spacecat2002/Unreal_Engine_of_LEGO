@@ -876,7 +876,7 @@ bool FDeferredShadingSceneRenderer::DispatchRayTracingWorldUpdates(FRHICommandLi
 
 		// #dxr_todo: UE-72565: refactor ray tracing effects to not be member functions of DeferredShadingRenderer. register each effect at startup and just loop over them automatically to gather all required shaders
 		TArray<FRHIRayTracingShader*> RayGenShaders;
-		PrepareRayTracingReflections(View, RayGenShaders);
+		PrepareRayTracingReflections(View, *Scene, RayGenShaders);
 		PrepareRayTracingShadows(View, RayGenShaders);
 		PrepareRayTracingAmbientOcclusion(View, RayGenShaders);
 		PrepareRayTracingSkyLight(View, RayGenShaders);
