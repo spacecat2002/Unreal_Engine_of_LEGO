@@ -214,6 +214,7 @@ class FRayTracingReflectionsRGS : public FGlobalShader
 
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureSamplerParameters, SceneTextureSamplers)
+		SHADER_PARAMETER_STRUCT_INCLUDE(FSkyLightQuasiRandomData, SkyLightQuasiRandomData)
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSkyLightVisibilityRaysData, SkyLightVisibilityRaysData)
 
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
@@ -390,6 +391,11 @@ void FDeferredShadingSceneRenderer::RenderRayTracingReflections(
 	SetupSkyLightParameters(*Scene, &SkyLightData);
 
 	CommonParameters.SkyLightData = CreateUniformBufferImmediate(SkyLightData, EUniformBufferUsage::UniformBuffer_SingleDraw);
+
+	// Setup Sky Light quasi random parameters
+
+	FIntVector BlueNoiseDimensions;
+	SetupSkyLightQuasiRandomParameters(*Scene, View, BlueNoiseDimensions, &CommonParameters.SkyLightQuasiRandomData);
 
 	for (uint32 PassIndex = 0; PassIndex < NumPasses; ++PassIndex)
 	{
