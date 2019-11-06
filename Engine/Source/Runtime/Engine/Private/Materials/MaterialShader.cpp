@@ -2647,6 +2647,13 @@ void FMaterialShaderMap::SaveShaderStableKeys(EShaderPlatform TargetShaderPlatfo
 		FShader* Shader = KeyValue.Value;
 		Shader->SaveShaderStableKeys(TargetShaderPlatform, SaveKeyVal);
 	}
+
+	TArray<FShaderPipeline*> ShadersPipelinesL;
+	GetShaderPipelineList(ShadersPipelinesL);
+	for (FShaderPipeline* Pipeline : ShadersPipelinesL)
+	{
+		Pipeline->SaveShaderStableKeys(TargetShaderPlatform, SaveKeyVal);
+	}
 #endif
 }
 
