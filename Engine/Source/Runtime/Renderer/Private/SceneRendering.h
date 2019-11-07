@@ -378,21 +378,21 @@ private:
 class FHZBOcclusionTester : public FRenderResource
 {
 public:
-					FHZBOcclusionTester();
-					~FHZBOcclusionTester() {}
+	FHZBOcclusionTester();
+	~FHZBOcclusionTester() {}
 
 	// FRenderResource interface
-					virtual void	InitDynamicRHI() override;
-					virtual void	ReleaseDynamicRHI() override;
+	virtual void InitDynamicRHI() override;
+	virtual void ReleaseDynamicRHI() override;
 	
-	uint32			GetNum() const { return Primitives.Num(); }
+	uint32 GetNum() const { return Primitives.Num(); }
 
-	uint32			AddBounds( const FVector& BoundsOrigin, const FVector& BoundsExtent );
-	void			Submit(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
+	uint32 AddBounds( const FVector& BoundsOrigin, const FVector& BoundsExtent );
+	void Submit(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 
-	void			MapResults(FRHICommandListImmediate& RHICmdList);
-	void			UnmapResults(FRHICommandListImmediate& RHICmdList);
-	bool			IsVisible( uint32 Index ) const;
+	void MapResults(FRHICommandListImmediate& RHICmdList);
+	void UnmapResults(FRHICommandListImmediate& RHICmdList);
+	bool IsVisible( uint32 Index ) const;
 
 	bool IsValidFrame(uint32 FrameNumber) const;
 
@@ -416,6 +416,7 @@ private:
 	void SetInvalidFrameNumber();
 
 	uint32 ValidFrameNumber;
+	FGPUFenceRHIRef Fence;
 };
 
 DECLARE_STATS_GROUP(TEXT("Parallel Command List Markers"), STATGROUP_ParallelCommandListMarkers, STATCAT_Advanced);
