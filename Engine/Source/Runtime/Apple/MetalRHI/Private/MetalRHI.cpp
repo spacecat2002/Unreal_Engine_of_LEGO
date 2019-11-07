@@ -110,6 +110,8 @@ FMetalDynamicRHI::FMetalDynamicRHI(ERHIFeatureLevel::Type RequestedFeatureLevel)
 	GRHIAdapterName = TEXT("Metal");
 	GRHIVendorId = 1; // non-zero to avoid asserts
 	
+	GRHISupportsMultithreading = true;
+
 	bool const bRequestedFeatureLevel = (RequestedFeatureLevel != ERHIFeatureLevel::Num);
 	bool bSupportsPointLights = false;
 	bool bSupportsRHIThread = false;

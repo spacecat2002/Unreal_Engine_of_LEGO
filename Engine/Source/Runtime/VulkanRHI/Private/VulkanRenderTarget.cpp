@@ -935,19 +935,6 @@ void FVulkanDynamicRHI::RHIMapStagingSurface(FRHITexture* TextureRHI, FRHIGPUFen
 	Texture2D->Surface.InvalidateMappedMemory();
 }
 
-
-void FVulkanDynamicRHI::RHIMapStagingSurface_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHITexture* Texture, FRHIGPUFence* Fence, void*& OutData, int32& OutWidth, int32& OutHeight)
-{
-	RHIMapStagingSurface(Texture, Fence, OutData, OutWidth, OutHeight, RHICmdList.GetGPUMask().ToIndex());
-}
-
-void FVulkanDynamicRHI::RHIUnmapStagingSurface_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHITexture* Texture)
-{
-	RHIUnmapStagingSurface(Texture, RHICmdList.GetGPUMask().ToIndex());
-}
-
-
-
 void FVulkanDynamicRHI::RHIUnmapStagingSurface(FRHITexture* TextureRHI, uint32 GPUIndex)
 {
 }

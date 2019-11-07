@@ -80,6 +80,9 @@ extern RHI_API EShaderPlatform GMaxRHIShaderPlatform;
 /** true if the RHI supports SRVs */
 extern RHI_API bool GSupportsResourceView;
 
+/** Whether the RHI can send commands to the device context from multiple threads. Used in the GPU readback to avoid stalling the RHI threads. */
+extern RHI_API bool GRHISupportsMultithreading;
+
 /** 
  * only set if RHI has the information (after init of the RHI and only if RHI has that information, never changes after that)
  * e.g. "NVIDIA GeForce GTX 670"

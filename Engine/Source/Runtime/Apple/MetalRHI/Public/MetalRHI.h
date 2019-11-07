@@ -181,10 +181,8 @@ public:
 	virtual FGPUFenceRHIRef RHICreateGPUFence(const FName &Name) final override;
 
 	virtual FStagingBufferRHIRef RHICreateStagingBuffer() final override;
-	virtual void* RHILockStagingBuffer(FRHIStagingBuffer* StagingBuffer, uint32 Offset, uint32 SizeRHI) final override;
+	virtual void* RHILockStagingBuffer(FRHIStagingBuffer* StagingBuffer, FRHIGPUFence* Fence, uint32 Offset, uint32 SizeRHI) final override;
 	virtual void RHIUnlockStagingBuffer(FRHIStagingBuffer* StagingBuffer) final override;
-	virtual void* LockStagingBuffer_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHIStagingBuffer* StagingBuffer, uint32 Offset, uint32 SizeRHI) final override;
-	virtual void UnlockStagingBuffer_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHIStagingBuffer* StagingBuffer) final override;
 	
 	virtual void RHIAcquireTransientResource_RenderThread(FRHITexture* Texture) final override;
 	virtual void RHIDiscardTransientResource_RenderThread(FRHITexture* Texture) final override;

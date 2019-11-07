@@ -119,7 +119,7 @@ FStagingBufferRHIRef FVulkanDynamicRHI::RHICreateStagingBuffer()
 	return new FVulkanStagingBuffer();
 }
 
-void* FVulkanDynamicRHI::RHILockStagingBuffer(FRHIStagingBuffer* StagingBufferRHI, uint32 Offset, uint32 NumBytes)
+void* FVulkanDynamicRHI::RHILockStagingBuffer(FRHIStagingBuffer* StagingBufferRHI, FRHIGPUFence* Fence, uint32 Offset, uint32 NumBytes)
 {
 	FVulkanStagingBuffer* StagingBuffer = ResourceCast(StagingBufferRHI);
 	return StagingBuffer->Lock(Offset, NumBytes);

@@ -209,13 +209,14 @@ public:
 	 * Lock a staging buffer to read contents on the CPU that were written by the GPU, without having to stall.
 	 * @discussion This function requires that you have issued an CopyToStagingBuffer invocation and verified that the FRHIGPUFence has been signaled before calling.
 	 * @param StagingBuffer The buffer to lock.
+	 * @param Fence An optional fence synchronized with the last buffer update.
 	 * @param Offset The offset in the buffer to return.
 	 * @param SizeRHI The length of the region in the buffer to lock.
 	 * @returns A pointer to the data starting at 'Offset' and of length 'SizeRHI' from 'StagingBuffer', or nullptr when there is an error.
 	 */
-	virtual void* RHILockStagingBuffer(FRHIStagingBuffer* StagingBuffer, uint32 Offset, uint32 SizeRHI) override final
+	virtual void* RHILockStagingBuffer(FRHIStagingBuffer* StagingBuffer, FRHIGPUFence* Fence, uint32 Offset, uint32 SizeRHI) override final
 	{
-		return RHI->RHILockStagingBuffer(StagingBuffer, Offset, SizeRHI);
+		return RHI->RHILockStagingBuffer(StagingBuffer, Fence, Offset, SizeRHI);
 	}
 
 	/**
@@ -232,13 +233,14 @@ public:
 	 * @discussion This function requires that you have issued an CopyToStagingBuffer invocation and verified that the FRHIGPUFence has been signaled before calling.
 	 * @param RHICmdList The command-list to execute on or synchronize with.
 	 * @param StagingBuffer The buffer to lock.
+	 * @param Fence An optional fence synchronized with the last buffer update.
 	 * @param Offset The offset in the buffer to return.
 	 * @param SizeRHI The length of the region in the buffer to lock.
 	 * @returns A pointer to the data starting at 'Offset' and of length 'SizeRHI' from 'StagingBuffer', or nullptr when there is an error.
 	 */
-	virtual void* LockStagingBuffer_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHIStagingBuffer* StagingBuffer, uint32 Offset, uint32 SizeRHI) override final
+	virtual void* LockStagingBuffer_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHIStagingBuffer* StagingBuffer, FRHIGPUFence* Fence, uint32 Offset, uint32 SizeRHI) override final
 	{
-		return RHI->LockStagingBuffer_RenderThread(RHICmdList, StagingBuffer, Offset, SizeRHI);
+		return RHI->LockStagingBuffer_RenderThread(RHICmdList, StagingBuffer, Fence, Offset, SizeRHI);
 	}
 
 	/**

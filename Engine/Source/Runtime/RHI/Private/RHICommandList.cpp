@@ -2227,7 +2227,7 @@ void FDynamicRHI::RHIUnlockStructuredBuffer(class FRHICommandListImmediate& RHIC
 }
 
 // @todo-mattc-staging Default implementation
-void* FDynamicRHI::RHILockStagingBuffer(FRHIStagingBuffer* StagingBuffer, uint32 Offset, uint32 SizeRHI)
+void* FDynamicRHI::RHILockStagingBuffer(FRHIStagingBuffer* StagingBuffer, FRHIGPUFence* Fence, uint32 Offset, uint32 SizeRHI)
 {
 	check(false);
 	return nullptr;
@@ -2239,19 +2239,41 @@ void FDynamicRHI::RHIUnlockStagingBuffer(FRHIStagingBuffer* StagingBuffer)
 	//GDynamicRHI->RHIUnlockVertexBuffer(StagingBuffer->GetSourceBuffer());
 }
 
-void* FDynamicRHI::LockStagingBuffer_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHIStagingBuffer* StagingBuffer, uint32 Offset, uint32 SizeRHI)
+void* FDynamicRHI::LockStagingBuffer_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHIStagingBuffer* StagingBuffer, FRHIGPUFence* Fence, uint32 Offset, uint32 SizeRHI)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FDynamicRHI_LockStagingBuffer_RenderThread);
 	check(IsInRenderingThread());
-	RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThread);
-	return GDynamicRHI->RHILockStagingBuffer(StagingBuffer, Offset, SizeRHI);
+	if (Fence == nullptr || !Fence->Poll())
+	{
+		QUICK_SCOPE_CYCLE_COUNTER(STAT_FDynamicRHI_LockStagingBuffer_Flush);
+		RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThread);
+	}
+	{
+		QUICK_SCOPE_CYCLE_COUNTER(STAT_FDynamicRHI_LockStagingBuffer_RenderThread);
+		if (GRHISupportsMultithreading)
+		{
+			return GDynamicRHI->RHILockStagingBuffer(StagingBuffer, Fence, Offset, SizeRHI);
+		}
+		else
+		{
+			FScopedRHIThreadStaller StallRHIThread(RHICmdList);
+			return GDynamicRHI->RHILockStagingBuffer(StagingBuffer, Fence, Offset, SizeRHI);
+		}
+	}
 }
+
 void FDynamicRHI::UnlockStagingBuffer_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHIStagingBuffer* StagingBuffer)
 {
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_FDynamicRHI_UnlockStagingBuffer_RenderThread);
 	check(IsInRenderingThread());
-	RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThread);
-	GDynamicRHI->RHIUnlockStagingBuffer(StagingBuffer);
+	if (GRHISupportsMultithreading)
+	{
+		GDynamicRHI->RHIUnlockStagingBuffer(StagingBuffer);
+	}
+	else
+	{
+		FScopedRHIThreadStaller StallRHIThread(RHICmdList);
+		GDynamicRHI->RHIUnlockStagingBuffer(StagingBuffer);
+	}
 }
 
 FTexture2DRHIRef FDynamicRHI::AsyncReallocateTexture2D_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHITexture2D* Texture2D, int32 NewMipCount, int32 NewSizeX, int32 NewSizeY, FThreadSafeCounter* RequestStatus)
@@ -2604,15 +2626,30 @@ void FDynamicRHI::RHIMapStagingSurface_RenderThread(class FRHICommandListImmedia
 		RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThread);
 	}
 	{
-		FScopedRHIThreadStaller StallRHIThread(RHICmdList);
-		GDynamicRHI->RHIMapStagingSurface(Texture, Fence, OutData, OutWidth, OutHeight, RHICmdList.GetGPUMask().ToIndex());
+		QUICK_SCOPE_CYCLE_COUNTER(STAT_RHIMETHOD_MapStagingSurface_RenderThread);
+		if (GRHISupportsMultithreading)
+		{
+			GDynamicRHI->RHIMapStagingSurface(Texture, Fence, OutData, OutWidth, OutHeight, RHICmdList.GetGPUMask().ToIndex());
+		}
+		else
+		{
+			FScopedRHIThreadStaller StallRHIThread(RHICmdList);
+			GDynamicRHI->RHIMapStagingSurface(Texture, Fence, OutData, OutWidth, OutHeight, RHICmdList.GetGPUMask().ToIndex());
+		}
 	}
 }
 
 void FDynamicRHI::RHIUnmapStagingSurface_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHITexture* Texture)
 {
-	FScopedRHIThreadStaller StallRHIThread(RHICmdList);
-	GDynamicRHI->RHIUnmapStagingSurface(Texture, RHICmdList.GetGPUMask().ToIndex());
+	if (GRHISupportsMultithreading)
+	{
+		GDynamicRHI->RHIUnmapStagingSurface(Texture, RHICmdList.GetGPUMask().ToIndex());
+	}
+	else
+	{
+		FScopedRHIThreadStaller StallRHIThread(RHICmdList);
+		GDynamicRHI->RHIUnmapStagingSurface(Texture, RHICmdList.GetGPUMask().ToIndex());
+	}
 }
 
 void FDynamicRHI::RHIReadSurfaceFloatData_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHITexture* Texture, FIntRect Rect, TArray<FFloat16Color>& OutData, ECubeFace CubeFace, int32 ArrayIndex, int32 MipIndex)

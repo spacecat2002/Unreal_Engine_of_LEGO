@@ -2176,7 +2176,7 @@ void FD3D11DynamicRHI::RHIWriteGPUFence(FRHIGPUFence* FenceRHI)
 	Fence->WriteInternal();
 }
 
-void* FD3D11DynamicRHI::RHILockStagingBuffer(FRHIStagingBuffer* StagingBufferRHI, uint32 Offset, uint32 SizeRHI)
+void* FD3D11DynamicRHI::RHILockStagingBuffer(FRHIStagingBuffer* StagingBufferRHI, FRHIGPUFence* Fence, uint32 Offset, uint32 SizeRHI)
 {
 	check(StagingBufferRHI);
 	FD3D11StagingBuffer* StagingBuffer = ResourceCast(StagingBufferRHI);
