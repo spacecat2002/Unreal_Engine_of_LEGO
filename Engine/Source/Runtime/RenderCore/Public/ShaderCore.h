@@ -594,13 +594,16 @@ struct FShaderCompilerInput
 		/** Name of the constant buffer stored parameter. */
 		FString Name;
 
+		/** Type expected in the shader code to ensure the binding is bug free. */
+		FString ExpectedShaderType;
+
 		/** The offset of the parameter in the root shader parameter struct. */
 		uint16 ByteOffset;
-
 
 		friend FArchive& operator<<(FArchive& Ar, FRootParameterBinding& RootParameterBinding)
 		{
 			Ar << RootParameterBinding.Name;
+			Ar << RootParameterBinding.ExpectedShaderType;
 			Ar << RootParameterBinding.ByteOffset;
 			return Ar;
 		}

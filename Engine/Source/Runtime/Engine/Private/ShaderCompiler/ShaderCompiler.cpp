@@ -93,7 +93,7 @@ uint32 FShaderCommonCompileJob::GetNextJobId()
 }
 
 // this is for the protocol, not the data, bump if FShaderCompilerInput or ProcessInputFromArchive changes (also search for the second one with the same name, todo: put into one header file)
-const int32 ShaderCompileWorkerInputVersion = 10;
+const int32 ShaderCompileWorkerInputVersion = 11;
 // this is for the protocol, not the data, bump if FShaderCompilerOutput or WriteToOutputArchive changes (also search for the second one with the same name, todo: put into one header file)
 const int32 ShaderCompileWorkerOutputVersion = 5;
 // this is for the protocol, not the data, bump if FShaderCompilerOutput or WriteToOutputArchive changes (also search for the second one with the same name, todo: put into one header file)
@@ -2707,43 +2707,47 @@ bool FShaderCompilingManager::IsShaderCompilerWorkerRunning(FProcHandle & Worker
 	return FPlatformProcess::IsProcRunning(WorkerHandle);
 }
 
+static void GenerateShaderParameterType(FString& Result, const FShaderParametersMetadata::FMember& Member)
+{
+	switch (Member.GetBaseType())
+	{
+	case UBMT_INT32:   Result = TEXT("int"); break;
+	case UBMT_UINT32:  Result = TEXT("uint"); break;
+	case UBMT_FLOAT32:
+		if (Member.GetPrecision() == EShaderPrecisionModifier::Float)
+		{
+			Result = TEXT("float");
+		}
+		else if (Member.GetPrecision() == EShaderPrecisionModifier::Half)
+		{
+			Result = TEXT("half");
+		}
+		else if (Member.GetPrecision() == EShaderPrecisionModifier::Fixed)
+		{
+			Result = TEXT("fixed");
+		}
+		break;
+	default:
+		UE_LOG(LogShaders, Fatal, TEXT("Unrecognized uniform buffer struct member base type."));
+	};
+
+	// Generate the type dimensions for vectors and matrices.
+	if (Member.GetNumRows() > 1)
+	{
+		Result = FString::Printf(TEXT("%s%ux%u"), *Result, Member.GetNumRows(), Member.GetNumColumns());
+	}
+	else if (Member.GetNumColumns() > 1)
+	{
+		Result = FString::Printf(TEXT("%s%u"), *Result, Member.GetNumColumns());
+	}
+}
+
 /* Generates a uniform buffer struct member hlsl declaration using the member's metadata. */
 static void GenerateUniformBufferStructMember(FString& Result, const FShaderParametersMetadata::FMember& Member)
 {
 	// Generate the base type name.
-	FString BaseTypeName;
-	switch (Member.GetBaseType())
-	{
-		case UBMT_INT32:   BaseTypeName = TEXT("int"); break;
-		case UBMT_UINT32:  BaseTypeName = TEXT("uint"); break;
-		case UBMT_FLOAT32:
-			if (Member.GetPrecision() == EShaderPrecisionModifier::Float)
-			{
-				BaseTypeName = TEXT("float");
-			}
-			else if (Member.GetPrecision() == EShaderPrecisionModifier::Half)
-			{
-				BaseTypeName = TEXT("half");
-			}
-			else if (Member.GetPrecision() == EShaderPrecisionModifier::Fixed)
-			{
-				BaseTypeName = TEXT("fixed");
-			}
-			break;
-		default:
-			UE_LOG(LogShaders, Fatal, TEXT("Unrecognized uniform buffer struct member base type."));
-	};
-
-	// Generate the type dimensions for vectors and matrices.
-	FString TypeDim;
-	if (Member.GetNumRows() > 1)
-	{
-		TypeDim = FString::Printf(TEXT("%ux%u"), Member.GetNumRows(), Member.GetNumColumns());
-	}
-	else if (Member.GetNumColumns() > 1)
-	{
-		TypeDim = FString::Printf(TEXT("%u"), Member.GetNumColumns());
-	}
+	FString TypeName;
+	GenerateShaderParameterType(TypeName, Member);
 
 	// Generate array dimension post fix
 	FString ArrayDim;
@@ -2752,7 +2756,7 @@ static void GenerateUniformBufferStructMember(FString& Result, const FShaderPara
 		ArrayDim = FString::Printf(TEXT("[%u]"), Member.GetNumElements());
 	}
 
-	Result = FString::Printf(TEXT("%s%s %s%s"), *BaseTypeName, *TypeDim, Member.GetName(), *ArrayDim);
+	Result = FString::Printf(TEXT("%s %s%s"), *TypeName, Member.GetName(), *ArrayDim);
 }
 
 /* Generates the instanced stereo hlsl code that's dependent on view uniform declarations. */
@@ -2870,6 +2874,7 @@ static void PullRootShaderParametersLayout(FShaderCompilerInput& CompileInput, c
 		{
 			FShaderCompilerInput::FRootParameterBinding RootParameterBinding;
 			RootParameterBinding.Name = FString::Printf(TEXT("%s%s"), *Prefix, Member.GetName());
+			GenerateShaderParameterType(RootParameterBinding.ExpectedShaderType, Member);
 			RootParameterBinding.ByteOffset = MemberOffset;
 			CompileInput.RootParameterBindings.Add(RootParameterBinding);
 		}
