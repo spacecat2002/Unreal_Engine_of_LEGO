@@ -45,7 +45,7 @@ TAutoConsoleVariable<int32> CVarEyeAdaptationBasicCompute(
 
 static TAutoConsoleVariable<int32> CVarEnablePreExposureOnlyInTheEditor(
 	TEXT("r.EyeAdaptation.EditorOnly"),
-	1,
+	0,
 	TEXT("When pre-exposure is enabled, 0 to enable it everywhere, 1 to enable it only in the editor (default).\n")
 	TEXT("This is to because it currently has an impact on the renderthread performance\n"),
 	ECVF_ReadOnly);
