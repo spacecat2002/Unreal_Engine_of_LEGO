@@ -147,21 +147,30 @@ DECLARE_GPU_STAT_NAMED(RayTracingGIFinalGather, TEXT("Ray Tracing GI: Final Gath
 DECLARE_GPU_STAT_NAMED(RayTracingGICreateGatherPoints, TEXT("Ray Tracing GI: Create Gather Points"));
 
 void SetupLightParameters(
-	const TSparseArray<FLightSceneInfoCompact>& Lights,
+	const FScene& Scene,
 	const FViewInfo& View,
 	FPathTracingLightData* LightParameters)
 {
 	LightParameters->Count = 0;
 
+	// Get the SkyLight color
+
+	FSkyLightSceneProxy* SkyLight = Scene.SkyLight;
+	FVector SkyLightColor = FVector(0.0f, 0.0f, 0.0f);
+	if (SkyLight && SkyLight->bAffectGlobalIllumination)
+	{
+		SkyLightColor = FVector(1.0f);
+	}
+
 	// Prepend SkyLight to light buffer
 	// WARNING: Until ray payload encodes Light data buffer, the execution depends on this ordering!
 	uint32 SkyLightIndex = 0;
 	LightParameters->Type[SkyLightIndex] = 0;
-	LightParameters->Color[SkyLightIndex] = FVector(1.0);
+	LightParameters->Color[SkyLightIndex] = SkyLightColor;
 	LightParameters->Count++;
 
 	uint32 MaxLightCount = FMath::Min(CVarRayTracingGlobalIlluminationMaxLightCount.GetValueOnRenderThread(), RAY_TRACING_LIGHT_COUNT_MAXIMUM);
-	for (auto Light : Lights)
+	for (auto Light : Scene.Lights)
 	{
 		if (LightParameters->Count >= MaxLightCount) break;
 
@@ -223,6 +232,21 @@ void SetupLightParameters(
 		};
 
 		LightParameters->Count++;
+	}
+}
+
+void SetupGlobalIlluminationSkyLightParameters(
+	const FScene& Scene,
+	FSkyLightData* SkyLightData)
+{
+	FSkyLightSceneProxy* SkyLight = Scene.SkyLight;
+
+	SetupSkyLightParameters(Scene, SkyLightData);
+
+	// Override the Sky Light color if it should not affect global illumination
+	if (SkyLight && !SkyLight->bAffectGlobalIllumination)
+	{
+		SkyLightData->Color = FVector(0.0f);
 	}
 }
 
@@ -534,7 +558,7 @@ void FDeferredShadingSceneRenderer::RayTracingGlobalIlluminationCreateGatherPoin
 	InitializeBlueNoise(BlueNoise);
 
 	FPathTracingLightData LightParameters;
-	SetupLightParameters(Scene->Lights, View, &LightParameters);
+	SetupLightParameters(*Scene, View, &LightParameters);
 
 	if (Scene->SkyLight && Scene->SkyLight->ShouldRebuildCdf())
 	{
@@ -542,7 +566,7 @@ void FDeferredShadingSceneRenderer::RayTracingGlobalIlluminationCreateGatherPoin
 		BuildSkyLightCdfs(GraphBuilder.RHICmdList, Scene->SkyLight);
 	}
 	FSkyLightData SkyLightParameters;
-	SetupSkyLightParameters(*Scene, &SkyLightParameters);
+	SetupGlobalIlluminationSkyLightParameters(*Scene, &SkyLightParameters);
 
 	FRayTracingGlobalIlluminationCreateGatherPointsRGS::FParameters* PassParameters = GraphBuilder.AllocParameters<FRayTracingGlobalIlluminationCreateGatherPointsRGS::FParameters>();
 	PassParameters->SampleIndex = (FrameIndex * SamplesPerPixel) % GatherSamples;
@@ -730,7 +754,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingGlobalIlluminationBruteForce
 	InitializeBlueNoise(BlueNoise);
 
 	FPathTracingLightData LightParameters;
-	SetupLightParameters(Scene->Lights, View, &LightParameters);
+	SetupLightParameters(*Scene, View, &LightParameters);
 
 	if (Scene->SkyLight && Scene->SkyLight->ShouldRebuildCdf())
 	{
@@ -738,7 +762,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingGlobalIlluminationBruteForce
 		BuildSkyLightCdfs(GraphBuilder.RHICmdList, Scene->SkyLight);
 	}
 	FSkyLightData SkyLightParameters;
-	SetupSkyLightParameters(*Scene, &SkyLightParameters);
+	SetupGlobalIlluminationSkyLightParameters(*Scene, &SkyLightParameters);
 
 	FGlobalIlluminationRGS::FParameters* PassParameters = GraphBuilder.AllocParameters<FGlobalIlluminationRGS::FParameters>();
 	PassParameters->SamplesPerPixel = RayTracingGISamplesPerPixel;
