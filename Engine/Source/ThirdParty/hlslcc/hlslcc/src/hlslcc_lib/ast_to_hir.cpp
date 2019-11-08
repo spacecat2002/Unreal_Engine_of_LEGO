@@ -1823,7 +1823,7 @@ ir_rvalue* ast_expression::hir(exec_list *instructions, struct _mesa_glsl_parse_
 			error_emitted = true;
 		}
 
-		if (!op[1]->type->is_integer())
+		if (!(op[1]->type->is_integer() || op[1]->type->is_boolean()))
 		{
 			_mesa_glsl_error(&index_loc, state,
 				"array index must be integer type");
@@ -1986,6 +1986,10 @@ ir_rvalue* ast_expression::hir(exec_list *instructions, struct _mesa_glsl_parse_
 		}
 		else
 		{
+			if (op[1]->type->is_boolean())
+			{
+				apply_type_conversion(glsl_type::get_instance(GLSL_TYPE_INT, 1, 1), op[1], instructions, state, false, &loc);
+			}
 			if (array->type->is_array())
 			{
 				/* whole_variable_referenced can return NULL if the array is a
@@ -4376,11 +4380,13 @@ ir_rvalue* ast_jump_statement::hir(exec_list *instructions, struct _mesa_glsl_pa
 	}
 
 	case ast_discard:
+/*
 		if (state->target != fragment_shader)
 		{
 			YYLTYPE loc = this->get_location();
 			_mesa_glsl_error(&loc, state, "'discard' may only appear in a fragment shader");
 		}
+*/
 		instructions->push_tail(new(ctx)ir_discard);
 		break;
 
