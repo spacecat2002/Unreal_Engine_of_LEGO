@@ -181,6 +181,7 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 		(EngineShowFlags.VisualizeBuffer && View.CurrentBufferVisualizationMode != NAME_None) ||
 		EngineShowFlags.RayTracingDebug ||
 		EngineShowFlags.VisualizeDistanceFieldAO ||
+		EngineShowFlags.VisualizeMeshDistanceFields ||
 		EngineShowFlags.VisualizeGlobalDistanceField ||
 		EngineShowFlags.CollisionVisibility ||
 		EngineShowFlags.CollisionPawn)
