@@ -193,6 +193,10 @@ public:
 					{
 						InSkeletalMeshComponent->AnimScriptInstance = SourceAnimInstance;
 					}
+					else
+					{
+						InSkeletalMeshComponent->AnimScriptInstance = nullptr;
+					}
 				}
 				else
 				{
