@@ -9,7 +9,17 @@ FScalarParameterNameAndCurve::FScalarParameterNameAndCurve( FName InParameterNam
 	ParameterName = InParameterName;
 }
 
-FVectorParameterNameAndCurves::FVectorParameterNameAndCurves( FName InParameterName )
+FBoolParameterNameAndCurve::FBoolParameterNameAndCurve(FName InParameterName)
+{
+	ParameterName = InParameterName;
+}
+
+FVector2DParameterNameAndCurves::FVector2DParameterNameAndCurves( FName InParameterName )
+{
+	ParameterName = InParameterName;
+}
+
+FVectorParameterNameAndCurves::FVectorParameterNameAndCurves(FName InParameterName)
 {
 	ParameterName = InParameterName;
 }
@@ -68,6 +78,22 @@ void UMovieSceneParameterSection::ReconstructChannelProxy(bool bForce)
 		// Prevent single channels from collapsing to the track node
 		MetaData.bCanCollapseToTrack = false;
 		Channels.Add(Scalar.ParameterCurve, MetaData, TMovieSceneExternalValue<float>());
+	}
+
+	for (FBoolParameterNameAndCurve& Bool : GetBoolParameterNamesAndCurves())
+	{
+		FMovieSceneChannelMetaData MetaData(Bool.ParameterName, FText::FromName(Bool.ParameterName));
+		// Prevent single channels from collapsing to the track node
+		MetaData.bCanCollapseToTrack = false;
+		Channels.Add(Bool.ParameterCurve, MetaData, TMovieSceneExternalValue<bool>());
+	}
+	for (FVector2DParameterNameAndCurves& Vector2D : GetVector2DParameterNamesAndCurves())
+	{
+		FString ParameterString = Vector2D.ParameterName.ToString();
+		FText Group = FText::FromString(ParameterString);
+
+		Channels.Add(Vector2D.XCurve, FMovieSceneChannelMetaData(*(ParameterString + TEXT(".X")), FCommonChannelData::ChannelX, Group), TMovieSceneExternalValue<float>());
+		Channels.Add(Vector2D.YCurve, FMovieSceneChannelMetaData(*(ParameterString + TEXT(".Y")), FCommonChannelData::ChannelY, Group), TMovieSceneExternalValue<float>());
 	}
 	for (FVectorParameterNameAndCurves& Vector : GetVectorParameterNamesAndCurves())
 	{
@@ -128,11 +154,14 @@ void UMovieSceneParameterSection::ReconstructChannelProxy(bool bForce)
 	{
 		Channels.Add(Scalar.ParameterCurve);
 	}
-	for (FVectorParameterNameAndCurves& Vector : GetVectorParameterNamesAndCurves())
+	for (FBoolParameterNameAndCurve& Bool : GetBoolParameterNamesAndCurves())
 	{
-		Channels.Add(Vector.XCurve);
-		Channels.Add(Vector.YCurve);
-		Channels.Add(Vector.ZCurve);
+		Channels.Add(Bool.ParameterCurve);
+	}
+	for (FVector2DParameterNameAndCurves& Vector2D : GetVector2DParameterNamesAndCurves())
+	{
+		Channels.Add(Vector2D.XCurve);
+		Channels.Add(Vector2D.YCurve);
 	}
 	for (FColorParameterNameAndCurves& Color : GetColorParameterNamesAndCurves())
 	{
@@ -184,6 +213,62 @@ void UMovieSceneParameterSection::AddScalarParameterKey( FName InParameterName, 
 	}
 
 	ExistingChannel->AddCubicKey(InTime, InValue);
+
+	if (TryModify())
+	{
+		SetRange(TRange<FFrameNumber>::Hull(TRange<FFrameNumber>(InTime), GetRange()));
+	}
+}
+
+void UMovieSceneParameterSection::AddBoolParameterKey(FName InParameterName, FFrameNumber InTime, bool InValue)
+{
+	FMovieSceneBoolChannel* ExistingChannel = nullptr;
+	for (FBoolParameterNameAndCurve& BoolParameterNameAndCurve : BoolParameterNamesAndCurves)
+	{
+		if (BoolParameterNameAndCurve.ParameterName == InParameterName)
+		{
+			ExistingChannel = &BoolParameterNameAndCurve.ParameterCurve;
+			break;
+		}
+	}
+	if (ExistingChannel == nullptr)
+	{
+		const int32 NewIndex = BoolParameterNamesAndCurves.Add(FBoolParameterNameAndCurve(InParameterName));
+		ExistingChannel = &BoolParameterNamesAndCurves[NewIndex].ParameterCurve;
+
+		ReconstructChannelProxy(true);
+	}
+
+	ExistingChannel->GetData().UpdateOrAddKey(InTime, InValue);
+
+	if (TryModify())
+	{
+		SetRange(TRange<FFrameNumber>::Hull(TRange<FFrameNumber>(InTime), GetRange()));
+	}
+}
+
+
+void UMovieSceneParameterSection::AddVector2DParameterKey(FName InParameterName, FFrameNumber InTime, FVector2D InValue)
+{
+	FVector2DParameterNameAndCurves* ExistingCurves = nullptr;
+	for (FVector2DParameterNameAndCurves& VectorParameterNameAndCurve : Vector2DParameterNamesAndCurves)
+	{
+		if (VectorParameterNameAndCurve.ParameterName == InParameterName)
+		{
+			ExistingCurves = &VectorParameterNameAndCurve;
+			break;
+		}
+	}
+	if (ExistingCurves == nullptr)
+	{
+		int32 NewIndex = Vector2DParameterNamesAndCurves.Add(FVector2DParameterNameAndCurves(InParameterName));
+		ExistingCurves = &Vector2DParameterNamesAndCurves[NewIndex];
+
+		ReconstructChannelProxy(true);
+	}
+
+	ExistingCurves->XCurve.AddCubicKey(InTime, InValue.X);
+	ExistingCurves->YCurve.AddCubicKey(InTime, InValue.Y);
 
 	if (TryModify())
 	{
@@ -303,6 +388,34 @@ bool UMovieSceneParameterSection::RemoveScalarParameter( FName InParameterName )
 	return false;
 }
 
+bool UMovieSceneParameterSection::RemoveBoolParameter(FName InParameterName)
+{
+	for (int32 i = 0; i < BoolParameterNamesAndCurves.Num(); i++)
+	{
+		if (BoolParameterNamesAndCurves[i].ParameterName == InParameterName)
+		{
+			BoolParameterNamesAndCurves.RemoveAt(i);
+			ReconstructChannelProxy(true);
+			return true;
+		}
+	}
+	return false;
+}
+
+bool UMovieSceneParameterSection::RemoveVector2DParameter(FName InParameterName)
+{
+	for (int32 i = 0; i < Vector2DParameterNamesAndCurves.Num(); i++)
+	{
+		if (Vector2DParameterNamesAndCurves[i].ParameterName == InParameterName)
+		{
+			Vector2DParameterNamesAndCurves.RemoveAt(i);
+			ReconstructChannelProxy(true);
+			return true;
+		}
+	}
+	return false;
+}
+
 bool UMovieSceneParameterSection::RemoveVectorParameter( FName InParameterName )
 {
 	for ( int32 i = 0; i < VectorParameterNamesAndCurves.Num(); i++ )
@@ -355,7 +468,27 @@ const TArray<FScalarParameterNameAndCurve>& UMovieSceneParameterSection::GetScal
 	return ScalarParameterNamesAndCurves;
 }
 
-TArray<FVectorParameterNameAndCurves>& UMovieSceneParameterSection::GetVectorParameterNamesAndCurves()
+TArray<FBoolParameterNameAndCurve>& UMovieSceneParameterSection::GetBoolParameterNamesAndCurves() 
+{
+	return BoolParameterNamesAndCurves;
+}
+
+const TArray<FBoolParameterNameAndCurve>& UMovieSceneParameterSection::GetBoolParameterNamesAndCurves() const
+{
+	return BoolParameterNamesAndCurves;
+}
+
+TArray<FVector2DParameterNameAndCurves>& UMovieSceneParameterSection::GetVector2DParameterNamesAndCurves()
+{
+	return Vector2DParameterNamesAndCurves;
+}
+
+const TArray<FVector2DParameterNameAndCurves>& UMovieSceneParameterSection::GetVector2DParameterNamesAndCurves() const
+{
+	return Vector2DParameterNamesAndCurves;
+}
+
+TArray<FVectorParameterNameAndCurves>& UMovieSceneParameterSection::GetVectorParameterNamesAndCurves() 
 {
 	return VectorParameterNamesAndCurves;
 }
