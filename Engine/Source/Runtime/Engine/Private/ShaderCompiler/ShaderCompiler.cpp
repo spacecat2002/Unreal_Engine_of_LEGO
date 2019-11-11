@@ -2488,6 +2488,7 @@ bool FShaderCompilingManager::HandlePotentialRetryOnError(TMap<int32, FShaderMap
 
 void FShaderCompilingManager::CancelCompilation(const TCHAR* MaterialName, const TArray<int32>& ShaderMapIdsToCancel)
 {
+	check(IsInGameThread());
 	check(!FPlatformProperties::RequiresCookedData());
 	UE_LOG(LogShaders, Log, TEXT("CancelCompilation %s "), MaterialName ? MaterialName : TEXT(""));
 
@@ -2542,6 +2543,7 @@ void FShaderCompilingManager::CancelCompilation(const TCHAR* MaterialName, const
 
 void FShaderCompilingManager::FinishCompilation(const TCHAR* MaterialName, const TArray<int32>& ShaderMapIdsToFinishCompiling)
 {
+	check(IsInGameThread());
 	check(!FPlatformProperties::RequiresCookedData());
 	const double StartTime = FPlatformTime::Seconds();
 
@@ -2581,6 +2583,7 @@ void FShaderCompilingManager::FinishCompilation(const TCHAR* MaterialName, const
 
 void FShaderCompilingManager::FinishAllCompilation()
 {
+	check(IsInGameThread());
 	check(!FPlatformProperties::RequiresCookedData());
 	const double StartTime = FPlatformTime::Seconds();
 
@@ -2607,6 +2610,7 @@ void FShaderCompilingManager::FinishAllCompilation()
 void FShaderCompilingManager::ProcessAsyncResults(bool bLimitExecutionTime, bool bBlockOnGlobalShaderCompletion)
 {
 	COOK_STAT(FScopedDurationTimer Timer(ShaderCompilerCookStats::ProcessAsyncResultsTimeSec));
+	check(IsInGameThread());
 	if (bAllowAsynchronousShaderCompiling)
 	{
 		Thread->CheckHealth();
