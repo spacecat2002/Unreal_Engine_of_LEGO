@@ -606,6 +606,21 @@ enum EUniformBufferBaseType : uint8
 };
 static_assert(EUniformBufferBaseType_Num <= (1 << EUniformBufferBaseType_NumBits), "EUniformBufferBaseType_Num will not fit on EUniformBufferBaseType_NumBits");
 
+/** Numerical type used to store the static slot indices. */
+using FUniformBufferStaticSlot = uint8;
+
+enum
+{
+	/** The maximum number of static slots allowed. */
+	MAX_UNIFORM_BUFFER_STATIC_SLOTS = 255
+};
+
+/** Returns whether a static uniform buffer slot index is valid. */
+inline bool IsUniformBufferStaticSlotValid(const FUniformBufferStaticSlot Slot)
+{
+	return Slot < MAX_UNIFORM_BUFFER_STATIC_SLOTS;
+}
+
 struct FRHIResourceTableEntry
 {
 public:

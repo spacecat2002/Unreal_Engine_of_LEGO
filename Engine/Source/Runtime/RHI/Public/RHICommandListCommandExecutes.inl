@@ -499,6 +499,11 @@ void FRHICommandWriteGPUFence<CmdListType>::Execute(FRHICommandListBase& CmdList
 template struct FRHICommandWriteGPUFence<ECmdList::EGfx>;
 template struct FRHICommandWriteGPUFence<ECmdList::ECompute>;
 
+void FRHICommandSetGlobalUniformBuffers::Execute(FRHICommandListBase& CmdList)
+{
+	RHISTAT(SetGlobalUniformBuffers);
+	INTERNAL_DECORATOR(RHISetGlobalUniformBuffers)(UniformBuffers);
+}
 
 void FRHICommandBuildLocalUniformBuffer::Execute(FRHICommandListBase& CmdList)
 {

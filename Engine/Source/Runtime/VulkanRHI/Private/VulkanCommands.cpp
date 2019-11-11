@@ -182,6 +182,8 @@ void FVulkanCommandListContext::RHISetComputePipelineState(FRHIComputePipelineSt
 	//#todo-rco: Set PendingGfx to null
 	FVulkanComputePipeline* ComputePipeline = ResourceCast(ComputePipelineState);
 	PendingComputeState->SetComputePipeline(ComputePipeline);
+
+	ApplyGlobalUniformBuffers(const_cast<FVulkanComputeShader*>(ComputePipeline->GetShader()));
 }
 
 void FVulkanCommandListContext::RHIDispatchComputeShader(uint32 ThreadGroupCountX, uint32 ThreadGroupCountY, uint32 ThreadGroupCountZ)
@@ -605,6 +607,16 @@ inline void FVulkanCommandListContext::SetShaderUniformBuffer(ShaderStage::EStag
 	{
 		// Internal error: Completely empty UB!
 		checkSlow(!CodeHeader.bHasRealUBs || !HeaderUBInfo.bOnlyHasResources);
+	}
+}
+
+void FVulkanCommandListContext::RHISetGlobalUniformBuffers(const FUniformBufferStaticBindings& InUniformBuffers)
+{
+	FMemory::Memzero(GlobalUniformBuffers.GetData(), GlobalUniformBuffers.Num() * sizeof(FRHIUniformBuffer*));
+
+	for (int32 Index = 0; Index < InUniformBuffers.GetUniformBufferCount(); ++Index)
+	{
+		GlobalUniformBuffers[InUniformBuffers.GetSlot(Index)] = InUniformBuffers.GetUniformBuffer(Index);
 	}
 }
 

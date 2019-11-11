@@ -425,10 +425,11 @@ void FUniformExpressionSet::CreateBufferStruct()
 
 	const uint32 StructSize = Align(NextMemberOffset, SHADER_PARAMETER_STRUCT_ALIGNMENT);
 	UniformBufferStruct.Emplace(
-		FShaderParametersMetadata::EUseCase::DataDrivenShaderParameterStruct,
+		FShaderParametersMetadata::EUseCase::DataDrivenUniformBuffer,
 		MaterialLayoutName,
 		TEXT("MaterialUniforms"),
 		TEXT("Material"),
+		nullptr,
 		StructSize,
 		Members);
 }

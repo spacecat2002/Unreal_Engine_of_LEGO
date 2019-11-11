@@ -1055,6 +1055,16 @@ void FOpenGLDynamicRHI::RHISetShaderTexture(FRHIComputeShader* ComputeShaderRHI,
 	}
 }
 
+void FOpenGLDynamicRHI::RHISetGlobalUniformBuffers(const FUniformBufferStaticBindings& InUniformBuffers)
+{
+	FMemory::Memzero(GlobalUniformBuffers.GetData(), GlobalUniformBuffers.Num() * sizeof(FRHIUniformBuffer*));
+
+	for (int32 Index = 0; Index < InUniformBuffers.GetUniformBufferCount(); ++Index)
+	{
+		GlobalUniformBuffers[InUniformBuffers.GetSlot(Index)] = InUniformBuffers.GetUniformBuffer(Index);
+	}
+}
+
 void FOpenGLDynamicRHI::RHISetShaderUniformBuffer(FRHIGraphicsShader* ShaderRHI,uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
 {
 	VERIFY_GL_SCOPE();
@@ -3055,6 +3065,8 @@ void FOpenGLDynamicRHI::RHISetComputeShader(FRHIComputeShader* ComputeShaderRHI)
 	{
 		UE_LOG(LogRHI,Fatal,TEXT("Platform doesn't support SM5 for OpenGL but set feature level to SM5"));
 	}
+
+	ApplyGlobalUniformBuffers(ComputeShaderRHI, ResourceCast(ComputeShaderRHI));
 }
 
 void FOpenGLDynamicRHI::RHIDispatchComputeShader(uint32 ThreadGroupCountX, uint32 ThreadGroupCountY, uint32 ThreadGroupCountZ)

@@ -2264,7 +2264,7 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 
 	{
 		SCOPED_BOOT_TIMING("FUniformBufferStruct::InitializeStructs()");
-		FShaderParametersMetadata::InitializeAllGlobalStructs();
+		FShaderParametersMetadata::InitializeAllUniformBufferStructs();
 	}
 
 	{

@@ -124,6 +124,8 @@ void FMetalRHICommandContext::RHISetComputeShader(FRHIComputeShader* ComputeShad
 	// cache this for Dispatch
 	// sets this compute shader pipeline as the current (this resets all state, so we need to set all resources after calling this)
 	Context->GetCurrentState().SetComputeShader(ComputeShader);
+
+	ApplyGlobalUniformBuffers(ComputeShader);
 	}
 }
 
@@ -135,6 +137,8 @@ void FMetalRHICommandContext::RHISetComputePipelineState(FRHIComputePipelineStat
 	// cache this for Dispatch
 	// sets this compute shader pipeline as the current (this resets all state, so we need to set all resources after calling this)
 	Context->GetCurrentState().SetComputeShader(ComputePipeline->GetComputeShader());
+
+	ApplyGlobalUniformBuffers(ComputeShader);
 	}
 }
 
@@ -251,6 +255,22 @@ void FMetalRHICommandContext::RHISetGraphicsPipelineState(FRHIGraphicsPipelineSt
 		// Bad Arne!
 		RHISetStencilRef(0);
 		RHISetBlendFactor(FLinearColor(1.0f, 1.0f, 1.0f));
+
+		ApplyGlobalUniformBuffers(PipelineState->VertexShader.GetReference());
+		ApplyGlobalUniformBuffers(PipelineState->HullShader.GetReference());
+		ApplyGlobalUniformBuffers(PipelineState->DomainShader.GetReference());
+		ApplyGlobalUniformBuffers(PipelineState->GeometryShader.GetReference());
+		ApplyGlobalUniformBuffers(PipelineState->PixelShader.GetReference());
+	}
+}
+
+void FMetalRHICommandContext::RHISetGlobalUniformBuffers(const FUniformBufferStaticBindings& InUniformBuffers)
+{
+	FMemory::Memzero(GlobalUniformBuffers.GetData(), GlobalUniformBuffers.Num() * sizeof(FRHIUniformBuffer*));
+
+	for (int32 Index = 0; Index < InUniformBuffers.GetUniformBufferCount(); ++Index)
+	{
+		GlobalUniformBuffers[InUniformBuffers.GetSlot(Index)] = InUniformBuffers.GetUniformBuffer(Index);
 	}
 }
 

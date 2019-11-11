@@ -81,6 +81,7 @@ FD3D12CommandContext::FD3D12CommandContext(FD3D12Device* InParent, FD3D12SubAllo
 	}
 	FMemory::Memzero(CurrentRenderTargets);
 	StateCache.Init(GetParentDevice(), this, nullptr, SubHeapDesc);
+	GlobalUniformBuffers.AddZeroed(FUniformBufferStaticSlotRegistry::Get().GetSlotCount());
 }
 
 FD3D12CommandContext::~FD3D12CommandContext()

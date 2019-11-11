@@ -73,6 +73,7 @@ FMetalRHICommandContext::FMetalRHICommandContext(class FMetalProfiler* InProfile
 , PendingNumPrimitives(0)
 {
 	check(Context);
+	GlobalUniformBuffers.AddZeroed(FUniformBufferStaticSlotRegistry::Get().GetSlotCount());
 }
 
 FMetalRHICommandContext::~FMetalRHICommandContext()

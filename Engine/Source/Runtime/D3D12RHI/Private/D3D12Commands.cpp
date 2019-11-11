@@ -377,6 +377,15 @@ void FD3D12CommandContext::RHITransitionResources(EResourceTransitionAccess Tran
 	}
 }
 
+void FD3D12CommandContext::RHISetGlobalUniformBuffers(const FUniformBufferStaticBindings& InUniformBuffers)
+{
+	FMemory::Memzero(GlobalUniformBuffers.GetData(), GlobalUniformBuffers.Num() * sizeof(FRHIUniformBuffer*));
+
+	for (int32 Index = 0; Index < InUniformBuffers.GetUniformBufferCount(); ++Index)
+	{
+		GlobalUniformBuffers[InUniformBuffers.GetSlot(Index)] = InUniformBuffers.GetUniformBuffer(Index);
+	}
+}
 
 void FD3D12CommandContext::RHICopyToStagingBuffer(FRHIVertexBuffer* SourceBufferRHI, FRHIStagingBuffer* StagingBufferRHI, uint32 Offset, uint32 NumBytes)
 {
@@ -487,6 +496,12 @@ void FD3D12CommandContext::RHISetGraphicsPipelineState(FRHIGraphicsPipelineState
 
 	StateCache.SetGraphicsPipelineState(GraphicsPipelineState, bUsingTessellation != bWasUsingTessellation);
 	StateCache.SetStencilRef(0);
+
+	ApplyGlobalUniformBuffers(GraphicsPipelineState->GetVertexShader());
+	ApplyGlobalUniformBuffers(GraphicsPipelineState->GetHullShader());
+	ApplyGlobalUniformBuffers(GraphicsPipelineState->GetDomainShader());
+	ApplyGlobalUniformBuffers(GraphicsPipelineState->GetGeometryShader());
+	ApplyGlobalUniformBuffers(GraphicsPipelineState->GetPixelShader());
 }
 
 void FD3D12CommandContext::RHISetComputePipelineState(FRHIComputePipelineState* ComputeState)
@@ -503,6 +518,8 @@ void FD3D12CommandContext::RHISetComputePipelineState(FRHIComputePipelineState* 
 	}
 
 	StateCache.SetComputePipelineState(ComputePipelineState);
+
+	ApplyGlobalUniformBuffers(ComputePipelineState->ComputeShader.GetReference());
 }
 
 void FD3D12CommandContext::RHISetShaderTexture(FRHIGraphicsShader* ShaderRHI, uint32 TextureIndex, FRHITexture* NewTextureRHI)

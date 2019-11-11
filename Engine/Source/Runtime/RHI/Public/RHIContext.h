@@ -30,6 +30,61 @@ enum class EAsyncComputeBudget;
 enum class EResourceTransitionAccess;
 enum class EResourceTransitionPipeline;
 
+#define VALIDATE_UNIFORM_BUFFER_GLOBAL_BINDINGS (!UE_BUILD_SHIPPING && !UE_BUILD_TEST)
+
+/** A list of global uniform buffer bindings. */
+class FUniformBufferStaticBindings
+{
+public:
+	FUniformBufferStaticBindings() = default;
+
+	template <typename... TArgs>
+	FUniformBufferStaticBindings(TArgs... Args)
+	{
+		std::initializer_list<FRHIUniformBuffer*> InitList = { Args... };
+
+		for (FRHIUniformBuffer* Buffer : InitList)
+		{
+			AddUniformBuffer(Buffer);
+		}
+	}
+
+	inline void AddUniformBuffer(FRHIUniformBuffer* UniformBuffer)
+	{
+		checkf(UniformBuffer, TEXT("Attemped to assign a null uniform buffer to the global uniform buffer bindings."));
+		const FRHIUniformBufferLayout& Layout = UniformBuffer->GetLayout();
+		const FUniformBufferStaticSlot Slot = Layout.StaticSlot;
+		checkf(IsUniformBufferStaticSlotValid(Slot), TEXT("Attempted to set a global uniform buffer %s with an invalid slot."), *Layout.GetDebugName().ToString());
+
+#if VALIDATE_UNIFORM_BUFFER_GLOBAL_BINDINGS
+		ensureMsgf(INDEX_NONE == Slots.Find(Slot), TEXT("Uniform Buffer %s was added twice to the binding array."), *Layout.GetDebugName().ToString());
+#endif
+
+		Slots.Add(Slot);
+		UniformBuffers.Add(UniformBuffer);
+	}
+
+	int32 GetUniformBufferCount() const
+	{
+		return UniformBuffers.Num();
+	}
+
+	FRHIUniformBuffer* GetUniformBuffer(int32 Index) const
+	{
+		return UniformBuffers[Index];
+	}
+
+	FUniformBufferStaticSlot GetSlot(int32 Index) const
+	{
+		return Slots[Index];
+	}
+
+private:
+	static const uint32 InlineUniformBufferCount = 8;
+	TArray<FUniformBufferStaticSlot, TInlineAllocator<InlineUniformBufferCount>> Slots;
+	TArray<FRHIUniformBuffer*, TInlineAllocator<InlineUniformBufferCount>> UniformBuffers;
+};
+
 /** Context that is capable of doing Compute work.  Can be async or compute on the gfx pipe. */
 class IRHIComputeContext
 {
@@ -105,6 +160,11 @@ public:
 	virtual void RHISetShaderUniformBuffer(FRHIComputeShader* ComputeShader, uint32 BufferIndex, FRHIUniformBuffer* Buffer) = 0;
 
 	virtual void RHISetShaderParameter(FRHIComputeShader* ComputeShader, uint32 BufferIndex, uint32 BaseIndex, uint32 NumBytes, const void* NewValue) = 0;
+
+	virtual void RHISetGlobalUniformBuffers(const FUniformBufferStaticBindings& InUniformBuffers)
+	{
+		checkNoEntry();
+	}
 
 	virtual void RHIPushEvent(const TCHAR* Name, FColor Color) = 0;
 

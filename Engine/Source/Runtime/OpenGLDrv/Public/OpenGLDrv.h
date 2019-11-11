@@ -476,6 +476,7 @@ public:
 	virtual void RHISetUAVParameter(FRHIComputeShader* ComputeShader, uint32 UAVIndex, FRHIUnorderedAccessView* UAV, uint32 InitialCount) final override;
 	virtual void RHISetShaderResourceViewParameter(FRHIGraphicsShader* Shader, uint32 SamplerIndex, FRHIShaderResourceView* SRV) final override;
 	virtual void RHISetShaderResourceViewParameter(FRHIComputeShader* ComputeShader, uint32 SamplerIndex, FRHIShaderResourceView* SRV) final override;
+	virtual void RHISetGlobalUniformBuffers(const FUniformBufferStaticBindings& InUniformBuffers) final override;
 	virtual void RHISetShaderUniformBuffer(FRHIGraphicsShader* Shader, uint32 BufferIndex, FRHIUniformBuffer* Buffer) final override;
 	virtual void RHISetShaderUniformBuffer(FRHIComputeShader* ComputeShader, uint32 BufferIndex, FRHIUniformBuffer* Buffer) final override;
 	virtual void RHISetShaderParameter(FRHIGraphicsShader* Shader, uint32 BufferIndex, uint32 BaseIndex, uint32 NumBytes, const void* NewValue) final override;
@@ -972,6 +973,12 @@ public:
 			RHIEnableDepthBoundsTest(FallbackGraphicsState->Initializer.bDepthBounds);
 		}
 
+		ApplyGlobalUniformBuffers(PsoInit.BoundShaderState.VertexShaderRHI, ResourceCast(PsoInit.BoundShaderState.VertexShaderRHI));
+		ApplyGlobalUniformBuffers(PsoInit.BoundShaderState.HullShaderRHI, ResourceCast(PsoInit.BoundShaderState.HullShaderRHI));
+		ApplyGlobalUniformBuffers(PsoInit.BoundShaderState.DomainShaderRHI, ResourceCast(PsoInit.BoundShaderState.DomainShaderRHI));
+		ApplyGlobalUniformBuffers(PsoInit.BoundShaderState.GeometryShaderRHI, ResourceCast(PsoInit.BoundShaderState.GeometryShaderRHI));
+		ApplyGlobalUniformBuffers(PsoInit.BoundShaderState.PixelShaderRHI, ResourceCast(PsoInit.BoundShaderState.PixelShaderRHI));
+
 		// Store the PSO's primitive (after since IRHICommandContext::RHISetGraphicsPipelineState sets the BSS)
 		PrimitiveType = PsoInit.PrimitiveType;
 	}
@@ -1059,7 +1066,19 @@ private:
 	FOpenGLContextState	RenderingContextState;
 	// Cached context type on BeginScene
 	int32 BeginSceneContextType;
-	
+
+	template <typename TRHIShader, typename TRHIProxyShader>
+	void ApplyGlobalUniformBuffers(TRHIShader* Shader, TRHIProxyShader* ProxyShader)
+	{
+		if (ProxyShader)
+		{
+			check(Shader);
+			::ApplyGlobalUniformBuffers(this, Shader, ProxyShader->StaticSlots, ProxyShader->Bindings.ShaderResourceTable.ResourceTableLayoutHashes, GlobalUniformBuffers);
+		}
+	}
+
+	TArray<FRHIUniformBuffer*> GlobalUniformBuffers;
+
 	/** Cached mip-limits for textures when ARB_texture_view is unavailable */
 	TMap<GLuint, TPair<GLenum, GLenum>> TextureMipLimits;
 

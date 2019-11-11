@@ -146,6 +146,8 @@ FVulkanCommandListContext::FVulkanCommandListContext(FVulkanDynamicRHI* InRHI, F
 	PendingComputeState = new FVulkanPendingComputeState(Device, *this);
 
 	UniformBufferUploader = new FVulkanUniformBufferUploader(Device);
+
+	GlobalUniformBuffers.AddZeroed(FUniformBufferStaticSlotRegistry::Get().GetSlotCount());
 }
 
 FVulkanCommandListContext::~FVulkanCommandListContext()

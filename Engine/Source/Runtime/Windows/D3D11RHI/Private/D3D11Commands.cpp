@@ -175,6 +175,22 @@ void FD3D11DynamicRHI::RHISetRasterizerState(FRHIRasterizerState* NewStateRHI)
 	StateCache.SetRasterizerState(NewState->Resource);
 }
 
+void FD3D11DynamicRHI::RHISetGraphicsPipelineState(FRHIGraphicsPipelineState* GraphicsState)
+{
+	FRHIGraphicsPipelineStateFallBack* FallbackGraphicsState = static_cast<FRHIGraphicsPipelineStateFallBack*>(GraphicsState);
+	IRHICommandContextPSOFallback::RHISetGraphicsPipelineState(GraphicsState);
+	const FGraphicsPipelineStateInitializer& PsoInit = FallbackGraphicsState->Initializer;
+
+	ApplyGlobalUniformBuffers(static_cast<FD3D11VertexShader*>(PsoInit.BoundShaderState.VertexShaderRHI));
+	ApplyGlobalUniformBuffers(static_cast<FD3D11HullShader*>(PsoInit.BoundShaderState.HullShaderRHI));
+	ApplyGlobalUniformBuffers(static_cast<FD3D11DomainShader*>(PsoInit.BoundShaderState.DomainShaderRHI));
+	ApplyGlobalUniformBuffers(static_cast<FD3D11GeometryShader*>(PsoInit.BoundShaderState.GeometryShaderRHI));
+	ApplyGlobalUniformBuffers(static_cast<FD3D11PixelShader*>(PsoInit.BoundShaderState.PixelShaderRHI));
+
+	// Store the PSO's primitive (after since IRHICommandContext::RHISetGraphicsPipelineState sets the BSS)
+	PrimitiveType = PsoInit.PrimitiveType;
+}
+
 void FD3D11DynamicRHI::RHISetComputeShader(FRHIComputeShader* ComputeShaderRHI)
 {
 	FD3D11ComputeShader* ComputeShader = ResourceCast(ComputeShaderRHI);
@@ -184,6 +200,8 @@ void FD3D11DynamicRHI::RHISetComputeShader(FRHIComputeShader* ComputeShaderRHI)
 	{
 		ClearAllShaderResourcesForFrequency<SF_Compute>();
 	}
+
+	ApplyGlobalUniformBuffers(ComputeShader);
 }
 
 void FD3D11DynamicRHI::RHIDispatchComputeShader(uint32 ThreadGroupCountX, uint32 ThreadGroupCountY, uint32 ThreadGroupCountZ) 
@@ -600,6 +618,16 @@ void FD3D11DynamicRHI::RHISetShaderSampler(FRHIComputeShader* ComputeShaderRHI,u
 
 	ID3D11SamplerState* StateResource = NewState->Resource;
 	StateCache.SetSamplerState<SF_Compute>(StateResource, SamplerIndex);
+}
+
+void FD3D11DynamicRHI::RHISetGlobalUniformBuffers(const FUniformBufferStaticBindings& InUniformBuffers)
+{
+	FMemory::Memzero(GlobalUniformBuffers.GetData(), GlobalUniformBuffers.Num() * sizeof(FRHIUniformBuffer*));
+
+	for (int32 Index = 0; Index < InUniformBuffers.GetUniformBufferCount(); ++Index)
+	{
+		GlobalUniformBuffers[InUniformBuffers.GetSlot(Index)] = InUniformBuffers.GetUniformBuffer(Index);
+	}
 }
 
 void FD3D11DynamicRHI::RHISetShaderUniformBuffer(FRHIGraphicsShader* ShaderRHI,uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)

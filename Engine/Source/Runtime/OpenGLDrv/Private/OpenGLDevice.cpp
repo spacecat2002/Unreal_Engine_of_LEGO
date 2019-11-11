@@ -1220,6 +1220,7 @@ FOpenGLDynamicRHI::FOpenGLDynamicRHI()
 	}
 
 	PrivateOpenGLDevicePtr = this;
+	GlobalUniformBuffers.AddZeroed(FUniformBufferStaticSlotRegistry::Get().GetSlotCount());
 }
 
 extern void DestroyShadersAndPrograms();

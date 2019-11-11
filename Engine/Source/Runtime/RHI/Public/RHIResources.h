@@ -335,6 +335,9 @@ struct FRHIUniformBufferLayout
 	/** The size of the constant buffer in bytes. */
 	uint32 ConstantBufferSize;
 
+	/** The static slot (if applicable). */
+	FUniformBufferStaticSlot StaticSlot = MAX_UNIFORM_BUFFER_STATIC_SLOTS;
+
 	/** The list of all resource inlined into the shader parameter structure. */
 	TArray<FResourceParameter> Resources;
 
@@ -350,8 +353,8 @@ struct FRHIUniformBufferLayout
 
 	void ComputeHash()
 	{
-		uint32 TmpHash = ConstantBufferSize << 16;
-			
+		uint32 TmpHash = ConstantBufferSize << 16 | static_cast<uint32>(StaticSlot);
+
 		for (int32 ResourceIndex = 0; ResourceIndex < Resources.Num(); ResourceIndex++)
 		{
 			// Offset and therefore hash must be the same regardless of pointer size
@@ -407,6 +410,7 @@ struct FRHIUniformBufferLayout
 	void CopyFrom(const FRHIUniformBufferLayout& Source)
 	{
 		ConstantBufferSize = Source.ConstantBufferSize;
+		StaticSlot = Source.StaticSlot;
 		Resources = Source.Resources;
 		Name = Source.Name;
 		Hash = Source.Hash;
@@ -436,6 +440,7 @@ inline bool operator==(const FRHIUniformBufferLayout::FResourceParameter& A, con
 inline bool operator==(const FRHIUniformBufferLayout& A, const FRHIUniformBufferLayout& B)
 {
 	return A.ConstantBufferSize == B.ConstantBufferSize
+		&& A.StaticSlot == B.StaticSlot
 		&& A.Resources == B.Resources;
 }
 
@@ -491,6 +496,11 @@ public:
 		return LayoutConstantBufferSize;
 	}
 	const FRHIUniformBufferLayout& GetLayout() const { return *Layout; }
+
+	bool HasStaticSlot() const
+	{
+		return IsUniformBufferStaticSlotValid(Layout->StaticSlot);
+	}
 
 #if VALIDATE_UNIFORM_BUFFER_LIFETIME
 	mutable int32 NumMeshCommandReferencesForDebugging = 0;

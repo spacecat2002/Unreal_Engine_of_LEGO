@@ -112,7 +112,9 @@ public:
 	virtual void RHISetScissorRect(bool bEnable, uint32 MinX, uint32 MinY, uint32 MaxX, uint32 MaxY) final override;
 	
 	virtual void RHISetGraphicsPipelineState(FRHIGraphicsPipelineState* GraphicsState) final override;
-	
+
+	virtual void RHISetGlobalUniformBuffers(const FUniformBufferStaticBindings& InUniformBuffers) final override;
+
 	/** Set the shader resource view of a surface. */
 	virtual void RHISetShaderTexture(FRHIGraphicsShader* Shader, uint32 TextureIndex, FRHITexture* NewTexture) final override;
 	
@@ -242,7 +244,7 @@ protected:
 	
 	/** Occlusion query batch fence */
 	TSharedPtr<FMetalCommandBufferFence, ESPMode::ThreadSafe> CommandBufferFence;
-	
+
 	/** Profiling implementation details. */
 	class FMetalProfiler* Profiler;
 	
@@ -255,6 +257,17 @@ protected:
 	
 	uint32 PendingPrimitiveType;
 	uint32 PendingNumPrimitives;
+
+	template <typename TRHIShader>
+	void ApplyGlobalUniformBuffers(TRHIShader* Shader)
+	{
+		if (Shader)
+		{
+			::ApplyGlobalUniformBuffers(this, Shader, Shader->StaticSlots, Shader->ShaderResourceTable.ResourceTableLayoutHashes, GlobalUniformBuffers);
+		}
+	}
+
+	TArray<FRHIUniformBuffer*> GlobalUniformBuffers;
 
 private:
 	void RHIClearMRT(bool bClearColor, int32 NumClearColors, const FLinearColor* ColorArray, bool bClearDepth, float Depth, bool bClearStencil, uint32 Stencil);
