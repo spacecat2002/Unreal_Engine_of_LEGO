@@ -44,7 +44,8 @@ BEGIN_SHADER_PARAMETER_STRUCT(FEyeAdaptationParameters, )
 	SHADER_PARAMETER(float, LuminanceMin)
 	SHADER_PARAMETER(float, CalibrationConstantInverse)
 	SHADER_PARAMETER(float, WeightSlope)
-	SHADER_PARAMETER(float, ForceClampInfluence)
+	SHADER_PARAMETER_TEXTURE(Texture2D, MeterMaskTexture)
+	SHADER_PARAMETER_SAMPLER(SamplerState, MeterMaskSampler)
 END_SHADER_PARAMETER_STRUCT()
 
 FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& ViewInfo, ERHIFeatureLevel::Type MinFeatureLevel);

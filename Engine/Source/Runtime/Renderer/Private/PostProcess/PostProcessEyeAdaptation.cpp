@@ -146,7 +146,8 @@ float GetAutoExposureCompensation(const FViewInfo& View)
 
 		if (AverageSceneLuminance > 0)
 		{
-			AutoExposureBias += Settings.AutoExposureBiasCurve->GetFloatValue(LuminanceToEV100(AverageSceneLuminance));
+			const float LuminanceEV100 = LuminanceToEV100(AverageSceneLuminance);
+			AutoExposureBias += Settings.AutoExposureBiasCurve->GetFloatValue(LuminanceEV100);
 		}
 	}
 
@@ -218,6 +219,7 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 
 	// This scales the average luminance BEFORE it gets clamped. Note that AEM_Histogram implements the calibration constant through ExposureLowPercent and ExposureHighPercent.
 	const float CalibrationConstant = FMath::Clamp(Settings.AutoExposureCalibrationConstant, 1.0f, 100.0f) * PercentToScale;
+	const float CalibrationScale = (AutoExposureMethod == EAutoExposureMethod::AEM_Basic || AutoExposureMethod == EAutoExposureMethod::AEM_Histogram) ? CalibrationConstant : 1.0f;
 
 	const float WeightSlope = (AutoExposureMethod == EAutoExposureMethod::AEM_Basic) ? GetBasicAutoExposureFocus() : 0.0f;
 
@@ -226,24 +228,27 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	const float HistogramBias = -HistogramLogMin * HistogramScale;
 	const float LuminanceMin = FMath::Exp2(HistogramLogMin);
 
-	// if we had a camera cut, then instead of slowly lerping to the target exposure we will just jump to it
-	const float ForceClampInfluence = View.bCameraCut ? 1.0f : 0.0f;
+	//AutoExposureMeterMask
+	const FTextureRHIRef MeterMask = Settings.AutoExposureMeterMask ?
+									Settings.AutoExposureMeterMask->Resource->TextureRHI :
+									GSystemTextures.WhiteDummy->GetRenderTargetItem().ShaderResourceTexture;
 
 	FEyeAdaptationParameters Parameters;
 	Parameters.ExposureLowPercent = ExposureLowPercent;
 	Parameters.ExposureHighPercent = ExposureHighPercent;
 	Parameters.MinAverageLuminance = MinAverageLuminance;
 	Parameters.MaxAverageLuminance = MaxAverageLuminance;
-	Parameters.ExposureCompensation = ExposureCompensation;
+	Parameters.ExposureCompensation = ExposureCompensation * CalibrationScale;
 	Parameters.DeltaWorldTime = View.Family->DeltaWorldTime;
 	Parameters.ExposureSpeedUp = Settings.AutoExposureSpeedUp;
 	Parameters.ExposureSpeedDown = Settings.AutoExposureSpeedDown;
 	Parameters.HistogramScale = HistogramScale;
 	Parameters.HistogramBias = HistogramBias;
 	Parameters.LuminanceMin = LuminanceMin;
-	Parameters.CalibrationConstantInverse = 1.0f / CalibrationConstant;
+	Parameters.CalibrationConstantInverse = 1.0f; // no calibration constant because it is now baked into ExposureCompensation
 	Parameters.WeightSlope = WeightSlope;
-	Parameters.ForceClampInfluence = ForceClampInfluence;
+	Parameters.MeterMaskTexture = MeterMask;
+	Parameters.MeterMaskSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	return Parameters;
 }
 

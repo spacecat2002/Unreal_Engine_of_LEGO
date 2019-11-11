@@ -1546,6 +1546,12 @@ void FSceneView::OverridePostProcessSettings(const FPostProcessSettings& Src, fl
 			Dest.AutoExposureBiasCurve = Src.AutoExposureBiasCurve;
 		}
 
+		// Texture asset isn't blended
+		IF_PP(AutoExposureMeterMask)
+		{
+			Dest.AutoExposureMeterMask = Src.AutoExposureMeterMask;
+		}
+
 		// actual texture cannot be blended but the intensity can be blended
 		IF_PP(LensFlareBokehShape)
 		{

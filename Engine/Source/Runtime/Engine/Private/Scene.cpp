@@ -167,8 +167,8 @@ FCameraExposureSettings::FCameraExposureSettings()
 
 	// next value might get overwritten by r.DefaultFeature.AutoExposure.Method
 	Method = AEM_Histogram;
-	LowPercent = 80.0f;
-	HighPercent = 98.3f;
+	LowPercent = 10.0f;
+	HighPercent = 90.0f;
 
 	if (bExtendedLuminanceRange)
 	{
@@ -203,6 +203,7 @@ void FCameraExposureSettings::ExportToPostProcessSettings(FPostProcessSettings* 
 	OutPostProcessSettings->bOverride_AutoExposureSpeedDown = true;
 	OutPostProcessSettings->bOverride_AutoExposureBias = true;
 	OutPostProcessSettings->bOverride_AutoExposureBiasCurve = true;
+	OutPostProcessSettings->bOverride_AutoExposureMeterMask = true;
 	OutPostProcessSettings->bOverride_HistogramLogMin = true;
 	OutPostProcessSettings->bOverride_HistogramLogMax = true;
 
@@ -214,6 +215,7 @@ void FCameraExposureSettings::ExportToPostProcessSettings(FPostProcessSettings* 
 	OutPostProcessSettings->AutoExposureSpeedDown = SpeedDown;
 	OutPostProcessSettings->AutoExposureBias = Bias;
 	OutPostProcessSettings->AutoExposureBiasCurve = BiasCurve;
+	OutPostProcessSettings->AutoExposureMeterMask = MeterMask;
 	OutPostProcessSettings->HistogramLogMin = HistogramLogMin;
 	OutPostProcessSettings->HistogramLogMax = HistogramLogMax;
 }
@@ -453,8 +455,8 @@ FPostProcessSettings::FPostProcessSettings()
 	CameraISO = 100.f;
 	AutoExposureCalibrationConstant = 16.f;
 	AutoExposureMethod = AEM_Histogram;
-	AutoExposureLowPercent = 80.0f;
-	AutoExposureHighPercent = 98.3f;
+	AutoExposureLowPercent = 10.0f;
+	AutoExposureHighPercent = 90.0f;
 
 	// next value might get overwritten by r.DefaultFeature.AutoExposure
 	static const auto VarDefaultAutoExposureExtendDefaultLuminanceRange = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.DefaultFeature.AutoExposure.ExtendDefaultLuminanceRange"));
@@ -669,6 +671,7 @@ FPostProcessSettings::FPostProcessSettings(const FPostProcessSettings& Settings)
 	, bOverride_AutoExposureSpeedDown(Settings.bOverride_AutoExposureSpeedDown)
 	, bOverride_AutoExposureBias(Settings.bOverride_AutoExposureBias)
 	, bOverride_AutoExposureBiasCurve(Settings.bOverride_AutoExposureBiasCurve)
+	, bOverride_AutoExposureMeterMask(Settings.bOverride_AutoExposureMeterMask)
 	, bOverride_HistogramLogMin(Settings.bOverride_HistogramLogMin)
 	, bOverride_HistogramLogMax(Settings.bOverride_HistogramLogMax)
 	, bOverride_LensFlareIntensity(Settings.bOverride_LensFlareIntensity)
@@ -842,6 +845,7 @@ FPostProcessSettings::FPostProcessSettings(const FPostProcessSettings& Settings)
 	, DepthOfFieldBladeCount(Settings.DepthOfFieldBladeCount)
 	, AutoExposureBias(Settings.AutoExposureBias)
 	, AutoExposureBiasCurve(Settings.AutoExposureBiasCurve)
+	, AutoExposureMeterMask(Settings.AutoExposureMeterMask)
 	, AutoExposureLowPercent(Settings.AutoExposureLowPercent)
 	, AutoExposureHighPercent(Settings.AutoExposureHighPercent)
 	, AutoExposureMinBrightness(Settings.AutoExposureMinBrightness)
