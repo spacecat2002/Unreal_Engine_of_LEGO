@@ -293,3 +293,11 @@ RENDERCORE_API void AddClearDepthStencilPass(
 	float Depth,
 	bool bClearStencil,
 	uint8 Stencil);
+
+RENDERCORE_API FRDGBufferRef CreateStructuredBuffer(
+	FRDGBuilder& GraphBuilder,
+	const TCHAR* Name,
+	uint32 BytesPerElement,
+	uint32 NumElements,
+	const void* InitialData,
+	uint64 InitialDataSize);

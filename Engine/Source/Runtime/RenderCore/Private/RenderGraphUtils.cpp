@@ -637,3 +637,39 @@ void FComputeShaderUtils::ClearUAV(FRDGBuilder& GraphBuilder, TShaderMap<FGlobal
 		PassParameters,
 		FIntVector(FMath::DivideAndRoundUp<int32>(PassParameters->NumEntries, 64), 1, 1));
 }
+
+BEGIN_SHADER_PARAMETER_STRUCT(FStructuredBufferUploadParameters, )
+	RDG_BUFFER_COPY_DEST(Buffer)
+END_SHADER_PARAMETER_STRUCT()
+
+FRDGBufferRef CreateStructuredBuffer(
+	FRDGBuilder& GraphBuilder,
+	const TCHAR* Name,
+	uint32 BytesPerElement,
+	uint32 NumElements,
+	const void* InitialData,
+	uint64 InitialDataSize)
+{
+	FRDGBufferRef Buffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateStructuredDesc(BytesPerElement, NumElements), Name);
+
+	FStructuredBufferUploadParameters* PassParameters = GraphBuilder.AllocParameters<FStructuredBufferUploadParameters>();
+	PassParameters->Buffer = Buffer;
+
+	// Allocates memory for the lifetime of the pass, since execution is deferred.
+	void* SourcePtr = GraphBuilder.MemStack.Alloc(InitialDataSize, 16);
+	FMemory::Memcpy(SourcePtr, InitialData, InitialDataSize);
+
+	GraphBuilder.AddPass(
+		RDG_EVENT_NAME("StructuredBufferUpload(%s)", Buffer->Name),
+		PassParameters,
+		ERDGPassFlags::Copy,
+		[Buffer, SourcePtr, InitialDataSize](FRHICommandListImmediate& RHICmdList)
+	{
+		FRHIStructuredBuffer* StructuredBuffer = Buffer->GetRHIStructuredBuffer();
+		void* DestPtr = RHICmdList.LockStructuredBuffer(StructuredBuffer, 0, InitialDataSize, RLM_WriteOnly);
+		FMemory::Memcpy(DestPtr, SourcePtr, InitialDataSize);
+		RHICmdList.UnlockStructuredBuffer(StructuredBuffer);
+	});
+
+	return Buffer;
+}
