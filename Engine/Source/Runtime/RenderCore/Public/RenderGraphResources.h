@@ -767,21 +767,21 @@ public:
 	{
 		checkf(Desc.UnderlyingType == FRDGBufferDesc::EUnderlyingType::VertexBuffer, TEXT("Buffer %s is not an underlying vertex buffer."), Name);
 		checkf(Desc.Usage & BUF_DrawIndirect, TEXT("Buffer %s was not flagged for indirect draw usage."), Name);
-		return PooledBuffer->VertexBuffer;
+		return static_cast<FRHIVertexBuffer*>(GetRHI());
 	}
 
 	/** Returns the buffer to use for RHI calls, eg RHILockVertexBuffer. */
 	FRHIVertexBuffer* GetRHIVertexBuffer() const
 	{
 		checkf(Desc.UnderlyingType == FRDGBufferDesc::EUnderlyingType::VertexBuffer, TEXT("Buffer %s is not an underlying vertex buffer."), Name);
-		return PooledBuffer->VertexBuffer;
+		return static_cast<FRHIVertexBuffer*>(GetRHI());
 	}
 
 	/** Returns the buffer to use for structured buffer calls. */
 	FRHIStructuredBuffer* GetRHIStructuredBuffer() const
 	{
 		checkf(Desc.UnderlyingType == FRDGBufferDesc::EUnderlyingType::StructuredBuffer, TEXT("Buffer %s is not an underlying structured buffer."), Name);
-		return PooledBuffer->StructuredBuffer;
+		return static_cast<FRHIStructuredBuffer*>(GetRHI());
 	}
 
 	//////////////////////////////////////////////////////////////////////////

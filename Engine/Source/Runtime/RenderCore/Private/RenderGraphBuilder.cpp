@@ -596,6 +596,19 @@ void FRDGBuilder::AllocateRHIBufferIfNeeded(FRDGBuffer* Buffer)
 	GRenderGraphResourcePool.FindFreeBuffer(RHICmdList, Buffer->Desc, AllocatedBuffer, Buffer->Name);
 	check(AllocatedBuffer);
 	Buffer->PooledBuffer = AllocatedBuffer;
+
+	switch (Buffer->Desc.UnderlyingType)
+	{
+	case FRDGBufferDesc::EUnderlyingType::VertexBuffer:
+		Buffer->ResourceRHI = AllocatedBuffer->VertexBuffer;
+		break;
+	case FRDGBufferDesc::EUnderlyingType::IndexBuffer:
+		Buffer->ResourceRHI = AllocatedBuffer->IndexBuffer;
+		break;
+	case FRDGBufferDesc::EUnderlyingType::StructuredBuffer:
+		Buffer->ResourceRHI = AllocatedBuffer->StructuredBuffer;
+		break;
+	}
 }
 
 void FRDGBuilder::AllocateRHIBufferSRVIfNeeded(FRDGBufferSRV* SRV)

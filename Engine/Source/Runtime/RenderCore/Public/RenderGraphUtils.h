@@ -294,10 +294,37 @@ RENDERCORE_API void AddClearDepthStencilPass(
 	bool bClearStencil,
 	uint8 Stencil);
 
+enum class ERDGInitialDataFlags : uint8
+{
+	/** Specifies the default behavior, which is to make a copy of the initial data for replay when
+	 *  the graph is executed. The user does not need to preserve lifetime of the data pointer.
+	 */
+	None = 0,
+
+	/** Specifies that the user will maintain ownership of the data until the graph is executed. The
+	 *  upload pass will only use a reference to store the data. Use caution with this flag since graph
+	 *  execution is deferred! Useful to avoid the copy if the initial data lifetime is guaranteed to
+	 *  outlive the graph.
+	 */
+	NoCopy = 0x1
+};
+ENUM_CLASS_FLAGS(ERDGInitialDataFlags)
+
+/** Creates a structured buffer with initial data by creating an upload pass. */
 RENDERCORE_API FRDGBufferRef CreateStructuredBuffer(
 	FRDGBuilder& GraphBuilder,
 	const TCHAR* Name,
 	uint32 BytesPerElement,
 	uint32 NumElements,
 	const void* InitialData,
-	uint64 InitialDataSize);
+	uint64 InitialDataSize,
+	ERDGInitialDataFlags InitialDataFlags = ERDGInitialDataFlags::None);
+
+/** Creates a vertex buffer with initial data by creating an upload pass. */
+RENDERCORE_API FRDGBufferRef CreateVertexBuffer(
+	FRDGBuilder& GraphBuilder,
+	const TCHAR* Name,
+	const FRDGBufferDesc& Desc,
+	const void* InitialData,
+	uint64 InitialDataSize,
+	ERDGInitialDataFlags InitialDataFlags = ERDGInitialDataFlags::None);
