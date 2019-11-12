@@ -935,7 +935,7 @@ public:
 
 	// Ray Traced Global Illumination Gather Point Data
 	TRefCountPtr<FPooledRDGBuffer> GatherPointsBuffer;
-	FIntPoint GatherPointsResolution;
+	FIntVector GatherPointsResolution;
 #endif
 
 	TUniquePtr<FForwardLightingViewResources> ForwardLightingResources;
