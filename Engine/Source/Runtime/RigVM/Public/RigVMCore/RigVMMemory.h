@@ -129,7 +129,6 @@ struct RIGVM_API FRigVMRegister
 		, Name(NAME_None)
 		, ScriptStructIndex(INDEX_NONE)
 		, bIsArray(false)
-		, ReferenceCount(0)
 	{
 	}
 
@@ -178,9 +177,6 @@ struct RIGVM_API FRigVMRegister
 	// If true defines this register as an array
 	UPROPERTY()
 	bool bIsArray;
-
-	UPROPERTY(transient)
-	int32 ReferenceCount;
 
 	bool Serialize(FArchive& Ar);
 	FORCEINLINE friend FArchive& operator<<(FArchive& Ar, FRigVMRegister& P)
