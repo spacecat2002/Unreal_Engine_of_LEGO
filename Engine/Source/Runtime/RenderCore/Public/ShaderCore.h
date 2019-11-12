@@ -16,6 +16,15 @@
 
 class Error;
 
+// this is for the protocol, not the data, bump if FShaderCompilerInput or ProcessInputFromArchive changes.
+const int32 ShaderCompileWorkerInputVersion = 12;
+// this is for the protocol, not the data, bump if FShaderCompilerOutput or WriteToOutputArchive changes.
+const int32 ShaderCompileWorkerOutputVersion = 5;
+// this is for the protocol, not the data, bump if FShaderCompilerOutput or WriteToOutputArchive changes.
+const int32 ShaderCompileWorkerSingleJobHeader = 'S';
+// this is for the protocol, not the data, bump if FShaderCompilerOutput or WriteToOutputArchive changes.
+const int32 ShaderCompileWorkerPipelineJobHeader = 'P';
+
 /**
  * Controls whether shader related logs are visible.
  * Note: The runtime verbosity is driven by the console variable 'r.ShaderDevelopmentMode'
