@@ -2481,7 +2481,7 @@ void FShaderCompilingManager::CancelCompilation(const TCHAR* MaterialName, const
 {
 	check(IsInGameThread());
 	check(!FPlatformProperties::RequiresCookedData());
-	UE_LOG(LogShaders, Log, TEXT("CancelCompilation %s "), MaterialName ? MaterialName : TEXT(""));
+	UE_LOG(LogShaders, Display, TEXT("CancelCompilation %s "), MaterialName ? MaterialName : TEXT(""));
 
 	// Lock CompileQueueSection so we can access the input and output queues
 	FScopeLock Lock(&CompileQueueSection);
@@ -2569,7 +2569,7 @@ void FShaderCompilingManager::FinishCompilation(const TCHAR* MaterialName, const
 
 	const double EndTime = FPlatformTime::Seconds();
 
-	UE_LOG(LogShaders, Log, TEXT("FinishCompilation %s %.3fs"), MaterialName ? MaterialName : TEXT(""), (float)(EndTime - StartTime));
+	UE_LOG(LogShaders, Verbose, TEXT("FinishCompilation %s %.3fs"), MaterialName ? MaterialName : TEXT(""), (float)(EndTime - StartTime));
 }
 
 void FShaderCompilingManager::FinishAllCompilation()
@@ -2595,7 +2595,7 @@ void FShaderCompilingManager::FinishAllCompilation()
 
 	const double EndTime = FPlatformTime::Seconds();
 
-	UE_LOG(LogShaders, Log, TEXT("FinishAllCompilation %.3fs"), (float)(EndTime - StartTime));
+	UE_LOG(LogShaders, Verbose, TEXT("FinishAllCompilation %.3fs"), (float)(EndTime - StartTime));
 }
 
 void FShaderCompilingManager::ProcessAsyncResults(bool bLimitExecutionTime, bool bBlockOnGlobalShaderCompletion)
@@ -2684,7 +2684,7 @@ void FShaderCompilingManager::ProcessAsyncResults(bool bLimitExecutionTime, bool
 			}
 			else if (NumPendingShaderMaps - PendingFinalizeShaderMaps.Num() > 0)
 			{
-				UE_LOG(LogShaders, Log, TEXT("Completed %u async shader maps, %u more pending, %u being compiled"), 
+				UE_LOG(LogShaders, Verbose, TEXT("Completed %u async shader maps, %u more pending, %u being compiled"),
 					NumPendingShaderMaps - PendingFinalizeShaderMaps.Num(), 
 					PendingFinalizeShaderMaps.Num(),
 					NumCompilingShaderMaps);
@@ -3908,7 +3908,7 @@ void VerifyGlobalShaders(EShaderPlatform Platform, bool bLoadedFromCacheFile)
 	check(!FPlatformProperties::IsServerOnly());
 	check(GGlobalShaderMap[Platform]);
 
-	UE_LOG(LogMaterial, Log, TEXT("Verifying Global Shaders for %s"), *LegacyShaderPlatformToShaderFormat(Platform).ToString());
+	UE_LOG(LogMaterial, Verbose, TEXT("Verifying Global Shaders for %s"), *LegacyShaderPlatformToShaderFormat(Platform).ToString());
 
 	// Ensure that the global shader map contains all global shader types.
 	TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(Platform);
