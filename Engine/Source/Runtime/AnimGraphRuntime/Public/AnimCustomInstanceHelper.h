@@ -195,12 +195,12 @@ public:
 					}
 					else
 					{
-						InSkeletalMeshComponent->AnimScriptInstance = nullptr;
+						InSkeletalMeshComponent->ClearAnimScriptInstance();
 					}
 				}
 				else
 				{
-					InSkeletalMeshComponent->AnimScriptInstance = nullptr;
+					InSkeletalMeshComponent->ClearAnimScriptInstance();
 				}
 			}
 			else // if not, we'd like to see if SequencerSupport
