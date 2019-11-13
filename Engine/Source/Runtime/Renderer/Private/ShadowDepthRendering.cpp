@@ -1475,7 +1475,7 @@ void FSceneRenderer::RenderShadowDepthMapAtlases(FRHICommandListImmediate& RHICm
 		FLightSceneProxy* CurrentLightForDrawEvent = NULL;
 
 #if WANTS_DRAW_MESH_EVENTS
-		TDrawEvent<FRHICommandList> LightEvent;
+		FDrawEvent LightEvent;
 #endif
 
 		if (ParallelShadowPasses.Num() > 0)

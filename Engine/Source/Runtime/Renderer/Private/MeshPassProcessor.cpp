@@ -811,16 +811,7 @@ void FMeshDrawShaderBindings::SetOnCommandList(FRHICommandList& RHICmdList, FBou
 	}
 }
 
-void FMeshDrawShaderBindings::SetOnCommandListForCompute(FRHICommandList& RHICmdList, FRHIComputeShader* Shader) const
-{
-	check(ShaderLayouts.Num() == 1);
-	FReadOnlyMeshDrawSingleShaderBindings SingleShaderBindings(ShaderLayouts[0], GetData());
-	check(SingleShaderBindings.Frequency == SF_Compute);
-
-	SetShaderBindings(RHICmdList, Shader, SingleShaderBindings);
-}
-
-void FMeshDrawShaderBindings::SetOnCommandListForCompute(FRHIAsyncComputeCommandList& RHICmdList, FRHIComputeShader* Shader) const
+void FMeshDrawShaderBindings::SetOnCommandList(FRHIComputeCommandList& RHICmdList, FRHIComputeShader* Shader) const
 {
 	check(ShaderLayouts.Num() == 1);
 	FReadOnlyMeshDrawSingleShaderBindings SingleShaderBindings(ShaderLayouts[0], GetData());
@@ -919,7 +910,7 @@ void FMeshDrawCommand::SubmitDraw(
 	checkSlow(MeshDrawCommand.CachedPipelineId.IsValid());
 		
 #if WANTS_DRAW_MESH_EVENTS
-	TDrawEvent<FRHICommandList> MeshEvent;
+	FDrawEvent MeshEvent;
 
 	if (GShowMaterialDrawEvents)
 	{

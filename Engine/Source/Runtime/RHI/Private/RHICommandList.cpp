@@ -23,8 +23,9 @@ DECLARE_CYCLE_STAT(TEXT("All Command List Execute"), STAT_ImmedCmdListExecuteTim
 DECLARE_DWORD_COUNTER_STAT(TEXT("Immed. Command List memory"), STAT_ImmedCmdListMemory, STATGROUP_RHICMDLIST);
 DECLARE_DWORD_COUNTER_STAT(TEXT("Immed. Command count"), STAT_ImmedCmdListCount, STATGROUP_RHICMDLIST);
 
-
-
+#if VALIDATE_UNIFORM_BUFFER_GLOBAL_BINDINGS
+bool FScopedUniformBufferGlobalBindings::bRecursionGuard = false;
+#endif
 
 #if !PLATFORM_USES_FIXED_RHI_CLASS
 #include "RHICommandListCommandExecutes.inl"
@@ -185,18 +186,6 @@ void FRHICommandListImmediate::SetCurrentStat(TStatId Stat)
 	}
 }
 
-void FRHICommandListBase::SetGPUMaskOnContext()
-{
-#if WITH_MGPU
-	if (Bypass())
-	{
-		GetContext().RHISetGPUMask(GPUMask);
-		return;
-	}
-	ALLOC_COMMAND(FRHICommandSetGPUMask)(GPUMask);
-#endif
-}
-
 DECLARE_CYCLE_STAT(TEXT("FNullGraphTask.RenderThreadTaskFence"), STAT_RenderThreadTaskFence, STATGROUP_TaskGraphTasks);
 DECLARE_CYCLE_STAT(TEXT("Render thread task fence wait"), STAT_RenderThreadTaskFenceWait, STATGROUP_TaskGraphTasks);
 FGraphEventRef FRHICommandListImmediate::RenderThreadTaskFence()
@@ -268,18 +257,6 @@ void FRHIAsyncComputeCommandListImmediate::ImmediateDispatch(FRHIAsyncComputeCom
 			RHIImmCmdList.ImmediateFlush(EImmediateFlushType::DispatchToRHIThread);
 		}
 	}
-}
-
-void FRHICommandListBase::SetGPUMaskOnComputeContext()
-{
-#if WITH_MGPU
-	if (Bypass())
-	{
-		GetComputeContext().RHISetGPUMask(GPUMask);
-		return;
-	}
-	ALLOC_COMMAND(FRHICommandSetGPUMask)(GPUMask);
-#endif
 }
 
 FRHICommandBase* GCurrentCommand = nullptr;
@@ -805,24 +782,24 @@ FGraphEventRef FRHICommandListImmediate::RHIThreadFence(bool bSetLockFence)
 	}
 
 	return nullptr;
-}		
+}
 
 DECLARE_CYCLE_STAT(TEXT("Async Compute CmdList Execute"), STAT_AsyncComputeExecute, STATGROUP_RHICMDLIST);
 FRHICOMMAND_MACRO(FRHIAsyncComputeSubmitList)
 {
-	FRHIAsyncComputeCommandList* RHICmdList;
-	FORCEINLINE_DEBUGGABLE FRHIAsyncComputeSubmitList(FRHIAsyncComputeCommandList* InRHICmdList)
+	FRHIComputeCommandList* RHICmdList;
+	FORCEINLINE_DEBUGGABLE FRHIAsyncComputeSubmitList(FRHIComputeCommandList* InRHICmdList)
 		: RHICmdList(InRHICmdList)
 	{
 	}
 	void Execute(FRHICommandListBase& CmdList)
-	{		
+	{
 		SCOPE_CYCLE_COUNTER(STAT_AsyncComputeExecute);
 		delete RHICmdList;
 	}
 };
 
-void FRHICommandListImmediate::QueueAsyncCompute(FRHIAsyncComputeCommandList& RHIComputeCmdList)
+void FRHICommandListImmediate::QueueAsyncCompute(FRHIComputeCommandList& RHIComputeCmdList)
 {
 	if (Bypass())
 	{
@@ -870,6 +847,12 @@ FRHICommandListBase::FRHICommandListBase(FRHIGPUMask InGPUMask)
 {
 	GRHICommandList.OutstandingCmdListCount.Increment();
 	Reset();
+
+	if (!bRecursive)
+	{
+		Context = GDynamicRHI ? RHIGetDefaultContext() : nullptr;
+		ComputeContext = Context;
+	}
 }
 
 FRHICommandListBase::~FRHICommandListBase()
@@ -891,20 +874,7 @@ void FRHICommandListBase::Reset()
 	NumCommands = 0;
 	Root = nullptr;
 	CommandLink = &Root;
-	if (!bRecursive)
-	{
-		Context = GDynamicRHI ? RHIGetDefaultContext() : nullptr;
 
-		if (GEnableAsyncCompute)
-		{
-			ComputeContext = GDynamicRHI ? RHIGetDefaultAsyncComputeContext() : nullptr;
-		}
-		else
-		{
-			ComputeContext = Context;
-		}
-	}
-	
 	UID = GRHICommandList.UIDCounter.Increment();
 	for (int32 Index = 0; ERenderThreadContext(Index) < ERenderThreadContext::Num; Index++)
 	{
@@ -1910,12 +1880,12 @@ void FRHICommandList::operator delete(void *RawMemory)
 	FMemory::Free(RawMemory);
 }
 
-void* FRHIAsyncComputeCommandList::operator new(size_t Size)
+void* FRHIComputeCommandList::operator new(size_t Size)
 {
 	return FMemory::Malloc(Size);
 }
 
-void FRHIAsyncComputeCommandList::operator delete(void *RawMemory)
+void FRHIComputeCommandList::operator delete(void *RawMemory)
 {
 	FMemory::Free(RawMemory);
 }

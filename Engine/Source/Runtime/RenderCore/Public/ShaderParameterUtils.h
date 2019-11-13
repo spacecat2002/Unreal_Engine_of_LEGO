@@ -100,7 +100,7 @@ void SetShaderValue(
 template<typename ShaderRHIParamRef>
 UE_DEPRECATED(4.24, "Please use integer values for boolean shader parameters instead.")
 void SetShaderValue(
-	FRHIAsyncComputeCommandList& RHICmdList,
+	FRHIComputeCommandList& RHICmdList,
 	const ShaderRHIParamRef& Shader,
 	const FShaderParameter& Parameter,
 	bool Value,
