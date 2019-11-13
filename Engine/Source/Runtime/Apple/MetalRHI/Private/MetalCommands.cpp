@@ -138,7 +138,7 @@ void FMetalRHICommandContext::RHISetComputePipelineState(FRHIComputePipelineStat
 	// sets this compute shader pipeline as the current (this resets all state, so we need to set all resources after calling this)
 	Context->GetCurrentState().SetComputeShader(ComputePipeline->GetComputeShader());
 
-	ApplyGlobalUniformBuffers(ComputeShader);
+	ApplyGlobalUniformBuffers(ComputePipeline->GetComputeShader());
 	}
 }
 
@@ -252,14 +252,13 @@ void FMetalRHICommandContext::RHISetGraphicsPipelineState(FRHIGraphicsPipelineSt
 			Context->GetCurrentRenderPass().GetCurrentCommandEncoder().ResetLive();
 		}
 		Context->GetCurrentState().SetGraphicsPipelineState(PipelineState);
-		// Bad Arne!
+
 		RHISetStencilRef(0);
 		RHISetBlendFactor(FLinearColor(1.0f, 1.0f, 1.0f));
 
 		ApplyGlobalUniformBuffers(PipelineState->VertexShader.GetReference());
 		ApplyGlobalUniformBuffers(PipelineState->HullShader.GetReference());
 		ApplyGlobalUniformBuffers(PipelineState->DomainShader.GetReference());
-		ApplyGlobalUniformBuffers(PipelineState->GeometryShader.GetReference());
 		ApplyGlobalUniformBuffers(PipelineState->PixelShader.GetReference());
 	}
 }
