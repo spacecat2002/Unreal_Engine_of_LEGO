@@ -577,6 +577,12 @@ void FD3D12DynamicRHI::Init()
 	{
 		UE_LOG(LogD3D12RHI, Warning, TEXT("Attempting to use RGP frame markers without driver support. Update AMD driver."));
 	}
+
+	if (IsRHIDeviceAMD() && bAllowVendorDevice)
+	{
+		GRHISupportsAtomicUInt64 = (AmdSupportedExtensionFlags & AGS_DX12_EXTENSION_INTRINSIC_ATOMIC_U64) != 0;
+		GRHISupportsAtomicUInt64 = GRHISupportsAtomicUInt64 && (AmdSupportedExtensionFlags & AGS_DX12_EXTENSION_INTRINSIC_UAV_BIND_SLOT) != 0;
+	}
 #endif
 
 #if NV_API_ENABLE

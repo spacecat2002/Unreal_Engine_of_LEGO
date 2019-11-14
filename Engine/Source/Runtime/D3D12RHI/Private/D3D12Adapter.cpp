@@ -157,6 +157,9 @@ void FD3D12Adapter::CreateRootDevice(bool bWithDebug)
 		AmdExtensionParams.pAppName = bDisableAppRegistration ? TEXT("") : FApp::GetProjectName();
 		AmdExtensionParams.appVersion = AGS_UNSPECIFIED_VERSION;
 
+		// Specify custom UAV bind point for the special UAV (custom slot will always assume space0 in the root signature).
+		AmdExtensionParams.uavSlot = 7;
+
 		AGSDX12ReturnedParams DeviceCreationReturnedParams;
 		AGSReturnCode DeviceCreation = agsDriverExtensionsDX12_CreateDevice(OwningRHI->GetAmdAgsContext(), &AmdDeviceCreationParams, &AmdExtensionParams, &DeviceCreationReturnedParams);
 
