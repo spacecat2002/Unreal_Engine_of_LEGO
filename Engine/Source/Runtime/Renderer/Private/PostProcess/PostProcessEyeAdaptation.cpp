@@ -602,6 +602,15 @@ void FSceneViewState::FEyeAdaptationRTManager::SwapRTs(bool bInUpdateLastExposur
 		}
 		else if (ExposureTextureReadback->IsReady())
 		{
+			// Workaround until FRHIGPUTextureReadback::Lock has multigpu support
+			FRHIGPUMask ReadBackGPUMask = RHICmdList.GetGPUMask();
+			if (!ReadBackGPUMask.HasSingleIndex())
+			{
+				ReadBackGPUMask = FRHIGPUMask::GPU0();
+			}
+
+			SCOPED_GPU_MASK(RHICmdList, ReadBackGPUMask);
+
 			// Read the last request results.
 			FVector4* ReadbackData = (FVector4*)ExposureTextureReadback->Lock(sizeof(FVector4));
 			if (ReadbackData)
