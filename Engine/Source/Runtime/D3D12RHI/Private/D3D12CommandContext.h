@@ -589,6 +589,10 @@ public:
 	{
 		ContextRedirect(RHISetShaderResourceViewParameter(Shader, SamplerIndex, SRV));
 	}
+	FORCEINLINE virtual void RHISetGlobalUniformBuffers(const FUniformBufferStaticBindings& InUniformBuffers) final override
+	{
+		ContextRedirect(RHISetGlobalUniformBuffers(InUniformBuffers));
+	}
 	FORCEINLINE virtual void RHISetShaderUniformBuffer(FRHIGraphicsShader* Shader, uint32 BufferIndex, FRHIUniformBuffer* Buffer) final override
 	{
 		ContextRedirect(RHISetShaderUniformBuffer(Shader, BufferIndex, Buffer));
