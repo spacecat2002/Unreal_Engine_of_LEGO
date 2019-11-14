@@ -2331,6 +2331,7 @@ void FSceneView::SetupCommonViewUniformBufferParameters(
 		InViewMatrices.GetTemporalAAJitter().X,		InViewMatrices.GetTemporalAAJitter().Y,
 		InPrevViewMatrices.GetTemporalAAJitter().X, InPrevViewMatrices.GetTemporalAAJitter().Y );
 
+	ViewUniformShaderParameters.DebugViewModeMask = Family->UseDebugViewPS() ? 1 : 0;
 	ViewUniformShaderParameters.UnlitViewmodeMask = !Family->EngineShowFlags.Lighting ? 1 : 0;
 	ViewUniformShaderParameters.OutOfBoundsMask = Family->EngineShowFlags.VisualizeOutOfBoundsPixels ? 1 : 0;
 
