@@ -551,6 +551,8 @@ void FD3D12DynamicRHI::Init()
 	if (IsRHIDeviceAMD() && bAllowVendorDevice)
 	{
 		check(AmdAgsContext == nullptr);
+		check(AmdSupportedExtensionFlags == 0);
+
 		// agsInit should be called before D3D device creation
 		agsInit(&AmdAgsContext, nullptr, nullptr);
 	}
@@ -564,15 +566,7 @@ void FD3D12DynamicRHI::Init()
 		Adapter->InitializeDevices();
 	}
 
-	uint32 AmdSupportedExtensionFlags = 0;
-
 #if !PLATFORM_CPU_ARM_FAMILY
-	if (AmdAgsContext && bAllowVendorDevice)
-	{
-		// Initialize AMD driver extensions
-		agsDriverExtensionsDX12_Init(AmdAgsContext, GetAdapter().GetD3DDevice(), &AmdSupportedExtensionFlags);
-	}
-
 	// Warn if we are trying to use RGP frame markers but are either running on a non-AMD device
 	// or using an older AMD driver without RGP marker support
 	if (GEmitRgpFrameMarkers && !IsRHIDeviceAMD())

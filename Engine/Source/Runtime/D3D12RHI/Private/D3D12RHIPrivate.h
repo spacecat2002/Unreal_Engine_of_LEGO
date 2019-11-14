@@ -900,6 +900,7 @@ public:
 	int32 GetNumAdapters() const { return ChosenAdapters.Num(); }
 
 	AGSContext* GetAmdAgsContext() { return AmdAgsContext; }
+	void SetAmdSupportedExtensionFlags(uint32 Flags) { AmdSupportedExtensionFlags = Flags; }
 
 protected:
 
@@ -914,6 +915,7 @@ protected:
 	 * Just use a bare pointer.
 	 */
 	AGSContext* AmdAgsContext;
+	uint32 AmdSupportedExtensionFlags;
 
 	/** A buffer in system memory containing all zeroes of the specified size. */
 	void* ZeroBuffer;

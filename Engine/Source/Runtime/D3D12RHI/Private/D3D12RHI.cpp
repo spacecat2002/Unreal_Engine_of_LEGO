@@ -44,6 +44,7 @@ FD3D12DynamicRHI::FD3D12DynamicRHI(const TArray<TSharedPtr<FD3D12Adapter>>& Chos
 	ChosenAdapters(ChosenAdaptersIn),
 	AmdAgsContext(nullptr),
 	FlipEvent(INVALID_HANDLE_VALUE),
+	AmdSupportedExtensionFlags(0),
 	bAllowVendorDevice(!FParse::Param(FCommandLine::Get(), TEXT("novendordevice")))
 {
 	// The FD3D12DynamicRHI must be a singleton
@@ -210,7 +211,6 @@ void FD3D12DynamicRHI::Shutdown()
 	if (AmdAgsContext)
 	{
 		// Clean up the AMD extensions and shut down the AMD AGS utility library
-		agsDriverExtensionsDX12_DeInit(AmdAgsContext);
 		agsDeInit(AmdAgsContext);
 		AmdAgsContext = nullptr;
 	}

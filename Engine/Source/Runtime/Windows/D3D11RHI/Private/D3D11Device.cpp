@@ -526,7 +526,7 @@ void FD3D11DynamicRHI::CleanupD3DDevice()
 
 			// AGS is holding an extra reference to the immediate context. Release it before calling DestroyDevice.
 			Direct3DDeviceIMContext->Release();
-			agsDriverExtensionsDX11_DestroyDevice(AmdAgsContext, Direct3DDevice, NULL);
+			agsDriverExtensionsDX11_DestroyDevice(AmdAgsContext, Direct3DDevice, NULL, Direct3DDeviceIMContext, NULL);
 			agsDeInit(AmdAgsContext);
 			GRHIDeviceIsAMDPreGCNArchitecture = false;
 			AmdAgsContext = NULL;

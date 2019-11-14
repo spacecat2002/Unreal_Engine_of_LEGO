@@ -5,6 +5,13 @@ D3D12Adapter.cpp:D3D12 Adapter implementation.
 =============================================================================*/
 
 #include "D3D12RHIPrivate.h"
+#include "Misc/CommandLine.h"
+#include "Misc/EngineVersion.h"
+#include "Windows/AllowWindowsPlatformTypes.h"
+#if !PLATFORM_CPU_ARM_FAMILY
+	#include "amd_ags.h"
+#endif
+#include "Windows/HideWindowsPlatformTypes.h"
 
 #if ENABLE_RESIDENCY_MANAGEMENT
 bool GEnableResidencyManagement = true;
@@ -119,12 +126,58 @@ void FD3D12Adapter::CreateRootDevice(bool bWithDebug)
 		DriverType = D3D_DRIVER_TYPE_REFERENCE;
 	}
 
-	// Creating the Direct3D device.
-	VERIFYD3D12RESULT(D3D12CreateDevice(
-		GetAdapter(),
-		GetFeatureLevel(),
-		IID_PPV_ARGS(RootDevice.GetInitReference())
-	));
+	bool bDeviceCreated = false;
+#if !PLATFORM_CPU_ARM_FAMILY
+	if (IsRHIDeviceAMD() && OwningRHI->GetAmdAgsContext())
+	{
+		auto* CVarShaderDevelopmentMode = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.ShaderDevelopmentMode"));
+		auto* CVarDisableEngineAndAppRegistration = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.DisableEngineAndAppRegistration"));
+
+		const bool bDisableEngineRegistration = (CVarShaderDevelopmentMode && CVarShaderDevelopmentMode->GetValueOnAnyThread() != 0) ||
+			(CVarDisableEngineAndAppRegistration && CVarDisableEngineAndAppRegistration->GetValueOnAnyThread() != 0);
+		const bool bDisableAppRegistration = bDisableEngineRegistration || !FApp::HasProjectName();
+
+		// Creating the Direct3D device with AGS registration and extensions.
+		AGSDX12DeviceCreationParams AmdDeviceCreationParams = {
+			GetAdapter(),											// IDXGIAdapter*               pAdapter;
+			__uuidof(**(RootDevice.GetInitReference())),			// IID                         iid;
+			GetFeatureLevel(),										// D3D_FEATURE_LEVEL           FeatureLevel;
+		};
+
+		AGSDX12ExtensionParams AmdExtensionParams;
+		FMemory::Memzero(&AmdExtensionParams, sizeof(AmdExtensionParams));
+		// Register the engine name with the AMD driver, e.g. "UnrealEngine4.19", unless disabled
+		// (note: to specify nothing for pEngineName below, you need to pass an empty string, not a null pointer)
+		FString EngineName = FApp::GetEpicProductIdentifier() + FEngineVersion::Current().ToString(EVersionComponent::Minor);
+		AmdExtensionParams.pEngineName = bDisableEngineRegistration ? TEXT("") : *EngineName;
+		AmdExtensionParams.engineVersion = AGS_UNSPECIFIED_VERSION;
+
+		// Register the project name with the AMD driver, unless disabled or no project name
+		// (note: to specify nothing for pAppName below, you need to pass an empty string, not a null pointer)
+		AmdExtensionParams.pAppName = bDisableAppRegistration ? TEXT("") : FApp::GetProjectName();
+		AmdExtensionParams.appVersion = AGS_UNSPECIFIED_VERSION;
+
+		AGSDX12ReturnedParams DeviceCreationReturnedParams;
+		AGSReturnCode DeviceCreation = agsDriverExtensionsDX12_CreateDevice(OwningRHI->GetAmdAgsContext(), &AmdDeviceCreationParams, &AmdExtensionParams, &DeviceCreationReturnedParams);
+
+		if (DeviceCreation == AGS_SUCCESS)
+		{
+			RootDevice = DeviceCreationReturnedParams.pDevice;
+			OwningRHI->SetAmdSupportedExtensionFlags(DeviceCreationReturnedParams.extensionsSupported);
+			bDeviceCreated = true;
+		}
+	}
+#endif
+
+	if (!bDeviceCreated)
+	{
+		// Creating the Direct3D device.
+		VERIFYD3D12RESULT(D3D12CreateDevice(
+			GetAdapter(),
+			GetFeatureLevel(),
+			IID_PPV_ARGS(RootDevice.GetInitReference())
+		));
+	}
 
 	// Detect availability of shader model 6.0 wave operations
 	{

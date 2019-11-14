@@ -1626,7 +1626,7 @@ void FD3D11DynamicRHI::InitD3DDevice()
 				for (int32 DeviceIndex = 0; DeviceIndex < AmdInfo.AmdGpuInfo.numDevices; DeviceIndex++)
 				{
 					const AGSDeviceInfo& DeviceInfo = AmdInfo.AmdGpuInfo.devices[DeviceIndex];
-					GRHIDeviceIsAMDPreGCNArchitecture |= (ChosenDescription.VendorId == DeviceInfo.vendorId) && (ChosenDescription.DeviceId == DeviceInfo.deviceId) && (DeviceInfo.architectureVersion == AGSDeviceInfo::ArchitectureVersion_PreGCN);
+					GRHIDeviceIsAMDPreGCNArchitecture |= (ChosenDescription.VendorId == DeviceInfo.vendorId) && (ChosenDescription.DeviceId == DeviceInfo.deviceId) && (DeviceInfo.asicFamily == AGSDeviceInfo::AsicFamily_PreGCN);
 					bFoundMatchingDevice |= (ChosenDescription.VendorId == DeviceInfo.vendorId) && (ChosenDescription.DeviceId == DeviceInfo.deviceId);
 				}
 				check(bFoundMatchingDevice);
@@ -1682,9 +1682,12 @@ void FD3D11DynamicRHI::InitD3DDevice()
 			const bool bDisableAppRegistration = bDisableEngineRegistration || !FApp::HasProjectName();
 
 			AGSDX11ExtensionParams AmdExtensionParams;
+			FMemory::Memzero(&AmdExtensionParams, sizeof(AmdExtensionParams));
 			// The AMD shader extensions are currently unused in UE4, but we have to set the associated UAV slot
 			// to something in the call below (default is 7, so just use that)
 			AmdExtensionParams.uavSlot = 7;
+			// Disable old-style, "automatic" alternate-frame rendering (AFR) MGPU driver behavior
+			AmdExtensionParams.crossfireMode = AGS_CROSSFIRE_MODE_DISABLE;
 
 			// Register the engine name with the AMD driver, e.g. "UnrealEngine4.19", unless disabled
 			// (note: to specify nothing for pEngineName below, you need to pass an empty string, not a null pointer)
@@ -1721,6 +1724,8 @@ void FD3D11DynamicRHI::InitD3DDevice()
 				FMemory::Memzero(&AmdInfo, sizeof(AmdInfo));
 				GRHIDeviceIsAMDPreGCNArchitecture = false;				
 			}
+
+			GRHISupportsAtomicUInt64 = (AmdSupportedExtensionFlags & AGS_DX11_EXTENSION_INTRINSIC_ATOMIC_U64) != 0;
 		}
 #endif //AMD_AGS_API
 

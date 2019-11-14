@@ -235,8 +235,8 @@ void FVulkanWindowsPlatform::CheckDeviceDriver(uint32 DeviceIndex, EGpuVendorId 
 			if (DeviceIndex < (uint32)AmdGpuInfo.numDevices && Version && *Version)
 			{
 				auto& DeviceInfo = AmdGpuInfo.devices[DeviceIndex];
-				bool bIsPreGCN = DeviceInfo.architectureVersion == AGSDeviceInfo::ArchitectureVersion_PreGCN;
-				if (DeviceInfo.architectureVersion == AGSDeviceInfo::ArchitectureVersion_GCN || bIsPreGCN)
+				bool bIsPreGCN = DeviceInfo.asicFamily == AGSDeviceInfo::AsicFamily_PreGCN;
+				if (DeviceInfo.asicFamily != AGSDeviceInfo::AsicFamily_Unknown)
 				{
 					// "Major.Minor.Revision"
 					do

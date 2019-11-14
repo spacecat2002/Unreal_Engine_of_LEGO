@@ -1911,7 +1911,7 @@ void FD3D11DynamicRHI::EnableDepthBoundsTest(bool bEnable,float MinDepth,float M
 	}
 	else if (IsRHIDeviceAMD())
 	{
-		auto Result = agsDriverExtensionsDX11_SetDepthBounds( AmdAgsContext, bEnable, MinDepth, MaxDepth );
+		auto Result = agsDriverExtensionsDX11_SetDepthBounds(AmdAgsContext, Direct3DDeviceIMContext, bEnable, MinDepth, MaxDepth);
 		if(Result != AGS_SUCCESS)
 		{
 			static bool bOnce = false;
@@ -2061,7 +2061,7 @@ void FD3D11DynamicRHI::BeginUAVOverlap()
 		}
 		else if (IsRHIDeviceAMD())
 		{
-			CHECK_AGS(agsDriverExtensionsDX11_BeginUAVOverlap(AmdAgsContext));
+			CHECK_AGS(agsDriverExtensionsDX11_BeginUAVOverlap(AmdAgsContext, Direct3DDeviceIMContext));
 		}
 		else if (IsRHIDeviceIntel())
 		{
@@ -2089,7 +2089,7 @@ void FD3D11DynamicRHI::EndUAVOverlap()
 		}
 		else if (IsRHIDeviceAMD())
 		{
-			CHECK_AGS(agsDriverExtensionsDX11_EndUAVOverlap(AmdAgsContext));
+			CHECK_AGS(agsDriverExtensionsDX11_EndUAVOverlap(AmdAgsContext, Direct3DDeviceIMContext));
 		}
 		else if (IsRHIDeviceIntel())
 		{
