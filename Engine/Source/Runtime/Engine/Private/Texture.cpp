@@ -705,7 +705,7 @@ void FTextureSource::InitBlocked(const ETextureSourceFormat* InLayerFormats,
 		LayerFormat[i] = InLayerFormats[i];
 	}
 
-	int32 TotalBytes = 0;
+	int64 TotalBytes = 0;
 	for (int i = 0; i < InNumBlocks; ++i)
 	{
 		TotalBytes += CalcBlockSize(i);
@@ -717,7 +717,7 @@ void FTextureSource::InitBlocked(const ETextureSourceFormat* InLayerFormats,
 	{
 		for (int i = 0; i < InNumBlocks; ++i)
 		{
-			const int32 BlockSize = CalcBlockSize(i);
+			const int64 BlockSize = CalcBlockSize(i);
 			if (InDataPerBlock[i])
 			{
 				FMemory::Memcpy(DestData, InDataPerBlock[i], BlockSize);
@@ -750,7 +750,7 @@ void FTextureSource::InitLayered(
 		LayerFormat[i] = NewLayerFormat[i];
 	}
 
-	int32 TotalBytes = 0;
+	int64 TotalBytes = 0;
 	for (int i = 0; i < NewNumLayers; ++i)
 	{
 		TotalBytes += CalcLayerSize(0, i);
@@ -966,8 +966,8 @@ bool FTextureSource::GetMipData(TArray64<uint8>& OutMipData, int32 BlockIndex, i
 		}
 		else
 		{
-			int32 MipOffset = CalcMipOffset(BlockIndex, LayerIndex, MipIndex);
-			int32 MipSize = CalcMipSize(BlockIndex, LayerIndex, MipIndex);
+			int64 MipOffset = CalcMipOffset(BlockIndex, LayerIndex, MipIndex);
+			int64 MipSize = CalcMipSize(BlockIndex, LayerIndex, MipIndex);
 			if (BulkData.GetBulkDataSize() >= MipOffset + MipSize)
 			{
 				OutMipData.Empty(MipSize);
@@ -985,15 +985,15 @@ bool FTextureSource::GetMipData(TArray64<uint8>& OutMipData, int32 BlockIndex, i
 	return bSuccess;
 }
 
-int32 FTextureSource::CalcMipSize(int32 BlockIndex, int32 LayerIndex, int32 MipIndex) const
+int64 FTextureSource::CalcMipSize(int32 BlockIndex, int32 LayerIndex, int32 MipIndex) const
 {
 	FTextureSourceBlock Block;
 	GetBlock(BlockIndex, Block);
 	check(MipIndex < Block.NumMips);
 
-	const int32 MipSizeX = FMath::Max(Block.SizeX >> MipIndex, 1);
-	const int32 MipSizeY = FMath::Max(Block.SizeY >> MipIndex, 1);
-	const int32 BytesPerPixel = GetBytesPerPixel(LayerIndex);
+	const int64 MipSizeX = FMath::Max(Block.SizeX >> MipIndex, 1);
+	const int64 MipSizeY = FMath::Max(Block.SizeY >> MipIndex, 1);
+	const int64 BytesPerPixel = GetBytesPerPixel(LayerIndex);
 	return MipSizeX * MipSizeY * Block.NumSlices * BytesPerPixel;
 }
 
@@ -1149,9 +1149,9 @@ void FTextureSource::RemoveSourceData()
 	ForceGenerateGuid();
 }
 
-int32 FTextureSource::CalcBlockSize(int32 BlockIndex) const
+int64 FTextureSource::CalcBlockSize(int32 BlockIndex) const
 {
-	int32 TotalSize = 0;
+	int64 TotalSize = 0;
 	for (int32 LayerIndex = 0; LayerIndex < GetNumLayers(); ++LayerIndex)
 	{
 		TotalSize += CalcLayerSize(BlockIndex, LayerIndex);
@@ -1159,28 +1159,28 @@ int32 FTextureSource::CalcBlockSize(int32 BlockIndex) const
 	return TotalSize;
 }
 
-int32 FTextureSource::CalcLayerSize(int32 BlockIndex, int32 LayerIndex) const
+int64 FTextureSource::CalcLayerSize(int32 BlockIndex, int32 LayerIndex) const
 {
 	FTextureSourceBlock Block;
 	GetBlock(BlockIndex, Block);
 
-	int32 BytesPerPixel = GetBytesPerPixel(LayerIndex);
-	int32 MipSizeX = Block.SizeX;
-	int32 MipSizeY = Block.SizeY;
+	int64 BytesPerPixel = GetBytesPerPixel(LayerIndex);
+	int64 MipSizeX = Block.SizeX;
+	int64 MipSizeY = Block.SizeY;
 
-	int32 TotalSize = 0;
+	int64 TotalSize = 0;
 	for(int32 MipIndex = 0; MipIndex < Block.NumMips; ++MipIndex)
 	{
 		TotalSize += MipSizeX * MipSizeY * BytesPerPixel * Block.NumSlices;
-		MipSizeX = FMath::Max(MipSizeX >> 1, 1);
-		MipSizeY = FMath::Max(MipSizeY >> 1, 1);
+		MipSizeX = FMath::Max<int64>(MipSizeX >> 1, 1);
+		MipSizeY = FMath::Max<int64>(MipSizeY >> 1, 1);
 	}
 	return TotalSize;
 }
 
-int32 FTextureSource::CalcMipOffset(int32 BlockIndex, int32 LayerIndex, int32 MipIndex) const
+int64 FTextureSource::CalcMipOffset(int32 BlockIndex, int32 LayerIndex, int32 MipIndex) const
 {
-	int32 MipOffset = 0;
+	int64 MipOffset = 0;
 
 	// Skip over the initial tiles
 	for (int i = 0; i < BlockIndex; ++i)
@@ -1198,15 +1198,15 @@ int32 FTextureSource::CalcMipOffset(int32 BlockIndex, int32 LayerIndex, int32 Mi
 	GetBlock(BlockIndex, Block);
 	check(MipIndex < Block.NumMips);
 	
-	int32 BytesPerPixel = GetBytesPerPixel(LayerIndex);
-	int32 MipSizeX = Block.SizeX;
-	int32 MipSizeY = Block.SizeY;
+	int64 BytesPerPixel = GetBytesPerPixel(LayerIndex);
+	int64 MipSizeX = Block.SizeX;
+	int64 MipSizeY = Block.SizeY;
 
 	while (MipIndex-- > 0)
 	{
 		MipOffset += MipSizeX * MipSizeY * BytesPerPixel * Block.NumSlices;
-		MipSizeX = FMath::Max(MipSizeX >> 1, 1);
-		MipSizeY = FMath::Max(MipSizeY >> 1, 1);
+		MipSizeX = FMath::Max<int64>(MipSizeX >> 1, 1);
+		MipSizeY = FMath::Max<int64>(MipSizeY >> 1, 1);
 	}
 
 	return MipOffset;
