@@ -1763,6 +1763,16 @@ bool FMathRoundHalfFromZeroTests::RunTest(const FString& Parameters)
 	return true;
 }
 
+// CentOS 7 doesn't define these yet (introduced in C11)
+#if !defined(FLT_TRUE_MIN)
+#define FLT_TRUE_MIN 1.401298464e-45f
+#endif
+
+#if !defined(DBL_TRUE_MIN)
+#define DBL_TRUE_MIN 4.9406564584124654e-324
+#endif
+
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FIsNearlyEqualByULPTest, "System.Core.Math.IsNearlyEqualByULP", EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::SmokeFilter)
 bool FIsNearlyEqualByULPTest::RunTest(const FString& Parameters)
 {
