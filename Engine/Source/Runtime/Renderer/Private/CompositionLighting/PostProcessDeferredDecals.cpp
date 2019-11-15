@@ -977,24 +977,22 @@ void FDecalRenderTargetManager::SetRenderTargetMode(FDecalRenderingCommon::ERend
 	case FDecalRenderingCommon::RTM_SceneColorAndGBufferWithNormal:
 	case FDecalRenderingCommon::RTM_SceneColorAndGBufferNoNormal:
 		TargetsToResolve[SceneColorIndex] = SceneContext.GetSceneColor()->GetRenderTargetItem().TargetableTexture;
-		TargetsToResolve[GBufferAIndex] = SceneContext.GBufferA->GetRenderTargetItem().TargetableTexture;
-		//TargetsToResolve[GBufferAIndex] = bHasNormal ? SceneContext.GBufferA->GetRenderTargetItem().TargetableTexture : nullptr;
+		TargetsToResolve[GBufferAIndex] = bHasNormal ? SceneContext.GBufferA->GetRenderTargetItem().TargetableTexture : nullptr;
 		TargetsToResolve[GBufferBIndex] = SceneContext.GBufferB->GetRenderTargetItem().TargetableTexture;
 		TargetsToResolve[GBufferCIndex] = SceneContext.GBufferC->GetRenderTargetItem().TargetableTexture;
 
-		NumColorTargets = 4;
+		NumColorTargets = 3 + (bHasNormal ? 1 : 0);
 		break;
 
 	case FDecalRenderingCommon::RTM_SceneColorAndGBufferDepthWriteWithNormal:
 	case FDecalRenderingCommon::RTM_SceneColorAndGBufferDepthWriteNoNormal:
 		TargetsToResolve[SceneColorIndex] = SceneContext.GetSceneColor()->GetRenderTargetItem().TargetableTexture;
-		TargetsToResolve[GBufferAIndex] = SceneContext.GBufferA->GetRenderTargetItem().TargetableTexture;
-		//TargetsToResolve[GBufferAIndex] = bHasNormal ? SceneContext.GBufferA->GetRenderTargetItem().TargetableTexture : nullptr;
+		TargetsToResolve[GBufferAIndex] = bHasNormal ? SceneContext.GBufferA->GetRenderTargetItem().TargetableTexture : nullptr;
 		TargetsToResolve[GBufferBIndex] = SceneContext.GBufferB->GetRenderTargetItem().TargetableTexture;
 		TargetsToResolve[GBufferCIndex] = SceneContext.GBufferC->GetRenderTargetItem().TargetableTexture;
 		TargetsToResolve[GBufferEIndex] = SceneContext.GBufferE->GetRenderTargetItem().TargetableTexture;
 
-		NumColorTargets = 5;
+		NumColorTargets = 4 + (bHasNormal ? 1 : 0);
 		DepthStencilAccess = FExclusiveDepthStencil::DepthWrite_StencilWrite;
 		DepthTargetActions = ERenderTargetActions::Load_Store;
 		break;
@@ -1051,7 +1049,21 @@ void FDecalRenderTargetManager::SetRenderTargetMode(FDecalRenderingCommon::ERend
 		break;
 	}
 
-	FRHIRenderPassInfo RPInfo(NumColorTargets, TargetsToBind, ColorTargetActions);
+	uint32 WriteIdx = 0;
+	FRHITexture* ValidTargetsToBind[MaxSimultaneousRenderTargets] = { nullptr };
+
+	for (uint32 i = 0; WriteIdx < NumColorTargets; ++i)
+	{
+		if (!TargetsToBind[i])
+		{
+			continue;
+		}
+
+		ValidTargetsToBind[WriteIdx] = TargetsToBind[i];
+		++WriteIdx;
+	}
+
+	FRHIRenderPassInfo RPInfo(NumColorTargets, ValidTargetsToBind, ColorTargetActions);
 	RPInfo.DepthStencilRenderTarget.DepthStencilTarget = DepthTarget;
 	RPInfo.DepthStencilRenderTarget.Action = MakeDepthStencilTargetActions(DepthTargetActions, ERenderTargetActions::Load_Store);
 	RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil = DepthStencilAccess;
