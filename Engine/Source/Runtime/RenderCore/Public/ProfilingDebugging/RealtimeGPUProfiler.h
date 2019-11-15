@@ -135,8 +135,7 @@ class FScopedGPUStatEvent;
 
 #else
 
-	template<typename TRHICmdList>
-	struct RENDERCORE_API TDrawEvent
+	struct RENDERCORE_API FDrawEvent
 	{
 	};
 

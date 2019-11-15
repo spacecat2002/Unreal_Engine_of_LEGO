@@ -1263,6 +1263,7 @@ void FVulkanDevice::ReleaseDeferredContext(FVulkanCommandListContext* InContext)
 
 void FVulkanDevice::VulkanSetObjectName(VkObjectType Type, uint64_t Handle, const TCHAR* Name)
 {
+#if VULKAN_ENABLE_DRAW_MARKERS
 	if(DebugMarkers.SetDebugName)
 	{
 		FTCHARToUTF8 Converter(Name);
@@ -1273,4 +1274,5 @@ void FVulkanDevice::VulkanSetObjectName(VkObjectType Type, uint64_t Handle, cons
 		Info.pObjectName = Converter.Get();
 		DebugMarkers.SetDebugName(Device, &Info);
 	}
+#endif // VULKAN_ENABLE_DRAW_MARKERS
 }
