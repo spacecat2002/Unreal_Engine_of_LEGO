@@ -3,6 +3,7 @@
 #pragma once
 
 #include "RenderResource.h"
+#include "RenderingThread.h"
 
 class FSkyLightImportanceSamplingData :
 	public FRenderResource,
