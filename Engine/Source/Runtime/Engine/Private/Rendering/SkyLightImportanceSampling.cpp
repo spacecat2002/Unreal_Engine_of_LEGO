@@ -3,6 +3,8 @@
 #include "Rendering/SkyLightImportanceSampling.h"
 #include "GlobalShader.h"
 #include "ShaderParameterUtils.h"
+#include "RHIStaticStates.h"
+#include "ProfilingDebugging/RealtimeGPUProfiler.h"
 
 DECLARE_GPU_STAT_NAMED(BuildSkyLightMipTree, TEXT("Build SkyLight Mip Tree"));
 
