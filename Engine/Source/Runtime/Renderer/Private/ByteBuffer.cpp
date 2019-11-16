@@ -229,19 +229,19 @@ void MemcpyTextureToTexture(FRHICommandList& RHICmdList, const FTextureRWBuffer2
 	RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, DstBuffer.UAV);
 }
 
-bool ResizeBufferIfNeeded(FRHICommandList& RHICmdList, FRWBufferStructured& Buffer, uint32 NumFloat4s)
+bool ResizeBufferIfNeeded(FRHICommandList& RHICmdList, FRWBufferStructured& Buffer, uint32 NumFloat4s, const TCHAR* InDebugName)
 {
 	EPixelFormat BufferFormat = PF_A32B32G32R32F;
 	uint32 BytesPerElement = GPixelFormats[BufferFormat].BlockBytes;
 
 	if (Buffer.NumBytes == 0)
 	{
-		Buffer.Initialize(BytesPerElement, NumFloat4s);
+		Buffer.Initialize(BytesPerElement, NumFloat4s, 0, InDebugName);
 	}
 	else if (NumFloat4s * BytesPerElement != Buffer.NumBytes)
 	{
 		FRWBufferStructured NewBuffer;
-		NewBuffer.Initialize(BytesPerElement, NumFloat4s);
+		NewBuffer.Initialize(BytesPerElement, NumFloat4s, 0, InDebugName);
 
 		// Copy data to new buffer
 		uint32 CopyFloat4s = FMath::Min(NumFloat4s, Buffer.NumBytes / BytesPerElement);
