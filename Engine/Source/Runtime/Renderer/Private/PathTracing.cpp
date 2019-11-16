@@ -443,12 +443,6 @@ void FDeferredShadingSceneRenderer::RenderPathTracing(FRHICommandListImmediate& 
 	// The frame independent temporal seed, not reset at the beginning of each frame unlike SPPCount to allow for less temporal aliasing.
 	static uint32 FrameIndependentTemporalSeed = 0;
 
-	// Conditionally rebuild sky light CDFs
-	if (Scene->SkyLight && Scene->SkyLight->ShouldRebuildCdf())
-	{
-		BuildSkyLightCdfs(RHICmdList, Scene->SkyLight);
-	}
-
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 	auto ViewSize = View.ViewRect.Size();
 	FSceneViewState* ViewState = (FSceneViewState*)View.State;
