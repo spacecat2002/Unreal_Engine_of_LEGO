@@ -6,6 +6,7 @@
 
 #pragma once
 
+#if 0
 #include "GPUProfiler.h"
 
 #include "Serialization/MemoryWriter.h"
@@ -157,9 +158,12 @@ struct FVulkanGPUProfiler : public FGPUProfiler
 	/** GPU hitch profile histories */
 	TIndirectArray<FVulkanEventNodeFrame> GPUHitchEventNodeFrames;
 
-	FVulkanGPUProfiler(FVulkanCommandListContext* InCmd, FVulkanDevice* InDevice);
-
-	virtual ~FVulkanGPUProfiler();
+	FVulkanGPUProfiler(FVulkanCommandListContext* InCmd, FVulkanDevice* InDevice)
+		: bCommandlistSubmitted(false)
+		, Device(InDevice)
+		, CmdContext(InCmd)
+	{
+	}
 
 	virtual FGPUProfilerEventNode* CreateEventNode(const TCHAR* InName, FGPUProfilerEventNode* InParent) override final
 	{
@@ -185,11 +189,8 @@ struct FVulkanGPUProfiler : public FGPUProfiler
 	// For crash/marker tracking
 	TMap<uint32, FString> CachedStrings;
 	TArray<uint32> PushPopStack;
-
-	FVulkanTimingQueryPool* LocalTracePointsQueryPool;
-	TArray<uint64> CrashMarkers;
-	bool bBeginFrame;
 };
+#endif
 
 namespace VulkanRHI
 {
