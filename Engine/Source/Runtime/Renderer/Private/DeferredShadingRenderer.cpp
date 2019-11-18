@@ -2859,7 +2859,11 @@ int32 GetForceRayTracingEffectsCVarValue()
 
 bool CanOverlayRayTracingOutput(const FViewInfo& View)
 {
-	return (View.RayTracingRenderMode != ERayTracingRenderMode::PathTracing)
-		&& (View.RayTracingRenderMode != ERayTracingRenderMode::RayTracingDebug);
+	static auto CVarWiper = IConsoleManager::Get().FindConsoleVariable(TEXT("r.PathTracing.WiperMode"));
+
+	return (
+		(View.RayTracingRenderMode != ERayTracingRenderMode::PathTracing || (View.RayTracingRenderMode == ERayTracingRenderMode::PathTracing && CVarWiper && CVarWiper->GetInt() > 0))
+		&& (View.RayTracingRenderMode != ERayTracingRenderMode::RayTracingDebug)
+		);
 }
 #endif // RHI_RAYTRACING
