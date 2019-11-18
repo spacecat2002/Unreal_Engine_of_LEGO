@@ -29,7 +29,6 @@ struct FRHICommandBindClearMRTValues;
 struct FRHICommandBuildLocalBoundShaderState;
 struct FRHICommandBuildLocalGraphicsPipelineState;
 struct FRHICommandBuildLocalUniformBuffer;
-struct FRHICommandClearUAV;
 struct FRHICommandCopyToResolveTarget;
 struct FRHICommandDrawIndexedIndirect;
 struct FRHICommandDrawIndexedPrimitive;
@@ -354,10 +353,16 @@ void FRHICommandSetDepthBounds::Execute(FRHICommandListBase& CmdList)
 	INTERNAL_DECORATOR(RHISetDepthBounds)(MinDepth, MaxDepth);
 }
 
-void FRHICommandClearTinyUAV::Execute(FRHICommandListBase& CmdList)
+void FRHICommandClearUAVFloat::Execute(FRHICommandListBase& CmdList)
 {
-	RHISTAT(ClearTinyUAV);
-	INTERNAL_DECORATOR(RHIClearTinyUAV)(UnorderedAccessViewRHI, Values);
+	RHISTAT(ClearUAV);
+	INTERNAL_DECORATOR_COMPUTE(RHIClearUAVFloat)(UnorderedAccessViewRHI, Values);
+}
+
+void FRHICommandClearUAVUint::Execute(FRHICommandListBase& CmdList)
+{
+	RHISTAT(ClearUAV);
+	INTERNAL_DECORATOR_COMPUTE(RHIClearUAVUint)(UnorderedAccessViewRHI, Values);
 }
 
 void FRHICommandCopyToResolveTarget::Execute(FRHICommandListBase& CmdList)

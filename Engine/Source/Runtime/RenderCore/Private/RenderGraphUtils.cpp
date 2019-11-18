@@ -261,7 +261,7 @@ void AddClearUAVPass(FRDGBuilder& GraphBuilder, FRDGBufferUAVRef BufferUAV, uint
 		// This might be called if using ClearTinyUAV.
 		BufferUAV->MarkResourceAsUsed();
 
-		::ClearUAV(RHICmdList, BufferUAV->GetRHI(), BufferUAV->GetParent()->Desc.GetTotalNumBytes(), Value);
+		RHICmdList.ClearUAVUint(BufferUAV->GetRHI(), FUintVector4(Value, Value, Value, Value));
 	});
 }
 
@@ -269,8 +269,7 @@ BEGIN_SHADER_PARAMETER_STRUCT(FClearTextureUAVParameters, )
 	SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D, TextureUAV)
 END_SHADER_PARAMETER_STRUCT()
 
-template <typename T>
-void AddClearUAVPass_T(FRDGBuilder& GraphBuilder, FRDGTextureUAVRef TextureUAV, const T(&ClearValues)[4])
+void AddClearUAVPass(FRDGBuilder& GraphBuilder, FRDGTextureUAVRef TextureUAV, const FUintVector4& ClearValues)
 {
 	check(TextureUAV);
 
@@ -280,7 +279,7 @@ void AddClearUAVPass_T(FRDGBuilder& GraphBuilder, FRDGTextureUAVRef TextureUAV, 
 	FRDGTextureRef Texture = TextureUAV->GetParent();
 
 	GraphBuilder.AddPass(
-		RDG_EVENT_NAME("ClearTexture(%s %s %dx%d Mip=%d)",
+		RDG_EVENT_NAME("ClearTextureUint(%s %s %dx%d Mip=%d)",
 			Texture->Name,
 			GPixelFormats[Texture->Desc.Format].Name,
 			Texture->Desc.Extent.X, Texture->Desc.Extent.Y,
@@ -293,102 +292,46 @@ void AddClearUAVPass_T(FRDGBuilder& GraphBuilder, FRDGTextureUAVRef TextureUAV, 
 
 		FRHIUnorderedAccessView* RHITextureUAV = TextureUAV->GetRHI();
 
-		if (LocalTextureDesc.Is2DTexture())
-		{
-			if (LocalTextureDesc.IsArray())
-			{
-				typedef TClearReplacementCS<EClearReplacementResourceType::Texture2DArray, TClearReplacementBase<T, 4>> FClearShader;
-
-				TShaderMapRef<FClearShader> ComputeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				FRHIComputeShader* ShaderRHI = ComputeShader->GetComputeShader();
-				RHICmdList.SetComputeShader(ShaderRHI);
-				SetShaderValue(RHICmdList, ShaderRHI, ComputeShader->GetClearValueParam(), ClearValues);
-				ComputeShader->SetResource(RHICmdList, RHITextureUAV);
-
-				RHICmdList.DispatchComputeShader(
-					FMath::DivideAndRoundUp(uint32(LocalTextureDesc.Extent.X ), ComputeShader->ThreadGroupSizeX),
-					FMath::DivideAndRoundUp(uint32(LocalTextureDesc.Extent.Y ), ComputeShader->ThreadGroupSizeY),
-					FMath::DivideAndRoundUp(uint32(LocalTextureDesc.ArraySize), ComputeShader->ThreadGroupSizeZ)
-				);
-
-				ComputeShader->FinalizeResource(RHICmdList, RHITextureUAV);
-			}
-			else
-			{
-				TShaderMapRef<TClearReplacementCS<EClearReplacementResourceType::Texture2D, TClearReplacementBase<T, 4>>> ComputeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				FRHIComputeShader* ShaderRHI = ComputeShader->GetComputeShader();
-				RHICmdList.SetComputeShader(ShaderRHI);
-				SetShaderValue(RHICmdList, ShaderRHI, ComputeShader->GetClearValueParam(), ClearValues);
-				ComputeShader->SetResource(RHICmdList, RHITextureUAV);
-
-				RHICmdList.DispatchComputeShader(
-					FMath::DivideAndRoundUp(uint32(LocalTextureDesc.Extent.X), ComputeShader->ThreadGroupSizeX),
-					FMath::DivideAndRoundUp(uint32(LocalTextureDesc.Extent.Y), ComputeShader->ThreadGroupSizeY),
-					1
-				);
-
-				ComputeShader->FinalizeResource(RHICmdList, RHITextureUAV);
-			}
-		}
-		else if (LocalTextureDesc.IsCubemap())
-		{
-			typedef TClearReplacementCS<EClearReplacementResourceType::Texture2DArray, TClearReplacementBase<T, 4>> FClearShader;
-
-			TShaderMapRef<FClearShader> ComputeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-			FRHIComputeShader* ShaderRHI = ComputeShader->GetComputeShader();
-			RHICmdList.SetComputeShader(ShaderRHI);
-			SetShaderValue(RHICmdList, ShaderRHI, ComputeShader->GetClearValueParam(), ClearValues);
-			ComputeShader->SetResource(RHICmdList, RHITextureUAV);
-
-			// One complete cube of 6 faces
-			const uint32 NumSlices = 6;
-
-			RHICmdList.DispatchComputeShader(
-				FMath::DivideAndRoundUp(uint32(LocalTextureDesc.Extent.X), ComputeShader->ThreadGroupSizeX),
-				FMath::DivideAndRoundUp(uint32(LocalTextureDesc.Extent.Y), ComputeShader->ThreadGroupSizeY),
-				FMath::DivideAndRoundUp(uint32(NumSlices                ), ComputeShader->ThreadGroupSizeZ)
-			);
-
-			ComputeShader->FinalizeResource(RHICmdList, RHITextureUAV);
-		}
-		else if (LocalTextureDesc.Is3DTexture())
-		{
-			typedef TClearReplacementCS<EClearReplacementResourceType::Texture3D, TClearReplacementBase<T, 4>> FClearShader;
-
-			TShaderMapRef<FClearShader> ComputeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-			FRHIComputeShader* ShaderRHI = ComputeShader->GetComputeShader();
-			RHICmdList.SetComputeShader(ShaderRHI);
-			SetShaderValue(RHICmdList, ShaderRHI, ComputeShader->GetClearValueParam(), ClearValues);
-			ComputeShader->SetResource(RHICmdList, RHITextureUAV);
-
-			RHICmdList.DispatchComputeShader(
-				FMath::DivideAndRoundUp(uint32(LocalTextureDesc.Extent.X), ComputeShader->ThreadGroupSizeX),
-				FMath::DivideAndRoundUp(uint32(LocalTextureDesc.Extent.Y), ComputeShader->ThreadGroupSizeY),
-				FMath::DivideAndRoundUp(uint32(LocalTextureDesc.Depth   ), ComputeShader->ThreadGroupSizeZ)
-			);
-
-			ComputeShader->FinalizeResource(RHICmdList, RHITextureUAV);
-		}
-		else
-		{
-			check(0);
-		}
+		RHICmdList.ClearUAVUint(RHITextureUAV, ClearValues);
 	});
 }
 
-void AddClearUAVPass(FRDGBuilder& GraphBuilder, FRDGTextureUAVRef TextureUAV, const float(&ClearValues)[4])
+void AddClearUAVPass(FRDGBuilder& GraphBuilder, FRDGTextureUAVRef TextureUAV, const FVector4& ClearValues)
 {
-	AddClearUAVPass_T(GraphBuilder, TextureUAV, ClearValues);
+	check(TextureUAV);
+
+	FClearTextureUAVParameters* Parameters = GraphBuilder.AllocParameters<FClearTextureUAVParameters>();
+	Parameters->TextureUAV = TextureUAV;
+
+	const FRDGTextureDesc& TextureDesc = TextureUAV->GetParent()->Desc;
+
+	GraphBuilder.AddPass(
+		RDG_EVENT_NAME("ClearTextureFloat(%s) %dx%d", TextureUAV->GetParent()->Name, TextureDesc.Extent.X, TextureDesc.Extent.Y),
+		Parameters,
+		ERDGPassFlags::Compute,
+		[&Parameters, TextureUAV, ClearValues](FRHICommandList& RHICmdList)
+	{
+		const FRDGTextureDesc& LocalTextureDesc = TextureUAV->GetParent()->Desc;
+
+		FRHIUnorderedAccessView* RHITextureUAV = TextureUAV->GetRHI();
+
+		RHICmdList.ClearUAVFloat(RHITextureUAV, ClearValues);
+	});
 }
 
 void AddClearUAVPass(FRDGBuilder& GraphBuilder, FRDGTextureUAVRef TextureUAV, const uint32(&ClearValues)[4])
 {
-	AddClearUAVPass_T(GraphBuilder, TextureUAV, ClearValues);
+	AddClearUAVPass(GraphBuilder, TextureUAV, FUintVector4(ClearValues[0], ClearValues[1], ClearValues[2], ClearValues[3]));
+}
+
+void AddClearUAVPass(FRDGBuilder& GraphBuilder, FRDGTextureUAVRef TextureUAV, const float(&ClearValues)[4])
+{
+	AddClearUAVPass(GraphBuilder, TextureUAV, FVector4(ClearValues[0], ClearValues[1], ClearValues[2], ClearValues[3]));
 }
 
 void AddClearUAVPass(FRDGBuilder& GraphBuilder, FRDGTextureUAVRef TextureUAV, const FLinearColor& ClearColor)
 {
-	AddClearUAVPass_T(GraphBuilder, TextureUAV, reinterpret_cast<const float(&)[4]>(ClearColor));
+	AddClearUAVPass(GraphBuilder, TextureUAV, FVector4(ClearColor.R, ClearColor.G, ClearColor.B, ClearColor.A));
 }
 
 class FClearUAVRectsPS : public FGlobalShader
@@ -534,7 +477,6 @@ void AddClearDepthStencilPass(
 		DrawClearQuad(RHICmdList, false, FLinearColor(), bClearDepth, Depth, bClearStencil, Stencil);
 	});
 }
-
 
 class FClearUAVUIntCS : public FGlobalShader
 {

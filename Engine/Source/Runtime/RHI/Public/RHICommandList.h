@@ -1405,18 +1405,28 @@ FRHICOMMAND_MACRO(FRHICommandSetDepthBounds)
 	RHI_API void Execute(FRHICommandListBase& CmdList);
 };
 
-FRHICOMMAND_MACRO(FRHICommandClearTinyUAV)
+FRHICOMMAND_MACRO(FRHICommandClearUAVFloat)
 {
 	FRHIUnorderedAccessView* UnorderedAccessViewRHI;
-	uint32 Values[4];
+	FVector4 Values;
 
-	FORCEINLINE_DEBUGGABLE FRHICommandClearTinyUAV(FRHIUnorderedAccessView* InUnorderedAccessViewRHI, const uint32* InValues)
+	FORCEINLINE_DEBUGGABLE FRHICommandClearUAVFloat(FRHIUnorderedAccessView* InUnorderedAccessViewRHI, const FVector4& InValues)
 		: UnorderedAccessViewRHI(InUnorderedAccessViewRHI)
+		, Values(InValues)
 	{
-		Values[0] = InValues[0];
-		Values[1] = InValues[1];
-		Values[2] = InValues[2];
-		Values[3] = InValues[3];
+	}
+	RHI_API void Execute(FRHICommandListBase& CmdList);
+};
+
+FRHICOMMAND_MACRO(FRHICommandClearUAVUint)
+{
+	FRHIUnorderedAccessView* UnorderedAccessViewRHI;
+	FUintVector4 Values;
+
+	FORCEINLINE_DEBUGGABLE FRHICommandClearUAVUint(FRHIUnorderedAccessView* InUnorderedAccessViewRHI, const FUintVector4& InValues)
+		: UnorderedAccessViewRHI(InUnorderedAccessViewRHI)
+		, Values(InValues)
+	{
 	}
 	RHI_API void Execute(FRHICommandListBase& CmdList);
 };
@@ -2402,6 +2412,26 @@ public:
 		ALLOC_COMMAND(FRHICommandDispatchIndirectComputeShader)(ArgumentBuffer, ArgumentOffset);
 	}
 
+	FORCEINLINE_DEBUGGABLE void ClearUAVFloat(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const FVector4& Values)
+	{
+		if (Bypass())
+		{
+			GetComputeContext().RHIClearUAVFloat(UnorderedAccessViewRHI, Values);
+			return;
+		}
+		ALLOC_COMMAND(FRHICommandClearUAVFloat)(UnorderedAccessViewRHI, Values);
+	}
+
+	FORCEINLINE_DEBUGGABLE void ClearUAVUint(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const FUintVector4& Values)
+	{
+		if (Bypass())
+		{
+			GetComputeContext().RHIClearUAVUint(UnorderedAccessViewRHI, Values);
+			return;
+		}
+		ALLOC_COMMAND(FRHICommandClearUAVUint)(UnorderedAccessViewRHI, Values);
+	}
+
 	FORCEINLINE_DEBUGGABLE void TransitionResource(EResourceTransitionAccess TransitionType, EResourceTransitionPipeline TransitionPipeline, FRHIUnorderedAccessView* InUAV, FRHIComputeFence* WriteFence)
 	{
 		check(InUAV == nullptr || InUAV->IsCommitted());
@@ -3145,15 +3175,11 @@ public:
 		ALLOC_COMMAND(FRHICommandResummarizeHTile)(DepthTexture);
 	}
 
+	UE_DEPRECATED(4.25, "RHIClearTinyUAV is deprecated. Use RHIClearUAVUint or RHIClearUAVFloat instead.")
 	FORCEINLINE_DEBUGGABLE void ClearTinyUAV(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const uint32(&Values)[4])
 	{
-		//check(IsOutsideRenderPass());
-		if (Bypass())
-		{
-			GetContext().RHIClearTinyUAV(UnorderedAccessViewRHI, Values);
-			return;
-		}
-		ALLOC_COMMAND(FRHICommandClearTinyUAV)(UnorderedAccessViewRHI, Values);
+		// Forward to the new uint clear implementation.
+		ClearUAVUint(UnorderedAccessViewRHI, FUintVector4(Values[0], Values[1], Values[2], Values[3]));
 	}
 
 	FORCEINLINE_DEBUGGABLE void BeginRenderQuery(FRHIRenderQuery* RenderQuery)

@@ -1034,6 +1034,20 @@ void FD3D11DynamicRHI::Init()
 #endif
 }
 
+void FD3D11DynamicRHI::PostInit()
+{
+	if (!FPlatformProperties::RequiresCookedData())
+	{
+		// Make sure all global shaders are complete at this point
+		extern RENDERCORE_API const int32 GlobalShaderMapId;
+
+		TArray<int32> ShaderMapIds;
+		ShaderMapIds.Add(GlobalShaderMapId);
+
+		GShaderCompilingManager->FinishCompilation(TEXT("Global"), ShaderMapIds);
+	}
+}
+
 bool FD3D11DynamicRHI::IsQuadBufferStereoEnabled()
 {
 	return bIsQuadBufferStereoEnabled;

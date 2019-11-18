@@ -2,6 +2,7 @@
 
 #include "VulkanRHIPrivate.h"
 #include "VulkanContext.h"
+#include "ClearReplacementShaders.h"
 
 FVulkanShaderResourceView::FVulkanShaderResourceView(FVulkanDevice* Device, FRHIResource* InRHIBuffer, FVulkanResourceMultiBuffer* InSourceBuffer, uint32 InSize, EPixelFormat InFormat)
 	: VulkanRHI::FDeviceChild(Device)
@@ -348,46 +349,58 @@ void FVulkanDynamicRHI::RHIUpdateShaderResourceView(FRHIShaderResourceView* SRV,
 	}
 }
 
-void FVulkanCommandListContext::RHIClearTinyUAV(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const uint32* Values)
+void FVulkanCommandListContext::ClearUAV(TRHICommandList_RecursiveHazardous<FVulkanCommandListContext>& RHICmdList, FVulkanUnorderedAccessView* UnorderedAccessView, const void* ClearValue, bool bFloat)
 {
-	FVulkanUnorderedAccessView* UnorderedAccessView = ResourceCast(UnorderedAccessViewRHI);
-	FVulkanCmdBuffer* CmdBuffer = CommandBufferManager->GetActiveCmdBuffer();
-
-	if (CmdBuffer->IsInsideRenderPass())
-	{
-		TransitionAndLayoutManager.EndEmulatedRenderPass(CmdBuffer);
-		if (GVulkanSubmitAfterEveryEndRenderPass)
-		{
-			CommandBufferManager->SubmitActiveCmdBuffer();
-			CommandBufferManager->PrepareForNewActiveCommandBuffer();
-			CmdBuffer = CommandBufferManager->GetActiveCmdBuffer();
-		}
-	}
+	EClearReplacementValueType ValueType = bFloat
+		? EClearReplacementValueType::Float
+		: EClearReplacementValueType::Uint32;
 
 	if (UnorderedAccessView->SourceVertexBuffer)
 	{
-		FVulkanVertexBuffer* VertexBuffer = UnorderedAccessView->SourceVertexBuffer;
-		switch (UnorderedAccessView->BufferViewFormat)
+		uint32 NumElements = UnorderedAccessView->SourceVertexBuffer->GetSize() / GPixelFormats[UnorderedAccessView->BufferViewFormat].BlockBytes;
+		ClearUAVShader_T<EClearReplacementResourceType::Buffer, 4, false>(RHICmdList, UnorderedAccessView, NumElements, 1, 1, ClearValue, ValueType);
+	}
+	else if (UnorderedAccessView->SourceTexture)
+	{
+		FIntVector SizeXYZ = UnorderedAccessView->SourceTexture->GetSizeXYZ();
+
+		if (FRHITexture2D* Texture2D = UnorderedAccessView->SourceTexture->GetTexture2D())
 		{
-		case PF_R32_SINT:
-		case PF_R32_FLOAT:
-		case PF_R32_UINT:
-			break;
-		case PF_A8R8G8B8:
-		case PF_R8G8B8A8:
-		case PF_B8G8R8A8:
-			ensure(Values[0] == Values[1] && Values[1] == Values[2] && Values[2] == Values[3]);
-			break;
-		default:
-			ensureMsgf(0, TEXT("Unsupported format (EPixelFormat)%d!"), (uint32)UnorderedAccessView->BufferViewFormat);
-			break;
+			ClearUAVShader_T<EClearReplacementResourceType::Texture2D, 4, false>(RHICmdList, UnorderedAccessView, SizeXYZ.X, SizeXYZ.Y, SizeXYZ.Z, ClearValue, ValueType);
 		}
-		VulkanRHI::vkCmdFillBuffer(CmdBuffer->GetHandle(), VertexBuffer->GetHandle(), VertexBuffer->GetOffset(), VertexBuffer->GetSize(), Values[0]);
+		else if (FRHITexture2DArray* Texture2DArray = UnorderedAccessView->SourceTexture->GetTexture2DArray())
+		{
+			ClearUAVShader_T<EClearReplacementResourceType::Texture2DArray, 4, false>(RHICmdList, UnorderedAccessView, SizeXYZ.X, SizeXYZ.Y, SizeXYZ.Z, ClearValue, ValueType);
+		}
+		else if (FRHITexture3D* Texture3D = UnorderedAccessView->SourceTexture->GetTexture3D())
+		{
+			ClearUAVShader_T<EClearReplacementResourceType::Texture3D, 4, false>(RHICmdList, UnorderedAccessView, SizeXYZ.X, SizeXYZ.Y, SizeXYZ.Z, ClearValue, ValueType);
+		}
+		else if (FRHITextureCube* TextureCube = UnorderedAccessView->SourceTexture->GetTextureCube())
+		{
+			ClearUAVShader_T<EClearReplacementResourceType::Texture2DArray, 4, false>(RHICmdList, UnorderedAccessView, SizeXYZ.X, SizeXYZ.Y, SizeXYZ.Z, ClearValue, ValueType);
+		}
+		else
+		{
+			ensure(0);
+		}
 	}
 	else
 	{
 		ensure(0);
 	}
+}
+
+void FVulkanCommandListContext::RHIClearUAVFloat(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const FVector4& Values)
+{
+	TRHICommandList_RecursiveHazardous<FVulkanCommandListContext> RHICmdList(this);
+	ClearUAV(RHICmdList, ResourceCast(UnorderedAccessViewRHI), &Values, true);
+}
+
+void FVulkanCommandListContext::RHIClearUAVUint(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const FUintVector4& Values)
+{
+	TRHICommandList_RecursiveHazardous<FVulkanCommandListContext> RHICmdList(this);
+	ClearUAV(RHICmdList, ResourceCast(UnorderedAccessViewRHI), &Values, false);
 }
 
 FVulkanComputeFence::FVulkanComputeFence(FVulkanDevice* InDevice, FName InName)

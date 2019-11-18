@@ -398,6 +398,16 @@ void FMetalDynamicRHI::RHIUpdateShaderResourceView(FRHIShaderResourceView* SRVRH
 	}
 }
 
+void FMetalRHICommandContext::RHIClearUAVFloat(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const FVector4& Values)
+{
+	checkNoEntry(); // @todo metal: implement
+}
+void FMetalRHICommandContext::RHIClearUAVUint(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const FUintVector4& Values)
+{
+	checkNoEntry(); // @todo metal: implement
+}
+
+#if 0 // Old implementation of RHIClearTinyUAV
 void FMetalRHICommandContext::RHIClearTinyUAV(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const uint32* Values)
 {
 	@autoreleasepool {
@@ -672,6 +682,7 @@ void FMetalRHICommandContext::RHIClearTinyUAV(FRHIUnorderedAccessView* Unordered
 	}
 	}
 }
+#endif
 
 FComputeFenceRHIRef FMetalDynamicRHI::RHICreateComputeFence(const FName& Name)
 {

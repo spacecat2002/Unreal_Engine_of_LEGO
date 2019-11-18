@@ -5445,6 +5445,15 @@ void FEngineLoop::PostInitRHI()
 		PixelFormatByteWidth[i] = GPixelFormats[i].BlockBytes;
 	}
 	RHIPostInit(PixelFormatByteWidth);
+
+#if (!UE_BUILD_SHIPPING)
+	if (FParse::Param(FCommandLine::Get(), TEXT("rhiunittest")))
+	{
+		extern ENGINE_API void RunRHIUnitTest();
+		RunRHIUnitTest();
+	}
+#endif //(!UE_BUILD_SHIPPING)
+
 #endif
 }
 

@@ -70,6 +70,16 @@ public:
 		RHIContext->RHITransitionResources(TransitionType, TransitionPipeline, InUAVs, NumUAVs, WriteComputeFence);
 	}
 
+	virtual void RHIClearUAVFloat(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const FVector4& Values) override final
+	{
+		RHIContext->RHIClearUAVFloat(UnorderedAccessViewRHI, Values);
+	}
+
+	virtual void RHIClearUAVUint(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const FUintVector4& Values) override final
+	{
+		RHIContext->RHIClearUAVUint(UnorderedAccessViewRHI, Values);
+	}
+
 	virtual void RHISubmitCommandsHint() override final
 	{
 		RHIContext->RHISubmitCommandsHint();
@@ -231,10 +241,14 @@ public:
 		RHIContext->RHISetMultipleViewports(Count, Data);
 	}
 
-	/** Clears a UAV to the multi-component value provided. */
-	virtual void RHIClearTinyUAV(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const uint32* Values) override final
+	virtual void RHIClearUAVFloat(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const FVector4& Values) final override
 	{
-		RHIContext->RHIClearTinyUAV(UnorderedAccessViewRHI, Values);
+		RHIContext->RHIClearUAVFloat(UnorderedAccessViewRHI, Values);
+	}
+
+	virtual void RHIClearUAVUint(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const FUintVector4& Values) final override
+	{
+		RHIContext->RHIClearUAVUint(UnorderedAccessViewRHI, Values);
 	}
 
 	/**
