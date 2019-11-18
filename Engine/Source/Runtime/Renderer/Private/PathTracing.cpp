@@ -473,10 +473,13 @@ void FDeferredShadingSceneRenderer::RenderPathTracing(FRHICommandListImmediate& 
 	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, RayCountPerPixelRT, TEXT("RayCountPerPixelRT"));
 
 	// Clear render targets
-	ClearUAV(RHICmdList, RadianceRT->GetRenderTargetItem(), FLinearColor::Black);
-	ClearUAV(RHICmdList, SampleCountRT->GetRenderTargetItem(), FLinearColor::Black);
-	ClearUAV(RHICmdList, PixelPositionRT->GetRenderTargetItem(), FLinearColor::Black);
-	ClearUAV(RHICmdList, RayCountPerPixelRT->GetRenderTargetItem(), FLinearColor::Black);
+	FUintVector4 BlackColor(0, 0, 0, 0);
+	FVector4 BlackColorF(0, 0, 0, 0);
+
+	RHICmdList.ClearUAVFloat(RadianceRT->GetRenderTargetItem().UAV, BlackColorF);
+	RHICmdList.ClearUAVUint(SampleCountRT->GetRenderTargetItem().UAV, BlackColor);
+	RHICmdList.ClearUAVUint(PixelPositionRT->GetRenderTargetItem().UAV, BlackColor);
+	RHICmdList.ClearUAVUint(RayCountPerPixelRT->GetRenderTargetItem().UAV, BlackColor);
 
 	auto RayGenShader = GetGlobalShaderMap(FeatureLevel)->GetShader<FPathTracingRG>();
 
@@ -657,11 +660,11 @@ void FDeferredShadingSceneRenderer::RenderPathTracing(FRHICommandListImmediate& 
 	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, RadianceSortedAlphaRT, TEXT("RadianceSortedAlphaRT"));
 	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, SampleCountSortedRT, TEXT("SampleCountSortedRT"));
 
-	ClearUAV(RHICmdList, RadianceSortedRedRT->GetRenderTargetItem(), FLinearColor::Black);
-	ClearUAV(RHICmdList, RadianceSortedGreenRT->GetRenderTargetItem(), FLinearColor::Black);
-	ClearUAV(RHICmdList, RadianceSortedBlueRT->GetRenderTargetItem(), FLinearColor::Black);
-	ClearUAV(RHICmdList, RadianceSortedAlphaRT->GetRenderTargetItem(), FLinearColor::Black);
-	ClearUAV(RHICmdList, SampleCountSortedRT->GetRenderTargetItem(), FLinearColor::Black);	
+	RHICmdList.ClearUAVUint(RadianceSortedRedRT->GetRenderTargetItem().UAV, BlackColor);
+	RHICmdList.ClearUAVUint(RadianceSortedGreenRT->GetRenderTargetItem().UAV, BlackColor);
+	RHICmdList.ClearUAVUint(RadianceSortedBlueRT->GetRenderTargetItem().UAV, BlackColor);
+	RHICmdList.ClearUAVUint(RadianceSortedAlphaRT->GetRenderTargetItem().UAV, BlackColor);
+	RHICmdList.ClearUAVUint(SampleCountSortedRT->GetRenderTargetItem().UAV, BlackColor);
 
 	ComputePathCompaction(
 		RHICmdList,
@@ -693,8 +696,9 @@ void FDeferredShadingSceneRenderer::RenderPathTracing(FRHICommandListImmediate& 
 	Desc.Format = PF_R16_UINT;
 	//Desc.Format = PF_R32_UINT;
 	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, OutputSampleCountRT, TEXT("OutputSampleCountRT"));
-	ClearUAV(RHICmdList, OutputRadianceRT->GetRenderTargetItem(), FLinearColor::Black);
-	ClearUAV(RHICmdList, OutputSampleCountRT->GetRenderTargetItem(), FLinearColor::Black);
+	
+	RHICmdList.ClearUAVFloat(OutputRadianceRT->GetRenderTargetItem().UAV, BlackColorF);
+	RHICmdList.ClearUAVUint(OutputSampleCountRT->GetRenderTargetItem().UAV, BlackColor);
 
 	// Run compositing engine
 	const auto ShaderMap = GetGlobalShaderMap(FeatureLevel);

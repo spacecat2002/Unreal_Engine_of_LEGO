@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "RenderUtils.h"
+#include "RenderingThread.h"
 
 #if (!UE_BUILD_SHIPPING)
 
