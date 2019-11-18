@@ -3114,7 +3114,6 @@ public:
 					BatchElement.NumPrimitives = MAX_PARTICLES_PER_INSTANCE * 2;
 					BatchElement.NumInstances = ParticleCount / MAX_PARTICLES_PER_INSTANCE;
 					BatchElement.FirstIndex = 0;
-					BatchElement.bIsInstancedMesh = true;
 					BatchElement.UserData = MeshBatchUserData;
 					Mesh.VertexFactory = &VertexFactory;
 					Mesh.LCI = NULL;

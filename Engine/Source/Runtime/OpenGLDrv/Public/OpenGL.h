@@ -104,7 +104,6 @@ public:
 	static FORCEINLINE bool SupportsTextureCompare()					{ return true; }
 	static FORCEINLINE bool SupportsTextureBaseLevel()					{ return true; }
 	static FORCEINLINE bool SupportsTextureMaxLevel()					{ return true; }
-	static FORCEINLINE bool SupportsInstancing()						{ return true; }
 	static FORCEINLINE bool SupportsVertexAttribInteger()				{ return true; }
 	static FORCEINLINE bool SupportsVertexAttribShort()					{ return true; }
 	static FORCEINLINE bool SupportsVertexAttribByte()					{ return true; }

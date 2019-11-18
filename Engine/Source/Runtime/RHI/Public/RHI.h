@@ -499,9 +499,6 @@ extern RHI_API int32 GCurrentNumPrimitivesDrawnRHI;
 /** Whether or not the RHI can handle a non-zero BaseVertexIndex - extra SetStreamSource calls will be needed if this is false */
 extern RHI_API bool GRHISupportsBaseVertexIndex;
 
-/** True if the RHI supports hardware instancing */
-extern RHI_API TRHIGlobal<bool> GRHISupportsInstancing;
-
 /** True if the RHI supports copying cubemap faces using CopyToResolveTarget */
 extern RHI_API bool GRHISupportsResolveCubemapFaces;
 
