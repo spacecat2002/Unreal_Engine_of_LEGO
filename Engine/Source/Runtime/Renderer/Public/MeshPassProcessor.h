@@ -12,6 +12,8 @@
 
 #define MESH_DRAW_COMMAND_DEBUG_DATA ((!UE_BUILD_SHIPPING && !UE_BUILD_TEST) || VALIDATE_MESH_COMMAND_BINDINGS || WANTS_DRAW_MESH_EVENTS)
 
+class FRayTracingLocalShaderBindingWriter;
+
 /** Mesh pass types supported. */
 namespace EMeshPass
 {
@@ -343,7 +345,7 @@ public:
 	void SetOnCommandList(FRHIComputeCommandList& RHICmdList, FRHIComputeShader* Shader) const;
 
 #if RHI_RAYTRACING
-	void SetRayTracingShaderBindingsForHitGroup(FRHICommandList& RHICmdList, FRHIRayTracingScene* Scene, uint32 InstanceIndex, uint32 SegmentIndex, FRayTracingPipelineState* Pipeline, uint32 HitGroupIndex, uint32 ShaderSlot) const;
+	void SetRayTracingShaderBindingsForHitGroup(FRayTracingLocalShaderBindingWriter* BindingWriter, uint32 InstanceIndex, uint32 SegmentIndex, uint32 HitGroupIndex, uint32 ShaderSlot) const;
 #endif // RHI_RAYTRACING
 
 	/** Returns whether this set of shader bindings can be merged into an instanced draw call with another. */

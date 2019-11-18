@@ -40,6 +40,7 @@ class FPostprocessContext;
 struct FILCUpdatePrimTaskData;
 template<typename ShaderMetaType> class TShaderMap;
 class FRaytracingLightDataPacked;
+class FRayTracingLocalShaderBindingWriter;
 
 DECLARE_STATS_GROUP(TEXT("Command List Markers"), STATGROUP_CommandListMarkers, STATCAT_Advanced);
 
@@ -1158,6 +1159,9 @@ public:
 	// Primary pipeline state object to be used with the ray tracing scene for this view.
 	// Material shaders are only available when using this pipeline.
 	FRayTracingPipelineState* RayTracingMaterialPipeline = nullptr;
+
+	TArray<FRayTracingLocalShaderBindingWriter*>	RayTracingMaterialBindings; // One per binding task
+	FGraphEventRef									RayTracingMaterialBindingsTask;
 
 	// Common resources used for lighting in ray tracing effects
 	TRefCountPtr<IPooledRenderTarget>				RayTracingSubSurfaceProfileTexture;

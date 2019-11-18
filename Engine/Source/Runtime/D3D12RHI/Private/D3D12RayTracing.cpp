@@ -3255,21 +3255,17 @@ void FD3D12CommandContext::RHIRayTraceDispatch(FRHIRayTracingPipelineState* InRa
 	DispatchRays(*this, GlobalResourceBindings, Pipeline, RayGenShaderIndex, ShaderTable, DispatchDesc);
 }
 
-void FD3D12CommandContext::RHISetRayTracingHitGroup(
-	FRHIRayTracingScene* InScene, uint32 InstanceIndex, uint32 SegmentIndex, uint32 ShaderSlot,
-	FRHIRayTracingPipelineState* InPipeline, uint32 HitGroupIndex,
+static void SetRayTracingHitGroup(
+	FD3D12CommandContext& CommandContext,
+	FD3D12RayTracingShaderTable* ShaderTable,
+	FD3D12RayTracingScene* Scene, 
+	FD3D12RayTracingPipelineState* Pipeline,
+	uint32 InstanceIndex, uint32 SegmentIndex, uint32 ShaderSlot, uint32 HitGroupIndex,
 	uint32 NumUniformBuffers, FRHIUniformBuffer* const* UniformBuffers,
 	uint32 LooseParameterDataSize, const void* LooseParameterData,
 	uint32 UserData)
 {
-	FD3D12RayTracingScene* Scene = FD3D12DynamicRHI::ResourceCast(InScene);
-	FD3D12RayTracingPipelineState* Pipeline = FD3D12DynamicRHI::ResourceCast(InPipeline);
-
 	checkf(ShaderSlot < Scene->ShaderSlotsPerGeometrySegment, TEXT("Shader slot is invalid. Make sure that ShaderSlotsPerGeometrySegment is correct on FRayTracingSceneInitializer."));
-
-	FD3D12RayTracingShaderTable* ShaderTable = Scene->FindOrCreateShaderTable(Pipeline, GetParentDevice());
-	checkf(ShaderTable->LocalShaderTableOffset == ShaderTable->HitGroupShaderTableOffset,
-		TEXT("Hit shader records are assumed to be at the beginning of local shader table"));
 
 	const uint32 RecordIndex = Scene->GetHitRecordBaseIndex(InstanceIndex, SegmentIndex) + ShaderSlot;
 	ShaderTable->SetLocalShaderIdentifier(RecordIndex, Pipeline->HitGroupShaders.Identifiers[HitGroupIndex]);
@@ -3300,9 +3296,9 @@ void FD3D12CommandContext::RHISetRayTracingHitGroup(
 		}
 	}
 
-	FD3D12RayTracingLocalResourceBinder ResourceBinder(*this, ShaderTable, Shader->pRootSignature, RecordIndex);
+	FD3D12RayTracingLocalResourceBinder ResourceBinder(CommandContext, ShaderTable, Shader->pRootSignature, RecordIndex);
 	check(ShaderTable->DescriptorCache);
-	SetRayTracingShaderResources(*this, Shader,
+	SetRayTracingShaderResources(CommandContext, Shader,
 		0, nullptr, // Textures
 		0, nullptr, // SRVs
 		NumUniformBuffers, UniformBuffers,
@@ -3317,6 +3313,60 @@ void FD3D12CommandContext::RHISetRayTracingHitGroup(
 	}
 }
 
+void FD3D12CommandContext::RHISetRayTracingHitGroups(
+	FRHIRayTracingScene* InScene, FRHIRayTracingPipelineState* InPipeline,
+	uint32 NumBindings, const FRayTracingLocalShaderBindings* Bindings)
+{
+	FD3D12RayTracingScene* Scene = FD3D12DynamicRHI::ResourceCast(InScene);
+	FD3D12RayTracingPipelineState* Pipeline = FD3D12DynamicRHI::ResourceCast(InPipeline);
+
+	FD3D12RayTracingShaderTable* ShaderTable = Scene->FindOrCreateShaderTable(Pipeline, GetParentDevice());
+	checkf(ShaderTable->LocalShaderTableOffset == ShaderTable->HitGroupShaderTableOffset,
+		TEXT("Hit shader records are assumed to be at the beginning of local shader table"));
+
+	for (uint32 BindingIndex = 0; BindingIndex < NumBindings; ++ BindingIndex)
+	{
+		const FRayTracingLocalShaderBindings& Binding = Bindings[BindingIndex];
+		SetRayTracingHitGroup(*this, ShaderTable, Scene, Pipeline,
+			Binding.InstanceIndex,
+			Binding.SegmentIndex,
+			Binding.ShaderSlot,
+			Binding.ShaderIndexInPipeline,
+			Binding.NumUniformBuffers,
+			Binding.UniformBuffers,
+			Binding.LooseParameterDataSize,
+			Binding.LooseParameterData,
+			Binding.UserData);
+	}
+}
+
+void FD3D12CommandContext::RHISetRayTracingHitGroup(
+	FRHIRayTracingScene* InScene, uint32 InstanceIndex, uint32 SegmentIndex, uint32 ShaderSlot,
+	FRHIRayTracingPipelineState* InPipeline, uint32 HitGroupIndex,
+	uint32 NumUniformBuffers, FRHIUniformBuffer* const* UniformBuffers,
+	uint32 LooseParameterDataSize, const void* LooseParameterData,
+	uint32 UserData)
+{
+	FD3D12RayTracingScene* Scene = FD3D12DynamicRHI::ResourceCast(InScene);
+	FD3D12RayTracingPipelineState* Pipeline = FD3D12DynamicRHI::ResourceCast(InPipeline);
+
+	checkf(ShaderSlot < Scene->ShaderSlotsPerGeometrySegment, TEXT("Shader slot is invalid. Make sure that ShaderSlotsPerGeometrySegment is correct on FRayTracingSceneInitializer."));
+
+	FD3D12RayTracingShaderTable* ShaderTable = Scene->FindOrCreateShaderTable(Pipeline, GetParentDevice());
+	checkf(ShaderTable->LocalShaderTableOffset == ShaderTable->HitGroupShaderTableOffset,
+		TEXT("Hit shader records are assumed to be at the beginning of local shader table"));
+
+	SetRayTracingHitGroup(*this, ShaderTable, Scene, Pipeline,
+		InstanceIndex,
+		SegmentIndex,
+		ShaderSlot,
+		HitGroupIndex,
+		NumUniformBuffers,
+		UniformBuffers,
+		LooseParameterDataSize,
+		LooseParameterData,
+		UserData);
+}
 
 void FD3D12CommandContext::RHISetRayTracingCallableShader(
 	FRHIRayTracingScene* InScene, uint32 ShaderSlotInScene,

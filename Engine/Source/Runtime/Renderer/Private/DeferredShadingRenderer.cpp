@@ -606,6 +606,7 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 	}
 
 	{
+		TRACE_CPUPROFILER_EVENT_SCOPE(FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances);
 		SCOPE_CYCLE_COUNTER(STAT_GatherRayTracingWorldInstances);
 		RayTracingCollector.ClearViewMeshArrays();
 		TArray<int> DynamicMeshBatchStartOffset;
@@ -967,6 +968,42 @@ bool FDeferredShadingSceneRenderer::DispatchRayTracingWorldUpdates(FRHICommandLi
 void FDeferredShadingSceneRenderer::WaitForRayTracingScene(FRHICommandListImmediate& RHICmdList)
 {
 	if (!IsRayTracingEnabled()) return;
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(FDeferredShadingSceneRenderer::WaitForRayTracingScene);
+
+	for (int32 ViewExt = 0; ViewExt < ViewFamily.ViewExtensions.Num(); ++ViewExt)
+	{
+		for (int32 ViewIndex = 0; ViewIndex < ViewFamily.Views.Num(); ++ViewIndex)
+		{
+			FViewInfo& View = Views[ViewIndex];
+			if (View.RayTracingMaterialBindings.Num())
+			{
+				FTaskGraphInterface::Get().WaitUntilTaskCompletes(View.RayTracingMaterialBindingsTask);
+
+				for (FRayTracingLocalShaderBindingWriter* BindingWriter : View.RayTracingMaterialBindings)
+				{
+					// Data is kept alive at the high level and explicitly deleted on RHI timeline,
+					// so we can avoid copying parameters to the command list and simply pass raw pointers around.
+					const bool bCopyDataToInlineStorage = false;
+					BindingWriter->Commit(
+						RHICmdList,
+						View.RayTracingScene.RayTracingSceneRHI,
+						View.RayTracingMaterialPipeline,
+						bCopyDataToInlineStorage);
+				}
+
+				// Move the ray tracing binding container ownership to the command list, so that memory will be
+				// released on the RHI thread timeline, after the commands that reference it are processed.
+				RHICmdList.EnqueueLambda([Ptrs = MoveTemp(View.RayTracingMaterialBindings)](FRHICommandListImmediate&)
+				{
+					for (auto Ptr : Ptrs)
+					{
+						delete Ptr;
+					}
+				});
+			}
+		}
+	}
 
 	if (RayTracingDynamicGeometryUpdateEndFence)
 	{

@@ -549,6 +549,10 @@ void FRHICommandSetRayTracingBindings::Execute(FRHICommandListBase& CmdList)
 			LooseParameterDataSize, LooseParameterData,
 			UserData);
 	}
+	else if (BindingType == EBindingType_HitGroupBatch)
+	{
+		INTERNAL_DECORATOR(RHISetRayTracingHitGroups)(Scene, GetRHIRayTracingPipelineState(Pipeline), NumBindings, Bindings);
+	}
 	else if (BindingType == EBindingType_CallableShader)
 	{
 		INTERNAL_DECORATOR(RHISetRayTracingCallableShader)(Scene, ShaderSlot, GetRHIRayTracingPipelineState(Pipeline), ShaderIndex, NumUniformBuffers, UniformBuffers, UserData);

@@ -26,6 +26,7 @@ struct FRayTracingGeometryInstance;
 struct FRayTracingShaderBindings;
 struct FRayTracingGeometrySegment;
 struct FAccelerationStructureBuildParams;
+struct FRayTracingLocalShaderBindings;
 enum class EAsyncComputeBudget;
 enum class EResourceTransitionAccess;
 enum class EResourceTransitionPipeline;
@@ -706,6 +707,11 @@ public:
 		FRHIRayTracingScene* Scene,
 		const FRayTracingShaderBindings& GlobalResourceBindings,
 		uint32 Width, uint32 Height)
+	{
+		checkNoEntry();
+	}
+
+	virtual void RHISetRayTracingHitGroups(FRHIRayTracingScene* Scene, FRHIRayTracingPipelineState* Pipeline, uint32 NumBindings, const FRayTracingLocalShaderBindings* Bindings)
 	{
 		checkNoEntry();
 	}

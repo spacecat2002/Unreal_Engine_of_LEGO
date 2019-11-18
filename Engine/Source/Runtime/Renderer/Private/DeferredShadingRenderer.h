@@ -626,8 +626,8 @@ private:
 	/** Lighting evaluation shader registration */
 	static FRHIRayTracingShader* GetRayTracingLightingMissShader(FViewInfo& View);
 
-	FComputeFenceRHIRef RayTracingDynamicGeometryUpdateBeginFence; // Signalled when ray tracing AS can start building
-	FComputeFenceRHIRef RayTracingDynamicGeometryUpdateEndFence; // Signalled when all AS for this frame are built
+	FComputeFenceRHIRef RayTracingDynamicGeometryUpdateBeginFence; // Signaled when ray tracing AS can start building
+	FComputeFenceRHIRef RayTracingDynamicGeometryUpdateEndFence; // Signaled when all AS for this frame are built
 
 #endif // RHI_RAYTRACING
 
