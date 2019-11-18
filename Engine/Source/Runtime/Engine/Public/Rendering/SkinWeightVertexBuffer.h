@@ -53,7 +53,7 @@ struct TSkinWeightInfo
 		return Ar;
 	}
 
-	bool GetRigidWeightBone(uint32& OutBoneIndex) const
+	bool GetRigidWeightBone(int32& OutBoneIndex) const
 	{
 		bool bIsRigid = false;
 
