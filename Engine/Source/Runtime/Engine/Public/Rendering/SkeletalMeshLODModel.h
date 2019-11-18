@@ -34,11 +34,11 @@ struct FSoftSkinVertex
 	FVector2D		UVs[MAX_TEXCOORDS];
 	// VertexColor
 	FColor			Color;
-	uint8			InfluenceBones[MAX_TOTAL_INFLUENCES];
+	FBoneIndexType	InfluenceBones[MAX_TOTAL_INFLUENCES];
 	uint8			InfluenceWeights[MAX_TOTAL_INFLUENCES];
 
 	/** If this vert is rigidly weighted to a bone, return true and the bone index. Otherwise return false. */
-	ENGINE_API bool GetRigidWeightBone(uint8& OutBoneIndex) const;
+	ENGINE_API bool GetRigidWeightBone(FBoneIndexType& OutBoneIndex) const;
 
 	/** Returns the maximum weight of any bone that influences this vertex. */
 	ENGINE_API uint8 GetMaximumWeight() const;
@@ -109,6 +109,9 @@ struct FSkelMeshSection
 	/** max # of bones used to skin the vertices in this section */
 	int32 MaxBoneInfluences;
 
+	/** whether to store bone indices as 16 bit or 8 bit in vertex buffer for rendering. */
+	bool bUse16BitBoneIndex;
+
 	// INDEX_NONE if not set
 	int16 CorrespondClothAssetIndex;
 
@@ -157,6 +160,7 @@ struct FSkelMeshSection
 		, BaseVertexIndex(0)
 		, NumVertices(0)
 		, MaxBoneInfluences(4)
+		, bUse16BitBoneIndex(false)
 		, CorrespondClothAssetIndex(INDEX_NONE)
 		, bDisabled(false)
 		, GenerateUpToLodIndex(INDEX_NONE)
@@ -199,6 +203,16 @@ struct FSkelMeshSection
 	FORCEINLINE bool HasExtraBoneInfluences() const
 	{
 		return MaxBoneInfluences > MAX_INFLUENCES_PER_STREAM;
+	}
+
+	/**
+	* Calculate if this skel mesh section needs 16-bit bone indices
+	*/
+	ENGINE_API void CalcUse16BitBoneIndex();
+
+	FORCEINLINE bool Use16BitBoneIndex() const
+	{
+		return bUse16BitBoneIndex;
 	}
 
 	// Serialization.
@@ -371,6 +385,7 @@ public:
 	ENGINE_API void GetNonClothVertices(TArray<FSoftSkinVertex>& OutVertices) const;
 
 	ENGINE_API bool DoSectionsNeedExtraBoneInfluences() const;
+	bool DoSectionsUse16BitBoneIndex() const;
 
 	void GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize) const;
 

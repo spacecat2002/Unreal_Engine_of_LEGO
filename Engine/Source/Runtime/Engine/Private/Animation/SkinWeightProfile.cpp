@@ -4,7 +4,7 @@
 #include "Engine/SkeletalMesh.h"
 #include "UObject/UObjectIterator.h"
 #include "ContentStreaming.h"
-
+#include "UObject/AnimObjectVersion.h"
 #include "Components/SkinnedMeshComponent.h"
 #include "Rendering/SkeletalMeshRenderData.h"
 #include "Rendering/SkinWeightVertexBuffer.h"
@@ -90,8 +90,25 @@ static FAutoConsoleVariableRef CVarSkinWeightProfilesAllowedFromLOD(
 
 FArchive& operator<<(FArchive& Ar, FRuntimeSkinWeightProfileData& OverrideData)
 {
+	Ar.UsingCustomVersion(FAnimObjectVersion::GUID);
 	Ar << OverrideData.OverridesInfo;
-	Ar << OverrideData.Weights;	
+	if (Ar.IsLoading() && Ar.CustomVer(FAnimObjectVersion::GUID) < FAnimObjectVersion::IncreaseBoneIndexLimitPerChunk)
+	{
+		TArray<uint16> OldWeights;
+		Ar << OldWeights;
+		// repack index_8bit|weight_8bit into index_16bit|weight_16bit
+		for (int32 i = 0; i < OldWeights.Num(); ++i)
+		{
+			uint16 OldWeight = OldWeights[i];
+			const uint8 Index = OldWeight >> 8;
+			const uint8 Weight = OldWeight & 0xFF;
+			OverrideData.Weights[i] = (Index << 16) | Weight;
+		}
+	}
+	else
+	{
+		Ar << OverrideData.Weights;
+	}
 	Ar << OverrideData.VertexIndexOverrideIndex;
 
 	return Ar;
@@ -123,9 +140,21 @@ FArchive& operator<<(FArchive& Ar, FImportedSkinWeightProfileData& ProfileData)
 
 FArchive& operator<<(FArchive& Ar, FRawSkinWeight& OverrideEntry)
 {
+	Ar.UsingCustomVersion(FAnimObjectVersion::GUID);
+
 	for (int32 InfluenceIndex = 0; InfluenceIndex < MAX_TOTAL_INFLUENCES; ++InfluenceIndex)
 	{
-		Ar << OverrideEntry.InfluenceBones[InfluenceIndex];
+		if (Ar.IsLoading() && Ar.CustomVer(FAnimObjectVersion::GUID) < FAnimObjectVersion::IncreaseBoneIndexLimitPerChunk)
+		{
+			uint8 BoneIndex = 0;
+			Ar << BoneIndex;
+			OverrideEntry.InfluenceBones[InfluenceIndex] = BoneIndex;
+		}
+		else
+		{
+			Ar << OverrideEntry.InfluenceBones[InfluenceIndex];
+		}
+
 		Ar << OverrideEntry.InfluenceWeights[InfluenceIndex];
 	}
 
@@ -309,17 +338,33 @@ void FSkinWeightProfilesData::ApplyOverrideProfile(FSkinWeightVertexBuffer* Over
 {
 	const bool bExtraWeights = BaseBuffer->HasExtraBoneInfluences();
 	OverrideBuffer->SetHasExtraBoneInfluences(bExtraWeights);
+	const bool bUse16BitBoneIndex = BaseBuffer->Use16BitBoneIndex();
+	OverrideBuffer->SetUse16BitBoneIndex(bUse16BitBoneIndex);
 
 	const FRuntimeSkinWeightProfileData* ProfilePtr = OverrideData.Find(ProfileName);
 	if (ProfilePtr)
 	{
 		if (bExtraWeights)
 		{
-			ProfilePtr->ApplyOverrides<true>(OverrideBuffer, BaseBuffer);
+			if (bUse16BitBoneIndex)
+			{
+				ProfilePtr->ApplyOverrides<true, FBoneIndex16>(OverrideBuffer, BaseBuffer);
+			}
+			else
+			{
+				ProfilePtr->ApplyOverrides<true, FBoneIndex8>(OverrideBuffer, BaseBuffer);
+			}
 		}
 		else
 		{
-			ProfilePtr->ApplyOverrides<false>(OverrideBuffer, BaseBuffer);
+			if (bUse16BitBoneIndex)
+			{
+				ProfilePtr->ApplyOverrides<false, FBoneIndex16>(OverrideBuffer, BaseBuffer);
+			}
+			else
+			{
+				ProfilePtr->ApplyOverrides<false, FBoneIndex8>(OverrideBuffer, BaseBuffer);
+			}
 		}
 	}
 }

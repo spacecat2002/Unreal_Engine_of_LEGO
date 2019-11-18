@@ -5245,7 +5245,7 @@ FSkinnedMeshComponentRecreateRenderStateContext::~FSkinnedMeshComponentRecreateR
 
 //////////////////////////////////////////////////////////////////////////
 
-template <bool bExtraBoneInfluencesT>
+template <bool bExtraBoneInfluencesT, typename BoneIndexType>
 FVector GetRefVertexLocationTyped(
 	const USkeletalMesh* Mesh,
 	const FSkelMeshRenderSection& Section,
@@ -5258,7 +5258,7 @@ FVector GetRefVertexLocationTyped(
 
 	// Do soft skinning for this vertex.
 	int32 BufferVertIndex = Section.GetVertexBufferIndex() + VertIndex;
-	const TSkinWeightInfo<bExtraBoneInfluencesT>* SrcSkinWeights = SkinWeightVertexBuffer.GetSkinWeightPtr<bExtraBoneInfluencesT>(BufferVertIndex);
+	const TSkinWeightInfo<bExtraBoneInfluencesT, BoneIndexType>* SrcSkinWeights = SkinWeightVertexBuffer.GetSkinWeightPtr<bExtraBoneInfluencesT, BoneIndexType>(BufferVertIndex);
 	int32 MaxBoneInfluences = bExtraBoneInfluencesT ? MAX_TOTAL_INFLUENCES : MAX_INFLUENCES_PER_STREAM;
 
 #if !PLATFORM_LITTLE_ENDIAN
@@ -5289,11 +5289,25 @@ FVector GetSkeletalMeshRefVertLocation(const USkeletalMesh* Mesh, const FSkeleta
 	const FSkelMeshRenderSection& Section = LODData.RenderSections[SectionIndex];
 	if (SkinWeightVertexBuffer.HasExtraBoneInfluences())
 	{
-		return GetRefVertexLocationTyped<true>(Mesh, Section, LODData.StaticVertexBuffers.PositionVertexBuffer, SkinWeightVertexBuffer, VertIndexInChunk);
+		if (SkinWeightVertexBuffer.Use16BitBoneIndex())
+		{
+			return GetRefVertexLocationTyped<true, FBoneIndex16>(Mesh, Section, LODData.StaticVertexBuffers.PositionVertexBuffer, SkinWeightVertexBuffer, VertIndexInChunk);
+		}
+		else
+		{
+			return GetRefVertexLocationTyped<true, FBoneIndex8>(Mesh, Section, LODData.StaticVertexBuffers.PositionVertexBuffer, SkinWeightVertexBuffer, VertIndexInChunk);
+		}
 	}
 	else
 	{
-		return GetRefVertexLocationTyped<false>(Mesh, Section, LODData.StaticVertexBuffers.PositionVertexBuffer, SkinWeightVertexBuffer, VertIndexInChunk);
+		if (SkinWeightVertexBuffer.Use16BitBoneIndex())
+		{
+			return GetRefVertexLocationTyped<false, FBoneIndex16>(Mesh, Section, LODData.StaticVertexBuffers.PositionVertexBuffer, SkinWeightVertexBuffer, VertIndexInChunk);
+		}
+		else
+		{
+			return GetRefVertexLocationTyped<false, FBoneIndex8>(Mesh, Section, LODData.StaticVertexBuffers.PositionVertexBuffer, SkinWeightVertexBuffer, VertIndexInChunk);
+		}
 	}
 }
 

@@ -5,12 +5,14 @@
 #include "Rendering/SkeletalMeshLODModel.h"
 #include "RenderUtils.h"
 #include "SkeletalMeshTypes.h"
+#include "UObject/AnimObjectVersion.h"
 
 ///
 
 FSkinWeightVertexBuffer::FSkinWeightVertexBuffer()
 :	bNeedsCPUAccess(false)
 ,	bExtraBoneInfluences(false)
+,	bUse16BitBoneIndex(false)
 ,	WeightData(nullptr)
 ,	Data(nullptr)
 ,	Stride(0)
@@ -21,6 +23,7 @@ FSkinWeightVertexBuffer::FSkinWeightVertexBuffer()
 FSkinWeightVertexBuffer::FSkinWeightVertexBuffer( const FSkinWeightVertexBuffer &Other )
 	: bNeedsCPUAccess(Other.bNeedsCPUAccess)
 	, bExtraBoneInfluences(Other.bExtraBoneInfluences)
+	, bUse16BitBoneIndex(Other.bUse16BitBoneIndex)
 	, WeightData(nullptr)
 	, Data(nullptr)
 	, Stride(0)
@@ -39,6 +42,7 @@ FSkinWeightVertexBuffer& FSkinWeightVertexBuffer::operator=(const FSkinWeightVer
 	CleanUp();
 	bNeedsCPUAccess = Other.bNeedsCPUAccess;
 	bExtraBoneInfluences = Other.bExtraBoneInfluences;
+	bUse16BitBoneIndex = Other.bUse16BitBoneIndex;
 	return *this;
 }
 
@@ -97,6 +101,7 @@ FArchive& operator<<(FArchive& Ar, FSkinWeightVertexBuffer& VertexBuffer)
 {
 	FStripDataFlags StripFlags(Ar);
 
+	Ar.UsingCustomVersion(FAnimObjectVersion::GUID);
 	VertexBuffer.SerializeMetaData(Ar);
 
 	if (Ar.IsLoading() || VertexBuffer.WeightData == NULL)
@@ -110,7 +115,8 @@ FArchive& operator<<(FArchive& Ar, FSkinWeightVertexBuffer& VertexBuffer)
 	{
 		if (VertexBuffer.WeightData != NULL)
 		{
-			VertexBuffer.WeightData->Serialize(Ar);
+			bool bForcePerElementSerialization = Ar.IsLoading() && Ar.CustomVer(FAnimObjectVersion::GUID) < FAnimObjectVersion::IncreaseBoneIndexLimitPerChunk;
+			VertexBuffer.WeightData->Serialize(Ar, bForcePerElementSerialization);
 
 			if (!Ar.IsCountingMemory())
 			{
@@ -133,14 +139,22 @@ void FSkinWeightVertexBuffer::SerializeMetaData(FArchive& Ar)
 		Ar << bExtraBoneInfluences << NumVertices;
 	}
 	else
-	{
+	{		
 		Ar << bExtraBoneInfluences << Stride << NumVertices;
+	}
+	
+	// bUse16BitBoneIndex doesn't exist before version IncreaseBoneIndexLimitPerChunk
+	Ar.UsingCustomVersion(FAnimObjectVersion::GUID);
+	if (Ar.CustomVer(FAnimObjectVersion::GUID) >= FAnimObjectVersion::IncreaseBoneIndexLimitPerChunk)
+	{
+		Ar << bUse16BitBoneIndex;
 	}
 }
 
 void FSkinWeightVertexBuffer::CopyMetaData(const FSkinWeightVertexBuffer& Other)
 {
 	bExtraBoneInfluences = Other.bExtraBoneInfluences;
+	bUse16BitBoneIndex = Other.bUse16BitBoneIndex;
 	Stride = Other.Stride;
 	NumVertices = Other.NumVertices;
 }
@@ -214,11 +228,25 @@ void FSkinWeightVertexBuffer::AllocateData()
 
 	if (bExtraBoneInfluences)
 	{
-		WeightData = new FSkinWeightVertexData< TSkinWeightInfo<true> >(bNeedsCPUAccess);
+		if (bUse16BitBoneIndex)
+		{
+			WeightData = new FSkinWeightVertexData< TSkinWeightInfo<true, FBoneIndex16> >(bNeedsCPUAccess);
+		}
+		else
+		{
+			WeightData = new FSkinWeightVertexData< TSkinWeightInfo<true, FBoneIndex8> >(bNeedsCPUAccess);
+		}
 	}
 	else
 	{
-		WeightData = new FSkinWeightVertexData< TSkinWeightInfo<false> >(bNeedsCPUAccess);
+		if (bUse16BitBoneIndex)
+		{
+			WeightData = new FSkinWeightVertexData< TSkinWeightInfo<false, FBoneIndex16> >(bNeedsCPUAccess);
+		}
+		else
+		{
+			WeightData = new FSkinWeightVertexData< TSkinWeightInfo<false, FBoneIndex8> >(bNeedsCPUAccess);
+		}
 	}
 }
 
@@ -228,9 +256,22 @@ template <bool bExtraBoneInfluencesT>
 void FSkinWeightVertexBuffer::SetWeightsForVertex(uint32 VertexIndex, const FSoftSkinVertex& SrcVertex)
 {
 	checkSlow(VertexIndex < GetNumVertices());
-	auto* VertBase = (TSkinWeightInfo<bExtraBoneInfluencesT>*)(Data + VertexIndex * Stride);
-	FMemory::Memcpy(VertBase->InfluenceBones, SrcVertex.InfluenceBones, TSkinWeightInfo<bExtraBoneInfluencesT>::NumInfluences);
-	FMemory::Memcpy(VertBase->InfluenceWeights, SrcVertex.InfluenceWeights, TSkinWeightInfo<bExtraBoneInfluencesT>::NumInfluences);
+	if (bUse16BitBoneIndex)
+	{
+		auto* VertBase = (TSkinWeightInfo<bExtraBoneInfluencesT, FBoneIndex16>*)(Data + VertexIndex * Stride);
+		FMemory::Memcpy(VertBase->InfluenceBones, SrcVertex.InfluenceBones, TSkinWeightInfo<bExtraBoneInfluencesT, FBoneIndex16>::NumInfluences * sizeof(FBoneIndex16));
+		FMemory::Memcpy(VertBase->InfluenceWeights, SrcVertex.InfluenceWeights, TSkinWeightInfo<bExtraBoneInfluencesT, FBoneIndex16>::NumInfluences);
+	}
+	else
+	{
+		auto* VertBase = (TSkinWeightInfo<bExtraBoneInfluencesT, FBoneIndex8>*)(Data + VertexIndex * Stride);
+		for (int32 i = 0; i < TSkinWeightInfo<bExtraBoneInfluencesT, FBoneIndex8>::NumInfluences; ++i)
+		{
+			FBoneIndexType BoneIndex = SrcVertex.InfluenceBones[i];
+			VertBase->InfluenceBones[i] = (FBoneIndex8)BoneIndex;
+		}
+		FMemory::Memcpy(VertBase->InfluenceWeights, SrcVertex.InfluenceWeights, TSkinWeightInfo<bExtraBoneInfluencesT, FBoneIndex8>::NumInfluences);
+	}
 }
 
 #endif //WITH_EDITOR

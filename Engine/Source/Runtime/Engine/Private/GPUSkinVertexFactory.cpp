@@ -20,6 +20,13 @@ static FAutoConsoleVariableRef CVarMaxGPUSkinBones(
 	TEXT("Max number of bones that can be skinned on the GPU in a single draw call. Cannot be changed at runtime."),
 	ECVF_ReadOnly);
 
+static int32 GCVarSupport16BitBoneIndex = 0;
+static FAutoConsoleVariableRef CVarSupport16BitBoneIndex(
+	TEXT("r.GPUSkin.Support16BitBoneIndex"),
+	GCVarSupport16BitBoneIndex,
+	TEXT("If enabled, a new mesh imported will use 8 bit (if <=256 bones) or 16 bit (if > 256 bones) bone indices for rendering."),
+	ECVF_ReadOnly);
+
 // Whether to use 2 bones influence instead of default 4 for GPU skinning
 // Changing this causes a full shader recompile
 static TAutoConsoleVariable<int32> CVarGPUSkinLimit2BoneInfluences(
@@ -312,7 +319,16 @@ bool FGPUBaseSkinVertexFactory::FShaderDataType::UpdateBoneData(FRHICommandListI
 
 int32 FGPUBaseSkinVertexFactory::GetMaxGPUSkinBones()
 {
-	return GCVarMaxGPUSkinBones;
+	if (GCVarSupport16BitBoneIndex > 0)
+	{
+		// 16-bit bone index is supported, use GCVarMaxGPUSkinBones
+		return GCVarMaxGPUSkinBones;
+	}
+	else
+	{
+		// 16-bit bone index is not supported, clamp the max bones to 8-bit
+		return FMath::Min(GCVarMaxGPUSkinBones, 256);
+	}
 }
 
 /*-----------------------------------------------------------------------------

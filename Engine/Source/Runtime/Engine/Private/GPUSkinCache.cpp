@@ -187,6 +187,7 @@ public:
 		uint32 SkinType = 0;
 		//
 		bool bExtraBoneInfluences = false;
+		bool bUse16BitBoneIndex = false;
 
 		// in floats (4 bytes)
 		uint32 OutputStreamStart = 0;
@@ -336,6 +337,7 @@ public:
 		Data.PositionBufferSRV = InSourceVertexFactory->GetPositionsSRV();
 
 		Data.bExtraBoneInfluences = InSourceVertexFactory->UsesExtraBoneInfluences();
+		Data.bUse16BitBoneIndex = InSourceVertexFactory->Use16BitBoneIndex();
 		check(Data.TangentBufferSRV && Data.PositionBufferSRV);
 
 		// weight buffer
@@ -541,6 +543,7 @@ private:
 template <int Permutation>
 class TGPUSkinCacheCS : public FBaseGPUSkinCacheCS
 {
+	constexpr static bool bBoneIndex16 = (8 == (Permutation & 8));
     constexpr static bool bUseExtraBoneInfluencesT = (4 == (Permutation & 4));
     constexpr static bool bMorphBlend = (1 == (Permutation & 3));
 	constexpr static bool bApexCloth = (2 == (Permutation & 3));
@@ -556,6 +559,7 @@ public:
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		const uint32 BoneIndex16 = bBoneIndex16;
 		const uint32 UseExtraBoneInfluences = bUseExtraBoneInfluencesT;
 		const uint32 MorphBlend = bMorphBlend;
 		const uint32 ApexCloth = bApexCloth;
@@ -564,6 +568,7 @@ public:
 		OutEnvironment.SetDefine(TEXT("GPUSKIN_APEX_CLOTH"), ApexCloth);
 		OutEnvironment.SetDefine(TEXT("GPUSKIN_RWBUFFER_OFFSET_TANGENT_X"), FGPUSkinCache::RWTangentXOffsetInFloats);
 		OutEnvironment.SetDefine(TEXT("GPUSKIN_RWBUFFER_OFFSET_TANGENT_Z"), FGPUSkinCache::RWTangentZOffsetInFloats);
+		OutEnvironment.SetDefine(TEXT("GPUSKIN_BONE_INDEX_UINT16"), BoneIndex16);
 	}
 
 	TGPUSkinCacheCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
@@ -582,6 +587,12 @@ IMPLEMENT_SHADER_TYPE(template<>, TGPUSkinCacheCS<2>, TEXT("/Engine/Private/GpuS
 IMPLEMENT_SHADER_TYPE(template<>, TGPUSkinCacheCS<4>, TEXT("/Engine/Private/GpuSkinCacheComputeShader.usf"), TEXT("SkinCacheUpdateBatchCS"), SF_Compute);
 IMPLEMENT_SHADER_TYPE(template<>, TGPUSkinCacheCS<5>, TEXT("/Engine/Private/GpuSkinCacheComputeShader.usf"), TEXT("SkinCacheUpdateBatchCS"), SF_Compute);
 IMPLEMENT_SHADER_TYPE(template<>, TGPUSkinCacheCS<6>, TEXT("/Engine/Private/GpuSkinCacheComputeShader.usf"), TEXT("SkinCacheUpdateBatchCS"), SF_Compute);
+IMPLEMENT_SHADER_TYPE(template<>, TGPUSkinCacheCS<8>, TEXT("/Engine/Private/GpuSkinCacheComputeShader.usf"), TEXT("SkinCacheUpdateBatchCS"), SF_Compute);
+IMPLEMENT_SHADER_TYPE(template<>, TGPUSkinCacheCS<9>, TEXT("/Engine/Private/GpuSkinCacheComputeShader.usf"), TEXT("SkinCacheUpdateBatchCS"), SF_Compute);
+IMPLEMENT_SHADER_TYPE(template<>, TGPUSkinCacheCS<10>, TEXT("/Engine/Private/GpuSkinCacheComputeShader.usf"), TEXT("SkinCacheUpdateBatchCS"), SF_Compute);
+IMPLEMENT_SHADER_TYPE(template<>, TGPUSkinCacheCS<12>, TEXT("/Engine/Private/GpuSkinCacheComputeShader.usf"), TEXT("SkinCacheUpdateBatchCS"), SF_Compute);
+IMPLEMENT_SHADER_TYPE(template<>, TGPUSkinCacheCS<13>, TEXT("/Engine/Private/GpuSkinCacheComputeShader.usf"), TEXT("SkinCacheUpdateBatchCS"), SF_Compute);
+IMPLEMENT_SHADER_TYPE(template<>, TGPUSkinCacheCS<14>, TEXT("/Engine/Private/GpuSkinCacheComputeShader.usf"), TEXT("SkinCacheUpdateBatchCS"), SF_Compute);
 
 FGPUSkinCache::FGPUSkinCache(bool bInRequiresMemoryLimit)
 	: UsedMemoryInBytes(0)
@@ -1260,22 +1271,34 @@ void FGPUSkinCache::DispatchUpdateSkinning(FRHICommandListImmediate& RHICmdList,
 		(int32)DispatchData.bExtraBoneInfluences, DispatchData.SkinType,
 		DispatchData.SectionIndex, DispatchData.InputStreamStart, DispatchData.OutputStreamStart, DispatchData.NumVertices, Entry->MorphBuffer != 0, DispatchData.MorphBufferOffset);
 	auto* GlobalShaderMap = GetGlobalShaderMap(GMaxRHIFeatureLevel);
-	TShaderMapRef<TGPUSkinCacheCS<0>> SkinCacheCS00(GlobalShaderMap);
-	TShaderMapRef<TGPUSkinCacheCS<1>> SkinCacheCS01(GlobalShaderMap);
-    TShaderMapRef<TGPUSkinCacheCS<2>> SkinCacheCS02(GlobalShaderMap);
-    TShaderMapRef<TGPUSkinCacheCS<4>> SkinCacheCS10(GlobalShaderMap);
-    TShaderMapRef<TGPUSkinCacheCS<5>> SkinCacheCS11(GlobalShaderMap);
-    TShaderMapRef<TGPUSkinCacheCS<6>> SkinCacheCS12(GlobalShaderMap);
+	TShaderMapRef<TGPUSkinCacheCS<0>> SkinCacheCS000(GlobalShaderMap);
+	TShaderMapRef<TGPUSkinCacheCS<1>> SkinCacheCS001(GlobalShaderMap);
+    TShaderMapRef<TGPUSkinCacheCS<2>> SkinCacheCS002(GlobalShaderMap);
+    TShaderMapRef<TGPUSkinCacheCS<4>> SkinCacheCS010(GlobalShaderMap);
+    TShaderMapRef<TGPUSkinCacheCS<5>> SkinCacheCS011(GlobalShaderMap);
+    TShaderMapRef<TGPUSkinCacheCS<6>> SkinCacheCS012(GlobalShaderMap);
+	TShaderMapRef<TGPUSkinCacheCS<8>> SkinCacheCS100(GlobalShaderMap);
+	TShaderMapRef<TGPUSkinCacheCS<9>> SkinCacheCS101(GlobalShaderMap);
+	TShaderMapRef<TGPUSkinCacheCS<10>> SkinCacheCS102(GlobalShaderMap);
+	TShaderMapRef<TGPUSkinCacheCS<12>> SkinCacheCS110(GlobalShaderMap);
+	TShaderMapRef<TGPUSkinCacheCS<13>> SkinCacheCS111(GlobalShaderMap);
+	TShaderMapRef<TGPUSkinCacheCS<14>> SkinCacheCS112(GlobalShaderMap);
 
 	FBaseGPUSkinCacheCS* Shader = 0;
 
 	switch (DispatchData.SkinType)
 	{
-	case 0: Shader = DispatchData.bExtraBoneInfluences ? (FBaseGPUSkinCacheCS*)*SkinCacheCS10 : (FBaseGPUSkinCacheCS*)*SkinCacheCS00;
+	case 0: Shader = DispatchData.bExtraBoneInfluences ? 
+					(DispatchData.bUse16BitBoneIndex ? (FBaseGPUSkinCacheCS*)*SkinCacheCS110 : (FBaseGPUSkinCacheCS*)*SkinCacheCS010) :
+					(DispatchData.bUse16BitBoneIndex ? (FBaseGPUSkinCacheCS*)*SkinCacheCS100 : (FBaseGPUSkinCacheCS*)*SkinCacheCS000);
 		break;
-	case 1: Shader = DispatchData.bExtraBoneInfluences ? (FBaseGPUSkinCacheCS*)*SkinCacheCS11 : (FBaseGPUSkinCacheCS*)*SkinCacheCS01;
+	case 1: Shader = DispatchData.bExtraBoneInfluences ? 
+					(DispatchData.bUse16BitBoneIndex ? (FBaseGPUSkinCacheCS*)*SkinCacheCS111 : (FBaseGPUSkinCacheCS*)*SkinCacheCS011) :
+					(DispatchData.bUse16BitBoneIndex ? (FBaseGPUSkinCacheCS*)*SkinCacheCS101 : (FBaseGPUSkinCacheCS*)*SkinCacheCS001);
 		break;
-	case 2: Shader = DispatchData.bExtraBoneInfluences ? (FBaseGPUSkinCacheCS*)*SkinCacheCS12 : (FBaseGPUSkinCacheCS*)*SkinCacheCS02;
+	case 2: Shader = DispatchData.bExtraBoneInfluences ? 
+					(DispatchData.bUse16BitBoneIndex ? (FBaseGPUSkinCacheCS*)*SkinCacheCS112 : (FBaseGPUSkinCacheCS*)*SkinCacheCS012) :
+					(DispatchData.bUse16BitBoneIndex ? (FBaseGPUSkinCacheCS*)*SkinCacheCS102 : (FBaseGPUSkinCacheCS*)*SkinCacheCS002);
 		break;
 	default:
 		check(0);

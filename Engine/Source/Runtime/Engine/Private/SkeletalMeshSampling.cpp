@@ -221,7 +221,7 @@ bool FSkeletalMeshSamplingRegion::IsMaterialAllowed(FName MaterialName)
 
 #if WITH_EDITORONLY_DATA
 
-template<bool bExtraBoneInfluencesT>
+template<bool bExtraBoneInfluencesT, typename BoneIndexTypeT>
 FORCEINLINE_DEBUGGABLE void GetRegionValidData(USkeletalMesh* SkeletalMesh, FSkeletalMeshSamplingRegion& SamplingRegion,
 	FSkeletalMeshLODRenderData& LODData, FReferenceSkeleton& RefSkel, FSkinWeightVertexBuffer* SkinWeightBuffer,
 	TArray<int32>& IncludedBoneIndices, TArray<int32>& ExcludedBoneIndices, TArray<int32>& OutValidTris, TArray<int32>& OutValidVerts)
@@ -229,7 +229,7 @@ FORCEINLINE_DEBUGGABLE void GetRegionValidData(USkeletalMesh* SkeletalMesh, FSke
 	int32 MaxBoneInfluences = bExtraBoneInfluencesT ? MAX_TOTAL_INFLUENCES : MAX_INFLUENCES_PER_STREAM;
 	auto VertIsValid = [&](FSkelMeshRenderSection& Section, int32 VertexIdx)
 	{
-		const TSkinWeightInfo<bExtraBoneInfluencesT>* SrcSkinWeights = SkinWeightBuffer->GetSkinWeightPtr<bExtraBoneInfluencesT>(VertexIdx);
+		const TSkinWeightInfo<bExtraBoneInfluencesT, BoneIndexTypeT>* SrcSkinWeights = SkinWeightBuffer->GetSkinWeightPtr<bExtraBoneInfluencesT, BoneIndexTypeT>(VertexIdx);
 
 #if !PLATFORM_LITTLE_ENDIAN
 		// uint8[] elements in LOD.VertexBufferGPUSkin have been swapped for VET_UBYTE4 vertex stream use
@@ -331,11 +331,25 @@ void FSkeletalMeshSamplingInfo::BuildRegions(USkeletalMesh* SkeletalMesh)
 
 		if (SkinWeightBuffer->HasExtraBoneInfluences())
 		{
-			GetRegionValidData<true>(SkeletalMesh, Region, LODData, RefSkel, SkinWeightBuffer, IncludedBoneIndices, ExcludedBoneIndices, RegionBuiltData.TriangleIndices, RegionBuiltData.Vertices);
+			if (SkinWeightBuffer->Use16BitBoneIndex())
+			{
+				GetRegionValidData<true, FBoneIndex16>(SkeletalMesh, Region, LODData, RefSkel, SkinWeightBuffer, IncludedBoneIndices, ExcludedBoneIndices, RegionBuiltData.TriangleIndices, RegionBuiltData.Vertices);
+			}
+			else
+			{
+				GetRegionValidData<true, FBoneIndex8>(SkeletalMesh, Region, LODData, RefSkel, SkinWeightBuffer, IncludedBoneIndices, ExcludedBoneIndices, RegionBuiltData.TriangleIndices, RegionBuiltData.Vertices);
+			}
 		}
 		else
 		{
-			GetRegionValidData<false>(SkeletalMesh, Region, LODData, RefSkel, SkinWeightBuffer, IncludedBoneIndices, ExcludedBoneIndices, RegionBuiltData.TriangleIndices, RegionBuiltData.Vertices);
+			if (SkinWeightBuffer->Use16BitBoneIndex())
+			{
+				GetRegionValidData<false, FBoneIndex16>(SkeletalMesh, Region, LODData, RefSkel, SkinWeightBuffer, IncludedBoneIndices, ExcludedBoneIndices, RegionBuiltData.TriangleIndices, RegionBuiltData.Vertices);
+			}
+			else
+			{
+				GetRegionValidData<false, FBoneIndex8>(SkeletalMesh, Region, LODData, RefSkel, SkinWeightBuffer, IncludedBoneIndices, ExcludedBoneIndices, RegionBuiltData.TriangleIndices, RegionBuiltData.Vertices);
+			}
 		}
 
 		if (Region.bSupportUniformlyDistributedSampling)

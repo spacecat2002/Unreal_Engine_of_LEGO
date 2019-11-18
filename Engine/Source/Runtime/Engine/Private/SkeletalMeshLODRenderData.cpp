@@ -584,6 +584,7 @@ void FSkeletalMeshLODRenderData::BuildFromLODModel(const FSkeletalMeshLODModel* 
 	// Init skin weight buffer
 	SkinWeightVertexBuffer.SetNeedsCPUAccess(true);
 	SkinWeightVertexBuffer.SetHasExtraBoneInfluences(ImportedModel->DoSectionsNeedExtraBoneInfluences());
+	SkinWeightVertexBuffer.SetUse16BitBoneIndex(ImportedModel->DoSectionsUse16BitBoneIndex());
 	SkinWeightVertexBuffer.Init(Vertices);
 
 	// Init the color buffer if this mesh has vertex colors.

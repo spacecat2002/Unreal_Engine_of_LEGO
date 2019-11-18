@@ -19,6 +19,7 @@
 #include "Rendering/SkeletalMeshLODImporterData.h"
 #include "UObject/FortniteMainBranchObjectVersion.h"
 #include "GPUSkinVertexFactory.h"
+#include "UObject/AnimObjectVersion.h"
 
 /*-----------------------------------------------------------------------------
 FSoftSkinVertex
@@ -57,18 +58,38 @@ FArchive& operator<<(FArchive& Ar, FSoftSkinVertex& V)
 
 	Ar << V.Color;
 
+	Ar.UsingCustomVersion(FAnimObjectVersion::GUID);
+
 	// serialize bone and weight uint8 arrays in order
 	// this is required when serializing as bulk data memory (see TArray::BulkSerialize notes)
 	for (uint32 InfluenceIndex = 0; InfluenceIndex < MAX_INFLUENCES_PER_STREAM; InfluenceIndex++)
 	{
-		Ar << V.InfluenceBones[InfluenceIndex];
+		if (Ar.IsLoading() && Ar.CustomVer(FAnimObjectVersion::GUID) < FAnimObjectVersion::IncreaseBoneIndexLimitPerChunk)
+		{
+			uint8 BoneIndex = 0;
+			Ar << BoneIndex;
+			V.InfluenceBones[InfluenceIndex] = BoneIndex;
+		}
+		else
+		{
+			Ar << V.InfluenceBones[InfluenceIndex];
+		}
 	}
 
 	if (Ar.UE4Ver() >= VER_UE4_SUPPORT_8_BONE_INFLUENCES_SKELETAL_MESHES)
 	{
 		for (uint32 InfluenceIndex = MAX_INFLUENCES_PER_STREAM; InfluenceIndex < MAX_TOTAL_INFLUENCES; InfluenceIndex++)
 		{
-			Ar << V.InfluenceBones[InfluenceIndex];
+			if (Ar.IsLoading() && Ar.CustomVer(FAnimObjectVersion::GUID) < FAnimObjectVersion::IncreaseBoneIndexLimitPerChunk)
+			{
+				uint8 BoneIndex = 0;
+				Ar << BoneIndex;
+				V.InfluenceBones[InfluenceIndex] = BoneIndex;
+			}
+			else
+			{
+				Ar << V.InfluenceBones[InfluenceIndex];
+			}
 		}
 	}
 	else
@@ -108,7 +129,7 @@ FArchive& operator<<(FArchive& Ar, FSoftSkinVertex& V)
 	return Ar;
 }
 
-bool FSoftSkinVertex::GetRigidWeightBone(uint8& OutBoneIndex) const
+bool FSoftSkinVertex::GetRigidWeightBone(FBoneIndexType& OutBoneIndex) const
 {
 	bool bIsRigid = false;
 
@@ -251,6 +272,28 @@ void FSkelMeshSection::CalcMaxBoneInfluences()
 	}
 }
 
+/**
+* Calculate if this skel mesh section needs 16-bit bone indices
+*/
+void FSkelMeshSection::CalcUse16BitBoneIndex()
+{
+	bUse16BitBoneIndex = false;
+	FBoneIndexType MaxBoneIndex = 0;
+	for (int32 VertIdx = 0; VertIdx < SoftVertices.Num(); VertIdx++)
+	{
+		FSoftSkinVertex& SoftVert = SoftVertices[VertIdx];
+		for (int32 InfluenceIdx = 0; InfluenceIdx < MAX_TOTAL_INFLUENCES; InfluenceIdx++)
+		{
+			MaxBoneIndex = FMath::Max(SoftVert.InfluenceBones[InfluenceIdx], MaxBoneIndex);
+			if (MaxBoneIndex > 255)
+			{
+				bUse16BitBoneIndex = true;
+				return;
+			}
+		}
+	}
+}
+
 // Serialization.
 FArchive& operator<<(FArchive& Ar, FSkelMeshSection& S)
 {
@@ -369,6 +412,18 @@ FArchive& operator<<(FArchive& Ar, FSkelMeshSection& S)
 				UE_LOG(LogSkeletalMesh, Warning, TEXT("Cannot set FSkelMeshSection::NumVertices for older content, loading in non-editor build."));
 				S.NumVertices = 0;
 			}
+		}
+
+		Ar.UsingCustomVersion(FAnimObjectVersion::GUID);
+		if (Ar.IsLoading() && Ar.CustomVer(FAnimObjectVersion::GUID) < FAnimObjectVersion::IncreaseBoneIndexLimitPerChunk)
+		{
+			// Previous versions only supported 8-bit bone indices and bUse16BitBoneIndex wasn't serialized 
+			S.CalcUse16BitBoneIndex();
+			check(!S.bUse16BitBoneIndex);
+		}
+		else
+		{
+			Ar << S.bUse16BitBoneIndex;
 		}
 
 		Ar << S.BoneMap;
@@ -946,6 +1001,19 @@ bool FSkeletalMeshLODModel::DoSectionsNeedExtraBoneInfluences() const
 	for (int32 SectionIdx = 0; SectionIdx < Sections.Num(); ++SectionIdx)
 	{
 		if (Sections[SectionIdx].HasExtraBoneInfluences())
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool FSkeletalMeshLODModel::DoSectionsUse16BitBoneIndex() const
+{
+	for (int32 SectionIdx = 0; SectionIdx < Sections.Num(); ++SectionIdx)
+	{
+		if (Sections[SectionIdx].Use16BitBoneIndex())
 		{
 			return true;
 		}

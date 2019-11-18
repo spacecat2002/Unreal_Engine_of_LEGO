@@ -21,6 +21,9 @@ struct CORE_API FAnimObjectVersion
 		// Serialized register array state for RigVM
 		SerializeRigVMRegisterArrayState,
 
+		// Increase number of bones per chunk from uint8 to uint16
+		IncreaseBoneIndexLimitPerChunk,
+
 		// -----<new versions can be added above this line>-------------------------------------------------
 		VersionPlusOne,
 		LatestVersion = VersionPlusOne - 1

@@ -313,6 +313,6 @@ private:
 	void CopyVertexFromSource(VertexDataType& DestVert, const FSkeletalMeshLODRenderData& SrcLODData, int32 SourceVertIdx, const FMergeSectionInfo& MergeSectionInfo);
 
 	/** Copy skin weight info from source LOD model - templatized per SourceLODModel extra bone influence */
-	template<typename SkinWeightType, bool bHasExtraBoneInfluences>
+	template<typename SkinWeightType, bool bHasExtraBoneInfluences, typename BoneIndexType>
 	void CopyWeightFromSource(SkinWeightType& DestWeight, const FSkeletalMeshLODRenderData& SrcLODData, int32 SourceVertIdx, const FMergeSectionInfo& MergeSectionInfo);
 };

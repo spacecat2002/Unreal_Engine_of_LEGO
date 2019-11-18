@@ -5,28 +5,44 @@
 #include "RenderResource.h"
 #include "StaticMeshVertexData.h"
 #include "GPUSkinPublicDefs.h"
+#include "SkeletalMeshTypes.h"
+#include "UObject/AnimObjectVersion.h"
 
 class FStaticMeshVertexDataInterface;
 struct FSoftSkinVertex;
 
+typedef uint8 FBoneIndex8;
+typedef uint16 FBoneIndex16;
+
 /** Struct for storing skin weight info in vertex buffer */
-template <bool bExtraBoneInfluences>
+template <bool bExtraBoneInfluences, typename BoneIndexType>
 struct TSkinWeightInfo
 {
 	enum
 	{
 		NumInfluences = bExtraBoneInfluences ? MAX_TOTAL_INFLUENCES : MAX_INFLUENCES_PER_STREAM,
 	};
-	uint8	InfluenceBones[NumInfluences];
-	uint8	InfluenceWeights[NumInfluences];
+	BoneIndexType	InfluenceBones[NumInfluences];
+	uint8			InfluenceWeights[NumInfluences];
 
 	friend FArchive& operator<<(FArchive& Ar, TSkinWeightInfo& I)
 	{
-		// serialize bone and weight uint8 arrays in order
+		Ar.UsingCustomVersion(FAnimObjectVersion::GUID);
+		// serialize bone index and weight arrays in order
 		// this is required when serializing as bulk data memory (see TArray::BulkSerialize notes)
 		for (uint32 InfluenceIndex = 0; InfluenceIndex < NumInfluences; InfluenceIndex++)
 		{
-			Ar << I.InfluenceBones[InfluenceIndex];
+			if (Ar.IsLoading() && Ar.CustomVer(FAnimObjectVersion::GUID) < FAnimObjectVersion::IncreaseBoneIndexLimitPerChunk)
+			{
+				// Older versions use uint8 bone indices
+				uint8 BoneIndex = 0;
+				Ar << BoneIndex;
+				I.InfluenceBones[InfluenceIndex] = BoneIndex;
+			}
+			else
+			{
+				Ar << I.InfluenceBones[InfluenceIndex];
+			}
 		}
 
 		for (uint32 InfluenceIndex = 0; InfluenceIndex < NumInfluences; InfluenceIndex++)
@@ -37,7 +53,7 @@ struct TSkinWeightInfo
 		return Ar;
 	}
 
-	bool GetRigidWeightBone(uint8& OutBoneIndex) const
+	bool GetRigidWeightBone(uint32& OutBoneIndex) const
 	{
 		bool bIsRigid = false;
 
@@ -109,19 +125,19 @@ public:
 	}
 
 	/** Const access to entry in weight data */
-	template <bool bExtraBoneInfluencesT>
-	FORCEINLINE const TSkinWeightInfo<bExtraBoneInfluencesT>* GetSkinWeightPtr(uint32 VertexIndex) const
+	template <bool bExtraBoneInfluencesT, typename BoneIndexTypeT>
+	FORCEINLINE const TSkinWeightInfo<bExtraBoneInfluencesT, BoneIndexTypeT>* GetSkinWeightPtr(uint32 VertexIndex) const
 	{
 		checkSlow(VertexIndex < GetNumVertices());
-		return (TSkinWeightInfo<bExtraBoneInfluencesT>*)(Data + VertexIndex * Stride);
+		return (TSkinWeightInfo<bExtraBoneInfluencesT, BoneIndexTypeT>*)(Data + VertexIndex * Stride);
 	}
 
 	/** Non-const access to entry in weight data */
-	template <bool bExtraBoneInfluencesT>
-	FORCEINLINE TSkinWeightInfo<bExtraBoneInfluencesT>* GetSkinWeightPtr(uint32 VertexIndex)
+	template <bool bExtraBoneInfluencesT, typename BoneIndexTypeT>
+	FORCEINLINE TSkinWeightInfo<bExtraBoneInfluencesT, BoneIndexTypeT>* GetSkinWeightPtr(uint32 VertexIndex)
 	{
 		checkSlow(VertexIndex < GetNumVertices());
-		return (TSkinWeightInfo<bExtraBoneInfluencesT>*)(Data + VertexIndex * Stride);
+		return (TSkinWeightInfo<bExtraBoneInfluencesT, BoneIndexTypeT>*)(Data + VertexIndex * Stride);
 	}
 
 	/** @return number of vertices in this vertex buffer */
@@ -170,14 +186,24 @@ public:
 		return bExtraBoneInfluences;
 	}
 
+	void SetUse16BitBoneIndex(bool bInUse16BitBoneIndex)
+	{
+		bUse16BitBoneIndex = bInUse16BitBoneIndex;
+	}
+
+	bool Use16BitBoneIndex() const
+	{
+		return bUse16BitBoneIndex;
+	}
+
 	/** Assignment operator for assigning array of weights to this buffer */
-	template <bool bExtraBoneInfluencesT>
-	FSkinWeightVertexBuffer& operator=(const TArray< TSkinWeightInfo<bExtraBoneInfluencesT> >& InWeights)
+	template <bool bExtraBoneInfluencesT, typename BoneIndexTypeT>
+	FSkinWeightVertexBuffer& operator=(const TArray< TSkinWeightInfo<bExtraBoneInfluencesT, BoneIndexTypeT> >& InWeights)
 	{
 		check(bExtraBoneInfluences == bExtraBoneInfluencesT);
 		AllocateData();
 
-		static_cast<FSkinWeightVertexData< TSkinWeightInfo<bExtraBoneInfluencesT> >*>(WeightData)->Assign(InWeights);
+		static_cast<FSkinWeightVertexData< TSkinWeightInfo<bExtraBoneInfluencesT, BoneIndexTypeT> >*>(WeightData)->Assign(InWeights);
 
 		Data = WeightData->GetDataPointer();
 		Stride = WeightData->GetStride();
@@ -226,6 +252,9 @@ private:
 
 	/** Has extra bone influences per Vertex, which means using a different TGPUSkinVertexBase */
 	bool bExtraBoneInfluences;
+
+	/** Use 16 bit bone index instead of 8 bit */
+	bool bUse16BitBoneIndex;
 
 	/** The vertex data storage type */
 	FStaticMeshVertexDataInterface* WeightData;

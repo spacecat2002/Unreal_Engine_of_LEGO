@@ -53,7 +53,7 @@ struct FSkinWeightProfileInfo
 struct FRawSkinWeight
 {
 	// MAX_TOTAL_INFLUENCES for now
-	uint8 InfluenceBones[MAX_TOTAL_INFLUENCES];
+	FBoneIndexType InfluenceBones[MAX_TOTAL_INFLUENCES];
 	uint8 InfluenceWeights[MAX_TOTAL_INFLUENCES];
 
 	friend FArchive& operator<<(FArchive& Ar, FRawSkinWeight& OverrideEntry);
@@ -87,24 +87,24 @@ struct FRuntimeSkinWeightProfileData
 		friend FArchive& operator<<(FArchive& Ar, FSkinWeightOverrideInfo& OverrideInfo);
 	};
 
-	template<bool bExtraBoneInfluences>
+	template<bool bExtraBoneInfluences, typename BoneIndexType>
 	void ApplyOverrides(FSkinWeightVertexBuffer* OverrideBuffer, const FSkinWeightVertexBuffer* BaseBuffer) const
 	{
-		const TSkinWeightInfo<bExtraBoneInfluences>* SkinWeightInfoPtr = BaseBuffer->GetSkinWeightPtr<bExtraBoneInfluences>(0);
+		const TSkinWeightInfo<bExtraBoneInfluences, BoneIndexType>* SkinWeightInfoPtr = BaseBuffer->GetSkinWeightPtr<bExtraBoneInfluences, BoneIndexType>(0);
 		
 		if (SkinWeightInfoPtr)
 		{
-			TArray<TSkinWeightInfo<bExtraBoneInfluences>> OverrideArray;
+			TArray<TSkinWeightInfo<bExtraBoneInfluences, BoneIndexType>> OverrideArray;
 			const int32 ExpectedNumVerts = BaseBuffer->GetNumVertices();
 			OverrideArray.SetNumUninitialized(ExpectedNumVerts);
-			FMemory::Memcpy(OverrideArray.GetData(), SkinWeightInfoPtr, sizeof(TSkinWeightInfo<bExtraBoneInfluences>) * ExpectedNumVerts);
+			FMemory::Memcpy(OverrideArray.GetData(), SkinWeightInfoPtr, sizeof(TSkinWeightInfo<bExtraBoneInfluences, BoneIndexType>) * ExpectedNumVerts);
 
 			// Apply overrides
 			{
 				for (auto VertexIndexOverridePair : VertexIndexOverrideIndex)
 				{
 					const uint32 VertexIndex = VertexIndexOverridePair.Key;
-					TSkinWeightInfo<bExtraBoneInfluences>& Entry = OverrideArray[VertexIndex];
+					TSkinWeightInfo<bExtraBoneInfluences, BoneIndexType>& Entry = OverrideArray[VertexIndex];
 
 					const uint32 OverrideIndex = VertexIndexOverridePair.Value;
 					const FSkinWeightOverrideInfo& OverrideInfo = OverridesInfo[OverrideIndex];
@@ -114,9 +114,9 @@ struct FRuntimeSkinWeightProfileData
 
 					for (int32 Index = 0; Index < OverrideInfo.NumInfluences; ++Index)
 					{
-						const uint16 WeightData = Weights[OverrideInfo.InfluencesOffset + Index];
+						const uint32 WeightData = Weights[OverrideInfo.InfluencesOffset + Index];
 
-						Entry.InfluenceBones[Index] = (WeightData) >> 8;
+						Entry.InfluenceBones[Index] = (WeightData) >> 16;
 						Entry.InfluenceWeights[Index] = (WeightData & 0xFF);
 					}
 				}
@@ -132,8 +132,8 @@ struct FRuntimeSkinWeightProfileData
 
 	/** Per skin weight offset into Weights array and number of weights stored */
 	TArray<FSkinWeightOverrideInfo> OverridesInfo;
-	/** Bulk data containing all Weights, stored as bone id in upper and weight in lower (8) bits */
-	TArray<uint16> Weights;	
+	/** Bulk data containing all Weights, stored as bone id in upper and weight in lower (16) bits */
+	TArray<uint32> Weights;
 	/** Map between Vertex Indices and entries of OverridesInfo */
 	TMap<uint32, uint32> VertexIndexOverrideIndex;
 	

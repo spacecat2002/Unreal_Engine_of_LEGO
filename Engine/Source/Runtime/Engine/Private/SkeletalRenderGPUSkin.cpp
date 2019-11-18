@@ -1189,7 +1189,8 @@ void InitGPUSkinVertexFactoryComponents(typename VertexFactoryType::FDataType* V
 										const FSkeletalMeshObjectGPUSkin::FVertexFactoryBuffers& VertexBuffers, const VertexFactoryType* VertexFactory)
 {
 	typedef TGPUSkinVertexBase BaseVertexType;
-	typedef TSkinWeightInfo<VertexFactoryType::HasExtraBoneInfluences> WeightInfoType;
+	typedef TSkinWeightInfo<VertexFactoryType::HasExtraBoneInfluences, FBoneIndex16> WeightInfoType16;
+	typedef TSkinWeightInfo<VertexFactoryType::HasExtraBoneInfluences, FBoneIndex8> WeightInfoType8;
 
 	//position
 	VertexBuffers.StaticVertexBuffers->PositionVertexBuffer.BindPositionVertexBuffer(VertexFactory, *VertexFactoryData);
@@ -1198,20 +1199,41 @@ void InitGPUSkinVertexFactoryComponents(typename VertexFactoryType::FDataType* V
 	VertexBuffers.StaticVertexBuffers->StaticMeshVertexBuffer.BindTangentVertexBuffer(VertexFactory, *VertexFactoryData);
 	VertexBuffers.StaticVertexBuffers->StaticMeshVertexBuffer.BindTexCoordVertexBuffer(VertexFactory, *VertexFactoryData);
 
-	// bone indices
-	VertexFactoryData->BoneIndices = FVertexStreamComponent(
-		VertexBuffers.SkinWeightVertexBuffer,STRUCT_OFFSET(WeightInfoType,InfluenceBones),VertexBuffers.SkinWeightVertexBuffer->GetStride(),VET_UByte4);
-	// bone weights
-	VertexFactoryData->BoneWeights = FVertexStreamComponent(
-		VertexBuffers.SkinWeightVertexBuffer,STRUCT_OFFSET(WeightInfoType,InfluenceWeights),VertexBuffers.SkinWeightVertexBuffer->GetStride(),VET_UByte4N);
+	// bone indices & weights
+	bool bUse16BitBoneIndex = VertexBuffers.SkinWeightVertexBuffer->Use16BitBoneIndex();
+	VertexFactoryData->bUse16BitBoneIndex = bUse16BitBoneIndex;
+	if (bUse16BitBoneIndex)
+	{
+		VertexFactoryData->BoneIndices = FVertexStreamComponent(
+			VertexBuffers.SkinWeightVertexBuffer,STRUCT_OFFSET(WeightInfoType16,InfluenceBones),VertexBuffers.SkinWeightVertexBuffer->GetStride(), VET_UShort4);
+		VertexFactoryData->BoneWeights = FVertexStreamComponent(
+			VertexBuffers.SkinWeightVertexBuffer, STRUCT_OFFSET(WeightInfoType16, InfluenceWeights), VertexBuffers.SkinWeightVertexBuffer->GetStride(), VET_UByte4N);
+	}
+	else
+	{
+		VertexFactoryData->BoneIndices = FVertexStreamComponent(
+			VertexBuffers.SkinWeightVertexBuffer, STRUCT_OFFSET(WeightInfoType8, InfluenceBones), VertexBuffers.SkinWeightVertexBuffer->GetStride(), VET_UByte4);
+		VertexFactoryData->BoneWeights = FVertexStreamComponent(
+			VertexBuffers.SkinWeightVertexBuffer, STRUCT_OFFSET(WeightInfoType8, InfluenceWeights), VertexBuffers.SkinWeightVertexBuffer->GetStride(), VET_UByte4N);
+	}
 
 	if (VertexFactoryType::HasExtraBoneInfluences)
 	{
 		// Extra streams for bone indices & weights
-		VertexFactoryData->ExtraBoneIndices = FVertexStreamComponent(
-			VertexBuffers.SkinWeightVertexBuffer,STRUCT_OFFSET(WeightInfoType,InfluenceBones) + 4,VertexBuffers.SkinWeightVertexBuffer->GetStride(),VET_UByte4);
-		VertexFactoryData->ExtraBoneWeights = FVertexStreamComponent(
-			VertexBuffers.SkinWeightVertexBuffer,STRUCT_OFFSET(WeightInfoType,InfluenceWeights) + 4,VertexBuffers.SkinWeightVertexBuffer->GetStride(),VET_UByte4N);
+		if (bUse16BitBoneIndex)
+		{
+			VertexFactoryData->ExtraBoneIndices = FVertexStreamComponent(
+				VertexBuffers.SkinWeightVertexBuffer,STRUCT_OFFSET(WeightInfoType16,InfluenceBones) + (4 * sizeof(FBoneIndex16)),VertexBuffers.SkinWeightVertexBuffer->GetStride(),VET_UShort4);
+			VertexFactoryData->ExtraBoneWeights = FVertexStreamComponent(
+				VertexBuffers.SkinWeightVertexBuffer, STRUCT_OFFSET(WeightInfoType16, InfluenceWeights) + 4, VertexBuffers.SkinWeightVertexBuffer->GetStride(), VET_UByte4N);
+		}
+		else
+		{
+			VertexFactoryData->ExtraBoneIndices = FVertexStreamComponent(
+				VertexBuffers.SkinWeightVertexBuffer, STRUCT_OFFSET(WeightInfoType8, InfluenceBones) + (4 * sizeof(FBoneIndex8)), VertexBuffers.SkinWeightVertexBuffer->GetStride(), VET_UByte4);
+			VertexFactoryData->ExtraBoneWeights = FVertexStreamComponent(
+				VertexBuffers.SkinWeightVertexBuffer, STRUCT_OFFSET(WeightInfoType8, InfluenceWeights) + 4, VertexBuffers.SkinWeightVertexBuffer->GetStride(), VET_UByte4N);
+		}
 	}
 
 	// Color data may be NULL

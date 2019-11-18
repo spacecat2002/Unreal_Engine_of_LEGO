@@ -293,6 +293,7 @@ public:
 	}
 
 	virtual bool UsesExtraBoneInfluences() const { return false; }
+	virtual bool Use16BitBoneIndex() const { return false; }
 
 	static bool SupportsTessellationShaders() { return true; }
 
@@ -303,7 +304,7 @@ public:
 
 	ENGINE_API static int32 GetMaxGPUSkinBones();
 
-	static const uint32 GHardwareMaxGPUSkinBones = 256;	
+	static const uint32 GHardwareMaxGPUSkinBones = 65536;
 	
 	virtual const FShaderResourceViewRHIRef GetPositionsSRV() const = 0;
 	virtual const FShaderResourceViewRHIRef GetTangentsSRV() const = 0;
@@ -356,6 +357,9 @@ public:
 
 		/** The stream to read the extra bone weights from */
 		FVertexStreamComponent ExtraBoneWeights;
+
+		/** If the bone indices are 16 or 8-bit format */
+		bool bUse16BitBoneIndex = 0;
 	};
 
 	/**
@@ -370,6 +374,11 @@ public:
 	virtual bool UsesExtraBoneInfluences() const override
 	{
 		return bExtraBoneInfluencesT;
+	}
+
+	virtual bool Use16BitBoneIndex() const override
+	{
+		return Data.bUse16BitBoneIndex;
 	}
 
 	static void ModifyCompilationEnvironment(const FVertexFactoryType* Type, EShaderPlatform Platform, const class ::FMaterial* Material, FShaderCompilerEnvironment& OutEnvironment);

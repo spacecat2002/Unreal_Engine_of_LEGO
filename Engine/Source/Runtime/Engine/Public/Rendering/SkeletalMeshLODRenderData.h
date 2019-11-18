@@ -208,6 +208,11 @@ public:
 		return SkinWeightVertexBuffer.HasExtraBoneInfluences();
 	}
 
+	bool DoesVertexBufferUse16BitBoneIndex() const
+	{
+		return SkinWeightVertexBuffer.Use16BitBoneIndex();
+	}
+
 	uint32 GetNumTexCoords() const
 	{
 		return StaticVertexBuffers.StaticMeshVertexBuffer.GetNumTexCoords();
