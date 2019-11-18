@@ -575,6 +575,11 @@ public:
 
 	static FVertexFactoryShaderParameters* ConstructShaderParameters(EShaderFrequency ShaderFrequency);
 
+	virtual bool Use16BitBoneIndex() const override
+	{
+		return MorphData.bUse16BitBoneIndex;
+	}
+
 	const FShaderResourceViewRHIRef GetPositionsSRV() const override
 	{
 		return MorphData.PositionComponentSRV;
