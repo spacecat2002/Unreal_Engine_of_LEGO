@@ -212,7 +212,7 @@ void CullObjectsToView(FRHICommandListImmediate& RHICmdList, FScene* Scene, cons
 	CulledObjectBuffers.Buffers.AcquireTransientResource();
 
 	{
-		ClearUAV(RHICmdList, CulledObjectBuffers.Buffers.ObjectIndirectArguments, 0);
+		RHICmdList.ClearUAVUint(CulledObjectBuffers.Buffers.ObjectIndirectArguments.UAV, FUintVector4(0, 0, 0, 0));
 
 		TShaderMapRef<FCullObjectsForViewCS> ComputeShader(GetGlobalShaderMap(Scene->GetFeatureLevel()));
 		RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
@@ -665,7 +665,7 @@ void BuildTileObjectLists(FRHICommandListImmediate& RHICmdList, FScene* Scene, T
 				SCOPED_DRAW_EVENT(RHICmdList, CountTileObjectIntersections);
 
 				// Start at 0 tiles per object
-				ClearUAV(RHICmdList, TileIntersectionResources->NumCulledTilesArray, 0);
+				RHICmdList.ClearUAVUint(TileIntersectionResources->NumCulledTilesArray.UAV, FUintVector4(0, 0, 0, 0));
 
 				// Rasterize object bounding shapes and intersect with screen tiles to compute how many tiles intersect each object
 				ScatterTilesToObjects<true>(RHICmdList, View, TileListGroupSize, Parameters);
@@ -674,7 +674,7 @@ void BuildTileObjectLists(FRHICommandListImmediate& RHICmdList, FScene* Scene, T
 			{
 				SCOPED_DRAW_EVENT(RHICmdList, ComputeStartOffsets);
 				// Start at 0 threadgroups
-				ClearUAV(RHICmdList, TileIntersectionResources->ObjectTilesIndirectArguments, 0);
+				RHICmdList.ClearUAVUint(TileIntersectionResources->ObjectTilesIndirectArguments.UAV, FUintVector4(0, 0, 0, 0));
 
 				// Accumulate how many cone trace threadgroups we should dispatch, and also compute the start offset for each object's culled tile data
 				TShaderMapRef<FComputeCulledTilesStartOffsetCS> ComputeShader(View.ShaderMap);
@@ -692,7 +692,7 @@ void BuildTileObjectLists(FRHICommandListImmediate& RHICmdList, FScene* Scene, T
 				SCOPED_DRAW_EVENT(RHICmdList, CullTilesToObjects);
 
 				// Start at 0 tiles per object
-				ClearUAV(RHICmdList, TileIntersectionResources->NumCulledTilesArray, 0);
+				RHICmdList.ClearUAVUint(TileIntersectionResources->NumCulledTilesArray.UAV, FUintVector4(0, 0, 0, 0));
 
 				// Rasterize object bounding shapes and intersect with screen tiles, and write out intersecting tile indices for the cone tracing pass
 				ScatterTilesToObjects<false>(RHICmdList, View, TileListGroupSize, Parameters);

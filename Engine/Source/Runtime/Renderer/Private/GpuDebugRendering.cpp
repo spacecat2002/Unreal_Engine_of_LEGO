@@ -34,9 +34,8 @@ FGpuDebugPrimitiveBuffers AllocateGpuDebugPrimitiveBuffers(FRHICommandListImmedi
 		}
 	}
 
-	uint32 ClearValues[4] = { 0, 0, 0, 0 };
-	RHICmdList.ClearTinyUAV(Output.DebugPrimitiveCountTexture->GetRenderTargetItem().UAV, ClearValues);
-	RHICmdList.ClearTinyUAV(Output.DebugPrimitiveTexture->GetRenderTargetItem().UAV, ClearValues);
+	RHICmdList.ClearUAVUint(Output.DebugPrimitiveCountTexture->GetRenderTargetItem().UAV, FUintVector4(0, 0, 0, 0));
+	RHICmdList.ClearUAVFloat(Output.DebugPrimitiveTexture->GetRenderTargetItem().UAV, FVector4(0, 0, 0, 0));
 
 	return Output;
 }

@@ -769,7 +769,7 @@ void CullDistanceFieldObjectsForLight(
 		{
 			SCOPED_DRAW_EVENTF(RHICmdList, CullObjectsToFrustum, TEXT("CullObjectsToFrustum SceneObjects %u"), Scene->DistanceFieldSceneData.NumObjectsInBuffer);
 
-			ClearUAV(RHICmdList, GShadowCulledObjectBuffers.Buffers.ObjectIndirectArguments, 0);
+			RHICmdList.ClearUAVUint(GShadowCulledObjectBuffers.Buffers.ObjectIndirectArguments.UAV, FUintVector4(0, 0, 0, 0));
 
 			TShaderMapRef<FCullObjectsForShadowCS> ComputeShader(GetGlobalShaderMap(Scene->GetFeatureLevel()));
 			RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
@@ -809,12 +809,12 @@ void CullDistanceFieldObjectsForLight(
 			SCOPED_DRAW_EVENT(RHICmdList, ComputeTileStartOffsets);
 
 			// Start at 0 tiles per object
-			ClearUAV(RHICmdList, TileIntersectionResources->TileNumCulledObjects, 0);
+			RHICmdList.ClearUAVUint(TileIntersectionResources->TileNumCulledObjects.UAV, FUintVector4(0, 0, 0, 0));
 
 			// Rasterize object bounding shapes and intersect with shadow tiles to compute how many objects intersect each tile
 			ScatterObjectsToShadowTiles<true>(RHICmdList, View, WorldToShadowValue, ShadowBoundingRadius, LightTileDimensions, TileIntersectionResources.Get());
 
-			ClearUAV(RHICmdList, TileIntersectionResources->NextStartOffset, 0);
+			RHICmdList.ClearUAVUint(TileIntersectionResources->NextStartOffset.UAV, FUintVector4(0, 0, 0, 0));
 
 			uint32 GroupSizeX = FMath::DivideAndRoundUp<int32>(LightTileDimensions.X, ComputeCulledObjectStartOffsetGroupSize);
 			uint32 GroupSizeY = FMath::DivideAndRoundUp<int32>(LightTileDimensions.Y, ComputeCulledObjectStartOffsetGroupSize);
@@ -831,7 +831,7 @@ void CullDistanceFieldObjectsForLight(
 			SCOPED_DRAW_EVENTF(RHICmdList, CullObjectsToTiles, TEXT("CullObjectsToTiles %ux%u"), LightTileDimensions.X, LightTileDimensions.Y);
 
 			// Start at 0 tiles per object
-			ClearUAV(RHICmdList, TileIntersectionResources->TileNumCulledObjects, 0);
+			RHICmdList.ClearUAVUint(TileIntersectionResources->TileNumCulledObjects.UAV, FUintVector4(0, 0, 0, 0));
 
 			// Rasterize object bounding shapes and intersect with shadow tiles, and write out intersecting tile indices for the cone tracing pass
 			ScatterObjectsToShadowTiles<false>(RHICmdList, View, WorldToShadowValue, ShadowBoundingRadius, LightTileDimensions, TileIntersectionResources.Get());

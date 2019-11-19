@@ -171,8 +171,7 @@ void FVirtualTextureFeedback::CreateResourceGPU( FRHICommandListImmediate& RHICm
 	GRenderTargetPool.FindFreeElement( RHICmdList, Desc, FeedbackTextureGPU, TEXT("VTFeedbackGPU") );
 
 	// Clear to default value
-	const uint32 ClearValue[4] = { ~0u, ~0u, ~0u, ~0u };
-	ClearUAV( RHICmdList, FeedbackTextureGPU->GetRenderTargetItem(), ClearValue );
+	RHICmdList.ClearUAVUint(FeedbackTextureGPU->GetRenderTargetItem().UAV, FUintVector4(~0u, ~0u, ~0u, ~0u));
 	RHICmdList.TransitionResource( EResourceTransitionAccess::ERWNoBarrier, EResourceTransitionPipeline::EGfxToGfx, FeedbackTextureGPU->GetRenderTargetItem().UAV );
 
 	FeedBackFences->Init(RHICmdList);

@@ -869,7 +869,7 @@ bool FDeferredShadingSceneRenderer::RenderCapsuleDirectShadows(
 				
 				AllocateCapsuleTileIntersectionCountsBuffer(GroupSize, View.ViewState);
 
-				ClearUAV(RHICmdList, View.ViewState->CapsuleTileIntersectionCountsBuffer, 0);
+				RHICmdList.ClearUAVUint(View.ViewState->CapsuleTileIntersectionCountsBuffer.UAV, FUintVector4(0, 0, 0, 0));
 
 				{
 					SCOPED_DRAW_EVENT(RHICmdList, TiledCapsuleShadowing);
@@ -1380,7 +1380,7 @@ void FDeferredShadingSceneRenderer::RenderIndirectCapsuleShadows(
 				
 						AllocateCapsuleTileIntersectionCountsBuffer(GroupSize, View.ViewState);
 
-						ClearUAV(RHICmdList, View.ViewState->CapsuleTileIntersectionCountsBuffer, 0);
+						RHICmdList.ClearUAVUint(View.ViewState->CapsuleTileIntersectionCountsBuffer.UAV, FUintVector4(0, 0, 0, 0));
 
 						{
 							SCOPED_DRAW_EVENTF(RHICmdList, TiledCapsuleShadowing, TEXT("TiledCapsuleShadowing %u capsules among %u meshes"), NumCapsuleShapes, NumMeshesWithCapsules);

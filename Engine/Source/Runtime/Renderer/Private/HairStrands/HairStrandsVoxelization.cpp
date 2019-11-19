@@ -353,14 +353,14 @@ static void RenderVoxelization(
 			GRenderTargetPool.FindFreeElement(RHICmdList, Desc, VoxelResources.MaterialTexture, TEXT("MaterialTexture"));
 		}
 
-		uint32 ClearValues[4] = { 0, 0, 0, 0 };
-		RHICmdList.ClearTinyUAV(VoxelResources.DensityTexture->GetRenderTargetItem().UAV, ClearValues);
+		FUintVector4 ClearValues(0, 0, 0, 0);
+		RHICmdList.ClearUAVUint(VoxelResources.DensityTexture->GetRenderTargetItem().UAV, ClearValues);
 		if (bVoxelizeMaterial)
 		{
-			RHICmdList.ClearTinyUAV(VoxelResources.TangentXTexture->GetRenderTargetItem().UAV, ClearValues);
-			RHICmdList.ClearTinyUAV(VoxelResources.TangentYTexture->GetRenderTargetItem().UAV, ClearValues);
-			RHICmdList.ClearTinyUAV(VoxelResources.TangentZTexture->GetRenderTargetItem().UAV, ClearValues);
-			RHICmdList.ClearTinyUAV(VoxelResources.MaterialTexture->GetRenderTargetItem().UAV, ClearValues);
+			RHICmdList.ClearUAVUint(VoxelResources.TangentXTexture->GetRenderTargetItem().UAV, ClearValues);
+			RHICmdList.ClearUAVUint(VoxelResources.TangentYTexture->GetRenderTargetItem().UAV, ClearValues);
+			RHICmdList.ClearUAVUint(VoxelResources.TangentZTexture->GetRenderTargetItem().UAV, ClearValues);
+			RHICmdList.ClearUAVUint(VoxelResources.MaterialTexture->GetRenderTargetItem().UAV, ClearValues);
 		}
 	}
 

@@ -873,8 +873,7 @@ void FSceneRenderTargets::SetQuadOverdrawUAV(FRHICommandList& RHICmdList, bool b
 			if (bClearQuadOverdrawBuffers)
 			{
 				// Clear to default value
-				const uint32 ClearValue[4] = { 0, 0, 0, 0 };
-				ClearUAV(RHICmdList, QuadOverdrawBuffer->GetRenderTargetItem(), ClearValue);
+				RHICmdList.ClearUAVUint(QuadOverdrawBuffer->GetRenderTargetItem().UAV, FUintVector4(0, 0, 0, 0));
 				RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToGfx, QuadOverdrawBuffer->GetRenderTargetItem().UAV);
 			}
 		}
