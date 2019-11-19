@@ -1029,6 +1029,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	Scene->UpdateAllPrimitiveSceneInfos(RHICmdList);
 
 	check(RHICmdList.IsOutsideRenderPass());
+	check(!FMaterialRenderProxy::HasDeferredUniformExpressionCacheRequests());
 
 	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(RenderOther);
 
