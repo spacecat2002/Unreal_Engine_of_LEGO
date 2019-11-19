@@ -8,7 +8,7 @@
 #include "Misc/CoreStats.h"
 #include "RenderingThread.h"
 #include "HAL/UnrealMemory.h"
-
+#include "BoneIndices.h"
 #include "SkinWeightProfile.generated.h"
 
 class USkeletalMesh;
