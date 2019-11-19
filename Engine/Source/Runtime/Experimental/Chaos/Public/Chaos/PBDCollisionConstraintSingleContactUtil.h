@@ -10,7 +10,7 @@ namespace Chaos
 	namespace Collisions
 	{
 		template<class T = float>
-		struct TSingleContParticleParameters {
+		struct TSingleContactParticleParameters {
 			TArrayCollectionArray<bool>* Collided;
 			const TArrayCollectionArray<TSerializablePtr<FChaosPhysicsMaterial>>* PhysicsMaterials;
 			T FrictionOverride;
@@ -27,20 +27,20 @@ namespace Chaos
 		};
 
 		template<ECollisionUpdateType UpdateType, typename T = float, int d = 3>
-		void Update(const T Thickness, TRigidBodySingleContactConstraint<T, d>& Constraint);
+		void Update(const T Thickness, TRigidBodyPointContactConstraint<T, d>& Constraint);
 
 		template<ECollisionUpdateType UpdateType, typename T=float, int d=3>
-		void UpdateConstraint(const T Thickness, TRigidBodySingleContactConstraint<T, d>& Constraint);
+		void UpdateConstraint(const T Thickness, TRigidBodyPointContactConstraint<T, d>& Constraint);
 			
 		template<typename T = float, int d = 3>
-		void Apply(TRigidBodySingleContactConstraint<T, d>& Constraint, T Thickness, 
+		void Apply(TRigidBodyPointContactConstraint<T, d>& Constraint, T Thickness, 
 			TSingleContactIterationParameters<T> & IterationParameters,
-			TSingleContParticleParameters<T> & ParticleParameters);
+			TSingleContactParticleParameters<T> & ParticleParameters);
 			
 		template<typename T=float, int d=3>
-		void ApplyPushOut(TRigidBodySingleContactConstraint<T, d>& Constraint, T Thickness, const TSet<const TGeometryParticleHandle<T, d>*>& IsTemporarilyStatic,
+		void ApplyPushOut(TRigidBodyPointContactConstraint<T, d>& Constraint, T Thickness, const TSet<const TGeometryParticleHandle<T, d>*>& IsTemporarilyStatic,
 			TSingleContactIterationParameters<T> & IterationParameters,
-			TSingleContParticleParameters<T> & ParticleParameters);
+			TSingleContactParticleParameters<T> & ParticleParameters);
 	}
 
 }
