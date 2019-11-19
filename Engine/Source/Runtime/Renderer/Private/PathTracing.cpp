@@ -473,8 +473,8 @@ void FDeferredShadingSceneRenderer::RenderPathTracing(FRHICommandListImmediate& 
 	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, RayCountPerPixelRT, TEXT("RayCountPerPixelRT"));
 
 	// Clear render targets
-	FUintVector4 BlackColor(0, 0, 0, 0);
-	FVector4 BlackColorF(0, 0, 0, 0);
+	FUintVector4 BlackColor(0, 0, 0, 1);
+	FVector4 BlackColorF(0, 0, 0, 1);
 
 	RHICmdList.ClearUAVFloat(RadianceRT->GetRenderTargetItem().UAV, BlackColorF);
 	RHICmdList.ClearUAVUint(SampleCountRT->GetRenderTargetItem().UAV, BlackColor);
