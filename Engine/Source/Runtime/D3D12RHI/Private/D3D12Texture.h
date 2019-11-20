@@ -174,6 +174,12 @@ public:
 		}
 	}
 
+	// Modifiers.
+	void SetReadBackListHandle(FD3D12CommandListHandle listToWaitFor) { ReadBackSyncPoint = listToWaitFor; }
+	FD3D12CLSyncPoint GetReadBackSyncPoint() const { return ReadBackSyncPoint; }
+
+	FD3D12CLSyncPoint ReadBackSyncPoint;
+
 protected:
 
 	/** Amount of memory allocated by this texture, in bytes. */
@@ -277,7 +283,6 @@ public:
 
 	void GetReadBackHeapDesc(D3D12_PLACED_SUBRESOURCE_FOOTPRINT& OutFootprint, uint32 Subresource) const;
 
-	FD3D12CLSyncPoint GetReadBackSyncPoint() const { return ReadBackSyncPoint; }
 	bool IsCubemap() const { return bCubemap; }
 
 	/** FRHITexture override.  See FRHITexture::GetNativeResource() */
@@ -291,9 +296,6 @@ public:
 	{
 		return static_cast<FD3D12TextureBase*>(this);
 	}
-
-	// Modifiers.
-	void SetReadBackListHandle(FD3D12CommandListHandle listToWaitFor) { ReadBackSyncPoint = listToWaitFor; }
 
 	// IRefCountedObject interface.
 	virtual uint32 AddRef() const
@@ -329,8 +331,6 @@ public:
 private:
 	/** Unlocks a previously locked mip-map. */
 	void UnlockInternal(class FRHICommandListImmediate* RHICmdList, TD3D12Texture2D* Previous, uint32 MipIndex, uint32 ArrayIndex);
-
-	FD3D12CLSyncPoint ReadBackSyncPoint;
 
 	/** Whether the texture is a cube-map. */
 	const uint32 bCubemap : 1;

@@ -3056,5 +3056,8 @@ void FD3D12CommandContext::RHICopyTexture(FRHITexture* SourceTextureRHI, FRHITex
 
 	CommandListHandle.UpdateResidency(SourceTexture->GetResource());
 	CommandListHandle.UpdateResidency(DestTexture->GetResource());
+
+	// Save the command list handle. This lets us check when this command list is complete. Note: This must be saved before we execute the command list
+	DestTexture->SetReadBackListHandle(CommandListHandle);
 }
 

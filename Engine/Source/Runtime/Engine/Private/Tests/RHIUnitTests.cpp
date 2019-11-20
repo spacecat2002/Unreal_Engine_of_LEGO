@@ -50,6 +50,7 @@ namespace RHIUnitTest
 
 			// @todo - readback API is inconsistent across RHIs
 			RHICmdList.SubmitCommandsAndFlushGPU();
+			RHICmdList.BlockUntilGPUIdle();
 
 			void* Memory = RHILockStagingBuffer(StagingBuffer, 0, NumBytes);
 			Result = VerifyCallback(Memory, NumBytes);
@@ -347,13 +348,14 @@ namespace RHIUnitTest
 		{
 			FIntVector Size = Texture->GetSizeXYZ();
 
-			for (int32 Z = 0; Z < Size.Z; ++Z)
+			for (uint32 MipIndex = 0; MipIndex < Texture->GetNumMips(); ++MipIndex)
 			{
-				for (uint32 MipIndex = 0; MipIndex < Texture->GetNumMips(); ++MipIndex)
-				{
-					uint32 MipWidth = Size.X >> MipIndex;
-					uint32 MipHeight = Size.Y >> MipIndex;
+				uint32 MipWidth = FMath::Max(Size.X >> MipIndex, 1);
+				uint32 MipHeight = FMath::Max(Size.Y >> MipIndex, 1);
+				uint32 MipDepth = FMath::Max(Size.Z >> MipIndex, 1);
 
+				for (uint32 Z = 0; Z < MipDepth; ++Z)
+				{
 					{
 						FRHIResourceCreateInfo CreateInfo;
 						FTexture2DRHIRef StagingTexture = RHICreateTexture2D(MipWidth, MipHeight, Texture->GetFormat(), 1, 1, TexCreate_CPUReadback, CreateInfo);
@@ -361,7 +363,15 @@ namespace RHIUnitTest
 						FRHICopyTextureInfo CopyInfo = {};
 						CopyInfo.Size = FIntVector(MipWidth, MipHeight, 1); // @todo - required for D3D11RHI to prevent crash in FD3D11DynamicRHI::RHICopyTexture
 						CopyInfo.SourceMipIndex = MipIndex;
-						CopyInfo.SourceSliceIndex = Z;
+						if (Texture->GetTexture3D())
+						{
+							CopyInfo.SourceSliceIndex = 0;
+							CopyInfo.SourcePosition.Z = Z;
+						}
+						else
+						{
+							CopyInfo.SourceSliceIndex = Z;
+						}
 						CopyInfo.NumSlices = 1;
 						CopyInfo.NumMips = 1;
 						RHICmdList.CopyTexture(Texture, StagingTexture, CopyInfo);
@@ -372,6 +382,7 @@ namespace RHIUnitTest
 						RHICmdList.WriteGPUFence(GPUFence);
 
 						RHICmdList.SubmitCommandsAndFlushGPU(); // @todo - refactor RHI readback API. This shouldn't be necessary
+						RHICmdList.BlockUntilGPUIdle();
 
 						int32 Width, Height;
 						void* Ptr;
