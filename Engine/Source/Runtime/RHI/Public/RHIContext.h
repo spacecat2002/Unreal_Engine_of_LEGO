@@ -133,6 +133,8 @@ public:
 	* Structured buffers are treated as a regular R32_UINT buffer during the clear operation, and the Values.X component is copied directly into the buffer without any format conversion. (Y,Z,W) of Values is ignored.
 	* Typed floating point buffers undergo standard format conversion during the write operation. The conversion is determined by the format of the UAV.
 	*
+	* The UAV is expected to be in a writable state, as this function has equivalent semantics to dispatching a compute shader. This function does not perform any implicit transitions.
+	*
 	* @param UnorderedAccessViewRHI		The UAV to clear.
 	* @param Values						The values to clear the UAV to, one component per channel (XYZW = RGBA). Channels not supported by the UAV are ignored.
 	*
@@ -143,6 +145,8 @@ public:
 	* Clears a UAV to the multi-component unsigned integer value provided. Should only be called on UAVs with an integer format, or on structured buffers.
 	* Structured buffers are treated as a regular R32_UINT buffer during the clear operation, and the Values.X component is copied directly into the buffer without any format conversion. (Y,Z,W) of Values is ignored.
 	* Typed integer buffers undergo standard format conversion during the write operation. The conversion is determined by the format of the UAV.
+	*
+	* The UAV is expected to be in a writable state, as this function has equivalent semantics to dispatching a compute shader. This function does not perform any implicit transitions.
 	*
 	* @param UnorderedAccessViewRHI		The UAV to clear.
 	* @param Values						The values to clear the UAV to, one component per channel (XYZW = RGBA). Channels not supported by the UAV are ignored.
