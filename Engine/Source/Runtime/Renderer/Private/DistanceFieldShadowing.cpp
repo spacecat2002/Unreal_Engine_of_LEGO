@@ -769,6 +769,7 @@ void CullDistanceFieldObjectsForLight(
 		{
 			SCOPED_DRAW_EVENTF(RHICmdList, CullObjectsToFrustum, TEXT("CullObjectsToFrustum SceneObjects %u"), Scene->DistanceFieldSceneData.NumObjectsInBuffer);
 
+			RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, GShadowCulledObjectBuffers.Buffers.ObjectIndirectArguments.UAV);
 			RHICmdList.ClearUAVUint(GShadowCulledObjectBuffers.Buffers.ObjectIndirectArguments.UAV, FUintVector4(0, 0, 0, 0));
 
 			TShaderMapRef<FCullObjectsForShadowCS> ComputeShader(GetGlobalShaderMap(Scene->GetFeatureLevel()));
@@ -809,11 +810,13 @@ void CullDistanceFieldObjectsForLight(
 			SCOPED_DRAW_EVENT(RHICmdList, ComputeTileStartOffsets);
 
 			// Start at 0 tiles per object
+			RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, TileIntersectionResources->TileNumCulledObjects.UAV);
 			RHICmdList.ClearUAVUint(TileIntersectionResources->TileNumCulledObjects.UAV, FUintVector4(0, 0, 0, 0));
 
 			// Rasterize object bounding shapes and intersect with shadow tiles to compute how many objects intersect each tile
 			ScatterObjectsToShadowTiles<true>(RHICmdList, View, WorldToShadowValue, ShadowBoundingRadius, LightTileDimensions, TileIntersectionResources.Get());
 
+			RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, TileIntersectionResources->NextStartOffset.UAV);
 			RHICmdList.ClearUAVUint(TileIntersectionResources->NextStartOffset.UAV, FUintVector4(0, 0, 0, 0));
 
 			uint32 GroupSizeX = FMath::DivideAndRoundUp<int32>(LightTileDimensions.X, ComputeCulledObjectStartOffsetGroupSize);
@@ -831,6 +834,7 @@ void CullDistanceFieldObjectsForLight(
 			SCOPED_DRAW_EVENTF(RHICmdList, CullObjectsToTiles, TEXT("CullObjectsToTiles %ux%u"), LightTileDimensions.X, LightTileDimensions.Y);
 
 			// Start at 0 tiles per object
+			RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, TileIntersectionResources->TileNumCulledObjects.UAV);
 			RHICmdList.ClearUAVUint(TileIntersectionResources->TileNumCulledObjects.UAV, FUintVector4(0, 0, 0, 0));
 
 			// Rasterize object bounding shapes and intersect with shadow tiles, and write out intersecting tile indices for the cone tracing pass
