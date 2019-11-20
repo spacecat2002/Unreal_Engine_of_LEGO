@@ -253,35 +253,51 @@ void FD3D12CommandContext::ClearUAV(TRHICommandList_RecursiveHazardous<FD3D12Com
 		if (UAVDesc.Format == DXGI_FORMAT_UNKNOWN)
 		{
 			// Structured buffer.
-			RHICmdList.RunOnContext([UnorderedAccessView, ClearValues](auto& Context)
+			RHICmdList.RunOnContext([UnorderedAccessView, ClearValues, UAVDesc](auto& Context)
 			{
-				FD3D12StateCache& StateCache = Context.StateCache;
-				FD3D12CommandListHandle& CommandListHandle = Context.CommandListHandle;
+				// Alias the structured buffer with an R32_UINT UAV to perform the clear.
+				// We construct a temporary UAV on the offline heap, copy it to the online heap, and then call ClearUnorderedAccessViewUint.
+
+				FD3D12Device* ParentDevice = Context.GetParentDevice();
+				ID3D12Device* Device = ParentDevice->GetDevice();
+				ID3D12Resource* Resource = UnorderedAccessView->GetResource()->GetResource();
+
+				// Structured buffer stride must be a multiple of sizeof(uint32)
+				check(UAVDesc.Buffer.StructureByteStride % sizeof(uint32) == 0);
+				uint32 DwordsPerElement = UAVDesc.Buffer.StructureByteStride / sizeof(uint32);
+
+				D3D12_UNORDERED_ACCESS_VIEW_DESC R32UAVDesc = {};
+				R32UAVDesc.Format = DXGI_FORMAT_R32_UINT;
+				R32UAVDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+				R32UAVDesc.Buffer.FirstElement = UAVDesc.Buffer.FirstElement * DwordsPerElement;
+				R32UAVDesc.Buffer.NumElements = UAVDesc.Buffer.NumElements * DwordsPerElement;
+
+				// Scoped descriptor handle will free the offline CPU handle once we return
+				FD3D12DescriptorHandleUAV UAVHandle(ParentDevice);
+				UAVHandle.CreateViewWithCounter(R32UAVDesc, Resource, nullptr);
 
 				// Check if the view heap is full and needs to rollover.
-				if (!StateCache.GetDescriptorCache()->GetCurrentViewHeap()->CanReserveSlots(1))
+				if (!Context.StateCache.GetDescriptorCache()->GetCurrentViewHeap()->CanReserveSlots(1))
 				{
-					StateCache.GetDescriptorCache()->GetCurrentViewHeap()->RollOver();
+					Context.StateCache.GetDescriptorCache()->GetCurrentViewHeap()->RollOver();
 				}
-				uint32 ReservedSlot = StateCache.GetDescriptorCache()->GetCurrentViewHeap()->ReserveSlots(1);
-				D3D12_CPU_DESCRIPTOR_HANDLE CPUHandle = UnorderedAccessView->GetView();
-				D3D12_CPU_DESCRIPTOR_HANDLE DestSlot = StateCache.GetDescriptorCache()->GetCurrentViewHeap()->GetCPUSlotHandle(ReservedSlot);
-				D3D12_GPU_DESCRIPTOR_HANDLE GPUHandle = StateCache.GetDescriptorCache()->GetCurrentViewHeap()->GetGPUSlotHandle(ReservedSlot);
-				Context.GetParentDevice()->GetDevice()->CopyDescriptorsSimple(1, DestSlot, CPUHandle, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-				FD3D12DynamicRHI::TransitionResource(CommandListHandle, UnorderedAccessView, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+				uint32 ReservedSlot = Context.StateCache.GetDescriptorCache()->GetCurrentViewHeap()->ReserveSlots(1);
+				D3D12_CPU_DESCRIPTOR_HANDLE CPUHandle = UAVHandle.GetHandle();
+				D3D12_CPU_DESCRIPTOR_HANDLE DestSlot = Context.StateCache.GetDescriptorCache()->GetCurrentViewHeap()->GetCPUSlotHandle(ReservedSlot);
+				D3D12_GPU_DESCRIPTOR_HANDLE GPUHandle = Context.StateCache.GetDescriptorCache()->GetCurrentViewHeap()->GetGPUSlotHandle(ReservedSlot);
+
+				Device->CopyDescriptorsSimple(1, DestSlot, CPUHandle, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+				FD3D12DynamicRHI::TransitionResource(Context.CommandListHandle, UnorderedAccessView, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 				Context.numClears++;
 
-				CommandListHandle.FlushResourceBarriers();
-
-				// @todo d3d12 - this function is *not* compatible with structured buffers. Find an alternative (i.e. alias buffer as R32_UINT and do a typed-clear)
-				CommandListHandle->ClearUnorderedAccessViewUint(GPUHandle, CPUHandle, UnorderedAccessView->GetResource()->GetResource(), *reinterpret_cast<const UINT(*)[4]>(ClearValues), 0, nullptr);
-				// @todo d3d12 - this function is *not* compatible with structured buffers. Find an alternative (i.e. alias buffer as R32_UINT and do a typed-clear)
-
-				CommandListHandle.UpdateResidency(UnorderedAccessView->GetResource());
+				Context.CommandListHandle.FlushResourceBarriers();
+				Context.CommandListHandle->ClearUnorderedAccessViewUint(GPUHandle, CPUHandle, Resource, *reinterpret_cast<const UINT(*)[4]>(ClearValues), 0, nullptr);
+				Context.CommandListHandle.UpdateResidency(UnorderedAccessView->GetResource());
 
 				if (Context.IsDefaultContext())
 				{
-					Context.GetParentDevice()->RegisterGPUWork(1);
+					ParentDevice->RegisterGPUWork(1);
 				}
 			});
 		}
