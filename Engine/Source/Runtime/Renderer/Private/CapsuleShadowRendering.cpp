@@ -869,6 +869,7 @@ bool FDeferredShadingSceneRenderer::RenderCapsuleDirectShadows(
 				
 				AllocateCapsuleTileIntersectionCountsBuffer(GroupSize, View.ViewState);
 
+				RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, View.ViewState->CapsuleTileIntersectionCountsBuffer.UAV);
 				RHICmdList.ClearUAVUint(View.ViewState->CapsuleTileIntersectionCountsBuffer.UAV, FUintVector4(0, 0, 0, 0));
 
 				{
@@ -1380,6 +1381,7 @@ void FDeferredShadingSceneRenderer::RenderIndirectCapsuleShadows(
 				
 						AllocateCapsuleTileIntersectionCountsBuffer(GroupSize, View.ViewState);
 
+						RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, View.ViewState->CapsuleTileIntersectionCountsBuffer.UAV);
 						RHICmdList.ClearUAVUint(View.ViewState->CapsuleTileIntersectionCountsBuffer.UAV, FUintVector4(0, 0, 0, 0));
 
 						{
