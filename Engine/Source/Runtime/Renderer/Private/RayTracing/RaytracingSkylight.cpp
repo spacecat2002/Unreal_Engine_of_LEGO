@@ -191,21 +191,20 @@ void SetupSkyLightParameters(
 		SkyLightData->TextureSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 		SkyLightData->MipDimensions = FIntVector(0);
 
-		auto BlackTextureBuffer = RHICreateShaderResourceView(GBlackTexture->TextureRHI->GetTexture2D(), 0);
-		SkyLightData->MipTreePosX = BlackTextureBuffer;
-		SkyLightData->MipTreeNegX = BlackTextureBuffer;
-		SkyLightData->MipTreePosY = BlackTextureBuffer;
-		SkyLightData->MipTreeNegY = BlackTextureBuffer;
-		SkyLightData->MipTreePosZ = BlackTextureBuffer;
-		SkyLightData->MipTreeNegZ = BlackTextureBuffer;
+		SkyLightData->MipTreePosX = GBlackTextureWithSRV->ShaderResourceViewRHI;
+		SkyLightData->MipTreeNegX = GBlackTextureWithSRV->ShaderResourceViewRHI;
+		SkyLightData->MipTreePosY = GBlackTextureWithSRV->ShaderResourceViewRHI;
+		SkyLightData->MipTreeNegY = GBlackTextureWithSRV->ShaderResourceViewRHI;
+		SkyLightData->MipTreePosZ = GBlackTextureWithSRV->ShaderResourceViewRHI;
+		SkyLightData->MipTreeNegZ = GBlackTextureWithSRV->ShaderResourceViewRHI;
 
-		SkyLightData->MipTreePdfPosX = BlackTextureBuffer;
-		SkyLightData->MipTreePdfNegX = BlackTextureBuffer;
-		SkyLightData->MipTreePdfPosY = BlackTextureBuffer;
-		SkyLightData->MipTreePdfNegY = BlackTextureBuffer;
-		SkyLightData->MipTreePdfPosZ = BlackTextureBuffer;
-		SkyLightData->MipTreePdfNegZ = BlackTextureBuffer;
-		SkyLightData->SolidAnglePdf = BlackTextureBuffer;
+		SkyLightData->MipTreePdfPosX = GBlackTextureWithSRV->ShaderResourceViewRHI;
+		SkyLightData->MipTreePdfNegX = GBlackTextureWithSRV->ShaderResourceViewRHI;
+		SkyLightData->MipTreePdfPosY = GBlackTextureWithSRV->ShaderResourceViewRHI;
+		SkyLightData->MipTreePdfNegY = GBlackTextureWithSRV->ShaderResourceViewRHI;
+		SkyLightData->MipTreePdfPosZ = GBlackTextureWithSRV->ShaderResourceViewRHI;
+		SkyLightData->MipTreePdfNegZ = GBlackTextureWithSRV->ShaderResourceViewRHI;
+		SkyLightData->SolidAnglePdf = GBlackTextureWithSRV->ShaderResourceViewRHI;
 	}
 }
 
