@@ -97,7 +97,9 @@ public:
 
 		if (NumUniformBuffers)
 		{
-			Result->UniformBuffers = (FRHIUniformBuffer**)ParameterMemory.Alloc(sizeof(FRHIUniformBuffer*) * NumUniformBuffers, alignof(FRHIUniformBuffer*));
+			uint32 AllocSize = sizeof(FRHIUniformBuffer*) * NumUniformBuffers;
+			Result->UniformBuffers = (FRHIUniformBuffer**)ParameterMemory.Alloc(AllocSize, alignof(FRHIUniformBuffer*));
+			FMemory::Memset(Result->UniformBuffers, 0, AllocSize);
 		}
 		Result->NumUniformBuffers = NumUniformBuffers;
 
