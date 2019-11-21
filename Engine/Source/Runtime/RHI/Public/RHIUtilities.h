@@ -198,6 +198,44 @@ struct FRWBuffer
 		: NumBytes(0)
 	{}
 
+	FRWBuffer(FRWBuffer&& Other)
+		: Buffer(MoveTemp(Other.Buffer))
+		, UAV(MoveTemp(Other.UAV))
+		, SRV(MoveTemp(Other.SRV))
+		, NumBytes(Other.NumBytes)
+	{
+		Other.NumBytes = 0;
+	}
+
+	FRWBuffer(const FRWBuffer& Other)
+		: Buffer(Other.Buffer)
+		, UAV(Other.UAV)
+		, SRV(Other.SRV)
+		, NumBytes(Other.NumBytes)
+	{
+	}
+
+	FRWBuffer& operator=(FRWBuffer&& Other)
+	{
+		Buffer = MoveTemp(Other.Buffer);
+		UAV = MoveTemp(Other.UAV);
+		SRV = MoveTemp(Other.SRV);
+		NumBytes = Other.NumBytes;
+		Other.NumBytes = 0;
+
+		return *this;
+	}
+
+	FRWBuffer& operator=(const FRWBuffer& Other)
+	{
+		Buffer = Other.Buffer;
+		UAV = Other.UAV;
+		SRV = Other.SRV;
+		NumBytes = Other.NumBytes;
+
+		return *this;
+	}
+
 	~FRWBuffer()
 	{
 		Release();

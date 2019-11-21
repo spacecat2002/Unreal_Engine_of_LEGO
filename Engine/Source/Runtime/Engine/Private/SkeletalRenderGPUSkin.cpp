@@ -230,6 +230,8 @@ void FSkeletalMeshObjectGPUSkin::ReleaseResources()
 	{
 		RayTracingDynamicVertexBuffer.Release();
 	});
+
+	check(!RayTracingDynamicVertexBuffer.Buffer.IsValid());
 #endif
 }
 
