@@ -427,25 +427,11 @@ namespace RHIUnitTest
 			}
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, TextureRHI);
 
-			auto VerifyMipIsZero = [&](void* Ptr, uint32 MipWidth, uint32 MipHeight, uint32 Width, uint32 Height, uint32 CurrentMipIndex, uint32 CurrentSliceIndex)
-			{
-				uint32 NumBytes = Width * Height * GPixelFormats[TextureRHI->GetFormat()].BlockBytes;
-				return IsZeroMem(Ptr, NumBytes);
-			};
-			bResult0 = VerifyTextureContents(*FString::Printf(TEXT("%s - clear whole resource to zero"), *TestName), RHICmdList, TextureRHI, VerifyMipIsZero);
-
-			// Clear the selected mip index to the provided value
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, TextureRHI);
-			FUnorderedAccessViewRHIRef SpecificMipUAV = RHICreateUnorderedAccessView(TextureRHI, MipIndex);
-			(RHICmdList.*ClearPtr)(SpecificMipUAV, ClearValue);
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, TextureRHI);
-			bResult1 = VerifyTextureContents(*FString::Printf(TEXT("%s - clear mip %d to (%s)"), *TestName, MipIndex, *ClearValueToString(ClearValue)), RHICmdList, TextureRHI, [&](void* Ptr, uint32 MipWidth, uint32 MipHeight, uint32 Width, uint32 Height, uint32 CurrentMipIndex, uint32 CurrentSliceIndex)
+			auto VerifyMip = [&](void* Ptr, uint32 MipWidth, uint32 MipHeight, uint32 Width, uint32 Height, uint32 CurrentMipIndex, uint32 CurrentSliceIndex, bool bShouldBeZero)
 			{
 				uint32 BytesPerPixel = GPixelFormats[TextureRHI->GetFormat()].BlockBytes;
 				uint32 NumBytes = Width * Height * BytesPerPixel;
 				check(NumBytes % NumTestBytes == 0);
-
-				bool bShouldBeZero = CurrentMipIndex != MipIndex;
 
 				// This is the specific mip we're targeting.
 				// Verify the mip entirely matches the clear value.
@@ -470,30 +456,26 @@ namespace RHIUnitTest
 								return false;
 						}
 					}
-
-					/*// Verify row outside mip stride bounds is zeroed.
-					for (uint32 X = MipWidth; X < Width; ++X)
-					{
-						uint8* Pixel = Row + X * BytesPerPixel;
-						if (!IsZeroMem(Pixel, BytesPerPixel))
-							return false;
-					}*/
 				}
 
-				/*// Verify remaining rows outside mip stride bounds are zeroed.
-				for (uint32 Y = MipHeight; Y < Height; ++Y)
-				{
-					uint8* Row = ((uint8*)Ptr) + (Y * Width * BytesPerPixel);
-					for (uint32 X = 0; X < Width; ++X)
-					{
-						uint8* Pixel = Row + X * BytesPerPixel;
-
-						if (!IsZeroMem(Pixel, BytesPerPixel))
-							return false;
-					}
-				}*/
-
 				return true;
+			};
+
+			auto VerifyMipIsZero = [&](void* Ptr, uint32 MipWidth, uint32 MipHeight, uint32 Width, uint32 Height, uint32 CurrentMipIndex, uint32 CurrentSliceIndex)
+			{
+				return VerifyMip(Ptr, MipWidth, MipHeight, Width, Height, CurrentMipIndex, CurrentSliceIndex, true);
+			};
+			bResult0 = VerifyTextureContents(*FString::Printf(TEXT("%s - clear whole resource to zero"), *TestName), RHICmdList, TextureRHI, VerifyMipIsZero);
+
+			// Clear the selected mip index to the provided value
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, TextureRHI);
+			FUnorderedAccessViewRHIRef SpecificMipUAV = RHICreateUnorderedAccessView(TextureRHI, MipIndex);
+			(RHICmdList.*ClearPtr)(SpecificMipUAV, ClearValue);
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, TextureRHI);
+			bResult1 = VerifyTextureContents(*FString::Printf(TEXT("%s - clear mip %d to (%s)"), *TestName, MipIndex, *ClearValueToString(ClearValue)), RHICmdList, TextureRHI, 
+				[&](void* Ptr, uint32 MipWidth, uint32 MipHeight, uint32 Width, uint32 Height, uint32 CurrentMipIndex, uint32 CurrentSliceIndex)
+			{
+				return VerifyMip(Ptr, MipWidth, MipHeight, Width, Height, CurrentMipIndex, CurrentSliceIndex, CurrentMipIndex != MipIndex);
 			});
 		}
 
