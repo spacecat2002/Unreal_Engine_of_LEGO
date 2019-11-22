@@ -194,11 +194,15 @@ void UTexture::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEven
 				{
 					CompressionSettings = TC_VectorDisplacementmap;
 					SRGB = false;
+					Filter = TF_Default;
+					MipGenSettings = TMGS_FromTextureGroup;
 				}
 				else if (LODGroup == TEXTUREGROUP_16BitData)
 				{
 					CompressionSettings = TC_HDR;
 					SRGB = false;
+					Filter = TF_Default;
+					MipGenSettings = TMGS_FromTextureGroup;
 				}
 			}
 		}
