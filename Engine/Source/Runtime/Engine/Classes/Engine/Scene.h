@@ -526,7 +526,7 @@ struct FCameraExposureSettings
 	 * and dark spots will have low influence.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Exposure", meta=(DisplayName = "Exposure Metering Mask"))
-	class UTexture* MeterMask;	
+	class UTexture* MeterMask = nullptr;	
 
 	/** temporary exposed until we found good values, -8: 1/256, -10: 1/1024 */
 	UPROPERTY(Interp, BlueprintReadWrite, Category="Exposure", AdvancedDisplay, meta=(UIMin = "-16", UIMax = "0.0"))
