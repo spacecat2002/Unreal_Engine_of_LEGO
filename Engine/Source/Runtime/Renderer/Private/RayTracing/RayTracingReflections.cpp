@@ -412,15 +412,19 @@ void FDeferredShadingSceneRenderer::RenderRayTracingReflections(
 	CommonParameters.ReflectionCapture = View.ReflectionCaptureUniformBuffer;
 	CommonParameters.Forward = View.ForwardLightingResources->ForwardLightDataUniformBuffer;
 
-	// Fill Sky Light parameters
-	FSkyLightData SkyLightData;
-	SetupSkyLightParameters(*Scene, &SkyLightData);
+	if (bRayTraceSkyLightContribution)
+	{
+		// Fill Sky Light parameters
+		FSkyLightData SkyLightData;
+		SetupSkyLightParameters(*Scene, &SkyLightData);
 
-	CommonParameters.SkyLightData = CreateUniformBufferImmediate(SkyLightData, EUniformBufferUsage::UniformBuffer_SingleDraw);
+		CommonParameters.SkyLightData = CreateUniformBufferImmediate(SkyLightData, EUniformBufferUsage::UniformBuffer_SingleDraw);
 
-	// Setup Sky Light quasi random parameters
-	FIntVector BlueNoiseDimensions;
-	SetupSkyLightQuasiRandomParameters(*Scene, View, BlueNoiseDimensions, &CommonParameters.SkyLightQuasiRandomData);
+		// Setup Sky Light quasi random parameters
+		FIntVector BlueNoiseDimensions;
+		SetupSkyLightQuasiRandomParameters(*Scene, View, BlueNoiseDimensions, &CommonParameters.SkyLightQuasiRandomData);
+	}
+
 	for (int32 SamplePassIndex = 0; SamplePassIndex < SamplePerPixel; SamplePassIndex++)
 	{
 		if (SamplePerPixel > 1)
