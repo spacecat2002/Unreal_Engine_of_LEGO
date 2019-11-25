@@ -2514,7 +2514,13 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	{
 		SCOPED_GPU_STAT(RHICmdList, VirtualTextureUpdate);
 		// No pass after this can make VT page requests
-		SceneContext.VirtualTextureFeedback.TransferGPUToCPU(RHICmdList, Views[0].ViewRect);
+		TArray<FIntRect, TInlineAllocator<FVirtualTextureFeedback::MaxRectPerTarget>> ViewRects;
+		ViewRects.AddUninitialized(Views.Num());
+		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
+		{
+			ViewRects[ViewIndex] = Views[ViewIndex].ViewRect;
+		}
+		SceneContext.VirtualTextureFeedback.TransferGPUToCPU(RHICmdList, ViewRects);
 	}
 
 #if RHI_RAYTRACING
@@ -2570,6 +2576,19 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	// Resolve the scene color for post processing.
 	ResolveSceneColor(RHICmdList);
+
+	// Keep scene color and depth for next frame screen space ray tracing.
+	{
+		for (const FViewInfo& View : Views)
+		{
+			if (ShouldKeepBleedFreeSceneColor(View))
+			{
+				FSceneViewState* ViewState = View.ViewState;
+				ViewState->PrevFrameViewInfo.DepthBuffer = SceneContext.SceneDepthZ;
+				ViewState->PrevFrameViewInfo.ScreenSpaceRayTracingInput = SceneContext.GetSceneColor();
+			}
+		}
+	}
 
 	GetRendererModule().RenderPostResolvedSceneColorExtension(RHICmdList, SceneContext);
 

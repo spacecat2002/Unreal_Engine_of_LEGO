@@ -26,8 +26,6 @@
     EnumMacro(PFN_vkGetImageMemoryRequirements2KHR , vkGetImageMemoryRequirements2KHR) \
     EnumMacro(PFN_vkGetBufferMemoryRequirements2KHR , vkGetBufferMemoryRequirements2KHR)
 
-#include "../VulkanLoader.h"
-
 // and now, include the GenericPlatform class
 #include "../VulkanGenericPlatform.h"
 

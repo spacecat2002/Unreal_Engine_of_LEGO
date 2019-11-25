@@ -646,7 +646,8 @@ bool ParseResolution(const TCHAR* InResolution, uint32& OutX, uint32& OutY, int3
 					StringTripLen = 1;
 				}
 
-				YString = YString.Left(YString.Len() - StringTripLen).TrimStartAndEnd();
+				YString.LeftInline(YString.Len() - StringTripLen, false);
+				YString.TrimStartAndEndInline();
 			}
 
 			if (YString.IsNumeric())
@@ -1945,6 +1946,7 @@ void UEngine::UpdateTimeAndHandleMaxTickRate()
 
 															// Figure out whether we want to use real or fixed time step.
 	const bool bUseFixedTimeStep = FApp::IsBenchmarking() || FApp::UseFixedTimeStep();
+	static bool bPreviousUseFixedTimeStep = bUseFixedTimeStep;
 
 	// Updates logical last time to match logical current time from last tick
 	FApp::UpdateLastTime();
@@ -1967,11 +1969,11 @@ void UEngine::UpdateTimeAndHandleMaxTickRate()
 
 		// Did we just switch from a fixed time step to real-time?  If so, then we'll update our
 		// cached 'last time' so our current interval isn't huge (or negative!)
-		if( bTimeWasManipulated )
+		if (bUseFixedTimeStep != bPreviousUseFixedTimeStep)
 		{
-			if ( bUseFixedFrameRate )
+			if (bUseFixedFrameRate)
 			{
-				LastRealTime = CurrentRealTime - (1.0/FixedFrameRate);
+				LastRealTime = CurrentRealTime - (1.0 / FixedFrameRate);
 			}
 			else
 			{
@@ -2123,6 +2125,8 @@ void UEngine::UpdateTimeAndHandleMaxTickRate()
 			}
 		}
 	}
+
+	bPreviousUseFixedTimeStep = bUseFixedTimeStep;
 
 #if !UE_BUILD_SHIPPING
 	{
@@ -6504,7 +6508,7 @@ bool UEngine::HandleMergeMeshCommand( const TCHAR* Cmd, FOutputDevice& Ar, UWorl
 		const TCHAR* LocalCmd = *CmdCopy;
 		FString Token = FParse::Token( LocalCmd, true );
 		Tokens.Add( Token );
-		CmdCopy = CmdCopy.Right( CmdCopy.Len() - Token.Len() - 1 );
+		CmdCopy.RightInline( CmdCopy.Len() - Token.Len() - 1, false);
 	}
 
 	// array of source meshes that will be merged
@@ -9178,7 +9182,7 @@ void UEngine::PerformanceCapture(UWorld* World, const FString& MapName, const FS
 	// can be define by command line -BuildName="ByCustomBuildName" or "CL<changelist>"
 	FString BuildName = GetBuildNameForPerfTesting();
 
-	// e.g. XboxOne, AllDesktop, Android_.., PS4, HTML5 
+	// e.g. XboxOne, AllDesktop, Android_.., PS4
 	FString PlatformName = FPlatformProperties::PlatformName();
 
 	// e.g. D3D11,OpenGL,Vulcan,D3D12
@@ -9591,11 +9595,11 @@ static void DrawProperty(UCanvas* CanvasObject, UObject* Obj, const FDebugDispla
 	do
 	{
 		FString Str = ValueText;
-		CommaIdx = ValueText.Find( TEXT(",") );
+		CommaIdx = ValueText.Find( TEXT(","), ESearchCase::CaseSensitive);
 		if( CommaIdx >= 0 )
 		{
 			Str = ValueText.Left(CommaIdx);
-			ValueText = ValueText.Mid( CommaIdx+1 );
+			ValueText.MidInline( CommaIdx+1, MAX_int32, false );
 		}
 
 		int32 XL, YL;

@@ -231,8 +231,3 @@ void FMetalRHICommandContext::RHIBeginComputePass(const TCHAR* InName)
 void FMetalRHICommandContext::RHIEndComputePass()
 {
 }
-
-void FMetalRHICommandContext::RHITransitionResources(FExclusiveDepthStencil DepthStencilMode, FRHITexture* DepthTexture)
-{
-	IRHICommandContext::RHITransitionResources(DepthStencilMode, DepthTexture);
-}

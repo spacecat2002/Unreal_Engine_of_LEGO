@@ -357,6 +357,12 @@ void* FEmptyDynamicRHI::RHIGetNativeDevice()
 	return nullptr;
 }
 
+void* FEmptyDynamicRHI::RHIGetNativeInstance()
+{
+	return nullptr;
+}
+
+
 void FEmptyDynamicRHI::RHIExecuteCommandList(FRHICommandList* CmdList)
 {
 }

@@ -3090,7 +3090,7 @@ void SetupSceneTextureUniformParameters(
 		}
 
 		SceneTextureParameters.SceneDepthTextureSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
-		SceneTextureParameters.SceneStencilTexture = bSetupDepth && SceneContext.SceneStencilSRV ? SceneContext.SceneStencilSRV : GNullColorVertexBuffer.VertexBufferSRV;
+		SceneTextureParameters.SceneStencilTexture = bSetupDepth && SceneContext.SceneStencilSRV ? SceneContext.SceneStencilSRV : GSystemTextures.StencilDummySRV;
 	}
 
 	// GBuffer
@@ -3142,7 +3142,7 @@ void SetupSceneTextureUniformParameters(
 		const bool bSetupCustomDepth = (SetupMode & ESceneTextureSetupMode::CustomDepth) != ESceneTextureSetupMode::None;
 
 		FRHITexture* CustomDepth = DepthDefault;
-		FRHIShaderResourceView* CustomStencilSRV = GSystemTextures.WhiteDummySRV;
+		FRHIShaderResourceView* CustomStencilSRV = GSystemTextures.StencilDummySRV;
 
 		// if there is no custom depth it's better to have the far distance there
 		IPooledRenderTarget* CustomDepthTarget = SceneContext.bCustomDepthIsValid ? SceneContext.CustomDepth.GetReference() : 0;

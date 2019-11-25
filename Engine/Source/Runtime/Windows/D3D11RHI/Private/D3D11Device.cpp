@@ -616,4 +616,9 @@ void* FD3D11DynamicRHI::RHIGetNativeDevice()
 	return (void*)Direct3DDevice.GetReference();
 }
 
+void* FD3D11DynamicRHI::RHIGetNativeInstance()
+{
+	return nullptr;
+}
+
 

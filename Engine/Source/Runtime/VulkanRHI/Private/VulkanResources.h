@@ -1097,6 +1097,11 @@ public:
 		check(IsVolatile());
 		return VolatileLockInfo.LockCounter;
 	}
+	inline uint32 GetVolatileLockSize() const
+	{
+		check(IsVolatile());
+		return VolatileLockInfo.Size;
+	}
 
 	inline int32 GetNumBuffers() const
 	{

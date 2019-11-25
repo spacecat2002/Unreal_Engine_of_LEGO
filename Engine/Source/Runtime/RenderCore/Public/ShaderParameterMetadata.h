@@ -230,6 +230,14 @@ public:
 	/** Initialize all the global shader parameter structs. */
 	static void InitializeAllUniformBufferStructs();
 
+	/** Returns a hash about the entire layout of the structure. */
+	uint32 GetLayoutHash() const
+	{
+		check(UseCase == EUseCase::ShaderParameterStruct || UseCase == EUseCase::GlobalShaderParameterStruct);
+		check(bLayoutInitialized);
+		return LayoutHash;	
+	}
+
 private:
 	/** Name of the structure type in C++ and shader code. */
 	const TCHAR* const StructTypeName;
@@ -257,6 +265,9 @@ private:
 
 	/** Whether the layout is actually initialized yet or not. */
 	uint32 bLayoutInitialized : 1;
+
+	/** Hash about the entire memory layout of the structure. */
+	uint32 LayoutHash = 0;
 
 
 	void InitializeLayout();

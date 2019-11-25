@@ -1186,10 +1186,12 @@ id <MTLBuffer> FMetalSurface::AllocSurface(uint32 MipIndex, uint32 ArrayIndex, E
 	uint32 MipBytes = GetMipSize(MipIndex, &DestStride, SingleLayer);
 	
 	// allocate some temporary memory
+	// This should really be pooled and texture transfers should be their own pool
 	id <MTLDevice> Device = GetMetalDeviceContext().GetDevice();
 	id <MTLBuffer> Buffer = [Device newBufferWithLength:MipBytes options:MTLResourceStorageModeShared];
 	Buffer.label = @"Temporary Surface Backing";
 	
+	// Note: while the lock is active, this map owns the backing store.
 	GRHILockTracker.Lock(this, Buffer, MipIndex, 0, LockMode, false);
 	
 #if PLATFORM_MAC

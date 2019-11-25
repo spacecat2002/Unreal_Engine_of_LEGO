@@ -1956,6 +1956,7 @@ bool FMaterial::BeginCompileShaderMap(
 
 	SCOPE_SECONDS_COUNTER(MaterialCompileTime);
 
+	NewShaderMap->SetMaterialPath(GetBaseMaterialPathName());
 	// Generate the material shader code.
 	FMaterialCompilationOutput NewCompilationOutput;
 	FHLSLMaterialTranslator MaterialTranslator(this, NewCompilationOutput, StaticParameterSet, Platform,GetQualityLevel(), ShaderMapId.FeatureLevel, TargetPlatform);
@@ -2441,6 +2442,7 @@ void FMaterialRenderProxy::EvaluateUniformExpressions(FUniformExpressionCache& O
 	OutUniformExpressionCache.ParameterCollections = UniformExpressionSet.ParameterCollections;
 
 	OutUniformExpressionCache.bUpToDate = true;
+	++UniformExpressionCacheSerialNumber;
 }
 
 void FMaterialRenderProxy::CacheUniformExpressions(bool bRecreateUniformBuffer)
@@ -2493,6 +2495,7 @@ void FMaterialRenderProxy::InvalidateUniformExpressionCache(bool bRecreateUnifor
 		HasVirtualTextureCallbacks = false;
 	}
 
+	++UniformExpressionCacheSerialNumber;
 	for (int32 i = 0; i < ERHIFeatureLevel::Num; ++i)
 	{
 		UniformExpressionCache[i].bUpToDate = false;
@@ -2518,7 +2521,7 @@ void FMaterialRenderProxy::UpdateUniformExpressionCacheIfNeeded(ERHIFeatureLevel
 
 		// Don't cache uniform expressions if an entirely different FMaterialRenderProxy is going to be used for rendering
 		if (!FallbackMaterialRenderProxy)
-{
+		{
 			FMaterialRenderContext MaterialRenderContext(this, Material, nullptr);
 			MaterialRenderContext.bShowSelection = GIsEditor;
 			EvaluateUniformExpressions(UniformExpressionCache[InFeatureLevel], MaterialRenderContext);
