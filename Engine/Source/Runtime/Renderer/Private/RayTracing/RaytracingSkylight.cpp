@@ -399,22 +399,12 @@ void FDeferredShadingSceneRenderer::GenerateSkyLightVisibilityRays(
 	// SkyLight data setup
 	FSkyLightData SkyLightData;
 	SetupSkyLightParameters(*Scene, &SkyLightData);
->>>> ORIGINAL //UE4/Dev-RenderPlat-Staging/Engine/Source/Runtime/Renderer/Private/RayTracing/RaytracingSkylight.cpp#5
-	int32 SamplesPerPixel = GRayTracingSkyLightSamplesPerPixel >= 0 ? GRayTracingSkyLightSamplesPerPixel : Scene->SkyLight->SamplesPerPixel;
-	ensure(SamplesPerPixel > 0);
-	SkyLightData.SamplesPerPixel = SamplesPerPixel;
-	SkyLightData.MaxRayDistance = GRayTracingSkyLightMaxRayDistance;
-	SkyLightData.MaxShadowThickness = GRayTracingSkyLightMaxShadowThickness;
-	SkyLightData.SamplingStopLevel = GRayTracingSkyLightSamplingStopLevel;
-==== THEIRS //UE4/Dev-RenderPlat-Staging/Engine/Source/Runtime/Renderer/Private/RayTracing/RaytracingSkylight.cpp#6
  	int32 SamplesPerPixel = GRayTracingSkyLightSamplesPerPixel >= 0 ? GRayTracingSkyLightSamplesPerPixel : FMath::Max(Scene->SkyLight->SamplesPerPixel, 2);
 	ensure(SamplesPerPixel > 0);
 	SkyLightData.SamplesPerPixel = SamplesPerPixel;
 	SkyLightData.MaxRayDistance = GRayTracingSkyLightMaxRayDistance;
 	SkyLightData.MaxShadowThickness = GRayTracingSkyLightMaxShadowThickness;
 	SkyLightData.SamplingStopLevel = GRayTracingSkyLightSamplingStopLevel;
-==== YOURS //Rolando.Caloca_I9_DevRenderingMerge/Engine/Source/Runtime/Renderer/Private/RayTracing/RaytracingSkylight.cpp
-<<<<
 
 	// Sky Light Quasi Random data setup
 	// Note: Sets Dimensions based on blue noise dimensions
