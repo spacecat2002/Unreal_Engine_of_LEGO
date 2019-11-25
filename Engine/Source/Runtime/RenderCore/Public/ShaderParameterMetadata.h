@@ -233,7 +233,7 @@ public:
 	/** Returns a hash about the entire layout of the structure. */
 	uint32 GetLayoutHash() const
 	{
-		check(UseCase == EUseCase::ShaderParameterStruct || UseCase == EUseCase::GlobalShaderParameterStruct);
+		check(UseCase == EUseCase::ShaderParameterStruct || UseCase == EUseCase::UniformBuffer);
 		check(bLayoutInitialized);
 		return LayoutHash;	
 	}
