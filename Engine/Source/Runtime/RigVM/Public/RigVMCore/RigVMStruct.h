@@ -15,6 +15,7 @@ struct RIGVM_API FRigVMStruct
 	GENERATED_BODY()
 
 	virtual ~FRigVMStruct() {}
+	virtual FString ProcessPinLabelForInjection(const FString& InLabel) const { return InLabel; }
 
 public:
 

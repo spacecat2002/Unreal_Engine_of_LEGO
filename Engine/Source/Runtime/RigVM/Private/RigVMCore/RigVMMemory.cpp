@@ -545,6 +545,11 @@ bool FRigVMMemoryContainer::Copy(
 	const FRigVMRegister& Source = InSourceMemory->Registers[InSourceRegisterIndex];
 	const FRigVMRegister& Target = Registers[InTargetRegisterIndex];
 
+	if (Target.GetNumBytesPerSlice() == 0)
+	{
+		return true;
+	}
+
 	const uint8* SourcePtr = InSourceMemory->GetData(InSourceRegisterIndex, InSourceRegisterOffset);
 	uint8* TargetPtr = GetData(InTargetRegisterIndex, InTargetRegisterOffset);
 	uint16 NumBytes = Target.GetNumBytesPerSlice();
@@ -696,6 +701,12 @@ bool FRigVMMemoryContainer::Construct(int32 InRegisterIndex, int32 InElementInde
 	ensure(Registers.IsValidIndex(InRegisterIndex));
 
 	const FRigVMRegister& Register = Registers[InRegisterIndex];
+
+	if (Register.ElementCount == 0)
+	{
+		return true;
+	}
+
 	switch (Register.Type)
 	{
 		case ERigVMRegisterType::Struct:
@@ -745,6 +756,11 @@ bool FRigVMMemoryContainer::Destroy(int32 InRegisterIndex, int32 InElementIndex)
 	ensure(Registers.IsValidIndex(InRegisterIndex));
 
 	FRigVMRegister& Register = Registers[InRegisterIndex];
+
+	if (Register.ElementCount == 0)
+	{
+		return true;
+	}
 
 	if (InElementIndex == INDEX_NONE)
 	{
