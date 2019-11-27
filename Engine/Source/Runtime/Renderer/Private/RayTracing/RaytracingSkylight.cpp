@@ -100,7 +100,8 @@ int32 GetSkyLightSamplesPerPixel(const FSkyLightSceneProxy* SkyLightSceneProxy)
 {
 	check(SkyLightSceneProxy != nullptr);
 
-	return GRayTracingSkyLightSamplesPerPixel >= 0 ? GRayTracingSkyLightSamplesPerPixel : SkyLightSceneProxy->SamplesPerPixel;
+	// Clamp to 2spp minimum due to poor 1spp denoised quality
+	return GRayTracingSkyLightSamplesPerPixel >= 0 ? GRayTracingSkyLightSamplesPerPixel : FMath::Max(SkyLightSceneProxy->SamplesPerPixel, 2);
 }
 
 bool ShouldRenderRayTracingSkyLight(const FSkyLightSceneProxy* SkyLightSceneProxy)
@@ -399,12 +400,6 @@ void FDeferredShadingSceneRenderer::GenerateSkyLightVisibilityRays(
 	// SkyLight data setup
 	FSkyLightData SkyLightData;
 	SetupSkyLightParameters(*Scene, &SkyLightData);
- 	int32 SamplesPerPixel = GRayTracingSkyLightSamplesPerPixel >= 0 ? GRayTracingSkyLightSamplesPerPixel : FMath::Max(Scene->SkyLight->SamplesPerPixel, 2);
-	ensure(SamplesPerPixel > 0);
-	SkyLightData.SamplesPerPixel = SamplesPerPixel;
-	SkyLightData.MaxRayDistance = GRayTracingSkyLightMaxRayDistance;
-	SkyLightData.MaxShadowThickness = GRayTracingSkyLightMaxShadowThickness;
-	SkyLightData.SamplingStopLevel = GRayTracingSkyLightSamplingStopLevel;
 
 	// Sky Light Quasi Random data setup
 	// Note: Sets Dimensions based on blue noise dimensions
@@ -445,12 +440,6 @@ void FDeferredShadingSceneRenderer::RenderRayTracingSkyLight(
 	SCOPED_GPU_STAT(RHICmdList, RayTracingSkyLight);
 
 	if (!ShouldRenderRayTracingSkyLight(Scene->SkyLight))
-	{
-		return;
-	}
-
-	int32 SamplesPerPixel = GRayTracingSkyLightSamplesPerPixel >= 0 ? GRayTracingSkyLightSamplesPerPixel : FMath::Max(Scene->SkyLight->SamplesPerPixel, 2);
-	if (SamplesPerPixel <= 0)
 	{
 		return;
 	}
