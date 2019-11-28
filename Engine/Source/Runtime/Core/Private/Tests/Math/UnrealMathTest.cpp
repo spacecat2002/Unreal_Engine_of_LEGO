@@ -1763,16 +1763,6 @@ bool FMathRoundHalfFromZeroTests::RunTest(const FString& Parameters)
 	return true;
 }
 
-// CentOS 7 doesn't define these yet (introduced in C11)
-#if !defined(FLT_TRUE_MIN)
-#define FLT_TRUE_MIN 1.401298464e-45f
-#endif
-
-#if !defined(DBL_TRUE_MIN)
-#define DBL_TRUE_MIN 4.9406564584124654e-324
-#endif
-
-
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FIsNearlyEqualByULPTest, "System.Core.Math.IsNearlyEqualByULP", EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::SmokeFilter)
 bool FIsNearlyEqualByULPTest::RunTest(const FString& Parameters)
 {
@@ -1781,6 +1771,19 @@ bool FIsNearlyEqualByULPTest::RunTest(const FString& Parameters)
 
 	static float FloatInf = 1.0f / 0.0f;
 	static float DoubleInf = 1.0 / 0.0;
+
+	float FloatTrueMin;
+	double DoubleTrueMin;
+
+	// Construct our own true minimum float constants (aka FLT_TRUE_MIN), bypassing any value parsing.
+	{
+		uint32 FloatTrueMinInt = 0x00000001U;
+		uint64 DoubleTrueMinInt = 0x0000000000000001ULL;
+
+		::memcpy(&FloatTrueMin, &FloatTrueMinInt, sizeof(FloatTrueMinInt));
+		::memcpy(&DoubleTrueMin, &DoubleTrueMinInt, sizeof(DoubleTrueMinInt));
+	}
+
 
 	static struct TestItem
 	{
@@ -1821,9 +1824,13 @@ bool FIsNearlyEqualByULPTest::RunTest(const FString& Parameters)
 		{"ONeULPDistEight",	true, {8.0f, 8.0f + 8.0f * FLT_EPSILON}, {8.0, 8.0 + 8.0 * DBL_EPSILON}, 1},
 		{"ONeULPDistFailEight",	false, {8.0f, 8.0f + 16.0f * FLT_EPSILON}, {8.0, 8.0 + 16.0 * DBL_EPSILON}, 1},
 
-		// {FLT,DBL}_TRUE_MIN is the smallest representable float that's not zero but closest to it.
-		{"AroundZero",		true, {-FLT_TRUE_MIN, FLT_TRUE_MIN}, {-DBL_TRUE_MIN, DBL_TRUE_MIN}, 2},
-		{"AroundZeroFail",	false, {-FLT_TRUE_MIN, FLT_TRUE_MIN}, {-DBL_TRUE_MIN, DBL_TRUE_MIN}, 1},
+		// Test for values around the zero point.
+		{"AroundZero",		true, {-FloatTrueMin, FloatTrueMin}, {-DoubleTrueMin, DoubleTrueMin}, 2},
+		{"AroundZeroFail",	false, {-FloatTrueMin, FloatTrueMin}, {-DoubleTrueMin, DoubleTrueMin}, 1},
+
+		// Test for values close to zero and zero.
+		{"PosNextToZero",	true, {0, FloatTrueMin}, {0, DoubleTrueMin}, 1},
+		{"NegNextToZero",	true, {-FloatTrueMin, 0}, {-DoubleTrueMin, 0}, 1},
 
 		// Should fail, even for maximum ULP distance.
 		{"InfAndMaxFail",	false, {FLT_MAX, FloatInf}, {DBL_MAX, DoubleInf}, INT32_MAX},
