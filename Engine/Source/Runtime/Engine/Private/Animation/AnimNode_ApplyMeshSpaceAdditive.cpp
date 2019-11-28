@@ -89,7 +89,9 @@ void FAnimNode_ApplyMeshSpaceAdditive::Evaluate_AnyThread(FPoseContext& Output)
 }
 
 FAnimNode_ApplyMeshSpaceAdditive::FAnimNode_ApplyMeshSpaceAdditive()
-	: Alpha(1.0f)
+	: AlphaInputType(EAnimAlphaInputType::Float)
+	, Alpha(1.0f)
+	, bAlphaBoolEnabled(true)
 	, AlphaCurveName(NAME_None)
 	, LODThreshold(INDEX_NONE)
 	, ActualAlpha(0.f)
