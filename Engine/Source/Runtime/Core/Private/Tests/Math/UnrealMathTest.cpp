@@ -1772,35 +1772,6 @@ bool FMathRoundHalfFromZeroTests::RunTest(const FString& Parameters)
 #define DBL_TRUE_MIN 4.9406564584124654e-324
 #endif
 
-#if PLATFORM_PS4
-template<typename FloatType, typename IntegralType, IntegralType SignedBit>
-static inline int32 TDistanceInULP(FloatType A, FloatType B)
-{
-	auto FloatToSignedNumber = [](IntegralType V) {
-		if (V & SignedBit)
-		{
-			return ~V + 1;
-		}
-		else
-		{
-			return SignedBit | V;
-		}
-	};
-
-	union FFloatToInt { FloatType F; IntegralType I; };
-	FFloatToInt FloatA;
-	FFloatToInt FloatB;
-
-	FloatA.F = A;
-	FloatB.F = B;
-
-	IntegralType SNA = FloatToSignedNumber(FloatA.I);
-	IntegralType SNB = FloatToSignedNumber(FloatB.I);
-	IntegralType Distance = (SNA >= SNB) ? (SNA - SNB) : (SNB - SNA);
-	
-	return int32(Distance);
-}
-#endif
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FIsNearlyEqualByULPTest, "System.Core.Math.IsNearlyEqualByULP", EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::SmokeFilter)
 bool FIsNearlyEqualByULPTest::RunTest(const FString& Parameters)
@@ -1873,16 +1844,6 @@ bool FIsNearlyEqualByULPTest::RunTest(const FString& Parameters)
 		(this->*Func)(Item.Name + "-Float", FMath::IsNearlyEqualByULP(Item.F.A, Item.F.B, Item.ULP));
 		(this->*Func)(Item.Name + "-Double", FMath::IsNearlyEqualByULP(Item.D.A, Item.D.B, Item.ULP));
 	}
-
-#if PLATFORM_PS4
-	// An experiment to see why denormalized number test is failing on the PS4.
-	int32 d = TDistanceInULP<float, uint32, uint32(1U << 31)>(-FLT_TRUE_MIN, FLT_TRUE_MIN);
-	if (d != 2)
-	{
-		static const float m = FLT_TRUE_MIN;
-		FAutomationTestBase::AddError(FString::Printf(TEXT("Expected ULP distance 2, got %d. True min: %g (%08x)"), d, m, *(uint32 *)&m));
-	}
-#endif
 
 	return true;
 }
