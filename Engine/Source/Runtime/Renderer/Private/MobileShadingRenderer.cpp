@@ -337,7 +337,6 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	SCOPED_GPU_STAT(RHICmdList, MobileSceneRender);
 
 	Scene->UpdateAllPrimitiveSceneInfos(RHICmdList);
-	check(!FMaterialRenderProxy::HasDeferredUniformExpressionCacheRequests());
 
 	PrepareViewRectsForRendering();
 
