@@ -375,12 +375,13 @@ struct FByteAddressBuffer
 
 	FByteAddressBuffer(): NumBytes(0) {}
 
-	void Initialize(uint32 InNumBytes, uint32 AdditionalUsage = 0)
+	void Initialize(uint32 InNumBytes, uint32 AdditionalUsage = 0, const TCHAR* InDebugName = nullptr)
 	{
 		NumBytes = InNumBytes;
 		check(GMaxRHIFeatureLevel == ERHIFeatureLevel::SM5);
 		check( NumBytes % 4 == 0 );
 		FRHIResourceCreateInfo CreateInfo;
+		CreateInfo.DebugName = InDebugName;
 		Buffer = RHICreateStructuredBuffer(4, NumBytes, BUF_ShaderResource | BUF_ByteAddressBuffer | AdditionalUsage, CreateInfo);
 		SRV = RHICreateShaderResourceView(Buffer);
 	}
@@ -398,9 +399,9 @@ struct FRWByteAddressBuffer : public FByteAddressBuffer
 {
 	FUnorderedAccessViewRHIRef UAV;
 
-	void Initialize(uint32 InNumBytes, uint32 AdditionalUsage = 0)
+	void Initialize(uint32 InNumBytes, uint32 AdditionalUsage = 0, const TCHAR* DebugName = nullptr)
 	{
-		FByteAddressBuffer::Initialize(InNumBytes, BUF_UnorderedAccess | AdditionalUsage);
+		FByteAddressBuffer::Initialize(InNumBytes, BUF_UnorderedAccess | AdditionalUsage, DebugName);
 		UAV = RHICreateUnorderedAccessView(Buffer, false, false);
 	}
 

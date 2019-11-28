@@ -42,7 +42,7 @@
 #include "SceneSoftwareOcclusion.h"
 #include "CommonRenderResources.h"
 #include "VisualizeTexture.h"
-#include "ByteBuffer.h"
+#include "UnifiedBuffer.h"
 #include "LightMapDensityRendering.h"
 #include "VolumetricFogShared.h"
 #include "DebugViewModeRendering.h"
@@ -1662,9 +1662,6 @@ public:
 	{
 	}
 
-	FReadBuffer	PrimitivesUploadScatterBuffer;
-	FReadBuffer	PrimitivesUploadDataBuffer;
-
 	bool bUpdateAllPrimitives;
 
 	/** Indices of primitives that need to be updated in GPU Scene */
@@ -1677,12 +1674,11 @@ public:
 	/** Only one of the resources(TextureBuffer or Texture2D) will be used depending on the Mobile.UseGPUSceneTexture cvar */
 	FRWBufferStructured PrimitiveBuffer;
 	FTextureRWBuffer2D PrimitiveTexture;
+	FScatterUploadBuffer PrimitiveUploadBuffer;
 
-	FGrowOnlySpanAllocator LightmapDataAllocator;
-
-	FReadBuffer	LightmapUploadScatterBuffer;
-	FReadBuffer	LightmapUploadDataBuffer;
-	FRWBufferStructured LightmapDataBuffer;
+	FGrowOnlySpanAllocator	LightmapDataAllocator;
+	FRWBufferStructured		LightmapDataBuffer;
+	FScatterUploadBuffer	LightmapUploadBuffer;
 };
 
 class FPrimitiveSurfelFreeEntry
