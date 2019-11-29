@@ -938,7 +938,7 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 
 		{
 			TRACE_CPUPROFILER_EVENT_SCOPE(WaitForLODTasks);
-			FTaskGraphInterface::Get().WaitUntilTasksComplete(LODTaskList);
+			FTaskGraphInterface::Get().WaitUntilTasksComplete(LODTaskList, ENamedThreads::GetRenderThread());
 		}
 
 		for (const FRelevantPrimitive& RelevantPrimitive : RelevantPrimitives)
@@ -1121,7 +1121,7 @@ void FDeferredShadingSceneRenderer::WaitForRayTracingScene(FRHICommandListImmedi
 			FViewInfo& View = Views[ViewIndex];
 			if (View.RayTracingMaterialBindings.Num())
 			{
-				FTaskGraphInterface::Get().WaitUntilTaskCompletes(View.RayTracingMaterialBindingsTask);
+				FTaskGraphInterface::Get().WaitUntilTaskCompletes(View.RayTracingMaterialBindingsTask, ENamedThreads::GetRenderThread());
 
 				for (FRayTracingLocalShaderBindingWriter* BindingWriter : View.RayTracingMaterialBindings)
 				{
