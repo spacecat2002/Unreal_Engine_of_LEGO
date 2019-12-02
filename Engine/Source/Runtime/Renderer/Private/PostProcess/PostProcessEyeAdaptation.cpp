@@ -59,6 +59,13 @@ TAutoConsoleVariable<bool> CVarEyeAdaptationAllowPhysicalCameraFlag(
 	TEXT("CVar to allow post processing volumes to disable the physical camera exposure.\n"),
 	ECVF_RenderThreadSafe);
 
+TAutoConsoleVariable<int> CVarEyeAdaptationVisualizeDebugType(
+	TEXT("r.EyeAdaptation.VisualizeDebugType"),
+	0,
+	TEXT("When enabling Show->Visualize->HDR (Eye Adaptation) is enabled, this flag controls the scene color.\n")
+	TEXT("    0: Scene Color after tonemapping (default).\n")
+	TEXT("    1: Histogram Debug\n"),
+	ECVF_RenderThreadSafe);
 
 static TAutoConsoleVariable<int32> CVarEnablePreExposureOnlyInTheEditor(
 	TEXT("r.EyeAdaptation.EditorOnly"),
@@ -297,6 +304,7 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	Parameters.ExponentialUpM = ExponentialUpM;
 	Parameters.StartTime = StartTime;
 	Parameters.LuminanceMax = LuminanceMax;
+	Parameters.VisualizeDebugType = CVarEyeAdaptationVisualizeDebugType.GetValueOnRenderThread();
 	Parameters.MeterMaskTexture = MeterMask;
 	Parameters.MeterMaskSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	return Parameters;
