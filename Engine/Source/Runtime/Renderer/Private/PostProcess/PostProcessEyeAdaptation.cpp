@@ -50,6 +50,16 @@ TAutoConsoleVariable<float> CVarEyeAdaptationExponentialTransitionTime(
 	TEXT("target exposure it switches to as slower exponential function.\n"),
 	ECVF_RenderThreadSafe);
 
+TAutoConsoleVariable<bool> CVarEyeAdaptationAllowPhysicalCameraFlag(
+	TEXT("r.EyeAdaptation.AllowPhysicalCameraFlag"),
+	false,
+	TEXT("The new \"ApplyPhysicalCameraExposure\" flag will make existing content darker. The proper solution\n")
+	TEXT("is to autoconvert new projects to default it to ON for Manual post processing volumes. But keeping\n")
+	TEXT("the default functionality off as a temporary solution. It is a little confusing, but turn on this\n")
+	TEXT("CVar to allow post processing volumes to disable the physical camera exposure.\n"),
+	ECVF_RenderThreadSafe);
+
+
 static TAutoConsoleVariable<int32> CVarEnablePreExposureOnlyInTheEditor(
 	TEXT("r.EyeAdaptation.EditorOnly"),
 	0,
@@ -190,7 +200,9 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 
 	const float BasePhysicalCameraEV100 = FMath::Log2(FMath::Square(Settings.DepthOfFieldFstop) * Settings.CameraShutterSpeed * 100 / FMath::Max(1.f, Settings.CameraISO));
 
-	const float PhysicalCameraEV100 = Settings.AutoExposureApplyPhysicalCameraExposure ? BasePhysicalCameraEV100 : 0.0f;
+	const bool bApplyPhysicalCameraExposure = CVarEyeAdaptationAllowPhysicalCameraFlag.GetValueOnRenderThread() ? Settings.AutoExposureApplyPhysicalCameraExposure : true;
+
+	const float PhysicalCameraEV100 = bApplyPhysicalCameraExposure ? BasePhysicalCameraEV100 : 0.0f;
 
 	// AEM_Histogram and AEM_Basic adjust their ExposureCompensation to middle grey (0.18). AEM_Manual ExposureCompensation is already calibrated to 1.0.
 	const float GreyMult = (AutoExposureMethod == AEM_Manual) ? 1.0f : 0.18f;
