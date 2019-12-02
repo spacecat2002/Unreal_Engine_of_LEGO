@@ -784,10 +784,13 @@ struct FPreviousViewInfo
 	TRefCountPtr<IPooledRenderTarget> GBufferA;
 	TRefCountPtr<IPooledRenderTarget> GBufferB;
 	TRefCountPtr<IPooledRenderTarget> GBufferC;
+	TRefCountPtr<IPooledRenderTarget> ImaginaryReflectionDepthBuffer;
+	TRefCountPtr<IPooledRenderTarget> ImaginaryReflectionGBufferA;
 
 	// Compressed scene textures for bandwidth efficient bilateral kernel rejection.
 	// DeviceZ as float16, and normal in view space.
 	TRefCountPtr<IPooledRenderTarget> CompressedDepthViewNormal;
+	TRefCountPtr<IPooledRenderTarget> ImaginaryReflectionCompressedDepthViewNormal;
 
 	// Bleed free scene color to use for screen space ray tracing.
 	TRefCountPtr<IPooledRenderTarget> ScreenSpaceRayTracingInput;
@@ -822,6 +825,9 @@ struct FPreviousViewInfo
 
 	// History for sky light
 	FScreenSpaceDenoiserHistory SkyLightHistory;
+
+	// History for reflected sky light
+	FScreenSpaceDenoiserHistory ReflectedSkyLightHistory;
 
 	// History for shadow denoising.
 	TMap<const ULightComponent*, FScreenSpaceDenoiserHistory> ShadowHistories;
