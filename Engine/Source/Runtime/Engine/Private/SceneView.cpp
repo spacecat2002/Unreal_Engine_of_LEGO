@@ -1339,6 +1339,7 @@ void FSceneView::OverridePostProcessSettings(const FPostProcessSettings& Src, fl
 		LERP_PP(AmbientCubemapTint);
 		LERP_PP(CameraShutterSpeed);
 		LERP_PP(CameraISO);
+		LERP_PP(CameraLensAttenuation);
 		LERP_PP(AutoExposureLowPercent);
 		LERP_PP(AutoExposureHighPercent);
 		LERP_PP(AutoExposureMinBrightness);
@@ -1584,6 +1585,11 @@ void FSceneView::OverridePostProcessSettings(const FPostProcessSettings& Src, fl
 		if (Src.bOverride_MotionBlurTargetFPS)
 		{
 			Dest.MotionBlurTargetFPS = Src.MotionBlurTargetFPS;
+		}
+
+		if (Src.bOverride_AutoExposureApplyPhysicalCameraExposure)
+		{
+			Dest.AutoExposureApplyPhysicalCameraExposure = Src.AutoExposureApplyPhysicalCameraExposure;
 		}
 	}
 

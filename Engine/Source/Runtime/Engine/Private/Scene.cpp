@@ -189,7 +189,9 @@ FCameraExposureSettings::FCameraExposureSettings()
 	SpeedUp = 3.0f;
 	SpeedDown = 1.0f;
 	Bias = 0.0f;
-	CalibrationConstant	= 16.0;
+	CalibrationConstant	= 18.0;
+
+	ApplyPhysicalCameraExposure = 0;
 }
 
 void FCameraExposureSettings::ExportToPostProcessSettings(FPostProcessSettings* OutPostProcessSettings) const
@@ -206,6 +208,8 @@ void FCameraExposureSettings::ExportToPostProcessSettings(FPostProcessSettings* 
 	OutPostProcessSettings->bOverride_AutoExposureMeterMask = true;
 	OutPostProcessSettings->bOverride_HistogramLogMin = true;
 	OutPostProcessSettings->bOverride_HistogramLogMax = true;
+	OutPostProcessSettings->bOverride_AutoExposureApplyPhysicalCameraExposure = true;
+	OutPostProcessSettings->bOverride_CameraLensAttenuation = true;
 
 	OutPostProcessSettings->AutoExposureLowPercent = LowPercent;
 	OutPostProcessSettings->AutoExposureHighPercent = HighPercent;
@@ -218,6 +222,8 @@ void FCameraExposureSettings::ExportToPostProcessSettings(FPostProcessSettings* 
 	OutPostProcessSettings->AutoExposureMeterMask = MeterMask;
 	OutPostProcessSettings->HistogramLogMin = HistogramLogMin;
 	OutPostProcessSettings->HistogramLogMax = HistogramLogMax;
+	OutPostProcessSettings->AutoExposureApplyPhysicalCameraExposure = ApplyPhysicalCameraExposure;
+	OutPostProcessSettings->CameraLensAttenuation = CameraLensAttenuation;
 }
 
 
@@ -453,6 +459,7 @@ FPostProcessSettings::FPostProcessSettings()
 	// next value might get overwritten by r.DefaultFeature.AutoExposure.Method
 	CameraShutterSpeed = 60.f;
 	CameraISO = 100.f;
+	CameraLensAttenuation = 0.78f;
 	AutoExposureCalibrationConstant = 16.f;
 	AutoExposureMethod = AEM_Histogram;
 	AutoExposureLowPercent = 10.0f;
@@ -479,6 +486,10 @@ FPostProcessSettings::FPostProcessSettings()
 	AutoExposureBias = 0.0f;
 	AutoExposureSpeedUp = 3.0f;
 	AutoExposureSpeedDown = 1.0f;
+
+	CameraLensAttenuation = 0.78;
+	AutoExposureApplyPhysicalCameraExposure = 0;
+
 	LPVDirectionalOcclusionIntensity = 0.0f;
 	LPVDirectionalOcclusionRadius = 8.0f;
 	LPVDiffuseOcclusionExponent = 1.0f;
@@ -661,6 +672,7 @@ FPostProcessSettings::FPostProcessSettings(const FPostProcessSettings& Settings)
 	, bOverride_BloomDirtMask(Settings.bOverride_BloomDirtMask)
 	, bOverride_CameraShutterSpeed(Settings.bOverride_CameraShutterSpeed)
 	, bOverride_CameraISO(Settings.bOverride_CameraISO)
+	, bOverride_CameraLensAttenuation(Settings.bOverride_CameraLensAttenuation)
 	, bOverride_AutoExposureMethod(Settings.bOverride_AutoExposureMethod)
 	, bOverride_AutoExposureLowPercent(Settings.bOverride_AutoExposureLowPercent)
 	, bOverride_AutoExposureHighPercent(Settings.bOverride_AutoExposureHighPercent)
@@ -672,6 +684,7 @@ FPostProcessSettings::FPostProcessSettings(const FPostProcessSettings& Settings)
 	, bOverride_AutoExposureBias(Settings.bOverride_AutoExposureBias)
 	, bOverride_AutoExposureBiasCurve(Settings.bOverride_AutoExposureBiasCurve)
 	, bOverride_AutoExposureMeterMask(Settings.bOverride_AutoExposureMeterMask)
+	, bOverride_AutoExposureApplyPhysicalCameraExposure(Settings.bOverride_AutoExposureApplyPhysicalCameraExposure)
 	, bOverride_HistogramLogMin(Settings.bOverride_HistogramLogMin)
 	, bOverride_HistogramLogMax(Settings.bOverride_HistogramLogMax)
 	, bOverride_LensFlareIntensity(Settings.bOverride_LensFlareIntensity)
@@ -840,6 +853,7 @@ FPostProcessSettings::FPostProcessSettings(const FPostProcessSettings& Settings)
 	, AmbientCubemap(Settings.AmbientCubemap)
 	, CameraShutterSpeed(Settings.CameraShutterSpeed)
 	, CameraISO(Settings.CameraISO)
+	, CameraLensAttenuation(Settings.CameraLensAttenuation)
 	, DepthOfFieldFstop(Settings.DepthOfFieldFstop)
 	, DepthOfFieldMinFstop(Settings.DepthOfFieldMinFstop)
 	, DepthOfFieldBladeCount(Settings.DepthOfFieldBladeCount)
@@ -852,6 +866,7 @@ FPostProcessSettings::FPostProcessSettings(const FPostProcessSettings& Settings)
 	, AutoExposureMaxBrightness(Settings.AutoExposureMaxBrightness)
 	, AutoExposureSpeedUp(Settings.AutoExposureSpeedUp)
 	, AutoExposureSpeedDown(Settings.AutoExposureSpeedDown)
+	, AutoExposureApplyPhysicalCameraExposure(Settings.AutoExposureApplyPhysicalCameraExposure)
 	, HistogramLogMin(Settings.HistogramLogMin)
 	, HistogramLogMax(Settings.HistogramLogMax)
 	, AutoExposureCalibrationConstant(Settings.AutoExposureCalibrationConstant)

@@ -4,24 +4,32 @@
 
 #include "ScreenPass.h"
 
-FORCEINLINE float EV100ToLuminance(float EV100)
+// LuminanceMax is the amount of light that will cause the sensor to saturate at EV100.
+FORCEINLINE float EV100ToLuminance(float LuminanceMax, float EV100)
 {
-	return 1.2 * FMath::Pow(2.0f, EV100);
+	return LuminanceMax * FMath::Pow(2.0f, EV100);
 }
 
-FORCEINLINE float EV100ToLog2(float EV100)
+FORCEINLINE float EV100ToLog2(float LuminanceMax, float EV100)
 {
-	return EV100 + 0.263f; // Where .263 is log2(1.2)
+	return EV100 + FMath::Log2(LuminanceMax);
 }
 
-FORCEINLINE float LuminanceToEV100(float Luminance)
+FORCEINLINE float LuminanceToEV100(float LuminanceMax, float Luminance)
 {
-	return FMath::Log2(Luminance / 1.2f);
+	return FMath::Log2(Luminance / LuminanceMax);
 }
 
-FORCEINLINE float Log2ToEV100(float Log2)
+FORCEINLINE float Log2ToEV100(float LuminanceMax, float Log2)
 {
-	return Log2 - 0.263f; // Where .263 is log2(1.2)
+	return Log2 - FMath::Log2(LuminanceMax);
+}
+
+FORCEINLINE float LuminanceMaxFromLensAttenuation(float LensAttenuation)
+{
+	// 78 is defined in the ISO 12232:2006 standard.
+	const float LuminanceMax = 0.78f / FMath::Max<float>(LensAttenuation, .01f);
+	return LuminanceMax;
 }
 
 // Returns whether the auto exposure method is supported by the feature level.
@@ -44,6 +52,11 @@ BEGIN_SHADER_PARAMETER_STRUCT(FEyeAdaptationParameters, )
 	SHADER_PARAMETER(float, LuminanceMin)
 	SHADER_PARAMETER(float, CalibrationConstantInverse)
 	SHADER_PARAMETER(float, WeightSlope)
+	SHADER_PARAMETER(float, GreyMult)
+	SHADER_PARAMETER(float, ExponentialUpM)
+	SHADER_PARAMETER(float, ExponentialDownM)
+	SHADER_PARAMETER(float, StartTime)
+	SHADER_PARAMETER(float, LuminanceMax)
 	SHADER_PARAMETER_TEXTURE(Texture2D, MeterMaskTexture)
 	SHADER_PARAMETER_SAMPLER(SamplerState, MeterMaskSampler)
 END_SHADER_PARAMETER_STRUCT()
