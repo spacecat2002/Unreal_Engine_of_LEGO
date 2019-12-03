@@ -360,10 +360,20 @@ protected:
 
 struct ENGINE_API FCompactPose : public FBaseCompactPose<FAnimStackAllocator>
 {
+	// Sets every bone transform to Identity
+	void ResetToAdditiveIdentity();
+
+	// Normalizes all rotations in this pose
+	void NormalizeRotations();
 };
 
 struct ENGINE_API FCompactHeapPose : public FBaseCompactPose<FDefaultAllocator>
 {
+	// Sets every bone transform to Identity
+	void ResetToAdditiveIdentity();
+
+	// Normalizes all rotations in this pose
+	void NormalizeRotations();
 };
 
 struct FMeshPose : public FBasePose<FMeshPoseBoneIndex, FDefaultAllocator>

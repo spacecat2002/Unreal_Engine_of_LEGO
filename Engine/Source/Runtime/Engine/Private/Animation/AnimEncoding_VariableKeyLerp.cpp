@@ -7,6 +7,9 @@
 #include "AnimEncoding_VariableKeyLerp.h"
 #include "Serialization/MemoryReader.h"
 #include "Serialization/MemoryWriter.h"
+#if INTEL_ISPC
+#include "AnimEncoding_VariableKeyLerp.ispc.generated.h"
+#endif
 
 /**
  * Handles the ByteSwap of compressed rotation data on import
@@ -365,4 +368,157 @@ void FAEVariableKeyLerpLinearContext::Seek(const FAnimSequenceDecompressionConte
 	OffsetNumKeysPairs[0] = DecompContext.CompressedByteStream + DecompContext.Segment0->ByteStreamOffset + DecompContext.RangeDataSize0;
 	OffsetNumKeysPairs[1] = DecompContext.CompressedByteStream + DecompContext.Segment1->ByteStreamOffset + DecompContext.RangeDataSize0;
 }
+#endif
+
+#if USE_ANIMATION_CODEC_BATCH_SOLVER
+
+/**
+ * Decompress all requested rotation components from an Animation Sequence
+ *
+ * @param	Atoms			The FTransform array to fill in.
+ * @param	DesiredPairs	Array of requested bone information
+ * @param	DecompContext	The decompression context to use.
+ */
+template<int32 FORMAT>
+void AEFVariableKeyLerp<FORMAT>::GetPoseRotations(
+	FTransformArray& Atoms,
+	const BoneTrackArray& DesiredPairs,
+	FAnimSequenceDecompressionContext& DecompContext)
+{
+	const int32 PairCount = DesiredPairs.Num();
+
+	if (INTEL_ISPC)
+	{
+#if INTEL_ISPC
+		ispc::GetVariableKeyLerpPoseRotations(
+			(ispc::FTransform*)&Atoms[0],
+			(ispc::BoneTrackPair*)&DesiredPairs[0],
+			DecompContext.GetCompressedTrackOffsets(),
+			DecompContext.GetCompressedByteStream(),
+			DecompContext.GetCompressedNumberOfFrames(),
+			DecompContext.RelativePos,
+			(uint8)DecompContext.GetInterpolation(),
+			FORMAT,
+			PairCount);
+#endif
+	}
+	else
+	{
+		for (int32 PairIndex = 0; PairIndex < PairCount; ++PairIndex)
+		{
+			const BoneTrackPair& Pair = DesiredPairs[PairIndex];
+			const int32 TrackIndex = Pair.TrackIndex;
+			const int32 AtomIndex = Pair.AtomIndex;
+			FTransform& BoneAtom = Atoms[AtomIndex];
+
+			// call the decoder directly (not through the vtable)
+			AEFVariableKeyLerp<FORMAT>::GetBoneAtomRotation(BoneAtom, DecompContext, TrackIndex);
+		}
+	}
+}
+
+/**
+ * Decompress all requested translation components from an Animation Sequence
+ *
+ * @param	Atoms			The FTransform array to fill in.
+ * @param	DesiredPairs	Array of requested bone information
+ * @param	DecompContext	The decompression context to use.
+ */
+template<int32 FORMAT>
+void AEFVariableKeyLerp<FORMAT>::GetPoseTranslations(
+	FTransformArray& Atoms,
+	const BoneTrackArray& DesiredPairs,
+	FAnimSequenceDecompressionContext& DecompContext)
+{
+	const int32 PairCount = DesiredPairs.Num();
+
+	if (INTEL_ISPC)
+	{
+#if INTEL_ISPC
+		ispc::GetVariableKeyLerpPoseTranslations(
+			(ispc::FTransform*)&Atoms[0],
+			(ispc::BoneTrackPair*)&DesiredPairs[0],
+			DecompContext.GetCompressedTrackOffsets(),
+			DecompContext.GetCompressedByteStream(),
+			DecompContext.GetCompressedNumberOfFrames(),
+			DecompContext.RelativePos,
+			(uint8)DecompContext.GetInterpolation(),
+			FORMAT,
+			PairCount);
+#endif
+	}
+	else
+	{
+		for (int32 PairIndex = 0; PairIndex < PairCount; ++PairIndex)
+		{
+			const BoneTrackPair& Pair = DesiredPairs[PairIndex];
+			const int32 TrackIndex = Pair.TrackIndex;
+			const int32 AtomIndex = Pair.AtomIndex;
+			FTransform& BoneAtom = Atoms[AtomIndex];
+	
+			// call the decoder directly (not through the vtable)
+			AEFVariableKeyLerp<FORMAT>::GetBoneAtomTranslation(BoneAtom, DecompContext, TrackIndex);
+		}
+	}
+}
+
+/**
+ * Decompress all requested Scale components from an Animation Sequence
+ *
+ * @param	Atoms			The FTransform array to fill in.
+ * @param	DesiredPairs	Array of requested bone information
+ * @param	DecompContext	The decompression context to use.
+ */
+template<int32 FORMAT>
+void AEFVariableKeyLerp<FORMAT>::GetPoseScales(
+	FTransformArray& Atoms,
+	const BoneTrackArray& DesiredPairs,
+	FAnimSequenceDecompressionContext& DecompContext)
+{
+	checkSlow(DecompContext.bHasScale);
+
+	const int32 PairCount = DesiredPairs.Num();
+
+	if (INTEL_ISPC)
+	{
+#if INTEL_ISPC
+		const TArrayView<int32> ScaleOffsets = DecompContext.GetCompressedScaleOffsets()->OffsetData;
+		const int32 StripSize = DecompContext.GetCompressedScaleOffsets()->StripSize;
+
+		ispc::GetVariableKeyLerpPoseScales(
+			(ispc::FTransform*)&Atoms[0],
+			(ispc::BoneTrackPair*)&DesiredPairs[0],
+			ScaleOffsets.GetData(),
+			StripSize,
+			DecompContext.GetCompressedByteStream(),
+			DecompContext.GetCompressedNumberOfFrames(),
+			DecompContext.RelativePos,
+			(uint8)DecompContext.GetInterpolation(),
+			FORMAT,
+			PairCount);
+#endif
+	}
+	else
+	{
+		for (int32 PairIndex = 0; PairIndex < PairCount; ++PairIndex)
+		{
+			const BoneTrackPair& Pair = DesiredPairs[PairIndex];
+			const int32 TrackIndex = Pair.TrackIndex;
+			const int32 AtomIndex = Pair.AtomIndex;
+			FTransform& BoneAtom = Atoms[AtomIndex];
+	
+			// call the decoder directly (not through the vtable)
+			AEFVariableKeyLerp<FORMAT>::GetBoneAtomScale(BoneAtom, DecompContext, TrackIndex);
+		}
+	}
+}
+
+template class AEFVariableKeyLerp<ACF_None>;
+template class AEFVariableKeyLerp<ACF_Float96NoW>;
+template class AEFVariableKeyLerp<ACF_Fixed48NoW>;
+template class AEFVariableKeyLerp<ACF_IntervalFixed32NoW>;
+template class AEFVariableKeyLerp<ACF_Fixed32NoW>;
+template class AEFVariableKeyLerp<ACF_Float32NoW>;
+template class AEFVariableKeyLerp<ACF_Identity>;
+
 #endif

@@ -10,6 +10,9 @@
 #include "Animation/AnimEncodingHeapAllocator.h"
 #include "Animation/AnimEncodingDecompressionContext.h"
 #include "AnimationCompression.h"
+#if INTEL_ISPC
+#include "AnimEncoding_PerTrackCompression.ispc.generated.h"
+#endif
 
 
 class FAEPerTrackKeyLerpContext : public FAnimEncodingDecompressionContext
@@ -865,14 +868,32 @@ void AEFPerTrackCompressionCodec::GetPoseRotations(
 {
 	const int32 PairCount = DesiredPairs.Num();
 
-	for( int32 PairIndex = 0; PairIndex < PairCount; ++PairIndex )
+	if (INTEL_ISPC)
 	{
-		const BoneTrackPair& Pair = DesiredPairs[PairIndex];
-		const int32 TrackIndex = Pair.TrackIndex;
-		const int32 AtomIndex = Pair.AtomIndex;
-		FTransform& BoneAtom = Atoms[AtomIndex];
-
-		GetBoneAtomRotation(BoneAtom, DecompContext, TrackIndex);
+#if INTEL_ISPC
+		ispc::GetPerTrackCompressionPoseRotations(
+			(ispc::FTransform*)&Atoms[0],
+			(ispc::BoneTrackPair*)&DesiredPairs[0],
+			DecompContext.GetCompressedTrackOffsets(),
+			DecompContext.GetCompressedByteStream(),
+			DecompContext.GetCompressedNumberOfFrames(),
+			DecompContext.GetSequenceLength(),
+			DecompContext.RelativePos,
+			(uint8)DecompContext.GetInterpolation(),
+			PairCount);
+#endif
+	}
+	else
+	{
+		for( int32 PairIndex = 0; PairIndex < PairCount; ++PairIndex )
+		{
+			const BoneTrackPair& Pair = DesiredPairs[PairIndex];
+			const int32 TrackIndex = Pair.TrackIndex;
+			const int32 AtomIndex = Pair.AtomIndex;
+			FTransform& BoneAtom = Atoms[AtomIndex];
+	
+			GetBoneAtomRotation(BoneAtom, DecompContext, TrackIndex);
+		}
 	}
 }
 
@@ -890,14 +911,32 @@ void AEFPerTrackCompressionCodec::GetPoseTranslations(
 {
 	const int32 PairCount = DesiredPairs.Num();
 
-	for( int32 PairIndex = 0; PairIndex < PairCount; ++PairIndex )
+	if (INTEL_ISPC)
 	{
-		const BoneTrackPair& Pair = DesiredPairs[PairIndex];
-		const int32 TrackIndex = Pair.TrackIndex;
-		const int32 AtomIndex = Pair.AtomIndex;
-		FTransform& BoneAtom = Atoms[AtomIndex];
-
-		GetBoneAtomTranslation(BoneAtom, DecompContext, TrackIndex);
+#if INTEL_ISPC
+		ispc::GetPerTrackCompressionPoseTranslations(
+			(ispc::FTransform*)&Atoms[0],
+			(ispc::BoneTrackPair*)&DesiredPairs[0],
+			DecompContext.GetCompressedTrackOffsets(),
+			DecompContext.GetCompressedByteStream(),
+			DecompContext.GetCompressedNumberOfFrames(),
+			DecompContext.GetSequenceLength(),
+			DecompContext.RelativePos,
+			(uint8)DecompContext.GetInterpolation(),
+			PairCount);
+#endif
+	}
+	else
+	{
+		for( int32 PairIndex = 0; PairIndex < PairCount; ++PairIndex )
+		{
+			const BoneTrackPair& Pair = DesiredPairs[PairIndex];
+			const int32 TrackIndex = Pair.TrackIndex;
+			const int32 AtomIndex = Pair.AtomIndex;
+			FTransform& BoneAtom = Atoms[AtomIndex];
+	
+			GetBoneAtomTranslation(BoneAtom, DecompContext, TrackIndex);
+		}
 	}
 }
 
@@ -917,14 +956,36 @@ void AEFPerTrackCompressionCodec::GetPoseScales(
 
 	const int32 PairCount = DesiredPairs.Num();
 
-	for( int32 PairIndex = 0; PairIndex < PairCount; ++PairIndex )
+	if (INTEL_ISPC)
 	{
-		const BoneTrackPair& Pair = DesiredPairs[PairIndex];
-		const int32 TrackIndex = Pair.TrackIndex;
-		const int32 AtomIndex = Pair.AtomIndex;
-		FTransform& BoneAtom = Atoms[AtomIndex];
+#if INTEL_ISPC
+		const TArrayView<int32> ScaleOffsets = DecompContext.GetCompressedScaleOffsets()->OffsetData;
+		const int32 StripSize = DecompContext.GetCompressedScaleOffsets()->StripSize;
 
-		GetBoneAtomScale(BoneAtom, DecompContext, TrackIndex);
+		ispc::GetPerTrackCompressionPoseScales(
+			(ispc::FTransform*)&Atoms[0],
+			(ispc::BoneTrackPair*)&DesiredPairs[0],
+			ScaleOffsets.GetData(),
+			StripSize,
+			DecompContext.GetCompressedByteStream(),
+			DecompContext.GetCompressedNumberOfFrames(),
+			DecompContext.GetSequenceLength(),
+			DecompContext.RelativePos,
+			(uint8)DecompContext.GetInterpolation(),
+			PairCount);
+#endif
+	}
+	else
+	{
+		for( int32 PairIndex = 0; PairIndex < PairCount; ++PairIndex )
+		{
+			const BoneTrackPair& Pair = DesiredPairs[PairIndex];
+			const int32 TrackIndex = Pair.TrackIndex;
+			const int32 AtomIndex = Pair.AtomIndex;
+			FTransform& BoneAtom = Atoms[AtomIndex];
+	
+			GetBoneAtomScale(BoneAtom, DecompContext, TrackIndex);
+		}
 	}
 }
 

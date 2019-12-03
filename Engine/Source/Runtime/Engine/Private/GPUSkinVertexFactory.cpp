@@ -10,6 +10,9 @@
 #include "GPUSkinCache.h"
 #include "ShaderParameterUtils.h"
 #include "MeshMaterialShader.h"
+#if INTEL_ISPC
+#include "GPUSkinVertexFactory.ispc.generated.h"
+#endif
 
 // Changing this is currently unsupported after content has been chunked with the previous setting
 // Changing this causes a full shader recompile
@@ -290,16 +293,30 @@ bool FGPUBaseSkinVertexFactory::FShaderDataType::UpdateBoneData(FRHICommandListI
 		// PLATFORM_CACHE_LINE_SIZE (128) / 48 = 2.6
 		//  sizeof(FMatrix) == 64
 		// PLATFORM_CACHE_LINE_SIZE (128) / 64 = 2
-		const int32 PreFetchStride = 2; // FPlatformMisc::Prefetch stride
-		for (uint32 BoneIdx = 0; BoneIdx < NumBones; BoneIdx++)
-		{
-			const FBoneIndexType RefToLocalIdx = BoneMap[BoneIdx];
-			FPlatformMisc::Prefetch( ReferenceToLocalMatrices.GetData() + RefToLocalIdx + PreFetchStride );
-			FPlatformMisc::Prefetch( ReferenceToLocalMatrices.GetData() + RefToLocalIdx + PreFetchStride, PLATFORM_CACHE_LINE_SIZE );
 
-			FMatrix3x4& BoneMat = ChunkMatrices[BoneIdx];
-			const FMatrix& RefToLocal = ReferenceToLocalMatrices[RefToLocalIdx];
-			RefToLocal.To3x4MatrixTranspose( (float*)BoneMat.M );
+		if (INTEL_ISPC)
+		{
+#if INTEL_ISPC
+			ispc::UpdateBoneData_CopyBones(
+				(ispc::FMatrix3x4*)&ChunkMatrices[0],
+				(ispc::FMatrix*)&ReferenceToLocalMatrices[0],
+				BoneMap.GetData(),
+				NumBones);
+#endif
+		}
+		else
+		{
+			const int32 PreFetchStride = 2; // FPlatformMisc::Prefetch stride
+			for (uint32 BoneIdx = 0; BoneIdx < NumBones; BoneIdx++)
+			{
+				const FBoneIndexType RefToLocalIdx = BoneMap[BoneIdx];
+				FPlatformMisc::Prefetch(ReferenceToLocalMatrices.GetData() + RefToLocalIdx + PreFetchStride);
+				FPlatformMisc::Prefetch(ReferenceToLocalMatrices.GetData() + RefToLocalIdx + PreFetchStride, PLATFORM_CACHE_LINE_SIZE);
+
+				FMatrix3x4& BoneMat = ChunkMatrices[BoneIdx];
+				const FMatrix& RefToLocal = ReferenceToLocalMatrices[RefToLocalIdx];
+				RefToLocal.To3x4MatrixTranspose((float*)BoneMat.M);
+			}
 		}
 	}
 	if (SupportsBonesBufferSRV(InFeatureLevel))
