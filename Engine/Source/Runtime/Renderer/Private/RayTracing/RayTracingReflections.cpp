@@ -302,6 +302,29 @@ void FDeferredShadingSceneRenderer::PrepareRayTracingReflections(const FViewInfo
 
 #endif // RHI_RAYTRACING
 
+void FDeferredShadingSceneRenderer::SetupImaginaryReflectionTextureParameters(
+	FRDGBuilder& GraphBuilder,
+	const FViewInfo& View,
+	FSceneTextureParameters* OutTextures)
+#if RHI_RAYTRACING
+{
+	*OutTextures = FSceneTextureParameters();
+
+	FSceneViewState* SceneViewState = (FSceneViewState*)View.State;
+
+	if (SceneViewState != nullptr)
+	{
+		OutTextures->SceneDepthBuffer = GraphBuilder.RegisterExternalTexture(SceneViewState->ImaginaryReflectionDepthZ, TEXT("ImaginaryReflectionDepthZ"));
+		OutTextures->SceneVelocityBuffer = GraphBuilder.TryRegisterExternalTexture(SceneViewState->ImaginaryReflectionVelocity, TEXT("ImaginaryReflectionVelocity"));
+		OutTextures->SceneGBufferA = GraphBuilder.TryRegisterExternalTexture(SceneViewState->ImaginaryReflectionGBufferA, TEXT("ImaginaryReflectionGBufferA"));
+	}
+}
+#else
+{
+	unimplemented();
+}
+#endif
+
 void FDeferredShadingSceneRenderer::RenderRayTracingReflections(
 	FRDGBuilder& GraphBuilder,
 	const FSceneTextureParameters& SceneTextures,
@@ -322,6 +345,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingReflections(
 	const bool bRayTraceSkyLightContribution = CVarRayTracingReflectionsRayTraceSkyLightContribution.GetValueOnRenderThread() && ShouldRenderRayTracingSkyLight(Scene->SkyLight);
 
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
+	FSceneViewState* SceneViewState = (FSceneViewState*)View.State;
 
 	int32 UpscaleFactor = int32(1.0f / ResolutionFraction);
 	ensure(ResolutionFraction == 1.0 / UpscaleFactor);
@@ -557,6 +581,34 @@ void FDeferredShadingSceneRenderer::RenderRayTracingReflections(
 		}
 	}
 
+	// Setup imaginary reflection g-buffer outputs
+	if (bRayTraceSkyLightContribution && SceneViewState != nullptr)
+	{
+		auto&& BufferSize = SceneContext.GetBufferSizeXY();
+
+		// Create the world-space normal imaginary reflection g-buffer.
+		{
+			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, SceneContext.GetGBufferAFormat(), FClearValueBinding::Transparent, TexCreate_None, TexCreate_ShaderResource | TexCreate_UAV, false));
+			GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, SceneViewState->ImaginaryReflectionGBufferA, TEXT("ImaginaryReflectionGBufferA"));
+		}
+
+		// Create the depth imaginary reflection g-buffer.
+		{
+			// R32_FLOAT used instead of usual depth/stencil format to work as a normal SRV/UAV rather a depth target
+			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, PF_R32_FLOAT, SceneContext.GetDefaultDepthClear(), TexCreate_None, TexCreate_ShaderResource | TexCreate_UAV, false));
+			GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, SceneViewState->ImaginaryReflectionDepthZ, TEXT("ImaginaryReflectionDepthZ"));
+		}
+
+		// Create the velocity imaginary reflection g-buffer.
+		{
+			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, FVelocityRendering::GetFormat(), FClearValueBinding::Transparent, TexCreate_None, TexCreate_ShaderResource | TexCreate_UAV, false));
+			GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, SceneViewState->ImaginaryReflectionVelocity, TEXT("ImaginaryReflectionGBufferVelocity"));
+		}
+
+		check(SceneViewState->ImaginaryReflectionGBufferA);
+		check(SceneViewState->ImaginaryReflectionDepthZ);
+		check(SceneViewState->ImaginaryReflectionVelocity);
+	}
 }
 #else // !RHI_RAYTRACING
 {

@@ -509,13 +509,11 @@ void FRCPassPostProcessDeferredDecals::Process(FRenderingCompositePassContext& C
 		// If we need dbuffer targets, initialize them
 		if (bNeedsDBufferTargets)
 		{
-			FPooledRenderTargetDesc GBufferADesc;
-			SceneContext.GetGBufferADesc(GBufferADesc);
-
 			uint32 BaseFlags = RHISupportsRenderTargetWriteMask(GMaxRHIShaderPlatform) ? TexCreate_NoFastClearFinalize : TexCreate_None;
 
 			// DBuffer: Decal buffer
-			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(GBufferADesc.Extent,
+			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(
+				SceneContext.GetBufferSizeXY(),
 				PF_B8G8R8A8,
 				FClearValueBinding::None,
 				BaseFlags | GFastVRamConfig.DBufferA,

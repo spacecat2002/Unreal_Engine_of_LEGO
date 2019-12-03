@@ -495,6 +495,10 @@ private:
 
 	void CopySceneCaptureComponentToTarget(FRHICommandListImmediate& RHICmdList);
 
+	void SetupImaginaryReflectionTextureParameters(
+		FRDGBuilder& GraphBuilder,
+		const FViewInfo& View,
+		FSceneTextureParameters* OutTextures);
 	void RenderRayTracingReflections(
 		FRDGBuilder& GraphBuilder,
 		const FSceneTextureParameters& SceneTextures,

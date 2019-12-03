@@ -481,7 +481,11 @@ public:
 	void AdjustGBufferRefCount(FRHICommandList& RHICmdList, int Delta);
 
 	void PreallocGBufferTargets();
-	void GetGBufferADesc(FPooledRenderTargetDesc& Desc) const;
+	EPixelFormat GetGBufferAFormat() const;
+	EPixelFormat GetGBufferBFormat() const;
+	EPixelFormat GetGBufferCFormat() const;
+	EPixelFormat GetGBufferDFormat() const;
+	EPixelFormat GetGBufferEFormat() const;
 	void AllocGBufferTargets(FRHICommandList& RHICmdList);
 
 	void AllocLightAttenuation(FRHICommandList& RHICmdList);
