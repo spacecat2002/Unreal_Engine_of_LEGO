@@ -200,9 +200,10 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	const float HistogramLogMax = bExtendedLuminanceRange ? EV100ToLog2(LuminanceMax, Settings.HistogramLogMax) : Settings.HistogramLogMax;
 	const float HistogramLogMin = FMath::Min(bExtendedLuminanceRange ? EV100ToLog2(LuminanceMax, Settings.HistogramLogMin) : Settings.HistogramLogMin, HistogramLogMax - 1);
 
-	// These clamp the average luminance computed from the scene color.
-	float MinAverageLuminance = 1.0f;
-	float MaxAverageLuminance = 1.0f;
+	// These clamp the average luminance computed from the scene color. We are going to calculate the white point first, and then
+	// figure out the average grey point later. I.e. if the white point is 1.0, the middle grey point should be 0.18.
+	float MinWhitePointLuminance = 1.0f; 
+	float MaxWhitePointLuminance = 1.0f;
 	float ExposureCompensation = GetAutoExposureCompensation(View);
 
 	const float BasePhysicalCameraEV100 = FMath::Log2(FMath::Square(Settings.DepthOfFieldFstop) * Settings.CameraShutterSpeed * 100 / FMath::Max(1.f, Settings.CameraISO));
@@ -211,8 +212,10 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 
 	const float PhysicalCameraEV100 = bApplyPhysicalCameraExposure ? BasePhysicalCameraEV100 : 0.0f;
 
+	const float MiddleGrey = 0.18f;
+
 	// AEM_Histogram and AEM_Basic adjust their ExposureCompensation to middle grey (0.18). AEM_Manual ExposureCompensation is already calibrated to 1.0.
-	const float GreyMult = (AutoExposureMethod == AEM_Manual) ? 1.0f : 0.18f;
+	const float GreyMult = (AutoExposureMethod == AEM_Manual) ? 1.0f : MiddleGrey;
 
 	if (View.Family->UseDebugViewPS() ||
 		!EngineShowFlags.Lighting ||
@@ -230,28 +233,28 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	else if (View.Family->ExposureSettings.bFixed)
 	{
 		ExposureCompensation = 1.0f;
-		MinAverageLuminance = MaxAverageLuminance = EV100ToLuminance(LuminanceMax, View.Family->ExposureSettings.FixedEV100);
+		MinWhitePointLuminance = MaxWhitePointLuminance = EV100ToLuminance(LuminanceMax, View.Family->ExposureSettings.FixedEV100);
 	}
 	// When !EngineShowFlags.EyeAdaptation (from "r.EyeAdaptationQuality 0") or the feature level doesn't support eye adaptation, only Settings.AutoExposureBias controls exposure.
 	else if (EngineShowFlags.EyeAdaptation && View.GetFeatureLevel() >= MinFeatureLevel)
 	{
 		if (AutoExposureMethod == EAutoExposureMethod::AEM_Manual)
 		{
-			MinAverageLuminance = MaxAverageLuminance = EV100ToLuminance(LuminanceMax,PhysicalCameraEV100);
+			MinWhitePointLuminance = MaxWhitePointLuminance = EV100ToLuminance(LuminanceMax,PhysicalCameraEV100);
 		}
 		else if (bExtendedLuminanceRange)
 		{
-			MinAverageLuminance = EV100ToLuminance(LuminanceMax, Settings.AutoExposureMinBrightness);
-			MaxAverageLuminance = EV100ToLuminance(LuminanceMax, Settings.AutoExposureMaxBrightness);
+			MinWhitePointLuminance = EV100ToLuminance(LuminanceMax, Settings.AutoExposureMinBrightness);
+			MaxWhitePointLuminance = EV100ToLuminance(LuminanceMax, Settings.AutoExposureMaxBrightness);
 		}
 		else
 		{
-			MinAverageLuminance = Settings.AutoExposureMinBrightness;
-			MaxAverageLuminance = Settings.AutoExposureMaxBrightness;
+			MinWhitePointLuminance = Settings.AutoExposureMinBrightness;
+			MaxWhitePointLuminance = Settings.AutoExposureMaxBrightness;
 		}
 	}
 
-	MinAverageLuminance = FMath::Min(MinAverageLuminance, MaxAverageLuminance);
+	MinWhitePointLuminance = FMath::Min(MinWhitePointLuminance, MaxWhitePointLuminance);
 
 	// This scales the average luminance BEFORE it gets clamped. Note that AEM_Histogram implements the calibration constant through ExposureLowPercent and ExposureHighPercent.
 	//const float CalibrationConstant = FMath::Clamp(Settings.AutoExposureCalibrationConstant, 1.0f, 100.0f) * PercentToScale;
@@ -285,6 +288,14 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	const float ExponentialUpM = FrameTimeEps / ((1.0f - exp2(-FrameTimeEps * Settings.AutoExposureSpeedUp)) * StartTime);
 	const float ExponentialDownM = FrameTimeEps / ((1.0f - exp2(-FrameTimeEps * Settings.AutoExposureSpeedDown)) * StartTime);
 
+	// If the white point luminance is 1.0, then the middle grey luminance should be 0.18.
+	const float MinAverageLuminance = MinWhitePointLuminance * MiddleGrey;
+	const float MaxAverageLuminance = MaxWhitePointLuminance * MiddleGrey;
+
+	// if it is a camera cut we force the exposure to go all the way to the target exposure without blending.
+	// if it is manual mode, we also force the exposure to hit the target
+	const float ForceTarget = (View.bCameraCut || AutoExposureMethod == EAutoExposureMethod::AEM_Manual) ? 1.0f : 0.0f;
+
 	FEyeAdaptationParameters Parameters;
 	Parameters.ExposureLowPercent = ExposureLowPercent;
 	Parameters.ExposureHighPercent = ExposureHighPercent;
@@ -304,6 +315,7 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	Parameters.ExponentialUpM = ExponentialUpM;
 	Parameters.StartTime = StartTime;
 	Parameters.LuminanceMax = LuminanceMax;
+	Parameters.ForceTarget = ForceTarget;
 	Parameters.VisualizeDebugType = CVarEyeAdaptationVisualizeDebugType.GetValueOnRenderThread();
 	Parameters.MeterMaskTexture = MeterMask;
 	Parameters.MeterMaskSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
