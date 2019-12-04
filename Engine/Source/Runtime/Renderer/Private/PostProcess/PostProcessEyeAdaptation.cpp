@@ -190,7 +190,7 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 
 	const bool bExtendedLuminanceRange = IsExtendLuminanceRangeEnabled();
 
-	const float LuminanceMax = LuminanceMaxFromLensAttenuation(Settings.CameraLensAttenuation);
+	const float LuminanceMax = bExtendedLuminanceRange ? LuminanceMaxFromLensAttenuation(Settings.CameraLensAttenuation) : 1.0f;
 
 	const float PercentToScale = 0.01f;
 
@@ -233,6 +233,8 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	else if (View.Family->ExposureSettings.bFixed)
 	{
 		ExposureCompensation = 1.0f;
+
+		// ignores bExtendedLuminanceRange
 		MinWhitePointLuminance = MaxWhitePointLuminance = EV100ToLuminance(LuminanceMax, View.Family->ExposureSettings.FixedEV100);
 	}
 	// When !EngineShowFlags.EyeAdaptation (from "r.EyeAdaptationQuality 0") or the feature level doesn't support eye adaptation, only Settings.AutoExposureBias controls exposure.
@@ -240,17 +242,21 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	{
 		if (AutoExposureMethod == EAutoExposureMethod::AEM_Manual)
 		{
-			MinWhitePointLuminance = MaxWhitePointLuminance = EV100ToLuminance(LuminanceMax,PhysicalCameraEV100);
-		}
-		else if (bExtendedLuminanceRange)
-		{
-			MinWhitePointLuminance = EV100ToLuminance(LuminanceMax, Settings.AutoExposureMinBrightness);
-			MaxWhitePointLuminance = EV100ToLuminance(LuminanceMax, Settings.AutoExposureMaxBrightness);
+			// ignores bExtendedLuminanceRange
+			MinWhitePointLuminance = MaxWhitePointLuminance = EV100ToLuminance(LuminanceMax, PhysicalCameraEV100);
 		}
 		else
 		{
-			MinWhitePointLuminance = Settings.AutoExposureMinBrightness;
-			MaxWhitePointLuminance = Settings.AutoExposureMaxBrightness;
+			if (bExtendedLuminanceRange)
+			{
+				MinWhitePointLuminance = EV100ToLuminance(LuminanceMax, Settings.AutoExposureMinBrightness);
+				MaxWhitePointLuminance = EV100ToLuminance(LuminanceMax, Settings.AutoExposureMaxBrightness);
+			}
+			else
+			{
+				MinWhitePointLuminance = Settings.AutoExposureMinBrightness;
+				MaxWhitePointLuminance = Settings.AutoExposureMaxBrightness;
+			}
 		}
 	}
 
@@ -292,9 +298,13 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	const float MinAverageLuminance = MinWhitePointLuminance * MiddleGrey;
 	const float MaxAverageLuminance = MaxWhitePointLuminance * MiddleGrey;
 
+
+	const bool bValidRange = View.FinalPostProcessSettings.AutoExposureMinBrightness < View.FinalPostProcessSettings.AutoExposureMaxBrightness;
+
 	// if it is a camera cut we force the exposure to go all the way to the target exposure without blending.
-	// if it is manual mode, we also force the exposure to hit the target
-	const float ForceTarget = (View.bCameraCut || AutoExposureMethod == EAutoExposureMethod::AEM_Manual) ? 1.0f : 0.0f;
+	// if it is manual mode, we also force the exposure to hit the target, which matters for HDR Visualization
+	// if we don't have a valid range (AutoExposureMinBrightness == AutoExposureMaxBrightness) then force it like Manual as well.
+	const float ForceTarget = (View.bCameraCut || AutoExposureMethod == EAutoExposureMethod::AEM_Manual || !bValidRange) ? 1.0f : 0.0f;
 
 	FEyeAdaptationParameters Parameters;
 	Parameters.ExposureLowPercent = ExposureLowPercent;

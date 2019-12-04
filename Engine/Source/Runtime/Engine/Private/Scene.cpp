@@ -488,7 +488,7 @@ FPostProcessSettings::FPostProcessSettings()
 	AutoExposureSpeedDown = 1.0f;
 
 	CameraLensAttenuation = 0.78;
-	AutoExposureApplyPhysicalCameraExposure = 0;
+	AutoExposureApplyPhysicalCameraExposure = 1;
 
 	LPVDirectionalOcclusionIntensity = 0.0f;
 	LPVDirectionalOcclusionRadius = 8.0f;
