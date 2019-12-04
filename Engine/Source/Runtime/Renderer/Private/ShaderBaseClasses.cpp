@@ -286,7 +286,7 @@ void FMaterialShader::SetParametersInner(
 				// In a cooked project these numbers are persistent so we can track back to the original
 				// parameter collection that was being referenced and no longer exists
 				FString InstancesString;
-				TMap<FGuid, FMaterialParameterCollectionInstanceResource*>::TIterator Iter = GDefaultMaterialParameterCollectionInstances.CreateIterator();
+				TMultiMap<FGuid, FMaterialParameterCollectionInstanceResource*>::TIterator Iter = GDefaultMaterialParameterCollectionInstances.CreateIterator();
 				while (Iter)
 				{
 					FMaterialParameterCollectionInstanceResource* Instance = Iter.Value();
@@ -464,7 +464,7 @@ void FMaterialShader::GetShaderBindings(
 				// In a cooked project these numbers are persistent so we can track back to the original
 				// parameter collection that was being referenced and no longer exists
 				FString InstancesString;
-				TMap<FGuid, FMaterialParameterCollectionInstanceResource*>::TIterator Iter = GDefaultMaterialParameterCollectionInstances.CreateIterator();
+				TMultiMap<FGuid, FMaterialParameterCollectionInstanceResource*>::TIterator Iter = GDefaultMaterialParameterCollectionInstances.CreateIterator();
 				while (Iter)
 				{
 					FMaterialParameterCollectionInstanceResource* Instance = Iter.Value();
