@@ -405,7 +405,7 @@ struct FMovieSceneSequenceTransform
 				
 				const uint32 CurWarpCount = WarpCounts[Index];
 				const FMovieSceneNestedSequenceTransform& CurNesting = NestedTransforms[Index];
-				Result = Result * CurNesting.InverseFromWarp(CurWarpCount);
+				Result = CurNesting.InverseFromWarp(CurWarpCount) * Result;
 			}
 			return Result;
 		}

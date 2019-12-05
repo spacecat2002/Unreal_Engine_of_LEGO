@@ -330,5 +330,93 @@ bool FMovieSceneSubSectionCoreSequenceTransformsTest::RunTest(const FString& Par
 	return true;
 }
 
+// Miscellaneous warping and scaling tests
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMovieSceneSubSectionCoreWarpingAndScalingTransformsTest,
+		"System.Engine.Sequencer.Core.WarpingAndScalingTransforms",
+		EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FMovieSceneSubSectionCoreWarpingAndScalingTransformsTest::RunTest(const FString& Parameters)
+{
+	{
+		// Sub-sequence at 0, playing at x2
+		FMovieSceneSequenceTransform Transform;
+		Transform.NestedTransforms.Emplace(FMovieSceneTimeTransform(0, 2.f), FMovieSceneTimeWarping(0, 30));
+		TestEqual("Transform time 1", FFrameNumber(10) * Transform, FFrameTime(20));
+		TestEqual("Transform time 2", FFrameNumber(18) * Transform, FFrameTime(6));
+
+		FMovieSceneTimeTransform Inv = Transform.InverseFromWarp(TArray<uint32> { 0 });
+		TestEqual("Inverse time 3", FFrameNumber(20) * Inv, FFrameTime(10));
+		Inv = Transform.InverseFromWarp(TArray<uint32> { 1 });
+		TestEqual("Inverse time 4", FFrameNumber(20) * Inv, FFrameTime(25));
+	}
+
+	{
+		// Sub-sequence at 0, playing at x2, with start offset 20
+		FMovieSceneSequenceTransform Transform;
+		Transform.NestedTransforms.Emplace(FMovieSceneTimeTransform(20, 2.f), FMovieSceneTimeWarping(20, 50));
+		TestEqual("Transform time 5", FFrameNumber(10) * Transform, FFrameTime(40));
+		TestEqual("Transform time 6", FFrameNumber(18) * Transform, FFrameTime(26));
+
+		FMovieSceneTimeTransform Inv = Transform.InverseFromWarp(TArray<uint32> { 0 });
+		TestEqual("Inverse time 7", FFrameNumber(40) * Inv, FFrameTime(10));
+		Inv = Transform.InverseFromWarp(TArray<uint32> { 1 });
+		TestEqual("Inverse time 8", FFrameNumber(40) * Inv, FFrameTime(25));
+	}
+
+	{
+		// Sub-sequence at 3, playing at x2
+		FMovieSceneSequenceTransform Transform;
+		Transform.NestedTransforms.Emplace(FMovieSceneTimeTransform(-6, 2.f), FMovieSceneTimeWarping(0, 30));
+		TestEqual("Transform time 9", FFrameNumber(13) * Transform, FFrameTime(20));
+		TestEqual("Transform time 10", FFrameNumber(21) * Transform, FFrameTime(6));
+
+		FMovieSceneTimeTransform Inv = Transform.InverseFromWarp(TArray<uint32> { 0 });
+		TestEqual("Inverse time 11", FFrameNumber(20) * Inv, FFrameTime(13));
+		Inv = Transform.InverseFromWarp(TArray<uint32> { 1 });
+		TestEqual("Inverse time 12", FFrameNumber(20) * Inv, FFrameTime(28));
+	}
+
+	{
+		// Sub-sequence at 3, playing at x2, with start offset 20
+		FMovieSceneSequenceTransform Transform;
+		Transform.NestedTransforms.Emplace(FMovieSceneTimeTransform(-6 + 20, 2.f), FMovieSceneTimeWarping(20, 50));
+		TestEqual("Transform time 13", FFrameNumber(13) * Transform, FFrameTime(40));
+		TestEqual("Transform time 14", FFrameNumber(21) * Transform, FFrameTime(26));
+
+		FMovieSceneTimeTransform Inv = Transform.InverseFromWarp(TArray<uint32> { 0 });
+		TestEqual("Inverse time 15", FFrameNumber(40) * Inv, FFrameTime(13));
+		Inv = Transform.InverseFromWarp(TArray<uint32> { 1 });
+		TestEqual("Inverse time 16", FFrameNumber(40) * Inv, FFrameTime(28));
+	}
+
+	{
+		// Two levels of sub-sequences: one placed at 10 and warping, the second placed at 6 with x2 scaling
+		FMovieSceneSequenceTransform Transform;
+		Transform.NestedTransforms.Emplace(FMovieSceneTimeTransform(-10, 1.f), FMovieSceneTimeWarping(0, 30));
+		Transform.NestedTransforms.Emplace(FMovieSceneTimeTransform(-12, 2.f));
+		TestEqual("Transform time 17", FFrameNumber(18) * Transform, FFrameTime(4));
+		TestEqual("Transform time 18", FFrameNumber(55) * Transform, FFrameTime(18));
+
+		FMovieSceneTimeTransform Inv = Transform.InverseFromWarp(TArray<uint32> { 0, FMovieSceneTimeWarping::InvalidWarpCount });
+		TestEqual("Inverse time 17", FFrameNumber(4) * Inv, FFrameTime(18));
+		Inv = Transform.InverseFromWarp(TArray<uint32> { 1, FMovieSceneTimeWarping::InvalidWarpCount });
+		TestEqual("Inverse time 18", FFrameNumber(18) * Inv, FFrameTime(55));
+	}
+
+	{
+		// Two levels of sub-sequences: one placed at 10, the second placed at 6 with x2 scaling and warping
+		FMovieSceneSequenceTransform Transform;
+		Transform.NestedTransforms.Emplace(FMovieSceneTimeTransform(-10, 1.f));
+		Transform.NestedTransforms.Emplace(FMovieSceneTimeTransform(-12, 2.f), FMovieSceneTimeWarping(0, 14));
+		TestEqual("Transform time 17", FFrameNumber(19) * Transform, FFrameTime(6));
+		TestEqual("Transform time 18", FFrameNumber(32) * Transform, FFrameTime(4));
+
+		FMovieSceneTimeTransform Inv = Transform.InverseFromWarp(TArray<uint32> { FMovieSceneTimeWarping::InvalidWarpCount, 0 });
+		TestEqual("Inverse time 17", FFrameNumber(6) * Inv, FFrameTime(19));
+		Inv = Transform.InverseFromWarp(TArray<uint32> { FMovieSceneTimeWarping::InvalidWarpCount, 2 });
+		TestEqual("Inverse time 18", FFrameNumber(4) * Inv, FFrameTime(32));
+	}
+
+	return true;
+}
 
 #undef LOCTEXT_NAMESPACE
