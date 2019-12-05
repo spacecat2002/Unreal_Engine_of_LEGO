@@ -1435,7 +1435,7 @@ struct FPostProcessSettings
 	float AutoExposureBias;
 
 	/** Enables physical camera exposure using ShutterSpeed/ISO/Aperture. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lens|Exposure", meta = (editcondition = "bOverride_AutoExposureApplyPhysicalCameraExposure", DisplayName = "Apply Physical Camera Exposure", tooltip = "Enable r.EyeAdaptation.AllowPhysicalCameraFlag for this parameter to have an effect."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lens|Exposure", meta = (editcondition = "bOverride_AutoExposureApplyPhysicalCameraExposure", DisplayName = "Apply Physical Camera Exposure", tooltip = "Only affects Manual exposure mode."))
 	uint32 AutoExposureApplyPhysicalCameraExposure : 1;
 
 	/**
