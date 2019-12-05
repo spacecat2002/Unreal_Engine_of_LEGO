@@ -102,7 +102,7 @@ FScreenPassTexture AddVisualizeHDRPass(FRDGBuilder& GraphBuilder, const FViewInf
 		const EAutoExposureMethod AutoExposureMethod = GetAutoExposureMethod(View);
 		const bool bExtendedLuminanceRange = IsExtendLuminanceRangeEnabled();
 
-		const float LuminanceMax = LuminanceMaxFromLensAttenuation(View.FinalPostProcessSettings.CameraLensAttenuation);
+		const float LuminanceMax = LuminanceMaxFromLensAttenuation();
 
 		float X = Output.ViewRect.Min.X + 30;
 		float Y = Output.ViewRect.Min.Y + 28;

@@ -553,10 +553,6 @@ struct FCameraExposureSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exposure", meta = (DisplayName = "Apply Physical Camera Exposure"))
 	uint32 ApplyPhysicalCameraExposure : 1;
 
-	/** The camera lens attenuation.*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Lens|Camera", meta=(ClampMin = "0.0", ClampMax = "1.0", tooltip = "The camera lens attenuation (q). Set this number to 0.78 for lighting to be unitless (1.0cd/m^2 becomes 1.0 at EV100) or 0.65 to match previous versions (1.0cd/m^2 becomes 1.2 at EV100).", editcondition = "bOverride_CameraLensAttenuation", DisplayName = "LensAttenuation"))
-    float CameraLensAttenuation;
-
 	ENGINE_API FCameraExposureSettings();
 
 	/* Exports to post process settings with overrides. */
@@ -823,9 +819,6 @@ struct FPostProcessSettings
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Overrides, meta=(PinHiddenByDefault, InlineEditConditionToggle))
     uint8 bOverride_CameraISO:1;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Overrides, meta=(PinHiddenByDefault, InlineEditConditionToggle))
-    uint8 bOverride_CameraLensAttenuation:1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Overrides, meta=(PinHiddenByDefault, InlineEditConditionToggle))
     uint8 bOverride_AutoExposureMethod:1;
@@ -1410,10 +1403,6 @@ struct FPostProcessSettings
 	/** The camera sensor sensitivity in ISO.*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Lens|Camera", meta=(ClampMin = "1.0", tooltip = "The camera sensor sensitivity", editcondition = "bOverride_CameraISO", DisplayName = "ISO"))
     float CameraISO;
-
-	/** The camera lens attenuation.*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Lens|Camera", meta=(ClampMin = "0.0", ClampMax = "1.0", tooltip = "The camera lens attenuation (q). Set this number to 0.78 for lighting to be unitless (1.0cd/m^2 becomes 1.0 at EV100) or 0.65 to match previous versions (1.0cd/m^2 becomes 1.2 at EV100).", editcondition = "bOverride_CameraLensAttenuation", DisplayName = "LensAttenuation"))
-    float CameraLensAttenuation;
 
 	/** Defines the opening of the camera lens, Aperture is 1/fstop, typical lens go down to f/1.2 (large opening), larger numbers reduce the DOF effect */
 	UPROPERTY(interp, BlueprintReadWrite, Category="Lens|Camera", meta=(ClampMin = "1.0", ClampMax = "32.0", editcondition = "bOverride_DepthOfFieldFstop", DisplayName = "Aperture (F-stop)"))

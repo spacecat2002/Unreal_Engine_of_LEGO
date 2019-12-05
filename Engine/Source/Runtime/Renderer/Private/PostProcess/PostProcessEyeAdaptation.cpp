@@ -50,12 +50,24 @@ TAutoConsoleVariable<float> CVarEyeAdaptationExponentialTransitionTime(
 	TEXT("target exposure it switches to as slower exponential function.\n"),
 	ECVF_RenderThreadSafe);
 
+TAutoConsoleVariable<bool> CVarEyeAdaptationTestParamConversion(
+	TEXT("r.EyeAdaptation.TestParamConversion"),
+	true,
+	TEXT("Converting parameters from old formula to new. Will move this functionality into serilization after testing.\n"),
+	ECVF_RenderThreadSafe);
+
 TAutoConsoleVariable<int> CVarEyeAdaptationVisualizeDebugType(
 	TEXT("r.EyeAdaptation.VisualizeDebugType"),
 	0,
 	TEXT("When enabling Show->Visualize->HDR (Eye Adaptation) is enabled, this flag controls the scene color.\n")
 	TEXT("    0: Scene Color after tonemapping (default).\n")
 	TEXT("    1: Histogram Debug\n"),
+	ECVF_RenderThreadSafe);
+
+TAutoConsoleVariable<float> CVarEyeAdaptationLensAttenuation(
+	TEXT("r.EyeAdaptation.LensAttenuation"),
+	0.78,
+	TEXT("The camera lens attenuation (q). Set this number to 0.78 for lighting to be unitless (1.0cd/m^2 becomes 1.0 at EV100) or 0.65 to match previous versions (1.0cd/m^2 becomes 1.2 at EV100)."),
 	ECVF_RenderThreadSafe);
 
 static TAutoConsoleVariable<int32> CVarEnablePreExposureOnlyInTheEditor(
@@ -78,6 +90,28 @@ bool IsAutoExposureMethodSupported(ERHIFeatureLevel::Type FeatureLevel, EAutoExp
 		return FeatureLevel >= ERHIFeatureLevel::ES3_1;
 	}
 	return false;
+}
+
+bool IsExtendLuminanceRangeEnabled()
+{
+	static const auto VarDefaultAutoExposureExtendDefaultLuminanceRange = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.DefaultFeature.AutoExposure.ExtendDefaultLuminanceRange"));
+
+	return VarDefaultAutoExposureExtendDefaultLuminanceRange->GetValueOnRenderThread() == 1;
+}
+
+float LuminanceMaxFromLensAttenuation()
+{
+	const bool bExtendedLuminanceRange = IsExtendLuminanceRangeEnabled();
+
+	float LensAttenuation = CVarEyeAdaptationLensAttenuation.GetValueOnRenderThread();
+
+	// 78 is defined in the ISO 12232:2006 standard.
+	const float kISOSaturationSpeedConstant = 0.78f;
+
+	const float LuminanceMax = kISOSaturationSpeedConstant / FMath::Max<float>(LensAttenuation, .01f);
+	
+	// if we do not have luminance range extended, the math is hardcoded to 1.0 scale.
+	return bExtendedLuminanceRange ? LuminanceMax : 1.0f;
 }
 
 // Query the view for the auto exposure method, and allow for CVar override.
@@ -132,12 +166,6 @@ EAutoExposureMethod GetAutoExposureMethod(const FViewInfo& View)
 	return AutoExposureMethod;
 }
 
-bool IsExtendLuminanceRangeEnabled()
-{
-	static const auto VarDefaultAutoExposureExtendDefaultLuminanceRange = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.DefaultFeature.AutoExposure.ExtendDefaultLuminanceRange"));
-
-	return VarDefaultAutoExposureExtendDefaultLuminanceRange->GetValueOnRenderThread() == 1;
-}
 
 float GetBasicAutoExposureFocus()
 {
@@ -152,7 +180,7 @@ float GetAutoExposureCompensation(const FViewInfo& View)
 
 	const FEngineShowFlags& EngineShowFlags = View.Family->EngineShowFlags;
 
-	const float LuminanceMax = LuminanceMaxFromLensAttenuation(Settings.CameraLensAttenuation);
+	const float LuminanceMax = LuminanceMaxFromLensAttenuation();
 
 	// This scales the average luminance AFTER it gets clamped, affecting the exposure value directly.
 	float AutoExposureBias = Settings.AutoExposureBias;
@@ -171,17 +199,98 @@ float GetAutoExposureCompensation(const FViewInfo& View)
 	return FMath::Pow(2.0f, AutoExposureBias);
 }
 
+// This code is temporary. We are putting the conversion here in a CVar so we can test that the conversion works well enough
+// between 4.24 and 4.25. But once it's finalized, we will put it into serialization and remove the CVar.
+float CalculateEyeAdaptationParameterExposureConversion(const FPostProcessSettings& Settings, const bool bExtendedLuminanceRange)
+{
+	float ExtraExposureCompensation = 0.0f;
+
+	const float CurrLuminanceMax = LuminanceMaxFromLensAttenuation();
+	const float PrevLuminanceMax = bExtendedLuminanceRange ? 1.2f : 1.0f;
+
+	if (Settings.AutoExposureMethod == EAutoExposureMethod::AEM_Basic)
+	{
+		if (bExtendedLuminanceRange)
+		{
+			// add the Calibration Constant into EC
+			ExtraExposureCompensation += FMath::Log2(18.0f / Settings.AutoExposureCalibrationConstant);
+		}
+		else
+		{
+			// add the Calibration Constant into EC, but it without extended luminance range the minimum is 16.
+			ExtraExposureCompensation += FMath::Log2(18 / FMath::Max(16.0f,Settings.AutoExposureCalibrationConstant));
+		}
+	}
+	else if (Settings.AutoExposureMethod == EAutoExposureMethod::AEM_Histogram)
+	{
+
+		if (bExtendedLuminanceRange)
+		{
+			// We're matching the look of the old and new formula by adding exposure compensation. But this does not work correctly
+			// at the min and max values of the exposure range, because adding exposure compensation pushes it outside the clamped
+			// value. So in the general case of AutoExposureMinBrightness < AutoExposureMaxBrightness, tweak the exposure compensation
+			// to adjust the look. But in the other special case, do nothing.
+			if (Settings.AutoExposureMinBrightness < Settings.AutoExposureMaxBrightness)
+			{
+				// The previous version of the histogram would take the averge luminance between high and low, and then make that
+				// value the white point. This is different from basic exposure (and the new version) which makes that point 
+				// middle grey instead. The following formula gives a similar look for auto-conversion.
+				const float Average = ((Settings.AutoExposureLowPercent + Settings.AutoExposureHighPercent) * .5f);
+				const float X0 = 50.00f;
+				const float X1 = 89.15f;
+				const float Y0 = 1.0f;
+				const float Y1 = 1.5f;
+
+				// These numbers actually under-correct a bit. Since wea are doing a hiddne upgrade, it's better to undercorrect
+				// than to overcorrect.
+
+				const float T = (Average - X0) / (X1 - X0);
+				ExtraExposureCompensation += FMath::Lerp(Y0, Y1, T);
+			}
+			else
+			{
+				// no op, histogram auto-exposure is effectively being used as manual exposure
+			}
+		}
+		else
+		{
+			// If we are not in extended luminance range, then do nothing. The default ranges is pretty tight (0.03 linear to 2.0),
+			// so if we apply an exposure bias to "fix the look" it will probably do more harm than good.
+		}
+	}
+	else // ConvertedSettings.AutoExposureMethod == EAutoExposureMethod::AEM_Manual
+	{
+		// nothing to do
+	}
+
+	// add the exposure compensation from the LuminanceMax. In general, if extended luminance range is enabled, the old value should be 1.2 and the new
+	// value should be 1.0. Otherwise they should both be 1.0.
+	ExtraExposureCompensation += FMath::Log2(CurrLuminanceMax / PrevLuminanceMax);
+
+	return ExtraExposureCompensation;
+}
+
+
 FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIFeatureLevel::Type MinFeatureLevel)
 {
+	const bool bExtendedLuminanceRange = IsExtendLuminanceRangeEnabled();
+
 	const FPostProcessSettings& Settings = View.FinalPostProcessSettings;
+
+	float ExtraExposureCompensation = 0.0f;
+
+	bool bConvertParams = CVarEyeAdaptationTestParamConversion.GetValueOnRenderThread();
+	if (bConvertParams)
+	{
+		ExtraExposureCompensation = CalculateEyeAdaptationParameterExposureConversion(Settings, bExtendedLuminanceRange);
+	}
 
 	const FEngineShowFlags& EngineShowFlags = View.Family->EngineShowFlags;
 
 	const EAutoExposureMethod AutoExposureMethod = GetAutoExposureMethod(View);
 
-	const bool bExtendedLuminanceRange = IsExtendLuminanceRangeEnabled();
-
-	const float LuminanceMax = bExtendedLuminanceRange ? LuminanceMaxFromLensAttenuation(Settings.CameraLensAttenuation) : 1.0f;
+	
+	const float LuminanceMax = bExtendedLuminanceRange ? LuminanceMaxFromLensAttenuation() : 1.0f;
 
 	const float PercentToScale = 0.01f;
 
@@ -195,16 +304,16 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	// figure out the average grey point later. I.e. if the white point is 1.0, the middle grey point should be 0.18.
 	float MinWhitePointLuminance = 1.0f; 
 	float MaxWhitePointLuminance = 1.0f;
-	float ExposureCompensation = GetAutoExposureCompensation(View);
+	float ExposureCompensation = GetAutoExposureCompensation(View) + ExtraExposureCompensation;
 
 	const float BasePhysicalCameraEV100 = FMath::Log2(FMath::Square(Settings.DepthOfFieldFstop) * Settings.CameraShutterSpeed * 100 / FMath::Max(1.f, Settings.CameraISO));
 
 	const float PhysicalCameraEV100 = Settings.AutoExposureApplyPhysicalCameraExposure ? BasePhysicalCameraEV100 : 0.0f;
 
-	const float MiddleGrey = 0.18f;
+	const float kMiddleGrey = 0.18f;
 
 	// AEM_Histogram and AEM_Basic adjust their ExposureCompensation to middle grey (0.18). AEM_Manual ExposureCompensation is already calibrated to 1.0.
-	const float GreyMult = (AutoExposureMethod == AEM_Manual) ? 1.0f : MiddleGrey;
+	const float GreyMult = (AutoExposureMethod == AEM_Manual) ? 1.0f : kMiddleGrey;
 
 	if (View.Family->UseDebugViewPS() ||
 		!EngineShowFlags.Lighting ||
@@ -279,13 +388,13 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	//      M = FrameTime / (1.0f - exp2(-FrameTime * AdaptionSpeed)) * StartT
 	//
 	// To be technically correct, we should take the limit as FrameTime->0, but for simplicity we can make FrameTime a small number. So:
-	const float FrameTimeEps = 1.0f/60.0f;
-	const float ExponentialUpM = FrameTimeEps / ((1.0f - exp2(-FrameTimeEps * Settings.AutoExposureSpeedUp)) * StartTime);
-	const float ExponentialDownM = FrameTimeEps / ((1.0f - exp2(-FrameTimeEps * Settings.AutoExposureSpeedDown)) * StartTime);
+	const float kFrameTimeEps = 1.0f/60.0f;
+	const float ExponentialUpM = kFrameTimeEps / ((1.0f - exp2(-kFrameTimeEps * Settings.AutoExposureSpeedUp)) * StartTime);
+	const float ExponentialDownM = kFrameTimeEps / ((1.0f - exp2(-kFrameTimeEps * Settings.AutoExposureSpeedDown)) * StartTime);
 
 	// If the white point luminance is 1.0, then the middle grey luminance should be 0.18.
-	const float MinAverageLuminance = MinWhitePointLuminance * MiddleGrey;
-	const float MaxAverageLuminance = MaxWhitePointLuminance * MiddleGrey;
+	const float MinAverageLuminance = MinWhitePointLuminance * kMiddleGrey;
+	const float MaxAverageLuminance = MaxWhitePointLuminance * kMiddleGrey;
 
 
 	const bool bValidRange = View.FinalPostProcessSettings.AutoExposureMinBrightness < View.FinalPostProcessSettings.AutoExposureMaxBrightness;

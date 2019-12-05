@@ -25,12 +25,8 @@ FORCEINLINE float Log2ToEV100(float LuminanceMax, float Log2)
 	return Log2 - FMath::Log2(LuminanceMax);
 }
 
-FORCEINLINE float LuminanceMaxFromLensAttenuation(float LensAttenuation)
-{
-	// 78 is defined in the ISO 12232:2006 standard.
-	const float LuminanceMax = 0.78f / FMath::Max<float>(LensAttenuation, .01f);
-	return LuminanceMax;
-}
+// figure out the LuminanceMax (i.e. how much light in cd/m2 will saturate the camera sensor) from the CVar lens attenuation
+float LuminanceMaxFromLensAttenuation();
 
 // Returns whether the auto exposure method is supported by the feature level.
 bool IsAutoExposureMethodSupported(ERHIFeatureLevel::Type FeatureLevel, EAutoExposureMethod AutoExposureMethodId);

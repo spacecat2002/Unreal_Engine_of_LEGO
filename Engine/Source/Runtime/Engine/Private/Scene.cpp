@@ -209,7 +209,6 @@ void FCameraExposureSettings::ExportToPostProcessSettings(FPostProcessSettings* 
 	OutPostProcessSettings->bOverride_HistogramLogMin = true;
 	OutPostProcessSettings->bOverride_HistogramLogMax = true;
 	OutPostProcessSettings->bOverride_AutoExposureApplyPhysicalCameraExposure = true;
-	OutPostProcessSettings->bOverride_CameraLensAttenuation = true;
 
 	OutPostProcessSettings->AutoExposureLowPercent = LowPercent;
 	OutPostProcessSettings->AutoExposureHighPercent = HighPercent;
@@ -223,7 +222,6 @@ void FCameraExposureSettings::ExportToPostProcessSettings(FPostProcessSettings* 
 	OutPostProcessSettings->HistogramLogMin = HistogramLogMin;
 	OutPostProcessSettings->HistogramLogMax = HistogramLogMax;
 	OutPostProcessSettings->AutoExposureApplyPhysicalCameraExposure = ApplyPhysicalCameraExposure;
-	OutPostProcessSettings->CameraLensAttenuation = CameraLensAttenuation;
 }
 
 
@@ -459,7 +457,6 @@ FPostProcessSettings::FPostProcessSettings()
 	// next value might get overwritten by r.DefaultFeature.AutoExposure.Method
 	CameraShutterSpeed = 60.f;
 	CameraISO = 100.f;
-	CameraLensAttenuation = 0.78f;
 	AutoExposureCalibrationConstant = 16.f;
 	AutoExposureMethod = AEM_Histogram;
 	AutoExposureLowPercent = 10.0f;
@@ -487,7 +484,6 @@ FPostProcessSettings::FPostProcessSettings()
 	AutoExposureSpeedUp = 3.0f;
 	AutoExposureSpeedDown = 1.0f;
 
-	CameraLensAttenuation = 0.78;
 	AutoExposureApplyPhysicalCameraExposure = 1;
 
 	LPVDirectionalOcclusionIntensity = 0.0f;
@@ -672,7 +668,6 @@ FPostProcessSettings::FPostProcessSettings(const FPostProcessSettings& Settings)
 	, bOverride_BloomDirtMask(Settings.bOverride_BloomDirtMask)
 	, bOverride_CameraShutterSpeed(Settings.bOverride_CameraShutterSpeed)
 	, bOverride_CameraISO(Settings.bOverride_CameraISO)
-	, bOverride_CameraLensAttenuation(Settings.bOverride_CameraLensAttenuation)
 	, bOverride_AutoExposureMethod(Settings.bOverride_AutoExposureMethod)
 	, bOverride_AutoExposureLowPercent(Settings.bOverride_AutoExposureLowPercent)
 	, bOverride_AutoExposureHighPercent(Settings.bOverride_AutoExposureHighPercent)
@@ -853,7 +848,6 @@ FPostProcessSettings::FPostProcessSettings(const FPostProcessSettings& Settings)
 	, AmbientCubemap(Settings.AmbientCubemap)
 	, CameraShutterSpeed(Settings.CameraShutterSpeed)
 	, CameraISO(Settings.CameraISO)
-	, CameraLensAttenuation(Settings.CameraLensAttenuation)
 	, DepthOfFieldFstop(Settings.DepthOfFieldFstop)
 	, DepthOfFieldMinFstop(Settings.DepthOfFieldMinFstop)
 	, DepthOfFieldBladeCount(Settings.DepthOfFieldBladeCount)
