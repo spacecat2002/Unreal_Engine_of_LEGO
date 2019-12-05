@@ -265,7 +265,7 @@ float CalculateEyeAdaptationParameterExposureConversion(const FPostProcessSettin
 
 	// add the exposure compensation from the LuminanceMax. In general, if extended luminance range is enabled, the old value should be 1.2 and the new
 	// value should be 1.0. Otherwise they should both be 1.0.
-	ExtraExposureCompensation += FMath::Log2(CurrLuminanceMax / PrevLuminanceMax);
+	ExtraExposureCompensation += FMath::Log2(PrevLuminanceMax/ CurrLuminanceMax);
 
 	return ExtraExposureCompensation;
 }
@@ -304,7 +304,7 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	// figure out the average grey point later. I.e. if the white point is 1.0, the middle grey point should be 0.18.
 	float MinWhitePointLuminance = 1.0f; 
 	float MaxWhitePointLuminance = 1.0f;
-	float ExposureCompensation = GetAutoExposureCompensation(View) + ExtraExposureCompensation;
+	float ExposureCompensation = GetAutoExposureCompensation(View) * FMath::Exp2(ExtraExposureCompensation);
 
 	const float BasePhysicalCameraEV100 = FMath::Log2(FMath::Square(Settings.DepthOfFieldFstop) * Settings.CameraShutterSpeed * 100 / FMath::Max(1.f, Settings.CameraISO));
 
