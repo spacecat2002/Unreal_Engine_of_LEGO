@@ -1,10 +1,10 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-#include "GameplayMediaEncoderSample.h"
-#include "GameplayMediaEncoderCommon.h"
-#include "Misc/AssertionMacros.h"
+#include "Microsoft/AVEncoderIMFSampleWrapper.h"
+#include "Microsoft/AVEncoderMicrosoftCommon.h"
 
-GAMEPLAYMEDIAENCODER_START
+namespace AVEncoder
+{
 
 namespace
 {
@@ -29,14 +29,19 @@ namespace
 	}
 }
 
-bool FGameplayMediaEncoderSample::CreateSample()
+//////////////////////////////////////////////////////////////////////////
+// FIMFSampleWrapper
+//////////////////////////////////////////////////////////////////////////
+
+
+bool FIMFSampleWrapper::CreateSample()
 {
 	Sample = nullptr;
 	CHECK_HR(MFCreateSample(Sample.GetInitReference()));
 	return true;
 }
 
-FTimespan FGameplayMediaEncoderSample::GetTime() const
+FTimespan FIMFSampleWrapper::GetTime() const
 {
 	int64 Time;
 	HRESULT hr = Sample->GetSampleTime(&Time);
@@ -44,12 +49,12 @@ FTimespan FGameplayMediaEncoderSample::GetTime() const
 	return Time;
 }
 
-void FGameplayMediaEncoderSample::SetTime(FTimespan Time)
+void FIMFSampleWrapper::SetTime(FTimespan Time)
 {
 	verify(SUCCEEDED(Sample->SetSampleTime(Time.GetTicks())));
 }
 
-FTimespan FGameplayMediaEncoderSample::GetDuration() const
+FTimespan FIMFSampleWrapper::GetDuration() const
 {
 	int64 Duration;
 	HRESULT hr = Sample->GetSampleDuration(&Duration);
@@ -57,19 +62,26 @@ FTimespan FGameplayMediaEncoderSample::GetDuration() const
 	return Duration;
 }
 
-void FGameplayMediaEncoderSample::SetDuration(FTimespan Duration)
+void FIMFSampleWrapper::SetDuration(FTimespan Duration)
 {
 	verify(SUCCEEDED(Sample->SetSampleDuration(Duration.GetTicks())));
 }
 
-bool FGameplayMediaEncoderSample::IsVideoKeyFrame() const
+bool FIMFSampleWrapper::IsVideoKeyFrame() const
 {
-	return MediaType == EMediaType::Video && MFGetAttributeUINT32(Sample, MFSampleExtension_CleanPoint, 0) != 0;
+	return MediaType == EPacketType::Video && MFGetAttributeUINT32(Sample, MFSampleExtension_CleanPoint, 0) != 0;
 }
 
-FGameplayMediaEncoderSample FGameplayMediaEncoderSample::Clone() const
+int FIMFSampleWrapper::GetBufferCount() const
 {
-	FGameplayMediaEncoderSample Res{ MediaType };
+	DWORD BufferCount = 0;
+	verify(SUCCEEDED(Sample->GetBufferCount(&BufferCount)));
+	return BufferCount;
+}
+
+FIMFSampleWrapper FIMFSampleWrapper::Clone() const
+{
+	FIMFSampleWrapper Res{ MediaType };
 	if (!Sample)
 	{
 		return Res;
@@ -89,8 +101,7 @@ FGameplayMediaEncoderSample FGameplayMediaEncoderSample::Clone() const
 		verify(SUCCEEDED(Res.GetSample()->SetUINT32(MFSampleExtension_CleanPoint, 1)));
 	}
 
-	DWORD BufferCount = 0;
-	verify(SUCCEEDED(Sample->GetBufferCount(&BufferCount)));
+	DWORD BufferCount = GetBufferCount();
 
 	for (DWORD i = 0; i != BufferCount; ++i)
 	{
@@ -104,4 +115,8 @@ FGameplayMediaEncoderSample FGameplayMediaEncoderSample::Clone() const
 	return Res;
 }
 
-GAMEPLAYMEDIAENCODER_END
+} // namespace AVEncoder
+
+
+
+
