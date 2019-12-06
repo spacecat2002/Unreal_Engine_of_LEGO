@@ -163,9 +163,10 @@ void SSlider::ResetControllerState()
 
 FNavigationReply SSlider::OnNavigation(const FGeometry& MyGeometry, const FNavigationEvent& InNavigationEvent)
 {
-	FNavigationReply Reply = FNavigationReply::Escape();
 	if (bControllerInputCaptured || !bRequiresControllerLock)
 	{
+		FNavigationReply Reply = FNavigationReply::Escape();
+
 		float NewValue = ValueAttribute.Get();
 		if (Orientation == EOrientation::Orient_Horizontal)
 		{
@@ -197,14 +198,11 @@ FNavigationReply SSlider::OnNavigation(const FGeometry& MyGeometry, const FNavig
 		{
 			CommitValue(FMath::Clamp(NewValue, MinValue, MaxValue));
 		}
+
+		return Reply;
 	}
 
-	if (Reply.GetBoundaryRule() != EUINavigationRule::Escape)
-	{
-		Reply = SLeafWidget::OnNavigation(MyGeometry, InNavigationEvent);
-	}
-
-	return Reply;
+	return SLeafWidget::OnNavigation(MyGeometry, InNavigationEvent);
 }
 
 FReply SSlider::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)
