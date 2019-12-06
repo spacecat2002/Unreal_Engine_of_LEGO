@@ -105,7 +105,7 @@ namespace ImmediatePhysics_Chaos
 		float GetMaxContactImpulse() const;
 
 		/** Get the actor-space centre of mass offset */
-		const FTransform& GetLocalCoMTransform() const;
+		FTransform GetLocalCoMTransform() const;
 
 		Chaos::TGeometryParticleHandle<FReal, Dimensions>* GetParticle();
 		const Chaos::TGeometryParticleHandle<FReal, Dimensions>* GetParticle() const;
@@ -119,15 +119,14 @@ namespace ImmediatePhysics_Chaos
 		friend struct FSimulation;
 		friend struct FJointHandle;
 
-		FActorHandle(Chaos::TPBDRigidsEvolutionGBF<FReal, Dimensions>* InEvolution, EActorType ActorType, FBodyInstance* BodyInstance, const FTransform& Transform);
+		FActorHandle(Chaos::TPBDRigidsSOAs<FReal, 3>& InParticles, EActorType ActorType, FBodyInstance* BodyInstance, const FTransform& Transform);
 
 		Chaos::TGenericParticleHandle<FReal, Dimensions> Handle() const;
 
-		Chaos::TPBDRigidsEvolutionGBF<FReal, Dimensions>* Evolution;
+		Chaos::TPBDRigidsSOAs<FReal, 3>& Particles;
 		Chaos::TGeometryParticleHandle<FReal, Dimensions>* ParticleHandle;
 		TUniquePtr<Chaos::FImplicitObject> Geometry;
 		TArray<TUniquePtr<Chaos::TPerShapeData<float, 3>>> Shapes;
-		FTransform ActorToCoMTransform;
 		int32 Level;
 	};
 

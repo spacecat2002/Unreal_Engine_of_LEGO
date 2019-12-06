@@ -585,6 +585,38 @@ void FPhysScene_Chaos::RemoveActorFromAccelerationStructure(FPhysicsActorHandle&
 #endif
 }
 
+void FPhysScene_Chaos::UpdateActorInAccelerationStructure(FPhysicsActorHandle& Actor)
+{
+#if WITH_CHAOS
+	using namespace Chaos;
+
+	if (GetSpacialAcceleration())
+	{
+		ExternalDataLock.WriteLock();
+
+		auto SpatialAcceleration = GetSpacialAcceleration();
+
+		if (SpatialAcceleration)
+		{
+
+			TBox<FReal, 3> WorldBounds;
+			const bool bHasBounds = Actor->Geometry()->HasBoundingBox();
+			if (bHasBounds)
+			{
+				WorldBounds = Actor->Geometry()->BoundingBox().GetAABB().TransformedAABB(TRigidTransform<FReal, 3>(Actor->X(), Actor->R()));
+			}
+
+
+			Chaos::TAccelerationStructureHandle<float, 3> AccelerationHandle(Actor);
+			SpatialAcceleration->UpdateElementIn(AccelerationHandle, WorldBounds, bHasBounds, Actor->SpatialIdx());
+		}
+
+		ExternalDataLock.WriteUnlock();
+	}
+#endif
+}
+
+
 template<typename ObjectType>
 void RemovePhysicsProxy(ObjectType* InObject, Chaos::FPhysicsSolver* InSolver, FChaosSolversModule* InModule)
 {
@@ -995,7 +1027,7 @@ void FPhysScene_ChaosInterface::Flush_AssumesLocked()
 		Dispatcher->Execute();
 	}
 
-	Chaos::FPBDRigidsSolver* Solver = Scene.GetSolver();
+	Chaos::FPBDRigidsSolver* Solver = GetSolver();
 
 	if(Solver)
 	{
@@ -1005,14 +1037,14 @@ void FPhysScene_ChaosInterface::Flush_AssumesLocked()
 		{
 			Command(Solver);
 		}
-	}
 
-	// Populate the spacial acceleration
-	Chaos::FPBDRigidsSolver::FPBDRigidsEvolution* Evolution = GetSolver()->GetEvolution();
+		// Populate the spacial acceleration
+		Chaos::FPBDRigidsSolver::FPBDRigidsEvolution* Evolution = Solver->GetEvolution();
 
-	if(Evolution)
-	{
-		Evolution->FlushSpatialAcceleration();
+		if(Evolution)
+		{
+			Evolution->FlushSpatialAcceleration();
+		}
 	}
 
 	Scene.CopySolverAccelerationStructure();
@@ -1078,11 +1110,11 @@ void FPhysScene_ChaosInterface::AddForceAtPosition_AssumesLocked(FBodyInstance* 
 			{
 				const Chaos::FVec3& CurrentForce = Rigid->ExternalForce();
 				const Chaos::FVec3& CurrentTorque = Rigid->ExternalTorque();
-				const Chaos::FVec3& CurrentPosition = Rigid->X();
-				const Chaos::FVec3 WorldCOM = Rigid->X(); // TODO: Remember to fix this once we add COM to particles!
+				const Chaos::FVec3 WorldCOM = FParticleUtilitiesGT::GetCoMWorldPosition(Rigid);
+
 				if (bIsLocalForce)
 				{
-					const Chaos::FRigidTransform3 CurrentTransform(Rigid->X(), Rigid->R());
+					const Chaos::FRigidTransform3 CurrentTransform = FParticleUtilitiesGT::GetActorWorldTransform(Rigid);
 					const Chaos::FVec3 WorldPosition = CurrentTransform.TransformPosition(Position);
 					const Chaos::FVec3 WorldForce = CurrentTransform.TransformVector(Force);
 					const Chaos::FVec3 WorldTorque = Chaos::FVec3::CrossProduct(WorldPosition - WorldCOM, WorldForce);
