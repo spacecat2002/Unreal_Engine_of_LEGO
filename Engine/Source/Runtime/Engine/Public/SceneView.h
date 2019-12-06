@@ -992,6 +992,9 @@ public:
 	/** Whether this view is being used to render a planar reflection. */
 	bool bIsPlanarReflection;
 
+	/** Whether this view is being used to render a high quality offline render */
+	bool bIsOfflineRender;
+
 	/** Whether to force two sided rendering for this view. */
 	bool bRenderSceneTwoSided;
 

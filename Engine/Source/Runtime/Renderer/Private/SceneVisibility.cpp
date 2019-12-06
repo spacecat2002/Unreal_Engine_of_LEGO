@@ -3399,7 +3399,8 @@ void FSceneRenderer::PreVisibilityFrameSetup(FRHICommandListImmediate& RHICmdLis
 
 			// we don't use DeltaTime as it can be 0 (in editor) and is computed by subtracting floats (loses precision over time)
 			// Clamp DeltaWorldTime to reasonable values for the purposes of motion blur, things like TimeDilation can make it very small
-			if (!ViewFamily.bWorldIsPaused)
+			// Offline renders always control the timestep for the view and always need the timescales calculated.
+			if (!ViewFamily.bWorldIsPaused || View.bIsOfflineRender)
 			{
 				ViewState->UpdateMotionBlurTimeScale(View);
 			}
