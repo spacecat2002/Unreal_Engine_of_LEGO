@@ -52,8 +52,11 @@ class FByteBufferShader : public FGlobalShader
 		SHADER_PARAMETER( uint32, SrcOffset )
 		SHADER_PARAMETER( uint32, DstOffset )
 
-		SHADER_PARAMETER_SRV( ByteAddressBuffer,	SrcBuffer )
-		SHADER_PARAMETER_UAV( RWByteAddressBuffer,	DstBuffer )
+		SHADER_PARAMETER_SRV( StructuredBuffer< float4 >,	SrcStructuredBuffer)
+		SHADER_PARAMETER_UAV( RWStructuredBuffer< float4 >, DstStructuredBuffer )
+
+		SHADER_PARAMETER_SRV( ByteAddressBuffer,			SrcByteAddressBuffer )
+		SHADER_PARAMETER_UAV( RWByteAddressBuffer,			DstByteAddressBuffer )
 	END_SHADER_PARAMETER_STRUCT()
 };
 
@@ -80,7 +83,8 @@ class FScatterCopyCS : public FByteBufferShader
 		SHADER_PARAMETER_STRUCT_INCLUDE( FByteBufferShader::FParameters, Common )
 		
 		SHADER_PARAMETER( uint32, NumScatters )
-		SHADER_PARAMETER_SRV( ByteAddressBuffer, ScatterBuffer )
+		SHADER_PARAMETER_SRV( StructureBuffer< float4 >,	ScatterStructuredBuffer )
+		SHADER_PARAMETER_SRV( ByteAddressBuffer,			ScatterByteAddressBuffer )
 	END_SHADER_PARAMETER_STRUCT()
 };
 IMPLEMENT_GLOBAL_SHADER( FScatterCopyCS, "/Engine/Private/ByteBuffer.usf", "ScatterCopyCS", SF_Compute );
@@ -96,8 +100,8 @@ class FMemcpyTextureToTextureCS : public FGlobalShader
 		SHADER_PARAMETER( uint32, SrcOffset )
 		SHADER_PARAMETER( uint32, DstOffset )
 		SHADER_PARAMETER( uint32, DstHeight )
-		SHADER_PARAMETER_SRV( StructuredBuffer< float4 >, SrcTexture )
-		SHADER_PARAMETER_UAV( RWTexture2D<float4>, DstTexture )
+		SHADER_PARAMETER_SRV( StructuredBuffer< float4 >,	SrcTexture )
+		SHADER_PARAMETER_UAV( RWTexture2D<float4>,			DstTexture )
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation( const FGlobalShaderPermutationParameters& Parameters )
@@ -119,8 +123,8 @@ class FScatterCopyTextureCS : public FGlobalShader
 		SHADER_PARAMETER( uint32, Float4sPerLine )
 		SHADER_PARAMETER( uint32, NumScatters )
 		SHADER_PARAMETER( uint32, DstHeight )
-		SHADER_PARAMETER_SRV( StructuredBuffer< float4 >, SrcBuffer )
-		SHADER_PARAMETER_SRV( StructuredBuffer< uint >, ScatterBuffer )
+		SHADER_PARAMETER_SRV( StructuredBuffer< float4 >, SrcStructuredBuffer )
+		SHADER_PARAMETER_SRV( StructuredBuffer< uint >, ScatterStructuredBuffer )
 		SHADER_PARAMETER_UAV( RWTexture2D<float4>, DstTexture )
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -146,10 +150,10 @@ void MemsetBuffer( FRHICommandList& RHICmdList, const FRWByteAddressBuffer& DstB
 	check( (DstOffset & 3) == 0 );
 
 	FMemsetBufferCS::FParameters Parameters;
-	Parameters.Value		= Value;
-	Parameters.Size			= NumBytes / 4;
-	Parameters.DstOffset	= DstOffset / 4;
-	Parameters.DstBuffer	= DstBuffer.UAV;
+	Parameters.Value				= Value;
+	Parameters.Size					= NumBytes / 4;
+	Parameters.DstOffset			= DstOffset / 4;
+	Parameters.DstByteAddressBuffer	= DstBuffer.UAV;
 
 	FMemsetBufferCS::FPermutationDomain PermutationVector;
 	PermutationVector.Set< FMemsetBufferCS::FFloat4BufferDim >( false );
@@ -171,8 +175,8 @@ void MemcpyBuffer( FRHICommandList& RHICmdList, const FRWByteAddressBuffer& DstB
 	Parameters.Size			= NumBytes / 4;
 	Parameters.SrcOffset	= SrcOffset / 4;
 	Parameters.DstOffset	= DstOffset / 4;
-	Parameters.SrcBuffer	= SrcBuffer.SRV;
-	Parameters.DstBuffer	= DstBuffer.UAV;
+	Parameters.SrcByteAddressBuffer	= SrcBuffer.SRV;
+	Parameters.DstByteAddressBuffer	= DstBuffer.UAV;
 
 	FMemcpyBufferCS::FPermutationDomain PermutationVector;
 	PermutationVector.Set< FMemcpyBufferCS::FFloat4BufferDim >( false );
@@ -217,10 +221,10 @@ void MemsetBufferFloat4( FRHICommandList& RHICmdList, const FRWBufferStructured&
 	check( (DstOffset & 15) == 0 );
 
 	FMemsetBufferCS::FParameters Parameters;
-	Parameters.Value		= Value;
-	Parameters.Size			= NumBytes / 16;
-	Parameters.DstOffset	= DstOffset / 16;
-	Parameters.DstBuffer	= DstBuffer.UAV;
+	Parameters.Value				= Value;
+	Parameters.Size					= NumBytes / 16;
+	Parameters.DstOffset			= DstOffset / 16;
+	Parameters.DstStructuredBuffer	= DstBuffer.UAV;
 
 	FMemsetBufferCS::FPermutationDomain PermutationVector;
 	PermutationVector.Set< FMemsetBufferCS::FFloat4BufferDim >( true );
@@ -242,8 +246,8 @@ void MemcpyBufferFloat4( FRHICommandList& RHICmdList, const FRWBufferStructured&
 	Parameters.Size			= NumBytes / 16;
 	Parameters.SrcOffset	= SrcOffset / 16;
 	Parameters.DstOffset	= DstOffset / 16;
-	Parameters.SrcBuffer	= SrcBuffer.SRV;
-	Parameters.DstBuffer	= DstBuffer.UAV;
+	Parameters.SrcStructuredBuffer	= SrcBuffer.SRV;
+	Parameters.DstStructuredBuffer	= DstBuffer.UAV;
 
 	FMemcpyBufferCS::FPermutationDomain PermutationVector;
 	PermutationVector.Set< FMemcpyBufferCS::FFloat4BufferDim >( true );
@@ -398,9 +402,20 @@ void FScatterUploadBuffer::UploadToBuffer( FRHICommandList& RHICmdList, FRHIUnor
 	FScatterCopyCS::FParameters Parameters;
 	Parameters.NumScatters = NumScatters;
 	Parameters.Common.Size = NumThreadsPerScatter;
-	Parameters.ScatterBuffer = ScatterBuffer.SRV;
-	Parameters.Common.SrcBuffer = UploadBuffer.SRV;
-	Parameters.Common.DstBuffer = DstBufferUAV;
+	
+	if (bFloat4Buffer)
+	{
+		Parameters.Common.SrcStructuredBuffer = UploadBuffer.SRV;
+		Parameters.Common.DstStructuredBuffer = DstBufferUAV;
+		Parameters.ScatterStructuredBuffer = ScatterBuffer.SRV;
+	}
+	else
+	{
+		Parameters.Common.SrcByteAddressBuffer = UploadBuffer.SRV;
+		Parameters.Common.DstByteAddressBuffer = DstBufferUAV;
+		Parameters.ScatterByteAddressBuffer = ScatterBuffer.SRV;
+	}
+	
 
 	FScatterCopyCS::FPermutationDomain PermutationVector;
 	PermutationVector.Set< FScatterCopyCS::FFloat4BufferDim >( bFloat4Buffer );
@@ -436,8 +451,8 @@ void FScatterUploadBuffer::UploadToTexture(FRHICommandList& RHICmdList, FTexture
 	Parameters.Float4sPerLine	= BytesPerLine >> 4;
 	Parameters.NumScatters		= NumScatters;
 	Parameters.DstHeight		= DstTexture.Buffer->GetSizeY();
-	Parameters.SrcBuffer		= UploadBuffer.SRV;
-	Parameters.ScatterBuffer	= ScatterBuffer.SRV;
+	Parameters.SrcStructuredBuffer		= UploadBuffer.SRV;
+	Parameters.ScatterStructuredBuffer	= ScatterBuffer.SRV;
 	Parameters.DstTexture		= DstTexture.UAV;
 
 	auto ComputeShader = GetGlobalShaderMap( GMaxRHIFeatureLevel )->GetShader< FScatterCopyTextureCS >();
