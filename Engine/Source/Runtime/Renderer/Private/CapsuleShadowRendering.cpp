@@ -951,8 +951,7 @@ bool FDeferredShadingSceneRenderer::RenderCapsuleDirectShadows(
 					GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
 					GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
 				
-					FProjectedShadowInfo::SetBlendStateForProjection(
-						GraphicsPSOInit,
+					GraphicsPSOInit.BlendState = FProjectedShadowInfo::GetBlendStateForProjection(
 						LightSceneInfo.GetDynamicShadowMapChannel(),
 						false,
 						false,

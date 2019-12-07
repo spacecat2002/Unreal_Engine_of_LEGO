@@ -414,15 +414,14 @@ public:
 	/** Renders shadow maps for translucent primitives. */
 	void RenderTranslucencyDepths(FRHICommandList& RHICmdList, class FSceneRenderer* SceneRenderer);
 
-	static void SetBlendStateForProjection(
-		FGraphicsPipelineStateInitializer& GraphicsPSOInit,
+	static FRHIBlendState* GetBlendStateForProjection(
 		int32 ShadowMapChannel,
 		bool bIsWholeSceneDirectionalShadow,
 		bool bUseFadePlane,
 		bool bProjectingForForwardShading,
 		bool bMobileModulatedProjections);
 
-	void SetBlendStateForProjection(FGraphicsPipelineStateInitializer& GraphicsPSOInit, bool bProjectingForForwardShading, bool bMobileModulatedProjections) const;
+	FRHIBlendState* GetBlendStateForProjection(bool bProjectingForForwardShading, bool bMobileModulatedProjections) const;
 
 	/**
 	 * Projects the shadow onto the scene for a particular view.
