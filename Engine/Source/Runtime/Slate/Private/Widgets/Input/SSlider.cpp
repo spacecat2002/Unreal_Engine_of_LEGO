@@ -197,9 +197,8 @@ FNavigationReply SSlider::OnNavigation(const FGeometry& MyGeometry, const FNavig
 		if (ValueAttribute.Get() != NewValue)
 		{
 			CommitValue(FMath::Clamp(NewValue, MinValue, MaxValue));
+			return Reply;
 		}
-
-		return Reply;
 	}
 
 	return SLeafWidget::OnNavigation(MyGeometry, InNavigationEvent);
