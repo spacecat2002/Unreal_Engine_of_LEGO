@@ -476,13 +476,13 @@ void FOpenGLDynamicRHI::UpdateViewportInOpenGLContext( FOpenGLContextState& Cont
 	}
 }
 
-void FOpenGLDynamicRHI::RHISetViewport(uint32 MinX,uint32 MinY,float MinZ,uint32 MaxX,uint32 MaxY,float MaxZ)
+void FOpenGLDynamicRHI::RHISetViewport(float MinX, float MinY,float MinZ, float MaxX, float MaxY,float MaxZ)
 {
 	VERIFY_GL_SCOPE();
-	PendingState.Viewport.Min.X = MinX;
-	PendingState.Viewport.Min.Y = MinY;
-	PendingState.Viewport.Max.X = MaxX;
-	PendingState.Viewport.Max.Y = MaxY;
+	PendingState.Viewport.Min.X = (uint32)MinX;
+	PendingState.Viewport.Min.Y = (uint32)MinY;
+	PendingState.Viewport.Max.X = (uint32)MaxX;
+	PendingState.Viewport.Max.Y = (uint32)MaxY;
 	PendingState.DepthMinZ = MinZ;
 	PendingState.DepthMaxZ = MaxZ;
 

@@ -438,7 +438,7 @@ void FD3D12CommandContext::RHIWriteGPUFence(FRHIGPUFence* FenceRHI)
 	Fence->WriteInternal(ED3D12CommandQueueType::Default);
 }
 
-void FD3D12CommandContext::RHISetViewport(uint32 MinX, uint32 MinY, float MinZ, uint32 MaxX, uint32 MaxY, float MaxZ)
+void FD3D12CommandContext::RHISetViewport(float MinX, float MinY, float MinZ, float MaxX, float MaxY, float MaxZ)
 {
 	// These are the maximum viewport extents for D3D12. Exceeding them leads to badness.
 	check(MinX <= (uint32)D3D12_VIEWPORT_BOUNDS_MAX);
@@ -446,7 +446,7 @@ void FD3D12CommandContext::RHISetViewport(uint32 MinX, uint32 MinY, float MinZ, 
 	check(MaxX <= (uint32)D3D12_VIEWPORT_BOUNDS_MAX);
 	check(MaxY <= (uint32)D3D12_VIEWPORT_BOUNDS_MAX);
 
-	D3D12_VIEWPORT Viewport = { (float)MinX, (float)MinY, (float)(MaxX - MinX), (float)(MaxY - MinY), MinZ, MaxZ };
+	D3D12_VIEWPORT Viewport = { MinX, MinY, (MaxX - MinX), (MaxY - MinY), MinZ, MaxZ };
 	//avoid setting a 0 extent viewport, which the debug runtime doesn't like
 	if (Viewport.Width > 0 && Viewport.Height > 0)
 	{
@@ -1026,13 +1026,13 @@ void FD3D12CommandContext::RHISetRenderTargets(
 		// check target 0 is valid
 		check(0 < NewNumSimultaneousRenderTargets && NewRenderTargetsRHI[0].Texture != nullptr);
 		FRTVDesc RTTDesc = GetRenderTargetViewDesc(NewRenderTargetViews[0]);
-		RHISetViewport(0, 0, 0.0f, RTTDesc.Width, RTTDesc.Height, 1.0f);
+		RHISetViewport(0.0f, 0.0f, 0.0f, (float)RTTDesc.Width, (float)RTTDesc.Height, 1.0f);
 	}
 	else if (DepthStencilView)
 	{
 		FD3D12Resource* DepthTargetTexture = DepthStencilView->GetResource();
 		D3D12_RESOURCE_DESC const& DTTDesc = DepthTargetTexture->GetDesc();
-		RHISetViewport(0, 0, 0.0f, (uint32)DTTDesc.Width, DTTDesc.Height, 1.0f);
+		RHISetViewport(0.0f, 0.0f, 0.0f, (float)DTTDesc.Width, (float)DTTDesc.Height, 1.0f);
 	}
 }
 

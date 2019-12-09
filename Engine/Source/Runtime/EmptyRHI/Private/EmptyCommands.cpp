@@ -35,7 +35,7 @@ void FEmptyDynamicRHI::RHIDispatchIndirectComputeShader(FRHIVertexBuffer* Argume
 
 }
 
-void FEmptyDynamicRHI::RHISetViewport(uint32 MinX,uint32 MinY,float MinZ,uint32 MaxX,uint32 MaxY,float MaxZ)
+void FEmptyDynamicRHI::RHISetViewport(float MinX, float MinY,float MinZ, float MaxX, float MaxY,float MaxZ)
 {
 
 }

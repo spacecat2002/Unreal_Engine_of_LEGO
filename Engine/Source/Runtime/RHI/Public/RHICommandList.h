@@ -1027,13 +1027,13 @@ FRHICOMMAND_MACRO(FRHICommandSetStreamSource)
 
 FRHICOMMAND_MACRO(FRHICommandSetViewport)
 {
-	uint32 MinX;
-	uint32 MinY;
+	float MinX;
+	float MinY;
 	float MinZ;
-	uint32 MaxX;
-	uint32 MaxY;
+	float MaxX;
+	float MaxY;
 	float MaxZ;
-	FORCEINLINE_DEBUGGABLE FRHICommandSetViewport(uint32 InMinX, uint32 InMinY, float InMinZ, uint32 InMaxX, uint32 InMaxY, float InMaxZ)
+	FORCEINLINE_DEBUGGABLE FRHICommandSetViewport(float InMinX, float InMinY, float InMinZ, float InMaxX, float InMaxY, float InMaxZ)
 		: MinX(InMinX)
 		, MinY(InMinY)
 		, MinZ(InMinZ)
@@ -1047,17 +1047,17 @@ FRHICOMMAND_MACRO(FRHICommandSetViewport)
 
 FRHICOMMAND_MACRO(FRHICommandSetStereoViewport)
 {
-	uint32 LeftMinX;
-	uint32 RightMinX;
-	uint32 LeftMinY;
-	uint32 RightMinY;
+	float LeftMinX;
+	float RightMinX;
+	float LeftMinY;
+	float RightMinY;
 	float MinZ;
-	uint32 LeftMaxX;
-	uint32 RightMaxX;
-	uint32 LeftMaxY;
-	uint32 RightMaxY;
+	float LeftMaxX;
+	float RightMaxX;
+	float LeftMaxY;
+	float RightMaxY;
 	float MaxZ;
-	FORCEINLINE_DEBUGGABLE FRHICommandSetStereoViewport(uint32 InLeftMinX, uint32 InRightMinX, uint32 InLeftMinY, uint32 InRightMinY, float InMinZ, uint32 InLeftMaxX, uint32 InRightMaxX, uint32 InLeftMaxY, uint32 InRightMaxY, float InMaxZ)
+	FORCEINLINE_DEBUGGABLE FRHICommandSetStereoViewport(float InLeftMinX, float InRightMinX, float InLeftMinY, float InRightMinY, float InMinZ, float InLeftMaxX, float InRightMaxX, float InLeftMaxY, float InRightMaxY, float InMaxZ)
 		: LeftMinX(InLeftMinX)
 		, RightMinX(InRightMinX)
 		, LeftMinY(InLeftMinY)
@@ -2918,7 +2918,7 @@ public:
 		ALLOC_COMMAND(FRHICommandSetStencilRef)(StencilRef);
 	}
 
-	FORCEINLINE_DEBUGGABLE void SetViewport(uint32 MinX, uint32 MinY, float MinZ, uint32 MaxX, uint32 MaxY, float MaxZ)
+	FORCEINLINE_DEBUGGABLE void SetViewport(float MinX, float MinY, float MinZ, float MaxX, float MaxY, float MaxZ)
 	{
 		//check(IsOutsideRenderPass());
 		if (Bypass())
@@ -2929,7 +2929,7 @@ public:
 		ALLOC_COMMAND(FRHICommandSetViewport)(MinX, MinY, MinZ, MaxX, MaxY, MaxZ);
 	}
 
-	FORCEINLINE_DEBUGGABLE void SetStereoViewport(uint32 LeftMinX, uint32 RightMinX, uint32 LeftMinY, uint32 RightMinY, float MinZ, uint32 LeftMaxX, uint32 RightMaxX, uint32 LeftMaxY, uint32 RightMaxY, float MaxZ)
+	FORCEINLINE_DEBUGGABLE void SetStereoViewport(float LeftMinX, float RightMinX, float LeftMinY, float RightMinY, float MinZ, float LeftMaxX, float RightMaxX, float LeftMaxY, float RightMaxY, float MaxZ)
 	{
 		//check(IsOutsideRenderPass());
 		if (Bypass())
