@@ -36,6 +36,7 @@ void UMeshSurfacePointToolBuilder::InitializeNewTool(UMeshSurfacePointTool* NewT
 	UActorComponent* ActorComponent = ToolBuilderUtil::FindFirstComponent(SceneState, CanMakeComponentTarget);
 	UPrimitiveComponent* MeshComponent = Cast<UPrimitiveComponent>(ActorComponent);
 	check(MeshComponent != nullptr);
+	NewTool->SetStylusAPI(this->StylusAPI);
 	NewTool->SetSelection( MakeComponentTarget(MeshComponent) );
 }
 
@@ -66,6 +67,10 @@ void UMeshSurfacePointTool::Setup()
 	AddInputBehavior(HoverBehavior);
 }
 
+void UMeshSurfacePointTool::SetStylusAPI(IToolStylusStateProviderAPI* StylusAPIIn)
+{
+	this->StylusAPI = StylusAPIIn;
+}
 
 bool UMeshSurfacePointTool::HitTest(const FRay& Ray, FHitResult& OutHit)
 {
@@ -168,6 +173,11 @@ FInputRayHit UMeshSurfacePointTool::BeginHoverSequenceHitTest(const FInputDevice
 	return FInputRayHit();
 }
 
+
+float UMeshSurfacePointTool::GetCurrentDevicePressure() const
+{
+	return (StylusAPI != nullptr) ? FMath::Clamp(StylusAPI->GetCurrentPressure(), 0.0f, 1.0f) : 1.0f;
+}
 
 
 

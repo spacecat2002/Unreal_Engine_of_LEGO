@@ -14,6 +14,14 @@
 
 class UMeshSurfacePointTool;
 
+// This is a temporary interface to provide stylus pressure, currently necessary due to limitations
+// in the stylus plugin architecture. Should be removed once InputState/InputBehavior can support stylus events
+class INTERACTIVETOOLSFRAMEWORK_API IToolStylusStateProviderAPI
+{
+public:
+	virtual float GetCurrentPressure() const = 0;
+};
+
 /**
  * 
  */
@@ -23,6 +31,8 @@ class INTERACTIVETOOLSFRAMEWORK_API UMeshSurfacePointToolBuilder : public UInter
 	GENERATED_BODY()
 
 public:
+	IToolStylusStateProviderAPI* StylusAPI = nullptr;
+
 	/** @return true if a single mesh source can be found in the active selection */
 	virtual bool CanBuildTool(const FToolBuilderState& SceneState) const override;
 
@@ -57,6 +67,8 @@ public:
 	/** Register InputBehaviors, etc */
 	virtual void Setup() override;
 
+	/** Set current stlyus API source */
+	virtual void SetStylusAPI(IToolStylusStateProviderAPI* StylusAPI);
 
 	// UMeshSurfacePointTool API
 
@@ -114,6 +126,8 @@ public:
 	/** @return current state of the shift toggle */
 	virtual bool GetCtrlToggle() const { return bCtrlToggle; }
 
+	/** @return current input device pressure in range 0-1 */
+	virtual float GetCurrentDevicePressure() const;
 
 protected:
 	/** Current state of the shift modifier toggle */
@@ -123,5 +137,7 @@ protected:
 	bool bCtrlToggle = false;
 
 	FRay LastWorldRay;
+
+	IToolStylusStateProviderAPI* StylusAPI = nullptr;
 };
 
