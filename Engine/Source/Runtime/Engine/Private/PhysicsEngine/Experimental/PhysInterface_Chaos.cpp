@@ -359,6 +359,14 @@ FPhysScene* FPhysInterface_Chaos::GetCurrentScene(const FPhysicsActorHandle& InH
 	return nullptr;
 }
 
+void FPhysInterface_Chaos::FlushScene(FPhysScene* InScene)
+{
+	FPhysicsCommand::ExecuteWrite(InScene, [&]()
+	{
+		InScene->Flush_AssumesLocked();
+	});
+}
+
 bool FPhysInterface_Chaos::CanSimulate_AssumesLocked(const FPhysicsActorHandle& InActorReference)
 {
 	// #todo : Implement
@@ -459,6 +467,9 @@ void FPhysInterface_Chaos::SetGlobalPose_AssumesLocked(const FPhysicsActorHandle
 {
 	InActorReference->SetX(InNewPose.GetLocation());
 	InActorReference->SetR(InNewPose.GetRotation());
+
+	FPhysScene* Scene = GetCurrentScene(InActorReference);
+	Scene->GetScene().UpdateActorInAccelerationStructure(InActorReference);
 }
 
 FTransform FPhysInterface_Chaos::GetTransform_AssumesLocked(const FPhysicsActorHandle& InRef, bool bForceGlobalPose /*= false*/)
@@ -1920,7 +1931,7 @@ int32 GetAllShapesInternal_AssumedLocked(const FPhysicsActorHandle& InActorHandl
 	//todo: can we avoid this construction?
 	for (const TUniquePtr<Chaos::TPerShapeData<float, 3>>& Shape : ShapesArray)
 	{
-		OutShapes.Add(FPhysicsShapeReference_Chaos(Shape.Get(), true, true, InActorHandle));
+		OutShapes.Add(FPhysicsShapeReference_Chaos(Shape.Get(), Shape->bSimulate, true, InActorHandle));
 	}
 	return OutShapes.Num();
 }

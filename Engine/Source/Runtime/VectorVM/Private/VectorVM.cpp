@@ -1,4 +1,4 @@
-#// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VectorVM.h"
 #include "Modules/ModuleManager.h"
@@ -84,6 +84,39 @@ namespace VectorVMConstants
 	};
 };
 
+// helper function wrapping the SSE3 shuffle operation.  Currently implemented for PS4/XB1/Neon, the
+// rest will just use the FPU version so as to not push the requirements up to SSE3 (currently SSE2)
+#if PLATFORM_ENABLE_VECTORINTRINSICS && (PLATFORM_PS4 || PLATFORM_XBOXONE)
+#define VectorIntShuffle( Vec, Mask )	_mm_shuffle_epi8( (Vec), (Mask) )
+#elif PLATFORM_ENABLE_VECTORINTRINSICS_NEON
+/**
+ * Shuffles a VectorInt using a provided shuffle mask
+ *
+ * @param Vec		Source vector
+ * @param Mask		Shuffle vector
+ */
+FORCEINLINE VectorRegisterInt VectorIntShuffle(const VectorRegisterInt& Vec, const VectorRegisterInt& Mask)
+{
+	uint8x8x2_t VecSplit = { { vget_low_u8(Vec), vget_high_u8(Vec) } };
+	return vcombine_u8(vtbl2_u8(VecSplit, vget_low_u8(Mask)), vtbl2_u8(VecSplit, vget_high_u8(Mask)));
+	}
+#else
+FORCEINLINE VectorRegisterInt VectorIntShuffle(const VectorRegisterInt& Vec, const VectorRegisterInt& Mask)
+{
+	VectorRegisterInt Result;
+	const int8* VecBytes = reinterpret_cast<const int8*>(&Vec);
+	const int8* MaskBytes = reinterpret_cast<const int8*>(&Mask);
+	int8* ResultBytes = reinterpret_cast<int8*>(&Result);
+
+	for (int32 i = 0; i < sizeof(VectorRegisterInt); ++i)
+	{
+		ResultBytes[i] = (MaskBytes[i] < 0) ? 0 : VecBytes[MaskBytes[i] % 16];
+	}
+
+	return Result;
+}
+#endif
+
 //Temporarily locking the free table until we can implement a lock free algorithm. UE-65856
 FORCEINLINE void FDataSetMeta::LockFreeTable()
 {
@@ -141,7 +174,7 @@ static FAutoConsoleVariableRef CVarParallelVVMInstancesPerChunk(
 	ECVF_ReadOnly
 );
 
-static int32 GbOptimizeVMByteCode = 1;
+static int32 GbOptimizeVMByteCode = 0;
 static FAutoConsoleVariableRef CVarbOptimizeVMByteCode(
 	TEXT("vm.OptimizeVMByteCode"),
 	GbOptimizeVMByteCode,
@@ -149,7 +182,7 @@ static FAutoConsoleVariableRef CVarbOptimizeVMByteCode(
 	ECVF_Default
 );
 
-static int32 GbUseOptimizedVMByteCode = 1;
+static int32 GbUseOptimizedVMByteCode = 0;
 static FAutoConsoleVariableRef CVarbUseOptimizedVMByteCode(
 	TEXT("vm.UseOptimizedVMByteCode"),
 	GbUseOptimizedVMByteCode,
@@ -2411,6 +2444,9 @@ FString VectorVM::GetOperandLocationName(EVectorVMOperandLocation Location)
 	return LocStr.RightChop(LastIdx);
 }
 #endif
+
+// local implementation of VectorIntShuffle for neon/directx/
+
 
 // Optimization managed by GbBatchPackVMOutput via PackedOutputOptimization()
 // Looks for the common pattern of an acquireindex op followed by a number of associated outputdata_32bit ops.  The
