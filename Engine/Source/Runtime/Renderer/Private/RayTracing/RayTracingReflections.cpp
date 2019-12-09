@@ -170,6 +170,15 @@ enum class ESamplePhase
 	Resolve = 3    // Final sample, apply weighting
 };
 
+// Counterpart for FImaginaryReflectionGBufferData in RayTracingReflectionsCommon.ush
+struct FImaginaryReflectionGBufferData
+{
+	float WorldNormal[3];
+	float SceneDepth;
+	float Velocity[2];
+	uint32 ValidSamples;
+};
+
 static const int32 GReflectionLightCountMaximum = 64;
 
 class FRayTracingReflectionsRGS : public FGlobalShader
@@ -243,6 +252,7 @@ class FRayTracingReflectionsRGS : public FGlobalShader
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, ColorOutput)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, RayHitDistanceOutput)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, RayImaginaryDepthOutput)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<FImaginaryReflectionGBufferData>, ImaginaryReflectionGBuffer)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -351,10 +361,11 @@ void FDeferredShadingSceneRenderer::RenderRayTracingReflections(
 	ensure(ResolutionFraction == 1.0 / UpscaleFactor);
 	ensureMsgf(FComputeShaderUtils::kGolden2DGroupSize % UpscaleFactor == 0, TEXT("Reflection ray tracing will have uv misalignement."));
 	FIntPoint RayTracingResolution = FIntPoint::DivideAndRoundUp(View.ViewRect.Size(), UpscaleFactor);
+	FIntPoint RayTracingBufferSize = SceneTextures.SceneDepthBuffer->Desc.Extent / UpscaleFactor;
 
 	{
 		FRDGTextureDesc Desc = FRDGTextureDesc::Create2DDesc(
-			SceneTextures.SceneDepthBuffer->Desc.Extent / UpscaleFactor,
+			RayTracingBufferSize,
 			PF_FloatRGBA,
 			FClearValueBinding::None,
 			/* InFlags = */ TexCreate_None,
@@ -366,6 +377,16 @@ void FDeferredShadingSceneRenderer::RenderRayTracingReflections(
 		Desc.Format = PF_R16F;
 		OutDenoiserInputs->RayHitDistance = GraphBuilder.CreateTexture(Desc, TEXT("RayTracingReflectionsHitDistance"));
 		OutDenoiserInputs->RayImaginaryDepth = GraphBuilder.CreateTexture(Desc, TEXT("RayTracingReflectionsImaginaryDepth"));
+	}
+
+	FRDGBufferRef ImaginaryReflectionGBuffer;
+	{
+		// Create the structured imaginary reflection G-buffer used by the reflection RGS
+		FRDGBufferDesc Desc = FRDGBufferDesc::CreateStructuredDesc(
+			sizeof(FImaginaryReflectionGBufferData),
+			RayTracingBufferSize.X * RayTracingBufferSize.Y);
+
+		ImaginaryReflectionGBuffer = GraphBuilder.CreateBuffer(Desc, TEXT("ImaginaryReflectionGBuffer"));
 	}
 
 	// When deferred materials are used, we need to dispatch the reflection shader twice:
@@ -434,6 +455,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingReflections(
 	CommonParameters.ColorOutput = GraphBuilder.CreateUAV(OutDenoiserInputs->Color);
 	CommonParameters.RayHitDistanceOutput = GraphBuilder.CreateUAV(OutDenoiserInputs->RayHitDistance);
 	CommonParameters.RayImaginaryDepthOutput = GraphBuilder.CreateUAV(OutDenoiserInputs->RayImaginaryDepth);
+	CommonParameters.ImaginaryReflectionGBuffer = GraphBuilder.CreateUAV(ImaginaryReflectionGBuffer);
 	CommonParameters.SortTileSize = SortTileSize;
 	CommonParameters.ReflectionCapture = View.ReflectionCaptureUniformBuffer;
 	CommonParameters.Forward = View.ForwardLightingResources->ForwardLightDataUniformBuffer;
