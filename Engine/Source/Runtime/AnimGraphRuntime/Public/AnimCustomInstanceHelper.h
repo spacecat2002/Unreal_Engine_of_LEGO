@@ -184,21 +184,23 @@ public:
 			InstanceClassType* SequencerInstance = Cast<InstanceClassType>(AnimInstance);
 			if (SequencerInstance)
 			{
-				ISequencerAnimationSupport* SequencerInterface = Cast<ISequencerAnimationSupport>(AnimInstance);
-				if (SequencerInterface->DoesSupportDifferentSourceAnimInstance())
+				bool bClearAnimScriptInstance = true;
+
+				if(ISequencerAnimationSupport* SequencerInterface = Cast<ISequencerAnimationSupport>(AnimInstance))
 				{
-					UAnimInstance* SourceAnimInstance = SequencerInterface->GetSourceAnimInstance();
-					// if we have source, replace with it
-					if (SourceAnimInstance)
+					if (SequencerInterface->DoesSupportDifferentSourceAnimInstance())
 					{
-						InSkeletalMeshComponent->AnimScriptInstance = SourceAnimInstance;
-					}
-					else
-					{
-						InSkeletalMeshComponent->ClearAnimScriptInstance();
+						UAnimInstance* SourceAnimInstance = SequencerInterface->GetSourceAnimInstance();
+						// if we have source, replace with it
+						if (SourceAnimInstance)
+						{
+							InSkeletalMeshComponent->AnimScriptInstance = SourceAnimInstance;
+							bClearAnimScriptInstance = false;
+						}
 					}
 				}
-				else
+				
+				if(bClearAnimScriptInstance)
 				{
 					InSkeletalMeshComponent->ClearAnimScriptInstance();
 				}
