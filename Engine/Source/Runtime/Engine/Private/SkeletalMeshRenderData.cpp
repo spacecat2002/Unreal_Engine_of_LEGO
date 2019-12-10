@@ -234,9 +234,11 @@ void FSkeletalMeshRenderData::Cache(USkeletalMesh* Owner)
 				FSkeletalMeshLODModel* LODModel = &(SkelMeshModel->LODModels[LODIndex]);
 				FSkeletalMeshLODInfo* LODInfo = Owner->GetLODInfo(LODIndex);
 				check(LODInfo);
+				bool bRawDataEmpty = Owner->IsLODImportedDataEmpty(LODIndex);
+				bool bRawBuildDataAvailable = Owner->IsLODImportedDataBuildAvailable(LODIndex);
 				//Build the source model before the render data, if we are a purely generated LOD we do not need to be build
 				IMeshBuilderModule& MeshBuilderModule = FModuleManager::Get().LoadModuleChecked<IMeshBuilderModule>("MeshBuilder");
-				if (!LODModel->RawSkeletalMeshBulkData.IsEmpty() && LODModel->RawSkeletalMeshBulkData.IsBuildDataAvailable())
+				if (!bRawDataEmpty && bRawBuildDataAvailable)
 				{
 					MeshBuilderModule.BuildSkeletalMesh(Owner, LODIndex, true);
 					LODModel = &(SkelMeshModel->LODModels[LODIndex]);
