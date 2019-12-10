@@ -1333,6 +1333,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		if (GDoPrepareDistanceFieldSceneAfterRHIFlush && (GRHINeedsExtraDeletionLatency || !GRHICommandList.Bypass()))
 		{
 			// we will probably stall on occlusion queries, so might as well have the RHI thread and GPU work while we wait.
+			CSV_SCOPED_TIMING_STAT_EXCLUSIVE(PostInitViews_FlushDel);
 			SCOPE_CYCLE_COUNTER(STAT_PostInitViews_FlushDel);
 			RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
 		}
@@ -1368,6 +1369,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		if (!GDoPrepareDistanceFieldSceneAfterRHIFlush && (GRHINeedsExtraDeletionLatency || !GRHICommandList.Bypass()))
 		{
 			// we will probably stall on occlusion queries, so might as well have the RHI thread and GPU work while we wait.
+			CSV_SCOPED_TIMING_STAT_EXCLUSIVE(PostInitViews_FlushDel);
 			SCOPE_CYCLE_COUNTER(STAT_PostInitViews_FlushDel);
 			FRHICommandListExecutor::GetImmediateCommandList().ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
 		}
@@ -2260,6 +2262,12 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		FSingleLayerWaterPassData SingleLayerWaterPassData;
 		SingleLayerWaterPassData.ViewData.SetNum(Views.Num());
 		CopySingleLayerWaterTextures(RHICmdList, SingleLayerWaterPassData);
+
+		// Render heightfog over the color buffer if it is allocated, e.g. SingleLayerWaterUsesSimpleShading is true which is not the case on Switch.
+		if (bCanOverlayRayTracingOutput && ShouldRenderFog(ViewFamily) && SingleLayerWaterPassData.SceneColorWithoutSingleLayerWater.IsValid())
+		{
+			RenderUnderWaterFog(RHICmdList, SingleLayerWaterPassData);
+		}
 
 		// Make the Depth texture writable since the water GBuffer pass will update it
 		RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable,  SceneContext.GetSceneDepthSurface());
