@@ -2317,13 +2317,12 @@ static const glsl_type * process_array_type(YYLTYPE *loc, const glsl_type *base,
 const glsl_type* ast_type_specifier::glsl_type(const char **name, _mesa_glsl_parse_state *state) const
 {
 	const struct glsl_type *type = nullptr;
-	const bool bStructuredBuffer = !strcmp(this->type_name, "StructuredBuffer");
-	const bool bRWStructuredBuffer = !strcmp(this->type_name + 2, "StructuredBuffer");
 
 	YYLTYPE loc = this->get_location();
 
-	if (bStructuredBuffer || bRWStructuredBuffer)
+	if (IsStructuredOrRWBuffer())
 	{
+		const bool bRWStructuredBuffer = !strcmp(this->type_name + 2, "StructuredBuffer");
 		const struct glsl_type* InnerType = nullptr;
 		if (this->InnerStructure)
 		{
@@ -3041,7 +3040,7 @@ ir_rvalue* ast_declarator_list::hir(exec_list *instructions, struct _mesa_glsl_p
 	}
 
 	// Handle row/column major qualifiers for matrices.
-	if (decl_type->is_matrix())
+	if (decl_type && decl_type->is_matrix())
 	{
 		// If the matrix was declared without a layout qualifer, it is row_major.
 		if (this->type->qualifier.flags.q.row_major == 0
@@ -3069,6 +3068,12 @@ ir_rvalue* ast_declarator_list::hir(exec_list *instructions, struct _mesa_glsl_p
 	{
 		const struct glsl_type *var_type;
 		ir_variable *var;
+
+		if (decl_type == nullptr && type->specifier->IsStructuredOrRWBuffer())
+		{
+			// Ignore for now
+			continue;
+		}
 
 		/* FINISHME: Emit a warning if a variable declaration shadows a
 		* FINISHME: declaration at a higher scope.
