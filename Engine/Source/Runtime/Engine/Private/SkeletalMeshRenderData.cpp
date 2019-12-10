@@ -165,6 +165,8 @@ void FSkeletalMeshRenderData::Cache(USkeletalMesh* Owner)
 
 				int32 MorphTargetNumber = 0;
 				Ar << MorphTargetNumber;
+				TArray<UMorphTarget*> ToDeleteMorphTargets;
+				ToDeleteMorphTargets.Append(Owner->MorphTargets);
 				Owner->MorphTargets.Empty();
 				//Rebuild the MorphTarget object
 				//We cannot serialize directly the UMorphTarget with a FMemoryArchive. This is not supported.
@@ -172,19 +174,37 @@ void FSkeletalMeshRenderData::Cache(USkeletalMesh* Owner)
 				{
 					FName MorphTargetName = NAME_None;
 					Ar << MorphTargetName;
-					UMorphTarget* MorphTarget = NewObject<UMorphTarget>(Owner, MorphTargetName);
+					UMorphTarget* MorphTarget = Cast<UMorphTarget>(StaticFindObjectFast(nullptr, Owner, MorphTargetName));
+					if (!MorphTarget)
+					{
+						MorphTarget = NewObject<UMorphTarget>(Owner, MorphTargetName);
+						check(MorphTarget);
+					}
+					else
+					{
+						ToDeleteMorphTargets.Remove(MorphTarget);
+					}
+					MorphTarget->MorphLODModels.Empty();
 					Owner->MorphTargets.Add(MorphTarget);
 					check(MorphTargetIndex == Owner->MorphTargets.Num() - 1);
 					int32 MorphLODModelNumber = 0;
 					Ar << MorphLODModelNumber;
-					Owner->MorphTargets[MorphTargetIndex]->MorphLODModels.AddDefaulted(MorphLODModelNumber);
+					MorphTarget->MorphLODModels.AddDefaulted(MorphLODModelNumber);
 					for (int32 MorphDataIndex = 0; MorphDataIndex < MorphLODModelNumber; ++MorphDataIndex)
 					{
-						Ar << Owner->MorphTargets[MorphTargetIndex]->MorphLODModels[MorphDataIndex];
+						Ar << MorphTarget->MorphLODModels[MorphDataIndex];
 					}
 				}
 				//Rebuild the mapping and rehook the curve data
 				Owner->InitMorphTargets();
+				for (int32 DeleteMorphIndex = 0; DeleteMorphIndex < ToDeleteMorphTargets.Num(); ++DeleteMorphIndex)
+				{
+					ToDeleteMorphTargets[DeleteMorphIndex]->BaseSkelMesh = nullptr;
+					ToDeleteMorphTargets[DeleteMorphIndex]->MorphLODModels.Empty();
+					//Move the unused asset in the transient package and mark it pending kill
+					ToDeleteMorphTargets[DeleteMorphIndex]->Rename(nullptr, GetTransientPackage(), REN_ForceNoResetLoaders | REN_DoNotDirty | REN_DontCreateRedirectors | REN_NonTransactional);
+					ToDeleteMorphTargets[DeleteMorphIndex]->MarkPendingKill();
+				}
 
 				//Serialize the LODModel sections since they are dependent on the reduction
 				for (int32 LODIndex = 0; LODIndex < SkelMeshModel->LODModels.Num(); LODIndex++)
