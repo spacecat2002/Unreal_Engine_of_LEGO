@@ -103,6 +103,7 @@ ATransformGizmoActor* ATransformGizmoActor::ConstructCustom3AxisGizmo(
 		SphereEdge->AttachToComponent(NewActor->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
 		SphereEdge->Color = FLinearColor::Gray;
 		SphereEdge->Thickness = 1.0f;
+		SphereEdge->Radius = 120.0f;
 		SphereEdge->bViewAligned = true;
 		SphereEdge->RegisterComponent();
 	}
@@ -337,6 +338,15 @@ void UTransformGizmo::SetNewGizmoTransform(const FTransform& NewTransform)
 	//ActiveTarget->SetTransform(NewTransform);		// this will happen in the GizmoComponent.TransformUpdated delegate handler above
 
 	StateTarget->EndUpdate();
+}
+
+
+void UTransformGizmo::SetVisibility(bool bVisible)
+{
+	GizmoActor->SetActorHiddenInGame(bVisible == false);
+#if WITH_EDITOR
+	GizmoActor->SetIsTemporarilyHiddenInEditor(bVisible == false);
+#endif
 }
 
 

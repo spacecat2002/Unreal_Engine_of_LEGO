@@ -231,6 +231,11 @@ public:
 	virtual void SetNewGizmoTransform(const FTransform& NewTransform);
 
 	/**
+	 * Set visibility for this Gizmo
+	 */
+	virtual void SetVisibility(bool bVisible);
+
+	/**
 	 * If true, then when using world frame, Axis and Plane translation snap to the world grid via the ContextQueriesAPI (in PositionSnapFunction)
 	 */
 	UPROPERTY()

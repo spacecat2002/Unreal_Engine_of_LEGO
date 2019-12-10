@@ -52,6 +52,7 @@ UGizmoRectangleComponent* AGizmoActor::AddDefaultRectangleComponent(
 	NewRectangle->DirectionX = PlaneAxis1;
 	NewRectangle->DirectionY = PlaneAxisx2;
 	NewRectangle->Color = Color;
+	NewRectangle->LengthX = NewRectangle->LengthY = 30.0f;
 	NewRectangle->RegisterComponent();
 	return NewRectangle;
 }
@@ -66,6 +67,7 @@ UGizmoCircleComponent* AGizmoActor::AddDefaultCircleComponent(
 	NewCircle->AttachToComponent(Actor->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
 	NewCircle->Normal = PlaneNormal;
 	NewCircle->Color = Color;
+	NewCircle->Radius = 120.0f;
 	NewCircle->RegisterComponent();
 	return NewCircle;
 }

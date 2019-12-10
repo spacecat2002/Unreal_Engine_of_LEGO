@@ -27,7 +27,7 @@ public:
 	/** Add standard arrow component to Actor, generally used for axis-translation */
 	static UGizmoArrowComponent* AddDefaultArrowComponent(
 		UWorld* World, AActor* Actor,
-		const FLinearColor& Color, const FVector& LocalDirection, const float Length = 60.f
+		const FLinearColor& Color, const FVector& LocalDirection, const float Length = 80.0f
 	);
 	/** Add standard rectangle component to Actor, generally used for plane-translation */
 	static UGizmoRectangleComponent* AddDefaultRectangleComponent(
