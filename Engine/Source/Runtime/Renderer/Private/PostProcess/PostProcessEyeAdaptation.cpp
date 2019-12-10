@@ -436,7 +436,8 @@ float GetEyeAdaptationFixedExposure(const FViewInfo& View)
 
 	const float Exposure = (Parameters.MinAverageLuminance + Parameters.MaxAverageLuminance) * 0.5f;
 
-	const float ExposureScale = 1.0f / FMath::Max(0.0001f, Exposure);
+	const float kMiddleGrey = 0.18f;
+	const float ExposureScale = kMiddleGrey / FMath::Max(0.0001f, Exposure);
 
 	return ExposureScale * Parameters.ExposureCompensation;
 }
