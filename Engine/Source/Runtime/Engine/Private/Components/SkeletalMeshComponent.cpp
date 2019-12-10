@@ -2743,7 +2743,7 @@ void USkeletalMeshComponent::ResetLinkedAnimInstances()
 {
 	for(UAnimInstance* LinkedInstance : LinkedInstances)
 	{
-		if(LinkedInstance)
+		if(LinkedInstance && LinkedInstance->bCreatedByLinkedAnimGraph)
 		{
 			LinkedInstance->MarkPendingKill();
 			LinkedInstance = nullptr;
