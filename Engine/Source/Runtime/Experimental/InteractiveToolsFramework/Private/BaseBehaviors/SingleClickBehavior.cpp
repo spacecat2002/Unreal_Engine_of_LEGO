@@ -16,13 +16,14 @@ void USingleClickInputBehavior::Initialize(IClickBehaviorTarget* TargetIn)
 }
 
 
-FInputCaptureRequest USingleClickInputBehavior::WantsCapture(const FInputDeviceState& input)
+FInputCaptureRequest USingleClickInputBehavior::WantsCapture(const FInputDeviceState& Input)
 {
-	if (IsPressed(input) && (ModifierCheckFunc == nullptr || ModifierCheckFunc(input)) )
+	if (IsPressed(Input) && (ModifierCheckFunc == nullptr || ModifierCheckFunc(Input)) )
 	{
-		if ( Target->IsHitByClick(GetDeviceRay(input)) )
+		FInputRayHit HitResult = Target->IsHitByClick(GetDeviceRay(Input));
+		if (HitResult.bHit)
 		{
-			return FInputCaptureRequest::Begin(this, EInputCaptureSide::Any);
+			return FInputCaptureRequest::Begin(this, EInputCaptureSide::Any, HitResult.HitDepth);
 		}
 	}
 	return FInputCaptureRequest::Ignore();
@@ -42,7 +43,7 @@ FInputCaptureUpdate USingleClickInputBehavior::UpdateCapture(const FInputDeviceS
 	if (IsReleased(Input))
 	{
 		if (HitTestOnRelease == false || 
-			Target->IsHitByClick(GetDeviceRay(Input)) )
+			Target->IsHitByClick(GetDeviceRay(Input)).bHit )
 		{
 			Clicked(Input, Data);
 		}
