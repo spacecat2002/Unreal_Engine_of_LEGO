@@ -263,6 +263,45 @@ class FRayTracingReflectionsRGS : public FGlobalShader
 
 IMPLEMENT_GLOBAL_SHADER(FRayTracingReflectionsRGS, "/Engine/Private/RayTracing/RayTracingReflections.usf", "RayTracingReflectionsRGS", SF_RayGen);
 
+class FSplitImaginaryReflectionGBufferCS : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FSplitImaginaryReflectionGBufferCS);
+	SHADER_USE_PARAMETER_STRUCT(FSplitImaginaryReflectionGBufferCS, FGlobalShader);
+
+	using FPermutationDomain = FShaderPermutationNone;
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return ShouldCompileRayTracingShadersForProject(Parameters.Platform);
+	}
+
+	static uint32 GetGroupSize()
+	{
+		return FComputeShaderUtils::kGolden2DGroupSize;
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), GetGroupSize());
+	}
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
+
+		SHADER_PARAMETER(int32, UpscaleFactor)
+		SHADER_PARAMETER(FIntPoint, RayTracingResolution)
+
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<FImaginaryReflectionGBufferData>, ImaginaryReflectionGBuffer)
+
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, ImaginaryReflectionGBufferA)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, ImaginaryReflectionDepthZ)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, ImaginaryReflectionVelocity)
+	END_SHADER_PARAMETER_STRUCT()
+};
+
+IMPLEMENT_GLOBAL_SHADER(FSplitImaginaryReflectionGBufferCS, "/Engine/Private/RayTracing/SplitImaginaryReflectionGBufferCS.usf", "MainCS", SF_Compute);
+
 void FDeferredShadingSceneRenderer::PrepareRayTracingReflections(const FViewInfo& View, const FScene& Scene, TArray<FRHIRayTracingShader*>& OutRayGenShaders)
 {
 	// Declare all RayGen shaders that require material closest hit shaders to be bound
@@ -606,30 +645,56 @@ void FDeferredShadingSceneRenderer::RenderRayTracingReflections(
 	// Setup imaginary reflection g-buffer outputs
 	if (bRayTraceSkyLightContribution && SceneViewState != nullptr)
 	{
-		auto&& BufferSize = SceneContext.GetBufferSizeXY();
-
-		// Create the world-space normal imaginary reflection g-buffer.
+		// Create a texture for the world-space normal imaginary reflection g-buffer.
+		FRDGTextureRef ImaginaryReflectionGBufferATexture;
 		{
-			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, SceneContext.GetGBufferAFormat(), FClearValueBinding::Transparent, TexCreate_None, TexCreate_ShaderResource | TexCreate_UAV, false));
-			GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, SceneViewState->ImaginaryReflectionGBufferA, TEXT("ImaginaryReflectionGBufferA"));
+			FRDGTextureDesc Desc(FRDGTextureDesc::Create2DDesc(RayTracingBufferSize, SceneContext.GetGBufferAFormat(), FClearValueBinding::Transparent, TexCreate_None, TexCreate_ShaderResource | TexCreate_UAV, false));
+			ImaginaryReflectionGBufferATexture = GraphBuilder.CreateTexture(Desc, TEXT("ImaginaryReflectionGBufferA"));
 		}
 
-		// Create the depth imaginary reflection g-buffer.
+		// Create a texture for the depth imaginary reflection g-buffer.
+		FRDGTextureRef ImaginaryReflectionDepthZTexture;
 		{
 			// R32_FLOAT used instead of usual depth/stencil format to work as a normal SRV/UAV rather a depth target
-			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, PF_R32_FLOAT, SceneContext.GetDefaultDepthClear(), TexCreate_None, TexCreate_ShaderResource | TexCreate_UAV, false));
-			GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, SceneViewState->ImaginaryReflectionDepthZ, TEXT("ImaginaryReflectionDepthZ"));
+			FRDGTextureDesc Desc(FRDGTextureDesc::Create2DDesc(RayTracingBufferSize, PF_R32_FLOAT, SceneContext.GetDefaultDepthClear(), TexCreate_None, TexCreate_ShaderResource | TexCreate_UAV, false));
+			ImaginaryReflectionDepthZTexture = GraphBuilder.CreateTexture(Desc, TEXT("ImaginaryReflectionDepthZ"));
 		}
 
-		// Create the velocity imaginary reflection g-buffer.
+		// Create a texture for the velocity imaginary reflection g-buffer.
+		FRDGTextureRef ImaginaryReflectionGBufferVelocityTexture;
 		{
-			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, FVelocityRendering::GetFormat(), FClearValueBinding::Transparent, TexCreate_None, TexCreate_ShaderResource | TexCreate_UAV, false));
-			GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, SceneViewState->ImaginaryReflectionVelocity, TEXT("ImaginaryReflectionGBufferVelocity"));
+			FRDGTextureDesc Desc(FRDGTextureDesc::Create2DDesc(RayTracingBufferSize, FVelocityRendering::GetFormat(), FClearValueBinding::Transparent, TexCreate_None, TexCreate_ShaderResource | TexCreate_UAV, false));
+			ImaginaryReflectionGBufferVelocityTexture = GraphBuilder.CreateTexture(Desc, TEXT("ImaginaryReflectionGBufferVelocity"));
 		}
 
-		check(SceneViewState->ImaginaryReflectionGBufferA);
-		check(SceneViewState->ImaginaryReflectionDepthZ);
-		check(SceneViewState->ImaginaryReflectionVelocity);
+		check(ImaginaryReflectionGBufferATexture);
+		check(ImaginaryReflectionDepthZTexture);
+		check(ImaginaryReflectionGBufferVelocityTexture);
+
+		// Split the imaginary reflection g-buffer data components into the individual textures
+		FSplitImaginaryReflectionGBufferCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FSplitImaginaryReflectionGBufferCS::FParameters>();
+		PassParameters->ViewUniformBuffer = View.ViewUniformBuffer;
+		PassParameters->UpscaleFactor = UpscaleFactor;
+		PassParameters->RayTracingResolution = RayTracingResolution;
+		PassParameters->ImaginaryReflectionGBuffer = GraphBuilder.CreateSRV(ImaginaryReflectionGBuffer);
+		PassParameters->ImaginaryReflectionGBufferA = GraphBuilder.CreateUAV(ImaginaryReflectionGBufferATexture);
+		PassParameters->ImaginaryReflectionDepthZ = GraphBuilder.CreateUAV(ImaginaryReflectionDepthZTexture);
+		PassParameters->ImaginaryReflectionVelocity = GraphBuilder.CreateUAV(ImaginaryReflectionGBufferVelocityTexture);
+
+		TShaderMapRef<FSplitImaginaryReflectionGBufferCS> ComputeShader(GetGlobalShaderMap(FeatureLevel));
+
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("SplitImaginaryReflectionGBuffer"),
+			*ComputeShader,
+			PassParameters,
+			FComputeShaderUtils::GetGroupCount(FIntPoint(RayTracingResolution.X, RayTracingResolution.Y), FSplitImaginaryReflectionGBufferCS::GetGroupSize())
+		);
+
+		// Extract the split textures to their respective pooled render targets
+		GraphBuilder.QueueTextureExtraction(ImaginaryReflectionGBufferATexture, &SceneViewState->ImaginaryReflectionGBufferA);
+		GraphBuilder.QueueTextureExtraction(ImaginaryReflectionDepthZTexture, &SceneViewState->ImaginaryReflectionDepthZ);
+		GraphBuilder.QueueTextureExtraction(ImaginaryReflectionGBufferVelocityTexture, &SceneViewState->ImaginaryReflectionVelocity);
 	}
 }
 #else // !RHI_RAYTRACING
