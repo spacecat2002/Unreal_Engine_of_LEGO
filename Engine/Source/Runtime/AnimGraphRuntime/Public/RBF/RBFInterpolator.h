@@ -175,7 +175,7 @@ public:
 		int NumNodes = Nodes.Num();
 		if (NumNodes > 1)
 		{
-			TArray<float, TMemStackAllocator<>> ValueWeights;
+			TArray<float, TMemStackAllocator<> > ValueWeights;
 			ValueWeights.SetNum(Nodes.Num());
 
 			for (int32 i = 0; i < NumNodes; i++)
