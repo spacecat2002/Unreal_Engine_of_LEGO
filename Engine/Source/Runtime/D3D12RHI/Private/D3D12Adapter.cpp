@@ -411,9 +411,36 @@ void FD3D12Adapter::CreateRootDevice(bool bWithDebug)
 
 	// Viewport ignores AFR if PresentGPU is specified.
 	int32 Dummy;
-	if (!FParse::Value(FCommandLine::Get(), TEXT("PresentGPU="), Dummy) && FParse::Param(FCommandLine::Get(), TEXT("AFR")))
+	if (!FParse::Value(FCommandLine::Get(), TEXT("PresentGPU="), Dummy))
 	{
-		GNumAlternateFrameRenderingGroups = GNumExplicitGPUsForRendering;
+		bool bWantsAFR = false;
+		if (FParse::Value(FCommandLine::Get(), TEXT("NumAFRGroups="), GNumAlternateFrameRenderingGroups))
+		{
+			bWantsAFR = true;
+		}
+		else if (FParse::Param(FCommandLine::Get(), TEXT("AFR")))
+		{
+			bWantsAFR = true;
+			GNumAlternateFrameRenderingGroups = GNumExplicitGPUsForRendering;
+		}
+
+		if (bWantsAFR)
+		{
+			if (GNumAlternateFrameRenderingGroups <= 1 || GNumAlternateFrameRenderingGroups > GNumExplicitGPUsForRendering)
+			{
+				UE_LOG(LogD3D12RHI, Error, TEXT("Cannot enable alternate frame rendering because NumAFRGroups (%u) must be > 1 and <= MaxGPUCount (%u)"), GNumAlternateFrameRenderingGroups, GNumExplicitGPUsForRendering);
+				GNumAlternateFrameRenderingGroups = 1;
+			}
+			else if (GNumExplicitGPUsForRendering % GNumAlternateFrameRenderingGroups != 0)
+			{
+				UE_LOG(LogD3D12RHI, Error, TEXT("Cannot enable alternate frame rendering because MaxGPUCount (%u) must be evenly divisible by NumAFRGroups (%u)"), GNumExplicitGPUsForRendering, GNumAlternateFrameRenderingGroups);
+				GNumAlternateFrameRenderingGroups = 1;
+			}
+			else
+			{
+				UE_LOG(LogD3D12RHI, Log, TEXT("Enabling alternate frame rendering with %u AFR groups"), GNumAlternateFrameRenderingGroups);
+			}
+		}
 	}
 #endif
 }
