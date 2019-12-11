@@ -20,6 +20,11 @@ public class AnimGraphRuntime : ModuleRules
 
         SetupModulePhysicsSupport(Target);
 
+		// External users of this library do not need to know about Eigen.
+        AddEngineThirdPartyPrivateStaticDependencies(Target,
+                "Eigen"
+                );
+
         if (Target.bCompileChaos || Target.bUseChaos)
         {
             PublicDependencyModuleNames.AddRange(
