@@ -17,6 +17,7 @@
 
 namespace Chaos
 {
+	DECLARE_CYCLE_STAT(TEXT("TPBDJointConstraints::Sort"), STAT_Joints_Sort, STATGROUP_Chaos);
 	DECLARE_CYCLE_STAT(TEXT("TPBDJointConstraints::Apply"), STAT_Joints_Apply, STATGROUP_Chaos);
 	DECLARE_CYCLE_STAT(TEXT("TPBDJointConstraints::ApplyPushOut"), STAT_Joints_ApplyPushOut, STATGROUP_Chaos);
 	DECLARE_CYCLE_STAT(TEXT("TPBDJointConstraints::Drives"), STAT_Joints_Drives, STATGROUP_Chaos);
@@ -25,7 +26,7 @@ namespace Chaos
 	DECLARE_CYCLE_STAT(TEXT("TPBDJointConstraints::SolveGaussSeidel"), STAT_Joints_Solve_GaussSeidel, STATGROUP_Chaos);
 	DECLARE_CYCLE_STAT(TEXT("TPBDJointConstraints::Project"), STAT_Joints_Project, STATGROUP_Chaos);
 
-	bool ChaosJoint_UseCholeskySolver = true;
+	bool ChaosJoint_UseCholeskySolver = false;
 	FAutoConsoleVariableRef CVarChaosImmPhysDeltaTime(TEXT("p.Chaos.Joint.UseCholeskySolver"), ChaosJoint_UseCholeskySolver, TEXT("Whether to use the new solver"));
 
 
@@ -174,7 +175,6 @@ namespace Chaos
 		, bEnableTwistLimits(true)
 		, bEnableSwingLimits(true)
 		, bEnableDrives(true)
-		, DrivesPhase(EJointSolverPhase::None)
 		, ProjectionPhase(EJointSolverPhase::None)
 		, LinearProjection((FReal)0)
 		, AngularProjection((FReal)0)
@@ -194,6 +194,7 @@ namespace Chaos
 		: Settings(InSettings)
 		, PreApplyCallback(nullptr)
 		, PostApplyCallback(nullptr)
+		, bRequiresSort(false)
 	{
 	}
 
@@ -300,16 +301,28 @@ namespace Chaos
 		PreApplyCallback = nullptr;
 	}
 
-	
+
 	void FPBDJointConstraints::SetPostApplyCallback(const FJointPostApplyCallback& Callback)
 	{
 		PostApplyCallback = Callback;
 	}
 
-	
+
 	void FPBDJointConstraints::ClearPostApplyCallback()
 	{
 		PostApplyCallback = nullptr;
+	}
+
+
+	void FPBDJointConstraints::SetPostProjectCallback(const FJointPostApplyCallback& Callback)
+	{
+		PostProjectCallback = Callback;
+	}
+
+
+	void FPBDJointConstraints::ClearPostProjectCallback()
+	{
+		PostProjectCallback = nullptr;
 	}
 
 	
@@ -345,13 +358,54 @@ namespace Chaos
 	
 	void FPBDJointConstraints::SetParticleLevels(int32 ConstraintIndex, const TVector<int32, 2>& ParticleLevels)
 	{
-		ConstraintStates[ConstraintIndex].Level = FMath::Min(ParticleLevels[0], ParticleLevels[1]);
+		int32 NewLevel = FMath::Min(ParticleLevels[0], ParticleLevels[1]);
+		int32 PreviousLevel = ConstraintStates[ConstraintIndex].Level;
+		ConstraintStates[ConstraintIndex].Level = NewLevel;
 		ConstraintStates[ConstraintIndex].ParticleLevels = ParticleLevels;
+		bRequiresSort = bRequiresSort || (NewLevel != PreviousLevel);
+	}
+
+
+	void FPBDJointConstraints::SortConstraints()
+	{
+		// Sort constraints so that constraints with lower level (closer to a kinematic joint) are first
+		// @todo(ccaulfield): should probably also take islands/particle order into account
+		// @todo(ccaulfield): optimize (though isn't called very often)
+		SCOPE_CYCLE_COUNTER(STAT_Joints_Sort);
+
+		FHandles SortedHandles = Handles;
+		SortedHandles.StableSort([](const FConstraintContainerHandle& L, const FConstraintContainerHandle& R)
+			{
+				return L.GetConstraintLevel() < R.GetConstraintLevel();
+			});
+
+		TArray<FPBDJointSettings> SortedConstraintSettings;
+		TArray<FParticlePair> SortedConstraintParticles;
+		TArray<FPBDJointState> SortedConstraintStates;
+		int32 SortedConstraintIndex = 0;
+		for (FConstraintContainerHandle* Handle : SortedHandles)
+		{
+			int32 UnsortedIndex = Handle->GetConstraintIndex();
+			SortedConstraintSettings.Add(ConstraintSettings[UnsortedIndex]);
+			SortedConstraintParticles.Add(ConstraintParticles[UnsortedIndex]);
+			SortedConstraintStates.Add(ConstraintStates[UnsortedIndex]);
+			SetConstraintIndex(Handle, SortedConstraintIndex++);
+		}
+
+		Swap(ConstraintSettings, SortedConstraintSettings);
+		Swap(ConstraintParticles, SortedConstraintParticles);
+		Swap(ConstraintStates, SortedConstraintStates);
+		Swap(Handles, SortedHandles);
 	}
 
 	
 	void FPBDJointConstraints::UpdatePositionBasedState(const FReal Dt)
 	{
+		if (bRequiresSort)
+		{
+			SortConstraints();
+			bRequiresSort = false;
+		}
 	}
 
 	
@@ -396,16 +450,15 @@ namespace Chaos
 			PreApplyCallback(Dt, Handles);
 		}
 
-		// Apply joint drives
-		if (Settings.DrivesPhase == EJointSolverPhase::Apply)
-		{
-			ApplyDrives(Dt, It, NumIts);
-		}
-
 		// Solve for joint position or velocity, depending on settings
 		if (Settings.ApplyPairIterations > 0)
 		{
 			SolvePosition(Dt, Settings.ApplyPairIterations, It, NumIts);
+		}
+
+		if (PostApplyCallback != nullptr)
+		{
+			PostApplyCallback(Dt, Handles);
 		}
 
 		// Correct remaining errors after last call to Solve if enabled in this phase
@@ -417,11 +470,6 @@ namespace Chaos
 				ApplyProjection(Dt);
 			}
 		}
-
-		if (PostApplyCallback != nullptr)
-		{
-			PostApplyCallback(Dt, Handles);
-		}
 	}
 
 	bool FPBDJointConstraints::ApplyPushOut(const FReal Dt, const int32 It, const int32 NumIts)
@@ -430,12 +478,6 @@ namespace Chaos
 
 		// @todo(ccaulfield): track whether we are sufficiently solved
 		bool bNeedsAnotherIteration = true;
-
-		// Apply joint drives
-		if (Settings.DrivesPhase == EJointSolverPhase::ApplyPushOut)
-		{
-			ApplyDrives(Dt, It, NumIts);
-		}
 
 		// Solve for positions
 		if (Settings.ApplyPushOutPairIterations > 0)
@@ -454,18 +496,6 @@ namespace Chaos
 		}
 
 		return bNeedsAnotherIteration;
-	}
-
-	void FPBDJointConstraints::ApplyDrives(const FReal Dt, const int32 It, const int32 NumIts)
-	{
-		if (It == 0)
-		{
-			SCOPE_CYCLE_COUNTER(STAT_Joints_Drives);
-			for (int32 ConstraintIndex = 0; ConstraintIndex < NumConstraints(); ++ConstraintIndex)
-			{
-				ApplyDrives(Dt, ConstraintIndex, 0, 1);
-			}
-		}
 	}
 
 	void FPBDJointConstraints::SolvePosition(const FReal Dt, const int32 NumPairIts, const int32 It, const int32 NumIts)
@@ -495,6 +525,11 @@ namespace Chaos
 		for (int32 ConstraintIndex = 0; ConstraintIndex < NumConstraints(); ++ConstraintIndex)
 		{
 			ProjectPosition(Dt, ConstraintIndex, 0, 1);
+		}
+
+		if (PostProjectCallback != nullptr)
+		{
+			PostProjectCallback(Dt, Handles);
 		}
 	}
 
@@ -530,19 +565,6 @@ namespace Chaos
 		if (PreApplyCallback != nullptr)
 		{
 			PreApplyCallback(Dt, SortedConstraintHandles);
-		}
-
-		// Apply joint drives
-		if (Settings.DrivesPhase == EJointSolverPhase::Apply)
-		{
-			SCOPE_CYCLE_COUNTER(STAT_Joints_Drives);
-			if (It == 0)
-			{
-				for (FConstraintContainerHandle* ConstraintHandle : SortedConstraintHandles)
-				{
-					ApplyDrives(Dt, ConstraintHandle->GetConstraintIndex(), 0, 1);
-				}
-			}
 		}
 
 		// Solve for joint position or velocity, depending on settings
@@ -586,19 +608,6 @@ namespace Chaos
 				// Sort bodies from root to leaf
 				return L.GetConstraintLevel() < R.GetConstraintLevel();
 			});
-
-		// Apply joint drives
-		if (Settings.DrivesPhase == EJointSolverPhase::ApplyPushOut)
-		{
-			SCOPE_CYCLE_COUNTER(STAT_Joints_Drives);
-			if (It == 0)
-			{
-				for (FConstraintContainerHandle* ConstraintHandle : SortedConstraintHandles)
-				{
-					ApplyDrives(Dt, ConstraintHandle->GetConstraintIndex(), 0, 1);
-				}
-			}
-		}
 
 		// Solve for positions
 		if (Settings.ApplyPushOutPairIterations > 0)
@@ -672,71 +681,6 @@ namespace Chaos
 	}
 
 
-	void FPBDJointConstraints::ApplyDrives(const FReal Dt, const int32 ConstraintIndex, const int32 It, const int32 NumIts)
-	{
-		const FPBDJointSettings& JointSettings = ConstraintSettings[ConstraintIndex];
-
-		const int32 Index0 = 1;
-		const int32 Index1 = 0;
-		TGenericParticleHandle<FReal, 3> Particle0 = TGenericParticleHandle<FReal, 3>(ConstraintParticles[ConstraintIndex][Index0]);
-		TGenericParticleHandle<FReal, 3> Particle1 = TGenericParticleHandle<FReal, 3>(ConstraintParticles[ConstraintIndex][Index1]);
-
-		FVec3 P0 = FParticleUtilities::GetCoMWorldPosition(Particle0);
-		FRotation3 Q0 = FParticleUtilities::GetCoMWorldRotation(Particle0);
-		FVec3 P1 = FParticleUtilities::GetCoMWorldPosition(Particle1);
-		FRotation3 Q1 = FParticleUtilities::GetCoMWorldRotation(Particle1);
-		FVec3 V0 = Particle0->V();
-		FVec3 W0 = Particle0->W();
-		FVec3 V1 = Particle1->V();
-		FVec3 W1 = Particle1->W();
-		const FRigidTransform3 XL0 = FParticleUtilities::ParticleLocalToCoMLocal(Particle0, JointSettings.ConstraintFrames[Index0]);
-		const FRigidTransform3 XL1 = FParticleUtilities::ParticleLocalToCoMLocal(Particle1, JointSettings.ConstraintFrames[Index1]);
-		float InvM0 = Particle0->InvM();
-		float InvM1 = Particle1->InvM();
-		FMatrix33 InvIL0 = Particle0->InvI();
-		FMatrix33 InvIL1 = Particle1->InvI();
-
-		EJointMotionType TwistMotion = JointSettings.Motion.AngularMotionTypes[(int32)EJointAngularConstraintIndex::Twist];
-		EJointMotionType Swing1Motion = JointSettings.Motion.AngularMotionTypes[(int32)EJointAngularConstraintIndex::Swing1];
-		EJointMotionType Swing2Motion = JointSettings.Motion.AngularMotionTypes[(int32)EJointAngularConstraintIndex::Swing2];
-
-		// Apply angular drives (NOTE: modifies position, not velocity)
-		if (Settings.bEnableDrives)
-		{
-			bool bTwistLocked = TwistMotion == EJointMotionType::Locked;
-			bool bSwing1Locked = Swing1Motion == EJointMotionType::Locked;
-			bool bSwing2Locked = Swing2Motion == EJointMotionType::Locked;
-
-			// No SLerp drive if we have a locked rotation (it will be grayed out in the editor in this case, but could still have been set before the rotation was locked)
-			if (JointSettings.Motion.bAngularSLerpDriveEnabled && !bTwistLocked && !bSwing1Locked && !bSwing2Locked)
-			{
-				FPBDJointUtilities::ApplyJointSLerpDrive(Dt, Settings, JointSettings, XL0, XL1, P0, Q0, V0, W0, P1, Q1, V1, W1, InvM0, InvIL0, InvM1, InvIL1);
-			}
-
-			if (JointSettings.Motion.bAngularTwistDriveEnabled && !bTwistLocked)
-			{
-				FPBDJointUtilities::ApplyJointTwistDrive(Dt, Settings, JointSettings, XL0, XL1, P0, Q0, V0, W0, P1, Q1, V1, W1, InvM0, InvIL0, InvM1, InvIL1);
-			}
-
-			if (JointSettings.Motion.bAngularSwingDriveEnabled && !bSwing1Locked && !bSwing2Locked)
-			{
-				FPBDJointUtilities::ApplyJointConeDrive(Dt, Settings, JointSettings, XL0, XL1, P0, Q0, V0, W0, P1, Q1, V1, W1, InvM0, InvIL0, InvM1, InvIL1);
-			}
-			else if (JointSettings.Motion.bAngularSwingDriveEnabled && !bSwing1Locked)
-			{
-				//FPBDJointUtilities::ApplyJointSwingDrive(Dt, Settings, JointSettings, XL0, XL1, EJointAngularConstraintIndex::Swing1, P0, Q0, P1, Q1, InvM0, InvIL0, InvM1, InvIL1);
-			}
-			else if (JointSettings.Motion.bAngularSwingDriveEnabled && !bSwing2Locked)
-			{
-				//FPBDJointUtilities::ApplyJointSwingDrive(Dt, Settings, JointSettings, XL0, XL1, EJointAngularConstraintIndex::Swing2, P0, Q0, P1, Q1, InvM0, InvIL0, InvM1, InvIL1);
-			}
-		}
-
-		UpdateParticleState(Particle0->CastToRigidParticle(), Dt, P0, Q0);
-		UpdateParticleState(Particle1->CastToRigidParticle(), Dt, P1, Q1);
-	}
-
-
 	void FPBDJointConstraints::SolvePosition(const FReal Dt, const int32 ConstraintIndex, const int32 NumPairIts, const int32 It, const int32 NumIts)
 	{
 		if (ChaosJoint_UseCholeskySolver)
@@ -784,6 +728,7 @@ namespace Chaos
 		
 		for (int32 PairIt = 0; PairIt < NumPairIts; ++PairIt)
 		{
+			Solver.ApplyDrives(Dt, JointSettings);
 			Solver.ApplyConstraints(Dt, JointSettings);
 		}
 
@@ -825,6 +770,7 @@ namespace Chaos
 
 		for (int32 PairIt = 0; PairIt < NumPairIts; ++PairIt)
 		{
+			Solver.ApplyDrives(Dt, JointSettings);
 			Solver.ApplyConstraints(Dt, JointSettings);
 		}
 

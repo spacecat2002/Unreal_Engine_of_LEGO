@@ -1211,7 +1211,7 @@ struct FInitBodiesHelper
 #if WITH_CHAOS
 							// If this shape shouldn't collide in the sim we disable it here until we support
 							// a separation of unions for these shapes
-							if(BI->GetCollisionEnabled() == ECollisionEnabled::QueryOnly)
+							if(BI->GetCollisionEnabled() == ECollisionEnabled::QueryOnly || BI->GetCollisionEnabled() == ECollisionEnabled::NoCollision)
 							{
 								const int32 NumShapes = FPhysicsInterface::GetNumShapes(ActorHandle);
 								for(int32 ShapeIndex = 0; ShapeIndex < NumShapes; ++ShapeIndex)
@@ -2799,13 +2799,6 @@ PxMassProperties ComputeMassProperties(const FBodyInstance* OwningBodyInstance, 
 void FBodyInstance::UpdateMassProperties()
 {
 	UPhysicalMaterial* PhysMat = GetSimplePhysicalMaterial();
-
-#if WITH_CHAOS
-	if (ActorHandle->CastToRigidParticle() != nullptr)
-	{
-		CHAOS_ENSURE(false);
-	}
-#endif
 
 #if WITH_PHYSX
 	if (FPhysicsInterface::IsValid(ActorHandle) && FPhysicsInterface::IsRigidBody(ActorHandle))

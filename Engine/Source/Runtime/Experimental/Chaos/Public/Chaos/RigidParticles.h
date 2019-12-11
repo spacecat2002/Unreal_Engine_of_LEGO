@@ -10,6 +10,7 @@
 #include "Chaos/Matrix.h"
 #include "Chaos/Particles.h"
 #include "Chaos/Rotation.h"
+#include "HAL/LowLevelMemTracker.h"
 
 namespace Chaos
 {
@@ -192,6 +193,7 @@ class TRigidParticles : public TKinematicGeometryParticles<T, d>
 
 	CHAOS_API virtual void Serialize(FChaosArchive& Ar) override
 	{
+		LLM_SCOPE(ELLMTag::ChaosParticles);
 		TKinematicGeometryParticles<T,d>::Serialize(Ar);
 		Ar << MF << MT << MExternalForce << MExternalTorque << MI << MInvI << MM << MInvM;
 

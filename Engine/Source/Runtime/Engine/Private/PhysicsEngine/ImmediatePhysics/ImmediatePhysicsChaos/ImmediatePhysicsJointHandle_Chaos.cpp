@@ -22,14 +22,14 @@ namespace ImmediatePhysics_Chaos
 	bool ChaosImmediate_StiffnessUseMass = true;
 	FAutoConsoleVariableRef CVarStiffnessUseMass(TEXT("p.Chaos.ImmPhys.StiffnessUseMass"), ChaosImmediate_StiffnessUseMass, TEXT("Whether to use mass to scale stiffness in the conversion."));
 
-	float ChaosImmediate_JointMinProjection = 0.1f;
-	float ChaosImmediate_JointMaxProjection = 1.0f;
+	float ChaosImmediate_JointMinProjection = 0.0f;
+	float ChaosImmediate_JointMaxProjection = 0.3f;
 	FAutoConsoleVariableRef CVarJointMinProjection(TEXT("p.Chaos.ImmPhys.JointMinProjection"), ChaosImmediate_JointMinProjection, TEXT("Joint min projection (for joints with projection disabled)."));
 	FAutoConsoleVariableRef CVarJointMaxProjection(TEXT("p.Chaos.ImmPhys.JointMaxProjection"), ChaosImmediate_JointMaxProjection, TEXT("Joint max projection (for joints with projection enabled)."));
 
-	float ChaosImmediate_DriveStiffnessSourceMin = 100.0f;
-	float ChaosImmediate_DriveStiffnessSourceMax = 2000.0f;
-	float ChaosImmediate_DriveStiffnessTargetMin = 0.1f;
+	float ChaosImmediate_DriveStiffnessSourceMin = 100.0f;	// PhysX stiffness per inertia that we translate to a Chaos stiffness of ChaosImmediate_DriveStiffnessTargetMin
+	float ChaosImmediate_DriveStiffnessSourceMax = 2000.0f;	// PhysX stiffness per inertia that we translate to a Chaos stiffness of ChaosImmediate_DriveStiffnessTargetMax
+	float ChaosImmediate_DriveStiffnessTargetMin = 0.2f;
 	float ChaosImmediate_DriveStiffnessTargetMax = 1.0f;
 	FAutoConsoleVariableRef CVarDriveStiffnessSourceMin(TEXT("p.Chaos.ImmPhys.DriveStiffnessSourceMin"), ChaosImmediate_DriveStiffnessSourceMin, TEXT("Conversion factor for drive stiffness."));
 	FAutoConsoleVariableRef CVarDriveStiffnessSourceMax(TEXT("p.Chaos.ImmPhys.DriveStiffnessSourceMax"), ChaosImmediate_DriveStiffnessSourceMax, TEXT("Conversion factor for drive stiffness."));
@@ -56,7 +56,7 @@ namespace ImmediatePhysics_Chaos
 		if (ChaosImmediate_DriveStiffnessSourceMax > ChaosImmediate_DriveStiffnessSourceMin)
 		{
 			const float InvI = ChaosImmediate_StiffnessUseMass ? (InvI0.Min() + InvI1.Min()) : 1.0f;
-			const float F = (InStiffness - ChaosImmediate_DriveStiffnessSourceMin) * InvI  / (ChaosImmediate_DriveStiffnessSourceMax - ChaosImmediate_DriveStiffnessSourceMin);
+			const float F = FMath::Max(0.0f, (InStiffness * InvI - ChaosImmediate_DriveStiffnessSourceMin)) / FMath::Max(SMALL_NUMBER, (ChaosImmediate_DriveStiffnessSourceMax - ChaosImmediate_DriveStiffnessSourceMin));
 			return FMath::Lerp(ChaosImmediate_DriveStiffnessTargetMin, ChaosImmediate_DriveStiffnessTargetMax, FMath::Clamp(F, 0.0f, 1.0f));
 		}
 		return 0;
@@ -67,7 +67,7 @@ namespace ImmediatePhysics_Chaos
 		if (ChaosImmediate_SoftLinearStiffnessSourceMax > ChaosImmediate_SoftLinearStiffnessSourceMin)
 		{
 			const float InvM = ChaosImmediate_StiffnessUseMass ? (InvM0 + InvM1) : 1.0f;
-			const float F = (InStiffness - ChaosImmediate_SoftLinearStiffnessSourceMin) * InvM / (ChaosImmediate_SoftLinearStiffnessSourceMax - ChaosImmediate_SoftLinearStiffnessSourceMin);
+			const float F = FMath::Max(0.0f, (InStiffness * InvM - ChaosImmediate_SoftLinearStiffnessSourceMin)) / FMath::Max(SMALL_NUMBER, (ChaosImmediate_SoftLinearStiffnessSourceMax - ChaosImmediate_SoftLinearStiffnessSourceMin));
 			return FMath::Lerp(ChaosImmediate_SoftLinearStiffnessTargetMin, ChaosImmediate_SoftLinearStiffnessTargetMax, FMath::Clamp(F, 0.0f, 1.0f));
 		}
 		return 0;
@@ -78,7 +78,7 @@ namespace ImmediatePhysics_Chaos
 		if (ChaosImmediate_SoftAngularStiffnessSourceMax > ChaosImmediate_SoftAngularStiffnessSourceMin)
 		{
 			const float InvI = ChaosImmediate_StiffnessUseMass ? (InvI0.Min() + InvI1.Min()) : 1.0f;
-			const float F = (InStiffness - ChaosImmediate_SoftAngularStiffnessSourceMin) * InvI / (ChaosImmediate_SoftAngularStiffnessSourceMax - ChaosImmediate_SoftAngularStiffnessSourceMin);
+			const float F = FMath::Max(0.0f, (InStiffness * InvI - ChaosImmediate_SoftAngularStiffnessSourceMin)) / FMath::Max(SMALL_NUMBER, (ChaosImmediate_SoftAngularStiffnessSourceMax - ChaosImmediate_SoftAngularStiffnessSourceMin));
 			return FMath::Lerp(ChaosImmediate_SoftAngularStiffnessTargetMin, ChaosImmediate_SoftAngularStiffnessTargetMax, FMath::Clamp(F, 0.0f, 1.0f));
 		}
 		return 0;
@@ -103,6 +103,7 @@ namespace ImmediatePhysics_Chaos
 			FParticleUtilities::ActorLocalToParticleLocal(TGenericParticleHandle<FReal, 3>(Actor2->GetParticle()), ConstraintFrame2),
 		};
 		ConstraintSettings.Motion.Stiffness = ChaosImmediate_JointStiffness;
+
 		ConstraintSettings.Motion.LinearMotionTypes = 
 		{
 			static_cast<EJointMotionType>(ConstraintInstance->GetLinearXMotion()),
@@ -110,20 +111,17 @@ namespace ImmediatePhysics_Chaos
 			static_cast<EJointMotionType>(ConstraintInstance->GetLinearZMotion()),
 		};
 		ConstraintSettings.Motion.LinearLimit = ConstraintInstance->GetLinearLimit();
-		ConstraintSettings.Motion.AngularMotionTypes =
-		{
-			static_cast<EJointMotionType>(ConstraintInstance->GetAngularTwistMotion()),
-			static_cast<EJointMotionType>(ConstraintInstance->GetAngularSwing1Motion()),
-			static_cast<EJointMotionType>(ConstraintInstance->GetAngularSwing2Motion())
-		};
-		ConstraintSettings.Motion.AngularLimits =
-		{
-			FMath::DegreesToRadians(ConstraintInstance->GetAngularTwistLimit()),
-			FMath::DegreesToRadians(ConstraintInstance->GetAngularSwing1Limit()),
-			FMath::DegreesToRadians(ConstraintInstance->GetAngularSwing2Limit())
-		};
+
+		ConstraintSettings.Motion.AngularMotionTypes[(int32)EJointAngularConstraintIndex::Twist] = static_cast<EJointMotionType>(ConstraintInstance->GetAngularTwistMotion());
+		ConstraintSettings.Motion.AngularMotionTypes[(int32)EJointAngularConstraintIndex::Swing1] = static_cast<EJointMotionType>(ConstraintInstance->GetAngularSwing1Motion());
+		ConstraintSettings.Motion.AngularMotionTypes[(int32)EJointAngularConstraintIndex::Swing2] = static_cast<EJointMotionType>(ConstraintInstance->GetAngularSwing2Motion());
+		ConstraintSettings.Motion.AngularLimits[(int32)EJointAngularConstraintIndex::Twist] = FMath::DegreesToRadians(ConstraintInstance->GetAngularTwistLimit());
+		ConstraintSettings.Motion.AngularLimits[(int32)EJointAngularConstraintIndex::Swing1] = FMath::DegreesToRadians(ConstraintInstance->GetAngularSwing1Limit());
+		ConstraintSettings.Motion.AngularLimits[(int32)EJointAngularConstraintIndex::Swing2] = FMath::DegreesToRadians(ConstraintInstance->GetAngularSwing2Limit());
+
 		ConstraintSettings.Motion.LinearProjection = ConstraintInstance->IsProjectionEnabled() ? ChaosImmediate_JointMaxProjection : ChaosImmediate_JointMinProjection;
 		ConstraintSettings.Motion.AngularProjection = ConstraintInstance->IsProjectionEnabled() ? ChaosImmediate_JointMaxProjection : ChaosImmediate_JointMinProjection;
+
 		ConstraintSettings.Motion.bSoftLinearLimitsEnabled = ConstraintInstance->GetIsSoftLinearLimit();
 		ConstraintSettings.Motion.bSoftTwistLimitsEnabled = ConstraintInstance->GetIsSoftTwistLimit();
 		ConstraintSettings.Motion.bSoftSwingLimitsEnabled = ConstraintInstance->GetIsSoftSwingLimit();
@@ -131,12 +129,11 @@ namespace ImmediatePhysics_Chaos
 		ConstraintSettings.Motion.SoftTwistStiffness = ConvertSoftAngularStiffness(ConstraintInstance->GetSoftTwistLimitStiffness(), Actor1->GetInverseInertia(), Actor2->GetInverseInertia());
 		ConstraintSettings.Motion.SoftSwingStiffness = ConvertSoftAngularStiffness(ConstraintInstance->GetSoftSwingLimitStiffness(), Actor1->GetInverseInertia(), Actor2->GetInverseInertia());
 		 
-		// @todo(ccaulfield): Remove one of these
 		ConstraintSettings.Motion.AngularDriveTarget = FQuat(ConstraintInstance->ProfileInstance.AngularDrive.OrientationTarget);
-		ConstraintSettings.Motion.AngularDriveTargetAngles = TVector<float, 3>(
-			FMath::DegreesToRadians(ConstraintInstance->ProfileInstance.AngularDrive.OrientationTarget.Roll), 
-			FMath::DegreesToRadians(ConstraintInstance->ProfileInstance.AngularDrive.OrientationTarget.Pitch),
-			FMath::DegreesToRadians(ConstraintInstance->ProfileInstance.AngularDrive.OrientationTarget.Yaw));
+		// NOTE: Hard dependence on EJointAngularConstraintIndex - the following will break if we change the order
+		ConstraintSettings.Motion.AngularDriveTargetAngles[(int32)EJointAngularConstraintIndex::Twist] = FMath::DegreesToRadians(ConstraintInstance->ProfileInstance.AngularDrive.OrientationTarget.Roll);
+		ConstraintSettings.Motion.AngularDriveTargetAngles[(int32)EJointAngularConstraintIndex::Swing1] = FMath::DegreesToRadians(ConstraintInstance->ProfileInstance.AngularDrive.OrientationTarget.Yaw);
+		ConstraintSettings.Motion.AngularDriveTargetAngles[(int32)EJointAngularConstraintIndex::Swing2] = FMath::DegreesToRadians(ConstraintInstance->ProfileInstance.AngularDrive.OrientationTarget.Pitch);
 
 		if (ConstraintInstance->ProfileInstance.AngularDrive.AngularDriveMode == EAngularDriveMode::SLERP)
 		{

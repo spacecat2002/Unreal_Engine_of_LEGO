@@ -201,6 +201,13 @@ struct TTriangleMeshRaycastVisitor
 };
 
 template <typename T>
+T TTriangleMeshImplicitObject<T>::PhiWithNormal(const TVector<T, 3>& x, TVector<T, 3>& Normal) const
+{
+	ensure(false);	//not supported yet - might support it in the future or we may change the interface
+	return (T)0;
+}
+
+template <typename T>
 bool TTriangleMeshImplicitObject<T>::Raycast(const TVector<T, 3>& StartPoint, const TVector<T, 3>& Dir, const T Length, const T Thickness, T& OutTime, TVector<T, 3>& OutPosition, TVector<T, 3>& OutNormal, int32& OutFaceIndex) const
 {
 	TTriangleMeshRaycastVisitor<T> SQVisitor(StartPoint, Dir, Thickness, MParticles, MElements);
@@ -231,7 +238,7 @@ bool TTriangleMeshImplicitObject<T>::Raycast(const TVector<T, 3>& StartPoint, co
 template <typename T>
 bool TTriangleMeshImplicitObject<T>::Overlap(const TVector<T, 3>& Point, const T Thickness) const
 {
-	TBox<T, 3> QueryBounds(Point, Point);
+	TAABB<T, 3> QueryBounds(Point, Point);
 	QueryBounds.Thicken(Thickness);
 	const TArray<int32> PotentialIntersections = BVH.FindAllIntersections(QueryBounds);
 
@@ -337,9 +344,9 @@ template <typename QueryGeomType>
 bool TTriangleMeshImplicitObject<T>::OverlapGeomImp(const QueryGeomType& QueryGeom, const TRigidTransform<T, 3>& QueryTM, const T Thickness) const
 {
 	bool bResult = false;
-	TBox<T, 3> QueryBounds = QueryGeom.BoundingBox();
+	TAABB<T, 3> QueryBounds = QueryGeom.BoundingBox();
 	QueryBounds.Thicken(Thickness);
-	QueryBounds = QueryBounds.TransformedBox(QueryTM);
+	QueryBounds = QueryBounds.TransformedAABB(QueryTM);
 	const TArray<int32> PotentialIntersections = BVH.FindAllIntersections(QueryBounds);
 
 	const auto& InnerQueryGeom = GetGeomHelper(QueryGeom);
@@ -553,7 +560,7 @@ bool TTriangleMeshImplicitObject<T>::SweepGeomImp(const QueryGeomType& QueryGeom
 	TTriangleMeshSweepVisitor<QueryGeomType, T> SQVisitor(*this, QueryGeom, StartTM, Dir, ScaledDirNormalized, LengthScale, ScaledStartTM, Thickness, bComputeMTD);
 
 
-	const TBox<T, 3> QueryBounds = QueryGeom.BoundingBox();
+	const TAABB<T, 3> QueryBounds = QueryGeom.BoundingBox();
 	const TVector<T, 3> StartPoint = StartTM.TransformPositionNoScale(QueryBounds.Center());
 	const TVector<T, 3> Inflation = QueryBounds.Extents() * 0.5 + TVector<T, 3>(Thickness);
 	BVH.template Sweep<TTriangleMeshSweepVisitor<QueryGeomType, T>>(StartPoint, Dir, Length, Inflation, SQVisitor);
@@ -623,7 +630,7 @@ int32 TTriangleMeshImplicitObject<T>::FindMostOpposingFace(const TVector<T, 3>& 
 	//todo: this is horribly slow, need adjacency information
 	const T SearchDist2 = SearchDist * SearchDist;
 	
-	TBox<T, 3> QueryBounds(Position - TVector<T,3>(SearchDist), Position + TVector<T,3>(SearchDist));
+	TAABB<T, 3> QueryBounds(Position - TVector<T,3>(SearchDist), Position + TVector<T,3>(SearchDist));
 
 	const TArray<int32> PotentialIntersections = BVH.FindAllIntersections(QueryBounds);
 	const T Epsilon = 1e-4;
@@ -670,6 +677,28 @@ TVector<T, 3> TTriangleMeshImplicitObject<T>::FindGeometryOpposingNormal(const T
 	return GetFaceNormal(FaceIndex);
 }
 
+template<typename T>
+void TTriangleMeshImplicitObject<T>::Serialize(FChaosArchive& Ar)
+{
+	FChaosArchiveScopedMemory ScopedMemory(Ar, GetTypeName());
+	SerializeImp(Ar);
+}
+
+template<typename T>
+uint32 TTriangleMeshImplicitObject<T>::GetTypeHash() const
+{
+	uint32 Result = MParticles.GetTypeHash();
+	Result = HashCombine(Result, MLocalBoundingBox.GetTypeHash());
+
+	for(TVector<int32, 3> Tri : MElements)
+	{
+		uint32 TriHash = HashCombine(::GetTypeHash(Tri[0]), HashCombine(::GetTypeHash(Tri[1]), ::GetTypeHash(Tri[2])));
+		Result = HashCombine(Result, TriHash);
+	}
+
+	return Result;
+}
+
 template <typename T>
 TVector<T, 3> TTriangleMeshImplicitObject<T>::GetFaceNormal(const int32 FaceIdx) const
 {
@@ -690,6 +719,17 @@ TVector<T, 3> TTriangleMeshImplicitObject<T>::GetFaceNormal(const int32 FaceIdx)
 	return TVector<T, 3>(0, 0, 1);
 }
 
+template <typename T>
+uint16 TTriangleMeshImplicitObject<T>::GetMaterialIndex(uint32 HintIndex) const
+{
+	if (MaterialIndices.IsValidIndex(HintIndex))
+	{
+		return MaterialIndices[HintIndex];
+	}
+
+	// 0 should always be the default material for a shape
+	return 0;
+}
 
 template<typename T>
 void Chaos::TTriangleMeshImplicitObject<T>::RebuildBV()

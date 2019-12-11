@@ -1356,6 +1356,12 @@ void UWorld::InitWorld(const InitializationValues IVS)
 	AWorldSettings* WorldSettings = GetWorldSettings();
 	if (IVS.bInitializeScenes)
 	{
+
+	#if WITH_EDITOR
+		bEnableTraceCollision = IVS.bEnableTraceCollision;
+	#endif
+
+
 		if (IVS.bCreatePhysicsScene)
 		{
 			// Create the physics scene
@@ -1390,9 +1396,6 @@ void UWorld::InitWorld(const InitializationValues IVS)
 		AvoidanceManager = NewObject<UAvoidanceManager>(this, GEngine->AvoidanceManagerClass);
 	}
 
-#if WITH_EDITOR
-	bEnableTraceCollision = IVS.bEnableTraceCollision;
-#endif
 
 	SetupParameterCollectionInstances();
 
