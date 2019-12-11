@@ -21,6 +21,7 @@ class UMaterialInterface;
 struct INTERACTIVETOOLSFRAMEWORK_API FComponentMaterialSet
 {
 	TArray<UMaterialInterface*> Materials;
+	bool operator!=(const FComponentMaterialSet& Other) const;
 };
 
 
@@ -61,8 +62,9 @@ public:
 	/**
 	 * Get material set provided by this source
 	 * @param MaterialSetOut returned material set
+	 * @param bAssetMaterials if an underlying asset exists, return the Asset-level material assignment instead of the component materials
 	 */
-	void GetMaterialSet(FComponentMaterialSet& MaterialSetOut) const;
+	virtual void GetMaterialSet(FComponentMaterialSet& MaterialSetOut, bool bAssetMaterials = false) const;
 
 	/**
 	 * @return the transform on this component
@@ -83,6 +85,15 @@ public:
 	 * @param bVisible desired visibility
 	 */
 	void SetOwnerVisibility(bool bVisible) const;
+
+
+	/**
+	 * Commit an update to the material set. This may generate a transaction.
+	 * @param MaterialSet new list of materials
+	 * @param bApplyToAsset if true, materials of Asset are updated (if Asset exists), rather than Component
+	 */
+	virtual void CommitMaterialSetUpdate(const FComponentMaterialSet& MaterialSet, bool bApplyToAsset);
+
 
 	struct FCommitParams
 	{
