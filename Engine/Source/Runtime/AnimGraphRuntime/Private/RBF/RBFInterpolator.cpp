@@ -2,8 +2,16 @@
 
 #include "RBF/RBFInterpolator.h"
 
+#if defined(__GNUC__)
+_Pragma("GCC diagnostic push")
+_Pragma("GCC diagnostic ignored \"-Wshadow\"")
+#endif
+
 #include "Eigen/LU"
 
+#if defined(__GCC__)
+_Pragma("GCC diagnostic pop")
+#endif
 
 FRBFInterpolatorBase::FRBFInterpolatorBase(
 	TArray<float>&& UpperKernel, 
