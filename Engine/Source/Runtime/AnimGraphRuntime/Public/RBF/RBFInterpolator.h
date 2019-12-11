@@ -6,6 +6,7 @@
 #include "Math/Quat.h"
 #include "Math/Rotator.h"
 #include "Math/Vector.h"
+#include "Misc/MemStack.h"
 #include "Templates/Function.h"
 
 /* A collection of distance metrics between two values of the same type */
