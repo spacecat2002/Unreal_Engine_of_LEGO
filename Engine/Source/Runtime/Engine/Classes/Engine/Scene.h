@@ -840,8 +840,8 @@ struct FPostProcessSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Overrides, meta=(PinHiddenByDefault, InlineEditConditionToggle))
 	uint8 bOverride_AutoExposureMaxBrightness:1;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Overrides, meta=(PinHiddenByDefault, InlineEditConditionToggle))
-	uint8 bOverride_AutoExposureCalibrationConstant:1;
+	UPROPERTY()
+	uint8 bOverride_AutoExposureCalibrationConstant_DEPRECATED:1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Overrides, meta=(PinHiddenByDefault, InlineEditConditionToggle))
 	uint8 bOverride_AutoExposureSpeedUp:1;
@@ -1428,6 +1428,13 @@ struct FPostProcessSettings
 	UPROPERTY(interp, BlueprintReadWrite, Category = "Lens|Exposure", meta = (UIMin = "-15.0", UIMax = "15.0", editcondition = "bOverride_AutoExposureBias", DisplayName = "Exposure Compensation "))
 	float AutoExposureBias;
 
+	/**
+	 * With the auto exposure changes, we are changing the AutoExposureBias inside the serialization code. We are 
+	 * storing that value before conversion here as a backup. Hopefully it will not be needed, and removed in the next engine revision.
+	 */
+	UPROPERTY()
+	float AutoExposureBiasBackup;
+
 	/** Enables physical camera exposure using ShutterSpeed/ISO/Aperture. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lens|Exposure", meta = (editcondition = "bOverride_AutoExposureApplyPhysicalCameraExposure", DisplayName = "Apply Physical Camera Exposure", tooltip = "Only affects Manual exposure mode."))
 	uint32 AutoExposureApplyPhysicalCameraExposure : 1;
@@ -1467,7 +1474,6 @@ struct FPostProcessSettings
 	UPROPERTY(interp, BlueprintReadWrite, Category="Lens|Exposure", AdvancedDisplay, meta=(ClampMin = "0.0", ClampMax = "100.0", editcondition = "bOverride_AutoExposureHighPercent", DisplayName = "High Percent"))
 	float AutoExposureHighPercent;
 
-
 	/**
 	 * Auto-Exposure minimum adaptation. Eye Adaptation is disabled if Min = Max. 
 	 * Auto-exposure is implemented by choosing an exposure value for which the average luminance generates a pixel brightness equal to the Constant Calibration value.
@@ -1500,9 +1506,9 @@ struct FPostProcessSettings
 	UPROPERTY(interp, BlueprintReadWrite, Category="Lens|Exposure", AdvancedDisplay, meta=(UIMin = "0.0", UIMax = "16.0", editcondition = "bOverride_HistogramLogMax"))
 	float HistogramLogMax;
 
-	/** Calibration constant for 18% albedo. */
-	UPROPERTY(interp, BlueprintReadWrite, Category = "Lens|Exposure", AdvancedDisplay, meta=(UIMin = "0", UIMax = "100.0", editcondition = "bOverride_AutoExposureCalibrationConstant", DisplayName = "Calibration Constant"))
-	float AutoExposureCalibrationConstant;
+	/** Calibration constant for 18% albedo, deprecating this value. */
+	UPROPERTY()
+	float AutoExposureCalibrationConstant_DEPRECATED;
 
 	/** Brightness scale of the image cased lens flares (linear) */
 	UPROPERTY(interp, BlueprintReadWrite, Category="Lens|Lens Flares", meta=(UIMin = "0.0", UIMax = "16.0", editcondition = "bOverride_LensFlareIntensity", DisplayName = "Intensity"))

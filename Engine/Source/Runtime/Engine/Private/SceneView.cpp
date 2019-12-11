@@ -1343,7 +1343,6 @@ void FSceneView::OverridePostProcessSettings(const FPostProcessSettings& Src, fl
 		LERP_PP(AutoExposureHighPercent);
 		LERP_PP(AutoExposureMinBrightness);
 		LERP_PP(AutoExposureMaxBrightness);
-		LERP_PP(AutoExposureCalibrationConstant);
 		LERP_PP(AutoExposureSpeedUp);
 		LERP_PP(AutoExposureSpeedDown);
 		LERP_PP(AutoExposureBias);

@@ -25,6 +25,9 @@ FORCEINLINE float Log2ToEV100(float LuminanceMax, float Log2)
 	return Log2 - FMath::Log2(LuminanceMax);
 }
 
+// For converting the auto exposure to new values from 4.24 to 4.25
+float CalculateEyeAdaptationParameterExposureConversion(const FPostProcessSettings& Settings, const bool bExtendedLuminanceRange);
+
 // figure out the LuminanceMax (i.e. how much light in cd/m2 will saturate the camera sensor) from the CVar lens attenuation
 float LuminanceMaxFromLensAttenuation();
 

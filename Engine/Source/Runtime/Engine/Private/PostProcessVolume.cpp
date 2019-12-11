@@ -132,8 +132,7 @@ bool APostProcessVolume::CanEditChange(const UProperty* InProperty) const
 			if (PropertyName == GET_MEMBER_NAME_STRING_CHECKED(FPostProcessSettings, AutoExposureMinBrightness) ||
 				PropertyName == GET_MEMBER_NAME_STRING_CHECKED(FPostProcessSettings, AutoExposureMaxBrightness) ||
 				PropertyName == GET_MEMBER_NAME_STRING_CHECKED(FPostProcessSettings, AutoExposureSpeedUp)       ||
-				PropertyName == GET_MEMBER_NAME_STRING_CHECKED(FPostProcessSettings, AutoExposureSpeedDown)     ||
-				PropertyName == GET_MEMBER_NAME_STRING_CHECKED(FPostProcessSettings, AutoExposureCalibrationConstant))
+				PropertyName == GET_MEMBER_NAME_STRING_CHECKED(FPostProcessSettings, AutoExposureSpeedDown))
 			{
 				return  ( Settings.AutoExposureMethod == EAutoExposureMethod::AEM_Histogram || 
 					      Settings.AutoExposureMethod == EAutoExposureMethod::AEM_Basic );

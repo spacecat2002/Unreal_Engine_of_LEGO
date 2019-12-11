@@ -186,13 +186,6 @@ FScreenPassTexture AddVisualizeHDRPass(FRDGBuilder& GraphBuilder, const FViewInf
 		Canvas.DrawShadowedString(X, Y += YStep, TEXT("Exposure Compensation: "), GetStatsFont(), FLinearColor(1, 1, 1));
 		Canvas.DrawShadowedString(X + ColumnWidth, Y, *Line, GetStatsFont(), FLinearColor(1, 0.3f, 0.3f));
 
-		if (AutoExposureMethod == AEM_Basic || AutoExposureMethod == AEM_Histogram)
-		{
-			Line = FString::Printf(TEXT("%g%%"), AutoExposureMethod == AEM_Basic ? View.FinalPostProcessSettings.AutoExposureCalibrationConstant : 100.f);
-			Canvas.DrawShadowedString(X, Y += YStep, TEXT("Calibration Constant: "), GetStatsFont(), FLinearColor(1, 1, 1));
-			Canvas.DrawShadowedString(X + ColumnWidth, Y, *Line, GetStatsFont(), FLinearColor(1, 0.3f, 0.3f));
-		}
-
 		if (bExtendedLuminanceRange)
 		{
 			Line = FString::Printf(TEXT("%.1f .. %.1f"), View.FinalPostProcessSettings.HistogramLogMin, View.FinalPostProcessSettings.HistogramLogMax);
