@@ -5,7 +5,7 @@
 #if WITH_ACCESSIBILITY
 
 #include "CoreMinimal.h"
-#include "GenericPlatform/GenericAccessibleInterfaces.h"
+#include "GenericPlatform/Accessibility/GenericAccessibleInterfaces.h"
 #include "Misc/Variant.h"
 #import <AppKit/AppKit.h>
 

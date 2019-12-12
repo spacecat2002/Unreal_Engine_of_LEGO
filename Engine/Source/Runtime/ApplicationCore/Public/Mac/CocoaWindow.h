@@ -4,7 +4,7 @@
 
 #include "GenericPlatform/GenericWindow.h"
 #if WITH_ACCESSIBILITY
-#include "GenericPlatform/GenericAccessibleInterfaces.h"
+#include "GenericPlatform/Accessibility/GenericAccessibleInterfaces.h"
 #endif
 
 

@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Misc/Variant.h"
 #include "Stats/Stats.h"
+#include "Async/TaskGraphInterfaces.h"
 
 /** Whether a widget should be included in accessibility, and if so, how its text should be retrieved. */
 enum class EAccessibleBehavior : uint8
@@ -515,6 +516,15 @@ public:
 		AccessibleEventDelegate = Delegate;
 	}
 
+	/**
+	 * Request a function to be run in a particular thread. 
+	 * Primarily used to service accessibility requests from the OS thread about accessible Slate widget data in the game thread. 
+	 *
+	 * @param Function The function to execute in the game thread.
+	 * @bWaitForCompletion If true, the function will block until the requested Function completes executing on the requested Thread
+	 * @param Thread The thread to run the Function in.
+	 */
+	virtual void RunInThread(const TFunction<void()>& Function, bool bWaitForCompletion = true, ENamedThreads::Type Thread = ENamedThreads::GameThread) { }
 protected:
 	/** Triggered when bIsActive changes from false to true. */
 	virtual void OnActivate() {}

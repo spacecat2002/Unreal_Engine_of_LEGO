@@ -4,7 +4,7 @@
 
 #include "Mac/Accessibility/MacAccessibilityElement.h"
 #include "Mac/CocoaThread.h"
-#include "GenericPlatform/GenericAccessibleInterfaces.h"
+#include "GenericPlatform/Accessibility/GenericAccessibleInterfaces.h"
 #include "Mac/Accessibility/MacAccessibilityManager.h"
 #include "Mac/MacApplication.h"
 #include "Mac/CocoaTextView.h"

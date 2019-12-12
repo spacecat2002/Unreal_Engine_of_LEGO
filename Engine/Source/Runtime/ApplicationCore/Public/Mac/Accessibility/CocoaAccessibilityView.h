@@ -2,7 +2,7 @@
 
 #pragma once
 #if WITH_ACCESSIBILITY
-#include "GenericPlatform/GenericAccessibleInterfaces.h"
+#include "GenericPlatform/Accessibility/GenericAccessibleInterfaces.h"
 #
 #import <AppKit/AppKit.h>
 
