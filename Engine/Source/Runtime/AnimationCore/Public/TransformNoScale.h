@@ -15,31 +15,31 @@ struct ANIMATIONCORE_API FTransformNoScale
 	 */
 	static const FTransformNoScale Identity;
 
-	FORCEINLINE FTransformNoScale()
+	FORCEINLINE_DEBUGGABLE FTransformNoScale()
 		: Location(ForceInitToZero)
 		, Rotation(ForceInitToZero)
 	{
 	}
 
-	FORCEINLINE FTransformNoScale(const FVector& InLocation, const FQuat& InRotation)
+	FORCEINLINE_DEBUGGABLE FTransformNoScale(const FVector& InLocation, const FQuat& InRotation)
 		: Location(InLocation)
 		, Rotation(InRotation)
 	{
 	}
 
-	FORCEINLINE FTransformNoScale(const FTransform& InTransform)
+	FORCEINLINE_DEBUGGABLE FTransformNoScale(const FTransform& InTransform)
 		: Location(InTransform.GetLocation())
 		, Rotation(InTransform.GetRotation())
 	{
 	}
 
-	FORCEINLINE FTransformNoScale& operator =(const FTransform& InTransform)
+	FORCEINLINE_DEBUGGABLE FTransformNoScale& operator =(const FTransform& InTransform)
 	{
 		FromFTransform(InTransform);
 		return *this;
 	}
 
-	FORCEINLINE operator FTransform() const
+	FORCEINLINE_DEBUGGABLE operator FTransform() const
 	{
 		return ToFTransform();
 	}
@@ -53,13 +53,13 @@ struct ANIMATIONCORE_API FTransformNoScale
 	FQuat Rotation;
 
 	/** Convert to an FTransform */
-	FORCEINLINE FTransform ToFTransform() const
+	FORCEINLINE_DEBUGGABLE FTransform ToFTransform() const
 	{
 		return FTransform(Rotation, Location, FVector::OneVector);
 	}
 
 	/** Convert from an FTransform */
-	FORCEINLINE void FromFTransform(const FTransform& InTransform)
+	FORCEINLINE_DEBUGGABLE void FromFTransform(const FTransform& InTransform)
 	{
 		Location = InTransform.GetLocation();
 		Rotation = InTransform.GetRotation();
