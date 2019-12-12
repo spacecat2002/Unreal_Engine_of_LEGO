@@ -539,7 +539,12 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::AddToSceneData(FPrecomputedV
 				IndirectionTexture = SceneData->IndirectionTexture;
 			}
 
+>>>> ORIGINAL //UE4/Dev-RenderPlat-Staging/Engine/Source/Runtime/Engine/Private/PrecomputedVolumetricLightmap.cpp#4
+==== THEIRS //UE4/Dev-RenderPlat-Staging/Engine/Source/Runtime/Engine/Private/PrecomputedVolumetricLightmap.cpp#5
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, IndirectionTexture.Texture);
+==== YOURS //Rolando.Caloca_I9_DevRenderingMerge/Engine/Source/Runtime/Engine/Private/PrecomputedVolumetricLightmap.cpp
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, NewIndirectionTexture.UAV);
+<<<<
 		}
 		else
 		{
@@ -1089,6 +1094,20 @@ void FVolumetricLightmapBrickAtlas::Insert(int32 Index, FPrecomputedVolumetricLi
 	// Replace with new allcations
 	Allocations = NewAllocations;
 	TextureSet = NewTextureSet; // <-- Old texture references are released here
+
+	FRHITexture* Textures[3 + UE_ARRAY_COUNT(TextureSet.SHCoefficients)] = 
+	{
+		TextureSet.AmbientVector.Texture,
+		TextureSet.SkyBentNormal.Texture,
+		TextureSet.DirectionalLightShadowing.Texture
+	};
+
+	for (int32 TextureIndex = 0; TextureIndex < UE_ARRAY_COUNT(TextureSet.SHCoefficients); ++TextureIndex)
+	{
+		Textures[TextureIndex + 3] = TextureSet.SHCoefficients[TextureIndex].Texture;
+	}
+
+	RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, Textures, UE_ARRAY_COUNT(Textures));
 }
 
 void FVolumetricLightmapBrickAtlas::Remove(FPrecomputedVolumetricLightmapData* Data)

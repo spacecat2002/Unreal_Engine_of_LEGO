@@ -986,7 +986,7 @@ public:
 		return RHI->RHICreateUnorderedAccessViewStencil(DepthTarget, MipLevel);
 	}
 
-	virtual void RHIAliasTextureResources(FRHITexture* DestTexture, FRHITexture* SourceTexture) override final
+	virtual void RHIAliasTextureResources(FTextureRHIRef& DestTexture, FTextureRHIRef& SourceTexture) override final
 	{
 		// Source and target need to be valid objects.
 		check(DestTexture && SourceTexture);
@@ -995,7 +995,7 @@ public:
 		RHI->RHIAliasTextureResources(DestTexture, SourceTexture);
 	}
 
-	virtual FTextureRHIRef RHICreateAliasedTexture(FRHITexture* SourceTexture) override final
+	virtual FTextureRHIRef RHICreateAliasedTexture(FTextureRHIRef& SourceTexture) override final
 	{
 		check(SourceTexture);
 		return RHI->RHICreateAliasedTexture(SourceTexture);

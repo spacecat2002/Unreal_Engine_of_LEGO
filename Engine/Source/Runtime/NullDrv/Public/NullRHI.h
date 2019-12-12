@@ -478,6 +478,10 @@ public:
 	{
 
 	}
+	virtual void RHIAliasTextureResources(FTextureRHIRef& DestTexture, FTextureRHIRef& SrcTexture) final override
+	{
+
+	}
 	virtual void RHIAdvanceFrameForGetViewportBackBuffer(FRHIViewport* Viewport) final override
 	{
 
