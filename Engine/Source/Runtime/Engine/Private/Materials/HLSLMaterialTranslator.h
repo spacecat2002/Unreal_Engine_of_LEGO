@@ -1644,7 +1644,7 @@ ResourcesString = TEXT("");
 				const EMaterialProperty Property = (EMaterialProperty)PropertyIndex;
 				check(FMaterialAttributeDefinitionMap::GetShaderFrequency(Property) == SF_Pixel);
 				// Special case MP_SubsurfaceColor as the actual property is a combination of the color and the profile but we don't want to expose the profile
-				const FString PropertyName = Property == MP_SubsurfaceColor ? "Subsurface" : FMaterialAttributeDefinitionMap::GetDisplayName(Property);
+				const FString PropertyName = Property == MP_SubsurfaceColor ? "Subsurface" : FMaterialAttributeDefinitionMap::GetAttributeName(Property);
 				check(PropertyName.Len() > 0);				
 				const EMaterialValueType Type = Property == MP_SubsurfaceColor ? MCT_Float4 : FMaterialAttributeDefinitionMap::GetValueType(Property);
 
@@ -6970,7 +6970,7 @@ protected:
 	{
 		if (MaterialProperty != MP_MAX)
 		{
-			return Errorf(TEXT("A Custom Output node should not be attached to the %s material property"), *FMaterialAttributeDefinitionMap::GetDisplayName(MaterialProperty));
+			return Errorf(TEXT("A Custom Output node should not be attached to the %s material property"), *FMaterialAttributeDefinitionMap::GetAttributeName(MaterialProperty));
 		}
 
 		if (OutputCode == INDEX_NONE)
