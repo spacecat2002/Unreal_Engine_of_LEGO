@@ -55,6 +55,7 @@ void FRBFEntry::AddFromVector(const FVector& InVector)
 
 FRBFParams::FRBFParams()
 	: TargetDimensions(3)
+	, SolverType(ERBFSolverType::Additive)
 	, Radius(1.f)
 	, Function(ERBFFunctionType::Gaussian)
 	, DistanceMethod(ERBFDistanceMethod::Euclidean)
