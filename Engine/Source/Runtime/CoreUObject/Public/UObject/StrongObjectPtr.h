@@ -45,9 +45,9 @@ namespace UE4StrongObjectPtr_Private
 			Collector.AddReferencedObject(Object);
 		}
 
-		virtual FString GetReferencerName() const
+		virtual FString GetReferencerName() const override
 		{
-			return TEXT("TStrongObjectPtr");
+			return "UE4StrongObjectPtr_Private::FInternalReferenceCollector";
 		}
 
 	private:
