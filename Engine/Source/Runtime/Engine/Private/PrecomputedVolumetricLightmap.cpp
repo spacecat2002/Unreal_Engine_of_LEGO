@@ -539,12 +539,8 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::AddToSceneData(FPrecomputedV
 				IndirectionTexture = SceneData->IndirectionTexture;
 			}
 
->>>> ORIGINAL //UE4/Dev-RenderPlat-Staging/Engine/Source/Runtime/Engine/Private/PrecomputedVolumetricLightmap.cpp#4
-==== THEIRS //UE4/Dev-RenderPlat-Staging/Engine/Source/Runtime/Engine/Private/PrecomputedVolumetricLightmap.cpp#5
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, IndirectionTexture.Texture);
-==== YOURS //Rolando.Caloca_I9_DevRenderingMerge/Engine/Source/Runtime/Engine/Private/PrecomputedVolumetricLightmap.cpp
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, NewIndirectionTexture.UAV);
-<<<<
 		}
 		else
 		{
