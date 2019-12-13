@@ -422,7 +422,7 @@ void FD3D12CommandContext::RHICopyToStagingBuffer(FRHIVertexBuffer* SourceBuffer
 
 		numCopies++;
 
-		CommandListHandle->CopyBufferRegion(pDestResource->GetResource(), Offset, pSourceResource->GetResource(), Offset, NumBytes);
+		CommandListHandle->CopyBufferRegion(pDestResource->GetResource(), 0, pSourceResource->GetResource(), Offset, NumBytes);
 		CommandListHandle.UpdateResidency(pDestResource);
 		CommandListHandle.UpdateResidency(pSourceResource);
 	}
