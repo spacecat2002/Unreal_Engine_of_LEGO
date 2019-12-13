@@ -10,7 +10,6 @@
 #include "Widgets/SWindow.h"
 #include "Input/HittestGrid.h"
 #include "HAL/IConsoleManager.h"
-#include "HAL/Event.h"
 #include "GenericPlatform/GenericPlatformProcess.h"
 
 
@@ -157,7 +156,10 @@ void FSlateAccessibleMessageHandler::ProcessAccessibleTasks()
 		RemainingTime = TimeSliceSeconds - ElapsedTime;
 		if (RemainingTime > 0)
 		{
+
+#if ACCESSIBILITY_DEBUG_RESPONSIVENESS
 			EnqueueEvent->Wait(FTimespan::FromSeconds(RemainingTime));
+#endif
 			ElapsedTime = FPlatformTime::Seconds() - StartTime;
 			RemainingTime = TimeSliceSeconds - ElapsedTime;
 		}
