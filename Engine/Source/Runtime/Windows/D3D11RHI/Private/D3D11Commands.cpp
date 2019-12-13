@@ -1855,7 +1855,7 @@ void FD3D11DynamicRHI::RHIBlockUntilGPUIdle()
 /**
  * Returns the total GPU time taken to render the last frame. Same metric as FPlatformTime::Cycles().
  */
-uint32 FD3D11DynamicRHI::RHIGetGPUFrameCycles()
+uint32 FD3D11DynamicRHI::RHIGetGPUFrameCycles(uint32 GPUIndex)
 {
 #if INTEL_METRICSDISCOVERY
 	if (GDX11IntelMetricsDiscoveryEnabled)

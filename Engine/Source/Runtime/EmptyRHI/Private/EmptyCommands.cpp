@@ -337,7 +337,7 @@ void FEmptyDynamicRHI::RHIBlockUntilGPUIdle()
 
 }
 
-uint32 FEmptyDynamicRHI::RHIGetGPUFrameCycles()
+uint32 FEmptyDynamicRHI::RHIGetGPUFrameCycles(uint32 GPUIndex)
 {
 	return GGPUFrameTime;
 }

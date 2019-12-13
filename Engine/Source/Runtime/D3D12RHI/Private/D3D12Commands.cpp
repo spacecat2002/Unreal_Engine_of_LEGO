@@ -1783,7 +1783,7 @@ void FD3D12DynamicRHI::RHISubmitCommandsAndFlushGPU()
 /*
 * Returns the total GPU time taken to render the last frame. Same metric as FPlatformTime::Cycles().
 */
-uint32 FD3D12DynamicRHI::RHIGetGPUFrameCycles()
+uint32 FD3D12DynamicRHI::RHIGetGPUFrameCycles(uint32 GPUIndex)
 {
 	return GGPUFrameTime;
 }

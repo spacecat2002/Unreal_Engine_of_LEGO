@@ -979,7 +979,7 @@ public:
 
 	// CAUTION: Even though this is marked as threadsafe, it is only valid to call from the render thread. It is need not be threadsafe on platforms that do not support or aren't using an RHIThread
 	// FlushType: Thread safe, but varies by RHI
-	virtual bool RHIGetRenderQueryResult(FRHIRenderQuery* RenderQuery, uint64& OutResult, bool bWait) = 0;
+	virtual bool RHIGetRenderQueryResult(FRHIRenderQuery* RenderQuery, uint64& OutResult, bool bWait, uint32 GPUIndex = INDEX_NONE) = 0;
 
 	// FlushType: Thread safe
 	virtual uint32 RHIGetViewportNextPresentGPUIndex(FRHIViewport* Viewport)
@@ -1058,7 +1058,7 @@ public:
 	* Returns the total GPU time taken to render the last frame. Same metric as FPlatformTime::Cycles().
 	*/
 	// FlushType: Thread safe
-	virtual uint32 RHIGetGPUFrameCycles() = 0;
+	virtual uint32 RHIGetGPUFrameCycles(uint32 GPUIndex = 0) = 0;
 
 	//  must be called from the main thread.
 	// FlushType: Thread safe
@@ -1478,9 +1478,9 @@ FORCEINLINE void RHIBindDebugLabelName(FRHIUnorderedAccessView* UnorderedAccessV
 	GDynamicRHI->RHIBindDebugLabelName(UnorderedAccessViewRHI, Name);
 }
 
-FORCEINLINE bool RHIGetRenderQueryResult(FRHIRenderQuery* RenderQuery, uint64& OutResult, bool bWait)
+FORCEINLINE bool RHIGetRenderQueryResult(FRHIRenderQuery* RenderQuery, uint64& OutResult, bool bWait, uint32 GPUIndex = INDEX_NONE)
 {
-	return GDynamicRHI->RHIGetRenderQueryResult(RenderQuery, OutResult, bWait);
+	return GDynamicRHI->RHIGetRenderQueryResult(RenderQuery, OutResult, bWait, GPUIndex);
 }
 
 FORCEINLINE uint32 RHIGetViewportNextPresentGPUIndex(FRHIViewport* Viewport)
@@ -1513,9 +1513,9 @@ FORCEINLINE void RHIAdvanceFrameForGetViewportBackBuffer(FRHIViewport* Viewport)
 	return GDynamicRHI->RHIAdvanceFrameForGetViewportBackBuffer(Viewport);
 }
 
-FORCEINLINE uint32 RHIGetGPUFrameCycles()
+FORCEINLINE uint32 RHIGetGPUFrameCycles(uint32 GPUIndex = 0)
 {
-	return GDynamicRHI->RHIGetGPUFrameCycles();
+	return GDynamicRHI->RHIGetGPUFrameCycles(GPUIndex);
 }
 
 FORCEINLINE FViewportRHIRef RHICreateViewport(void* WindowHandle, uint32 SizeX, uint32 SizeY, bool bIsFullscreen, EPixelFormat PreferredPixelFormat)

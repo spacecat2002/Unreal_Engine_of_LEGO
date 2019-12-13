@@ -433,7 +433,7 @@ public:
 	}
 
 
-	virtual bool RHIGetRenderQueryResult(FRHIRenderQuery* RenderQuery, uint64& OutResult, bool bWait) final override
+	virtual bool RHIGetRenderQueryResult(FRHIRenderQuery* RenderQuery, uint64& OutResult, bool bWait, uint32 GPUIndex = INDEX_NONE) final override
 	{ 
 		return true; 
 	}
@@ -497,7 +497,7 @@ public:
 
 	}
 
-	virtual uint32 RHIGetGPUFrameCycles() final override
+	virtual uint32 RHIGetGPUFrameCycles(uint32 GPUIndex = 0) final override
 	{ 
 		return 0; 
 	}

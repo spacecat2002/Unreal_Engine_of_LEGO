@@ -887,7 +887,7 @@ void FVulkanDynamicRHI::RHIBlockUntilGPUIdle()
 	Device->WaitUntilIdle();
 }
 
-uint32 FVulkanDynamicRHI::RHIGetGPUFrameCycles()
+uint32 FVulkanDynamicRHI::RHIGetGPUFrameCycles(uint32 GPUIndex)
 {
 	return GGPUFrameTime;
 }

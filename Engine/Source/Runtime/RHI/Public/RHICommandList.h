@@ -4376,11 +4376,11 @@ public:
 		}
 	}
 
-	FORCEINLINE bool GetRenderQueryResult(FRHIRenderQuery* RenderQuery, uint64& OutResult, bool bWait)
+	FORCEINLINE bool GetRenderQueryResult(FRHIRenderQuery* RenderQuery, uint64& OutResult, bool bWait, uint32 GPUIndex = INDEX_NONE)
 	{
-		return RHIGetRenderQueryResult(RenderQuery, OutResult, bWait);
+		return RHIGetRenderQueryResult(RenderQuery, OutResult, bWait, GPUIndex);
 	}
-	
+
 	FORCEINLINE uint32 GetViewportNextPresentGPUIndex(FRHIViewport* Viewport)
 	{
 		return GDynamicRHI->RHIGetViewportNextPresentGPUIndex(Viewport);
@@ -4704,8 +4704,8 @@ class TRHICommandList_RecursiveHazardous : public FRHICommandList_RecursiveHazar
 	};
 
 public:
-	TRHICommandList_RecursiveHazardous(ContextType *Context)
-		: FRHICommandList_RecursiveHazardous(Context)
+	TRHICommandList_RecursiveHazardous(ContextType *Context, FRHIGPUMask GPUMask = FRHIGPUMask::All())
+		: FRHICommandList_RecursiveHazardous(Context, GPUMask)
 	{}
 
 	template <typename LAMBDA>
@@ -4724,8 +4724,8 @@ public:
 #else
 
 public:
-	TRHICommandList_RecursiveHazardous(ContextType *Context)
-		: FRHICommandList_RecursiveHazardous(Context)
+	TRHICommandList_RecursiveHazardous(ContextType *Context, FRHIGPUMask GPUMask = FRHIGPUMask::All())
+		: FRHICommandList_RecursiveHazardous(Context, GPUMask)
 	{}
 
 	template <typename LAMBDA>

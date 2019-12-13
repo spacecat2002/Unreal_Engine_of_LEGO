@@ -947,9 +947,9 @@ public:
 	}
 	// CAUTION: Even though this is marked as threadsafe, it is only valid to call from the render thread. It is need not be threadsafe on platforms that do not support or aren't using an RHIThread
 	// FlushType: Thread safe, but varies by RHI
-	virtual bool RHIGetRenderQueryResult(FRHIRenderQuery* RenderQuery, uint64& OutResult, bool bWait) override final
+	virtual bool RHIGetRenderQueryResult(FRHIRenderQuery* RenderQuery, uint64& OutResult, bool bWait, uint32 GPUIndex = INDEX_NONE) override final
 	{
-		return RHI->RHIGetRenderQueryResult(RenderQuery, OutResult, bWait);
+		return RHI->RHIGetRenderQueryResult(RenderQuery, OutResult, bWait, GPUIndex);
 	}
 
 	// FlushType: Thread safe
@@ -1033,9 +1033,9 @@ public:
 	* Returns the total GPU time taken to render the last frame. Same metric as FPlatformTime::Cycles().
 	*/
 	// FlushType: Thread safe
-	virtual uint32 RHIGetGPUFrameCycles() override final
+	virtual uint32 RHIGetGPUFrameCycles(uint32 GPUIndex = 0) override final
 	{
-		return RHI->RHIGetGPUFrameCycles();
+		return RHI->RHIGetGPUFrameCycles(GPUIndex);
 	}
 
 	//  must be called from the main thread.
