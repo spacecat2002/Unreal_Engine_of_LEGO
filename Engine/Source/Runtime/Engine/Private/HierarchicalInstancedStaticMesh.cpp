@@ -2252,6 +2252,7 @@ bool UHierarchicalInstancedStaticMeshComponent::UpdateInstanceTransform(int32 In
 		if (!bIsOmittedInstance)
 		{
 			InstanceUpdateCmdBuffer.UpdateInstance(RenderIndex, NewLocalTransform.ToMatrixWithScale());
+			bMarkRenderStateDirty = true;
 		}
 		
 		if (bDoInPlaceUpdate)
@@ -2261,11 +2262,11 @@ bool UHierarchicalInstancedStaticMeshComponent::UpdateInstanceTransform(int32 In
 			if (!OldInstanceBounds.IsInside(NewInstanceBounds))
 			{
 				BuiltInstanceBounds += NewInstanceBounds;
+			}
 
-				if (bMarkRenderStateDirty)
-				{
-					MarkRenderStateDirty();
-				}
+			if (bMarkRenderStateDirty)
+			{
+				MarkRenderStateDirty();
 			}
 		}
 		else
