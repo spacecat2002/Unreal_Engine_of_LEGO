@@ -391,7 +391,9 @@ void FScatterUploadBuffer::UploadToBuffer( FRHICommandList& RHICmdList, FRHIUnor
 	RHIUnlockStructuredBuffer( UploadBuffer.Buffer );
 
 	if( NumScatters == 0 )
+	{
 		return;
+	}
 
 	RHICmdList.TransitionResource( EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EComputeToCompute, DstBufferUAV );
 
@@ -400,8 +402,11 @@ void FScatterUploadBuffer::UploadToBuffer( FRHICommandList& RHICmdList, FRHIUnor
 	uint32 NumThreads = NumScatters * NumThreadsPerScatter;
 
 	FScatterCopyCS::FParameters Parameters;
-	Parameters.NumScatters = NumScatters;
+	Parameters.Common.Value = 0;
 	Parameters.Common.Size = NumThreadsPerScatter;
+	Parameters.Common.SrcOffset = 0;
+	Parameters.Common.DstOffset = 0;
+	Parameters.NumScatters = NumScatters;
 	
 	if (bFloat4Buffer)
 	{
