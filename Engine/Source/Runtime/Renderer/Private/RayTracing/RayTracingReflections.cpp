@@ -1,5 +1,6 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
+#include "RayTracingReflections.h"
 #include "RendererPrivate.h"
 #include "GlobalShader.h"
 #include "DeferredShadingRenderer.h"
@@ -22,6 +23,22 @@
 #include "RayTracing/RayTracingLighting.h"
 #include "RayTracing/RayTracingSkyLight.h"
 #include "SceneTextureParameters.h"
+
+static int32 GRayTracingReflections = -1;
+static FAutoConsoleVariableRef CVarReflectionsMethod(
+	TEXT("r.RayTracing.Reflections"),
+	GRayTracingReflections,
+	TEXT("-1: Value driven by postprocess volume (default) \n")
+	TEXT("0: use traditional rasterized SSR\n")
+	TEXT("1: use ray traced reflections\n")
+);
+
+static int32 GRayTracingReflectionsSamplesPerPixel = -1;
+static FAutoConsoleVariableRef CVarRayTracingReflectionsSamplesPerPixel(
+	TEXT("r.RayTracing.Reflections.SamplesPerPixel"),
+	GRayTracingReflectionsSamplesPerPixel,
+	TEXT("Sets the samples-per-pixel for reflections (default = -1 (driven by postprocesing volume))")
+);
 
 static float GRayTracingReflectionsMaxRoughness = -1;
 static FAutoConsoleVariableRef CVarRayTracingReflectionsMaxRoughness(
@@ -91,6 +108,13 @@ static FAutoConsoleVariableRef CVarRayTracingReflectionsMaxRayDistance(
 	TEXT("r.RayTracing.Reflections.MaxRayDistance"),
 	GRayTracingReflectionsMaxRayDistance,
 	TEXT("Sets the maximum ray distance for ray traced reflection rays. When ray shortening is used, skybox will not be sampled in RT reflection pass and will be composited later, together with local reflection captures. Negative values turn off this optimization. (default = -1 (infinite rays))")
+);
+
+static int32 GRayTracingReflectionsHeightFog = 1;
+static FAutoConsoleVariableRef CVarRayTracingReflectionsHeightFog(
+	TEXT("r.RayTracing.Reflections.HeightFog"),
+	GRayTracingReflectionsHeightFog,
+	TEXT("Enables height fog in ray traced reflections (default = 1)")
 );
 
 static TAutoConsoleVariable<int32> CVarRayTracingReflectionsSortMaterials(
@@ -302,16 +326,48 @@ class FSplitImaginaryReflectionGBufferCS : public FGlobalShader
 
 IMPLEMENT_GLOBAL_SHADER(FSplitImaginaryReflectionGBufferCS, "/Engine/Private/RayTracing/SplitImaginaryReflectionGBufferCS.usf", "MainCS", SF_Compute);
 
+int32 GetRayTracingReflectionsSamplesPerPixel(const FViewInfo& View)
+{
+	return GRayTracingReflectionsSamplesPerPixel >= 0 ? GRayTracingReflectionsSamplesPerPixel : View.FinalPostProcessSettings.RayTracingReflectionsSamplesPerPixel;
+}
+
+bool ShouldRenderRayTracingReflections(const FViewInfo& View)
+{
+	bool bThisViewHasRaytracingReflections = View.FinalPostProcessSettings.ReflectionsType == EReflectionsType::RayTracing;
+
+	const bool bReflectionsCvarEnabled = GRayTracingReflections < 0 ? bThisViewHasRaytracingReflections : (GRayTracingReflections != 0);
+	const int32 ForceAllRayTracingEffects = GetForceRayTracingEffectsCVarValue();
+	const bool bReflectionPassEnabled = (ForceAllRayTracingEffects > 0 || (bReflectionsCvarEnabled && ForceAllRayTracingEffects < 0)) && (GetRayTracingReflectionsSamplesPerPixel(View) > 0);
+
+	return IsRayTracingEnabled() && bReflectionPassEnabled;
+}
+
+bool ShouldRayTracedReflectionsUseHybridReflections()
+{
+	return CVarRayTracingReflectionsHybrid.GetValueOnRenderThread() != 0;
+}
+
+bool ShouldRayTracedReflectionsSortMaterials(const FViewInfo& View)
+{
+	const bool bIsMultiviewSecondary = View.ViewRect.Min.X > 0 || View.ViewRect.Min.Y > 0;
+
+	return (ShouldRayTracedReflectionsUseHybridReflections() || CVarRayTracingReflectionsSortMaterials.GetValueOnRenderThread() != 0) && !bIsMultiviewSecondary;
+}
+
+bool ShouldRayTracedReflectionsRayTraceSkyLightContribution(const FScene& Scene)
+{
+	// Only ray trace sky light contribution when the ray traced sky light should be rendered in normal conditions (sky light exists, ray traced shadows enabled)
+	return CVarRayTracingReflectionsRayTraceSkyLightContribution.GetValueOnRenderThread() && ShouldRenderRayTracingSkyLight(Scene.SkyLight);
+}
+
 void FDeferredShadingSceneRenderer::PrepareRayTracingReflections(const FViewInfo& View, const FScene& Scene, TArray<FRHIRayTracingShader*>& OutRayGenShaders)
 {
 	// Declare all RayGen shaders that require material closest hit shaders to be bound
 
-	const bool bHybridReflections = CVarRayTracingReflectionsHybrid.GetValueOnRenderThread() != 0;
-	const bool bIsMultiviewSecondary = View.ViewRect.Min.X > 0 || View.ViewRect.Min.Y > 0;
-	const bool bSortMaterials = (bHybridReflections || CVarRayTracingReflectionsSortMaterials.GetValueOnRenderThread() != 0) && !bIsMultiviewSecondary;
+	const bool bHybridReflections = ShouldRayTracedReflectionsUseHybridReflections();
+	const bool bSortMaterials = ShouldRayTracedReflectionsSortMaterials(View);
 	const bool bMissShaderLighting = CanUseRayTracingLightingMissShader(View.GetShaderPlatform());
-	// Only ray trace sky light contribution when the ray traced sky light should be rendered in normal conditions (sky light exists, ray traced shadows enabled)
-	const bool bRayTraceSkyLightContribution = CVarRayTracingReflectionsRayTraceSkyLightContribution.GetValueOnRenderThread() && ShouldRenderRayTracingSkyLight(Scene.SkyLight);
+	const bool bRayTraceSkyLightContribution = ShouldRayTracedReflectionsRayTraceSkyLightContribution(Scene);
 
 	if (bSortMaterials)
 	{
@@ -379,7 +435,6 @@ void FDeferredShadingSceneRenderer::RenderRayTracingReflections(
 	const FSceneTextureParameters& SceneTextures,
 	const FViewInfo& View,
 	int32 SamplePerPixel,
-	int32 HeightFog,
 	float ResolutionFraction,
 	IScreenSpaceDenoiser::FReflectionsInputs* OutDenoiserInputs)
 #if RHI_RAYTRACING
@@ -387,11 +442,10 @@ void FDeferredShadingSceneRenderer::RenderRayTracingReflections(
 	const uint32 SortTileSize = CVarRayTracingReflectionsSortTileSize.GetValueOnRenderThread();
 	const uint32 EnableTranslucency = GRayTracingReflectionsTranslucency > -1 ? (uint32)GRayTracingReflectionsTranslucency : (uint32)View.FinalPostProcessSettings.RayTracingReflectionsTranslucency;
 
-	const bool bHybridReflections = CVarRayTracingReflectionsHybrid.GetValueOnRenderThread() != 0;
-	const bool bIsMultiviewSecondary = View.ViewRect.Min.X > 0 || View.ViewRect.Min.Y > 0;
-	const bool bSortMaterials = (bHybridReflections || CVarRayTracingReflectionsSortMaterials.GetValueOnRenderThread() != 0) && !bIsMultiviewSecondary;
+	const bool bHybridReflections = ShouldRayTracedReflectionsUseHybridReflections();
+	const bool bSortMaterials = ShouldRayTracedReflectionsSortMaterials(View);
 	const bool bLightingMissShader = CanUseRayTracingLightingMissShader(View.GetShaderPlatform());
-	const bool bRayTraceSkyLightContribution = CVarRayTracingReflectionsRayTraceSkyLightContribution.GetValueOnRenderThread() && ShouldRenderRayTracingSkyLight(Scene->SkyLight);
+	const bool bRayTraceSkyLightContribution = ShouldRayTracedReflectionsRayTraceSkyLightContribution(*Scene);
 
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 	FSceneViewState* SceneViewState = (FSceneViewState*)View.State;
@@ -453,7 +507,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingReflections(
 
 	CommonParameters.SamplesPerPixel = SamplePerPixel;
 	CommonParameters.MaxBounces = GRayTracingReflectionsMaxBounces > -1? GRayTracingReflectionsMaxBounces : View.FinalPostProcessSettings.RayTracingReflectionsMaxBounces;
-	CommonParameters.HeightFog = HeightFog;
+	CommonParameters.HeightFog = GRayTracingReflectionsHeightFog;
 	CommonParameters.UseReflectionCaptures = GRayTracingReflectionsCaptures;
 	CommonParameters.ShouldDoDirectLighting = GRayTracingReflectionsDirectLighting;
 	CommonParameters.ReflectedShadowsType = GRayTracingReflectionsShadows > -1 ? GRayTracingReflectionsShadows : (int32)View.FinalPostProcessSettings.RayTracingReflectionsShadows;

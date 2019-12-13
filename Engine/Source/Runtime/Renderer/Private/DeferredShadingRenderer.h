@@ -506,7 +506,6 @@ private:
 		const FSceneTextureParameters& SceneTextures,
 		const FViewInfo& View,
 		int32 SamplePerPixel,
-		int32 HeightFog,
 		float ResolutionFraction,
 		IScreenSpaceDenoiser::FReflectionsInputs* OutDenoiserInputs);
 
