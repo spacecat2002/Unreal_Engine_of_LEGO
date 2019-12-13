@@ -37,8 +37,6 @@ struct FTestLanguageSpec : public ILanguageSpec
 
 	virtual bool SupportsSinCosIntrinsic() const { return false; }
 
-	//virtual bool EmulateStructuredWithTypedBuffers() const { return true; }
-
 	// half3x3 <-> float3x3
 	virtual bool SupportsMatrixConversions() const { return false; }
 	virtual void SetupLanguageIntrinsics(_mesa_glsl_parse_state* State, exec_list* ir)
