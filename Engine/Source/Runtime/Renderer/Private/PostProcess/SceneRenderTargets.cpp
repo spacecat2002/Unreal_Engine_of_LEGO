@@ -727,37 +727,19 @@ void FSceneRenderTargets::FinishRenderingSceneColor(FRHICommandList& RHICmdList)
 	RHICmdList.EndRenderPass();
 }
 
-int32 FSceneRenderTargets::FillGBufferRenderPassInfo(ERenderTargetLoadAction ColorLoadAction, FRHIRenderPassInfo& OutRenderPassInfo, int32& OutVelocityRTIndex)
+int32 FSceneRenderTargets::GetGBufferRenderTargets(TRefCountPtr<IPooledRenderTarget>* OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex)
 {
 	int32 MRTCount = 0;
-	OutRenderPassInfo.ColorRenderTargets[MRTCount].Action = MakeRenderTargetActions(ColorLoadAction, ERenderTargetStoreAction::EStore);
-	OutRenderPassInfo.ColorRenderTargets[MRTCount].RenderTarget = GetSceneColorSurface();
-	OutRenderPassInfo.ColorRenderTargets[MRTCount].ArraySlice = -1;
-	OutRenderPassInfo.ColorRenderTargets[MRTCount].MipIndex = 0;
-	MRTCount++;
+	OutRenderTargets[MRTCount++] = &GetSceneColor();
 
 	const EShaderPlatform ShaderPlatform = GetFeatureLevelShaderPlatform(CurrentFeatureLevel);
 	const bool bUseGBuffer = IsUsingGBuffers(ShaderPlatform);
 
 	if (bUseGBuffer)
 	{
-		OutRenderPassInfo.ColorRenderTargets[MRTCount].Action = MakeRenderTargetActions(ColorLoadAction, ERenderTargetStoreAction::EStore);
-		OutRenderPassInfo.ColorRenderTargets[MRTCount].RenderTarget = GBufferA->GetRenderTargetItem().TargetableTexture;
-		OutRenderPassInfo.ColorRenderTargets[MRTCount].ArraySlice = -1;
-		OutRenderPassInfo.ColorRenderTargets[MRTCount].MipIndex = 0;
-		MRTCount++;
-
-		OutRenderPassInfo.ColorRenderTargets[MRTCount].Action = MakeRenderTargetActions(ColorLoadAction, ERenderTargetStoreAction::EStore);
-		OutRenderPassInfo.ColorRenderTargets[MRTCount].RenderTarget = GBufferB->GetRenderTargetItem().TargetableTexture;
-		OutRenderPassInfo.ColorRenderTargets[MRTCount].ArraySlice = -1;
-		OutRenderPassInfo.ColorRenderTargets[MRTCount].MipIndex = 0;
-		MRTCount++;
-
-		OutRenderPassInfo.ColorRenderTargets[MRTCount].Action = MakeRenderTargetActions(ColorLoadAction, ERenderTargetStoreAction::EStore);
-		OutRenderPassInfo.ColorRenderTargets[MRTCount].RenderTarget = GBufferC->GetRenderTargetItem().TargetableTexture;
-		OutRenderPassInfo.ColorRenderTargets[MRTCount].ArraySlice = -1;
-		OutRenderPassInfo.ColorRenderTargets[MRTCount].MipIndex = 0;
-		MRTCount++;
+		OutRenderTargets[MRTCount++] = &GBufferA;
+		OutRenderTargets[MRTCount++] = &GBufferB;
+		OutRenderTargets[MRTCount++] = &GBufferC;
 	}
 
 	// The velocity buffer needs to be bound before other optionnal rendertargets (when UseSelectiveBasePassOutputs() is true).
@@ -766,12 +748,7 @@ int32 FSceneRenderTargets::FillGBufferRenderPassInfo(ERenderTargetLoadAction Col
 	{
 		OutVelocityRTIndex = MRTCount;
 		check(OutVelocityRTIndex == 4 || (!bUseGBuffer && OutVelocityRTIndex == 1)); // As defined in BasePassPixelShader.usf
-		
-		OutRenderPassInfo.ColorRenderTargets[MRTCount].Action = MakeRenderTargetActions(ColorLoadAction, ERenderTargetStoreAction::EStore);
-		OutRenderPassInfo.ColorRenderTargets[MRTCount].RenderTarget = SceneVelocity->GetRenderTargetItem().TargetableTexture;
-		OutRenderPassInfo.ColorRenderTargets[MRTCount].ArraySlice = -1;
-		OutRenderPassInfo.ColorRenderTargets[MRTCount].MipIndex = 0;
-		MRTCount++;
+		OutRenderTargets[MRTCount++] = &SceneVelocity;
 	}
 	else
 	{
@@ -780,20 +757,12 @@ int32 FSceneRenderTargets::FillGBufferRenderPassInfo(ERenderTargetLoadAction Col
 
 	if (bUseGBuffer)
 	{
-		OutRenderPassInfo.ColorRenderTargets[MRTCount].Action = MakeRenderTargetActions(ColorLoadAction, ERenderTargetStoreAction::EStore);
-		OutRenderPassInfo.ColorRenderTargets[MRTCount].RenderTarget = GBufferD->GetRenderTargetItem().TargetableTexture;
-		OutRenderPassInfo.ColorRenderTargets[MRTCount].ArraySlice = -1;
-		OutRenderPassInfo.ColorRenderTargets[MRTCount].MipIndex = 0;
-		MRTCount++;
+		OutRenderTargets[MRTCount++] = &GBufferD;
 
 		if (bAllowStaticLighting)
 		{
 			check(MRTCount == (bAllocateVelocityGBuffer ? 6 : 5)); // As defined in BasePassPixelShader.usf
-			OutRenderPassInfo.ColorRenderTargets[MRTCount].Action = MakeRenderTargetActions(ColorLoadAction, ERenderTargetStoreAction::EStore);
-			OutRenderPassInfo.ColorRenderTargets[MRTCount].RenderTarget = GBufferE->GetRenderTargetItem().TargetableTexture;
-			OutRenderPassInfo.ColorRenderTargets[MRTCount].ArraySlice = -1;
-			OutRenderPassInfo.ColorRenderTargets[MRTCount].MipIndex = 0;
-			MRTCount++;
+			OutRenderTargets[MRTCount++] = &GBufferE;
 		}
 	}
 
@@ -801,45 +770,48 @@ int32 FSceneRenderTargets::FillGBufferRenderPassInfo(ERenderTargetLoadAction Col
 	return MRTCount;
 }
 
+int32 FSceneRenderTargets::FillGBufferRenderPassInfo(ERenderTargetLoadAction ColorLoadAction, FRHIRenderPassInfo& OutRenderPassInfo, int32& OutVelocityRTIndex)
+{
+	TRefCountPtr<IPooledRenderTarget>* RenderTargets[MaxSimultaneousRenderTargets];
+	int32 MRTCount = GetGBufferRenderTargets(RenderTargets, OutVelocityRTIndex);
+
+	for (int32 MRTIdx = 0; MRTIdx < MRTCount; ++MRTIdx)
+	{
+		OutRenderPassInfo.ColorRenderTargets[MRTIdx].Action = MakeRenderTargetActions(ColorLoadAction, ERenderTargetStoreAction::EStore);
+		OutRenderPassInfo.ColorRenderTargets[MRTIdx].RenderTarget = (*RenderTargets[MRTIdx])->GetRenderTargetItem().TargetableTexture;
+		OutRenderPassInfo.ColorRenderTargets[MRTIdx].ArraySlice = -1;
+		OutRenderPassInfo.ColorRenderTargets[MRTIdx].MipIndex = 0;
+	}
+
+	return MRTCount;
+}
+
 int32 FSceneRenderTargets::GetGBufferRenderTargets(ERenderTargetLoadAction ColorLoadAction, FRHIRenderTargetView OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex)
 {
-	int32 MRTCount = 0;
-	OutRenderTargets[MRTCount++] = FRHIRenderTargetView(GetSceneColorSurface(), 0, -1, ColorLoadAction, ERenderTargetStoreAction::EStore);
+	TRefCountPtr<IPooledRenderTarget>* RenderTargets[MaxSimultaneousRenderTargets];
+	int32 MRTCount = GetGBufferRenderTargets(RenderTargets, OutVelocityRTIndex);
 
-	const EShaderPlatform ShaderPlatform = GetFeatureLevelShaderPlatform(CurrentFeatureLevel);
-	const bool bUseGBuffer = IsUsingGBuffers(ShaderPlatform);
-	if (bUseGBuffer)
+	for (int32 MRTIdx = 0; MRTIdx < MRTCount; ++MRTIdx)
 	{
-		OutRenderTargets[MRTCount++] = FRHIRenderTargetView(GBufferA->GetRenderTargetItem().TargetableTexture, 0, -1, ColorLoadAction, ERenderTargetStoreAction::EStore);
-		OutRenderTargets[MRTCount++] = FRHIRenderTargetView(GBufferB->GetRenderTargetItem().TargetableTexture, 0, -1, ColorLoadAction, ERenderTargetStoreAction::EStore);
-		OutRenderTargets[MRTCount++] = FRHIRenderTargetView(GBufferC->GetRenderTargetItem().TargetableTexture, 0, -1, ColorLoadAction, ERenderTargetStoreAction::EStore);
+		OutRenderTargets[MRTIdx] = FRHIRenderTargetView((*RenderTargets[MRTIdx])->GetRenderTargetItem().TargetableTexture, 0, -1, ColorLoadAction, ERenderTargetStoreAction::EStore);
 	}
 
-	// The velocity buffer needs to be bound before other optionnal rendertargets (when UseSelectiveBasePassOutputs() is true).
-	// Otherwise there is an issue on some AMD hardware where the target does not get updated. Seems to be related to the velocity buffer format as it works fine with other targets.
-	if (bAllocateVelocityGBuffer && !IsSimpleForwardShadingEnabled(ShaderPlatform))
-	{
-		OutVelocityRTIndex = MRTCount;
-		check(OutVelocityRTIndex == 4 || (!bUseGBuffer && OutVelocityRTIndex == 1)); // As defined in BasePassPixelShader.usf
-		OutRenderTargets[MRTCount++] = FRHIRenderTargetView(SceneVelocity->GetRenderTargetItem().TargetableTexture, 0, -1, ColorLoadAction, ERenderTargetStoreAction::EStore);
-	}
-	else
-	{
-		OutVelocityRTIndex = -1;
-	}
+	return MRTCount;
+}
 
-	if (bUseGBuffer)
-	{
-		OutRenderTargets[MRTCount++] = FRHIRenderTargetView(GBufferD->GetRenderTargetItem().TargetableTexture, 0, -1, ColorLoadAction, ERenderTargetStoreAction::EStore);
+int32 FSceneRenderTargets::GetGBufferRenderTargets(FRDGBuilder& GraphBuilder, ERenderTargetLoadAction ColorLoadAction, FRenderTargetBinding OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex)
+{
+	TRefCountPtr<IPooledRenderTarget>* RenderTargets[MaxSimultaneousRenderTargets];
+	int32 MRTCount = GetGBufferRenderTargets(RenderTargets, OutVelocityRTIndex);
 
-		if (bAllowStaticLighting)
-		{
-			check(MRTCount == (bAllocateVelocityGBuffer ? 6 : 5)); // As defined in BasePassPixelShader.usf
-			OutRenderTargets[MRTCount++] = FRHIRenderTargetView(GBufferE->GetRenderTargetItem().TargetableTexture, 0, -1, ColorLoadAction, ERenderTargetStoreAction::EStore);
-		}
+	for (int32 MRTIdx = 0; MRTIdx < MRTCount; ++MRTIdx)
+	{
+		FPooledRenderTargetDesc Desc = (*RenderTargets[MRTIdx])->GetDesc();
+		FRDGTextureRef RDGTextureRef = GraphBuilder.RegisterExternalTexture(*RenderTargets[MRTIdx], Desc.DebugName);
+
+		OutRenderTargets[MRTIdx] = FRenderTargetBinding(RDGTextureRef, ColorLoadAction);
 	}
 
-	check(MRTCount <= MaxSimultaneousRenderTargets);
 	return MRTCount;
 }
 

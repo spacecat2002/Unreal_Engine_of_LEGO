@@ -647,6 +647,11 @@ public:
 
 	/** Fills the given FRenderPassInfo with the current GBuffer */
 	int32 FillGBufferRenderPassInfo(ERenderTargetLoadAction ColorLoadAction, FRHIRenderPassInfo& OutRenderPassInfo, int32& OutVelocityRTIndex);
+
+	/** Gets all GBuffers to use.  Returns the number actually used. */
+	int32 GetGBufferRenderTargets(ERenderTargetLoadAction ColorLoadAction, FRHIRenderTargetView OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex);
+	int32 GetGBufferRenderTargets(FRDGBuilder& GraphBuilder, ERenderTargetLoadAction ColorLoadAction, FRenderTargetBinding OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex);
+
 private:
 
 	/** Allocates render targets for use with the current shading path. */
@@ -694,8 +699,7 @@ private:
 			|| AreShadingPathRenderTargetsAllocated(ESceneColorFormatType::Mobile); 
 	}
 
-	/** Gets all GBuffers to use.  Returns the number actually used. */
-	int32 GetGBufferRenderTargets(ERenderTargetLoadAction ColorLoadAction, FRHIRenderTargetView OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex);
+	int32 GetGBufferRenderTargets(TRefCountPtr<IPooledRenderTarget>* OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex);
 
 	ESceneColorFormatType GetSceneColorFormatType() const
 	{
