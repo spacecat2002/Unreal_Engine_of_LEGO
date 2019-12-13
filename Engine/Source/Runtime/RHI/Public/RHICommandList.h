@@ -2557,21 +2557,23 @@ public:
 		if (GPUMask != InGPUMask)
 		{
 			GPUMask = InGPUMask;
-			if (HasCommands() || Bypass())
-			{
 #if WITH_MGPU
+			if (!HasCommands())
+			{
+				// Update even in Bypass mode to make sure it has the correct value after a toggle.
+				InitialGPUMask = GPUMask;
 				if (Bypass())
 				{
 					GetComputeContext().RHISetGPUMask(GPUMask);
 					return;
 				}
-				ALLOC_COMMAND(FRHICommandSetGPUMask)(GPUMask);
-#endif
 			}
 			else
 			{
-				InitialGPUMask = GPUMask;
+				checkSlow(!Bypass());
+				ALLOC_COMMAND(FRHICommandSetGPUMask)(GPUMask);
 			}
+#endif
 		}
 	}
 
