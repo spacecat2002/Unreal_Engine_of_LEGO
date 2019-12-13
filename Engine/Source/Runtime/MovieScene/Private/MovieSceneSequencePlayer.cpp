@@ -13,7 +13,14 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 
-DEFINE_LOG_CATEGORY_STATIC(LogMovieSceneRepl, Warning, All);
+DEFINE_LOG_CATEGORY_STATIC(LogMovieSceneRepl, Log, All);
+
+float GSequencerNetSyncThresholdMS = 200;
+static FAutoConsoleVariableRef CVarSequencerNetSyncThresholdMS(
+	TEXT("Sequencer.NetSyncThreshold"),
+	GSequencerNetSyncThresholdMS,
+	TEXT("(Default: 200ms. Defines the threshold at which clients and servers must be forcibly re-synced during playback.")
+	);
 
 bool FMovieSceneSequenceLoopCount::SerializeFromMismatchedTag( const FPropertyTag& Tag, FStructuredArchive::FSlot Slot )
 {
@@ -689,7 +696,7 @@ void UMovieSceneSequencePlayer::Update(const float DeltaSeconds)
 
 	if (IsPlaying())
 	{
-		// Delta seconds has already been multiplied by MatineeTimeDilation at this point, so don't pass that through to Tick
+		// Delta seconds has already been multiplied by GetEffectiveTimeDilation at this point, so don't pass that through to Tick
 		float PlayRate = bReversePlayback ? -PlaybackSettings.PlayRate : PlaybackSettings.PlayRate;
 
 		float DeltaTimeForFunction = DeltaSeconds;
@@ -703,7 +710,7 @@ void UMovieSceneSequencePlayer::Update(const float DeltaSeconds)
 
 		if (World)
 		{
-			PlayRate *= World->GetWorldSettings()->MatineeTimeDilation;
+			PlayRate *= World->GetWorldSettings()->GetEffectiveTimeDilation();
 		}
 
 		FFrameTime NewTime = TimeController->RequestCurrentTime(GetCurrentTime(), PlayRate);
@@ -1087,7 +1094,9 @@ void UMovieSceneSequencePlayer::PostNetReceive()
 	const bool bHasChangedTime    = NetSyncProps.LastKnownPosition != PlayPosition.GetCurrentPosition();
 
 	const FFrameTime PingLag      = (PingMs/1000.f) * PlayPosition.GetInputRate();
-	const FFrameTime LagThreshold = 0.2f * PlayPosition.GetInputRate();
+	//const FFrameTime LagThreshold = 0.2f * PlayPosition.GetInputRate();
+	//const FFrameTime LagDisparity = FMath::Abs(PlayPosition.GetCurrentPosition() - NetSyncProps.LastKnownPosition);
+	const FFrameTime LagThreshold = (GSequencerNetSyncThresholdMS * 0.001f) * PlayPosition.GetInputRate();
 
 	if (!bHasChangedStatus && !bHasChangedTime)
 	{

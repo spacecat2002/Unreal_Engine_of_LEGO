@@ -55,6 +55,9 @@ namespace Chaos
 	class TCapsule;
 
 	template <typename T, int>
+	class TAABB;
+
+	template <typename T, int>
 	class TBox;
 
 	template <typename T, int>
@@ -223,6 +226,7 @@ public:
     static bool HasAsyncSceneData(const FPhysicsActorHandle& InHandle) { return false; }
 	static bool IsInScene(const FPhysicsActorHandle& InActorReference);
 	static FPhysScene* GetCurrentScene(const FPhysicsActorHandle& InHandle);
+	static void FlushScene(FPhysScene* InScene);
 	static bool CanSimulate_AssumesLocked(const FPhysicsActorHandle& InActorReference);
 	static float GetMass_AssumesLocked(const FPhysicsActorHandle& InActorReference);
 

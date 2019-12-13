@@ -33,12 +33,8 @@ namespace Chaos
 		TTriangleMeshImplicitObject(TTriangleMeshImplicitObject&& Other) = default;
 		virtual ~TTriangleMeshImplicitObject() {}
 
-		virtual T PhiWithNormal(const TVector<T, 3>& x, TVector<T, 3>& Normal) const
-		{
-			ensure(false);	//not supported yet - might support it in the future or we may change the interface
-			return TNumericLimits<T>::Max();
-		}
-
+		virtual T PhiWithNormal(const TVector<T, 3>& x, TVector<T, 3>& Normal) const;
+		
 		virtual bool Raycast(const TVector<T, 3>& StartPoint, const TVector<T, 3>& Dir, const T Length, const T Thickness, T& OutTime, TVector<T,3>& OutPosition, TVector<T,3>& OutNormal, int32& OutFaceIndex) const override;
 		virtual bool Overlap(const TVector<T, 3>& Point, const T Thickness) const override;
 
@@ -64,7 +60,7 @@ namespace Chaos
 		virtual int32 FindMostOpposingFace(const TVector<T, 3>& Position, const TVector<T, 3>& UnitDir, int32 HintFaceIndex, T SearchDistance) const override;
 		virtual TVector<T, 3> FindGeometryOpposingNormal(const TVector<T, 3>& DenormDir, int32 FaceIndex, const TVector<T, 3>& OriginalNormal) const override;
 
-		virtual const TBox<T, 3>& BoundingBox() const
+		virtual const TAABB<T, 3>& BoundingBox() const
 		{
 			return MLocalBoundingBox;
 		}
@@ -81,7 +77,7 @@ namespace Chaos
 			FImplicitObject::SerializeImp(Ar);
 			Ar << MParticles;
 			Ar << MElements;
-			Ar << MLocalBoundingBox;
+			TBox<T, 3>::SerializeAsAABB(Ar, MLocalBoundingBox);
 
 			if (Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) < FExternalPhysicsCustomObjectVersion::RemovedConvexHullsFromTriangleMeshImplicitObject)
 			{
@@ -112,38 +108,13 @@ namespace Chaos
 			}
 		}
 
-		virtual void Serialize(FChaosArchive& Ar) override
-		{
-			FChaosArchiveScopedMemory ScopedMemory(Ar, GetTypeName());
-			SerializeImp(Ar);
-		}
+		virtual void Serialize(FChaosArchive& Ar) override;
 
-		virtual uint32 GetTypeHash() const override
-		{
-			uint32 Result = MParticles.GetTypeHash();
-			Result = HashCombine(Result, MLocalBoundingBox.GetTypeHash());
-
-			for(TVector<int32, 3> Tri : MElements)
-			{
-				uint32 TriHash = HashCombine(::GetTypeHash(Tri[0]), HashCombine(::GetTypeHash(Tri[1]), ::GetTypeHash(Tri[2])));
-				Result = HashCombine(Result, TriHash);
-			}
-
-			return Result;
-		}
+		virtual uint32 GetTypeHash() const override;
 
 		TVector<T, 3> GetFaceNormal(const int32 FaceIdx) const;
 
-		virtual uint16 GetMaterialIndex(uint32 HintIndex) const override
-		{
-			if (MaterialIndices.IsValidIndex(HintIndex))
-			{
-				return MaterialIndices[HintIndex];
-			}
-
-			// 0 should always be the default material for a shape
-			return 0;
-		}
+		virtual uint16 GetMaterialIndex(uint32 HintIndex) const override;
 
 	private:
 
@@ -151,7 +122,7 @@ namespace Chaos
 
 		TParticles<T, 3> MParticles;
 		TArray<TVector<int32, 3>> MElements;
-		TBox<T, 3> MLocalBoundingBox;
+		TAABB<T, 3> MLocalBoundingBox;
 		TArray<uint16> MaterialIndices;
 
 		//using BVHType = TBoundingVolume<int32, T, 3>;
@@ -167,9 +138,9 @@ namespace Chaos
 
 			bool HasBoundingBox() const { return true; }
 
-			TBox<T, 3> BoundingBox() const
+			TAABB<T, 3> BoundingBox() const
 			{
-				TBox<T, 3> Bounds(TmData->MParticles.X(TmData->MElements[Index][0]), TmData->MParticles.X(TmData->MElements[Index][0]));
+				TAABB<T, 3> Bounds(TmData->MParticles.X(TmData->MElements[Index][0]), TmData->MParticles.X(TmData->MElements[Index][0]));
 
 				Bounds.GrowToInclude(TmData->MParticles.X(TmData->MElements[Index][1]));
 				Bounds.GrowToInclude(TmData->MParticles.X(TmData->MElements[Index][2]));

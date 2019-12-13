@@ -35,7 +35,10 @@ namespace Chaos
 		TSerializablePtr<FImplicitObject> Geometry;
 		TAABB<FReal, 3> WorldSpaceInflatedShapeBounds;
 		TArray<FMaterialHandle> Materials;
+
+		// TODO: Bitfields?
 		bool bDisable;
+		bool bSimulate;
 
 		void UpdateShapeBounds(const TRigidTransform<T, d>& WorldTM);
 
@@ -204,7 +207,7 @@ namespace Chaos
 
 		const TSharedPtr<FImplicitObject, ESPMode::ThreadSafe>& SharedGeometry(const int32 Index) const { return MSharedGeometry[Index]; }
 
-		const TShapesArray<T, d>& ShapesArray(const int32 Index) const { return MShapesArray[Index]; }
+		CHAOS_API const TShapesArray<T, d>& ShapesArray(const int32 Index) const { return MShapesArray[Index]; }
 
 #if CHAOS_DETERMINISTIC
 		CHAOS_API FParticleID ParticleID(const int32 Idx) const { return MParticleIDs[Idx]; }
@@ -238,12 +241,12 @@ namespace Chaos
 			MapImplicitShapes(Index);
 		}
 
-		CHAOS_API const TBox<T,d>& LocalBounds(const int32 Index) const
+		CHAOS_API const TAABB<T,d>& LocalBounds(const int32 Index) const
 		{
 			return MLocalBounds[Index];
 		}
 
-		CHAOS_API TBox<T, d>& LocalBounds(const int32 Index)
+		CHAOS_API TAABB<T, d>& LocalBounds(const int32 Index)
 		{
 			return MLocalBounds[Index];
 		}
@@ -290,12 +293,12 @@ namespace Chaos
 		}
 #endif
 
-		CHAOS_API const TBox<T, d>& WorldSpaceInflatedBounds(const int32 Index) const
+		CHAOS_API const TAABB<T, d>& WorldSpaceInflatedBounds(const int32 Index) const
 		{
 			return MWorldSpaceInflatedBounds[Index];
 		}
 
-		CHAOS_API void SetWorldSpaceInflatedBounds(const int32 Index, const TBox<T, d>& Bounds)
+		CHAOS_API void SetWorldSpaceInflatedBounds(const int32 Index, const TAABB<T, d>& Bounds)
 		{
 			MWorldSpaceInflatedBounds[Index] = Bounds;
 
@@ -328,6 +331,7 @@ namespace Chaos
 
 		CHAOS_API virtual void Serialize(FChaosArchive& Ar)
 		{
+			LLM_SCOPE(ELLMTag::ChaosParticles);
 			TParticles<T, d>::Serialize(Ar);
 			Ar << MGeometry << MDynamicGeometry << MR;
 			Ar.UsingCustomVersion(FPhysicsObjectVersion::GUID);
@@ -349,8 +353,8 @@ namespace Chaos
 			Ar.UsingCustomVersion(FExternalPhysicsCustomObjectVersion::GUID);
 			if (Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) >= FExternalPhysicsCustomObjectVersion::SerializeParticleBounds)
 			{
-				Ar << MLocalBounds;
-				Ar << MWorldSpaceInflatedBounds;
+				TBox<FReal, 3>::SerializeAsAABBs(Ar, MLocalBounds);
+				TBox<FReal, 3>::SerializeAsAABBs(Ar, MWorldSpaceInflatedBounds);
 				Ar << MHasBounds;
 
 				if (Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) < FExternalPhysicsCustomObjectVersion::SerializeShapeWorldSpaceBounds)
@@ -371,7 +375,7 @@ namespace Chaos
 					{
 						MLocalBounds[Idx] = MGeometry[Idx]->BoundingBox();
 						//ignore velocity too, really just trying to get something reasonable)
-						SetWorldSpaceInflatedBounds(Idx, MLocalBounds[Idx].TransformedBox(TRigidTransform<T,d>(X(Idx), R(Idx))));
+						SetWorldSpaceInflatedBounds(Idx, MLocalBounds[Idx].TransformedAABB(TRigidTransform<T,d>(X(Idx), R(Idx))));
 					}
 				}
 			}
@@ -433,8 +437,8 @@ namespace Chaos
 		TArrayCollectionArray<TGeometryParticle<T, d>*> MGeometryParticle;
 		TArrayCollectionArray<TShapesArray<T,d>> MShapesArray;
 		TArrayCollectionArray<TMap<const FImplicitObject*, int32>> ImplicitShapeMap;
-		TArrayCollectionArray<TBox<T,d>> MLocalBounds;
-		TArrayCollectionArray<TBox<T, d>> MWorldSpaceInflatedBounds;
+		TArrayCollectionArray<TAABB<T,d>> MLocalBounds;
+		TArrayCollectionArray<TAABB<T, d>> MWorldSpaceInflatedBounds;
 		TArrayCollectionArray<bool> MHasBounds;
 		TArrayCollectionArray<FSpatialAccelerationIdx> MSpatialIdx;
 		TArrayCollectionArray<uint32> MHashResult;

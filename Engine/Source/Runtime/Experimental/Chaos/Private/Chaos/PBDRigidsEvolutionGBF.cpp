@@ -141,7 +141,7 @@ void TPBDRigidsEvolutionGBF<T, d>::AdvanceOneTimeStep(const T Dt, const T StepFr
 
 	{
 		SCOPE_CYCLE_COUNTER(STAT_Evolution_Integrate);
-		Integrate(Particles.GetNonDisabledDynamicView(), Dt);	//Question: should we use an awake view?
+		Integrate(Particles.GetActiveParticlesView(), Dt);
 	}
 
 	{
@@ -154,8 +154,6 @@ void TPBDRigidsEvolutionGBF<T, d>::AdvanceOneTimeStep(const T Dt, const T StepFr
 		PostIntegrateCallback();
 	}
 
-	// @todo(ccaulfield): When we have persistent constraints we will want to run collision detection before
-	// UpdateConstraintPositionBasedState. For now it is after because we just delete all collisions there right now.
 	{
 		SCOPE_CYCLE_COUNTER(STAT_Evolution_UpdateConstraintPositionBasedState);
 		UpdateConstraintPositionBasedState(Dt);
@@ -338,3 +336,4 @@ void TPBDRigidsEvolutionGBF<T,d>::Serialize(FChaosArchive& Ar)
 }
 
 template class Chaos::TPBDRigidsEvolutionGBF<float, 3>;
+

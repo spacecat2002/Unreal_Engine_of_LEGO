@@ -77,6 +77,18 @@ struct CORE_API FExternalPhysicsCustomObjectVersion
 
 		// Added ability to remove shapes from collision resolution (will not construct constraints when one or more shapes removed)
 		AddShapeCollisionDisable,
+
+		//Heightfield cell bounds are implicit
+		HeightfieldImplicitBounds,
+
+		// Add damping to rigid particles
+		AddDampingToRigids,
+
+		//Replace TBox with TAABB in many places
+		TBoxReplacedWithTAABB,
+
+		// Serialize bSimulate on PerShapeData
+		SerializePerShapeDataSimulateFlag,
 		
 		// -----<new versions can be added above this line>-------------------------------------------------
 		VersionPlusOne,

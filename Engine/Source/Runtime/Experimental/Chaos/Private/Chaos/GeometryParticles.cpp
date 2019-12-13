@@ -14,13 +14,19 @@ namespace Chaos
 		{
 			if(const auto* Union = Geometry->template GetObject<TImplicitObjectUnion<T, d>>())
 			{
+				const int32 OldShapeNum = ShapesArray.Num();
+
 				ShapesArray.SetNum(Union->GetObjects().Num());
-				int32 Inner = 0;
-				for(const auto& Geom : Union->GetObjects())
+
+				for (int32 ShapeIndex = 0; ShapeIndex < ShapesArray.Num(); ++ShapeIndex)
 				{
-					ShapesArray[Inner] = TPerShapeData<T, d>::CreatePerShapeData();
-					ShapesArray[Inner]->Geometry = MakeSerializable(Geom);
-					++Inner;
+					if (ShapeIndex >= OldShapeNum)
+					{
+						// If newly allocated shape, initialize it.
+						ShapesArray[ShapeIndex] = TPerShapeData<T, d>::CreatePerShapeData();
+					}
+
+					ShapesArray[ShapeIndex]->Geometry = MakeSerializable(Union->GetObjects()[ShapeIndex]);
 				}
 			}
 			else
@@ -46,8 +52,14 @@ namespace Chaos
 
 	template <typename T, int d>
 	TPerShapeData<T, d>::TPerShapeData()
-		: UserData(nullptr)
+		: QueryData()
+		, SimData()
+		, UserData(nullptr)
+		, Geometry()
+		, WorldSpaceInflatedShapeBounds(TAABB<FReal, 3>(FVec3(0), FVec3(0)))
+		, Materials()
 		, bDisable(false)
+		, bSimulate(true)
 	{
 	}
 
@@ -67,7 +79,7 @@ namespace Chaos
 	{
 		if (Geometry && Geometry->HasBoundingBox())
 		{
-			WorldSpaceInflatedShapeBounds = Geometry->BoundingBox().GetAABB().TransformedAABB(WorldTM);
+			WorldSpaceInflatedShapeBounds = Geometry->BoundingBox().TransformedAABB(WorldTM);
 		}
 	}
 
@@ -88,7 +100,7 @@ namespace Chaos
 
 		if (Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) >= FExternalPhysicsCustomObjectVersion::SerializeShapeWorldSpaceBounds)
 		{
-			Ar << WorldSpaceInflatedShapeBounds;
+			TBox<T, d>::SerializeAsAABB(Ar, WorldSpaceInflatedShapeBounds);
 		}
 		else
 		{
@@ -104,6 +116,11 @@ namespace Chaos
 		if(Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) >= FExternalPhysicsCustomObjectVersion::AddShapeCollisionDisable)
 		{
 			Ar << bDisable;
+		}
+
+		if (Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) >= FExternalPhysicsCustomObjectVersion::SerializePerShapeDataSimulateFlag)
+		{
+			Ar << bSimulate;
 		}
 	}
 

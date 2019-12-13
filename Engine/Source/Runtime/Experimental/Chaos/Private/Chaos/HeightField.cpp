@@ -273,7 +273,7 @@ namespace Chaos
 	};
 
 	template<typename HeightfieldT, typename BufferType>
-	void BuildGeomData(TArrayView<BufferType> BufferView, TArrayView<uint8> MaterialIndexView, int32 NumRows, int32 NumCols, const TVector<HeightfieldT, 3>& InScale, TUniqueFunction<HeightfieldT(const BufferType)> ToRealFunc, typename THeightField<HeightfieldT>::FDataType& OutData, TBox<HeightfieldT, 3>& OutBounds)
+	void BuildGeomData(TArrayView<BufferType> BufferView, TArrayView<uint8> MaterialIndexView, int32 NumRows, int32 NumCols, const TVector<HeightfieldT, 3>& InScale, TUniqueFunction<HeightfieldT(const BufferType)> ToRealFunc, typename THeightField<HeightfieldT>::FDataType& OutData, TAABB<HeightfieldT, 3>& OutBounds)
 	{
 		using FDataType = typename THeightField<HeightfieldT>::FDataType;
 
@@ -321,7 +321,7 @@ namespace Chaos
 			TVector<HeightfieldT, 3> Position(RealType(X), RealType(Y), OutData.MinValue + OutData.Heights[HeightIndex] * OutData.HeightPerUnit);
 			if(HeightIndex == 0)
 			{
-				OutBounds = TBox<HeightfieldT, 3>(Position * InScale, Position * InScale);
+				OutBounds = TAABB<HeightfieldT, 3>(Position * InScale, Position * InScale);
 			}
 			else
 			{
@@ -347,7 +347,7 @@ namespace Chaos
 	}
 
 	template<typename HeightfieldT, typename BufferType>
-	void EditGeomData(TArrayView<BufferType> BufferView, int32 InBeginRow, int32 InBeginCol, int32 NumRows, int32 NumCols, TUniqueFunction<HeightfieldT(const BufferType)> ToRealFunc, typename THeightField<HeightfieldT>::FDataType& OutData, TBox<HeightfieldT, 3>& OutBounds)
+	void EditGeomData(TArrayView<BufferType> BufferView, int32 InBeginRow, int32 InBeginCol, int32 NumRows, int32 NumCols, TUniqueFunction<HeightfieldT(const BufferType)> ToRealFunc, typename THeightField<HeightfieldT>::FDataType& OutData, TAABB<HeightfieldT, 3>& OutBounds)
 	{
 		using FDataType = typename THeightField<HeightfieldT>::FDataType;
 		using RealType = typename FDataType::RealType;
@@ -399,7 +399,7 @@ namespace Chaos
 					TVector<HeightfieldT, 3> Position(RealType(X), RealType(Y), NewMin + OutData.Heights[HeightIndex] * NewHeightPerUnit);
 					if(HeightIndex == 0)
 					{
-						OutBounds = TBox<HeightfieldT, 3>(Position, Position);
+						OutBounds = TAABB<HeightfieldT, 3>(Position, Position);
 					}
 					else
 					{
@@ -492,11 +492,10 @@ namespace Chaos
 	template<typename T>
 	bool Chaos::THeightField<T>::GetCellBounds2D(const TVector<int32, 2> InCoord, FBounds2D& OutBounds, const TVector<T, 2>& InInflate /*= {0}*/) const
 	{
-		if(FlatGrid.IsValid(InCoord))
+		if (FlatGrid.IsValid(InCoord))
 		{
-			const TBox<T, 3>& Bound = GeomData.CellBounds[InCoord[1] * (GeomData.NumCols - 1) + InCoord[0]];
-			OutBounds.Min = {Bound.Min()[0], Bound.Min()[1]};
-			OutBounds.Max = {Bound.Max()[0], Bound.Max()[1]};
+			OutBounds.Min = TVector<T, 2>(InCoord[0], InCoord[1]);
+			OutBounds.Max = TVector<T, 2>(InCoord[0] + 1, InCoord[1] + 1);
 			OutBounds.Min -= InInflate;
 			OutBounds.Max += InInflate;
 
@@ -509,11 +508,12 @@ namespace Chaos
 	template<typename T>
 	bool Chaos::THeightField<T>::GetCellBounds3D(const TVector<int32, 2> InCoord, TVector<T, 3>& OutMin, TVector<T, 3>& OutMax, const TVector<T, 3>& InInflate /*= {0}*/) const
 	{
-		if(FlatGrid.IsValid(InCoord))
+		if (FlatGrid.IsValid(InCoord))
 		{
-			const TBox<T, 3>& Bound = GeomData.CellBounds[InCoord[1] * (GeomData.NumCols - 1) + InCoord[0]];
-			OutMin = Bound.Min() - InInflate;
-			OutMax = Bound.Max() + InInflate;
+			OutMin = TVec3<T>(InCoord[0], InCoord[1], 0);
+			OutMax = TVec3<T>(InCoord[0] + 1, InCoord[1] + 1, GeomData.CellHeights[InCoord[1] * (GeomData.NumCols - 1) + InCoord[0]]);
+			OutMin = OutMin - InInflate;
+			OutMax = OutMax + InInflate;
 
 			return true;
 		}
@@ -524,11 +524,10 @@ namespace Chaos
 	template<typename T>
 	bool Chaos::THeightField<T>::GetCellBounds2DScaled(const TVector<int32, 2> InCoord, FBounds2D& OutBounds, const TVector<T, 2>& InInflate /*= {0}*/) const
 	{
-		if(FlatGrid.IsValid(InCoord))
+		if (FlatGrid.IsValid(InCoord))
 		{
-			const TBox<T, 3>& Bound = GeomData.CellBounds[InCoord[1] * (GeomData.NumCols - 1) + InCoord[0]];
-			OutBounds.Min = {Bound.Min()[0], Bound.Min()[1]};
-			OutBounds.Max = {Bound.Max()[0], Bound.Max()[1]};
+			OutBounds.Min = TVector<T, 2>(InCoord[0], InCoord[1]);
+			OutBounds.Max = TVector<T, 2>(InCoord[0] + 1, InCoord[1] + 1);
 			OutBounds.Min -= InInflate;
 			OutBounds.Max += InInflate;
 			const TVector<float, 2> Scale2D = TVector<T, 2>(GeomData.Scale[0], GeomData.Scale[1]);
@@ -543,11 +542,10 @@ namespace Chaos
 	template<typename T>
 	bool Chaos::THeightField<T>::GetCellBounds3DScaled(const TVector<int32, 2> InCoord, TVector<T, 3>& OutMin, TVector<T, 3>& OutMax, const TVector<T, 3>& InInflate /*= {0}*/) const
 	{
-		if(FlatGrid.IsValid(InCoord))
+		if (FlatGrid.IsValid(InCoord))
 		{
-			const TBox<T, 3>& Bound = GeomData.CellBounds[InCoord[1] * (GeomData.NumCols - 1) + InCoord[0]];
-			OutMin = Bound.Min();
-			OutMax = Bound.Max();
+			OutMin = TVec3<T>(InCoord[0], InCoord[1], 0);
+			OutMax = TVec3<T>(InCoord[0] + 1, InCoord[1] + 1, GeomData.CellHeights[InCoord[1] * (GeomData.NumCols - 1) + InCoord[0]]);
 			OutMin = OutMin * GeomData.Scale - InInflate;
 			OutMax = OutMax * GeomData.Scale + InInflate;
 			return true;
@@ -618,7 +616,7 @@ namespace Chaos
 
 				if (GetCellBounds3DScaled(Cell, Min, Max))
 				{
-					if (TBox<T, 3>::RaycastFast(Min, Max, StartPoint, Dir, InvDir, bParallel, CurrentLength, InvCurrentLength, ToI, HitPoint))
+					if (TAABB<T, 3>(Min,Max).RaycastFast(StartPoint, Dir, InvDir, bParallel, CurrentLength, InvCurrentLength, ToI, HitPoint))
 					{
 						Visitor.VisitRaycast(Cell[1] * (GeomData.NumCols - 1) + Cell[0], CurrentLength);
 					}
@@ -648,7 +646,7 @@ namespace Chaos
 					if (GetCellBounds3DScaled(StartCell, Min, Max))
 					{
 						// Check cell bounds
-						if (TBox<T, 3>::RaycastFast(Min, Max, StartPoint, Dir, InvDir, bParallel, CurrentLength, InvCurrentLength, ToI, HitPoint))
+						if (TAABB<T, 3>(Min,Max).RaycastFast(StartPoint, Dir, InvDir, bParallel, CurrentLength, InvCurrentLength, ToI, HitPoint))
 						{
 							Visitor.VisitRaycast(StartCell[1] * (GeomData.NumCols - 1) + StartCell[0], CurrentLength);
 						}
@@ -660,7 +658,7 @@ namespace Chaos
 					if (GetCellBounds3DScaled(StartCell, Min, Max))
 					{
 						// Check cell bounds
-						if (TBox<T, 3>::RaycastFast(Min, Max, StartPoint, Dir, InvDir, bParallel, CurrentLength, InvCurrentLength, ToI, HitPoint))
+						if (TAABB<T, 3>(Min,Max).RaycastFast(StartPoint, Dir, InvDir, bParallel, CurrentLength, InvCurrentLength, ToI, HitPoint))
 						{
 							Visitor.VisitRaycast(StartCell[1] * (GeomData.NumCols - 1) + StartCell[0], CurrentLength);
 						}
@@ -685,7 +683,7 @@ namespace Chaos
 						if (GetCellBounds3DScaled(StartCell, Min, Max))
 						{
 							// Check cell bounds
-							if (TBox<T, 3>::RaycastFast(Min, Max, StartPoint, Dir, InvDir, bParallel, CurrentLength, InvCurrentLength, ToI, HitPoint))
+							if (TAABB<T, 3>(Min,Max).RaycastFast(StartPoint, Dir, InvDir, bParallel, CurrentLength, InvCurrentLength, ToI, HitPoint))
 							{
 								// Visit the selected cell
 								bool bContinue = Visitor.VisitRaycast(StartCell[1] * (GeomData.NumCols - 1) + StartCell[0], CurrentLength);
@@ -840,7 +838,7 @@ namespace Chaos
 						FBounds2D CellBounds;
 						if(GetCellBounds3DScaled(NeighCoord, Min, Max, HalfExtents3D) && !Seen.Contains(NeighCoord))
 						{
-							if(TBox<T, 3>::RaycastFast(Min, Max, StartPoint, Dir, InvDir, bParallel, CurrentLength, InvCurrentLength, ToI, HitPoint))
+							if(TAABB<T, 3>(Min,Max).RaycastFast(StartPoint, Dir, InvDir, bParallel, CurrentLength, InvCurrentLength, ToI, HitPoint))
 							{
 								Seen.Add(NeighCoord);
 								Queue.Add({NeighCoord, ToI});
@@ -882,7 +880,7 @@ namespace Chaos
 					// Check the current cell, if we hit its 3D bound we can move on to narrow phase
 					const TVector<int32, 2> Coord = CellCoord.Index;
 					if(GetCellBounds3DScaled(Coord, Min, Max, HalfExtents3D) &&
-						TBox<T, 3>::RaycastFast(Min, Max, StartPoint, Dir, InvDir, bParallel, CurrentLength, InvCurrentLength, ToI, HitPoint))
+						TAABB<T, 3>(Min,Max).RaycastFast(StartPoint, Dir, InvDir, bParallel, CurrentLength, InvCurrentLength, ToI, HitPoint))
 					{
 						bool bContinue = Visitor.VisitSweep(CellCoord.Index[1] * (GeomData.NumCols - 1) + CellCoord.Index[0], CurrentLength);
 
@@ -1036,7 +1034,7 @@ namespace Chaos
 			return false;
 		};
 
-		TBox<T, 3> QueryBounds(Point, Point);
+		TAABB<T, 3> QueryBounds(Point, Point);
 		QueryBounds.Thicken(Thickness);
 
 		FBounds2D FlatQueryBounds;
@@ -1086,9 +1084,9 @@ namespace Chaos
 		};
 
 		bool bResult = false;
-		TBox<T, 3> QueryBounds = QueryGeom.BoundingBox();
+		TAABB<T, 3> QueryBounds = QueryGeom.BoundingBox();
 		QueryBounds.Thicken(Thickness);
-		QueryBounds = QueryBounds.TransformedBox(QueryTM);
+		QueryBounds = QueryBounds.TransformedAABB(QueryTM);
 
 		FBounds2D FlatQueryBounds;
 		FlatQueryBounds.Min = TVector<T, 2>(QueryBounds.Min()[0], QueryBounds.Min()[1]);
@@ -1172,7 +1170,7 @@ namespace Chaos
 	{
 		bool bHit = false;
 		THeightfieldSweepVisitor<QueryGeomType, T> SQVisitor(&GeomData, QueryGeom, StartTM, Dir, Thickness, bComputeMTD);
-		const TBox<T, 3> QueryBounds = QueryGeom.BoundingBox();
+		const TAABB<T, 3> QueryBounds = QueryGeom.BoundingBox();
 		const TVector<T, 3> StartPoint = StartTM.TransformPositionNoScale(QueryBounds.Center());
 
 		const TVector<T, 3> Inflation3D = QueryBounds.Extents() * 0.5 + TVector<T, 3>(Thickness);
@@ -1243,7 +1241,7 @@ namespace Chaos
 	{
 		const T SearchDist2 = SearchDist * SearchDist;
 
-		TBox<T, 3> QueryBounds(Position - TVector<T, 3>(SearchDist), Position + TVector<T, 3>(SearchDist));
+		TAABB<T, 3> QueryBounds(Position - TVector<T, 3>(SearchDist), Position + TVector<T, 3>(SearchDist));
 		const FBounds2D FlatBounds(QueryBounds);
 		TArray<TVector<int32, 2>> PotentialIntersections;
 		GetGridIntersections(FlatBounds, PotentialIntersections);
@@ -1350,7 +1348,8 @@ namespace Chaos
 		// Cache per-cell bounds
 		const int32 NumX = GeomData.NumCols - 1;
 		const int32 NumY = GeomData.NumRows - 1;
-		GeomData.CellBounds.SetNum(NumX * NumY);
+		//GeomData.CellBounds.SetNum(NumX * NumY);
+		GeomData.CellHeights.SetNum(NumX*NumY);
 		for(int32 XIndex = 0; XIndex < NumX; ++XIndex)
 		{
 			for(int32 YIndex = 0; YIndex < NumY; ++YIndex)
@@ -1358,7 +1357,8 @@ namespace Chaos
 				const TVector<int32, 2> Cell(XIndex, YIndex);
 				TVector<T, 3> Min, Max;
 				CalcCellBounds3D(Cell, Min, Max);
-				GeomData.CellBounds[YIndex * NumX + XIndex] = TBox<T, 3>(Min, Max);
+				//GeomData.CellBounds[YIndex * NumX + XIndex] = TAABB<T, 3>(Min, Max);
+				GeomData.CellHeights[YIndex * NumX + XIndex] = Max.Z;
 			}
 		}
 	}

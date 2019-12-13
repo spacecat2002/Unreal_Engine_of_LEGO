@@ -114,12 +114,8 @@ namespace UE4_NetConnectionPrivate
 		return Result;
 	}
 
-
-	/** Number of bits to use in the packet header for sending the milliseconds on the clock when the packet is sent */
-	constexpr int32 NumBitsForJitterClockTimeInHeader = 10;
-
 	/** Maximum possible clock time value with available bits. If that value is sent than the jitter clock time is ignored */
-	constexpr int32 MaxJitterClockTimeValue = (1 << NumBitsForJitterClockTimeInHeader) - 1;
+	constexpr uint32 MaxJitterClockTimeValue = (1 << NetConnectionHelper::NumBitsForJitterClockTimeInHeader) - 1;
 
 	/** Maximum possible precision of the jitter stat. Set to 1 second since we only send the milliseconds of the local clock time */
 	constexpr int32 MaxJitterPrecisionInMS = 1000;
@@ -1074,7 +1070,11 @@ void UNetConnection::UpdateLevelVisibility(const FUpdateLevelVisibilityLevelInfo
 		else
 		{
 			UE_LOG(LogPlayerController, Warning, TEXT("ServerUpdateLevelVisibility() ignored non-existant package. PackageName='%s', FileName='%s'"), *LevelVisibility.PackageName.ToString(), *LevelVisibility.FileName.ToString());
-			Close();
+
+			if (!LevelVisibility.bSkipCloseOnError)
+			{
+				Close();
+			}
 		}
 	}
 	else
@@ -1715,6 +1715,10 @@ void UNetConnection::WritePacketHeader(FBitWriter& Writer)
 	// Write notification header or refresh the header if used space is the same.
 	bool bWroteHeader = PacketNotify.WriteHeader(Writer, bIsHeaderUpdate);
 
+#if !UE_BUILD_SHIPPING
+	checkf(Writer.GetNumBits() <= MAX_PACKET_RELIABLE_SEQUENCE_HEADER_BITS, TEXT("WritePacketHeader exceeded the max allowed bits. Wrote %d. Max %d"), Writer.GetNumBits(), MAX_PACKET_RELIABLE_SEQUENCE_HEADER_BITS);
+#endif
+
 	// Jump back to where we came from.
 	if (bIsHeaderUpdate)
 	{
@@ -1730,6 +1734,10 @@ void UNetConnection::WritePacketHeader(FBitWriter& Writer)
 
 void UNetConnection::WriteDummyPacketInfo(FBitWriter& Writer)
 {
+#if !UE_BUILD_SHIPPING
+	const int32 BitsWrittenPrePacketInfo = Writer.GetNumBits();
+#endif
+
 	// The first packet of a frame will include the packet info payload
 	const bool bHasPacketInfoPayload = bFlushedNetThisFrame == false;
 	Writer.WriteBit(bHasPacketInfoPayload);
@@ -1738,8 +1746,13 @@ void UNetConnection::WriteDummyPacketInfo(FBitWriter& Writer)
 	{
 		// Pre-insert the bits since the final time values will be calculated and inserted right before LowLevelSend
 		HeaderMarkForPacketInfo.Init(Writer);
-		int32 DummyJitterClockTime(UE4_NetConnectionPrivate::MaxJitterClockTimeValue);
-		Writer.SerializeBits(&DummyJitterClockTime, UE4_NetConnectionPrivate::NumBitsForJitterClockTimeInHeader);
+		uint32 DummyJitterClockTime(0);
+		Writer.SerializeBits(&DummyJitterClockTime, NetConnectionHelper::NumBitsForJitterClockTimeInHeader);
+
+#if !UE_BUILD_SHIPPING
+		checkf(Writer.GetNumBits() - BitsWrittenPrePacketInfo == (1 + NetConnectionHelper::NumBitsForJitterClockTimeInHeader), TEXT("WriteDummyPacketInfo did not write the expected nb of bits: Wrote %d, Expected %d"),
+			   Writer.GetNumBits() - BitsWrittenPrePacketInfo, (1 + NetConnectionHelper::NumBitsForJitterClockTimeInHeader));
+#endif
 
 		const uint8 bHasServerFrameTime = Driver->IsServer() ? bLastHasServerFrameTime : (CVarPingExcludeFrameTime.GetValueOnGameThread() > 0 ? 1u : 0u);
 		Writer.WriteBit(bHasServerFrameTime);
@@ -1752,6 +1765,10 @@ void UNetConnection::WriteDummyPacketInfo(FBitWriter& Writer)
 	}
 
 	bSendBufferHasDummyPacketInfo = bHasPacketInfoPayload;
+
+#if !UE_BUILD_SHIPPING
+	checkf(Writer.GetNumBits() - BitsWrittenPrePacketInfo <= MAX_PACKET_INFO_HEADER_BITS, TEXT("WriteDummyPacketInfo exceeded the max allowed bits. Wrote %d. Max %d"), Writer.GetNumBits() - BitsWrittenPrePacketInfo, MAX_PACKET_INFO_HEADER_BITS);
+#endif
 }
 
 void UNetConnection::WriteFinalPacketInfo(FBitWriter& Writer, const double PacketSentTimeInS)
@@ -1769,11 +1786,15 @@ void UNetConnection::WriteFinalPacketInfo(FBitWriter& Writer, const double Packe
 	// Go back to write over the dummy bits
 	HeaderMarkForPacketInfo.PopWithoutClear(Writer);
 
+#if !UE_BUILD_SHIPPING
+	const int32 BitsWrittenPreJitterClock = Writer.GetNumBits();
+#endif
+
 	// Write Jitter clock time
 	{
 		const double DeltaSendTimeInMS = (PacketSentTimeInS - PreviousPacketSendTimeInS) * 1000.0;
 
-		int32 ClockTimeMilliseconds = 0;
+		uint32 ClockTimeMilliseconds = 0;
 
 		// If the delta is over our max precision, we send MAX value and jitter will be ignored by the receiver.
 		if (DeltaSendTimeInMS >= UE4_NetConnectionPrivate::MaxJitterPrecisionInMS)
@@ -1789,7 +1810,12 @@ void UNetConnection::WriteFinalPacketInfo(FBitWriter& Writer, const double Packe
 			ClockTimeMilliseconds &= UE4_NetConnectionPrivate::MaxJitterClockTimeValue;
 		}
 
-			Writer.SerializeBits(&ClockTimeMilliseconds, UE4_NetConnectionPrivate::NumBitsForJitterClockTimeInHeader);
+		Writer.SerializeInt(ClockTimeMilliseconds, UE4_NetConnectionPrivate::MaxJitterClockTimeValue + 1);
+
+#if !UE_BUILD_SHIPPING
+		checkf(Writer.GetNumBits() - BitsWrittenPreJitterClock == NetConnectionHelper::NumBitsForJitterClockTimeInHeader, TEXT("WriteFinalPacketInfo did not write the expected nb of bits: Wrote %d, Expected %d"),
+			   Writer.GetNumBits() - BitsWrittenPreJitterClock, NetConnectionHelper::NumBitsForJitterClockTimeInHeader);
+#endif
 
 		PreviousPacketSendTimeInS = PacketSentTimeInS;
 	}
@@ -2011,9 +2037,17 @@ void UNetConnection::ReceivedPacket( FBitReader& Reader, bool bIsReinjectedPacke
 
 			if (bHasPacketInfoPayload)
 			{
+#if !UE_BUILD_SHIPPING
+				const int32 BitsReadPreJitterClock = Reader.GetPosBits();
+#endif
 				// Read jitter clock time from the packet header
-				int32 PacketJitterClockTimeMS = 0;
-				Reader.SerializeBits(&PacketJitterClockTimeMS, UE4_NetConnectionPrivate::NumBitsForJitterClockTimeInHeader);
+				uint32 PacketJitterClockTimeMS = 0;
+				Reader.SerializeInt(PacketJitterClockTimeMS, UE4_NetConnectionPrivate::MaxJitterClockTimeValue + 1);
+
+#if !UE_BUILD_SHIPPING
+				checkf(Reader.GetPosBits() - BitsReadPreJitterClock == NetConnectionHelper::NumBitsForJitterClockTimeInHeader, TEXT("JitterClockTime did not read the expected nb of bits. Read %d, Expected %d"),
+					   Reader.GetPosBits() - BitsReadPreJitterClock, NetConnectionHelper::NumBitsForJitterClockTimeInHeader);
+#endif
 
 				if (!bIsReinjectedPacket)
 				{
@@ -3897,7 +3931,7 @@ void UNetConnection::TrackReplicationForAnalytics(const bool bWasSaturated)
 	SaturationAnalytics.TrackReplication(bWasSaturated);
 }
 
-void UNetConnection::ProcessJitter(int32 PacketJitterClockTimeMS)
+void UNetConnection::ProcessJitter(uint32 PacketJitterClockTimeMS)
 {
 	if (PacketJitterClockTimeMS >= UE4_NetConnectionPrivate::MaxJitterClockTimeValue)
 	{
@@ -3908,7 +3942,7 @@ void UNetConnection::ProcessJitter(int32 PacketJitterClockTimeMS)
 	const int32 CurrentClockTimeMilliseconds = UE4_NetConnectionPrivate::GetClockTimeMilliseconds(LastReceiveRealtime);
 
 	// Get the delta between the sent and receive clock time.
-	int32 CurrentJitterTimeDelta = CurrentClockTimeMilliseconds - PacketJitterClockTimeMS;
+	int32 CurrentJitterTimeDelta = CurrentClockTimeMilliseconds - (int32)PacketJitterClockTimeMS;
 	
 	if (CurrentJitterTimeDelta < 0)
 	{

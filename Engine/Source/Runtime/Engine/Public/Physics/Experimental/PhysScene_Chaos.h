@@ -126,6 +126,7 @@ public:
 	void RemoveObject(FFieldSystemPhysicsProxy* InObject);	
 
 	void RemoveActorFromAccelerationStructure(FPhysicsActorHandle& Actor);
+	void UpdateActorInAccelerationStructure(const FPhysicsActorHandle& Actor);
 
 #if XGE_FIXED
 	template<typename PayloadType>
@@ -188,6 +189,7 @@ private:
 	 * sync as the editor will ignore packages being dirtied in PIE
 	 */
 	void OnWorldEndPlay();
+
 
 	// List of objects that we modified during a PIE run for physics simulation caching.
 	TArray<UObject*> PieModifiedObjects;
@@ -385,6 +387,11 @@ public:
 #endif // XGE_FIXED
 
 private:
+
+
+#if WITH_EDITOR
+	bool IsOwningWorldEditor() const;
+#endif
 
 	void SyncBodies(Chaos::FPhysicsSolver* Solver);
 

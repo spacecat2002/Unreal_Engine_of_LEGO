@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "PhysicsEngine/ShapeElem.h"
+#include "Chaos/Convex.h"
 
 #if WITH_CHAOS
 #include "Chaos/Serializable.h"
@@ -37,6 +38,9 @@ struct FKConvexElem : public FKShapeElem
 	/** Array of indices that make up the convex hull. */
 	UPROPERTY()
 	TArray<FVector> VertexData;
+
+	UPROPERTY()
+	TArray<int32> IndexData;
 
 	/** Bounding box of this convex hull. */
 	UPROPERTY()

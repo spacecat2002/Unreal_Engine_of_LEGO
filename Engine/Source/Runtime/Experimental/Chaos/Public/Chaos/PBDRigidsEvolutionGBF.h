@@ -127,7 +127,7 @@ public:
 		CHAOS_SCOPED_TIMER(Integrate);
 		TPerParticleInitForce<T, d> InitForceRule;
 		TPerParticleEulerStepVelocity<T, d> EulerStepVelocityRule;
-		TPerParticleEtherDrag<T, d> EtherDragRule(HackLinearDrag, HackAngularDrag);
+		TPerParticleEtherDrag<T, d> EtherDragRule;
 		TPerParticlePBDEulerStep<T, d> EulerStepRule;
 
 		const T MaxAngularSpeedSq = HackMaxAngularVelocity * HackMaxAngularVelocity;
@@ -174,8 +174,8 @@ public:
 
 				if (Particle.HasBounds())
 				{
-					const TBox<T, d>& LocalBounds = Particle.LocalBounds();
-					TBox<T, d> WorldSpaceBounds = LocalBounds.TransformedBox(TRigidTransform<T, d>(Particle.P(), Particle.Q()));
+					const TAABB<T, d>& LocalBounds = Particle.LocalBounds();
+					TAABB<T, d> WorldSpaceBounds = LocalBounds.TransformedAABB(TRigidTransform<T, d>(Particle.P(), Particle.Q()));
 					WorldSpaceBounds.ThickenSymmetrically(Particle.V());
 					Particle.SetWorldSpaceInflatedBounds(WorldSpaceBounds);
 				}

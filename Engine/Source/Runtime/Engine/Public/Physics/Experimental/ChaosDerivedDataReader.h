@@ -25,8 +25,9 @@ public:
 	explicit FChaosDerivedDataReader(FUntypedBulkData* InBulkData);
 
 	TArray<TUniquePtr<Chaos::FConvex>> ConvexImplicitObjects;
-	TArray<TUniquePtr<Chaos::TTriangleMeshImplicitObject<T>>> TrimeshImplicitObjects;
+	TArray<TSharedPtr<Chaos::TTriangleMeshImplicitObject<T>, ESPMode::ThreadSafe>> TrimeshImplicitObjects;
 	FBodySetupUVInfo UVInfo;
+	TArray<int32> FaceRemap;
 
 private:
 	FChaosDerivedDataReader() = delete;

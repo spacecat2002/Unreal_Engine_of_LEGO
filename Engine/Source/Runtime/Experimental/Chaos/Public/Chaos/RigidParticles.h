@@ -10,6 +10,7 @@
 #include "Chaos/Matrix.h"
 #include "Chaos/Particles.h"
 #include "Chaos/Rotation.h"
+#include "HAL/LowLevelMemTracker.h"
 
 namespace Chaos
 {
@@ -23,6 +24,25 @@ enum class EObjectStateType : int8
 
 	Count
 };
+
+template<class T, int d>
+struct TSleepData
+{
+	TSleepData()
+		: Particle(nullptr)
+		, Sleeping(true)
+	{}
+
+	TSleepData(
+		TGeometryParticleHandle<T, d>* InParticle, bool InSleeping)
+		: Particle(InParticle)
+		, Sleeping(InSleeping)
+	{}
+
+	TGeometryParticleHandle<T, d>* Particle;
+	bool Sleeping; // if !Sleeping == Awake
+};
+
 
 // Counts the number of bits needed to represent an int with a max
 constexpr int8 NumBitsNeeded(const int8 MaxValue)
@@ -58,6 +78,8 @@ class TRigidParticles : public TKinematicGeometryParticles<T, d>
 		TArrayCollection::AddArray(&MInvI);
 		TArrayCollection::AddArray(&MM);
 		TArrayCollection::AddArray(&MInvM);
+		TArrayCollection::AddArray(&MLinearEtherDrag);
+		TArrayCollection::AddArray(&MAngularEtherDrag);
 		TArrayCollection::AddArray(&MCollisionParticles);
 		TArrayCollection::AddArray(&MCollisionGroup);
 		TArrayCollection::AddArray(&MDisabled);
@@ -77,6 +99,8 @@ class TRigidParticles : public TKinematicGeometryParticles<T, d>
 		TArrayCollection::AddArray(&MInvI);
 		TArrayCollection::AddArray(&MM);
 		TArrayCollection::AddArray(&MInvM);
+		TArrayCollection::AddArray(&MLinearEtherDrag);
+		TArrayCollection::AddArray(&MAngularEtherDrag);
 		TArrayCollection::AddArray(&MCollisionParticles);
 		TArrayCollection::AddArray(&MCollisionGroup);
 		TArrayCollection::AddArray(&MDisabled);
@@ -112,7 +136,14 @@ class TRigidParticles : public TKinematicGeometryParticles<T, d>
 	FORCEINLINE const T InvM(const int32 Index) const { return MInvM[Index]; }
 	FORCEINLINE T& InvM(const int32 Index) { return MInvM[Index]; }
 
+	FORCEINLINE const T& LinearEtherDrag(const int32 index) const { return MLinearEtherDrag[index]; }
+	FORCEINLINE T& LinearEtherDrag(const int32 index) { return MLinearEtherDrag[index]; }
+
+	FORCEINLINE const T& AngularEtherDrag(const int32 index) const { return MAngularEtherDrag[index]; }
+	FORCEINLINE T& AngularEtherDrag(const int32 index) { return MAngularEtherDrag[index]; }
+
 	FORCEINLINE int32 CollisionParticlesSize(int32 Index) const { return MCollisionParticles[Index] == nullptr ? 0 : MCollisionParticles[Index]->Size(); }
+
 	void CHAOS_API CollisionParticlesInitIfNeeded(const int32 Index);
 	void CHAOS_API SetCollisionParticles(const int32 Index, TParticles<T, d>&& Particles);
 	
@@ -133,8 +164,14 @@ class TRigidParticles : public TKinematicGeometryParticles<T, d>
 	FORCEINLINE const bool ToBeRemovedOnFracture(const int32 Index) const { return MToBeRemovedOnFracture[Index]; }
 	FORCEINLINE bool& ToBeRemovedOnFracture(const int32 Index) { return MToBeRemovedOnFracture[Index]; }
 
-	FORCEINLINE TQueue<TGeometryParticleHandle<T, d>*, EQueueMode::Mpsc>& GetSleepData() { return MSleepData; }
-	FORCEINLINE void AddSleepData(TGeometryParticleHandle<T, d>* Particle) { MSleepData.Enqueue(Particle); }
+	FORCEINLINE TQueue<TSleepData<T, d>, EQueueMode::Mpsc>& GetSleepData() { return MSleepData; }
+	FORCEINLINE void AddSleepData(TGeometryParticleHandle<T, d>* Particle, bool Sleeping)
+	{ 
+		TSleepData<T, d> SleepData;
+		SleepData.Particle = Particle;
+		SleepData.Sleeping = Sleeping;
+		MSleepData.Enqueue(SleepData); 
+	}
 
 	FORCEINLINE const EObjectStateType ObjectState(const int32 Index) const { return MObjectState[Index]; }
 	FORCEINLINE EObjectStateType& ObjectState(const int32 Index) { return MObjectState[Index]; }
@@ -156,8 +193,16 @@ class TRigidParticles : public TKinematicGeometryParticles<T, d>
 
 	CHAOS_API virtual void Serialize(FChaosArchive& Ar) override
 	{
+		LLM_SCOPE(ELLMTag::ChaosParticles);
 		TKinematicGeometryParticles<T,d>::Serialize(Ar);
 		Ar << MF << MT << MExternalForce << MExternalTorque << MI << MInvI << MM << MInvM;
+
+		Ar.UsingCustomVersion(FExternalPhysicsCustomObjectVersion::GUID);
+		if (Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) >= FExternalPhysicsCustomObjectVersion::AddDampingToRigids)
+		{
+			Ar << MLinearEtherDrag << MAngularEtherDrag;
+		}
+
 		Ar << MCollisionParticles << MCollisionGroup << MIsland << MDisabled << MObjectState;
 	}
 
@@ -170,13 +215,15 @@ class TRigidParticles : public TKinematicGeometryParticles<T, d>
 	TArrayCollectionArray<PMatrix<T, d, d>> MInvI;
 	TArrayCollectionArray<T> MM;
 	TArrayCollectionArray<T> MInvM;
+	TArrayCollectionArray<T> MLinearEtherDrag;
+	TArrayCollectionArray<T> MAngularEtherDrag;
 	TArrayCollectionArray<TUniquePtr<TBVHParticles<T, d>>> MCollisionParticles;
 	TArrayCollectionArray<int32> MCollisionGroup;
 	TArrayCollectionArray<int32> MIsland;
 	TArrayCollectionArray<bool> MDisabled;
 	TArrayCollectionArray<bool> MToBeRemovedOnFracture;
 	TArrayCollectionArray<EObjectStateType> MObjectState;
-	TQueue<TGeometryParticleHandle<T, d>*, EQueueMode::Mpsc> MSleepData;
+	TQueue<TSleepData<T, d>, EQueueMode::Mpsc> MSleepData;
 };
 
 

@@ -281,7 +281,7 @@ void FWindowsUIAManager::UpdateCachedCurrentLocaleLCID()
 
 void FWindowsUIAManager::RunInGameThreadBlocking(CONST TFunction<void()>& Function) const
 {
-		WindowsApplication.GetAccessibleMessageHandler()->RunInThread(Function, ENamedThreads::GameThread);
+		WindowsApplication.GetAccessibleMessageHandler()->RunInThread(Function, true, ENamedThreads::GameThread);
 }
 
 #if !UE_BUILD_SHIPPING

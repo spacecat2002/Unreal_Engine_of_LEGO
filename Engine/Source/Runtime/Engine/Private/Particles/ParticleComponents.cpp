@@ -3358,11 +3358,12 @@ UParticleSystemComponent::UParticleSystemComponent(const FObjectInitializer& Obj
 	MaxTimeBeforeForceUpdateTransform = 5.0f;
 	bAutoActivate = true;
 	bResetOnDetach = false;
-	OldPosition = FVector(0.0f, 0.0f, 0.0f);
+	bOldPositionValid = false;
+	OldPosition = FVector::ZeroVector;
 
 	RandomStream.Initialize(FApp::bUseFixedSeed ? GetFName() : NAME_None);
 
-	PartSysVelocity = FVector(0.0f, 0.0f, 0.0f);
+	PartSysVelocity = FVector::ZeroVector;
 
 	WarmupTime = 0.0f;
 	SecondsBeforeInactive = 1.0f;
@@ -3983,6 +3984,7 @@ void UParticleSystemComponent::SendRenderDynamicData_Concurrent()
 	SCOPE_CYCLE_COUNTER(STAT_ParticleSystemComponent_SendRenderDynamicData_Concurrent);
 	SCOPE_CYCLE_COUNTER(STAT_ParticlesOverview_GT_CNC);
 	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(Effects);
+	PARTICLE_PERF_STAT_CYCLES(Template, EndOfFrame);
 
 	ForceAsyncWorkCompletion(ENSURE_AND_STALL, false, true);
 	Super::SendRenderDynamicData_Concurrent();
@@ -5044,6 +5046,8 @@ void UParticleSystemComponent::TickComponent(float DeltaTime, enum ELevelTick Ti
 		SetComponentTickEnabled(false);
 		return;
 	}
+	PARTICLE_PERF_STAT_CYCLES(Template, TickGameThread);
+	PARTICLE_PERF_STAT_INSTANCE_COUNT(Template, 1);
 
 	checkf(!IsTickManaged() || !PrimaryComponentTick.IsTickFunctionEnabled(), TEXT("PSC has enabled tick funciton and is also ticking via the tick manager.\nTemplate:%s\nPSC: %s\nParent:%s")
 	, *Template->GetFullName(), *GetFullName(), GetAttachParent() ? *GetAttachParent()->GetFullName() : TEXT("nullptr"));
@@ -5301,6 +5305,7 @@ void UParticleSystemComponent::ComputeTickComponent_Concurrent()
 	SCOPE_CYCLE_COUNTER(STAT_ParticleComputeTickTime);
 	FScopeCycleCounterUObject AdditionalScope(AdditionalStatObject(), GET_STATID(STAT_ParticleComputeTickTime));
 	SCOPE_CYCLE_COUNTER(STAT_ParticlesOverview_GT_CNC);
+	PARTICLE_PERF_STAT_CYCLES(Template, TickConcurrent);
 
 	// Tick Subemitters.
 	int32 EmitterIndex;
@@ -5376,6 +5381,7 @@ void UParticleSystemComponent::FinalizeTickComponent()
 
 	SCOPE_CYCLE_COUNTER(STAT_ParticleFinalizeTickTime);
 	SCOPE_CYCLE_COUNTER(STAT_ParticlesOverview_GT);
+	PARTICLE_PERF_STAT_CYCLES(Template, Finalize);
 
 	if(bAsyncDataCopyIsValid)
 	{
@@ -5500,8 +5506,16 @@ void UParticleSystemComponent::FinalizeTickComponent()
 		bIsTransformDirty = false;
 	}
 
-	const float InvDeltaTime = (DeltaTimeTick > 0.0f) ? 1.0f / DeltaTimeTick : 0.0f;
-	PartSysVelocity = (GetComponentLocation() - OldPosition) * InvDeltaTime;
+	if (bOldPositionValid)
+	{
+		const float InvDeltaTime = (DeltaTimeTick > 0.0f) ? 1.0f / DeltaTimeTick : 0.0f;
+		PartSysVelocity = (GetComponentLocation() - OldPosition) * InvDeltaTime;
+	}
+	else
+	{
+		PartSysVelocity = FVector::ZeroVector;
+	}
+	bOldPositionValid = true;
 	OldPosition = GetComponentLocation();
 
 	if (bIsViewRelevanceDirty)
@@ -5882,6 +5896,10 @@ void UParticleSystemComponent::ActivateSystem(bool bFlagAsJustAttached)
 	{
 		return;
 	}
+
+	bOldPositionValid = false;
+	OldPosition = FVector::ZeroVector;
+	PartSysVelocity = FVector::ZeroVector;
 
 	UWorld* World = GetWorld();
 	check(World);

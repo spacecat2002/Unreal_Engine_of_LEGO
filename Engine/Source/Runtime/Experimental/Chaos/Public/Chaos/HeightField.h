@@ -91,9 +91,9 @@ namespace Chaos
 			return 0;
 		}
 
-		virtual const TBox<T, 3>& BoundingBox() const
+		virtual const TAABB<T, 3>& BoundingBox() const
 		{
-			CachedBounds = TBox<T, 3>(LocalBounds.Min() * GeomData.Scale, LocalBounds.Max() * GeomData.Scale);
+			CachedBounds = TAABB<T, 3>(LocalBounds.Min() * GeomData.Scale, LocalBounds.Max() * GeomData.Scale);
 			return CachedBounds;
 		}
 
@@ -128,7 +128,7 @@ namespace Chaos
 				Ar << FlatGrid;
 				Ar << FlattenedBounds.Min;
 				Ar << FlattenedBounds.Max;
-				Ar << LocalBounds;
+				TBox<FReal, 3>::SerializeAsAABB(Ar, LocalBounds);
 			}
 			else
 			{
@@ -183,7 +183,7 @@ namespace Chaos
 			uint16 NumCols;
 			RealType Range;
 			RealType HeightPerUnit;
-			TArray<TBox<RealType, 3>> CellBounds;
+			TArray<RealType> CellHeights; //todo: remove this and use heights directly
 
 			constexpr float GetCellWidth() const
 			{
@@ -247,7 +247,20 @@ namespace Chaos
 				{
 					Ar << Range;
 					Ar << HeightPerUnit;
-					Ar << CellBounds;
+
+					if (Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) < FExternalPhysicsCustomObjectVersion::HeightfieldImplicitBounds)
+					{
+						TArray<TBox<RealType, 3>> CellBounds;
+						Ar << CellBounds;
+						for (const TBox<RealType, 3>& Box : CellBounds)
+						{
+							CellHeights.Add(Box.Extents().Z);
+						}
+					}
+					else
+					{
+						Ar << CellHeights;
+					}
 				}
 
 				if(Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) >= FExternalPhysicsCustomObjectVersion::AddedMaterialManager)
@@ -273,12 +286,12 @@ namespace Chaos
 				, Max(0)
 			{}
 
-			explicit FBounds2D(const TBox<T, 3>& In3DBounds)
+			explicit FBounds2D(const TAABB<T, 3>& In3DBounds)
 			{
 				Set(In3DBounds);
 			}
 
-			void Set(const TBox<T, 3>& In3DBounds)
+			void Set(const TAABB<T, 3>& In3DBounds)
 			{
 				Min = {In3DBounds.Min()[0], In3DBounds.Min()[1]};
 				Max = {In3DBounds.Max()[0], In3DBounds.Max()[1]};
@@ -432,9 +445,9 @@ namespace Chaos
 		// Bounds in 2D of the whole heightfield, to clip queries against
 		FBounds2D FlattenedBounds;
 		// 3D bounds for the heightfield, for insertion to the scene structure
-		TBox<T, 3> LocalBounds;
+		TAABB<T, 3> LocalBounds;
 		// Cached when bounds are requested. Mutable to allow GetBounds to be logical const
-		mutable TBox<T, 3> CachedBounds;
+		mutable TAABB<T, 3> CachedBounds;
 
 		void CalcBounds();
 		void BuildQueryData();
