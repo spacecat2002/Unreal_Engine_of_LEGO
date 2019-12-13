@@ -10,6 +10,7 @@
 #include "Widgets/SWindow.h"
 #include "Input/HittestGrid.h"
 #include "HAL/IConsoleManager.h"
+#include "HAL/Event.h"
 #include "GenericPlatform/GenericPlatformProcess.h"
 
 
