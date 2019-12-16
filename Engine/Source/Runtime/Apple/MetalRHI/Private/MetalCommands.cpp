@@ -257,8 +257,10 @@ void FMetalRHICommandContext::RHISetGraphicsPipelineState(FRHIGraphicsPipelineSt
 		RHISetBlendFactor(FLinearColor(1.0f, 1.0f, 1.0f));
 
 		ApplyGlobalUniformBuffers(PipelineState->VertexShader.GetReference());
+#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
 		ApplyGlobalUniformBuffers(PipelineState->HullShader.GetReference());
 		ApplyGlobalUniformBuffers(PipelineState->DomainShader.GetReference());
+#endif
 		ApplyGlobalUniformBuffers(PipelineState->PixelShader.GetReference());
 	}
 }
