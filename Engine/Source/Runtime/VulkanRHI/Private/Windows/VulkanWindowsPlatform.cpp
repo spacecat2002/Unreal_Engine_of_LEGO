@@ -141,6 +141,11 @@ void FVulkanWindowsPlatform::GetInstanceExtensions(TArray<const ANSICHAR*>& OutE
 	// windows surface extension
 	OutExtensions.Add(VK_KHR_SURFACE_EXTENSION_NAME);
 	OutExtensions.Add(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
+
+#if VULKAN_SUPPORTS_FULLSCREEN_EXCLUSIVE
+	// Required by Fullscreen
+	OutExtensions.Add(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+#endif
 }
 
 
@@ -177,6 +182,11 @@ void FVulkanWindowsPlatform::GetDeviceExtensions(EGpuVendorId VendorId, TArray<c
 	OutExtensions.Add(VK_KHR_BIND_MEMORY_2_EXTENSION_NAME);
 	OutExtensions.Add(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
 	OutExtensions.Add(VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME);
+#endif
+
+#if VULKAN_SUPPORTS_FULLSCREEN_EXCLUSIVE
+	// Fullscreen requires Instance capabilities2
+	OutExtensions.Add(VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME);
 #endif
 }
 
