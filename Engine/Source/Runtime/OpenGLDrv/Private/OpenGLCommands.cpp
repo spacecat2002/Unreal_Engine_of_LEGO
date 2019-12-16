@@ -361,12 +361,12 @@ static FORCEINLINE void GetShaderStageIndexAndMaxUnits(FRHIGraphicsShader* Shade
 		OutIndex = FOpenGL::GetFirstGeometryTextureUnit();
 		OutMaxUnits = FOpenGL::GetMaxGeometryTextureImageUnits();
 		break;
+#endif
 	case FRHIShader::EType::Pixel:
 		VALIDATE_BOUND_SHADER(ShaderRHI, Pixel);
 		OutIndex = FOpenGL::GetFirstPixelTextureUnit();
 		OutMaxUnits = FOpenGL::GetMaxTextureImageUnits();
 		break;
-#endif
 	default:
 		checkf(0, TEXT("Undefined FRHIShader Type %d!"), (int32)ShaderRHI->GetType());
 	}
