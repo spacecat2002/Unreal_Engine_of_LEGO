@@ -43,10 +43,10 @@ TAutoConsoleVariable<int32> CVarEyeAdaptationBasicCompute(
 	TEXT("> 0 : Compute Shader (default) \n"),
 	ECVF_Scalability | ECVF_RenderThreadSafe);
 
-TAutoConsoleVariable<float> CVarEyeAdaptationExponentialTransitionTime(
-	TEXT("r.EyeAdaptation.ExponentialTransitionTime"),
+TAutoConsoleVariable<float> CVarEyeAdaptationExponentialTransitionDistance(
+	TEXT("r.EyeAdaptation.ExponentialTransitionDistance"),
 	1.5,
-	TEXT("The auto exposure moves linearly, but when it gets ExponentialTransitionTime seconds away from the\n")
+	TEXT("The auto exposure moves linearly, but when it gets ExponentialTransitionDistance F-stops away from the\n")
 	TEXT("target exposure it switches to as slower exponential function.\n"),
 	ECVF_RenderThreadSafe);
 
@@ -293,9 +293,11 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 									Settings.AutoExposureMeterMask->Resource->TextureRHI :
 									GSystemTextures.WhiteDummy->GetRenderTargetItem().ShaderResourceTexture;
 
-	// The time at which we switch from linear to exponential. I.e. at StartTime=1.5, when linear is 1.5 seconds away from hitting the 
+	// The distance at which we switch from linear to exponential. I.e. at StartDistance=1.5, when linear is 1.5 f-stops away from hitting the 
 	// target, we switch to exponential.
-	const float StartTime = CVarEyeAdaptationExponentialTransitionTime.GetValueOnRenderThread();
+	const float StartDistance = CVarEyeAdaptationExponentialTransitionDistance.GetValueOnRenderThread();
+	const float StartTimeUp = StartDistance / FMath::Max(Settings.AutoExposureSpeedUp,0.001f);
+	const float StartTimeDown = StartDistance / FMath::Max(Settings.AutoExposureSpeedDown,0.001f);
 
 	// We want to ensure that at time=StartT, that the derivative of the exponential curve is the same as the derivative of the linear curve.
 	// For the linear curve, the step will be AdaptationSpeed * FrameTime.
@@ -306,8 +308,8 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	//
 	// To be technically correct, we should take the limit as FrameTime->0, but for simplicity we can make FrameTime a small number. So:
 	const float kFrameTimeEps = 1.0f/60.0f;
-	const float ExponentialUpM = kFrameTimeEps / ((1.0f - exp2(-kFrameTimeEps * Settings.AutoExposureSpeedUp)) * StartTime);
-	const float ExponentialDownM = kFrameTimeEps / ((1.0f - exp2(-kFrameTimeEps * Settings.AutoExposureSpeedDown)) * StartTime);
+	const float ExponentialUpM = kFrameTimeEps / ((1.0f - exp2(-kFrameTimeEps * Settings.AutoExposureSpeedUp)) * StartTimeUp);
+	const float ExponentialDownM = kFrameTimeEps / ((1.0f - exp2(-kFrameTimeEps * Settings.AutoExposureSpeedDown)) * StartTimeDown);
 
 	// If the white point luminance is 1.0, then the middle grey luminance should be 0.18.
 	const float MinAverageLuminance = MinWhitePointLuminance * kMiddleGrey;
@@ -338,7 +340,7 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	Parameters.GreyMult = GreyMult;
 	Parameters.ExponentialDownM = ExponentialDownM;
 	Parameters.ExponentialUpM = ExponentialUpM;
-	Parameters.StartTime = StartTime;
+	Parameters.StartDistance = StartDistance;
 	Parameters.LuminanceMax = LuminanceMax;
 	Parameters.ForceTarget = ForceTarget;
 	Parameters.VisualizeDebugType = CVarEyeAdaptationVisualizeDebugType.GetValueOnRenderThread();
