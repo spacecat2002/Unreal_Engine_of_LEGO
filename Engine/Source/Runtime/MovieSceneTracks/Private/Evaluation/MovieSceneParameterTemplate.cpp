@@ -8,6 +8,8 @@
 
 FMovieSceneParameterSectionTemplate::FMovieSceneParameterSectionTemplate(const UMovieSceneParameterSection& Section)
 	: Scalars(Section.GetScalarParameterNamesAndCurves())
+	, Bools(Section.GetBoolParameterNamesAndCurves())
+	, Vector2Ds(Section.GetVector2DParameterNamesAndCurves())
 	, Vectors(Section.GetVectorParameterNamesAndCurves())
 	, Colors(Section.GetColorParameterNamesAndCurves())
 	, Transforms(Section.GetTransformParameterNamesAndCurves())
