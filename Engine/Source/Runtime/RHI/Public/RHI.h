@@ -614,14 +614,6 @@ extern RHI_API void GetShadingPathName(ERHIShadingPath::Type InShadingPath, FStr
 extern RHI_API void GetShadingPathName(ERHIShadingPath::Type InShadingPath, FName& OutName);
 
 
-inline FArchive& operator <<(FArchive& Ar, EResourceLockMode& LockMode)
-{
-	uint32 Temp = LockMode;
-	Ar << Temp;
-	LockMode = (EResourceLockMode)Temp;
-	return Ar;
-}
-
 /** to customize the RHIReadSurfaceData() output */
 class FReadSurfaceDataFlags
 {
@@ -844,21 +836,6 @@ struct FSamplerStateInitializerRHI
 	int32 MaxAnisotropy;
 	uint32 BorderColor;
 	TEnumAsByte<ESamplerCompareFunction> SamplerComparisonFunction;
-
-	friend FArchive& operator<<(FArchive& Ar,FSamplerStateInitializerRHI& SamplerStateInitializer)
-	{
-		Ar << SamplerStateInitializer.Filter;
-		Ar << SamplerStateInitializer.AddressU;
-		Ar << SamplerStateInitializer.AddressV;
-		Ar << SamplerStateInitializer.AddressW;
-		Ar << SamplerStateInitializer.MipBias;
-		Ar << SamplerStateInitializer.MinMipLevel;
-		Ar << SamplerStateInitializer.MaxMipLevel;
-		Ar << SamplerStateInitializer.MaxAnisotropy;
-		Ar << SamplerStateInitializer.BorderColor;
-		Ar << SamplerStateInitializer.SamplerComparisonFunction;
-		return Ar;
-	}
 };
 
 struct FRasterizerStateInitializerRHI
@@ -952,8 +929,6 @@ struct FDepthStencilStateInitializerRHI
 	}
 	RHI_API FString ToString() const;
 	RHI_API void FromString(const FString& Src);
-
-
 };
 
 class FBlendStateInitializerRHI
@@ -1005,8 +980,6 @@ public:
 		}
 		RHI_API FString ToString() const;
 		RHI_API void FromString(const TArray<FString>& Parts, int32 Index);
-
-
 	};
 
 	FBlendStateInitializerRHI() {}
@@ -1040,8 +1013,6 @@ public:
 	}
 	RHI_API FString ToString() const;
 	RHI_API void FromString(const FString& Src);
-
-
 };
 
 /**
@@ -1072,17 +1043,6 @@ struct FViewportBounds
 	FViewportBounds(float InTopLeftX, float InTopLeftY, float InWidth, float InHeight, float InMinDepth = 0.0f, float InMaxDepth = 1.0f)
 		:TopLeftX(InTopLeftX), TopLeftY(InTopLeftY), Width(InWidth), Height(InHeight), MinDepth(InMinDepth), MaxDepth(InMaxDepth)
 	{
-	}
-
-	friend FArchive& operator<<(FArchive& Ar,FViewportBounds& ViewportBounds)
-	{
-		Ar << ViewportBounds.TopLeftX;
-		Ar << ViewportBounds.TopLeftY;
-		Ar << ViewportBounds.Width;
-		Ar << ViewportBounds.Height;
-		Ar << ViewportBounds.MinDepth;
-		Ar << ViewportBounds.MaxDepth;
-		return Ar;
 	}
 };
 
@@ -1403,15 +1363,6 @@ struct FResolveRect
 	{
 		return X1 >= 0 && Y1 >= 0 && X2 - X1 > 0 && Y2 - Y1 > 0;
 	}
-
-	friend FArchive& operator<<(FArchive& Ar,FResolveRect& ResolveRect)
-	{
-		Ar << ResolveRect.X1;
-		Ar << ResolveRect.Y1;
-		Ar << ResolveRect.X2;
-		Ar << ResolveRect.Y2;
-		return Ar;
-	}
 };
 
 struct FResolveParams
@@ -1525,17 +1476,6 @@ struct FUpdateTextureRegion2D
 	,	Width(InWidth)
 	,	Height(InHeight)
 	{}
-
-	friend FArchive& operator<<(FArchive& Ar,FUpdateTextureRegion2D& Region)
-	{
-		Ar << Region.DestX;
-		Ar << Region.DestY;
-		Ar << Region.SrcX;
-		Ar << Region.SrcY;
-		Ar << Region.Width;
-		Ar << Region.Height;
-		return Ar;
-	}
 };
 
 /** specifies an update region for a texture */
@@ -1582,20 +1522,6 @@ struct FUpdateTextureRegion3D
 		, Height(InSourceSize.Y)
 		, Depth(InSourceSize.Z)
 	{}
-
-	friend FArchive& operator<<(FArchive& Ar,FUpdateTextureRegion3D& Region)
-	{
-		Ar << Region.DestX;
-		Ar << Region.DestY;
-		Ar << Region.DestZ;
-		Ar << Region.SrcX;
-		Ar << Region.SrcY;
-		Ar << Region.SrcZ;
-		Ar << Region.Width;
-		Ar << Region.Height;
-		Ar << Region.Depth;
-		return Ar;
-	}
 };
 
 struct FRHIDispatchIndirectParameters
