@@ -3454,7 +3454,7 @@ FGPUSpriteParticleEmitterInstance(FFXSystem* InFXSystem, FGPUSpriteEmitterInfo& 
 			// If using fixDT strategy
 			if (FixDeltaSeconds > 0)
 			{
-				if (!Simulation->LocalVectorField.bUseFixDT)
+				if (!DynamicData->LocalVectorField.bUseFixDT)
 				{
 					// With FixDeltaSeconds > 0, "InFix" is the persistent delta time, while "InVar" is only used for interpolation.
 					Swap(DeltaSecondsInFix, DeltaSecondsInVar);
