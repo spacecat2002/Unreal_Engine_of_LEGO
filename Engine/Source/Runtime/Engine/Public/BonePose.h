@@ -63,6 +63,11 @@ public:
 		return Bones[BoneIndex.GetInt()];
 	}
 
+	FORCEINLINE TArrayView<FTransform> GetMutableBones()
+	{
+		return TArrayView<FTransform>(Bones);
+	}
+
 	//Bone Index Iteration
 	template<typename PoseType, typename IterType>
 	struct FRangedForSupport

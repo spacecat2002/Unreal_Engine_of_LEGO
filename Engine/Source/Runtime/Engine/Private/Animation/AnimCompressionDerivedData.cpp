@@ -6,6 +6,7 @@
 #include "AnimationUtils.h"
 #include "AnimEncoding.h"
 #include "Animation/AnimCompress.h"
+#include "Animation/AnimBoneCompressionSettings.h"
 #include "Animation/AnimCurveCompressionSettings.h"
 #include "AnimationCompression.h"
 #include "UObject/Package.h"
@@ -32,7 +33,7 @@ const TCHAR* FDerivedDataAnimationCompression::GetVersionString() const
 	// This is a version string that mimics the old versioning scheme. If you
 	// want to bump this version, generate a new guid using VS->Tools->Create GUID and
 	// return it here. Ex.
-	return TEXT("2E79BF10172A48FDACA76883B8951538");
+	return TEXT("EFB2D82D0DDA4A4E9D0D9AC41A9C557A");
 }
 
 bool FDerivedDataAnimationCompression::Build( TArray<uint8>& OutDataArray )
@@ -50,20 +51,16 @@ bool FDerivedDataAnimationCompression::Build( TArray<uint8>& OutDataArray )
 	{
 		DataToCompress.Update(OutData);
 
-		bool bCurveCompressionSuccess = FAnimationUtils::CompressAnimCurves(DataToCompress, OutData);
+		const bool bBoneCompressionOk = FAnimationUtils::CompressAnimBones(DataToCompress, CompressionResult);
+		const bool bCurveCompressionOk = FAnimationUtils::CompressAnimCurves(DataToCompress, OutData);
 
 #if DO_CHECK
-		FString CompressionName = DataToCompress.RequestedCompressionScheme->GetFullName();
+		FString CompressionName = DataToCompress.BoneCompressionSettings->GetFullName();
 		const TCHAR* AAC = CompressContext.Get()->bAllowAlternateCompressor ? TEXT("true") : TEXT("false");
 		const TCHAR* OutputStr = CompressContext.Get()->bOutput ? TEXT("true") : TEXT("false");
 #endif
 
-		CompressionResult.CompressedNumberOfFrames = DataToCompress.NumFrames; //Do this before compression so compress code can read the correct value
-
-		CompressContext->GatherPreCompressionStats(DataToCompress, PreviousCompressedSize);
-
-		FAnimationUtils::CompressAnimSequence(DataToCompress, CompressionResult, *CompressContext.Get());
-		bCompressionSuccessful = (CompressionResult.IsCompressedDataValid() || DataToCompress.RawAnimationData.Num() == 0) && bCurveCompressionSuccess;
+		bCompressionSuccessful = bBoneCompressionOk && bCurveCompressionOk;
 
 		ensureMsgf(bCompressionSuccessful, TEXT("Anim Compression failed for Sequence '%s' with compression scheme '%s': compressed data empty\n\tAnimIndex: %i\n\tMaxAnim:%i\n\tAllowAltCompressor:%s\n\tOutput:%s"), 
 											*DataToCompress.FullName,
@@ -72,21 +69,16 @@ bool FDerivedDataAnimationCompression::Build( TArray<uint8>& OutDataArray )
 											CompressContext.Get()->MaxAnimations,
 											AAC,
 											OutputStr);
-
-		if (CompressionResult.IsCompressedDataValid())
-		{
-			CompressionResult.BuildFinalBuffer(OutData.CompressedByteStream); // Build final compressed data buffer
-
-			OutData.CompressedDataStructure.CopyFrom(CompressionResult); //Copy header info
-			OutData.CompressedDataStructure.InitViewsFromBuffer(OutData.CompressedByteStream); //Init views to CompressedByteStream
-			
-		}
 	}
 
 	if (bCompressionSuccessful)
 	{
+		OutData.CompressedByteStream = MoveTemp(CompressionResult.CompressedByteStream);
+		OutData.CompressedDataStructure = MoveTemp(CompressionResult.AnimData);
+		OutData.BoneCompressionCodec = CompressionResult.Codec;
+
 		FMemoryWriter Ar(OutDataArray, true);
-		OutData.SerializeCompressedData(Ar, true, nullptr, DataToCompress.Skeleton, DataToCompress.CurveCompressionSettings); //Save out compressed
+		OutData.SerializeCompressedData(Ar, true, nullptr, DataToCompress.Skeleton, DataToCompress.BoneCompressionSettings, DataToCompress.CurveCompressionSettings); //Save out compressed
 	}
 
 	return bCompressionSuccessful;

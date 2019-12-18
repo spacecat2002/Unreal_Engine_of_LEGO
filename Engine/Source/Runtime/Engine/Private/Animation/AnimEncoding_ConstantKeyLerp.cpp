@@ -238,63 +238,6 @@ void AEFConstantKeyLerpShared::ByteSwapScaleOut(
 	}
 }
 
-#if USE_SEGMENTING_CONTEXT
-void AEFConstantKeyLerpShared::CreateEncodingContext(FAnimSequenceDecompressionContext& DecompContext)
-{
-	checkSlow(DecompContext.EncodingContext == nullptr);
-	DecompContext.EncodingContext = new FAEConstantKeyLerpContext(DecompContext);
-}
-
-void AEFConstantKeyLerpShared::ReleaseEncodingContext(FAnimSequenceDecompressionContext& DecompContext)
-{
-	checkSlow(DecompContext.EncodingContext != nullptr);
-	delete DecompContext.EncodingContext;
-	DecompContext.EncodingContext = nullptr;
-}
-
-FAEConstantKeyLerpContext::FAEConstantKeyLerpContext(const FAnimSequenceDecompressionContext& DecompContext)
-	: KeyFrameSize(-1)
-{
-}
-
-void FAEConstantKeyLerpContext::Seek(const FAnimSequenceDecompressionContext& DecompContext, float SampleAtTime)
-{
-	if (KeyFrameSize < 0)
-	{
-		// First update, cache some stuff
-		UniformKeyOffsets.Empty(DecompContext.NumTracks * DecompContext.NumStreamsPerTrack);
-		UniformKeyOffsets.AddUninitialized(DecompContext.NumTracks * DecompContext.NumStreamsPerTrack);
-
-		const int32 PackedTranslationSize0 = CompressedTranslationStrides[DecompContext.Segment0->TranslationCompressionFormat] * CompressedTranslationNum[DecompContext.Segment0->TranslationCompressionFormat];
-		const int32 PackedRotationSize0 = CompressedRotationStrides[DecompContext.Segment0->RotationCompressionFormat] * CompressedRotationNum[DecompContext.Segment0->RotationCompressionFormat];
-		const int32 PackedScaleSize0 = DecompContext.bHasScale ? (CompressedScaleStrides[DecompContext.Segment0->ScaleCompressionFormat] * CompressedScaleNum[DecompContext.Segment0->ScaleCompressionFormat]) : 0;
-
-		int32 KeyOffset = 0;
-		for (int32 TrackIndex = 0; TrackIndex < DecompContext.NumTracks; ++TrackIndex)
-		{
-			const FTrivialTrackFlags TrackFlags(DecompContext.TrackFlags[TrackIndex]);
-
-			UniformKeyOffsets[DecompContext.GetTranslationValueOffset(TrackIndex)] = KeyOffset;
-			KeyOffset += TrackFlags.IsTranslationTrivial() ? 0 : PackedTranslationSize0;
-
-			UniformKeyOffsets[DecompContext.GetRotationValueOffset(TrackIndex)] = KeyOffset;
-			KeyOffset += TrackFlags.IsRotationTrivial() ? 0 : PackedRotationSize0;
-
-			if (DecompContext.bHasScale)
-			{
-				UniformKeyOffsets[DecompContext.GetScaleValueOffset(TrackIndex)] = KeyOffset;
-				KeyOffset += TrackFlags.IsScaleTrivial() ? 0 : PackedScaleSize0;
-			}
-		}
-
-		KeyFrameSize = KeyOffset;
-	}
-
-	FrameKeysOffset[0] = DecompContext.Segment0->ByteStreamOffset + DecompContext.RangeDataSize0 + (KeyFrameSize * DecompContext.SegmentKeyIndex0);
-	FrameKeysOffset[1] = DecompContext.Segment1->ByteStreamOffset + DecompContext.RangeDataSize0 + (KeyFrameSize * DecompContext.SegmentKeyIndex1);
-}
-#endif
-
 #if USE_ANIMATION_CODEC_BATCH_SOLVER
 
 /**
@@ -306,7 +249,7 @@ void FAEConstantKeyLerpContext::Seek(const FAnimSequenceDecompressionContext& De
  */
 template<int32 FORMAT>
 inline void AEFConstantKeyLerp<FORMAT>::GetPoseRotations(
-	FTransformArray& Atoms,
+	TArrayView<FTransform>& Atoms,
 	const BoneTrackArray& DesiredPairs,
 	FAnimSequenceDecompressionContext& DecompContext)
 {
@@ -315,14 +258,16 @@ inline void AEFConstantKeyLerp<FORMAT>::GetPoseRotations(
 	if (INTEL_ISPC)
 	{
 #if INTEL_ISPC
+		const FUECompressedAnimData& AnimData = static_cast<const FUECompressedAnimData&>(DecompContext.CompressedAnimData);
+
 		ispc::GetConstantKeyLerpPoseRotations(
 			(ispc::FTransform*)&Atoms[0],
 			(ispc::BoneTrackPair*)&DesiredPairs[0],
-			DecompContext.GetCompressedTrackOffsets(),
-			DecompContext.GetCompressedByteStream(),
-			DecompContext.GetSequenceLength(),
+			AnimData.CompressedTrackOffsets.GetData(),
+			AnimData.CompressedByteStream.GetData(),
+			DecompContext.SequenceLength,
 			DecompContext.RelativePos,
-			(uint8)DecompContext.GetInterpolation(),
+			(uint8)DecompContext.Interpolation,
 			FORMAT,
 			PairCount);
 #endif
@@ -351,7 +296,7 @@ inline void AEFConstantKeyLerp<FORMAT>::GetPoseRotations(
  */
 template<int32 FORMAT>
 inline void AEFConstantKeyLerp<FORMAT>::GetPoseTranslations(
-	FTransformArray& Atoms,
+	TArrayView<FTransform>& Atoms,
 	const BoneTrackArray& DesiredPairs,
 	FAnimSequenceDecompressionContext& DecompContext)
 {
@@ -360,14 +305,16 @@ inline void AEFConstantKeyLerp<FORMAT>::GetPoseTranslations(
 	if (INTEL_ISPC)
 	{
 #if INTEL_ISPC
+		const FUECompressedAnimData& AnimData = static_cast<const FUECompressedAnimData&>(DecompContext.CompressedAnimData);
+
 		ispc::GetConstantKeyLerpPoseTranslations(
 			(ispc::FTransform*)&Atoms[0],
 			(ispc::BoneTrackPair*)&DesiredPairs[0],
-			DecompContext.GetCompressedTrackOffsets(),
-			DecompContext.GetCompressedByteStream(),
-			DecompContext.GetSequenceLength(),
+			AnimData.CompressedTrackOffsets.GetData(),
+			AnimData.CompressedByteStream.GetData(),
+			DecompContext.SequenceLength,
 			DecompContext.RelativePos,
-			(uint8)DecompContext.GetInterpolation(),
+			(uint8)DecompContext.Interpolation,
 			FORMAT,
 			PairCount);
 #endif
@@ -412,7 +359,7 @@ inline void AEFConstantKeyLerp<FORMAT>::GetPoseTranslations(
  */
 template<int32 FORMAT>
 inline void AEFConstantKeyLerp<FORMAT>::GetPoseScales(
-	FTransformArray& Atoms,
+	TArrayView<FTransform>& Atoms,
 	const BoneTrackArray& DesiredPairs,
 	FAnimSequenceDecompressionContext& DecompContext)
 {
@@ -423,18 +370,20 @@ inline void AEFConstantKeyLerp<FORMAT>::GetPoseScales(
 	if (INTEL_ISPC)
 	{
 #if INTEL_ISPC
-		const TArrayView<int32> ScaleOffsets = DecompContext.GetCompressedScaleOffsets()->OffsetData;
-		const int32 StripSize = DecompContext.GetCompressedScaleOffsets()->StripSize;
+		const FUECompressedAnimData& AnimData = static_cast<const FUECompressedAnimData&>(DecompContext.CompressedAnimData);
+
+		const TArrayView<int32> ScaleOffsets = AnimData.CompressedScaleOffsets.OffsetData;
+		const int32 StripSize = AnimData.CompressedScaleOffsets.StripSize;
 
 		ispc::GetConstantKeyLerpPoseScales(
 			(ispc::FTransform*)&Atoms[0],
 			(ispc::BoneTrackPair*)&DesiredPairs[0],
 			ScaleOffsets.GetData(),
 			StripSize,
-			DecompContext.GetCompressedByteStream(),
-			DecompContext.GetSequenceLength(),
+			AnimData.CompressedByteStream.GetData(),
+			DecompContext.SequenceLength,
 			DecompContext.RelativePos,
-			(uint8)DecompContext.GetInterpolation(),
+			(uint8)DecompContext.Interpolation,
 			FORMAT,
 			PairCount);
 #endif
