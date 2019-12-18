@@ -312,8 +312,6 @@ void AEFVariableKeyLerp<FORMAT>::GetPoseScales(
 	const BoneTrackArray& DesiredPairs,
 	FAnimSequenceDecompressionContext& DecompContext)
 {
-	checkSlow(DecompContext.bHasScale);
-
 	const int32 PairCount = DesiredPairs.Num();
 
 	if (INTEL_ISPC)
