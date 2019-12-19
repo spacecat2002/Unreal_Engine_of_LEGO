@@ -37,6 +37,11 @@ extern TAutoConsoleVariable<float> CVarFoliageLODDistanceScale;
 extern TAutoConsoleVariable<float> CVarRandomLODRange;
 extern TAutoConsoleVariable<int32> CVarMinLOD;
 
+BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FInstancedStaticMeshVertexFactoryUniformShaderParameters, ENGINE_API)
+	SHADER_PARAMETER_SRV(Buffer<float4>, VertexFetch_InstanceOriginBuffer)
+	SHADER_PARAMETER_SRV(Buffer<float4>, VertexFetch_InstanceTransformBuffer)
+	SHADER_PARAMETER_SRV(Buffer<float4>, VertexFetch_InstanceLightmapBuffer)
+END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
 // This must match the maximum a user could specify in the material (see 
 // FHLSLMaterialTranslator::TextureCoordinate), otherwise the material will attempt 
@@ -287,8 +292,15 @@ public:
 		return Data.InstanceLightmapSRV;
 	}
 
+	FRHIUniformBuffer* GetUniformBuffer() const
+	{
+		return UniformBuffer.GetReference();
+	}
+
 private:
 	FDataType Data;
+
+	TUniformBufferRef<FInstancedStaticMeshVertexFactoryUniformShaderParameters> UniformBuffer;
 };
 
 class FInstancedStaticMeshVertexFactoryShaderParameters : public FLocalVertexFactoryShaderParametersBase

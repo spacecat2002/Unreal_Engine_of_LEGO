@@ -36,6 +36,7 @@ static bool IsSupportedVertexFactoryType(const FVertexFactoryType* VertexFactory
 
 	return VertexFactoryType == FindVertexFactoryType(LocalVfFname)
 		|| VertexFactoryType == FindVertexFactoryType(LSkinnedVfFname)
+		|| VertexFactoryType == FindVertexFactoryType(InstancedVfFname)
 		|| VertexFactoryType == FindVertexFactoryType(NiagaraRibbonVfFname)
 		|| VertexFactoryType == FindVertexFactoryType(NiagaraSpriteVfFname)
 		|| VertexFactoryType == FindVertexFactoryType(GeometryCacheVfFname)
