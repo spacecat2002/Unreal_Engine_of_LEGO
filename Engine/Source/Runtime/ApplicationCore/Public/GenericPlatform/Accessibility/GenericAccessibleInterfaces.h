@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Misc/Variant.h"
 #include "Stats/Stats.h"
+#include "Async/TaskGraphInterfaces.h"
 
 /** Whether a widget should be included in accessibility, and if so, how its text should be retrieved. */
 enum class EAccessibleBehavior : uint8
@@ -222,6 +223,12 @@ public:
 	 * @return A string representing the serialized value stored in the widget.
 	 */
 	virtual FString GetValue() const = 0;
+	/**
+	 * The current value stored by the widget as a FVariant. Used on platforms where the type of the value is important for accessibility methods
+	 * such as on Mac. .
+	 * @return An FVariant that holds the widget's current value and type of value.
+	 */
+	virtual FVariant GetValueAsVariant() const { return FVariant(); }
 	/*
 	 * Set the value stored by the widget. While this function accepts a String, there is no way to know
 	 * what the underlying data is stored as. The platform layer must retain some additional information
@@ -347,7 +354,7 @@ public:
 	 * @return A more-detailed description of what the widget is or how its used.
 	 */
 	virtual FString GetHelpText() const = 0;
-	
+
 	/**
 	 * Whether the widget is enabled and can be interacted with.
 	 *
@@ -509,6 +516,15 @@ public:
 		AccessibleEventDelegate = Delegate;
 	}
 
+	/**
+	 * Request a function to be run in a particular thread. 
+	 * Primarily used to service accessibility requests from the OS thread about accessible Slate widget data in the game thread. 
+	 *
+	 * @param Function The function to execute in the game thread.
+	 * @bWaitForCompletion If true, the function will block until the requested Function completes executing on the requested Thread
+	 * @param Thread The thread to run the Function in.
+	 */
+	virtual void RunInThread(const TFunction<void()>& Function, bool bWaitForCompletion = true, ENamedThreads::Type Thread = ENamedThreads::GameThread) { }
 protected:
 	/** Triggered when bIsActive changes from false to true. */
 	virtual void OnActivate() {}
