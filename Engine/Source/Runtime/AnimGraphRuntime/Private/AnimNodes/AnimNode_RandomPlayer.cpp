@@ -5,7 +5,7 @@
 #include "Algo/BinarySearch.h"
 #include "Animation/AnimInstanceProxy.h"
 #include "Animation/AnimSequence.h"
-#include "AnimationRuntime.h"
+#include "Animation/AnimTrace.h"
 
 FAnimNode_RandomPlayer::FAnimNode_RandomPlayer()
     : CurrentPlayDataIndex(0)
@@ -235,6 +235,8 @@ void FAnimNode_RandomPlayer::Update_AnyThread(const FAnimationUpdateContext& Con
 	AnimProxy->MakeSequenceTickRecord(
 	    TickRecord, CurrentData->Entry->Sequence, true, CurrentData->PlayRate,
 	    CurrentData->BlendWeight, CurrentData->CurrentPlayTime, CurrentData->MarkerTickRecord);
+	
+	TRACE_ANIM_TICK_RECORD(Context, TickRecord);
 
 	if (FAnimationRuntime::HasWeight(NextData->BlendWeight))
 	{
@@ -242,7 +244,14 @@ void FAnimNode_RandomPlayer::Update_AnyThread(const FAnimationUpdateContext& Con
 		AnimProxy->MakeSequenceTickRecord(
 		    NextTickRecord, NextData->Entry->Sequence, true, NextData->PlayRate,
 		    NextData->BlendWeight, NextData->CurrentPlayTime, NextData->MarkerTickRecord);
+			
+		TRACE_ANIM_TICK_RECORD(Context, NextTickRecord);
 	}
+
+	TRACE_ANIM_NODE_VALUE(Context, TEXT("Current Sequence"), CurrentData ? CurrentData->Entry->Sequence : nullptr);
+	TRACE_ANIM_NODE_VALUE(Context, TEXT("Current Weight"), CurrentData ? CurrentData->BlendWeight : 0.0f);
+	TRACE_ANIM_NODE_VALUE(Context, TEXT("Next Sequence"), NextData ? NextData->Entry->Sequence : nullptr);
+	TRACE_ANIM_NODE_VALUE(Context, TEXT("Next Weight"), NextData ? NextData->BlendWeight : 0.0f);
 }
 
 void FAnimNode_RandomPlayer::Evaluate_AnyThread(FPoseContext& Output)

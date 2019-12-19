@@ -4409,7 +4409,7 @@ void UAnimSequence::RefreshTrackMapFromAnimTrackNames()
 	}
 }
 
-uint8* UAnimSequence::FindSyncMarkerPropertyData(int32 SyncMarkerIndex, UArrayProperty*& ArrayProperty)
+uint8* UAnimSequence::FindSyncMarkerPropertyData(int32 SyncMarkerIndex, FArrayProperty*& ArrayProperty)
 {
 	ArrayProperty = NULL;
 

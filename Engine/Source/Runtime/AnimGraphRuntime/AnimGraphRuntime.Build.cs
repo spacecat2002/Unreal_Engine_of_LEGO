@@ -18,6 +18,12 @@ public class AnimGraphRuntime : ModuleRules
 			}
 		);
 
+		PrivateDependencyModuleNames.AddRange(
+			new string[] {
+				"TraceLog",
+			}
+		);
+
         SetupModulePhysicsSupport(Target);
 
 		// External users of this library do not need to know about Eigen.
