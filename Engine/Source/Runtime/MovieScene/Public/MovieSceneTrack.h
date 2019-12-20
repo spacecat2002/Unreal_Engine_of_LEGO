@@ -107,6 +107,15 @@ struct FMovieSceneTrackDisplayOptions
 	uint32 bShowVerticalFrames : 1;
 };
 
+enum class EMovieSceneTrackEasingSupportFlags
+{
+	None = 0,
+	AutomaticEasing = 1 << 0,
+	ManualEasing = 1 << 1,
+	All = AutomaticEasing | ManualEasing
+};
+ENUM_CLASS_FLAGS(EMovieSceneTrackEasingSupportFlags)
+
 /**
  * Base class for a track in a Movie Scene
  */
@@ -248,6 +257,11 @@ public:
 	virtual bool SupportsMultipleRows() const
 	{
 		return SupportedBlendTypes.Num() != 0;
+	}
+
+	virtual EMovieSceneTrackEasingSupportFlags SupportsEasing() const
+	{
+		return SupportedBlendTypes.Num() > 0 ? EMovieSceneTrackEasingSupportFlags::All : EMovieSceneTrackEasingSupportFlags::None;
 	}
 
 	/** Set This Section as the one to key. If track doesn't support layered blends then don't implement

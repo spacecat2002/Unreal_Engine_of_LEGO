@@ -71,6 +71,11 @@ bool UMovieSceneTrack::IsPostLoadThreadSafe() const
 
 void UMovieSceneTrack::UpdateEasing()
 {
+	if (!EnumHasAllFlags(SupportsEasing(), EMovieSceneTrackEasingSupportFlags::AutomaticEasing))
+	{
+		return;
+	}
+
 	int32 MaxRows = GetMaxRowIndex();
 	TArray<UMovieSceneSection*> RowSections;
 
