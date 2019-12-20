@@ -585,7 +585,15 @@ void UMovieSceneSequencePlayer::SetPlaybackRange( float NewStartTime, float NewE
 
 FFrameTime UMovieSceneSequencePlayer::GetLastValidTime() const
 {
-	return DurationFrames > 0 ? FFrameTime(StartTime + DurationFrames-1, 0.99999994f) : FFrameTime(StartTime);
+	UMovieScene* MovieScene = Sequence->GetMovieScene();
+	if (MovieScene)
+	{
+		TRange<FFrameNumber> PlaybackRange = MovieScene->GetPlaybackRange();
+		const FFrameNumber SrcEndFrame = MovieScene::DiscreteExclusiveUpper(PlaybackRange) - 1;
+		return ConvertFrameTime(SrcEndFrame, MovieScene->GetTickResolution(), MovieScene->GetDisplayRate());
+	}
+
+	return FFrameTime(StartTime);
 }
 
 bool UMovieSceneSequencePlayer::ShouldStopOrLoop(FFrameTime NewPosition) const
@@ -595,7 +603,7 @@ bool UMovieSceneSequencePlayer::ShouldStopOrLoop(FFrameTime NewPosition) const
 	{
 		if (!bReversePlayback)
 		{
-			bShouldStopOrLoop = NewPosition.FrameNumber >= StartTime + GetFrameDuration();
+			bShouldStopOrLoop = NewPosition >= GetLastValidTime();
 		}
 		else
 		{
