@@ -19,6 +19,7 @@ class UGizmoConstantFrameAxisSource;
 class UGizmoComponentAxisSource;
 class UGizmoTransformChangeStateTarget;
 class UGizmoScaledTransformSource;
+class FTransformGizmoTransformChange;
 
 /**
  * ATransformGizmoActor is an Actor type intended to be used with UTransformGizmo,
