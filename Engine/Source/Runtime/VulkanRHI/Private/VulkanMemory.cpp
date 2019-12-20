@@ -2195,10 +2195,11 @@ namespace VulkanRHI
 		FVulkanQueue* Queue = Device->GetGraphicsQueue();
 
 		FEntry Entry;
-		Queue->GetLastSubmittedInfo(Entry.CmdBuffer, Entry.FenceCounter);
-		Entry.Handle = Handle;
 		Entry.StructureType = Type;
+		Queue->GetLastSubmittedInfo(Entry.CmdBuffer, Entry.FenceCounter);
 		Entry.FrameNumber = GVulkanRHIDeletionFrameNumber;
+
+		Entry.Handle = Handle;
 
 		{
 			FScopeLock ScopeLock(&CS);
@@ -2210,6 +2211,25 @@ namespace VulkanRHI
 				});
 			checkf(ExistingEntry == nullptr, TEXT("Attempt to double-delete resource, FDeferredDeletionQueue::EType: %d, Handle: %llu"), (int32)Type, Handle);
 #endif
+
+			Entries.Add(Entry);
+		}
+	}
+
+	void FDeferredDeletionQueue::EnqueueResourceAllocation(TRefCountPtr<VulkanRHI::FOldResourceAllocation> ResourceAllocation)
+	{
+		FVulkanQueue* Queue = Device->GetGraphicsQueue();
+
+		FEntry Entry;
+		Entry.StructureType = EType::ResourceAllocation;
+		Queue->GetLastSubmittedInfo(Entry.CmdBuffer, Entry.FenceCounter);
+		Entry.FrameNumber = GVulkanRHIDeletionFrameNumber;
+
+		Entry.Handle = VK_NULL_HANDLE;
+		Entry.ResourceAllocation = ResourceAllocation;
+
+		{
+			FScopeLock ScopeLock(&CS);
 
 			Entries.Add(Entry);
 		}
@@ -2251,6 +2271,9 @@ namespace VulkanRHI
 				VKSWITCH(ShaderModule);
 				VKSWITCH(Event);
 #undef VKSWITCH
+				case EType::ResourceAllocation:
+					Entry->ResourceAllocation.SafeRelease();
+					break;
 				default:
 					check(0);
 					break;

@@ -1222,6 +1222,7 @@ namespace VulkanRHI
 			Semaphore,
 			ShaderModule,
 			Event,
+			ResourceAllocation,
 		};
 
 		template <typename T>
@@ -1230,6 +1231,7 @@ namespace VulkanRHI
 			static_assert(sizeof(T) <= sizeof(uint64), "Vulkan resource handle type size too large.");
 			EnqueueGenericResource(Type, (uint64)Handle);
 		}
+		void EnqueueResourceAllocation(TRefCountPtr<VulkanRHI::FOldResourceAllocation> ResourceAllocation);
 
 		void ReleaseResources(bool bDeleteImmediately = false);
 
@@ -1258,11 +1260,13 @@ namespace VulkanRHI
 
 		struct FEntry
 		{
-			uint64 FenceCounter;
-			uint64 Handle;
-			FVulkanCmdBuffer* CmdBuffer;
 			EType StructureType;
 			uint32 FrameNumber;
+			uint64 FenceCounter;
+			FVulkanCmdBuffer* CmdBuffer;
+
+			uint64 Handle;
+			TRefCountPtr<VulkanRHI::FOldResourceAllocation> ResourceAllocation;
 		};
 		FCriticalSection CS;
 		TArray<FEntry> Entries;

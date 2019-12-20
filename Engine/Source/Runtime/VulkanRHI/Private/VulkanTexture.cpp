@@ -673,6 +673,7 @@ void FVulkanSurface::Destroy()
 		{
 			Size = GetMemorySize();
 			Device->GetDeferredDeletionQueue().EnqueueResource(VulkanRHI::FDeferredDeletionQueue::EType::Image, Image);
+			Device->GetDeferredDeletionQueue().EnqueueResourceAllocation(GetResourceAllocation());
 			Image = VK_NULL_HANDLE;
 		}
 

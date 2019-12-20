@@ -406,6 +406,11 @@ public:
 		}
 	}
 
+	inline TRefCountPtr<VulkanRHI::FOldResourceAllocation> GetResourceAllocation()
+	{
+		return ResourceAllocation;
+	}
+
 	FVulkanDevice* Device;
 
 	VkImage Image;
