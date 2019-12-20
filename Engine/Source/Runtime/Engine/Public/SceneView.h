@@ -987,6 +987,9 @@ public:
 	/** Whether this view is being used to render a scene capture. */
 	bool bIsSceneCapture;
 
+	/** Whether this view uses ray tracing, for views that are used to render a scene capture. */
+	bool bSceneCaptureUsesRayTracing;
+
 	/** Whether this view is being used to render a reflection capture. */
 	bool bIsReflectionCapture;
 

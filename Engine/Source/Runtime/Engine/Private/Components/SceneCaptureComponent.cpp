@@ -135,6 +135,7 @@ USceneCaptureComponent::USceneCaptureComponent(const FObjectInitializer& ObjectI
 	LODDistanceFactor = 1.0f;
 	MaxViewDistanceOverride = -1;
 	CaptureSortPriority = 0;
+	bUseRayTracingIfEnabled = 0;
 
 	// Disable features that are not desired when capturing the scene
 	ShowFlags.SetMotionBlur(0); // motion blur doesn't work correctly with scene captures.
