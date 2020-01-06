@@ -281,6 +281,9 @@ private:
 	 */
 	FInteractiveToolActionSet* ToolActionSet = nullptr;
 
+
+	// InteractionMechanic needs to be able to talk to Tool internals, eg property sets, behaviors, etc
+	friend class UInteractionMechanic;
 };
 
 
