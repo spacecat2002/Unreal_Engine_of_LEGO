@@ -117,7 +117,7 @@ void GetPropertyValueAsStringDirect(const UProperty* InProp, const uint8* InData
 		const USetProperty* SetProp = Cast<const USetProperty>(InProp);
 		const UMapProperty* MapProp = Cast<const UMapProperty>(InProp);
 
-		if (ArrayProp && ArrayProp->Inner->IsA<UStructProperty>() && !!(InDTExportFlags & EDataTableExportFlags::UseJsonObjectsForStructs))
+		if (ArrayProp && ArrayProp->Inner->IsA<UStructProperty>() && EnumHasAnyFlags(InDTExportFlags, EDataTableExportFlags::UseJsonObjectsForStructs))
 		{
 			const UStructProperty* StructInner = CastChecked<const UStructProperty>(ArrayProp->Inner);
 
@@ -139,7 +139,7 @@ void GetPropertyValueAsStringDirect(const UProperty* InProp, const uint8* InData
 			OutString.AppendChar(')');
 			return;
 		}
-		else if (SetProp && SetProp->ElementProp->IsA<UStructProperty>() && !!(InDTExportFlags & EDataTableExportFlags::UseJsonObjectsForStructs))
+		else if (SetProp && SetProp->ElementProp->IsA<UStructProperty>() && EnumHasAnyFlags(InDTExportFlags, EDataTableExportFlags::UseJsonObjectsForStructs))
 		{
 			const UStructProperty* StructInner = CastChecked<const UStructProperty>(SetProp->ElementProp);
 
@@ -190,7 +190,7 @@ void GetPropertyValueAsStringDirect(const UProperty* InProp, const uint8* InData
 
 					OutString.Append(TEXT(" = "));
 
-					if (MapHelper.GetValueProperty()->IsA<UStructProperty>() && !!(InDTExportFlags & EDataTableExportFlags::UseJsonObjectsForStructs))
+					if (MapHelper.GetValueProperty()->IsA<UStructProperty>() && EnumHasAnyFlags(InDTExportFlags, EDataTableExportFlags::UseJsonObjectsForStructs))
 					{
 						const UStructProperty* StructMapValue = CastChecked<const UStructProperty>(MapHelper.GetValueProperty());
 						OutString.Append(ExportStructAsJson(StructMapValue->Struct, MapValueData));
@@ -212,6 +212,15 @@ void GetPropertyValueAsStringDirect(const UProperty* InProp, const uint8* InData
 		}
 	}
 #endif // WITH_EDITOR
+
+	if (EnumHasAnyFlags(InDTExportFlags, EDataTableExportFlags::UseSimpleText) && InProp->IsA<UTextProperty>())
+	{
+		const UTextProperty* TextProp = CastChecked<const UTextProperty>(InProp);
+		const FText& TextValue = TextProp->GetPropertyValue(InData);
+		OutString.Append(TextValue.ToString());
+		return;
+	}
+
 	InProp->ExportText_Direct(OutString, InData, InData, nullptr, InPortFlags);
 }
 
