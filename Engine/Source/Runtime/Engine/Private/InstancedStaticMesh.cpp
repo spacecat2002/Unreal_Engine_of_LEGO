@@ -1083,8 +1083,8 @@ void FInstancedStaticMeshSceneProxy::GetDynamicRayTracingInstances(struct FRayTr
 
 				FMatrix Transform;
 				InstancedRenderData.PerInstanceRenderData->InstanceBuffer.GetInstanceTransform(Instance, Transform);
+				Transform.M[3][3] = 1.0f;
 				FMatrix InstanceTransform = Transform * GetLocalToWorld();
-				InstanceTransform.M[3][3] = 1.0f;
 				FVector InstanceLocation = InstanceTransform.TransformPosition({ 0.0f,0.0f,0.0f });
 				FVector VToInstanceCenter = Context.ReferenceView->ViewLocation - InstanceLocation;
 				float   DistanceToInstanceCenter = VToInstanceCenter.Size();
@@ -1119,8 +1119,8 @@ void FInstancedStaticMeshSceneProxy::GetDynamicRayTracingInstances(struct FRayTr
 		{
 			FMatrix Transform;
 			InstancedRenderData.PerInstanceRenderData->InstanceBuffer.GetInstanceTransform(InstanceIdx, Transform);
+			Transform.M[3][3] = 1.0f;
 			FMatrix InstanceTransform = Transform * GetLocalToWorld();
-			InstanceTransform.M[3][3] = 1.0f;
 
 			RayTracingInstanceTemplate.InstanceTransforms.Add(InstanceTransform);
 		}
@@ -1155,6 +1155,7 @@ void FInstancedStaticMeshSceneProxy::SetupRayTracingCullClusters()
 		{
 			FMatrix Transform;
 			InstancedRenderData.PerInstanceRenderData->InstanceBuffer.GetInstanceTransform(Instance, Transform);
+			Transform.M[3][3] = 1.0f;
 			FMatrix InstanceTransform = Transform * ComponentLocalToWorld;
 
 			FVector VMin, VMax;
@@ -1174,6 +1175,7 @@ void FInstancedStaticMeshSceneProxy::SetupRayTracingCullClusters()
 		{
 			FMatrix Transform;
 			InstancedRenderData.PerInstanceRenderData->InstanceBuffer.GetInstanceTransform(Instance, Transform);
+			Transform.M[3][3] = 1.0f;
 			FMatrix InstanceTransform = Transform * ComponentLocalToWorld;
 			FVector InstanceLocation = InstanceTransform.TransformPosition({ 0.0f,0.0f,0.0f });
 			FVector VMin = InstanceLocation - FVector(MaxInstanceRadius, MaxInstanceRadius, MaxInstanceRadius);
