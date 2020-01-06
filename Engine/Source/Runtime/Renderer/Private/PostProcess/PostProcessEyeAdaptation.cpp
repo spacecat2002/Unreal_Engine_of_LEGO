@@ -240,7 +240,8 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 		EngineShowFlags.VisualizeMeshDistanceFields ||
 		EngineShowFlags.VisualizeGlobalDistanceField ||
 		EngineShowFlags.CollisionVisibility ||
-		EngineShowFlags.CollisionPawn)
+		EngineShowFlags.CollisionPawn ||
+		!EngineShowFlags.PostProcessing)
 	{
 		ExposureCompensation = 1.0f;
 	}
