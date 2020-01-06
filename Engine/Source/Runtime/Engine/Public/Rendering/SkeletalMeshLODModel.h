@@ -200,9 +200,9 @@ struct FSkelMeshSection
 	*/
 	ENGINE_API void CalcMaxBoneInfluences();
 
-	FORCEINLINE bool HasExtraBoneInfluences() const
+	FORCEINLINE int32 GetMaxBoneInfluences() const
 	{
-		return MaxBoneInfluences > MAX_INFLUENCES_PER_STREAM;
+		return MaxBoneInfluences;
 	}
 
 	/**
@@ -384,7 +384,7 @@ public:
 	*/
 	ENGINE_API void GetNonClothVertices(TArray<FSoftSkinVertex>& OutVertices) const;
 
-	ENGINE_API bool DoSectionsNeedExtraBoneInfluences() const;
+	ENGINE_API int32 GetMaxBoneInfluences() const;
 	bool DoSectionsUse16BitBoneIndex() const;
 
 	void GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize) const;

@@ -60,6 +60,12 @@ FArchive& operator<<(FArchive& Ar, FSoftSkinVertex& V)
 
 	Ar.UsingCustomVersion(FAnimObjectVersion::GUID);
 
+	if (Ar.IsLoading())
+	{
+		FMemory::Memzero(V.InfluenceBones);
+		FMemory::Memzero(V.InfluenceWeights);
+	}
+
 	// serialize bone and weight uint8 arrays in order
 	// this is required when serializing as bulk data memory (see TArray::BulkSerialize notes)
 	for (uint32 InfluenceIndex = 0; InfluenceIndex < MAX_INFLUENCES_PER_STREAM; InfluenceIndex++)
@@ -78,7 +84,7 @@ FArchive& operator<<(FArchive& Ar, FSoftSkinVertex& V)
 
 	if (Ar.UE4Ver() >= VER_UE4_SUPPORT_8_BONE_INFLUENCES_SKELETAL_MESHES)
 	{
-		for (uint32 InfluenceIndex = MAX_INFLUENCES_PER_STREAM; InfluenceIndex < MAX_TOTAL_INFLUENCES; InfluenceIndex++)
+		for (uint32 InfluenceIndex = MAX_INFLUENCES_PER_STREAM; InfluenceIndex < EXTRA_BONE_INFLUENCES; InfluenceIndex++)
 		{
 			if (Ar.IsLoading() && Ar.CustomVer(FAnimObjectVersion::GUID) < FAnimObjectVersion::IncreaseBoneIndexLimitPerChunk)
 			{
@@ -92,14 +98,12 @@ FArchive& operator<<(FArchive& Ar, FSoftSkinVertex& V)
 			}
 		}
 	}
-	else
+
+	if (Ar.CustomVer(FAnimObjectVersion::GUID) >= FAnimObjectVersion::UnlimitedBoneInfluences)
 	{
-		if (Ar.IsLoading())
+		for (uint32 InfluenceIndex = EXTRA_BONE_INFLUENCES; InfluenceIndex < MAX_TOTAL_INFLUENCES; InfluenceIndex++)
 		{
-			for (uint32 InfluenceIndex = MAX_INFLUENCES_PER_STREAM; InfluenceIndex < MAX_TOTAL_INFLUENCES; InfluenceIndex++)
-			{
-				V.InfluenceBones[InfluenceIndex] = 0;
-			}
+			Ar << V.InfluenceBones[InfluenceIndex];
 		}
 	}
 
@@ -110,19 +114,17 @@ FArchive& operator<<(FArchive& Ar, FSoftSkinVertex& V)
 
 	if (Ar.UE4Ver() >= VER_UE4_SUPPORT_8_BONE_INFLUENCES_SKELETAL_MESHES)
 	{
-		for (uint32 InfluenceIndex = MAX_INFLUENCES_PER_STREAM; InfluenceIndex < MAX_TOTAL_INFLUENCES; InfluenceIndex++)
+		for (uint32 InfluenceIndex = MAX_INFLUENCES_PER_STREAM; InfluenceIndex < EXTRA_BONE_INFLUENCES; InfluenceIndex++)
 		{
 			Ar << V.InfluenceWeights[InfluenceIndex];
 		}
 	}
-	else
+
+	if (Ar.CustomVer(FAnimObjectVersion::GUID) >= FAnimObjectVersion::UnlimitedBoneInfluences)
 	{
-		if (Ar.IsLoading())
+		for (uint32 InfluenceIndex = EXTRA_BONE_INFLUENCES; InfluenceIndex < MAX_TOTAL_INFLUENCES; InfluenceIndex++)
 		{
-			for (uint32 InfluenceIndex = MAX_INFLUENCES_PER_STREAM; InfluenceIndex < MAX_TOTAL_INFLUENCES; InfluenceIndex++)
-			{
-				V.InfluenceWeights[InfluenceIndex] = 0;
-			}
+			Ar << V.InfluenceWeights[InfluenceIndex];
 		}
 	}
 
@@ -996,17 +998,15 @@ void FSkeletalMeshLODModel::GetNonClothVertices(TArray<FSoftSkinVertex>& OutVert
 	}
 }
 
-bool FSkeletalMeshLODModel::DoSectionsNeedExtraBoneInfluences() const
+int32 FSkeletalMeshLODModel::GetMaxBoneInfluences() const
 {
+	int32 NumBoneInfluences = 0;
 	for (int32 SectionIdx = 0; SectionIdx < Sections.Num(); ++SectionIdx)
 	{
-		if (Sections[SectionIdx].HasExtraBoneInfluences())
-		{
-			return true;
-		}
+		NumBoneInfluences = FMath::Max(NumBoneInfluences, Sections[SectionIdx].GetMaxBoneInfluences());
 	}
 
-	return false;
+	return NumBoneInfluences;
 }
 
 bool FSkeletalMeshLODModel::DoSectionsUse16BitBoneIndex() const

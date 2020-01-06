@@ -59,7 +59,7 @@ static void SerializeLODInfoForDDC(USkeletalMesh* SkeletalMesh, FString& KeySuff
 // differences, etc.) replace the version GUID below with a new one.
 // In case of merge conflicts with DDC versions, you MUST generate a new GUID
 // and set this new GUID as the version.                                       
-#define SKELETALMESH_DERIVEDDATA_VER TEXT("534BAFEED74A49E4B54BB63DB7AB7886")
+#define SKELETALMESH_DERIVEDDATA_VER TEXT("4204590A8DF340018408B11723A3FC33")
 
 static const FString& GetSkeletalMeshDerivedDataVersion()
 {
@@ -387,18 +387,16 @@ void FSkeletalMeshRenderData::ReleaseResources()
 	}
 }
 
-bool FSkeletalMeshRenderData::HasExtraBoneInfluences() const
+uint32 FSkeletalMeshRenderData::GetNumBoneInfluences() const
 {
+	uint32 NumBoneInfluences = 0;
 	for (int32 LODIndex = 0; LODIndex < LODRenderData.Num(); ++LODIndex)
 	{
 		const FSkeletalMeshLODRenderData& Data = LODRenderData[LODIndex];
-		if (Data.DoesVertexBufferHaveExtraBoneInfluences())
-		{
-			return true;
-		}
+		NumBoneInfluences = FMath::Max(NumBoneInfluences, Data.GetVertexBufferMaxBoneInfluences());
 	}
 
-	return false;
+	return NumBoneInfluences;
 }
 
 bool FSkeletalMeshRenderData::RequiresCPUSkinning(ERHIFeatureLevel::Type FeatureLevel) const
@@ -406,7 +404,7 @@ bool FSkeletalMeshRenderData::RequiresCPUSkinning(ERHIFeatureLevel::Type Feature
 	const int32 MaxGPUSkinBones = FMath::Min(GetFeatureLevelMaxNumberOfBones(FeatureLevel), FGPUBaseSkinVertexFactory::GetMaxGPUSkinBones());
 	const int32 MaxBonesPerChunk = GetMaxBonesPerSection();
 	// Do CPU skinning if we need too many bones per chunk, or if we have too many influences per vertex on lower end
-	return (MaxBonesPerChunk > MaxGPUSkinBones) || (HasExtraBoneInfluences() && FeatureLevel < ERHIFeatureLevel::ES3_1);
+	return (MaxBonesPerChunk > MaxGPUSkinBones) || (GetNumBoneInfluences() > MAX_INFLUENCES_PER_STREAM && FeatureLevel < ERHIFeatureLevel::ES3_1);
 }
 
 void FSkeletalMeshRenderData::GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize)

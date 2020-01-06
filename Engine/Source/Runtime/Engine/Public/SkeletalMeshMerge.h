@@ -231,8 +231,8 @@ private:
 	* Creates a new LOD model and adds the new merged sections to it. Modifies the MergedMesh.
 	* @param LODIdx - current LOD to process
 	*/
-	template<typename VertexDataType, typename SkinWeightType>
-	void GenerateLODModel( int32 LODIdx );
+	template<typename VertexDataType>
+	void GenerateLODModel( int32 LODIdx);
 
 	/**
 	* Generate the list of sections that need to be created along with info needed to merge sections

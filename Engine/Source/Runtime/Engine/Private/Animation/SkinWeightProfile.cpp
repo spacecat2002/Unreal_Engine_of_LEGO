@@ -142,20 +142,37 @@ FArchive& operator<<(FArchive& Ar, FRawSkinWeight& OverrideEntry)
 {
 	Ar.UsingCustomVersion(FAnimObjectVersion::GUID);
 
-	for (int32 InfluenceIndex = 0; InfluenceIndex < MAX_TOTAL_INFLUENCES; ++InfluenceIndex)
+	if (Ar.IsLoading())
 	{
-		if (Ar.IsLoading() && Ar.CustomVer(FAnimObjectVersion::GUID) < FAnimObjectVersion::IncreaseBoneIndexLimitPerChunk)
+		FMemory::Memzero(OverrideEntry.InfluenceBones);
+		FMemory::Memzero(OverrideEntry.InfluenceWeights);
+	}
+
+	if (Ar.CustomVer(FAnimObjectVersion::GUID) < FAnimObjectVersion::UnlimitedBoneInfluences)
+	{
+		for (int32 InfluenceIndex = 0; InfluenceIndex < EXTRA_BONE_INFLUENCES; ++InfluenceIndex)
 		{
-			uint8 BoneIndex = 0;
-			Ar << BoneIndex;
-			OverrideEntry.InfluenceBones[InfluenceIndex] = BoneIndex;
+			if (Ar.IsLoading() && Ar.CustomVer(FAnimObjectVersion::GUID) < FAnimObjectVersion::IncreaseBoneIndexLimitPerChunk)
+			{
+				uint8 BoneIndex = 0;
+				Ar << BoneIndex;
+				OverrideEntry.InfluenceBones[InfluenceIndex] = BoneIndex;
+			}
+			else
+			{
+				Ar << OverrideEntry.InfluenceBones[InfluenceIndex];
+			}
+
+			Ar << OverrideEntry.InfluenceWeights[InfluenceIndex];
 		}
-		else
+	}
+	else
+	{
+		for (int32 InfluenceIndex = 0; InfluenceIndex < MAX_TOTAL_INFLUENCES; ++InfluenceIndex)
 		{
 			Ar << OverrideEntry.InfluenceBones[InfluenceIndex];
+			Ar << OverrideEntry.InfluenceWeights[InfluenceIndex];
 		}
-
-		Ar << OverrideEntry.InfluenceWeights[InfluenceIndex];
 	}
 
 	return Ar;
@@ -314,7 +331,7 @@ FSkinWeightVertexBuffer* FSkinWeightProfilesData::GetOverrideBuffer(const FName&
 				ApplyOverrideProfile(OverrideBuffer, ProfileName);
 
 				INC_DWORD_STAT_BY(STAT_SkeletalMeshVertexMemory, OverrideBuffer->GetVertexDataSize());
-				BeginInitResource(OverrideBuffer);
+				OverrideBuffer->BeginInitResources();
 
 				return OverrideBuffer;
 			}
@@ -336,36 +353,15 @@ FRuntimeSkinWeightProfileData& FSkinWeightProfilesData::AddOverrideData(const FN
 
 void FSkinWeightProfilesData::ApplyOverrideProfile(FSkinWeightVertexBuffer* OverrideBuffer, const FName& ProfileName)
 {
-	const bool bExtraWeights = BaseBuffer->HasExtraBoneInfluences();
-	OverrideBuffer->SetHasExtraBoneInfluences(bExtraWeights);
+	const uint32 NumInfluences = BaseBuffer->GetMaxBoneInfluences();
+	OverrideBuffer->SetMaxBoneInfluences(NumInfluences);
 	const bool bUse16BitBoneIndex = BaseBuffer->Use16BitBoneIndex();
 	OverrideBuffer->SetUse16BitBoneIndex(bUse16BitBoneIndex);
 
 	const FRuntimeSkinWeightProfileData* ProfilePtr = OverrideData.Find(ProfileName);
 	if (ProfilePtr)
 	{
-		if (bExtraWeights)
-		{
-			if (bUse16BitBoneIndex)
-			{
-				ProfilePtr->ApplyOverrides<true, FBoneIndex16>(OverrideBuffer, BaseBuffer);
-			}
-			else
-			{
-				ProfilePtr->ApplyOverrides<true, FBoneIndex8>(OverrideBuffer, BaseBuffer);
-			}
-		}
-		else
-		{
-			if (bUse16BitBoneIndex)
-			{
-				ProfilePtr->ApplyOverrides<false, FBoneIndex16>(OverrideBuffer, BaseBuffer);
-			}
-			else
-			{
-				ProfilePtr->ApplyOverrides<false, FBoneIndex8>(OverrideBuffer, BaseBuffer);
-			}
-		}
+		ProfilePtr->ApplyOverrides(OverrideBuffer, BaseBuffer);
 	}
 }
 
@@ -382,7 +378,7 @@ void FSkinWeightProfilesData::ReleaseBuffer(const FName& ProfileName)
 			ENQUEUE_RENDER_COMMAND(ReleaseSkinSkinWeightProfilesDataBufferCommand)(
 				[Buffer](FRHICommandListImmediate& RHICmdList)
 			{			
-				Buffer->ReleaseResource();
+				Buffer->ReleaseResources();
 				delete Buffer;		
 			});
 		}
@@ -411,7 +407,7 @@ void FSkinWeightProfilesData::ReleaseResources()
 		{
 			for (FSkinWeightVertexBuffer* Buffer : Buffers)
 			{	
-				Buffer->ReleaseResource();
+				Buffer->ReleaseResources();
 				delete Buffer;
 			}
 		});
@@ -457,7 +453,7 @@ void FSkinWeightProfilesData::ReleaseCPUResources()
 }
 
 template <bool bRenderThread>
-void FSkinWeightProfilesData::CreateRHIBuffers_Internal(TArray<TPair<FName, FVertexBufferRHIRef>>& OutBuffers)
+void FSkinWeightProfilesData::CreateRHIBuffers_Internal(TArray<TPair<FName, FSkinWeightRHIInfo>>& OutBuffers)
 {
 	const int32 NumActiveProfiles = ProfileNameToBuffer.Num();
 	check(BaseBuffer || !NumActiveProfiles);
@@ -478,12 +474,12 @@ void FSkinWeightProfilesData::CreateRHIBuffers_Internal(TArray<TPair<FName, FVer
 	}
 }
 
-void FSkinWeightProfilesData::CreateRHIBuffers_RenderThread(TArray<TPair<FName, FVertexBufferRHIRef>>& OutBuffers)
+void FSkinWeightProfilesData::CreateRHIBuffers_RenderThread(TArray<TPair<FName, FSkinWeightRHIInfo>>& OutBuffers)
 {
 	CreateRHIBuffers_Internal<true>(OutBuffers);
 }
 
-void FSkinWeightProfilesData::CreateRHIBuffers_Async(TArray<TPair<FName, FVertexBufferRHIRef>>& OutBuffers)
+void FSkinWeightProfilesData::CreateRHIBuffers_Async(TArray<TPair<FName, FSkinWeightRHIInfo>>& OutBuffers)
 {
 	CreateRHIBuffers_Internal<false>(OutBuffers);
 }

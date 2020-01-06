@@ -24,6 +24,8 @@ struct CORE_API FAnimObjectVersion
 		// Increase number of bones per chunk from uint8 to uint16
 		IncreaseBoneIndexLimitPerChunk,
 
+		UnlimitedBoneInfluences,
+
 		// -----<new versions can be added above this line>-------------------------------------------------
 		VersionPlusOne,
 		LatestVersion = VersionPlusOne - 1

@@ -12,6 +12,7 @@
 #include "Animation/MorphTarget.h"
 #include "GPUSkinVertexFactory.h"
 #include "Rendering/SkinWeightVertexBuffer.h"
+#include "BoneIndices.h"
 
 struct FMorphTargetDelta;
 
@@ -26,6 +27,10 @@ static void SkinVertices(FFinalSkinVertex* DestVertex, FMatrix* ReferenceToLocal
 #define INFLUENCE_5		5
 #define INFLUENCE_6		6
 #define INFLUENCE_7		7
+#define INFLUENCE_8		8
+#define INFLUENCE_9		9
+#define INFLUENCE_10	10
+#define INFLUENCE_11	11
 
 /** 
  * Modify the vertex buffer to store bone weights in the UV coordinates for rendering 
@@ -303,13 +308,13 @@ void FSkeletalMeshObjectCPUSkin::FSkeletalMeshObjectLOD::InitResources(FSkelMesh
 		if (CompLODInfo->OverrideSkinWeights &&
 			CompLODInfo->OverrideSkinWeights->GetNumVertices() == LODData.StaticVertexBuffers.PositionVertexBuffer.GetNumVertices())
 		{
-			check(LODData.SkinWeightVertexBuffer.HasExtraBoneInfluences() == CompLODInfo->OverrideSkinWeights->HasExtraBoneInfluences());
+			check(LODData.SkinWeightVertexBuffer.GetMaxBoneInfluences() == CompLODInfo->OverrideSkinWeights->GetMaxBoneInfluences());
 			MeshObjectWeightBuffer = CompLODInfo->OverrideSkinWeights;
 		}
 		else if (CompLODInfo->OverrideProfileSkinWeights &&
 			CompLODInfo->OverrideProfileSkinWeights->GetNumVertices() == LODData.StaticVertexBuffers.PositionVertexBuffer.GetNumVertices())
 		{
-			check(LODData.SkinWeightVertexBuffer.HasExtraBoneInfluences() == CompLODInfo->OverrideProfileSkinWeights->HasExtraBoneInfluences());
+			check(LODData.SkinWeightVertexBuffer.GetMaxBoneInfluences() == CompLODInfo->OverrideProfileSkinWeights->GetMaxBoneInfluences());
 			MeshObjectWeightBuffer = CompLODInfo->OverrideProfileSkinWeights;
 		}
 		else
@@ -425,13 +430,13 @@ void FSkeletalMeshObjectCPUSkin::FSkeletalMeshObjectLOD::UpdateSkinWeights(FSkel
 		if (CompLODInfo->OverrideSkinWeights &&
 			CompLODInfo->OverrideSkinWeights->GetNumVertices() == LODData.StaticVertexBuffers.PositionVertexBuffer.GetNumVertices())
 		{
-			check(LODData.SkinWeightVertexBuffer.HasExtraBoneInfluences() == CompLODInfo->OverrideSkinWeights->HasExtraBoneInfluences());
+			check(LODData.SkinWeightVertexBuffer.GetMaxBoneInfluences() == CompLODInfo->OverrideSkinWeights->GetMaxBoneInfluences());
 			NewMeshObjectWeightBuffer = CompLODInfo->OverrideSkinWeights;
 		}
 		else if (CompLODInfo->OverrideProfileSkinWeights &&
 			CompLODInfo->OverrideProfileSkinWeights->GetNumVertices() == LODData.StaticVertexBuffers.PositionVertexBuffer.GetNumVertices())
 		{
-			check(LODData.SkinWeightVertexBuffer.HasExtraBoneInfluences() == CompLODInfo->OverrideProfileSkinWeights->HasExtraBoneInfluences());
+			check(LODData.SkinWeightVertexBuffer.GetMaxBoneInfluences() == CompLODInfo->OverrideProfileSkinWeights->GetMaxBoneInfluences());
 			NewMeshObjectWeightBuffer = CompLODInfo->OverrideProfileSkinWeights;
 		}
 		else
@@ -683,7 +688,7 @@ const VectorRegister		VECTOR_0001				= DECLARE_VECTOR_REGISTER(0.f, 0.f, 0.f, 1.
 
 #define FIXED_VERTEX_INDEX 0xFFFF
 
-template<bool bExtraBoneInfluences, typename BoneIndexType, int32 MaxSectionBoneInfluences, typename VertexType>
+template<typename VertexType>
 static void SkinVertexSection(
 	FFinalSkinVertex*& DestVertex,
 	TArray<FMorphTargetInfo>& MorphEvalInfos,
@@ -709,6 +714,7 @@ static void SkinVertexSection(
 	FPlatformMisc::Prefetch( BoneMap );
 	FPlatformMisc::Prefetch( BoneMap, PLATFORM_CACHE_LINE_SIZE );
 
+	const int32 MaxSectionBoneInfluences = WeightBuffer.GetMaxBoneInfluences();
 	const bool bLODUsesCloth = LOD.HasClothData() && ClothSimData != nullptr && ClothBlendWeight > 0.0f;
 	const int32 NumSoftVertices = Section.GetNumVertices();
 	if (NumSoftVertices > 0)
@@ -732,7 +738,7 @@ static void SkinVertexSection(
 
 			VertexType* MorphedVertex = &SrcSoftVertex;
 
-			const TSkinWeightInfo<bExtraBoneInfluences, BoneIndexType>* SrcWeights = WeightBuffer.GetSkinWeightPtr<bExtraBoneInfluences, BoneIndexType>(VertexBufferIndex);
+			FSkinWeightInfo SrcWeights = WeightBuffer.GetVertexSkinWeights(VertexBufferIndex);
 
 			if( NumValidMorphs ) 
 			{
@@ -747,8 +753,8 @@ static void SkinVertexSection(
 				FPlatformMisc::Prefetch(ClothVertData, PLATFORM_CACHE_LINE_SIZE);	// Prefetch next cloth vertex
 			}
 
-			const BoneIndexType* RESTRICT BoneIndices = SrcWeights->InfluenceBones;
-			const uint8* RESTRICT BoneWeights = SrcWeights->InfluenceWeights;
+			const FBoneIndexType* RESTRICT BoneIndices = SrcWeights.InfluenceBones;
+			const uint8* RESTRICT BoneWeights = SrcWeights.InfluenceWeights;
 
 			static VectorRegister	SrcNormals[3];
 			VectorRegister			DstNormals[3];
@@ -756,10 +762,15 @@ static void SkinVertexSection(
 			SrcNormals[1] = Unpack3( &MorphedVertex->TangentX.Vector.Packed );
 			SrcNormals[2] = Unpack4( &MorphedVertex->TangentZ.Vector.Packed );
 			VectorRegister Weights = VectorMultiply( VectorLoadByte4(BoneWeights), VECTOR_INV_255 );
-			VectorRegister ExtraWeights;
+			VectorRegister ExtraWeights = MakeVectorRegister(0.f, 0.f, 0.f, 0.f);
+			VectorRegister ExtraWeights2 = MakeVectorRegister(0.f, 0.f, 0.f, 0.f);
 			if (MaxSectionBoneInfluences > 4)
 			{
 				ExtraWeights = VectorMultiply( VectorLoadByte4(&BoneWeights[MAX_INFLUENCES_PER_STREAM]), VECTOR_INV_255 );
+			}
+			if (MaxSectionBoneInfluences > 8)
+			{
+				ExtraWeights2 = VectorMultiply(VectorLoadByte4(&BoneWeights[EXTRA_BONE_INFLUENCES]), VECTOR_INV_255);
 			}
 			VectorResetFloatRegisters(); // Need to call this to be able to use regular floating point registers again after Unpack and VectorLoadByte4.
 
@@ -833,6 +844,46 @@ static void SkinVertexSection(
 									M10	= VectorMultiplyAdd( VectorLoadAligned( &BoneMatrix7.M[1][0] ), Weight7, M10 );
 									M20	= VectorMultiplyAdd( VectorLoadAligned( &BoneMatrix7.M[2][0] ), Weight7, M20 );
 									M30	= VectorMultiplyAdd( VectorLoadAligned( &BoneMatrix7.M[3][0] ), Weight7, M30 );
+
+									if (MaxSectionBoneInfluences > 8)
+									{
+										const FMatrix BoneMatrix8 = ReferenceToLocal[BoneMap[BoneIndices[INFLUENCE_8]]];
+										VectorRegister Weight8 = VectorReplicate( ExtraWeights2, INFLUENCE_8 - INFLUENCE_8 );
+										M00 = VectorMultiplyAdd(VectorLoadAligned( &BoneMatrix8.M[0][0]), Weight8, M00 );
+										M10 = VectorMultiplyAdd(VectorLoadAligned( &BoneMatrix8.M[1][0]), Weight8, M10 );
+										M20 = VectorMultiplyAdd(VectorLoadAligned( &BoneMatrix8.M[2][0]), Weight8, M20 );
+										M30 = VectorMultiplyAdd(VectorLoadAligned( &BoneMatrix8.M[3][0]), Weight8, M30 );
+
+										if (MaxSectionBoneInfluences > 9)
+										{
+											const FMatrix BoneMatrix9 = ReferenceToLocal[BoneMap[BoneIndices[INFLUENCE_9]]];
+											VectorRegister Weight9 = VectorReplicate(ExtraWeights2, INFLUENCE_9 - INFLUENCE_8);
+											M00 = VectorMultiplyAdd(VectorLoadAligned(&BoneMatrix9.M[0][0]), Weight9, M00);
+											M10 = VectorMultiplyAdd(VectorLoadAligned(&BoneMatrix9.M[1][0]), Weight9, M10);
+											M20 = VectorMultiplyAdd(VectorLoadAligned(&BoneMatrix9.M[2][0]), Weight9, M20);
+											M30 = VectorMultiplyAdd(VectorLoadAligned(&BoneMatrix9.M[3][0]), Weight9, M30);
+
+											if (MaxSectionBoneInfluences > 10)
+											{
+												const FMatrix BoneMatrix10 = ReferenceToLocal[BoneMap[BoneIndices[INFLUENCE_10]]];
+												VectorRegister Weight10 = VectorReplicate(ExtraWeights2, INFLUENCE_10 - INFLUENCE_8);
+												M00 = VectorMultiplyAdd(VectorLoadAligned(&BoneMatrix10.M[0][0]), Weight10, M00);
+												M10 = VectorMultiplyAdd(VectorLoadAligned(&BoneMatrix10.M[1][0]), Weight10, M10);
+												M20 = VectorMultiplyAdd(VectorLoadAligned(&BoneMatrix10.M[2][0]), Weight10, M20);
+												M30 = VectorMultiplyAdd(VectorLoadAligned(&BoneMatrix10.M[3][0]), Weight10, M30);
+
+												if (MaxSectionBoneInfluences > 11)
+												{
+													const FMatrix BoneMatrix11 = ReferenceToLocal[BoneMap[BoneIndices[INFLUENCE_11]]];
+													VectorRegister Weight11 = VectorReplicate(ExtraWeights2, INFLUENCE_11 - INFLUENCE_8);
+													M00 = VectorMultiplyAdd(VectorLoadAligned(&BoneMatrix11.M[0][0]), Weight11, M00);
+													M10 = VectorMultiplyAdd(VectorLoadAligned(&BoneMatrix11.M[1][0]), Weight11, M10);
+													M20 = VectorMultiplyAdd(VectorLoadAligned(&BoneMatrix11.M[2][0]), Weight11, M20);
+													M30 = VectorMultiplyAdd(VectorLoadAligned(&BoneMatrix11.M[3][0]), Weight11, M30);
+												}
+											}
+										}
+									}
 								}
 							}
 						}
@@ -957,37 +1008,6 @@ static void SkinVertexSection(
 	}
 }
 
-template< bool bExtraBoneInfluences, typename BoneIndexType, typename VertexType>
-static void SkinVertexSection( 
-	FFinalSkinVertex*& DestVertex, 
-	TArray<FMorphTargetInfo>& MorphEvalInfos, 
-	const TArray<float>& MorphWeights, 
-	const FSkelMeshRenderSection& Section, 
-	const FSkeletalMeshLODRenderData &LOD,
-	FSkinWeightVertexBuffer& WeightBuffer,
-	int32 VertexBufferBaseIndex, 
-	uint32 NumValidMorphs, 
-	int32 &CurBaseVertIdx, 
-	int32 LODIndex, 
-	const FMatrix* RESTRICT ReferenceToLocal, 
-	const FClothSimulData* ClothSimData, 
-	float ClothBlendWeight, 
-	const FMatrix& WorldToLocal)
-{
-	switch (Section.MaxBoneInfluences)
-	{
-		case 1: SkinVertexSection<bExtraBoneInfluences, BoneIndexType, 1, VertexType>(DestVertex, MorphEvalInfos, MorphWeights, Section, LOD, WeightBuffer, VertexBufferBaseIndex, NumValidMorphs, CurBaseVertIdx, LODIndex, ReferenceToLocal, ClothSimData, ClothBlendWeight, WorldToLocal); break;
-		case 2: SkinVertexSection<bExtraBoneInfluences, BoneIndexType, 2, VertexType>(DestVertex, MorphEvalInfos, MorphWeights, Section, LOD, WeightBuffer, VertexBufferBaseIndex, NumValidMorphs, CurBaseVertIdx, LODIndex, ReferenceToLocal, ClothSimData, ClothBlendWeight, WorldToLocal); break;
-		case 3: SkinVertexSection<bExtraBoneInfluences, BoneIndexType, 3, VertexType>(DestVertex, MorphEvalInfos, MorphWeights, Section, LOD, WeightBuffer, VertexBufferBaseIndex, NumValidMorphs, CurBaseVertIdx, LODIndex, ReferenceToLocal, ClothSimData, ClothBlendWeight, WorldToLocal); break;
-		case 4: SkinVertexSection<bExtraBoneInfluences, BoneIndexType, 4, VertexType>(DestVertex, MorphEvalInfos, MorphWeights, Section, LOD, WeightBuffer, VertexBufferBaseIndex, NumValidMorphs, CurBaseVertIdx, LODIndex, ReferenceToLocal, ClothSimData, ClothBlendWeight, WorldToLocal); break;
-		case 5: SkinVertexSection<bExtraBoneInfluences, BoneIndexType, 5, VertexType>(DestVertex, MorphEvalInfos, MorphWeights, Section, LOD, WeightBuffer, VertexBufferBaseIndex, NumValidMorphs, CurBaseVertIdx, LODIndex, ReferenceToLocal, ClothSimData, ClothBlendWeight, WorldToLocal); break;
-		case 6: SkinVertexSection<bExtraBoneInfluences, BoneIndexType, 6, VertexType>(DestVertex, MorphEvalInfos, MorphWeights, Section, LOD, WeightBuffer, VertexBufferBaseIndex, NumValidMorphs, CurBaseVertIdx, LODIndex, ReferenceToLocal, ClothSimData, ClothBlendWeight, WorldToLocal); break;
-		case 7: SkinVertexSection<bExtraBoneInfluences, BoneIndexType, 7, VertexType>(DestVertex, MorphEvalInfos, MorphWeights, Section, LOD, WeightBuffer, VertexBufferBaseIndex, NumValidMorphs, CurBaseVertIdx, LODIndex, ReferenceToLocal, ClothSimData, ClothBlendWeight, WorldToLocal); break;
-		case 8: SkinVertexSection<bExtraBoneInfluences, BoneIndexType, 8, VertexType>(DestVertex, MorphEvalInfos, MorphWeights, Section, LOD, WeightBuffer, VertexBufferBaseIndex, NumValidMorphs, CurBaseVertIdx, LODIndex, ReferenceToLocal, ClothSimData, ClothBlendWeight, WorldToLocal); break;
-		default: check(0);
-	}
-}
-
 template<typename VertexType>
 static void SkinVertices(
 	FFinalSkinVertex* DestVertex, 
@@ -1027,28 +1047,7 @@ static void SkinVertices(
 
 		const FClothSimulData* ClothSimData = ClothSimulUpdateData.Find(Section.CorrespondClothAssetIndex);
 
-		if (LOD.DoesVertexBufferHaveExtraBoneInfluences())
-		{
-			if (WeightBuffer.Use16BitBoneIndex())
-			{
-				SkinVertexSection<true, FBoneIndex16, VertexType>(DestVertex, MorphEvalInfos, MorphTargetWeights, Section, LOD, WeightBuffer, VertexBufferBaseIndex, NumValidMorphs, CurBaseVertIdx, LODIndex, ReferenceToLocal, ClothSimData, ClothBlendWeight, WorldToLocal);
-			}
-			else
-			{
-				SkinVertexSection<true, FBoneIndex8, VertexType>(DestVertex, MorphEvalInfos, MorphTargetWeights, Section, LOD, WeightBuffer, VertexBufferBaseIndex, NumValidMorphs, CurBaseVertIdx, LODIndex, ReferenceToLocal, ClothSimData, ClothBlendWeight, WorldToLocal);
-			}
-		}
-		else
-		{
-			if (WeightBuffer.Use16BitBoneIndex())
-			{
-				SkinVertexSection<false, FBoneIndex16, VertexType>(DestVertex, MorphEvalInfos, MorphTargetWeights, Section, LOD, WeightBuffer, VertexBufferBaseIndex, NumValidMorphs, CurBaseVertIdx, LODIndex, ReferenceToLocal, ClothSimData, ClothBlendWeight, WorldToLocal);
-			}
-			else
-			{
-				SkinVertexSection<false, FBoneIndex8, VertexType>(DestVertex, MorphEvalInfos, MorphTargetWeights, Section, LOD, WeightBuffer, VertexBufferBaseIndex, NumValidMorphs, CurBaseVertIdx, LODIndex, ReferenceToLocal, ClothSimData, ClothBlendWeight, WorldToLocal);
-			}
-		}
+		SkinVertexSection<VertexType>(DestVertex, MorphEvalInfos, MorphTargetWeights, Section, LOD, WeightBuffer, VertexBufferBaseIndex, NumValidMorphs, CurBaseVertIdx, LODIndex, ReferenceToLocal, ClothSimData, ClothBlendWeight, WorldToLocal);
 	}
 
 	VectorSetControlRegister( StatusRegister );
@@ -1076,7 +1075,6 @@ FVector4 GetTangetToColor(FPackedNormal Tangent)
  * @param LOD - LOD model corresponding to DestVertex 
  * @param BonesOfInterest - array of bones we want to display
  */
-template <bool bExtraBoneInfluencesT, typename BoneIndexType>
 static FORCEINLINE void CalculateSectionBoneWeights(FFinalSkinVertex*& DestVertex, FSkinWeightVertexBuffer& SkinWeightVertexBuffer, FSkelMeshRenderSection& Section, const TArray<int32>& BonesOfInterest)
 {
 	const float INV255 = 1.f/255.f;
@@ -1089,16 +1087,16 @@ static FORCEINLINE void CalculateSectionBoneWeights(FFinalSkinVertex*& DestVerte
 	for(int32 VertexIndex = VertexBufferBaseIndex;VertexIndex < Section.GetNumVertices();VertexIndex++,DestVertex++)
 	{
 		const int32 VertexBufferIndex = Section.GetVertexBufferIndex() + VertexIndex;
-		auto* SrcWeight = SkinWeightVertexBuffer.GetSkinWeightPtr<bExtraBoneInfluencesT, BoneIndexType>(VertexBufferIndex);
+		FSkinWeightInfo SrcWeight = SkinWeightVertexBuffer.GetVertexSkinWeights(VertexBufferIndex);
 
 		//Zero out the UV coords
 		DestVertex->U = 0.0f;
 		DestVertex->V = 0.0f;
 
-		const BoneIndexType* RESTRICT BoneIndices = SrcWeight->InfluenceBones;
-		const uint8* RESTRICT BoneWeights = SrcWeight->InfluenceWeights;
+		const FBoneIndexType* RESTRICT BoneIndices = SrcWeight.InfluenceBones;
+		const uint8* RESTRICT BoneWeights = SrcWeight.InfluenceWeights;
 
-		for (int32 i = 0; i < TSkinWeightInfo<bExtraBoneInfluencesT, BoneIndexType>::NumInfluences; i++)
+		for (uint32 i = 0; i < SkinWeightVertexBuffer.GetMaxBoneInfluences(); i++)
 		{
 			if (BonesOfInterest.Contains(BoneMap[BoneIndices[i]]))
 			{
@@ -1125,29 +1123,7 @@ static void CalculateBoneWeights(FFinalSkinVertex* DestVertex, FSkeletalMeshLODR
 	for(int32 SectionIndex= 0;SectionIndex< LOD.RenderSections.Num();SectionIndex++)
 	{
 		FSkelMeshRenderSection& Section = LOD.RenderSections[SectionIndex];
-
-		if (WeightBuffer.HasExtraBoneInfluences())
-		{
-			if (WeightBuffer.Use16BitBoneIndex())
-			{
-				CalculateSectionBoneWeights<true, FBoneIndex16>(DestVertex, WeightBuffer, Section, InBonesOfInterest);
-			}
-			else
-			{
-				CalculateSectionBoneWeights<true, FBoneIndex8>(DestVertex, WeightBuffer, Section, InBonesOfInterest);
-			}
-		}
-		else
-		{
-			if (WeightBuffer.Use16BitBoneIndex())
-			{
-				CalculateSectionBoneWeights<false, FBoneIndex16>(DestVertex, WeightBuffer, Section, InBonesOfInterest);
-			}
-			else
-			{
-				CalculateSectionBoneWeights<false, FBoneIndex8>(DestVertex, WeightBuffer, Section, InBonesOfInterest);
-			}
-		}
+		CalculateSectionBoneWeights(DestVertex, WeightBuffer, Section, InBonesOfInterest);
 	}
 }
 

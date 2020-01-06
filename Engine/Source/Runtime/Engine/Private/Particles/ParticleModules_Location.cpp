@@ -2931,33 +2931,11 @@ bool UParticleModuleLocationSkelVertSurface::VertInfluencedByActiveBone(FParticl
 			}
 		}
 
-		if (LODData.GetSkinWeightVertexBuffer()->HasExtraBoneInfluences())
-		{
-			if (LODData.GetSkinWeightVertexBuffer()->Use16BitBoneIndex())
-			{
-				return VertInfluencedByActiveBoneTyped<true, FBoneIndex16>(LODData, 0, Section, VertIndex, InSkelMeshComponent, InstancePayload, OutBoneIndex);
-			}
-			else
-			{
-				return VertInfluencedByActiveBoneTyped<true, FBoneIndex8>(LODData, 0, Section, VertIndex, InSkelMeshComponent, InstancePayload, OutBoneIndex);
-			}
-		}
-		else
-		{
-			if (LODData.GetSkinWeightVertexBuffer()->Use16BitBoneIndex())
-			{
-				return VertInfluencedByActiveBoneTyped<false, FBoneIndex16>(LODData, 0, Section, VertIndex, InSkelMeshComponent, InstancePayload, OutBoneIndex);
-			}
-			else
-			{
-				return VertInfluencedByActiveBoneTyped<false, FBoneIndex8>(LODData, 0, Section, VertIndex, InSkelMeshComponent, InstancePayload, OutBoneIndex);
-			}
-		}
+		return VertInfluencedByActiveBoneTyped(LODData, 0, Section, VertIndex, InSkelMeshComponent, InstancePayload, OutBoneIndex);
 	}
 	return false;
 }
 
-template<bool bExtraBoneInfluencesT, typename BoneIndexTypeT>
 bool UParticleModuleLocationSkelVertSurface::VertInfluencedByActiveBoneTyped(
 	FSkeletalMeshLODRenderData& LODData,
 	int32 LODIndex,
@@ -2972,8 +2950,6 @@ bool UParticleModuleLocationSkelVertSurface::VertInfluencedByActiveBoneTyped(
 	FSkinWeightVertexBuffer* WeightBuffer = InSkelMeshComponent->GetSkinWeightBuffer(LODIndex);
 	if (WeightBuffer)
 	{
-		const TSkinWeightInfo<bExtraBoneInfluencesT, BoneIndexTypeT>* SrcSkinWeights = WeightBuffer->GetSkinWeightPtr<bExtraBoneInfluencesT, BoneIndexTypeT>(Section.GetVertexBufferIndex() + VertIndex);
-
 #if !PLATFORM_LITTLE_ENDIAN
 		// uint8[] elements in LOD.VertexBufferGPUSkin have been swapped for VET_UBYTE4 vertex stream use
 		for (int32 InfluenceIndex = MAX_INFLUENCES - 1; InfluenceIndex >= MAX_INFLUENCES - Section.MaxBoneInfluences; InfluenceIndex--)
@@ -2981,7 +2957,7 @@ bool UParticleModuleLocationSkelVertSurface::VertInfluencedByActiveBoneTyped(
 		for (int32 InfluenceIndex = 0; InfluenceIndex < Section.MaxBoneInfluences; InfluenceIndex++)
 #endif
 		{
-			int32 BoneIndex = Section.BoneMap[SrcSkinWeights->InfluenceBones[InfluenceIndex]];
+			int32 BoneIndex = Section.BoneMap[WeightBuffer->GetBoneIndex(Section.GetVertexBufferIndex() + VertIndex, InfluenceIndex)];
 			if (InSkelMeshComponent->MasterPoseComponent.IsValid())
 			{
 				check(MasterBoneMap.Num() == InSkelMeshComponent->SkeletalMesh->RefSkeleton.GetNum());

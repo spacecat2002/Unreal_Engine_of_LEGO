@@ -195,7 +195,7 @@ void FSkeletalMeshLODRenderData::InitResources(bool bNeedsVertexColors, int32 LO
 	{
 		SkinWeightProfilesData.SetDynamicDefaultSkinWeightProfile(Owner, LODIndex);
 	}
-	BeginInitResource(&SkinWeightVertexBuffer);
+	SkinWeightVertexBuffer.BeginInitResources();
 
 	if (bNeedsVertexColors)
 	{
@@ -473,7 +473,7 @@ void FSkeletalMeshLODRenderData::ReleaseResources()
 
 	BeginReleaseResource(&StaticVertexBuffers.PositionVertexBuffer);
 	BeginReleaseResource(&StaticVertexBuffers.StaticMeshVertexBuffer);
-	BeginReleaseResource(&SkinWeightVertexBuffer);
+	SkinWeightVertexBuffer.BeginReleaseResources();
 	BeginReleaseResource(&StaticVertexBuffers.ColorVertexBuffer);
 	BeginReleaseResource(&ClothVertexBuffer);
 	// DuplicatedVerticesBuffer is used only for SkinCache and Editor features which is SM5 only
@@ -583,7 +583,7 @@ void FSkeletalMeshLODRenderData::BuildFromLODModel(const FSkeletalMeshLODModel* 
 
 	// Init skin weight buffer
 	SkinWeightVertexBuffer.SetNeedsCPUAccess(true);
-	SkinWeightVertexBuffer.SetHasExtraBoneInfluences(ImportedModel->DoSectionsNeedExtraBoneInfluences());
+	SkinWeightVertexBuffer.SetMaxBoneInfluences(ImportedModel->GetMaxBoneInfluences());
 	SkinWeightVertexBuffer.SetUse16BitBoneIndex(ImportedModel->DoSectionsUse16BitBoneIndex());
 	SkinWeightVertexBuffer.Init(Vertices);
 
@@ -641,11 +641,8 @@ void FSkeletalMeshLODRenderData::ReleaseCPUResources(bool bForStreaming)
 		{
 			AdjacencyMultiSizeIndexContainer.GetIndexBuffer()->Empty();
 		}
-		if (SkinWeightVertexBuffer.IsWeightDataValid())
-		{
-			SkinWeightVertexBuffer.CleanUp();
-		}
 
+		SkinWeightVertexBuffer.CleanUp();
 		StaticVertexBuffers.PositionVertexBuffer.CleanUp();
 		StaticVertexBuffers.StaticMeshVertexBuffer.CleanUp();
 
