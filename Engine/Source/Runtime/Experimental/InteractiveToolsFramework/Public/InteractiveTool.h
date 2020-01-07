@@ -104,6 +104,23 @@ private:
 	UPROPERTY()
 	UObject* CachedProperties = nullptr;
 
+
+	//
+	// Visibility, enable/disable, etc
+	//
+
+private:
+	UPROPERTY()
+	bool bIsPropertySetEnabled = true;
+
+	friend class UInteractiveTool;	// so that tool can enable/disable
+
+public:
+	/** Return true if this property set is enabled. Enabled/Disable state is intended to be used to control things like visibility in UI/etc. */
+	bool IsPropertySetEnabled() const
+	{
+		return bIsPropertySetEnabled;
+	}
 };
 
 
@@ -205,8 +222,13 @@ public:
 	/**
 	 * @return list of property UObjects for this tool (ie to add to a DetailsViewPanel, for example)
 	 */
-	virtual const TArray<UObject*>& GetToolProperties() const;
+	virtual TArray<UObject*> GetToolProperties(bool bEnabledOnly = true) const;
 
+	/**
+	 * OnPropertySetsModified is broadcast whenever the contents of the ToolPropertyObjects array is modified
+	 */
+	DECLARE_MULTICAST_DELEGATE(OnInteractiveToolPropertySetsModified);
+	OnInteractiveToolPropertySetsModified OnPropertySetsModified;
 
 	/**
 	 * Automatically called by UInteractiveToolPropertySet.OnModified delegate to notify Tool of child property set changes
@@ -240,7 +262,29 @@ protected:
 	 */
 	virtual void AddToolPropertySource(UInteractiveToolPropertySet* PropertySet);
 
+	/**
+	 * Remove a PropertySet object from this Tool. If found, will broadcast OnPropertySetsModified
+	 * @param PropertySet property set to remove.
+	 * @return true if PropertySet is found and removed
+	 */
+	virtual bool RemoveToolPropertySource(UInteractiveToolPropertySet* PropertySet);
 
+	/**
+	 * Replace a PropertySet object on this Tool with another property set. If replaced, will broadcast OnPropertySetsModified
+	 * @param CurPropertySet property set to remove
+	 * @param ReplaceWith property set to add
+	 * @param bSetToEnabled if true, ReplaceWith property set is explicitly enabled (otherwise enable/disable state is unmodified)
+	 * @return true if CurPropertySet is found and replaced
+	 */
+	virtual bool ReplaceToolPropertySource(UInteractiveToolPropertySet* CurPropertySet, UInteractiveToolPropertySet* ReplaceWith, bool bSetToEnabled = true);
+
+	/**
+	 * Enable/Disable a PropertySet object for this Tool. If found and state was modified, will broadcast OnPropertySetsModified
+	 * @param PropertySet Property Set object to modify
+	 * @param bEnabled whether to enable or disable
+	 * @return true if PropertySet was found
+	 */
+	virtual bool SetToolPropertySourceEnabled(UInteractiveToolPropertySet* PropertySet, bool bEnabled);
 
 
 	//
