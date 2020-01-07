@@ -44,6 +44,8 @@ bool FMovieSceneSequencePlaybackSettings::SerializeFromMismatchedTag( const FPro
 	return false;
 }
 
+PRAGMA_DISABLE_OPTIMIZATION
+
 UMovieSceneSequencePlayer::UMovieSceneSequencePlayer(const FObjectInitializer& Init)
 	: Super(Init)
 	, Status(EMovieScenePlayerStatus::Stopped)
@@ -357,10 +359,16 @@ void UMovieSceneSequencePlayer::StopInternal(FFrameTime TimeToResetTo)
 
 void UMovieSceneSequencePlayer::GoToEndAndStop()
 {
-	FFrameTime Time = GetLastValidTime();
+	FFrameTime LastValidTime = GetLastValidTime();
+
+	if (PlayPosition.GetCurrentPosition() == LastValidTime && Status == EMovieScenePlayerStatus::Stopped)
+	{
+		return;
+	}
+
 	Status = EMovieScenePlayerStatus::Playing;
-	JumpToFrame(Time);
-	StopInternal(Time);
+	JumpToFrame(LastValidTime);
+	StopInternal(LastValidTime);
 }
 
 FQualifiedFrameTime UMovieSceneSequencePlayer::GetCurrentTime() const
@@ -1250,3 +1258,6 @@ bool UMovieSceneSequencePlayer::CallRemoteFunction(UFunction* Function, void* Pa
 
 	return false;
 }
+
+
+PRAGMA_ENABLE_OPTIMIZATION
