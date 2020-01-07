@@ -23,6 +23,7 @@ class SMultiBoxWidget;
 class STableViewBase;
 class SVerticalBox;
 class UToolMenuBase;
+class SUniformToolbarPanel;
 
 namespace MultiBoxConstants
 {	
@@ -701,7 +702,7 @@ public:
 
 private:
 	/** Adds a block Widget to this widget */
-	void AddBlockWidget( const FMultiBlock& Block, TSharedPtr<SHorizontalBox> HorizontalBox, TSharedPtr<SVerticalBox> VerticalBox, EMultiBlockLocation::Type InLocation, bool bSectionContainsIcons );
+	void AddBlockWidget( const FMultiBlock& Block, TSharedPtr<SHorizontalBox> HorizontalBox, TSharedPtr<SVerticalBox> VerticalBox, TSharedPtr<SUniformToolbarPanel> UniformToolbarPanel, EMultiBlockLocation::Type InLocation, bool bSectionContainsIcons );
 
 	/**
 	 * Updates the preview block being dragged.  The drag area is where the users dragged block will be dropped

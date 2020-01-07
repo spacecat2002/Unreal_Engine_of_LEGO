@@ -22,6 +22,8 @@
 #include "Framework/MultiBox/MultiBoxCustomization.h"
 #include "Framework/MultiBox/SClippingHorizontalBox.h"
 #include "Framework/Commands/UICommandDragDropOp.h"
+#include "Widgets/Layout/SUniformGridPanel.h"
+#include "SUniformToolbarPanel.h"
 
 
 TAttribute<bool> FMultiBoxSettings::UseSmallToolBarIcons;
@@ -569,7 +571,7 @@ EVisibility SMultiBoxWidget::GetCustomizationBorderDragVisibility(const FName In
 	return EVisibility::Collapsed;
 }
 
-void SMultiBoxWidget::AddBlockWidget( const FMultiBlock& Block, TSharedPtr<SHorizontalBox> HorizontalBox, TSharedPtr<SVerticalBox> VerticalBox, EMultiBlockLocation::Type InLocation, bool bSectionContainsIcons )
+void SMultiBoxWidget::AddBlockWidget( const FMultiBlock& Block, TSharedPtr<SHorizontalBox> HorizontalBox, TSharedPtr<SVerticalBox> VerticalBox, TSharedPtr<SUniformToolbarPanel> UniformToolbarPanel, EMultiBlockLocation::Type InLocation, bool bSectionContainsIcons )
 {
 	check( MultiBox.IsValid() );
 
@@ -595,54 +597,63 @@ void SMultiBoxWidget::AddBlockWidget( const FMultiBlock& Block, TSharedPtr<SHori
 		FinalWidget = BlockWidget;
 	}
 
+	TSharedRef<SWidget> FinalWidgetWithHook = 
+		SNew(SVerticalBox)
+		+ SVerticalBox::Slot()
+		.HAlign(HAlign_Center)
+		.AutoHeight()
+		[
+			SNew(STextBlock)
+			.Visibility(bDisplayExtensionHooks ? EVisibility::Visible : EVisibility::Collapsed)
+			.ColorAndOpacity(StyleSet->GetColor("MultiboxHookColor"))
+			.Text(FText::FromName(Block.GetExtensionHook()))
+		]
+		+ SVerticalBox::Slot()
+		[
+			FinalWidget.ToSharedRef()
+		];
+
 	switch (MultiBox->GetType())
 	{
 	case EMultiBoxType::MenuBar:
-	case EMultiBoxType::ToolBar:
 	case EMultiBoxType::ToolMenuBar:
+	case EMultiBoxType::ToolBar:
 		{
+
 			HorizontalBox->AddSlot()
 			.AutoWidth()
-			.Padding( 0 )
+			.Padding(0)
 			[
-				SNew(SVerticalBox)
-				+SVerticalBox::Slot()
-				.HAlign(HAlign_Center)
-				.AutoHeight()
-				[
-					SNew(STextBlock)
-					.Visibility(bDisplayExtensionHooks ? EVisibility::Visible : EVisibility::Collapsed)
-					.ColorAndOpacity(StyleSet->GetColor("MultiboxHookColor"))
-					.Text(FText::FromName(Block.GetExtensionHook()))
-				]
-				+SVerticalBox::Slot()
-				[
-					FinalWidget.ToSharedRef()
-				]
+				FinalWidgetWithHook
 			];
 		}
 		break;
 	case EMultiBoxType::VerticalToolBar:
 		{
-			VerticalBox->AddSlot()
-				.AutoHeight()
-				.Padding( 0.0f, 1.0f, 0.0f, 1.0f )
+			if (UniformToolbarPanel.IsValid())
+			{
+				UniformToolbarPanel->AddSlot()
 				[
-					SNew(SVerticalBox)
-					+SVerticalBox::Slot()
-					.HAlign(HAlign_Center)
-					.AutoHeight()
-					[
-						SNew(STextBlock)
-						.Visibility(bDisplayExtensionHooks ? EVisibility::Visible : EVisibility::Collapsed)
-						.ColorAndOpacity(StyleSet->GetColor("MultiboxHookColor"))
-						.Text(FText::FromName(Block.GetExtensionHook()))
-					]
-					+SVerticalBox::Slot()
-					[
-						FinalWidget.ToSharedRef()
-					]
+					FinalWidgetWithHook
 				];
+			}
+			else
+			{
+				VerticalBox->AddSlot()
+				.AutoHeight()
+				.Padding(0.0f, 1.0f, 0.0f, 1.0f)
+				[
+					FinalWidgetWithHook
+				];
+			}
+		}
+		break;
+	case EMultiBoxType::UniformToolBar:
+		{
+			UniformToolbarPanel->AddSlot()
+			[
+				FinalWidgetWithHook
+			];
 		}
 		break;
 	case EMultiBoxType::ButtonRow:
@@ -706,14 +717,17 @@ void SMultiBoxWidget::BuildMultiBoxWidget()
 
 	// Create a box panel that the various multiblocks will resides within
 	// @todo Slate MultiBox: Expose margins and other useful bits
-	TSharedPtr< SHorizontalBox > HorizontalBox;
 	TSharedPtr< SVerticalBox > VerticalBox;
 	TSharedPtr< SWidget > MainWidget;
+
+	TSharedPtr<SHorizontalBox> HorizontalBox;
 
 	/** The current row of buttons for if the multibox type is a button row */
 	TSharedPtr<SHorizontalBox> ButtonRow;
 
 	TSharedPtr< STileView< TSharedPtr<SWidget> > > TileView;
+
+	TSharedPtr<SUniformToolbarPanel> UniformToolbarPanel;
 
 	switch (MultiBox->GetType())
 	{
@@ -721,16 +735,25 @@ void SMultiBoxWidget::BuildMultiBoxWidget()
 	case EMultiBoxType::ToolBar:
 	case EMultiBoxType::ToolMenuBar:
 		{
-				MainWidget = HorizontalBox = ClippedHorizontalBox = SNew( SClippingHorizontalBox )
-					.BackgroundBrush(BackgroundBrush)
-					.OnWrapButtonClicked(FOnGetContent::CreateSP(this, &SMultiBoxWidget::OnWrapButtonClicked))
-					.StyleSet( StyleSet )
-					.StyleName( StyleName );
+			MainWidget = HorizontalBox = ClippedHorizontalBox = SNew(SClippingHorizontalBox)
+				.BackgroundBrush(BackgroundBrush)
+				.OnWrapButtonClicked(FOnGetContent::CreateSP(this, &SMultiBoxWidget::OnWrapButtonClicked))
+				.StyleSet(StyleSet)
+				.StyleName(StyleName);
 		}
 		break;
 	case EMultiBoxType::VerticalToolBar:
 		{
-			MainWidget = VerticalBox = SNew( SVerticalBox );
+			MainWidget = VerticalBox = SNew(SVerticalBox);
+		}
+		break;
+	case EMultiBoxType::UniformToolBar:
+		{
+			MainWidget = UniformToolbarPanel =
+				SNew(SUniformToolbarPanel)
+				.Orientation(Orient_Horizontal)
+				.MinUniformSize(StyleSet->GetFloat(StyleName, ".MinUniformToolbarSize", 0.0f))
+				.MaxUniformSize(StyleSet->GetFloat(StyleName, ".MaxUniformToolbarSize", 0.0f));
 		}
 		break;
 	case EMultiBoxType::ButtonRow:
@@ -764,6 +787,7 @@ void SMultiBoxWidget::BuildMultiBoxWidget()
 	// Assign and add the search widget at the top
 	SearchTextWidget = MultiBox->SearchTextWidget;
 
+
 	for( int32 Index = 0; Index < Blocks.Num(); Index++ )
 	{
 		// If we've passed the last menu separator, scan for the next one (the end of the list is also considered a menu separator for the purposes of this index)
@@ -787,7 +811,7 @@ void SMultiBoxWidget::BuildMultiBoxWidget()
 
 		const FMultiBlock& Block = *Blocks[Index];
 		EMultiBlockLocation::Type Location = EMultiBlockLocation::None;
-
+		
 		// Determine the location of the current block, used for group styling information
 		{
 			// Check if we are a start or end block
@@ -849,13 +873,13 @@ void SMultiBoxWidget::BuildMultiBoxWidget()
 		{
 			// Add the drag preview before if we have it. This block shows where the custom block will be 
 			// added if the user drops it
-			AddBlockWidget( *DragPreview.PreviewBlock, HorizontalBox, VerticalBox, EMultiBlockLocation::None, bSectionContainsIcons );
+			AddBlockWidget( *DragPreview.PreviewBlock, HorizontalBox, VerticalBox, UniformToolbarPanel, EMultiBlockLocation::None, bSectionContainsIcons );
 		}
 		
 		// Do not add a block if it is being dragged
 		if( !IsBlockBeingDragged( Blocks[Index] ) )
 		{
-			AddBlockWidget( Block, HorizontalBox, VerticalBox, Location, bSectionContainsIcons );
+			AddBlockWidget( Block, HorizontalBox, VerticalBox, UniformToolbarPanel, Location, bSectionContainsIcons );
 		}
 	}
 
