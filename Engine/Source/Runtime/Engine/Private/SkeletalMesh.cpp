@@ -5204,7 +5204,8 @@ bool FSkeletalMeshSceneProxy::GetMaterialTextureScales(int32 LODIndex, int32 Sec
 
 void FSkeletalMeshSceneProxy::OnTransformChanged()
 {
-	MeshObject->RefreshClothingTransforms(GetLocalToWorld(), GetScene().GetFrameNumber() + 1);
+	// OnTransformChanged is called on the following frame after FSkeletalMeshObject::Update(), thus omit '+ 1' to frame number.
+	MeshObject->RefreshClothingTransforms(GetLocalToWorld(), GetScene().GetFrameNumber());
 }
 
 
