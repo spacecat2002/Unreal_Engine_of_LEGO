@@ -129,7 +129,7 @@ TArray<UObject*> UInteractiveTool::GetToolProperties(bool bEnabledOnly) const
 		UInteractiveToolPropertySet* Prop = Cast<UInteractiveToolPropertySet>(Object);
 		if (Prop == nullptr || Prop->IsPropertySetEnabled())
 		{
-			Properties.Add(Prop);
+			Properties.Add(Object);
 		}
 	}
 
