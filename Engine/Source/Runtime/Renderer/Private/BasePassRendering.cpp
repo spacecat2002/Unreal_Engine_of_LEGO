@@ -127,41 +127,60 @@ IMPLEMENT_BASEPASS_LIGHTMAPPED_SHADER_TYPE( TUniformLightMapPolicy<LMP_DISTANCE_
 
 DECLARE_GPU_STAT(Basepass);
 
-void SetTranslucentRenderState(FMeshPassProcessorRenderState& DrawRenderState, const FMaterial& Material)
+void SetTranslucentRenderState(FMeshPassProcessorRenderState& DrawRenderState, const FMaterial& Material, const EShaderPlatform Platform)
 {
-	switch (Material.GetBlendMode())
+	if (Material.GetShadingModels().HasShadingModel(MSM_ThinTranslucent))
 	{
-	default:
-	case BLEND_Opaque:
-		// Opaque materials are rendered together in the base pass, where the blend state is set at a higher level
-		break;
-	case BLEND_Masked:
-		// Masked materials are rendered together in the base pass, where the blend state is set at a higher level
-		break;
-	case BLEND_Translucent:
-		// Note: alpha channel used by separate translucency, storing how much of the background should be added when doing the final composite
-		// The Alpha channel is also used by non-separate translucency when rendering to scene captures, which store the final opacity
-		DrawRenderState.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha>::GetRHI());
-		break;
-	case BLEND_Additive:
-		// Add to the existing scene color
-		// Note: alpha channel used by separate translucency, storing how much of the background should be added when doing the final composite
-		// The Alpha channel is also used by non-separate translucency when rendering to scene captures, which store the final opacity
-		DrawRenderState.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_Zero, BF_InverseSourceAlpha>::GetRHI());
-		break;
-	case BLEND_Modulate:
-		// Modulate with the existing scene color, preserve destination alpha.
-		DrawRenderState.SetBlendState(TStaticBlendState<CW_RGB, BO_Add, BF_DestColor, BF_Zero>::GetRHI());
-		break;
-	case BLEND_AlphaComposite:
-		// Blend with existing scene color. New color is already pre-multiplied by alpha.
-		DrawRenderState.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha>::GetRHI());
-		break;
-	case BLEND_AlphaHoldout:
-		// Blend by holding out the matte shape of the source alpha
-		DrawRenderState.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_Zero, BF_InverseSourceAlpha, BO_Add, BF_One, BF_InverseSourceAlpha>::GetRHI());
-		break;
-	};
+		// Special case for dual blending, which is not exposed as a parameter in the material editor
+		if (RHISupportsDualSourceBlending(Platform))
+		{
+			// Blend by putting add in target 0 and multiply by background in target 1.
+			DrawRenderState.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_Source1Color, BO_Add, BF_One, BF_Source1Alpha>::GetRHI());
+		}
+		else
+		{
+			// If unsupported, use the closest analogue, One and SourceAlpha for greyscale color. ShaderColor.rgb already has alpha baked in, so no BF_SourceAlpha.
+			// FinalColor.rgb = ShaderColor.rgb + BackgroundColor.rgb * (1-ShaderColor.a);
+			// FinalColor.a   =                   BackgroundColor.a   * (1-ShaderColor.a);
+			DrawRenderState.SetBlendState(TStaticBlendState < CW_RGBA, BO_Add, BF_One, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha > ::GetRHI());
+		}
+	}
+	else
+	{
+		switch (Material.GetBlendMode())
+		{
+		default:
+		case BLEND_Opaque:
+			// Opaque materials are rendered together in the base pass, where the blend state is set at a higher level
+			break;
+		case BLEND_Masked:
+			// Masked materials are rendered together in the base pass, where the blend state is set at a higher level
+			break;
+		case BLEND_Translucent:
+			// Note: alpha channel used by separate translucency, storing how much of the background should be added when doing the final composite
+			// The Alpha channel is also used by non-separate translucency when rendering to scene captures, which store the final opacity
+			DrawRenderState.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha>::GetRHI());
+			break;
+		case BLEND_Additive:
+			// Add to the existing scene color
+			// Note: alpha channel used by separate translucency, storing how much of the background should be added when doing the final composite
+			// The Alpha channel is also used by non-separate translucency when rendering to scene captures, which store the final opacity
+			DrawRenderState.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_Zero, BF_InverseSourceAlpha>::GetRHI());
+			break;
+		case BLEND_Modulate:
+			// Modulate with the existing scene color, preserve destination alpha.
+			DrawRenderState.SetBlendState(TStaticBlendState<CW_RGB, BO_Add, BF_DestColor, BF_Zero>::GetRHI());
+			break;
+		case BLEND_AlphaComposite:
+			// Blend with existing scene color. New color is already pre-multiplied by alpha.
+			DrawRenderState.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha>::GetRHI());
+			break;
+		case BLEND_AlphaHoldout:
+			// Blend by holding out the matte shape of the source alpha
+			DrawRenderState.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_Zero, BF_InverseSourceAlpha, BO_Add, BF_One, BF_InverseSourceAlpha>::GetRHI());
+			break;
+		};
+	}
 
 	const bool bDisableDepthTest = Material.ShouldDisableDepthTest();
 	const bool bEnableResponsiveAA = Material.ShouldEnableResponsiveAA();
@@ -1007,7 +1026,7 @@ void FBasePassMeshProcessor::Process(
 
 	if (bTranslucentBasePass)
 	{
-		SetTranslucentRenderState(DrawRenderState, MaterialResource);
+		SetTranslucentRenderState(DrawRenderState, MaterialResource, GShaderPlatformForFeatureLevel[FeatureLevel]);
 	}
 
 	TBasePassShaderElementData<LightMapPolicyType> ShaderElementData(LightMapElementData);

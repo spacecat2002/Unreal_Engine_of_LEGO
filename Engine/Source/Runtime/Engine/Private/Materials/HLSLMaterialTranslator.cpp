@@ -898,6 +898,29 @@ bool FHLSLMaterialTranslator::Translate()
 			}
 		}
 
+		if (MaterialShadingModels.HasShadingModel(MSM_ThinTranslucent))
+		{
+			if (BlendMode != BLEND_Translucent)
+			{
+				Errorf(TEXT("ThinTranslucent materials must be translucent."));
+			}
+
+			const ETranslucencyLightingMode TranslucencyLightingMode = Material->GetTranslucencyLightingMode();
+
+			if (TranslucencyLightingMode != ETranslucencyLightingMode::TLM_SurfacePerPixelLighting)
+			{
+				Errorf(TEXT("ThinTranslucent materials must use Surface Per Pixel Lighting (Translucency->LightingMode=Surface ForwardShading).\n"));
+			}
+			if (!MaterialShadingModels.HasOnlyShadingModel(MSM_ThinTranslucent))
+			{
+				Errorf(TEXT("ThinTranslucent materials cannot be combined with other shading models.")); // Simply untested for now
+			}
+			if (Material->GetMaterialInterface() && !Material->GetMaterialInterface()->GetMaterial()->HasAnyExpressionsInMaterialAndFunctionsOfType<UMaterialExpressionThinTranslucentMaterialOutput>())
+			{
+				Errorf(TEXT("ThinTranslucent materials requires the use of ThinTranslucentMaterial output node."));
+			}
+		}
+
 		bool bDBufferAllowed = IsUsingDBuffers(Platform);
 		bool bDBufferBlendMode = IsDBufferDecalBlendMode((EDecalBlendMode)Material->GetDecalBlendMode());
 
@@ -1252,6 +1275,16 @@ void FHLSLMaterialTranslator::GetMaterialEnvironment(EShaderPlatform InPlatform,
 		{
 			OutEnvironment.SetDefine(TEXT("MATERIAL_SHADINGMODEL_SINGLELAYERWATER"), TEXT("1"));
 			NumSetMaterials++;
+		}
+		if (ShadingModels.HasShadingModel(MSM_ThinTranslucent))
+		{
+			OutEnvironment.SetDefine(TEXT("MATERIAL_SHADINGMODEL_THIN_TRANSLUCENT"), TEXT("1"));
+			NumSetMaterials++;
+
+			if (RHISupportsDualSourceBlending(Platform))
+			{
+				OutEnvironment.SetDefine(TEXT("THIN_TRANSLUCENT_USE_DUAL_BLEND"), TEXT("1"));
+			}
 		}
 
 		if(ShadingModels.HasShadingModel(MSM_SingleLayerWater) && (IsSwitchPlatform(Platform) || IsPS4Platform(Platform) || Platform == SP_XBOXONE_D3D12))

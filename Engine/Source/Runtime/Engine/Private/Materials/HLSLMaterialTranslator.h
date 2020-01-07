@@ -18,6 +18,7 @@
 #include "Materials/MaterialExpressionMaterialFunctionCall.h"
 #include "Materials/MaterialFunctionInstance.h"
 #include "Materials/MaterialExpressionSingleLayerWaterMaterialOutput.h"
+#include "Materials/MaterialExpressionThinTranslucentMaterialOutput.h"
 #include "MaterialCompiler.h"
 #include "RenderUtils.h"
 #include "EngineGlobals.h"

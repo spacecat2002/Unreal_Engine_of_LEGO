@@ -174,6 +174,7 @@
 #include "Materials/MaterialExpressionShadingModel.h"
 #include "Materials/MaterialExpressionSine.h"
 #include "Materials/MaterialExpressionSingleLayerWaterMaterialOutput.h"
+#include "Materials/MaterialExpressionThinTranslucentMaterialOutput.h"
 #include "Materials/MaterialExpressionSobol.h"
 #include "Materials/MaterialExpressionSpeedTree.h"
 #include "Materials/MaterialExpressionSphereMask.h"
@@ -17072,9 +17073,68 @@ FString UMaterialExpressionSingleLayerWaterMaterialOutput::GetDisplayName() cons
 	return TEXT("Single Layer Water Material");
 }
 
+/////////////////////////// THIN TRANSLUCENT
 
 
+UMaterialExpressionThinTranslucentMaterialOutput::UMaterialExpressionThinTranslucentMaterialOutput(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
+{
+	// Structure to hold one-time initialization
+	struct FConstructorStatics
+	{
+		FText NAME_ThinTranslucent;
+		FConstructorStatics()
+			: NAME_ThinTranslucent(LOCTEXT("ThinTranslucent", "ThinTranslucent"))
+		{
+		}
+	};
+	static FConstructorStatics ConstructorStatics;
 
+#if WITH_EDITORONLY_DATA
+	MenuCategories.Add(ConstructorStatics.NAME_ThinTranslucent);
+#endif
+
+#if WITH_EDITOR
+	Outputs.Reset();
+#endif
+}
+
+#if WITH_EDITOR
+
+int32 UMaterialExpressionThinTranslucentMaterialOutput::Compile(class FMaterialCompiler* Compiler, int32 OutputIndex)
+{
+	int32 CodeInput = INDEX_NONE;
+
+	// Generates function names GetSingleLayerWaterMaterialOutput{index} used in BasePixelShader.usf.
+	if (OutputIndex == 0)
+	{
+		CodeInput = TransmittanceColor.IsConnected() ? TransmittanceColor.Compile(Compiler) : Compiler->Constant3(0.5f, 0.5f, 0.5f);
+	}
+
+	return Compiler->CustomOutput(this, OutputIndex, CodeInput);
+}
+
+void UMaterialExpressionThinTranslucentMaterialOutput::GetCaption(TArray<FString>& OutCaptions) const
+{
+	OutCaptions.Add(FString(TEXT("Thin Translucent Material")));
+}
+
+#endif // WITH_EDITOR
+
+int32 UMaterialExpressionThinTranslucentMaterialOutput::GetNumOutputs() const
+{
+	return 1;
+}
+
+FString UMaterialExpressionThinTranslucentMaterialOutput::GetFunctionName() const
+{
+	return TEXT("GetThinTranslucentMaterialOutput");
+}
+
+FString UMaterialExpressionThinTranslucentMaterialOutput::GetDisplayName() const
+{
+	return TEXT("Thin Translucent Material");
+}
 
 
 

@@ -1223,7 +1223,8 @@ bool FMaterialResource::IsCrackFreeDisplacementEnabled() const
 
 bool FMaterialResource::IsTranslucencyAfterDOFEnabled() const 
 { 
-	return Material->bEnableSeparateTranslucency && !IsUIMaterial() && !IsDeferredDecal();
+	// Dual blended models are not allowed to do translucency after DOF
+	return Material->bEnableSeparateTranslucency && !IsUIMaterial() && !IsDeferredDecal() && Material->ShadingModel != MSM_ThinTranslucent;
 }
 
 bool FMaterialResource::IsMobileSeparateTranslucencyEnabled() const
