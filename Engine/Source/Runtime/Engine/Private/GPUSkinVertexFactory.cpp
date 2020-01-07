@@ -49,7 +49,7 @@ IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FBoneMatricesUniformShaderParameters,"B
 static FBoneMatricesUniformShaderParameters GBoneUniformStruct;
 
 #define IMPLEMENT_GPUSKINNING_VERTEX_FACTORY_TYPE_INTERNAL(FactoryClass, ShaderFilename,bUsedWithMaterials,bSupportsStaticLighting,bSupportsDynamicLighting,bPrecisePrevWorldPos,bSupportsPositionOnly) \
-	template <GPUSkinBoneInfluenceType BoneInfluenceType> FVertexFactoryType FactoryClass<BoneInfluenceType>::StaticType( \
+	template <GPUSkinBoneInfluenceType BoneInfluenceType> ENGINE_API FVertexFactoryType FactoryClass<BoneInfluenceType>::StaticType( \
 	BoneInfluenceType == DefaultBoneInfluence ? TEXT(#FactoryClass) TEXT("Default") : (BoneInfluenceType == ExtraBoneInfluence ? TEXT(#FactoryClass) TEXT("Extra") : TEXT(#FactoryClass) TEXT("Unlimited")), \
 	TEXT(ShaderFilename), \
 	bUsedWithMaterials, \
