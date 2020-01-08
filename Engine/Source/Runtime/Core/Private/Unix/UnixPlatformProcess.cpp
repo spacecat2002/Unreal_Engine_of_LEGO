@@ -187,6 +187,31 @@ const TCHAR* FUnixPlatformProcess::UserName(bool bOnlyAlphaNumeric)
 	return Name;
 }
 
+const TCHAR* FUnixPlatformProcess::UserTempDir()
+{
+	// Use $TMPDIR if it set other wise fall backto /var/tmp as Windows defaults to %TEMP% which
+	// does not get cleared on boot, so for we will fallback to a similar behaviour location
+	static bool bHaveTemp = false;
+	static TCHAR CachedResult[PlatformProcessLimits::MaxUserHomeDirLength] = { 0 };
+
+	if (!bHaveTemp)
+	{
+		const char* TmpDirValue = secure_getenv("TMPDIR");
+		if (TmpDirValue)
+		{
+			FCString::Strcpy(CachedResult, UE_ARRAY_COUNT(CachedResult) - 1, UTF8_TO_TCHAR(TmpDirValue));
+		}
+		else
+		{
+			FCString::Strcpy(CachedResult, UE_ARRAY_COUNT(CachedResult) - 1, TEXT("/var/tmp"));
+		}
+
+		bHaveTemp = true;
+	}
+
+	return CachedResult;
+}
+
 const TCHAR* FUnixPlatformProcess::UserDir()
 {
 	// The UserDir is where user visible files (such as game projects) live.
