@@ -416,7 +416,11 @@ void FVirtualTextureSpace::ApplyUpdates(FVirtualTextureSystem* System, FRHIComma
 	{
 		const uint32 TextureIndex = LayerIndex / LayersPerPageTableTexture;
 		const uint32 LayerInTexture = LayerIndex % LayersPerPageTableTexture;
-		FSceneRenderTargetItem& PageTableTarget = PageTable[TextureIndex].RenderTarget->GetRenderTargetItem();
+
+		FTextureEntry& PageTableEntry = PageTable[TextureIndex];
+		check(PageTableEntry.RenderTarget != nullptr);
+
+		FSceneRenderTargetItem& PageTableTarget = PageTableEntry.RenderTarget->GetRenderTargetItem();
 
 		// Use color write mask to update the proper page table entry for this layer
 		FRHIBlendState* BlendStateRHI = nullptr;
