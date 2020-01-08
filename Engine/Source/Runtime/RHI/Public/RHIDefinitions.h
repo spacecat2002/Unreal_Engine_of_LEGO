@@ -251,6 +251,7 @@ struct RHI_API FDataDrivenShaderPlatformInfo
 	bool bSupportsByteBufferComputeShaders;
 	bool bSupportsPrimitiveShaders;
 	bool bSupportsUInt64ImageAtomics;
+	bool bSupportsTemporalHistoryUpscale;
 	bool bSupportsRTIndexFromVS;
 
 	bool bTargetsTiledGPU;
