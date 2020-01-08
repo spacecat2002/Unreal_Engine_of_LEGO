@@ -68,7 +68,7 @@ FD3D12_GRAPHICS_PIPELINE_STATE_STREAM FD3D12_GRAPHICS_PIPELINE_STATE_DESC::Pipel
 
 D3D12_GRAPHICS_PIPELINE_STATE_DESC FD3D12_GRAPHICS_PIPELINE_STATE_DESC::GraphicsDescV0() const
 {
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC D;
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC D = {};
 	D.Flags = this->Flags;
 	D.NodeMask = this->NodeMask;
 	D.pRootSignature = this->pRootSignature;
@@ -105,7 +105,7 @@ FD3D12_COMPUTE_PIPELINE_STATE_STREAM FD3D12_COMPUTE_PIPELINE_STATE_DESC::Pipelin
 
 D3D12_COMPUTE_PIPELINE_STATE_DESC FD3D12_COMPUTE_PIPELINE_STATE_DESC::ComputeDescV0() const
 {
-	D3D12_COMPUTE_PIPELINE_STATE_DESC D;
+	D3D12_COMPUTE_PIPELINE_STATE_DESC D = {};
 	D.Flags = this->Flags;
 	D.NodeMask = this->NodeMask;
 	D.pRootSignature = this->pRootSignature;
@@ -633,11 +633,12 @@ void CreatePipelineState(ID3D12PipelineState*&PSO, ID3D12Device* Device, const T
 	else
 	{
 		SCOPE_CYCLE_COUNTER(STAT_PSOCreateTime);
-		HRESULT r = (Device->*TPSOFunctionMap<TDesc>::GetCreatePipelineState())(Desc, IID_PPV_ARGS(&PSO));
-		if (FAILED(r))
+		HRESULT HResult = (Device->*TPSOFunctionMap<TDesc>::GetCreatePipelineState())(Desc, IID_PPV_ARGS(&PSO));
+		if (FAILED(HResult))
 		{
 			UE_LOG(LogD3D12RHI, Error, TEXT("Failed to create PipelineState with hash %s"), Name);
 		}
+		VERIFYD3D12RESULT(HResult);
 	}
 
 	check(PSO);
@@ -677,12 +678,12 @@ void CreatePipelineStateFromStream(ID3D12PipelineState*& PSO, ID3D12Device2* Dev
 	else
 	{
 		SCOPE_CYCLE_COUNTER(STAT_PSOCreateTime);
-		HRESULT r = Device->CreatePipelineState(Desc, IID_PPV_ARGS(&PSO));
-
-		if (FAILED(r))
+		HRESULT HResult = Device->CreatePipelineState(Desc, IID_PPV_ARGS(&PSO));
+		if (FAILED(HResult))
 		{
 			UE_LOG(LogD3D12RHI, Error, TEXT("Failed to create PipelineState with hash %s"), Name);
 		}
+		VERIFYD3D12RESULT(HResult);
 	}
 
 	check(PSO);
