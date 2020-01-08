@@ -249,13 +249,14 @@ struct RHI_API FDataDrivenShaderPlatformInfo
 	bool bSupportsRayTracingMissShaderBindings; // Whether resources could be bound for miss shaders
 	bool bSupportsGPUSkinCache;
 	bool bSupportsByteBufferComputeShaders;
+	bool bSupportsPrimitiveShaders;
 	bool bSupportsUInt64ImageAtomics;
 	bool bSupportsRTIndexFromVS;
 
 	bool bTargetsTiledGPU;
 	bool bNeedsOfflineCompiler;
 
-	// NOTE: WHen adding fields, you must also add to ParseDataDrivenShaderInfo!
+	// NOTE: When adding fields, you must also add to ParseDataDrivenShaderInfo!
 
 	FDataDrivenShaderPlatformInfo()
 	{
