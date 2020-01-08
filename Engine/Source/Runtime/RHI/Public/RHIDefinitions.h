@@ -250,6 +250,7 @@ struct RHI_API FDataDrivenShaderPlatformInfo
 	bool bSupportsGPUSkinCache;
 	bool bSupportsByteBufferComputeShaders;
 	bool bSupportsUInt64ImageAtomics;
+	bool bSupportsRTIndexFromVS;
 
 	bool bTargetsTiledGPU;
 	bool bNeedsOfflineCompiler;
