@@ -148,11 +148,8 @@ FMaterialRelevance UMaterialInterface::GetRelevance_Internal(const UMaterial* Ma
 		}
 		else
 		{
-			// Any dual blending materials can not be in the separate translucency path because they need to modify the underlying color.
-			const bool bRequiresDualBlending = Material->GetShadingModels().HasShadingModel(MSM_ThinTranslucent);
-
 			// Check whether the material can be drawn in the separate translucency pass as per FMaterialResource::IsTranslucencyAfterDOFEnabled and IsMobileSeparateTranslucencyEnabled
-			bool bSupportsSeparateTranclucency = Material->MaterialDomain != MD_UI && Material->MaterialDomain != MD_DeferredDecal && !bRequiresDualBlending;
+			bool bSupportsSeparateTranclucency = Material->MaterialDomain != MD_UI && Material->MaterialDomain != MD_DeferredDecal;
 			bool bMaterialSeparateTranclucency = bSupportsSeparateTranclucency && (bIsMobile ? Material->bEnableMobileSeparateTranslucency : Material->bEnableSeparateTranslucency );
 			
 			MaterialRelevance.bOpaque = !bIsTranslucent;

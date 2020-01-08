@@ -132,17 +132,15 @@ void SetTranslucentRenderState(FMeshPassProcessorRenderState& DrawRenderState, c
 	if (Material.GetShadingModels().HasShadingModel(MSM_ThinTranslucent))
 	{
 		// Special case for dual blending, which is not exposed as a parameter in the material editor
-		if (RHISupportsDualSourceBlending(Platform))
+		if (Material.IsDualBlendingEnabled(Platform))
 		{
 			// Blend by putting add in target 0 and multiply by background in target 1.
 			DrawRenderState.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_Source1Color, BO_Add, BF_One, BF_Source1Alpha>::GetRHI());
 		}
 		else
 		{
-			// If unsupported, use the closest analogue, One and SourceAlpha for greyscale color. ShaderColor.rgb already has alpha baked in, so no BF_SourceAlpha.
-			// FinalColor.rgb = ShaderColor.rgb + BackgroundColor.rgb * (1-ShaderColor.a);
-			// FinalColor.a   =                   BackgroundColor.a   * (1-ShaderColor.a);
-			DrawRenderState.SetBlendState(TStaticBlendState < CW_RGBA, BO_Add, BF_One, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha > ::GetRHI());
+			// If unsupported, use the same as translucent.
+			DrawRenderState.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha>::GetRHI());
 		}
 	}
 	else

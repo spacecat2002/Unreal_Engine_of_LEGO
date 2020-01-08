@@ -1281,7 +1281,8 @@ void FHLSLMaterialTranslator::GetMaterialEnvironment(EShaderPlatform InPlatform,
 			OutEnvironment.SetDefine(TEXT("MATERIAL_SHADINGMODEL_THIN_TRANSLUCENT"), TEXT("1"));
 			NumSetMaterials++;
 
-			if (RHISupportsDualSourceBlending(Platform))
+			// if it is not enabled, it will fall back to standard alpha blending
+			if (Material->IsDualBlendingEnabled(Platform))
 			{
 				OutEnvironment.SetDefine(TEXT("THIN_TRANSLUCENT_USE_DUAL_BLEND"), TEXT("1"));
 			}

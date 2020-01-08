@@ -1223,8 +1223,14 @@ bool FMaterialResource::IsCrackFreeDisplacementEnabled() const
 
 bool FMaterialResource::IsTranslucencyAfterDOFEnabled() const 
 { 
-	// Dual blended models are not allowed to do translucency after DOF
-	return Material->bEnableSeparateTranslucency && !IsUIMaterial() && !IsDeferredDecal() && Material->ShadingModel != MSM_ThinTranslucent;
+	return Material->bEnableSeparateTranslucency && !IsUIMaterial() && !IsDeferredDecal();
+}
+
+bool FMaterialResource::IsDualBlendingEnabled(EShaderPlatform Platform) const
+{
+	const bool bIsMaterialEnabled = (Material->ShadingModel == MSM_ThinTranslucent) && !Material->bEnableSeparateTranslucency;
+	const bool bIsPlatformSupported = RHISupportsDualSourceBlending(Platform);
+	return bIsMaterialEnabled && bIsPlatformSupported;
 }
 
 bool FMaterialResource::IsMobileSeparateTranslucencyEnabled() const

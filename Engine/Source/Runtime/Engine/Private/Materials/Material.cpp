@@ -4295,14 +4295,9 @@ bool UMaterial::CanEditChange(const UProperty* InProperty) const
 		{
 			return Refraction.IsConnected();
 		}
-
-		if (PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, bEnableSeparateTranslucency))
-		{
-			// not allowed when using a model with dual blending, which for now is only ThinTranslucent
-			return MaterialDomain != MD_DeferredDecal && MaterialDomain != MD_RuntimeVirtualTexture && IsTranslucentBlendMode(BlendMode) && ShadingModel != MSM_ThinTranslucent;
-		}
 	
-		if (PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, bEnableResponsiveAA)
+		if (PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, bEnableSeparateTranslucency)
+			|| PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, bEnableResponsiveAA)
 			|| PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, bScreenSpaceReflections)
 			|| PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, bContactShadows)
 			|| PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, bDisableDepthTest)
