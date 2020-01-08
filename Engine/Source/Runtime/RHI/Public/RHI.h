@@ -315,6 +315,9 @@ extern RHI_API bool GRHISupportsQuadTopology;
 /** true if the RHI supports rectangular topology (PT_RectList). */
 extern RHI_API bool GRHISupportsRectTopology;
 
+/** true if the RHI supports primitive shaders. */
+extern RHI_API bool GRHISupportsPrimitiveShaders;
+
 /** true if the RHI supports 64 bit uint atomics. */
 extern RHI_API bool GRHISupportsAtomicUInt64;
 
