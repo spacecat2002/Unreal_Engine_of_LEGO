@@ -627,9 +627,6 @@ void FGPUSkinCache::CommitRayTracingGeometryUpdates(FRHICommandList& RHICmdList)
 
 	if (RayTracingGeometriesToUpdate.Num())
 	{
-		// Flush any remaining pending resource barriers before performing BVH updates
-		TransitionAllToReadable(RHICmdList);
-
 		TArray<FAccelerationStructureBuildParams> Updates;
 		for (const FRayTracingGeometry* RayTracingGeometry : RayTracingGeometriesToUpdate)
 		{
