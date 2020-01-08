@@ -540,7 +540,7 @@ protected:
 
 /** Vertex factory with vertex stream components for GPU-skinned and morph target streams */
 template<GPUSkinBoneInfluenceType BoneInfluenceType>
-class ENGINE_API TGPUSkinMorphVertexFactory : public TGPUSkinVertexFactory<BoneInfluenceType>
+class TGPUSkinMorphVertexFactory : public TGPUSkinVertexFactory<BoneInfluenceType>
 {
 	DECLARE_VERTEX_FACTORY_TYPE(TGPUSkinMorphVertexFactory<BoneInfluenceType>);
 
@@ -842,7 +842,7 @@ protected:
 
 /** Vertex factory with vertex stream components for GPU-skinned and morph target streams */
 template<GPUSkinBoneInfluenceType BoneInfluenceType>
-class ENGINE_API TGPUSkinAPEXClothVertexFactory : public FGPUBaseSkinAPEXClothVertexFactory, public TGPUSkinVertexFactory<BoneInfluenceType>
+class TGPUSkinAPEXClothVertexFactory : public FGPUBaseSkinAPEXClothVertexFactory, public TGPUSkinVertexFactory<BoneInfluenceType>
 {
 	DECLARE_VERTEX_FACTORY_TYPE(TGPUSkinAPEXClothVertexFactory<BoneInfluenceType>);
 
