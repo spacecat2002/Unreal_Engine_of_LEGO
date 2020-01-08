@@ -148,8 +148,7 @@ public:
 		check(Owner->GetNumMips() > 0);
 
 		TIndirectArray<FTexture2DMipMap>& Mips = InOwner->PlatformData->Mips;
-		const int32 FirstMipTailIndex = Mips.Num() - InOwner->PlatformData->GetNumMipsInTail();
-		for (int32 MipIndex = 0; MipIndex < FirstMipTailIndex; MipIndex++)
+		for (int32 MipIndex = 0; MipIndex < Mips.Num(); MipIndex++)
 		{
 			FTexture2DMipMap& Mip = Mips[MipIndex];
 			if( Mip.BulkData.GetBulkDataSize() <= 0 )
