@@ -189,8 +189,7 @@ const TCHAR* FUnixPlatformProcess::UserName(bool bOnlyAlphaNumeric)
 
 const TCHAR* FUnixPlatformProcess::UserTempDir()
 {
-	// Use $TMPDIR if it set other wise fall backto /var/tmp as Windows defaults to %TEMP% which
-	// does not get cleared on boot, so for we will fallback to a similar behaviour location
+	// Use $TMPDIR if its set otherwise fallback to /var/tmp as Windows defaults to %TEMP% which does not get cleared on reboot.
 	static bool bHaveTemp = false;
 	static TCHAR CachedResult[PlatformProcessLimits::MaxUserHomeDirLength] = { 0 };
 
@@ -199,11 +198,11 @@ const TCHAR* FUnixPlatformProcess::UserTempDir()
 		const char* TmpDirValue = secure_getenv("TMPDIR");
 		if (TmpDirValue)
 		{
-			FCString::Strcpy(CachedResult, UE_ARRAY_COUNT(CachedResult) - 1, UTF8_TO_TCHAR(TmpDirValue));
+			FCString::Strcpy(CachedResult, UTF8_TO_TCHAR(TmpDirValue));
 		}
 		else
 		{
-			FCString::Strcpy(CachedResult, UE_ARRAY_COUNT(CachedResult) - 1, TEXT("/var/tmp"));
+			FCString::Strcpy(CachedResult, TEXT("/var/tmp"));
 		}
 
 		bHaveTemp = true;
