@@ -1311,18 +1311,18 @@ void FViewInfo::SetupUniformBufferParameters(
 		AtmosphereLightDataClearStartIndex = NUM_ATMOSPHERE_LIGHTS;	// Do not clear any atmosphere light data, this component sets everything it needs
 
 		// The constants below should match the one in SkyAtmosphereCommon.ush
-		const float SkyUnitToCm = 1.0f / 0.00001f;	// Kilometers to Centimeters
 		const float PlanetRadiusOffset = 0.01f;		// Always force to be 10 meters above the ground/sea level (to always see the sky and not be under the virtual planet occluding ray tracing)
 
-		const float Offset = PlanetRadiusOffset * SkyUnitToCm;
-		const float BottomRadiusWorld = AtmosphereSetup.BottomRadius * SkyUnitToCm;
-		const FVector PlanetCenterWorld = FVector(0.0f, 0.0f, -BottomRadiusWorld);
+		const float Offset = PlanetRadiusOffset * FAtmosphereSetup::SkyUnitToCm;
+		const float BottomRadiusWorld = AtmosphereSetup.BottomRadius * FAtmosphereSetup::SkyUnitToCm;
+		const FVector PlanetCenterWorld = AtmosphereSetup.PlanetCenter * FAtmosphereSetup::SkyUnitToCm;
 		const FVector PlanetCenterToCameraWorld = ViewUniformShaderParameters.WorldCameraOrigin - PlanetCenterWorld;
 		const float DistanceToPlanetCenterWorld = PlanetCenterToCameraWorld.Size();
 
 		// If the camera is below the planet surface, we snap it back onto the surface.
 		// This is to make sure the sky is always visible even if the camera is inside the virtual planet.
 		ViewUniformShaderParameters.SkyWorldCameraOrigin = DistanceToPlanetCenterWorld < (BottomRadiusWorld + Offset) ? PlanetCenterWorld + (BottomRadiusWorld + Offset) * (PlanetCenterToCameraWorld / DistanceToPlanetCenterWorld) : ViewUniformShaderParameters.WorldCameraOrigin;
+		ViewUniformShaderParameters.SkyPlanetCenterAndViewHeight = FVector4(PlanetCenterWorld, (ViewUniformShaderParameters.SkyWorldCameraOrigin - PlanetCenterWorld).Size());
 	}
 	else
 	{
@@ -1338,6 +1338,7 @@ void FViewInfo::SetupUniformBufferParameters(
 		ViewUniformShaderParameters.SkyAtmosphereCameraAerialPerspectiveVolumeDepthSliceLengthInv = 1.0f;
 		ViewUniformShaderParameters.SkyAtmosphereApplyCameraAerialPerspectiveVolume = 1.0f;
 		ViewUniformShaderParameters.SkyWorldCameraOrigin = ViewUniformShaderParameters.WorldCameraOrigin;
+		ViewUniformShaderParameters.SkyPlanetCenterAndViewHeight = FVector4(ForceInitToZero);
 	}
 
 	for (uint8 Index = AtmosphereLightDataClearStartIndex; Index < NUM_ATMOSPHERE_LIGHTS; ++Index)

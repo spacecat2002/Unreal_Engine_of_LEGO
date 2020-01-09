@@ -21,8 +21,6 @@
 
 #define LOCTEXT_NAMESPACE "SkyAtmosphereComponent"
 
-//#pragma optimize( "", off )
-
 
 
 /*=============================================================================
@@ -40,6 +38,7 @@ USkyAtmosphereComponent::USkyAtmosphereComponent(const FObjectInitializer& Objec
 	const float EarthMieScaleHeight = 1.2f;
 	
 	// Default: Earth like atmosphere
+	TransformMode = ESkyAtmosphereTransformMode::PlanetTopAtAbsoluteWorldOrigin;
 	BottomRadius = EarthBottomRadius;
 	AtmosphereHeight = EarthTopRadius - EarthBottomRadius;
 	GroundAlbedo = FColor(170, 170, 170); // 170 => 0.4f linear
@@ -117,6 +116,21 @@ static bool SkyAtmosphereComponentStaticLightingBuilt(const USkyAtmosphereCompon
 	return true;	// The component has not been spawned in any world yet so let's mark it as built for now.
 }
 
+void USkyAtmosphereComponent::SendRenderTransformCommand()
+{
+	if (SkyAtmosphereSceneProxy)
+	{
+		FTransform ComponentTransform = GetComponentTransform();
+		uint8 TrsfMode = uint8(TransformMode);
+		FSkyAtmosphereSceneProxy* SceneProxy = SkyAtmosphereSceneProxy;
+		ENQUEUE_RENDER_COMMAND(FUpdateSkyAtmosphereSceneProxyTransformCommand)(
+			[SceneProxy, ComponentTransform, TrsfMode](FRHICommandList& RHICmdList)
+		{
+			SceneProxy->UpdateTransform(ComponentTransform, TrsfMode);
+		});
+	}
+}
+
 void USkyAtmosphereComponent::CreateRenderState_Concurrent()
 {
 	Super::CreateRenderState_Concurrent();
@@ -139,6 +153,12 @@ void USkyAtmosphereComponent::CreateRenderState_Concurrent()
 		GetWorld()->Scene->AddSkyAtmosphere(SkyAtmosphereSceneProxy, SkyAtmosphereComponentStaticLightingBuilt(this));
 	}
 
+}
+
+void USkyAtmosphereComponent::SendRenderTransform_Concurrent()
+{
+	Super::SendRenderTransform_Concurrent();
+	SendRenderTransformCommand();
 }
 
 void USkyAtmosphereComponent::DestroyRenderState_Concurrent()
@@ -252,6 +272,11 @@ void USkyAtmosphereComponent::PostEditChangeProperty(FPropertyChangedEvent& Prop
 		{
 			// If we have changed an atmosphere property and the lighyting has already been built, we need to ask for a rebuild by updating the static lighting GUIDs.
 			UpdateStaticLightingGUIDs();
+		}
+
+		if (PropertyChangedEvent.MemberProperty && PropertyChangedEvent.MemberProperty->GetFName() == GET_MEMBER_NAME_CHECKED(USkyAtmosphereComponent, TransformMode))
+		{
+			SendRenderTransformCommand();
 		}
 	}
 }

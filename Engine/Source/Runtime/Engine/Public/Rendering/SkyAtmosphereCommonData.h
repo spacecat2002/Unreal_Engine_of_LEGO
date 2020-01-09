@@ -16,6 +16,10 @@ class USkyAtmosphereComponent;
 
 struct FAtmosphereSetup
 {
+	ENGINE_API static const float CmToSkyUnit;
+	ENGINE_API static const float SkyUnitToCm;
+
+	FVector PlanetCenter;
 	float BottomRadius;
 	float TopRadius;
 
@@ -44,6 +48,8 @@ struct FAtmosphereSetup
 	ENGINE_API FAtmosphereSetup(const USkyAtmosphereComponent& SkyAtmosphereComponent);
 
 	ENGINE_API FLinearColor GetTransmittanceAtGroundLevel(const FVector& SunDirection) const;
+
+	ENGINE_API void UpdateTransform(const FTransform& ComponentTransform, uint8 TranformMode);
 };
 
 

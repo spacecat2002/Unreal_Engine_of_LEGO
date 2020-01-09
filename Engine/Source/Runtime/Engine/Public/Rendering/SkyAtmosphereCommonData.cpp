@@ -10,6 +10,8 @@
 
 //#pragma optimize( "", off )
 
+const float FAtmosphereSetup::CmToSkyUnit = 0.00001f;			// Centimeters to Kilometers
+const float FAtmosphereSetup::SkyUnitToCm = 1.0f / 0.00001f;	// Kilometers to Centimeters
 
 FAtmosphereSetup::FAtmosphereSetup(const USkyAtmosphereComponent& SkyAtmosphereComponent)
 {
@@ -55,6 +57,26 @@ FAtmosphereSetup::FAtmosphereSetup(const USkyAtmosphereComponent& SkyAtmosphereC
 	TentToCoefficients(SkyAtmosphereComponent.OtherTentDistribution, AbsorptionDensity0LayerWidth, AbsorptionDensity0LinearTerm, AbsorptionDensity1LinearTerm, AbsorptionDensity0ConstantTerm, AbsorptionDensity1ConstantTerm);
 
 	TransmittanceMinLightElevationAngle = SkyAtmosphereComponent.TransmittanceMinLightElevationAngle;
+
+	UpdateTransform(SkyAtmosphereComponent.GetComponentTransform(), uint8(SkyAtmosphereComponent.TransformMode));
+}
+
+void FAtmosphereSetup::UpdateTransform(const FTransform& ComponentTransform, uint8 TranformMode)
+{
+	switch (ESkyAtmosphereTransformMode(TranformMode))
+	{
+	case ESkyAtmosphereTransformMode::PlanetTopAtAbsoluteWorldOrigin:
+		PlanetCenter = FVector(0.0f, 0.0f, -BottomRadius);
+		break;
+	case ESkyAtmosphereTransformMode::PlanetTopAtComponentTransform:
+		PlanetCenter = FVector(0.0f, 0.0f, -BottomRadius) + ComponentTransform.GetTranslation() * FAtmosphereSetup::CmToSkyUnit;
+		break;
+	case ESkyAtmosphereTransformMode::PlanetCenterAtComponentTransform:
+		PlanetCenter = ComponentTransform.GetTranslation() * FAtmosphereSetup::CmToSkyUnit;
+		break;
+	default:
+		check(false);
+	}
 }
 
 FLinearColor FAtmosphereSetup::GetTransmittanceAtGroundLevel(const FVector& SunDirection) const
