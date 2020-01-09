@@ -1312,10 +1312,10 @@ void FSceneRenderer::RenderSkyAtmosphere(FRHICommandListImmediate& RHICmdList)
 		const bool bRenderSkyPixel = !View.bSceneHasSkyMaterial;
 
 		const FVector ViewOrigin = View.ViewMatrices.GetViewOrigin();
-		const FVector PlanetOrigin = FVector(0.0f, 0.0f, -Atmosphere.BottomRadiusKm * KM_TO_CM);
+		const FVector PlanetCenter = Atmosphere.PlanetCenterKm * KM_TO_CM;
 		const float TopOfAtmosphere = Atmosphere.TopRadiusKm * KM_TO_CM;
 		const float SafeEdge = 1000.0f;	// 10 meters
-		const bool ForceRayMarching = (FVector::Distance(ViewOrigin, PlanetOrigin) - TopOfAtmosphere - SafeEdge) > 0.0f;
+		const bool ForceRayMarching = (FVector::Distance(ViewOrigin, PlanetCenter) - TopOfAtmosphere - SafeEdge) > 0.0f;
 
 		FRDGTextureRef SkyAtmosphereViewLutTexture = GraphBuilder.RegisterExternalTexture(View.SkyAtmosphereViewLutTexture);
 		FRDGTextureRef SkyAtmosphereCameraAerialPerspectiveVolume = GraphBuilder.RegisterExternalTexture(View.SkyAtmosphereCameraAerialPerspectiveVolume);
@@ -1591,7 +1591,7 @@ void FDeferredShadingSceneRenderer::RenderDebugSkyAtmosphere(FRHICommandListImme
 
 		if (bSkyAtmosphereVisualizeShowFlag)
 		{
-			const float ViewPlanetAltitude = (View.ViewLocation*0.00001f - FVector(0.0f, 0.0f, -Atmosphere.BottomRadiusKm)).Size() - Atmosphere.BottomRadiusKm;
+			const float ViewPlanetAltitude = (View.ViewLocation*FAtmosphereSetup::CmToSkyUnit - Atmosphere.PlanetCenterKm).Size() - Atmosphere.BottomRadiusKm;
 			const bool bViewUnderGroundLevel = ViewPlanetAltitude < 0.0f;
 			if (bViewUnderGroundLevel)
 			{
