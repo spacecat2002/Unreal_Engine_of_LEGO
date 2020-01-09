@@ -85,7 +85,7 @@ bool UInteractiveTool::ReplaceToolPropertySource(UInteractiveToolPropertySet* Cu
 	}
 	CurPropertySet->GetOnModified().Clear();
 
-	ReplaceWith->GetOnModified().AddLambda([this](UObject* PropertySetArg, UProperty* PropertyArg)
+	ReplaceWith->GetOnModified().AddLambda([this](UObject* PropertySetArg, FProperty* PropertyArg)
 	{
 		OnPropertyModified(PropertySetArg, PropertyArg);
 	});
