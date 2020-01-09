@@ -3326,7 +3326,7 @@ void USkeletalMeshComponent::SetAllUseCCD(bool InUseCCD)
 }
 
 // blueprint callable methods 
-float USkeletalMeshComponent::GetClothMaxDistanceScale()
+float USkeletalMeshComponent::GetClothMaxDistanceScale() const
 {
 	return ClothMaxDistanceScale;
 }

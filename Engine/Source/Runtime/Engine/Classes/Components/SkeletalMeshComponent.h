@@ -1011,7 +1011,7 @@ public:
 	 * Get/Set the max distance scale of clothing mesh vertices
 	 */
 	UFUNCTION(BlueprintCallable, Category="Components|SkeletalMesh")
-	float GetClothMaxDistanceScale();
+	float GetClothMaxDistanceScale() const;
 	UFUNCTION(BlueprintCallable, Category="Components|SkeletalMesh")
 	void SetClothMaxDistanceScale(float Scale);
 
