@@ -802,14 +802,10 @@ static void InitRHICapabilitiesForGL()
 	GRHISupportsRHIThread = false;
 #endif
 	
+	// By default use emulated UBs on mobile
 	static auto* CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("OpenGL.UseEmulatedUBs"));
 	const bool bUseEmulatedUBs = (CVar && CVar->GetValueOnAnyThread() != 0);
-	
-	// Emulate uniform buffers on ES2
-	// Optional emulation on ES3.1 and PC
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	GUseEmulatedUniformBuffers = (IsES2Platform(GMaxRHIShaderPlatform) && !IsPCPlatform(GMaxRHIShaderPlatform)) || bUseEmulatedUBs;
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
+	GUseEmulatedUniformBuffers = (IsMobilePlatform(GMaxRHIShaderPlatform) && bUseEmulatedUBs);
 
 	FString FeatureLevelName;
 	GetFeatureLevelName(GMaxRHIFeatureLevel, FeatureLevelName);
