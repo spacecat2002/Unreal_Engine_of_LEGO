@@ -43,7 +43,7 @@ USkyAtmosphereComponent::USkyAtmosphereComponent(const FObjectInitializer& Objec
 	AtmosphereHeight = EarthTopRadius - EarthBottomRadius;
 	GroundAlbedo = FColor(170, 170, 170); // 170 => 0.4f linear
 
-	// FLoat to a u8 rgb + float length can lose some precision but it is better UI wise.
+	// Float to a u8 rgb + float length can lose some precision but it is better UI wise.
 	const FLinearColor RayleightScatteringRaw = FLinearColor(0.005802f, 0.013558f, 0.033100f);
 	RayleighScattering = RayleightScatteringRaw * (1.0f / RayleightScatteringRaw.B);
 	RayleighScatteringScale = RayleightScatteringRaw.B;

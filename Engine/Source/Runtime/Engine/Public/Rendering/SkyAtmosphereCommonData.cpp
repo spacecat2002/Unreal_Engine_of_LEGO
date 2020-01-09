@@ -39,8 +39,8 @@ FAtmosphereSetup::FAtmosphereSetup(const USkyAtmosphereComponent& SkyAtmosphereC
 		}
 	};
 
-	BottomRadius = SkyAtmosphereComponent.BottomRadius;
-	TopRadius = SkyAtmosphereComponent.BottomRadius + SkyAtmosphereComponent.AtmosphereHeight;
+	BottomRadiusKm = SkyAtmosphereComponent.BottomRadius;
+	TopRadiusKm = SkyAtmosphereComponent.BottomRadius + SkyAtmosphereComponent.AtmosphereHeight;
 	GroundAlbedo = FLinearColor(SkyAtmosphereComponent.GroundAlbedo);
 	MultiScatteringFactor = SkyAtmosphereComponent.MultiScatteringFactor;
 
@@ -66,13 +66,13 @@ void FAtmosphereSetup::UpdateTransform(const FTransform& ComponentTransform, uin
 	switch (ESkyAtmosphereTransformMode(TranformMode))
 	{
 	case ESkyAtmosphereTransformMode::PlanetTopAtAbsoluteWorldOrigin:
-		PlanetCenter = FVector(0.0f, 0.0f, -BottomRadius);
+		PlanetCenterKm = FVector(0.0f, 0.0f, -BottomRadiusKm);
 		break;
 	case ESkyAtmosphereTransformMode::PlanetTopAtComponentTransform:
-		PlanetCenter = FVector(0.0f, 0.0f, -BottomRadius) + ComponentTransform.GetTranslation() * FAtmosphereSetup::CmToSkyUnit;
+		PlanetCenterKm = FVector(0.0f, 0.0f, -BottomRadiusKm) + ComponentTransform.GetTranslation() * FAtmosphereSetup::CmToSkyUnit;
 		break;
 	case ESkyAtmosphereTransformMode::PlanetCenterAtComponentTransform:
-		PlanetCenter = ComponentTransform.GetTranslation() * FAtmosphereSetup::CmToSkyUnit;
+		PlanetCenterKm = ComponentTransform.GetTranslation() * FAtmosphereSetup::CmToSkyUnit;
 		break;
 	default:
 		check(false);
@@ -130,7 +130,7 @@ FLinearColor FAtmosphereSetup::GetTransmittanceAtGroundLevel(const FVector& SunD
 
 	auto OpticalDepth = [&](FVector RayOrigin, FVector RayDirection)
 	{
-		float TMax = raySphereIntersectNearest(RayOrigin, RayDirection, FVector(0.0f, 0.0f, 0.0f), TopRadius);
+		float TMax = raySphereIntersectNearest(RayOrigin, RayDirection, FVector(0.0f, 0.0f, 0.0f), TopRadiusKm);
 
 		FLinearColor OpticalDepthRGB = FLinearColor(ForceInitToZero);
 		FVector VectorZero = FVector(ForceInitToZero);
@@ -142,7 +142,7 @@ FLinearColor FAtmosphereSetup::GetTransmittanceAtGroundLevel(const FVector& SunD
 			for (float SampleT = 0.0f; SampleT < 1.0f; SampleT += SampleStep)
 			{
 				FVector Pos = RayOrigin + RayDirection * (TMax * SampleT);
-				const float viewHeight = (FVector::Distance(Pos, VectorZero) - BottomRadius);
+				const float viewHeight = (FVector::Distance(Pos, VectorZero) - BottomRadiusKm);
 
 				const float densityMie = FMath::Max(0.0f, FMath::Exp(MieDensityExpScale * viewHeight));
 				const float densityRay = FMath::Max(0.0f, FMath::Exp(RayleighDensityExpScale * viewHeight));
@@ -160,7 +160,7 @@ FLinearColor FAtmosphereSetup::GetTransmittanceAtGroundLevel(const FVector& SunD
 	};
 
 	// Assuming camera is along Z on (0,0,earthRadius + 500m)
-	const FVector WorldPos = FVector(0.0f, 0.0f, BottomRadius + 0.5);
+	const FVector WorldPos = FVector(0.0f, 0.0f, BottomRadiusKm + 0.5);
 	FVector2D AzimuthElevation = FMath::GetAzimuthAndElevation(SunDirection, FVector::ForwardVector, FVector::LeftVector, FVector::UpVector); // TODO: make it work over the entire virtual planet with a local basis
 	AzimuthElevation.Y = FMath::Max(FMath::DegreesToRadians(TransmittanceMinLightElevationAngle), AzimuthElevation.Y);
 	const FVector WorldDir = FVector(FMath::Cos(AzimuthElevation.Y), 0.0f, FMath::Sin(AzimuthElevation.Y)); // no need to take azimuth into account as transmittance is symmetrical around zenith axis.

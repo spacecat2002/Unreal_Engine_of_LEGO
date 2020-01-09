@@ -97,7 +97,7 @@ static TAutoConsoleVariable<float> CVarSkyAtmosphereFastSkyLUTHeight(
 
 static TAutoConsoleVariable<float> CVarSkyAtmosphereAerialPerspectiveStartDepth(
 	TEXT("r.SkyAtmosphere.AerialPerspective.StartDepth"), 0.1f,
-	TEXT("The distance at which we start evaluate the aerial pespective. Default: 100 meters."),
+	TEXT("The distance at which we start evaluate the aerial pespective in Kilometers. Default: 0.1 kilometers."),
 	ECVF_RenderThreadSafe | ECVF_Scalability);
 
 static TAutoConsoleVariable<int32> CVarSkyAtmosphereAerialPerspectiveDepthTest(
@@ -217,8 +217,8 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FSkyAtmosphereInternalCommonParameters, )
 	SHADER_PARAMETER(FVector4, CameraAerialPerspectiveVolumeSizeAndInvSize)
 	SHADER_PARAMETER(float, CameraAerialPerspectiveVolumeDepthResolution)		// Also on View UB
 	SHADER_PARAMETER(float, CameraAerialPerspectiveVolumeDepthResolutionInv)	// Also on View UB
-	SHADER_PARAMETER(float, CameraAerialPerspectiveVolumeDepthSliceLength)		// Also on View UB
-	SHADER_PARAMETER(float, CameraAerialPerspectiveVolumeDepthSliceLengthInv)	// Also on View UB
+	SHADER_PARAMETER(float, CameraAerialPerspectiveVolumeDepthSliceLengthKm)	// Also on View UB
+	SHADER_PARAMETER(float, CameraAerialPerspectiveVolumeDepthSliceLengthKmInv)	// Also on View UB
 	SHADER_PARAMETER(float, CameraAerialPerspectiveSampleCountPerSlice)
 
 	SHADER_PARAMETER(FVector4, TransmittanceLutSizeAndInvSize)
@@ -250,19 +250,19 @@ IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FSkyAtmosphereInternalCommonParameters,
 	int32 SkyViewLutHeight = ValidateLUTResolution(CVarSkyAtmosphereFastSkyLUTHeight.GetValueOnRenderThread()); \
 	int32 CameraAerialPerspectiveVolumeScreenResolution = ValidateLUTResolution(CVarSkyAtmosphereAerialPerspectiveLUTWidth.GetValueOnRenderThread()); \
 	int32 CameraAerialPerspectiveVolumeDepthResolution = ValidateLUTResolution(CVarSkyAtmosphereAerialPerspectiveLUTDepthResolution.GetValueOnRenderThread()); \
-	float CameraAerialPerspectiveVolumeDepth = CVarSkyAtmosphereAerialPerspectiveLUTDepth.GetValueOnRenderThread(); \
-	CameraAerialPerspectiveVolumeDepth = CameraAerialPerspectiveVolumeDepth < 1.0f ? 1.0f : CameraAerialPerspectiveVolumeDepth;	/* 1 kilometer minimum */ \
-	float CameraAerialPerspectiveVolumeDepthSliceLength = CameraAerialPerspectiveVolumeDepth / CameraAerialPerspectiveVolumeDepthResolution;
+	float CameraAerialPerspectiveVolumeDepthKm = CVarSkyAtmosphereAerialPerspectiveLUTDepth.GetValueOnRenderThread(); \
+	CameraAerialPerspectiveVolumeDepthKm = CameraAerialPerspectiveVolumeDepthKm < 1.0f ? 1.0f : CameraAerialPerspectiveVolumeDepthKm;	/* 1 kilometer minimum */ \
+	float CameraAerialPerspectiveVolumeDepthSliceLengthKm = CameraAerialPerspectiveVolumeDepthKm / CameraAerialPerspectiveVolumeDepthResolution;
 
 #define KM_TO_CM  100000.0f
 #define CM_TO_KM  (1.0f / KM_TO_CM)
 
 static float GetValidAerialPerspectiveStartDepthInCm(const FViewInfo& View)
 {
-	float AerialPerspectiveStartDepth = CVarSkyAtmosphereAerialPerspectiveStartDepth.GetValueOnRenderThread();
-	AerialPerspectiveStartDepth = AerialPerspectiveStartDepth < 0.0f ? 0.0f : AerialPerspectiveStartDepth;
+	float AerialPerspectiveStartDepthKm = CVarSkyAtmosphereAerialPerspectiveStartDepth.GetValueOnRenderThread();
+	AerialPerspectiveStartDepthKm = AerialPerspectiveStartDepthKm < 0.0f ? 0.0f : AerialPerspectiveStartDepthKm;
 	// For sky reflection capture, the start depth can be super large. So we max it to make sure the triangle is never in front the NearClippingDistance.
-	const float StartDepthInCm = FMath::Max(AerialPerspectiveStartDepth * KM_TO_CM, View.NearClippingDistance);
+	const float StartDepthInCm = FMath::Max(AerialPerspectiveStartDepthKm * KM_TO_CM, View.NearClippingDistance);
 	return StartDepthInCm;
 }
 
@@ -299,10 +299,10 @@ void SetupSkyAtmosphereViewSharedUniformShaderParameters(const FViewInfo& View, 
 	OutParameters.ApplyCameraAerialPerspectiveVolume = View.SkyAtmosphereCameraAerialPerspectiveVolume == nullptr ? 0.0f : 1.0f;
 	OutParameters.CameraAerialPerspectiveVolumeDepthResolution = float(CameraAerialPerspectiveVolumeDepthResolution);
 	OutParameters.CameraAerialPerspectiveVolumeDepthResolutionInv = 1.0f / OutParameters.CameraAerialPerspectiveVolumeDepthResolution;
-	OutParameters.CameraAerialPerspectiveVolumeDepthSliceLength = CameraAerialPerspectiveVolumeDepthSliceLength;
-	OutParameters.CameraAerialPerspectiveVolumeDepthSliceLengthInv = 1.0f / OutParameters.CameraAerialPerspectiveVolumeDepthSliceLength;
+	OutParameters.CameraAerialPerspectiveVolumeDepthSliceLengthKm = CameraAerialPerspectiveVolumeDepthSliceLengthKm;
+	OutParameters.CameraAerialPerspectiveVolumeDepthSliceLengthKmInv = 1.0f / OutParameters.CameraAerialPerspectiveVolumeDepthSliceLengthKm;
 
-	OutParameters.AerialPerspectiveStartDepth = GetValidAerialPerspectiveStartDepthInCm(View) * CM_TO_KM;
+	OutParameters.AerialPerspectiveStartDepthKm = GetValidAerialPerspectiveStartDepthInCm(View) * CM_TO_KM;
 
 	SetBlackAlpha13DIfNull(SkyAtmosphereCameraAerialPerspectiveVolume); // Needs to be after we set ApplyCameraAerialPerspectiveVolume
 }
@@ -311,8 +311,8 @@ static void CopyAtmosphereSetupToUniformShaderParameters(FAtmosphereUniformShade
 {
 #define COPYMACRO(MemberName) out.MemberName = Atmosphere.MemberName 
 	COPYMACRO(MultiScatteringFactor);
-	COPYMACRO(BottomRadius);
-	COPYMACRO(TopRadius);
+	COPYMACRO(BottomRadiusKm);
+	COPYMACRO(TopRadiusKm);
 	COPYMACRO(RayleighDensityExpScale);
 	COPYMACRO(RayleighScattering);
 	COPYMACRO(MieScattering);
@@ -530,7 +530,7 @@ class FRenderSkyAtmospherePS : public FGlobalShader
 		SHADER_PARAMETER_SAMPLER(SamplerState, MultiScatteredLuminanceLutTextureSampler)
 		SHADER_PARAMETER_SAMPLER(SamplerState, SkyViewLutTextureSampler)
 		SHADER_PARAMETER_SAMPLER(SamplerState, CameraAerialPerspectiveVolumeTextureSampler)
-		SHADER_PARAMETER(float, AerialPerspectiveStartDepth)
+		SHADER_PARAMETER(float, AerialPerspectiveStartDepthKm)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static FPermutationDomain RemapPermutation(FPermutationDomain PermutationVector)
@@ -751,7 +751,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float3>, MultiScatteredLuminanceLutTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, TransmittanceLutTextureSampler)
 		SHADER_PARAMETER_SAMPLER(SamplerState, MultiScatteredLuminanceLutTextureSampler)
-		SHADER_PARAMETER(float, AerialPerspectiveStartDepth)
+		SHADER_PARAMETER(float, AerialPerspectiveStartDepthKm)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -1047,8 +1047,8 @@ static void SetupSkyAtmosphereInternalCommonParameters(
 
 	InternalCommonParameters.CameraAerialPerspectiveVolumeDepthResolution = float(CameraAerialPerspectiveVolumeDepthResolution);
 	InternalCommonParameters.CameraAerialPerspectiveVolumeDepthResolutionInv = 1.0f / InternalCommonParameters.CameraAerialPerspectiveVolumeDepthResolution;
-	InternalCommonParameters.CameraAerialPerspectiveVolumeDepthSliceLength = CameraAerialPerspectiveVolumeDepthSliceLength;
-	InternalCommonParameters.CameraAerialPerspectiveVolumeDepthSliceLengthInv = 1.0f / CameraAerialPerspectiveVolumeDepthSliceLength;
+	InternalCommonParameters.CameraAerialPerspectiveVolumeDepthSliceLengthKm = CameraAerialPerspectiveVolumeDepthSliceLengthKm;
+	InternalCommonParameters.CameraAerialPerspectiveVolumeDepthSliceLengthKmInv = 1.0f / CameraAerialPerspectiveVolumeDepthSliceLengthKm;
 	InternalCommonParameters.CameraAerialPerspectiveSampleCountPerSlice = CVarSkyAtmosphereAerialPerspectiveLUTSampleCountPerSlice.GetValueOnRenderThread();
 
 	InternalCommonParameters.TransmittanceSampleCount = CVarSkyAtmosphereTranstmittanceLUTSampleCount.GetValueOnRenderThread();
@@ -1251,7 +1251,7 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& R
 			PassParameters->TransmittanceLutTexture = TransmittanceLut;
 			PassParameters->MultiScatteredLuminanceLutTexture = MultiScatteredLuminanceLut;
 			PassParameters->CameraAerialPerspectiveVolumeUAV = SkyAtmosphereCameraAerialPerspectiveVolumeUAV;
-			PassParameters->AerialPerspectiveStartDepth = AerialPerspectiveStartDepthInCm * CM_TO_KM;
+			PassParameters->AerialPerspectiveStartDepthKm = AerialPerspectiveStartDepthInCm * CM_TO_KM;
 
 			FIntVector TextureSize = SkyAtmosphereCameraAerialPerspectiveVolume->Desc.GetSize();
 			const FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FRenderCameraAerialPerspectiveVolumeCS::GroupSize);
@@ -1312,8 +1312,8 @@ void FSceneRenderer::RenderSkyAtmosphere(FRHICommandListImmediate& RHICmdList)
 		const bool bRenderSkyPixel = !View.bSceneHasSkyMaterial;
 
 		const FVector ViewOrigin = View.ViewMatrices.GetViewOrigin();
-		const FVector PlanetOrigin = FVector(0.0f, 0.0f, -Atmosphere.BottomRadius * KM_TO_CM);
-		const float TopOfAtmosphere = Atmosphere.TopRadius * KM_TO_CM;
+		const FVector PlanetOrigin = FVector(0.0f, 0.0f, -Atmosphere.BottomRadiusKm * KM_TO_CM);
+		const float TopOfAtmosphere = Atmosphere.TopRadiusKm * KM_TO_CM;
 		const float SafeEdge = 1000.0f;	// 10 meters
 		const bool ForceRayMarching = (FVector::Distance(ViewOrigin, PlanetOrigin) - TopOfAtmosphere - SafeEdge) > 0.0f;
 
@@ -1353,7 +1353,7 @@ void FSceneRenderer::RenderSkyAtmosphere(FRHICommandListImmediate& RHICmdList)
 			PsPassParameters->MultiScatteredLuminanceLutTexture = MultiScatteredLuminanceLut;
 			PsPassParameters->SkyViewLutTexture = SkyAtmosphereViewLutTexture;
 			PsPassParameters->CameraAerialPerspectiveVolumeTexture = SkyAtmosphereCameraAerialPerspectiveVolume;
-			PsPassParameters->AerialPerspectiveStartDepth = AerialPerspectiveStartDepthInCm * CM_TO_KM;
+			PsPassParameters->AerialPerspectiveStartDepthKm = AerialPerspectiveStartDepthInCm * CM_TO_KM;
 			ClearUnusedGraphResources(*PixelShader, PsPassParameters);
 
 			float StartDepthZ = 0.1f;
@@ -1591,7 +1591,7 @@ void FDeferredShadingSceneRenderer::RenderDebugSkyAtmosphere(FRHICommandListImme
 
 		if (bSkyAtmosphereVisualizeShowFlag)
 		{
-			const float ViewPlanetAltitude = (View.ViewLocation*0.00001f - FVector(0.0f, 0.0f, -Atmosphere.BottomRadius)).Size() - Atmosphere.BottomRadius;
+			const float ViewPlanetAltitude = (View.ViewLocation*0.00001f - FVector(0.0f, 0.0f, -Atmosphere.BottomRadiusKm)).Size() - Atmosphere.BottomRadiusKm;
 			const bool bViewUnderGroundLevel = ViewPlanetAltitude < 0.0f;
 			if (bViewUnderGroundLevel)
 			{
@@ -1609,7 +1609,7 @@ void FDeferredShadingSceneRenderer::RenderDebugSkyAtmosphere(FRHICommandListImme
 			const float HemiViewHeight = ViewPortWidth * 0.25f;
 			const float HemiViewTop = ViewPortHeight - HemiViewHeight - TimeOfDayViewHeight - Margin * 2.0;
 
-			Text = FString::Printf(TEXT("Atmosphere top = %.1f km"), Atmosphere.TopRadius - Atmosphere.BottomRadius);
+			Text = FString::Printf(TEXT("Atmosphere top = %.1f km"), Atmosphere.TopRadiusKm - Atmosphere.BottomRadiusKm);
 			Canvas.DrawShadowedString(DensityViewLeft, DensityViewTop, *Text, GetStatsFont(), TextColor);
 			Text = FString::Printf(TEXT("Rayleigh extinction"));
 			Canvas.DrawShadowedString(DensityViewLeft + 60.0f, DensityViewTop + 30.0f, *Text, GetStatsFont(), FLinearColor(FLinearColor::Red));

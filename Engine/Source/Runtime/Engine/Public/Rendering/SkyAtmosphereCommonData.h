@@ -19,18 +19,18 @@ struct FAtmosphereSetup
 	ENGINE_API static const float CmToSkyUnit;
 	ENGINE_API static const float SkyUnitToCm;
 
-	FVector PlanetCenter;
-	float BottomRadius;
-	float TopRadius;
+	FVector PlanetCenterKm;			// In sky unit (kilometers)
+	float BottomRadiusKm;			// idem
+	float TopRadiusKm;				// idem
 
 	float MultiScatteringFactor;
 
-	FLinearColor RayleighScattering;
+	FLinearColor RayleighScattering;// Unit is 1/km
 	float RayleighDensityExpScale;
 
-	FLinearColor MieScattering;
-	FLinearColor MieExtinction;
-	FLinearColor MieAbsorption;
+	FLinearColor MieScattering;		// Unit is 1/km
+	FLinearColor MieExtinction;		// idem
+	FLinearColor MieAbsorption;		// idem
 	float MieDensityExpScale;
 	float MiePhaseG;
 
