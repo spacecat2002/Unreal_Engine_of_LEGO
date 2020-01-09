@@ -213,9 +213,9 @@ void GetPropertyValueAsStringDirect(const FProperty* InProp, const uint8* InData
 	}
 #endif // WITH_EDITOR
 
-	if (EnumHasAnyFlags(InDTExportFlags, EDataTableExportFlags::UseSimpleText) && InProp->IsA<UTextProperty>())
+	if (EnumHasAnyFlags(InDTExportFlags, EDataTableExportFlags::UseSimpleText) && InProp->IsA<FTextProperty>())
 	{
-		const UTextProperty* TextProp = CastChecked<const UTextProperty>(InProp);
+		const FTextProperty* TextProp = CastFieldChecked<const FTextProperty>(InProp);
 		const FText& TextValue = TextProp->GetPropertyValue(InData);
 		OutString.Append(TextValue.ToString());
 		return;
