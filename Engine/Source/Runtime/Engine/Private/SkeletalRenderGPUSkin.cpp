@@ -839,9 +839,9 @@ void FSkeletalMeshObjectGPUSkin::FSkeletalMeshObjectLOD::UpdateMorphVertexBuffer
 
 		RHICmdList.ClearUAVUint(MorphVertexBuffer.GetUAV(), FUintVector4(0, 0, 0, 0));
 
-		RHICmdList.AutomaticCacheFlushAfterComputeShader(false);
+		{
+			RHICmdList.BeginUAVOverlap();
 
-		{		
 			FVector4 MorphScale; 
 			FVector4 InvMorphScale; 
 			TArray<float> InverseAccumulatedWeights;
@@ -884,8 +884,9 @@ void FSkeletalMeshObjectGPUSkin::FSkeletalMeshObjectLOD::UpdateMorphVertexBuffer
 				i += j;
 			}
 			GPUMorphUpdateCS->EndAllDispatches(RHICmdList);
-			RHICmdList.AutomaticCacheFlushAfterComputeShader(true);
-			RHICmdList.FlushComputeShaderCache();
+
+			RHICmdList.EndUAVOverlap();
+
 			RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, MorphVertexBuffer.GetUAV());
 
 			//The second pass normalizes the scattered result and converts it back into floats.
@@ -923,7 +924,7 @@ void FSkeletalMeshObjectGPUSkin::FSkeletalMeshObjectLOD::UpdateMorphVertexBuffer
 				i += j;
 			}
 			GPUMorphNormalizeCS->EndAllDispatches(RHICmdList);
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, MorphVertexBuffer.GetUAV());
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, MorphVertexBuffer.GetUAV());
 		}
 
 		// Copy the section Ids use by all active morph targets

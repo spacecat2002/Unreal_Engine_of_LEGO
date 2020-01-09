@@ -1010,7 +1010,7 @@ void FLightPropagationVolume::Clear(FRHICommandListImmediate& RHICmdList, FViewI
 	LpvWriteUniformBuffer.SetContents( *LpvWriteUniformBufferParams );
 
 	// TODO: these could be run in parallel... 
-	RHICmdList.AutomaticCacheFlushAfterComputeShader(false);
+	RHICmdList.BeginUAVOverlap();
 
 	// Clear the list buffers
 	{
@@ -1048,8 +1048,7 @@ void FLightPropagationVolume::Clear(FRHICommandListImmediate& RHICmdList, FViewI
 		DispatchComputeShader(RHICmdList, *Shader, LPV_GRIDRES/4, LPV_GRIDRES/4, LPV_GRIDRES/4 );
 		Shader->UnbindBuffers(RHICmdList, ShaderParams);
 	}
-	RHICmdList.AutomaticCacheFlushAfterComputeShader(true);
-	RHICmdList.FlushComputeShaderCache();
+	RHICmdList.EndUAVOverlap();
 
 	RHICmdList.SetUAVParameter( FComputeShaderRHIRef(), 7, mVplListBuffer->UAV, 0 );
 	RHICmdList.SetUAVParameter( FComputeShaderRHIRef(), 7, GvListBuffer->UAV, 0 );

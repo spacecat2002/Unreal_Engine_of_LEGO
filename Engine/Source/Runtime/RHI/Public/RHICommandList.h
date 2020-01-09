@@ -1333,6 +1333,30 @@ struct FRHICommandDispatchIndirectComputeShader final : public FRHICommand<FRHIC
 	RHI_API void Execute(FRHICommandListBase& CmdList);
 };
 
+struct FRHICommandBeginUAVOverlapString
+{
+	static const TCHAR* TStr() { return TEXT("FRHICommandBeginUAVOverlap"); }
+};
+struct FRHICommandBeginUAVOverlap final : public FRHICommand<FRHICommandBeginUAVOverlap, FRHICommandBeginUAVOverlapString>
+{
+	FORCEINLINE_DEBUGGABLE FRHICommandBeginUAVOverlap()
+	{}
+
+	RHI_API void Execute(FRHICommandListBase& CmdList);
+};
+
+struct FRHICommandEndUAVOverlapString
+{
+	static const TCHAR* TStr() { return TEXT("FRHICommandEndUAVOverlap"); }
+};
+struct FRHICommandEndUAVOverlap final : public FRHICommand<FRHICommandEndUAVOverlap, FRHICommandEndUAVOverlapString>
+{
+	FORCEINLINE_DEBUGGABLE FRHICommandEndUAVOverlap()
+	{}
+
+	RHI_API void Execute(FRHICommandListBase& CmdList);
+};
+
 FRHICOMMAND_MACRO(FRHICommandAutomaticCacheFlushAfterComputeShader)
 {
 	bool bEnable;
@@ -2486,6 +2510,26 @@ public:
 		ALLOC_COMMAND(FRHICommandWaitComputeFence)(WaitFence);
 	}
 
+	FORCEINLINE_DEBUGGABLE void BeginUAVOverlap()
+	{
+		if (Bypass())
+		{
+			GetContext().RHIBeginUAVOverlap();
+			return;
+		}
+		ALLOC_COMMAND(FRHICommandBeginUAVOverlap)();
+	}
+
+	FORCEINLINE_DEBUGGABLE void EndUAVOverlap()
+	{
+		if (Bypass())
+		{
+			GetContext().RHIEndUAVOverlap();
+			return;
+		}
+		ALLOC_COMMAND(FRHICommandEndUAVOverlap)();
+	}
+
 	FORCEINLINE_DEBUGGABLE void PushEvent(const TCHAR* Name, FColor Color)
 	{
 		if (Bypass())
@@ -3057,6 +3101,27 @@ public:
 		ALLOC_COMMAND(FRHICommandSetGraphicsPipelineState)(GraphicsPipelineState);
 	}
 
+	FORCEINLINE_DEBUGGABLE void BeginUAVOverlap()
+	{
+		if (Bypass())
+		{
+			GetContext().RHIBeginUAVOverlap();
+			return;
+		}
+		ALLOC_COMMAND(FRHICommandBeginUAVOverlap)();
+	}
+
+	FORCEINLINE_DEBUGGABLE void EndUAVOverlap()
+	{
+		if (Bypass())
+		{
+			GetContext().RHIEndUAVOverlap();
+			return;
+		}
+		ALLOC_COMMAND(FRHICommandEndUAVOverlap)();
+	}
+
+	UE_DEPRECATED(4.25, "AutomaticCacheFlushAfterComputeShader is deprecated. Use RHICmdList.BeginUAVOverlap() and RHICmdList.EndUAVOverlap() to mark up sections of RHI commands where multiple draws/dispatches using UAVs are allowed to overlap without interleaved resource transitions. Call BeginUAVOverlap() where previously AutomaticCacheFlushAfterComputeShader(false) was called, and EndUAVOverlap() where previously AutomaticCacheFlushAfterComputeShader(true) was called.")
 	FORCEINLINE_DEBUGGABLE void AutomaticCacheFlushAfterComputeShader(bool bEnable)
 	{
 		if (Bypass())
@@ -3067,6 +3132,7 @@ public:
 		ALLOC_COMMAND(FRHICommandAutomaticCacheFlushAfterComputeShader)(bEnable);
 	}
 
+	UE_DEPRECATED(4.25, "FlushComputeShaderCache is deprecated. Use RHICmdList.BeginUAVOverlap() and RHICmdList.EndUAVOverlap() to mark up sections of RHI commands where multiple draws/dispatches using UAVs are allowed to overlap without interleaved resource transitions. Use of FlushComputeShaderCache() should be replaced with an appropriate call to RHICmdList.TransitionResources(), if one is not already being made.")
 	FORCEINLINE_DEBUGGABLE void FlushComputeShaderCache()
 	{
 		if (Bypass())

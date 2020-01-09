@@ -285,7 +285,8 @@ void FVirtualTextureSpace::AllocateTextures(FRHICommandList& RHICmdList)
 				TexCreate_None,
 				TexCreate_RenderTargetable | TexCreate_ShaderResource,
 				false,
-				NumPageTableLevels);
+				NumPageTableLevels,
+				false /* InAutowritable */);
 
 			TRefCountPtr<IPooledRenderTarget> RenderTarget;
 			GRenderTargetPool.FindFreeElement(RHICmdList, Desc, RenderTarget, TextureNames[TextureIndex]);
@@ -395,6 +396,14 @@ void FVirtualTextureSpace::ApplyUpdates(FVirtualTextureSystem* System, FRHIComma
 		}
 		RHIUnlockVertexBuffer(UpdateBuffer);
 	}
+
+	TArray<FRHITexture*, SceneRenderingAllocator> TexturesToTransition;
+	TexturesToTransition.SetNumUninitialized(GetNumPageTableTextures());
+	for (int32 i = 0; i < TexturesToTransition.Num(); ++i)
+	{
+		TexturesToTransition[i] = PageTable[i].RenderTarget->GetRenderTargetItem().TargetableTexture;
+	}
+	RHICmdList.TransitionResources(EResourceTransitionAccess::EWritable, TexturesToTransition.GetData(), TexturesToTransition.Num());
 
 	// Draw
 	SCOPED_DRAW_EVENT(RHICmdList, PageTableUpdate);

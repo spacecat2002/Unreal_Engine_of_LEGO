@@ -160,11 +160,15 @@ void FVirtualTextureUploadCache::Finalize(FRHICommandListImmediate& RHICmdList)
 			const FIntVector SourceBoxStart(SrcTileX * TileSize + SkipBorderSize, SrcTileY * TileSize + SkipBorderSize, 0);
 			const FIntVector DestinationBoxStart(Entry.SubmitDestX * SubmitTileSize, Entry.SubmitDestY * SubmitTileSize, 0);
 
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, Entry.RHISubmitTexture);
+
 			FRHICopyTextureInfo CopyInfo;
 			CopyInfo.Size = FIntVector(SubmitTileSize, SubmitTileSize, 1);
 			CopyInfo.SourcePosition = SourceBoxStart;
 			CopyInfo.DestPosition = DestinationBoxStart;
 			RHICmdList.CopyTexture(StagingTexture.RHITexture, Entry.RHISubmitTexture, CopyInfo);
+
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, Entry.RHISubmitTexture);
 
 			Entry.RHISubmitTexture = nullptr;
 			Entry.SubmitBatchIndex = 0u;

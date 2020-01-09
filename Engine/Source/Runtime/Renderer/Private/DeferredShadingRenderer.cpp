@@ -2458,7 +2458,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 			ConditionalResolveSceneColorForTranslucentMaterials(RHICmdList, SceneColorCopy);
 
 			// Disable UAV cache flushing so we have optimal VT feedback performance.
-			RHICmdList.AutomaticCacheFlushAfterComputeShader(false);
+			RHICmdList.BeginUAVOverlap();
 
 			if (ViewFamily.AllowTranslucencyAfterDOF())
 			{
@@ -2471,8 +2471,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 				RenderTranslucency(RHICmdList, ETranslucencyPass::TPT_AllTranslucency, SceneColorCopy);
 			}
 
-			RHICmdList.AutomaticCacheFlushAfterComputeShader(true);
-			RHICmdList.FlushComputeShaderCache();
+			RHICmdList.EndUAVOverlap();
 
 			ServiceLocalQueue();
 

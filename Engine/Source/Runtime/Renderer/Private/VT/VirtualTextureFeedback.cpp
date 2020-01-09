@@ -224,6 +224,8 @@ void FVirtualTextureFeedback::TransferGPUToCPU( FRHICommandListImmediate& RHICmd
 	FeedbackEntryCPU.GPUMask = FRHIGPUMask::FromIndex(RHICmdList.GetGPUMask().GetFirstIndex());
 	SCOPED_GPU_MASK(RHICmdList, FeedbackEntryCPU.GPUMask);
 
+	RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, FeedbackEntryCPU.TextureCPU->GetRenderTargetItem().ShaderResourceTexture);
+
 	// Transfer memory GPU -> CPU
 	RHICmdList.CopyToResolveTarget(
 		FeedbackTextureGPU->GetRenderTargetItem().TargetableTexture,
