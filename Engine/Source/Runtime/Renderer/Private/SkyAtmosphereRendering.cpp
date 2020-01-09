@@ -807,6 +807,39 @@ class FRenderDebugSkyAtmospherePS : public FGlobalShader
 };
 IMPLEMENT_GLOBAL_SHADER(FRenderDebugSkyAtmospherePS, "/Engine/Private/SkyAtmosphere.usf", "RenderSkyAtmosphereDebugPS", SF_Pixel);
 
+//////////////////////////////////////////////////////////////////////////
+
+class RenderSkyAtmosphereEditorHudPS : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(RenderSkyAtmosphereEditorHudPS);
+	SHADER_USE_PARAMETER_STRUCT(RenderSkyAtmosphereEditorHudPS, FGlobalShader);
+
+	using FPermutationDomain = TShaderPermutationDomain<FSkyPermutationMultiScatteringApprox>;
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
+		SHADER_PARAMETER_TEXTURE(Texture2D, MiniFontTexture)
+		RENDER_TARGET_BINDING_SLOTS()
+	END_SHADER_PARAMETER_STRUCT()
+
+	static FPermutationDomain RemapPermutation(FPermutationDomain PermutationVector)
+	{
+		return PermutationVector;
+	}
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		// TODO: Exclude when shipping.
+		return ShouldPipelineCompileSkyAtmosphereShader(Parameters.Platform);
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("SHADER_EDITOR_HUD"), 1);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(RenderSkyAtmosphereEditorHudPS, "/Engine/Private/SkyAtmosphere.usf", "RenderSkyAtmosphereEditorHudPS", SF_Pixel);
 
 
 /*=============================================================================
@@ -1437,38 +1470,30 @@ void FSceneRenderer::RenderSkyAtmosphereEditorNotifications(FRHICommandListImmed
 	SCOPED_DRAW_EVENT(RHICmdList, SkyAtmosphereEditor);
 	SCOPED_GPU_STAT(RHICmdList, SkyAtmosphereEditor);
 
+	FRDGBuilder GraphBuilder(RHICmdList);
+
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+	FTexture2DRHIRef& SceneColor = (FTexture2DRHIRef&)SceneContext.GetSceneColor()->GetRenderTargetItem().TargetableTexture;
+	FRDGTextureRef RdgSceneColor = GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor(), TEXT("SceneColor"));
+
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
 		FViewInfo& View = Views[ViewIndex];
-
 		if (View.bSceneHasSkyMaterial && View.Family->EngineShowFlags.Atmosphere)
 		{
-			const float ViewPortWidth = float(View.ViewRect.Width());
-			const float ViewPortHeight = float(View.ViewRect.Height());
+			RenderSkyAtmosphereEditorHudPS::FPermutationDomain PermutationVector;
+			TShaderMapRef<RenderSkyAtmosphereEditorHudPS> PixelShader(View.ShaderMap, PermutationVector);
 
-			FRenderTargetTemp TempRenderTarget(View, (const FTexture2DRHIRef&)SceneContext.GetSceneColor()->GetRenderTargetItem().TargetableTexture);
-			FCanvas Canvas(&TempRenderTarget, NULL, View.Family->CurrentRealTime, ViewFamily.CurrentWorldTime, ViewFamily.DeltaWorldTime, View.GetFeatureLevel());
+			RenderSkyAtmosphereEditorHudPS::FParameters* PassParameters = GraphBuilder.AllocParameters<RenderSkyAtmosphereEditorHudPS::FParameters>();
+			PassParameters->RenderTargets[0] = FRenderTargetBinding(RdgSceneColor, ERenderTargetLoadAction::ELoad);
+			PassParameters->ViewUniformBuffer = View.ViewUniformBuffer;
+			PassParameters->MiniFontTexture = GEngine->MiniFontTexture ? GEngine->MiniFontTexture->Resource->TextureRHI : GSystemTextures.WhiteDummy->GetRenderTargetItem().TargetableTexture;
 
-			FLinearColor TextColor(1.0f, 0.5f, 0.0f);
-			FString Text  = TEXT("Your scene contains a mesh with a sky material assigned to it.");
-			FString Text2 = TEXT("So we optimize by not rendering the sky as a full-screen pass.");
-			FString Text3 = TEXT("However, your sky mesh does not cover that part of the screen!");
-			const int32 TextWidth = Text.Len() * 7;
-			for (int i = 32; i < ViewPortWidth; i += (TextWidth + 32))
-			{
-				for (int j = 32; j < ViewPortHeight; j += 128)
-				{
-					Canvas.DrawShadowedString(i, j     , *Text , GetStatsFont(), TextColor);
-					Canvas.DrawShadowedString(i, j + 16, *Text2, GetStatsFont(), TextColor);
-					Canvas.DrawShadowedString(i, j + 32, *Text3, GetStatsFont(), TextColor);
-				}
-			}
-
-			// Flush immediately to output into the scene color right away
-			Canvas.Flush_RenderThread(RHICmdList);
+			FPixelShaderUtils::AddFullscreenPass<RenderSkyAtmosphereEditorHudPS>(GraphBuilder, View.ShaderMap, RDG_EVENT_NAME("SkyAtmosphereEditor"), *PixelShader, PassParameters, View.ViewRect);
 		}
 	}
+
+	GraphBuilder.Execute();
 #endif
 }
 
