@@ -2614,8 +2614,10 @@ public:
 	/** Precomputed visibility data for the scene. */
 	const FPrecomputedVisibilityHandler* PrecomputedVisibilityHandler;
 
-	/** An octree containing the shadow casting lights in the scene. */
-	FSceneLightOctree LightOctree;
+	/** An octree containing the shadow-casting local lights in the scene. */
+	FSceneLightOctree LocalShadowCastingLightOctree;
+	/** An array containing IDs of shadow-casting directional lights in the scene. */
+	TArray<int32> DirectionalShadowCastingLightIDs;
 
 	/** An octree containing the primitives in the scene. */
 	FScenePrimitiveOctree PrimitiveOctree;

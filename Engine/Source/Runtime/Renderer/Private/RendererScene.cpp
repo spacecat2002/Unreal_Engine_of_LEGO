@@ -554,7 +554,7 @@ SIZE_T FScene::GetSizeBytes() const
 		+ WindSources.GetAllocatedSize()
 		+ SpeedTreeVertexFactoryMap.GetAllocatedSize()
 		+ SpeedTreeWindComputationMap.GetAllocatedSize()
-		+ LightOctree.GetSizeBytes()
+		+ LocalShadowCastingLightOctree.GetSizeBytes()
 		+ PrimitiveOctree.GetSizeBytes();
 }
 
@@ -981,7 +981,7 @@ FScene::FScene(UWorld* InWorld, bool bInRequiresHitProxies, bool bInIsEditorScen
 ,	AtmosphericFog(NULL)
 ,	SkyAtmosphere(NULL)
 ,	PrecomputedVisibilityHandler(NULL)
-,	LightOctree(FVector::ZeroVector,HALF_WORLD_MAX)
+,	LocalShadowCastingLightOctree(FVector::ZeroVector,HALF_WORLD_MAX)
 ,	PrimitiveOctree(FVector::ZeroVector,HALF_WORLD_MAX)
 ,	bRequiresHitProxies(bInRequiresHitProxies)
 ,	bIsEditorScene(bInIsEditorScene)
@@ -3300,8 +3300,7 @@ void FScene::ApplyWorldOffset_RenderThread(const FVector& InOffset)
 		(*It).LightSceneInfo->Proxy->ApplyWorldOffset(InOffset);
 	}
 
-	// Lights octree
-	LightOctree.ApplyOffset(InOffset, /*bGlobalOctee*/ true);
+	LocalShadowCastingLightOctree.ApplyOffset(InOffset, /*bGlobalOctee*/ true);
 
 	// Cached preshadows
 	for (auto It = CachedPreshadows.CreateIterator(); It; ++It)
