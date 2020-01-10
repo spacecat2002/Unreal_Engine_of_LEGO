@@ -1,4 +1,4 @@
-// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
+// Copyright Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	InstancedStaticMesh.cpp: Static mesh rendering code.
@@ -53,7 +53,8 @@ IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FInstancedStaticMeshVertexFactoryUnifor
 TAutoConsoleVariable<int32> CVarMinLOD(
 	TEXT("foliage.MinLOD"),
 	-1,
-	TEXT("Used to discard the top LODs for performance evaluation. -1: Disable all effects of this cvar."));
+	TEXT("Used to discard the top LODs for performance evaluation. -1: Disable all effects of this cvar."),
+	ECVF_Scalability | ECVF_Default);
 
 static TAutoConsoleVariable<int32> CVarRayTracingRenderInstances(
 	TEXT("r.RayTracing.InstancedStaticMeshes"),
@@ -1911,7 +1912,7 @@ void UInstancedStaticMeshComponent::SerializeRenderData(FArchive& Ar)
 		{
 			uint64 RenderDataPos = Ar.Tell();
 
-			if (PerInstanceSMData.Num() > 0)
+			if (PerInstanceSMData.Num() > 0 && PerInstanceRenderData.IsValid())
 			{
 				check(PerInstanceRenderData.IsValid());
 

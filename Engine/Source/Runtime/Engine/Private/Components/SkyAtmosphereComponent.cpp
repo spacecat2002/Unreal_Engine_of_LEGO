@@ -1,4 +1,4 @@
-// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
+// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Components/SkyAtmosphereComponent.h"
 
@@ -283,7 +283,7 @@ void USkyAtmosphereComponent::PostEditChangeProperty(FPropertyChangedEvent& Prop
 
 #endif // WITH_EDITOR
 
-void USkyAtmosphereComponent::PostInterpChange(UProperty* PropertyThatChanged)
+void USkyAtmosphereComponent::PostInterpChange(FProperty* PropertyThatChanged)
 {
 	Super::PostInterpChange(PropertyThatChanged);
 	MarkRenderStateDirty();

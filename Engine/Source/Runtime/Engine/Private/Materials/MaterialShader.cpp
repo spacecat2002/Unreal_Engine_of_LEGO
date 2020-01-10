@@ -1,4 +1,4 @@
-// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
+// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "MaterialShader.h"
 #include "Stats/StatsMisc.h"
@@ -1639,6 +1639,9 @@ FShader* FMaterialShaderMap::ProcessCompilationResultsForSingleJob(FShaderCompil
 	const FShaderCompileJob& CurrentJob = *SingleJob;
 	check(CurrentJob.Id == CompilingId);
 
+#if ALLOW_SHADERMAP_DEBUG_DATA
+	CompileTime += SingleJob->Output.CompileTime;
+#endif
 	FShader* Shader = nullptr;
 	if (CurrentJob.VFType)
 	{
@@ -2275,6 +2278,7 @@ FMaterialShaderMap::FMaterialShaderMap(EShaderPlatform InPlatform) :
 	checkSlow(IsInGameThread() || IsAsyncLoading());
 #if ALLOW_SHADERMAP_DEBUG_DATA
 	AllMaterialShaderMaps.Add(this);
+	CompileTime = 0.f;
 #endif
 }
 
@@ -2287,7 +2291,7 @@ FMaterialShaderMap::~FMaterialShaderMap()
 	if(GShaderCompilerStats != 0)
 	{
 		FString Path = !MaterialPath.IsEmpty() ? MaterialPath : GetFriendlyName();
-		GShaderCompilerStats->RegisterCookedShaders(GetShaderNum(), Platform, Path, GetDebugDescription());
+		GShaderCompilerStats->RegisterCookedShaders(GetShaderNum(), CompileTime, Platform, Path, GetDebugDescription());
 	}
 	AllMaterialShaderMaps.RemoveSwap(this);
 #endif
