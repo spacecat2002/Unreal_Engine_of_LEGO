@@ -316,10 +316,14 @@ void UTransformGizmo::UpdateCameraAxisSource()
 
 void UTransformGizmo::Tick(float DeltaTime)
 {	
-	EToolContextCoordinateSystem CoordSystem = GetGizmoManager()->GetContextQueriesAPI()->GetCurrentCoordinateSystem();
-	check(CoordSystem == EToolContextCoordinateSystem::World || CoordSystem == EToolContextCoordinateSystem::Local)
-	bool bUseLocalAxes =
-		(GetGizmoManager()->GetContextQueriesAPI()->GetCurrentCoordinateSystem() == EToolContextCoordinateSystem::Local);
+	if (bUseContextCoordinateSystem)
+	{
+		CurrentCoordinateSystem = GetGizmoManager()->GetContextQueriesAPI()->GetCurrentCoordinateSystem();
+	}
+	
+	check(CurrentCoordinateSystem == EToolContextCoordinateSystem::World || CurrentCoordinateSystem == EToolContextCoordinateSystem::Local)
+	bool bUseLocalAxes = (CurrentCoordinateSystem == EToolContextCoordinateSystem::Local);
+
 	if (AxisXSource != nullptr && AxisYSource != nullptr && AxisZSource != nullptr)
 	{
 		AxisXSource->bLocalAxes = bUseLocalAxes;
@@ -330,7 +334,7 @@ void UTransformGizmo::Tick(float DeltaTime)
 	{
 		for (UPrimitiveComponent* Component : ActiveComponents)
 		{
-			UpdateCoordSystemFunction(Component, CoordSystem);
+			UpdateCoordSystemFunction(Component, CurrentCoordinateSystem);
 		}
 	}
 

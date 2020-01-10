@@ -291,6 +291,19 @@ public:
 	bool bSnapToWorldGrid = false;
 
 
+	/**
+	 * Whether to use the World/Local coordinate system provided by the context via the ContextyQueriesAPI.
+	 */
+	UPROPERTY()
+	bool bUseContextCoordinateSystem = true;
+
+	/**
+	 * Current coordinate system in use. If bUseContextCoordinateSystem is true, this value will be updated internally every Tick()
+	 * by quering the ContextyQueriesAPI, otherwise the default is Local and the client can change it as necessary
+	 */
+	UPROPERTY()
+	EToolContextCoordinateSystem CurrentCoordinateSystem = EToolContextCoordinateSystem::Local;
+
 
 protected:
 	TSharedPtr<FTransformGizmoActorFactory> GizmoActorBuilder;
