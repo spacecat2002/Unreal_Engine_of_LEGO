@@ -1172,6 +1172,7 @@ void FLightPropagationVolume::InjectDirectionalLightRSM(
 */
 void FLightPropagationVolume::ComputeDirectionalOcclusion( FRHICommandListImmediate& RHICmdList, FViewInfo& View )
 {
+	RHICmdList.BeginUAVOverlap();
 	//if ( View.FinalPostProcessSettings.ContributingCubemaps.Num() > 0 || GScene-> )
 	{
 		// Compute directional occlusion
@@ -1190,7 +1191,7 @@ void FLightPropagationVolume::ComputeDirectionalOcclusion( FRHICommandListImmedi
 			Shader->UnbindBuffers(RHICmdList, ShaderParams);
 		}
 	}
-	RHICmdList.FlushComputeShaderCache();
+	RHICmdList.EndUAVOverlap();
 }
 
 /**
@@ -1214,6 +1215,8 @@ void FLightPropagationVolume::Update( FRHICommandListImmediate& RHICmdList, FVie
 	if ( mInjectedLightCount )
 	{
 		SCOPED_DRAW_EVENT(RHICmdList, LpvAccumulateVplLists);
+
+		RHICmdList.BeginUAVOverlap();
 		mWriteBufferIndex = 1-mWriteBufferIndex; // Swap buffers with each iteration
 
 		TShaderMapRef<FLpvInject_AccumulateVplListsCS> Shader(View.ShaderMap);
@@ -1226,7 +1229,7 @@ void FLightPropagationVolume::Update( FRHICommandListImmediate& RHICmdList, FVie
 		Shader->SetParameters(RHICmdList, ShaderParams );
 
 		DispatchComputeShader(RHICmdList, *Shader, LPV_GRIDRES/4, LPV_GRIDRES/4, LPV_GRIDRES/4 );
-		RHICmdList.FlushComputeShaderCache();
+		RHICmdList.EndUAVOverlap();
 
 		Shader->UnbindBuffers(RHICmdList, ShaderParams);
 	}
@@ -1245,6 +1248,8 @@ void FLightPropagationVolume::Update( FRHICommandListImmediate& RHICmdList, FVie
 
 		for ( int i = 0; i < LPVNumPropagationSteps; i++ )
 		{
+			RHICmdList.BeginUAVOverlap();
+
 			mWriteBufferIndex = 1-mWriteBufferIndex; // Swap buffers with each iteration
 
 			// Compute shader flags
@@ -1274,6 +1279,8 @@ void FLightPropagationVolume::Update( FRHICommandListImmediate& RHICmdList, FVie
 			}
 
 			Shader->UnbindBuffers(RHICmdList, ShaderParams);
+
+			RHICmdList.EndUAVOverlap();
 		}
 	}
 

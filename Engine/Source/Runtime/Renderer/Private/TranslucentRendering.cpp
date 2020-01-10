@@ -867,7 +867,7 @@ void FDeferredShadingSceneRenderer::RenderTranslucency(FRHICommandListImmediate&
 	}
 
 	// Disable UAV cache flushing so we have optimal VT feedback performance.
-	RHICmdList.AutomaticCacheFlushAfterComputeShader(false);
+	RHICmdList.BeginUAVOverlap();
 
 	if (ViewFamily.AllowTranslucencyAfterDOF())
 	{
@@ -880,8 +880,7 @@ void FDeferredShadingSceneRenderer::RenderTranslucency(FRHICommandListImmediate&
 		RenderTranslucencyInner(RHICmdList, ETranslucencyPass::TPT_AllTranslucency, SceneColorCopy, bDrawUnderwaterViews);
 	}
 
-	RHICmdList.AutomaticCacheFlushAfterComputeShader(true);
-	RHICmdList.FlushComputeShaderCache();
+	RHICmdList.EndUAVOverlap();
 }
 
 void FDeferredShadingSceneRenderer::RenderTranslucencyInner(FRHICommandListImmediate& RHICmdList, ETranslucencyPass::Type TranslucencyPass, IPooledRenderTarget* SceneColorCopy, bool bDrawUnderwaterViews)
