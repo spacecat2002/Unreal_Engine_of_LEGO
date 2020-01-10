@@ -1,4 +1,4 @@
-// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
+// Copyright Epic Games, Inc. All Rights Reserved.
 #include "Engine/SkeletalMeshEditorData.h"
 
 #include "CoreMinimal.h"
@@ -57,4 +57,6 @@ void USkeletalMeshEditorData::Serialize(FArchive& Ar)
 	FRawSkeletalMeshBulkData::Serialize(Ar, RawSkeletalMeshBulkDatas, this);
 }
 
-#endif //WITH_EDITOR
+#endif //WITH_EDITORONLY_DATA
+
+#undef LOCTEXT_NAMESPACE
