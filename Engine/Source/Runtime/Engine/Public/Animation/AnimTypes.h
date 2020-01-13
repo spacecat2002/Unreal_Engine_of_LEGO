@@ -526,12 +526,21 @@ namespace ECurveBlendOption
 {
 	enum Type
 	{
-		/** Find Max Weight of curve and use that weight. */
-		MaxWeight,
+		/* Last pose that contains valid curve value override it. 
+		 * Unfortunately this has been default behavior for a long time, so we still keep it. */
+		Override, // redirect from MaxWeight old legacy behavior
+		/** Only set the value if the previous pose doesn't have the curve value. */
+		DoNotOverride, 
 		/** Normalize By Sum of Weight and use it to blend. */
 		NormalizeByWeight,
 		/** Blend By Weight without normalizing*/
-		BlendByWeight
+		BlendByWeight, 
+		/** Use Base Pose for all curve values. Do not blend */
+		UseBasePose,
+		/** Find the highest curve value from multiple poses and use that. */
+		UseMaxValue,
+		/** Find the lowest curve value from multiple poses and use that. */
+		UseMinValue,
 	};
 }
 

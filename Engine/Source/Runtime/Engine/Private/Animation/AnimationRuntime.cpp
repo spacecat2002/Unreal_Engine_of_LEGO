@@ -175,6 +175,37 @@ FORCEINLINE void BlendCurves(const TArrayView<const FBlendedCurve* const> Source
 				BlendCurves(SourceCurves, SourceWeights, OutCurve);
 			}
 		}
+		else if (BlendOption == ECurveBlendOption::Type::UseMaxValue)
+		{
+			OutCurve.Override(*SourceCurves[0], SourceWeights[0]);
+
+			for (int32 CurveIndex = 1; CurveIndex < SourceCurves.Num(); ++CurveIndex)
+			{
+				OutCurve.UseMaxValue(*SourceCurves[CurveIndex]);
+			}
+		}
+		else if (BlendOption == ECurveBlendOption::Type::UseMinValue)
+		{
+			OutCurve.Override(*SourceCurves[0], SourceWeights[0]);
+
+			for (int32 CurveIndex = 1; CurveIndex < SourceCurves.Num(); ++CurveIndex)
+			{
+				OutCurve.UseMinValue(*SourceCurves[CurveIndex]);
+			}
+		}
+		else if (BlendOption == ECurveBlendOption::Type::UseBasePose)
+		{
+			OutCurve.Override(*SourceCurves[0], SourceWeights[0]);
+		}
+		else if (BlendOption == ECurveBlendOption::Type::DoNotOverride)
+		{
+			OutCurve.Override(*SourceCurves[0], SourceWeights[0]);
+
+			for (int32 CurveIndex = 1; CurveIndex < SourceCurves.Num(); ++CurveIndex)
+			{
+				OutCurve.CombinePreserved(*SourceCurves[CurveIndex]);
+			}
+		}
 		else
 		{
 			OutCurve.Override(*SourceCurves[0], SourceWeights[0]);

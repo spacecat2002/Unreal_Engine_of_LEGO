@@ -482,6 +482,68 @@ struct FBaseBlendedCurve
 	/**
 	 * This doesn't blend but combine MAX(current weight, curvetocombine weight)
 	 */
+	void UseMaxValue(const FBaseBlendedCurve& CurveToCombine)
+	{
+		check(bInitialized);
+		check(Num() == CurveToCombine.Num());
+
+		for (int32 CurveId = 0; CurveId < CurveToCombine.Elements.Num(); ++CurveId)
+		{
+			// if target value is valid, we accept target value
+			if (Elements[CurveId].bValid && CurveToCombine.Elements[CurveId].bValid)
+			{
+				Elements[CurveId].Value = FMath::Max(Elements[CurveId].Value, CurveToCombine.Elements[CurveId].Value);
+			}
+			else if (CurveToCombine.Elements[CurveId].bValid)
+			{
+				Elements[CurveId].SetValue(CurveToCombine.Elements[CurveId].Value);
+			}
+		}
+	}
+
+	/**
+	 * This doesn't blend but combine MIN(current weight, curvetocombine weight)
+	 */
+	void UseMinValue(const FBaseBlendedCurve& CurveToCombine)
+	{
+		check(bInitialized);
+		check(Num() == CurveToCombine.Num());
+
+		for (int32 CurveId = 0; CurveId < CurveToCombine.Elements.Num(); ++CurveId)
+		{
+			// if target value is valid, we accept target value
+			if (Elements[CurveId].bValid && CurveToCombine.Elements[CurveId].bValid)
+			{
+				Elements[CurveId].Value = FMath::Min(Elements[CurveId].Value, CurveToCombine.Elements[CurveId].Value);
+			}
+			else if (CurveToCombine.Elements[CurveId].bValid)
+			{
+				Elements[CurveId].SetValue(CurveToCombine.Elements[CurveId].Value);
+			}
+		}
+	}
+
+	/**
+	 * This combines IF the input does not contain valid curve
+	 */
+	void CombinePreserved(const FBaseBlendedCurve& CurveToCombine)
+	{
+		check(bInitialized);
+		check(Num() == CurveToCombine.Num());
+
+		for (int32 CurveId = 0; CurveId < CurveToCombine.Elements.Num(); ++CurveId)
+		{
+			// if target value is valid, we accept target value
+			if (!Elements[CurveId].bValid && CurveToCombine.Elements[CurveId].bValid)
+			{
+				Elements[CurveId].SetValue(CurveToCombine.Elements[CurveId].Value);
+			}
+
+		}
+	}
+	/**
+	 * This doesn't blend but later pose with valid curve value overrides
+	 */
 	void Combine(const FBaseBlendedCurve& CurveToCombine)
 	{
 		check(bInitialized);
@@ -492,8 +554,7 @@ struct FBaseBlendedCurve
 			// if target value is valid, we accept target value
 			if (CurveToCombine.Elements[CurveId].bValid)
 			{
-				Elements[CurveId].bValid = true;
-				Elements[CurveId].Value = CurveToCombine.Elements[CurveId].Value;
+				Elements[CurveId].SetValue(CurveToCombine.Elements[CurveId].Value);
 			}
 
 		}
