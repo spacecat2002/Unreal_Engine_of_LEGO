@@ -24,14 +24,14 @@ static TAutoConsoleVariable<int32> CVarSkyAtmosphere(
 	TEXT("SkyAtmosphere components are rendered when this is not 0, otherwise ignored.\n"),
 	ECVF_RenderThreadSafe);
 
-// The project settings (disable runtime and shader code)
+// The project setting (disable runtime and shader code)
 static TAutoConsoleVariable<int32> CVarSupportSkyAtmosphere(
 	TEXT("r.SupportSkyAtmosphere"),
 	1,
 	TEXT("Enables SkyAtmosphere rendering and shader code."),
 	ECVF_ReadOnly | ECVF_RenderThreadSafe);
 
-// The project settings for the sky atmosphere component to affect the height fog (disable runtime and shader code)
+// The project setting for the sky atmosphere component to affect the height fog (disable runtime and shader code)
 static TAutoConsoleVariable<int32> CVarSupportSkyAtmosphereAffectsHeightFog(
 	TEXT("r.SupportSkyAtmosphereAffectsHeightFog"),
 	0,
@@ -157,6 +157,12 @@ static TAutoConsoleVariable<float> CVarSkyAtmosphereTransmittanceLUTHeight(
 	TEXT("r.SkyAtmosphere.TransmittanceLUT.Height"), 64,
 	TEXT(""),
 	ECVF_RenderThreadSafe | ECVF_Scalability);
+
+static TAutoConsoleVariable<int32> CVarSkyAtmosphereTransmittanceLUTLightPerPixelTransmittance(
+	TEXT("r.SkyAtmosphere.TransmittanceLUT.LightPerPixelTransmittance"),
+	1,	// Enabled by default to make space views of planet work by default when a SkyAtmosphere component is present
+	TEXT("Enables SkyAtmosphere light per pixel transmittance. Only for opaque objects in the deferred renderer. It is more expensive but space/planetary views will be more accurate."),
+	ECVF_RenderThreadSafe);
 
 ////////////////////////////////////////////////////////////////////////// Multi-scattering LUT
 
@@ -286,6 +292,11 @@ bool ShouldRenderSkyAtmosphere(const FScene* Scene, const FEngineShowFlags& Engi
 	return false;
 }
 
+bool ShouldApplyAtmosphereLightPerPixelTransmittance(const FScene* Scene, const FEngineShowFlags& EngineShowFlags)
+{
+	return ShouldRenderSkyAtmosphere(Scene, EngineShowFlags) && CVarSkyAtmosphereTransmittanceLUTLightPerPixelTransmittance.GetValueOnAnyThread() > 0;
+}
+
 void SetupSkyAtmosphereViewSharedUniformShaderParameters(const FViewInfo& View, FSkyAtmosphereViewSharedUniformShaderParameters& OutParameters)
 {
 	GET_VALID_DATA_FROM_CVAR;
@@ -349,7 +360,9 @@ void PrepareSunLightProxy(const FSkyAtmosphereRenderSceneInfo& SkyAtmosphere, ui
 	FLinearColor SunOuterSpaceIlluminance = SunZenithIlluminance / TransmittanceAtZenithFinal;
 	FLinearColor SunDiskOuterSpaceLuminance = GetLightDiskLuminance(AtmosphereLight, SunOuterSpaceIlluminance);
 
-	AtmosphereLight.Proxy->SetAtmosphereRelatedProperties(TransmittanceTowardSun / TransmittanceAtZenithFinal, SunDiskOuterSpaceLuminance);
+	AtmosphereLight.Proxy->SetAtmosphereRelatedProperties(
+		CVarSkyAtmosphereTransmittanceLUTLightPerPixelTransmittance.GetValueOnAnyThread() > 0 ? FLinearColor::White : TransmittanceTowardSun / TransmittanceAtZenithFinal,
+		SunDiskOuterSpaceLuminance);
 }
 
 

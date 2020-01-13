@@ -89,6 +89,7 @@ private:
 
 
 bool ShouldRenderSkyAtmosphere(const FScene* Scene, const FEngineShowFlags& EngineShowFlags);
+bool ShouldApplyAtmosphereLightPerPixelTransmittance(const FScene* Scene, const FEngineShowFlags& EngineShowFlags);
 
 void InitSkyAtmosphereForScene(FRHICommandListImmediate& RHICmdList, FScene* Scene);
 void InitSkyAtmosphereForView(FRHICommandListImmediate& RHICmdList, const FScene* Scene, FViewInfo& View);
