@@ -5136,6 +5136,7 @@ void UStaticMesh::BuildFromMeshDescription(const FMeshDescription& MeshDescripti
 
 	LODResources.bHasDepthOnlyIndices = true;
 	LODResources.DepthOnlyIndexBuffer.SetIndices(DepthOnlyIndexBuffer, IndexBufferStride);
+	LODResources.DepthOnlyNumTriangles = NumTriangles;
 
 	// Fill reversed index buffer
 	TArray<uint32> ReversedIndexBuffer(IndexBuffer);
@@ -5175,7 +5176,7 @@ UStaticMeshDescription* UStaticMesh::CreateStaticMeshDescription(UObject* Outer)
 }
 
 
-void UStaticMesh::BuildFromStaticMeshDescriptions(const TArray<UStaticMeshDescription*>& StaticMeshDescriptions)
+void UStaticMesh::BuildFromStaticMeshDescriptions(const TArray<UStaticMeshDescription*>& StaticMeshDescriptions, bool bBuildSimpleCollision)
 {
 	TArray<const FMeshDescription*> MeshDescriptions;
 	MeshDescriptions.Reserve(StaticMeshDescriptions.Num());
@@ -5185,11 +5186,11 @@ void UStaticMesh::BuildFromStaticMeshDescriptions(const TArray<UStaticMeshDescri
 		MeshDescriptions.Emplace(&StaticMeshDescription->GetMeshDescription());
 	}
 
-	BuildFromMeshDescriptions(MeshDescriptions);
+	BuildFromMeshDescriptions(MeshDescriptions, bBuildSimpleCollision);
 }
 
 
-bool UStaticMesh::BuildFromMeshDescriptions(const TArray<const FMeshDescription*>& MeshDescriptions)
+bool UStaticMesh::BuildFromMeshDescriptions(const TArray<const FMeshDescription*>& MeshDescriptions, bool bBuildSimpleCollision)
 {
 	// Set up
 
@@ -5198,15 +5199,16 @@ bool UStaticMesh::BuildFromMeshDescriptions(const TArray<const FMeshDescription*
 
 	TOptional<FStaticMeshComponentRecreateRenderStateContext> RecreateRenderStateContext;
 	
+	bool bNewMesh = true;
 	if (RenderData.IsValid())
 	{
+		bNewMesh = false;
 		const bool bInvalidateLighting = true;
 		const bool bRefreshBounds = true;
 		RecreateRenderStateContext = FStaticMeshComponentRecreateRenderStateContext(this, bInvalidateLighting, bRefreshBounds);
+		ReleaseResources();
+		ReleaseResourcesFence.Wait();
 	}
-
-	ReleaseResources();
-	ReleaseResourcesFence.Wait();
 
 	RenderData = MakeUnique<FStaticMeshRenderData>();
 	RenderData->AllocateLODResources(MeshDescriptions.Num());
@@ -5276,7 +5278,33 @@ bool UStaticMesh::BuildFromMeshDescriptions(const TArray<const FMeshDescription*
 	CreateBodySetup();
 	check(BodySetup);
 	BodySetup->InvalidatePhysicsData();
-	BodySetup->CreatePhysicsMeshes();
+
+	if (bBuildSimpleCollision)
+	{
+		FKBoxElem BoxElem;
+		BoxElem.Center = RenderData->Bounds.Origin;
+		BoxElem.X = RenderData->Bounds.BoxExtent.X * 2.0f;
+		BoxElem.Y = RenderData->Bounds.BoxExtent.Y * 2.0f;
+		BoxElem.Z = RenderData->Bounds.BoxExtent.Z * 2.0f;
+		BodySetup->AggGeom.BoxElems.Add(BoxElem);
+		BodySetup->CreatePhysicsMeshes();
+	}
+
+	if (!bNewMesh)
+	{
+		for (FObjectIterator Iter(UStaticMeshComponent::StaticClass()); Iter; ++Iter)
+		{
+			UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(*Iter);
+			if (StaticMeshComponent->GetStaticMesh() == this)
+			{
+				// it needs to recreate IF it already has been created
+				if (StaticMeshComponent->IsPhysicsStateCreated())
+				{
+					StaticMeshComponent->RecreatePhysicsState();
+				}
+			}
+		}
+	}
 
 	return true;
 }
