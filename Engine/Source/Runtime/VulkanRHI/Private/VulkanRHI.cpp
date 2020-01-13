@@ -381,6 +381,22 @@ void FVulkanDynamicRHI::CreateInstance()
 		{ 
 			return Key && !FCStringAnsi::Strcmp(Key, VK_EXT_DEBUG_REPORT_EXTENSION_NAME); 
 		});
+
+	bool bHasGPUValidation = InstanceExtensions.ContainsByPredicate([](const ANSICHAR* Key)
+		{
+			return Key && !FCStringAnsi::Strcmp(Key, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
+		});
+	VkValidationFeaturesEXT ValidationFeatures;
+	VkValidationFeatureEnableEXT ValidationFeaturesEnabled[] = {VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT, VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_RESERVE_BINDING_SLOT_EXT};
+	if (bHasGPUValidation)
+	{
+		ZeroVulkanStruct(ValidationFeatures, VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT);
+		ValidationFeatures.pNext = InstInfo.pNext;
+		extern TAutoConsoleVariable<int32> GGPUValidationCvar;
+		ValidationFeatures.enabledValidationFeatureCount = GGPUValidationCvar.GetValueOnAnyThread() > 1 ? 2 : 1;
+		ValidationFeatures.pEnabledValidationFeatures = ValidationFeaturesEnabled;
+		InstInfo.pNext = &ValidationFeatures;
+	}
 #endif
 
 	VkResult Result = VulkanRHI::vkCreateInstance(&InstInfo, VULKAN_CPU_ALLOCATOR, &Instance);

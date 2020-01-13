@@ -38,6 +38,15 @@ static TAutoConsoleVariable<int32> GStandardValidationCvar(
 	ECVF_ReadOnly | ECVF_RenderThreadSafe
 );
 
+TAutoConsoleVariable<int32> GGPUValidationCvar(
+	TEXT("r.Vulkan.GPUValidation"),
+	0,
+	TEXT("2 to use enable GPU assised validation AND extra binding slot when using validation layers, or\n")
+	TEXT("1 to use enable GPU assised validation when using validation layers, or\n")
+	TEXT("0 to not use (default)"),
+	ECVF_ReadOnly | ECVF_RenderThreadSafe
+);
+
 #if VULKAN_ENABLE_DRAW_MARKERS
 	#define RENDERDOC_LAYER_NAME				"VK_LAYER_RENDERDOC_Capture"
 #endif
@@ -408,6 +417,14 @@ void FVulkanDynamicRHI::GetInstanceLayersAndExtensions(TArray<const ANSICHAR*>& 
 		if (FindLayerExtensionInList(GlobalLayerExtensions, VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
 		{
 			OutInstanceExtensions.Add(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+		}
+	}
+
+	if (VulkanValidationOption > 0 && !bVkTrace)
+	{
+		if (FindLayerExtensionInList(GlobalLayerExtensions, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME) && GGPUValidationCvar.GetValueOnAnyThread() != 0)
+		{
+			OutInstanceExtensions.Add(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
 		}
 	}
 #endif
