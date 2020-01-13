@@ -2773,6 +2773,9 @@ public:
 	/** Updates all static draw lists. */
 	virtual void UpdateStaticDrawLists() override;
 
+	/** Update render states that possibly cached inside renderer, like mesh draw commands. More lightweight than re-registering the scene proxy. */
+	virtual void UpdateCachedRenderStates(FPrimitiveSceneProxy* SceneProxy) override;
+
 	virtual void Release() override;
 	virtual UWorld* GetWorld() const override { return World; }
 

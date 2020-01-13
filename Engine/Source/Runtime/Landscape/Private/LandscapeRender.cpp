@@ -1898,6 +1898,9 @@ void FLandscapeComponentSceneProxy::OnTransformChanged()
 		FLandscapeRenderSystem& RenderSystem = *LandscapeRenderSystems.FindChecked(LandscapeKey);
 		RenderSystem.SetSectionOriginAndRadius(ComponentBase, OriginAndSphereRadius);
 	}
+
+	// Recache mesh draw commands for changed uniform buffers
+	GetScene().UpdateCachedRenderStates(this);
 }
 
 /** Creates a mesh batch for virtual texture rendering. Will render a simple fixed grid with combined subsections. */

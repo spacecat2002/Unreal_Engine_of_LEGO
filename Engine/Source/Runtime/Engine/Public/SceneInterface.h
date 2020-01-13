@@ -211,6 +211,9 @@ public:
 	/** Updates all static draw lists. */
 	virtual void UpdateStaticDrawLists() {}
 
+	/** Update render states that possibly cached inside renderer, like mesh draw commands. More lightweight than re-registering the scene proxy. */
+	virtual void UpdateCachedRenderStates(class FPrimitiveSceneProxy* SceneProxy) {}
+
 	/** 
 	 * Adds a new exponential height fog component to the scene
 	 * 

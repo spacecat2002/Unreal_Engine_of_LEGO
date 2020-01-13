@@ -3049,6 +3049,16 @@ void FScene::UpdateStaticDrawLists()
 		});
 }
 
+void FScene::UpdateCachedRenderStates(FPrimitiveSceneProxy* SceneProxy)
+{
+	check(IsInRenderingThread());
+
+	if (SceneProxy->GetPrimitiveSceneInfo())
+	{
+		SceneProxy->GetPrimitiveSceneInfo()->BeginDeferredUpdateStaticMeshes();
+	}
+}
+
 /**
  * @return		true if hit proxies should be rendered in this scene.
  */
