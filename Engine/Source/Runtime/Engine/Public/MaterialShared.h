@@ -1367,7 +1367,7 @@ extern ENGINE_API bool CanConnectMaterialValueTypes(const uint32 InputType, cons
  *   Stores a cached shader map, and other transient output from a compile, which is necessary with async shader compiling
  *      (when a material finishes async compilation, the shader map and compile errors need to be stored somewhere)
  */
-class ENGINE_VTABLE FMaterial
+class FMaterial
 {
 public:
 
@@ -1940,7 +1940,7 @@ class USubsurfaceProfile;
 /**
  * A material render proxy used by the renderer.
  */
-class ENGINE_VTABLE FMaterialRenderProxy : public FRenderResource
+class FMaterialRenderProxy : public FRenderResource
 {
 public:
 
@@ -2071,7 +2071,7 @@ private:
 /**
  * An material render proxy which overrides the material's Color vector parameter.
  */
-class ENGINE_VTABLE FColoredMaterialRenderProxy : public FMaterialRenderProxy
+class FColoredMaterialRenderProxy : public FMaterialRenderProxy
 {
 public:
 
@@ -2098,7 +2098,7 @@ public:
 /**
  * An material render proxy which overrides the material's Color vector and Texture parameter (mixed together).
  */
-class ENGINE_VTABLE FColoredTexturedMaterialRenderProxy : public FColoredMaterialRenderProxy
+class FColoredTexturedMaterialRenderProxy : public FColoredMaterialRenderProxy
 {
 public:
 
@@ -2171,7 +2171,7 @@ inline bool IsTranslucentBlendMode(enum EBlendMode BlendMode)
 /**
  * Implementation of the FMaterial interface for a UMaterial or UMaterialInstance.
  */
-class ENGINE_VTABLE FMaterialResource : public FMaterial
+class FMaterialResource : public FMaterial
 {
 public:
 
@@ -2471,7 +2471,7 @@ public:
 /**
  * Material property to attribute data mappings
  */
-class ENGINE_VTABLE FMaterialAttributeDefinitionMap
+class FMaterialAttributeDefinitionMap
 {
 public:
 	FMaterialAttributeDefinitionMap()

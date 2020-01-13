@@ -65,7 +65,7 @@ public:
  * Class used to reference an FSceneViewStateInterface that allows destruction and recreation of all FSceneViewStateInterface's when needed. 
  * This is used to support reloading the renderer module on the fly.
  */
-class ENGINE_VTABLE FSceneViewStateReference
+class FSceneViewStateReference
 {
 public:
 	FSceneViewStateReference() :

@@ -227,7 +227,7 @@ struct FPrimitiveSceneShaderData
 	ENGINE_API static uint16 GetPrimitivesPerTextureLine();
 };
 
-class ENGINE_VTABLE FSinglePrimitiveStructured : public FRenderResource
+class FSinglePrimitiveStructured : public FRenderResource
 {
 public:
 

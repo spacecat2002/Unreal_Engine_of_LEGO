@@ -111,7 +111,7 @@ struct FMovieSceneTrackDisplayOptions
  * Base class for a track in a Movie Scene
  */
 UCLASS(abstract, DefaultToInstanced, MinimalAPI, BlueprintType)
-class MOVIESCENE_VTABLE UMovieSceneTrack
+class UMovieSceneTrack
 	: public UMovieSceneSignedObject
 {
 	GENERATED_BODY()

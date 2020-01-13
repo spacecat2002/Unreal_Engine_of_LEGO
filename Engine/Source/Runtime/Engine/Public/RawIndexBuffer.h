@@ -118,7 +118,7 @@ private:
 	bool b32Bit;
 };
 
-class ENGINE_VTABLE FRawStaticIndexBuffer : public FIndexBuffer
+class FRawStaticIndexBuffer : public FIndexBuffer
 {
 public:	
 	/**
