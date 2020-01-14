@@ -286,7 +286,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "AR AugmentedReality|Image Detection")
 	EARCandidateImageOrientation GetOrientation() const { return Orientation; }
 
-private:
+protected:
 #if WITH_EDITOR
 	/** Used to enforce physical sizes matching the aspect ratio of the images */
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
