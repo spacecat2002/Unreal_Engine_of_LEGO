@@ -121,6 +121,42 @@ enum class ELuminPrivilege : uint8
 	SocialConnectionsInvitesAccess,
 };
 
+USTRUCT(BlueprintType)
+struct FLocalizedAppName
+{
+	GENERATED_BODY()
+	
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Localization", Meta = (DisplayName = "Language Code"))
+	FString LanguageCode;
+
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Localization", Meta = (DisplayName = "App Name"))
+	FString AppName;
+};
+
+USTRUCT(BlueprintType)
+struct FLocalizedIconInfo
+{
+	GENERATED_BODY()
+
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Localization", Meta = (DisplayName = "Language Code"))
+	FString LanguageCode;
+
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Localization", Meta = (DisplayName = "Icon Model Path"))
+	FDirectoryPath IconModelPath;
+
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Localization", Meta = (DisplayName = "Icon Portal Path"))
+	FDirectoryPath IconPortalPath;
+};
+
+USTRUCT(BlueprintType)
+struct FLocalizedIconInfos 
+{
+	GENERATED_BODY()
+
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Localization", Meta = (DisplayName = "Icon Data"))
+	TArray<FLocalizedIconInfo> IconData;
+};
+
 /**
  * IMPORTANT!! Add a default value for every new UPROPERTY in the ULuminRuntimeSettings class in <UnrealEngine>/Engine/Config/BaseEngine.ini
  */
@@ -141,10 +177,6 @@ public:
 	/** The visual application name displayed for end users. */
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "MPK Packaging", Meta = (DisplayName = "Application Display Name (project name if blank)"))
 	FString ApplicationDisplayName;
-
-	/** Is a Screens type (Magic TV) app. */
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Build", Meta = (DisplayName = "Is Screens App"))
-	bool bIsScreensApp;
 
 	/** Indicates to the Lumin OS what the application's target framerate is, to improve prediction and reprojection */
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Runtime", Meta = (DisplayName = "Frame timing hint"))
@@ -172,6 +204,9 @@ public:
 	/** Folder containing the assets (FBX / OBJ / MTL / PNG files) used for the Magic Leap App Icon portal. */
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Magic Leap App Tile", Meta = (DisplayName = "Icon Portal"))
 	FDirectoryPath IconPortalPath;
+
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Magic Leap App Tile", Meta = (DisplayName = "Localized Icon Infos"))
+	FLocalizedIconInfos LocalizedIconInfos;
 
 	/** Used as an internal version number. This number is used only to determine whether one version is more recent than another, with higher numbers indicating more recent versions. This is not the version number shown to users. */
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Advanced MPK Packaging", Meta = (DisplayName = "Version Code", ClampMin = 0))
@@ -220,6 +255,9 @@ public:
 	/** Render frame vignette. */
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Rendering", Meta = (DisplayName = "Render frame vignette"))
 	bool bFrameVignette;
+
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Advanced MPK Packaging", Meta = (DisplayName = "Localized App Names"))
+	TArray<FLocalizedAppName> LocalizedAppNames;
 
 	TArray<FString> ExtraApplicationNodes_DEPRECATED;
 	TArray<FString> ExtraComponentNodes_DEPRECATED;
