@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Containers/Array.h"
+#include "Containers/ArrayView.h"
 #include "Math/Quat.h"
 #include "Math/Rotator.h"
 #include "Math/Vector.h"
@@ -133,11 +134,12 @@ namespace RBFKernel
 class FRBFInterpolatorBase
 {
 protected:
-	FRBFInterpolatorBase(TArray<float>&& UpperKernel, int32 Size);
+	ANIMGRAPHRUNTIME_API bool SetUpperKernel(const TArrayView<float>& UpperKernel, int32 Size);
 
 	// A square matrix of the solved coefficients.
 public:
 	TArray<float> Coeffs;
+	bool bIsValid = false;
 };
 
 
@@ -146,34 +148,39 @@ class TRBFInterpolator
 	: public FRBFInterpolatorBase
 {
 public:
-	using NodeArrayT = TArray<T>;
 	using WeightFuncT = TFunction<float(const T& A, const T& B)>;
 
-	/* Construct an RBF interpolator, taking in a set of sparse nodes and a weight computation
-	   function that computes the distance between two nodes, and optionally smooths the distance
-	   with a smoothing kernel.
-
+	/* Construct an RBF interpolator, taking in a set of sparse nodes and a symmetric weighing
+	   function that computes the distance between two nodes, and, optionally, smooths 
+	   the distance with a smoothing kernel.
 	*/
 	TRBFInterpolator(
-		const NodeArrayT& InNodes,
+		const TArrayView<T>& InNodes,
 		WeightFuncT InWeightFunc)
-		: FRBFInterpolatorBase(MakeUpperKernel(InNodes, InWeightFunc), InNodes.Num())
-		, Nodes(InNodes)
+		: Nodes(InNodes)
 		, WeightFunc(InWeightFunc)
 	{
+		MakeUpperKernel();
 	}
 
 	/* Given a value, compute the weight values to use to calculate each node's contribution
 	   to that value's location.
 	*/
-	template<typename InAllocator>
+	template<typename U, typename InAllocator>
 	void Interpolate(
 		TArray<float, InAllocator>& OutWeights,
-		const T& Value,
+		const U& Value,
 		bool bClip = true,
 		bool bNormalize = false)
 	{
 		int NumNodes = Nodes.Num();
+
+		if (!bIsValid)
+		{
+			OutWeights.Init(0.0f, NumNodes);
+			return;
+		}	
+
 		if (NumNodes > 1)
 		{
 			TArray<float, TMemStackAllocator<> > ValueWeights;
@@ -252,22 +259,59 @@ public:
 		}
 	}
 
+	// Returns a list of integer pairs indicating which distinct pair of nodes have the same
+	// weight as a pair of the same node. These result in an ill-formed coefficient matrix
+	// which kills the interpolation. The user can then either simply remove one of the pairs
+	// and retry, or warn the user that they have an invalid setup.
+	static bool GetIdenticalNodePairs(
+		const TArrayView<T>& InNodes,
+		WeightFuncT InWeightFunc,
+		TArray<TTuple<int, int>> &OutInvalidPairs
+		) 
+	{
+		int NumNodes = InNodes.Num();
+		if (NumNodes < 2)
+		{
+			return false;		
+		}
+
+		// One of the assumptions we make, is that the smoothing function is symmetric, 
+		// hence we can use the weight between the same node as the functional equivalent
+		// of the identity weight between any two nodes.
+		float IdentityWeight = InWeightFunc(InNodes[0], InNodes[0]);
+
+		OutInvalidPairs.Empty();
+		for (int32 i = 0; i < (NumNodes - 1); i++)
+		{
+			for (int32 j = i + 1; j < NumNodes; j++)
+			{
+				float Weight = InWeightFunc(InNodes[i], InNodes[j]);
+
+				// Don't use the default ULP, but be a little more cautious, since a matrix
+				// inversion can lose a chunk of float precision.
+				if (FMath::IsNearlyEqualByULP(Weight, IdentityWeight, 32))
+				{
+					OutInvalidPairs.Add(MakeTuple(i, j));
+				}
+			}
+		}
+		return OutInvalidPairs.Num() != 0;
+	}
 
 private:
-	static TArray<float> MakeUpperKernel(
-		const NodeArrayT& InNodes,
-		WeightFuncT& InWeightFunc)
+	void MakeUpperKernel()
 	{
 		// If there are less than two nodes, nothing to do, since the interpolated value
 		// will be the same across the entire space. This is handled in Interpolate().
-		int32 NumNodes = InNodes.Num();
+		int32 NumNodes = Nodes.Num();
 		if (NumNodes < 2)
 		{
-			return {};
+			bIsValid = true;
+			return;
 		}
 
 		// Compute the upper diagonal of the target kernel for solving the weight coefficients.
-		TArray<float> UpperKernel;
+		TArray<float, TMemStackAllocator<> > UpperKernel;
 		UpperKernel.Reserve(NumNodes * (NumNodes - 1) / 2);
 
 		// We need to include the diagonal itself, since we can't guarantee that the weight
@@ -276,13 +320,14 @@ private:
 		{
 			for (int32 j = i; j < NumNodes; j++)
 			{
-				UpperKernel.Add(InWeightFunc(InNodes[i], InNodes[j]));
+				UpperKernel.Add(WeightFunc(Nodes[i], Nodes[j]));
 			}
 		}
-		return UpperKernel;
+
+		bIsValid = SetUpperKernel(UpperKernel, NumNodes);
 	}
 
 
-	const NodeArrayT& Nodes;
+	const TArrayView<T>& Nodes;
 	WeightFuncT WeightFunc;
 };

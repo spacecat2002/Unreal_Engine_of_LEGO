@@ -13,8 +13,8 @@ _Pragma("GCC diagnostic ignored \"-Wshadow\"")
 _Pragma("GCC diagnostic pop")
 #endif
 
-FRBFInterpolatorBase::FRBFInterpolatorBase(
-	TArray<float>&& UpperKernel, 
+bool FRBFInterpolatorBase::SetUpperKernel(
+	const TArrayView<float>& UpperKernel, 
 	int32 Size
 )
 {
@@ -61,5 +61,13 @@ FRBFInterpolatorBase::FRBFInterpolatorBase(
 
 	Coeffs.Init(0.0f, Size * Size);
 	Map<MatrixXf> Result(Coeffs.GetData(), Size, Size);
+
+	// If the matrix is non-invertible, return now and bail out.
+	float Det = FullKernel.determinant();
+	if (FMath::IsNearlyZero(Det))
+		return false;
+
 	Result = FullKernel.inverse();
+
+	return true;
 }

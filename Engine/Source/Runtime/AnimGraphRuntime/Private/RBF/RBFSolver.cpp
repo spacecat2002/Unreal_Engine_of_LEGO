@@ -6,6 +6,8 @@
 
 #include "EngineLogs.h"
 
+#include "Containers/Set.h"
+
 FRotator FRBFEntry::AsRotator(int32 Index) const
 {
 	FRotator Result = FRotator::ZeroRotator;
@@ -192,6 +194,71 @@ static float GetWeightedValue(
 	}
 }
 
+static auto InterpolativeWeightFunction(
+	const FRBFParams& Params
+	)
+{
+	// This is fairly arbitrary, but is done to maintain a close relationship with how the radius 
+	// controls the falloff distance in the additive solver.
+	float Sigma = FMath::DegreesToRadians(Params.Radius);
+	FVector TwistAxis = Params.GetTwistAxisVector();
+
+	return [Sigma, TwistAxis, &Params](const FRBFEntry& A, const FRBFEntry& B) {
+		float Distance = GetDistanceBetweenEntries(A, B, Params.DistanceMethod, TwistAxis);
+		return GetWeightedValue(Distance, Sigma, Params.Function);
+	};
+}
+
+static bool ValidateInterpolative(
+	const FRBFParams& Params,
+	const TArray<FRBFTarget>& Targets,
+	TArray<int>& InvalidTargets
+)
+{
+	TArray<FRBFEntry> EntryTargets;
+	for (const auto& T : Targets)
+		EntryTargets.Add(T);
+
+	TArray<TTuple<int, int>> InvalidPairs;
+	TSet<int> InvalidTargetSet;
+
+	InvalidTargets.Empty();
+	if (TRBFInterpolator<FRBFEntry>::GetIdenticalNodePairs(EntryTargets, InterpolativeWeightFunction(Params), InvalidPairs))
+	{
+		// We mark the second of the pair to be invalid. Given how GetInvalidNodePairs iterates over all possible pairs,
+		// this should guarantee to catch them all.
+		for (const auto& IP : InvalidPairs)
+			InvalidTargetSet.Add(IP.Get<1>());
+
+		for (const auto& IT : InvalidTargetSet)
+			InvalidTargets.Add(IT);
+
+		// Return things in a nice sorted order, rather than TSet's hash order.
+		InvalidTargets.Sort();
+	}
+
+	return InvalidTargets.Num() == 0;
+}
+
+bool FRBFSolver::ValidateTargets(
+	const FRBFParams& Params,
+	const TArray<FRBFTarget>& Targets,
+	TArray<int>& InvalidTargets
+)
+{
+	switch (Params.SolverType)
+	{
+	case ERBFSolverType::Additive:
+	default:
+		// The additive solver does not care
+		return true;
+
+	case ERBFSolverType::Interpolative:
+		return ValidateInterpolative(Params, Targets, InvalidTargets);
+	}
+}
+
+
 static void SolveAdditive(
 	const FRBFParams& Params,
 	const TArray<FRBFTarget>& Targets,
@@ -235,23 +302,13 @@ static void SolveInterpolative(
 {
 	check(Input.GetDimensions() == 3);
 
-	// This is fairly arbitrary, but is done to maintain a close relationship with how the radius 
-	// controls the falloff distance in the additive solver.
-	float Sigma = FMath::DegreesToRadians(Params.Radius);
-	FVector TwistAxis = Params.GetTwistAxisVector();
-
-	auto WeightFunction = [Sigma, &TwistAxis, &Params](const FRBFEntry& A, const FRBFEntry& B) {
-		float Distance = GetDistanceBetweenEntries(A, B, Params.DistanceMethod, TwistAxis);
-		return GetWeightedValue(Distance, Sigma, Params.Function);
-	};
-
 	TArray<FRBFEntry> EntryTargets;
 	for (const auto& T : Targets)
 		EntryTargets.Add(T);
 
 	// FIXME: We ought to be able to store the initial RBF interpolator matrix and re-use it between solves
 	// but that requires larger changes in the PoseDriver and how this code is wrapped.
-	TRBFInterpolator<FRBFEntry> Rbf(EntryTargets, WeightFunction);
+	TRBFInterpolator<FRBFEntry> Rbf(EntryTargets, InterpolativeWeightFunction(Params));
 
 	Rbf.Interpolate(AllWeights, Input);
 

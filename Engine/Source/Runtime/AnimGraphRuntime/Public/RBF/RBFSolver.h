@@ -249,6 +249,10 @@ struct ANIMGRAPHRUNTIME_API FRBFParams
 /** Library of Radial Basis Function solver functions */
 struct ANIMGRAPHRUNTIME_API FRBFSolver
 {
+	/** Given a list of targets, verify which ones are valid for solving the RBF setup. This is mostly about removing identical targets
+		which invalidates the interpolative solver. Returns true if all targets are valid. */
+	static bool ValidateTargets(const FRBFParams& Params, const TArray<FRBFTarget>& Targets, TArray<int>& InvalidTargets);
+
 	/** Given a set of targets and new input entry, give list of activated targets with weights */
 	static void Solve(const FRBFParams& Params, const TArray<FRBFTarget>& Targets, const FRBFEntry& Input, TArray<FRBFOutputWeight>& OutputWeights);
 
