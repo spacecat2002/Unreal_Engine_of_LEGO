@@ -1634,7 +1634,7 @@ namespace VulkanRHI
 		}
 	};
 
-	class FSemaphore : public FRefCount
+	class VULKANRHI_API FSemaphore : public FRefCount
 	{
 	public:
 		FSemaphore(FVulkanDevice& InDevice);
