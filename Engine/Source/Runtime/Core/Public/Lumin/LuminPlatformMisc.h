@@ -13,6 +13,7 @@ struct CORE_API FLuminPlatformMisc : public FAndroidMisc
 	 */
 	static void RequestExit(bool Force);
 	static void PlatformPreInit();
+	static void PlatformInit();
 	static bool AllowRenderThread();
 	static bool SupportsLocalCaching();
 	static bool SupportsMessaging();
