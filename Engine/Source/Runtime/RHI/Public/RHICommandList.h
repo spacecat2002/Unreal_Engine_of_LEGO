@@ -4511,13 +4511,6 @@ public:
 		RHITick(DeltaTime);
 	}
 	
-	//#todo-RemoveStreamOut
-	UE_DEPRECATED(4.24, "SetStreamOutTargets API is deprecated.")
-	FORCEINLINE void SetStreamOutTargets(uint32 NumTargets, FRHIVertexBuffer* const* VertexBuffers, const uint32* Offsets)
-	{
-		checkf(0, TEXT("SetStreamOutTargets() is not supported"));
-	}
-	
 	FORCEINLINE void BlockUntilGPUIdle()
 	{
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_RHIMETHOD_BlockUntilGPUIdle_Flush);
