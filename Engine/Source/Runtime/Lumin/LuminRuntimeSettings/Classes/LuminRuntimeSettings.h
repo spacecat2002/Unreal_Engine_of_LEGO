@@ -103,7 +103,8 @@ enum class ELuminPrivilege : uint8
 	Documents,
 	ConnectBackgroundMusicService,
 	RegisterBackgroundMusicService,
-	PwFoundObjRead,
+	PcfRead,
+	PwFoundObjRead = ELuminPrivilege::PcfRead,
 	NormalNotificationsUsage,
 	MusicService,
 	ControllerPose,
@@ -112,9 +113,12 @@ enum class ELuminPrivilege : uint8
 	GesturesConfig,
 	AddressBookRead,
 	AddressBookWrite,
+	AddressBookBasicAccess,
 	CoarseLocation,
+	FineLocation,
 	HandMesh,
 	WifiStatusRead,
+	SocialConnectionsInvitesAccess,
 };
 
 /**
