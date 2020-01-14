@@ -5,6 +5,7 @@
 #include "AnimationUtils.h"
 #include "Animation/AnimNotifies/AnimNotify.h"
 #include "Animation/AnimNotifies/AnimNotifyState.h"
+#include "UObject/AnimObjectVersion.h"
 
 #define NOTIFY_TRIGGER_OFFSET KINDA_SMALL_NUMBER;
 
@@ -38,6 +39,36 @@ float GetTriggerTimeOffsetForType(EAnimEventTriggerOffsets::Type OffsetType)
 
 /////////////////////////////////////////////////////
 // FAnimNotifyEvent
+
+#if WITH_EDITORONLY_DATA
+
+bool FAnimNotifyEvent::Serialize(FArchive& Ar)
+{
+	Ar.UsingCustomVersion(FAnimObjectVersion::GUID);
+	
+	UScriptStruct* Struct = FAnimNotifyEvent::StaticStruct();
+	
+	if (Ar.IsLoading() || Ar.IsSaving())
+	{
+		Struct->SerializeTaggedProperties(Ar, (uint8*)this, Struct, nullptr);
+	}
+
+	if (Ar.IsLoading())
+	{
+		if (Ar.CustomVer(FAnimObjectVersion::GUID) < FAnimObjectVersion::NotifyAndSyncMarkerGuids)
+		{
+			if(!Guid.IsValid())
+			{
+				// Create a new Guid if this one is invalid
+				Guid = FGuid::NewGuid();
+			}
+		}
+	}
+
+	return true;
+}
+
+#endif
 
 void FAnimNotifyEvent::RefreshTriggerOffset(EAnimEventTriggerOffsets::Type PredictedOffsetType)
 {
@@ -109,6 +140,40 @@ FName FAnimNotifyEvent::GetNotifyEventName() const
 
 	return NAME_None;
 }
+
+////////////////////////////
+//
+// FAnimSyncMarker
+// 
+////////////////////////////
+
+#if WITH_EDITORONLY_DATA
+bool FAnimSyncMarker::Serialize(FArchive& Ar)
+{
+	Ar.UsingCustomVersion(FAnimObjectVersion::GUID);
+	
+	UScriptStruct* Struct = FAnimSyncMarker::StaticStruct();
+	
+	if (Ar.IsLoading() || Ar.IsSaving())
+	{
+		Struct->SerializeTaggedProperties(Ar, (uint8*)this, Struct, nullptr);
+	}
+
+	if (Ar.IsLoading())
+	{
+		if (Ar.CustomVer(FAnimObjectVersion::GUID) < FAnimObjectVersion::NotifyAndSyncMarkerGuids)
+		{
+			if(!Guid.IsValid())
+			{
+				// Create a new Guid if this one is invalid
+				Guid = FGuid::NewGuid();
+			}
+		}
+	}
+
+	return true;
+}
+#endif
 
 ////////////////////////////
 //

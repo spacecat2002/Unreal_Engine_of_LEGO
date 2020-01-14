@@ -434,7 +434,10 @@ public:
 	ENGINE_API const FAnimSlotGroup* FindAnimSlotGroup(const FName& InGroupName) const;
 	ENGINE_API const TArray<FAnimSlotGroup>& GetSlotGroups() const;
 	ENGINE_API bool ContainsSlotName(const FName& InSlotName) const;
-	ENGINE_API void RegisterSlotNode(const FName& InSlotName);
+
+	/** Register a slot name. Return true if a slot was registered, false if it was already registered. */
+	ENGINE_API bool RegisterSlotNode(const FName& InSlotName);
+
 	ENGINE_API void SetSlotGroupName(const FName& InSlotName, const FName& InGroupName);
 	/** Returns true if Group is added, false if it already exists */
 	ENGINE_API bool AddSlotGroupName(const FName& InNewGroupName);

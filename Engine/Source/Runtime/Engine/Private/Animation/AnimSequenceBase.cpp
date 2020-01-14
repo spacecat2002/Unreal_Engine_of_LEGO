@@ -454,12 +454,14 @@ void UAnimSequenceBase::RefreshCacheData()
 
 		// Handle overlapping notifies
 		FAnimNotifyTrack* TrackToUse = nullptr;
+		int32 TrackIndexToUse = INDEX_NONE;
 		for (int32 TrackOffset = 0; TrackOffset < AnimNotifyTracks.Num(); ++TrackOffset)
 		{
 			const int32 TrackIndex = (Notify.TrackIndex + TrackOffset) % AnimNotifyTracks.Num();
 			if (CanNotifyUseTrack(AnimNotifyTracks[TrackIndex], Notify))
 			{
 				TrackToUse = &AnimNotifyTracks[TrackIndex];
+				TrackIndexToUse = TrackIndex;
 				break;
 			}
 		}
@@ -467,10 +469,13 @@ void UAnimSequenceBase::RefreshCacheData()
 		if (TrackToUse == nullptr)
 		{
 			TrackToUse = &AddNewTrack(AnimNotifyTracks);
+			TrackIndexToUse = AnimNotifyTracks.Num() - 1;
 		}
 
 		check(TrackToUse);
+		check(TrackIndexToUse != INDEX_NONE);
 
+		Notify.TrackIndex = TrackIndexToUse;
 		TrackToUse->Notifies.Add(&Notify);
 	}
 

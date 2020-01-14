@@ -1157,13 +1157,16 @@ bool USkeleton::ContainsSlotName(const FName& InSlotName) const
 	return SlotToGroupNameMap.Contains(InSlotName);
 }
 
-void USkeleton::RegisterSlotNode(const FName& InSlotName)
+bool USkeleton::RegisterSlotNode(const FName& InSlotName)
 {
 	// verify the slot name exists, if not create it in the default group.
 	if (!ContainsSlotName(InSlotName))
 	{
 		SetSlotGroupName(InSlotName, FAnimSlotGroup::DefaultGroupName);
+		return true;
 	}
+
+	return false;
 }
 
 void USkeleton::SetSlotGroupName(const FName& InSlotName, const FName& InGroupName)

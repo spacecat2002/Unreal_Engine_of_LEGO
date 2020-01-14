@@ -83,6 +83,11 @@ struct ENGINE_API FAnimCurveBase
 	UPROPERTY()
 	FSmartName	Name;
 
+#if WITH_EDITORONLY_DATA
+	UPROPERTY()
+	FLinearColor Color;
+#endif
+
 private:
 	// this flag is mostly used by editor only now
 	// however I can't remove this to editor only because 
@@ -98,7 +103,10 @@ public:
 	FAnimCurveBase(FSmartName InName, int32 InCurveTypeFlags)
 		: Name(InName)
 		, CurveTypeFlags(InCurveTypeFlags)
-	{	
+	{
+#if WITH_EDITORONLY_DATA
+		Color = MakeColor();
+#endif
 	}
 
 	// To be able to use typedef'd types we need to serialize manually
@@ -128,6 +136,15 @@ public:
 	 * returns CurveTypeFlags
 	 */
 	int32 GetCurveTypeFlags() const;
+
+#if WITH_EDITORONLY_DATA
+	/** Get the color used to display this curve in the editor */
+	FLinearColor GetColor() const { return Color; }
+
+private:
+	/** Make an initial color */
+	FLinearColor MakeColor();
+#endif
 };
 
 USTRUCT()

@@ -161,6 +161,11 @@ FRichCurveKey FRichCurve::GetKey(FKeyHandle KeyHandle) const
 	return Keys[GetIndex(KeyHandle)];
 }
 
+const FRichCurveKey& FRichCurve::GetKeyRef(FKeyHandle KeyHandle) const
+{
+	EnsureAllIndicesHaveHandles();
+	return Keys[GetIndex(KeyHandle)];
+}
 
 FRichCurveKey FRichCurve::GetFirstKey() const
 {

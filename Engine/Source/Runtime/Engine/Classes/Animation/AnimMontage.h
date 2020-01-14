@@ -43,7 +43,7 @@ struct FCompositeSection : public FAnimLinkableElement
 	float StartTime_DEPRECATED;
 
 	/** Should this animation loop. */
-	UPROPERTY()
+	UPROPERTY(VisibleAnywhere, Category=Section)
 	FName NextSectionName;
 
 	/** Meta data that can be saved with the asset 

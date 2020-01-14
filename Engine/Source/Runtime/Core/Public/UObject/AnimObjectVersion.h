@@ -26,6 +26,12 @@ struct CORE_API FAnimObjectVersion
 
 		UnlimitedBoneInfluences,
 
+		// Anim sequences have colors for their curves
+		AnimSequenceCurveColors,
+
+		// Notifies and sync markers now have Guids
+		NotifyAndSyncMarkerGuids,
+
 		// -----<new versions can be added above this line>-------------------------------------------------
 		VersionPlusOne,
 		LatestVersion = VersionPlusOne - 1

@@ -346,6 +346,10 @@ struct ENGINE_VTABLE FAnimNotifyEvent : public FAnimLinkableElement
 	/** Color of Notify in editor */
 	UPROPERTY()
 	FColor NotifyColor;
+
+	/** Guid for tracking notifies in editor */
+	UPROPERTY()
+	FGuid Guid;
 #endif // WITH_EDITORONLY_DATA
 
 	/** 'Track' that the notify exists on, used for visual placement in editor and sorting priority in runtime */
@@ -378,6 +382,7 @@ public:
 		, bTriggerOnFollower(false)
 #if WITH_EDITORONLY_DATA
 		, NotifyColor(FColor::Black)
+		, Guid(FGuid::NewGuid())
 #endif // WITH_EDITORONLY_DATA
 		, TrackIndex(0)
 		, CachedNotifyEventName(NAME_None)
@@ -388,6 +393,10 @@ public:
 	virtual ~FAnimNotifyEvent()
 	{
 	}
+
+#if WITH_EDITORONLY_DATA
+	ENGINE_API bool Serialize(FArchive& Ar);
+#endif
 
 	/** Updates trigger offset based on a combination of predicted offset and current offset */
 	ENGINE_API void RefreshTriggerOffset(EAnimEventTriggerOffsets::Type PredictedOffsetType);
@@ -432,6 +441,16 @@ public:
 	ENGINE_API FName GetNotifyEventName() const;
 };
 
+#if WITH_EDITORONLY_DATA
+template<> struct TStructOpsTypeTraits<FAnimNotifyEvent> : public TStructOpsTypeTraitsBase2<FAnimNotifyEvent>
+{
+	enum 
+	{ 
+		WithSerializer = true
+	};
+};
+#endif
+
 // Used by UAnimSequenceBase::SortNotifies() to sort its Notifies array
 FORCEINLINE bool FAnimNotifyEvent::operator<(const FAnimNotifyEvent& Other) const
 {
@@ -455,7 +474,16 @@ FORCEINLINE bool FAnimNotifyEvent::operator<(const FAnimNotifyEvent& Other) cons
 USTRUCT(BlueprintType)
 struct FAnimSyncMarker
 {
-	GENERATED_USTRUCT_BODY()
+	GENERATED_BODY()
+
+	FAnimSyncMarker()
+		: MarkerName(NAME_None)
+		, Time(0.0f)
+#if WITH_EDITORONLY_DATA
+		, TrackIndex(0)
+		, Guid(FGuid::NewGuid())
+#endif
+	{}
 
 	// The name of this marker
 	UPROPERTY(BlueprintReadOnly, Category=Animation)
@@ -469,11 +497,28 @@ struct FAnimSyncMarker
 	// The editor track this marker sits on
 	UPROPERTY()
 	int32 TrackIndex;
+
+	UPROPERTY()
+	FGuid Guid;
+#endif
+	
+#if WITH_EDITORONLY_DATA
+	ENGINE_API bool Serialize(FArchive& Ar);
 #endif
 
 	/** This can be used with the Sort() function on a TArray of FAnimSyncMarker to sort the notifies array by time, earliest first. */
 	ENGINE_API bool operator <(const FAnimSyncMarker& Other) const { return Time < Other.Time; }
 };
+
+#if WITH_EDITORONLY_DATA
+template<> struct TStructOpsTypeTraits<FAnimSyncMarker> : public TStructOpsTypeTraitsBase2<FAnimSyncMarker>
+{
+	enum 
+	{ 
+		WithSerializer = true
+	};
+};
+#endif
 
 /**
  * Keyframe position data for one track.  Pos(i) occurs at Time(i).  Pos.Num() always equals Time.Num().
