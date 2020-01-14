@@ -186,6 +186,14 @@ public:
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Runtime", Meta = (DisplayName = "Protected Content"))
 	bool bProtectedContent;
 
+	/**
+	 * Check this if you wish to manually control when the start up loading animation is dismissed.
+	 * @note If this is checked, the developer MUST call MagicLeapHMDFunctionLibrary::SetAppReady
+	 *       in order for their application to finish booting.
+	 */
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Runtime", Meta = (DisplayName = "Manual call to 'set ready indication'"))
+	bool bManualCallToAppReady;
+
 	/** If checked, use Mobile Rendering. Otherwise, use Desktop Rendering. */
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Build", Meta = (DisplayName = "Use Mobile Rendering (otherwise, Desktop Rendering)"))
 	bool bUseMobileRendering;
