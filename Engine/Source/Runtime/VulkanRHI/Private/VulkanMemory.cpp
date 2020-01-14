@@ -2412,7 +2412,8 @@ namespace VulkanRHI
 
 	FSemaphore::FSemaphore(FVulkanDevice& InDevice) :
 		Device(InDevice),
-		SemaphoreHandle(VK_NULL_HANDLE)
+		SemaphoreHandle(VK_NULL_HANDLE),
+		bExternallyOwned(false)
 	{
 		// Create semaphore
 		VkSemaphoreCreateInfo CreateInfo;
@@ -2422,10 +2423,19 @@ namespace VulkanRHI
 		VERIFYVULKANRESULT(VulkanRHI::vkCreateSemaphore(Device.GetInstanceHandle(), &CreateInfo, VULKAN_CPU_ALLOCATOR, &SemaphoreHandle));
 	}
 
+	FSemaphore::FSemaphore(FVulkanDevice& InDevice, const VkSemaphore& InExternalSemaphore) :
+		Device(InDevice),
+		SemaphoreHandle(InExternalSemaphore),
+		bExternallyOwned(true)
+	{}
+
 	FSemaphore::~FSemaphore()
 	{
 		check(SemaphoreHandle != VK_NULL_HANDLE);
-		Device.GetDeferredDeletionQueue().EnqueueResource(VulkanRHI::FDeferredDeletionQueue::EType::Semaphore, SemaphoreHandle);
+		if (!bExternallyOwned)
+		{
+			Device.GetDeferredDeletionQueue().EnqueueResource(VulkanRHI::FDeferredDeletionQueue::EType::Semaphore, SemaphoreHandle);
+		}
 		SemaphoreHandle = VK_NULL_HANDLE;
 	}
 }
