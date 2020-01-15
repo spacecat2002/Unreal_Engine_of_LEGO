@@ -192,14 +192,14 @@ void* LockResource<FTextureRWBuffer2D>(FTextureRWBuffer2D& Resource, uint32& Str
 }
 
 template<typename ResourceType>
-void UnlockResource(ResourceType& Resource);
+void UnlockResourceGPUScene(ResourceType& Resource);
 template<>
-void UnlockResource<FRWBufferStructured>(FRWBufferStructured& Resource)
+void UnlockResourceGPUScene<FRWBufferStructured>(FRWBufferStructured& Resource)
 {
 	RHIUnlockStructuredBuffer(Resource.Buffer);
 }
 template<>
-void UnlockResource<FTextureRWBuffer2D>(FTextureRWBuffer2D& Resource)
+void UnlockResourceGPUScene<FTextureRWBuffer2D>(FTextureRWBuffer2D& Resource)
 {
 	RHIUnlockTexture2D(Resource.Buffer, 0, false);
 }
@@ -334,7 +334,7 @@ void UpdateGPUSceneInternal(FRHICommandListImmediate& RHICmdList, FScene& Scene)
 				InstanceBufferCopy += Stride / sizeof(FPrimitiveSceneShaderData);
 			}
 
-			UnlockResource(*MirrorResourceGPU);
+			UnlockResourceGPUScene(*MirrorResourceGPU);
 		}
 
 		if (NumPrimitiveDataUploads > 0)
@@ -490,7 +490,7 @@ void UploadDynamicPrimitiveShaderDataForViewInternal(FRHICommandListImmediate& R
 					InstanceBufferCopy += Stride / sizeof(FPrimitiveSceneShaderData);
 				}
 
-				UnlockResource(ViewPrimitiveShaderDataResource);
+				UnlockResourceGPUScene(ViewPrimitiveShaderDataResource);
 			}
 
 		}
