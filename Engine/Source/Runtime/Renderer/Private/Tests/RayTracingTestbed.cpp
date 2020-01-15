@@ -104,11 +104,8 @@ bool RunRayTracingTestbed_RenderThread(const FString& Parameters)
 	GeometryInitializer.TotalPrimitiveCount = Segment.NumPrimitives;
 	FRayTracingGeometryRHIRef Geometry = RHICreateRayTracingGeometry(GeometryInitializer);
 
-	FRHIResourceCreateInfo CreateInfo;
-	FStructuredBufferRHIRef GPUTransforms = nullptr;
-
 	FRayTracingGeometryInstance Instances[] = {
-		FRayTracingGeometryInstance { Geometry, {FMatrix::Identity}, GPUTransforms, {0}, 0xFF }
+		FRayTracingGeometryInstance { Geometry, {FMatrix::Identity}, {0}, 0xFF }
 	};
 
 	FRayTracingSceneInitializer Initializer;
