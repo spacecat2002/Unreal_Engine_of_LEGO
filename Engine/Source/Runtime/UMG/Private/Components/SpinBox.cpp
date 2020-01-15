@@ -28,7 +28,7 @@ USpinBox::USpinBox(const FObjectInitializer& ObjectInitializer)
 	MinFractionalDigits = 1;
 	MaxFractionalDigits = 6;
 	bAlwaysUsesDeltaSnap = false;
-	Delta = 10;
+	Delta = 0;
 	SliderExponent = 1;
 	MinDesiredWidth = 0;
 	ClearKeyboardFocusOnCommit = false;

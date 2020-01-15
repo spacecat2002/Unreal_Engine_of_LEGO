@@ -47,7 +47,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, BlueprintSetter = SetMinFractionalDigits, BlueprintGetter = GetMinFractionalDigits, Category = "Slider", meta = (ClampMin = 0, UIMin = 0))
 	int32 MinFractionalDigits;
 
-	/** The maximume required fractional digits - default 7 */
+	/** The maximume required fractional digits - default 6 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, BlueprintSetter = SetMaxFractionalDigits, BlueprintGetter = GetMaxFractionalDigits, Category = "Slider", meta = (ClampMin = 0, UIMin = 0))
 	int32 MaxFractionalDigits;
 

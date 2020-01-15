@@ -9,6 +9,7 @@
 #include "Misc/ExpressionParserTypes.h"
 #include "Math/BasicMathExpressionEvaluator.h"
 #include "Internationalization/FastDecimalFormat.h"
+#include "Misc/Attribute.h"
 
 enum class EUnit : uint8;
 

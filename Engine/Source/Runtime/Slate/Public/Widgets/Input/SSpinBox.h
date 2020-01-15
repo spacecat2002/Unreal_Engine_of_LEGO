@@ -74,7 +74,7 @@ public:
 		, _MinFractionalDigits(DefaultMinFractionalDigits)
 		, _MaxFractionalDigits(DefaultMaxFractionalDigits)
 		, _AlwaysUsesDeltaSnap(false)
-		, _Delta(10)
+		, _Delta(0)
 		, _ShiftMouseMovePixelPerDelta(1)
 		, _SupportDynamicSliderMaxValue(false)
 		, _SupportDynamicSliderMinValue(false)
