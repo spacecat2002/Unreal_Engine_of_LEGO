@@ -480,7 +480,6 @@ struct FAnimSyncMarker
 		, Time(0.0f)
 #if WITH_EDITORONLY_DATA
 		, TrackIndex(0)
-		, Guid(FGuid::NewGuid())
 #endif
 	{}
 
