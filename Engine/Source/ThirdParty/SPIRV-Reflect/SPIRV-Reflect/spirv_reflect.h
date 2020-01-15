@@ -69,7 +69,17 @@ typedef enum SpvReflectResult {
   SPV_REFLECT_RESULT_ERROR_SPIRV_SET_NUMBER_OVERFLOW,
   SPV_REFLECT_RESULT_ERROR_SPIRV_INVALID_STORAGE_CLASS,
   SPV_REFLECT_RESULT_ERROR_SPIRV_RECURSION,
+  SPV_REFLECT_RESULT_ERROR_SPIRV_INVALID_INSTRUCTION,
 } SpvReflectResult;
+
+/*! @enum SpvReflectReturnFlagBits
+
+*/
+typedef enum SpvReflectReturnFlagBits {
+	SPV_REFLECT_RETURN_FLAG_SAMPLER_IMAGE_USAGE = 0x00000001,
+} SpvReflectReturnFlagBits;
+
+typedef uint32_t SpvReflectReturnFlags;
 
 /*! @enum SpvReflectTypeFlagBits
 
@@ -307,26 +317,30 @@ typedef struct SpvReflectBlockVariable {
 
 */
 typedef struct SpvReflectDescriptorBinding {
-  uint32_t                            spirv_id;
-  const char*                         name;
-  uint32_t                            binding;
-  uint32_t                            input_attachment_index;
-  uint32_t                            set;
-  SpvReflectDescriptorType            descriptor_type;
-  SpvReflectResourceType              resource_type;
-  SpvReflectImageTraits               image;
-  SpvReflectBlockVariable             block;
-  SpvReflectBindingArrayTraits        array;
-  uint32_t                            count;
-  uint32_t                            accessed;
-  uint32_t                            uav_counter_id;
-  struct SpvReflectDescriptorBinding* uav_counter_binding;
+  uint32_t                              spirv_id;
+  const char*                           name;
+  uint32_t                              binding;
+  uint32_t                              input_attachment_index;
+  uint32_t                              set;
+  SpvReflectDescriptorType              descriptor_type;
+  SpvReflectResourceType                resource_type;
+  SpvReflectImageTraits                 image;
+  SpvReflectBlockVariable               block;
+  SpvReflectBindingArrayTraits          array;
+  uint32_t                              count;
+  uint32_t                              accessed;
+  uint32_t                              uav_counter_id;
+  struct SpvReflectDescriptorBinding*   uav_counter_binding;
 
-  SpvReflectTypeDescription*          type_description;
+  SpvReflectTypeDescription*            type_description;
+
+  // Bindings this binding is used with (only for samplers)
+  uint32_t                              usage_binding_count;
+  struct SpvReflectDescriptorBinding**  usage_bindings;
 
   struct {
-    uint32_t                          binding;
-    uint32_t                          set;
+    uint32_t                            binding;
+    uint32_t                            set;
   } word_offset;
 } SpvReflectDescriptorBinding;
 
@@ -418,6 +432,13 @@ typedef struct SpvReflectShaderModule {
 
     size_t                          type_description_count;
     SpvReflectTypeDescription*      type_descriptions;
+
+    struct BindingAssociation {
+      SpvReflectDescriptorBinding*  resource;
+      size_t                        usage_binding_count;
+    } *                             binding_associations;
+    size_t                          binding_association_count;
+    SpvReflectDescriptorBinding**   usage_bindings;
   } * _internal;
 
 } SpvReflectShaderModule;
@@ -431,13 +452,15 @@ extern "C" {
  @param  size      Size in bytes of SPIR-V code.
  @param  p_code    Pointer to SPIR-V code.
  @param  p_module  Pointer to an instance of SpvReflectShaderModule.
+ @param  flags     Flags to enable/disable individual reflection passes.
  @return           SPV_REFLECT_RESULT_SUCCESS on success.
 
 */
 SpvReflectResult spvReflectCreateShaderModule(
   size_t                   size,
   const void*              p_code,
-  SpvReflectShaderModule*  p_module
+  SpvReflectShaderModule*  p_module,
+  SpvReflectReturnFlags    flags
 );
 
 SPV_REFLECT_DEPRECATED("renamed to spvReflectCreateShaderModule")
@@ -1340,9 +1363,9 @@ namespace spv_reflect {
 class ShaderModule {
 public:
   ShaderModule();
-  ShaderModule(size_t size, const void* p_code);
-  ShaderModule(const std::vector<uint8_t>& code);
-  ShaderModule(const std::vector<uint32_t>& code);
+  ShaderModule(size_t size, const void* p_code, SpvReflectReturnFlags flags = 0);
+  ShaderModule(const std::vector<uint8_t>& code, SpvReflectReturnFlags flags = 0);
+  ShaderModule(const std::vector<uint32_t>& code, SpvReflectReturnFlags flags = 0);
   ~ShaderModule();
 
   SpvReflectResult GetResult() const;
@@ -1445,10 +1468,11 @@ inline ShaderModule::ShaderModule() {}
   @param  p_code
 
 */
-inline ShaderModule::ShaderModule(size_t size, const void* p_code) {
+inline ShaderModule::ShaderModule(size_t size, const void* p_code, SpvReflectReturnFlags flags) {
   m_result = spvReflectCreateShaderModule(size,
                                           p_code,
-                                          &m_module);
+                                          &m_module,
+	                                      flags);
 }
 
 /*! @fn ShaderModule
@@ -1456,10 +1480,11 @@ inline ShaderModule::ShaderModule(size_t size, const void* p_code) {
   @param  code
   
 */
-inline ShaderModule::ShaderModule(const std::vector<uint8_t>& code) {
+inline ShaderModule::ShaderModule(const std::vector<uint8_t>& code, SpvReflectReturnFlags flags) {
   m_result = spvReflectCreateShaderModule(code.size(),
                                           code.data(),
-                                          &m_module);
+                                          &m_module,
+	                                      flags);
 }
 
 /*! @fn ShaderModule
@@ -1467,10 +1492,11 @@ inline ShaderModule::ShaderModule(const std::vector<uint8_t>& code) {
   @param  code
   
 */
-inline ShaderModule::ShaderModule(const std::vector<uint32_t>& code) {
+inline ShaderModule::ShaderModule(const std::vector<uint32_t>& code, SpvReflectReturnFlags flags) {
   m_result = spvReflectCreateShaderModule(code.size() * sizeof(uint32_t),
                                           code.data(),
-                                          &m_module);
+                                          &m_module,
+	                                      flags);
 }
 
 /*! @fn  ~ShaderModule
