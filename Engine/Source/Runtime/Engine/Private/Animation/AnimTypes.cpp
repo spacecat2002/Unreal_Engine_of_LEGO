@@ -55,13 +55,10 @@ bool FAnimNotifyEvent::Serialize(FArchive& Ar)
 
 	if (Ar.IsLoading())
 	{
-		if (Ar.CustomVer(FAnimObjectVersion::GUID) < FAnimObjectVersion::NotifyAndSyncMarkerGuids)
+		if(!Guid.IsValid())
 		{
-			if(!Guid.IsValid())
-			{
-				// Create a new Guid if this one is invalid
-				Guid = FGuid::NewGuid();
-			}
+			// Create a new Guid if this one is invalid
+			Guid = FGuid::NewGuid();
 		}
 	}
 

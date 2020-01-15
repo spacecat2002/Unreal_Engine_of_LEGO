@@ -382,7 +382,6 @@ public:
 		, bTriggerOnFollower(false)
 #if WITH_EDITORONLY_DATA
 		, NotifyColor(FColor::Black)
-		, Guid(FGuid::NewGuid())
 #endif // WITH_EDITORONLY_DATA
 		, TrackIndex(0)
 		, CachedNotifyEventName(NAME_None)

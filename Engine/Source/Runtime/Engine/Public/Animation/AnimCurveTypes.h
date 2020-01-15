@@ -98,7 +98,13 @@ private:
 	int32		CurveTypeFlags;
 
 public:
-	FAnimCurveBase() : CurveTypeFlags(0) {}
+	FAnimCurveBase() 
+		: CurveTypeFlags(0)
+	{
+#if WITH_EDITORONLY_DATA
+		Color = MakeColor();
+#endif
+	}
 
 	FAnimCurveBase(FSmartName InName, int32 InCurveTypeFlags)
 		: Name(InName)
