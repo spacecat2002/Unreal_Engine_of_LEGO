@@ -1251,7 +1251,7 @@ bool FMaterialResource::IsTranslucencyAfterDOFEnabled() const
 
 bool FMaterialResource::IsDualBlendingEnabled(EShaderPlatform Platform) const
 {
-	const bool bIsMaterialEnabled = (Material->ShadingModel == MSM_ThinTranslucent) && !Material->bEnableSeparateTranslucency;
+	const bool bIsMaterialEnabled = (Material->ShadingModel == MSM_ThinTranslucent);
 	const bool bIsPlatformSupported = RHISupportsDualSourceBlending(Platform);
 	return bIsMaterialEnabled && bIsPlatformSupported;
 }

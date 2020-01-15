@@ -255,10 +255,20 @@ public:
 	void BeginRenderingSeparateTranslucency(FRHICommandList& RHICmdList, const FViewInfo& View, const FSceneRenderer& Renderer, bool bFirstTimeThisFrame);
 	void ResolveSeparateTranslucency(FRHICommandList& RHICmdList, const FViewInfo& View);
 
+	/** Begin rendering translucency in a separate (offscreen) buffer. This can be any translucency pass, but is only the modulation component. */
+	void BeginRenderingSeparateTranslucencyModulate(FRHICommandList& RHICmdList, const FViewInfo& View, const FSceneRenderer& Renderer, bool bFirstTimeThisFrame);
+	void ResolveSeparateTranslucencyModulate(FRHICommandList& RHICmdList, const FViewInfo& View);
+
 	void FreeSeparateTranslucency()
 	{
 		SeparateTranslucencyRT.SafeRelease();
 		check(!SeparateTranslucencyRT);
+	}
+
+	void FreeSeparateTranslucencyModulate()
+	{
+		SeparateTranslucencyModulateRT.SafeRelease();
+		check(!SeparateTranslucencyModulateRT);
 	}
 
 	void FreeDownsampledTranslucencyDepth()
@@ -311,6 +321,12 @@ public:
 
 	/** Returns a dummy texture that can be used for shader resource binding when separate translucency render target is not available */
 	TRefCountPtr<IPooledRenderTarget>& GetSeparateTranslucencyDummy();
+
+	/** Separate translucency buffer can be downsampled or not (as it is used to store the AfterDOF translucency) */
+	TRefCountPtr<IPooledRenderTarget>& GetSeparateTranslucencyModulate(FRHICommandList& RHICmdList, FIntPoint Size);
+
+	/** Returns a dummy texture that can be used for shader resource binding when separate translucency render target is not available */
+	TRefCountPtr<IPooledRenderTarget>& GetSeparateTranslucencyModulateDummy();
 
 	bool IsDownsampledTranslucencyDepthValid()
 	{
@@ -592,6 +608,8 @@ public:
 
 	/** ONLY for snapshots!!! this is a copy of the SeparateTranslucencyRT from the view state. */
 	TRefCountPtr<IPooledRenderTarget> SeparateTranslucencyRT;
+	/** For dual blending alpha */
+	TRefCountPtr<IPooledRenderTarget> SeparateTranslucencyModulateRT;
 	/** Downsampled depth used when rendering translucency in smaller resolution. */
 	TRefCountPtr<IPooledRenderTarget> DownsampledTranslucencyDepthRT;
 

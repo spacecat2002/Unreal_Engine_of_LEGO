@@ -77,8 +77,8 @@ void FEditorPrimitivesBasePassMeshProcessor::ProcessDeferredShadingPath(const FM
 
 	if (bTranslucentBasePass)
 	{
-		extern void SetTranslucentRenderState(FMeshPassProcessorRenderState& DrawRenderState, const FMaterial& Material, const EShaderPlatform Platform);
-		SetTranslucentRenderState(DrawRenderState, Material, Scene->GetShaderPlatform());
+		extern void SetTranslucentRenderState(FMeshPassProcessorRenderState& DrawRenderState, const FMaterial& Material, const EShaderPlatform Platform, ETranslucencyPass::Type InTranslucencyPassType);
+		SetTranslucentRenderState(DrawRenderState, Material, Scene->GetShaderPlatform(), ETranslucencyPass::TPT_StandardTranslucency);
 	}
 
 	ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, Material);

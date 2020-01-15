@@ -269,6 +269,7 @@ FSceneRenderTargets::FSceneRenderTargets(const FViewInfo& View, const FSceneRend
 	, EditorPrimitivesColor(GRenderTargetPool.MakeSnapshot(SnapshotSource.EditorPrimitivesColor))
 	, EditorPrimitivesDepth(GRenderTargetPool.MakeSnapshot(SnapshotSource.EditorPrimitivesDepth))
 	, SeparateTranslucencyRT(SnapshotSource.SeparateTranslucencyRT)
+	, SeparateTranslucencyModulateRT(SnapshotSource.SeparateTranslucencyModulateRT)
 	, DownsampledTranslucencyDepthRT(SnapshotSource.DownsampledTranslucencyDepthRT)
 	, FoveationTexture(GRenderTargetPool.MakeSnapshot(SnapshotSource.FoveationTexture))
 	, bScreenSpaceAOIsValid(SnapshotSource.bScreenSpaceAOIsValid)
@@ -1627,6 +1628,28 @@ TRefCountPtr<IPooledRenderTarget>& FSceneRenderTargets::GetSeparateTranslucencyD
 	return GSystemTextures.BlackAlphaOneDummy;
 }
 
+TRefCountPtr<IPooledRenderTarget>& FSceneRenderTargets::GetSeparateTranslucencyModulate(FRHICommandList& RHICmdList, FIntPoint Size)
+{
+	if (!SeparateTranslucencyModulateRT || SeparateTranslucencyModulateRT->GetDesc().Extent != Size)
+	{
+		uint32 Flags = TexCreate_RenderTargetable | TexCreate_ShaderResource;
+
+		// Create the SeparateTranslucency render target (alpha is needed to lerping)
+		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(Size, PF_FloatRGBA, FClearValueBinding::White, TexCreate_None, Flags, false));
+		Desc.Flags |= GFastVRamConfig.SeparateTranslucencyModulate;
+		Desc.AutoWritable = false;
+		Desc.NumSamples = GetNumSceneColorMSAASamples(CurrentFeatureLevel);
+		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, SeparateTranslucencyModulateRT, TEXT("SeparateTranslucencyModulate"), false);
+	}
+	return SeparateTranslucencyModulateRT;
+}
+
+TRefCountPtr<IPooledRenderTarget>& FSceneRenderTargets::GetSeparateTranslucencyModulateDummy()
+{
+	// Make sure the dummy is consistent with the clear color of separate translucnecy render target
+	return GSystemTextures.WhiteDummy;
+}
+
 TRefCountPtr<IPooledRenderTarget>& FSceneRenderTargets::GetDownsampledTranslucencyDepth(FRHICommandList& RHICmdList, FIntPoint Size)
 {
 	if (!DownsampledTranslucencyDepthRT || DownsampledTranslucencyDepthRT->GetDesc().Extent != Size)
@@ -1815,6 +1838,127 @@ void FSceneRenderTargets::ResolveSeparateTranslucency(FRHICommandList& RHICmdLis
 
 	bSeparateTranslucencyPass = false;
 }
+
+// this code is copy pasted from BeginRenderingSeparateTranslucency, might be a good idea to add some helperfunctions.
+void FSceneRenderTargets::BeginRenderingSeparateTranslucencyModulate(FRHICommandList& RHICmdList, const FViewInfo& View, const FSceneRenderer& Renderer, bool bFirstTimeThisFrame)
+{
+	check(RHICmdList.IsOutsideRenderPass());
+
+	bSeparateTranslucencyPass = true;
+
+	SCOPED_DRAW_EVENT(RHICmdList, BeginSeparateTranslucencyModulate);
+
+	TRefCountPtr<IPooledRenderTarget>* SeparateTranslucencyModulate;
+	if (bSnapshot)
+	{
+		check(SeparateTranslucencyModulateRT.GetReference());
+		SeparateTranslucencyModulate = &SeparateTranslucencyModulateRT;
+	}
+	else
+	{
+		SeparateTranslucencyModulate = &GetSeparateTranslucencyModulate(RHICmdList, SeparateTranslucencyBufferSize);
+	}
+	// dpeth is the same as regular separate
+	const FTexture2DRHIRef &SeparateTranslucencyDepth = SeparateTranslucencyScale < 1.0f ? (const FTexture2DRHIRef&)GetDownsampledTranslucencyDepth(RHICmdList, SeparateTranslucencyBufferSize)->GetRenderTargetItem().TargetableTexture : GetSceneDepthSurface();
+
+	// start at white and multiply down, as opposed to the separate pass which starts and black and adds up
+	check((*SeparateTranslucencyModulate)->GetRenderTargetItem().TargetableTexture->GetClearColor() == FLinearColor::White);
+	FRHIRenderPassInfo RPInfo((*SeparateTranslucencyModulate)->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Load_Store);
+	
+	// this is the same as regular separate
+	// #todo-renderpass do we ever want to write to depth in these passes?
+	// when do we write to stencil?
+	RPInfo.DepthStencilRenderTarget.Action = MakeDepthStencilTargetActions(ERenderTargetActions::Load_DontStore, ERenderTargetActions::Load_Store);
+	RPInfo.DepthStencilRenderTarget.DepthStencilTarget = SeparateTranslucencyDepth;
+	RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil = FExclusiveDepthStencil::DepthRead_StencilWrite;
+	RPInfo.DepthStencilRenderTarget.ResolveTarget = nullptr;
+
+	if (bFirstTimeThisFrame)
+	{
+		// Clear the color target the first pass through and re-use after
+		RPInfo.ColorRenderTargets[0].Action = ERenderTargetActions::Clear_Store;
+	}
+	
+	if (UseVirtualTexturing(CurrentFeatureLevel))
+	{
+		BindVirtualTextureFeedbackUAV(RPInfo);
+	}
+
+	RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, RPInfo.ColorRenderTargets[0].RenderTarget);
+	RHICmdList.BeginRenderPass(RPInfo, TEXT("BeginRenderingSeparateTranslucencyModulate"));
+
+	// same as regular separate
+	if (!bFirstTimeThisFrame)
+	{
+		// Clear the stencil buffer for ResponsiveAA
+		RHICmdList.BindClearMRTValues(true, false, true);
+	}
+
+	// same as regular separate, SeparateTranslucencyScale is the same for both Separate and SeparateModulate
+
+	// viewport to match view size
+	if (View.IsInstancedStereoPass())
+	{
+		if (View.bIsMultiViewEnabled)
+		{
+			const FViewInfo* LeftView = static_cast<const FViewInfo*>(View.Family->Views[0]);
+			const FViewInfo* RightView = static_cast<const FViewInfo*>(View.Family->Views[1]);
+
+			const uint32 LeftMinX = LeftView->ViewRect.Min.X * SeparateTranslucencyScale;
+			const uint32 LeftMaxX = LeftView->ViewRect.Max.X * SeparateTranslucencyScale;
+			const uint32 RightMinX = RightView->ViewRect.Min.X * SeparateTranslucencyScale;
+			const uint32 RightMaxX = RightView->ViewRect.Max.X * SeparateTranslucencyScale;
+
+			const uint32 LeftMaxY = LeftView->ViewRect.Max.Y * SeparateTranslucencyScale;
+			const uint32 RightMaxY = RightView->ViewRect.Max.Y * SeparateTranslucencyScale;
+
+			RHICmdList.SetStereoViewport(LeftMinX, RightMinX, 0, 0, 0.0f, LeftMaxX, RightMaxX, LeftMaxY, RightMaxY, 1.0f);
+		}
+		else
+		{
+			RHICmdList.SetViewport(0, 0, 0, Renderer.InstancedStereoWidth * SeparateTranslucencyScale, View.ViewRect.Max.Y * SeparateTranslucencyScale, 1.0f);
+		}	
+	}
+	else
+	{
+		RHICmdList.SetViewport(View.ViewRect.Min.X * SeparateTranslucencyScale, View.ViewRect.Min.Y * SeparateTranslucencyScale, 0.0f, View.ViewRect.Max.X * SeparateTranslucencyScale, View.ViewRect.Max.Y * SeparateTranslucencyScale, 1.0f);
+	}
+}
+
+
+void FSceneRenderTargets::ResolveSeparateTranslucencyModulate(FRHICommandList& RHICmdList, const FViewInfo& View)
+{
+	SCOPED_DRAW_EVENT(RHICmdList, ResolveSeparateTranslucencyModulate);
+
+	check(RHICmdList.IsOutsideRenderPass());
+
+	TRefCountPtr<IPooledRenderTarget>* SeparateTranslucencyModulate;
+	TRefCountPtr<IPooledRenderTarget>* SeparateTranslucencyDepth; // same depth as regular
+	if (bSnapshot)
+	{
+		check(SeparateTranslucencyRT.GetReference());
+		SeparateTranslucencyModulate = &SeparateTranslucencyModulateRT;
+		SeparateTranslucencyDepth = SeparateTranslucencyScale < 1.f ? &DownsampledTranslucencyDepthRT : &SceneDepthZ;
+	}
+	else
+	{
+		SeparateTranslucencyModulate = &GetSeparateTranslucencyModulate(RHICmdList, SeparateTranslucencyBufferSize);
+		SeparateTranslucencyDepth = SeparateTranslucencyScale < 1.f ? &GetDownsampledTranslucencyDepth(RHICmdList, SeparateTranslucencyBufferSize) : &SceneDepthZ;
+	}
+
+	const FResolveRect SeparateResolveRect(
+		View.ViewRect.Min.X * SeparateTranslucencyScale, 
+		View.ViewRect.Min.Y * SeparateTranslucencyScale, 
+		View.ViewRect.Max.X * SeparateTranslucencyScale, 
+		View.ViewRect.Max.Y * SeparateTranslucencyScale
+		);
+
+	RHICmdList.CopyToResolveTarget((*SeparateTranslucencyModulate)->GetRenderTargetItem().TargetableTexture, (*SeparateTranslucencyModulate)->GetRenderTargetItem().ShaderResourceTexture, SeparateResolveRect);
+	RHICmdList.CopyToResolveTarget((*SeparateTranslucencyDepth)->GetRenderTargetItem().TargetableTexture, (*SeparateTranslucencyDepth)->GetRenderTargetItem().ShaderResourceTexture, SeparateResolveRect);
+
+	bSeparateTranslucencyPass = false;
+}
+
 
 FResolveRect FSceneRenderTargets::GetDefaultRect(const FResolveRect& Rect, uint32 DefaultWidth, uint32 DefaultHeight)
 {

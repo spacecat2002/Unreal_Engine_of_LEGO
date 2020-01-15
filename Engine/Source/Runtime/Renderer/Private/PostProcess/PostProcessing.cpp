@@ -154,6 +154,8 @@ class FComposeSeparateTranslucencyPS : public FGlobalShader
 		SHADER_PARAMETER_SAMPLER(SamplerState, SceneColorSampler)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SeparateTranslucency)
 		SHADER_PARAMETER_SAMPLER(SamplerState, SeparateTranslucencySampler)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SeparateModulation)
+		SHADER_PARAMETER_SAMPLER(SamplerState, SeparateModulationSampler)
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
 		RENDER_TARGET_BINDING_SLOTS()
 	END_SHADER_PARAMETER_STRUCT()
@@ -166,7 +168,7 @@ class FComposeSeparateTranslucencyPS : public FGlobalShader
 
 IMPLEMENT_GLOBAL_SHADER(FComposeSeparateTranslucencyPS, "/Engine/Private/ComposeSeparateTranslucency.usf", "MainPS", SF_Pixel);
 
-FRDGTextureRef AddSeparateTranslucencyCompositionPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, FRDGTextureRef SceneColor, FRDGTextureRef SeparateTranslucency)
+FRDGTextureRef AddSeparateTranslucencyCompositionPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, FRDGTextureRef SceneColor, FRDGTextureRef SeparateTranslucency, FRDGTextureRef SeparateModulation)
 {
 	FRDGTextureDesc SceneColorDesc = SceneColor->Desc;
 	SceneColorDesc.TargetableFlags &= ~TexCreate_UAV;
@@ -179,6 +181,8 @@ FRDGTextureRef AddSeparateTranslucencyCompositionPass(FRDGBuilder& GraphBuilder,
 	PassParameters->SceneColorSampler = TStaticSamplerState<SF_Point>::GetRHI();
 	PassParameters->SeparateTranslucency = SeparateTranslucency;
 	PassParameters->SeparateTranslucencySampler = TStaticSamplerState<SF_Point>::GetRHI();
+	PassParameters->SeparateModulation = SeparateModulation;
+	PassParameters->SeparateModulationSampler = TStaticSamplerState<SF_Point>::GetRHI();
 	PassParameters->ViewUniformBuffer = View.ViewUniformBuffer;
 	PassParameters->RenderTargets[0] = FRenderTargetBinding(NewSceneColor, ERenderTargetLoadAction::ENoAction);
 
@@ -209,6 +213,7 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 	const FScreenPassRenderTarget ViewFamilyOutput = FScreenPassRenderTarget::CreateViewFamilyOutput(Inputs.ViewFamilyTexture, View);
 	const FScreenPassTexture SceneDepth(SceneTextures.SceneDepthBuffer, PrimaryViewRect);
 	const FScreenPassTexture SeparateTranslucency(Inputs.SeparateTranslucency, PrimaryViewRect);
+	const FScreenPassTexture SeparateModulation(Inputs.SeparateModulation, PrimaryViewRect);
 	const FScreenPassTexture CustomDepth(Inputs.CustomDepth, PrimaryViewRect);
 	const FScreenPassTexture Velocity(SceneTextures.SceneVelocityBuffer, PrimaryViewRect);
 	const FScreenPassTexture BlackDummy(GSystemTextures.GetBlackDummy(GraphBuilder));
@@ -390,9 +395,10 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 			}
 
 			// DOF passes were not added, therefore need to compose Separate translucency manually.
-			if (LocalSceneColorTexture == SceneColor.Texture && SeparateTranslucency.Texture)
+			// If modulation pass was not run, SeparateModulation should be the GSystemTextures.WhiteDummy texture.
+			if (LocalSceneColorTexture == SceneColor.Texture && SeparateTranslucency.Texture && SeparateModulation.Texture)
 			{
-				LocalSceneColorTexture = AddSeparateTranslucencyCompositionPass(GraphBuilder, View, SceneColor.Texture, SeparateTranslucency.Texture);
+				LocalSceneColorTexture = AddSeparateTranslucencyCompositionPass(GraphBuilder, View, SceneColor.Texture, SeparateTranslucency.Texture, SeparateModulation.Texture);
 			}
 
 			SceneColor.Texture = LocalSceneColorTexture;
@@ -660,7 +666,7 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 		PassSequence.SetEnabled(EPass::VisualizeDepthOfField, false);
 		PassSequence.Finalize();
 
-		SceneColor.Texture = AddSeparateTranslucencyCompositionPass(GraphBuilder, View, SceneColor.Texture, SeparateTranslucency.Texture);
+		SceneColor.Texture = AddSeparateTranslucencyCompositionPass(GraphBuilder, View, SceneColor.Texture, SeparateTranslucency.Texture, SeparateModulation.Texture);
 
 		SceneColorBeforeTonemap = SceneColor;
 
