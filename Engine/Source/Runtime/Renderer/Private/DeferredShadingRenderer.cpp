@@ -1089,10 +1089,14 @@ bool FDeferredShadingSceneRenderer::DispatchRayTracingWorldUpdates(FRHICommandLi
 
 		Scene->GetRayTracingDynamicGeometryCollection()->DispatchUpdates(RHICmdList);
 
-		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
 		{
-			FViewInfo& View = Views[ViewIndex];
-			RHICmdList.BuildAccelerationStructure(View.RayTracingScene.RayTracingSceneRHI);
+			SCOPED_DRAW_EVENT(RHICmdList, BuildRayTracingScene);
+
+			for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
+			{
+				FViewInfo& View = Views[ViewIndex];
+				RHICmdList.BuildAccelerationStructure(View.RayTracingScene.RayTracingSceneRHI);
+			}
 		}
 	}
 	else
