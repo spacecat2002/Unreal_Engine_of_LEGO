@@ -1135,6 +1135,7 @@ static ERichCurveCompressionFormat FindRichCurveCompressionFormat(const FRichCur
 	switch (RefKey.InterpMode)
 	{
 	case RCIM_Constant:
+		return RCCF_Mixed;
 	case RCIM_None:
 	default:
 		return RCCF_Constant;
