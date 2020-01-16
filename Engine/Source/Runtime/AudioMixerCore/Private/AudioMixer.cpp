@@ -436,8 +436,8 @@ namespace Audio
 	{
 		if (bIsUsingNullDevice)
 		{
-			CurrentBufferReadIndex = INDEX_NONE;
-			CurrentBufferWriteIndex = INDEX_NONE;
+			CurrentBufferReadIndex = 0;
+			CurrentBufferWriteIndex = 1;
 		}
 		if (NullDeviceCallback.IsValid())
 		{
@@ -555,7 +555,10 @@ namespace Audio
 		DeviceSwapCriticalSection.Unlock();
 
 		// Kick off rendering of the next set of buffers
-		AudioRenderEvent->Trigger();
+		if (AudioRenderEvent)
+		{
+			AudioRenderEvent->Trigger();
+		}
 	}
 
 	void IAudioMixerPlatformInterface::BeginGeneratingAudio()

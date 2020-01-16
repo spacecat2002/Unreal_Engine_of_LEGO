@@ -58,7 +58,7 @@ namespace Audio
 
 	void FMixerPlatformNonRealtime::RenderAudio(double NumSecondsToRender)
 	{
-		if (!bIsInitialized || !bIsDeviceOpen)
+		if (!bIsInitialized || !bIsDeviceOpen || OutputBuffers.Num() == 0)
 		{
 			return;
 		}
