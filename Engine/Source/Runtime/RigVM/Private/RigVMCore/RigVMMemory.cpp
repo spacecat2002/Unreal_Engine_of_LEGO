@@ -381,6 +381,11 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 
 		for (const FRigVMRegister& Register : Registers)
 		{
+			if (Register.ElementCount == 0)
+			{
+				continue;
+			}
+
 			switch (Register.Type)
 			{
 				case ERigVMRegisterType::Plain:
@@ -447,6 +452,11 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 
 		for (FRigVMRegister& Register : Registers)
 		{
+			if (Register.ElementCount == 0)
+			{
+				continue;
+			}
+
 			Register.MoveToFirstSlice();
 
 			switch(Register.Type)
