@@ -260,4 +260,7 @@ private:
 
 public:
 
+	/** Returns SkyAtmosphereComponent subobject */
+	ENGINE_API USkyAtmosphereComponent* GetComponent() const { return SkyAtmosphereComponent; }
+
 };
