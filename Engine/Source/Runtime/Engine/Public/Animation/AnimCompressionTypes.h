@@ -362,10 +362,15 @@ struct ENGINE_API FCompressibleAnimDataResult
 
 	UAnimBoneCompressionCodec* Codec;
 
+	// Give compression code a place to store some extra data during compression
+	// (Needed for PerTrackCompression)
+	void* CompressionUserData;
+
 	FCompressibleAnimDataResult()
 		: CompressedByteStream()
 		, AnimData()
 		, Codec(nullptr)
+		, CompressionUserData(nullptr)
 	{}
 };
 

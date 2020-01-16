@@ -34,6 +34,7 @@
 #include "DerivedDataCacheInterface.h"
 #include "Interfaces/ITargetPlatform.h"
 #include "Animation/AnimCompressionDerivedData.h"
+#include "Animation/AnimCompressionDerivedDataPublic.h"
 #include "UObject/UObjectThreadContext.h"
 #include "Animation/AnimNotifies/AnimNotifyState.h"
 #include "Widgets/Notifications/SNotificationList.h"
@@ -547,6 +548,9 @@ UAnimSequence::UAnimSequence(const FObjectInitializer& ObjectInitializer)
 	, bUseNormalizedRootMotionScale(true)
 	, bRootMotionSettingsCopiedFromMontage(false)
 	, bUseRawDataOnly(!FPlatformProperties::RequiresCookedData())
+#if WITH_EDITOR
+	, bCompressionInProgress(false)
+#endif
 {
 	RateScale = 1.0;
 
@@ -765,11 +769,6 @@ void UAnimSequence::Serialize(FArchive& Ar)
 			}
 		}
 
-		if (bIsDuplicating)
-		{
-			Ar << bCompressionInProgress;
-		}
-
 		if (bSerializeCompressedData)
 		{
 			SerializeCompressedData(Ar,false);
@@ -844,6 +843,9 @@ void UAnimSequence::GetPreloadDependencies(TArray<UObject*>& OutDeps)
 void UAnimSequence::PreSave(const class ITargetPlatform* TargetPlatform)
 {
 #if WITH_EDITOR
+	// Could already be compressing
+	WaitOnExistingCompression();
+
 	// we have to bake it if it's not baked
 	if (DoesNeedRebake())
 	{
@@ -872,6 +874,7 @@ void UAnimSequence::PreSave(const class ITargetPlatform* TargetPlatform)
 		RequestAnimCompression(Params);
 	}
 
+	WaitOnExistingCompression(); // Wait on updated data
 #endif
 
 	Super::PreSave(TargetPlatform);
@@ -928,9 +931,9 @@ void UAnimSequence::PostLoad()
 		bUseRawDataOnly = true;
 	}
 
-	if (bUseRawDataOnly && !bCompressionInProgress)
+	if (bUseRawDataOnly)
 	{
-		RequestSyncAnimRecompression();
+		RequestAnimCompression(FRequestAnimCompressionParams(true, false, false));
 	}
 #endif
 
@@ -965,7 +968,11 @@ void UAnimSequence::PostLoad()
 		SequenceLength = MINIMUM_ANIMATION_LENGTH;
 	}
 	// Raw data exists, but missing compress animation data
-	else if( !bCompressionInProgress && GetSkeleton() && !IsCompressedDataValid())
+	else if( GetSkeleton() && !IsCompressedDataValid()
+#if WITH_EDITOR
+		&& !bCompressionInProgress
+#endif
+		)
 	{
 		UE_LOG(LogAnimation, Fatal, TEXT("No animation compression exists for sequence %s (%s)"), *GetName(), (GetOuter() ? *GetOuter()->GetFullName() : *GetFullName()) );
 	}
@@ -1120,6 +1127,9 @@ void UAnimSequence::VerifyTrackMap(USkeleton* MySkeleton)
 #endif // WITH_EDITOR
 void UAnimSequence::BeginDestroy()
 {
+	// Could already be compressing
+	WaitOnExistingCompression(false);
+
 	Super::BeginDestroy();
 
 	ClearCompressedCurveData();
@@ -2116,9 +2126,43 @@ void UAnimSequence::FlipRotationWForNonRoot(USkeletalMesh * SkelMesh)
 }
 #endif 
 
+#if WITH_EDITOR
+bool UAnimSequence::ShouldPerformStripping(const bool bPerformFrameStripping, const bool bPerformStrippingOnOddFramedAnims) const
+{
+	const bool bShouldPerformFrameStripping = bPerformFrameStripping && bAllowFrameStripping;
+
+	// Can only do stripping on animations that have an even number of frames once the end frame is removed)
+	const bool bIsEvenFramed = ((NumFrames - 1) % 2) == 0;
+	const bool bIsValidForStripping = bIsEvenFramed || bPerformStrippingOnOddFramedAnims;
+
+	const bool bStripCandidate = (NumFrames > 10) && bIsValidForStripping;
+
+	return bStripCandidate && bShouldPerformFrameStripping;
+}
+
+FString UAnimSequence::GetDDCCacheKeySuffix(const bool bPerformStripping) const
+{
+	return GetAnimSequenceSpecificCacheKeySuffix(*this, bPerformStripping, CompressionErrorThresholdScale);
+}
+#endif
+
+void UAnimSequence::WaitOnExistingCompression(const bool bCancelIfNotStarted)
+{
+#if WITH_EDITOR
+	check(IsInGameThread());
+	if (bCompressionInProgress)
+	{
+		double WaitTime = FPlatformTime::Seconds();
+		FAsyncCompressedAnimationsManagement::Get().WaitOnExistingCompression(this, bCancelIfNotStarted);
+		FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Compression Finished %.3f\n"), FPlatformTime::Seconds() - WaitTime);
+	}
+#endif
+}
+
 void UAnimSequence::RequestAnimCompression(FRequestAnimCompressionParams Params)
 {
 #if WITH_EDITOR
+	check(IsInGameThread());
 	USkeleton* CurrentSkeleton = GetSkeleton();
 	if (CurrentSkeleton == nullptr)
 	{
@@ -2126,16 +2170,12 @@ void UAnimSequence::RequestAnimCompression(FRequestAnimCompressionParams Params)
 		return;
 	}
 
-	if (GetOutermost() == GetTransientPackage())
-	{
-		bUseRawDataOnly = true;
-		return; // Skip transient animations, they are most likely the leftovers of previous compression attempts.
-	}
-
 	if (FPlatformProperties::RequiresCookedData())
 	{
 		return;
 	}
+
+	WaitOnExistingCompression(false);
 
 	if (BoneCompressionSettings == nullptr || !BoneCompressionSettings->AreSettingsValid())
 	{
@@ -2155,10 +2195,10 @@ void UAnimSequence::RequestAnimCompression(FRequestAnimCompressionParams Params)
 		RawDataGuid = GenerateGuidFromRawData();
 	}
 
-	Params.bAsyncCompression = false; //Just get sync working first
 	bUseRawDataOnly = true;
 
-	TGuardValue<bool> CompressGuard(bCompressionInProgress, true);
+	check(!bCompressionInProgress);
+	bCompressionInProgress = true;
 
 	// Need to make sure this is up to date.
 	VerifyCurveNames<FFloatCurve>(*CurrentSkeleton, USkeleton::AnimCurveMappingName, RawCurveData.FloatCurves);
@@ -2167,85 +2207,102 @@ void UAnimSequence::RequestAnimCompression(FRequestAnimCompressionParams Params)
 	Params.CompressContext->GatherPreCompressionStats(GetName(), GetApproxRawSize(), GetApproxCompressedSize());
 
 	const double CompressionStartTime = FPlatformTime::Seconds();
-	bool bPerformedCompression = false;
 
-	if (Params.bAsyncCompression)
+	const bool bPerformStripping = ShouldPerformStripping(Params.bPerformFrameStripping, Params.bPerformFrameStrippingOnOddNumberedFrames);
+	const FString AssetDDCKey = GetDDCCacheKeySuffix(bPerformStripping);
+
+	bool bCompressedDataFromDDC = false;
+
+	TArray<uint8> OutData;
 	{
-	}
-	else
-	{
-		const bool bPerformFrameStripping = Params.bPerformFrameStripping && bAllowFrameStripping;
-		const bool bPerformStrippingOnOddFramedAnims = Params.bPerformFrameStrippingOnOddNumberedFrames;
+		FDerivedDataAnimationCompression* AnimCompressor = new FDerivedDataAnimationCompression(TEXT("AnimSeq"), AssetDDCKey, Params.CompressContext);
 
-		// Can only do stripping on animations that have an even number of frames once the end frame is removed)
-		const bool bIsEvenFramed = ((NumFrames - 1) % 2) == 0;
-		const bool bIsValidForStripping = bIsEvenFramed || bPerformStrippingOnOddFramedAnims;
+		const FString FinalDDCKey = FDerivedDataCacheInterface::BuildCacheKey(AnimCompressor->GetPluginName(), AnimCompressor->GetVersionString(), *AnimCompressor->GetPluginSpecificCacheKeySuffix());
 
-		const bool bStripCandidate = (NumFrames > 10) && bIsValidForStripping;
+		// For debugging DDC/Compression issues		
+		const bool bSkipDDC = false;
 
-		const bool bPerformStripping = bStripCandidate && bPerformFrameStripping;
-
-		const int32 PreviousCompressionSize = GetApproxCompressedSize();
-
-		FString AssetDDCKey = GetAnimSequenceSpecificCacheKeySuffix(*this, bPerformStripping, CompressionErrorThresholdScale);
-
-		TArray<uint8> OutData;
+		if (bSkipDDC || !GetDerivedDataCacheRef().GetSynchronous(*FinalDDCKey, OutData))
 		{
-			bool bNeedToCleanUpAnimCompressor = true;
-			FDerivedDataAnimationCompression* AnimCompressor = new FDerivedDataAnimationCompression(TEXT("AnimSeq"), AssetDDCKey, Params.CompressContext, PreviousCompressionSize);
+			// Data does not exist, need to build it.
+			// Filter RAW data to get rid of mismatched tracks (translation/rotation data with a different number of keys than there are frames)
+			// No trivial key removal is done at this point (impossible error metrics of -1), since all of the techniques will perform it themselves
+			CompressRawAnimData(-1.0f, -1.0f);
 
-			const FString FinalDDCKey = FDerivedDataCacheInterface::BuildCacheKey(AnimCompressor->GetPluginName(), AnimCompressor->GetVersionString(), *AnimCompressor->GetPluginSpecificCacheKeySuffix());
+			TSharedRef<FCompressibleAnimData> CompressibleData = MakeShared<FCompressibleAnimData>(this, bPerformStripping);
+			AnimCompressor->SetCompressibleData(CompressibleData);
 
-			// For debugging DDC/Compression issues		
-			const bool bSkipDDC = false;
-
-			if (bSkipDDC || !GetDerivedDataCacheRef().GetSynchronous(*FinalDDCKey, OutData))
+			if (bSkipDDC || (CompressCommandletVersion == INDEX_NONE))
 			{
-				// Data does not exist, need to build it.
-				// Filter RAW data to get rid of mismatched tracks (translation/rotation data with a different number of keys than there are frames)
-				// No trivial key removal is done at this point (impossible error metrics of -1), since all of the techniques will perform it themselves
-				CompressRawAnimData(-1.0f, -1.0f);
-
-				TSharedRef<FCompressibleAnimData> CompressibleData = MakeShared<FCompressibleAnimData>(this, bPerformStripping);
-				AnimCompressor->SetCompressibleData(CompressibleData);
-
-				if (bSkipDDC || (CompressCommandletVersion == INDEX_NONE))
+				AnimCompressor->Build(OutData);
+			}
+			else if (AnimCompressor->CanBuild())
+			{
+				if (Params.bAsyncCompression)
 				{
-					AnimCompressor->Build(OutData);
+					FAsyncCompressedAnimationsManagement::Get().RequestAsyncCompression(*AnimCompressor, this, bPerformStripping, OutData);
 				}
-				else if (AnimCompressor->CanBuild())
+				else
 				{
-					bNeedToCleanUpAnimCompressor = false; // GetSynchronous will handle this
 					GetDerivedDataCacheRef().GetSynchronous(AnimCompressor, OutData);
 				}
-
-				bPerformedCompression = true;
-			}
-			
-			if(bNeedToCleanUpAnimCompressor)
-			{
-				delete AnimCompressor; // Would really like to do auto mem management but GetDerivedDataCacheRef().GetSynchronous expects a point it can delete, every
 				AnimCompressor = nullptr;
 			}
 		}
-
-		if (OutData.Num() > 0)
+		else
 		{
-			FMemoryReader MemAr(OutData);
-			SerializeCompressedData(MemAr, true);
-			//This is only safe during sync anim compression
-			SetSkeletonVirtualBoneGuid(GetSkeleton()->GetVirtualBoneGuid());
-			bUseRawDataOnly = false;
+			bCompressedDataFromDDC = true;
 		}
+
+		delete AnimCompressor; // Would really like to do auto mem management but GetDerivedDataCacheRef().GetSynchronous expects a pointer it can delete
+		AnimCompressor = nullptr;
 	}
 
-	const double CompressionEndTime = FPlatformTime::Seconds();
-	const double CompressionTime = CompressionEndTime - CompressionStartTime;
+	if (OutData.Num() > 0) // Haven't async compressed
+	{
+		ApplyCompressedData(OutData);
 
-	TArray<FBoneData> BoneData;
-	FAnimationUtils::BuildSkeletonMetaData(GetSkeleton(), BoneData);
-	Params.CompressContext->GatherPostCompressionStats(CompressedData, BoneData, GetFName(), CompressionTime, bPerformedCompression);
+		if(bCompressedDataFromDDC)
+		{
+			const double CompressionEndTime = FPlatformTime::Seconds();
+			const double CompressionTime = CompressionEndTime - CompressionStartTime;
+
+			TArray<FBoneData> BoneData;
+			FAnimationUtils::BuildSkeletonMetaData(GetSkeleton(), BoneData);
+			Params.CompressContext->GatherPostCompressionStats(CompressedData, BoneData, GetFName(), CompressionTime, false);
+		}
+
+	}
 #endif
+}
+
+#if WITH_EDITOR
+void UAnimSequence::ApplyCompressedData(const FString& DataCacheKeySuffix, const bool bPerformFrameStripping, const TArray<uint8>& Data)
+{
+	if (GetDDCCacheKeySuffix(bPerformFrameStripping) == DataCacheKeySuffix)
+	{
+		ApplyCompressedData(Data);
+	}
+	else
+	{
+		bCompressionInProgress = false;
+	}
+}
+#endif
+
+void UAnimSequence::ApplyCompressedData(const TArray<uint8>& Data)
+{
+#if WITH_EDITOR
+	bCompressionInProgress = false;
+#endif
+	if(Data.Num() > 0)
+	{
+		FMemoryReader MemAr(Data);
+		SerializeCompressedData(MemAr, true);
+		//This is only safe during sync anim compression
+		SetSkeletonVirtualBoneGuid(GetSkeleton()->GetVirtualBoneGuid());
+		bUseRawDataOnly = false;
+	}
 }
 
 void UAnimSequence::SerializeCompressedData(FArchive& Ar, bool bDDCData)
@@ -5352,7 +5409,7 @@ void UAnimSequence::OnRawDataChanged()
 	ClearCompressedBoneData();
 	bUseRawDataOnly = true;
 
-	RequestSyncAnimRecompression(false);
+	RequestAsyncAnimRecompression(false);
 	//MDW - Once we have async anim ddc requests we should do this too
 	//RequestDependentAnimRecompression();
 }

@@ -987,8 +987,8 @@ void UAnimCompress_PerTrackCompression::CompressUsingUnderlyingCompressor(
 	}
 
 	// Grab the cache
-	check(PerReductionCachedData != NULL);
-	FPerTrackCachedInfo* Cache = (FPerTrackCachedInfo*)PerReductionCachedData;
+	check(OutCompressedData.CompressionUserData);
+	FPerTrackCachedInfo* Cache = (FPerTrackCachedInfo*)OutCompressedData.CompressionUserData;
 
 	// record the proper runtime decompressor to use
 	FUECompressedAnimDataMutable& AnimData = static_cast<FUECompressedAnimDataMutable&>(*OutCompressedData.AnimData);
@@ -1444,7 +1444,7 @@ void ResampleKeys(
 
 
 
-void UAnimCompress_PerTrackCompression::FilterBeforeMainKeyRemoval(
+void* UAnimCompress_PerTrackCompression::FilterBeforeMainKeyRemoval(
 	const FCompressibleAnimData& CompressibleAnimData,
 	TArray<FTranslationTrack>& TranslationData,
 	TArray<FRotationTrack>& RotationData, 
@@ -1467,9 +1467,8 @@ void UAnimCompress_PerTrackCompression::FilterBeforeMainKeyRemoval(
 	}
 
 	// Create the cache
-	check(PerReductionCachedData == NULL);
+
 	FPerTrackCachedInfo* Cache = new FPerTrackCachedInfo();
-	PerReductionCachedData = Cache;
 	
 	// Calculate how far each track is from controlling an end effector
 	if (bUseAdaptiveError)
@@ -1495,6 +1494,8 @@ void UAnimCompress_PerTrackCompression::FilterBeforeMainKeyRemoval(
 
 	// remove obviously redundant keys from the source data
 	FilterTrivialKeys(TranslationData, RotationData, ScaleData, TRANSLATION_ZEROING_THRESHOLD, QUATERNION_ZEROING_THRESHOLD, SCALE_ZEROING_THRESHOLD);
+
+	return Cache;
 }
 
 void UAnimCompress_PerTrackCompression::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
@@ -1565,11 +1566,12 @@ bool UAnimCompress_PerTrackCompression::DoReduction(const FCompressibleAnimData&
 	bool bSuccess = UAnimCompress_RemoveLinearKeys::DoReduction(CompressibleAnimData, OutResult);
 
 	// Delete the cache
-	if (PerReductionCachedData != NULL)
+	if (OutResult.CompressionUserData != nullptr)
 	{
-		delete PerReductionCachedData;
+		delete OutResult.CompressionUserData;
+		OutResult.CompressionUserData = nullptr;
 	}
-	PerReductionCachedData = NULL;
+	
 	return bSuccess;
 }
 

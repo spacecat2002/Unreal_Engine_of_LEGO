@@ -88,7 +88,7 @@ protected:
 	/**
 	 * Pre-filters the tracks before running the main key removal algorithm
 	 */
-	virtual void FilterBeforeMainKeyRemoval(
+	virtual void* FilterBeforeMainKeyRemoval(
 		const FCompressibleAnimData& CompressibleAnimData,
 		TArray<FTranslationTrack>& TranslationData,
 		TArray<FRotationTrack>& RotationData, 

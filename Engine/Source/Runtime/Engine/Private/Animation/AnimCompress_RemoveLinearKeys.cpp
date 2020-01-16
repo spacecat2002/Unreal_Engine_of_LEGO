@@ -364,7 +364,7 @@ void UAnimCompress_RemoveLinearKeys::UpdateWorldBoneTransformTable(
 }
 
 
-void UAnimCompress_RemoveLinearKeys::FilterBeforeMainKeyRemoval(
+void* UAnimCompress_RemoveLinearKeys::FilterBeforeMainKeyRemoval(
 	const FCompressibleAnimData& CompressibleAnimData,
 	TArray<FTranslationTrack>& TranslationData,
 	TArray<FRotationTrack>& RotationData, 
@@ -372,6 +372,7 @@ void UAnimCompress_RemoveLinearKeys::FilterBeforeMainKeyRemoval(
 {
 	// remove obviously redundant keys from the source data
 	FilterTrivialKeys(TranslationData, RotationData, ScaleData, TRANSLATION_ZEROING_THRESHOLD, QUATERNION_ZEROING_THRESHOLD, SCALE_ZEROING_THRESHOLD);
+	return nullptr;
 }
 
 
@@ -1052,7 +1053,8 @@ bool UAnimCompress_RemoveLinearKeys::DoReduction(const FCompressibleAnimData& Co
 	TArray<FScaleTrack> ScaleData;
 	SeparateRawDataIntoTracks(CompressibleDataToOperateOn.RawAnimationData, CompressibleDataToOperateOn.SequenceLength, TranslationData, RotationData, ScaleData);
 
-	FilterBeforeMainKeyRemoval(CompressibleDataToOperateOn, TranslationData, RotationData, ScaleData);
+	check(OutResult.CompressionUserData == nullptr);
+	OutResult.CompressionUserData = FilterBeforeMainKeyRemoval(CompressibleDataToOperateOn, TranslationData, RotationData, ScaleData);
 
 	if (bRunningProcessor)
 	{

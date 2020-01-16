@@ -130,11 +130,6 @@ class UAnimCompress_PerTrackCompression : public UAnimCompress_RemoveLinearKeys
 
 
 public:
-	/**
-	 * Cached metastructures used within DoReduction, tied to a particular sequence and mesh
-	 */
-	struct FPerTrackCachedInfo* PerReductionCachedData;
-
 	virtual void DecompressBone(FAnimSequenceDecompressionContext& DecompContext, int32 TrackIndex, FTransform& OutAtom) const override;
 
 protected:
@@ -156,7 +151,7 @@ protected:
 		const TArray<FScaleTrack>& ScaleData,
 		const bool bFinalPass) override;
 
-	virtual void FilterBeforeMainKeyRemoval(
+	virtual void* FilterBeforeMainKeyRemoval(
 		const FCompressibleAnimData& CompressibleAnimData,
 		TArray<FTranslationTrack>& TranslationData,
 		TArray<FRotationTrack>& RotationData,

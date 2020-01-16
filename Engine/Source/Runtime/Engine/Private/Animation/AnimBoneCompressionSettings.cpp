@@ -161,11 +161,11 @@ bool UAnimBoneCompressionSettings::Compress(const FCompressibleAnimData& AnimSeq
 		FAnimBoneCompressionContext* Context = new FAnimBoneCompressionContext(AnimSeq, Codec);
 		ContextList.Add(Context);
 
-		AnimCompressionTask_CompletionEvents.Add(TGraphTask<FAsyncAnimCompressionTask>::CreateTask(NULL, ENamedThreads::GameThread).ConstructAndDispatchWhenReady(Context));
+		AnimCompressionTask_CompletionEvents.Add(TGraphTask<FAsyncAnimCompressionTask>::CreateTask(NULL).ConstructAndDispatchWhenReady(Context));
 	}
 
 	// Wait for async compression to finish
-	FTaskGraphInterface::Get().WaitUntilTasksComplete(AnimCompressionTask_CompletionEvents, ENamedThreads::GameThread);
+	FTaskGraphInterface::Get().WaitUntilTasksComplete(AnimCompressionTask_CompletionEvents);
 
 	const int32 NumContextes = ContextList.Num();
 	if (NumContextes == 0)

@@ -576,8 +576,20 @@ public:
 	bool CompressRawAnimData();
 
 	// Get compressed data for this UAnimSequence. May be built directly or pulled from DDC
+#if WITH_EDITOR
+	bool ShouldPerformStripping(const bool bPerformFrameStripping, const bool bPerformStrippingOnOddFramedAnims) const;
+	FString GetDDCCacheKeySuffix(const bool bPerformStripping) const;
+	void ApplyCompressedData(const FString& DataCacheKeySuffix, const bool bPerformFrameStripping, const TArray<uint8>& Data);
+#endif
+	void WaitOnExistingCompression(const bool bCancelIfNotStarted=false);
 	void RequestAnimCompression(FRequestAnimCompressionParams Params);
 	void RequestSyncAnimRecompression(bool bOutput = false) { RequestAnimCompression(FRequestAnimCompressionParams(false, false, bOutput)); }
+	void RequestAsyncAnimRecompression(bool bOutput = false) { RequestAnimCompression(FRequestAnimCompressionParams(true, false, bOutput)); }
+
+protected:
+	void ApplyCompressedData(const TArray<uint8>& Data);
+
+public:
 	bool IsCompressedDataValid() const;
 	bool IsCurveCompressedDataValid() const;
 
@@ -844,9 +856,12 @@ private:
 	// Should we be always using our raw data (i.e is our compressed data stale)
 	bool bUseRawDataOnly;
 
-public:
+#if WITH_EDITOR
 	// Are we currently compressing this animation
 	bool bCompressionInProgress;
+#endif
+
+public:
 
 	friend class UAnimationAsset;
 	friend struct FScopedAnimSequenceRawDataCache;
