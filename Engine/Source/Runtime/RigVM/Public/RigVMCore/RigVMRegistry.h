@@ -16,16 +16,19 @@ typedef void (*FRigVMFunctionPtr)(const FName& RigVMOperatorName, int32 RigVMOpe
 struct RIGVM_API FRigVMFunction
 {
 	const TCHAR* Name;
+	UScriptStruct* Struct;
 	FRigVMFunctionPtr FunctionPtr;
 
 	FRigVMFunction()
 		: Name(nullptr)
+		, Struct(nullptr)
 		, FunctionPtr(nullptr)
 	{
 	}
 
-	FRigVMFunction(const TCHAR* InName, FRigVMFunctionPtr InFunctionPtr)
+	FRigVMFunction(const TCHAR* InName, FRigVMFunctionPtr InFunctionPtr, UScriptStruct* InStruct = nullptr)
 		: Name(InName)
+		, Struct(InStruct)
 		, FunctionPtr(InFunctionPtr)
 	{
 	}
@@ -47,7 +50,7 @@ public:
 	// Registers a function given its name.
 	// The name will be the name of the struct and virtual method,
 	// for example "FMyStruct::MyVirtualMethod"
-	void Register(const TCHAR* InName, FRigVMFunctionPtr InFunctionPtr);
+	void Register(const TCHAR* InName, FRigVMFunctionPtr InFunctionPtr, UScriptStruct* InStruct = nullptr);
 
 	// Refreshes the list and finds the function pointers
 	// based on the names.
@@ -55,6 +58,9 @@ public:
 
 	// Returns a function pointer given its name
 	FRigVMFunctionPtr Find(const TCHAR* InName) const;
+
+	// Returns all current rigvm functions
+	const TArray<FRigVMFunction>& GetFunctions() const;
 
 private:
 
