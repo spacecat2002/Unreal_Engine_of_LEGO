@@ -524,11 +524,19 @@ void UTransformGizmo::SetNewGizmoTransform(const FTransform& NewTransform)
 
 	StateTarget->BeginUpdate();
 
+	SeparateChildScale = NewTransform.GetScale3D();
+
 	USceneComponent* GizmoComponent = GizmoActor->GetRootComponent();
 	GizmoComponent->SetWorldTransform(NewTransform);
 	//ActiveTarget->SetTransform(NewTransform);		// this will happen in the GizmoComponent.TransformUpdated delegate handler above
 
 	StateTarget->EndUpdate();
+}
+
+
+void UTransformGizmo::SetNewChildScale(const FVector& NewChildScale)
+{
+	SeparateChildScale = NewChildScale;
 }
 
 

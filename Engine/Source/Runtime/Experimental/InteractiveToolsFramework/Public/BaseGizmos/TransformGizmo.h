@@ -280,6 +280,12 @@ public:
 	virtual void SetNewGizmoTransform(const FTransform& NewTransform);
 
 	/**
+	 * Explicitly set the child scale. Mainly useful to "reset" the child scale to (1,1,1) when re-using Gizmo across multiple transform actions.
+	 * @warning does not generate change/modify events!!
+	 */
+	virtual void SetNewChildScale(const FVector& NewChildScale);
+
+	/**
 	 * Set visibility for this Gizmo
 	 */
 	virtual void SetVisibility(bool bVisible);
