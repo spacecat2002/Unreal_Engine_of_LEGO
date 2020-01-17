@@ -27,14 +27,6 @@ TAutoConsoleVariable<int32> CVarEyeAdaptationMethodOverride(
 	TEXT(" 3: Manual"),
 	ECVF_Scalability | ECVF_RenderThreadSafe);
 
-TAutoConsoleVariable<float> CVarEyeAdaptationFocus(
-	TEXT("r.EyeAdaptation.Focus"),
-	1.0f,
-	TEXT("Applies to basic adapation mode only\n")
-	TEXT(" 0: Uniform weighting\n")
-	TEXT(">0: Center focus, 1 is a good number (default)"),
-	ECVF_Scalability | ECVF_RenderThreadSafe);
-
 TAutoConsoleVariable<int32> CVarEyeAdaptationBasicCompute(
 	TEXT("r.EyeAdaptation.Basic.Compute"),
 	1,
@@ -160,14 +152,6 @@ EAutoExposureMethod GetAutoExposureMethod(const FViewInfo& View)
 	return AutoExposureMethod;
 }
 
-
-float GetBasicAutoExposureFocus()
-{
-	const float FocusMax = 10.f;
-	const float FocusValue = CVarEyeAdaptationFocus.GetValueOnRenderThread();
-	return FMath::Max(FMath::Min(FocusValue, FocusMax), 0.0f);
-}
-
 float GetAutoExposureCompensation(const FViewInfo& View)
 {
 	const FPostProcessSettings& Settings = View.FinalPostProcessSettings;
@@ -282,8 +266,6 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	//const float CalibrationConstant = FMath::Clamp(Settings.AutoExposureCalibrationConstant, 1.0f, 100.0f) * PercentToScale;
 	//const float CalibrationScale = (AutoExposureMethod == EAutoExposureMethod::AEM_Basic || AutoExposureMethod == EAutoExposureMethod::AEM_Histogram) ? CalibrationConstant : 1.0f;
 
-	const float WeightSlope = (AutoExposureMethod == EAutoExposureMethod::AEM_Basic) ? GetBasicAutoExposureFocus() : 0.0f;
-
 	const float HistogramLogDelta = HistogramLogMax - HistogramLogMin;
 	const float HistogramScale = 1.0f / HistogramLogDelta;
 	const float HistogramBias = -HistogramLogMin * HistogramScale;
@@ -337,7 +319,6 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	Parameters.HistogramBias = HistogramBias;
 	Parameters.LuminanceMin = LuminanceMin;
 	Parameters.CalibrationConstantInverse = 1.0f; // no calibration constant because it is now baked into ExposureCompensation
-	Parameters.WeightSlope = WeightSlope;
 	Parameters.GreyMult = GreyMult;
 	Parameters.ExponentialDownM = ExponentialDownM;
 	Parameters.ExponentialUpM = ExponentialUpM;

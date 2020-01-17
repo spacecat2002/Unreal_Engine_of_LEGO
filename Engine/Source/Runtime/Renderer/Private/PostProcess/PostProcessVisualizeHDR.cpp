@@ -4,8 +4,6 @@
 #include "PostProcess/PostProcessTonemap.h"
 #include "Curves/CurveFloat.h"
 
-extern float GetBasicAutoExposureFocus();
-
 extern bool IsExtendLuminanceRangeEnabled();
 
 class FVisualizeHDRPS : public FGlobalShader
@@ -198,12 +196,6 @@ FScreenPassTexture AddVisualizeHDRPass(FRDGBuilder& GraphBuilder, const FViewInf
 		Canvas.DrawShadowedString(X, Y += YStep, TEXT("Histogram EV100 Min/Max:"), GetStatsFont(), FLinearColor(1, 1, 1));
 		Canvas.DrawShadowedString(X + ColumnWidth, Y, *Line, GetStatsFont(), FLinearColor(0.3f, 0.3f, 1));
 
-		if (AutoExposureMethod == EAutoExposureMethod::AEM_Basic)
-		{
-			Line = FString::Printf(TEXT("%g"), GetBasicAutoExposureFocus());
-			Canvas.DrawShadowedString(X, Y += YStep, TEXT("Weighting Focus: "), GetStatsFont(), FLinearColor(1, 1, 1));
-			Canvas.DrawShadowedString(X + ColumnWidth, Y, *Line, GetStatsFont(), FLinearColor(1, 0.3f, 0.3f));
-		}
 	});
 
 	return MoveTemp(Output);
