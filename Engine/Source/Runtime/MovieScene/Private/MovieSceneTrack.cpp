@@ -71,11 +71,6 @@ bool UMovieSceneTrack::IsPostLoadThreadSafe() const
 
 void UMovieSceneTrack::UpdateEasing()
 {
-	if (!EnumHasAllFlags(SupportsEasing(), EMovieSceneTrackEasingSupportFlags::AutomaticEasing))
-	{
-		return;
-	}
-
 	int32 MaxRows = GetMaxRowIndex();
 	TArray<UMovieSceneSection*> RowSections;
 
@@ -94,6 +89,12 @@ void UMovieSceneTrack::UpdateEasing()
 		for (int32 Index = 0; Index < RowSections.Num(); ++Index)
 		{
 			UMovieSceneSection* CurrentSection = RowSections[Index];
+
+			FMovieSceneSupportsEasingParams SupportsEasingParams(CurrentSection);
+			if (!EnumHasAllFlags(SupportsEasing(SupportsEasingParams), EMovieSceneTrackEasingSupportFlags::AutomaticEasing))
+			{
+				continue;
+			}
 
 			// Check overlaps with exclusive ranges so that sections can butt up against each other
 			UMovieSceneTrack* OuterTrack = CurrentSection->GetTypedOuter<UMovieSceneTrack>();

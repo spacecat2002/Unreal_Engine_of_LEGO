@@ -107,6 +107,7 @@ struct FMovieSceneTrackDisplayOptions
 	uint32 bShowVerticalFrames : 1;
 };
 
+/** Returns what kind of section easing we support in the editor */
 enum class EMovieSceneTrackEasingSupportFlags
 {
 	None = 0,
@@ -115,6 +116,16 @@ enum class EMovieSceneTrackEasingSupportFlags
 	All = AutomaticEasing | ManualEasing
 };
 ENUM_CLASS_FLAGS(EMovieSceneTrackEasingSupportFlags)
+
+/** Parameters for the `SupportsEasing` method */
+struct FMovieSceneSupportsEasingParams
+{
+	// Non-null if we are asking for a specific section.
+	const UMovieSceneSection* ForSection;
+
+	FMovieSceneSupportsEasingParams() : ForSection(nullptr) {}
+	FMovieSceneSupportsEasingParams(const UMovieSceneSection* InSection) : ForSection(InSection) {}
+};
 
 /**
  * Base class for a track in a Movie Scene
@@ -259,7 +270,7 @@ public:
 		return SupportedBlendTypes.Num() != 0;
 	}
 
-	virtual EMovieSceneTrackEasingSupportFlags SupportsEasing() const
+	virtual EMovieSceneTrackEasingSupportFlags SupportsEasing(FMovieSceneSupportsEasingParams& Params) const
 	{
 		return SupportedBlendTypes.Num() > 0 ? EMovieSceneTrackEasingSupportFlags::All : EMovieSceneTrackEasingSupportFlags::None;
 	}
