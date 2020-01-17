@@ -310,7 +310,15 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ConfigRestartRequired = true,
 		ConsoleVariable = "r.ClearCoatNormal",
 		ToolTip = "Use a separate normal map for the bottom layer of a clear coat material. This is a higher quality feature that is expensive."))
-		uint32 bClearCoatEnableSecondNormal : 1;
+	uint32 bClearCoatEnableSecondNormal : 1;
+
+	UPROPERTY(config, EditAnywhere, Category = Materials, meta = (
+		DisplayName = "Use anisotropic BRDF (Beta)",
+		ConsoleVariable = "r.AnisotropicBRDF", 
+		EditCondition = "!bBasePassOutputsVelocity || bAnisotropicBRDF && bBasePassOutputsVelocity",
+		ConfigRestartRequired = true,
+		ToolTip = "Uses an anisotropic BRDF for default lit and clear coat surface materials. Changing this setting requires restarting the editor.\n\nNote: can only be enabled if 'Output velocities during base pass' (r.BasePassOutputsVelocity) is disabled."))
+	uint32 bAnisotropicBRDF : 1;
 
 	UPROPERTY(config, EditAnywhere, Category = Reflections, meta = (
 		ConsoleVariable = "r.ReflectionCaptureResolution", DisplayName = "Reflection Capture Resolution",
@@ -523,10 +531,21 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 	TEnumAsByte<EClearSceneOptions::Type> ClearSceneMethod;
 
 	UPROPERTY(config, EditAnywhere, Category=Optimizations, meta=(
-		ConsoleVariable="r.BasePassOutputsVelocity", DisplayName="Accurate velocities from Vertex Deformation",
-		ToolTip="Enables materials with time-based World Position Offset and/or World Displacement to output accurate velocities. This incurs a performance cost. If this is disabled, those materials will not output velocities. Changing this setting requires restarting the editor.",
-		ConfigRestartRequired=true))
+		DisplayName="Output velocities during base pass",
+		ConsoleVariable="r.BasePassOutputsVelocity",
+		EditCondition = "!bAnisotropicBRDF || bAnisotropicBRDF && bBasePassOutputsVelocity",
+		ConfigRestartRequired = true,
+		ToolTip="Enables emitting velocity during Base Pass rendering. Changing this setting requires restarting the editor.\n\nNote: can only be enabled if 'Use anisotropic BRDF' (r.AnisotropicBRDF) is disabled.\nNote: enabling this behaves as if 'Output velocities due to vertex deformation' (r.VertexDeformationOutputsVelocity) is also enabled."
+		))
 	uint32 bBasePassOutputsVelocity:1;
+	
+	UPROPERTY(config, EditAnywhere, Category=Optimizations, meta=(
+		DisplayName="Output velocities due to vertex deformation",
+		ConsoleVariable="r.VertexDeformationOutputsVelocity",
+		EditCondition = "!bBasePassOutputsVelocity",
+		ToolTip="Enables materials with World Position Offset and/or World Displacement to output velocities during velocity pass even when the actor has not moved. This incurs a performance cost and can be quite significant if many objects are using WPO, such as a forest of trees - in that case consider 'Output velocities during base pass' (r.BasePassOutputsVelocity) and disabling this option."
+		))
+	uint32 bVertexDeformationOutputsVelocity:1;
 
 	UPROPERTY(config, EditAnywhere, Category=Optimizations, meta=(
 		ConsoleVariable="r.SelectiveBasePassOutputs", DisplayName="Selectively output to the GBuffer rendertargets",

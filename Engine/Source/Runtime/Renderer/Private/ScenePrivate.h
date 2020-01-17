@@ -2291,7 +2291,7 @@ class FPixelInspectorData
 public:
 	FPixelInspectorData();
 
-	void InitializeBuffers(FRenderTarget* BufferFinalColor, FRenderTarget* BufferSceneColor, FRenderTarget* BufferDepth, FRenderTarget* BufferHDR, FRenderTarget* BufferA, FRenderTarget* BufferBCDE, int32 bufferIndex);
+	void InitializeBuffers(FRenderTarget* BufferFinalColor, FRenderTarget* BufferSceneColor, FRenderTarget* BufferDepth, FRenderTarget* BufferHDR, FRenderTarget* BufferA, FRenderTarget* BufferBCDEF, int32 bufferIndex);
 
 	bool AddPixelInspectorRequest(FPixelInspectorRequest *PixelInspectorRequest);
 
@@ -2303,7 +2303,7 @@ public:
 	FRenderTarget* RenderTargetBufferHDR[2];
 	FRenderTarget* RenderTargetBufferSceneColor[2];
 	FRenderTarget* RenderTargetBufferA[2];
-	FRenderTarget* RenderTargetBufferBCDE[2];
+	FRenderTarget* RenderTargetBufferBCDEF[2];
 };
 #endif //WITH_EDITOR
 
@@ -2904,7 +2904,7 @@ public:
 	void FlushDirtyRuntimeVirtualTextures();
 
 #if WITH_EDITOR
-	virtual bool InitializePixelInspector(FRenderTarget* BufferFinalColor, FRenderTarget* BufferSceneColor, FRenderTarget* BufferDepth, FRenderTarget* BufferHDR, FRenderTarget* BufferA, FRenderTarget* BufferBCDE, int32 BufferIndex) override;
+	virtual bool InitializePixelInspector(FRenderTarget* BufferFinalColor, FRenderTarget* BufferSceneColor, FRenderTarget* BufferDepth, FRenderTarget* BufferHDR, FRenderTarget* BufferA, FRenderTarget* BufferBCDEF, int32 BufferIndex) override;
 
 	virtual bool AddPixelInspectorRequest(FPixelInspectorRequest *PixelInspectorRequest) override;
 #endif //WITH_EDITOR

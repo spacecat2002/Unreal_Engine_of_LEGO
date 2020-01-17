@@ -1971,6 +1971,7 @@ struct FFastVramConfig
 	uint32 GBufferC;
 	uint32 GBufferD;
 	uint32 GBufferE;
+	uint32 GBufferF;
 	uint32 GBufferVelocity;
 	uint32 HZB;
 	uint32 SceneDepth;

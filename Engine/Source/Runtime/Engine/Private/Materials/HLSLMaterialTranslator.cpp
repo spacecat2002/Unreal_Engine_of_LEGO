@@ -113,6 +113,7 @@ FHLSLMaterialTranslator::FHLSLMaterialTranslator(FMaterial* InMaterial,
 	FMemory::Memzero(SharedPixelProperties);
 
 	SharedPixelProperties[MP_Normal] = true;
+	SharedPixelProperties[MP_Tangent] = true;
 	SharedPixelProperties[MP_EmissiveColor] = true;
 	SharedPixelProperties[MP_Opacity] = true;
 	SharedPixelProperties[MP_OpacityMask] = true;
@@ -120,6 +121,7 @@ FHLSLMaterialTranslator::FHLSLMaterialTranslator(FMaterial* InMaterial,
 	SharedPixelProperties[MP_Metallic] = true;
 	SharedPixelProperties[MP_Specular] = true;
 	SharedPixelProperties[MP_Roughness] = true;
+	SharedPixelProperties[MP_Anisotropy] = true;
 	SharedPixelProperties[MP_AmbientOcclusion] = true;
 	SharedPixelProperties[MP_Refraction] = true;
 	SharedPixelProperties[MP_PixelDepthOffset] = true;
@@ -638,8 +640,10 @@ bool FHLSLMaterialTranslator::Translate()
 		Chunk[MP_Metallic]						= Material->CompilePropertyAndSetMaterialProperty(MP_Metallic				,this);
 		Chunk[MP_Specular]						= Material->CompilePropertyAndSetMaterialProperty(MP_Specular				,this);
 		Chunk[MP_Roughness]						= Material->CompilePropertyAndSetMaterialProperty(MP_Roughness				,this);
+		Chunk[MP_Anisotropy]					= Material->CompilePropertyAndSetMaterialProperty(MP_Anisotropy				,this);
 		Chunk[MP_Opacity]						= Material->CompilePropertyAndSetMaterialProperty(MP_Opacity				,this);
 		Chunk[MP_OpacityMask]					= Material->CompilePropertyAndSetMaterialProperty(MP_OpacityMask			,this);
+		Chunk[MP_Tangent]						= Material->CompilePropertyAndSetMaterialProperty(MP_Tangent				,this);
 		Chunk[MP_WorldPositionOffset]			= Material->CompilePropertyAndSetMaterialProperty(MP_WorldPositionOffset	,this);
 		Chunk[MP_WorldDisplacement]				= Material->CompilePropertyAndSetMaterialProperty(MP_WorldDisplacement		,this);
 		Chunk[MP_TessellationMultiplier]		= Material->CompilePropertyAndSetMaterialProperty(MP_TessellationMultiplier	,this);			
@@ -4799,6 +4803,26 @@ void FHLSLMaterialTranslator::UseSceneTextureId(ESceneTextureId SceneTextureId, 
 		}
 	}
 
+	if (SceneTextureId == PPI_WorldTangent)
+	{
+		static IConsoleVariable* AnisotropicBRDF = IConsoleManager::Get().FindConsoleVariable(TEXT("r.AnisotropicBRDF"));
+
+		if (!AnisotropicBRDF || !AnisotropicBRDF->GetBool())
+		{
+			Errorf(TEXT("World Tangent scene texture is only available when using anisotropic BRDF."));
+		}
+	}
+
+	if (SceneTextureId == PPI_Anisotropy)
+	{
+		static IConsoleVariable* AnisotropicBRDF = IConsoleManager::Get().FindConsoleVariable(TEXT("r.AnisotropicBRDF"));
+
+		if (!AnisotropicBRDF || !AnisotropicBRDF->GetBool())
+		{
+			Errorf(TEXT("Anisotropy scene texture is only available when using anisotropic BRDF."));
+		}
+	}
+
 	// not yet tracked:
 	//   PPI_SeparateTranslucency, PPI_CustomDepth, PPI_AmbientOcclusion
 }
@@ -6125,6 +6149,15 @@ int32 FHLSLMaterialTranslator::VertexNormal()
 		bUsesTransformVector = true;
 	}
 	return AddInlinedCodeChunk(MCT_Float3,TEXT("Parameters.TangentToWorld[2]"));	
+}
+
+int32 FHLSLMaterialTranslator::VertexTangent()
+{
+	if (ShaderFrequency != SF_Vertex)
+	{
+		bUsesTransformVector = true;
+	}
+	return AddInlinedCodeChunk(MCT_Float3, TEXT("Parameters.TangentToWorld[0]"));
 }
 
 int32 FHLSLMaterialTranslator::PixelNormalWS()

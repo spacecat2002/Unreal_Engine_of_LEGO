@@ -106,6 +106,9 @@ struct CORE_API FRenderingObjectVersion
 		// Add force opaque flag for static mesh
 		AutoExposureChanges,
 
+		// Added material arrtibutes to shader graph to support anisotropic materials 
+		AnisotropicMaterial,
+
 		// -----<new versions can be added above this line>-------------------------------------------------
 		VersionPlusOne,
 		LatestVersion = VersionPlusOne - 1

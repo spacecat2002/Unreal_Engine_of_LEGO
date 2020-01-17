@@ -368,7 +368,13 @@ class UMaterial : public UMaterialInterface
 #endif
 
 	UPROPERTY()
+	FScalarMaterialInput Anisotropy;
+
+	UPROPERTY()
 	FVectorMaterialInput Normal;
+
+	UPROPERTY()
+	FVectorMaterialInput Tangent;
 
 	// Emission.
 	UPROPERTY()

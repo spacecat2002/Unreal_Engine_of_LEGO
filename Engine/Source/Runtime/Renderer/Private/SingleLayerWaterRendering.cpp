@@ -525,8 +525,9 @@ void FDeferredShadingSceneRenderer::BeginRenderingWaterGBuffer(FRHICommandList& 
 
 	// Create MRT
 	int32 VelocityRTIndex = -1;
+	int32 TangentRTIndex = -1;
 	FRHIRenderPassInfo RPInfo;
-	SceneContext.FillGBufferRenderPassInfo(ERenderTargetLoadAction::ELoad, RPInfo, VelocityRTIndex);
+	SceneContext.FillGBufferRenderPassInfo(ERenderTargetLoadAction::ELoad, RPInfo, VelocityRTIndex, TangentRTIndex);
 	// Set a dummy Scene color RT to avoid gbuffer to stomp HDR scene color we want to blend over
 	RPInfo.ColorRenderTargets[0].Action = MakeRenderTargetActions(ERenderTargetLoadAction::ENoAction, ERenderTargetStoreAction::ENoAction);
 	RPInfo.ColorRenderTargets[0].RenderTarget = SceneContext.GetSceneColorSurface();

@@ -620,8 +620,10 @@ public:
 			IsSceneTextureUsed(PPI_Specular) ||
 			IsSceneTextureUsed(PPI_Metallic) ||
 			IsSceneTextureUsed(PPI_WorldNormal) ||
+			IsSceneTextureUsed(PPI_WorldTangent) ||
 			IsSceneTextureUsed(PPI_Opacity) ||
 			IsSceneTextureUsed(PPI_Roughness) ||
+			IsSceneTextureUsed(PPI_Anisotropy) ||
 			IsSceneTextureUsed(PPI_MaterialAO) ||
 			IsSceneTextureUsed(PPI_DecalMask) ||
 			IsSceneTextureUsed(PPI_ShadingModelColor) ||
@@ -657,8 +659,10 @@ namespace EMaterialShaderMapUsage
 		MaterialExportBaseColor,
 		MaterialExportSpecular,
 		MaterialExportNormal,
+		MaterialExportTangent,
 		MaterialExportMetallic,
 		MaterialExportRoughness,
+		MaterialExportAnisotropy,
 		MaterialExportAO,
 		MaterialExportEmissive,
 		MaterialExportOpacity,
@@ -2410,7 +2414,7 @@ ENGINE_API bool DoesMaterialUseTexture(const UMaterialInterface* Material,const 
 
 #if WITH_EDITORONLY_DATA
 /** TODO - This can be removed whenever VER_UE4_MATERIAL_ATTRIBUTES_REORDERING is no longer relevant. */
-ENGINE_API void DoMaterialAttributeReorder(FExpressionInput* Input, int32 UE4Ver);
+ENGINE_API void DoMaterialAttributeReorder(FExpressionInput* Input, int32 UE4Ver, int32 RenderObjVer);
 #endif // WITH_EDITORONLY_DATA
 
 /**
