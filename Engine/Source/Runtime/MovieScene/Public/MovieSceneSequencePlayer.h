@@ -638,7 +638,7 @@ protected:
 		enum class EType : uint8 { Stop, Pause, Update };
 
 		FLatentAction(EType InType, FFrameTime DesiredTime = 0)
-			: Type(InType)
+			: Type(InType), Position(DesiredTime)
 		{}
 
 		FLatentAction(EUpdatePositionMethod InUpdateMethod, FFrameTime DesiredTime)
