@@ -1269,8 +1269,9 @@ void FBasePassMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshBatch, 
 					bShouldDraw = Material.IsTranslucencyAfterDOFEnabled();
 					break;
 
+				// only dual blended or modulate surfaces need background modulation
 				case ETranslucencyPass::TPT_TranslucencyAfterDOFModulate:
-					bShouldDraw = Material.IsTranslucencyAfterDOFEnabled() && Material.IsDualBlendingEnabled(GetFeatureLevelShaderPlatform(FeatureLevel));
+					bShouldDraw = Material.IsTranslucencyAfterDOFEnabled() && (Material.IsDualBlendingEnabled(GetFeatureLevelShaderPlatform(FeatureLevel)) || BlendMode == BLEND_Modulate);
 					break;
 
 				case ETranslucencyPass::TPT_AllTranslucency:

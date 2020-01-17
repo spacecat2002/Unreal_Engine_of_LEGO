@@ -816,11 +816,12 @@ bool FHLSLMaterialTranslator::Translate()
 
 		if (Domain == MD_Surface)
 		{
-			if (BlendMode == BLEND_Modulate && Material->IsTranslucencyAfterDOFEnabled())
+			if (BlendMode == BLEND_Modulate && Material->IsTranslucencyAfterDOFEnabled() && !RHISupportsDualSourceBlending(Platform))
 			{
-				Errorf(TEXT("Translucency after DOF with BLEND_Modulate is not supported. Consider using BLEND_Translucent with black emissive"));
+				Errorf(TEXT("Translucency after DOF with BLEND_Modulate is only allowed on platforms that support dual-blending. Consider using BLEND_Translucent with black emissive"));
 			}
 		}
+		
 
 		// Don't allow opaque and masked materials to scene depth as the results are undefined
 		if (bUsesSceneDepth && Domain != MD_PostProcess && !IsTranslucentBlendMode(BlendMode))

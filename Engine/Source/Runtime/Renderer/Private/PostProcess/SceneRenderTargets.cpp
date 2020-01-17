@@ -1635,7 +1635,7 @@ TRefCountPtr<IPooledRenderTarget>& FSceneRenderTargets::GetSeparateTranslucencyM
 		uint32 Flags = TexCreate_RenderTargetable | TexCreate_ShaderResource;
 
 		// Create the SeparateTranslucency render target (alpha is needed to lerping)
-		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(Size, PF_FloatRGBA, FClearValueBinding::White, TexCreate_None, Flags, false));
+		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(Size, PF_FloatR11G11B10, FClearValueBinding::White, TexCreate_None, Flags, false));
 		Desc.Flags |= GFastVRamConfig.SeparateTranslucencyModulate;
 		Desc.AutoWritable = false;
 		Desc.NumSamples = GetNumSceneColorMSAASamples(CurrentFeatureLevel);
