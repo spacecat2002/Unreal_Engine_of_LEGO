@@ -1849,7 +1849,37 @@ void FD3D11DynamicRHI::RHIBindClearMRTValues(bool bClearColor, bool bClearDepth,
 // Blocks the CPU until the GPU catches up and goes idle.
 void FD3D11DynamicRHI::RHIBlockUntilGPUIdle()
 {
-	// Not really supported
+	if (IsRunningRHIInSeparateThread())
+	{
+		FRHICommandListExecutor::GetImmediateCommandList().ImmediateFlush(EImmediateFlushType::DispatchToRHIThread);
+	}
+	
+	D3D11_QUERY_DESC Desc = {};
+	Desc.Query = D3D11_QUERY_EVENT;
+
+	TRefCountPtr<ID3D11Query> Query;
+	VERIFYD3D11RESULT_EX(Direct3DDevice->CreateQuery(&Desc, Query.GetInitReference()), Direct3DDevice);
+	
+	D3D11StallRHIThread();
+	
+	Direct3DDeviceIMContext->End(Query.GetReference());
+	Direct3DDeviceIMContext->Flush();
+
+	for(;;)
+	{
+		BOOL EventComplete = false;
+		Direct3DDeviceIMContext->GetData(Query.GetReference(), &EventComplete, sizeof(EventComplete), 0);
+		if (EventComplete)
+		{
+			break;
+		}
+		else
+		{
+			FPlatformProcess::Sleep(0.005f);
+		}
+	}
+
+	D3D11UnstallRHIThread();
 }
 
 /**
