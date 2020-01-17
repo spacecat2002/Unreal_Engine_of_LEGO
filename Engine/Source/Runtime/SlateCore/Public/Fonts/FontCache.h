@@ -713,6 +713,11 @@ public:
 	void ReleaseResources();
 
 	/**
+	 * Event called after releasing the rendering resources in ReleaseResources
+	 */
+	FOnReleaseFontResources& OnReleaseResources() { return OnReleaseResourcesDelegate; }
+
+	/**
 	 * Get the texture resource for a font atlas at a given index
 	 * 
 	 * @param Index	The index of the texture 
@@ -919,6 +924,9 @@ private:
 
 	/** Array of UFont objects that the font cache has been requested to flush. Since GC can happen while the loading screen is running, the request may be deferred until the next call to ConditionalFlushCache */
 	TArray<const UObject*> FontObjectsToFlush;
+
+	/** Called after releasing the rendering resources in ReleaseResources */
+	FOnReleaseFontResources OnReleaseResourcesDelegate;
 
 	ESlateTextureAtlasThreadId OwningThread;
 };
