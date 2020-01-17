@@ -224,6 +224,11 @@ void SWrapBox::FChildArranger::FinalizeLine(int32 IndexOfLastChildInCurrentLine)
 		{
 			ArrangementData.SlotSize.X = WrapBox.PreferredWidth.Get() - ArrangementData.SlotOffset.X;
 		}
+		
+		// All slots on this line should now match to the tallest element's height, which they can then use to do their alignment in OnSlotArranged below (eg. center within that)
+		// If we left their height as is, then their slots would just be whatever their child's desired height was, and so a vertical alignment of "center" would actually 
+		// leave the widget at the top of the line, since you couldn't calculate how much to offset by to actually reach the center of the "container"
+		ArrangementData.SlotSize.Y = MaximumHeightInCurrentLine;
 
 		OnSlotArranged(Slot, ArrangementData);
 	}
