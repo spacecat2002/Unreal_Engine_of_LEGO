@@ -70,56 +70,53 @@ FCompressionMemorySummary::FCompressionMemorySummary(bool bInEnabled)
 
 FCompressionMemorySummary::~FCompressionMemorySummary()
 {
-	if (bEnabled)
+	if (bEnabled && bUsed && WorstBoneError.IsValid())
 	{
-		if (bUsed)
+		const int32 TotalBeforeSaving = TotalRaw - TotalBeforeCompressed;
+		const int32 TotalAfterSaving = TotalRaw - TotalAfterCompressed;
+		const float OldCompressionRatio = (TotalBeforeCompressed > 0.f) ? (static_cast<float>(TotalRaw) / TotalBeforeCompressed) : 0.f;
+		const float NewCompressionRatio = (TotalAfterCompressed > 0.f) ? (static_cast<float>(TotalRaw) / TotalAfterCompressed) : 0.f;
+
+		FNumberFormattingOptions Options;
+		Options.MinimumIntegralDigits = 7;
+		Options.MinimumFractionalDigits = 2;
+
+		FFormatNamedArguments Args;
+		Args.Add(TEXT("TotalRaw"), FText::AsMemory(TotalRaw, &Options));
+		Args.Add(TEXT("TotalBeforeCompressed"), FText::AsMemory(TotalBeforeCompressed, &Options));
+		Args.Add(TEXT("TotalBeforeSaving"), FText::AsMemory(TotalBeforeSaving, &Options));
+		Args.Add(TEXT("NumberOfAnimations"), FText::AsNumber(NumberOfAnimations));
+		Args.Add(TEXT("OldCompressionRatio"), OldCompressionRatio);
+
+		Args.Add(TEXT("TotalAfterCompressed"), FText::AsMemory(TotalAfterCompressed, &Options));
+		Args.Add(TEXT("TotalAfterSaving"), FText::AsMemory(TotalAfterSaving, &Options));
+		Args.Add(TEXT("NewCompressionRatio"), NewCompressionRatio);
+		Args.Add(TEXT("TotalTimeSpentCompressingPretty"), FText::FromString(FPlatformTime::PrettyTime(TotalCompressionExecutionTime)));
+		Args.Add(TEXT("TotalTimeSpentCompressingRawSeconds"), FText::AsNumber((float)TotalCompressionExecutionTime, &Options));
+
+		const FErrorTrackerWorstBone WorstBone = WorstBoneError.GetMaxErrorItem();
+		const FErrorTrackerWorstAnimation WorstAnimation = WorstAnimationError.GetMaxErrorItem();
+
+		Args.Add(TEXT("AverageError"), FText::AsNumber(AverageError, &Options));
+
+		Args.Add(TEXT("WorstBoneError"), WorstBone.ToText());
+		Args.Add(TEXT("WorstAnimationError"), WorstAnimation.ToText());
+
+		FText Message;
+		if (!bPerformedCompression)
 		{
-			const int32 TotalBeforeSaving = TotalRaw - TotalBeforeCompressed;
-			const int32 TotalAfterSaving = TotalRaw - TotalAfterCompressed;
-			const float OldCompressionRatio = (TotalBeforeCompressed > 0.f) ? (static_cast<float>(TotalRaw) / TotalBeforeCompressed) : 0.f;
-			const float NewCompressionRatio = (TotalAfterCompressed > 0.f) ? (static_cast<float>(TotalRaw) / TotalAfterCompressed) : 0.f;
-
-			FNumberFormattingOptions Options;
-			Options.MinimumIntegralDigits = 7;
-			Options.MinimumFractionalDigits = 2;
-
-			FFormatNamedArguments Args;
-			Args.Add(TEXT("TotalRaw"), FText::AsMemory(TotalRaw, &Options));
-			Args.Add(TEXT("TotalBeforeCompressed"), FText::AsMemory(TotalBeforeCompressed, &Options));
-			Args.Add(TEXT("TotalBeforeSaving"), FText::AsMemory(TotalBeforeSaving, &Options));
-			Args.Add(TEXT("NumberOfAnimations"), FText::AsNumber(NumberOfAnimations));
-			Args.Add(TEXT("OldCompressionRatio"), OldCompressionRatio);
-
-			Args.Add(TEXT("TotalAfterCompressed"), FText::AsMemory(TotalAfterCompressed, &Options));
-			Args.Add(TEXT("TotalAfterSaving"), FText::AsMemory(TotalAfterSaving, &Options));
-			Args.Add(TEXT("NewCompressionRatio"), NewCompressionRatio);
-			Args.Add(TEXT("TotalTimeSpentCompressingPretty"), FText::FromString(FPlatformTime::PrettyTime(TotalCompressionExecutionTime)));
-			Args.Add(TEXT("TotalTimeSpentCompressingRawSeconds"), FText::AsNumber((float)TotalCompressionExecutionTime, &Options));
-
-			const FErrorTrackerWorstBone WorstBone = WorstBoneError.GetMaxErrorItem();
-			const FErrorTrackerWorstAnimation WorstAnimation = WorstAnimationError.GetMaxErrorItem();
-
-			Args.Add(TEXT("AverageError"), FText::AsNumber(AverageError, &Options));
-
-			Args.Add(TEXT("WorstBoneError"), WorstBone.ToText());
-			Args.Add(TEXT("WorstAnimationError"), WorstAnimation.ToText());
-
-			FText Message;
-			if (!bPerformedCompression)
-			{
-				Message = FText::Format(NSLOCTEXT("Engine", "CompressionMemorySummaryNoChange", "Compressed {NumberOfAnimations} Animation(s)\n\nRaw: {TotalRaw} - Compressed: {TotalAfterCompressed}\nSaving: {TotalAfterSaving} ({NewCompressionRatio})\n\nEnd Effector Translation Added By Compression:\n Average: {AverageError} Max:\n{WorstBoneError}\n\nMax Average Animation Error:\n{WorstAnimationError}"), Args);
-			}
-			else
-			{
-				Message = FText::Format(NSLOCTEXT("Engine", "CompressionMemorySummary", "Compressed {NumberOfAnimations} Animation(s)\n\nPre Compression:\n\nRaw: {TotalRaw} - Compressed: {TotalBeforeCompressed}\nSaving: {TotalBeforeSaving} ({OldCompressionRatio})\n\nPost Compression:\n\nRaw: {TotalRaw} - Compressed: {TotalAfterCompressed}\nSaving: {TotalAfterSaving} ({NewCompressionRatio})\n\nTotal Compression Time: {TotalTimeSpentCompressingPretty} (Seconds: {TotalTimeSpentCompressingRawSeconds})\n\nEnd Effector Translation Added By Compression:\n Average: {AverageError} Max:\n{WorstBoneError}\n\nMax Average Animation Error:\n{WorstAnimationError}"), Args);
-			}
-
-			UE_LOG(LogAnimationCompression, Display, TEXT("Top 10 Worst Bone Errors:"));
-			WorstBoneError.LogErrorStat();
-			UE_LOG(LogAnimationCompression, Display, TEXT("Top 10 Worst Average Animation Errors:"));
-			WorstAnimationError.LogErrorStat();
-			FMessageDialog::Open(EAppMsgType::Ok, Message);
+			Message = FText::Format(NSLOCTEXT("Engine", "CompressionMemorySummaryNoChange", "Compressed {NumberOfAnimations} Animation(s)\n\nRaw: {TotalRaw} - Compressed: {TotalAfterCompressed}\nSaving: {TotalAfterSaving} ({NewCompressionRatio})\n\nEnd Effector Translation Added By Compression:\n Average: {AverageError} Max:\n{WorstBoneError}\n\nMax Average Animation Error:\n{WorstAnimationError}"), Args);
 		}
+		else
+		{
+			Message = FText::Format(NSLOCTEXT("Engine", "CompressionMemorySummary", "Compressed {NumberOfAnimations} Animation(s)\n\nPre Compression:\n\nRaw: {TotalRaw} - Compressed: {TotalBeforeCompressed}\nSaving: {TotalBeforeSaving} ({OldCompressionRatio})\n\nPost Compression:\n\nRaw: {TotalRaw} - Compressed: {TotalAfterCompressed}\nSaving: {TotalAfterSaving} ({NewCompressionRatio})\n\nTotal Compression Time: {TotalTimeSpentCompressingPretty} (Seconds: {TotalTimeSpentCompressingRawSeconds})\n\nEnd Effector Translation Added By Compression:\n Average: {AverageError} Max:\n{WorstBoneError}\n\nMax Average Animation Error:\n{WorstAnimationError}"), Args);
+		}
+
+		UE_LOG(LogAnimationCompression, Display, TEXT("Top 10 Worst Bone Errors:"));
+		WorstBoneError.LogErrorStat();
+		UE_LOG(LogAnimationCompression, Display, TEXT("Top 10 Worst Average Animation Errors:"));
+		WorstAnimationError.LogErrorStat();
+		FMessageDialog::Open(EAppMsgType::Ok, Message);
 	}
 }
 

@@ -75,6 +75,11 @@ public:
 		return Items[0];
 	}
 
+	bool IsValid() const
+	{
+		return Items.Num() > 0;
+	}
+
 private:
 	//Storage of tracked items
 	TArray<DataType> Items;
