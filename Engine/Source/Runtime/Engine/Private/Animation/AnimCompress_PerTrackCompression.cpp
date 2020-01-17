@@ -1568,7 +1568,7 @@ bool UAnimCompress_PerTrackCompression::DoReduction(const FCompressibleAnimData&
 	// Delete the cache
 	if (OutResult.CompressionUserData != nullptr)
 	{
-		delete OutResult.CompressionUserData;
+		delete (FPerTrackCachedInfo*)OutResult.CompressionUserData;
 		OutResult.CompressionUserData = nullptr;
 	}
 	
