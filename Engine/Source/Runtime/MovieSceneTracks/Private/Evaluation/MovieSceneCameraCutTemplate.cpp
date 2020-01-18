@@ -122,108 +122,108 @@ struct FCameraCutPreAnimatedTokenProducer : IMovieScenePreAnimatedGlobalTokenPro
 	}
 };
 
-/** Camera cut info struct. */
-struct FBlendedCameraCut
-{
-	FMovieSceneObjectBindingID CameraBindingID;
-
-	FBlendedCameraCutEasingInfo EaseIn;
-	FBlendedCameraCutEasingInfo EaseOut;
-	bool bIsFinalCut = false;
-
-	FMovieSceneObjectBindingID PreviousCameraBindingID;
-
-	float PreviewBlendFactor = -1.f;
-
-	FBlendedCameraCut() {}
-	FBlendedCameraCut(FMovieSceneObjectBindingID InCameraBindingID) : CameraBindingID(InCameraBindingID) {}
-	
-	FBlendedCameraCut& Resolve(TMovieSceneInitialValueStore<FBlendedCameraCut>& InitialValueStore)
-	{
-		return *this;
-	}
-};
-
-/** Blending actuator for camera cuts. */
-struct FCameraCutBlendingActuator : public TMovieSceneBlendingActuator<FBlendedCameraCut>
-{
-	FCameraCutBlendingActuator() : TMovieSceneBlendingActuator<FBlendedCameraCut>(GetActuatorTypeID()) {}
-
-	static FMovieSceneBlendingActuatorID GetActuatorTypeID()
-	{
-		static FMovieSceneAnimTypeID TypeID = TMovieSceneAnimTypeID<FCameraCutBlendingActuator, 0>();
-		return FMovieSceneBlendingActuatorID(TypeID);
-	}
-
-	static FMovieSceneAnimTypeID GetCameraCutTypeID()
-	{
-		static FMovieSceneAnimTypeID TypeID = TMovieSceneAnimTypeID<FCameraCutBlendingActuator, 2>();
-		return TypeID;
-	}
-
-	static UObject* FindBoundObject(FMovieSceneObjectBindingID BindingID, IMovieScenePlayer& Player)
-	{
-		if (BindingID.IsValid())
-		{
-			FMovieSceneObjectBindingID RootBindingID = BindingID.ResolveLocalToRoot(BindingID.GetSequenceID(), Player.GetEvaluationTemplate().GetHierarchy());
-
-			FMovieSceneEvaluationOperand Operand(RootBindingID.GetSequenceID(), RootBindingID.GetGuid());
-			TArrayView<TWeakObjectPtr<>> Objects = Player.FindBoundObjects(Operand);
-			if (Objects.Num() > 0)
-			{
-				return Objects[0].Get();
-			}
-		}
-		return nullptr;
-	}
-
-	virtual void Actuate(UObject* InObject, const FBlendedCameraCut& InFinalValue, const TBlendableTokenStack<FBlendedCameraCut>& OriginalStack, const FMovieSceneContext& Context, FPersistentEvaluationData& PersistentData, IMovieScenePlayer& Player) override
-	{
-		OriginalStack.SavePreAnimatedState(Player, GetCameraCutTypeID(), FCameraCutPreAnimatedTokenProducer());
-
-		UObject* CameraActor = FindBoundObject(InFinalValue.CameraBindingID, Player);
-
-		FCameraCutTrackData& CameraCutCache = PersistentData.GetOrAddTrackData<FCameraCutTrackData>();
-
-		EMovieSceneCameraCutParams CameraCutParams;
-		CameraCutParams.bJumpCut = Context.HasJumped();
-		CameraCutParams.BlendTime = InFinalValue.EaseIn.BlendTime;
-		CameraCutParams.BlendType = InFinalValue.EaseIn.BlendType;
-
-#if WITH_EDITOR
-		UObject* PreviousCameraActor = FindBoundObject(InFinalValue.PreviousCameraBindingID, Player);
-		CameraCutParams.PreviousCameraObject = PreviousCameraActor;
-		CameraCutParams.PreviewBlendFactor = InFinalValue.PreviewBlendFactor;
-#endif
-
-		if (CameraCutCache.LastLockedCamera.Get() != CameraActor)
-		{
-			CameraCutParams.UnlockIfCameraObject = CameraCutCache.LastLockedCamera.Get();
-			Player.UpdateCameraCut(CameraActor, CameraCutParams);
-			CameraCutCache.LastLockedCamera = CameraActor;
-			IMovieSceneMotionVectorSimulation::EnableThisFrame(PersistentData);
-		}
-		else if (CameraActor || CameraCutParams.BlendTime > 0.f)
-		{
-			Player.UpdateCameraCut(CameraActor, CameraCutParams);
-		}
-	}
-
-	virtual void Actuate(FMovieSceneInterrogationData& InterrogationData, const FBlendedCameraCut& InValue, const TBlendableTokenStack<FBlendedCameraCut>& OriginalStack, const FMovieSceneContext& Context) const override
-	{
-		check(false);
-	}
-
-	virtual FBlendedCameraCut RetrieveCurrentValue(UObject* InObject, IMovieScenePlayer* Player) const override
-	{
-		// Not applicable: camera cut tracks are master tracks that don't have any object to retrieve anything from.
-		check(false);
-		return FBlendedCameraCut();
-	}
-};
-
 namespace MovieScene
 {
+	/** Camera cut info struct. */
+	struct FBlendedCameraCut
+	{
+		FMovieSceneObjectBindingID CameraBindingID;
+
+		FBlendedCameraCutEasingInfo EaseIn;
+		FBlendedCameraCutEasingInfo EaseOut;
+		bool bIsFinalCut = false;
+
+		FMovieSceneObjectBindingID PreviousCameraBindingID;
+
+		float PreviewBlendFactor = -1.f;
+
+		FBlendedCameraCut() {}
+		FBlendedCameraCut(FMovieSceneObjectBindingID InCameraBindingID) : CameraBindingID(InCameraBindingID) {}
+
+		FBlendedCameraCut& Resolve(TMovieSceneInitialValueStore<FBlendedCameraCut>& InitialValueStore)
+		{
+			return *this;
+		}
+	};
+
+	/** Blending actuator for camera cuts. */
+	struct FCameraCutBlendingActuator : public TMovieSceneBlendingActuator<FBlendedCameraCut>
+	{
+		FCameraCutBlendingActuator() : TMovieSceneBlendingActuator<FBlendedCameraCut>(GetActuatorTypeID()) {}
+
+		static FMovieSceneBlendingActuatorID GetActuatorTypeID()
+		{
+			static FMovieSceneAnimTypeID TypeID = TMovieSceneAnimTypeID<FCameraCutBlendingActuator, 0>();
+			return FMovieSceneBlendingActuatorID(TypeID);
+		}
+
+		static FMovieSceneAnimTypeID GetCameraCutTypeID()
+		{
+			static FMovieSceneAnimTypeID TypeID = TMovieSceneAnimTypeID<FCameraCutBlendingActuator, 2>();
+			return TypeID;
+		}
+
+		static UObject* FindBoundObject(FMovieSceneObjectBindingID BindingID, IMovieScenePlayer& Player)
+		{
+			if (BindingID.IsValid())
+			{
+				FMovieSceneObjectBindingID RootBindingID = BindingID.ResolveLocalToRoot(BindingID.GetSequenceID(), Player.GetEvaluationTemplate().GetHierarchy());
+
+				FMovieSceneEvaluationOperand Operand(RootBindingID.GetSequenceID(), RootBindingID.GetGuid());
+				TArrayView<TWeakObjectPtr<>> Objects = Player.FindBoundObjects(Operand);
+				if (Objects.Num() > 0)
+				{
+					return Objects[0].Get();
+				}
+			}
+			return nullptr;
+		}
+
+		virtual void Actuate(UObject* InObject, const FBlendedCameraCut& InFinalValue, const TBlendableTokenStack<FBlendedCameraCut>& OriginalStack, const FMovieSceneContext& Context, FPersistentEvaluationData& PersistentData, IMovieScenePlayer& Player) override
+		{
+			OriginalStack.SavePreAnimatedState(Player, GetCameraCutTypeID(), FCameraCutPreAnimatedTokenProducer());
+
+			UObject* CameraActor = FindBoundObject(InFinalValue.CameraBindingID, Player);
+
+			FCameraCutTrackData& CameraCutCache = PersistentData.GetOrAddTrackData<FCameraCutTrackData>();
+
+			EMovieSceneCameraCutParams CameraCutParams;
+			CameraCutParams.bJumpCut = Context.HasJumped();
+			CameraCutParams.BlendTime = InFinalValue.EaseIn.BlendTime;
+			CameraCutParams.BlendType = InFinalValue.EaseIn.BlendType;
+
+#if WITH_EDITOR
+			UObject* PreviousCameraActor = FindBoundObject(InFinalValue.PreviousCameraBindingID, Player);
+			CameraCutParams.PreviousCameraObject = PreviousCameraActor;
+			CameraCutParams.PreviewBlendFactor = InFinalValue.PreviewBlendFactor;
+#endif
+
+			if (CameraCutCache.LastLockedCamera.Get() != CameraActor)
+			{
+				CameraCutParams.UnlockIfCameraObject = CameraCutCache.LastLockedCamera.Get();
+				Player.UpdateCameraCut(CameraActor, CameraCutParams);
+				CameraCutCache.LastLockedCamera = CameraActor;
+				IMovieSceneMotionVectorSimulation::EnableThisFrame(PersistentData);
+			}
+			else if (CameraActor || CameraCutParams.BlendTime > 0.f)
+			{
+				Player.UpdateCameraCut(CameraActor, CameraCutParams);
+			}
+		}
+
+		virtual void Actuate(FMovieSceneInterrogationData& InterrogationData, const FBlendedCameraCut& InValue, const TBlendableTokenStack<FBlendedCameraCut>& OriginalStack, const FMovieSceneContext& Context) const override
+		{
+			check(false);
+		}
+
+		virtual FBlendedCameraCut RetrieveCurrentValue(UObject* InObject, IMovieScenePlayer* Player) const override
+		{
+			// Not applicable: camera cut tracks are master tracks that don't have any object to retrieve anything from.
+			check(false);
+			return FBlendedCameraCut();
+		}
+	};
+
 	void BlendValue(FBlendedCameraCut& OutBlend, const FBlendedCameraCut& InValue, float Weight, EMovieSceneBlendType BlendType, TMovieSceneInitialValueStore<FBlendedCameraCut>& InitialValueStore)
 	{
 		// Blending camera cuts... we just need to keep track of what's the next/previous shot so we can pass
@@ -241,7 +241,7 @@ namespace MovieScene
 	}
 }
 
-template<> FMovieSceneAnimTypeID GetBlendingDataType<FBlendedCameraCut>()
+template<> FMovieSceneAnimTypeID GetBlendingDataType<MovieScene::FBlendedCameraCut>()
 {
 	static FMovieSceneAnimTypeID TypeID = FMovieSceneAnimTypeID::Unique();
 	return TypeID;
@@ -271,7 +271,7 @@ void FMovieSceneCameraCutSectionTemplate::Evaluate(const FMovieSceneEvaluationOp
 		// For now we only look at how long the camera blend is supposed to be, and we pass that on to
 		// the player controller via the execution token. Later we'll need to actually drive the blend
 		// ourselves so that the curve itself is actually matching.
-		FBlendedCameraCut Params(CameraBindingID);
+		MovieScene::FBlendedCameraCut Params(CameraBindingID);
 		Params.bIsFinalCut = bIsFinalSection;
 		if (SourceSectionPtr.IsValid())
 		{
@@ -287,11 +287,11 @@ void FMovieSceneCameraCutSectionTemplate::Evaluate(const FMovieSceneEvaluationOp
 			}
 		}
 
-		FMovieSceneBlendingActuatorID ActuatorTypeID = FCameraCutBlendingActuator::GetActuatorTypeID();
+		FMovieSceneBlendingActuatorID ActuatorTypeID = MovieScene::FCameraCutBlendingActuator::GetActuatorTypeID();
 		FMovieSceneBlendingAccumulator& Accumulator = ExecutionTokens.GetBlendingAccumulator();
-		if (!Accumulator.FindActuator<FBlendedCameraCut>(ActuatorTypeID))
+		if (!Accumulator.FindActuator<MovieScene::FBlendedCameraCut>(ActuatorTypeID))
 		{
-			Accumulator.DefineActuator(ActuatorTypeID, MakeShared<FCameraCutBlendingActuator>());
+			Accumulator.DefineActuator(ActuatorTypeID, MakeShared<MovieScene::FCameraCutBlendingActuator>());
 		}
 
 		float Weight = EvaluateEasing(Context.GetTime());
@@ -319,7 +319,7 @@ void FMovieSceneCameraCutSectionTemplate::Evaluate(const FMovieSceneEvaluationOp
 		
 		ExecutionTokens.GetBlendingAccumulator().BlendToken(
 				Operand, ActuatorTypeID, EvalScope, Context,
-				TBlendableToken<FBlendedCameraCut>(
+				TBlendableToken<MovieScene::FBlendedCameraCut>(
 					Params, EvalScope, Context, 
 					SourceSectionPtr->GetBlendType().Get(), Weight));
 	}
