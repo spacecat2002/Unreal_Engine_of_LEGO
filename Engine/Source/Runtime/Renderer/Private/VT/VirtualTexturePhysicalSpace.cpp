@@ -88,7 +88,7 @@ void FVirtualTexturePhysicalSpace::InitRHI()
 			FIntPoint(TextureSize, TextureSize),
 			FormatSRV,
 			FClearValueBinding::None,
-			TexCreate_None,
+			TexCreate_SRGB,
 			bCreateAliasedUAV ? TexCreate_ShaderResource | TexCreate_UAV : TexCreate_ShaderResource,
 			false);
 
@@ -98,9 +98,10 @@ void FVirtualTexturePhysicalSpace::InitRHI()
 		// Create sRGB and non-sRGB shader resource views into the physical texture
 		FRHITextureSRVCreateInfo SRVCreateInfo;
 		SRVCreateInfo.Format = FormatSRV;
+		SRVCreateInfo.SRGBOverride = SRGBO_ForceDisable;
 		TextureSRV[Layer] = RHICreateShaderResourceView(TextureRHI, SRVCreateInfo);
 
-		SRVCreateInfo.SRGBOverride = SRGBO_ForceEnable;
+		SRVCreateInfo.SRGBOverride = SRGBO_Default;
 		TextureSRV_SRGB[Layer] = RHICreateShaderResourceView(TextureRHI, SRVCreateInfo);
 
 		if (bCreateAliasedUAV)

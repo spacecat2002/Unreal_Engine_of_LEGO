@@ -1272,7 +1272,6 @@ enum ERHITextureSRVOverrideSRGBType
 {
 	SRGBO_Default,
 	SRGBO_ForceDisable,
-	SRGBO_ForceEnable,
 };
 
 struct FRHITextureSRVCreateInfo
