@@ -1940,6 +1940,16 @@ float FViewInfo::GetLastEyeAdaptationExposure() const
 	return 0.f; // Invalid exposure
 }
 
+float FViewInfo::GetLastEyeAdaptationExposureWithoutCompensation() const
+{
+	const FSceneViewState* EffectiveViewState = GetEffectiveViewState();	
+	if (EffectiveViewState)
+	{
+		return EffectiveViewState->GetLastEyeAdaptationExposureWithoutCompensation();
+	}
+	return 0.f; // Invalid exposure
+}
+
 float FViewInfo::GetLastAverageSceneLuminance() const
 {
 	const FSceneViewState* EffectiveViewState = GetEffectiveViewState();

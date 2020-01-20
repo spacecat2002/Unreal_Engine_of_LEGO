@@ -165,11 +165,25 @@ float GetAutoExposureCompensation(const FViewInfo& View)
 
 	if (Settings.AutoExposureBiasCurve)
 	{
-		const float AverageSceneLuminance = View.GetLastAverageSceneLuminance();
+		// Note that we are using View.GetLastEyeAdaptationExposureWithoutCompensation() instead of the alternatives.
+		//
+		// We could use GetLastEyeAdaptationExposure(), but that function is the last actual exposure multiplier, so we would
+		// have to grab LastEyeAdaptationExposure, remove the previous frame's exposure compensation, put that into the curve,
+		// and then find the new compensation. Unfortunately we don't actually know the last frame's information because
+		// we could be transitioning through a post process volume.
+		// 
+		// We also could use GetLastAverageSceneLuminance(). That function gets the last scene luminance, but has no
+		// concept of transition time. So if we used it, we would have an instantaneous transition from the current
+		// scene exposure compensation curve to the new value.
+		//
+		// So instead use the new value GetLastEyeAdaptationExposureWithoutCompensation(). It's the previous frames
+		// eye adaptation after adjustment but without any exposure compensation. This gives us a smooth transition, but also
+		// prevents the curve EC from getting stuck in a feedback loop.
+		const float AverageSceneLuminance = View.GetLastEyeAdaptationExposureWithoutCompensation();
 
 		if (AverageSceneLuminance > 0)
 		{
-			const float LuminanceEV100 = LuminanceToEV100(LuminanceMax, AverageSceneLuminance);
+			const float LuminanceEV100 = -LuminanceToEV100(LuminanceMax, AverageSceneLuminance);
 			AutoExposureBias += Settings.AutoExposureBiasCurve->GetFloatValue(LuminanceEV100);
 		}
 	}
@@ -697,6 +711,7 @@ void FSceneViewState::FEyeAdaptationRTManager::SwapRTs(bool bInUpdateLastExposur
 			{
 				LastExposure = ReadbackData->X;
 				LastAverageSceneLuminance = ReadbackData->Z;
+				LastExposureWithoutCompensation = ReadbackData->W;
 
 				ExposureTextureReadback->Unlock();
 			}

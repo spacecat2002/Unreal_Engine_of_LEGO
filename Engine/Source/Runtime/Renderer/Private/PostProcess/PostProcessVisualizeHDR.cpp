@@ -171,13 +171,30 @@ FScreenPassTexture AddVisualizeHDRPass(FRDGBuilder& GraphBuilder, const FViewInf
 		Canvas.DrawShadowedString(X + ColumnWidth, Y, *Line, GetStatsFont(), FLinearColor(1, 1, 1));
 
 		float AutoExposureBias = View.FinalPostProcessSettings.AutoExposureBias;
-		if (View.FinalPostProcessSettings.AutoExposureBiasCurve)
 		{
-			float AverageSceneLuminance = View.GetLastAverageSceneLuminance();
+			float AverageSceneLuminance = View.GetLastEyeAdaptationExposureWithoutCompensation();
+
+			float CurveExposureBias = 0.0f;
+			float AverageSceneLuminanceEV100 = 0.0f;
 			if (AverageSceneLuminance > 0)
 			{
-				AutoExposureBias += View.FinalPostProcessSettings.AutoExposureBiasCurve->GetFloatValue(LuminanceToEV100(LuminanceMax,AverageSceneLuminance));
+				// The Luminance EV100 needs to factor in the 0.18 middle grey.
+				AverageSceneLuminanceEV100 = -LuminanceToEV100(LuminanceMax, AverageSceneLuminance);
+				if (View.FinalPostProcessSettings.AutoExposureBiasCurve)
+				{
+					CurveExposureBias = View.FinalPostProcessSettings.AutoExposureBiasCurve->GetFloatValue(AverageSceneLuminanceEV100);
+				}
 			}
+
+			Line = FString::Printf(TEXT("%g"), AverageSceneLuminanceEV100);
+			Canvas.DrawShadowedString(X, Y += YStep, TEXT("Average Scene EV100:"), GetStatsFont(), FLinearColor(1, 1, 1));
+			Canvas.DrawShadowedString(X + ColumnWidth, Y, *Line, GetStatsFont(), FLinearColor(1, 1, 1));
+
+			Line = FString::Printf(TEXT("%g"), CurveExposureBias);
+			Canvas.DrawShadowedString(X, Y += YStep, TEXT("Curve Exposure Bias:"), GetStatsFont(), FLinearColor(1, 1, 1));
+			Canvas.DrawShadowedString(X + ColumnWidth, Y, *Line, GetStatsFont(), FLinearColor(1, 1, 1));
+
+			AutoExposureBias += CurveExposureBias;
 		}
 
 		Line = FString::Printf(TEXT("%.2g"), AutoExposureBias);

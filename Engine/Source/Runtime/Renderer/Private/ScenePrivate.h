@@ -795,6 +795,9 @@ private:
 		/** Get the last frame average scene luminance (used for exposure compensation curve) */
 		float GetLastAverageSceneLuminance() const { return LastAverageSceneLuminance; }
 
+		/** Get the last frame exposure value but without any compensation applied (alternative to scene luminance) */
+		float GetLastExposureWithoutCompensation() const { return LastExposureWithoutCompensation; }
+
 	private:
 
 		/** Return one of two two render targets */
@@ -806,6 +809,7 @@ private:
 
 		float LastExposure = 0;
 		float LastAverageSceneLuminance = 0; // 0 means invalid. Used for Exposure Compensation Curve.
+		float LastExposureWithoutCompensation = 0;
 
 		TRefCountPtr<IPooledRenderTarget> PooledRenderTarget[2];
 		TUniquePtr<FRHIGPUTextureReadback> ExposureTextureReadback;
@@ -1176,6 +1180,11 @@ public:
 	float GetLastEyeAdaptationExposure() const
 	{
 		return EyeAdaptationRTManager.GetLastExposure();
+	}
+
+	float GetLastEyeAdaptationExposureWithoutCompensation() const
+	{
+		return EyeAdaptationRTManager.GetLastExposureWithoutCompensation();
 	}
 
 	float GetLastAverageSceneLuminance() const
