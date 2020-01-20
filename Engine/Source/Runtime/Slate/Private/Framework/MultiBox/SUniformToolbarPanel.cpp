@@ -2,6 +2,8 @@
 
 #include "SUniformToolbarPanel.h"
 #include "Layout/LayoutUtils.h"
+#include "Widgets/Input/SComboButton.h"
+#include "Widgets/Images/SImage.h"
 
 SUniformToolbarPanel::SUniformToolbarPanel()
 : Children(this)
@@ -16,34 +18,64 @@ void SUniformToolbarPanel::Construct( const FArguments& InArgs )
 	MaxUniformSize = InArgs._MaxUniformSize;
 	MinUniformSize = InArgs._MinUniformSize;
 
+	StyleSet = InArgs._StyleSet;
+	StyleName = InArgs._StyleName;
+
 	Orientation = InArgs._Orientation;
 
+	ClippedIndex = INDEX_NONE;
+
 	Children.Reserve( InArgs.Slots.Num() );
-	for (int32 ChildIndex=0; ChildIndex < InArgs.Slots.Num(); ChildIndex++)
+	for (FSlot* ChildSlot : InArgs.Slots)
 	{
-		FSlot* ChildSlot = InArgs.Slots[ChildIndex];
 		Children.Add( ChildSlot );
 	}
+
+	// Add the optional dropdown arrow as a child.  
+	FSlot& NewSlot = *(new FSlot());
+
+	NewSlot
+	[
+		SAssignNew(Dropdown, SComboButton)
+		.HasDownArrow(false)
+		.ButtonStyle(StyleSet, ISlateStyle::Join(StyleName, ".Button"))
+		.ContentPadding(0)
+		.ToolTipText(NSLOCTEXT("Slate", "ExpandToolbar", "Click to expand toolbar"))
+		.OnGetMenuContent(InArgs._OnDropdownOpened)
+		.Cursor(EMouseCursor::Default)
+		.ButtonContent()
+		[
+			SNew(SImage)
+			.Image(StyleSet->GetBrush(StyleName, ".Expand"))
+		]
+	];
+
+	Children.Add(&NewSlot);
 }
 
 void SUniformToolbarPanel::OnArrangeChildren( const FGeometry& AllottedGeometry, FArrangedChildren& ArrangedChildren ) const
 {
 	if ( Children.Num() > 0 )
 	{
+		ClippedIndex = INDEX_NONE;
+
 		const float MaxUniformSizeVal = MaxUniformSize.Get();
 		const float MinUniformSizeVal = MinUniformSize.Get();
 
 		const FVector2D UniformCellSize = Orientation == EOrientation::Orient_Horizontal
-			? FVector2D(FMath::Min(AllottedGeometry.GetLocalSize().X/Children.Num(), MajorAxisUniformDesiredSize), AllottedGeometry.GetLocalSize().Y)
-			: FVector2D(AllottedGeometry.GetLocalSize().X, FMath::Min(AllottedGeometry.GetLocalSize().Y / Children.Num(), MajorAxisUniformDesiredSize));
+			? FVector2D(MajorAxisUniformDesiredSize, AllottedGeometry.GetLocalSize().Y)
+			: FVector2D(AllottedGeometry.GetLocalSize().X, MajorAxisUniformDesiredSize);
 
 		const FVector2D SlotPaddingDesiredSize = SlotPadding.Get().GetDesiredSize();
 
 		const FMargin& CurrentSlotPadding(SlotPadding.Get());
 		FVector2D CurrentOffset = FVector2D::ZeroVector;
 
+		const int32 ClippedChildrenDropDownIndex = Children.Num() - 1;
 
-		for ( int32 ChildIndex=0; ChildIndex < Children.Num(); ++ChildIndex )
+		const FVector2D ClippedChildrenDropDownDesiredSize = Children[ClippedChildrenDropDownIndex].GetWidget()->GetDesiredSize();
+
+		for (int32 ChildIndex=0; ChildIndex < ClippedChildrenDropDownIndex; ++ChildIndex)
 		{
 			const FSlot& Child = Children[ChildIndex];
 			const EVisibility ChildVisibility = Child.GetWidget()->GetVisibility();
@@ -71,23 +103,61 @@ void SUniformToolbarPanel::OnArrangeChildren( const FGeometry& AllottedGeometry,
 					YAxisResult = AlignChild<Orient_Vertical>(UniformCellSize.Y, Child, CurrentSlotPadding);
 				}
 
+
+				int32 WidgetExtents = 0;
+				int32 AllottedGeometryExtents = 0;
+
+				FArrangedWidget ArrangedChild = FArrangedWidget::GetNullWidget();
+
 				if(Orientation == EOrientation::Orient_Horizontal)
 				{
-					ArrangedChildren.AddWidget(ChildVisibility,
+					ArrangedChild =
 						AllottedGeometry.MakeChild(Child.GetWidget(),
 							FVector2D(CurrentOffset.X + XAxisResult.Offset, YAxisResult.Offset),
 							FVector2D(XAxisResult.Size, YAxisResult.Size)
-						));
+						);
+
+					WidgetExtents = FMath::TruncToFloat(ArrangedChild.Geometry.AbsolutePosition.X + ArrangedChild.Geometry.GetLocalSize().X * ArrangedChild.Geometry.Scale);
+					AllottedGeometryExtents = FMath::TruncToFloat((AllottedGeometry.AbsolutePosition.X + AllottedGeometry.GetLocalSize().X * AllottedGeometry.Scale) - ClippedChildrenDropDownDesiredSize.X);
+
 				}
 				else
 				{
-					ArrangedChildren.AddWidget(ChildVisibility,
+					ArrangedChild =
 						AllottedGeometry.MakeChild(Child.GetWidget(),
 							FVector2D(XAxisResult.Offset, CurrentOffset.Y + YAxisResult.Offset),
 							FVector2D(XAxisResult.Size, YAxisResult.Size)
-						));
+						);
+
+					WidgetExtents = FMath::TruncToFloat(ArrangedChild.Geometry.AbsolutePosition.Y + ArrangedChild.Geometry.GetLocalSize().Y * ArrangedChild.Geometry.Scale);
+					AllottedGeometryExtents = FMath::TruncToFloat((AllottedGeometry.AbsolutePosition.Y + AllottedGeometry.GetLocalSize().Y * AllottedGeometry.Scale) - ClippedChildrenDropDownDesiredSize.Y);
+
 				}
+
+				if (WidgetExtents > AllottedGeometryExtents)
+				{
+					ClippedIndex = ChildIndex;
+
+					// Arrange dropdown 
+					TSharedRef<SWidget> Widget = Children[ClippedChildrenDropDownIndex].GetWidget();
+
+					FVector2D DropdownDesiredSize = Widget->GetDesiredSize();
+					ArrangedChildren.AddWidget(
+						AllottedGeometry.MakeChild(Widget,
+							FVector2D(CurrentOffset.X, (AllottedGeometry.GetLocalSize().Y - DropdownDesiredSize.Y) / 2.0f),
+							DropdownDesiredSize)
+					);
+
+					break;
+				}
+				else
+				{
+					ArrangedChildren.AddWidget(ChildVisibility, ArrangedChild);
+				}
+
+
 				CurrentOffset += FVector2D(XAxisResult.Size, YAxisResult.Size);
+
 			}
 
 		}
@@ -109,8 +179,10 @@ FVector2D SUniformToolbarPanel::ComputeDesiredSize( float ) const
 
 	float MinorAxisUniformDesiredSize = 0;
 
+	const int32 ClippedChildrenDropDownIndex = Children.Num() - 1;
+
 	const int32 NumChildren = Children.Num();
-	for ( int32 ChildIndex=0; ChildIndex < NumChildren; ++ChildIndex )
+	for ( int32 ChildIndex=0; ChildIndex < ClippedChildrenDropDownIndex; ++ChildIndex )
 	{
 		const FSlot& Child = Children[ ChildIndex ];
 
@@ -140,10 +212,18 @@ FVector2D SUniformToolbarPanel::ComputeDesiredSize( float ) const
 		}
 	}
 
-	return Orientation == Orient_Horizontal
+	FVector2D DropdownDesiredSize = FVector2D::ZeroVector;
+	if (ClippedIndex != INDEX_NONE)
+	{
+		// factor in the desired size of the drop down since it will be shown when children are clipped
+		DropdownDesiredSize = Dropdown->GetDesiredSize();
+	}
+
+	return (Orientation == Orient_Horizontal
 		? FVector2D(NumUniformCells*MajorAxisUniformDesiredSize + NonUniformChildDesiredSize.X, NumChildren*MinorAxisUniformDesiredSize)
-		: FVector2D(NumChildren*MinorAxisUniformDesiredSize, NumUniformCells*MajorAxisUniformDesiredSize + NonUniformChildDesiredSize.Y);
+		: FVector2D(NumChildren*MinorAxisUniformDesiredSize, NumUniformCells*MajorAxisUniformDesiredSize + NonUniformChildDesiredSize.Y)) + DropdownDesiredSize;
 }
+
 
 FChildren* SUniformToolbarPanel::GetChildren()
 {
@@ -161,7 +241,7 @@ SUniformToolbarPanel::FSlot& SUniformToolbarPanel::AddSlot()
 {
 	FSlot& NewSlot = *(new FSlot());
 
-	Children.Add( &NewSlot );
+	Children.Insert( &NewSlot, Children.Num()-1);
 
 	return NewSlot;
 }
@@ -178,9 +258,4 @@ bool SUniformToolbarPanel::RemoveSlot( const TSharedRef<SWidget>& SlotWidget )
 	}
 	
 	return false;
-}
-
-void SUniformToolbarPanel::ClearChildren()
-{
-	Children.Empty();
 }

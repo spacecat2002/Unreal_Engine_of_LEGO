@@ -22,7 +22,6 @@
 #include "Framework/MultiBox/MultiBoxCustomization.h"
 #include "Framework/MultiBox/SClippingHorizontalBox.h"
 #include "Framework/Commands/UICommandDragDropOp.h"
-#include "Widgets/Layout/SUniformGridPanel.h"
 #include "SUniformToolbarPanel.h"
 
 
@@ -571,7 +570,7 @@ EVisibility SMultiBoxWidget::GetCustomizationBorderDragVisibility(const FName In
 	return EVisibility::Collapsed;
 }
 
-void SMultiBoxWidget::AddBlockWidget( const FMultiBlock& Block, TSharedPtr<SHorizontalBox> HorizontalBox, TSharedPtr<SVerticalBox> VerticalBox, TSharedPtr<SUniformToolbarPanel> UniformToolbarPanel, EMultiBlockLocation::Type InLocation, bool bSectionContainsIcons )
+void SMultiBoxWidget::AddBlockWidget( const FMultiBlock& Block, TSharedPtr<SHorizontalBox> HorizontalBox, TSharedPtr<SVerticalBox> VerticalBox, EMultiBlockLocation::Type InLocation, bool bSectionContainsIcons )
 {
 	check( MultiBox.IsValid() );
 
@@ -727,8 +726,6 @@ void SMultiBoxWidget::BuildMultiBoxWidget()
 
 	TSharedPtr< STileView< TSharedPtr<SWidget> > > TileView;
 
-	TSharedPtr<SUniformToolbarPanel> UniformToolbarPanel;
-
 	switch (MultiBox->GetType())
 	{
 	case EMultiBoxType::MenuBar:
@@ -750,10 +747,13 @@ void SMultiBoxWidget::BuildMultiBoxWidget()
 	case EMultiBoxType::UniformToolBar:
 		{
 			MainWidget = UniformToolbarPanel =
-				SNew(SUniformToolbarPanel)
+				SAssignNew(UniformToolbarPanel, SUniformToolbarPanel)
 				.Orientation(Orient_Horizontal)
+				.StyleSet(StyleSet)
+				.StyleName(StyleName)
 				.MinUniformSize(StyleSet->GetFloat(StyleName, ".MinUniformToolbarSize", 0.0f))
-				.MaxUniformSize(StyleSet->GetFloat(StyleName, ".MaxUniformToolbarSize", 0.0f));
+				.MaxUniformSize(StyleSet->GetFloat(StyleName, ".MaxUniformToolbarSize", 0.0f))
+				.OnDropdownOpened(FOnGetContent::CreateSP(this, &SMultiBoxWidget::OnWrapButtonClicked));
 		}
 		break;
 	case EMultiBoxType::ButtonRow:
@@ -873,13 +873,13 @@ void SMultiBoxWidget::BuildMultiBoxWidget()
 		{
 			// Add the drag preview before if we have it. This block shows where the custom block will be 
 			// added if the user drops it
-			AddBlockWidget( *DragPreview.PreviewBlock, HorizontalBox, VerticalBox, UniformToolbarPanel, EMultiBlockLocation::None, bSectionContainsIcons );
+			AddBlockWidget( *DragPreview.PreviewBlock, HorizontalBox, VerticalBox, EMultiBlockLocation::None, bSectionContainsIcons );
 		}
 		
 		// Do not add a block if it is being dragged
 		if( !IsBlockBeingDragged( Blocks[Index] ) )
 		{
-			AddBlockWidget( Block, HorizontalBox, VerticalBox, UniformToolbarPanel, Location, bSectionContainsIcons );
+			AddBlockWidget( Block, HorizontalBox, VerticalBox, Location, bSectionContainsIcons );
 		}
 	}
 
@@ -936,11 +936,16 @@ TSharedRef<SWidget> SMultiBoxWidget::OnWrapButtonClicked()
 {
 	FMenuBuilder MenuBuilder(true, NULL, TSharedPtr<FExtender>(), false, GetStyleSet());
 	{ 
+		const int32 ClippedIndex = ClippedHorizontalBox.IsValid() ? ClippedHorizontalBox->GetClippedIndex() : UniformToolbarPanel->GetClippedIndex();
 		// Iterate through the array of blocks telling each one to add itself to the menu
 		const TArray< TSharedRef< const FMultiBlock > >& Blocks = MultiBox->GetBlocks();
-		for (int32 BlockIdx = ClippedHorizontalBox->GetClippedIndex(); BlockIdx < Blocks.Num(); ++BlockIdx)
+		for (int32 BlockIdx = ClippedIndex; BlockIdx < Blocks.Num(); ++BlockIdx)
 		{
-			Blocks[BlockIdx]->CreateMenuEntry(MenuBuilder);
+			// Skip the first entry if its a separator
+			if (BlockIdx != ClippedIndex || !Blocks[BlockIdx]->IsSeparator())
+			{
+				Blocks[BlockIdx]->CreateMenuEntry(MenuBuilder);
+			}
 		}
 	}
 

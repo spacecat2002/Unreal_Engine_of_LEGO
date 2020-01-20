@@ -11,9 +11,11 @@
 #include "Layout/Children.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SPanel.h"
+#include "Framework/SlateDelegates.h"
 
 class FArrangedChildren;
-
+class SComboButton;
+class ISlateStyle;
 
 /**
  * This panel evenly divides up the available space between all of its children but allows for a min and max threshold to be supplied so that
@@ -55,7 +57,10 @@ public:
 
 		/** Slot type supported by this panel */
 		SLATE_SUPPORTS_SLOT(FSlot)
-		 
+
+		SLATE_ARGUMENT(const ISlateStyle*, StyleSet)
+		SLATE_ARGUMENT(FName, StyleName)
+
 		/** Orientation (i.e major axis for this panel) */
 		SLATE_ARGUMENT(EOrientation, Orientation)
 
@@ -76,6 +81,12 @@ public:
 		 * If this value is 0 all widgets will be uniformly sized
 		 */
 		SLATE_ATTRIBUTE(float, MinUniformSize)
+
+		/**
+		 * Called when the dropdown button is clicked and the menu opened
+		 */
+		SLATE_EVENT(FOnGetContent, OnDropdownOpened)
+
 	SLATE_END_ARGS()
 
 	void Construct( const FArguments& InArgs );
@@ -102,22 +113,32 @@ public:
 	 * @returns The true if the slot was removed and false if no slot was found matching the widget
 	 */
 	bool RemoveSlot( const TSharedRef<SWidget>& SlotWidget );
+	
+	/**
+	 * Return the index to the first widget cli
+	 */
+	int32 GetClippedIndex() const { return ClippedIndex; }
 
-	/** Removes all slots from the panel */
-	void ClearChildren();
 protected:
-	// Begin SWidget overrides.
 	virtual FVector2D ComputeDesiredSize(float) const override;
-	// End SWidget overrides.
-
 private:
+	/** The button that is displayed when the toolbar is clipped */
+	TSharedPtr<SComboButton> Dropdown;
+
 	TPanelChildren<FSlot> Children;
 	TAttribute<FMargin> SlotPadding;
 	
 	mutable float MajorAxisUniformDesiredSize = 0;
 
+	/** Index of the first child that is cliped. Children at this index or beyond will be in a dropdown menu */
+	mutable int32 ClippedIndex;
+
 	EOrientation Orientation;
 	TAttribute<FVector2D> MinDesiredSlotSize;
 	TAttribute<float> MaxUniformSize;
 	TAttribute<float> MinUniformSize;
+
+	/** The style to use */
+	const ISlateStyle* StyleSet;
+	FName StyleName;
 };
