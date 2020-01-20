@@ -265,9 +265,17 @@ private:
 class FVulkanSurface
 {
 public:
+	struct FImageCreateInfo
+	{
+		VkImageCreateInfo ImageCreateInfo;
+		//only used when HasImageFormatListKHR is supported. Otherise VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT is used.
+		VkImageFormatListCreateInfoKHR ImageFormatListCreateInfo;
+		VkFormat FormatsUsed[2];
+	};
 
 	// Seperate method for creating VkImageCreateInfo
-	static VkImageCreateInfo GenerateImageCreateInfo(
+	static void GenerateImageCreateInfo(
+		FImageCreateInfo& OutImageCreateInfo,
 		FVulkanDevice& InDevice,
 		VkImageViewType ResourceType,
 		EPixelFormat InFormat,
