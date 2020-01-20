@@ -226,28 +226,28 @@ public:
 
 	// Retrieve the value of a parameter
 	template<class T>
-	const T& GetParameterValue(const FRigVMParameter& InParameter, int32 InArrayIndex = 0)
+	const T& GetParameterValue(const FRigVMParameter& InParameter, int32 InArrayIndex = 0, const T& DefaultValue = T{})
 	{
 		if (InParameter.GetRegisterIndex() != INDEX_NONE)
 		{
 			return WorkMemory.GetArray<T>(InParameter.GetRegisterIndex())[InArrayIndex];
 		}
-		return *((const T*)nullptr);
+		return DefaultValue;
 	}
 
 	// Retrieve the value of a parameter given its index
 	template<class T>
-	const T& GetParameterValue(int32 InParameterIndex, int32 InArrayIndex = 0)
+	const T& GetParameterValue(int32 InParameterIndex, int32 InArrayIndex = 0, const T& DefaultValue = T{})
 	{
-		return GetParameterValue<T>(Parameters[InParameterIndex], InArrayIndex);
+		return GetParameterValue<T>(Parameters[InParameterIndex], InArrayIndex, DefaultValue);
 	}
 
 	// Retrieve the value of a parameter given its name
 	template<class T>
-	const T& GetParameterValue(const FName& InParameterName, int32 InArrayIndex = 0)
+	const T& GetParameterValue(const FName& InParameterName, int32 InArrayIndex = 0, const T& DefaultValue = T{})
 	{
 		int32 ParameterIndex = ParametersNameMap.FindChecked(InParameterName);
-		return GetParameterValue<T>(ParameterIndex, InArrayIndex);
+		return GetParameterValue<T>(ParameterIndex, InArrayIndex, DefaultValue);
 	}
 
 	// Set the value of a parameter
@@ -308,25 +308,25 @@ public:
 	UFUNCTION(BlueprintCallable, Category = RigVM)
 	FVector2D GetParameterValueVector2D(const FName& InParameterName, int32 InArrayIndex = 0)
 	{
-		return GetParameterValue<FVector2D>(InParameterName, InArrayIndex);
+		return GetParameterValue<FVector2D>(InParameterName, InArrayIndex, FVector2D::ZeroVector);
 	}
 
 	UFUNCTION(BlueprintCallable, Category = RigVM)
 	FVector GetParameterValueVector(const FName& InParameterName, int32 InArrayIndex = 0)
 	{
-		return GetParameterValue<FVector>(InParameterName, InArrayIndex);
+		return GetParameterValue<FVector>(InParameterName, InArrayIndex, FVector::ZeroVector);
 	}
 
 	UFUNCTION(BlueprintCallable, Category = RigVM)
 	FQuat GetParameterValueQuat(const FName& InParameterName, int32 InArrayIndex = 0)
 	{
-		return GetParameterValue<FQuat>(InParameterName, InArrayIndex);
+		return GetParameterValue<FQuat>(InParameterName, InArrayIndex, FQuat::Identity);
 	}
 
 	UFUNCTION(BlueprintCallable, Category = RigVM)
 	FTransform GetParameterValueTransform(const FName& InParameterName, int32 InArrayIndex = 0)
 	{
-		return GetParameterValue<FTransform>(InParameterName, InArrayIndex);
+		return GetParameterValue<FTransform>(InParameterName, InArrayIndex, FTransform::Identity);
 	}
 
 	UFUNCTION(BlueprintCallable, Category = RigVM)
