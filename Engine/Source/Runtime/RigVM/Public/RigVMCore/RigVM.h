@@ -228,7 +228,11 @@ public:
 	template<class T>
 	const T& GetParameterValue(const FRigVMParameter& InParameter, int32 InArrayIndex = 0)
 	{
-		return WorkMemory.GetArray<T>(InParameter.GetRegisterIndex())[InArrayIndex];
+		if (InParameter.GetRegisterIndex() != INDEX_NONE)
+		{
+			return WorkMemory.GetArray<T>(InParameter.GetRegisterIndex())[InArrayIndex];
+		}
+		return *((const T*)nullptr);
 	}
 
 	// Retrieve the value of a parameter given its index
@@ -250,7 +254,10 @@ public:
 	template<class T>
 	void SetParameterValue(const FRigVMParameter& InParameter, const T& InNewValue, int32 InArrayIndex = 0)
 	{
-		WorkMemory.GetArray<T>(InParameter.GetRegisterIndex())[InArrayIndex] = InNewValue;
+		if (InParameter.GetRegisterIndex() != INDEX_NONE)
+		{
+			WorkMemory.GetArray<T>(InParameter.GetRegisterIndex())[InArrayIndex] = InNewValue;
+		}
 	}
 
 	// Set the value of a parameter given its index
