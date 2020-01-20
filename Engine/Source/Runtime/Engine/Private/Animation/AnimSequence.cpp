@@ -2154,7 +2154,7 @@ void UAnimSequence::WaitOnExistingCompression(const bool bCancelIfNotStarted)
 	{
 		double WaitTime = FPlatformTime::Seconds();
 		FAsyncCompressedAnimationsManagement::Get().WaitOnExistingCompression(this, bCancelIfNotStarted);
-		FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Compression Finished %.3f\n"), FPlatformTime::Seconds() - WaitTime);
+		bCompressionInProgress = false;
 	}
 #endif
 }
