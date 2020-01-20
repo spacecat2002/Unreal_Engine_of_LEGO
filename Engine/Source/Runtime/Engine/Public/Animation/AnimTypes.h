@@ -395,6 +395,7 @@ public:
 
 #if WITH_EDITORONLY_DATA
 	ENGINE_API bool Serialize(FArchive& Ar);
+	ENGINE_API void PostSerialize(const FArchive& Ar);
 #endif
 
 	/** Updates trigger offset based on a combination of predicted offset and current offset */
@@ -445,7 +446,8 @@ template<> struct TStructOpsTypeTraits<FAnimNotifyEvent> : public TStructOpsType
 {
 	enum 
 	{ 
-		WithSerializer = true
+		WithSerializer = true,
+		WithPostSerialize = true
 	};
 };
 #endif

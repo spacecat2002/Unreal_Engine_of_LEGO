@@ -45,24 +45,19 @@ float GetTriggerTimeOffsetForType(EAnimEventTriggerOffsets::Type OffsetType)
 bool FAnimNotifyEvent::Serialize(FArchive& Ar)
 {
 	Ar.UsingCustomVersion(FAnimObjectVersion::GUID);
-	
-	UScriptStruct* Struct = FAnimNotifyEvent::StaticStruct();
-	
-	if (Ar.IsLoading() || Ar.IsSaving())
-	{
-		Struct->SerializeTaggedProperties(Ar, (uint8*)this, Struct, nullptr);
-	}
+	return false;
+}
 
+void FAnimNotifyEvent::PostSerialize(const FArchive& Ar)
+{
 	if (Ar.IsLoading())
 	{
-		if(!Guid.IsValid())
+		if (!Guid.IsValid())
 		{
 			// Create a new Guid if this one is invalid
 			Guid = FGuid::NewGuid();
 		}
 	}
-
-	return true;
 }
 
 #endif
