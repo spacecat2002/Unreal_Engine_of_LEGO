@@ -23,6 +23,18 @@ enum class EToolShutdownType
 };
 
 
+
+
+/**
+ * FInteractiveToolInfo provides information about a tool (name, tooltip, etc)
+ */
+struct INTERACTIVETOOLSFRAMEWORK_API FInteractiveToolInfo
+{
+	/** Name of Tool. May be FText::Empty(), but will default to Tool->GetClass()->GetDisplayNameText() in InteractiveTool constructor */
+	FText ToolDisplayName = FText::GetEmpty();
+};
+
+
 /** This delegate is used by UInteractiveToolPropertySet */
 DECLARE_MULTICAST_DELEGATE_TwoParams(FInteractiveToolPropertySetModifiedSignature, UObject*, FProperty*);
 
@@ -96,7 +108,7 @@ protected:
 	 */
 	template<typename ObjType>
 	ObjType* GetPropertyCache()
-	{
+	{ 
 		ObjType* CDO = GetMutableDefault<ObjType>();
 		if (CDO->CachedProperties == nullptr)
 		{
@@ -106,9 +118,9 @@ protected:
 	}
 
 	/**
-	 * Subclass this to save and restore in a single function. Use the SaveRestoryProperty function for each member
-	 *   UPropertySetObj* PropertyCache = GetPropertyCache<UPropertySetObj>();
-	 *	 SaveRestoreProperty(PropertyCache->PropSetMember, PropertySet->PropSetMember, bSaving);
+	 * Subclass this to save and restore in a single function. Use the SaveRestoryProperty function for each member:
+	 *   UMyPropertySetSubclass* PropertyCache = GetPropertyCache<UMyPropertySetSubclass>();
+	 *	 SaveRestoreProperty(PropertyCache->PropSetMember, this->PropSetMember, bSaving);
 	 */
 	virtual void SaveRestoreProperties(UInteractiveTool* RestoreToTool, bool bSaving) {}
 
@@ -355,6 +367,47 @@ private:
 	 */
 	FInteractiveToolActionSet* ToolActionSet = nullptr;
 
+
+
+	//
+	// Tool Information (name, icon, help text, etc)
+	//
+
+
+public:
+	/**
+	 * @return ToolInfo structure for this Tool
+	 */
+	virtual FInteractiveToolInfo GetToolInfo() const
+	{
+		return DefaultToolInfo;
+	}
+
+	/**
+	 * Replace existing ToolInfo with new data
+	 */
+	virtual void SetToolInfo(const FInteractiveToolInfo& NewInfo)
+	{
+		DefaultToolInfo = NewInfo;
+	}
+
+	/**
+	 * Set Tool name
+	 */
+	virtual void SetToolDisplayName(const FText& NewName)
+	{
+		DefaultToolInfo.ToolDisplayName = NewName;
+	}
+
+private:
+	/**
+	 * ToolInfo for this Tool
+	 */
+	FInteractiveToolInfo DefaultToolInfo;
+
+
+
+private:
 
 	// InteractionMechanic needs to be able to talk to Tool internals, eg property sets, behaviors, etc
 	friend class UInteractionMechanic;

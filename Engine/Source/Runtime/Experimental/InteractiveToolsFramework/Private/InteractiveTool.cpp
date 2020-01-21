@@ -5,6 +5,9 @@
 #include "InteractiveToolManager.h"
 
 
+#define LOCTEXT_NAMESPACE "UInteractiveTool"
+
+
 UInteractiveTool::UInteractiveTool()
 {
 	// tools need to be transactional or undo/redo won't work on their uproperties
@@ -14,6 +17,9 @@ UInteractiveTool::UInteractiveTool()
 	//SetFlags(RF_Transient);
 
 	InputBehaviors = NewObject<UInputBehaviorSet>(this, TEXT("InputBehaviors"));
+
+	// initialize ToolInfo
+	DefaultToolInfo.ToolDisplayName = GetClass()->GetDisplayNameText();
 }
 
 void UInteractiveTool::Setup()
@@ -184,3 +190,6 @@ UInteractiveToolManager* UInteractiveTool::GetToolManager() const
 	check(ToolManager != nullptr);
 	return ToolManager;
 }
+
+
+#undef LOCTEXT_NAMESPACE
