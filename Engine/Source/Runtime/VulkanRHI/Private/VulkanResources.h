@@ -1127,6 +1127,12 @@ public:
 		return Current.Offset;
 	}
 
+	inline uint64 GetCurrentSize() const
+	{
+		return Current.Size;
+	}
+
+
 	inline VkBufferUsageFlags GetBufferUsageFlags() const
 	{
 		return BufferUsageFlags;
@@ -1155,6 +1161,7 @@ protected:
 		VulkanRHI::FBufferAllocation* BufferAllocation = nullptr;
 		VkBuffer Handle = VK_NULL_HANDLE;
 		uint64 Offset = 0;
+		uint64 Size = 0;
 	} Current;
 	VulkanRHI::FTempFrameAllocationBuffer::FTempAllocInfo VolatileLockInfo;
 

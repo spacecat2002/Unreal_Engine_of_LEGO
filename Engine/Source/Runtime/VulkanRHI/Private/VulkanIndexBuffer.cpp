@@ -116,6 +116,7 @@ FVulkanResourceMultiBuffer::FVulkanResourceMultiBuffer(FVulkanDevice* InDevice, 
 			Current.BufferAllocation = Current.SubAlloc->GetBufferAllocation();
 			Current.Handle = Current.SubAlloc->GetHandle();
 			Current.Offset = Current.SubAlloc->GetOffset();
+			Current.Size = InSize;
 
 			bool bRenderThread = (InRHICmdList == nullptr);
 			if (bRenderThread)
@@ -176,6 +177,7 @@ void* FVulkanResourceMultiBuffer::Lock(bool bFromRenderingThread, EResourceLockM
 			Current.BufferAllocation = VolatileLockInfo.GetBufferAllocation();
 			Current.Handle = VolatileLockInfo.GetHandle();
 			Current.Offset = VolatileLockInfo.GetBindOffset();
+			Current.Size = Size;
 		}
 	}
 	else
@@ -249,6 +251,8 @@ void* FVulkanResourceMultiBuffer::Lock(bool bFromRenderingThread, EResourceLockM
 			Current.BufferAllocation = Current.SubAlloc->GetBufferAllocation();
 			Current.Handle = Current.SubAlloc->GetHandle();
 			Current.Offset = Current.SubAlloc->GetOffset();
+			check(Current.SubAlloc->GetSize() >= Size);
+			Current.Size = Size;
 
 			const bool bUnifiedMem = Device->HasUnifiedMemory();
 			if (bUnifiedMem)
