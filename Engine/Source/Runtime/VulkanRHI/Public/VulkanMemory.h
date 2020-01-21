@@ -125,6 +125,7 @@ namespace VulkanRHI
 			, bIsCoherent(0)
 			, bIsCached(0)
 			, bFreedBySystem(false)
+			, bDedicatedMemory(0)
 #if VULKAN_MEMORY_TRACK_FILE_LINE
 			, File(nullptr)
 			, Line(0)
@@ -185,6 +186,7 @@ namespace VulkanRHI
 		uint32 bIsCoherent : 1;
 		uint32 bIsCached : 1;
 		uint32 bFreedBySystem : 1;
+		uint32 bDedicatedMemory : 1;
 		uint32 : 0;
 
 #if VULKAN_MEMORY_TRACK_FILE_LINE
@@ -616,7 +618,7 @@ namespace VulkanRHI
 		}
 
 		void Flush(VkDeviceSize Offset, VkDeviceSize AllocationSize);
-		uint32 GetMaxSize(){ return MaxSize; }
+		uint32 GetMaxSize() const { return MaxSize; }
 	protected:
 		FResourceHeapManager* Owner;
 		uint32 MemoryTypeIndex;
