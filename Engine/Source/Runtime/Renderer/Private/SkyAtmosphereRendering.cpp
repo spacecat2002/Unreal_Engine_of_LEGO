@@ -160,7 +160,7 @@ static TAutoConsoleVariable<float> CVarSkyAtmosphereTransmittanceLUTHeight(
 
 static TAutoConsoleVariable<int32> CVarSkyAtmosphereTransmittanceLUTLightPerPixelTransmittance(
 	TEXT("r.SkyAtmosphere.TransmittanceLUT.LightPerPixelTransmittance"),
-	1,	// Enabled by default to make space views of planet work by default when a SkyAtmosphere component is present
+	0,	// Disabled by default because when it is enabled, you need to make sure your level is above the virtual planet ground (transmittance includes a shadow test against the virtual planet)
 	TEXT("Enables SkyAtmosphere light per pixel transmittance. Only for opaque objects in the deferred renderer. It is more expensive but space/planetary views will be more accurate."),
 	ECVF_RenderThreadSafe);
 
