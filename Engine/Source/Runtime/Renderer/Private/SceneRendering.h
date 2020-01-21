@@ -1283,9 +1283,6 @@ public:
 	/** Get the last valid average scene luminange for eye adapation (exposure compensation curve). */
 	float GetLastAverageSceneLuminance() const;
 
-	/** Get the last valid exposure value for eye adapation, but without any exposure compensation. */
-	float GetLastEyeAdaptationExposureWithoutCompensation() const;
-
 	/** Returns the load action to use when overwriting all pixels of a target that you intend to read from. Takes into account the HMD hidden area mesh. */
 	ERenderTargetLoadAction GetOverwriteLoadAction() const;
 

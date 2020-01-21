@@ -56,6 +56,14 @@ TAutoConsoleVariable<float> CVarEyeAdaptationLensAttenuation(
 	TEXT("The camera lens attenuation (q). Set this number to 0.78 for lighting to be unitless (1.0cd/m^2 becomes 1.0 at EV100) or 0.65 to match previous versions (1.0cd/m^2 becomes 1.2 at EV100)."),
 	ECVF_RenderThreadSafe);
 
+TAutoConsoleVariable<float> CVarEyeAdaptationBlackHistogramBucketInfluence(
+	TEXT("r.EyeAdaptation.BlackHistogramBucketInfluence"),
+	0.0,
+	TEXT("This parameter controls how much weight to apply to completely dark 0.0 values in the exposure histogram.\n")
+	TEXT("When set to 1.0, fully dark pixels will accumulate normally, whereas when set to 0.0 fully dark pixels\n")
+	TEXT("will have no influence.\n"),
+	ECVF_RenderThreadSafe);
+
 static TAutoConsoleVariable<int32> CVarEnablePreExposureOnlyInTheEditor(
 	TEXT("r.EyeAdaptation.EditorOnly"),
 	0,
@@ -152,38 +160,40 @@ EAutoExposureMethod GetAutoExposureMethod(const FViewInfo& View)
 	return AutoExposureMethod;
 }
 
-float GetAutoExposureCompensation(const FViewInfo& View)
+float GetAutoExposureCompensationFromSettings(const FViewInfo& View)
 {
 	const FPostProcessSettings& Settings = View.FinalPostProcessSettings;
-
-	const FEngineShowFlags& EngineShowFlags = View.Family->EngineShowFlags;
-
-	const float LuminanceMax = LuminanceMaxFromLensAttenuation();
 
 	// This scales the average luminance AFTER it gets clamped, affecting the exposure value directly.
 	float AutoExposureBias = Settings.AutoExposureBias;
 
+	return FMath::Pow(2.0f, AutoExposureBias);
+}
+
+
+float GetAutoExposureCompensationFromCurve(const FViewInfo& View)
+{
+	const FPostProcessSettings& Settings = View.FinalPostProcessSettings;
+
+	const float LuminanceMax = LuminanceMaxFromLensAttenuation();
+
+	float AutoExposureBias = 0.0f;
+
 	if (Settings.AutoExposureBiasCurve)
 	{
-		// Note that we are using View.GetLastEyeAdaptationExposureWithoutCompensation() instead of the alternatives.
-		//
-		// We could use GetLastEyeAdaptationExposure(), but that function is the last actual exposure multiplier, so we would
-		// have to grab LastEyeAdaptationExposure, remove the previous frame's exposure compensation, put that into the curve,
-		// and then find the new compensation. Unfortunately we don't actually know the last frame's information because
-		// we could be transitioning through a post process volume.
+		// Note that we are using View.GetLastAverageSceneLuminance() instead of the alternatives. GetLastAverageSceneLuminance()
+		// immediately converges because it is calculated from the current frame's average luminance (without any history).
 		// 
-		// We also could use GetLastAverageSceneLuminance(). That function gets the last scene luminance, but has no
-		// concept of transition time. So if we used it, we would have an instantaneous transition from the current
-		// scene exposure compensation curve to the new value.
-		//
-		// So instead use the new value GetLastEyeAdaptationExposureWithoutCompensation(). It's the previous frames
-		// eye adaptation after adjustment but without any exposure compensation. This gives us a smooth transition, but also
-		// prevents the curve EC from getting stuck in a feedback loop.
-		const float AverageSceneLuminance = View.GetLastEyeAdaptationExposureWithoutCompensation();
+		// Note that when there is an abrupt change, there will be an immediate change in exposure compensation. But this is
+		// fine because the shader will recalculate a new target exposure. The next result is that the smoothed exposure (purple
+		// line in HDR visualization) will have sudden shifts, but the actual output exposure value (white line in HDR visualization)
+		// will be smooth.
+		const float AverageSceneLuminance = View.GetLastAverageSceneLuminance();
 
 		if (AverageSceneLuminance > 0)
 		{
-			const float LuminanceEV100 = -LuminanceToEV100(LuminanceMax, AverageSceneLuminance);
+			// We need the Log2(0.18) to convert from average luminance to saturation luminance
+			const float LuminanceEV100 = LuminanceToEV100(LuminanceMax, AverageSceneLuminance) + FMath::Log2(1.0f / 0.18f);
 			AutoExposureBias += Settings.AutoExposureBiasCurve->GetFloatValue(LuminanceEV100);
 		}
 	}
@@ -191,14 +201,11 @@ float GetAutoExposureCompensation(const FViewInfo& View)
 	return FMath::Pow(2.0f, AutoExposureBias);
 }
 
-
 FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIFeatureLevel::Type MinFeatureLevel)
 {
 	const bool bExtendedLuminanceRange = IsExtendLuminanceRangeEnabled();
 
 	const FPostProcessSettings& Settings = View.FinalPostProcessSettings;
-
-	float ExtraExposureCompensation = 0.0f;
 
 	const FEngineShowFlags& EngineShowFlags = View.Family->EngineShowFlags;
 
@@ -219,7 +226,13 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	// figure out the average grey point later. I.e. if the white point is 1.0, the middle grey point should be 0.18.
 	float MinWhitePointLuminance = 1.0f; 
 	float MaxWhitePointLuminance = 1.0f;
-	float ExposureCompensation = GetAutoExposureCompensation(View) * FMath::Exp2(ExtraExposureCompensation);
+
+	// Get the exposure compensation from the post process volume settings (everything except the curve)
+	float ExposureCompensationSettings = GetAutoExposureCompensationFromSettings(View);
+
+	// Get the exposure compensation from the curve
+	float ExposureCompensationCurve = GetAutoExposureCompensationFromCurve(View);
+	const float BlackHistogramBucketInfluence = CVarEyeAdaptationBlackHistogramBucketInfluence.GetValueOnRenderThread();
 
 	const float BasePhysicalCameraEV100 = FMath::Log2(FMath::Square(Settings.DepthOfFieldFstop) * Settings.CameraShutterSpeed * 100 / FMath::Max(1.f, Settings.CameraISO));
 
@@ -241,12 +254,14 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 		EngineShowFlags.CollisionPawn ||
 		!EngineShowFlags.PostProcessing)
 	{
-		ExposureCompensation = 1.0f;
+		ExposureCompensationSettings = 1.0f;
+		ExposureCompensationCurve = 1.0f;
 	}
 	// Fixed exposure override in effect.
 	else if (View.Family->ExposureSettings.bFixed)
 	{
-		ExposureCompensation = 1.0f;
+		ExposureCompensationSettings = 1.0f;
+		ExposureCompensationCurve = 1.0f;
 
 		// ignores bExtendedLuminanceRange
 		MinWhitePointLuminance = MaxWhitePointLuminance = EV100ToLuminance(LuminanceMax, View.Family->ExposureSettings.FixedEV100);
@@ -312,7 +327,6 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	const float MinAverageLuminance = MinWhitePointLuminance * kMiddleGrey;
 	const float MaxAverageLuminance = MaxWhitePointLuminance * kMiddleGrey;
 
-
 	const bool bValidRange = View.FinalPostProcessSettings.AutoExposureMinBrightness < View.FinalPostProcessSettings.AutoExposureMaxBrightness;
 
 	// if it is a camera cut we force the exposure to go all the way to the target exposure without blending.
@@ -325,14 +339,15 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	Parameters.ExposureHighPercent = ExposureHighPercent;
 	Parameters.MinAverageLuminance = MinAverageLuminance;
 	Parameters.MaxAverageLuminance = MaxAverageLuminance;
-	Parameters.ExposureCompensation = ExposureCompensation;// *CalibrationScale;
+	Parameters.ExposureCompensationSettings = ExposureCompensationSettings;
+	Parameters.ExposureCompensationCurve = ExposureCompensationCurve;
 	Parameters.DeltaWorldTime = View.Family->DeltaWorldTime;
 	Parameters.ExposureSpeedUp = Settings.AutoExposureSpeedUp;
 	Parameters.ExposureSpeedDown = Settings.AutoExposureSpeedDown;
 	Parameters.HistogramScale = HistogramScale;
 	Parameters.HistogramBias = HistogramBias;
 	Parameters.LuminanceMin = LuminanceMin;
-	Parameters.CalibrationConstantInverse = 1.0f; // no calibration constant because it is now baked into ExposureCompensation
+	Parameters.BlackHistogramBucketInfluence = BlackHistogramBucketInfluence; // no calibration constant because it is now baked into ExposureCompensation
 	Parameters.GreyMult = GreyMult;
 	Parameters.ExponentialDownM = ExponentialDownM;
 	Parameters.ExponentialUpM = ExponentialUpM;
@@ -354,7 +369,8 @@ float GetEyeAdaptationFixedExposure(const FViewInfo& View)
 	const float kMiddleGrey = 0.18f;
 	const float ExposureScale = kMiddleGrey / FMath::Max(0.0001f, Exposure);
 
-	return ExposureScale * Parameters.ExposureCompensation;
+	// We're ignoring any curve influence
+	return ExposureScale * Parameters.ExposureCompensationSettings;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -711,7 +727,6 @@ void FSceneViewState::FEyeAdaptationRTManager::SwapRTs(bool bInUpdateLastExposur
 			{
 				LastExposure = ReadbackData->X;
 				LastAverageSceneLuminance = ReadbackData->Z;
-				LastExposureWithoutCompensation = ReadbackData->W;
 
 				ExposureTextureReadback->Unlock();
 			}
