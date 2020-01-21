@@ -2076,7 +2076,7 @@ static void SerializeBuildSettingsForDDC(FArchive& Ar, FMeshBuildSettings& Build
 // differences, etc.) replace the version GUID below with a new one.
 // In case of merge conflicts with DDC versions, you MUST generate a new GUID
 // and set this new GUID as the version.                                       
-#define STATICMESH_DERIVEDDATA_VER TEXT("AC59C886D91E43A1A5EC4DC250ED0E6A")
+#define STATICMESH_DERIVEDDATA_VER TEXT("5149978CCBA84959B85F350F5AE658E2")
 
 static const FString& GetStaticMeshDerivedDataVersion()
 {
@@ -4058,7 +4058,8 @@ void UStaticMesh::FixupMaterialSlotName()
 // differences, etc.) replace the version GUID below with a new one.
 // In case of merge conflicts with DDC versions, you MUST generate a new GUID
 // and set this new GUID as the version.                                       
-#define MESHDATAKEY_STATICMESH_DERIVEDDATA_VER TEXT("A3E0B7AD760A496A8C56C261B5FE9BF9")
+#define MESHDATAKEY_STATICMESH_DERIVEDDATA_VER TEXT("940C97E946F545F5834146D0D58828BF")
+
 
 static const FString& GetMeshDataKeyStaticMeshDerivedDataVersion()
 {

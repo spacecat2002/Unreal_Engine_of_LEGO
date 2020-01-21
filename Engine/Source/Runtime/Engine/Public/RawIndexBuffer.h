@@ -205,6 +205,9 @@ public:
 	 */
 	ENGINE_API void GetCopy(TArray<uint32>& OutIndices) const;
 
+	/** Expands the 16bit index buffer to 32bit */
+	void ExpandTo32Bit();
+
 	/**
 	 * Get the direct read access to index data 
 	 * Only valid if NeedsCPUAccess = true and indices are 16 bit
@@ -297,6 +300,9 @@ private:
 
 	/** 32bit or 16bit? */
 	bool b32Bit;
+
+	/** Set when cooking for Android if the 16-bit index data potentially needs to be converted to 32-bit on load to work around bugs on certain devices. Only when FPlatformMisc::Expand16BitIndicesTo32BitOnLoad equals true*/
+	bool bShouldExpandTo32Bit;
 };
 
 /**
