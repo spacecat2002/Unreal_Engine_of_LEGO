@@ -123,7 +123,8 @@ namespace WindowsMixedReality
 	enum class HMDEye
 	{
 		Left = 0,
-		Right = 1
+		Right = 1,
+		ThirdCamera = 2
 	};
 
 	enum class HMDTrackingOrigin
@@ -389,6 +390,7 @@ namespace WindowsMixedReality
 
 		bool CreateRenderingParameters();
 		bool CommitDepthBuffer(ID3D11Texture2D* depthTexture);
+		bool CommitThirdCameraDepthBuffer(ID3D11Texture2D* depthTexture);
 
 		void SetFocusPointForFrame(DirectX::XMFLOAT3 position);
 
@@ -510,6 +512,14 @@ namespace WindowsMixedReality
 		bool CreateHolographicSpace(HWND hwnd);
 #endif
 		void SetInteractionManagerForCurrentView();
+
+		// Third camera
+		bool IsThirdCameraActive();
+		bool GetThirdCameraPoseRenderThread(DirectX::XMMATRIX& thirdCameraViewLeft, DirectX::XMMATRIX& thirdCameraViewRight);
+
+		bool SetEnabledMixedRealityCamera(bool enabled);
+		bool ResizeMixedRealityCamera(/*inout*/ SIZE& sz);
+		void GetThirdCameraDimensions(int& width, int& height);
 	};
 
 	class SpatialAudioClientRenderer;

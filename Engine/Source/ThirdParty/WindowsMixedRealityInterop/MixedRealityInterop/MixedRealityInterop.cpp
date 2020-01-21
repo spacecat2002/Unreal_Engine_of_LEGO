@@ -148,7 +148,9 @@ namespace WindowsMixedReality
 	// Tracking frames.
 	std::unique_ptr<TrackingFrame> currentFrame = nullptr;
 	float4x4 LastKnownCoordinateSystemTransform = float4x4::identity();
+	float4x4 LastKnownThirdCameraCoordinateSystemTransform = float4x4::identity();
 	HolographicStereoTransform LastKnownProjection;
+	HolographicStereoTransform LastKnownThirdCameraProjection;
 	std::mutex poseLock;
 	std::mutex disposeLock_GetProjection;
 	std::mutex disposeLock_Present;
@@ -170,6 +172,7 @@ namespace WindowsMixedReality
 	float farPlaneDistance = 650.0f;
 	float ScreenScaleFactor = 1.0f;
 	std::shared_ptr<HolographicCameraResources> CameraResources = nullptr;
+	std::shared_ptr<HolographicCameraResources> PVCameraResources = nullptr;
 	std::recursive_mutex CameraResourcesLock;
 	std::mutex StageLock;
 
@@ -400,6 +403,30 @@ namespace WindowsMixedReality
 	}
 #endif
 
+	HolographicViewConfigurationKind GetCameraKind(HolographicCamera const& Camera)
+	{
+		auto kind = HolographicViewConfigurationKind::Display;
+		if (isRemoteHolographicSpace)
+		{
+			// to reduce output spam for the below exception when remoting.
+			return kind;
+		}
+		try
+		{
+			// handling exception for current limitation of remoting camera support. 
+			// https://docs.microsoft.com/en-us/windows/mixed-reality/holographic-remoting-troubleshooting
+			auto ViewConfiguration = Camera.ViewConfiguration();
+			if (!ViewConfiguration)
+			{
+				return kind;
+			}
+
+			kind = ViewConfiguration.Kind();
+		}
+		catch (winrt::hresult_error const&) {}
+		return kind;
+	}
+
 #pragma region Camera Resources
 	class TrackingFrame
 	{
@@ -462,7 +489,7 @@ namespace WindowsMixedReality
 		bool bStereoEnabled;
 	
 	public:
-		bool CalculatePose(const winrt::Windows::Perception::Spatial::SpatialCoordinateSystem& CoordinateSystem, const HolographicCameraPose& InPose, const HolographicFramePrediction& Prediction)
+		bool CalculatePose(const winrt::Windows::Perception::Spatial::SpatialCoordinateSystem& CoordinateSystem, const HolographicCameraPose& InPose, const HolographicFramePrediction& Prediction, bool displayCamera = true)
 		{
 			Pose = InPose;
 			if (Pose == nullptr)
@@ -482,7 +509,7 @@ namespace WindowsMixedReality
 
 				SpatialPointerPose pointerPose = SpatialPointerPose::TryGetAtTimestamp(StationaryReferenceFrame.CoordinateSystem(), Prediction.Timestamp());
 
-				if (pointerPose != nullptr)
+				if (pointerPose != nullptr && displayCamera)
 				{
 					AttachedReferenceFrame.RelativePosition(pointerPose.Head().Position());
 					// Let the mesh observer and the QR code observer update their transforms
@@ -513,7 +540,14 @@ namespace WindowsMixedReality
 				winrt::Windows::Foundation::IReference<float4x4> locatorToFixedCoordTransform = CoordinateSystem.TryGetTransformTo(locatorAttachedCoordinateSystem);
 				if (locatorToFixedCoordTransform != nullptr)
 				{
-					LastKnownCoordinateSystemTransform = locatorToFixedCoordTransform.Value();
+					if (displayCamera)
+					{
+						LastKnownCoordinateSystemTransform = locatorToFixedCoordTransform.Value();
+					}
+					else
+					{
+						LastKnownThirdCameraCoordinateSystemTransform = locatorToFixedCoordTransform.Value();
+					}
 				}
 			}
 
@@ -534,7 +568,15 @@ namespace WindowsMixedReality
 			// position and orientation so there's no visible jump.
 			if (orientationOnlyTracking)
 			{
-				DirectX::XMMATRIX lastKnownCoordSystemTransform = DirectX::XMLoadFloat4x4((const DirectX::XMFLOAT4X4*)&LastKnownCoordinateSystemTransform);
+				DirectX::XMMATRIX lastKnownCoordSystemTransform = DirectX::XMMatrixIdentity();
+				if (displayCamera)
+				{
+					DirectX::XMMATRIX lastKnownCoordSystemTransform = DirectX::XMLoadFloat4x4((const DirectX::XMFLOAT4X4*)&LastKnownCoordinateSystemTransform);
+				}
+				else
+				{
+					DirectX::XMMATRIX lastKnownCoordSystemTransform = DirectX::XMLoadFloat4x4((const DirectX::XMFLOAT4X4*)&LastKnownThirdCameraCoordinateSystemTransform);
+				}
 
 				// Transform the left and right poses by the last known coordinate system transform.
 				leftPose = DirectX::XMMatrixMultiply(lastKnownCoordSystemTransform, leftPose);
@@ -547,7 +589,6 @@ namespace WindowsMixedReality
 		DirectX::XMMATRIX leftPose = DirectX::XMMatrixIdentity();
 		DirectX::XMMATRIX rightPose = DirectX::XMMatrixIdentity();
 
-		HolographicFrame Frame = nullptr;
 		HolographicCameraPose Pose = nullptr;
 
 		void SetFocusPoint(const DirectX::XMFLOAT3 pos)
@@ -636,6 +677,8 @@ namespace WindowsMixedReality
 			if (bIsLSRSetThisFrame)
 			{
 				SetFocusPoint(LSRPosition);
+				// Note: if we use point LSR at runtime on HoloLens, this would only work for the first camera resources.
+				// Since we are only using point LSR when remoting, this is fine for now.
 				bIsLSRSetThisFrame = false;
 			}
 
@@ -755,7 +798,20 @@ namespace WindowsMixedReality
 			return false;
 		}
 
-		CameraResources->CalculatePose(CoordinateSystem, CameraPoses.GetAt(0), Prediction);
+		for (unsigned int i = 0; i < CameraPoses.Size(); i++)
+		{
+			const HolographicCameraPose& pose = CameraPoses.GetAt(i);
+			auto kind = GetCameraKind(pose.HolographicCamera());
+
+			if (kind == HolographicViewConfigurationKind::Display)
+			{
+				CameraResources->CalculatePose(CoordinateSystem, pose, Prediction);
+			}
+			else if (kind == HolographicViewConfigurationKind::PhotoVideoCamera)
+			{
+				PVCameraResources->CalculatePose(CoordinateSystem, pose, Prediction, false);
+			}
+		}
 
 		return true;
 	}
@@ -931,10 +987,15 @@ namespace WindowsMixedReality
 		std::lock_guard<std::recursive_mutex> lock(CameraResourcesLock);
 		HolographicCamera Camera = args.Camera();
 
-		CameraResources = std::make_shared<HolographicCameraResources>(Camera);
-
-		float width = Camera.RenderTargetSize().Width * 2.0f;
-		float height = Camera.RenderTargetSize().Height;
+		auto kind = GetCameraKind(Camera);
+		if (kind == HolographicViewConfigurationKind::Display)
+		{
+			CameraResources = std::make_shared<HolographicCameraResources>(Camera);
+		}
+		else if (kind == HolographicViewConfigurationKind::PhotoVideoCamera)
+		{
+			PVCameraResources = std::make_shared<HolographicCameraResources>(Camera);
+		}
 
 		// Switch near and far planes for the camera to match Unreal's reverse-z projection.
 		// The HoloLens compositor does not support a near-infinite reverse-z clipping plane, so use a very large value instead.
@@ -949,15 +1010,33 @@ namespace WindowsMixedReality
 		const HolographicCamera& Camera)
 	{
 		std::lock_guard<std::recursive_mutex> lock(CameraResourcesLock);
-		if (CameraResources == nullptr)
+		auto kind = GetCameraKind(Camera);
+		if (kind == HolographicViewConfigurationKind::Display)
 		{
-			return;
-		}
+			if (CameraResources == nullptr)
+			{
+				return;
+			}
 
-		if (Camera == CameraResources->GetCamera())
+			if (Camera == CameraResources->GetCamera())
+			{
+				CameraResources.reset();
+				CameraResources = nullptr;
+			}
+
+		}
+		else if (kind == HolographicViewConfigurationKind::PhotoVideoCamera)
 		{
-			CameraResources.reset();
-			CameraResources = nullptr;
+			if (PVCameraResources == nullptr)
+			{
+				return;
+			}
+
+			if (Camera == PVCameraResources->GetCamera())
+			{
+				PVCameraResources.reset();
+				PVCameraResources = nullptr;
+			}
 		}
 	}
 
@@ -1806,21 +1885,32 @@ namespace WindowsMixedReality
 		winrt::Windows::Foundation::Numerics::float4x4 projection = winrt::Windows::Foundation::Numerics::float4x4::identity();
 
 		if (CameraResources == nullptr
-			|| CameraResources->Pose == nullptr)
+			|| CameraResources->Pose == nullptr
+			|| (eye == HMDEye::ThirdCamera 
+				&& (PVCameraResources == nullptr || PVCameraResources->Pose == nullptr)))
 		{
-			projection = (eye == HMDEye::Left)
-				? LastKnownProjection.Left
-				: LastKnownProjection.Right;
+			switch (eye)
+			{
+			case HMDEye::Left:
+				projection = LastKnownProjection.Left;
+				break;
+			case HMDEye::Right:
+				projection = LastKnownProjection.Right;
+				break;
+			case HMDEye::ThirdCamera:
+				projection = LastKnownThirdCameraProjection.Left;
+				break;
+			};
 		}
 		else
 		{
 			IHolographicCameraPose pose = CameraResources->Pose;
+			if (eye == HMDEye::ThirdCamera)
+			{
+				pose = PVCameraResources->Pose;
+			}
 
 			HolographicStereoTransform CameraProjectionTransform = pose.ProjectionTransform();
-
-			projection = (eye == HMDEye::Left)
-				? CameraProjectionTransform.Left
-				: CameraProjectionTransform.Right;
 
 			// Override the projection transform so we have correct matrices to unproject depth to.
 			// IHolographicCameraPose2 is not supported when remoting.
@@ -1833,10 +1923,26 @@ namespace WindowsMixedReality
 				CameraProjectionTransform.Right.m43 = nearPlaneDistance;
 
 				IHolographicCameraPose2 pose2 = CameraResources->Pose;
+				if (eye == HMDEye::ThirdCamera)
+				{
+					pose2 = PVCameraResources->Pose;
+				}
+
 				pose2.OverrideProjectionTransform(CameraProjectionTransform);
 			}
 
-			LastKnownProjection = HolographicStereoTransform(CameraProjectionTransform);
+			projection = (eye == HMDEye::Left || eye == HMDEye::ThirdCamera)
+				? CameraProjectionTransform.Left
+				: CameraProjectionTransform.Right;
+
+			if (eye != HMDEye::ThirdCamera)
+			{
+				LastKnownProjection = HolographicStereoTransform(CameraProjectionTransform);
+			}
+			else
+			{
+				LastKnownThirdCameraProjection = HolographicStereoTransform(CameraProjectionTransform);
+			}
 		}
 
 		return DirectX::XMFLOAT4X4(
@@ -1976,19 +2082,25 @@ namespace WindowsMixedReality
 		bool succeeded = true;
 
 		if (currentFrame == nullptr
-			|| currentFrame->Frame == nullptr
-			|| CameraResources == nullptr
+			|| currentFrame->Frame == nullptr)
+		{
+			return succeeded;
+		}
+
+		if (PVCameraResources != nullptr
+			&& PVCameraResources->Pose != nullptr)
+		{
+			bool pvSucceeded = true;
+			PVCameraResources->CreateRenderingParameters(currentFrame.get(), pvSucceeded);
+		}
+
+		if(CameraResources == nullptr
 			|| CameraResources->Pose == nullptr)
 		{
 			return succeeded;
 		}
 
 		bool renderingParamsCreated = CameraResources->CreateRenderingParameters(currentFrame.get(), succeeded);
-
-		if (!renderingParamsCreated
-			|| CameraResources->GetBackBufferTexture() == nullptr)
-		{
-		}
 
 		return succeeded;
 	}
@@ -2008,6 +2120,25 @@ namespace WindowsMixedReality
 		}
 
 		bool renderingParamsCreated = CameraResources->CommitDepthBuffer(currentFrame.get(), depthTexture, succeeded);
+
+		return succeeded;
+	}
+
+	bool MixedRealityInterop::CommitThirdCameraDepthBuffer(ID3D11Texture2D* depthTexture)
+	{
+		std::lock_guard<std::mutex> lock(poseLock);
+		std::lock_guard<std::recursive_mutex> lock2(CameraResourcesLock);
+
+		bool succeeded = true;
+
+		if (currentFrame == nullptr
+			|| currentFrame->Frame == nullptr
+			|| PVCameraResources == nullptr)
+		{
+			return succeeded;
+		}
+
+		bool renderingParamsCreated = PVCameraResources->CommitDepthBuffer(currentFrame.get(), depthTexture, succeeded);
 
 		return succeeded;
 	}
@@ -2067,6 +2198,31 @@ namespace WindowsMixedReality
 			viewportTexture,
 			CameraResources->GetBackBufferTexture());
 
+		// Copy third camera texture to PVCameraResources backbuffer.
+		if (IsThirdCameraActive() && PVCameraResources != nullptr)
+		{
+			int w, h;
+			GetThirdCameraDimensions(w, h);
+			
+			D3D11_TEXTURE2D_DESC desc{};
+			viewportTexture->GetDesc(&desc);
+
+			D3D11_BOX box = {};
+			box.right = desc.Width;
+			box.left = desc.Width - w;
+			box.top = 0;
+			box.bottom = h;
+			box.back = 1;
+
+			context->CopySubresourceRegion(
+				PVCameraResources->GetBackBufferTexture(),
+				0, 0, 0, 0,
+				viewportTexture,
+				0,
+				&box);
+		}
+
+		//Note: HoloLens does not support Quad Layers, so we do not need to render to the third camera here.
 		// Quad Layers
 		uint32_t maxQuadLayers = (m_isHL1Remoting || (CameraResources.get() == nullptr) || (CameraResources->GetCamera() == nullptr)) ? 0 : CameraResources->GetCamera().MaxQuadLayerCount();
 		if (maxQuadLayers > 0)
@@ -3827,6 +3983,79 @@ namespace WindowsMixedReality
 	void MixedRealityInterop::StopQRCodeTracking()
 	{
 		StopQRCodeObserver();
+	}
+
+	bool isThirdCameraActive = false;
+	bool MixedRealityInterop::IsThirdCameraActive()
+	{
+		return isThirdCameraActive;
+	}
+
+	bool MixedRealityInterop::GetThirdCameraPoseRenderThread(DirectX::XMMATRIX& thirdCameraViewLeft, DirectX::XMMATRIX& thirdCameraViewRight)
+	{
+		std::lock_guard<std::mutex> lock(poseLock);
+
+		if (!IsInitialized()
+			|| PVCameraResources == nullptr)
+		{
+			return false;
+		}
+
+		thirdCameraViewLeft = PVCameraResources->leftPose;
+		thirdCameraViewRight = PVCameraResources->rightPose;
+		return true;
+	}
+
+	int thirdCameraWidth = 0;
+	int thirdCameraHeight = 0;
+	bool MixedRealityInterop::SetEnabledMixedRealityCamera(bool enabled)
+	{
+		// Reset dimensions
+		if (!enabled)
+		{
+			thirdCameraWidth = 0;
+			thirdCameraHeight = 0;
+		}
+
+		auto view = HolographicDisplay::GetDefault().TryGetViewConfiguration(HolographicViewConfigurationKind::PhotoVideoCamera);
+		if (!view)
+		{
+			isThirdCameraActive = false;
+			return false;
+		}
+
+		view.IsEnabled(enabled);
+		isThirdCameraActive = enabled;
+		return true;
+	}
+
+	bool MixedRealityInterop::ResizeMixedRealityCamera(SIZE& sz)
+	{
+		auto view = HolographicDisplay::GetDefault().TryGetViewConfiguration(HolographicViewConfigurationKind::PhotoVideoCamera);
+		if (!view)
+		{
+			thirdCameraWidth = 0;
+			thirdCameraHeight = 0;
+			return false;
+		}
+
+		winrt::Windows::Foundation::Size newSize;
+		newSize.Width = (float)sz.cx;
+		newSize.Height = (float)sz.cy;
+		newSize = view.RequestRenderTargetSize(newSize);
+		sz.cx = (LONG)newSize.Width;
+		sz.cy = (LONG)newSize.Height;
+
+		thirdCameraWidth = (int)sz.cx;
+		thirdCameraHeight = (int)sz.cy;
+
+		return true;
+	}
+
+	void MixedRealityInterop::GetThirdCameraDimensions(int& width, int& height)
+	{
+		width = thirdCameraWidth;
+		height = thirdCameraHeight;
 	}
 }
 
