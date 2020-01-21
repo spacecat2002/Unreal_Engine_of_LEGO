@@ -76,12 +76,18 @@ public:
 	 * GetPropertyCache() can be used to return an instance of subclasses that is an easy
 	 * place to save/restore these properties
 	 */
-	virtual void SaveProperties(UInteractiveTool* SaveFromTool) {}
+	virtual void SaveProperties(UInteractiveTool* SaveFromTool) 
+	{ 
+		SaveRestoreProperties(SaveFromTool, true); 
+	}
 
 	/**
 	 * Restore saved property values
 	 */
-	virtual void RestoreProperties(UInteractiveTool* RestoreToTool) {}
+	virtual void RestoreProperties(UInteractiveTool* RestoreToTool) 
+	{ 
+		SaveRestoreProperties(RestoreToTool, false);
+	}
 
 protected:
 	/**
@@ -98,6 +104,30 @@ protected:
 		}
 		return CastChecked<ObjType>(CDO->CachedProperties);
 	}
+
+	/**
+	 * Subclass this to save and restore in a single function. Use the SaveRestoryProperty function for each member
+	 *   UPropertySetObj* PropertyCache = GetPropertyCache<UPropertySetObj>();
+	 *	 SaveRestoreProperty(PropertyCache->PropSetMember, PropertySet->PropSetMember, bSaving);
+	 */
+	virtual void SaveRestoreProperties(UInteractiveTool* RestoreToTool, bool bSaving) {}
+
+	/**
+	 * Call this from SaveRestoreProperties to either save or restore a given property value
+	 */
+	template<typename T>
+	void SaveRestoreProperty(T& CacheValue, T& PropsValue, bool bSaving)
+	{
+		if (bSaving)
+		{
+			CacheValue = PropsValue;
+		}
+		else
+		{
+			PropsValue = CacheValue;
+		}
+	}
+
 
 private:
 	// CachedProperties should only ever be set to an instance of the subclass, ideally via GetPropertyCache().

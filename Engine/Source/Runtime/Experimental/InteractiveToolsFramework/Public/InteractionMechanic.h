@@ -30,11 +30,20 @@ public:
 	virtual void Setup(UInteractiveTool* ParentTool);
 
 	/**
+	 * Called to clean up the InteractionMechanic
+	 */
+	virtual void Shutdown();
+
+	/**
 	 * Allow the Mechanic to do any custom drawing (ie via PDI/RHI)
 	 * @param RenderAPI Abstraction that provides access to Rendering in the current ToolsContext
 	 */
 	virtual void Render(IToolsContextRenderAPI* RenderAPI);
 
+	/**
+	 * ALlow the Mechanic to Tick
+	 */
+	virtual void Tick(float DeltaTime);
 
 protected:
 	TWeakObjectPtr<UInteractiveTool> ParentTool;

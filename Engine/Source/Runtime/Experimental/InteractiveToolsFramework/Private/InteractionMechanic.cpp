@@ -15,8 +15,20 @@ void UInteractionMechanic::Setup(UInteractiveTool* ParentToolIn)
 	ParentTool = ParentToolIn;
 }
 
+void UInteractionMechanic::Shutdown()
+{
+	ParentTool = nullptr;
+}
+
+
 void UInteractionMechanic::Render(IToolsContextRenderAPI* RenderAPI)
 {
+}
+
+
+void UInteractionMechanic::Tick(float DeltaTime)
+{
+
 }
 
 
