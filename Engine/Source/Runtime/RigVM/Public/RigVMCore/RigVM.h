@@ -226,7 +226,7 @@ public:
 
 	// Retrieve the value of a parameter
 	template<class T>
-	const T& GetParameterValue(const FRigVMParameter& InParameter, int32 InArrayIndex = 0, const T& DefaultValue = T{})
+	T GetParameterValue(const FRigVMParameter& InParameter, int32 InArrayIndex = 0, T DefaultValue = T{})
 	{
 		if (InParameter.GetRegisterIndex() != INDEX_NONE)
 		{
@@ -237,14 +237,14 @@ public:
 
 	// Retrieve the value of a parameter given its index
 	template<class T>
-	const T& GetParameterValue(int32 InParameterIndex, int32 InArrayIndex = 0, const T& DefaultValue = T{})
+	T GetParameterValue(int32 InParameterIndex, int32 InArrayIndex = 0, T DefaultValue = T{})
 	{
 		return GetParameterValue<T>(Parameters[InParameterIndex], InArrayIndex, DefaultValue);
 	}
 
 	// Retrieve the value of a parameter given its name
 	template<class T>
-	const T& GetParameterValue(const FName& InParameterName, int32 InArrayIndex = 0, const T& DefaultValue = T{})
+	T GetParameterValue(const FName& InParameterName, int32 InArrayIndex = 0, T DefaultValue = T{})
 	{
 		int32 ParameterIndex = ParametersNameMap.FindChecked(InParameterName);
 		return GetParameterValue<T>(ParameterIndex, InArrayIndex, DefaultValue);
