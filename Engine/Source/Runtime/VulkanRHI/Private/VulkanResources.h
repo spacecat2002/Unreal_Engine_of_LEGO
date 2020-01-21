@@ -1138,6 +1138,12 @@ public:
 		return BufferUsageFlags;
 	}
 
+	inline uint32 GetUEUsage() const
+	{
+		return BufferUsageFlags;
+	}
+
+
 	void* Lock(bool bFromRenderingThread, EResourceLockMode LockMode, uint32 Size, uint32 Offset);
 	void Unlock(bool bFromRenderingThread);
 

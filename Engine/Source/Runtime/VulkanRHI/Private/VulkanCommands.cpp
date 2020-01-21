@@ -227,10 +227,6 @@ void FVulkanCommandListContext::RHIDispatchIndirectComputeShader(FRHIVertexBuffe
 	VkCommandBuffer CmdBuffer = Cmd->GetHandle();
 	PendingComputeState->PrepareForDispatch(Cmd);
 
-	// The argument buffer might have been written by a previous dispatch, so we need to make sure there's a VK_ACCESS_INDIRECT_COMMAND_READ_BIT barrier here.
-	VkBufferMemoryBarrier ArgumentBufferBarrier;
-	VulkanRHI::SetupAndZeroBufferBarrier(ArgumentBufferBarrier, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT, ArgumentBuffer->GetHandle(), ArgumentBuffer->GetOffset() + ArgumentOffset, sizeof(VkDispatchIndirectCommand));
-	VulkanRHI::vkCmdPipelineBarrier(CmdBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 1, &ArgumentBufferBarrier, 0, nullptr);
 
 	VulkanRHI::vkCmdDispatchIndirect(CmdBuffer, ArgumentBuffer->GetHandle(), ArgumentBuffer->GetOffset() + ArgumentOffset);
 
@@ -733,10 +729,6 @@ void FVulkanCommandListContext::RHIDrawPrimitiveIndirect(FRHIVertexBuffer* Argum
 
 	FVulkanVertexBuffer* ArgumentBuffer = ResourceCast(ArgumentBufferRHI);
 
-	// The argument buffer might have been written by a previous dispatch, so we need to make sure there's a VK_ACCESS_INDIRECT_COMMAND_READ_BIT barrier here.
-	VkBufferMemoryBarrier ArgumentBufferBarrier;
-	VulkanRHI::SetupAndZeroBufferBarrier(ArgumentBufferBarrier, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT, ArgumentBuffer->GetHandle(), ArgumentBuffer->GetOffset() + ArgumentOffset, sizeof(VkDrawIndirectCommand));
-	VulkanRHI::vkCmdPipelineBarrier(CmdBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 1, &ArgumentBufferBarrier, 0, nullptr);
 
 	VulkanRHI::vkCmdDrawIndirect(CmdBuffer, ArgumentBuffer->GetHandle(), ArgumentBuffer->GetOffset() + ArgumentOffset, 1, sizeof(VkDrawIndirectCommand));
 
@@ -787,10 +779,6 @@ void FVulkanCommandListContext::RHIDrawIndexedIndirect(FRHIIndexBuffer* IndexBuf
 	FVulkanStructuredBuffer* ArgumentBuffer = ResourceCast(ArgumentsBufferRHI);
 	VkDeviceSize ArgumentOffset = DrawArgumentsIndex * sizeof(VkDrawIndexedIndirectCommand);
 
-	// The argument buffer might have been written by a previous dispatch, so we need to make sure there's a VK_ACCESS_INDIRECT_COMMAND_READ_BIT barrier here.
-	VkBufferMemoryBarrier ArgumentBufferBarrier;
-	VulkanRHI::SetupAndZeroBufferBarrier(ArgumentBufferBarrier, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT, ArgumentBuffer->GetHandle(), ArgumentBuffer->GetOffset() + ArgumentOffset, NumInstances*sizeof(VkDrawIndexedIndirectCommand));
-	VulkanRHI::vkCmdPipelineBarrier(CmdBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 1, &ArgumentBufferBarrier, 0, nullptr);
 
 	VulkanRHI::vkCmdDrawIndexedIndirect(CmdBuffer, ArgumentBuffer->GetHandle(), ArgumentBuffer->GetOffset() + ArgumentOffset, NumInstances, sizeof(VkDrawIndexedIndirectCommand));
 
@@ -815,10 +803,6 @@ void FVulkanCommandListContext::RHIDrawIndexedPrimitiveIndirect(FRHIIndexBuffer*
 
 	FVulkanVertexBuffer* ArgumentBuffer = ResourceCast(ArgumentBufferRHI);
 
-	// The argument buffer might have been written by a previous dispatch, so we need to make sure there's a VK_ACCESS_INDIRECT_COMMAND_READ_BIT barrier here.
-	VkBufferMemoryBarrier ArgumentBufferBarrier;
-	VulkanRHI::SetupAndZeroBufferBarrier(ArgumentBufferBarrier, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT, ArgumentBuffer->GetHandle(), ArgumentBuffer->GetOffset() + ArgumentOffset, sizeof(VkDrawIndexedIndirectCommand));
-	VulkanRHI::vkCmdPipelineBarrier(CmdBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 1, &ArgumentBufferBarrier, 0, nullptr);
 
 	VulkanRHI::vkCmdDrawIndexedIndirect(CmdBuffer, ArgumentBuffer->GetHandle(), ArgumentBuffer->GetOffset() + ArgumentOffset, 1, sizeof(VkDrawIndexedIndirectCommand));
 
