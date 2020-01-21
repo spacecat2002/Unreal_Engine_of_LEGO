@@ -12,7 +12,7 @@
 
 template<typename> struct TImageDataTraits;
 
-typedef TFunction<void(FImagePixelData*)> FPixelPreProcessor;
+typedef TUniqueFunction<void(FImagePixelData*)> FPixelPreProcessor;
 
 /**
  * Interface that is implemented in order to be able to asynchronously write images to disk
