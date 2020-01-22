@@ -50,6 +50,8 @@ TAutoConsoleVariable<int32> CVar_ChaosDrawHierarchyDrawEmptyCells(TEXT("P.Chaos.
 
 #endif
 
+TAutoConsoleVariable<int32> CVar_ChaosSimulationEnable(TEXT("P.Chaos.Simulation.Enable"), 1, TEXT("Enable / disable chaos simulation. If disabled, physics will not tick."));
+
 #if WITH_EDITOR
 #include "Editor.h"
 #endif
@@ -465,6 +467,8 @@ bool FPhysScene_Chaos::IsTickable() const
 
 void FPhysScene_Chaos::Tick(float DeltaTime)
 {
+	SCOPE_CYCLE_COUNTER(STAT_ChaosTick);
+	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(Physics);
 	LLM_SCOPE(ELLMTag::Chaos);
 
 #if WITH_EDITOR
@@ -610,7 +614,7 @@ void FPhysScene_Chaos::AddObject(UPrimitiveComponent* Component, FFieldSystemPhy
 void FPhysScene_Chaos::RemoveActorFromAccelerationStructure(FPhysicsActorHandle& Actor)
 {
 #if WITH_CHAOS
-	if (GetSpacialAcceleration())
+	if (GetSpacialAcceleration() && Actor->UniqueIdx().IsValid())
 	{
 		ExternalDataLock.WriteLock();
 		Chaos::TAccelerationStructureHandle<float, 3> AccelerationHandle(Actor);
@@ -1385,6 +1389,11 @@ void FPhysScene_ChaosInterface::StartFrame()
 
 	SCOPE_CYCLE_COUNTER(STAT_Scene_StartFrame);
 
+	if (CVar_ChaosSimulationEnable.GetValueOnGameThread() == 0)
+	{
+		return;
+	}
+
 	FChaosSolversModule* SolverModule = FChaosSolversModule::GetModule();
 	checkSlow(SolverModule);
 
@@ -1402,6 +1411,11 @@ void FPhysScene_ChaosInterface::StartFrame()
 		Dt = 0.0f;
 	}
 #endif
+
+	if (FPhysicsReplication* PhysicsReplication = Scene.GetPhysicsReplication())
+	{
+		PhysicsReplication->Tick(Dt);
+	}
 
 	if (Chaos::IDispatcher* Dispatcher = SolverModule->GetDispatcher())
 	{
@@ -1457,11 +1471,6 @@ void FPhysScene_ChaosInterface::StartFrame()
 			break;
 		}
 	}
-
-	if (FPhysicsReplication* PhysicsReplication = Scene.GetPhysicsReplication())
-	{
-		PhysicsReplication->Tick(Dt);
-	}
 }
 
 void FPhysScene_ChaosInterface::EndFrame(ULineBatchComponent* InLineBatcher)
@@ -1469,6 +1478,11 @@ void FPhysScene_ChaosInterface::EndFrame(ULineBatchComponent* InLineBatcher)
 	using namespace Chaos;
 
 	SCOPE_CYCLE_COUNTER(STAT_Scene_EndFrame);
+
+	if (CVar_ChaosSimulationEnable.GetValueOnGameThread() == 0)
+	{
+		return;
+	}
 
 	FChaosSolversModule* SolverModule = FChaosSolversModule::GetModule();
 	checkSlow(SolverModule);
@@ -1644,27 +1658,36 @@ void FPhysScene_ChaosInterface::SyncBodies(Chaos::FPhysicsSolver* Solver)
 
 				if (FBodyInstance* BodyInstance = FPhysicsUserData::Get<FBodyInstance>(ActiveParticle->UserData()))
 				{
-					if (BodyInstance->InstanceBodyIndex == INDEX_NONE && BodyInstance->OwnerComponent.IsValid())
+					if (BodyInstance->OwnerComponent.IsValid())
 					{
 						UPrimitiveComponent* OwnerComponent = BodyInstance->OwnerComponent.Get();
 						if (OwnerComponent != nullptr)
 						{
 							AActor* Owner = OwnerComponent->GetOwner();
 
-							Chaos::TRigidTransform<float, 3> NewTransform(ActiveParticle->X(), ActiveParticle->R());
-
-							if (!NewTransform.EqualsNoScale(OwnerComponent->GetComponentTransform()))
+							if (BodyInstance->InstanceBodyIndex == INDEX_NONE)
 							{
-								const FVector MoveBy = NewTransform.GetLocation() - OwnerComponent->GetComponentTransform().GetLocation();
-								const FQuat NewRotation = NewTransform.GetRotation();
+								Chaos::TRigidTransform<float, 3> NewTransform(ActiveParticle->X(), ActiveParticle->R());
 
-								OwnerComponent->MoveComponent(MoveBy, NewRotation, false, NULL, MOVECOMP_SkipPhysicsMove);
+								if (!NewTransform.EqualsNoScale(OwnerComponent->GetComponentTransform()))
+								{
+									const FVector MoveBy = NewTransform.GetLocation() - OwnerComponent->GetComponentTransform().GetLocation();
+									const FQuat NewRotation = NewTransform.GetRotation();
+
+									OwnerComponent->MoveComponent(MoveBy, NewRotation, false, NULL, MOVECOMP_SkipPhysicsMove);
+								}
+
+								if (Owner != NULL && !Owner->IsPendingKill())
+								{
+									Owner->CheckStillInWorld();
+								}
 							}
 
-							if (Owner != NULL && !Owner->IsPendingKill())
+							if (Proxy->HasAwakeEvent())
 							{
-								Owner->CheckStillInWorld();
+								OwnerComponent->DispatchWakeEvents(ESleepEvent::SET_Wakeup, NAME_None);
 							}
+							Proxy->ClearEvents();
 						}
 					}
 				}
@@ -1712,6 +1735,15 @@ void FPhysScene_ChaosInterface::CompleteSceneSimulation(ENamedThreads::Type Curr
 		{
 			if(Solver->HasActiveParticles())
 			{
+				// We need to process the Command Q here to prevent corruption in BufferPhysicsResults & FlipBuffers
+				// needs further investigation.
+				TQueue<TFunction<void(Chaos::FPhysicsSolver*)>, EQueueMode::Mpsc>& Queue = Solver->GetCommandQueue();
+				TFunction<void(FPhysicsSolver*)> Command;
+				while (Queue.Dequeue(Command))
+				{
+					Command(Solver);
+				}
+
 				ActiveSolvers.Add(Solver);
 			}
 		}

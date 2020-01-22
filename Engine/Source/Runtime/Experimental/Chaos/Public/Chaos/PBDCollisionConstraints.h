@@ -64,7 +64,7 @@ public:
 	TPBDCollisionConstraints(const TPBDRigidsSOAs<T,d>& InParticles, 
 		TArrayCollectionArray<bool>& Collided, 
 		const TArrayCollectionArray<TSerializablePtr<FChaosPhysicsMaterial>>& PerParticleMaterials, 
-		const int32 ApplyPairIterations = 1, const int32 ApplyPushOutPairIterations = 1, const T Thickness = (T)0);
+		const int32 ApplyPairIterations = 1, const int32 ApplyPushOutPairIterations = 1, const T CullDistance = (T)0, const T ShapePadding = (T)0);
 
 	virtual ~TPBDCollisionConstraints() {}
 
@@ -77,7 +77,8 @@ public:
 	*  This function will make a deep copy of the constraint and 
 	*  then delete the InConstraint. 
 	*/
-	void AddConstraint(FConstraintBase* InConstraint);
+	void AddConstraint(const TRigidBodyPointContactConstraint<FReal, 3>& InConstraint);
+	void AddConstraint(const TRigidBodyMultiPointContactConstraint<FReal, 3>& InConstraint);
 
 	/**
 	*  Reset the constraint frame. 
@@ -177,9 +178,30 @@ public:
 		return Manifolds.Contains(FConstraintContainerHandle::MakeKey(Base));
 	}
 
-	void SetThickness(T InThickness)
+	// @todo(chaos): remove
+	//void SetThickness(T InThickness)
+	//{
+	//	MCullDistance = InThickness;
+	//}
+
+	void SetCullDistance(T InCullDistance)
 	{
-		MThickness = InThickness;
+		MCullDistance = InCullDistance;
+	}
+
+	FReal GetCullDistance() const
+	{
+		return MCullDistance;
+	}
+
+	void SetShapePadding(T InShapePadding)
+	{
+		MShapePadding = InShapePadding;
+	}
+
+	FReal GetShapePadding() const
+	{
+		return MShapePadding;
 	}
 
 	void SetPairIterations(int32 InPairIterations)
@@ -218,8 +240,10 @@ public:
 
 
 protected:
-		using Base::GetConstraintIndex;
-		using Base::SetConstraintIndex;
+	using Base::GetConstraintIndex;
+	using Base::SetConstraintIndex;
+
+	void UpdateConstraintMaterialProperties(FConstraintBase& Contact);
 
 private:
 
@@ -236,10 +260,12 @@ private:
 	const TArrayCollectionArray<TSerializablePtr<FChaosPhysicsMaterial>>& MPhysicsMaterials;
 	int32 MApplyPairIterations;
 	int32 MApplyPushOutPairIterations;
-	T MThickness;	// @todo(ccaulfield) - COLLISION thickness - this should be used as shape padding (as opposed to broad/narrowphase thickness which is for speculative creation of constraints)
+	T MCullDistance;
+	T MShapePadding;
 	T MAngularFriction;
 	bool bUseCCD;
 	bool bEnableCollisions;
+	bool bEnableParallelFor;
 
 	int32 LifespanCounter;
 

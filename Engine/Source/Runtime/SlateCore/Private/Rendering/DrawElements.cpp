@@ -1031,6 +1031,14 @@ void FSlateCachedElementData::CleanupUnusedClipStates()
 	}
 }
 
+void FSlateCachedElementData::RemoveList(FSlateCachedElementsHandle& CacheHandle)
+{
+	TSharedPtr<FSlateCachedElementList> CachedList = CacheHandle.Ptr.Pin();
+	CachedElementLists.RemoveSingleSwap(CachedList);
+	ListsWithNewData.RemoveSingleSwap(CachedList.Get());
+
+	CachedList->ClearCachedElements();
+}
 
 void FSlateCachedElementData::AddReferencedObjects(FReferenceCollector& Collector)
 {

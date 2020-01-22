@@ -13,13 +13,14 @@ namespace Chaos
 template <typename IdxType>
 struct FTriangleMeshRaycastVisitor
 {
-	FTriangleMeshRaycastVisitor(const FVec3& InStart, const FVec3& InDir, const FReal InThickness, const TParticles<FReal,3>& InParticles, const TArray<TVector<IdxType, 3>>& InElements)
+	FTriangleMeshRaycastVisitor(const FVec3& InStart, const FVec3& InDir, const FReal InThickness, const TParticles<FReal,3>& InParticles, const TArray<TVector<IdxType, 3>>& InElements, bool bInCullsBackFaceRaycast)
 	: Particles(InParticles)
 	, Elements(InElements)
 	, StartPoint(InStart)
 	, Dir(InDir)
 	, Thickness(InThickness)
 	, OutTime(TNumericLimits<FReal>::Max())
+	, bCullsBackFaceRaycast(bInCullsBackFaceRaycast)
 	{
 	}
 
@@ -51,6 +52,12 @@ struct FTriangleMeshRaycastVisitor
 		if (!CHAOS_ENSURE(NormalLength > Epsilon))
 		{
 			//hitting degenerate triangle so keep searching - should be fixed before we get to this stage
+			return true;
+		}
+
+		const bool bBackFace = (FVec3::DotProduct(Dir, TriNormal) > 0.0f);
+		if (bCullsBackFaceRaycast && bBackFace)
+		{
 			return true;
 		}
 
@@ -185,18 +192,23 @@ struct FTriangleMeshRaycastVisitor
 	FVec3 OutPosition;
 	FVec3 OutNormal;
 	int32 OutFaceIndex;
+	bool bCullsBackFaceRaycast;
 };
 
 FReal FTriangleMeshImplicitObject::PhiWithNormal(const FVec3& x, FVec3& Normal) const
 {
-	ensure(false);	//not supported yet - might support it in the future or we may change the interface
-	return 0;
+	TSphere<FReal, 3> TestSphere(x, 0.0f);
+	FRigidTransform3 TestXf(TVector<float, 3>(0.0), TRotation<float, 3>::FromIdentity());
+	FVec3 TestLocation = x;
+	FReal Depth;
+	GJKContactPointImp(TestSphere, TestXf, 0.0f, TestLocation, Normal, Depth);
+	return Depth;
 }
 
 template <typename IdxType>
 bool FTriangleMeshImplicitObject::RaycastImp(const TArray<TVector<IdxType, 3>>& Elements, const FVec3& StartPoint, const FVec3& Dir, const FReal Length, const FReal Thickness, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex) const
 {
-	FTriangleMeshRaycastVisitor<IdxType> SQVisitor(StartPoint, Dir, Thickness, MParticles, Elements);
+	FTriangleMeshRaycastVisitor<IdxType> SQVisitor(StartPoint, Dir, Thickness, MParticles, Elements, bCullsBackFaceRaycast);
 
 	if (Thickness > 0)
 	{
@@ -351,7 +363,28 @@ bool FTriangleMeshImplicitObject::GJKContactPoint(const TImplicitObjectScaled< F
 	return GJKContactPointImp(QueryGeom, QueryTM, Thickness, Location, Normal, Penetration);
 }
 
+int32 FTriangleMeshImplicitObject::GetExternalFaceIndexFromInternal(int32 InternalFaceIndex) const
+{
+	if (InternalFaceIndex > -1 && ExternalFaceIndexMap.Get())
+	{
+		if (ensure(InternalFaceIndex >= 0 && InternalFaceIndex < ExternalFaceIndexMap->Num()))
+		{
+			return (*ExternalFaceIndexMap)[InternalFaceIndex];
+		}
+	}
 
+	return -1;
+}
+
+bool FTriangleMeshImplicitObject::GetCullsBackFaceRaycast() const
+{
+	return bCullsBackFaceRaycast;
+}
+
+void FTriangleMeshImplicitObject::SetCullsBackFaceRaycast(const bool bInCullsBackFace)
+{
+	bCullsBackFaceRaycast = bInCullsBackFace;
+}
 
 template <typename IdxType>
 bool FTriangleMeshImplicitObject::OverlapImp(const TArray<TVec3<IdxType>>& Elements, const FVec3& Point, const FReal Thickness) const

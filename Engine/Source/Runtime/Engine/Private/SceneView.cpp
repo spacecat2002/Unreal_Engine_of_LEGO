@@ -635,6 +635,7 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 	, SpecularOverrideParameter(FVector4(0,0,0,1))
 	, NormalOverrideParameter(FVector4(0,0,0,1))
 	, RoughnessOverrideParameter(FVector2D(0,1))
+	, MaterialTextureMipBias(0.f)
 	, HiddenPrimitives(InitOptions.HiddenPrimitives)
 	, ShowOnlyPrimitives(InitOptions.ShowOnlyPrimitives)
 	, OriginOffsetThisFrame(InitOptions.OriginOffsetThisFrame)
@@ -647,6 +648,7 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 	, bIsSceneCapture(false)
 	, bIsReflectionCapture(false)
 	, bIsPlanarReflection(false)
+	, bIsOfflineRender(false)
 	, bRenderSceneTwoSided(false)
 	, bIsLocked(false)
 	, bStaticSceneOnly(false)
@@ -656,7 +658,9 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 	, bIsMobileMultiViewDirectEnabled(false)
 	, bShouldBindInstancedViewUB(false)
 	, UnderwaterDepth(-1.0f)
+	, bForceCameraVisibilityReset(false)
 	, GlobalClippingPlane(FPlane(0, 0, 0, 0))
+	, LensPrincipalPointOffsetScale(0.0f, 0.0f, 1.0f, 1.0f)
 #if WITH_EDITOR
 	, OverrideLODViewOrigin(InitOptions.OverrideLODViewOrigin)
 	, bAllowTranslucentPrimitivesInHitProxy( true )
@@ -2347,7 +2351,6 @@ void FSceneView::SetupCommonViewUniformBufferParameters(
 
 	ViewUniformShaderParameters.CameraCut = bCameraCut ? 1 : 0;
 
-	ViewUniformShaderParameters.VirtualTextureParams = FVector4(ForceInitToZero);
 	ViewUniformShaderParameters.MinRoughness = FMath::Clamp(CVarGlobalMinRoughnessOverride.GetValueOnRenderThread(), 0.02f, 1.0f);
 
 	//to tail call keep the order and number of parameters of the caller function

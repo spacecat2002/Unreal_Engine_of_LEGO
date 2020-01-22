@@ -302,7 +302,7 @@ void FGenericCrashContext::CopySharedCrashContext(FSharedCrashContext& Dst)
 	TCHAR* DynamicDataStart = &Dst.DynamicData[0];
 	TCHAR* DynamicDataPtr = DynamicDataStart;
 
-	Dst.EnabledPluginsOffset = DynamicDataPtr - DynamicDataStart;
+	Dst.EnabledPluginsOffset = (uint32)(DynamicDataPtr - DynamicDataStart);
 	Dst.EnabledPluginsNum = NCached::EnabledPluginsList.Num();
 	for (const FString& Plugin : NCached::EnabledPluginsList)
 	{
@@ -311,7 +311,7 @@ void FGenericCrashContext::CopySharedCrashContext(FSharedCrashContext& Dst)
 	}
 	DynamicDataPtr += FCString::Strlen(DynamicDataPtr) + 1;
 
-	Dst.EngineDataOffset = DynamicDataPtr - DynamicDataStart;
+	Dst.EngineDataOffset = (uint32)(DynamicDataPtr - DynamicDataStart);
 	Dst.EngineDataNum = NCached::EngineData.Num();
 	for (const TPair<FString, FString>& Pair : NCached::EngineData)
 	{
@@ -322,7 +322,7 @@ void FGenericCrashContext::CopySharedCrashContext(FSharedCrashContext& Dst)
 	}
 	DynamicDataPtr += FCString::Strlen(DynamicDataPtr) + 1;
 
-	Dst.GameDataOffset = DynamicDataPtr - DynamicDataStart;
+	Dst.GameDataOffset = (uint32)(DynamicDataPtr - DynamicDataStart);
 	Dst.GameDataNum = NCached::GameData.Num();
 	for (const TPair<FString, FString>& Pair : NCached::GameData)
 	{
@@ -1131,5 +1131,7 @@ FProgramCounterSymbolInfoEx::FProgramCounterSymbolInfoEx( FString InModuleName, 
 
 FString RecoveryService::GetRecoveryServerName()
 {
-	return FString::Printf(TEXT("RecoverySvr_%d"), FPlatformProcess::GetCurrentProcessId());
+	// Requirement: The name must be unique on the local machine (multiple instances) and across the local network (multiple users).
+	static FGuid RecoverySessionGuid = FGuid::NewGuid();
+	return FString::Printf(TEXT("RecoverySvr_%s"), *RecoverySessionGuid.ToString());
 }

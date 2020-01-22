@@ -3385,6 +3385,8 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 	const class ITargetPlatform* TargetPlatform, const FDateTime& FinalTimeStamp, bool bSlowTask, FArchiveDiffMap* InOutDiffMap,
 	FSavePackageContext* SavePackageContext)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(UPackage::Save);
+
 	COOK_STAT(FScopedDurationTimer FuncSaveTimer(SavePackageStats::SavePackageTimeSec));
 	COOK_STAT(SavePackageStats::NumPackagesSaved++);
 	TRACE_CPUPROFILER_EVENT_SCOPE(UPackage_Save);
@@ -3791,15 +3793,15 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 					// Finds the asset object within a package
 					auto FindAssetInPackage = [](UPackage* Package) -> UObject*
 					{
-						for (UObject* Object : TObjectRange<UObject>())
-						{
-							if (Object->GetOuter() == Package && Object->IsAsset())
+						UObject* Asset = nullptr;
+						ForEachObjectWithOuter(Package, [&Asset](UObject* Object)
 							{
-								return Object;
-							}
-						}
-
-						return nullptr;
+								if (!Asset && Object->IsAsset())
+								{
+									Asset = Object;
+								}
+							}, /*bIncludeNestedObjects*/ false);
+						return Asset;
 					};
 
 					if (TargetPlatform != nullptr && (SaveFlags & SAVE_DiffCallstack))
@@ -5912,14 +5914,14 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 							{
 								if (SaveFlags & SAVE_NoError)
 								{
-									UE_LOG(LogSavePackage, Warning, TEXT("%s"), *FString::Printf( TEXT("Filename '%s' is too long; this may interfere with cooking for consoles.  Unreal filenames should be no longer than %s characters."), *BaseFilename, MaxFilenameLength ) );
+									UE_LOG(LogSavePackage, Warning, TEXT("%s"), *FString::Printf( TEXT("Filename is too long (%d characters); this may interfere with cooking for consoles. Unreal filenames should be no longer than %s characters. Filename value: %s"), BaseFilename.Len(), MaxFilenameLength, *BaseFilename ) );
 								}
 								else
 								{
 									FFormatNamedArguments Arguments;
 									Arguments.Add(TEXT("FileName"), FText::FromString( BaseFilename ));
 									Arguments.Add(TEXT("MaxLength"), FText::AsNumber( MaxFilenameLength ));
-									Error->Logf(ELogVerbosity::Warning, TEXT("%s"), *FText::Format( NSLOCTEXT( "Core", "Error_FilenameIsTooLongForCooking", "Filename '{FileName}' is too long; this may interfere with cooking for consoles.  Unreal filenames should be no longer than {MaxLength} characters." ), Arguments ).ToString() );
+									Error->Logf(ELogVerbosity::Warning, TEXT("%s"), *FText::Format( NSLOCTEXT( "Core", "Error_FilenameIsTooLongForCooking", "Filename '{FileName}' is too long; this may interfere with cooking for consoles. Unreal filenames should be no longer than {MaxLength} characters." ), Arguments ).ToString() );
 								}
 							}
 						}

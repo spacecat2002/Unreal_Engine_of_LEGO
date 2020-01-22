@@ -405,8 +405,6 @@ void FDistanceFieldSceneData::AddPrimitive(FPrimitiveSceneInfo* InPrimitive)
 	{
 		if (Proxy->SupportsHeightfieldRepresentation())
 		{
-			// Theoretically, we may need to wait for high-res mips to be streamed in.
-			// In practice, however, those mips are usually resident at this point.
 			UTexture2D* HeightAndNormal;
 			UTexture2D* Unused0, *Unused1;
 			FHeightfieldComponentDescription Unused2(FMatrix::Identity);
@@ -1148,7 +1146,7 @@ void FScene::AddPrimitive(UPrimitiveComponent* Primitive)
 	FPrimitiveSceneInfo* PrimitiveSceneInfo = new FPrimitiveSceneInfo(Primitive, this);
 	PrimitiveSceneProxy->PrimitiveSceneInfo = PrimitiveSceneInfo;
 
-	// Cache the primitive's initial transform.
+	// Cache the primitives initial transform.
 	FMatrix RenderMatrix = Primitive->GetRenderMatrix();
 	FVector AttachmentRootPosition(0);
 
@@ -1628,7 +1626,7 @@ void FScene::AddLight(ULightComponent* Light)
 		Light->SceneProxy = Proxy;
 
 		// Update the light's transform and position.
-		Proxy->SetTransform(Light->GetComponentTransform().ToMatrixNoScale(),Light->GetLightPosition());
+		Proxy->SetTransform(Light->GetComponentTransform().ToMatrixNoScale(), Light->GetLightPosition());
 
 		// Create the light scene info.
 		Proxy->LightSceneInfo = new FLightSceneInfo(Proxy, true);

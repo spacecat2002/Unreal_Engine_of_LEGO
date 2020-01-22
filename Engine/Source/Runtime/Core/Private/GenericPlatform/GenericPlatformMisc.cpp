@@ -714,6 +714,31 @@ void FGenericPlatformMisc::CreateGuid(FGuid& Guid)
 	Guid = FGuid(RandBits | (SequentialBits << 16), EstimatedCurrentDateTime.GetTicks() >> 32, EstimatedCurrentDateTime.GetTicks() & 0xffffffff, FPlatformTime::Cycles());
 }
 
+const TCHAR* LexToString( EAppReturnType::Type Value )
+{
+	switch (Value)
+	{
+	case EAppReturnType::No:
+		return TEXT("No");
+	case EAppReturnType::Yes:
+		return TEXT("Yes");
+	case EAppReturnType::YesAll:
+		return TEXT("YesAll");
+	case EAppReturnType::NoAll:
+		return TEXT("NoAll");
+	case EAppReturnType::Cancel:
+		return TEXT("Cancel");
+	case EAppReturnType::Ok:
+		return TEXT("Ok");
+	case EAppReturnType::Retry:
+		return TEXT("Retry");
+	case EAppReturnType::Continue:
+		return TEXT("Continue");
+	default:
+		return TEXT("Unknown");
+	}
+}
+
 EAppReturnType::Type FGenericPlatformMisc::MessageBoxExt( EAppMsgType::Type MsgType, const TCHAR* Text, const TCHAR* Caption )
 {
 	if (GWarn)
@@ -1182,14 +1207,14 @@ void FGenericPlatformMisc::UpdateHotfixableEnsureSettings()
 	float HandleEnsurePercentInConfig = 100.0f;
 	if (GConfig && GConfig->GetFloat(TEXT("Core.System"), TEXT("HandleEnsurePercent"), HandleEnsurePercentInConfig, GEngineIni))
 	{
-		GenericPlatformMisc::GEnsureChance = HandleEnsurePercentInConfig / 100.0;
+		GenericPlatformMisc::GEnsureChance = HandleEnsurePercentInConfig / 100.0f;
 	}
 	else
 	{
 		float HandleEnsurePercentOnCmdLine = 100.0f;
 		if (!FCommandLine::IsInitialized() && FParse::Value(FCommandLine::Get(), TEXT("handleensurepercent="), HandleEnsurePercentOnCmdLine))
 		{
-			GenericPlatformMisc::GEnsureChance = HandleEnsurePercentOnCmdLine / 100.0;
+			GenericPlatformMisc::GEnsureChance = HandleEnsurePercentOnCmdLine / 100.0f;
 		}
 	}
 

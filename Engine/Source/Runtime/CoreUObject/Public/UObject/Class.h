@@ -147,8 +147,8 @@ class COREUOBJECT_API UField : public UObject
 	 * @param LocalizationKey			Key to lookup in the localization manager
 	 * @return							Localized metadata if available, defaults to whatever is provided via GetMetaData
 	 */
-	const FText GetMetaDataText(const TCHAR* MetaDataKey, const FString LocalizationNamespace = FString(), const FString LocalizationKey = FString()) const;
-	const FText GetMetaDataText(const FName& MetaDataKey, const FString LocalizationNamespace = FString(), const FString LocalizationKey = FString()) const;
+	FText GetMetaDataText(const TCHAR* MetaDataKey, const FString LocalizationNamespace = FString(), const FString LocalizationKey = FString()) const;
+	FText GetMetaDataText(const FName& MetaDataKey, const FString LocalizationNamespace = FString(), const FString LocalizationKey = FString()) const;
 
 	/**
 	 * Sets the metadata value associated with the key
@@ -502,6 +502,9 @@ public:
 	{
 		return false;
 	}
+
+	/** Destroys all properties owned by this struct */
+	void DestroyChildPropertiesAndResetPropertyLinks();
 
 #if WITH_EDITORONLY_DATA
 	/** Try and find boolean metadata with the given key. If not found on this class, work up hierarchy looking for it. */

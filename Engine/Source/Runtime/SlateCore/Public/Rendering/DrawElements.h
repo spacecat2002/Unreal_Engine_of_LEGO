@@ -432,12 +432,7 @@ struct FSlateCachedElementData
 
 private:
 	/** Removes a cache node completely from the cache */
-	void RemoveList(FSlateCachedElementsHandle& CacheHandle)
-	{
-		TSharedPtr<FSlateCachedElementList> Data = CacheHandle.Ptr.Pin();
-		CachedElementLists.RemoveSingleSwap(Data);
-		Data->ClearCachedElements();
-	}
+	void RemoveList(FSlateCachedElementsHandle& CacheHandle);
 
 private:
 
