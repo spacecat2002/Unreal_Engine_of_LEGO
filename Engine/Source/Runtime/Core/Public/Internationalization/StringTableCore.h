@@ -7,6 +7,7 @@
 #include "Containers/UnrealString.h"
 #include "Internationalization/Text.h"
 #include "Internationalization/LocKeyFuncs.h"
+#include "Internationalization/Internationalization.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogStringTable, Log, All);
 
