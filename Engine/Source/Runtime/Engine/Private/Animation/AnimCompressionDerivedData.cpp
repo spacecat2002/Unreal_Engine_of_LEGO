@@ -120,7 +120,7 @@ void FAsyncCompressedAnimationsManagement::OnActiveCompressionFinished(int32 Act
 	}
 	else
 	{
-		UE_LOG(LogAnimationCompression, Fatal, TEXT("Failed to get async compressed animation data for anim '%'"), *Task.Sequence->GetName());
+		UE_LOG(LogAnimationCompression, Fatal, TEXT("Failed to get async compressed animation data for anim '%s'"), *Task.Sequence->GetName());
 		Task.Sequence->ApplyCompressedData(FString(), false, OutData); // Clear active compression on Sequence
 	}
 	ActiveMemoryUsage -= Task.TaskSize;
