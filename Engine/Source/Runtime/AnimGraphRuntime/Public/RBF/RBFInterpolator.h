@@ -318,7 +318,8 @@ private:
 		// function returns 1.0 for nodes of the same coordinates.
 		for (int32 i = 0; i < NumNodes; i++)
 		{
-			for (int32 j = i; j < NumNodes; j++)
+			// PVS thinks the use of 'j = i' might be an bug. It is not.
+			for (int32 j = i; j < NumNodes; j++) //-V791 
 			{
 				UpperKernel.Add(WeightFunc(Nodes[i], Nodes[j]));
 			}
