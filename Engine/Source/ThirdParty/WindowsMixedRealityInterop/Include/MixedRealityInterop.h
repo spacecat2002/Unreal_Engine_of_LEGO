@@ -426,7 +426,8 @@ namespace WindowsMixedReality
 			HMDHand hand,
 			HMDHandJoint joint,
 			DirectX::XMFLOAT4& orientation,
-			DirectX::XMFLOAT3& position);
+			DirectX::XMFLOAT3& position,
+			float& radius);
 
 		void PollInput();
 		void PollHandTracking();

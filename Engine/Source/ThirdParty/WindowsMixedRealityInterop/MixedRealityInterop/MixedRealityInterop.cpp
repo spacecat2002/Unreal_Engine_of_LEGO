@@ -2583,7 +2583,7 @@ namespace WindowsMixedReality
 		return ControllerIsTracked[(int)hand];
 	}
 
-	bool MixedRealityInterop::GetHandJointOrientationAndPosition(HMDHand hand, HMDHandJoint joint, DirectX::XMFLOAT4& orientation, DirectX::XMFLOAT3& position)
+	bool MixedRealityInterop::GetHandJointOrientationAndPosition(HMDHand hand, HMDHandJoint joint, DirectX::XMFLOAT4& orientation, DirectX::XMFLOAT3& position, float& radius)
 	{
 		if (!supportsHandTracking)
 		{
@@ -2600,6 +2600,7 @@ namespace WindowsMixedReality
 
 		float3 pos = JointPoses[(int)hand][(int)joint].Position;
 		quaternion rot = JointPoses[(int)hand][(int)joint].Orientation;
+		radius = JointPoses[(int)hand][(int)joint].Radius;
 
 		// Rotate the bones to the MS API's new frame
  		rot *= make_quaternion_from_yaw_pitch_roll(0.0f, DirectX::XM_PI, 0.0f);
