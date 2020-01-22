@@ -1767,10 +1767,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FIsNearlyEqualByULPTest, "System.Core.Math.IsNe
 bool FIsNearlyEqualByULPTest::RunTest(const FString& Parameters)
 {
 	static float FloatNan = FMath::Sqrt(-1.0f);
-	static float DoubleNan = double(FloatNan);
+	static double DoubleNan = double(FloatNan);
 
 	static float FloatInf = 1.0f / 0.0f;
-	static float DoubleInf = 1.0 / 0.0;
+	static double DoubleInf = 1.0 / 0.0;
 
 	float FloatTrueMin;
 	double DoubleTrueMin;
@@ -1841,8 +1841,8 @@ bool FIsNearlyEqualByULPTest::RunTest(const FString& Parameters)
 
 	};
 
-	void(FAutomationTestBase::*FuncTrue)(const FString &, bool) = &FAutomationTestBase::TestTrue;
-	void(FAutomationTestBase::*FuncFalse)(const FString &, bool) = &FAutomationTestBase::TestFalse;
+	bool(FAutomationTestBase::*FuncTrue)(const FString &, bool) = &FAutomationTestBase::TestTrue;
+	bool(FAutomationTestBase::*FuncFalse)(const FString &, bool) = &FAutomationTestBase::TestFalse;
 
 	for (const TestItem& Item : TestItems)
 	{
