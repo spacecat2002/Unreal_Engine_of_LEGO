@@ -271,7 +271,7 @@ void FMovieSceneCameraCutSectionTemplate::Evaluate(const FMovieSceneEvaluationOp
 		// For now we only look at how long the camera blend is supposed to be, and we pass that on to
 		// the player controller via the execution token. Later we'll need to actually drive the blend
 		// ourselves so that the curve itself is actually matching.
-		MovieScene::FBlendedCameraCut Params(CameraBindingID);
+		MovieScene::FBlendedCameraCut Params(FMovieSceneObjectBindingID(CameraBindingID.GetGuid(), Operand.SequenceID));
 		Params.bIsFinalCut = bIsFinalSection;
 		if (SourceSectionPtr.IsValid())
 		{
