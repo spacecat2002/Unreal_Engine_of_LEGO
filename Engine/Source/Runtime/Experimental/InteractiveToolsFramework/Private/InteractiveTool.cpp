@@ -3,6 +3,7 @@
 
 #include "InteractiveTool.h"
 #include "InteractiveToolManager.h"
+#include "UObject/Class.h"
 
 
 #define LOCTEXT_NAMESPACE "UInteractiveTool"
