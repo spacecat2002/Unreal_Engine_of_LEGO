@@ -71,8 +71,8 @@ public:
 		, _Value(0)
 		, _MinValue(0)
 		, _MaxValue(0)
-		, _MinFractionalDigits(1)
-		, _MaxFractionalDigits(6)
+		, _MinFractionalDigits(DefaultMinFractionalDigits)
+		, _MaxFractionalDigits(DefaultMaxFractionalDigits)
 		, _AlwaysUsesDeltaSnap(false)
 		, _Delta(0)
 		, _ShiftMouseMovePixelPerDelta(1)
@@ -184,8 +184,8 @@ public:
 		MinSliderValue = (InArgs._MinSliderValue.Get().IsSet()) ? InArgs._MinSliderValue : MinValue;
 		MaxSliderValue = (InArgs._MaxSliderValue.Get().IsSet()) ? InArgs._MaxSliderValue : MaxValue;
 
-		MinFractionalDigits = (InArgs._MinFractionalDigits.Get().IsSet()) ? InArgs._MinFractionalDigits : 1;
-		MaxFractionalDigits = (InArgs._MaxFractionalDigits.Get().IsSet()) ? InArgs._MaxFractionalDigits : 6;
+		MinFractionalDigits = (InArgs._MinFractionalDigits.Get().IsSet()) ? InArgs._MinFractionalDigits : DefaultMinFractionalDigits;
+		MaxFractionalDigits = (InArgs._MaxFractionalDigits.Get().IsSet()) ? InArgs._MaxFractionalDigits : DefaultMaxFractionalDigits;
 
 		AlwaysUsesDeltaSnap = InArgs._AlwaysUsesDeltaSnap;
 
@@ -989,6 +989,12 @@ protected:
 
 private:
 
+	/** The default minimum fractional digits */
+	static const int32 DefaultMinFractionalDigits;
+
+	/** The default maximum fractional digits */
+	static const int32 DefaultMaxFractionalDigits;
+
 	TAttribute<NumericType> ValueAttribute;
 	FOnValueChanged OnValueChanged;
 	FOnValueCommitted OnValueCommitted;
@@ -1081,3 +1087,9 @@ private:
 	// When true, the viewport will be updated with every single change to the value during dragging
 	bool bPreventThrottling;
 };
+
+template<typename NumericType>
+const int32 SSpinBox<NumericType>::DefaultMinFractionalDigits = 1;
+
+template<typename NumericType>
+const int32 SSpinBox<NumericType>::DefaultMaxFractionalDigits = 6;
