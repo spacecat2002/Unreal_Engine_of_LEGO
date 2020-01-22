@@ -184,8 +184,10 @@ bool FAsyncCompressedAnimationsManagement::RequestAsyncCompression(FDerivedDataA
 		Tick(0.f); // Try to free up some memory
 	}
 
-	const bool bForceSync = false;
-	if (!bForceSync && (ActiveMemoryUsage + NewTaskSize < MAX_ASYNC_COMPRESSION_MEM_USAGE))
+	const bool bCanRunASync = (ActiveMemoryUsage + NewTaskSize < MAX_ASYNC_COMPRESSION_MEM_USAGE);
+	const bool bForceSync = false; //debugging override
+
+	if (bCanRunASync && !bForceSync)
 	{
 		//Queue Async
 		ActiveMemoryUsage += NewTaskSize;

@@ -173,61 +173,80 @@ bool UAnimBoneCompressionSettings::Compress(const FCompressibleAnimData& AnimSeq
 		return false;
 	}
 
-	// Find the best codec
 	FAnimBoneCompressionContext* BestContext = nullptr;
-	AnimationErrorStats BestErrorStats;
-	BestErrorStats.MaxError = MAX_FLT;
-
-	const int32 RawSize = AnimSeq.GetApproxRawSize();
-
-	const float ErrorThresholdToUse = ErrorThreshold / AnimSeq.ErrorThresholdScale;
+	int32 ComparisonLoopStart = 0;
 
 	for (int32 ContextIndex = 0; ContextIndex < NumContextes; ++ContextIndex)
 	{
 		FAnimBoneCompressionContext* Context = ContextList[ContextIndex];
 
-		if (!Context->bSuccess)
-		{
-			// Compression failed for this codec, ignore it
-			continue;
-		}
-
-		const FAnimationErrorStats& ErrorStats = Context->Result.AnimData->BoneCompressionErrorStats;
-		const int32 BestSize = BestContext != nullptr ? BestContext->GetCompressedSize() : RawSize;
-		const int32 CurrentSize = Context->GetCompressedSize();
-		const int32 MemorySavingsFromPrevious = BestSize - CurrentSize;
-
-		const bool bLowersError = ErrorStats.MaxError < BestErrorStats.MaxError;
-		const bool bErrorUnderThreshold = ErrorStats.MaxError <= ErrorThresholdToUse;
-
-		// Keep it if we have no other alternative yet
-		bool bKeepNewCompressionMethod = BestContext == nullptr;
-		/* or if it we want to force the error below the threshold and it reduces error */
-		const bool bReducesErrorBelowThreshold = bLowersError && (BestErrorStats.MaxError > ErrorThresholdToUse) && bForceBelowThreshold;
-		bKeepNewCompressionMethod |= bReducesErrorBelowThreshold;
-		/* or if has an acceptable error and saves space  */
-		const bool bHasAcceptableErrorAndSavesSpace = bErrorUnderThreshold && (MemorySavingsFromPrevious > 0);
-		bKeepNewCompressionMethod |= bHasAcceptableErrorAndSavesSpace;
-		/* or if saves the same amount and an acceptable error that is lower than the previous best */
-		const bool bLowersErrorAndSavesSameOrBetter = bErrorUnderThreshold && bLowersError && (MemorySavingsFromPrevious >= 0);
-		bKeepNewCompressionMethod |= bLowersErrorAndSavesSameOrBetter;
-
-		if (bKeepNewCompressionMethod)
+		if (Context->bSuccess)
 		{
 			BestContext = Context;
-			BestErrorStats = ErrorStats;
+			ComparisonLoopStart = ContextIndex + 1;
+			break;
 		}
+	}
 
-		const int32 MemorySavingsFromOriginal = RawSize - CurrentSize;
-		const FString CodecLabel = Context->Codec->Description.Len() == 0 ? Context->Codec->GetName() : Context->Codec->Description;
-		UE_LOG(LogAnimationCompression, Verbose, TEXT("- %s - bytes saved(%i) from previous(%i) MaxError(%.2f) bLowersError(%d) %s"),
-			*CodecLabel, MemorySavingsFromOriginal, MemorySavingsFromPrevious, ErrorStats.MaxError, bLowersError, bKeepNewCompressionMethod ? TEXT("(**Best so far**)") : TEXT(""));
+	if(BestContext)
+	{
+		const int32 RawSize = AnimSeq.GetApproxRawSize();
 
-		UE_LOG(LogAnimationCompression, Verbose, TEXT("    bReducesErrorBelowThreshold(%d) bHasAcceptableErrorAndSavesSpace(%d) bLowersErrorAndSavesSameOrBetter(%d)"),
-			bReducesErrorBelowThreshold, bHasAcceptableErrorAndSavesSpace, bLowersErrorAndSavesSameOrBetter);
+		// Find the best codec
+		int32 BestSize = BestContext->GetCompressedSize();
 
-		UE_LOG(LogAnimationCompression, Verbose, TEXT("    WinningCompressorError(%f) Settings ErrorThreshold(%f) ErrorThresholdToUse(%f) bForceBelowThreshold(%d) bErrorUnderThreshold(%d)"),
-			BestErrorStats.MaxError, ErrorThreshold, ErrorThresholdToUse, bForceBelowThreshold, bErrorUnderThreshold);
+		AnimationErrorStats BestErrorStats = BestContext->Result.AnimData->BoneCompressionErrorStats;
+
+		const float ErrorThresholdToUse = ErrorThreshold / AnimSeq.ErrorThresholdScale;
+
+		for (int32 ContextIndex = ComparisonLoopStart; ContextIndex < NumContextes; ++ContextIndex)
+		{
+			FAnimBoneCompressionContext* Context = ContextList[ContextIndex];
+
+			if (!Context->bSuccess)
+			{
+				// Compression failed for this codec, ignore it
+				continue;
+			}
+
+			const FAnimationErrorStats& ErrorStats = Context->Result.AnimData->BoneCompressionErrorStats;
+			const int32 CurrentSize = Context->GetCompressedSize();
+			const int32 MemorySavingsFromPrevious = BestSize - CurrentSize;
+
+			const bool bLowersError = ErrorStats.MaxError < BestErrorStats.MaxError;
+			const bool bErrorUnderThreshold = ErrorStats.MaxError <= ErrorThresholdToUse;
+
+			/* or if it we want to force the error below the threshold and it reduces error */
+			const bool bReducesErrorBelowThreshold = bLowersError && (BestErrorStats.MaxError > ErrorThresholdToUse) && bForceBelowThreshold;
+			
+			bool bKeepNewCompressionMethod = bReducesErrorBelowThreshold;
+
+			/* or if has an acceptable error and saves space  */
+			const bool bHasAcceptableErrorAndSavesSpace = bErrorUnderThreshold && (MemorySavingsFromPrevious > 0);
+			bKeepNewCompressionMethod |= bHasAcceptableErrorAndSavesSpace;
+			
+			/* or if saves the same amount and an acceptable error that is lower than the previous best */
+			const bool bLowersErrorAndSavesSameOrBetter = bErrorUnderThreshold && bLowersError && (MemorySavingsFromPrevious >= 0);
+			bKeepNewCompressionMethod |= bLowersErrorAndSavesSameOrBetter;
+
+			if (bKeepNewCompressionMethod)
+			{
+				BestContext = Context;
+				BestSize = Context->GetCompressedSize();
+				BestErrorStats = ErrorStats;
+			}
+
+			const int32 MemorySavingsFromOriginal = RawSize - CurrentSize;
+			const FString CodecLabel = Context->Codec->Description.Len() == 0 ? Context->Codec->GetName() : Context->Codec->Description;
+			UE_LOG(LogAnimationCompression, Verbose, TEXT("- %s - bytes saved(%i) from previous(%i) MaxError(%.2f) bLowersError(%d) %s"),
+				*CodecLabel, MemorySavingsFromOriginal, MemorySavingsFromPrevious, ErrorStats.MaxError, bLowersError, bKeepNewCompressionMethod ? TEXT("(**Best so far**)") : TEXT(""));
+
+			UE_LOG(LogAnimationCompression, Verbose, TEXT("    bReducesErrorBelowThreshold(%d) bHasAcceptableErrorAndSavesSpace(%d) bLowersErrorAndSavesSameOrBetter(%d)"),
+				bReducesErrorBelowThreshold, bHasAcceptableErrorAndSavesSpace, bLowersErrorAndSavesSameOrBetter);
+
+			UE_LOG(LogAnimationCompression, Verbose, TEXT("    WinningCompressorError(%f) Settings ErrorThreshold(%f) ErrorThresholdToUse(%f) bForceBelowThreshold(%d) bErrorUnderThreshold(%d)"),
+				BestErrorStats.MaxError, ErrorThreshold, ErrorThresholdToUse, bForceBelowThreshold, bErrorUnderThreshold);
+		}
 	}
 
 	const bool Success = BestContext != nullptr;
