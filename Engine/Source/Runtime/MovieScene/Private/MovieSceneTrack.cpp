@@ -91,7 +91,19 @@ void UMovieSceneTrack::UpdateEasing()
 			UMovieSceneSection* CurrentSection = RowSections[Index];
 
 			FMovieSceneSupportsEasingParams SupportsEasingParams(CurrentSection);
-			if (!EnumHasAllFlags(SupportsEasing(SupportsEasingParams), EMovieSceneTrackEasingSupportFlags::AutomaticEasing))
+			EMovieSceneTrackEasingSupportFlags EasingFlags = SupportsEasing(SupportsEasingParams);
+
+			// Auto-deactivate manual easing if we lost the ability to use it.
+			if (!EnumHasAllFlags(EasingFlags, EMovieSceneTrackEasingSupportFlags::ManualEaseIn))
+			{
+				CurrentSection->Easing.bManualEaseIn = false;
+			}
+			if (!EnumHasAllFlags(EasingFlags, EMovieSceneTrackEasingSupportFlags::ManualEaseOut))
+			{
+				CurrentSection->Easing.bManualEaseOut = false;
+			}
+
+			if (!EnumHasAllFlags(EasingFlags, EMovieSceneTrackEasingSupportFlags::AutomaticEasing))
 			{
 				continue;
 			}

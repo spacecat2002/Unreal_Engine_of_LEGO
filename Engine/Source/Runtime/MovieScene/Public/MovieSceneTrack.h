@@ -111,8 +111,12 @@ struct FMovieSceneTrackDisplayOptions
 enum class EMovieSceneTrackEasingSupportFlags
 {
 	None = 0,
-	AutomaticEasing = 1 << 0,
-	ManualEasing = 1 << 1,
+	AutomaticEaseIn = 1 << 0,
+	AutomaticEaseOut = 1 << 1,
+	ManualEaseIn = 1 << 2,
+	ManualEaseOut = 1 << 3,
+	AutomaticEasing = AutomaticEaseIn | AutomaticEaseOut,
+	ManualEasing = ManualEaseIn | ManualEaseOut,
 	All = AutomaticEasing | ManualEasing
 };
 ENUM_CLASS_FLAGS(EMovieSceneTrackEasingSupportFlags)
