@@ -36,6 +36,7 @@ public:
 
 	virtual const FName& GetStyleSetName() const override;
 	virtual void GetResources(TArray< const FSlateBrush* >& OutResources) const override;
+	virtual TArray<FName> GetEntriesUsingBrush(const FName BrushName) const override;
 	virtual void SetContentRoot(const FString& InContentRootDir);
 	virtual FString RootToContentDir(const ANSICHAR* RelativePath, const TCHAR* Extension);
 	virtual FString RootToContentDir(const WIDECHAR* RelativePath, const TCHAR* Extension);

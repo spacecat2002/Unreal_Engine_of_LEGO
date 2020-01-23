@@ -34,6 +34,15 @@ public:
 	 */
 	virtual void GetResources( TArray< const FSlateBrush* >& OutResources ) const = 0;
 
+	/**
+	 * Gets the names of every style entry using a brush in this style
+	 * Note: this function is expensive and is not designed to be used in performance critical situations
+	 *
+	 * @param BrushName The name of the brush to find style entries from
+	 * @return Array of style names using the brush
+	 */
+	virtual TArray<FName> GetEntriesUsingBrush(const FName BrushName) const = 0;
+
 	template< typename WidgetStyleType >            
 	const WidgetStyleType& GetWidgetStyle( FName PropertyName, const ANSICHAR* Specifier = nullptr ) const 
 	{

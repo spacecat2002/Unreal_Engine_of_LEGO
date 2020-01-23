@@ -59,6 +59,41 @@ void FSlateStyleSet::GetResources(TArray< const FSlateBrush* >& OutResources) co
 	OutResources.Append(SlateBrushResources);
 }
 
+TArray<FName> FSlateStyleSet::GetEntriesUsingBrush(const FName BrushName) const
+{
+	TArray<FName> FoundStyles;
+
+	// Collection for this style's brush resources.
+	for (TMap< FName, FSlateBrush* >::TConstIterator It(BrushResources); It; ++It)
+	{
+		if (It.Value()->GetResourceName() == BrushName)
+		{
+			FoundStyles.Add(It.Key());
+		}
+	}
+
+	//Gather resources from our definitions
+	TArray<const FSlateBrush*> BrushesInStyle;
+	BrushesInStyle.Reserve(20);
+
+	for (TMap< FName, TSharedRef< struct FSlateWidgetStyle > >::TConstIterator It(WidgetStyleValues); It; ++It)
+	{
+		It.Value()->GetResources(BrushesInStyle);
+
+		for (const FSlateBrush* Brush : BrushesInStyle)
+		{
+			if (Brush->GetResourceName() == BrushName)
+			{
+				FoundStyles.Add(It.Key());
+			}
+		}
+
+		BrushesInStyle.Reset();
+	}
+
+	return FoundStyles;
+}
+
 void FSlateStyleSet::SetContentRoot(const FString& InContentRootDir)
 {
 	ContentRootDir = InContentRootDir;

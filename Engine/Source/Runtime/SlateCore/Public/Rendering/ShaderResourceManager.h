@@ -8,6 +8,7 @@
 #include "Textures/SlateTextureData.h"
 
 class ISlateAtlasProvider;
+class FSlateAtlasedTextureSlot;
 
 /**
  * Represents a new texture that has been loaded but no resource created for it
@@ -84,6 +85,9 @@ protected:
 			delete It.Value();
 		}
 		ResourceMap.Empty();
+#if WITH_ATLAS_DEBUGGING
+		AtlasDebugData.Empty();
+#endif
 	}
 
 	FString GetResourcePath( const FSlateBrush& InBrush ) const
@@ -95,6 +99,9 @@ protected:
 	/** Mapping of names to texture pointers */
 	TMap<FName,FSlateShaderResourceProxy*> ResourceMap;
 
+#if WITH_ATLAS_DEBUGGING
+	TMap<const FAtlasedTextureSlot*, FName> AtlasDebugData;
+#endif
 private:
 	// Non-copyable
 	FSlateShaderResourceManager(const FSlateShaderResourceManager&);
