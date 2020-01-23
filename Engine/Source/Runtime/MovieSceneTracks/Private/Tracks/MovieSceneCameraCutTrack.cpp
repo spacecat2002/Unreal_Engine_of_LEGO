@@ -108,10 +108,16 @@ EMovieSceneTrackEasingSupportFlags UMovieSceneCameraCutTrack::SupportsEasing(FMo
 	{
 		return EMovieSceneTrackEasingSupportFlags::None;
 	}
-	if (Params.ForSection != nullptr && Sections.Num() > 0 && 
-			(Params.ForSection == Sections[0] || Params.ForSection == Sections.Last()))
+	if (Params.ForSection != nullptr && Sections.Num() > 0)
 	{
-		return EMovieSceneTrackEasingSupportFlags::All;
+		if (Params.ForSection == Sections[0])
+		{
+			return EMovieSceneTrackEasingSupportFlags::AutomaticEasing | EMovieSceneTrackEasingSupportFlags::ManualEaseIn;
+		}
+		if (Params.ForSection == Sections.Last())
+		{
+			return EMovieSceneTrackEasingSupportFlags::AutomaticEasing | EMovieSceneTrackEasingSupportFlags::ManualEaseOut;
+		}
 	}
 	return EMovieSceneTrackEasingSupportFlags::AutomaticEasing;
 }
@@ -124,6 +130,7 @@ const TArray<UMovieSceneSection*>& UMovieSceneCameraCutTrack::GetAllSections() c
 void UMovieSceneCameraCutTrack::RemoveSection(UMovieSceneSection& Section)
 {
 	Sections.Remove(&Section);
+
 	MovieSceneHelpers::FixupConsecutiveSections(Sections, Section, true, true, bCanBlend);
 	MovieSceneHelpers::SortConsecutiveSections(Sections);
 
