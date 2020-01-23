@@ -20,7 +20,11 @@ UInteractiveTool::UInteractiveTool()
 	InputBehaviors = NewObject<UInputBehaviorSet>(this, TEXT("InputBehaviors"));
 
 	// initialize ToolInfo
+#if WITH_EDITORONLY_DATA
 	DefaultToolInfo.ToolDisplayName = GetClass()->GetDisplayNameText();
+#else
+	DefaultToolInfo.ToolDisplayName = FText("DefaultInteractiveToolName", "DefaultToolName");
+#endif
 }
 
 void UInteractiveTool::Setup()
