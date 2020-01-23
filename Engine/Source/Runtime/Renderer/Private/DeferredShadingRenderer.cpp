@@ -669,6 +669,7 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 		Scene,
 		&ReferenceView,
 		ViewFamily,
+		RHICmdList,
 		*ReferenceView.RayTracingMeshResourceCollector
 	};
 
@@ -922,9 +923,18 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 						(Instance.Geometry->Initializer.Segments.Num() == 0 && Instance.Materials.Num() == 1) ||
 						(Instance.Materials.Num() == 0 && (Instance.Mask & RAY_TRACING_MASK_THIN_SHADOW) > 0));
 
-					RayTracingInstance.Transforms.SetNumUninitialized(Instance.InstanceTransforms.Num());
-					FMemory::Memcpy(RayTracingInstance.Transforms.GetData(), Instance.InstanceTransforms.GetData(), Instance.InstanceTransforms.Num() * sizeof(RayTracingInstance.Transforms[0]));
-					static_assert(TIsSame<decltype(RayTracingInstance.Transforms[0]), decltype(Instance.InstanceTransforms[0])>::Value, "Unexpected transform type");
+					if (Instance.InstanceGPUTransformsSRV.IsValid())
+					{
+						RayTracingInstance.NumTransforms = Instance.NumTransforms;
+						RayTracingInstance.GPUTransformsSRV = Instance.InstanceGPUTransformsSRV;
+					}
+					else 
+					{
+						RayTracingInstance.NumTransforms = Instance.InstanceTransforms.Num();
+						RayTracingInstance.Transforms.SetNumUninitialized(Instance.InstanceTransforms.Num());
+						FMemory::Memcpy(RayTracingInstance.Transforms.GetData(), Instance.InstanceTransforms.GetData(), Instance.InstanceTransforms.Num() * sizeof(RayTracingInstance.Transforms[0]));
+						static_assert(TIsSame<decltype(RayTracingInstance.Transforms[0]), decltype(Instance.InstanceTransforms[0])>::Value, "Unexpected transform type");
+					}			
 
 					uint32 InstanceIndex = ReferenceView.RayTracingGeometryInstances.Add(RayTracingInstance);
 
@@ -996,6 +1006,7 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 			}
 
 			FRayTracingGeometryInstance& RayTracingInstance = View.RayTracingGeometryInstances.Emplace_GetRef();
+			RayTracingInstance.NumTransforms = 1;
 			RayTracingInstance.Transforms.SetNumUninitialized(1);
 			RayTracingInstance.UserData.SetNumUninitialized(1);
 

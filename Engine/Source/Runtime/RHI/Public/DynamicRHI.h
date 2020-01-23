@@ -84,6 +84,12 @@ struct FRayTracingGeometryInstance
 	// All copies share the same shader binding table entries and therefore will have the same material and shader resources.
 	TArray<FMatrix, TInlineAllocator<1>> Transforms;
 
+	// Transforms count. When GPU transforms are used it is a conservative count 
+	uint32 NumTransforms = 0;
+
+	// Buffer that stores GPU transforms
+	FShaderResourceViewRHIRef GPUTransformsSRV;
+	
 	// Each geometry copy can receive a user-provided integer, which can be used to retrieve extra shader parameters or customize appearance.
 	// This data can be retrieved using GetInstanceUserData() in closest/any hit shaders.
 	// If UserData is empty, then 0 will be implicitly used for all entries.

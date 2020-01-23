@@ -2335,6 +2335,7 @@ struct FRayTracingMaterialGatheringContext
 	const class FScene* Scene;
 	const FSceneView* ReferenceView;
 	const FSceneViewFamily& ReferenceViewFamily;
+	FRHICommandListImmediate& RHICmdList;
 
 	FRayTracingMeshResourceCollector& RayTracingMeshResourceCollector;
 	TArray<FRayTracingDynamicGeometryUpdateParams> DynamicRayTracingGeometriesToUpdate;
