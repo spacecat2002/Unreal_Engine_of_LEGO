@@ -1371,6 +1371,13 @@ bool USkinnedMeshComponent::GetTwistAndSwingAngleOfDeltaRotationFromRefPose(FNam
 	const int32 BoneIndex = GetBoneIndex(BoneName);
 	const TArray<FTransform>& Transforms = GetComponentSpaceTransforms();
 
+	// detect the case where we don't have a pose yet
+	if (Transforms.Num() == 0)
+	{
+		OutTwistAngle = OutSwingAngle = 0.f;
+		return false;
+	}
+
 	if (BoneIndex != INDEX_NONE && ensureMsgf(BoneIndex < Transforms.Num(), TEXT("Invalid transform access in %s. Index=%d, Num=%d"), *GetPathName(), BoneIndex, Transforms.Num()))
 	{
 		FTransform LocalTransform = GetComponentSpaceTransforms()[BoneIndex];
