@@ -6,9 +6,7 @@
 #include "Styling/SlateBrush.h"
 #include "Textures/SlateShaderResource.h"
 #include "Textures/SlateTextureData.h"
-
-class ISlateAtlasProvider;
-class FSlateAtlasedTextureSlot;
+#include "Textures/TextureAtlas.h"
 
 /**
  * Represents a new texture that has been loaded but no resource created for it
