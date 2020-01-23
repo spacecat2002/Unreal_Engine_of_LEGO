@@ -6724,7 +6724,29 @@ int32 FHLSLMaterialTranslator::CustomExpression( class UMaterialExpressionCustom
 
 	FString ParametersType = ShaderFrequency == SF_Vertex ? TEXT("Vertex") : (ShaderFrequency == SF_Domain ? TEXT("Tessellation") : TEXT("Pixel"));
 
-	FString ImplementationCode = FString::Printf(TEXT("%s CustomExpression%d(FMaterial%sParameters Parameters%s)\r\n{\r\n%s\r\n}\r\n"), *OutputTypeString, CustomExpressionIndex, *ParametersType, *InputParamDecl, *Code);
+	FString ImplementationCode;
+
+	for (FCustomDefine DefineEntry : Custom->AdditionalDefines)
+	{
+		FString DefineStatement = TEXT("#ifndef ") + DefineEntry.DefineName + LINE_TERMINATOR;
+		DefineStatement += TEXT("#define ") + DefineEntry.DefineName + TEXT(" ") + DefineEntry.DefineValue + LINE_TERMINATOR;
+		DefineStatement += TEXT("#endif//") + DefineEntry.DefineName + LINE_TERMINATOR;
+
+		ImplementationCode += DefineStatement;
+	}
+
+	for (FString IncludeFile : Custom->IncludeFilePaths)
+	{
+		FString IncludeStatement = TEXT("#include ");
+		IncludeStatement += TEXT("\"");
+		IncludeStatement += IncludeFile;
+		IncludeStatement += TEXT("\"");
+		IncludeStatement += LINE_TERMINATOR;
+
+		ImplementationCode += IncludeStatement;
+	}		
+		
+	ImplementationCode += FString::Printf(TEXT("%s CustomExpression%d(FMaterial%sParameters Parameters%s)\r\n{\r\n%s\r\n}\r\n"), *OutputTypeString, CustomExpressionIndex, *ParametersType, *InputParamDecl, *Code);
 	CustomExpressionImplementations.Add( ImplementationCode );
 
 	// Add call to implementation function
