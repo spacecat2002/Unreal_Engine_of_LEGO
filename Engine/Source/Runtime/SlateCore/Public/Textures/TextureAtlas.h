@@ -218,7 +218,6 @@ protected:
 #endif
 };
 
-#if WITH_ATLAS_DEBUGGING
 struct FAtlasSlotInfo
 {
 	FAtlasSlotInfo()
@@ -234,7 +233,6 @@ struct FAtlasSlotInfo
 	FSlateRect AtlasSlotRect;
 	FName TextureName;
 };
-#endif
 
 /**
  * Interface to allow the Slate atlas visualizer to query atlas page information for an atlas provider
