@@ -6,7 +6,7 @@
 
 #include "D3D12Resources.h"
 #include "Containers/DynamicRHIResourceArray.h"
-#include "Containers/BitArray.h"
+#include "Experimental/Containers/SherwoodHashTable.h"
 #include "BuiltInRayTracingShaders.h"
 #include "RayTracingBuiltInResources.h"
 #include "Hash/CityHash.h"
@@ -982,16 +982,16 @@ public:
 		checkSlow(Type == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV || Type == D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
 
 		FD3D12RayTracingDescriptorHeap& Heap = (Type == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) ? ViewHeap : SamplerHeap;
-		TMap<uint64, uint32>& Map = (Type == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) ? ViewDescriptorTableCache : SamplerDescriptorTableCache;
+		TDescriptorHashMap& Map = (Type == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) ? ViewDescriptorTableCache : SamplerDescriptorTableCache;
 
 		const uint64 Key = CityHash64((const char*)Descriptors, sizeof(Descriptors[0]) * NumDescriptors);
 
-		uint32 DescriptorTableBaseIndex = ~0u;
-		const uint32* FoundDescriptorTableBaseIndex = Map.Find(Key);
+		const uint32 InvalidIndex = ~0u;
+		uint32& DescriptorTableBaseIndex = Map.FindOrAdd(Key, InvalidIndex);
 
-		if (FoundDescriptorTableBaseIndex)
+		if (DescriptorTableBaseIndex != InvalidIndex)
 		{
-			DescriptorTableBaseIndex = *FoundDescriptorTableBaseIndex;
+			return DescriptorTableBaseIndex;
 		}
 		else
 		{
@@ -1001,8 +1001,6 @@ public:
 			checkf(Heap.CPUBase.ptr, TEXT("Ray tracing descriptor heap of type %d assigned to descriptor cache is invalid."), Type);
 			GetParentDevice()->GetDevice()->CopyDescriptors(1, &DestDescriptor, &NumDescriptors, NumDescriptors, Descriptors, nullptr, Type);
 
-			Map.Add(Key, DescriptorTableBaseIndex);
-
 			if (Type == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)
 			{
 				INC_DWORD_STAT_BY(STAT_D3D12RayTracingUsedViewDescriptors, NumDescriptors);
@@ -1011,16 +1009,30 @@ public:
 			{
 				INC_DWORD_STAT_BY(STAT_D3D12RayTracingUsedSamplerDescriptors, NumDescriptors);
 			}
-		}
 
-		return DescriptorTableBaseIndex;
+			return DescriptorTableBaseIndex;
+		}
 	}
 
 	FD3D12RayTracingDescriptorHeap ViewHeap;
 	FD3D12RayTracingDescriptorHeap SamplerHeap;
 
-	TMap<uint64, uint32> ViewDescriptorTableCache;
-	TMap<uint64, uint32> SamplerDescriptorTableCache;
+	template<typename KeyType>
+	struct TIdentityHash
+	{
+		static FORCEINLINE bool Matches(KeyType A, KeyType B)
+		{
+			return A == B;
+		}
+		static FORCEINLINE uint32 GetKeyHash(KeyType Key)
+		{
+			return (uint32)Key;
+		}
+	};
+
+	using TDescriptorHashMap = Experimental::TSherwoodMap<uint64, uint32, TIdentityHash<uint64>>;
+	TDescriptorHashMap ViewDescriptorTableCache;
+	TDescriptorHashMap SamplerDescriptorTableCache;
 };
 
 class FD3D12RayTracingShaderTable
@@ -1370,7 +1382,7 @@ public:
 
 	// A set of all resources referenced by this shader table for the purpose of updating residency before ray tracing work dispatch.
 	// #dxr_todo UE-72159: remove resources from this set when SBT slot entries are replaced
-	TSet<void*> ReferencedD3D12ResourceSet;
+	Experimental::TSherwoodSet<void*> ReferencedD3D12ResourceSet;
 	TArray<TRefCountPtr<FD3D12Resource>> ReferencedD3D12Resources;
 	TArray<TRefCountPtr<FRHIResource>> ReferencedResources;
 	void AddResourceReference(FD3D12Resource* D3D12Resource, FRHIResource* Resource)
