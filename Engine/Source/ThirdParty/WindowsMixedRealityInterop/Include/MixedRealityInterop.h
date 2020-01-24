@@ -22,7 +22,7 @@
 
 //wrap for non-windows platforms
 #if !__UNREAL__ || (PLATFORM_HOLOLENS || PLATFORM_WINDOWS)
-#include <Windows.h>
+
 #include <string>
 
 #include <d3d11.h>
@@ -593,6 +593,50 @@ private:
 	void(*OnLog)(const wchar_t*);
 	/** Function pointer for when new frames have arrived */
 	void(*OnReceivedFrame)(ID3D11Texture2D*);
+};
+
+
+/** Singleton for AsureSpatialAnchors */
+class MIXEDREALITYINTEROP_API AzureSpatialAnchorsInterop
+{
+public:
+	static void Create(WindowsMixedReality::MixedRealityInterop& interop, void(*LogFunctionPointer)(const wchar_t* LogMsg));
+	static AzureSpatialAnchorsInterop& Get();
+	static void Release();
+
+	// The session lifecycle
+	virtual bool CreateSession() = 0;
+	virtual bool ConfigSession(const wchar_t* accountId, const wchar_t* accountKey, int logVerbosity) = 0;
+	virtual bool StartSession() = 0;
+	virtual void StopSession() = 0;
+	virtual void DestroySession() = 0;
+
+	enum class SaveResult
+	{
+		Success,
+		Started,
+		FailBadAnchorId,
+		FailNoLocalAnchor,
+		FailNoSession,
+		FailNotEnoughData,
+		FailSeeErrorString
+	};
+
+	// Things you can do while your session is running.
+	virtual bool HasEnoughDataForSaving() = 0;
+	virtual bool CreateCloudAnchor(const wchar_t* anchorId) = 0;
+	virtual bool SetCloudAnchorExpiration(const wchar_t* anchorId, int minutesFromNow) = 0;
+	virtual bool SaveCloudAnchor(const wchar_t* anchorId, SaveResult& OutResult, wchar_t*& OutError, int OutErrorSize) = 0;
+	virtual bool DeleteCloudAnchor(const wchar_t* anchorId, SaveResult& OutResult, wchar_t*& OutError, int OutErrorSize) = 0;
+	virtual bool LoadCloudAnchorByID(const wchar_t* cloudAnchorId, const wchar_t* localAnchorId, SaveResult& OutResult, wchar_t*& OutError, int OutErrorSize) = 0;
+	//virtual void FindCloudAnchorNearCloudAnchorWithID(const wchar_t* anchorId) = 0;
+	//virtual void FindAnchorByLocation()=0;
+
+protected:
+	AzureSpatialAnchorsInterop() {};
+	virtual ~AzureSpatialAnchorsInterop() {};
+	AzureSpatialAnchorsInterop(const AzureSpatialAnchorsInterop&) =delete;
+	AzureSpatialAnchorsInterop& operator=(const AzureSpatialAnchorsInterop&) =delete;
 };
 
 

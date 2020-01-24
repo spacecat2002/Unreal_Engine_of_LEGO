@@ -3,7 +3,7 @@
 #include "stdafx.h"
 #include "MixedRealityInterop.h"
 
-#include <winrt/Windows.Media.Capture.Frames.h>
+#include <Windows.Media.Capture.Frames.h>
 #include <ppltasks.h>
 #include <string>
 #include <sstream>

@@ -6,9 +6,6 @@
 #include "QRCodeObserver.h"
 #include "FastConversion.h"
 
-#include <wrl/client.h>
-#include <wrl/wrappers/corewrappers.h>
-
 #include <WindowsNumerics.h>
 #include <windows.foundation.numerics.h>
 #include <ppltasks.h>

@@ -44,6 +44,8 @@
 
 #if !PLATFORM_HOLOLENS && defined(_WIN64)
 // Remoting
+#include <winrt/base.h>
+#include <winrt/Microsoft.Holographic.AppRemoting.h>
 #include <HolographicAppRemoting/Streamer.h>
 #define HOLO_STREAMING_RENDERING 1
 #include <winrt/Windows.Data.Xml.Dom.h>
@@ -57,6 +59,7 @@
 #include "SpatialAnchorHelper.h"
 #include "SpeechRecognizer.h"
 #include "GestureRecognizer.h"
+#include "AzureSpatialAnchors.h"
 
 #include <sstream>
 
@@ -200,7 +203,12 @@ namespace WindowsMixedReality
 
 	// Spatial Anchors
 	std::shared_ptr<WindowsMixedReality::SpatialAnchorHelper> m_spatialAnchorHelper = nullptr;
-	
+
+	std::shared_ptr<WindowsMixedReality::SpatialAnchorHelper> GetSpatialAnchorHelper()
+	{
+		return m_spatialAnchorHelper;
+	}
+
 	// Remoting
 	void(*m_logCallback)(const wchar_t*) = nullptr;
 	wchar_t m_ip[32] = L"000.000.000.000";
