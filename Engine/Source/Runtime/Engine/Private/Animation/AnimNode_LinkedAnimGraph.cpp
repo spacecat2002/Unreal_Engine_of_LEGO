@@ -35,8 +35,6 @@ FAnimNode_LinkedAnimGraph::FAnimNode_LinkedAnimGraph()
 	, LinkedRoot(nullptr)
 	, NodeIndex(INDEX_NONE)
 	, PendingBlendDuration(-1.0f)
-	, bReceiveNotifiesFromLinkedInstances(false)
-	, bPropagateNotifiesToLinkedInstances(false)
 {
 }
 
@@ -260,8 +258,6 @@ void FAnimNode_LinkedAnimGraph::ReinitializeLinkedAnimInstance(const UAnimInstan
 			// we mark them as created by linked anim graph
 			// this is to know who owns memory instance
 			InstanceToRun->bCreatedByLinkedAnimGraph = true;
-			InstanceToRun->bPropagateNotifiesToLinkedInstances = bPropagateNotifiesToLinkedInstances;
-			InstanceToRun->bReceiveNotifiesFromLinkedInstances = bReceiveNotifiesFromLinkedInstances;
 		}
 
 		SetTargetInstance(InstanceToRun);

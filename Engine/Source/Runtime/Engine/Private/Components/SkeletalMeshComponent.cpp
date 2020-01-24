@@ -836,11 +836,11 @@ void USkeletalMeshComponent::BeginPlay()
 	// Trace the 'first frame' markers
 	TRACE_SKELETAL_MESH_COMPONENT(this);
 
-	ForEachAnimInstance([](UAnimInstance* InAnimInstance)
+	if (AnimScriptInstance)
 	{
-		InAnimInstance->NativeBeginPlay();
-		InAnimInstance->BlueprintBeginPlay();
-	});
+		AnimScriptInstance->NativeBeginPlay();
+		AnimScriptInstance->BlueprintBeginPlay();
+	}
 }
 
 #if WITH_EDITOR
@@ -2810,27 +2810,6 @@ UAnimInstance* USkeletalMeshComponent::GetLinkedAnimLayerInstanceByClass(TSubcla
 		return AnimScriptInstance->GetLinkedAnimLayerInstanceByClass(InClass);
 	}
 	return nullptr;
-}
-
-void USkeletalMeshComponent::ForEachAnimInstance(TFunctionRef<void(UAnimInstance*)> InFunction)
-{
-	if(AnimScriptInstance)
-	{
-		InFunction(AnimScriptInstance);
-	}
-
-	for(UAnimInstance* LinkedInstance : LinkedInstances)
-	{
-		if(LinkedInstance)
-		{
-			InFunction(LinkedInstance);
-		}
-	}
-
-	if(PostProcessAnimInstance)
-	{
-		InFunction(PostProcessAnimInstance);
-	}
 }
 
 bool USkeletalMeshComponent::HasValidAnimationInstance() const

@@ -432,12 +432,6 @@ private:
 	UPROPERTY(Transient)
 	uint8 bQueueMontageEvents : 1;
 
-	/** Whether to process notifies from any linked anim instances */
-	uint8 bReceiveNotifiesFromLinkedInstances : 1;
-
-	/** Whether to propagate notifies to any linked anim instances */
-	uint8 bPropagateNotifiesToLinkedInstances : 1;
-
 #if DO_CHECK
 	/** Used to guard against recursive calls to UpdateAnimation */
 	bool bPostUpdatingAnimation;
@@ -450,6 +444,8 @@ public:
 
 	// @todo document
 	void MakeMontageTickRecord(FAnimTickRecord& TickRecord, class UAnimMontage* Montage, float CurrentPosition, float PreviousPosition, float MoveDelta, float Weight, TArray<FPassedMarker>& MarkersPassedThisTick, FMarkerTickRecord& MarkerTickRecord);
+
+	bool IsSlotNodeRelevantForNotifies(FName SlotNodeName) const;
 
 	/** Get global weight in AnimGraph for this slot node.
 	* Note: this is the weight of the node, not the weight of any potential montage it is playing. */
@@ -501,22 +497,6 @@ public:
 
 	// Can does this anim instance need an update (parallel or not)?
 	bool NeedsUpdate() const;
-
-	/** Get whether to process notifies from any linked anim instances */
-	UFUNCTION(BlueprintPure, Category = "Notifies")
-	bool GetReceiveNotifiesFromLinkedInstances() const { return bReceiveNotifiesFromLinkedInstances; }
-
-	/** Set whether to process notifies from any linked anim instances */
-	UFUNCTION(BlueprintCallable, Category = "Notifies")
-	void SetReceiveNotifiesFromLinkedInstances(bool bSet) { bReceiveNotifiesFromLinkedInstances = bSet; }
-
-	/** Get whether to propagate notifies to any linked anim instances */
-	UFUNCTION(BlueprintPure, Category = "Notifies")
-	bool GetPropagateNotifiesToLinkedInstances() const { return bPropagateNotifiesToLinkedInstances; }
-
-	/** Set whether to propagate notifies to any linked anim instances */
-	UFUNCTION(BlueprintCallable, Category = "Notifies")
-	void SetPropagateNotifiesToLinkedInstances(bool bSet) { bPropagateNotifiesToLinkedInstances = bSet; }
 
 private:
 	// Does this anim instance need immediate update (rather than parallel)?
