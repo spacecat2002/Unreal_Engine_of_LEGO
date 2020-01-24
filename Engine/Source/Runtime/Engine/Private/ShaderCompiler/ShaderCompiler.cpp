@@ -2654,13 +2654,18 @@ bool FShaderCompilingManager::HandlePotentialRetryOnError(TMap<int32, FShaderMap
 						// NOTE: MaterialTemplate.usf will not be reloaded when retrying!
 						bRetryCompile = GRetryShaderCompilation;
 					}
-					else 
+					else
 #endif	//UE_BUILD_DEBUG
-						if (FPlatformMisc::MessageBoxExt( EAppMsgType::YesNo, *FText::Format(NSLOCTEXT("UnrealEd", "Error_RetryShaderCompilation", "{0}\r\n\r\nRetry compilation?"),
-							FText::FromString(ErrorString)).ToString(), TEXT("Error")) == EAppReturnType::Type::Yes)
+					{
+						if (!IsRunningCommandlet() && !FApp::IsUnattended())
 						{
-							bRetryCompile = true;
+							if (FPlatformMisc::MessageBoxExt(EAppMsgType::YesNo, *FText::Format(NSLOCTEXT("UnrealEd", "Error_RetryShaderCompilation", "{0}\r\n\r\nRetry compilation?"),
+								FText::FromString(ErrorString)).ToString(), TEXT("Error")) == EAppReturnType::Type::Yes)
+							{
+								bRetryCompile = true;
+							}
 						}
+					}
 				}
 
 				if (bRetryCompile)
