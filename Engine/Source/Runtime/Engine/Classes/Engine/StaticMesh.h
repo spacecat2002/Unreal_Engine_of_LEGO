@@ -1328,5 +1328,10 @@ private:
 	 * Fixes up the material when it was converted to the new staticmesh build process
 	 */
 	bool bCleanUpRedundantMaterialPostLoad;
+
+	/**
+	 * Guard to ignore re-entrant PostEditChange calls.
+	 */
+	bool bIsInPostEditChange = false;
 #endif // #if WITH_EDITOR
 };
