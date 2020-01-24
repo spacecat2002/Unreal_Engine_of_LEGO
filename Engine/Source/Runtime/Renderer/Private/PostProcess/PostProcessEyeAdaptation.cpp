@@ -291,10 +291,6 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 
 	MinWhitePointLuminance = FMath::Min(MinWhitePointLuminance, MaxWhitePointLuminance);
 
-	// This scales the average luminance BEFORE it gets clamped. Note that AEM_Histogram implements the calibration constant through ExposureLowPercent and ExposureHighPercent.
-	//const float CalibrationConstant = FMath::Clamp(Settings.AutoExposureCalibrationConstant, 1.0f, 100.0f) * PercentToScale;
-	//const float CalibrationScale = (AutoExposureMethod == EAutoExposureMethod::AEM_Basic || AutoExposureMethod == EAutoExposureMethod::AEM_Histogram) ? CalibrationConstant : 1.0f;
-
 	const float HistogramLogDelta = HistogramLogMax - HistogramLogMin;
 	const float HistogramScale = 1.0f / HistogramLogDelta;
 	const float HistogramBias = -HistogramLogMin * HistogramScale;
