@@ -37,6 +37,7 @@
 #include "CompositionLighting/PostProcessPassThrough.h"
 #include "CompositionLighting/PostProcessLpvIndirect.h"
 #include "ShaderPrint.h"
+#include "GpuDebugRendering.h"
 #include "HighResScreenshot.h"
 #include "IHeadMountedDisplay.h"
 #include "IXRTrackingSystem.h"
@@ -530,9 +531,9 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 			FBloomInputs PassInputs;
 			PassInputs.SceneColor = SceneColor;
 
-			const bool bBloomThresholdEnabled = View.FinalPostProcessSettings.BloomThreshold > 0.0f;
+			const bool bBloomThresholdEnabled = View.FinalPostProcessSettings.BloomThreshold > -1.0f;
 
-			// Reuse the main scene downsample chain if a threshold isn't required for bloom. 
+			// Reuse the main scene downsample chain if a threshold isn't required for bloom.
 			if (SceneDownsampleChain.IsInitialized() && !bBloomThresholdEnabled)
 			{
 				PassInputs.SceneDownsampleChain = &SceneDownsampleChain;
@@ -836,6 +837,10 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 		AddTestImagePass(GraphBuilder, View, SceneColor);
 	}
 
+	if (ShaderDrawDebug::IsShaderDrawDebugEnabled(View))
+	{
+		ShaderDrawDebug::DrawView(GraphBuilder, View, SceneColor.Texture, SceneDepth.Texture);
+	}
 	if (ShaderPrint::IsEnabled() && ShaderPrint::IsSupported(View))
 	{
 		ShaderPrint::DrawView(GraphBuilder, View, SceneColor.Texture);
@@ -1775,7 +1780,10 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 			Desc.NumMips = 1;
 			Desc.DebugName = TEXT("OverriddenRenderTarget");
 			Desc.TargetableFlags |= TexCreate_RenderTargetable;
-
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+			// for FVisualizeTexture
+			Desc.TargetableFlags |= TexCreate_ShaderResource;
+#endif
 			GRenderTargetPool.CreateUntrackedElement(Desc, Temp, Item);
 
 			OverrideRenderTarget(Context.FinalOutput, Temp, Desc);

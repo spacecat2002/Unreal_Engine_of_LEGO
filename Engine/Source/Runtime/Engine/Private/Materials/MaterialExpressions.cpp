@@ -5430,7 +5430,7 @@ int32 UMaterialExpressionMakeMaterialAttributes::Compile(class FMaterialCompiler
 	//If we've connected an expression but its still returned INDEX_NONE, flag the error. This also catches reroute nodes to nowhere.
 	if (Expression && INDEX_NONE == Ret)
 	{
-		Compiler->Errorf(TEXT("Error on property %s"), *FMaterialAttributeDefinitionMap::GetDisplayName(Property));
+		Compiler->Errorf(TEXT("Error on property %s"), *FMaterialAttributeDefinitionMap::GetAttributeName(Property));
 	}
 
 	return Ret;
@@ -5811,7 +5811,7 @@ void UMaterialExpressionGetMaterialAttributes::PostEditChangeProperty(FPropertyC
 			}
 		
 			// Copy final defaults to new output
-			FString AttributeName = FMaterialAttributeDefinitionMap::GetDisplayName(AttributeGetTypes.Last());
+			FString AttributeName = FMaterialAttributeDefinitionMap::GetDisplayNameForMaterial(AttributeGetTypes.Last(), Material).ToString();
 			Outputs.Add(FExpressionOutput(*AttributeName, 0, 0, 0, 0, 0));
 
 			GraphNode->ReconstructNode();
@@ -5857,7 +5857,7 @@ void UMaterialExpressionGetMaterialAttributes::PostEditChangeProperty(FPropertyC
 			// Type changed, update pin names
 			for (int i = 1; i < Outputs.Num(); ++i)
 			{
-				Outputs[i].OutputName = *FMaterialAttributeDefinitionMap::GetDisplayName(AttributeGetTypes[i-1]);
+				Outputs[i].OutputName = *FMaterialAttributeDefinitionMap::GetDisplayNameForMaterial(AttributeGetTypes[i-1], Material).ToString();
 			}
 
 			GraphNode->ReconstructNode();
@@ -5876,7 +5876,7 @@ void UMaterialExpressionGetMaterialAttributes::PostLoad()
 
 	for (int i = 1; i < Outputs.Num(); ++i)
 	{
-		const FString DisplayName = FMaterialAttributeDefinitionMap::GetDisplayName(AttributeGetTypes[i-1]);
+		const FString DisplayName = FMaterialAttributeDefinitionMap::GetDisplayNameForMaterial(AttributeGetTypes[i-1],Material).ToString();
 		if (Outputs[i].OutputName.ToString() != DisplayName)
 		{
 			FString MaterialName;
@@ -5997,7 +5997,7 @@ FName UMaterialExpressionSetMaterialAttributes::GetInputName(int32 InputIndex) c
 	}
 	else if (InputIndex > 0)
 	{
-		Name = *FMaterialAttributeDefinitionMap::GetDisplayName(AttributeSetTypes[InputIndex-1]);
+		Name = *FMaterialAttributeDefinitionMap::GetDisplayNameForMaterial(AttributeSetTypes[InputIndex-1], Material).ToString();
 	}
 
 	return Name;
@@ -6067,7 +6067,7 @@ void UMaterialExpressionSetMaterialAttributes::PostEditChangeProperty(FPropertyC
 		
 			// Copy final defaults to new input
 			Inputs.Add(FExpressionInput());
-			Inputs.Last().InputName = FName(*FMaterialAttributeDefinitionMap::GetDisplayName(AttributeSetTypes.Last()));
+			Inputs.Last().InputName = FName(*FMaterialAttributeDefinitionMap::GetDisplayNameForMaterial(AttributeSetTypes.Last(), Material).ToString());
 			GraphNode->ReconstructNode();
 		}	 
 		else if (PreEditAttributeSetTypes.Num() > AttributeSetTypes.Num())
@@ -6111,7 +6111,7 @@ void UMaterialExpressionSetMaterialAttributes::PostEditChangeProperty(FPropertyC
 			// Type changed, update pin names
 			for (int i = 1; i < Inputs.Num(); ++i)
 			{
-				Inputs[i].InputName = *FMaterialAttributeDefinitionMap::GetDisplayName(AttributeSetTypes[i - 1]);
+				Inputs[i].InputName = FName(*FMaterialAttributeDefinitionMap::GetDisplayNameForMaterial(AttributeSetTypes[i - 1], Material).ToString());
 			}
 			GraphNode->ReconstructNode();
 		}

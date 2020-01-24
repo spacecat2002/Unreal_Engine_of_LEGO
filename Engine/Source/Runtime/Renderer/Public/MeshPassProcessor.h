@@ -917,7 +917,7 @@ enum class EMeshPassFeatures
 {
 	Default = 0,
 	PositionOnly = 1 << 0,
-	PositionAndNormalOnly = 1 << 1
+	PositionAndNormalOnly = 1 << 1,
 };
 ENUM_CLASS_FLAGS(EMeshPassFeatures);
 

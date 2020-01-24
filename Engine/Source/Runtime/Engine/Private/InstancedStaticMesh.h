@@ -158,6 +158,7 @@ struct FInstancingUserData
 	bool bRenderSelected;
 	bool bRenderUnselected;
 	FVector AverageInstancesScale;
+	FVector InstancingOffset;
 };
 
 struct FInstancedStaticMeshDataType
@@ -313,6 +314,7 @@ class FInstancedStaticMeshVertexFactoryShaderParameters : public FLocalVertexFac
 		InstancingViewZCompareZeroParameter.Bind(ParameterMap, TEXT("InstancingViewZCompareZero"));
 		InstancingViewZCompareOneParameter.Bind(ParameterMap, TEXT("InstancingViewZCompareOne"));
 		InstancingViewZConstantParameter.Bind(ParameterMap, TEXT("InstancingViewZConstant"));
+		InstancingOffsetParameter.Bind(ParameterMap, TEXT("InstancingOffset"));
 		InstancingWorldViewOriginZeroParameter.Bind(ParameterMap, TEXT("InstancingWorldViewOriginZero"));
 		InstancingWorldViewOriginOneParameter.Bind(ParameterMap, TEXT("InstancingWorldViewOriginOne"));
 		CPUInstanceOrigin.Bind(ParameterMap, TEXT("CPUInstanceOrigin"));
@@ -343,6 +345,7 @@ class FInstancedStaticMeshVertexFactoryShaderParameters : public FLocalVertexFac
 		Ar << InstancingViewZCompareZeroParameter;
 		Ar << InstancingViewZCompareOneParameter;
 		Ar << InstancingViewZConstantParameter;
+		Ar << InstancingOffsetParameter;
 		Ar << InstancingWorldViewOriginZeroParameter;
 		Ar << InstancingWorldViewOriginOneParameter;
 		Ar << CPUInstanceOrigin;
@@ -361,6 +364,7 @@ private:
 	FShaderParameter InstancingViewZCompareZeroParameter;
 	FShaderParameter InstancingViewZCompareOneParameter;
 	FShaderParameter InstancingViewZConstantParameter;
+	FShaderParameter InstancingOffsetParameter;
 	FShaderParameter InstancingWorldViewOriginZeroParameter;
 	FShaderParameter InstancingWorldViewOriginOneParameter;
 

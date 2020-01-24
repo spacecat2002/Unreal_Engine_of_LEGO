@@ -1402,7 +1402,7 @@ public:
 	 * Caches the material shaders for the given static parameter set and platform.
 	 * This is used by material resources of UMaterialInstances.
 	 */
-	ENGINE_API bool CacheShaders(const FMaterialShaderMapId& ShaderMapId, const FStaticParameterSet &StaticParameterSet, EShaderPlatform Platform, const ITargetPlatform* TargetPlatform = nullptr);
+	ENGINE_API bool CacheShaders(const FMaterialShaderMapId& ShaderMapId, const FStaticParameterSet *StaticParameterSet, EShaderPlatform Platform, const ITargetPlatform* TargetPlatform = nullptr);
 
 	/**
 	 * Should the shader for this material with the given platform, shader type and vertex 
@@ -2428,7 +2428,7 @@ typedef int32 (*MaterialAttributeBlendFunction)(FMaterialCompiler* Compiler, int
 class FMaterialAttributeDefintion
 {
 public:
-	FMaterialAttributeDefintion(const FGuid& InGUID, const FString& InDisplayName, EMaterialProperty InProperty,
+	FMaterialAttributeDefintion(const FGuid& InGUID, const FString& AttributeName, EMaterialProperty InProperty,
 		EMaterialValueType InValueType, const FVector4& InDefaultValue, EShaderFrequency InShaderFrequency,
 		int32 InTexCoordIndex = INDEX_NONE, bool bInIsHidden = false, MaterialAttributeBlendFunction InBlendFunction = nullptr);
 
@@ -2440,7 +2440,7 @@ public:
 	}
 
 	FGuid				AttributeID;
-	FString				DisplayName;
+	FString				AttributeName;
 	EMaterialProperty	Property;	
 	EMaterialValueType	ValueType;
 	FVector4			DefaultValue;
@@ -2460,7 +2460,7 @@ public:
 class FMaterialCustomOutputAttributeDefintion : public FMaterialAttributeDefintion
 {
 public:
-	FMaterialCustomOutputAttributeDefintion(const FGuid& InGUID, const FString& InDisplayName, const FString& InFunctionName, EMaterialProperty InProperty,
+	FMaterialCustomOutputAttributeDefintion(const FGuid& InGUID, const FString& InAttributeName, const FString& InFunctionName, EMaterialProperty InProperty,
 		EMaterialValueType InValueType, const FVector4& InDefaultValue, EShaderFrequency InShaderFrequency, MaterialAttributeBlendFunction InBlendFunction = nullptr);
 
 	bool operator==(const FMaterialCustomOutputAttributeDefintion& Other) const
@@ -2501,17 +2501,41 @@ public:
 	}
 
 	/** Returns the display name of a material attribute */
-	ENGINE_API static FString GetDisplayName(EMaterialProperty Property)
+	ENGINE_API static FString GetAttributeName(EMaterialProperty Property)
 	{
 		FMaterialAttributeDefintion* Attribute = GMaterialPropertyAttributesMap.Find(Property);
-		return Attribute->DisplayName;
+		return Attribute->AttributeName;
 	}
 
 	/** Returns the display name of a material attribute */
-	ENGINE_API static FString GetDisplayName(const FGuid& AttributeID)
+	ENGINE_API static FString GetAttributeName(const FGuid& AttributeID)
 	{
 		FMaterialAttributeDefintion* Attribute = GMaterialPropertyAttributesMap.Find(AttributeID);
-		return Attribute->DisplayName;
+		return Attribute->AttributeName;
+	}
+
+	/** Returns the display name of a material attribute, accounting for overrides based on properties of a given material */
+	ENGINE_API static FText GetDisplayNameForMaterial(EMaterialProperty Property, UMaterial* Material)
+	{
+		if (!Material)
+		{
+			return FText::FromString(GetAttributeName(Property));
+		}
+
+		FMaterialAttributeDefintion* Attribute = GMaterialPropertyAttributesMap.Find(Property);
+		return GetAttributeOverrideForMaterial(Attribute->AttributeID, Material);
+	}
+
+	/** Returns the display name of a material attribute, accounting for overrides based on properties of a given material */
+	ENGINE_API static FText GetDisplayNameForMaterial(const FGuid& AttributeID, UMaterial* Material)
+	{
+		if (!Material)
+		{
+			return FText::FromString(GetAttributeName(AttributeID));
+		}
+
+		FMaterialAttributeDefintion* Attribute = GMaterialPropertyAttributesMap.Find(AttributeID);
+		return GetAttributeOverrideForMaterial(AttributeID, Material);
 	}
 
 	/** Returns the value type of a material attribute */
@@ -2576,7 +2600,7 @@ public:
 	ENGINE_API static void AppendDDCKeyString(FString& String);
 
 	/** Appends a new attribute definition to the custom output list */
-	ENGINE_API static void AddCustomAttribute(const FGuid& AttributeID, const FString& DisplayName, const FString& FunctionName, EMaterialValueType ValueType, const FVector4& DefaultValue, MaterialAttributeBlendFunction BlendFunction = nullptr);
+	ENGINE_API static void AddCustomAttribute(const FGuid& AttributeID, const FString& AttributeName, const FString& FunctionName, EMaterialValueType ValueType, const FVector4& DefaultValue, MaterialAttributeBlendFunction BlendFunction = nullptr);
 
 	/** Returns a list of registered custom attributes */
 	ENGINE_API static void GetCustomAttributeList(TArray<FMaterialCustomOutputAttributeDefintion>& CustomAttributeList);
@@ -2591,17 +2615,21 @@ private:
 	friend class FMaterialAttributePropertyDetails;
 
 	/** Returns a list of display names and their associated GUIDs for material properties */
-	ENGINE_API static void GetDisplayNameToIDList(TArray<TPair<FString, FGuid>>& NameToIDList);
+	ENGINE_API static void GetAttributeNameToIDList(TArray<TPair<FString, FGuid>>& NameToIDList);
 
 	// Internal map management
 	void InitializeAttributeMap();
 
-	void Add(const FGuid& AttributeID, const FString& DisplayName, EMaterialProperty Property,
+	void Add(const FGuid& AttributeID, const FString& AttributeName, EMaterialProperty Property,
 		EMaterialValueType ValueType, const FVector4& DefaultValue, EShaderFrequency ShaderFrequency,
 		int32 TexCoordIndex = INDEX_NONE, bool bIsHidden = false, MaterialAttributeBlendFunction BlendFunction = nullptr);
 
 	ENGINE_API FMaterialAttributeDefintion* Find(const FGuid& AttributeID);
 	ENGINE_API FMaterialAttributeDefintion* Find(EMaterialProperty Property);
+
+	// Helper functions to determine display name based on shader model, material domain, etc.
+	ENGINE_API static FText GetAttributeOverrideForMaterial(const FGuid& AttributeID, UMaterial* Material);
+	ENGINE_API static FString GetPinNameFromShadingModelField(FMaterialShadingModelField InShadingModels, const TArray<TKeyValuePair<EMaterialShadingModel, FString>>& InCustomShadingModelPinNames, const FString& InDefaultPinName);
 
 	ENGINE_API static FMaterialAttributeDefinitionMap GMaterialPropertyAttributesMap;
 

@@ -2478,13 +2478,6 @@ void ShaderMapAppendKeyString(EShaderPlatform Platform, FString& KeyString)
 	}
 
 	{
-		if (UseVirtualTexturing(GetMaxSupportedFeatureLevel(Platform), TargetPlatform))
-		{
-			KeyString += TEXT("_VT");
-		}
-	}
-
-	{
 		static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.PostProcessing.PropagateAlpha"));
 		if (CVar && CVar->GetValueOnAnyThread() > 0)
 		{
