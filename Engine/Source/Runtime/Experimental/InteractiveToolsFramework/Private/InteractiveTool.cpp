@@ -23,7 +23,7 @@ UInteractiveTool::UInteractiveTool()
 #if WITH_EDITORONLY_DATA
 	DefaultToolInfo.ToolDisplayName = GetClass()->GetDisplayNameText();
 #else
-	DefaultToolInfo.ToolDisplayName = FText("DefaultInteractiveToolName", "DefaultToolName");
+	DefaultToolInfo.ToolDisplayName = FText(LOCTEXT("DefaultInteractiveToolName", "DefaultToolName"));
 #endif
 }
 
