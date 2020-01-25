@@ -503,7 +503,7 @@ void FSkeletalMeshObjectGPUSkin::ProcessUpdatedDynamicData(FGPUSkinCache* GPUSki
 
 	bool bDataPresent = false;
 
-	bool bGPUSkinCacheEnabled = GPUSkinCache && GEnableGPUSkinCache && (FeatureLevel >= ERHIFeatureLevel::SM5);
+	bool bGPUSkinCacheEnabled = GPUSkinCache && GEnableGPUSkinCache && (FeatureLevel >= ERHIFeatureLevel::SM5) && DynamicData->bIsSkinCacheAllowed;
 
 	if (LOD.MorphVertexBuffer.bNeedsInitialClear && !(bMorph && bMorphNeedsUpdate))
 	{
@@ -618,6 +618,7 @@ void FSkeletalMeshObjectGPUSkin::ProcessUpdatedDynamicData(FGPUSkinCache* GPUSki
 			// Create a uniform buffer from the bone transforms.
 			TArray<FMatrix>& ReferenceToLocalMatrices = DynamicData->ReferenceToLocal;
 			bool bNeedFence = ShaderData.UpdateBoneData(RHICmdList, ReferenceToLocalMatrices, Section.BoneMap, RevisionNumber, false, FeatureLevel, bUseSkinCache);
+
 #if WITH_APEX_CLOTHING || WITH_CHAOS_CLOTHING
 			// Update uniform buffer for APEX cloth simulation mesh positions and normals
 			if( bClothFactory )
@@ -632,6 +633,7 @@ void FSkeletalMeshObjectGPUSkin::ProcessUpdatedDynamicData(FGPUSkinCache* GPUSki
 				}
 			}
 #endif // WITH_APEX_CLOTHING || WITH_CHAOS_CLOTHING
+
 			// Try to use the GPU skinning cache if possible
 			if (bUseSkinCache)
 			{
@@ -650,6 +652,7 @@ void FSkeletalMeshObjectGPUSkin::ProcessUpdatedDynamicData(FGPUSkinCache* GPUSki
 				CachedSection.LODIndex = DynamicData->LODIndex;
 				CachedGeometry.Sections.Add(CachedSection);
 			}
+
 			if (bNeedFence)
 			{
 				RHIThreadFenceForDynamicData = RHICmdList.RHIThreadFence(true);
@@ -1113,7 +1116,7 @@ const FVertexFactory* FSkeletalMeshObjectGPUSkin::GetSkinVertexFactory(const FSc
 	const FSkeletalMeshObjectLOD& LOD = LODs[LODIndex];
 
 	// If the GPU skinning cache was used, return the passthrough vertex factory
-	if (SkinCacheEntry && FGPUSkinCache::IsEntryValid(SkinCacheEntry, ChunkIdx))
+	if (SkinCacheEntry && FGPUSkinCache::IsEntryValid(SkinCacheEntry, ChunkIdx) && DynamicData->bIsSkinCacheAllowed)
 	{
 		return LOD.GPUSkinVertexFactories.PassthroughVertexFactories[ChunkIdx].Get();
 	}
@@ -1776,6 +1779,7 @@ void FDynamicSkelMeshObjectDataGPUSkin::Clear()
 	NumWeightedActiveMorphTargets = 0;
 	ClothingSimData.Reset();
 	ClothBlendWeight = 0.0f;
+	bIsSkinCacheAllowed = false;
 #if RHI_RAYTRACING
 	bAnySegmentUsesWorldPositionOffset = false;
 #endif
@@ -1932,6 +1936,8 @@ void FDynamicSkelMeshObjectDataGPUSkin::InitDynamicSkelMeshObjectDataGPUSkin(
 	}
 	// Update the clothing simulation mesh positions and normals
 	UpdateClothSimulationData(InMeshComponent);
+
+	bIsSkinCacheAllowed = InMeshComponent->IsSkinCacheAllowed(InLODIndex);
 
 #if RHI_RAYTRACING
 	if (SkeletalMeshProxy != nullptr)

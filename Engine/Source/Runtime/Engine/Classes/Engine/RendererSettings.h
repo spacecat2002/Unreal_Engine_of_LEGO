@@ -11,6 +11,8 @@
 
 #include "RendererSettings.generated.h"
 
+enum class ESkinCacheDefaultBehavior : uint8;
+
 struct FPropertyChangedEvent;
 
 /**
@@ -704,13 +706,23 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		uint32 bSupportSkyAtmosphereAffectsHeightFog : 1;
 
 	/**
-	"Skincache allows a compute shader to skin once each vertex, save those results into a new buffer and reuse those calculations when later running the depth, base and velocity passes. This also allows opting into the 'recompute tangents' for skinned mesh instance feature. Disabling will reduce the number of shader permutations required per material. Changing this setting requires restarting the editor."
+	"Skin cache allows a compute shader to skin once each vertex, save those results into a new buffer and reuse those calculations when later running the depth, base and velocity passes. This also allows opting into the 'recompute tangents' for skinned mesh instance feature. Disabling will reduce the number of shader permutations required per material. Changing this setting requires restarting the editor."
 	*/
 	UPROPERTY(config, EditAnywhere, Category = Optimizations, meta = (
-		ConsoleVariable = "r.SkinCache.CompileShaders", DisplayName = "Support Compute Skincache",
+		ConsoleVariable = "r.SkinCache.CompileShaders", DisplayName = "Support Compute Skin Cache",
 		ToolTip = "Cannot be disabled while Ray Tracing is enabled as it is then required.",
 		ConfigRestartRequired = true))
-		uint32 bSupportSkinCacheShaders : 1;
+	uint32 bSupportSkinCacheShaders : 1;
+
+	UPROPERTY(config, EditAnywhere, Category = Optimizations, meta = (
+		ConsoleVariable = "r.SkinCache.DefaultBehavior", DisplayName = "Default Skin Cache Behavior",
+		ToolTip = "Default behavior if all skeletal meshes are included/excluded from the skin cache. If Ray Tracing is enabled, will force inclusive behavior."))
+	ESkinCacheDefaultBehavior DefaultSkinCacheBehavior;
+
+	UPROPERTY(config, EditAnywhere, Category = Optimizations, meta = (
+		ConsoleVariable = "r.SkinCache.SceneMemoryLimitInMB", DisplayName = "Maximum memory for Compute Skin Cache per world (MB)",
+		ToolTip = "Maximum amount of memory (in MB) per world/scene allowed for the Compute Skin Cache to generate output vertex data and recompute tangents."))
+	float SkinCacheSceneMemoryLimitInMB;
 
 	UPROPERTY(config, EditAnywhere, Category = MobileShaderPermutationReduction, meta = (
 		ConsoleVariable = "r.Mobile.EnableStaticAndCSMShadowReceivers", DisplayName = "Support Combined Static and CSM Shadowing",
@@ -756,11 +768,6 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ToolTip = "Generate shaders for primitives to receive lighting from movable spotlights. This incurs an additional cost when processing movable lights. Changing this setting requires restarting the editor.",
 		ConfigRestartRequired = true))
 		uint32 bMobileAllowMovableSpotlights : 1;
-
-	UPROPERTY(config, EditAnywhere, Category = Optimizations, meta = (
-		ConsoleVariable = "r.SkinCache.SceneMemoryLimitInMB", DisplayName = "Maximum memory for Compute Skincache per world (MB)",
-		ToolTip = "Maximum amount of memory (in MB) per world/scene allowed for the Compute Skincache to generate output vertex data and recompute tangents."))
-		float SkinCacheSceneMemoryLimitInMB;
 
 	UPROPERTY(config, EditAnywhere, Category = Optimizations, meta = (
 		ConsoleVariable = "r.GPUSkin.Limit2BoneInfluences", DisplayName = "Limit GPU skinning to 2 bones influence",
