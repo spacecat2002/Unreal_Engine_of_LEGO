@@ -13,6 +13,8 @@
 #include "Containers/SortedMap.h"
 #include "SkinnedMeshComponent.generated.h"
 
+enum class ESkinCacheUsage : uint8;
+
 class FPrimitiveSceneProxy;
 class FColorVertexBuffer;
 class FSkinWeightVertexBuffer;
