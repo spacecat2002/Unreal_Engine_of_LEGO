@@ -847,7 +847,7 @@ FShaderCompileJob* FMaterialShaderType::BeginCompileShader(
 	FShaderCompilerEnvironment* MaterialEnvironment,
 	const FShaderPipelineType* ShaderPipeline,
 	EShaderPlatform Platform,
-	TArray<FShaderCommonCompileJob*>& NewJobs,
+	TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>>& NewJobs,
 	const FString& DebugDescription,
 	const FString& DebugExtension
 	)
@@ -877,7 +877,7 @@ FShaderCompileJob* FMaterialShaderType::BeginCompileShader(
 		GetShaderFilename(),
 		GetFunctionName(),
 		FShaderTarget(GetFrequency(),Platform),
-		NewJob,
+		TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>(NewJob),
 		NewJobs,
 		true,
 		DebugDescription,
@@ -893,7 +893,7 @@ void FMaterialShaderType::BeginCompileShaderPipeline(
 	FShaderCompilerEnvironment* MaterialEnvironment,
 	const FShaderPipelineType* ShaderPipeline,
 	const TArray<FMaterialShaderType*>& ShaderStages,
-	TArray<FShaderCommonCompileJob*>& NewJobs,
+	TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>>& NewJobs,
 	const FString& DebugDescription,
 	const FString& DebugExtension)
 {
@@ -909,7 +909,7 @@ void FMaterialShaderType::BeginCompileShaderPipeline(
 		ShaderStage->BeginCompileShader(ShaderMapId, kUniqueShaderPermutationId, Material, MaterialEnvironment, ShaderPipeline, Platform, NewPipelineJob->StageJobs, DebugDescription, DebugExtension);
 	}
 
-	NewJobs.Add(NewPipelineJob);
+	NewJobs.Add(TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>(NewPipelineJob));
 }
 
 /**
@@ -1454,7 +1454,7 @@ void FMaterialShaderMap::Compile(
 
 			uint32 NumShaders = 0;
 			uint32 NumVertexFactories = 0;
-			TArray<FShaderCommonCompileJob*> NewJobs;
+			TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>> NewJobs;
   
 			// Iterate over all vertex factory types.
 			for(TLinkedList<FVertexFactoryType*>::TIterator VertexFactoryTypeIt(FVertexFactoryType::GetTypeList());VertexFactoryTypeIt;VertexFactoryTypeIt.Next())
@@ -1525,7 +1525,7 @@ void FMaterialShaderMap::Compile(
 						// Only compile the shader if we don't already have it
 						if (!HasShader(ShaderType, PermutationId))
 						{
-							auto* Job = ShaderType->BeginCompileShader(
+							FShaderCompileJob* Job = ShaderType->BeginCompileShader(
 								CompilingId,
 								PermutationId,
 								Material,
@@ -1705,7 +1705,7 @@ FShader* FMaterialShaderMap::ProcessCompilationResultsForSingleJob(FShaderCompil
 }
 
 #if WITH_EDITOR
-bool FMaterialShaderMap::ProcessCompilationResults(const TArray<FShaderCommonCompileJob*>& InCompilationResults, int32& InOutJobIndex, float& TimeBudget, TMap<const FVertexFactoryType*, TArray<const FShaderPipelineType*> >& SharedPipelines)
+bool FMaterialShaderMap::ProcessCompilationResults(const TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>>& InCompilationResults, int32& InOutJobIndex, float& TimeBudget, TMap<const FVertexFactoryType*, TArray<const FShaderPipelineType*> >& SharedPipelines)
 {
 	check(InOutJobIndex < InCompilationResults.Num());
 	check(!bCompilationFinalized);
