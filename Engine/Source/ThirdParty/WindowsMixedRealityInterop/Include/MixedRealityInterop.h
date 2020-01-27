@@ -389,6 +389,7 @@ namespace WindowsMixedReality
 		void RemoveQuadLayer(uint32 Id);
 
 		bool CreateRenderingParameters();
+		ID3D11Texture2D* GetBackBufferTexture();
 		bool CommitDepthBuffer(ID3D11Texture2D* depthTexture);
 		bool CommitThirdCameraDepthBuffer(ID3D11Texture2D* depthTexture);
 

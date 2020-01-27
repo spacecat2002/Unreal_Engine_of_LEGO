@@ -2087,7 +2087,7 @@ namespace WindowsMixedReality
 		std::lock_guard<std::mutex> lock(poseLock);
 		std::lock_guard<std::recursive_mutex> lock2(CameraResourcesLock);
 
-		bool succeeded = true;
+		bool succeeded = false;
 
 		if (currentFrame == nullptr
 			|| currentFrame->Frame == nullptr)
@@ -2111,6 +2111,21 @@ namespace WindowsMixedReality
 		bool renderingParamsCreated = CameraResources->CreateRenderingParameters(currentFrame.get(), succeeded);
 
 		return succeeded;
+	}
+
+	ID3D11Texture2D* MixedRealityInterop::GetBackBufferTexture()
+	{
+		std::lock_guard<std::mutex> lock(poseLock);
+		std::lock_guard<std::recursive_mutex> lock2(CameraResourcesLock);
+
+		if (currentFrame == nullptr
+			|| currentFrame->Frame == nullptr
+			|| CameraResources == nullptr)
+		{
+			return nullptr;
+		}
+
+		return CameraResources->GetBackBufferTexture();
 	}
 
 	bool MixedRealityInterop::CommitDepthBuffer(ID3D11Texture2D* depthTexture)
