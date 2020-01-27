@@ -513,10 +513,10 @@ public:
 		return *Context;
 	}
 
-	void SetComputeContext(IRHIComputeContext* InContext)
+	void SetComputeContext(IRHIComputeContext* InComputeContext)
 	{
-		check(InContext);
-		ComputeContext = InContext;
+		check(Context == nullptr);
+		ComputeContext = InComputeContext;
 	}
 
 	IRHIComputeContext& GetComputeContext()
@@ -562,7 +562,6 @@ protected:
 	FRHICommandListBase(FRHIGPUMask InGPUMask);
 
 	bool bAsyncPSOCompileAllowed;
-	bool bRecursive;
 	FRHIGPUMask GPUMask;
 	// GPUMask that was set at the time the command list was last Reset. We set
     // this mask on the command contexts immediately before executing the
@@ -4047,6 +4046,12 @@ public:
 		return GDynamicRHI->CreateShaderResourceView_RenderThread(*this, VertexBuffer, Stride, Format);
 	}
 	
+	FORCEINLINE FShaderResourceViewRHIRef CreateShaderResourceView(const FShaderResourceViewInitializer& Initializer)
+	{
+		LLM_SCOPE(ELLMTag::RHIMisc);
+		return GDynamicRHI->CreateShaderResourceView_RenderThread(*this, Initializer);
+	}
+
 	FORCEINLINE FShaderResourceViewRHIRef CreateShaderResourceView(FRHIIndexBuffer* Buffer)
 	{
 		LLM_SCOPE(ELLMTag::RHIMisc);
@@ -4734,7 +4739,6 @@ public:
 	{
 		SetContext(Context);
 		bAsyncPSOCompileAllowed = false;
-		bRecursive = true;
 	}
 };
 
@@ -5072,6 +5076,11 @@ FORCEINLINE FShaderResourceViewRHIRef RHICreateShaderResourceView(FRHIStructured
 FORCEINLINE FShaderResourceViewRHIRef RHICreateShaderResourceView(FRHIVertexBuffer* VertexBuffer, uint32 Stride, uint8 Format)
 {
 	return FRHICommandListExecutor::GetImmediateCommandList().CreateShaderResourceView(VertexBuffer, Stride, Format);
+}
+
+FORCEINLINE FShaderResourceViewRHIRef RHICreateShaderResourceView(const FShaderResourceViewInitializer& Initializer)
+{
+	return FRHICommandListExecutor::GetImmediateCommandList().CreateShaderResourceView(Initializer);
 }
 
 FORCEINLINE FShaderResourceViewRHIRef RHICreateShaderResourceView(FRHIIndexBuffer* Buffer)

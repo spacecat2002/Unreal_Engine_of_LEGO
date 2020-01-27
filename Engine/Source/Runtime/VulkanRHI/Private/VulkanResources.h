@@ -1304,7 +1304,7 @@ protected:
 class FVulkanShaderResourceView : public FRHIShaderResourceView, public VulkanRHI::FDeviceChild
 {
 public:
-	FVulkanShaderResourceView(FVulkanDevice* Device, FRHIResource* InRHIBuffer, FVulkanResourceMultiBuffer* InSourceBuffer, uint32 InSize, EPixelFormat InFormat);
+	FVulkanShaderResourceView(FVulkanDevice* Device, FRHIResource* InRHIBuffer, FVulkanResourceMultiBuffer* InSourceBuffer, uint32 InSize, EPixelFormat InFormat, uint32 InOffset = 0);
 
 	FVulkanShaderResourceView(FVulkanDevice* Device, FRHITexture* InSourceTexture, const FRHITextureSRVCreateInfo& InCreateInfo)
 		: VulkanRHI::FDeviceChild(Device)
@@ -1321,13 +1321,14 @@ public:
 	{
 	}
 
-	FVulkanShaderResourceView(FVulkanDevice* Device, FVulkanStructuredBuffer* InStructuredBuffer)
+	FVulkanShaderResourceView(FVulkanDevice* Device, FVulkanStructuredBuffer* InStructuredBuffer, uint32 InOffset = 0)
 		: VulkanRHI::FDeviceChild(Device)
 		, BufferViewFormat(PF_Unknown)
 		, SourceTexture(nullptr)
 		, SourceStructuredBuffer(InStructuredBuffer)
 		, NumMips(0)
-		, Size(InStructuredBuffer->GetSize())
+		, Size(InStructuredBuffer->GetSize() - InOffset)
+		, Offset(InOffset)
 		, SourceBuffer(nullptr)
 	{
 	}
@@ -1360,6 +1361,7 @@ public:
 	TArray<TRefCountPtr<FVulkanBufferView>> BufferViews;
 	uint32 BufferIndex = 0;
 	uint32 Size;
+	uint32 Offset = 0;
 	// The buffer this SRV comes from (can be null)
 	FVulkanResourceMultiBuffer* SourceBuffer;
 	// To keep a reference
