@@ -310,7 +310,6 @@ uint32 FVulkanDescriptorSetWriter::SetupDescriptorWrites(
 	HashableDescriptorInfos = InHashableDescriptorInfos;
 	WriteDescriptors = InWriteDescriptors;
 	NumWrites = Types.Num();
-	checkf(Types.Num() <= 64, TEXT("Out of bits for Dirty Mask! More than 64 resources in one descriptor set!"));
 
 	BindingToDynamicOffsetMap = InBindingToDynamicOffsetMap;
 
