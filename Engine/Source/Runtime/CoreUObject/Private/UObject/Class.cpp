@@ -1573,6 +1573,15 @@ inline void DestroyPropertyLinkedList(FField*& PropertiesToDestroy)
 	PropertiesToDestroy = nullptr;
 }
 
+void UStruct::DestroyChildPropertiesAndResetPropertyLinks()
+{
+	DestroyPropertyLinkedList(ChildProperties);
+	PropertyLink = nullptr;
+	RefLink = nullptr;
+	DestructorLink = nullptr;
+	PostConstructLink = nullptr;
+}
+
 UStruct::~UStruct()
 {
 	// Destroy all properties owned by this struct
@@ -4140,7 +4149,7 @@ void UClass::ValidateRuntimeReplicationData()
 				}
 			}
 
-			UE_LOG(LogClass, Warning, TEXT("Property %s::%s (SourceClass: %s) was not registered in GetLifetimeReplicatedProps. This property will not be replicated."),
+			UE_LOG(LogClass, Warning, TEXT("Property %s::%s (SourceClass: %s) was not registered in GetLifetimeReplicatedProps. This property will not be replicated. Use DISABLE_REPLICATED_PROPERTY if not replicating was intentional."),
 				*GetName(), *RepProp->GetName(), *RepProp->GetOwnerClass()->GetName());
 		}
 	}
