@@ -122,9 +122,12 @@ void FJpegImageWrapper::Compress(int32 Quality)
 
 		jpge::params Parameters;
 		Parameters.m_quality = Quality;
+		int64_t OutBufferSize64 = (int64_t)OutBufferSize;
 		bool bSuccess = jpge::compress_image_to_jpeg_file_in_memory(
-			CompressedData.GetData(), OutBufferSize, Width, Height, NumComponents, RawData.GetData(), Parameters);
-		
+			CompressedData.GetData(), OutBufferSize64, Width, Height, NumComponents, RawData.GetData(), Parameters);
+
+		OutBufferSize = (int32_t)OutBufferSize64;
+
 		check(bSuccess);
 
 		CompressedData.RemoveAt(OutBufferSize, CompressedData.Num() - OutBufferSize);

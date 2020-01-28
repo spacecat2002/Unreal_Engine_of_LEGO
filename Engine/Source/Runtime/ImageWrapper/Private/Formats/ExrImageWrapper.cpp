@@ -19,7 +19,7 @@ FExrImageWrapper::FExrImageWrapper()
 template <typename sourcetype> class FSourceImageRaw
 {
 public:
-	FSourceImageRaw(const TArray<uint8>& SourceImageBitmapIN, uint32 ChannelsIN, uint32 WidthIN, uint32 HeightIN)
+	FSourceImageRaw(const TArray64<uint8>& SourceImageBitmapIN, uint32 ChannelsIN, uint32 WidthIN, uint32 HeightIN)
 		: SourceImageBitmap(SourceImageBitmapIN),
 			Width( WidthIN ),
 			Height(HeightIN),
@@ -28,19 +28,19 @@ public:
 		check(SourceImageBitmap.Num() == Channels*Width*Height*sizeof(sourcetype));
 	}
 
-	uint32 GetXStride() const	{return sizeof(sourcetype) * Channels;}
-	uint32 GetYStride() const	{return GetXStride() * Width;}
+	uint64 GetXStride() const	{return sizeof(sourcetype) * Channels;}
+	uint64 GetYStride() const	{return GetXStride() * Width;}
 
-	const sourcetype* GetHorzLine(uint32 y, uint32 Channel)
+	const sourcetype* GetHorzLine(uint64 y, uint64 Channel)
 	{
 		return &SourceImageBitmap[(sizeof(sourcetype) * Channel) + (GetYStride() * y)];
 	}
 
 private:
-	const TArray<uint8>& SourceImageBitmap;
-	uint32 Width;
-	uint32 Height;
-	uint32 Channels;
+	const TArray64<uint8>& SourceImageBitmap;
+	uint64 Width;
+	uint64 Height;
+	uint64 Channels;
 };
 
 
@@ -58,19 +58,21 @@ public:
 	{
 	}
 
-	virtual void write(const char c[/*n*/], int n)
+	// int32 is part of the abstract interface
+	virtual void write(const char c[/*n*/], int32 InN)
 	{
-		int32 DestPost = Pos + n;
+		int64 SrcN = (int64)InN;
+		int64 DestPost = Pos + SrcN;
 		if (DestPost > Data.Num())
 		{
-			Data.AddUninitialized(FMath::Max(Data.Num() * 2, DestPost) - Data.Num());
+			Data.AddUninitialized(FMath::Max<int64>(Data.Num() * 2, DestPost) - Data.Num());
 		}
 
-		for (int32 i = 0; i < n; ++i)
+		for (int64 i = 0; i < SrcN; ++i)
 		{
 			Data[Pos + i] = c[i];
 		}
-		Pos += n;
+		Pos += SrcN;
 	}
 
 
@@ -99,7 +101,7 @@ public:
 
 
 	int64 Pos;
-	TArray<uint8> Data;
+	TArray64<uint8> Data;
 };
 
 
@@ -111,7 +113,7 @@ public:
 	// The destructor will close the file.
 	//-------------------------------------------------------
 
-	FMemFileIn(const void* InData, int32 InSize)
+	FMemFileIn(const void* InData, int64 InSize)
 		: Imf::IStream("")
 		, Data((const char *)InData)
 		, Size(InSize)
@@ -129,14 +131,16 @@ public:
 	// the file it returns false, otherwise it returns true.
 	//------------------------------------------------------
 
-	virtual bool read (char c[/*n*/], int n)
+	// Note: We can't change the int32 to int64 because the base class uses int32
+	virtual bool read (char c[/*n*/], int32 inN)
 	{
-		if(Pos + n > Size)
+		int64 FullN = (int64)inN;
+		if(Pos + FullN > Size)
 		{
 			return false;
 		}
 
-		for (int32 i = 0; i < n; ++i)
+		for (int64 i = 0; i < FullN; ++i)
 		{
 			c[i] = Data[Pos];
 			++Pos;
@@ -169,7 +173,7 @@ public:
 private:
 
 	const char* Data;
-	int32 Size;
+	int64 Size;
 	int64 Pos;
 };
 
@@ -178,17 +182,17 @@ namespace
 {
 	/////////////////////////////////////////
 	// 8 bit per channel source
-	void ExtractAndConvertChannel(const uint8*Src, uint32 SrcChannels, uint32 x, uint32 y, float* ChannelOUT)
+	void ExtractAndConvertChannel(const uint8*Src, uint64 SrcChannels, uint64 x, uint64 y, float* ChannelOUT)
 	{
-		for (uint32 i = 0; i < x*y; i++, Src += SrcChannels)
+		for (uint64 i = 0; i < x*y; i++, Src += SrcChannels)
 		{
 			ChannelOUT[i] = *Src / 255.f;
 		}
 	}
 
-	void ExtractAndConvertChannel(const uint8*Src, uint32 SrcChannels, uint32 x, uint32 y, FFloat16* ChannelOUT)
+	void ExtractAndConvertChannel(const uint8*Src, uint64 SrcChannels, uint64 x, uint64 y, FFloat16* ChannelOUT)
 	{
-		for (uint32 i = 0; i < x*y; i++, Src += SrcChannels)
+		for (uint64 i = 0; i < x*y; i++, Src += SrcChannels)
 		{
 			ChannelOUT[i] = FFloat16(*Src / 255.f);
 		}
@@ -196,17 +200,17 @@ namespace
 
 	/////////////////////////////////////////
 	// 16 bit per channel source
-	void ExtractAndConvertChannel(const FFloat16*Src, uint32 SrcChannels, uint32 x, uint32 y, float* ChannelOUT)
+	void ExtractAndConvertChannel(const FFloat16*Src, uint64 SrcChannels, uint64 x, uint64 y, float* ChannelOUT)
 	{
-		for (uint32 i = 0; i < x*y; i++, Src += SrcChannels)
+		for (uint64 i = 0; i < x*y; i++, Src += SrcChannels)
 		{
 			ChannelOUT[i] = Src->GetFloat();
 		}
 	}
 
-	void ExtractAndConvertChannel(const FFloat16*Src, uint32 SrcChannels, uint32 x, uint32 y, FFloat16* ChannelOUT)
+	void ExtractAndConvertChannel(const FFloat16*Src, uint64 SrcChannels, uint64 x, uint64 y, FFloat16* ChannelOUT)
 	{
-		for (uint32 i = 0; i < x*y; i++, Src += SrcChannels)
+		for (uint64 i = 0; i < x*y; i++, Src += SrcChannels)
 		{
 			ChannelOUT[i] = *Src;
 		}
@@ -214,17 +218,17 @@ namespace
 
 	/////////////////////////////////////////
 	// 32 bit per channel source
-	void ExtractAndConvertChannel(const float* Src, uint32 SrcChannels, uint32 x, uint32 y, float* ChannelOUT)
+	void ExtractAndConvertChannel(const float* Src, uint64 SrcChannels, uint64 x, uint64 y, float* ChannelOUT)
 	{
-		for (uint32 i = 0; i < x*y; i++, Src += SrcChannels)
+		for (uint64 i = 0; i < x*y; i++, Src += SrcChannels)
 		{
 			ChannelOUT[i] = *Src;
 		}
 	}
 
-	void ExtractAndConvertChannel(const float* Src, uint32 SrcChannels, uint32 x, uint32 y, FFloat16* ChannelOUT)
+	void ExtractAndConvertChannel(const float* Src, uint64 SrcChannels, uint64 x, uint64 y, FFloat16* ChannelOUT)
 	{
-		for (uint32 i = 0; i < x*y; i++, Src += SrcChannels)
+		for (uint64 i = 0; i < x*y; i++, Src += SrcChannels)
 		{
 			ChannelOUT[i] = *Src;
 		}
@@ -246,7 +250,8 @@ namespace
 	}
 }
 
-const char* FExrImageWrapper::GetRawChannelName(int ChannelIndex) const
+// this is ok as a 32bit int
+const char* FExrImageWrapper::GetRawChannelName(int32 ChannelIndex) const
 {
 	const int32 MaxChannels = 4;
 	static const char* RGBAChannelNames[] = { "R", "G", "B", "A" };
@@ -287,13 +292,13 @@ template <> struct TExrImageOutputChannelType<Imf::HALF>  { typedef FFloat16 Typ
 template <> struct TExrImageOutputChannelType<Imf::FLOAT> { typedef float Type; };
 
 template <Imf::PixelType OutputFormat, typename sourcetype>
-void FExrImageWrapper::WriteFrameBufferChannel(Imf::FrameBuffer& ImfFrameBuffer, const char* ChannelName, const sourcetype* SrcData, TArray<uint8>& ChannelBuffer)
+void FExrImageWrapper::WriteFrameBufferChannel(Imf::FrameBuffer& ImfFrameBuffer, const char* ChannelName, const sourcetype* SrcData, TArray64<uint8>& ChannelBuffer)
 {
-	const int32 OutputPixelSize = ((OutputFormat == Imf::HALF) ? 2 : 4);
-	ChannelBuffer.AddUninitialized(Width*Height*OutputPixelSize);
-	uint32 SrcChannels = GetNumChannelsFromFormat(RawFormat);
+	const int64 OutputPixelSize = ((OutputFormat == Imf::HALF) ? 2 : 4);
+	ChannelBuffer.AddUninitialized(int64(Width)*int64(Height)*OutputPixelSize);
+	uint64 SrcChannels = GetNumChannelsFromFormat(RawFormat);
 	ExtractAndConvertChannel(SrcData, SrcChannels, Width, Height, (typename TExrImageOutputChannelType<OutputFormat>::Type*)&ChannelBuffer[0]);
-	Imf::Slice FrameChannel = Imf::Slice(OutputFormat, (char*)&ChannelBuffer[0], OutputPixelSize, Width*OutputPixelSize);
+	Imf::Slice FrameChannel = Imf::Slice(OutputFormat, (char*)&ChannelBuffer[0], OutputPixelSize, int64(Width)*OutputPixelSize);
 	ImfFrameBuffer.insert(ChannelName, FrameChannel);
 }
 
@@ -301,7 +306,7 @@ template <Imf::PixelType OutputFormat, typename sourcetype>
 void FExrImageWrapper::CompressRaw(const sourcetype* SrcData, bool bIgnoreAlpha)
 {
 	const double StartTime = FPlatformTime::Seconds();
-	uint32 NumWriteComponents = GetNumChannelsFromFormat(RawFormat);
+	uint64 NumWriteComponents = GetNumChannelsFromFormat(RawFormat);
 	if (bIgnoreAlpha && NumWriteComponents == 4)
 	{
 		NumWriteComponents = 3;
@@ -310,25 +315,25 @@ void FExrImageWrapper::CompressRaw(const sourcetype* SrcData, bool bIgnoreAlpha)
 	Imf::Compression Comp = bUseCompression ? Imf::Compression::ZIP_COMPRESSION : Imf::Compression::NO_COMPRESSION;
 	Imf::Header Header(Width, Height, 1, Imath::V2f(0, 0), 1, Imf::LineOrder::INCREASING_Y, Comp);
 	
-	for (uint32 Channel = 0; Channel < NumWriteComponents; Channel++)
+	for (uint64 Channel = 0; Channel < NumWriteComponents; Channel++)
 	{
 		Header.channels().insert(GetRawChannelName(Channel), Imf::Channel(OutputFormat));
 	}
 
 	// OutputFormat is 0 UINT, 1 HALF or 2 FLOAT. Size evaluates to 2/4/8 or 1/2/4 compressed
-	const int32 OutputPixelSize = (bUseCompression ? 1 : 2) << OutputFormat;
+	const int64 OutputPixelSize = (bUseCompression ? 1 : 2) << OutputFormat;
 	checkSlow(OutputPixelSize >= 1 && OutputPixelSize <= 8);
 
 	FMemFileOut MemFile("");
 	Imf::FrameBuffer ImfFrameBuffer;
-	TArray<uint8> ChannelOutputBuffers[4];
+	TArray64<uint8> ChannelOutputBuffers[4];
 
 	for (uint32 Channel = 0; Channel < NumWriteComponents; Channel++)
 	{
 		WriteFrameBufferChannel<OutputFormat>(ImfFrameBuffer, GetRawChannelName(Channel), SrcData + Channel, ChannelOutputBuffers[Channel]);
 	}
 
-	uint32 FileLength;
+	uint64 FileLength;
 	{
 		// This scope ensures that IMF::Outputfile creates a complete file by closing the file when it goes out of scope.
 		// To complete the file, EXR seeks back into the file and writes the scanline offsets when the file is closed, 
@@ -337,8 +342,10 @@ void FExrImageWrapper::CompressRaw(const sourcetype* SrcData, bool bIgnoreAlpha)
 		Imf::OutputFile ImfFile(MemFile, Header);
 		ImfFile.setFrameBuffer(ImfFrameBuffer);
 	
-		MemFile.Data.AddUninitialized(Width * Height * NumWriteComponents * (OutputFormat == 2 ? 4 : 2));
-		ImfFile.writePixels(Height);
+		int64 DataSize = int64(Width) * int64(Height) * int64(NumWriteComponents) * int64(OutputFormat == 2 ? 4 : 2);
+
+		MemFile.Data.AddUninitialized(DataSize);
+		ImfFile.writePixels(int32(Height));
 		FileLength = MemFile.tellp();
 	}
 
@@ -355,8 +362,6 @@ void FExrImageWrapper::Compress( int32 Quality )
 	check(Width > 0);
 	check(Height > 0);
 	check(RawBitDepth == 8 || RawBitDepth == 16 || RawBitDepth == 32);
-
-	const int32 MaxComponents = 4;
 
 	bUseCompression = (Quality != (int32)EImageCompressionQuality::Uncompressed);
 
@@ -394,15 +399,16 @@ void FExrImageWrapper::Uncompress( const ERGBFormat InFormat, const int32 InBitD
 	check(Width);
 	check(Height);
 
-	uint32 Channels = 4;
+	uint64 Channels = 4;
 
+	uint64 DataSize = uint64(Width) * uint64(Height) * uint64(Channels) * uint64(BitDepth / 8);
 	RawData.Empty();
-	RawData.AddUninitialized( Width * Height * Channels * (BitDepth / 8) );
+	RawData.AddUninitialized(DataSize);
 
-	int dx = win.min.x;
-	int dy = win.min.y;
+	int64 dx = int64(win.min.x);
+	int64 dy = int64(win.min.y);
 
-	ImfFile.setFrameBuffer((Imf::Rgba*)&RawData[0] - dx - dy * Width, 1, Width);
+	ImfFile.setFrameBuffer((Imf::Rgba*)&RawData[0] - dx - dy * int64(Width), 1, Width);
 	ImfFile.readPixels(win.min.y, win.max.y);
 }
 
