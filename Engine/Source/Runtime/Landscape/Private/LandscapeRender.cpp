@@ -1819,7 +1819,7 @@ void FLandscapeComponentSceneProxy::OnTransformChanged()
 
 	// cache component's WorldToLocal
 	FMatrix LtoW = GetLocalToWorld();
-	WorldToLocal = LtoW.InverseFast();
+	WorldToLocal = LtoW.Inverse();
 
 	// cache component's LocalToWorldNoScaling
 	LocalToWorldNoScaling = LtoW;
@@ -2515,7 +2515,7 @@ void FLandscapeComponentSceneProxy::CalculateBatchElementLOD(const FSceneView& I
 		InOutLODData.UseCombinedMeshBatch = false; // default to individual batch render
 
 		float SubSectionMaxExtend = ComponentMaxExtend / 2.0f;
-		float SubSectionRadius = GetBounds().SphereRadius / 2.0f;
+		float SubSectionRadius = FMath::Max(GetBounds().SphereRadius / 2.0f, 1.0f); // clamp radius to avoid any div by 0 later
 		float CombinedScreenRatio = 0.0f;
 		bool AllSubSectionHaveSameScreenSize = true;
 
@@ -2528,7 +2528,6 @@ void FLandscapeComponentSceneProxy::CalculateBatchElementLOD(const FSceneView& I
 				FViewCustomDataSubSectionLOD& SubSectionLODData = InOutLODData.SubSections[SubSectionIndex];
 
 				SubSectionLODData.ScreenSizeSquared = GetComponentScreenSize(&InView, SubSectionScreenSizeTestingPosition[SubSectionIndex], SubSectionMaxExtend, SubSectionRadius);
-
 				check(SubSectionLODData.ScreenSizeSquared > 0.0f);
 
 				CalculateLODFromScreenSize(InView, SubSectionLODData.ScreenSizeSquared, InViewLODScale, SubSectionIndex, InOutLODData);
