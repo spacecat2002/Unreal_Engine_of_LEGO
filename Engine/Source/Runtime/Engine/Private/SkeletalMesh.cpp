@@ -1280,7 +1280,7 @@ void USkeletalMesh::PostEditChangeProperty(FPropertyChangedEvent& PropertyChange
 	//Block any re-entrant call by incrementing PostEditChangeStackCounter. It will be decrement when we will go out of scope.
 	const bool bCallPostEditChange = false;
 	const bool bReRegisterComponents = false;
-	FScopedSkeletalMeshPostEditChange(this, bCallPostEditChange, bReRegisterComponents);
+	FScopedSkeletalMeshPostEditChange BlockRecursiveCallScope(this, bCallPostEditChange, bReRegisterComponents);
 
 	bool bFullPrecisionUVsReallyChanged = false;
 
@@ -1382,8 +1382,8 @@ void USkeletalMesh::PostEditChangeProperty(FPropertyChangedEvent& PropertyChange
 
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 
-	//The stack counter after a PostEditChange should be 0
-	check(PostEditChangeStackCounter == 0);
+	//The stack counter here should be 1 since the BlockRecursiveCallScope protection has the lock and it will be decrement to 0 when we get out of the function scope
+	check(PostEditChangeStackCounter == 1);
 }
 
 void USkeletalMesh::PostEditUndo()
