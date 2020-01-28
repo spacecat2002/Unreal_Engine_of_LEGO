@@ -124,7 +124,7 @@ void FJpegImageWrapper::Compress(int32 Quality)
 		CompressedData.Reset(RawData.Num());
 		CompressedData.AddUninitialized(RawData.Num());
 
-		int OutBufferSize = CompressedData.Num();
+		int64 OutBufferSize = CompressedData.Num();
 
 		jpge::params Parameters;
 		Parameters.m_quality = Quality;
