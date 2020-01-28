@@ -73,6 +73,7 @@
 #endif // #if WITH_EDITOR
 
 #include "Interfaces/ITargetPlatform.h"
+#include "Interfaces/ITargetPlatformManagerModule.h"
 
 #if WITH_APEX
 #include "PhysXIncludes.h"
@@ -1147,8 +1148,11 @@ bool USkeletalMesh::UpdateStreamingStatus(bool bWaitForMipFading)
 			// destroying the object.
 			if (bRebuildPlatformData)
 			{
+				ITargetPlatformManagerModule& TargetPlatformManager = GetTargetPlatformManagerRef();
+				ITargetPlatform* TargetPlatform = TargetPlatformManager.GetRunningTargetPlatform();
+
 				// TODO: force rebuild even if DDC keys match
-				SkeletalMeshRenderData->Cache(this);
+				SkeletalMeshRenderData->Cache(TargetPlatform, this);
 				// @TODO this can not be called from this callstack since the entry needs to be removed completely from the streamer.
 				// UpdateResource();
 			}
@@ -3324,8 +3328,13 @@ void USkeletalMesh::InvalidateDeriveDataCacheGUID()
 
 void USkeletalMesh::CacheDerivedData()
 {
+	// Cache derived data for the running platform.
+	ITargetPlatformManagerModule& TargetPlatformManager = GetTargetPlatformManagerRef();
+	ITargetPlatform* RunningPlatform = TargetPlatformManager.GetRunningTargetPlatform();
+	check(RunningPlatform);
+
 	AllocateResourceForRendering();
-	SkeletalMeshRenderData->Cache(this);
+	SkeletalMeshRenderData->Cache(RunningPlatform, this);
 	PostMeshCached.Broadcast(this);
 }
 

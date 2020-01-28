@@ -1075,6 +1075,9 @@ static_assert(SP_NumPlatforms <= sizeof(GSelectiveBasePassOutputsPlatformMask) *
 RENDERCORE_API uint64 GDistanceFieldsPlatformMask = 0;
 static_assert(SP_NumPlatforms <= sizeof(GDistanceFieldsPlatformMask) * 8, "GDistanceFieldsPlatformMask must be large enough to support all shader platforms");
 
+RENDERCORE_API uint64 GRayTracingPlaformMask = 0;
+static_assert(SP_NumPlatforms <= sizeof(GRayTracingPlaformMask) * 8, "GRayTracingPlaformMask must be large enough to support all shader platforms");
+
 RENDERCORE_API void RenderUtilsInit()
 {
 	if (GUseForwardShading)
@@ -1110,6 +1113,12 @@ RENDERCORE_API void RenderUtilsInit()
 	if (DistanceFieldsCVar && DistanceFieldsCVar->GetInt())
 	{
 		GDistanceFieldsPlatformMask = ~0ull;
+	}
+
+	static IConsoleVariable* RayTracingCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.RayTracing"));
+	if (RayTracingCVar && RayTracingCVar->GetInt())
+	{
+		GRayTracingPlaformMask = ~0ull;
 	}
 
 #if WITH_EDITOR
@@ -1177,6 +1186,15 @@ RENDERCORE_API void RenderUtilsInit()
 				else
 				{
 					GDistanceFieldsPlatformMask &= ~Mask;
+				}
+
+				if (TargetPlatform->UsesRayTracing())
+				{
+					GRayTracingPlaformMask |= Mask;
+				}
+				else
+				{
+					GRayTracingPlaformMask &= ~Mask;
 				}
 			}
 		}

@@ -215,6 +215,12 @@ public:
 	ENGINE_API const uint16* AccessStream16() const;
 
 	/**
+	 * Get the direct read access to index data
+	 * Only valid if NeedsCPUAccess = true and indices are 32 bit
+	 */
+	ENGINE_API const uint32* AccessStream32() const;
+
+	/**
 	 * Retrieves an array view in to the index buffer. The array view allows code
 	 * to retrieve indices as 32-bit regardless of how they are stored internally
 	 * without a copy. The array view is valid only if:

@@ -164,6 +164,9 @@ struct FRayTracingGeometryInitializer
 	// All ray tracing geometries must have at least one segment.
 	TArray<FRayTracingGeometrySegment> Segments;
 
+	// Offline built geometry data. If null, the geometry will be built by the RHI at runtime.
+	FResourceArrayInterface* OfflineData = nullptr;
+
 	bool bFastBuild = false;
 	bool bAllowUpdate = false;
 };

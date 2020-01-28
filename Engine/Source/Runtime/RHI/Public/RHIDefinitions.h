@@ -12,11 +12,7 @@
 #include "HAL/IConsoleManager.h"
 
 #ifndef RHI_RAYTRACING
-#if (PLATFORM_WINDOWS && PLATFORM_64BITS)
-	#define RHI_RAYTRACING 1
-#else
-	#define RHI_RAYTRACING 0
-#endif
+#define RHI_RAYTRACING 0
 #endif
 
 enum EShaderFrequency

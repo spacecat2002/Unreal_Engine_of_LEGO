@@ -299,6 +299,15 @@ const uint16* FRawStaticIndexBuffer::AccessStream16() const
 	return nullptr;
 }
 
+const uint32* FRawStaticIndexBuffer::AccessStream32() const
+{
+	if (b32Bit)
+	{
+		return reinterpret_cast<const uint32*>(IndexStorage.GetData());
+	}
+	return nullptr;
+}
+
 FIndexArrayView FRawStaticIndexBuffer::GetArrayView() const
 {
 	int32 NumIndices = b32Bit ? (IndexStorage.Num() / 4) : (IndexStorage.Num() / 2);
