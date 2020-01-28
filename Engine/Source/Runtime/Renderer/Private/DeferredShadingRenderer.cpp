@@ -629,18 +629,25 @@ void FDeferredShadingSceneRenderer::PrepareDistanceFieldScene(FRHICommandListImm
 
 bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandListImmediate& RHICmdList)
 {
-	if (!IsRayTracingEnabled() || GetForceRayTracingEffectsCVarValue() == 0 || Views.Num() == 0)
+	if (!IsRayTracingEnabled() || Views.Num() == 0)
 	{
 		return false;
 	}
 
 	bool bAnyRayTracingPassEnabled = false;
+	bool bPathTracingOrDebugViewEnabled = false;
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
 		bAnyRayTracingPassEnabled |= AnyRayTracingPassEnabled(Scene, Views[ViewIndex]);
+		bPathTracingOrDebugViewEnabled |= !CanOverlayRayTracingOutput(Views[ViewIndex]);
 	}
 
 	if (!bAnyRayTracingPassEnabled)
+	{
+		return false;
+	}
+
+	if (GetForceRayTracingEffectsCVarValue() == 0 && !bPathTracingOrDebugViewEnabled)
 	{
 		return false;
 	}
@@ -1053,18 +1060,25 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 
 bool FDeferredShadingSceneRenderer::DispatchRayTracingWorldUpdates(FRHICommandListImmediate& RHICmdList)
 {
-	if (!IsRayTracingEnabled() || GetForceRayTracingEffectsCVarValue() == 0 || Views.Num() == 0)
+	if (!IsRayTracingEnabled() || Views.Num() == 0)
 	{
 		return false;
 	}
 
 	bool bAnyRayTracingPassEnabled = false;
+	bool bPathTracingOrDebugViewEnabled = false;
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
 		bAnyRayTracingPassEnabled |= AnyRayTracingPassEnabled(Scene, Views[ViewIndex]);
+		bPathTracingOrDebugViewEnabled |= !CanOverlayRayTracingOutput(Views[ViewIndex]);
 	}
 
 	if (!bAnyRayTracingPassEnabled)
+	{
+		return false;
+	}
+
+	if (GetForceRayTracingEffectsCVarValue() == 0 && !bPathTracingOrDebugViewEnabled)
 	{
 		return false;
 	}
