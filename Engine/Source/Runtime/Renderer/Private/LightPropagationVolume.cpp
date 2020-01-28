@@ -860,7 +860,8 @@ void FLightPropagationVolume::InitSettings(FRHICommandListImmediate& RHICmdList,
 			TexCreate_HideInVisualizeTexture | GFastVRamConfig.LPV,
 			TexCreate_ShaderResource | TexCreate_UAV,
 			false,
-			1));
+			1,
+			false));
 
 		{
 			const TCHAR* Names[] = { TEXT("LPV_A0"), TEXT("LPV_B0"), TEXT("LPV_A1"), TEXT("LPV_B1"), TEXT("LPV_A2"), TEXT("LPV_B2"), TEXT("LPV_A3"), TEXT("LPV_B3"), TEXT("LPV_A4"), TEXT("LPV_B4"), TEXT("LPV_A5"), TEXT("LPV_B5"), TEXT("LPV_A6"), TEXT("LPV_B6") };
