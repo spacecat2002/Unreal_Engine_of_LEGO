@@ -526,6 +526,8 @@ public:
 	virtual void RHIDispatchIndirectComputeShader(FRHIVertexBuffer* ArgumentBuffer, uint32 ArgumentOffset) final override;
 	virtual void RHIAutomaticCacheFlushAfterComputeShader(bool bEnable) final override;
 	virtual void RHIFlushComputeShaderCache() final override;
+	virtual void RHIBeginUAVOverlap() final override;
+	virtual void RHIEndUAVOverlap() final override;
 	virtual void RHISetMultipleViewports(uint32 Count, const FViewportBounds* Data) final override;
 	virtual void RHIClearUAVFloat(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const FVector4& Values) final override;
 	virtual void RHIClearUAVUint(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const FUintVector4& Values) final override;
@@ -1067,8 +1069,11 @@ protected:
 	void StopIntelExtensions();
 #endif // INTEL_EXTENSIONS
 
-	void BeginUAVOverlap();
-	void EndUAVOverlap();
+	// UAV overlap handling
+	bool bUAVOverlapAllowed = false;
+	bool bUAVOverlapEnabled = false;
+	bool IsUAVOverlapSupported();
+	void UAVBarrier();
 
 #if INTEL_METRICSDISCOVERY
 	void CreateIntelMetricsDiscovery();

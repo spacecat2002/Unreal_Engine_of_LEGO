@@ -2018,6 +2018,18 @@ void FD3D11DynamicRHI::RHITransitionResources(EResourceTransitionAccess Transiti
 			Resource->SetCurrentGPUAccess(TransitionType);
 		}
 	}
+
+	// If we get any write transitions and UAV overlaps are enabled,
+	// we have to toggle the overlap off/back on again to get the driver
+	// to insert an appropriate UAV barrier.
+	switch (TransitionType)
+	{
+	case EResourceTransitionAccess::EWritable:
+	case EResourceTransitionAccess::ERWBarrier:
+	case EResourceTransitionAccess::ERWSubResBarrier:
+		UAVBarrier();
+		break;
+	}
 }
 
 void FD3D11DynamicRHI::RHITransitionResources(EResourceTransitionAccess TransitionType, EResourceTransitionPipeline TransitionPipeline, FRHIUnorderedAccessView** InUAVs, int32 InNumUAVs, FRHIComputeFence* WriteFence)
@@ -2038,6 +2050,18 @@ void FD3D11DynamicRHI::RHITransitionResources(EResourceTransitionAccess Transiti
 		}
 	}
 
+	// If we get any write transitions and UAV overlaps are enabled,
+	// we have to toggle the overlap off/back on again to get the driver
+	// to insert an appropriate UAV barrier.
+	switch (TransitionType)
+	{
+	case EResourceTransitionAccess::EWritable:
+	case EResourceTransitionAccess::ERWBarrier:
+	case EResourceTransitionAccess::ERWSubResBarrier:
+		UAVBarrier();
+		break;
+	}
+
 	if (WriteFence)
 	{
 		WriteFence->WriteFence();
@@ -2052,127 +2076,127 @@ static TAutoConsoleVariable<int32> CVarAllowUAVFlushExt(
 	TEXT(" 0: off"),
 	ECVF_RenderThreadSafe);
 
-static bool GAllowUAVFlushExt = true;
-static bool GOverlapUAVOBegin = false;
-
 // Enable this to test if NvAPI/AGS/Intel returned an error during UAV overlap enabling/disabling.
 // By default we do not test because this is an optimalisation (if overlapping is not enabled, GPU execution is slower)
 // Enable it here to validate if overlapping is actually used.
 #if 0
-	#define CHECK_AGS(x) {AGSReturnCode err = (x); check(err == AGS_SUCCESS);}
-	#define CHECK_NVAPI(x) {NvAPI_Status err = (x); check(err == NVAPI_OK);}
-	#define CHECK_INTEL(x) { HRESULT err = (x); check(err == S_OK);}
+	#define CHECK_AGS(x)   do { AGSReturnCode err = (x); check(err == AGS_SUCCESS); } while(false)
+	#define CHECK_NVAPI(x) do { NvAPI_Status  err = (x); check(err == NVAPI_OK);    } while(false)
+	#define CHECK_INTEL(x) do { HRESULT       err = (x); check(err == S_OK);        } while(false)
 #else
-	#define CHECK_AGS(x) {(x);}
-	#define CHECK_NVAPI(x) {(x);}
-	#define CHECK_INTEL(x) {(x);}
+	#define CHECK_AGS(x)   do { (x); } while(false)
+	#define CHECK_NVAPI(x) do { (x); } while(false)
+	#define CHECK_INTEL(x) do { (x); } while(false)
 #endif
 
-static bool IsUAVOverlapSupported()
+bool FD3D11DynamicRHI::IsUAVOverlapSupported()
 {
-	if (!GAllowUAVFlushExt ||
-		(!IsRHIDeviceNVIDIA() &&
-		!IsRHIDeviceAMD() &&
-		!IsRHIDeviceIntel()))
-	{
-		return true;
-	}
-	return false;
+	return IsRHIDeviceNVIDIA() || IsRHIDeviceAMD() || IsRHIDeviceIntel();
 }
 
-void FD3D11DynamicRHI::BeginUAVOverlap()
+void FD3D11DynamicRHI::RHIBeginUAVOverlap()
 {
-#if !PLATFORM_HOLOLENS
-	if (!GOverlapUAVOBegin)
-	{
-		if (IsRHIDeviceNVIDIA())
-		{
-			CHECK_NVAPI(NvAPI_D3D11_BeginUAVOverlap(Direct3DDevice));
-		}
-		else if (IsRHIDeviceAMD())
-		{
-			CHECK_AGS(agsDriverExtensionsDX11_BeginUAVOverlap(AmdAgsContext, Direct3DDeviceIMContext));
-		}
-		else if (IsRHIDeviceIntel())
-		{
-#if INTEL_EXTENSIONS
-			if (IntelD3D11ExtensionFuncs && IntelD3D11ExtensionFuncs->D3D11BeginUAVOverlap)
-			{
-				CHECK_INTEL(IntelD3D11ExtensionFuncs->D3D11BeginUAVOverlap(IntelExtensionContext));
-			}
-#endif
-		}
-		else ensure(false);
+	checkf(!bUAVOverlapEnabled, TEXT("Mismatched call to BeginUAVOverlap. Ensure all calls to RHICmdList.BeginUAVOverlap() are paired with a call to RHICmdList.EndUAVOverlap()."));
 
-		GOverlapUAVOBegin = true;
+	bUAVOverlapAllowed = (CVarAllowUAVFlushExt.GetValueOnRenderThread() != 0) && IsUAVOverlapSupported();
+	if (!bUAVOverlapAllowed)
+	{
+		return;
+	}
+
+	bUAVOverlapEnabled = true;
+
+#if !PLATFORM_HOLOLENS
+	if (IsRHIDeviceNVIDIA())
+	{
+		CHECK_NVAPI(NvAPI_D3D11_BeginUAVOverlap(Direct3DDevice));
+	}
+	else if (IsRHIDeviceAMD())
+	{
+		CHECK_AGS(agsDriverExtensionsDX11_BeginUAVOverlap(AmdAgsContext, Direct3DDeviceIMContext));
+	}
+	else if (IsRHIDeviceIntel())
+	{
+#if INTEL_EXTENSIONS
+		if (IntelD3D11ExtensionFuncs && IntelD3D11ExtensionFuncs->D3D11BeginUAVOverlap)
+		{
+			CHECK_INTEL(IntelD3D11ExtensionFuncs->D3D11BeginUAVOverlap(IntelExtensionContext));
+		}
+#endif
+	}
+	else
+	{
+		ensureMsgf(false, TEXT("BeginUAVOverlap not implemented for this GPU IHV."));
+	}
+#endif
+}
+
+void FD3D11DynamicRHI::RHIEndUAVOverlap()
+{
+	if (!bUAVOverlapAllowed)
+	{
+		return;
+	}
+
+	checkf(bUAVOverlapEnabled, TEXT("Mismatched call to EndUAVOverlap. Ensure all calls to RHICmdList.BeginUAVOverlap() are paired with a call to RHICmdList.EndUAVOverlap()."));
+	bUAVOverlapEnabled = false;
+
+#if !PLATFORM_HOLOLENS
+	if (IsRHIDeviceNVIDIA())
+	{
+		CHECK_NVAPI(NvAPI_D3D11_EndUAVOverlap(Direct3DDevice));
+	}
+	else if (IsRHIDeviceAMD())
+	{
+		CHECK_AGS(agsDriverExtensionsDX11_EndUAVOverlap(AmdAgsContext, Direct3DDeviceIMContext));
+	}
+	else if (IsRHIDeviceIntel())
+	{
+#if INTEL_EXTENSIONS
+		if (IntelD3D11ExtensionFuncs && IntelD3D11ExtensionFuncs->D3D11EndUAVOverlap)
+		{
+			CHECK_INTEL(IntelD3D11ExtensionFuncs->D3D11EndUAVOverlap(IntelExtensionContext));
+		}
+#endif
+	}
+	else
+	{
+		ensureMsgf(false, TEXT("EndUAVOverlap not implemented for this GPU IHV."));
 	}
 #endif	
 }
-void FD3D11DynamicRHI::EndUAVOverlap()
-{
-#if !PLATFORM_HOLOLENS
-	if (GOverlapUAVOBegin)
-	{
-		if (IsRHIDeviceNVIDIA())
-		{
-			CHECK_NVAPI(NvAPI_D3D11_EndUAVOverlap(Direct3DDevice));
-		}
-		else if (IsRHIDeviceAMD())
-		{
-			CHECK_AGS(agsDriverExtensionsDX11_EndUAVOverlap(AmdAgsContext, Direct3DDeviceIMContext));
-		}
-		else if (IsRHIDeviceIntel())
-		{
-#if INTEL_EXTENSIONS
-			if (IntelD3D11ExtensionFuncs && IntelD3D11ExtensionFuncs->D3D11EndUAVOverlap)
-			{
-				CHECK_INTEL(IntelD3D11ExtensionFuncs->D3D11EndUAVOverlap(IntelExtensionContext));
-			}
-#endif
-		}
-		else ensure(false);
 
-		GOverlapUAVOBegin = false;
+void FD3D11DynamicRHI::UAVBarrier()
+{
+	if (bUAVOverlapEnabled)
+	{
+		RHIEndUAVOverlap();
+		RHIBeginUAVOverlap();
 	}
-#endif
 }
 
 
 void FD3D11DynamicRHI::RHIAutomaticCacheFlushAfterComputeShader(bool bEnable)
 {
-	const bool bCVarEnabled = CVarAllowUAVFlushExt.GetValueOnRenderThread() != 0;
-
-	if (GAllowUAVFlushExt != bCVarEnabled)
-	{
-		// Make sure to disable first
-		EndUAVOverlap();
-	}
-
-	GAllowUAVFlushExt = bCVarEnabled;
-
-	if (!IsUAVOverlapSupported())
-	{
-		return;
-	}
-
 	if (bEnable)
 	{
-		EndUAVOverlap();
+		if (bUAVOverlapEnabled)
+		{
+			RHIEndUAVOverlap();
+		}
 	}
 	else
 	{
-		BeginUAVOverlap();
+		if (!bUAVOverlapEnabled)
+		{
+			RHIBeginUAVOverlap();
+		}
 	}
 }
 
 void FD3D11DynamicRHI::RHIFlushComputeShaderCache()
 {
-	if (!IsUAVOverlapSupported())
-	{
-		return;
-	}
-
-	EndUAVOverlap();
+	UAVBarrier();
 }
 
 //*********************** StagingBuffer Implementation ***********************//
