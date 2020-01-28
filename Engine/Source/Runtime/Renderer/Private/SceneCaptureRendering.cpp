@@ -517,7 +517,7 @@ void BuildProjectionMatrix(FIntPoint RenderTargetSize, ECameraProjectionMode::Ty
 	}
 }
 
-void SetupViewVamilyForSceneCapture(
+void SetupViewFamilyForSceneCapture(
 	FSceneViewFamily& ViewFamily,
 	USceneCaptureComponent* SceneCaptureComponent,
 	const TArrayView<const FSceneCaptureViewInfo> Views,
@@ -679,7 +679,7 @@ static FSceneRenderer* CreateSceneRendererForSceneCapture(
 		ViewFamily.ViewExtensions = GEngine->ViewExtensions->GatherActiveExtensions(nullptr);
 	}
 	
-	SetupViewVamilyForSceneCapture(
+	SetupViewFamilyForSceneCapture(
 		ViewFamily,
 		SceneCaptureComponent,
 		MakeArrayView(&SceneCaptureViewInfo, 1),
