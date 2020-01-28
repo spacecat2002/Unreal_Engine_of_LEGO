@@ -46,12 +46,12 @@ public:
 protected:
 
 	template <Imf::PixelType OutputFormat, typename sourcetype>
-	void WriteFrameBufferChannel(Imf::FrameBuffer& ImfFrameBuffer, const char* ChannelName, const sourcetype* SrcData, TArray64<uint8>& ChannelBuffer);
+	void WriteFrameBufferChannel(Imf::FrameBuffer& ImfFrameBuffer, const char* ChannelName, const sourcetype* SrcData, TArray<uint8>& ChannelBuffer);
 
 	template <Imf::PixelType OutputFormat, typename sourcetype>
 	void CompressRaw(const sourcetype* SrcData, bool bIgnoreAlpha);
 
-	const char* GetRawChannelName(int32 ChannelIndex) const;
+	const char* GetRawChannelName(int ChannelIndex) const;
 
 private:
 
