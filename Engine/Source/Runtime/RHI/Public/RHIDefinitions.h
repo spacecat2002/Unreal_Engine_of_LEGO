@@ -243,6 +243,7 @@ struct RHI_API FDataDrivenShaderPlatformInfo
 	bool bSupportsRenderTargetWriteMask;
 	bool bSupportsRayTracing;
 	bool bSupportsRayTracingMissShaderBindings; // Whether resources could be bound for miss shaders
+	bool bSupportsRayTracingIndirectInstanceData; // Whether instance transforms can be copied from the GPU to the TLAS instances buffer 
 	bool bSupportsGPUSkinCache;
 	bool bSupportsByteBufferComputeShaders;
 	bool bSupportsPrimitiveShaders;
