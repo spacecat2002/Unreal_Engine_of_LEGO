@@ -249,6 +249,7 @@ struct RHI_API FDataDrivenShaderPlatformInfo
 	bool bSupportsUInt64ImageAtomics;
 	bool bSupportsTemporalHistoryUpscale;
 	bool bSupportsRTIndexFromVS;
+	bool bSupportsWaveOperations; // Whether HLSL SM6 shader wave intrinsics are supported
 
 	bool bTargetsTiledGPU;
 	bool bNeedsOfflineCompiler;

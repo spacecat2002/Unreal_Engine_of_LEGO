@@ -216,8 +216,7 @@ inline RHI_API bool RHISupportsRayTracingShaders(EShaderPlatform Platform)
  **/
 inline RHI_API bool RHISupportsWaveOperations(EShaderPlatform Platform)
 {
-	// Currently SM6 shaders are treated as an extension of SM5.
-	return Platform == SP_PCD3D_SM5;
+	return FDataDrivenShaderPlatformInfo::GetInfo(Platform).bSupportsWaveOperations;
 }
 
 /** True if the given shader platform supports a render target write mask */
