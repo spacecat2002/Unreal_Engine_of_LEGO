@@ -609,10 +609,13 @@ void UAnimInstance::ParallelUpdateAnimation()
 {
 	GetProxyOnAnyThread<FAnimInstanceProxy>().UpdateAnimation();
 
-	// Tick asset players for this and any linked instances we have
-	for(UAnimInstance* LinkedInstance : GetSkelMeshComponent()->GetLinkedAnimInstances())
+	if(GetSkelMeshComponent()->GetAnimInstance() == this)
 	{
-		LinkedInstance->GetProxyOnAnyThread<FAnimInstanceProxy>().TickAssetPlayerInstances();
+		// If this is the main instance,  Tick asset players for this and any linked instances we have
+		for(UAnimInstance* LinkedInstance : GetSkelMeshComponent()->GetLinkedAnimInstances())
+		{
+			LinkedInstance->GetProxyOnAnyThread<FAnimInstanceProxy>().TickAssetPlayerInstances();
+		}
 	}
 
 	GetProxyOnAnyThread<FAnimInstanceProxy>().TickAssetPlayerInstances();
