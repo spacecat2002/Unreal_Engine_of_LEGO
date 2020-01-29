@@ -1485,9 +1485,19 @@ void USkinnedMeshComponent::SetSkeletalMesh(USkeletalMesh* InSkelMesh, bool bRei
 
 		SkeletalMesh = InSkelMesh;
 
-		for (TWeakObjectPtr<USkinnedMeshComponent>& SlavePoseComponent : SlavePoseComponents)
+		//SlavePoseComponents is an array of weak obj ptrs, so it can contain null elements
+		for (auto Iter = SlavePoseComponents.CreateIterator(); Iter; ++Iter)
 		{
-			SlavePoseComponent->UpdateMasterBoneMap();
+			TWeakObjectPtr<USkinnedMeshComponent> Comp = (*Iter);
+			if (Comp.IsValid() == false)
+			{
+				SlavePoseComponents.RemoveAt(Iter.GetIndex());
+				--Iter;
+			}
+			else
+			{
+				Comp->UpdateMasterBoneMap();
+			}
 		}
 
 		// Don't init anim state if not registered
