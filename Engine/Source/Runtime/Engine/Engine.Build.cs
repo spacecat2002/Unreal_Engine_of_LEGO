@@ -316,7 +316,7 @@ public class Engine : ModuleRules
 
 		if (Target.bWithLiveCoding)
 		{
-			PrivateDependencyModuleNames.Add("LiveCoding");
+			DynamicallyLoadedModuleNames.Add("LiveCoding");
 		}
 
 		if (Target.Type != TargetType.Server)
