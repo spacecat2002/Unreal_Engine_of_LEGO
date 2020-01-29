@@ -67,6 +67,21 @@ bool GGPUCrashDebuggingEnabled = false;
 extern TAutoConsoleVariable<int32> GRHIAllowAsyncComputeCvar;
 
 
+#if VULKAN_HAS_VALIDATION_FEATURES
+static inline TArray<VkValidationFeatureEnableEXT> GetValidationFeaturesEnabled()
+{
+	TArray<VkValidationFeatureEnableEXT> Features;
+	Features.Add(VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT);
+	extern TAutoConsoleVariable<int32> GGPUValidationCvar;
+	if (GGPUValidationCvar.GetValueOnAnyThread() > 1)
+	{
+		Features.Add(VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_RESERVE_BINDING_SLOT_EXT);
+	}
+
+	return Features;
+}
+#endif
+
 DEFINE_LOG_CATEGORY(LogVulkan)
 
 bool FVulkanDynamicRHIModule::IsSupported()
@@ -382,21 +397,22 @@ void FVulkanDynamicRHI::CreateInstance()
 			return Key && !FCStringAnsi::Strcmp(Key, VK_EXT_DEBUG_REPORT_EXTENSION_NAME); 
 		});
 
+#if VULKAN_HAS_VALIDATION_FEATURES
 	bool bHasGPUValidation = InstanceExtensions.ContainsByPredicate([](const ANSICHAR* Key)
 		{
 			return Key && !FCStringAnsi::Strcmp(Key, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
 		});
 	VkValidationFeaturesEXT ValidationFeatures;
-	VkValidationFeatureEnableEXT ValidationFeaturesEnabled[] = {VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT, VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_RESERVE_BINDING_SLOT_EXT};
+	TArray<VkValidationFeatureEnableEXT> ValidationFeaturesEnabled = GetValidationFeaturesEnabled();
 	if (bHasGPUValidation)
 	{
 		ZeroVulkanStruct(ValidationFeatures, VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT);
 		ValidationFeatures.pNext = InstInfo.pNext;
-		extern TAutoConsoleVariable<int32> GGPUValidationCvar;
-		ValidationFeatures.enabledValidationFeatureCount = GGPUValidationCvar.GetValueOnAnyThread() > 1 ? 2 : 1;
-		ValidationFeatures.pEnabledValidationFeatures = ValidationFeaturesEnabled;
+		ValidationFeatures.enabledValidationFeatureCount = (uint32)ValidationFeaturesEnabled.Num();
+		ValidationFeatures.pEnabledValidationFeatures = ValidationFeaturesEnabled.GetData();
 		InstInfo.pNext = &ValidationFeatures;
 	}
+#endif
 #endif
 
 	VkResult Result = VulkanRHI::vkCreateInstance(&InstInfo, VULKAN_CPU_ALLOCATOR, &Instance);

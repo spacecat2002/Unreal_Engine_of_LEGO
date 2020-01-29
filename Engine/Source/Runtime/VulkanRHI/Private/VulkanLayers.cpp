@@ -422,10 +422,12 @@ void FVulkanDynamicRHI::GetInstanceLayersAndExtensions(TArray<const ANSICHAR*>& 
 
 	if (VulkanValidationOption > 0 && !bVkTrace)
 	{
+#if VULKAN_HAS_VALIDATION_FEATURES
 		if (FindLayerExtensionInList(GlobalLayerExtensions, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME) && GGPUValidationCvar.GetValueOnAnyThread() != 0)
 		{
 			OutInstanceExtensions.Add(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
 		}
+#endif
 	}
 #endif
 
