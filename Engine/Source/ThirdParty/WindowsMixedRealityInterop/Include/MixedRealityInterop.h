@@ -186,6 +186,15 @@ namespace WindowsMixedReality
 		TouchpadX,
 		TouchpadY
 	};
+	
+	enum class HMDRemotingConnectionState
+	{
+		Connecting,
+		Connected,
+		Disconnected,
+		Unknown,
+		Undefined
+	};
 
 	enum class HMDHandJoint
 	{
@@ -467,6 +476,7 @@ namespace WindowsMixedReality
 
 		typedef std::function<void(ConnectionEvent)> ConnectionCallback;
 
+		HMDRemotingConnectionState GetConnectionState();
 		void SetLogCallback(void (*functionPointer)(const wchar_t* text));
 		void ConnectToRemoteHoloLens(ID3D11Device* device, const wchar_t* ip, int bitrate, bool IsHoloLens1 = false);
 		void ConnectToLocalWMRHeadset();

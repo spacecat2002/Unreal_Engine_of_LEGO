@@ -308,6 +308,8 @@ namespace WindowsMixedReality
 	std::recursive_mutex ConnectionHandlerLock;
 	uint32 ConnectionHandlerMaxId = 1;
 
+	std::mutex remoteContextLock;
+	HMDRemotingConnectionState remotingState = HMDRemotingConnectionState::Disconnected;
 #endif // HOLO_STREAMING_RENDERING
 #endif // !PLATFORM_HOLOLENS
 
@@ -1433,7 +1435,10 @@ namespace WindowsMixedReality
 
 #if HOLO_STREAMING_RENDERING
 		// Also need to clear out the streamer helper in case of abnormal program termination to fix a race condition in the dll shutdown order
-		m_remoteContext = nullptr;
+		{
+			std::lock_guard<std::mutex> remoteLock(remoteContextLock);
+			m_remoteContext = nullptr;
+		}
 #endif
 #endif
 	}
@@ -3599,6 +3604,41 @@ namespace WindowsMixedReality
 
 		return gestureRecognizerMap[id]->SubscribeNavigation(callback, settings);
 	}
+	
+	HMDRemotingConnectionState MixedRealityInterop::GetConnectionState()
+	{
+#if HOLO_STREAMING_RENDERING
+		if (m_isHL1Remoting)
+		{
+			return remotingState;
+		}
+		else
+		{
+			std::lock_guard<std::mutex> remoteLock(remoteContextLock);
+			if (m_remoteContext == nullptr)
+			{
+				return remotingState;
+			}
+
+			switch (m_remoteContext.ConnectionState())
+			{
+			case winrt::Microsoft::Holographic::AppRemoting::ConnectionState::Connected:
+				return HMDRemotingConnectionState::Connected;
+				break;
+			case winrt::Microsoft::Holographic::AppRemoting::ConnectionState::Connecting:
+				return HMDRemotingConnectionState::Connecting;
+				break;
+			case winrt::Microsoft::Holographic::AppRemoting::ConnectionState::Disconnected:
+				return HMDRemotingConnectionState::Disconnected;
+				break;
+			}
+
+			return remotingState;
+		}
+#endif
+
+		return HMDRemotingConnectionState::Unknown;
+	}
 
 	void MixedRealityInterop::ConnectToRemoteHoloLens(ID3D11Device* device, const wchar_t * ip, int bitrate, bool IsHoloLens1)
 	{
@@ -3643,6 +3683,7 @@ namespace WindowsMixedReality
 				RemotingConnectedEvent = ref new Microsoft::Holographic::ConnectedEvent(
 					[this]()
 				{
+					remotingState = HMDRemotingConnectionState::Connected;
 					isRemoteHolographicSpace = true;
 
 					winrt::check_hresult(reinterpret_cast<::IUnknown*>(m_streamerHelpers->HolographicSpace)
@@ -3659,18 +3700,20 @@ namespace WindowsMixedReality
 					[this](_In_ Microsoft::Holographic::HolographicStreamerConnectionFailureReason failureReason)
 				{
 					DisconnectFromDevice();
-				{
-					std::map<uint32, ConnectionCallback > copyOfMap;
 					{
-						std::lock_guard<std::recursive_mutex> lock(ConnectionHandlerLock);
-						copyOfMap = ConnectionHandlerMap;
-					}
+						std::map<uint32, ConnectionCallback > copyOfMap;
+						{
+							std::lock_guard<std::recursive_mutex> lock(ConnectionHandlerLock);
+							copyOfMap = ConnectionHandlerMap;
+						}
 
-					for (auto p : copyOfMap)
-					{
-						p.second(MixedRealityInterop::ConnectionEvent::DisconnectedFromPeer);
+						for (auto p : copyOfMap)
+						{
+							p.second(MixedRealityInterop::ConnectionEvent::DisconnectedFromPeer);
+						}
 					}
-				}
+					
+					remotingState = HMDRemotingConnectionState::Disconnected;
 				});
 				DisconnectedToken = m_streamerHelpers->OnDisconnected += RemotingDisconnectedEvent;
 
@@ -3689,6 +3732,7 @@ namespace WindowsMixedReality
 			// HoloLens 2 Remoting
 			
 			// Do not use WMR api's before this call when remoting or you may get access to local machine WMR instead.
+			std::lock_guard<std::mutex> remoteLock(remoteContextLock);
 			CreateRemoteContext(m_remoteContext, bitrate);
 			{
 				holographicSpace = HolographicSpace::CreateForCoreWindow(nullptr);
@@ -3868,8 +3912,11 @@ namespace WindowsMixedReality
 			m_onDisconnectedEventRevoker.revoke();
 			m_onRecognizedSpeechRevoker.revoke();
 
-			m_remoteContext.Close();
-			m_remoteContext = nullptr;
+			{
+				std::lock_guard<std::mutex> remoteLock(remoteContextLock);
+				m_remoteContext.Close();
+				m_remoteContext = nullptr;
+			}
 
 			DestroySpatialAnchorHelper();
 
