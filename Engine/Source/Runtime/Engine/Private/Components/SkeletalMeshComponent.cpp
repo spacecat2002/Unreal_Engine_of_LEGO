@@ -2292,8 +2292,11 @@ void USkeletalMeshComponent::PostAnimEvaluation(FAnimationEvaluationContext& Eva
 	if (EvaluationContext.AnimInstance && EvaluationContext.AnimInstance->NeedsUpdate())
 	{
 		EvaluationContext.AnimInstance->PostUpdateAnimation();
+	}
 
-		for (UAnimInstance* LinkedInstance : LinkedInstances)
+	for (UAnimInstance* LinkedInstance : LinkedInstances)
+	{
+		if(LinkedInstance->NeedsUpdate())
 		{
 			LinkedInstance->PostUpdateAnimation();
 		}
