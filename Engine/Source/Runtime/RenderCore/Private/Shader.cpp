@@ -50,8 +50,8 @@ static TAutoConsoleVariable<int32> CVarSkipShaderCompression(
 	ECVF_ReadOnly | ECVF_Cheat
 	);
 
-static TAutoConsoleVariable<int32> CVarEmitShaderCompilerWarningsOnLoad(
-	TEXT("r.EmitShaderCompilerWarningsOnLoad"),
+static TAutoConsoleVariable<int32> CVarShaderCompilerEmitWarningsOnLoad(
+	TEXT("r.ShaderCompiler.EmitWarningsOnLoad"),
 	0,
 	TEXT("When 1, shader compiler warnings are emitted to the log for all shaders as they are loaded."),
 	ECVF_Default
@@ -802,7 +802,7 @@ void FShaderResource::Serialize(FArchive& Ar, bool bLoadedByCookedMaterial)
 #if WITH_EDITORONLY_DATA
 void FShaderResource::LogShaderCompilerWarnings()
 {
-	if (CompilerWarnings.Num() > 0 && CVarEmitShaderCompilerWarningsOnLoad.GetValueOnGameThread() != 0)
+	if (CompilerWarnings.Num() > 0 && CVarShaderCompilerEmitWarningsOnLoad.GetValueOnGameThread() != 0)
 	{
 		// Emit all the compiler warnings seen whilst serializing/loading this shader to the log.
 		// Since successfully compiled shaders are stored in the DDC, we'll get the compiler warnings
