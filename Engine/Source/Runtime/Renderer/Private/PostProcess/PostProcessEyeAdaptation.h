@@ -35,6 +35,20 @@ float LuminanceMaxFromLensAttenuation();
 // Returns whether the auto exposure method is supported by the feature level.
 bool IsAutoExposureMethodSupported(ERHIFeatureLevel::Type FeatureLevel, EAutoExposureMethod AutoExposureMethodId);
 
+// Returns true if the view is in a debug mode that disables all exposure
+bool IsAutoExposureDebugMode(const FViewInfo& View);
+
+// Returns the fixed exposure value
+float CalculateFixedAutoExposure(const FViewInfo& View);
+
+// Returns the manual exposure value
+float CalculateManualAutoExposure(const FViewInfo& View, bool bForceDisablePhysicalCamera);
+
+// Returns the exposure compensation from the View, 
+float GetAutoExposureCompensationFromSettings(const FViewInfo& View);
+
+bool IsExtendLuminanceRangeEnabled();
+
 // Returns the auto exposure method enabled by the view (including CVar override).
 EAutoExposureMethod GetAutoExposureMethod(const FViewInfo& View);
 

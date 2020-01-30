@@ -1354,7 +1354,55 @@ public:
 
 		SetShaderValue(RHICmdList, ShaderRHI, SRGBAwareTargetParam, bSRGBAwareTarget ? 1.0f : 0.0f );
 
-		float FixedExposure = GetEyeAdaptationFixedExposure(Context.View);
+		// Default Eye Exposure should only be used when auto-exposure is off. In that case, we would only use the manual exposure bias
+		float FixedExposure = 1.0f;
+
+		const bool bExtendedLuminanceRange = IsExtendLuminanceRangeEnabled();
+
+
+		const float BrightnessDifference = FMath::Abs(Settings.AutoExposureMinBrightness - Settings.AutoExposureMaxBrightness);
+		const bool IsDebugViewMode = IsAutoExposureDebugMode(Context.View);
+		if (IsDebugViewMode)
+		{
+			// Lock exposure to 1.0 for debug modes
+			FixedExposure = 1.0f;
+		}
+		else if (Context.View.Family->ExposureSettings.bFixed)
+		{
+			// Lock fixed exposure if set
+			FixedExposure = CalculateFixedAutoExposure(Context.View);
+		}
+		else if (BrightnessDifference < 1e-3f) // the GUI only shows three decimal places, so a difference 1e-3 is close enough to be the same
+		{
+			// A common approach for legacy is to take the min and max luminance, and average them together and use that
+			// as a "fake" manual exposure. This only works because in the past, the default low was about 0.03 and the 
+			// default high was 2.0, so the average (by chance) was around 1.015f. But it falls apart if the default high
+			// is any non-default value like 1.0 or 8.0. So we will keep the special exception when Min=Max, but if they
+			// are different at all, we are going to force them to 1.0 instead of taking the average.
+			const float LuminanceMax = bExtendedLuminanceRange ? LuminanceMaxFromLensAttenuation() : 1.0f;
+
+			if (!bExtendedLuminanceRange)
+			{
+				FixedExposure = Settings.AutoExposureMinBrightness;
+			}
+			else
+			{
+				FixedExposure = EV100ToLuminance(LuminanceMax, Settings.AutoExposureMinBrightness);
+			}
+		}
+		else if (Settings.AutoExposureMethod == EAutoExposureMethod::AEM_Manual)
+		{
+			// if we are explicitly setting a manual exposure value, then use the exposure bias
+			FixedExposure = FMath::Exp2(Settings.AutoExposureBias);
+		}
+		else
+		{
+			// If the exposure type is Histogram or Basic, and AutoExposureMinBrightness != AutoExposureMaxBrightness
+			// override to 1.0 to maintain legacy behavior. We can't average the Min/Max because with extended luminance
+			// range the top is 2^20 and bottom is 2^-10, which isn't a reasonable average.
+			FixedExposure = 1.0f;
+		}
+
 		SetShaderValue(RHICmdList, ShaderRHI, DefaultEyeExposure, FixedExposure);
 	}
 };

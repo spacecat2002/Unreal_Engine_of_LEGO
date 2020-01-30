@@ -201,6 +201,44 @@ float GetAutoExposureCompensationFromCurve(const FViewInfo& View)
 	return FMath::Pow(2.0f, AutoExposureBias);
 }
 
+bool IsAutoExposureDebugMode(const FViewInfo& View)
+{
+	const FEngineShowFlags& EngineShowFlags = View.Family->EngineShowFlags;
+
+	return View.Family->UseDebugViewPS() ||
+		!EngineShowFlags.Lighting ||
+		(EngineShowFlags.VisualizeBuffer && View.CurrentBufferVisualizationMode != NAME_None) ||
+		EngineShowFlags.RayTracingDebug ||
+		EngineShowFlags.VisualizeDistanceFieldAO ||
+		EngineShowFlags.VisualizeMeshDistanceFields ||
+		EngineShowFlags.VisualizeGlobalDistanceField ||
+		EngineShowFlags.CollisionVisibility ||
+		EngineShowFlags.CollisionPawn ||
+		!EngineShowFlags.PostProcessing;
+}
+
+float CalculateFixedAutoExposure(const FViewInfo& View)
+{
+	const bool bExtendedLuminanceRange = IsExtendLuminanceRangeEnabled();
+	const float LuminanceMax = bExtendedLuminanceRange ? LuminanceMaxFromLensAttenuation() : 1.0f;
+	return EV100ToLuminance(LuminanceMax, View.Family->ExposureSettings.FixedEV100);
+}
+
+// on mobile, we are never using the Physical Camera, which is why we need the bForceDisablePhysicalCamera
+float CalculateManualAutoExposure(const FViewInfo& View, bool bForceDisablePhysicalCamera)
+{
+	const bool bExtendedLuminanceRange = IsExtendLuminanceRangeEnabled();
+	const float LuminanceMax = bExtendedLuminanceRange ? LuminanceMaxFromLensAttenuation() : 1.0f;
+
+	const FPostProcessSettings& Settings = View.FinalPostProcessSettings;
+
+	const float BasePhysicalCameraEV100 = FMath::Log2(FMath::Square(Settings.DepthOfFieldFstop) * Settings.CameraShutterSpeed * 100 / FMath::Max(1.f, Settings.CameraISO));
+	const float PhysicalCameraEV100 = (!bForceDisablePhysicalCamera && Settings.AutoExposureApplyPhysicalCameraExposure) ? BasePhysicalCameraEV100 : 0.0f;
+
+	float FoundLuminance = EV100ToLuminance(LuminanceMax, PhysicalCameraEV100);
+	return FoundLuminance;
+}
+
 FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIFeatureLevel::Type MinFeatureLevel)
 {
 	const bool bExtendedLuminanceRange = IsExtendLuminanceRangeEnabled();
@@ -210,7 +248,6 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	const FEngineShowFlags& EngineShowFlags = View.Family->EngineShowFlags;
 
 	const EAutoExposureMethod AutoExposureMethod = GetAutoExposureMethod(View);
-
 	
 	const float LuminanceMax = bExtendedLuminanceRange ? LuminanceMaxFromLensAttenuation() : 1.0f;
 
@@ -234,25 +271,14 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 	float ExposureCompensationCurve = GetAutoExposureCompensationFromCurve(View);
 	const float BlackHistogramBucketInfluence = CVarEyeAdaptationBlackHistogramBucketInfluence.GetValueOnRenderThread();
 
-	const float BasePhysicalCameraEV100 = FMath::Log2(FMath::Square(Settings.DepthOfFieldFstop) * Settings.CameraShutterSpeed * 100 / FMath::Max(1.f, Settings.CameraISO));
-
-	const float PhysicalCameraEV100 = Settings.AutoExposureApplyPhysicalCameraExposure ? BasePhysicalCameraEV100 : 0.0f;
-
 	const float kMiddleGrey = 0.18f;
 
 	// AEM_Histogram and AEM_Basic adjust their ExposureCompensation to middle grey (0.18). AEM_Manual ExposureCompensation is already calibrated to 1.0.
 	const float GreyMult = (AutoExposureMethod == AEM_Manual) ? 1.0f : kMiddleGrey;
 
-	if (View.Family->UseDebugViewPS() ||
-		!EngineShowFlags.Lighting ||
-		(EngineShowFlags.VisualizeBuffer && View.CurrentBufferVisualizationMode != NAME_None) ||
-		EngineShowFlags.RayTracingDebug ||
-		EngineShowFlags.VisualizeDistanceFieldAO ||
-		EngineShowFlags.VisualizeMeshDistanceFields ||
-		EngineShowFlags.VisualizeGlobalDistanceField ||
-		EngineShowFlags.CollisionVisibility ||
-		EngineShowFlags.CollisionPawn ||
-		!EngineShowFlags.PostProcessing)
+	const bool IsDebugViewMode = IsAutoExposureDebugMode(View);
+
+	if (IsDebugViewMode)
 	{
 		ExposureCompensationSettings = 1.0f;
 		ExposureCompensationCurve = 1.0f;
@@ -264,7 +290,7 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 		ExposureCompensationCurve = 1.0f;
 
 		// ignores bExtendedLuminanceRange
-		MinWhitePointLuminance = MaxWhitePointLuminance = EV100ToLuminance(LuminanceMax, View.Family->ExposureSettings.FixedEV100);
+		MinWhitePointLuminance = MaxWhitePointLuminance = CalculateFixedAutoExposure(View);
 	}
 	// When !EngineShowFlags.EyeAdaptation (from "r.EyeAdaptationQuality 0") or the feature level doesn't support eye adaptation, only Settings.AutoExposureBias controls exposure.
 	else if (EngineShowFlags.EyeAdaptation && View.GetFeatureLevel() >= MinFeatureLevel)
@@ -272,7 +298,7 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 		if (AutoExposureMethod == EAutoExposureMethod::AEM_Manual)
 		{
 			// ignores bExtendedLuminanceRange
-			MinWhitePointLuminance = MaxWhitePointLuminance = EV100ToLuminance(LuminanceMax, PhysicalCameraEV100);
+			MinWhitePointLuminance = MaxWhitePointLuminance = CalculateManualAutoExposure(View, false);
 		}
 		else
 		{
