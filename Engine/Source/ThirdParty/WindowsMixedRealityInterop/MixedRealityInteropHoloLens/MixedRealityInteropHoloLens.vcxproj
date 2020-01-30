@@ -184,6 +184,7 @@
     <ClInclude Include="..\MixedRealityInterop\AzureSpatialAnchors.h" />
     <ClInclude Include="..\MixedRealityInterop\CxDataFromBuffer.h" />
     <ClInclude Include="..\MixedRealityInterop\GestureRecognizer.h" />
+    <ClInclude Include="..\MixedRealityInterop\HandMeshObserver.h" />
     <ClInclude Include="..\MixedRealityInterop\MeshObserver.h" />
     <ClInclude Include="..\MixedRealityInterop\QRCodeObserver.h" />
     <ClInclude Include="..\MixedRealityInterop\SceneUnderstandingObserver.h" />
@@ -195,6 +196,7 @@
   <ItemGroup>
     <ClCompile Include="..\MixedRealityInterop\AzureSpatialAnchors.cpp" />
     <ClCompile Include="..\MixedRealityInterop\CameraImageCapture.cpp" />
+    <ClCompile Include="..\MixedRealityInterop\HandMeshObserver.cpp" />
     <ClCompile Include="..\MixedRealityInterop\MeshObserver.cpp" />
     <ClCompile Include="..\MixedRealityInterop\MixedRealityInterop.cpp" />
     <ClCompile Include="..\MixedRealityInterop\QRCodeObserver.cpp" />

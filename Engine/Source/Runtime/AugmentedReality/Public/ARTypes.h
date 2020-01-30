@@ -169,6 +169,8 @@ enum class EARObjectClassification : uint8
 	World,
 	/** A closed mesh that was identified in the scene */
 	SceneObject,
+	/** A user's hand */
+	HandMesh,
 	// Add other types here...
 };
 

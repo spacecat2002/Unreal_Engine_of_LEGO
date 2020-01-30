@@ -65,7 +65,9 @@ struct MIXEDREALITYINTEROP_API TransformUpdate
 struct MIXEDREALITYINTEROP_API MeshUpdate :
 	public TransformUpdate
 {
+	enum MeshType {	World, Hand	};
 	GUID Id;
+	MeshType Type = World;
 
 	/** If this is zero, there were no mesh changes */
 	int NumVertices = 0;

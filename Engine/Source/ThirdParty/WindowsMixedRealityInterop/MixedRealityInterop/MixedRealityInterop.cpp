@@ -62,6 +62,7 @@
 #include "AzureSpatialAnchors.h"
 
 #include <sstream>
+#include "HandMeshObserver.h"
 
 //https://docs.microsoft.com/en-us/cpp/preprocessor/predefined-macros?view=vs-2019
 //_M_ARM64 Defined as 1 for compilations that target 64-bit ARM processors. Otherwise, undefined.
@@ -222,6 +223,9 @@ namespace WindowsMixedReality
 
 	// IDs for unhanded controllers.
 	int HandIDs[2];
+
+	std::map<uint32_t, std::shared_ptr<HandMeshUpdateObserver> > MeshUpdateObserverMap;
+	bool enabledHandMesh = false;
 
 	// Controller state
 	HMDInputPressState CurrentSelectState[2];
@@ -1789,7 +1793,8 @@ namespace WindowsMixedReality
 	bool MixedRealityInterop::UpdateRenderThreadFrame()
 	{
 		if (currentFrame != nullptr 
-			|| holographicSpace == nullptr)
+			|| holographicSpace == nullptr
+			|| !bInitialized)
 		{
 			return false;
 		}
@@ -2948,6 +2953,19 @@ namespace WindowsMixedReality
 							HandPose handPose = state.TryGetHandPose();
 							if (handPose != nullptr)
 							{
+								if (enabledHandMesh)
+								{
+									if (MeshUpdateObserverMap.count(source.Id()) == 0)
+									{
+										auto Observer = std::make_shared<HandMeshUpdateObserver>();
+										Observer->InitAsync(source);
+										MeshUpdateObserverMap[source.Id()] = Observer;
+									}
+									else
+									{
+										MeshUpdateObserverMap[source.Id()]->Update(handPose, coordinateSystem);
+									}
+								}
 								JointPoseValid[(int)hand] = handPose.TryGetJoints(coordinateSystem, Joints, JointPoses[(int)hand]);
 							}
 						}

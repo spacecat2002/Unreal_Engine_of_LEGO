@@ -46,6 +46,9 @@
     <ClInclude Include="..\MixedRealityInterop\AzureSpatialAnchors.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\MixedRealityInterop\HandMeshObserver.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\MixedRealityInterop\MixedRealityInterop.cpp">
@@ -73,6 +76,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\MixedRealityInterop\AzureSpatialAnchors.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\MixedRealityInterop\HandMeshObserver.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

@@ -137,6 +137,7 @@
     <ClInclude Include="AzureSpatialAnchors.h" />
     <ClInclude Include="CxDataFromBuffer.h" />
     <ClInclude Include="FastConversion.h" />
+    <ClInclude Include="HandMeshObserver.h" />
     <ClInclude Include="MeshObserver.h" />
     <ClInclude Include="QRCodeObserver.h" />
     <ClInclude Include="SceneUnderstandingObserver.h" />
@@ -149,6 +150,7 @@
   <ItemGroup>
     <ClCompile Include="AzureSpatialAnchors.cpp" />
     <ClCompile Include="CameraImageCapture.cpp" />
+    <ClCompile Include="HandMeshObserver.cpp" />
     <ClCompile Include="MeshObserver.cpp" />
     <ClCompile Include="MixedRealityInterop.cpp" />
     <ClCompile Include="QRCodeObserver.cpp" />
