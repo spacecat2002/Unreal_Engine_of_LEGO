@@ -421,6 +421,7 @@ namespace WindowsMixedReality
 			// to reduce output spam for the below exception when remoting.
 			return kind;
 		}
+#if PLATFORM_HOLOLENS
 		try
 		{
 			// handling exception for current limitation of remoting camera support. 
@@ -434,6 +435,7 @@ namespace WindowsMixedReality
 			kind = ViewConfiguration.Kind();
 		}
 		catch (winrt::hresult_error const&) {}
+#endif
 		return kind;
 	}
 
