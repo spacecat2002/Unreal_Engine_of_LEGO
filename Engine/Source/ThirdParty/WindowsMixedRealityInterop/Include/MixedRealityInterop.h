@@ -374,7 +374,7 @@ namespace WindowsMixedReality
 
 		// Get the latest pose information from our tracking frame.
 		bool GetCurrentPoseRenderThread(DirectX::XMMATRIX& leftView, DirectX::XMMATRIX& rightView, HMDTrackingOrigin& trackingOrigin);
-		bool QueryCoordinateSystem(ABI::Windows::Perception::Spatial::ISpatialCoordinateSystem *& pCoordinateSystem, HMDTrackingOrigin& trackingOrigin);
+		static bool QueryCoordinateSystem(ABI::Windows::Perception::Spatial::ISpatialCoordinateSystem *& pCoordinateSystem, HMDTrackingOrigin& trackingOrigin);
 		
 		DirectX::XMFLOAT4X4 GetProjectionMatrix(HMDEye eye);
 		bool GetHiddenAreaMesh(HMDEye eye, DirectX::XMFLOAT2*& vertices, int& length);
@@ -588,12 +588,15 @@ public:
 	/** To route logging messages back to the UE_LOG() macros */
 	void SetOnLog(void(*FunctionPointer)(const wchar_t* LogMsg));
 
-	void StartCameraCapture(void(*FunctionPointer)(ID3D11Texture2D*), int DesiredWidth, int DesiredHeight, int DesiredFPS);
+	void StartCameraCapture(void(*FunctionPointer)(void*, DirectX::XMFLOAT4X4), int DesiredWidth, int DesiredHeight, int DesiredFPS);
 	void StopCameraCapture();
 
-	void NotifyReceivedFrame(ID3D11Texture2D* ReceivedFrame);
+	void NotifyReceivedFrame(void* handle, DirectX::XMFLOAT4X4 CamToTracking);
 
 	void Log(const wchar_t* LogMsg);
+
+	bool GetCameraIntrinsics(DirectX::XMFLOAT2& focalLength, int& width, int& height, DirectX::XMFLOAT2& principalPoint, DirectX::XMFLOAT3& radialDistortion, DirectX::XMFLOAT2& tangentialDistortion);
+	DirectX::XMFLOAT2 UnprojectPVCamPointAtUnitDepth(DirectX::XMFLOAT2 pixelCoordinate);
 
 private:
 	CameraImageCapture();
@@ -603,7 +606,7 @@ private:
 	/** Function pointer for logging */
 	void(*OnLog)(const wchar_t*);
 	/** Function pointer for when new frames have arrived */
-	void(*OnReceivedFrame)(ID3D11Texture2D*);
+	void(*OnReceivedFrame)(void*, DirectX::XMFLOAT4X4);
 };
 
 

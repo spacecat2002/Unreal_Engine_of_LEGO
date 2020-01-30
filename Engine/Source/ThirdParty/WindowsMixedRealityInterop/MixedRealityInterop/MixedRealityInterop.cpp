@@ -1869,8 +1869,7 @@ namespace WindowsMixedReality
 	
 	bool MixedRealityInterop::QueryCoordinateSystem(ABI::Windows::Perception::Spatial::ISpatialCoordinateSystem *& pCoordinateSystem, HMDTrackingOrigin& trackingOrigin)
 	{
-		if (!IsInitialized()
-			|| CameraResources == nullptr)
+		if (CameraResources == nullptr)
 		{
 			return false;
 		}
