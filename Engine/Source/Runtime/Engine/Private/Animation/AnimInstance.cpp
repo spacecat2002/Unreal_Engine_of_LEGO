@@ -226,6 +226,8 @@ void UAnimInstance::InitializeAnimation(bool bInDeferRootNodeInitialization)
 	GetProxyOnGameThread<FAnimInstanceProxy>().BindNativeDelegates();
 
 	InitializeGroupedLayers(bInDeferRootNodeInitialization);
+
+	BlueprintLinkedAnimationLayersInitialized();
 }
 
 void UAnimInstance::UninitializeAnimation()
@@ -2669,8 +2671,8 @@ void UAnimInstance::PerformLinkedLayerOverlayOperation(TSubclassOf<UAnimInstance
 							if(!bInDeferSubGraphInitialization)
 							{
 								// Initialize the correct parts of the linked instance
-							if(LayerNode->LinkedRoot)
-							{
+								if(LayerNode->LinkedRoot)
+								{
 									FAnimInstanceProxy& ThisProxy = GetProxyOnAnyThread<FAnimInstanceProxy>();
 									FAnimInstanceProxy& LinkedProxy = NewLinkedInstance->GetProxyOnAnyThread<FAnimInstanceProxy>();
 									InitializeAndCacheBonesForLinkedRoot(LayerNode, ThisProxy, NewLinkedInstance, LinkedProxy);

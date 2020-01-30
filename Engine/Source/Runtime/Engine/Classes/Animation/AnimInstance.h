@@ -551,6 +551,10 @@ public:
 	UFUNCTION(BlueprintImplementableEvent)
 	void BlueprintBeginPlay();
 
+	/** Executed when the all Linked Animation Layers are initialized */
+	UFUNCTION(BlueprintImplementableEvent)
+	void BlueprintLinkedAnimationLayersInitialized();
+
 	bool CanTransitionSignature() const;
 	
 	/*********************************************************************************************
