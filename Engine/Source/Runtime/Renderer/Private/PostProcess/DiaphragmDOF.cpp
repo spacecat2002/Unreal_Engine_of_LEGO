@@ -1097,6 +1097,7 @@ class FDiaphragmDOFGatherCS : public FDiaphragmDOFShader
 		SHADER_PARAMETER_STRUCT_INCLUDE(FDOFCommonShaderParameters, CommonParameters)
 
 		SHADER_PARAMETER(FVector4, GatherInputSize)
+		SHADER_PARAMETER(FVector2D, GatherInputViewportSize)
 		SHADER_PARAMETER_STRUCT(FDOFGatherInputTextures, GatherInput)
 
 		SHADER_PARAMETER_STRUCT(FDOFTileClassificationTextures, TileClassification)
@@ -2285,6 +2286,7 @@ FRDGTextureRef DiaphragmDOF::AddPasses(
 			PassParameters->CommonParameters = CommonParameters;
 		
 			PassParameters->GatherInputSize = FVector4(SrcSize.X, SrcSize.Y, 1.0f / SrcSize.X, 1.0f / SrcSize.Y);
+			PassParameters->GatherInputViewportSize = FVector2D(PreprocessViewSize.X, PreprocessViewSize.Y);
 			PassParameters->GatherInput = ReducedGatherInputTextures;
 		
 			PassParameters->TileClassification = TileClassificationTextures;
