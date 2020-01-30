@@ -2635,6 +2635,7 @@ struct FMeshBuildSettings
 		, bUseFullPrecisionUVs(false)
 		, bGenerateLightmapUVs(true)
 		, bGenerateDistanceFieldAsIfTwoSided(false)
+		, bSupportFaceRemap(false)
 		, MinLightmapResolution(64)
 		, SrcLightmapIndex(0)
 		, DstLightmapIndex(1)

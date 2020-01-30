@@ -886,7 +886,7 @@ FUnorderedAccessViewRHIRef FSceneRenderTargets::GetVirtualTextureFeedbackUAV()
 {
 	if (!VirtualTextureFeedback.FeedbackBufferUAV)
 	{
-		return GBlackTextureWithUAV->UnorderedAccessViewRHI;
+		return GEmptyVertexBufferWithUAV->UnorderedAccessViewRHI;
 	}
 	
 	return VirtualTextureFeedback.FeedbackBufferUAV;
