@@ -2591,6 +2591,9 @@ struct FMeshBuildSettings
 	UPROPERTY(EditAnywhere, Category=BuildSettings, meta=(DisplayName="Two-Sided Distance Field Generation"))
 	uint8 bGenerateDistanceFieldAsIfTwoSided:1;
 
+	UPROPERTY(EditAnywhere, Category=BuildSettings, meta=(DisplayName="Enable Physical Material Mask"))
+	uint8 bSupportFaceRemap : 1;
+
 	UPROPERTY(EditAnywhere, Category=BuildSettings)
 	int32 MinLightmapResolution;
 
