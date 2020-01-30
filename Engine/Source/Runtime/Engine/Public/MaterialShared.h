@@ -634,7 +634,7 @@ public:
 	}
 
 	/** true if the material uses the SceneDepth lookup */
-	ENGINE_API bool UsesSceneDepthLookup() const { return IsSceneTextureUsed(PPI_SceneColor); }
+	ENGINE_API bool UsesSceneDepthLookup() const { return IsSceneTextureUsed(PPI_SceneDepth); }
 
 	/** true if the material uses the Velocity SceneTexture lookup */
 	ENGINE_API bool UsesVelocitySceneTexture() const { return IsSceneTextureUsed(PPI_Velocity); }
