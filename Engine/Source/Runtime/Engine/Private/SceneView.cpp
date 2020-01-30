@@ -163,6 +163,11 @@ static TAutoConsoleVariable<int32> CVarDefaultAutoExposureMethod(
 	TEXT(" 0: Histogram based (requires compute shader, default)\n")
 	TEXT(" 1: Basic AutoExposure"));
 
+static TAutoConsoleVariable<float> CVarDefaultAutoExposureBias(
+	TEXT("r.DefaultFeature.AutoExposure.Bias"),
+	1.0f,
+	TEXT("Engine default (project setting) for AutoExposure Exposure Bias (postprocess volume/camera/game setting still can override)\n"));
+
 static TAutoConsoleVariable<int32> CVarDefaultAutoExposureExtendDefaultLuminanceRange(
 	TEXT("r.DefaultFeature.AutoExposure.ExtendDefaultLuminanceRange"),
 	0,
