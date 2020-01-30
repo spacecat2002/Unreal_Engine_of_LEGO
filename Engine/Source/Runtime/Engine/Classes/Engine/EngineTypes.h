@@ -18,6 +18,7 @@
 class AActor;
 class UDecalComponent;
 class UPhysicalMaterial;
+class UPhysicalMaterialMask;
 class UPrimitiveComponent;
 class USceneComponent;
 
@@ -3652,6 +3653,24 @@ enum EPhysicalSurface
 	SurfaceType62 UMETA(Hidden),
 	SurfaceType_Max UMETA(Hidden)
 };
+
+/** Types of valid physical material mask colors which may be associated with a physical material */
+UENUM(BlueprintType)
+namespace EPhysicalMaterialMaskColor
+{
+	enum Type
+	{
+		Red,
+		Green,
+		Blue,
+		Cyan,
+		Magenta,
+		Yellow,
+		White,
+		Black,
+		MAX
+	};
+}
 
 /** Describes how often this component is allowed to move. */
 UENUM(BlueprintType)
