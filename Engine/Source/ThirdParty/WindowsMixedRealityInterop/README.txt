@@ -2,9 +2,11 @@ This solution builds libs and/or dlls (depending on output configuration) to wra
 
 To build new interop binaries:
 1) Open for edit the target files.  p4EditBinaries.bat will use BinaryFileList.txt to do this with perforce.
-2) Build MixedRealtityInterop x64 debug and release, MixedRealityInteropHoloLens x64 and arm64 debug and release and submit the results to perforce if you change the implementation.
+2) Right click solution and "restore nuget packages" just in case they did not automatically download.
+3) Run GenerateNugetPackageHeaders.bat from Engine\Source\ThirdParty\WindowsMixedRealityInterop\.  (Only need to do this the first time on a new machine)
+4) Build MixedRealtityInterop x64 debug and release, MixedRealityInteropHoloLens x64 and arm64 debug and release and submit the results to perforce if you change the implementation.
 The visual studio 'Build->Batch Build' feature is useful here (check all the boxes).
-3) Submit the target files along with whatever changes made it necessary to build.
+5) Submit the target files along with whatever changes made it necessary to build.
 
 To update the holographic remoting version, the cppwinrt, or the windows sdk version you will need to do the following:
 1) Install the remoting nuget package via 'manage nuget packages...' in the project context menu for the MixedRealityInterop project.
