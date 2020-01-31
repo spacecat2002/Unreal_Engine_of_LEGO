@@ -15,11 +15,11 @@ public class SPIRVReflect : ModuleRules
 		{
 			if (Target.Configuration == UnrealTargetConfiguration.Debug && Target.bDebugBuildsActuallyUseDebugCRT)
 			{
-				PublicAdditionalLibraries.Add(LibPath + "Mac/libspirv-reflectd.a");
+				PublicAdditionalLibraries.Add(LibPath + "Mac/libSPIRV-Reflectd.a");
 			}
 			else
 			{
-				PublicAdditionalLibraries.Add(LibPath + "Mac/libspirv-reflect.a");
+				PublicAdditionalLibraries.Add(LibPath + "Mac/libSPIRV-Reflect.a");
 			}
 		}
         else if (Target.Platform == UnrealTargetPlatform.Win64)
