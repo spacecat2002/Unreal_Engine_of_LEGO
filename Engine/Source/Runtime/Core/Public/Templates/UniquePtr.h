@@ -330,6 +330,10 @@ class TUniquePtr<T[], Deleter> : private Deleter
 public:
 	using ElementType = T;
 
+	// Non-copyable
+	TUniquePtr(const TUniquePtr&) = delete;
+	TUniquePtr& operator=(const TUniquePtr&) = delete;
+
 	/**
 	 * Default constructor - initializes the TUniquePtr to null.
 	 */
@@ -554,10 +558,6 @@ public:
 	}
 
 private:
-	// Non-copyable
-	TUniquePtr(const TUniquePtr&);
-	TUniquePtr& operator=(const TUniquePtr&);
-
 	T* Ptr;
 };
 
