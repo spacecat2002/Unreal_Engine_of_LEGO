@@ -752,19 +752,17 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 	static const auto MultiViewCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.MultiView"));
 	bIsMultiViewEnabled = RHISupportsMultiView(ShaderPlatform) && (MultiViewCVar && MultiViewCVar->GetValueOnAnyThread() != 0);
 
-#if PLATFORM_ANDROID
 	static const auto MobileMultiViewCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.MobileMultiView"));
 	bIsMobileMultiViewEnabled = RHISupportsMobileMultiView(ShaderPlatform) && (MobileMultiViewCVar && MobileMultiViewCVar->GetValueOnAnyThread() != 0);
 
 	// TODO: Test platform support for direct
 	static const auto MobileMultiViewDirectCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.MobileMultiView.Direct"));
 	bIsMobileMultiViewDirectEnabled = (MobileMultiViewDirectCVar && MobileMultiViewDirectCVar->GetValueOnAnyThread() != 0);
-#endif
 
 	bShouldBindInstancedViewUB = bIsInstancedStereoEnabled || bIsMobileMultiViewEnabled;
 
 	// If the device doesn't support mobile multi-view, disable it.
-	bIsMobileMultiViewEnabled = bIsMobileMultiViewEnabled && GSupportsMobileMultiView && IStereoRendering::IsStereoEyePass(StereoPass);
+	bIsMobileMultiViewEnabled = bIsMobileMultiViewEnabled && (GSupportsMobileMultiView || GRHISupportsArrayIndexFromAnyShader) && IStereoRendering::IsStereoEyePass(StereoPass);
 
 	SetupAntiAliasingMethod();
 
