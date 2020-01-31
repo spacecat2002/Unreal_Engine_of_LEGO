@@ -136,7 +136,7 @@ inline bool RHISupportsInstancedStereo(const EShaderPlatform Platform)
 {
 	// Only D3D SM5, PS4 and Metal SM5 supports Instanced Stereo
 	return Platform == EShaderPlatform::SP_PCD3D_SM5 || Platform == EShaderPlatform::SP_PS4 || Platform == EShaderPlatform::SP_METAL_SM5 || Platform == EShaderPlatform::SP_METAL_SM5_NOTESS
-		|| FDataDrivenShaderPlatformInfo::GetInfo(Platform).bSupportsInstancedStereo;
+		|| EShaderPlatform::SP_PCD3D_ES3_1 || FDataDrivenShaderPlatformInfo::GetInfo(Platform).bSupportsInstancedStereo;
 }
 
 inline bool RHISupportsMultiView(const EShaderPlatform Platform)
@@ -558,6 +558,9 @@ extern RHI_API EPixelFormat GRHIHDRDisplayOutputFormat;
 
 /** Counter incremented once on each frame present. Used to support game thread synchronization with swap chain frame flips. */
 extern RHI_API uint64 GRHIPresentCounter;
+
+/** True if the RHI supports setting the render target array index from any shader stage */
+extern RHI_API bool GRHISupportsArrayIndexFromAnyShader;
 
 /** Called once per frame only from within an RHI. */
 extern RHI_API void RHIPrivateBeginFrame();

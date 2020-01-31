@@ -365,6 +365,9 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		return;
 	}
 
+	SCOPED_DRAW_EVENT(RHICmdList, MobileSceneRender);
+	SCOPED_GPU_STAT(RHICmdList, MobileSceneRender);
+
 	WaitOcclusionTests(RHICmdList);
 	FRHICommandListExecutor::GetImmediateCommandList().PollOcclusionQueries();
 	RHICmdList.ImmediateFlush(EImmediateFlushType::DispatchToRHIThread);

@@ -1634,10 +1634,11 @@ namespace VulkanRHI
 		}
 	};
 
-	class FSemaphore : public FRefCount
+	class VULKANRHI_API FSemaphore : public FRefCount
 	{
 	public:
 		FSemaphore(FVulkanDevice& InDevice);
+		FSemaphore(FVulkanDevice& InDevice, const VkSemaphore& InExternalSemaphore);
 		virtual ~FSemaphore();
 
 		inline VkSemaphore GetHandle() const
@@ -1645,9 +1646,15 @@ namespace VulkanRHI
 			return SemaphoreHandle;
 		}
 
+		inline bool IsExternallyOwned() const
+		{
+			return bExternallyOwned;
+		}
+
 	private:
 		FVulkanDevice& Device;
 		VkSemaphore SemaphoreHandle;
+		bool bExternallyOwned;
 	};
 }
 
