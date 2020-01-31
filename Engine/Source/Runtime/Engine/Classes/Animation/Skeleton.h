@@ -315,8 +315,8 @@ public:
 #if WITH_EDITOR
 	ENGINE_API virtual void PreEditUndo() override;
 	ENGINE_API virtual void PostEditUndo() override;
-	ENGINE_API virtual void BeginDestroy() override;
 #endif
+	ENGINE_API virtual void BeginDestroy() override;
 
 	/** Accessor to Reference Skeleton to make data read only */
 	const FReferenceSkeleton& GetReferenceSkeleton() const
