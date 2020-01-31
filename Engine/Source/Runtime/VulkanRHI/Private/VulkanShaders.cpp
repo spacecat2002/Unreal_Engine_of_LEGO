@@ -128,7 +128,7 @@ void FVulkanShader::Setup(const TArray<uint8>& InShaderHeaderAndCode, uint64 InS
 #if VULKAN_ENABLE_SHADER_DEBUG_NAMES
 	// main_00000000_00000000
 	ANSICHAR EntryPoint[24];
-	GetEntryPoint(EntryPoint);
+	GetEntryPoint(EntryPoint, 24);
 	DebugEntryPoint = EntryPoint;
 #endif
 }

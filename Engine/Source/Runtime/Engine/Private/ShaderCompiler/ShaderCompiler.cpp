@@ -253,13 +253,21 @@ static TAutoConsoleVariable<int32> CVarMetalForceDXC(
 	(PLATFORM_WINDOWS || PLATFORM_MAC || PLATFORM_IOS),
 	TEXT("Forces DirectX Shader Compiler (DXC) to be used for all Metal shaders instead of hlslcc.\n")
 	TEXT(" 0: Disable\n")
-	TEXT(" 1: Use new compiler for all shaders (Default)"),
+	TEXT(" 1: Use new compiler for all shaders (default)"),
 	ECVF_ReadOnly);
 
 static TAutoConsoleVariable<int32> CVarOpenGLForceDXC(
 	TEXT("r.OpenGL.ForceDXC"),
 	0,
 	TEXT("Forces DirectX Shader Compiler (DXC) to be used for all OpenGL shaders instead of hlslcc.\n")
+	TEXT(" 0: Disable (default)\n")
+	TEXT(" 1: Force new compiler for all shaders"),
+	ECVF_ReadOnly);
+
+static TAutoConsoleVariable<int32> CVarVulkanForceDXC(
+	TEXT("r.Vulkan.ForceDXC"),
+	0,
+	TEXT("Forces DirectX Shader Compiler (DXC) to be used for all Vulkan shaders instead of hlslcc.\n")
 	TEXT(" 0: Disable (default)\n")
 	TEXT(" 1: Force new compiler for all shaders"),
 	ECVF_ReadOnly);
@@ -3575,7 +3583,16 @@ void GlobalBeginCompileShader(
 		}
 	}
 
-	if (IsOpenGLPlatform((EShaderPlatform)Target.Platform) && 
+	if (IsVulkanPlatform((EShaderPlatform)Target.Platform))
+	{
+		static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Vulkan.ForceDXC"));
+		if (CVar && CVar->GetInt() != 0)
+		{
+			Input.Environment.CompilerFlags.Add(CFLAG_ForceDXC);
+		}
+	}
+
+	if (IsOpenGLPlatform((EShaderPlatform)Target.Platform) &&
 		IsMobilePlatform((EShaderPlatform)Target.Platform))
 	{
 		static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("OpenGL.UseEmulatedUBs"));
