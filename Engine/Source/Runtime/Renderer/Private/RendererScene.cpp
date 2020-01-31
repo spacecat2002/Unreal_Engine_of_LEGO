@@ -217,7 +217,7 @@ FSceneViewState::FSceneViewState()
 		ENQUEUE_RENDER_COMMAND(InitializeSceneViewStateRWBuffer)(
 			[this](FRHICommandList&)
 			{
-				TotalRayCountBuffer->Initialize(sizeof(uint32), 1, PF_R32_UINT);
+				TotalRayCountBuffer->Initialize(sizeof(uint32), 1, PF_R32_UINT, BUF_SourceCopy);
 			});
 	}
 	bReadbackInitialized = false;

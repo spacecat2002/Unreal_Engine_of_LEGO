@@ -794,7 +794,7 @@ FExposureBufferData& FSceneViewState::FEyeAdaptationRTManager::GetBufferRef(cons
 	if (!ExposureBufferData[BufferNumber].IsValid())
 	{
 		FRHIResourceCreateInfo CreateInfo(TEXT("ExposureBuffer"));
-		ExposureBufferData[BufferNumber].Buffer = RHICreateVertexBuffer(sizeof(FVector4), BUF_Static | BUF_ShaderResource | BUF_UnorderedAccess, CreateInfo);
+		ExposureBufferData[BufferNumber].Buffer = RHICreateVertexBuffer(sizeof(FVector4), BUF_Static | BUF_ShaderResource | BUF_UnorderedAccess | BUF_SourceCopy, CreateInfo);
 		
 		FVector4* BufferData = (FVector4*)RHILockVertexBuffer(ExposureBufferData[BufferNumber].Buffer, 0, sizeof(FVector4), RLM_WriteOnly);
 		*BufferData = FVector4(1.0f, 1.0f, 1.0f, 1.0f);

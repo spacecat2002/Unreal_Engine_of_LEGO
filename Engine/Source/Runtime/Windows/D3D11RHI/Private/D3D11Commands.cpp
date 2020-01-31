@@ -2215,6 +2215,8 @@ void FD3D11DynamicRHI::RHICopyToStagingBuffer(FRHIVertexBuffer* SourceBufferRHI,
 		ensureMsgf(!StagingBuffer->bIsLocked, TEXT("Attempting to Copy to a locked staging buffer. This may have undefined behavior"));
 		if (SourceBuffer)
 		{
+			ensureMsgf((SourceBufferRHI->GetUsage() & BUF_SourceCopy) != 0, TEXT("Buffers used as copy source need to be created with BUF_SourceCopy"));
+
 			if (!StagingBuffer->StagedRead || StagingBuffer->ShadowBufferSize < NumBytes)
 			{
 				// Free previously allocated buffer.
