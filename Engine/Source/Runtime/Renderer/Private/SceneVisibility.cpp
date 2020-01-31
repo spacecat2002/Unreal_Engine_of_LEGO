@@ -2039,7 +2039,7 @@ struct FRelevancePacket
 						TranslucentPrimCount.Add(ETranslucencyPass::TPT_TranslucencyAfterDOF, ViewRelevance.bUsesSceneColorCopy, ViewRelevance.bDisableOffscreenRendering);
 					}
 
-					if (ViewRelevance.bSeparateTranslucencyModulateRelevance)
+					if (ViewRelevance.bSeparateTranslucencyModulate)
 					{
 						TranslucentPrimCount.Add(ETranslucencyPass::TPT_TranslucencyAfterDOFModulate, ViewRelevance.bUsesSceneColorCopy, ViewRelevance.bDisableOffscreenRendering);
 					}
@@ -2064,7 +2064,7 @@ struct FRelevancePacket
 			bUsesCustomDepthStencil |= ViewRelevance.bUsesCustomDepthStencil;
 			bSceneHasSkyMaterial |= ViewRelevance.bUsesSkyMaterial;
 			bHasSingleLayerWaterMaterial |= ViewRelevance.bUsesSingleLayerWaterMaterial;
-			bHasTranslucencySeparateModulation |= ViewRelevance.bSeparateTranslucencyModulateRelevance;
+			bHasTranslucencySeparateModulation |= ViewRelevance.bSeparateTranslucencyModulate;
 
 			if (ViewRelevance.bRenderCustomDepth)
 			{
@@ -2346,7 +2346,7 @@ struct FRelevancePacket
 									DrawCommandPacket.AddCommandsForMesh(PrimitiveIndex, PrimitiveSceneInfo, StaticMeshRelevance, StaticMesh, Scene, bCanCache, EMeshPass::TranslucencyAfterDOF);
 								}
 
-								if (ViewRelevance.bSeparateTranslucencyModulateRelevance)
+								if (ViewRelevance.bSeparateTranslucencyModulate)
 								{
 									DrawCommandPacket.AddCommandsForMesh(PrimitiveIndex, PrimitiveSceneInfo, StaticMeshRelevance, StaticMesh, Scene, bCanCache, EMeshPass::TranslucencyAfterDOFModulate);
 								}
@@ -2777,7 +2777,7 @@ void ComputeDynamicMeshRelevance(EShadingPath ShadingPath, bool bAddLightmapDens
 				View.NumVisibleDynamicMeshElements[EMeshPass::TranslucencyAfterDOF] += NumElements;
 			}
 
-			if (ViewRelevance.bSeparateTranslucencyModulateRelevance)
+			if (ViewRelevance.bSeparateTranslucencyModulate)
 			{
 				PassMask.Set(EMeshPass::TranslucencyAfterDOFModulate);
 				View.NumVisibleDynamicMeshElements[EMeshPass::TranslucencyAfterDOFModulate] += NumElements;

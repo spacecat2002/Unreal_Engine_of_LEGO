@@ -146,7 +146,6 @@ FMaterialRelevance UMaterialInterface::GetRelevance_Internal(const UMaterial* Ma
 			MaterialRelevance.bHairStrands = IsCompatibleWithHairStrands(MaterialResource, InFeatureLevel);
 			MaterialRelevance.bSeparateTranslucency = bIsTranslucent && bMaterialSeparateTranslucency;
 			MaterialRelevance.bSeparateTranslucencyModulate = bIsTranslucent && bMaterialSeparateModulation;
-			MaterialRelevance.bSeparateTranslucencyModulateRelevance = bSeparateTranslucencyModulateRelevance;
 			MaterialRelevance.bNormalTranslucency = bIsTranslucent && !bMaterialSeparateTranslucency;
 			MaterialRelevance.bDisableDepthTest = bIsTranslucent && Material->bDisableDepthTest;		
 			MaterialRelevance.bUsesSceneColorCopy = bIsTranslucent && MaterialResource->RequiresSceneColorCopy_GameThread();
