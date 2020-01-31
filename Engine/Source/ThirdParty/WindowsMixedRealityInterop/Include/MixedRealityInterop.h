@@ -35,6 +35,7 @@
 #endif
 
 #include <atomic>
+#include <memory>
 
 #pragma warning(default:4005)
 #pragma warning(default:4668)
