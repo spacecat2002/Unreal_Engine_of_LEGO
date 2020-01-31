@@ -630,6 +630,25 @@ struct FHLODSceneNodeVisibilityState
 	uint16 bIsFading	: 1;
 };
 
+struct FExposureBufferData
+{
+	FVertexBufferRHIRef Buffer;
+	FShaderResourceViewRHIRef SRV;
+	FUnorderedAccessViewRHIRef UAV;
+
+	bool IsValid()
+	{
+		return Buffer.IsValid();
+	}
+
+	void SafeRelease()
+	{
+		Buffer.SafeRelease();
+		SRV.SafeRelease();
+		UAV.SafeRelease();
+	}
+};
+
 /**
  * The scene manager's private implementation of persistent view state.
  * This class is associated with a particular camera across multiple frames by the game thread.
@@ -761,6 +780,7 @@ private:
 	bool bUpdateLastExposure;
 
 	// to implement eye adaptation / auto exposure changes over time
+	// SM5 and above should use RenderTarget and ES3_1 for mobile should use RWBuffer for read back.
 	class FEyeAdaptationRTManager
 	{
 	public:
@@ -796,11 +816,24 @@ private:
 		/** Get the last frame average scene luminance (used for exposure compensation curve) */
 		float GetLastAverageSceneLuminance() const { return LastAverageSceneLuminance; }
 
+		const FExposureBufferData& GetCurrentBuffer()
+		{
+			return GetBufferRef(CurrentBuffer);
+		}
+
+		const FExposureBufferData& GetLastBuffer()
+		{
+			return GetBufferRef(1 - CurrentBuffer);
+		}
+
+		void SwapBuffers(bool bUpdateLastExposure);
+
 	private:
 
 		/** Return one of two two render targets */
 		TRefCountPtr<IPooledRenderTarget>&  GetRTRef(FRHICommandList* RHICmdList, const int BufferNumber);
 
+		FExposureBufferData& GetBufferRef(const int BufferNumber);
 	private:
 
 		int32 CurrentBuffer = 0;
@@ -810,6 +843,9 @@ private:
 
 		TRefCountPtr<IPooledRenderTarget> PooledRenderTarget[2];
 		TUniquePtr<FRHIGPUTextureReadback> ExposureTextureReadback;
+
+		FExposureBufferData ExposureBufferData[2];
+		TUniquePtr<FRHIGPUBufferReadback> ExposureBufferReadback;
 
 	} EyeAdaptationRTManager;
 
@@ -1162,6 +1198,20 @@ public:
 	void SwapEyeAdaptationRTs()
 	{
 		EyeAdaptationRTManager.SwapRTs(bUpdateLastExposure && bValidEyeAdaptation);
+	}
+
+	const FExposureBufferData* GetCurrentEyeAdaptationBuffer()
+	{
+		return &EyeAdaptationRTManager.GetCurrentBuffer();
+	}
+	const FExposureBufferData* GetLastEyeAdaptationBuffer()
+	{
+		return &EyeAdaptationRTManager.GetLastBuffer();
+	}
+
+	void SwapEyeAdaptationBuffers()
+	{
+		EyeAdaptationRTManager.SwapBuffers(bUpdateLastExposure && bValidEyeAdaptation);
 	}
 
 	bool HasValidEyeAdaptation() const

@@ -19,29 +19,17 @@ float GetMobileDepthOfFieldScale(const FViewInfo& View);
 void SetMobilePassFlipVerticalAxis(const FRenderingCompositePass* FlipPass);
 bool ShouldMobilePassFlipVerticalAxis(const FRenderingCompositePassContext& Context, const FRenderingCompositePass* ShouldFlipPass);
 
-class FRCPassPostProcessBloomSetupES2 : public TRenderingCompositePassBase<1, 1>
+class FRCPassPostProcessBloomSetupES2 : public TRenderingCompositePassBase<1, 2>
 {
 public:
-	FRCPassPostProcessBloomSetupES2(FIntRect InPrePostSourceViewportRect, bool bInUseViewRectSource) : PrePostSourceViewportRect(InPrePostSourceViewportRect), bUseViewRectSource(bInUseViewRectSource) { }
+	FRCPassPostProcessBloomSetupES2(FIntRect InPrePostSourceViewportRect, bool bInUseViewRectSource, uint32 InUseEyeAdaptation) : PrePostSourceViewportRect(InPrePostSourceViewportRect), bUseViewRectSource(bInUseViewRectSource), UseEyeAdaptation(InUseEyeAdaptation) { }
 	virtual void Process(FRenderingCompositePassContext& Context) override;
 	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
 	virtual void Release() override { delete this; }
 private:
 	FIntRect PrePostSourceViewportRect;
 	bool bUseViewRectSource;
-	void SetShader(const FRenderingCompositePassContext& Context);
-};
-
-class FRCPassPostProcessBloomSetupSmallES2 : public TRenderingCompositePassBase<1, 1>
-{
-public:
-	FRCPassPostProcessBloomSetupSmallES2(FIntPoint InPrePostSourceViewportSize, bool bInUseViewRectSource) : PrePostSourceViewportSize(InPrePostSourceViewportSize), bUseViewRectSource(bInUseViewRectSource) { }
-	virtual void Process(FRenderingCompositePassContext& Context) override;
-	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
-	virtual void Release() override { delete this; }
-private:
-	FIntPoint PrePostSourceViewportSize;
-	bool bUseViewRectSource;
+	uint32 UseEyeAdaptation;
 	void SetShader(const FRenderingCompositePassContext& Context);
 };
 
@@ -155,18 +143,6 @@ private:
 	FShader* SetShader(const FRenderingCompositePassContext& Context);
 };
 
-class FRCPassPostProcessSunMergeSmallES2 : public TRenderingCompositePassBase<2, 1>
-{
-public:
-	FRCPassPostProcessSunMergeSmallES2(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
-	virtual void Process(FRenderingCompositePassContext& Context) override;
-	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
-	virtual void Release() override { delete this; }
-private:
-	FIntPoint PrePostSourceViewportSize;
-	void SetShader(const FRenderingCompositePassContext& Context);
-};
-
 class FRCPassPostProcessSunAvgES2 : public TRenderingCompositePassBase<2, 1>
 {
 public:
@@ -189,3 +165,41 @@ private:
 	void SetShader(const FRenderingCompositePassContext& Context);
 };
 
+class FRCPassPostProcessAverageLuminanceES2 : public TRenderingCompositePassBase<1, 1>
+{
+public:
+	// interface FRenderingCompositePass ---------
+	virtual void Process(FRenderingCompositePassContext& Context) override;
+	virtual void Release() override { delete this; }
+	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
+};
+
+class FRCPassPostProcessBasicEyeAdaptationES2 : public TRenderingCompositePassBase<1, 1>
+{
+public:
+	// interface FRenderingCompositePass ---------
+	virtual void Process(FRenderingCompositePassContext& Context) override;
+	virtual void Release() override { delete this; }
+	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
+};
+
+class FRCPassPostProcessHistogramES2 : public TRenderingCompositePassBase<1, 1>
+{
+public:
+	// interface FRenderingCompositePass ---------
+	virtual void Process(FRenderingCompositePassContext& Context) override;
+	virtual void Release() override { delete this; }
+	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
+};
+
+// Computes the eye-adaptation from HDRHistogram.
+// ePId_Input0: HDRHistogram or nothing
+// derives from TRenderingCompositePassBase<InputCount, OutputCount> 
+class FRCPassPostProcessHistogramEyeAdaptationES2 : public TRenderingCompositePassBase<1, 1>
+{
+public:
+	// interface FRenderingCompositePass ---------
+	virtual void Process(FRenderingCompositePassContext& Context) override;
+	virtual void Release() override { delete this; }
+	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
+};

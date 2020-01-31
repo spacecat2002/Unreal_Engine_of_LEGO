@@ -42,6 +42,7 @@ struct FILCUpdatePrimTaskData;
 template<typename ShaderMetaType> class TShaderMap;
 class FRaytracingLightDataPacked;
 class FRayTracingLocalShaderBindingWriter;
+struct FExposureBufferData;
 
 DECLARE_STATS_GROUP(TEXT("Command List Markers"), STATGROUP_CommandListMarkers, STATCAT_Advanced);
 
@@ -1270,6 +1271,11 @@ public:
 
 	/**Swap the order of the two eye adaptation targets in the double buffer system */
 	void SwapEyeAdaptationRTs(FRHICommandList& RHICmdList) const;
+
+	const FExposureBufferData* GetEyeAdaptationBuffer() const;
+	const FExposureBufferData* GetLastEyeAdaptationBuffer() const;
+
+	void SwapEyeAdaptationBuffers() const;
 
 	/** Tells if the eyeadaptation texture exists without attempting to allocate it. */
 	bool HasValidEyeAdaptation() const;

@@ -14,6 +14,7 @@
 #include "PostProcess/PostProcessEyeAdaptation.h"
 #include "PipelineStateCache.h"
 #include "ClearQuad.h"
+#include "PostProcess/PostProcessing.h"
 
 static EPixelFormat GetHDRPixelFormat()
 {
@@ -38,6 +39,10 @@ bool ShouldMobilePassFlipVerticalAxis(const FRenderingCompositePassContext& Cont
 	return RHINeedsToSwitchVerticalAxis(Context.GetShaderPlatform()) && (GMobilePassShouldFlipVerticalAxis == ShouldFlipPass);
 }
 
+bool IsMobileEyeAdaptationEnabled(const FViewInfo& View)
+{
+	return IsMobileHDR() && View.ViewState != nullptr && View.Family->EngineShowFlags.EyeAdaptation;
+}
 //
 // BLOOM SETUP
 //
@@ -82,10 +87,16 @@ public:
 	}
 };
 
-template <uint32 UseSunDof> // 0=none, 1=dof, 2=sun, 3=sun&dof, 4=msaa
+template <uint32 UseSunDofEye> // 0=none, 1=dof, 2=sun, 3=sun&dof, 4=msaa, 8=eyeadaptation
 class FPostProcessBloomSetupPS_ES2 : public FGlobalShader
 {
 	DECLARE_SHADER_TYPE(FPostProcessBloomSetupPS_ES2, Global);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(float, BloomThreshold)
+		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
+		SHADER_PARAMETER_STRUCT(FEyeAdaptationParameters, EyeAdaptation)
+	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
@@ -96,29 +107,27 @@ class FPostProcessBloomSetupPS_ES2 : public FGlobalShader
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 
-		//Need to hack in exposure scale for < SM5
-		OutEnvironment.SetDefine(TEXT("NO_EYEADAPTATION_EXPOSURE_FIX"), 1);
-
 		CA_SUPPRESS(6313);
-		OutEnvironment.SetDefine(TEXT("ES2_USE_MSAA"), (UseSunDof & 4) ? (uint32)1 : (uint32)0);
+		OutEnvironment.SetDefine(TEXT("ES2_USE_EYEADAPTATION"), (UseSunDofEye & 8) ? (uint32)1 : (uint32)0);
 		CA_SUPPRESS(6313);
-		OutEnvironment.SetDefine(TEXT("ES2_USE_SUN"), (UseSunDof & 2) ? (uint32)1 : (uint32)0);
+		OutEnvironment.SetDefine(TEXT("ES2_USE_MSAA"), (UseSunDofEye & 4) ? (uint32)1 : (uint32)0);
 		CA_SUPPRESS(6313);
-		OutEnvironment.SetDefine(TEXT("ES2_USE_DOF"), (UseSunDof & 1) ? (uint32)1 : (uint32)0);
+		OutEnvironment.SetDefine(TEXT("ES2_USE_SUN"), (UseSunDofEye & 2) ? (uint32)1 : (uint32)0);
+		CA_SUPPRESS(6313);
+		OutEnvironment.SetDefine(TEXT("ES2_USE_DOF"), (UseSunDofEye & 1) ? (uint32)1 : (uint32)0);
 	}
 
 	FPostProcessBloomSetupPS_ES2() {}
 
 public:
 	FPostProcessPassParameters PostprocessParameter;
-	FShaderParameter BloomThreshold;
 
 	/** Initialization constructor. */
 	FPostProcessBloomSetupPS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
 	{
+		Bindings.BindForLegacyShaderParameters(this, Initializer.ParameterMap, *FParameters::FTypeInfo::GetStructMetadata());
 		PostprocessParameter.Bind(Initializer.ParameterMap);
-		BloomThreshold.Bind(Initializer.ParameterMap, TEXT("BloomThreshold"));
 	}
 
 	void SetPS(const FRenderingCompositePassContext& Context)
@@ -127,18 +136,22 @@ public:
 
 		const FPostProcessSettings& Settings = Context.View.FinalPostProcessSettings;
 
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
-
 		PostprocessParameter.SetPS(Context.RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 
-		SetShaderValue(Context.RHICmdList, ShaderRHI, BloomThreshold, Settings.BloomThreshold);
+		FParameters ShaderParameters;
+
+		ShaderParameters.EyeAdaptation = GetEyeAdaptationParameters(Context.View, ERHIFeatureLevel::ES3_1);
+		ShaderParameters.BloomThreshold = Settings.BloomThreshold;
+		ShaderParameters.View = Context.View.ViewUniformBuffer;
+
+		SetShaderParameters(Context.RHICmdList, this, ShaderRHI, ShaderParameters);
 	}
 
 	// FShader interface.
 	virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter << BloomThreshold;
+		Ar << PostprocessParameter;
 		return bShaderHasOutdatedParameters;
 	}
 };
@@ -150,13 +163,21 @@ typedef FPostProcessBloomSetupPS_ES2<1> FPostProcessBloomSetupPS_ES2_1;
 typedef FPostProcessBloomSetupPS_ES2<2> FPostProcessBloomSetupPS_ES2_2;
 typedef FPostProcessBloomSetupPS_ES2<3> FPostProcessBloomSetupPS_ES2_3;
 typedef FPostProcessBloomSetupPS_ES2<4> FPostProcessBloomSetupPS_ES2_4;
+typedef FPostProcessBloomSetupPS_ES2<8> FPostProcessBloomSetupPS_ES2_8;
+typedef FPostProcessBloomSetupPS_ES2<9> FPostProcessBloomSetupPS_ES2_9;
+typedef FPostProcessBloomSetupPS_ES2<10> FPostProcessBloomSetupPS_ES2_10;
+typedef FPostProcessBloomSetupPS_ES2<11> FPostProcessBloomSetupPS_ES2_11;
 IMPLEMENT_SHADER_TYPE(template<>,FPostProcessBloomSetupPS_ES2_0,TEXT("/Engine/Private/PostProcessMobile.usf"),TEXT("BloomPS_ES2"),SF_Pixel);
 IMPLEMENT_SHADER_TYPE(template<>,FPostProcessBloomSetupPS_ES2_1,TEXT("/Engine/Private/PostProcessMobile.usf"),TEXT("BloomPS_ES2"),SF_Pixel);
 IMPLEMENT_SHADER_TYPE(template<>,FPostProcessBloomSetupPS_ES2_2,TEXT("/Engine/Private/PostProcessMobile.usf"),TEXT("BloomPS_ES2"),SF_Pixel);
 IMPLEMENT_SHADER_TYPE(template<>,FPostProcessBloomSetupPS_ES2_3,TEXT("/Engine/Private/PostProcessMobile.usf"),TEXT("BloomPS_ES2"),SF_Pixel);
 IMPLEMENT_SHADER_TYPE(template<>,FPostProcessBloomSetupPS_ES2_4,TEXT("/Engine/Private/PostProcessMobile.usf"),TEXT("BloomPS_ES2"),SF_Pixel);
+IMPLEMENT_SHADER_TYPE(template<>,FPostProcessBloomSetupPS_ES2_8,TEXT("/Engine/Private/PostProcessMobile.usf"),TEXT("BloomPS_ES2"),SF_Pixel);
+IMPLEMENT_SHADER_TYPE(template<>,FPostProcessBloomSetupPS_ES2_9,TEXT("/Engine/Private/PostProcessMobile.usf"),TEXT("BloomPS_ES2"),SF_Pixel);
+IMPLEMENT_SHADER_TYPE(template<>,FPostProcessBloomSetupPS_ES2_10,TEXT("/Engine/Private/PostProcessMobile.usf"),TEXT("BloomPS_ES2"),SF_Pixel);
+IMPLEMENT_SHADER_TYPE(template<>,FPostProcessBloomSetupPS_ES2_11,TEXT("/Engine/Private/PostProcessMobile.usf"),TEXT("BloomPS_ES2"),SF_Pixel);
 
-template <uint32 UseSunDof>
+template <uint32 UseSunDofEye>
 static void BloomSetup_SetShader(const FRenderingCompositePassContext& Context)
 {
 	FGraphicsPipelineStateInitializer GraphicsPSOInit;
@@ -166,7 +187,7 @@ static void BloomSetup_SetShader(const FRenderingCompositePassContext& Context)
 	GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
 
 	TShaderMapRef<FPostProcessBloomSetupVS_ES2> VertexShader(Context.GetShaderMap());
-	TShaderMapRef<FPostProcessBloomSetupPS_ES2<UseSunDof> > PixelShader(Context.GetShaderMap());
+	TShaderMapRef<FPostProcessBloomSetupPS_ES2<UseSunDofEye> > PixelShader(Context.GetShaderMap());
 
 	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
 	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
@@ -183,19 +204,23 @@ void FRCPassPostProcessBloomSetupES2::SetShader(const FRenderingCompositePassCon
 	const FViewInfo& View = Context.View;
 	uint32 UseSun = Context.View.bLightShaftUse ? 1 : 0;
 	uint32 UseDof = (GetMobileDepthOfFieldScale(Context.View) > 0.0f) ? 1 : 0;
-	uint32 UseSunDof = (UseSun << 1) + UseDof;
+	uint32 UseSunDofEye = (UseEyeAdaptation << 3) + (UseSun << 1) + UseDof;
 
 	static const auto CVarMobileMSAA = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileMSAA"));
 	const EShaderPlatform ShaderPlatform = GShaderPlatformForFeatureLevel[Context.GetFeatureLevel()];
-	UseSunDof += (GSupportsShaderFramebufferFetch && (IsMetalMobilePlatform(ShaderPlatform) || IsVulkanMobilePlatform(ShaderPlatform))) ? (CVarMobileMSAA ? (CVarMobileMSAA->GetValueOnRenderThread() > 1 ? 4 : 0) : 0) : 0;
+	UseSunDofEye += (GSupportsShaderFramebufferFetch && IsMetalMobilePlatform(ShaderPlatform)) ? (CVarMobileMSAA ? (CVarMobileMSAA->GetValueOnRenderThread() > 1 ? 4 : 0) : 0) : 0;
 
-	switch(UseSunDof)
+	switch(UseSunDofEye)
 	{
 		case 0: BloomSetup_SetShader<0>(Context); break;
 		case 1: BloomSetup_SetShader<1>(Context); break;
 		case 2: BloomSetup_SetShader<2>(Context); break;
 		case 3: BloomSetup_SetShader<3>(Context); break;
 		case 4: BloomSetup_SetShader<4>(Context); break;
+		case 8: BloomSetup_SetShader<8>(Context); break;
+		case 9: BloomSetup_SetShader<9>(Context); break;
+		case 10: BloomSetup_SetShader<10>(Context); break;
+		case 11: BloomSetup_SetShader<11>(Context); break;
 	}
 }
 
@@ -235,11 +260,25 @@ void FRCPassPostProcessBloomSetupES2::Process(FRenderingCompositePassContext& Co
 		SrcRect = DstRect;
 	}
 
-	const FSceneRenderTargetItem& DestRenderTarget = PassOutputs[0].RequestSurface(Context);
+	const FSceneRenderTargetItem& DestRenderTarget0 = PassOutputs[0].RequestSurface(Context);
+	const FSceneRenderTargetItem* DestRenderTarget1 = nullptr;
+
+	int32 NumRenderTargets = 1;
+	if (UseEyeAdaptation == 1)
+	{
+		DestRenderTarget1 = &PassOutputs[1].RequestSurface(Context);
+		NumRenderTargets = 2;
+	}
+
+	FRHITexture* RenderTargets[2] =
+	{
+		DestRenderTarget0.TargetableTexture,
+		DestRenderTarget1 != nullptr ? DestRenderTarget1->TargetableTexture : nullptr
+	};
 
 	ERenderTargetLoadAction LoadAction = ERenderTargetLoadAction::EClear;
 
-	bool bUseClearQuad = (DestRenderTarget.TargetableTexture->GetClearColor() != FLinearColor::Black);
+	bool bUseClearQuad = (DestRenderTarget0.TargetableTexture->GetClearColor() != FLinearColor::Black);
 
 	// OverrideRenderTarget might patch out final render target and we have no control of the clear color anymore
 	if (bUseClearQuad)
@@ -247,7 +286,7 @@ void FRCPassPostProcessBloomSetupES2::Process(FRenderingCompositePassContext& Co
 		LoadAction = ERenderTargetLoadAction::ENoAction;
 	}
 
-	FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, MakeRenderTargetActions(LoadAction, ERenderTargetStoreAction::EStore));
+	FRHIRenderPassInfo RPInfo(NumRenderTargets, RenderTargets, MakeRenderTargetActions(LoadAction, ERenderTargetStoreAction::EStore));
 	
 	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("PostProcessBloomSetupES2"));
 	{
@@ -274,7 +313,14 @@ void FRCPassPostProcessBloomSetupES2::Process(FRenderingCompositePassContext& Co
 			EDRF_UseTriangleOptimization);
 	}
 	Context.RHICmdList.EndRenderPass();
-	Context.RHICmdList.CopyToResolveTarget(DestRenderTarget.TargetableTexture, DestRenderTarget.ShaderResourceTexture, FResolveParams());
+
+	for (int32 i = 0; i < NumRenderTargets; ++i)
+	{
+		if (RenderTargets[i] != nullptr)
+		{
+			Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, RenderTargets[i]);
+		}
+	}
 }
 
 FPooledRenderTargetDesc FRCPassPostProcessBloomSetupES2::ComputeOutputDesc(EPassOutputId InPassOutputId) const
@@ -286,225 +332,11 @@ FPooledRenderTargetDesc FRCPassPostProcessBloomSetupES2::ComputeOutputDesc(EPass
 	Ret.NumMips = 1;
 	Ret.TargetableFlags = TexCreate_RenderTargetable | TexCreate_ShaderResource;
 	Ret.bForceSeparateTargetAndShaderResource = false;
-	Ret.Format = GetHDRPixelFormat();
+	Ret.Format = InPassOutputId == ePId_Output0 ? GetHDRPixelFormat() : PF_R16F;
 	Ret.NumSamples = 1;
 	Ret.Extent.X = FMath::Max(1, PrePostSourceViewportRect.Width() / 4);
 	Ret.Extent.Y = FMath::Max(1, PrePostSourceViewportRect.Height() / 4);
-	Ret.DebugName = TEXT("BloomSetup");
-	Ret.ClearValue = FClearValueBinding(FLinearColor::Black);
-	return Ret;
-}
-
-
-
-
-//
-// BLOOM SETUP SMALL (BLOOM)
-//
-
-class FPostProcessBloomSetupSmallVS_ES2 : public FGlobalShader
-{
-	DECLARE_SHADER_TYPE(FPostProcessBloomSetupSmallVS_ES2, Global);
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return !IsConsolePlatform(Parameters.Platform);
-	}
-
-	/** Default constructor. */
-	FPostProcessBloomSetupSmallVS_ES2() {}
-
-public:
-	FPostProcessPassParameters PostprocessParameter;
-
-	/** Initialization constructor. */
-	FPostProcessBloomSetupSmallVS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
-		: FGlobalShader(Initializer)
-	{
-		PostprocessParameter.Bind(Initializer.ParameterMap);
-	}
-
-	void SetVS(const FRenderingCompositePassContext& Context)
-	{
-		FRHIVertexShader* ShaderRHI = GetVertexShader();
-
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
-
-		PostprocessParameter.SetVS(ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
-	}
-
-	// FShader interface.
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter;
-		return bShaderHasOutdatedParameters;
-	}
-};
-
-class FPostProcessBloomSetupSmallPS_ES2 : public FGlobalShader
-{
-	DECLARE_SHADER_TYPE(FPostProcessBloomSetupSmallPS_ES2, Global);
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return !IsConsolePlatform(Parameters.Platform);
-	}
-
-	FPostProcessBloomSetupSmallPS_ES2() {}
-
-public:
-	FPostProcessPassParameters PostprocessParameter;
-	FShaderParameter BloomThreshold;
-
-	/** Initialization constructor. */
-	FPostProcessBloomSetupSmallPS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
-		: FGlobalShader(Initializer)
-	{
-		PostprocessParameter.Bind(Initializer.ParameterMap);
-		BloomThreshold.Bind(Initializer.ParameterMap, TEXT("BloomThreshold"));
-	}
-
-	template <typename TRHICmdList>
-	void SetPS(TRHICmdList& RHICmdList, const FRenderingCompositePassContext& Context)
-	{
-		FRHIPixelShader* ShaderRHI = GetPixelShader();
-
-		const FPostProcessSettings& Settings = Context.View.FinalPostProcessSettings;
-
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
-
-		PostprocessParameter.SetPS(RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
-
-		SetShaderValue(RHICmdList, ShaderRHI, BloomThreshold, Settings.BloomThreshold);
-	}
-
-	// FShader interface.
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter << BloomThreshold;
-		return bShaderHasOutdatedParameters;
-	}
-};
-
-IMPLEMENT_SHADER_TYPE(,FPostProcessBloomSetupSmallVS_ES2,TEXT("/Engine/Private/PostProcessMobile.usf"),TEXT("BloomSmallVS_ES2"),SF_Vertex);
-
-IMPLEMENT_SHADER_TYPE(,FPostProcessBloomSetupSmallPS_ES2,TEXT("/Engine/Private/PostProcessMobile.usf"),TEXT("BloomSmallPS_ES2"),SF_Pixel);
-
-
-void FRCPassPostProcessBloomSetupSmallES2::SetShader(const FRenderingCompositePassContext& Context)
-{
-	FGraphicsPipelineStateInitializer GraphicsPSOInit;
-	Context.RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
-	GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
-	GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
-	GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
-
-	TShaderMapRef<FPostProcessBloomSetupSmallVS_ES2> VertexShader(Context.GetShaderMap());
-	TShaderMapRef<FPostProcessBloomSetupSmallPS_ES2> PixelShader(Context.GetShaderMap());
-
-	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
-	GraphicsPSOInit.PrimitiveType = PT_TriangleList;
-	SetGraphicsPipelineState(Context.RHICmdList, GraphicsPSOInit);
-
-	VertexShader->SetVS(Context);
-	PixelShader->SetPS(Context.RHICmdList, Context);
-}
-
-void FRCPassPostProcessBloomSetupSmallES2::Process(FRenderingCompositePassContext& Context)
-{
-	SCOPED_DRAW_EVENT(Context.RHICmdList, PostProcessBloomSetupSmall);
-
-	const FPooledRenderTargetDesc* InputDesc = GetInputDesc(ePId_Input0);
-
-	uint32 DstX = FMath::Max(1, PrePostSourceViewportSize.X/4);
-	uint32 DstY = FMath::Max(1, PrePostSourceViewportSize.Y/4);
-
-	FIntRect DstRect;
-	DstRect.Min.X = 0;
-	DstRect.Min.Y = 0;
-	DstRect.Max.X = DstX;
-	DstRect.Max.Y = DstY;
-
-	FIntPoint DstSize = PrePostSourceViewportSize / 4;
-
-	FIntPoint SrcSize;
-	FIntRect SrcRect;
-	if(bUseViewRectSource)
-	{
-		// Mobile with framebuffer fetch uses view rect as source.
-		const FViewInfo& View = Context.View;
-		SrcSize = InputDesc->Extent;
-		//	uint32 ScaleFactor = View.ViewRect.Width() / SrcSize.X;
-		//	SrcRect = View.ViewRect / ScaleFactor;
-		// TODO: This won't work with scaled views.
-		SrcRect = View.ViewRect;
-	}
-	else
-	{
-		// Otherwise using exact size texture.
-		SrcSize = DstSize;
-		SrcRect = DstRect;
-	}
-
-	const FSceneRenderTargetItem& DestRenderTarget = PassOutputs[0].RequestSurface(Context);
-
-	const bool bUseClearQuad = DestRenderTarget.TargetableTexture->GetClearColor() != FLinearColor::Black;
-	
-	// OverrideRenderTarget might patch out final render target and we have no control of the clear color anymore
-	ERenderTargetLoadAction LoadAction = ERenderTargetLoadAction::EClear;
-
-	if (bUseClearQuad)
-	{
-		LoadAction = ERenderTargetLoadAction::ENoAction;
-	}
-
-	FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, MakeRenderTargetActions(LoadAction, ERenderTargetStoreAction::EStore));
-	
-	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("PostProcessBloomSetupSmallES2"));
-	{
-		if (bUseClearQuad)
-		{
-			DrawClearQuad(Context.RHICmdList, FLinearColor::Black);
-		}
-
-		Context.SetViewportAndCallRHI(0, 0, 0.0f, DstX, DstY, 1.0f);
-
-		SetShader(Context);
-
-		TShaderMapRef<FPostProcessBloomSetupSmallVS_ES2> VertexShader(Context.GetShaderMap());
-		DrawRectangle(
-			Context.RHICmdList,
-			0, 0,
-			DstX, DstY,
-			SrcRect.Min.X, SrcRect.Min.Y,
-			SrcRect.Width(), SrcRect.Height(),
-			DstSize,
-			SrcSize,
-			*VertexShader,
-			EDRF_UseTriangleOptimization);
-	}
-	Context.RHICmdList.EndRenderPass();
-	Context.RHICmdList.CopyToResolveTarget(DestRenderTarget.TargetableTexture, DestRenderTarget.ShaderResourceTexture, FResolveParams());
-}
-
-FPooledRenderTargetDesc FRCPassPostProcessBloomSetupSmallES2::ComputeOutputDesc(EPassOutputId InPassOutputId) const
-{
-	FPooledRenderTargetDesc Ret;
-	Ret.Depth = 0;
-	Ret.ArraySize = 1;
-	Ret.bIsArray = false;
-	Ret.NumMips = 1;
-	Ret.TargetableFlags = TexCreate_RenderTargetable | TexCreate_ShaderResource;
-	Ret.bForceSeparateTargetAndShaderResource = false;
-	Ret.Format = GetHDRPixelFormat();
-	Ret.NumSamples = 1;
-	Ret.Extent.X = FMath::Max(1, PrePostSourceViewportSize.X/4);
-	Ret.Extent.Y = FMath::Max(1, PrePostSourceViewportSize.Y/4);
-	Ret.DebugName = TEXT("BloomSetupSmall");
+	Ret.DebugName = InPassOutputId == ePId_Output0 ? TEXT("BloomSetup0") : TEXT("BloomSetup1");
 	Ret.ClearValue = FClearValueBinding(FLinearColor::Black);
 	return Ret;
 }
@@ -1758,217 +1590,6 @@ FPooledRenderTargetDesc FRCPassPostProcessSunMergeES2::ComputeOutputDesc(EPassOu
 
 
 //
-// SUN MERGE SMALL (BLOOM)
-//
-
-class FPostProcessSunMergeSmallPS_ES2 : public FGlobalShader
-{
-	DECLARE_SHADER_TYPE(FPostProcessSunMergeSmallPS_ES2, Global);
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return !IsConsolePlatform(Parameters.Platform);
-	}	
-
-	FPostProcessSunMergeSmallPS_ES2() {}
-
-public:
-	FPostProcessPassParameters PostprocessParameter;
-	FShaderParameter SunColorVignetteIntensity;
-	FShaderParameter VignetteColor;
-	FShaderParameter BloomColor;
-	FShaderParameter BloomColor2;
-
-	FPostProcessSunMergeSmallPS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
-		: FGlobalShader(Initializer)
-	{
-		PostprocessParameter.Bind(Initializer.ParameterMap);
-		SunColorVignetteIntensity.Bind(Initializer.ParameterMap, TEXT("SunColorVignetteIntensity"));
-		VignetteColor.Bind(Initializer.ParameterMap, TEXT("VignetteColor"));
-		BloomColor.Bind(Initializer.ParameterMap, TEXT("BloomColor"));
-		BloomColor2.Bind(Initializer.ParameterMap, TEXT("BloomColor2"));
-	}
-
-	void SetPS(const FRenderingCompositePassContext& Context)
-	{
-		FRHIPixelShader* ShaderRHI = GetPixelShader();
-		const FPostProcessSettings& Settings = Context.View.FinalPostProcessSettings;
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
-		PostprocessParameter.SetPS(Context.RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
-
-		FVector4 SunColorVignetteIntensityParam;
-		SunColorVignetteIntensityParam.X = Context.View.LightShaftColorApply.R;
-		SunColorVignetteIntensityParam.Y = Context.View.LightShaftColorApply.G;
-		SunColorVignetteIntensityParam.Z = Context.View.LightShaftColorApply.B;
-		SunColorVignetteIntensityParam.W = Settings.VignetteIntensity;
-		SetShaderValue(Context.RHICmdList, ShaderRHI, SunColorVignetteIntensity, SunColorVignetteIntensityParam);
-
-		// Scaling Bloom1 by extra factor to match filter area difference between PC default and mobile.
-		SetShaderValue(Context.RHICmdList, ShaderRHI, BloomColor, Context.View.FinalPostProcessSettings.Bloom1Tint * Context.View.FinalPostProcessSettings.BloomIntensity * 0.5);
-		SetShaderValue(Context.RHICmdList, ShaderRHI, BloomColor2, Context.View.FinalPostProcessSettings.Bloom2Tint * Context.View.FinalPostProcessSettings.BloomIntensity);
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter << SunColorVignetteIntensity << BloomColor << BloomColor2;
-		return bShaderHasOutdatedParameters;
-	}
-};
-
-IMPLEMENT_SHADER_TYPE(,FPostProcessSunMergeSmallPS_ES2,TEXT("/Engine/Private/PostProcessMobile.usf"),TEXT("SunMergeSmallPS_ES2"),SF_Pixel);
-
-class FPostProcessSunMergeSmallVS_ES2 : public FGlobalShader
-{
-	DECLARE_SHADER_TYPE(FPostProcessSunMergeSmallVS_ES2,Global);
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return !IsConsolePlatform(Parameters.Platform);
-	}
-
-	FPostProcessSunMergeSmallVS_ES2(){}
-
-public:
-	FPostProcessPassParameters PostprocessParameter;
-
-	FPostProcessSunMergeSmallVS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
-		: FGlobalShader(Initializer)
-	{
-		PostprocessParameter.Bind(Initializer.ParameterMap);
-	}
-
-	void SetVS(const FRenderingCompositePassContext& Context)
-	{
-		FRHIVertexShader* ShaderRHI = GetVertexShader();
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
-		PostprocessParameter.SetVS(ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter;
-		return bShaderHasOutdatedParameters;
-	}
-};
-
-IMPLEMENT_SHADER_TYPE(,FPostProcessSunMergeSmallVS_ES2,TEXT("/Engine/Private/PostProcessMobile.usf"),TEXT("SunMergeSmallVS_ES2"),SF_Vertex);
-
-void FRCPassPostProcessSunMergeSmallES2::SetShader(const FRenderingCompositePassContext& Context)
-{
-	FGraphicsPipelineStateInitializer GraphicsPSOInit;
-	Context.RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
-	GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
-	GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
-	GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
-
-	TShaderMapRef<FPostProcessSunMergeSmallVS_ES2> VertexShader(Context.GetShaderMap());
-	TShaderMapRef<FPostProcessSunMergeSmallPS_ES2> PixelShader(Context.GetShaderMap());
-
-	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
-	GraphicsPSOInit.PrimitiveType = PT_TriangleList;
-
-	SetGraphicsPipelineState(Context.RHICmdList, GraphicsPSOInit);
-
-	VertexShader->SetVS(Context);
-	PixelShader->SetPS(Context);
-}
-
-void FRCPassPostProcessSunMergeSmallES2::Process(FRenderingCompositePassContext& Context)
-{
-	SCOPED_DRAW_EVENT(Context.RHICmdList, PostProcessSunMergeSmall);
-
-	uint32 DstX = FMath::Max(1, PrePostSourceViewportSize.X/4);
-	uint32 DstY = FMath::Max(1, PrePostSourceViewportSize.Y/4);
-
-	FIntRect DstRect;
-	DstRect.Min.X = 0;
-	DstRect.Min.Y = 0;
-	DstRect.Max.X = DstX;
-	DstRect.Max.Y = DstY;
-
-	const FSceneRenderTargetItem& DestRenderTarget = PassOutputs[0].RequestSurface(Context);
-	
-	// OverrideRenderTarget might patch out final render target and we have no control of the clear color anymore
-	const bool bUseClearQuad = DestRenderTarget.TargetableTexture->GetClearColor() != FLinearColor::Black;
-	ERenderTargetLoadAction LoadAction = ERenderTargetLoadAction::EClear;
-	if (bUseClearQuad)
-	{
-		LoadAction = ERenderTargetLoadAction::ENoAction;
-	}
-	FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, MakeRenderTargetActions(LoadAction, ERenderTargetStoreAction::EStore));
-	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("SunMergeSmallES2"));
-	{
-		if (bUseClearQuad)
-		{
-			DrawClearQuad(Context.RHICmdList, FLinearColor::Black);
-		}
-
-		Context.SetViewportAndCallRHI(0, 0, 0.0f, DstX, DstY, 1.0f);
-
-		SetShader(Context);
-
-		FIntPoint SrcDstSize = PrePostSourceViewportSize / 4;
-		TShaderMapRef<FPostProcessSunMergeSmallVS_ES2> VertexShader(Context.GetShaderMap());
-
-		DrawRectangle(
-			Context.RHICmdList,
-			0, 0,
-			DstX, DstY,
-			0, 0,
-			DstX, DstY,
-			SrcDstSize,
-			SrcDstSize,
-			*VertexShader,
-			EDRF_UseTriangleOptimization);
-	}
-	Context.RHICmdList.EndRenderPass();
-	Context.RHICmdList.CopyToResolveTarget(DestRenderTarget.TargetableTexture, DestRenderTarget.ShaderResourceTexture, FResolveParams());
-
-	// Double buffer sun+bloom+vignette composite.
-
-	if (Context.View.AntiAliasingMethod == AAM_TemporalAA)
-	{
-		FSceneViewState* ViewState = (FSceneViewState*)Context.View.State;
-		if(ViewState) 
-		{
-			ViewState->MobileAaBloomSunVignette0 = PassOutputs[0].PooledRenderTarget;
-		}
-	}
-}
-
-FPooledRenderTargetDesc FRCPassPostProcessSunMergeSmallES2::ComputeOutputDesc(EPassOutputId InPassOutputId) const
-{
-	// This might not have a valid input texture.
-	FPooledRenderTargetDesc Ret;
-	Ret.Depth = 0;
-	Ret.ArraySize = 1;
-	Ret.bIsArray = false;
-	Ret.NumMips = 1;
-	Ret.TargetableFlags = TexCreate_RenderTargetable | TexCreate_ShaderResource;
-	Ret.bForceSeparateTargetAndShaderResource = false;
-	Ret.Format = GetHDRPixelFormat();
-	Ret.NumSamples = 1;
-	Ret.Extent.X = FMath::Max(1, PrePostSourceViewportSize.X/4);
-	Ret.Extent.Y = FMath::Max(1, PrePostSourceViewportSize.Y/4);
-	Ret.DebugName = TEXT("SunMergeSmall");
-	Ret.ClearValue = FClearValueBinding(FLinearColor::Black);
-	Ret.AutoWritable = false;
-	return Ret;
-}
-
-
-
-
-
-
-
-
-
-//
 // DOF DOWNSAMPLE
 //
 
@@ -3030,3 +2651,558 @@ FPooledRenderTargetDesc FRCPassPostProcessAaES2::ComputeOutputDesc(EPassOutputId
 	return Ret;
 }
 
+class FClearUAVUIntCS_ES2 : public FGlobalShader
+{
+	DECLARE_SHADER_TYPE(FClearUAVUIntCS_ES2, Global);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_UAV(RWBuffer<uint>, UAV)
+		SHADER_PARAMETER(uint32, ClearValue)
+		SHADER_PARAMETER(uint32, NumEntries)
+		END_SHADER_PARAMETER_STRUCT()
+
+		FClearUAVUIntCS_ES2() {}
+public:
+
+	FClearUAVUIntCS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+		: FGlobalShader(Initializer)
+	{
+		Bindings.BindForLegacyShaderParameters(this, Initializer.ParameterMap, *FParameters::FTypeInfo::GetStructMetadata());
+	}
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return !IsConsolePlatform(Parameters.Platform);
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("CLEAR_UAV_UINT_COMPUTE_SHADER"), 1u);
+		OutEnvironment.CompilerFlags.Add(CFLAG_StandardOptimization);
+	}
+
+	void SetCS(const FRenderingCompositePassContext& Context, uint32 ClearValue, uint32 NumEntries, FRHIUnorderedAccessView* NewUnorderedAccessViewRHI)
+	{
+		FRHIComputeShader* ShaderRHI = GetComputeShader();
+
+		FParameters ShaderParameters;
+		ShaderParameters.ClearValue = ClearValue;
+		ShaderParameters.NumEntries = NumEntries;
+		ShaderParameters.UAV = NewUnorderedAccessViewRHI;
+
+		SetShaderParameters(Context.RHICmdList, this, ShaderRHI, ShaderParameters);
+	}
+};
+
+IMPLEMENT_SHADER_TYPE(, FClearUAVUIntCS_ES2, TEXT("/Engine/Private/PostProcessMobile.usf"), TEXT("ClearUAVUIntCS"), SF_Compute);
+
+/** Encapsulates the average luminance compute shader. */
+class FPostProcessAverageLuminanceCS_ES2 : public FGlobalShader
+{
+public:
+	// Changing these numbers requires PostProcessMobile.usf to be recompiled.
+	static const uint32 ThreadGroupSizeX = 8;
+	static const uint32 ThreadGroupSizeY = 8;
+	static const uint32 LoopCountX = 2;
+	static const uint32 LoopCountY = 2;
+
+	// The number of texels on each axis processed by a single thread group.
+	static const FIntPoint TexelsPerThreadGroup;
+
+	DECLARE_SHADER_TYPE(FPostProcessAverageLuminanceCS_ES2, Global);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FVector4, SourceSizeAndInvSize)
+		SHADER_PARAMETER_STRUCT(FEyeAdaptationParameters, EyeAdaptation)
+		SHADER_PARAMETER_SAMPLER(SamplerState, InputSampler)
+		SHADER_PARAMETER_TEXTURE(Texture2D<half>, InputTexture)
+		SHADER_PARAMETER_UAV(RWTexture2D<uint>, OutputTexture)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return !IsConsolePlatform(Parameters.Platform);
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZEX"), ThreadGroupSizeX);
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZEY"), ThreadGroupSizeY);
+		OutEnvironment.SetDefine(TEXT("LOOP_SIZEX"), LoopCountX);
+		OutEnvironment.SetDefine(TEXT("LOOP_SIZEY"), LoopCountY);
+		OutEnvironment.SetDefine(TEXT("AVERAGE_LUMINANCE_COMPUTE_SHADER"), 1u);
+		OutEnvironment.CompilerFlags.Add(CFLAG_StandardOptimization);
+	}
+
+	/** Default constructor. */
+	FPostProcessAverageLuminanceCS_ES2() {}
+
+public:
+
+	/** Initialization constructor. */
+	FPostProcessAverageLuminanceCS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+		: FGlobalShader(Initializer)
+	{
+		Bindings.BindForLegacyShaderParameters(this, Initializer.ParameterMap, *FParameters::FTypeInfo::GetStructMetadata());
+	}
+
+
+	void SetCS(const FRenderingCompositePassContext& Context, const FIntPoint& SrcRectExtent, FRHITexture* NewTextureRHI, FRHIUnorderedAccessView* NewUnorderedAccessViewRHI)
+	{
+		FRHIComputeShader* ShaderRHI = GetComputeShader();
+
+		FParameters ShaderParameters;
+
+		ShaderParameters.SourceSizeAndInvSize = FVector4(SrcRectExtent.X, SrcRectExtent.Y, 1.0f / SrcRectExtent.X, 1.0f / SrcRectExtent.Y);
+		ShaderParameters.InputSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+		ShaderParameters.InputTexture = NewTextureRHI;
+		ShaderParameters.EyeAdaptation = GetEyeAdaptationParameters(Context.View, ERHIFeatureLevel::ES3_1);
+		ShaderParameters.OutputTexture = NewUnorderedAccessViewRHI;
+
+		SetShaderParameters(Context.RHICmdList, this, ShaderRHI, ShaderParameters);
+	}
+};
+
+const FIntPoint FPostProcessAverageLuminanceCS_ES2::TexelsPerThreadGroup(ThreadGroupSizeX * LoopCountX * 2, ThreadGroupSizeY * LoopCountY * 2); // Multiply 2 because we use bilinear filter, to reduce the sample count
+
+IMPLEMENT_SHADER_TYPE(, FPostProcessAverageLuminanceCS_ES2, TEXT("/Engine/Private/PostProcessMobile.usf"), TEXT("AverageLuminance_MainCS"), SF_Compute);
+
+void FRCPassPostProcessAverageLuminanceES2::Process(FRenderingCompositePassContext& Context)
+{
+	SCOPED_DRAW_EVENT(Context.RHICmdList, PostProcessAverageLuminanceToSingleTexel);
+
+	const FViewInfo& View = Context.View;
+	const FSceneViewFamily& ViewFamily = *(View.Family);
+
+	const FSceneRenderTargetItem& DestRenderTarget = PassOutputs[0].RequestSurface(Context);
+
+	FIntVector DestSize = PassOutputs[0].RenderTargetDesc.GetSize();
+
+	FRHIRenderPassInfo RPInfo(GSystemTextures.BlackDummy->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::DontLoad_DontStore);
+
+	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("AverageLuminanceToSingleTexel"));
+
+	Context.RHICmdList.EndRenderPass();
+
+	{
+		// clear Average Luminance History
+		if (IsAndroidOpenGLESPlatform(View.GetShaderPlatform()))
+		{
+			TShaderMapRef<FClearUAVUIntCS_ES2> ClearShader(Context.GetShaderMap());
+
+			Context.RHICmdList.SetComputeShader(ClearShader->GetComputeShader());
+
+			ClearShader->SetCS(Context, 0, DestSize.X, DestRenderTarget.UAV);
+
+			DispatchComputeShader(Context.RHICmdList, *ClearShader, FMath::DivideAndRoundUp<uint32>(DestSize.X, 64), DestSize.Y, 1);
+
+			UnsetShaderUAVs(Context.RHICmdList, *ClearShader, ClearShader->GetComputeShader());
+		}
+		else
+		{
+			Context.RHICmdList.ClearUAVUint(DestRenderTarget.UAV, FUintVector4(0, 0, 0, 0));
+		}
+
+		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, DestRenderTarget.UAV);
+
+		{
+			const FPooledRenderTargetDesc* InputDesc = GetInputDesc(ePId_Input0);
+
+			const FSceneRenderTargetItem& InputRenderTarget = GetInput(ePId_Input0)->GetOutput()->PooledRenderTarget->GetRenderTargetItem();
+
+			TShaderMapRef<FPostProcessAverageLuminanceCS_ES2> ComputeShader(Context.GetShaderMap());
+
+			Context.RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
+
+			const FIntPoint SrcRectExtent = InputDesc->Extent;
+
+			FIntPoint ThreadGroupCount = FIntPoint::DivideAndRoundUp(SrcRectExtent, FPostProcessAverageLuminanceCS_ES2::TexelsPerThreadGroup);
+
+			ComputeShader->SetCS(Context, SrcRectExtent, InputRenderTarget.ShaderResourceTexture, DestRenderTarget.UAV);
+
+			DispatchComputeShader(Context.RHICmdList, *ComputeShader, ThreadGroupCount.X, ThreadGroupCount.Y, 1);
+
+			UnsetShaderUAVs(Context.RHICmdList, *ComputeShader, ComputeShader->GetComputeShader());
+		}
+
+		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, DestRenderTarget.UAV);
+	}
+}
+
+FPooledRenderTargetDesc FRCPassPostProcessAverageLuminanceES2::ComputeOutputDesc(EPassOutputId InPassOutputId) const
+{
+	FPooledRenderTargetDesc Ret;
+
+	Ret = GetInput(ePId_Input0)->GetOutput()->RenderTargetDesc;
+	Ret.Reset();
+
+	Ret.Format = PF_R32_UINT;
+	Ret.ClearValue = FClearValueBinding::Black;
+	Ret.TargetableFlags = TexCreate_UAV | TexCreate_ShaderResource;
+	Ret.Flags |= GFastVRamConfig.EyeAdaptation;
+	Ret.DebugName = TEXT("AverageLuminance");
+
+	Ret.Extent = FIntPoint(2, 1);
+
+	return Ret;
+}
+
+class FBasicEyeAdaptationCS_ES2 : public FGlobalShader
+{
+	DECLARE_SHADER_TYPE(FBasicEyeAdaptationCS_ES2, Global);
+public:
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_SRV(Buffer<float4>, EyeAdaptationBuffer)
+		SHADER_PARAMETER_STRUCT(FEyeAdaptationParameters, EyeAdaptation)
+		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
+		SHADER_PARAMETER_TEXTURE(Texture2D<uint>, LogLuminanceWeightTexture)
+		SHADER_PARAMETER_UAV(RWBuffer<float4>, OutputBuffer)
+	END_SHADER_PARAMETER_STRUCT()
+
+public:
+	/** Default constructor. */
+	FBasicEyeAdaptationCS_ES2() {}
+
+	/** Initialization constructor. */
+	FBasicEyeAdaptationCS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+		: FGlobalShader(Initializer)
+	{
+		Bindings.BindForLegacyShaderParameters(this, Initializer.ParameterMap, *FParameters::FTypeInfo::GetStructMetadata());
+	}
+
+public:
+
+	/** Static Shader boilerplate */
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return !IsConsolePlatform(Parameters.Platform);
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("BASIC_EYEADAPTATION_COMPUTE_SHADER"), 1u);
+		OutEnvironment.CompilerFlags.Add(CFLAG_StandardOptimization);
+	}
+
+	void Set(const FRenderingCompositePassContext& Context, FRHIShaderResourceView* LastEyeAdaptation, FRHITexture* NewTextureRHI, FRHIUnorderedAccessView* TextureUnorderedAccessViewRHI = nullptr)
+	{
+		FParameters ShaderParameters;
+
+		ShaderParameters.EyeAdaptation = GetEyeAdaptationParameters(Context.View, ERHIFeatureLevel::ES3_1);
+		ShaderParameters.View = Context.View.ViewUniformBuffer;
+
+		ShaderParameters.EyeAdaptationBuffer = LastEyeAdaptation;
+		
+		ShaderParameters.LogLuminanceWeightTexture = NewTextureRHI;
+
+		ShaderParameters.OutputBuffer = TextureUnorderedAccessViewRHI;
+
+		SetShaderParameters(Context.RHICmdList, this, GetComputeShader(), ShaderParameters);
+	}
+};
+
+IMPLEMENT_SHADER_TYPE(, FBasicEyeAdaptationCS_ES2, TEXT("/Engine/Private/PostProcessMobile.usf"), TEXT("BasicEyeAdaptationCS_ES2"), SF_Compute);
+
+void FRCPassPostProcessBasicEyeAdaptationES2::Process(FRenderingCompositePassContext& Context)
+{
+	const FViewInfo& View = Context.View;
+	const FSceneViewFamily& ViewFamily = *(View.Family);
+
+	// Get the custom 1x1 target used to store exposure value and Toggle the two render targets used to store new and old.
+	Context.View.SwapEyeAdaptationBuffers();
+
+	const FExposureBufferData* EyeAdaptationThisFrameBuffer = Context.View.GetEyeAdaptationBuffer();
+	const FExposureBufferData* EyeAdaptationLastFrameBuffer = Context.View.GetLastEyeAdaptationBuffer();
+
+	Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EGfxToCompute, EyeAdaptationLastFrameBuffer->UAV);
+
+	check(EyeAdaptationThisFrameBuffer && EyeAdaptationLastFrameBuffer);
+
+	FRHITexture* InputRHITexture = GetInput(ePId_Input0)->IsValid() ? GetInput(ePId_Input0)->GetOutput()->PooledRenderTarget->GetRenderTargetItem().ShaderResourceTexture : GSystemTextures.ZeroUIntDummy->GetRenderTargetItem().ShaderResourceTexture;
+
+	SCOPED_DRAW_EVENT(Context.RHICmdList, PostProcessBasicEyeAdaptationES2);
+
+	{
+		TShaderMapRef<FBasicEyeAdaptationCS_ES2> ComputeShader(Context.GetShaderMap());
+
+		Context.RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
+
+		ComputeShader->Set(Context, EyeAdaptationLastFrameBuffer->SRV, InputRHITexture, EyeAdaptationThisFrameBuffer->UAV);
+
+		DispatchComputeShader(Context.RHICmdList, *ComputeShader, 1, 1, 1);
+
+		UnsetShaderUAVs(Context.RHICmdList, *ComputeShader, ComputeShader->GetComputeShader());
+
+		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, EyeAdaptationThisFrameBuffer->UAV);
+	}
+
+	Context.View.SetValidEyeAdaptation();
+}
+
+FPooledRenderTargetDesc FRCPassPostProcessBasicEyeAdaptationES2::ComputeOutputDesc(EPassOutputId InPassOutputId) const
+{
+	FPooledRenderTargetDesc Ret;
+
+	Ret.DebugName = TEXT("EyeAdaptationBasic");
+	Ret.Flags |= GFastVRamConfig.EyeAdaptation;
+	return Ret;
+}
+
+/** Encapsulates the post processing histogram compute shader. */
+class FPostProcessHistogramCS_ES2 : public FGlobalShader
+{
+public:
+	// Changing these numbers requires PostProcessMobile.usf to be recompiled.
+	static const uint32 ThreadGroupSizeX = 8;
+	static const uint32 ThreadGroupSizeY = 8;
+	static const uint32 LoopCountX = 2;
+	static const uint32 LoopCountY = 2;
+	static const uint32 HistogramSize = 64; // HistogramSize must be 64 and ThreadGroupSizeX * ThreadGroupSizeY must be larger than 32
+
+	// The number of texels on each axis processed by a single thread group.
+	static const FIntPoint TexelsPerThreadGroup;
+
+	DECLARE_SHADER_TYPE(FPostProcessHistogramCS_ES2, Global);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
+		SHADER_PARAMETER(FVector4, SourceSizeAndInvSize)
+		SHADER_PARAMETER_STRUCT(FEyeAdaptationParameters, EyeAdaptation)
+		SHADER_PARAMETER_SAMPLER(SamplerState, InputSampler)
+		SHADER_PARAMETER_TEXTURE(Texture2D<half>, InputTexture)
+		SHADER_PARAMETER_UAV(RWTexture2D<uint>, HistogramRWTexture)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return !IsConsolePlatform(Parameters.Platform);
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZEX"), ThreadGroupSizeX);
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZEY"), ThreadGroupSizeY);
+		OutEnvironment.SetDefine(TEXT("LOOP_SIZEX"), LoopCountX);
+		OutEnvironment.SetDefine(TEXT("LOOP_SIZEY"), LoopCountY);
+		OutEnvironment.SetDefine(TEXT("HISTOGRAM_COMPUTE_SHADER"), 1u);
+		OutEnvironment.CompilerFlags.Add(CFLAG_StandardOptimization);
+	}
+
+	/** Default constructor. */
+	FPostProcessHistogramCS_ES2() {}
+
+public:
+
+	FPostProcessPassParameters PostprocessParameter;
+
+	/** Initialization constructor. */
+	FPostProcessHistogramCS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+		: FGlobalShader(Initializer)
+	{
+		Bindings.BindForLegacyShaderParameters(this, Initializer.ParameterMap, *FParameters::FTypeInfo::GetStructMetadata());
+	}
+
+	template <typename TRHICmdList>
+	void SetCS(TRHICmdList& RHICmdList, const FRenderingCompositePassContext& Context, const FIntPoint& SrcRectExtent, FRHITexture* NewTextureRHI, FRHIUnorderedAccessView* NewUnorderedAccessViewRHI)
+	{
+		FRHIComputeShader* ShaderRHI = GetComputeShader();
+
+		FParameters ShaderParameters;
+
+		ShaderParameters.View = Context.View.ViewUniformBuffer;
+		ShaderParameters.SourceSizeAndInvSize = FVector4(SrcRectExtent.X, SrcRectExtent.Y, 1.0f / SrcRectExtent.X, 1.0f / SrcRectExtent.Y);
+		ShaderParameters.InputTexture = NewTextureRHI;
+		ShaderParameters.InputSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+		ShaderParameters.HistogramRWTexture = NewUnorderedAccessViewRHI;
+		ShaderParameters.EyeAdaptation = GetEyeAdaptationParameters(Context.View, ERHIFeatureLevel::ES3_1);
+
+		SetShaderParameters(RHICmdList, this, ShaderRHI, ShaderParameters);
+	}
+};
+
+const FIntPoint FPostProcessHistogramCS_ES2::TexelsPerThreadGroup(ThreadGroupSizeX * LoopCountX * 2, ThreadGroupSizeY * LoopCountY * 2); // Multiply 2 because we use bilinear filter, to reduce the sample count
+
+IMPLEMENT_SHADER_TYPE(, FPostProcessHistogramCS_ES2, TEXT("/Engine/Private/PostProcessMobile.usf"), TEXT("Histogram_MainCS"), SF_Compute);
+
+void FRCPassPostProcessHistogramES2::Process(FRenderingCompositePassContext& Context)
+{
+	SCOPED_DRAW_EVENT(Context.RHICmdList, PostProcessHistogram);
+	
+	const FViewInfo& View = Context.View;
+	const FSceneViewFamily& ViewFamily = *(View.Family);
+
+	//Histogram Pass
+	const FSceneRenderTargetItem& DestRenderTarget = PassOutputs[0].RequestSurface(Context);
+
+	FIntVector DestSize = PassOutputs[0].RenderTargetDesc.GetSize();
+
+	FRHIRenderPassInfo RPInfo(GSystemTextures.BlackDummy->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::DontLoad_DontStore);
+
+	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("Histogram"));
+
+	Context.RHICmdList.EndRenderPass();
+
+	{
+		// clear Histogram History
+		if (IsAndroidOpenGLESPlatform(View.GetShaderPlatform()))
+		{
+			TShaderMapRef<FClearUAVUIntCS_ES2> ClearShader(Context.GetShaderMap());
+
+			Context.RHICmdList.SetComputeShader(ClearShader->GetComputeShader());
+
+			ClearShader->SetCS(Context, 0, DestSize.X, DestRenderTarget.UAV);
+
+			DispatchComputeShader(Context.RHICmdList, *ClearShader, FMath::DivideAndRoundUp<uint32>(DestSize.X, 64), DestSize.Y, 1);
+
+			UnsetShaderUAVs(Context.RHICmdList, *ClearShader, ClearShader->GetComputeShader());
+		}
+		else
+		{
+			Context.RHICmdList.ClearUAVUint(DestRenderTarget.UAV, FUintVector4(0, 0, 0, 0));
+		}
+
+		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, DestRenderTarget.UAV);
+
+		{
+			const FPooledRenderTargetDesc* InputDesc = GetInputDesc(ePId_Input0);
+
+			const FSceneRenderTargetItem& InputRenderTarget = GetInput(ePId_Input0)->GetOutput()->PooledRenderTarget->GetRenderTargetItem();
+
+			TShaderMapRef<FPostProcessHistogramCS_ES2> ComputeShader(Context.GetShaderMap());
+
+			Context.RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
+
+			const FIntPoint SrcRectExtent = InputDesc->Extent;
+			const FIntPoint ThreadGroupCount = FIntPoint::DivideAndRoundUp(SrcRectExtent, FPostProcessHistogramCS_ES2::TexelsPerThreadGroup);
+
+			ComputeShader->SetCS(Context.RHICmdList, Context, SrcRectExtent, InputRenderTarget.ShaderResourceTexture, DestRenderTarget.UAV);
+
+			DispatchComputeShader(Context.RHICmdList, *ComputeShader, ThreadGroupCount.X, ThreadGroupCount.Y, 1);
+
+			UnsetShaderUAVs(Context.RHICmdList, *ComputeShader, ComputeShader->GetComputeShader());
+		}
+
+		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, DestRenderTarget.UAV);
+	}
+}
+
+FPooledRenderTargetDesc FRCPassPostProcessHistogramES2::ComputeOutputDesc(EPassOutputId InPassOutputId) const
+{
+	FPooledRenderTargetDesc Ret;
+	
+	Ret = GetInput(ePId_Input0)->GetOutput()->RenderTargetDesc;
+	Ret.Reset();
+	
+	Ret.Format = PF_R32_UINT;
+	Ret.ClearValue = FClearValueBinding::Black;
+	Ret.TargetableFlags = TexCreate_UAV | TexCreate_ShaderResource;
+	Ret.Flags |= GFastVRamConfig.Histogram;
+	Ret.DebugName = TEXT("Histogram");
+
+	Ret.Extent = FIntPoint(FPostProcessHistogramCS_ES2::HistogramSize, 1);
+
+	return Ret;
+}
+
+//////////////////////////////////////////////////////////////////////////
+//! Histogram Eye Adaptation
+//////////////////////////////////////////////////////////////////////////
+
+class FHistogramEyeAdaptationCS_ES2 : public FGlobalShader
+{
+	DECLARE_SHADER_TYPE(FHistogramEyeAdaptationCS_ES2, Global);
+
+public:
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_STRUCT(FEyeAdaptationParameters, EyeAdaptation)
+		SHADER_PARAMETER_SRV(Buffer<float4>, EyeAdaptationBuffer)
+		SHADER_PARAMETER_TEXTURE(Texture2D<uint>, HistogramTexture)
+		SHADER_PARAMETER_UAV(RWBuffer<float4>, OutputBuffer)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return !IsConsolePlatform(Parameters.Platform);
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("HISTOGRAM_EYEADAPTATION_COMPUTE_SHADER"), 1u);
+		OutEnvironment.CompilerFlags.Add(CFLAG_StandardOptimization);
+	}
+
+public:
+	FHistogramEyeAdaptationCS_ES2() = default;
+	FHistogramEyeAdaptationCS_ES2(const CompiledShaderInitializerType& Initializer)
+		: FGlobalShader(Initializer)
+	{
+		Bindings.BindForLegacyShaderParameters(this, Initializer.ParameterMap, *FParameters::FTypeInfo::GetStructMetadata());
+	}
+
+	void Set(const FRenderingCompositePassContext& Context, FRHIShaderResourceView* LastEyeAdaptation, FRHITexture* NewTextureRHI, FRHIUnorderedAccessView* TextureUnorderedAccessViewRHI = nullptr)
+	{
+		FParameters ShaderParameters;
+
+		ShaderParameters.EyeAdaptationBuffer = LastEyeAdaptation;
+
+		ShaderParameters.EyeAdaptation = GetEyeAdaptationParameters(Context.View, ERHIFeatureLevel::ES3_1);
+
+		ShaderParameters.HistogramTexture = NewTextureRHI;
+
+		ShaderParameters.OutputBuffer = TextureUnorderedAccessViewRHI;
+
+		SetShaderParameters(Context.RHICmdList, this, GetComputeShader(), ShaderParameters);
+	}
+};
+
+IMPLEMENT_SHADER_TYPE(, FHistogramEyeAdaptationCS_ES2, TEXT("/Engine/Private/PostProcessMobile.usf"), TEXT("HistogramEyeAdaptationCS"), SF_Compute);
+
+void FRCPassPostProcessHistogramEyeAdaptationES2::Process(FRenderingCompositePassContext& Context)
+{
+	SCOPED_DRAW_EVENT(Context.RHICmdList, PostProcessHistogramEyeAdaptation);
+
+	const FViewInfo& View = Context.View;
+	const FSceneViewFamily& ViewFamily = *(View.Family);
+
+	// Get the custom 1x1 target used to store exposure value and Toggle the two render targets used to store new and old.
+	Context.View.SwapEyeAdaptationBuffers();
+
+	const FExposureBufferData* EyeAdaptationThisFrameBuffer = Context.View.GetEyeAdaptationBuffer();
+	const FExposureBufferData* EyeAdaptationLastFrameBuffer = Context.View.GetLastEyeAdaptationBuffer();
+
+	Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EGfxToCompute, EyeAdaptationLastFrameBuffer->UAV);
+	
+	check(EyeAdaptationThisFrameBuffer && EyeAdaptationLastFrameBuffer);
+
+	const FSceneRenderTargetItem& InputRenderTarget = GetInput(ePId_Input0)->GetOutput()->PooledRenderTarget->GetRenderTargetItem();
+
+	{
+		TShaderMapRef<FHistogramEyeAdaptationCS_ES2> ComputeShader(Context.GetShaderMap());
+
+		Context.RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
+
+		ComputeShader->Set(Context, EyeAdaptationLastFrameBuffer->SRV, InputRenderTarget.ShaderResourceTexture, EyeAdaptationThisFrameBuffer->UAV);
+
+		DispatchComputeShader(Context.RHICmdList, *ComputeShader, 1, 1, 1);
+
+		UnsetShaderUAVs(Context.RHICmdList, *ComputeShader, ComputeShader->GetComputeShader());
+
+		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, EyeAdaptationThisFrameBuffer->UAV);
+	}
+
+	Context.View.SetValidEyeAdaptation();
+}
+
+FPooledRenderTargetDesc FRCPassPostProcessHistogramEyeAdaptationES2::ComputeOutputDesc(EPassOutputId InPassOutputId) const
+{
+	FPooledRenderTargetDesc Ret;
+
+	Ret.DebugName = TEXT("EyeAdaptationHistogram");
+	Ret.Flags |= GFastVRamConfig.Histogram;
+	return Ret;
+}

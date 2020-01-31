@@ -1876,6 +1876,8 @@ IPooledRenderTarget* FViewInfo::GetEyeAdaptation(FRHICommandList& RHICmdList) co
 
 IPooledRenderTarget* FViewInfo::GetEyeAdaptationRT(FRHICommandList& RHICmdList) const
 {
+	checkf(FeatureLevel > ERHIFeatureLevel::ES3_1, TEXT("SM5 and above use RenderTarget for read back"));
+
 	FSceneViewState* EffectiveViewState = GetEffectiveViewState();
 	IPooledRenderTarget* Result = NULL;
 	if (EffectiveViewState)
@@ -1887,6 +1889,8 @@ IPooledRenderTarget* FViewInfo::GetEyeAdaptationRT(FRHICommandList& RHICmdList) 
 
 IPooledRenderTarget* FViewInfo::GetEyeAdaptationRT() const
 {
+	checkf(FeatureLevel > ERHIFeatureLevel::ES3_1, TEXT("SM5 and above use RenderTarget for read back"));
+
 	FSceneViewState* EffectiveViewState = GetEffectiveViewState();
 	IPooledRenderTarget* Result = NULL;
 	if (EffectiveViewState)
@@ -1898,6 +1902,8 @@ IPooledRenderTarget* FViewInfo::GetEyeAdaptationRT() const
 
 IPooledRenderTarget* FViewInfo::GetLastEyeAdaptationRT(FRHICommandList& RHICmdList) const
 {
+	checkf(FeatureLevel > ERHIFeatureLevel::ES3_1, TEXT("SM5 and above use RenderTarget for read back"));
+
 	FSceneViewState* EffectiveViewState = GetEffectiveViewState();
 	IPooledRenderTarget* Result = NULL;
 	if (EffectiveViewState)
@@ -1909,10 +1915,49 @@ IPooledRenderTarget* FViewInfo::GetLastEyeAdaptationRT(FRHICommandList& RHICmdLi
 
 void FViewInfo::SwapEyeAdaptationRTs(FRHICommandList& RHICmdList) const
 {
+	checkf(FeatureLevel > ERHIFeatureLevel::ES3_1, TEXT("SM5 and above use RenderTarget for read back"));
+
 	FSceneViewState* EffectiveViewState = GetEffectiveViewState();
 	if (EffectiveViewState)
 	{
 		EffectiveViewState->SwapEyeAdaptationRTs();
+	}
+}
+
+const FExposureBufferData* FViewInfo::GetEyeAdaptationBuffer() const
+{
+	checkf(FeatureLevel == ERHIFeatureLevel::ES3_1, TEXT("ES3_1 use RWBuffer for read back"));
+
+	FSceneViewState* EffectiveViewState = GetEffectiveViewState();
+	const FExposureBufferData* Result = NULL;
+	if (EffectiveViewState)
+	{
+		Result = EffectiveViewState->GetCurrentEyeAdaptationBuffer();
+	}
+	return Result;
+}
+
+const FExposureBufferData* FViewInfo::GetLastEyeAdaptationBuffer() const
+{
+	checkf(FeatureLevel == ERHIFeatureLevel::ES3_1, TEXT("ES3_1 use RWBuffer for read back"));
+
+	FSceneViewState* EffectiveViewState = GetEffectiveViewState();
+	const FExposureBufferData* Result = NULL;
+	if (EffectiveViewState)
+	{
+		Result = EffectiveViewState->GetLastEyeAdaptationBuffer();
+	}
+	return Result;
+}
+
+void FViewInfo::SwapEyeAdaptationBuffers() const
+{
+	checkf(FeatureLevel == ERHIFeatureLevel::ES3_1, TEXT("ES3_1 use RWBuffer for read back"));
+
+	FSceneViewState* EffectiveViewState = GetEffectiveViewState();
+	if (EffectiveViewState)
+	{
+		EffectiveViewState->SwapEyeAdaptationBuffers();
 	}
 }
 

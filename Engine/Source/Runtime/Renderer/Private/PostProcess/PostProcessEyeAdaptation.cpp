@@ -6,6 +6,8 @@
 
 RENDERCORE_API bool UsePreExposure(EShaderPlatform Platform);
 
+bool IsMobileEyeAdaptationEnabled(const FViewInfo& View);
+
 namespace
 {
 TAutoConsoleVariable<float> CVarEyeAdaptationPreExposureOverride(
@@ -78,7 +80,6 @@ bool IsAutoExposureMethodSupported(ERHIFeatureLevel::Type FeatureLevel, EAutoExp
 	switch (AutoExposureMethodId)
 	{
 	case EAutoExposureMethod::AEM_Histogram:
-		return FeatureLevel >= ERHIFeatureLevel::SM5;
 	case EAutoExposureMethod::AEM_Basic:
 	case EAutoExposureMethod::AEM_Manual:
 		return FeatureLevel >= ERHIFeatureLevel::ES3_1;
@@ -715,6 +716,11 @@ void FSceneViewState::FEyeAdaptationRTManager::SafeRelease()
 	PooledRenderTarget[1].SafeRelease();
 
 	ExposureTextureReadback = nullptr;
+
+	ExposureBufferData[0].SafeRelease();
+	ExposureBufferData[1].SafeRelease();
+
+	ExposureBufferReadback = nullptr;
 }
 
 void FSceneViewState::FEyeAdaptationRTManager::SwapRTs(bool bInUpdateLastExposure)
@@ -780,6 +786,71 @@ TRefCountPtr<IPooledRenderTarget>& FSceneViewState::FEyeAdaptationRTManager::Get
 	return PooledRenderTarget[BufferNumber];
 }
 
+FExposureBufferData& FSceneViewState::FEyeAdaptationRTManager::GetBufferRef(const int BufferNumber)
+{
+	check(BufferNumber == 0 || BufferNumber == 1);
+
+	// Create textures if needed.
+	if (!ExposureBufferData[BufferNumber].IsValid())
+	{
+		FRHIResourceCreateInfo CreateInfo(TEXT("ExposureBuffer"));
+		ExposureBufferData[BufferNumber].Buffer = RHICreateVertexBuffer(sizeof(FVector4), BUF_Static | BUF_ShaderResource | BUF_UnorderedAccess, CreateInfo);
+		
+		FVector4* BufferData = (FVector4*)RHILockVertexBuffer(ExposureBufferData[BufferNumber].Buffer, 0, sizeof(FVector4), RLM_WriteOnly);
+		*BufferData = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+		RHIUnlockVertexBuffer(ExposureBufferData[BufferNumber].Buffer);
+
+		ExposureBufferData[BufferNumber].SRV = RHICreateShaderResourceView(ExposureBufferData[BufferNumber].Buffer, sizeof(FVector4), PF_A32B32G32R32F);
+		ExposureBufferData[BufferNumber].UAV = RHICreateUnorderedAccessView(ExposureBufferData[BufferNumber].Buffer, PF_A32B32G32R32F);
+	}
+
+	return ExposureBufferData[BufferNumber];
+}
+
+void FSceneViewState::FEyeAdaptationRTManager::SwapBuffers(bool bInUpdateLastExposure)
+{
+	QUICK_SCOPE_CYCLE_COUNTER(STAT_FEyeAdaptationRTManager_SwapBuffers);
+
+	FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
+
+	if (bInUpdateLastExposure && ExposureBufferData[CurrentBuffer].IsValid() && (GIsEditor || CVarEnablePreExposureOnlyInTheEditor.GetValueOnRenderThread() == 0))
+	{
+		if (!ExposureBufferReadback)
+		{
+			static const FName ExposureValueName(TEXT("Scene view state exposure readback"));
+			ExposureBufferReadback.Reset(new FRHIGPUBufferReadback(ExposureValueName));
+			// Send the first request.
+			ExposureBufferReadback->EnqueueCopy(RHICmdList, ExposureBufferData[CurrentBuffer].Buffer);
+		}
+		else if (ExposureBufferReadback->IsReady())
+		{
+			// Workaround until FRHIGPUTextureReadback::Lock has multigpu support
+			FRHIGPUMask ReadBackGPUMask = RHICmdList.GetGPUMask();
+			if (!ReadBackGPUMask.HasSingleIndex())
+			{
+				ReadBackGPUMask = FRHIGPUMask::GPU0();
+			}
+
+			SCOPED_GPU_MASK(RHICmdList, ReadBackGPUMask);
+
+			// Read the last request results.
+			FVector4* ReadbackData = (FVector4*)ExposureBufferReadback->Lock(sizeof(FVector4));
+			if (ReadbackData)
+			{
+				LastExposure = ReadbackData->X;
+				LastAverageSceneLuminance = ReadbackData->Z;
+
+				ExposureBufferReadback->Unlock();
+			}
+
+			// Send the request for next update.
+			ExposureBufferReadback->EnqueueCopy(RHICmdList, ExposureBufferData[CurrentBuffer].Buffer);
+		}
+	}
+
+	CurrentBuffer = 1 - CurrentBuffer;
+}
+
 void FSceneViewState::UpdatePreExposure(FViewInfo& View)
 {
 	const FSceneViewFamily& ViewFamily = *View.Family;
@@ -803,15 +874,14 @@ void FSceneViewState::UpdatePreExposure(FViewInfo& View)
 	PreExposure = 1.f;
 	bUpdateLastExposure = false;
 
+	bool bEnableAutoExposure = true;
+
 	if (IsMobilePlatform(View.GetShaderPlatform()))
 	{
-		if (!IsMobileHDR())
-		{
-			// In gamma space, the exposure is fully applied in the pre-exposure (no post-exposure compensation)
-			PreExposure = GetEyeAdaptationFixedExposure(View);
-		}
+		bEnableAutoExposure &= IsMobileEyeAdaptationEnabled(View);
 	}
-	else if (bIsPreExposureRelevant)
+	
+	if (bIsPreExposureRelevant && bEnableAutoExposure)
 	{
 		if (UsePreExposure(View.GetShaderPlatform()))
 		{

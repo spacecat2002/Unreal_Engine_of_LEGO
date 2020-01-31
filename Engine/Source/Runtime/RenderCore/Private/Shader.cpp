@@ -31,9 +31,8 @@ DECLARE_LOG_CATEGORY_CLASS(LogShaderWarnings, Log, Log);
 
 RENDERCORE_API bool UsePreExposure(EShaderPlatform Platform)
 {
-	// Mobile platforms are excluded because they use a different pre-exposure logic in MobileBasePassPixelShader.usf
 	static const auto CVarUsePreExposure = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.UsePreExposure"));
-	return CVarUsePreExposure->GetValueOnAnyThread() != 0 && !IsMobilePlatform(Platform) && IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5);
+	return CVarUsePreExposure->GetValueOnAnyThread() != 0;
 }
 
 static const FName ShaderCompressionFormat = NAME_Zlib;

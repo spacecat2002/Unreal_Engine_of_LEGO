@@ -52,6 +52,8 @@
 /** The global center for all post processing activities. */
 FPostProcessing GPostProcessing;
 
+bool IsMobileEyeAdaptationEnabled(const FViewInfo& View);
+
 namespace
 {
 TAutoConsoleVariable<float> CVarDepthOfFieldNearBlurSizeThreshold(
@@ -66,15 +68,6 @@ TAutoConsoleVariable<float> CVarDepthOfFieldMaxSize(
 	100.0f,
 	TEXT("Allows to clamp the gaussian depth of field radius (for better performance), default: 100"),
 	ECVF_Scalability | ECVF_RenderThreadSafe);
-
-TAutoConsoleVariable<int32> CVarRenderTargetSwitchWorkaround(
-	TEXT("r.RenderTargetSwitchWorkaround"),
-	0,
-	TEXT("Workaround needed on some mobile platforms to avoid a performance drop related to switching render targets.\n")
-	TEXT("Only enabled on some hardware. This affects the bloom quality a bit. It runs slower than the normal code path but\n")
-	TEXT("still faster as it avoids the many render target switches. (Default: 0)\n")
-	TEXT("We want this enabled (1) on all 32 bit iOS devices (implemented through DeviceProfiles)."),
-	ECVF_RenderThreadSafe);
 
 TAutoConsoleVariable<int32> CVarPostProcessingPropagateAlpha(
 	TEXT("r.PostProcessing.PropagateAlpha"),
@@ -1226,7 +1219,7 @@ static FRCPassPostProcessTonemap* AddTonemapper(
 		TonemapperCombinedLUTOutputRef = AddCombineLUTPass(Context.Graph);
 	}
 
-	const bool bDoEyeAdaptation = IsAutoExposureMethodSupported(View.GetFeatureLevel(), EyeAdapationMethodId);
+	const bool bDoEyeAdaptation = IsAutoExposureMethodSupported(View.GetFeatureLevel(), EyeAdapationMethodId) && EyeAdaptation.IsValid();
 	FRCPassPostProcessTonemap* PostProcessTonemap = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessTonemap(bDoGammaOnly, bDoEyeAdaptation, bHDRTonemapperOutput));
 
 	PostProcessTonemap->SetInput(ePId_Input0, Context.FinalOutput);
@@ -1306,26 +1299,39 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 			&& View.bIsSceneCapture
 			&& IsMetalMobilePlatform(View.GetShaderPlatform());
 
+		static const auto VarTonemapperFilm = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.TonemapperFilm"));
+		const bool bUseTonemapperFilm = Context.View.GetFeatureLevel() == ERHIFeatureLevel::ES3_1 && IsMobileHDR() && !bMobileHDR32bpp && GSupportsRenderTargetFormat_PF_FloatRGBA && (VarTonemapperFilm && VarTonemapperFilm->GetValueOnRenderThread());
+		
+		const EAutoExposureMethod AutoExposureMethod = GetAutoExposureMethod(View);
+		uint32 bUseEyeAdaptation = IsMobileEyeAdaptationEnabled(View) ? 1 : 0;
+
 		// add the passes we want to add to the graph (commenting a line means the pass is not inserted into the graph) ---------
+		FRenderingCompositeOutputRef PostProcessEyeAdaptation;
 		if( View.Family->EngineShowFlags.PostProcessing && bAllowFullPostProcess)
 		{
 			const EMobileHDRMode HDRMode = GetMobileHDRMode();
 			bool bUseEncodedHDR = HDRMode == EMobileHDRMode::EnabledRGBE;
 			bool bHDRModeAllowsPost = bUseEncodedHDR || HDRMode == EMobileHDRMode::EnabledFloat16;
 
-			bool bUseSun = !bUseEncodedHDR && View.bLightShaftUse;
-			bool bUseDof = !bUseEncodedHDR && GetMobileDepthOfFieldScale(View) > 0.0f && !Context.View.Family->EngineShowFlags.VisualizeDOF;
-			bool bUseBloom = View.FinalPostProcessSettings.BloomIntensity > 0.0f;
-			bool bUseVignette = View.FinalPostProcessSettings.VignetteIntensity > 0.0f;
+			uint32 bUseSun = !bUseEncodedHDR && View.bLightShaftUse ? 1 : 0;
+			uint32 bUseDof = !bUseEncodedHDR && GetMobileDepthOfFieldScale(View) > 0.0f && !Context.View.Family->EngineShowFlags.VisualizeDOF ? 1 : 0;
+			uint32 bUseBloom = View.FinalPostProcessSettings.BloomIntensity > 0.0f ? 1 : 0;
+			uint32 bUseVignette = View.FinalPostProcessSettings.VignetteIntensity > 0.0f ? 1 : 0;
 
-			bool bWorkaround = CVarRenderTargetSwitchWorkaround.GetValueOnRenderThread() != 0;
+			uint32 bUseBasicEyeAdaptation = bUseEyeAdaptation && (AutoExposureMethod == EAutoExposureMethod::AEM_Basic) &&
+				// Skip if we don't have any exposure range to generate (eye adaptation will clamp).
+				View.FinalPostProcessSettings.AutoExposureMinBrightness < View.FinalPostProcessSettings.AutoExposureMaxBrightness ? 1 : 0;
+
+			uint32 bUseHistogramEyeAdaptation = bUseEyeAdaptation && (AutoExposureMethod == EAutoExposureMethod::AEM_Histogram) &&
+				// Skip if we don't have any exposure range to generate (eye adaptation will clamp).
+				View.FinalPostProcessSettings.AutoExposureMinBrightness < View.FinalPostProcessSettings.AutoExposureMaxBrightness ? 1 : 0;
+
+			static const auto CVarMobileMSAA = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileMSAA"));
+			uint32 bUseMSAA = GSupportsShaderFramebufferFetch && IsMetalMobilePlatform(View.GetShaderPlatform()) && CVarMobileMSAA && CVarMobileMSAA->GetValueOnRenderThread() > 1 ? 1 : 0;
 
 			// Use original mobile Dof on ES2 devices regardless of bMobileHQGaussian.
 			// HQ gaussian 
-			bool bUseMobileDof = bUseDof && (!View.FinalPostProcessSettings.bMobileHQGaussian || (Context.View.GetFeatureLevel() < ERHIFeatureLevel::ES3_1));
-
-			// This is a workaround to avoid a performance cliff when using many render targets. 
-			bool bUseBloomSmall = bUseBloom && !bUseSun && !bUseDof && bWorkaround;
+			uint32 bUseMobileDof = bUseDof && (!View.FinalPostProcessSettings.bMobileHQGaussian || (Context.View.GetFeatureLevel() < ERHIFeatureLevel::ES3_1)) ? 1 : 0;
 
 			// Post is not supported on ES2 devices using mosaic.
 			bool bUsePost = bHDRModeAllowsPost && IsMobileHDR();
@@ -1350,7 +1356,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 			}
 
 			// Optional fixed pass processes
-			if (bUsePost && (bUseSun | bUseDof | bUseBloom | bUseVignette))
+			if (bUsePost && (bUseSun | bUseDof | bUseBloom | bUseVignette | bUseBasicEyeAdaptation | bUseHistogramEyeAdaptation))
 			{
 				if (bUseSun || bUseDof)
 				{
@@ -1363,20 +1369,16 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 				}
 
 				FRenderingCompositeOutputRef PostProcessBloomSetup;
-				if (bUseSun || bUseMobileDof || bUseBloom)
+				FRenderingCompositeOutputRef PostProcessBloomSetup_EyeAdaptation;
+				if (bUseSun || bUseMobileDof || bUseBloom || bUseBasicEyeAdaptation || bUseHistogramEyeAdaptation)
 				{
-					if(bUseBloomSmall)
-					{
-						FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessBloomSetupSmallES2(PrePostSourceViewportSize, bViewRectSource));
-						Pass->SetInput(ePId_Input0, Context.FinalOutput);
-						PostProcessBloomSetup = FRenderingCompositeOutputRef(Pass);
-					}
-					else
-					{
-						FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessBloomSetupES2(FinalOutputViewRect, bViewRectSource));
-						Pass->SetInput(ePId_Input0, Context.FinalOutput);
-						PostProcessBloomSetup = FRenderingCompositeOutputRef(Pass);
-					}
+					uint32 bHasEyeAdaptationPass = (bUseBasicEyeAdaptation || bUseHistogramEyeAdaptation) ? 1 : 0;
+
+					FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessBloomSetupES2(FinalOutputViewRect, bViewRectSource, bHasEyeAdaptationPass));
+					Pass->SetInput(ePId_Input0, Context.FinalOutput);
+
+					PostProcessBloomSetup = FRenderingCompositeOutputRef(Pass, ePId_Output0);
+					PostProcessBloomSetup_EyeAdaptation = FRenderingCompositeOutputRef(Pass, ePId_Output1);
 				}
 
 				if (bUseDof)
@@ -1440,18 +1442,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 				FRenderingCompositeOutputRef PostProcessUpsample3;
 				FRenderingCompositeOutputRef PostProcessUpsample2;
 
-				if(bUseBloomSmall)
-				{
-					float DownScale = 0.66f * 4.0f;
-					// Downsample by 2
-					{
-						FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessBloomDownES2(PrePostSourceViewportSize/4, DownScale * 2.0f));
-						Pass->SetInput(ePId_Input0, PostProcessBloomSetup);
-						PostProcessDownsample2 = FRenderingCompositeOutputRef(Pass);
-					}
-				}
-
-				if(bUseBloom && (!bUseBloomSmall))
+				if(bUseBloom)
 				{
 					float DownScale = 0.66f * 4.0f;
 					// Downsample by 2
@@ -1521,6 +1512,41 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 						PostProcessUpsample2 = FRenderingCompositeOutputRef(Pass);
 					}
 				}
+				
+				FRenderingCompositeOutputRef PostProcessAverageLuminance;
+
+				FRenderingCompositeOutputRef PostProcessHistogram;
+
+				if (bUseBasicEyeAdaptation)
+				{
+					FRenderingCompositePass* AverageLuminancePass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessAverageLuminanceES2());
+					AverageLuminancePass->SetInput(ePId_Input0, PostProcessBloomSetup_EyeAdaptation);
+					PostProcessAverageLuminance = FRenderingCompositeOutputRef(AverageLuminancePass, ePId_Output0);
+				}
+				else if (bUseHistogramEyeAdaptation)
+				{
+					FRenderingCompositePass* HistogramAndReducePass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessHistogramES2());
+					HistogramAndReducePass->SetInput(ePId_Input0, PostProcessBloomSetup_EyeAdaptation);
+					PostProcessHistogram = FRenderingCompositeOutputRef(HistogramAndReducePass, ePId_Output0);
+				}
+
+				if (bUseEyeAdaptation)
+				{
+					if (bUseHistogramEyeAdaptation)
+					{
+						FRenderingCompositePass* HistogramEyeAdaptationPass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessHistogramEyeAdaptationES2());
+						HistogramEyeAdaptationPass->SetInput(ePId_Input0, PostProcessHistogram);
+						PostProcessEyeAdaptation = FRenderingCompositeOutputRef(HistogramEyeAdaptationPass);
+					}
+					else
+					{
+						FRenderingCompositePass* BasicEyeAdaptationPass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessBasicEyeAdaptationES2());
+						BasicEyeAdaptationPass->SetInput(ePId_Input0, PostProcessAverageLuminance);
+						PostProcessEyeAdaptation = FRenderingCompositeOutputRef(BasicEyeAdaptationPass);
+					}
+
+//					PostProcessEyeAdaptation.GetOutput()->PooledRenderTarget = Context.View.GetLastEyeAdaptationRT(Context.RHICmdList);
+				}
 
 				FRenderingCompositeOutputRef PostProcessSunBlur;
 				if(bUseSun)
@@ -1544,15 +1570,6 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 				if(bUseSun | bUseVignette | bUseBloom)
 				{
 					FRenderingCompositeOutputRef PostProcessSunMerge;
-					if(bUseBloomSmall) 
-					{
-						FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessSunMergeSmallES2(PrePostSourceViewportSize));
-						Pass->SetInput(ePId_Input0, PostProcessBloomSetup);
-						Pass->SetInput(ePId_Input1, PostProcessDownsample2);
-						PostProcessSunMerge = FRenderingCompositeOutputRef(Pass);
-						BloomOutput = PostProcessSunMerge;
-					}
-					else
 					{
 						FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessSunMergeES2(PrePostSourceViewportSize));
 						if(bUseSun)
@@ -1605,10 +1622,6 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 			}
 		}
 		
-		static const auto VarTonemapperFilm = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.TonemapperFilm"));
-		const bool bUseTonemapperFilm = Context.View.GetFeatureLevel() == ERHIFeatureLevel::ES3_1 && IsMobileHDR() && !bMobileHDR32bpp && GSupportsRenderTargetFormat_PF_FloatRGBA && (VarTonemapperFilm && VarTonemapperFilm->GetValueOnRenderThread());
-
-
 		static const auto VarTonemapperUpscale = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileTonemapperUpscale"));
 		bool bDisableUpscaleInTonemapper = IsMobileHDRMosaic() || !VarTonemapperUpscale || VarTonemapperUpscale->GetValueOnRenderThread() == 0;
 
@@ -1619,7 +1632,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 			if (bUseTonemapperFilm)
 			{
 				//@todo Ronin Set to EAutoExposureMethod::AEM_Basic for PC vk crash.
-				FRCPassPostProcessTonemap* PostProcessTonemap = AddTonemapper(Context, BloomOutput, nullptr, EAutoExposureMethod::AEM_Histogram, false, false);
+				FRCPassPostProcessTonemap* PostProcessTonemap = AddTonemapper(Context, BloomOutput, PostProcessEyeAdaptation, AutoExposureMethod, false, false);
 				// remember the tonemapper pass so we can check if it's last
 				TonemapperPass = PostProcessTonemap;
 
@@ -1629,7 +1642,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 			else
 			{
 				// Must run to blit to back buffer even if post processing is off.
-				FRCPassPostProcessTonemapES2* PostProcessTonemap = (FRCPassPostProcessTonemapES2*)Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessTonemapES2(Context.View, bViewRectSource, bSRGBAwareTarget));
+				FRCPassPostProcessTonemapES2* PostProcessTonemap = (FRCPassPostProcessTonemapES2*)Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessTonemapES2(Context.View, bViewRectSource, bSRGBAwareTarget, bUseEyeAdaptation));
 				// remember the tonemapper pass so we can check if it's last
 				TonemapperPass = PostProcessTonemap;
 
@@ -1645,6 +1658,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 					PostProcessTonemap->SetInput(ePId_Input1, BloomOutput);
 				}
 				PostProcessTonemap->SetInput(ePId_Input2, DofOutput);
+				PostProcessTonemap->SetInput(ePId_Input3, PostProcessEyeAdaptation);
 
 				Context.FinalOutput = FRenderingCompositeOutputRef(PostProcessTonemap);
 
@@ -1779,7 +1793,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 			Desc.Format = PF_B8G8R8A8;
 			Desc.NumMips = 1;
 			Desc.DebugName = TEXT("OverriddenRenderTarget");
-			Desc.TargetableFlags |= TexCreate_RenderTargetable;
+			Desc.TargetableFlags |= TexCreate_RenderTargetable | TexCreate_ShaderResource;
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 			// for FVisualizeTexture
 			Desc.TargetableFlags |= TexCreate_ShaderResource;
