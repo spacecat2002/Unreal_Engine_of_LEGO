@@ -18,7 +18,8 @@ namespace WindowsMixedReality
 
 	void HandMeshUpdateObserver::InitAsync(SpatialInteractionSource source)
 	{
-#if PLATFORM_HOLOLENS
+#if 0
+//#if PLATFORM_HOLOLENS
 		m_sourceId = source.Id();
 		CoCreateGuid(&m_guid);
 		switch (source.Handedness())
