@@ -2975,7 +2975,7 @@ namespace WindowsMixedReality
 		}
 	}
 
-	HMDInputPressState MixedRealityInterop::GetPressState(HMDHand hand, HMDInputControllerButtons button)
+	HMDInputPressState MixedRealityInterop::GetPressState(HMDHand hand, HMDInputControllerButtons button, bool onlyRegisterClicks)
 	{
 		int index = (int)hand;
 
@@ -2984,27 +2984,33 @@ namespace WindowsMixedReality
 		switch (button)
 		{
 		case HMDInputControllerButtons::Grasp:
-			pressState = (CurrentGraspState[index] != PreviousGraspState[index]) ? CurrentGraspState[index] : HMDInputPressState::NotApplicable;
+			pressState = (!onlyRegisterClicks) ? CurrentGraspState[index] :
+				(CurrentGraspState[index] != PreviousGraspState[index]) ? CurrentGraspState[index] : HMDInputPressState::NotApplicable;
 			break;
 
 		case HMDInputControllerButtons::Menu:
-			pressState = (CurrentMenuState[index] != PreviousMenuState[index]) ? CurrentMenuState[index] : HMDInputPressState::NotApplicable;
+			pressState = (!onlyRegisterClicks) ? CurrentMenuState[index] :
+				(CurrentMenuState[index] != PreviousMenuState[index]) ? CurrentMenuState[index] : HMDInputPressState::NotApplicable;
 			break;
 
 		case HMDInputControllerButtons::Select:
-			pressState = (CurrentSelectState[index] != PreviousSelectState[index]) ? CurrentSelectState[index] : HMDInputPressState::NotApplicable;
+			pressState = (!onlyRegisterClicks) ? CurrentSelectState[index] :
+				(CurrentSelectState[index] != PreviousSelectState[index]) ? CurrentSelectState[index] : HMDInputPressState::NotApplicable;
 			break;
 
 		case HMDInputControllerButtons::Thumbstick:
-			pressState = (CurrentThumbstickPressState[index] != PreviousThumbstickPressState[index]) ? CurrentThumbstickPressState[index] : HMDInputPressState::NotApplicable;
+			pressState = (!onlyRegisterClicks) ? CurrentThumbstickPressState[index] :
+				(CurrentThumbstickPressState[index] != PreviousThumbstickPressState[index]) ? CurrentThumbstickPressState[index] : HMDInputPressState::NotApplicable;
 			break;
 
 		case HMDInputControllerButtons::Touchpad:
-			pressState = (CurrentTouchpadPressState[index] != PreviousTouchpadPressState[index]) ? CurrentTouchpadPressState[index] : HMDInputPressState::NotApplicable;
+			pressState = (!onlyRegisterClicks) ? CurrentTouchpadPressState[index] :
+				(CurrentTouchpadPressState[index] != PreviousTouchpadPressState[index]) ? CurrentTouchpadPressState[index] : HMDInputPressState::NotApplicable;
 			break;
 
 		case HMDInputControllerButtons::TouchpadIsTouched:
-			pressState = (CurrentTouchpadIsTouchedState[index] != PreviousTouchpadIsTouchedState[index]) ? CurrentTouchpadIsTouchedState[index] : HMDInputPressState::NotApplicable;
+			pressState = (!onlyRegisterClicks) ? CurrentTouchpadIsTouchedState[index] :
+				(CurrentTouchpadIsTouchedState[index] != PreviousTouchpadIsTouchedState[index]) ? CurrentTouchpadIsTouchedState[index] : HMDInputPressState::NotApplicable;
 			break;
 		}
 

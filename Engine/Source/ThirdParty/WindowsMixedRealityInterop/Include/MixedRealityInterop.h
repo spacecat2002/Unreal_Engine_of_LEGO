@@ -443,7 +443,7 @@ namespace WindowsMixedReality
 
 		void PollInput();
 		void PollHandTracking();
-		HMDInputPressState GetPressState(HMDHand hand, HMDInputControllerButtons button);
+		HMDInputPressState GetPressState(HMDHand hand, HMDInputControllerButtons button, bool onlyRegisterClicks = true);
 		void ResetButtonStates();
 
 		float GetAxisPosition(HMDHand hand, HMDInputControllerAxes axis);
