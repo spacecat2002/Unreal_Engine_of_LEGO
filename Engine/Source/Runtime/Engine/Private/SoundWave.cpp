@@ -33,7 +33,7 @@
 #include "DSP/EnvelopeFollower.h"
 #include "DSP/BufferVectorOperations.h"
 #include "Misc/OutputDeviceArchiveWrapper.h"
-
+#include "Async/Async.h"
 #include "Misc/CommandLine.h"
 
 static int32 SoundWaveDefaultLoadingBehaviorCVar = 0;
@@ -219,7 +219,7 @@ void USoundWave::GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize)
 		return;
 	}
 
-	if (FAudioDevice* LocalAudioDevice = GEngine->GetMainAudioDevice())
+	if (FAudioDevice* LocalAudioDevice = GEngine->GetMainAudioDeviceRaw())
 	{
 		if (LocalAudioDevice->HasCompressedAudioInfoClass(this) && DecompressionType == DTYPE_Native)
 		{
@@ -835,7 +835,7 @@ void USoundWave::PostLoad()
 	// most likely cause us to run out of memory.
 	if (!GIsEditor && !IsTemplate( RF_ClassDefaultObject ) && GEngine)
 	{
-		FAudioDevice* AudioDevice = GEngine->GetMainAudioDevice();
+		FAudioDeviceHandle AudioDevice = GEngine->GetMainAudioDevice();
 		if (AudioDevice)
 		{
 			// Upload the data to the hardware, but only if we've precached startup sounds already
@@ -969,6 +969,8 @@ void USoundWave::BeginDestroy()
 		AsyncLoadingDataFormats.Empty();
 	}
 #endif
+
+	ReleaseCompressedAudio();
 }
 
 void USoundWave::InitAudioResource( FByteBulkData& CompressedData )
@@ -1746,7 +1748,6 @@ void USoundWave::Parse(FAudioDevice* AudioDevice, const UPTRINT NodeWaveInstance
 		WaveInstance->VoiceCenterChannelVolume = SoundClassProperties->VoiceCenterChannelVolume;
 		WaveInstance->RadioFilterVolume = SoundClassProperties->RadioFilterVolume * ParseParams.VolumeMultiplier;
 		WaveInstance->RadioFilterVolumeThreshold = SoundClassProperties->RadioFilterVolumeThreshold * ParseParams.VolumeMultiplier;
-		WaveInstance->StereoBleed = SoundClassProperties->StereoBleed;
 		WaveInstance->LFEBleed = SoundClassProperties->LFEBleed;
 
 		WaveInstance->bIsUISound = ActiveSound.bIsUISound || SoundClassProperties->bIsUISound;
@@ -1780,7 +1781,6 @@ void USoundWave::Parse(FAudioDevice* AudioDevice, const UPTRINT NodeWaveInstance
 		WaveInstance->VoiceCenterChannelVolume = 0.f;
 		WaveInstance->RadioFilterVolume = 0.f;
 		WaveInstance->RadioFilterVolumeThreshold = 0.f;
-		WaveInstance->StereoBleed = 0.f;
 		WaveInstance->LFEBleed = 0.f;
 		WaveInstance->bIsUISound = ActiveSound.bIsUISound;
 		WaveInstance->bIsMusic = ActiveSound.bIsMusic;
@@ -2434,13 +2434,19 @@ void USoundWave::RetainCompressedAudio(bool bForceSync /*= false*/)
 	{
 		GetHandleForChunkOfAudio([WeakThis = MakeWeakObjectPtr(this)](FAudioChunkHandle OutHandle)
 		{
-			check(IsInGameThread());
-			
-			if (WeakThis.IsValid())
+			if (OutHandle.IsValid())
 			{
-				WeakThis->FirstChunk = OutHandle;
+				AsyncTask(ENamedThreads::GameThread, [WeakThis, OutHandle]() {
+					check(IsInGameThread());
+
+					if (WeakThis.IsValid())
+					{
+						WeakThis->FirstChunk = OutHandle;
+					}
+				});
+				
 			}
-		}, false, 1, ENamedThreads::GameThread);
+		}, false, 1);
 	}
 }
 
@@ -2448,6 +2454,11 @@ void USoundWave::ReleaseCompressedAudio()
 {
 	// Here we release the USoundWave's handle to the compressed asset by resetting it.
 	FirstChunk = FAudioChunkHandle();
+}
+
+bool USoundWave::IsRetainingAudio()
+{
+	return FirstChunk.IsValid();
 }
 
 void USoundWave::CacheInheritedLoadingBehavior()

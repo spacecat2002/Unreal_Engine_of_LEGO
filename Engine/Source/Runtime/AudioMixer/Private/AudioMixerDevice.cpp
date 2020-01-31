@@ -138,7 +138,7 @@ namespace Audio
 
 	bool FMixerDevice::InitializeHardware()
 	{
-		AUDIO_MIXER_CHECK_GAME_THREAD(this);
+		ensure(IsInGameThread());
 	
 		LLM_SCOPE(ELLMTag::AudioMixer);
 
@@ -1688,7 +1688,7 @@ namespace Audio
 
 	bool FMixerDevice::IsMainAudioDevice() const
 	{
-		bool bIsMain = (this == GEngine->GetMainAudioDevice());
+		bool bIsMain = (this == GEngine->GetMainAudioDeviceRaw());
 		return bIsMain;
 	}
 

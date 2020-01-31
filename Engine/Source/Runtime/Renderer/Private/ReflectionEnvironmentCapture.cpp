@@ -89,6 +89,14 @@ static TAutoConsoleVariable<int32> CVarReflectionCaptureStaticSceneOnly(
 	TEXT(" 0 is off, 1 is on (default)"),
 	ECVF_ReadOnly);
 
+static int32 GReleaseSRVsAfterCubeMipsGen = 1;
+static FAutoConsoleVariableRef CVarReleaseSRVsAfterCubeMipsGen(
+	TEXT("r.ReleaseSRVsAfterCubeMipsGen"),
+	GReleaseSRVsAfterCubeMipsGen,
+	TEXT("Don't store SRVs used during mip gen to the cubemap render target item.\n")
+	TEXT("This reduces unnecessary memory allocations and copies when the item is copied around during snapshot creation."),
+	ECVF_RenderThreadSafe);
+
 bool DoGPUArrayCopy()
 {
 	return GRHISupportsResolveCubemapFaces && CVarReflectionCaptureGPUArrayCopy.GetValueOnAnyThread();
@@ -185,14 +193,15 @@ void CreateCubeMips( FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Typ
 
 	auto* ShaderMap = GetGlobalShaderMap(FeatureLevel);
 
-	for (int32 MipIndex = 0; MipIndex < NumMips; MipIndex++)
+	if (!Cubemap.SRVs.Num())
 	{
-		FRHITextureSRVCreateInfo SRVDesc;
-		SRVDesc.MipLevel = MipIndex;
+		Cubemap.SRVs.Empty(NumMips);
 
-		if (!Cubemap.SRVs.Contains(SRVDesc))
+		for (int32 MipIndex = 0; MipIndex < NumMips; MipIndex++)
 		{
-			Cubemap.SRVs.Add(SRVDesc, RHICreateShaderResourceView(Cubemap.ShaderResourceTexture, SRVDesc));
+			FRHITextureSRVCreateInfo SRVDesc;
+			SRVDesc.MipLevel = MipIndex;
+			Cubemap.SRVs.Emplace(SRVDesc, RHICreateShaderResourceView(Cubemap.ShaderResourceTexture, SRVDesc));
 		}
 	}
 
@@ -214,7 +223,7 @@ void CreateCubeMips( FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Typ
 			RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
 
 			const FIntRect ViewRect(0, 0, MipSize, MipSize);
-			RHICmdList.SetViewport(0, 0, 0.0f, MipSize, MipSize, 1.0f);
+			RHICmdList.SetViewport(0.0f, 0.0f, 0.0f, (float)MipSize, (float)MipSize, 1.0f);
 
 
 			TShaderMapRef<FScreenVS> VertexShader(ShaderMap);
@@ -235,10 +244,8 @@ void CreateCubeMips( FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Typ
 
 				SetShaderValue(RHICmdList, ShaderRHI, PixelShader->NumMips, NumMips);
 
-				FRHITextureSRVCreateInfo SrcSRVDesc;
-				SrcSRVDesc.MipLevel = MipIndex - 1;
-
-				SetSRVParameter(RHICmdList, ShaderRHI, PixelShader->SourceTexture, Cubemap.SRVs[SrcSRVDesc]);
+				check(Cubemap.SRVs.IsValidIndex(MipIndex - 1) && Cubemap.SRVs[MipIndex - 1].Key.MipLevel == MipIndex - 1);
+				SetSRVParameter(RHICmdList, ShaderRHI, PixelShader->SourceTexture, Cubemap.SRVs[MipIndex - 1].Value);
 				SetSamplerParameter(RHICmdList, ShaderRHI, PixelShader->SourceTextureSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 			}
 
@@ -257,6 +264,11 @@ void CreateCubeMips( FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Typ
 	}
 
 	RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, &CubeRef, 1);
+
+	if (!!GReleaseSRVsAfterCubeMipsGen)
+	{
+		Cubemap.SRVs.Empty();
+	}
 }
 
 /** Computes the average brightness of the given reflection capture and stores it in the scene. */
@@ -430,7 +442,7 @@ void FilterReflectionEnvironment(FRHICommandListImmediate& RHICmdList, ERHIFeatu
 				RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
 
 				const FIntRect ViewRect(0, 0, MipSize, MipSize);
-				RHICmdList.SetViewport(0, 0, 0.0f, MipSize, MipSize, 1.0f);
+				RHICmdList.SetViewport(0.0f, 0.0f, 0.0f, (float)MipSize, (float)MipSize, 1.0f);
 
 				TShaderMapRef<FScreenVS> VertexShader(GetGlobalShaderMap(FeatureLevel));
 				TShaderMapRef< TCubeFilterPS<1> > CaptureCubemapArrayPixelShader(GetGlobalShaderMap(FeatureLevel));
@@ -800,7 +812,7 @@ void CaptureSceneToScratchCubemap(FRHICommandListImmediate& RHICmdList, FSceneRe
 			RHICmdList.BeginRenderPass(RPInfo, TEXT("CubeMapCopySceneRP"));
 
 			const FIntRect ViewRect(0, 0, EffectiveSize, EffectiveSize);
-			RHICmdList.SetViewport(0, 0, 0.0f, EffectiveSize, EffectiveSize, 1.0f);
+			RHICmdList.SetViewport(0.0f, 0.0f, 0.0f, (float)EffectiveSize, (float)EffectiveSize, 1.0f);
 
 			FGraphicsPipelineStateInitializer GraphicsPSOInit;
 			RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -865,7 +877,7 @@ void CopyCubemapToScratchCubemap(FRHICommandList& RHICmdList, ERHIFeatureLevel::
 
 		const FIntPoint SourceDimensions(SourceCubemapResource->GetSizeX(), SourceCubemapResource->GetSizeY());
 		const FIntRect ViewRect(0, 0, EffectiveSize, EffectiveSize);
-		RHICmdList.SetViewport(0, 0, 0.0f, EffectiveSize, EffectiveSize, 1.0f);
+		RHICmdList.SetViewport(0.0f, 0.0f, 0.0f, (float)EffectiveSize, (float)EffectiveSize, 1.0f);
 
 		FGraphicsPipelineStateInitializer GraphicsPSOInit;
 		RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);

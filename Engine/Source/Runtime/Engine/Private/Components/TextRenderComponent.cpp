@@ -465,6 +465,11 @@ public:
 		}
 	}
 
+	virtual FString GetReferencerName() const override
+	{
+		return "FTextRenderComponentMIDCache";
+	}
+
 private:
 	/** Key identifying an array of MIDs */
 	struct FKey
@@ -815,7 +820,7 @@ FPrimitiveViewRelevance FTextRenderSceneProxy::GetViewRelevance(const FSceneView
 	}
 
 	MaterialRelevance.SetPrimitiveViewRelevance(Result);
-	Result.bVelocityRelevance = IsMovable() && Result.bOpaqueRelevance && Result.bRenderInMainPass;
+	Result.bVelocityRelevance = IsMovable() && Result.bOpaque && Result.bRenderInMainPass;
 	return Result;
 }
 

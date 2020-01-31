@@ -533,6 +533,14 @@ public:
 	bool bIsPerformingInteractiveActionOnLandscapeMaterialOverride;
 #endif 
 
+	/** Use unique geometry instead of material alpha tests for holes on mobile platforms. This requires additional memory and will render more vertices at lower LODs.*/
+	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category = Mobile, meta = (DisplayName = "Unique Hole Meshes"))
+	bool bMeshHoles = false;
+
+	/** Maximum geometry LOD at which to render unique hole meshes.*/
+	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category = Mobile, meta = (DisplayName = "Unique Hole Meshes Max LOD", UIMin = "1", UIMax = "6"))
+	uint8 MeshHolesMaxLod = 6;
+
 	/**
 	 * Array of runtime virtual textures into which we render this landscape.
 	 * The material also needs to be set up to output to a virtual texture.
@@ -908,7 +916,7 @@ public:
 	static void AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector);
 	virtual void PostLoad() override;
 
-	LANDSCAPE_API ULandscapeInfo* CreateLandscapeInfo();
+	LANDSCAPE_API ULandscapeInfo* CreateLandscapeInfo(bool bMapCheck = false);
 	LANDSCAPE_API ULandscapeInfo* GetLandscapeInfo() const;
 
 	/** Get the LandcapeActor-to-world transform with respect to landscape section offset*/

@@ -15,9 +15,11 @@
 #define RHI_COMMAND_LIST_DEBUG_TRACES 0
 #endif
 
+template <typename T> class TArrayView;
+
 class FResourceArrayInterface;
 class FResourceBulkDataInterface;
-
+class FStringView;
 
 /** Alignment of the shader parameters struct is required to be 16-byte boundaries. */
 #define SHADER_PARAMETER_STRUCT_ALIGNMENT 16
@@ -79,6 +81,9 @@ extern RHI_API EShaderPlatform GMaxRHIShaderPlatform;
 
 /** true if the RHI supports SRVs */
 extern RHI_API bool GSupportsResourceView;
+
+/** Whether the RHI can send commands to the device context from multiple threads. Used in the GPU readback to avoid stalling the RHI threads. */
+extern RHI_API bool GRHISupportsMultithreading;
 
 /** 
  * only set if RHI has the information (after init of the RHI and only if RHI has that information, never changes after that)
@@ -164,7 +169,7 @@ inline bool RHISupportsVolumeTextures(ERHIFeatureLevel::Type FeatureLevel)
 
 inline bool RHISupportsVertexShaderLayer(const EShaderPlatform Platform)
 {
-	return IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5) && IsMetalPlatform(Platform) && (IsPCPlatform(Platform) || (Platform == SP_METAL_MRT && RHIGetShaderLanguageVersion(Platform) >= 4));
+	return IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5) && IsMetalPlatform(Platform) && IsPCPlatform(Platform);
 }
 
 /** Return true if and only if the GPU support rendering to volume textures (2D Array, 3D) is guaranteed supported for a target platform.
@@ -496,9 +501,6 @@ extern RHI_API int32 GCurrentNumPrimitivesDrawnRHI;
 /** Whether or not the RHI can handle a non-zero BaseVertexIndex - extra SetStreamSource calls will be needed if this is false */
 extern RHI_API bool GRHISupportsBaseVertexIndex;
 
-/** True if the RHI supports hardware instancing */
-extern RHI_API TRHIGlobal<bool> GRHISupportsInstancing;
-
 /** True if the RHI supports copying cubemap faces using CopyToResolveTarget */
 extern RHI_API bool GRHISupportsResolveCubemapFaces;
 
@@ -510,6 +512,12 @@ extern RHI_API bool GRHISupportsDynamicResolution;
 
 /** Whether or not the RHI supports ray tracing on current hardware (acceleration structure building and new ray tracing-specific shader types). */
 extern RHI_API bool GRHISupportsRayTracing;
+
+/** Whether or not the RHI supports binding multiple miss shaders with local resources via RHISetRayTracingMissShader(). */
+extern RHI_API bool GRHISupportsRayTracingMissShaderBindings;
+
+/** Whether or not the RHI supports async building ray tracing acceleration structures. */
+extern RHI_API bool GRHISupportsRayTracingAsyncBuildAccelerationStructure;
 
 /** Whether or not the RHI supports shader wave operations (shader model 6.0). */
 extern RHI_API bool GRHISupportsWaveOperations;
@@ -758,6 +766,7 @@ struct FVertexElement
 	}
 	RHI_API FString ToString() const;
 	RHI_API void FromString(const FString& Src);
+	RHI_API void FromString(const FStringView& Src);
 };
 
 typedef TArray<FVertexElement,TFixedAllocator<MaxVertexElementCount> > FVertexDeclarationElementList;
@@ -946,8 +955,7 @@ struct FDepthStencilStateInitializerRHI
 	}
 	RHI_API FString ToString() const;
 	RHI_API void FromString(const FString& Src);
-
-
+	RHI_API void FromString(const FStringView& Src);
 };
 
 class FBlendStateInitializerRHI
@@ -999,8 +1007,7 @@ public:
 		}
 		RHI_API FString ToString() const;
 		RHI_API void FromString(const TArray<FString>& Parts, int32 Index);
-
-
+		RHI_API void FromString(TArrayView<const FStringView> Parts);
 	};
 
 	FBlendStateInitializerRHI() {}
@@ -1034,8 +1041,7 @@ public:
 	}
 	RHI_API FString ToString() const;
 	RHI_API void FromString(const FString& Src);
-
-
+	RHI_API void FromString(const FStringView& Src);
 };
 
 /**
@@ -1310,18 +1316,18 @@ struct FRHITextureSRVCreateInfo
 {
 	explicit FRHITextureSRVCreateInfo(uint8 InMipLevel = 0u, uint8 InNumMipLevels = 1u, uint8 InFormat = PF_Unknown)
 		: Format(InFormat)
-		, SRGBOverride(SRGBO_Default)
 		, MipLevel(InMipLevel)
 		, NumMipLevels(InNumMipLevels)
+		, SRGBOverride(SRGBO_Default)
 		, FirstArraySlice(0)
 		, NumArraySlices(0)
 	{}
 
 	explicit FRHITextureSRVCreateInfo(uint8 InMipLevel, uint8 InNumMipLevels, uint32 InFirstArraySlice, uint32 InNumArraySlices, uint8 InFormat = PF_Unknown)
 		: Format(InFormat)
-		, SRGBOverride(SRGBO_Default)
 		, MipLevel(InMipLevel)
 		, NumMipLevels(InNumMipLevels)
+		, SRGBOverride(SRGBO_Default)
 		, FirstArraySlice(InFirstArraySlice)
 		, NumArraySlices(InNumArraySlices)
 	{}
@@ -1329,14 +1335,14 @@ struct FRHITextureSRVCreateInfo
 	/** View the texture with a different format. Leave as PF_Unknown to use original format. Useful when sampling stencil */
 	uint8 Format;
 
-	/** Potentially override the texture's sRGB flag */
-	ERHITextureSRVOverrideSRGBType SRGBOverride;
-
 	/** Specify the mip level to use. Useful when rendering to one mip while sampling from another */
 	uint8 MipLevel;
 
 	/** Create a view to a single, or multiple mip levels */
 	uint8 NumMipLevels;
+
+	/** Potentially override the texture's sRGB flag */
+	ERHITextureSRVOverrideSRGBType SRGBOverride;
 
 	/** Specify first array slice index. By default 0. */
 	uint32 FirstArraySlice;
@@ -1348,9 +1354,9 @@ struct FRHITextureSRVCreateInfo
 	{
 		return (
 			Format == Other.Format &&
-			SRGBOverride == Other.SRGBOverride &&
 			MipLevel == Other.MipLevel &&
 			NumMipLevels == Other.NumMipLevels &&
+			SRGBOverride == Other.SRGBOverride &&
 			FirstArraySlice == Other.FirstArraySlice &&
 			NumArraySlices == Other.NumArraySlices);
 	}

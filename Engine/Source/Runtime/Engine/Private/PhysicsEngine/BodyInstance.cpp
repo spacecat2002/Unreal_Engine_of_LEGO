@@ -37,6 +37,10 @@
 #include "Chaos/ParticleHandle.h"
 #include "Chaos/TriangleMeshImplicitObject.h"
 
+#if WITH_CHAOS
+#include "Chaos/ParticleHandle.h"
+#endif // WITH_CHAOS
+
 #if WITH_PHYSX
 	#include "PhysXPublic.h"
 	#include "Physics/PhysicsFiltering.h"
@@ -465,11 +469,12 @@ void FBodyInstance::UpdatePhysicalMaterials()
 {
 	SCOPE_CYCLE_COUNTER(STAT_UpdatePhysMats);
 	UPhysicalMaterial* SimplePhysMat = GetSimplePhysicalMaterial();
-	TArray<UPhysicalMaterial*> ComplexPhysMats = GetComplexPhysicalMaterials();
+	TArray<FPhysicalMaterialMaskParams> ComplexPhysMatMasks;
+	TArray<UPhysicalMaterial*> ComplexPhysMats = GetComplexPhysicalMaterials(ComplexPhysMatMasks);
 
 	FPhysicsCommand::ExecuteWrite(GetActorReferenceWithWelding(), [&](const FPhysicsActorHandle& Actor)
 	{
-		ApplyMaterialToInstanceShapes_AssumesLocked(SimplePhysMat, ComplexPhysMats);
+		ApplyMaterialToInstanceShapes_AssumesLocked(SimplePhysMat, ComplexPhysMats, ComplexPhysMatMasks);
 	});
 }
 
@@ -889,9 +894,17 @@ void FBodyInstance::UpdatePhysicsFilterData()
 	}
 
 		if(bUpdateMassProperties)
-	{
+		{
 			UpdateMassProperties();
 		}
+
+#if WITH_CHAOS
+		//If filtering changed we must update GT structure right away
+		if (FPhysScene* PhysScene = GetPhysicsScene())
+		{
+			PhysScene->GetScene().UpdateActorInAccelerationStructure(Actor);
+		}
+#endif
 	});
 
 	UpdateInterpolateWhenSubStepping();
@@ -1055,7 +1068,15 @@ struct FInitBodiesHelper
 	bool CreateShapes_AssumesLocked(FBodyInstance* Instance) const
 	{
 		UPhysicalMaterial* SimplePhysMat = Instance->GetSimplePhysicalMaterial();
-		TArray<UPhysicalMaterial*> ComplexPhysMats = Instance->GetComplexPhysicalMaterials();
+
+		TArray<UPhysicalMaterial*> ComplexPhysMats;
+		TArray<FPhysicalMaterialMaskParams> ComplexPhysMatMasks;
+
+#if WITH_CHAOS
+		ComplexPhysMats = Instance->GetComplexPhysicalMaterials(ComplexPhysMatMasks);
+#else
+		ComplexPhysMats = Instance->GetComplexPhysicalMaterials();
+#endif
 
 		FBodyCollisionData BodyCollisionData;
 		Instance->BuildBodyFilterData(BodyCollisionData.CollisionFilterData);
@@ -1064,7 +1085,7 @@ struct FInitBodiesHelper
 		bool bInitFail = false;
 
 		// #PHYS2 Call interface AddGeometry
-		BodySetup->AddShapesToRigidActor_AssumesLocked(Instance, Instance->Scale3D, SimplePhysMat, ComplexPhysMats, BodyCollisionData, FTransform::Identity);
+		BodySetup->AddShapesToRigidActor_AssumesLocked(Instance, Instance->Scale3D, SimplePhysMat, ComplexPhysMats, ComplexPhysMatMasks, BodyCollisionData, FTransform::Identity);
 
 		const int32 NumShapes = FPhysicsInterface::GetNumShapes(Instance->ActorHandle);
 		bInitFail |= NumShapes == 0;
@@ -1265,6 +1286,26 @@ struct FInitBodiesHelper
 					}
 
 					PhysScene->AddActorsToScene_AssumesLocked(ActorHandles);
+#if WITH_CHAOS
+					for (FBodyInstance* BI : Bodies)
+					{
+						FPhysicsActorHandle& ActorHandle = BI->GetPhysicsActorHandle();
+						if (FPhysicsInterface::IsValid(ActorHandle))
+						{
+
+							PhysScene->AddToComponentMaps(BI->OwnerComponent.Get(), ActorHandle->Proxy);
+						}
+						if (BI->bNotifyRigidBodyCollision)
+						{
+							if (UPrimitiveComponent* PrimComp = BI->OwnerComponent.Get())
+							{
+								FPhysScene_ChaosInterface* LocalPhysScene = PrimComp->GetWorld()->GetPhysicsScene();
+								FPhysScene_Chaos& Scene = LocalPhysScene->GetScene();
+								Scene.RegisterForCollisionEvents(PrimComp);
+							}
+						}
+					}
+#endif
 				}
 
 				// Set up dynamic instance data
@@ -1386,6 +1427,24 @@ void FBodyInstance::TermBody(bool bNeverDeferRelease)
 		FPhysicsInterface::ReleaseActor(ActorHandle, GetPhysicsScene(), bNeverDeferRelease);
 	}
 
+#if WITH_CHAOS
+	if (UPrimitiveComponent* PrimComp = OwnerComponent.Get())
+	{
+		if (FPhysScene_ChaosInterface* PhysScene = PrimComp->GetWorld()->GetPhysicsScene())
+		{
+			if (FPhysicsInterface::IsValid(ActorHandle))
+			{
+				PhysScene->RemoveFromComponentMaps(ActorHandle->Proxy);
+			}
+			if (bNotifyRigidBodyCollision)
+			{
+				FPhysScene_Chaos& Scene = PhysScene->GetScene();
+				Scene.UnRegisterForCollisionEvents(PrimComp);
+			}
+		}
+	}
+#endif // WITH_CHAOS
+
 	// @TODO UE4: Release spring body here
 
 	CurrentSceneState = BodyInstanceSceneState::NotAdded;
@@ -1430,14 +1489,21 @@ bool FBodyInstance::Weld(FBodyInstance* TheirBody, const FTransform& TheirTM)
 		TheirBody->WeldParent = this;
 
 		UPhysicalMaterial* SimplePhysMat = TheirBody->GetSimplePhysicalMaterial();
-		TArray<UPhysicalMaterial*> ComplexPhysMats = TheirBody->GetComplexPhysicalMaterials();
 
+		TArray<UPhysicalMaterial*> ComplexPhysMats;
+		TArray<FPhysicalMaterialMaskParams> ComplexPhysMatMasks;
+	
+#if WITH_CHAOS
+		ComplexPhysMats = TheirBody->GetComplexPhysicalMaterials(ComplexPhysMatMasks);
+#else
+		ComplexPhysMats = TheirBody->GetComplexPhysicalMaterials();
+#endif
 		// This builds collision data based on this (parent) body, not their body. This gets fixed  up later though when PostShapeChange() calls UpdatePhysicsFilterData().
 		FBodyCollisionData BodyCollisionData;
 		BuildBodyFilterData(BodyCollisionData.CollisionFilterData);
 		BuildBodyCollisionFlags(BodyCollisionData.CollisionFlags, GetCollisionEnabled(), BodySetup->GetCollisionTraceFlag() == CTF_UseComplexAsSimple);
 
-		TheirBody->BodySetup->AddShapesToRigidActor_AssumesLocked(this, Scale3D, SimplePhysMat, ComplexPhysMats, BodyCollisionData, RelativeTM, &PNewShapes);
+		TheirBody->BodySetup->AddShapesToRigidActor_AssumesLocked(this, Scale3D, SimplePhysMat, ComplexPhysMats, ComplexPhysMatMasks, BodyCollisionData, RelativeTM, &PNewShapes);
 
 		FPhysicsInterface::SetSendsSleepNotifies_AssumesLocked(Actor, TheirBody->bGenerateWakeEvents);
 
@@ -1707,9 +1773,6 @@ bool FBodyInstance::UpdateBodyScale(const FVector& InScale3D, bool bForceUpdate)
 
 			const FTransform& RelativeTM = GetRelativeBodyTransform(ShapeHandle);
 
-			// TODO: support instanced
-			CHAOS_ENSURE(!IsInstanced(ImplicitType));
-
 			bool bIsTransformed = false;
 			if(ImplicitType == ImplicitObjectType::Transformed)
 			{
@@ -1733,9 +1796,9 @@ bool FBodyInstance::UpdateBodyScale(const FVector& InScale3D, bool bForceUpdate)
 					FReal Radius = FMath::Max(SphereElem->Radius * AdjustedScale3DAbs.X, FCollisionShape::MinSphereRadius());
 
 
-					if (!CHAOS_ENSURE(!IsScaled(ImplicitType) || !CHAOS_ENSURE(!bIsTransformed)))
+					if (!CHAOS_ENSURE(!IsScaled(ImplicitType) && !bIsTransformed && !IsInstanced(ImplicitType)))
 					{
-						// No support for Scaled sphere or transformed.
+						// No support for Scaled, Instanced,or transformed.
 						break;
 					}
 
@@ -1749,9 +1812,9 @@ bool FBodyInstance::UpdateBodyScale(const FVector& InScale3D, bool bForceUpdate)
 				}
 				case ImplicitObjectType::Box:
 				{
-					if (!CHAOS_ENSURE(!IsScaled(ImplicitType)))
+					if (!CHAOS_ENSURE(!IsScaled(ImplicitType) && !IsInstanced(ImplicitType)))
 					{
-						// No support for ScaledImplicit Box yet
+						// No support for ScaledImplicit Box yet or instanced
 						break;
 					}
 
@@ -1803,9 +1866,9 @@ bool FBodyInstance::UpdateBodyScale(const FVector& InScale3D, bool bForceUpdate)
 
 					FKSphylElem* SphylElem = ShapeElem->GetShapeCheck<FKSphylElem>();
 
-					if (!CHAOS_ENSURE(!IsScaled(ImplicitType) || !CHAOS_ENSURE(!bIsTransformed)))
+					if (!CHAOS_ENSURE(!IsScaled(ImplicitType) && !bIsTransformed && !IsInstanced(ImplicitType)))
 					{
-						// No support for Scaled or Transformed Capsule yet
+						// No support for Scaled, Instanced, or Transformed Capsule yet
 						break;
 					}
 
@@ -1838,15 +1901,11 @@ bool FBodyInstance::UpdateBodyScale(const FVector& InScale3D, bool bForceUpdate)
 				}
 				case ImplicitObjectType::Convex:
 				{
-
-					if (!CHAOS_ENSURE(IsScaled(ImplicitType) || IsInstanced(ImplicitType)))
+					if(!CHAOS_ENSURE(IsInstanced(ImplicitType) || IsScaled(ImplicitType)))
 					{
-						// Currently assuming all convexes are scaled or instanced (if scale == 1).
+						CHAOS_ENSURE(false); // Expecting instanced or scaled.
 						break;
 					}
-
-					// Get Convex
-					const TImplicitObjectScaled<FConvex>* ConvexGeometry = static_cast<const TImplicitObjectScaled<FConvex>*>(&ImplicitObject);
 
 					FKConvexElem* ConvexElem = ShapeElem->GetShapeCheck<FKConvexElem>();
 					const auto& ConvexImplicit = ConvexElem->GetChaosConvexMesh();
@@ -1855,9 +1914,16 @@ bool FBodyInstance::UpdateBodyScale(const FVector& InScale3D, bool bForceUpdate)
 					CHAOS_ENSURE(RelativeTM.GetRotation() == FQuat::Identity);
 					CHAOS_ENSURE(RelativeTM.GetTranslation() == FVector(0, 0, 0));
 
-
-					TUniquePtr<TImplicitObjectScaled<FConvex>> NewConvex = MakeUnique<TImplicitObjectScaled<FConvex>>(MakeSerializable(ConvexImplicit), AdjustedScale3D);
-					NewGeometry.Emplace(MoveTemp(NewConvex));
+					if (AdjustedScale3D == FVector(1.0f, 1.0f, 1.0f))
+					{
+						TUniquePtr<TImplicitObjectInstanced<FConvex>> NewConvex = MakeUnique<TImplicitObjectInstanced<FConvex>>(ConvexImplicit);
+						NewGeometry.Emplace(MoveTemp(NewConvex));
+					}
+					else
+					{
+						TUniquePtr<TImplicitObjectScaled<FConvex>> NewConvex = MakeUnique<TImplicitObjectScaled<FConvex>>(ConvexImplicit, AdjustedScale3D);
+						NewGeometry.Emplace(MoveTemp(NewConvex));
+					}
 
 					bSuccess = true;
 
@@ -1871,15 +1937,37 @@ bool FBodyInstance::UpdateBodyScale(const FVector& InScale3D, bool bForceUpdate)
 						break;
 					}
 
-
 					// PhysX supports translation, we currently do not.
 					CHAOS_ENSURE(RelativeTM.GetTranslation() == FVector(0, 0, 0));
 
-					const TImplicitObjectScaled<FTriangleMeshImplicitObject>* ScaledTriangleMesh = (static_cast<const TImplicitObjectScaled<FTriangleMeshImplicitObject>*>(&ImplicitObject));
-					auto UnscaledTriangleMesh = ScaledTriangleMesh->Object();
+					TSharedPtr<FTriangleMeshImplicitObject, ESPMode::ThreadSafe> InnerTriangleMesh = nullptr;
+					if (IsScaled(ImplicitType))
+					{
+						const TImplicitObjectScaled<FTriangleMeshImplicitObject>* ScaledTriangleMesh = (static_cast<const TImplicitObjectScaled<FTriangleMeshImplicitObject>*>(&ImplicitObject));
+						InnerTriangleMesh = ScaledTriangleMesh->GetSharedObject();
+					}
+					else if (IsInstanced(ImplicitType))
+					{
+						const TImplicitObjectInstanced<FTriangleMeshImplicitObject>* InstancedTriangleMesh = (static_cast<const TImplicitObjectInstanced<FTriangleMeshImplicitObject>*>(&ImplicitObject));
+						InnerTriangleMesh = InstancedTriangleMesh->Object();
+					}
+					else
+					{
+						CHAOS_ENSURE(false);
+						break;
+					}
 
-					TUniquePtr<TImplicitObjectScaled<FTriangleMeshImplicitObject>> NewTriangleMesh = MakeUnique<TImplicitObjectScaled<FTriangleMeshImplicitObject>>(UnscaledTriangleMesh, AdjustedScale3D);
-					NewGeometry.Emplace(MoveTemp(NewTriangleMesh));
+					if (AdjustedScale3D == FVec3(1.0f, 1.0f, 1.0f))
+					{
+						TUniquePtr<TImplicitObjectInstanced<FTriangleMeshImplicitObject>> NewTriangleMesh = MakeUnique<TImplicitObjectInstanced<FTriangleMeshImplicitObject>>(InnerTriangleMesh);
+						NewGeometry.Emplace(MoveTemp(NewTriangleMesh));
+					}
+					else
+					{
+						TUniquePtr<TImplicitObjectScaled<FTriangleMeshImplicitObject>> NewTriangleMesh = MakeUnique<TImplicitObjectScaled<FTriangleMeshImplicitObject>>(MoveTemp(InnerTriangleMesh), AdjustedScale3D);
+						NewGeometry.Emplace(MoveTemp(NewTriangleMesh));
+					}
+
 
 					bSuccess = true;
 
@@ -2713,13 +2801,24 @@ TArray<UPhysicalMaterial*> FBodyInstance::GetComplexPhysicalMaterials() const
 	return PhysMaterials;
 }
 
-void FBodyInstance::GetComplexPhysicalMaterials(TArray<UPhysicalMaterial*>& PhysMaterials) const
+TArray<UPhysicalMaterial*> FBodyInstance::GetComplexPhysicalMaterials(TArray<FPhysicalMaterialMaskParams>& OutPhysMaterialMasks) const
 {
-	GetComplexPhysicalMaterials(this, OwnerComponent, PhysMaterials);
+	TArray<UPhysicalMaterial*> PhysMaterials;
+	GetComplexPhysicalMaterials(PhysMaterials, OutPhysMaterialMasks);
+	return PhysMaterials;
 }
 
+void FBodyInstance::GetComplexPhysicalMaterials(TArray<UPhysicalMaterial*>& OutPhysMaterials) const
+{
+	GetComplexPhysicalMaterials(this, OwnerComponent, OutPhysMaterials);
+}
 
-void FBodyInstance::GetComplexPhysicalMaterials(const FBodyInstance*, TWeakObjectPtr<UPrimitiveComponent> OwnerComp, TArray<UPhysicalMaterial*>& OutPhysicalMaterials)
+void FBodyInstance::GetComplexPhysicalMaterials(TArray<UPhysicalMaterial*>& OutPhysMaterials, TArray<FPhysicalMaterialMaskParams>& OutPhysMaterialMasks) const
+{
+	GetComplexPhysicalMaterials(this, OwnerComponent, OutPhysMaterials, &OutPhysMaterialMasks);
+}
+
+void FBodyInstance::GetComplexPhysicalMaterials(const FBodyInstance*, TWeakObjectPtr<UPrimitiveComponent> OwnerComp, TArray<UPhysicalMaterial*>& OutPhysMaterials, TArray<FPhysicalMaterialMaskParams>* OutPhysMaterialMasks)
 {
 	if(!GEngine || !GEngine->DefaultPhysMaterial)
 	{
@@ -2733,7 +2832,12 @@ void FBodyInstance::GetComplexPhysicalMaterials(const FBodyInstance*, TWeakObjec
 	if (PrimComp)
 	{
 		const int32 NumMaterials = PrimComp->GetNumMaterials();
-		OutPhysicalMaterials.SetNum(NumMaterials);
+		OutPhysMaterials.SetNum(NumMaterials);
+
+		if (OutPhysMaterialMasks)
+		{
+			OutPhysMaterialMasks->SetNum(NumMaterials);
+		}
 
 		for (int32 MatIdx = 0; MatIdx < NumMaterials; MatIdx++)
 		{
@@ -2743,9 +2847,26 @@ void FBodyInstance::GetComplexPhysicalMaterials(const FBodyInstance*, TWeakObjec
 			{
 				PhysMat = Material->GetPhysicalMaterial();
 			}
+			
+			OutPhysMaterials[MatIdx] = PhysMat;
 
-			check(PhysMat != NULL);
-			OutPhysicalMaterials[MatIdx] = PhysMat;
+			if (OutPhysMaterialMasks)
+			{
+				UPhysicalMaterialMask* PhysMatMask = nullptr;
+				UMaterialInterface* PhysMatMap = nullptr;
+
+				if (Material)
+				{
+					PhysMatMask = Material->GetPhysicalMaterialMask();
+					if (PhysMatMask)
+					{
+						PhysMatMap = Material;
+					}
+				}
+
+				(*OutPhysMaterialMasks)[MatIdx].PhysicalMaterialMask = PhysMatMask;
+				(*OutPhysMaterialMasks)[MatIdx].PhysicalMaterialMap = PhysMatMap;
+			}
 		}
 	}
 }
@@ -3656,7 +3777,7 @@ void FBodyInstance::FixupData(class UObject* Loader)
 	}
 }
 
-void FBodyInstance::ApplyMaterialToShape_AssumesLocked(const FPhysicsShapeHandle& InShape, UPhysicalMaterial* SimplePhysMat, const TArrayView<UPhysicalMaterial*>& ComplexPhysMats)
+void FBodyInstance::ApplyMaterialToShape_AssumesLocked(const FPhysicsShapeHandle& InShape, UPhysicalMaterial* SimplePhysMat, const TArrayView<UPhysicalMaterial*>& ComplexPhysMats, const TArrayView<FPhysicalMaterialMaskParams>* ComplexPhysMatMasks)
 {
 	// If a triangle mesh, need to get array of materials...
 	ECollisionShapeType GeomType = FPhysicsInterface::GetShapeType(InShape);
@@ -3664,7 +3785,18 @@ void FBodyInstance::ApplyMaterialToShape_AssumesLocked(const FPhysicsShapeHandle
 	{
 		if(ComplexPhysMats.Num())
 		{
+#if WITH_CHAOS
+			if (ensure(ComplexPhysMatMasks))
+			{
+				FPhysicsInterface::SetMaterials(InShape, ComplexPhysMats, *ComplexPhysMatMasks);
+			}
+			else
+			{
+				FPhysicsInterface::SetMaterials(InShape, ComplexPhysMats);
+			}
+#else
 			FPhysicsInterface::SetMaterials(InShape, ComplexPhysMats);
+#endif
 		}
 		else
 		{
@@ -3691,7 +3823,7 @@ void FBodyInstance::ApplyMaterialToShape_AssumesLocked(const FPhysicsShapeHandle
 	}
 }
 
-void FBodyInstance::ApplyMaterialToInstanceShapes_AssumesLocked(UPhysicalMaterial* SimplePhysMat, TArray<UPhysicalMaterial*>& ComplexPhysMats)
+void FBodyInstance::ApplyMaterialToInstanceShapes_AssumesLocked(UPhysicalMaterial* SimplePhysMat, TArray<UPhysicalMaterial*>& ComplexPhysMats, const TArrayView<FPhysicalMaterialMaskParams>& ComplexPhysMatMasks)
 {
 	FBodyInstance* TheirBI = this;
 	FBodyInstance* BIWithActor = TheirBI->WeldParent ? TheirBI->WeldParent : TheirBI;
@@ -3704,11 +3836,11 @@ void FBodyInstance::ApplyMaterialToInstanceShapes_AssumesLocked(UPhysicalMateria
 		if(TheirBI->IsShapeBoundToBody(Shape))
 		{
 			FPhysicsCommand::ExecuteShapeWrite(BIWithActor, Shape, [&](const FPhysicsShapeHandle& InnerShape)
-		{
-				ApplyMaterialToShape_AssumesLocked(InnerShape, SimplePhysMat, ComplexPhysMats);
-		});		
+			{
+				ApplyMaterialToShape_AssumesLocked(InnerShape, SimplePhysMat, ComplexPhysMats, &ComplexPhysMatMasks);
+			});		
+		}
 	}
-}
 }
 
 bool FBodyInstance::ValidateTransform(const FTransform &Transform, const FString& DebugName, const UBodySetup* Setup)
@@ -3820,6 +3952,9 @@ void FBodyInstance::InitDynamicProperties_AssumesLocked()
 				FPhysicsInterface::PutToSleep_AssumesLocked(ActorHandle);
 			}
 		}
+#if WITH_CHAOS
+		FPhysicsInterface::SetInitialized_AssumesLocked(ActorHandle, true);
+#endif
 	}
 }
 

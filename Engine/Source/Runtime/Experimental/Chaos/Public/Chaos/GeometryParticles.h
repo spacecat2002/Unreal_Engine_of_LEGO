@@ -12,6 +12,7 @@
 #include "Chaos/PhysicalMaterials.h"
 #include "UObject/PhysicsObjectVersion.h"
 #include "UObject/ExternalPhysicsCustomObjectVersion.h"
+#include "UObject/ExternalPhysicsMaterialCustomObjectVersion.h"
 
 #ifndef CHAOS_DETERMINISTIC
 #define CHAOS_DETERMINISTIC 1
@@ -52,6 +53,9 @@ namespace Chaos
 		TSerializablePtr<FImplicitObject> Geometry;
 		TAABB<FReal, 3> WorldSpaceInflatedShapeBounds;
 		TArray<FMaterialHandle> Materials;
+		TArray<FMaterialMaskHandle> MaterialMasks;
+		TArray<uint32> MaterialMaskMaps;
+		TArray<FMaterialHandle> MaterialMaskMapMaterials;
 
 		// TODO: Bitfields?
 		bool bDisable;
@@ -125,6 +129,7 @@ namespace Chaos
 			TArrayCollection::AddArray(&MWorldSpaceInflatedBounds);
 			TArrayCollection::AddArray(&MHasBounds);
 			TArrayCollection::AddArray(&MSpatialIdx);
+			TArrayCollection::AddArray(&MUserData);
 #if CHAOS_CHECKED
 			TArrayCollection::AddArray(&MDebugName);
 #endif
@@ -152,6 +157,7 @@ namespace Chaos
 			, MWorldSpaceInflatedBounds(MoveTemp(Other.MWorldSpaceInflatedBounds))
 			, MHasBounds(MoveTemp(Other.MHasBounds))
 			, MSpatialIdx(MoveTemp(Other.MSpatialIdx))
+			, MUserData(MoveTemp(Other.MUserData))
 #if CHAOS_DETERMINISTIC
 			, MParticleIDs(MoveTemp(Other.MParticleIDs))
 #endif
@@ -168,6 +174,7 @@ namespace Chaos
 			TArrayCollection::AddArray(&MWorldSpaceInflatedBounds);
 			TArrayCollection::AddArray(&MHasBounds);
 			TArrayCollection::AddArray(&MSpatialIdx);
+			TArrayCollection::AddArray(&MUserData);
 #if CHAOS_DETERMINISTIC
 			TArrayCollection::AddArray(&MParticleIDs);
 #endif
@@ -199,6 +206,7 @@ namespace Chaos
 			TArrayCollection::AddArray(&MWorldSpaceInflatedBounds);
 			TArrayCollection::AddArray(&MHasBounds);
 			TArrayCollection::AddArray(&MSpatialIdx);
+			TArrayCollection::AddArray(&MUserData);
 #if CHAOS_DETERMINISTIC
 			TArrayCollection::AddArray(&MParticleIDs);
 #endif
@@ -219,8 +227,11 @@ namespace Chaos
 		CHAOS_API const TRotation<T, d>& R(const int32 Index) const { return MR[Index]; }
 		CHAOS_API TRotation<T, d>& R(const int32 Index) { return MR[Index]; }
 
-		FUniqueIdx UniqueIdx(const int32 Index) const { return MUniqueIdx[Index]; }
-		FUniqueIdx& UniqueIdx(const int32 Index) { return MUniqueIdx[Index]; }
+		CHAOS_API FUniqueIdx UniqueIdx(const int32 Index) const { return MUniqueIdx[Index]; }
+		CHAOS_API FUniqueIdx& UniqueIdx(const int32 Index) { return MUniqueIdx[Index]; }
+
+		CHAOS_API void*& UserData(const int32 Index) { return MUserData[Index]; }
+		CHAOS_API const void* UserData(const int32 Index) const { return MUserData[Index]; }
 
 		CHAOS_API TSerializablePtr<FImplicitObject> Geometry(const int32 Index) const { return MGeometry[Index]; }
 
@@ -234,7 +245,7 @@ namespace Chaos
 		CHAOS_API FParticleID ParticleID(const int32 Idx) const { return MParticleIDs[Idx]; }
 		CHAOS_API FParticleID& ParticleID(const int32 Idx) { return MParticleIDs[Idx]; }
 #endif
-
+		// Set a dynamic geometry. Note that X and R must be initialized before calling this function.
 		CHAOS_API void SetDynamicGeometry(const int32 Index, TUniquePtr<FImplicitObject>&& InUnique)
 		{
 			check(!SharedGeometry(Index));	// If shared geometry exists we should not be setting dynamic geometry on top
@@ -244,6 +255,7 @@ namespace Chaos
 			MapImplicitShapes(Index);
 		}
 
+		// Set a shared geometry. Note that X and R must be initialized before calling this function.
 		CHAOS_API void SetSharedGeometry(const int32 Index, TSharedPtr<FImplicitObject, ESPMode::ThreadSafe> InShared)
 		{
 			check(!DynamicGeometry(Index));	// If dynamic geometry exists we should not be setting shared geometry on top
@@ -446,6 +458,7 @@ namespace Chaos
 		TArrayCollectionArray<TAABB<T, d>> MWorldSpaceInflatedBounds;
 		TArrayCollectionArray<bool> MHasBounds;
 		TArrayCollectionArray<FSpatialAccelerationIdx> MSpatialIdx;
+		TArrayCollectionArray<void*> MUserData;
 
 		void UpdateShapesArray(const int32 Index)
 		{
@@ -453,30 +466,9 @@ namespace Chaos
 			MapImplicitShapes(Index);
 		}
 
-		void MapImplicitShapes()
-		{
-			int32 NumShapeArrays = MShapesArray.Num();
-			ImplicitShapeMap.Resize(NumShapeArrays);
-			for(int32 Index = 0; Index < NumShapeArrays; ++Index)
-			{
-				MapImplicitShapes(Index);
-			}
-		}
+		void MapImplicitShapes();
 
-		void MapImplicitShapes(int32 Index)
-		{
-			checkSlow(Index >= 0 && Index < ImplicitShapeMap.Num());
-
-			TMap<const FImplicitObject*, int32>& Mapping = ImplicitShapeMap[Index];
-			TShapesArray<T, d>& ShapeArray = MShapesArray[Index];
-			Mapping.Reset();
-
-			int32 ShapeIndex = 0;
-			for(TUniquePtr<TPerShapeData<T, d>>& Shape : ShapeArray)
-			{
-				Mapping.Add(Shape->Geometry.Get(), ShapeIndex++);
-			}
-		}
+		void MapImplicitShapes(int32 Index);
 
 		template <typename T2, int d2, EGeometryParticlesSimType SimType2>
 		friend class TGeometryParticlesImp;

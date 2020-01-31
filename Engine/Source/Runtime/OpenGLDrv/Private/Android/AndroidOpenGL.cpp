@@ -87,6 +87,7 @@ PFNGLCLEARBUFFERUIVPROC					glClearBufferuiv = NULL;
 PFNGLREADBUFFERPROC						glReadBuffer = NULL;
 PFNGLDRAWBUFFERSPROC					glDrawBuffers = NULL;
 PFNGLTEXBUFFEREXTPROC					glTexBufferEXT = NULL;
+PFNGLTEXBUFFERRANGEEXTPROC				glTexBufferRangeEXT = NULL;
 PFNGLCOPYIMAGESUBDATAPROC				glCopyImageSubData = nullptr;
 
 PFNGLGETPROGRAMBINARYOESPROC            glGetProgramBinary = NULL;
@@ -876,7 +877,6 @@ bool FAndroidOpenGL::bSupportsTextureBuffer = false;
 bool FAndroidOpenGL::bUseES30ShadingLanguage = false;
 bool FAndroidOpenGL::bES30Support = false;
 bool FAndroidOpenGL::bES31Support = false;
-bool FAndroidOpenGL::bSupportsInstancing = false;
 bool FAndroidOpenGL::bHasHardwareHiddenSurfaceRemoval = false;
 bool FAndroidOpenGL::bSupportsMobileMultiView = false;
 bool FAndroidOpenGL::bSupportsImageExternal = false;
@@ -1184,7 +1184,6 @@ void FAndroidOpenGL::ProcessExtensions(const FString& ExtensionsString)
 		glClientWaitSync = (PFNGLCLIENTWAITSYNCPROC)((void*)eglGetProcAddress("glClientWaitSync"));
 
 		// Required by the ES3 spec
-		bSupportsInstancing = true;
 		bSupportsTextureFloat = true;
 		bSupportsTextureHalfFloat = true;
 		bSupportsRGB10A2 = true;
@@ -1226,6 +1225,7 @@ void FAndroidOpenGL::ProcessExtensions(const FString& ExtensionsString)
 		if (bSupportsTextureBuffer)
 		{
 			glTexBufferEXT = (PFNGLTEXBUFFEREXTPROC)((void*)eglGetProcAddress("glTexBufferEXT"));
+			glTexBufferRangeEXT = (PFNGLTEXBUFFERRANGEEXTPROC)((void*)eglGetProcAddress("glTexBufferRangeEXT"));
 		}
 
 		GSupportsDepthRenderTargetWithoutColorRenderTarget = true;
@@ -1262,13 +1262,6 @@ void FAndroidOpenGL::ProcessExtensions(const FString& ExtensionsString)
 	//On Android, there are problems compiling shaders with textureCubeLodEXT calls in the glsl code,
 	// so we set this to false to modify the glsl manually at compile-time.
 	bSupportsTextureCubeLodEXT = false;
-
-	// Nexus 5 (Android 4.4.2) doesn't like glVertexAttribDivisor(index, 0) called when not using a glDrawElementsInstanced
-	if (bIsAdrenoBased && VersionString.Contains(TEXT("OpenGL ES 3.0 V@66.0 AU@  (CL@)")))
-	{
-		UE_LOG(LogRHI, Warning, TEXT("Disabling support for hardware instancing on Adreno 330 OpenGL ES 3.0 V@66.0 AU@  (CL@)"));
-		bSupportsInstancing = false;
-	}
 
 	// disable swizzled render targets on Android
 	bSupportsBGRA8888RenderTarget = false;

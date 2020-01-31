@@ -13,6 +13,8 @@
 namespace Chaos
 {
 
+struct FMTDInfo;
+
 template <typename TConcrete>
 class TImplicitObjectInstanced final : public FImplicitObject
 {
@@ -24,6 +26,11 @@ public:
 	using ObjectType = TSharedPtr<TConcrete,ESPMode::ThreadSafe>;
 
 	using FImplicitObject::GetTypeName;
+
+	//needed for serialization
+	TImplicitObjectInstanced()
+		: FImplicitObject(EImplicitObject::HasBoundingBox,StaticType())
+	{}
 
 	TImplicitObjectInstanced(const ObjectType&& Object)
 		: FImplicitObject(EImplicitObject::HasBoundingBox, Object->GetType() | ImplicitObjectType::IsInstanced)
@@ -131,9 +138,14 @@ public:
 
 	/** This is a low level function and assumes the internal object has a OverlapGeom function. Should not be called directly. See GeometryQueries.h : OverlapQuery */
 	template <typename QueryGeomType>
-	bool LowLevelOverlapGeom(const QueryGeomType& B,const TRigidTransform<T,d>& BToATM,T Thickness = 0) const
+	bool LowLevelOverlapGeom(const QueryGeomType& B,const TRigidTransform<T,d>& BToATM,T Thickness = 0, FMTDInfo* OutMTD = nullptr) const
 	{
-		return MObject->OverlapGeom(B,BToATM,Thickness);
+		return MObject->OverlapGeom(B,BToATM,Thickness, OutMTD);
+	}
+
+	virtual uint16 GetMaterialIndex(uint32 HintIndex) const
+	{
+		return MObject->GetMaterialIndex(HintIndex);
 	}
 
 protected:
@@ -365,7 +377,7 @@ public:
 
 			TRigidTransform<T, d> BToATMNoScale(BToATM.GetLocation() * MInvScale, BToATM.GetRotation());
 			
-			if (MObject->SweepGeom(ScaledB, BToATMNoScale, UnscaledDir, UnscaledLength, UnscaledTime, UnscaledPosition, UnscaledNormal, OutFaceIndex, MInternalThickness + Thickness, bComputeMTD))
+			if (MObject->SweepGeom(ScaledB, BToATMNoScale, UnscaledDir, UnscaledLength, UnscaledTime, UnscaledPosition, UnscaledNormal, OutFaceIndex, MInternalThickness + Thickness, bComputeMTD, MScale))
 			{
 				const T NewTime = LengthScaleInv * UnscaledTime;
 				//We double check that NewTime < Length because of potential precision issues. When that happens we always keep the shortest hit first
@@ -382,15 +394,24 @@ public:
 		return false;
 	}
 
+	template <typename QueryGeomType>
+	bool GJKContactPoint(const QueryGeomType& A, const FRigidTransform3& AToBTM, const FReal Thickness, FVec3& Location, FVec3& Normal, FReal& Penetration) const
+	{
+		TRigidTransform<T, d> AToBTMNoScale(AToBTM.GetLocation() * MInvScale, AToBTM.GetRotation());
+
+		auto ScaledA = MakeScaledHelper(A, MInvScale);
+		return MObject->GJKContactPoint(ScaledA, AToBTMNoScale, MInternalThickness + Thickness, Location, Normal, Penetration, MScale);
+	}
+
 	/** This is a low level function and assumes the internal object has a OverlapGeom function. Should not be called directly. See GeometryQueries.h : OverlapQuery */
 	template <typename QueryGeomType>
-	bool LowLevelOverlapGeom(const QueryGeomType& B, const TRigidTransform<T, d>& BToATM, T Thickness = 0) const
+	bool LowLevelOverlapGeom(const QueryGeomType& B, const TRigidTransform<T, d>& BToATM, T Thickness = 0, FMTDInfo* OutMTD = nullptr) const
 	{
 		ensure(Thickness == 0 || (FMath::IsNearlyEqual(MScale[0], MScale[1]) && FMath::IsNearlyEqual(MScale[0], MScale[2])));
 
 		auto ScaledB = MakeScaledHelper(B, MInvScale);
 		TRigidTransform<T, d> BToATMNoScale(BToATM.GetLocation() * MInvScale, BToATM.GetRotation());
-		return MObject->OverlapGeom(ScaledB, BToATMNoScale, MInternalThickness + Thickness);
+		return MObject->OverlapGeom(ScaledB, BToATMNoScale, MInternalThickness + Thickness, OutMTD, MScale);
 	}
 
 	virtual int32 FindMostOpposingFace(const TVector<T, d>& Position, const TVector<T, d>& UnitDir, int32 HintFaceIndex, T SearchDist) const override
@@ -490,7 +511,9 @@ public:
 	{
 		if (T UnscaledMargin = MObject->GetMargin())
 		{
-			ensure(MScale[0] == MScale[1] && MScale[1] == MScale[2]);
+			ensure(FMath::IsNearlyEqual(MScale[0], MScale[1], KINDA_SMALL_NUMBER));
+			ensure(FMath::IsNearlyEqual(MScale[1], MScale[2], KINDA_SMALL_NUMBER));
+
 			return UnscaledMargin * FMath::Abs(MScale[0]);
 		}
 
@@ -539,6 +562,9 @@ public:
 	}
 
 	const ObjectType Object() const { return MObject; }
+
+	// Only should be retrieved for copy purposes. Do not modify or access.
+	TSharedPtr<TConcrete, ESPMode::ThreadSafe> GetSharedObject() const { return MSharedPtrForRefCount; }
 	
 	virtual void Serialize(FChaosArchive& Ar) override
 	{

@@ -217,7 +217,7 @@ void FGenerateMips::RenderMips(FRHICommandListImmediate& CommandList, FRHITextur
 		CommandList.BeginRenderPass(RPInfo, TEXT("GenMipsLevel"));
 		{
 			CommandList.ApplyCachedRenderTargets(GraphicsPSOInit);
-			CommandList.SetViewport(0, 0, 0.0f, Width, Height, 1.0f);
+			CommandList.SetViewport(0.0f, 0.0f, 0.0f, (float)Width, (float)Height, 1.0f);
 
 			SetGraphicsPipelineState(CommandList, GraphicsPSOInit);
 			CopyShader->SetParameters(CommandList, InTexture, CommandList.CreateSamplerState(GenMipsStruct->Sampler), FVector2D(0.5f / Width,  0.5f / Height), MipLevel - 1);
@@ -256,13 +256,13 @@ TSharedPtr<FGenerateMipsStruct> FGenerateMips::SetupTexture(FRHITexture* InTextu
 		RenderTexture.TargetableTexture = InTexture;
 		RenderTexture.ShaderResourceTexture = InTexture;
 
-		RenderTexture.SRVs.Reserve(Desc.NumMips);
-		RenderTexture.MipUAVs.Reserve(Desc.NumMips);
+		RenderTexture.SRVs.Empty(Desc.NumMips);
+		RenderTexture.MipUAVs.Empty(Desc.NumMips);
 		for (uint8 MipLevel = 0; MipLevel < Desc.NumMips; MipLevel++)
 		{
 			FRHITextureSRVCreateInfo SRVDesc;
 			SRVDesc.MipLevel = MipLevel;
-			RenderTexture.SRVs.Add(SRVDesc, RHICreateShaderResourceView((FTexture2DRHIRef&)InTexture, SRVDesc));
+			RenderTexture.SRVs.Emplace(SRVDesc, RHICreateShaderResourceView((FTexture2DRHIRef&)InTexture, SRVDesc));
 
 			RenderTexture.MipUAVs.Add(RHICreateUnorderedAccessView(InTexture, MipLevel));
 		}

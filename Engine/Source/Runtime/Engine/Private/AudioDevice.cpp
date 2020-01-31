@@ -2,6 +2,7 @@
 #include "AudioDevice.h"
 
 #include "ActiveSound.h"
+#include "Audio.h"
 #include "AudioCompressionSettingsUtils.h"
 #include "AudioDecompress.h"
 #include "AudioDefines.h"
@@ -76,6 +77,14 @@ FAutoConsoleVariableRef CVarForceRealtimeDecompression(
 	ForceRealtimeDecompressionCvar,
 	TEXT("When set to 1, this deliberately ensures that all audio assets are decompressed as they play, rather than fully on load.\n")
 	TEXT("0: Allow full decompression on load, 1: force realtime decompression."),
+	ECVF_Default);
+
+static int32 DisableAppVolumeCvar = 0;
+FAutoConsoleVariableRef CVarDisableAppVolume(
+	TEXT("au.DisableAppVolume"),
+	DisableAppVolumeCvar,
+	TEXT("Disables application volume when set to 1.\n")
+	TEXT("0: App volume enabled, 1: App volume disabled"),
 	ECVF_Default);
 
 static int32 DisableAutomaticPrecacheCvar = 0;
@@ -242,7 +251,7 @@ FAudioDevice::FAudioDevice()
 	: NumStoppingSources(32)
 	, SampleRate(0)
 	, NumPrecacheFrames(MONO_PCM_BUFFER_SAMPLES)
-	, DeviceHandle(static_cast<Audio::FDeviceId>(INDEX_NONE))
+	, DeviceID(static_cast<Audio::FDeviceId>(INDEX_NONE))
 	, SpatializationPluginInterface(nullptr)
 	, ReverbPluginInterface(nullptr)
 	, OcclusionInterface(nullptr)
@@ -1261,13 +1270,6 @@ bool FAudioDevice::HandleTestHPFCommand(const TCHAR* Cmd, FOutputDevice& Ar)
 	return true;
 }
 
-bool FAudioDevice::HandleTestStereoBleedCommand(const TCHAR* Cmd, FOutputDevice& Ar)
-{
-	Ar.Logf(TEXT("StereoBleed set to max for all sources"));
-	SetMixDebugState(DEBUGSTATE_TestStereoBleed);
-	return true;
-}
-
 bool FAudioDevice::HandleTestLFEBleedCommand(const TCHAR* Cmd, FOutputDevice& Ar)
 {
 	Ar.Logf(TEXT("LFEBleed set to max for all sources"));
@@ -1328,7 +1330,7 @@ bool FAudioDevice::HandleSoloCommand(const TCHAR* Cmd, FOutputDevice& Ar)
 	FAudioDeviceManager* DeviceManager = GEngine->GetAudioDeviceManager();
 	if (DeviceManager)
 	{
-		DeviceManager->SetSoloDevice(DeviceHandle);
+		DeviceManager->SetSoloDevice(DeviceID);
 	}
 	return true;
 }
@@ -1956,10 +1958,6 @@ bool FAudioDevice::Exec(UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar)
 	else if (FParse::Command(&Cmd, TEXT("TestLPF")))
 	{
 		return HandleTestLPFCommand(Cmd, Ar);
-	}
-	else if (FParse::Command(&Cmd, TEXT("TestStereoBleed")))
-	{
-		return HandleTestStereoBleedCommand(Cmd, Ar);
 	}
 	else if (FParse::Command(&Cmd, TEXT("TestLFEBleed")))
 	{
@@ -4162,7 +4160,12 @@ void FAudioDevice::Update(bool bGameTicking)
 	bIsStoppingVoicesEnabled = !DisableStoppingVoicesCvar;
 
 	// Update the master volume
-	MasterVolume = GetTransientMasterVolume() * FApp::GetVolumeMultiplier();
+	MasterVolume = GetTransientMasterVolume();
+	
+	if (!DisableAppVolumeCvar)
+	{
+		MasterVolume *= FApp::GetVolumeMultiplier();
+	}
 
 	UpdateAudioPluginSettingsObjectCache();
 
@@ -4345,7 +4348,7 @@ void FAudioDevice::SendUpdateResultsToGameThread(const int32 FirstActiveIndex)
 {
 	DECLARE_CYCLE_STAT(TEXT("FGameThreadAudioTask.AudioSendResults"), STAT_AudioSendResults, STATGROUP_TaskGraphTasks);
 
-	const Audio::FDeviceId AudioDeviceID = DeviceHandle;
+	const Audio::FDeviceId AudioDeviceID = DeviceID;
 	UReverbEffect* ReverbEffect = Effects ? Effects->GetCurrentReverbEffect() : nullptr;
 	FAudioThread::RunCommandOnGameThread([AudioDeviceID, ReverbEffect]()
 	{
@@ -4354,7 +4357,7 @@ void FAudioDevice::SendUpdateResultsToGameThread(const int32 FirstActiveIndex)
 		{
 			if (FAudioDeviceManager* AudioDeviceManager = GEngine->GetAudioDeviceManager())
 			{
-				if (FAudioDevice* AudioDevice = AudioDeviceManager->GetAudioDevice(AudioDeviceID))
+				if (FAudioDeviceHandle AudioDevice = AudioDeviceManager->GetAudioDevice(AudioDeviceID))
 				{
 					AudioDevice->CurrentReverbEffect = ReverbEffect;
 				}
@@ -4574,10 +4577,10 @@ void FAudioDevice::AddNewActiveSoundInternal(const FActiveSound& NewActiveSound,
 		}
 	}
 
-	int32* PlayCount = Sound->CurrentPlayCount.Find(DeviceHandle);
+	int32* PlayCount = Sound->CurrentPlayCount.Find(DeviceID);
 	if (!PlayCount)
 	{
-		PlayCount = &Sound->CurrentPlayCount.Add(DeviceHandle);
+		PlayCount = &Sound->CurrentPlayCount.Add(DeviceID);
 	}
 	(*PlayCount)++;
 
@@ -5340,7 +5343,7 @@ FAudioDevice::FCreateComponentParams::FCreateComponentParams()
 	: World(nullptr)
 	, Actor(nullptr)
 {
-	AudioDevice = (GEngine ? GEngine->GetMainAudioDevice() : nullptr);
+	AudioDevice = (GEngine ? GEngine->GetMainAudioDeviceRaw() : nullptr);
 	CommonInit();
 }
 
@@ -5357,7 +5360,14 @@ FAudioDevice::FCreateComponentParams::FCreateComponentParams(UWorld* InWorld, AA
 		Actor = (World ? World->GetWorldSettings() : nullptr);
 	}
 
-	AudioDevice = (World ? World->GetAudioDevice() : nullptr);
+	AudioDevice = (World ? World->GetAudioDeviceRaw() : nullptr);
+	
+	// If the world doesn't own an audio device, fall back to the main audio device.
+	if (!AudioDevice)
+	{
+		AudioDevice = (GEngine ? GEngine->GetMainAudioDeviceRaw() : nullptr);
+	}
+
 	CommonInit();
 }
 
@@ -5365,7 +5375,14 @@ FAudioDevice::FCreateComponentParams::FCreateComponentParams(AActor* InActor)
 	: Actor(InActor)
 {
 	World = (Actor ? Actor->GetWorld() : nullptr);
-	AudioDevice = (World ? World->GetAudioDevice() : nullptr);
+	AudioDevice = (World ? World->GetAudioDeviceRaw() : nullptr);
+
+	// If the world doesn't own an audio device, fall back to the main audio device.
+	if (!AudioDevice)
+	{
+		AudioDevice = (GEngine ? GEngine->GetMainAudioDeviceRaw() : nullptr);
+	}
+
 	CommonInit();
 }
 
@@ -5415,7 +5432,7 @@ UAudioComponent* FAudioDevice::CreateComponent(USoundBase* Sound, UWorld* World,
 	}
 	else
 	{
-		Params = MakeUnique<FCreateComponentParams>(GEngine->GetMainAudioDevice());
+		Params = MakeUnique<FCreateComponentParams>(GEngine->GetMainAudioDeviceRaw());
 	}
 
 	Params->bPlay = bPlay;
@@ -5496,7 +5513,7 @@ UAudioComponent* FAudioDevice::CreateComponent(USoundBase* Sound, const FCreateC
 				}
 				else
 				{
-					AudioComponent->AudioDeviceHandle = Params.AudioDevice->DeviceHandle;
+					AudioComponent->AudioDeviceID = Params.AudioDevice->DeviceID;
 				}
 
 				if (Params.bPlay)
@@ -5861,7 +5878,7 @@ void FAudioDevice::Precache(USoundWave* SoundWave, bool bSynchronous, bool bTrac
 			else
 			{
 				// This is the one case where precaching will not be done when this function exits
-				check(SoundWave->GetPrecacheState() == ESoundWavePrecacheState::InProgress);
+				checkf(SoundWave->GetPrecacheState() == ESoundWavePrecacheState::InProgress, TEXT("Bad PrecacheState %d on SoundWave %s"), static_cast<uint8>(SoundWave->GetPrecacheState()), *GetPathNameSafe(SoundWave));
 				SoundWave->AudioDecompressor = new FAsyncAudioDecompress(SoundWave, GetNumPrecacheFrames());
 				SoundWave->AudioDecompressor->StartBackgroundTask();
 				PrecachingSoundWaves.Add(SoundWave);

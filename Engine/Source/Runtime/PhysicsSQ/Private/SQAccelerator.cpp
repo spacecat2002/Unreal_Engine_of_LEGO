@@ -13,6 +13,7 @@
 #endif
 
 #include "ChaosInterfaceWrapperCore.h"
+#include "Chaos/CastingUtilities.h"
 #include "Chaos/ISpatialAcceleration.h"
 #include "Chaos/PBDCollisionConstraints.h"
 #include "Chaos/GeometryQueries.h"
@@ -93,6 +94,7 @@ struct TSQVisitor : public Chaos::ISpatialVisitor<TPayload, float>
 		, DebugParams(InDebugParams)
 		, HitBuffer(InHitBuffer)
 		, QueryFilterData(InQueryFilterData)
+		, QueryFilterDataConcrete(P2UFilterData(QueryFilterData.data))
 		, QueryCallback(InQueryCallback)
 	{
 #if WITH_PHYSX
@@ -110,6 +112,7 @@ struct TSQVisitor : public Chaos::ISpatialVisitor<TPayload, float>
 		, DebugParams(InDebugParams)
 		, HitBuffer(InHitBuffer)
 		, QueryFilterData(InQueryFilterData)
+		, QueryFilterDataConcrete(P2UFilterData(QueryFilterData.data))
 		, QueryGeom(&InQueryGeom)
 		, QueryCallback(InQueryCallback)
 		, StartTM(InStartTM)
@@ -128,6 +131,7 @@ struct TSQVisitor : public Chaos::ISpatialVisitor<TPayload, float>
 		, DebugParams(InDebugParams)
 		, HitBuffer(InHitBuffer)
 		, QueryFilterData(InQueryFilterData)
+		, QueryFilterDataConcrete(P2UFilterData(QueryFilterData.data))
 		, QueryGeom(&InQueryGeom)
 		, QueryCallback(InQueryCallback)
 		, StartTM(InWorldTM)
@@ -154,6 +158,11 @@ struct TSQVisitor : public Chaos::ISpatialVisitor<TPayload, float>
 		return Visit<ESQType::Overlap>(Instance, nullptr);
 	}
 
+	virtual const void* GetQueryData() const override
+	{
+		return &QueryFilterData;
+	}
+
 private:
 
 	enum class ESQType
@@ -166,6 +175,7 @@ private:
 	template <ESQType SQ>
 	bool Visit(const Chaos::TSpatialVisitorData<TPayload>& Instance, Chaos::FQueryFastData* CurData)
 	{
+		//QUICK_SCOPE_CYCLE_COUNTER(SQVisit);
 #if CHAOS_DEBUG_DRAW && WITH_CHAOS
 		if (DebugParams.IsDebugQuery() && ChaosSQDrawDebugVisitorQueries)
 		{
@@ -222,7 +232,7 @@ private:
 			//TODO: use gt particles directly
 			//#TODO alternative to px flags
 #if WITH_PHYSX
-			ECollisionQueryHitType HitType = QueryFilterData.flags & PxQueryFlag::ePREFILTER ? QueryCallback.PreFilter(P2UFilterData(QueryFilterData.data), *Shape, *GeometryParticle) : ECollisionQueryHitType::Block;
+			ECollisionQueryHitType HitType = QueryFilterData.flags & PxQueryFlag::ePREFILTER ? QueryCallback.PreFilter(QueryFilterDataConcrete, *Shape, *GeometryParticle) : ECollisionQueryHitType::Block;
 #else
 			//#TODO Chaos flag alternative
 			ensure(false);
@@ -230,7 +240,7 @@ private:
 #endif
 			if (HitType != ECollisionQueryHitType::None)
 			{
-
+				//QUICK_SCOPE_CYCLE_COUNTER(SQNarrow);
 				THitType Hit;
 				Hit.Actor = GeometryParticle;
 				Hit.Shape = Shape.Get();
@@ -240,7 +250,7 @@ private:
 				TVector<float, 3> WorldPosition, WorldNormal;
 				float Distance = 0;	//not needed but fixes compiler warning for overlap
 				int32 FaceIdx = INDEX_NONE;	//not needed but fixes compiler warning for overlap
-				const bool bComputeMTD = !!((uint16)(OutputFlags & EHitFlags::MTD));
+				const bool bComputeMTD = !!((uint16)(OutputFlags.HitFlags & EHitFlags::MTD));
 
 				if (SQ == ESQType::Raycast)
 				{
@@ -262,14 +272,27 @@ private:
 				}
 				else if (SQ == ESQType::Overlap || (SQ == ESQType::Sweep && CurData->CurrentLength == 0))
 				{
-					bHit = OverlapQuery(*Geom, ActorTM, *QueryGeom, StartTM, /*Thickness=*/0);
+					if (bComputeMTD)
+					{
+						FMTDInfo MTDInfo;
+						bHit = OverlapQuery(*Geom, ActorTM, *QueryGeom, StartTM, /*Thickness=*/0, &MTDInfo);
+						if (bHit)
+						{
+							WorldNormal = MTDInfo.Normal * MTDInfo.Penetration;
+						}
+					}
+					else
+					{
+						bHit = OverlapQuery(*Geom, ActorTM, *QueryGeom, StartTM, /*Thickness=*/0);
+					}
 				}
 
 				if(bHit)
 				{
+					//QUICK_SCOPE_CYCLE_COUNTER(SQNarrowHit);
 					FillHitHelper(Hit, Distance, WorldPosition, WorldNormal, FaceIdx, bComputeMTD);
 #if WITH_PHYSX
-					HitType = QueryFilterData.flags & PxQueryFlag::ePOSTFILTER ? QueryCallback.PostFilter(P2UFilterData(QueryFilterData.data), Hit) : HitType;
+					HitType = QueryFilterData.flags & PxQueryFlag::ePOSTFILTER ? QueryCallback.PostFilter(QueryFilterDataConcrete, Hit) : HitType;
 #else
 					//#TODO Chaos flag alternative
 					ensure(false);
@@ -322,11 +345,12 @@ private:
 	const FVector StartPoint;
 	const FVector Dir;
 	const FVector HalfExtents;
-	EHitFlags OutputFlags;
+	FHitFlags OutputFlags;
 	bool bAnyHit;
 	const FQueryDebugParams DebugParams;
 	ChaosInterface::FSQHitBuffer<THitType>& HitBuffer;
 	const FQueryFilterData& QueryFilterData;
+	const FCollisionFilterData QueryFilterDataConcrete;
 	const QueryGeometryType* QueryGeom;
 	ICollisionQueryFilterCallbackBase& QueryCallback;
 	const FTransform StartTM;
@@ -370,7 +394,7 @@ void SweepHelper(const QueryGeomType& QueryGeom,const Chaos::ISpatialAcceleratio
 
 void FChaosSQAccelerator::Sweep(const Chaos::FImplicitObject& QueryGeom, const FTransform& StartTM, const FVector& Dir, const float DeltaMagnitude, ChaosInterface::FSQHitBuffer<ChaosInterface::FSweepHit>& HitBuffer, EHitFlags OutputFlags, const FQueryFilterData& QueryFilterData, ICollisionQueryFilterCallbackBase& QueryCallback, const FQueryDebugParams& DebugParams) const
 {
-	return Chaos::CastHelper(QueryGeom, StartTM, [&](const auto& Downcast, const FTransform& StartFullTM) { return SweepHelper(Downcast, SpatialAcceleration, StartFullTM, Dir, DeltaMagnitude, HitBuffer, OutputFlags, QueryFilterData, QueryCallback, DebugParams); });
+	return Chaos::Utilities::CastHelper(QueryGeom, StartTM, [&](const auto& Downcast, const FTransform& StartFullTM) { return SweepHelper(Downcast, SpatialAcceleration, StartFullTM, Dir, DeltaMagnitude, HitBuffer, OutputFlags, QueryFilterData, QueryCallback, DebugParams); });
 }
 
 template <typename QueryGeomType>
@@ -388,7 +412,7 @@ void OverlapHelper(const QueryGeomType& QueryGeom, const Chaos::ISpatialAccelera
 
 void FChaosSQAccelerator::Overlap(const Chaos::FImplicitObject& QueryGeom, const FTransform& GeomPose, ChaosInterface::FSQHitBuffer<ChaosInterface::FOverlapHit>& HitBuffer, const FQueryFilterData& QueryFilterData, ICollisionQueryFilterCallbackBase& QueryCallback, const FQueryDebugParams& DebugParams) const
 {
-	return Chaos::CastHelper(QueryGeom, GeomPose, [&](const auto& Downcast, const FTransform& GeomFullPose) { return OverlapHelper(Downcast, SpatialAcceleration, GeomFullPose, HitBuffer, QueryFilterData, QueryCallback, DebugParams); });
+	return Chaos::Utilities::CastHelper(QueryGeom, GeomPose, [&](const auto& Downcast, const FTransform& GeomFullPose) { return OverlapHelper(Downcast, SpatialAcceleration, GeomFullPose, HitBuffer, QueryFilterData, QueryCallback, DebugParams); });
 }
 
 #if WITH_PHYSX

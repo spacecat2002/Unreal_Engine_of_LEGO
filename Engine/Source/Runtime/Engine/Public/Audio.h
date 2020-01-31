@@ -92,14 +92,6 @@ struct FWaveInstance;
 struct FReverbSettings;
 struct FSampleLoop;
 
-namespace Audio
-{
-	/**
-	 * Typed identifier for Audio Device Id
-	 */
-	using FDeviceId = uint32;
-}
-
 enum ELoopingMode
 {
 	/** One shot sound */
@@ -225,6 +217,7 @@ public:
 	float RadioFilterVolumeThreshold;
 
 	/** The amount of stereo sounds to bleed to the rear speakers */
+	UE_DEPRECATED(4.25, "Stereo Bleed is no longer supported.")
 	float StereoBleed;
 
 	/** The amount of a sound to bleed to the LFE channel */
@@ -540,7 +533,6 @@ public:
 		: AudioDevice(InAudioDevice)
 		, WaveInstance(nullptr)
 		, Buffer(nullptr)
-		, StereoBleed(0.0f)
 		, LFEBleed(0.5f)
 		, LPFFrequency(MAX_FILTER_FREQUENCY)
 		, HPFFrequency(MIN_FILTER_FREQUENCY)
@@ -633,6 +625,7 @@ public:
 	ENGINE_API bool SetReverbApplied(bool bHardwareAvailable);
 
 	/** Set the StereoBleed variable. */
+	UE_DEPRECATED(4.25, "Stereo Bleed is no longer supported.")
 	ENGINE_API float SetStereoBleed();
 
 	/** Updates and sets the LFEBleed variable. */
@@ -696,9 +689,6 @@ protected:
 
 	/** Cached sound buffer associated with currently bound wave instance. */
 	FSoundBuffer* Buffer;
-
-	/** The amount of stereo sounds to bleed to the rear speakers */
-	float StereoBleed;
 
 	/** The amount of a sound to bleed to the LFE speaker */
 	float LFEBleed;
