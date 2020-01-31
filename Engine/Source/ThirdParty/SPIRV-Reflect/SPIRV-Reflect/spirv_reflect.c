@@ -1787,8 +1787,6 @@ static SpvReflectResult ParseTypes(Parser* p_parser, SpvReflectShaderModule* p_m
   return SPV_REFLECT_RESULT_SUCCESS;
 }
 
-typedef struct BindingAssociation BindingAssociation;
-
 static SpvReflectDescriptorBinding* FindDescriptorBinding(SpvReflectShaderModule* p_module, uint32_t spirv_id) {
   for (size_t i = 0; i < p_module->descriptor_binding_count; ++i) {
     SpvReflectDescriptorBinding* binding = &(p_module->descriptor_bindings[i]);
@@ -1802,15 +1800,15 @@ static SpvReflectDescriptorBinding* FindDescriptorBinding(SpvReflectShaderModule
 static SpvReflectResult ParseSamplerImageUsage(Parser* p_parser, SpvReflectShaderModule* p_module)
 {
   // Allocate container for binding associations
-  BindingAssociation* associations = NULL;
+  SpvReflectBindingAssociation* associations = NULL;
   size_t association_count = 0;
   const size_t max_association_count = p_parser->sampled_image_count;
   
   p_module->_internal->binding_association_count = 0;
   
   if (max_association_count > 0) {
-    associations = (BindingAssociation*)calloc(max_association_count, sizeof(BindingAssociation));
-    memset(associations, 0, sizeof(BindingAssociation) * max_association_count);
+    associations = (SpvReflectBindingAssociation*)calloc(max_association_count, sizeof(SpvReflectBindingAssociation));
+    memset(associations, 0, sizeof(SpvReflectBindingAssociation) * max_association_count);
     p_module->_internal->binding_associations = associations;
   } else {
     p_module->_internal->binding_associations = NULL;
@@ -1825,7 +1823,7 @@ static SpvReflectResult ParseSamplerImageUsage(Parser* p_parser, SpvReflectShade
     }
 
     // Find entry for sampler in associations container
-    BindingAssociation* assoc = NULL;
+    SpvReflectBindingAssociation* assoc = NULL;
     for (size_t j = 0; j < association_count; ++j) {
       if (associations[j].resource != NULL &&
           associations[j].resource->spirv_id == p_sampled_image->image)
@@ -1857,7 +1855,7 @@ static SpvReflectResult ParseSamplerImageUsage(Parser* p_parser, SpvReflectShade
   SpvReflectDescriptorBinding** p_usage_bindings = p_module->_internal->usage_bindings;
 
   for (size_t i = 0; i < association_count; ++i) {
-    BindingAssociation* assoc = &(associations[i]);
+    SpvReflectBindingAssociation* assoc = &(associations[i]);
     if (assoc->resource == NULL) {
       continue;
     }

@@ -421,6 +421,14 @@ typedef struct SpvReflectEntryPoint {
   uint32_t                          name_length_with_terminator;
 } SpvReflectEntryPoint;
 
+/*! @struct SpvReflectBindingAssociation
+
+*/
+typedef struct SpvReflectBindingAssociation {
+  SpvReflectDescriptorBinding*  resource;
+  size_t                        usage_binding_count;
+} SpvReflectBindingAssociation;
+
 /*! @struct SpvReflectShaderModule
 
 */
@@ -460,10 +468,7 @@ typedef struct SpvReflectShaderModule {
     size_t                          type_description_count;
     SpvReflectTypeDescription*      type_descriptions;
 
-    struct BindingAssociation {
-      SpvReflectDescriptorBinding*  resource;
-      size_t                        usage_binding_count;
-    } *binding_associations;
+    SpvReflectBindingAssociation*   binding_associations;
     size_t                          binding_association_count;
     SpvReflectDescriptorBinding**   usage_bindings;
   } *_internal;
