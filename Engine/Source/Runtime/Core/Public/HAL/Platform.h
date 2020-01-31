@@ -42,9 +42,6 @@
 #if !defined(PLATFORM_ANDROID_VULKAN)
 	#define PLATFORM_ANDROID_VULKAN 0
 #endif
-#if !defined(PLATFORM_QUAIL)
-	#define PLATFORM_QUAIL 0
-#endif
 #if !defined(PLATFORM_ANDROIDESDEFERRED)
 	#define PLATFORM_ANDROIDESDEFERRED 0
 #endif
