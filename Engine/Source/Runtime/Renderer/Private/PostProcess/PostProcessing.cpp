@@ -54,6 +54,8 @@ FPostProcessing GPostProcessing;
 
 bool IsMobileEyeAdaptationEnabled(const FViewInfo& View);
 
+bool IsValidBloomSetupVariation(uint32 UseBloom, uint32 UseSun, uint32 UseDof, uint32 UseEyeAdaptation);
+
 namespace
 {
 TAutoConsoleVariable<float> CVarDepthOfFieldNearBlurSizeThreshold(
@@ -1358,27 +1360,59 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 			// Optional fixed pass processes
 			if (bUsePost && (bUseSun | bUseDof | bUseBloom | bUseVignette | bUseBasicEyeAdaptation | bUseHistogramEyeAdaptation))
 			{
+				FRenderingCompositeOutputRef PostProcessSunShaftAndDof;
 				if (bUseSun || bUseDof)
 				{
 					// Convert depth to {circle of confusion, sun shaft intensity}
 				//	FRenderingCompositePass* PostProcessSunMask = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessSunMaskES2(PrePostSourceViewportSize, false));
 					FRenderingCompositePass* PostProcessSunMask = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessSunMaskES2(SceneColorSize));
 					PostProcessSunMask->SetInput(ePId_Input0, Context.FinalOutput);
-					Context.FinalOutput = FRenderingCompositeOutputRef(PostProcessSunMask);
+					PostProcessSunShaftAndDof = FRenderingCompositeOutputRef(PostProcessSunMask, ePId_Output0);
+					if (Context.FinalOutput.GetOutput()->RenderTargetDesc.Format != PF_FloatR11G11B10)
+					{
+						Context.FinalOutput = FRenderingCompositeOutputRef(PostProcessSunMask, ePId_Output1);
+					}
 					//@todo Ronin sunmask pass isnt clipping to image only.
 				}
 
-				FRenderingCompositeOutputRef PostProcessBloomSetup;
+				FRenderingCompositeOutputRef PostProcessBloomSetup_Bloom;
+				FRenderingCompositeOutputRef PostProcessBloomSetup_SunShaftAndDof;
 				FRenderingCompositeOutputRef PostProcessBloomSetup_EyeAdaptation;
 				if (bUseSun || bUseMobileDof || bUseBloom || bUseBasicEyeAdaptation || bUseHistogramEyeAdaptation)
 				{
 					uint32 bHasEyeAdaptationPass = (bUseBasicEyeAdaptation || bUseHistogramEyeAdaptation) ? 1 : 0;
 
-					FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessBloomSetupES2(FinalOutputViewRect, bViewRectSource, bHasEyeAdaptationPass));
+					FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessBloomSetupES2(FinalOutputViewRect, bViewRectSource, bUseBloom, bUseSun, bUseMobileDof, bHasEyeAdaptationPass, bUseMSAA));
 					Pass->SetInput(ePId_Input0, Context.FinalOutput);
+					Pass->SetInput(ePId_Input1, PostProcessSunShaftAndDof);
 
-					PostProcessBloomSetup = FRenderingCompositeOutputRef(Pass, ePId_Output0);
-					PostProcessBloomSetup_EyeAdaptation = FRenderingCompositeOutputRef(Pass, ePId_Output1);
+					bool bIsValidVariation = IsValidBloomSetupVariation(bUseBloom, bUseSun, bUseDof, bHasEyeAdaptationPass);
+
+					if (!bIsValidVariation || bUseBloom)
+					{
+						PostProcessBloomSetup_Bloom = FRenderingCompositeOutputRef(Pass, ePId_Output0);
+						if (bUseSun || bUseMobileDof)
+						{
+							PostProcessBloomSetup_SunShaftAndDof = FRenderingCompositeOutputRef(Pass, ePId_Output1);
+							PostProcessBloomSetup_EyeAdaptation = FRenderingCompositeOutputRef(Pass, ePId_Output2);
+						}
+						else
+						{
+							PostProcessBloomSetup_EyeAdaptation = FRenderingCompositeOutputRef(Pass, ePId_Output1);
+						}
+					}
+					else
+					{
+						if (bUseSun || bUseMobileDof)
+						{
+							PostProcessBloomSetup_SunShaftAndDof = FRenderingCompositeOutputRef(Pass, ePId_Output0);
+							PostProcessBloomSetup_EyeAdaptation = FRenderingCompositeOutputRef(Pass, ePId_Output1);
+						}
+						else
+						{
+							PostProcessBloomSetup_EyeAdaptation = FRenderingCompositeOutputRef(Pass, ePId_Output0);
+						}
+					}
 				}
 
 				if (bUseDof)
@@ -1390,7 +1424,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 						FRenderingCompositeOutputRef PostProcessNear;
 						{
 							FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessDofNearES2(FinalOutputViewRect.Size()));
-							Pass->SetInput(ePId_Input0, PostProcessBloomSetup);
+							Pass->SetInput(ePId_Input0, PostProcessBloomSetup_SunShaftAndDof);
 							PostProcessNear = FRenderingCompositeOutputRef(Pass);
 						}
 
@@ -1434,10 +1468,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 				}
 
 				// Bloom.
-				FRenderingCompositeOutputRef PostProcessDownsample2;
-				FRenderingCompositeOutputRef PostProcessDownsample3;
-				FRenderingCompositeOutputRef PostProcessDownsample4;
-				FRenderingCompositeOutputRef PostProcessDownsample5;
+				FRenderingCompositeOutputRef PostProcessDownsample_Bloom[4];
 				FRenderingCompositeOutputRef PostProcessUpsample4;
 				FRenderingCompositeOutputRef PostProcessUpsample3;
 				FRenderingCompositeOutputRef PostProcessUpsample2;
@@ -1445,32 +1476,16 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 				if(bUseBloom)
 				{
 					float DownScale = 0.66f * 4.0f;
-					// Downsample by 2
-					{
-						FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessBloomDownES2(PrePostSourceViewportSize/4, DownScale));
-						Pass->SetInput(ePId_Input0, PostProcessBloomSetup);
-						PostProcessDownsample2 = FRenderingCompositeOutputRef(Pass);
-					}
+					FIntPoint DownSamplePrePostSourceViewportSize = PrePostSourceViewportSize / 4;
 
-					// Downsample by 2
+					for (int32 i = 0; i < 4; ++i)
 					{
-						FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessBloomDownES2(PrePostSourceViewportSize/8, DownScale));
-						Pass->SetInput(ePId_Input0, PostProcessDownsample2);
-						PostProcessDownsample3 = FRenderingCompositeOutputRef(Pass);
-					}
+						FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessBloomDownES2(DownSamplePrePostSourceViewportSize, DownScale));
+				
+						Pass->SetInput(ePId_Input0, i == 0 ? PostProcessBloomSetup_Bloom : PostProcessDownsample_Bloom[i - 1]);
+						PostProcessDownsample_Bloom[i] = FRenderingCompositeOutputRef(Pass, ePId_Output0);
 
-					// Downsample by 2
-					{
-						FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessBloomDownES2(PrePostSourceViewportSize/16, DownScale));
-						Pass->SetInput(ePId_Input0, PostProcessDownsample3);
-						PostProcessDownsample4 = FRenderingCompositeOutputRef(Pass);
-					}
-
-					// Downsample by 2
-					{
-						FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessBloomDownES2(PrePostSourceViewportSize/32, DownScale));
-						Pass->SetInput(ePId_Input0, PostProcessDownsample4);
-						PostProcessDownsample5 = FRenderingCompositeOutputRef(Pass);
+						DownSamplePrePostSourceViewportSize = FIntPoint::DivideAndRoundUp(DownSamplePrePostSourceViewportSize, 2);
 					}
 
 					const FFinalPostProcessSettings& Settings = Context.View.FinalPostProcessSettings;
@@ -1483,8 +1498,8 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 						TintA *= View.FinalPostProcessSettings.BloomIntensity;
 						TintB *= View.FinalPostProcessSettings.BloomIntensity;
 						FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessBloomUpES2(PrePostSourceViewportSize/32, FVector2D(UpScale, UpScale), TintA, TintB));
-						Pass->SetInput(ePId_Input0, PostProcessDownsample4);
-						Pass->SetInput(ePId_Input1, PostProcessDownsample5);
+						Pass->SetInput(ePId_Input0, PostProcessDownsample_Bloom[2]);
+						Pass->SetInput(ePId_Input1, PostProcessDownsample_Bloom[3]);
 						PostProcessUpsample4 = FRenderingCompositeOutputRef(Pass);
 					}
 
@@ -1494,7 +1509,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 						TintA *= View.FinalPostProcessSettings.BloomIntensity;
 						FVector4 TintB = FVector4(1.0f, 1.0f, 1.0f, 0.0f);
 						FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessBloomUpES2(PrePostSourceViewportSize/16, FVector2D(UpScale, UpScale), TintA, TintB));
-						Pass->SetInput(ePId_Input0, PostProcessDownsample3);
+						Pass->SetInput(ePId_Input0, PostProcessDownsample_Bloom[1]);
 						Pass->SetInput(ePId_Input1, PostProcessUpsample4);
 						PostProcessUpsample3 = FRenderingCompositeOutputRef(Pass);
 					}
@@ -1507,7 +1522,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 						TintA *= 0.5;
 						FVector4 TintB = FVector4(1.0f, 1.0f, 1.0f, 0.0f);
 						FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessBloomUpES2(PrePostSourceViewportSize/8, FVector2D(UpScale, UpScale), TintA, TintB));
-						Pass->SetInput(ePId_Input0, PostProcessDownsample2);
+						Pass->SetInput(ePId_Input0, PostProcessDownsample_Bloom[0]);
 						Pass->SetInput(ePId_Input1, PostProcessUpsample3);
 						PostProcessUpsample2 = FRenderingCompositeOutputRef(Pass);
 					}
@@ -1555,7 +1570,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 					FRenderingCompositeOutputRef PostProcessSunAlpha;
 					{
 						FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessSunAlphaES2(PrePostSourceViewportSize));
-						Pass->SetInput(ePId_Input0, PostProcessBloomSetup);
+						Pass->SetInput(ePId_Input0, PostProcessBloomSetup_SunShaftAndDof);
 						PostProcessSunAlpha = FRenderingCompositeOutputRef(Pass);
 					}
 
@@ -1578,7 +1593,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 						}
 						if(bUseBloom)
 						{
-							Pass->SetInput(ePId_Input1, PostProcessBloomSetup);
+							Pass->SetInput(ePId_Input1, PostProcessBloomSetup_Bloom);
 							Pass->SetInput(ePId_Input2, PostProcessUpsample2);
 						}
 						PostProcessSunMerge = FRenderingCompositeOutputRef(Pass);

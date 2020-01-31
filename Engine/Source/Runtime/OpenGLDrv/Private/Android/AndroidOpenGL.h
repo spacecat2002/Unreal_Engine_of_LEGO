@@ -707,6 +707,8 @@ struct FAndroidOpenGL : public FOpenGLES2
 		return bUseES30ShadingLanguage;
 	}
 
+	static FORCEINLINE bool SupportsR11G11B10F()						{ return bES30Support; }
+
 	// Disable all queries except occlusion
 	// Query is a limited resource on Android and we better spent them all on occlusion
 	static FORCEINLINE bool SupportsTimestampQueries()					{ return false; }

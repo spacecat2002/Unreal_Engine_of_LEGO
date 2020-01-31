@@ -19,18 +19,32 @@ float GetMobileDepthOfFieldScale(const FViewInfo& View);
 void SetMobilePassFlipVerticalAxis(const FRenderingCompositePass* FlipPass);
 bool ShouldMobilePassFlipVerticalAxis(const FRenderingCompositePassContext& Context, const FRenderingCompositePass* ShouldFlipPass);
 
-class FRCPassPostProcessBloomSetupES2 : public TRenderingCompositePassBase<1, 2>
+class FRCPassPostProcessBloomSetupES2 : public TRenderingCompositePassBase<2, 3>
 {
 public:
-	FRCPassPostProcessBloomSetupES2(FIntRect InPrePostSourceViewportRect, bool bInUseViewRectSource, uint32 InUseEyeAdaptation) : PrePostSourceViewportRect(InPrePostSourceViewportRect), bUseViewRectSource(bInUseViewRectSource), UseEyeAdaptation(InUseEyeAdaptation) { }
+	FRCPassPostProcessBloomSetupES2(FIntRect InPrePostSourceViewportRect, bool bInUseViewRectSource, uint32 InUseBloom, uint32 InUseSun, uint32 InUseDof, uint32 InUseEyeAdaptation, uint32 InUseMSAA)
+	: PrePostSourceViewportRect(InPrePostSourceViewportRect)
+	, bUseViewRectSource(bInUseViewRectSource)
+	, UseBloom(InUseBloom)
+	, UseSun(InUseSun)
+	, UseDof(InUseDof)
+	, UseEyeAdaptation(InUseEyeAdaptation)
+	, UseMSAA(InUseMSAA)
+	{ }
 	virtual void Process(FRenderingCompositePassContext& Context) override;
 	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
 	virtual void Release() override { delete this; }
 private:
 	FIntRect PrePostSourceViewportRect;
 	bool bUseViewRectSource;
+	uint32 UseBloom;
+	uint32 UseSun;
+	uint32 UseDof;
 	uint32 UseEyeAdaptation;
-	void SetShader(const FRenderingCompositePassContext& Context);
+	uint32 UseMSAA;
+	
+	template <uint32 Variation>
+	void SetShaderAndExecute(FRenderingCompositePassContext& Context);
 };
 
 class FRCPassPostProcessDofNearES2 : public TRenderingCompositePassBase<1, 1>
@@ -95,7 +109,7 @@ private:
 	FVector4 TintB;
 };
 
-class FRCPassPostProcessSunMaskES2 : public TRenderingCompositePassBase<1, 1>
+class FRCPassPostProcessSunMaskES2 : public TRenderingCompositePassBase<1, 2>
 {
 public:
 	FRCPassPostProcessSunMaskES2(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
@@ -104,8 +118,9 @@ public:
 	virtual void Release() override { delete this; }
 private:
 	FIntPoint PrePostSourceViewportSize;
-	template <bool bUseDepthTexture>
-	void SetShader(const FRenderingCompositePassContext& Context);
+
+	template <uint32 bUseDepthTexture>
+	void SetShaderAndExecute(const FRenderingCompositePassContext& Context);
 };
 
 class FRCPassPostProcessSunAlphaES2 : public TRenderingCompositePassBase<1, 1>
