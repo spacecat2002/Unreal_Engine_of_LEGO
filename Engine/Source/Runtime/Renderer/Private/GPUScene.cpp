@@ -342,45 +342,40 @@ void UpdateGPUSceneInternal(FRHICommandListImmediate& RHICmdList, FScene& Scene)
 
 			if (NumLightmapDataUploads > 0)
 			{
-				const int32 MaxLightmapsUploads = GetMaxPrimitivesUpdate(NumLightmapDataUploads, FLightmapSceneShaderData::LightmapDataStrideInFloat4s);
-				for (int32 PrimitiveOffset = 0; PrimitiveOffset < NumPrimitiveDataUploads; PrimitiveOffset += MaxLightmapsUploads)
+				Scene.GPUScene.LightmapUploadBuffer.Init(NumLightmapDataUploads, sizeof(FLightmapSceneShaderData::Data), true, TEXT("LightmapUploadBuffer"));
+
+				for (int32 Index : Scene.GPUScene.PrimitivesToUpdate)
 				{
-					Scene.GPUScene.LightmapUploadBuffer.Init(MaxLightmapsUploads, sizeof(FLightmapSceneShaderData::Data), true, TEXT("LightmapUploadBuffer"));
-
-					for (int32 IndexUpdate = 0; (IndexUpdate < MaxLightmapsUploads) && ((IndexUpdate + PrimitiveOffset) < NumPrimitiveDataUploads); ++IndexUpdate)
+					// PrimitivesToUpdate may contain a stale out of bounds index, as we don't remove update request on primitive removal from scene.
+					if (Index < Scene.PrimitiveSceneProxies.Num())
 					{
-						int32 Index = Scene.GPUScene.PrimitivesToUpdate[IndexUpdate + PrimitiveOffset];
-						// PrimitivesToUpdate may contain a stale out of bounds index, as we don't remove update request on primitive removal from scene.
-						if (Index < Scene.PrimitiveSceneProxies.Num())
+						FPrimitiveSceneProxy* PrimitiveSceneProxy = Scene.PrimitiveSceneProxies[Index];
+
+						FPrimitiveSceneProxy::FLCIArray LCIs;
+						PrimitiveSceneProxy->GetLCIs(LCIs);
+
+						check(LCIs.Num() == PrimitiveSceneProxy->GetPrimitiveSceneInfo()->GetNumLightmapDataEntries());
+						const int32 LightmapDataOffset = PrimitiveSceneProxy->GetPrimitiveSceneInfo()->GetLightmapDataOffset();
+
+						for (int32 i = 0; i < LCIs.Num(); i++)
 						{
-							FPrimitiveSceneProxy* PrimitiveSceneProxy = Scene.PrimitiveSceneProxies[Index];
-
-							FPrimitiveSceneProxy::FLCIArray LCIs;
-							PrimitiveSceneProxy->GetLCIs(LCIs);
-
-							check(LCIs.Num() == PrimitiveSceneProxy->GetPrimitiveSceneInfo()->GetNumLightmapDataEntries());
-							const int32 LightmapDataOffset = PrimitiveSceneProxy->GetPrimitiveSceneInfo()->GetLightmapDataOffset();
-
-							for (int32 i = 0; i < LCIs.Num(); i++)
-							{
-								FLightmapSceneShaderData LightmapSceneData(LCIs[i], Scene.GetFeatureLevel());
-								Scene.GPUScene.LightmapUploadBuffer.Add(LightmapDataOffset + i, &LightmapSceneData.Data[0]);
-							}
+							FLightmapSceneShaderData LightmapSceneData(LCIs[i], Scene.GetFeatureLevel());
+							Scene.GPUScene.LightmapUploadBuffer.Add(LightmapDataOffset + i, &LightmapSceneData.Data[0]);
 						}
 					}
-
-					if (bResizedLightmapData)
-					{
-						RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, Scene.GPUScene.LightmapDataBuffer.UAV);
-					}
-					else
-					{
-						RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToCompute, Scene.GPUScene.LightmapDataBuffer.UAV);
-					}
-
-					Scene.GPUScene.LightmapUploadBuffer.ResourceUploadTo(RHICmdList, Scene.GPUScene.LightmapDataBuffer, false);
-	
 				}
+
+				if (bResizedLightmapData)
+				{
+					RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, Scene.GPUScene.LightmapDataBuffer.UAV);
+				}
+				else
+				{
+					RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToCompute, Scene.GPUScene.LightmapDataBuffer.UAV);
+				}
+
+				Scene.GPUScene.LightmapUploadBuffer.ResourceUploadTo(RHICmdList, Scene.GPUScene.LightmapDataBuffer, false);
+
 				RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, Scene.GPUScene.LightmapDataBuffer.UAV);
 			}
 
