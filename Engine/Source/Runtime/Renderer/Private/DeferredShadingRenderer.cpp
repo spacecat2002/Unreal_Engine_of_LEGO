@@ -152,6 +152,16 @@ static TAutoConsoleVariable<int32> CVarForceAllRayTracingEffects(
 	TEXT(" 1: All ray tracing effects enabled"),
 	ECVF_RenderThreadSafe);
 
+static int32 GRayTracingSceneCaptures = -1;
+static FAutoConsoleVariableRef CVarRayTracingSceneCaptures(
+	TEXT("r.RayTracing.SceneCaptures"),
+	GRayTracingSceneCaptures,
+	TEXT("Enable ray tracing in scene captures.\n")
+	TEXT(" -1: Use scene capture settings (default) \n")
+	TEXT(" 0: off \n")
+	TEXT(" 1: on"),
+	ECVF_RenderThreadSafe);
+
 static int32 GRayTracingExcludeDecals = 0;
 static FAutoConsoleVariableRef CRayTracingExcludeDecals(
 	TEXT("r.RayTracing.ExcludeDecals"),
@@ -619,18 +629,25 @@ void FDeferredShadingSceneRenderer::PrepareDistanceFieldScene(FRHICommandListImm
 
 bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandListImmediate& RHICmdList)
 {
-	if (!IsRayTracingEnabled() || GetForceRayTracingEffectsCVarValue() == 0 || Views.Num() == 0)
+	if (!IsRayTracingEnabled() || Views.Num() == 0)
 	{
 		return false;
 	}
 
 	bool bAnyRayTracingPassEnabled = false;
+	bool bPathTracingOrDebugViewEnabled = false;
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
 		bAnyRayTracingPassEnabled |= AnyRayTracingPassEnabled(Scene, Views[ViewIndex]);
+		bPathTracingOrDebugViewEnabled |= !CanOverlayRayTracingOutput(Views[ViewIndex]);
 	}
 
 	if (!bAnyRayTracingPassEnabled)
+	{
+		return false;
+	}
+
+	if (GetForceRayTracingEffectsCVarValue() == 0 && !bPathTracingOrDebugViewEnabled)
 	{
 		return false;
 	}
@@ -689,6 +706,7 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 		Scene,
 		&ReferenceView,
 		ViewFamily,
+		RHICmdList,
 		*ReferenceView.RayTracingMeshResourceCollector
 	};
 
@@ -754,8 +772,13 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 					continue;
 				}
 
-				if ((View.bIsReflectionCapture && !SceneInfo->bIsVisibleInReflectionCaptures)
-					|| View.bIsSceneCapture)
+				if (View.bIsReflectionCapture)
+				{
+					continue;
+				}
+
+				bool bShouldRayTraceSceneCapture = GRayTracingSceneCaptures > 0 || (GRayTracingSceneCaptures == -1 && View.bSceneCaptureUsesRayTracing);
+				if (View.bIsSceneCapture && (!bShouldRayTraceSceneCapture || !SceneInfo->bIsVisibleInReflectionCaptures))
 				{
 					continue;
 				}
@@ -937,9 +960,18 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 						(Instance.Geometry->Initializer.Segments.Num() == 0 && Instance.Materials.Num() == 1) ||
 						(Instance.Materials.Num() == 0 && (Instance.Mask & RAY_TRACING_MASK_THIN_SHADOW) > 0));
 
-					RayTracingInstance.Transforms.SetNumUninitialized(Instance.InstanceTransforms.Num());
-					FMemory::Memcpy(RayTracingInstance.Transforms.GetData(), Instance.InstanceTransforms.GetData(), Instance.InstanceTransforms.Num() * sizeof(RayTracingInstance.Transforms[0]));
-					static_assert(TIsSame<decltype(RayTracingInstance.Transforms[0]), decltype(Instance.InstanceTransforms[0])>::Value, "Unexpected transform type");
+					if (Instance.InstanceGPUTransformsSRV.IsValid())
+					{
+						RayTracingInstance.NumTransforms = Instance.NumTransforms;
+						RayTracingInstance.GPUTransformsSRV = Instance.InstanceGPUTransformsSRV;
+					}
+					else 
+					{
+						RayTracingInstance.NumTransforms = Instance.InstanceTransforms.Num();
+						RayTracingInstance.Transforms.SetNumUninitialized(Instance.InstanceTransforms.Num());
+						FMemory::Memcpy(RayTracingInstance.Transforms.GetData(), Instance.InstanceTransforms.GetData(), Instance.InstanceTransforms.Num() * sizeof(RayTracingInstance.Transforms[0]));
+						static_assert(TIsSame<decltype(RayTracingInstance.Transforms[0]), decltype(Instance.InstanceTransforms[0])>::Value, "Unexpected transform type");
+					}			
 
 					uint32 InstanceIndex = ReferenceView.RayTracingGeometryInstances.Add(RayTracingInstance);
 
@@ -968,7 +1000,7 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 
 		{
 			TRACE_CPUPROFILER_EVENT_SCOPE(WaitForLODTasks);
-			FTaskGraphInterface::Get().WaitUntilTasksComplete(LODTaskList, ENamedThreads::GetRenderThread());
+			FTaskGraphInterface::Get().WaitUntilTasksComplete(LODTaskList, ENamedThreads::GetRenderThread_Local());
 		}
 
 		for (const FRelevantPrimitive& RelevantPrimitive : RelevantPrimitives)
@@ -1011,6 +1043,7 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 			}
 
 			FRayTracingGeometryInstance& RayTracingInstance = View.RayTracingGeometryInstances.Emplace_GetRef();
+			RayTracingInstance.NumTransforms = 1;
 			RayTracingInstance.Transforms.SetNumUninitialized(1);
 			RayTracingInstance.UserData.SetNumUninitialized(1);
 
@@ -1027,18 +1060,25 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 
 bool FDeferredShadingSceneRenderer::DispatchRayTracingWorldUpdates(FRHICommandListImmediate& RHICmdList)
 {
-	if (!IsRayTracingEnabled() || GetForceRayTracingEffectsCVarValue() == 0 || Views.Num() == 0)
+	if (!IsRayTracingEnabled() || Views.Num() == 0)
 	{
 		return false;
 	}
 
 	bool bAnyRayTracingPassEnabled = false;
+	bool bPathTracingOrDebugViewEnabled = false;
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
 		bAnyRayTracingPassEnabled |= AnyRayTracingPassEnabled(Scene, Views[ViewIndex]);
+		bPathTracingOrDebugViewEnabled |= !CanOverlayRayTracingOutput(Views[ViewIndex]);
 	}
 
 	if (!bAnyRayTracingPassEnabled)
+	{
+		return false;
+	}
+
+	if (GetForceRayTracingEffectsCVarValue() == 0 && !bPathTracingOrDebugViewEnabled)
 	{
 		return false;
 	}
@@ -1110,10 +1150,14 @@ bool FDeferredShadingSceneRenderer::DispatchRayTracingWorldUpdates(FRHICommandLi
 
 		Scene->GetRayTracingDynamicGeometryCollection()->DispatchUpdates(RHICmdList);
 
-		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
 		{
-			FViewInfo& View = Views[ViewIndex];
-			RHICmdList.BuildAccelerationStructure(View.RayTracingScene.RayTracingSceneRHI);
+			SCOPED_DRAW_EVENT(RHICmdList, BuildRayTracingScene);
+
+			for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
+			{
+				FViewInfo& View = Views[ViewIndex];
+				RHICmdList.BuildAccelerationStructure(View.RayTracingScene.RayTracingSceneRHI);
+			}
 		}
 	}
 	else
@@ -1150,37 +1194,34 @@ void FDeferredShadingSceneRenderer::WaitForRayTracingScene(FRHICommandListImmedi
 
 	TRACE_CPUPROFILER_EVENT_SCOPE(FDeferredShadingSceneRenderer::WaitForRayTracingScene);
 
-	for (int32 ViewExt = 0; ViewExt < ViewFamily.ViewExtensions.Num(); ++ViewExt)
+	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
 	{
-		for (int32 ViewIndex = 0; ViewIndex < ViewFamily.Views.Num(); ++ViewIndex)
+		FViewInfo& View = Views[ViewIndex];
+		if (View.RayTracingMaterialBindings.Num())
 		{
-			FViewInfo& View = Views[ViewIndex];
-			if (View.RayTracingMaterialBindings.Num())
+			FTaskGraphInterface::Get().WaitUntilTaskCompletes(View.RayTracingMaterialBindingsTask, ENamedThreads::GetRenderThread_Local());
+
+			for (FRayTracingLocalShaderBindingWriter* BindingWriter : View.RayTracingMaterialBindings)
 			{
-				FTaskGraphInterface::Get().WaitUntilTaskCompletes(View.RayTracingMaterialBindingsTask, ENamedThreads::GetRenderThread());
-
-				for (FRayTracingLocalShaderBindingWriter* BindingWriter : View.RayTracingMaterialBindings)
-				{
-					// Data is kept alive at the high level and explicitly deleted on RHI timeline,
-					// so we can avoid copying parameters to the command list and simply pass raw pointers around.
-					const bool bCopyDataToInlineStorage = false;
-					BindingWriter->Commit(
-						RHICmdList,
-						View.RayTracingScene.RayTracingSceneRHI,
-						View.RayTracingMaterialPipeline,
-						bCopyDataToInlineStorage);
-				}
-
-				// Move the ray tracing binding container ownership to the command list, so that memory will be
-				// released on the RHI thread timeline, after the commands that reference it are processed.
-				RHICmdList.EnqueueLambda([Ptrs = MoveTemp(View.RayTracingMaterialBindings)](FRHICommandListImmediate&)
-				{
-					for (auto Ptr : Ptrs)
-					{
-						delete Ptr;
-					}
-				});
+				// Data is kept alive at the high level and explicitly deleted on RHI timeline,
+				// so we can avoid copying parameters to the command list and simply pass raw pointers around.
+				const bool bCopyDataToInlineStorage = false;
+				BindingWriter->Commit(
+					RHICmdList,
+					View.RayTracingScene.RayTracingSceneRHI,
+					View.RayTracingMaterialPipeline,
+					bCopyDataToInlineStorage);
 			}
+
+			// Move the ray tracing binding container ownership to the command list, so that memory will be
+			// released on the RHI thread timeline, after the commands that reference it are processed.
+			RHICmdList.EnqueueLambda([Ptrs = MoveTemp(View.RayTracingMaterialBindings)](FRHICommandListImmediate&)
+			{
+				for (auto Ptr : Ptrs)
+				{
+					delete Ptr;
+				}
+			});
 		}
 	}
 
@@ -2698,6 +2739,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		PostProcessingInputs.SceneColor = GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor(), TEXT("SceneColor"));
 		PostProcessingInputs.CustomDepth = GraphBuilder.TryRegisterExternalTexture(SceneContext.CustomDepth, TEXT("CustomDepth"));
 		PostProcessingInputs.SeparateTranslucency = RegisterExternalTextureWithFallback(GraphBuilder, SceneContext.SeparateTranslucencyRT, SceneContext.GetSeparateTranslucencyDummy(), TEXT("SeparateTranslucency"));
+		PostProcessingInputs.SeparateModulation = RegisterExternalTextureWithFallback(GraphBuilder, SceneContext.SeparateTranslucencyModulateRT, SceneContext.GetSeparateTranslucencyModulateDummy(), TEXT("SeparateModulate"));
 
 		if (ViewFamily.UseDebugViewPS())
 		{
@@ -2723,6 +2765,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		}
 
 		SceneContext.FreeSeparateTranslucency();
+		SceneContext.FreeSeparateTranslucencyModulate();
 		SceneContext.SetSceneColor(nullptr);
 		SceneContext.AdjustGBufferRefCount(GraphBuilder.RHICmdList, -1);
 

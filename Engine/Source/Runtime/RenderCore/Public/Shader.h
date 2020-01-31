@@ -450,8 +450,11 @@ private:
 	void SerializeShaderCode(FArchive& Ar);
 
 #if WITH_EDITORONLY_DATA
-	/** Conditionally serialize platform debug data. */
-	void SerializePlatformDebugData(FArchive& Ar);
+	/** Conditionally serialize editor only data (platform debug data and shader compiler warnings). */
+	void SerializeEditorOnlyData(FArchive& Ar);
+
+	/** Prints any warnings in the CompilerWarnings array to the log. */
+	void LogShaderCompilerWarnings();
 #endif
 
 	/**
@@ -477,6 +480,12 @@ private:
 #if WITH_EDITORONLY_DATA
 	/** Platform specific debug data output by the shader compiler. Discarded in cooked builds. */
 	TArray<uint8> PlatformDebugData;
+
+	/**
+	 * An array of all the compiler warnings that were emitted when this shader was compiled.
+	 * Does not contain errors since if there were any errors, this FShaderResource instance wouldn't exist.
+	 */
+	TArray<FShaderCompilerError> CompilerWarnings;
 #endif
 
 	/** Original bytecode size, before compression */

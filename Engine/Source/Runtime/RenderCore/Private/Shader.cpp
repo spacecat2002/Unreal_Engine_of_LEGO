@@ -27,12 +27,12 @@
 #endif
 
 DEFINE_LOG_CATEGORY(LogShaders);
+DECLARE_LOG_CATEGORY_CLASS(LogShaderWarnings, Log, Log);
 
 RENDERCORE_API bool UsePreExposure(EShaderPlatform Platform)
 {
-	// Mobile platforms are excluded because they use a different pre-exposure logic in MobileBasePassPixelShader.usf
 	static const auto CVarUsePreExposure = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.UsePreExposure"));
-	return CVarUsePreExposure->GetValueOnAnyThread() != 0 && !IsMobilePlatform(Platform) && IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5);
+	return CVarUsePreExposure->GetValueOnAnyThread() != 0;
 }
 
 static const FName ShaderCompressionFormat = NAME_Zlib;
@@ -48,6 +48,13 @@ static TAutoConsoleVariable<int32> CVarSkipShaderCompression(
 	TEXT("Skips shader compression after compiling. Shader compression time can be quite significant when using debug shaders. This CVar is only valid in non-shipping/test builds."),
 	ECVF_ReadOnly | ECVF_Cheat
 	);
+
+static TAutoConsoleVariable<int32> CVarShaderCompilerEmitWarningsOnLoad(
+	TEXT("r.ShaderCompiler.EmitWarningsOnLoad"),
+	0,
+	TEXT("When 1, shader compiler warnings are emitted to the log for all shaders as they are loaded."),
+	ECVF_Default
+);
 
 static TLinkedList<FShaderType*>*			GShaderTypeList = nullptr;
 static TLinkedList<FShaderPipelineType*>*	GShaderPipelineList = nullptr;
@@ -584,12 +591,17 @@ FShaderResource::FShaderResource(const FShaderCompilerOutput& Output, int32 InSp
 	checkSlow(OutputHash != FSHAHash());
 
 #if WITH_EDITORONLY_DATA
+	CompilerWarnings = Output.Errors;
 	PlatformDebugData = Output.PlatformDebugData;
 #endif
 		
 	INC_DWORD_STAT_BY_FName(GetMemoryStatType((EShaderFrequency)Target.Frequency).GetName(), Code.Num());
 	INC_DWORD_STAT_BY(STAT_Shaders_ShaderResourceMemory, GetSizeBytes());
 	INC_DWORD_STAT_BY(STAT_Shaders_NumShaderResourcesLoaded, 1);
+
+#if WITH_EDITORONLY_DATA
+	LogShaderCompilerWarnings();
+#endif
 }
 
 
@@ -771,7 +783,7 @@ void FShaderResource::Serialize(FArchive& Ar, bool bLoadedByCookedMaterial)
 #if WITH_EDITORONLY_DATA
 	if (!bLoadedByCookedMaterial)
 	{
-		SerializePlatformDebugData(Ar);
+		SerializeEditorOnlyData(Ar);
 	}
 #endif
 
@@ -779,8 +791,28 @@ void FShaderResource::Serialize(FArchive& Ar, bool bLoadedByCookedMaterial)
 	{
 		INC_DWORD_STAT_BY_FName(GetMemoryStatType((EShaderFrequency)Target.Frequency).GetName(), (int64)Code.Num());
 		INC_DWORD_STAT_BY(STAT_Shaders_ShaderResourceMemory, GetSizeBytes());
+
+#if WITH_EDITORONLY_DATA
+		LogShaderCompilerWarnings();
+#endif
 	}
 }
+
+#if WITH_EDITORONLY_DATA
+void FShaderResource::LogShaderCompilerWarnings()
+{
+	if (CompilerWarnings.Num() > 0 && CVarShaderCompilerEmitWarningsOnLoad.GetValueOnGameThread() != 0)
+	{
+		// Emit all the compiler warnings seen whilst serializing/loading this shader to the log.
+		// Since successfully compiled shaders are stored in the DDC, we'll get the compiler warnings
+		// even if we didn't compile the shader this run.
+		for (const FShaderCompilerError& CompilerWarning : CompilerWarnings)
+		{
+			UE_LOG(LogShaderWarnings, Warning, TEXT("%s"), *CompilerWarning.GetErrorString());
+		}
+	}
+}
+#endif
 
 void FShaderResource::SerializeShaderCode(FArchive& Ar)
 {
@@ -824,7 +856,7 @@ void FShaderResource::SerializeShaderCode(FArchive& Ar)
 }
 
 #if WITH_EDITORONLY_DATA
-void FShaderResource::SerializePlatformDebugData(FArchive& Ar)
+void FShaderResource::SerializeEditorOnlyData(FArchive& Ar)
 {
 #if WITH_ENGINE
 	if (Ar.IsCooking())
@@ -851,6 +883,7 @@ void FShaderResource::SerializePlatformDebugData(FArchive& Ar)
 #endif
 	{
 		// Always serialize if we're not cooking, the cook target requires editor only data, or we don't have the engine (i.e. we're SCW).
+		Ar << CompilerWarnings;
 		Ar << PlatformDebugData;
 	}
 }
@@ -2181,6 +2214,10 @@ void ShaderMapAppendKeyString(EShaderPlatform Platform, FString& KeyString)
 
 	{
 		KeyString += IsUsingBasePassVelocity(Platform) ? TEXT("_GV") : TEXT("");
+	}
+
+	{
+		KeyString += BasePassCanOutputTangent(Platform) ? TEXT("_GT") : TEXT("");
 	}
 
 	{

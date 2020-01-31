@@ -1111,7 +1111,7 @@ enum class UE_DEPRECATED(4.24, "Use FRepLayout::IsEmpty() instead.") ERepLayoutS
  * and replication of the Object will be completely paused until the property bunches are acknowledged.
  * However, this will not affect other history items since they are still unreliable.
  */
-class ENGINE_VTABLE FRepLayout : public FGCObject, public TSharedFromThis<FRepLayout>
+class FRepLayout : public FGCObject, public TSharedFromThis<FRepLayout>
 {
 private:
 

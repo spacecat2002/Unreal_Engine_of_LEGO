@@ -909,6 +909,21 @@ template<class VolumetricLightmapBrickDataType>
 void CopyDataIntoAtlas(FRHICommandList& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, int32 SrcOffset, int32 DestOffset, int32 NumBricks, const VolumetricLightmapBrickDataType& SrcData, FVolumetricLightmapBrickTextureSet DestTextureSet)
 {
 	{
+		// Transition all the UAVs to writable
+		FRHIUnorderedAccessView* UAVs[UE_ARRAY_COUNT(DestTextureSet.SHCoefficients) + 3] =
+		{
+			DestTextureSet.AmbientVector.UAV,
+			DestTextureSet.SkyBentNormal.UAV,
+			DestTextureSet.DirectionalLightShadowing.UAV
+		};
+		for (int32 i = 0; i < UE_ARRAY_COUNT(DestTextureSet.SHCoefficients); i++)
+		{
+			UAVs[i + 3] = DestTextureSet.SHCoefficients[i].UAV;
+		}
+		RHICmdList.TransitionResources(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, UAVs, UE_ARRAY_COUNT(UAVs), nullptr);
+	}
+
+	{
 		TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 
 		FCopyResidentBricksCS::FPermutationDomain PermutationVector;

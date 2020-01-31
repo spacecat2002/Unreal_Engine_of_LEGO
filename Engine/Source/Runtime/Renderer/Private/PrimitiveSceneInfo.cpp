@@ -664,16 +664,19 @@ void FPrimitiveSceneInfo::AddToScene(FRHICommandListImmediate& RHICmdList, bool 
 	{
 		FMemMark MemStackMark(FMemStack::Get());
 
-		// Find lights that affect the primitive in the light octree.
-		for (FSceneLightOctree::TConstElementBoxIterator<SceneRenderingAllocator> LightIt(Scene->LightOctree, Proxy->GetBounds().GetBox());
+		// Find local lights that affect the primitive in the light octree.
+		for (FSceneLightOctree::TConstElementBoxIterator<SceneRenderingAllocator> LightIt(Scene->LocalShadowCastingLightOctree, Proxy->GetBounds().GetBox());
 			LightIt.HasPendingElements();
 			LightIt.Advance())
 		{
 			const FLightSceneInfoCompact& LightSceneInfoCompact = LightIt.GetCurrentElement();
-			if (LightSceneInfoCompact.AffectsPrimitive(CompactPrimitiveSceneInfo.Bounds, CompactPrimitiveSceneInfo.Proxy))
-			{
-				FLightPrimitiveInteraction::Create(LightSceneInfoCompact.LightSceneInfo,this);
-			}
+			LightSceneInfoCompact.LightSceneInfo->CreateLightPrimitiveInteraction(LightSceneInfoCompact, this);
+		}
+		// Also loop through non-local (directional) shadow-casting lights
+		for (int32 LightID : Scene->DirectionalShadowCastingLightIDs)
+		{
+			const FLightSceneInfoCompact& LightSceneInfoCompact = Scene->Lights[LightID];
+			LightSceneInfoCompact.LightSceneInfo->CreateLightPrimitiveInteraction(LightSceneInfoCompact, this);
 		}
 	}
 

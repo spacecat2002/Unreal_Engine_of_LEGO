@@ -42,9 +42,6 @@
 #if !defined(PLATFORM_ANDROID_VULKAN)
 	#define PLATFORM_ANDROID_VULKAN 0
 #endif
-#if !defined(PLATFORM_QUAIL)
-	#define PLATFORM_QUAIL 0
-#endif
 #if !defined(PLATFORM_ANDROIDESDEFERRED)
 	#define PLATFORM_ANDROIDESDEFERRED 0
 #endif
@@ -771,11 +768,6 @@
 #ifndef DLLEXPORT
 	#define DLLEXPORT
 	#define DLLIMPORT
-#endif
-
-#ifndef DLLEXPORT_VTABLE
-	#define DLLEXPORT_VTABLE
-	#define DLLIMPORT_VTABLE
 #endif
 
 // embedded app is not default (embedding UE4 in a native view, right now just for IOS and Android)

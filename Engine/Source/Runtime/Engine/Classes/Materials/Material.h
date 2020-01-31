@@ -337,7 +337,7 @@ struct FParameterGroupData
  * Warning: Creating new materials directly increases shader compile times!  Consider creating a Material Instance off of an existing material instead.
  */
 UCLASS(hidecategories=Object, MinimalAPI, BlueprintType)
-class ENGINE_VTABLE UMaterial : public UMaterialInterface
+class UMaterial : public UMaterialInterface
 {
 	GENERATED_UCLASS_BODY()
 
@@ -379,7 +379,13 @@ class ENGINE_VTABLE UMaterial : public UMaterialInterface
 #endif
 
 	UPROPERTY()
+	FScalarMaterialInput Anisotropy;
+
+	UPROPERTY()
 	FVectorMaterialInput Normal;
+
+	UPROPERTY()
+	FVectorMaterialInput Tangent;
 
 	// Emission.
 	UPROPERTY()
@@ -929,6 +935,10 @@ public:
 	/** If multiple nodes with the same  type are inserted at the same point, this defined order and if they get combined, only used if domain is PostProcess */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = PostProcessMaterial, meta = (DisplayName = "Blendable Priority"))
 	int32 BlendablePriority;
+
+	/** Allows blendability to be turned off, only used if domain is PostProcess */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = PostProcessMaterial, meta = (DisplayName = "Is Blendable"))
+	uint8 bIsBlendable : 1;
 
 	/** true if we have printed a warning about material usage for a given usage flag. */
 	UPROPERTY(transient, duplicatetransient)

@@ -246,43 +246,43 @@ private:
 	EType Type;
 };
 
-class RHI_VTABLE FRHIGraphicsShader : public FRHIShader
+class FRHIGraphicsShader : public FRHIShader
 {
 public:
 	FRHIGraphicsShader(FRHIShader::EType InType) : FRHIShader(InType) {}
 };
 
-class RHI_VTABLE FRHIVertexShader : public FRHIGraphicsShader
+class FRHIVertexShader : public FRHIGraphicsShader
 {
 public:
 	FRHIVertexShader() : FRHIGraphicsShader(FRHIShader::EType::Vertex) {}
 };
 
-class RHI_VTABLE FRHIHullShader : public FRHIGraphicsShader
+class FRHIHullShader : public FRHIGraphicsShader
 {
 public:
 	FRHIHullShader() : FRHIGraphicsShader(FRHIShader::EType::Hull) {}
 };
 
-class RHI_VTABLE FRHIDomainShader : public FRHIGraphicsShader
+class FRHIDomainShader : public FRHIGraphicsShader
 {
 public:
 	FRHIDomainShader() : FRHIGraphicsShader(FRHIShader::EType::Domain) {}
 };
 
-class RHI_VTABLE FRHIPixelShader : public FRHIGraphicsShader
+class FRHIPixelShader : public FRHIGraphicsShader
 {
 public:
 	FRHIPixelShader() : FRHIGraphicsShader(FRHIShader::EType::Pixel) {}
 };
 
-class RHI_VTABLE FRHIGeometryShader : public FRHIGraphicsShader
+class FRHIGeometryShader : public FRHIGraphicsShader
 {
 public:
 	FRHIGeometryShader() : FRHIGraphicsShader(FRHIShader::EType::Geometry) {}
 };
 
-class RHI_VTABLE FRHIRayTracingShader : public FRHIShader
+class FRHIRayTracingShader : public FRHIShader
 {
 public:
 	FRHIRayTracingShader() : FRHIShader(FRHIShader::EType::RayTracing) {}

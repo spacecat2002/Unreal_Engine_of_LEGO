@@ -36,6 +36,7 @@ static bool IsSupportedVertexFactoryType(const FVertexFactoryType* VertexFactory
 
 	return VertexFactoryType == FindVertexFactoryType(LocalVfFname)
 		|| VertexFactoryType == FindVertexFactoryType(LSkinnedVfFname)
+		|| VertexFactoryType == FindVertexFactoryType(InstancedVfFname)
 		|| VertexFactoryType == FindVertexFactoryType(NiagaraRibbonVfFname)
 		|| VertexFactoryType == FindVertexFactoryType(NiagaraSpriteVfFname)
 		|| VertexFactoryType == FindVertexFactoryType(GeometryCacheVfFname)
@@ -512,7 +513,7 @@ FRayTracingPipelineState* FDeferredShadingSceneRenderer::BindRayTracingMaterialP
 
 	FGraphEventArray TaskList;
 	TaskList.Reserve(NumTasks);
-	ReferenceView.RayTracingMaterialBindings.SetNum(NumTasks);
+	View.RayTracingMaterialBindings.SetNum(NumTasks);
 		
 	for (uint32 TaskIndex = 0; TaskIndex < NumTasks; ++TaskIndex)
 	{
@@ -521,7 +522,7 @@ FRayTracingPipelineState* FDeferredShadingSceneRenderer::BindRayTracingMaterialP
 		const uint32 NumCommands = FMath::Min(CommandsPerTask, NumTotalMeshCommands - FirstTaskCommandIndex);
 
 		FRayTracingLocalShaderBindingWriter* BindingWriter = new FRayTracingLocalShaderBindingWriter();
-		ReferenceView.RayTracingMaterialBindings[TaskIndex] = BindingWriter;
+		View.RayTracingMaterialBindings[TaskIndex] = BindingWriter;
 
 		TaskList.Add(FFunctionGraphTask::CreateAndDispatchWhenReady(
 		[BindingWriter, MeshCommands, NumCommands, bEnableMaterials, bEnableShadowMaterials, OpaqueShadowMaterialIndex, HiddenMaterialIndex, TaskIndex]()
@@ -583,7 +584,7 @@ FRayTracingPipelineState* FDeferredShadingSceneRenderer::BindRayTracingMaterialP
 		TStatId(), nullptr, ENamedThreads::AnyThread));
 	}
 
-	ReferenceView.RayTracingMaterialBindingsTask = FFunctionGraphTask::CreateAndDispatchWhenReady([]() {}, TStatId(), &TaskList, ENamedThreads::AnyHiPriThreadHiPriTask);
+	View.RayTracingMaterialBindingsTask = FFunctionGraphTask::CreateAndDispatchWhenReady([]() {}, TStatId(), &TaskList, ENamedThreads::AnyHiPriThreadHiPriTask);
 
 	return PipelineState;
 }

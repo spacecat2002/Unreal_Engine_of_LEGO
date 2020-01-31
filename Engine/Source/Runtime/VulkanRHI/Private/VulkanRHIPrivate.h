@@ -224,7 +224,10 @@ public:
 	TArray<FVulkanTextureView> AttachmentTextureViews;
 	// Copy from the Depth render target partial view
 	FVulkanTextureView PartialDepthTextureView;
+
+	// Image views and memory allocations we need to addref + release
 	TArray<VkImageView> AttachmentViewsToDelete;
+	TArray< TRefCountPtr<VulkanRHI::FOldResourceAllocation> > ResourceAllocationsToDelete;
 
 	inline bool ContainsRenderTarget(FRHITexture* Texture) const
 	{

@@ -188,8 +188,10 @@ enum ECompilerFlags
 	CFLAG_ForceRemoveUnusedInterpolators,
 	// Set default precision to highp in a pixel shader (default is mediump on ES2 platforms)
 	CFLAG_UseFullPrecisionInPS,
-	// Hint that its a vertex to geometry shader
+	// Hint that it is a vertex to geometry shader
 	CFLAG_VertexToGeometryShader,
+	// Hint that it is a vertex to primitive shader
+	CFLAG_VertexToPrimitiveShader,
 	// Prepare the shader for archiving in the native binary shader cache format
 	CFLAG_Archive,
 	// Shaders uses external texture so may need special runtime handling

@@ -119,7 +119,7 @@ DECLARE_DELEGATE_RetVal_TwoParams(FFXSystemInterface*, FCreateCustomFXSystemDele
 /**
  * The interface to an effects system.
  */
-class ENGINE_VTABLE FFXSystemInterface
+class FFXSystemInterface
 {
 public:
 

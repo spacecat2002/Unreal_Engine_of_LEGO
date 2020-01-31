@@ -519,7 +519,7 @@ void BuildProjectionMatrix(FIntPoint RenderTargetSize, ECameraProjectionMode::Ty
 	}
 }
 
-void SetupViewVamilyForSceneCapture(
+void SetupViewFamilyForSceneCapture(
 	FSceneViewFamily& ViewFamily,
 	USceneCaptureComponent* SceneCaptureComponent,
 	const TArrayView<const FSceneCaptureViewInfo> Views,
@@ -564,6 +564,7 @@ void SetupViewVamilyForSceneCapture(
 		FSceneView* View = new FSceneView(ViewInitOptions);
 
 		View->bIsSceneCapture = true;
+		View->bSceneCaptureUsesRayTracing = SceneCaptureComponent->bUseRayTracingIfEnabled;
 		// Note: this has to be set before EndFinalPostprocessSettings
 		View->bIsPlanarReflection = bIsPlanarReflection;
         // Needs to be reconfigured now that bIsPlanarReflection has changed.
@@ -680,7 +681,7 @@ static FSceneRenderer* CreateSceneRendererForSceneCapture(
 		ViewFamily.ViewExtensions = GEngine->ViewExtensions->GatherActiveExtensions(nullptr);
 	}
 	
-	SetupViewVamilyForSceneCapture(
+	SetupViewFamilyForSceneCapture(
 		ViewFamily,
 		SceneCaptureComponent,
 		MakeArrayView(&SceneCaptureViewInfo, 1),

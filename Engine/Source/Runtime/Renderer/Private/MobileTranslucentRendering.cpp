@@ -251,7 +251,7 @@ bool FMobileSceneRenderer::RenderInverseOpacity(FRHICommandListImmediate& RHICmd
 		SceneContext.GetSceneDepthSurface(),
 		EDepthStencilTargetActions::ClearDepthStencil_DontStoreDepthStencil,
 		nullptr,
-		FExclusiveDepthStencil::DepthRead_StencilRead
+		FExclusiveDepthStencil::DepthWrite_StencilWrite
 	);
 		
 	RHICmdList.BeginRenderPass(RPInfo, TEXT("RenderInverseOpacity"));

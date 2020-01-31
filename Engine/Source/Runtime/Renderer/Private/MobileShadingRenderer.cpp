@@ -277,6 +277,11 @@ void FMobileSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdList)
 	// initialize per-view uniform buffer.  Pass in shadow info as necessary.
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
+		if (Views[ViewIndex].ViewState)
+		{
+			Views[ViewIndex].ViewState->UpdatePreExposure(Views[ViewIndex]);
+		}
+
 		// Initialize the view's RHI resources.
 		Views[ViewIndex].InitRHIResources();
 
@@ -832,7 +837,7 @@ void FMobileSceneRenderer::BasicPostProcess(FRHICommandListImmediate& RHICmdList
 	// todo: this should come from View.Family->RenderTarget
 	Desc.Format = PF_B8G8R8A8;
 	Desc.NumMips = 1;
-	Desc.TargetableFlags |= TexCreate_RenderTargetable;
+	Desc.TargetableFlags |= TexCreate_RenderTargetable | TexCreate_ShaderResource;
 
 	GRenderTargetPool.CreateUntrackedElement(Desc, Temp, Item);
 
