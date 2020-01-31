@@ -2261,11 +2261,10 @@ void FSceneRenderTargets::AllocateMobileRenderTargets(FRHICommandListImmediate& 
 	AllocateCommonDepthTargets(RHICmdList);
 	AllocateFoveationTexture(RHICmdList);
 
-#if PLATFORM_ANDROID
 	static const auto MobileMultiViewCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.MobileMultiView"));
 	static const auto CVarMobileMultiViewDirect = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.MobileMultiView.Direct"));
 
-	const bool bIsUsingMobileMultiView = GSupportsMobileMultiView && (MobileMultiViewCVar && MobileMultiViewCVar->GetValueOnAnyThread() != 0);
+	const bool bIsUsingMobileMultiView = (GSupportsMobileMultiView || GRHISupportsArrayIndexFromAnyShader) && (MobileMultiViewCVar && MobileMultiViewCVar->GetValueOnAnyThread() != 0);
 
 	// TODO: Test platform support for direct
 	const bool bIsMobileMultiViewDirectEnabled = (CVarMobileMultiViewDirect && CVarMobileMultiViewDirect->GetValueOnAnyThread() != 0);
@@ -2277,7 +2276,6 @@ void FSceneRenderTargets::AllocateMobileRenderTargets(FRHICommandListImmediate& 
 		AllocMobileMultiViewSceneColor(RHICmdList, ScaleFactor);
 		AllocMobileMultiViewDepth(RHICmdList, ScaleFactor);
 	}
-#endif
 
 	AllocateDebugViewModeTargets(RHICmdList);
 
@@ -3173,14 +3171,11 @@ bool FSceneRenderTargets::AreRenderTargetClearsValid(ESceneColorFormatType InSce
 			const TRefCountPtr<IPooledRenderTarget>& SceneColorTarget = GetSceneColorForCurrentShadingPath();
 			const bool bColorValid = SceneColorTarget && (SceneColorTarget->GetRenderTargetItem().TargetableTexture->GetClearBinding() == DefaultColorClear);
 			const bool bDepthValid = SceneDepthZ && (SceneDepthZ->GetRenderTargetItem().TargetableTexture->GetClearBinding() == DefaultDepthClear);
-#if PLATFORM_ANDROID
+
 			// For mobile multi-view + mono support
 			const bool bMobileMultiViewColorValid = (!MobileMultiViewSceneColor || MobileMultiViewSceneColor->GetRenderTargetItem().TargetableTexture->GetClearBinding() == DefaultColorClear);
 			const bool bMobileMultiViewDepthValid = (!MobileMultiViewSceneDepthZ || MobileMultiViewSceneDepthZ->GetRenderTargetItem().TargetableTexture->GetClearBinding() == DefaultDepthClear);
 			return bColorValid && bDepthValid && bMobileMultiViewColorValid && bMobileMultiViewDepthValid;
-#else
-			return bColorValid && bDepthValid;
-#endif
 		}
 	default:
 		{

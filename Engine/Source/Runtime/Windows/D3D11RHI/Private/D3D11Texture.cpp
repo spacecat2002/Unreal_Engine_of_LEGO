@@ -2453,6 +2453,11 @@ FTexture2DRHIRef FD3D11DynamicRHI::RHICreateTexture2DFromResource(EPixelFormat F
 	return CreateTextureFromResource<FD3D11BaseTexture2D>(false, false, Format, TexCreateFlags, ClearValueBinding, TextureResource);
 }
 
+FTexture2DArrayRHIRef FD3D11DynamicRHI::RHICreateTexture2DArrayFromResource(EPixelFormat Format, uint32 TexCreateFlags, const FClearValueBinding& ClearValueBinding, ID3D11Texture2D* TextureResource)
+{
+	return CreateTextureFromResource<FD3D11BaseTexture2DArray>(true, false, Format, TexCreateFlags, ClearValueBinding, TextureResource);
+}
+
 FTextureCubeRHIRef FD3D11DynamicRHI::RHICreateTextureCubeFromResource(EPixelFormat Format, uint32 TexCreateFlags, const FClearValueBinding& ClearValueBinding, ID3D11Texture2D* TextureResource)
 {
 	return CreateTextureFromResource<FD3D11BaseTextureCube>(false, true, Format, TexCreateFlags, ClearValueBinding, TextureResource);

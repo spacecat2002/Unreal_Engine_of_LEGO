@@ -351,7 +351,8 @@ void UpdateSceneCaptureContentMobile_RenderThread(
 	const FString& EventName,
 	const FResolveParams& ResolveParams,
 	bool bGenerateMips,
-	const FGenerateMipsParams& GenerateMipsParams)
+	const FGenerateMipsParams& GenerateMipsParams,
+	bool bDisableFlipCopyGLES)
 {
 	FMemMark MemStackMark(FMemStack::Get());
 
@@ -365,9 +366,10 @@ void UpdateSceneCaptureContentMobile_RenderThread(
 #else
 		SCOPED_DRAW_EVENT(RHICmdList, UpdateSceneCaptureContentMobile_RenderThread);
 #endif
+		FViewInfo& View = SceneRenderer->Views[0];
 
 		const bool bIsMobileHDR = IsMobileHDR();
-		const bool bRHINeedsFlip = RHINeedsToSwitchVerticalAxis(GMaxRHIShaderPlatform);
+		const bool bRHINeedsFlip = RHINeedsToSwitchVerticalAxis(GMaxRHIShaderPlatform) && bDisableFlipCopyGLES;
 		// note that GLES code will flip the image when:
 		//	bIsMobileHDR && SceneCaptureSource == SCS_FinalColorLDR (flip performed during post processing)
 		//	!bIsMobileHDR (rendering is flipped by vertex shader)
@@ -410,7 +412,7 @@ void UpdateSceneCaptureContentMobile_RenderThread(
 			FlippedPooledRenderTarget.GetReference()
 			? FlippedPooledRenderTarget.GetReference()->GetRenderTargetItem().TargetableTexture->GetTexture2D()
 			: nullptr);
-		FViewInfo& View = SceneRenderer->Views[0];
+
 		// We don't support screen percentage in scene capture.
 		FIntRect ViewRect = View.UnscaledViewRect;
 		FIntRect UnconstrainedViewRect = View.UnconstrainedViewRect;
