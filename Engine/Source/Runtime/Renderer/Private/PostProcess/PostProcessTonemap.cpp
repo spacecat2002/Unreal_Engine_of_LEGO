@@ -519,6 +519,7 @@ BEGIN_SHADER_PARAMETER_STRUCT(FTonemapParameters, )
 	SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Output)
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ColorTexture)
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, BloomTexture)
+	// SM5 and above use Texture2D for EyeAdaptation
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, EyeAdaptation)
 	SHADER_PARAMETER_RDG_TEXTURE(, ColorGradingLUT)
 	SHADER_PARAMETER_TEXTURE(Texture2D, NoiseTexture)
@@ -539,6 +540,8 @@ BEGIN_SHADER_PARAMETER_STRUCT(FTonemapParameters, )
 	SHADER_PARAMETER(float, DefaultEyeExposure)
 	SHADER_PARAMETER(float, EditorNITLevel)
 	SHADER_PARAMETER(uint32, bOutputInHDR)
+	//ES3_1 use Buffer for EyeAdaptation
+	SHADER_PARAMETER_SRV(Buffer<float4>, EyeAdaptationBuffer)
 END_SHADER_PARAMETER_STRUCT()
 
 class FTonemapVS : public FGlobalShader
@@ -647,7 +650,7 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FViewInfo& Vi
 	const FSceneViewFamily& ViewFamily = *(View.Family);
 	const FPostProcessSettings& PostProcessSettings = View.FinalPostProcessSettings;
 
-	const bool bEyeAdaptation = Inputs.EyeAdaptationTexture != nullptr;
+	const bool bEyeAdaptation = Inputs.EyeAdaptationTexture != nullptr || Inputs.EyeAdaptationBuffer != nullptr;
 
 	const FScreenPassTextureViewport SceneColorViewport(Inputs.SceneColor);
 
@@ -791,6 +794,7 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FViewInfo& Vi
 	CommonParameters.LensPrincipalPointOffsetScaleInverse.Y = -View.LensPrincipalPointOffsetScale.Y / View.LensPrincipalPointOffsetScale.W;
 	CommonParameters.LensPrincipalPointOffsetScaleInverse.Z = 1.0f / View.LensPrincipalPointOffsetScale.Z;
 	CommonParameters.LensPrincipalPointOffsetScaleInverse.W = 1.0f / View.LensPrincipalPointOffsetScale.W;
+	CommonParameters.EyeAdaptationBuffer = Inputs.EyeAdaptationBuffer;
 
 	// Generate permutation vector for the desktop tonemapper.
 	TonemapperPermutation::FDesktopDomain DesktopPermutationVector;
@@ -900,8 +904,6 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 	FRDGTextureRef BloomTexture = CreateRDGTextureForInputWithFallback(GraphBuilder, ePId_Input1, TEXT("Bloom"), eFC_0000);
 	const FIntRect BloomViewRect = Context.GetDownsampledSceneColorViewRectFromInputExtent(BloomTexture->Desc.Extent);
 
-	FRDGTextureRef EyeAdaptationTexture = CreateRDGTextureForOptionalInput(GraphBuilder, ePId_Input2, TEXT("EyeAdaptation"));
-
 	FRDGTextureRef ColorGradingTexture = CreateRDGTextureForOptionalInput(GraphBuilder, ePId_Input3, TEXT("ColorGrading"));
 
 	// If we didn't calculate the LUT during post processing, see if we've cached it on the view.
@@ -962,7 +964,7 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 	Inputs.SceneColor.ViewRect = SceneColorViewRect;
 	Inputs.Bloom.Texture = BloomTexture;
 	Inputs.Bloom.ViewRect = BloomViewRect;
-	Inputs.EyeAdaptationTexture = EyeAdaptationTexture;
+	Inputs.EyeAdaptationTexture = nullptr;
 	Inputs.ColorGradingTexture = ColorGradingTexture;
 	Inputs.OverrideOutput.Texture = OutputTexture;
 	Inputs.OverrideOutput.ViewRect = OutputViewRect;
@@ -970,6 +972,7 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 	Inputs.bWriteAlphaChannel = View.AntiAliasingMethod == AAM_FXAA || IsPostProcessingWithAlphaChannelSupported();
 	Inputs.bFlipYAxis = ShouldMobilePassFlipVerticalAxis(Context, this);
 	Inputs.bGammaOnly = bDoGammaOnly;
+	Inputs.EyeAdaptationBuffer = bDoEyeAdaptation && View.GetEyeAdaptationBuffer() ? View.GetEyeAdaptationBuffer()->SRV : nullptr;
 
 	AddTonemapPass(GraphBuilder, View, Inputs);
 
@@ -1226,7 +1229,6 @@ public:
 	FShaderParameter OverlayColor;
 	FShaderParameter FringeIntensity;
 	FShaderParameter SRGBAwareTargetParam;
-	FShaderParameter DefaultEyeExposure;
 
 	/** Initialization constructor. */
 	FPostProcessTonemapPS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
@@ -1253,8 +1255,6 @@ public:
 		FringeIntensity.Bind(Initializer.ParameterMap, TEXT("FringeIntensity"));
 
 		SRGBAwareTargetParam.Bind(Initializer.ParameterMap, TEXT("SRGBAwareTarget"));
-
-		DefaultEyeExposure.Bind(Initializer.ParameterMap, TEXT("DefaultEyeExposure"));
 	}
 	
 	// FShader interface.
@@ -1266,8 +1266,7 @@ public:
 			<< ColorMatrixR_ColorCurveCd1 << ColorMatrixG_ColorCurveCd3Cm3 << ColorMatrixB_ColorCurveCm2 << ColorCurve_Cm0Cd0_Cd2_Ch0Cm1_Ch3 << ColorCurve_Ch1_Ch2 << ColorShadow_Luma << ColorShadow_Tint1 << ColorShadow_Tint2
 			<< OverlayColor
 			<< FringeIntensity
-			<< SRGBAwareTargetParam
-			<< DefaultEyeExposure;
+			<< SRGBAwareTargetParam;
 
 		return bShaderHasOutdatedParameters;
 	}
@@ -1353,9 +1352,6 @@ public:
 		}
 
 		SetShaderValue(RHICmdList, ShaderRHI, SRGBAwareTargetParam, bSRGBAwareTarget ? 1.0f : 0.0f );
-
-		float FixedExposure = GetEyeAdaptationFixedExposure(Context.View);
-		SetShaderValue(RHICmdList, ShaderRHI, DefaultEyeExposure, FixedExposure);
 	}
 };
 
@@ -1363,10 +1359,8 @@ class FPostProcessTonemapVS_ES2 : public FGlobalShader
 {
 	DECLARE_GLOBAL_SHADER(FPostProcessTonemapVS_ES2);
 
-	class FTonemapperSwitchAxis : SHADER_PERMUTATION_BOOL("NEEDTOSWITCHVERTICLEAXIS");
-
 	using FPermutationDomain = TShaderPermutationDomain<
-		FTonemapperSwitchAxis
+		TonemapperPermutation::FTonemapperSwitchAxis, TonemapperPermutation::FTonemapperEyeAdaptationDim
 	>;
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -1374,7 +1368,7 @@ class FPostProcessTonemapVS_ES2 : public FGlobalShader
 		FPermutationDomain PermutationVector(Parameters.PermutationId);
 
 		// Prevent switch axis permutation on platforms that dont require it.
-		if (PermutationVector.Get<FTonemapperSwitchAxis>() && !RHINeedsToSwitchVerticalAxis(Parameters.Platform))
+		if (PermutationVector.Get<TonemapperPermutation::FTonemapperSwitchAxis>() && !RHINeedsToSwitchVerticalAxis(Parameters.Platform))
 		{
 			return false;
 		}
@@ -1387,10 +1381,11 @@ class FPostProcessTonemapVS_ES2 : public FGlobalShader
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 	}
 
-	static FPermutationDomain BuildPermutationVector(bool bNeedsToSwitchVerticalAxis)
+	static FPermutationDomain BuildPermutationVector(bool bNeedsToSwitchVerticalAxis, bool bEyeAdaptation)
 	{
 		FPermutationDomain PermutationVector;
-		PermutationVector.Set<FTonemapperSwitchAxis>(bNeedsToSwitchVerticalAxis);
+		PermutationVector.Set<TonemapperPermutation::FTonemapperSwitchAxis>(bNeedsToSwitchVerticalAxis);
+		PermutationVector.Set<TonemapperPermutation::FTonemapperEyeAdaptationDim>(bEyeAdaptation);
 		return PermutationVector;
 	}
 
@@ -1398,11 +1393,12 @@ class FPostProcessTonemapVS_ES2 : public FGlobalShader
 
 public:
 	FPostProcessPassParameters PostprocessParameter;
-	FShaderResourceParameter EyeAdaptation;
 	FShaderParameter GrainRandomFull;
 	FShaderParameter FringeIntensity;
 	FShaderParameter ScreenPosToViewportBias;
 	FShaderParameter ScreenPosToViewportScale;
+	FShaderParameter DefaultEyeExposure;	
+	FShaderResourceParameter EyeAdaptationBuffer;
 	bool bUsedFramebufferFetch;
 
 	FPostProcessTonemapVS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
@@ -1413,9 +1409,11 @@ public:
 		FringeIntensity.Bind(Initializer.ParameterMap, TEXT("FringeIntensity"));
 		ScreenPosToViewportBias.Bind(Initializer.ParameterMap, TEXT("Color_ScreenPosToViewportBias"));
 		ScreenPosToViewportScale.Bind(Initializer.ParameterMap, TEXT("Color_ScreenPosToViewportScale"));
+		DefaultEyeExposure.Bind(Initializer.ParameterMap, TEXT("DefaultEyeExposure"));
+		EyeAdaptationBuffer.Bind(Initializer.ParameterMap, TEXT("EyeAdaptationBuffer"));
 	}
 
-	void SetVS(const FRenderingCompositePassContext& Context)
+	void SetVS(const FRenderingCompositePassContext& Context, bool bEyeAdaptation)
 	{
 		FRHIVertexShader* ShaderRHI = GetVertexShader();
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
@@ -1451,12 +1449,17 @@ public:
 			SetShaderValue(Context.RHICmdList, ShaderRHI, ScreenPosToViewportScale, FVector2D(ScreenPosToScenePixelValue.X, ScreenPosToScenePixelValue.Y));
 			SetShaderValue(Context.RHICmdList, ShaderRHI, ScreenPosToViewportBias, FVector2D(ScreenPosToScenePixelValue.Z, ScreenPosToScenePixelValue.W));
 		}
+
+		float FixedExposure = bEyeAdaptation ? 0.0f : GetEyeAdaptationFixedExposure(Context.View);
+		SetShaderValue(Context.RHICmdList, ShaderRHI, DefaultEyeExposure, FixedExposure);
+
+		SetSRVParameter(Context.RHICmdList, ShaderRHI, EyeAdaptationBuffer, bEyeAdaptation && Context.View.GetEyeAdaptationBuffer() ? Context.View.GetEyeAdaptationBuffer()->SRV : nullptr);
 	}
 	
 	virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter << GrainRandomFull << FringeIntensity << ScreenPosToViewportBias << ScreenPosToViewportScale;
+		Ar << PostprocessParameter << GrainRandomFull << FringeIntensity << ScreenPosToViewportBias << ScreenPosToViewportScale << DefaultEyeExposure << EyeAdaptationBuffer;
 		return bShaderHasOutdatedParameters;
 	}
 };
@@ -1465,11 +1468,12 @@ IMPLEMENT_GLOBAL_SHADER(FPostProcessTonemapVS_ES2, "/Engine/Private/PostProcessT
 IMPLEMENT_GLOBAL_SHADER(FPostProcessTonemapPS_ES2, "/Engine/Private/PostProcessTonemap.usf", "MainPS_ES2", SF_Pixel);
 
 
-FRCPassPostProcessTonemapES2::FRCPassPostProcessTonemapES2(const FViewInfo& InView, bool bInUsedFramebufferFetch, bool bInSRGBAwareTarget)
+FRCPassPostProcessTonemapES2::FRCPassPostProcessTonemapES2(const FViewInfo& InView, bool bInUsedFramebufferFetch, bool bInSRGBAwareTarget, bool bInDoEyeAdaptation)
 	: bDoScreenPercentageInTonemapper(false)
 	, View(InView)
 	, bUsedFramebufferFetch(bInUsedFramebufferFetch)
 	, bSRGBAwareTarget(bInSRGBAwareTarget)
+	, bDoEyeAdaptation(bInDoEyeAdaptation)
 { }
 
 void FRCPassPostProcessTonemapES2::Process(FRenderingCompositePassContext& Context)
@@ -1509,7 +1513,7 @@ void FRCPassPostProcessTonemapES2::Process(FRenderingCompositePassContext& Conte
 
 		bool bNeedsToSwitchVerticalAxis = ShouldMobilePassFlipVerticalAxis(Context, this);
 
-		auto VertexShaderPermutationVector = FPostProcessTonemapVS_ES2::BuildPermutationVector(bNeedsToSwitchVerticalAxis);
+		auto VertexShaderPermutationVector = FPostProcessTonemapVS_ES2::BuildPermutationVector(bNeedsToSwitchVerticalAxis, bDoEyeAdaptation);
 		auto PixelShaderPermutationVector = FPostProcessTonemapPS_ES2::BuildPermutationVector(View, bNeedsToSwitchVerticalAxis);
 
 		TShaderMapRef<FPostProcessTonemapVS_ES2> VertexShader(Context.GetShaderMap(), VertexShaderPermutationVector);
@@ -1531,7 +1535,7 @@ void FRCPassPostProcessTonemapES2::Process(FRenderingCompositePassContext& Conte
 
 			SetGraphicsPipelineState(Context.RHICmdList, GraphicsPSOInit);
 
-			VertexShader->SetVS(Context);
+			VertexShader->SetVS(Context, bDoEyeAdaptation);
 			PixelShader->SetPS(Context.RHICmdList, Context, PixelShaderPermutationVector, bSRGBAwareTarget);
 		}
 

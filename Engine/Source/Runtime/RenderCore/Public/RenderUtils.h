@@ -505,6 +505,22 @@ inline bool IsUsingBasePassVelocity(EShaderPlatform Platform)
 	return !!(GBasePassVelocityPlatformMask & (1ull << Platform));
 }
 
+inline bool IsUsingAnisotropicBRDF(EShaderPlatform Platform)
+{
+	extern RENDERCORE_API uint64 GAnisotropicBRDFPlatformMask;
+	return (!!(GAnisotropicBRDFPlatformMask & (1ull << Platform)));
+}
+
+inline bool BasePassCanOutputTangent(EShaderPlatform Platform)
+{
+	return IsUsingAnisotropicBRDF(Platform) && !IsUsingBasePassVelocity(Platform);
+}
+
+inline bool BasePassCanOutputTangent(ERHIFeatureLevel::Type FeatureLevel)
+{
+	return BasePassCanOutputTangent(GetFeatureLevelShaderPlatform(FeatureLevel));
+}
+
 /** Returns whether the base pass should use selective outputs for a given shader platform */
 inline bool IsUsingSelectiveBasePassOutputs(EShaderPlatform Platform)
 {

@@ -18,6 +18,7 @@
 #include "Materials/MaterialExpressionMaterialFunctionCall.h"
 #include "Materials/MaterialFunctionInstance.h"
 #include "Materials/MaterialExpressionSingleLayerWaterMaterialOutput.h"
+#include "Materials/MaterialExpressionThinTranslucentMaterialOutput.h"
 #include "MaterialCompiler.h"
 #include "RenderUtils.h"
 #include "EngineGlobals.h"
@@ -666,6 +667,7 @@ protected:
 
 	virtual int32 TwoSidedSign() override;
 	virtual int32 VertexNormal() override;
+	virtual int32 VertexTangent() override;
 	virtual int32 PixelNormalWS() override;
 	virtual int32 DDX(int32 X) override;
 	virtual int32 DDY(int32 X) override;

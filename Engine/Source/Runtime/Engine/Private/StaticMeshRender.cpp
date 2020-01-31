@@ -565,7 +565,7 @@ void FStaticMeshSceneProxy::CreateRenderThreadResources()
 		{
 			auto& Geometry = DynamicRayTracingGeometries[i];
 			DynamicRayTracingGeometryVertexBuffers[i]
-				.Initialize(4, 256, PF_R32_FLOAT, BUF_UnorderedAccess | BUF_ShaderResource, TEXT("RayTracingDynamicVertexBuffer"));
+				.Initialize(4, 256, PF_R32_FLOAT, BUF_UnorderedAccess | BUF_ShaderResource, TEXT("FStaticMeshSceneProxy::RayTracingDynamicVertexBuffer"));
 			Geometry.InitResource();
 		}
 	}

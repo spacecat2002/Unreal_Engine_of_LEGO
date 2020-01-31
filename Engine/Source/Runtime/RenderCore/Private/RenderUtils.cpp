@@ -1084,11 +1084,17 @@ static_assert(SP_NumPlatforms <= sizeof(GDBufferPlatformMask) * 8, "GDBufferPlat
 RENDERCORE_API uint64 GBasePassVelocityPlatformMask = 0;
 static_assert(SP_NumPlatforms <= sizeof(GBasePassVelocityPlatformMask) * 8, "GBasePassVelocityPlatformMask must be large enough to support all shader platforms");
 
+RENDERCORE_API uint64 GAnisotropicBRDFPlatformMask = 0;
+static_assert(SP_NumPlatforms <= sizeof(GAnisotropicBRDFPlatformMask) * 8, "GAnisotropicBRDFPlatformMask must be large enough to support all shader platforms");
+
 RENDERCORE_API uint64 GSelectiveBasePassOutputsPlatformMask = 0;
 static_assert(SP_NumPlatforms <= sizeof(GSelectiveBasePassOutputsPlatformMask) * 8, "GSelectiveBasePassOutputsPlatformMask must be large enough to support all shader platforms");
 
 RENDERCORE_API uint64 GDistanceFieldsPlatformMask = 0;
 static_assert(SP_NumPlatforms <= sizeof(GDistanceFieldsPlatformMask) * 8, "GDistanceFieldsPlatformMask must be large enough to support all shader platforms");
+
+RENDERCORE_API uint64 GRayTracingPlaformMask = 0;
+static_assert(SP_NumPlatforms <= sizeof(GRayTracingPlaformMask) * 8, "GRayTracingPlaformMask must be large enough to support all shader platforms");
 
 RENDERCORE_API void RenderUtilsInit()
 {
@@ -1109,6 +1115,12 @@ RENDERCORE_API void RenderUtilsInit()
 		GBasePassVelocityPlatformMask = ~0ull;
 	}
 
+	static const IConsoleVariable* AnisotropicBRDFCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.AnisotropicBRDF"));
+	if (AnisotropicBRDFCVar && AnisotropicBRDFCVar->GetInt())
+	{
+		GAnisotropicBRDFPlatformMask = ~0ull;
+	}
+
 	static IConsoleVariable* SelectiveBasePassOutputsCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.SelectiveBasePassOutputs"));
 	if (SelectiveBasePassOutputsCVar && SelectiveBasePassOutputsCVar->GetInt())
 	{
@@ -1119,6 +1131,12 @@ RENDERCORE_API void RenderUtilsInit()
 	if (DistanceFieldsCVar && DistanceFieldsCVar->GetInt())
 	{
 		GDistanceFieldsPlatformMask = ~0ull;
+	}
+
+	static IConsoleVariable* RayTracingCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.RayTracing"));
+	if (RayTracingCVar && RayTracingCVar->GetInt())
+	{
+		GRayTracingPlaformMask = ~0ull;
 	}
 
 #if WITH_EDITOR
@@ -1161,6 +1179,15 @@ RENDERCORE_API void RenderUtilsInit()
 					GBasePassVelocityPlatformMask &= ~Mask;
 				}
 
+				if (TargetPlatform->UsesAnisotropicBRDF())
+				{
+					GAnisotropicBRDFPlatformMask |= Mask;
+				}
+				else
+				{
+					GAnisotropicBRDFPlatformMask &= ~Mask;
+				}
+
 				if (TargetPlatform->UsesSelectiveBasePassOutputs())
 				{
 					GSelectiveBasePassOutputsPlatformMask |= Mask;
@@ -1177,6 +1204,15 @@ RENDERCORE_API void RenderUtilsInit()
 				else
 				{
 					GDistanceFieldsPlatformMask &= ~Mask;
+				}
+
+				if (TargetPlatform->UsesRayTracing())
+				{
+					GRayTracingPlaformMask |= Mask;
+				}
+				else
+				{
+					GRayTracingPlaformMask &= ~Mask;
 				}
 			}
 		}

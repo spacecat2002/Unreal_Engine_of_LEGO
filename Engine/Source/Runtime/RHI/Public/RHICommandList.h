@@ -1331,6 +1331,30 @@ struct FRHICommandDispatchIndirectComputeShader final : public FRHICommand<FRHIC
 	RHI_API void Execute(FRHICommandListBase& CmdList);
 };
 
+struct FRHICommandBeginUAVOverlapString
+{
+	static const TCHAR* TStr() { return TEXT("FRHICommandBeginUAVOverlap"); }
+};
+struct FRHICommandBeginUAVOverlap final : public FRHICommand<FRHICommandBeginUAVOverlap, FRHICommandBeginUAVOverlapString>
+{
+	FORCEINLINE_DEBUGGABLE FRHICommandBeginUAVOverlap()
+	{}
+
+	RHI_API void Execute(FRHICommandListBase& CmdList);
+};
+
+struct FRHICommandEndUAVOverlapString
+{
+	static const TCHAR* TStr() { return TEXT("FRHICommandEndUAVOverlap"); }
+};
+struct FRHICommandEndUAVOverlap final : public FRHICommand<FRHICommandEndUAVOverlap, FRHICommandEndUAVOverlapString>
+{
+	FORCEINLINE_DEBUGGABLE FRHICommandEndUAVOverlap()
+	{}
+
+	RHI_API void Execute(FRHICommandListBase& CmdList);
+};
+
 FRHICOMMAND_MACRO(FRHICommandAutomaticCacheFlushAfterComputeShader)
 {
 	bool bEnable;
@@ -2484,6 +2508,26 @@ public:
 		ALLOC_COMMAND(FRHICommandWaitComputeFence)(WaitFence);
 	}
 
+	FORCEINLINE_DEBUGGABLE void BeginUAVOverlap()
+	{
+		if (Bypass())
+		{
+			GetContext().RHIBeginUAVOverlap();
+			return;
+		}
+		ALLOC_COMMAND(FRHICommandBeginUAVOverlap)();
+	}
+
+	FORCEINLINE_DEBUGGABLE void EndUAVOverlap()
+	{
+		if (Bypass())
+		{
+			GetContext().RHIEndUAVOverlap();
+			return;
+		}
+		ALLOC_COMMAND(FRHICommandEndUAVOverlap)();
+	}
+
 	FORCEINLINE_DEBUGGABLE void PushEvent(const TCHAR* Name, FColor Color)
 	{
 		if (Bypass())
@@ -3055,6 +3099,27 @@ public:
 		ALLOC_COMMAND(FRHICommandSetGraphicsPipelineState)(GraphicsPipelineState);
 	}
 
+	FORCEINLINE_DEBUGGABLE void BeginUAVOverlap()
+	{
+		if (Bypass())
+		{
+			GetContext().RHIBeginUAVOverlap();
+			return;
+		}
+		ALLOC_COMMAND(FRHICommandBeginUAVOverlap)();
+	}
+
+	FORCEINLINE_DEBUGGABLE void EndUAVOverlap()
+	{
+		if (Bypass())
+		{
+			GetContext().RHIEndUAVOverlap();
+			return;
+		}
+		ALLOC_COMMAND(FRHICommandEndUAVOverlap)();
+	}
+
+	UE_DEPRECATED(4.25, "AutomaticCacheFlushAfterComputeShader is deprecated. Use RHICmdList.BeginUAVOverlap() and RHICmdList.EndUAVOverlap() to mark up sections of RHI commands where multiple draws/dispatches using UAVs are allowed to overlap without interleaved resource transitions. Call BeginUAVOverlap() where previously AutomaticCacheFlushAfterComputeShader(false) was called, and EndUAVOverlap() where previously AutomaticCacheFlushAfterComputeShader(true) was called.")
 	FORCEINLINE_DEBUGGABLE void AutomaticCacheFlushAfterComputeShader(bool bEnable)
 	{
 		if (Bypass())
@@ -3065,6 +3130,7 @@ public:
 		ALLOC_COMMAND(FRHICommandAutomaticCacheFlushAfterComputeShader)(bEnable);
 	}
 
+	UE_DEPRECATED(4.25, "FlushComputeShaderCache is deprecated. Use RHICmdList.BeginUAVOverlap() and RHICmdList.EndUAVOverlap() to mark up sections of RHI commands where multiple draws/dispatches using UAVs are allowed to overlap without interleaved resource transitions. Use of FlushComputeShaderCache() should be replaced with an appropriate call to RHICmdList.TransitionResources(), if one is not already being made.")
 	FORCEINLINE_DEBUGGABLE void FlushComputeShaderCache()
 	{
 		if (Bypass())
@@ -3862,7 +3928,6 @@ public:
 
 	FORCEINLINE FUniformBufferRHIRef CreateUniformBuffer(const void* Contents, const FRHIUniformBufferLayout& Layout, EUniformBufferUsage Usage)
 	{
-		LLM_SCOPE(ELLMTag::RHIMisc);
 		return RHICreateUniformBuffer(Contents, Layout, Usage);
 	}
 	
@@ -3925,19 +3990,16 @@ public:
 
 	FORCEINLINE FStructuredBufferRHIRef CreateStructuredBuffer(uint32 Stride, uint32 Size, uint32 InUsage, FRHIResourceCreateInfo& CreateInfo)
 	{
-		LLM_SCOPE(ELLMTag::RHIMisc);
 		return GDynamicRHI->CreateStructuredBuffer_RenderThread(*this, Stride, Size, InUsage, CreateInfo);
 	}
 	
 	FORCEINLINE void* LockStructuredBuffer(FRHIStructuredBuffer* StructuredBuffer, uint32 Offset, uint32 SizeRHI, EResourceLockMode LockMode)
 	{
-		LLM_SCOPE(ELLMTag::RHIMisc);
 		return GDynamicRHI->RHILockStructuredBuffer(*this, StructuredBuffer, Offset, SizeRHI, LockMode);
 	}
 	
 	FORCEINLINE void UnlockStructuredBuffer(FRHIStructuredBuffer* StructuredBuffer)
 	{
-		LLM_SCOPE(ELLMTag::RHIMisc);
 		GDynamicRHI->RHIUnlockStructuredBuffer(*this, StructuredBuffer);
 	}
 	
@@ -4255,6 +4317,7 @@ public:
 	FORCEINLINE void ReadSurfaceData(FRHITexture* Texture,FIntRect Rect,TArray<FColor>& OutData,FReadSurfaceDataFlags InFlags)
 	{
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_RHIMETHOD_ReadSurfaceData_Flush);
+		LLM_SCOPE(ELLMTag::Textures);
 		ImmediateFlush(EImmediateFlushType::FlushRHIThread);  
 		GDynamicRHI->RHIReadSurfaceData(Texture,Rect,OutData,InFlags);
 	}
@@ -4262,22 +4325,26 @@ public:
 	FORCEINLINE void ReadSurfaceData(FRHITexture* Texture, FIntRect Rect, TArray<FLinearColor>& OutData, FReadSurfaceDataFlags InFlags)
 	{
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_RHIMETHOD_ReadSurfaceData_Flush);
+		LLM_SCOPE(ELLMTag::Textures);
 		ImmediateFlush(EImmediateFlushType::FlushRHIThread);
 		GDynamicRHI->RHIReadSurfaceData(Texture, Rect, OutData, InFlags);
 	}
 	
 	FORCEINLINE void MapStagingSurface(FRHITexture* Texture, void*& OutData, int32& OutWidth, int32& OutHeight)
 	{
+		LLM_SCOPE(ELLMTag::Textures);
 		GDynamicRHI->RHIMapStagingSurface_RenderThread(*this, Texture, nullptr, OutData, OutWidth, OutHeight);
 	}
 
 	FORCEINLINE void MapStagingSurface(FRHITexture* Texture, FRHIGPUFence* Fence, void*& OutData, int32& OutWidth, int32& OutHeight)
 	{
+		LLM_SCOPE(ELLMTag::Textures);
 		GDynamicRHI->RHIMapStagingSurface_RenderThread(*this, Texture, Fence, OutData, OutWidth, OutHeight);
 	}
 
 	FORCEINLINE void UnmapStagingSurface(FRHITexture* Texture)
 	{
+		LLM_SCOPE(ELLMTag::Textures);
 		GDynamicRHI->RHIUnmapStagingSurface_RenderThread(*this, Texture);
 	}
 	
@@ -4290,6 +4357,7 @@ public:
 	FORCEINLINE void Read3DSurfaceFloatData(FRHITexture* Texture,FIntRect Rect,FIntPoint ZMinMax,TArray<FFloat16Color>& OutData)
 	{
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_RHIMETHOD_Read3DSurfaceFloatData_Flush);
+		LLM_SCOPE(ELLMTag::Textures);
 		ImmediateFlush(EImmediateFlushType::FlushRHIThread);  
 		GDynamicRHI->RHIRead3DSurfaceFloatData(Texture,Rect,ZMinMax,OutData);
 	}
@@ -4445,13 +4513,6 @@ public:
 	{
 		LLM_SCOPE(ELLMTag::RHIMisc);
 		RHITick(DeltaTime);
-	}
-	
-	//#todo-RemoveStreamOut
-	UE_DEPRECATED(4.24, "SetStreamOutTargets API is deprecated.")
-	FORCEINLINE void SetStreamOutTargets(uint32 NumTargets, FRHIVertexBuffer* const* VertexBuffers, const uint32* Offsets)
-	{
-		checkf(0, TEXT("SetStreamOutTargets() is not supported"));
 	}
 	
 	FORCEINLINE void BlockUntilGPUIdle()
@@ -5357,7 +5418,7 @@ private:
 		}
 #ifdef _MSC_VER
 #pragma warning(push)
-#pragma warning(disable : 6385) // Access is alawys in-bound due to the Flush above
+#pragma warning(disable : 6385) // Access is always in-bound due to the Flush above
 #endif
 		return UpdateInfos[NumBatched++];
 #ifdef _MSC_VER

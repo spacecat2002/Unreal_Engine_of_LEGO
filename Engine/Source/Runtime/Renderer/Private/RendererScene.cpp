@@ -134,6 +134,7 @@ FSceneViewState::FSceneViewState()
 	, TimerQueryPool(RHICreateRenderQueryPool(RQT_AbsoluteTime, FLatentGPUTimer::NumBufferedFrames * 2 * 2 * 2))
 	, TranslucencyTimer(TimerQueryPool)
 	, SeparateTranslucencyTimer(TimerQueryPool)
+	, SeparateTranslucencyModulateTimer(TimerQueryPool)
 {
 	UniqueID = FSceneViewState_UniqueID.Increment();
 	OcclusionFrameCounter = 0;
@@ -216,7 +217,7 @@ FSceneViewState::FSceneViewState()
 		ENQUEUE_RENDER_COMMAND(InitializeSceneViewStateRWBuffer)(
 			[this](FRHICommandList&)
 			{
-				TotalRayCountBuffer->Initialize(sizeof(uint32), 1, PF_R32_UINT);
+				TotalRayCountBuffer->Initialize(sizeof(uint32), 1, PF_R32_UINT, BUF_SourceCopy);
 			});
 	}
 	bReadbackInitialized = false;
@@ -289,22 +290,22 @@ FPixelInspectorData::FPixelInspectorData()
 		RenderTargetBufferSceneColor[i] = nullptr;
 		RenderTargetBufferHDR[i] = nullptr;
 		RenderTargetBufferA[i] = nullptr;
-		RenderTargetBufferBCDE[i] = nullptr;
+		RenderTargetBufferBCDEF[i] = nullptr;
 	}
 }
 
-void FPixelInspectorData::InitializeBuffers(FRenderTarget* BufferFinalColor, FRenderTarget* BufferSceneColor, FRenderTarget* BufferDepth, FRenderTarget* BufferHDR, FRenderTarget* BufferA, FRenderTarget* BufferBCDE, int32 BufferIndex)
+void FPixelInspectorData::InitializeBuffers(FRenderTarget* BufferFinalColor, FRenderTarget* BufferSceneColor, FRenderTarget* BufferDepth, FRenderTarget* BufferHDR, FRenderTarget* BufferA, FRenderTarget* BufferBCDEF, int32 BufferIndex)
 {
 	RenderTargetBufferFinalColor[BufferIndex] = BufferFinalColor;
 	RenderTargetBufferDepth[BufferIndex] = BufferDepth;
 	RenderTargetBufferSceneColor[BufferIndex] = BufferSceneColor;
 	RenderTargetBufferHDR[BufferIndex] = BufferHDR;
 	RenderTargetBufferA[BufferIndex] = BufferA;
-	RenderTargetBufferBCDE[BufferIndex] = BufferBCDE;
+	RenderTargetBufferBCDEF[BufferIndex] = BufferBCDEF;
 
-	check(RenderTargetBufferBCDE[BufferIndex] != nullptr);
+	check(RenderTargetBufferBCDEF[BufferIndex] != nullptr);
 	
-	FIntPoint BufferSize = RenderTargetBufferBCDE[BufferIndex]->GetSizeXY();
+	FIntPoint BufferSize = RenderTargetBufferBCDEF[BufferIndex]->GetSizeXY();
 	check(BufferSize.X == 4 && BufferSize.Y == 1);
 
 	if (RenderTargetBufferA[BufferIndex] != nullptr)
@@ -587,7 +588,7 @@ SIZE_T FScene::GetSizeBytes() const
 		+ WindSources.GetAllocatedSize()
 		+ SpeedTreeVertexFactoryMap.GetAllocatedSize()
 		+ SpeedTreeWindComputationMap.GetAllocatedSize()
-		+ LightOctree.GetSizeBytes()
+		+ LocalShadowCastingLightOctree.GetSizeBytes()
 		+ PrimitiveOctree.GetSizeBytes();
 }
 
@@ -1014,7 +1015,7 @@ FScene::FScene(UWorld* InWorld, bool bInRequiresHitProxies, bool bInIsEditorScen
 ,	AtmosphericFog(NULL)
 ,	SkyAtmosphere(NULL)
 ,	PrecomputedVisibilityHandler(NULL)
-,	LightOctree(FVector::ZeroVector,HALF_WORLD_MAX)
+,	LocalShadowCastingLightOctree(FVector::ZeroVector,HALF_WORLD_MAX)
 ,	PrimitiveOctree(FVector::ZeroVector,HALF_WORLD_MAX)
 ,	bRequiresHitProxies(bInRequiresHitProxies)
 ,	bIsEditorScene(bInIsEditorScene)
@@ -3079,6 +3080,16 @@ void FScene::UpdateStaticDrawLists()
 		});
 }
 
+void FScene::UpdateCachedRenderStates(FPrimitiveSceneProxy* SceneProxy)
+{
+	check(IsInRenderingThread());
+
+	if (SceneProxy->GetPrimitiveSceneInfo())
+	{
+		SceneProxy->GetPrimitiveSceneInfo()->BeginDeferredUpdateStaticMeshes();
+	}
+}
+
 /**
  * @return		true if hit proxies should be rendered in this scene.
  */
@@ -3332,8 +3343,7 @@ void FScene::ApplyWorldOffset_RenderThread(const FVector& InOffset)
 		(*It).LightSceneInfo->Proxy->ApplyWorldOffset(InOffset);
 	}
 
-	// Lights octree
-	LightOctree.ApplyOffset(InOffset, /*bGlobalOctee*/ true);
+	LocalShadowCastingLightOctree.ApplyOffset(InOffset, /*bGlobalOctee*/ true);
 
 	// Cached preshadows
 	for (auto It = CachedPreshadows.CreateIterator(); It; ++It)
@@ -3462,10 +3472,10 @@ void FScene::OnLevelRemovedFromWorld(UWorld* InWorld, bool bIsLightingScenario)
 }
 
 #if WITH_EDITOR
-bool FScene::InitializePixelInspector(FRenderTarget* BufferFinalColor, FRenderTarget* BufferSceneColor, FRenderTarget* BufferDepth, FRenderTarget* BufferHDR, FRenderTarget* BufferA, FRenderTarget* BufferBCDE, int32 BufferIndex)
+bool FScene::InitializePixelInspector(FRenderTarget* BufferFinalColor, FRenderTarget* BufferSceneColor, FRenderTarget* BufferDepth, FRenderTarget* BufferHDR, FRenderTarget* BufferA, FRenderTarget* BufferBCDEF, int32 BufferIndex)
 {
 	//Initialize the buffers
-	PixelInspectorData.InitializeBuffers(BufferFinalColor, BufferSceneColor, BufferDepth, BufferHDR, BufferA, BufferBCDE, BufferIndex);
+	PixelInspectorData.InitializeBuffers(BufferFinalColor, BufferSceneColor, BufferDepth, BufferHDR, BufferA, BufferBCDEF, BufferIndex);
 	//return true when the interface is implemented
 	return true;
 }

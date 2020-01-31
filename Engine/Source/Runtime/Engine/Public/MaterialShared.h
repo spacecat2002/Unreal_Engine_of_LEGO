@@ -620,8 +620,10 @@ public:
 			IsSceneTextureUsed(PPI_Specular) ||
 			IsSceneTextureUsed(PPI_Metallic) ||
 			IsSceneTextureUsed(PPI_WorldNormal) ||
+			IsSceneTextureUsed(PPI_WorldTangent) ||
 			IsSceneTextureUsed(PPI_Opacity) ||
 			IsSceneTextureUsed(PPI_Roughness) ||
+			IsSceneTextureUsed(PPI_Anisotropy) ||
 			IsSceneTextureUsed(PPI_MaterialAO) ||
 			IsSceneTextureUsed(PPI_DecalMask) ||
 			IsSceneTextureUsed(PPI_ShadingModelColor) ||
@@ -632,7 +634,7 @@ public:
 	}
 
 	/** true if the material uses the SceneDepth lookup */
-	ENGINE_API bool UsesSceneDepthLookup() const { return IsSceneTextureUsed(PPI_SceneColor); }
+	ENGINE_API bool UsesSceneDepthLookup() const { return IsSceneTextureUsed(PPI_SceneDepth); }
 
 	/** true if the material uses the Velocity SceneTexture lookup */
 	ENGINE_API bool UsesVelocitySceneTexture() const { return IsSceneTextureUsed(PPI_Velocity); }
@@ -657,8 +659,10 @@ namespace EMaterialShaderMapUsage
 		MaterialExportBaseColor,
 		MaterialExportSpecular,
 		MaterialExportNormal,
+		MaterialExportTangent,
 		MaterialExportMetallic,
 		MaterialExportRoughness,
+		MaterialExportAnisotropy,
 		MaterialExportAO,
 		MaterialExportEmissive,
 		MaterialExportOpacity,
@@ -1367,7 +1371,7 @@ extern ENGINE_API bool CanConnectMaterialValueTypes(const uint32 InputType, cons
  *   Stores a cached shader map, and other transient output from a compile, which is necessary with async shader compiling
  *      (when a material finishes async compilation, the shader map and compile errors need to be stored somewhere)
  */
-class ENGINE_VTABLE FMaterial
+class FMaterial
 {
 public:
 
@@ -1499,6 +1503,7 @@ public:
 	virtual float GetTranslucentSelfShadowSecondOpacity() const { return 1.0f; }
 	virtual float GetTranslucentBackscatteringExponent() const { return 1.0f; }
 	virtual bool IsTranslucencyAfterDOFEnabled() const { return false; }
+	virtual bool IsDualBlendingEnabled(EShaderPlatform Platform) const { return false; }
 	virtual bool IsMobileSeparateTranslucencyEnabled() const { return false; }
 	virtual FLinearColor GetTranslucentMultipleScatteringExtinction() const { return FLinearColor::White; }
 	virtual float GetTranslucentShadowStartOffset() const { return 0.0f; }
@@ -1939,7 +1944,7 @@ class USubsurfaceProfile;
 /**
  * A material render proxy used by the renderer.
  */
-class ENGINE_VTABLE FMaterialRenderProxy : public FRenderResource
+class FMaterialRenderProxy : public FRenderResource
 {
 public:
 
@@ -2070,7 +2075,7 @@ private:
 /**
  * An material render proxy which overrides the material's Color vector parameter.
  */
-class ENGINE_VTABLE FColoredMaterialRenderProxy : public FMaterialRenderProxy
+class FColoredMaterialRenderProxy : public FMaterialRenderProxy
 {
 public:
 
@@ -2097,7 +2102,7 @@ public:
 /**
  * An material render proxy which overrides the material's Color vector and Texture parameter (mixed together).
  */
-class ENGINE_VTABLE FColoredTexturedMaterialRenderProxy : public FColoredMaterialRenderProxy
+class FColoredTexturedMaterialRenderProxy : public FColoredMaterialRenderProxy
 {
 public:
 
@@ -2170,7 +2175,7 @@ inline bool IsTranslucentBlendMode(enum EBlendMode BlendMode)
 /**
  * Implementation of the FMaterial interface for a UMaterial or UMaterialInstance.
  */
-class ENGINE_VTABLE FMaterialResource : public FMaterial
+class FMaterialResource : public FMaterial
 {
 public:
 
@@ -2274,6 +2279,7 @@ public:
 	ENGINE_API virtual float GetTranslucentSelfShadowSecondOpacity() const override;
 	ENGINE_API virtual float GetTranslucentBackscatteringExponent() const override;
 	ENGINE_API virtual bool IsTranslucencyAfterDOFEnabled() const override;
+	ENGINE_API virtual bool IsDualBlendingEnabled(EShaderPlatform Platform) const override;
 	ENGINE_API virtual bool IsMobileSeparateTranslucencyEnabled() const override;
 	ENGINE_API virtual FLinearColor GetTranslucentMultipleScatteringExtinction() const override;
 	ENGINE_API virtual float GetTranslucentShadowStartOffset() const override;
@@ -2408,7 +2414,7 @@ ENGINE_API bool DoesMaterialUseTexture(const UMaterialInterface* Material,const 
 
 #if WITH_EDITORONLY_DATA
 /** TODO - This can be removed whenever VER_UE4_MATERIAL_ATTRIBUTES_REORDERING is no longer relevant. */
-ENGINE_API void DoMaterialAttributeReorder(FExpressionInput* Input, int32 UE4Ver);
+ENGINE_API void DoMaterialAttributeReorder(FExpressionInput* Input, int32 UE4Ver, int32 RenderObjVer);
 #endif // WITH_EDITORONLY_DATA
 
 /**
@@ -2469,7 +2475,7 @@ public:
 /**
  * Material property to attribute data mappings
  */
-class ENGINE_VTABLE FMaterialAttributeDefinitionMap
+class FMaterialAttributeDefinitionMap
 {
 public:
 	FMaterialAttributeDefinitionMap()

@@ -187,6 +187,8 @@ void FD3D12Adapter::CreateRootDevice(bool bWithDebug)
 		D3D12_FEATURE_DATA_D3D12_OPTIONS1 Features = {};
 		RootDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS1, &Features, sizeof(Features));
 		GRHISupportsWaveOperations = Features.WaveOps;
+		GRHIMinimumWaveSize = Features.WaveLaneCountMin;
+		GRHIMaximumWaveSize = Features.WaveLaneCountMax;
 	}
 
 #if ENABLE_RESIDENCY_MANAGEMENT

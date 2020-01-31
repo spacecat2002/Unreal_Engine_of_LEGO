@@ -101,10 +101,15 @@ bool RunRayTracingTestbed_RenderThread(const FString& Parameters)
 	Segment.VertexBuffer = VertexBuffer;
 	Segment.NumPrimitives = 1;
 	GeometryInitializer.Segments.Add(Segment);
+	GeometryInitializer.TotalPrimitiveCount = Segment.NumPrimitives;
 	FRayTracingGeometryRHIRef Geometry = RHICreateRayTracingGeometry(GeometryInitializer);
 
+	FRHIResourceCreateInfo CreateInfo;
+	FShaderResourceViewRHIRef GPUTransforms = nullptr;
+	const uint32 NumTransforms = 1;
+
 	FRayTracingGeometryInstance Instances[] = {
-		FRayTracingGeometryInstance { Geometry, {FMatrix::Identity}, {0}, 0xFF }
+		FRayTracingGeometryInstance { Geometry, {FMatrix::Identity}, NumTransforms, GPUTransforms, {0}, 0xFF }
 	};
 
 	FRayTracingSceneInitializer Initializer;
@@ -143,7 +148,7 @@ bool RunRayTracingTestbed_RenderThread(const FString& Parameters)
 
 			RHIUnlockVertexBuffer(OcclusionResultBuffer);
 
-			bOcclusionTestOK = (MappedResults[0] != 0) && (MappedResults[1] == 0) && (MappedResults[2] == 0) && (MappedResults[3] == 0);
+			bOcclusionTestOK = (MappedResults[0] != 0) && (MappedResults[1] == 0) && (MappedResults[2] != 0) && (MappedResults[3] == 0);
 		}
 
 		// Read back and validate intersection trace results

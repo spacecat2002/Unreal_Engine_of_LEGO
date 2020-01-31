@@ -165,6 +165,9 @@ FCameraExposureSettings::FCameraExposureSettings()
 	static const auto VarDefaultAutoExposureExtendDefaultLuminanceRange = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.DefaultFeature.AutoExposure.ExtendDefaultLuminanceRange"));
 	const bool bExtendedLuminanceRange = VarDefaultAutoExposureExtendDefaultLuminanceRange->GetValueOnAnyThread() == 1;
 
+	static const auto VarDefaultAutoExposureBias = IConsoleManager::Get().FindTConsoleVariableDataFloat(TEXT("r.DefaultFeature.AutoExposure.Bias"));
+	const float BaseAutoExposureBias = VarDefaultAutoExposureBias->GetValueOnAnyThread();
+
 	// next value might get overwritten by r.DefaultFeature.AutoExposure.Method
 	Method = AEM_Histogram;
 	LowPercent = 10.0f;
@@ -181,14 +184,14 @@ FCameraExposureSettings::FCameraExposureSettings()
 	else
 	{
 		MinBrightness = 0.03f;
-		MaxBrightness = 2.0f;
+		MaxBrightness = 8.0f;
 		HistogramLogMin = -8.0f;
 		HistogramLogMax = 4.0f;
 	}
 
 	SpeedUp = 3.0f;
 	SpeedDown = 1.0f;
-	Bias = 0.0f;
+	Bias = BaseAutoExposureBias;
 	CalibrationConstant	= 18.0;
 
 	ApplyPhysicalCameraExposure = 0;
@@ -454,10 +457,10 @@ FPostProcessSettings::FPostProcessSettings()
 	LPVVplInjectionBias = 0.64f;
 	LPVGeometryVolumeBias = 0.384f;
 	LPVEmissiveInjectionIntensity = 1.0f;
-	// next value might get overwritten by r.DefaultFeature.AutoExposure.Method
 	CameraShutterSpeed = 60.f;
 	CameraISO = 100.f;
 	AutoExposureCalibrationConstant_DEPRECATED = 16.f;
+	// next value might get overwritten by r.DefaultFeature.AutoExposure.Method
 	AutoExposureMethod = AEM_Histogram;
 	AutoExposureLowPercent = 10.0f;
 	AutoExposureHighPercent = 90.0f;
@@ -475,12 +478,15 @@ FPostProcessSettings::FPostProcessSettings()
 	else
 	{
 		AutoExposureMinBrightness = 0.03f;
-		AutoExposureMaxBrightness = 2.0f;
+		AutoExposureMaxBrightness = 8.0f;
 		HistogramLogMin = -8.0f;
 		HistogramLogMax = 4.0f;
 	}
 
-	AutoExposureBias = 0.0f;
+	static const auto VarDefaultAutoExposureBias = IConsoleManager::Get().FindTConsoleVariableDataFloat(TEXT("r.DefaultFeature.AutoExposure.Bias"));
+	const float BaseAutoExposureBias = VarDefaultAutoExposureBias->GetValueOnAnyThread();
+
+	AutoExposureBias = BaseAutoExposureBias;
 	AutoExposureSpeedUp = 3.0f;
 	AutoExposureSpeedDown = 1.0f;
 

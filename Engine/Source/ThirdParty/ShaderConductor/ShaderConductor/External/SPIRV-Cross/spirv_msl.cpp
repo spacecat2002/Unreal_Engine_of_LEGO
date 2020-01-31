@@ -5626,6 +5626,7 @@ void CompilerMSL::emit_instruction(const Instruction &instruction)
 					coord = join("spvStorageBufferCoords(", convert_to_string(var_index), ", spvBufferSizeConstants, ",
 					             type_to_glsl(innertype), ", ", coord, ")");
 				}
+				add_spv_func_and_recompile(SPVFuncImplStorageBufferCoords);
 			}
 
 			auto &e = set<SPIRExpression>(id, join(to_expression(ops[2]), "_atomic[", coord, "]"), result_type, true);

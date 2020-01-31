@@ -1413,6 +1413,11 @@ public:
 		return PakchunkIndex;
 	}
 
+	FORCEINLINE static bool Expand16BitIndicesTo32BitOnLoad()
+	{
+		return false;
+	}
+
 #if !UE_BUILD_SHIPPING
 	/** 
 	 * Returns any platform specific warning messages we want printed on screen

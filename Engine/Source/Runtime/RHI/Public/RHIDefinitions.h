@@ -12,11 +12,7 @@
 #include "HAL/IConsoleManager.h"
 
 #ifndef RHI_RAYTRACING
-#if (PLATFORM_WINDOWS && PLATFORM_64BITS)
-	#define RHI_RAYTRACING 1
-#else
-	#define RHI_RAYTRACING 0
-#endif
+#define RHI_RAYTRACING 0
 #endif
 
 enum EShaderFrequency
@@ -247,13 +243,19 @@ struct RHI_API FDataDrivenShaderPlatformInfo
 	bool bSupportsRenderTargetWriteMask;
 	bool bSupportsRayTracing;
 	bool bSupportsRayTracingMissShaderBindings; // Whether resources could be bound for miss shaders
+	bool bSupportsRayTracingIndirectInstanceData; // Whether instance transforms can be copied from the GPU to the TLAS instances buffer 
 	bool bSupportsGPUSkinCache;
 	bool bSupportsByteBufferComputeShaders;
+	bool bSupportsPrimitiveShaders;
+	bool bSupportsUInt64ImageAtomics;
+	bool bSupportsTemporalHistoryUpscale;
+	bool bSupportsRTIndexFromVS;
+	bool bSupportsWaveOperations; // Whether HLSL SM6 shader wave intrinsics are supported
 
 	bool bTargetsTiledGPU;
 	bool bNeedsOfflineCompiler;
 
-	// NOTE: WHen adding fields, you must also add to ParseDataDrivenShaderInfo!
+	// NOTE: When adding fields, you must also add to ParseDataDrivenShaderInfo!
 
 	FDataDrivenShaderPlatformInfo()
 	{
@@ -794,8 +796,13 @@ enum EBufferUsageFlags
 
 	/** Create a byte address buffer, which is basically a structured buffer with a uint32 type. */
 	BUF_ByteAddressBuffer = 0x0020,
+
 	/** Create a structured buffer with an atomic UAV counter. */
-	BUF_UAVCounter        = 0x0040,
+	BUF_UAVCounter UE_DEPRECATED(4.25, "BUF_UINT8 is deprecated and getting removed; please don't use.") = 0x0040,
+
+	/** Buffer that the GPU will use as a source for a copy. */
+	BUF_SourceCopy			= 0x0040,
+
 	/** Create a buffer that can be bound as a stream output target. */
 	BUF_StreamOutput      = 0x0080,
 	/** Create a buffer which contains the arguments used by DispatchIndirect or DrawIndirect. */
@@ -825,7 +832,7 @@ enum EBufferUsageFlags
 	BUF_Transient		  = 0x2000,
 
 	/** Buffer that should be accessed one byte at a time. */
-	BUF_UINT8             = 0x4000,
+	BUF_UINT8 UE_DEPRECATED(4.25, "BUF_UINT8 is deprecated and getting removed; please don't use.") = 0x4000,
 
 	/**
 	 * Buffer contains opaque ray tracing acceleration structure data.
