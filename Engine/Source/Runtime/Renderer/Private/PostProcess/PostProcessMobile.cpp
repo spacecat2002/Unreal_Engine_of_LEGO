@@ -23,6 +23,14 @@ static TAutoConsoleVariable<int32> CVarMobileSupportBloomSetupRareCases(
 	TEXT("1: Generate permutations for BloomSetup rare cases. "),
 	ECVF_ReadOnly);
 
+static TAutoConsoleVariable<int32> CVarMobileEyeAdaptation(
+	TEXT("r.Mobile.EyeAdaptation"),
+	1,
+	TEXT("EyeAdaptation for mobile platform.\n")
+	TEXT(" 0: Disable\n")
+	TEXT(" 1: Enabled (Default)"),
+	ECVF_ReadOnly);
+
 static EPixelFormat GetHDRPixelFormat()
 {
 	// PF_B8G8R8A8 instead of floats for 32bpp hdr encoding.
@@ -48,7 +56,7 @@ bool ShouldMobilePassFlipVerticalAxis(const FRenderingCompositePassContext& Cont
 
 bool IsMobileEyeAdaptationEnabled(const FViewInfo& View)
 {
-	return IsMobileHDR() && View.ViewState != nullptr && View.Family->EngineShowFlags.EyeAdaptation;
+	return IsMobileHDR() && View.ViewState != nullptr && View.Family->EngineShowFlags.EyeAdaptation && CVarMobileEyeAdaptation.GetValueOnRenderThread() == 1;
 }
 
 //Following variations are always generated
