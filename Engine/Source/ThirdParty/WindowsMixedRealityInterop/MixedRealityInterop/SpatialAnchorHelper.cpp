@@ -447,15 +447,10 @@ namespace WindowsMixedReality
 		return &(iterator->second);
 	}
 
-	bool SpatialAnchorHelper::StoreSpatialAnchor(const wchar_t* anchorId, winrt::Windows::Perception::Spatial::SpatialAnchor& newAnchor)
+	void SpatialAnchorHelper::StoreSpatialAnchor(const std::wstring& anchorId, winrt::Windows::Perception::Spatial::SpatialAnchor& newAnchor)
 	{
-		if (m_spatialAnchorMap.count(anchorId) == 0)
-		{
-			m_spatialAnchorMap.insert(std::make_pair(anchorId, newAnchor));
-			return true;
-		}
-
-		return false;
+		auto pair = m_spatialAnchorMap.insert_or_assign(anchorId, newAnchor);
+		assert(pair.second);
 	}
 
 	void SpatialAnchorHelper::SetLogCallback(void(*functionPointer)(const wchar_t*))

@@ -40,7 +40,7 @@ namespace WindowsMixedReality
 		
 		// Support functions used by AzureSpatialAnchors
 		winrt::Windows::Perception::Spatial::SpatialAnchor* GetSpatialAnchor(const wchar_t* anchorId);
-		bool StoreSpatialAnchor(const wchar_t* anchorId, winrt::Windows::Perception::Spatial::SpatialAnchor& newAnchor);
+		void StoreSpatialAnchor(const std::wstring& anchorId, winrt::Windows::Perception::Spatial::SpatialAnchor& newAnchor);
 
 
 

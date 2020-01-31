@@ -34,6 +34,8 @@
 #include <functional>
 #endif
 
+#include <atomic>
+
 #pragma warning(default:4005)
 #pragma warning(default:4668)
 
@@ -627,32 +629,74 @@ public:
 	virtual void StopSession() = 0;
 	virtual void DestroySession() = 0;
 
-	enum class SaveResult
+	enum class AsyncResult : uint8
 	{
-		Success,
+		NotStarted,
 		Started,
 		FailBadAnchorId,
+		FailAnchorIdAlreadyUsed,
+		FailAnchorDoesNotExist,
+		FailAnchorAlreadyTracked,
+		FailNoAnchor,
 		FailNoLocalAnchor,
 		FailNoSession,
 		FailNotEnoughData,
-		FailSeeErrorString
+		FailSeeErrorString,
+		NotLocated,
+		Canceled,
+		Success
 	};
 
+	struct SaveAsyncData
+	{
+		std::wstring CloudAnchorId;
+		AsyncResult Result = AsyncResult::NotStarted;
+		std::wstring OutError;
+		std::atomic<bool> Completed = false;
+
+		void Complete() { Completed = true; }
+	};
+	typedef std::shared_ptr<SaveAsyncData> SaveAsyncDataPtr;
+
+	struct DeleteAsyncData
+	{
+		std::wstring CloudAnchorId;
+		AsyncResult Result = AsyncResult::NotStarted;
+		std::wstring OutError;
+		std::atomic<bool> Completed = false;
+
+		void Complete() { Completed = true; }
+	};
+	typedef std::shared_ptr<DeleteAsyncData> DeleteAsyncDataPtr;
+
+	struct LoadByIDAsyncData
+	{
+		std::wstring CloudAnchorId;
+		std::wstring LocalAnchorId;
+		AsyncResult Result = AsyncResult::NotStarted;
+		std::wstring OutError;
+		std::atomic<bool> Completed = false;
+
+		void Complete() { Completed = true; }
+	};
+	typedef std::shared_ptr<LoadByIDAsyncData> LoadByIDAsyncDataPtr;
+
 	// Things you can do while your session is running.
+	// AsyncDataPtr objects are created by UE4, and passed in here.
 	virtual bool HasEnoughDataForSaving() = 0;
 	virtual bool CreateCloudAnchor(const wchar_t* anchorId) = 0;
 	virtual bool SetCloudAnchorExpiration(const wchar_t* anchorId, int minutesFromNow) = 0;
-	virtual bool SaveCloudAnchor(const wchar_t* anchorId, SaveResult& OutResult, wchar_t*& OutError, int OutErrorSize) = 0;
-	virtual bool DeleteCloudAnchor(const wchar_t* anchorId, SaveResult& OutResult, wchar_t*& OutError, int OutErrorSize) = 0;
-	virtual bool LoadCloudAnchorByID(const wchar_t* cloudAnchorId, const wchar_t* localAnchorId, SaveResult& OutResult, wchar_t*& OutError, int OutErrorSize) = 0;
+	virtual bool SaveCloudAnchor(SaveAsyncDataPtr Data) = 0;
+	virtual bool DeleteCloudAnchor(DeleteAsyncDataPtr Data) = 0;
+	virtual bool LoadCloudAnchorByID(LoadByIDAsyncDataPtr Data) = 0;
 	//virtual void FindCloudAnchorNearCloudAnchorWithID(const wchar_t* anchorId) = 0;
 	//virtual void FindAnchorByLocation()=0;
 
 protected:
 	AzureSpatialAnchorsInterop() {};
 	virtual ~AzureSpatialAnchorsInterop() {};
-	AzureSpatialAnchorsInterop(const AzureSpatialAnchorsInterop&) =delete;
-	AzureSpatialAnchorsInterop& operator=(const AzureSpatialAnchorsInterop&) =delete;
+	AzureSpatialAnchorsInterop(const AzureSpatialAnchorsInterop&) = delete;
+	AzureSpatialAnchorsInterop& operator=(const AzureSpatialAnchorsInterop&) = delete;
 };
 
 
