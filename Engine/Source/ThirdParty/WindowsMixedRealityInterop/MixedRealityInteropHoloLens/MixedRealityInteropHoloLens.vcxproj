@@ -103,7 +103,7 @@
       <AdditionalIncludeDirectories>../Include;./Generated Files;</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_ENABLE_EXTENDED_ALIGNED_STORAGE;PLATFORM_HOLOLENS;%(PreprocessorDefinitions);WITH_SCENE_UNDERSTANDING=$(WithSceneUnderstanding)</PreprocessorDefinitions>
       <ProgramDataBaseFileName>$(SolutionDir)Lib\arm64\$(ProjectName).pdb</ProgramDataBaseFileName>
-      <ForcedUsingFiles>$(SolutionDir)..\..\..\Binaries\ThirdParty\HoloLens\$(PlatformTarget)\QRCodesTrackerPlugin.winmd;%(ForcedUsingFiles);$(SceneUnderstandingWinMDArm)</ForcedUsingFiles>
+      <ForcedUsingFiles>$(SolutionDir)..\..\..\Binaries\ThirdParty\HoloLens\$(PlatformTarget)\Microsoft.MixedReality.QR.winmd;%(ForcedUsingFiles);$(SceneUnderstandingWinMDArm)</ForcedUsingFiles>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -127,7 +127,7 @@
       <AdditionalIncludeDirectories>../Include/$(WindowsTargetPlatformVersion);../Include;./Generated Files;</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_ENABLE_EXTENDED_ALIGNED_STORAGE;PLATFORM_HOLOLENS;%(PreprocessorDefinitions);WITH_SCENE_UNDERSTANDING=$(WithSceneUnderstanding)</PreprocessorDefinitions>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
-      <ForcedUsingFiles>$(SolutionDir)..\..\..\Binaries\ThirdParty\Windows\$(PlatformTarget)\QRCodesTrackerPlugin.winmd;%(ForcedUsingFiles);$(SceneUnderstandingWinMDx64)</ForcedUsingFiles>
+      <ForcedUsingFiles>$(SolutionDir)..\..\..\Binaries\ThirdParty\Windows\$(PlatformTarget)\Microsoft.MixedReality.QR.winmd;%(ForcedUsingFiles);$(SceneUnderstandingWinMDx64)</ForcedUsingFiles>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -150,7 +150,7 @@
       <AdditionalOptions>/await %(AdditionalOptions)</AdditionalOptions>
       <AdditionalIncludeDirectories>../Include/$(WindowsTargetPlatformVersion);../Include;./Generated Files;</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_ENABLE_EXTENDED_ALIGNED_STORAGE;NDEBUG;_LIB;%(PreprocessorDefinitions);MIXEDREALITYINTEROP_EXPORTS;PLATFORM_HOLOLENS;WITH_SCENE_UNDERSTANDING=$(WithSceneUnderstanding)</PreprocessorDefinitions>
-      <ForcedUsingFiles>$(SolutionDir)..\..\..\Binaries\ThirdParty\Windows\$(PlatformTarget)\QRCodesTrackerPlugin.winmd;%(ForcedUsingFiles);$(SceneUnderstandingWinMDx64)</ForcedUsingFiles>
+      <ForcedUsingFiles>$(SolutionDir)..\..\..\Binaries\ThirdParty\Windows\$(PlatformTarget)\Microsoft.MixedReality.QR.winmd;%(ForcedUsingFiles);$(SceneUnderstandingWinMDx64)</ForcedUsingFiles>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -172,7 +172,7 @@
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalOptions>/await %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Disabled</Optimization>
-      <ForcedUsingFiles>$(SolutionDir)..\..\..\Binaries\ThirdParty\HoloLens\$(PlatformTarget)\QRCodesTrackerPlugin.winmd;%(ForcedUsingFiles);$(SceneUnderstandingWinMDArm)</ForcedUsingFiles>
+      <ForcedUsingFiles>$(SolutionDir)..\..\..\Binaries\ThirdParty\HoloLens\$(PlatformTarget)\Microsoft.MixedReality.QR.winmd;%(ForcedUsingFiles);$(SceneUnderstandingWinMDArm)</ForcedUsingFiles>
       <CompileAsWinRT>true</CompileAsWinRT>
     </ClCompile>
     <Lib>

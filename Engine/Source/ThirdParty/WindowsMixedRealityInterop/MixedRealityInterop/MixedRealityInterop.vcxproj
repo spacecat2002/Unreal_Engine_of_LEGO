@@ -70,7 +70,7 @@
       <CompileAsWinRT>true</CompileAsWinRT>
       <AdditionalUsingDirectories>$(VCIDEInstallDir)vcpackages;$(WindowsSDKDir)UnionMetadata\$(TargetPlatformVersion);$(WindowsSDKDir)UnionMetadata;</AdditionalUsingDirectories>
       <AdditionalOptions>/await /bigobj %(AdditionalOptions)</AdditionalOptions>
-      <ForcedUsingFiles>$(SolutionDir)..\..\..\Binaries\ThirdParty\Windows\$(PlatformTarget)\QRCodesTrackerPlugin.winmd;$(SolutionDir)Include\$(TargetPlatformVersion)\Microsoft.Holographic.AppRemoting.winmd;$(SolutionDir)..\..\..\Binaries\ThirdParty\Windows\$(PlatformTarget)\Microsoft.Azure.SpatialAnchors.winmd;%(ForcedUsingFiles);$(SceneUnderstandingWinMDx64)</ForcedUsingFiles>
+      <ForcedUsingFiles>$(SolutionDir)..\..\..\Binaries\ThirdParty\Windows\$(PlatformTarget)\Microsoft.MixedReality.QR.winmd;$(SolutionDir)Include\$(TargetPlatformVersion)\Microsoft.Holographic.AppRemoting.winmd;$(SolutionDir)..\..\..\Binaries\ThirdParty\Windows\$(PlatformTarget)\Microsoft.Azure.SpatialAnchors.winmd;%(ForcedUsingFiles);$(SceneUnderstandingWinMDx64)</ForcedUsingFiles>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -98,7 +98,7 @@
       <AdditionalIncludeDirectories>../MixedRealityInteropHoloLens/Generated Files;../Include/$(WindowsTargetPlatformVersion);../Include;../Include/HoloLens1Remoting;</AdditionalIncludeDirectories>
       <CompileAsWinRT>true</CompileAsWinRT>
       <AdditionalOptions>/await %(AdditionalOptions)</AdditionalOptions>
-      <ForcedUsingFiles>$(SolutionDir)..\..\..\Binaries\ThirdParty\Windows\$(PlatformTarget)\QRCodesTrackerPlugin.winmd;$(SolutionDir)Include\$(TargetPlatformVersion)\Microsoft.Holographic.AppRemoting.winmd;$(SolutionDir)..\..\..\Binaries\ThirdParty\Windows\$(PlatformTarget)\Microsoft.Azure.SpatialAnchors.winmd;%(ForcedUsingFiles);$(SceneUnderstandingWinMDx64)</ForcedUsingFiles>
+      <ForcedUsingFiles>$(SolutionDir)..\..\..\Binaries\ThirdParty\Windows\$(PlatformTarget)\Microsoft.MixedReality.QR.winmd;$(SolutionDir)Include\$(TargetPlatformVersion)\Microsoft.Holographic.AppRemoting.winmd;$(SolutionDir)..\..\..\Binaries\ThirdParty\Windows\$(PlatformTarget)\Microsoft.Azure.SpatialAnchors.winmd;%(ForcedUsingFiles);$(SceneUnderstandingWinMDx64)</ForcedUsingFiles>
       <AdditionalUsingDirectories>$(VCIDEInstallDir)vcpackages;$(WindowsSDKDir)UnionMetadata\$(TargetPlatformVersion);$(WindowsSDKDir)UnionMetadata</AdditionalUsingDirectories>
     </ClCompile>
     <Link>
