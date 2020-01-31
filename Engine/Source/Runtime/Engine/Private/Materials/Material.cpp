@@ -470,7 +470,7 @@ static const TCHAR* GDefaultMaterialNames[MD_MAX] =
 	// User Interface 
 	TEXT("engine-ini:/Script/Engine.Engine.DefaultMaterialName"),
 	// Virtual Texture
-	TEXT("engine-ini:/Script/Engine.Engine.DefaultVirtualTextureMaterialName"),
+	TEXT("engine-ini:/Script/Engine.Engine.DefaultMaterialName"),
 };
 
 void UMaterialInterface::InitDefaultMaterials()
