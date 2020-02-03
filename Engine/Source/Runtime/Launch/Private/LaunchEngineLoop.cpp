@@ -1534,7 +1534,7 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 			if (FPaths::FileExists(ProjPath) == false)
 			{
 				// display it multiple ways, it's very important error message...
-				FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Project file not found: %s"), *ProjPath);
+				FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Project file not found: %s\n"), *ProjPath);
 				UE_LOG(LogInit, Display, TEXT("Project file not found: %s"), *ProjPath);
 				UE_LOG(LogInit, Display, TEXT("\tAttempting to find via project info helper."));
 				// Use the uprojectdirs
@@ -2648,7 +2648,7 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 						{
 							FPreLoadScreenManager::Get()->PlayFirstPreLoadScreen(EPreLoadScreenTypes::CustomSplashScreen);
 						}
-#if PLATFORM_XBOXONE && ENABLE_XBOXONE_FAST_ACTIVATION
+#if PLATFORM_XBOXONE && WITH_LEGACY_XDK && ENABLE_XBOXONE_FAST_ACTIVATION
 						else
 						{
 							UE_LOG(LogInit, Warning, TEXT("Enable fast activation without enabling a custom splash screen may cause garbage frame buffer being presented"));
@@ -5200,8 +5200,8 @@ bool FEngineLoop::AppInit( )
 
 #if PLATFORM_WINDOWS
 
-	// make sure that the log directory exists
-	IFileManager::Get().MakeDirectory( *FPaths::ProjectLogDir() );
+	// make sure that the log directory tree exists
+	IFileManager::Get().MakeDirectory( *FPaths::ProjectLogDir(), true );
 
 	// update the mini dump filename now that we have enough info to point it to the log folder even in installed builds
 	FCString::Strcpy(MiniDumpFilenameW, *IFileManager::Get().ConvertToAbsolutePathForExternalAppForWrite(*FString::Printf(TEXT("%sunreal-v%i-%s.dmp"), *FPaths::ProjectLogDir(), FEngineVersion::Current().GetChangelist(), *FDateTime::Now().ToString())));

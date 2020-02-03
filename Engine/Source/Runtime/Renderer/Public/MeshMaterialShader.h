@@ -68,7 +68,7 @@ public:
 		const FSceneView* ViewIfDynamicMeshCommand, 
 		const FVertexFactory* VertexFactory,
 		const EVertexInputStreamType InputStreamType,
-		ERHIFeatureLevel::Type FeatureLevel,
+		const FStaticFeatureLevel FeatureLevel,
 		const FPrimitiveSceneProxy* PrimitiveSceneProxy,
 		const FMeshBatch& MeshBatch,
 		const FMeshBatchElement& BatchElement, 

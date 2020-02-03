@@ -341,7 +341,7 @@ static bool SafeTestD3D11CreateDevice(IDXGIAdapter* Adapter,D3D_FEATURE_LEVEL Mi
 #if PLATFORM_HOLOLENS
 		bool bIsWin10 = true;
 #else
-		bool bIsWin10 = FWindowsPlatformMisc::VerifyWindowsVersion(10, 0);
+		bool bIsWin10 = FPlatformMisc::VerifyWindowsVersion(10, 0);
 #endif
 
 		// Fatal error on 0x887A002D

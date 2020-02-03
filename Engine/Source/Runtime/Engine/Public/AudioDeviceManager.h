@@ -241,6 +241,9 @@ private:
 	/** Create a "main" audio device. */
 	bool CreateMainAudioDevice();
 
+	/** Application enters background handler */
+	void AppWillEnterBackground();
+
 	/** Array for generation counts of audio devices in indices */
 	TArray<uint8> Generations;
 

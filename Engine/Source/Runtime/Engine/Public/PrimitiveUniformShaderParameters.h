@@ -233,6 +233,10 @@ class FSinglePrimitiveStructured : public FRenderResource
 {
 public:
 
+	FSinglePrimitiveStructured()
+		: ShaderPlatform(SP_NumPlatforms)
+	{}
+
 	ENGINE_API virtual void InitRHI() override;
 
 	virtual void ReleaseRHI() override

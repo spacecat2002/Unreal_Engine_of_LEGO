@@ -18,7 +18,7 @@ bool CanUseRayTracingLightingMissShader(EShaderPlatform ShaderPlatform)
 {
 	return GRHISupportsRayTracingMissShaderBindings
 		&& CVarRayTracingLightingMissShader.GetValueOnRenderThread() != 0
-		&& FDataDrivenShaderPlatformInfo::GetInfo(ShaderPlatform).bSupportsRayTracingMissShaderBindings;
+		&& FDataDrivenShaderPlatformInfo::GetSupportsRayTracingMissShaderBindings(ShaderPlatform);
 }
 
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FRaytracingLightDataPacked, "RaytracingLightsDataPacked");
@@ -238,7 +238,7 @@ class FRayTracingLightingMS : public FGlobalShader
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
 		return ShouldCompileRayTracingShadersForProject(Parameters.Platform)
-			&& FDataDrivenShaderPlatformInfo::GetInfo(Parameters.Platform).bSupportsRayTracingMissShaderBindings;
+			&& FDataDrivenShaderPlatformInfo::GetSupportsRayTracingMissShaderBindings(Parameters.Platform);
 	}
 };
 

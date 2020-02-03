@@ -331,7 +331,7 @@ void FPrecomputedVolumetricLightmapData::FinalizeImport()
 
 ENGINE_API void FPrecomputedVolumetricLightmapData::InitRHI()
 {
-	if (FeatureLevel >= ERHIFeatureLevel::SM5)
+	if (GetFeatureLevel() >= ERHIFeatureLevel::SM5)
 	{
 		if (IndirectionTextureDimensions.GetMax() > 0)
 		{
@@ -385,7 +385,7 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::InitRHIForSubLevelResources(
 
 ENGINE_API void FPrecomputedVolumetricLightmapData::ReleaseRHI()
 {
-	if (FeatureLevel >= ERHIFeatureLevel::SM5)
+	if (GetFeatureLevel() >= ERHIFeatureLevel::SM5)
 	{
 		{
 			IndirectionTexture.Texture.SafeRelease();
@@ -421,7 +421,7 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::HandleDataMovementInAtlas(in
 
 		for (FPrecomputedVolumetricLightmapData* SceneData : SceneDataAdded)
 		{
-			TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
+			TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(GetFeatureLevel());
 
 			TShaderMapRef<FMoveWholeIndirectionTextureCS> ComputeShader(GlobalShaderMap);
 
@@ -457,7 +457,7 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::HandleDataMovementInAtlas(in
 		{
 			if (SceneData->IndirectionTexture.Texture.IsValid())
 			{
-				TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
+				TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(GetFeatureLevel());
 
 				TShaderMapRef<FPatchIndirectionTextureCS> ComputeShader(GlobalShaderMap);
 
@@ -511,14 +511,14 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::AddToSceneData(FPrecomputedV
 		SceneData->IndirectionTexture.Format = IndirectionTexture.Format;
 		SceneData->IndirectionTextureDimensions = IndirectionTextureDimensions;
 
-		if (FeatureLevel >= ERHIFeatureLevel::SM5)
+		if (GetFeatureLevel() >= ERHIFeatureLevel::SM5)
 		{
 			// GPU Path
 
 			const int32 PaddedBrickSize = BrickSize + 1;
 			int32 NumBricks = BrickDataDimensions.X * BrickDataDimensions.Y * BrickDataDimensions.Z / (PaddedBrickSize * PaddedBrickSize * PaddedBrickSize);
 
-			TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
+			TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(GetFeatureLevel());
 
 			TShaderMapRef<FMoveWholeIndirectionTextureCS> ComputeShader(GlobalShaderMap);
 
@@ -563,14 +563,14 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::AddToSceneData(FPrecomputedV
 	}
 	else
 	{
-		if (FeatureLevel >= ERHIFeatureLevel::SM5)
+		if (GetFeatureLevel() >= ERHIFeatureLevel::SM5)
 		{
 			// GPU Path
 			if (SceneData->IndirectionTexture.Texture.IsValid())
 			{
 				InitRHIForSubLevelResources();
 
-				TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
+				TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(GetFeatureLevel());
 
 				TShaderMapRef<FPatchIndirectionTextureCS> ComputeShader(GlobalShaderMap);
 
@@ -652,7 +652,7 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::RemoveFromSceneData(FPrecomp
 	}
 	else
 	{
-		if (FeatureLevel >= ERHIFeatureLevel::SM5)
+		if (GetFeatureLevel() >= ERHIFeatureLevel::SM5)
 		{
 			if (SceneData->IndirectionTexture.Texture.IsValid())
 			{
@@ -660,7 +660,7 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::RemoveFromSceneData(FPrecomp
 
 				InitRHIForSubLevelResources();
 
-				TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
+				TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(GetFeatureLevel());
 
 				TShaderMapRef<FRemoveSubLevelBricksCS> ComputeShader(GlobalShaderMap);
 
@@ -809,7 +809,7 @@ void FPrecomputedVolumetricLightmap::SetData(FPrecomputedVolumetricLightmapData*
 
 	if (Data)
 	{
-		Data->FeatureLevel = Scene->GetFeatureLevel();
+		Data->SetFeatureLevel(Scene->GetFeatureLevel());
 		Data->IndirectionTexture.bNeedsCPUAccess = GIsEditor;
 		Data->BrickData.SetNeedsCPUAccess(GIsEditor);
 
@@ -980,7 +980,7 @@ void FVolumetricLightmapBrickAtlas::Insert(int32 Index, FPrecomputedVolumetricLi
 
 	if (!bInitialized)
 	{
-		FeatureLevel = ERHIFeatureLevel::SM5;
+		SetFeatureLevel(ERHIFeatureLevel::SM5);
 		check(Data->BrickSize > 0);
 		PaddedBrickSize = Data->BrickSize + 1;
 		TextureSet.Initialize(Data->BrickDataDimensions, Data->BrickData);
@@ -1082,7 +1082,7 @@ void FVolumetricLightmapBrickAtlas::Insert(int32 Index, FPrecomputedVolumetricLi
 		// Copy old allocations
 		for (int32 AllocationIndex = 0; AllocationIndex < Index && AllocationIndex < Allocations.Num(); AllocationIndex++)
 		{
-			CopyDataIntoAtlas(RHICmdList, FeatureLevel, Allocations[AllocationIndex].StartOffset, BrickStartAllocation, Allocations[AllocationIndex].Size, TextureSet, NewTextureSet);
+			CopyDataIntoAtlas(RHICmdList, GetFeatureLevel(), Allocations[AllocationIndex].StartOffset, BrickStartAllocation, Allocations[AllocationIndex].Size, TextureSet, NewTextureSet);
 
 			NewAllocations.Add(Allocation{ Allocations[AllocationIndex].Data, Allocations[AllocationIndex].Size, BrickStartAllocation });
 			BrickStartAllocation += Allocations[AllocationIndex].Size;
@@ -1092,7 +1092,7 @@ void FVolumetricLightmapBrickAtlas::Insert(int32 Index, FPrecomputedVolumetricLi
 		{
 			int32 NumBricks = Data->BrickDataDimensions.X * Data->BrickDataDimensions.Y * Data->BrickDataDimensions.Z / (PaddedBrickSize * PaddedBrickSize * PaddedBrickSize);
 
-			CopyDataIntoAtlas(RHICmdList, FeatureLevel, 0, BrickStartAllocation, NumBricks, Data->BrickData, NewTextureSet);
+			CopyDataIntoAtlas(RHICmdList, GetFeatureLevel(), 0, BrickStartAllocation, NumBricks, Data->BrickData, NewTextureSet);
 
 			NewAllocations.Add(Allocation{ Data, NumBricks, BrickStartAllocation });
 			Data->BrickDataBaseOffsetInAtlas = BrickStartAllocation;
@@ -1102,7 +1102,7 @@ void FVolumetricLightmapBrickAtlas::Insert(int32 Index, FPrecomputedVolumetricLi
 		// Copy the rest of allocations
 		for (int32 AllocationIndex = Index; AllocationIndex < Allocations.Num(); AllocationIndex++)
 		{
-			CopyDataIntoAtlas(RHICmdList, FeatureLevel, Allocations[AllocationIndex].StartOffset, BrickStartAllocation, Allocations[AllocationIndex].Size, TextureSet, NewTextureSet);
+			CopyDataIntoAtlas(RHICmdList, GetFeatureLevel(), Allocations[AllocationIndex].StartOffset, BrickStartAllocation, Allocations[AllocationIndex].Size, TextureSet, NewTextureSet);
 
 			NewAllocations.Add(Allocation{ Allocations[AllocationIndex].Data, Allocations[AllocationIndex].Size, BrickStartAllocation });
 			// Handle the sub level data movements
@@ -1210,7 +1210,7 @@ void FVolumetricLightmapBrickAtlas::Remove(FPrecomputedVolumetricLightmapData* D
 			// Copy old allocations
 			for (int32 AllocationIndex = 0; AllocationIndex < Index && AllocationIndex < Allocations.Num(); AllocationIndex++)
 			{
-				CopyDataIntoAtlas(RHICmdList, FeatureLevel, Allocations[AllocationIndex].StartOffset, BrickStartAllocation, Allocations[AllocationIndex].Size, TextureSet, NewTextureSet);
+				CopyDataIntoAtlas(RHICmdList, GetFeatureLevel(), Allocations[AllocationIndex].StartOffset, BrickStartAllocation, Allocations[AllocationIndex].Size, TextureSet, NewTextureSet);
 
 				NewAllocations.Add(Allocation{ Allocations[AllocationIndex].Data, Allocations[AllocationIndex].Size, BrickStartAllocation });
 				BrickStartAllocation += Allocations[AllocationIndex].Size;
@@ -1221,7 +1221,7 @@ void FVolumetricLightmapBrickAtlas::Remove(FPrecomputedVolumetricLightmapData* D
 			// Copy the rest of allocations
 			for (int32 AllocationIndex = Index + 1; AllocationIndex < Allocations.Num(); AllocationIndex++)
 			{
-				CopyDataIntoAtlas(RHICmdList, FeatureLevel, Allocations[AllocationIndex].StartOffset, BrickStartAllocation, Allocations[AllocationIndex].Size, TextureSet, NewTextureSet);
+				CopyDataIntoAtlas(RHICmdList, GetFeatureLevel(), Allocations[AllocationIndex].StartOffset, BrickStartAllocation, Allocations[AllocationIndex].Size, TextureSet, NewTextureSet);
 
 				NewAllocations.Add(Allocation{ Allocations[AllocationIndex].Data, Allocations[AllocationIndex].Size, BrickStartAllocation });
 				Allocations[AllocationIndex].Data->HandleDataMovementInAtlas(Allocations[AllocationIndex].StartOffset, BrickStartAllocation);

@@ -678,7 +678,7 @@ static FORCEINLINE bool SupportsRGBColorBuffer(EShaderPlatform ShaderPlatform)
 	return ShaderPlatform == SP_PS4
 		|| ShaderPlatform == SP_XBOXONE_D3D12
 		|| ShaderPlatform == SP_VULKAN_SM5
-		|| FDataDrivenShaderPlatformInfo::GetInfo(ShaderPlatform).bSupportsRGBColorBuffer;
+		|| FDataDrivenShaderPlatformInfo::GetSupportsRGBColorBuffer(ShaderPlatform);
 }
 
 

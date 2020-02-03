@@ -70,16 +70,18 @@ public class Launch : ModuleRules
 					"MRMesh",
 			});
 
-			if ((Target.Platform == UnrealTargetPlatform.Win32) ||
-				(Target.Platform == UnrealTargetPlatform.Win64))
+			if (Target.Platform == UnrealTargetPlatform.Win32 || Target.Platform == UnrealTargetPlatform.Win64)
+			{
+				DynamicallyLoadedModuleNames.AddRange(new string[] {
+					"WindowsPlatformFeatures",
+				});
+			}
+
+			if (Target.Platform.IsInGroup(UnrealPlatformGroup.Windows))
 			{
 				DynamicallyLoadedModuleNames.AddRange(new string[] {
 					"AudioMixerXAudio2",
-					"D3D11RHI",
-					"D3D12RHI",
 					"XAudio2",
-					"WindowsPlatformFeatures",
-					"GameplayMediaEncoder",
 				});
 			}
 			else if (Target.Platform == UnrealTargetPlatform.HoloLens)

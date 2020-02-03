@@ -533,7 +533,7 @@ public:
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		return IsFeatureLevelSupported(Parameters.Platform, BasicEyeAdaptationMinFeatureLevel);
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::Type(BasicEyeAdaptationMinFeatureLevel));
 	}
 };
 
@@ -600,7 +600,7 @@ public:
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		return IsFeatureLevelSupported(Parameters.Platform, BasicEyeAdaptationMinFeatureLevel);
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::Type(BasicEyeAdaptationMinFeatureLevel));
 	}
 
 	FBasicEyeAdaptationShader() = default;

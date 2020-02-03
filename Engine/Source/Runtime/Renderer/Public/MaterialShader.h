@@ -172,7 +172,7 @@ public:
 
 	void GetShaderBindings(
 		const FScene* Scene,
-		ERHIFeatureLevel::Type FeatureLevel,
+		const FStaticFeatureLevel FeatureLevel,
 		const FMaterialRenderProxy& MaterialRenderProxy,
 		const FMaterial& Material,
 		FMeshDrawSingleShaderBindings& ShaderBindings) const;

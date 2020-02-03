@@ -196,6 +196,7 @@ void FSingleLayerWaterPassMeshProcessor::Process(
 		FeatureLevel,
 		bRenderAtmosphericFog,
 		bRenderSkylight,
+		false,
 		WaterPassShaders.HullShader,
 		WaterPassShaders.DomainShader,
 		WaterPassShaders.VertexShader,

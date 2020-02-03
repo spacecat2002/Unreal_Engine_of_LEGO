@@ -1599,7 +1599,7 @@ public:
 	const FGuid& GetLegacyId() const { return Id_DEPRECATED; }
 #endif // WITH_EDITOR
 
-	ERHIFeatureLevel::Type GetFeatureLevel() const { return FeatureLevel; }
+	const FStaticFeatureLevel GetFeatureLevel() const { return FeatureLevel; }
 	bool GetUsesDynamicParameter() const 
 	{ 
 		//@todo - remove non-dynamic parameter particle VF and always support dynamic parameter

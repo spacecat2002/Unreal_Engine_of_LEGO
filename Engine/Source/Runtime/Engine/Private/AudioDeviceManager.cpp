@@ -11,6 +11,7 @@
 #include "GameFramework/GameUserSettings.h"
 #include "Misc/CommandLine.h"
 #include "Misc/ConfigCacheIni.h"
+#include "Misc/CoreDelegates.h"
 #include "UObject/UObjectIterator.h"
 
 #if WITH_EDITOR
@@ -55,6 +56,14 @@ FAutoConsoleVariableRef CVarAudioVisualizeEnabled(
 	CVarIsVisualizeEnabled,
 	TEXT("Whether or not audio visualization is enabled. \n")
 	TEXT("0: Not Enabled, 1: Enabled"),
+	ECVF_Default);
+
+static int32 GCVarFlushAudioRenderCommandsOnSuspend = 0;
+FAutoConsoleVariableRef CVarFlushAudioRenderCommandsOnSuspend(
+	TEXT("au.FlushAudioRenderCommandsOnSuspend"),
+	GCVarFlushAudioRenderCommandsOnSuspend,
+	TEXT("When set to 1, ensures that we pump through all pending commands to the audio thread and audio render thread on app suspension.\n")
+	TEXT("0: Not Disabled, 1: Disabled"),
 	ECVF_Default);
 
 
@@ -277,6 +286,8 @@ bool FAudioDeviceManager::Initialize()
 			AudioEditorModule->RegisterEffectPresetAssetActions();
 		}
 #endif
+
+		FCoreDelegates::ApplicationWillEnterBackgroundDelegate.AddRaw(this, &FAudioDeviceManager::AppWillEnterBackground);
 
 		return CreateMainAudioDevice();
 	}
@@ -605,6 +616,8 @@ bool FAudioDeviceManager::ShutdownAllAudioDevices()
 
 	check(NumActiveAudioDevices == 0);
 	check(NumWorldsUsingMainAudioDevice == 0);
+
+	FCoreDelegates::ApplicationWillEnterBackgroundDelegate.RemoveAll(this);
 
 	return true;
 }
@@ -1095,3 +1108,25 @@ FAudioDebugger& FAudioDeviceManager::GetDebugger()
 	return AudioDebugger;
 }
 #endif // ENABLE_AUDIO_DEBUG
+
+void FAudioDeviceManager::AppWillEnterBackground()
+{
+	// Flush all commands to the audio thread and the audio render thread:
+	if (GCVarFlushAudioRenderCommandsOnSuspend)
+	{
+		FAudioDevice* AudioDevice = nullptr;
+		if (GEngine && GEngine->GetMainAudioDevice())
+		{
+			AudioDevice = GEngine->GetMainAudioDevice();
+
+			FAudioThread::RunCommandOnAudioThread([AudioDevice]()
+			{
+				AudioDevice->FlushAudioRenderingCommands(true);
+			}, TStatId());
+		}
+
+		FAudioCommandFence AudioCommandFence;
+		AudioCommandFence.BeginFence();
+		AudioCommandFence.Wait();
+	}
+}

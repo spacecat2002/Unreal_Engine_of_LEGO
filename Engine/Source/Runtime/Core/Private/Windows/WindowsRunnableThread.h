@@ -65,9 +65,7 @@ class FRunnableThreadWin
 #endif
 	}
 
-#if !PLATFORM_XBOXONE		
 	static void SetThreadDescription(HANDLE hThread, PCWSTR lpThreadDescription);
-#endif
 
 	/**
 	 * The thread entry point. Simply forwards the call on to the right
@@ -176,7 +174,8 @@ protected:
 
 	virtual bool CreateInternal( FRunnable* InRunnable, const TCHAR* InThreadName,
 		uint32 InStackSize = 0,
-		EThreadPriority InThreadPri = TPri_Normal, uint64 InThreadAffinityMask = 0 ) override
+		EThreadPriority InThreadPri = TPri_Normal, uint64 InThreadAffinityMask = 0,
+		EThreadCreateFlags InCreateFlags = EThreadCreateFlags::None) override
 	{
 		static bool bOnce = false;
 		if (!bOnce)
@@ -214,26 +213,16 @@ protected:
 		}
 		else
 		{
-#if !PLATFORM_XBOXONE		
 			// We try to use the SetThreadDescription API where possible since this
 			// enables thread names in crashdumps and ETW traces
 			SetThreadDescription(Thread, *ThreadName);
-#endif
 
 			FThreadManager::Get().AddThread(ThreadID, this);
 			ResumeThread(Thread);
 
 			// Let the thread start up, then set the name for debug purposes.
 			ThreadInitSyncEvent->Wait(INFINITE);
-#if !PLATFORM_XBOXONE
 			SetThreadName( ThreadID, TCHAR_TO_ANSI( *ThreadName ) );
-#elif !UE_BUILD_SHIPPING
-			if (FPlatformMisc::IsDebuggerPresent())
-			{
-				SetThreadName( ThreadID, TCHAR_TO_ANSI( *ThreadName ) );
-			}
-			::SetThreadName( Thread, *ThreadName );
-#endif
 			SetThreadPriority(InThreadPri);
 		}
 
