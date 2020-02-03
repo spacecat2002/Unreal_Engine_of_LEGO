@@ -943,6 +943,15 @@ bool FHLSLMaterialTranslator::Translate()
 			Errorf(TEXT("Material using the DeferredDecal domain need to use the BlendModel Translucent (this saves performance)"));
 		}
 
+		if (Domain == MD_RuntimeVirtualTexture)
+		{
+			// Add connected material output nodes to the runtime virtual texture output mask.
+			MaterialCompilationOutput.RuntimeVirtualTextureOutputAttributeMask |= Material->HasBaseColorConnected() ? (1 << (uint8)ERuntimeVirtualTextureAttributeType::BaseColor) : 0;
+			MaterialCompilationOutput.RuntimeVirtualTextureOutputAttributeMask |= Material->HasNormalConnected() ? (1 << (uint8)ERuntimeVirtualTextureAttributeType::Normal) : 0;
+			MaterialCompilationOutput.RuntimeVirtualTextureOutputAttributeMask |= Material->HasRoughnessConnected() ? (1 << (uint8)ERuntimeVirtualTextureAttributeType::Roughness) : 0;
+			MaterialCompilationOutput.RuntimeVirtualTextureOutputAttributeMask |= Material->HasSpecularConnected() ? (1 << (uint8)ERuntimeVirtualTextureAttributeType::Specular) : 0;
+		}
+
 		if (MaterialCompilationOutput.bNeedsSceneTextures)
 		{
 			if (Domain != MD_DeferredDecal && Domain != MD_PostProcess)
@@ -1163,7 +1172,7 @@ void FHLSLMaterialTranslator::GetMaterialEnvironment(EShaderPlatform InPlatform,
 		OutEnvironment.SetDefine(TEXT("USES_EYE_ADAPTATION"), TEXT("1"));
 	}
 
-	if (MaterialCompilationOutput.bHasRuntimeVirtualTextureOutput)
+	if (MaterialCompilationOutput.bHasRuntimeVirtualTextureOutputNode)
 	{
 		OutEnvironment.SetDefine(TEXT("VIRTUAL_TEXTURE_OUTPUT"), 1);
 	}
@@ -6833,7 +6842,7 @@ int32 FHLSLMaterialTranslator::CustomOutput(class UMaterialExpressionCustomOutpu
 	return INDEX_NONE;
 }
 
-int32 FHLSLMaterialTranslator::VirtualTextureOutput()
+int32 FHLSLMaterialTranslator::VirtualTextureOutput(uint8 AttributeMask)
 {
 	if (Material->GetMaterialDomain() == MD_RuntimeVirtualTexture)
 	{
@@ -6843,7 +6852,8 @@ int32 FHLSLMaterialTranslator::VirtualTextureOutput()
 	}
 	else
 	{
-		MaterialCompilationOutput.bHasRuntimeVirtualTextureOutput = true;
+		MaterialCompilationOutput.bHasRuntimeVirtualTextureOutputNode |= AttributeMask != 0;
+		MaterialCompilationOutput.RuntimeVirtualTextureOutputAttributeMask |= AttributeMask;
 	}
 
 	// return value is not used
