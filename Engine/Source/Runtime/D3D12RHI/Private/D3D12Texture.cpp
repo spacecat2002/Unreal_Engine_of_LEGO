@@ -28,7 +28,7 @@ static TAutoConsoleVariable<int32> CVarD3D12Texture2DRHIFlush(
 
 static TAutoConsoleVariable<int32> CVarUseUpdateTexture3DComputeShader(
 	TEXT("D3D12.UseUpdateTexture3DComputeShader"),
-	PLATFORM_XBOXONE,
+	0,
 	TEXT("If enabled, use a compute shader for UpdateTexture3D. Avoids alignment restrictions")
 	TEXT(" 0: off (default)\n")
 	TEXT(" 1: on"),
@@ -1567,9 +1567,11 @@ void* TD3D12Texture2D<RHIResourceType>::Lock(class FRHICommandListImmediate* RHI
 
 	FD3D12CommandListHandle& hCommandList = Device->GetDefaultCommandContext().CommandListHandle;
 
-	void* Data = nullptr;
+#if !PLATFORM_SUPPORTS_VIRTUAL_TEXTURES
+	void* RawTextureMemory = (void*)ResourceLocation.GetGPUVirtualAddress();
+#endif
 
-#if	PLATFORM_SUPPORTS_VIRTUAL_TEXTURES
+	void* Data = nullptr;
 
 	if (GetParentDevice()->GetOwningRHI()->HandleSpecialLock(Data, MipIndex, ArrayIndex, GetFlags(), LockMode, GetTextureLayout(), RawTextureMemory, DestStride))
 	{
@@ -1577,7 +1579,6 @@ void* TD3D12Texture2D<RHIResourceType>::Lock(class FRHICommandListImmediate* RHI
 		check(Data != nullptr);
 	}
 	else
-#endif
 	if (LockMode == RLM_WriteOnly)
 	{
 		// If we're writing to the texture, allocate a system memory buffer to receive the new contents.
@@ -1815,13 +1816,15 @@ void TD3D12Texture2D<RHIResourceType>::UnlockInternal(class FRHICommandListImmed
 
 	check(LockedResource);
 
-#if PLATFORM_SUPPORTS_VIRTUAL_TEXTURES
+#if !PLATFORM_SUPPORTS_VIRTUAL_TEXTURES
+	void* RawTextureMemory = (void*)ResourceLocation.GetGPUVirtualAddress();
+#endif
+
 	if (GetParentDevice()->GetOwningRHI()->HandleSpecialUnlock(RHICmdList, MipIndex, GetFlags(), GetTextureLayout(), RawTextureMemory))
 	{
 		// nothing left to do...
 	}
 	else
-#endif
 	{
 		if (!LockedResource->bLockedForReadOnly)
 		{

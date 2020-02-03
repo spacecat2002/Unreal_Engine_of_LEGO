@@ -1394,6 +1394,10 @@ public:
 	{
 	}
 
+	static void PumpMessagesForSlowTask()
+	{
+	}
+
 	static void HidePlatformStartupScreen()
 	{
 

@@ -66,7 +66,7 @@ void FD3D12DynamicRHI::SetupRecursiveResources()
 	}
 
 	// TODO: Waiting to integrate MSAA fix for ResolveShader.h
-	if (GMaxRHIShaderPlatform == SP_XBOXONE_D3D12)
+	if (!(PLATFORM_WINDOWS || PLATFORM_HOLOLENS))
 		return;
 
 	TShaderMapRef<FResolveVS> ResolveVertexShader(ShaderMap);
