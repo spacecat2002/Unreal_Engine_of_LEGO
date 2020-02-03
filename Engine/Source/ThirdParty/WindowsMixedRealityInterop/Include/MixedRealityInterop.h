@@ -653,7 +653,7 @@ public:
 		std::wstring CloudAnchorId;
 		AsyncResult Result = AsyncResult::NotStarted;
 		std::wstring OutError;
-		std::atomic<bool> Completed = false;
+		std::atomic<bool> Completed = { false };
 
 		void Complete() { Completed = true; }
 	};
@@ -664,7 +664,7 @@ public:
 		std::wstring CloudAnchorId;
 		AsyncResult Result = AsyncResult::NotStarted;
 		std::wstring OutError;
-		std::atomic<bool> Completed = false;
+		std::atomic<bool> Completed = { false };
 
 		void Complete() { Completed = true; }
 	};
@@ -676,7 +676,7 @@ public:
 		std::wstring LocalAnchorId;
 		AsyncResult Result = AsyncResult::NotStarted;
 		std::wstring OutError;
-		std::atomic<bool> Completed = false;
+		std::atomic<bool> Completed = { false };
 
 		void Complete() { Completed = true; }
 	};
