@@ -1083,7 +1083,7 @@ enum EBufferUsageFlags
 	BUF_ByteAddressBuffer = 0x0020,
 
 	/** Create a structured buffer with an atomic UAV counter. */
-	BUF_UAVCounter UE_DEPRECATED(4.25, "BUF_UINT8 is deprecated and getting removed; please don't use.") = 0x0040,
+	BUF_UAVCounter UE_DEPRECATED(4.25, "BUF_UAVCounter is deprecated and getting removed; please don't use.") = 0x0040,
 
 	/** Buffer that the GPU will use as a source for a copy. */
 	BUF_SourceCopy			= 0x0040,

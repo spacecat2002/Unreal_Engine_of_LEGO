@@ -1417,6 +1417,8 @@ public:
 		return PakchunkIndex;
 	}
 
+	static int32 GetPakchunkIndexFromPakFile(const FString& InFilename);
+
 	FORCEINLINE static bool Expand16BitIndicesTo32BitOnLoad()
 	{
 		return false;
