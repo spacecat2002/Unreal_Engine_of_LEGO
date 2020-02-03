@@ -104,12 +104,12 @@ public:
 
 protected:
 	// This is used during mobile editor preview refactor, this will eventually be replaced with a parameter to InitRHI() etc..
-	ERHIFeatureLevel::Type GetFeatureLevel() const { return FeatureLevel == ERHIFeatureLevel::Num ? GMaxRHIFeatureLevel : FeatureLevel; }
+	void SetFeatureLevel(const FStaticFeatureLevel InFeatureLevel) { FeatureLevel = InFeatureLevel; }
+	const FStaticFeatureLevel GetFeatureLevel() const { return FeatureLevel == ERHIFeatureLevel::Num ? GMaxRHIFeatureLevel : FeatureLevel; }
 	FORCEINLINE bool HasValidFeatureLevel() const { return FeatureLevel < ERHIFeatureLevel::Num; }
 
-	ERHIFeatureLevel::Type FeatureLevel;
-
 private:
+	ERHIFeatureLevel::Type FeatureLevel;
 	/** True if the resource has been initialized. */
 	bool bInitialized;
 
@@ -850,3 +850,19 @@ private:
 	uint32 NextBoundShaderStateIndex;
 	FCriticalSection BoundShaderStateHistoryLock;
 };
+
+/**Note, this should only be used when a platform requires special shader compilation for 32 bit pixel format render targets.
+Does not replace pixel format associations across the board**/
+
+FORCEINLINE bool PlatformRequires128bitRT(EPixelFormat PixelFormat)
+{
+	switch (PixelFormat)
+	{
+	case PF_R32_FLOAT:
+	case PF_G32R32F:
+	case PF_A32B32G32R32F:
+		return FDataDrivenShaderPlatformInfo::GetRequiresExplicit128bitRT(GMaxRHIShaderPlatform);
+	default:
+		return false;
+	}
+}

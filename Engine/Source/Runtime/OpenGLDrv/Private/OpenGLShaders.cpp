@@ -4687,6 +4687,10 @@ static FCriticalSection GPendingGLProgramCreateRequestsCS;
 // Scan the binary cache file and build a record of all programs.
 void FOpenGLProgramBinaryCache::ScanProgramCacheFile(const FGuid& ShaderPipelineCacheVersionGuid)
 {
+	// Flush any pending BSS create requests, this ensures we do not have RT/RHI thread creating programs while this step adds programs to the LRU.
+	check(IsInGameThread());
+	FlushRenderingCommands();
+
 	UE_LOG(LogRHI, Log, TEXT("OnShaderScanProgramCacheFile"));
 	FScopeLock Lock(&GProgramBinaryCacheCS);
 	FString ProgramCacheFilename = GetProgramBinaryCacheFilePath();

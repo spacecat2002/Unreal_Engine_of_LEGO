@@ -2636,7 +2636,7 @@ bool FSlateApplication::SetUserFocus(FSlateUser& User, const FWidgetPath& InFocu
 		}
 	}
 
-	//UE_LOG(LogSlate, Warning, TEXT("Focus for user %i set to %s."), User->GetUserIndex(), NewFocusedWidget.IsValid() ? *NewFocusedWidget->ToString() : TEXT("Invalid"));
+	//UE_LOG(LogSlate, Warning, TEXT("Focus for user %i set to %s."), User.GetUserIndex(), NewFocusedWidget.IsValid() ? *NewFocusedWidget->ToString() : TEXT("Invalid"));
 
 	// Figure out if we should show focus for this focus entry
 	bool ShowFocus = false;

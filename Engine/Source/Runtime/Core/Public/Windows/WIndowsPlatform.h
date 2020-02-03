@@ -56,6 +56,7 @@ typedef FWindowsPlatformTypes FPlatformTypes;
 #define PLATFORM_HAS_BSD_TIME								0
 #define PLATFORM_USE_PTHREADS								0
 #define PLATFORM_MAX_FILEPATH_LENGTH_DEPRECATED				WINDOWS_MAX_PATH
+#define PLATFORM_HAS_BSD_IPV6_SOCKETS						1
 #define PLATFORM_HAS_BSD_SOCKET_FEATURE_WINSOCKETS			1
 #define PLATFORM_USES_MICROSOFT_LIBC_FUNCTIONS				1
 #define PLATFORM_IS_ANSI_MALLOC_THREADSAFE					1
@@ -73,6 +74,13 @@ typedef FWindowsPlatformTypes FPlatformTypes;
 
 #define PLATFORM_GLOBAL_LOG_CATEGORY						LogWindows
 
+#define WINDOWS_USE_FEATURE_APPLICATIONMISC_CLASS			1
+#define WINDOWS_USE_FEATURE_PLATFORMPROCESS_CLASS			1
+#define WINDOWS_USE_FEATURE_PLATFORMMISC_CLASS				1
+#define WINDOWS_USE_FEATURE_APPLICATION						1
+#define	WINDOWS_USE_FEATURE_WINDOW							1
+#define WINDOWS_USE_FEATURE_LAUNCH							1
+#define WINDOWS_USE_FEATURE_DYNAMIC_RHI						1
 
 // Q: Why is there a __nop() before __debugbreak()?
 // A: VS' debug engine has a bug where it will silently swallow explicit

@@ -1305,7 +1305,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 		const bool bUseTonemapperFilm = Context.View.GetFeatureLevel() == ERHIFeatureLevel::ES3_1 && IsMobileHDR() && !bMobileHDR32bpp && GSupportsRenderTargetFormat_PF_FloatRGBA && (VarTonemapperFilm && VarTonemapperFilm->GetValueOnRenderThread());
 		
 		const EAutoExposureMethod AutoExposureMethod = GetAutoExposureMethod(View);
-		uint32 bUseEyeAdaptation = IsMobileEyeAdaptationEnabled(View) ? 1 : 0;
+		const bool bUseEyeAdaptation = IsMobileEyeAdaptationEnabled(View);
 
 		// add the passes we want to add to the graph (commenting a line means the pass is not inserted into the graph) ---------
 		FRenderingCompositeOutputRef PostProcessEyeAdaptation;

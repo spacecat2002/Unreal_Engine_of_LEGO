@@ -301,31 +301,9 @@ void FDeferredShadingSceneRenderer::ClearGBufferAtMaxZ(FRHICommandList& RHICmdLi
 	auto ShaderMap = GetGlobalShaderMap(FeatureLevel);
 
 	TShaderMapRef<TOneColorVS<true> > VertexShader(ShaderMap);
-	FOneColorPS* PixelShader = NULL; 
-
-	// Assume for now all code path supports SM4, otherwise render target numbers are changed
-	switch(NumActiveRenderTargets)
-	{
-	case 5:
-		{
-			TShaderMapRef<TOneColorPixelShaderMRT<5> > MRTPixelShader(ShaderMap);
-			PixelShader = *MRTPixelShader;
-		}
-		break;
-	case 6:
-		{
-			TShaderMapRef<TOneColorPixelShaderMRT<6> > MRTPixelShader(ShaderMap);
-			PixelShader = *MRTPixelShader;
-		}
-		break;
-	default:
-	case 1:
-		{
-			TShaderMapRef<TOneColorPixelShaderMRT<1> > MRTPixelShader(ShaderMap);
-			PixelShader = *MRTPixelShader;
-		}
-		break;
-	}
+	TOneColorPixelShaderMRT::FPermutationDomain PermutationVector;
+	PermutationVector.Set<TOneColorPixelShaderMRT::TOneColorPixelShaderNumOutputs>(NumActiveRenderTargets);
+	TShaderMapRef<TOneColorPixelShaderMRT>PixelShader(ShaderMap, PermutationVector);
 
 	FGraphicsPipelineStateInitializer GraphicsPSOInit;
 	RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -337,7 +315,7 @@ void FDeferredShadingSceneRenderer::ClearGBufferAtMaxZ(FRHICommandList& RHICmdLi
 
 	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GetVertexDeclarationFVector4();
 	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(PixelShader);
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 	GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
 
 	SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -1804,11 +1782,6 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	if (IsForwardShadingEnabled(ShaderPlatform))
 	{
 		RenderForwardShadingShadowProjections(RHICmdList, ForwardScreenSpaceShadowMask);
-
-		RenderIndirectCapsuleShadows(
-			RHICmdList, 
-			NULL, 
-			NULL);
 	}
 
 	// only temporarily available after early z pass and until base pass
@@ -1845,6 +1818,11 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		ServiceLocalQueue();
 	}
 	
+	if (IsForwardShadingEnabled(ShaderPlatform))
+	{
+		RenderIndirectCapsuleShadows( RHICmdList, NULL,
+			SceneContext.bScreenSpaceAOIsValid ? SceneContext.ScreenSpaceAO->GetRenderTargetItem().TargetableTexture : NULL);
+	}
 	checkSlow(RHICmdList.IsOutsideRenderPass());
 
 	if (bRenderDeferredLighting)

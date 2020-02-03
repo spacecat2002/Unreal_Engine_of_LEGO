@@ -165,7 +165,8 @@ void FCanvasTileRendererItem::FRenderData::RenderTiles(
 	FMeshPassProcessorRenderState& DrawRenderState,
 	const FSceneView& View,
 	bool bIsHitTesting,
-	bool bNeedsToSwitchVerticalAxis)
+	bool bNeedsToSwitchVerticalAxis,
+	bool bUse128bitRT)
 {
 	check(IsInRenderingThread());
 
@@ -184,7 +185,7 @@ void FCanvasTileRendererItem::FRenderData::RenderTiles(
 		Mesh.MaterialRenderProxy = MaterialRenderProxy;
 		Mesh.Elements[0].FirstIndex = CanvasTileIndexCount * TileIdx;
 
-		RendererModule.DrawTileMesh(RHICmdList, DrawRenderState, View, Mesh, bIsHitTesting, Tile.HitProxyId);
+		RendererModule.DrawTileMesh(RHICmdList, DrawRenderState, View, Mesh, bIsHitTesting, Tile.HitProxyId, bUse128bitRT);
 	}
 
 	ReleaseTileMesh();
@@ -282,8 +283,18 @@ bool FCanvasTileRendererItem::Render_GameThread(const FCanvas* Canvas, FRenderTh
 	const bool bIsHitTesting = Canvas->IsHitTesting();
 	const bool bDeleteOnRender = Canvas->GetAllowedModes() & FCanvas::Allow_DeleteOnRender;
 
+	bool bRequiresExplicit128bitRT= false;
+	if (CanvasRenderTarget)
+	{
+		FTexture2DRHIRef CanvasRTTexture = CanvasRenderTarget->GetRenderTargetTexture();
+		if (CanvasRTTexture)
+		{
+			bRequiresExplicit128bitRT = PlatformRequires128bitRT(CanvasRTTexture->GetFormat());
+		}
+	}
+
 	RenderScope.EnqueueRenderCommand(
-		[LocalData = Data, View, bIsHitTesting, bNeedsToSwitchVerticalAxis]
+		[LocalData = Data, View, bIsHitTesting, bNeedsToSwitchVerticalAxis, bRequiresExplicit128bitRT]
 		(FRHICommandListImmediate& RHICmdList)
 	{
 		FMeshPassProcessorRenderState DrawRenderState(*View);
@@ -291,7 +302,7 @@ bool FCanvasTileRendererItem::Render_GameThread(const FCanvas* Canvas, FRenderTh
 		// disable depth test & writes
 		DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_Always>::GetRHI());
 
-		LocalData->RenderTiles(RHICmdList, DrawRenderState, *View, bIsHitTesting, bNeedsToSwitchVerticalAxis);
+		LocalData->RenderTiles(RHICmdList, DrawRenderState, *View, bIsHitTesting, bNeedsToSwitchVerticalAxis, bRequiresExplicit128bitRT);
 
 		delete View->Family;
 		delete View;

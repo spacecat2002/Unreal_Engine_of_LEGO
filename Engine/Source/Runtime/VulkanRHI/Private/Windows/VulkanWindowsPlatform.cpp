@@ -206,7 +206,7 @@ void FVulkanWindowsPlatform::CreateSurface(void* WindowHandle, VkInstance Instan
 
 bool FVulkanWindowsPlatform::SupportsDeviceLocalHostVisibleWithNoPenalty(EGpuVendorId VendorId)
 {
-	static bool bIsWin10 = FWindowsPlatformMisc::VerifyWindowsVersion(10, 0) /*Win10*/;
+	static bool bIsWin10 = FPlatformMisc::VerifyWindowsVersion(10, 0) /*Win10*/;
 	return (VendorId == EGpuVendorId::Amd && bIsWin10);
 }
 

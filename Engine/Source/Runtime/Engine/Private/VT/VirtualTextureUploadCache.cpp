@@ -16,11 +16,8 @@ static const bool ALLOW_COPY_FROM_BUFFER = false;
 // this is slow under D3D11
 // Should be pretty decent on D3D12X...UpdateTexture does make an extra copy of the data, but Lock/Unlock texture also buffers an extra copy of texture on this platform
 // Might also be worth enabling this path on PC D3D12, need to measure
-// 'ALLOW_COPY_FROM_BUFFER' would still be better, but involves more Xbox-specific RHI work
-#if PLATFORM_XBOXONE
-static const bool ALLOW_UPDATE_TEXTURE = true;
-#else
-static const bool ALLOW_UPDATE_TEXTURE = false;
+#if !defined(ALLOW_UPDATE_TEXTURE)
+	#define ALLOW_UPDATE_TEXTURE 0
 #endif
 
 DECLARE_MEMORY_STAT_POOL(TEXT("Total GPU Upload Memory"), STAT_TotalGPUUploadSize, STATGROUP_VirtualTextureMemory, FPlatformMemory::MCR_GPU);
@@ -273,7 +270,8 @@ void FVirtualTextureUploadCache::SubmitTile(FRHICommandListImmediate& RHICmdList
 		// (we're using persist mapped buffer here, so this is the only synchronization method in place...without this delay we'd get corrupt textures)
 		AddToList(LIST_SUBMITTED, Index);
 	}
-	else if(ALLOW_UPDATE_TEXTURE)
+	else
+#if ALLOW_UPDATE_TEXTURE	
 	{
 		const FUpdateTextureRegion2D UpdateRegion(InDestX * TileSize, InDestY * TileSize, InSkipBorderSize, InSkipBorderSize, TileSize, TileSize);
 		RHICmdList.UpdateTexture2D(InDestTexture, 0u, UpdateRegion, Entry.Stride, (uint8*)Entry.Memory);
@@ -281,7 +279,7 @@ void FVirtualTextureUploadCache::SubmitTile(FRHICommandListImmediate& RHICmdList
 		// UpdateTexture2D makes internal copy of data, no need to wait before re-using tile
 		AddToList(PoolEntry.FreeTileListHead, Index);
 	}
-	else
+#else
 	{
 		Entry.RHISubmitTexture = InDestTexture;
 		Entry.SubmitDestX = InDestX;
@@ -292,6 +290,7 @@ void FVirtualTextureUploadCache::SubmitTile(FRHICommandListImmediate& RHICmdList
 		// move to list of batched updates for the current pool
 		AddToList(PoolEntry.SubmitTileListHead, Index);
 	}
+#endif
 }
 
 void FVirtualTextureUploadCache::CancelTile(const FVTUploadTileHandle& InHandle)

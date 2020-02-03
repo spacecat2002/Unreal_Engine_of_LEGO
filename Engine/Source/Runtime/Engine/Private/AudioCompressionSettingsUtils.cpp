@@ -4,7 +4,12 @@
 #include "AudioCompressionSettings.h"
 
 #define ENABLE_PLATFORM_COMPRESSION_OVERRIDES 1
-#define PLATFORM_SUPPORTS_COMPRESSION_OVERRIDES (PLATFORM_ANDROID && !PLATFORM_LUMIN) || PLATFORM_IOS || PLATFORM_SWITCH || PLATFORM_XBOXONE || PLATFORM_PS4 || PLATFORM_WINDOWS
+
+#if defined(PLATFORM_COMPRESSION_OVERRIDE_CATEGORY)
+	#define PLATFORM_SUPPORTS_COMPRESSION_OVERRIDES 1
+#else
+	#define PLATFORM_SUPPORTS_COMPRESSION_OVERRIDES (PLATFORM_ANDROID && !PLATFORM_LUMIN) || PLATFORM_IOS || PLATFORM_SWITCH || PLATFORM_PS4 || PLATFORM_WINDOWS
+#endif
 
 #if PLATFORM_ANDROID && !PLATFORM_LUMIN && ENABLE_PLATFORM_COMPRESSION_OVERRIDES
 #include "AndroidRuntimeSettings.h"
@@ -81,11 +86,11 @@ void CacheCurrentPlatformAudioCookOverrides(FPlatformAudioCookOverrides& OutOver
 #elif PLATFORM_SWITCH
 	const TCHAR* CategoryName = TEXT("/Script/SwitchRuntimeSettings.SwitchRuntimeSettings");
 #elif PLATFORM_WINDOWS
-	const TCHAR* CategoryName = TEXT("/Script/WindowsTargetPlatform.WindowsTargetSettings");
+	const TCHAR* CategoryName = FPlatformProperties::GetRuntimeSettingsClassName();
 #elif PLATFORM_PS4
 	const TCHAR* CategoryName = TEXT("/Script/PS4PlatformEditor.PS4TargetSettings");
-#elif PLATFORM_XBOXONE
-	const TCHAR* CategoryName = TEXT("/Script/XboxOnePlatformEditor.XboxOneTargetSettings");
+#elif defined(PLATFORM_COMPRESSION_OVERRIDE_CATEGORY)
+	const TCHAR* CategoryName = PLATFORM_COMPRESSION_OVERRIDE_CATEGORY;
 #else
 	const TCHAR* CategoryName = TEXT("");
 #endif

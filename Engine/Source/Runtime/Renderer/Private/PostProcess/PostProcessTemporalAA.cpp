@@ -14,7 +14,7 @@ namespace
 
 inline bool DoesPlatformSupportTemporalHistoryUpscale(EShaderPlatform Platform)
 {
-	return (IsPCPlatform(Platform) || FDataDrivenShaderPlatformInfo::GetInfo(Platform).bSupportsTemporalHistoryUpscale)
+	return (IsPCPlatform(Platform) || FDataDrivenShaderPlatformInfo::GetSupportsTemporalHistoryUpscale(Platform))
 		&& IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5);
 }
 

@@ -67,6 +67,7 @@ void FEditorPrimitivesBasePassMeshProcessor::ProcessDeferredShadingPath(const FM
 		FeatureLevel,
 		bRenderAtmosphericFog,
 		bRenderSkylight,
+		false,
 		BasePassShaders.HullShader,
 		BasePassShaders.DomainShader,
 		BasePassShaders.VertexShader,

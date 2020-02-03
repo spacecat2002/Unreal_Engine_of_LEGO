@@ -22,6 +22,10 @@
 #define D3D12RHI_USE_ASYNC_PRELOAD 0
 #endif
 
+#ifndef D3D12RHI_USE_D3DDISASSEMBLE
+#define D3D12RHI_USE_D3DDISASSEMBLE 1
+#endif
+
 // D3D12RHI PSO file cache doesn't work anymore. Use FPipelineFileCache instead
 static TAutoConsoleVariable<int32> CVarPipelineStateDiskCache(
 	TEXT("D3D12.PSO.DiskCache"),
@@ -603,6 +607,7 @@ DECLARE_CYCLE_STAT(TEXT("Create time"), STAT_PSOCreateTime, STATGROUP_D3D12Pipel
 
 static void DumpShaderAsm(const D3D12_SHADER_BYTECODE& Shader, const TCHAR* Stage)
 {
+#if D3D12RHI_USE_D3DDISASSEMBLE
 	if (Shader.pShaderBytecode)
 	{
 		ID3DBlob* blob = nullptr;
@@ -612,6 +617,7 @@ static void DumpShaderAsm(const D3D12_SHADER_BYTECODE& Shader, const TCHAR* Stag
 			blob->Release();
 		}
 	}
+#endif
 }
 
 // Thread-safe create graphics/compute pipeline state. Conditionally load/store the PSO using a Pipeline Library.

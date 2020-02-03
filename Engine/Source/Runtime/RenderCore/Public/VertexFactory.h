@@ -546,7 +546,7 @@ public:
 	virtual uint64 GetStaticBatchElementVisibility(const class FSceneView& View, const struct FMeshBatch* Batch, const void* InViewCustomData = nullptr) const { return 1; }
 
 	bool NeedsDeclaration() const { return bNeedsDeclaration; }
-	bool SupportsManualVertexFetch(ERHIFeatureLevel::Type InFeatureLevel) const 
+	inline bool SupportsManualVertexFetch(const FStaticFeatureLevel InFeatureLevel) const
 	{ 
 		check(InFeatureLevel != ERHIFeatureLevel::Num);
 		return bSupportsManualVertexFetch && (InFeatureLevel > ERHIFeatureLevel::ES3_1) && RHISupportsManualVertexFetch(GMaxRHIShaderPlatform);

@@ -72,6 +72,9 @@
 #if !defined(PLATFORM_UNIX)
 	#define PLATFORM_UNIX 0
 #endif
+#if !defined(PLATFORM_MICROSOFT)
+	#define PLATFORM_MICROSOFT 0
+#endif
 #if !defined(PLATFORM_HOLOLENS)
 #define PLATFORM_HOLOLENS 0
 #endif
@@ -549,6 +552,17 @@
 	#define	PLATFORM_HAS_FPlatformVirtualMemoryBlock 1
 #endif
 
+#ifndef PLATFORM_USE_GENERIC_LAUNCH_IMPLEMENTATION
+	#define PLATFORM_USE_GENERIC_LAUNCH_IMPLEMENTATION			0
+#endif
+
+#ifndef PLATFORM_USES_FIXED_HDR_SETTING
+	#define PLATFORM_USES_FIXED_HDR_SETTING 0
+#endif
+
+#ifndef PLATFORM_MANAGES_HDR_SETTING
+	#define PLATFORM_MANAGES_HDR_SETTING 0
+#endif
 
 // deprecated, do not use
 #define PLATFORM_HAS_THREADSAFE_RHIGetRenderQueryResult	#
