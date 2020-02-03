@@ -2,6 +2,7 @@
 #include "HandMeshObserver.h"
 #include "FastConversion.h"
 
+#include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Perception.People.h>
 
 
@@ -18,8 +19,7 @@ namespace WindowsMixedReality
 
 	void HandMeshUpdateObserver::InitAsync(SpatialInteractionSource source)
 	{
-#if 0
-//#if PLATFORM_HOLOLENS
+#if PLATFORM_HOLOLENS
 		m_sourceId = source.Id();
 		CoCreateGuid(&m_guid);
 		switch (source.Handedness())
