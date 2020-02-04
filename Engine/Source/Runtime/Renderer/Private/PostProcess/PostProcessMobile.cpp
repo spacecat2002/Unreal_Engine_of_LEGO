@@ -3299,14 +3299,14 @@ void FRCPassPostProcessHistogramEyeAdaptationES2::Process(FRenderingCompositePas
 	
 	check(EyeAdaptationThisFrameBuffer && EyeAdaptationLastFrameBuffer);
 
-	const FSceneRenderTargetItem& InputRenderTarget = GetInput(ePId_Input0)->GetOutput()->PooledRenderTarget->GetRenderTargetItem();
+	FRHITexture* InputRHITexture = GetInput(ePId_Input0)->IsValid() ? GetInput(ePId_Input0)->GetOutput()->PooledRenderTarget->GetRenderTargetItem().ShaderResourceTexture : GSystemTextures.ZeroUIntDummy->GetRenderTargetItem().ShaderResourceTexture;
 
 	{
 		TShaderMapRef<FHistogramEyeAdaptationCS_ES2> ComputeShader(Context.GetShaderMap());
 
 		Context.RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
 
-		ComputeShader->Set(Context, EyeAdaptationLastFrameBuffer->SRV, InputRenderTarget.ShaderResourceTexture, EyeAdaptationThisFrameBuffer->UAV);
+		ComputeShader->Set(Context, EyeAdaptationLastFrameBuffer->SRV, InputRHITexture, EyeAdaptationThisFrameBuffer->UAV);
 
 		DispatchComputeShader(Context.RHICmdList, *ComputeShader, 1, 1, 1);
 
