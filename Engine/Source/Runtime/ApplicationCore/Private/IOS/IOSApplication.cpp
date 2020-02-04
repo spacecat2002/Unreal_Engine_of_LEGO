@@ -276,6 +276,12 @@ void FIOSApplication::OnAccessibleEventRaised(TSharedRef<IAccessibleWidget> Widg
 	}
 	case EAccessibleEvent::WidgetRemoved:
 		dispatch_async(dispatch_get_main_queue(), ^{
+			// There is an ensure() in FSlateAccessibleMessageHandler::OnWidgetRemoved that makes sure the Slate Accessibility Tree
+			// is up to date and the removed widget doesn't have an invalid parent.
+			// Also, since we update the children of each FIOSAccessibilityLeaf in [FIOSAccessibilityCache  UpdateAllProperties], we don't need to
+			// handle reparenting/orphaned accessibility children here
+			FIOSAccessibilityLeaf* Element = [[FIOSAccessibilityCache AccessibilityElementCache] GetAccessibilityElement:Id];
+			[Element SetParent: IAccessibleWidget::InvalidAccessibleWidgetId];
 			[[FIOSAccessibilityCache AccessibilityElementCache] RemoveAccessibilityElement:Id];
 		});
 		break;
