@@ -7005,11 +7005,6 @@ int32 FHLSLMaterialTranslator::TextureCoordinateOffset()
 /**Experimental access to the EyeAdaptation RT for Post Process materials. Can be one frame behind depending on the value of BlendableLocation. */
 int32 FHLSLMaterialTranslator::EyeAdaptation()
 {
-	if (ErrorUnlessFeatureLevelSupported(ERHIFeatureLevel::SM5) == INDEX_NONE)
-	{
-		return INDEX_NONE;
-	}
-
 	if( ShaderFrequency != SF_Pixel )
 	{
 		return NonPixelShaderExpressionError();
