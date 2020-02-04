@@ -343,12 +343,25 @@ struct FPhysScenePendingComponentTransform_Chaos
 	/** Component to move */
 	TWeakObjectPtr<UPrimitiveComponent> OwningComp;
 	/** New transform from physics engine */
-	FTransform NewTransform;
-
-	FPhysScenePendingComponentTransform_Chaos(UPrimitiveComponent* InOwningComp, const FTransform& InNewTransform)
+	FVector NewTranslation;
+	FQuat NewRotation;
+	bool bHasValidTransform;
+	bool bHasWakeEvent;
+	
+	FPhysScenePendingComponentTransform_Chaos(UPrimitiveComponent* InOwningComp, const FVector& InNewTranslation, const FQuat& InNewRotation, const bool InHasWakeEvent)
 		: OwningComp(InOwningComp)
-		, NewTransform(InNewTransform)
+		, NewTranslation(InNewTranslation)
+		, NewRotation(InNewRotation)
+		, bHasValidTransform(true)
+		, bHasWakeEvent(InHasWakeEvent)
 	{}
+
+	FPhysScenePendingComponentTransform_Chaos(UPrimitiveComponent* InOwningComp)
+		: OwningComp(InOwningComp)
+		, bHasValidTransform(false)
+		, bHasWakeEvent(true)
+	{}
+
 };
 
 FPhysScene_Chaos::FPhysScene_Chaos(AActor* InSolverActor
@@ -1480,6 +1493,16 @@ void FPhysScene_ChaosInterface::AddRadialForceToBody_AssumesLocked(FBodyInstance
 
 void FPhysScene_ChaosInterface::ClearForces_AssumesLocked(FBodyInstance* BodyInstance, bool bAllowSubstepping)
 {
+	FPhysicsActorHandle& Handle = BodyInstance->GetPhysicsActorHandle();
+	if (ensure(FPhysicsInterface::IsValid(Handle)))
+	{
+		Chaos::TPBDRigidParticle<float, 3>* Rigid = Handle->CastToRigidParticle();
+		if (ensure(Rigid))
+		{
+			Rigid->SetF(Chaos::TVector<float, 3>(0.f,0.f,0.f));
+			Rigid->MarkClean(Chaos::EParticleFlags::F);
+		}
+	}
 }
 
 void FPhysScene_ChaosInterface::AddTorque_AssumesLocked(FBodyInstance* BodyInstance, const FVector& Torque, bool bAllowSubstepping, bool bAccelChange)
@@ -1512,7 +1535,16 @@ void FPhysScene_ChaosInterface::AddTorque_AssumesLocked(FBodyInstance* BodyInsta
 
 void FPhysScene_ChaosInterface::ClearTorques_AssumesLocked(FBodyInstance* BodyInstance, bool bAllowSubstepping)
 {
-	// #todo : Implement
+	FPhysicsActorHandle& Handle = BodyInstance->GetPhysicsActorHandle();
+	if (ensure(FPhysicsInterface::IsValid(Handle)))
+	{
+		Chaos::TPBDRigidParticle<float, 3>* Rigid = Handle->CastToRigidParticle();
+		if (ensure(Rigid))
+		{
+			Rigid->SetTorque(Chaos::TVector<float, 3>(0.f, 0.f, 0.f));
+			Rigid->MarkClean(Chaos::EParticleFlags::Torque);
+		}
+	}
 }
 
 void FPhysScene_ChaosInterface::SetKinematicTarget_AssumesLocked(FBodyInstance* BodyInstance, const FTransform& TargetTM, bool bAllowSubstepping)
@@ -2054,29 +2086,23 @@ void FPhysScene_ChaosInterface::SyncBodies(Chaos::FPhysicsSolver* Solver)
 						UPrimitiveComponent* OwnerComponent = BodyInstance->OwnerComponent.Get();
 						if (OwnerComponent != nullptr)
 						{
-							AActor* Owner = OwnerComponent->GetOwner();
-
+							bool bPendingMove = false;
 							if (BodyInstance->InstanceBodyIndex == INDEX_NONE)
 							{
 								Chaos::TRigidTransform<float, 3> NewTransform(ActiveParticle->X(), ActiveParticle->R());
 
 								if (!NewTransform.EqualsNoScale(OwnerComponent->GetComponentTransform()))
 								{
+									bPendingMove = true;
 									const FVector MoveBy = NewTransform.GetLocation() - OwnerComponent->GetComponentTransform().GetLocation();
 									const FQuat NewRotation = NewTransform.GetRotation();
-
-									OwnerComponent->MoveComponent(MoveBy, NewRotation, false, NULL, MOVECOMP_SkipPhysicsMove);
-								}
-
-								if (Owner != NULL && !Owner->IsPendingKill())
-								{
-									Owner->CheckStillInWorld();
+									PendingTransforms.Add(FPhysScenePendingComponentTransform_Chaos(OwnerComponent, MoveBy, NewRotation, Proxy->HasAwakeEvent()));
 								}
 							}
 
-							if (Proxy->HasAwakeEvent())
+							if (Proxy->HasAwakeEvent() && !bPendingMove)
 							{
-								OwnerComponent->DispatchWakeEvents(ESleepEvent::SET_Wakeup, NAME_None);
+								PendingTransforms.Add(FPhysScenePendingComponentTransform_Chaos(OwnerComponent));
 							}
 							Proxy->ClearEvents();
 						}
@@ -2087,6 +2113,31 @@ void FPhysScene_ChaosInterface::SyncBodies(Chaos::FPhysicsSolver* Solver)
 			{
 				FGeometryCollectionPhysicsProxy* Proxy = static_cast<FGeometryCollectionPhysicsProxy*>(ProxyBase);
 				Proxy->PullFromPhysicsState();
+			}
+		}
+	}
+	for (const FPhysScenePendingComponentTransform_Chaos& ComponentTransform : PendingTransforms)
+	{
+		if (ComponentTransform.OwningComp != nullptr)
+		{
+			AActor* Owner = ComponentTransform.OwningComp->GetOwner();
+
+			if (ComponentTransform.bHasValidTransform)
+			{
+				ComponentTransform.OwningComp->MoveComponent(ComponentTransform.NewTranslation, ComponentTransform.NewRotation, false, NULL, MOVECOMP_SkipPhysicsMove);
+			}
+
+			if (Owner != NULL && !Owner->IsPendingKill())
+			{
+				Owner->CheckStillInWorld();
+			}
+		}
+
+		if (ComponentTransform.OwningComp != nullptr)
+		{
+			if (ComponentTransform.bHasWakeEvent)
+			{
+				ComponentTransform.OwningComp->DispatchWakeEvents(ESleepEvent::SET_Wakeup, NAME_None);
 			}
 		}
 	}
