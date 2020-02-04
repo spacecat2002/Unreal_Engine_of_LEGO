@@ -284,13 +284,11 @@ bool FCanvasTileRendererItem::Render_GameThread(const FCanvas* Canvas, FRenderTh
 	const bool bDeleteOnRender = Canvas->GetAllowedModes() & FCanvas::Allow_DeleteOnRender;
 
 	bool bRequiresExplicit128bitRT= false;
-	if (CanvasRenderTarget)
+
+	FTexture2DRHIRef CanvasRTTexture = CanvasRenderTarget->GetRenderTargetTexture();
+	if (CanvasRTTexture)
 	{
-		FTexture2DRHIRef CanvasRTTexture = CanvasRenderTarget->GetRenderTargetTexture();
-		if (CanvasRTTexture)
-		{
-			bRequiresExplicit128bitRT = PlatformRequires128bitRT(CanvasRTTexture->GetFormat());
-		}
+		bRequiresExplicit128bitRT = PlatformRequires128bitRT(CanvasRTTexture->GetFormat());
 	}
 
 	RenderScope.EnqueueRenderCommand(
