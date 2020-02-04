@@ -1547,17 +1547,17 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 
 				if (bUseEyeAdaptation)
 				{
-					if (bUseHistogramEyeAdaptation)
-					{
-						FRenderingCompositePass* HistogramEyeAdaptationPass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessHistogramEyeAdaptationES2());
-						HistogramEyeAdaptationPass->SetInput(ePId_Input0, PostProcessHistogram);
-						PostProcessEyeAdaptation = FRenderingCompositeOutputRef(HistogramEyeAdaptationPass);
-					}
-					else
+					if (bUseBasicEyeAdaptation)
 					{
 						FRenderingCompositePass* BasicEyeAdaptationPass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessBasicEyeAdaptationES2());
 						BasicEyeAdaptationPass->SetInput(ePId_Input0, PostProcessAverageLuminance);
 						PostProcessEyeAdaptation = FRenderingCompositeOutputRef(BasicEyeAdaptationPass);
+					}
+					else
+					{
+						FRenderingCompositePass* HistogramEyeAdaptationPass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessHistogramEyeAdaptationES2());
+						HistogramEyeAdaptationPass->SetInput(ePId_Input0, PostProcessHistogram);
+						PostProcessEyeAdaptation = FRenderingCompositeOutputRef(HistogramEyeAdaptationPass);
 					}
 
 //					PostProcessEyeAdaptation.GetOutput()->PooledRenderTarget = Context.View.GetLastEyeAdaptationRT(Context.RHICmdList);
