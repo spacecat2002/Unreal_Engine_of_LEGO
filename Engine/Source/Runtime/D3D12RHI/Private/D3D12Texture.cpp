@@ -1573,7 +1573,7 @@ void* TD3D12Texture2D<RHIResourceType>::Lock(class FRHICommandListImmediate* RHI
 
 	void* Data = nullptr;
 
-	if (GetParentDevice()->GetOwningRHI()->HandleSpecialLock(Data, MipIndex, ArrayIndex, GetFlags(), LockMode, GetTextureLayout(), RawTextureMemory, DestStride))
+	if (GetParentDevice()->GetOwningRHI()->HandleSpecialLock(Data, MipIndex, ArrayIndex, RHIResourceType::GetFlags(), LockMode, GetTextureLayout(), RawTextureMemory, DestStride))
 	{
 		// nothing left to do...
 		check(Data != nullptr);
@@ -1820,7 +1820,7 @@ void TD3D12Texture2D<RHIResourceType>::UnlockInternal(class FRHICommandListImmed
 	void* RawTextureMemory = (void*)ResourceLocation.GetGPUVirtualAddress();
 #endif
 
-	if (GetParentDevice()->GetOwningRHI()->HandleSpecialUnlock(RHICmdList, MipIndex, GetFlags(), GetTextureLayout(), RawTextureMemory))
+	if (GetParentDevice()->GetOwningRHI()->HandleSpecialUnlock(RHICmdList, MipIndex, RHIResourceType::GetFlags(), GetTextureLayout(), RawTextureMemory))
 	{
 		// nothing left to do...
 	}
