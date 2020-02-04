@@ -3442,6 +3442,8 @@ void SetupMobileSceneTextureUniformParameters(
 	{
 		SceneTextureParameters.VirtualTextureFeedbackUAV = GVirtualTextureFeedbackDummyResource.UAV;
 	}
+
+	SceneTextureParameters.EyeAdaptationBuffer = GWhiteVertexBufferWithSRV->ShaderResourceViewRHI;
 }
 
 template< typename TRHICmdList >
