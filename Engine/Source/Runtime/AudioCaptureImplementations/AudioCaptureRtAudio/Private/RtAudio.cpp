@@ -2,6 +2,8 @@
 
 #include "RtAudio.h"
 
+#if WITH_RTAUDIO
+
 #if PLATFORM_MICROSOFT || PLATFORM_MAC
 /************************************************************************/
 /*! \class RtAudio
@@ -10201,3 +10203,5 @@ void RtApi :: byteSwapBuffer( char *buffer, unsigned int samples, RtAudioFormat 
   // vim: et sts=2 sw=2
 
 #endif // PLATFORM_WINDOWS
+
+#endif // WITH_RTAUDIO
