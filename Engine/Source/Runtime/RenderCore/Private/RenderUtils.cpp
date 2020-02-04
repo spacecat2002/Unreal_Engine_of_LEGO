@@ -268,6 +268,27 @@ FTextureWithSRV* GBlackTextureWithUAV = new TGlobalResource<FColoredTexture<0,0,
 
 FVertexBufferWithSRV* GEmptyVertexBufferWithUAV = new TGlobalResource<FEmptyVertexBuffer>;
 
+class FWhiteVertexBuffer : public FVertexBufferWithSRV
+{
+public:
+	virtual void InitRHI() override
+	{
+		// Create the texture RHI.  		
+		FRHIResourceCreateInfo CreateInfo(TEXT("WhiteVertexBuffer"));
+
+		VertexBufferRHI = RHICreateVertexBuffer(sizeof(FVector4), BUF_Static | BUF_ShaderResource, CreateInfo);
+
+		FVector4* BufferData = (FVector4*)RHILockVertexBuffer(VertexBufferRHI, 0, sizeof(FVector4), RLM_WriteOnly);
+		*BufferData = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+		RHIUnlockVertexBuffer(VertexBufferRHI);
+
+		// Create a view of the buffer
+		ShaderResourceViewRHI = RHICreateShaderResourceView(VertexBufferRHI, sizeof(FVector4), PF_A32B32G32R32F);
+	}
+};
+
+FVertexBufferWithSRV* GWhiteVertexBufferWithSRV = new TGlobalResource<FWhiteVertexBuffer>;
+
 /**
  * Bulk data interface for providing a single black color used to initialize a
  * volume texture.
