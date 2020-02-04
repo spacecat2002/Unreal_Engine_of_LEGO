@@ -4,11 +4,13 @@
 
 #if WITH_EDITOR
 
+#include "Animation/AnimCompressionTypes.h"
 #include "TickableEditorObject.h"
 
 class UAnimSequence;
 class FDerivedDataAnimationCompression;
 struct FCompressibleAnimData;
+
 
 extern ENGINE_API class FAsyncCompressedAnimationsManagement* GAsyncCompressedAnimationsTracker;
 
