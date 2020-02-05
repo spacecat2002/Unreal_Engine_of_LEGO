@@ -230,8 +230,7 @@ public:
 
 	static bool ShouldCompilePermutation(EShaderPlatform Platform, const class FMaterial* Material, const class FShaderType* ShaderType)
 	{
-		return (Platform == SP_OPENGL_ES2_ANDROID) // Android platforms that might not support hardware instancing
-			&& FMeshParticleVertexFactory::ShouldCompilePermutation(Platform, Material, ShaderType);
+		return FMeshParticleVertexFactory::ShouldCompilePermutation(Platform, Material, ShaderType);
 	}
 
 	static void ModifyCompilationEnvironment(const FVertexFactoryType* Type, EShaderPlatform Platform, const FMaterial* Material, FShaderCompilerEnvironment& OutEnvironment)

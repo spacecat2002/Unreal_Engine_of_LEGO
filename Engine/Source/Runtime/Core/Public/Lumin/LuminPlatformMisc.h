@@ -36,7 +36,7 @@ struct CORE_API FLuminPlatformMisc : public FAndroidMisc
 
 	FORCEINLINE static const TCHAR* GetNullRHIShaderFormat()
 	{
-		return TEXT("GLSL_ES2");
+		return TEXT("GLSL_ES3_1_ANDROID");
 	}
 
 	static void LowLevelOutputDebugString(const TCHAR *Message);

@@ -766,11 +766,6 @@ public:
 
 		// Set a define so we can tell in MaterialTemplate.usf when we are compiling a sprite vertex factory
 		OutEnvironment.SetDefine(TEXT("PARTICLE_SPRITE_FACTORY"),TEXT("1"));
-
-		if (Platform == SP_OPENGL_ES2_ANDROID)
-		{
-			OutEnvironment.CompilerFlags.Add(CFLAG_FeatureLevelES31);
-		}
 	}
 
 	/**
@@ -1007,11 +1002,6 @@ public:
 	{
 		FGlobalShader::ModifyCompilationEnvironment( Parameters, OutEnvironment );
 		OutEnvironment.SetDefine(TEXT("TILES_PER_INSTANCE"), TILES_PER_INSTANCE);
-
-		if (Parameters.Platform == SP_OPENGL_ES2_ANDROID)
-		{
-			OutEnvironment.CompilerFlags.Add(CFLAG_FeatureLevelES31);
-		}
 	}
 
 	/** Default constructor. */
@@ -1081,11 +1071,6 @@ public:
 		OutEnvironment.SetDefine(TEXT("DEPTH_BUFFER_COLLISION"), CollisionMode == PCM_DepthBuffer);
 		OutEnvironment.SetDefine(TEXT("DISTANCE_FIELD_COLLISION"), CollisionMode == PCM_DistanceField);
 		OutEnvironment.SetRenderTargetOutputFormat(0, PF_A32B32G32R32F);
-
-		if (Parameters.Platform == SP_OPENGL_ES2_ANDROID)
-		{
-			OutEnvironment.CompilerFlags.Add(CFLAG_FeatureLevelES31);
-		}
 	}
 
 	/** Default constructor. */
@@ -1286,11 +1271,6 @@ public:
 		FGlobalShader::ModifyCompilationEnvironment( Parameters, OutEnvironment );
 		OutEnvironment.SetDefine( TEXT("PARTICLE_CLEAR_PIXELSHADER"), 1 );
 		OutEnvironment.SetRenderTargetOutputFormat(0, PF_A32B32G32R32F);
-
-		if (Parameters.Platform == SP_OPENGL_ES2_ANDROID)
-		{
-			OutEnvironment.CompilerFlags.Add(CFLAG_FeatureLevelES31);
-		}
 	}
 
 	/** Default constructor. */
@@ -1733,11 +1713,6 @@ public:
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FGlobalShader::ModifyCompilationEnvironment( Parameters, OutEnvironment );
-
-		if (Parameters.Platform == SP_OPENGL_ES2_ANDROID)
-		{
-			OutEnvironment.CompilerFlags.Add(CFLAG_FeatureLevelES31);
-		}
 	}
 
 	/** Default constructor. */
@@ -1786,14 +1761,7 @@ public:
 
 		OutEnvironment.SetDefine(TEXT("STATIC_PROPERTIES_ONLY"), StaticPropertiesOnly);
 
-		
 		OutEnvironment.SetRenderTargetOutputFormat(0, StaticPropertiesOnly ? PF_A8R8G8B8 : PF_A32B32G32R32F);
-
-		if (Parameters.Platform == SP_OPENGL_ES2_ANDROID)
-		{
-			OutEnvironment.CompilerFlags.Add(CFLAG_FeatureLevelES31);
-		}
-
 	}
 
 	/** Default constructor. */

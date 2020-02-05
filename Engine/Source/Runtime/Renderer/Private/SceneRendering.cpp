@@ -1521,30 +1521,6 @@ void FViewInfo::SetupUniformBufferParameters(
 	ViewUniformShaderParameters.AmbientCubemapTint = FinalPostProcessSettings.AmbientCubemapTint;
 	ViewUniformShaderParameters.AmbientCubemapIntensity = FinalPostProcessSettings.AmbientCubemapIntensity;
 
-	{
-		// Enables HDR encoding mode selection without recompile of all PC shaders during ES2 emulation.
-		ViewUniformShaderParameters.HDR32bppEncodingMode = 0.0f;
-		if (IsMobileHDR32bpp())
-		{
-			EMobileHDRMode MobileHDRMode = GetMobileHDRMode();
-			switch (MobileHDRMode)
-			{
-				case EMobileHDRMode::EnabledMosaic:
-					ViewUniformShaderParameters.HDR32bppEncodingMode = 1.0f;
-				break;
-				case EMobileHDRMode::EnabledRGBE:
-					ViewUniformShaderParameters.HDR32bppEncodingMode = 2.0f;
-				break;
-				case EMobileHDRMode::EnabledRGBA8:
-					ViewUniformShaderParameters.HDR32bppEncodingMode = 3.0f;
-					break;
-				default:
-					checkNoEntry();
-				break;
-			}
-		}
-	}
-
 	ViewUniformShaderParameters.CircleDOFParams = DiaphragmDOF::CircleDofHalfCoc(*this);
 
 	ERHIFeatureLevel::Type RHIFeatureLevel = Scene == nullptr ? GMaxRHIFeatureLevel : Scene->GetFeatureLevel();
@@ -1577,7 +1553,7 @@ void FViewInfo::SetupUniformBufferParameters(
 	
 	ViewUniformShaderParameters.MobilePreviewMode =
 		(GIsEditor &&
-		(RHIFeatureLevel == ERHIFeatureLevel::ES2 || RHIFeatureLevel == ERHIFeatureLevel::ES3_1) &&
+		(RHIFeatureLevel == ERHIFeatureLevel::ES3_1) &&
 		GMaxRHIFeatureLevel > ERHIFeatureLevel::ES3_1) ? 1.0f : 0.0f;
 
 	static const auto MobileMSAACVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileMSAA"));
@@ -2245,12 +2221,6 @@ FIntPoint FSceneRenderer::ApplyResolutionFraction(const FSceneViewFamily& ViewFa
 	// CeilToInt so tha view size is at least 1x1 if ResolutionFraction == FSceneViewScreenPercentageConfig::kMinResolutionFraction.
 	ViewSize.X = FMath::CeilToInt(UnscaledViewSize.X * ResolutionFraction);
 	ViewSize.Y = FMath::CeilToInt(UnscaledViewSize.Y * ResolutionFraction);
-
-	// Mosaic needs the viewport height to be a multiple of 2.
-	if (ViewFamily.GetFeatureLevel() <= ERHIFeatureLevel::ES3_1 && IsMobileHDRMosaic())
-	{
-		ViewSize.Y = ViewSize.Y + (1 & ViewSize.Y);		
-	}
 
 	check(ViewSize.GetMin() > 0);
 

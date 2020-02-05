@@ -54,7 +54,7 @@ public:
 	static bool ShouldCompilePermutation(EShaderPlatform Platform, const class FMaterial* Material, const class FShaderType* ShaderType)
 	{
 		auto FeatureLevel = GetMaxSupportedFeatureLevel(Platform);
-		return (FeatureLevel == ERHIFeatureLevel::ES2 || FeatureLevel == ERHIFeatureLevel::ES3_1) &&
+		return (FeatureLevel == ERHIFeatureLevel::ES3_1) &&
 			(Material->IsUsedWithLandscape() || Material->IsSpecialEngineMaterial());
 	}
 
