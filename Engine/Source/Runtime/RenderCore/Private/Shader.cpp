@@ -43,7 +43,7 @@ static TAutoConsoleVariable<int32> CVarUsePipelines(
 	TEXT("Enable using Shader pipelines."));
 
 static TAutoConsoleVariable<int32> CVarSkipShaderCompression(
-	TEXT("r.SkipShaderCompression"),
+	TEXT("r.Shaders.SkipCompression"),
 	0,
 	TEXT("Skips shader compression after compiling. Shader compression time can be quite significant when using debug shaders. This CVar is only valid in non-shipping/test builds."),
 	ECVF_ReadOnly | ECVF_Cheat
