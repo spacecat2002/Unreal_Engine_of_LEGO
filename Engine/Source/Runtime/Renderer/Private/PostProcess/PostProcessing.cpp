@@ -1019,6 +1019,8 @@ void AddDebugPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& Vi
 		PassInputs.SceneColor = SceneColor;
 		PassInputs.bOutputInHDR = bViewFamilyOutputInHDR;
 		PassInputs.bGammaOnly = true;
+		// Do eye adaptation in ray tracing debug modes to match raster buffer visualization modes
+		PassInputs.EyeAdaptationTexture = GetEyeAdaptationTexture(GraphBuilder, View);;
 
 		SceneColor = AddTonemapPass(GraphBuilder, View, PassInputs);
 	}
