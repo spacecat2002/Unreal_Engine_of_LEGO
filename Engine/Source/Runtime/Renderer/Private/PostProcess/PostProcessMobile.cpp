@@ -384,10 +384,17 @@ void FRCPassPostProcessBloomSetupES2::Process(FRenderingCompositePassContext& Co
 	SCOPED_DRAW_EVENT(Context.RHICmdList, PostProcessBloomSetup);
 
 	uint32 Variation = UseBloom | (UseSun << 1) | (UseDof << 2) | (UseEyeAdaptation << 3) | (UseMSAA << 4);
+	bool bMobileSupportBloomSetupRareCasesOff = CVarMobileSupportBloomSetupRareCases.GetValueOnRenderThread() == 0;
+
+
+#define SET_SHADER_SINGLE_CASE(ShaderCase) \
+		case ShaderCase: \
+			SetShaderAndExecute<ShaderCase>(Context);\
+		break
 
 #define SET_SHADER_CASE(ShaderCase, FallBackCase) \
 		case ShaderCase: \
-		if (CVarMobileSupportBloomSetupRareCases.GetValueOnRenderThread() == 0)		\
+		if (bMobileSupportBloomSetupRareCasesOff)		\
 		{						\
 			SetShaderAndExecute<FallBackCase>(Context);\
 		} \
@@ -399,24 +406,24 @@ void FRCPassPostProcessBloomSetupES2::Process(FRenderingCompositePassContext& Co
 
 	switch (Variation)
 	{
-		SET_SHADER_CASE(1, 1); // Bloom
-		SET_SHADER_CASE(3, 3); // Bloom + SunShaft
-		SET_SHADER_CASE(5, 5); // Bloom + Dof
-		SET_SHADER_CASE(7, 7); // Bloom + Dof + SunShaft
-		SET_SHADER_CASE(9, 9); // Bloom + EyeAdaptation
-		SET_SHADER_CASE(11, 11); // Bloom + SunShaft + EyeAdaptation
-		SET_SHADER_CASE(13, 13); // Bloom + Dof + EyeAdaptation
-		SET_SHADER_CASE(15, 15); // Bloom + SunShaft + Dof + EyeAdaptation
-		SET_SHADER_CASE(17, 17); // Bloom + MSAA
-		SET_SHADER_CASE(8, 8); // EyeAdaptation
+		SET_SHADER_SINGLE_CASE(1); // Bloom
+		SET_SHADER_SINGLE_CASE(3); // Bloom + SunShaft
+		SET_SHADER_SINGLE_CASE(5); // Bloom + Dof
+		SET_SHADER_SINGLE_CASE(7); // Bloom + Dof + SunShaft
+		SET_SHADER_SINGLE_CASE(9); // Bloom + EyeAdaptation
+		SET_SHADER_SINGLE_CASE(11); // Bloom + SunShaft + EyeAdaptation
+		SET_SHADER_SINGLE_CASE(13); // Bloom + Dof + EyeAdaptation
+		SET_SHADER_SINGLE_CASE(15); // Bloom + SunShaft + Dof + EyeAdaptation
+		SET_SHADER_SINGLE_CASE(17); // Bloom + MSAA
+		SET_SHADER_SINGLE_CASE(8); // EyeAdaptation
 
-		SET_SHADER_CASE(19, 19); // Bloom + SunShaft + MSAA
-		SET_SHADER_CASE(21, 21); // Bloom + Dof + MSAA
-		SET_SHADER_CASE(23, 23); // Bloom + Dof + SunShaft + MSAA
-		SET_SHADER_CASE(25, 25); // Bloom + EyeAdaptation + MSAA
-		SET_SHADER_CASE(27, 27); // Bloom + SunShaft + EyeAdaptation + MSAA
-		SET_SHADER_CASE(29, 29); // Bloom + Dof + EyeAdaptation + MSAA
-		SET_SHADER_CASE(31, 31); // Bloom + SunShaft + Dof + EyeAdaptation + MSAA
+		SET_SHADER_SINGLE_CASE(19); // Bloom + SunShaft + MSAA
+		SET_SHADER_SINGLE_CASE(21); // Bloom + Dof + MSAA
+		SET_SHADER_SINGLE_CASE(23); // Bloom + Dof + SunShaft + MSAA
+		SET_SHADER_SINGLE_CASE(25); // Bloom + EyeAdaptation + MSAA
+		SET_SHADER_SINGLE_CASE(27); // Bloom + SunShaft + EyeAdaptation + MSAA
+		SET_SHADER_SINGLE_CASE(29); // Bloom + Dof + EyeAdaptation + MSAA
+		SET_SHADER_SINGLE_CASE(31); // Bloom + SunShaft + Dof + EyeAdaptation + MSAA
 
 		//Following rare cases could fall back to Bloom, depends on CVarMobileSupportBloomSetupRareCases
 		SET_SHADER_CASE(2, 3); // SunShaft
@@ -427,8 +434,8 @@ void FRCPassPostProcessBloomSetupES2::Process(FRenderingCompositePassContext& Co
 		SET_SHADER_CASE(12, 13); // Dof + EyeAdaptation
 		SET_SHADER_CASE(14, 15); // SunShaft + Dof + EyeAdaptation
 	}
-
 #undef SET_SHADER_CASE
+#undef SET_SHADER_SINGLE_CASE
 }
 
 FPooledRenderTargetDesc FRCPassPostProcessBloomSetupES2::ComputeOutputDesc(EPassOutputId InPassOutputId) const
