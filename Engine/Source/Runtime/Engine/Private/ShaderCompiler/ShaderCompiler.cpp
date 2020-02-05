@@ -154,7 +154,7 @@ static FAutoConsoleVariableRef CVarDumpShaderDebugSCWCommandLine(
 
 static int32 GDumpSCWJobInfoOnCrash = 0;
 static FAutoConsoleVariableRef CVarDumpSCWJobInfoOnCrash(
-	TEXT("r.DumpSCWQueuedJobs"),
+	TEXT("r.ShaderCompiler.DumpQueuedJobs"),
 	GDumpSCWJobInfoOnCrash,
 	TEXT("When set to 1, it will dump a job list to help track down crashes that happened on ShaderCompileWorker.")
 );
