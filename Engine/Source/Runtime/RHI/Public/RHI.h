@@ -376,9 +376,6 @@ extern RHI_API bool GRHISupportsDepthUAV;
 /** True if the RHI and current hardware supports efficient AsyncCompute (by default we assume false and later we can enable this for more hardware) */
 extern RHI_API bool GSupportsEfficientAsyncCompute;
 
-/** True if the RHI supports 'GetHDR32bppEncodeModeES2' shader intrinsic. */
-extern RHI_API bool GSupportsHDR32bppEncodeModeIntrinsic;
-
 /** True if the RHI supports getting the result of occlusion queries when on a thread other than the render thread */
 extern RHI_API bool GSupportsParallelOcclusionQueries;
 

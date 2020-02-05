@@ -977,7 +977,7 @@ bool FHLSLMaterialTranslator::Translate()
 		// Finished compilation, verify final interpolator count restrictions
 		if (CurrentCustomVertexInterpolatorOffset > 0)
 		{
-			const int32 MaxNumScalars = (FeatureLevel == ERHIFeatureLevel::ES2) ? 3 * 2 : 8 * 2;
+			const int32 MaxNumScalars = 8 * 2;
 			const int32 TotalUsedScalars = FinalAllocatedCoords.FindLast(true) + 1;
 
  			if (TotalUsedScalars > MaxNumScalars)
@@ -3639,16 +3639,8 @@ int32 FHLSLMaterialTranslator::WorldPosition(EWorldPositionIncludedOffsets World
 
 	case WPT_ExcludeAllShaderOffsets:
 		{
-			if (FeatureLevel < ERHIFeatureLevel::ES3_1)
-			{
-				// World position excluding shader offsets is not available on ES2
-				FunctionNamePattern = TEXT("Get<PREV>WorldPosition");
-			}
-			else
-			{
-				bNeedsWorldPositionExcludingShaderOffsets = true;
-				FunctionNamePattern = TEXT("Get<PREV>WorldPosition<NO_MATERIAL_OFFSETS>");
-			}
+			bNeedsWorldPositionExcludingShaderOffsets = true;
+			FunctionNamePattern = TEXT("Get<PREV>WorldPosition<NO_MATERIAL_OFFSETS>");
 			break;
 		}
 
@@ -3660,16 +3652,8 @@ int32 FHLSLMaterialTranslator::WorldPosition(EWorldPositionIncludedOffsets World
 
 	case WPT_CameraRelativeNoOffsets:
 		{
-			if (FeatureLevel < ERHIFeatureLevel::ES3_1)
-			{
-				// World position excluding shader offsets is not available on ES2
-				FunctionNamePattern = TEXT("Get<PREV>TranslatedWorldPosition");
-			}
-			else
-			{
-				bNeedsWorldPositionExcludingShaderOffsets = true;
-				FunctionNamePattern = TEXT("Get<PREV>TranslatedWorldPosition<NO_MATERIAL_OFFSETS>");
-			}
+			bNeedsWorldPositionExcludingShaderOffsets = true;
+			FunctionNamePattern = TEXT("Get<PREV>TranslatedWorldPosition<NO_MATERIAL_OFFSETS>");
 			break;
 		}
 
@@ -3856,11 +3840,9 @@ int32 FHLSLMaterialTranslator::MaterialBakingWorldPosition()
 
 int32 FHLSLMaterialTranslator::TextureCoordinate(uint32 CoordinateIndex, bool UnMirrorU, bool UnMirrorV)
 {
-	// For WebGL 1 which is essentially GLES2.0, we can safely assume a higher number of supported vertex attributes
-	// even when we are compiling ES 2 feature level shaders.
 	// For UI materials can safely use more texture coordinates due to how they are packed in the slate material shader
 	// Landscape materials also calculate their texture coordinates in the vertex factory and do not need to be sent using an interpolator
-	const uint32 MaxNumCoordinates = ((Platform == SP_OPENGL_ES2_WEBGL) || (FeatureLevel != ERHIFeatureLevel::ES2) || Material->IsUIMaterial() || Material->IsUsedWithLandscape()) ? 8 : 3;
+	const uint32 MaxNumCoordinates = Material->IsUIMaterial() || Material->IsUsedWithLandscape() ? 8 : 3;
 
 	if (CoordinateIndex >= MaxNumCoordinates)
 	{
@@ -4023,15 +4005,7 @@ int32 FHLSLMaterialTranslator::TextureSample(
 		return INDEX_NONE;
 	}
 
-	if (FeatureLevel == ERHIFeatureLevel::ES2 && ShaderFrequency == SF_Vertex)
-	{
-		if (MipValueMode != TMVM_MipLevel)
-		{
-			Errorf(TEXT("Sampling from vertex textures requires an absolute mip level on feature level ES2!"));
-			return INDEX_NONE;
-		}
-	}
-	else if (ShaderFrequency != SF_Pixel
+	if (ShaderFrequency != SF_Pixel
 		&& ErrorUnlessFeatureLevelSupported(ERHIFeatureLevel::ES3_1) == INDEX_NONE)
 	{
 		return INDEX_NONE;
@@ -4241,17 +4215,6 @@ int32 FHLSLMaterialTranslator::TextureSample(
 		}
 		else if (MipValueMode == TMVM_MipLevel)
 		{
-			// WebGL 2/GLES3.0 (or browsers with the texture lod extension) it is possible to sample from specific mip levels
-			// GLSL >= 100 should support this in the vertex shader
-			bool bES2MipSupport = (Platform == SP_OPENGL_ES2_WEBGL) || (Platform == SP_OPENGL_ES2_ANDROID && ShaderFrequency == SF_Vertex);
-			// Mobile: Sampling of a particular level depends on an extension; iOS does have it by default but
-			// there's a driver as of 7.0.2 that will cause a GPU hang if used with an Aniso > 1 sampler, so show an error for now
-			if (!bES2MipSupport && ErrorUnlessFeatureLevelSupported(ERHIFeatureLevel::ES3_1) == INDEX_NONE)
-			{
-				Errorf(TEXT("Sampling for a specific mip-level is not supported for ES2"));
-				return INDEX_NONE;
-			}
-
 			SampleCode += TEXT("Level(%s") + SamplerStateCode + TEXT(",%s,%s)");
 		}
 		else if (MipValueMode == TMVM_MipBias)
@@ -4871,15 +4834,7 @@ int32 FHLSLMaterialTranslator::SceneColor(int32 Offset, int32 ViewportUV, bool b
 
 int32 FHLSLMaterialTranslator::Texture(UTexture* InTexture, int32& TextureReferenceIndex, EMaterialSamplerType SamplerType, ESamplerSourceMode SamplerSource, ETextureMipValueMode MipValueMode)
 {
-	if (FeatureLevel == ERHIFeatureLevel::ES2 && ShaderFrequency == SF_Vertex)
-	{
-		if (MipValueMode != TMVM_MipLevel)
-		{
-			Errorf(TEXT("Sampling from vertex textures requires an absolute mip level on feature level ES2"));
-			return INDEX_NONE;
-		}
-	}
-	else if (ShaderFrequency != SF_Pixel
+	if (ShaderFrequency != SF_Pixel
 		&& ErrorUnlessFeatureLevelSupported(ERHIFeatureLevel::ES3_1) == INDEX_NONE)
 	{
 		return INDEX_NONE;
@@ -6188,8 +6143,7 @@ int32 FHLSLMaterialTranslator::PixelNormalWS()
 
 int32 FHLSLMaterialTranslator::DDX( int32 X )
 {
-	if ((Platform != SP_OPENGL_ES2_WEBGL) && // WebGL 2/GLES3.0 - DDX() function is available
-		ErrorUnlessFeatureLevelSupported(ERHIFeatureLevel::ES3_1) == INDEX_NONE)
+	if (ErrorUnlessFeatureLevelSupported(ERHIFeatureLevel::ES3_1) == INDEX_NONE)
 	{
 		return INDEX_NONE;
 	}
@@ -6215,8 +6169,7 @@ int32 FHLSLMaterialTranslator::DDX( int32 X )
 
 int32 FHLSLMaterialTranslator::DDY( int32 X )
 {
-	if ((Platform != SP_OPENGL_ES2_WEBGL) && // WebGL 2/GLES3.0 - DDY() function is available
-		ErrorUnlessFeatureLevelSupported(ERHIFeatureLevel::ES3_1) == INDEX_NONE)
+	if (ErrorUnlessFeatureLevelSupported(ERHIFeatureLevel::ES3_1) == INDEX_NONE)
 	{
 		return INDEX_NONE;
 	}
@@ -6324,11 +6277,6 @@ int32 FHLSLMaterialTranslator::Noise(int32 Position, float Scale, int32 Quality,
 			return INDEX_NONE;
 		}
 	}
-	// all others are fine for ES2 feature level
-	else if (ErrorUnlessFeatureLevelSupported(ERHIFeatureLevel::ES2) == INDEX_NONE)
-	{
-		return INDEX_NONE;
-	}
 
 	if(Position == INDEX_NONE || FilterWidth == INDEX_NONE)
 	{
@@ -6374,11 +6322,6 @@ int32 FHLSLMaterialTranslator::Noise(int32 Position, float Scale, int32 Quality,
 
 int32 FHLSLMaterialTranslator::VectorNoise(int32 Position, int32 Quality, uint8 NoiseFunction, bool bTiling, uint32 TileSize)
 {
-	if (ErrorUnlessFeatureLevelSupported(ERHIFeatureLevel::ES2) == INDEX_NONE)
-	{
-		return INDEX_NONE;
-	}
-
 	if (Position == INDEX_NONE)
 	{
 		return INDEX_NONE;

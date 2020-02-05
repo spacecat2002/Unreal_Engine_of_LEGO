@@ -529,12 +529,6 @@ TD3D11Texture2D<BaseResourceType>* FD3D11DynamicRHI::CreateD3D11Texture2D(uint32
 
 	bool bPooledTexture = true;
 
-	if (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES2)
-	{
-		// Remove sRGB read flag when not supported
-		Flags &= ~TexCreate_SRGB;
-	}
-
 	const bool bSRGB = (Flags & TexCreate_SRGB) != 0;
 
 	const DXGI_FORMAT PlatformResourceFormat = FD3D11DynamicRHI::GetPlatformTextureResourceFormat((DXGI_FORMAT)GPixelFormats[Format].PlatformFormat, Flags);
@@ -1144,12 +1138,6 @@ FTexture2DRHIRef FD3D11DynamicRHI::RHIAsyncCreateTexture2D(uint32 SizeX,uint32 S
 	
 	check(GRHISupportsAsyncTextureCreation);
 	check((Flags & InvalidFlags) == 0);
-
-	if (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES2)
-	{
-		// Remove sRGB read flag when not supported
-		Flags &= ~TexCreate_SRGB;
-	}
 
 	const DXGI_FORMAT PlatformResourceFormat = (DXGI_FORMAT)GPixelFormats[Format].PlatformFormat;
 	const DXGI_FORMAT PlatformShaderResourceFormat = FindShaderResourceDXGIFormat(PlatformResourceFormat,((Flags & TexCreate_SRGB) != 0));

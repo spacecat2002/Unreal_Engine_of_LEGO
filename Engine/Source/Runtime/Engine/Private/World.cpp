@@ -6587,7 +6587,6 @@ bool UWorld::IsPlayInMobilePreview() const
 {
 #if WITH_EDITOR
 	if (FPIEPreviewDeviceModule::IsRequestingPreviewDevice()
-		|| FParse::Param(FCommandLine::Get(), TEXT("featureleveles2"))
 		|| FParse::Param(FCommandLine::Get(), TEXT("featureleveles31")))
 	{
 		return true;

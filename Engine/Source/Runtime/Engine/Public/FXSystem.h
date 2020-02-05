@@ -88,9 +88,7 @@ namespace FXConsoleVariables
  */
 inline bool SupportsGPUParticles(EShaderPlatform Platform)
 {
-	return IsFeatureLevelSupported(Platform, ERHIFeatureLevel::ES3_1)
-		|| IsPCPlatform(Platform) // For editor mobile preview 
-		|| Platform == SP_OPENGL_ES2_ANDROID; // Android device might support it (ex. Adreno 420)
+	return IsFeatureLevelSupported(Platform, ERHIFeatureLevel::ES3_1) || IsPCPlatform(Platform); // For editor mobile preview 
 }
 
 /*

@@ -555,7 +555,6 @@ int32 GRHIMaximumWaveSize = 128; // Maximum supported value in SM 6.0
 bool GRHISupportsRHIThread = false;
 bool GRHISupportsRHIOnTaskThread = false;
 bool GRHISupportsParallelRHIExecute = false;
-bool GSupportsHDR32bppEncodeModeIntrinsic = false;
 bool GSupportsParallelOcclusionQueries = false;
 bool GSupportsTransientResourceAliasing = false;
 bool GRHIRequiresRenderTargetForPixelShaderUAVs = false;
@@ -749,13 +748,10 @@ FName ShaderPlatformToPlatformName(EShaderPlatform Platform)
 		return NAME_PLATFORM_PS4;
 	case SP_XBOXONE_D3D12:
 		return NAME_PLATFORM_XBOXONE;
-	case SP_OPENGL_ES2_ANDROID:
 	case SP_OPENGL_ES31_EXT:
 	case SP_VULKAN_ES3_1_ANDROID:
 	case SP_OPENGL_ES3_1_ANDROID:
 		return NAME_PLATFORM_ANDROID;
-	case SP_OPENGL_ES2_WEBGL:
-		return FName(TEXT(PREPROCESSOR_TO_STRING(PLATFORM_HEADER_NAME))); // WIP: platform extension magic
 	case SP_METAL:
 	case SP_METAL_MRT:
 		return NAME_PLATFORM_IOS;
@@ -924,19 +920,9 @@ RHI_API void RHISetMobilePreviewFeatureLevel(ERHIFeatureLevel::Type MobilePrevie
 
 bool RHIGetPreviewFeatureLevel(ERHIFeatureLevel::Type& PreviewFeatureLevelOUT)
 {
-	static bool bForceFeatureLevelES2 = !GIsEditor && FParse::Param(FCommandLine::Get(), TEXT("FeatureLevelES2"));
 	static bool bForceFeatureLevelES3_1 = !GIsEditor && (FParse::Param(FCommandLine::Get(), TEXT("FeatureLevelES31")) || FParse::Param(FCommandLine::Get(), TEXT("FeatureLevelES3_1")));
 
-	if (bForceFeatureLevelES2)
-	{
-		if (!UE_BUILD_SHIPPING)
-		{
-			FMessageDialog::Open(EAppMsgType::Ok, NSLOCTEXT("RHI", "ES2Deprecated", "Warning: FeatureLevel ES2 is deprecated, please use FeatureLevel ES3.1."));
-		}
-
-		PreviewFeatureLevelOUT = ERHIFeatureLevel::ES2;
-	}
-	else if (bForceFeatureLevelES3_1)
+	if (bForceFeatureLevelES3_1)
 	{
 		PreviewFeatureLevelOUT = ERHIFeatureLevel::ES3_1;
 	}
@@ -1149,8 +1135,6 @@ FString LexToString(EShaderPlatform Platform)
 	case SP_PCD3D_ES3_1: return TEXT("PCD3D_ES3_1");
 	case SP_OPENGL_SM5: return TEXT("OPENGL_SM5");
 	case SP_OPENGL_PCES3_1: return TEXT("OPENGL_PCES3_1");
-	case SP_OPENGL_ES2_ANDROID: return TEXT("OPENGL_ES2_ANDROID");
-	case SP_OPENGL_ES2_WEBGL: return TEXT("OPENGL_ES2_WEBGL");
 	case SP_OPENGL_ES31_EXT: return TEXT("OPENGL_ES31_EXT");
 	case SP_OPENGL_ES3_1_ANDROID: return TEXT("OPENGL_ES3_1_ANDROID");
 	case SP_PS4: return TEXT("PS4");
@@ -1171,6 +1155,8 @@ FString LexToString(EShaderPlatform Platform)
 	case SP_VULKAN_SM5: return TEXT("VULKAN_SM5");
 	case SP_VULKAN_SM5_LUMIN: return TEXT("VULKAN_SM5_LUMIN");
 
+	case SP_OPENGL_ES2_ANDROID_REMOVED:
+	case SP_OPENGL_ES2_WEBGL_REMOVED:
 	case SP_OPENGL_ES2_IOS_REMOVED:
 	case SP_VULKAN_SM4_REMOVED:
 	case SP_PCD3D_SM4_REMOVED:

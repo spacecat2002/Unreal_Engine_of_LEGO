@@ -498,8 +498,6 @@ private:
 	template <bool bIncrement>
 	void UpdateVertexMemoryStats() const;
 
-	void ConditionalForce16BitIndexBuffer(EShaderPlatform MaxShaderPlatform, UStaticMesh* Parent);
-
 	void IncrementMemoryStats();
 
 	void DecrementMemoryStats();

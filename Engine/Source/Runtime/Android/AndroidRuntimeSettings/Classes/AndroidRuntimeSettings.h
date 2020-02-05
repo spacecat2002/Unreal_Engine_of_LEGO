@@ -379,10 +379,6 @@ public:
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = Build, meta = (DisplayName = "Support x86_64 [aka x64]"))
 	bool bBuildForX8664;
 
-	// Include shaders for devices that support OpenGL ES 2 and above
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = Build, meta = (DisplayName = "Support OpenGL ES2 (Deprecated)"))
-	bool bBuildForES2;
-
 	// Include shaders for devices supporting OpenGL ES 3.1 and above (default)
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = Build, meta = (DisplayName = "Support OpenGL ES3.1"))
 	bool bBuildForES31;

@@ -178,7 +178,6 @@ protected:
 		CurrentMaxShadowResolution(0),
 		CurrentRSMResolution(0),
 		CurrentTranslucencyLightingVolumeDim(64),
-		CurrentMobile32bpp(0),
 		bCurrentLightPropagationVolume(false),
 		CurrentFeatureLevel(ERHIFeatureLevel::Num),
 		CurrentShadingPath(EShadingPath::Num),
@@ -772,8 +771,6 @@ private:
 	int32 CurrentRSMResolution;
 	/** To detect a change of the CVar r.TranslucencyLightingVolumeDim */
 	int32 CurrentTranslucencyLightingVolumeDim;
-	/** To detect a change of the CVar r.MobileHDR / r.MobileHDR32bppMode */
-	int32 CurrentMobile32bpp;
 	/** To detect a change of the CVar r.MobileMSAA or r.MSAA */
 	int32 CurrentMSAACount;
 	/** To detect a change of the CVar r.Shadow.MinResolution */

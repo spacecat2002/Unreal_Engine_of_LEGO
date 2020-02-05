@@ -1127,9 +1127,6 @@ public:
 	float MaxPixelShaderAdditiveComplexityCount;
 
 	UPROPERTY(globalconfig)
-	float MaxES2PixelShaderAdditiveComplexityCount;
-
-	UPROPERTY(globalconfig)
 	float MaxES3PixelShaderAdditiveComplexityCount;
 
 	/** Range for the lightmap density view mode. */

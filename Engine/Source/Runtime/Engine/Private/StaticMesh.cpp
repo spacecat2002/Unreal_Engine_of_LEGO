@@ -1112,25 +1112,6 @@ FStaticMeshLODResources::~FStaticMeshLODResources()
 	delete AdditionalIndexBuffers;
 }
 
-void FStaticMeshLODResources::ConditionalForce16BitIndexBuffer(EShaderPlatform MaxShaderPlatform, UStaticMesh* Parent)
-{
-	// Initialize the vertex and index buffers.
-	// All platforms supporting Metal also support 32-bit indices.
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	if (IsES2Platform(MaxShaderPlatform) && !IsMetalPlatform(MaxShaderPlatform))
-	{
-		if (IndexBuffer.Is32Bit())
-		{
-			//TODO: Show this as an error in the static mesh editor when doing a Mobile preview so gets fixed in content
-			TArray<uint32> Indices;
-			IndexBuffer.GetCopy(Indices);
-			IndexBuffer.SetIndices(Indices, EIndexBufferStride::Force16Bit);
-			UE_LOG(LogStaticMesh, Warning, TEXT("[%s] Mesh has more that 65535 vertices, incompatible with mobile; forcing 16-bit (will probably cause rendering issues)."), *Parent->GetName());
-		}
-	}
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
-}
-
 template <bool bIncrement>
 void FStaticMeshLODResources::UpdateIndexMemoryStats()
 {
@@ -1181,7 +1162,6 @@ void FStaticMeshLODResources::UpdateVertexMemoryStats() const
 
 void FStaticMeshLODResources::InitResources(UStaticMesh* Parent)
 {
-	ConditionalForce16BitIndexBuffer(GMaxRHIShaderPlatform, Parent);
 	UpdateIndexMemoryStats<true>();
 
 	BeginInitResource(&IndexBuffer);

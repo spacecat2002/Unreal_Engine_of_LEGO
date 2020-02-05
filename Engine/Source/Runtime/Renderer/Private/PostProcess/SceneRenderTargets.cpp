@@ -292,7 +292,6 @@ FSceneRenderTargets::FSceneRenderTargets(const FViewInfo& View, const FSceneRend
 	, CurrentMaxShadowResolution(SnapshotSource.CurrentMaxShadowResolution)
 	, CurrentRSMResolution(SnapshotSource.CurrentRSMResolution)
 	, CurrentTranslucencyLightingVolumeDim(SnapshotSource.CurrentTranslucencyLightingVolumeDim)
-	, CurrentMobile32bpp(SnapshotSource.CurrentMobile32bpp)
 	, CurrentMSAACount(SnapshotSource.CurrentMSAACount)
 	, CurrentMinShadowResolution(SnapshotSource.CurrentMinShadowResolution)
 	, bCurrentLightPropagationVolume(SnapshotSource.bCurrentLightPropagationVolume)
@@ -641,8 +640,6 @@ void FSceneRenderTargets::Allocate(FRHICommandListImmediate& RHICmdList, const F
 
 	const int32 TranslucencyLightingVolumeDim = GetTranslucencyLightingVolumeDim();
 
-	uint32 Mobile32bpp = !IsMobileHDR() || IsMobileHDR32bpp();
-
 	int32 MSAACount = GetNumSceneColorMSAASamples(NewFeatureLevel);
 
 	bool bLightPropagationVolume = UseLightPropagationVolumeRT(NewFeatureLevel);
@@ -664,7 +661,6 @@ void FSceneRenderTargets::Allocate(FRHICommandListImmediate& RHICmdList, const F
 		(CurrentMaxShadowResolution != MaxShadowResolution) ||
  		(CurrentRSMResolution != RSMResolution) ||
 		(CurrentTranslucencyLightingVolumeDim != TranslucencyLightingVolumeDim) ||
-		(CurrentMobile32bpp != Mobile32bpp) ||
 		(CurrentMSAACount != MSAACount) ||
 		(bCurrentLightPropagationVolume != bLightPropagationVolume) ||
 		(CurrentMinShadowResolution != MinShadowResolution))
@@ -677,7 +673,6 @@ void FSceneRenderTargets::Allocate(FRHICommandListImmediate& RHICmdList, const F
 		CurrentMaxShadowResolution = MaxShadowResolution;
 		CurrentRSMResolution = RSMResolution;
 		CurrentTranslucencyLightingVolumeDim = TranslucencyLightingVolumeDim;
-		CurrentMobile32bpp = Mobile32bpp;
 		CurrentMSAACount = MSAACount;
 		CurrentMinShadowResolution = MinShadowResolution;
 		bCurrentLightPropagationVolume = bLightPropagationVolume;
@@ -2281,19 +2276,7 @@ void FSceneRenderTargets::AllocateMobileRenderTargets(FRHICommandListImmediate& 
 
 	EPixelFormat Format = GetSceneColor()->GetDesc().Format;
 
-	// For 64-bit ES2 without framebuffer fetch, create extra render target for copy of alpha channel.
-	const EShaderPlatform ShaderPlatform = GetFeatureLevelShaderPlatform(CurrentFeatureLevel);
-	if((ShaderPlatform == SP_OPENGL_ES2_WEBGL) && (Format == PF_FloatRGBA) && (GSupportsShaderFramebufferFetch == false))
-	{
-		// creating a PF_R16F (a true one-channel renderable fp texture) is only supported on GL if EXT_texture_rg is available.  It's present
-		// on iOS, but not in WebGL or Android.
-		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, PF_FloatRGBA, FClearValueBinding::None, TexCreate_None, TexCreate_RenderTargetable, false));
-		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, SceneAlphaCopy, TEXT("SceneAlphaCopy"));
-	}
-	else
-	{
-		SceneAlphaCopy = GSystemTextures.MaxFP16Depth;
-	}
+	SceneAlphaCopy = GSystemTextures.MaxFP16Depth;
 	
 	if (UseVirtualTexturing(CurrentFeatureLevel))
 	{
@@ -2719,7 +2702,7 @@ void FSceneRenderTargets::AllocateDeferredShadingPathRenderTargets(FRHICommandLi
 
 EPixelFormat FSceneRenderTargets::GetDesiredMobileSceneColorFormat() const
 {
-	EPixelFormat DefaultColorFormat = (!IsMobileHDR() || IsMobileHDR32bpp() || !GSupportsRenderTargetFormat_PF_FloatRGBA) ? PF_B8G8R8A8 : PF_FloatRGBA;
+	EPixelFormat DefaultColorFormat = (!IsMobileHDR() || !GSupportsRenderTargetFormat_PF_FloatRGBA) ? PF_B8G8R8A8 : PF_FloatRGBA;
 	check(GPixelFormats[DefaultColorFormat].Supported);
 
 	EPixelFormat MobileSceneColorBufferFormat = DefaultColorFormat;
