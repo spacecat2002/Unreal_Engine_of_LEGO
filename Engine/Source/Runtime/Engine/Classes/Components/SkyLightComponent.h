@@ -259,7 +259,9 @@ public:
 	virtual void Serialize(FArchive& Ar) override;
 
 	const FTexture* GetProcessedSkyTexture() const { return ProcessedSkyTexture; }
+#if RHI_RAYTRACING
 	const FSkyLightImportanceSamplingData* GetImportanceSamplingData() const { return ImportanceSamplingData; }
+#endif
 	FSHVectorRGB3 GetIrradianceEnvironmentMap() { return IrradianceEnvironmentMap; }
 protected:
 
