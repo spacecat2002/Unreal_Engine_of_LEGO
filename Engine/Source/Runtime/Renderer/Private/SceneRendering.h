@@ -1192,7 +1192,7 @@ public:
 	/** 
 	 * Initialization constructor. Passes all parameters to FSceneView constructor
 	 */
-	FViewInfo(const FSceneViewInitOptions& InitOptions);
+	RENDERER_API FViewInfo(const FSceneViewInitOptions& InitOptions);
 
 	/** 
 	* Initialization constructor. 
@@ -1203,7 +1203,7 @@ public:
 	/** 
 	* Destructor. 
 	*/
-	~FViewInfo();
+	RENDERER_API ~FViewInfo();
 
 #if DO_CHECK
 	/** Verifies all the assertions made on members. */
@@ -1220,7 +1220,7 @@ public:
 	}
 
 	/** Creates ViewUniformShaderParameters given a set of view transforms. */
-	void SetupUniformBufferParameters(
+	RENDERER_API void SetupUniformBufferParameters(
 		FSceneRenderTargets& SceneContext,
 		const FViewMatrices& InViewMatrices,
 		const FViewMatrices& InPrevViewMatrices,

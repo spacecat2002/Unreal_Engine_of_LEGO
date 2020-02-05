@@ -48,7 +48,7 @@ public:
 };
 
 /** Global uniform buffer containing the default precomputed lighting data. */
-extern TGlobalResource< FEmptyPrecomputedLightingUniformBuffer > GEmptyPrecomputedLightingUniformBuffer;
+extern RENDERER_API TGlobalResource< FEmptyPrecomputedLightingUniformBuffer > GEmptyPrecomputedLightingUniformBuffer;
 
 void GetIndirectLightingCacheParameters(
 	ERHIFeatureLevel::Type FeatureLevel,

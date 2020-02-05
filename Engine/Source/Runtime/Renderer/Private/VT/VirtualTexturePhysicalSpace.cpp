@@ -102,7 +102,8 @@ void FVirtualTexturePhysicalSpace::InitRHI()
 			FormatSRV,
 			FClearValueBinding::None,
 			TexCreate_SRGB,
-			bCreateAliasedUAV ? TexCreate_ShaderResource | TexCreate_UAV : TexCreate_ShaderResource,
+			// GPULightmass hack: always create UAV for PF_A32B32G32R32F
+			(bCreateAliasedUAV || FormatSRV == PF_A32B32G32R32F) ? TexCreate_ShaderResource | TexCreate_UAV : TexCreate_ShaderResource,
 			false);
 
 		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, PooledRenderTarget[Layer], TEXT("PhysicalTexture"));

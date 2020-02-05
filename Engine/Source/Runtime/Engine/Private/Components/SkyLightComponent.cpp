@@ -30,6 +30,10 @@
 #include "PipelineStateCache.h"
 #endif
 
+#if WITH_EDITOR
+#include "Rendering/StaticLightingSystemInterface.h"
+#endif
+
 #define LOCTEXT_NAMESPACE "SkyLightComponent"
 
 void OnUpdateSkylights(UWorld* InWorld)
@@ -676,6 +680,11 @@ void USkyLightComponent::UpdateSkyCaptureContentsArray(UWorld* WorldToUpdate, TA
 			// Only capture valid sky light components
 			if (CaptureComponent->SourceType != SLS_SpecifiedCubemap || CaptureComponent->Cubemap)
 			{
+
+#if WITH_EDITOR
+				FStaticLightingSystemInterface::OnLightComponentUnregistered.Broadcast(CaptureComponent);
+#endif
+
 				if (bOperateOnBlendSource)
 				{
 					ensure(!CaptureComponent->ProcessedSkyTexture || CaptureComponent->ProcessedSkyTexture->GetSizeX() == CaptureComponent->ProcessedSkyTexture->GetSizeY());
@@ -712,6 +721,10 @@ void USkyLightComponent::UpdateSkyCaptureContentsArray(UWorld* WorldToUpdate, TA
 				CaptureComponent->IrradianceMapFence.BeginFence();
 				CaptureComponent->bHasEverCaptured = true;
 				CaptureComponent->MarkRenderStateDirty();
+
+#if WITH_EDITOR
+				FStaticLightingSystemInterface::OnLightComponentRegistered.Broadcast(CaptureComponent);
+#endif
 			}
 
 			// Only remove queued update requests if we processed it for the right world

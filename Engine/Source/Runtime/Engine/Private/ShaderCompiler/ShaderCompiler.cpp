@@ -47,6 +47,9 @@
 #include "MeshMaterialShaderType.h"
 #include "ShaderParameterMetadata.h"
 #include "ProfilingDebugging/DiagnosticTable.h"
+#if WITH_EDITOR
+#include "Rendering/StaticLightingSystemInterface.h"
+#endif
 
 #define LOCTEXT_NAMESPACE "ShaderCompiler"
 
@@ -2525,6 +2528,14 @@ void FShaderCompilingManager::PropagateMaterialChangesToPrimitives(const TMap<FM
 				if (bPrimitiveIsDependentOnMaterial)
 				{
 					ComponentContexts.Add(new FComponentRecreateRenderStateContext(PrimitiveComponent));
+#if WITH_EDITOR
+					FStaticLightingSystemInterface::OnPrimitiveComponentUnregistered.Broadcast(PrimitiveComponent);
+
+					if (PrimitiveComponent->HasValidSettingsForStaticLighting(false))
+					{
+						FStaticLightingSystemInterface::OnPrimitiveComponentRegistered.Broadcast(PrimitiveComponent);
+					}
+#endif
 				}
 			}
 		}

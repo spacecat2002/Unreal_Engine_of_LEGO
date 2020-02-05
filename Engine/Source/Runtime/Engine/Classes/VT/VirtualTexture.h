@@ -49,4 +49,7 @@ class ENGINE_API ULightMapVirtualTexture2D : public UTexture2D
 	uint32 GetLayerForType(ELightMapVirtualTextureType InType) const;
 
 	inline bool HasLayerForType(ELightMapVirtualTextureType InType) const { return GetLayerForType(InType) != ~0u; }
+	
+	/** Whether this virtual texture is used for preview lightmaps (no underlying FVirtualTexture2DResource) */
+	bool bPreviewLightmap;
 };

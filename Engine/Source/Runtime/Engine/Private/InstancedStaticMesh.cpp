@@ -4,7 +4,7 @@
 	InstancedStaticMesh.cpp: Static mesh rendering code.
 =============================================================================*/
 
-#include "InstancedStaticMesh.h"
+#include "Engine/InstancedStaticMesh.h"
 #include "AI/NavigationSystemBase.h"
 #include "Engine/MapBuildDataRegistry.h"
 #include "Components/LightComponent.h"
@@ -44,6 +44,9 @@
 #include "UObject/EditorObjectVersion.h"
 #include "UObject/RenderingObjectVersion.h"
 
+#if WITH_EDITOR
+#include "Rendering/StaticLightingSystemInterface.h"
+#endif
 
 const int32 InstancedStaticMeshMaxTexCoord = 8;
 
@@ -1415,6 +1418,15 @@ void UInstancedStaticMeshComponent::ApplyComponentInstanceData(FInstancedStaticM
 #endif
 }
 
+void UInstancedStaticMeshComponent::FlushInstanceUpdateCommands()
+{
+	InstanceUpdateCmdBuffer.Reset();
+
+	FStaticMeshInstanceData RenderInstanceData = FStaticMeshInstanceData(GVertexElementTypeSupport.IsSupported(VET_Half2));
+	BuildRenderData(RenderInstanceData, PerInstanceRenderData->HitProxies);
+	PerInstanceRenderData->UpdateFromPreallocatedData(RenderInstanceData);
+}
+
 FPrimitiveSceneProxy* UInstancedStaticMeshComponent::CreateSceneProxy()
 {
 	LLM_SCOPE(ELLMTag::InstancedMesh);
@@ -1439,11 +1451,7 @@ FPrimitiveSceneProxy* UInstancedStaticMeshComponent::CreateSceneProxy()
 		// generally happens only in editor 
 		if (InstanceUpdateCmdBuffer.NumTotalCommands() != 0)
 		{
-			InstanceUpdateCmdBuffer.Reset();
-
-			FStaticMeshInstanceData RenderInstanceData = FStaticMeshInstanceData(GVertexElementTypeSupport.IsSupported(VET_Half2));
-			BuildRenderData(RenderInstanceData, PerInstanceRenderData->HitProxies);
-			PerInstanceRenderData->UpdateFromPreallocatedData(RenderInstanceData);
+			FlushInstanceUpdateCommands();
 		}
 		
 		ProxySize = PerInstanceRenderData->ResourceSize;
@@ -1491,7 +1499,12 @@ void UInstancedStaticMeshComponent::BuildRenderData(FStaticMeshInstanceData& Out
 	OutData.AllocateInstances(NumInstances, NumCustomDataFloats, GIsEditor ? EResizeBufferFlags::AllowSlackOnGrow | EResizeBufferFlags::AllowSlackOnReduce : EResizeBufferFlags::None, true); // In Editor always permit overallocation, to prevent too much realloc
 
 	const FMeshMapBuildData* MeshMapBuildData = nullptr;
-	if (LODData.Num() > 0)
+
+#if WITH_EDITOR
+	MeshMapBuildData = FStaticLightingSystemInterface::GetPrimitiveMeshMapBuildData(this, 0);
+#endif
+
+	if (MeshMapBuildData == nullptr && LODData.Num() > 0)
 	{
 		MeshMapBuildData = GetMeshMapBuildData(LODData[0], false);
 	}
@@ -2017,11 +2030,7 @@ void UInstancedStaticMeshComponent::SerializeRenderData(FArchive& Ar)
 				// This will usually happen when having a BP adding instance through the construct script
 				if (PerInstanceRenderData->InstanceBuffer.GetNumInstances() != PerInstanceSMData.Num() || InstanceUpdateCmdBuffer.NumTotalCommands() > 0)
 				{
-					InstanceUpdateCmdBuffer.Reset();
-
-					FStaticMeshInstanceData RenderInstanceData = FStaticMeshInstanceData(GVertexElementTypeSupport.IsSupported(VET_Half2));
-					BuildRenderData(RenderInstanceData, PerInstanceRenderData->HitProxies);
-					PerInstanceRenderData->UpdateFromPreallocatedData(RenderInstanceData);
+					FlushInstanceUpdateCommands();
 					MarkRenderStateDirty();
 				}
 			}

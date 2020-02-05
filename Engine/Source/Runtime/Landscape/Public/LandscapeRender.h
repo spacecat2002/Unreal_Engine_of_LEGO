@@ -136,8 +136,7 @@ struct FLandscapeBatchElementParams
 
 	// LOD calculation-related params
 	const FLandscapeComponentSceneProxy* SceneProxy;
-	int32 SubX;
-	int32 SubY;
+	int32 SubsectionSizeVerts;
 	int32 CurrentLOD;
 	int32 ForcedLOD = -1;
 };
@@ -174,7 +173,7 @@ public:
 };
 
 /** vertex factory for VTF-heightmap terrain  */
-class FLandscapeVertexFactory : public FVertexFactory
+class LANDSCAPE_API FLandscapeVertexFactory : public FVertexFactory
 {
 	DECLARE_VERTEX_FACTORY_TYPE(FLandscapeVertexFactory);
 
@@ -231,6 +230,7 @@ public:
 		Data = InData;
 		UpdateRHI();
 	}
+
 
 	virtual uint64 GetStaticBatchElementVisibility(const FSceneView& InView, const FMeshBatch* InBatch, const void* InViewCustomData = nullptr) const override;
 
@@ -329,7 +329,7 @@ public:
 //
 // FLandscapeSharedBuffers
 //
-class FLandscapeSharedBuffers : public FRefCountedObject
+class LANDSCAPE_API FLandscapeSharedBuffers : public FRefCountedObject
 {
 public:
 	struct FLandscapeIndexRanges
@@ -853,6 +853,11 @@ public:
 
 	friend FLandscapeRenderSystem;
 
+	// Reference counted vertex and index buffer shared among all landscape scene proxies of the same component size
+	// Key is the component size and number of subsections.
+	// Also being reused by GPULightmass currently to save mem
+	static LANDSCAPE_API TMap<uint32, FLandscapeSharedBuffers*> SharedBuffersMap;
+
 protected:
 	int8						MaxLOD;		// Maximum LOD level, user override possible
 	bool						UseTessellationComponentScreenSizeFalloff:1;	// Tell if we should apply a Tessellation falloff
@@ -952,10 +957,6 @@ protected:
 	/** Material Relevance for each material in AvailableMaterials */
 	TArray<FMaterialRelevance> MaterialRelevances;
 
-	// Reference counted vertex and index buffer shared among all landscape scene proxies of the same component size
-	// Key is the component size and number of subsections.
-	static TMap<uint32, FLandscapeSharedBuffers*> SharedBuffersMap;
-
 #if WITH_EDITORONLY_DATA
 	FLandscapeEditToolRenderData EditToolRenderData;
 #endif
@@ -998,7 +999,7 @@ protected:
 	
 	FORCEINLINE void GetShaderCurrentNeighborLOD(const FSceneView& InView, float InBatchElementCurrentLOD, int8 InSubSectionX, int8 InSubSectionY, int8 InCurrentSubSectionIndex, FVector4& OutShaderCurrentNeighborLOD) const;
 	FORCEINLINE FVector4 GetShaderLODBias() const;
-	FVector4 GetShaderLODValues(int8 BatchElementCurrentLOD) const;
+	static FVector4 GetShaderLODValues(int32 InSubsectionSizeVerts, int8 BatchElementCurrentLOD);
 
 	bool GetMeshElement(bool UseSeperateBatchForShadow, bool ShadowOnly, bool HasTessellation, int8 InLODIndex, UMaterialInterface* InMaterialInterface, FMeshBatch& OutMeshBatch, TArray<FLandscapeBatchElementParams>& OutStaticBatchParamArray) const;
 	bool GetMeshElementForVirtualTexture(int32 InLodIndex, ERuntimeVirtualTextureMaterialType MaterialType, UMaterialInterface* InMaterialInterface, FMeshBatch& OutMeshBatch, TArray<FLandscapeBatchElementParams>& OutStaticBatchParamArray) const;

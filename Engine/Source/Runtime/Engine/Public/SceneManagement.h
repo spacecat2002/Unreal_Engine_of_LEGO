@@ -2332,6 +2332,8 @@ struct FRayTracingDynamicGeometryUpdateParams
 
 	FRayTracingGeometry* Geometry;
 	FRWBuffer* Buffer;
+
+	bool bApplyWorldPositionOffset = true;
 };
 
 struct FRayTracingMaterialGatheringContext

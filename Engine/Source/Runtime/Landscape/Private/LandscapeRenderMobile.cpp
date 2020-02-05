@@ -301,7 +301,7 @@ public:
 
 		if (LodValuesParameter.IsBound())
 		{
-			ShaderBindings.Add(LodValuesParameter, SceneProxy->GetShaderLODValues(BatchElementParams->CurrentLOD));
+			ShaderBindings.Add(LodValuesParameter, FLandscapeComponentSceneProxy::GetShaderLODValues(BatchElementParams->SubsectionSizeVerts, BatchElementParams->CurrentLOD));
 		}
 
 		if (LodBiasParameter.IsBound())

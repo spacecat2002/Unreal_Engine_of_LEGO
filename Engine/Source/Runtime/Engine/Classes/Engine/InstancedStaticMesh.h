@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	InstancedStaticMesh.h: Instanced static mesh header
@@ -119,6 +119,21 @@ public:
 
 	/** Keep CPU copy of instance data*/
 	bool RequireCPUAccess;
+
+	FVertexBufferRHIRef GetInstanceOriginBuffer()
+	{
+		return InstanceOriginBuffer.VertexBufferRHI;
+	}
+
+	FVertexBufferRHIRef GetInstanceTransformBuffer()
+	{
+		return InstanceTransformBuffer.VertexBufferRHI;
+	}
+
+	FVertexBufferRHIRef GetInstanceLightmapBuffer()
+	{
+		return InstanceLightmapBuffer.VertexBufferRHI;
+	}
 
 private:
 	class FInstanceOriginBuffer : public FVertexBuffer
@@ -423,7 +438,7 @@ struct FPerInstanceRenderData
 	FInstancedStaticMeshRenderData
 -----------------------------------------------------------------------------*/
 
-class FInstancedStaticMeshRenderData
+class ENGINE_API FInstancedStaticMeshRenderData
 {
 public:
 

@@ -178,6 +178,7 @@ enum class EVTProducePageFlags : uint8
 {
 	None = 0u,
 	SkipPageBorders = (1u << 0),
+	ContinuousUpdate = (1u << 1),
 };
 ENUM_CLASS_FLAGS(EVTProducePageFlags);
 
@@ -199,7 +200,12 @@ struct FVTProduceTargetLayer
 	FRHITexture* TextureRHI = nullptr;
 	/** The UAV to write to. This may be nullptr if no suitable UAV can be created for the texture format.  */
 	FRHIUnorderedAccessView* UnorderedAccessViewRHI = nullptr;
-
+	/**
+	 * Pooled render target. For FRDGBuilder::RegisterExternalTexture() which only accepts pooled render targets.
+	 * To avoid cost of manipulating ref counting pointers a raw pointer is used instead - it is valid until returning from your Finalize().
+	 * So do not try to store the pointer
+	 */
+	struct IPooledRenderTarget* PooledRenderTarget = nullptr;
 	/** Location within the texture to write */
 	FIntVector pPageLocation;
 };

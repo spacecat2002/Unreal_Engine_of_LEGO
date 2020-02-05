@@ -1223,7 +1223,7 @@ void FMeshPassProcessor::GetDrawCommandPrimitiveId(
 		}
 		else if (BatchElement.PrimitiveIdMode == PrimID_DynamicPrimitiveShaderData)
 		{
-			DrawPrimitiveId = Scene->Primitives.Num() + BatchElement.DynamicPrimitiveShaderDataIndex;
+			DrawPrimitiveId = (Scene ? Scene->Primitives.Num() : 0) + BatchElement.DynamicPrimitiveShaderDataIndex;
 		}
 		else
 		{

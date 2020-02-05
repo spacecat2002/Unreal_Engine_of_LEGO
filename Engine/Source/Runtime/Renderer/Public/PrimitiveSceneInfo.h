@@ -479,7 +479,7 @@ public:
 	void UpdateComponentLastRenderTime(float CurrentWorldTime, bool bUpdateLastRenderTimeOnScreen) const;
 
 	/** Updates static lighting uniform buffer, returns the number of entries needed for GPUScene */
-	int32 UpdateStaticLightingBuffer();
+	RENDERER_API int32 UpdateStaticLightingBuffer();
 
 	/** Update the cached runtime virtual texture flags for this primitive. Do this when runtime virtual textures are created or destroyed. */
 	void UpdateRuntimeVirtualTextureFlags();

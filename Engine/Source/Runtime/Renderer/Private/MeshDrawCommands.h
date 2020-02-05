@@ -23,7 +23,7 @@ public:
 	~FPrimitiveIdVertexBufferPool();
 
 	FRHIVertexBuffer* Allocate(int32 BufferSize);
-	void DiscardAll();
+	RENDERER_API void DiscardAll();
 
 	virtual void ReleaseDynamicRHI() override;
 
@@ -39,7 +39,7 @@ private:
 	TArray<FPrimitiveIdVertexBufferPoolEntry> Entries;
 };
 
-extern TGlobalResource<FPrimitiveIdVertexBufferPool> GPrimitiveIdVertexBufferPool;
+extern RENDERER_API TGlobalResource<FPrimitiveIdVertexBufferPool> GPrimitiveIdVertexBufferPool;
 
 /**	
  * Parallel mesh draw command pass setup task context.

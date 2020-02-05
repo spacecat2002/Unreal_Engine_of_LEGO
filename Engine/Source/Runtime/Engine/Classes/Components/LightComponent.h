@@ -425,9 +425,6 @@ protected:
 public:
 	virtual void InvalidateLightingCacheDetailed(bool bInvalidateBuildEnqueuedLighting, bool bTranslationOnly) override;
 
-	/** Invalidates the light's cached lighting with the option to recreate the light Guids. */
-	void InvalidateLightingCacheInner(bool bRecreateLightGuids);
-
 	/** Script interface to retrieve light direction. */
 	FVector GetDirection() const;
 

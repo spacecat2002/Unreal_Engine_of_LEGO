@@ -64,6 +64,9 @@ Landscape.cpp: Terrain rendering
 #include "LandscapeDataAccess.h"
 #include "UObject/EditorObjectVersion.h"
 #include "Algo/BinarySearch.h"
+#if WITH_EDITOR
+#include "Rendering/StaticLightingSystemInterface.h"
+#endif
 
 /** Landscape stats */
 
@@ -1301,6 +1304,13 @@ const FMeshMapBuildData* ULandscapeComponent::GetMeshMapBuildData() const
 	if (Owner)
 	{
 		ULevel* OwnerLevel = Owner->GetLevel();
+
+#if WITH_EDITOR
+		if (FStaticLightingSystemInterface::GetPrimitiveMeshMapBuildData(this))
+		{
+			return FStaticLightingSystemInterface::GetPrimitiveMeshMapBuildData(this);
+		}
+#endif
 
 		if (OwnerLevel && OwnerLevel->OwningWorld)
 		{

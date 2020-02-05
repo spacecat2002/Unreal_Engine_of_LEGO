@@ -999,6 +999,7 @@ void FFoliageStaticMesh::SetInstanceWorldTransform(int32 InstanceIndex, const FT
 {
 	check(Component);
 	Component->UpdateInstanceTransform(InstanceIndex, Transform, true, true, bTeleport);
+	bInvalidateLightingCache = true;
 }
 
 FTransform FFoliageStaticMesh::GetInstanceWorldTransform(int32 InstanceIndex) const

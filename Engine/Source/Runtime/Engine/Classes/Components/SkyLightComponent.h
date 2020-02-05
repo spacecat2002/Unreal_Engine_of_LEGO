@@ -254,15 +254,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Rendering|Components|SkyLight")
 	void RecaptureSky();
 
-	void SetIrradianceEnvironmentMap(const FSHVectorRGB3& InIrradianceEnvironmentMap)
-	{
-		IrradianceEnvironmentMap = InIrradianceEnvironmentMap;
-	}
-
 	void UpdateImportanceSamplingData();
 
 	virtual void Serialize(FArchive& Ar) override;
 
+	const FTexture* GetProcessedSkyTexture() const { return ProcessedSkyTexture; }
+	const FSkyLightImportanceSamplingData* GetImportanceSamplingData() const { return ImportanceSamplingData; }
+	FSHVectorRGB3 GetIrradianceEnvironmentMap() { return IrradianceEnvironmentMap; }
 protected:
 
 #if WITH_EDITOR

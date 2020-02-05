@@ -12,21 +12,23 @@ class FRayTracingMeshProcessor
 {
 public:
 
-	FRayTracingMeshProcessor(FRayTracingMeshCommandContext* InCommandContext, const FScene* InScene, const FSceneView* InViewIfDynamicMeshCommand)
+	FRayTracingMeshProcessor(FRayTracingMeshCommandContext* InCommandContext, const FScene* InScene, const FSceneView* InViewIfDynamicMeshCommand, FMeshPassProcessorRenderState InPassDrawRenderState)
 		:
 		CommandContext(InCommandContext),
 		Scene(InScene),
 		ViewIfDynamicMeshCommand(InViewIfDynamicMeshCommand),
-		FeatureLevel(InScene->GetFeatureLevel())
+		FeatureLevel(InScene ? InScene->GetFeatureLevel() : ERHIFeatureLevel::SM5),
+		PassDrawRenderState(InPassDrawRenderState)
 	{}
 
-	void AddMeshBatch(const FMeshBatch& RESTRICT MeshBatch, uint64 BatchElementMask, const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy);
+	RENDERER_API void AddMeshBatch(const FMeshBatch& RESTRICT MeshBatch, uint64 BatchElementMask, const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy);
 
 private:
 	FRayTracingMeshCommandContext* CommandContext;
 	const FScene* Scene;
 	const FSceneView* ViewIfDynamicMeshCommand;
 	ERHIFeatureLevel::Type FeatureLevel;
+	FMeshPassProcessorRenderState PassDrawRenderState;
 
 	void Process(
 		const FMeshBatch& RESTRICT MeshBatch,
@@ -50,7 +52,7 @@ private:
 		const ShaderElementDataType& ShaderElementData);
 };
 
-class FHiddenMaterialHitGroup : public FGlobalShader
+class RENDERER_API FHiddenMaterialHitGroup : public FGlobalShader
 {
 	DECLARE_GLOBAL_SHADER(FHiddenMaterialHitGroup)
 	SHADER_USE_ROOT_PARAMETER_STRUCT(FHiddenMaterialHitGroup, FGlobalShader)
@@ -63,7 +65,7 @@ class FHiddenMaterialHitGroup : public FGlobalShader
 	using FParameters = FEmptyShaderParameters;
 };
 
-class FOpaqueShadowHitGroup : public FGlobalShader
+class RENDERER_API FOpaqueShadowHitGroup : public FGlobalShader
 {
 	DECLARE_GLOBAL_SHADER(FOpaqueShadowHitGroup)
 	SHADER_USE_ROOT_PARAMETER_STRUCT(FOpaqueShadowHitGroup, FGlobalShader)

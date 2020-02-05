@@ -324,7 +324,8 @@ void FPrimitiveSceneInfo::CacheMeshDrawCommands(FRHICommandListImmediate& RHICmd
 				if (IsRayTracingEnabled() && Proxy->IsRayTracingStaticRelevant())
 				{
 					FCachedRayTracingMeshCommandContext CommandContext(Scene->CachedRayTracingMeshCommands);
-					FRayTracingMeshProcessor RayTracingMeshProcessor(&CommandContext, Scene, nullptr);
+					FMeshPassProcessorRenderState PassDrawRenderState(Scene->UniformBuffers.ViewUniformBuffer, Scene->UniformBuffers.OpaqueBasePassUniformBuffer);
+					FRayTracingMeshProcessor RayTracingMeshProcessor(&CommandContext, Scene, nullptr, PassDrawRenderState);
 
 					check(!Mesh.bRequiresPerElementVisibility);
 					RayTracingMeshProcessor.AddMeshBatch(Mesh, ~0ull, Proxy);

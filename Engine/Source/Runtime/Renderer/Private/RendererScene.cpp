@@ -63,6 +63,10 @@
 #endif
 #include "RHIGPUReadback.h"
 
+#if WITH_EDITOR
+#include "Rendering/StaticLightingSystemInterface.h"
+#endif
+
 // Enable this define to do slow checks for components being added to the wrong
 // world's scene, when using PIE. This can happen if a PIE component is reattached
 // while GWorld is the editor world, for example.
@@ -1010,6 +1014,7 @@ FScene::FScene(UWorld* InWorld, bool bInRequiresHitProxies, bool bInIsEditorScen
 ,	SimpleDirectionalLight(NULL)
 ,	ReflectionSceneData(InFeatureLevel)
 ,	IndirectLightingCache(InFeatureLevel)
+,	VolumetricLightmapSceneData(this)
 ,	DistanceFieldSceneData(GShaderPlatformForFeatureLevel[InFeatureLevel])
 ,	PreshadowCacheLayout(0, 0, 0, 0, false)
 ,	AtmosphericFog(NULL)
@@ -1030,7 +1035,7 @@ FScene::FScene(UWorld* InWorld, bool bInRequiresHitProxies, bool bInIsEditorScen
 ,	DynamicIndirectShadowsSelfShadowingIntensity(FMath::Clamp(InWorld->GetWorldSettings()->DynamicIndirectShadowsSelfShadowingIntensity, 0.0f, 1.0f))
 ,	ReadOnlyCVARCache(FReadOnlyCVARCache::Get())
 #if RHI_RAYTRACING
-, RayTracingDynamicGeometryCollection(nullptr)
+,	RayTracingDynamicGeometryCollection(nullptr)
 #endif
 ,	NumVisibleLights_GameThread(0)
 ,	NumEnabledSkylights_GameThread(0)
@@ -2242,8 +2247,36 @@ void FVolumetricLightmapSceneData::RemoveLevelVolume(const FPrecomputedVolumetri
 	}
 }
 
+const FPrecomputedVolumetricLightmap* FVolumetricLightmapSceneData::GetLevelVolumetricLightmap() const
+{
+#if WITH_EDITOR
+	if (FStaticLightingSystemInterface::GetPrecomputedVolumetricLightmap(Scene->GetWorld()))
+	{
+		return FStaticLightingSystemInterface::GetPrecomputedVolumetricLightmap(Scene->GetWorld());
+	}
+#endif
+	return &GlobalVolumetricLightmap;
+}
+
+bool FVolumetricLightmapSceneData::HasData() const
+{
+#if WITH_EDITOR
+	if (FStaticLightingSystemInterface::GetPrecomputedVolumetricLightmap(Scene->GetWorld()))
+	{
+		return true;
+	}
+#endif
+	return LevelVolumetricLightmaps.Num() > 0;
+}
+
 bool FScene::HasPrecomputedVolumetricLightmap_RenderThread() const
 {
+#if WITH_EDITOR
+	if (FStaticLightingSystemInterface::GetPrecomputedVolumetricLightmap(GetWorld()))
+	{
+		return true;
+	}
+#endif
 	return VolumetricLightmapSceneData.HasData();
 }
 
