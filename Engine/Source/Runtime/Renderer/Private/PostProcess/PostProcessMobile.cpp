@@ -976,7 +976,7 @@ void FRCPassPostProcessSunMaskES2::SetShaderAndExecute(const FRenderingComposite
 // TODO: This won't work with scaled views.
 	SrcRect = View.ViewRect;
 
-	uint32 UseDepth = (InputDesc != NULL && InputDesc->Format == PF_FloatR11G11B10) ? 1 : 0;
+	uint32 UseDepth = (UseSunDofDepth & 4) ? 1 : 0;
 
 	const FSceneRenderTargetItem& DestRenderTarget0 = PassOutputs[0].RequestSurface(Context);
 	const FSceneRenderTargetItem* DestRenderTarget1 = nullptr;
