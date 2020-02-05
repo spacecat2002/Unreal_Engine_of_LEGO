@@ -33,8 +33,7 @@ static TAutoConsoleVariable<int32> CVarMobileEyeAdaptation(
 
 static EPixelFormat GetHDRPixelFormat()
 {
-	// PF_B8G8R8A8 instead of floats for 32bpp hdr encoding.
-	return IsMobileHDR32bpp() ? PF_B8G8R8A8 : PF_FloatRGBA;
+	return PF_FloatRGBA;
 }
 
 // return Depth of Field Scale if Gaussian DoF mode is active. 0.0f otherwise.

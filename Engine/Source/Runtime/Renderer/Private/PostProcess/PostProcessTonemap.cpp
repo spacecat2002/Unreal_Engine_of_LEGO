@@ -1003,7 +1003,6 @@ class FPostProcessTonemapPS_ES2 : public FGlobalShader
 	// Mobile renderer specific permutation dimensions.
 	class FTonemapperDOFDim         : SHADER_PERMUTATION_BOOL("USE_DOF");
 	class FTonemapperLightShaftsDim : SHADER_PERMUTATION_BOOL("USE_LIGHT_SHAFTS");
-	class FTonemapper32BPPHDRDim    : SHADER_PERMUTATION_BOOL("USE_32BPP_HDR");
 	class FTonemapperColorMatrixDim : SHADER_PERMUTATION_BOOL("USE_COLOR_MATRIX");
 	class FTonemapperShadowTintDim  : SHADER_PERMUTATION_BOOL("USE_SHADOW_TINT");
 	class FTonemapperContrastDim    : SHADER_PERMUTATION_BOOL("USE_CONTRAST");
@@ -1012,7 +1011,6 @@ class FPostProcessTonemapPS_ES2 : public FGlobalShader
 		TonemapperPermutation::FCommonDomain,
 		FTonemapperDOFDim,
 		FTonemapperLightShaftsDim,
-		FTonemapper32BPPHDRDim,
 		FTonemapperColorMatrixDim,
 		FTonemapperShadowTintDim,
 		FTonemapperContrastDim>;
@@ -1034,9 +1032,6 @@ class FPostProcessTonemapPS_ES2 : public FGlobalShader
 		TonemapperPermutation::FCommonDomain RemappedCommonPermutationVector;
 
 		// Note: FTonemapperSharpenDim, FTonemapperGrainJitterDim are not supported.
-
-		// 32 bit hdr (encoding)
-		EnableIfSet<FTonemapper32BPPHDRDim>(WantedPermutationVector, RemappedPermutationVector);
 
 		// Gamma only
 		if (WantedCommonPermutationVector.Get<TonemapperPermutation::FTonemapperGammaOnlyDim>())
@@ -1091,14 +1086,6 @@ class FPostProcessTonemapPS_ES2 : public FGlobalShader
 			RemappedPermutationVector.Set<FTonemapperColorMatrixDim>(true);
 		}
 
-		if (RemappedPermutationVector.Get<FTonemapper32BPPHDRDim>())
-		{
-			// 32 bpp hdr does not support:
-			RemappedPermutationVector.Set<FTonemapperDOFDim>(false);
-			RemappedPermutationVector.Set<FTonemapperLightShaftsDim>(false);
-			RemappedCommonPermutationVector.Set<TonemapperPermutation::FTonemapperMsaaDim>(false);
-		}
-
 		RemappedPermutationVector.Set<TonemapperPermutation::FCommonDomain>(RemappedCommonPermutationVector);
 		return RemappedPermutationVector;
 	}
@@ -1110,12 +1097,9 @@ class FPostProcessTonemapPS_ES2 : public FGlobalShader
 		FPostProcessTonemapPS_ES2::FPermutationDomain MobilePermutationVector;
 		MobilePermutationVector.Set<TonemapperPermutation::FCommonDomain>(CommonPermutationVector);
 
-		bool bUse32BPPHDR = IsMobileHDR32bpp();
-
 		// Must early exit if gamma only.
 		if (CommonPermutationVector.Get<TonemapperPermutation::FTonemapperGammaOnlyDim>())
 		{
-			MobilePermutationVector.Set<FTonemapper32BPPHDRDim>(bUse32BPPHDR);
 			return RemapPermutationVector(MobilePermutationVector);
 		}
 
@@ -1136,12 +1120,6 @@ class FPostProcessTonemapPS_ES2 : public FGlobalShader
 		MobilePermutationVector.Set<FTonemapperShadowTintDim>(Settings.FilmShadowTintAmount > 0.0f);
 		MobilePermutationVector.Set<FTonemapperContrastDim>(Settings.FilmContrast > 0.0f);
 
-		if (IsMobileHDRMosaic())
-		{
-			MobilePermutationVector.Set<FTonemapper32BPPHDRDim>(true);
-			return MobilePermutationVector;
-		}
-
 		static const auto CVarMobileMSAA = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileMSAA"));
 		const EShaderPlatform ShaderPlatform = View.GetShaderPlatform();
 		if (IsMetalMobilePlatform(ShaderPlatform))
@@ -1150,12 +1128,7 @@ class FPostProcessTonemapPS_ES2 : public FGlobalShader
 			CommonPermutationVector.Set<TonemapperPermutation::FTonemapperMsaaDim>(bMSAA);
 		}
 
-		if (bUse32BPPHDR)
-		{
-			// add limited post for 32 bit encoded hdr.
-			MobilePermutationVector.Set<FTonemapper32BPPHDRDim>(true);
-		}
-		else if (GSupportsRenderTargetFormat_PF_FloatRGBA)
+		if (GSupportsRenderTargetFormat_PF_FloatRGBA)
 		{
 			bool bUseDof = GetMobileDepthOfFieldScale(View) > 0.0f && (!Settings.bMobileHQGaussian || (View.GetFeatureLevel() < ERHIFeatureLevel::ES3_1));
 
@@ -1194,9 +1167,7 @@ class FPostProcessTonemapPS_ES2 : public FGlobalShader
 		}
 
 		// Only cache for ES2/3.1 shader platforms, and only compile 32bpp shaders for Android or PC emulation
-		return (IsMobilePlatform(Parameters.Platform) && (!PermutationVector.Get<FTonemapper32BPPHDRDim>()))
-			|| Parameters.Platform == SP_OPENGL_ES2_ANDROID
-			|| (IsMobilePlatform(Parameters.Platform) && IsPCPlatform(Parameters.Platform));
+		return IsMobilePlatform(Parameters.Platform);
 	}
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
@@ -1281,14 +1252,7 @@ public:
 		
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 
-		if (PermutationVector.Get<FTonemapper32BPPHDRDim>() && IsMobileHDRMosaic())
-		{
-			PostprocessParameter.SetPS(RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
-		}
-		else
-		{
-			PostprocessParameter.SetPS(RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
-		}
+		PostprocessParameter.SetPS(RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 			
 		SetShaderValue(RHICmdList, ShaderRHI, OverlayColor, Context.View.OverlayColor);
 		SetShaderValue(RHICmdList, ShaderRHI, FringeIntensity, fabsf(Settings.SceneFringeIntensity) * 0.01f); // Interpreted as [0-1] percentage

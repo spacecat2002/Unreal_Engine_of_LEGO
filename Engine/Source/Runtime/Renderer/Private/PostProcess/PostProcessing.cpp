@@ -1293,7 +1293,6 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 		// ES2 preview uses a subsection of the scene RT
 		FIntPoint SceneColorSize = FSceneRenderTargets::Get(RHICmdList).GetBufferSizeXY();
 		bool bViewRectSource = SceneColorSize != PrePostSourceViewportSize;
-		bool bMobileHDR32bpp = IsMobileHDR32bpp();
 
 		// temporary solution for SP_METAL using HW sRGB flag during read vs all other mob platforms using
 		// incorrect UTexture::SRGB state. (UTexture::SRGB != HW texture state)
@@ -1302,7 +1301,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 			&& IsMetalMobilePlatform(View.GetShaderPlatform());
 
 		static const auto VarTonemapperFilm = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.TonemapperFilm"));
-		const bool bUseTonemapperFilm = Context.View.GetFeatureLevel() == ERHIFeatureLevel::ES3_1 && IsMobileHDR() && !bMobileHDR32bpp && GSupportsRenderTargetFormat_PF_FloatRGBA && (VarTonemapperFilm && VarTonemapperFilm->GetValueOnRenderThread());
+		const bool bUseTonemapperFilm = Context.View.GetFeatureLevel() == ERHIFeatureLevel::ES3_1 && IsMobileHDR() && GSupportsRenderTargetFormat_PF_FloatRGBA && (VarTonemapperFilm && VarTonemapperFilm->GetValueOnRenderThread());
 		
 		const EAutoExposureMethod AutoExposureMethod = GetAutoExposureMethod(View);
 		const bool bUseEyeAdaptation = IsMobileEyeAdaptationEnabled(View);
@@ -1312,11 +1311,10 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 		if( View.Family->EngineShowFlags.PostProcessing && bAllowFullPostProcess)
 		{
 			const EMobileHDRMode HDRMode = GetMobileHDRMode();
-			bool bUseEncodedHDR = HDRMode == EMobileHDRMode::EnabledRGBE;
-			bool bHDRModeAllowsPost = bUseEncodedHDR || HDRMode == EMobileHDRMode::EnabledFloat16;
+			bool bHDRModeAllowsPost = HDRMode == EMobileHDRMode::EnabledFloat16;
 
-			uint32 bUseSun = !bUseEncodedHDR && View.bLightShaftUse ? 1 : 0;
-			uint32 bUseDof = !bUseEncodedHDR && GetMobileDepthOfFieldScale(View) > 0.0f && !Context.View.Family->EngineShowFlags.VisualizeDOF ? 1 : 0;
+			uint32 bUseSun = View.bLightShaftUse ? 1 : 0;
+			uint32 bUseDof = GetMobileDepthOfFieldScale(View) > 0.0f && !Context.View.Family->EngineShowFlags.VisualizeDOF ? 1 : 0;
 			uint32 bUseBloom = View.FinalPostProcessSettings.BloomIntensity > 0.0f ? 1 : 0;
 			uint32 bUseVignette = View.FinalPostProcessSettings.VignetteIntensity > 0.0f ? 1 : 0;
 
@@ -1335,7 +1333,6 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 			// HQ gaussian 
 			uint32 bUseMobileDof = bUseDof && (!View.FinalPostProcessSettings.bMobileHQGaussian || (Context.View.GetFeatureLevel() < ERHIFeatureLevel::ES3_1)) ? 1 : 0;
 
-			// Post is not supported on ES2 devices using mosaic.
 			bool bUsePost = bHDRModeAllowsPost && IsMobileHDR();
 			
 			if (bUsePost && IsMobileDistortionActive(View))
@@ -1638,7 +1635,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 		}
 		
 		static const auto VarTonemapperUpscale = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileTonemapperUpscale"));
-		bool bDisableUpscaleInTonemapper = IsMobileHDRMosaic() || !VarTonemapperUpscale || VarTonemapperUpscale->GetValueOnRenderThread() == 0;
+		bool bDisableUpscaleInTonemapper = !VarTonemapperUpscale || VarTonemapperUpscale->GetValueOnRenderThread() == 0;
 
 		bool* DoScreenPercentageInTonemapperPtr = nullptr;
 		FRenderingCompositePass* TonemapperPass = nullptr;
@@ -1688,7 +1685,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 
 		if (View.Family->EngineShowFlags.PostProcessing && bAllowFullPostProcess)
 		{
-			if (IsMobileHDR() && !IsMobileHDRMosaic())
+			if (IsMobileHDR())
 			{
 				Context.FinalOutput = AddPostProcessMaterialChain(Context, BL_AfterTonemapping, nullptr);
 			}

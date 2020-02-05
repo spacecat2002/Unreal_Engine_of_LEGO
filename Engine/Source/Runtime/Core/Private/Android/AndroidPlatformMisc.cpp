@@ -2053,7 +2053,7 @@ bool FAndroidMisc::IsVulkanAvailable()
 			// @todo Lumin: Double check all this stuff after merging general android Vulkan SM5 from main
 			const bool bSupportsVulkanSM5 = ShouldUseDesktopVulkan();
 
-			const bool bVulkanDisabledCmdLine = FParse::Param(FCommandLine::Get(), TEXT("GL")) || FParse::Param(FCommandLine::Get(), TEXT("OpenGL")) || FParse::Param(FCommandLine::Get(), TEXT("ES2"));
+			const bool bVulkanDisabledCmdLine = FParse::Param(FCommandLine::Get(), TEXT("GL")) || FParse::Param(FCommandLine::Get(), TEXT("OpenGL"));
 
 			if (!FModuleManager::Get().ModuleExists(TEXT("VulkanRHI")))
 			{

@@ -694,12 +694,6 @@ TD3D12Texture2D<BaseResourceType>* FD3D12DynamicRHI::CreateD3D12Texture2D(FRHICo
 
 	SCOPE_CYCLE_COUNTER(STAT_D3D12CreateTextureTime);
 
-	if (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES2)
-	{
-		// Remove sRGB read flag when not supported
-		Flags &= ~TexCreate_SRGB;
-	}
-
 	const bool bSRGB = (Flags & TexCreate_SRGB) != 0;
 
 	const DXGI_FORMAT PlatformResourceFormat = GetPlatformTextureResourceFormat((DXGI_FORMAT)GPixelFormats[Format].PlatformFormat, Flags);
@@ -1125,12 +1119,6 @@ FTexture2DRHIRef FD3D12DynamicRHI::RHIAsyncCreateTexture2D(uint32 SizeX, uint32 
 	
 	const uint32 InvalidFlags = TexCreate_RenderTargetable | TexCreate_ResolveTargetable | TexCreate_DepthStencilTargetable | TexCreate_GenerateMipCapable | TexCreate_UAV | TexCreate_Presentable | TexCreate_CPUReadback;
 	check((Flags & InvalidFlags) == 0);
-
-	if (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES2)
-	{
-		// Remove sRGB read flag when not supported
-		Flags &= ~TexCreate_SRGB;
-	}
 
 	const DXGI_FORMAT PlatformResourceFormat = (DXGI_FORMAT)GPixelFormats[Format].PlatformFormat;
 	const DXGI_FORMAT PlatformShaderResourceFormat = FindShaderResourceDXGIFormat(PlatformResourceFormat, ((Flags & TexCreate_SRGB) != 0));
@@ -1573,7 +1561,7 @@ void* TD3D12Texture2D<RHIResourceType>::Lock(class FRHICommandListImmediate* RHI
 
 	void* Data = nullptr;
 
-	if (GetParentDevice()->GetOwningRHI()->HandleSpecialLock(Data, MipIndex, ArrayIndex, GetFlags(), LockMode, GetTextureLayout(), RawTextureMemory, DestStride))
+	if (GetParentDevice()->GetOwningRHI()->HandleSpecialLock(Data, MipIndex, ArrayIndex, RHIResourceType::GetFlags(), LockMode, GetTextureLayout(), RawTextureMemory, DestStride))
 	{
 		// nothing left to do...
 		check(Data != nullptr);
@@ -1820,7 +1808,7 @@ void TD3D12Texture2D<RHIResourceType>::UnlockInternal(class FRHICommandListImmed
 	void* RawTextureMemory = (void*)ResourceLocation.GetGPUVirtualAddress();
 #endif
 
-	if (GetParentDevice()->GetOwningRHI()->HandleSpecialUnlock(RHICmdList, MipIndex, GetFlags(), GetTextureLayout(), RawTextureMemory))
+	if (GetParentDevice()->GetOwningRHI()->HandleSpecialUnlock(RHICmdList, MipIndex, RHIResourceType::GetFlags(), GetTextureLayout(), RawTextureMemory))
 	{
 		// nothing left to do...
 	}
@@ -2557,12 +2545,6 @@ FTexture2DRHIRef FD3D12DynamicRHI::RHICreateTexture2DFromResource(EPixelFormat F
 
 	SCOPE_CYCLE_COUNTER(STAT_D3D12CreateTextureTime);
 
-	if (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES2)
-	{
-		// Remove sRGB read flag when not supported
-		TexCreateFlags &= ~TexCreate_SRGB;
-	}
-
 	const bool bSRGB = (TexCreateFlags & TexCreate_SRGB) != 0;
 
 	const DXGI_FORMAT PlatformResourceFormat = TextureDesc.Format;
@@ -2704,12 +2686,6 @@ FTextureCubeRHIRef FD3D12DynamicRHI::RHICreateTextureCubeFromResource(EPixelForm
 	}
 
 	SCOPE_CYCLE_COUNTER(STAT_D3D12CreateTextureTime);
-
-	if (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES2)
-	{
-		// Remove sRGB read flag when not supported
-		TexCreateFlags &= ~TexCreate_SRGB;
-	}
 
 	const bool bSRGB = (TexCreateFlags & TexCreate_SRGB) != 0;
 
