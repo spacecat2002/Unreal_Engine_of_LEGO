@@ -177,6 +177,8 @@ id<MTLDevice> GMetalDevice = nil;
 {
 	SCOPED_BOOT_TIMING("[FIOSView initInternal]");
 
+	CachedMarkedText = nil;
+
 	// figure out if we should start up GL or Metal
 #if HAS_METAL
 	// if the device is valid, we know Metal is usable (see +layerClass)
@@ -260,6 +262,7 @@ id<MTLDevice> GMetalDevice = nil;
 
 -(void)dealloc
 {
+	[CachedMarkedText release];
 	[markedTextStyle release];
 	[super dealloc];
 }
@@ -620,6 +623,11 @@ self.accessibilityElements = @[Window.accessibilityContainer];
 
 - (void)insertText:(NSString *)theText
 {
+	if (nil != CachedMarkedText) {
+		[CachedMarkedText release];
+		CachedMarkedText = nil;
+	}
+
 	// insert text one key at a time, as chars, not keydowns
 	for (int32 CharIndex = 0; CharIndex < [theText length]; CharIndex++)
 	{
@@ -644,6 +652,10 @@ self.accessibilityElements = @[Window.accessibilityContainer];
 
 - (void)deleteBackward
 {
+	if (nil != CachedMarkedText) {
+		[CachedMarkedText release];
+		CachedMarkedText = nil;
+	}
 	FIOSInputInterface::QueueKeyInput(KEYCODE_BACKSPACE, '\b');
 }
 
@@ -730,8 +742,10 @@ self.accessibilityElements = @[Window.accessibilityContainer];
 
 - (NSString *)textInRange:(UITextRange *)range
 {
-	// @todo keyboard: This is called
-	return @"";
+	if (nil != CachedMarkedText) {
+		return CachedMarkedText;
+	}
+	return nil;
 	//IndexedRange *r = (IndexedRange *)range;
 	//return ([textStore substringWithRange:r.range]);
 }
@@ -761,14 +775,23 @@ self.accessibilityElements = @[Window.accessibilityContainer];
 
 - (UITextRange *)markedTextRange
 {
-	// @todo keyboard: This is called
-	return nil;
+	if (nil != CachedMarkedText) {
+		return[[[UITextRange alloc] init] autorelease];
+	}
+	return nil; // Nil if no marked text.
 }
 
 
 - (void)setMarkedText:(NSString *)markedText selectedRange:(NSRange)selectedRange
 {
+	if (markedText == CachedMarkedText) {
+		return;
+	}
+	if (nil != CachedMarkedText) {
+		[CachedMarkedText release];
+	}
 	CachedMarkedText = markedText;
+	[CachedMarkedText retain];
 	//NSLog(@"setting marked text to %@", markedText);
 }
 
@@ -778,6 +801,7 @@ self.accessibilityElements = @[Window.accessibilityContainer];
 	if (CachedMarkedText != nil)
 	{
 		[self insertText:CachedMarkedText];
+		[CachedMarkedText release];
 		CachedMarkedText = nil;
 	}
 }
@@ -854,15 +878,15 @@ self.accessibilityElements = @[Window.accessibilityContainer];
 }
 
 
-- (UITextWritingDirection)baseWritingDirectionForPosition:(UITextPosition *)position inDirection:(UITextStorageDirection)direction
+- (NSWritingDirection)baseWritingDirectionForPosition:(UITextPosition *)position inDirection:(UITextStorageDirection)direction
 {
 	REPORT_EVENT;
 	// assume left to right for now
-	return UITextWritingDirectionLeftToRight;
+	return NSWritingDirectionLeftToRight;
 }
 
 
-- (void)setBaseWritingDirection:(UITextWritingDirection)writingDirection forRange:(UITextRange *)range
+- (void)setBaseWritingDirection:(NSWritingDirection)writingDirection forRange:(UITextRange *)range
 {
 	// @todo keyboard: This is called
 }
