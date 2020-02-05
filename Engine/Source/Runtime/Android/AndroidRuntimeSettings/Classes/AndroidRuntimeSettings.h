@@ -286,6 +286,26 @@ public:
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "APK Packaging", Meta = (DisplayName = "Validate texture formats"))
 	bool bValidateTextureFormats;
 
+	// Enables generating AAB bundle
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = "App Bundles", Meta = (DisplayName = "Generate bundle (AAB)"))
+	bool bEnableBundle;
+
+	// Enables generating universal APK from bundle
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = "App Bundles", Meta = (DisplayName = "Generate universal APK from bundle", EditCondition = "bEnableBundle"))
+	bool bEnableUniversalAPK;
+
+	// Separate ABIs into their own APK in bundle
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = "App Bundles", Meta = (DisplayName = "Enable ABI split", EditCondition = "bEnableBundle"))
+	bool bBundleABISplit;
+
+	// Separate resources by language into their own APK in bundle
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = "App Bundles", Meta = (DisplayName = "Enable language split", EditCondition = "bEnableBundle"))
+	bool bBundleLanguageSplit;
+
+	// Separate resources by density into their own APK in bundle
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = "App Bundles", Meta = (DisplayName = "Enable density split", EditCondition = "bEnableBundle"))
+	bool bBundleDensitySplit;
+
 	// Any extra tags for the <manifest> node
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Advanced APK Packaging", Meta = (DisplayName = "Extra Tags for <manifest> node"))
 	TArray<FString> ExtraManifestNodeTags;
