@@ -41,6 +41,8 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FInstancedStaticMeshVertexFactoryUniformSha
 	SHADER_PARAMETER_SRV(Buffer<float4>, VertexFetch_InstanceOriginBuffer)
 	SHADER_PARAMETER_SRV(Buffer<float4>, VertexFetch_InstanceTransformBuffer)
 	SHADER_PARAMETER_SRV(Buffer<float4>, VertexFetch_InstanceLightmapBuffer)
+	SHADER_PARAMETER_SRV(Buffer<float>, InstanceCustomDataBuffer)
+	SHADER_PARAMETER(int32, NumCustomDataFloats)
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
 // This must match the maximum a user could specify in the material (see 
@@ -91,6 +93,11 @@ public:
 		InstanceData->GetInstanceShaderValues(InstanceIndex, InstanceTransform, InstanceLightmapAndShadowMapUVBias, InstanceOrigin);
 	}
 	
+	FORCEINLINE  void GetInstanceCustomDataValues(int32 InstanceIndex, TArray<float>& InstanceCustomData) const
+	{
+		InstanceData->GetInstanceShaderCustomDataValues(InstanceIndex, InstanceCustomData);
+	}
+	
 	FORCEINLINE FStaticMeshInstanceData* GetInstanceData() const
 	{
 		return InstanceData.Get();
@@ -131,6 +138,12 @@ private:
 		virtual FString GetFriendlyName() const override { return TEXT("FInstanceLightmapBuffer"); }
 	} InstanceLightmapBuffer;
 	FShaderResourceViewRHIRef InstanceLightmapSRV;
+
+	class FInstanceCustomDataBuffer : public FVertexBuffer
+	{
+		virtual FString GetFriendlyName() const override { return TEXT("FInstanceCustomDataBuffer"); }
+	} InstanceCustomDataBuffer;
+	FShaderResourceViewRHIRef InstanceCustomDataSRV;	
 
 	/** Delete existing resources */
 	void CleanUp();
@@ -175,10 +188,9 @@ struct FInstancedStaticMeshDataType
 	FRHIShaderResourceView* InstanceOriginSRV = nullptr;
 	FRHIShaderResourceView* InstanceTransformSRV = nullptr;
 	FRHIShaderResourceView* InstanceLightmapSRV = nullptr;
+	FRHIShaderResourceView* InstanceCustomDataSRV = nullptr;
 
-	/** Used to track state for debugging. */
-	uint32 NumInstances = 0;
-	bool bInitialized = false;
+	int32 NumCustomDataFloats = 0;
 };
 
 /**
@@ -268,16 +280,6 @@ public:
 	virtual bool SupportsNullPixelShader() const override { return false; }
 #endif
 
-	inline bool IsDataInitialized() const
-	{
-		return Data.bInitialized;
-	}
-
-	inline uint32 GetNumInstances() const
-	{
-		return Data.NumInstances;
-	}
-
 	inline FRHIShaderResourceView* GetInstanceOriginSRV() const
 	{
 		return Data.InstanceOriginSRV;
@@ -291,6 +293,11 @@ public:
 	inline FRHIShaderResourceView* GetInstanceLightmapSRV() const
 	{
 		return Data.InstanceLightmapSRV;
+	}
+
+	inline FRHIShaderResourceView* GetInstanceCustomDataSRV() const
+	{
+		return Data.InstanceCustomDataSRV;
 	}
 
 	FRHIUniformBuffer* GetUniformBuffer() const
