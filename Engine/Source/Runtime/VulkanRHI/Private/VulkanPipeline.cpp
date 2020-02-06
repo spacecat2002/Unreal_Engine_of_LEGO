@@ -214,6 +214,15 @@ FVulkanRHIGraphicsPipelineState::~FVulkanRHIGraphicsPipelineState()
 	SGraphicsRHICount--;
 #endif	
 	DEC_DWORD_STAT(STAT_VulkanNumGraphicsPSOs);
+
+	for (int ShaderStageIndex = 0; ShaderStageIndex < ShaderStage::NumStages; ShaderStageIndex++)
+	{
+		if (VulkanShaders[ShaderStageIndex] != nullptr)
+		{
+			VulkanShaders[ShaderStageIndex]->Release();
+		}
+	}
+
 	Device->PipelineStateCache->NotifyDeletedGraphicsPSO(this);
 	if (bShaderModulesLoaded)
 	{
@@ -1621,6 +1630,14 @@ FVulkanRHIGraphicsPipelineState::FVulkanRHIGraphicsPipelineState(FVulkanDevice* 
 	VulkanShaders[ShaderStage::Geometry] = static_cast<FVulkanGeometryShader*>(PSOInitializer_.BoundShaderState.GeometryShaderRHI);
 #endif
 	VulkanShaders[ShaderStage::Pixel] = static_cast<FVulkanPixelShader*>(PSOInitializer_.BoundShaderState.PixelShaderRHI);
+
+	for (int ShaderStageIndex = 0; ShaderStageIndex < ShaderStage::NumStages; ShaderStageIndex++)
+	{
+		if (VulkanShaders[ShaderStageIndex] != nullptr)
+		{
+			VulkanShaders[ShaderStageIndex]->AddRef();
+		}
+	}
 
 #if VULKAN_PSO_CACHE_DEBUG
 	PixelShaderRHI = PSOInitializer_.BoundShaderState.PixelShaderRHI;
