@@ -2,6 +2,7 @@
 
 using System;
 using System.IO;
+using System.Globalization;
 using UnrealBuildTool;
 
 public class Steamworks : ModuleRules
@@ -12,7 +13,7 @@ public class Steamworks : ModuleRules
         double SteamVersionNumber = 1.47;
 
         // Mark the current version of the Steam SDK
-        string SteamVersion = String.Format("v{0}", SteamVersionNumber).Replace(".", "");
+        string SteamVersion = String.Format(CultureInfo.InvariantCulture, "v{0}", SteamVersionNumber).Replace(".", "");
 		Type = ModuleType.External;
 
 		PublicDefinitions.Add(String.Format("STEAM_SDK_VER=TEXT(\"{0}\")", SteamVersionNumber));
