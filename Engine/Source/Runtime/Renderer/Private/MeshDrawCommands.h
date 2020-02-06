@@ -16,27 +16,30 @@ class FParallelCommandListSet;
 /**
  * Global vertex buffer pool used for GPUScene primitive id arrays.
  */
+
+struct FPrimitiveIdVertexBufferPoolEntry
+{
+	int32 BufferSize = 0;
+	uint32 LastDiscardId = 0;
+	FVertexBufferRHIRef BufferRHI;
+};
+
 class FPrimitiveIdVertexBufferPool : public FRenderResource
 {
 public:
 	FPrimitiveIdVertexBufferPool();
 	~FPrimitiveIdVertexBufferPool();
 
-	FRHIVertexBuffer* Allocate(int32 BufferSize);
+	FPrimitiveIdVertexBufferPoolEntry Allocate(int32 BufferSize);
+	void ReturnToFreeList(FPrimitiveIdVertexBufferPoolEntry Entry);
 	RENDERER_API void DiscardAll();
 
 	virtual void ReleaseDynamicRHI() override;
 
 private:
-	struct FPrimitiveIdVertexBufferPoolEntry
-	{
-		int32 BufferSize;
-		uint32 LastDiscardId;
-		FVertexBufferRHIRef BufferRHI;
-	};
-
 	uint32 DiscardId;
 	TArray<FPrimitiveIdVertexBufferPoolEntry> Entries;
+	FCriticalSection AllocationCS;
 };
 
 extern RENDERER_API TGlobalResource<FPrimitiveIdVertexBufferPool> GPrimitiveIdVertexBufferPool;
@@ -126,8 +129,7 @@ class FParallelMeshDrawCommandPass
 {
 public:
 	FParallelMeshDrawCommandPass()
-		: PrimitiveIdVertexBufferRHI(nullptr)
-		, bPrimitiveIdBufferDataOwnedByRHIThread(false)
+		: bPrimitiveIdBufferDataOwnedByRHIThread(false)
 		, MaxNumDraws(0)
 	{
 	}
@@ -165,7 +167,7 @@ public:
 
 
 private:
-	FRHIVertexBuffer* PrimitiveIdVertexBufferRHI;
+	FPrimitiveIdVertexBufferPoolEntry PrimitiveIdVertexBufferPoolEntry;
 	FMeshDrawCommandPassSetupTaskContext TaskContext;
 	FGraphEventRef TaskEventRef;
 	FString PassNameForStats;
