@@ -963,7 +963,7 @@ void FRHIRenderPassInfo::ConvertToRenderTargetsInfo(FRHISetRenderTargetsInfo& Ou
 		OutRTInfo.ColorRenderTarget[Index].MipIndex = ColorRenderTargets[Index].MipIndex;
 		++OutRTInfo.NumColorRenderTargets;
 
-		OutRTInfo.bClearColor |= (LoadAction == ERenderTargetLoadAction::EClear);
+		OutRTInfo.bClearColor |= (LoadAction == ERenderTargetLoadAction::EClear) || (IsOpenGLPlatform(GMaxRHIShaderPlatform) && LoadAction == ERenderTargetLoadAction::ENoAction);
 
 		ensure(!OutRTInfo.bHasResolveAttachments || ColorRenderTargets[Index].ResolveTarget);
 		if (ColorRenderTargets[Index].ResolveTarget)
