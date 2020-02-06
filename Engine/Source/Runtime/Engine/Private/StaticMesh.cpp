@@ -3768,15 +3768,15 @@ static FStaticMeshRenderData& GetPlatformStaticMeshRenderData(UStaticMesh* Mesh,
 		BuildStaticMeshDerivedDataKeySuffix(Platform, Mesh, PlatformLODSettings.GetLODGroup(Mesh->LODGroup)));
 	FStaticMeshRenderData* PlatformRenderData = Mesh->RenderData.Get();
 
-	while (PlatformRenderData && PlatformRenderData->DerivedDataKey != PlatformDerivedDataKey)
-	{
-		PlatformRenderData = PlatformRenderData->NextCachedRenderData.Get();
-	}
-
 	if (Mesh->GetOutermost()->HasAnyPackageFlags(PKG_FilterEditorOnly))
 	{
 		check(PlatformRenderData);
 		return *PlatformRenderData;
+	}
+
+	while (PlatformRenderData && PlatformRenderData->DerivedDataKey != PlatformDerivedDataKey)
+	{
+		PlatformRenderData = PlatformRenderData->NextCachedRenderData.Get();
 	}
 
 	if (PlatformRenderData == NULL)
