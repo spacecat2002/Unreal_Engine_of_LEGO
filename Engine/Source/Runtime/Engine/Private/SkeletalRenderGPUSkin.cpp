@@ -345,6 +345,20 @@ void FSkeletalMeshObjectGPUSkin::UpdateSkinWeightBuffer(USkinnedMeshComponent* I
 			}
 
 			SkelLOD.UpdateSkinWeights(CompLODInfo);
+
+			if (InMeshComponent && InMeshComponent->SceneProxy)
+			{
+				FGPUSkinCache* GPUSkinCache = InMeshComponent->SceneProxy->GetScene().GetGPUSkinCache();
+				FGPUSkinCacheEntry* SkinCacheEntryToUpdate = SkinCacheEntry;
+				if (GPUSkinCache && SkinCacheEntryToUpdate)
+				{
+					ENQUEUE_RENDER_COMMAND(UpdateSkinCacheSkinWeightBuffer)(
+						[GPUSkinCache, SkinCacheEntryToUpdate](FRHICommandListImmediate& RHICmdList)
+					{
+						GPUSkinCache->UpdateSkinWeightBuffer(SkinCacheEntryToUpdate);
+					});
+				}
+			}
 		}
 	}
 

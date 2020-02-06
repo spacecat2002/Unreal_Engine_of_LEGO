@@ -166,13 +166,7 @@ public:
 			BatchElementsUserData[Index].Section = Index;
 		}
 
-		FSkinWeightVertexBuffer* WeightBuffer = GPUSkin->GetSkinWeightVertexBuffer(LOD);
-		BoneInfluenceType = WeightBuffer->GetBoneInfluenceType();
-		bUse16BitBoneIndex = WeightBuffer->Use16BitBoneIndex();
-		InputWeightIndexSize = WeightBuffer->GetBoneIndexByteSize();
-		InputWeightStride = WeightBuffer->GetConstantInfluencesVertexStride();
-		InputWeightStreamSRV = WeightBuffer->GetDataVertexBuffer()->GetSRV();
-		InputWeightLookupStreamSRV = WeightBuffer->GetLookupVertexBuffer()->GetSRV();
+		UpdateSkinWeightBuffer();
 	}
 
 	~FGPUSkinCacheEntry()
@@ -299,6 +293,17 @@ public:
 	bool IsValid(FSkeletalMeshObjectGPUSkin* InSkin) const
 	{
 		return GPUSkin == InSkin && GPUSkin->GetLOD() == LOD;
+	}
+
+	void UpdateSkinWeightBuffer()
+	{
+		FSkinWeightVertexBuffer* WeightBuffer = GPUSkin->GetSkinWeightVertexBuffer(LOD);
+		BoneInfluenceType = WeightBuffer->GetBoneInfluenceType();
+		bUse16BitBoneIndex = WeightBuffer->Use16BitBoneIndex();
+		InputWeightIndexSize = WeightBuffer->GetBoneIndexByteSize();
+		InputWeightStride = WeightBuffer->GetConstantInfluencesVertexStride();
+		InputWeightStreamSRV = WeightBuffer->GetDataVertexBuffer()->GetSRV();
+		InputWeightLookupStreamSRV = WeightBuffer->GetLookupVertexBuffer()->GetSRV();
 	}
 
 	void SetupSection(int32 SectionIndex, FGPUSkinCache::FRWBuffersAllocation* InPositionAllocation, FSkelMeshRenderSection* Section, const FMorphVertexBuffer* MorphVertexBuffer, const FSkeletalMeshVertexClothBuffer* ClothVertexBuffer,
@@ -1450,6 +1455,14 @@ void FGPUSkinCache::InvalidateAllEntries()
 FCachedGeometrySection FGPUSkinCache::GetCachedGeometry(FGPUSkinCacheEntry* InOutEntry, uint32 sectionIndex)
 {
 	return InOutEntry ? InOutEntry->GetCachedGeometry(sectionIndex) : FCachedGeometrySection();
+}
+
+void FGPUSkinCache::UpdateSkinWeightBuffer(FGPUSkinCacheEntry* Entry)
+{
+	if (Entry)
+	{
+		Entry->UpdateSkinWeightBuffer();
+	}
 }
 
 void FGPUSkinCache::CVarSinkFunction()
