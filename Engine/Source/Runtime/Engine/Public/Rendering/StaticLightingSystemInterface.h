@@ -1,5 +1,6 @@
 #pragma once
-#include "CoreMinimal.h"
+#include "Components/PrimitiveComponent.h"
+#include "Components/LightComponent.h"
 
 // TODO: Remove the 'V2' suffix after the renderer version is removed
 

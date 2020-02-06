@@ -4,6 +4,7 @@
 #include "Misc/ScopedSlowTask.h"
 #include "Engine/World.h"
 #include "Components/LightComponent.h"
+#include "UObject/UObjectIterator.h"
 
 #define LOCTEXT_NAMESPACE "StaticLightingSystem"
 
