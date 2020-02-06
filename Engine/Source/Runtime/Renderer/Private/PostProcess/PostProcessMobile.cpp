@@ -855,6 +855,9 @@ class FPostProcessSunMaskPS_ES2 : public FGlobalShader
 		OutEnvironment.SetDefine(TEXT("ES2_USE_SUN"), (UseSunDofDepth & 2) ? (uint32)1 : (uint32)0);
 		CA_SUPPRESS(6313);
 		OutEnvironment.SetDefine(TEXT("ES2_USE_DOF"), (UseSunDofDepth & 1) ? (uint32)1 : (uint32)0);
+		
+		// This post-processor has a 1-Dimensional color attachment for SV_Target0
+		OutEnvironment.SetDefine(TEXT("SUBPASS_COLOR0_ATTACHMENT_DIM"), 1);
 
 		if (IsVulkanMobilePlatform(Parameters.Platform))
 		{
@@ -1051,7 +1054,7 @@ void FRCPassPostProcessSunMaskES2::Process(FRenderingCompositePassContext& Conte
 	uint32 UseSun = Context.View.bLightShaftUse ? 1 : 0;
 	uint32 UseDof = (GetMobileDepthOfFieldScale(Context.View) > 0.0f) ? 1 : 0;
 	uint32 UseDepth = (InputDesc != NULL && InputDesc->Format == PF_FloatR11G11B10) ? 1 : 0;
-	uint32 UseSunDofDepth = (UseDepth<<2) + (UseSun << 1) + UseDof;
+	uint32 UseSunDofDepth = (UseDepth << 2) | (UseSun << 1) | UseDof;
 
 	switch (UseSunDofDepth)
 	{
