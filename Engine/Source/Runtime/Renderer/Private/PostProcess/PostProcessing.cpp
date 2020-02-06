@@ -671,6 +671,7 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 			FTonemapInputs PassInputs;
 			PassSequence.AcceptOverrideIfLastPass(EPass::Tonemap, PassInputs.OverrideOutput);
 			PassInputs.SceneColor = SceneColor;
+			PassInputs.EyeAdaptationTexture = EyeAdaptationTexture;
 			PassInputs.bOutputInHDR = bViewFamilyOutputInHDR;
 			PassInputs.bGammaOnly = true;
 
