@@ -849,6 +849,7 @@ class FPostProcessSunMaskPS_ES2 : public FGlobalShader
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		CA_SUPPRESS(6313);
 		OutEnvironment.SetDefine(TEXT("ES2_USE_DEPTHTEXTURE"), (UseSunDofDepth & 4) ? (uint32)1 : (uint32)0);
 		CA_SUPPRESS(6313);
 		OutEnvironment.SetDefine(TEXT("ES2_USE_SUN"), (UseSunDofDepth & 2) ? (uint32)1 : (uint32)0);
@@ -975,6 +976,7 @@ void FRCPassPostProcessSunMaskES2::SetShaderAndExecute(const FRenderingComposite
 // TODO: This won't work with scaled views.
 	SrcRect = View.ViewRect;
 
+	CA_SUPPRESS(6313);
 	uint32 UseDepth = (UseSunDofDepth & 4) ? 1 : 0;
 
 	const FSceneRenderTargetItem& DestRenderTarget0 = PassOutputs[0].RequestSurface(Context);
