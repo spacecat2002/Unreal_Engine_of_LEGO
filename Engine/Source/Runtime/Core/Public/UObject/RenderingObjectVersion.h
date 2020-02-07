@@ -112,6 +112,9 @@ struct CORE_API FRenderingObjectVersion
 		// Removed emulated instancing from instanced static meshes
 		RemovedEmulatedInstancing,
 
+		// Add if anything has changed in the exposure, override the bias to avoid the new default propogating
+		AutoExposureForceOverrideBiasFlag,
+
 		// -----<new versions can be added above this line>-------------------------------------------------
 		VersionPlusOne,
 		LatestVersion = VersionPlusOne - 1
