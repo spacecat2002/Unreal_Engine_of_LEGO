@@ -8,7 +8,6 @@
 
 #define LOCTEXT_NAMESPACE "UInteractiveTool"
 
-
 UInteractiveTool::UInteractiveTool()
 {
 	// tools need to be transactional or undo/redo won't work on their uproperties
@@ -144,7 +143,7 @@ TArray<UObject*> UInteractiveTool::GetToolProperties(bool bEnabledOnly) const
 		}
 	}
 
-	return MoveTemp(Properties);
+	return Properties;
 }
 
 
@@ -187,6 +186,21 @@ bool UInteractiveTool::CanAccept() const
 
 void UInteractiveTool::Tick(float DeltaTime)
 {
+	for (auto* Object : ToolPropertyObjects)
+	{
+		auto* Propset = Cast<UInteractiveToolPropertySet>(Object);
+		if ( Propset != nullptr )
+		{
+			if ( Propset->IsPropertySetEnabled() )
+			{
+				Propset->CheckAndUpdateWatched();
+			}
+			else
+			{
+				Propset->SilentUpdateWatched();
+			}
+		}
+	}
 }
 
 UInteractiveToolManager* UInteractiveTool::GetToolManager() const
