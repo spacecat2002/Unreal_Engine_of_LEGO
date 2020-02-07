@@ -2828,6 +2828,24 @@ public:
 
 IMPLEMENT_SHADER_TYPE(, FClearUAVUIntCS_ES2, TEXT("/Engine/Private/PostProcessMobile.usf"), TEXT("ClearUAVUIntCS"), SF_Compute);
 
+class FAverageLuminanceVertexBuffer : public FVertexBufferWithSRV
+{
+public:
+	virtual void InitRHI() override
+	{
+		// Create the texture RHI.  		
+		FRHIResourceCreateInfo CreateInfo(TEXT("AverageLuminanceVertexBuffer"));
+
+		VertexBufferRHI = RHICreateVertexBuffer(sizeof(uint32) * 2, BUF_Static | BUF_ShaderResource | BUF_UnorderedAccess, CreateInfo);
+
+		// Create a view of the buffer
+		ShaderResourceViewRHI = RHICreateShaderResourceView(VertexBufferRHI, sizeof(uint32), PF_R32_UINT);
+		UnorderedAccessViewRHI = RHICreateUnorderedAccessView(VertexBufferRHI, PF_R32_UINT);
+	}
+};
+
+FAverageLuminanceVertexBuffer* GAverageLuminanceBuffer = new TGlobalResource<FAverageLuminanceVertexBuffer>;
+
 /** Encapsulates the average luminance compute shader. */
 class FPostProcessAverageLuminanceCS_ES2 : public FGlobalShader
 {
@@ -2848,7 +2866,7 @@ public:
 		SHADER_PARAMETER_STRUCT(FEyeAdaptationParameters, EyeAdaptation)
 		SHADER_PARAMETER_SAMPLER(SamplerState, InputSampler)
 		SHADER_PARAMETER_TEXTURE(Texture2D<half>, InputTexture)
-		SHADER_PARAMETER_UAV(RWTexture2D<uint>, OutputTexture)
+		SHADER_PARAMETER_UAV(RWBuffer<uint>, OutputUIntBuffer)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -2890,7 +2908,7 @@ public:
 		ShaderParameters.InputSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 		ShaderParameters.InputTexture = NewTextureRHI;
 		ShaderParameters.EyeAdaptation = GetEyeAdaptationParameters(Context.View, ERHIFeatureLevel::ES3_1);
-		ShaderParameters.OutputTexture = NewUnorderedAccessViewRHI;
+		ShaderParameters.OutputUIntBuffer = NewUnorderedAccessViewRHI;
 
 		SetShaderParameters(Context.RHICmdList, this, ShaderRHI, ShaderParameters);
 	}
@@ -2907,15 +2925,22 @@ void FRCPassPostProcessAverageLuminanceES2::Process(FRenderingCompositePassConte
 	const FViewInfo& View = Context.View;
 	const FSceneViewFamily& ViewFamily = *(View.Family);
 
-	const FSceneRenderTargetItem& DestRenderTarget = PassOutputs[0].RequestSurface(Context);
-
 	FIntVector DestSize = PassOutputs[0].RenderTargetDesc.GetSize();
 
-	FRHIRenderPassInfo RPInfo(GSystemTextures.BlackDummy->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::DontLoad_DontStore);
+	const FSceneRenderTargetItem& InputRenderTarget = GetInput(ePId_Input0)->GetOutput()->PooledRenderTarget->GetRenderTargetItem();
 
-	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("AverageLuminanceToSingleTexel"));
+	if (!IsMetalPlatform(Context.View.GetShaderPlatform()) && !IsVulkanPlatform(Context.View.GetShaderPlatform()))
+	{
+		FRHIRenderPassInfo RPInfo(GSystemTextures.BlackDummy->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::DontLoad_DontStore);
 
-	Context.RHICmdList.EndRenderPass();
+		Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("AverageLuminanceToSingleTexel"));
+
+		Context.RHICmdList.EndRenderPass();
+	}
+	else
+	{
+		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, InputRenderTarget.TargetableTexture);
+	}
 
 	{
 		// clear Average Luminance History
@@ -2925,7 +2950,7 @@ void FRCPassPostProcessAverageLuminanceES2::Process(FRenderingCompositePassConte
 
 			Context.RHICmdList.SetComputeShader(ClearShader->GetComputeShader());
 
-			ClearShader->SetCS(Context, 0, DestSize.X, DestRenderTarget.UAV);
+			ClearShader->SetCS(Context, 0, DestSize.X, GAverageLuminanceBuffer->UnorderedAccessViewRHI);
 
 			DispatchComputeShader(Context.RHICmdList, *ClearShader, FMath::DivideAndRoundUp<uint32>(DestSize.X, 64), DestSize.Y, 1);
 
@@ -2933,15 +2958,13 @@ void FRCPassPostProcessAverageLuminanceES2::Process(FRenderingCompositePassConte
 		}
 		else
 		{
-			Context.RHICmdList.ClearUAVUint(DestRenderTarget.UAV, FUintVector4(0, 0, 0, 0));
+			Context.RHICmdList.ClearUAVUint(GAverageLuminanceBuffer->UnorderedAccessViewRHI, FUintVector4(0, 0, 0, 0));
 		}
 
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, DestRenderTarget.UAV);
+		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, GAverageLuminanceBuffer->UnorderedAccessViewRHI);
 
 		{
 			const FPooledRenderTargetDesc* InputDesc = GetInputDesc(ePId_Input0);
-
-			const FSceneRenderTargetItem& InputRenderTarget = GetInput(ePId_Input0)->GetOutput()->PooledRenderTarget->GetRenderTargetItem();
 
 			TShaderMapRef<FPostProcessAverageLuminanceCS_ES2> ComputeShader(Context.GetShaderMap());
 
@@ -2951,14 +2974,14 @@ void FRCPassPostProcessAverageLuminanceES2::Process(FRenderingCompositePassConte
 
 			FIntPoint ThreadGroupCount = FIntPoint::DivideAndRoundUp(SrcRectExtent, FPostProcessAverageLuminanceCS_ES2::TexelsPerThreadGroup);
 
-			ComputeShader->SetCS(Context, SrcRectExtent, InputRenderTarget.ShaderResourceTexture, DestRenderTarget.UAV);
+			ComputeShader->SetCS(Context, SrcRectExtent, InputRenderTarget.ShaderResourceTexture, GAverageLuminanceBuffer->UnorderedAccessViewRHI);
 
 			DispatchComputeShader(Context.RHICmdList, *ComputeShader, ThreadGroupCount.X, ThreadGroupCount.Y, 1);
 
 			UnsetShaderUAVs(Context.RHICmdList, *ComputeShader, ComputeShader->GetComputeShader());
 		}
 
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, DestRenderTarget.UAV);
+		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, GAverageLuminanceBuffer->UnorderedAccessViewRHI);
 	}
 }
 
@@ -2988,7 +3011,7 @@ public:
 		SHADER_PARAMETER_SRV(Buffer<float4>, EyeAdaptationBuffer)
 		SHADER_PARAMETER_STRUCT(FEyeAdaptationParameters, EyeAdaptation)
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
-		SHADER_PARAMETER_TEXTURE(Texture2D<uint>, LogLuminanceWeightTexture)
+		SHADER_PARAMETER_SRV(Buffer<uint>, LogLuminanceWeightBuffer)
 		SHADER_PARAMETER_UAV(RWBuffer<float4>, OutputBuffer)
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -3018,7 +3041,7 @@ public:
 		OutEnvironment.CompilerFlags.Add(CFLAG_StandardOptimization);
 	}
 
-	void Set(const FRenderingCompositePassContext& Context, FRHIShaderResourceView* LastEyeAdaptation, FRHITexture* NewTextureRHI, FRHIUnorderedAccessView* TextureUnorderedAccessViewRHI = nullptr)
+	void Set(const FRenderingCompositePassContext& Context, FRHIShaderResourceView* LastEyeAdaptation, FRHIShaderResourceView* LogLuminanceWeightBuffer, FRHIUnorderedAccessView* TextureUnorderedAccessViewRHI = nullptr)
 	{
 		FParameters ShaderParameters;
 
@@ -3027,7 +3050,7 @@ public:
 
 		ShaderParameters.EyeAdaptationBuffer = LastEyeAdaptation;
 		
-		ShaderParameters.LogLuminanceWeightTexture = NewTextureRHI;
+		ShaderParameters.LogLuminanceWeightBuffer = LogLuminanceWeightBuffer;
 
 		ShaderParameters.OutputBuffer = TextureUnorderedAccessViewRHI;
 
@@ -3052,7 +3075,7 @@ void FRCPassPostProcessBasicEyeAdaptationES2::Process(FRenderingCompositePassCon
 
 	check(EyeAdaptationThisFrameBuffer && EyeAdaptationLastFrameBuffer);
 
-	FRHITexture* InputRHITexture = GetInput(ePId_Input0)->IsValid() ? GetInput(ePId_Input0)->GetOutput()->PooledRenderTarget->GetRenderTargetItem().ShaderResourceTexture : GSystemTextures.ZeroUIntDummy->GetRenderTargetItem().ShaderResourceTexture;
+	FShaderResourceViewRHIRef LogLuminanceWeightBuffer = GetInput(ePId_Input0)->IsValid() ? GAverageLuminanceBuffer->ShaderResourceViewRHI : GEmptyVertexBufferWithUAV->ShaderResourceViewRHI;
 
 	SCOPED_DRAW_EVENT(Context.RHICmdList, PostProcessBasicEyeAdaptationES2);
 
@@ -3061,7 +3084,7 @@ void FRCPassPostProcessBasicEyeAdaptationES2::Process(FRenderingCompositePassCon
 
 		Context.RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
 
-		ComputeShader->Set(Context, EyeAdaptationLastFrameBuffer->SRV, InputRHITexture, EyeAdaptationThisFrameBuffer->UAV);
+		ComputeShader->Set(Context, EyeAdaptationLastFrameBuffer->SRV, LogLuminanceWeightBuffer, EyeAdaptationThisFrameBuffer->UAV);
 
 		DispatchComputeShader(Context.RHICmdList, *ComputeShader, 1, 1, 1);
 
@@ -3081,6 +3104,24 @@ FPooledRenderTargetDesc FRCPassPostProcessBasicEyeAdaptationES2::ComputeOutputDe
 	Ret.Flags |= GFastVRamConfig.EyeAdaptation;
 	return Ret;
 }
+
+class FHistogramVertexBuffer : public FVertexBufferWithSRV
+{
+public:
+	virtual void InitRHI() override
+	{
+		// Create the texture RHI.  		
+		FRHIResourceCreateInfo CreateInfo(TEXT("HistogramVertexBuffer"));
+
+		VertexBufferRHI = RHICreateVertexBuffer(sizeof(uint32) * 64, BUF_Static | BUF_ShaderResource | BUF_UnorderedAccess, CreateInfo);
+
+		// Create a view of the buffer
+		ShaderResourceViewRHI = RHICreateShaderResourceView(VertexBufferRHI, sizeof(uint32), PF_R32_UINT);
+		UnorderedAccessViewRHI = RHICreateUnorderedAccessView(VertexBufferRHI, PF_R32_UINT);
+	}
+};
+
+FHistogramVertexBuffer* GHistogramBuffer = new TGlobalResource<FHistogramVertexBuffer>;
 
 /** Encapsulates the post processing histogram compute shader. */
 class FPostProcessHistogramCS_ES2 : public FGlobalShader
@@ -3104,7 +3145,7 @@ public:
 		SHADER_PARAMETER_STRUCT(FEyeAdaptationParameters, EyeAdaptation)
 		SHADER_PARAMETER_SAMPLER(SamplerState, InputSampler)
 		SHADER_PARAMETER_TEXTURE(Texture2D<half>, InputTexture)
-		SHADER_PARAMETER_UAV(RWTexture2D<uint>, HistogramRWTexture)
+		SHADER_PARAMETER_UAV(RWBuffer<uint>, RWHistogramBuffer)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -3148,7 +3189,7 @@ public:
 		ShaderParameters.SourceSizeAndInvSize = FVector4(SrcRectExtent.X, SrcRectExtent.Y, 1.0f / SrcRectExtent.X, 1.0f / SrcRectExtent.Y);
 		ShaderParameters.InputTexture = NewTextureRHI;
 		ShaderParameters.InputSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
-		ShaderParameters.HistogramRWTexture = NewUnorderedAccessViewRHI;
+		ShaderParameters.RWHistogramBuffer = NewUnorderedAccessViewRHI;
 		ShaderParameters.EyeAdaptation = GetEyeAdaptationParameters(Context.View, ERHIFeatureLevel::ES3_1);
 
 		SetShaderParameters(RHICmdList, this, ShaderRHI, ShaderParameters);
@@ -3167,15 +3208,23 @@ void FRCPassPostProcessHistogramES2::Process(FRenderingCompositePassContext& Con
 	const FSceneViewFamily& ViewFamily = *(View.Family);
 
 	//Histogram Pass
-	const FSceneRenderTargetItem& DestRenderTarget = PassOutputs[0].RequestSurface(Context);
+
+	const FSceneRenderTargetItem& InputRenderTarget = GetInput(ePId_Input0)->GetOutput()->PooledRenderTarget->GetRenderTargetItem();
 
 	FIntVector DestSize = PassOutputs[0].RenderTargetDesc.GetSize();
 
-	FRHIRenderPassInfo RPInfo(GSystemTextures.BlackDummy->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::DontLoad_DontStore);
+	if (!IsMetalPlatform(Context.View.GetShaderPlatform()) && !IsVulkanPlatform(Context.View.GetShaderPlatform()))
+	{
+		FRHIRenderPassInfo RPInfo(GSystemTextures.BlackDummy->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::DontLoad_DontStore);
 
-	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("Histogram"));
+		Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("Histogram"));
 
-	Context.RHICmdList.EndRenderPass();
+		Context.RHICmdList.EndRenderPass();
+	}
+	else
+	{
+		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, InputRenderTarget.TargetableTexture);
+	}
 
 	{
 		// clear Histogram History
@@ -3185,7 +3234,7 @@ void FRCPassPostProcessHistogramES2::Process(FRenderingCompositePassContext& Con
 
 			Context.RHICmdList.SetComputeShader(ClearShader->GetComputeShader());
 
-			ClearShader->SetCS(Context, 0, DestSize.X, DestRenderTarget.UAV);
+			ClearShader->SetCS(Context, 0, DestSize.X, GHistogramBuffer->UnorderedAccessViewRHI);
 
 			DispatchComputeShader(Context.RHICmdList, *ClearShader, FMath::DivideAndRoundUp<uint32>(DestSize.X, 64), DestSize.Y, 1);
 
@@ -3193,15 +3242,13 @@ void FRCPassPostProcessHistogramES2::Process(FRenderingCompositePassContext& Con
 		}
 		else
 		{
-			Context.RHICmdList.ClearUAVUint(DestRenderTarget.UAV, FUintVector4(0, 0, 0, 0));
+			Context.RHICmdList.ClearUAVUint(GHistogramBuffer->UnorderedAccessViewRHI, FUintVector4(0, 0, 0, 0));
 		}
 
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, DestRenderTarget.UAV);
+		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, GHistogramBuffer->UnorderedAccessViewRHI);
 
 		{
-			const FPooledRenderTargetDesc* InputDesc = GetInputDesc(ePId_Input0);
-
-			const FSceneRenderTargetItem& InputRenderTarget = GetInput(ePId_Input0)->GetOutput()->PooledRenderTarget->GetRenderTargetItem();
+			const FPooledRenderTargetDesc* InputDesc = GetInputDesc(ePId_Input0);			
 
 			TShaderMapRef<FPostProcessHistogramCS_ES2> ComputeShader(Context.GetShaderMap());
 
@@ -3210,14 +3257,14 @@ void FRCPassPostProcessHistogramES2::Process(FRenderingCompositePassContext& Con
 			const FIntPoint SrcRectExtent = InputDesc->Extent;
 			const FIntPoint ThreadGroupCount = FIntPoint::DivideAndRoundUp(SrcRectExtent, FPostProcessHistogramCS_ES2::TexelsPerThreadGroup);
 
-			ComputeShader->SetCS(Context.RHICmdList, Context, SrcRectExtent, InputRenderTarget.ShaderResourceTexture, DestRenderTarget.UAV);
+			ComputeShader->SetCS(Context.RHICmdList, Context, SrcRectExtent, InputRenderTarget.ShaderResourceTexture, GHistogramBuffer->UnorderedAccessViewRHI);
 
 			DispatchComputeShader(Context.RHICmdList, *ComputeShader, ThreadGroupCount.X, ThreadGroupCount.Y, 1);
 
 			UnsetShaderUAVs(Context.RHICmdList, *ComputeShader, ComputeShader->GetComputeShader());
 		}
 
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, DestRenderTarget.UAV);
+		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, GHistogramBuffer->UnorderedAccessViewRHI);
 	}
 }
 
@@ -3251,7 +3298,7 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_STRUCT(FEyeAdaptationParameters, EyeAdaptation)
 		SHADER_PARAMETER_SRV(Buffer<float4>, EyeAdaptationBuffer)
-		SHADER_PARAMETER_TEXTURE(Texture2D<uint>, HistogramTexture)
+		SHADER_PARAMETER_SRV(Buffer<uint>, HistogramBuffer)
 		SHADER_PARAMETER_UAV(RWBuffer<float4>, OutputBuffer)
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -3275,7 +3322,7 @@ public:
 		Bindings.BindForLegacyShaderParameters(this, Initializer.ParameterMap, *FParameters::FTypeInfo::GetStructMetadata());
 	}
 
-	void Set(const FRenderingCompositePassContext& Context, FRHIShaderResourceView* LastEyeAdaptation, FRHITexture* NewTextureRHI, FRHIUnorderedAccessView* TextureUnorderedAccessViewRHI = nullptr)
+	void Set(const FRenderingCompositePassContext& Context, FRHIShaderResourceView* LastEyeAdaptation, FRHIShaderResourceView* HistogramBuffer, FRHIUnorderedAccessView* TextureUnorderedAccessViewRHI = nullptr)
 	{
 		FParameters ShaderParameters;
 
@@ -3283,7 +3330,7 @@ public:
 
 		ShaderParameters.EyeAdaptation = GetEyeAdaptationParameters(Context.View, ERHIFeatureLevel::ES3_1);
 
-		ShaderParameters.HistogramTexture = NewTextureRHI;
+		ShaderParameters.HistogramBuffer = HistogramBuffer;
 
 		ShaderParameters.OutputBuffer = TextureUnorderedAccessViewRHI;
 
@@ -3310,14 +3357,14 @@ void FRCPassPostProcessHistogramEyeAdaptationES2::Process(FRenderingCompositePas
 	
 	check(EyeAdaptationThisFrameBuffer && EyeAdaptationLastFrameBuffer);
 
-	FRHITexture* InputRHITexture = GetInput(ePId_Input0)->IsValid() ? GetInput(ePId_Input0)->GetOutput()->PooledRenderTarget->GetRenderTargetItem().ShaderResourceTexture : GSystemTextures.ZeroUIntDummy->GetRenderTargetItem().ShaderResourceTexture;
+	FShaderResourceViewRHIRef HistogramBuffer = GetInput(ePId_Input0)->IsValid() ? GHistogramBuffer->ShaderResourceViewRHI : GEmptyVertexBufferWithUAV->ShaderResourceViewRHI;
 
 	{
 		TShaderMapRef<FHistogramEyeAdaptationCS_ES2> ComputeShader(Context.GetShaderMap());
 
 		Context.RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
 
-		ComputeShader->Set(Context, EyeAdaptationLastFrameBuffer->SRV, InputRHITexture, EyeAdaptationThisFrameBuffer->UAV);
+		ComputeShader->Set(Context, EyeAdaptationLastFrameBuffer->SRV, HistogramBuffer, EyeAdaptationThisFrameBuffer->UAV);
 
 		DispatchComputeShader(Context.RHICmdList, *ComputeShader, 1, 1, 1);
 
