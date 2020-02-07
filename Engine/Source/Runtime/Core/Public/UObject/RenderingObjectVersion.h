@@ -115,6 +115,9 @@ struct CORE_API FRenderingObjectVersion
 		// Added per instance custom data (for Instanced Static Meshes)
 		PerInstanceCustomData,
 
+		// Add if anything has changed in the exposure, override the bias to avoid the new default propogating
+		AutoExposureForceOverrideBiasFlag,
+
 		// -----<new versions can be added above this line>-------------------------------------------------
 		VersionPlusOne,
 		LatestVersion = VersionPlusOne - 1
