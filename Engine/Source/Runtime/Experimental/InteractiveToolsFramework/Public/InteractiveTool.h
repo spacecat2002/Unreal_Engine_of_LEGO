@@ -7,7 +7,6 @@
 #include "InteractiveToolActionSet.h"
 #include "Shader.h"
 #include "ToolContextInterfaces.h"
-#include <functional>
 #include "InteractiveTool.generated.h"
 
 class UInteractiveToolManager;
