@@ -1072,15 +1072,18 @@ void FParallelMeshDrawCommandPass::WaitForTasksAndEmpty()
 		TaskContext.MobileBasePassCSMMeshPassProcessor = nullptr;
 	}
 
-	if (bPrimitiveIdBufferDataOwnedByRHIThread)
+	if (MaxNumDraws > 0)
 	{
-		FRHICommandListExecutor::GetImmediateCommandList().EnqueueLambda([PrimitiveIdVertexBufferPoolEntry = PrimitiveIdVertexBufferPoolEntry](FRHICommandListImmediate&) {
+		if (bPrimitiveIdBufferDataOwnedByRHIThread)
+		{
+			FRHICommandListExecutor::GetImmediateCommandList().EnqueueLambda([PrimitiveIdVertexBufferPoolEntry = PrimitiveIdVertexBufferPoolEntry](FRHICommandListImmediate&) {
+				GPrimitiveIdVertexBufferPool.ReturnToFreeList(PrimitiveIdVertexBufferPoolEntry);
+			});
+		}
+		else
+		{
 			GPrimitiveIdVertexBufferPool.ReturnToFreeList(PrimitiveIdVertexBufferPoolEntry);
-		});
-	}
-	else
-	{
-		GPrimitiveIdVertexBufferPool.ReturnToFreeList(PrimitiveIdVertexBufferPoolEntry);
+		}
 	}
 
 	if (!bPrimitiveIdBufferDataOwnedByRHIThread)
