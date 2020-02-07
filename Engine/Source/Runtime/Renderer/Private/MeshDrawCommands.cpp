@@ -1072,6 +1072,17 @@ void FParallelMeshDrawCommandPass::WaitForTasksAndEmpty()
 		TaskContext.MobileBasePassCSMMeshPassProcessor = nullptr;
 	}
 
+	if (bPrimitiveIdBufferDataOwnedByRHIThread)
+	{
+		FRHICommandListExecutor::GetImmediateCommandList().EnqueueLambda([PrimitiveIdVertexBufferPoolEntry = PrimitiveIdVertexBufferPoolEntry](FRHICommandListImmediate&) {
+			GPrimitiveIdVertexBufferPool.ReturnToFreeList(PrimitiveIdVertexBufferPoolEntry);
+		});
+	}
+	else
+	{
+		GPrimitiveIdVertexBufferPool.ReturnToFreeList(PrimitiveIdVertexBufferPoolEntry);
+	}
+
 	if (!bPrimitiveIdBufferDataOwnedByRHIThread)
 	{
 		FMemory::Free(TaskContext.PrimitiveIdBufferData);
@@ -1193,8 +1204,6 @@ void FParallelMeshDrawCommandPass::DispatchDraw(FParallelCommandListSet* Paralle
 				CmdList.UnlockVertexBuffer(VertexBuffer);
 
 				FMemory::Free(VertexBufferData);
-
-				GPrimitiveIdVertexBufferPool.ReturnToFreeList(PrimitiveIdVertexBufferPoolEntry);
 			});
 
 			RHICommandList.RHIThreadFence(true);
@@ -1245,7 +1254,6 @@ void FParallelMeshDrawCommandPass::DispatchDraw(FParallelCommandListSet* Paralle
 			void* RESTRICT Data = RHILockVertexBuffer(PrimitiveIdVertexBufferPoolEntry.BufferRHI, 0, TaskContext.PrimitiveIdBufferDataSize, RLM_WriteOnly);
 			FMemory::Memcpy(Data, TaskContext.PrimitiveIdBufferData, TaskContext.PrimitiveIdBufferDataSize);
 			RHIUnlockVertexBuffer(PrimitiveIdVertexBufferPoolEntry.BufferRHI);
-			GPrimitiveIdVertexBufferPool.ReturnToFreeList(PrimitiveIdVertexBufferPoolEntry);
 		}
 
 		SubmitMeshDrawCommandsRange(TaskContext.MeshDrawCommands, TaskContext.MinimalPipelineStatePassSet, PrimitiveIdsBuffer, BasePrimitiveIdsOffset, TaskContext.bDynamicInstancing, 0, TaskContext.MeshDrawCommands.Num(), TaskContext.InstanceFactor, RHICmdList);
