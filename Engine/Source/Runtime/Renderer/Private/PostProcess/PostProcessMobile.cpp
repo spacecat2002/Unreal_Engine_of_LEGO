@@ -67,10 +67,10 @@ bool IsMobileEyeAdaptationEnabled(const FViewInfo& View)
 // 11 = Bloom + SunShaft + EyeAdaptation
 // 13 = Bloom + Dof + EyeAdaptation
 // 15 = Bloom + SunShaft + Dof + EyeAdaptation
-// 17 = Bloom + MSAA
 // 8 = EyeAdaptation
 
 //Following variations should only be generated on IOS, only IOS has to do PreTonemapMSAA if MSAA is enabled.
+// 17 = Bloom + MSAA
 // 19 = Bloom + SunShaft + MSAA
 // 21 = Bloom + Dof + MSAA
 // 23 = Bloom + Dof + SunShaft + MSAA
@@ -333,6 +333,13 @@ void FRCPassPostProcessBloomSetupES2::SetShaderAndExecute(FRenderingCompositePas
 
 	FRHIRenderPassInfo RPInfo(NumRenderTargets, RenderTargets, ERenderTargetActions::DontLoad_Store);
 
+	bool bIsValidVariation = IsValidBloomSetupVariation(UseBloom, UseSun, UseDof, UseEyeAdaptation);
+
+	if (!bIsValidVariation)
+	{
+		RPInfo.ColorRenderTargets[0].Action = ERenderTargetActions::DontLoad_DontStore;
+	}
+
 	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("PostProcessBloomSetupES2"));
 	{
 		Context.SetViewportAndCallRHI(0, 0, 0.0f, DstX, DstY, 1.0f);
@@ -413,9 +420,10 @@ void FRCPassPostProcessBloomSetupES2::Process(FRenderingCompositePassContext& Co
 		SET_SHADER_SINGLE_CASE(11); // Bloom + SunShaft + EyeAdaptation
 		SET_SHADER_SINGLE_CASE(13); // Bloom + Dof + EyeAdaptation
 		SET_SHADER_SINGLE_CASE(15); // Bloom + SunShaft + Dof + EyeAdaptation
-		SET_SHADER_SINGLE_CASE(17); // Bloom + MSAA
 		SET_SHADER_SINGLE_CASE(8); // EyeAdaptation
 
+		//Following cases only for IOS platform
+		SET_SHADER_SINGLE_CASE(17); // Bloom + MSAA
 		SET_SHADER_SINGLE_CASE(19); // Bloom + SunShaft + MSAA
 		SET_SHADER_SINGLE_CASE(21); // Bloom + Dof + MSAA
 		SET_SHADER_SINGLE_CASE(23); // Bloom + Dof + SunShaft + MSAA
@@ -447,6 +455,12 @@ FPooledRenderTargetDesc FRCPassPostProcessBloomSetupES2::ComputeOutputDesc(EPass
 	Ret.bIsArray = false;
 	Ret.NumMips = 1;
 	Ret.TargetableFlags = TexCreate_RenderTargetable | TexCreate_ShaderResource;
+
+	if (!bIsValidVariation && InPassOutputId == ePId_Output0)
+	{
+		Ret.TargetableFlags |= TexCreate_Memoryless;
+	}
+
 	Ret.bForceSeparateTargetAndShaderResource = false;
 	
 	if (!bIsValidVariation || UseBloom)
