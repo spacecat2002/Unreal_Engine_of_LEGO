@@ -1128,6 +1128,28 @@ void FPostProcessSettings::PostSerialize(const FArchive& Ar)
 			}
 		}
 
+		if (RenderingObjectVersion < FRenderingObjectVersion::AutoExposureForceOverrideBiasFlag)
+		{
+			// Backup the exposure bias override in case we run into a major problem
+			bOverride_AutoExposureBiasBackup = bOverride_AutoExposureBias;
+
+			// Same logic as FRenderingObjectVersion::AutoExposureChanges
+			const bool bIsAnyNonDefault = bOverride_AutoExposureBias ||
+				bOverride_AutoExposureLowPercent ||
+				bOverride_AutoExposureHighPercent ||
+				bOverride_AutoExposureBiasCurve ||
+				bOverride_AutoExposureMethod ||
+				bOverride_AutoExposureMinBrightness ||
+				bOverride_AutoExposureMaxBrightness;
+
+			// Since the auto-exposure was updated in the revision from FRenderingObjectVersion::AutoExposureChanges, we should also
+			// override the default value.
+			if (bIsAnyNonDefault)
+			{
+				bOverride_AutoExposureBias = true;
+			}
+		}
+
 	}
 }
 #endif
