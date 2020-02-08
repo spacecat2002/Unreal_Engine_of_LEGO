@@ -496,7 +496,10 @@ private:
 		{
 			for (int32 LODIndex = 0; LODIndex < LODModels.Num(); LODIndex++)
 			{
-				Component->GetScene()->AddSpeedTreeWind(&VertexFactories[LODIndex], Component->GetStaticMesh());
+				if (Component->GetScene())
+				{
+					Component->GetScene()->AddSpeedTreeWind(&VertexFactories[LODIndex], Component->GetStaticMesh());
+				}
 			}
 		}
 	}
