@@ -212,6 +212,7 @@ protected:
 	}
 
 private:
+#if WITH_EDITOR
 	/**
 	  * Posts a message to the OnModified delegate with the modified FProperty
 	  * @warning this function is currently only called in Editor (not at runtime)
@@ -220,7 +221,7 @@ private:
 	{
 		OnModified.Broadcast(this, PropertyChangedEvent.Property);
 	}
-
+#endif
 	// CachedProperties should only ever be set to an instance of the subclass, ideally via GetPropertyCache().
 	UPROPERTY()
 	UInteractiveToolPropertySet* CachedProperties = nullptr;
