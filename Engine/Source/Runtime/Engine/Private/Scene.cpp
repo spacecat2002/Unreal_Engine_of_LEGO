@@ -1150,7 +1150,7 @@ void FPostProcessSettings::PostSerialize(const FArchive& Ar)
 			}
 		}
 
-		if (RenderingObjectVersion < FRenderingObjectVersion::AutoExposureForceOverrideBiasFlag)
+		if (RenderingObjectVersion < FRenderingObjectVersion::AutoExposureDefaultFix)
 		{
 			// This fix is for a specific corner case of serialization. In between the versions of AutoExposureChanges and
 			// AutoExposureForceOverrideBiasFlag, we changed the default AutoExposure bias from 0.0 to 1.0. Which sounds
