@@ -349,7 +349,7 @@ static FLinearColor GetLightDiskLuminance(FLightSceneInfo& Light, FLinearColor L
 
 void PrepareSunLightProxy(const FSkyAtmosphereRenderSceneInfo& SkyAtmosphere, uint32 AtmosphereLightIndex, FLightSceneInfo& AtmosphereLight)
 {
-	// See explanation in https://media.contentapi.ea.com/content/dam/eacom/frostbite/files/s2016-pbs-frostbite-sky-clouds-new.pdf page 26
+	// See explanation in "Physically Based Sky, Atmosphere	and Cloud Rendering in Frostbite" page 26
 	const bool bAtmosphereAffectsSunIlluminance = true;
 	const FSkyAtmosphereSceneProxy& SkyAtmosphereProxy = SkyAtmosphere.GetSkyAtmosphereSceneProxy();
 	const FVector AtmosphereLightDirection = SkyAtmosphereProxy.GetAtmosphereLightDirection(AtmosphereLightIndex, -AtmosphereLight.Proxy->GetDirection());
@@ -360,9 +360,10 @@ void PrepareSunLightProxy(const FSkyAtmosphereRenderSceneInfo& SkyAtmosphere, ui
 	FLinearColor SunOuterSpaceIlluminance = SunZenithIlluminance / TransmittanceAtZenithFinal;
 	FLinearColor SunDiskOuterSpaceLuminance = GetLightDiskLuminance(AtmosphereLight, SunOuterSpaceIlluminance);
 
-	AtmosphereLight.Proxy->SetAtmosphereRelatedProperties(
-		CVarSkyAtmosphereTransmittanceLUTLightPerPixelTransmittance.GetValueOnAnyThread() > 0 ? FLinearColor::White : TransmittanceTowardSun / TransmittanceAtZenithFinal,
-		SunDiskOuterSpaceLuminance);
+	// We always set the transmittance on the proxy. Shaders using atmospheric light color then have to decide which sun illuminance to use (without or with transmittance).
+	// We also set whether or not the light should apply the simple transmittance computed on CPU during lighting pass. If per pixel transmittance is enabled, it should not be done.
+	const bool bApplyAtmosphereTransmittanceToLightShaderParam = CVarSkyAtmosphereTransmittanceLUTLightPerPixelTransmittance.GetValueOnAnyThread() <= 0;
+	AtmosphereLight.Proxy->SetAtmosphereRelatedProperties(TransmittanceTowardSun / TransmittanceAtZenithFinal, SunDiskOuterSpaceLuminance, bApplyAtmosphereTransmittanceToLightShaderParam);
 }
 
 
@@ -466,7 +467,8 @@ void FScene::ResetAtmosphereLightsProperties()
 		if (Light)
 		{
 			FLinearColor LightZenithIlluminance = Light->Proxy->GetColor();
-			Light->Proxy->SetAtmosphereRelatedProperties(FLinearColor::White, GetLightDiskLuminance(*Light, LightZenithIlluminance));
+			const bool bApplyAtmosphereTransmittanceToLightShaderParam = true;
+			Light->Proxy->SetAtmosphereRelatedProperties(FLinearColor::White, GetLightDiskLuminance(*Light, LightZenithIlluminance), bApplyAtmosphereTransmittanceToLightShaderParam);
 		}
 	}
 }

@@ -1414,7 +1414,7 @@ public:
 
 	inline bool IsUsedAsAtmosphereSunLight() const { return bUsedAsAtmosphereSunLight; }
 	inline uint8 GetAtmosphereSunLightIndex() const { return AtmosphereSunLightIndex; }
-	virtual void SetAtmosphereRelatedProperties(FLinearColor TransmittanceFactor, FLinearColor SunOuterSpaceLuminance) {}
+	virtual void SetAtmosphereRelatedProperties(FLinearColor TransmittanceFactor, FLinearColor SunOuterSpaceLuminance, bool bApplyAtmosphereTransmittanceToLightShaderParamIn) {}
 	virtual FLinearColor GetOuterSpaceLuminance() const { return FLinearColor::White; }
 	virtual FLinearColor GetTransmittanceFactor() const { return FLinearColor::White; }
 	static float GetSunOnEarthHalfApexAngleRadian() 
