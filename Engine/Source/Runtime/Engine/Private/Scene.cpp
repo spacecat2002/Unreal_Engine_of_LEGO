@@ -1150,6 +1150,67 @@ void FPostProcessSettings::PostSerialize(const FArchive& Ar)
 			}
 		}
 
+		if (RenderingObjectVersion < FRenderingObjectVersion::AutoExposureForceOverrideBiasFlag)
+		{
+			// This fix is for a specific corner case of serialization. In between the versions of AutoExposureChanges and
+			// AutoExposureForceOverrideBiasFlag, we changed the default AutoExposure bias from 0.0 to 1.0. Which sounds
+			// like a harmless change, but actually caused a problematic corner case.
+			//
+			// A common approach for artists is to use auto-exposure in Histogram mode, with the AutoExposureMinBrightness==AutoExposureMaxBrightness
+			// I.e. fake Manual exposure. The version AutoExposureChanges would detect this and set exposure compensation to 0.0. Then later,
+			// Then in the AutoExposureForceOverrideBiasFlag step, it would would set the EC override checkbox to true. So ideally we would
+			// have the same Min/Max Brightness, EC would be zero, and everything would look the same.
+			//
+			// However, this does not work if the object gets serialized and deserialized in between those steps.
+			// Step 0: Initial Object
+			//       AutoExposureMinBrightness==AutoExposureMaxBrightness
+			//       AutoExposureBias = 0.0;
+			//       bOverride_AutoExposureBias = false;
+			//
+			// Step 1: FRenderingObjectVersion::AutoExposureForceOverrideBiasFlag. CalculateEyeAdaptationExposureVersionUpdate() handles this case, and sets the extra to 0.0.
+			//       
+			//       bOverride_AutoExposureBias = false;
+			//       AutoExposureBias = 0.0;
+			//
+			// Step 2: FRenderingObjectVersion::Deserialize and Serialize. During deserialization, AutoExposureBias is marked as unset, so it deserailizes with the default value of 1.0.
+			//       bOverride_AutoExposureBias = false;
+			//       AutoExposureBias = 1.0;
+			//
+			// Step 3: FRenderingObjectVersion::AutoExposureForceOverrideBiasFlag. Auto Exposure Bias is set to 1.0, and overriding the default making things too bright.
+			//       bOverride_AutoExposureBias = true;
+			//       AutoExposureBias = 1.0;
+
+			// So we can fix this by looking that the result of CalculateEyeAdaptationExposureVersionUpdate(). If the backup
+			// Using the same check as above.
+			const bool bIsAnyNonDefault = bOverride_AutoExposureBias ||
+				bOverride_AutoExposureLowPercent ||
+				bOverride_AutoExposureHighPercent ||
+				bOverride_AutoExposureBiasCurve ||
+				bOverride_AutoExposureMethod ||
+				bOverride_AutoExposureMinBrightness ||
+				bOverride_AutoExposureMaxBrightness;
+
+			if (bIsAnyNonDefault)
+			{
+				const auto VarDefaultAutoExposureExtendDefaultLuminanceRange = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.DefaultFeature.AutoExposure.ExtendDefaultLuminanceRange"));
+				bool bExtendedLuminanceRange = (VarDefaultAutoExposureExtendDefaultLuminanceRange->GetValueOnAnyThread() == 1);
+
+				const float ExtraAutoExposureBias = CalculateEyeAdaptationExposureVersionUpdate(*this, bExtendedLuminanceRange);
+
+				// We take this path if:
+				// 1. We did not originally have bOverride_AutoExposureBias
+				// 2. We now do have bOverride_AutoExposureBias (it changed during FRenderingObjectVersion::AutoExposureForceOverrideBiasFlag)
+				// 3. Our PPV had the serialized AutoExposureBias of 0.0, which would cause the default to change.
+				// 4. AutoExposureBias is now nonzero.
+				if (!bOverride_AutoExposureBiasBackup &&
+					bOverride_AutoExposureBias &&
+					ExtraAutoExposureBias + AutoExposureBiasBackup == 0.0f &&
+					AutoExposureBias != 0.0f)
+				{
+					AutoExposureBias = 0.0f;
+				}
+			}
+		}
 	}
 }
 #endif
