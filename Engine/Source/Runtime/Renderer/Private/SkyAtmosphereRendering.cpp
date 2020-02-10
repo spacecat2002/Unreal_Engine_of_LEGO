@@ -234,6 +234,7 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FSkyAtmosphereInternalCommonParameters, )
 	SHADER_PARAMETER(float, TransmittanceSampleCount)
 	SHADER_PARAMETER(float, MultiScatteringSampleCount)
 	SHADER_PARAMETER(float, AerialPespectiveViewDistanceScale)
+	SHADER_PARAMETER(float, FogShowFlagFactor)
 
 	SHADER_PARAMETER(FVector, SkyLuminanceFactor)
 
@@ -1037,6 +1038,7 @@ void InitSkyAtmosphereForView(FRHICommandListImmediate& RHICmdList, const FScene
 static void SetupSkyAtmosphereInternalCommonParameters(
 	FSkyAtmosphereInternalCommonParameters& InternalCommonParameters, 
 	const FScene& Scene,
+	const FSceneViewFamily& ViewFamily,
 	const FSkyAtmosphereRenderSceneInfo& SkyInfo)
 {
 	GET_VALID_DATA_FROM_CVAR;
@@ -1072,6 +1074,7 @@ static void SetupSkyAtmosphereInternalCommonParameters(
 	const FSkyAtmosphereSceneProxy& SkyAtmosphereSceneProxy = SkyInfo.GetSkyAtmosphereSceneProxy();
 	InternalCommonParameters.SkyLuminanceFactor = FVector(SkyAtmosphereSceneProxy.GetSkyLuminanceFactor());
 	InternalCommonParameters.AerialPespectiveViewDistanceScale = SkyAtmosphereSceneProxy.GetAerialPespectiveViewDistanceScale();
+	InternalCommonParameters.FogShowFlagFactor = ViewFamily.EngineShowFlags.Fog > 0 ? 1.0f : 0.0f;
 
 	auto ValidateDistanceValue = [](float& Value)
 	{
@@ -1128,7 +1131,7 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& R
 
 	// Initialise common internal parameters
 	FSkyAtmosphereInternalCommonParameters InternalCommonParameters;
-	SetupSkyAtmosphereInternalCommonParameters(InternalCommonParameters, *Scene, SkyInfo);
+	SetupSkyAtmosphereInternalCommonParameters(InternalCommonParameters, *Scene, ViewFamily, SkyInfo);
 	TUniformBufferRef<FSkyAtmosphereInternalCommonParameters> InternalCommonParametersRef = TUniformBufferRef<FSkyAtmosphereInternalCommonParameters>::CreateUniformBufferImmediate(InternalCommonParameters, UniformBuffer_SingleFrame);
 
 	FRDGBuilder GraphBuilder(RHICmdList);
@@ -1303,7 +1306,7 @@ void FSceneRenderer::RenderSkyAtmosphere(FRHICommandListImmediate& RHICmdList)
 
 	// Initialise common internal parameters
 	FSkyAtmosphereInternalCommonParameters InternalCommonParameters;
-	SetupSkyAtmosphereInternalCommonParameters(InternalCommonParameters, *Scene, SkyInfo);
+	SetupSkyAtmosphereInternalCommonParameters(InternalCommonParameters, *Scene, ViewFamily, SkyInfo);
 	TUniformBufferRef<FSkyAtmosphereInternalCommonParameters> InternalCommonParametersRef = TUniformBufferRef<FSkyAtmosphereInternalCommonParameters>::CreateUniformBufferImmediate(InternalCommonParameters, UniformBuffer_SingleFrame);
 
 	FRDGBuilder GraphBuilder(RHICmdList);
@@ -1556,7 +1559,7 @@ void FDeferredShadingSceneRenderer::RenderDebugSkyAtmosphere(FRHICommandListImme
 
 		// Initialise common internal parameters
 		FSkyAtmosphereInternalCommonParameters InternalCommonParameters;
-		SetupSkyAtmosphereInternalCommonParameters(InternalCommonParameters, *Scene, SkyInfo);
+		SetupSkyAtmosphereInternalCommonParameters(InternalCommonParameters, *Scene, ViewFamily, SkyInfo);
 		TUniformBufferRef<FSkyAtmosphereInternalCommonParameters> InternalCommonParametersRef = TUniformBufferRef<FSkyAtmosphereInternalCommonParameters>::CreateUniformBufferImmediate(InternalCommonParameters, UniformBuffer_SingleFrame);
 
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
