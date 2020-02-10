@@ -187,7 +187,38 @@ void FSystemTextures::InitializeFeatureLevelDependentTextures(FRHICommandListImm
 	// this function will be called every time the feature level will be updated and some textures require a minimum feature level to exist
 	// the below declared variable (CurrentFeatureLevel) will guard against reinitialization of those textures already created in a previous call
 	// if FeatureLevelInitializedTo has its default value (ERHIFeatureLevel::Num) it means that setup was never performed and all textures are invalid
-	ERHIFeatureLevel::Type CurrentFeatureLevel = FeatureLevelInitializedTo == ERHIFeatureLevel::Num ? ERHIFeatureLevel::ES3_1 : FeatureLevelInitializedTo;
+	// thus CurrentFeatureLevel will be set to ERHIFeatureLevel::ES2_REMOVED to validate all 'is valid' branching conditions below
+	ERHIFeatureLevel::Type CurrentFeatureLevel = FeatureLevelInitializedTo == ERHIFeatureLevel::Num ? ERHIFeatureLevel::ES2_REMOVED : FeatureLevelInitializedTo;
+
+	// Create the SobolSampling texture
+	if (CurrentFeatureLevel < ERHIFeatureLevel::ES3_1 && InFeatureLevel >= ERHIFeatureLevel::ES3_1 && GPixelFormats[PF_R16_UINT].Supported)
+	{
+		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(FIntPoint(32, 16), PF_R16_UINT, FClearValueBinding::None, TexCreate_HideInVisualizeTexture, TexCreate_NoFastClear | TexCreate_ShaderResource, false));
+		Desc.AutoWritable = false;
+		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, SobolSampling, TEXT("SobolSampling"));
+		// Write the contents of the texture.
+		uint32 DestStride;
+		uint8* DestBuffer = (uint8*)RHICmdList.LockTexture2D((FTexture2DRHIRef&)SobolSampling->GetRenderTargetItem().ShaderResourceTexture, 0, RLM_WriteOnly, DestStride, false);
+
+		uint16* Dest;
+		for (int y = 0; y < 16; ++y)
+		{
+			Dest = (uint16*)(DestBuffer + y * DestStride);
+
+			// 16x16 block starting at 0,0 = Sobol X,Y from bottom 4 bits of cell X,Y
+			for (int x = 0; x < 16; ++x, ++Dest)
+			{
+				*Dest = FSobol::ComputeGPUSpatialSeed(x, y, /* Index = */ 0);
+			}
+
+			// 16x16 block starting at 16,0 = Sobol X,Y from 2nd 4 bits of cell X,Y
+			for (int x = 0; x < 16; ++x, ++Dest)
+			{
+				*Dest = FSobol::ComputeGPUSpatialSeed(x, y, /* Index = */ 1);
+			}
+		}
+		RHICmdList.UnlockTexture2D((FTexture2DRHIRef&)SobolSampling->GetRenderTargetItem().ShaderResourceTexture, 0, false);
+	}
 
 	// Create a VolumetricBlackDummy texture
 	if (CurrentFeatureLevel < ERHIFeatureLevel::SM5 && InFeatureLevel >= ERHIFeatureLevel::SM5)
