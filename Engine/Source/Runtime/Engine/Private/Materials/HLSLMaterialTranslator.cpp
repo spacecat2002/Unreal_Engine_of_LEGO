@@ -3840,9 +3840,8 @@ int32 FHLSLMaterialTranslator::MaterialBakingWorldPosition()
 
 int32 FHLSLMaterialTranslator::TextureCoordinate(uint32 CoordinateIndex, bool UnMirrorU, bool UnMirrorV)
 {
-	// For UI materials can safely use more texture coordinates due to how they are packed in the slate material shader
-	// Landscape materials also calculate their texture coordinates in the vertex factory and do not need to be sent using an interpolator
-	const uint32 MaxNumCoordinates = Material->IsUIMaterial() || Material->IsUsedWithLandscape() ? 8 : 3;
+	// ERHIFeatureLevel::ES2 was the only feature level that required a maximum of 3 coordinates. Every other feature level has a maximum of 8.
+	const uint32 MaxNumCoordinates = 8;
 
 	if (CoordinateIndex >= MaxNumCoordinates)
 	{
