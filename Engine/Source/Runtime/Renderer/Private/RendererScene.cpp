@@ -1051,7 +1051,7 @@ public:
 			FPrimitiveSceneProxy* Proxy = PrimInfo->Proxy;
 			const FBoxSphereBounds& Bounds = Proxy->GetBounds();
 
-			for (FSceneLightOctree::TConstElementBoxIterator<> LightIt(Scene->LightOctree, FBoxCenterAndExtent(Bounds));
+			for (FSceneLightOctree::TConstElementBoxIterator<> LightIt(Scene->LocalShadowCastingLightOctree, FBoxCenterAndExtent(Bounds));
 				LightIt.HasPendingElements();
 				LightIt.Advance())
 			{
@@ -4160,7 +4160,7 @@ void FScene::CreateLightPrimitiveInteractionsForPrimitive(FPrimitiveSceneInfo* P
 		FMemMark MemStackMark(FMemStack::Get());
 		const FBoxSphereBounds& Bounds = PrimitiveInfo->Proxy->GetBounds();
 
-		for (FSceneLightOctree::TConstElementBoxIterator<SceneRenderingAllocator> LightIt(LightOctree, FBoxCenterAndExtent(Bounds));
+		for (FSceneLightOctree::TConstElementBoxIterator<SceneRenderingAllocator> LightIt(LocalShadowCastingLightOctree, FBoxCenterAndExtent(Bounds));
 			LightIt.HasPendingElements();
 			LightIt.Advance())
 		{
