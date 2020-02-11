@@ -336,7 +336,7 @@ void FSkeletalMeshObjectGPUSkin::UpdateSkinWeightBuffer(USkinnedMeshComponent* I
 		FSkeletalMeshObjectLOD& SkelLOD = LODs[LODIndex];
 
 		// Skip LODs that have their render data stripped
-		if (SkelLOD.SkelMeshRenderData->LODRenderData[LODIndex].GetNumVertices() > 0)
+		if (InMeshComponent && SkelLOD.SkelMeshRenderData->LODRenderData[LODIndex].GetNumVertices() > 0)
 		{
 			FSkelMeshComponentLODInfo* CompLODInfo = nullptr;
 			if (InMeshComponent->LODInfo.IsValidIndex(LODIndex))
