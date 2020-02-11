@@ -131,9 +131,9 @@ void USkyAtmosphereComponent::SendRenderTransformCommand()
 	}
 }
 
-void USkyAtmosphereComponent::CreateRenderState_Concurrent()
+void USkyAtmosphereComponent::CreateRenderState_Concurrent(FRegisterComponentContext* Context)
 {
-	Super::CreateRenderState_Concurrent();
+	Super::CreateRenderState_Concurrent(Context);
 	// If one day we need to look up lightmass built data, lookup it up here using the guid from the correct MapBuildData.
 
 	bool bHidden = false;

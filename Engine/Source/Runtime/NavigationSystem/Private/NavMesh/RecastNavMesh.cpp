@@ -932,6 +932,24 @@ void ARecastNavMesh::AddTileCacheLayers(int32 TileX, int32 TileY, const TArray<F
 	}
 }
 
+#if RECAST_INTERNAL_DEBUG_DATA
+void ARecastNavMesh::RemoveTileDebugData(int32 TileX, int32 TileY)
+{
+	if (RecastNavMeshImpl)
+	{
+		RecastNavMeshImpl->DebugDataMap.Remove(FIntPoint(TileX, TileY));
+	}
+}
+
+void ARecastNavMesh::AddTileDebugData(int32 TileX, int32 TileY, const FRecastInternalDebugData& InTileDebugData)
+{
+	if (RecastNavMeshImpl)
+	{
+		RecastNavMeshImpl->DebugDataMap.Add(FIntPoint(TileX, TileY), InTileDebugData);
+	}
+}
+#endif //RECAST_INTERNAL_DEBUG_DATA
+
 void ARecastNavMesh::MarkEmptyTileCacheLayers(int32 TileX, int32 TileY)
 {
 	if (RecastNavMeshImpl && bStoreEmptyTileLayers)
@@ -1411,6 +1429,10 @@ void ARecastNavMesh::UpdateCustomLink(const INavLinkCustomInterface* CustomLink)
 
 		RecastNavMeshImpl->UpdateNavigationLinkArea(UserId, AreaId, PolyFlags);
 		RecastNavMeshImpl->UpdateSegmentLinkArea(UserId, AreaId, PolyFlags);
+
+#if !UE_BUILD_SHIPPING
+		RequestDrawingUpdate(false);
+#endif
 	}
 }
 
@@ -1507,7 +1529,7 @@ int32 ARecastNavMesh::ReplaceAreaInTileBounds(const FBox& Bounds, TSubclassOf<UN
 
 		const int32 OldAreaID = GetAreaID(OldArea);
 		ensure(OldAreaID != INDEX_NONE);
-		const int32 NewAreaID = 34;// GetAreaID(NewArea);
+		const int32 NewAreaID = GetAreaID(NewArea);
 		ensure(NewAreaID != INDEX_NONE);
 		ensure(NewAreaID != OldAreaID);
 
@@ -2683,6 +2705,17 @@ void ARecastNavMesh::RebuildTile(const TArray<FIntPoint>& Tiles)
 		}
 	}
 }
+
+#if RECAST_INTERNAL_DEBUG_DATA
+const TMap<FIntPoint, struct FRecastInternalDebugData>* ARecastNavMesh::GetDebugDataMap() const
+{
+	if (RecastNavMeshImpl)
+	{
+		return &RecastNavMeshImpl->DebugDataMap;
+	}
+	return nullptr;
+}
+#endif //RECAST_INTERNAL_DEBUG_DATA
 
 //----------------------------------------------------------------------//
 // FRecastNavMeshCachedData

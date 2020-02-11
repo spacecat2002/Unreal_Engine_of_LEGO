@@ -155,7 +155,7 @@ public:
 	virtual void Release() override { delete this; }
 private:
 	FIntPoint PrePostSourceViewportSize;
-	FShader* SetShader(const FRenderingCompositePassContext& Context);
+	TShaderRef<FShader> SetShader(const FRenderingCompositePassContext& Context);
 };
 
 class FRCPassPostProcessSunAvgES2 : public TRenderingCompositePassBase<2, 1>

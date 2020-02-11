@@ -57,6 +57,9 @@ public class Core : ModuleRules
 				"IntelVTune"
 				);
 
+			AddEngineThirdPartyPrivateStaticDependencies(Target,
+				"mimalloc");
+
 			if(Target.Platform != UnrealTargetPlatform.Win32 && Target.WindowsPlatform.bUseBundledDbgHelp)
 			{
 				PublicDelayLoadDLLs.Add("DBGHELP.DLL");

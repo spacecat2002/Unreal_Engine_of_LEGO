@@ -1441,9 +1441,9 @@ public:
 template<typename ShaderType>
 static FD3D12RayTracingShader* GetBuildInRayTracingShader()
 {
-	TShaderMap<FGlobalShaderType>* ShaderMap = GetGlobalShaderMap(ERHIFeatureLevel::SM5);
+	FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(ERHIFeatureLevel::SM5);
 	auto Shader = ShaderMap->GetShader<ShaderType>();
-	FD3D12RayTracingShader* RayTracingShader = static_cast<FD3D12RayTracingShader*>(Shader->GetRayTracingShader());
+	FD3D12RayTracingShader* RayTracingShader = static_cast<FD3D12RayTracingShader*>(Shader.GetRayTracingShader());
 	return RayTracingShader;
 }
 

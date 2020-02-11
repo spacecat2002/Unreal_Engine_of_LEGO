@@ -388,6 +388,9 @@ extern RHI_API bool GRHIRequiresRenderTargetForPixelShaderUAVs;
 /** true if the RHI supports unordered access view format aliasing */
 extern RHI_API bool GRHISupportsUAVFormatAliasing;
 
+/** true if the pointer returned by Lock is a persistent direct pointer to gpu memory */
+extern RHI_API bool GRHISupportsDirectGPUMemoryLock;
+
 /** The minimum Z value in clip space for the RHI. */
 extern RHI_API float GMinClipZ;
 
@@ -1663,16 +1666,6 @@ extern RHI_API void RHIPostInit(const TArray<uint32>& InPixelFormatByteWidth);
 
 /** Shuts down the RHI. */
 extern RHI_API void RHIExit();
-
-
-// the following helper macros allow to safely convert shader types without much code clutter
-#define GETSAFERHISHADER_PIXEL(Shader) ((Shader) ? (Shader)->GetPixelShader() : nullptr)
-#define GETSAFERHISHADER_VERTEX(Shader) ((Shader) ? (Shader)->GetVertexShader() : nullptr)
-#define GETSAFERHISHADER_HULL(Shader) ((Shader) ? (Shader)->GetHullShader() : nullptr)
-#define GETSAFERHISHADER_DOMAIN(Shader) ((Shader) ? (Shader)->GetDomainShader() : nullptr)
-#define GETSAFERHISHADER_GEOMETRY(Shader) ((Shader) ? (Shader)->GetGeometryShader() : (FRHIGeometryShader*)FGeometryShaderRHIRef())
-#define GETSAFERHISHADER_COMPUTE(Shader) ((Shader) ? (Shader)->GetComputeShader() : nullptr)
-#define GETSAFERHISHADER_RAYTRACING(Shader) ((Shader) ? (Shader)->GetRayTracingShader() : (FRHIRayTracingShader*)FRayTracingShaderRHIRef())
 
 
 // Panic delegate is called when when a fatal condition is encountered within RHI function.

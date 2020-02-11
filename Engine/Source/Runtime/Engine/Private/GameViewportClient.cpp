@@ -536,6 +536,8 @@ bool UGameViewportClient::InputKey(const FInputKeyEventArgs& EventArgs)
 		GEngine->RemapGamepadControllerIdForPIE(this, ControllerId);
 	}
 
+	OnInputKeyEvent.Broadcast(EventArgs);
+
 #if WITH_EDITOR
 	// Give debugger commands a chance to process key binding
 	if (GameViewportInputKeyDelegate.IsBound())
@@ -602,6 +604,8 @@ bool UGameViewportClient::InputAxis(FViewport* InViewport, int32 ControllerId, F
 		GEngine->RemapGamepadControllerIdForPIE(this, ControllerId);
 	}
 
+	OnInputAxisEvent.Broadcast(InViewport, ControllerId, Key, Delta, DeltaTime, NumSamples, bGamepad);
+	
 	bool bResult = false;
 
 	// Don't allow mouse/joystick input axes while in PIE and the console has forced the cursor to be visible.  It's
@@ -1263,6 +1267,11 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 					{
 						View->DiffuseOverrideParameter = FVector4(GEngine->LightingOnlyBrightness.R, GEngine->LightingOnlyBrightness.G, GEngine->LightingOnlyBrightness.B, 0.0f);
 						View->SpecularOverrideParameter = FVector4(.1f, .1f, .1f, 0.0f);
+					}
+					else if (View->Family->EngineShowFlags.LightingOnlyOverride)
+					{
+						View->DiffuseOverrideParameter = FVector4(GEngine->LightingOnlyBrightness.R, GEngine->LightingOnlyBrightness.G, GEngine->LightingOnlyBrightness.B, 0.0f);
+						View->SpecularOverrideParameter = FVector4(0.f, 0.f, 0.f, 0.f);
 					}
 					else if (View->Family->EngineShowFlags.ReflectionOverride)
 					{

@@ -1229,13 +1229,16 @@ void FAndroidMisc::TriggerNonFatalCrashHandler(ECrashContextType InType, const F
 	}
 }
 
-void FAndroidMisc::TriggerCrashHandler(const TCHAR* InErrorMessage, const TMap<FString, FString>& AdditionalProperties)
+void FAndroidMisc::TriggerCrashHandler(const TCHAR* InErrorMessage, const TCHAR* OverrideCallstack)
 {
 	FAndroidCrashContext CrashContext(ECrashContextType::Crash, InErrorMessage);
-	CrashContext.CaptureCrashInfo();
-	for (TMap<FString, FString>::TConstIterator Iter(AdditionalProperties); Iter; ++Iter)
+	if(OverrideCallstack)
 	{
-		CrashContext.AddAndroidCrashProperty(*Iter.Key(), *Iter.Value());
+		CrashContext.SetOverrideCallstack(OverrideCallstack);
+	}
+	else
+	{
+		CrashContext.CaptureCrashInfo();
 	}
 
 	if (GCrashHandlerPointer)
@@ -1543,6 +1546,40 @@ int32 FAndroidMisc::GetAndroidBuildVersion()
 		}
 	}
 	return AndroidBuildVersion;
+}
+#endif
+
+#if USE_ANDROID_JNI
+bool FAndroidMisc::IsSupportedAndroidDevice()
+{
+	static bool bChecked = false;
+	static bool bSupported = true;
+
+	if (!bChecked)
+	{
+		bChecked = true;
+
+		JNIEnv* JEnv = AndroidJavaEnv::GetJavaEnv();
+		if (nullptr != JEnv)
+		{
+			jclass Class = AndroidJavaEnv::FindJavaClassGlobalRef("com/epicgames/ue4/GameActivity");
+			if (nullptr != Class)
+			{
+				jfieldID Field = JEnv->GetStaticFieldID(Class, "bSupportedDevice", "Z");
+				if (nullptr != Field)
+				{
+					bSupported = (bool)JEnv->GetStaticBooleanField(Class, Field);
+				}
+				JEnv->DeleteGlobalRef(Class);
+			}
+		}
+	}
+	return bSupported;
+}
+#else
+bool FAndroidMisc::IsSupportedAndroidDevice()
+{
+	return true;
 }
 #endif
 
@@ -2266,6 +2303,12 @@ void FAndroidMisc::BeginNamedEvent(const struct FColor& Color, const TCHAR* Text
 #if FRAMEPRO_ENABLED
 	FFrameProProfiler::PushEvent(Text);
 #endif // FRAMEPRO_ENABLED
+#if CPUPROFILERTRACE_ENABLED
+	if (CpuChannel)
+	{
+		FCpuProfilerTrace::OutputBeginDynamicEvent(Text);
+	}
+#endif
 	if (bUseNativeSystrace ? !ATrace_isEnabled() : TraceMarkerFileDescriptor == -1)
 	{
 		return;
@@ -2293,6 +2336,12 @@ void FAndroidMisc::BeginNamedEvent(const struct FColor& Color, const ANSICHAR* T
 #if FRAMEPRO_ENABLED
 	FFrameProProfiler::PushEvent(Text);
 #endif // FRAMEPRO_ENABLED
+#if CPUPROFILERTRACE_ENABLED
+	if (CpuChannel)
+	{
+		FCpuProfilerTrace::OutputBeginDynamicEvent(Text);
+	}
+#endif
 	if (bUseNativeSystrace ? !ATrace_isEnabled() : TraceMarkerFileDescriptor == -1)
 	{
 		return;
@@ -2306,6 +2355,12 @@ void FAndroidMisc::EndNamedEvent()
 #if FRAMEPRO_ENABLED
 	FFrameProProfiler::PopEvent();
 #endif // FRAMEPRO_ENABLED
+#if CPUPROFILERTRACE_ENABLED
+	if (CpuChannel)
+	{
+		FCpuProfilerTrace::OutputEndEvent();
+	}
+#endif
 	if (bUseNativeSystrace ? !ATrace_isEnabled() : TraceMarkerFileDescriptor == -1)
 	{
 		return;

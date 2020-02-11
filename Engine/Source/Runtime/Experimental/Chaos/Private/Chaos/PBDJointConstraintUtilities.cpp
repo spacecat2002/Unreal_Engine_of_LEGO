@@ -4,32 +4,109 @@
 #include "Chaos/ParticleHandle.h"
 #include "Chaos/Utilities.h"
 
-//#pragma optimize("", off)
+//PRAGMA_DISABLE_OPTIMIZATION
 
 namespace Chaos
 {
-	void ToSwingTwistX(const FRotation3& Q, FRotation3& OutSwing, FRotation3& OutTwist)
-	{
-		FReal S = FMath::Sqrt(Q.X * Q.X + Q.W * Q.W);
-		if (S > KINDA_SMALL_NUMBER)
-		{
-			FReal SInv = 1.0f / S;
-			OutTwist = FRotation3::FromElements(Q.X * SInv, 0, 0, Q.W * SInv);
-			OutSwing = FRotation3::FromElements(0, (Q.W * Q.Y + Q.X * Q.Z) * SInv, (Q.W * Q.Z - Q.X * Q.Y) * SInv, S);
-		}
-		else
-		{
-			OutTwist = FRotation3::FromIdentity();
-			OutSwing = Q;
-		}
-	}
-
-
 	void FPBDJointUtilities::DecomposeSwingTwistLocal(const FRotation3& R0, const FRotation3& R1, FRotation3& R01Swing, FRotation3& R01Twist)
 	{
 		const FRotation3 R01 = R0.Inverse() * R1;
-		ToSwingTwistX(R01, R01Swing, R01Twist);
+		R01.ToSwingTwistX(R01Swing, R01Twist);
 	}
+
+	void FPBDJointUtilities::GetSwingTwistAngles(const FRotation3& R0, const FRotation3& R1, FReal& TwistAngle, FReal& Swing1Angle, FReal& Swing2Angle)
+	{
+		FRotation3 R01Twist, R01Swing;
+		FPBDJointUtilities::DecomposeSwingTwistLocal(R0, R1, R01Swing, R01Twist);
+		TwistAngle = R01Twist.GetAngle();
+		Swing1Angle = 4.0f * FMath::Atan2(R01Swing.Z, 1.0f + R01Swing.W);
+		Swing2Angle = 4.0f * FMath::Atan2(R01Swing.Y, 1.0f + R01Swing.W);
+	}
+
+	FReal FPBDJointUtilities::GetTwistAngle(const FRotation3& InTwist)
+	{
+		FRotation3 Twist = InTwist.GetNormalized();
+		ensure(FMath::Abs(Twist.W) <= 1.0f);
+		FReal Angle = Twist.GetAngle();
+		if (Angle > PI)
+		{
+			Angle = Angle - (FReal)2 * PI;
+		}
+		if (Twist.X < 0.0f)
+		{
+			Angle = -Angle;
+		}
+		return Angle;
+	}
+
+
+	void FPBDJointUtilities::GetTwistAxisAngle(
+		const FRotation3& R0,
+		const FRotation3& R1,
+		FVec3& Axis,
+		FReal& Angle)
+	{
+		FRotation3 R01Twist, R01Swing;
+		FPBDJointUtilities::DecomposeSwingTwistLocal(R0, R1, R01Swing, R01Twist);
+
+		Axis = R1 * FJointConstants::TwistAxis();
+		Angle = FPBDJointUtilities::GetTwistAngle(R01Twist);
+	}
+
+
+	void FPBDJointUtilities::GetConeAxisAngleLocal(
+		const FRotation3& R0,
+		const FRotation3& R1,
+		const FReal AngleTolerance,
+		FVec3& AxisLocal,
+		FReal& Angle)
+	{
+		// Decompose rotation of body 1 relative to body 0 into swing and twist rotations, assuming twist is X axis
+		FRotation3 R01Twist, R01Swing;
+		FPBDJointUtilities::DecomposeSwingTwistLocal(R0, R1, R01Swing, R01Twist);
+
+		R01Swing.ToAxisAndAngleSafe(AxisLocal, Angle, FJointConstants::Swing1Axis(), AngleTolerance);
+		if (Angle > PI)
+		{
+			Angle = Angle - (FReal)2 * PI;
+		}
+	}
+
+
+	void FPBDJointUtilities::GetDualConeSwingAxisAngle(
+		const FRotation3& R0,
+		const FRotation3& R1,
+		const EJointAngularConstraintIndex SwingConstraintIndex,
+		const EJointAngularAxisIndex SwingAxisIndex,
+		FVec3& Axis,
+		FReal& Angle)
+	{
+		FVec3 Twist1 = R1 * FJointConstants::TwistAxis();
+		FVec3 Swing0 = R0 * ((SwingConstraintIndex == EJointAngularConstraintIndex::Swing1)? FJointConstants::Swing2Axis() : FJointConstants::Swing1Axis());
+		Axis = FVec3::CrossProduct(Swing0, Twist1);
+		FReal SwingTwistDot = FVec3::DotProduct(Swing0, Twist1);
+		Angle = FMath::Asin(FMath::Clamp(-SwingTwistDot, -1.0f, 1.0f));
+	}
+
+
+	void FPBDJointUtilities::GetSwingAxisAngle(
+		const FRotation3& R0,
+		const FRotation3& R1,
+		const FReal AngleTolerance,
+		const EJointAngularConstraintIndex SwingConstraintIndex,
+		const EJointAngularAxisIndex SwingAxisIndex,
+		FVec3& Axis,
+		FReal& Angle)
+	{
+		// Decompose rotation of body 1 relative to body 0 into swing and twist rotations, assuming twist is X axis
+		FRotation3 R01Twist, R01Swing;
+		FPBDJointUtilities::DecomposeSwingTwistLocal(R0, R1, R01Swing, R01Twist);
+		const FReal R01SwingYorZ = ((int32)SwingAxisIndex == 2) ? R01Swing.Z : R01Swing.Y;	// Can't index a quat :(
+		Angle = 4.0f * FMath::Atan2(R01SwingYorZ, 1.0f + R01Swing.W);
+		const FVec3& AxisLocal = (SwingConstraintIndex == EJointAngularConstraintIndex::Swing1) ? FJointConstants::Swing1Axis() : FJointConstants::Swing2Axis();
+		Axis = R0 * AxisLocal;
+	}
+
 
 	// @todo(ccaulfield): separate linear soft and stiff
 	FReal FPBDJointUtilities::GetLinearStiffness(

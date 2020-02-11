@@ -3,9 +3,12 @@
 #include "PrimitiveUniformShaderParameters.h"
 #include "PrimitiveSceneProxy.h"
 #include "PrimitiveSceneInfo.h"
+#include "ProfilingDebugging/LoadTimeTracker.h"
 
 void FSinglePrimitiveStructured::InitRHI() 
 {
+	SCOPED_LOADTIMER(FSinglePrimitiveStructuredBuffer_InitRHI);
+
 	if (RHISupportsComputeShaders(GMaxRHIShaderPlatform))
 	{
 		FRHIResourceCreateInfo CreateInfo;

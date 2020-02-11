@@ -732,9 +732,9 @@ UReflectionCaptureComponent::UReflectionCaptureComponent(const FObjectInitialize
 	bNeedsRecaptureOrUpload = false;
 }
 
-void UReflectionCaptureComponent::CreateRenderState_Concurrent()
+void UReflectionCaptureComponent::CreateRenderState_Concurrent(FRegisterComponentContext* Context)
 {
-	Super::CreateRenderState_Concurrent();
+	Super::CreateRenderState_Concurrent(Context);
 
 	UpdatePreviewShape();
 
@@ -906,7 +906,7 @@ void UReflectionCaptureComponent::SerializeLegacyData(FArchive& Ar)
 					FReflectionCaptureMapBuildLegacyData LegacyComponentData;
 					LegacyComponentData.Id = MapBuildDataId;
 					LegacyComponentData.MapBuildData = LegacyMapBuildData;
-					GReflectionCapturesWithLegacyBuildData.AddAnnotation(this, LegacyComponentData);
+					GReflectionCapturesWithLegacyBuildData.AddAnnotation(this, MoveTemp(LegacyComponentData));
 				}
 			}
 		}

@@ -825,7 +825,7 @@ protected:
 	//~ Begin UActorComponent Interface
 	virtual void OnRegister() override;
 	virtual void OnUnregister() override;
-	virtual void CreateRenderState_Concurrent() override;
+	virtual void CreateRenderState_Concurrent(FRegisterComponentContext* Context) override;
 	virtual void SendRenderDynamicData_Concurrent() override;
 	virtual void DestroyRenderState_Concurrent() override;
 	virtual bool RequiresGameThreadEndOfFrameRecreate() const override
@@ -1568,7 +1568,7 @@ public:
 
 		if (bWasRenderStateCreated && bIsRegistered)
 		{
-			Component->CreateRenderState_Concurrent();
+			Component->CreateRenderState_Concurrent(nullptr);
 		}
 	}
 };
