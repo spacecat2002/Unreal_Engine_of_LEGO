@@ -171,6 +171,7 @@ struct FD3D12RHICommandInitializeTexture final : public FRHICommand<FD3D12RHICom
 		void* Mem = bAllocateOnStack? FMemory_Alloca(MemSize) : FMemory::Malloc(MemSize);
 
 		D3D12_PLACED_SUBRESOURCE_FOOTPRINT* Footprints = (D3D12_PLACED_SUBRESOURCE_FOOTPRINT*) Mem;
+		check(Footprints);
 		UINT* Rows = (UINT*) (Footprints + NumSubresources);
 		UINT64* RowSizeInBytes = (UINT64*) (Rows + NumSubresources);
 
@@ -1723,8 +1724,11 @@ void FD3D12TextureBase::InitializeTextureData(FRHICommandListImmediate* RHICmdLi
 	void* Mem = bAllocateOnStack? FMemory_Alloca(MemSize) : FMemory::Malloc(MemSize);
 
 	D3D12_PLACED_SUBRESOURCE_FOOTPRINT* Footprints = (D3D12_PLACED_SUBRESOURCE_FOOTPRINT*) Mem;
+	check(Footprints);
 	UINT* Rows = (UINT*) (Footprints + NumSubresources);
+	check(Rows);
 	UINT64* RowSizeInBytes = (UINT64*) (Rows + NumSubresources);
+	check(RowSizeInBytes);
 
 	uint64 Size = 0;
 	const D3D12_RESOURCE_DESC& Desc = GetResource()->GetDesc();
