@@ -196,7 +196,7 @@ class FPostProcessBloomSetupPS_ES2 : public FGlobalShader
 	FPostProcessBloomSetupPS_ES2() {}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
 
 	/** Initialization constructor. */
 	FPostProcessBloomSetupPS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
@@ -841,7 +841,7 @@ class FPostProcessSunMaskPS_ES2 : public FGlobalShader
 	FPostProcessSunMaskPS_ES2() {}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
 
 	FPostProcessSunMaskPS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
