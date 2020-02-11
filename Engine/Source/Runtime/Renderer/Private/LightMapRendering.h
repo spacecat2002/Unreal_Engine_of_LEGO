@@ -731,7 +731,7 @@ public:
 	FShaderUniformBufferParameter LightmapResourceCluster;
 };
 
-class FUniformLightMapPolicy
+class RENDERER_API FUniformLightMapPolicy
 {
 public:
 

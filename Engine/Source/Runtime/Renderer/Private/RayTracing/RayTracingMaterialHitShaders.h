@@ -5,10 +5,13 @@
 #include "LightMapRendering.h"
 #include "ScenePrivate.h"
 #include "MeshPassProcessor.inl"
+#include "RayTracing/RayTracingMaterialHitShaders.h"
 
 #if RHI_RAYTRACING
 
-class FRayTracingMeshProcessor
+ENGINE_API uint8 ComputeBlendModeMask(const EBlendMode BlendMode);
+
+class RENDERER_API FRayTracingMeshProcessor
 {
 public:
 
@@ -21,16 +24,18 @@ public:
 		PassDrawRenderState(InPassDrawRenderState)
 	{}
 
-	RENDERER_API void AddMeshBatch(const FMeshBatch& RESTRICT MeshBatch, uint64 BatchElementMask, const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy);
+	virtual ~FRayTracingMeshProcessor() = default;
 
-private:
+	void AddMeshBatch(const FMeshBatch& RESTRICT MeshBatch, uint64 BatchElementMask, const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy);
+
+protected:
 	FRayTracingMeshCommandContext* CommandContext;
 	const FScene* Scene;
 	const FSceneView* ViewIfDynamicMeshCommand;
 	ERHIFeatureLevel::Type FeatureLevel;
 	FMeshPassProcessorRenderState PassDrawRenderState;
 
-	void Process(
+	virtual void Process(
 		const FMeshBatch& RESTRICT MeshBatch,
 		uint64 BatchElementMask,
 		const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy,
@@ -49,7 +54,51 @@ private:
 		const FMaterial& RESTRICT MaterialResource,
 		const FMeshPassProcessorRenderState& RESTRICT DrawRenderState,
 		PassShadersType PassShaders,
-		const ShaderElementDataType& ShaderElementData);
+		const ShaderElementDataType& ShaderElementData)
+	{
+		const FVertexFactory* RESTRICT VertexFactory = MeshBatch.VertexFactory;
+
+		checkf(MaterialRenderProxy.ImmutableSamplerState.ImmutableSamplers[0] == nullptr, TEXT("Immutable samplers not yet supported in Mesh Draw Command pipeline"));
+
+		FRayTracingMeshCommand SharedCommand;
+
+		SharedCommand.SetShaders(PassShaders.GetUntypedShaders());
+		SharedCommand.InstanceMask = ComputeBlendModeMask(MaterialResource.GetBlendMode());
+		SharedCommand.bCastRayTracedShadows = MeshBatch.CastRayTracedShadow && MaterialResource.CastsRayTracedShadows();
+		SharedCommand.bOpaque = MaterialResource.GetBlendMode() == EBlendMode::BLEND_Opaque;
+		SharedCommand.bDecal = MaterialResource.GetMaterialDomain() == EMaterialDomain::MD_DeferredDecal;
+
+		FVertexInputStreamArray VertexStreams;
+		VertexFactory->GetStreams(ERHIFeatureLevel::SM5, EVertexInputStreamType::Default, VertexStreams);
+
+		if (PassShaders.RayHitGroupShader)
+		{
+			FMeshDrawSingleShaderBindings ShaderBindings = SharedCommand.ShaderBindings.GetSingleShaderBindings(SF_RayHitGroup);
+			PassShaders.RayHitGroupShader->GetShaderBindings(Scene, FeatureLevel, PrimitiveSceneProxy, MaterialRenderProxy, MaterialResource, DrawRenderState, ShaderElementData, ShaderBindings);
+		}
+
+		const int32 NumElements = MeshBatch.Elements.Num();
+
+		for (int32 BatchElementIndex = 0; BatchElementIndex < NumElements; BatchElementIndex++)
+		{
+			if ((1ull << BatchElementIndex) & BatchElementMask)
+			{
+				const FMeshBatchElement& BatchElement = MeshBatch.Elements[BatchElementIndex];
+				FRayTracingMeshCommand& RayTracingMeshCommand = CommandContext->AddCommand(SharedCommand);
+
+				if (PassShaders.RayHitGroupShader)
+				{
+					FMeshDrawSingleShaderBindings RayHitGroupShaderBindings = RayTracingMeshCommand.ShaderBindings.GetSingleShaderBindings(SF_RayHitGroup);
+					PassShaders.RayHitGroupShader->GetElementShaderBindings(Scene, ViewIfDynamicMeshCommand, VertexFactory, EVertexInputStreamType::Default, FeatureLevel, PrimitiveSceneProxy, MeshBatch, BatchElement, ShaderElementData, RayHitGroupShaderBindings, VertexStreams);
+				}
+
+				int32 GeometrySegmentIndex = MeshBatch.SegmentIndex + BatchElementIndex;
+				RayTracingMeshCommand.GeometrySegmentIndex = (GeometrySegmentIndex < UINT8_MAX) ? uint8(GeometrySegmentIndex) : UINT8_MAX;
+
+				CommandContext->FinalizeCommand(RayTracingMeshCommand);
+			}
+		}
+	}
 };
 
 class RENDERER_API FHiddenMaterialHitGroup : public FGlobalShader
