@@ -1050,17 +1050,21 @@ public:
 			FPrimitiveSceneInfo* PrimInfo = *It;
 			FPrimitiveSceneProxy* Proxy = PrimInfo->Proxy;
 			const FBoxSphereBounds& Bounds = Proxy->GetBounds();
+			const FPrimitiveSceneInfoCompact PrimitiveSceneInfoCompact(PrimInfo);
 
-			for (FSceneLightOctree::TConstElementBoxIterator<> LightIt(Scene->LocalShadowCastingLightOctree, FBoxCenterAndExtent(Bounds));
+			// Find local lights that affect the primitive in the light octree.
+			for (FSceneLightOctree::TConstElementBoxIterator<SceneRenderingAllocator> LightIt(Scene->LocalShadowCastingLightOctree, Bounds.GetBox());
 				LightIt.HasPendingElements();
 				LightIt.Advance())
 			{
-				const FLightSceneInfoCompact& LightInfo = LightIt.GetCurrentElement();
-
-				if (LightInfo.AffectsPrimitive(Bounds, Proxy))
-				{
-					FLightPrimitiveInteraction::Create(LightInfo.LightSceneInfo, PrimInfo);
-				}
+				const FLightSceneInfoCompact& LightSceneInfoCompact = LightIt.GetCurrentElement();
+				LightSceneInfoCompact.LightSceneInfo->CreateLightPrimitiveInteraction(LightSceneInfoCompact, PrimitiveSceneInfoCompact);
+			}
+			// Also loop through non-local (directional) shadow-casting lights
+			for (int32 LightID : Scene->DirectionalShadowCastingLightIDs)
+			{
+				const FLightSceneInfoCompact& LightSceneInfoCompact = Scene->Lights[LightID];
+				LightSceneInfoCompact.LightSceneInfo->CreateLightPrimitiveInteraction(LightSceneInfoCompact, PrimitiveSceneInfoCompact);
 			}
 		}
 
@@ -4159,17 +4163,21 @@ void FScene::CreateLightPrimitiveInteractionsForPrimitive(FPrimitiveSceneInfo* P
 	{
 		FMemMark MemStackMark(FMemStack::Get());
 		const FBoxSphereBounds& Bounds = PrimitiveInfo->Proxy->GetBounds();
+		const FPrimitiveSceneInfoCompact PrimitiveSceneInfoCompact(PrimitiveInfo);
 
-		for (FSceneLightOctree::TConstElementBoxIterator<SceneRenderingAllocator> LightIt(LocalShadowCastingLightOctree, FBoxCenterAndExtent(Bounds));
+		// Find local lights that affect the primitive in the light octree.
+		for (FSceneLightOctree::TConstElementBoxIterator<SceneRenderingAllocator> LightIt(LocalShadowCastingLightOctree, Bounds.GetBox());
 			LightIt.HasPendingElements();
 			LightIt.Advance())
 		{
-			const FLightSceneInfoCompact& LightInfo = LightIt.GetCurrentElement();
-
-			if (LightInfo.AffectsPrimitive(Bounds, PrimitiveInfo->Proxy))
-			{
-				FLightPrimitiveInteraction::Create(LightInfo.LightSceneInfo, PrimitiveInfo);
-			}
+			const FLightSceneInfoCompact& LightSceneInfoCompact = LightIt.GetCurrentElement();
+			LightSceneInfoCompact.LightSceneInfo->CreateLightPrimitiveInteraction(LightSceneInfoCompact, PrimitiveSceneInfoCompact);
+		}
+		// Also loop through non-local (directional) shadow-casting lights
+		for (int32 LightID : DirectionalShadowCastingLightIDs)
+		{
+			const FLightSceneInfoCompact& LightSceneInfoCompact = Lights[LightID];
+			LightSceneInfoCompact.LightSceneInfo->CreateLightPrimitiveInteraction(LightSceneInfoCompact, PrimitiveSceneInfoCompact);
 		}
 	}
 	else

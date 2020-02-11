@@ -206,7 +206,7 @@ public:
 		PostprocessParameter.Bind(Initializer.ParameterMap);
 	}
 
-	void SetPS(const FRenderingCompositePassContext& Context)
+	void SetPS(const FRenderingCompositePassContext& Context, const TShaderRef<FPostProcessBloomSetupPS_ES2>& Shader)
 	{
 		FRHIPixelShader* ShaderRHI = Context.RHICmdList.GetBoundPixelShader();
 
@@ -220,7 +220,7 @@ public:
 		ShaderParameters.BloomThreshold = Settings.BloomThreshold;
 		ShaderParameters.View = Context.View.ViewUniformBuffer;
 
-		SetShaderParameters(Context.RHICmdList, this, ShaderRHI, ShaderParameters);
+		SetShaderParameters(Context.RHICmdList, Shader, ShaderRHI, ShaderParameters);
 	}
 };
 
@@ -338,14 +338,14 @@ void FRCPassPostProcessBloomSetupES2::SetShaderAndExecute(FRenderingCompositePas
 		TShaderMapRef<FPostProcessBloomSetupPS_ES2<Variation> > PixelShader(Context.GetShaderMap());
 
 		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 		SetGraphicsPipelineState(Context.RHICmdList, GraphicsPSOInit);
 
 		VertexShader->SetVS(Context);
-		PixelShader->SetPS(Context);
+		PixelShader->SetPS(Context, PixelShader);
 
 		DrawRectangle(
 			Context.RHICmdList,
@@ -850,7 +850,7 @@ public:
 		Bindings.BindForLegacyShaderParameters(this, Initializer.ParameterMap, *FParameters::FTypeInfo::GetStructMetadata());
 	}
 
-	void SetPS(const FRenderingCompositePassContext& Context)
+	void SetPS(const FRenderingCompositePassContext& Context, const TShaderRef<FPostProcessSunMaskPS_ES2>& Shader)
 	{
 		FRHIPixelShader* ShaderRHI = Context.RHICmdList.GetBoundPixelShader();
 
@@ -867,7 +867,7 @@ public:
 		ShaderParameters.SunColorApertureDiv2.Z = Context.View.LightShaftColorMask.B;
 		ShaderParameters.SunColorApertureDiv2.W = GetMobileDepthOfFieldScale(Context.View) * 0.5f;
 
-		SetShaderParameters(Context.RHICmdList, this, ShaderRHI, ShaderParameters);
+		SetShaderParameters(Context.RHICmdList, Shader, ShaderRHI, ShaderParameters);
 	}
 };
 
@@ -976,7 +976,7 @@ void FRCPassPostProcessSunMaskES2::SetShaderAndExecute(const FRenderingComposite
 	SetGraphicsPipelineState(Context.RHICmdList, GraphicsPSOInit);
 
 	VertexShader->SetVS(Context);
-	PixelShader->SetPS(Context);
+	PixelShader->SetPS(Context, PixelShader);
 
 	DrawRectangle(
 		Context.RHICmdList,
@@ -986,7 +986,7 @@ void FRCPassPostProcessSunMaskES2::SetShaderAndExecute(const FRenderingComposite
 		SrcRect.Width(), SrcRect.Height(),
 		DstSize,
 		SrcSize,
-		*VertexShader,
+		VertexShader,
 		EDRF_UseTriangleOptimization);
 
 	Context.RHICmdList.EndRenderPass();
@@ -2655,16 +2655,14 @@ public:
 		OutEnvironment.CompilerFlags.Add(CFLAG_StandardOptimization);
 	}
 
-	void SetCS(const FRenderingCompositePassContext& Context, uint32 ClearValue, uint32 NumEntries, FRHIUnorderedAccessView* NewUnorderedAccessViewRHI) const
+	void SetCS(const FRenderingCompositePassContext& Context, const TShaderRef<FClearUAVUIntCS_ES2>& Shader, uint32 ClearValue, uint32 NumEntries, FRHIUnorderedAccessView* NewUnorderedAccessViewRHI) const
 	{
-		FRHIComputeShader* ShaderRHI = Context.RHICmdList.GetBoundComputeShader();
-
 		FParameters ShaderParameters;
 		ShaderParameters.ClearValue = ClearValue;
 		ShaderParameters.NumEntries = NumEntries;
 		ShaderParameters.UAV = NewUnorderedAccessViewRHI;
 
-		SetShaderParameters(Context.RHICmdList, *this, ShaderRHI, ShaderParameters);
+		SetShaderParameters(Context.RHICmdList, Shader, Shader.GetComputeShader(), ShaderParameters);
 	}
 };
 
@@ -2740,10 +2738,8 @@ public:
 	}
 
 
-	void SetCS(const FRenderingCompositePassContext& Context, const FIntPoint& SrcRectExtent, FRHITexture* NewTextureRHI, FRHIUnorderedAccessView* NewUnorderedAccessViewRHI)
+	void SetCS(const FRenderingCompositePassContext& Context, const TShaderRef<FPostProcessAverageLuminanceCS_ES2>& Shader, const FIntPoint& SrcRectExtent, FRHITexture* NewTextureRHI, FRHIUnorderedAccessView* NewUnorderedAccessViewRHI)
 	{
-		FRHIComputeShader* ShaderRHI = Context.RHICmdList.GetBoundComputeShader();
-
 		FParameters ShaderParameters;
 
 		ShaderParameters.SourceSizeAndInvSize = FVector4(SrcRectExtent.X, SrcRectExtent.Y, 1.0f / SrcRectExtent.X, 1.0f / SrcRectExtent.Y);
@@ -2752,7 +2748,7 @@ public:
 		ShaderParameters.EyeAdaptation = GetEyeAdaptationParameters(Context.View, ERHIFeatureLevel::ES3_1);
 		ShaderParameters.OutputUIntBuffer = NewUnorderedAccessViewRHI;
 
-		SetShaderParameters(Context.RHICmdList, this, ShaderRHI, ShaderParameters);
+		SetShaderParameters(Context.RHICmdList, Shader, Shader.GetComputeShader(), ShaderParameters);
 	}
 };
 
@@ -2790,13 +2786,13 @@ void FRCPassPostProcessAverageLuminanceES2::Process(FRenderingCompositePassConte
 		{
 			TShaderMapRef<FClearUAVUIntCS_ES2> ClearShader(Context.GetShaderMap());
 
-			Context.RHICmdList.SetComputeShader(Context.RHICmdList.GetBoundComputeShader());
+			Context.RHICmdList.SetComputeShader(ClearShader.GetComputeShader());
 
-			ClearShader->SetCS(Context, 0, DestSize.X, GAverageLuminanceBuffer->UnorderedAccessViewRHI);
+			ClearShader->SetCS(Context, ClearShader, 0, DestSize.X, GAverageLuminanceBuffer->UnorderedAccessViewRHI);
 
-			DispatchComputeShader(Context.RHICmdList, ClearShader.GetComputeShader(), FMath::DivideAndRoundUp<uint32>(DestSize.X, 64), DestSize.Y, 1);
+			DispatchComputeShader(Context.RHICmdList, ClearShader, FMath::DivideAndRoundUp<uint32>(DestSize.X, 64), DestSize.Y, 1);
 
-			UnsetShaderUAVs(Context.RHICmdList, *ClearShader, Context.RHICmdList.GetBoundComputeShader());
+			UnsetShaderUAVs(Context.RHICmdList, ClearShader, Context.RHICmdList.GetBoundComputeShader());
 		}
 		else
 		{
@@ -2810,17 +2806,17 @@ void FRCPassPostProcessAverageLuminanceES2::Process(FRenderingCompositePassConte
 
 			TShaderMapRef<FPostProcessAverageLuminanceCS_ES2> ComputeShader(Context.GetShaderMap());
 
-			Context.RHICmdList.SetComputeShader(Context.RHICmdList.GetBoundComputeShader());
+			Context.RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
 
 			const FIntPoint SrcRectExtent = InputDesc->Extent;
 
 			FIntPoint ThreadGroupCount = FIntPoint::DivideAndRoundUp(SrcRectExtent, FPostProcessAverageLuminanceCS_ES2::TexelsPerThreadGroup);
 
-			ComputeShader->SetCS(Context, SrcRectExtent, InputRenderTarget.ShaderResourceTexture, GAverageLuminanceBuffer->UnorderedAccessViewRHI);
+			ComputeShader->SetCS(Context, ComputeShader, SrcRectExtent, InputRenderTarget.ShaderResourceTexture, GAverageLuminanceBuffer->UnorderedAccessViewRHI);
 
-			DispatchComputeShader(Context.RHICmdList, *ComputeShader, ThreadGroupCount.X, ThreadGroupCount.Y, 1);
+			DispatchComputeShader(Context.RHICmdList, ComputeShader, ThreadGroupCount.X, ThreadGroupCount.Y, 1);
 
-			UnsetShaderUAVs(Context.RHICmdList, *ComputeShader, Context.RHICmdList.GetBoundComputeShader());
+			UnsetShaderUAVs(Context.RHICmdList, ComputeShader, Context.RHICmdList.GetBoundComputeShader());
 		}
 
 		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, GAverageLuminanceBuffer->UnorderedAccessViewRHI);
@@ -2883,7 +2879,7 @@ public:
 		OutEnvironment.CompilerFlags.Add(CFLAG_StandardOptimization);
 	}
 
-	void Set(const FRenderingCompositePassContext& Context, FRHIShaderResourceView* LastEyeAdaptation, FRHIShaderResourceView* LogLuminanceWeightBuffer, FRHIUnorderedAccessView* TextureUnorderedAccessViewRHI = nullptr)
+	void Set(const FRenderingCompositePassContext& Context, const TShaderRef<FBasicEyeAdaptationCS_ES2>& Shader, FRHIShaderResourceView* LastEyeAdaptation, FRHIShaderResourceView* LogLuminanceWeightBuffer, FRHIUnorderedAccessView* TextureUnorderedAccessViewRHI = nullptr)
 	{
 		FParameters ShaderParameters;
 
@@ -2896,7 +2892,7 @@ public:
 
 		ShaderParameters.OutputBuffer = TextureUnorderedAccessViewRHI;
 
-		SetShaderParameters(Context.RHICmdList, this, Context.RHICmdList.GetBoundComputeShader(), ShaderParameters);
+		SetShaderParameters(Context.RHICmdList, Shader, Shader.GetComputeShader(), ShaderParameters);
 	}
 };
 
@@ -2924,13 +2920,13 @@ void FRCPassPostProcessBasicEyeAdaptationES2::Process(FRenderingCompositePassCon
 	{
 		TShaderMapRef<FBasicEyeAdaptationCS_ES2> ComputeShader(Context.GetShaderMap());
 
-		Context.RHICmdList.SetComputeShader(Context.RHICmdList.GetBoundComputeShader());
+		Context.RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
 
-		ComputeShader->Set(Context, EyeAdaptationLastFrameBuffer->SRV, LogLuminanceWeightBuffer, EyeAdaptationThisFrameBuffer->UAV);
+		ComputeShader->Set(Context, ComputeShader, EyeAdaptationLastFrameBuffer->SRV, LogLuminanceWeightBuffer, EyeAdaptationThisFrameBuffer->UAV);
 
-		DispatchComputeShader(Context.RHICmdList, *ComputeShader, 1, 1, 1);
+		DispatchComputeShader(Context.RHICmdList, ComputeShader, 1, 1, 1);
 
-		UnsetShaderUAVs(Context.RHICmdList, *ComputeShader, Context.RHICmdList.GetBoundComputeShader());
+		UnsetShaderUAVs(Context.RHICmdList, ComputeShader, Context.RHICmdList.GetBoundComputeShader());
 
 		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, EyeAdaptationThisFrameBuffer->UAV);
 	}
@@ -3011,7 +3007,7 @@ public:
 
 public:
 
-	FPostProcessPassParameters PostprocessParameter;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
 
 	/** Initialization constructor. */
 	FPostProcessHistogramCS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
@@ -3021,10 +3017,8 @@ public:
 	}
 
 	template <typename TRHICmdList>
-	void SetCS(TRHICmdList& RHICmdList, const FRenderingCompositePassContext& Context, const FIntPoint& SrcRectExtent, FRHITexture* NewTextureRHI, FRHIUnorderedAccessView* NewUnorderedAccessViewRHI)
+	void SetCS(TRHICmdList& RHICmdList, const TShaderRef<FPostProcessHistogramCS_ES2>& Shader, const FRenderingCompositePassContext& Context, const FIntPoint& SrcRectExtent, FRHITexture* NewTextureRHI, FRHIUnorderedAccessView* NewUnorderedAccessViewRHI)
 	{
-		FRHIComputeShader* ShaderRHI = GetComputeShader();
-
 		FParameters ShaderParameters;
 
 		ShaderParameters.View = Context.View.ViewUniformBuffer;
@@ -3034,7 +3028,7 @@ public:
 		ShaderParameters.RWHistogramBuffer = NewUnorderedAccessViewRHI;
 		ShaderParameters.EyeAdaptation = GetEyeAdaptationParameters(Context.View, ERHIFeatureLevel::ES3_1);
 
-		SetShaderParameters(RHICmdList, this, ShaderRHI, ShaderParameters);
+		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), ShaderParameters);
 	}
 };
 
@@ -3074,13 +3068,13 @@ void FRCPassPostProcessHistogramES2::Process(FRenderingCompositePassContext& Con
 		{
 			TShaderMapRef<FClearUAVUIntCS_ES2> ClearShader(Context.GetShaderMap());
 
-			Context.RHICmdList.SetComputeShader(Context.RHICmdList.GetBoundComputeShader());
+			Context.RHICmdList.SetComputeShader(ClearShader.GetComputeShader());
 
-			ClearShader->SetCS(Context, 0, DestSize.X, GHistogramBuffer->UnorderedAccessViewRHI);
+			ClearShader->SetCS(Context, ClearShader, 0, DestSize.X, GHistogramBuffer->UnorderedAccessViewRHI);
 
-			DispatchComputeShader(Context.RHICmdList, *ClearShader, FMath::DivideAndRoundUp<uint32>(DestSize.X, 64), DestSize.Y, 1);
+			DispatchComputeShader(Context.RHICmdList, ClearShader, FMath::DivideAndRoundUp<uint32>(DestSize.X, 64), DestSize.Y, 1);
 
-			UnsetShaderUAVs(Context.RHICmdList, *ClearShader, Context.RHICmdList.GetBoundComputeShader());
+			UnsetShaderUAVs(Context.RHICmdList, ClearShader, Context.RHICmdList.GetBoundComputeShader());
 		}
 		else
 		{
@@ -3094,16 +3088,16 @@ void FRCPassPostProcessHistogramES2::Process(FRenderingCompositePassContext& Con
 
 			TShaderMapRef<FPostProcessHistogramCS_ES2> ComputeShader(Context.GetShaderMap());
 
-			Context.RHICmdList.SetComputeShader(Context.RHICmdList.GetBoundComputeShader());
+			Context.RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
 
 			const FIntPoint SrcRectExtent = InputDesc->Extent;
 			const FIntPoint ThreadGroupCount = FIntPoint::DivideAndRoundUp(SrcRectExtent, FPostProcessHistogramCS_ES2::TexelsPerThreadGroup);
 
-			ComputeShader->SetCS(Context.RHICmdList, Context, SrcRectExtent, InputRenderTarget.ShaderResourceTexture, GHistogramBuffer->UnorderedAccessViewRHI);
+			ComputeShader->SetCS(Context.RHICmdList, ComputeShader, Context, SrcRectExtent, InputRenderTarget.ShaderResourceTexture, GHistogramBuffer->UnorderedAccessViewRHI);
 
-			DispatchComputeShader(Context.RHICmdList, *ComputeShader, ThreadGroupCount.X, ThreadGroupCount.Y, 1);
+			DispatchComputeShader(Context.RHICmdList, ComputeShader, ThreadGroupCount.X, ThreadGroupCount.Y, 1);
 
-			UnsetShaderUAVs(Context.RHICmdList, *ComputeShader, Context.RHICmdList.GetBoundComputeShader());
+			UnsetShaderUAVs(Context.RHICmdList, ComputeShader, Context.RHICmdList.GetBoundComputeShader());
 		}
 
 		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, GHistogramBuffer->UnorderedAccessViewRHI);
@@ -3164,7 +3158,7 @@ public:
 		Bindings.BindForLegacyShaderParameters(this, Initializer.ParameterMap, *FParameters::FTypeInfo::GetStructMetadata());
 	}
 
-	void Set(const FRenderingCompositePassContext& Context, FRHIShaderResourceView* LastEyeAdaptation, FRHIShaderResourceView* HistogramBuffer, FRHIUnorderedAccessView* TextureUnorderedAccessViewRHI = nullptr)
+	void Set(const FRenderingCompositePassContext& Context, const TShaderRef<FHistogramEyeAdaptationCS_ES2>& Shader, FRHIShaderResourceView* LastEyeAdaptation, FRHIShaderResourceView* HistogramBuffer, FRHIUnorderedAccessView* TextureUnorderedAccessViewRHI = nullptr)
 	{
 		FParameters ShaderParameters;
 
@@ -3176,7 +3170,7 @@ public:
 
 		ShaderParameters.OutputBuffer = TextureUnorderedAccessViewRHI;
 
-		SetShaderParameters(Context.RHICmdList, this, Context.RHICmdList.GetBoundComputeShader(), ShaderParameters);
+		SetShaderParameters(Context.RHICmdList, Shader, Shader.GetComputeShader(), ShaderParameters);
 	}
 };
 
@@ -3204,13 +3198,13 @@ void FRCPassPostProcessHistogramEyeAdaptationES2::Process(FRenderingCompositePas
 	{
 		TShaderMapRef<FHistogramEyeAdaptationCS_ES2> ComputeShader(Context.GetShaderMap());
 
-		Context.RHICmdList.SetComputeShader(Context.RHICmdList.GetBoundComputeShader());
+		Context.RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
 
-		ComputeShader->Set(Context, EyeAdaptationLastFrameBuffer->SRV, HistogramBuffer, EyeAdaptationThisFrameBuffer->UAV);
+		ComputeShader->Set(Context, ComputeShader, EyeAdaptationLastFrameBuffer->SRV, HistogramBuffer, EyeAdaptationThisFrameBuffer->UAV);
 
-		DispatchComputeShader(Context.RHICmdList, *ComputeShader, 1, 1, 1);
+		DispatchComputeShader(Context.RHICmdList, ComputeShader, 1, 1, 1);
 
-		UnsetShaderUAVs(Context.RHICmdList, *ComputeShader, Context.RHICmdList.GetBoundComputeShader());
+		UnsetShaderUAVs(Context.RHICmdList, ComputeShader, Context.RHICmdList.GetBoundComputeShader());
 
 		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, EyeAdaptationThisFrameBuffer->UAV);
 	}
