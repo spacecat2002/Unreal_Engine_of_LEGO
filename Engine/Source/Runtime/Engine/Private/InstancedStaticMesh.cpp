@@ -3165,7 +3165,7 @@ void FInstancedStaticMeshVertexFactoryShaderParameters::GetElementShaderBindings
 
 	if (InstancedVertexFactory->SupportsManualVertexFetch(FeatureLevel))
 	{
-		if (InstancedVertexFactory->GetNumInstances() > 0)
+		//if (InstancedVertexFactory->GetNumInstances() > 0)
 		{
 			ShaderBindings.Add(Shader->GetUniformBufferParameter<FInstancedStaticMeshVertexFactoryUniformShaderParameters>(), InstancedVertexFactory->GetUniformBuffer());
 
@@ -3174,10 +3174,10 @@ void FInstancedStaticMeshVertexFactoryShaderParameters::GetElementShaderBindings
 			ShaderBindings.Add(VertexFetch_InstanceLightmapBufferParameter, InstancedVertexFactory->GetInstanceLightmapSRV());
 			ShaderBindings.Add(InstanceOffset, InstanceOffsetValue);
 		}
-		else
-		{
-			ensureMsgf(false, TEXT("Instanced static mesh rendered with no instances. Data initialized: %d"), InstancedVertexFactory->IsDataInitialized());
-		}
+		//else
+		//{
+		//	ensureMsgf(false, TEXT("Instanced static mesh rendered with no instances. Data initialized: %d"), InstancedVertexFactory->IsDataInitialized());
+		//}
 	}
 	if (InstanceOffsetValue > 0 && VertexStreams.Num() > 0)
 	{
