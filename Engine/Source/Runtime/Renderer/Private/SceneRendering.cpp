@@ -3113,9 +3113,9 @@ void FSceneRenderer::RenderCustomDepthPass(FRHICommandListImmediate& RHICmdList)
 					PassUniformBuffer = Scene->UniformBuffers.CustomDepthPassUniformBuffer;
 				}
 				
-				static const auto CVarMobileCustomDepthDownSample = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.CustomDepthDownSample"));
+				static const auto MobileCustomDepthDownSampleLocalCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.CustomDepthDownSample"));
 
-				bool bMobileCustomDepthDownSample = bMobilePath && CVarMobileCustomDepthDownSample && CVarMobileCustomDepthDownSample->GetValueOnRenderThread() > 0;
+				bool bMobileCustomDepthDownSample = bMobilePath && MobileCustomDepthDownSampleLocalCVar && MobileCustomDepthDownSampleLocalCVar->GetValueOnRenderThread() > 0;
 
 				FIntRect ViewRect = bMobileCustomDepthDownSample ? FIntRect::DivideAndRoundUp(View.ViewRect, 2) : View.ViewRect;
 
