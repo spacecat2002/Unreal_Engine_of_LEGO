@@ -293,8 +293,20 @@ FEyeAdaptationParameters GetEyeAdaptationParameters(const FViewInfo& View, ERHIF
 		// ignores bExtendedLuminanceRange
 		MinWhitePointLuminance = MaxWhitePointLuminance = CalculateFixedAutoExposure(View);
 	}
-	// When !EngineShowFlags.EyeAdaptation (from "r.EyeAdaptationQuality 0") or the feature level doesn't support eye adaptation, only Settings.AutoExposureBias controls exposure.
-	else if (EngineShowFlags.EyeAdaptation && View.GetFeatureLevel() >= MinFeatureLevel)
+	else if (!EngineShowFlags.EyeAdaptation)
+	{
+		// if eye adaptation is off, then set everything to 1.0
+		ExposureCompensationSettings = 1.0f;
+		ExposureCompensationCurve = 1.0f;
+
+		// GetAutoExposureMethod() should return Manual in this case.
+		check(AutoExposureMethod == AEM_Manual);
+
+		// just lock to 1.0, it's not possible to guess a reasonable value using the min and max.
+		MinWhitePointLuminance = MaxWhitePointLuminance = 1.0;
+	}
+	// This should always be true now that it works on mobile
+	else if (View.GetFeatureLevel() >= MinFeatureLevel)
 	{
 		if (AutoExposureMethod == EAutoExposureMethod::AEM_Manual)
 		{
