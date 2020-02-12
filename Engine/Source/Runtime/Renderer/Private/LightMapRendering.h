@@ -711,7 +711,7 @@ enum ELightMapPolicyType
 	LMP_DUMMY
 };
 
-class FUniformLightMapPolicyShaderParametersType
+class RENDERER_API FUniformLightMapPolicyShaderParametersType
 {
 	DECLARE_TYPE_LAYOUT(FUniformLightMapPolicyShaderParametersType, NonVirtual);
 public:

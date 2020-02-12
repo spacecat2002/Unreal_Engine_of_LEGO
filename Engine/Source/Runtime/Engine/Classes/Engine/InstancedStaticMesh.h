@@ -120,6 +120,21 @@ public:
 	/** Keep CPU copy of instance data*/
 	bool RequireCPUAccess;
 
+	FVertexBufferRHIRef GetInstanceOriginBuffer()
+	{
+		return InstanceOriginBuffer.VertexBufferRHI;
+	}
+
+	FVertexBufferRHIRef GetInstanceTransformBuffer()
+	{
+		return InstanceTransformBuffer.VertexBufferRHI;
+	}
+
+	FVertexBufferRHIRef GetInstanceLightmapBuffer()
+	{
+		return InstanceLightmapBuffer.VertexBufferRHI;
+	}
+
 private:
 	class FInstanceOriginBuffer : public FVertexBuffer
 	{
@@ -378,7 +393,7 @@ struct FPerInstanceRenderData
 	FInstancedStaticMeshRenderData
 -----------------------------------------------------------------------------*/
 
-class FInstancedStaticMeshRenderData
+class ENGINE_API FInstancedStaticMeshRenderData
 {
 public:
 
@@ -436,7 +451,10 @@ private:
 		{
 			for (int32 LODIndex = 0; LODIndex < LODModels.Num(); LODIndex++)
 			{
-				Component->GetScene()->AddSpeedTreeWind(&VertexFactories[LODIndex], Component->GetStaticMesh());
+				if (Component->GetScene())
+				{
+					Component->GetScene()->AddSpeedTreeWind(&VertexFactories[LODIndex], Component->GetStaticMesh());
+				}
 			}
 		}
 	}
