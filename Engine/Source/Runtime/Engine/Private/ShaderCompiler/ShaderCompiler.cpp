@@ -244,6 +244,14 @@ static TAutoConsoleVariable<int32> CVarD3DRemoveUnusedInterpolators(
 	ECVF_ReadOnly
 	);
 
+static TAutoConsoleVariable<int32> CVarD3DCheckedForTypedUAVs(
+	TEXT("r.D3D.CheckedForTypedUAVs"),
+	1,
+	TEXT("Whether to disallow usage of typed UAV loads, as they are unavailable in Windows 7 D3D 11.0.\n")
+	TEXT(" 0: Allow usage of typed UAV loads.\n")
+	TEXT(" 1: Disallow usage of typed UAV loads. (default)"),
+	ECVF_ReadOnly);
+
 static TAutoConsoleVariable<int32> CVarD3DForceDXC(
 	TEXT("r.D3D.ForceDXC"),
 	0,
@@ -3492,6 +3500,13 @@ void GlobalBeginCompileShader(
 			if (CVar && CVar->GetInt() != 0)
 			{
 				Input.Environment.CompilerFlags.Add(CFLAG_ForceDXC);
+			}
+		}
+		{
+			static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.D3D.CheckedForTypedUAVs"));
+			if (CVar && CVar->GetInt() == 0)
+			{
+				Input.Environment.CompilerFlags.Add(CFLAG_AllowTypedUAVLoads);
 			}
 		}
 	}

@@ -206,7 +206,9 @@ enum ECompilerFlags
 	CFLAG_ForceDXC,
 	CFLAG_SkipOptimizations,
 	// Temporarily disable optimizations with DXC compiler only, intended to workaround shader compiler bugs until they can be resolved with 1st party
-	CFLAG_SkipOptimizationsDXC
+	CFLAG_SkipOptimizationsDXC,
+	// Typed UAV loads are disallowed by default, as Windows 7 D3D 11.0 does not support them; this flag allows a shader to use them.
+	CFLAG_AllowTypedUAVLoads,
 };
 
 enum class EShaderParameterType : uint8
