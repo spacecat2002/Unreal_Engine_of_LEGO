@@ -86,7 +86,7 @@ class FMaterialSortCS : public FGlobalShader
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		if (!ShouldCompileRayTracingShadersForProject(Parameters.Platform))
+		if (!GRHISupportsRayTracing || !ShouldCompileRayTracingShadersForProject(Parameters.Platform))
 		{
 			return false;
 		}
