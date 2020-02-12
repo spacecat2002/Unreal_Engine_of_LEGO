@@ -20,6 +20,7 @@ enum class ETonemapperOutputDevice
 	ACES2000nitScRGB,
 	LinearEXR,
 	LinearNoToneCurve,
+	LinearWithToneCurve,
 
 	MAX
 };
@@ -80,7 +81,7 @@ struct FTonemapInputs
 	// Whether to leave the final output in HDR.
 	bool bOutputInHDR = false;
 
-	FRHIShaderResourceView* EyeAdaptationBuffer;
+	FRHIShaderResourceView* EyeAdaptationBuffer = nullptr;
 };
 
 FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FTonemapInputs& Inputs);

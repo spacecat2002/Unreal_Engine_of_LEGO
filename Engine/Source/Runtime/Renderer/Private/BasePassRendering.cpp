@@ -279,8 +279,7 @@ void SetDepthStencilStateForBasePass(
 	const FPrimitiveSceneProxy* PrimitiveSceneProxy,
 	bool bEnableReceiveDecalOutput)
 {
-	static IConsoleVariable* EarlyZPassOnlyMaterialMaskingCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.EarlyZPassOnlyMaterialMasking"));
-	const bool bMaskInEarlyPass = (Mesh.MaterialRenderProxy->GetMaterial(FeatureLevel)->IsMasked() || Mesh.bDitheredLODTransition) && EarlyZPassOnlyMaterialMaskingCVar->GetInt();
+	const bool bMaskedInEarlyPass = (Mesh.MaterialRenderProxy->GetMaterial(FeatureLevel)->IsMasked() || Mesh.bDitheredLODTransition) && MaskedInEarlyPass(GShaderPlatformForFeatureLevel[FeatureLevel]);
 
 	if (bEnableReceiveDecalOutput)
 	{
@@ -289,7 +288,7 @@ void SetDepthStencilStateForBasePass(
 		const uint8 StencilValue = GET_STENCIL_BIT_MASK(RECEIVE_DECAL, PrimitiveSceneProxy ? !!PrimitiveSceneProxy->ReceivesDecals() : 0x00)
 			| STENCIL_LIGHTING_CHANNELS_MASK(PrimitiveSceneProxy ? PrimitiveSceneProxy->GetLightingChannelStencilValue() : 0x00);
 
-		if (bMaskInEarlyPass)
+		if (bMaskedInEarlyPass)
 		{
 			DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<
 				false, CF_Equal,
@@ -320,7 +319,7 @@ void SetDepthStencilStateForBasePass(
 			DrawRenderState.SetStencilRef(StencilValue);
 		}
 	}
-	else if (bMaskInEarlyPass)
+	else if (bMaskedInEarlyPass)
 	{
 		DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_Equal>::GetRHI());
 	}
@@ -395,10 +394,10 @@ void GetUniformBasePassShaders(
 	bool bEnableAtmosphericFog,
 	bool bEnableSkyLight,
 	bool bUse128bitRT,
-	FBaseHS*& HullShader,
-	FBaseDS*& DomainShader,
-	TBasePassVertexShaderPolicyParamType<FUniformLightMapPolicy>*& VertexShader,
-	TBasePassPixelShaderPolicyParamType<FUniformLightMapPolicy>*& PixelShader
+	TShaderRef<FBaseHS>& HullShader,
+	TShaderRef<FBaseDS>& DomainShader,
+	TShaderRef<TBasePassVertexShaderPolicyParamType<FUniformLightMapPolicy>>& VertexShader,
+	TShaderRef<TBasePassPixelShaderPolicyParamType<FUniformLightMapPolicy>>& PixelShader
 	)
 {
 	const EMaterialTessellationMode MaterialTessellationMode = Material.GetTessellationMode();
@@ -412,7 +411,7 @@ void GetUniformBasePassShaders(
 		DomainShader = Material.GetShader<TBasePassDS<TUniformLightMapPolicy<Policy> > >(VertexFactoryType);
 		
 		// Metal requires matching permutations, but no other platform should worry about this complication.
-		if (bEnableAtmosphericFog && DomainShader && IsMetalPlatform(EShaderPlatform(DomainShader->GetTarget().Platform)))
+		if (bEnableAtmosphericFog && DomainShader.IsValid() && IsMetalPlatform(EShaderPlatform(DomainShader->GetTarget().Platform)))
 		{
 			HullShader = Material.GetShader<TBasePassHS<TUniformLightMapPolicy<Policy>, true > >(VertexFactoryType);
 		}
@@ -424,26 +423,26 @@ void GetUniformBasePassShaders(
 
 	if (bEnableAtmosphericFog)
 	{
-		VertexShader = (TBasePassVertexShaderPolicyParamType<FUniformLightMapPolicy>*)Material.GetShader<TBasePassVS<TUniformLightMapPolicy<Policy>, true> >(VertexFactoryType);
+		VertexShader = TShaderRef<TBasePassVertexShaderPolicyParamType<FUniformLightMapPolicy>>::ReinterpretCast(Material.GetShader<TBasePassVS<TUniformLightMapPolicy<Policy>, true> >(VertexFactoryType));
 	}
 	else
 	{
-		VertexShader = (TBasePassVertexShaderPolicyParamType<FUniformLightMapPolicy>*)Material.GetShader<TBasePassVS<TUniformLightMapPolicy<Policy>, false> >(VertexFactoryType);
+		VertexShader = TShaderRef<TBasePassVertexShaderPolicyParamType<FUniformLightMapPolicy>>::ReinterpretCast(Material.GetShader<TBasePassVS<TUniformLightMapPolicy<Policy>, false> >(VertexFactoryType));
 	}
 
 	if (bEnableSkyLight)
 	{
-		PixelShader = (TBasePassPixelShaderPolicyParamType<FUniformLightMapPolicy>*)Material.GetShader<TBasePassPS<TUniformLightMapPolicy<Policy>, true> >(VertexFactoryType);
+		PixelShader = TShaderRef<TBasePassPixelShaderPolicyParamType<FUniformLightMapPolicy>>::ReinterpretCast(Material.GetShader<TBasePassPS<TUniformLightMapPolicy<Policy>, true> >(VertexFactoryType));
 	}
 	else
 	{
 		if (bUse128bitRT && (Policy == LMP_NO_LIGHTMAP))
 		{
-			PixelShader = (TBasePassPixelShaderPolicyParamType<FUniformLightMapPolicy>*)Material.GetShader<F128BitRTBasePassPS>(VertexFactoryType);
+			PixelShader = TShaderRef<TBasePassPixelShaderPolicyParamType<FUniformLightMapPolicy>>::ReinterpretCast(Material.GetShader<F128BitRTBasePassPS>(VertexFactoryType));
 		}
 		else
 		{
-			PixelShader = (TBasePassPixelShaderPolicyParamType<FUniformLightMapPolicy>*)Material.GetShader<TBasePassPS<TUniformLightMapPolicy<Policy>, false> >(VertexFactoryType);
+			PixelShader = TShaderRef<TBasePassPixelShaderPolicyParamType<FUniformLightMapPolicy>>::ReinterpretCast(Material.GetShader<TBasePassPS<TUniformLightMapPolicy<Policy>, false> >(VertexFactoryType));
 		}
 	}
 }
@@ -457,10 +456,10 @@ void GetBasePassShaders<FUniformLightMapPolicy>(
 	bool bEnableAtmosphericFog,
 	bool bEnableSkyLight,
 	bool bUse128bitRT,
-	FBaseHS*& HullShader,
-	FBaseDS*& DomainShader,
-	TBasePassVertexShaderPolicyParamType<FUniformLightMapPolicy>*& VertexShader,
-	TBasePassPixelShaderPolicyParamType<FUniformLightMapPolicy>*& PixelShader
+	TShaderRef<FBaseHS>& HullShader,
+	TShaderRef<FBaseDS>& DomainShader,
+	TShaderRef<TBasePassVertexShaderPolicyParamType<FUniformLightMapPolicy>>& VertexShader,
+	TShaderRef<TBasePassPixelShaderPolicyParamType<FUniformLightMapPolicy>>& PixelShader
 	)
 {
 	switch (LightMapPolicy.GetIndirectPolicy())
@@ -1070,7 +1069,7 @@ void FBasePassMeshProcessor::Process(
 	}
 	else
 	{
-		SortKey = CalculateBasePassMeshStaticSortKey(EarlyZPassMode, BlendMode, BasePassShaders.VertexShader, BasePassShaders.PixelShader);
+		SortKey = CalculateBasePassMeshStaticSortKey(EarlyZPassMode, BlendMode, BasePassShaders.VertexShader.GetShader(), BasePassShaders.PixelShader.GetShader());
 	}
 
 	BuildMeshDrawCommands(
@@ -1261,8 +1260,9 @@ void FBasePassMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshBatch, 
 		const EBlendMode BlendMode = Material.GetBlendMode();
 		const FMaterialShadingModelField ShadingModels = Material.GetShadingModels();
 		const bool bIsTranslucent = IsTranslucentBlendMode(BlendMode);
-		const ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, Material);
-		const ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, Material);
+		const FMeshDrawingPolicyOverrideSettings OverrideSettings = ComputeMeshOverrideSettings(MeshBatch);
+		const ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, Material, OverrideSettings);
+		const ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, Material, OverrideSettings);
 
 
 		bool bShouldDraw = false;

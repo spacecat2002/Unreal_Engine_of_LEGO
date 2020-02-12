@@ -246,15 +246,15 @@ IMPLEMENT_GLOBAL_SHADER(FRayTracingLightingMS, "/Engine/Private/RayTracing/RayTr
 
 FRHIRayTracingShader* FDeferredShadingSceneRenderer::GetRayTracingLightingMissShader(FViewInfo& View)
 {
-	return View.ShaderMap->GetShader<FRayTracingLightingMS>()->GetRayTracingShader();
+	return View.ShaderMap->GetShader<FRayTracingLightingMS>().GetRayTracingShader();
 }
 
 template< typename ShaderClass>
-static int32 BindParameters(ShaderClass* Shader, typename ShaderClass::FParameters & Parameters, int32 MaxParams, const FRHIUniformBuffer **OutUniformBuffers)
+static int32 BindParameters(const TShaderRef<ShaderClass>& Shader, typename ShaderClass::FParameters & Parameters, int32 MaxParams, const FRHIUniformBuffer **OutUniformBuffers)
 {
 	FRayTracingShaderBindingsWriter ResourceBinder;
 
-	auto &ParameterMap = Shader->GetParameterMapInfo();
+	auto &ParameterMap = Shader->ParameterMapInfo;
 
 	// all parameters should be in uniform buffers
 	check(ParameterMap.LooseParameterBuffers.Num() == 0);

@@ -22,6 +22,7 @@
 #include "VT/VirtualTexture.h"
 #include "EngineModule.h"
 #include "Misc/PackageName.h"
+#include "ProfilingDebugging/LoadTimeTracker.h"
 
 #define VISUALIZE_PACKING 0
 
@@ -421,7 +422,7 @@ struct FLightMapPendingTexture : public FTextureLayout
 		, OwningWorld(InWorld)
 		, Bounds(FBox(ForceInit))
 		, LightmapFlags(LMF_None)
-		, UnallocatedTexels(InSizeX * InSizeY)
+		, UnallocatedTexels(static_cast<int64>(InSizeX) * InSizeY)
 		, NumOutstandingAsyncTasks(0)
 		, bUObjectsCreated(false)
 		, NumNonPower2Texels(0)
@@ -3390,6 +3391,8 @@ void FLightmapResourceCluster::ReleaseAllocatedVT()
 
 void FLightmapResourceCluster::InitRHI()
 {
+	SCOPED_LOADTIMER(FLightmapResourceCluster_InitRHI);
+
 	FLightmapResourceClusterShaderParameters Parameters;
 
 	// Lightmap resources are normally created before the feature level is known, so we'll use defaults and rely on a subsequent call to UpdateUniformBuffer()

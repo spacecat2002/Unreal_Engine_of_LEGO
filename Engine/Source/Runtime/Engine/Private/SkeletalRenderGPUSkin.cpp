@@ -336,7 +336,7 @@ void FSkeletalMeshObjectGPUSkin::UpdateSkinWeightBuffer(USkinnedMeshComponent* I
 		FSkeletalMeshObjectLOD& SkelLOD = LODs[LODIndex];
 
 		// Skip LODs that have their render data stripped
-		if (SkelLOD.SkelMeshRenderData->LODRenderData[LODIndex].GetNumVertices() > 0)
+		if (InMeshComponent && SkelLOD.SkelMeshRenderData->LODRenderData[LODIndex].GetNumVertices() > 0)
 		{
 			FSkelMeshComponentLODInfo* CompLODInfo = nullptr;
 			if (InMeshComponent->LODInfo.IsValidIndex(LODIndex))
@@ -345,6 +345,20 @@ void FSkeletalMeshObjectGPUSkin::UpdateSkinWeightBuffer(USkinnedMeshComponent* I
 			}
 
 			SkelLOD.UpdateSkinWeights(CompLODInfo);
+
+			if (InMeshComponent && InMeshComponent->SceneProxy)
+			{
+				FGPUSkinCache* GPUSkinCache = InMeshComponent->SceneProxy->GetScene().GetGPUSkinCache();
+				FGPUSkinCacheEntry* SkinCacheEntryToUpdate = SkinCacheEntry;
+				if (GPUSkinCache && SkinCacheEntryToUpdate)
+				{
+					ENQUEUE_RENDER_COMMAND(UpdateSkinCacheSkinWeightBuffer)(
+						[GPUSkinCache, SkinCacheEntryToUpdate](FRHICommandListImmediate& RHICmdList)
+					{
+						GPUSkinCache->UpdateSkinWeightBuffer(SkinCacheEntryToUpdate);
+					});
+				}
+			}
 		}
 	}
 
@@ -659,9 +673,11 @@ void FSkeletalMeshObjectGPUSkin::ProcessUpdatedDynamicData(FGPUSkinCache* GPUSki
 					bClothFactory ? DynamicData->ClothingSimData.Find(Section.CorrespondClothAssetIndex) : 0, LocalToCloth, DynamicData->ClothBlendWeight, RevisionNumber, SectionIdx, SkinCacheEntry);
 
 				FCachedGeometrySection CachedSection = GPUSkinCache->GetCachedGeometry(SkinCacheEntry, SectionIdx);
-				CachedSection.IndexBuffer = LODData.MultiSizeIndexContainer.GetIndexBuffer()->GetSRV();
-				CachedSection.TotalIndexCount = LODData.MultiSizeIndexContainer.GetIndexBuffer()->Num();
-				CachedSection.LODIndex = DynamicData->LODIndex;
+				CachedSection.IndexBuffer		= LODData.MultiSizeIndexContainer.GetIndexBuffer()->GetSRV();
+				CachedSection.TotalIndexCount	= LODData.MultiSizeIndexContainer.GetIndexBuffer()->Num();
+				CachedSection.LODIndex			= DynamicData->LODIndex;
+				CachedSection.UVsChannelOffset	= 0; // Assume that we needs to pair meshes based on UVs 0
+				CachedSection.UVsChannelCount	= LODData.StaticVertexBuffers.StaticMeshVertexBuffer.GetNumTexCoords();
 				CachedGeometry.Sections.Add(CachedSection);
 			}
 
@@ -677,8 +693,7 @@ TArray<float> FSkeletalMeshObjectGPUSkin::FSkeletalMeshObjectLOD::MorphAccumulat
 
 void FGPUMorphUpdateCS::SetParameters(FRHICommandList& RHICmdList, const FVector4& LocalScale, const FMorphTargetVertexInfoBuffers& MorphTargetVertexInfoBuffers, FMorphVertexBuffer& MorphVertexBuffer)
 {
-	FRHIComputeShader* CS = GetComputeShader();
-	RHICmdList.SetComputeShader(CS);
+	FRHIComputeShader* CS = RHICmdList.GetBoundComputeShader();
 
 	SetUAVParameter(RHICmdList, CS, MorphVertexBufferParameter, MorphVertexBuffer.GetUAV());
 
@@ -692,7 +707,7 @@ static const uint32 GMorphTargetDispatchBatchSize = 128;
 
 void FGPUMorphUpdateCS::SetOffsetAndSize(FRHICommandList& RHICmdList, uint32 StartIndex, uint32 EndIndexPlusOne, const FMorphTargetVertexInfoBuffers& MorphTargetVertexInfoBuffers, const TArray<float>& MorphTargetWeights)
 {
-	FComputeShaderRHIRef CS = GetComputeShader();
+	FRHIComputeShader* CS = RHICmdList.GetBoundComputeShader();
 
 	uint32 ThreadOffsets[GMorphTargetDispatchBatchSize];
 	float Weights[GMorphTargetDispatchBatchSize];
@@ -730,7 +745,7 @@ void FGPUMorphUpdateCS::Dispatch(FRHICommandList& RHICmdList, uint32 Size)
 
 void FGPUMorphUpdateCS::EndAllDispatches(FRHICommandList& RHICmdList)
 {
-	FComputeShaderRHIRef CS = GetComputeShader();
+	FRHIComputeShader* CS = RHICmdList.GetBoundComputeShader();
 	SetUAVParameter(RHICmdList, CS, MorphVertexBufferParameter, nullptr);
 }
 
@@ -738,9 +753,7 @@ IMPLEMENT_SHADER_TYPE(, FGPUMorphUpdateCS, TEXT("/Engine/Private/MorphTargets.us
 
 void FGPUMorphNormalizeCS::SetParameters(FRHICommandList& RHICmdList, const FVector4& InvLocalScale, const FMorphTargetVertexInfoBuffers& MorphTargetVertexInfoBuffers, FMorphVertexBuffer& MorphVertexBuffer)
 {
-	FComputeShaderRHIRef CS = GetComputeShader();
-	RHICmdList.SetComputeShader(CS);
-
+	FRHIComputeShader* CS = RHICmdList.GetBoundComputeShader();
 	SetUAVParameter(RHICmdList, CS, MorphVertexBufferParameter, MorphVertexBuffer.GetUAV());
 	SetSRVParameter(RHICmdList, CS, MorphPermutationBufferParameter, MorphTargetVertexInfoBuffers.MorphPermutationsSRV);
 	SetShaderValue(RHICmdList, CS, PositionScaleParameter, InvLocalScale);
@@ -748,7 +761,7 @@ void FGPUMorphNormalizeCS::SetParameters(FRHICommandList& RHICmdList, const FVec
 
 void FGPUMorphNormalizeCS::SetOffsetAndSize(FRHICommandList& RHICmdList, uint32 StartIndex, uint32 EndIndexPlusOne, const FMorphTargetVertexInfoBuffers& MorphTargetVertexInfoBuffers, const TArray<float>& InverseAccumulatedWeights)
 {
-	FComputeShaderRHIRef CS = GetComputeShader();
+	FRHIComputeShader* CS = RHICmdList.GetBoundComputeShader();
 
 	uint32 ThreadOffsets[GMorphTargetDispatchBatchSize];
 	float Weights[GMorphTargetDispatchBatchSize];
@@ -786,7 +799,7 @@ void FGPUMorphNormalizeCS::Dispatch(FRHICommandList& RHICmdList, uint32 NumVerti
 
 void FGPUMorphNormalizeCS::EndAllDispatches(FRHICommandList& RHICmdList)
 {
-	FComputeShaderRHIRef CS = GetComputeShader();
+	FRHIComputeShader* CS = RHICmdList.GetBoundComputeShader();
 	SetUAVParameter(RHICmdList, CS, MorphVertexBufferParameter, nullptr);
 }
 
@@ -894,6 +907,7 @@ void FSkeletalMeshObjectGPUSkin::FSkeletalMeshObjectLOD::UpdateMorphVertexBuffer
 
 					if (NumMorphDeltas > 0)
 					{
+						RHICmdList.SetComputeShader(GPUMorphUpdateCS.GetComputeShader());
 						GPUMorphUpdateCS->SetParameters(RHICmdList, MorphScale, MorphTargetVertexInfoBuffers, MorphVertexBuffer);
 						GPUMorphUpdateCS->SetOffsetAndSize(RHICmdList, i, i + j, MorphTargetVertexInfoBuffers, MorphTargetWeights);
 						check(NumMorphDeltas <= FMorphTargetVertexInfoBuffers::GetMaximumThreadGroupSize());
@@ -936,6 +950,7 @@ void FSkeletalMeshObjectGPUSkin::FSkeletalMeshObjectLOD::UpdateMorphVertexBuffer
 
 					if (DispatchSize > 0)
 					{
+						RHICmdList.SetComputeShader(GPUMorphNormalizeCS.GetComputeShader());
 						GPUMorphNormalizeCS->SetParameters(RHICmdList, InvMorphScale, MorphTargetVertexInfoBuffers, MorphVertexBuffer);
 						GPUMorphNormalizeCS->SetOffsetAndSize(RHICmdList, i, i + j, MorphTargetVertexInfoBuffers, InverseAccumulatedWeights);
 						check(DispatchSize <= FMorphTargetVertexInfoBuffers::GetMaximumThreadGroupSize());

@@ -871,6 +871,12 @@ void FWindowsPlatformMisc::BeginNamedEvent(const struct FColor& Color, const TCH
 		Profiler->StartScopedEvent(Text);
 	}
 #endif
+#if CPUPROFILERTRACE_ENABLED
+	if (CpuChannel)
+	{
+		FCpuProfilerTrace::OutputBeginDynamicEvent(Text);
+	}
+#endif
 }
 
 void FWindowsPlatformMisc::BeginNamedEvent(const struct FColor& Color, const ANSICHAR* Text)
@@ -884,6 +890,12 @@ void FWindowsPlatformMisc::BeginNamedEvent(const struct FColor& Color, const ANS
 		Profiler->StartScopedEvent(ANSI_TO_TCHAR(Text));
 	}
 #endif
+#if CPUPROFILERTRACE_ENABLED
+	if (CpuChannel)
+	{
+		FCpuProfilerTrace::OutputBeginDynamicEvent(Text);
+	}
+#endif
 }
 
 void FWindowsPlatformMisc::EndNamedEvent()
@@ -895,6 +907,12 @@ void FWindowsPlatformMisc::EndNamedEvent()
 	if (Profiler)
 	{
 		Profiler->EndScopedEvent();
+	}
+#endif
+#if CPUPROFILERTRACE_ENABLED
+	if (CpuChannel)
+	{
+		FCpuProfilerTrace::OutputEndEvent();
 	}
 #endif
 }
@@ -1998,7 +2016,7 @@ class FCPUIDQueriedData
 {
 public:
 	FCPUIDQueriedData()
-		: bHasCPUIDInstruction(CheckForCPUIDInstruction()), Vendor(), CPUInfo(0), CacheLineSize(1)
+		: bHasCPUIDInstruction(CheckForCPUIDInstruction()), Vendor(), CPUInfo(0), CacheLineSize(PLATFORM_CACHE_LINE_SIZE)
 	{
 		if(bHasCPUIDInstruction)
 		{
@@ -2080,9 +2098,13 @@ private:
 	 */
 	static bool CheckForCPUIDInstruction()
 	{
-#if PLATFORM_SEH_EXCEPTIONS_DISABLED
-		return false;
+		// all x86 64-bit CPUs support CPUID, no check required
+#if PLATFORM_HAS_CPUID && PLATFORM_64BITS
+		return true;
 #else
+	#if PLATFORM_SEH_EXCEPTIONS_DISABLED
+		return false;
+	#else
 		__try
 		{
 			int Args[4];
@@ -2093,6 +2115,7 @@ private:
 			return false;
 		}
 		return true;
+	#endif
 #endif
 	}
 

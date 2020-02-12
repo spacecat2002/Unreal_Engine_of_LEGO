@@ -106,11 +106,16 @@ struct CORE_API FRenderingObjectVersion
 		// Add force opaque flag for static mesh
 		AutoExposureChanges,
 
-		// Added material arrtibutes to shader graph to support anisotropic materials 
 		AnisotropicMaterial,
 
 		// Removed emulated instancing from instanced static meshes
 		RemovedEmulatedInstancing,
+
+		// Added per instance custom data (for Instanced Static Meshes)
+		PerInstanceCustomData,
+
+		// Added material attributes to shader graph to support anisotropic materials 
+		// Add if anything has changed in the exposure, override the bias to avoid the new default propagating
 
 		// Added per instance custom data (for Instanced Static Meshes)
 		PerInstanceCustomData,

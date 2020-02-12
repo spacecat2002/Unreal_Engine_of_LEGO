@@ -37,6 +37,9 @@ DEFINE_STAT(STAT_VertexBufferMemory);
 DEFINE_STAT(STAT_StructuredBufferMemory);
 DEFINE_STAT(STAT_PixelBufferMemory);
 
+IMPLEMENT_TYPE_LAYOUT(FRHIUniformBufferLayout);
+IMPLEMENT_TYPE_LAYOUT(FRHIUniformBufferLayout::FResourceParameter);
+
 #if !defined(RHIRESOURCE_NUM_FRAMES_TO_EXPIRE)
 	#define RHIRESOURCE_NUM_FRAMES_TO_EXPIRE 3
 #endif
@@ -559,6 +562,7 @@ bool GSupportsParallelOcclusionQueries = false;
 bool GSupportsTransientResourceAliasing = false;
 bool GRHIRequiresRenderTargetForPixelShaderUAVs = false;
 bool GRHISupportsUAVFormatAliasing = false;
+bool GRHISupportsDirectGPUMemoryLock = false;
 
 bool GRHISupportsMSAADepthSampleAccess = false;
 bool GRHISupportsResolveCubemapFaces = false;
@@ -1244,6 +1248,7 @@ void FGenericDataDrivenShaderPlatformInfo::ParseDataDrivenShaderInfo(const FConf
 	Info.bSupportsRayTracingIndirectInstanceData = GetSectionBool(Section, "bSupportsRayTracingIndirectInstanceData");
 	Info.bSupportsGPUSkinCache = GetSectionBool(Section, "bSupportsGPUSkinCache");
 	Info.bSupportsByteBufferComputeShaders = GetSectionBool(Section, "bSupportsByteBufferComputeShaders");
+	Info.bSupportsGPUScene = GetSectionBool(Section, "bSupportsGPUScene");
 	Info.bSupportsPrimitiveShaders = GetSectionBool(Section, "bSupportsPrimitiveShaders");
 	Info.bSupportsUInt64ImageAtomics = GetSectionBool(Section, "bSupportsUInt64ImageAtomics");
 	Info.bSupportsTemporalHistoryUpscale = GetSectionBool(Section, "bSupportsTemporalHistoryUpscale");

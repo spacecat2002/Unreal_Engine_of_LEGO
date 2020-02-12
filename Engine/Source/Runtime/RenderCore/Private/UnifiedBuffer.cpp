@@ -12,7 +12,7 @@
 
 class FByteBufferShader : public FGlobalShader
 {
-	DECLARE_GLOBAL_SHADER( FByteBufferShader );
+	DECLARE_INLINE_TYPE_LAYOUT( FByteBufferShader, NonVirtual );
 
 	FByteBufferShader() {}
 	FByteBufferShader( const ShaderMetaType::CompiledShaderInitializerType& Initializer )

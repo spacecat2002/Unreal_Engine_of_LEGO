@@ -1766,6 +1766,11 @@ FViewInfo* FViewInfo::CreateSnapshot() const
 	TStaticArray<FParallelMeshDrawCommandPass, EMeshPass::Num> NullParallelMeshDrawCommandPasses;
 	FMemory::Memcpy(Result->ParallelMeshDrawCommandPasses, NullParallelMeshDrawCommandPasses);
 
+	for (int i = 0; i < EMeshPass::Num; i++)
+	{
+		Result->ParallelMeshDrawCommandPasses[i].InitCreateSnapshot();
+	}
+	
 	Result->bIsSnapshot = true;
 	ViewInfoSnapshots.Add(Result);
 	return Result;
@@ -2360,7 +2365,7 @@ void FSceneRenderer::PrepareViewRectsForRendering()
 			TEXT("ISceneViewFamilyScreenPercentage::GetPrimaryResolutionFractionUpperBound() should not lie to the renderer."));
 		
 		check(FSceneViewScreenPercentageConfig::IsValidResolutionFraction(PrimaryResolutionFraction));
-		
+
 		// Compute final resolution fraction.
 		float ResolutionFraction = PrimaryResolutionFraction * ViewFamily.SecondaryViewFraction;
 
@@ -2499,7 +2504,7 @@ void FSceneRenderer::ComputeViewGPUMasks(FRHIGPUMask RenderTargetGPUMask)
 				{
 					ViewInfo.GPUMask = FRHIGPUMask::FromIndex(*GPUIterator);
 					ViewFamily.bMultiGPUForkAndJoin |= (ViewInfo.GPUMask != RenderTargetGPUMask);
-
+					
 					// Increment and wrap around if we reach the last index.
 					++GPUIterator;
 					if (!GPUIterator)
@@ -2619,10 +2624,7 @@ bool FSceneRenderer::DoOcclusionQueries(ERHIFeatureLevel::Type InFeatureLevel) c
 }
 
 FSceneRenderer::~FSceneRenderer()
-{
-	// To prevent keeping persistent references to single frame buffers, clear any such reference at this point.
-	ClearPrimitiveSingleFrameIndirectLightingCacheBuffers();
-	
+{	
 	if(Scene)
 	{
 		// Destruct the projected shadow infos.
@@ -2735,7 +2737,7 @@ void FSceneRenderer::RenderFinish(FRHICommandListImmediate& RHICmdList)
 				bMobileShowVertexFogWarning = true;
 			}
 		}
-
+		
 		const bool bSingleLayerWaterWarning = ShouldRenderSingleLayerWaterSkippedRenderEditorNotification(Views);
 		
 		const bool bAnyWarning = bShowPrecomputedVisibilityWarning || bShowGlobalClipPlaneWarning || bShowAtmosphericFogWarning || bShowSkylightWarning || bShowPointLightWarning 
@@ -3117,9 +3119,9 @@ void FSceneRenderer::RenderCustomDepthPass(FRHICommandListImmediate& RHICmdList)
 					PassUniformBuffer = Scene->UniformBuffers.CustomDepthPassUniformBuffer;
 				}
 				
-				static const auto CVarMobileCustomDepthDownSample = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.CustomDepthDownSample"));
+				static const auto MobileCustomDepthDownSampleLocalCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.CustomDepthDownSample"));
 
-				bool bMobileCustomDepthDownSample = bMobilePath && CVarMobileCustomDepthDownSample && CVarMobileCustomDepthDownSample->GetValueOnRenderThread() > 0;
+				bool bMobileCustomDepthDownSample = bMobilePath && MobileCustomDepthDownSampleLocalCVar && MobileCustomDepthDownSampleLocalCVar->GetValueOnRenderThread() > 0;
 
 				FIntRect ViewRect = bMobileCustomDepthDownSample ? FIntRect::DivideAndRoundUp(View.ViewRect, 2) : View.ViewRect;
 
@@ -3205,7 +3207,7 @@ void FSceneRenderer::RenderCustomDepthPass(FRHICommandListImmediate& RHICmdList)
 						Scene->UniformBuffers.InstancedCustomDepthViewUniformBuffer.UpdateUniformBufferImmediate(reinterpret_cast<FInstancedViewUniformShaderParameters&>(*View.CachedViewUniformShaderParameters));
 					}
 				}
-
+	
 				extern TSet<IPersistentViewUniformBufferExtension*> PersistentViewUniformBufferExtensions;
 				
 				for (IPersistentViewUniformBufferExtension* Extension : PersistentViewUniformBufferExtensions)
@@ -3391,24 +3393,6 @@ void FSceneRenderer::UpdatePrimitiveIndirectLightingCacheBuffers()
 			if (Interpolation.LastUsedSceneFrameNumber < CurrentSceneFrameNumber - 100)
 			{
 				It.RemoveCurrent();
-			}
-		}
-	}
-}
-
-void FSceneRenderer::ClearPrimitiveSingleFrameIndirectLightingCacheBuffers()
-{
-	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
-	{		
-		FViewInfo& View = Views[ViewIndex];
-
-		for (int32 Index = 0; Index < View.DirtyIndirectLightingCacheBufferPrimitives.Num(); ++Index)
-		{
-			FPrimitiveSceneInfo* PrimitiveSceneInfo = View.DirtyIndirectLightingCacheBufferPrimitives[Index];
-	
-			if (PrimitiveSceneInfo) // Could be null if it was a duplicate.
-			{
-				PrimitiveSceneInfo->ClearIndirectLightingCacheBuffer(true);
 			}
 		}
 	}
@@ -3705,7 +3689,7 @@ void FRendererModule::BeginRenderingViewFamily(FCanvas* Canvas, FSceneViewFamily
 	}
 
 	if (Scene)
-	{
+	{		
 		// Set the world's "needs full lighting rebuild" flag if the scene has any uncached static lighting interactions.
 		if(World)
 		{
@@ -3784,7 +3768,7 @@ void FRendererModule::DrawRectangle(
 		float SizeV,
 		FIntPoint TargetSize,
 		FIntPoint TextureSize,
-		class FShader* VertexShader,
+		const TShaderRef<FShader>& VertexShader,
 		EDrawRectangleFlags Flags
 		)
 {
@@ -4131,7 +4115,7 @@ void FSceneRenderer::ResolveSceneColor(FRHICommandList& RHICmdList)
 					auto ShaderMap = GetGlobalShaderMap(SceneContext.GetCurrentFeatureLevel());
 					TShaderMapRef<FHdrCustomResolveVS> VertexShader(ShaderMap);
 					GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GetVertexDeclarationFVector4();
-					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
 					GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 					if (SceneColor.FmaskSRV)
@@ -4139,7 +4123,7 @@ void FSceneRenderer::ResolveSceneColor(FRHICommandList& RHICmdList)
 						if (CurrentNumSamples == 2)
 						{
 							TShaderMapRef<FHdrCustomResolveFMask2xPS> PixelShader(ShaderMap);
-							GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+							GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 
 							SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 							PixelShader->SetParameters(RHICmdList, SceneColor.TargetableTexture, SceneColor.FmaskSRV);
@@ -4147,7 +4131,7 @@ void FSceneRenderer::ResolveSceneColor(FRHICommandList& RHICmdList)
 						else if (CurrentNumSamples == 4)
 						{
 							TShaderMapRef<FHdrCustomResolveFMask4xPS> PixelShader(ShaderMap);
-							GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+							GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 
 							SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 							PixelShader->SetParameters(RHICmdList, SceneColor.TargetableTexture, SceneColor.FmaskSRV);
@@ -4155,7 +4139,7 @@ void FSceneRenderer::ResolveSceneColor(FRHICommandList& RHICmdList)
 						else if (CurrentNumSamples == 8)
 						{
 							TShaderMapRef<FHdrCustomResolveFMask8xPS> PixelShader(ShaderMap);
-							GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+							GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 
 							SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 							PixelShader->SetParameters(RHICmdList, SceneColor.TargetableTexture, SceneColor.FmaskSRV);
@@ -4172,7 +4156,7 @@ void FSceneRenderer::ResolveSceneColor(FRHICommandList& RHICmdList)
 						if (CurrentNumSamples == 2)
 						{
 							TShaderMapRef<FHdrCustomResolve2xPS> PixelShader(ShaderMap);
-							GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+							GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 
 							SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 							PixelShader->SetParameters(RHICmdList, SceneColor.TargetableTexture);
@@ -4180,7 +4164,7 @@ void FSceneRenderer::ResolveSceneColor(FRHICommandList& RHICmdList)
 						else if (CurrentNumSamples == 4)
 						{
 							TShaderMapRef<FHdrCustomResolve4xPS> PixelShader(ShaderMap);
-							GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+							GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 
 							SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 							PixelShader->SetParameters(RHICmdList, SceneColor.TargetableTexture);
@@ -4188,7 +4172,7 @@ void FSceneRenderer::ResolveSceneColor(FRHICommandList& RHICmdList)
 						else if (CurrentNumSamples == 8)
 						{
 							TShaderMapRef<FHdrCustomResolve8xPS> PixelShader(ShaderMap);
-							GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+							GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 
 							SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 							PixelShader->SetParameters(RHICmdList, SceneColor.TargetableTexture);

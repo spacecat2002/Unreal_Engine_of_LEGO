@@ -519,7 +519,8 @@ void GenerateDynamicMeshDrawCommands(
 	int32 MaxNumBuildRequestElements,
 	FMeshCommandOneFrameArray& VisibleCommands,
 	FDynamicMeshDrawCommandStorage& MeshDrawCommandStorage,
-	FGraphicsMinimalPipelineStateSet& MinimalPipelineStatePassSet
+	FGraphicsMinimalPipelineStateSet& MinimalPipelineStatePassSet,
+	bool& NeedsShaderInitialisation
 )
 {
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_GenerateDynamicMeshDrawCommands);
@@ -529,7 +530,8 @@ void GenerateDynamicMeshDrawCommands(
 	FDynamicPassMeshDrawListContext DynamicPassMeshDrawListContext(
 		MeshDrawCommandStorage,
 		VisibleCommands,
-		MinimalPipelineStatePassSet
+		MinimalPipelineStatePassSet,
+		NeedsShaderInitialisation
 	);
 	PassMeshProcessor->SetDrawListContext(&DynamicPassMeshDrawListContext);
 
@@ -589,7 +591,8 @@ void GenerateMobileBasePassDynamicMeshDrawCommands(
 	int32 MaxNumBuildRequestElements,
 	FMeshCommandOneFrameArray& VisibleCommands,
 	FDynamicMeshDrawCommandStorage& MeshDrawCommandStorage,
-	FGraphicsMinimalPipelineStateSet& GraphicsMinimalPipelineStateSet
+	FGraphicsMinimalPipelineStateSet& GraphicsMinimalPipelineStateSet,
+	bool& NeedsShaderInitialisation
 )
 {
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_GenerateMobileBasePassDynamicMeshDrawCommands);
@@ -599,7 +602,8 @@ void GenerateMobileBasePassDynamicMeshDrawCommands(
 	FDynamicPassMeshDrawListContext DynamicPassMeshDrawListContext(
 		MeshDrawCommandStorage,
 		VisibleCommands,
-		GraphicsMinimalPipelineStateSet
+		GraphicsMinimalPipelineStateSet,
+		NeedsShaderInitialisation
 	);
 	PassMeshProcessor->SetDrawListContext(&DynamicPassMeshDrawListContext);
 	MobilePassCSMPassMeshProcessor->SetDrawListContext(&DynamicPassMeshDrawListContext);
@@ -677,6 +681,7 @@ void ApplyViewOverridesToMeshDrawCommands(
 	FMeshCommandOneFrameArray& VisibleMeshDrawCommands,
 	FDynamicMeshDrawCommandStorage& MeshDrawCommandStorage,
 	FGraphicsMinimalPipelineStateSet& MinimalPipelineStatePassSet,
+	bool& NeedsShaderInitialisation,
 	FMeshCommandOneFrameArray& TempVisibleMeshDrawCommands
 	)
 {
@@ -708,7 +713,7 @@ void ApplyViewOverridesToMeshDrawCommands(
 					PipelineState.DepthStencilState = PassDrawRenderState.GetDepthStencilState();
 				}
 
-				const FGraphicsMinimalPipelineStateId PipelineId = FGraphicsMinimalPipelineStateId::GetPipelineStateId(PipelineState, MinimalPipelineStatePassSet);
+				const FGraphicsMinimalPipelineStateId PipelineId = FGraphicsMinimalPipelineStateId::GetPipelineStateId(PipelineState, MinimalPipelineStatePassSet, NeedsShaderInitialisation);
 				NewMeshCommand.Finalize(PipelineId, nullptr);
 
 				FVisibleMeshDrawCommand NewVisibleMeshDrawCommand;
@@ -767,6 +772,7 @@ public:
 
 	void AnyThreadTask()
 	{
+		TRACE_CPUPROFILER_EVENT_SCOPE(MeshDrawCommandPassSetupTask);
 		// Mobile base pass is a special case, as final lists is created from two mesh passes based on CSM visibility.
 		const bool bMobileBasePass = Context.ShadingPath == EShadingPath::Mobile && Context.PassType == EMeshPass::BasePass;
 
@@ -792,7 +798,8 @@ public:
 				Context.NumDynamicMeshCommandBuildRequestElements,
 				Context.MeshDrawCommands,
 				Context.MeshDrawCommandStorage,
-				Context.MinimalPipelineStatePassSet
+				Context.MinimalPipelineStatePassSet,
+				Context.NeedsShaderInitialisation
 			);
 		}
 		else
@@ -809,7 +816,8 @@ public:
 				Context.NumDynamicMeshCommandBuildRequestElements,
 				Context.MeshDrawCommands,
 				Context.MeshDrawCommandStorage,
-				Context.MinimalPipelineStatePassSet
+				Context.MinimalPipelineStatePassSet,
+				Context.NeedsShaderInitialisation
 			);
 		}
 
@@ -827,6 +835,7 @@ public:
 					Context.MeshDrawCommands,
 					Context.MeshDrawCommandStorage,
 					Context.MinimalPipelineStatePassSet,
+					Context.NeedsShaderInitialisation,
 					Context.TempVisibleMeshDrawCommands
 				);
 			}
@@ -873,6 +882,54 @@ public:
 					Context.ShaderPlatform,
 					Context.InstanceFactor
 				);
+			}
+		}
+	}
+
+	void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
+	{
+		AnyThreadTask();
+	}
+
+
+private:
+	FMeshDrawCommandPassSetupTaskContext& Context;
+};
+
+/**
+ * Task for shader initialization. This will run on the RenderThread after Commands have been generated.
+ */
+class FMeshDrawCommandInitResourcesTask
+{
+public:
+	FMeshDrawCommandInitResourcesTask(FMeshDrawCommandPassSetupTaskContext& InContext)
+		: Context(InContext)
+	{
+	}
+
+	FORCEINLINE TStatId GetStatId() const
+	{
+		RETURN_QUICK_DECLARE_CYCLE_STAT(FMeshDrawCommandInitResourcesTask, STATGROUP_TaskGraphTasks);
+	}
+
+	ENamedThreads::Type GetDesiredThread()
+	{
+		return ENamedThreads::GetRenderThread_Local();
+	}
+
+	static ESubsequentsMode::Type GetSubsequentsMode()
+	{
+		return ESubsequentsMode::TrackSubsequents;
+	}
+
+	void AnyThreadTask()
+	{
+		TRACE_CPUPROFILER_EVENT_SCOPE(MeshDrawCommandInitResourcesTask);
+		if (Context.NeedsShaderInitialisation)
+		{
+			for (const FGraphicsMinimalPipelineStateInitializer& Initializer : Context.MinimalPipelineStatePassSet)
+			{
+				Initializer.BoundShaderState.LazilyInitShaders();
 			}
 		}
 	}
@@ -959,6 +1016,7 @@ void FParallelMeshDrawCommandPass::DispatchPassSetup(
 	FMeshCommandOneFrameArray* InOutMobileBasePassCSMMeshDrawCommands
 )
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(ParallelMdcDispatchPassSetup);
 	check(!TaskEventRef.IsValid() && MeshPassProcessor != nullptr && TaskContext.PrimitiveIdBufferData == nullptr);
 	check((PassType == EMeshPass::Num) == (DynamicMeshElementsPassRelevance == nullptr));
 
@@ -1031,14 +1089,17 @@ void FParallelMeshDrawCommandPass::DispatchPassSetup(
 
 		if (bExecuteInParallel)
 		{
-			TaskEventRef = TGraphTask<FMeshDrawCommandPassSetupTask>::CreateTask(
-				nullptr, ENamedThreads::GetRenderThread()).ConstructAndDispatchWhenReady(TaskContext);
+			FGraphEventArray DependentGraphEvents;
+			DependentGraphEvents.Add(TGraphTask<FMeshDrawCommandPassSetupTask>::CreateTask(nullptr, ENamedThreads::GetRenderThread()).ConstructAndDispatchWhenReady(TaskContext));
+			TaskEventRef = TGraphTask<FMeshDrawCommandInitResourcesTask>::CreateTask(&DependentGraphEvents, ENamedThreads::GetRenderThread()).ConstructAndDispatchWhenReady(TaskContext);
 		}
 		else
 		{
 			QUICK_SCOPE_CYCLE_COUNTER(STAT_MeshPassSetupImmediate);
 			FMeshDrawCommandPassSetupTask Task(TaskContext);
 			Task.AnyThreadTask();
+			FMeshDrawCommandInitResourcesTask DependentTask(TaskContext);
+			DependentTask.AnyThreadTask();
 		}
 	}
 }
@@ -1158,6 +1219,7 @@ public:
 
 	void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
 	{
+		TRACE_CPUPROFILER_EVENT_SCOPE(DrawVisibleMeshCommandsAnyThreadTask);
 		checkSlow(RHICmdList.IsInsideRenderPass());
 
 		// Recompute draw range.
@@ -1175,6 +1237,7 @@ public:
 
 void FParallelMeshDrawCommandPass::DispatchDraw(FParallelCommandListSet* ParallelCommandListSet, FRHICommandList& RHICmdList) const
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(ParallelMdcDispatchDraw);
 	if (MaxNumDraws <= 0)
 	{
 		return;

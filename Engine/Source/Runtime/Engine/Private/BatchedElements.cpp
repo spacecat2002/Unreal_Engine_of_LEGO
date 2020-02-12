@@ -438,9 +438,9 @@ float GBatchedElementSmoothWidth = 4;
 FAutoConsoleVariableRef CVarWellCanvasDistanceFieldSmoothWidth(TEXT("Canvas.DistanceFieldSmoothness"), GBatchedElementSmoothWidth, TEXT("Global sharpness of distance field fonts/shapes rendered by canvas."), ECVF_Default);
 
 template<class TSimpleElementPixelShader>
-static TSimpleElementPixelShader* GetPixelShader(ESimpleElementBlendMode BlendMode, ERHIFeatureLevel::Type FeatureLevel)
+static TShaderRef<TSimpleElementPixelShader> GetPixelShader(ESimpleElementBlendMode BlendMode, ERHIFeatureLevel::Type FeatureLevel)
 {
-	return *TShaderMapRef<TSimpleElementPixelShader>(GetGlobalShaderMap(FeatureLevel));
+	return TShaderMapRef<TSimpleElementPixelShader>(GetGlobalShaderMap(FeatureLevel));
 }
 
 /**
@@ -540,14 +540,14 @@ void FBatchedElements::PrepareShaders(
 		TShaderMapRef<FSimpleElementVS> VertexShader(GetGlobalShaderMap(FeatureLevel));
 			
 		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GSimpleElementVertexDeclaration.VertexDeclarationRHI;
-		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
 
 		if (bHitTesting)
 		{
 			SetHitTestingBlendState(RHICmdList, GraphicsPSOInit, BlendMode);
 
 			TShaderMapRef<FSimpleElementHitProxyPS> HitTestingPixelShader(GetGlobalShaderMap(FeatureLevel));
-			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*HitTestingPixelShader);
+			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = HitTestingPixelShader.GetPixelShader();
 
 			SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
@@ -563,9 +563,8 @@ void FBatchedElements::PrepareShaders(
 
 				if (Texture->bSRGB)
 				{
-					auto* MaskedPixelShader = GetPixelShader<FSimpleElementMaskedGammaPS_SRGB>(BlendMode, FeatureLevel);
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(MaskedPixelShader);
-
+					auto MaskedPixelShader = GetPixelShader<FSimpleElementMaskedGammaPS_SRGB>(BlendMode, FeatureLevel);
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = MaskedPixelShader.GetPixelShader();
 					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
 					MaskedPixelShader->SetEditorCompositingParameters(RHICmdList, View);
@@ -573,8 +572,8 @@ void FBatchedElements::PrepareShaders(
 				}
 				else
 				{
-					auto* MaskedPixelShader = GetPixelShader<FSimpleElementMaskedGammaPS_Linear>(BlendMode, FeatureLevel);
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(MaskedPixelShader);
+					auto MaskedPixelShader = GetPixelShader<FSimpleElementMaskedGammaPS_Linear>(BlendMode, FeatureLevel);
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = MaskedPixelShader.GetPixelShader();
 
 					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
@@ -604,7 +603,7 @@ void FBatchedElements::PrepareShaders(
 				}
 				
 				TShaderMapRef<FSimpleElementDistanceFieldGammaPS> DistanceFieldPixelShader(GetGlobalShaderMap(FeatureLevel));
-				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*DistanceFieldPixelShader);
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = DistanceFieldPixelShader.GetPixelShader();
 
 				SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
@@ -638,8 +637,8 @@ void FBatchedElements::PrepareShaders(
 
 				if (FMath::Abs(Gamma - 1.0f) < KINDA_SMALL_NUMBER)
 				{
-					auto* AlphaOnlyPixelShader = GetPixelShader<FSimpleElementAlphaOnlyPS>(BlendMode, FeatureLevel);
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(AlphaOnlyPixelShader);
+					auto AlphaOnlyPixelShader = GetPixelShader<FSimpleElementAlphaOnlyPS>(BlendMode, FeatureLevel);
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = AlphaOnlyPixelShader.GetPixelShader();
 
 					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
@@ -648,8 +647,8 @@ void FBatchedElements::PrepareShaders(
 				}
 				else
 				{
-					auto* GammaAlphaOnlyPixelShader = GetPixelShader<FSimpleElementGammaAlphaOnlyPS>(BlendMode, FeatureLevel);
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(GammaAlphaOnlyPixelShader);
+					auto GammaAlphaOnlyPixelShader = GetPixelShader<FSimpleElementGammaAlphaOnlyPS>(BlendMode, FeatureLevel);
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GammaAlphaOnlyPixelShader.GetPixelShader();
 
 					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
@@ -660,7 +659,7 @@ void FBatchedElements::PrepareShaders(
 			else if(BlendMode >= SE_BLEND_RGBA_MASK_START && BlendMode <= SE_BLEND_RGBA_MASK_END)
 			{
 				TShaderMapRef<FSimpleElementColorChannelMaskPS> ColorChannelMaskPixelShader(GetGlobalShaderMap(FeatureLevel));
-				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*ColorChannelMaskPixelShader);
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ColorChannelMaskPixelShader.GetPixelShader();
 
 				SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 			
@@ -673,7 +672,7 @@ void FBatchedElements::PrepareShaders(
 				if (FMath::Abs(Gamma - 1.0f) < KINDA_SMALL_NUMBER)
 				{
 					TShaderMapRef<FSimpleElementPS> PixelShader(GetGlobalShaderMap(FeatureLevel));
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 
 					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
@@ -682,12 +681,19 @@ void FBatchedElements::PrepareShaders(
 				}
 				else
 				{
-					TShaderMapRef<FSimpleElementGammaPS_SRGB> PixelShader_SRGB(GetGlobalShaderMap(FeatureLevel));
-					TShaderMapRef<FSimpleElementGammaPS_Linear> PixelShader_Linear(GetGlobalShaderMap(FeatureLevel));
-					
-					FSimpleElementGammaBasePS* BasePixelShader = Texture->bSRGB ? static_cast<FSimpleElementGammaBasePS*>(*PixelShader_SRGB) : *PixelShader_Linear;
+					TShaderRef<FSimpleElementGammaBasePS> BasePixelShader;
+					if (Texture->bSRGB)
+					{
+						TShaderMapRef<FSimpleElementGammaPS_SRGB> PixelShader_SRGB(GetGlobalShaderMap(FeatureLevel));
+						BasePixelShader = PixelShader_SRGB;
+					}
+					else
+					{
+						TShaderMapRef<FSimpleElementGammaPS_Linear> PixelShader_Linear(GetGlobalShaderMap(FeatureLevel));
+						BasePixelShader = PixelShader_Linear;
+					}
 
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(BasePixelShader);
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = BasePixelShader.GetPixelShader();
 					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
 					BasePixelShader->SetParameters(RHICmdList, Texture, Gamma, BlendMode);

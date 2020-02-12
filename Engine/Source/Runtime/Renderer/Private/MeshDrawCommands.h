@@ -65,6 +65,7 @@ public:
 		, InstanceFactor(1)
 		, NumDynamicMeshElements(0)
 		, NumDynamicMeshCommandBuildRequestElements(0)
+		, NeedsShaderInitialisation(false)
 		, PrimitiveIdBufferData(nullptr)
 		, PrimitiveIdBufferDataSize(0)
 		, PrimitiveBounds(nullptr)
@@ -101,6 +102,7 @@ public:
 	TArray<const FStaticMeshBatch*, SceneRenderingAllocator> MobileBasePassCSMDynamicMeshCommandBuildRequests;
 	FDynamicMeshDrawCommandStorage MeshDrawCommandStorage;
 	FGraphicsMinimalPipelineStateSet MinimalPipelineStatePassSet;
+	bool NeedsShaderInitialisation;
 
 	// Resources preallocated on rendering thread.
 	void* PrimitiveIdBufferData;
@@ -165,6 +167,10 @@ public:
 	void SetDumpInstancingStats(const FString& InPassName);
 	bool HasAnyDraw() const { return MaxNumDraws > 0; }
 
+	void InitCreateSnapshot()
+	{
+		new (&TaskContext.MinimalPipelineStatePassSet) FGraphicsMinimalPipelineStateSet();
+	}
 
 private:
 	FPrimitiveIdVertexBufferPoolEntry PrimitiveIdVertexBufferPoolEntry;

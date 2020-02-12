@@ -49,6 +49,7 @@
 #include "SkyAtmosphereRendering.h"
 #include "VisualizeTexture.h"
 #include "VT/VirtualTextureSystem.h"
+#include "GPUSortManager.h"
 
 uint32 GetShadowQuality();
 
@@ -73,6 +74,14 @@ static TAutoConsoleVariable<int32> CVarMobileAdrenoOcclusionMode(
 	TEXT("1: Render occlusion queries after translucency and a flush, which can help Adreno devices in GL mode."),
 	ECVF_RenderThreadSafe);
 
+static TAutoConsoleVariable<int32> CVarMobileCustomDepthForTranslucency(
+	TEXT("r.Mobile.CustomDepthForTranslucency"),
+	1,
+	TEXT(" Whether to render custom depth/stencil if any tranclucency in the scene uses it. \n")
+	TEXT(" 0 = Off \n")
+	TEXT(" 1 = On [default]"),
+	ECVF_Scalability | ECVF_RenderThreadSafe);
+
 DECLARE_GPU_STAT_NAMED(MobileSceneRender, TEXT("Mobile Scene Render"));
 
 DECLARE_CYCLE_STAT(TEXT("SceneStart"), STAT_CLMM_SceneStart, STATGROUP_CommandListMarkers);
@@ -84,6 +93,7 @@ DECLARE_CYCLE_STAT(TEXT("Post"), STAT_CLMM_Post, STATGROUP_CommandListMarkers);
 DECLARE_CYCLE_STAT(TEXT("Translucency"), STAT_CLMM_Translucency, STATGROUP_CommandListMarkers);
 DECLARE_CYCLE_STAT(TEXT("Shadows"), STAT_CLMM_Shadows, STATGROUP_CommandListMarkers);
 DECLARE_CYCLE_STAT(TEXT("SceneSimulation"), STAT_CLMM_SceneSim, STATGROUP_CommandListMarkers);
+DECLARE_CYCLE_STAT(TEXT("PrePass"), STAT_CLM_MobilePrePass, STATGROUP_CommandListMarkers);
 
 FGlobalDynamicIndexBuffer FMobileSceneRenderer::DynamicIndexBuffer;
 FGlobalDynamicVertexBuffer FMobileSceneRenderer::DynamicVertexBuffer;
@@ -91,7 +101,7 @@ TGlobalResource<FGlobalDynamicReadBuffer> FMobileSceneRenderer::DynamicReadBuffe
 
 static bool UsesCustomDepthStencilLookup(const FViewInfo& View)
 {
-	if (View.bUsesCustomDepthStencil)
+	if (View.bUsesCustomDepthStencil && CVarMobileCustomDepthForTranslucency.GetValueOnAnyThread() != 0)
 	{
 		return true;
 	}
@@ -468,6 +478,10 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	if (Scene->FXSystem && ViewFamily.EngineShowFlags.Particles)
 	{
 		Scene->FXSystem->PreRender(RHICmdList, NULL, !Views[0].bIsPlanarReflection);
+		if (FGPUSortManager* GPUSortManager = Scene->FXSystem->GetGPUSortManager())
+		{
+			GPUSortManager->OnPreRender(RHICmdList);
+		}
 	}
 	FRHICommandListExecutor::GetImmediateCommandList().PollOcclusionQueries();
 	RHICmdList.ImmediateFlush(EImmediateFlushType::DispatchToRHIThread);
@@ -581,6 +595,9 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	}
 	
 	RHICmdList.BeginRenderPass(SceneColorRenderPassInfo, TEXT("SceneColorRendering"));
+
+	RHICmdList.SetCurrentStat(GET_STATID(STAT_CLM_MobilePrePass));
+	RenderPrePass(RHICmdList);
 
 	if (GIsEditor && !View.bIsSceneCapture)
 	{
@@ -728,6 +745,10 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 			nullptr,
 			Views[0].AllowGPUParticleUpdate()
 		);
+		if (FGPUSortManager* GPUSortManager = Scene->FXSystem->GetGPUSortManager())
+		{
+			GPUSortManager->OnPostRenderOpaque(RHICmdList);
+		}
 		RHICmdList.ImmediateFlush(EImmediateFlushType::DispatchToRHIThread);
 	}
 
@@ -997,10 +1018,10 @@ void FMobileSceneRenderer::ConditionalResolveSceneDepth(FRHICommandListImmediate
 				// The results of this draw are irrelevant.
 				TShaderMapRef<FScreenVS> ScreenVertexShader(View.ShaderMap);
 				TShaderMapRef<FScreenPS> PixelShader(View.ShaderMap);
-					
+
 				GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*ScreenVertexShader);
-				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = ScreenVertexShader.GetVertexShader();
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 				GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 				SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -1015,7 +1036,7 @@ void FMobileSceneRenderer::ConditionalResolveSceneDepth(FRHICommandListImmediate
 					1, 1,
 					FIntPoint(1, 1),
 					FIntPoint(1, 1),
-					*ScreenVertexShader,
+					ScreenVertexShader,
 					EDRF_UseTriangleOptimization);
 			} // force depth resolve
 			RHICmdList.EndRenderPass();	
@@ -1101,7 +1122,7 @@ public:
 
 	void SetParameters(FRHICommandList& RHICmdList, FRHIUniformBuffer* ViewUniformBuffer, FTextureRHIRef InMobileMultiViewSceneColorTexture)
 	{
-		FRHIPixelShader* ShaderRHI = GetPixelShader();
+		FRHIPixelShader* ShaderRHI = RHICmdList.GetBoundPixelShader();
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, ViewUniformBuffer);
 		SetTextureParameter(
 			RHICmdList,
@@ -1112,16 +1133,8 @@ public:
 			InMobileMultiViewSceneColorTexture);
 	}
 
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		const bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << MobileMultiViewSceneColorTexture;
-		Ar << MobileMultiViewSceneColorTextureSampler;
-		return bShaderHasOutdatedParameters;
-	}
-
-	FShaderResourceParameter MobileMultiViewSceneColorTexture;
-	FShaderResourceParameter MobileMultiViewSceneColorTextureSampler;
+	LAYOUT_FIELD(FShaderResourceParameter, MobileMultiViewSceneColorTexture)
+	LAYOUT_FIELD(FShaderResourceParameter, MobileMultiViewSceneColorTextureSampler)
 };
 
 IMPLEMENT_SHADER_TYPE(, FCopyMobileMultiViewSceneColorPS, TEXT("/Engine/Private/MobileMultiView.usf"), TEXT("MainPS"), SF_Pixel);
@@ -1158,8 +1171,8 @@ void FMobileSceneRenderer::CopyMobileMultiViewSceneColor(FRHICommandListImmediat
 	extern TGlobalResource<FFilterVertexDeclaration> GFilterVertexDeclaration;
 
 	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 	GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 	SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -1182,7 +1195,7 @@ void FMobileSceneRenderer::CopyMobileMultiViewSceneColor(FRHICommandListImmediat
 			View.ViewRect.Width(), View.ViewRect.Height(),
 			TargetSize,
 			TargetSize,
-			*VertexShader,
+			VertexShader,
 			EDRF_UseTriangleOptimization);
 	}
 
@@ -1238,8 +1251,8 @@ void FMobileSceneRenderer::PreTonemapMSAA(FRHICommandListImmediate& RHICmdList)
 
 	extern TGlobalResource<FFilterVertexDeclaration> GFilterVertexDeclaration;
 	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 	GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 	SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -1255,6 +1268,6 @@ void FMobileSceneRenderer::PreTonemapMSAA(FRHICommandListImmediate& RHICmdList)
 		TargetSize.X, TargetSize.Y,
 		TargetSize,
 		TargetSize,
-		*VertexShader,
+		VertexShader,
 		EDRF_UseTriangleOptimization);
 }

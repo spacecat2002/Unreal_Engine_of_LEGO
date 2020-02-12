@@ -277,18 +277,11 @@ public:
 
 	void SetParameters(FRHICommandList& RHICmdList, const FViewInfo& View)
 	{
-		SceneTextureParameters.Set(RHICmdList, GetPixelShader(), View.FeatureLevel, ESceneTextureSetupMode::All);
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << SceneTextureParameters;
-		return bShaderHasOutdatedParameters;
+		SceneTextureParameters.Set(RHICmdList, RHICmdList.GetBoundPixelShader(), View.FeatureLevel, ESceneTextureSetupMode::All);
 	}
 
 private:
-	FSceneTextureShaderParameters SceneTextureParameters;
+	LAYOUT_FIELD(FSceneTextureShaderParameters, SceneTextureParameters);
 };
 
 IMPLEMENT_SHADER_TYPE(, FCopySceneColorPS, TEXT("/Engine/Private/TranslucentLightingShaders.usf"), TEXT("CopySceneColorMain"), SF_Pixel);
@@ -568,8 +561,8 @@ void FDeferredShadingSceneRenderer::ConditionalResolveSceneColorForTranslucentMa
 				TShaderMapRef<FCopySceneColorPS> PixelShader(View.ShaderMap);
 
 				GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*ScreenVertexShader);
-				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = ScreenVertexShader.GetVertexShader();
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 				GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 				SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -584,7 +577,7 @@ void FDeferredShadingSceneRenderer::ConditionalResolveSceneColorForTranslucentMa
 					View.ViewRect.Width(), View.ViewRect.Height(),
 					FIntPoint(View.ViewRect.Width(), View.ViewRect.Height()),
 					SceneContext.GetBufferSizeXY(),
-					*ScreenVertexShader,
+					ScreenVertexShader,
 					EDRF_UseTriangleOptimization);
 			}
 			RHICmdList.EndRenderPass();
@@ -725,6 +718,7 @@ void CreateTranslucentBasePassUniformBuffer(
 
 class FTranslucencyUpsamplingPS : public FGlobalShader
 {
+	DECLARE_INLINE_TYPE_LAYOUT(FTranslucencyUpsamplingPS, NonVirtual);
 protected:
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -738,12 +732,12 @@ protected:
 	{
 	}
 
-	FSceneTextureShaderParameters SceneTextureParameters;
-	FShaderParameter LowResColorTexelSize;
-	FShaderResourceParameter LowResDepthTexture;
-	FShaderResourceParameter LowResColorTexture;
-	FShaderResourceParameter BilinearClampedSampler;
-	FShaderResourceParameter PointClampedSampler;
+	LAYOUT_FIELD(FSceneTextureShaderParameters, SceneTextureParameters);
+	LAYOUT_FIELD(FShaderParameter, LowResColorTexelSize);
+	LAYOUT_FIELD(FShaderResourceParameter, LowResDepthTexture);
+	LAYOUT_FIELD(FShaderResourceParameter, LowResColorTexture);
+	LAYOUT_FIELD(FShaderResourceParameter, BilinearClampedSampler);
+	LAYOUT_FIELD(FShaderResourceParameter, PointClampedSampler);
 
 public:
 
@@ -760,17 +754,9 @@ public:
 		PointClampedSampler.Bind(Initializer.ParameterMap, TEXT("PointClampedSampler"));
 	}
 
-	// FShader interface.
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << SceneTextureParameters << LowResColorTexelSize << LowResDepthTexture << LowResColorTexture << BilinearClampedSampler << PointClampedSampler;
-		return bShaderHasOutdatedParameters;
-	}
-
 	void SetParameters(FRHICommandList& RHICmdList, const FViewInfo& View)
 	{
-		FRHIPixelShader* ShaderRHI = GetPixelShader();
+		FRHIPixelShader* ShaderRHI = RHICmdList.GetBoundPixelShader();
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, View.ViewUniformBuffer);
 
 		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
@@ -786,10 +772,10 @@ public:
 		SetSamplerParameter(RHICmdList, ShaderRHI, BilinearClampedSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 		SetSamplerParameter(RHICmdList, ShaderRHI, PointClampedSampler, TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 
-		SceneTextureParameters.Set(RHICmdList, GetPixelShader(), View.FeatureLevel, ESceneTextureSetupMode::All);
+		SceneTextureParameters.Set(RHICmdList, RHICmdList.GetBoundPixelShader(), View.FeatureLevel, ESceneTextureSetupMode::All);
 	}
 
-	const bool bUseNearestDepthNeighborUpsample;
+	LAYOUT_FIELD(const bool, bUseNearestDepthNeighborUpsample);
 };
 
 class FTranslucencySimpleUpsamplingPS : public FTranslucencyUpsamplingPS
@@ -846,21 +832,21 @@ void UpsampleTranslucency(FRHICommandList& RHICmdList, const FViewInfo& View, bo
 	}
 
 	TShaderMapRef<FScreenVS> ScreenVertexShader(View.ShaderMap);
-	FTranslucencyUpsamplingPS* UpsamplingPixelShader = nullptr;
+	TShaderRef<FTranslucencyUpsamplingPS> UpsamplingPixelShader;
 	if (UseNearestDepthNeighborUpsampleForSeparateTranslucency(SceneContext))
 	{
 		TShaderMapRef<FTranslucencyNearestDepthNeighborUpsamplingPS> PixelShader(View.ShaderMap);
-		UpsamplingPixelShader = *PixelShader;
+		UpsamplingPixelShader = PixelShader;
 	}
 	else
 	{
 		TShaderMapRef<FTranslucencySimpleUpsamplingPS> PixelShader(View.ShaderMap);
-		UpsamplingPixelShader = *PixelShader;
+		UpsamplingPixelShader = PixelShader;
 	}
 
 	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*ScreenVertexShader);
-	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(UpsamplingPixelShader);
+	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = ScreenVertexShader.GetVertexShader();
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = UpsamplingPixelShader.GetPixelShader();
 	GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 	SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -882,7 +868,7 @@ void UpsampleTranslucency(FRHICommandList& RHICmdList, const FViewInfo& View, bo
 		View.ViewRect.Width() * OutScale, View.ViewRect.Height() * OutScale,
 		View.ViewRect.Size(),
 		FIntPoint(TextureWidth, TextureHeight),
-		*ScreenVertexShader,
+		ScreenVertexShader,
 		EDRF_UseTriangleOptimization);
 
 	SceneContext.FinishRenderingSceneColor(RHICmdList);

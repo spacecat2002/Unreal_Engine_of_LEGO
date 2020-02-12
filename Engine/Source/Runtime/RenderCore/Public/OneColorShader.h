@@ -37,15 +37,7 @@ public:
 
 	void SetDepthParameter(FRHICommandList& RHICmdList, float Depth)
 	{
-		SetShaderValue(RHICmdList, GetVertexShader(), DepthParameter, Depth);
-	}
-
-	// FShader interface.
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << DepthParameter;
-		return bShaderHasOutdatedParameters;
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundVertexShader(), DepthParameter, Depth);
 	}
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -64,7 +56,7 @@ public:
 	}
 
 private:
-	FShaderParameter DepthParameter;
+	LAYOUT_FIELD(FShaderParameter, DepthParameter);
 };
 
 /**
@@ -82,22 +74,15 @@ public:
 		//ColorParameter.Bind( Initializer.ParameterMap, TEXT("DrawColorMRT"), SPF_Mandatory);
 	}
 
-	virtual void SetColors(FRHICommandList& RHICmdList, const FLinearColor* Colors, int32 NumColors);	
+	void SetColors(FRHICommandList& RHICmdList, const FLinearColor* Colors, int32 NumColors);
 
-	// FShader interface.
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		//Ar << ColorParameter;
-		return bShaderHasOutdatedParameters;
-	}
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
 		return true;
 	}
 
 	/** The parameter to use for setting the draw Color. */
-	//FShaderParameter ColorParameter;
+	//LAYOUT_FIELD(FShaderParameter, ColorParameter);
 };
 
 /**
@@ -160,24 +145,16 @@ public:
 		FillTexture.Bind( Initializer.ParameterMap, TEXT("FillTexture"), SPF_Mandatory);
 	}
 
-	// FShader interface.
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << FillValue << Params0 << Params1 << Params2 << FillTexture;
-		return bShaderHasOutdatedParameters;
-	}
-
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
 		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
-	FShaderParameter FillValue;
-	FShaderParameter Params0;	// Texture Width,Height (.xy); Use Exclude Rect 1 : 0 (.z)
-	FShaderParameter Params1;	// Include X0,Y0 (.xy) - X1,Y1 (.zw)
-	FShaderParameter Params2;	// ExcludeRect X0,Y0 (.xy) - X1,Y1 (.zw)
-	FShaderResourceParameter FillTexture;
+	LAYOUT_FIELD(FShaderParameter, FillValue);
+	LAYOUT_FIELD(FShaderParameter, Params0);	// Texture Width,Height (.xy); Use Exclude Rect 1 : 0 (.z)
+	LAYOUT_FIELD(FShaderParameter, Params1);	// Include X0,Y0 (.xy) - X1,Y1 (.zw)
+	LAYOUT_FIELD(FShaderParameter, Params2);	// ExcludeRect X0,Y0 (.xy) - X1,Y1 (.zw)
+	LAYOUT_FIELD(FShaderResourceParameter, FillTexture);
 };
 
 class FLongGPUTaskPS : public FGlobalShader
@@ -189,14 +166,7 @@ public:
 	:	FGlobalShader( Initializer )
 	{
 	}
-	
-	// FShader interface.
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		return bShaderHasOutdatedParameters;
-	}
-	
+
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
 		// MLCHANGES BEGIN

@@ -221,9 +221,6 @@ FD3D12Texture2D* GetSwapChainSurface(FD3D12Device* Parent, EPixelFormat PixelFor
 		Parent->GetDevice()->CreateCommittedResource(&HeapProps, D3D12_HEAP_FLAG_NONE, &TextureDesc, D3D12_RESOURCE_STATE_PRESENT, nullptr, IID_PPV_ARGS(BackBufferResource.GetInitReference()));
 	}
 
-	FString Name = FString::Printf(TEXT("BackBuffer%d"), BackBufferIndex);
-	SetName(BackBufferResource, *Name);
-
 	D3D12_RESOURCE_DESC BackBufferDesc = BackBufferResource->GetDesc();
 
 	FD3D12Texture2D* SwapChainTexture = Adapter->CreateLinkedObject<FD3D12Texture2D>(FRHIGPUMask::All(), [&](FD3D12Device* Device)
@@ -326,6 +323,9 @@ FD3D12Texture2D* GetSwapChainSurface(FD3D12Device* Parent, EPixelFormat PixelFor
 		return NewTexture;
 	});
 
+	FString Name = FString::Printf(TEXT("BackBuffer%d"), BackBufferIndex);
+	SetName(SwapChainTexture->GetResource(), *Name);
+
 	FD3D12TextureStats::D3D12TextureAllocated2D(*SwapChainTexture);
 	return SwapChainTexture;
 }
@@ -333,6 +333,15 @@ FD3D12Texture2D* GetSwapChainSurface(FD3D12Device* Parent, EPixelFormat PixelFor
 FD3D12Viewport::~FD3D12Viewport()
 {
 	check(IsInRenderingThread());
+
+	// If the swap chain was in fullscreen mode, switch back to windowed before releasing the swap chain.
+	// DXGI throws an error otherwise.
+#if !PLATFORM_HOLOLENS
+	if (SwapChain1)
+	{
+		SwapChain1->SetFullscreenState(0, nullptr);
+	}
+#endif
 
 	GetParentAdapter()->GetViewports().Remove(this);
 
@@ -942,7 +951,11 @@ void FD3D12CommandContextBase::RHIEndDrawingViewport(FRHIViewport* ViewportRHI, 
 	}
 }
 
-struct FRHICommandSignalFrameFence final : public FRHICommand<FRHICommandSignalFrameFence>
+struct FRHICommandSignalFrameFenceString
+{
+	static const TCHAR* TStr() { return TEXT("FRHICommandSignalFrameFence"); }
+};
+struct FRHICommandSignalFrameFence final : public FRHICommand<FRHICommandSignalFrameFence, FRHICommandSignalFrameFenceString>
 {
 	ED3D12CommandQueueType QueueType;
 	FD3D12ManualFence* const Fence;

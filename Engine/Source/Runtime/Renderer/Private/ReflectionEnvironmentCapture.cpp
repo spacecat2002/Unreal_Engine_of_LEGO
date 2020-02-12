@@ -157,30 +157,21 @@ public:
 		{
 			SetTextureParameter(
 				RHICmdList,
-				GetPixelShader(), 
+				RHICmdList.GetBoundPixelShader(),
 				ReflectionEnvironmentColorTexture, 
 				ReflectionEnvironmentColorSampler, 
 				TStaticSamplerState<SF_Trilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), 
 				Cubemap.ShaderResourceTexture);
 		}
 
-		SetShaderValue(RHICmdList, GetPixelShader(), NumCaptureArrayMips, FMath::CeilLogTwo(TargetSize) + 1);
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{		
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << ReflectionEnvironmentColorTexture;
-		Ar << ReflectionEnvironmentColorSampler;
-		Ar << NumCaptureArrayMips;
-		return bShaderHasOutdatedParameters;
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), NumCaptureArrayMips, FMath::CeilLogTwo(TargetSize) + 1);
 	}
 
 private:
 
-	FShaderResourceParameter ReflectionEnvironmentColorTexture;
-	FShaderResourceParameter ReflectionEnvironmentColorSampler;
-	FShaderParameter NumCaptureArrayMips;
+	LAYOUT_FIELD(FShaderResourceParameter, ReflectionEnvironmentColorTexture);
+	LAYOUT_FIELD(FShaderResourceParameter, ReflectionEnvironmentColorSampler);
+	LAYOUT_FIELD(FShaderParameter, NumCaptureArrayMips);
 };
 
 IMPLEMENT_SHADER_TYPE(,FComputeBrightnessPS,TEXT("/Engine/Private/ReflectionEnvironmentShaders.usf"),TEXT("ComputeBrightnessMain"),SF_Pixel);
@@ -230,14 +221,14 @@ void CreateCubeMips( FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Typ
 			TShaderMapRef<FCubeFilterPS> PixelShader(ShaderMap);
 
 			GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 			GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 			SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
 			{
-				FRHIPixelShader* ShaderRHI = PixelShader->GetPixelShader();
+				FRHIPixelShader* ShaderRHI = PixelShader.GetPixelShader();
 
 				SetShaderValue(RHICmdList, ShaderRHI, PixelShader->CubeFace, CubeFace);
 				SetShaderValue(RHICmdList, ShaderRHI, PixelShader->MipIndex, MipIndex);
@@ -257,7 +248,7 @@ void CreateCubeMips( FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Typ
 				ViewRect.Width(), ViewRect.Height(),
 				FIntPoint(ViewRect.Width(), ViewRect.Height()),
 				FIntPoint(MipSize, MipSize),
-				*VertexShader);
+				VertexShader);
 
 			RHICmdList.EndRenderPass();
 		}
@@ -297,8 +288,8 @@ float ComputeSingleAverageBrightnessFromCubemap(FRHICommandListImmediate& RHICmd
 		TShaderMapRef<FComputeBrightnessPS> PixelShader(ShaderMap);
 
 		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 	
 		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -313,7 +304,7 @@ float ComputeSingleAverageBrightnessFromCubemap(FRHICommandListImmediate& RHICmd
 			1, 1,
 			FIntPoint(1, 1),
 			FIntPoint(1, 1),
-			*VertexShader);
+			VertexShader);
 	}
 	RHICmdList.EndRenderPass();
 	RHICmdList.CopyToResolveTarget(BrightnessTarget, BrightnessTarget, FResolveParams());
@@ -377,8 +368,8 @@ void FilterReflectionEnvironment(FRHICommandListImmediate& RHICmdList, ERHIFeatu
 		TShaderMapRef<FOneColorPS> PixelShader(GetGlobalShaderMap(FeatureLevel));
 
 		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -394,7 +385,7 @@ void FilterReflectionEnvironment(FRHICommandListImmediate& RHICmdList, ERHIFeatu
 			SourceDimensions.X, SourceDimensions.Y,
 			FIntPoint(ViewRect.Width(), ViewRect.Height()),
 			SourceDimensions,
-			*VertexShader);
+			VertexShader);
 
 		RHICmdList.EndRenderPass();
 	}
@@ -447,20 +438,17 @@ void FilterReflectionEnvironment(FRHICommandListImmediate& RHICmdList, ERHIFeatu
 				TShaderMapRef<FScreenVS> VertexShader(GetGlobalShaderMap(FeatureLevel));
 				TShaderMapRef< TCubeFilterPS<1> > CaptureCubemapArrayPixelShader(GetGlobalShaderMap(FeatureLevel));
 
-				FCubeFilterPS* PixelShader;
-
-				PixelShader = *TShaderMapRef< TCubeFilterPS<0> >(ShaderMap);
-				check(PixelShader);
+				TShaderMapRef< TCubeFilterPS<0> > PixelShader(ShaderMap);
 
 				GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(PixelShader);
+				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 				GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 				SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
 				{
-					FRHIPixelShader* ShaderRHI = PixelShader->GetPixelShader();
+					FRHIPixelShader* ShaderRHI = PixelShader.GetPixelShader();
 
 					SetShaderValue( RHICmdList, ShaderRHI, PixelShader->CubeFace, CubeFace );
 					SetShaderValue( RHICmdList, ShaderRHI, PixelShader->MipIndex, MipIndex );
@@ -484,7 +472,7 @@ void FilterReflectionEnvironment(FRHICommandListImmediate& RHICmdList, ERHIFeatu
 					ViewRect.Width(), ViewRect.Height(),
 					FIntPoint(ViewRect.Width(), ViewRect.Height()),
 					FIntPoint(MipSize, MipSize),
-					*VertexShader);
+					VertexShader);
 
 				RHICmdList.EndRenderPass();
 			}
@@ -734,16 +722,16 @@ void CaptureSceneToScratchCubemap(FRHICommandListImmediate& RHICmdList, FSceneRe
 			TShaderMapRef<FCopySceneColorToCubeFacePS> PixelShader(GetGlobalShaderMap(FeatureLevel));
 
 			GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 			GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 			SetGraphicsPipelineState(InRHICmdList, GraphicsPSOInit);
 
 			FCopyToCubeFaceVS::FParameters VertexParameters;
 			VertexParameters.View = PassParameters->View;
-			SetShaderParameters(InRHICmdList, *VertexShader, VertexShader->GetVertexShader(), VertexParameters);
-			SetShaderParameters(InRHICmdList, *PixelShader, PixelShader->GetPixelShader(), *PassParameters);
+			SetShaderParameters(InRHICmdList, VertexShader, VertexShader.GetVertexShader(), VertexParameters);
+			SetShaderParameters(InRHICmdList, PixelShader, PixelShader.GetPixelShader(), *PassParameters);
 
 			const int32 SupersampleCaptureFactor = FMath::Clamp(GSupersampleCaptureFactor, MinSupersampleCaptureFactor, MaxSupersampleCaptureFactor);
 
@@ -755,7 +743,7 @@ void CaptureSceneToScratchCubemap(FRHICommandListImmediate& RHICmdList, FSceneRe
 				ViewRect.Width() * SupersampleCaptureFactor, ViewRect.Height() * SupersampleCaptureFactor,
 				FIntPoint(ViewRect.Width(), ViewRect.Height()),
 				SceneContext.GetBufferSizeXY(),
-				*VertexShader);
+				VertexShader);
 		});
 
 		GraphBuilder.Execute();
@@ -816,12 +804,12 @@ void CopyCubemapToScratchCubemap(FRHICommandListImmediate& RHICmdList, ERHIFeatu
 			TShaderMapRef<FCopyCubemapToCubeFacePS> PixelShader(GetGlobalShaderMap(FeatureLevel));
 
 			GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 			GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 			SetGraphicsPipelineState(InRHICmdList, GraphicsPSOInit);
-			SetShaderParameters(InRHICmdList, *PixelShader, PixelShader->GetPixelShader(), *PassParameters);
+			SetShaderParameters(InRHICmdList, PixelShader, PixelShader.GetPixelShader(), *PassParameters);
 
 			DrawRectangle(
 				InRHICmdList,
@@ -831,7 +819,7 @@ void CopyCubemapToScratchCubemap(FRHICommandListImmediate& RHICmdList, ERHIFeatu
 				SourceDimensions.X, SourceDimensions.Y,
 				FIntPoint(ViewRect.Width(), ViewRect.Height()),
 				SourceDimensions,
-				*VertexShader);
+				VertexShader);
 		});
 	}
 
