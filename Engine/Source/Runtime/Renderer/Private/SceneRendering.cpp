@@ -879,7 +879,8 @@ void FViewInfo::Init()
 	bHasCustomDepthPrimitives = false;
 	bHasDistortionPrimitives = false;
 	bAllowStencilDither = false;
-	bUsesCustomDepthStencil = false;
+	bCustomDepthStencilValid = false;
+	bUsesCustomDepthStencilInTranslucentMaterials = false;
 
 	ForwardLightingResources = nullptr;
 

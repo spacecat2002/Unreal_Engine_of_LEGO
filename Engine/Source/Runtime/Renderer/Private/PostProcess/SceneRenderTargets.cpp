@@ -2322,6 +2322,7 @@ public:
 
 	const TCHAR* const operator[] (uint32 Idx) const
 	{
+		CA_SUPPRESS(6385);	// Doesn't like COM
 		return *Names[Idx];
 	}
 
@@ -2338,6 +2339,7 @@ static const TCHAR* const GetVolumeName(uint32 Id, bool bDirectional)
 
 	check(Id < MaxNames);
 
+	CA_SUPPRESS(6385);	// Doesn't like COM
 	return bDirectional ? NamesDir[Id] : Names[Id];
 }
 
@@ -3109,7 +3111,7 @@ IPooledRenderTarget* FSceneRenderTargets::RequestCustomDepth(FRHICommandListImme
 					CustomDepthStencilTargetableFlags |= TexCreate_Memoryless;
 				}
 
-				FPooledRenderTargetDesc MobileCustomStencilDesc(FPooledRenderTargetDesc::Create2DDesc(CustomDepthBufferSize, PF_R8_UINT, FClearValueBinding::Transparent, TexCreate_None, CustomDepthStencilTargetableFlags, false));
+				FPooledRenderTargetDesc MobileCustomStencilDesc(FPooledRenderTargetDesc::Create2DDesc(CustomDepthBufferSize, PF_G8, FClearValueBinding::Transparent, TexCreate_None, CustomDepthStencilTargetableFlags, false));
 				GRenderTargetPool.FindFreeElement(RHICmdList, MobileCustomStencilDesc, MobileCustomStencil, TEXT("MobileCustomStencil"));
 
 				CustomStencilSRV.SafeRelease();
@@ -3418,7 +3420,6 @@ void SetupMobileSceneTextureUniformParameters(
 {
 	FRHITexture* BlackDefault2D = GSystemTextures.BlackDummy->GetRenderTargetItem().ShaderResourceTexture;
 	FRHITexture* DepthDefault = GSystemTextures.DepthDummy->GetRenderTargetItem().ShaderResourceTexture;
-	FRHITexture* ZeroUIntDummy = GSystemTextures.ZeroUIntDummy->GetRenderTargetItem().ShaderResourceTexture;
 
 	SceneTextureParameters.SceneColorTexture = bSceneTexturesValid ? SceneContext.GetSceneColorTexture().GetReference() : BlackDefault2D;
 	SceneTextureParameters.SceneColorTextureSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
@@ -3443,14 +3444,15 @@ void SetupMobileSceneTextureUniformParameters(
 	SceneTextureParameters.CustomDepthTexture = CustomDepth;
 	SceneTextureParameters.CustomDepthTextureSampler = TStaticSamplerState<>::GetRHI();
 
-	FRHITexture* MobileCustomStencil = ZeroUIntDummy;
+	FRHITexture* MobileCustomStencil = BlackDefault2D;
 
 	if (SceneContext.MobileCustomStencil.IsValid())
 	{
 		MobileCustomStencil = SceneContext.MobileCustomStencil->GetRenderTargetItem().ShaderResourceTexture;
 	}
 
-	SceneTextureParameters.CustomStencilTexture = MobileCustomStencil;
+	SceneTextureParameters.MobileCustomStencilTexture = MobileCustomStencil;
+	SceneTextureParameters.MobileCustomStencilTextureSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	
 	if (SceneContext.VirtualTextureFeedback.FeedbackBufferUAV.IsValid())
 	{
@@ -3469,7 +3471,7 @@ TUniformBufferRef<FMobileSceneTextureUniformParameters> CreateMobileSceneTexture
 {
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 	FMobileSceneTextureUniformParameters SceneTextureParameters;
-	SetupMobileSceneTextureUniformParameters(SceneContext, FeatureLevel, true, true, SceneTextureParameters);
+	SetupMobileSceneTextureUniformParameters(SceneContext, FeatureLevel, true, SceneContext.bCustomDepthIsValid, SceneTextureParameters);
 	return TUniformBufferRef<FMobileSceneTextureUniformParameters>::CreateUniformBufferImmediate(SceneTextureParameters, UniformBuffer_SingleDraw);
 }
 

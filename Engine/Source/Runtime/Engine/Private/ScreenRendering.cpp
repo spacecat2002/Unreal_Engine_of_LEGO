@@ -15,6 +15,4 @@ IMPLEMENT_SHADER_TYPE(,FScreenPSsRGBSource, TEXT("/Engine/Private/ScreenPixelSha
 IMPLEMENT_SHADER_TYPE(,FScreenPSMipLevel, TEXT("/Engine/Private/ScreenPixelShader.usf"), TEXT("MainMipLevel"), SF_Pixel);
 IMPLEMENT_SHADER_TYPE(,FScreenPSsRGBSourceMipLevel, TEXT("/Engine/Private/ScreenPixelShader.usf"), TEXT("MainsRGBSourceMipLevel"), SF_Pixel);
 IMPLEMENT_SHADER_TYPE(,FScreenVS,TEXT("/Engine/Private/ScreenVertexShader.usf"),TEXT("Main"),SF_Vertex);
-IMPLEMENT_SHADER_TYPE(template<>,TScreenVSForGS<false>,TEXT("/Engine/Private/ScreenVertexShader.usf"),TEXT("MainForGS"),SF_Vertex);
-IMPLEMENT_SHADER_TYPE(template<>,TScreenVSForGS<true>,TEXT("/Engine/Private/ScreenVertexShader.usf"),TEXT("MainForGS"),SF_Vertex);
 IMPLEMENT_SHADER_TYPE(,FScreenPS_OSE,TEXT("/Engine/Private/ScreenPixelShaderOES.usf"),TEXT("Main"),SF_Pixel);

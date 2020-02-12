@@ -165,7 +165,7 @@ void SetupMobileBasePassUniformParameters(
 	SetupPlanarReflectionUniformParameters(View, ReflectionSceneProxy, BasePassParameters.PlanarReflection);
 
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-	SetupMobileSceneTextureUniformParameters(SceneContext, View.FeatureLevel, bTranslucentPass, View.bUsesCustomDepthStencil, BasePassParameters.SceneTextures);
+	SetupMobileSceneTextureUniformParameters(SceneContext, View.FeatureLevel, bTranslucentPass, View.bCustomDepthStencilValid, BasePassParameters.SceneTextures);
 	if (View.HasValidEyeAdaptation() && View.GetEyeAdaptationBuffer())
 	{
 		BasePassParameters.SceneTextures.EyeAdaptationBuffer = View.GetEyeAdaptationBuffer()->SRV;
