@@ -18,6 +18,7 @@ class FReferenceCollector;
  * HPP_Wireframe - the priority of items that are drawn in wireframe, such as volumes
  * HPP_UI - the priority of the UI components such as the translation widget
  */
+UENUM()
 enum EHitProxyPriority
 {
 	HPP_World = 0,

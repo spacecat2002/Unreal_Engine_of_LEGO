@@ -20,6 +20,7 @@
 #include "Engine/TextureStreamingTypes.h"
 #include "AI/Navigation/NavRelevantInterface.h"
 #include "VT/RuntimeVirtualTextureEnum.h"
+#include "HitProxies.h"
 #include "PrimitiveComponent.generated.h"
 
 class AController;
@@ -523,10 +524,17 @@ public:
 	UPROPERTY()
 	TEnumAsByte<EHasCustomNavigableGeometry::Type> bHasCustomNavigableGeometry;
 
+public:
+#if WITH_EDITORONLY_DATA
+	UPROPERTY()
+	TEnumAsByte<enum EHitProxyPriority> HitProxyPriority;
+#endif
+
 private:
 #if WITH_EDITORONLY_DATA
 	UPROPERTY()
 	TEnumAsByte<enum ECanBeCharacterBase> CanBeCharacterBase_DEPRECATED;
+
 #endif
 
 	FMaskFilter MoveIgnoreMask;
