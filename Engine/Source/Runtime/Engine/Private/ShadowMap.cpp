@@ -8,7 +8,7 @@
 #include "Interfaces/ITargetPlatform.h"
 #include "Engine/ShadowMapTexture2D.h"
 #include "Components/InstancedStaticMeshComponent.h"
-#include "Engine/InstancedStaticMesh.h"
+#include "InstancedStaticMesh.h"
 #include "LightMap.h"
 #include "UObject/Package.h"
 #include "Misc/FeedbackContext.h"

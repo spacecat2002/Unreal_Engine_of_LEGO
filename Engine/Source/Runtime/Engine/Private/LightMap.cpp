@@ -12,7 +12,7 @@
 #include "StaticLighting.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/LightComponent.h"
-#include "Engine/InstancedStaticMesh.h"
+#include "InstancedStaticMesh.h"
 #include "UObject/UObjectHash.h"
 #include "UObject/UObjectIterator.h"
 #include "Misc/FeedbackContext.h"
