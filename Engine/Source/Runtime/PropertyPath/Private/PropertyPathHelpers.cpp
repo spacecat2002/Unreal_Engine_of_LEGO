@@ -115,15 +115,15 @@ namespace PropertyPathHelpersInternal
 					}
 				}
 			}
-			else
-			{
+				else
+				{
 				// If it's the final segment, use the resolver to get the value.
 				if (bFinalSegment)
 				{
 					return InResolver.Resolve(static_cast<ContainerType*>(InContainer), InPropertyPath);
 				}
-				else
-				{
+			else
+			{
 					// If it's not the final segment, but still a function, we're going to treat it as an Object* getter.
 					// in the hopes that it leads to another object that we can resolve the next segment on.  These
 					// getter functions must be very simple.
@@ -134,7 +134,7 @@ namespace PropertyPathHelpersInternal
 
 					FCachedPropertyPath TempPath(Segment);
 					if (GetterResolver.Resolve(InContainer, TempPath))
-					{
+				{
 						if (CurrentObject)
 						{
 							InPropertyPath.SetCanSafelyUsedCachedAddress(false);
@@ -476,9 +476,9 @@ namespace PropertyPathHelpersInternal
 	{
 		if (InContainer)
 		{
-			FCachedPropertyPath InternalPropertyPath(InPropertyPath);
-			return IteratePropertyPathRecursive<UObject>(InContainer->GetClass(), InContainer, 0, InternalPropertyPath, InResolver);
-		}
+		FCachedPropertyPath InternalPropertyPath(InPropertyPath);
+		return IteratePropertyPathRecursive<UObject>(InContainer->GetClass(), InContainer, 0, InternalPropertyPath, InResolver);
+	}
 
 		return false;
 	}
@@ -487,8 +487,8 @@ namespace PropertyPathHelpersInternal
 	{
 		if (InContainer)
 		{
-			return IteratePropertyPathRecursive<UObject>(InContainer->GetClass(), InContainer, 0, InPropertyPath, InResolver);
-		}
+		return IteratePropertyPathRecursive<UObject>(InContainer->GetClass(), InContainer, 0, InPropertyPath, InResolver);
+	}
 
 		return false;
 	}
@@ -539,6 +539,17 @@ FPropertyPathSegment::FPropertyPathSegment(int32 InCount, const TCHAR* InString)
 	Name = FName(*PropertyNameString, FNAME_Find);
 }
 
+void FPropertyPathSegment::PostSerialize(const FArchive& Ar)
+{
+	if (Struct)
+	{
+		// if the struct has been serialized then we're loading a CDO and we need to re-cache the field pointer
+		UStruct* ResolveStruct = Struct;
+		Struct = nullptr;
+		Resolve(ResolveStruct);
+	}
+}
+
 FPropertyPathSegment FPropertyPathSegment::MakeUnresolvedCopy(const FPropertyPathSegment& ToCopy)
 {
 	FPropertyPathSegment Segment;
@@ -556,10 +567,10 @@ FFieldVariant FPropertyPathSegment::Resolve(UStruct* InStruct) const
 		if ( InStruct != Struct )
 		{
 			Struct = InStruct;
-			Field = FindField<UField>(InStruct, Name);
+			Field = FindField<FProperty>(InStruct, Name);
 			if (!Field.IsValid())
 			{
-				Field = FindField<FProperty>(InStruct, Name);
+				Field = FindField<UField>(InStruct, Name);
 			}
 		}
 
@@ -887,7 +898,7 @@ namespace PropertyPathHelpers
 				FString ArrayIndexString(InCount - Offset - 2, &InString[Offset + 1]);
 				OutArrayIndex = FCString::Atoi(*ArrayIndexString);
 				break;
-			}
+		}
 			Offset++;
 		}
 	}
