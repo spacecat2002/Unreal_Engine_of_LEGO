@@ -279,13 +279,12 @@ public:
 	 */
 	virtual void Render(IToolsContextRenderAPI* RenderAPI);
 
+
 	/**
-	 * Allow the Tool to do any necessary processing on Tick
+	 * Non overrideable func which does processing and calls the tool's OnTick
 	 * @param DeltaTime the time delta since last tick
 	 */
-	virtual void Tick(float DeltaTime);
-
-
+	virtual void Tick(float DeltaTime) final;
 
 	/**
 	 * @return ToolManager that owns this Tool
@@ -405,6 +404,13 @@ protected:
 	// by overloading RegisterActions(). Then external systems can use GetActionSet() to
 	// find out what Actions your Tool supports, and ExecuteAction() to run those actions.
 	//
+
+private:
+	/**
+	 * Allow the Tool to do any necessary processing on Tick
+	 * @param DeltaTime the time delta since last tick
+	 */
+	virtual void OnTick(float DeltaTime){};
 
 public:
 	/**

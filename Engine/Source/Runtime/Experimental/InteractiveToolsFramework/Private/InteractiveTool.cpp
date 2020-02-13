@@ -201,6 +201,7 @@ void UInteractiveTool::Tick(float DeltaTime)
 			}
 		}
 	}
+	OnTick(DeltaTime);
 }
 
 UInteractiveToolManager* UInteractiveTool::GetToolManager() const

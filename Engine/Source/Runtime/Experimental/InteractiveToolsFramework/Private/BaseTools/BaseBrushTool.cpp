@@ -250,14 +250,6 @@ void UBaseBrushTool::Render(IToolsContextRenderAPI* RenderAPI)
 	UpdateBrushStampIndicator();
 }
 
-void UBaseBrushTool::Tick(float DeltaTime)
-{
-	UMeshSurfacePointTool::Tick(DeltaTime);
-}
-
-
-
-
 const FString BaseBrushIndicatorGizmoType = TEXT("BrushIndicatorGizmoType");
 
 void UBaseBrushTool::SetupBrushStampIndicator()
