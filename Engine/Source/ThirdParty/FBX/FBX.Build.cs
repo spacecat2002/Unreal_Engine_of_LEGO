@@ -9,7 +9,7 @@ public class FBX : ModuleRules
 	{
 		Type = ModuleType.External;
 
-		string FBXSDKDir = Target.UEThirdPartySourceDirectory + "FBX/2018.1.1/";
+		string FBXSDKDir = Target.UEThirdPartySourceDirectory + "FBX/2020.0.1/";
 		PublicSystemIncludePaths.AddRange(
 			new string[] {
 					FBXSDKDir + "include",
@@ -17,10 +17,11 @@ public class FBX : ModuleRules
 				}
 			);
 
-
 		if ( Target.Platform == UnrealTargetPlatform.Win64 )
 		{
-			string FBxLibPath = FBXSDKDir + "lib/vs" + Target.WindowsPlatform.GetVisualStudioCompilerVersionName() + "/";
+            //Target.WindowsPlatform.GetVisualStudioCompilerVersionName() is hardcode to 2015 for vs2015-vs2017-vs2019
+			//So we have to hardcode vs2017, we cannot use the compilerVersionName to deal with it
+            string FBxLibPath = FBXSDKDir + "lib/vs2017/";
 
 			FBxLibPath += "x64/release/";
 
@@ -38,11 +39,15 @@ public class FBX : ModuleRules
 				if (Target.bUseStaticCRT)
 				{
 					PublicAdditionalLibraries.Add(FBxLibPath + "libfbxsdk-mt.lib");
-				}
+                    PublicAdditionalLibraries.Add(FBxLibPath + "libxml2-mt.lib");
+                    PublicAdditionalLibraries.Add(FBxLibPath + "zlib-mt.lib");
+                }
 				else
 				{
 					PublicAdditionalLibraries.Add(FBxLibPath + "libfbxsdk-md.lib");
-				}
+                    PublicAdditionalLibraries.Add(FBxLibPath + "libxml2-md.lib");
+                    PublicAdditionalLibraries.Add(FBxLibPath + "zlib-md.lib");
+                }
 			}
 		}
 		else if (Target.Platform == UnrealTargetPlatform.Mac)
