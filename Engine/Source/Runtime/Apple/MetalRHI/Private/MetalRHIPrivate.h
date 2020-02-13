@@ -13,6 +13,7 @@
 
 // Dependencies
 #include "MetalRHI.h"
+#include "MetalDynamicRHI.h"
 #include "RHI.h"
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
