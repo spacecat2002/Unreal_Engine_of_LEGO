@@ -38,7 +38,7 @@ UE_TRACE_EVENT_BEGIN(GpuProfiler, EventSpec, Important)
 UE_TRACE_EVENT_END()
 
 UE_TRACE_EVENT_BEGIN(GpuProfiler, Frame)
-	UE_TRACE_EVENT_FIELD(int64, CalibrationBias)
+	UE_TRACE_EVENT_FIELD(uint64, CalibrationBias)
 	UE_TRACE_EVENT_FIELD(uint64, TimestampBase)
 	UE_TRACE_EVENT_FIELD(uint32, RenderingFrameNumber)
 	UE_TRACE_EVENT_FIELD(uint8[], Data)
@@ -148,6 +148,7 @@ void FGpuProfilerTrace::EndFrame()
 
 	if (GCurrentFrame.EventBufferSize)
 	{
+		// This subtraction is intended to be performed on uint64 to leverage the wrap around behavior defined by the standard
 		uint64 Bias = GCurrentFrame.Calibration.CPUMicroseconds - GCurrentFrame.Calibration.GPUMicroseconds;
 		UE_TRACE_LOG(GpuProfiler, Frame, GpuChannel)
 			<< Frame.CalibrationBias(Bias)

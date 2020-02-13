@@ -258,8 +258,7 @@ private:
 void TraverseEventTree(
 	const TArray<FRealtimeGPUProfilerEvent, TInlineAllocator<100u>>& GpuProfilerEvents,
 	const TArray<TArray<int32>>& GpuProfilerEventChildrenIndices,
-	int32 Root,
-	const uint64 GPUTimestampOffset)
+	int32 Root)
 {
 	uint64 lastStartTime = 0;
 	uint64 lastEndTime = 0;
@@ -270,7 +269,7 @@ void TraverseEventTree(
 	if (Root != 0)
 	{
 		FGpuProfilerTrace::SpecifyEventByName(GpuProfilerEvents[Root].GetName());
-		FGpuProfilerTrace::BeginEventByName(GpuProfilerEvents[Root].GetName(), GpuProfilerEvents[Root].GetFrameNumber(), GpuProfilerEvents[Root].GetStartResultMicroseconds() + GPUTimestampOffset);
+		FGpuProfilerTrace::BeginEventByName(GpuProfilerEvents[Root].GetName(), GpuProfilerEvents[Root].GetFrameNumber(), GpuProfilerEvents[Root].GetStartResultMicroseconds());
 	}
 
 	for (int32 Subroot : GpuProfilerEventChildrenIndices[Root])
@@ -284,13 +283,13 @@ void TraverseEventTree(
 			check(lastStartTime >= GpuProfilerEvents[Root].GetStartResultMicroseconds());
 			check(lastEndTime <= GpuProfilerEvents[Root].GetEndResultMicroseconds());
 		}
-		TraverseEventTree(GpuProfilerEvents, GpuProfilerEventChildrenIndices, Subroot, GPUTimestampOffset);
+		TraverseEventTree(GpuProfilerEvents, GpuProfilerEventChildrenIndices, Subroot);
 	}
 
 	if (Root != 0)
 	{
 		FGpuProfilerTrace::SpecifyEventByName(GpuProfilerEvents[Root].GetName());
-		FGpuProfilerTrace::EndEvent(GpuProfilerEvents[Root].GetEndResultMicroseconds() + GPUTimestampOffset);
+		FGpuProfilerTrace::EndEvent(GpuProfilerEvents[Root].GetEndResultMicroseconds());
 	}
 }
 #endif
@@ -491,11 +490,8 @@ public:
 			GpuProfilerEventChildrenIndices[ParentIdx].Add(EventIdx);
 		}
 
-		FGPUTimingCalibrationTimestamp CalibrationTimestamp = FGPUTiming::GetCalibrationTimestamp();
-		const uint64 GPUTimeOffset = CalibrationTimestamp.CPUMicroseconds - CalibrationTimestamp.GPUMicroseconds;
-
 		FGpuProfilerTrace::BeginFrame();
-		TraverseEventTree(GpuProfilerEvents, GpuProfilerEventChildrenIndices, 0, GPUTimeOffset);
+		TraverseEventTree(GpuProfilerEvents, GpuProfilerEventChildrenIndices, 0);
 		FGpuProfilerTrace::EndFrame();
 #endif
 
