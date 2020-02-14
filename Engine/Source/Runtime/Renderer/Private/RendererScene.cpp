@@ -1051,6 +1051,8 @@ public:
 	{
 		for (TSet<FPrimitiveSceneInfo*>::TConstIterator It(PendingPrimitives); It; ++It)
 		{
+			FMemMark MemStackMark(FMemStack::Get());
+
 			FPrimitiveSceneInfo* PrimInfo = *It;
 			FPrimitiveSceneProxy* Proxy = PrimInfo->Proxy;
 			const FBoxSphereBounds& Bounds = Proxy->GetBounds();

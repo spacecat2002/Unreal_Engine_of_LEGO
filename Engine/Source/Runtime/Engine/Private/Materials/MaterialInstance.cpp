@@ -4137,13 +4137,20 @@ void UMaterialInstance::UpdateCachedLayerParameters()
 		CachedExpressionData.ReferencedTextures = Parent->GetReferencedTextures();
 	}
 	
+	bool bCachedDataValid = true;
 	for (FStaticMaterialLayersParameter& LayerParameters : StaticParameters.MaterialLayersParameters)
 	{
-		CachedExpressionData.UpdateForLayerFunctions(LayerParameters.Value);
+		if (!CachedExpressionData.UpdateForLayerFunctions(LayerParameters.Value))
+		{
+			bCachedDataValid = false;
+		}
 	}
 
-	CachedLayerParameters = MoveTemp(CachedExpressionData.Parameters);
-	CachedReferencedTextures = MoveTemp(CachedExpressionData.ReferencedTextures);
+	if (bCachedDataValid)
+	{
+		CachedLayerParameters = MoveTemp(CachedExpressionData.Parameters);
+		CachedReferencedTextures = MoveTemp(CachedExpressionData.ReferencedTextures);
+	}
 }
 
 void UMaterialInstance::UpdateStaticPermutation(const FStaticParameterSet& NewParameters, FMaterialUpdateContext* MaterialUpdateContext)

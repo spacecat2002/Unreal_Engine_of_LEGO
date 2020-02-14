@@ -1121,10 +1121,6 @@ FName UMaterialExpressionLandscapeGrassOutput::GetInputName(int32 InputIndex) co
 }
 #endif // WITH_EDITOR
 
-bool UMaterialExpressionLandscapeGrassOutput::NeedsLoadForClient() const
-{
-	return true;
-}
 
 #if WITH_EDITOR
 void UMaterialExpressionLandscapeGrassOutput::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
@@ -1979,11 +1975,14 @@ void ALandscapeProxy::FlushGrassComponents(const TSet<ULandscapeComponent*>* Onl
 			}
 		}
 #if WITH_EDITOR
-		if (GIsEditor && bFlushGrassMaps && GetWorld() && GetWorld()->FeatureLevel >= ERHIFeatureLevel::SM5)
+		if (bFlushGrassMaps)
 		{
 			for (ULandscapeComponent* Component : *OnlyForComponents)
 			{
-				Component->RemoveGrassMap();
+				if (Component->CanRenderGrassMap())
+				{
+					Component->RemoveGrassMap();
+				}
 			}
 		}
 #endif
@@ -2024,14 +2023,17 @@ void ALandscapeProxy::FlushGrassComponents(const TSet<ULandscapeComponent*>* Onl
 #if WITH_EDITOR
 		UWorld* World = GetWorld();
 
-		if (GIsEditor && bFlushGrassMaps && World != nullptr && World->Scene != nullptr && World->Scene->GetFeatureLevel() >= ERHIFeatureLevel::SM5)
+		if (bFlushGrassMaps)
 		{
 			// Clear GrassMaps
 			for (UActorComponent* Component : GetComponents())
 			{
 				if (ULandscapeComponent* LandscapeComp = Cast<ULandscapeComponent>(Component))
 				{
-					LandscapeComp->RemoveGrassMap();
+					if (LandscapeComp->CanRenderGrassMap())
+					{
+						LandscapeComp->RemoveGrassMap();
+					}
 				}
 			}
 		}
