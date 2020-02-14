@@ -46,7 +46,7 @@ UE_TRACE_EVENT_END()
 
 } // namespace GpuProfilerTrace
 
-void FGpuProfilerTrace::BeginFrame()
+void FGpuProfilerTrace::BeginFrame(FGPUTimingCalibrationTimestamp& Calibration)
 {
 	using namespace GpuProfilerTrace;
 
@@ -55,14 +55,8 @@ void FGpuProfilerTrace::BeginFrame()
 		return;
 	}
 
-	GCurrentFrame.Calibration = FGPUTiming::GetCalibrationTimestamp();
-	if (GCurrentFrame.Calibration.CPUMicroseconds == 0)
-	{
-		uint64 Cycles = FPlatformTime::Cycles64();
-		Cycles = uint64(FPlatformTime::ToSeconds64(Cycles) * 1000 * 1000);
-		GCurrentFrame.Calibration.CPUMicroseconds = Cycles;
-	}
-
+	GCurrentFrame.Calibration = Calibration;
+	ensure(GCurrentFrame.Calibration.CPUMicroseconds > 0 && GCurrentFrame.Calibration.GPUMicroseconds > 0);
 	GCurrentFrame.TimestampBase = 0;
 	GCurrentFrame.EventBufferSize = 0;
 	GCurrentFrame.bActive = true;

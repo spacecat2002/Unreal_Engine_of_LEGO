@@ -965,6 +965,12 @@ public:
 // Misc
 //
 
+class RHI_API FRHITimestampCalibrationQuery : public FRHIResource
+{
+public:
+	uint64 GPUMicroseconds = 0;
+	uint64 CPUMicroseconds = 0;
+};
 
 /*
 * Generic GPU fence class.
@@ -1204,6 +1210,7 @@ typedef TRefCountPtr<FRHITextureCube> FTextureCubeRHIRef;
 typedef TRefCountPtr<FRHITextureReference> FTextureReferenceRHIRef;
 typedef TRefCountPtr<FRHIRenderQuery> FRenderQueryRHIRef;
 typedef TRefCountPtr<FRHIRenderQueryPool> FRenderQueryPoolRHIRef;
+typedef TRefCountPtr<FRHITimestampCalibrationQuery> FTimestampCalibrationQueryRHIRef;
 typedef TRefCountPtr<FRHIGPUFence>	FGPUFenceRHIRef;
 typedef TRefCountPtr<FRHIViewport> FViewportRHIRef;
 typedef TRefCountPtr<FRHIUnorderedAccessView> FUnorderedAccessViewRHIRef;
