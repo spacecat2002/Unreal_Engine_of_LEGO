@@ -490,7 +490,7 @@ public:
 			GpuProfilerEventChildrenIndices[ParentIdx].Add(EventIdx);
 		}
 
-		FGPUTimingCalibrationTimestamp Timestamp;
+		FGPUTimingCalibrationTimestamp Timestamp { 0, 0 };
 
 		if (TimestampCalibrationQuery.IsValid())
 		{
