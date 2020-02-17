@@ -4756,6 +4756,7 @@ bool UMaterial::UpdateLightmassTextureTracking()
 	return bTexturesHaveChanged;
 }
 
+#if WITH_EDITOR
 int32 UMaterial::GetLayerParameterIndex(EMaterialParameterAssociation Association, UMaterialFunctionInterface* LayerFunction) const
 {
 	int32 Index = INDEX_NONE;
@@ -4773,7 +4774,6 @@ int32 UMaterial::GetLayerParameterIndex(EMaterialParameterAssociation Associatio
 	return Index;
 }
 
-#if WITH_EDITOR
 FExpressionInput* UMaterial::GetExpressionInputForProperty(EMaterialProperty InProperty)
 {
 	switch (InProperty)
