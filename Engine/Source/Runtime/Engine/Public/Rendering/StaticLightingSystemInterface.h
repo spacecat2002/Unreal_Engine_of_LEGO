@@ -34,6 +34,7 @@ public:
 	DECLARE_MULTICAST_DELEGATE_OneParam(FLightComponentBasedSignature, ULightComponentBase* /*InComponent*/);
 	DECLARE_MULTICAST_DELEGATE_TwoParams(FStationaryLightChannelReassignmentSignature, ULightComponentBase* /*InComponent*/, int32 /*NewShadowMapChannel*/);
 	DECLARE_MULTICAST_DELEGATE(FLightmassImportanceVolumeModifiedSignature);
+	DECLARE_MULTICAST_DELEGATE_OneParam(FMaterialInvalidationSignature, FMaterialRenderProxy* /*Material*/);
 
 	static FPrimitiveComponentBasedSignature OnPrimitiveComponentRegistered;
 	static FPrimitiveComponentBasedSignature OnPrimitiveComponentUnregistered;
@@ -41,6 +42,7 @@ public:
 	static FLightComponentBasedSignature OnLightComponentUnregistered;
 	static FStationaryLightChannelReassignmentSignature OnStationaryLightChannelReassigned;
 	static FLightmassImportanceVolumeModifiedSignature OnLightmassImportanceVolumeModified;
+	static FMaterialInvalidationSignature OnMaterialInvalidated;
 	static const class FMeshMapBuildData* GetPrimitiveMeshMapBuildData(const UPrimitiveComponent* Component, int32 LODIndex = 0);
 	static const class FLightComponentMapBuildData* GetLightComponentMapBuildData(const ULightComponent* Component);
 	static const class FPrecomputedVolumetricLightmap* GetPrecomputedVolumetricLightmap(UWorld* World);

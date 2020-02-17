@@ -706,9 +706,9 @@ public:
 #endif // RHI_RAYTRACING
 
 	/** Returns whether this set of shader bindings can be merged into an instanced draw call with another. */
-	bool MatchesForDynamicInstancing(const FMeshDrawShaderBindings& Rhs) const;
+	bool RENDERER_API MatchesForDynamicInstancing(const FMeshDrawShaderBindings& Rhs) const;
 
-	uint32 GetDynamicInstancingHash() const;
+	uint32 RENDERER_API GetDynamicInstancingHash() const;
 
 	SIZE_T GetAllocatedSize() const
 	{
