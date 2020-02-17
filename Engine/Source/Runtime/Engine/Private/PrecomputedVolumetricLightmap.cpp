@@ -513,6 +513,20 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::AddToSceneData(FPrecomputedV
 
 		if (GetFeatureLevel() >= ERHIFeatureLevel::SM5)
 		{
+			// Tracking down UE-88573
+			ensureMsgf(IsInitialized(), TEXT("FPrecomputedVolumetricLightmapData is being added to a scene data without initialization"));
+
+			if (!IsInitialized())
+			{
+				InitResource();
+			}
+
+			if (!IndirectionTexture.Texture)
+			{
+				ensureMsgf(IsInitialized(), TEXT("FPrecomputedVolumetricLightmapData IndirectionTexture is still invalid after manual initialization, returning"));
+				return;
+			}
+
 			// GPU Path
 
 			const int32 PaddedBrickSize = BrickSize + 1;
