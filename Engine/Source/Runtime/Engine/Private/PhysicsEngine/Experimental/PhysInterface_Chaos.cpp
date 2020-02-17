@@ -782,7 +782,7 @@ void FPhysInterface_Chaos::AddImpulse_AssumesLocked(const FPhysicsActorHandle& I
 		Chaos::TPBDRigidParticle<float, 3>* Rigid = InActorReference->CastToRigidParticle();
 		if (ensure(Rigid))
 		{
-			AddVelocity_AssumesLocked(InActorReference, Rigid->InvM() * InForce);
+			Rigid->SetLinearImpulse(Rigid->LinearImpulse() + InForce);
 		}
 	}
 }
@@ -794,7 +794,7 @@ void FPhysInterface_Chaos::AddAngularImpulseInRadians_AssumesLocked(const FPhysi
 		Chaos::TPBDRigidParticle<float, 3>* Rigid = InActorReference->CastToRigidParticle();
 		if (ensure(Rigid))
 		{
-			AddAngularVelocityInRadians_AssumesLocked(InActorReference, Chaos::Utilities::ComputeWorldSpaceInertia(Rigid->R(), Rigid->InvI()) * InTorque);
+			Rigid->SetAngularImpulse(Rigid->AngularImpulse() + InTorque);
 		}
 	}
 }
@@ -803,10 +803,10 @@ void FPhysInterface_Chaos::AddVelocity_AssumesLocked(const FPhysicsActorHandle& 
 {
 	if (ensure(FPhysicsInterface::IsValid(InActorReference)))
 	{
-		Chaos::TKinematicGeometryParticle<float, 3>* Kinematic = InActorReference->CastToKinematicParticle();
-		if (ensure(Kinematic))
+		Chaos::TPBDRigidParticle<float, 3>* Rigid = InActorReference->CastToRigidParticle();
+		if (ensure(Rigid))
 		{
-			Kinematic->SetV(Kinematic->V() + InVelocityDelta);
+			AddImpulse_AssumesLocked(InActorReference, Rigid->M() * InVelocityDelta);
 		}
 	}
 }
@@ -815,11 +815,11 @@ void FPhysInterface_Chaos::AddAngularVelocityInRadians_AssumesLocked(const FPhys
 {
 	if (ensure(FPhysicsInterface::IsValid(InActorReference)))
 	{
-		Chaos::TKinematicGeometryParticle<float, 3>* Kinematic = InActorReference->CastToKinematicParticle();
-		if (ensure(Kinematic))
+		Chaos::TPBDRigidParticle<float, 3>* Rigid = InActorReference->CastToRigidParticle();
+		if (ensure(Rigid))
 		{
-			// NOTE: Need to convert W to rad/sec?
-			Kinematic->SetW(Kinematic->W() + InAngularVelocityDeltaRad);
+			const Chaos::FMatrix33 WorldI = Chaos::Utilities::ComputeWorldSpaceInertia(Rigid->R(), Rigid->I());
+			AddAngularImpulseInRadians_AssumesLocked(InActorReference, WorldI * InAngularVelocityDeltaRad);
 		}
 	}
 }
@@ -1559,14 +1559,28 @@ FPhysicsGeometryCollection_Chaos::FPhysicsGeometryCollection_Chaos(const FPhysic
 {
 }
 
-FCollisionFilterData FPhysInterface_Chaos::GetSimulationFilter(const FPhysicsShapeHandle& InShape)
+FCollisionFilterData FPhysInterface_Chaos::GetSimulationFilter(const FPhysicsShapeReference_Chaos& InShape)
 {
-	return FCollisionFilterData();
+	if (ensure(InShape.Shape))
+	{
+		return InShape.Shape->SimData;
+	}
+	else
+	{
+		return FCollisionFilterData();
+	}
 }
 
-FCollisionFilterData FPhysInterface_Chaos::GetQueryFilter(const FPhysicsShapeHandle& InShape)
+FCollisionFilterData FPhysInterface_Chaos::GetQueryFilter(const FPhysicsShapeReference_Chaos& InShape)
 {
-	return FCollisionFilterData();
+	if (ensure(InShape.Shape))
+	{
+		return InShape.Shape->QueryData;
+	}
+	else
+	{
+		return FCollisionFilterData();
+	}
 }
 
 void FPhysInterface_Chaos::SetQueryFilter(const FPhysicsShapeReference_Chaos& InShapeRef, const FCollisionFilterData& InFilter)

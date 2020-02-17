@@ -496,6 +496,11 @@ public:
 	bool HasBatchesToRender() const;
 
 	/**
+	 * Clear the list of dirty batches that need to be rendered by the canvas
+	 */
+	void ClearBatchesToRender();
+
+	/**
 	* Access current feature level
 	*
 	* @return feature level that this canvas is rendering at
@@ -1070,7 +1075,8 @@ private:
 			FMeshPassProcessorRenderState& DrawRenderState,
 			const FSceneView& View,
 			bool bIsHitTesting,
-			bool bNeedsToSwitchVerticalAxis);
+			bool bNeedsToSwitchVerticalAxis,
+			bool bUse128bitRT = false);
 
 		const FMaterialRenderProxy* const MaterialRenderProxy;
 		const FCanvas::FTransformEntry Transform;

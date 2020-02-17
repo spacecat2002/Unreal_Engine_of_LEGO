@@ -11,6 +11,10 @@
 #define WITH_XMA2 0
 #endif
 
+#ifndef HAS_COMPRESSED_AUDIO_INFO_CLASS
+#define HAS_COMPRESSED_AUDIO_INFO_CLASS 0
+#endif
+
 #if WITH_XMA2
 #include "XMAAudioInfo.h"
 #endif  //#if WITH_XMA2
@@ -41,10 +45,11 @@ FAutoConsoleVariableRef CVarRenderEveryTick(
 
 namespace Audio
 {
-	FMixerPlatformNonRealtime::FMixerPlatformNonRealtime(float InSampleRate /*= 48000*/, float InNumChannels /*= 2*/, float ExpectedCallbackDuration /*= 0.033f*/)
+	FMixerPlatformNonRealtime::FMixerPlatformNonRealtime(float InSampleRate /*= 48000*/, float InNumChannels /*= 2*/)
 		: SampleRate(InSampleRate)
 		, NumChannels(InNumChannels)
 		, TotalDurationRendered(0.0)
+		, TotalDesiredRender(0.0)
 		, TickDelta(0.0)
 		, bIsInitialized(false)
 		, bIsDeviceOpen(false)
@@ -63,14 +68,15 @@ namespace Audio
 		}
 
 		const double TimePerCallback = ((double) AudioStreamInfo.NumOutputFrames) / AudioStreamInfo.DeviceInfo.SampleRate;
-		double SecondsRendered = TotalDurationRendered;
-		TotalDurationRendered += NumSecondsToRender;
+
+		// Increment how much audio time the user wants to have been rendered. 
+		TotalDesiredRender += NumSecondsToRender;
 
 		CurrentBufferWriteIndex = 0;
 		CurrentBufferReadIndex = 0;
 
-
-		while (SecondsRendered < TotalDurationRendered)
+		// Keep rendering audio until we surpass their desired time, TimePerCallback may be much smaller than NumSecondsToRender.
+		while (TotalDurationRendered < TotalDesiredRender)
 		{
 			// RenderTimeAnalysis.Start();
 			if (OutputBuffers.IsValidIndex(CurrentBufferWriteIndex))
@@ -80,7 +86,7 @@ namespace Audio
 			// RenderTimeAnalysis.End();
 
 			ReadNextBuffer();
-			SecondsRendered += TimePerCallback;
+			TotalDurationRendered += TimePerCallback;
 		}
 
 		CurrentBufferReadIndex = INDEX_NONE;
@@ -315,13 +321,13 @@ namespace Audio
 		static FName NAME_XMA(TEXT("XMA"));
 
 #if WITH_XMA2 && USE_XMA2_FOR_STREAMING
-		if (InSoundWave->IsStreaming() && InSoundWave->NumChannels <= 2)
+		if (InSoundWave->IsStreaming(nullptr) && InSoundWave->NumChannels <= 2)
 		{
 			return NAME_XMA;
 		}
 #endif
 
-		if (InSoundWave->IsStreaming())
+		if (InSoundWave->IsStreaming(nullptr))
 		{
 #if USE_VORBIS_FOR_STREAMING
 			return NAME_OGG;
@@ -342,17 +348,17 @@ namespace Audio
 
 	bool FMixerPlatformNonRealtime::HasCompressedAudioInfoClass(USoundWave* InSoundWave)
 	{
-#if PLATFORM_WINDOWS || PLATFORM_XBOXONE
+#if PLATFORM_WINDOWS || HAS_COMPRESSED_AUDIO_INFO_CLASS
 		return true;
 #else
 		return false;
-#endif // PLATFORM_WINDOWS || PLATFORM_XBOXONE
+#endif // PLATFORM_WINDOWS || HAS_COMPRESSED_AUDIO_INFO_CLASS
 	}
 
 	ICompressedAudioInfo* FMixerPlatformNonRealtime::CreateCompressedAudioInfo(USoundWave* InSoundWave)
 	{
 		// TODO: Currently this is a copy paste of the XAudio2 platform interface. Ultimately, this function needs to propogate to the current platform's correct CrateCompressedAudioInfo call.
-#if PLATFORM_WINDOWS || PLATFORM_XBOXONE
+#if PLATFORM_WINDOWS || HAS_COMPRESSED_AUDIO_INFO_CLASS
 		check(InSoundWave);
 
 #if WITH_XMA2 && USE_XMA2_FOR_STREAMING
@@ -362,7 +368,7 @@ namespace Audio
 		}
 #endif
 
-		if (InSoundWave->IsStreaming())
+		if (InSoundWave->IsStreaming(nullptr))
 		{
 #if USE_VORBIS_FOR_STREAMING
 			return new FVorbisAudioInfo();
@@ -384,7 +390,7 @@ namespace Audio
 			return XMA2_INFO_NEW();
 		}
 #endif // WITH_XMA2
-#endif // PLATFORM_WINDOWS || WITH_XMA2
+#endif // PLATFORM_WINDOWS || HAS_COMPRESSED_AUDIO_INFO_CLASS
 
 		return nullptr;
 	}

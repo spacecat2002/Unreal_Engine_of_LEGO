@@ -4464,9 +4464,8 @@ void ALandscapeProxy::PostEditChangeProperty(FPropertyChangedEvent& PropertyChan
 			{
 				ModifiedScale.X = FMath::Abs(OriginalScale.Y)*FMath::Sign(ModifiedScale.X);
 			}
-			else
+			else if (SubPropertyName == FName("X"))
 			{
-				// There's no "if name == X" here so that if we can't tell which has changed out of X and Y, we just use X
 				ModifiedScale.Y = FMath::Abs(OriginalScale.X)*FMath::Sign(ModifiedScale.Y);
 			}
 
@@ -4805,9 +4804,9 @@ void ALandscape::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEv
 			MaterialInstanceConstantMap.Empty();
 		}
 	}
-	else if (PropertyName == FName(TEXT("RelativeScale3D")) ||
-		PropertyName == FName(TEXT("RelativeLocation")) ||
-		PropertyName == FName(TEXT("RelativeRotation")))
+	else if (MemberPropertyName == FName(TEXT("RelativeScale3D")) ||
+			 MemberPropertyName == FName(TEXT("RelativeLocation")) ||
+			 MemberPropertyName == FName(TEXT("RelativeRotation")))
 	{
 		if (Info != nullptr)
 		{
@@ -6007,16 +6006,10 @@ static void GetAllMobileRelevantLayerNames(TSet<FName>& OutLayerNames, UMaterial
 	TArray<FMaterialParameterInfo> ParameterInfos;
 	TArray<FGuid> ParameterIds;
 
-	TArray<UMaterialExpression*> ES2MobileExpressions;
-	InMaterial->GetAllReferencedExpressions(ES2MobileExpressions, nullptr, ERHIFeatureLevel::ES2);
 	TArray<UMaterialExpression*> ES31Expressions;
 	InMaterial->GetAllReferencedExpressions(ES31Expressions, nullptr, ERHIFeatureLevel::ES3_1);
 
-	TArray<UMaterialExpression*> MobileExpressions = MoveTemp(ES2MobileExpressions);
-	for (UMaterialExpression* Expression : ES31Expressions)
-	{
-		MobileExpressions.AddUnique(Expression);
-	}
+	TArray<UMaterialExpression*> MobileExpressions = MoveTemp(ES31Expressions);
 
 	for (UMaterialExpression* Expression : MobileExpressions)
 	{

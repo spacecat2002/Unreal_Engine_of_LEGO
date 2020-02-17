@@ -9,6 +9,7 @@
 #include "HAL/UnrealMemory.h"
 #include "GenericPlatform/GenericPlatformFile.h"
 #include "Containers/UnrealString.h"
+#include "Algo/Replace.h"
 #include "Templates/Function.h"
 #include "Misc/Paths.h"
 #include "CoreGlobals.h"
@@ -610,7 +611,7 @@ public:
 		int64 TotalNumWritten = 0;
 		do
 		{
-			uint32 BytesToWrite32 = (uint32)FMath::Min<int64>(BytesToWrite - TotalNumWritten, int64(UINT32_MAX));
+			uint32 BytesToWrite32 = (uint32)FMath::Min<int64>(BytesToWrite, int64(UINT32_MAX));
 			uint32 NumWritten = 0;
 			// Now kick off an async write
 			if (!WriteFile(FileHandle, Source, BytesToWrite32, (::DWORD*)&NumWritten, &OverlappedIO))

@@ -90,8 +90,9 @@ public class Engine : ModuleRules
 				"PakFile",
 				"NetworkReplayStreaming",
 				"PhysicsCore",
-                "SignalProcessing"
-			}
+                "SignalProcessing",
+                "AudioExtensions"
+            }
 		);
 
 		PrivateDependencyModuleNames.AddRange(
@@ -143,7 +144,6 @@ public class Engine : ModuleRules
 		{
 			// for now we depend on this
 			PrivateDependencyModuleNames.Add("RawMesh");
-			PrivateDependencyModuleNames.Add("MeshDescriptionOperations");
 		}
 
 		bool bVariadicTemplatesSupported = true;
@@ -159,10 +159,6 @@ public class Engine : ModuleRules
 					bVariadicTemplatesSupported = false;
 				}
 			}
-
-			AddEngineThirdPartyPrivateStaticDependencies(Target,
-				"libOpus"
-				);
 		}
 
 		if (bVariadicTemplatesSupported)
