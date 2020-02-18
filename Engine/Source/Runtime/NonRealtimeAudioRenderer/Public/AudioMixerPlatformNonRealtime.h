@@ -13,10 +13,10 @@ namespace Audio
 
 	public:
 
-		FMixerPlatformNonRealtime(float InSampleRate = 48000, float InNumChannels = 2, float ExpectedCallbackDuration = 0.033f);
+		FMixerPlatformNonRealtime(float InSampleRate = 48000, float InNumChannels = 2);
 		~FMixerPlatformNonRealtime();
 
-		void RenderAudio(double NumSecondsToRender);
+		NONREALTIMEAUDIORENDERER_API void RenderAudio(double NumSecondsToRender);
 		void OpenFileToWriteAudioTo(const FString& OutPath);
 		void CloseFile();
 
@@ -52,8 +52,10 @@ namespace Audio
 		float SampleRate;
 		int32 NumChannels;
 
-		// In order to avoid having our number of samples rendered drift, 
+		// How much audio time has actually been rendered? Incremented by RenderAudio at fixed precision.
 		double TotalDurationRendered;
+		// How much time does the user want to have rendered? This prevents drift over time where we render more audio on a given frame than asked.
+		double TotalDesiredRender;
 
 		// This is retrieved from the tick interval on InitializeHardware.
 		double TickDelta;
