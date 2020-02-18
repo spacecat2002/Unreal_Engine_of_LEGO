@@ -77,9 +77,9 @@ void UMeshComponent::SetMaterial(int32 ElementIndex, UMaterialInterface* Materia
 			}
 
 #if WITH_EDITOR
+			FStaticLightingSystemInterface::OnPrimitiveComponentUnregistered.Broadcast(this);
 			if (HasValidSettingsForStaticLighting(false))
 			{
-				FStaticLightingSystemInterface::OnPrimitiveComponentUnregistered.Broadcast(this);
 				FStaticLightingSystemInterface::OnPrimitiveComponentRegistered.Broadcast(this);
 			}
 #endif
