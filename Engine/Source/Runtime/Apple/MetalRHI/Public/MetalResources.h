@@ -1222,57 +1222,6 @@ private:
 	FMetalBuffer ShadowBuffer;
 };
 
-class FMetalShaderLibrary final : public FRHIShaderLibrary
-{	
-public:
-	FMetalShaderLibrary(EShaderPlatform Platform,
-		FString const& Name,
-		const FString& InShaderLibraryFilename,
-		const FMetalShaderLibraryHeader& InHeader,
-		const FSerializedShaderArchive& InSerializedShaders,
-		const TArray<uint8>& InShaderCode,
-		const TArray<mtlpp::Library>& InLibrary);
-	virtual ~FMetalShaderLibrary();
-	
-	virtual bool IsNativeLibrary() const override final {return true;}
-
-	virtual int32 GetNumShaders() const override { return SerializedShaders.ShaderEntries.Num(); }
-	virtual int32 GetNumShaderMaps() const override { return SerializedShaders.ShaderMapEntries.Num(); }
-	virtual int32 GetNumShadersForShaderMap(int32 ShaderMapIndex) const override { return SerializedShaders.ShaderMapEntries[ShaderMapIndex].NumShaders; }
-
-	virtual int32 GetShaderIndex(int32 ShaderMapIndex, int32 i) const override
-	{
-		const FShaderMapEntry& ShaderMapEntry = SerializedShaders.ShaderMapEntries[ShaderMapIndex];
-		return SerializedShaders.ShaderIndices[ShaderMapEntry.ShaderIndicesOffset + i];
-	}
-
-	virtual int32 FindShaderMapIndex(const FSHAHash& Hash) override
-	{
-		return SerializedShaders.FindShaderMap(Hash);
-	}
-
-	virtual int32 FindShaderIndex(const FSHAHash& Hash) override
-	{
-		return SerializedShaders.FindShader(Hash);
-	}
-
-	/** No preload support */
-	virtual FGraphEventRef PreloadShader(int32 ShaderIndex) override { return FGraphEventRef(); }
-	virtual FGraphEventRef PreloadShaderMap(int32 ShaderMapIndex) override { return FGraphEventRef(); }
-
-	virtual TRefCountPtr<FRHIShader> CreateShader(int32 Index) override;
-	
-private:
-	FString ShaderLibraryFilename;
-	TArray<mtlpp::Library> Library;
-	FMetalShaderLibraryHeader Header;
-	FSerializedShaderArchive SerializedShaders;
-	TArray<uint8> ShaderCode;
-#if !UE_BUILD_SHIPPING
-	class FMetalShaderDebugZipFile* DebugFile;
-#endif
-};
-
 template<class T>
 struct TMetalResourceTraits
 {
@@ -1280,7 +1229,7 @@ struct TMetalResourceTraits
 template<>
 struct TMetalResourceTraits<FRHIShaderLibrary>
 {
-	typedef FMetalShaderLibrary TConcreteType;
+	typedef class FMetalShaderLibrary TConcreteType;
 };
 template<>
 struct TMetalResourceTraits<FRHIVertexDeclaration>
