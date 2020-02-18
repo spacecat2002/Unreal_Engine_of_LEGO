@@ -3,7 +3,7 @@ set(CMAKE_ALLOW_LOOSE_LOOP_CONSTRUCTS ON)
 
 project(zlib C)
 
-set(VERSION "1.2.11")
+set(VERSION "1.2.8")
 
 option(ASM686 "Enable building i686 assembly implementation")
 option(AMD64 "Enable building amd64 assembly implementation")
@@ -160,7 +160,7 @@ if(MSVC)
 	if(ZLIB_ASMS)
 		add_definitions(-DASMV -DASMINF)
 	endif()
-	
+
 	set(ZLIB_MINIZIP_SRCS
 		contrib/minizip/zip.c
 		contrib/minizip/ioapi.c
