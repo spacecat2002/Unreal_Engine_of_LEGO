@@ -113,10 +113,10 @@ public:
 
 public:
 	FRealtimeGPUProfilerEvent(FRHIRenderQueryPool& RenderQueryPool)
-		: StartQuery(RenderQueryPool.AllocateQuery())
-		, EndQuery(RenderQueryPool.AllocateQuery())
-		, StartResultMicroseconds(InvalidQueryResult)
+		: StartResultMicroseconds(InvalidQueryResult)
 		, EndResultMicroseconds(InvalidQueryResult)
+		, StartQuery(RenderQueryPool.AllocateQuery())
+		, EndQuery(RenderQueryPool.AllocateQuery())
 #if REALTIME_GPU_PROFILER_EVENT_TRACK_FRAME_NUMBER
 		, FrameNumber(-1)
 #endif
