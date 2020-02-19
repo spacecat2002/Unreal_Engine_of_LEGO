@@ -124,7 +124,7 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FLandscapeSectionLODUniformParameters, )
 	SHADER_PARAMETER_SRV(Buffer<float>, SectionTessellationFalloffK)
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
-BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FLandscapeFixedGridUniformShaderParameters, )
+BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FLandscapeFixedGridUniformShaderParameters, LANDSCAPE_API)
 	SHADER_PARAMETER(FVector4, LodValues)
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
@@ -135,6 +135,7 @@ struct FLandscapeBatchElementParams
 	FLandscapeVertexFactoryMVFUniformBufferRef LandscapeVertexFactoryMVFUniformBuffer;
 #endif
 	const TUniformBuffer<FLandscapeUniformShaderParameters>* LandscapeUniformShaderParametersResource;
+	const TArray<TUniformBuffer<FLandscapeFixedGridUniformShaderParameters>>* FixedGridUniformShaderParameters;
 	const FLandscapeComponentSceneProxy* SceneProxy;
 	int32 CurrentLOD;
 };
@@ -243,7 +244,7 @@ public:
 
 
 /** Vertex factory for fixed grid runtime virtual texture lod  */
-class FLandscapeFixedGridVertexFactory : public FLandscapeVertexFactory
+class LANDSCAPE_API FLandscapeFixedGridVertexFactory : public FLandscapeVertexFactory
 {
 	DECLARE_VERTEX_FACTORY_TYPE(FLandscapeFixedGridVertexFactory);
 
