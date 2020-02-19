@@ -28,7 +28,7 @@ limitations under the License.
 #endif
 
 #define OVRP_MAJOR_VERSION 1
-#define OVRP_MINOR_VERSION 44
+#define OVRP_MINOR_VERSION 45
 #define OVRP_PATCH_VERSION 0
 
 #define OVRP_VERSION OVRP_MAJOR_VERSION, OVRP_MINOR_VERSION, OVRP_PATCH_VERSION
@@ -736,7 +736,7 @@ const static ovrpFrustum2f s_identityFrustum2 = {0, 0, {0, 0, 0, 0}};
 const static ovrpVector3f s_vec3Zero = {0, 0, 0};
 const static ovrpVector2f s_vec2Zero = {0, 0};
 const static ovrpVector3f s_vec3One = {1, 1, 1};
-const static ovrpQuatf s_identifyQuat = {0, 0, 0, 1};
+const static ovrpQuatf s_identityQuat = {0, 0, 0, 1};
 const static ovrpCameraIntrinsics s_invalidCameraIntrinsics = {ovrpBool_False, -1, {0, 0, 0, 0}, 0, 0, {0, 0}};
 const static ovrpCameraExtrinsics s_invalidCameraExtrinsics = {ovrpBool_False,
                                                                -1,
@@ -896,6 +896,8 @@ typedef enum {
   ovrpLayerSubmitFlag_ExpensiveSuperSample = (1 << 8),
   /// Enable per-overlay show/hide functionality.
   ovrpLayerSubmitFlag_Hidden = (1 << 9),
+  /// Force the texture's alpha to 1.0 on Rift
+  ovrpLayerSubmitFlag_IgnoreSourceAlpha = (1 << 10),
 } ovrpLayerSubmitFlags;
 
 /// Layer state to submit to ovrp_EndFrame
@@ -1200,5 +1202,23 @@ typedef struct ovrpHandState_ {
   // Time stamp of the captured sample that the pose was extrapolated from.
   double SampleTimeStamp;
 } ovrpHandState;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #endif

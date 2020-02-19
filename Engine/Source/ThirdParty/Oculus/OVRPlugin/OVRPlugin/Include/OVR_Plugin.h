@@ -636,6 +636,16 @@ OVRP_EXPORT ovrpResult ovrp_GetMesh(ovrpMeshType meshType, ovrpMesh* mesh);
 
 OVRP_EXPORT ovrpResult ovrp_GetLocalTrackingSpaceRecenterCount(int* recenterCount);
 
+// Returns true if the system Hmd is in 3dof mode
+OVRP_EXPORT ovrpResult ovrp_GetSystemHmd3DofModeEnabled(ovrpBool* enabled);
+
+
+
+
+
+
+
+
 #ifdef __cplusplus
 }
 #endif
