@@ -215,7 +215,6 @@ FMaterialRelevance UMaterialInterface::GetRelevance_Internal(const UMaterial* Ma
 
 FMaterialParameterInfo UMaterialInterface::GetParameterInfo(EMaterialParameterAssociation Association, FName ParameterName, UMaterialFunctionInterface* LayerFunction) const
 {
-#if WITH_EDITOR
 	int32 Index = 0;
 	if (Association != GlobalParameter)
 	{
@@ -228,9 +227,6 @@ FMaterialParameterInfo UMaterialInterface::GetParameterInfo(EMaterialParameterAs
 	}
 
 	return FMaterialParameterInfo(ParameterName, Association, Index);
-#else // WITH_EDITOR
-	return FMaterialParameterInfo();
-#endif // WITH_EDITOR
 }
 
 FMaterialRelevance UMaterialInterface::GetRelevance(ERHIFeatureLevel::Type InFeatureLevel) const

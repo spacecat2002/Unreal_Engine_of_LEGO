@@ -1204,7 +1204,6 @@ bool UMaterialInstance::GetRefractionSettings(float& OutBiasValue) const
 	}
 }
 
-#if WITH_EDITOR
 int32 UMaterialInstance::GetLayerParameterIndex(EMaterialParameterAssociation Association, UMaterialFunctionInterface* LayerFunction) const
 {
 	check(Association != GlobalParameter);
@@ -1224,7 +1223,6 @@ int32 UMaterialInstance::GetLayerParameterIndex(EMaterialParameterAssociation As
 	}
 	return Index;
 }
-#endif // WITH_EDITOR
 
 void UMaterialInstance::GetTextureExpressionValues(const FMaterialResource* MaterialResource, TArray<UTexture*>& OutTextures, TArray< TArray<int32> >* OutIndices) const
 {

@@ -4756,24 +4756,19 @@ bool UMaterial::UpdateLightmassTextureTracking()
 	return bTexturesHaveChanged;
 }
 
-#if WITH_EDITOR
 int32 UMaterial::GetLayerParameterIndex(EMaterialParameterAssociation Association, UMaterialFunctionInterface* LayerFunction) const
 {
 	int32 Index = INDEX_NONE;
-	for (UMaterialExpression* Expression : Expressions)
+	switch (Association)
 	{
-		UMaterialExpressionMaterialAttributeLayers* LayersExpression = Cast<UMaterialExpressionMaterialAttributeLayers>(Expression);
-		if (LayersExpression)
-		{
-			if (Association == BlendParameter) Index = LayersExpression->DefaultLayers.Blends.Find(LayerFunction);
-			else if (Association == LayerParameter) Index = LayersExpression->DefaultLayers.Layers.Find(LayerFunction);
-			break;
-		}
+	case BlendParameter: Index = CachedExpressionData.DefaultLayerBlends.Find(LayerFunction); break;
+	case LayerParameter: Index = CachedExpressionData.DefaultLayers.Find(LayerFunction); break;
+	default: checkNoEntry(); break;
 	}
-
 	return Index;
 }
 
+#if WITH_EDITOR
 FExpressionInput* UMaterial::GetExpressionInputForProperty(EMaterialProperty InProperty)
 {
 	switch (InProperty)
