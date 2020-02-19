@@ -235,15 +235,15 @@ public:
 		return 2u;
 	}
 
+	uint64 StartResultMicroseconds;
+	uint64 EndResultMicroseconds;
+
 private:
 	FRHIPooledRenderQuery StartQuery;
 	FRHIPooledRenderQuery EndQuery;
 
 	FName Name;
 	STAT(FName StatName;)
-
-	uint64 StartResultMicroseconds;
-	uint64 EndResultMicroseconds;
 
 #if REALTIME_GPU_PROFILER_EVENT_TRACK_FRAME_NUMBER
 	uint32 FrameNumber;
@@ -291,6 +291,25 @@ void TraverseEventTree(
 		FGpuProfilerTrace::SpecifyEventByName(GpuProfilerEvents[Root].GetName());
 		FGpuProfilerTrace::EndEvent(GpuProfilerEvents[Root].GetEndResultMicroseconds());
 	}
+}
+
+void SanitizeEventTree(
+	TArray<FRealtimeGPUProfilerEvent, TInlineAllocator<100u>>& GpuProfilerEvents,
+	const TArray<TArray<int32>>& GpuProfilerEventChildrenIndices,
+	int32 Root,
+	uint64& MonotonicTime)
+{
+	GpuProfilerEvents[Root].StartResultMicroseconds = FMath::Max(GpuProfilerEvents[Root].StartResultMicroseconds, MonotonicTime);
+	GpuProfilerEvents[Root].EndResultMicroseconds = FMath::Max(GpuProfilerEvents[Root].EndResultMicroseconds, GpuProfilerEvents[Root].GetStartResultMicroseconds());
+
+	for (int32 Subroot : GpuProfilerEventChildrenIndices[Root])
+	{
+		SanitizeEventTree(GpuProfilerEvents, GpuProfilerEventChildrenIndices, Subroot, MonotonicTime);
+	}
+
+	GpuProfilerEvents[Root].EndResultMicroseconds = FMath::Max(GpuProfilerEvents[Root].EndResultMicroseconds, MonotonicTime);
+
+	MonotonicTime = FMath::Max(MonotonicTime, GpuProfilerEvents[Root].GetEndResultMicroseconds());
 }
 #endif
 
@@ -512,6 +531,9 @@ public:
 				Timestamp = FGPUTiming::GetCalibrationTimestamp();
 			}
 		}
+
+		uint64 MonotonicTime = 0;
+		SanitizeEventTree(GpuProfilerEvents, GpuProfilerEventChildrenIndices, 0, MonotonicTime);
 
 		FGpuProfilerTrace::BeginFrame(Timestamp);
 		TraverseEventTree(GpuProfilerEvents, GpuProfilerEventChildrenIndices, 0);
