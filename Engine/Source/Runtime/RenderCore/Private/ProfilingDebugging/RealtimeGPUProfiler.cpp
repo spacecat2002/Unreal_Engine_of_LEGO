@@ -733,7 +733,12 @@ void FRealtimeGPUProfiler::BeginFrame(FRHICommandListImmediate& RHICmdList)
 {
 	check(bInBeginEndBlock == false);
 	bInBeginEndBlock = true;
-	
+
+	if (!AreGPUStatsEnabled())
+	{
+		return;
+	}
+
 	Frames[WriteBufferIndex]->TimestampCalibrationQuery = new FRHITimestampCalibrationQuery();
 	RHICmdList.CalibrateTimers(Frames[WriteBufferIndex]->TimestampCalibrationQuery);
 	Frames[WriteBufferIndex]->CPUFrameStartTimestamp = FPlatformTime::Cycles64();
