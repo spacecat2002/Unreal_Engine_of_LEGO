@@ -88,25 +88,25 @@ LANDSCAPE_API extern UMaterialInterface* GLandscapeDirtyMaterial;
 
 /** The uniform shader parameters for a landscape draw call. */
 BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FLandscapeUniformShaderParameters, LANDSCAPE_API)
-	SHADER_PARAMETER(int32, ComponentBaseX)
-	SHADER_PARAMETER(int32, ComponentBaseY)
-	SHADER_PARAMETER(int32, SubsectionSizeVerts)
-	SHADER_PARAMETER(int32, NumSubsections)
-	SHADER_PARAMETER(int32, LastLOD)
-	SHADER_PARAMETER(FVector4, HeightmapUVScaleBias)
-	SHADER_PARAMETER(FVector4, WeightmapUVScaleBias)
-	SHADER_PARAMETER(FVector4, LandscapeLightmapScaleBias)
-	SHADER_PARAMETER(FVector4, SubsectionSizeVertsLayerUVPan)
-	SHADER_PARAMETER(FVector4, SubsectionOffsetParams)
-	SHADER_PARAMETER(FVector4, LightmapSubsectionOffsetParams)
+SHADER_PARAMETER(int32, ComponentBaseX)
+SHADER_PARAMETER(int32, ComponentBaseY)
+SHADER_PARAMETER(int32, SubsectionSizeVerts)
+SHADER_PARAMETER(int32, NumSubsections)
+SHADER_PARAMETER(int32, LastLOD)
+SHADER_PARAMETER(FVector4, HeightmapUVScaleBias)
+SHADER_PARAMETER(FVector4, WeightmapUVScaleBias)
+SHADER_PARAMETER(FVector4, LandscapeLightmapScaleBias)
+SHADER_PARAMETER(FVector4, SubsectionSizeVertsLayerUVPan)
+SHADER_PARAMETER(FVector4, SubsectionOffsetParams)
+SHADER_PARAMETER(FVector4, LightmapSubsectionOffsetParams)
 	SHADER_PARAMETER(FVector4, BlendableLayerMask)
-	SHADER_PARAMETER(FMatrix, LocalToWorldNoScaling)
-	SHADER_PARAMETER_TEXTURE(Texture2D, HeightmapTexture)
-	SHADER_PARAMETER_SAMPLER(SamplerState, HeightmapTextureSampler)
-	SHADER_PARAMETER_TEXTURE(Texture2D, NormalmapTexture)
-	SHADER_PARAMETER_SAMPLER(SamplerState, NormalmapTextureSampler)
-	SHADER_PARAMETER_TEXTURE(Texture2D, XYOffsetmapTexture)
-	SHADER_PARAMETER_SAMPLER(SamplerState, XYOffsetmapTextureSampler)
+SHADER_PARAMETER(FMatrix, LocalToWorldNoScaling)
+SHADER_PARAMETER_TEXTURE(Texture2D, HeightmapTexture)
+SHADER_PARAMETER_SAMPLER(SamplerState, HeightmapTextureSampler)
+SHADER_PARAMETER_TEXTURE(Texture2D, NormalmapTexture)
+SHADER_PARAMETER_SAMPLER(SamplerState, NormalmapTextureSampler)
+SHADER_PARAMETER_TEXTURE(Texture2D, XYOffsetmapTexture)
+SHADER_PARAMETER_SAMPLER(SamplerState, XYOffsetmapTextureSampler)
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
 BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FLandscapeVertexFactoryMVFParameters, LANDSCAPE_API)
@@ -959,7 +959,7 @@ protected:
 #endif
 
 	TUniformBuffer<FLandscapeUniformShaderParameters> LandscapeUniformShaderParameters;
-	
+
 	TArray< TUniformBuffer<FLandscapeFixedGridUniformShaderParameters> > LandscapeFixedGridUniformShaderParameters;
 
 	// Cached versions of these

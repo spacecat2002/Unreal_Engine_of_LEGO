@@ -101,7 +101,7 @@ public:
 		{
 			ShaderBindings.Add(Shader->GetUniformBufferParameter<FLandscapeSectionLODUniformParameters>(), GNullLandscapeRenderSystemResources.UniformBuffer);
 		}
-	}
+			}
 
 protected:
 	LAYOUT_FIELD(FShaderParameter, TexCoordOffsetParameter);
@@ -412,21 +412,21 @@ void FLandscapeComponentSceneProxyMobile::CreateRenderThreadResources()
 		FLandscapeComponentSceneProxy::SharedBuffersMap.Add(SharedBuffersKey, SharedBuffers);
 	}
 	SharedBuffers->AddRef();
-
+				
 	// Init vertex buffer
-	{
+		{
 		check(MobileRenderData->VertexBuffer);
 		MobileRenderData->VertexBuffer->InitResource();
 
 		FLandscapeVertexFactoryMobile* LandscapeVertexFactory = new FLandscapeVertexFactoryMobile(FeatureLevel);
 		LandscapeVertexFactory->MobileData.PositionComponent = FVertexStreamComponent(MobileRenderData->VertexBuffer, STRUCT_OFFSET(FLandscapeMobileVertex, Position), sizeof(FLandscapeMobileVertex), VET_UByte4N);
 		for (uint32 Index = 0; Index < LANDSCAPE_MAX_ES_LOD_COMP; ++Index)
-		{
-			LandscapeVertexFactory->MobileData.LODHeightsComponent.Add
+			{
+				LandscapeVertexFactory->MobileData.LODHeightsComponent.Add
 			(FVertexStreamComponent(MobileRenderData->VertexBuffer, STRUCT_OFFSET(FLandscapeMobileVertex, LODHeights) + sizeof(uint8) * 4 * Index, sizeof(FLandscapeMobileVertex), VET_UByte4N));
-		}
+			}
 
-		LandscapeVertexFactory->InitResource();
+			LandscapeVertexFactory->InitResource();
 		VertexFactory = LandscapeVertexFactory;
 	}
 
@@ -437,12 +437,12 @@ void FLandscapeComponentSceneProxyMobile::CreateRenderThreadResources()
 		LandscapeVertexFactory->MobileData.PositionComponent = FVertexStreamComponent(MobileRenderData->VertexBuffer, STRUCT_OFFSET(FLandscapeMobileVertex, Position), sizeof(FLandscapeMobileVertex), VET_UByte4N);
 		
 		for (uint32 Index = 0; Index < LANDSCAPE_MAX_ES_LOD_COMP; ++Index)
-		{
-			LandscapeVertexFactory->MobileData.LODHeightsComponent.Add
+	{
+		LandscapeVertexFactory->MobileData.LODHeightsComponent.Add
 			(FVertexStreamComponent(MobileRenderData->VertexBuffer, STRUCT_OFFSET(FLandscapeMobileVertex, LODHeights) + sizeof(uint8) * 4 * Index, sizeof(FLandscapeMobileVertex), VET_UByte4N));
-		}
-		
-		LandscapeVertexFactory->InitResource();
+	}
+
+	LandscapeVertexFactory->InitResource();
 		FixedGridVertexFactory = LandscapeVertexFactory;
 	}
 
@@ -466,7 +466,8 @@ void FLandscapeComponentSceneProxyMobile::CreateRenderThreadResources()
 
 TSharedPtr<FLandscapeMobileRenderData, ESPMode::ThreadSafe> FLandscapeComponentDerivedData::GetRenderData()
 {
-	check(IsInGameThread());
+	// This function is expected to be called from either the GameThread or via ParallelFor from the GameThread
+	check(!IsInRenderingThread());
 
 	if (FPlatformProperties::RequiresCookedData() && CachedRenderData.IsValid())
 	{
