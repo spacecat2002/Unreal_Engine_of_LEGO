@@ -440,10 +440,21 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 
 					uint8* DataPtr = &Data[Register.GetWorkByteIndex()];
 					UScriptStruct* ScriptStruct = GetScriptStruct(Register);
-					for (uint16 ElementIndex = 0; ElementIndex < Register.GetTotalElementCount(); ElementIndex++)
+					int32 StructureSize = ScriptStruct->GetStructureSize();
+					if (StructureSize != Register.ElementSize)
 					{
-						ScriptStruct->ImportText(*View[ElementIndex], DataPtr, nullptr, PPF_None, nullptr, ScriptStruct->GetName());
-						DataPtr += Register.ElementSize;
+						FString PackagePath = Ar.GetArchiveName();
+						FString ScriptStructPath = ScriptStruct->GetPathName();
+						UE_LOG(LogRigVM, Warning, TEXT("Struct '%s' has changed  size. Asset '%s' needs to be recompiled."), *ScriptStructPath, *PackagePath);
+						bEncounteredErrorDuringLoad = true;
+					}
+					else
+					{
+						for (uint16 ElementIndex = 0; ElementIndex < Register.GetTotalElementCount(); ElementIndex++)
+						{
+							ScriptStruct->ImportText(*View[ElementIndex], DataPtr, nullptr, PPF_None, nullptr, ScriptStruct->GetName());
+							DataPtr += Register.ElementSize;
+						}
 					}
 					break;
 				}
@@ -742,7 +753,8 @@ bool FRigVMMemoryContainer::Construct(int32 InRegisterIndex, int32 InElementInde
 	{
 		case ERigVMRegisterType::Struct:
 		{
-			uint8* DataPtr = &Data[InElementIndex == INDEX_NONE ? Register.GetWorkByteIndex() : Register.GetWorkByteIndex() + InElementIndex * Register.ElementSize];
+			int32 DataPtrIndex = InElementIndex == INDEX_NONE ? Register.GetWorkByteIndex() : Register.GetWorkByteIndex() + InElementIndex * Register.ElementSize;
+			uint8* DataPtr = &Data[DataPtrIndex];
 			int32 Count = InElementIndex == INDEX_NONE ? Register.GetTotalElementCount() : 1;
 
 			UScriptStruct* ScriptStruct = GetScriptStruct(InRegisterIndex);
@@ -958,7 +970,10 @@ bool FRigVMMemoryContainer::Resize(int32 InRegisterIndex, int32 InNewElementCoun
 
 		for (uint32 ElementIndex = OldElementCount; ElementIndex < NewTotalCount; ElementIndex++)
 		{
-			Construct(InRegisterIndex, (int32)ElementIndex);
+			if (!Construct(InRegisterIndex, (int32)ElementIndex))
+			{
+				break;
+			}
 		}
 
 		for (int32 RegisterIndex = InRegisterIndex + 1; RegisterIndex < Registers.Num(); RegisterIndex++)
