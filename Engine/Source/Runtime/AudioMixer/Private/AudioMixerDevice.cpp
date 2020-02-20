@@ -340,6 +340,11 @@ namespace Audio
 				return AudioMixerPlatform->StartAudioStream();
 			}
 		}
+		else if (AudioMixerPlatform)
+		{
+			UE_LOG(LogAudioMixer, Warning, TEXT("Failed to Open audio stream"));
+		}
+
 		return false;
 	}
 
@@ -1909,6 +1914,65 @@ namespace Audio
 			check(MasterSubmixPtr.IsValid());
 
 			return MasterSubmixPtr->UnregisterBufferListener(InSubmixBufferListener);
+		}
+	}
+
+	void FMixerDevice::StartAudioBus(uint32 InAudioBusId, int32 InNumChannels, bool bInIsAutomatic)
+	{
+		if (IsInGameThread())
+		{
+			if (ActiveAudioBuses_GameThread.Contains(InAudioBusId))
+			{
+				return;
+			}
+
+			ActiveAudioBuses_GameThread.Add(InAudioBusId);
+
+			FAudioThread::RunCommandOnAudioThread([this, InAudioBusId, InNumChannels, bInIsAutomatic]()
+			{
+				SourceManager->StartAudioBus(InAudioBusId, InNumChannels, bInIsAutomatic);
+			});
+		}
+	}
+
+	void FMixerDevice::StopAudioBus(uint32 InAudioBusId)
+	{
+		if (IsInGameThread())
+		{
+			if (!ActiveAudioBuses_GameThread.Contains(InAudioBusId))
+			{
+				return;
+			}
+
+			ActiveAudioBuses_GameThread.Remove(InAudioBusId);
+
+			FAudioThread::RunCommandOnAudioThread([this, InAudioBusId]()
+			{
+				SourceManager->StopAudioBus(InAudioBusId);
+			});
+		}
+	}
+
+	bool FMixerDevice::IsAudioBusActive(uint32 InAudioBusId)
+	{
+		if (IsInGameThread())
+		{
+			return ActiveAudioBuses_GameThread.Contains(InAudioBusId);
+		}
+
+		check(IsInAudioThread());
+		return SourceManager->IsAudioBusActive(InAudioBusId);
+	}
+
+	FPatchOutputStrongPtr FMixerDevice::AddPatchForAudioBus(uint32 InAudioBusId, float PatchGain)
+	{
+		if (ensure(!IsInGameThread() && !IsInAudioThread()))
+		{
+			return SourceManager->AddPatchForAudioBus(InAudioBusId, PatchGain);
+		}
+		else
+		{
+			return nullptr;
 		}
 	}
 

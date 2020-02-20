@@ -589,8 +589,10 @@ public:
 	uint8										bAlreadyRoutedActorInitialize:1;
 	/** Whether we already sorted the actor list.											*/
 	uint8										bAlreadySortedActorList:1;
-	/** Whether this level is in the process of being associated with its world				*/
+	/** Whether this level is in the process of being associated with its world	(i.e. we are within AddToWorld for this level */
 	uint8										bIsAssociatingLevel:1;
+	/** Whether this level is in the process of being disassociated with its world (i.e. we are within RemoveFromWorld for this level */
+	uint8										bIsDisassociatingLevel : 1;
 	/** Whether this level should be fully added to the world before rendering his components	*/
 	uint8										bRequireFullVisibilityToRender:1;
 	/** Whether this level is specific to client, visibility state will not be replicated to server	*/
@@ -693,7 +695,7 @@ private:
 	TArray<FPendingAutoReceiveInputActor> PendingAutoReceiveInputActors;
 
 	/** List of replicated static actors that have been destroyed. Used by net drivers to replicate destruction to clients. */
-	UPROPERTY()
+	UPROPERTY(Transient)
 	TArray<FReplicatedStaticActorDestructionInfo> DestroyedReplicatedStaticActors;
 
 #if WITH_EDITORONLY_DATA
