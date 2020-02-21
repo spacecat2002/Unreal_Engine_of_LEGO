@@ -48,6 +48,10 @@
 #include "Android/AndroidPlatformStackWalk.h"
 #include "Android/AndroidSignals.h"
 
+#include "Misc/OutputDevice.h"
+#include "Logging/LogMacros.h"
+#include "Misc/OutputDeviceError.h"
+
 #if USE_ANDROID_JNI
 extern AAssetManager * AndroidThunkCpp_GetAssetManager();
 extern int32 GAndroidPackageVersion;
@@ -893,7 +897,8 @@ static constexpr int32 TargetSignals[] =
 	SIGFPE,
 	SIGBUS,
 	SIGSEGV,
-	SIGSYS
+	SIGSYS,
+	SIGABRT
 };
 static constexpr int32 NumTargetSignals = UE_ARRAY_COUNT(TargetSignals);
 
@@ -913,6 +918,8 @@ static const char* SignalToString(int32 Signal)
 			return "SIGSEGV";
 		case SIGSYS:
 			return "SIGSYS";
+		case SIGABRT:
+			return "SIGABRT";
 		default:
 			return FAndroidCrashContext::ItoANSI(Signal,16, 16);
 	}
@@ -1214,6 +1221,20 @@ bool FAndroidMisc::IsInSignalHandler()
 void FAndroidMisc::TriggerNonFatalCrashHandler(ECrashContextType InType, const FString& Message)
 {
 	check(InType == ECrashContextType::Ensure);
+
+	if (GLog)
+	{
+		GLog->PanicFlushThreadedLogs();
+		GLog->Flush();
+	}
+	if (GWarn)
+	{
+		GWarn->Flush();
+	}
+	if (GError)
+	{
+		GError->Flush();
+	}
 
 	FAndroidCrashContext CrashContext(InType, *Message);
 
