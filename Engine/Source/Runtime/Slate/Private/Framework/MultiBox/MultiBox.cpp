@@ -414,6 +414,7 @@ TSharedPtr<FMultiBlock> FMultiBox::MakeMultiBlockFromCommand( TSharedPtr<const F
 		switch ( Type )
 		{
 		case EMultiBoxType::ToolBar:
+		case EMultiBoxType::UniformToolBar:
 			{
 				NewBlock = MakeShareable( new FToolBarButtonBlock( CommandInfo, CommandList ) );
 			}
@@ -618,10 +619,8 @@ void SMultiBoxWidget::AddBlockWidget( const FMultiBlock& Block, TSharedPtr<SHori
 	switch (MultiBox->GetType())
 	{
 	case EMultiBoxType::MenuBar:
-	case EMultiBoxType::ToolMenuBar:
 	case EMultiBoxType::ToolBar:
 		{
-
 			HorizontalBox->AddSlot()
 			.AutoWidth()
 			.Padding(0)
@@ -733,7 +732,6 @@ void SMultiBoxWidget::BuildMultiBoxWidget()
 	{
 	case EMultiBoxType::MenuBar:
 	case EMultiBoxType::ToolBar:
-	case EMultiBoxType::ToolMenuBar:
 		{
 			MainWidget = HorizontalBox = ClippedHorizontalBox = SNew(SClippingHorizontalBox)
 				.BackgroundBrush(BackgroundBrush)
@@ -915,7 +913,6 @@ void SMultiBoxWidget::BuildMultiBoxWidget()
 	{
 	case EMultiBoxType::MenuBar:
 	case EMultiBoxType::ToolBar:
-	case EMultiBoxType::ToolMenuBar:
 		{
 			RootBorder =
 				SNew( SBorder )

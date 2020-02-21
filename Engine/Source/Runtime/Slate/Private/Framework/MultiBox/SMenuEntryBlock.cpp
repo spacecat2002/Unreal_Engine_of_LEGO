@@ -944,7 +944,7 @@ void SMenuEntryBlock::BuildMultiBlockWidget(const ISlateStyle* StyleSet, const F
 			ChildSlot.AttachWidget( BuildMenuEntryWidget( BuildParams ) );
 		}
 	}
-	else if( ensure( MultiBox->GetType() == EMultiBoxType::MenuBar || MultiBox->GetType() == EMultiBoxType::ToolMenuBar ) )
+	else if( ensure( MultiBox->GetType() == EMultiBoxType::MenuBar) )
 	{
 		// Menu bar items cannot be submenus
 		check( !MenuEntryBlock->bIsSubMenu );
