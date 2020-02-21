@@ -99,8 +99,13 @@ public:
 	
 	void Init(TArrayView<const uint8> InCode, FMetalCodeHeader& Header, mtlpp::Library InLibrary = nil);
 
+	void Destroy();
+
 	/** Destructor */
-	virtual ~TMetalBaseShader();
+	virtual ~TMetalBaseShader()
+	{
+		Destroy();
+	}
 
 	/** @returns The Metal source code as an NSString if available or nil if not. Will dynamically decompress from compressed data on first invocation. */
 	inline NSString* GetSourceCode()

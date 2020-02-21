@@ -44,6 +44,6 @@ private:
 	FSerializedShaderArchive SerializedShaders;
 	TArray<uint8> ShaderCode;
 #if !UE_BUILD_SHIPPING
-	FMetalShaderDebugZipFile* DebugFile;
+	class FMetalShaderDebugZipFile* DebugFile;
 #endif
 };
