@@ -232,8 +232,6 @@ const FViewInfo* UpdateEditorPrimitiveView(
 
 	EditorView->CachedViewUniformShaderParameters = MoveTemp(ViewParameters);
 
-	SceneUniformBuffers.UpdateViewUniformBufferImmediate(*EditorView->CachedViewUniformShaderParameters);
-
 	EditorView->ViewUniformBuffer = SceneUniformBuffers.ViewUniformBuffer;
 
 	return EditorView;
@@ -320,11 +318,11 @@ FScreenPassTexture AddEditorPrimitivePass(
 					View,
 					EditorPrimitivesViewport,
 					SceneDepthViewport,
-					FScreenPassPipelineState(*PopulateDepthVertexShader, *PopulateDepthPixelShader, FScreenPassPipelineState::FDefaultBlendState::GetRHI(), TStaticDepthStencilState<true, CF_Always>::GetRHI()),
+					FScreenPassPipelineState(PopulateDepthVertexShader, PopulateDepthPixelShader, FScreenPassPipelineState::FDefaultBlendState::GetRHI(), TStaticDepthStencilState<true, CF_Always>::GetRHI()),
 					EScreenPassDrawFlags::None,
 					[&](FRHICommandList&)
 				{
-					SetShaderParameters(RHICmdList, *PopulateDepthPixelShader, PopulateDepthPixelShader->GetPixelShader(), *PassParameters);
+					SetShaderParameters(RHICmdList, PopulateDepthPixelShader, PopulateDepthPixelShader.GetPixelShader(), *PassParameters);
 				});
 			}
 			else
@@ -413,7 +411,7 @@ FScreenPassTexture AddEditorPrimitivePass(
 		View,
 		OutputViewport,
 		ColorViewport,
-		*PixelShader,
+		PixelShader,
 		PassParameters);
 
 	return MoveTemp(Output);

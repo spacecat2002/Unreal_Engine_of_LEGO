@@ -44,7 +44,7 @@ FChunkCacheWorker::FChunkCacheWorker(FArchive* InReader, const TCHAR* Filename)
 		if (bEnableMultithreading)
 		{
 			QueuedRequestsEvent = FPlatformProcess::GetSynchEventFromPool();
-			ChunkRequestAvailable = FPlatformProcess::GetSynchEventFromPool();
+			ChunkRequestAvailable = FPlatformProcess::GetSynchEventFromPool(true);
 			Thread = FRunnableThread::Create(this, TEXT("FChunkCacheWorker"), 0, TPri_BelowNormal);
 		}
 	}
@@ -211,6 +211,7 @@ int32 FChunkCacheWorker::ProcessQueue()
 				if (ChunkRequestAvailable != nullptr)
 				{
 					ChunkRequestAvailable->Trigger();
+					ChunkRequestAvailable->Reset();
 				}
 			}
 		}
@@ -251,7 +252,7 @@ bool FChunkCacheWorker::CheckSignature(const FChunkRequest& ChunkInfo)
 			}
 
 			const FPakChunkSignatureCheckFailedData Data(Reader->GetArchiveName(), Signatures->ChunkHashes[ChunkInfo.Index], ChunkHash, ChunkInfo.Index);
-			FPakPlatformFile::GetPakChunkSignatureCheckFailedHandler().Broadcast(Data);
+			FPakPlatformFile::BroadcastPakChunkSignatureCheckFailure(Data);
 		}
 	}
 	

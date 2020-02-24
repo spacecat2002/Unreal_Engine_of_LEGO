@@ -110,14 +110,21 @@ static inline void UpdateDerivedState(uniform FJointSolverGaussSeidel * uniform 
 {
 	M->Xs[Index] = M->Ps[Index] + VectorQuaternionRotateVector(M->Qs[Index], M->XLs[Index].Translation);
 	M->Rs[Index] = VectorQuaternionMultiply2(M->Qs[Index], M->XLs[Index].Rotation);
+
+	const uniform FVector4 Rs1Shortest = VectorQuaternionEnforceShortestArcWith(M->Rs[1], M->Rs[0]);
+	M->Rs[1] = Rs1Shortest;
 }
 
 static inline void UpdateDerivedState(uniform FJointSolverGaussSeidel * uniform M)
 {
 	M->Xs[0] = M->Ps[0] + VectorQuaternionRotateVector(M->Qs[0], M->XLs[0].Translation);
 	M->Xs[1] = M->Ps[1] + VectorQuaternionRotateVector(M->Qs[1], M->XLs[1].Translation);
-	M->Rs[0] = VectorQuaternionMultiply2(M->Qs[0], M->XLs[0].Rotation);
-	M->Rs[1] = VectorQuaternionMultiply2(M->Qs[1], M->XLs[1].Rotation);
+
+	const uniform FVector4 Rs0 = VectorQuaternionMultiply2(M->Qs[0], M->XLs[0].Rotation);
+	const uniform FVector4 Rs1 = VectorQuaternionMultiply2(M->Qs[1], M->XLs[1].Rotation);
+	const uniform FVector4 Rs1Shortest = VectorQuaternionEnforceShortestArcWith(Rs1, Rs0);
+	M->Rs[0] = Rs0;
+	M->Rs[1] = Rs1Shortest;
 }
 
 static inline void ApplyPositionDelta(
@@ -152,7 +159,10 @@ static inline void ApplyRotationDelta(
 
 	const uniform FVector4 QsNorm = VectorNormalizeQuaternion(Qs + DQ);
 
-	M->Qs[1] = QsNorm;
+	M->Qs[Index] = QsNorm;
+
+	const uniform FVector4 Qs1Shortest = VectorQuaternionEnforceShortestArcWith(M->Qs[1], M->Qs[0]);
+	M->Qs[1] = Qs1Shortest;
 }
 
 static inline void ApplyRotationDelta(
@@ -278,16 +288,16 @@ export void ApplyRotationConstraintSoftKD(
 
 	// If we are correcting the position, we need to adjust the constraint effective mass using parallel axis theorem
 	// @todo(ccaulfield): the IMs here are constant per constraint...pre-build and cache it
-	if (M->AngularPositionCorrection > 0)
-	{
-		const uniform FVector LinearAxis1 = VectorCross(M->Xs[DIndex] - M->Ps[DIndex], Axis);
-		const uniform float LinearAxisLen1Sq = VectorSizeSquared(LinearAxis1);
-		if (LinearAxisLen1Sq > KINDA_SMALL_NUMBER)
-		{
-			const uniform float IM1 = M->InvMs[DIndex] / LinearAxisLen1Sq;
-			II1 = II1 * IM1 / (II1 + IM1);
-		}
-	}
+	////if (M->AngularPositionCorrection > 0)
+	//{
+	//	const uniform FVector LinearAxis1 = VectorCross(M->Xs[DIndex] - M->Ps[DIndex], Axis);
+	//	const uniform float LinearAxisLen1Sq = VectorSizeSquared(LinearAxis1);
+	//	if (LinearAxisLen1Sq > KINDA_SMALL_NUMBER)
+	//	{
+	//		const uniform float IM1 = M->InvMs[DIndex] / LinearAxisLen1Sq;
+	//		II1 = II1 * IM1 / (II1 + IM1);
+	//	}
+	//}
 	const uniform float II = II1;
 
 	// Damping angular velocity
@@ -315,15 +325,15 @@ export void ApplyRotationConstraintSoftKD(
 	// This significantly improves angular stiffness at lower iterations, although the same effect
 	// is achieved by increasing iterations.
 	// @todo(ccaulfield): this position correction needs to have components in direction of inactive position constraints removed
-	if (M->AngularPositionCorrection > 0)
-	{
-		const uniform FVector PrevX0 = M->Xs[KIndex];
-		const uniform FVector PrevX1 = M->Xs[DIndex];
-		UpdateDerivedState(M);
-
-		const uniform FVector DP1 = (PrevX1 - PrevX0) - (M->Xs[DIndex] - M->Xs[KIndex]);
-		ApplyPositionDelta(M, DIndex, M->AngularPositionCorrection, DP1);
-	}
+	//if (M->AngularPositionCorrection > 0)
+	//{
+	//	const uniform FVector PrevX0 = M->Xs[KIndex];
+	//	const uniform FVector PrevX1 = M->Xs[DIndex];
+	//	UpdateDerivedState(M);
+	//
+	//	const uniform FVector DP1 = (PrevX1 - PrevX0) - (M->Xs[DIndex] - M->Xs[KIndex]);
+	//	ApplyPositionDelta(M, DIndex, M->AngularPositionCorrection, DP1);
+	//}
 
 	UpdateDerivedState(M, DIndex);
 }
@@ -350,23 +360,23 @@ export void ApplyRotationConstraintSoftDD(
 
 	// If we are correcting the position, we need to adjust the constraint effective mass using parallel axis theorem
 	// @todo(ccaulfield): the IMs here are constant per constraint...pre-build and cache it
-	if (M->AngularPositionCorrection > 0)
-	{
-		const uniform FVector LinearAxis0 = VectorCross(M->Xs[0] - M->Ps[0], Axis);
-		const uniform float LinearAxisLen0Sq = VectorSizeSquared(LinearAxis0);
-		if (LinearAxisLen0Sq > KINDA_SMALL_NUMBER)
-		{
-			const uniform float IM0 = M->InvMs[0] / LinearAxisLen0Sq;
-			II0 = II0 * IM0 / (II0 + IM0);
-		}
-		const uniform FVector LinearAxis1 = VectorCross(M->Xs[1] - M->Ps[1], Axis);
-		const uniform float LinearAxisLen1Sq = VectorSizeSquared(LinearAxis1);
-		if (LinearAxisLen1Sq > KINDA_SMALL_NUMBER)
-		{
-			const uniform float IM1 = M->InvMs[1] / LinearAxisLen1Sq;
-			II1 = II1 * IM1 / (II1 + IM1);
-		}
-	}
+	//if (M->AngularPositionCorrection > 0)
+	//{
+	//	const uniform FVector LinearAxis0 = VectorCross(M->Xs[0] - M->Ps[0], Axis);
+	//	const uniform float LinearAxisLen0Sq = VectorSizeSquared(LinearAxis0);
+	//	if (LinearAxisLen0Sq > KINDA_SMALL_NUMBER)
+	//	{
+	//		const uniform float IM0 = M->InvMs[0] / LinearAxisLen0Sq;
+	//		II0 = II0 * IM0 / (II0 + IM0);
+	//	}
+	//	const uniform FVector LinearAxis1 = VectorCross(M->Xs[1] - M->Ps[1], Axis);
+	//	const uniform float LinearAxisLen1Sq = VectorSizeSquared(LinearAxis1);
+	//	if (LinearAxisLen1Sq > KINDA_SMALL_NUMBER)
+	//	{
+	//		const uniform float IM1 = M->InvMs[1] / LinearAxisLen1Sq;
+	//		II1 = II1 * IM1 / (II1 + IM1);
+	//	}
+	//}
 	const uniform float II = (II0 + II1);
 
 	// Damping angular velocity
@@ -397,17 +407,17 @@ export void ApplyRotationConstraintSoftDD(
 	// This significantly improves angular stiffness at lower iterations, although the same effect
 	// is achieved by increasing iterations.
 	// @todo(ccaulfield): this position correction needs to have components in direction of inactive position constraints removed
-	if (M->AngularPositionCorrection > 0)
-	{
-		const uniform FVector PrevX0 = M->Xs[0];
-		const uniform FVector PrevX1 = M->Xs[1];
-		UpdateDerivedState(M);
-
-		const uniform FVector DX = (M->Xs[1] - M->Xs[0]) - (PrevX1 - PrevX0);
-		const uniform FVector DP0 = DX * (M->InvMs[0] / (M->InvMs[0] + M->InvMs[1]));
-		const uniform FVector DP1 = DX * (-M->InvMs[1] / (M->InvMs[0] + M->InvMs[1]));
-		ApplyPositionDelta(M, M->AngularPositionCorrection, DP0, DP1);
-	}
+	//if (M->AngularPositionCorrection > 0)
+	//{
+	//	const uniform FVector PrevX0 = M->Xs[0];
+	//	const uniform FVector PrevX1 = M->Xs[1];
+	//	UpdateDerivedState(M);
+	//
+	//	const uniform FVector DX = (M->Xs[1] - M->Xs[0]) - (PrevX1 - PrevX0);
+	//	const uniform FVector DP0 = DX * (M->InvMs[0] / (M->InvMs[0] + M->InvMs[1]));
+	//	const uniform FVector DP1 = DX * (-M->InvMs[1] / (M->InvMs[0] + M->InvMs[1]));
+	//	ApplyPositionDelta(M, M->AngularPositionCorrection, DP0, DP1);
+	//}
 
 	UpdateDerivedState(M);
 }

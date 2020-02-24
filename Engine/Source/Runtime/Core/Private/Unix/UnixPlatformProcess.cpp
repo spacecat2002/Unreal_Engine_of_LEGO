@@ -187,6 +187,30 @@ const TCHAR* FUnixPlatformProcess::UserName(bool bOnlyAlphaNumeric)
 	return Name;
 }
 
+const TCHAR* FUnixPlatformProcess::UserTempDir()
+{
+	// Use $TMPDIR if its set otherwise fallback to /var/tmp as Windows defaults to %TEMP% which does not get cleared on reboot.
+	static bool bHaveTemp = false;
+	static TCHAR CachedResult[PlatformProcessLimits::MaxUserHomeDirLength] = { 0 };
+
+	if (!bHaveTemp)
+	{
+		const char* TmpDirValue = secure_getenv("TMPDIR");
+		if (TmpDirValue)
+		{
+			FCString::Strcpy(CachedResult, UTF8_TO_TCHAR(TmpDirValue));
+		}
+		else
+		{
+			FCString::Strcpy(CachedResult, TEXT("/var/tmp"));
+		}
+
+		bHaveTemp = true;
+	}
+
+	return CachedResult;
+}
+
 const TCHAR* FUnixPlatformProcess::UserDir()
 {
 	// The UserDir is where user visible files (such as game projects) live.
@@ -319,6 +343,16 @@ bool FUnixPlatformProcess::SetProcessLimits(EProcessResource::Type Resource, uin
 	return true;
 }
 
+const FString FUnixPlatformProcess::GetModulesDirectory()
+{
+	static FString CachedModulePath;
+	if (CachedModulePath.IsEmpty())
+	{
+		CachedModulePath = FPaths::GetPath(FString(ExecutablePath()));
+	}
+
+	return CachedModulePath;
+}
 
 const TCHAR* FUnixPlatformProcess::ExecutablePath()
 {

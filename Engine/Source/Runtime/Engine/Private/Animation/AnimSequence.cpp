@@ -2224,14 +2224,14 @@ void UAnimSequence::RequestAnimCompression(FRequestAnimCompressionParams Params)
 		// For debugging DDC/Compression issues		
 		const bool bSkipDDC = false;
 
-		if (bSkipDDC || !GetDerivedDataCacheRef().GetSynchronous(*FinalDDCKey, OutData))
+		if (bSkipDDC || !GetDerivedDataCacheRef().GetSynchronous(*FinalDDCKey, OutData, AnimCompressor->GetDebugContextString()))
 		{
 			// Data does not exist, need to build it.
 			// Filter RAW data to get rid of mismatched tracks (translation/rotation data with a different number of keys than there are frames)
 			// No trivial key removal is done at this point (impossible error metrics of -1), since all of the techniques will perform it themselves
 			CompressRawAnimData(-1.0f, -1.0f);
 
-			TSharedRef<FCompressibleAnimData> CompressibleData = MakeShared<FCompressibleAnimData>(this, bPerformStripping);
+			FCompressibleAnimRef CompressibleData = MakeShared<FCompressibleAnimData, ESPMode::ThreadSafe>(this, bPerformStripping);
 			AnimCompressor->SetCompressibleData(CompressibleData);
 
 			if (bSkipDDC || (CompressCommandletVersion == INDEX_NONE))
@@ -2256,8 +2256,12 @@ void UAnimSequence::RequestAnimCompression(FRequestAnimCompressionParams Params)
 			bCompressedDataFromDDC = true;
 		}
 
-		delete AnimCompressor; // Would really like to do auto mem management but GetDerivedDataCacheRef().GetSynchronous expects a pointer it can delete
-		AnimCompressor = nullptr;
+		if (AnimCompressor)
+		{
+			// Would really like to do auto mem management but GetDerivedDataCacheRef().GetSynchronous expects a pointer it can delete
+			delete AnimCompressor;
+			AnimCompressor = nullptr;
+		}
 	}
 
 	if (OutData.Num() > 0) // Haven't async compressed

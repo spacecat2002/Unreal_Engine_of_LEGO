@@ -39,22 +39,30 @@ public:
 	virtual void AddSection(UMovieSceneSection& Section) override;
 	virtual bool SupportsType(TSubclassOf<UMovieSceneSection> SectionClass) const override;
 	virtual UMovieSceneSection* CreateNewSection() override;
+	virtual bool SupportsMultipleRows() const override;
+	virtual EMovieSceneTrackEasingSupportFlags SupportsEasing(FMovieSceneSupportsEasingParams& Params) const override;
 	virtual const TArray<UMovieSceneSection*>& GetAllSections() const override;
 	virtual void RemoveSection(UMovieSceneSection& Section) override;
 	virtual void RemoveSectionAt(int32 SectionIndex) override;
 	virtual void RemoveAllAnimationData() override;
+	virtual FMovieSceneTrackRowSegmentBlenderPtr GetRowSegmentBlender() const override;
+	virtual FMovieSceneTrackSegmentBlenderPtr GetTrackSegmentBlender() const override;
 
 #if WITH_EDITORONLY_DATA
 	virtual FText GetDefaultDisplayName() const override;
 #endif
 
 #if WITH_EDITOR
-	virtual void OnSectionMoved(UMovieSceneSection& Section) override;
+	virtual void OnSectionMoved(UMovieSceneSection& Section, const FMovieSceneSectionMovedParams& Params) override;
 #endif
 
 protected:
 
 	FFrameNumber FindEndTimeForCameraCut(FFrameNumber StartTime);
+
+public:
+	UPROPERTY()
+	bool bCanBlend;
 
 private:
 

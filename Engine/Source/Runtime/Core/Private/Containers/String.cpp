@@ -2,6 +2,7 @@
 
 #include "Containers/UnrealString.h"
 
+#include "Containers/StringView.h"
 #include "CoreGlobals.h"
 #include "CoreTypes.h"
 #include "HAL/UnrealMemory.h"
@@ -10,8 +11,8 @@
 #include "Math/UnrealMathUtility.h"
 #include "Misc/AssertionMacros.h"
 #include "Misc/ByteSwap.h"
-#include "Misc/StringView.h"
 #include "Misc/VarArgs.h"
+#include "String/HexToBytes.h"
 #include "Templates/UnrealTemplate.h"
 
 /* FString implementation
@@ -148,6 +149,13 @@ FString& FString::operator=(const FStringView& Other)
 		CopyAssignItems(DataPtr, OtherData, OtherLen);
 		DataPtr[OtherLen] = TEXT('\0');
 	}
+	return *this;
+}
+
+FString& FString::operator+=(const FStringView& Str)
+{
+	CheckInvariants();
+	AppendChars(Str.GetData(), Str.Len());
 	return *this;
 }
 
@@ -982,7 +990,7 @@ int32 FString::ParseIntoArrayLines(TArray<FString>& OutArray, bool InCullEmpty) 
 	return ParseIntoArray(OutArray, LineEndings, NumLineEndings, InCullEmpty);
 }
 
-int32 FString::ParseIntoArray(TArray<FString>& OutArray, const TCHAR** DelimArray, int32 NumDelims, bool InCullEmpty) const
+int32 FString::ParseIntoArray(TArray<FString>& OutArray, const TCHAR* const * DelimArray, int32 NumDelims, bool InCullEmpty) const
 {
 	// Make sure the delimit string is not null or empty
 	check(DelimArray);
@@ -1407,6 +1415,13 @@ FArchive& operator<<( FArchive& Ar, FString& A )
 				// read in the unicode string
 				auto Passthru = StringMemoryPassthru<UCS2CHAR>(A.Data.GetData(), SaveNum, SaveNum);
 				Ar.Serialize(Passthru.Get(), SaveNum * sizeof(UCS2CHAR));
+				if (Ar.IsByteSwapping())
+				{
+					for (int32 CharIndex = 0; CharIndex < SaveNum; ++CharIndex)
+					{
+						Passthru.Get()[CharIndex] = ByteSwap(Passthru.Get()[CharIndex]);
+					}
+				}
 				// Ensure the string has a null terminator
 				Passthru.Get()[SaveNum-1] = '\0';
 				Passthru.Apply();
@@ -1421,7 +1436,7 @@ FArchive& operator<<( FArchive& Ar, FString& A )
 				if(A.FindChar(0xffff, Index))
 				{
 					A[Index] = '\0';
-					A.TrimToNullTerminator();		
+					A.TrimToNullTerminator();
 				}
 			}
 			else
@@ -1456,7 +1471,19 @@ FArchive& operator<<( FArchive& Ar, FString& A )
 
 			if (Num)
 			{
-				Ar.Serialize((void*)UTF16String.Get(), sizeof(UTF16CHAR) * Num);
+				if (!Ar.IsByteSwapping())
+				{
+					Ar.Serialize((void*)UTF16String.Get(), sizeof(UTF16CHAR) * Num);
+				}
+				else
+				{
+					TArray<UTF16CHAR> Swapped(UTF16String.Get(), Num);
+					for (int32 CharIndex = 0; CharIndex < Num; ++CharIndex)
+					{
+						Swapped[CharIndex] = ByteSwap(Swapped[CharIndex]);
+					}
+					Ar.Serialize((void*)Swapped.GetData(), sizeof(UTF16CHAR) * Num);
+				}
 			}
 		}
 		else
@@ -1472,6 +1499,11 @@ FArchive& operator<<( FArchive& Ar, FString& A )
 	}
 
 	return Ar;
+}
+
+int32 HexToBytes(const FString& HexString, uint8* OutBytes)
+{
+	return UE::String::HexToBytes(HexString, OutBytes);
 }
 
 int32 FindMatchingClosingParenthesis(const FString& TargetString, const int32 StartSearch)

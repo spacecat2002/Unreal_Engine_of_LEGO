@@ -135,6 +135,7 @@ public:
 	static uint32 GetCurrentProcessId();
 	static uint32 GetCurrentCoreNumber();
 	static void SetThreadAffinityMask( uint64 AffinityMask );
+	static void SetThreadName( const TCHAR* ThreadName );
 	static const TCHAR* BaseDir();
 	static const TCHAR* UserDir();
 	static const TCHAR* UserTempDir();
@@ -219,5 +220,7 @@ private:
 	static void* LoadLibraryWithSearchPaths(const FString& FileName, const TArray<FString>& SearchPaths);
 };
 
-
+#if WINDOWS_USE_FEATURE_PLATFORMPROCESS_CLASS
 typedef FWindowsPlatformProcess FPlatformProcess;
+#endif
+

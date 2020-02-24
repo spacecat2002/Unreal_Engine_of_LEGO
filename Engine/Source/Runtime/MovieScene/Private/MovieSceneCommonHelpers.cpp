@@ -125,6 +125,82 @@ void MovieSceneHelpers::FixupConsecutiveSections(TArray<UMovieSceneSection*>& Se
 	SortConsecutiveSections(Sections);
 }
 
+void MovieSceneHelpers::FixupConsecutiveBlendingSections(TArray<UMovieSceneSection*>& Sections, UMovieSceneSection& Section, bool bDelete)
+{
+	int32 SectionIndex = INDEX_NONE;
+
+	TRange<FFrameNumber> SectionRange = Section.GetRange();
+
+	if (Sections.Find(&Section, SectionIndex))
+	{
+		// Find the previous section and extend it to take the place of the section being deleted
+		int32 PrevSectionIndex = SectionIndex - 1;
+		if (Sections.IsValidIndex(PrevSectionIndex))
+		{
+			UMovieSceneSection* PrevSection = Sections[PrevSectionIndex];
+			if (PrevSection->GetRowIndex() == Section.GetRowIndex())
+			{
+				PrevSection->Modify();
+
+				if (bDelete)
+				{
+					// The current section was deleted... extend the previous section to fill the gap.
+					PrevSection->SetEndFrame(SectionRange.GetUpperBound());
+				}
+				else
+				{
+					// If we made a gap: adjust the previous section's end time so that it ends wherever the current section's ease-in ends.
+					// If we created an overlap: calls to UMovieSceneTrack::UpdateEasing have already set the easing curves correctly based on overlaps.
+					const FFrameNumber GapOrOverlap = SectionRange.GetLowerBoundValue() - PrevSection->GetRange().GetUpperBoundValue();
+					if (GapOrOverlap > 0)
+					{
+						// It's a gap!
+						PrevSection->SetEndFrame(TRangeBound<FFrameNumber>::Exclusive(SectionRange.GetLowerBoundValue() + Section.Easing.GetEaseInDuration()));
+					}
+				}
+			}
+		}
+		else
+		{
+			if (!bDelete)
+			{
+				// The given section is the first section. Let's clear its auto ease-in since there's no overlap anymore with a previous section.
+				Section.Easing.AutoEaseInDuration = 0;
+			}
+		}
+
+		// Find the next section and adjust its start time to match the moved/resized section's new end time.
+		if (!bDelete)
+		{
+			int32 NextSectionIndex = SectionIndex + 1;
+			if (Sections.IsValidIndex(NextSectionIndex))
+			{
+				UMovieSceneSection* NextSection = Sections[NextSectionIndex];
+				if (NextSection->GetRowIndex() == Section.GetRowIndex())
+				{
+					NextSection->Modify();
+
+					// If we made a gap: adjust the next section's start time so that it lines up with the current section's end.
+					// If we created an overlap: adjust the next section's ease-in so it ends where the current section ends.
+					const FFrameNumber GapOrOverlap = NextSection->GetRange().GetLowerBoundValue() - SectionRange.GetUpperBoundValue();
+					if (GapOrOverlap > 0)
+					{
+						// It's a gap!
+						NextSection->SetStartFrame(TRangeBound<FFrameNumber>::Inclusive(SectionRange.GetUpperBoundValue() - NextSection->Easing.GetEaseInDuration()));
+					}
+				}
+			}
+			else
+			{
+				// The given section is the last section. Let's clear its auto ease-out since there's no overlap anymore with a next section.
+				Section.Easing.AutoEaseOutDuration = 0;
+			}
+		}
+	}
+
+	SortConsecutiveSections(Sections);
+}
+
 
 void MovieSceneHelpers::GetDescendantMovieScenes(UMovieSceneSequence* InSequence, TArray<UMovieScene*> & InMovieScenes)
 {
@@ -303,7 +379,7 @@ float MovieSceneHelpers::CalculateWeightForBlending(UMovieSceneSection* SectionT
 }
 
 FTrackInstancePropertyBindings::FTrackInstancePropertyBindings( FName InPropertyName, const FString& InPropertyPath, const FName& InFunctionName, const FName& InNotifyFunctionName )
-    : PropertyPath( InPropertyPath )
+	: PropertyPath( InPropertyPath )
 	, NotifyFunctionName(InNotifyFunctionName)
 	, PropertyName( InPropertyName )
 {

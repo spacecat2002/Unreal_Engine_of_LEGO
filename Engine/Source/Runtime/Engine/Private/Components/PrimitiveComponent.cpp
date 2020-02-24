@@ -84,6 +84,13 @@ static FAutoConsoleVariableRef CVarHitDistanceTolerance(
 	TEXT("Hits that are less than this distance are ignored."),
 	ECVF_Default);
 
+static int32 AlwaysCreatePhysicsStateConversionHackCVar = 0;
+static FAutoConsoleVariableRef CVarAlwaysCreatePhysicsStateConversionHack(
+	TEXT("p.AlwaysCreatePhysicsStateConversionHack"),
+	AlwaysCreatePhysicsStateConversionHackCVar,
+	TEXT("Hack to convert actors with query and ignore all to always create physics."),
+	ECVF_Default);
+
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 int32 CVarShowInitialOverlaps = 0;
 FAutoConsoleVariableRef CVarRefShowInitialOverlaps(
@@ -371,6 +378,7 @@ UPrimitiveComponent::UPrimitiveComponent(const FObjectInitializer& ObjectInitial
 	bReceiveMobileCSMShadows = true;
 #if WITH_EDITORONLY_DATA
 	bEnableAutoLODGeneration = true;
+	HitProxyPriority = HPP_World;
 #endif // WITH_EDITORONLY_DATA
 }
 
@@ -529,7 +537,7 @@ FORCEINLINE_DEBUGGABLE bool OwnerLevelHasRegisteredStaticComponentsInStreamingMa
 	return false;
 }
 
-void UPrimitiveComponent::CreateRenderState_Concurrent()
+void UPrimitiveComponent::CreateRenderState_Concurrent(FRegisterComponentContext* Context)
 {
 	// Make sure cached cull distance is up-to-date if its zero and we have an LD cull distance
 	if( CachedMaxDrawDistance == 0.f && LDMaxDrawDistance > 0.f )
@@ -538,14 +546,21 @@ void UPrimitiveComponent::CreateRenderState_Concurrent()
 		CachedMaxDrawDistance = bNeverCull ? 0.f : LDMaxDrawDistance;
 	}
 
-	Super::CreateRenderState_Concurrent();
+	Super::CreateRenderState_Concurrent(Context);
 
 	UpdateBounds();
 
 	// If the primitive isn't hidden and the detail mode setting allows it, add it to the scene.
 	if (ShouldComponentAddToScene())
 	{
-		GetWorld()->Scene->AddPrimitive(this);
+		if (Context != nullptr)
+		{
+			Context->AddPrimitiveBatches.Add(this);
+		}
+		else
+		{
+			GetWorld()->Scene->AddPrimitive(this);
+		}
 	}
 
 	// Components are either registered as static or dynamic in the streaming manager.
@@ -729,6 +744,16 @@ void UPrimitiveComponent::OnCreatePhysicsState()
 	if(!BodyInstance.IsValidBodyInstance())
 	{
 		//UE_LOG(LogPrimitiveComponent, Warning, TEXT("Creating Physics State (%s : %s)"), *GetNameSafe(GetOuter()),  *GetName());
+
+		if (AlwaysCreatePhysicsStateConversionHackCVar > 0)
+		{
+			static FCollisionResponseContainer IgnoreAll(ECR_Ignore);
+			if (BodyInstance.GetCollisionEnabled() == ECollisionEnabled::QueryOnly && BodyInstance.GetResponseToChannels() == IgnoreAll)
+			{
+				bAlwaysCreatePhysicsState = true;
+				BodyInstance.SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			}
+		}
 
 		UBodySetup* BodySetup = GetBodySetup();
 		if(BodySetup)
