@@ -20,5 +20,5 @@ struct RIGVM_API FRigVMStruct
 
 public:
 
-	FORCEINLINE virtual int32 GetMaxArraySize(const FName& InParameterName, const FRigVMUserDataArray& RigVMUserData) { return INDEX_NONE; }
+	FORCEINLINE virtual int32 GetArraySize(const FName& InParameterName, const FRigVMUserDataArray& RigVMUserData) { return INDEX_NONE; }
 };
