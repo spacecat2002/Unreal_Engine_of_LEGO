@@ -2,6 +2,7 @@
 
 
 #include "MetalRHIPrivate.h"
+#include "MetalGraphicsPipelineState.h"
 #include "MetalStateCache.h"
 #include "MetalProfiler.h"
 #include "MetalCommandBuffer.h"
@@ -1184,6 +1185,17 @@ void FMetalStateCache::SetGraphicsPipelineState(FMetalGraphicsPipelineState* Sta
 			}
 		}
 	}
+}
+
+FMetalShaderPipeline* FMetalStateCache::GetPipelineState() const
+{
+	return GraphicsPSO->GetPipeline(GetIndexType());
+}
+
+EPrimitiveType FMetalStateCache::GetPrimitiveType()
+{
+	check(IsValidRef(GraphicsPSO));
+	return GraphicsPSO->GetPrimitiveType();
 }
 
 void FMetalStateCache::SetIndexType(EMetalIndexType InIndexType)

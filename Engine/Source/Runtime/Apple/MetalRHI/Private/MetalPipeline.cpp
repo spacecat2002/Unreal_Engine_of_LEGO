@@ -5,9 +5,10 @@
 =============================================================================*/
 
 #include "MetalRHIPrivate.h"
+#include "MetalGraphicsPipelineState.h"
+#include "MetalComputePipelineState.h"
 #include "MetalPipeline.h"
 #include "MetalShaderResources.h"
-#include "MetalResources.h"
 #include "MetalProfiler.h"
 #include "MetalCommandQueue.h"
 #include "MetalCommandBuffer.h"
@@ -1768,54 +1769,15 @@ static FMetalShaderPipeline* CreateMTLRenderPipeline(bool const bSync, FMetalGra
     return !bSync ? nil : Pipeline;
 }
 
-static FMetalShaderPipeline* GetMTLRenderPipeline(bool const bSync, FMetalGraphicsPipelineState const* State, const FGraphicsPipelineStateInitializer& Init, EMetalIndexType const IndexType)
+FMetalShaderPipeline* GetMTLRenderPipeline(bool const bSync, FMetalGraphicsPipelineState const* State, const FGraphicsPipelineStateInitializer& Init, EMetalIndexType const IndexType)
 {
 	return FMetalShaderPipelineCache::Get().GetRenderPipeline(bSync, State, Init, IndexType);
 }
 
-static void ReleaseMTLRenderPipeline(FMetalShaderPipeline* Pipeline)
+void ReleaseMTLRenderPipeline(FMetalShaderPipeline* Pipeline)
 {
 	FMetalShaderPipelineCache::Get().ReleaseRenderPipeline(Pipeline);
 }
-
-bool FMetalGraphicsPipelineState::Compile()
-{
-	FMemory::Memzero(PipelineStates);
-		for (uint32 i = 0; i < EMetalIndexType_Num; i++)
-		{
-			PipelineStates[i] = [GetMTLRenderPipeline(true, this, Initializer, (EMetalIndexType)i) retain];
-			if(!PipelineStates[i])
-			{
-				return false;
-			}
-		}
-	
-	return true;
-}
-
-FMetalGraphicsPipelineState::~FMetalGraphicsPipelineState()
-{
-	for (uint32 i = 0; i < EMetalIndexType_Num; i++)
-	{
-		ReleaseMTLRenderPipeline(PipelineStates[i]);
-		PipelineStates[i] = nil;
-	}
-}
-
-FMetalShaderPipeline* FMetalGraphicsPipelineState::GetPipeline(EMetalIndexType IndexType)
-{
-	check(IndexType < EMetalIndexType_Num);
-
-		if(!PipelineStates[IndexType])
-		{
-			PipelineStates[IndexType] = [GetMTLRenderPipeline(true, this, Initializer, IndexType) retain];
-		}
-	FMetalShaderPipeline* Pipe = PipelineStates[IndexType];
-
-		check(Pipe);
-    return Pipe;
-}
-
 
 FGraphicsPipelineStateRHIRef FMetalDynamicRHI::RHICreateGraphicsPipelineState(const FGraphicsPipelineStateInitializer& Initializer)
 {

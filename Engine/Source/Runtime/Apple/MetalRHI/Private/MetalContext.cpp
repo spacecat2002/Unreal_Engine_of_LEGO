@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "MetalRHIPrivate.h"
+#include "MetalGraphicsPipelineState.h"
 #include "Misc/App.h"
 #if PLATFORM_IOS
 #include "IOS/IOSAppDelegate.h"

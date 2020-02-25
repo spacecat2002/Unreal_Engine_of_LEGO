@@ -6,6 +6,8 @@
 #include "MetalCommandEncoder.h"
 #include "MetalPipeline.h"
 
+class FMetalGraphicsPipelineState;
+
 enum EMetalPipelineFlags
 {
 	EMetalPipelineFlagPipelineState = 1 << 0,
@@ -149,8 +151,8 @@ public:
 	mtlpp::RenderPassDescriptor GetRenderPassDescriptor(void) const { return RenderPassDesc; }
 	uint32 GetSampleCount(void) const { return SampleCount; }
     bool IsLinearBuffer(EMetalShaderStages ShaderStage, uint32 BindIndex);
-    FMetalShaderPipeline* GetPipelineState(void) const { return GraphicsPSO->GetPipeline(GetIndexType()); }
-	EPrimitiveType GetPrimitiveType() { check(IsValidRef(GraphicsPSO)); return GraphicsPSO->GetPrimitiveType(); }
+	FMetalShaderPipeline* GetPipelineState() const;
+	EPrimitiveType GetPrimitiveType();
 	mtlpp::VisibilityResultMode GetVisibilityResultMode() { return VisibilityMode; }
 	uint32 GetVisibilityResultOffset() { return VisibilityOffset; }
 	

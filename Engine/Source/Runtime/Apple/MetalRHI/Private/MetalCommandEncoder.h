@@ -15,6 +15,7 @@
 
 class FMetalCommandList;
 class FMetalCommandQueue;
+class FMetalGraphicsPipelineState;
 struct FMetalCommandBufferFence;
 
 /**

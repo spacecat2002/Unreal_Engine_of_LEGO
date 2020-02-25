@@ -302,66 +302,6 @@ struct FMetalRenderPipelineHash
 	uint64 TargetBits;
 };
 
-class FMetalGraphicsPipelineState : public FRHIGraphicsPipelineState
-{
-public:
-	virtual ~FMetalGraphicsPipelineState();
-
-	FMetalShaderPipeline* GetPipeline(EMetalIndexType IndexType);
-	
-	/** Cached vertex structure */
-	TRefCountPtr<FMetalVertexDeclaration> VertexDeclaration;
-	
-	/** Cached shaders */
-	TRefCountPtr<FMetalVertexShader> VertexShader;
-	TRefCountPtr<FMetalPixelShader> PixelShader;
-#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
-	TRefCountPtr<FMetalHullShader> HullShader;
-	TRefCountPtr<FMetalDomainShader> DomainShader;
-#endif
-#if PLATFORM_SUPPORTS_GEOMETRY_SHADERS
-	TRefCountPtr<FMetalGeometryShader> GeometryShader;
-#endif
-	
-	/** Cached state objects */
-	TRefCountPtr<FMetalDepthStencilState> DepthStencilState;
-	TRefCountPtr<FMetalRasterizerState> RasterizerState;
-	
-	inline EPrimitiveType GetPrimitiveType() { return Initializer.PrimitiveType; }
-	inline bool GetDepthBounds() const { return Initializer.bDepthBounds; }
-	
-	friend class FMetalDynamicRHI;
-	
-private:
-	// This can only be created through the RHI to make sure Compile() is called.
-	FMetalGraphicsPipelineState(const FGraphicsPipelineStateInitializer& Init) : Initializer(Init) {}
-	// Compiles the underlying gpu pipeline objects. This must be called before usage.
-	bool Compile();
-	// Needed to runtime refine shaders currently.
-	FGraphicsPipelineStateInitializer Initializer;
-	// Tessellation pipelines have three different variations for the indexing-style.
-	FMetalShaderPipeline* PipelineStates[EMetalIndexType_Num];
-};
-
-class FMetalComputePipelineState : public FRHIComputePipelineState
-{
-public:
-	FMetalComputePipelineState(FMetalComputeShader* InComputeShader)
-	: ComputeShader(InComputeShader)
-	{
-		check(InComputeShader);
-	}
-	virtual ~FMetalComputePipelineState() {}
-
-	FMetalComputeShader* GetComputeShader()
-	{
-		return ComputeShader;
-	}
-
-private:
-	TRefCountPtr<FMetalComputeShader> ComputeShader;
-};
-
 class FMetalSubBufferHeap;
 class FMetalSubBufferLinear;
 class FMetalSubBufferMagazine;
@@ -1223,6 +1163,10 @@ private:
 	FMetalBuffer ShadowBuffer;
 };
 
+class FMetalShaderLibrary;
+class FMetalGraphicsPipelineState;
+class FMetalComputePipelineState;
+
 template<class T>
 struct TMetalResourceTraits
 {
@@ -1230,7 +1174,7 @@ struct TMetalResourceTraits
 template<>
 struct TMetalResourceTraits<FRHIShaderLibrary>
 {
-	typedef class FMetalShaderLibrary TConcreteType;
+	typedef FMetalShaderLibrary TConcreteType;
 };
 template<>
 struct TMetalResourceTraits<FRHIVertexDeclaration>

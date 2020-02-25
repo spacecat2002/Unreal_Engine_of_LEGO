@@ -6,7 +6,7 @@
 
 
 #include "MetalRHIPrivate.h"
-
+#include "MetalGraphicsPipelineState.h"
 #include "MetalRenderPass.h"
 #include "MetalCommandBuffer.h"
 #include "MetalProfiler.h"

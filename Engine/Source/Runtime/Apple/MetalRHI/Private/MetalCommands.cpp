@@ -5,7 +5,8 @@
 =============================================================================*/
 
 #include "MetalRHIPrivate.h"
-
+#include "MetalGraphicsPipelineState.h"
+#include "MetalComputePipelineState.h"
 #include "GlobalShader.h"
 #include "OneColorShader.h"
 #include "RHICommandList.h"
