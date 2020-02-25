@@ -730,8 +730,8 @@ void CaptureSceneToScratchCubemap(FRHICommandListImmediate& RHICmdList, FSceneRe
 
 			FCopyToCubeFaceVS::FParameters VertexParameters;
 			VertexParameters.View = PassParameters->View;
-			SetShaderParameters(InRHICmdList, *VertexShader, VertexShader.GetVertexShader(), VertexParameters);
-			SetShaderParameters(InRHICmdList, *PixelShader, PixelShader.GetPixelShader(), *PassParameters);
+			SetShaderParameters(InRHICmdList, VertexShader, VertexShader.GetVertexShader(), VertexParameters);
+			SetShaderParameters(InRHICmdList, PixelShader, PixelShader.GetPixelShader(), *PassParameters);
 
 			const int32 SupersampleCaptureFactor = FMath::Clamp(GSupersampleCaptureFactor, MinSupersampleCaptureFactor, MaxSupersampleCaptureFactor);
 
@@ -809,7 +809,7 @@ void CopyCubemapToScratchCubemap(FRHICommandListImmediate& RHICmdList, ERHIFeatu
 			GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 			SetGraphicsPipelineState(InRHICmdList, GraphicsPSOInit);
-			SetShaderParameters(InRHICmdList, *PixelShader, InRHICmdList.GetBoundPixelShader(), *PassParameters);
+			SetShaderParameters(InRHICmdList, PixelShader, PixelShader.GetPixelShader(), *PassParameters);
 
 			DrawRectangle(
 				InRHICmdList,

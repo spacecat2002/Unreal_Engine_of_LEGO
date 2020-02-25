@@ -438,11 +438,11 @@ void GetUniformBasePassShaders(
 	{
 		if (bUse128bitRT && (Policy == LMP_NO_LIGHTMAP))
 		{
-			PixelShader = (TBasePassPixelShaderPolicyParamType<FUniformLightMapPolicy>*)Material.GetShader<F128BitRTBasePassPS>(VertexFactoryType);
+			PixelShader = TShaderRef<TBasePassPixelShaderPolicyParamType<FUniformLightMapPolicy>>::ReinterpretCast(Material.GetShader<F128BitRTBasePassPS>(VertexFactoryType));
 		}
 		else
 		{
-			PixelShader = (TBasePassPixelShaderPolicyParamType<FUniformLightMapPolicy>*)Material.GetShader<TBasePassPS<TUniformLightMapPolicy<Policy>, false> >(VertexFactoryType);
+			PixelShader = TShaderRef<TBasePassPixelShaderPolicyParamType<FUniformLightMapPolicy>>::ReinterpretCast(Material.GetShader<TBasePassPS<TUniformLightMapPolicy<Policy>, false> >(VertexFactoryType));
 		}
 	}
 }
