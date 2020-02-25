@@ -1,14 +1,37 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
-	MetalDynamicRHI_PipelineStates.cpp:
-		Metal Dynamic RHI Class Pipeline State Methods.
+	MetalDynamicRHI.cpp: Metal Dynamic RHI Class Implementation.
 =============================================================================*/
 
 
 #include "MetalRHIPrivate.h"
+#include "MetalVertexDeclaration.h"
 #include "MetalGraphicsPipelineState.h"
 #include "MetalComputePipelineState.h"
+
+
+//------------------------------------------------------------------------------
+
+#pragma mark - Metal Dynamic RHI Vertex Declaration Methods
+
+
+FVertexDeclarationRHIRef FMetalDynamicRHI::RHICreateVertexDeclaration(const FVertexDeclarationElementList& Elements)
+{
+	@autoreleasepool {
+		uint32 Key = FCrc::MemCrc32(Elements.GetData(), Elements.Num() * sizeof(FVertexElement));
+
+		// look up an existing declaration
+		FVertexDeclarationRHIRef* VertexDeclarationRefPtr = VertexDeclarationCache.Find(Key);
+		if (VertexDeclarationRefPtr == NULL)
+		{
+			// create and add to the cache if it doesn't exist.
+			VertexDeclarationRefPtr = &VertexDeclarationCache.Add(Key, new FMetalVertexDeclaration(Elements));
+		}
+
+		return *VertexDeclarationRefPtr;
+	} // autoreleasepool
+}
 
 
 //------------------------------------------------------------------------------

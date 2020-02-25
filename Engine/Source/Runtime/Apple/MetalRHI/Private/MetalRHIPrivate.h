@@ -237,8 +237,6 @@ FORCEINLINE mtlpp::LoadAction GetMetalRTLoadAction(ERenderTargetLoadAction LoadA
 	}
 }
 
-uint32 TranslateElementTypeToSize(EVertexElementType Type);
-
 mtlpp::PrimitiveType TranslatePrimitiveType(uint32 PrimitiveType);
 
 #if PLATFORM_MAC

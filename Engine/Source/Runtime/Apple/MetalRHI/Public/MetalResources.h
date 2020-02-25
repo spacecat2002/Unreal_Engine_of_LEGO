@@ -20,55 +20,6 @@ THIRD_PARTY_INCLUDES_END
 class FMetalContext;
 @class FMetalShaderPipeline;
 
-/** The MTLVertexDescriptor and a pre-calculated hash value used to simplify comparisons (as vendor MTLVertexDescriptor implementations aren't all comparable) */
-struct FMetalHashedVertexDescriptor
-{
-	NSUInteger VertexDescHash;
-	mtlpp::VertexDescriptor VertexDesc;
-	
-	FMetalHashedVertexDescriptor();
-	FMetalHashedVertexDescriptor(mtlpp::VertexDescriptor Desc, uint32 Hash);
-	FMetalHashedVertexDescriptor(FMetalHashedVertexDescriptor const& Other);
-	~FMetalHashedVertexDescriptor();
-	
-	FMetalHashedVertexDescriptor& operator=(FMetalHashedVertexDescriptor const& Other);
-	bool operator==(FMetalHashedVertexDescriptor const& Other) const;
-	
-	friend uint32 GetTypeHash(FMetalHashedVertexDescriptor const& Hash)
-	{
-		return Hash.VertexDescHash;
-	}
-};
-
-/** This represents a vertex declaration that hasn't been combined with a specific shader to create a bound shader. */
-class FMetalVertexDeclaration : public FRHIVertexDeclaration
-{
-public:
-
-	/** Initialization constructor. */
-	FMetalVertexDeclaration(const FVertexDeclarationElementList& InElements);
-	~FMetalVertexDeclaration();
-	
-	/** Cached element info array (offset, stream index, etc) */
-	FVertexDeclarationElementList Elements;
-
-	/** This is the layout for the vertex elements */
-	FMetalHashedVertexDescriptor Layout;
-	
-	/** Hash without considering strides which may be overriden */
-	uint32 BaseHash;
-	
-	virtual bool GetInitializer(FVertexDeclarationElementList& Init)
-	{
-		Init = Elements;
-		return true;
-	}
-
-protected:
-	void GenerateLayout(const FVertexDeclarationElementList& Elements);
-
-};
-
 extern NSString* DecodeMetalSourceCode(uint32 CodeSize, TArray<uint8> const& CompressedSource);
 
 enum EMetalIndexType
@@ -1166,6 +1117,7 @@ private:
 class FMetalShaderLibrary;
 class FMetalGraphicsPipelineState;
 class FMetalComputePipelineState;
+class FMetalVertexDeclaration;
 
 template<class T>
 struct TMetalResourceTraits
