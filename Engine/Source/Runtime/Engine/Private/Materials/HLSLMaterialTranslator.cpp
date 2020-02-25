@@ -104,6 +104,7 @@ FHLSLMaterialTranslator::FHLSLMaterialTranslator(FMaterial* InMaterial,
 ,	bUsesDistanceCullFade(false)
 ,	bIsFullyRough(0)
 ,	bAllowCodeChunkGeneration(true)
+,	bUsesPerInstanceCustomData(false)
 ,	AllocatedUserTexCoords()
 ,	AllocatedUserVertexTexCoords()
 ,	DynamicParticleParameterMask(0)
@@ -1059,6 +1060,36 @@ bool FHLSLMaterialTranslator::Translate()
 			ResourcesString += CustomOutputImplementations[ExpressionIndex] + "\r\n\r\n";
 		}
 
+		for (const FMaterialUniformExpression* ScalarExpression : UniformScalarExpressions)
+		{
+			FMaterialUniformPreshaderHeader& Preshader = MaterialCompilationOutput.UniformExpressionSet.UniformScalarPreshaders.AddDefaulted_GetRef();
+			Preshader.OpcodeOffset = MaterialCompilationOutput.UniformExpressionSet.UniformPreshaderData.Num();
+			ScalarExpression->WriteNumberOpcodes(MaterialCompilationOutput.UniformExpressionSet.UniformPreshaderData);
+			Preshader.OpcodeSize = MaterialCompilationOutput.UniformExpressionSet.UniformPreshaderData.Num() - Preshader.OpcodeOffset;
+		}
+
+		for (FMaterialUniformExpression* VectorExpression : UniformVectorExpressions)
+		{
+			FMaterialUniformPreshaderHeader& Preshader = MaterialCompilationOutput.UniformExpressionSet.UniformVectorPreshaders.AddDefaulted_GetRef();
+			Preshader.OpcodeOffset = MaterialCompilationOutput.UniformExpressionSet.UniformPreshaderData.Num();
+			VectorExpression->WriteNumberOpcodes(MaterialCompilationOutput.UniformExpressionSet.UniformPreshaderData);
+			Preshader.OpcodeSize = MaterialCompilationOutput.UniformExpressionSet.UniformPreshaderData.Num() - Preshader.OpcodeOffset;
+		}
+
+		for (uint32 TypeIndex = 0u; TypeIndex < NumMaterialTextureParameterTypes; ++TypeIndex)
+		{
+			MaterialCompilationOutput.UniformExpressionSet.UniformTextureParameters[TypeIndex].Empty(UniformTextureExpressions[TypeIndex].Num());
+			for (FMaterialUniformExpressionTexture* TextureExpression : UniformTextureExpressions[TypeIndex])
+			{
+				TextureExpression->GetTextureParameterInfo(MaterialCompilationOutput.UniformExpressionSet.UniformTextureParameters[TypeIndex].AddDefaulted_GetRef());
+			}
+		}
+		MaterialCompilationOutput.UniformExpressionSet.UniformExternalTextureParameters.Empty(UniformExternalTextureExpressions.Num());
+		for (FMaterialUniformExpressionExternalTexture* TextureExpression : UniformExternalTextureExpressions)
+		{
+			TextureExpression->GetExternalTextureParameterInfo(MaterialCompilationOutput.UniformExpressionSet.UniformExternalTextureParameters.AddDefaulted_GetRef());
+		}
+
 		LoadShaderSourceFileChecked(TEXT("/Engine/Private/MaterialTemplate.ush"), GetShaderPlatform(), MaterialTemplate);
 
 		// Find the string index of the '#line' statement in MaterialTemplate.usf
@@ -1176,6 +1207,8 @@ void FHLSLMaterialTranslator::GetMaterialEnvironment(EShaderPlatform InPlatform,
 	{
 		OutEnvironment.SetDefine(TEXT("VIRTUAL_TEXTURE_OUTPUT"), 1);
 	}
+
+	OutEnvironment.SetDefine(TEXT("USES_PER_INSTANCE_CUSTOM_DATA"), bUsesPerInstanceCustomData && Material->IsUsedWithInstancedStaticMeshes());
 		
 	// @todo MetalMRT: Remove this hack and implement proper atmospheric-fog solution for Metal MRT...
 	OutEnvironment.SetDefine(TEXT("MATERIAL_ATMOSPHERIC_FOG"), !IsMetalMRTPlatform(InPlatform) ? bUsesAtmosphericFog : 0);
@@ -2193,7 +2226,7 @@ int32 FHLSLMaterialTranslator::AccessUniformExpression(int32 Index)
 	if(CodeChunk.Type == MCT_Float)
 	{
 		const static TCHAR IndexToMask[] = {'x', 'y', 'z', 'w'};
-		const int32 ScalarInputIndex = MaterialCompilationOutput.UniformExpressionSet.UniformScalarExpressions.AddUnique(CodeChunk.UniformExpression);
+		const int32 ScalarInputIndex = UniformScalarExpressions.AddUnique(CodeChunk.UniformExpression);
 		// Update the above FMemory::Malloc if this FCString::Sprintf grows in size, e.g. %s, ...
 		FCString::Sprintf(FormattedCode, TEXT("Material.ScalarExpressions[%u].%c"), ScalarInputIndex / 4, IndexToMask[ScalarInputIndex % 4]);
 	}
@@ -2209,7 +2242,7 @@ int32 FHLSLMaterialTranslator::AccessUniformExpression(int32 Index)
 		default: Mask = TEXT(""); break;
 		};
 
-		const int32 VectorInputIndex = MaterialCompilationOutput.UniformExpressionSet.UniformVectorExpressions.AddUnique(CodeChunk.UniformExpression);
+		const int32 VectorInputIndex = UniformVectorExpressions.AddUnique(CodeChunk.UniformExpression);
 		FCString::Sprintf(FormattedCode, TEXT("Material.VectorExpressions[%u]%s"), VectorInputIndex, Mask);
 	}
 	else if(CodeChunk.Type & MCT_Texture)
@@ -2220,27 +2253,27 @@ int32 FHLSLMaterialTranslator::AccessUniformExpression(int32 Index)
 		switch(CodeChunk.Type)
 		{
 		case MCT_Texture2D:
-			TextureInputIndex = MaterialCompilationOutput.UniformExpressionSet.Uniform2DTextureExpressions.AddUnique(TextureUniformExpression);
+			TextureInputIndex = UniformTextureExpressions[(uint32)EMaterialTextureParameterType::Standard2D].AddUnique(TextureUniformExpression);
 			BaseName = TEXT("Texture2D");
 			break;
 		case MCT_TextureCube:
-			TextureInputIndex = MaterialCompilationOutput.UniformExpressionSet.UniformCubeTextureExpressions.AddUnique(TextureUniformExpression);
+			TextureInputIndex = UniformTextureExpressions[(uint32)EMaterialTextureParameterType::Cube].AddUnique(TextureUniformExpression);
 			BaseName = TEXT("TextureCube");
 			break;
 		case MCT_Texture2DArray:
-			TextureInputIndex = MaterialCompilationOutput.UniformExpressionSet.Uniform2DArrayTextureExpressions.AddUnique(TextureUniformExpression);
+			TextureInputIndex = UniformTextureExpressions[(uint32)EMaterialTextureParameterType::Array2D].AddUnique(TextureUniformExpression);
 			BaseName = TEXT("Texture2DArray");
 			break;
 		case MCT_VolumeTexture:
-			TextureInputIndex = MaterialCompilationOutput.UniformExpressionSet.UniformVolumeTextureExpressions.AddUnique(TextureUniformExpression);
+			TextureInputIndex = UniformTextureExpressions[(uint32)EMaterialTextureParameterType::Volume].AddUnique(TextureUniformExpression);
 			BaseName = TEXT("VolumeTexture");
 			break;
 		case MCT_TextureExternal:
-			TextureInputIndex = MaterialCompilationOutput.UniformExpressionSet.UniformExternalTextureExpressions.AddUnique(ExternalTextureUniformExpression);
+			TextureInputIndex = UniformExternalTextureExpressions.AddUnique(ExternalTextureUniformExpression);
 			BaseName = TEXT("ExternalTexture");
 			break;
 		case MCT_TextureVirtual:
-			TextureInputIndex = MaterialCompilationOutput.UniformExpressionSet.UniformVirtualTextureExpressions.AddUnique(TextureUniformExpression);
+			TextureInputIndex = UniformTextureExpressions[(uint32)EMaterialTextureParameterType::Virtual].AddUnique(TextureUniformExpression);
 			GenerateCode = false;
 			break;
 		default: UE_LOG(LogMaterial, Fatal,TEXT("Unrecognized texture material value type: %u"),(int32)CodeChunk.Type);
@@ -2863,14 +2896,53 @@ int32 FHLSLMaterialTranslator::ScalarParameter(FName ParameterName, float Defaul
 {
 	FMaterialParameterInfo ParameterInfo = GetParameterAssociationInfo();
 	ParameterInfo.Name = ParameterName;
-	return AddUniformExpression(new FMaterialUniformExpressionScalarParameter(ParameterInfo,DefaultValue),MCT_Float,TEXT(""));
+	int32 ParameterIndex = INDEX_NONE;
+	for (int32 i = 0; i < MaterialCompilationOutput.UniformExpressionSet.UniformScalarParameters.Num(); ++i)
+	{
+		const FMaterialScalarParameterInfo& Parameter = MaterialCompilationOutput.UniformExpressionSet.UniformScalarParameters[i];
+		if (Parameter.ParameterInfo == ParameterInfo)
+		{
+			ParameterIndex = i;
+			break;
+		}
+	}
+	if (ParameterIndex == INDEX_NONE)
+	{
+		ParameterIndex = MaterialCompilationOutput.UniformExpressionSet.UniformScalarParameters.Num();
+		FMaterialScalarParameterInfo& Parameter = MaterialCompilationOutput.UniformExpressionSet.UniformScalarParameters.AddDefaulted_GetRef();
+		Parameter.ParameterInfo = ParameterInfo;
+		Parameter.ParameterName = ParameterName.ToString();
+		Parameter.DefaultValue = DefaultValue;
+	}
+
+	return AddUniformExpression(new FMaterialUniformExpressionScalarParameter(ParameterInfo, ParameterIndex), MCT_Float, TEXT(""));
 }
 
 int32 FHLSLMaterialTranslator::VectorParameter(FName ParameterName, const FLinearColor& DefaultValue)
 {
 	FMaterialParameterInfo ParameterInfo = GetParameterAssociationInfo();
 	ParameterInfo.Name = ParameterName;
-	return AddUniformExpression(new FMaterialUniformExpressionVectorParameter(ParameterInfo,DefaultValue),MCT_Float4,TEXT(""));
+
+	int32 ParameterIndex = INDEX_NONE;
+	for (int32 i = 0; i < MaterialCompilationOutput.UniformExpressionSet.UniformVectorParameters.Num(); ++i)
+	{
+		const FMaterialVectorParameterInfo& Parameter = MaterialCompilationOutput.UniformExpressionSet.UniformVectorParameters[i];
+		if (Parameter.ParameterInfo == ParameterInfo)
+		{
+			ParameterIndex = i;
+			break;
+		}
+	}
+	if (ParameterIndex == INDEX_NONE)
+	{
+		ParameterIndex = MaterialCompilationOutput.UniformExpressionSet.UniformVectorParameters.Num();
+		FMaterialVectorParameterInfo& Parameter = MaterialCompilationOutput.UniformExpressionSet.UniformVectorParameters.AddDefaulted_GetRef();
+		Parameter.ParameterInfo = ParameterInfo;
+		Parameter.ParameterName = ParameterName.ToString();
+		Parameter.DefaultValue = DefaultValue;
+	}
+
+	return AddUniformExpression(new FMaterialUniformExpressionVectorParameter(ParameterInfo, ParameterIndex), MCT_Float4, TEXT(""));
 }
 
 int32 FHLSLMaterialTranslator::Constant(float X)
@@ -4320,8 +4392,8 @@ int32 FHLSLMaterialTranslator::TextureSample(
 			return Errorf(TEXT("The provided uniform expression is not a texture"));
 		}
 
-		VirtualTextureIndex = MaterialCompilationOutput.UniformExpressionSet.UniformVirtualTextureExpressions.Find(TextureUniformExpression);
-		check(MaterialCompilationOutput.UniformExpressionSet.UniformVirtualTextureExpressions.IsValidIndex(VirtualTextureIndex));
+		VirtualTextureIndex = UniformTextureExpressions[(uint32)EMaterialTextureParameterType::Virtual].Find(TextureUniformExpression);
+		check(UniformTextureExpressions[(uint32)EMaterialTextureParameterType::Virtual].IsValidIndex(VirtualTextureIndex));
 
 		if (SamplerSource != SSM_FromTextureAsset)
 		{
@@ -4400,13 +4472,13 @@ int32 FHLSLMaterialTranslator::TextureSample(
 		//todo[vt]: Support feedback from other shader types
 		const bool bGenerateFeedback = ShaderFrequency == SF_Pixel;
 
-		VTLayerIndex = MaterialCompilationOutput.UniformExpressionSet.UniformVirtualTextureExpressions[VirtualTextureIndex]->GetTextureLayerIndex();
+		VTLayerIndex = UniformTextureExpressions[(uint32)EMaterialTextureParameterType::Virtual][VirtualTextureIndex]->GetTextureLayerIndex();
 		if (VTLayerIndex != INDEX_NONE)
 		{
 			// The layer index in the virtual texture stack is already known
 			// Create a page table sample for each new combination of virtual texture and sample parameters
 			VTStackIndex = AcquireVTStackIndex(MipValueMode, AddressU, AddressV, 1.0f, CoordinateIndex, MipValue0Index, MipValue1Index, TextureReferenceIndex, bGenerateFeedback);
-			VTPageTableIndex = MaterialCompilationOutput.UniformExpressionSet.UniformVirtualTextureExpressions[VirtualTextureIndex]->GetPageTableLayerIndex();
+			VTPageTableIndex = UniformTextureExpressions[(uint32)EMaterialTextureParameterType::Virtual][VirtualTextureIndex]->GetPageTableLayerIndex();
 		}
 		else
 		{
@@ -4846,7 +4918,7 @@ int32 FHLSLMaterialTranslator::Texture(UTexture* InTexture, int32& TextureRefere
 	// UE-3518: Additional pre-assert logging to help determine the cause of this failure.
 	if (TextureReferenceIndex == INDEX_NONE)
 	{
-		const TArray<UObject*>& ReferencedTextures = Material->GetReferencedTextures();
+		const auto ReferencedTextures = Material->GetReferencedTextures();
 		UE_LOG(LogMaterial, Error, TEXT("Compiler->Texture() failed to find texture '%s' in referenced list of size '%i':"), *InTexture->GetName(), ReferencedTextures.Num());
 		for (int32 i = 0; i < ReferencedTextures.Num(); ++i)
 		{
@@ -6877,6 +6949,25 @@ int32 FHLSLMaterialTranslator::PerInstanceFadeAmount()
 	else
 	{
 		return AddInlinedCodeChunk(MCT_Float, TEXT("GetPerInstanceFadeAmount(Parameters)"));
+	}
+}
+
+/**
+ *	Returns a custom data on a per-instance basis when instancing
+ *	@DataIndex - index in array that represents custom data
+ *
+ *	@return	Code index
+ */
+int32 FHLSLMaterialTranslator::PerInstanceCustomData(int32 DataIndex, int32 DefaultValueIndex)
+{
+	if (ShaderFrequency != SF_Vertex)
+	{
+		return NonVertexShaderExpressionError();
+	}
+	else
+	{
+		bUsesPerInstanceCustomData = true;
+		return AddInlinedCodeChunk(MCT_Float, TEXT("GetPerInstanceCustomData(Parameters, %d, %s)"), DataIndex, *GetParameterCode(DefaultValueIndex));
 	}
 }
 

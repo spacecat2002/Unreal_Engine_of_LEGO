@@ -471,6 +471,8 @@ RENDERCORE_API bool MobileSupportsGPUScene(const FStaticShaderPlatform Platform)
 
 RENDERCORE_API bool GPUSceneUseTexture2D(const FStaticShaderPlatform Platform);
 
+RENDERCORE_API bool MaskedInEarlyPass(const FStaticShaderPlatform Platform);
+
 RENDERCORE_API bool AllowPixelDepthOffset(const FStaticShaderPlatform Platform);
 
 /** Returns if ForwardShading is enabled. Only valid for the current platform (otherwise call ITargetPlatform::UsesForwardShading()). */
@@ -564,7 +566,7 @@ inline bool UseGPUScene(const FStaticShaderPlatform Platform, const FStaticFeatu
 		&& !IsOpenGLPlatform(Platform)
 		&& !IsSwitchPlatform(Platform)
 		// we only check DDSPI for platforms that have been read in - IsValid() can go away once ALL platforms are converted over to this system
-		&& (!FGenericDataDrivenShaderPlatformInfo::IsValid(Platform) || FGenericDataDrivenShaderPlatformInfo::GetSupportsGPUScene(Platform));
+		&& (!FDataDrivenShaderPlatformInfo::IsValid(Platform) || FDataDrivenShaderPlatformInfo::GetSupportsGPUScene(Platform));
 }
 
 /** Unit cube vertex buffer (VertexDeclarationFVector4) */

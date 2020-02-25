@@ -25,11 +25,12 @@
 #include "HAL/LowLevelMemTracker.h"
 #include "ProfilingDebugging/MiscTrace.h"
 
+
 //
 // Globals
 //
 
-
+UE_TRACE_CHANNEL_DEFINE(RenderCommandsChannel);
 
 RENDERCORE_API bool GIsThreadedRendering = false;
 RENDERCORE_API bool GUseThreadedRendering = false;

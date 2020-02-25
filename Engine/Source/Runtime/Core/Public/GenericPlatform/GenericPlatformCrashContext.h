@@ -432,6 +432,9 @@ protected:
 	TArray<FCrashStackFrame> CallStack;
 	TArray<FThreadStackFrames> ThreadCallStacks;
 
+	/** Allow platform implementations to provide a callstack property. Primarily used when non-native code triggers a crash. */
+	virtual const TCHAR* GetCallstackProperty() const;
+
 private:
 
 	/** Serializes the session context section of the crash context to a temporary file. */
@@ -499,6 +502,12 @@ struct CORE_API FGenericMemoryWarningContext
 
 namespace RecoveryService
 {
-	/** Generates a name for the disaster recovery service embedded in the CrashReporterClient. */
+	/** Generates a name for the disaster recovery service embedded in the CrashReporterClientEditor. */
 	CORE_API FString GetRecoveryServerName();
+
+	/** Generates a name for the disaster recovery session. */
+	CORE_API FString MakeSessionName();
+
+	/** Tokenize the session name into its components. */
+	CORE_API bool TokenizeSessionName(const FString& SessionName, FString* OutServerName, int32* SeqNum, FString* ProjName, FDateTime* DateTime);
 }

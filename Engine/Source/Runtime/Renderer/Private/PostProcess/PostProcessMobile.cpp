@@ -134,7 +134,7 @@ class FPostProcessBloomSetupVS_ES2 : public FGlobalShader
 	FPostProcessBloomSetupVS_ES2() {}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
 
 	/** Initialization constructor. */
 	FPostProcessBloomSetupVS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
@@ -145,19 +145,11 @@ public:
 
 	void SetVS(const FRenderingCompositePassContext& Context)
 	{
-		FRHIVertexShader* ShaderRHI = GetVertexShader();
+		FRHIVertexShader* ShaderRHI = Context.RHICmdList.GetBoundVertexShader();
 
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 
 		PostprocessParameter.SetVS(ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
-	}
-
-	// FShader interface.
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -216,7 +208,7 @@ public:
 
 	void SetPS(const FRenderingCompositePassContext& Context)
 	{
-		FRHIPixelShader* ShaderRHI = GetPixelShader();
+		FRHIPixelShader* ShaderRHI = Context.RHICmdList.GetBoundPixelShader();
 
 		const FPostProcessSettings& Settings = Context.View.FinalPostProcessSettings;
 
@@ -229,14 +221,6 @@ public:
 		ShaderParameters.View = Context.View.ViewUniformBuffer;
 
 		SetShaderParameters(Context.RHICmdList, this, ShaderRHI, ShaderParameters);
-	}
-
-	// FShader interface.
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -371,7 +355,7 @@ void FRCPassPostProcessBloomSetupES2::SetShaderAndExecute(FRenderingCompositePas
 			SrcRect.Width(), SrcRect.Height(),
 			DstSize,
 			SrcSize,
-			*VertexShader,
+			VertexShader,
 			EDRF_UseTriangleOptimization);
 	}
 	Context.RHICmdList.EndRenderPass();
@@ -501,7 +485,7 @@ class FPostProcessBloomDownPS_ES2 : public FGlobalShader
 	FPostProcessBloomDownPS_ES2() {}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
 
 	FPostProcessBloomDownPS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -512,17 +496,10 @@ public:
 	template <typename TRHICmdList>
 	void SetPS(TRHICmdList& RHICmdList, const FRenderingCompositePassContext& Context)
 	{
-		FRHIPixelShader* ShaderRHI = GetPixelShader();
+		FRHIPixelShader* ShaderRHI = Context.RHICmdList.GetBoundPixelShader();
 		const FPostProcessSettings& Settings = Context.View.FinalPostProcessSettings;
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetPS(RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -541,8 +518,8 @@ class FPostProcessBloomDownVS_ES2 : public FGlobalShader
 	FPostProcessBloomDownVS_ES2(){}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
-	FShaderParameter BloomDownScale;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
+	LAYOUT_FIELD(FShaderParameter, BloomDownScale);
 
 	FPostProcessBloomDownVS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -553,17 +530,10 @@ public:
 
 	void SetVS(const FRenderingCompositePassContext& Context, float InScale)
 	{
-		FRHIVertexShader* ShaderRHI = GetVertexShader();
+		FRHIVertexShader* ShaderRHI = Context.RHICmdList.GetBoundVertexShader();
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetVS(ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
 		SetShaderValue(Context.RHICmdList, ShaderRHI, BloomDownScale, InScale);
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter << BloomDownScale;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -602,8 +572,8 @@ void FRCPassPostProcessBloomDownES2::Process(FRenderingCompositePassContext& Con
 		TShaderMapRef<FPostProcessBloomDownPS_ES2> PixelShader(Context.GetShaderMap());
 
 		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 		SetGraphicsPipelineState(Context.RHICmdList, GraphicsPSOInit);
@@ -621,7 +591,7 @@ void FRCPassPostProcessBloomDownES2::Process(FRenderingCompositePassContext& Con
 			DstX, DstY,
 			SrcDstSize,
 			SrcDstSize,
-			*VertexShader,
+			VertexShader,
 			EDRF_UseTriangleOptimization);
 	}
 	Context.RHICmdList.EndRenderPass();
@@ -668,9 +638,9 @@ class FPostProcessBloomUpPS_ES2 : public FGlobalShader
 	FPostProcessBloomUpPS_ES2() {}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
-	FShaderParameter TintA;
-	FShaderParameter TintB;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
+	LAYOUT_FIELD(FShaderParameter, TintA);
+	LAYOUT_FIELD(FShaderParameter, TintB);
 
 	FPostProcessBloomUpPS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -683,19 +653,12 @@ public:
 	template <typename TRHICmdList>
 	void SetPS(TRHICmdList& RHICmdList, const FRenderingCompositePassContext& Context, FVector4& InTintA, FVector4& InTintB)
 	{
-		FRHIPixelShader* ShaderRHI = GetPixelShader();
+		FRHIPixelShader* ShaderRHI = Context.RHICmdList.GetBoundPixelShader();
 		const FPostProcessSettings& Settings = Context.View.FinalPostProcessSettings;
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetPS(RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
 		SetShaderValue(RHICmdList, ShaderRHI, TintA, InTintA);
 		SetShaderValue(RHICmdList, ShaderRHI, TintB, InTintB);
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter << TintA << TintB;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -714,8 +677,8 @@ class FPostProcessBloomUpVS_ES2 : public FGlobalShader
 	FPostProcessBloomUpVS_ES2(){}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
-	FShaderParameter BloomUpScales;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
+	LAYOUT_FIELD(FShaderParameter, BloomUpScales);
 
 	FPostProcessBloomUpVS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -726,17 +689,10 @@ public:
 
 	void SetVS(const FRenderingCompositePassContext& Context, FVector2D InScale)
 	{
-		FRHIVertexShader* ShaderRHI = GetVertexShader();
+		FRHIVertexShader* ShaderRHI = Context.RHICmdList.GetBoundVertexShader();
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetVS(ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
 		SetShaderValue(Context.RHICmdList, ShaderRHI, BloomUpScales, InScale);
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter << BloomUpScales;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -788,8 +744,8 @@ void FRCPassPostProcessBloomUpES2::Process(FRenderingCompositePassContext& Conte
 		TShaderMapRef<FPostProcessBloomUpPS_ES2> PixelShader(Context.GetShaderMap());
 
 		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 		SetGraphicsPipelineState(Context.RHICmdList, GraphicsPSOInit);
@@ -810,7 +766,7 @@ void FRCPassPostProcessBloomUpES2::Process(FRenderingCompositePassContext& Conte
 			DstX, DstY,
 			SrcDstSize,
 			SrcDstSize,
-			*VertexShader,
+			VertexShader,
 			EDRF_UseTriangleOptimization);
 	}
 	Context.RHICmdList.EndRenderPass();
@@ -896,7 +852,7 @@ public:
 
 	void SetPS(const FRenderingCompositePassContext& Context)
 	{
-		FRHIPixelShader* ShaderRHI = GetPixelShader();
+		FRHIPixelShader* ShaderRHI = Context.RHICmdList.GetBoundPixelShader();
 
 		PostprocessParameter.SetPS(Context.RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
 
@@ -912,13 +868,6 @@ public:
 		ShaderParameters.SunColorApertureDiv2.W = GetMobileDepthOfFieldScale(Context.View) * 0.5f;
 
 		SetShaderParameters(Context.RHICmdList, this, ShaderRHI, ShaderParameters);
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -942,7 +891,7 @@ class FPostProcessSunMaskVS_ES2 : public FGlobalShader
 	FPostProcessSunMaskVS_ES2(){}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
 
 	FPostProcessSunMaskVS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -952,16 +901,9 @@ public:
 
 	void SetVS(const FRenderingCompositePassContext& Context)
 	{
-		FRHIVertexShader* ShaderRHI = GetVertexShader();
+		FRHIVertexShader* ShaderRHI = Context.RHICmdList.GetBoundVertexShader();
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetVS(ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -1027,8 +969,8 @@ void FRCPassPostProcessSunMaskES2::SetShaderAndExecute(const FRenderingComposite
 	TShaderMapRef<FPostProcessSunMaskPS_ES2<UseSunDofDepth> > PixelShader(Context.GetShaderMap());
 
 	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 	GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 	SetGraphicsPipelineState(Context.RHICmdList, GraphicsPSOInit);
@@ -1127,7 +1069,7 @@ class FPostProcessSunAlphaPS_ES2 : public FGlobalShader
 	FPostProcessSunAlphaPS_ES2() {}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
 
 	FPostProcessSunAlphaPS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -1137,17 +1079,10 @@ public:
 
 	void SetPS(const FRenderingCompositePassContext& Context)
 	{
-		FRHIPixelShader* ShaderRHI = GetPixelShader();
+		FRHIPixelShader* ShaderRHI = Context.RHICmdList.GetBoundPixelShader();
 		const FPostProcessSettings& Settings = Context.View.FinalPostProcessSettings;
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetPS(Context.RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -1168,8 +1103,8 @@ class FPostProcessSunAlphaVS_ES2 : public FGlobalShader
 	FPostProcessSunAlphaVS_ES2(){}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
-	FShaderParameter LightShaftCenter;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
+	LAYOUT_FIELD(FShaderParameter, LightShaftCenter);
 
 	FPostProcessSunAlphaVS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -1180,18 +1115,11 @@ public:
 
 	void SetVS(const FRenderingCompositePassContext& Context)
 	{
-		FRHIVertexShader* ShaderRHI = GetVertexShader();
+		FRHIVertexShader* ShaderRHI = Context.RHICmdList.GetBoundVertexShader();
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetVS(ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
 
 		SetShaderValue(Context.RHICmdList, ShaderRHI, LightShaftCenter, Context.View.LightShaftCenter);
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter << LightShaftCenter;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -1210,8 +1138,8 @@ static void SunAlpha_SetShader(const FRenderingCompositePassContext& Context)
 	TShaderMapRef<FPostProcessSunAlphaPS_ES2<UseDof> > PixelShader(Context.GetShaderMap());
 
 	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 	GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 	SetGraphicsPipelineState(Context.RHICmdList, GraphicsPSOInit);
@@ -1279,7 +1207,7 @@ void FRCPassPostProcessSunAlphaES2::Process(FRenderingCompositePassContext& Cont
 			DstX, DstY,
 			SrcDstSize,
 			SrcDstSize,
-			*VertexShader,
+			VertexShader,
 			EDRF_UseTriangleOptimization);
 	}
 	Context.RHICmdList.EndRenderPass();
@@ -1326,7 +1254,7 @@ class FPostProcessSunBlurPS_ES2 : public FGlobalShader
 	FPostProcessSunBlurPS_ES2() {}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
 
 	FPostProcessSunBlurPS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -1336,17 +1264,10 @@ public:
 
 	void SetPS(const FRenderingCompositePassContext& Context)
 	{
-		FRHIPixelShader* ShaderRHI = GetPixelShader();
+		FRHIPixelShader* ShaderRHI = Context.RHICmdList.GetBoundPixelShader();
 		const FPostProcessSettings& Settings = Context.View.FinalPostProcessSettings;
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetPS(Context.RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -1365,8 +1286,8 @@ class FPostProcessSunBlurVS_ES2 : public FGlobalShader
 	FPostProcessSunBlurVS_ES2(){}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
-	FShaderParameter LightShaftCenter;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
+	LAYOUT_FIELD(FShaderParameter, LightShaftCenter);
 
 	FPostProcessSunBlurVS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -1377,18 +1298,11 @@ public:
 
 	void SetVS(const FRenderingCompositePassContext& Context)
 	{
-		FRHIVertexShader* ShaderRHI = GetVertexShader();
+		FRHIVertexShader* ShaderRHI = Context.RHICmdList.GetBoundVertexShader();
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetVS(ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
 
 		SetShaderValue(Context.RHICmdList, ShaderRHI, LightShaftCenter, Context.View.LightShaftCenter);
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter << LightShaftCenter;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -1438,8 +1352,8 @@ void FRCPassPostProcessSunBlurES2::Process(FRenderingCompositePassContext& Conte
 		TShaderMapRef<FPostProcessSunBlurPS_ES2> PixelShader(Context.GetShaderMap());
 
 		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 		SetGraphicsPipelineState(Context.RHICmdList, GraphicsPSOInit);
@@ -1457,7 +1371,7 @@ void FRCPassPostProcessSunBlurES2::Process(FRenderingCompositePassContext& Conte
 			DstX, DstY,
 			SrcDstSize,
 			SrcDstSize,
-			*VertexShader,
+			VertexShader,
 			EDRF_UseTriangleOptimization);
 	}
 	Context.RHICmdList.EndRenderPass();
@@ -1512,10 +1426,10 @@ class FPostProcessSunMergePS_ES2 : public FGlobalShader
 	FPostProcessSunMergePS_ES2() {}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
-	FShaderParameter SunColorVignetteIntensity;
-	FShaderParameter VignetteColor;
-	FShaderParameter BloomColor;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
+	LAYOUT_FIELD(FShaderParameter, SunColorVignetteIntensity);
+	LAYOUT_FIELD(FShaderParameter, VignetteColor);
+	LAYOUT_FIELD(FShaderParameter, BloomColor);
 
 	FPostProcessSunMergePS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -1528,7 +1442,7 @@ public:
 
 	void SetPS(const FRenderingCompositePassContext& Context)
 	{
-		FRHIPixelShader* ShaderRHI = GetPixelShader();
+		FRHIPixelShader* ShaderRHI = Context.RHICmdList.GetBoundPixelShader();
 		const FPostProcessSettings& Settings = Context.View.FinalPostProcessSettings;
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetPS(Context.RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
@@ -1542,13 +1456,6 @@ public:
 
 		// Scaling Bloom1 by extra factor to match filter area difference between PC default and mobile.
 		SetShaderValue(Context.RHICmdList, ShaderRHI, BloomColor, Context.View.FinalPostProcessSettings.Bloom1Tint * Context.View.FinalPostProcessSettings.BloomIntensity * 0.5);
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter << SunColorVignetteIntensity << BloomColor;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -1574,8 +1481,8 @@ class FPostProcessSunMergeVS_ES2 : public FGlobalShader
 	FPostProcessSunMergeVS_ES2(){}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
-	FShaderParameter LightShaftCenter;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
+	LAYOUT_FIELD(FShaderParameter, LightShaftCenter);
 
 	FPostProcessSunMergeVS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -1586,18 +1493,11 @@ public:
 
 	void SetVS(const FRenderingCompositePassContext& Context)
 	{
-		FRHIVertexShader* ShaderRHI = GetVertexShader();
+		FRHIVertexShader* ShaderRHI = Context.RHICmdList.GetBoundVertexShader();
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetVS(ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
 
 		SetShaderValue(Context.RHICmdList, ShaderRHI, LightShaftCenter, Context.View.LightShaftCenter);
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter << LightShaftCenter;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -1606,7 +1506,7 @@ IMPLEMENT_SHADER_TYPE(,FPostProcessSunMergeVS_ES2,TEXT("/Engine/Private/PostProc
 
 
 template <uint32 UseSunBloom>
-FShader* SunMerge_SetShader(const FRenderingCompositePassContext& Context)
+TShaderRef<FShader> SunMerge_SetShader(const FRenderingCompositePassContext& Context)
 {
 	FGraphicsPipelineStateInitializer GraphicsPSOInit;
 	Context.RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -1618,8 +1518,8 @@ FShader* SunMerge_SetShader(const FRenderingCompositePassContext& Context)
 	TShaderMapRef<FPostProcessSunMergePS_ES2<UseSunBloom> > PixelShader(Context.GetShaderMap());
 
 	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 	GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 	SetGraphicsPipelineState(Context.RHICmdList, GraphicsPSOInit);
@@ -1627,10 +1527,10 @@ FShader* SunMerge_SetShader(const FRenderingCompositePassContext& Context)
 	VertexShader->SetVS(Context);
 	PixelShader->SetPS(Context);
 
-	return *VertexShader;
+	return VertexShader;
 }
 
-FShader* FRCPassPostProcessSunMergeES2::SetShader(const FRenderingCompositePassContext& Context)
+TShaderRef<FShader> FRCPassPostProcessSunMergeES2::SetShader(const FRenderingCompositePassContext& Context)
 {
 	const FViewInfo& View = Context.View;
 	uint32 UseBloom = (View.FinalPostProcessSettings.BloomIntensity > 0.0f) ? 1 : 0;
@@ -1646,7 +1546,7 @@ FShader* FRCPassPostProcessSunMergeES2::SetShader(const FRenderingCompositePassC
 	}
 
 	check(false);
-	return NULL;
+	return TShaderRef<FShader>();
 }
 
 void FRCPassPostProcessSunMergeES2::Process(FRenderingCompositePassContext& Context)
@@ -1681,7 +1581,7 @@ void FRCPassPostProcessSunMergeES2::Process(FRenderingCompositePassContext& Cont
 
 		Context.SetViewportAndCallRHI(0, 0, 0.0f, DstX, DstY, 1.0f);
 
-		FShader* VertexShader = SetShader(Context);
+		TShaderRef<FShader> VertexShader = SetShader(Context);
 
 		FIntPoint SrcDstSize = PrePostSourceViewportSize / 4;
 
@@ -1751,7 +1651,7 @@ class FPostProcessDofDownVS_ES2 : public FGlobalShader
 	FPostProcessDofDownVS_ES2() {}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
 
 	/** Initialization constructor. */
 	FPostProcessDofDownVS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
@@ -1762,19 +1662,11 @@ public:
 
 	void SetVS(const FRenderingCompositePassContext& Context)
 	{
-		FRHIVertexShader* ShaderRHI = GetVertexShader();
+		FRHIVertexShader* ShaderRHI = Context.RHICmdList.GetBoundVertexShader();
 
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 
 		PostprocessParameter.SetVS(ShaderRHI, Context, TStaticSamplerState<SF_Point,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
-	}
-
-	// FShader interface.
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -1797,7 +1689,7 @@ class FPostProcessDofDownPS_ES2 : public FGlobalShader
 	FPostProcessDofDownPS_ES2() {}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
 
 	FPostProcessDofDownPS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -1807,17 +1699,10 @@ public:
 
 	void SetPS(const FRenderingCompositePassContext& Context)
 	{
-		FRHIPixelShader* ShaderRHI = GetPixelShader();
+		FRHIPixelShader* ShaderRHI = Context.RHICmdList.GetBoundPixelShader();
 		const FPostProcessSettings& Settings = Context.View.FinalPostProcessSettings;
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetPS(Context.RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -1841,8 +1726,8 @@ static void DofDown_SetShader(const FRenderingCompositePassContext& Context)
 	TShaderMapRef<FPostProcessDofDownPS_ES2<UseSun> > PixelShader(Context.GetShaderMap());
 
 	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 	GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 	SetGraphicsPipelineState(Context.RHICmdList, GraphicsPSOInit);
@@ -1931,7 +1816,7 @@ void FRCPassPostProcessDofDownES2::Process(FRenderingCompositePassContext& Conte
 			SrcRect.Width(), SrcRect.Height(),
 			DstSize,
 			SrcSize,
-			*VertexShader,
+			VertexShader,
 			EDRF_UseTriangleOptimization);
 	}
 	Context.RHICmdList.EndRenderPass();
@@ -1977,7 +1862,7 @@ class FPostProcessDofNearVS_ES2 : public FGlobalShader
 	FPostProcessDofNearVS_ES2() {}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
 
 	/** Initialization constructor. */
 	FPostProcessDofNearVS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
@@ -1988,19 +1873,11 @@ public:
 
 	void SetVS(const FRenderingCompositePassContext& Context)
 	{
-		FRHIVertexShader* ShaderRHI = GetVertexShader();
+		FRHIVertexShader* ShaderRHI = Context.RHICmdList.GetBoundVertexShader();
 
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 
 		PostprocessParameter.SetVS(ShaderRHI, Context, TStaticSamplerState<SF_Point,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
-	}
-
-	// FShader interface.
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -2023,7 +1900,7 @@ class FPostProcessDofNearPS_ES2 : public FGlobalShader
 	FPostProcessDofNearPS_ES2() {}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
 
 	FPostProcessDofNearPS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -2033,17 +1910,10 @@ public:
 
 	void SetPS(const FRenderingCompositePassContext& Context)
 	{
-		FRHIPixelShader* ShaderRHI = GetPixelShader();
+		FRHIPixelShader* ShaderRHI = Context.RHICmdList.GetBoundPixelShader();
 		const FPostProcessSettings& Settings = Context.View.FinalPostProcessSettings;
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetPS(Context.RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -2067,8 +1937,8 @@ static void DofNear_SetShader(const FRenderingCompositePassContext& Context)
 	TShaderMapRef<FPostProcessDofNearPS_ES2<UseSun> > PixelShader(Context.GetShaderMap());
 
 	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 	GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 	SetGraphicsPipelineState(Context.RHICmdList, GraphicsPSOInit);
@@ -2138,7 +2008,7 @@ void FRCPassPostProcessDofNearES2::Process(FRenderingCompositePassContext& Conte
 			DstX, DstY,
 			SrcDstSize,
 			SrcSize,
-			*VertexShader,
+			VertexShader,
 			EDRF_UseTriangleOptimization);
 	}
 	Context.RHICmdList.EndRenderPass();
@@ -2182,7 +2052,7 @@ class FPostProcessDofBlurPS_ES2 : public FGlobalShader
 	FPostProcessDofBlurPS_ES2() {}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
 
 	FPostProcessDofBlurPS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -2192,17 +2062,10 @@ public:
 
 	void SetPS(const FRenderingCompositePassContext& Context)
 	{
-		FRHIPixelShader* ShaderRHI = GetPixelShader();
+		FRHIPixelShader* ShaderRHI = Context.RHICmdList.GetBoundPixelShader();
 		const FPostProcessSettings& Settings = Context.View.FinalPostProcessSettings;
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetPS(Context.RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -2221,7 +2084,7 @@ class FPostProcessDofBlurVS_ES2 : public FGlobalShader
 	FPostProcessDofBlurVS_ES2(){}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
 
 	FPostProcessDofBlurVS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -2231,16 +2094,9 @@ public:
 
 	void SetVS(const FRenderingCompositePassContext& Context)
 	{
-		FRHIVertexShader* ShaderRHI = GetVertexShader();
+		FRHIVertexShader* ShaderRHI = Context.RHICmdList.GetBoundVertexShader();
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetVS(ShaderRHI, Context, TStaticSamplerState<SF_Point,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -2289,8 +2145,8 @@ void FRCPassPostProcessDofBlurES2::Process(FRenderingCompositePassContext& Conte
 		TShaderMapRef<FPostProcessDofBlurPS_ES2> PixelShader(Context.GetShaderMap());
 
 		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 		SetGraphicsPipelineState(Context.RHICmdList, GraphicsPSOInit);
@@ -2308,7 +2164,7 @@ void FRCPassPostProcessDofBlurES2::Process(FRenderingCompositePassContext& Conte
 			DstX, DstY,
 			SrcDstSize,
 			SrcDstSize,
-			*VertexShader,
+			VertexShader,
 			EDRF_UseTriangleOptimization);
 	}
 	Context.RHICmdList.EndRenderPass();
@@ -2354,7 +2210,7 @@ class FPostProcessSunAvgPS_ES2 : public FGlobalShader
 	FPostProcessSunAvgPS_ES2() {}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
 
 	FPostProcessSunAvgPS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -2364,17 +2220,10 @@ public:
 
 	void SetPS(const FRenderingCompositePassContext& Context)
 	{
-		FRHIPixelShader* ShaderRHI = GetPixelShader();
+		FRHIPixelShader* ShaderRHI = Context.RHICmdList.GetBoundPixelShader();
 		const FPostProcessSettings& Settings = Context.View.FinalPostProcessSettings;
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetPS(Context.RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -2394,7 +2243,7 @@ class FPostProcessSunAvgVS_ES2 : public FGlobalShader
 	FPostProcessSunAvgVS_ES2(){}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
 
 	FPostProcessSunAvgVS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -2404,16 +2253,9 @@ public:
 
 	void SetVS(const FRenderingCompositePassContext& Context)
 	{
-		FRHIVertexShader* ShaderRHI = GetVertexShader();
+		FRHIVertexShader* ShaderRHI = Context.RHICmdList.GetBoundVertexShader();
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetVS(ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -2433,8 +2275,8 @@ static void SunAvg_SetShader(const FRenderingCompositePassContext& Context)
 	TShaderMapRef<FPostProcessSunAvgPS_ES2> PixelShader(Context.GetShaderMap());
 
 	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 	GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 	SetGraphicsPipelineState(Context.RHICmdList, GraphicsPSOInit);
@@ -2493,7 +2335,7 @@ void FRCPassPostProcessSunAvgES2::Process(FRenderingCompositePassContext& Contex
 			DstX, DstY,
 			SrcDstSize,
 			SrcDstSize,
-			*VertexShader,
+			VertexShader,
 			EDRF_UseTriangleOptimization);
 	}
 	Context.RHICmdList.EndRenderPass();
@@ -2538,8 +2380,8 @@ class FPostProcessAaPS_ES2 : public FGlobalShader
 	FPostProcessAaPS_ES2() {}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
-	FShaderParameter AaBlendAmount;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
+	LAYOUT_FIELD(FShaderParameter, AaBlendAmount);
 
 	FPostProcessAaPS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -2550,7 +2392,7 @@ public:
 
 	void SetPS(const FRenderingCompositePassContext& Context)
 	{
-		FRHIPixelShader* ShaderRHI = GetPixelShader();
+		FRHIPixelShader* ShaderRHI = Context.RHICmdList.GetBoundPixelShader();
 		const FPostProcessSettings& Settings = Context.View.FinalPostProcessSettings;
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetPS(Context.RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
@@ -2620,13 +2462,6 @@ public:
 			SetShaderValue(Context.RHICmdList, ShaderRHI, AaBlendAmount, BlendAmount);
 		}
 	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter << AaBlendAmount;
-		return bShaderHasOutdatedParameters;
-	}
 };
 
 IMPLEMENT_SHADER_TYPE(,FPostProcessAaPS_ES2,TEXT("/Engine/Private/PostProcessMobile.usf"),TEXT("AaPS_ES2"),SF_Pixel);
@@ -2645,7 +2480,7 @@ class FPostProcessAaVS_ES2 : public FGlobalShader
 	FPostProcessAaVS_ES2(){}
 
 public:
-	FPostProcessPassParameters PostprocessParameter;
+	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
 
 	FPostProcessAaVS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -2655,16 +2490,9 @@ public:
 
 	void SetVS(const FRenderingCompositePassContext& Context)
 	{
-		FRHIVertexShader* ShaderRHI = GetVertexShader();
+		FRHIVertexShader* ShaderRHI = Context.RHICmdList.GetBoundVertexShader();
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetVS(ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << PostprocessParameter;
-		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -2684,8 +2512,8 @@ static void Aa_SetShader(const FRenderingCompositePassContext& Context)
 	TShaderMapRef<FPostProcessAaPS_ES2> PixelShader(Context.GetShaderMap());
 
 	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 	GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 	SetGraphicsPipelineState(Context.RHICmdList, GraphicsPSOInit);
@@ -2760,7 +2588,7 @@ void FRCPassPostProcessAaES2::Process(FRenderingCompositePassContext& Context)
 			Width, Height,
 			DestSize,
 			SrcSize,
-			*VertexShader,
+			VertexShader,
 			EDRF_UseTriangleOptimization);
 	}
 	Context.RHICmdList.EndRenderPass();
@@ -2827,16 +2655,16 @@ public:
 		OutEnvironment.CompilerFlags.Add(CFLAG_StandardOptimization);
 	}
 
-	void SetCS(const FRenderingCompositePassContext& Context, uint32 ClearValue, uint32 NumEntries, FRHIUnorderedAccessView* NewUnorderedAccessViewRHI)
+	void SetCS(const FRenderingCompositePassContext& Context, uint32 ClearValue, uint32 NumEntries, FRHIUnorderedAccessView* NewUnorderedAccessViewRHI) const
 	{
-		FRHIComputeShader* ShaderRHI = GetComputeShader();
+		FRHIComputeShader* ShaderRHI = Context.RHICmdList.GetBoundComputeShader();
 
 		FParameters ShaderParameters;
 		ShaderParameters.ClearValue = ClearValue;
 		ShaderParameters.NumEntries = NumEntries;
 		ShaderParameters.UAV = NewUnorderedAccessViewRHI;
 
-		SetShaderParameters(Context.RHICmdList, this, ShaderRHI, ShaderParameters);
+		SetShaderParameters(Context.RHICmdList, *this, ShaderRHI, ShaderParameters);
 	}
 };
 
@@ -2914,7 +2742,7 @@ public:
 
 	void SetCS(const FRenderingCompositePassContext& Context, const FIntPoint& SrcRectExtent, FRHITexture* NewTextureRHI, FRHIUnorderedAccessView* NewUnorderedAccessViewRHI)
 	{
-		FRHIComputeShader* ShaderRHI = GetComputeShader();
+		FRHIComputeShader* ShaderRHI = Context.RHICmdList.GetBoundComputeShader();
 
 		FParameters ShaderParameters;
 
@@ -2962,13 +2790,13 @@ void FRCPassPostProcessAverageLuminanceES2::Process(FRenderingCompositePassConte
 		{
 			TShaderMapRef<FClearUAVUIntCS_ES2> ClearShader(Context.GetShaderMap());
 
-			Context.RHICmdList.SetComputeShader(ClearShader->GetComputeShader());
+			Context.RHICmdList.SetComputeShader(Context.RHICmdList.GetBoundComputeShader());
 
 			ClearShader->SetCS(Context, 0, DestSize.X, GAverageLuminanceBuffer->UnorderedAccessViewRHI);
 
-			DispatchComputeShader(Context.RHICmdList, *ClearShader, FMath::DivideAndRoundUp<uint32>(DestSize.X, 64), DestSize.Y, 1);
+			DispatchComputeShader(Context.RHICmdList, ClearShader.GetComputeShader(), FMath::DivideAndRoundUp<uint32>(DestSize.X, 64), DestSize.Y, 1);
 
-			UnsetShaderUAVs(Context.RHICmdList, *ClearShader, ClearShader->GetComputeShader());
+			UnsetShaderUAVs(Context.RHICmdList, *ClearShader, Context.RHICmdList.GetBoundComputeShader());
 		}
 		else
 		{
@@ -2982,7 +2810,7 @@ void FRCPassPostProcessAverageLuminanceES2::Process(FRenderingCompositePassConte
 
 			TShaderMapRef<FPostProcessAverageLuminanceCS_ES2> ComputeShader(Context.GetShaderMap());
 
-			Context.RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
+			Context.RHICmdList.SetComputeShader(Context.RHICmdList.GetBoundComputeShader());
 
 			const FIntPoint SrcRectExtent = InputDesc->Extent;
 
@@ -2992,7 +2820,7 @@ void FRCPassPostProcessAverageLuminanceES2::Process(FRenderingCompositePassConte
 
 			DispatchComputeShader(Context.RHICmdList, *ComputeShader, ThreadGroupCount.X, ThreadGroupCount.Y, 1);
 
-			UnsetShaderUAVs(Context.RHICmdList, *ComputeShader, ComputeShader->GetComputeShader());
+			UnsetShaderUAVs(Context.RHICmdList, *ComputeShader, Context.RHICmdList.GetBoundComputeShader());
 		}
 
 		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, GAverageLuminanceBuffer->UnorderedAccessViewRHI);
@@ -3068,7 +2896,7 @@ public:
 
 		ShaderParameters.OutputBuffer = TextureUnorderedAccessViewRHI;
 
-		SetShaderParameters(Context.RHICmdList, this, GetComputeShader(), ShaderParameters);
+		SetShaderParameters(Context.RHICmdList, this, Context.RHICmdList.GetBoundComputeShader(), ShaderParameters);
 	}
 };
 
@@ -3096,13 +2924,13 @@ void FRCPassPostProcessBasicEyeAdaptationES2::Process(FRenderingCompositePassCon
 	{
 		TShaderMapRef<FBasicEyeAdaptationCS_ES2> ComputeShader(Context.GetShaderMap());
 
-		Context.RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
+		Context.RHICmdList.SetComputeShader(Context.RHICmdList.GetBoundComputeShader());
 
 		ComputeShader->Set(Context, EyeAdaptationLastFrameBuffer->SRV, LogLuminanceWeightBuffer, EyeAdaptationThisFrameBuffer->UAV);
 
 		DispatchComputeShader(Context.RHICmdList, *ComputeShader, 1, 1, 1);
 
-		UnsetShaderUAVs(Context.RHICmdList, *ComputeShader, ComputeShader->GetComputeShader());
+		UnsetShaderUAVs(Context.RHICmdList, *ComputeShader, Context.RHICmdList.GetBoundComputeShader());
 
 		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, EyeAdaptationThisFrameBuffer->UAV);
 	}
@@ -3246,13 +3074,13 @@ void FRCPassPostProcessHistogramES2::Process(FRenderingCompositePassContext& Con
 		{
 			TShaderMapRef<FClearUAVUIntCS_ES2> ClearShader(Context.GetShaderMap());
 
-			Context.RHICmdList.SetComputeShader(ClearShader->GetComputeShader());
+			Context.RHICmdList.SetComputeShader(Context.RHICmdList.GetBoundComputeShader());
 
 			ClearShader->SetCS(Context, 0, DestSize.X, GHistogramBuffer->UnorderedAccessViewRHI);
 
 			DispatchComputeShader(Context.RHICmdList, *ClearShader, FMath::DivideAndRoundUp<uint32>(DestSize.X, 64), DestSize.Y, 1);
 
-			UnsetShaderUAVs(Context.RHICmdList, *ClearShader, ClearShader->GetComputeShader());
+			UnsetShaderUAVs(Context.RHICmdList, *ClearShader, Context.RHICmdList.GetBoundComputeShader());
 		}
 		else
 		{
@@ -3266,7 +3094,7 @@ void FRCPassPostProcessHistogramES2::Process(FRenderingCompositePassContext& Con
 
 			TShaderMapRef<FPostProcessHistogramCS_ES2> ComputeShader(Context.GetShaderMap());
 
-			Context.RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
+			Context.RHICmdList.SetComputeShader(Context.RHICmdList.GetBoundComputeShader());
 
 			const FIntPoint SrcRectExtent = InputDesc->Extent;
 			const FIntPoint ThreadGroupCount = FIntPoint::DivideAndRoundUp(SrcRectExtent, FPostProcessHistogramCS_ES2::TexelsPerThreadGroup);
@@ -3275,7 +3103,7 @@ void FRCPassPostProcessHistogramES2::Process(FRenderingCompositePassContext& Con
 
 			DispatchComputeShader(Context.RHICmdList, *ComputeShader, ThreadGroupCount.X, ThreadGroupCount.Y, 1);
 
-			UnsetShaderUAVs(Context.RHICmdList, *ComputeShader, ComputeShader->GetComputeShader());
+			UnsetShaderUAVs(Context.RHICmdList, *ComputeShader, Context.RHICmdList.GetBoundComputeShader());
 		}
 
 		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, GHistogramBuffer->UnorderedAccessViewRHI);
@@ -3348,7 +3176,7 @@ public:
 
 		ShaderParameters.OutputBuffer = TextureUnorderedAccessViewRHI;
 
-		SetShaderParameters(Context.RHICmdList, this, GetComputeShader(), ShaderParameters);
+		SetShaderParameters(Context.RHICmdList, this, Context.RHICmdList.GetBoundComputeShader(), ShaderParameters);
 	}
 };
 
@@ -3376,13 +3204,13 @@ void FRCPassPostProcessHistogramEyeAdaptationES2::Process(FRenderingCompositePas
 	{
 		TShaderMapRef<FHistogramEyeAdaptationCS_ES2> ComputeShader(Context.GetShaderMap());
 
-		Context.RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
+		Context.RHICmdList.SetComputeShader(Context.RHICmdList.GetBoundComputeShader());
 
 		ComputeShader->Set(Context, EyeAdaptationLastFrameBuffer->SRV, HistogramBuffer, EyeAdaptationThisFrameBuffer->UAV);
 
 		DispatchComputeShader(Context.RHICmdList, *ComputeShader, 1, 1, 1);
 
-		UnsetShaderUAVs(Context.RHICmdList, *ComputeShader, ComputeShader->GetComputeShader());
+		UnsetShaderUAVs(Context.RHICmdList, *ComputeShader, Context.RHICmdList.GetBoundComputeShader());
 
 		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, EyeAdaptationThisFrameBuffer->UAV);
 	}

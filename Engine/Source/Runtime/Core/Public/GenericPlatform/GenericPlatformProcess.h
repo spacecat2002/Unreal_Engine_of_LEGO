@@ -207,6 +207,12 @@ struct CORE_API FGenericPlatformProcess
 	 */
 	static void SetThreadAffinityMask( uint64 AffinityMask );
 
+	/**
+	 * Helper function to set thread name of the current thread.
+	 * @param ThreadName   Name to set
+	 */
+	static void SetThreadName( const TCHAR* ThreadName ) { }
+
 	/** Allow the platform to do anything it needs for game thread */
 	static void SetupGameThread() { }
 

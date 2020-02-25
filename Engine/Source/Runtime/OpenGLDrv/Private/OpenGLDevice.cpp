@@ -1343,14 +1343,7 @@ void FOpenGLDynamicRHI::Cleanup()
 		GPUProfilingData.Cleanup();
 
 		// Ask all initialized FRenderResources to release their RHI resources.
-		for(TLinkedList<FRenderResource*>::TIterator ResourceIt(FRenderResource::GetResourceList());ResourceIt;ResourceIt.Next())
-		{
-			ResourceIt->ReleaseRHI();
-		}
-		for(TLinkedList<FRenderResource*>::TIterator ResourceIt(FRenderResource::GetResourceList());ResourceIt;ResourceIt.Next())
-		{
-			ResourceIt->ReleaseDynamicRHI();
-		}
+		FRenderResource::ReleaseRHIForAllResources();
 	}
 
 	// Release dynamic vertex and index buffers.

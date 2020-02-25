@@ -40,28 +40,16 @@ public:
 		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), ThreadGroupSize);
 	}
 
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-
-		Ar << InstancesCPUCountParam;
-		Ar << DescBufferOffsetParam;
-		Ar << InstancesTransformsParam;
-		Ar << InstancesDescriptorsParam;
-
-		return bShaderHasOutdatedParameters;
-	}
-
 	const FShaderParameter& GetInstancesCountParam() const { return InstancesCPUCountParam; }
 	inline const FShaderParameter& GetInstancesDescBufferOffsetParam() const { return DescBufferOffsetParam; }
 	inline const FShaderResourceParameter& GetInstancesTransformsParam() const { return InstancesTransformsParam; }	
 	inline const FShaderResourceParameter& GetInstancesDescriptorsParam() const { return InstancesDescriptorsParam; }
 
 private:
-	FShaderParameter InstancesCPUCountParam;
-	FShaderParameter DescBufferOffsetParam;
-	FShaderResourceParameter InstancesTransformsParam;
-	FShaderResourceParameter InstancesDescriptorsParam;
+	LAYOUT_FIELD(FShaderParameter, InstancesCPUCountParam);
+	LAYOUT_FIELD(FShaderParameter, DescBufferOffsetParam);
+	LAYOUT_FIELD(FShaderResourceParameter, InstancesTransformsParam);
+	LAYOUT_FIELD(FShaderResourceParameter, InstancesDescriptorsParam);
 };
 
 /**
@@ -71,7 +59,7 @@ private:
 inline void CopyRayTracingGPUInstances(FRHICommandList& RHICmdList, uint32 InstancesCount, int32 DescBufferOffset, FRHIShaderResourceView* TransformsSRV, FRHIUnorderedAccessView* InstancesDescUAV, TFunctionRef<void(FRHIComputeShader*, const FShaderResourceParameter&, const FShaderResourceParameter&, bool)> ResourceBindCallback)
 {
 	TShaderMapRef<RayTracingInstanceCopyCS> ComputeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-	FRHIComputeShader* ShaderRHI = ComputeShader->GetComputeShader();
+	FRHIComputeShader* ShaderRHI = ComputeShader.GetComputeShader();
 	RHICmdList.SetComputeShader(ShaderRHI);
 
 	SetShaderValue(RHICmdList, ShaderRHI, ComputeShader->GetInstancesCountParam(), InstancesCount);

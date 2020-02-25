@@ -29,6 +29,8 @@
 #include "VisualizeTexture.h"
 #include "GpuDebugRendering.h"
 
+IMPLEMENT_TYPE_LAYOUT(FSceneTextureShaderParameters);
+
 static TAutoConsoleVariable<int32> CVarRSMResolution(
 	TEXT("r.LPV.RSMResolution"),
 	360,
@@ -252,7 +254,7 @@ FSceneRenderTargets::FSceneRenderTargets(const FViewInfo& View, const FSceneRend
 	, LightAccumulation(GRenderTargetPool.MakeSnapshot(SnapshotSource.LightAccumulation))
 	, SceneColorSubPixel(GRenderTargetPool.MakeSnapshot(SnapshotSource.SceneColorSubPixel))
 	, DirectionalOcclusion(GRenderTargetPool.MakeSnapshot(SnapshotSource.DirectionalOcclusion))
-	, SceneDepthZ(GRenderTargetPool.MakeSnapshot(SnapshotSource.SceneDepthZ))
+	, SceneDepthZ(GRenderTargetPool.MakeSnapshot(SnapshotSource.SceneDepthZ))	
 	, SceneVelocity(GRenderTargetPool.MakeSnapshot(SnapshotSource.SceneVelocity))
 	, LightingChannels(GRenderTargetPool.MakeSnapshot(SnapshotSource.LightingChannels))
 	, SceneAlphaCopy(GRenderTargetPool.MakeSnapshot(SnapshotSource.SceneAlphaCopy))
@@ -1493,7 +1495,7 @@ bool FSceneRenderTargets::BeginRenderingCustomDepth(FRHICommandListImmediate& RH
 			RPInfo.ColorRenderTargets[0].MipIndex = 0;
 			RPInfo.ColorRenderTargets[0].RenderTarget = MobileCustomDepth->GetRenderTargetItem().ShaderResourceTexture;
 
-			RPInfo.ColorRenderTargets[1].Action = ERenderTargetActions::Clear_Store;
+			RPInfo.ColorRenderTargets[1].Action = bWritesCustomStencilValues ? ERenderTargetActions::Clear_Store : ERenderTargetActions::DontLoad_DontStore;
 			RPInfo.ColorRenderTargets[1].ArraySlice = -1;
 			RPInfo.ColorRenderTargets[1].MipIndex = 0;
 			RPInfo.ColorRenderTargets[1].RenderTarget = MobileCustomStencil->GetRenderTargetItem().ShaderResourceTexture;
@@ -1562,7 +1564,7 @@ void FSceneRenderTargets::BeginRenderingPrePass(FRHICommandList& RHICmdList, boo
 		// Note, this is a reversed Z depth surface, so 0.0f is the far plane.
 		ERenderTargetActions StencilAction = bStencilClear ? ERenderTargetActions::Clear_Store : ERenderTargetActions::Load_Store;
 		RPInfo.DepthStencilRenderTarget.Action = MakeDepthStencilTargetActions(ERenderTargetActions::Clear_Store, StencilAction);
-		bSceneDepthCleared = true;
+		bSceneDepthCleared = true;	
 	}
 	else
 	{
@@ -2079,24 +2081,25 @@ void FSceneRenderTargets::ResolveDepthTexture(FRHICommandList& RHICmdList, const
 		{
 		case 2:
 			TextureIndex = ResolvePixelShader2X->UnresolvedSurface.GetBaseIndex();
-			ResolvePixelShader = GETSAFERHISHADER_PIXEL(*ResolvePixelShader2X);
+			ResolvePixelShader = ResolvePixelShader2X.GetPixelShader();
 			break;
 		case 4:
 			TextureIndex = ResolvePixelShader4X->UnresolvedSurface.GetBaseIndex();
-			ResolvePixelShader = GETSAFERHISHADER_PIXEL(*ResolvePixelShader4X);
+			ResolvePixelShader = ResolvePixelShader4X.GetPixelShader();
 			break;
 		case 8:
 			TextureIndex = ResolvePixelShader8X->UnresolvedSurface.GetBaseIndex();
-			ResolvePixelShader = GETSAFERHISHADER_PIXEL(*ResolvePixelShader8X);
+			ResolvePixelShader = ResolvePixelShader8X.GetPixelShader();
 			break;
 		default:
 			ensureMsgf(false, TEXT("Unsupported depth resolve for samples: %i.  Dynamic loop method isn't supported on all platforms.  Please add specific case."), SourceTexture->GetNumSamples());
 			TextureIndex = ResolvePixelShaderAny->UnresolvedSurface.GetBaseIndex();
-			ResolvePixelShader = GETSAFERHISHADER_PIXEL(*ResolvePixelShaderAny);
+			ResolvePixelShader = ResolvePixelShaderAny.GetPixelShader();
 			break;
 		}
 
-		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*ResolveVertexShader);
+		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GScreenVertexDeclaration.VertexDeclarationRHI;
+		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = ResolveVertexShader.GetVertexShader();
 		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ResolvePixelShader;
 		GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
 
@@ -2304,42 +2307,34 @@ void FSceneRenderTargets::AllocateMobileRenderTargets(FRHICommandListImmediate& 
 // This is a helper class. It generates and provides N names with
 // sequentially incremented postfix starting from 0.
 // Example: SomeName0, SomeName1, ..., SomeName117
-class IncrementalNamesHolder
+class FIncrementalNamesHolder
 {
 public:
-	IncrementalNamesHolder(const TCHAR* const Name, uint32 Size)
-		: ArraySize(Size)
+	FIncrementalNamesHolder(const TCHAR* const Name, uint32 Size)
 	{
 		check(Size > 0);
-		Names = new FString[Size];
+		Names.Empty(Size);
 		for (uint32 i = 0; i < Size; ++i)
 		{
-			Names[i] = FString::Printf(TEXT("%s%d"), Name, i);
+			Names.Add(FString::Printf(TEXT("%s%d"), Name, i));
 		}
-	}
-
-	~IncrementalNamesHolder()
-	{
-		delete[] Names;
 	}
 
 	const TCHAR* const operator[] (uint32 Idx) const
 	{
-		check(Idx < ArraySize);
 		return *Names[Idx];
 	}
 
 private:
-	const uint32 ArraySize;
-	FString*     Names = nullptr;
+	TArray<FString> Names;
 };
 
 // for easier use of "VisualizeTexture"
 static const TCHAR* const GetVolumeName(uint32 Id, bool bDirectional)
 {
 	constexpr uint32 MaxNames = 128;
-	static IncrementalNamesHolder Names   (TEXT("TranslucentVolume"),    MaxNames);
-	static IncrementalNamesHolder NamesDir(TEXT("TranslucentVolumeDir"), MaxNames);
+	static FIncrementalNamesHolder Names(TEXT("TranslucentVolume"), MaxNames);
+	static FIncrementalNamesHolder NamesDir(TEXT("TranslucentVolumeDir"), MaxNames);
 
 	check(Id < MaxNames);
 
@@ -2453,7 +2448,7 @@ void FSceneRenderTargets::AllocateCommonDepthTargets(FRHICommandList& RHICmdList
 		if (SceneDepthZ && bHMDAllocatedDepthTarget)
 		{
 			const uint32 OldElementSize = SceneDepthZ->ComputeMemorySize();
-
+		
 			{
 				FSceneRenderTargetItem& Item = SceneDepthZ->GetRenderTargetItem();
 
@@ -2491,7 +2486,7 @@ void FSceneRenderTargets::AllocateFoveationTexture(FRHICommandList& RHICmdList)
 {
 	const bool bStereo = GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled();
 	IStereoRenderTargetManager* const StereoRenderTargetManager = bStereo ? GEngine->StereoRenderingDevice->GetRenderTargetManager() : nullptr;
-	
+
 	FTexture2DRHIRef Texture;
 	FIntPoint TextureSize;
 
@@ -2600,7 +2595,7 @@ void FSceneRenderTargets::AllocateDeferredShadingPathRenderTargets(FRHICommandLi
 			}
 			GRenderTargetPool.FindFreeElement(RHICmdList, Desc, ScreenSpaceAO, TEXT("ScreenSpaceAO"), true, ERenderTargetTransience::NonTransient);
 		}
-
+		
 		{
 			const int32 TranslucencyLightingVolumeDim = GetTranslucencyLightingVolumeDim();
 
@@ -2806,11 +2801,11 @@ void FSceneRenderTargets::ClearVolumeTextures(FRHICommandList& RHICmdList, ERHIF
 	TShaderMapRef<TOneColorPixelShaderMRT>PixelShader(ShaderMap, PermutationVector);
 
 	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GScreenVertexDeclaration.VertexDeclarationRHI;
-	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
 #if PLATFORM_SUPPORTS_GEOMETRY_SHADERS
-	GraphicsPSOInit.BoundShaderState.GeometryShaderRHI = GETSAFERHISHADER_GEOMETRY(*GeometryShader);
+	GraphicsPSOInit.BoundShaderState.GeometryShaderRHI = GeometryShader.GetGeometryShader();
 #endif
-	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 	GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
 
 	SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -3076,7 +3071,9 @@ IPooledRenderTarget* FSceneRenderTargets::RequestCustomDepth(FRHICommandListImme
 		bool bHasValidCustomStencil;
 		if (bMobilePath)
 		{
-			bHasValidCustomStencil = (MobileCustomStencil.IsValid() && CustomDepthBufferSize == MobileCustomStencil->GetDesc().Extent);
+			bHasValidCustomStencil = (MobileCustomStencil.IsValid() && CustomDepthBufferSize == MobileCustomStencil->GetDesc().Extent) && 
+									//Use memory less when stencil writing is disabled and vice versa
+									bCustomDepthPassWritingStencil == ((MobileCustomStencil->GetDesc().TargetableFlags & TexCreate_Memoryless) == 0);
 		}
 		else
 		{
@@ -3102,11 +3099,20 @@ IPooledRenderTarget* FSceneRenderTargets::RequestCustomDepth(FRHICommandListImme
 			
 			if (bMobilePath)
 			{
-				FPooledRenderTargetDesc MobileCustomDepthDesc(FPooledRenderTargetDesc::Create2DDesc(CustomDepthBufferSize, PF_R16F, FClearValueBinding(FLinearColor(65500.0f, 65500.0f, 65500.0f)), TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource, false));
+				uint32 CustomDepthStencilTargetableFlags = TexCreate_RenderTargetable | TexCreate_ShaderResource;
+
+				FPooledRenderTargetDesc MobileCustomDepthDesc(FPooledRenderTargetDesc::Create2DDesc(CustomDepthBufferSize, PF_R16F, FClearValueBinding(FLinearColor(65500.0f, 65500.0f, 65500.0f)), TexCreate_None, CustomDepthStencilTargetableFlags, false));
 				GRenderTargetPool.FindFreeElement(RHICmdList, MobileCustomDepthDesc, MobileCustomDepth, TEXT("MobileCustomDepth"));
 
-				FPooledRenderTargetDesc MobileCustomStencilDesc(FPooledRenderTargetDesc::Create2DDesc(CustomDepthBufferSize, PF_R8_UINT, FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource, false));
+				if (!bCustomDepthPassWritingStencil)
+				{
+					CustomDepthStencilTargetableFlags |= TexCreate_Memoryless;
+				}
+
+				FPooledRenderTargetDesc MobileCustomStencilDesc(FPooledRenderTargetDesc::Create2DDesc(CustomDepthBufferSize, PF_R8_UINT, FClearValueBinding::Transparent, TexCreate_None, CustomDepthStencilTargetableFlags, false));
 				GRenderTargetPool.FindFreeElement(RHICmdList, MobileCustomStencilDesc, MobileCustomStencil, TEXT("MobileCustomStencil"));
+
+				CustomStencilSRV.SafeRelease();
 			}
 			else
 			{
@@ -3412,6 +3418,7 @@ void SetupMobileSceneTextureUniformParameters(
 {
 	FRHITexture* BlackDefault2D = GSystemTextures.BlackDummy->GetRenderTargetItem().ShaderResourceTexture;
 	FRHITexture* DepthDefault = GSystemTextures.DepthDummy->GetRenderTargetItem().ShaderResourceTexture;
+	FRHITexture* ZeroUIntDummy = GSystemTextures.ZeroUIntDummy->GetRenderTargetItem().ShaderResourceTexture;
 
 	SceneTextureParameters.SceneColorTexture = bSceneTexturesValid ? SceneContext.GetSceneColorTexture().GetReference() : BlackDefault2D;
 	SceneTextureParameters.SceneColorTextureSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
@@ -3436,15 +3443,14 @@ void SetupMobileSceneTextureUniformParameters(
 	SceneTextureParameters.CustomDepthTexture = CustomDepth;
 	SceneTextureParameters.CustomDepthTextureSampler = TStaticSamplerState<>::GetRHI();
 
-	FRHITexture* MobileCustomStencil = BlackDefault2D;
+	FRHITexture* MobileCustomStencil = ZeroUIntDummy;
 
 	if (SceneContext.MobileCustomStencil.IsValid())
 	{
 		MobileCustomStencil = SceneContext.MobileCustomStencil->GetRenderTargetItem().ShaderResourceTexture;
 	}
 
-	SceneTextureParameters.MobileCustomStencilTexture = MobileCustomStencil;
-	SceneTextureParameters.MobileCustomStencilTextureSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+	SceneTextureParameters.CustomStencilTexture = MobileCustomStencil;
 	
 	if (SceneContext.VirtualTextureFeedback.FeedbackBufferUAV.IsValid())
 	{

@@ -65,24 +65,15 @@ public:
 
 	void SetParameters(FRHICommandList& RHICmdList, const FViewInfo& View, FRHISamplerState* SamplerStateRHI, FRHITexture* TextureRHI)
 	{
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, GetPixelShader(), View.ViewUniformBuffer);
-		SetTextureParameter(RHICmdList, GetPixelShader(), InTexture, InTextureSampler, SamplerStateRHI, TextureRHI);
-		SceneTextureParameters.Set(RHICmdList, GetPixelShader(), View.FeatureLevel, ESceneTextureSetupMode::All);
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << InTexture;
-		Ar << InTextureSampler;
-		Ar << SceneTextureParameters;
-		return bShaderHasOutdatedParameters;
+		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, RHICmdList.GetBoundPixelShader(), View.ViewUniformBuffer);
+		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), InTexture, InTextureSampler, SamplerStateRHI, TextureRHI);
+		SceneTextureParameters.Set(RHICmdList, RHICmdList.GetBoundPixelShader(), View.FeatureLevel, ESceneTextureSetupMode::All);
 	}
 
 private:
-	FShaderResourceParameter InTexture;
-	FShaderResourceParameter InTextureSampler;
-	FSceneTextureShaderParameters SceneTextureParameters;
+	LAYOUT_FIELD(FShaderResourceParameter, InTexture)
+	LAYOUT_FIELD(FShaderResourceParameter, InTextureSampler)
+	LAYOUT_FIELD(FSceneTextureShaderParameters, SceneTextureParameters)
 };
 
 /**
@@ -108,22 +99,15 @@ public:
 
 	void SetParameters(FRHICommandList& RHICmdList, const FViewInfo& View, const FIntPoint& SourceTexSize)
 	{
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, GetVertexShader(), View.ViewUniformBuffer);
+		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, RHICmdList.GetBoundVertexShader(), View.ViewUniformBuffer);
 		if (InvTexSizeParameter.IsBound())
 		{
 			FVector2D InvTexSize(1.0f / SourceTexSize.X, 1.0f / SourceTexSize.Y);
-			SetShaderValue(RHICmdList, GetVertexShader(), InvTexSizeParameter, InvTexSize);
+			SetShaderValue(RHICmdList, RHICmdList.GetBoundVertexShader(), InvTexSizeParameter, InvTexSize);
 		}
 	}
 
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << InvTexSizeParameter;
-		return bShaderHasOutdatedParameters;
-	}
-
-	FShaderParameter InvTexSizeParameter;
+	LAYOUT_FIELD(FShaderParameter, InvTexSizeParameter)
 };
 
 #define IMPLEMENT_MOBILE_SCENE_CAPTURECOPY(SCENETYPE) \
@@ -140,23 +124,23 @@ IMPLEMENT_SHADER_TYPE(, FMobileSceneCaptureCopyVS, TEXT("/Engine/Private/MobileS
  
 
 template <ESceneCaptureSource CaptureSource>
-static FShader* SetCaptureToTargetShaders(FRHICommandListImmediate& RHICmdList, FGraphicsPipelineStateInitializer& GraphicsPSOInit, FViewInfo& View, const FIntPoint& SourceTexSize, FRHITexture* SourceTextureRHI)
+static TShaderRef<FShader> SetCaptureToTargetShaders(FRHICommandListImmediate& RHICmdList, FGraphicsPipelineStateInitializer& GraphicsPSOInit, FViewInfo& View, const FIntPoint& SourceTexSize, FRHITexture* SourceTextureRHI)
 {
 	TShaderMapRef<FMobileSceneCaptureCopyVS> VertexShader(View.ShaderMap);
 	TShaderMapRef<FMobileSceneCaptureCopyPS<CaptureSource>> PixelShader(View.ShaderMap);
 
 	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 	SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
 	VertexShader->SetParameters(RHICmdList, View, SourceTexSize);
 	PixelShader->SetParameters(RHICmdList, View, TStaticSamplerState<SF_Point>::GetRHI(), SourceTextureRHI);
 
-	return *VertexShader;
+	return VertexShader;
 }
 
-static FShader* SetCaptureToTargetShaders(FRHICommandListImmediate& RHICmdList, FGraphicsPipelineStateInitializer& GraphicsPSOInit, ESceneCaptureSource CaptureSource, FViewInfo& View, const FIntPoint& SourceTexSize, FRHITexture* SourceTextureRHI)
+static TShaderRef<FShader> SetCaptureToTargetShaders(FRHICommandListImmediate& RHICmdList, FGraphicsPipelineStateInitializer& GraphicsPSOInit, ESceneCaptureSource CaptureSource, FViewInfo& View, const FIntPoint& SourceTexSize, FRHITexture* SourceTextureRHI)
 {
 	switch (CaptureSource)
 	{
@@ -174,7 +158,7 @@ static FShader* SetCaptureToTargetShaders(FRHICommandListImmediate& RHICmdList, 
 			return SetCaptureToTargetShaders<SCS_DeviceDepth>(RHICmdList, GraphicsPSOInit, View, SourceTexSize, SourceTextureRHI);
 		default:
 			checkNoEntry();
-			return nullptr;
+			return TShaderRef<FShader>();
 	}
 }
 
@@ -232,7 +216,7 @@ static void CopyCaptureToTarget(
 		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
 
-		FShader* VertexShader = SetCaptureToTargetShaders(RHICmdList, GraphicsPSOInit, CaptureSource, View, SourceTexSize, SourceTextureRHI);
+		TShaderRef<FShader> VertexShader = SetCaptureToTargetShaders(RHICmdList, GraphicsPSOInit, CaptureSource, View, SourceTexSize, SourceTextureRHI);
 
 		if (bNeedsFlippedRenderTarget)
 		{
@@ -292,8 +276,8 @@ static void CopyCaptureToTarget(
 			TShaderMapRef<FScreenPS> PixelShader(View.ShaderMap);
 
 			GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*ScreenVertexShader);
-			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = ScreenVertexShader.GetVertexShader();
+			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 			GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 			SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -318,7 +302,7 @@ static void CopyCaptureToTarget(
 				ViewRect.Width(), TargetHeight,
 				TargetSize,
 				SourceTexSize,
-				*ScreenVertexShader,
+				ScreenVertexShader,
 				EDRF_UseTriangleOptimization);
 		}
 		RHICmdList.EndRenderPass();

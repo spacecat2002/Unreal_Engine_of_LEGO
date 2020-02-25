@@ -500,7 +500,7 @@ FRDGTextureRef AddHistogramEyeAdaptationPass(
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
 			RDG_EVENT_NAME("HistogramEyeAdaptation (CS)"),
-			*ComputeShader,
+			ComputeShader,
 			PassParameters,
 			FIntVector(1, 1, 1));
 	}
@@ -518,7 +518,7 @@ FRDGTextureRef AddHistogramEyeAdaptationPass(
 			View,
 			FScreenPassTextureViewport(OutputTexture),
 			FScreenPassTextureViewport(HistogramTexture),
-			*PixelShader,
+			PixelShader,
 			PassParameters);
 	}
 
@@ -584,7 +584,7 @@ FScreenPassTexture AddBasicEyeAdaptationSetupPass(
 		View,
 		Viewport,
 		Viewport,
-		*PixelShader,
+		PixelShader,
 		PassParameters,
 		EScreenPassDrawFlags::AllowHMDHiddenAreaMask);
 
@@ -693,7 +693,7 @@ FRDGTextureRef AddBasicEyeAdaptationPass(
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
 			RDG_EVENT_NAME("BasicEyeAdaptation (CS)"),
-			*ComputeShader,
+			ComputeShader,
 			PassParameters,
 			FIntVector(1, 1, 1));
 	}
@@ -713,7 +713,7 @@ FRDGTextureRef AddBasicEyeAdaptationPass(
 			View,
 			OutputViewport,
 			OutputViewport,
-			*PixelShader,
+			PixelShader,
 			PassParameters);
 	}
 

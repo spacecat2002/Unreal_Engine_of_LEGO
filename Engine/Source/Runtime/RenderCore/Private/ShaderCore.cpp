@@ -22,6 +22,7 @@
 #include "Interfaces/ITargetPlatform.h"
 #include "Interfaces/ITargetPlatformManagerModule.h"
 #include "Misc/ConfigCacheIni.h"
+#include "Misc/StringBuilder.h"
 #endif
 
 #define VALIDATE_GLOBAL_UNIFORM_BUFFERS (!UE_BUILD_SHIPPING && !UE_BUILD_TEST)
@@ -92,7 +93,6 @@ DEFINE_STAT(STAT_Shaders_TotalRTShaderInitForRenderingTime);
 DEFINE_STAT(STAT_Shaders_FrameRTShaderInitForRenderingTime);
 DEFINE_STAT(STAT_Shaders_ShaderMemory);
 DEFINE_STAT(STAT_Shaders_ShaderResourceMemory);
-DEFINE_STAT(STAT_Shaders_ShaderMapMemory);
 
 DEFINE_STAT(STAT_Shaders_NumShadersRegistered);
 DEFINE_STAT(STAT_Shaders_NumShadersDuplicated);
@@ -262,7 +262,9 @@ bool AllowDebugViewmodes(EShaderPlatform Platform)
 	const int32 ForceDebugViewValue = CVarForceDebugViewModes.GetValueOnAnyThread();
 	bool bForceEnable = ForceDebugViewValue == 1;
 	bool bForceDisable = ForceDebugViewValue == 2;
-	ITargetPlatform* TargetPlatform = GetTargetPlatformManager()->FindTargetPlatform(ShaderPlatformToPlatformName(Platform).ToString());
+	TStringBuilder<64> PlatformName;
+	ShaderPlatformToPlatformName(Platform).ToString(PlatformName);
+	ITargetPlatform* TargetPlatform = GetTargetPlatformManager()->FindTargetPlatform(PlatformName);
 	return (!bForceDisable) && (bForceEnable || !TargetPlatform || !TargetPlatform->RequiresCookedData());
 #else
 	return AllowDebugViewmodes();
@@ -381,12 +383,12 @@ void ValidateStaticUniformBuffer(FRHIUniformBuffer* UniformBuffer, FUniformBuffe
 			checkf(
 				ExpectedStructMetadata,
 				TEXT("Shader is requesting uniform buffer '%s' at slot %s with hash '%u', but a reverse lookup of the hash can't find it. The shader cache may be out of date."),
-				*Layout.GetDebugName().ToString(), *SlotRegistry.GetDebugDescription(Slot), ExpectedHash);
+				*Layout.GetDebugName(), *SlotRegistry.GetDebugDescription(Slot), ExpectedHash);
 
 			checkf(
 				false,
 				TEXT("Shader attempted to bind uniform buffer '%s' at slot %s with hash '%u', but the shader expected '%s' with hash '%u'."),
-				*Layout.GetDebugName().ToString(), *SlotRegistry.GetDebugDescription(Slot), ExpectedHash, ExpectedStructMetadata->GetShaderVariableName(), Layout.GetHash());
+				*Layout.GetDebugName(), *SlotRegistry.GetDebugDescription(Slot), ExpectedHash, ExpectedStructMetadata->GetShaderVariableName(), Layout.GetHash());
 		}
 	}
 #endif

@@ -60,6 +60,11 @@ bool MaterialRenderingRequiresAdjacencyInformation_RenderingThread(UMaterialInte
   * Please use the explicit game/render thread functions above instead */
 bool RequiresAdjacencyInformation(UMaterialInterface* Material, const FVertexFactoryType* VertexFactoryType, const FStaticFeatureLevel InFeatureLevel)
 {
+	if (!RHISupportsTessellation(GShaderPlatformForFeatureLevel[InFeatureLevel]))
+	{
+		return false;
+	}
+
 	if (IsInRenderingThread())
 	{
 		return MaterialRenderingRequiresAdjacencyInformation_RenderingThread(Material, VertexFactoryType, InFeatureLevel);
@@ -74,10 +79,9 @@ bool RequiresAdjacencyInformation(UMaterialInterface* Material, const FVertexFac
 		bool VertexFactorySupportsTessellation = !VertexFactoryType || (VertexFactoryType && VertexFactoryType->SupportsTessellationShaders());
 
 		// Concurrent?
-		if (RHISupportsTessellation(GShaderPlatformForFeatureLevel[InFeatureLevel]) && VertexFactorySupportsTessellation && Material)
+		if (VertexFactorySupportsTessellation && Material)
 		{
-			UMaterialInterface::TMicRecursionGuard RecursionGuard;
-			const UMaterial* BaseMaterial = Material->GetMaterial_Concurrent(RecursionGuard);
+			const UMaterial* BaseMaterial = Material->GetMaterial_Concurrent();
 			check(BaseMaterial);
 			EMaterialTessellationMode TessellationMode = (EMaterialTessellationMode)BaseMaterial->D3D11TessellationMode;
 			bool bEnableCrackFreeDisplacement = BaseMaterial->bEnableCrackFreeDisplacement;

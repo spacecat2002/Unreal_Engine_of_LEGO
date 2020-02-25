@@ -10,6 +10,7 @@
 #include "CoreMinimal.h"
 #include "PixelFormat.h"
 #include "HAL/IConsoleManager.h"
+#include "Serialization/MemoryLayout.h"
 
 #ifndef USE_STATIC_SHADER_PLATFORM_ENUMS
 #define USE_STATIC_SHADER_PLATFORM_ENUMS 0
@@ -19,7 +20,7 @@
 #define RHI_RAYTRACING 0
 #endif
 
-enum EShaderFrequency
+enum EShaderFrequency : uint8
 {
 	SF_Vertex			= 0,
 	SF_Hull				= 1,
@@ -238,6 +239,7 @@ namespace ERHIFeatureLevel
 		Num
 	};
 };
+DECLARE_INTRINSIC_TYPE_LAYOUT(ERHIFeatureLevel::Type);
 
 struct FGenericStaticFeatureLevel
 {
@@ -300,41 +302,41 @@ class RHI_API FGenericDataDrivenShaderPlatformInfo
 {
 	FName Language;
 	ERHIFeatureLevel::Type MaxFeatureLevel;
-	bool bIsMobile;
-	bool bIsMetalMRT;
-	bool bIsPC;
-	bool bIsConsole;
-	bool bIsAndroidOpenGLES;
+	uint32 bIsMobile: 1;
+	uint32 bIsMetalMRT: 1;
+	uint32 bIsPC: 1;
+	uint32 bIsConsole: 1;
+	uint32 bIsAndroidOpenGLES: 1;
 
-	bool bSupportsDrawIndirect;
-	bool bSupportsMobileMultiView;
-	bool bSupportsVolumeTextureCompression;
-	bool bSupportsDistanceFields; // used for DFShadows and DFAO - since they had the same checks
-	bool bSupportsDiaphragmDOF;
-	bool bSupportsRGBColorBuffer;
-	bool bSupportsCapsuleShadows;
-	bool bSupportsVolumetricFog; // also used for FVVoxelization
-	bool bSupportsIndexBufferUAVs;
-	bool bSupportsInstancedStereo;
-	bool bSupportsMultiView;
-	bool bSupportsMSAA;
-	bool bSupports4ComponentUAVReadWrite;
-	bool bSupportsRenderTargetWriteMask;
-	bool bSupportsRayTracing;
-	bool bSupportsRayTracingMissShaderBindings; // Whether resources could be bound for miss shaders
-	bool bSupportsRayTracingIndirectInstanceData; // Whether instance transforms can be copied from the GPU to the TLAS instances buffer 
-	bool bSupportsGPUSkinCache;
-	bool bSupportsByteBufferComputeShaders;
-	bool bSupportsPrimitiveShaders;
-	bool bSupportsUInt64ImageAtomics;
-	bool bSupportsTemporalHistoryUpscale;
-	bool bSupportsRTIndexFromVS;
-	bool bSupportsWaveOperations; // Whether HLSL SM6 shader wave intrinsics are supported
-	bool bSupportsGPUScene;
-	bool bRequiresExplicit128bitRT;
+	uint32 bSupportsDrawIndirect: 1;
+	uint32 bSupportsMobileMultiView: 1;
+	uint32 bSupportsVolumeTextureCompression: 1;
+	uint32 bSupportsDistanceFields: 1; // used for DFShadows and DFAO - since they had the same checks
+	uint32 bSupportsDiaphragmDOF: 1;
+	uint32 bSupportsRGBColorBuffer: 1;
+	uint32 bSupportsCapsuleShadows: 1;
+	uint32 bSupportsVolumetricFog: 1; // also used for FVVoxelization
+	uint32 bSupportsIndexBufferUAVs: 1;
+	uint32 bSupportsInstancedStereo: 1;
+	uint32 bSupportsMultiView: 1;
+	uint32 bSupportsMSAA: 1;
+	uint32 bSupports4ComponentUAVReadWrite: 1;
+	uint32 bSupportsRenderTargetWriteMask: 1;
+	uint32 bSupportsRayTracing: 1;
+	uint32 bSupportsRayTracingMissShaderBindings : 1; // Whether resources could be bound for miss shaders
+	uint32 bSupportsRayTracingIndirectInstanceData : 1; // Whether instance transforms can be copied from the GPU to the TLAS instances buffer
+	uint32 bSupportsGPUSkinCache: 1;
+	uint32 bSupportsGPUScene : 1;
+	uint32 bSupportsByteBufferComputeShaders : 1;
+	uint32 bSupportsPrimitiveShaders : 1;
+	uint32 bSupportsUInt64ImageAtomics : 1;
+	uint32 bSupportsTemporalHistoryUpscale : 1;
+	uint32 bSupportsRTIndexFromVS : 1;
+	uint32 bSupportsWaveOperations : 1; // Whether HLSL SM6 shader wave intrinsics are supported
+	uint32 bRequiresExplicit128bitRT : 1;
 
-	bool bTargetsTiledGPU;
-	bool bNeedsOfflineCompiler;
+	uint32 bTargetsTiledGPU: 1;
+	uint32 bNeedsOfflineCompiler: 1;
 
 	// NOTE: When adding fields, you must also add to ParseDataDrivenShaderInfo!
 	uint32 bContainsValidPlatformInfo : 1;
@@ -819,6 +821,7 @@ enum EVertexElementType
 	VET_NumBits = 5,
 };
 static_assert(VET_MAX <= (1 << VET_NumBits), "VET_MAX will not fit on VET_NumBits");
+DECLARE_INTRINSIC_TYPE_LAYOUT(EVertexElementType);
 
 enum ECubeFace
 {
@@ -893,6 +896,7 @@ enum EUniformBufferBaseType : uint8
 	EUniformBufferBaseType_NumBits = 5,
 };
 static_assert(EUniformBufferBaseType_Num <= (1 << EUniformBufferBaseType_NumBits), "EUniformBufferBaseType_Num will not fit on EUniformBufferBaseType_NumBits");
+DECLARE_INTRINSIC_TYPE_LAYOUT(EUniformBufferBaseType);
 
 /** Numerical type used to store the static slot indices. */
 using FUniformBufferStaticSlot = uint8;
@@ -1529,7 +1533,7 @@ inline EShaderPlatform GetSimulatedPlatform(EShaderPlatform Platform)
 }
 
 /** Returns true if the feature level is supported by the shader platform. */
-inline bool IsFeatureLevelSupported(FStaticShaderPlatform InShaderPlatform, ERHIFeatureLevel::Type InFeatureLevel)
+inline bool IsFeatureLevelSupported(const FStaticShaderPlatform InShaderPlatform, ERHIFeatureLevel::Type InFeatureLevel)
 {
 	return InFeatureLevel <= GetMaxSupportedFeatureLevel(InShaderPlatform);
 }

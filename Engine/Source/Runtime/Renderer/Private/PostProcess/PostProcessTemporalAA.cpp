@@ -648,7 +648,7 @@ FTAAOutputs AddTemporalAAPass(
 				PassName, Inputs.bUseFast ? TEXT(" Fast") : TEXT(""),
 				PracticableSrcRect.Width(), PracticableSrcRect.Height(),
 				PracticableDestRect.Width(), PracticableDestRect.Height()),
-			*ComputeShader,
+			ComputeShader,
 			PassParameters,
 			FComputeShaderUtils::GetGroupCount(PracticableDestRect.Size(), GTemporalAATileSizeX));
 	}

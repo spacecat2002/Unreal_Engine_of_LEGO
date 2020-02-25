@@ -12,13 +12,6 @@
 #include "DeviceProfiles/DeviceProfileManager.h"
 #include "Containers/ResourceArray.h"
 
-static TAutoConsoleVariable<int32> CVarAllowVolumeTextureAssetCreation(
-	TEXT("r.AllowVolumeTextureAssetCreation"),
-	0,
-	TEXT("Enable UVolumeTexture assets"),
-	ECVF_ReadOnly
-	);
-
 // Limit the possible depth of volume texture otherwise when the user converts 2D textures, he can crash the engine.
 const int32 MAX_VOLUME_TEXTURE_DEPTH = 512;
 
@@ -376,7 +369,7 @@ public:
 		bGreyScaleFormat = (PixelFormat == PF_G8) || (PixelFormat == PF_BC4);
 
 		FTexturePlatformData* PlatformData = Owner->PlatformData;
-		if (PlatformData && PlatformData->TryLoadMips(MipBias, InitialData.GetMipData() + MipBias))
+		if (PlatformData && PlatformData->TryLoadMips(MipBias, InitialData.GetMipData() + MipBias, Owner))
 		{
 			for (int32 MipIndex = MipBias; MipIndex < NumMips; ++MipIndex)
 			{

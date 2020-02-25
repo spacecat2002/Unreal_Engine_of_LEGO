@@ -63,8 +63,9 @@ void FCustomDepthPassMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT Mesh
 		const FMaterialRenderProxy& MaterialRenderProxy = FallbackMaterialRenderProxyPtr ? *FallbackMaterialRenderProxyPtr : *MeshBatch.MaterialRenderProxy;
 
 		const EBlendMode BlendMode = Material.GetBlendMode();
-		const ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, Material);
-		const ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, Material);
+		const FMeshDrawingPolicyOverrideSettings OverrideSettings = ComputeMeshOverrideSettings(MeshBatch);
+		const ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, Material, OverrideSettings);
+		const ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, Material, OverrideSettings);
 		const bool bIsTranslucent = IsTranslucentBlendMode(BlendMode);
 
 
@@ -162,8 +163,7 @@ void FCustomDepthPassMeshProcessor::Process(
 		FDepthOnlyDS,
 		FDepthOnlyPS<bUsesMobileColorValue>> DepthPassShaders;
 
-	FShaderPipeline* ShaderPipeline = nullptr;
-
+	FShaderPipelineRef ShaderPipeline;
 	GetDepthPassShaders<bPositionOnly, bUsesMobileColorValue>(
 		MaterialResource,
 		VertexFactory->GetType(),

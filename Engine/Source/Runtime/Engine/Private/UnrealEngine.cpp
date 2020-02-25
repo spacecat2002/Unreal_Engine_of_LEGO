@@ -140,6 +140,7 @@ UnrealEngine.cpp: Implements the UEngine class and helpers.
 #include "Streaming/Texture2DUpdate.h"
 #include "Rendering/SkeletalMeshRenderData.h"
 #include "Serialization/LoadTimeTrace.h"
+#include "Async/ParallelFor.h"
 
 #if WITH_EDITOR
 #include "Settings/LevelEditorPlaySettings.h"
@@ -232,6 +233,7 @@ UnrealEngine.cpp: Implements the UEngine class and helpers.
 #include "ObjectTrace.h"
 #include "Animation/AnimTrace.h"
 #include "StudioAnalytics.h"
+#include "TraceFilter.h"
 
 DEFINE_LOG_CATEGORY(LogEngine);
 IMPLEMENT_MODULE( FEngineModule, Engine );
@@ -269,17 +271,17 @@ void FEngineModule::StartupModule()
 	USkinnedMeshComponent::BindWorldDelegates();
 #endif
 
-#if OBJECT_TRACE_ENABLED
-	FObjectTrace::Init();
-#endif
-
-#if ANIM_TRACE_ENABLED
-	FAnimTrace::Init();
+#if TRACE_FILTERING_ENABLED
+	FTraceFilter::Init();
 #endif
 }
 
 void FEngineModule::ShutdownModule()
 {
+#if TRACE_FILTERING_ENABLED
+	FTraceFilter::Destroy();
+#endif
+
 	FParticleSystemWorldManager::OnShutdown();
 }
 
@@ -2249,14 +2251,12 @@ bool UEngine::SetTimecodeProvider(UTimecodeProvider* InTimecodeProvider)
 
 void UEngine::UpdateTimecode()
 {
+	FApp::InvalidateCurrentFrameTime();
+
 	const UTimecodeProvider* Provider = GetTimecodeProvider();
 	if (Provider && Provider->GetSynchronizationState() == ETimecodeProviderSynchronizationState::Synchronized)
 	{
-		FApp::SetTimecodeAndFrameRate(Provider->GetDelayedTimecode(), Provider->GetFrameRate());
-	}
-	else
-	{
-		FApp::SetTimecodeAndFrameRate(FTimecode(), FFrameRate());
+		FApp::SetCurrentFrameTime(Provider->GetDelayedQualifiedFrameTime());
 	}
 }
 
@@ -2422,13 +2422,20 @@ static void LoadTimecodeProvider(UEngine* Engine)
 			UE_LOG(LogEngine, Error, TEXT("Engine config value TimecodeProviderClassName '%s' is not a valid class name."), *Engine->TimecodeProviderClassName.ToString());
 		}
 	}
-	else
+	else if (Engine->bGenerateDefaultTimecode)
 	{
+		FName ObjectName = MakeUniqueObjectName(Engine, USystemTimeTimecodeProvider::StaticClass(), "DefaultTimecodeProvider");
+		USystemTimeTimecodeProvider* NewTimecodeProvider = NewObject<USystemTimeTimecodeProvider>(Engine, ObjectName);
+		NewTimecodeProvider->FrameRate = Engine->GenerateDefaultTimecodeFrameRate;
+		NewTimecodeProvider->FrameDelay = Engine->GenerateDefaultTimecodeFrameDelay;
+		NewTimecodeProvider->bGenerateFullFrame = false;
 #if PLATFORM_DESKTOP
-		//HACK until Dev-VP comes in!!!
-		UTimecodeProvider* NewTimecodeProvider = NewObject<USystemTimeTimecodeProvider>(Engine, TEXT("SystemTimeTimecodeProvider"));
-		Engine->SetTimecodeProvider(NewTimecodeProvider);
+		NewTimecodeProvider->bUseHighPerformanceClock = false;
+#else
+		//If a user wish to have an accurate TC value on console, he should set an accurate TC provider in his project settings.
+		NewTimecodeProvider->bUseHighPerformanceClock = true;
 #endif
+		Engine->SetTimecodeProvider(NewTimecodeProvider);
 	}
 }
 
@@ -4958,16 +4965,43 @@ bool UEngine::HandleKismetEventCommand(UWorld* InWorld, const TCHAR* Cmd, FOutpu
 	FString const ObjectName = FParse::Token(Cmd, 0);
 	if (ObjectName == TEXT("*"))
 	{
+		// TObjectIterator excludes RF_ClassDefaultObjects but not default SubObjects which belong to them, so we'll see if this object belongs to a CDO.
+		const auto IsCDOOwnedArchtype = [](UObject* InObject)
+		{
+			if (!InObject->HasAnyFlags(RF_ArchetypeObject))
+			{
+				return false;
+			}
+
+			InObject = InObject->GetOuter();
+			while (InObject)
+			{
+				if (InObject->HasAnyFlags(RF_ClassDefaultObject))
+				{
+					return true;
+				}
+
+				InObject = InObject->GetOuter();
+			}
+
+			return false;
+		};
+
 		// Send the command to everything in the world we're dealing with...
 		int32 NumInstanceCallsSucceeded = 0;
 		for (TObjectIterator<UObject> It; It; ++It)
 		{
 			UObject* const Obj = *It;
-			UWorld const* const ObjWorld = Obj->GetWorld();
-			if (ObjWorld == InWorld)
+
+			const bool bIsCDOOwnedArchtype = IsCDOOwnedArchtype(Obj);
+			if (!bIsCDOOwnedArchtype)
 			{
-				const bool bSucceeded = Obj->CallFunctionByNameWithArguments(Cmd, Ar, nullptr, true);
-				NumInstanceCallsSucceeded += bSucceeded ? 1 : 0;
+				UWorld const* const ObjWorld = Obj->GetWorld();
+				if (ObjWorld == InWorld)
+				{
+					const bool bSucceeded = Obj->CallFunctionByNameWithArguments(Cmd, Ar, nullptr, true);
+					NumInstanceCallsSucceeded += bSucceeded ? 1 : 0;
+				}
 			}
 		}
 
@@ -9097,6 +9131,17 @@ void UEngine::AddOnScreenDebugMessage(uint64 Key, float TimeToDisplay, FColor Di
 #endif
 }
 
+void UEngine::RemoveOnScreenDebugMessage(uint64 Key)
+{
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+	{
+		// Because some components add their message in concurrent work, we need a CS here.
+		FScopeLock ScopeLock(&GOnScreenMessageCS);
+		ScreenMessages.Remove((int32)Key);
+	}
+#endif
+}
+
 UEngine::FErrorsAndWarningsCollector::FErrorsAndWarningsCollector()
 {
 }
@@ -9208,9 +9253,14 @@ bool UEngine::OnScreenDebugMessageExists(uint64 Key)
 
 void UEngine::ClearOnScreenDebugMessages()
 {
-#if !UE_BUILD_SHIPPING
-	ScreenMessages.Empty();
-	PriorityScreenMessages.Empty();
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+
+	{	
+		// Because some components add their message in concurrent work, we need a CS here.
+		FScopeLock ScopeLock(&GOnScreenMessageCS);
+		ScreenMessages.Empty();
+		PriorityScreenMessages.Empty();
+	}
 #endif // !UE_BUILD_SHIPPING
 }
 
@@ -10009,66 +10059,72 @@ float DrawMapWarnings(UWorld* World, FViewport* Viewport, FCanvas* Canvas, UCanv
 *
 *	@return The Y position in the canvas after the last drawn string
 */
-float DrawOnscreenDebugMessages(UWorld* World, FViewport* Viewport, FCanvas* Canvas, UCanvas* CanvasObject, float MessageX, float MessageY)
+float UEngine::DrawOnscreenDebugMessages(UWorld* World, FViewport* Viewport, FCanvas* Canvas, UCanvas* CanvasObject, float MessageX, float MessageY)
 {
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	static TFrameValue<bool> HasUpdatedScreenDebugMessages;
 
 	int32 YPos = MessageY;
 	const int32 MaxYPos = CanvasObject ? CanvasObject->SizeY : 700;
-	if (GEngine->PriorityScreenMessages.Num() > 0)
 	{
-		FCanvasTextItem MessageTextItem(FVector2D(0, 0), FText::GetEmpty(), GEngine->GetSmallFont(), FLinearColor::White);
-		MessageTextItem.EnableShadow(FLinearColor::Black);
-		for (int32 PrioIndex = GEngine->PriorityScreenMessages.Num() - 1; PrioIndex >= 0; PrioIndex--)
+		// Because some components add their message in concurrent work, we need a CS here.
+		FScopeLock ScopeLock(&GOnScreenMessageCS);
+
+		if (PriorityScreenMessages.Num() > 0)
 		{
-			FScreenMessageString& Message = GEngine->PriorityScreenMessages[PrioIndex];
-			if (YPos < MaxYPos)
+			FCanvasTextItem MessageTextItem(FVector2D(0, 0), FText::GetEmpty(), GetSmallFont(), FLinearColor::White);
+			MessageTextItem.EnableShadow(FLinearColor::Black);
+			for (int32 PrioIndex = PriorityScreenMessages.Num() - 1; PrioIndex >= 0; PrioIndex--)
 			{
-				MessageTextItem.Text = FText::FromString(Message.ScreenMessage);
-				MessageTextItem.SetColor(Message.DisplayColor);
-				MessageTextItem.Scale = Message.TextScale;
-				Canvas->DrawItem(MessageTextItem, FVector2D(MessageX, YPos));
-				YPos += MessageTextItem.DrawnSize.Y * 1.15f;
-			}
-			if (!HasUpdatedScreenDebugMessages.IsSet())
-			{
-				Message.CurrentTimeDisplayed += World->GetDeltaSeconds();
-				if (Message.CurrentTimeDisplayed >= Message.TimeToDisplay)
+				FScreenMessageString& Message = PriorityScreenMessages[PrioIndex];
+				if (YPos < MaxYPos)
 				{
-					GEngine->PriorityScreenMessages.RemoveAt(PrioIndex);
+					MessageTextItem.Text = FText::FromString(Message.ScreenMessage);
+					MessageTextItem.SetColor(Message.DisplayColor);
+					MessageTextItem.Scale = Message.TextScale;
+					Canvas->DrawItem(MessageTextItem, FVector2D(MessageX, YPos));
+					YPos += MessageTextItem.DrawnSize.Y * 1.15f;
+				}
+				if (!HasUpdatedScreenDebugMessages.IsSet())
+				{
+					Message.CurrentTimeDisplayed += World->GetDeltaSeconds();
+					if (Message.CurrentTimeDisplayed >= Message.TimeToDisplay)
+					{
+						PriorityScreenMessages.RemoveAt(PrioIndex);
+					}
+				}
+			}
+		}
+
+		if (ScreenMessages.Num() > 0)
+		{
+			FCanvasTextItem MessageTextItem(FVector2D(0, 0), FText::GetEmpty(), GetSmallFont(), FLinearColor::White);
+			MessageTextItem.EnableShadow(FLinearColor::Black);
+			for (TMap<int32, FScreenMessageString>::TIterator MsgIt(ScreenMessages); MsgIt; ++MsgIt)
+			{
+				FScreenMessageString& Message = MsgIt.Value();
+				if (YPos < MaxYPos)
+				{
+					MessageTextItem.Text = FText::FromString(Message.ScreenMessage);
+					MessageTextItem.SetColor(Message.DisplayColor);
+					MessageTextItem.Scale = Message.TextScale;
+					Canvas->DrawItem(MessageTextItem, FVector2D(MessageX, YPos));
+					YPos += MessageTextItem.DrawnSize.Y * 1.15f;
+				}
+				if (!HasUpdatedScreenDebugMessages.IsSet())
+				{
+					Message.CurrentTimeDisplayed += World->GetDeltaSeconds();
+					if (Message.CurrentTimeDisplayed >= Message.TimeToDisplay)
+					{
+						MsgIt.RemoveCurrent();
+					}
 				}
 			}
 		}
 	}
-
-	if (GEngine->ScreenMessages.Num() > 0)
-	{
-		FCanvasTextItem MessageTextItem(FVector2D(0, 0), FText::GetEmpty(), GEngine->GetSmallFont(), FLinearColor::White);
-		MessageTextItem.EnableShadow(FLinearColor::Black);
-		for (TMap<int32, FScreenMessageString>::TIterator MsgIt(GEngine->ScreenMessages); MsgIt; ++MsgIt)
-		{
-			FScreenMessageString& Message = MsgIt.Value();
-			if (YPos < MaxYPos)
-			{
-				MessageTextItem.Text = FText::FromString(Message.ScreenMessage);
-				MessageTextItem.SetColor(Message.DisplayColor);
-				MessageTextItem.Scale = Message.TextScale;
-				Canvas->DrawItem(MessageTextItem, FVector2D(MessageX, YPos));
-				YPos += MessageTextItem.DrawnSize.Y * 1.15f;
-			}
-			if (!HasUpdatedScreenDebugMessages.IsSet())
-			{
-				Message.CurrentTimeDisplayed += World->GetDeltaSeconds();
-				if (Message.CurrentTimeDisplayed >= Message.TimeToDisplay)
-				{
-					MsgIt.RemoveCurrent();
-				}
-			}
-		}
-	}
-
 	// Flag variable that the update has already been done this frame
 	HasUpdatedScreenDebugMessages = true;
+#endif //#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 
 	return MessageY;
 }
@@ -10236,7 +10292,7 @@ void DrawStatsHUD( UWorld* World, FViewport* Viewport, FCanvas* Canvas, UCanvas*
 #if !(UE_BUILD_TEST)
 		if (GEngine->bEnableOnScreenDebugMessagesDisplay && GEngine->bEnableOnScreenDebugMessages)
 		{
-			MessageY = DrawOnscreenDebugMessages(World, Viewport, Canvas, CanvasObject, MessageX, MessageY);
+			MessageY = GEngine->DrawOnscreenDebugMessages(World, Viewport, Canvas, CanvasObject, MessageX, MessageY);
 		}
 #endif // UE_BUILD_TEST
 
@@ -12785,8 +12841,21 @@ bool UEngine::LoadMap( FWorldContext& WorldContext, FURL URL, class UPendingNetG
 	// Note that AI system will be created only if ai-system-creation conditions are met
 	WorldContext.World()->CreateAISystem();
 
+	FRegisterComponentContext Context;
 	// Initialize gameplay for the level.
-	WorldContext.World()->InitializeActorsForPlay(URL);		
+	WorldContext.World()->InitializeActorsForPlay(URL, true, &Context);
+
+	UWorld* ParallelWorld = WorldContext.World();
+	ParallelFor(Context.AddPrimitiveBatches.Num(),
+		[&Context, ParallelWorld](int32 Index)
+		{
+			if (!Context.AddPrimitiveBatches[Index]->IsPendingKill())
+			{
+				ParallelWorld->Scene->AddPrimitive(Context.AddPrimitiveBatches[Index]);
+			}
+		},
+		!FApp::ShouldUseThreadingForPerformance()
+	);
 
 	// calling it after InitializeActorsForPlay has been called to have all potential bounding boxed initialized
 	FNavigationSystem::AddNavigationSystemToWorld(*WorldContext.World(), FNavigationSystemRunMode::GameMode);
@@ -15946,6 +16015,40 @@ int32 UEngine::RenderStatSlateBatches(UWorld* World, FViewport* Viewport, FCanva
 	Y += RowHeight;
 	}*/
 	return Y;
+}
+#endif
+
+#if WITH_EDITOR
+void UEngine::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
+{
+	if (!HasAnyFlags(RF_ArchetypeObject|RF_ClassDefaultObject))
+	{
+		FName PropertyName = PropertyChangedEvent.GetPropertyName();
+		if (PropertyName == GET_MEMBER_NAME_CHECKED(UEngine, TimecodeProviderClassName)
+			|| PropertyName == GET_MEMBER_NAME_CHECKED(UEngine, bGenerateDefaultTimecode)
+			|| PropertyName == GET_MEMBER_NAME_CHECKED(UEngine, GenerateDefaultTimecodeFrameRate)
+			|| PropertyName == GET_MEMBER_NAME_CHECKED(UEngine, GenerateDefaultTimecodeFrameDelay))
+		{
+			// Only reload the timecode provider if the current was created by the engine
+			UTimecodeProvider* CurrentTimecodeProvider = GetTimecodeProvider();
+			if (CurrentTimecodeProvider == nullptr || CurrentTimecodeProvider->GetOuter() == this)
+			{
+				LoadTimecodeProvider(this);
+			}
+		}
+
+		if (PropertyName == GET_MEMBER_NAME_CHECKED(UEngine, CustomTimeStepClassName))
+		{
+			// Only reload the custom time step if the current was created by the engine
+			UEngineCustomTimeStep* CurrentCustomTimeStep = GetCustomTimeStep();
+			if (CurrentCustomTimeStep == nullptr || CurrentCustomTimeStep->GetOuter() == this)
+			{
+				LoadCustomTimeStep(this);
+			}
+		}
+	}
+
+	Super::PostEditChangeProperty(PropertyChangedEvent);
 }
 #endif
 
