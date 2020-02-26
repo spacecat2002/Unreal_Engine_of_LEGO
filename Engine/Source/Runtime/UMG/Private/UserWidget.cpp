@@ -260,13 +260,14 @@ bool UUserWidget::VerifyTemplateIntegrity(UUserWidget* TemplateRoot, TArray<FTex
 	{
 		WidgetTree->ForEachWidget([this, TemplateClass, &bIsTemplateSafe, &OutErrors, TemplateRoot] (UWidget* Widget) {
 
+			bool IsFromNamedSlot = NamedSlotBindings.ContainsByPredicate([Widget](const FNamedSlotBinding& Element) { return Element.Content == Widget; });
 			FName VariableFName = Widget->GetFName();
 
 			// Find property with the same name as the template and assign the new widget to it.
 			FObjectPropertyBase* Prop = FindField<FObjectPropertyBase>(TemplateClass, VariableFName);
 			if ( Prop )
 			{
-				UObject* Value = Prop->GetObjectPropertyValue_InContainer(this);
+				UObject* Value = Prop->GetObjectPropertyValue_InContainer(IsFromNamedSlot ? TemplateRoot : this);
 				if ( Value != Widget )
 				{
 					OutErrors.Add(FText::Format(LOCTEXT("WidgetTreeVerify", "Property in widget template did not load correctly, {0}. Value was {1} but should have been {2}"),
@@ -933,8 +934,8 @@ void UUserWidget::OnWidgetRebuilt()
 
 		if (bCanCallPreConstruct)
 		{
-		NativePreConstruct();
-	}
+			NativePreConstruct();
+		}
 	}
 #endif
 }
@@ -1476,14 +1477,14 @@ void UUserWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 	// If this ensure is hit it is likely UpdateCanTick as not called somewhere
 	if(ensureMsgf(TickFrequency != EWidgetTickFrequency::Never, TEXT("SObjectWidget and UUserWidget have mismatching tick states or UUserWidget::NativeTick was called manually (Never do this)")))
 	{
-	GInitRunaway();
+		GInitRunaway();
 
-	TickActionsAndAnimation(MyGeometry, InDeltaTime);
+		TickActionsAndAnimation(MyGeometry, InDeltaTime);
 
 		if (bHasScriptImplementedTick)
-	{
-		Tick(MyGeometry, InDeltaTime);
-	}
+		{
+			Tick(MyGeometry, InDeltaTime);
+		}
 	}
 }
 
@@ -2092,7 +2093,7 @@ UUserWidget* UUserWidget::CreateWidgetInstance(UWidgetTree& OwningWidgetTree, TS
 	if (UUserWidget* OwningUserWidget = Cast<UUserWidget>(OwningWidgetTree.GetOuter()))
 	{
 		return CreateWidgetInstance(*OwningUserWidget, UserWidgetClass, WidgetName);
-		}
+	}
 
 	return CreateInstanceInternal(&OwningWidgetTree, UserWidgetClass, WidgetName, nullptr, nullptr);
 }
@@ -2100,12 +2101,12 @@ UUserWidget* UUserWidget::CreateWidgetInstance(UWidgetTree& OwningWidgetTree, TS
 UUserWidget* UUserWidget::CreateWidgetInstance(APlayerController& OwnerPC, TSubclassOf<UUserWidget> UserWidgetClass, FName WidgetName)
 {
 	if (!OwnerPC.IsLocalPlayerController())
-		{
+	{
 		const FText FormatPattern = LOCTEXT("NotLocalPlayer", "Only Local Player Controllers can be assigned to widgets. {PlayerController} is not a Local Player Controller.");
 		FFormatNamedArguments FormatPatternArgs;
 		FormatPatternArgs.Add(TEXT("PlayerController"), FText::FromName(OwnerPC.GetFName()));
 		FMessageLog("PIE").Error(FText::Format(FormatPattern, FormatPatternArgs));
-		}
+	}
 	else if (!OwnerPC.Player)
 	{
 		const FText FormatPattern = LOCTEXT("NoPlayer", "CreateWidget cannot be used on Player Controller with no attached player. {PlayerController} has no Player attached.");
@@ -2171,14 +2172,14 @@ UUserWidget* UUserWidget::CreateInstanceInternal(UObject* Outer, TSubclassOf<UUs
 	{
 		// Look for indications that widgets are being created for a dead and dying world.
 		ensureMsgf(!World->bIsTearingDown, TEXT("Widget Class %s - Attempting to be created while tearing down the world '%s'"), *UserWidgetClass->GetName(), *World->GetName());
-		}
+	}
 #endif
 
 	if (!Outer)
-		{
+	{
 		FMessageLog("PIE").Error(FText::Format(LOCTEXT("OuterNull", "Unable to create the widget {0}, no outer provided."), FText::FromName(UserWidgetClass->GetFName())));
 			return nullptr;
-		}
+	}
 
 	UUserWidget* NewWidget = nullptr;
 	UWidgetBlueprintGeneratedClass* WBGC = Cast<UWidgetBlueprintGeneratedClass>(UserWidgetClass);
