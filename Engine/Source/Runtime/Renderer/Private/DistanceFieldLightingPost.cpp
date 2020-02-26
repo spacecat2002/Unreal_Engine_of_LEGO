@@ -12,7 +12,6 @@
 #include "CompositionLighting/PostProcessAmbientOcclusion.h"
 #include "PipelineStateCache.h"
 
-IMPLEMENT_TYPE_LAYOUT(FSurfelBufferParameters);
 IMPLEMENT_TYPE_LAYOUT(FLightTileIntersectionParameters);
 
 int32 GAOUseHistory = 1;
