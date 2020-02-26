@@ -3800,6 +3800,7 @@ void FConfigCacheIni::SerializeStateForBootstrap_Impl(FArchive& Ar)
 	Ar << GGameIni;
 	Ar << GGameUserSettingsIni;
 	Ar << GRuntimeOptionsIni;
+	Ar << GEngineIni;
 }
 
 void FConfigCacheIni::InitializeConfigSystem()
