@@ -408,6 +408,7 @@ static void RemapLayerParameterIndicesArray(TArray<ParameterType>& Parameters, c
 	}
 }
 
+#if WITH_EDITOR
 template<typename ParameterType>
 static void SwapLayerParameterIndicesArray(TArray<ParameterType>& Parameters, int32 OriginalIndex, int32 NewIndex)
 {
@@ -442,6 +443,7 @@ void UMaterialInstance::SwapLayerParameterIndices(int32 OriginalIndex, int32 New
 		SwapLayerParameterIndicesArray(StaticParameters.MaterialLayersParameters, OriginalIndex, NewIndex);
 	}
 }
+#endif
 
 bool UMaterialInstance::UpdateParameters()
 {
