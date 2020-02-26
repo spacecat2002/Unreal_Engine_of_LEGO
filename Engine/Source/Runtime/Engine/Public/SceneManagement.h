@@ -1028,11 +1028,6 @@ inline bool DoesPlatformSupportDistanceFieldAO(EShaderPlatform Platform)
 	return DoesPlatformSupportDistanceFields(Platform);
 }
 
-inline bool DoesPlatformSupportDistanceFieldGI(EShaderPlatform Platform)
-{
-	return (Platform == SP_PCD3D_SM5) && DoesPlatformSupportDistanceFields(Platform);
-}
-
 BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileReflectionCaptureShaderParameters,ENGINE_API)
 	SHADER_PARAMETER(FVector4, Params) // x - inv average brightness, y - sky cubemap max mip, zw - unused
 	SHADER_PARAMETER_TEXTURE(TextureCube, Texture)
@@ -2284,7 +2279,6 @@ protected:
 	friend class FSceneRenderer;
 	friend class FDeferredShadingSceneRenderer;
 	friend class FProjectedShadowInfo;
-	friend class FUniformMeshConverter;
 };
 
 #if RHI_RAYTRACING

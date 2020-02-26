@@ -14,7 +14,6 @@
 #include "OneColorShader.h"
 #include "GlobalDistanceField.h"
 #include "FXSystem.h"
-#include "DistanceFieldGlobalIllumination.h"
 #include "RendererModule.h"
 #include "PipelineStateCache.h"
 #include "VisualizeTexture.h"
@@ -59,12 +58,6 @@ FAutoConsoleVariableRef CVarDistanceFieldAOSpecularOcclusionMode(
 	TEXT("1: (default) Intersect the reflection cone with the unoccluded cone produced by DFAO.  This gives more accurate occlusion than 0, but can bring out DFAO sampling artifacts.\n"),
 	ECVF_Scalability | ECVF_RenderThreadSafe
 	);
-
-bool IsDistanceFieldGIAllowed(const FViewInfo& View)
-{
-	return DoesPlatformSupportDistanceFieldGI(View.GetShaderPlatform())
-		&& (View.Family->EngineShowFlags.VisualizeDistanceFieldGI || (View.Family->EngineShowFlags.DistanceFieldGI && GDistanceFieldGI && View.Family->EngineShowFlags.GlobalIllumination));
-}
 
 float GAOStepExponentScale = .5f;
 FAutoConsoleVariableRef CVarAOStepExponentScale(
@@ -132,8 +125,6 @@ bool UseAOObjectDistanceField()
 {
 	return GAOObjectDistanceField && GDistanceFieldAOQuality >= 2;
 }
-
-TGlobalResource<FTemporaryIrradianceCacheResources> GTemporaryIrradianceCacheResources;
 
 int32 GDistanceFieldAOTileSizeX = 16;
 int32 GDistanceFieldAOTileSizeY = 16;
@@ -631,7 +622,6 @@ void ListDistanceFieldLightingMemory(const FViewInfo& View, FSceneRenderer& Scen
 	UE_LOG(LogRenderer, Log, TEXT(""));
 	UE_LOG(LogRenderer, Log, TEXT("Distance Field AO"));
 	
-	UE_LOG(LogRenderer, Log, TEXT("   Temporary cache %.3fMb"), GTemporaryIrradianceCacheResources.GetSizeBytes() / 1024.0f / 1024.0f);
 	UE_LOG(LogRenderer, Log, TEXT("   Culled objects %.3fMb"), GAOCulledObjectBuffers.Buffers.GetSizeBytes() / 1024.0f / 1024.0f);
 
 	FTileIntersectionResources* TileIntersectionResources = ((FSceneViewState*)View.State)->AOTileIntersectionResources;
@@ -672,26 +662,6 @@ void ListDistanceFieldLightingMemory(const FViewInfo& View, FSceneRenderer& Scen
 	extern void ListGlobalDistanceFieldMemory();
 	ListGlobalDistanceFieldMemory();
 
-	UE_LOG(LogRenderer, Log, TEXT(""));
-	UE_LOG(LogRenderer, Log, TEXT("Distance Field GI"));
-
-	if (Scene->DistanceFieldSceneData.SurfelBuffers)
-	{
-		UE_LOG(LogRenderer, Log, TEXT("   Scene surfel data %.3fMb"), Scene->DistanceFieldSceneData.SurfelBuffers->GetSizeBytes() / 1024.0f / 1024.0f);
-	}
-	
-	if (Scene->DistanceFieldSceneData.InstancedSurfelBuffers)
-	{
-		UE_LOG(LogRenderer, Log, TEXT("   Instanced scene surfel data %.3fMb"), Scene->DistanceFieldSceneData.InstancedSurfelBuffers->GetSizeBytes() / 1024.0f / 1024.0f);
-	}
-	
-	if (ScreenGridResources)
-	{
-		UE_LOG(LogRenderer, Log, TEXT("   Screen grid temporaries %.3fMb"), ScreenGridResources->GetSizeBytesForGI() / 1024.0f / 1024.0f);
-	}
-
-	extern void ListDistanceFieldGIMemory(const FViewInfo& View);
-	ListDistanceFieldGIMemory(View);
 #endif // !NO_LOGGING
 }
 
@@ -728,7 +698,6 @@ bool FDeferredShadingSceneRenderer::ShouldPrepareForDistanceFieldAO() const
 			|| ViewFamily.EngineShowFlags.VisualizeMeshDistanceFields
 			|| ViewFamily.EngineShowFlags.VisualizeGlobalDistanceField
 			|| ViewFamily.EngineShowFlags.VisualizeDistanceFieldAO
-			|| ViewFamily.EngineShowFlags.VisualizeDistanceFieldGI
 			|| (GDistanceFieldAOApplyToStaticIndirect && ViewFamily.EngineShowFlags.DistanceFieldAO));
 }
 
@@ -916,7 +885,6 @@ bool FDeferredShadingSceneRenderer::ShouldRenderDistanceFieldAO() const
 {
 	return ViewFamily.EngineShowFlags.DistanceFieldAO 
 		&& !ViewFamily.EngineShowFlags.VisualizeDistanceFieldAO
-		&& !ViewFamily.EngineShowFlags.VisualizeDistanceFieldGI
 		&& !ViewFamily.EngineShowFlags.VisualizeMeshDistanceFields
 		&& !ViewFamily.EngineShowFlags.VisualizeGlobalDistanceField;
 }

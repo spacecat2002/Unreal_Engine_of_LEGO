@@ -116,7 +116,6 @@ bool IsPostProcessingEnabled(const FViewInfo& View)
 		return
 			 View.Family->EngineShowFlags.PostProcessing &&
 			!View.Family->EngineShowFlags.VisualizeDistanceFieldAO &&
-			!View.Family->EngineShowFlags.VisualizeDistanceFieldGI &&
 			!View.Family->EngineShowFlags.VisualizeShadingModels &&
 			!View.Family->EngineShowFlags.VisualizeMeshDistanceFields &&
 			!View.Family->EngineShowFlags.VisualizeGlobalDistanceField &&
