@@ -82,6 +82,15 @@ static TAutoConsoleVariable<int32> CVarUseExistingBinaryFileCache(
 	TEXT("1: When Pipeline Cache Version Guid changes re-use programs from the existing binary cache where possible (default)."),
 	ECVF_RenderThreadSafe);
 
+static int32 GMaxShaderLibProcessingTimeMS = 10;
+static FAutoConsoleVariableRef CVarMaxShaderLibProcessingTime(
+	TEXT("r.OpenGL.MaxShaderLibProcessingTime"),
+	GMaxShaderLibProcessingTimeMS,
+	TEXT("The maximum time per frame to process shader library requests in milliseconds.\n")
+	TEXT("default 10ms. Note: Driver compile time for a single program may exceed this limit."),
+	ECVF_RenderThreadSafe
+);
+
 #if PLATFORM_ANDROID
 bool GOpenGLShaderHackLastCompileSuccess = false;
 #endif
@@ -378,6 +387,7 @@ struct FLibraryShaderCacheValue
 	FOpenGLCodeHeader* Header;
 	uint32 ShaderCrc;
 	GLuint GLShader;
+	TArray<FUniformBufferStaticSlot> StaticSlots;
 
 #if DEBUG_GL_SHADERS
 	TArray<ANSICHAR> GlslCode;
@@ -724,6 +734,7 @@ ShaderType* CompileOpenGLShader(TArrayView<const uint8> InShaderCode, const FSHA
 			Shader->Resource = Val->GLShader;
 			Shader->Bindings = Val->Header->Bindings;
 			Shader->UniformBuffersCopyInfo = Val->Header->UniformBuffersCopyInfo;
+			Shader->StaticSlots = Val->StaticSlots;
 			if (FOpenGL::SupportsSeparateShaderObjects())
 			{
 				FSHAHash Hash;
@@ -911,6 +922,7 @@ ShaderType* CompileOpenGLShader(TArrayView<const uint8> InShaderCode, const FSHA
 		Val.Header = new FOpenGLCodeHeader;
 		*Val.Header = Header;
 		Val.ShaderCrc = GlslCodeOriginalCRC;
+		Val.StaticSlots = Shader->StaticSlots;
 #if DEBUG_GL_SHADERS
 		Val.GlslCode = GlslCode;
 		Val.GlslCodeString = (ANSICHAR*)Shader->GlslCode.GetData();
@@ -2152,6 +2164,7 @@ public:
 		}
 		else
 		{
+			check(!ProgramCache.Contains(ProgramKey));
 			ProgramCache.Add(ProgramKey, LinkedProgram);
 		}
 	}
@@ -4987,6 +5000,7 @@ void FOpenGLProgramBinaryCache::CheckPendingGLProgramCreateRequests()
 	FDelayedEvictionContainer::Get().Tick();
 	if (CachePtr)
 	{
+		QUICK_SCOPE_CYCLE_COUNTER(STAT_OpenGLShaderCreateShaderLibRequests);
 		CachePtr->CheckPendingGLProgramCreateRequests_internal();
 	}
 }
@@ -4996,10 +5010,17 @@ void FOpenGLProgramBinaryCache::CheckPendingGLProgramCreateRequests_internal()
 	check(IsInRenderingThread() || IsInRHIThread());
 	FScopeLock Lock(&GPendingGLProgramCreateRequestsCS);
 	//UE_LOG(LogRHI, Log, TEXT("CheckPendingGLProgramCreateRequests : PendingGLProgramCreateRequests = %d"), PendingGLProgramCreateRequests.Num());
-	while (PendingGLProgramCreateRequests.Num())
+
+	float TimeRemainingS = (float)GMaxShaderLibProcessingTimeMS / 1000.0f;
+	double StartTime = FPlatformTime::Seconds();
+	int32 Count = 0;
+	while(PendingGLProgramCreateRequests.Num() && TimeRemainingS > 0.0f)
 	{
 		CompleteLoadedGLProgramRequest_internal(PendingGLProgramCreateRequests.Pop());
+		TimeRemainingS -= (float)(FPlatformTime::Seconds() - StartTime);
+		Count++;
 	}
+	UE_CLOG(PendingGLProgramCreateRequests.Num()>0, LogRHI, Log, TEXT("CheckPendingGLProgramCreateRequests : iter count = %d, time taken = %d ms (remaining %d)"), Count, GMaxShaderLibProcessingTimeMS - (int32)(TimeRemainingS*1000.0f), PendingGLProgramCreateRequests.Num());
 }
 
 void FOpenGLProgramBinaryCache::CompleteLoadedGLProgramRequest_internal(FGLProgramBinaryFileCacheEntry* PendingGLCreate)

@@ -835,9 +835,12 @@ void USoundWave::PostLoad()
 	{
 		const TArray<ITargetPlatform*>& Platforms = TPM->GetActiveTargetPlatforms();
 
-		for (int32 Index = 0; Index < Platforms.Num(); Index++)
+		for (const ITargetPlatform* Platform : Platforms)
 		{
-			BeginGetCompressedData(Platforms[Index]->GetWaveFormat(this), FPlatformCompressionUtilities::GetCookOverrides(*Platforms[Index]->IniPlatformName()));
+			if (!Platform->IsServerOnly())
+			{
+				BeginGetCompressedData(Platform->GetWaveFormat(this), FPlatformCompressionUtilities::GetCookOverrides(*Platform->IniPlatformName()));
+			}
 		}
 	}
 
@@ -1903,7 +1906,7 @@ void USoundWave::Parse(FAudioDevice* AudioDevice, const UPTRINT NodeWaveInstance
 
 	for (int32 BusSendType = 0; BusSendType < (int32)EBusSendType::Count; ++BusSendType)
 	{
-		WaveInstance->SoundSourceBusSends[BusSendType] = ParseParams.SoundSourceBusSends[BusSendType];
+		WaveInstance->BusSends[BusSendType] = ParseParams.BusSends[BusSendType];
 	}
 
 	// Pass along plugin settings to the wave instance
