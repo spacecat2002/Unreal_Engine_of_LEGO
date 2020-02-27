@@ -199,6 +199,9 @@ public:
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	// for debugging only e.g. MaterialName:ShaderFile.usf or ShaderFile.usf/EntryFunc
 	FString ShaderName;
+	FORCEINLINE const TCHAR* GetShaderName() const { return *ShaderName; }
+#else
+	FORCEINLINE const TCHAR* GetShaderName() const { return TEXT(""); }
 #endif
 
 	explicit FRHIShader(EShaderFrequency InFrequency)
@@ -993,6 +996,8 @@ public:
 	virtual bool Poll(FRHIGPUMask GPUMask) const { return Poll(); }
 
 	const FName& GetFName() const { return FenceName; }
+
+	FThreadSafeCounter NumPendingWriteCommands;
 
 protected:
 	FName FenceName;
