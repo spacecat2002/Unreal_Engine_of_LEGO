@@ -717,7 +717,8 @@ void RenderScreenSpaceReflections(
 			FIntPoint ViewportExtent = View.ViewRect.Size();
 			FIntPoint BufferSize = SceneTextures.SceneDepthBuffer->Desc.Extent;
 
-			if (View.PrevViewInfo.TemporalAAHistory.IsValid())
+			// with 'RealTime' option off. Once we activate the frame, the sceneColor is valid but the rest info of TemporalAAHistory is not.
+			if (View.PrevViewInfo.DepthBuffer != nullptr && View.PrevViewInfo.TemporalAAHistory.IsValid())
 			{
 				ViewportOffset = View.PrevViewInfo.TemporalAAHistory.ViewportRect.Min;
 				ViewportExtent = View.PrevViewInfo.TemporalAAHistory.ViewportRect.Size();
