@@ -206,8 +206,8 @@ struct FD3D12RHICommandInitializeTexture final : public FRHICommand<FD3D12RHICom
 			FD3D12CommandListHandle& hCommandList = Device->GetDefaultCommandContext().CommandListHandle;
 			hCommandList.GetCurrentOwningContext()->numCopies += NumSubresources;
 
-			FConditionalScopeResourceBarrier ConditionalScopeResourceBarrier(hCommandList, Resource, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
-
+			// resource should be in copy dest already, because it's created like that, so no transition required here
+			
 			ID3D12GraphicsCommandList* CmdList = hCommandList.GraphicsCommandList();
 
 			D3D12_TEXTURE_COPY_LOCATION Dst;
@@ -219,9 +219,20 @@ struct FD3D12RHICommandInitializeTexture final : public FRHICommand<FD3D12RHICom
 				Dst.SubresourceIndex = Subresource;
 				Src.PlacedFootprint = Footprints[Subresource];
 				CmdList->CopyTextureRegion(&Dst, 0, 0, 0, &Src, nullptr);
+			}			
+			
+			// Update the resource state after the copy has been done (will take care of updating the residency as well)
+			if (Resource->RequiresResourceStateTracking())
+			{
+				// record the dummy copy_dest to copy_dest transition in the command list to make sure we have proper tracking of the resource
+				// mostly needed to make sure we have correct storage of end resource state when all the pending buffer transitions are flushed 
+				// (otherwise it's untracked and not updated)
+				FD3D12DynamicRHI::TransitionResource(hCommandList, Resource, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
 			}
-
-			hCommandList.UpdateResidency(Resource);
+			else
+			{
+				hCommandList.AddTransitionBarrier(Resource, D3D12_RESOURCE_STATE_COPY_DEST, Resource->GetDefaultResourceState(), D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
+			}
 
 			CurrentTexture = CurrentTexture->GetNextObject();
 		}
