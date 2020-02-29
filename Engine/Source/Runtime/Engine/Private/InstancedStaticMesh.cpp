@@ -3004,6 +3004,10 @@ void UInstancedStaticMeshComponent::PostEditChangeChainProperty(FPropertyChanged
 			{
 				ClearInstances();
 			}
+			else if (PropertyChangedEvent.ChangeType == EPropertyChangeType::ValueSet)
+			{
+				InstanceUpdateCmdBuffer.Edit();
+			}
 			
 			MarkRenderStateDirty();
 		}
