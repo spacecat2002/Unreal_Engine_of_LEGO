@@ -636,6 +636,24 @@ void ULandscapeComponent::GetUsedMaterials(TArray<UMaterialInterface*>& OutMater
 #endif
 }
 
+/** 
+ * Return any global Lod override for landscape. 
+ * A return value less than 0 means no override.
+ * Any positive value must still be clamped into the valid Lod range for the landscape.
+ */
+static int32 GetLandscapeLodOverride(FSceneView const& View)
+{
+	// Apply r.ForceLOD override
+	int32 LodOverride = GetCVarForceLOD();
+#if WITH_EDITOR
+	// Apply editor landscape lod override
+	LodOverride = View.Family->LandscapeLODOverride >= 0 ? View.Family->LandscapeLODOverride : LodOverride;
+#endif
+	// Use lod 0 if lodding is disabled
+	LodOverride = View.Family->EngineShowFlags.LOD == 0 ? 0 : LodOverride;
+	return LodOverride;
+}
+
 //
 // FLandscapeComponentSceneProxy
 //
@@ -833,7 +851,7 @@ void FLandscapeRenderSystem::BeginRenderView(const FSceneView* View)
 
 void FLandscapeRenderSystem::ComputeSectionPerViewParameters(
 	const FSceneView* ViewPtrAsIdentifier,
-	bool ViewEngineShowFlagLOD,
+	int32 ViewLODOverride,
 	float ViewLODDistanceFactor,
 	FVector ViewOrigin,
 	FMatrix ViewProjectionMarix
@@ -853,7 +871,6 @@ void FLandscapeRenderSystem::ComputeSectionPerViewParameters(
 		NewSectionTessellationFalloffK.AddZeroed(SectionLODSettings.Num());
 	}
 
-	int32 ForcedLODLevel = ViewEngineShowFlagLOD ? GetCVarForceLOD() : -1;
 	float LODScale = ViewLODDistanceFactor * CVarStaticMeshLODDistanceScale.GetValueOnRenderThread();
 
 	for (int32 EntityIndex = 0; EntityIndex < SectionLODSettings.Num(); EntityIndex++)
@@ -863,6 +880,7 @@ void FLandscapeRenderSystem::ComputeSectionPerViewParameters(
 		float FractionalLOD;
 		GetLODFromScreenSize(SectionLODSettings[EntityIndex], MeshScreenSizeSquared, LODScale * LODScale, FractionalLOD);
 
+		int32 ForcedLODLevel = FMath::Min<int32>(ViewLODOverride, SectionLODSettings[EntityIndex].LastLODIndex);
 		NewSectionLODValues[EntityIndex] = ForcedLODLevel >= 0 ? ForcedLODLevel : FractionalLOD;
 
 		if (TessellationFalloffSettings.UseTessellationComponentScreenSizeFalloff && NumEntitiesWithTessellation > 0)
@@ -1047,6 +1065,16 @@ void FLandscapeRenderSystem::EndFrame()
 	}
 
 	PerViewParametersTasks.Empty();
+}
+
+FLandscapeRenderSystem::FComputeSectionPerViewParametersTask::FComputeSectionPerViewParametersTask(FLandscapeRenderSystem& InRenderSystem, const FSceneView* InView)
+	: RenderSystem(InRenderSystem)
+	, ViewPtrAsIdentifier(InView)
+	, ViewLODOverride(GetLandscapeLodOverride(*InView))
+	, ViewLODDistanceFactor(InView->LODDistanceFactor)
+	, ViewOrigin(InView->ViewMatrices.GetViewOrigin())
+	, ViewProjectionMatrix(InView->ViewMatrices.GetProjectionMatrix())
+{
 }
 
 class FLandscapePersistentViewUniformBufferExtension : public IPersistentViewUniformBufferExtension
@@ -1463,8 +1491,10 @@ void FLandscapeComponentSceneProxy::CreateRenderThreadResources()
 	LandscapeUniformShaderParameters.InitResource();
 
 	// Create per Lod uniform buffers
-	LandscapeFixedGridUniformShaderParameters.AddDefaulted(MaxLOD+1);
-	for (int32 LodIndex = 0; LodIndex <= MaxLOD; ++LodIndex)
+	const int32 NumMips = FMath::CeilLogTwo(SubsectionSizeVerts); 
+	// create as many as there are potential mips (even if MaxLOD can be inferior than that), because the grass could need that much :
+	LandscapeFixedGridUniformShaderParameters.AddDefaulted(NumMips);
+	for (int32 LodIndex = 0; LodIndex < NumMips; ++LodIndex)
 	{
 		LandscapeFixedGridUniformShaderParameters[LodIndex].InitResource();
 		FLandscapeFixedGridUniformShaderParameters Parameters;
@@ -1480,15 +1510,15 @@ void FLandscapeComponentSceneProxy::CreateRenderThreadResources()
 	// Create MeshBatch for grass rendering
 	if (SharedBuffers->GrassIndexBuffer)
 	{
-		const int32 NumMips = FMath::CeilLogTwo(SubsectionSizeVerts);
 		GrassMeshBatch.Elements.Empty(NumMips);
 		GrassMeshBatch.Elements.AddDefaulted(NumMips);
 		GrassBatchParams.Empty(NumMips);
 		GrassBatchParams.AddDefaulted(NumMips);
 		
 		// Grass is being generated using LOD0 material only
+		// It uses the fixed grid vertex factory so it doesn't support XY offsets
 		FMaterialRenderProxy* RenderProxy = AvailableMaterials[LODIndexToMaterialIndex[0]]->GetRenderProxy();
-		GrassMeshBatch.VertexFactory = VertexFactory;
+		GrassMeshBatch.VertexFactory = FixedGridVertexFactory;
 		GrassMeshBatch.MaterialRenderProxy = RenderProxy;
 		GrassMeshBatch.LCI = nullptr;
 		GrassMeshBatch.ReverseCulling = false;
@@ -1510,6 +1540,7 @@ void FLandscapeComponentSceneProxy::CreateRenderThreadResources()
 		GrassBatchElement->MinVertexIndex = 0;
 		GrassBatchElement->MaxVertexIndex = SharedBuffers->NumVertices - 1;
 
+		// Grass system is also used to bake out heights which are source for collision data when bBakeMaterialPositionOffsetIntoCollision is enabled
 		for (int32 Mip = 1; Mip < NumMips; ++Mip)
 		{
 			const int32 MipSubsectionSizeVerts = SubsectionSizeVerts >> Mip;
@@ -1518,6 +1549,7 @@ void FLandscapeComponentSceneProxy::CreateRenderThreadResources()
 			*CollisionBatchElement = *GrassBatchElement;
 			FLandscapeBatchElementParams* CollisionBatchElementParams = &GrassBatchParams[Mip];
 			*CollisionBatchElementParams = *BatchElementParams;
+			CollisionBatchElementParams->CurrentLOD = Mip;
 			CollisionBatchElement->UserData = CollisionBatchElementParams;
 			CollisionBatchElement->NumPrimitives = FMath::Square(NumSubsections) * FMath::Square(MipSubsectionSizeVerts);
 			CollisionBatchElement->FirstIndex = SharedBuffers->GrassIndexMipOffsets[Mip];
@@ -2269,7 +2301,7 @@ bool FLandscapeComponentSceneProxy::GetStaticMeshElement(int32 LODIndex, bool bF
 		}
 
 		UMaterialInstance* MaterialInstance = Cast<UMaterialInstance>(AvailableMaterials[MaterialIndex]);
-		bool HasTessellationEnabled = (GetScene().GetFeatureLevel() >= ERHIFeatureLevel::SM5) ? MaterialInstance != nullptr && MaterialInstance->GetMaterial_Concurrent()->D3D11TessellationMode != EMaterialTessellationMode::MTM_NoTessellation && MaterialIndexToDisabledTessellationMaterial[MaterialIndex] != INDEX_NONE : false;
+		bool HasTessellationEnabled = (GetScene().GetFeatureLevel() >= ERHIFeatureLevel::SM5) ? MaterialInstance != nullptr && RequiresAdjacencyInformation(MaterialInstance, VertexFactory->GetType(), GetScene().GetFeatureLevel()) && MaterialIndexToDisabledTessellationMaterial[MaterialIndex] != INDEX_NONE : false;
 
 		if (HasTessellationEnabled)
 		{
@@ -2386,14 +2418,7 @@ void FLandscapeComponentSceneProxy::DrawStaticElements(FStaticPrimitiveDrawInter
 void FLandscapeComponentSceneProxy::CalculateLODFromScreenSize(const FSceneView& InView, float InMeshScreenSizeSquared, float InViewLODScale, int32 InSubSectionIndex, FViewCustomDataLOD& InOutLODData) const
 {
 	// Handle general LOD override
-	float PreferedLOD = (float)GetCVarForceLOD();
-
-#if WITH_EDITOR
-	if (InView.Family->LandscapeLODOverride >= 0)
-	{
-		PreferedLOD = (float)InView.Family->LandscapeLODOverride;
-	}
-#endif
+	float PreferedLOD = GetLandscapeLodOverride(InView);
 
 #if WITH_EDITOR || !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	if (InView.Family->EngineShowFlags.CollisionVisibility || InView.Family->EngineShowFlags.CollisionPawn)
@@ -2639,39 +2664,6 @@ int8 FLandscapeComponentSceneProxy::GetLODFromScreenSize(float InScreenSizeSquar
 	float FractionalLOD;
 
 	return FLandscapeRenderSystem::GetLODFromScreenSize(LODSettings, InScreenSizeSquared, InViewLODScale, FractionalLOD);
-
-#if 0
-	int32 LODScreenRatioSquaredCount = LODScreenRatioSquared.Num();
-	float ScreenSizeSquared = InScreenSizeSquared / InViewLODScale;
-
-	if (ScreenSizeSquared <= LODScreenRatioSquared[LODScreenRatioSquaredCount - 1])
-	{
-		return LODScreenRatioSquaredCount - 1;
-	}
-	else if (ScreenSizeSquared > LODScreenRatioSquared[1])
-	{
-		return 0;
-	}
-	else
-	{
-		int32 HalfPointIndex = (LODScreenRatioSquaredCount - 1) / 2;
-		int32 StartingIndex = ScreenSizeSquared < LODScreenRatioSquared[HalfPointIndex] ? HalfPointIndex : 1;
-		int8 SelectedLODIndex = INDEX_NONE;
-
-		for (int32 i = StartingIndex; i < LODScreenRatioSquaredCount - 1; ++i)
-		{
-			if (ScreenSizeSquared > LODScreenRatioSquared[i + 1])
-			{
-				SelectedLODIndex = i;
-				break;
-			}
-		}
-
-		return SelectedLODIndex;
-	}
-
-	return INDEX_NONE;
-#endif
 }
 
 void* FLandscapeComponentSceneProxy::InitViewCustomData(const FSceneView& InView, float InViewLODScale, FMemStackBase& InCustomDataMemStack, bool InIsStaticRelevant, bool InIsShadowOnly, const FLODMask* InVisiblePrimitiveLODMask, float InMeshScreenSizeSquared)
@@ -3239,10 +3231,7 @@ void FLandscapeComponentSceneProxy::GetDynamicMeshElements(const TArray<const FS
 
 			const FSceneView* View = Views[ViewIndex];
 
-			int32 ForcedLODLevel = (View->Family->EngineShowFlags.LOD) ? GetCVarForceLOD() : -1;
-#if WITH_EDITOR
-			ForcedLODLevel = View->Family->LandscapeLODOverride >= 0 ? View->Family->LandscapeLODOverride : ForcedLODLevel;
-#endif
+			int32 ForcedLODLevel = GetLandscapeLodOverride(*View);
 
 #if WITH_EDITOR || !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 			ForcedLODLevel = CollisionLODLevel >= 0 ? CollisionLODLevel : ForcedLODLevel;
@@ -3594,7 +3583,7 @@ void FLandscapeComponentSceneProxy::GetDynamicRayTracingInstances(FRayTracingMat
 		return;
 	}
 	float MeshScreenSizeSquared = ComputeBoundsScreenRadiusSquared(GetBounds().Origin, GetBounds().SphereRadius, *Context.ReferenceView);
-	int32 ForcedLODLevel = (Context.ReferenceView->Family->EngineShowFlags.LOD) ? GetCVarForceLOD() : 0;
+	int32 ForcedLODLevel = GetLandscapeLodOverride(*Context.ReferenceView);
 
 	int32 LODToRender = ForcedLODLevel >= 0 ? ForcedLODLevel : GetLODFromScreenSize(MeshScreenSizeSquared, Context.ReferenceView->LODDistanceFactor);
 	
@@ -4667,8 +4656,9 @@ public:
 			{
 				// Landscape MICs are only for use with the Landscape vertex factories
 
-				// For now only compile FLandscapeFixedGridVertexFactory for runtime virtual texture page rendering (can change if we need for other cases)
+				// For now only compile FLandscapeFixedGridVertexFactory for grass and runtime virtual texture page rendering (can change if we need for other cases)
 				// Todo: only compile LandscapeXYOffsetVertexFactory if we are using it
+				bool bIsGrassShaderType = Algo::Find(GetGrassShaderTypes(), ShaderType->GetFName()) != nullptr;
 				bool bIsRuntimeVirtualTextureShaderType = Algo::Find(GetRuntimeVirtualTextureShaderTypes(), ShaderType->GetFName()) != nullptr;
 
 				static const FName LandscapeVertexFactory = FName(TEXT("FLandscapeVertexFactory"));
@@ -4686,7 +4676,7 @@ public:
 				if (VertexFactoryType->GetFName() == LandscapeFixedGridVertexFactory ||
 					VertexFactoryType->GetFName() == LandscapeFixedGridVertexFactoryMobile)
 				{
-					return bIsRuntimeVirtualTextureShaderType && FMaterialResource::ShouldCache(Platform, ShaderType, VertexFactoryType);
+					return (bIsGrassShaderType || bIsRuntimeVirtualTextureShaderType) && FMaterialResource::ShouldCache(Platform, ShaderType, VertexFactoryType);
 				}
 			}
 		}
@@ -4955,6 +4945,16 @@ public:
 #endif // RHI_RAYTRACING
 		};
 		return ExcludedShaderTypes;
+	}
+
+	static const TArray<FName>& GetGrassShaderTypes()
+	{
+		static const TArray<FName> ShaderTypes =
+		{
+			FName(TEXT("FLandscapeGrassWeightVS")),
+			FName(TEXT("FLandscapeGrassWeightPS")),
+		};
+		return ShaderTypes;
 	}
 
 	static const TArray<FName>& GetRuntimeVirtualTextureShaderTypes()
