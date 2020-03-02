@@ -963,7 +963,6 @@ void UMaterial::PreSave(const class ITargetPlatform* TargetPlatform)
 	Super::PreSave(TargetPlatform);
 #if WITH_EDITOR
 	GMaterialsWithDirtyUsageFlags.RemoveAnnotation(this);
-	UpdateCachedExpressionData();
 #endif
 }
 
@@ -2042,7 +2041,8 @@ void UMaterial::UpdateCachedExpressionData()
 	{
 		FMaterialCachedExpressionData UpdatedCachedExpressionData;
 		UpdatedCachedExpressionData.Reset();
-		if (UpdatedCachedExpressionData.UpdateForExpressions(Expressions, EMaterialParameterAssociation::GlobalParameter, -1))
+		FMaterialCachedExpressionContext Context(nullptr); // UMaterial have no parent
+		if (UpdatedCachedExpressionData.UpdateForExpressions(Context, Expressions, EMaterialParameterAssociation::GlobalParameter, -1))
 		{
 			// Only update our cached data if the update succeeded
 			// It's possible we could have some nullptr UMaterialExpressions, if we're loading cooked data here
@@ -2064,6 +2064,10 @@ void UMaterial::UpdateCachedExpressionData()
 
 	if (!bAnyQualityLevelsSet)
 	{
+		if (CachedExpressionData.QualityLevelsUsed.Num() == 0)
+		{
+			CachedExpressionData.QualityLevelsUsed.AddDefaulted(EMaterialQualityLevel::Num);
+		}
 		CachedExpressionData.QualityLevelsUsed[EMaterialQualityLevel::High] = true;
 	}
 }
@@ -3075,7 +3079,7 @@ void UMaterial::CacheResourceShadersForCooking(EShaderPlatform ShaderPlatform, T
 void UMaterial::CacheShadersForResources(EShaderPlatform ShaderPlatform, const TArray<FMaterialResource*>& ResourcesToCache, const ITargetPlatform* TargetPlatform)
 {
 #if WITH_EDITOR
-	UpdateCachedExpressionData();
+	check(!HasAnyFlags(RF_NeedPostLoad));
 #endif
 	for (int32 ResourceIndex = 0; ResourceIndex < ResourcesToCache.Num(); ResourceIndex++)
 	{
@@ -4754,6 +4758,18 @@ bool UMaterial::UpdateLightmassTextureTracking()
 #endif // WITH_EDITORONLY_DATA
 
 	return bTexturesHaveChanged;
+}
+
+int32 UMaterial::GetLayerParameterIndex(EMaterialParameterAssociation Association, UMaterialFunctionInterface* LayerFunction) const
+{
+	int32 Index = INDEX_NONE;
+	switch (Association)
+	{
+	case BlendParameter: Index = CachedExpressionData.DefaultLayerBlends.Find(LayerFunction); break;
+	case LayerParameter: Index = CachedExpressionData.DefaultLayers.Find(LayerFunction); break;
+	default: checkNoEntry(); break;
+	}
+	return Index;
 }
 
 #if WITH_EDITOR

@@ -2,8 +2,6 @@
 
 #include "Windows/WindowsApplication.h"
 
-#if WINDOWS_USE_FEATURE_APPLICATION
-
 #include "Containers/StringConv.h"
 #include "CoreGlobals.h"
 #include "Internationalization/Text.h"
@@ -20,6 +18,7 @@
 #include "HAL/ThreadHeartBeat.h"
 #include "Templates/UniquePtr.h"
 #include "Windows/WindowsPlatformApplicationMisc.h"
+#include "Stats/Stats.h"
 
 #if WITH_EDITOR
 #include "Modules/ModuleManager.h"
@@ -394,6 +393,8 @@ static TSharedPtr< FWindowsWindow > FindWindowByHWND(const TArray< TSharedRef< F
 
 bool FWindowsApplication::IsCursorDirectlyOverSlateWindow() const
 {
+	QUICK_SCOPE_CYCLE_COUNTER(STAT_STAT_IsCursorDirectlyOverSlateWindow);
+
 	POINT CursorPos;
 	BOOL bGotPoint = ::GetCursorPos(&CursorPos);
 	if (bGotPoint)
@@ -1500,8 +1501,8 @@ int32 FWindowsApplication::ProcessMessage( HWND hwnd, uint32 msg, WPARAM wParam,
 					break;
 				case SC_CLOSE:
 					{
-						// do not allow Alt-f4 during slow tasks.  This causes entry into the shutdown sequence at abonrmal times which causes crashes.
-						if (!GIsSlowTask)
+						// Do not allow Alt-f4 during slow tasks, or slate's loading thread.  This causes entry into the shutdown sequence at abnormal times which causes crashes.
+						if (!GIsSlowTask && GSlateLoadingThreadId == 0)
 						{
 							DeferMessage(CurrentNativeEventWindowPtr, hwnd, WM_CLOSE, 0, 0);
 						}
@@ -2823,4 +2824,3 @@ TSharedRef<FTaskbarList> FTaskbarList::Create()
 
 #include "Windows/HideWindowsPlatformTypes.h"
 
-#endif
