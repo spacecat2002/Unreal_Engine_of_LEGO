@@ -2,6 +2,7 @@
 
 #include "MetalRHIPrivate.h"
 #include "MetalVertexDeclaration.h"
+#include "MetalShaderTypes.h"
 #include "MetalGraphicsPipelineState.h"
 #include "Misc/App.h"
 #if PLATFORM_IOS

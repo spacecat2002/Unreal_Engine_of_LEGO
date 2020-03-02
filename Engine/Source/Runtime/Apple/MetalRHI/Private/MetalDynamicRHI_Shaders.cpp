@@ -6,6 +6,7 @@
 
 
 #include "MetalRHIPrivate.h"
+#include "MetalShaderTypes.h"
 #include "Shaders/MetalShaderLibrary.h"
 
 

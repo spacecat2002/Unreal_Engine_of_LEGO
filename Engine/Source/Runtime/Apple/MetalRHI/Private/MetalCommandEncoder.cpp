@@ -5,6 +5,7 @@
 =============================================================================*/
 
 #include "MetalRHIPrivate.h"
+#include "MetalShaderTypes.h"
 #include "MetalGraphicsPipelineState.h"
 #include "MetalCommandEncoder.h"
 #include "MetalCommandBuffer.h"

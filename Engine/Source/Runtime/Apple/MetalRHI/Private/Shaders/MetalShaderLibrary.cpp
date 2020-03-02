@@ -5,17 +5,13 @@
 =============================================================================*/
 
 
-#include "CoreMinimal.h"
-
-#include <Metal/Metal.h>						// Required for MetalState.h
-#include "MetalState.h"							// Required for MetalResources.h
-#include "MetalResources.h"						// Required for ShaderType
-#include "MetalShaderResources.h"				// Required for FMetalShaderLibraryHeader
+#include "MetalRHIPrivate.h"
 #if !UE_BUILD_SHIPPING
 #include "Debugging/MetalShaderDebugCache.h"
 #include "Debugging/MetalShaderDebugZipFile.h"
 #endif // !UE_BUILD_SHIPPING
 #include "MetalShaderLibrary.h"
+#include "MetalShaderTypes.h"
 
 
 //------------------------------------------------------------------------------

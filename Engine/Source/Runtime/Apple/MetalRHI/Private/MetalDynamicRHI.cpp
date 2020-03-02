@@ -6,6 +6,7 @@
 
 
 #include "MetalRHIPrivate.h"
+#include "MetalShaderTypes.h"
 #include "MetalVertexDeclaration.h"
 #include "MetalGraphicsPipelineState.h"
 #include "MetalComputePipelineState.h"
