@@ -168,6 +168,9 @@ class ENGINE_API UDirectionalLightComponent : public ULightComponent
 	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category = Light, meta = (DisplayName = "Atmosphere Sun Light Index", UIMin = "0", UIMax = "1", ClampMin = "0", ClampMax= "1"))
 	int32 AtmosphereSunLightIndex;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Light, AdvancedDisplay, meta = (DisplayName = "Atmosphere Sun Disk Color Scale"))
+	FLinearColor AtmosphereSunDiskColorScale;
+
 	UFUNCTION(BlueprintCallable, Category="Rendering|Lighting")
 	void SetDynamicShadowDistanceMovableLight(float NewValue);
 
@@ -216,6 +219,10 @@ class ENGINE_API UDirectionalLightComponent : public ULightComponent
 	virtual uint8 GetAtmosphereSunLightIndex() const override
 	{
 		return AtmosphereSunLightIndex;
+	}
+	virtual FLinearColor GetAtmosphereSunDiskColorScale() const override
+	{
+		return AtmosphereSunDiskColorScale;
 	}
 	//~ End ULightComponent Interface
 

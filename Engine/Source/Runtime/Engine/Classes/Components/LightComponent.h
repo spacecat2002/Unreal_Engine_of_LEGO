@@ -374,6 +374,10 @@ public:
 	{
 		return 0;
 	}
+	virtual FLinearColor GetAtmosphereSunDiskColorScale() const
+	{
+		return FLinearColor::White;
+	}
 
 	/** Compute current light brightness based on whether there is a valid IES profile texture attached, and whether IES brightness is enabled */
 	virtual float ComputeLightBrightness() const;

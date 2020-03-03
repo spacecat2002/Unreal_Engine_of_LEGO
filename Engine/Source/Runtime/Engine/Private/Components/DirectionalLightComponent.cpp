@@ -883,6 +883,10 @@ UDirectionalLightComponent::UDirectionalLightComponent(const FObjectInitializer&
 
 	ModulatedShadowColor = FColor(128, 128, 128);
 	ShadowAmount = 1.0f;
+
+	bUsedAsAtmosphereSunLight = false;
+	AtmosphereSunLightIndex = 0;
+	AtmosphereSunDiskColorScale = FLinearColor::White;
 }
 
 #if WITH_EDITOR
