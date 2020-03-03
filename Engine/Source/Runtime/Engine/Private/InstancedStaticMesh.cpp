@@ -1250,7 +1250,7 @@ void FInstancedStaticMeshSceneProxy::SetupRayTracingCullClusters()
 		return;
 	}
 
-	check(IsInGameThread());
+	//check(IsInGameThread());
 
 	//#dxr_todo: select the appropriate LOD depending on Context.View
 	int32 LOD = 0;
