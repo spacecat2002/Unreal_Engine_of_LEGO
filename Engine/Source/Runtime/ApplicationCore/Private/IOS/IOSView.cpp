@@ -884,7 +884,7 @@ self.accessibilityElements = @[Window.accessibilityContainer];
 {
 	REPORT_EVENT;
 	// assume left to right for now
-	return NSWritingDirectionLeftToRight;
+	return UITextWritingDirectionLeftToRight;
 }
 
 
