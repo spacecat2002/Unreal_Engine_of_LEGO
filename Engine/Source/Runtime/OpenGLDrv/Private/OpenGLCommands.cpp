@@ -51,7 +51,7 @@ namespace OpenGLConsoleVariables
 
 	static FAutoConsoleVariable CVarUseEmulatedUBs(
 		TEXT("OpenGL.UseEmulatedUBs"),
-		0,
+		1,
 		TEXT("If true, enable using emulated uniform buffers on ES3.1 mode."),
 		ECVF_ReadOnly
 		);
@@ -826,8 +826,6 @@ void FOpenGLDynamicRHI::SetupTexturesForDraw( FOpenGLContextState& ContextState,
 					FOpenGL::BindSampler(TextureStageIndex, PendingSampler ? PendingSampler->Resource : 0);
 					ContextState.SamplerStates[TextureStageIndex] = PendingSampler;
 				}
-				//Clean the Pending Sampler State so the textures sampled by TexelFetch without setting point sampler could use sampler 0.
-				PendingState.SamplerStates[TextureStageIndex] = nullptr;
 			}
 			else if (TextureStage.Target != GL_TEXTURE_BUFFER)
 			{

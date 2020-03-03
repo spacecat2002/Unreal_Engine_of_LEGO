@@ -1654,10 +1654,10 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	RunGPUSkinCacheTransition(RHICmdList, Scene, EGPUSkinCacheTransition::Renderer);
 
-	if (HasHairStrandsProjectionQuery(Scene->GetShaderPlatform()))
+	if (HasHairStrandsProcess(Scene->GetShaderPlatform()))
 	{
-		FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(FeatureLevel);
-		RunHairStrandsBindingQueries(RHICmdList, ShaderMap);
+		auto ShaderMap = GetGlobalShaderMap(FeatureLevel);
+		RunHairStrandsProcess(RHICmdList, ShaderMap);
 	}
 
 	// Interpolation needs to happen after the skin cache run as there is a dependency 
@@ -1669,7 +1669,8 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		const EWorldType::Type WorldType = Views[0].Family->Scene->GetWorld()->WorldType;
 		auto ShaderMap = GetGlobalShaderMap(FeatureLevel);
 
-		RunHairStrandsInterpolation(RHICmdList, WorldType, &Views[0].ShaderDrawData, ShaderMap, EHairStrandsInterpolationType::RenderStrands, &HairClusterData); // Send data to full up with culling
+		FGPUSkinCache* GPUSkinCache = Scene->GetGPUSkinCache();
+		RunHairStrandsInterpolation(RHICmdList, WorldType, GPUSkinCache, &Views[0].ShaderDrawData, ShaderMap, EHairStrandsInterpolationType::RenderStrands, &HairClusterData); // Send data to full up with culling
 	}
 
 	// Before starting the render, all async task for the Custom data must be completed
@@ -2346,6 +2347,10 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 		ComputeSubsurfaceShim(RHICmdList, Views);
 
+		if (HairDatas)
+		{
+			RenderHairStrandsSceneColorScattering(RHICmdList, Views, HairDatas);
+		}
 #if RHI_RAYTRACING
 		if (SkyLightRT)
 		{

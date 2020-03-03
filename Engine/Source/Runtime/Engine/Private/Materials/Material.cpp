@@ -963,7 +963,6 @@ void UMaterial::PreSave(const class ITargetPlatform* TargetPlatform)
 	Super::PreSave(TargetPlatform);
 #if WITH_EDITOR
 	GMaterialsWithDirtyUsageFlags.RemoveAnnotation(this);
-	UpdateCachedExpressionData();
 #endif
 }
 
@@ -2065,6 +2064,10 @@ void UMaterial::UpdateCachedExpressionData()
 
 	if (!bAnyQualityLevelsSet)
 	{
+		if (CachedExpressionData.QualityLevelsUsed.Num() == 0)
+		{
+			CachedExpressionData.QualityLevelsUsed.AddDefaulted(EMaterialQualityLevel::Num);
+		}
 		CachedExpressionData.QualityLevelsUsed[EMaterialQualityLevel::High] = true;
 	}
 }
@@ -3076,7 +3079,7 @@ void UMaterial::CacheResourceShadersForCooking(EShaderPlatform ShaderPlatform, T
 void UMaterial::CacheShadersForResources(EShaderPlatform ShaderPlatform, const TArray<FMaterialResource*>& ResourcesToCache, const ITargetPlatform* TargetPlatform)
 {
 #if WITH_EDITOR
-	UpdateCachedExpressionData();
+	check(!HasAnyFlags(RF_NeedPostLoad));
 #endif
 	for (int32 ResourceIndex = 0; ResourceIndex < ResourcesToCache.Num(); ResourceIndex++)
 	{

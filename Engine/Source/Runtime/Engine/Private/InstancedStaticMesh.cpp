@@ -785,7 +785,6 @@ IMPLEMENT_VERTEX_FACTORY_PARAMETER_TYPE(FInstancedStaticMeshVertexFactory, SF_Ve
 #if RHI_RAYTRACING
 IMPLEMENT_VERTEX_FACTORY_PARAMETER_TYPE(FInstancedStaticMeshVertexFactory, SF_RayHitGroup, FInstancedStaticMeshVertexFactoryShaderParameters);
 #endif
-
 IMPLEMENT_VERTEX_FACTORY_TYPE_EX(FInstancedStaticMeshVertexFactory,"/Engine/Private/LocalVertexFactory.ush",true,true,true,true,true,true,false);
 
 void FInstancedStaticMeshRenderData::InitVertexFactories()
@@ -1250,6 +1249,11 @@ void FInstancedStaticMeshSceneProxy::GetDynamicRayTracingInstances(struct FRayTr
 
 void FInstancedStaticMeshSceneProxy::SetupRayTracingCullClusters()
 {
+	if (!IsRayTracingEnabled())
+	{
+		return;
+	}
+
 	check(IsInGameThread());
 
 	//#dxr_todo: select the appropriate LOD depending on Context.View

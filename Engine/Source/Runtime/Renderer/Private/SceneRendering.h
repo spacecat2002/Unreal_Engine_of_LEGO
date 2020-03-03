@@ -1251,7 +1251,12 @@ public:
 	void InitRHIResources();
 
 	/** Determines distance culling and fades if the state changes */
-	bool IsDistanceCulled(float DistanceSquared, float MaxDrawDistance, float MinDrawDistance, const FPrimitiveSceneInfo* PrimitiveSceneInfo);
+	bool IsDistanceCulled(float DistanceSquared, float MinDrawDistance, float InMaxDrawDistance, const FPrimitiveSceneInfo* PrimitiveSceneInfo);
+
+	bool IsDistanceCulled_AnyThread(float DistanceSquared, float MinDrawDistance, float InMaxDrawDistance, const FPrimitiveSceneInfo* PrimitiveSceneInfo, bool& bOutMayBeFading, bool& bOutFadingIn) const;
+
+	/** @return - whether this primitive has completely faded out */
+	bool UpdatePrimitiveFadingState(const FPrimitiveSceneInfo* PrimitiveSceneInfo, bool bFadingIn);
 
 	/** Gets the eye adaptation render target for this view. Same as GetEyeAdaptationRT */
 	IPooledRenderTarget* GetEyeAdaptation(FRHICommandList& RHICmdList) const;
@@ -1887,6 +1892,7 @@ protected:
 	void UpdateTranslucentBasePassUniformBuffer(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 	void UpdateDirectionalLightUniformBuffers(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 	void UpdateSkyReflectionUniformBuffer();
+	void UpdateDepthPrepassUniformBuffer(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 	
 private:
 	bool bModulatedShadowsInUse;

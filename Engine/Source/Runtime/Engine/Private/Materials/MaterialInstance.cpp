@@ -365,6 +365,7 @@ void GameThread_UpdateMIParameter(const UMaterialInstance* Instance, const Param
 		});
 }
 
+#if WITH_EDITOR
 template<typename ParameterType>
 static void RemapLayerParameterIndicesArray(TArray<ParameterType>& Parameters, const TArray<int32>& RemapLayerIndices)
 {
@@ -408,7 +409,6 @@ static void RemapLayerParameterIndicesArray(TArray<ParameterType>& Parameters, c
 	}
 }
 
-#if WITH_EDITOR
 template<typename ParameterType>
 static void SwapLayerParameterIndicesArray(TArray<ParameterType>& Parameters, int32 OriginalIndex, int32 NewIndex)
 {
@@ -443,7 +443,7 @@ void UMaterialInstance::SwapLayerParameterIndices(int32 OriginalIndex, int32 New
 		SwapLayerParameterIndicesArray(StaticParameters.MaterialLayersParameters, OriginalIndex, NewIndex);
 	}
 }
-#endif
+#endif // WITH_EDITOR
 
 bool UMaterialInstance::UpdateParameters()
 {
@@ -2856,8 +2856,8 @@ void UMaterialInstance::CacheShadersForResources(EShaderPlatform ShaderPlatform,
 {
 	UMaterial* BaseMaterial = GetMaterial();
 #if WITH_EDITOR
-	BaseMaterial->UpdateCachedExpressionData();
-	UpdateCachedLayerParameters();
+	check(!HasAnyFlags(RF_NeedPostLoad));
+	check(!BaseMaterial->HasAnyFlags(RF_NeedPostLoad));
 #endif
 
 	for (int32 ResourceIndex = 0; ResourceIndex < ResourcesToCache.Num(); ResourceIndex++)

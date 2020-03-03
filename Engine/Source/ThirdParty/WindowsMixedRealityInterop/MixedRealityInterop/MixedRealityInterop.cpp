@@ -1774,18 +1774,26 @@ namespace WindowsMixedReality
 		// Do not wait for a frame if we are running on the emulator or HL1 Remoting.
 		if (!m_isHL1Remoting)
 		{
-			if (!IsActiveAndValid())
+			if (!IsActiveAndValid() || currentFrame != nullptr)
 			{
 				return;
 			}
 
+			try
+			{
 #if	LOG_HOLOLENS_FRAME_COUNTER
-			{ std::wstringstream string; string << L"BlockUntilNextFrame() started"; Log(string); }
-			holographicSpace.WaitForNextFrameReady();
-			{ std::wstringstream string; string << L"BlockUntilNextFrame() ended"; Log(string); }
+				{ std::wstringstream string; string << L"BlockUntilNextFrame() started"; Log(string); }
+				holographicSpace.WaitForNextFrameReady();
+				{ std::wstringstream string; string << L"BlockUntilNextFrame() ended"; Log(string); }
 #else
-			holographicSpace.WaitForNextFrameReady();
+				holographicSpace.WaitForNextFrameReady();
 #endif
+			}
+			catch (winrt::hresult_error&)
+			{
+				Log(L"BlockUntilNextFrame() failed with exception");
+			}
+
 		}
 #endif
 	}
@@ -3779,10 +3787,35 @@ namespace WindowsMixedReality
 				RequestUserPermissionForEyeTracking();
 			});
 
+
 			m_onDisconnectedEventRevoker =
 				m_remoteContext.OnDisconnected(winrt::auto_revoke, [this](winrt::Microsoft::Holographic::AppRemoting::ConnectionFailureReason failureReason) 
 			{
-				{ std::wstringstream string; string << L"RemotingDisconnectedEvent: Reason: " << static_cast<int>(failureReason); Log(string); }
+				const wchar_t ConnectFailureReasonString[static_cast<int32>(winrt::Microsoft::Holographic::AppRemoting::ConnectionFailureReason::DisconnectRequest) + 1][32] =
+				{
+					L"None",
+					L"Unknown",
+					L"NoServerCertificate",
+					L"HandshakePortBusy",
+					L"HandshakeUnreachable",
+					L"HandshakeConnectionFailed",
+					L"AuthenticationFailed",
+					L"RemotingVersionMismatch",
+					L"IncompatibleTransportProtocols",
+					L"HandshakeFailed",
+					L"TransportPortBusy",
+					L"TransportUnreachable",
+					L"TransportConnectionFailed",
+					L"ProtocolVersionMismatch",
+					L"ProtocolError",
+					L"VideoCodecNotAvailable",
+					L"Canceled",
+					L"ConnectionLost",
+					L"DeviceLost",
+					L"DisconnectRequest"
+				}; 
+
+				{ std::wstringstream string; string << L"RemotingDisconnectedEvent: Reason: " << static_cast<int>(failureReason) << " " << ConnectFailureReasonString[static_cast<int32>(failureReason)]; Log(string); }
 
 				DisconnectFromDevice();
 				{

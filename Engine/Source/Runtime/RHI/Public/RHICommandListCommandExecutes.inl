@@ -54,6 +54,7 @@ struct FRHICommandSetStereoViewport;
 struct FRHICommandSetStreamSource;
 struct FRHICommandSetViewport;
 struct FRHICommandTransitionTextures;
+struct FRHICommandTransitionTexturesPipeline;
 struct FRHICommandTransitionTexturesDepth;
 struct FRHICommandTransitionTexturesArray;
 struct FRHICommandUpdateTextureReference;
@@ -123,7 +124,7 @@ template<> void FRHICommandSetShaderParameter<FRHIComputeShader>::Execute(FRHICo
 template <> void FRHICommandSetShaderParameter<FRHIGraphicsShader>::Execute(FRHICommandListBase& CmdList)
 {
 	RHISTAT(SetShaderParameter);
-	INTERNAL_DECORATOR(RHISetShaderParameter)(Shader, BufferIndex, BaseIndex, NumBytes, NewValue);
+	INTERNAL_DECORATOR(RHISetShaderParameter)(Shader, BufferIndex, BaseIndex, NumBytes, NewValue); 
 }
 
 template<> void FRHICommandSetShaderUniformBuffer<FRHIComputeShader>::Execute(FRHICommandListBase& CmdList)
@@ -401,6 +402,12 @@ void FRHICommandTransitionTextures::Execute(FRHICommandListBase& CmdList)
 	INTERNAL_DECORATOR(RHITransitionResources)(TransitionType, &Textures[0], NumTextures);
 }
 
+void FRHICommandTransitionTexturesPipeline::Execute(FRHICommandListBase& CmdList)
+{
+	RHISTAT(TransitionTextures);
+	INTERNAL_DECORATOR(RHITransitionResources)(TransitionType, TransitionPipeline, &Textures[0], NumTextures);
+}
+
 void FRHICommandTransitionTexturesDepth::Execute(FRHICommandListBase& CmdList)
 {
 	RHISTAT(TransitionTextures);
@@ -584,7 +591,7 @@ void FRHICommandSetRayTracingBindings::Execute(FRHICommandListBase& CmdList)
 	{
 		INTERNAL_DECORATOR(RHISetRayTracingCallableShader)(Scene, ShaderSlot, GetRHIRayTracingPipelineState(Pipeline), ShaderIndex, NumUniformBuffers, UniformBuffers, UserData);
 	}
-	else 
+	else
 	{
 		INTERNAL_DECORATOR(RHISetRayTracingMissShader)(Scene, ShaderSlot, GetRHIRayTracingPipelineState(Pipeline), ShaderIndex, NumUniformBuffers, UniformBuffers, UserData);
 	}

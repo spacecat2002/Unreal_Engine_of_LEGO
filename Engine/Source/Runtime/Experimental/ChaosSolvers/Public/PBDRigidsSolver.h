@@ -66,7 +66,7 @@ namespace Chaos
 	class CHAOSSOLVERS_API FPBDRigidsSolver : public FPhysicsSolverBase
 	{
 
-		FPBDRigidsSolver(const EMultiBufferMode BufferingModeIn);
+		FPBDRigidsSolver(const EMultiBufferMode BufferingModeIn, UObject* InOwner);
 
 	public:
 
@@ -269,9 +269,6 @@ namespace Chaos
 		void SetCollisionFilterSettings(const FSolverCollisionFilterSettings& InCollisionFilterSettings) { GetEventFilters()->GetCollisionFilter()->UpdateFilterSettings(InCollisionFilterSettings); }
 		void SetBreakingFilterSettings(const FSolverBreakingFilterSettings& InBreakingFilterSettings) { GetEventFilters()->GetBreakingFilter()->UpdateFilterSettings(InBreakingFilterSettings); }
 		void SetTrailingFilterSettings(const FSolverTrailingFilterSettings& InTrailingFilterSettings) { GetEventFilters()->GetTrailingFilter()->UpdateFilterSettings(InTrailingFilterSettings); }
-		void SetHasFloor(bool bHasFloorIn) { bHasFloor = bHasFloorIn; }
-		void SetIsFloorAnalytic(bool bIsAnalytic) { bIsFloorAnalytic = bIsAnalytic; }
-		void SetFloorHeight(float Height) { FloorHeight = Height; }
 
 		/**/
 		FPBDRigidsEvolution* GetEvolution() { return MEvolution.Get(); }
@@ -279,6 +276,11 @@ namespace Chaos
 
 		FParticlesType& GetParticles() { return Particles; }
 		const FParticlesType& GetParticles() const { return Particles; }
+
+		void AddParticleToProxy(const Chaos::TGeometryParticleHandle<float, 3>* Particle, IPhysicsProxyBase* Proxy)
+		{ MParticleToProxy.Add(Particle, Proxy); }
+		void RemoveParticleToProxy(const Chaos::TGeometryParticleHandle<float, 3>* Particle)
+		{ MParticleToProxy.Remove(Particle); }
 
 		/**/
 		FEventManager* GetEventManager() { return MEventManager.Get(); }
