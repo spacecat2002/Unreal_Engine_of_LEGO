@@ -2405,10 +2405,6 @@ void FMetalRHICommandContext::RHIUpdateTextureReference(FRHITextureReference* Te
 		if (TextureRef)
 		{
 			TextureRef->SetReferencedTexture(NewTextureRHI);
-			if (NewTextureRHI)
-			{
-				GetMetalDeviceContext().UpdateIABs(TextureRefRHI);
-			}
 		}
 	}
 }
