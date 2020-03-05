@@ -902,6 +902,7 @@ private:
 
 	friend class URigVM;
 	friend class URigVMCompiler;
+	friend struct FRigVMCompilerWorkData;
 };
 
 template<>
