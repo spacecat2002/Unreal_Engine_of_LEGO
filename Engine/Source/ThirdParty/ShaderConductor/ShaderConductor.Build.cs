@@ -1,5 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
+using System;
+using System.IO;
 using UnrealBuildTool;
 
 public class ShaderConductor : ModuleRules
@@ -29,27 +31,29 @@ public class ShaderConductor : ModuleRules
 		}
         else if (Target.Platform == UnrealTargetPlatform.Win64)
         {
-            string[] DynamicLibraries = new string[] {
-                "/dxcompiler_sc.dll",
-                "/ShaderConductor.dll",
-            };
+			string LibPath = Target.UEThirdPartySourceDirectory + "ShaderConductor/ShaderConductor/lib/Win64/ShaderConductor.lib";
+			PublicAdditionalLibraries.Add(LibPath);
 
-            string BinariesDir = Target.UEThirdPartyBinariesDirectory + "../Win64";
-            foreach (string Lib in DynamicLibraries)
-            {
-                string LibraryPath = BinariesDir + Lib;
-                PublicDelayLoadDLLs.Add(LibraryPath);
-                RuntimeDependencies.Add(LibraryPath);
-            }
-            string LibPath = Target.UEThirdPartyBinariesDirectory + "ShaderConductor/Win64/ShaderConductor.lib";
-            PublicAdditionalLibraries.Add(LibPath);
-        }
-        else
+			string SCBinariesDir = String.Format("$(EngineDir)/Binaries/ThirdParty/ShaderConductor/Win64/");
+			AddDependency(SCBinariesDir, "dxcompiler_sc.dll", false);
+			AddDependency(SCBinariesDir, "ShaderConductor.dll", true);
+		}
+		else
 		{
 			string Err = string.Format("Attempt to build against ShaderConductor on unsupported platform {0}", Target.Platform);
 			System.Console.WriteLine(Err);
 			throw new BuildException(Err);
 		}
 	}
-}
 
+	private void AddDependency(string SCBinariesDir, string InDLL, bool bAddPDB)
+	{
+		string FileName = Path.Combine(SCBinariesDir, InDLL);
+		RuntimeDependencies.Add(FileName, StagedFileType.NonUFS);
+		if (bAddPDB)
+		{
+			RuntimeDependencies.Add(Path.ChangeExtension(FileName, ".pdb"), StagedFileType.DebugNonUFS);
+		}
+		PublicDelayLoadDLLs.Add(InDLL);
+	}
+}
