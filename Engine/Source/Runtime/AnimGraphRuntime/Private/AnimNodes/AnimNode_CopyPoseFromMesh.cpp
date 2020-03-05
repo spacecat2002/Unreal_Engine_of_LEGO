@@ -11,6 +11,7 @@ FAnimNode_CopyPoseFromMesh::FAnimNode_CopyPoseFromMesh()
 	: SourceMeshComponent(nullptr)
 	, bUseAttachedParent (false)
 	, bCopyCurves (false)
+	, bUseMeshPose (false)
 {
 }
 
@@ -168,26 +169,48 @@ void FAnimNode_CopyPoseFromMesh::Evaluate_AnyThread(FPoseContext& Output)
 	{
 		const FBoneContainer& RequiredBones = OutPose.GetBoneContainer();
 
-		for(FCompactPoseBoneIndex PoseBoneIndex : OutPose.ForEachBoneIndex())
+		if (bUseMeshPose)
 		{
-			const int32 SkeletonBoneIndex = RequiredBones.GetSkeletonIndex(PoseBoneIndex);
-			const int32 MeshBoneIndex = RequiredBones.GetSkeletonToPoseBoneIndexArray()[SkeletonBoneIndex];
-			const int32* Value = BoneMapToSource.Find(MeshBoneIndex);
-			if(Value && SourceMeshTransformArray.IsValidIndex(*Value))
+			FCSPose<FCompactPose> MeshPoses;
+			MeshPoses.InitPose(OutPose);
+
+			for (FCompactPoseBoneIndex PoseBoneIndex : OutPose.ForEachBoneIndex())
 			{
-				const int32 SourceBoneIndex = *Value;
-				const int32 ParentIndex = CurrentMesh->RefSkeleton.GetParentIndex(SourceBoneIndex);
-				const FCompactPoseBoneIndex MyParentIndex = RequiredBones.GetParentBoneIndex(PoseBoneIndex);
-				// only apply if I also have parent, otherwise, it should apply the space bases
-				if (SourceMeshTransformArray.IsValidIndex(ParentIndex) && MyParentIndex != INDEX_NONE)
+				const int32 SkeletonBoneIndex = RequiredBones.GetSkeletonIndex(PoseBoneIndex);
+				const int32 MeshBoneIndex = RequiredBones.GetSkeletonToPoseBoneIndexArray()[SkeletonBoneIndex];
+				const int32* Value = BoneMapToSource.Find(MeshBoneIndex);
+ 				if (Value && SourceMeshTransformArray.IsValidIndex(*Value))
 				{
-					const FTransform& ParentTransform = SourceMeshTransformArray[ParentIndex];
-					const FTransform& ChildTransform = SourceMeshTransformArray[SourceBoneIndex];
-					OutPose[PoseBoneIndex] = ChildTransform.GetRelativeTransform(ParentTransform);
+					const int32 SourceBoneIndex = *Value;
+					MeshPoses.SetComponentSpaceTransform(PoseBoneIndex, SourceMeshTransformArray[SourceBoneIndex]);
 				}
-				else
+			}
+
+			FCSPose<FCompactPose>::ConvertComponentPosesToLocalPosesSafe(MeshPoses, OutPose);
+		}
+		else
+		{
+			for (FCompactPoseBoneIndex PoseBoneIndex : OutPose.ForEachBoneIndex())
+			{
+				const int32 SkeletonBoneIndex = RequiredBones.GetSkeletonIndex(PoseBoneIndex);
+				const int32 MeshBoneIndex = RequiredBones.GetSkeletonToPoseBoneIndexArray()[SkeletonBoneIndex];
+				const int32* Value = BoneMapToSource.Find(MeshBoneIndex);
+				if (Value && SourceMeshTransformArray.IsValidIndex(*Value))
 				{
-					OutPose[PoseBoneIndex] = SourceMeshTransformArray[SourceBoneIndex];
+					const int32 SourceBoneIndex = *Value;
+					const int32 ParentIndex = CurrentMesh->RefSkeleton.GetParentIndex(SourceBoneIndex);
+					const FCompactPoseBoneIndex MyParentIndex = RequiredBones.GetParentBoneIndex(PoseBoneIndex);
+					// only apply if I also have parent, otherwise, it should apply the space bases
+					if (SourceMeshTransformArray.IsValidIndex(ParentIndex) && MyParentIndex != INDEX_NONE)
+					{
+						const FTransform& ParentTransform = SourceMeshTransformArray[ParentIndex];
+						const FTransform& ChildTransform = SourceMeshTransformArray[SourceBoneIndex];
+						OutPose[PoseBoneIndex] = ChildTransform.GetRelativeTransform(ParentTransform);
+					}
+					else
+					{
+						OutPose[PoseBoneIndex] = SourceMeshTransformArray[SourceBoneIndex];
+					}
 				}
 			}
 		}
@@ -252,7 +275,7 @@ void FAnimNode_CopyPoseFromMesh::ReinitializeMeshComponent(USkeletalMeshComponen
 					BoneMapToSource.Add(ComponentSpaceBoneId, SourceSkelMesh->RefSkeleton.FindBoneIndex(BoneName));
 				}
 			}
-
+		
 			if (bCopyCurves)
 			{
 				USkeleton* SourceSkeleton = SourceSkelMesh->Skeleton;
