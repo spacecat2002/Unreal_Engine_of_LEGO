@@ -526,8 +526,8 @@ public:
 
 public:
 #if WITH_EDITORONLY_DATA
-	UPROPERTY()
-	TEnumAsByte<enum EHitProxyPriority> HitProxyPriority;
+		UPROPERTY()
+			TEnumAsByte<enum EHitProxyPriority> HitProxyPriority;
 #endif
 
 private:
