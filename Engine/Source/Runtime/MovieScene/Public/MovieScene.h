@@ -239,7 +239,6 @@ public:
 	FORCEINLINE TArray<TWeakObjectPtr<UMovieSceneSection> >::RangedForConstIteratorType end() const { return Sections.end(); }
 };
 
-#if WITH_EDITORONLY_DATA
 /**
  * Structure that represents a group of nodes
  */
@@ -248,6 +247,7 @@ class MOVIESCENE_API UMovieSceneNodeGroup : public UObject
 {
 	GENERATED_BODY()
 
+#if WITH_EDITORONLY_DATA
 public:
 	const FName GetName() const { return Name; }
 	void SetName(const FName& Name);
@@ -291,6 +291,7 @@ private:
 	{
 		return &Nodes != &Other.Nodes;
 	}
+#endif
 };
 
 /**
@@ -301,6 +302,7 @@ class MOVIESCENE_API UMovieSceneNodeGroupCollection : public UObject
 {
 	GENERATED_BODY()
 
+#if WITH_EDITORONLY_DATA
 public:
 	/** Called after this object has been deserialized */
 	virtual void PostLoad() override;
@@ -337,9 +339,8 @@ public:
 	FORCEINLINE TArray<UMovieSceneNodeGroup*>::RangedForConstIteratorType begin()	const { return NodeGroups.begin(); }
 	FORCEINLINE TArray<UMovieSceneNodeGroup*>::RangedForIteratorType      end()	{ return NodeGroups.end(); }
 	FORCEINLINE TArray<UMovieSceneNodeGroup*>::RangedForConstIteratorType end()	const { return NodeGroups.end(); }
-
-};
 #endif
+};
 
 /**
  * Implements a movie scene asset.
@@ -1195,9 +1196,11 @@ private:
 	UPROPERTY()
 	TArray<FMovieSceneSectionGroup> SectionGroups;
 
+#if WITH_EDITORONLY_DATA
 	/** Collection of user-defined groups */
 	UPROPERTY()
 	UMovieSceneNodeGroupCollection* NodeGroupCollection;
+#endif
 
 	/** Whether this scene's marked frames should be shown globally */
 	bool bGloballyShowMarkedFrames;
