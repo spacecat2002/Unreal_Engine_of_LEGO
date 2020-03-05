@@ -11,6 +11,7 @@
 #endif
 #include "Serializable.h"
 
+#include "UObject/ExternalPhysicsCustomObjectVersion.h"
 #include "Chaos/Core.h"
 
 #if COMPILE_WITHOUT_UNREAL_SUPPORT
