@@ -166,6 +166,9 @@ public:
 
 		/** When true, allows the combo box to receive keyboard focus */
 		SLATE_ARGUMENT( bool, IsFocusable )
+
+		/** True if this combo's menu should be collapsed when our parent receives focus, false (default) otherwise */
+		SLATE_ARGUMENT(bool, CollapseMenuOnParentFocus)
 				
 	SLATE_END_ARGS()
 
@@ -233,6 +236,7 @@ public:
 			.ForegroundColor( InArgs._ForegroundColor )
 			.OnMenuOpenChanged(this, &SComboBox< OptionType >::OnMenuOpenChanged)
 			.IsFocusable(InArgs._IsFocusable)
+			.CollapseMenuOnParentFocus(InArgs._CollapseMenuOnParentFocus)
 		);
 		SetMenuContentWidgetToFocus(ComboListView);
 
