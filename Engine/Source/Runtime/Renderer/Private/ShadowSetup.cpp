@@ -1091,7 +1091,7 @@ void FProjectedShadowInfo::AddCachedMeshDrawCommands_AnyThread(
 {
 	const EMeshPass::Type PassType = EMeshPass::CSMShadowDepth;
 	const EShadingPath ShadingPath = Scene->GetShadingPath();
-	const bool bUseCachedMeshCommand = UseCachedMeshDrawCommands()
+	const bool bUseCachedMeshCommand = UseCachedMeshDrawCommands_AnyThread()
 		&& !!(FPassProcessorManager::GetPassFlags(ShadingPath, PassType) & EMeshPassFlags::CachedMeshCommands)
 		&& StaticMeshRelevance.bSupportsCachingMeshDrawCommands;
 
@@ -1276,7 +1276,7 @@ bool FProjectedShadowInfo::ShouldDrawStaticMeshes_AnyThread(
 	const int32 PrimitiveId = PrimitiveSceneInfo->GetIndex();
 
 	{
-		const int32 ForcedLOD = CurrentView.Family->EngineShowFlags.LOD ? (GetCVarForceLODShadow() != -1 ? GetCVarForceLODShadow() : GetCVarForceLOD()) : -1;
+		const int32 ForcedLOD = CurrentView.Family->EngineShowFlags.LOD ? (GetCVarForceLODShadow_AnyThread() != -1 ? GetCVarForceLODShadow_AnyThread() : GetCVarForceLOD_AnyThread()) : -1;
 		const FLODMask* VisibilePrimitiveLODMask = nullptr;
 
 		if (CurrentView.PrimitivesLODMask[PrimitiveId].ContainsLOD(MAX_int8)) // only calculate it if it's not set
@@ -1597,11 +1597,11 @@ uint64 FProjectedShadowInfo::AddSubjectPrimitive_AnyThread(
 		static auto* CVarMobileEnableStaticAndCSMShadowReceivers = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.EnableStaticAndCSMShadowReceivers"));
 		static auto* CVarMobileEnableMovableLightCSMShaderCulling = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.EnableMovableLightCSMShaderCulling"));
 		static auto* CVarMobileCSMShaderCullingMethod = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.Shadow.CSMShaderCullingMethod"));
-		const uint32 MobileCSMCullingMode = CVarMobileCSMShaderCullingMethod->GetValueOnRenderThread() & 0xF;
+		const uint32 MobileCSMCullingMode = CVarMobileCSMShaderCullingMethod->GetValueOnAnyThread() & 0xF;
 		const bool bRecordShadowSubjectsForMobile =
 			(MobileCSMCullingMode == 2 || MobileCSMCullingMode == 3)
-			&& ((CVarMobileEnableMovableLightCSMShaderCulling->GetValueOnRenderThread() && GetLightSceneInfo().Proxy->IsMovable() && GetLightSceneInfo().ShouldRenderViewIndependentWholeSceneShadows())
-				|| (CVarMobileEnableStaticAndCSMShadowReceivers->GetValueOnRenderThread() && GetLightSceneInfo().Proxy->UseCSMForDynamicObjects()));
+			&& ((CVarMobileEnableMovableLightCSMShaderCulling->GetValueOnAnyThread() && GetLightSceneInfo().Proxy->IsMovable() && GetLightSceneInfo().ShouldRenderViewIndependentWholeSceneShadows())
+				|| (CVarMobileEnableStaticAndCSMShadowReceivers->GetValueOnAnyThread() && GetLightSceneInfo().Proxy->UseCSMForDynamicObjects()));
 
 		if (bRecordShadowSubjectsForMobile)
 		{
@@ -3458,8 +3458,7 @@ void FSceneRenderer::InitProjectedShadowVisibility(FRHICommandListImmediate& RHI
 					// The view dependent projected shadow is valid for this view if it's the
 					// right eye and the projected shadow is being rendered for the left eye.
 					const bool bIsValidForView = IStereoRendering::IsASecondaryView(View)
-						&& Views.IsValidIndex(ViewIndex - 1)
-						&& IStereoRendering::IsAPrimaryView(Views[ViewIndex - 1])
+						&& IStereoRendering::IsAPrimaryView(*ProjectedShadowInfo.DependentView)
 						&& ProjectedShadowInfo.FadeAlphas.IsValidIndex(ViewIndex)
 						&& ProjectedShadowInfo.FadeAlphas[ViewIndex] == 1.0f;
 
@@ -4125,11 +4124,20 @@ void FSceneRenderer::AddViewDependentWholeSceneShadowsForView(
 		FadeAlphas.Init(0.0f, Views.Num());
 		FadeAlphas[ViewIndex] = LightShadowAmount;
 
-		if (IStereoRendering::IsAPrimaryView(View)
-			&& Views.IsValidIndex(ViewIndex + 1)
-			&& IStereoRendering::IsASecondaryView(Views[ViewIndex + 1]))
+		if (IStereoRendering::IsAPrimaryView(View))
 		{
-			FadeAlphas[ViewIndex + 1] = LightShadowAmount;
+			for (int FadeAlphaIndex = ViewIndex + 1; FadeAlphaIndex < Views.Num(); FadeAlphaIndex++)
+			{
+				if (Views.IsValidIndex(FadeAlphaIndex)
+					&& IStereoRendering::IsASecondaryView(Views[FadeAlphaIndex]))
+				{
+					FadeAlphas[FadeAlphaIndex] = LightShadowAmount;
+				}
+				else if (IStereoRendering::IsAPrimaryView(Views[FadeAlphaIndex]))
+				{
+					break;
+				}
+			}
 		}		
 		
 		// If rendering in stereo mode we render shadow depths only for the left eye, but project for both eyes!

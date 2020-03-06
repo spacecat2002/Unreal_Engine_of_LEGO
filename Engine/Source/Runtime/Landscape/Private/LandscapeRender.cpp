@@ -759,16 +759,20 @@ void FLandscapeRenderSystem::ResizeAndMoveTo(FIntPoint NewMin, FIntPoint NewSize
 		{
 			int32 LinearIndex = Y * Size.X + X;
 			int32 NewLinearIndex = (Y + (Min.Y - NewMin.Y)) * NewSize.X + (X + (Min.X - NewMin.X));
-			NewSectionLODValues[NewLinearIndex] = SectionLODValues[LinearIndex];
-			NewSectionLODBiases[NewLinearIndex] = SectionLODBiases[LinearIndex];
-			if (TessellationFalloffSettings.UseTessellationComponentScreenSizeFalloff && NumEntitiesWithTessellation > 0)
+
+			if (NewLinearIndex >= 0 && NewLinearIndex < NewSize.X * NewSize.Y)
 			{
-				NewSectionTessellationFalloffC[NewLinearIndex] = SectionTessellationFalloffC[LinearIndex];
-				NewSectionTessellationFalloffK[NewLinearIndex] = SectionTessellationFalloffK[LinearIndex];
+				NewSectionLODValues[NewLinearIndex] = SectionLODValues[LinearIndex];
+				NewSectionLODBiases[NewLinearIndex] = SectionLODBiases[LinearIndex];
+				if (TessellationFalloffSettings.UseTessellationComponentScreenSizeFalloff && NumEntitiesWithTessellation > 0)
+				{
+					NewSectionTessellationFalloffC[NewLinearIndex] = SectionTessellationFalloffC[LinearIndex];
+					NewSectionTessellationFalloffK[NewLinearIndex] = SectionTessellationFalloffK[LinearIndex];
+				}
+				NewSectionLODSettings[NewLinearIndex] = SectionLODSettings[LinearIndex];
+				NewSectionOriginAndRadius[NewLinearIndex] = SectionOriginAndRadius[LinearIndex];
+				NewSceneProxies[NewLinearIndex] = SceneProxies[LinearIndex];
 			}
-			NewSectionLODSettings[NewLinearIndex] = SectionLODSettings[LinearIndex];
-			NewSectionOriginAndRadius[NewLinearIndex] = SectionOriginAndRadius[LinearIndex];
-			NewSceneProxies[NewLinearIndex] = SceneProxies[LinearIndex];
 		}
 	}
 
@@ -1443,7 +1447,14 @@ void FLandscapeComponentSceneProxy::CreateRenderThreadResources()
 			SharedBuffers->VertexFactory = LandscapeXYOffsetVertexFactory;
 		}
 
-		if (UseVirtualTexturing(FeatureLevel))
+		// we need the fixed grid vertex factory for both virtual texturing and grass : 
+		bool bNeedsFixedGridVertexFactory = UseVirtualTexturing(FeatureLevel);
+
+#if WITH_EDITOR
+		bNeedsFixedGridVertexFactory |= (SharedBuffers->GrassIndexBuffer != nullptr);
+#endif // WITH_EDITOR
+
+		if (bNeedsFixedGridVertexFactory)
 		{
 			//todo[vt]: We will need a version of this to support XYOffsetmapTexture
 			FLandscapeFixedGridVertexFactory* LandscapeVertexFactory = new FLandscapeFixedGridVertexFactory(FeatureLevel);
@@ -1510,6 +1521,8 @@ void FLandscapeComponentSceneProxy::CreateRenderThreadResources()
 	// Create MeshBatch for grass rendering
 	if (SharedBuffers->GrassIndexBuffer)
 	{
+		check(FixedGridVertexFactory != nullptr);
+
 		GrassMeshBatch.Elements.Empty(NumMips);
 		GrassMeshBatch.Elements.AddDefaulted(NumMips);
 		GrassBatchParams.Empty(NumMips);
@@ -4073,6 +4086,7 @@ FLandscapeSharedBuffers::FLandscapeSharedBuffers(const int32 InSharedBuffersKey,
 	, SubsectionSizeVerts(InSubsectionSizeQuads + 1)
 	, NumSubsections(InNumSubsections)
 	, VertexFactory(nullptr)
+	, FixedGridVertexFactory(nullptr)
 	, VertexBuffer(nullptr)
 	, AdjacencyIndexBuffers(nullptr)
 	, bUse32BitIndices(false)
@@ -4706,7 +4720,8 @@ public:
 			FName(TEXT("TBasePassVSFSimpleNoLightmapLightingPolicyAtmosphericFog")),
 			FName(TEXT("TDepthOnlyVS<false>")),
 			FName(TEXT("TDepthOnlyVS<true>")),
-			FName(TEXT("FDepthOnlyPS")),
+			FName(TEXT("FDepthOnlyPS<true>")),
+			FName(TEXT("FDepthOnlyPS<false>")),
 			// UE-44519, masked material with landscape layers requires FHitProxy shaders.
 			FName(TEXT("FHitProxyVS")),
 			FName(TEXT("FHitProxyPS")),
@@ -4875,6 +4890,7 @@ public:
 			FName(TEXT("TTranslucencyShadowDepthVS<TranslucencyShadowDepth_PerspectiveCorrect>")),
 			FName(TEXT("TTranslucencyShadowDepthPS<TranslucencyShadowDepth_PerspectiveCorrect>")),
 
+			FName(TEXT("TShadowDepthVSForGSVertexShadowDepth_OnePassPointLight")),
 			FName(TEXT("TShadowDepthVSForGSVertexShadowDepth_OnePassPointLightPositionOnly")),
 			FName(TEXT("TShadowDepthVSVertexShadowDepth_OnePassPointLightPositionOnly")),
 			FName(TEXT("TShadowDepthVSVertexShadowDepth_OutputDepthPositionOnly")),

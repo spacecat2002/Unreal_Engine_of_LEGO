@@ -838,8 +838,7 @@ private:
 		{
 			Name = FName();
 			BadNameIndexError(NameIndex);
-			ArIsError = true;
-			ArIsCriticalError = true;
+			SetCriticalError();
 		}
 
 		return *this;
@@ -915,9 +914,14 @@ protected: // Daniel L: Made this protected so I can override the constructor an
 	);
 private:
 	/**
-	 * Serializes the package file summary.
+	 * Start the process of serializing the package file summary if needed
 	 */
 	ELinkerStatus SerializePackageFileSummary();
+
+	/**
+	 * Does the actual serialization of  the package file summary.
+	 */
+	ELinkerStatus SerializePackageFileSummaryInternal();
 
 	/**
 	 * Updates the linker, loader and root package with data from the package file summary.

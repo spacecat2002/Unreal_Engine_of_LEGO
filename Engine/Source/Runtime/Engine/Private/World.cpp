@@ -172,6 +172,7 @@ FActorSpawnParameters::FActorSpawnParameters()
 , bTemporaryEditorActor(false)
 , bHideFromSceneOutliner(false)
 #endif
+, NameMode(ESpawnActorNameMode::Required_Fatal)
 , ObjectFlags(RF_Transactional)
 {
 }
@@ -4282,7 +4283,7 @@ void UWorld::CleanupWorldInternal(bool bSessionEnded, bool bCleanupResources, UW
 
 		if (WorldType != EWorldType::PIE)
 		{
-			if (PersistentLevel && PersistentLevel->MapBuildData)
+			if (PersistentLevel && PersistentLevel->MapBuildData && !PersistentLevel->MapBuildData->IsAsset())
 			{
 				PersistentLevel->MapBuildData->ClearFlags(RF_Standalone);
 

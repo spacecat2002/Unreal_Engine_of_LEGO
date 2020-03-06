@@ -189,10 +189,10 @@ namespace Chaos
 		, bHasFloor(true)
 		, bIsFloorAnalytic(false)
 		, FloorHeight(0.f)
-		, MEvolution(new FPBDRigidsEvolution(Particles, ChaosSolverCollisionDefaultIterationsCVar, ChaosSolverCollisionDefaultPushoutIterationsCVar, BufferingModeIn == Chaos::EMultiBufferMode::Single))
+		, MEvolution(new FPBDRigidsEvolution(Particles, SimMaterials, ChaosSolverCollisionDefaultIterationsCVar, ChaosSolverCollisionDefaultPushoutIterationsCVar, BufferingModeIn == Chaos::EMultiBufferMode::Single))
 		, MEventManager(new FEventManager(BufferingModeIn))
 		, MSolverEventFilters(new FSolverEventFilters())
-		, MActiveParticlesBuffer(new FActiveParticlesBuffer(BufferingModeIn))
+		, MActiveParticlesBuffer(new FActiveParticlesBuffer(BufferingModeIn, BufferingModeIn == Chaos::EMultiBufferMode::Single))
 		, MCurrentLock(new FCriticalSection())
 	{
 		UE_LOG(LogPBDRigidsSolver, Verbose, TEXT("PBDRigidsSolver::PBDRigidsSolver()"));
@@ -415,6 +415,10 @@ namespace Chaos
 				delete Proxy;
 			}
 
+			// Remove game thread particle from ActiveGameThreadParticles so we won't crash when pulling physics state
+			// if this particle was deleted after buffering results. 
+			Solver->GetActiveParticlesBuffer()->RemoveActiveParticleFromConsumerBuffer(Handle->GTGeometryParticle());
+
 			Solver->MParticleToProxy.Remove(Handle);
 
 			// Use the handle to destroy the particle data
@@ -430,7 +434,6 @@ namespace Chaos
 		GeometryCollectionPhysicsProxies.AddUnique(InProxy);
 		InProxy->SetSolver(this);
 		InProxy->Initialize();
-		InProxy->InitializeBodiesGT();
 		InProxy->NewData(); // Buffers data on the proxy.
 		FParticlesType* InParticles = &GetParticles();
 
@@ -515,7 +518,7 @@ namespace Chaos
 		MMaxDeltaTime = 1.f;
 		MMinDeltaTime = 1.e-10f;
 		MMaxSubSteps = 1;
-		MEvolution = TUniquePtr<FPBDRigidsEvolution>(new FPBDRigidsEvolution(Particles, ChaosSolverCollisionDefaultIterationsCVar, ChaosSolverCollisionDefaultPushoutIterationsCVar, BufferMode == EMultiBufferMode::Single)); 
+		MEvolution = TUniquePtr<FPBDRigidsEvolution>(new FPBDRigidsEvolution(Particles, SimMaterials, ChaosSolverCollisionDefaultIterationsCVar, ChaosSolverCollisionDefaultPushoutIterationsCVar, BufferMode == EMultiBufferMode::Single)); 
 
 		FEventDefaults::RegisterSystemEvents(*GetEventManager());
 	}
@@ -665,20 +668,11 @@ namespace Chaos
 		auto Cmd = [Proxy, Solver](Chaos::FPersistentPhysicsTask* PhysThread)
 		{
 			auto* Evolution = Solver->GetEvolution();
-			TManagedArray<Chaos::TPBDRigidClusteredParticleHandle<float, 3>*>& Handles = 
-				Proxy->GetSolverParticleHandles();
-			for (auto* Handle : Handles)
-			{
-				if (Handle)
-					Evolution->DirtyParticle(*Handle);
-			}
+			TArray<FGeometryCollectionPhysicsProxy::FClusterHandle*>& Handles = Proxy->GetSolverParticleHandles();
+			for (auto* Handle : Handles) if (Handle) Evolution->DirtyParticle(*Handle);
 			Proxy->PushToPhysicsState(nullptr);
 		};
-
-		if (Dispatcher)
-			Dispatcher->EnqueueCommandImmediate(Cmd);
-		else
-			Cmd(nullptr);
+		if (Dispatcher) Dispatcher->EnqueueCommandImmediate(Cmd);  else Cmd(nullptr);
 		Proxy->ClearAccumulatedData();
 		Solver->RemoveDirtyProxy(Proxy);
 	}
@@ -821,9 +815,11 @@ namespace Chaos
 		}
 	}
 
-	// This function is not called.  FPhysScene_ChaosInterface::EndFrame() calls 
+	// This function is not called during normal Engine execution.  
+	// FPhysScene_ChaosInterface::EndFrame() calls 
 	// FPhysScene_ChaosInterface::SyncBodies() instead, and then immediately afterwards 
-	// calls FPBDRigidsSovler::SyncEvents_GameThread().
+	// calls FPBDRigidsSovler::SyncEvents_GameThread().  This function is used by tests,
+	// however.
 	void FPBDRigidsSolver::UpdateGameThreadStructures()
 	{
 		//ensure(IsInGameThread());

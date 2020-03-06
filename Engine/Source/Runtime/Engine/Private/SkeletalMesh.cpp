@@ -98,6 +98,7 @@
 #if RHI_RAYTRACING
 #include "RayTracingInstance.h"
 #endif
+#include "Animation/SkinWeightProfileManager.h"
 
 #define LOCTEXT_NAMESPACE "SkeltalMesh"
 
@@ -1438,6 +1439,11 @@ void USkeletalMesh::BeginDestroy()
 
 	// Safely unlink mesh from list of streamable ones.
 	UnlinkStreaming();
+
+	if (FSkinWeightProfileManager * Manager = FSkinWeightProfileManager::Get(GetWorld()))
+	{
+		Manager->CancelSkinWeightProfileRequest(this);
+	}
 
 	// remove the cache of link up
 	if (Skeleton)
@@ -4081,6 +4087,8 @@ static void SerializeReductionSettingsForDDC(FArchive& Ar, FSkeletalMeshOptimiza
 	Ar << ReductionSettings.NumOfVertPercentage;
 	Ar << ReductionSettings.MaxNumOfTriangles;
 	Ar << ReductionSettings.MaxNumOfVerts;
+	Ar << ReductionSettings.MaxNumOfTrianglesPercentage;
+	Ar << ReductionSettings.MaxNumOfVertsPercentage;
 	Ar << ReductionSettings.MaxDeviationPercentage;
 	Ar << ReductionSettings.ReductionMethod;
 	Ar << ReductionSettings.SilhouetteImportance;

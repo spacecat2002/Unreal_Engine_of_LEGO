@@ -3764,6 +3764,8 @@ void ALandscape::PostDuplicate(bool bDuplicateForPIE)
 	{
 		// Need to generate new GUID when duplicating
 		LandscapeGuid = FGuid::NewGuid();
+		// This makes sure at least we have a LandscapeInfo mapped for this GUID.
+		CreateLandscapeInfo();
 	}
 
 	Super::PostDuplicate(bDuplicateForPIE);
@@ -6853,12 +6855,6 @@ UTexture2D* ALandscapeProxy::CreateLandscapeTexture(int32 InSizeX, int32 InSizeY
 	NewTexture->AddressX = TA_Clamp;
 	NewTexture->AddressY = TA_Clamp;
 	NewTexture->LODGroup = InLODGroup;
-
-	if (bCompress && InLODGroup == TEXTUREGROUP_Terrain_Weightmap)
-	{
-		// Compress weightmaps with a best quality to reduce blocky artifacts on a landscape 
-		NewTexture->CompressionQuality = TCQ_Highest;
-	}
 
 	return NewTexture;
 }

@@ -3006,11 +3006,6 @@ void FAudioDevice::SetListener(UWorld* World, const int32 InViewportIndex, const
 	{
 		ListenerProxies.AddDefaulted(InViewportIndex - ListenerProxies.Num() + 1);
 	}
-	else if (ListenerProxies[InViewportIndex].Transform.Equals(ListenerTransformCopy, KINDA_SMALL_NUMBER))
-	{
-		// Don't need tp update the listener if we're very close to our current transform
-		return;
-	}
 
 	ListenerProxies[InViewportIndex].Transform = ListenerTransformCopy;
 
@@ -4591,12 +4586,9 @@ void FAudioDevice::AddNewActiveSoundInternal(const FActiveSound& NewActiveSound,
 	}
 	(*PlayCount)++;
 
-	if (ModulationInterface.IsValid())
+	if (USoundModulationPluginSourceSettingsBase* ModulationSettings = ActiveSound->FindModulationSettings())
 	{
-		if (USoundModulationPluginSourceSettingsBase* ModulationSettings = ActiveSound->FindModulationSettings())
-		{
-			ModulationInterface->OnInitSound(static_cast<ISoundModulatable&>(*ActiveSound), *ModulationSettings);
-		}
+		ModulationInterface->OnInitSound(static_cast<ISoundModulatable&>(*ActiveSound), *ModulationSettings);
 	}
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
