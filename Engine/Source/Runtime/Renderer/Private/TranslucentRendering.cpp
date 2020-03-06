@@ -21,7 +21,7 @@ DECLARE_CYCLE_STAT(TEXT("TranslucencyTimestampQuery Wait"), STAT_TranslucencyTim
 
 DECLARE_FLOAT_COUNTER_STAT(TEXT("Translucency GPU Time (MS)"), STAT_TranslucencyGPU, STATGROUP_SceneRendering);
 
-DECLARE_GPU_STAT(Translucency);
+DECLARE_GPU_DRAWCALL_STAT(Translucency);
 
 static TAutoConsoleVariable<float> CVarSeparateTranslucencyScreenPercentage(
 	TEXT("r.SeparateTranslucencyScreenPercentage"),
@@ -987,6 +987,10 @@ void FDeferredShadingSceneRenderer::RenderTranslucencyInner(FRHICommandListImmed
 			{
 				BeginTimingSeparateTranslucencyModulatePass(RHICmdList, View);
 				SceneContext.BeginRenderingSeparateTranslucencyModulate(RHICmdList, View, *this, NumProcessedViews == 0 || View.Family->bMultiGPUForkAndJoin);
+			}
+			else
+			{
+				SceneContext.BeginRenderingSeparateTranslucency(RHICmdList, View, *this, NumProcessedViews == 0 || View.Family->bMultiGPUForkAndJoin);
 			}
 
 			// Draw only translucent prims that are in the SeparateTranslucency pass

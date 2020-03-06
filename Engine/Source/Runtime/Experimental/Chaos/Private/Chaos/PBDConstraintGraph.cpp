@@ -1,7 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Chaos/PBDConstraintGraph.h"
-
 #include "ProfilingDebugging/ScopedTimers.h"
 #include "ChaosStats.h"
 #include "ChaosLog.h"
@@ -488,6 +487,32 @@ void FPBDConstraintGraph::ComputeIslands(const TParticleView<TPBDRigidParticles<
 			}
 			else
 			{
+				int32 NumRigidsInIsland = 0, NumRigidsInNewIsland = 0;
+				if (OtherIsland != INDEX_NONE)
+				{
+					for (TGeometryParticleHandle<FReal, 3>* Particle : IslandToParticles[Island])
+					{
+						if (Particle)
+						{
+							if (TPBDRigidParticleHandle<FReal, 3>* PBDRigid = Particle->CastToRigidParticle())
+							{
+								NumRigidsInIsland++;
+							}
+						}
+					}
+
+					for (TGeometryParticleHandle<FReal, 3>* Particle : NewIslandParticles[OtherIsland])
+					{
+						if (Particle)
+						{
+							if (TPBDRigidParticleHandle<FReal, 3>* PBDRigid = Particle->CastToRigidParticle())
+							{
+								NumRigidsInNewIsland++;
+							}
+						}
+					}
+				}
+
 				for (TGeometryParticleHandle<FReal, 3>* Particle : IslandToParticles[Island])
 				{
 					if (CHAOS_ENSURE(Particle))
@@ -495,9 +520,14 @@ void FPBDConstraintGraph::ComputeIslands(const TParticleView<TPBDRigidParticles<
 						TPBDRigidParticleHandle<FReal, 3>* PBDRigid = Particle->CastToRigidParticle();
 						if (PBDRigid && PBDRigid->ObjectState() != EObjectStateType::Kinematic)
 						{
-							if (!PBDRigid->Disabled())	// todo: why is this needed? [we aren't handling enable/disable state changes properly so disabled particles end up in the graph.]
+							if (!PBDRigid->Disabled()) // todo: why is this needed? [we aren't handling enable/disable state changes properly so disabled particles end up in the graph.]
 							{
-								PBDRigid->SetSleeping(false);
+								//this condition is a hack to ensure we don't immediately wake up particles that were put to sleep due to them getting into a new island. 
+								//we should probably fix island generation code to not move particles to their own islands when sleeping.
+								if (!(NumRigidsInIsland == 1 && NumRigidsInNewIsland == 1 && PBDRigid->Sleeping()))
+								{
+									PBDRigid->SetSleeping(false);
+								}
 								Particles.ActivateParticle(Particle);
 							}
 						}
@@ -592,7 +622,7 @@ void FPBDConstraintGraph::ComputeIsland(const int32 InNode, const int32 Island, 
 	}
 }
 
-bool FPBDConstraintGraph::SleepInactive(const int32 Island, const TArrayCollectionArray<TSerializablePtr<FChaosPhysicsMaterial>>& PerParticleMaterialAttributes)
+bool FPBDConstraintGraph::SleepInactive(const int32 Island, const TArrayCollectionArray<TSerializablePtr<FChaosPhysicsMaterial>>& PerParticleMaterialAttributes, THandleArray<FChaosPhysicsMaterial>& SolverPhysicsMaterials)
 {
 	FReal LinearSleepingThreshold = FLT_MAX;
 	FReal AngularSleepingThreshold = FLT_MAX;
@@ -625,13 +655,32 @@ bool FPBDConstraintGraph::SleepInactive(const int32 Island, const TArrayCollecti
 				M += PBDRigid->M();
 				V += PBDRigid->V() * PBDRigid->M();
 
+				bool bThresholdsSet = false;
 				if (TSerializablePtr<FChaosPhysicsMaterial> PhysicsMaterial = Particle->AuxilaryValue(PerParticleMaterialAttributes))
 				{
 					LinearSleepingThreshold = FMath::Min(LinearSleepingThreshold, PhysicsMaterial->SleepingLinearThreshold);
 					AngularSleepingThreshold = FMath::Min(AngularSleepingThreshold, PhysicsMaterial->SleepingAngularThreshold);
 					SleepCounterThreshold = FMath::Max(SleepCounterThreshold, PhysicsMaterial->SleepCounterThreshold);
+					bThresholdsSet = true;
 				}
-				else
+				else if (PBDRigid->ShapesArray().Num())
+				{
+					if (TPerShapeData<FReal, 3>* PerShapeData = PBDRigid->ShapesArray()[0].Get())
+					{
+						if (PerShapeData->Materials.Num())
+						{
+							if (FChaosPhysicsMaterial* Material = SolverPhysicsMaterials.Get(PBDRigid->ShapesArray()[0].Get()->Materials[0].InnerHandle))
+							{
+								LinearSleepingThreshold = FMath::Min(LinearSleepingThreshold, Material->SleepingLinearThreshold);
+								AngularSleepingThreshold = FMath::Min(AngularSleepingThreshold, Material->SleepingAngularThreshold);
+								SleepCounterThreshold = FMath::Max(SleepCounterThreshold, Material->SleepCounterThreshold);
+								bThresholdsSet = true;
+							}
+						}
+					}
+				}
+
+				if (!bThresholdsSet)
 				{
 					LinearSleepingThreshold = FMath::Min(LinearSleepingThreshold, ChaosSolverCollisionDefaultLinearSleepThresholdCVar);
 					AngularSleepingThreshold = FMath::Min(AngularSleepingThreshold, ChaosSolverCollisionDefaultAngularSleepThresholdCVar);

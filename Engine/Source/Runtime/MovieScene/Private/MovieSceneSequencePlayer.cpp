@@ -44,8 +44,6 @@ bool FMovieSceneSequencePlaybackSettings::SerializeFromMismatchedTag( const FPro
 	return false;
 }
 
-PRAGMA_DISABLE_OPTIMIZATION
-
 UMovieSceneSequencePlayer::UMovieSceneSequencePlayer(const FObjectInitializer& Init)
 	: Super(Init)
 	, Status(EMovieScenePlayerStatus::Stopped)
@@ -1094,11 +1092,17 @@ void UMovieSceneSequencePlayer::RPC_OnStopEvent_Implementation(FFrameTime Stoppe
 	}
 #endif
 
-	switch (Status.GetValue())
+	// If we're behind the target time to stop at, advance to that target time.
+	const bool bBehindTime = StoppedTime < PlayPosition.GetCurrentPosition();
+
+	if (bBehindTime)
 	{
-	case EMovieScenePlayerStatus::Playing:   PlayToFrame( StoppedTime);  break;
-	case EMovieScenePlayerStatus::Stopped:   JumpToFrame( StoppedTime);  break;
-	case EMovieScenePlayerStatus::Scrubbing: ScrubToFrame(StoppedTime);  break;
+		switch (Status.GetValue())
+		{
+		case EMovieScenePlayerStatus::Playing:   PlayToFrame(StoppedTime);  break;
+		case EMovieScenePlayerStatus::Stopped:   JumpToFrame(StoppedTime);  break;
+		case EMovieScenePlayerStatus::Scrubbing: ScrubToFrame(StoppedTime);  break;
+		}
 	}
 
 	StopInternal(StoppedTime);
@@ -1283,5 +1287,3 @@ bool UMovieSceneSequencePlayer::CallRemoteFunction(UFunction* Function, void* Pa
 	return false;
 }
 
-
-PRAGMA_ENABLE_OPTIMIZATION

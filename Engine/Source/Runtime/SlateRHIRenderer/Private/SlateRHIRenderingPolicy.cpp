@@ -298,9 +298,10 @@ static bool UpdateScissorRect(
 					// #todo-renderpasses this is very gross. If/when this gets refactored we can detect a simple clear or batch up elements by rendertarget (and other stuff)
 					RHICmdList.EndRenderPass();
 					bDidRestartRenderpass = true;
+					ERenderTargetActions StencilAction = IsMemorylessTexture(DepthStencilTarget) ? ERenderTargetActions::DontLoad_DontStore : ERenderTargetActions::Load_Store;
 
 					FRHIRenderPassInfo RPInfo(ColorTarget, ERenderTargetActions::Load_Store);
-					RPInfo.DepthStencilRenderTarget.Action = MakeDepthStencilTargetActions(ERenderTargetActions::DontLoad_DontStore, ERenderTargetActions::Load_Store);
+					RPInfo.DepthStencilRenderTarget.Action = MakeDepthStencilTargetActions(ERenderTargetActions::DontLoad_DontStore, StencilAction);
 					RPInfo.DepthStencilRenderTarget.DepthStencilTarget = DepthStencilTarget;
 					RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil = FExclusiveDepthStencil::DepthNop_StencilWrite;
 
@@ -397,9 +398,15 @@ static bool UpdateScissorRect(
 
 					// Clear current stencil buffer, we use ELoad/EStore, because we need to keep the stencil around.
 					ERenderTargetLoadAction StencilLoadAction = bClearStencil ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
+					ERenderTargetActions StencilAction = MakeRenderTargetActions(StencilLoadAction, ERenderTargetStoreAction::EStore);
+					if (IsMemorylessTexture(DepthStencilTarget))
+					{
+						// We can't preserve content for memoryless targets
+						StencilAction = bClearStencil ? ERenderTargetActions::Clear_DontStore : ERenderTargetActions::DontLoad_DontStore;
+					}
 
 					FRHIRenderPassInfo RPInfo(ColorTarget, ERenderTargetActions::Load_Store);
-					RPInfo.DepthStencilRenderTarget.Action = MakeDepthStencilTargetActions(ERenderTargetActions::DontLoad_DontStore, MakeRenderTargetActions(StencilLoadAction, ERenderTargetStoreAction::EStore));
+					RPInfo.DepthStencilRenderTarget.Action = MakeDepthStencilTargetActions(ERenderTargetActions::DontLoad_DontStore, StencilAction);
 					RPInfo.DepthStencilRenderTarget.DepthStencilTarget = DepthStencilTarget;
 					RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil = FExclusiveDepthStencil::DepthNop_StencilWrite;
 					RHICmdList.BeginRenderPass(RPInfo, TEXT("SlateUpdateScissorRect_ClearStencil"));
@@ -555,6 +562,7 @@ void FSlateRHIRenderingPolicy::DrawElements(
 	FRHICommandListImmediate& RHICmdList,
 	FSlateBackBuffer& BackBuffer,
 	FTexture2DRHIRef& ColorTarget,
+	FTexture2DRHIRef& PostProcessTexture,
 	FTexture2DRHIRef& DepthStencilTarget,
 	int32 FirstBatchIndex,
 	const TArray<FSlateRenderBatch>& RenderBatches,
@@ -699,7 +707,7 @@ void FSlateRHIRenderingPolicy::DrawElements(
 			RPInfo.DepthStencilRenderTarget.DepthStencilTarget = DepthStencilTarget;
 			if (DepthStencilTarget)
 			{
-				RPInfo.DepthStencilRenderTarget.Action = EDepthStencilTargetActions::LoadDepthStencil_StoreDepthStencil;
+				RPInfo.DepthStencilRenderTarget.Action = IsMemorylessTexture(DepthStencilTarget) ? EDepthStencilTargetActions::DontLoad_DontStore : EDepthStencilTargetActions::LoadDepthStencil_StoreDepthStencil;
 				RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil = FExclusiveDepthStencil::DepthWrite_StencilWrite;
 			}
 			else
@@ -1054,6 +1062,11 @@ void FSlateRHIRenderingPolicy::DrawElements(
 						{
 							PixelShader->SetBlendState(GraphicsPSOInit, Material);
 							FSlateShaderResource* MaskResource = MaterialShaderResource->GetTextureMaskResource();
+							if (MaskResource && (Material->GetBlendMode() == EBlendMode::BLEND_Opaque || Material->GetBlendMode() == EBlendMode::BLEND_Masked))
+							{
+								// Font materials require some form of translucent blending
+								GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGBA, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_InverseDestAlpha, BF_One>::GetRHI();
+							}
 
 							GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = bUseInstancing ? GSlateInstancedVertexDeclaration.VertexDeclarationRHI : GSlateVertexDeclaration.VertexDeclarationRHI;
 							GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
@@ -1121,10 +1134,10 @@ void FSlateRHIRenderingPolicy::DrawElements(
 				const FVector4& QuadPositionData = ShaderParams.PixelParams;
 
 				FPostProcessRectParams RectParams;
-				RectParams.SourceTexture = BackBuffer.GetRenderTargetTexture();
-				RectParams.SourceRect = FSlateRect(0, 0, BackBuffer.GetSizeXY().X, BackBuffer.GetSizeXY().Y);
+				RectParams.SourceTexture = PostProcessTexture->GetTexture2D();
+				RectParams.SourceRect = FSlateRect(0, 0, PostProcessTexture->GetSizeX(), PostProcessTexture->GetSizeY());
 				RectParams.DestRect = FSlateRect(QuadPositionData.X, QuadPositionData.Y, QuadPositionData.Z, QuadPositionData.W);
-				RectParams.SourceTextureSize = BackBuffer.GetSizeXY();
+				RectParams.SourceTextureSize = PostProcessTexture->GetSizeXY();
 
 				RectParams.RestoreStateFunc = [&](FRHICommandListImmediate&InRHICmdList, FGraphicsPipelineStateInitializer& InGraphicsPSOInit) {
 					return UpdateScissorRect(
