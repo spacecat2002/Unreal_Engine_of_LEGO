@@ -1120,7 +1120,7 @@ enum EBufferUsageFlags
 	BUF_Transient				= 0x2000,
 
 	/** Create a buffer that can be shared with an external RHI or process. */
-	BUF_Shared					= 0x0400,
+	BUF_Shared					= 0x4000,
 
 	/**
 	 * Buffer contains opaque ray tracing acceleration structure data.
