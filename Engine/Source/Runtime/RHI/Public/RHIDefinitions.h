@@ -1086,9 +1086,6 @@ enum EBufferUsageFlags
 	/** Create a byte address buffer, which is basically a structured buffer with a uint32 type. */
 	BUF_ByteAddressBuffer		= 0x0020,
 
-	/** Create a buffer that can be shared with an external RHI or process. */
-	BUF_Shared					= 0x0040,
-
 	/** Buffer that the GPU will use as a source for a copy. */
 	BUF_SourceCopy				= 0x0040,
 
@@ -1122,8 +1119,8 @@ enum EBufferUsageFlags
 	/** Buffer should be allocated from transient memory. */
 	BUF_Transient				= 0x2000,
 
-	/** Buffer that should be accessed one byte at a time. */
-	BUF_UINT8 UE_DEPRECATED(4.25, "BUF_UINT8 is deprecated and getting removed; please don't use.") = 0x4000,
+	/** Create a buffer that can be shared with an external RHI or process. */
+	BUF_Shared					= 0x0400,
 
 	/**
 	 * Buffer contains opaque ray tracing acceleration structure data.
