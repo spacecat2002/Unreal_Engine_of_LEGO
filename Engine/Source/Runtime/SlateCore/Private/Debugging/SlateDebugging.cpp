@@ -5,10 +5,12 @@
 #include "SlateGlobals.h"
 #include "FastUpdate/WidgetProxy.h"
 #include "Animation/CurveSequence.h"
-#include "Widgets/SNullWidget.h"
+#include "Layout/WidgetPath.h"
 #include "Rendering/DrawElements.h"
 #include "Styling/CoreStyle.h"
+#include "Types/ReflectionMetadata.h"
 #include "Widgets/SWidget.h"
+#include "Widgets/SNullWidget.h"
 #include "Application/SlateApplicationBase.h"
 #include "ProfilingDebugging/CsvProfiler.h"
 
@@ -118,6 +120,23 @@ FSlateDebuggingInputEventArgs::FSlateDebuggingInputEventArgs(ESlateDebuggingInpu
 {
 }
 
+FText FSlateDebuggingInputEventArgs::ToText() const
+{
+	static const FText InputEventFormat = LOCTEXT("InputEventFormat", "{0} - ({1}) - [{2}]");
+
+	const UEnum* SlateDebuggingInputEventEnum = StaticEnum<ESlateDebuggingInputEvent>();
+	const FText InputEventTypeText = SlateDebuggingInputEventEnum->GetDisplayNameTextByValue((int64)InputEventType);
+	const FText AdditionalContentText = FText::FromString(AdditionalContent);
+	const FText HandlerWidgetText = FText::FromString(FReflectionMetaData::GetWidgetDebugInfo(HandlerWidget.Get()));
+
+	return FText::Format(
+		InputEventFormat,
+		InputEventTypeText,
+		HandlerWidgetText,
+		AdditionalContentText
+	);
+}
+
 FSlateDebuggingFocusEventArgs::FSlateDebuggingFocusEventArgs(
 	ESlateDebuggingFocusEvent InFocusEventType,
 	const FFocusEvent& InFocusEvent,
@@ -134,6 +153,66 @@ FSlateDebuggingFocusEventArgs::FSlateDebuggingFocusEventArgs(
 {
 }
 
+FText FSlateDebuggingFocusEventArgs::ToText() const
+{
+	static const FText FocusEventFormat = LOCTEXT("FocusEventFormat", "{0}({1}:{2}) - {3} -> {4}");
+
+	FText FocusEventText;
+	switch (FocusEventType)
+	{
+	case ESlateDebuggingFocusEvent::FocusChanging:
+		FocusEventText = LOCTEXT("FocusChanging", "Focus Changing");
+		break;
+	case ESlateDebuggingFocusEvent::FocusLost:
+		FocusEventText = LOCTEXT("FocusLost", "Focus Lost");
+		break;
+	case ESlateDebuggingFocusEvent::FocusReceived:
+		FocusEventText = LOCTEXT("FocusReceived", "Focus Received");
+		break;
+	default:
+		ensureMsgf(false, TEXT("A focus event was not handled."));
+	}
+
+	FText CauseText;
+	switch (FocusEvent.GetCause())
+	{
+	case EFocusCause::Mouse:
+		CauseText = LOCTEXT("FocusCause_Mouse", "Mouse");
+		break;
+	case EFocusCause::Navigation:
+		CauseText = LOCTEXT("FocusCause_Navigation", "Navigation");
+		break;
+	case EFocusCause::SetDirectly:
+		CauseText = LOCTEXT("FocusCause_SetDirectly", "SetDirectly");
+		break;
+	case EFocusCause::Cleared:
+		CauseText = LOCTEXT("FocusCause_Cleared", "Cleared");
+		break;
+	case EFocusCause::OtherWidgetLostFocus:
+		CauseText = LOCTEXT("FocusCause_OtherWidgetLostFocus", "OtherWidgetLostFocus");
+		break;
+	case EFocusCause::WindowActivate:
+		CauseText = LOCTEXT("FocusCause_WindowActivate", "WindowActivate");
+		break;
+	default:
+		ensureMsgf(false, TEXT("A focus case was not handled."));
+	}
+
+	const int32 UserIndex = FocusEvent.GetUser();
+
+	const FText OldFocusedWidgetText = FText::FromString(FReflectionMetaData::GetWidgetDebugInfo(OldFocusedWidget.Get()));
+	const FText NewFocusedWidgetText = FText::FromString(FReflectionMetaData::GetWidgetDebugInfo(NewFocusedWidget.Get()));
+
+	return FText::Format(
+		FocusEventFormat,
+		FocusEventText,
+		UserIndex,
+		CauseText,
+		OldFocusedWidgetText,
+		NewFocusedWidgetText
+	);
+}
+
 FSlateDebuggingNavigationEventArgs::FSlateDebuggingNavigationEventArgs(
 	const FNavigationEvent& InNavigationEvent,
 	const FNavigationReply& InNavigationReply,
@@ -148,12 +227,46 @@ FSlateDebuggingNavigationEventArgs::FSlateDebuggingNavigationEventArgs(
 {
 }
 
+FText FSlateDebuggingNavigationEventArgs::ToText() const
+{
+	static const FText NavEventFormat = LOCTEXT("NavEventFormat", "Navigation User({4}) Source({0}:{1}) | {5} | {2} -> {3}");
+
+	const FText SourceWidgetText = FText::FromString(FReflectionMetaData::GetWidgetDebugInfo(&NavigationSource.GetLastWidget().Get()));
+	const FText DestinationWidgetText = FText::FromString(FReflectionMetaData::GetWidgetDebugInfo(DestinationWidget.Get()));
+	const FText NavigationTypeText = StaticEnum<EUINavigation>()->GetDisplayNameTextByValue((int64)NavigationEvent.GetNavigationType());
+	const FText NavigationGenesisText = StaticEnum<ENavigationGenesis>()->GetDisplayNameTextByValue((int64)NavigationEvent.GetNavigationGenesis());
+	const FText NavigationMethodText = StaticEnum<ESlateDebuggingNavigationMethod>()->GetDisplayNameTextByValue((int64)NavigationMethod);
+
+	return FText::Format(
+		NavEventFormat,
+		NavigationGenesisText,
+		NavigationTypeText,
+		SourceWidgetText,
+		DestinationWidgetText,
+		NavigationEvent.GetUserIndex(),
+		NavigationMethodText
+	);
+}
+
 FSlateDebuggingWarningEventArgs::FSlateDebuggingWarningEventArgs(
 	const FText& InWarning,
 	const TSharedPtr<SWidget>& InOptionalContextWidget)
 	: Warning(InWarning)
 	, OptionalContextWidget(InOptionalContextWidget)
 {
+}
+
+FText FSlateDebuggingWarningEventArgs::ToText() const
+{
+	static const FText InputEventFormat = LOCTEXT("WarningEventFormat", "{0} (Widget: {1})");
+
+	const FText ContextWidget = FText::FromString(FReflectionMetaData::GetWidgetDebugInfo(OptionalContextWidget.Get()));
+
+	return FText::Format(
+		InputEventFormat,
+		Warning,
+		ContextWidget
+	);
 }
 
 FSlateDebuggingMouseCaptureEventArgs::FSlateDebuggingMouseCaptureEventArgs(
@@ -166,6 +279,22 @@ FSlateDebuggingMouseCaptureEventArgs::FSlateDebuggingMouseCaptureEventArgs(
 	, PointerIndex(InPointerIndex)
 	, CaptureWidget(InCapturingWidget)
 {
+}
+
+FText FSlateDebuggingMouseCaptureEventArgs::ToText() const
+{
+	static const FText StateChangeEventFormat = LOCTEXT("StateChangeEventFormat", "{0}({1}:{2}) : {3}");
+
+	const FText StateText = Captured ? LOCTEXT("MouseCaptured", "Mouse Captured") : LOCTEXT("MouseCaptureLost", "Mouse Capture Lost");
+	const FText SourceWidget = FText::FromString(FReflectionMetaData::GetWidgetDebugInfo(CaptureWidget.Get()));
+
+	return FText::Format(
+		StateChangeEventFormat,
+		StateText,
+		UserIndex,
+		PointerIndex,
+		SourceWidget
+	);
 }
 
 FSlateDebugging::FBeginWindow FSlateDebugging::BeginWindow;

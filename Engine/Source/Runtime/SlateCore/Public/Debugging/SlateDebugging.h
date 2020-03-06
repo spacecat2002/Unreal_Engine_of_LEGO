@@ -32,7 +32,7 @@ class FSlateInvalidationRoot;
 UENUM()
 enum class ESlateDebuggingInputEvent : uint8
 {
-	MouseMove,
+	MouseMove = 0,
 	MouseEnter,
 	MouseLeave,
 	MouseButtonDown,
@@ -52,7 +52,7 @@ enum class ESlateDebuggingInputEvent : uint8
 	KeyChar,
 	AnalogInput,
 	TouchGesture,
-	COUNT
+	MAX,
 };
 
 UENUM()
@@ -82,14 +82,17 @@ public:
 	const FReply& Reply;
 	const TSharedPtr<SWidget>& HandlerWidget;
 	const FString& AdditionalContent;
+
+	FText ToText() const;
 };
 
 UENUM()
 enum class ESlateDebuggingFocusEvent : uint8
 {
-	FocusChanging,
+	FocusChanging = 0,
 	FocusLost,
-	FocusReceived
+	FocusReceived,
+	MAX
 };
 
 
@@ -114,6 +117,8 @@ public:
 	const TSharedPtr<SWidget>& OldFocusedWidget;
 	const FWidgetPath& NewFocusedWidgetPath;
 	const TSharedPtr<SWidget>& NewFocusedWidget;
+
+	FText ToText() const;
 };
 
 struct SLATECORE_API FSlateDebuggingNavigationEventArgs
@@ -132,6 +137,8 @@ public:
 	const FWidgetPath& NavigationSource;
 	const TSharedPtr<SWidget>& DestinationWidget;
 	const ESlateDebuggingNavigationMethod NavigationMethod;
+
+	FText ToText() const;
 };
 
 struct SLATECORE_API FSlateDebuggingExecuteNavigationEventArgs
@@ -149,6 +156,8 @@ public:
 
 	const FText& Warning;
 	const TSharedPtr<SWidget>& OptionalContextWidget;
+
+	FText ToText() const;
 };
 
 struct SLATECORE_API FSlateDebuggingMouseCaptureEventArgs
@@ -165,6 +174,8 @@ public:
 	uint32 UserIndex;
 	uint32 PointerIndex;
 	const TSharedPtr<const SWidget>& CaptureWidget;
+
+	FText ToText() const;
 };
 
 

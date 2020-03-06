@@ -7,13 +7,10 @@
 #include "Debugging/SlateDebugging.h"
 #include "Widgets/SBoxPanel.h"
 #include "Modules/ModuleManager.h"
-#include "Logging/MessageLog.h"
-#include "Types/ReflectionMetadata.h"
 #include "GenericPlatform/GenericPlatformStackWalk.h"
 #include "HAL/PlatformStackWalk.h"
 #include "UObject/UObjectGlobals.h"
 #include "UObject/Package.h"
-#include "Layout/WidgetPath.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSlateDebugger, Log, All);
 
@@ -23,7 +20,8 @@ static FConsoleSlateDebugger SlateConsoleDebugger;
 
 FConsoleSlateDebugger::FConsoleSlateDebugger()
 	: bCaptureStack(0)
-	, EnabledInputEvents(false, (uint8)ESlateDebuggingInputEvent::COUNT)
+	, EnabledInputEvents(false, (uint8)ESlateDebuggingInputEvent::MAX)
+	, EnabledFocusEvents(false, (uint8)ESlateDebuggingFocusEvent::MAX)
 	, StartDebuggingCommand(
 		TEXT("SlateDebugger.Start"),
 		*LOCTEXT("StartDebugger", "Starts the debugger.").ToString(),
@@ -38,8 +36,12 @@ FConsoleSlateDebugger::FConsoleSlateDebugger()
 		*LOCTEXT("CaptureStack", "Should we capture the stack when there are events?").ToString())
 	, SetInputFilterCommand(
 		TEXT("SlateDebugger.SetInputFilter"),
-		*LOCTEXT("SetInputFilter", "Enable or Disable specific filters").ToString(),
+		*LOCTEXT("SetInputFilter", "Enable or Disable specific input filters").ToString(),
 		FConsoleCommandWithArgsDelegate::CreateRaw(this, &FConsoleSlateDebugger::SetInputFilter))
+	, SetFocusFilterCommand(
+		TEXT("SlateDebugger.SetFocusFilter"),
+		*LOCTEXT("SetFocusFilter", "Enable or Disable specific focus filters").ToString(),
+		FConsoleCommandWithArgsDelegate::CreateRaw(this, &FConsoleSlateDebugger::SetFocusFilter))
 {
 	//EnabledInputEvents[(uint8)ESlateDebuggingInputEvent::MouseMove] = true;
 	//EnabledInputEvents[(uint8)ESlateDebuggingInputEvent::MouseEnter] = true;
@@ -62,8 +64,9 @@ FConsoleSlateDebugger::FConsoleSlateDebugger()
 	//EnabledInputEvents[(uint8)ESlateDebuggingInputEvent::AnalogInput] = true;
 	EnabledInputEvents[(uint8)ESlateDebuggingInputEvent::TouchGesture] = true;
 
-
-	// TODO Add commands for setting and unsetting input event filters.
+	EnabledFocusEvents[(uint8)ESlateDebuggingFocusEvent::FocusChanging] = true;
+	//EnabledFocusEvents[(uint8)ESlateDebuggingFocusEvent::FocusLost] = true;
+	//EnabledFocusEvents[(uint8)ESlateDebuggingFocusEvent::FocusReceived] = true;
 }
 
 FConsoleSlateDebugger::~FConsoleSlateDebugger()
@@ -85,68 +88,67 @@ void FConsoleSlateDebugger::StopDebugging()
 	RemoveListeners();
 }
 
+namespace SlateDebuggerUtils
+{
+	void SetEventFilter(const TArray< FString >& Params, const UEnum* EventEnum, TBitArray<>& Bitfield)
+	{
+		if (Params.Num() != 2)
+		{
+			return;
+		}
+
+		const int64 InputEventEnumValue = EventEnum->GetValueByNameString(Params[0]);
+		// We are casting ESlateDebuggingInputEvent::MAX to uint8. Let's make sure it has a valid value. Prefer to crash now than doing bad memory access.
+		check(EventEnum->GetMaxEnumValue() < (int64)TNumericLimits<uint8>::Max());
+		if (InputEventEnumValue == INDEX_NONE)
+		{
+			return;
+		}
+
+		bool bEnable = false;
+		if (!LexTryParseString(bEnable, *Params[1]))
+		{
+			return;
+		}
+
+		Bitfield[InputEventEnumValue] = bEnable;
+	}
+}
+
 void FConsoleSlateDebugger::SetInputFilter(const TArray< FString >& Params)
 {
-	if (Params.Num() != 2)
-	{
-		return;
-	}
+	SlateDebuggerUtils::SetEventFilter(Params, StaticEnum<ESlateDebuggingInputEvent>(), EnabledInputEvents);
+}
 
-	static const UEnum* SlateDebuggingInputEventEnum = StaticEnum<ESlateDebuggingInputEvent>();
-	
-	const int64 InputEventEnumValue = SlateDebuggingInputEventEnum->GetValueByNameString(Params[0]);
-	if (InputEventEnumValue == INDEX_NONE)
-	{
-		return;
-	}
-
-	bool bEnable = false;
-	if (!LexTryParseString(bEnable, *Params[1]))
-	{
-		return;
-	}
-	
-	EnabledInputEvents[InputEventEnumValue] = bEnable;
+void FConsoleSlateDebugger::SetFocusFilter(const TArray< FString >& Params)
+{
+	SlateDebuggerUtils::SetEventFilter(Params, StaticEnum<ESlateDebuggingFocusEvent>(), EnabledFocusEvents);
 }
 
 void FConsoleSlateDebugger::RemoveListeners()
 {
-#if WITH_SLATE_DEBUGGING
 	FSlateDebugging::Warning.RemoveAll(this);
 	FSlateDebugging::InputEvent.RemoveAll(this);
 	FSlateDebugging::FocusEvent.RemoveAll(this);
 	FSlateDebugging::AttemptNavigationEvent.RemoveAll(this);
 	FSlateDebugging::MouseCaptureEvent.RemoveAll(this);
-#endif
 }
 
 void FConsoleSlateDebugger::UpdateListeners()
 {
 	RemoveListeners();
 
-#if WITH_SLATE_DEBUGGING
 	FSlateDebugging::Warning.AddRaw(this, &FConsoleSlateDebugger::OnWarning);
 	FSlateDebugging::InputEvent.AddRaw(this, &FConsoleSlateDebugger::OnInputEvent);
 	FSlateDebugging::FocusEvent.AddRaw(this, &FConsoleSlateDebugger::OnFocusEvent);
 	FSlateDebugging::AttemptNavigationEvent.AddRaw(this, &FConsoleSlateDebugger::OnAttemptNavigationEvent);
 	FSlateDebugging::ExecuteNavigationEvent.AddRaw(this, &FConsoleSlateDebugger::OnExecuteNavigationEvent);
 	FSlateDebugging::MouseCaptureEvent.AddRaw(this, &FConsoleSlateDebugger::OnCaptureStateChangeEvent);
-#endif
 }
 
 void FConsoleSlateDebugger::OnWarning(const FSlateDebuggingWarningEventArgs& EventArgs)
 {
-	static const FText InputEventFormat = LOCTEXT("WarningEventFormat", "{0} (Widget: {1})");
-
-	const FText ContextWidget = FText::FromString(FReflectionMetaData::GetWidgetDebugInfo(EventArgs.OptionalContextWidget.Get()));
-
-	FText EventText = FText::Format(
-		InputEventFormat,
-		EventArgs.Warning,
-		ContextWidget
-	);
-
-	UE_LOG(LogSlateDebugger, Warning, TEXT("%s"), *EventText.ToString());
+	UE_LOG(LogSlateDebugger, Warning, TEXT("%s"), *EventArgs.ToText().ToString());
 
 	OptionallyDumpCallStack();
 }
@@ -159,106 +161,26 @@ void FConsoleSlateDebugger::OnInputEvent(const FSlateDebuggingInputEventArgs& Ev
 		return;
 	}
 
-	static const FText InputEventFormat = LOCTEXT("InputEventFormat", "{0} - ({1}) - [{2}]");
-
-	static const UEnum* SlateDebuggingInputEventEnum = StaticEnum<ESlateDebuggingInputEvent>();
-	const FText InputEventTypeText = SlateDebuggingInputEventEnum->GetDisplayNameTextByValue((int64)EventArgs.InputEventType);
-	const FText AdditionalContent = FText::FromString(EventArgs.AdditionalContent);
-	const FText HandlerWidget = FText::FromString(FReflectionMetaData::GetWidgetDebugInfo(EventArgs.HandlerWidget.Get()));
-
-	FText EventText = FText::Format(
-		InputEventFormat,
-		InputEventTypeText,
-		HandlerWidget,
-		AdditionalContent
-	);
-
-	UE_LOG(LogSlateDebugger, Log, TEXT("%s"), *EventText.ToString());
+	UE_LOG(LogSlateDebugger, Log, TEXT("%s"), *EventArgs.ToText().ToString());
 
 	OptionallyDumpCallStack();
 }
 
 void FConsoleSlateDebugger::OnFocusEvent(const FSlateDebuggingFocusEventArgs& EventArgs)
 {
-	static const FText FocusEventFormat = LOCTEXT("FocusEventFormat", "{0}({1}:{2}) - {3} -> {4}");
-
-	FText FocusEventText;
-	switch (EventArgs.FocusEventType)
+	if (!EnabledFocusEvents[(uint8)EventArgs.FocusEventType])
 	{
-	case ESlateDebuggingFocusEvent::FocusChanging:
-		FocusEventText = LOCTEXT("FocusChanging", "Focus Changing");
-		break;
-	case ESlateDebuggingFocusEvent::FocusLost:
-		// Ignore the Lost
-		return;
-	case ESlateDebuggingFocusEvent::FocusReceived:
-		// Ignore the Received
 		return;
 	}
 
-	FText CauseText;
-	switch (EventArgs.FocusEvent.GetCause())
-	{
-	case EFocusCause::Mouse:
-		CauseText = LOCTEXT("FocusCause_Mouse", "Mouse");
-		break;
-	case EFocusCause::Navigation:
-		CauseText = LOCTEXT("FocusCause_Navigation", "Navigation");
-		break;
-	case EFocusCause::SetDirectly:
-		CauseText = LOCTEXT("FocusCause_SetDirectly", "SetDirectly");
-		break;
-	case EFocusCause::Cleared:
-		CauseText = LOCTEXT("FocusCause_Cleared", "Cleared");
-		break;
-	case EFocusCause::OtherWidgetLostFocus:
-		CauseText = LOCTEXT("FocusCause_OtherWidgetLostFocus", "OtherWidgetLostFocus");
-		break;
-	case EFocusCause::WindowActivate:
-		CauseText = LOCTEXT("FocusCause_WindowActivate", "WindowActivate");
-		break;
-	}
-
-	const int32 UserIndex = EventArgs.FocusEvent.GetUser();
-
-	const FText OldFocusedWidgetText = FText::FromString(FReflectionMetaData::GetWidgetDebugInfo(EventArgs.OldFocusedWidget.Get()));
-	const FText NewFocusedWidgetText = FText::FromString(FReflectionMetaData::GetWidgetDebugInfo(EventArgs.NewFocusedWidget.Get()));
-
-	FText EventText = FText::Format(
-		FocusEventFormat,
-		FocusEventText,
-		UserIndex,
-		CauseText,
-		OldFocusedWidgetText,
-		NewFocusedWidgetText
-	);
-
-	UE_LOG(LogSlateDebugger, Log, TEXT("%s"), *EventText.ToString());
+	UE_LOG(LogSlateDebugger, Log, TEXT("%s"), *EventArgs.ToText().ToString());
 
 	OptionallyDumpCallStack();
 }
 
 void FConsoleSlateDebugger::OnAttemptNavigationEvent(const FSlateDebuggingNavigationEventArgs& EventArgs)
 {
-	static const FText NavEventFormat = LOCTEXT("NavEventFormat", "Navigation User({4}) Source({0}:{1}) | {5} | {2} -> {3}");
-
-	const FText SourceWidget = FText::FromString(FReflectionMetaData::GetWidgetDebugInfo(&EventArgs.NavigationSource.GetLastWidget().Get()));
-	const FText DestinationWidget = FText::FromString(FReflectionMetaData::GetWidgetDebugInfo(EventArgs.DestinationWidget.Get()));
-	const FText NavigationTypeText = StaticEnum<EUINavigation>()->GetDisplayNameTextByValue((int64)EventArgs.NavigationEvent.GetNavigationType());
-	const FText NavigationGenesisText = StaticEnum<ENavigationGenesis>()->GetDisplayNameTextByValue((int64)EventArgs.NavigationEvent.GetNavigationGenesis());
-	const FText NavigationMethodText = StaticEnum<ESlateDebuggingNavigationMethod>()->GetDisplayNameTextByValue((int64)EventArgs.NavigationMethod);
-
-	FText EventText = FText::Format(
-		NavEventFormat,
-		NavigationGenesisText,
-		NavigationTypeText,
-		SourceWidget,
-		DestinationWidget,
-		EventArgs.NavigationEvent.GetUserIndex(),
-		NavigationMethodText
-	);
-
-	UE_LOG(LogSlateDebugger, Log, TEXT("%s"), *EventText.ToString());
+	UE_LOG(LogSlateDebugger, Log, TEXT("%s"), *EventArgs.ToText().ToString());
 
 	OptionallyDumpCallStack();
 }
@@ -270,20 +192,7 @@ void FConsoleSlateDebugger::OnExecuteNavigationEvent(const FSlateDebuggingExecut
 
 void FConsoleSlateDebugger::OnCaptureStateChangeEvent(const FSlateDebuggingMouseCaptureEventArgs& EventArgs)
 {
-	static const FText StateChangeEventFormat = LOCTEXT("StateChangeEventFormat", "{0}({1}:{2}) : {3}");
-
-	const FText StateText = EventArgs.Captured ? LOCTEXT("MouseCaptured", "Mouse Captured") : LOCTEXT("MouseCaptureLost", "Mouse Capture Lost");
-	const FText SourceWidget = FText::FromString(FReflectionMetaData::GetWidgetDebugInfo(EventArgs.CaptureWidget.Get()));
-
-	FText EventText = FText::Format(
-		StateChangeEventFormat,
-		StateText,
-		EventArgs.UserIndex,
-		EventArgs.PointerIndex,
-		SourceWidget
-	);
-
-	UE_LOG(LogSlateDebugger, Log, TEXT("%s"), *EventText.ToString());
+	UE_LOG(LogSlateDebugger, Log, TEXT("%s"), *EventArgs.ToText().ToString());
 
 	OptionallyDumpCallStack();
 }

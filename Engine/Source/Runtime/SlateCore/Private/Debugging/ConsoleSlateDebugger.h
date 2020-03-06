@@ -36,6 +36,7 @@ private:
 	void UpdateListeners();
 
 	void SetInputFilter(const TArray< FString >& Parms);
+	void SetFocusFilter(const TArray< FString >& Parms);
 
 	void OnWarning(const FSlateDebuggingWarningEventArgs& EventArgs);
 	void OnInputEvent(const FSlateDebuggingInputEventArgs& EventArgs);
@@ -53,6 +54,7 @@ private:
 
 	/** Which events should we log about. */
 	TBitArray<> EnabledInputEvents;
+	TBitArray<> EnabledFocusEvents;
 
 	/**
 	 * Console objects
@@ -61,6 +63,7 @@ private:
 	FAutoConsoleCommand StopDebuggingCommand;
 	FAutoConsoleVariableRef CaptureStackVariable;
 	FAutoConsoleCommand SetInputFilterCommand;
+	FAutoConsoleCommand SetFocusFilterCommand;
 };
 
 #endif //WITH_SLATE_DEBUGGING
