@@ -201,7 +201,6 @@ struct FSimulationParameters
 	FSimulationParameters()
 		: Name("")
 		, RestCollection(nullptr)
-		, DynamicCollection(nullptr)
 		, RecordedTrack(nullptr)
 		, bOwnsTrack(false)
 		, Simulating(false)
@@ -222,14 +221,12 @@ struct FSimulationParameters
 		, CacheBeginTime(0.0f)
 		, ReverseCacheBeginTime(0.0f)
 		, bClearCache(false)
-		, InitializationState(ESimulationInitializationState::Unintialized)
 		, RemoveOnFractureEnabled(false)
 	{}
 
 
 	FSimulationParameters(const FSimulationParameters& Other)
 		: RestCollection(Other.RestCollection)
-		, DynamicCollection(Other.DynamicCollection)
 		, InitializationCommands(Other.InitializationCommands)
 		, RecordedTrack(Other.RecordedTrack)
 		, bOwnsTrack(false)
@@ -255,7 +252,6 @@ struct FSimulationParameters
 		, BreakingData(Other.BreakingData)
 		, TrailingData(Other.TrailingData)
 		, Shared(Other.Shared)
-		, InitializationState(Other.InitializationState)
 		, RemoveOnFractureEnabled(false)
 	{}
 
@@ -272,7 +268,6 @@ struct FSimulationParameters
 
 	FString Name;
 	const FGeometryCollection* RestCollection;
-	FGeometryDynamicCollection* DynamicCollection;
 	TArray<FFieldSystemCommand> InitializationCommands;
 	const FRecordedTransformTrack* RecordedTrack;
 	bool bOwnsTrack;
@@ -311,8 +306,6 @@ struct FSimulationParameters
 	FTrailingDataSimulationParameters TrailingData;
 
 	FSharedSimulationParameters Shared;
-
-	ESimulationInitializationState InitializationState;
 
 	bool RemoveOnFractureEnabled;
 };

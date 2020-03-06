@@ -6,17 +6,25 @@
 namespace Chaos
 {
 
-	FPBDRigidActiveParticlesBuffer::FPBDRigidActiveParticlesBuffer(const Chaos::EMultiBufferMode& InBufferMode) : BufferMode(InBufferMode)
+	FPBDRigidActiveParticlesBuffer::FPBDRigidActiveParticlesBuffer(const Chaos::EMultiBufferMode& InBufferMode, bool bInSingleThreaded) : BufferMode(InBufferMode), bUseLock(!bInSingleThreaded)
 	{
 		SolverDataOut = Chaos::FMultiBufferFactory<FPBDRigidActiveParticlesBufferOut>::CreateBuffer(InBufferMode);
 	}
 
 	void FPBDRigidActiveParticlesBuffer::CaptureSolverData(FPBDRigidsSolver* Solver)
 	{
-		ResourceOutLock.WriteLock();
+		WriteLock();
 		BufferPhysicsResults(Solver);
 		FlipDataOut();
-		ResourceOutLock.WriteUnlock();
+		WriteUnlock();
+	}
+
+	void FPBDRigidActiveParticlesBuffer::RemoveActiveParticleFromConsumerBuffer(TGeometryParticle<FReal, 3>* Particle)
+	{
+		WriteLock();
+		auto& ActiveGameThreadParticles = SolverDataOut->GetConsumerBufferMutable()->ActiveGameThreadParticles;
+		ActiveGameThreadParticles.RemoveSingleSwap(Particle);
+		WriteUnlock();
 	}
 
 	void FPBDRigidActiveParticlesBuffer::BufferPhysicsResults(FPBDRigidsSolver* Solver)
@@ -44,4 +52,35 @@ namespace Chaos
 		}
 	}
 
+	void FPBDRigidActiveParticlesBuffer::ReadLock()
+	{
+		if (bUseLock)
+		{
+			ResourceOutLock.ReadLock();
+		}
+	}
+
+	void FPBDRigidActiveParticlesBuffer::ReadUnlock()
+	{
+		if (bUseLock)
+		{
+			ResourceOutLock.ReadUnlock();
+		}
+	}
+
+	void FPBDRigidActiveParticlesBuffer::WriteLock()
+	{
+		if (bUseLock)
+		{
+			ResourceOutLock.WriteLock();
+		}
+	}
+
+	void FPBDRigidActiveParticlesBuffer::WriteUnlock()
+	{
+		if (bUseLock)
+		{
+			ResourceOutLock.WriteUnlock();
+		}
+	}
 }

@@ -61,7 +61,7 @@ template<typename T, int d>
 using TRigidBodyContactConstraintsPostApplyPushOutCallback = TFunction<void(const T Dt, const TArray<TPBDCollisionConstraintHandle<T, d>*>&, bool)>;
 
 template <typename T, int d>
-using TCollisionModifierCallback = TFunction<ECollisionModifierResult(const TPBDCollisionConstraintHandle<T, d>*)>;
+using TCollisionModifierCallback = TFunction<ECollisionModifierResult(TPBDCollisionConstraintHandle<T, d>*)>;
 
 /**
  * A container and solver for collision constraints.
@@ -164,6 +164,14 @@ public:
 	* Update all contact manifolds
 	*/
 	void UpdateManifolds(T Dt);
+
+	/*
+	* Add particle to list of particles that will always update their constraint manifold.
+	*/
+	void AddParticleAlwaysUpdateManifold(const TGeometryParticleHandle<T, d>* Particle);
+
+	bool ShouldParticleAlwaysUpdateManifold(const TGeometryParticleHandle<T, d>* Particle) const;
+
 
 	//
 	// General Rule API
@@ -284,17 +292,7 @@ public:
 		return Handles;
 	}
 
-	const FConstraintBase& GetConstraint(int32 Index) const 
-	{
-		check(Index < NumConstraints());
-		
-		if (Index < PointConstraints.Num())
-		{
-			return PointConstraints[Index];
-		}
-		
-		return IterativeConstraints[Index - PointConstraints.Num()];
-	}
+	const FConstraintBase& GetConstraint(int32 Index) const;
 
 
 protected:
@@ -310,6 +308,8 @@ private:
 	TArray<FPointContactConstraint> PointConstraints;
 	TArray<FSweptPointContactConstraint> SweptPointConstraints;
 	TArray<FMultiPointContactConstraint> IterativeConstraints;
+
+	TSet<const TGeometryParticleHandle<T, d>*> ParticlesAlwaysUpdatingManifold;
 
 #if CHAOS_COLLISION_PERSISTENCE_ENABLED
 	TMap< FConstraintContainerHandleKey, FConstraintContainerHandle* > Manifolds;

@@ -8,6 +8,10 @@
 #include "Chaos/ParticleIterator.h"
 #include "Chaos/ParticleDirtyFlags.h"
 #include "ChaosCheck.h"
+#include "Chaos/ChaosDebugDrawDeclares.h"
+#if CHAOS_DEBUG_DRAW
+#include "Chaos/ChaosDebugDraw.h"
+#endif
 
 
 
@@ -225,6 +229,11 @@ private:
 
 	template <typename TParticle>
 	void UpdatePrePreFilter(const TParticle& Particle);
+
+public:
+#if CHAOS_DEBUG_DRAW
+	void DebugDraw(const bool bExternal, const bool bHit) const;
+#endif
 };
 
 template <typename T, int d>
@@ -1620,7 +1629,7 @@ public:
 private:
 
 #if CHAOS_CHECKED
-	FName MDebugName;
+	TParticleProperty<FName, EParticleProperty::DebugName> MDebugName;
 #endif
 
 protected:
@@ -1691,12 +1700,14 @@ public:
 		CollisionTraceType.Empty(Shapes.Num());
 		ShapeSimData.Empty(Shapes.Num());
 		ShapeQueryData.Empty(Shapes.Num());
+		ShapeMaterials.Empty(Shapes.Num());
 		for (const TUniquePtr<TPerShapeData<T, d>>& ShapePtr : Shapes)
 		{
 			ShapeCollisionDisableFlags.Add(ShapePtr->bDisable);
 			CollisionTraceType.Add(ShapePtr->CollisionTraceType);
 			ShapeSimData.Add(ShapePtr->SimData);
 			ShapeQueryData.Add(ShapePtr->QueryData);
+			ShapeMaterials.Add(ShapePtr->Materials);
 		}
 	}
 
@@ -1714,6 +1725,7 @@ public:
 		CollisionTraceType.Reset();
 		ShapeSimData.Reset();
 		ShapeQueryData.Reset();
+		ShapeMaterials.Reset();
 #if CHAOS_CHECKED
 		DebugName = NAME_None;
 #endif
@@ -1737,12 +1749,14 @@ public:
 			CollisionTraceType.Empty(Shapes.Num());
 			ShapeSimData.Empty(Shapes.Num());
 			ShapeQueryData.Empty(Shapes.Num());
+			ShapeMaterials.Empty(Shapes.Num());
 			for (const TUniquePtr<TPerShapeData<T, d>>& ShapePtr : Shapes)
 			{
 				ShapeCollisionDisableFlags.Add(ShapePtr->bDisable);
 				CollisionTraceType.Add(ShapePtr->CollisionTraceType);
 				ShapeSimData.Add(ShapePtr->SimData);
 				ShapeQueryData.Add(ShapePtr->QueryData);
+				ShapeMaterials.Add(ShapePtr->Materials);
 			}
 	}
 	TVector<T, d> X;
@@ -1756,6 +1770,7 @@ public:
 	TArray<EChaosCollisionTraceFlag> CollisionTraceType;
 	TArray < FCollisionFilterData > ShapeSimData;
 	TArray < FCollisionFilterData > ShapeQueryData;
+	TArray < TArray<FMaterialHandle> > ShapeMaterials;
 #if CHAOS_CHECKED
 	FName DebugName;
 #endif
@@ -2466,6 +2481,23 @@ FChaosArchive& operator<<(FChaosArchive& Ar, TAccelerationStructureHandle<T, d>&
 	AccelerationHandle.Serialize(Ar);
 	return Ar;
 }
+
+#if CHAOS_DEBUG_DRAW
+template <typename T, int d>
+void TAccelerationStructureHandle<T, d>::DebugDraw(const bool bExternal, const bool bHit) const
+{
+	if (ExternalGeometryParticle && bExternal)
+	{
+		DebugDraw::DrawParticleShapes(FRigidTransform3(), ExternalGeometryParticle, bHit ? FColor::Red : FColor::Green);
+	}
+
+	if (GeometryParticleHandle && !bExternal)
+	{
+		DebugDraw::DrawParticleShapes(FRigidTransform3(), GeometryParticleHandle, bHit ? FColor(200, 100, 100) : FColor(100, 200, 100));
+	}
+}
+#endif
+
 #if PLATFORM_MAC || PLATFORM_LINUX
 extern template class CHAOS_API TGeometryParticle<float, 3>;
 extern template class CHAOS_API TKinematicGeometryParticle<float, 3>;

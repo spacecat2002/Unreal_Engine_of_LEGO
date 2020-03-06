@@ -3,7 +3,7 @@
 #pragma once
 
 #include "GeometryCollection/GeometryCollection.h"
-#include "GeometryCollection/GeometryDynamicCollection.h"
+#include "GeometryCollectionProxyData.h"
 
 #include "Chaos/Framework/PhysicsProxy.h"
 #include "GeometryCollection/ManagedArray.h"
@@ -13,6 +13,7 @@
 #include "Chaos/GeometryParticlesfwd.h"
 #include "Chaos/ParticleHandle.h"
 #include "Chaos/ParticleHandleFwd.h"
+#include "Containers/Array.h"
 #include "PBDRigidsSolver.h"
 
 namespace Chaos
@@ -70,9 +71,7 @@ public:
 
 	TManagedArray<int32> ClusterId;
 
-	TArray<TSharedPtr<Chaos::FImplicitObject, ESPMode::ThreadSafe>> SharedGeometry;
-	TArray<TArray<FCollisionFilterData>> ShapeSimData;
-	TArray<TArray<FCollisionFilterData>> ShapeQueryData;
+
 
 	bool IsObjectDynamic;
 	bool IsObjectLoading;
@@ -108,17 +107,11 @@ private:
  */
 class CHAOSSOLVERS_API FGeometryCollectionPhysicsProxy : public TPhysicsProxy<FGeometryCollectionPhysicsProxy, FStubGeometryCollectionData>
 {
-	typedef TPhysicsProxy<FGeometryCollectionPhysicsProxy, FStubGeometryCollectionData> Base;
-
 public:
-	// collection attributes
-	static FName SimplicialsAttribute;
-	static FName ImplicitsAttribute;
-	static FName SharedImplicitsAttribute;
-	static FName SolverParticleHandlesAttribute;
-	static FName SolverClusterHandlesAttribute;
-
+	typedef TPhysicsProxy<FGeometryCollectionPhysicsProxy, FStubGeometryCollectionData> Base;
 	typedef FCollisionStructureManager::FSimplicial FSimplicial;
+	typedef Chaos::TPBDRigidParticleHandle<float, 3> FParticleHandle;
+	typedef Chaos::TPBDRigidClusteredParticleHandle<float, 3> FClusterHandle;
 
 	/** Proxy publics */
 	using FInitFunc = TFunction<void(FSimulationParameters&)>;
@@ -135,7 +128,8 @@ public:
 	 */
 	FGeometryCollectionPhysicsProxy(
 		UObject* InOwner, 
-		FGeometryDynamicCollection* InDynamicCollection, 
+		FGeometryDynamicCollection& GameThreadCollection,
+		const FSimulationParameters& SimulationParameters,
 		FInitFunc InInitFunc, 
 		FCacheSyncFunc InCacheSyncFunc, 
 		FFinalSyncFunc InFinalSyncFunc  ,
@@ -147,14 +141,7 @@ public:
 	 * and prepare for simulation.
 	 */
 	void Initialize();
-	void Reset() { InitializedState = ESimulationInitializationState::Unintialized; }
-
-	/** 
-	 * Initialize rigid body particles on the game thread. 
-	 *
-	 * Called by \c FPBDRigidsSolver::RegisterObject().
-	 */
-	void InitializeBodiesGT();
+	void Reset() { }
 
 	/** 
 	 * Finish initialization on the physics thread. 
@@ -217,11 +204,10 @@ public:
 	void SetCollisionParticlesPerObjectFraction(float CollisionParticlesPerObjectFractionIn) 
 	{CollisionParticlesPerObjectFraction = CollisionParticlesPerObjectFractionIn;}
 
-	TManagedArray<Chaos::TPBDRigidClusteredParticleHandle<float, 3>*>& GetSolverParticleHandles() 
-	{ return SolverParticleHandles; }
+	TArray<FClusterHandle*>& GetSolverParticleHandles() { return SolverParticleHandles; }
 
 	const FGeometryCollectionResults* GetConsumerResultsGT() const 
-	{ return PhysToGameInterchange ? PhysToGameInterchange->PeekConsumerBuffer() : nullptr; }
+	{ return PhysToGameInterchange.PeekConsumerBuffer(); }
 
 	/** Enqueue a field \p Command to be processed by \c ProcessCommands() or 
 	 * \c FieldForcesUpdateCallback(). 
@@ -232,22 +218,16 @@ public:
 	static void InitializeSharedCollisionStructures(Chaos::FErrorReporter& ErrorReporter, FGeometryCollection& RestCollection, const FSharedSimulationParameters& SharedParams);
 	static void InitRemoveOnFracture(FGeometryCollection& RestCollection, const FSharedSimulationParameters& SharedParams);
 
-	static void MergeRecordedTracks(const FRecordedTransformTrack& A, const FRecordedTransformTrack& B, FRecordedTransformTrack& Target);
-	static FRecordedFrame& InsertRecordedFrame(FRecordedTransformTrack& InTrack, float InTime);
-
-	// 
-	// DEPRECATED
-	//
-	void UpdateKinematicBodiesCallback(const FParticlesType& InParticles, const float InDt, const float InTime, FKinematicProxy& InKinematicProxy);
-	void StartFrameCallback(const float InDt, const float InTime);
-	void EndFrameCallback(const float InDt);
-	void BindParticleCallbackMapping(Chaos::TArrayCollectionArray<PhysicsProxyWrapper> & PhysicsProxyReverseMap, Chaos::TArrayCollectionArray<int32> & ParticleIDReverseMap);
-	void CreateRigidBodyCallback(FParticlesType& InOutParticles);
+	void FieldForcesUpdateCallback(Chaos::FPhysicsSolver* InSolver, FParticlesType& Particles, Chaos::TArrayCollectionArray<FVector>& Force, Chaos::TArrayCollectionArray<FVector>& Torque, const float Time);
 	void ParameterUpdateCallback(FParticlesType& InParticles, const float InTime);
-	void DisableCollisionsCallback(TSet<TTuple<int32, int32>>& InPairs);
-	void AddForceCallback(FParticlesType& InParticles, const float InDt, const int32 InIndex);
-	void FieldForcesUpdateCallback(Chaos::FPhysicsSolver* InSolver, FParticlesType& Particles, Chaos::TArrayCollectionArray<FVector> & Force, Chaos::TArrayCollectionArray<FVector> & Torque, const float Time);
-	void ActivateBodies();
+
+	void UpdateKinematicBodiesCallback(const FParticlesType& InParticles, const float InDt, const float InTime, FKinematicProxy& InKinematicProxy) {}
+	void StartFrameCallback(const float InDt, const float InTime) {}
+	void EndFrameCallback(const float InDt) {}
+	void BindParticleCallbackMapping(Chaos::TArrayCollectionArray<PhysicsProxyWrapper>& PhysicsProxyReverseMap, Chaos::TArrayCollectionArray<int32>& ParticleIDReverseMap) {}
+	void CreateRigidBodyCallback(FParticlesType& InOutParticles) {}
+	void DisableCollisionsCallback(TSet<TTuple<int32, int32>>& InPairs) {}
+	void AddForceCallback(FParticlesType& InParticles, const float InDt, const int32 InIndex) {}
 
 protected:
 	/**
@@ -284,99 +264,43 @@ protected:
 		EFieldResolutionType ResolutionType, 
 		bool bForce);
 
-	/** The size of the transform group, as reported by the \c DynamicCollection 
-	 * currently stored in \c Parameters. 
-	 */
-	int32 GetTransformGroupSize() const 
-	{ return Parameters.DynamicCollection ? Parameters.DynamicCollection->NumElements(FGeometryCollection::TransformGroup) : 0; }
-
 	/** 
 	 * Traverses the parents of \p TransformIndex in \p GeometryCollection, counting
 	 * the number of levels until the next parent is \c INDEX_NONE.
 	 */
-	int32 CalculateHierarchyLevel(
-		const FGeometryDynamicCollection* GeometryCollection, 
-		int32 TransformIndex) const;
+	int32 CalculateHierarchyLevel(const FGeometryDynamicCollection& GeometryCollection, int32 TransformIndex) const;
 
-	void CreateDynamicAttributes();
-	void InitializeKinematics(FParticlesType& Particles, const TManagedArray<int32>& ObjectType);
+	static void InitializeDynamicCollection(FGeometryDynamicCollection& DynamicCollection, const FGeometryCollection& RestCollection, const FSimulationParameters& Params);
 	void InitializeRemoveOnFracture(FParticlesType& Particles, const TManagedArray<int32>& DynamicState);
-	void PushKinematicStateToSolver(FParticlesType& Particles);
-
 	void ProcessCommands(FParticlesType& Particles, const float Time);
 
 private:
-	void UpdateRecordedState(
-		float SolverTime, 
-		const TManagedArray<int32>& RigidBodyID, 
-		const TManagedArray<int32>& CollectionClusterID, 
-		const Chaos::TArrayCollectionArray<bool>& InternalCluster, 
-		const FParticlesType& Particles, 
-		const FCollisionConstraintsType& CollisionRule);
 
-	void AddCollisionToCollisionData(
-		FRecordedFrame* ExistingFrame, 
-		const FParticlesType& Particles, 
-		const Chaos::TPBDCollisionConstraints<float, 3>::FPointContactConstraint& Constraint);
-
-	void UpdateCollisionData(
-		const FParticlesType& Particles, 
-		const FCollisionConstraintsType& CollisionRule, 
-		FRecordedFrame* ExistingFrame);
-
-	void AddBreakingToBreakingData(
-		FRecordedFrame* ExistingFrame, 
-		const FParticlesType& Particles, 
-		const Chaos::TBreakingData<float, 3>& Breaking);
-
-	void UpdateBreakingData(
-		const FParticlesType& Particles, 
-		FRecordedFrame* ExistingFrame);
-
-	void UpdateTrailingData(
-		const FParticlesType& Particles, 
-		FRecordedFrame* ExistingFrame);
-
-private:
 	FSimulationParameters Parameters;
+	TArray<FFieldSystemCommand> Commands;
 
-	ESimulationInitializationState InitializedState;
-	// Records current dynamic state
-	bool IsObjectDynamic;
-	// Indicate when loaded
-	bool IsObjectLoading;
+	//
+	//  Proxy State Information
+	//
+	int32 NumParticles;
+	int32 BaseParticleIndex;
+	TArray<FParticleHandle*> SolverClusterID;
+	TArray<FClusterHandle*> SolverClusterHandles; // make a TArray of the base clase with type
+	TArray<FClusterHandle*> SolverParticleHandles;// make a TArray of base class and join with above
+	TMap<FParticleHandle*, int32> HandleToTransformGroupIndex;
 
-	// Dynamic collection on the game thread - used to populate the simulated collection
-	FGeometryDynamicCollection* GTDynamicCollection;
-	// Duplicated dynamic collection for use on the physics thread, copied to the game thread on sync
-	//TUniquePtr<FGeometryDynamicCollection> PTDynamicCollection;
-	FGeometryDynamicCollection PTDynamicCollection;
 
-	TMap<Chaos::TPBDRigidParticleHandle<float, 3>*, int32> HandleToTransformGroupIndex;
-
-	TManagedArray<Chaos::TPBDRigidClusteredParticleHandle<float, 3>*> SolverParticleHandles;
-	TManagedArray<Chaos::TPBDRigidClusteredParticleHandle<float, 3>*> SolverClusterHandles;
-	TManagedArray<Chaos::TPBDRigidParticleHandle<float, 3>*> SolverClusterID; // Rename to ClusterParent?
-
-	TManagedArray<FTransform> MassToLocal;
-	TManagedArray<int32> CollisionMask;
-	TManagedArray<int32> CollisionStructureID;
-	TManagedArray<int32> RigidBodyID; // Deprecated.  Not added to dynamic collection.
-	TManagedArray<FVector> InitialAngularVelocity;
-	TManagedArray<FVector> InitialLinearVelocity;
-	TManagedArray<bool> SimulatableParticles;
-
-	TManagedArray<TUniquePtr<FSimplicial> > Simplicials; // FSimplicial = Chaos::TBVHParticles<float,3>
-	TManagedArray<TSharedPtr<Chaos::FImplicitObject, ESPMode::ThreadSafe>> Implicits;
-
+	//
+	// Buffer Results State Information
+	//
+	bool IsObjectDynamic; // Records current dynamic state
+	bool IsObjectLoading; // Indicate when loaded
 	TArray<int32> EndFrameUnparentingBuffer;
-
 	// This is a subset of the geometry group that are used in the transform hierarchy to represent geometry
 	TArray<FBox> ValidGeometryBoundingBoxes;
 	TArray<int32> ValidGeometryTransformIndices;
 
-	TArray<FFieldSystemCommand> Commands;
-
+#ifdef TODO_REIMPLEMENT_RIGID_CACHING
 	TFunction<void(void)> ResetAnimationCacheCallback;
 	TFunction<void(const TArrayView<FTransform> &)> UpdateTransformsCallback;
 	TFunction<void(const int32 & CurrentFrame, const TManagedArray<int32> & RigidBodyID, const TManagedArray<int32>& Level, const TManagedArray<int32>& Parent, const TManagedArray<TSet<int32>>& Children, const TManagedArray<uint32>& SimulationType, const TManagedArray<uint32>& StatusFlags, const FParticlesType& Particles)> UpdateRestStateCallback;
@@ -384,35 +308,34 @@ private:
 	TFunction<void(FRecordedTransformTrack& InTrack)> CommitRecordedStateCallback;
 
 	// Index of the first particles for this collection in the larger particle array
-	int32 BaseParticleIndex;
-	// Number of particles added by this collection
-	int32 NumParticles;
-
 	// Time since this object started simulating
 	float ProxySimDuration;
 
-	// bodies waiting to activate on initialization
-	TArray<uint32> PendingActivationList;
+	// Sync frame numbers so we don't do many syncs when physics is running behind
+	uint32 LastSyncCountGT;
 
 	// Storage for the recorded frame information when we're caching the geometry component results.
 	// Synced back to the component with SyncBeforeDestroy
 	FRecordedTransformTrack RecordedTracks;
+#endif
 
 	// Functions to handle engine-side events
 	FInitFunc InitFunc;
 	FCacheSyncFunc CacheSyncFunc;
 	FFinalSyncFunc FinalSyncFunc;
 
-	// Sync frame numbers so we don't do many syncs when physics is running behind
-	uint32 LastSyncCountGT;
 
 	// Per object collision fraction.
 	float CollisionParticlesPerObjectFraction;
 
-	// Double buffer of geom collection result data - TODO (Ryan): deprecated?
-	//Chaos::TBufferedData<FGeometryCollectionResults> Results;
+	// The Simulation data is copied between the game and physics thread. It is 
+	// expected that the two data sets will diverge, based on how the simulation
+	// uses the data, but at the start of the simulation the PhysicsThreadCollection
+	// is a deep copy from the GameThreadCollection. 
+	FGeometryDynamicCollection PhysicsThreadCollection;
+	FGeometryDynamicCollection& GameThreadCollection;
 
-	// TODO (Ryan) - Currently this is using triple buffers for game-physics and 
+	// Currently this is using triple buffers for game-physics and 
 	// physics-game thread communication, but not for any reason other than this 
 	// is the only implementation we currently have of a guarded buffer - a buffer 
 	// that tracks it's own state, rather than having other mechanisms determine 
@@ -421,8 +344,8 @@ private:
 	// currently managing the exchange is built upon.  However, I believe that 
 	// logic locks, and the triple buffer would enable a decoupled lock-free 
 	// paradigm, at least for this component of the handshake.
-	TUniquePtr<Chaos::FGuardedTripleBuffer<FGeometryCollectionResults>> PhysToGameInterchange;
-	TUniquePtr<Chaos::FGuardedTripleBuffer<FGeometryCollectionResults>> GameToPhysInterchange;
+	Chaos::FGuardedTripleBuffer<FGeometryCollectionResults> PhysToGameInterchange;
+
 };
 
 CHAOSSOLVERS_API void BuildSimulationData(Chaos::FErrorReporter& ErrorReporter, FGeometryCollection& GeometryCollection, const FSharedSimulationParameters& SharedParams);

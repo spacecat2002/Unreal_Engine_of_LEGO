@@ -835,6 +835,7 @@ public:
 		HairCategorizationTexture.Bind(ParameterMap, TEXT("HairCategorizationTexture"));
 		PerObjectShadowFadeStart.Bind(ParameterMap, TEXT("PerObjectShadowFadeStart"));
 		InvPerObjectShadowFadeLength.Bind(ParameterMap, TEXT("InvPerObjectShadowFadeLength"));
+		ShadowNearAndFarDepth.Bind(ParameterMap, TEXT("ShadowNearAndFarDepth"));
 	}
 
 	void Set(FRHICommandList& RHICmdList, FShader* Shader, const FSceneView& View, const FProjectedShadowInfo* ShadowInfo, const FHairStrandsVisibilityData* HairVisibilityData, bool bModulatedShadows)
@@ -929,6 +930,21 @@ public:
 		if (HairVisibilityData && HairVisibilityData->CategorizationTexture)
 		{
 			SetTextureParameter(RHICmdList, ShaderRHI, HairCategorizationTexture, HairVisibilityData->CategorizationTexture->GetRenderTargetItem().ShaderResourceTexture);
+
+			float DeviceZNear = 1;
+			float DeviceZFar = 0;
+			if (ShadowInfo->bDirectionalLight)
+			{
+				FVector4 Near = View.ViewMatrices.GetProjectionMatrix().TransformFVector4(FVector4(0, 0, ShadowInfo->CascadeSettings.SplitNear));
+				FVector4 Far = View.ViewMatrices.GetProjectionMatrix().TransformFVector4(FVector4(0, 0, ShadowInfo->CascadeSettings.SplitFar));
+				DeviceZNear = Near.Z / Near.W;
+				DeviceZFar = Far.Z / Far.W;
+			}
+
+			FVector2D SliceNearAndFarDepth;
+			SliceNearAndFarDepth.X = DeviceZNear;
+			SliceNearAndFarDepth.Y = DeviceZFar;
+			SetShaderValue(RHICmdList, ShaderRHI, ShadowNearAndFarDepth, SliceNearAndFarDepth);
 		}
 
 		SetShaderValue(RHICmdList, ShaderRHI, PerObjectShadowFadeStart, ShadowInfo->PerObjectShadowFadeStart);
@@ -952,6 +968,7 @@ public:
 		Ar << P.HairCategorizationTexture;
 		Ar << P.PerObjectShadowFadeStart;
 		Ar << P.InvPerObjectShadowFadeLength;
+		Ar << P.ShadowNearAndFarDepth;
 		return Ar;
 	}*/
 
@@ -970,6 +987,7 @@ private:
 	LAYOUT_FIELD(FShaderResourceParameter, HairCategorizationTexture);
 	LAYOUT_FIELD(FShaderParameter, PerObjectShadowFadeStart);
 	LAYOUT_FIELD(FShaderParameter, InvPerObjectShadowFadeLength);
+	LAYOUT_FIELD(FShaderParameter, ShadowNearAndFarDepth);
 };
 
 /**
