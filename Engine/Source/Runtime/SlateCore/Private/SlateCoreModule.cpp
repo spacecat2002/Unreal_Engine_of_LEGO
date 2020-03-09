@@ -23,10 +23,15 @@ class FSlateCoreModule
 public:
 	FSlateCoreModule()
 	{
+#if WITH_SLATE_DEBUGGING
 		SlateDebugger = MakeUnique<FConsoleSlateDebugger>();
+#endif
 	}
 
+#if WITH_SLATE_DEBUGGING
+private:
 	TUniquePtr<FConsoleSlateDebugger> SlateDebugger;
+#endif
 };
 
 
