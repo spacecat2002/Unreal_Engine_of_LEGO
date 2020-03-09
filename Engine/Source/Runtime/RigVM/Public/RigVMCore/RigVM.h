@@ -165,6 +165,21 @@ public:
 	// Returns the instructions of the VM
 	const FRigVMInstructionArray& GetInstructions();
 
+#if WITH_EDITOR
+	// Returns true if the given instruction has been visited during the last run
+	FORCEINLINE bool WasInstructionVisitedDuringLastRun(int32 InIndex) const
+	{
+		if (InstructionVisitedDuringLastRun.IsValidIndex(InIndex))
+		{
+			return InstructionVisitedDuringLastRun[InIndex];
+		}
+		return false;
+	}
+
+	// Returns the order of all instructions during the last run
+	FORCEINLINE const TArray<int32> GetInstructionVisitOrder() const { return InstructionVisitOrder; }
+#endif
+
 	// Returns the parameters of the VM
 	const TArray<FRigVMParameter>& GetParameters() const;
 
@@ -457,6 +472,11 @@ private:
 	TArray<uint32> FirstPointerForInstruction;
 	TArray<void*> CachedMemoryPointers;
 	TArray<FRigVMMemoryContainer*> CachedMemory;
+
+#if WITH_EDITOR
+	TArray<bool> InstructionVisitedDuringLastRun;
+	TArray<int32> InstructionVisitOrder;
+#endif
 
 	friend class URigVMCompiler;
 };

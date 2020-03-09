@@ -481,9 +481,17 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> Add
 
 	CacheMemoryPointersIfRequired(Memory);
 
+#if WITH_EDITOR
+	InstructionVisitedDuringLastRun.SetNumZeroed(Instructions.Num());
+#endif
+
 	uint16 InstructionIndex = 0;
 	while (Instructions[InstructionIndex].OpCode != ERigVMOpCode::Exit)
 	{
+#if WITH_EDITOR
+		InstructionVisitedDuringLastRun[InstructionIndex] = true;
+		InstructionVisitOrder.Add(InstructionIndex);
+#endif
 		switch (Instructions[InstructionIndex].OpCode)
 		{
 			case ERigVMOpCode::Execute_0_Operands:
