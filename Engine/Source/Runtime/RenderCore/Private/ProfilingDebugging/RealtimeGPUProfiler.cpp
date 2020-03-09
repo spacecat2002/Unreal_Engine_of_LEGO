@@ -731,15 +731,14 @@ void FRealtimeGPUProfiler::Cleanup()
 
 void FRealtimeGPUProfiler::BeginFrame(FRHICommandListImmediate& RHICmdList)
 {
-	check(bInBeginEndBlock == false);
-	bInBeginEndBlock = true;
-
 	if (!AreGPUStatsEnabled())
 	{
 		return;
 	}
 
-	
+	check(bInBeginEndBlock == false);
+	bInBeginEndBlock = true;
+
 	Frames[WriteBufferIndex]->TimestampCalibrationQuery = new FRHITimestampCalibrationQuery();
 	RHICmdList.CalibrateTimers(Frames[WriteBufferIndex]->TimestampCalibrationQuery);
 	Frames[WriteBufferIndex]->CPUFrameStartTimestamp = FPlatformTime::Cycles64();
@@ -786,10 +785,6 @@ void FRealtimeGPUProfiler::EndFrame(FRHICommandListImmediate& RHICmdList)
 	check(IsInRenderingThread());
 	check(bInBeginEndBlock == true);
 	bInBeginEndBlock = false;
-	if (!AreGPUStatsEnabled())
-	{
-		return;
-	}
 
 	if (Frames[ReadBufferIndex]->UpdateStats(RHICmdList))
 	{
