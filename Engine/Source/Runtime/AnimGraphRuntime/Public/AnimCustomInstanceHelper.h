@@ -228,6 +228,17 @@ public:
 		else if (InSkeletalMeshComponent->GetAnimationMode() == EAnimationMode::Type::AnimationBlueprint)
 		{
 			UAnimInstance* AnimInstance = InSkeletalMeshComponent->GetAnimInstance();
+			ISequencerAnimationSupport* SequencerInterface = Cast<ISequencerAnimationSupport>(AnimInstance);
+			if (SequencerInterface && SequencerInterface->DoesSupportDifferentSourceAnimInstance())
+			{
+				UAnimInstance* SourceInstance = SequencerInterface->GetSourceAnimInstance();
+				if (SourceInstance)
+				{
+					InSkeletalMeshComponent->AnimScriptInstance = SourceInstance;
+					AnimInstance = SourceInstance;
+				}
+			}
+		
 			if (AnimInstance)
 			{
 				AnimInstance->Montage_Stop(0.0f);
