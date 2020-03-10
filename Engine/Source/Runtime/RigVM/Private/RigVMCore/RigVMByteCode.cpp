@@ -13,6 +13,12 @@ FRigVMInstructionArray::FRigVMInstructionArray(const FRigVMByteCode& InByteCode)
 	while (ByteIndex < InByteCode.Num())
 	{
 		ERigVMOpCode OpCode = InByteCode.GetOpCodeAt(ByteIndex);
+		if ((int32)OpCode >= (int32)ERigVMOpCode::Invalid)
+		{
+			checkNoEntry();
+			Instructions.Reset();
+			break;
+		}
 		Instructions.Add(FRigVMInstruction(OpCode, ByteIndex));
 		ByteIndex += InByteCode.GetOpNumBytesAt(ByteIndex);
 	}

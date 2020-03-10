@@ -452,6 +452,21 @@ public:
 		return GetOpAt<OpType>(InInstruction.ByteCodeIndex);
 	}
 
+	// returns an operator at a given byte code index
+	template<class OpType>
+	FORCEINLINE OpType& GetOpAt(uint64 InByteCodeIndex)
+	{
+		ensure(InByteCodeIndex >= 0 && InByteCodeIndex <= ByteCode.Num() - sizeof(OpType));
+		return *(OpType*)(ByteCode.GetData() + InByteCodeIndex);
+	}
+
+	// returns an operator for a given instruction
+	template<class OpType>
+	FORCEINLINE OpType& GetOpAt(const FRigVMInstruction& InInstruction)
+	{
+		return GetOpAt<OpType>(InInstruction.ByteCodeIndex);
+	}
+
 	// returns a list of operands at a given byte code index
 	FORCEINLINE TArrayView<FRigVMOperand> GetOperandsAt(uint64 InByteCodeIndex, uint16 InArgumentCount) const
 	{
