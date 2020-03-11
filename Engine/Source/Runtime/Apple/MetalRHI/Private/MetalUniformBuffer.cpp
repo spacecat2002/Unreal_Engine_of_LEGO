@@ -11,25 +11,6 @@
 #include "HAL/LowLevelMemTracker.h"
 #include "Misc/ScopeRWLock.h"
 
-@implementation FMetalIAB
-
-APPLE_PLATFORM_OBJECT_ALLOC_OVERRIDES(FMetalIAB)
-
--(instancetype)init
-{
-	id Self = [super init];
-	if (Self)
-		((FMetalIAB*)Self)->UpdateIAB = 0;
-	return Self;
-}
--(void)dealloc
-{
-	SafeReleaseMetalBuffer(IndirectArgumentBuffer);
-	SafeReleaseMetalBuffer(IndirectArgumentBufferSideTable);
-	[super dealloc];
-}
-@end
-
 FMetalUniformBuffer::FMetalUniformBuffer(const void* Contents, const FRHIUniformBufferLayout& Layout, EUniformBufferUsage InUsage, EUniformBufferValidation Validation)
 	: FRHIUniformBuffer(Layout)
     , FMetalRHIBuffer(Layout.ConstantBufferSize, (FMetalCommandQueue::SupportsFeature(EMetalFeaturesIABs) && Layout.Resources.Num() ? (EMetalBufferUsage_GPUOnly|BUF_Volatile) : BUF_Volatile), RRT_UniformBuffer)

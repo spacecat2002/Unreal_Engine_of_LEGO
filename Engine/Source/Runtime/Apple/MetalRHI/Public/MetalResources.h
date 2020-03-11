@@ -736,8 +736,6 @@ struct FMetalArgumentDesc
 	}
 };
 
-@class FMetalIAB;
-
 class FMetalUniformBuffer : public FRHIUniformBuffer, public FMetalRHIBuffer
 {
 public:
