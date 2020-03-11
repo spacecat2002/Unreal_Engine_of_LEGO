@@ -21,4 +21,22 @@ struct RIGVM_API FRigVMStruct
 public:
 
 	FORCEINLINE virtual int32 GetArraySize(const FName& InParameterName, const FRigVMUserDataArray& RigVMUserData) { return INDEX_NONE; }
+
+	static const FName DeprecatedMetaName;
+	static const FName InputMetaName;
+	static const FName OutputMetaName;
+	static const FName AbstractMetaName;
+	static const FName CategoryMetaName;
+	static const FName DisplayNameMetaName;
+	static const FName MenuDescSuffixMetaName;
+	static const FName ShowVariableNameInTitleMetaName;
+	static const FName CustomWidgetMetaName;
+	static const FName ConstantMetaName;
+	static const FName TitleColorMetaName;
+	static const FName NodeColorMetaName;
+	static const FName KeywordsMetaName;
+	static const FName PrototypeNameMetaName;
+	static const FName ExpandPinByDefaultMetaName;
+	static const FName DefaultArraySizeMetaName;
+	static const FName VaryingMetaName;
 };
