@@ -614,7 +614,7 @@ void USkeletalMeshComponent::InitAnim(bool bForceReinit)
 		// Calling this here with true will block this init till that thread completes
 		// and it is safe to continue
 		const bool bBlockOnTask = true; // wait on evaluation task so it is safe to continue with Init
-		const bool bPerformPostAnimEvaluation = false; // Skip post evaluation, it would be wasted work
+		const bool bPerformPostAnimEvaluation = true; // That will swap buffer back to ComponentTransform, and finish evaluate. This is required - otherwise, we won't have a buffer.
 		HandleExistingParallelEvaluationTask(bBlockOnTask, bPerformPostAnimEvaluation);
 
 		bool bBlueprintMismatch = (AnimClass != nullptr) &&
@@ -3658,6 +3658,7 @@ void USkeletalMeshComponent::CompleteParallelAnimationEvaluation(bool bDoPostAni
 
 		PostAnimEvaluation(AnimEvaluationContext);
 	}
+	
 	AnimEvaluationContext.Clear();
 }
 
