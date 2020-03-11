@@ -3,6 +3,7 @@
 #pragma once
 
 #include "MetalRHIPrivate.h"
+#include "Shaders/MetalShaderParameterCache.h"
 #include "MetalCommandEncoder.h"
 #include "MetalPipeline.h"
 
