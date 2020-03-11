@@ -852,24 +852,6 @@ private:
 	mtlpp::CommandBufferFence Fence;
 };
 
-class FMetalStagingBuffer final : public FRHIStagingBuffer
-{
-	friend class FMetalRHICommandContext;
-public:
-	FMetalStagingBuffer()
-		: FRHIStagingBuffer()
-	{
-	}
-
-	virtual ~FMetalStagingBuffer() final override;
-
-	virtual void* Lock(uint32 Offset, uint32 NumBytes) final override;
-
-	virtual void Unlock() final override;
-private:
-	FMetalBuffer ShadowBuffer;
-};
-
 class FMetalShaderLibrary;
 class FMetalGraphicsPipelineState;
 class FMetalComputePipelineState;
@@ -880,6 +862,7 @@ class FMetalDomainShader;
 class FMetalGeometryShader;
 class FMetalPixelShader;
 class FMetalComputeShader;
+class FMetalRHIStagingBuffer;
 
 template<class T>
 struct TMetalResourceTraits
@@ -1024,5 +1007,5 @@ struct TMetalResourceTraits<FRHIGPUFence>
 template<>
 struct TMetalResourceTraits<FRHIStagingBuffer>
 {
-	typedef FMetalStagingBuffer TConcreteType;
+	typedef FMetalRHIStagingBuffer TConcreteType;
 };

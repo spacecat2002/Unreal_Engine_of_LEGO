@@ -6,6 +6,7 @@
 
 
 #include "MetalRHIPrivate.h"
+#include "MetalRHIStagingBuffer.h"
 #include "MetalShaderTypes.h"
 #include "MetalVertexDeclaration.h"
 #include "MetalGraphicsPipelineState.h"
@@ -76,4 +77,27 @@ TRefCountPtr<FRHIComputePipelineState> FMetalDynamicRHI::RHICreateComputePipelin
 	@autoreleasepool {
 		return new FMetalComputePipelineState(ResourceCast(ComputeShader));
 	} // autoreleasepool
+}
+
+
+//------------------------------------------------------------------------------
+
+#pragma mark - Metal Dynamic RHI Staging Buffer Methods
+
+
+FStagingBufferRHIRef FMetalDynamicRHI::RHICreateStagingBuffer()
+{
+	return new FMetalRHIStagingBuffer();
+}
+
+void* FMetalDynamicRHI::RHILockStagingBuffer(FRHIStagingBuffer* StagingBuffer, FRHIGPUFence* Fence, uint32 Offset, uint32 SizeRHI)
+{
+	FMetalRHIStagingBuffer* Buffer = ResourceCast(StagingBuffer);
+	return Buffer->Lock(Offset, SizeRHI);
+}
+
+void FMetalDynamicRHI::RHIUnlockStagingBuffer(FRHIStagingBuffer* StagingBuffer)
+{
+	FMetalRHIStagingBuffer* Buffer = ResourceCast(StagingBuffer);
+	Buffer->Unlock();
 }
