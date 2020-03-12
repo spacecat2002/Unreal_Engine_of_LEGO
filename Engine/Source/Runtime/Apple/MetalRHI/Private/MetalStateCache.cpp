@@ -2,6 +2,7 @@
 
 
 #include "MetalRHIPrivate.h"
+#include "MetalRHIRenderQuery.h"
 #include "MetalShaderTypes.h"
 #include "MetalGraphicsPipelineState.h"
 #include "MetalStateCache.h"

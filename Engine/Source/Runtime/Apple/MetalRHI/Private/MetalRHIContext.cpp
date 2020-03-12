@@ -1,8 +1,8 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "MetalRHIPrivate.h"
+#include "MetalRHIRenderQuery.h"
 #include "MetalCommandBufferFence.h"
-#include "MetalQuery.h"
 
 TGlobalResource<TBoundShaderStateHistory<10000>> FMetalRHICommandContext::BoundShaderStateHistory;
 

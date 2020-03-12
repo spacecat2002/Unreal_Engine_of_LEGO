@@ -8,6 +8,7 @@
 #include "MetalPipeline.h"
 
 class FMetalGraphicsPipelineState;
+class FMetalQueryBuffer;
 
 enum EMetalPipelineFlags
 {

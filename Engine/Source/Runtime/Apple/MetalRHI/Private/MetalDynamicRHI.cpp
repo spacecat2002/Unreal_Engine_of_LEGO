@@ -6,8 +6,8 @@
 
 
 #include "MetalRHIPrivate.h"
+#include "MetalRHIRenderQuery.h"
 #include "MetalRHIStagingBuffer.h"
-#include "MetalQuery.h"
 #include "MetalShaderTypes.h"
 #include "MetalVertexDeclaration.h"
 #include "MetalGraphicsPipelineState.h"

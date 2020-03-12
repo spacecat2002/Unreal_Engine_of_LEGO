@@ -5,8 +5,8 @@
 =============================================================================*/
 
 #include "MetalRHIPrivate.h"
+#include "MetalRHIRenderQuery.h"
 #include "MetalCommandBufferFence.h"
-#include "MetalQuery.h"
 #include "MetalProfiler.h"
 #include "MetalLLM.h"
 #include "MetalCommandBuffer.h"
