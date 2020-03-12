@@ -9,6 +9,7 @@
 #include "MetalViewport.h"
 
 class FMetalContext;
+struct FMetalCommandBufferFence;
 
 /** The interface RHI command context. */
 class FMetalRHICommandContext : public IRHICommandContext

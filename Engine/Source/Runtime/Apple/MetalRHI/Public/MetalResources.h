@@ -371,72 +371,6 @@ public:
 	}
 };
 
-struct FMetalCommandBufferFence
-{
-	bool Wait(uint64 Millis);
-	
-	mtlpp::CommandBufferFence CommandBufferFence;
-};
-
-struct FMetalQueryBuffer : public FRHIResource
-{
-	FMetalQueryBuffer(FMetalContext* InContext, FMetalBuffer InBuffer);
-	
-	virtual ~FMetalQueryBuffer();
-	
-	uint64 GetResult(uint32 Offset);
-	
-	TWeakPtr<struct FMetalQueryBufferPool, ESPMode::ThreadSafe> Pool;
-	FMetalBuffer Buffer;
-	uint32 WriteOffset;
-};
-typedef TRefCountPtr<FMetalQueryBuffer> FMetalQueryBufferRef;
-
-struct FMetalQueryResult
-{
-	bool Wait(uint64 Millis);
-	uint64 GetResult();
-	
-	FMetalQueryBufferRef SourceBuffer;
-	TSharedPtr<FMetalCommandBufferFence, ESPMode::ThreadSafe> CommandBufferFence;
-	uint32 Offset;
-	bool bCompleted;
-	bool bBatchFence;
-};
-
-/** Metal occlusion query */
-class FMetalRenderQuery : public FRHIRenderQuery
-{
-public:
-
-	/** Initialization constructor. */
-	FMetalRenderQuery(ERenderQueryType InQueryType);
-
-	virtual ~FMetalRenderQuery();
-
-	/**
-	 * Kick off an occlusion test 
-	 */
-	void Begin(FMetalContext* Context, TSharedPtr<FMetalCommandBufferFence, ESPMode::ThreadSafe> const& BatchFence);
-
-	/**
-	 * Finish up an occlusion test 
-	 */
-	void End(FMetalContext* Context);
-	
-	// The type of query
-	ERenderQueryType Type;
-
-	// Query buffer allocation details as the buffer is already set on the command-encoder
-	FMetalQueryResult Buffer;
-	
-	// Query result.
-	volatile uint64 Result;
-	
-	// Result availability - if not set the first call to acquire it will read the buffer & cache
-	volatile bool bAvailable;
-};
-
 @interface FMetalBufferData : FApplePlatformObject<NSObject>
 {
 @public
@@ -786,6 +720,7 @@ class FMetalGeometryShader;
 class FMetalPixelShader;
 class FMetalComputeShader;
 class FMetalRHIStagingBuffer;
+class FMetalRHIRenderQuery;
 
 template<class T>
 struct TMetalResourceTraits
@@ -854,7 +789,7 @@ struct TMetalResourceTraits<FRHITextureCube>
 template<>
 struct TMetalResourceTraits<FRHIRenderQuery>
 {
-	typedef FMetalRenderQuery TConcreteType;
+	typedef FMetalRHIRenderQuery TConcreteType;
 };
 template<>
 struct TMetalResourceTraits<FRHIUniformBuffer>

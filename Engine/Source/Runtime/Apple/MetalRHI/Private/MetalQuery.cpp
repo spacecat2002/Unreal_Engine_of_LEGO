@@ -1,10 +1,12 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
-	MetalQuery.cpp: Metal query RHI implementation.
+	MetalRHIRenderQuery.cpp: Metal RHI Render Query Implementation.
 =============================================================================*/
 
 #include "MetalRHIPrivate.h"
+#include "MetalCommandBufferFence.h"
+#include "MetalQuery.h"
 #include "MetalProfiler.h"
 #include "MetalLLM.h"
 #include "MetalCommandBuffer.h"
@@ -13,81 +15,25 @@
 extern int32 GMetalProfilerStatisticsTiming;
 #endif
 
-void FMetalQueryBufferPool::Allocate(FMetalQueryResult& NewQuery)
-{
-	FMetalQueryBuffer* QB = IsValidRef(CurrentBuffer) ? CurrentBuffer.GetReference() : GetCurrentQueryBuffer();
-	
-	uint32 Offset = Align(QB->WriteOffset, EQueryBufferAlignment);
-	uint32 End = Align(Offset + EQueryResultMaxSize, EQueryBufferAlignment);
-	
-	if(Align(QB->WriteOffset, EQueryBufferAlignment) + EQueryResultMaxSize <= EQueryBufferMaxSize)
-	{
-		NewQuery.SourceBuffer = QB;
-		NewQuery.Offset = Align(QB->WriteOffset, EQueryBufferAlignment);
-		QB->WriteOffset = Align(QB->WriteOffset, EQueryBufferAlignment) + EQueryResultMaxSize;
-	}
-	else
-	{
-		UE_LOG(LogRHI, Warning, TEXT("Performance: Resetting render command encoder as query buffer offset: %d exceeds the maximum allowed: %d."), QB->WriteOffset, EQueryBufferMaxSize);
-		Context->ResetRenderCommandEncoder();
-		Allocate(NewQuery);
-	}
-}
 
-void FMetalQueryBufferPool::ReleaseCurrentQueryBuffer()
-{
-	if (IsValidRef(CurrentBuffer) && CurrentBuffer->WriteOffset > 0)
-	{
-		CurrentBuffer.SafeRelease();
-	}
-}
+//------------------------------------------------------------------------------
 
-FMetalQueryBuffer* FMetalQueryBufferPool::GetCurrentQueryBuffer()
-{
-	if(!IsValidRef(CurrentBuffer) || (CurrentBuffer->Buffer.GetStorageMode() != mtlpp::StorageMode::Shared && CurrentBuffer->WriteOffset > 0))
-	{
-		FMetalBuffer Buffer;
-		if(Buffers.Num())
-		{
-			Buffer = Buffers.Pop();
-		}
-		else
-		{
-			LLM_SCOPE_METAL(ELLMTagMetal::Buffers);
-			LLM_PLATFORM_SCOPE_METAL(ELLMTagMetal::Buffers);
+#pragma mark - Metal RHI Private Query Buffer Resource Class -
 
-			METAL_GPUPROFILE(FScopedMetalCPUStats CPUStat(FString::Printf(TEXT("AllocBuffer: %llu, %llu"), EQueryBufferMaxSize, mtlpp::ResourceOptions::StorageModeShared)));
-            Buffer = GetMetalDeviceContext().GetResourceHeap().CreateBuffer(EQueryBufferMaxSize, 16, BUF_Dynamic, FMetalCommandQueue::GetCompatibleResourceOptions((mtlpp::ResourceOptions)(BUFFER_CACHE_MODE | mtlpp::ResourceOptions::HazardTrackingModeUntracked | mtlpp::ResourceOptions::StorageModeShared)), true);
-			FMemory::Memzero((((uint8*)Buffer.GetContents())), EQueryBufferMaxSize);
-
-#if STATS || ENABLE_LOW_LEVEL_MEM_TRACKER
-			MetalLLM::LogAllocBuffer(Context->GetDevice(), Buffer);
-#endif
-		}
-		
-		CurrentBuffer = new FMetalQueryBuffer(Context, MoveTemp(Buffer));
-	}
-	
-	return CurrentBuffer.GetReference();
-}
-
-void FMetalQueryBufferPool::ReleaseQueryBuffer(FMetalBuffer& Buffer)
-{
-	Buffers.Add(MoveTemp(Buffer));
-}
 
 FMetalQueryBuffer::FMetalQueryBuffer(FMetalContext* InContext, FMetalBuffer InBuffer)
-: Pool(InContext->GetQueryBufferPool())
-, Buffer(MoveTemp(InBuffer))
-, WriteOffset(0)
+	: Pool(InContext->GetQueryBufferPool())
+	, Buffer(MoveTemp(InBuffer))
+	, WriteOffset(0)
 {
+	// void
 }
 
 FMetalQueryBuffer::~FMetalQueryBuffer()
 {
 	if (GIsMetalInitialized)
 	{
-		if(Buffer)
+		if (Buffer)
 		{
 			TSharedPtr<FMetalQueryBufferPool, ESPMode::ThreadSafe> BufferPool = Pool.Pin();
 			if (BufferPool.IsValid())
@@ -101,36 +47,105 @@ FMetalQueryBuffer::~FMetalQueryBuffer()
 uint64 FMetalQueryBuffer::GetResult(uint32 Offset)
 {
 	uint64 Result = 0;
-	@autoreleasepool
-	{
+	@autoreleasepool {
 		Result = *((uint64 const*)(((uint8*)Buffer.GetContents()) + Offset));
 	}
-    return Result;
+	return Result;
 }
 
-bool FMetalCommandBufferFence::Wait(uint64 Millis)
+
+//------------------------------------------------------------------------------
+
+#pragma mark - Metal RHI Private Query Buffer Pool Class -
+
+
+FMetalQueryBufferPool::FMetalQueryBufferPool(FMetalContext* InContext)
+	: CurrentBuffer{nullptr}
+	, Buffers{}
+	, Context{InContext}
 {
-	@autoreleasepool
+	// void
+}
+
+FMetalQueryBufferPool::~FMetalQueryBufferPool()
+{
+	// void
+}
+
+void FMetalQueryBufferPool::Allocate(FMetalQueryResult& NewQuery)
+{
+	FMetalQueryBuffer* QB = IsValidRef(CurrentBuffer) ? CurrentBuffer.GetReference() : GetCurrentQueryBuffer();
+
+	uint32 Offset = Align(QB->WriteOffset, EQueryBufferAlignment);
+	uint32 End = Align(Offset + EQueryResultMaxSize, EQueryBufferAlignment);
+
+	if (Align(QB->WriteOffset, EQueryBufferAlignment) + EQueryResultMaxSize <= EQueryBufferMaxSize)
 	{
-		if (CommandBufferFence)
+		NewQuery.SourceBuffer = QB;
+		NewQuery.Offset = Align(QB->WriteOffset, EQueryBufferAlignment);
+		QB->WriteOffset = Align(QB->WriteOffset, EQueryBufferAlignment) + EQueryResultMaxSize;
+	}
+	else
+	{
+		UE_LOG(LogRHI, Warning, TEXT("Performance: Resetting render command encoder as query buffer offset: %d exceeds the maximum allowed: %d."), QB->WriteOffset, EQueryBufferMaxSize);
+		Context->ResetRenderCommandEncoder();
+		Allocate(NewQuery);
+	}
+}
+
+FMetalQueryBuffer* FMetalQueryBufferPool::GetCurrentQueryBuffer()
+{
+	if (!IsValidRef(CurrentBuffer) || (CurrentBuffer->Buffer.GetStorageMode() != mtlpp::StorageMode::Shared && CurrentBuffer->WriteOffset > 0))
+	{
+		FMetalBuffer Buffer;
+		if (Buffers.Num())
 		{
-			bool bFinished = CommandBufferFence.Wait(Millis);
-			FPlatformMisc::MemoryBarrier();
-			return bFinished;
+			Buffer = Buffers.Pop();
 		}
 		else
 		{
-			return true;
+			LLM_SCOPE_METAL(ELLMTagMetal::Buffers);
+			LLM_PLATFORM_SCOPE_METAL(ELLMTagMetal::Buffers);
+
+			METAL_GPUPROFILE(FScopedMetalCPUStats CPUStat(FString::Printf(TEXT("AllocBuffer: %llu, %llu"), EQueryBufferMaxSize, mtlpp::ResourceOptions::StorageModeShared)));
+			Buffer = GetMetalDeviceContext().GetResourceHeap().CreateBuffer(EQueryBufferMaxSize, 16, BUF_Dynamic, FMetalCommandQueue::GetCompatibleResourceOptions((mtlpp::ResourceOptions)(BUFFER_CACHE_MODE | mtlpp::ResourceOptions::HazardTrackingModeUntracked | mtlpp::ResourceOptions::StorageModeShared)), true);
+			FMemory::Memzero((((uint8*)Buffer.GetContents())), EQueryBufferMaxSize);
+
+#if STATS || ENABLE_LOW_LEVEL_MEM_TRACKER
+			MetalLLM::LogAllocBuffer(Context->GetDevice(), Buffer);
+#endif // STATS || ENABLE_LOW_LEVEL_MEM_TRACKER
 		}
+
+		CurrentBuffer = new FMetalQueryBuffer(Context, MoveTemp(Buffer));
+	}
+
+	return CurrentBuffer.GetReference();
+}
+
+void FMetalQueryBufferPool::ReleaseCurrentQueryBuffer()
+{
+	if (IsValidRef(CurrentBuffer) && CurrentBuffer->WriteOffset > 0)
+	{
+		CurrentBuffer.SafeRelease();
 	}
 }
-	
+
+void FMetalQueryBufferPool::ReleaseQueryBuffer(FMetalBuffer& Buffer)
+{
+	Buffers.Add(MoveTemp(Buffer));
+}
+
+
+//------------------------------------------------------------------------------
+
+#pragma mark - Metal RHI Private Query Result Class -
+
+
 bool FMetalQueryResult::Wait(uint64 Millis)
 {
-	if(!bCompleted)
+	if (!bCompleted)
 	{
 		bCompleted = CommandBufferFence->Wait(Millis);
-		
 		return bCompleted;
 	}
 	return true;
@@ -138,47 +153,52 @@ bool FMetalQueryResult::Wait(uint64 Millis)
 
 uint64 FMetalQueryResult::GetResult()
 {
-	if(IsValidRef(SourceBuffer))
+	if (IsValidRef(SourceBuffer))
 	{
 		return SourceBuffer->GetResult(Offset);
 	}
 	return 0;
 }
 
-FMetalRenderQuery::FMetalRenderQuery(ERenderQueryType InQueryType)
-: Type(InQueryType)
+
+//------------------------------------------------------------------------------
+
+#pragma mark - Metal RHI Render Query Class -
+
+
+FMetalRHIRenderQuery::FMetalRHIRenderQuery(ERenderQueryType InQueryType)
+	: Type{InQueryType}
+	, Buffer{}
+	, Result{0}
+	, bAvailable{false}
 {
-	Result = 0;
-	bAvailable = false;
-	Buffer.Offset = 0;
-	Buffer.bCompleted = false;
-	Buffer.bBatchFence = false;
+	// void
 }
 
-FMetalRenderQuery::~FMetalRenderQuery()
+FMetalRHIRenderQuery::~FMetalRHIRenderQuery()
 {
 	Buffer.SourceBuffer.SafeRelease();
 	Buffer.Offset = 0;
 }
 
-void FMetalRenderQuery::Begin(FMetalContext* Context, TSharedPtr<FMetalCommandBufferFence, ESPMode::ThreadSafe> const& BatchFence)
+void FMetalRHIRenderQuery::Begin(FMetalContext* Context, TSharedPtr<FMetalCommandBufferFence, ESPMode::ThreadSafe> const& BatchFence)
 {
 	Buffer.CommandBufferFence.Reset();
 	Buffer.SourceBuffer.SafeRelease();
 	Buffer.Offset = 0;
 	Buffer.bBatchFence = false;
-	
+
 	Result = 0;
 	bAvailable = false;
-	
-	switch(Type)
+
+	switch (Type)
 	{
 		case RQT_Occlusion:
 		{
 			// allocate our space in the current buffer
 			Context->GetQueryBufferPool()->Allocate(Buffer);
 			Buffer.bCompleted = false;
-			
+
 			if ((GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5) && GetMetalDeviceContext().SupportsFeature(EMetalFeaturesCountingQueries))
 			{
 				Context->GetCurrentState().SetVisibilityResultMode(mtlpp::VisibilityResultMode::Counting, Buffer.Offset);
@@ -210,16 +230,16 @@ void FMetalRenderQuery::Begin(FMetalContext* Context, TSharedPtr<FMetalCommandBu
 	}
 }
 
-void FMetalRenderQuery::End(FMetalContext* Context)
+void FMetalRHIRenderQuery::End(FMetalContext* Context)
 {
-	switch(Type)
+	switch (Type)
 	{
 		case RQT_Occlusion:
 		{
 			// switch back to non-occlusion rendering
 			check(Buffer.CommandBufferFence.IsValid());
 			Context->GetCurrentState().SetVisibilityResultMode(mtlpp::VisibilityResultMode::Disabled, 0);
-			
+
 			// For unique, unbatched, queries insert the fence now
 			if (!Buffer.bBatchFence)
 			{
@@ -230,7 +250,7 @@ void FMetalRenderQuery::End(FMetalContext* Context)
 		case RQT_AbsoluteTime:
 		{
 			AddRef();
-			
+
 			// Reset the result availability state
 			Buffer.SourceBuffer.SafeRelease();
 			Buffer.Offset = 0;
@@ -238,10 +258,10 @@ void FMetalRenderQuery::End(FMetalContext* Context)
 			Buffer.bBatchFence = false;
 			Buffer.CommandBufferFence = MakeShareable(new FMetalCommandBufferFence);
 			check(Buffer.CommandBufferFence.IsValid());
-			
+
 			Result = 0;
 			bAvailable = false;
-			
+
 #if METAL_STATISTICS
 			class IMetalStatistics* Stats = Context->GetCommandQueue().GetStatistics();
 			if (Stats && GMetalProfilerStatisticsTiming)
@@ -254,7 +274,7 @@ void FMetalRenderQuery::End(FMetalContext* Context)
 				}
 				check(StatSample);
 				[StatSample retain];
-				
+
 				// Insert the fence to wait on the current command buffer
 				Context->InsertCommandBufferFence(*(Buffer.CommandBufferFence), [this, StatSample](mtlpp::CommandBuffer const&)
 				{
@@ -267,7 +287,7 @@ void FMetalRenderQuery::End(FMetalContext* Context)
 				});
 			}
 			else
-#endif
+#endif // METAL_STATISTICS
 			{
 				// Insert the fence to wait on the current command buffer
 				Context->InsertCommandBufferFence(*(Buffer.CommandBufferFence), [this](mtlpp::CommandBuffer const&)
@@ -275,7 +295,7 @@ void FMetalRenderQuery::End(FMetalContext* Context)
 					Result = (FPlatformTime::ToMilliseconds64(mach_absolute_time()) * 1000.0);
 					this->Release();
 				});
-				
+
 				// Submit the current command buffer, marking this is as a break of a logical command buffer for render restart purposes
 				// This is necessary because we use command-buffer completion to emulate timer queries as Metal has no such API
 				Context->SubmitCommandsHint(EMetalSubmitFlagsCreateCommandBuffer|EMetalSubmitFlagsBreakCommandBuffer);
@@ -290,51 +310,32 @@ void FMetalRenderQuery::End(FMetalContext* Context)
 	}
 }
 
-FRenderQueryRHIRef FMetalDynamicRHI::RHICreateRenderQuery_RenderThread(class FRHICommandListImmediate& RHICmdList, ERenderQueryType QueryType)
+bool FMetalRHIRenderQuery::GetResult(uint64& OutNumPixels, bool bWait, uint32 GPUIndex)
 {
-	@autoreleasepool {
-	return GDynamicRHI->RHICreateRenderQuery(QueryType);
-	}
-}
+	if (!bAvailable)
+	{
+		SCOPE_CYCLE_COUNTER(STAT_RenderQueryResultTime);
 
-FRenderQueryRHIRef FMetalDynamicRHI::RHICreateRenderQuery(ERenderQueryType QueryType)
-{
-	@autoreleasepool {
-		FRenderQueryRHIRef Query = new FMetalRenderQuery(QueryType);
-		return Query;
-	}
-}
-
-bool FMetalDynamicRHI::RHIGetRenderQueryResult(FRHIRenderQuery* QueryRHI, uint64& OutNumPixels, bool bWait, uint32 GPUIndex)
-{
-	@autoreleasepool {
-	check(IsInRenderingThread());
-	FMetalRenderQuery* Query = ResourceCast(QueryRHI);
-	
-    if(!Query->bAvailable)
-    {
-		SCOPE_CYCLE_COUNTER( STAT_RenderQueryResultTime );
-		
 		bool bOK = false;
-		
-		bool const bCmdBufferIncomplete = !Query->Buffer.bCompleted;
-		
+
+		bool const bCmdBufferIncomplete = !Buffer.bCompleted;
+
 		// timer queries are used for Benchmarks which can stall a bit more
-		uint64 WaitMS = (Query->Type == RQT_AbsoluteTime) ? 2000 : 500;
+		uint64 WaitMS = (Type == RQT_AbsoluteTime) ? 2000 : 500;
 		if (bWait)
 		{
 			// RHI thread *must* be flushed at this point if the internal handles we rely upon are not yet valid.
 			// We *CANNOT* have one event per query as it consumes too many pthread objects.
-			if (!FRHICommandListExecutor::GetImmediateCommandList().Bypass() && IsRunningRHIInSeparateThread() && !Query->Buffer.CommandBufferFence.IsValid())
+			if (!FRHICommandListExecutor::GetImmediateCommandList().Bypass() && IsRunningRHIInSeparateThread() && !Buffer.CommandBufferFence.IsValid())
 			{
 				FRHICommandListExecutor::GetImmediateCommandList().RHIThreadFence(true);
 				FRHICommandListExecutor::GetImmediateCommandList().ImmediateFlush(EImmediateFlushType::FlushRHIThread);
 			}
-			
+
 			uint32 IdleStart = FPlatformTime::Cycles();
-		
-			bOK = Query->Buffer.Wait(WaitMS);
-			
+
+			bOK = Buffer.Wait(WaitMS);
+
 			if (IsInRHIThread())
 			{
 				GWorkingRHIThreadStallTime += FPlatformTime::Cycles() - IdleStart;
@@ -344,107 +345,32 @@ bool FMetalDynamicRHI::RHIGetRenderQueryResult(FRHIRenderQuery* QueryRHI, uint64
 				GRenderThreadIdle[ERenderThreadIdleTypes::WaitingForGPUQuery] += FPlatformTime::Cycles() - IdleStart;
 				GRenderThreadNumIdle[ERenderThreadIdleTypes::WaitingForGPUQuery]++;
 			}
-			
+
 			// Never wait for a failed signal again.
-			Query->bAvailable = Query->Buffer.bCompleted;
+			bAvailable = Buffer.bCompleted;
 		}
 		else
 		{
-			bOK = Query->Buffer.Wait(0);
+			bOK = Buffer.Wait(0);
 		}
-		
-        if (bOK == false)
-        {
+
+		if (bOK == false)
+		{
 			OutNumPixels = 0;
 			UE_CLOG(bWait, LogMetal, Display, TEXT("Timed out while waiting for GPU to catch up. (%llu ms)"), WaitMS);
 			return false;
-        }
-		
-		if(Query->Type == RQT_Occlusion)
-		{
-			Query->Result = Query->Buffer.GetResult();
 		}
-		
-		Query->Buffer.SourceBuffer.SafeRelease();
-    }
+
+		if (Type == RQT_Occlusion)
+		{
+			Result = Buffer.GetResult();
+		}
+
+		Buffer.SourceBuffer.SafeRelease();
+	}
 
 	// at this point, we are ready to read the value!
-	OutNumPixels = Query->Result;
-    return true;
-	}
-}
+	OutNumPixels = Result;
 
-// Occlusion/Timer queries.
-void FMetalRHICommandContext::RHIBeginRenderQuery(FRHIRenderQuery* QueryRHI)
-{
-	@autoreleasepool {
-	FMetalRenderQuery* Query = ResourceCast(QueryRHI);
-	
-	Query->Begin(Context, CommandBufferFence);
-	}
-}
-
-void FMetalRHICommandContext::RHIEndRenderQuery(FRHIRenderQuery* QueryRHI)
-{
-	@autoreleasepool {
-	FMetalRenderQuery* Query = ResourceCast(QueryRHI);
-	
-	Query->End(Context);
-	}
-}
-
-void FMetalRHICommandContext::RHIBeginOcclusionQueryBatch(uint32 NumQueriesInBatch)
-{
-	check(!CommandBufferFence.IsValid());
-	CommandBufferFence = MakeShareable(new FMetalCommandBufferFence);
-}
-
-void FMetalRHICommandContext::RHIEndOcclusionQueryBatch()
-{
-	check(CommandBufferFence.IsValid());
-	Context->InsertCommandBufferFence(*CommandBufferFence);
-	CommandBufferFence.Reset();
-}
-
-void FMetalDynamicRHI::RHICalibrateTimers()
-{
-//	check(IsInRenderingThread());
-//#if METAL_STATISTICS
-//	FMetalContext& Context = ImmediateContext.GetInternalContext();
-//	if (Context.GetCommandQueue().GetStatistics())
-//	{
-//		FScopedRHIThreadStaller StallRHIThread(FRHICommandListExecutor::GetImmediateCommandList());
-//		mtlpp::CommandBuffer Buffer = Context.GetCommandQueue().CreateCommandBuffer();
-//		
-//		id<IMetalStatisticsSamples> Samples = Context.GetCommandQueue().GetStatistics()->RegisterEncoderStatistics(Buffer.GetPtr(), EMetalSampleComputeEncoderStart);
-//		mtlpp::ComputeCommandEncoder Encoder = Buffer.ComputeCommandEncoder();
-//#if MTLPP_CONFIG_VALIDATE && METAL_DEBUG_OPTIONS
-//		FMetalComputeCommandEncoderDebugging Debugging;
-//		if (SafeGetRuntimeDebuggingLevel() >= EMetalDebugLevelFastValidation)
-//		{
-//			FMetalCommandBufferDebugging CmdDebug = FMetalCommandBufferDebugging::Get(Buffer);
-//			Debugging = FMetalComputeCommandEncoderDebugging(Encoder, CmdDebug);
-//		}
-//#endif
-//		
-//		Context.GetCommandQueue().GetStatistics()->RegisterEncoderStatistics(Buffer.GetPtr(), EMetalSampleComputeEncoderEnd);
-//		check(Samples);
-//		[Samples retain];
-//		Encoder.EndEncoding();
-//		METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, Debugging.EndEncoder());
-//		
-//		FMetalProfiler* Profiler = ImmediateContext.GetProfiler();
-//		Buffer.AddCompletedHandler(^(const mtlpp::CommandBuffer & theBuffer) {
-//			double GpuTimeSeconds = theBuffer.GetGpuStartTime();
-//			const double CyclesPerSecond = 1.0 / FPlatformTime::GetSecondsPerCycle();
-//			NSUInteger EndTime = GpuTimeSeconds * CyclesPerSecond;
-//			NSUInteger StatsTime = Samples.Array[0];
-//			Profiler->TimingSupport.SetCalibrationTimestamp(StatsTime / 1000, EndTime / 1000);
-//			[Samples release];
-//		});
-//		
-//		Context.GetCommandQueue().CommitCommandBuffer(Buffer);
-//		Buffer.WaitUntilCompleted();
-//	}
-//#endif
+	return true;
 }

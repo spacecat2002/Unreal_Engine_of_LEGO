@@ -7,6 +7,7 @@
 
 #include "MetalRHIPrivate.h"
 #include "MetalRHIStagingBuffer.h"
+#include "MetalQuery.h"
 #include "MetalShaderTypes.h"
 #include "MetalVertexDeclaration.h"
 #include "MetalGraphicsPipelineState.h"
@@ -15,7 +16,7 @@
 
 //------------------------------------------------------------------------------
 
-#pragma mark - Metal Dynamic RHI Vertex Declaration Methods
+#pragma mark - Metal Dynamic RHI Vertex Declaration Methods -
 
 
 FVertexDeclarationRHIRef FMetalDynamicRHI::RHICreateVertexDeclaration(const FVertexDeclarationElementList& Elements)
@@ -38,7 +39,7 @@ FVertexDeclarationRHIRef FMetalDynamicRHI::RHICreateVertexDeclaration(const FVer
 
 //------------------------------------------------------------------------------
 
-#pragma mark - Metal Dynamic RHI Pipeline State Methods
+#pragma mark - Metal Dynamic RHI Pipeline State Methods -
 
 
 FGraphicsPipelineStateRHIRef FMetalDynamicRHI::RHICreateGraphicsPipelineState(const FGraphicsPipelineStateInitializer& Initializer)
@@ -82,7 +83,7 @@ TRefCountPtr<FRHIComputePipelineState> FMetalDynamicRHI::RHICreateComputePipelin
 
 //------------------------------------------------------------------------------
 
-#pragma mark - Metal Dynamic RHI Staging Buffer Methods
+#pragma mark - Metal Dynamic RHI Staging Buffer Methods -
 
 
 FStagingBufferRHIRef FMetalDynamicRHI::RHICreateStagingBuffer()
@@ -100,4 +101,79 @@ void FMetalDynamicRHI::RHIUnlockStagingBuffer(FRHIStagingBuffer* StagingBuffer)
 {
 	FMetalRHIStagingBuffer* Buffer = ResourceCast(StagingBuffer);
 	Buffer->Unlock();
+}
+
+
+//------------------------------------------------------------------------------
+
+#pragma mark - Metal Dynamic RHI Render Query Methods -
+
+
+FRenderQueryRHIRef FMetalDynamicRHI::RHICreateRenderQuery(ERenderQueryType QueryType)
+{
+	@autoreleasepool {
+		FRenderQueryRHIRef Query = new FMetalRHIRenderQuery(QueryType);
+		return Query;
+	}
+}
+
+FRenderQueryRHIRef FMetalDynamicRHI::RHICreateRenderQuery_RenderThread(class FRHICommandListImmediate& RHICmdList, ERenderQueryType QueryType)
+{
+	@autoreleasepool {
+		return GDynamicRHI->RHICreateRenderQuery(QueryType);
+	}
+}
+
+bool FMetalDynamicRHI::RHIGetRenderQueryResult(FRHIRenderQuery* QueryRHI, uint64& OutNumPixels, bool bWait, uint32 GPUIndex)
+{
+	@autoreleasepool {
+		check(IsInRenderingThread());
+		FMetalRHIRenderQuery* Query = ResourceCast(QueryRHI);
+		return Query->GetResult(OutNumPixels, bWait, GPUIndex);
+	}
+}
+
+void FMetalDynamicRHI::RHICalibrateTimers()
+{
+#if defined(UE_MTL_RHI_SUPPORTS_CALIBRATE_TIMERS)
+	check(IsInRenderingThread());
+#if METAL_STATISTICS
+	FMetalContext& Context = ImmediateContext.GetInternalContext();
+	if (Context.GetCommandQueue().GetStatistics())
+	{
+		FScopedRHIThreadStaller StallRHIThread(FRHICommandListExecutor::GetImmediateCommandList());
+		mtlpp::CommandBuffer Buffer = Context.GetCommandQueue().CreateCommandBuffer();
+
+		id<IMetalStatisticsSamples> Samples = Context.GetCommandQueue().GetStatistics()->RegisterEncoderStatistics(Buffer.GetPtr(), EMetalSampleComputeEncoderStart);
+		mtlpp::ComputeCommandEncoder Encoder = Buffer.ComputeCommandEncoder();
+#if MTLPP_CONFIG_VALIDATE && METAL_DEBUG_OPTIONS
+		FMetalComputeCommandEncoderDebugging Debugging;
+		if (SafeGetRuntimeDebuggingLevel() >= EMetalDebugLevelFastValidation)
+		{
+			FMetalCommandBufferDebugging CmdDebug = FMetalCommandBufferDebugging::Get(Buffer);
+			Debugging = FMetalComputeCommandEncoderDebugging(Encoder, CmdDebug);
+		}
+#endif // MTLPP_CONFIG_VALIDATE && METAL_DEBUG_OPTIONS
+
+		Context.GetCommandQueue().GetStatistics()->RegisterEncoderStatistics(Buffer.GetPtr(), EMetalSampleComputeEncoderEnd);
+		check(Samples);
+		[Samples retain];
+		Encoder.EndEncoding();
+		METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, Debugging.EndEncoder());
+
+		FMetalProfiler* Profiler = ImmediateContext.GetProfiler();
+		Buffer.AddCompletedHandler(^(const mtlpp::CommandBuffer & theBuffer) {
+			double GpuTimeSeconds = theBuffer.GetGpuStartTime();
+			const double CyclesPerSecond = 1.0 / FPlatformTime::GetSecondsPerCycle();
+			NSUInteger EndTime = GpuTimeSeconds * CyclesPerSecond;
+			NSUInteger StatsTime = Samples.Array[0];
+			Profiler->TimingSupport.SetCalibrationTimestamp(StatsTime / 1000, EndTime / 1000);
+			[Samples release];
+		});
+
+		Context.GetCommandQueue().CommitCommandBuffer(Buffer);
+		Buffer.WaitUntilCompleted();
+	}
+#endif // METAL_STATISTICS
+#endif // UE_MTL_RHI_SUPPORTS_CALIBRATE_TIMERS
 }

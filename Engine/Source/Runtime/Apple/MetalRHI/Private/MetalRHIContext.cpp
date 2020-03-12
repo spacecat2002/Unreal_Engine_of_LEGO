@@ -1,6 +1,8 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "MetalRHIPrivate.h"
+#include "MetalCommandBufferFence.h"
+#include "MetalQuery.h"
 
 TGlobalResource<TBoundShaderStateHistory<10000>> FMetalRHICommandContext::BoundShaderStateHistory;
 
@@ -230,4 +232,33 @@ void FMetalRHICommandContext::RHIBeginComputePass(const TCHAR* InName)
 
 void FMetalRHICommandContext::RHIEndComputePass()
 {
+}
+
+void FMetalRHICommandContext::RHIBeginRenderQuery(FRHIRenderQuery* QueryRHI)
+{
+	@autoreleasepool {
+		FMetalRHIRenderQuery* Query = ResourceCast(QueryRHI);
+		Query->Begin(Context, CommandBufferFence);
+	}
+}
+
+void FMetalRHICommandContext::RHIEndRenderQuery(FRHIRenderQuery* QueryRHI)
+{
+	@autoreleasepool {
+		FMetalRHIRenderQuery* Query = ResourceCast(QueryRHI);
+		Query->End(Context);
+	}
+}
+
+void FMetalRHICommandContext::RHIBeginOcclusionQueryBatch(uint32 NumQueriesInBatch)
+{
+	check(!CommandBufferFence.IsValid());
+	CommandBufferFence = MakeShareable(new FMetalCommandBufferFence);
+}
+
+void FMetalRHICommandContext::RHIEndOcclusionQueryBatch()
+{
+	check(CommandBufferFence.IsValid());
+	Context->InsertCommandBufferFence(*CommandBufferFence);
+	CommandBufferFence.Reset();
 }
