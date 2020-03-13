@@ -504,6 +504,9 @@ public:
 		return Statistics;
 	}
 
+	// returns the number of instructions within this byte code
+	int32 GetNumInstructions() const { return NumInstructions; }
+
 private:
 
 	template<class OpType>
@@ -511,10 +514,15 @@ private:
 	{
 		uint64 ByteIndex = (uint64)ByteCode.AddUninitialized(sizeof(OpType));
 		FMemory::Memcpy(ByteCode.GetData() + ByteIndex, &InOp, sizeof(OpType));
+		NumInstructions++;
 		return ByteIndex;
 	}
 
 	// memory for all functions
 	UPROPERTY()
 	TArray<uint8> ByteCode;
+
+	// memory for all functions
+	UPROPERTY()
+	int32 NumInstructions;
 };

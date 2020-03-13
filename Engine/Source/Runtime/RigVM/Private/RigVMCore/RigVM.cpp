@@ -273,7 +273,7 @@ void URigVM::CacheMemoryPointersIfRequired(FRigVMMemoryContainerPtrArray InMemor
 	}
 
 	uint16 InstructionIndex = 0;
-	while (Instructions[InstructionIndex].OpCode != ERigVMOpCode::Exit)
+	while (Instructions.IsValidIndex(InstructionIndex))
 	{
 		FirstPointerForInstruction.Add(CachedMemoryPointers.Num());
 
@@ -444,16 +444,15 @@ void URigVM::CacheMemoryPointersIfRequired(FRigVMMemoryContainerPtrArray InMemor
 				break;
 			}
 			case ERigVMOpCode::Exit:
+			{
+				InstructionIndex++;
+				break;
+			}
 			case ERigVMOpCode::Invalid:
 			{
 				ensure(false);
 				break;
 			}
-		}
-
-		if (!Instructions.IsValidIndex(InstructionIndex))
-		{
-			break;
 		}
 	}
 
@@ -488,7 +487,7 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> Add
 #endif
 
 	uint16 InstructionIndex = 0;
-	while (Instructions[InstructionIndex].OpCode != ERigVMOpCode::Exit)
+	while (Instructions.IsValidIndex(InstructionIndex))
 	{
 #if WITH_EDITOR
 		InstructionVisitedDuringLastRun[InstructionIndex] = true;
@@ -802,16 +801,14 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> Add
 				break;
 			}
 			case ERigVMOpCode::Exit:
+			{
+				return true;
+			}
 			case ERigVMOpCode::Invalid:
 			{
 				ensure(false);
 				return false;
 			}
-		}
-
-		if (!Instructions.IsValidIndex(InstructionIndex))
-		{
-			break;
 		}
 	}
 
@@ -834,3 +831,267 @@ void URigVM::SetRegisterValueFromString(const FRigVMOperand& InOperand, const FS
 		WorkMemory.SetRegisterValueFromString(InOperand, InCPPType, InCPPTypeObject, InDefaultValues);
 	}
 }
+
+
+#if WITH_EDITOR
+
+FString URigVM::DumpByteCodeAsText(const TArray<int32>& InInstructionOrder)
+{
+	RefreshInstructionsIfRequired();
+
+	TArray<int32> InstructionOrder;
+	InstructionOrder.Append(InInstructionOrder);
+	if (InstructionOrder.Num() == 0)
+	{
+		for (int32 InstructionIndex = 0; InstructionIndex < Instructions.Num(); InstructionIndex++)
+		{
+			InstructionOrder.Add(InstructionIndex);
+		}
+	}
+
+	TArray<FString> Result;
+
+	for (int32 InstructionIndex : InstructionOrder)
+	{
+		FString ResultLine;
+
+		switch (Instructions[InstructionIndex].OpCode)
+		{
+			case ERigVMOpCode::Execute_0_Operands:
+			case ERigVMOpCode::Execute_1_Operands:
+			case ERigVMOpCode::Execute_2_Operands:
+			case ERigVMOpCode::Execute_3_Operands:
+			case ERigVMOpCode::Execute_4_Operands:
+			case ERigVMOpCode::Execute_5_Operands:
+			case ERigVMOpCode::Execute_6_Operands:
+			case ERigVMOpCode::Execute_7_Operands:
+			case ERigVMOpCode::Execute_8_Operands:
+			case ERigVMOpCode::Execute_9_Operands:
+			case ERigVMOpCode::Execute_10_Operands:
+			case ERigVMOpCode::Execute_11_Operands:
+			case ERigVMOpCode::Execute_12_Operands:
+			case ERigVMOpCode::Execute_13_Operands:
+			case ERigVMOpCode::Execute_14_Operands:
+			case ERigVMOpCode::Execute_15_Operands:
+			case ERigVMOpCode::Execute_16_Operands:
+			case ERigVMOpCode::Execute_17_Operands:
+			case ERigVMOpCode::Execute_18_Operands:
+			case ERigVMOpCode::Execute_19_Operands:
+			case ERigVMOpCode::Execute_20_Operands:
+			case ERigVMOpCode::Execute_21_Operands:
+			case ERigVMOpCode::Execute_22_Operands:
+			case ERigVMOpCode::Execute_23_Operands:
+			case ERigVMOpCode::Execute_24_Operands:
+			case ERigVMOpCode::Execute_25_Operands:
+			case ERigVMOpCode::Execute_26_Operands:
+			case ERigVMOpCode::Execute_27_Operands:
+			case ERigVMOpCode::Execute_28_Operands:
+			case ERigVMOpCode::Execute_29_Operands:
+			case ERigVMOpCode::Execute_30_Operands:
+			case ERigVMOpCode::Execute_31_Operands:
+			case ERigVMOpCode::Execute_32_Operands:
+			case ERigVMOpCode::Execute_33_Operands:
+			case ERigVMOpCode::Execute_34_Operands:
+			case ERigVMOpCode::Execute_35_Operands:
+			case ERigVMOpCode::Execute_36_Operands:
+			case ERigVMOpCode::Execute_37_Operands:
+			case ERigVMOpCode::Execute_38_Operands:
+			case ERigVMOpCode::Execute_39_Operands:
+			case ERigVMOpCode::Execute_40_Operands:
+			case ERigVMOpCode::Execute_41_Operands:
+			case ERigVMOpCode::Execute_42_Operands:
+			case ERigVMOpCode::Execute_43_Operands:
+			case ERigVMOpCode::Execute_44_Operands:
+			case ERigVMOpCode::Execute_45_Operands:
+			case ERigVMOpCode::Execute_46_Operands:
+			case ERigVMOpCode::Execute_47_Operands:
+			case ERigVMOpCode::Execute_48_Operands:
+			case ERigVMOpCode::Execute_49_Operands:
+			case ERigVMOpCode::Execute_50_Operands:
+			case ERigVMOpCode::Execute_51_Operands:
+			case ERigVMOpCode::Execute_52_Operands:
+			case ERigVMOpCode::Execute_53_Operands:
+			case ERigVMOpCode::Execute_54_Operands:
+			case ERigVMOpCode::Execute_55_Operands:
+			case ERigVMOpCode::Execute_56_Operands:
+			case ERigVMOpCode::Execute_57_Operands:
+			case ERigVMOpCode::Execute_58_Operands:
+			case ERigVMOpCode::Execute_59_Operands:
+			case ERigVMOpCode::Execute_60_Operands:
+			case ERigVMOpCode::Execute_61_Operands:
+			case ERigVMOpCode::Execute_62_Operands:
+			case ERigVMOpCode::Execute_63_Operands:
+			case ERigVMOpCode::Execute_64_Operands:
+			{
+				const FRigVMExecuteOp& Op = ByteCode.GetOpAt<FRigVMExecuteOp>(Instructions[InstructionIndex]);
+				FString FunctionName = FunctionNames[Op.FunctionIndex].ToString();
+				FRigVMOperandArray Operands = ByteCode.GetOperandsForExecuteOp(Instructions[InstructionIndex]);
+
+				TArray<FString> Labels;
+				for (FRigVMOperand& Operand : Operands)
+				{
+					Labels.Add(GetOperandLabel(Operand));
+				}
+
+				ResultLine = FString::Printf(TEXT("%s(%s)"), *FunctionName, *FString::Join(Labels, TEXT(",")));
+				break;
+			}
+			case ERigVMOpCode::Zero:
+			{
+				const FRigVMUnaryOp& Op = ByteCode.GetOpAt<FRigVMUnaryOp>(Instructions[InstructionIndex]);
+				ResultLine = FString::Printf(TEXT("Set %s to 0"), *GetOperandLabel(Op.Arg));
+				break;
+			}
+			case ERigVMOpCode::BoolFalse:
+			{
+				const FRigVMUnaryOp& Op = ByteCode.GetOpAt<FRigVMUnaryOp>(Instructions[InstructionIndex]);
+				ResultLine = FString::Printf(TEXT("Set %s to False"), *GetOperandLabel(Op.Arg));
+				break;
+			}
+			case ERigVMOpCode::BoolTrue:
+			{
+				const FRigVMUnaryOp& Op = ByteCode.GetOpAt<FRigVMUnaryOp>(Instructions[InstructionIndex]);
+				ResultLine = FString::Printf(TEXT("Set %s to True"), *GetOperandLabel(Op.Arg));
+				break;
+			}
+			case ERigVMOpCode::Increment:
+			{
+				const FRigVMUnaryOp& Op = ByteCode.GetOpAt<FRigVMUnaryOp>(Instructions[InstructionIndex]);
+				ResultLine = FString::Printf(TEXT("Inc %s (++)"), *GetOperandLabel(Op.Arg));
+				break;
+			}
+			case ERigVMOpCode::Decrement:
+			{
+				const FRigVMUnaryOp& Op = ByteCode.GetOpAt<FRigVMUnaryOp>(Instructions[InstructionIndex]);
+				ResultLine = FString::Printf(TEXT("Dec %s (--)"), *GetOperandLabel(Op.Arg));
+				break;
+			}
+			case ERigVMOpCode::Copy:
+			{
+				const FRigVMCopyOp& Op = ByteCode.GetOpAt<FRigVMCopyOp>(Instructions[InstructionIndex]);
+				ResultLine = FString::Printf(TEXT("Copy %s to %s"), *GetOperandLabel(Op.Source), *GetOperandLabel(Op.Target));
+				break;
+			}
+			case ERigVMOpCode::Equals:
+			{
+				const FRigVMComparisonOp& Op = ByteCode.GetOpAt<FRigVMComparisonOp>(Instructions[InstructionIndex]);
+				ResultLine = FString::Printf(TEXT("Set %s to ( %s == %s )"), *GetOperandLabel(Op.Result), *GetOperandLabel(Op.A), *GetOperandLabel(Op.B));
+				break;
+			}
+			case ERigVMOpCode::NotEquals:
+			{
+				const FRigVMComparisonOp& Op = ByteCode.GetOpAt<FRigVMComparisonOp>(Instructions[InstructionIndex]);
+				ResultLine = FString::Printf(TEXT("Set %s to ( %s != %s )"), *GetOperandLabel(Op.Result), *GetOperandLabel(Op.A), *GetOperandLabel(Op.B));
+				break;
+			}
+			case ERigVMOpCode::JumpAbsolute:
+			{
+				const FRigVMJumpOp& Op = ByteCode.GetOpAt<FRigVMJumpOp>(Instructions[InstructionIndex]);
+				ResultLine = FString::Printf(TEXT("Jump to instruction %d"), Op.InstructionIndex);
+				break;
+			}
+			case ERigVMOpCode::JumpForward:
+			{
+				const FRigVMJumpOp& Op = ByteCode.GetOpAt<FRigVMJumpOp>(Instructions[InstructionIndex]);
+				ResultLine = FString::Printf(TEXT("Jump %d instructions forwards"), Op.InstructionIndex);
+				break;
+			}
+			case ERigVMOpCode::JumpBackward:
+			{
+				const FRigVMJumpOp& Op = ByteCode.GetOpAt<FRigVMJumpOp>(Instructions[InstructionIndex]);
+				ResultLine = FString::Printf(TEXT("Jump %d instructions backwards"), Op.InstructionIndex);
+				break;
+			}
+			case ERigVMOpCode::JumpAbsoluteIf:
+			{
+				const FRigVMJumpIfOp& Op = ByteCode.GetOpAt<FRigVMJumpIfOp>(Instructions[InstructionIndex]);
+				if (Op.Condition)
+				{
+					ResultLine = FString::Printf(TEXT("Jump to instruction %d if %s"), Op.InstructionIndex, *GetOperandLabel(Op.Arg));
+				}
+				else
+				{
+					ResultLine = FString::Printf(TEXT("Jump to instruction %d if !%s"), Op.InstructionIndex, *GetOperandLabel(Op.Arg));
+				}
+				break;
+			}
+			case ERigVMOpCode::JumpForwardIf:
+			{
+				const FRigVMJumpIfOp& Op = ByteCode.GetOpAt<FRigVMJumpIfOp>(Instructions[InstructionIndex]);
+				if (Op.Condition)
+				{
+					ResultLine = FString::Printf(TEXT("Jump %d instructions forwards if %s"), Op.InstructionIndex, *GetOperandLabel(Op.Arg));
+				}
+				else
+				{
+					ResultLine = FString::Printf(TEXT("Jump %d instructions forwards if !%s"), Op.InstructionIndex, *GetOperandLabel(Op.Arg));
+				}
+				break;
+			}
+			case ERigVMOpCode::JumpBackwardIf:
+			{
+				const FRigVMJumpIfOp& Op = ByteCode.GetOpAt<FRigVMJumpIfOp>(Instructions[InstructionIndex]);
+				if (Op.Condition)
+				{
+					ResultLine = FString::Printf(TEXT("Jump %d instructions backwards if %s"), Op.InstructionIndex, *GetOperandLabel(Op.Arg));
+				}
+				else
+				{
+					ResultLine = FString::Printf(TEXT("Jump %d instructions backwards if !%s"), Op.InstructionIndex, *GetOperandLabel(Op.Arg));
+				}
+				break;
+			}
+			case ERigVMOpCode::ChangeType:
+			{
+				const FRigVMChangeTypeOp& Op = ByteCode.GetOpAt<FRigVMChangeTypeOp>(Instructions[InstructionIndex]);
+				ResultLine = FString::Printf(TEXT("Change type of %s"), *GetOperandLabel(Op.Arg));
+				break;
+			}
+			case ERigVMOpCode::Exit:
+			{
+				ResultLine = TEXT("Exit");
+				break;
+			}
+			default:
+			{
+				ensure(false);
+				break;
+			}
+		}
+
+		FString ResultIndexStr = FString::FromInt(InstructionIndex);
+		while (ResultIndexStr.Len() < 3)
+		{
+			ResultIndexStr = TEXT("0") + ResultIndexStr;
+		}
+		Result.Add(FString::Printf(TEXT("%s. %s"), *ResultIndexStr, *ResultLine));
+	}
+
+	return FString::Join(Result, TEXT("\n"));
+}
+
+FString URigVM::GetOperandLabel(const FRigVMOperand& InOperand) const
+{
+	const FRigVMMemoryContainer* MemoryPtr = nullptr;
+
+	if (InOperand.GetMemoryType() == ERigVMMemoryType::Literal)
+	{
+		MemoryPtr = &LiteralMemory;
+	}
+	else
+	{
+		MemoryPtr = &WorkMemory;
+	}
+
+	const FRigVMMemoryContainer& Memory = *MemoryPtr;
+	FRigVMRegister Register = Memory[InOperand];
+
+	if (InOperand.GetRegisterOffset() != INDEX_NONE)
+	{
+		return FString::Printf(TEXT("%s.%s"), *Register.Name.ToString(), *Memory.RegisterOffsets[InOperand.GetRegisterOffset()].CachedSegmentPath);
+	}
+
+	return Register.Name.ToString();
+}
+
+#endif

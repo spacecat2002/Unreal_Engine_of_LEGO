@@ -304,7 +304,13 @@ private:
 	UPROPERTY()
 	uint16 ElementSize;
 
+#if WITH_EDITORONLY_DATA
+	UPROPERTY()
+	FString CachedSegmentPath;
+#endif
+
 	friend struct FRigVMRegisterOffsetBuilder;
+	friend class URigVM;
 };
 
 /**

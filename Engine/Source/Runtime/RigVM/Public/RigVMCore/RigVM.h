@@ -418,6 +418,14 @@ public:
 		return Statistics;
 	}
 
+
+#if WITH_EDITOR
+
+	// returns the instructions as text
+	FString DumpByteCodeAsText(const TArray<int32>& InInstructionOrder = TArray<int32>());
+
+#endif
+
 private:
 
 	FORCEINLINE FRigVMParameter AddPlainParameter(ERigVMParameterType InParameterType, const FName& InName, const FString& InCPPType, const uint8* InPtr, uint16 InSize, int32 InArraySize)
@@ -454,6 +462,10 @@ private:
 	void RefreshInstructionsIfRequired();
 	void InvalidateCachedMemory();
 	void CacheMemoryPointersIfRequired(FRigVMMemoryContainerPtrArray InMemory);
+
+#if WITH_EDITOR
+	FString GetOperandLabel(const FRigVMOperand& InOperand) const;
+#endif
 
 	UPROPERTY(transient)
 	FRigVMInstructionArray Instructions;

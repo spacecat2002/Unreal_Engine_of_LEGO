@@ -54,11 +54,13 @@ bool FRigVMByteCode::Serialize(FArchive& Ar)
 void FRigVMByteCode::Reset()
 {
 	ByteCode.Reset();
+	NumInstructions = 0;
 }
 
 void FRigVMByteCode::Empty()
 {
 	ByteCode.Empty();
+	NumInstructions = 0;
 }
 
 uint64 FRigVMByteCode::Num() const

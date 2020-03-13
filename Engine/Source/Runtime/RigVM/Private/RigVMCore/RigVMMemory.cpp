@@ -70,6 +70,9 @@ FRigVMRegisterOffset::FRigVMRegisterOffset(UScriptStruct* InScriptStruct, const 
 	, ScriptStruct(nullptr)
 	, ScriptStructPath()
 	, ElementSize(InElementSize)
+#if WITH_EDITORONLY_DATA
+	, CachedSegmentPath(InSegmentPath)
+#endif
 {
 	struct FRigVMRegisterOffsetBuilder
 	{
