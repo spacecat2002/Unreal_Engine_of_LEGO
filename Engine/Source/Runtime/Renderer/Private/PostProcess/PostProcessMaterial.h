@@ -106,15 +106,15 @@ struct FPostProcessMaterialInputs
 	 *  Set this to false when you need to guarantee creation of a dedicated output texture.
 	 */
 	bool bAllowSceneColorInputAsOutput = true;
+
+	bool bMetalMSAAHDRDecode = false;
 };
 
 FScreenPassTexture AddPostProcessMaterialPass(
 	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
 	const FPostProcessMaterialInputs& Inputs,
-	const UMaterialInterface* MaterialInterface,
-	//bMetalMSAAHDRDecode has to be set only on mobile platform, the other platforms could use the default value.
-	const bool bMetalMSAAHDRDecode = false);
+	const UMaterialInterface* MaterialInterface);
 
 FScreenPassTexture AddPostProcessMaterialChain(
 	FRDGBuilder& GraphBuilder,
