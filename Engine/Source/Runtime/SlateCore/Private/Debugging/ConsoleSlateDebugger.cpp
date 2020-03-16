@@ -16,8 +16,6 @@ DEFINE_LOG_CATEGORY_STATIC(LogSlateDebugger, Log, All);
 
 #define LOCTEXT_NAMESPACE "ConsoleSlateDebugger"
 
-static FConsoleSlateDebugger SlateConsoleDebugger;
-
 FConsoleSlateDebugger::FConsoleSlateDebugger()
 	: bCaptureStack(0)
 	, EnabledInputEvents(false, (uint8)ESlateDebuggingInputEvent::MAX)
