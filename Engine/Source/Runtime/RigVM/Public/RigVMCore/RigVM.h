@@ -152,15 +152,24 @@ public:
 
 	// The default mutable work memory
 	UPROPERTY()
-	FRigVMMemoryContainer WorkMemory;
+	FRigVMMemoryContainer WorkMemoryStorage;
+	FRigVMMemoryContainer* WorkMemoryPtr;
+	FORCEINLINE FRigVMMemoryContainer& GetWorkMemory() { return *WorkMemoryPtr; }
+	FORCEINLINE const FRigVMMemoryContainer& GetWorkMemory() const { return *WorkMemoryPtr; }
 
 	// The default const literal memory
 	UPROPERTY()
-	FRigVMMemoryContainer LiteralMemory;
+	FRigVMMemoryContainer LiteralMemoryStorage;
+	FRigVMMemoryContainer* LiteralMemoryPtr;
+	FORCEINLINE FRigVMMemoryContainer& GetLiteralMemory() { return *LiteralMemoryPtr; }
+	FORCEINLINE const FRigVMMemoryContainer& GetLiteralMemory() const { return *LiteralMemoryPtr; }
 
 	// The byte code of the VM
 	UPROPERTY()
-	FRigVMByteCode ByteCode;
+	FRigVMByteCode ByteCodeStorage;
+	FRigVMByteCode* ByteCodePtr;
+	FORCEINLINE FRigVMByteCode& GetByteCode() { return *ByteCodePtr; }
+	FORCEINLINE const FRigVMByteCode& GetByteCode() const { return *ByteCodePtr; }
 
 	// Returns the instructions of the VM
 	const FRigVMInstructionArray& GetInstructions();
@@ -222,7 +231,7 @@ public:
 	// Retrieve the array size of the parameter
 	int32 GetParameterArraySize(const FRigVMParameter& InParameter) const
 	{
-		return (int32)WorkMemory[InParameter.GetRegisterIndex()].GetTotalElementCount();
+		return (int32)GetWorkMemory()[InParameter.GetRegisterIndex()].GetTotalElementCount();
 	}
 
 	// Retrieve the array size of the parameter
@@ -245,7 +254,7 @@ public:
 	{
 		if (InParameter.GetRegisterIndex() != INDEX_NONE)
 		{
-			return WorkMemory.GetArray<T>(InParameter.GetRegisterIndex())[InArrayIndex];
+			return WorkMemoryPtr->GetArray<T>(InParameter.GetRegisterIndex())[InArrayIndex];
 		}
 		return DefaultValue;
 	}
@@ -271,7 +280,7 @@ public:
 	{
 		if (InParameter.GetRegisterIndex() != INDEX_NONE)
 		{
-			WorkMemory.GetArray<T>(InParameter.GetRegisterIndex())[InArrayIndex] = InNewValue;
+			WorkMemoryPtr->GetArray<T>(InParameter.GetRegisterIndex())[InArrayIndex] = InNewValue;
 		}
 	}
 
@@ -404,16 +413,16 @@ public:
 	FRigVMStatistics GetStatistics() const
 	{
 		FRigVMStatistics Statistics;
-		Statistics.LiteralMemory = LiteralMemory.GetStatistics();
-		Statistics.WorkMemory = WorkMemory.GetStatistics();
-		Statistics.ByteCode = ByteCode.GetStatistics();
+		Statistics.LiteralMemory = LiteralMemoryPtr->GetStatistics();
+		Statistics.WorkMemory = WorkMemoryPtr->GetStatistics();
+		Statistics.ByteCode = ByteCodePtr->GetStatistics();
 		Statistics.BytesForCaching = FirstPointerForInstruction.GetAllocatedSize() + CachedMemoryPointers.GetAllocatedSize();
 		Statistics.BytesForCDO =
 			Statistics.LiteralMemory.TotalBytes +
 			Statistics.WorkMemory.TotalBytes +
 			Statistics.ByteCode.DataBytes +
 			Statistics.BytesForCaching;
-		// Statistics.BytesPerInstance = Statistics.WorkMemory.DataBytes;
+		// Statistics.BytesPerInstance = Statistics.WorkMemoryPtr->DataBytes;
 		Statistics.BytesPerInstance = Statistics.BytesForCDO;
 		return Statistics;
 	}
@@ -433,12 +442,12 @@ private:
 	{
 		ensure(InParameterType != ERigVMParameterType::Invalid);
 		int32 ArraySize = InArraySize <= 0 ? 1 : InArraySize;
-		int32 RegisterIndex = WorkMemory.AddPlainArray(WorkMemory.SupportsNames() ? InName : NAME_None, InSize, ArraySize, InPtr, 1);
+		int32 RegisterIndex = WorkMemoryPtr->AddPlainArray(WorkMemoryPtr->SupportsNames() ? InName : NAME_None, InSize, ArraySize, InPtr, 1);
 		if (RegisterIndex == INDEX_NONE)
 		{
 			return FRigVMParameter();
 		}
-		FName Name = WorkMemory.SupportsNames() ? WorkMemory[RegisterIndex].Name : InName;
+		FName Name = WorkMemoryPtr->SupportsNames() ? GetWorkMemory()[RegisterIndex].Name : InName;
 		FRigVMParameter Parameter(InParameterType, Name, RegisterIndex, InCPPType, nullptr);
 		ParametersNameMap.Add(Parameter.Name, Parameters.Add(Parameter));
 		return Parameter;
@@ -448,12 +457,12 @@ private:
 	{
 		ensure(InParameterType != ERigVMParameterType::Invalid);
 		int32 ArraySize = InArraySize <= 0 ? 1 : InArraySize;
-		int32 RegisterIndex = WorkMemory.AddStructArray(WorkMemory.SupportsNames() ? InName : NAME_None, InScriptStruct, ArraySize, InPtr, 1);
+		int32 RegisterIndex = WorkMemoryPtr->AddStructArray(WorkMemoryPtr->SupportsNames() ? InName : NAME_None, InScriptStruct, ArraySize, InPtr, 1);
 		if (RegisterIndex == INDEX_NONE)
 		{
 			return FRigVMParameter();
 		}
-		FName Name = WorkMemory.SupportsNames() ? WorkMemory[RegisterIndex].Name : InName;
+		FName Name = WorkMemoryPtr->SupportsNames() ? GetWorkMemory()[RegisterIndex].Name : InName;
 		FRigVMParameter Parameter(InParameterType, Name, RegisterIndex, InScriptStruct->GetName(), InScriptStruct);
 		ParametersNameMap.Add(Parameter.Name, Parameters.Add(Parameter));
 		return Parameter;
@@ -472,9 +481,15 @@ private:
 	FRigVMInstructionArray Instructions;
 
 	UPROPERTY()
-	TArray<FName> FunctionNames;
+	TArray<FName> FunctionNamesStorage;
+	TArray<FName>* FunctionNamesPtr;
+	FORCEINLINE TArray<FName>& GetFunctionNames() { return *FunctionNamesPtr; }
+	FORCEINLINE const TArray<FName>& GetFunctionNames() const { return *FunctionNamesPtr; }
 
-	TArray<FRigVMFunctionPtr> Functions;
+	TArray<FRigVMFunctionPtr> FunctionsStorage;
+	TArray<FRigVMFunctionPtr>* FunctionsPtr;
+	FORCEINLINE TArray<FRigVMFunctionPtr>& GetFunctions() { return *FunctionsPtr; }
+	FORCEINLINE const TArray<FRigVMFunctionPtr>& GetFunctions() const { return *FunctionsPtr; }
 
 	UPROPERTY()
 	TArray<FRigVMParameter> Parameters;

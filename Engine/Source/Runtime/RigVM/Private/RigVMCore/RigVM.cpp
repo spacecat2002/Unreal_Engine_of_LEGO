@@ -41,9 +41,12 @@ UScriptStruct* FRigVMParameter::GetScriptStruct() const
 }
 
 URigVM::URigVM()
+: WorkMemoryPtr(&WorkMemoryStorage)
+, LiteralMemoryPtr(&LiteralMemoryStorage)
+, ByteCodePtr(&ByteCodeStorage)
 {
-	WorkMemory.SetMemoryType(ERigVMMemoryType::Work);
-	LiteralMemory.SetMemoryType(ERigVMMemoryType::Literal);
+	GetWorkMemory().SetMemoryType(ERigVMMemoryType::Work);
+	GetLiteralMemory().SetMemoryType(ERigVMMemoryType::Literal);
 }
 
 URigVM::~URigVM()
@@ -65,23 +68,23 @@ void URigVM::Serialize(FArchive& Ar)
 		Reset();
 	}
 
-	Ar << WorkMemory;
-	Ar << LiteralMemory;
-	Ar << FunctionNames;
-	Ar << ByteCode;
+	Ar << WorkMemoryStorage;
+	Ar << LiteralMemoryStorage;
+	Ar << FunctionNamesStorage;
+	Ar << ByteCodeStorage;
 	Ar << Parameters;
 
 	if (Ar.IsLoading())
 	{
-		if (WorkMemory.bEncounteredErrorDuringLoad ||
-			LiteralMemory.bEncounteredErrorDuringLoad)
+		if (WorkMemoryStorage.bEncounteredErrorDuringLoad ||
+			LiteralMemoryStorage.bEncounteredErrorDuringLoad)
 		{
 			Reset();
 		}
 		else
 		{
 			Instructions.Reset();
-			Functions.Reset();
+			FunctionsStorage.Reset();
 			ParametersNameMap.Reset();
 
 			for (int32 Index = 0; Index < Parameters.Num(); Index++)
@@ -96,25 +99,31 @@ void URigVM::Serialize(FArchive& Ar)
 
 void URigVM::Reset()
 {
-	WorkMemory.Reset();
-	LiteralMemory.Reset();
-	FunctionNames.Reset();
-	Functions.Reset();
-	ByteCode.Reset();
+	WorkMemoryStorage.Reset();
+	LiteralMemoryStorage.Reset();
+	FunctionNamesStorage.Reset();
+	FunctionsStorage.Reset();
+	ByteCodeStorage.Reset();
 	Instructions.Reset();
 	Parameters.Reset();
 	ParametersNameMap.Reset();
+
+	WorkMemoryPtr = &WorkMemoryStorage;
+	LiteralMemoryPtr = &LiteralMemoryStorage;
+	FunctionNamesPtr = &FunctionNamesStorage;
+	FunctionsPtr = &FunctionsStorage;
+	ByteCodePtr = &ByteCodeStorage;
 
 	InvalidateCachedMemory();
 }
 
 void URigVM::Empty()
 {
-	WorkMemory.Empty();
-	LiteralMemory.Empty();
-	FunctionNames.Empty();
-	Functions.Empty();
-	ByteCode.Empty();
+	WorkMemoryStorage.Empty();
+	LiteralMemoryStorage.Empty();
+	FunctionNamesStorage.Empty();
+	FunctionsStorage.Empty();
+	ByteCodeStorage.Empty();
 	Instructions.Empty();
 	Parameters.Empty();
 	ParametersNameMap.Empty();
@@ -132,11 +141,51 @@ void URigVM::CopyFrom(URigVM* InVM)
 	
 	Reset();
 
-	WorkMemory = InVM->WorkMemory;
-	LiteralMemory = InVM->LiteralMemory;
-	FunctionNames = InVM->FunctionNames;
-	Functions = InVM->Functions;
-	ByteCode = InVM->ByteCode;
+	WorkMemoryStorage = InVM->WorkMemoryStorage;
+	if(InVM->WorkMemoryPtr == &InVM->WorkMemoryStorage)
+	{
+		WorkMemoryPtr = &WorkMemoryStorage;
+	}
+	else
+	{
+		WorkMemoryPtr = InVM->WorkMemoryPtr;
+	}
+	LiteralMemoryStorage = InVM->LiteralMemoryStorage;
+	if(InVM->LiteralMemoryPtr == &InVM->LiteralMemoryStorage)
+	{
+		LiteralMemoryPtr = &LiteralMemoryStorage;
+	}
+	else
+	{
+		LiteralMemoryPtr = InVM->LiteralMemoryPtr;
+	}
+	FunctionNamesStorage = InVM->FunctionNamesStorage;
+	if(InVM->FunctionNamesPtr == &InVM->FunctionNamesStorage)
+	{
+		FunctionNamesPtr = &FunctionNamesStorage;
+	}
+	else
+	{
+		FunctionNamesPtr = InVM->FunctionNamesPtr;
+	}
+	FunctionsStorage = InVM->FunctionsStorage;
+	if(InVM->FunctionsPtr == &InVM->FunctionsStorage)
+	{
+		FunctionsPtr = &FunctionsStorage;
+	}
+	else
+	{
+		FunctionsPtr = InVM->FunctionsPtr;
+	}
+	ByteCodeStorage = InVM->ByteCodeStorage;
+	if(InVM->ByteCodePtr == &InVM->ByteCodeStorage)
+	{
+		ByteCodePtr = &ByteCodeStorage;
+	}
+	else
+	{
+		ByteCodePtr = InVM->ByteCodePtr;
+	}
 	Instructions = InVM->Instructions;
 	Parameters = InVM->Parameters;
 	ParametersNameMap = InVM->ParametersNameMap;
@@ -146,7 +195,7 @@ int32 URigVM::AddRigVMFunction(UScriptStruct* InRigVMStruct, const FName& InMeth
 {
 	check(InRigVMStruct);
 	FString FunctionKey = FString::Printf(TEXT("F%s::%s"), *InRigVMStruct->GetName(), *InMethodName.ToString());
-	int32 FunctionIndex = FunctionNames.Find(*FunctionKey);
+	int32 FunctionIndex = GetFunctionNames().Find(*FunctionKey);
 	if (FunctionIndex != INDEX_NONE)
 	{
 		return FunctionIndex;
@@ -158,13 +207,13 @@ int32 URigVM::AddRigVMFunction(UScriptStruct* InRigVMStruct, const FName& InMeth
 		return INDEX_NONE;
 	}
 
-	FunctionNames.Add(*FunctionKey);
-	return Functions.Add(Function);
+	GetFunctionNames().Add(*FunctionKey);
+	return GetFunctions().Add(Function);
 }
 
 FString URigVM::GetRigVMFunctionName(int32 InFunctionIndex) const
 {
-	return FunctionNames[InFunctionIndex].ToString();
+	return GetFunctionNames()[InFunctionIndex].ToString();
 }
 
 const FRigVMInstructionArray& URigVM::GetInstructions()
@@ -205,14 +254,14 @@ FRigVMParameter URigVM::GetParameterByName(const FName& InParameterName)
 
 void URigVM::ResolveFunctionsIfRequired()
 {
-	if (Functions.Num() != FunctionNames.Num())
+	if (GetFunctions().Num() != GetFunctionNames().Num())
 	{
-		Functions.Reset();
-		Functions.SetNumZeroed(FunctionNames.Num());
+		GetFunctions().Reset();
+		GetFunctions().SetNumZeroed(GetFunctionNames().Num());
 
-		for (int32 FunctionIndex = 0; FunctionIndex < FunctionNames.Num(); FunctionIndex++)
+		for (int32 FunctionIndex = 0; FunctionIndex < GetFunctionNames().Num(); FunctionIndex++)
 		{
-			Functions[FunctionIndex] = FRigVMRegistry::Get().Find(*FunctionNames[FunctionIndex].ToString());
+			GetFunctions()[FunctionIndex] = FRigVMRegistry::Get().Find(*GetFunctionNames()[FunctionIndex].ToString());
 		}
 	}
 }
@@ -221,7 +270,7 @@ void URigVM::RefreshInstructionsIfRequired()
 {
 	if (Instructions.Num() == 0)
 	{
-		Instructions = ByteCode.GetInstructions();
+		Instructions = GetByteCode().GetInstructions();
 	}
 }
 
@@ -271,6 +320,8 @@ void URigVM::CacheMemoryPointersIfRequired(FRigVMMemoryContainerPtrArray InMemor
 	{
 		CachedMemory.Add(InMemory[Index]);
 	}
+
+	FRigVMByteCode& ByteCode = GetByteCode();
 
 	uint16 InstructionIndex = 0;
 	while (Instructions.IsValidIndex(InstructionIndex))
@@ -472,15 +523,18 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> Add
 		return true;
 	}
 
-	FRigVMMemoryContainer* LocalMemory[] = { &WorkMemory, &LiteralMemory }; 
+	FRigVMMemoryContainer* LocalMemory[] = { WorkMemoryPtr, LiteralMemoryPtr }; 
 	if (Memory.Num() == 0)
 	{
 		Memory = FRigVMMemoryContainerPtrArray(LocalMemory, 2);
 	}
 
 	CacheMemoryPointersIfRequired(Memory);
+	FRigVMByteCode& ByteCode = GetByteCode();
+	TArray<FRigVMFunctionPtr>& Functions = GetFunctions();
 
 #if WITH_EDITOR
+	TArray<FName>& FunctionNames = GetFunctionNames();
 	InstructionVisitedDuringLastRun.Reset();
 	InstructionVisitOrder.Reset();
 	InstructionVisitedDuringLastRun.SetNumZeroed(Instructions.Num());
@@ -824,11 +878,11 @@ void URigVM::SetRegisterValueFromString(const FRigVMOperand& InOperand, const FS
 {
 	if (InOperand.GetMemoryType() == ERigVMMemoryType::Literal)
 	{
-		LiteralMemory.SetRegisterValueFromString(InOperand, InCPPType, InCPPTypeObject, InDefaultValues);
+		GetLiteralMemory().SetRegisterValueFromString(InOperand, InCPPType, InCPPTypeObject, InDefaultValues);
 	}
 	else if (InOperand.GetMemoryType() == ERigVMMemoryType::Work)
 	{
-		WorkMemory.SetRegisterValueFromString(InOperand, InCPPType, InCPPTypeObject, InDefaultValues);
+		GetWorkMemory().SetRegisterValueFromString(InOperand, InCPPType, InCPPTypeObject, InDefaultValues);
 	}
 }
 
@@ -838,6 +892,8 @@ void URigVM::SetRegisterValueFromString(const FRigVMOperand& InOperand, const FS
 TArray<FString> URigVM::DumpByteCodeAsTextArray(const TArray<int32>& InInstructionOrder, bool bIncludeLineNumbers)
 {
 	RefreshInstructionsIfRequired();
+	const FRigVMByteCode& ByteCode = GetByteCode();
+	const TArray<FName>& FunctionNames = GetFunctionNames();
 
 	TArray<int32> InstructionOrder;
 	InstructionOrder.Append(InInstructionOrder);
@@ -1088,11 +1144,11 @@ FString URigVM::GetOperandLabel(const FRigVMOperand& InOperand) const
 
 	if (InOperand.GetMemoryType() == ERigVMMemoryType::Literal)
 	{
-		MemoryPtr = &LiteralMemory;
+		MemoryPtr = LiteralMemoryPtr;
 	}
 	else
 	{
-		MemoryPtr = &WorkMemory;
+		MemoryPtr = WorkMemoryPtr;
 	}
 
 	const FRigVMMemoryContainer& Memory = *MemoryPtr;
