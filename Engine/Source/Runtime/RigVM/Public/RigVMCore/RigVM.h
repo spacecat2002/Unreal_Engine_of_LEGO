@@ -422,7 +422,8 @@ public:
 #if WITH_EDITOR
 
 	// returns the instructions as text
-	FString DumpByteCodeAsText(const TArray<int32>& InInstructionOrder = TArray<int32>());
+	TArray<FString> DumpByteCodeAsTextArray(const TArray<int32>& InInstructionOrder = TArray<int32>(), bool bIncludeLineNumbers = true);
+	FString DumpByteCodeAsText(const TArray<int32>& InInstructionOrder = TArray<int32>(), bool bIncludeLineNumbers = true);
 
 #endif
 

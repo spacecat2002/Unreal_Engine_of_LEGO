@@ -835,7 +835,7 @@ void URigVM::SetRegisterValueFromString(const FRigVMOperand& InOperand, const FS
 
 #if WITH_EDITOR
 
-FString URigVM::DumpByteCodeAsText(const TArray<int32>& InInstructionOrder)
+TArray<FString> URigVM::DumpByteCodeAsTextArray(const TArray<int32>& InInstructionOrder, bool bIncludeLineNumbers)
 {
 	RefreshInstructionsIfRequired();
 
@@ -957,13 +957,13 @@ FString URigVM::DumpByteCodeAsText(const TArray<int32>& InInstructionOrder)
 			case ERigVMOpCode::Increment:
 			{
 				const FRigVMUnaryOp& Op = ByteCode.GetOpAt<FRigVMUnaryOp>(Instructions[InstructionIndex]);
-				ResultLine = FString::Printf(TEXT("Inc %s (++)"), *GetOperandLabel(Op.Arg));
+				ResultLine = FString::Printf(TEXT("Inc %s ++"), *GetOperandLabel(Op.Arg));
 				break;
 			}
 			case ERigVMOpCode::Decrement:
 			{
 				const FRigVMUnaryOp& Op = ByteCode.GetOpAt<FRigVMUnaryOp>(Instructions[InstructionIndex]);
-				ResultLine = FString::Printf(TEXT("Dec %s (--)"), *GetOperandLabel(Op.Arg));
+				ResultLine = FString::Printf(TEXT("Dec %s --"), *GetOperandLabel(Op.Arg));
 				break;
 			}
 			case ERigVMOpCode::Copy:
@@ -975,13 +975,13 @@ FString URigVM::DumpByteCodeAsText(const TArray<int32>& InInstructionOrder)
 			case ERigVMOpCode::Equals:
 			{
 				const FRigVMComparisonOp& Op = ByteCode.GetOpAt<FRigVMComparisonOp>(Instructions[InstructionIndex]);
-				ResultLine = FString::Printf(TEXT("Set %s to ( %s == %s )"), *GetOperandLabel(Op.Result), *GetOperandLabel(Op.A), *GetOperandLabel(Op.B));
+				ResultLine = FString::Printf(TEXT("Set %s to %s == %s "), *GetOperandLabel(Op.Result), *GetOperandLabel(Op.A), *GetOperandLabel(Op.B));
 				break;
 			}
 			case ERigVMOpCode::NotEquals:
 			{
 				const FRigVMComparisonOp& Op = ByteCode.GetOpAt<FRigVMComparisonOp>(Instructions[InstructionIndex]);
-				ResultLine = FString::Printf(TEXT("Set %s to ( %s != %s )"), *GetOperandLabel(Op.Result), *GetOperandLabel(Op.A), *GetOperandLabel(Op.B));
+				ResultLine = FString::Printf(TEXT("Set %s to %s != %s"), *GetOperandLabel(Op.Result), *GetOperandLabel(Op.A), *GetOperandLabel(Op.B));
 				break;
 			}
 			case ERigVMOpCode::JumpAbsolute:
@@ -1059,15 +1059,27 @@ FString URigVM::DumpByteCodeAsText(const TArray<int32>& InInstructionOrder)
 			}
 		}
 
-		FString ResultIndexStr = FString::FromInt(InstructionIndex);
-		while (ResultIndexStr.Len() < 3)
+		if (bIncludeLineNumbers)
 		{
-			ResultIndexStr = TEXT("0") + ResultIndexStr;
+			FString ResultIndexStr = FString::FromInt(InstructionIndex);
+			while (ResultIndexStr.Len() < 3)
+			{
+				ResultIndexStr = TEXT("0") + ResultIndexStr;
+			}
+			Result.Add(FString::Printf(TEXT("%s. %s"), *ResultIndexStr, *ResultLine));
 		}
-		Result.Add(FString::Printf(TEXT("%s. %s"), *ResultIndexStr, *ResultLine));
+		else
+		{
+			Result.Add(ResultLine);
+		}
 	}
 
-	return FString::Join(Result, TEXT("\n"));
+	return Result;
+}
+
+FString URigVM::DumpByteCodeAsText(const TArray<int32>& InInstructionOrder, bool bIncludeLineNumbers)
+{
+	return FString::Join(DumpByteCodeAsTextArray(InInstructionOrder, bIncludeLineNumbers), TEXT("\n"));
 }
 
 FString URigVM::GetOperandLabel(const FRigVMOperand& InOperand) const
