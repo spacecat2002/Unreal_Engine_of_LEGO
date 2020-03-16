@@ -613,9 +613,6 @@ protected:
 	FName GetCurrentBufferVisualizationMode() const { return CurrentBufferVisualizationMode; }
 	bool HasAudioFocus() const { return bHasAudioFocus; }
 
-	/** Updates CSVProfiler camera stats */
-	void UpdateCsvCameraStats(const FSceneView* View);
-
 protected:
 	/** FCommonViewportClient interface */
 	virtual float UpdateViewportClientWindowDPIScale() const override;
@@ -823,6 +820,8 @@ public:
 	/** Does the viewport client have a software cursor set up for the given enum? */
 	bool HasSoftwareCursor(EMouseCursor::Type Cursor) const;
 
+	void EnableCsvPlayerStats(int32 LocalPlayerCount);
+
 private:
 	/** Resets the platform type shape to nullptr, to restore it to the OS default. */
 	void ResetHardwareCursorStates();
@@ -945,6 +944,10 @@ private:
 	 * @param WindowMode What window mode do we want to st the display to.
 	 */
 	bool SetDisplayConfiguration( const FIntPoint* Dimensions, EWindowMode::Type WindowMode);
+
+	/** Updates CSVProfiler camera stats */
+	void UpdateCsvCameraStats(const TMap<ULocalPlayer*, FSceneView*>& PlayerViewMap);
+
 
 #if WITH_EDITOR
 	/** Delegate called when game viewport client received input key */
