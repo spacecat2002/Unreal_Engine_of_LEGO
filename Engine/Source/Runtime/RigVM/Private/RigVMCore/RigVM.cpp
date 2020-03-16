@@ -43,6 +43,8 @@ UScriptStruct* FRigVMParameter::GetScriptStruct() const
 URigVM::URigVM()
 : WorkMemoryPtr(&WorkMemoryStorage)
 , LiteralMemoryPtr(&LiteralMemoryStorage)
+, FunctionNamesPtr(&FunctionNamesStorage)
+, FunctionsPtr(&FunctionsStorage)
 , ByteCodePtr(&ByteCodeStorage)
 {
 	GetWorkMemory().SetMemoryType(ERigVMMemoryType::Work);
@@ -135,57 +137,62 @@ void URigVM::Empty()
 	CachedMemoryPointers.Empty();
 }
 
-void URigVM::CopyFrom(URigVM* InVM)
+void URigVM::CopyFrom(URigVM* InVM, bool bReferenceLiteralMemory, bool bReferenceByteCode)
 {
 	check(InVM);
 	
 	Reset();
 
-	WorkMemoryStorage = InVM->WorkMemoryStorage;
 	if(InVM->WorkMemoryPtr == &InVM->WorkMemoryStorage)
 	{
+		WorkMemoryStorage = InVM->WorkMemoryStorage;
 		WorkMemoryPtr = &WorkMemoryStorage;
 	}
 	else
 	{
 		WorkMemoryPtr = InVM->WorkMemoryPtr;
 	}
-	LiteralMemoryStorage = InVM->LiteralMemoryStorage;
-	if(InVM->LiteralMemoryPtr == &InVM->LiteralMemoryStorage)
+
+	if(InVM->LiteralMemoryPtr == &InVM->LiteralMemoryStorage && !bReferenceLiteralMemory)
 	{
+		LiteralMemoryStorage = InVM->LiteralMemoryStorage;
 		LiteralMemoryPtr = &LiteralMemoryStorage;
 	}
 	else
 	{
 		LiteralMemoryPtr = InVM->LiteralMemoryPtr;
 	}
-	FunctionNamesStorage = InVM->FunctionNamesStorage;
-	if(InVM->FunctionNamesPtr == &InVM->FunctionNamesStorage)
+
+	if(InVM->FunctionNamesPtr == &InVM->FunctionNamesStorage && !bReferenceByteCode)
 	{
+		FunctionNamesStorage = InVM->FunctionNamesStorage;
 		FunctionNamesPtr = &FunctionNamesStorage;
 	}
 	else
 	{
 		FunctionNamesPtr = InVM->FunctionNamesPtr;
 	}
-	FunctionsStorage = InVM->FunctionsStorage;
-	if(InVM->FunctionsPtr == &InVM->FunctionsStorage)
+	
+	if(InVM->FunctionsPtr == &InVM->FunctionsStorage && !bReferenceByteCode)
 	{
+		FunctionsStorage = InVM->FunctionsStorage;
 		FunctionsPtr = &FunctionsStorage;
 	}
 	else
 	{
 		FunctionsPtr = InVM->FunctionsPtr;
 	}
-	ByteCodeStorage = InVM->ByteCodeStorage;
-	if(InVM->ByteCodePtr == &InVM->ByteCodeStorage)
+	
+	if(InVM->ByteCodePtr == &InVM->ByteCodeStorage && !bReferenceByteCode)
 	{
+		ByteCodeStorage = InVM->ByteCodeStorage;
 		ByteCodePtr = &ByteCodeStorage;
 	}
 	else
 	{
 		ByteCodePtr = InVM->ByteCodePtr;
 	}
+	
 	Instructions = InVM->Instructions;
 	Parameters = InVM->Parameters;
 	ParametersNameMap = InVM->ParametersNameMap;

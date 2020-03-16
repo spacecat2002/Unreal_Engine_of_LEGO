@@ -128,7 +128,7 @@ public:
 	void Empty();
 
 	// resets the container and clones the input VM
-	void CopyFrom(URigVM* InVM);
+	void CopyFrom(URigVM* InVM, bool bReferenceLiteralMemory = false, bool bReferenceByteCode = false);
 
 	// Executes the VM.
 	// You can optionally provide external memory to the execution
@@ -422,8 +422,10 @@ public:
 			Statistics.WorkMemory.TotalBytes +
 			Statistics.ByteCode.DataBytes +
 			Statistics.BytesForCaching;
-		// Statistics.BytesPerInstance = Statistics.WorkMemoryPtr->DataBytes;
-		Statistics.BytesPerInstance = Statistics.BytesForCDO;
+		Statistics.BytesPerInstance =
+			Statistics.WorkMemory.TotalBytes +
+			Statistics.BytesForCaching;
+
 		return Statistics;
 	}
 
