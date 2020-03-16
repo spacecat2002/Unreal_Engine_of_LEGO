@@ -521,6 +521,7 @@ private:
 		const FSceneTextureParameters& SceneTextures,
 		const FViewInfo& View,
 		int32 SamplePerPixel,
+		bool bReflectOnlyWater,
 		float ResolutionFraction,
 		IScreenSpaceDenoiser::FReflectionsInputs* OutDenoiserInputs);
 
