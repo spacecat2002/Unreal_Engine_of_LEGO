@@ -671,7 +671,7 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHI
 		FRDGTextureRef ReflectionsColor = nullptr;
 		if (bRayTracedReflections || bScreenSpaceReflections)
 		{
-			int32 DenoiserMode = CVarUseReflectionDenoiser.GetValueOnRenderThread();
+			int32 DenoiserMode = GetReflectionsDenoiserMode();
 
 			bool bDenoise = false;
 			bool bTemporalFilter = false;
@@ -698,11 +698,14 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHI
 					RayTracingConfig.ResolutionFraction = 1.0f;
 				}
 
+				bool bReflectOnlyWater = false;
 				RenderRayTracingReflections(
 					GraphBuilder,
 					SceneTextures,
 					View,
-					RayTracingConfig.RayCountPerPixel, RayTracingConfig.ResolutionFraction,
+					RayTracingConfig.RayCountPerPixel,
+					bReflectOnlyWater,
+					RayTracingConfig.ResolutionFraction,
 					&DenoiserInputs);
 			}
 			else if (bScreenSpaceReflections)

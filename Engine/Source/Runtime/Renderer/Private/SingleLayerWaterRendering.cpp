@@ -12,6 +12,8 @@
 #include "PostProcess/PostProcessSubsurface.h"
 #include "PostProcess/SceneRenderTargets.h"
 #include "PostProcessTemporalAA.h"
+#include "RayTracing/RayTracingOptions.h"
+#include "RayTracing/RayTracingReflections.h"
 #include "RenderGraph.h"
 #include "ScenePrivate.h"
 #include "SceneRendering.h"
@@ -21,7 +23,7 @@
 
 
 DECLARE_GPU_STAT(SingleLayerWater);
-
+DECLARE_GPU_STAT_NAMED(RayTracingWaterReflections, TEXT("Ray Tracing Water Reflections"));
 
 
 static TAutoConsoleVariable<int32> CVarWaterSingleLayer(
@@ -62,6 +64,10 @@ static TAutoConsoleVariable<int32> CVarWaterSingleLayerSSR(
 	TEXT("Enable SSR for the single water renderring system."),
 	ECVF_RenderThreadSafe | ECVF_Scalability);
 
+static TAutoConsoleVariable<int32> CVarWaterSingleLayerRTR(
+	TEXT("r.Water.SingleLayer.RTR"), 1,
+	TEXT("Enable RTR for the single water renderring system."),
+	ECVF_RenderThreadSafe | ECVF_Scalability);
 
 static TAutoConsoleVariable<int32> CVarWaterSingleLayerSSRTAA(
 	TEXT("r.Water.SingleLayer.SSRTAA"), 1,
@@ -667,7 +673,84 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWaterReflections(FRHIComman
 		}
 
  		const bool bEnableSSR = CVarWaterSingleLayerSSR.GetValueOnRenderThread() != 0 && ShouldRenderScreenSpaceReflections(View);
-		if (bEnableSSR)
+		const bool bEnableRTR = CVarWaterSingleLayerRTR.GetValueOnRenderThread() != 0 && ShouldRenderRayTracingReflections(View);
+		if (bEnableRTR)
+		{
+			RDG_EVENT_SCOPE(GraphBuilder, "RayTracingWaterReflections");
+			RDG_GPU_STAT_SCOPE(GraphBuilder, RayTracingWaterReflections);
+
+			IScreenSpaceDenoiser::FReflectionsInputs DenoiserInputs;
+			IScreenSpaceDenoiser::FReflectionsRayTracingConfig RayTracingConfig;
+
+			//RayTracingConfig.ResolutionFraction = FMath::Clamp(GetRayTracingReflectionsScreenPercentage() / 100.0f, 0.25f, 1.0f);
+			RayTracingConfig.ResolutionFraction = 1.0f;
+			RayTracingConfig.RayCountPerPixel = GetRayTracingReflectionsSamplesPerPixel(View) > -1 ? GetRayTracingReflectionsSamplesPerPixel(View) : View.FinalPostProcessSettings.RayTracingReflectionsSamplesPerPixel;
+
+			// Water is assumed to have zero roughness and is not currently denoised.
+			int32 DenoiserMode = GetReflectionsDenoiserMode();
+			//bool bDenoise = DenoiserMode != 0;
+			bool bDenoise = false;
+
+			if (!bDenoise)
+			{
+				RayTracingConfig.ResolutionFraction = 1.0f;
+			}
+
+			int32 UpscaleFactor = int32(1.0f / RayTracingConfig.ResolutionFraction);
+
+			{
+				FRDGTextureDesc Desc = FRDGTextureDesc::Create2DDesc(
+					SceneTextures.SceneDepthBuffer->Desc.Extent / UpscaleFactor,
+					PF_FloatRGBA,
+					FClearValueBinding::None,
+					/* InFlags = */ TexCreate_None,
+					/* InTargetableFlags = */ TexCreate_ShaderResource | TexCreate_RenderTargetable | TexCreate_UAV,
+					/* bInForceSeparateTargetAndShaderResource = */ false);
+
+				DenoiserInputs.Color = GraphBuilder.CreateTexture(Desc, TEXT("RayTracingReflections"));
+
+				Desc.Format = PF_R16F;
+				DenoiserInputs.RayHitDistance = GraphBuilder.CreateTexture(Desc, TEXT("RayTracingReflectionsHitDistance"));
+				DenoiserInputs.RayImaginaryDepth = GraphBuilder.CreateTexture(Desc, TEXT("RayTracingReflectionsImaginaryDepth"));
+			}
+
+			bool bReflectOnlyWater = true;
+			RenderRayTracingReflections(
+				GraphBuilder,
+				SceneTextures,
+				View,
+				RayTracingConfig.RayCountPerPixel,
+				bReflectOnlyWater,
+				RayTracingConfig.ResolutionFraction,
+				&DenoiserInputs);
+
+			if (bDenoise)
+			{
+				const IScreenSpaceDenoiser* DefaultDenoiser = IScreenSpaceDenoiser::GetDefaultDenoiser();
+				const IScreenSpaceDenoiser* DenoiserToUse = DenoiserMode == 1 ? DefaultDenoiser : GScreenSpaceDenoiser;
+
+				// Standard event scope for denoiser to have all profiling information not matter what, and with explicit detection of third party.
+				RDG_EVENT_SCOPE(GraphBuilder, "%s%s(WaterReflections) %dx%d",
+					DenoiserToUse != DefaultDenoiser ? TEXT("ThirdParty ") : TEXT(""),
+					DenoiserToUse->GetDebugName(),
+					View.ViewRect.Width(), View.ViewRect.Height());
+
+				IScreenSpaceDenoiser::FReflectionsOutputs DenoiserOutputs = DenoiserToUse->DenoiseWaterReflections(
+					GraphBuilder,
+					View,
+					&View.PrevViewInfo,
+					SceneTextures,
+					DenoiserInputs,
+					RayTracingConfig);
+
+				ReflectionsColor = DenoiserOutputs.Color;
+			}
+			else
+			{
+				ReflectionsColor = DenoiserInputs.Color;
+			}
+		}
+		else if (bEnableSSR)
 		{
 			// RUN SSR
 			// Uses the water GBuffer (depth, ABCDEF) to know how to start tracing.
@@ -701,8 +784,8 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWaterReflections(FRHIComman
 					SceneTextures, 
 					View,
 					TAASettings,
-					View.PrevViewInfo.SSRHistory,
-					&View.ViewState->PrevFrameViewInfo.SSRHistory);
+					View.PrevViewInfo.WaterSSRHistory,
+					&View.ViewState->PrevFrameViewInfo.WaterSSRHistory);
 
 				ReflectionsColor = TAAOutputs.SceneColor;
 			}
