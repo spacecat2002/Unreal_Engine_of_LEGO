@@ -43,9 +43,9 @@ UScriptStruct* FRigVMParameter::GetScriptStruct() const
 URigVM::URigVM()
 : WorkMemoryPtr(&WorkMemoryStorage)
 , LiteralMemoryPtr(&LiteralMemoryStorage)
+, ByteCodePtr(&ByteCodeStorage)
 , FunctionNamesPtr(&FunctionNamesStorage)
 , FunctionsPtr(&FunctionsStorage)
-, ByteCodePtr(&ByteCodeStorage)
 {
 	GetWorkMemory().SetMemoryType(ERigVMMemoryType::Work);
 	GetLiteralMemory().SetMemoryType(ERigVMMemoryType::Literal);
