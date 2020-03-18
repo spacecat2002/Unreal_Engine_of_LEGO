@@ -301,6 +301,10 @@ public:
 	virtual int32 Clamp(int32 X,int32 A,int32 B) = 0;
 	virtual int32 Saturate(int32 X) = 0;
 
+	virtual int32 SmoothStep(int32 X,int32 Y,int32 A) = 0;
+	virtual int32 Step(int32 Y,int32 X) = 0;
+	virtual int32 InvLerp(int32 X,int32 Y,int32 A) = 0;
+
 	virtual int32 ComponentMask(int32 Vector,bool R,bool G,bool B,bool A) = 0;
 	virtual int32 AppendVector(int32 A,int32 B) = 0;
 	virtual int32 TransformVector(EMaterialCommonBasis SourceCoordBasis, EMaterialCommonBasis DestCoordBasis, int32 A) = 0;
@@ -553,6 +557,10 @@ public:
 	virtual int32 Max(int32 A,int32 B) override { return Compiler->Max(A,B); }
 	virtual int32 Clamp(int32 X,int32 A,int32 B) override { return Compiler->Clamp(X,A,B); }
 	virtual int32 Saturate(int32 X) override { return Compiler->Saturate(X); }
+
+	virtual int32 SmoothStep(int32 X,int32 Y,int32 A) override { return Compiler->SmoothStep(X,Y,A); }
+	virtual int32 Step(int32 Y,int32 X) override { return Compiler->Step(Y,X); }
+	virtual int32 InvLerp(int32 X,int32 Y,int32 A) override { return Compiler->InvLerp(X,Y,A); }
 
 	virtual int32 ComponentMask(int32 Vector,bool R,bool G,bool B,bool A) override { return Compiler->ComponentMask(Vector,R,G,B,A); }
 	virtual int32 AppendVector(int32 A,int32 B) override { return Compiler->AppendVector(A,B); }

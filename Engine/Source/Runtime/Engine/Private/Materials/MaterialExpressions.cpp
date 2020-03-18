@@ -105,6 +105,7 @@
 #include "Materials/MaterialExpressionGetMaterialAttributes.h"
 #include "Materials/MaterialExpressionHairAttributes.h"
 #include "Materials/MaterialExpressionIf.h"
+#include "Materials/MaterialExpressionInverseLinearInterpolate.h"
 #include "Materials/MaterialExpressionLightmapUVs.h"
 #include "Materials/MaterialExpressionPrecomputedAOMask.h"
 #include "Materials/MaterialExpressionLightmassReplace.h"
@@ -175,6 +176,7 @@
 #include "Materials/MaterialExpressionScreenPosition.h"
 #include "Materials/MaterialExpressionShadingModel.h"
 #include "Materials/MaterialExpressionSine.h"
+#include "Materials/MaterialExpressionSmoothStep.h"
 #include "Materials/MaterialExpressionSingleLayerWaterMaterialOutput.h"
 #include "Materials/MaterialExpressionThinTranslucentMaterialOutput.h"
 #include "Materials/MaterialExpressionSobol.h"
@@ -184,6 +186,7 @@
 #include "Materials/MaterialExpressionSquareRoot.h"
 #include "Materials/MaterialExpressionStaticBool.h"
 #include "Materials/MaterialExpressionStaticSwitch.h"
+#include "Materials/MaterialExpressionStep.h"
 #include "Materials/MaterialExpressionSubtract.h"
 #include "Materials/MaterialExpressionTangent.h"
 #include "Materials/MaterialExpressionTangentOutput.h"
@@ -3644,6 +3647,197 @@ void UMaterialExpressionSubtract::GetCaption(TArray<FString>& OutCaptions) const
 		ret += TEXT("(");
 		ret += ATraced.Expression ? TEXT(",") : FString::Printf( TEXT("%.4g,"), ConstA);
 		ret += BTraced.Expression ? TEXT(")") : FString::Printf( TEXT("%.4g)"), ConstB);
+	}
+
+	OutCaptions.Add(ret);
+}
+#endif // WITH_EDITOR
+
+//
+//	UMaterialExpressionSmoothStep
+//
+
+UMaterialExpressionSmoothStep::UMaterialExpressionSmoothStep(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
+{
+	// Structure to hold one-time initialization
+	struct FConstructorStatics
+	{
+		FText NAME_Math;
+		FText NAME_Utility;
+		FConstructorStatics()
+			: NAME_Math(LOCTEXT("Math", "Math"))
+			, NAME_Utility(LOCTEXT("Utility", "Utility"))
+		{
+		}
+	};
+	static FConstructorStatics ConstructorStatics;
+
+	ConstMin = 0.0f;
+	ConstMax = 1.0f;
+	ConstValue = 0.0f;
+
+#if WITH_EDITORONLY_DATA
+	MenuCategories.Add(ConstructorStatics.NAME_Math);
+	MenuCategories.Add(ConstructorStatics.NAME_Utility);
+#endif
+}
+
+#if WITH_EDITOR
+int32 UMaterialExpressionSmoothStep::Compile(class FMaterialCompiler* Compiler, int32 OutputIndex)
+{
+	// if the input is hooked up, use it, otherwise use the internal constant
+	int32 Arg1 = Min.GetTracedInput().Expression ? Min.Compile(Compiler) : Compiler->Constant(ConstMin);
+	// if the input is hooked up, use it, otherwise use the internal constant
+	int32 Arg2 = Max.GetTracedInput().Expression ? Max.Compile(Compiler) : Compiler->Constant(ConstMax);
+	// if the input is hooked up, use it, otherwise use the internal constant
+	int32 Arg3 = Value.GetTracedInput().Expression ? Value.Compile(Compiler) : Compiler->Constant(ConstValue);
+
+	return Compiler->SmoothStep(Arg1, Arg2, Arg3);
+}
+
+void UMaterialExpressionSmoothStep::GetCaption(TArray<FString>& OutCaptions) const
+{
+	FString ret = TEXT("SmoothStep");
+
+	FExpressionInput MinTraced = Min.GetTracedInput();
+	FExpressionInput MaxTraced = Max.GetTracedInput();
+	FExpressionInput ValueTraced = Value.GetTracedInput();
+
+	if (!MinTraced.Expression || !MaxTraced.Expression || !ValueTraced.Expression)
+	{
+		ret += TEXT("(");
+		ret += MinTraced.Expression ? TEXT(",") : FString::Printf(TEXT("%.4g,"), ConstMin);
+		ret += MaxTraced.Expression ? TEXT(",") : FString::Printf(TEXT("%.4g,"), ConstMax);
+		ret += ValueTraced.Expression ? TEXT(")") : FString::Printf(TEXT("%.4g)"), ConstValue);
+	}
+
+	OutCaptions.Add(ret);
+}
+#endif // WITH_EDITOR
+
+//
+//	UMaterialExpressionStep
+//
+
+UMaterialExpressionStep::UMaterialExpressionStep(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
+{
+	// Structure to hold one-time initialization
+	struct FConstructorStatics
+	{
+		FText NAME_Math;
+		FText NAME_Utility;
+		FConstructorStatics()
+			: NAME_Math(LOCTEXT("Math", "Math"))
+			, NAME_Utility(LOCTEXT("Utility", "Utility"))
+		{
+		}
+	};
+	static FConstructorStatics ConstructorStatics;
+
+	ConstY = 0.0f;
+	ConstX = 1.0f;
+
+#if WITH_EDITORONLY_DATA
+	MenuCategories.Add(ConstructorStatics.NAME_Math);
+	MenuCategories.Add(ConstructorStatics.NAME_Utility);
+#endif
+}
+
+#if WITH_EDITOR
+int32 UMaterialExpressionStep::Compile(class FMaterialCompiler* Compiler, int32 OutputIndex)
+{
+	// if the input is hooked up, use it, otherwise use the internal constant
+	int32 Arg1 = Y.GetTracedInput().Expression ? Y.Compile(Compiler) : Compiler->Constant(ConstY);
+	// if the input is hooked up, use it, otherwise use the internal constant
+	int32 Arg2 = X.GetTracedInput().Expression ? X.Compile(Compiler) : Compiler->Constant(ConstX);
+
+	return Compiler->Step(Arg1, Arg2);
+}
+
+void UMaterialExpressionStep::GetCaption(TArray<FString>& OutCaptions) const
+{
+	FString ret = TEXT("Step");
+
+	FExpressionInput YTraced = Y.GetTracedInput();
+	FExpressionInput XTraced = X.GetTracedInput();
+
+	if (!YTraced.Expression || !XTraced.Expression)
+	{
+		ret += TEXT("(");
+		ret += YTraced.Expression ? TEXT(",") : FString::Printf(TEXT("%.4g,"), ConstY);
+		ret += XTraced.Expression ? TEXT(")") : FString::Printf(TEXT("%.4g)"), ConstX);
+	}
+
+	OutCaptions.Add(ret);
+}
+#endif // WITH_EDITOR
+
+//
+//	UMaterialExpressionInverseLerp
+//
+
+UMaterialExpressionInverseLinearInterpolate::UMaterialExpressionInverseLinearInterpolate(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
+{
+	// Structure to hold one-time initialization
+	struct FConstructorStatics
+	{
+		FText NAME_Math;
+		FText NAME_Utility;
+		FConstructorStatics()
+			: NAME_Math(LOCTEXT("Math", "Math"))
+			, NAME_Utility(LOCTEXT("Utility", "Utility"))
+		{
+		}
+	};
+	static FConstructorStatics ConstructorStatics;
+
+	ConstA = 0.0f;
+	ConstB = 1.0f;
+	ConstValue = 0.0f;
+	bClampResult = false;
+
+#if WITH_EDITORONLY_DATA
+	MenuCategories.Add(ConstructorStatics.NAME_Math);
+	MenuCategories.Add(ConstructorStatics.NAME_Utility);
+#endif
+}
+
+#if WITH_EDITOR
+int32 UMaterialExpressionInverseLinearInterpolate::Compile(class FMaterialCompiler* Compiler, int32 OutputIndex)
+{
+	// if the input is hooked up, use it, otherwise use the internal constant
+	int32 Arg1 = A.GetTracedInput().Expression ? A.Compile(Compiler) : Compiler->Constant(ConstA);
+	// if the input is hooked up, use it, otherwise use the internal constant
+	int32 Arg2 = B.GetTracedInput().Expression ? B.Compile(Compiler) : Compiler->Constant(ConstB);
+	// if the input is hooked up, use it, otherwise use the internal constant
+	int32 Arg3 = Value.GetTracedInput().Expression ? Value.Compile(Compiler) : Compiler->Constant(ConstValue);
+
+	int32 Result = Compiler->InvLerp(Arg1, Arg2, Arg3);
+	return bClampResult ? Compiler->Clamp(Result, Compiler->Constant(0.0f), Compiler->Constant(1.0f)) : Result;
+}
+
+void UMaterialExpressionInverseLinearInterpolate::GetCaption(TArray<FString>& OutCaptions) const
+{
+	FString ret = TEXT("InvLerp");
+
+	FExpressionInput MinTraced = A.GetTracedInput();
+	FExpressionInput MaxTraced = B.GetTracedInput();
+	FExpressionInput ValueTraced = Value.GetTracedInput();
+
+	if (!MinTraced.Expression || !MaxTraced.Expression || !ValueTraced.Expression)
+	{
+		ret += TEXT("(");
+		ret += MinTraced.Expression ? TEXT(",") : FString::Printf(TEXT("%.4g,"), ConstA);
+		ret += MaxTraced.Expression ? TEXT(",") : FString::Printf(TEXT("%.4g,"), ConstB);
+		ret += ValueTraced.Expression ? TEXT(")") : FString::Printf(TEXT("%.4g)"), ConstValue);
+	}
+
+	if (bClampResult)
+	{
+		ret += TEXT(" Clamped");
 	}
 
 	OutCaptions.Add(ret);

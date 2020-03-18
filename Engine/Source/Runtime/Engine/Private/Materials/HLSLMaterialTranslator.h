@@ -648,6 +648,9 @@ protected:
 	virtual int32 Logarithm10(int32 X) override;
 	virtual int32 SquareRoot(int32 X) override;
 	virtual int32 Length(int32 X) override;
+	virtual int32 Step(int32 Y, int32 X) override;
+	virtual int32 SmoothStep(int32 X, int32 Y, int32 A) override;
+	virtual int32 InvLerp(int32 X, int32 Y, int32 A) override;
 	virtual int32 Lerp(int32 X, int32 Y, int32 A) override;
 	virtual int32 Min(int32 A, int32 B) override;
 	virtual int32 Max(int32 A, int32 B) override;
