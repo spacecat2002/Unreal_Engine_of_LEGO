@@ -755,7 +755,7 @@ public:
 	TRCPassForRDG(TFunction<void (FRenderingCompositePass*, FRenderingCompositePassContext&)>&& InProcessLambda)
 		: ProcessLambda(InProcessLambda)
 	{
-		bBindGlobalUniformBuffers = false;
+		FRenderingCompositePass::bBindGlobalUniformBuffers = false;
 	}
 
 	// interface FRenderingCompositePass ---------
