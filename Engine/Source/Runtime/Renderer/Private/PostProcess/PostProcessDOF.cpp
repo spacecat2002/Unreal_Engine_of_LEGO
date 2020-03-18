@@ -62,7 +62,6 @@ class FPostProcessDOFSetupPS : public FGlobalShader
 
 public:
 	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
-	LAYOUT_FIELD(FSceneTextureShaderParameters, SceneTextureParameters);
 	LAYOUT_FIELD(FShaderParameter, DepthOfFieldParams);
 	
 	/** Initialization constructor. */
@@ -70,7 +69,6 @@ public:
 		: FGlobalShader(Initializer)
 	{
 		PostprocessParameter.Bind(Initializer.ParameterMap);
-		SceneTextureParameters.Bind(Initializer);
 		DepthOfFieldParams.Bind(Initializer.ParameterMap,TEXT("DepthOfFieldParams"));
 	}
 
@@ -90,8 +88,6 @@ public:
 		{
 			PostprocessParameter.SetPS(RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Point, AM_Border, AM_Border, AM_Clamp>::GetRHI());
 		}
-
-		SceneTextureParameters.Set(RHICmdList, ShaderRHI, Context.View.FeatureLevel, ESceneTextureSetupMode::All);
 
 		{
 			const FVector4 DepthOfFieldParamValue = GetDepthOfFieldParameters(Context.View.FinalPostProcessSettings);
@@ -328,7 +324,6 @@ class FPostProcessDOFRecombinePS : public FGlobalShader
 
 public:
 	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
-	LAYOUT_FIELD(FSceneTextureShaderParameters, SceneTextureParameters);
 	LAYOUT_FIELD(FShaderParameter, DepthOfFieldUVLimit);
 
 	/** Initialization constructor. */
@@ -336,7 +331,6 @@ public:
 		: FGlobalShader(Initializer)
 	{
 		PostprocessParameter.Bind(Initializer.ParameterMap);
-		SceneTextureParameters.Bind(Initializer);
 		DepthOfFieldUVLimit.Bind(Initializer.ParameterMap,TEXT("DepthOfFieldUVLimit"));
 	}
 
@@ -347,7 +341,6 @@ public:
 
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 
-		SceneTextureParameters.Set(Context.RHICmdList, ShaderRHI, Context.View.FeatureLevel, ESceneTextureSetupMode::All);
 		PostprocessParameter.SetPS(Context.RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI(), eFC_0001);
 		
 		// Compute out of bounds UVs in the source texture.

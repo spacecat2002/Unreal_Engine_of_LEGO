@@ -282,7 +282,6 @@ public:
 		LightPositionAndInvRadius.Bind(Initializer.ParameterMap, TEXT("LightPositionAndInvRadius"));
 		LightAngleAndNormalThreshold.Bind(Initializer.ParameterMap, TEXT("LightAngleAndNormalThreshold"));
 		ScissorRectMinAndSize.Bind(Initializer.ParameterMap, TEXT("ScissorRectMinAndSize"));
-		SceneTextureParameters.Bind(Initializer);
 		DownsampleFactor.Bind(Initializer.ParameterMap, TEXT("DownsampleFactor"));
 		NumShadowCapsules.Bind(Initializer.ParameterMap, TEXT("NumShadowCapsules"));
 		ShadowCapsuleShapes.Bind(Initializer.ParameterMap, TEXT("ShadowCapsuleShapes"));
@@ -359,8 +358,6 @@ public:
 		{
 			check(!ReceiverBentNormalTexture.IsBound());
 		}
-
-		SceneTextureParameters.Set(RHICmdList, ShaderRHI, View.FeatureLevel, ESceneTextureSetupMode::All);
 
 		SetShaderValue(RHICmdList, ShaderRHI, NumGroups, NumGroupsValue);
 
@@ -468,7 +465,6 @@ private:
 	LAYOUT_FIELD(FShaderParameter, RayStartOffsetDepthScale);
 	LAYOUT_FIELD(FShaderParameter, LightAngleAndNormalThreshold);
 	LAYOUT_FIELD(FShaderParameter, ScissorRectMinAndSize);
-	LAYOUT_FIELD(FSceneTextureShaderParameters, SceneTextureParameters);
 	LAYOUT_FIELD(FShaderParameter, DownsampleFactor);
 	LAYOUT_FIELD(FShaderParameter, NumShadowCapsules);
 	LAYOUT_FIELD(FShaderResourceParameter, ShadowCapsuleShapes);
@@ -612,7 +608,6 @@ public:
 	TCapsuleShadowingUpsamplePS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
 	{
-		SceneTextureParameters.Bind(Initializer);
 		ShadowFactorsTexture.Bind(Initializer.ParameterMap,TEXT("ShadowFactorsTexture"));
 		ShadowFactorsSampler.Bind(Initializer.ParameterMap,TEXT("ShadowFactorsSampler"));
 		ScissorRectMinAndSize.Bind(Initializer.ParameterMap,TEXT("ScissorRectMinAndSize"));
@@ -624,7 +619,6 @@ public:
 		FRHIPixelShader* ShaderRHI = RHICmdList.GetBoundPixelShader();
 
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, View.ViewUniformBuffer);
-		SceneTextureParameters.Set(RHICmdList, ShaderRHI, View.FeatureLevel, ESceneTextureSetupMode::All);
 
 		SetTextureParameter(RHICmdList, ShaderRHI, ShadowFactorsTexture, ShadowFactorsSampler, TStaticSamplerState<SF_Bilinear>::GetRHI(), ShadowFactorsTextureValue->GetRenderTargetItem().ShaderResourceTexture);
 	
@@ -633,8 +627,6 @@ public:
 	}
 
 private:
-
-	LAYOUT_FIELD(FSceneTextureShaderParameters, SceneTextureParameters);
 	LAYOUT_FIELD(FShaderResourceParameter, ShadowFactorsTexture);
 	LAYOUT_FIELD(FShaderResourceParameter, ShadowFactorsSampler);
 	LAYOUT_FIELD(FShaderParameter, ScissorRectMinAndSize);
@@ -740,6 +732,9 @@ bool FDeferredShadingSceneRenderer::RenderCapsuleDirectShadows(
 	{
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_RenderCapsuleShadows);
 
+		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+		FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(SceneContext, FeatureLevel, ESceneTextureSetupMode::All, UniformBuffer_SingleFrame);
+
 		TRefCountPtr<IPooledRenderTarget> RayTracedShadowsRT;
 
 		{
@@ -753,6 +748,9 @@ bool FDeferredShadingSceneRenderer::RenderCapsuleDirectShadows(
 			const FViewInfo& View = Views[ViewIndex];
 			SCOPED_DRAW_EVENT(RHICmdList, CapsuleShadows);
 			SCOPED_GPU_STAT(RHICmdList, CapsuleShadows);
+
+			FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
+			SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
 
 			static TArray<FCapsuleShape> CapsuleShapeData;
 			CapsuleShapeData.Reset();
@@ -1248,6 +1246,9 @@ void FDeferredShadingSceneRenderer::RenderIndirectCapsuleShadows(
 		{
 			SCOPED_DRAW_EVENT(RHICmdList, IndirectCapsuleShadows);
 
+			FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+			FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(SceneContext, FeatureLevel, ESceneTextureSetupMode::All, UniformBuffer_SingleFrame);
+
 			TRefCountPtr<IPooledRenderTarget> RayTracedShadowsRT;
 
 			{
@@ -1257,7 +1258,6 @@ void FDeferredShadingSceneRenderer::RenderIndirectCapsuleShadows(
 				GRenderTargetPool.FindFreeElement(RHICmdList, Desc, RayTracedShadowsRT, TEXT("RayTracedShadows"));
 			}
 
-			FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 			TArray<FRHITexture*, TInlineAllocator<2>> RenderTargets;
 
 			if (IndirectLightingTexture)
@@ -1308,7 +1308,10 @@ void FDeferredShadingSceneRenderer::RenderIndirectCapsuleShadows(
 				if (View.IndirectShadowPrimitives.Num() > 0 && View.ViewState)
 				{
 					SCOPED_GPU_STAT(RHICmdList, CapsuleShadows);
-		
+
+					FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
+					SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
+
 					int32 NumCapsuleShapes = 0;
 					int32 NumMeshesWithCapsules = 0;
 					int32 NumMeshDistanceFieldCasters = 0;

@@ -185,7 +185,6 @@ public:
 	FUpdateHistoryDepthRejectionPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
 	{
-		SceneTextureParameters.Bind(Initializer);
 		AOParameters.Bind(Initializer.ParameterMap);
 		GeometryAwareUpsampleParameters.Bind(Initializer.ParameterMap);
 		BentNormalHistoryTexture.Bind(Initializer.ParameterMap, TEXT("BentNormalHistoryTexture"));
@@ -212,7 +211,6 @@ public:
 		FRHIPixelShader* ShaderRHI = RHICmdList.GetBoundPixelShader();
 
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, View.ViewUniformBuffer);
-		SceneTextureParameters.Set(RHICmdList, ShaderRHI, View.FeatureLevel, ESceneTextureSetupMode::All);
 		AOParameters.Set(RHICmdList, ShaderRHI, Parameters);
 		GeometryAwareUpsampleParameters.Set(RHICmdList, ShaderRHI, View, DistanceFieldNormal, DistanceFieldAOBentNormal);
 
@@ -263,7 +261,6 @@ public:
 	}
 
 private:
-	LAYOUT_FIELD(FSceneTextureShaderParameters, SceneTextureParameters);
 	LAYOUT_FIELD(FAOParameters, AOParameters);
 	LAYOUT_FIELD(FGeometryAwareUpsampleParameters, GeometryAwareUpsampleParameters);
 	LAYOUT_FIELD(FShaderResourceParameter, BentNormalHistoryTexture);
@@ -522,6 +519,10 @@ void UpdateHistory(
 
 			SCOPED_DRAW_EVENT(RHICmdList, UpdateHistory);
 
+			FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(SceneContext, View.GetFeatureLevel(), ESceneTextureSetupMode::All, UniformBuffer_SingleFrame);
+			FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
+			SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
+
 			{
 				FRHIRenderPassInfo RPInfo(NewBentNormalHistory->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Load_Store);
 				RHICmdList.BeginRenderPass(RPInfo, TEXT("UpdateHistory"));
@@ -693,7 +694,6 @@ public:
 	TDistanceFieldAOUpsamplePS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
 	{
-		SceneTextureParameters.Bind(Initializer);
 		DFAOUpsampleParameters.Bind(Initializer.ParameterMap);
 		MinIndirectDiffuseOcclusion.Bind(Initializer.ParameterMap,TEXT("MinIndirectDiffuseOcclusion"));
 	}
@@ -703,7 +703,6 @@ public:
 		FRHIPixelShader* ShaderRHI = RHICmdList.GetBoundPixelShader();
 
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, View.ViewUniformBuffer);
-		SceneTextureParameters.Set(RHICmdList, ShaderRHI, View.FeatureLevel, ESceneTextureSetupMode::All);
 		DFAOUpsampleParameters.Set(RHICmdList, ShaderRHI, View, DistanceFieldAOBentNormal);
 
 		FScene* Scene = (FScene*)View.Family->Scene;
@@ -712,8 +711,6 @@ public:
 	}
 	
 private:
-
-	LAYOUT_FIELD(FSceneTextureShaderParameters, SceneTextureParameters);
 	LAYOUT_FIELD(FDFAOUpsampleParameters, DFAOUpsampleParameters);
 	LAYOUT_FIELD(FShaderParameter, MinIndirectDiffuseOcclusion);
 };
@@ -731,6 +728,8 @@ void UpsampleBentNormalAO(
 	TRefCountPtr<IPooledRenderTarget>& DistanceFieldAOBentNormal,
 	bool bModulateSceneColor)
 {
+	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+
 	FGraphicsPipelineStateInitializer GraphicsPSOInit;
 	RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
 
@@ -740,6 +739,10 @@ void UpsampleBentNormalAO(
 
 		SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
 		SCOPED_DRAW_EVENT(RHICmdList, UpsampleAO);
+
+		FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(SceneContext, View.GetFeatureLevel(), ESceneTextureSetupMode::All, UniformBuffer_SingleDraw);
+		FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
+		SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
 
 		RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
 		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();

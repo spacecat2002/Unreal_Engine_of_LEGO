@@ -417,7 +417,6 @@ class FPostProcessAmbientOcclusionSetupPS : public FGlobalShader
 
 public:
 	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter)
-	LAYOUT_FIELD(FSceneTextureShaderParameters, SceneTextureParameters)
 	LAYOUT_FIELD(FScreenSpaceAOParameters, ScreenSpaceAOParams);
 	LAYOUT_FIELD(FShaderParameter, AmbientOcclusionSetupParams)
 
@@ -426,7 +425,6 @@ public:
 		: FGlobalShader(Initializer)
 	{
 		PostprocessParameter.Bind(Initializer.ParameterMap);
-		SceneTextureParameters.Bind(Initializer);
 		ScreenSpaceAOParams.Bind(Initializer.ParameterMap);
 		AmbientOcclusionSetupParams.Bind(Initializer.ParameterMap, TEXT("AmbientOcclusionSetupParams"));
 	}
@@ -439,7 +437,6 @@ public:
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 
 		PostprocessParameter.SetPS(Context.RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
-		SceneTextureParameters.Set(Context.RHICmdList, ShaderRHI, Context.View.FeatureLevel, ESceneTextureSetupMode::All);
 
 		FIntPoint TexSize = FSceneRenderTargets::Get(Context.RHICmdList).GetBufferSizeXY();
 		ScreenSpaceAOParams.Set(Context.RHICmdList, Context.View, ShaderRHI, TexSize);
@@ -794,7 +791,6 @@ class FPostProcessAmbientOcclusionPSandCS : public FGlobalShader
 public:
 	LAYOUT_FIELD(FShaderParameter, HZBRemapping)
 	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter)
-	LAYOUT_FIELD(FSceneTextureShaderParameters, SceneTextureParameters)
 	LAYOUT_FIELD(FScreenSpaceAOParameters, ScreenSpaceAOParams)
 	LAYOUT_FIELD(FShaderResourceParameter, RandomNormalTexture)
 	LAYOUT_FIELD(FShaderResourceParameter, RandomNormalTextureSampler)
@@ -805,7 +801,6 @@ public:
 		: FGlobalShader(Initializer)
 	{
 		PostprocessParameter.Bind(Initializer.ParameterMap);
-		SceneTextureParameters.Bind(Initializer);
 		ScreenSpaceAOParams.Bind(Initializer.ParameterMap);
 		RandomNormalTexture.Bind(Initializer.ParameterMap, TEXT("RandomNormalTexture"));
 		RandomNormalTextureSampler.Bind(Initializer.ParameterMap, TEXT("RandomNormalTextureSampler"));
@@ -842,7 +837,6 @@ public:
 		RHICmdList.SetUAVParameter(ShaderRHI, OutTexture.GetBaseIndex(), OutUAV);
 
 		// SF_Point is better than bilinear to avoid halos around objects
-		SceneTextureParameters.Set(RHICmdList, ShaderRHI, View.FeatureLevel, ESceneTextureSetupMode::All);
 		PostprocessParameter.SetCS(ShaderRHI, Context, RHICmdList, TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 
 		SetTextureParameter(RHICmdList, ShaderRHI, RandomNormalTexture, RandomNormalTextureSampler, TStaticSamplerState<SF_Point, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI(), SSAORandomization.ShaderResourceTexture);
@@ -862,7 +856,6 @@ public:
 
 		// SF_Point is better than bilinear to avoid halos around objects
 		PostprocessParameter.SetPS(RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
-		SceneTextureParameters.Set(RHICmdList, ShaderRHI, View.FeatureLevel, ESceneTextureSetupMode::All);
 
 		SetTextureParameter(RHICmdList, ShaderRHI, RandomNormalTexture, RandomNormalTextureSampler, TStaticSamplerState<SF_Point, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI(), SSAORandomization.ShaderResourceTexture);
 		ScreenSpaceAOParams.Set(RHICmdList, View, ShaderRHI, InputTextureSize);
@@ -1355,7 +1348,6 @@ class FPostProcessGTAOHorizonSearchPSandCS : public FGlobalShader
 	FPostProcessGTAOHorizonSearchPSandCS() {}
 
 public:
-	LAYOUT_FIELD(FSceneTextureShaderParameters, SceneTextureParameters);
 	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
 	LAYOUT_FIELD(FScreenSpaceAOParameters, ScreenSpaceAOParams);
 	LAYOUT_FIELD(FGTAOParameters, GTAOParams);
@@ -1371,7 +1363,6 @@ public:
 		: FGlobalShader(Initializer)
 	{
 		PostprocessParameter.Bind(Initializer.ParameterMap);
-		SceneTextureParameters.Bind(Initializer);
 		ScreenSpaceAOParams.Bind(Initializer.ParameterMap);
 		GTAOParams.Bind(Initializer.ParameterMap);
 		HZBRemapping.Bind(Initializer.ParameterMap, TEXT("HZBRemapping"));
@@ -1402,7 +1393,6 @@ public:
 		FRHIComputeShader* ShaderRHI = RHICmdList.GetBoundComputeShader();
 
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
-		SceneTextureParameters.Set(RHICmdList, ShaderRHI, Context.View.FeatureLevel, ESceneTextureSetupMode::All);
 		ScreenSpaceAOParams.Set(RHICmdList, Context.View, ShaderRHI, DestSize, FScreenSpaceAOParameters::ERandTexType::GTAO);
 
 		GTAOParams.Set(RHICmdList, Context.View, DestSize, ShaderRHI);
@@ -1430,7 +1420,6 @@ public:
 		PostprocessParameter.SetPS(Context.RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
-		SceneTextureParameters.Set(Context.RHICmdList, ShaderRHI, Context.View.FeatureLevel, ESceneTextureSetupMode::All);
 		ScreenSpaceAOParams.Set(Context.RHICmdList, Context.View, ShaderRHI, DestSize, FScreenSpaceAOParameters::ERandTexType::GTAO);
 		GTAOParams.Set(Context.RHICmdList, Context.View, DestSize, ShaderRHI);
 
@@ -1508,7 +1497,6 @@ class FPostProcessGTAOCombinedPSandCS : public FGlobalShader
 	FPostProcessGTAOCombinedPSandCS() {}
 
 public:
-	LAYOUT_FIELD(FSceneTextureShaderParameters, SceneTextureParameters);
 	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
 	LAYOUT_FIELD(FScreenSpaceAOParameters, ScreenSpaceAOParams);
 	LAYOUT_FIELD(FShaderResourceParameter, OutTexture);
@@ -1523,7 +1511,6 @@ public:
 		: FGlobalShader(Initializer)
 	{
 		PostprocessParameter.Bind(Initializer.ParameterMap);
-		SceneTextureParameters.Bind(Initializer);
 		ScreenSpaceAOParams.Bind(Initializer.ParameterMap);
 		HZBRemapping.Bind(Initializer.ParameterMap, TEXT("HZBRemapping"));
 		RandomNormalTexture.Bind(Initializer.ParameterMap, TEXT("RandomNormalTexture"));
@@ -1555,7 +1542,6 @@ public:
 		FRHIComputeShader* ShaderRHI = RHICmdList.GetBoundComputeShader();
 
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
-		SceneTextureParameters.Set(RHICmdList, ShaderRHI, Context.View.FeatureLevel, ESceneTextureSetupMode::All);
 		ScreenSpaceAOParams.Set(RHICmdList, Context.View, ShaderRHI, DestSize, FScreenSpaceAOParameters::ERandTexType::GTAO);
 
 		PostprocessParameter.SetCS(ShaderRHI, Context, RHICmdList, TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
@@ -1579,7 +1565,6 @@ public:
 		PostprocessParameter.SetPS(Context.RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
-		SceneTextureParameters.Set(Context.RHICmdList, ShaderRHI, Context.View.FeatureLevel, ESceneTextureSetupMode::All);
 		ScreenSpaceAOParams.Set(Context.RHICmdList, Context.View, ShaderRHI, DestSize, FScreenSpaceAOParameters::ERandTexType::GTAO);
 		GTAOParams.Set(Context.RHICmdList, Context.View, DestSize, ShaderRHI);
 
@@ -1657,7 +1642,6 @@ class FPostProcessGTAOInnerIntegratePSandCS : public FGlobalShader
 	FPostProcessGTAOInnerIntegratePSandCS() {}
 
 public:
-	LAYOUT_FIELD(FSceneTextureShaderParameters, SceneTextureParameters);
 	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
 	LAYOUT_FIELD(FScreenSpaceAOParameters, ScreenSpaceAOParams);
 	LAYOUT_FIELD(FShaderResourceParameter, OutTexture);
@@ -1674,7 +1658,6 @@ public:
 		: FGlobalShader(Initializer)
 	{
 		PostprocessParameter.Bind(Initializer.ParameterMap);
-		SceneTextureParameters.Bind(Initializer);
 		ScreenSpaceAOParams.Bind(Initializer.ParameterMap);
 		RandomNormalTexture.Bind(Initializer.ParameterMap, TEXT("RandomNormalTexture"));
 		RandomNormalTextureSampler.Bind(Initializer.ParameterMap, TEXT("RandomNormalTextureSampler"));
@@ -1698,7 +1681,6 @@ public:
 		FRHIComputeShader* ShaderRHI = RHICmdList.GetBoundComputeShader();
 
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
-		SceneTextureParameters.Set(RHICmdList, ShaderRHI, Context.View.FeatureLevel, ESceneTextureSetupMode::All);
 		ScreenSpaceAOParams.Set(RHICmdList, Context.View, ShaderRHI, InputTextureSize, FScreenSpaceAOParameters::ERandTexType::GTAO);
 		GTAOParams.Set(RHICmdList, Context.View, DestSize, ShaderRHI);
 
@@ -1727,7 +1709,6 @@ public:
 		PostprocessParameter.SetPS(Context.RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
-		SceneTextureParameters.Set(Context.RHICmdList, ShaderRHI, Context.View.FeatureLevel, ESceneTextureSetupMode::All);
 		ScreenSpaceAOParams.Set(Context.RHICmdList, Context.View, ShaderRHI, DestSize, FScreenSpaceAOParameters::ERandTexType::GTAO);
 		GTAOParams.Set(Context.RHICmdList, Context.View, DestSize, ShaderRHI);
 
@@ -2271,7 +2252,6 @@ class FPostProcessGTAOTemporalFilterPSandCS : public FGlobalShader
 	FPostProcessGTAOTemporalFilterPSandCS() {}
 
 public:
-	LAYOUT_FIELD(FSceneTextureShaderParameters, SceneTextureParameters);
 	LAYOUT_FIELD(FPostProcessPassParameters, 	PostprocessParameter);
 	LAYOUT_FIELD(FShaderResourceParameter, 		HistoryTexture);
 	LAYOUT_FIELD(FShaderResourceParameter, 		HistoryTextureSampler);
@@ -2302,7 +2282,6 @@ public:
 		: FGlobalShader(Initializer)
 	{
 		PostprocessParameter.Bind(Initializer.ParameterMap);
-		SceneTextureParameters.Bind(Initializer);
 
 		HistoryTexture.Bind(Initializer.ParameterMap, TEXT("HistoryTexture"));
 		HistoryTextureSampler.Bind(Initializer.ParameterMap, TEXT("HistoryTextureSampler"));
@@ -2342,7 +2321,6 @@ public:
 		PostprocessParameter.SetCS(ShaderRHI, Context, RHICmdList, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
-		SceneTextureParameters.Set(RHICmdList, ShaderRHI, Context.View.FeatureLevel, ESceneTextureSetupMode::All);
 
 		FIntPoint ViewportOffset = InputHistory.ViewportRect.Min;
 		FIntPoint ViewportExtent = InputHistory.ViewportRect.Size();
@@ -2404,7 +2382,6 @@ public:
 		PostprocessParameter.SetPS(Context.RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
-		SceneTextureParameters.Set(Context.RHICmdList, ShaderRHI, Context.View.FeatureLevel, ESceneTextureSetupMode::All);
 
 		FIntPoint ViewportOffset = InputHistory.ViewportRect.Min;
 		FIntPoint ViewportExtent = InputHistory.ViewportRect.Size();
