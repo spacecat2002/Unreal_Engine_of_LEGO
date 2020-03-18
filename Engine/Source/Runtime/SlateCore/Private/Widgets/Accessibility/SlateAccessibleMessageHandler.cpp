@@ -267,4 +267,18 @@ void FSlateAccessibleMessageHandler::Tick()
 	}
 }
 
+void FSlateAccessibleMessageHandler::MakeAccessibleAnnouncement(const FString& AnnouncementString)
+{
+	if(IsActive())
+	{
+		// Making an announcement doesn't have to be tied to any specific widget.
+		// We just pass in the accessible widget for the top levle window for convenience
+		TSharedPtr<SWidget> ActiveTopLevelWindow = FSlateApplicationBase::Get().GetActiveTopLevelWindow();
+		if(ActiveTopLevelWindow.IsValid())
+		{
+			RaiseEvent(FSlateAccessibleWidgetCache::GetAccessibleWidget(ActiveTopLevelWindow.ToSharedRef()), EAccessibleEvent::Notification, FString(), AnnouncementString);
+		}
+	}
+}
+
 #endif

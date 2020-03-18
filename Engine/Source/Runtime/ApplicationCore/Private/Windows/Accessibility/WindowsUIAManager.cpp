@@ -199,12 +199,23 @@ void FWindowsUIAManager::OnEventRaised(TSharedRef<IAccessibleWidget> Widget, EAc
 				UiaRaiseAutomationEvent(&ScopedProvider.Provider, UIA_Invoke_InvokedEventId);
 			}
 			break;
-#if WINVER >= 0x0A00
 		case EAccessibleEvent::Notification:
 		{
-			typedef HRESULT(WINAPI* UiaRaiseNotificationEventFunc)(IRawElementProviderSimple*, NotificationKind, NotificationProcessing, BSTR, BSTR);
+			// By right the signature should be
+			// typedef HRESULT(WINAPI* UiaRaiseNotificationEventFunc)(IRawElementProviderSimple*, NotificationKind, NotificationProcessing, BSTR, BSTR);
+			// But NotificationKind and NotificationProcessing are Windows 10 only enums.
+			// Since WINVER only keeps track of the minimum supported version, we use
+			// ints instead of the enums to ensure older versions of Windows can compile the code and Windows 10 users can use the functionality.
+			typedef HRESULT(WINAPI* UiaRaiseNotificationEventFunc)(IRawElementProviderSimple*, int, int, BSTR, BSTR);
 			static UiaRaiseNotificationEventFunc NotificationFunc = nullptr;
 			static bool bDoOnce = true;
+#if WINVER >= 0x0A00
+			const int NotificationKindEnum = NotificationKind_ActionCompleted;
+			const int NotificationProcessingEnum = NotificationProcessing_All;
+#else
+			const int NotificationKindEnum = 2; // NotificationKind_ActionCompleted
+			const int NotificationProcessingEnum = 2; // NotificationProcessing_All
+#endif
 			if (bDoOnce)
 			{
 				HMODULE Handle = GetModuleHandle(TEXT("Uiautomationcore.dll"));
@@ -217,11 +228,10 @@ void FWindowsUIAManager::OnEventRaised(TSharedRef<IAccessibleWidget> Widget, EAc
 			}
 			if (NotificationFunc)
 			{
-				NotificationFunc(&ScopedProvider.Provider, NotificationKind_ActionCompleted, NotificationProcessing_All, SysAllocString(*NewValue.GetValue<FString>()), SysAllocString(TEXT("")));
+				NotificationFunc(&ScopedProvider.Provider, NotificationKindEnum, NotificationProcessingEnum, SysAllocString(*NewValue.GetValue<FString>()), SysAllocString(TEXT("")));
 			}
 			break;
 		}
-#endif
 		// IMPORTANT: Calling UiaRaiseStructureChangedEvent seems to raise our per-frame timing for accessibility by
 		// over 10x (.04ms to .7ms, tested by clicking on the "All Classes" button in the modes panel of the Editor).
 		// For now, I'm disabling this until we figure out if it's absolutely necessary.

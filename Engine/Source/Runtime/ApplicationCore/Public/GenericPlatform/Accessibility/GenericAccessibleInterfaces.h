@@ -525,6 +525,13 @@ public:
 	 * @param Thread The thread to run the Function in.
 	 */
 	virtual void RunInThread(const TFunction<void()>& Function, bool bWaitForCompletion = true, ENamedThreads::Type Thread = ENamedThreads::GameThread) { }
+	
+	/**
+	 * Request a string to be announced to the user.
+	 * Note: Currently only supported on Win10, Mac, iOS. If requests are made too close together,
+	 * earlier announcement requests will get stomped by later announcements on certain platforms.
+	 */
+	virtual void MakeAccessibleAnnouncement(const FString& AnnouncementString) { }
 protected:
 	/** Triggered when bIsActive changes from false to true. */
 	virtual void OnActivate() {}
