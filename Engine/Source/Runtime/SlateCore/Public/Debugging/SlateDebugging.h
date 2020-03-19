@@ -86,6 +86,15 @@ public:
 	FText ToText() const;
 };
 
+struct SLATECORE_API FSlateDebuggingCursorQueryEventArgs
+{
+public:
+	FSlateDebuggingCursorQueryEventArgs(const SWidget* InWidgetOverridingCursor, const FCursorReply& InReply);
+
+	const SWidget* WidgetOverridingCursor = nullptr;
+	const FCursorReply& Reply;
+};
+
 UENUM()
 enum class ESlateDebuggingFocusEvent : uint8
 {
@@ -255,6 +264,12 @@ public:
 	static void BroadcastMouseCaptureLost(uint32 UserIndex, uint32 PointerIndex, TSharedPtr<const SWidget> InWidgetLostCapture);
 
 public:
+	DECLARE_MULTICAST_DELEGATE_OneParam(FWidgetCursorQuery, const FSlateDebuggingCursorQueryEventArgs& /*EventArgs*/);
+	static FWidgetCursorQuery CursorChangedEvent;
+
+	static void BroadcastCursorQuery(const SWidget* InWidgetOverridingCursor, const FCursorReply& InReply);
+
+public:
 	/**  */
 	DECLARE_MULTICAST_DELEGATE_TwoParams(FUICommandRun, const FName& /*CommandName*/, const FText& /*CommandLabel*/);
 	static FUICommandRun CommandRun;
@@ -272,6 +287,14 @@ private:
 	FSlateDebugging() {}
 
 	static TArray<struct FInvalidatedWidgetDrawer> InvalidatedWidgetDrawers;
+
+	struct FLastCursorQuery
+	{
+		const SWidget* WidgetThatOverrideCursorLast_UnsafeToUseForAnythingButCompare = nullptr;
+		TWeakPtr<SWidget> CursorWidget;
+		EMouseCursor::Type MouseCursor;
+	};
+	static FLastCursorQuery LastCursorQuery;
 };
 
 #endif

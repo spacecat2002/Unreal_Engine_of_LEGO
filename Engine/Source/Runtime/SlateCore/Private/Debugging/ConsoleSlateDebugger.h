@@ -44,6 +44,7 @@ private:
 	void OnAttemptNavigationEvent(const FSlateDebuggingNavigationEventArgs& EventArgs);
 	void OnExecuteNavigationEvent(const FSlateDebuggingExecuteNavigationEventArgs& EventArgs);
 	void OnCaptureStateChangeEvent(const FSlateDebuggingMouseCaptureEventArgs& EventArgs);
+	void OnCursorChangeEvent(const FSlateDebuggingCursorQueryEventArgs& EventArgs);
 
 	void OptionallyDumpCallStack();
 
