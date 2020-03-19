@@ -99,6 +99,7 @@ public:
 	FORCEINLINE const D3D12_RESOURCE_BINDING_TIER GetResourceBindingTier() const { return ResourceBindingTier; }
 	FORCEINLINE const D3D_ROOT_SIGNATURE_VERSION GetRootSignatureVersion() const { return RootSignatureVersion; }
 	FORCEINLINE const bool IsDepthBoundsTestSupported() const { return bDepthBoundsTestSupported; }
+	FORCEINLINE const bool IsHeapNotZeroedSupported() const { return bHeapNotZeroedSupported; }
 	FORCEINLINE const DXGI_ADAPTER_DESC& GetD3DAdapterDesc() const { return Desc.Desc; }
 	FORCEINLINE IDXGIAdapter* GetAdapter() { return DxgiAdapter; }
 	FORCEINLINE const FD3D12AdapterDesc& GetDesc() const { return Desc; }
@@ -317,6 +318,7 @@ protected:
 	D3D12_RESOURCE_BINDING_TIER ResourceBindingTier;
 	D3D_ROOT_SIGNATURE_VERSION RootSignatureVersion;
 	bool bDepthBoundsTestSupported;
+	bool bHeapNotZeroedSupported;
 
 	/** GPU Crash debugging requested */
 	bool bGPUCrashDebugging;

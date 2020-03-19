@@ -143,6 +143,10 @@ void FD3D12BuddyAllocator::Initialize()
 		Desc.Properties = HeapProps;
 		Desc.Alignment = 0;
 		Desc.Flags = HeapFlags;
+		if (Adapter->IsHeapNotZeroedSupported())
+		{
+			Desc.Flags |= D3D12_HEAP_FLAG_CREATE_NOT_ZEROED;
+		}
 
 		ID3D12Heap* Heap = nullptr;
 		{
@@ -1560,6 +1564,10 @@ FD3D12SegHeap* FD3D12SegList::CreateBackingHeap(
 	Desc.SizeInBytes = HeapSize;
 	Desc.Properties = CD3DX12_HEAP_PROPERTIES(HeapType, Parent->GetGPUMask().GetNative(), VisibleNodeMask.GetNative());
 	Desc.Flags = HeapFlags;
+	if (Parent->GetParentAdapter()->IsHeapNotZeroedSupported())
+	{
+		Desc.Flags |= D3D12_HEAP_FLAG_CREATE_NOT_ZEROED;
+	}
 
 	VERIFYD3D12RESULT(Parent->GetDevice()->CreateHeap(&Desc, IID_PPV_ARGS(&D3DHeap)));
 

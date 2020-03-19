@@ -26,6 +26,7 @@ static TAutoConsoleVariable<int32> CVarResidencyManagement(
 FD3D12Adapter::FD3D12Adapter(FD3D12AdapterDesc& DescIn)
 	: OwningRHI(nullptr)
 	, bDepthBoundsTestSupported(false)
+	, bHeapNotZeroedSupported(false)
 	, bGPUCrashDebugging(false)
 	, bDeviceRemoved(false)
 	, Desc(DescIn)
@@ -264,6 +265,14 @@ void FD3D12Adapter::CreateRootDevice(bool bWithDebug)
 		}
 	}
 #endif // D3D12_RHI_RAYTRACING
+
+	{
+		D3D12_FEATURE_DATA_D3D12_OPTIONS7 Features = {};
+		if (SUCCEEDED(RootDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS7, &Features, sizeof(Features))))
+		{
+			bHeapNotZeroedSupported = true;
+		}
+	}
 
 #if NV_AFTERMATH
 	// Enable aftermath when GPU crash debugging is enabled
