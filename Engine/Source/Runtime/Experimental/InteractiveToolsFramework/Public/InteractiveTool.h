@@ -211,17 +211,17 @@ protected:
 		}
 	}
 
-private:
+public:
 #if WITH_EDITOR
 	/**
 	  * Posts a message to the OnModified delegate with the modified FProperty
+	  * @warning Please consider listening to OnModified instead of overriding this function
 	  * @warning this function is currently only called in Editor (not at runtime)
 	  */
-	void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
-	{
-		OnModified.Broadcast(this, PropertyChangedEvent.Property);
-	}
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent);
 #endif
+
+protected:
 	// CachedProperties should only ever be set to an instance of the subclass, ideally via GetPropertyCache().
 	UPROPERTY()
 	UInteractiveToolPropertySet* CachedProperties = nullptr;

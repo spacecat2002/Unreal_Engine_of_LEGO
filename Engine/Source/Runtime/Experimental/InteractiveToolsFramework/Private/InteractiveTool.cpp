@@ -8,6 +8,15 @@
 
 #define LOCTEXT_NAMESPACE "UInteractiveTool"
 
+
+void UInteractiveToolPropertySet::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+
+	OnModified.Broadcast(this, PropertyChangedEvent.Property);
+}
+
+
 UInteractiveTool::UInteractiveTool()
 {
 	// tools need to be transactional or undo/redo won't work on their uproperties
@@ -145,6 +154,7 @@ TArray<UObject*> UInteractiveTool::GetToolProperties(bool bEnabledOnly) const
 
 	return Properties;
 }
+
 
 
 void UInteractiveTool::RegisterActions(FInteractiveToolActionSet& ActionSet)
