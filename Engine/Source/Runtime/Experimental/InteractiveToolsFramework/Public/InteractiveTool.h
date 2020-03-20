@@ -217,7 +217,7 @@ private:
 	  * Posts a message to the OnModified delegate with the modified FProperty
 	  * @warning this function is currently only called in Editor (not at runtime)
 	  */
-	void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) final
+	void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 	{
 		OnModified.Broadcast(this, PropertyChangedEvent.Property);
 	}
