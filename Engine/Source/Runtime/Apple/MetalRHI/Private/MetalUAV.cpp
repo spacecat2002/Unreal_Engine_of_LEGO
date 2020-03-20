@@ -313,7 +313,7 @@ FShaderResourceViewRHIRef FMetalDynamicRHI::RHICreateShaderResourceView(FRHIVert
 
 	@autoreleasepool
 	{
-		return RHICreateShaderResourceView(FShaderResourceViewInitializer(VertexBufferRHI, Format));
+		return RHICreateShaderResourceView(FShaderResourceViewInitializer(VertexBufferRHI, EPixelFormat(Format)));
 	}
 }
 
@@ -356,9 +356,9 @@ FShaderResourceViewRHIRef FMetalDynamicRHI::RHICreateShaderResourceView(const FS
 					uint32 Stride = GPixelFormats[Desc.Format].BlockBytes;
 					
 					SRV->Stride = Stride;
-					SRV->Offset = Desc.StartElement * Stride;
+					SRV->Offset = Desc.StartOffsetBytes;
 					
-					FMetalLinearTextureDescriptor LinearTextureDesc(Desc.StartElement, Desc.NumElements, Stride);
+					FMetalLinearTextureDescriptor LinearTextureDesc(Desc.StartOffsetBytes, Desc.NumElements, Stride);
 					SRV->InitLinearTextureDescriptor(LinearTextureDesc);
 					
 					VertexBuffer->CreateLinearTexture((EPixelFormat)Desc.Format, VertexBuffer, &LinearTextureDesc);
@@ -379,7 +379,7 @@ FShaderResourceViewRHIRef FMetalDynamicRHI::RHICreateShaderResourceView(const FS
 				SRV->TextureView = nullptr;
 				SRV->SourceStructuredBuffer = StructuredBuffer;
 				
-				SRV->Offset = Desc.StartElement * StructuredBuffer->GetStride();
+				SRV->Offset = Desc.StartOffsetBytes;
 				SRV->Format = 0;
 				SRV->Stride = StructuredBuffer->GetStride();
 				
@@ -410,10 +410,10 @@ FShaderResourceViewRHIRef FMetalDynamicRHI::RHICreateShaderResourceView(const FS
 					const uint32 Stride = Desc.IndexBuffer->GetStride();
 					check(Stride == ((SRV->Format == PF_R16_UINT) ? 2 : 4));
 					
-					SRV->Offset = Desc.StartElement * Stride;
+					SRV->Offset = Desc.StartOffsetBytes;
 					SRV->Stride = Stride;
 					
-					FMetalLinearTextureDescriptor LinearTextureDesc(Desc.StartElement, Desc.NumElements, Stride);
+					FMetalLinearTextureDescriptor LinearTextureDesc(Desc.StartOffsetBytes, Desc.NumElements, Stride);
 					SRV->InitLinearTextureDescriptor(LinearTextureDesc);
 					
 					IndexBuffer->CreateLinearTexture((EPixelFormat)SRV->Format, IndexBuffer, &LinearTextureDesc);

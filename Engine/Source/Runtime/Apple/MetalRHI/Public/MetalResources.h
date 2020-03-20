@@ -391,15 +391,15 @@ class FMetalLinearTextureDescriptor
 {
 public:
 	FMetalLinearTextureDescriptor()
-		: StartElement(0)
+		: StartOffsetBytes(0)
 		, NumElements(UINT_MAX)
 		, BytesPerElement(0)
 	{
 		// void
 	}
 
-	FMetalLinearTextureDescriptor(uint32 InStartElement, uint32 InNumElements, uint32 InBytesPerElement)
-		: StartElement(InStartElement)
+	FMetalLinearTextureDescriptor(uint32 InStartOffsetBytes, uint32 InNumElements, uint32 InBytesPerElement)
+		: StartOffsetBytes(InStartOffsetBytes)
 		, NumElements(InNumElements)
 		, BytesPerElement(InBytesPerElement)
 	{
@@ -407,7 +407,7 @@ public:
 	}
 	
 	FMetalLinearTextureDescriptor(const FMetalLinearTextureDescriptor& Other)
-		: StartElement(Other.StartElement)
+		: StartOffsetBytes(Other.StartOffsetBytes)
 		, NumElements(Other.NumElements)
 		, BytesPerElement(Other.BytesPerElement)
 	{
@@ -421,7 +421,7 @@ public:
 
 	friend uint32 GetTypeHash(FMetalLinearTextureDescriptor const& Key)
 	{
-		uint32 Hash = GetTypeHash((uint64)Key.StartElement);
+		uint32 Hash = GetTypeHash((uint64)Key.StartOffsetBytes);
 		Hash = HashCombine(Hash, GetTypeHash((uint64)Key.NumElements));
 		Hash = HashCombine(Hash, GetTypeHash((uint64)Key.BytesPerElement));
 		return Hash;
@@ -429,12 +429,12 @@ public:
 
 	bool operator==(FMetalLinearTextureDescriptor const& Other) const
 	{
-		return    StartElement    == Other.StartElement
-		       && NumElements     == Other.NumElements
-		       && BytesPerElement == Other.BytesPerElement;
+		return    StartOffsetBytes == Other.StartOffsetBytes
+		       && NumElements      == Other.NumElements
+		       && BytesPerElement  == Other.BytesPerElement;
 	}
 
-	uint32 StartElement;
+	uint32 StartOffsetBytes;
 	uint32 NumElements;
 	uint32 BytesPerElement;
 };

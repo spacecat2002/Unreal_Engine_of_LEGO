@@ -56,8 +56,6 @@
 
 DEFINE_LOG_CATEGORY(LogShaderCompilers);
 
-RENDERCORE_API bool UsePreExposure(EShaderPlatform Platform);
-
 #if ENABLE_COOK_STATS
 namespace GlobalShaderCookStats
 {
@@ -2184,7 +2182,7 @@ void FShaderCompilingManager::BlockOnShaderMapCompletion(const TArray<int32>& Sh
 	if (bAllowAsynchronousShaderCompiling)
 	{
 		int32 NumPendingJobs = 0;
-
+		int32 LogCounter = 0;
 		do 
 		{
 			Thread->CheckHealth();
@@ -2218,6 +2216,13 @@ void FShaderCompilingManager::BlockOnShaderMapCompletion(const TArray<int32>& Sh
 			{
 				// Yield CPU time while waiting
 				FPlatformProcess::Sleep(.01f);
+
+				// Flush threaded logs around every 500ms or so based on Sleep of 0.01f seconds above
+				if (++LogCounter > 50)
+				{
+					LogCounter = 0;
+					GLog->FlushThreadedLogs();
+				}
 			}
 		} 
 		while (NumPendingJobs > 0);
@@ -3707,7 +3712,8 @@ void GlobalBeginCompileShader(
 	}
 
 	{
-		Input.Environment.SetDefine(TEXT("USE_PREEXPOSURE"), UsePreExposure((EShaderPlatform)Target.Platform) ? 1 : 0);
+		// PreExposure is now always enabled in the shaders.
+		Input.Environment.SetDefine(TEXT("USE_PREEXPOSURE"), 1);
 	}
 
 	{

@@ -221,6 +221,8 @@ struct FD3D12RHICommandInitializeTexture final : public FRHICommand<FD3D12RHICom
 				CmdList->CopyTextureRegion(&Dst, 0, 0, 0, &Src, nullptr);
 			}			
 			
+			}
+
 			// Update the resource state after the copy has been done (will take care of updating the residency as well)
 			if (Resource->RequiresResourceStateTracking())
 			{

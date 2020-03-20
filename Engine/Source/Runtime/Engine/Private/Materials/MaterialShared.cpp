@@ -924,8 +924,13 @@ void FMaterial::SerializeInlineShaderMap(FArchive& Ar)
 			if (bValid)
 			{
 				TRefCountPtr<FMaterialShaderMap> LoadedShaderMap = new FMaterialShaderMap();
-				LoadedShaderMap->Serialize(Ar, true, bCooked && Ar.IsLoading());
-				GameThreadShaderMap = LoadedShaderMap;
+				if (LoadedShaderMap->Serialize(Ar, true, bCooked && Ar.IsLoading()))
+				{
+					GameThreadShaderMap = MoveTemp(LoadedShaderMap);
+#if WITH_EDITOR
+					GameThreadShaderMap->MarkAsAssociatedWithAsset(GetAssetPath());
+#endif
+				}
 			}
 		}
 	}
@@ -1409,6 +1414,27 @@ void FMaterialResource::NotifyCompilationFinished()
 {
 	UMaterial::NotifyCompilationFinished(MaterialInstance ? (UMaterialInterface*)MaterialInstance : (UMaterialInterface*)Material);
 }
+
+FString FMaterialResource::GetAssetPath() const
+{
+	FString OutermostName;
+	if (MaterialInstance)
+	{
+		OutermostName = MaterialInstance->GetOutermost()->GetName();
+	}
+	else if (Material)
+	{
+		OutermostName = Material->GetOutermost()->GetName();
+	}
+	else
+	{
+		// neither is known
+		return FString();
+	}
+
+	FString Result = FPackageName::LongPackageNameToFilename(OutermostName, TEXT(".uasset"));
+	return Result;
+}
 #endif
 
 void FMaterialResource::GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize)
@@ -1745,6 +1771,14 @@ bool FMaterial::CacheShaders(const FMaterialShaderMapId& ShaderMapId, EShaderPla
 #endif // WITH_EDITOR
 	}
 
+#if WITH_EDITOR
+	// some of the above paths did not mark the shader map as associated with an asset, do so
+	if (GameThreadShaderMap)
+	{
+		GameThreadShaderMap->MarkAsAssociatedWithAsset(GetAssetPath());
+	}
+#endif
+
 	UMaterialInterface* MaterialInterface = GetMaterialInterface();
 	const bool bMaterialInstance = MaterialInterface && MaterialInterface->IsA(UMaterialInstance::StaticClass());
 	const bool bSpecialEngineMaterial = !bMaterialInstance && IsSpecialEngineMaterial();
@@ -1888,6 +1922,9 @@ bool FMaterial::BeginCompileShaderMap(
 
 	SCOPE_SECONDS_COUNTER(MaterialCompileTime);
 
+#if WITH_EDITOR
+	NewShaderMap->MarkAsAssociatedWithAsset(GetAssetPath());
+#endif
 	// Generate the material shader code.
 	FMaterialCompilationOutput NewCompilationOutput;
 	FHLSLMaterialTranslator MaterialTranslator(this, NewCompilationOutput, StaticParameterSet, Platform,GetQualityLevel(), ShaderMapId.FeatureLevel, TargetPlatform);
@@ -3838,7 +3875,8 @@ FArchive& FMaterialResourceMemoryWriter::operator<<(class FName& Name)
 		NewIdx = Name2Indices.Num();
 		Name2Indices.Add(Name.GetDisplayIndex(), NewIdx);
 	}
-	auto InstNum = Name.GetNumber();
+	int32 InstNum = Name.GetNumber();
+	static_assert(sizeof(decltype(DeclVal<FName>().GetNumber())) == sizeof(int32), "FName serialization in FMaterialResourceMemoryWriter requires changing, InstNum is no longer 32-bit");
 	*this << NewIdx << InstNum;
 	return *this;
 }
@@ -3940,9 +3978,18 @@ FMaterialResourceProxyReader::~FMaterialResourceProxyReader()
 FArchive& FMaterialResourceProxyReader::operator<<(class FName& Name)
 {
 	int32 NameIdx;
-	decltype(DeclVal<FName>().GetNumber()) InstNum;
+	int32 InstNum;
+	static_assert(sizeof(decltype(DeclVal<FName>().GetNumber())) == sizeof(int32), "FName serialization in FMaterialResourceProxyReader requires changing, InstNum is no longer 32-bit");
 	InnerArchive << NameIdx << InstNum;
-	Name = FName(Names[NameIdx], InstNum);
+	if (NameIdx >= 0 && NameIdx < Names.Num())
+	{
+		Name = FName(Names[NameIdx], InstNum);
+	}
+	else
+	{
+		UE_LOG(LogMaterial, Fatal, TEXT("FMaterialResourceProxyReader: deserialized an invalid FName, NameIdx=%d, Names.Num()=%d (Offset=%lld, InnerArchive.Tell()=%lld, OffsetToFirstResource=%lld)"), 
+			NameIdx, Names.Num(), Tell(), InnerArchive.Tell(), OffsetToFirstResource);
+	}
 	return *this;
 }
 
