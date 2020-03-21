@@ -8,14 +8,14 @@
 
 #define LOCTEXT_NAMESPACE "UInteractiveTool"
 
-
+#if WITH_EDITOR
 void UInteractiveToolPropertySet::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 
 	OnModified.Broadcast(this, PropertyChangedEvent.Property);
 }
-
+#endif
 
 UInteractiveTool::UInteractiveTool()
 {
