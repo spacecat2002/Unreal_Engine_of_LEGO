@@ -5,6 +5,7 @@
 #include "HAL/RunnableThread.h"
 #include "Misc/ScopeLock.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Input/HittestGrid.h"
 #include "HAL/PlatformApplicationMisc.h"
 #include "HAL/PlatformAtomics.h"
 #include "Rendering/SlateDrawBuffer.h"

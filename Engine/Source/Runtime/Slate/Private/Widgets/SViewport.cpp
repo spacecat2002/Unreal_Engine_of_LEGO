@@ -5,6 +5,7 @@
 #include "Brushes/SlateColorBrush.h"
 #include "Application/SlateApplicationBase.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Input/HittestGrid.h"
 
 DECLARE_CYCLE_STAT(TEXT("Game UI Tick"), STAT_ViewportTickTime, STATGROUP_Slate);
 DECLARE_CYCLE_STAT(TEXT("Game UI Paint"), STAT_ViewportPaintTime, STATGROUP_Slate);
