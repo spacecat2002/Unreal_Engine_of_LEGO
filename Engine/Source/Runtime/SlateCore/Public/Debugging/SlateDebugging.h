@@ -89,10 +89,12 @@ public:
 struct SLATECORE_API FSlateDebuggingCursorQueryEventArgs
 {
 public:
-	FSlateDebuggingCursorQueryEventArgs(const SWidget* InWidgetOverridingCursor, const FCursorReply& InReply);
+	FSlateDebuggingCursorQueryEventArgs(const TSharedPtr<const SWidget>& InWidgetOverridingCursor, const FCursorReply& InReply);
 
-	const SWidget* WidgetOverridingCursor = nullptr;
+	const TSharedPtr<const SWidget>& WidgetOverridingCursor;
 	const FCursorReply& Reply;
+
+	FText ToText() const;
 };
 
 UENUM()
@@ -267,7 +269,7 @@ public:
 	DECLARE_MULTICAST_DELEGATE_OneParam(FWidgetCursorQuery, const FSlateDebuggingCursorQueryEventArgs& /*EventArgs*/);
 	static FWidgetCursorQuery CursorChangedEvent;
 
-	static void BroadcastCursorQuery(const SWidget* InWidgetOverridingCursor, const FCursorReply& InReply);
+	static void BroadcastCursorQuery(TSharedPtr<const SWidget> InWidgetOverridingCursor, const FCursorReply& InReply);
 
 public:
 	/**  */

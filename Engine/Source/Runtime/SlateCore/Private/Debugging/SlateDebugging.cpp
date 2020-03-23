@@ -297,10 +297,36 @@ FText FSlateDebuggingMouseCaptureEventArgs::ToText() const
 	);
 }
 
-FSlateDebuggingCursorQueryEventArgs::FSlateDebuggingCursorQueryEventArgs(const SWidget* InWidgetOverridingCursor, const FCursorReply& InReply)
+FSlateDebuggingCursorQueryEventArgs::FSlateDebuggingCursorQueryEventArgs(const TSharedPtr<const SWidget>& InWidgetOverridingCursor, const FCursorReply& InReply)
 	: WidgetOverridingCursor(InWidgetOverridingCursor)
 	, Reply(InReply)
 {
+}
+
+FText FSlateDebuggingCursorQueryEventArgs::ToText() const
+{
+	const FText ContextWidget = FText::FromString(FReflectionMetaData::GetWidgetDebugInfo(WidgetOverridingCursor.Get()));
+
+	FText EventText;
+	if (Reply.GetCursorWidget().IsValid())
+	{
+		static const FText InputEventFormat = LOCTEXT("CursorChangedToWidget", "{0} To Widget: {0} (Widget: {1})");
+		EventText = FText::Format(
+			InputEventFormat,
+			FText::FromString(FReflectionMetaData::GetWidgetDebugInfo(Reply.GetCursorWidget().Get())),
+			ContextWidget
+		);
+	}
+	else
+	{
+		static const FText InputEventFormat = LOCTEXT("CursorChangedToCursor", "Cursor Changed: To Type: {0} (By Widget: {1})");
+		EventText = FText::Format(
+			InputEventFormat,
+			FText::FromString(StaticEnum<EMouseCursor::Type>()->GetNameStringByValue((int64)Reply.GetCursorType())),
+			ContextWidget
+		);
+	}
+	return EventText;
 }
 
 FSlateDebugging::FBeginWindow FSlateDebugging::BeginWindow;
@@ -403,13 +429,13 @@ void FSlateDebugging::BroadcastMouseCaptureLost(uint32 UserIndex, uint32 Pointer
 	MouseCaptureEvent.Broadcast(FSlateDebuggingMouseCaptureEventArgs(false, UserIndex, PointerIndex, InWidgetLostCapture));
 }
 
-void FSlateDebugging::BroadcastCursorQuery(const SWidget* InWidgetOverridingCursor, const FCursorReply& InReply)
+void FSlateDebugging::BroadcastCursorQuery(TSharedPtr<const SWidget> InWidgetOverridingCursor, const FCursorReply& InReply)
 {
-	if (LastCursorQuery.WidgetThatOverrideCursorLast_UnsafeToUseForAnythingButCompare != InWidgetOverridingCursor || 
+	if (LastCursorQuery.WidgetThatOverrideCursorLast_UnsafeToUseForAnythingButCompare != InWidgetOverridingCursor.Get() || 
 		LastCursorQuery.MouseCursor != InReply.GetCursorType() || 
 		LastCursorQuery.CursorWidget.Pin() != InReply.GetCursorWidget())
 	{
-		LastCursorQuery.WidgetThatOverrideCursorLast_UnsafeToUseForAnythingButCompare = InWidgetOverridingCursor;
+		LastCursorQuery.WidgetThatOverrideCursorLast_UnsafeToUseForAnythingButCompare = InWidgetOverridingCursor.Get();
 		LastCursorQuery.MouseCursor = InReply.GetCursorType();
 		LastCursorQuery.CursorWidget = InReply.GetCursorWidget();
 

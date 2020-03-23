@@ -203,29 +203,7 @@ void FConsoleSlateDebugger::OnCaptureStateChangeEvent(const FSlateDebuggingMouse
 
 void FConsoleSlateDebugger::OnCursorChangeEvent(const FSlateDebuggingCursorQueryEventArgs& EventArgs)
 {
-	const FText ContextWidget = FText::FromString(FReflectionMetaData::GetWidgetDebugInfo(EventArgs.WidgetOverridingCursor));
-
-	FText EventText;
-	if (EventArgs.Reply.GetCursorWidget().IsValid())
-	{
-		static const FText InputEventFormat = LOCTEXT("CursorChangedToWidget", "{0} To Widget: {0} (Widget: {1})");
-		EventText = FText::Format(
-			InputEventFormat,
-			FText::FromString(FReflectionMetaData::GetWidgetDebugInfo(EventArgs.Reply.GetCursorWidget().Get())),
-			ContextWidget
-		);
-	}
-	else
-	{
-		static const FText InputEventFormat = LOCTEXT("CursorChangedToCursor", "Cursor Changed: To Type: {0} (By Widget: {1})");
-		EventText = FText::Format(
-			InputEventFormat,
-			FText::FromString(StaticEnum<EMouseCursor::Type>()->GetNameStringByValue((int64)EventArgs.Reply.GetCursorType())),
-			ContextWidget
-		);
-	}
-
-	UE_LOG(LogSlateDebugger, Log, TEXT("%s"), *EventText.ToString());
+	UE_LOG(LogSlateDebugger, Log, TEXT("%s"), *EventArgs.ToText().ToString());
 
 	OptionallyDumpCallStack();
 }
