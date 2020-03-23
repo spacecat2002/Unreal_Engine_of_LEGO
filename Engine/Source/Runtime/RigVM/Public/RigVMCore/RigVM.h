@@ -130,16 +130,19 @@ public:
 	// resets the container and clones the input VM
 	void CopyFrom(URigVM* InVM, bool bReferenceLiteralMemory = false, bool bReferenceByteCode = false);
 
+	// Initializes all execute ops and their memory.
+	bool Initialize(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> AdditionalArguments);
+
 	// Executes the VM.
 	// You can optionally provide external memory to the execution
 	// and provide optional additional operands.
-	bool Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> AdditionalArguments);
+	bool Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> AdditionalArguments, const FName& InEntryName = NAME_None);
 
 	// Executes the VM.
 	// You can optionally provide external memory to the execution
 	// and provide optional additional operands.
 	UFUNCTION(BlueprintCallable, Category = RigVM)
-	bool Execute();
+	bool Execute(const FName& InEntryName = NAME_None);
 
 	// Add a function for execute instructions to this VM.
 	// Execute instructions can then refer to the function by index.

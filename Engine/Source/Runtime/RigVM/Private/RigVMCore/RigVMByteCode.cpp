@@ -55,17 +55,41 @@ void FRigVMByteCode::Reset()
 {
 	ByteCode.Reset();
 	NumInstructions = 0;
+	Entries.Reset();
 }
 
 void FRigVMByteCode::Empty()
 {
 	ByteCode.Empty();
 	NumInstructions = 0;
+	Entries.Empty();
 }
 
 uint64 FRigVMByteCode::Num() const
 {
 	return (uint64)ByteCode.Num();
+}
+
+uint64 FRigVMByteCode::NumEntries() const
+{
+	return Entries.Num();
+}
+
+const FRigVMByteCodeEntry& FRigVMByteCode::GetEntry(int32 InEntryIndex) const
+{
+	return Entries[InEntryIndex];
+}
+
+int32 FRigVMByteCode::FindEntryIndex(const FName& InEntryName) const
+{
+	for (int32 EntryIndex = 0; EntryIndex < Entries.Num(); EntryIndex++)
+	{
+		if (Entries[EntryIndex].Name == InEntryName)
+		{
+			return EntryIndex;
+		}
+	}
+	return INDEX_NONE;
 }
 
 uint64 FRigVMByteCode::GetOpNumBytesAt(uint64 InByteCodeIndex, bool bIncludeOperands) const

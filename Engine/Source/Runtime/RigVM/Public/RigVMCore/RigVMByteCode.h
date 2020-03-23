@@ -351,6 +351,18 @@ private:
 	friend struct FRigVMByteCode;
 };
 
+USTRUCT()
+struct RIGVM_API FRigVMByteCodeEntry
+{
+	GENERATED_USTRUCT_BODY()
+
+	UPROPERTY()
+	FName Name;
+
+	UPROPERTY()
+	int32 InstructionIndex;
+};
+
 /**
  * The FRigVMByteCode is a container to store a list of instructions with
  * their corresponding data. The byte code is then used within a VM to 
@@ -381,6 +393,15 @@ public:
 
 	// returns the number of instructions in this container
 	uint64 Num() const;
+
+	// returns the number of entries
+	uint64 NumEntries() const;
+
+	// returns the entry with a given index
+	const FRigVMByteCodeEntry& GetEntry(int32 InEntryIndex) const;
+
+	// returns the index of an entry given a name or INDEX_NONE
+	int32 FindEntryIndex(const FName& InEntryName) const;
 
 	// adds an execute operator given its function index operands
 	uint64 AddExecuteOp(uint16 InFunctionIndex, const TArrayView<FRigVMOperand>& InOperands);
@@ -525,4 +546,9 @@ private:
 	// memory for all functions
 	UPROPERTY()
 	int32 NumInstructions;
+
+	UPROPERTY()
+	TArray<FRigVMByteCodeEntry> Entries;
+
+	friend class URigVMCompiler;
 };

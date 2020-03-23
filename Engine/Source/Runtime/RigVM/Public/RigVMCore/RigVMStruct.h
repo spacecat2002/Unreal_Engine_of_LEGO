@@ -17,6 +17,7 @@ struct RIGVM_API FRigVMStruct
 	virtual ~FRigVMStruct() {}
 	virtual FString ProcessPinLabelForInjection(const FString& InLabel) const { return InLabel; }
 	virtual FName DetermineSpaceForPin(const FString& InPinPath, void* InUserContext) const { return NAME_None; }
+	virtual FName GetEventName() const { return NAME_None; }
 
 public:
 

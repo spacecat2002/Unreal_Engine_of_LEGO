@@ -14,5 +14,12 @@ struct RIGVM_API FRigVMExecuteContext
 {
 	GENERATED_BODY()
 
+	FRigVMExecuteContext()
+	: EventName(NAME_None)
+	{
+	}
+
+	FName EventName;
+
 	TArrayView<void*> OpaqueArguments;
 };
