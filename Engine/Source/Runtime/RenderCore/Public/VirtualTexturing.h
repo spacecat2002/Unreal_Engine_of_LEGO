@@ -314,7 +314,7 @@ public:
 	virtual uint32 GetNumPageTableTextures() const = 0;
 
 	/** Writes 2x FUintVector4 */
-	virtual void GetPackedPageTableUniform(FUintVector4* OutUniform, bool bApplyBlockScale) const = 0;
+	virtual void GetPackedPageTableUniform(FUintVector4* OutUniform) const = 0;
 
 	/** Writes 1x FUintVector4 */
 	virtual void GetPackedUniform(FUintVector4* OutUniform, uint32 LayerIndex) const = 0;
