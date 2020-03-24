@@ -80,10 +80,38 @@ public:
 	FVector2D GetGridOrigin() const { return GridOrigin; }
 	FVector2D GetGridWindowOrigin() const { return GridWindowOrigin; }
 
+	struct FDebuggingFindNextFocusableWidgetArgs
+	{
+		struct FWidgetResult
+		{
+			const TSharedPtr<const SWidget> Widget;
+			const FText Result;
+			FWidgetResult(const TSharedPtr<const SWidget>& InWidget, FText InResult)
+				: Widget(InWidget), Result(InResult) {}
+		};
+		const FArrangedWidget StartingWidget;
+		const EUINavigation Direction;
+		const FNavigationReply NavigationReply;
+		const FArrangedWidget RuleWidget;
+		const int32 UserIndex;
+		const TSharedPtr<const SWidget> Result;
+		TArray<FWidgetResult> IntermediateResults;
+	};
+
 #if WITH_SLATE_DEBUGGING
+	DECLARE_MULTICAST_DELEGATE_TwoParams(FDebuggingFindNextFocusableWidget, const FHittestGrid* /*HittestGrid*/, const FDebuggingFindNextFocusableWidgetArgs& /*Info*/);
+	static FDebuggingFindNextFocusableWidget OnFindNextFocusableWidgetExecuted;
+
 	void LogGrid() const;
 
-	void DisplayGrid(int32 InLayer, const FGeometry& AllottedGeometry, FSlateWindowElementList& WindowElementList) const;
+	enum class EDisplayGridFlags
+	{
+		None = 0,
+		HideDisabledWidgets = 1 << 0,					// Hide hit box for widgets that have IsEnabled false
+		HideUnsupportedKeyboardFocusWidgets = 1 << 1,	// Hide hit box for widgets that have SupportsKeyboardFocus false
+		UseFocusBrush = 1 << 2,
+	};
+	void DisplayGrid(int32 InLayer, const FGeometry& AllottedGeometry, FSlateWindowElementList& WindowElementList, EDisplayGridFlags DisplayFlags = EDisplayGridFlags::UseFocusBrush) const;
 #endif
 
 private:
@@ -156,7 +184,7 @@ private:
 
 	/** Utility function for searching for the next focusable widget. */
 	template<typename TCompareFunc, typename TSourceSideFunc, typename TDestSideFunc>
-	TSharedPtr<SWidget> FindFocusableWidget(const FSlateRect WidgetRect, const FSlateRect SweptRect, int32 AxisIndex, int32 Increment, const EUINavigation Direction, const FNavigationReply& NavigationReply, TCompareFunc CompareFunc, TSourceSideFunc SourceSideFunc, TDestSideFunc DestSideFunc, int32 UserIndex);
+	TSharedPtr<SWidget> FindFocusableWidget(const FSlateRect WidgetRect, const FSlateRect SweptRect, int32 AxisIndex, int32 Increment, const EUINavigation Direction, const FNavigationReply& NavigationReply, TCompareFunc CompareFunc, TSourceSideFunc SourceSideFunc, TDestSideFunc DestSideFunc, int32 UserIndex, TArray<FDebuggingFindNextFocusableWidgetArgs::FWidgetResult>* IntermediatedResultPtr);
 
 	/** Constrains a float position into the grid coordinate. */
 	FIntPoint GetCellCoordinate(FVector2D Position);
@@ -199,3 +227,7 @@ private:
 	/** The current slate user index that should be associated with any added widgets */
 	int32 CurrentUserIndex;
 };
+
+#if WITH_SLATE_DEBUGGING
+ENUM_CLASS_FLAGS(FHittestGrid::EDisplayGridFlags);
+#endif

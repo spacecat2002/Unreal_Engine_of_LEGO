@@ -212,6 +212,10 @@ public:
 	DECLARE_MULTICAST_DELEGATE_ThreeParams(FEndWidgetPaint, const SWidget* /*Widget*/, const FSlateWindowElementList& /*OutDrawElements*/, int32 /*LayerId*/);
 	static FEndWidgetPaint EndWidgetPaint;
 
+	/** Called once the window is drawn (including PaintDeferred). It can be used to draw additional debug info on top of the window. */
+	DECLARE_MULTICAST_DELEGATE_FourParams(FDrawDebuggerVisuals, const FPaintArgs& /*InArgs*/, const FGeometry& /*InAllottedGeometry*/, FSlateWindowElementList& /*InOutDrawElements*/, int32& /*InOutLayerId*/);
+	static FDrawDebuggerVisuals DrawDebuggerVisuals;
+
 	/**
 	 * Called as soon as the element is added to the element list.
 	 * NOTE: These elements are not valid until the widget finishes painting, or you can resolve them all after the window finishes painting.

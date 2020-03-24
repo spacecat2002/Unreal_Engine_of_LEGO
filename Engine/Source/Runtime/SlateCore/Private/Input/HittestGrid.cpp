@@ -13,8 +13,11 @@ DECLARE_CYCLE_STAT(TEXT("HitTestGrid AddWidget"), STAT_SlateHTG_AddWidget, STATG
 DECLARE_CYCLE_STAT(TEXT("HitTestGrid RemoveWidget"), STAT_SlateHTG_RemoveWidget, STATGROUP_Slate);
 DECLARE_CYCLE_STAT(TEXT("HitTestGrid Clear"), STAT_SlateHTG_Clear, STATGROUP_Slate);
 
-int32 SlateVerifyHitTestVisibility = 0;
-static FAutoConsoleVariableRef CVarSlateVerifyHitTestVisibility(TEXT("Slate.VerifyHitTestVisibility"), SlateVerifyHitTestVisibility, TEXT("Should we double check the visibility of widgets during hit testing, in case previously resolved hit tests that same frame may have changed state?"), ECVF_Default);
+#define LOCTEXT_NAMESPACE "HittestGrid"
+
+#if WITH_SLATE_DEBUGGING
+FHittestGrid::FDebuggingFindNextFocusableWidget FHittestGrid::OnFindNextFocusableWidgetExecuted;
+#endif //WITH_SLATE_DEBUGGING
 
 constexpr bool IsCompatibleUserIndex(int32 RequestedUserIndex, int32 TestUserIndex)
 {
@@ -340,8 +343,24 @@ bool FHittestGrid::IsDescendantOf(const TSharedRef<SWidget> Parent, const FWidge
 	return false;
 }
 
+#if WITH_SLATE_DEBUGGING
+namespace HittestGridDebuggingText
+{
+	static FText Valid = LOCTEXT("StateValid", "Valid"); //~ The widget is valid will be consider as the result
+	static FText NotCompatibleWithUserIndex = LOCTEXT("StateNotCompatibleWithUserIndex", "User Index not compatible"); //~ The widget is not compatible with the requested user index
+	static FText DoesNotIntersect = LOCTEXT("StateDoesNotIntersect", "Does not intersect"); //~ The widget rect is not in the correct direction or is not intersecting with the "swept" rectangle
+	static FText PreviousWidgetIsBetter = LOCTEXT("StatePreviousWidgetIsBetter", "Previous Widget was better"); //~ The widget would be valid but the previous valid is closer
+	static FText NotADescendant = LOCTEXT("StateNotADescendant", "Not a descendant"); //~ We have a non escape boundary condition and the widget isn't a descendant of our boundary
+	static FText Disabled = LOCTEXT("StateNotEnabled", "Disabled"); //~ The widget is not enabled
+	static FText DoesNotSuportKeyboardFocus = LOCTEXT("StateDoesNotSuportKeyboardFocus", "Keyboard focus unsupported"); //~ THe widget does not support keyboard focus
+}
+	#define AddToNextFocusableWidgetCondidateDebugResults(Candidate, Result) { if (IntermediateResultsPtr) { IntermediateResultsPtr->Emplace((Candidate), (Result)); } }
+#else
+	#define AddToNextFocusableWidgetCondidateDebugResults(Candidate, Result) CA_ASSUME(Candidate)
+#endif
+
 template<typename TCompareFunc, typename TSourceSideFunc, typename TDestSideFunc>
-TSharedPtr<SWidget> FHittestGrid::FindFocusableWidget(FSlateRect WidgetRect, const FSlateRect SweptRect, int32 AxisIndex, int32 Increment, const EUINavigation Direction, const FNavigationReply& NavigationReply, TCompareFunc CompareFunc, TSourceSideFunc SourceSideFunc, TDestSideFunc DestSideFunc, int32 UserIndex)
+TSharedPtr<SWidget> FHittestGrid::FindFocusableWidget(FSlateRect WidgetRect, const FSlateRect SweptRect, int32 AxisIndex, int32 Increment, const EUINavigation Direction, const FNavigationReply& NavigationReply, TCompareFunc CompareFunc, TSourceSideFunc SourceSideFunc, TDestSideFunc DestSideFunc, int32 UserIndex, TArray<FDebuggingFindNextFocusableWidgetArgs::FWidgetResult>* IntermediateResultsPtr)
 {
 	FIntPoint CurrentCellPoint = GetCellCoordinate(WidgetRect.GetCenter());
 
@@ -394,35 +413,57 @@ TSharedPtr<SWidget> FHittestGrid::FindFocusableWidget(FSlateRect WidgetRect, con
 
 				const FWidgetData& TestCandidate = WidgetArray[CurrentIndex];
 				const TSharedPtr<SWidget> TestWidget = TestCandidate.GetWidget();
-				if (TestWidget.IsValid() && IsCompatibleUserIndex(UserIndex, TestCandidate.UserIndex))
+				if (!TestWidget.IsValid())
 				{
-					FGeometry TestCandidateGeo = TestWidget->GetPaintSpaceGeometry();
-					TestCandidateGeo.AppendTransform(FSlateLayoutTransform(-GridWindowOrigin));
-					const FSlateRect TestCandidateRect = TestCandidateGeo.GetRenderBoundingRect();
-
-					if (CompareFunc(DestSideFunc(TestCandidateRect), CurrentSourceSide) && FSlateRect::DoRectanglesIntersect(SweptRect, TestCandidateRect))
-					{
-						// If this found widget isn't closer then the previously found widget then keep looking.
-						if (BestWidget.IsValid() && !CompareFunc(DestSideFunc(BestWidgetRect), DestSideFunc(TestCandidateRect)))
-						{
-							continue;
-						}
-
-						// If we have a non escape boundary condition and this widget isn't a descendant of our boundary condition widget then it's invalid so we keep looking.
-						if (NavigationReply.GetBoundaryRule() != EUINavigationRule::Escape
-							&& NavigationReply.GetHandler().IsValid()
-							&& !IsDescendantOf(NavigationReply.GetHandler().ToSharedRef(), TestCandidate))
-						{
-							continue;
-						}
-
-						if (TestWidget->IsEnabled() && TestWidget->SupportsKeyboardFocus())
-						{
-							BestWidgetRect = TestCandidateRect;
-							BestWidget = TestWidget;
-						}
-					}
+					continue;
 				}
+
+				if (!IsCompatibleUserIndex(UserIndex, TestCandidate.UserIndex))
+				{
+					AddToNextFocusableWidgetCondidateDebugResults(TestWidget, HittestGridDebuggingText::NotCompatibleWithUserIndex);
+					continue;
+				}
+
+				FGeometry TestCandidateGeo = TestWidget->GetPaintSpaceGeometry();
+				TestCandidateGeo.AppendTransform(FSlateLayoutTransform(-GridWindowOrigin));
+				const FSlateRect TestCandidateRect = TestCandidateGeo.GetRenderBoundingRect();
+				if (!(CompareFunc(DestSideFunc(TestCandidateRect), CurrentSourceSide) && FSlateRect::DoRectanglesIntersect(SweptRect, TestCandidateRect)))
+				{
+					AddToNextFocusableWidgetCondidateDebugResults(TestWidget, HittestGridDebuggingText::DoesNotIntersect);
+					continue;
+				}
+
+				// If this found widget isn't closer then the previously found widget then keep looking.
+				if (BestWidget.IsValid() && !CompareFunc(DestSideFunc(BestWidgetRect), DestSideFunc(TestCandidateRect)))
+				{
+					AddToNextFocusableWidgetCondidateDebugResults(TestWidget, HittestGridDebuggingText::PreviousWidgetIsBetter);
+					continue;
+				}
+
+				// If we have a non escape boundary condition and this widget isn't a descendant of our boundary condition widget then it's invalid so we keep looking.
+				if (NavigationReply.GetBoundaryRule() != EUINavigationRule::Escape
+					&& NavigationReply.GetHandler().IsValid()
+					&& !IsDescendantOf(NavigationReply.GetHandler().ToSharedRef(), TestCandidate))
+				{
+					AddToNextFocusableWidgetCondidateDebugResults(TestWidget, HittestGridDebuggingText::NotADescendant);
+					continue;
+				}
+
+				if (!TestWidget->IsEnabled())
+				{
+					AddToNextFocusableWidgetCondidateDebugResults(TestWidget, HittestGridDebuggingText::Disabled);
+					continue;
+				}
+				
+				if (!TestWidget->SupportsKeyboardFocus())
+				{
+					AddToNextFocusableWidgetCondidateDebugResults(TestWidget, HittestGridDebuggingText::DoesNotSuportKeyboardFocus);
+					continue;
+				}
+
+				BestWidgetRect = TestCandidateRect;
+				BestWidget = TestWidget;
+				AddToNextFocusableWidgetCondidateDebugResults(TestWidget, HittestGridDebuggingText::Valid);
 			}
 		}
 
@@ -493,6 +534,8 @@ TSharedPtr<SWidget> FHittestGrid::FindFocusableWidget(FSlateRect WidgetRect, con
 	return TSharedPtr<SWidget>();
 }
 
+#undef AddToNextFocusableWidgetCondidateDebugResults
+
 TSharedPtr<SWidget> FHittestGrid::FindNextFocusableWidget(const FArrangedWidget& StartingWidget, const EUINavigation Direction, const FNavigationReply& NavigationReply, const FArrangedWidget& RuleWidget, int32 UserIndex)
 {
 	FGeometry StartingWidgetGeo = StartingWidget.Widget->GetPaintSpaceGeometry();
@@ -507,6 +550,13 @@ TSharedPtr<SWidget> FHittestGrid::FindNextFocusableWidget(const FArrangedWidget&
 
 	TSharedPtr<SWidget> Widget = TSharedPtr<SWidget>();
 
+#if WITH_SLATE_DEBUGGING
+	TArray<FDebuggingFindNextFocusableWidgetArgs::FWidgetResult> IntermediateResults;
+	TArray<FDebuggingFindNextFocusableWidgetArgs::FWidgetResult>* IntermediateResultsPtr = OnFindNextFocusableWidgetExecuted.IsBound() ? &IntermediateResults : nullptr;
+#else
+	TArray<FDebuggingFindNextFocusableWidgetArgs::FWidgetResult>* IntermediateResultsPtr = nullptr;
+#endif
+
 	switch (Direction)
 	{
 	case EUINavigation::Left:
@@ -517,7 +567,8 @@ TSharedPtr<SWidget> FHittestGrid::FindNextFocusableWidget(const FArrangedWidget&
 		Widget = FindFocusableWidget(WidgetRect, SweptWidgetRect, 0, -1, Direction, NavigationReply,
 			[](float A, float B) { return A - 0.1f < B; }, // Compare function
 			[](FSlateRect SourceRect) { return SourceRect.Left; }, // Source side function
-			[](FSlateRect DestRect) { return DestRect.Right; }, UserIndex); // Dest side function
+			[](FSlateRect DestRect) { return DestRect.Right; }, // Dest side function
+			UserIndex, IntermediateResultsPtr);
 		break;
 	case EUINavigation::Right:
 		SweptWidgetRect.Left = BoundingRuleRect.Left;
@@ -527,7 +578,8 @@ TSharedPtr<SWidget> FHittestGrid::FindNextFocusableWidget(const FArrangedWidget&
 		Widget = FindFocusableWidget(WidgetRect, SweptWidgetRect, 0, 1, Direction, NavigationReply,
 			[](float A, float B) { return A + 0.1f > B; }, // Compare function
 			[](FSlateRect SourceRect) { return SourceRect.Right; }, // Source side function
-			[](FSlateRect DestRect) { return DestRect.Left; }, UserIndex); // Dest side function
+			[](FSlateRect DestRect) { return DestRect.Left; }, // Dest side function
+			UserIndex, IntermediateResultsPtr);
 		break;
 	case EUINavigation::Up:
 		SweptWidgetRect.Top = BoundingRuleRect.Top;
@@ -537,7 +589,8 @@ TSharedPtr<SWidget> FHittestGrid::FindNextFocusableWidget(const FArrangedWidget&
 		Widget = FindFocusableWidget(WidgetRect, SweptWidgetRect, 1, -1, Direction, NavigationReply,
 			[](float A, float B) { return A - 0.1f < B; }, // Compare function
 			[](FSlateRect SourceRect) { return SourceRect.Top; }, // Source side function
-			[](FSlateRect DestRect) { return DestRect.Bottom; }, UserIndex); // Dest side function
+			[](FSlateRect DestRect) { return DestRect.Bottom; }, // Dest side function
+			UserIndex, IntermediateResultsPtr);
 		break;
 	case EUINavigation::Down:
 		SweptWidgetRect.Top = BoundingRuleRect.Top;
@@ -547,12 +600,21 @@ TSharedPtr<SWidget> FHittestGrid::FindNextFocusableWidget(const FArrangedWidget&
 		Widget = FindFocusableWidget(WidgetRect, SweptWidgetRect, 1, 1, Direction, NavigationReply,
 			[](float A, float B) { return A + 0.1f > B; }, // Compare function
 			[](FSlateRect SourceRect) { return SourceRect.Bottom; }, // Source side function
-			[](FSlateRect DestRect) { return DestRect.Top; }, UserIndex); // Dest side function
+			[](FSlateRect DestRect) { return DestRect.Top; }, // Dest side function
+			UserIndex, IntermediateResultsPtr);
 		break;
 
 	default:
 		break;
 	}
+
+#if WITH_SLATE_DEBUGGING
+	if (IntermediateResultsPtr)
+	{
+		FDebuggingFindNextFocusableWidgetArgs Args {StartingWidget, Direction, NavigationReply, RuleWidget, UserIndex, Widget , MoveTemp(*IntermediateResultsPtr)};
+		OnFindNextFocusableWidgetExecuted.Broadcast(this, Args);
+	}
+#endif
 
 	return Widget;
 }
@@ -657,31 +719,39 @@ constexpr FLinearColor GetUserColorFromIndex(int32 Index)
 };
 
 
-void FHittestGrid::DisplayGrid(int32 InLayer, const FGeometry& AllottedGeometry, FSlateWindowElementList& WindowElementList) const
+void FHittestGrid::DisplayGrid(int32 InLayer, const FGeometry& AllottedGeometry, FSlateWindowElementList& WindowElementList, EDisplayGridFlags DisplayFlags) const
 {
-	static const FSlateBrush* WhiteBrush = FCoreStyle::Get().GetBrush(TEXT("FocusRectangle"));
+	static const FSlateBrush* FocusRectangleBrush = FCoreStyle::Get().GetBrush(TEXT("FocusRectangle"));
+	static const FSlateBrush* BorderBrush = FCoreStyle::Get().GetBrush(TEXT("Border"));
 
-	//WindowElementList.PushAbsoluteBatchPriortyGroup(INT_MAX);
+	const FSlateBrush* Brush = EnumHasAnyFlags(DisplayFlags, EDisplayGridFlags::UseFocusBrush) ? FocusRectangleBrush : BorderBrush;
+
 	for (TSparseArray<FWidgetData>::TConstIterator It(WidgetArray); It; ++It)
 	{
 		const FWidgetData& CurWidgetData = *It;
 		const TSharedPtr<SWidget> CachedWidget = CurWidgetData.GetWidget();
 		if (CachedWidget.IsValid())
 		{
+			if (EnumHasAnyFlags(DisplayFlags, EDisplayGridFlags::HideDisabledWidgets) && !CachedWidget->IsEnabled())
+			{
+				continue;
+			}
+			if (EnumHasAnyFlags(DisplayFlags, EDisplayGridFlags::HideUnsupportedKeyboardFocusWidgets) && !CachedWidget->SupportsKeyboardFocus())
+			{
+				continue;
+			}
+
 			FSlateDrawElement::MakeBox(
 				WindowElementList,
 				InLayer,
 				CachedWidget->GetPaintSpaceGeometry().ToPaintGeometry(),
-				WhiteBrush,
+				Brush,
 				ESlateDrawEffect::None,
 				GetUserColorFromIndex(CurWidgetData.UserIndex)
 			);
 		}
 	}
-
-	//WindowElementList.PopBatchPriortyGroup();
 }
-
 #endif // WITH_SLATE_DEBUGGING
 
 
@@ -848,3 +918,5 @@ FHittestGrid::FIndexAndDistance FHittestGrid::GetHitIndexFromCellIndex(const FGr
 
 	return FIndexAndDistance();
 }
+
+#undef LOCTEXT_NAMESPACE
