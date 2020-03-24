@@ -1887,7 +1887,9 @@ protected:
 	void UpdateTranslucentBasePassUniformBuffer(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 	void UpdateDirectionalLightUniformBuffers(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 	void UpdateSkyReflectionUniformBuffer();
-	
+
+	/** Before SetupMobileBasePassAfterShadowInit, we need to update the uniform buffer for all movable point lights.*/
+	void UpdateMovablePointLightUniformBuffer();
 private:
 	bool bModulatedShadowsInUse;
 	bool bShouldRenderCustomDepth;

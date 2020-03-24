@@ -120,6 +120,13 @@ void FLightSceneInfo::AddToScene()
 			{
 				CreateLightPrimitiveInteraction(LightSceneInfoCompact, PrimitiveIt.GetCurrentElement());
 			}
+
+			if (bIsValidLightTypeMobile)
+			{
+				Proxy->MobileMovablePointLightUniformBuffer = TUniformBufferRef<FMobileMovablePointLightUniformShaderParameters>::CreateUniformBufferImmediate(GetDummyMovablePointLightUniformShaderParameters(), UniformBuffer_MultiFrame);
+
+				Proxy->bMobileMovablePointLightUniformBufferNeedsUpdate = true;
+			}
 		}
 	}
 }
@@ -263,6 +270,95 @@ void FLightSceneInfo::ReleaseRHI()
 
 	ShadowCapsuleShapesVertexBuffer.SafeRelease();
 	ShadowCapsuleShapesSRV.SafeRelease();
+}
+
+void FLightSceneInfo::ConditionalUpdateMobileMovablePointLightUniformBuffer(const FSceneRenderer* SceneRenderer)
+{
+	QUICK_SCOPE_CYCLE_COUNTER(STAT_FLightSceneProxy_UpdateMobileMovablePointLightUniformBuffer);
+
+	static auto* MobileNumDynamicPointLightsCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileNumDynamicPointLights"));
+	const int32 MobileNumDynamicPointLights = MobileNumDynamicPointLightsCVar->GetValueOnRenderThread();
+
+	static auto* MobileEnableMovableSpotlightsCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.EnableMovableSpotlights"));
+	const int32 MobileEnableMovableSpotlights = MobileEnableMovableSpotlightsCVar->GetValueOnRenderThread();
+
+	checkSlow(MobileNumDynamicPointLights > 0 && SceneRenderer);
+
+	FVector4 LightPositionAndInvRadius;
+	FVector4 LightColorAndFalloffExponent;
+	FVector4 SpotLightDirectionAndSpecularScale;
+	FVector4 SpotLightAnglesAndSoftTransitionScaleAndLightShadowType;
+
+	bool bShouldBeRender = false;
+	for (int32 ViewIndex = 0; ViewIndex < SceneRenderer->Views.Num(); ++ViewIndex)
+	{
+		bShouldBeRender = ShouldRenderLight(SceneRenderer->Views[ViewIndex]);
+
+		if (bShouldBeRender)
+		{
+			break;
+		}
+	}
+
+	if (bShouldBeRender)
+	{
+		const uint8 LightType = Proxy->GetLightType();
+
+		const bool bIsValidLightType =
+			LightType == LightType_Point
+			|| LightType == LightType_Rect
+			|| (LightType == LightType_Spot && MobileEnableMovableSpotlights);
+
+		checkSlow(bIsValidLightType && Proxy->IsMovable());
+
+		FLightShaderParameters LightParameters;
+		Proxy->GetLightShaderParameters(LightParameters);
+
+		float LightFadeFactor = 0.0f;
+
+		for (int32 ViewIndex = 0; ViewIndex < SceneRenderer->Views.Num(); ++ViewIndex)
+		{
+			LightFadeFactor = FMath::Max(LightFadeFactor, GetLightFadeFactor(SceneRenderer->Views[ViewIndex], Proxy));
+		}
+
+		LightParameters.Color *= LightFadeFactor;
+
+		if (Proxy->IsInverseSquared())
+		{
+			LightParameters.FalloffExponent = 0;
+		}
+
+		uint32 LightShadowType = LightType == LightType_Spot ? 2.0f : 1.0f;
+
+		float SoftTransitionScale = 0.0f;
+		
+		LightPositionAndInvRadius = FVector4(LightParameters.Position, LightParameters.InvRadius);
+		LightColorAndFalloffExponent = FVector4(LightParameters.Color, LightParameters.FalloffExponent);
+		SpotLightDirectionAndSpecularScale = FVector4(LightParameters.Direction.X, LightParameters.Direction.Y, LightParameters.Direction.Z, Proxy->GetSpecularScale());
+		SpotLightAnglesAndSoftTransitionScaleAndLightShadowType = FVector4(LightParameters.SpotAngles.X, LightParameters.SpotAngles.Y, SoftTransitionScale, LightShadowType);
+	}
+
+	if (bShouldBeRender != Proxy->bMobileMovablePointLightShouldBeRender)
+	{
+		Proxy->bMobileMovablePointLightUniformBufferNeedsUpdate = true;
+
+		Proxy->bMobileMovablePointLightShouldBeRender = bShouldBeRender;
+	}
+
+	if (Proxy->bMobileMovablePointLightUniformBufferNeedsUpdate)
+	{
+		const FMobileMovablePointLightUniformShaderParameters MobileMovablePointLightUniformShaderParameters =
+			GetMovablePointLightUniformShaderParameters(
+				LightPositionAndInvRadius,
+				LightColorAndFalloffExponent,
+				SpotLightDirectionAndSpecularScale,
+				SpotLightAnglesAndSoftTransitionScaleAndLightShadowType
+			);
+
+		Proxy->MobileMovablePointLightUniformBuffer.UpdateUniformBufferImmediate(MobileMovablePointLightUniformShaderParameters);
+
+		Proxy->bMobileMovablePointLightUniformBufferNeedsUpdate = false;
+	}
 }
 
 /** Determines whether two bounding spheres intersect. */

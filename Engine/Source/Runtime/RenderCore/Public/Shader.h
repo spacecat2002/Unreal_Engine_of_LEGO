@@ -719,6 +719,13 @@ public:
 	FORCEINLINE_DEBUGGABLE const FShaderUniformBufferParameter& GetUniformBufferParameter(const FShaderParametersMetadata* SearchStruct) const
 	{
 		const FHashedName SearchName = SearchStruct->GetShaderVariableHashedName();
+		
+		return GetUniformBufferParameter(SearchName);
+	}
+
+	/** Finds an automatically bound uniform buffer matching the HashedName if one exists, or returns an unbound parameter. */
+	FORCEINLINE_DEBUGGABLE const FShaderUniformBufferParameter& GetUniformBufferParameter(const FHashedName SearchName) const
+	{
 		int32 FoundIndex = INDEX_NONE;
 		for (int32 StructIndex = 0, Count = UniformBufferParameterStructs.Num(); StructIndex < Count; StructIndex++)
 		{

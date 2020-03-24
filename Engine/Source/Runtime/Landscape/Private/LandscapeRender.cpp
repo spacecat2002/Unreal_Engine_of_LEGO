@@ -1724,11 +1724,11 @@ FPrimitiveViewRelevance FLandscapeComponentSceneProxy::GetViewRelevance(const FS
 		(IsSelected() && !GLandscapeEditModeActive) ||
 		(GLandscapeViewMode != ELandscapeViewMode::Normal) ||
 		(CVarLandscapeShowDirty.GetValueOnRenderThread() && GLandscapeDirtyMaterial) ||
-		(View->Family->LandscapeLODOverride >= 0) ||
+		(View->Family->LandscapeLODOverride >= 0)
 #else
-		IsSelected() ||
+		IsSelected()
 #endif
-		!IsStaticPathAvailable())
+		)
 	{
 		Result.bDynamicRelevance = true;
 	}
@@ -3462,11 +3462,11 @@ void FLandscapeComponentSceneProxy::GetDynamicMeshElements(const TArray<const FS
 						bIsWireframe ||
 #if WITH_EDITOR
 						(IsSelected() && !GLandscapeEditModeActive) ||
-						ViewFamily.LandscapeLODOverride >= 0 ||
+						ViewFamily.LandscapeLODOverride >= 0
 #else
-						IsSelected() ||
+						IsSelected()
 #endif
-						!IsStaticPathAvailable())
+						)
 					{
 						Mesh.bCanApplyViewModeOverrides = true;
 						Mesh.bUseWireframeSelectionColoring = IsSelected();

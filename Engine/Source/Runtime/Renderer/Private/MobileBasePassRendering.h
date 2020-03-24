@@ -76,10 +76,7 @@ public:
 	FMobileBasePassMovableLightInfo(const FPrimitiveSceneProxy* InSceneProxy);
 
 	int32 NumMovablePointLights;
-	FVector4 LightPositionAndInvRadius[MAX_BASEPASS_DYNAMIC_POINT_LIGHTS];
-	FVector4 LightColorAndFalloffExponent[MAX_BASEPASS_DYNAMIC_POINT_LIGHTS];
-	FVector4 SpotLightDirectionAndSpecularScale[MAX_BASEPASS_DYNAMIC_POINT_LIGHTS];
-	FVector4 SpotLightAngles[MAX_BASEPASS_DYNAMIC_POINT_LIGHTS];
+	FRHIUniformBuffer* MovablePointLightUniformBuffer[MAX_BASEPASS_DYNAMIC_POINT_LIGHTS];
 };
 
 static bool ShouldCacheShaderByPlatformAndOutputFormat(EShaderPlatform Platform, EOutputFormat OutputFormat)
@@ -248,11 +245,7 @@ public:
 		HQReflectionInvAverageBrigtnessParams.Bind(Initializer.ParameterMap, TEXT("ReflectionAverageBrigtness"));
 		HQReflectionPositionsAndRadii.Bind(Initializer.ParameterMap, TEXT("ReflectionPositionsAndRadii"));
 
-		LightPositionAndInvRadiusParameter.Bind(Initializer.ParameterMap, TEXT("LightPositionAndInvRadius"));
-		LightColorAndFalloffExponentParameter.Bind(Initializer.ParameterMap, TEXT("LightColorAndFalloffExponent"));
 		NumDynamicPointLightsParameter.Bind(Initializer.ParameterMap, TEXT("NumDynamicPointLights"));
-		SpotLightAnglesParameter.Bind(Initializer.ParameterMap, TEXT("SpotLightAngles"));
-		SpotLightDirectionAndSpecularScaleParameter.Bind(Initializer.ParameterMap, TEXT("SpotLightDirectionAndSpecularScale"));
 						
 		CSMDebugHintParams.Bind(Initializer.ParameterMap, TEXT("CSMDebugHint"));
 	}
@@ -269,11 +262,7 @@ private:
 	LAYOUT_FIELD(FShaderParameter, HQReflectionInvAverageBrigtnessParams);
 	LAYOUT_FIELD(FShaderParameter, HQReflectionPositionsAndRadii);
 
-	LAYOUT_FIELD(FShaderParameter, LightPositionAndInvRadiusParameter);
-	LAYOUT_FIELD(FShaderParameter, LightColorAndFalloffExponentParameter);
 	LAYOUT_FIELD(FShaderParameter, NumDynamicPointLightsParameter);
-	LAYOUT_FIELD(FShaderParameter, SpotLightDirectionAndSpecularScaleParameter);
-	LAYOUT_FIELD(FShaderParameter, SpotLightAnglesParameter);
 
 	LAYOUT_FIELD(FShaderParameter, CSMDebugHintParams);
 	

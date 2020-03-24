@@ -505,15 +505,24 @@ void TMobileBasePassPSPolicyParamType<FUniformLightMapPolicy>::GetShaderBindings
 			ShaderBindings.Add(ReflectionParameter, ReflectionUB);
 		}
 		
-		if (LightPositionAndInvRadiusParameter.IsBound() || SpotLightDirectionAndSpecularScaleParameter.IsBound())
+		if (NumDynamicPointLightsParameter.IsBound())
 		{
+			static FHashedName MobileMovablePointLightHashedName[MAX_BASEPASS_DYNAMIC_POINT_LIGHTS] = { FHashedName(TEXT("MobileMovablePointLight0")), FHashedName(TEXT("MobileMovablePointLight1")), FHashedName(TEXT("MobileMovablePointLight2")), FHashedName(TEXT("MobileMovablePointLight3")) };
+
 			// Set dynamic point lights
 			FMobileBasePassMovableLightInfo LightInfo(PrimitiveSceneProxy);
 			ShaderBindings.Add(NumDynamicPointLightsParameter, LightInfo.NumMovablePointLights);
-			ShaderBindings.Add(LightPositionAndInvRadiusParameter, LightInfo.LightPositionAndInvRadius);
-			ShaderBindings.Add(LightColorAndFalloffExponentParameter, LightInfo.LightColorAndFalloffExponent);
-			ShaderBindings.Add(SpotLightDirectionAndSpecularScaleParameter, LightInfo.SpotLightDirectionAndSpecularScale);
-			ShaderBindings.Add(SpotLightAnglesParameter, LightInfo.SpotLightAngles);
+			for (int32 i = 0; i < MAX_BASEPASS_DYNAMIC_POINT_LIGHTS; ++i)
+			{
+				if (i < LightInfo.NumMovablePointLights && LightInfo.MovablePointLightUniformBuffer[i])
+				{
+					ShaderBindings.Add(GetUniformBufferParameter(MobileMovablePointLightHashedName[i]), LightInfo.MovablePointLightUniformBuffer[i]);
+				}
+				else
+				{
+					ShaderBindings.Add(GetUniformBufferParameter(MobileMovablePointLightHashedName[i]), GDummyMovablePointLightUniformBuffer.GetUniformBufferRHI());
+				}
+			}
 		}
 	}
 	else

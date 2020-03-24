@@ -117,7 +117,8 @@ FMobileBasePassMovableLightInfo::FMobileBasePassMovableLightInfo(const FPrimitiv
 	{
 		for (FLightPrimitiveInteraction* LPI = InSceneProxy->GetPrimitiveSceneInfo()->LightList; LPI && NumMovablePointLights < MobileNumDynamicPointLights; LPI = LPI->GetNextLight())
 		{
-			FLightSceneProxy* LightProxy = LPI->GetLight()->Proxy;
+			FLightSceneInfo* LightSceneInfo = LPI->GetLight();
+			FLightSceneProxy* LightProxy = LightSceneInfo->Proxy;
 			const uint8 LightType = LightProxy->GetLightType(); 
 			const bool bIsValidLightType =
 				  LightType == LightType_Point
@@ -126,25 +127,7 @@ FMobileBasePassMovableLightInfo::FMobileBasePassMovableLightInfo(const FPrimitiv
 				
 			if (bIsValidLightType && LightProxy->IsMovable() && (LightProxy->GetLightingChannelMask() & InSceneProxy->GetLightingChannelMask()) != 0)
 			{
-				FLightShaderParameters LightParameters;
-				LightProxy->GetLightShaderParameters(LightParameters);
-
-				LightPositionAndInvRadius[NumMovablePointLights] = FVector4(LightParameters.Position, LightParameters.InvRadius);
-				LightColorAndFalloffExponent[NumMovablePointLights] = FVector4(LightParameters.Color, LightParameters.FalloffExponent);
-				SpotLightDirectionAndSpecularScale[NumMovablePointLights] = LightParameters.Direction;
-				SpotLightDirectionAndSpecularScale[NumMovablePointLights].Component(3) = LightProxy->GetSpecularScale();
-				SpotLightAngles[NumMovablePointLights].Set(LightParameters.SpotAngles.X, LightParameters.SpotAngles.Y, 0.f, LightType == LightType_Spot ? 1.0f : 0.0f);
-
-				if (LightType == LightType_Rect)
-				{
-					// Treat rect lights as point lights.
-					LightColorAndFalloffExponent[NumMovablePointLights] = FVector4(LightParameters.Color, LightParameters.FalloffExponent);
-				}
-
-				if (LightProxy->IsInverseSquared())
-				{
-					LightColorAndFalloffExponent[NumMovablePointLights].W = 0;
-				}
+				MovablePointLightUniformBuffer[NumMovablePointLights] = LightProxy->GetMobileMovablePointLightUniformBufferRHI();
 
 				NumMovablePointLights++;
 			}

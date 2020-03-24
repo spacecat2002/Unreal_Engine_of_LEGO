@@ -302,6 +302,9 @@ void FMobileSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdList)
 		PrepareViewVisibilityLists();
 	}
 
+	/** Before SetupMobileBasePassAfterShadowInit, we need to update the uniform buffer for all movable point lights.*/
+	UpdateMovablePointLightUniformBuffer();
+
 	SetupMobileBasePassAfterShadowInit(BasePassDepthStencilAccess, ViewCommandsPerView);
 
 	// if we kicked off ILC update via task, wait and finalize.
@@ -1283,4 +1286,36 @@ void FMobileSceneRenderer::PreTonemapMSAA(FRHICommandListImmediate& RHICmdList)
 		TargetSize,
 		VertexShader,
 		EDRF_UseTriangleOptimization);
+}
+
+/** Before SetupMobileBasePassAfterShadowInit, we need to update the uniform buffer and shadow info for all movable point lights.*/
+void FMobileSceneRenderer::UpdateMovablePointLightUniformBuffer()
+{
+	static auto* MobileNumDynamicPointLightsCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileNumDynamicPointLights"));
+	const int32 MobileNumDynamicPointLights = MobileNumDynamicPointLightsCVar->GetValueOnRenderThread();
+
+	static auto* MobileEnableMovableSpotlightsCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.EnableMovableSpotlights"));
+	const int32 MobileEnableMovableSpotlights = MobileEnableMovableSpotlightsCVar->GetValueOnRenderThread();
+
+	if (MobileNumDynamicPointLights > 0)
+	{
+		for (TSparseArray<FLightSceneInfoCompact>::TConstIterator LightIt(Scene->Lights); LightIt; ++LightIt)
+		{
+			const FLightSceneInfoCompact& LightSceneInfoCompact = *LightIt;
+			FLightSceneInfo* LightSceneInfo = LightSceneInfoCompact.LightSceneInfo;
+
+			FLightSceneProxy* LightProxy = LightSceneInfo->Proxy;
+			const uint8 LightType = LightProxy->GetLightType();
+
+			const bool bIsValidLightType =
+				LightType == LightType_Point
+				|| LightType == LightType_Rect
+				|| (LightType == LightType_Spot && MobileEnableMovableSpotlights);
+
+			if (bIsValidLightType && LightProxy->IsMovable())
+			{
+				LightSceneInfo->ConditionalUpdateMobileMovablePointLightUniformBuffer(this);
+			}
+		}
+	}
 }

@@ -1186,6 +1186,58 @@ BEGIN_SHADER_PARAMETER_STRUCT(FLightShaderParameters, ENGINE_API)
 END_SHADER_PARAMETER_STRUCT()
 
 
+// Movable point light uniform buffer for mobile
+BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileMovablePointLightUniformShaderParameters,ENGINE_API)
+	SHADER_PARAMETER(FVector4, LightPositionAndInvRadius)
+	SHADER_PARAMETER(FVector4, LightColorAndFalloffExponent)
+	SHADER_PARAMETER(FVector4, SpotLightDirectionAndSpecularScale)
+	SHADER_PARAMETER(FVector4, SpotLightAnglesAndSoftTransitionScaleAndLightShadowType) //xy SpotAngles, z SoftTransitionScale, w LightShadowType if (w&1 == 1) is pointlight, (w&2 == 2) is spotlight
+END_GLOBAL_SHADER_PARAMETER_STRUCT()
+
+/** Initializes the movable point light uniform shader parameters. */
+FORCEINLINE FMobileMovablePointLightUniformShaderParameters GetMovablePointLightUniformShaderParameters(
+	const FVector4& LightPositionAndInvRadius,
+	const FVector4& LightColorAndFalloffExponent,
+	const FVector4& SpotLightDirectionAndSpecularScale,
+	const FVector4& SpotLightAnglesAndSoftTransitionScaleAndLightShadowType
+)
+{
+	FMobileMovablePointLightUniformShaderParameters Result;
+	Result.LightPositionAndInvRadius = LightPositionAndInvRadius;
+	Result.LightColorAndFalloffExponent = LightColorAndFalloffExponent;
+	Result.SpotLightDirectionAndSpecularScale = SpotLightDirectionAndSpecularScale;
+	Result.SpotLightAnglesAndSoftTransitionScaleAndLightShadowType = SpotLightAnglesAndSoftTransitionScaleAndLightShadowType;
+
+	return Result;
+}
+
+FORCEINLINE FMobileMovablePointLightUniformShaderParameters GetDummyMovablePointLightUniformShaderParameters()
+{
+	return GetMovablePointLightUniformShaderParameters(
+		FVector4(),
+		FVector4(),
+		FVector4(),
+		FVector4()
+	);
+}
+
+/**
+ * Dummy mobile movable point light uniform buffer.
+ */
+class FDummyMovablePointLightUniformBuffer : public TUniformBuffer<FMobileMovablePointLightUniformShaderParameters>
+{
+public:
+
+	/** Default constructor. */
+	FDummyMovablePointLightUniformBuffer()
+	{
+		SetContents(GetDummyMovablePointLightUniformShaderParameters());
+	}
+};
+
+/** Global primitive uniform buffer resource containing identity transformations. */
+extern ENGINE_API TGlobalResource<FDummyMovablePointLightUniformBuffer> GDummyMovablePointLightUniformBuffer;
+
 /** 
  * Encapsulates the data which is used to render a light by the rendering thread. 
  * The constructor is called from the game thread, and after that the rendering thread owns the object.
@@ -1427,9 +1479,20 @@ public:
 	 */
 	virtual float GetSunLightHalfApexAngleRadian() const { return GetSunOnEarthHalfApexAngleRadian() ; }
 
+	FORCEINLINE void SetMobileMovablePointLightUniformBufferNeedsUpdate(bool bInMobileMovablePointLightUniformBufferNeedsUpdate)
+	{
+		bMobileMovablePointLightUniformBufferNeedsUpdate = bInMobileMovablePointLightUniformBufferNeedsUpdate;
+	}
+
+	FORCEINLINE FRHIUniformBuffer* GetMobileMovablePointLightUniformBufferRHI() const
+	{
+		return MobileMovablePointLightUniformBuffer.GetReference();
+	}
+
 protected:
 
 	friend class FScene;
+	friend class FLightSceneInfo;
 
 	/** The light component. */
 	const ULightComponent* LightComponent;
@@ -1602,6 +1665,15 @@ protected:
 
 	/** Samples per pixel for ray tracing */
 	uint32 SamplesPerPixel;
+
+	/** If this is TRUE, the light's mobile movable point light uniform buffer needs to be updated before it can be used for mobile base pass rendering. */
+	bool bMobileMovablePointLightUniformBufferNeedsUpdate;
+
+	/** Cached ShouldBeRender for mobile, since if the ShouldBeRender is changed we have to update the movable point lights uniform buffer. */
+	bool bMobileMovablePointLightShouldBeRender;
+
+	/** The movable point light's uniform buffer for mobile. */
+	TUniformBufferRef<FMobileMovablePointLightUniformShaderParameters> MobileMovablePointLightUniformBuffer;
 
 	/**
 	 * Updates the light proxy's cached transforms.
@@ -3013,6 +3085,7 @@ struct FReadOnlyCVARCache
 	int32 NumMobileMovablePointLights;
 	int32 MobileSkyLightPermutation;
 	bool bMobileMovablePointLightsUseStaticBranch;
+	bool bMobileEnableMovableSpotlights;
 	
 	bool bInitialized;
 	void Init();

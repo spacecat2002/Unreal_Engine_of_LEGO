@@ -884,7 +884,7 @@ public:
 	{ 
 		const bool bAllowStaticLighting = FReadOnlyCVARCache::Get().bAllowStaticLighting;
 		const bool bIsStaticInstance = !bDynamicRayTracingGeometry;
-		return bIsStaticInstance && IsStaticPathAvailable() && !HasViewDependentDPG() && !(bAllowStaticLighting && HasStaticLighting() && !HasValidSettingsForStaticLighting());
+		return bIsStaticInstance && !HasViewDependentDPG() && !(bAllowStaticLighting && HasStaticLighting() && !HasValidSettingsForStaticLighting());
 	}
 #endif // RHI_RAYTRACING
 
