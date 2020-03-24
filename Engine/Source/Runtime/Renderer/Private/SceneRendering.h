@@ -105,6 +105,13 @@ protected:
 	TArray<const FPrimitiveSceneInfo*, SceneRenderingAllocator> ShadowSubjectPrimitives;
 };
 
+class FMobileMovableSpotLightsShadowInfo
+{
+public:
+	FVector4 ShadowBufferSize = FVector4(0.0f);
+	FRHITexture* ShadowDepthTexture = nullptr;
+};
+
 /** Information about a visible light which is specific to the view it's visible in. */
 class FVisibleLightViewInfo
 {
@@ -1005,6 +1012,9 @@ public:
 	// Used by mobile renderer to determine whether static meshes will be rendered with CSM shaders or not.
 	FMobileCSMVisibilityInfo MobileCSMVisibilityInfo;
 
+	//Spotlight shadow info for mobile.
+	FMobileMovableSpotLightsShadowInfo MobileMovableSpotLightsShadowInfo;
+
 	// Primitive CustomData
 	TArray<FMemStackBase, SceneRenderingAllocator> PrimitiveCustomDataMemStack; // Size == 1 global stack + 1 per visibility thread (if multithread)
 
@@ -1697,6 +1707,7 @@ protected:
 
 	void AllocateTranslucentShadowDepthTargets(FRHICommandListImmediate& RHICmdList, TArray<FProjectedShadowInfo*, SceneRenderingAllocator>& TranslucentShadows);
 
+	void AllocateMobileCSMAndSpotLightShadowDepthTargets(FRHICommandListImmediate& RHICmdList, const TArray<FProjectedShadowInfo*, SceneRenderingAllocator>& MobileCSMAndSpotLightShadows);
 	/**
 	* Used by RenderLights to figure out if projected shadows need to be rendered to the attenuation buffer.
 	* Or to render a given shadowdepth map for forward rendering.
@@ -1888,8 +1899,8 @@ protected:
 	void UpdateDirectionalLightUniformBuffers(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 	void UpdateSkyReflectionUniformBuffer();
 
-	/** Before SetupMobileBasePassAfterShadowInit, we need to update the uniform buffer for all movable point lights.*/
-	void UpdateMovablePointLightUniformBuffer();
+	/** Before SetupMobileBasePassAfterShadowInit, we need to update the uniform buffer and shadow info for all movable point lights.*/
+	void UpdateMovablePointLightUniformBufferAndShadowInfo();
 private:
 	bool bModulatedShadowsInUse;
 	bool bShouldRenderCustomDepth;

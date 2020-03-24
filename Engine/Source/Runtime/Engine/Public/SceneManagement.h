@@ -1191,7 +1191,10 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileMovablePointLightUniformShaderParame
 	SHADER_PARAMETER(FVector4, LightPositionAndInvRadius)
 	SHADER_PARAMETER(FVector4, LightColorAndFalloffExponent)
 	SHADER_PARAMETER(FVector4, SpotLightDirectionAndSpecularScale)
-	SHADER_PARAMETER(FVector4, SpotLightAnglesAndSoftTransitionScaleAndLightShadowType) //xy SpotAngles, z SoftTransitionScale, w LightShadowType if (w&1 == 1) is pointlight, (w&2 == 2) is spotlight
+	SHADER_PARAMETER(FVector4, SpotLightAnglesAndSoftTransitionScaleAndLightShadowType) //xy SpotAngles, z SoftTransitionScale, w LightShadowType if (w&1 == 1) is pointlight, (w&2 == 2) is spotlight, (w&4 == 4) is with shadow
+	SHADER_PARAMETER(FVector4, SpotLightShadowSharpenAndShadowFadeFraction) // x ShadowSharpen, y ShadowFadFraction
+	SHADER_PARAMETER(FVector4, SpotLightShadowmapMinMax)
+	SHADER_PARAMETER(FMatrix, SpotLightShadowWorldToShadowMatrix)
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
 /** Initializes the movable point light uniform shader parameters. */
@@ -1199,7 +1202,10 @@ FORCEINLINE FMobileMovablePointLightUniformShaderParameters GetMovablePointLight
 	const FVector4& LightPositionAndInvRadius,
 	const FVector4& LightColorAndFalloffExponent,
 	const FVector4& SpotLightDirectionAndSpecularScale,
-	const FVector4& SpotLightAnglesAndSoftTransitionScaleAndLightShadowType
+	const FVector4& SpotLightAnglesAndSoftTransitionScaleAndLightShadowType,
+	const FVector4& SpotLightShadowSharpenAndShadowFadeFraction,
+	const FVector4& SpotLightShadowmapMinMax,
+	const FMatrix& SpotLightShadowWorldToShadowMatrix
 )
 {
 	FMobileMovablePointLightUniformShaderParameters Result;
@@ -1207,6 +1213,9 @@ FORCEINLINE FMobileMovablePointLightUniformShaderParameters GetMovablePointLight
 	Result.LightColorAndFalloffExponent = LightColorAndFalloffExponent;
 	Result.SpotLightDirectionAndSpecularScale = SpotLightDirectionAndSpecularScale;
 	Result.SpotLightAnglesAndSoftTransitionScaleAndLightShadowType = SpotLightAnglesAndSoftTransitionScaleAndLightShadowType;
+	Result.SpotLightShadowSharpenAndShadowFadeFraction = SpotLightShadowSharpenAndShadowFadeFraction;
+	Result.SpotLightShadowmapMinMax = SpotLightShadowmapMinMax;
+	Result.SpotLightShadowWorldToShadowMatrix = SpotLightShadowWorldToShadowMatrix;
 
 	return Result;
 }
@@ -1217,7 +1226,10 @@ FORCEINLINE FMobileMovablePointLightUniformShaderParameters GetDummyMovablePoint
 		FVector4(),
 		FVector4(),
 		FVector4(),
-		FVector4()
+		FVector4(),
+		FVector4(),
+		FVector4(),
+		FMatrix()
 	);
 }
 
@@ -1671,6 +1683,12 @@ protected:
 
 	/** Cached ShouldBeRender for mobile, since if the ShouldBeRender is changed we have to update the movable point lights uniform buffer. */
 	bool bMobileMovablePointLightShouldBeRender;
+
+	/** Cached DynamicShadows show flag for mobile, since if the show flag is changed we have to update the movable point lights uniform buffer. */
+	bool bMobileMovablePointLightShouldCastShadow;
+
+	/** Cached the spotlight shadow map min and max value for mobile, since if the value is changed we have to update the movable point lights uniform buffer. */
+	FVector4 MobileMovablePointLightShadowmapMinMax;
 
 	/** The movable point light's uniform buffer for mobile. */
 	TUniformBufferRef<FMobileMovablePointLightUniformShaderParameters> MobileMovablePointLightUniformBuffer;
@@ -3086,6 +3104,7 @@ struct FReadOnlyCVARCache
 	int32 MobileSkyLightPermutation;
 	bool bMobileMovablePointLightsUseStaticBranch;
 	bool bMobileEnableMovableSpotlights;
+	bool bMobileEnableMovableSpotlightsShadow;
 	
 	bool bInitialized;
 	void Init();

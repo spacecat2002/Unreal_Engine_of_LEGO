@@ -3768,8 +3768,13 @@ void GlobalBeginCompileShader(
 
 	if (IsMobilePlatform((EShaderPlatform)Target.Platform))
 	{
-		static IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Mobile.EnableMovableSpotlights"));
-		Input.Environment.SetDefine(TEXT("PROJECT_MOBILE_ENABLE_MOVABLE_SPOTLIGHTS"), CVar ? (CVar->GetInt() != 0) : 0);
+		static IConsoleVariable* CVarMobileEnableMovableSpotlights = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Mobile.EnableMovableSpotlights"));
+		bool bMobileEnableMovableSpotlights = CVarMobileEnableMovableSpotlights ? (CVarMobileEnableMovableSpotlights->GetInt() != 0) : false;
+		Input.Environment.SetDefine(TEXT("PROJECT_MOBILE_ENABLE_MOVABLE_SPOTLIGHTS"), bMobileEnableMovableSpotlights ? 1 : 0);
+
+		static IConsoleVariable* CVarMobileEnableMovableSpotlightsShadow = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Mobile.EnableMovableSpotlightsShadow"));
+		bool bMobileEnableMovableSpotlightsShadow = CVarMobileEnableMovableSpotlightsShadow ? (CVarMobileEnableMovableSpotlightsShadow->GetInt() != 0) : false;
+		Input.Environment.SetDefine(TEXT("PROJECT_MOBILE_ENABLE_MOVABLE_SPOTLIGHTS_SHADOW"), bMobileEnableMovableSpotlights && bMobileEnableMovableSpotlightsShadow ? 1 : 0);
 	}
 
 	// Allow the target shader format to modify the shader input before we add it as a job

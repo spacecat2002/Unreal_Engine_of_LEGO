@@ -36,6 +36,17 @@ static TAutoConsoleVariable<int32> CVarMobileEnableMovableSpotLights(
 	TEXT("If 1 then enable movable spotlight support"),
 	ECVF_ReadOnly | ECVF_RenderThreadSafe);
 
+static TAutoConsoleVariable<int32> CVarMobileEnableMovableSpotLightShadows(
+	TEXT("r.Mobile.EnableMovableSpotlightsShadow"),
+	0,
+	TEXT("If 1 then enable movable spotlight shadow support"),
+	ECVF_ReadOnly | ECVF_RenderThreadSafe);
+
+static TAutoConsoleVariable<int32> CVarMobileMaxVisibleMovableSpotLightsShadow(
+	TEXT("r.Mobile.MaxVisibleMovableSpotLightsShadow"),
+	8,
+	TEXT("The max number of visible spotlighs can cast shadow sorted by screen size, should be as less as possible for performance reason"),
+	ECVF_RenderThreadSafe);
 
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileBasePassUniformParameters, "MobileBasePass");
 
@@ -102,7 +113,7 @@ bool TMobileBasePassPSPolicyParamType<LightMapPolicyType>::ModifyCompilationEnvi
 	OutEnvironment.SetDefine(TEXT("QL_FORCEDISABLE_LM_DIRECTIONALITY"), QualityOverrides.bEnableOverride && QualityOverrides.bForceDisableLMDirectionality != 0 ? 1u : 0u);
 	OutEnvironment.SetDefine(TEXT("MOBILE_QL_FORCE_LQ_REFLECTIONS"), QualityOverrides.bEnableOverride && QualityOverrides.bForceLQReflections != 0 ? 1u : 0u);
 	OutEnvironment.SetDefine(TEXT("MOBILE_QL_FORCE_DISABLE_PREINTEGRATEDGF"), QualityOverrides.bEnableOverride && QualityOverrides.bForceDisablePreintegratedGF != 0 ? 1u : 0u);
-	OutEnvironment.SetDefine(TEXT("MOBILE_CSM_QUALITY"), (uint32)QualityOverrides.MobileCSMQuality);
+	OutEnvironment.SetDefine(TEXT("MOBILE_SHADOW_QUALITY"), (uint32)QualityOverrides.MobileShadowQuality);
 	OutEnvironment.SetDefine(TEXT("MOBILE_QL_DISABLE_MATERIAL_NORMAL"), QualityOverrides.bEnableOverride && QualityOverrides.bDisableMaterialNormalCalculation);
 	return true;
 }
@@ -156,6 +167,10 @@ void SetupMobileBasePassUniformParameters(
 
 	BasePassParameters.PreIntegratedGFTexture = GSystemTextures.PreintegratedGF->GetRenderTargetItem().ShaderResourceTexture;
 	BasePassParameters.PreIntegratedGFSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+
+	BasePassParameters.DynamicSpotLightShadowSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+	BasePassParameters.DynamicSpotLightShadowBufferSize = View.MobileMovableSpotLightsShadowInfo.ShadowBufferSize;
+	BasePassParameters.DynamicSpotLightShadowTexture = View.MobileMovableSpotLightsShadowInfo.ShadowDepthTexture != nullptr ? View.MobileMovableSpotLightsShadowInfo.ShadowDepthTexture : (FRHITexture*)GSystemTextures.DepthDummy->GetRenderTargetItem().ShaderResourceTexture;
 }
 
 void CreateMobileBasePassUniformBuffer(

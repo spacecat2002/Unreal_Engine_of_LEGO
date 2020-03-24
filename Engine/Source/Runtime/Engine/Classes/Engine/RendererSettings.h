@@ -781,6 +781,14 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ConfigRestartRequired = true))
 		uint32 bMobileAllowMovableSpotlights : 1;
 
+	UPROPERTY(config, EditAnywhere, Category = MobileShaderPermutationReduction, meta = (
+		EditCondition = "bMobileAllowMovableSpotlights",
+		ConsoleVariable = "r.Mobile.EnableMovableSpotlightsShadow",
+		DisplayName = "Support Movable SpotlightShadows",
+		ToolTip = "Generate shaders for primitives to receive shadow from movable spotlights. Changing this setting requires restarting the editor.",
+		ConfigRestartRequired = true))
+		uint32 bMobileAllowMovableSpotlightShadows : 1;
+
 	UPROPERTY(config, EditAnywhere, Category = Optimizations, meta = (
 		ConsoleVariable = "r.GPUSkin.Support16BitBoneIndex", DisplayName = "Support 16-bit Bone Index",
 		ToolTip = "If enabled, a new mesh imported will use 8 bit (if <=256 bones) or 16 bit (if > 256 bones) bone indices for rendering.",

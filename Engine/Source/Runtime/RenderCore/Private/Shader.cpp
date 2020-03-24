@@ -1444,8 +1444,13 @@ void ShaderMapAppendKeyString(EShaderPlatform Platform, FString& KeyString)
 		}
 
 		{
-			static IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Mobile.EnableMovableSpotlights"));
-			KeyString += (CVar && CVar->GetInt() != 0) ? TEXT("_MSPTL") : TEXT("");
+			static IConsoleVariable* CVarMobileEnableMovableSpotlights = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Mobile.EnableMovableSpotlights"));
+			bool bMobileEnableMovableSpotlights = CVarMobileEnableMovableSpotlights ? (CVarMobileEnableMovableSpotlights->GetInt() != 0) : false;
+			KeyString += (bMobileEnableMovableSpotlights) ? TEXT("_MSPTL") : TEXT("");
+
+			static IConsoleVariable* CVarMobileEnableMovableSpotlightsShadow = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Mobile.EnableMovableSpotlightsShadow"));
+			bool bMobileEnableMovableSpotlightsShadow = CVarMobileEnableMovableSpotlightsShadow ? (CVarMobileEnableMovableSpotlightsShadow->GetInt() != 0) : false;
+			KeyString += (bMobileEnableMovableSpotlights && bMobileEnableMovableSpotlightsShadow) ? TEXT("S") : TEXT("");
 		}
 		
 		{

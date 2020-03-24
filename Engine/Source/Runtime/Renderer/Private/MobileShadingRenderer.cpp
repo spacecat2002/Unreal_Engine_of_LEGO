@@ -302,8 +302,8 @@ void FMobileSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdList)
 		PrepareViewVisibilityLists();
 	}
 
-	/** Before SetupMobileBasePassAfterShadowInit, we need to update the uniform buffer for all movable point lights.*/
-	UpdateMovablePointLightUniformBuffer();
+	/** Before SetupMobileBasePassAfterShadowInit, we need to update the uniform buffer and shadow info for all movable point lights.*/
+	UpdateMovablePointLightUniformBufferAndShadowInfo();
 
 	SetupMobileBasePassAfterShadowInit(BasePassDepthStencilAccess, ViewCommandsPerView);
 
@@ -1289,7 +1289,7 @@ void FMobileSceneRenderer::PreTonemapMSAA(FRHICommandListImmediate& RHICmdList)
 }
 
 /** Before SetupMobileBasePassAfterShadowInit, we need to update the uniform buffer and shadow info for all movable point lights.*/
-void FMobileSceneRenderer::UpdateMovablePointLightUniformBuffer()
+void FMobileSceneRenderer::UpdateMovablePointLightUniformBufferAndShadowInfo()
 {
 	static auto* MobileNumDynamicPointLightsCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileNumDynamicPointLights"));
 	const int32 MobileNumDynamicPointLights = MobileNumDynamicPointLightsCVar->GetValueOnRenderThread();
@@ -1297,8 +1297,16 @@ void FMobileSceneRenderer::UpdateMovablePointLightUniformBuffer()
 	static auto* MobileEnableMovableSpotlightsCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.EnableMovableSpotlights"));
 	const int32 MobileEnableMovableSpotlights = MobileEnableMovableSpotlightsCVar->GetValueOnRenderThread();
 
+	static auto* EnableMovableSpotlightShadowsCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.EnableMovableSpotlightsShadow"));
+	const int32 EnableMovableSpotlightShadows = EnableMovableSpotlightShadowsCVar->GetValueOnRenderThread();
+
 	if (MobileNumDynamicPointLights > 0)
 	{
+		bool bShouldDynamicShadows = ViewFamily.EngineShowFlags.DynamicShadows
+			&& !IsSimpleForwardShadingEnabled(ShaderPlatform)
+			&& GetShadowQuality() > 0
+			&& EnableMovableSpotlightShadows != 0;
+
 		for (TSparseArray<FLightSceneInfoCompact>::TConstIterator LightIt(Scene->Lights); LightIt; ++LightIt)
 		{
 			const FLightSceneInfoCompact& LightSceneInfoCompact = *LightIt;
@@ -1315,6 +1323,35 @@ void FMobileSceneRenderer::UpdateMovablePointLightUniformBuffer()
 			if (bIsValidLightType && LightProxy->IsMovable())
 			{
 				LightSceneInfo->ConditionalUpdateMobileMovablePointLightUniformBuffer(this);
+
+				bool bDynamicShadows = bShouldDynamicShadows
+					&& LightType == LightType_Spot
+					&& VisibleLightInfos[LightSceneInfo->Id].AllProjectedShadows.Num() > 0
+					&& VisibleLightInfos[LightSceneInfo->Id].AllProjectedShadows.Last()->bAllocated;
+
+				if (bDynamicShadows)
+				{
+					FProjectedShadowInfo *ProjectedShadowInfo = VisibleLightInfos[LightSceneInfo->Id].AllProjectedShadows.Last();
+					checkSlow(ProjectedShadowInfo && ProjectedShadowInfo->CacheMode != SDCM_StaticPrimitivesOnly);
+
+					const FIntPoint ShadowBufferResolution = ProjectedShadowInfo->GetShadowBufferResolution();
+					
+					for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
+					{
+						FViewInfo& View = Views[ViewIndex];
+
+						FMobileMovableSpotLightsShadowInfo& MobileMovableSpotLightsShadowInfo = View.MobileMovableSpotLightsShadowInfo;
+
+						checkSlow(MobileMovableSpotLightsShadowInfo.ShadowDepthTexture == nullptr
+							|| MobileMovableSpotLightsShadowInfo.ShadowDepthTexture == ProjectedShadowInfo->RenderTargets.DepthTarget->GetRenderTargetItem().ShaderResourceTexture.GetReference());
+
+						if (MobileMovableSpotLightsShadowInfo.ShadowDepthTexture == nullptr)
+						{
+							MobileMovableSpotLightsShadowInfo.ShadowDepthTexture = ProjectedShadowInfo->RenderTargets.DepthTarget->GetRenderTargetItem().ShaderResourceTexture.GetReference();
+							MobileMovableSpotLightsShadowInfo.ShadowBufferSize = FVector4(ShadowBufferResolution.X, ShadowBufferResolution.Y, 1.0f / ShadowBufferResolution.X, 1.0f / ShadowBufferResolution.Y);
+						}
+					}
+				}
 			}
 		}
 	}

@@ -311,6 +311,8 @@ FLightSceneProxy::FLightSceneProxy(const ULightComponent* InLightComponent)
 	, SamplesPerPixel(1)
 	, bMobileMovablePointLightUniformBufferNeedsUpdate(false)
 	, bMobileMovablePointLightShouldBeRender(false)
+	, bMobileMovablePointLightShouldCastShadow(false)
+	, MobileMovablePointLightShadowmapMinMax()
 {
 	check(SceneInterface);
 
