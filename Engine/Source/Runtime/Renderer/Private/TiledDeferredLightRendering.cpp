@@ -216,12 +216,7 @@ public:
 					LightData.LightColorAndFalloffExponent[LightIndex].Z *= LightSceneInfo->Proxy->GetIndirectLightingScale();
 				}
 
-				{
-					// SignBit:Spotlight, SpecularScale = abs();
-					float W = LightParameters.SpecularScale * ((LightSceneInfo->Proxy->GetLightType() == LightType_Spot) ? 1 : -1);
-
-					LightData2.LightDirectionAndSpotlightMaskAndSpecularScale[LightIndex] = FVector4(LightParameters.Direction, W);
-				}
+				LightData2.LightDirectionAndSpotlightMaskAndSpecularScale[LightIndex] = FVector4(LightParameters.Direction, LightParameters.SpecularScale);
 
 				// Lights with non-0 length don't support tiled deferred pass, should not have gotten into this list
 				ensure(LightParameters.SourceLength==0.0f);
