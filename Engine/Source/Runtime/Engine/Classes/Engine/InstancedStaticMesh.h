@@ -486,12 +486,6 @@ public:
 
 	~FInstancedStaticMeshSceneProxy()
 	{
-#if RHI_RAYTRACING
-		for (int32 i = 0; i < RayTracingCullClusterInstances.Num(); ++i)
-		{
-			delete RayTracingCullClusterInstances[i];
-		}
-#endif
 	}
 
 	// FPrimitiveSceneProxy interface.
@@ -582,9 +576,23 @@ protected:
 	FInstancingUserData UserData_DeselectedInstances;
 
 #if RHI_RAYTRACING
-	TArray< FVector >						RayTracingCullClusterBoundsMin;
-	TArray< FVector >						RayTracingCullClusterBoundsMax;
-	TArray< TDoubleLinkedList< uint32 >* >	RayTracingCullClusterInstances;
+	
+	/* Precomputed bounding spheres for culling */
+	struct FCullNode
+	{
+		FVector Center;
+		float Radius;
+		uint32 Instance;
+	};
+
+	struct FRayTracingCullCluster
+	{
+		FVector BoundsMin;
+		FVector BoundsMax;
+		TArray<FCullNode> Nodes;
+	};
+
+	TArray<FRayTracingCullCluster> RayTracingCullClusters;
 #endif
 
 	/** Common path for the Get*MeshElement functions */
