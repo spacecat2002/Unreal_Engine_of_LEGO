@@ -178,6 +178,8 @@ struct LIVELINKINTERFACE_API FLiveLinkMetaData
 	FQualifiedFrameTime SceneTime;
 };
 
+// Identifier assigned to each incoming frame once in the pipeline
+using FLiveLinkFrameIdentifier = int32;
 
 /**
  * Base data structure for each frame coming in for a subject
@@ -200,8 +202,11 @@ struct LIVELINKINTERFACE_API FLiveLinkBaseFrameData
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="LiveLink")
 	TArray<float> PropertyValues;
 
-	/** Time at which this frame was received */
+	/** Time at which this frame was received - populated once inside pipeline */
 	FLiveLinkTime ArrivalTime;
+
+	/** This frame identifier - populated once inside pipeline*/
+	FLiveLinkFrameIdentifier FrameId = INDEX_NONE;
 
 	/** Return the LiveLinkTime struct constructed from this frame data. */
 	FLiveLinkTime GetLiveLinkTime() const { return FLiveLinkTime(WorldTime.GetOffsettedTime(), MetaData.SceneTime); }
