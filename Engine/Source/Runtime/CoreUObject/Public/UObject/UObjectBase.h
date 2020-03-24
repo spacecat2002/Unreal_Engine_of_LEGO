@@ -138,6 +138,9 @@ public:
 		return NamePrivate;
 	}
 
+	/** Removes the class prefix from the given string */
+	static FString RemoveClassPrefix(const TCHAR* ClassName);
+
 protected:
 	/**
 	 * Set the object flags directly
