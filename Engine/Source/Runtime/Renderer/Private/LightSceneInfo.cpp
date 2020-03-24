@@ -336,7 +336,7 @@ void FLightSceneInfo::ConditionalUpdateMobileMovablePointLightUniformBuffer(cons
 			LightParameters.FalloffExponent = 0;
 		}
 
-		uint32 LightShadowType = LightType == LightType_Spot ? 2.0f : 1.0f;
+		uint32 LightShadowType = LightType == LightType_Spot ? 2 : 1;
 
 		bShouldCastShadow = SceneRenderer->ViewFamily.EngineShowFlags.DynamicShadows
 			&& !IsSimpleForwardShadingEnabled(SceneRenderer->ShaderPlatform)
