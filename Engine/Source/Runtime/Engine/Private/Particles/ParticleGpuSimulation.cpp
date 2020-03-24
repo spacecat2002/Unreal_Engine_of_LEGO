@@ -1428,7 +1428,11 @@ void ExecuteSimulationCommands(
 	SCOPED_DRAW_EVENT(RHICmdList, ParticleSimulation);
 	SCOPED_GPU_STAT(RHICmdList, ParticleSimulation);
 
-	FUniformBufferStaticBindings GlobalUniformBuffers(SceneTexturesUniformBuffer);
+	FUniformBufferStaticBindings GlobalUniformBuffers;
+	if (SceneTexturesUniformBuffer)
+	{
+		GlobalUniformBuffers.AddUniformBuffer(SceneTexturesUniformBuffer);
+	}
 	SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
 
 	const float FixDeltaSeconds = CVarGPUParticleFixDeltaSeconds.GetValueOnRenderThread();
