@@ -59,6 +59,12 @@ namespace Chaos
 	float DefaultCollisionRestitution = 0;
 	FAutoConsoleVariableRef CVarDefaultCollisionRestitution(TEXT("p.DefaultCollisionRestitution"), DefaultCollisionRestitution, TEXT("Collision restitution default value if no materials are found."));
 
+#if INTEL_ISPC
+	bool bChaos_Collision_ISPC_Enabled = false;
+	FAutoConsoleVariableRef CVarChaosCollisionISPCEnabled(TEXT("p.Chaos.Collision.ISPC"), bChaos_Collision_ISPC_Enabled, TEXT("Whether to use ISPC optimizations in the Collision Solver"));
+#endif
+
+
 	DECLARE_CYCLE_STAT(TEXT("Collisions::Reset"), STAT_Collisions_Reset, STATGROUP_ChaosCollision);
 	DECLARE_CYCLE_STAT(TEXT("Collisions::UpdatePointConstraints"), STAT_Collisions_UpdatePointConstraints, STATGROUP_ChaosCollision);
 	DECLARE_CYCLE_STAT(TEXT("Collisions::UpdateManifoldConstraints"), STAT_Collisions_UpdateManifoldConstraints, STATGROUP_ChaosCollision);
@@ -79,6 +85,9 @@ namespace Chaos
 		const T CullDistance /*= (T)0*/,
 		const T ShapePadding /*= (T)0*/)
 		: Particles(InParticles)
+		, NumActivePointConstraints(0)
+		, NumActiveSweptPointConstraints(0)
+		, NumActiveIterativeConstraints(0)
 		, MCollided(Collided)
 		, MPhysicsMaterials(InPerParticleMaterials)
 		, MApplyPairIterations(InApplyPairIterations)
@@ -94,6 +103,12 @@ namespace Chaos
 		, PostApplyCallback(nullptr)
 		, PostApplyPushOutCallback(nullptr)
 	{
+#if INTEL_ISPC
+		if (bChaos_Collision_ISPC_Enabled)
+		{
+			check(sizeof(FCollisionContact) == ispc::SizeofFCollisionContact());
+		}
+#endif
 	}
 
 	template<typename T, int d>
@@ -171,14 +186,14 @@ namespace Chaos
 	template<typename T, int d>
 	void TPBDCollisionConstraints<T, d>::AddConstraint(const TRigidBodyPointContactConstraint<FReal, 3>& InConstraint)
 	{
-		int32 Idx = PointConstraints.Add(InConstraint);
+		int32 Idx = Constraints.SinglePointConstraints.Add(InConstraint);
 
 		if (bHandlesEnabled)
 		{
 			FConstraintContainerHandle* Handle = HandleAllocator.template AllocHandle< TRigidBodyPointContactConstraint<T, d> >(this, Idx);
 			Handle->GetContact().Timestamp = -INT_MAX; // force point constraints to be deleted.
 
-			PointConstraints[Idx].ConstraintHandle = Handle;
+			Constraints.SinglePointConstraints[Idx].ConstraintHandle = Handle;
 
 			check(Handle != nullptr);
 			Handles.Add(Handle);
@@ -189,20 +204,20 @@ namespace Chaos
 #endif
 		}
 
-		UpdateConstraintMaterialProperties(PointConstraints[Idx]);
+		UpdateConstraintMaterialProperties(Constraints.SinglePointConstraints[Idx]);
 	}
 
 	template<typename T, int d>
 	void TPBDCollisionConstraints<T, d>::AddConstraint(const TRigidBodySweptPointContactConstraint<FReal, 3>& InConstraint)
 	{
-		int32 Idx = SweptPointConstraints.Add(InConstraint);
+		int32 Idx = Constraints.SinglePointSweptConstraints.Add(InConstraint);
 
 		if (bHandlesEnabled)
 		{
 			FConstraintContainerHandle* Handle = HandleAllocator.template AllocHandle< TRigidBodySweptPointContactConstraint<T, d> >(this, Idx);
 			Handle->GetContact().Timestamp = -INT_MAX; // force point constraints to be deleted.
 
-			SweptPointConstraints[Idx].ConstraintHandle = Handle;
+			Constraints.SinglePointSweptConstraints[Idx].ConstraintHandle = Handle;
 
 			if(ensure(Handle != nullptr))
 			{			
@@ -215,25 +230,21 @@ namespace Chaos
 			}
 		}
 
-		// Swept constraint may drastically change particle position during Apply, other constraint's
-		// manifolds with particle may be invalidated, so we should update manifolds with this particle even on first apply iteration.
-		AddParticleAlwaysUpdateManifold(InConstraint.Particle[0]);
-
-		UpdateConstraintMaterialProperties(SweptPointConstraints[Idx]);
+		UpdateConstraintMaterialProperties(Constraints.SinglePointSweptConstraints[Idx]);
 	}
 
 
 	template<typename T, int d>
 	void TPBDCollisionConstraints<T, d>::AddConstraint(const TRigidBodyMultiPointContactConstraint<FReal, 3>& InConstraint)
 	{
-		int32 Idx = IterativeConstraints.Add(InConstraint);
+		int32 Idx = Constraints.MultiPointConstraints.Add(InConstraint);
 
 		if (bHandlesEnabled)
 		{
 			FConstraintContainerHandle* Handle = HandleAllocator.template AllocHandle< TRigidBodyMultiPointContactConstraint<T, d> >(this, Idx);
 			Handle->GetContact().Timestamp = LifespanCounter;
 
-			IterativeConstraints[Idx].ConstraintHandle = Handle;
+			Constraints.MultiPointConstraints[Idx].ConstraintHandle = Handle;
 
 			check(Handle != nullptr);
 			Handles.Add(Handle);
@@ -244,7 +255,7 @@ namespace Chaos
 #endif
 		}
 
-		UpdateConstraintMaterialProperties(IterativeConstraints[Idx]);
+		UpdateConstraintMaterialProperties(Constraints.MultiPointConstraints[Idx]);
 	}
 
 	template<typename T, int d>
@@ -276,10 +287,7 @@ namespace Chaos
 		{
 			HandleAllocator.FreeHandle(Handle);
 		}
-		PointConstraints.Reset();
-		SweptPointConstraints.Reset();
-		IterativeConstraints.Reset();
-		ParticlesAlwaysUpdatingManifold.Reset();
+		Constraints.Reset();
 		Handles.Reset();
 #endif
 
@@ -334,50 +342,50 @@ namespace Chaos
 		if (ConstraintType == FCollisionConstraintBase::FType::SinglePoint)
 		{
 #if CHAOS_COLLISION_PERSISTENCE_ENABLED
-			if (Idx < PointConstraints.Num() - 1)
+			if (Idx < Constraints.SinglePointConstraints.Num() - 1)
 			{
 				// update the handle
-				FConstraintContainerHandleKey Key = FPBDCollisionConstraintHandle::MakeKey(&PointConstraints.Last());
+				FConstraintContainerHandleKey Key = FPBDCollisionConstraintHandle::MakeKey(&Constraints.SinglePointConstraints.Last());
 				Manifolds[Key]->SetConstraintIndex(Idx, ConstraintType);
 			}
 #endif
-			PointConstraints.RemoveAtSwap(Idx);
-			if (bHandlesEnabled && (Idx < PointConstraints.Num()))
+			Constraints.SinglePointConstraints.RemoveAtSwap(Idx);
+			if (bHandlesEnabled && (Idx < Constraints.SinglePointConstraints.Num()))
 			{
-				PointConstraints[Idx].ConstraintHandle->SetConstraintIndex(Idx, FCollisionConstraintBase::FType::SinglePoint);
+				Constraints.SinglePointConstraints[Idx].ConstraintHandle->SetConstraintIndex(Idx, FCollisionConstraintBase::FType::SinglePoint);
 			}
 
 		}
 		else if (ConstraintType == FCollisionConstraintBase::FType::SinglePointSwept)
 		{
 #if CHAOS_COLLISION_PERSISTENCE_ENABLED
-			if (Idx < SweptPointConstraints.Num() - 1)
+			if (Idx < Constraints.SinglePointSweptConstraints.Num() - 1)
 			{
 				// update the handle
-				FConstraintContainerHandleKey Key = FPBDCollisionConstraintHandle::MakeKey(&SweptPointConstraints.Last());
+				FConstraintContainerHandleKey Key = FPBDCollisionConstraintHandle::MakeKey(&Constraints.SinglePointSweptConstraints.Last());
 				Manifolds[Key]->SetConstraintIndex(Idx, ConstraintType);
 			}
 #endif
-			SweptPointConstraints.RemoveAtSwap(Idx);
-			if (bHandlesEnabled && (Idx < SweptPointConstraints.Num()))
+			Constraints.SinglePointSweptConstraints.RemoveAtSwap(Idx);
+			if (bHandlesEnabled && (Idx < Constraints.SinglePointSweptConstraints.Num()))
 			{
-				SweptPointConstraints[Idx].ConstraintHandle->SetConstraintIndex(Idx, FCollisionConstraintBase::FType::SinglePointSwept);
+				Constraints.SinglePointSweptConstraints[Idx].ConstraintHandle->SetConstraintIndex(Idx, FCollisionConstraintBase::FType::SinglePointSwept);
 			}
 		}
 		else if (ConstraintType == FCollisionConstraintBase::FType::MultiPoint)
 		{
 #if CHAOS_COLLISION_PERSISTENCE_ENABLED
-			if (Idx < IterativeConstraints.Num() - 1)
+			if (Idx < Constraints.MultiPointConstraints.Num() - 1)
 			{
 				// update the handle
-				FConstraintContainerHandleKey Key = FPBDCollisionConstraintHandle::MakeKey(&IterativeConstraints.Last());
+				FConstraintContainerHandleKey Key = FPBDCollisionConstraintHandle::MakeKey(&Constraints.MultiPointConstraints.Last());
 				Manifolds[Key]->SetConstraintIndex(Idx, ConstraintType);
 			}
 #endif
-			IterativeConstraints.RemoveAtSwap(Idx);
-			if (bHandlesEnabled && (Idx < IterativeConstraints.Num()))
+			Constraints.MultiPointConstraints.RemoveAtSwap(Idx);
+			if (bHandlesEnabled && (Idx < Constraints.MultiPointConstraints.Num()))
 			{
-				IterativeConstraints[Idx].ConstraintHandle->SetConstraintIndex(Idx, FCollisionConstraintBase::FType::MultiPoint);
+				Constraints.MultiPointConstraints[Idx].ConstraintHandle->SetConstraintIndex(Idx, FCollisionConstraintBase::FType::MultiPoint);
 			}
 		}
 		else 
@@ -394,7 +402,7 @@ namespace Chaos
 			Manifolds.Remove(KeyToRemove);
 #endif
 			Handles.Remove(Handle);
-			check(Handles.Num() == PointConstraints.Num() + SweptPointConstraints.Num() + IterativeConstraints.Num());
+			check(Handles.Num() == Constraints.SinglePointConstraints.Num() + Constraints.SinglePointSweptConstraints.Num() + Constraints.MultiPointConstraints.Num());
 
 			HandleAllocator.FreeHandle(Handle);
 		}
@@ -427,7 +435,7 @@ namespace Chaos
 		//	}
 		//}, bDisableCollisionParallelFor);
 
-		for (FPointContactConstraint& Contact : PointConstraints)
+		for (FPointContactConstraint& Contact : Constraints.SinglePointConstraints)
 		{
 			Collisions::Update(Contact, MCullDistance);
 			if (Contact.GetPhi() < MCullDistance)
@@ -454,7 +462,7 @@ namespace Chaos
 
 		FCollisionContext Context;
 
-		for (FMultiPointContactConstraint& Contact : IterativeConstraints)
+		for (FMultiPointContactConstraint& Contact : Constraints.MultiPointConstraints)
 		{
 			Collisions::UpdateManifold(Contact, MCullDistance, Context);
 			if (Contact.GetPhi() < MCullDistance)
@@ -465,44 +473,46 @@ namespace Chaos
 	}
 
 	template<typename T, int d>
-	void TPBDCollisionConstraints<T, d>::AddParticleAlwaysUpdateManifold(const TGeometryParticleHandle<T, d>* Particle)
-	{
-		ParticlesAlwaysUpdatingManifold.Add(Particle);
-	}
-
-	template<typename T, int d>
-	bool TPBDCollisionConstraints<T, d>::ShouldParticleAlwaysUpdateManifold(const TGeometryParticleHandle<T, d>* Particle) const
-	{
-		return ParticlesAlwaysUpdatingManifold.Contains(Particle);
-	}
-
-	template<typename T, int d>
 	bool TPBDCollisionConstraints<T, d>::Apply(const T Dt, const int32 Iterations, const int32 NumIterations)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_Collisions_Apply);
 
 		bool bNeedsAnotherIteration = false;
-		bool bAlwaysUpdateManifold = false;
 		if (MApplyPairIterations > 0)
 		{
 			const Collisions::TContactParticleParameters<T> ParticleParameters = { MCullDistance, MShapePadding, &MCollided };
-			const Collisions::TContactIterationParameters<T> IterationParameters = { Dt, Iterations, NumIterations, MApplyPairIterations, ApplyType, &bNeedsAnotherIteration, &bAlwaysUpdateManifold };
+			const Collisions::TContactIterationParameters<T> IterationParameters = { Dt, Iterations, NumIterations, MApplyPairIterations, ApplyType, &bNeedsAnotherIteration };
 
-			for (FPointContactConstraint& Contact : PointConstraints)
+			NumActivePointConstraints = 0;
+			for (FPointContactConstraint& Contact : Constraints.SinglePointConstraints)
 			{
-				Collisions::ApplySinglePoint(Contact, IterationParameters, ParticleParameters);
+				if (!Contact.GetDisabled())
+				{
+					Collisions::ApplySinglePoint(Contact, IterationParameters, ParticleParameters);
+					++NumActivePointConstraints;
+				}
 			}
 
-			for (FMultiPointContactConstraint& Contact : IterativeConstraints)
+			NumActiveIterativeConstraints = 0;
+			for (FMultiPointContactConstraint& Contact : Constraints.MultiPointConstraints)
 			{
-				Collisions::ApplyMultiPoint(Contact, IterationParameters, ParticleParameters);
+				if (!Contact.GetDisabled())
+				{
+					Collisions::ApplyMultiPoint(Contact, IterationParameters, ParticleParameters);
+					++NumActiveIterativeConstraints;
+				}
 			}
 
 			// Swept apply may significantly change particle position, invalidating other constraint's manifolds.
 			// We don't update manifolds on first apply iteration, so make sure we apply swept constraints last.
-			for (FSweptPointContactConstraint& Contact : SweptPointConstraints)
+			NumActiveSweptPointConstraints = 0;
+			for (FSweptPointContactConstraint& Contact : Constraints.SinglePointSweptConstraints)
 			{
-				Collisions::Apply(Contact, IterationParameters, ParticleParameters);
+				if (!Contact.GetDisabled())
+				{
+					Collisions::Apply(Contact, IterationParameters, ParticleParameters);
+					++NumActiveSweptPointConstraints;
+				}
 			}
 		}
 
@@ -526,19 +536,28 @@ namespace Chaos
 			const Collisions::TContactParticleParameters<T> ParticleParameters = { MCullDistance, MShapePadding, &MCollided };
 			const Collisions::TContactIterationParameters<T> IterationParameters = { Dt, Iterations, NumIterations, MApplyPushOutPairIterations, ECollisionApplyType::None, &bNeedsAnotherIteration };
 
-			for (FPointContactConstraint& Contact : PointConstraints)
+			for (FPointContactConstraint& Contact : Constraints.SinglePointConstraints)
 			{
-				Collisions::ApplyPushOutSinglePoint(Contact, TempStatic, IterationParameters, ParticleParameters);
+				if (!Contact.GetDisabled())
+				{
+					Collisions::ApplyPushOutSinglePoint(Contact, TempStatic, IterationParameters, ParticleParameters);
+				}
 			}
 
-			for (FSweptPointContactConstraint& Contact : SweptPointConstraints)
+			for (FSweptPointContactConstraint& Contact : Constraints.SinglePointSweptConstraints)
 			{
-				Collisions::ApplyPushOut(Contact, TempStatic, IterationParameters, ParticleParameters);
+				if (!Contact.GetDisabled())
+				{
+					Collisions::ApplyPushOut(Contact, TempStatic, IterationParameters, ParticleParameters);
+				}
 			}
 
-			for (FMultiPointContactConstraint& Contact : IterativeConstraints)
+			for (FMultiPointContactConstraint& Contact : Constraints.MultiPointConstraints)
 			{
-				Collisions::ApplyPushOutMultiPoint(Contact, TempStatic, IterationParameters, ParticleParameters);
+				if (!Contact.GetDisabled())
+				{
+					Collisions::ApplyPushOutMultiPoint(Contact, TempStatic, IterationParameters, ParticleParameters);
+				}
 			}
 		}
 
@@ -565,10 +584,9 @@ namespace Chaos
 				check(ConstraintHandle != nullptr);
 
 				TVector<const TGeometryParticleHandle<T, d>*, 2> ConstrainedParticles = ConstraintHandle->GetConstrainedParticles();
-				bool bAlwaysUpdateManifold = ShouldParticleAlwaysUpdateManifold(ConstrainedParticles[0]) || ShouldParticleAlwaysUpdateManifold(ConstrainedParticles[1]);
 				bool bNeedsAnotherIteration = false;
 				Collisions::TContactParticleParameters<T> ParticleParameters = { MCullDistance, MShapePadding, &MCollided };
-				Collisions::TContactIterationParameters<T> IterationParameters = { Dt, Iterations, NumIterations, MApplyPairIterations, ApplyType, &bNeedsAnotherIteration, &bAlwaysUpdateManifold };
+				Collisions::TContactIterationParameters<T> IterationParameters = { Dt, Iterations, NumIterations, MApplyPairIterations, ApplyType, &bNeedsAnotherIteration };
 				Collisions::Apply(ConstraintHandle->GetContact(), IterationParameters, ParticleParameters);
 
 				if (bNeedsAnotherIteration)
@@ -621,20 +639,20 @@ namespace Chaos
 	{
 		check(Index < NumConstraints());
 		
-		if (Index < PointConstraints.Num())
+		if (Index < Constraints.SinglePointConstraints.Num())
 		{
-			return PointConstraints[Index];
+			return Constraints.SinglePointConstraints[Index];
 		}
-		Index -= PointConstraints.Num();
+		Index -= Constraints.SinglePointConstraints.Num();
 
-		if (Index < SweptPointConstraints.Num())
+		if (Index < Constraints.SinglePointSweptConstraints.Num())
 		{
-			return SweptPointConstraints[Index];
+			return Constraints.SinglePointSweptConstraints[Index];
 		}
-		Index -= SweptPointConstraints.Num();
+		Index -= Constraints.SinglePointSweptConstraints.Num();
 
 		{
-			return IterativeConstraints[Index];
+			return Constraints.MultiPointConstraints[Index];
 		}
 	}
 

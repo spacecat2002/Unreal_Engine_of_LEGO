@@ -919,6 +919,13 @@ void FPhysInterface_Chaos::SetComLocalPose_AssumesLocked(const FPhysicsActorHand
 	}
 }
 
+void FPhysInterface_Chaos::SetIsSimulationShape(const FPhysicsShapeHandle& InShape, bool bIsSimShape)
+{
+	FPhysicsShapeHandle& ShapeHandle = const_cast<FPhysicsShapeHandle&>(InShape);
+	ShapeHandle.Shape->SetSimulate(bIsSimShape);
+	ShapeHandle.bSimulation = bIsSimShape;
+}
+
 float FPhysInterface_Chaos::GetStabilizationEnergyThreshold_AssumesLocked(const FPhysicsActorHandle& InHandle)
 {
 	// #todo : Implement
@@ -1604,6 +1611,8 @@ bool FPhysInterface_Chaos::IsSimulationShape(const FPhysicsShapeHandle& InShape)
 
 bool FPhysInterface_Chaos::IsQueryShape(const FPhysicsShapeHandle& InShape)
 {
+	// This data is not stored on concrete shape. TODO: Remove ensure if we actually use this flag when constructing shape handles.
+	CHAOS_ENSURE(false);
     return InShape.bQuery;
 }
 
@@ -2198,8 +2207,8 @@ uint32 GetTriangleMeshExternalFaceIndex(const FPhysicsShape& Shape, uint32 Inter
 template<typename AllocatorType>
 int32 GetAllShapesInternal_AssumedLocked(const FPhysicsActorHandle& InActorHandle, TArray<FPhysicsShapeReference_Chaos, AllocatorType>& OutShapes)
 {
-	OutShapes.Reset();
 	const Chaos::FShapesArray& ShapesArray = InActorHandle->ShapesArray();
+	OutShapes.Reset(ShapesArray.Num());
 	//todo: can we avoid this construction?
 	for (const TUniquePtr<Chaos::FPerShapeData>& Shape : ShapesArray)
 	{

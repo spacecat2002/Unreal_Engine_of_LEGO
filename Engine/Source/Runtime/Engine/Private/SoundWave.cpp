@@ -1854,7 +1854,7 @@ void USoundWave::Parse(FAudioDevice* AudioDevice, const UPTRINT NodeWaveInstance
 	}
 	else
 	{
-		WaveInstance->Priority = ParseParams.Priority;
+		WaveInstance->Priority = FMath::Clamp(ParseParams.Priority, 0.0f, 100.0f);
 	}
 
 	WaveInstance->Location = ParseParams.Transform.GetTranslation();
@@ -2533,6 +2533,22 @@ void USoundWave::ReleaseCompressedAudio()
 bool USoundWave::IsRetainingAudio()
 {
 	return FirstChunk.IsValid();
+}
+
+void USoundWave::SetCacheLookupIDForChunk(uint32 InChunkIndex, uint64 InCacheLookupID)
+{
+	check(FPlatformCompressionUtilities::IsCurrentPlatformUsingStreamCaching());
+	check(RunningPlatformData && InChunkIndex < ((uint32)RunningPlatformData->Chunks.Num()));
+
+	RunningPlatformData->Chunks[InChunkIndex].CacheLookupID = InCacheLookupID;
+}
+
+uint64 USoundWave::GetCacheLookupIDForChunk(uint32 InChunkIndex)
+{
+	check(FPlatformCompressionUtilities::IsCurrentPlatformUsingStreamCaching());
+	check(RunningPlatformData && (InChunkIndex < (uint32)RunningPlatformData->Chunks.Num()));
+
+	return RunningPlatformData->Chunks[InChunkIndex].CacheLookupID;
 }
 
 void USoundWave::CacheInheritedLoadingBehavior()
