@@ -40,4 +40,5 @@ public:
 	static const FName ExpandPinByDefaultMetaName;
 	static const FName DefaultArraySizeMetaName;
 	static const FName VaryingMetaName;
+	static const FName SliceContextMetaName;
 };

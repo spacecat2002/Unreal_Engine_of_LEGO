@@ -19,3 +19,4 @@ const FName FRigVMStruct::PrototypeNameMetaName("PrototypeName");
 const FName FRigVMStruct::ExpandPinByDefaultMetaName("ExpandByDefault");
 const FName FRigVMStruct::DefaultArraySizeMetaName("DefaultArraySize");
 const FName FRigVMStruct::VaryingMetaName("Varying");
+const FName FRigVMStruct::SliceContextMetaName("SliceContext");
