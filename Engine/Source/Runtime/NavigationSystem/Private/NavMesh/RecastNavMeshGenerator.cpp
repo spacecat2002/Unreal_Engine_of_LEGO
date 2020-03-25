@@ -872,12 +872,6 @@ void ExportChaosHeightFieldSlice(const FNavHeightfieldSamples& PrefetchedHeightf
 {
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_NavMesh_ExportChaosHeightFieldSlice);
 
-#if PHYSICS_INTERFACE_PHYSX
-	static const uint32 SizeOfPx = sizeof(physx::PxI16);
-	static const uint32 SizeOfHeight = PrefetchedHeightfieldSamples.Heights.GetTypeSize();
-	ensure(SizeOfPx == SizeOfHeight);
-#endif // WITH_PHYSX
-
 	// calculate the actual start and number of columns we want
 	const FBox LocalBox = SliceBox.TransformBy(LocalToWorld.Inverse());
 	const bool bMirrored = (LocalToWorld.GetDeterminant() < 0.f);
@@ -926,7 +920,7 @@ void ExportChaosHeightFieldSlice(const FNavHeightfieldSamples& PrefetchedHeightf
 		{
 			const int32 CoordX = IdxX + MinX;
 			const int32 CoordY = IdxY + MinY;
-			const int32 SampleIdx = CoordY * NumCols + CoordX;  // #PHYSTODO bMirrored support
+			const int32 SampleIdx = CoordY * (NumCols-1) + CoordX;  // #PHYSTODO bMirrored support
 
 			const bool bIsHole = PrefetchedHeightfieldSamples.Holes[SampleIdx];
 			if (bIsHole)
@@ -5531,7 +5525,7 @@ void FRecastNavMeshGenerator::MarkDirtyTiles(const TArray<FNavigationDirtyArea>&
 		bool bDoTileInclusionTest = false;
 		FBox AdjustedAreaBounds = DirtyArea.Bounds;
 		
-		// if it's not expanding the navigatble area
+		// if it's not expanding the navigable area
 		if (DirtyArea.HasFlag(ENavigationDirtyFlag::NavigationBounds) == false)
 		{
 			// and is outside of current bounds
@@ -5611,31 +5605,30 @@ void FRecastNavMeshGenerator::MarkDirtyTiles(const TArray<FNavigationDirtyArea>&
 	
 	int32 NumTilesMarked = DirtyTiles.Num();
 
-	// Merge all pending tiles into one container
-	for (const FPendingTileElement& Element : PendingDirtyTiles)
+	// Merge new dirty tiles info with existing pending elements
+	for (FPendingTileElement& ExistingElement : PendingDirtyTiles)
 	{
-		FPendingTileElement* ExistingElement = DirtyTiles.Find(Element);
-		if (ExistingElement)
+		FSetElementId Id = DirtyTiles.FindId(ExistingElement);
+		if (Id.IsValidId())
 		{
-			ExistingElement->bRebuildGeometry|= Element.bRebuildGeometry;
+			const FPendingTileElement& DirtyElement = DirtyTiles[Id];
+
+			ExistingElement.bRebuildGeometry |= DirtyElement.bRebuildGeometry;
 			// Append area bounds to existing list 
-			if (ExistingElement->bRebuildGeometry == false)
+			if (ExistingElement.bRebuildGeometry == false)
 			{
-				ExistingElement->DirtyAreas.Append(Element.DirtyAreas);
+				ExistingElement.DirtyAreas.Append(DirtyElement.DirtyAreas);
 			}
 			else
 			{
-				ExistingElement->DirtyAreas.Empty();
+				ExistingElement.DirtyAreas.Empty();
 			}
-		}
-		else
-		{
-			DirtyTiles.Add(Element);
+			DirtyTiles.Remove(Id);
 		}
 	}
-	
-	// Dump results into array
-	PendingDirtyTiles.Empty(DirtyTiles.Num());
+
+	// Append remaining new dirty tile elements
+	PendingDirtyTiles.Reserve(PendingDirtyTiles.Num() + DirtyTiles.Num());
 	for(const FPendingTileElement& Element : DirtyTiles)
 	{
 		PendingDirtyTiles.Add(Element);

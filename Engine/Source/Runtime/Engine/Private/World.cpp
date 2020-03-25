@@ -962,6 +962,7 @@ void UWorld::PostLoad()
 #endif
 #if WITH_EDITOR
 	RepairWorldSettings();
+	RepairStreamingLevels();
 #endif
 #if INCLUDE_CHAOS
 	//RepairChaosActors();
@@ -1276,6 +1277,22 @@ void UWorld::RepairChaosActors()
 }
 #endif
 
+void UWorld::RepairStreamingLevels()
+{
+	for (int32 Index = 0; Index < StreamingLevels.Num(); )
+	{
+		ULevelStreaming* StreamingLevel = StreamingLevels[Index];
+		if (StreamingLevel && !StreamingLevel->IsValidStreamingLevel())
+		{
+			StreamingLevels.RemoveAtSwap(Index);
+		}
+		else
+		{
+			++Index;
+		}
+	}
+}
+
 void UWorld::RepairWorldSettings()
 {
 	AWorldSettings* ExistingWorldSettings = PersistentLevel->GetWorldSettings(false);
@@ -1407,10 +1424,12 @@ void UWorld::InitWorld(const InitializationValues IVS)
 
 #if WITH_EDITOR
 	RepairWorldSettings();
+	RepairStreamingLevels();
 #endif
 #if INCLUDE_CHAOS
 	//RepairChaosActors();
 #endif
+
 
 	// initialize DefaultPhysicsVolume for the world
 	// Spawned on demand by this function.
@@ -4353,6 +4372,11 @@ UGameViewportClient* UWorld::GetGameViewport() const
 FConstControllerIterator UWorld::GetControllerIterator() const
 {
 	return ControllerList.CreateConstIterator();
+}
+
+int32 UWorld::GetNumControllers() const
+{
+	return ControllerList.Num();
 }
 
 FConstPlayerControllerIterator UWorld::GetPlayerControllerIterator() const

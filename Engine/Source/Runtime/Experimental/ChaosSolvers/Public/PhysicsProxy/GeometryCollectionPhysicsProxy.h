@@ -100,6 +100,9 @@ public:
 		Chaos::FPBDRigidsSolver::FParticlesType& Particles);
 
 	/** */
+	static void InitializeDynamicCollection(FGeometryDynamicCollection& DynamicCollection, const FGeometryCollection& RestCollection, const FSimulationParameters& Params);
+
+	/** */
 	bool IsSimulating() const { return Parameters.Simulating; }
 
 	/**
@@ -220,7 +223,6 @@ protected:
 	 */
 	int32 CalculateHierarchyLevel(const FGeometryDynamicCollection& GeometryCollection, int32 TransformIndex) const;
 
-	static void InitializeDynamicCollection(FGeometryDynamicCollection& DynamicCollection, const FGeometryCollection& RestCollection, const FSimulationParameters& Params);
 	void InitializeRemoveOnFracture(FParticlesType& Particles, const TManagedArray<int32>& DynamicState);
 	void ProcessCommands(FParticlesType& Particles, const float Time);
 
@@ -303,5 +305,5 @@ private:
 
 };
 
-CHAOSSOLVERS_API Chaos::TTriangleMesh<float>* CreateTriangleMesh(const int32 FaceCount,const int32 VertexOffset,const int32 StartIndex,const TManagedArray<FVector>& Vertex,const TManagedArray<bool>& Visible,const TManagedArray<FIntVector>& Indices,TSet<int32>& VertsAdded);
+CHAOSSOLVERS_API Chaos::TTriangleMesh<float>* CreateTriangleMesh(const int32 FaceStart,const int32 FaceCount,const TManagedArray<bool>& Visible,const TManagedArray<FIntVector>& Indices);
 CHAOSSOLVERS_API void BuildSimulationData(Chaos::FErrorReporter& ErrorReporter, FGeometryCollection& GeometryCollection, const FSharedSimulationParameters& SharedParams);

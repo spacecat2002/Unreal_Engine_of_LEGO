@@ -410,28 +410,14 @@ void FPluginManager::ReadAllPlugins(TMap<FString, TSharedRef<FPlugin>>& Plugins,
 				{
 					if (ParentModule.Name == ChildModule.Name && ParentModule.Type == ChildModule.Type)
 					{
+						// we only need to whitelist the platform if the parent had a whitelist (otherwise, we could mistakenly remove all other platforms)
 						if (ParentModule.WhitelistPlatforms.Num() > 0)
 						{
-							if (ChildModule.WhitelistPlatforms.Num() > 0)
-							{
-								ParentModule.WhitelistPlatforms.Append(ChildModule.WhitelistPlatforms);
-							}
-							else
-							{
-								ParentModule.WhitelistPlatforms.Add(FPlatformProperties::PlatformName());
-							}
+							ParentModule.WhitelistPlatforms.Append(ChildModule.WhitelistPlatforms);
 						}
-						if (ParentModule.BlacklistPlatforms.Num() > 0)
-						{
-							if (ChildModule.BlacklistPlatforms.Num() > 0)
-							{
-								ParentModule.BlacklistPlatforms.Append(ChildModule.BlacklistPlatforms);
-							}
-							else
-							{
-								ParentModule.BlacklistPlatforms.Add(FPlatformProperties::PlatformName());
-							}
-						}
+
+						// if we want to blacklist a platform, add it even if the parent didn't have a blacklist. this won't cause problems with other platforms
+						ParentModule.BlacklistPlatforms.Append(ChildModule.BlacklistPlatforms);
 					}
 				}
 			}
@@ -637,6 +623,15 @@ bool FPluginManager::ConfigureEnabledPlugins()
 					else if (FPaths::IsUnderDirectory(Target.Path, FPaths::EngineDir()))
 					{
 						EditorTargetFileName = FTargetReceipt::GetDefaultPath(*FPaths::EngineDir(), *Target.Name, FPlatformProcess::GetBinariesSubdirectory(), FApp::GetBuildConfiguration(), nullptr);
+					}
+					else
+					{
+						// Unknown path, possibly built on another machine. Try project first with this target name, then engine
+						EditorTargetFileName = FTargetReceipt::GetDefaultPath(FPlatformMisc::ProjectDir(), *Target.Name, FPlatformProcess::GetBinariesSubdirectory(), FApp::GetBuildConfiguration(), nullptr);
+						if (!FPaths::FileExists(EditorTargetFileName))
+						{
+							EditorTargetFileName = FTargetReceipt::GetDefaultPath(*FPaths::EngineDir(), *Target.Name, FPlatformProcess::GetBinariesSubdirectory(), FApp::GetBuildConfiguration(), nullptr);
+						}
 					}
 					break;
 				}
