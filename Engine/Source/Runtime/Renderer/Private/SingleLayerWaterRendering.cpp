@@ -137,7 +137,7 @@ bool ShouldRenderSingleLayerWaterSkippedRenderEditorNotification(const TArray<FV
 bool UseSingleLayerWaterIndirectDraw(EShaderPlatform ShaderPlatform)
 {
 	return IsFeatureLevelSupported(ShaderPlatform, ERHIFeatureLevel::SM5)
-		&& !IsSwitchPlatform(ShaderPlatform) && !IsVulkanPlatform(ShaderPlatform) && !IsMetalPlatform(ShaderPlatform); // Switch does not use tiling, Vulkan gives error with WaterTileCatergorisationCS usage of atomic, and Metal does not play nice, either.
+		&& !IsSwitchPlatform(ShaderPlatform) && !IsVulkanMobilePlatform(ShaderPlatform) && !IsMetalPlatform(ShaderPlatform); // Switch does not use tiling, Vulkan gives error with WaterTileCatergorisationCS usage of atomic, and Metal does not play nice, either.
 }
 
 
@@ -684,34 +684,17 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWaterReflections(FRHIComman
 
 			//RayTracingConfig.ResolutionFraction = FMath::Clamp(GetRayTracingReflectionsScreenPercentage() / 100.0f, 0.25f, 1.0f);
 			RayTracingConfig.ResolutionFraction = 1.0f;
-			RayTracingConfig.RayCountPerPixel = GetRayTracingReflectionsSamplesPerPixel(View) > -1 ? GetRayTracingReflectionsSamplesPerPixel(View) : View.FinalPostProcessSettings.RayTracingReflectionsSamplesPerPixel;
+			//RayTracingConfig.RayCountPerPixel = GetRayTracingReflectionsSamplesPerPixel(View) > -1 ? GetRayTracingReflectionsSamplesPerPixel(View) : View.FinalPostProcessSettings.RayTracingReflectionsSamplesPerPixel;
+			RayTracingConfig.RayCountPerPixel = 1;
 
 			// Water is assumed to have zero roughness and is not currently denoised.
-			int32 DenoiserMode = GetReflectionsDenoiserMode();
-			//bool bDenoise = DenoiserMode != 0;
-			bool bDenoise = false;
+			//int32 DenoiserMode = GetReflectionsDenoiserMode();
+			int DenoiserMode = 0;
+			bool bDenoise = DenoiserMode != 0;
 
 			if (!bDenoise)
 			{
 				RayTracingConfig.ResolutionFraction = 1.0f;
-			}
-
-			int32 UpscaleFactor = int32(1.0f / RayTracingConfig.ResolutionFraction);
-
-			{
-				FRDGTextureDesc Desc = FRDGTextureDesc::Create2DDesc(
-					SceneTextures.SceneDepthBuffer->Desc.Extent / UpscaleFactor,
-					PF_FloatRGBA,
-					FClearValueBinding::None,
-					/* InFlags = */ TexCreate_None,
-					/* InTargetableFlags = */ TexCreate_ShaderResource | TexCreate_RenderTargetable | TexCreate_UAV,
-					/* bInForceSeparateTargetAndShaderResource = */ false);
-
-				DenoiserInputs.Color = GraphBuilder.CreateTexture(Desc, TEXT("RayTracingReflections"));
-
-				Desc.Format = PF_R16F;
-				DenoiserInputs.RayHitDistance = GraphBuilder.CreateTexture(Desc, TEXT("RayTracingReflectionsHitDistance"));
-				DenoiserInputs.RayImaginaryDepth = GraphBuilder.CreateTexture(Desc, TEXT("RayTracingReflectionsImaginaryDepth"));
 			}
 
 			bool bReflectOnlyWater = true;
@@ -784,8 +767,10 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWaterReflections(FRHIComman
 					SceneTextures, 
 					View,
 					TAASettings,
-					View.PrevViewInfo.WaterSSRHistory,
-					&View.ViewState->PrevFrameViewInfo.WaterSSRHistory);
+					//View.PrevViewInfo.WaterSSRHistory,
+					//&View.ViewState->PrevFrameViewInfo.WaterSSRHistory);
+					View.PrevViewInfo.SSRHistory,
+					&View.ViewState->PrevFrameViewInfo.SSRHistory);
 
 				ReflectionsColor = TAAOutputs.SceneColor;
 			}

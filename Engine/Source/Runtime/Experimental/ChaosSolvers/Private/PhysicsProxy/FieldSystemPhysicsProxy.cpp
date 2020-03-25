@@ -365,7 +365,37 @@ void FFieldSystemPhysicsProxy::FieldParameterUpdateCallback(
 
 						if (StrainSamples.Num())
 						{
-							CurrentSolver->GetEvolution()->GetRigidClustering().BreakingModel(&FloatBuffer);
+							TMap<TGeometryParticleHandle<float, 3>*, float> Map;
+							
+							for (int Index=0; Index < StrainSamples.Num(); Index++)
+							{
+								if (StrainSamples[Index] > 0)
+								{
+									Map.Add(Handles[Index], StrainSamples[Index]);
+								}
+							}
+
+							// Capture the results from the breaking model to post-process
+							TMap<TPBDRigidClusteredParticleHandle<FReal, 3>*, TSet<TPBDRigidParticleHandle<FReal, 3>*>> BreakResults = CurrentSolver->GetEvolution()->GetRigidClustering().BreakingModel(&Map);
+							
+							// If clusters broke apart then we'll have activated new particles that have no relationship to the proxy that now owns them
+							// Here we attach each new particle to the proxy of the parent particle that owns it.
+							for(const TPair<TPBDRigidClusteredParticleHandle<FReal, 3>*, TSet<TPBDRigidParticleHandle<FReal, 3>*>>& Iter : BreakResults)
+							{
+								const TSet<TPBDRigidParticleHandle<FReal, 3>*>& Activated = Iter.Value;
+
+								for(TPBDRigidParticleHandle<FReal, 3>* Handle : Activated)
+								{
+									if(!CurrentSolver->GetProxy(Handle))
+									{
+										IPhysicsProxyBase* ParentProxy = CurrentSolver->GetProxy(Iter.Key);
+										if(ensure(ParentProxy))
+										{
+											CurrentSolver->AddParticleToProxy(Handle, ParentProxy);
+										}
+									}
+								}
+							}
 						}
 					}
 				}

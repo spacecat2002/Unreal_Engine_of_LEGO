@@ -516,6 +516,10 @@ namespace D3D12RHI
 		{
 			ErrorMessage.AppendLine(LOCTEXT("GPU CrashDump", "\nA GPU mini dump will be saved in the Crashes folder."));
 		}
+		
+		// Make sure the log is flushed!
+		GLog->PanicFlushThreadedLogs();
+		GLog->Flush();
 
 		// Show message box or trace information
 		if (!FApp::IsUnattended())

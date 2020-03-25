@@ -186,6 +186,12 @@ FMetalSurface* GetMetalSurfaceFromRHITexture(FRHITexture* Texture);
 
 #define NOT_SUPPORTED(Func) UE_LOG(LogMetal, Fatal, TEXT("'%s' is not supported"), L##Func);
 
+// Verifies we are on the correct thread to mutate internal MetalRHI resources.
+FORCEINLINE void CheckMetalThread()
+{
+    check((IsInRenderingThread() && (!IsRunningRHIInSeparateThread() || !FRHICommandListExecutor::IsRHIThreadActive())) || IsInRHIThread());
+}
+
 FORCEINLINE mtlpp::IndexType GetMetalIndexType(EMetalIndexType IndexType)
 {
 	switch (IndexType)

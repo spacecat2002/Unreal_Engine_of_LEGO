@@ -466,7 +466,7 @@ public:
 	/**
 	 * Allocate the buffer backing store.
 	 */
-	void Alloc(uint32 InSize, EResourceLockMode LockMode, bool bIsUniformBuffer=false);
+	void Alloc(uint32 InSize, EResourceLockMode LockMode);
 	
 	/**
 	 * Allocate the CPU accessible buffer for data transfer.
@@ -491,7 +491,7 @@ public:
 	/**
 	 * Prepare a CPU accessible buffer for uploading to GPU memory
 	 */
-	void* Lock(bool bIsOnRHIThread, EResourceLockMode LockMode, uint32 Offset, uint32 Size=0, bool bIsUniformBuffer=false);
+	void* Lock(bool bIsOnRHIThread, EResourceLockMode LockMode, uint32 Offset, uint32 Size=0);
 	
 	/**
 	 * Prepare a CPU accessible buffer for uploading to GPU memory
@@ -537,33 +537,6 @@ public:
 	
 	// Resource type
 	ERHIResourceType Type;
-
-	/**
-	 * For resources backing uniform buffers, set the device frame index.
-	 *
-	 * Calling this function on resources that do not back uniform buffers has no effect.
-	 */
-	void ConditionalSetUniformBufferFrameIndex();
-
-private:
-	bool CanUseBufferAsBackingForAsyncCopy() const;
-
-	/**
-	 * For resources backing uniform buffers, updates the last used sub-allocation offset; this is used for
-	 * internal tracking and deciding when to recycle backing stores during uniform buffer updates.
-	 */
-	void ConditionalSetUniformBufferPreviousOffset()
-	{
-		if (bIsUniformBufferBacking)
-		{
-			check(Buffer);
-			UniformBufferPreviousOffset = Buffer.GetOffset();
-		}
-	}
-
-	bool bIsUniformBufferBacking = false;
-	uint64 UniformBufferFrameIndex = 0;
-	uint64 UniformBufferPreviousOffset = UINT64_MAX;
 };
 
 /** Index buffer resource class that stores stride information. */
@@ -592,25 +565,6 @@ public:
 
 	void Swap(FMetalVertexBuffer& Other);
 };
-
-class FMetalUniformBuffer : public FRHIUniformBuffer, public FMetalRHIBuffer
-{
-public:
-	// Constructor
-	FMetalUniformBuffer(const void* Contents, const FRHIUniformBufferLayout& Layout, EUniformBufferUsage Usage, EUniformBufferValidation Validation);
-
-	// Destructor 
-    virtual ~FMetalUniformBuffer() {}
-	
-	void const* GetData();
-
-	void UpdateResourceTable(TArray<TRefCountPtr<FRHIResource>>& Resources, EUniformBufferValidation Validation);
-	void Update(const void* Contents, TArray<TRefCountPtr<FRHIResource>>& Resources, EUniformBufferValidation Validation);
-	
-	/** Resource table containing RHI references. */
-	TArray<TRefCountPtr<FRHIResource> > ResourceTable;
-};
-
 
 class FMetalStructuredBuffer : public FRHIStructuredBuffer, public FMetalRHIBuffer
 {
@@ -794,7 +748,7 @@ struct TMetalResourceTraits<FRHIRenderQuery>
 template<>
 struct TMetalResourceTraits<FRHIUniformBuffer>
 {
-	typedef FMetalUniformBuffer TConcreteType;
+	typedef FMetalSuballocatedUniformBuffer TConcreteType;
 };
 template<>
 struct TMetalResourceTraits<FRHIIndexBuffer>

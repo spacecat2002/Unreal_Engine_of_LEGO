@@ -2475,8 +2475,9 @@ public:
 
 		// Imaginary depth is only used for Nvidia denoiser.
 		// TODO: permutation to not generate it?
-		GraphBuilder.RemoveUnusedTextureWarning(ReflectionInputs.RayImaginaryDepth);
-
+		if (ReflectionInputs.RayImaginaryDepth)
+			GraphBuilder.RemoveUnusedTextureWarning(ReflectionInputs.RayImaginaryDepth);
+		
 		FViewInfoPooledRenderTargets ViewInfoPooledRenderTargets;
 		SetupSceneViewInfoPooledRenderTargets(View, &ViewInfoPooledRenderTargets);
 

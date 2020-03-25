@@ -1044,6 +1044,8 @@ void FVulkanDevice::Destroy()
 	}
 	FreeOcclusionQueryPools.SetNum(0, false);
 
+	FRHIResource::FlushPendingDeletes();
+
 	delete PipelineStateCache;
 	PipelineStateCache = nullptr;
 	StagingManager.Deinit();
@@ -1069,7 +1071,7 @@ void FVulkanDevice::Destroy()
 #endif
 	}
 
-	FRHIResource::FlushPendingDeletes();
+	
 	DeferredDeletionQueue.Clear();
 
 	ResourceHeapManager.Deinit();

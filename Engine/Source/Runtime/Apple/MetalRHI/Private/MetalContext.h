@@ -22,7 +22,12 @@
 
 class FMetalRHICommandContext;
 class FMetalPipelineStateCacheManager;
+>>>> ORIGINAL //UE4/Dev-RenderPlat-Staging/Engine/Source/Runtime/Apple/MetalRHI/Private/MetalContext.h#7
+==== THEIRS //UE4/Dev-RenderPlat-Staging/Engine/Source/Runtime/Apple/MetalRHI/Private/MetalContext.h#8
+class FMetalFrameAllocator;
+==== YOURS //juan.canada_Dev-Rendering_Work/Engine/Source/Runtime/Apple/MetalRHI/Private/MetalContext.h
 class FMetalQueryBufferPool;
+<<<<
 
 class FMetalContext
 {
@@ -222,11 +227,15 @@ public:
 	/** Get the index of the bound Metal device in the global list of rendering devices. */
 	uint32 GetDeviceIndex(void) const;
     
-	/** Device frame index accessor. */
-	uint64 GetDeviceFrameIndex() const
-	{
-		return DeviceFrameIndex;
-	}
+    FMetalFrameAllocator* GetUniformAllocator()
+    {
+        return UniformBufferAllocator;
+    }
+    
+    uint32 GetFrameNumberRHIThread()
+    {
+        return FrameNumberRHIThread;
+    }
 	
 #if METAL_DEBUG_OPTIONS
     void AddActiveBuffer(FMetalBuffer const& Buffer);
@@ -268,7 +277,8 @@ private:
 	};
 	TArray<FMetalDelayedFreeList*> DelayedFreeLists;
 	
-	TSet<FMetalUniformBuffer*> UniformBuffers;
+//	TSet<FMetalUniformBuffer*> UniformBuffers;
+    FMetalFrameAllocator* UniformBufferAllocator;
 	
 #if METAL_DEBUG_OPTIONS
 	/** The list of fences for the current frame */
@@ -313,6 +323,7 @@ private:
 	/** PSO cache manager */
 	FMetalPipelineStateCacheManager* PSOManager;
 
-	/** Device frame index, glorified frame counter in the device namespace. */
-	uint64 DeviceFrameIndex;
+    /** Thread index owned by the RHI Thread. Monotonically increases every call to EndFrame() */
+    uint32 FrameNumberRHIThread;
 };
+

@@ -165,13 +165,6 @@ public:
 	*/
 	void UpdateManifolds(T Dt);
 
-	/*
-	* Add particle to list of particles that will always update their constraint manifold.
-	*/
-	void AddParticleAlwaysUpdateManifold(const TGeometryParticleHandle<T, d>* Particle);
-
-	bool ShouldParticleAlwaysUpdateManifold(const TGeometryParticleHandle<T, d>* Particle) const;
-
 
 	//
 	// General Rule API
@@ -279,7 +272,7 @@ public:
 
 	int32 NumConstraints() const
 	{
-		return PointConstraints.Num() + SweptPointConstraints.Num() + IterativeConstraints.Num();
+		return Constraints.SinglePointConstraints.Num() + Constraints.SinglePointSweptConstraints.Num() + Constraints.MultiPointConstraints.Num();
 	}
 
 	FHandles& GetConstraintHandles()
@@ -294,6 +287,7 @@ public:
 
 	const FConstraintBase& GetConstraint(int32 Index) const;
 
+	FCollisionConstraintsArray& GetConstraintsArray() { return Constraints; }
 
 protected:
 	using Base::GetConstraintIndex;
@@ -305,11 +299,10 @@ private:
 
 	const TPBDRigidsSOAs<T,d>& Particles;
 
-	TArray<FPointContactConstraint> PointConstraints;
-	TArray<FSweptPointContactConstraint> SweptPointConstraints;
-	TArray<FMultiPointContactConstraint> IterativeConstraints;
-
-	TSet<const TGeometryParticleHandle<T, d>*> ParticlesAlwaysUpdatingManifold;
+	FCollisionConstraintsArray Constraints;
+	int32 NumActivePointConstraints;
+	int32 NumActiveSweptPointConstraints;
+	int32 NumActiveIterativeConstraints;
 
 #if CHAOS_COLLISION_PERSISTENCE_ENABLED
 	TMap< FConstraintContainerHandleKey, FConstraintContainerHandle* > Manifolds;
