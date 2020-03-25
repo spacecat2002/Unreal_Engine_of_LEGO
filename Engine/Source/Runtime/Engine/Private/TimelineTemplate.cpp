@@ -220,6 +220,32 @@ void UTimelineTemplate::Serialize(FArchive& Ar)
 	Super::Serialize(Ar);
 
 	Ar.UsingCustomVersion(FFortniteMainBranchObjectVersion::GUID);
+
+	//can't be done in post-load, as the UK2Node_Timeline::AllocateDefaultPins, just does Preload.
+	//if we've never used this feature, init with the defaults
+	if (TrackDisplayOrder.Num() == 0)
+	{
+		for (int32 EventIndex = 0; EventIndex < EventTracks.Num(); ++EventIndex)
+		{
+			FTTTrackId TrackId(0 /* TT_Event */, EventIndex);
+			TrackDisplayOrder.Add(TrackId);
+		}
+		for (int32 FloatIndex = 0; FloatIndex < FloatTracks.Num(); ++FloatIndex)
+		{
+			FTTTrackId TrackId(1 /* TT_FloatInterp*/, FloatIndex);
+			TrackDisplayOrder.Add(TrackId);
+		}
+		for (int32 VectorIndex = 0; VectorIndex < VectorTracks.Num(); ++VectorIndex)
+		{
+			FTTTrackId TrackId(2 /* TT_VectorInterp*/, VectorIndex);
+			TrackDisplayOrder.Add(TrackId);
+		}
+		for (int32 ColorIndex = 0; ColorIndex < LinearColorTracks.Num(); ++ColorIndex)
+		{
+			FTTTrackId TrackId(3 /* TT_LinearColorInterp */, ColorIndex);
+			TrackDisplayOrder.Add(TrackId);
+		}
+	}
 }
 
 void UTimelineTemplate::PostLoad()
@@ -364,6 +390,53 @@ void UTimelineTemplate::GetAllCurves(TSet<UCurveBase*>& InOutCurves) const
 	}
 }
 
+FTTTrackId UTimelineTemplate::GetDisplayTrackId(int32 DisplayTrackIndex)
+{
+	//based on refresh of the list, we can't guarantee the display track index is still valid after a delete
+	if (TrackDisplayOrder.IsValidIndex(DisplayTrackIndex))
+	{
+		return TrackDisplayOrder[DisplayTrackIndex];
+	}
+	return FTTTrackId(-1, -1);
+}
+
+int32 UTimelineTemplate::GetNumDisplayTracks() const
+{
+	return TrackDisplayOrder.Num();
+}
+
+void UTimelineTemplate::RemoveDisplayTrack(int32 DisplayTrackIndex)
+{
+	check(TrackDisplayOrder.IsValidIndex(DisplayTrackIndex));
+
+	FTTTrackId TrackToRemove = TrackDisplayOrder[DisplayTrackIndex];
+	TrackDisplayOrder.RemoveAt(DisplayTrackIndex);
+
+	//Adjust all other Tracks of the same type!!!
+	for (int32 i = 0; i < TrackDisplayOrder.Num(); ++i)
+	{
+		//if this is the same type and was AFTER the removed track, adjust to the new index
+		if ((TrackDisplayOrder[i].TrackType == TrackToRemove.TrackType) && (TrackDisplayOrder[i].TrackIndex > TrackToRemove.TrackIndex))
+		{
+			TrackDisplayOrder[i].TrackIndex--;
+		}
+	}
+}
+
+void UTimelineTemplate::MoveDisplayTrack(int32 DisplayTrackIndex, int32 DirectionDelta)
+{
+	check(TrackDisplayOrder.IsValidIndex(DisplayTrackIndex));
+	check(TrackDisplayOrder.IsValidIndex(DisplayTrackIndex + DirectionDelta));
+	TrackDisplayOrder.Swap(DisplayTrackIndex, DisplayTrackIndex + DirectionDelta);
+}
+
+void UTimelineTemplate::AddDisplayTrack(FTTTrackId NewTrackId)
+{
+	TrackDisplayOrder.Add(NewTrackId);
+}
+
+
+
 void FTTTrackBase::SetTrackName(const FName NewTrackName, UTimelineTemplate* OwningTimeline)
 {
 	TrackName = NewTrackName;
@@ -388,7 +461,11 @@ void FTTPropertyTrack::SetTrackName(const FName NewTrackName, UTimelineTemplate*
 bool FTTTrackBase::operator==( const FTTTrackBase& T2 ) const
 {
 	return (TrackName == T2.TrackName) &&
-		   (bIsExternalCurve == T2.bIsExternalCurve);
+#if WITH_EDITORONLY_DATA
+		(bIsExpanded == T2.bIsExpanded) &&
+		(bIsCurveViewSynchronized == T2.bIsCurveViewSynchronized) &&
+#endif
+		(bIsExternalCurve == T2.bIsExternalCurve);
 }
 
 bool FTTEventTrack::operator==( const FTTEventTrack& T2 ) const
