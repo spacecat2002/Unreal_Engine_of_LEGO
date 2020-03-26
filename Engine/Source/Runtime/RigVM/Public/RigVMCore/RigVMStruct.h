@@ -23,9 +23,22 @@ public:
 
 	FORCEINLINE virtual int32 GetArraySize(const FName& InParameterName, const FRigVMUserDataArray& RigVMUserData) { return INDEX_NONE; }
 
+	// loop realted
+	FORCEINLINE virtual bool IsForLoop() const { return false; }
+	FORCEINLINE virtual int32 GetNumSlices() const { return 1; }
+
+#if WITH_EDITOR
+	static bool ValidateStruct(UScriptStruct* InStruct, FString* OutErrorMessage);
+	static bool CheckPinType(UScriptStruct* InStruct, const FName& PinName, const FString& ExpectedType, FString* OutErrorMessage = nullptr);
+	static bool CheckPinDirection(UScriptStruct* InStruct, const FName& PinName, const FName& InDirectionMetaName);
+	static bool CheckPinExists(UScriptStruct* InStruct, const FName& PinName, const FString& ExpectedType = FString(), FString* OutErrorMessage = nullptr);
+#endif
+
 	static const FName DeprecatedMetaName;
 	static const FName InputMetaName;
 	static const FName OutputMetaName;
+	static const FName IOMetaName;
+	static const FName HiddenMetaName;
 	static const FName AbstractMetaName;
 	static const FName CategoryMetaName;
 	static const FName DisplayNameMetaName;
@@ -41,4 +54,18 @@ public:
 	static const FName DefaultArraySizeMetaName;
 	static const FName VaryingMetaName;
 	static const FName SliceContextMetaName;
+	static const FName ExecuteName;
+	static const FName ExecuteContextName;
+	static const FName ForLoopRangePinName;
+	static const FName ForLoopCountPinName;
+	static const FName ForLoopExitConditionPinName;
+	static const FName ForLoopCompletedPinName;
+	static const FName ForLoopIndexPinName;
+	static const FName ForLoopRatioPinName;
+	static const FName ForLoopElementPinName;
+
+protected:
+
+	static float GetRatioFromIndex(int32 InIndex, int32 InCount);
+
 };
