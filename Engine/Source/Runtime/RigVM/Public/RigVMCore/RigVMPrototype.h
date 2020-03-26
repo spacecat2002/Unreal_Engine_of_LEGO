@@ -4,6 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "RigVMFunction.h"
+#include "UObject/Object.h"
+
 
 /**
  * The Prototype argument represents a single parameter

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Blueprint/BlueprintSupport.h"
 
 typedef TArrayView<void*> FRigVMOperandMemory;
 typedef TArrayView<void*> FRigVMUserDataArray;

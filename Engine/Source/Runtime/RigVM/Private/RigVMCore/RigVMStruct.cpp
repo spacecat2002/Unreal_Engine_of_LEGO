@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "RigVMCore/RigVMStruct.h"
+#include "UObject/StructOnScope.h"
 
 const FName FRigVMStruct::DeprecatedMetaName("Deprecated");
 const FName FRigVMStruct::InputMetaName("Input");
