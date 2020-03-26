@@ -906,9 +906,6 @@ protected:
 	/** Whether or not this audio device is in audio-focus */
 	bool bHasAudioFocus = false;
 
-	/** Updates CSVProfiler camera stats */
-	void UpdateCsvCameraStats(const TMap<ULocalPlayer*, FSceneView*>& PlayerViewMap);
-
 private:
 	/** Slate window associated with this viewport client.  The same window may host more than one viewport client. */
 	TWeakPtr<SWindow> Window;
