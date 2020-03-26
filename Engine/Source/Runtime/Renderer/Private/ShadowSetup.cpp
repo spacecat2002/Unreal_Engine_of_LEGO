@@ -3656,10 +3656,10 @@ void FSceneRenderer::AllocateShadowDepthTargets(FRHICommandListImmediate& RHICmd
 		Shadows.Sort(FCompareFProjectedShadowInfoByResolution());
 
 		//Limit the number of spotlights shadow for performance reason
-		static const auto CVarMobileMaxVisibleMovableSpotLightsShadow = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.MaxVisibleMovableSpotLightsShadow"));
-		if (CVarMobileMaxVisibleMovableSpotLightsShadow)
+		static const auto MobileMaxVisibleMovableSpotLightsShadowCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.MaxVisibleMovableSpotLightsShadow"));
+		if (MobileMaxVisibleMovableSpotLightsShadowCVar)
 		{
-			int32 MobileMaxVisibleMovableSpotLightsShadow = CVarMobileMaxVisibleMovableSpotLightsShadow->GetValueOnRenderThread();
+			int32 MobileMaxVisibleMovableSpotLightsShadow = MobileMaxVisibleMovableSpotLightsShadowCVar->GetValueOnRenderThread();
 			Shadows.RemoveAt(MobileMaxVisibleMovableSpotLightsShadow, FMath::Max(Shadows.Num() - MobileMaxVisibleMovableSpotLightsShadow, 0), false);
 		}
 
