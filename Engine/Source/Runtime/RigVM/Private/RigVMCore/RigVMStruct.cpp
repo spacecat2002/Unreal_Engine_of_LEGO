@@ -230,4 +230,17 @@ bool FRigVMStruct::CheckPinExists(UScriptStruct* InStruct, const FName& PinName,
 	return true;
 }
 
+ERigVMPinDirection FRigVMStruct::GetPinDirectionFromProperty(FProperty* InProperty)
+{
+	bool bIsInput = InProperty->HasMetaData(InputMetaName);
+	bool bIsOutput = InProperty->HasMetaData(OutputMetaName);
+
+	if (bIsInput)
+	{
+		return bIsOutput ? ERigVMPinDirection::IO : ERigVMPinDirection::Input;
+	} 
+
+	return bIsOutput ? ERigVMPinDirection::Output : ERigVMPinDirection::Hidden;
+}
+
 #endif

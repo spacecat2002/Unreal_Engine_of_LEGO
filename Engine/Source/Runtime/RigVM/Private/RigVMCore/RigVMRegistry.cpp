@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "RigVMCore/RigVMRegistry.h"
+#include "RigVMCore/RigVMStruct.h"
 #include "UObject/UObjectIterator.h"
 
 FRigVMRegistry FRigVMRegistry::s_RigVMRegistry;
@@ -30,6 +31,11 @@ void FRigVMRegistry::Register(const TCHAR* InName, FRigVMFunctionPtr InFunctionP
 	FString PrototypeMetadata;
 	if (InStruct->GetStringMetaDataHierarchical(PrototypeNameMetaName, &PrototypeMetadata))
 	{
+		if(InStruct->HasMetaData(FRigVMStruct::DeprecatedMetaName))
+		{
+			return;
+		}
+
 		FString MethodName;
 		if (FString(InName).Split(TEXT("::"), nullptr, &MethodName))
 		{
@@ -102,4 +108,10 @@ const TArray<FRigVMFunction>& FRigVMRegistry::GetFunctions() const
 {
 	return Functions;
 }
+
+const TArray<FRigVMPrototype>& FRigVMRegistry::GetPrototypes() const
+{
+	return Prototypes;
+}
+
 

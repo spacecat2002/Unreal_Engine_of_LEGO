@@ -11,14 +11,72 @@
  */
 struct RIGVM_API FRigVMPrototypeArg
 {
+	struct FType
+	{
+		FString CPPType;
+		UObject* CPPTypeObject;
+
+		FType()
+			: CPPType()
+			, CPPTypeObject(nullptr)
+		{}
+
+		FType(const FString& InCPPType, UObject* InCPPTypeObject = nullptr)
+			: CPPType(InCPPType)
+			, CPPTypeObject(InCPPTypeObject)
+		{}
+
+		bool operator == (const FType& InOther) const
+		{
+			return CPPType == InOther.CPPType;
+		}
+
+		bool operator == (const FString& InOther) const
+		{
+			return CPPType == InOther;
+		}
+
+		bool operator != (const FType& InOther) const
+		{
+			return CPPType != InOther.CPPType;
+		}
+
+		bool operator != (const FString& InOther) const
+		{
+			return CPPType != InOther;
+		}
+
+		operator FString() const
+		{
+			return CPPType;
+		}
+
+		operator UObject*() const
+		{
+			return CPPTypeObject;
+		}
+
+		FName GetCPPTypeObjectPath() const
+		{
+			if(CPPTypeObject)
+			{
+				return *CPPTypeObject->GetPathName();
+			}
+			return NAME_None;
+		}
+	};
+
 	// returns the name of the argument
 	const FName& GetName() const { return Name; }
+
+	// returns the direction of the argument
+	ERigVMPinDirection GetDirection() const { return Direction; }
 
 	// returns true if this argument supports a given type
 	bool SupportsType(const FString& InCPPType) const;
 
 	// returns an array of all of the supported types
-	TArray<FString> GetSupportedTypes() const;
+	TArray<FType> GetSupportedTypes() const;
 
 	// returns true if an argument is singleton (same type for all variants)
 	bool IsSingleton() const;
@@ -30,14 +88,15 @@ protected:
 	bool IsSingleton(TArray<int32> InFunctionIndices) const;
 
 	FName Name;
+	ERigVMPinDirection Direction;
 	bool bSingleton;
-	TArray<FString> Types;
+	TArray<FType> Types;
 
 	// default constructor
 	FRigVMPrototypeArg();
 
 	// constructor from a property
-	FRigVMPrototypeArg(const FProperty* InProperty);
+	FRigVMPrototypeArg(FProperty* InProperty);
 
 	friend struct FRigVMPrototype;
 };
@@ -52,13 +111,16 @@ struct RIGVM_API FRigVMPrototype
 {
 public:
 
-	typedef TMap<FName, FString> FTypeMap;
+	typedef TMap<FName, FRigVMPrototypeArg::FType> FTypeMap;
 
 	// returns true if this is a valid prototype
 	bool IsValid() const;
 
 	// Returns the notation of this prototype
 	const FName& GetNotation() const;
+
+	// Returns the name of the prototype
+	FName GetName() const;
 
 	// returns true if this prototype is compatible with another one
 	bool IsCompatible(const FRigVMPrototype& InOther) const;
@@ -88,6 +150,13 @@ public:
 	bool Resolve(FTypeMap& InOutTypes, int32& OutFunctionIndex) const;
 
 	static FName GetNotationFromStruct(UScriptStruct* InStruct, const FString& InPrototypeName);
+
+#if WITH_EDITOR
+
+	FString GetCategory() const;
+	FString GetKeywords() const;
+
+#endif
 
 private:
 

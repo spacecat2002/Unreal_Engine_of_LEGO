@@ -8,15 +8,37 @@
 
 FRigVMPrototypeArg::FRigVMPrototypeArg()
 	: Name(NAME_None)
+	, Direction(ERigVMPinDirection::IO)
 	, bSingleton(true)
 {
 }
 
-FRigVMPrototypeArg::FRigVMPrototypeArg(const FProperty* InProperty)
+FRigVMPrototypeArg::FRigVMPrototypeArg(FProperty* InProperty)
 	: Name(InProperty->GetFName())
+	, Direction(ERigVMPinDirection::IO)
 	, bSingleton(true)
 {
-	Types.Add(InProperty->GetCPPType());
+	FType Type(InProperty->GetCPPType());
+
+	if (FArrayProperty* ArrayProperty = CastField<FArrayProperty>(InProperty))
+	{
+		InProperty = ArrayProperty->Inner;
+	}
+
+	if (FStructProperty* StructProperty = CastField<FStructProperty>(InProperty))
+	{
+		Type.CPPTypeObject = StructProperty->Struct;
+	}
+	else if (FEnumProperty* EnumProperty = CastField<FEnumProperty>(InProperty))
+	{
+		Type.CPPTypeObject = EnumProperty->GetEnum();
+	}
+
+	Types.Add(Type);
+
+#if WITH_EDITOR
+	Direction = FRigVMStruct::GetPinDirectionFromProperty(InProperty);
+#endif
 }
 
 bool FRigVMPrototypeArg::SupportsType(const FString& InCPPType) const
@@ -73,10 +95,10 @@ bool FRigVMPrototypeArg::IsSingleton(TArray<int32> InFunctionIndices) const
 	return true;
 }
 
-TArray<FString> FRigVMPrototypeArg::GetSupportedTypes() const
+TArray<FRigVMPrototypeArg::FType> FRigVMPrototypeArg::GetSupportedTypes() const
 {
-	TArray<FString> SupportedTypes;
-	for (const FString& Type : Types)
+	TArray<FType> SupportedTypes;
+	for (const FType& Type : Types)
 	{
 		SupportedTypes.AddUnique(Type);
 	}
@@ -146,13 +168,38 @@ const FName& FRigVMPrototype::GetNotation() const
 	return Notation;
 }
 
+FName FRigVMPrototype::GetName() const
+{
+	FString Left;
+	if (GetNotation().ToString().Split(TEXT("::"), &Left, nullptr))
+	{
+		return *Left;
+	}
+	return NAME_None;
+}
+
+
 bool FRigVMPrototype::IsCompatible(const FRigVMPrototype& InOther) const
 {
 	if (!IsValid() || !InOther.IsValid())
 	{
 		return false;
 	}
-	return Notation == InOther.Notation;
+
+	if(Notation != InOther.Notation)
+	{
+		return false;
+	}
+
+	for (int32 ArgIndex = 0; ArgIndex < Args.Num(); ArgIndex++)
+	{
+		if (Args[ArgIndex].Direction != InOther.Args[ArgIndex].Direction)
+		{
+			return false;
+		}
+	}
+
+	return true;
 }
 
 bool FRigVMPrototype::Merge(const FRigVMPrototype& InOther)
@@ -248,7 +295,7 @@ bool FRigVMPrototype::Resolve(FRigVMPrototype::FTypeMap& InOutTypes, int32& OutF
 		{
 			InOutTypes.Add(Arg.Name, Arg.Types[0]);
 		}
-		else if (const FString* InputType = InputTypes.Find(Arg.Name))
+		else if (const FRigVMPrototypeArg::FType* InputType = InputTypes.Find(Arg.Name))
 		{
 			bool bFoundMatch = false;
 			for (int32 FunctionIndex = 0; FunctionIndex < Arg.Types.Num(); FunctionIndex++)
@@ -293,3 +340,69 @@ bool FRigVMPrototype::Resolve(FRigVMPrototype::FTypeMap& InOutTypes, int32& OutF
 
 	return FunctionIndices.Num() == 1;
 }
+
+#if WITH_EDITOR
+
+FString FRigVMPrototype::GetCategory() const
+{
+	FString Category;
+	GetFunction(0)->Struct->GetStringMetaDataHierarchical(FRigVMStruct::CategoryMetaName, &Category);
+
+	if (Category.IsEmpty())
+	{
+		return Category;
+	}
+
+	for (int32 FunctionIndex = 1; FunctionIndex < NumFunctions(); FunctionIndex++)
+	{
+		FString OtherCategory;
+		if (GetFunction(FunctionIndex)->Struct->GetStringMetaDataHierarchical(FRigVMStruct::CategoryMetaName, &OtherCategory))
+		{
+			while (!OtherCategory.StartsWith(Category, ESearchCase::IgnoreCase))
+			{
+				FString Left;
+				if (Category.Split(TEXT("|"), &Left, nullptr, ESearchCase::IgnoreCase, ESearchDir::FromEnd))
+				{
+					Category = Left;
+				}
+				else
+				{
+					return FString();
+				}
+
+			}
+		}
+	}
+
+	return Category;
+}
+
+FString FRigVMPrototype::GetKeywords() const
+{
+	FString KeywordsMetadata = GetName().ToString();
+
+	for (int32 FunctionIndex = 0; FunctionIndex < NumFunctions(); FunctionIndex++)
+	{
+		if (const FRigVMFunction* Function = GetFunction(FunctionIndex))
+		{
+			FString FunctionKeyWordsMetadata;
+			Function->Struct->GetStringMetaDataHierarchical(FRigVMStruct::KeywordsMetaName, &FunctionKeyWordsMetadata);
+
+			if (!FunctionKeyWordsMetadata.IsEmpty())
+			{
+				if (KeywordsMetadata.IsEmpty())
+				{
+					KeywordsMetadata = FunctionKeyWordsMetadata;
+				}
+				else
+				{
+					KeywordsMetadata = KeywordsMetadata + TEXT(",") + FunctionKeyWordsMetadata;
+				}
+			}
+		}
+	}
+
+	return KeywordsMetadata;
+}
+
+#endif
