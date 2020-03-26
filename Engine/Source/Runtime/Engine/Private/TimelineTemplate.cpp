@@ -221,6 +221,7 @@ void UTimelineTemplate::Serialize(FArchive& Ar)
 
 	Ar.UsingCustomVersion(FFortniteMainBranchObjectVersion::GUID);
 
+#if WITH_EDITORONLY_DATA
 	//can't be done in post-load, as the UK2Node_Timeline::AllocateDefaultPins, just does Preload.
 	//if we've never used this feature, init with the defaults
 	if (TrackDisplayOrder.Num() == 0)
@@ -242,10 +243,11 @@ void UTimelineTemplate::Serialize(FArchive& Ar)
 		}
 		for (int32 ColorIndex = 0; ColorIndex < LinearColorTracks.Num(); ++ColorIndex)
 		{
-			FTTTrackId TrackId(3 /* TT_LinearColorInterp */, ColorIndex);
+			FTTTrackId TrackId(3 /* TT_LinearColorInterp 7*/, ColorIndex);
 			TrackDisplayOrder.Add(TrackId);
 		}
 	}
+#endif
 }
 
 void UTimelineTemplate::PostLoad()
@@ -392,21 +394,28 @@ void UTimelineTemplate::GetAllCurves(TSet<UCurveBase*>& InOutCurves) const
 
 FTTTrackId UTimelineTemplate::GetDisplayTrackId(int32 DisplayTrackIndex)
 {
+#if WITH_EDITORONLY_DATA
 	//based on refresh of the list, we can't guarantee the display track index is still valid after a delete
 	if (TrackDisplayOrder.IsValidIndex(DisplayTrackIndex))
 	{
 		return TrackDisplayOrder[DisplayTrackIndex];
 	}
+#endif
 	return FTTTrackId(-1, -1);
 }
 
 int32 UTimelineTemplate::GetNumDisplayTracks() const
 {
+#if WITH_EDITORONLY_DATA
 	return TrackDisplayOrder.Num();
+#else
+	return 0;
+#endif
 }
 
 void UTimelineTemplate::RemoveDisplayTrack(int32 DisplayTrackIndex)
 {
+#if WITH_EDITORONLY_DATA
 	check(TrackDisplayOrder.IsValidIndex(DisplayTrackIndex));
 
 	FTTTrackId TrackToRemove = TrackDisplayOrder[DisplayTrackIndex];
@@ -421,18 +430,23 @@ void UTimelineTemplate::RemoveDisplayTrack(int32 DisplayTrackIndex)
 			TrackDisplayOrder[i].TrackIndex--;
 		}
 	}
+#endif
 }
 
 void UTimelineTemplate::MoveDisplayTrack(int32 DisplayTrackIndex, int32 DirectionDelta)
 {
+#if WITH_EDITORONLY_DATA
 	check(TrackDisplayOrder.IsValidIndex(DisplayTrackIndex));
 	check(TrackDisplayOrder.IsValidIndex(DisplayTrackIndex + DirectionDelta));
 	TrackDisplayOrder.Swap(DisplayTrackIndex, DisplayTrackIndex + DirectionDelta);
+#endif
 }
 
 void UTimelineTemplate::AddDisplayTrack(FTTTrackId NewTrackId)
 {
+#if WITH_EDITORONLY_DATA
 	TrackDisplayOrder.Add(NewTrackId);
+#endif
 }
 
 
