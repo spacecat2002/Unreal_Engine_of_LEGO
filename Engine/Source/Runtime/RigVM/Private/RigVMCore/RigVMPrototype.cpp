@@ -309,11 +309,11 @@ bool FRigVMPrototype::Resolve(FRigVMPrototype::FTypeMap& InOutTypes, int32& OutF
 					bFoundMatch = true;
 				}
 			}
-			InOutTypes.Add(Arg.Name, bFoundMatch ? *InputType : FString());
+			InOutTypes.Add(Arg.Name, bFoundMatch ? *InputType : FRigVMPrototypeArg::FType());
 		}
 		else
 		{
-			InOutTypes.Add(Arg.Name, FString());
+			InOutTypes.Add(Arg.Name, FRigVMPrototypeArg::FType());
 		}
 	}
 
