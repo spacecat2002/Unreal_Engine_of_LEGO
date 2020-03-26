@@ -4,6 +4,7 @@
 #include "UObject/UObjectIterator.h"
 
 FRigVMRegistry FRigVMRegistry::s_RigVMRegistry;
+const FName FRigVMRegistry::PrototypeNameMetaName = TEXT("PrototypeName");
 
 FRigVMRegistry& FRigVMRegistry::Get()
 {
@@ -16,14 +17,50 @@ void FRigVMRegistry::Refresh()
 
 void FRigVMRegistry::Register(const TCHAR* InName, FRigVMFunctionPtr InFunctionPtr, UScriptStruct* InStruct)
 {
-	if (Find(InName) != nullptr)
+	if (FindFunction(InName) != nullptr)
 	{
 		return;
 	}
-	Functions.Add(FRigVMFunction(InName, InFunctionPtr, InStruct));
+
+	FRigVMFunction Function(InName, InFunctionPtr, InStruct, Functions.Num());
+	Functions.Add(Function);
+
+#if WITH_EDITOR
+	
+	FString PrototypeMetadata;
+	if (InStruct->GetStringMetaDataHierarchical(PrototypeNameMetaName, &PrototypeMetadata))
+	{
+		FString MethodName;
+		if (FString(InName).Split(TEXT("::"), nullptr, &MethodName))
+		{
+			FString PrototypeName = FString::Printf(TEXT("%s::%s"), *PrototypeMetadata, *MethodName);
+			FRigVMPrototype Prototype(InStruct, PrototypeName, Function.Index);
+			if (Prototype.IsValid())
+			{
+				bool bWasMerged = false;
+				for (FRigVMPrototype& ExistingPrototype : Prototypes)
+				{
+					if (ExistingPrototype.Merge(Prototype))
+					{
+						Functions[Function.Index].PrototypeIndex = ExistingPrototype.Index;
+						bWasMerged = true;
+					}
+				}
+
+				if (!bWasMerged)
+				{
+					Prototype.Index = Prototypes.Num();
+					Functions[Function.Index].PrototypeIndex = Prototype.Index;
+					Prototypes.Add(Prototype);
+				}
+			}
+		}
+	}
+
+#endif
 }
 
-FRigVMFunctionPtr FRigVMRegistry::Find(const TCHAR* InName) const
+FRigVMFunctionPtr FRigVMRegistry::FindFunction(const TCHAR* InName) const
 {
 	for (const FRigVMFunction& Function : Functions)
 	{
@@ -34,6 +71,31 @@ FRigVMFunctionPtr FRigVMRegistry::Find(const TCHAR* InName) const
 	}
 
 	return nullptr;
+}
+
+const FRigVMPrototype* FRigVMRegistry::FindPrototype(const FName& InNotation) const
+{
+	if (InNotation.IsNone())
+	{
+		return nullptr;
+	}
+
+	for (const FRigVMPrototype& Prototype : Prototypes)
+	{
+		if (Prototype.GetNotation() == InNotation)
+		{
+			return &Prototype;
+		}
+	}
+
+	return nullptr;
+}
+
+// Returns a prototype pointer given its notation (or nullptr)
+const FRigVMPrototype* FRigVMRegistry::FindPrototype(UScriptStruct* InStruct, const FString& InPrototypeName) const
+{
+	FName Notation = FRigVMPrototype::GetNotationFromStruct(InStruct, InPrototypeName);
+	return FindPrototype(Notation);
 }
 
 const TArray<FRigVMFunction>& FRigVMRegistry::GetFunctions() const

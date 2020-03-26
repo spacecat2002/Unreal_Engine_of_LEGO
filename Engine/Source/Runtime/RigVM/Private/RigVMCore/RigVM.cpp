@@ -208,7 +208,7 @@ int32 URigVM::AddRigVMFunction(UScriptStruct* InRigVMStruct, const FName& InMeth
 		return FunctionIndex;
 	}
 
-	FRigVMFunctionPtr Function = FRigVMRegistry::Get().Find(*FunctionKey);
+	FRigVMFunctionPtr Function = FRigVMRegistry::Get().FindFunction(*FunctionKey);
 	if (Function == nullptr)
 	{
 		return INDEX_NONE;
@@ -268,7 +268,7 @@ void URigVM::ResolveFunctionsIfRequired()
 
 		for (int32 FunctionIndex = 0; FunctionIndex < GetFunctionNames().Num(); FunctionIndex++)
 		{
-			GetFunctions()[FunctionIndex] = FRigVMRegistry::Get().Find(*GetFunctionNames()[FunctionIndex].ToString());
+			GetFunctions()[FunctionIndex] = FRigVMRegistry::Get().FindFunction(*GetFunctionNames()[FunctionIndex].ToString());
 		}
 	}
 }
