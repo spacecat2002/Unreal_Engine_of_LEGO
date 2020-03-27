@@ -4746,14 +4746,14 @@ void FAsyncLoadingThread::StartThread()
 
 	if (!Thread && FAsyncLoadingThreadSettings::Get().bAsyncLoadingThreadEnabled)
 	{
+		Trace::ThreadGroupBegin(TEXT("AsyncLoading"));
+
 		UE_LOG(LogStreaming, Log, TEXT("Starting Async Loading Thread."));
 		bThreadStarted = true;
 		FPlatformMisc::MemoryBarrier();
 		Thread = FRunnableThread::Create(this, TEXT("FAsyncLoadingThread"), 0, TPri_Normal);
-		if (Thread)
-		{
-			TRACE_SET_THREAD_GROUP(Thread->GetThreadID(), "AsyncLoading");
-		}
+
+		Trace::ThreadGroupEnd();
 	}
 }
 

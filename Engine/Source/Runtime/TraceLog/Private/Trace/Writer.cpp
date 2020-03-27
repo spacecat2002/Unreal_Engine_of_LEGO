@@ -215,6 +215,7 @@ static FWriteBuffer* Writer_NextBufferInternal(uint32 PageSize)
 		// Throttle back if memory usage is growing past a comfortable threshold
 		if (GPoolUsageThreshold && (GPoolUsage > GPoolUsageThreshold))
 		{
+			/* TODO: If there's no worker thread, now what? Force update maybe... */
 			ThreadSleep(0);
 			continue;
 		}
@@ -728,6 +729,8 @@ static void Writer_InternalInitializeImpl()
 	}
 	GInitialized = true;
 
+	Trace::ThreadRegister(TEXT("MainThread"), 0, -1);
+
 	Writer_InitializeBuffers();
 	Writer_InitializeControl();
 	Writer_InitializeTiming();
@@ -800,6 +803,17 @@ void Writer_Update()
 		Writer_WorkerUpdate();
 	}
 }
+
+////////////////////////////////////////////////////////////////////////////////
+static bool const bEnsureDynamicInit = [] () -> bool
+{
+	// Trace will register the thread it is initialised on as the main thread. On
+	// the off chance that no events are trace during dynamic initialisation this
+	// lambda will get called to cover that scenario. Of course, this cunning plan
+	// may not work on some platforms or if TraceLog is loaded on another thread.
+	Writer_InternalInitialize();
+	return false;
+}();
 
 
 

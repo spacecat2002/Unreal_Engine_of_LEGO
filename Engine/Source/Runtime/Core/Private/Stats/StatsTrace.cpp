@@ -20,7 +20,6 @@ UE_TRACE_EVENT_BEGIN(Stats, Spec, Important)
 UE_TRACE_EVENT_END()
 
 UE_TRACE_EVENT_BEGIN(Stats, EventBatch)
-	UE_TRACE_EVENT_FIELD(uint32, ThreadId)
 UE_TRACE_EVENT_END()
 
 struct FStatsTraceInternal
@@ -46,7 +45,6 @@ public:
 	struct FThreadState
 	{
 		uint64 LastCycle;
-		uint32 ThreadId;
 		uint16 BufferSize;
 		uint8 Buffer[MaxBufferSize];
 	};
@@ -67,7 +65,6 @@ FStatsTraceInternal::FThreadState* FStatsTraceInternal::InitThreadState()
 {
 	ThreadLocalThreadState = new FThreadState();
 	ThreadLocalThreadState->BufferSize = 0;
-	ThreadLocalThreadState->ThreadId = FPlatformTLS::GetCurrentThreadId();
 	ThreadLocalThreadState->LastCycle = 0;
 	return ThreadLocalThreadState;
 }
@@ -75,7 +72,6 @@ FStatsTraceInternal::FThreadState* FStatsTraceInternal::InitThreadState()
 void FStatsTraceInternal::FlushThreadBuffer(FThreadState* ThreadState)
 {
 	UE_TRACE_LOG(Stats, EventBatch, StatsChannel, ThreadState->BufferSize)
-		<< EventBatch.ThreadId(ThreadState->ThreadId)
 		<< EventBatch.Attachment(ThreadState->Buffer, ThreadState->BufferSize);
 	ThreadState->BufferSize = 0;
 }

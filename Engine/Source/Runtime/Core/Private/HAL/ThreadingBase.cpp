@@ -180,6 +180,34 @@ uint32 FFakeThread::ThreadIdCounter = 0xffff;
 
 void FThreadManager::AddThread(uint32 ThreadId, FRunnableThread* Thread)
 {
+	// Convert the thread's priority into an ordered value that is suitable
+	// for sorting. Note we're using higher values so as to not collide with
+	// existing trace data that's using TPri directly, and leaving gaps so
+	// values can be added in between should need be
+	int8 PriRemap[][2] = {
+		{ TPri_TimeCritical,		0x10 },
+		{ TPri_Highest,				0x20 },
+		{ TPri_AboveNormal,			0x30 },
+		{ TPri_Normal,				0x40 },
+		{ TPri_SlightlyBelowNormal,	0x50 },
+		{ TPri_BelowNormal,			0x60 },
+		{ TPri_Lowest,				0x70 },
+	};
+	static_assert(TPri_Num == UE_ARRAY_COUNT(PriRemap), "Please update PriRemap when adding/removing thread priorities. Many thanks.");
+
+	int32 SortHint = UE_ARRAY_COUNT(PriRemap);
+	for (auto Candidate : PriRemap)
+	{
+		if (Candidate[0] == Thread->GetThreadPriority())
+		{
+			SortHint = Candidate[1];
+			break;
+		}
+	}
+
+	// Note that this must be called from thread being registered.
+	Trace::ThreadRegister(*(Thread->GetThreadName()), Thread->GetThreadID(), SortHint);
+
 	FScopeLock ThreadsLock(&ThreadsCritical);
 	// Some platforms do not support TLS
 	if (!Threads.Contains(ThreadId))
@@ -437,14 +465,10 @@ FRunnableThread* FRunnableThread::Create(
 
 	if (NewThread)
 	{
-		TRACE_CREATE_THREAD(NewThread->GetThreadID(), *NewThread->GetThreadName(), InThreadPri);
-	}
 #if	STATS
-	if( NewThread )
-	{
 		FStartupMessages::Get().AddThreadMetadata( FName( *NewThread->GetThreadName() ), NewThread->GetThreadID() );
-	}
 #endif // STATS
+	}
 
 	return NewThread;
 }
@@ -620,7 +644,7 @@ public:
 
 	virtual bool Create(uint32 InNumQueuedThreads, uint32 StackSize, EThreadPriority ThreadPriority, const TCHAR* Name) override
 	{
-		TRACE_THREAD_GROUP_SCOPE(Name);
+		Trace::ThreadGroupBegin(Name);
 
 		// Make sure we have synch objects
 		bool bWasSuccessful = true;
@@ -660,6 +684,8 @@ public:
 		{
 			Destroy();
 		}
+
+		Trace::ThreadGroupEnd();
 		return bWasSuccessful;
 	}
 
