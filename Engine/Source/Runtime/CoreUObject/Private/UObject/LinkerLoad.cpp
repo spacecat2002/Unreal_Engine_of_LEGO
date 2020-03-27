@@ -3504,6 +3504,7 @@ int32 FLinkerLoad::LoadMetaDataFromExportMap(bool bForcePreload)
  */
 void FLinkerLoad::LoadAllObjects(bool bForcePreload)
 {
+	SCOPED_LOADTIMER(LinkerLoad_LoadAllObjects);
 #if WITH_EDITOR
 	TOptional<FScopedSlowTask> SlowTask;
 	if (ShouldCreateThrottledSlowTask())
@@ -3981,6 +3982,9 @@ void FLinkerLoad::Preload( UObject* Object )
 						FArchive::FScopeAddDebugData C(*this, Object->GetClass()->GetFName());
 #endif
 						check(CurrentLoadContext);
+#if WITH_EDITOR
+						SCOPED_LOADTIMER_TEXT(*((Object->GetClass()->IsChildOf(UDynamicClass::StaticClass()) ? UDynamicClass::StaticClass() : Object->GetClass())->GetName() + TEXT("_Serialize")));
+#endif
 
 						// Maintain the current SerializedObjects.
 						UObject* PrevSerializedObject = CurrentLoadContext->SerializedObject;

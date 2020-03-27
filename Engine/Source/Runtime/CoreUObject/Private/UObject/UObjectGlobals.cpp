@@ -1063,8 +1063,8 @@ static int32 GGameThreadLoadCounter = 0;
 UPackage* LoadPackageInternal(UPackage* InOuter, const TCHAR* InLongPackageNameOrFilename, uint32 LoadFlags, FLinkerLoad* ImportLinker, FArchive* InReaderOverride, FLinkerInstancingContext* InstancingContext)
 {
 	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("LoadPackageInternal"), STAT_LoadPackageInternal, STATGROUP_ObjectVerbose);
-	SCOPED_LOADTIMER(LoadPackageInternal);
-	TRACE_CPUPROFILER_EVENT_SCOPE_TEXT_ON_CHANNEL(InLongPackageNameOrFilename, LoadTimeChannel); // Temporary until scope metadata becomes available
+	SCOPED_LOADTIMER(LoadPackageInternal)
+		ADD_LOADTIMER_META(PackageName, InLongPackageNameOrFilename);
 
 	checkf(IsInGameThread(), TEXT("Unable to load %s. Objects and Packages can only be loaded from the game thread."), InLongPackageNameOrFilename);
 

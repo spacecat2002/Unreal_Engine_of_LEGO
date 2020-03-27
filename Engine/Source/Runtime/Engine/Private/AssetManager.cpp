@@ -3334,6 +3334,7 @@ bool UAssetManager::ShouldCookForPlatform(const UPackage* Package, const ITarget
 
 EPrimaryAssetCookRule UAssetManager::GetPackageCookRule(FName PackageName) const
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(UAssetManager::GetPackageCookRule);
 	FPrimaryAssetRules BestRules;
 	FPrimaryAssetId BestId;
 	TSet<FPrimaryAssetId> Managers;
