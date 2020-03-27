@@ -897,6 +897,16 @@ public:
 
 private:
 
+	// Copies the source memory into a known register
+	bool Copy(
+		int32 InTargetRegisterIndex,
+		int32 InTargetRegisterOffset,
+		ERigVMRegisterType InTargetType,
+		const uint8* InSourcePtr,
+		uint8* InTargetPtr,
+		uint16 InNumBytes);
+
+
 	// Adds a new named register for a fixed plain array from a data pointer (used by compiler)
 	FORCEINLINE int32 AddFixedPlainArray(const FName& InNewName, int32 InElementSize, int32 InCount, const uint8* InDataPtr = nullptr, int32 InSliceCount = 1)
 	{
@@ -904,12 +914,44 @@ private:
 	}
 
 	// Adds a new named register for a dynamic plain array from a data pointer (used by compiler)
-	FORCEINLINE int32 AddDynamicPlainArray(const FName& InNewName, int32 InElementSize, int32 InCount, const uint8* InDataPtr = nullptr, int32 InSliceCount = 1)
+	FORCEINLINE int32 AddDynamicPlainArray(const FName& InNewName, int32 InElementSize, int32 InCount, bool bIsArrayPerSlice, const uint8* InDataPtr = nullptr, int32 InSliceCount = 1, ERigVMRegisterType InType = ERigVMRegisterType::Plain)
 	{
-		int32 Register = Allocate(InNewName, sizeof(FRigVMByteArray), 1, 1, nullptr);
+		int32 Register = INDEX_NONE;
+		
+		if (bIsArrayPerSlice)
+		{
+			Register = Allocate(InNewName, sizeof(FRigVMNestedByteArray), 1, 1, nullptr);
+			Registers[Register].Type = InType;
+			Registers[Register].bIsDynamic = true;
+			Registers[Register].bIsArray = bIsArrayPerSlice;
 
-		FRigVMByteArray* Storage = (FRigVMByteArray*)GetData(Register);
-		// todo
+			FRigVMNestedByteArray& Storage = *(FRigVMNestedByteArray*)GetData(Register);
+			Storage.SetNum(InSliceCount);
+
+			for (int32 SliceIndex = 0; SliceIndex < InSliceCount; SliceIndex++)
+			{
+				Storage[SliceIndex].SetNumZeroed(InCount);
+				if (InDataPtr)
+				{
+					Copy(Register, INDEX_NONE, ERigVMRegisterType::Plain, InDataPtr, Storage[SliceIndex].GetData(), InElementSize * InCount);
+				}
+			}
+		}
+		else
+		{
+			Register = Allocate(InNewName, sizeof(FRigVMByteArray), 1, 1, nullptr);
+			Registers[Register].Type = InType;
+			Registers[Register].bIsDynamic = true;
+			Registers[Register].bIsArray = bIsArrayPerSlice;
+
+			FRigVMByteArray& Storage = *(FRigVMByteArray*)GetData(Register);
+			Storage.SetNumZeroed(InCount);
+			if (InDataPtr)
+			{
+				Copy(Register, INDEX_NONE, ERigVMRegisterType::Plain, InDataPtr, Storage.GetData(), InElementSize * InCount);
+			}
+		}
+
 
 		return Register;
 	}

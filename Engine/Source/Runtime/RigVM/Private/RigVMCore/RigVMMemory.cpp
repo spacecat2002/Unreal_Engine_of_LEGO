@@ -568,6 +568,59 @@ void FRigVMMemoryContainer::Empty()
 }
 
 bool FRigVMMemoryContainer::Copy(
+	int32 InTargetRegisterIndex,
+	int32 InTargetRegisterOffset,
+	ERigVMRegisterType InTargetType,
+	const uint8* InSourcePtr,
+	uint8* InTargetPtr,
+	uint16 InNumBytes)
+{
+	switch (InTargetType)
+	{
+		case ERigVMRegisterType::Plain:
+		{
+			FMemory::Memcpy(InTargetPtr, InSourcePtr, InNumBytes);
+			break;
+		}
+		case ERigVMRegisterType::Struct:
+		{
+			UScriptStruct* ScriptStruct = GetScriptStruct(InTargetRegisterIndex, InTargetRegisterOffset);
+			int32 NumStructs = InNumBytes / ScriptStruct->GetStructureSize();
+			ScriptStruct->CopyScriptStruct(InTargetPtr, InSourcePtr, NumStructs);
+			break;
+		}
+		case ERigVMRegisterType::Name:
+		{
+			int32 NumNames = InNumBytes / sizeof(FName);
+			FRigVMFixedArray<FName> TargetNames((FName*)InTargetPtr, NumNames);
+			FRigVMFixedArray<FName> SourceNames((FName*)InSourcePtr, NumNames);
+			for (int32 Index = 0; Index < NumNames; Index++)
+			{
+				TargetNames[Index] = SourceNames[Index];
+			}
+			break;
+		}
+		case ERigVMRegisterType::String:
+		{
+			int32 NumStrings = InNumBytes / sizeof(FString);
+			FRigVMFixedArray<FString> TargetStrings((FString*)InTargetPtr, NumStrings);
+			FRigVMFixedArray<FString> SourceStrings((FString*)InSourcePtr, NumStrings);
+			for (int32 Index = 0; Index < NumStrings; Index++)
+			{
+				TargetStrings[Index] = SourceStrings[Index];
+			}
+			break;
+		}
+		case ERigVMRegisterType::Invalid:
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
+bool FRigVMMemoryContainer::Copy(
 	int32 InSourceRegisterIndex,
 	int32 InTargetRegisterIndex,
 	const FRigVMMemoryContainer* InSourceMemory,
@@ -606,6 +659,8 @@ bool FRigVMMemoryContainer::Copy(
 		NumBytes = RegisterOffsets[InTargetRegisterOffset].GetElementSize();
 	}
 
+	return Copy(InTargetRegisterIndex, InTargetRegisterOffset, TargetType, SourcePtr, TargetPtr, NumBytes);
+	/*
 	switch (TargetType)
 	{
 		case ERigVMRegisterType::Plain:
@@ -647,8 +702,9 @@ bool FRigVMMemoryContainer::Copy(
 			return false;
 		}
 	}
-
+	
 	return true;
+	*/
 }
 
 bool FRigVMMemoryContainer::Copy(
