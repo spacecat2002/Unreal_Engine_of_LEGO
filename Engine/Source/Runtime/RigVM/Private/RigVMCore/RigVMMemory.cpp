@@ -239,7 +239,7 @@ uint8* FRigVMRegisterOffset::GetData(uint8* InContainer) const
 		if (SegmentIndex < 0)
 		{
 			int32 ArrayOffset = (-SegmentIndex) - 1;
-			TArray<uint8>* ArrayPtr = (TArray<uint8>*)Data;
+			FRigVMByteArray* ArrayPtr = (FRigVMByteArray*)Data;
 			Data = ArrayPtr->GetData() + ArrayOffset;
 		}
 		else
@@ -407,7 +407,7 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 			{
 				case ERigVMRegisterType::Plain:
 				{
-					TArray<uint8> View;
+					FRigVMByteArray View;
 					Ar << View;
 					ensure(View.Num() == Register.GetAllocatedBytes());
 					FMemory::Memcpy(&Data[Register.GetFirstAllocatedByte()], View.GetData(), View.Num());
@@ -498,7 +498,7 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 			{
 				case ERigVMRegisterType::Plain:
 				{
-					TArray<uint8> View;
+					FRigVMByteArray View;
 					View.Append(&Data[Register.GetFirstAllocatedByte()], Register.GetAllocatedBytes());
 					Ar << View;
 					break;

@@ -100,8 +100,6 @@ enum class ERigVMRegisterType : uint8
 	String, // FString
 	Name, // FName
 	Struct, // Any USTRUCT
-	Dynamic, // A dynamic register with fixed elements
-	DynamicDynamic, // A dynamic register with dynamic
 	Invalid
 };
 
@@ -132,6 +130,7 @@ struct RIGVM_API FRigVMRegister
 		, Name(NAME_None)
 		, ScriptStructIndex(INDEX_NONE)
 		, bIsArray(false)
+		, bIsDynamic(false)
 	{
 	}
 
@@ -181,6 +180,10 @@ struct RIGVM_API FRigVMRegister
 	UPROPERTY()
 	bool bIsArray;
 
+	// If true defines this register to use dynamic storage
+	UPROPERTY()
+	bool bIsDynamic;
+
 	bool Serialize(FArchive& Ar);
 	FORCEINLINE friend FArchive& operator<<(FArchive& Ar, FRigVMRegister& P)
 	{
@@ -189,7 +192,7 @@ struct RIGVM_API FRigVMRegister
 	}
 
 	// returns true if this register is using a dynamic array for storage
-	FORCEINLINE bool IsDynamic() const { return Type == ERigVMRegisterType::Dynamic || Type == ERigVMRegisterType::DynamicDynamic; }
+	FORCEINLINE bool IsDynamic() const { return bIsDynamic; }
 
 	// returns the current address of the register within the data byte array.
 	// this can change over time - as the register is moving through slices.
@@ -472,7 +475,7 @@ public:
 		uint8* Ptr = nullptr;
 		if (Register.IsDynamic()) 
 		{
-			TArray<uint8>* ArrayStorage = (TArray<uint8>*)Ptr;
+			FRigVMByteArray* ArrayStorage = (FRigVMByteArray*)Ptr;
 			Ptr = ArrayStorage->GetData();
 			Ptr = Ptr + Register.SliceIndex * Register.GetNumBytesPerSlice();
 		}
@@ -514,7 +517,7 @@ public:
 		uint8* Ptr = nullptr;
 		if (Register.IsDynamic())
 		{
-			TArray<uint8>* ArrayStorage = (TArray<uint8>*)Ptr;
+			FRigVMByteArray* ArrayStorage = (FRigVMByteArray*)Ptr;
 			Ptr = ArrayStorage->GetData();
 			Ptr = Ptr + Register.SliceIndex * Register.GetNumBytesPerSlice();
 		}
@@ -777,6 +780,20 @@ public:
 		return AddFixedPlainArray<T>(NAME_None, InArrayView, InSliceCount);
 	}
 
+	// Adds a new named register for a typed plain array from an array view (used by compiler)
+	template<class T>
+	FORCEINLINE int32 AddDynamicPlainArray(const FName& InNewName, const FRigVMFixedArray<T>& InArrayView, int32 InSliceCount = 1)
+	{
+		return AddDynamicPlainArray(InNewName, sizeof(T), InArrayView.Num(), (const uint8*)InArrayView.GetData(), InSliceCount);
+	}
+
+	// Adds a new unnamed register for a typed plain array from an array view.
+	template<class T>
+	FORCEINLINE int32 AddDynamicPlainArray(const FRigVMFixedArray<T>& InArrayView, int32 InSliceCount = 1)
+	{
+		return AddDynamicPlainArray<T>(NAME_None, InArrayView, InSliceCount);
+	}
+
 	// Adds a new named register for a typed plain value from a value reference.
 	template<class T>
 	FORCEINLINE int32 AddPlain(const FName& InNewName, const T& InValue, int32 InSliceCount = 1)
@@ -880,10 +897,21 @@ public:
 
 private:
 
-	// Adds a new named register for a plain array from a data pointer (used by compiler)
+	// Adds a new named register for a fixed plain array from a data pointer (used by compiler)
 	FORCEINLINE int32 AddFixedPlainArray(const FName& InNewName, int32 InElementSize, int32 InCount, const uint8* InDataPtr = nullptr, int32 InSliceCount = 1)
 	{
 		return Allocate(InNewName, InElementSize, InCount, InSliceCount, InDataPtr);
+	}
+
+	// Adds a new named register for a dynamic plain array from a data pointer (used by compiler)
+	FORCEINLINE int32 AddDynamicPlainArray(const FName& InNewName, int32 InElementSize, int32 InCount, const uint8* InDataPtr = nullptr, int32 InSliceCount = 1)
+	{
+		int32 Register = Allocate(InNewName, sizeof(FRigVMByteArray), 1, 1, nullptr);
+
+		FRigVMByteArray* Storage = (FRigVMByteArray*)GetData(Register);
+		// todo
+
+		return Register;
 	}
 
 	// Adds a new named register for a struct given a scriptstruct and a data pointer (used by compiler)

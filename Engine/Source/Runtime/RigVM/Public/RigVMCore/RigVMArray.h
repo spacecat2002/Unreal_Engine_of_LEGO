@@ -4,6 +4,8 @@
 
 #include "CoreMinimal.h"
 
+typedef TArray<uint8> FRigVMByteArray;
+
 /**
  * The FRigVMDynamicArray is used as an array wrapping a generic TArray.
  * FRigVMDynamicArray is copied by reference.
@@ -16,7 +18,7 @@ public:
 	typedef       T* RangedForIteratorType;
 	typedef const T* RangedForConstIteratorType;
 
-	FORCEINLINE FRigVMDynamicArray(TArray<uint8>& InStorage)
+	FORCEINLINE FRigVMDynamicArray(FRigVMByteArray& InStorage)
 	: Storage(InStorage)
 	{
 	}
@@ -204,7 +206,7 @@ private:
 		T::StaticStruct()->DestroyStruct(Data, Count);
 	}
 
-	TArray<uint8>& Storage;
+	FRigVMByteArray& Storage;
 };
 
 /**
@@ -271,7 +273,7 @@ public:
 	// returns true if a given Index is valid
 	FORCEINLINE bool IsValidIndex(int32 InIndex) const
 	{
-		return InIndex > INDEX_NONE && Index < Size;
+		return InIndex > INDEX_NONE && InIndex < Size;
 	}
 
 	FORCEINLINE const T& operator[](int32 InIndex) const
