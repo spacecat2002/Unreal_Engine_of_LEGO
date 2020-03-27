@@ -49,32 +49,32 @@ public:
 	{
 	}
 
-	FORCEINLINE bool operator == (const FRigVMOperand& InOther) const
+	FORCEINLINE_DEBUGGABLE bool operator == (const FRigVMOperand& InOther) const
 	{
 		return MemoryType == InOther.MemoryType &&
 			RegisterIndex == InOther.RegisterIndex &&
 			RegisterOffset == InOther.RegisterOffset;
 	}
 
-	FORCEINLINE bool operator != (const FRigVMOperand& InOther) const
+	FORCEINLINE_DEBUGGABLE bool operator != (const FRigVMOperand& InOther) const
 	{
 		return !(*this == InOther);
 	}
 
 	// returns the memory type of this argument
-	FORCEINLINE bool IsValid() const { return RegisterIndex != UINT16_MAX; }
+	FORCEINLINE_DEBUGGABLE bool IsValid() const { return RegisterIndex != UINT16_MAX; }
 
 	// returns the memory type of this argument
-	FORCEINLINE ERigVMMemoryType GetMemoryType() const { return MemoryType; }
+	FORCEINLINE_DEBUGGABLE ERigVMMemoryType GetMemoryType() const { return MemoryType; }
 
 	// returns the index of the container of this argument
-	FORCEINLINE int32 GetContainerIndex() const { return (int32)MemoryType; }
+	FORCEINLINE_DEBUGGABLE int32 GetContainerIndex() const { return (int32)MemoryType; }
 
 	// returns the index of the register of this argument
-	FORCEINLINE int32 GetRegisterIndex() const { return RegisterIndex == UINT16_MAX ? INDEX_NONE : (int32)RegisterIndex; }
+	FORCEINLINE_DEBUGGABLE int32 GetRegisterIndex() const { return RegisterIndex == UINT16_MAX ? INDEX_NONE : (int32)RegisterIndex; }
 
 	// returns the index of the register of this argument
-	FORCEINLINE int32 GetRegisterOffset() const { return RegisterOffset == UINT16_MAX ? INDEX_NONE : (int32)RegisterOffset; }
+	FORCEINLINE_DEBUGGABLE int32 GetRegisterOffset() const { return RegisterOffset == UINT16_MAX ? INDEX_NONE : (int32)RegisterOffset; }
 
 private:
 
@@ -123,7 +123,6 @@ struct RIGVM_API FRigVMRegister
 		, ByteIndex(INDEX_NONE)
 		, ElementSize(0)
 		, ElementCount(0)
-		, SliceIndex(0)
 		, SliceCount(1)
 		, AlignmentBytes(0)
 		, TrailingBytes(0)
@@ -149,10 +148,6 @@ struct RIGVM_API FRigVMRegister
 	// The number of elements in this register
 	UPROPERTY()
 	uint16 ElementCount;
-
-	// The currently active slice index
-	UPROPERTY()
-	uint16 SliceIndex;
 
 	// The number of slices (complete copies)
 	UPROPERTY()
@@ -185,76 +180,57 @@ struct RIGVM_API FRigVMRegister
 	bool bIsDynamic;
 
 	bool Serialize(FArchive& Ar);
-	FORCEINLINE friend FArchive& operator<<(FArchive& Ar, FRigVMRegister& P)
+	FORCEINLINE_DEBUGGABLE friend FArchive& operator<<(FArchive& Ar, FRigVMRegister& P)
 	{
 		P.Serialize(Ar);
 		return Ar;
 	}
 
 	// returns true if this register is using a dynamic array for storage
-	FORCEINLINE bool IsDynamic() const { return bIsDynamic; }
+	FORCEINLINE_DEBUGGABLE bool IsDynamic() const { return bIsDynamic; }
+
+	// returns true if this register is using a dynamic array for storage
+	FORCEINLINE_DEBUGGABLE bool IsNestedDynamic() const { return bIsDynamic && bIsArray; }
 
 	// returns the current address of the register within the data byte array.
 	// this can change over time - as the register is moving through slices.
 	// use GetFirstAllocatedByte to get the fixed first byte.
-	FORCEINLINE uint64 GetWorkByteIndex() const { return ByteIndex; }
-
-	// returns the first allocated byte in the data byte array
-	FORCEINLINE uint64 GetFirstAllocatedByte() const
-	{ 
-		if (IsDynamic())
+	FORCEINLINE_DEBUGGABLE uint64 GetWorkByteIndex(int32 InSliceIndex = INDEX_NONE) const
+	{
+		if (InSliceIndex == INDEX_NONE)
 		{
 			return ByteIndex;
 		}
-		return ByteIndex - (uint64)AlignmentBytes - ((uint64)SliceIndex * GetNumBytesPerSlice());
+		return ByteIndex + ((uint64)InSliceIndex * GetNumBytesPerSlice());
+	}
+
+	// returns the first allocated byte in the data byte array
+	FORCEINLINE_DEBUGGABLE uint64 GetFirstAllocatedByte() const
+	{ 
+		return ByteIndex - (uint64)AlignmentBytes;
 	}
 
 	// Returns the leading alignment bytes
-	FORCEINLINE uint8 GetAlignmentBytes() const { return AlignmentBytes; }
+	FORCEINLINE_DEBUGGABLE uint8 GetAlignmentBytes() const { return AlignmentBytes; }
 
 	// Returns true if the register stores more than one element
-	FORCEINLINE bool IsArray() const { return bIsArray || (ElementCount > 1); }
+	FORCEINLINE_DEBUGGABLE bool IsArray() const { return bIsArray || (ElementCount > 1); }
 
 	// Returns true if the register stores plain / shallow memory
-	FORCEINLINE bool IsPlain() const { return ScriptStructIndex == INDEX_NONE; }
+	FORCEINLINE_DEBUGGABLE bool IsPlain() const { return ScriptStructIndex == INDEX_NONE; }
 
 	// Returns the number of allocated bytes (including alignment + trailing bytes)
-	FORCEINLINE uint16 GetAllocatedBytes() const { return ElementCount * ElementSize * SliceCount + (uint16)AlignmentBytes + TrailingBytes; }
+	FORCEINLINE_DEBUGGABLE uint16 GetAllocatedBytes() const { return ElementCount * ElementSize * SliceCount + (uint16)AlignmentBytes + TrailingBytes; }
 
 	// Returns the number of bytes for a complete slice
-	FORCEINLINE uint16 GetNumBytesPerSlice() const { return ElementCount * ElementSize; }
+	FORCEINLINE_DEBUGGABLE uint16 GetNumBytesPerSlice() const { return ElementCount * ElementSize; }
 
 	// Returns the number of bytes for all slices
-	FORCEINLINE uint16 GetNumBytesAllSlices() const { return ElementCount * ElementSize * SliceCount; }
+	FORCEINLINE_DEBUGGABLE uint16 GetNumBytesAllSlices() const { return ElementCount * ElementSize * SliceCount; }
 
 	// Returns the total number of elements (elementcount * slicecount) in the register
-	FORCEINLINE uint32 GetTotalElementCount() const { return (uint32)ElementCount * (uint32)SliceCount; }
-	
-	// Moves the register address to the first slice
-	FORCEINLINE void MoveToFirstSlice() { ByteIndex -= SliceIndex * GetNumBytesPerSlice(); SliceIndex = 0; }
+	FORCEINLINE_DEBUGGABLE uint32 GetTotalElementCount() const { return (uint32)ElementCount * (uint32)SliceCount; }
 
-	// Moves the register address to the next slice. This also wraps around - so when the register reaches 
-	// the end it will move to the first slice again.
-	FORCEINLINE void MoveToNextSlice()
-	{
-		if(SliceCount <= 1)
-		{
-			return;
-		}
-		
-		if(SliceIndex == SliceCount - 1)
-		{
-			MoveToFirstSlice();
-		}
-		else
-		{
-			if (!IsDynamic())
-			{
-				ByteIndex += GetNumBytesPerSlice();
-			}
-			SliceIndex++;
-		}
-	}
 };
 
 typedef FRigVMFixedArray<FRigVMRegister> FRigVMRegisterArray;
@@ -281,7 +257,7 @@ public:
 	}
 
 	bool Serialize(FArchive& Ar);
-	FORCEINLINE friend FArchive& operator<<(FArchive& Ar, FRigVMRegisterOffset& P)
+	FORCEINLINE_DEBUGGABLE friend FArchive& operator<<(FArchive& Ar, FRigVMRegisterOffset& P)
 	{
 		P.Serialize(Ar);
 		return Ar;
@@ -298,8 +274,8 @@ public:
 
 	bool operator == (const FRigVMRegisterOffset& InOther) const;
 
-	FORCEINLINE ERigVMRegisterType GetType() const { return Type; }
-	FORCEINLINE FName GetCPPType() const { return CPPType; }
+	FORCEINLINE_DEBUGGABLE ERigVMRegisterType GetType() const { return Type; }
+	FORCEINLINE_DEBUGGABLE FName GetCPPType() const { return CPPType; }
 	uint16 GetElementSize() const;
 	UScriptStruct* GetScriptStruct() const;
 
@@ -373,16 +349,16 @@ public:
 	FRigVMMemoryContainer& operator= (const FRigVMMemoryContainer &InOther);
 
 	// returns the memory type of this container
-	FORCEINLINE ERigVMMemoryType GetMemoryType() const { return MemoryType;  }
+	FORCEINLINE_DEBUGGABLE ERigVMMemoryType GetMemoryType() const { return MemoryType;  }
 
 	// sets the memory type. should only be used when the container is empty
-	FORCEINLINE void SetMemoryType(ERigVMMemoryType InMemoryType) { MemoryType = InMemoryType; }
+	FORCEINLINE_DEBUGGABLE void SetMemoryType(ERigVMMemoryType InMemoryType) { MemoryType = InMemoryType; }
 
 	// returns true if this container supports name based lookup
-	FORCEINLINE bool SupportsNames() const { return bUseNameMap;  }
+	FORCEINLINE_DEBUGGABLE bool SupportsNames() const { return bUseNameMap;  }
 
 	// returns the number of registers in this container
-	FORCEINLINE int32 Num() const { return Registers.Num(); }
+	FORCEINLINE_DEBUGGABLE int32 Num() const { return Registers.Num(); }
 
 	// resets the container but maintains storage.
 	void Reset();
@@ -391,48 +367,48 @@ public:
 	void Empty();
 
 	// const accessor for a register based on index
-	FORCEINLINE const FRigVMRegister& operator[](int32 InIndex) const { return GetRegister(InIndex); }
+	FORCEINLINE_DEBUGGABLE const FRigVMRegister& operator[](int32 InIndex) const { return GetRegister(InIndex); }
 
 	// accessor for a register based on index
-	FORCEINLINE FRigVMRegister& operator[](int32 InIndex) { return GetRegister(InIndex); }
+	FORCEINLINE_DEBUGGABLE FRigVMRegister& operator[](int32 InIndex) { return GetRegister(InIndex); }
 
 	// const accessor for a register based on an argument
-	FORCEINLINE const FRigVMRegister& operator[](const FRigVMOperand& InArg) const { return GetRegister(InArg); }
+	FORCEINLINE_DEBUGGABLE const FRigVMRegister& operator[](const FRigVMOperand& InArg) const { return GetRegister(InArg); }
 
 	// accessor for a register based on an argument
-	FORCEINLINE FRigVMRegister& operator[](const FRigVMOperand& InArg) { return GetRegister(InArg); }
+	FORCEINLINE_DEBUGGABLE FRigVMRegister& operator[](const FRigVMOperand& InArg) { return GetRegister(InArg); }
 
 	// const accessor for a register based on a a name. note: only works if SupportsNames() == true
-	FORCEINLINE const FRigVMRegister& operator[](const FName& InName) const { return GetRegister(InName); }
+	FORCEINLINE_DEBUGGABLE const FRigVMRegister& operator[](const FName& InName) const { return GetRegister(InName); }
 
 	// accessor for a register based on a a name. note: only works if SupportsNames() == true
-	FORCEINLINE FRigVMRegister& operator[](const FName& InName) { return GetRegister(InName); }
+	FORCEINLINE_DEBUGGABLE FRigVMRegister& operator[](const FName& InName) { return GetRegister(InName); }
 
-	FORCEINLINE TArray<FRigVMRegister>::RangedForIteratorType      begin() { return Registers.begin(); }
-	FORCEINLINE TArray<FRigVMRegister>::RangedForConstIteratorType begin() const { return Registers.begin(); }
-	FORCEINLINE TArray<FRigVMRegister>::RangedForIteratorType      end() { return Registers.end(); }
-	FORCEINLINE TArray<FRigVMRegister>::RangedForConstIteratorType end() const { return Registers.end(); }
+	FORCEINLINE_DEBUGGABLE TArray<FRigVMRegister>::RangedForIteratorType      begin() { return Registers.begin(); }
+	FORCEINLINE_DEBUGGABLE TArray<FRigVMRegister>::RangedForConstIteratorType begin() const { return Registers.begin(); }
+	FORCEINLINE_DEBUGGABLE TArray<FRigVMRegister>::RangedForIteratorType      end() { return Registers.end(); }
+	FORCEINLINE_DEBUGGABLE TArray<FRigVMRegister>::RangedForConstIteratorType end() const { return Registers.end(); }
 
 	// const accessor for a register based on index
-	FORCEINLINE const FRigVMRegister& GetRegister(int32 InIndex) const { return Registers[InIndex]; }
+	FORCEINLINE_DEBUGGABLE const FRigVMRegister& GetRegister(int32 InIndex) const { return Registers[InIndex]; }
 
 	// accessor for a register based on index
-	FORCEINLINE FRigVMRegister& GetRegister(int32 InIndex) { return Registers[InIndex]; }
+	FORCEINLINE_DEBUGGABLE FRigVMRegister& GetRegister(int32 InIndex) { return Registers[InIndex]; }
 
 	// const accessor for a register based on an argument
-	FORCEINLINE const FRigVMRegister& GetRegister(const FRigVMOperand& InArg) const { return Registers[InArg.GetRegisterIndex()]; }
+	FORCEINLINE_DEBUGGABLE const FRigVMRegister& GetRegister(const FRigVMOperand& InArg) const { return Registers[InArg.GetRegisterIndex()]; }
 
 	// accessor for a register based on an argument
-	FORCEINLINE FRigVMRegister& GetRegister(const FRigVMOperand& InArg) { return Registers[InArg.GetRegisterIndex()]; }
+	FORCEINLINE_DEBUGGABLE FRigVMRegister& GetRegister(const FRigVMOperand& InArg) { return Registers[InArg.GetRegisterIndex()]; }
 
 	// const accessor for a register based on a a name. note: only works if SupportsNames() == true
-	FORCEINLINE const FRigVMRegister& GetRegister(const FName& InName) const { return Registers[GetIndex(InName)]; }
+	FORCEINLINE_DEBUGGABLE const FRigVMRegister& GetRegister(const FName& InName) const { return Registers[GetIndex(InName)]; }
 
 	// accessor for a register based on a a name. note: only works if SupportsNames() == true
-	FORCEINLINE FRigVMRegister& GetRegister(const FName& InName) { return Registers[GetIndex(InName)]; }
+	FORCEINLINE_DEBUGGABLE FRigVMRegister& GetRegister(const FName& InName) { return Registers[GetIndex(InName)]; }
 
 	bool Serialize(FArchive& Ar);
-	FORCEINLINE friend FArchive& operator<<(FArchive& Ar, FRigVMMemoryContainer& P)
+	FORCEINLINE_DEBUGGABLE friend FArchive& operator<<(FArchive& Ar, FRigVMMemoryContainer& P)
 	{
 		P.Serialize(Ar);
 		return Ar;
@@ -440,7 +416,7 @@ public:
 
 	// Returns an argument for a given register.
 	// This is typically used to store a light weight address for use within a VM.
-	FORCEINLINE FRigVMOperand GetOperand(int32 InRegisterIndex, int32 InRegisterOffset)
+	FORCEINLINE_DEBUGGABLE FRigVMOperand GetOperand(int32 InRegisterIndex, int32 InRegisterOffset)
 	{
 		ensure(Registers.IsValidIndex(InRegisterIndex));
 		return FRigVMOperand(MemoryType, InRegisterIndex, InRegisterOffset);
@@ -448,7 +424,7 @@ public:
 
 	// Returns an argument for a given register.
 	// This is typically used to store a light weight address for use within a VM.
-	FORCEINLINE FRigVMOperand GetOperand(int32 InRegisterIndex, const FString& InSegmentPath = FString(), int32 InArrayElement = INDEX_NONE)
+	FORCEINLINE_DEBUGGABLE FRigVMOperand GetOperand(int32 InRegisterIndex, const FString& InSegmentPath = FString(), int32 InArrayElement = INDEX_NONE)
 	{
 		ensure(Registers.IsValidIndex(InRegisterIndex));
 		UScriptStruct* ScriptStruct = nullptr;
@@ -468,214 +444,275 @@ public:
 		return GetOperand(InRegisterIndex, GetOrAddRegisterOffset(InRegisterIndex, ScriptStruct, InSegmentPath, InitialOffset, ElementSize));
 	}
 
-	// Returns the current const data pointer for a given register.
-	// Note: This refers to the active slice - and can change over time.
-	FORCEINLINE const uint8* GetData(const FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE) const
+private:
+	FORCEINLINE_DEBUGGABLE uint8* GetData_Internal(const FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE, int32* OutElementCount = nullptr) const
 	{
-		uint8* Ptr = nullptr;
-		if (Register.IsDynamic()) 
+		if (Register.ElementCount == 0)
 		{
-			FRigVMByteArray* ArrayStorage = (FRigVMByteArray*)Ptr;
-			Ptr = ArrayStorage->GetData();
-			Ptr = Ptr + Register.SliceIndex * Register.GetNumBytesPerSlice();
-		}
-		else
-		{
-			Ptr = (uint8*)&Data[Register.GetWorkByteIndex()];
-		}
-
-		if (InRegisterOffset != INDEX_NONE)
-		{
-			Ptr = RegisterOffsets[InRegisterOffset].GetData(Ptr);
-		}
-		return Ptr;
-	}
-
-	// Returns the current const data pointer for a given register index.
-	// Note: This refers to the active slice - and can change over time.
-	FORCEINLINE const uint8* GetData(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE) const
-	{
-		ensure(Registers.IsValidIndex(InRegisterIndex));
-		const FRigVMRegister& Register = Registers[InRegisterIndex];
-		return GetData(Register, InRegisterOffset);
-	}
-
-	// Returns the current data pointer for a given register.
-	// Note: This refers to the active slice - and can change over time.
-	FORCEINLINE uint8* GetData(FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE, bool bMoveToNextSlice = false)
-	{
-		if (Register.ElementCount <= 0)
-		{
+			if (OutElementCount)
+			{
+				*OutElementCount = 0;
+			}
 			return nullptr;
-		}
-
-		if(bMoveToNextSlice)
-		{
-			Register.MoveToNextSlice();
 		}
 
 		uint8* Ptr = nullptr;
 		if (Register.IsDynamic())
 		{
-			FRigVMByteArray* ArrayStorage = (FRigVMByteArray*)Ptr;
-			Ptr = ArrayStorage->GetData();
-			Ptr = Ptr + Register.SliceIndex * Register.GetNumBytesPerSlice();
+			if (InSliceIndex == INDEX_NONE)
+			{
+				InSliceIndex = 0;
+			}
+
+			Ptr = (uint8*)&Data[Register.GetWorkByteIndex()];
+
+			if (Register.IsNestedDynamic())
+			{
+				FRigVMNestedByteArray* ArrayStorage = (FRigVMNestedByteArray*)Ptr;
+				if (OutElementCount)
+				{
+					*OutElementCount = (*ArrayStorage)[InSliceIndex].Num() / Register.ElementSize;
+				}
+				Ptr = (uint8*)ArrayStorage->GetData();
+
+				if (Ptr)
+				{
+					Ptr = Ptr + InSliceIndex * sizeof(FRigVMByteArray);
+				}
+			}
+			else
+			{
+				FRigVMByteArray* ArrayStorage = (FRigVMByteArray*)Ptr;
+				if (OutElementCount)
+				{
+					*OutElementCount = ArrayStorage->Num() / Register.ElementSize;
+				}
+				Ptr = (uint8*)ArrayStorage->GetData();
+
+				if (Ptr)
+				{
+					Ptr = Ptr + InSliceIndex * Register.GetNumBytesPerSlice();
+				}
+			}
 		}
 		else
 		{
-			Ptr = (uint8*)&Data[Register.GetWorkByteIndex()];
+			Ptr = (uint8*)&Data[Register.GetWorkByteIndex(InSliceIndex)];
 		}
 
-		if (InRegisterOffset != INDEX_NONE)
+		if (InRegisterOffset != INDEX_NONE && Ptr != nullptr)
 		{
 			Ptr = RegisterOffsets[InRegisterOffset].GetData(Ptr);
 		}
 		return Ptr;
 	}
 
+public:
+
+	// Returns the current const data pointer for a given register.
+	// Note: This refers to the active slice - and can change over time.
+	FORCEINLINE_DEBUGGABLE const uint8* GetData(const FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE, int32* OutElementCount = nullptr) const
+	{
+		return GetData_Internal(Register, InRegisterOffset, InSliceIndex, OutElementCount);
+	}
+
+	// Returns the current const data pointer for a given register index.
+	// Note: This refers to the active slice - and can change over time.
+	FORCEINLINE_DEBUGGABLE const uint8* GetData(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE, int32* OutElementCount = nullptr) const
+	{
+		ensure(Registers.IsValidIndex(InRegisterIndex));
+		const FRigVMRegister& Register = Registers[InRegisterIndex];
+		return GetData(Register, InRegisterOffset, InSliceIndex, OutElementCount);
+	}
+
+	// Returns the current data pointer for a given register.
+	// Note: This refers to the active slice - and can change over time.
+	FORCEINLINE_DEBUGGABLE uint8* GetData(FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE, int32* OutElementCount = nullptr)
+	{
+		return GetData_Internal(Register, InRegisterOffset, InSliceIndex, OutElementCount);
+	}
+
 	// Returns the current data pointer for a given register index.
 	// Note: This refers to the active slice - and can change over time.
-	FORCEINLINE uint8* GetData(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, bool bMoveToNextSlice = false)
+	FORCEINLINE_DEBUGGABLE uint8* GetData(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE, int32* OutElementCount = nullptr)
 	{
 		ensure(Registers.IsValidIndex(InRegisterIndex));
 		FRigVMRegister& Register = Registers[InRegisterIndex];
-		return GetData(Register, InRegisterOffset, bMoveToNextSlice);
+		return GetData(Register, InRegisterOffset, InSliceIndex, OutElementCount);
 	}
 
 	// Returns the current const typed pointer for a given register.
 	// Note: This refers to the active slice - and can change over time.
 	template<class T>
-	FORCEINLINE const T* Get(const FRigVMRegister& InRegister, int32 InRegisterOffset = INDEX_NONE) const
+	FORCEINLINE_DEBUGGABLE const T* Get(const FRigVMRegister& InRegister, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE) const
 	{
-		return (const T*)GetData(InRegister, InRegisterOffset);
+		return (const T*)GetData(InRegister, InRegisterOffset, InSliceIndex);
 	}
 
 	// Returns the current const typed pointer for a given register index.
 	// Note: This refers to the active slice - and can change over time.
 	template<class T>
-	FORCEINLINE const T* Get(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE) const
+	FORCEINLINE_DEBUGGABLE const T* Get(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE) const
 	{
 		ensure(Registers.IsValidIndex(InRegisterIndex));
 		const FRigVMRegister& Register = Registers[InRegisterIndex];
-		return Get<T>(Register, InRegisterOffset);
+		return Get<T>(Register, InRegisterOffset, InSliceIndex);
 	}
 
 	// Returns the current const typed pointer for a given argument
 	// Note: This refers to the active slice - and can change over time.
 	template<class T>
-	FORCEINLINE const T* Get(const FRigVMOperand& InOperand) const
+	FORCEINLINE_DEBUGGABLE const T* Get(const FRigVMOperand& InOperand, int32 InSliceIndex = INDEX_NONE) const
 	{
-		return Get<T>(InOperand.GetRegisterIndex(), InOperand.GetRegisterOffset());
+		return Get<T>(InOperand.GetRegisterIndex(), InOperand.GetRegisterOffset(), InSliceIndex);
 	}
 
 	// Returns the current const typed reference for a given register
 	// Note: This refers to the active slice - and can change over time.
 	template<class T>
-	FORCEINLINE const T& GetRef(const FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE) const
+	FORCEINLINE_DEBUGGABLE const T& GetRef(const FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE) const
 	{
-		return *Get<T>(Register, InRegisterOffset);
+		return *Get<T>(Register, InRegisterOffset, InSliceIndex);
 	}
 
 	// Returns the current const typed reference for a given register index
 	// Note: This refers to the active slice - and can change over time.
 	template<class T>
-	FORCEINLINE const T& GetRef(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE) const
+	FORCEINLINE_DEBUGGABLE const T& GetRef(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE) const
 	{
-		return *Get<T>(InRegisterIndex, InRegisterOffset);
+		return *Get<T>(InRegisterIndex, InRegisterOffset, InSliceIndex);
 	}
 
 	// Returns the current const typed reference for a given argument
 	// Note: This refers to the active slice - and can change over time.
 	template<class T>
-	FORCEINLINE const T& GetRef(const FRigVMOperand& InOperand) const
+	FORCEINLINE_DEBUGGABLE const T& GetRef(const FRigVMOperand& InOperand, int32 InSliceIndex = INDEX_NONE) const
 	{
-		return GetRef<T>(InOperand.GetRegisterIndex(), InOperand.GetRegisterOffset());
+		return GetRef<T>(InOperand.GetRegisterIndex(), InOperand.GetRegisterOffset(), InSliceIndex);
 	}
 
 	// Returns the current typed pointer for a given register
 	// Note: This refers to the active slice - and can change over time.
 	template<class T>
-	FORCEINLINE T* Get(FRigVMRegister& InRegister, int32 InRegisterOffset = INDEX_NONE, bool bMoveToNextSlice = false)
+	FORCEINLINE_DEBUGGABLE T* Get(FRigVMRegister& InRegister, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE)
 	{
-		if(bMoveToNextSlice)
-		{
-			InRegister.MoveToNextSlice();
-		}
-		return (T*)GetData(InRegister, InRegisterOffset);
+		return (T*)GetData(InRegister, InRegisterOffset, InSliceIndex);
 	}
 
 	// Returns the current typed pointer for a given register index
 	// Note: This refers to the active slice - and can change over time.
 	template<class T>
-	FORCEINLINE T* Get(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, bool bMoveToNextSlice = false)
+	FORCEINLINE_DEBUGGABLE T* Get(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE)
 	{
 		ensure(Registers.IsValidIndex(InRegisterIndex));
 		FRigVMRegister& Register = Registers[InRegisterIndex];
-		return Get<T>(Register, InRegisterOffset, bMoveToNextSlice);
+		return Get<T>(Register, InRegisterOffset, InSliceIndex);
 	}
 
 	// Returns the current typed pointer for a given argument
 	// Note: This refers to the active slice - and can change over time.
 	template<class T>
-	FORCEINLINE T* Get(const FRigVMOperand& InOperand, bool bMoveToNextSlice = false)
+	FORCEINLINE_DEBUGGABLE T* Get(const FRigVMOperand& InOperand, int32 InSliceIndex = INDEX_NONE)
 	{
-		return Get<T>(InOperand.GetRegisterIndex(), InOperand.GetRegisterOffset(), bMoveToNextSlice);
+		return Get<T>(InOperand.GetRegisterIndex(), InOperand.GetRegisterOffset(), InSliceIndex);
 	}
 
 	// Returns the current typed reference for a given register
 	// Note: This refers to the active slice - and can change over time.
 	template<class T>
-	FORCEINLINE T& GetRef(FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE, bool bMoveToNextSlice = false)
+	FORCEINLINE_DEBUGGABLE T& GetRef(FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE)
 	{
-		return *Get<T>(Register, InRegisterOffset, bMoveToNextSlice);
+		return *Get<T>(Register, InRegisterOffset, InSliceIndex);
 	}
 
 	// Returns the current typed reference for a given register index
 	// Note: This refers to the active slice - and can change over time.
 	template<class T>
-	FORCEINLINE T& GetRef(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, bool bMoveToNextSlice = false)
+	FORCEINLINE_DEBUGGABLE T& GetRef(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE)
 	{
-		return *Get<T>(InRegisterIndex, InRegisterOffset, bMoveToNextSlice);
+		return *Get<T>(InRegisterIndex, InRegisterOffset, InSliceIndex);
 	}
 
 	// Returns the current typed reference for a given argument
 	// Note: This refers to the active slice - and can change over time.
 	template<class T>
-	FORCEINLINE T& GetRef(const FRigVMOperand& InOperand, bool bMoveToNextSlice = false)
+	FORCEINLINE_DEBUGGABLE T& GetRef(const FRigVMOperand& InOperand, int32 InSliceIndex = INDEX_NONE)
 	{
-		return GetRef<T>(InOperand.GetRegisterIndex(), InOperand.GetRegisterOffset(), bMoveToNextSlice);
+		return GetRef<T>(InOperand.GetRegisterIndex(), InOperand.GetRegisterOffset(), InSliceIndex);
 	}
 
 	// Returns an array view for all elements of the current slice for a given register.
 	template<class T>
-	FORCEINLINE FRigVMFixedArray<T> GetFixedArray(FRigVMRegister& InRegister, int32 InRegisterOffset = INDEX_NONE, bool bMoveToNextSlice = false)
+	FORCEINLINE_DEBUGGABLE FRigVMFixedArray<T> GetFixedArray(FRigVMRegister& InRegister, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE)
 	{
 		if (InRegisterOffset == INDEX_NONE)
 		{
-			return FRigVMFixedArray<T>((T*)GetData(InRegister, INDEX_NONE, bMoveToNextSlice), InRegister.ElementCount);
+			int32 ElementCount = InRegister.ElementCount;
+			uint8* Ptr = (uint8*)GetData(InRegister, INDEX_NONE, InSliceIndex, &ElementCount);
+			if (InRegister.IsNestedDynamic())
+			{
+				FRigVMByteArray* ArrayStorage = (FRigVMByteArray*)Ptr;
+				Ptr = (uint8*)ArrayStorage->GetData();
+			}
+			return FRigVMFixedArray<T>((T*)Ptr, ElementCount);
 		}
-		TArray<T>* StoredArray = (TArray<T>*)GetData(InRegister, InRegisterOffset, bMoveToNextSlice);
+		TArray<T>* StoredArray = (TArray<T>*)GetData(InRegister, InRegisterOffset, InSliceIndex);
 		return FRigVMFixedArray<T>(StoredArray->GetData(), StoredArray->Num());
 	}
 
 	// Returns an array view for all elements of the current slice for a given register index.
 	template<class T>
-	FORCEINLINE FRigVMFixedArray<T> GetFixedArray(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, bool bMoveToNextSlice = false)
+	FORCEINLINE_DEBUGGABLE FRigVMFixedArray<T> GetFixedArray(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE)
 	{
 		ensure(Registers.IsValidIndex(InRegisterIndex));
 		FRigVMRegister& Register = Registers[InRegisterIndex];
-		return GetFixedArray<T>(Register, InRegisterOffset, bMoveToNextSlice);
+		return GetFixedArray<T>(Register, InRegisterOffset, InSliceIndex);
 	}
 	
 	// Returns an array view for all elements of the current slice for a given argument.
 	template<class T>
-	FORCEINLINE FRigVMFixedArray<T> GetFixedArray(const FRigVMOperand& InOperand, bool bMoveToNextSlice = false)
+	FORCEINLINE_DEBUGGABLE FRigVMFixedArray<T> GetFixedArray(const FRigVMOperand& InOperand, int32 InSliceIndex = INDEX_NONE)
 	{
-		return GetFixedArray<T>(InOperand.GetRegisterIndex(), InOperand.GetRegisterOffset(), bMoveToNextSlice);
+		return GetFixedArray<T>(InOperand.GetRegisterIndex(), InOperand.GetRegisterOffset(), InSliceIndex);
+	}
+
+	// Returns an array view for all elements of the current slice for a given register.
+	template<class T>
+	FORCEINLINE_DEBUGGABLE FRigVMDynamicArray<T> GetDynamicArray(FRigVMRegister& InRegister, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE)
+	{
+		if (InRegisterOffset == INDEX_NONE)
+		{
+			uint8* Ptr = (uint8*)GetData(InRegister, INDEX_NONE, InSliceIndex);
+			if (InRegister.IsNestedDynamic())
+			{
+				FRigVMByteArray* ArrayStorage = (FRigVMByteArray*)Ptr;
+				return FRigVMDynamicArray<T>(*ArrayStorage);
+			}
+			return FRigVMDynamicArray<T>(DefaultByteArray);
+		}
+		// todo
+		ensure(false);
+		return FRigVMDynamicArray<T>(DefaultByteArray);
+	}
+
+	// Returns an array view for all elements of the current slice for a given register index.
+	template<class T>
+	FORCEINLINE_DEBUGGABLE FRigVMDynamicArray<T> GetDynamicArray(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE)
+	{
+		ensure(Registers.IsValidIndex(InRegisterIndex));
+		FRigVMRegister& Register = Registers[InRegisterIndex];
+		return GetDynamicArray<T>(Register, InRegisterOffset, InSliceIndex);
+	}
+
+	// Returns an array view for all elements of the current slice for a given argument.
+	template<class T>
+	FORCEINLINE_DEBUGGABLE FRigVMDynamicArray<T> GetDynamicArray(const FRigVMOperand& InOperand, int32 InSliceIndex = INDEX_NONE)
+	{
+		return GetDynamicArray<T>(InOperand.GetRegisterIndex(), InOperand.GetRegisterOffset(), InSliceIndex);
 	}
 
 	// Returns the script struct used for a given register (can be nullptr for non-struct-registers).
-	FORCEINLINE UScriptStruct* GetScriptStruct(const FRigVMRegister& Register) const
+	FORCEINLINE_DEBUGGABLE UScriptStruct* GetScriptStruct(const FRigVMRegister& Register) const
 	{
 		if (Register.ScriptStructIndex != INDEX_NONE)
 		{
@@ -686,7 +723,7 @@ public:
 	}
 
 	// Returns the script struct used for a given register index (can be nullptr for non-struct-registers).
-	FORCEINLINE UScriptStruct* GetScriptStruct(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE) const
+	FORCEINLINE_DEBUGGABLE UScriptStruct* GetScriptStruct(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE) const
 	{
 		if (InRegisterOffset == INDEX_NONE)
 		{
@@ -727,7 +764,7 @@ public:
 
 	// Returns the index of a register based on the register name.
 	// Note: This only works if SupportsNames() == true
-	FORCEINLINE int32 GetIndex(const FName& InName) const
+	FORCEINLINE_DEBUGGABLE int32 GetIndex(const FName& InName) const
 	{
 		if (!bUseNameMap)
 		{
@@ -757,7 +794,7 @@ public:
 	}
 
 	// Returns true if a given name is available for a new register.
-	FORCEINLINE bool IsNameAvailable(const FName& InPotentialNewName) const
+	FORCEINLINE_DEBUGGABLE bool IsNameAvailable(const FName& InPotentialNewName) const
 	{
 		if (!bUseNameMap)
 		{
@@ -768,35 +805,49 @@ public:
 
 	// Adds a new named register for a typed plain array from an array view (used by compiler)
 	template<class T>
-	FORCEINLINE int32 AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<T> InArrayView, int32 InSliceCount = 1)
+	FORCEINLINE_DEBUGGABLE int32 AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<T> InArrayView, int32 InSliceCount = 1)
 	{
 		return AddFixedPlainArray(InNewName, sizeof(T), InArrayView.Num(), (const uint8*)InArrayView.GetData(), InSliceCount);
 	}
 
 	// Adds a new unnamed register for a typed plain array from an array view.
 	template<class T>
-	FORCEINLINE int32 AddFixedPlainArray(FRigVMFixedArray<T> InArrayView, int32 InSliceCount = 1)
+	FORCEINLINE_DEBUGGABLE int32 AddFixedPlainArray(FRigVMFixedArray<T> InArrayView, int32 InSliceCount = 1)
 	{
 		return AddFixedPlainArray<T>(NAME_None, InArrayView, InSliceCount);
 	}
 
 	// Adds a new named register for a typed plain array from an array view (used by compiler)
 	template<class T>
-	FORCEINLINE int32 AddDynamicPlainArray(const FName& InNewName, const FRigVMFixedArray<T>& InArrayView, int32 InSliceCount = 1)
+	FORCEINLINE_DEBUGGABLE int32 AddDynamicPlainArray(const FName& InNewName, const FRigVMFixedArray<T>& InArrayView, int32 InSliceCount = 1)
 	{
-		return AddDynamicPlainArray(InNewName, sizeof(T), InArrayView.Num(), (const uint8*)InArrayView.GetData(), InSliceCount);
+		return AddDynamicArray<T>(InNewName, InArrayView.Num(), true, InArrayView.GetData(), InSliceCount, ERigVMRegisterType::Plain);
 	}
 
 	// Adds a new unnamed register for a typed plain array from an array view.
 	template<class T>
-	FORCEINLINE int32 AddDynamicPlainArray(const FRigVMFixedArray<T>& InArrayView, int32 InSliceCount = 1)
+	FORCEINLINE_DEBUGGABLE int32 AddDynamicPlainArray(const FRigVMFixedArray<T>& InArrayView, int32 InSliceCount = 1)
 	{
 		return AddDynamicPlainArray<T>(NAME_None, InArrayView, InSliceCount);
 	}
 
+	// Adds a new named register for a typed plain array from an array view (used by compiler)
+	template<class T>
+	FORCEINLINE_DEBUGGABLE int32 AddDynamicPlainArray(const FName& InNewName, const TArray<T>& InArray, int32 InSliceCount = 1)
+	{
+		return AddDynamicPlainArray<T>(InNewName, FRigVMFixedArray<T>(InArray), InSliceCount);
+	}
+
+	// Adds a new unnamed register for a typed plain array from an array view.
+	template<class T>
+	FORCEINLINE_DEBUGGABLE int32 AddDynamicPlainArray(const TArray<T>& InArray, int32 InSliceCount = 1)
+	{
+		return AddDynamicPlainArray<T>(NAME_None, InArray, InSliceCount);
+	}
+
 	// Adds a new named register for a typed plain value from a value reference.
 	template<class T>
-	FORCEINLINE int32 AddPlain(const FName& InNewName, const T& InValue, int32 InSliceCount = 1)
+	FORCEINLINE_DEBUGGABLE int32 AddPlain(const FName& InNewName, const T& InValue, int32 InSliceCount = 1)
 	{
 		FRigVMFixedArray<T> ArrayView((T*)&InValue, 1);
 		return AddFixedPlainArray<T>(InNewName, ArrayView, InSliceCount);
@@ -804,14 +855,28 @@ public:
 
 	// Adds a new unnamed register for a typed plain value from a value reference.
 	template<class T>
-	FORCEINLINE int32 AddPlain(const T& InValue, int32 InSliceCount = 1)
+	FORCEINLINE_DEBUGGABLE int32 AddPlain(const T& InValue, int32 InSliceCount = 1)
 	{
 		return AddPlain<T>(NAME_None, InValue, InSliceCount);
 	}
 
+	// Adds a new named register for a typed plain value from a value reference.
+	template<class T>
+	FORCEINLINE_DEBUGGABLE int32 AddDynamicPlain(const FName& InNewName, const T& InValue, int32 InSliceCount = 1)
+	{
+		return AddDynamicArray<T>(InNewName, 1, false, &InValue, InSliceCount, ERigVMRegisterType::Plain);
+	}
+
+	// Adds a new unnamed register for a typed plain value from a value reference.
+	template<class T>
+	FORCEINLINE_DEBUGGABLE int32 AddDynamicPlain(const T& InValue, int32 InSliceCount = 1)
+	{
+		return AddDynamicPlain<T>(NAME_None, InValue, InSliceCount);
+	}
+
 	// Adds a new named register for a typed struct array given a value reference.
 	template<class T>
-	FORCEINLINE int32 AddFixedStructArray(const FName& InNewName, FRigVMFixedArray<T> InArrayView, int32 InSliceCount = 1)
+	FORCEINLINE_DEBUGGABLE int32 AddFixedStructArray(const FName& InNewName, FRigVMFixedArray<T> InArrayView, int32 InSliceCount = 1)
 	{
 		UScriptStruct* Struct = T::StaticStruct();
 		if (Struct == nullptr)
@@ -823,14 +888,14 @@ public:
 
 	// Adds a new named register for a typed struct array given a TArray
 	template<class T>
-	FORCEINLINE int32 AddFixedStructArray(FRigVMFixedArray<T> InArrayView, int32 InSliceCount = 1)
+	FORCEINLINE_DEBUGGABLE int32 AddFixedStructArray(FRigVMFixedArray<T> InArrayView, int32 InSliceCount = 1)
 	{
 		return AddFixedStructArray<T>(NAME_None, InArrayView, InSliceCount);
 	}
 
 	// Adds a new named register for a typed struct given a value reference
 	template<class T>
-	FORCEINLINE int32 AddStruct(const FName& InNewName, const T& InValue, int32 InSliceCount = 1)
+	FORCEINLINE_DEBUGGABLE int32 AddStruct(const FName& InNewName, const T& InValue, int32 InSliceCount = 1)
 	{
 		FRigVMFixedArray<T> ArrayView((T*)&InValue, 1);
 		return AddFixedStructArray<T>(InNewName, ArrayView, InSliceCount);
@@ -838,17 +903,10 @@ public:
 
 	// Adds a new unnamed register for a typed struct given a value reference
 	template<class T>
-	FORCEINLINE int32 AddStruct(const T& InValue, int32 InSliceCount = 1)
+	FORCEINLINE_DEBUGGABLE int32 AddStruct(const T& InValue, int32 InSliceCount = 1)
 	{
 		return AddStruct<T>(NAME_None, InValue, InSliceCount);
 	}
-
-	// Remove a register given its index
-	bool Remove(int32 InRegisterIndex);
-
-	// Remove a register given its name
-	// Note: This only works if SupportsNames() == true
-	bool Remove(const FName& InRegisterName);
 
 	// Remove a register given its index
 	// Note: This only works if SupportsNames() == true
@@ -857,27 +915,6 @@ public:
 	// Remove a register given its old name
 	// Note: This only works if SupportsNames() == true
 	FName Rename(const FName& InOldName, const FName& InNewName);
-
-	// Resize a register given its index
-	bool Resize(int32 InRegisterIndex, int32 InNewElementCount, int32 InNewSliceCount = 1);
-
-	// Resize a register given its name
-	// Note: This only works if SupportsNames() == true
-	bool Resize(const FName& InRegisterName, int32 InNewElementCount, int32 InNewSliceCount = 1);
-
-	// Changes the type of a register provided a new type and a data pointer.
-	// This can be used to store different content in a register for re-using the memory,
-	// but this only works for new elements smaller or of the same size (since the register can't grow).
-	bool ChangeRegisterType(int32 InRegisterIndex, ERigVMRegisterType InNewType, int32 InElementSize, const uint8* InDataPtr = nullptr, int32 InNewElementCount = 1, int32 InNewSliceCount = 1);
-
-	// Changes the type of a register provided a new type and a data pointer.
-	// This can be used to store different content in a register for re-using the memory,
-	// but this only works for new elements smaller or of the same size (since the register can't grow).
-	template<class T>
-	FORCEINLINE bool ChangeRegisterType(int32 InRegisterIndex, const T* InDataPtr = nullptr, int32 InNewElementCount = 1, int32 InNewSliceCount = 1)
-	{
-		return ChangeRegisterType(InRegisterIndex, ERigVMRegisterType::Plain, sizeof(T), (uint8*)InDataPtr, InNewElementCount, InNewSliceCount);
-	}
 
 	// Adds a register path and returns its index
 	int32 GetOrAddRegisterOffset(int32 InRegisterIndex, UScriptStruct* InScriptStruct, const FString& InSegmentPath, int32 InInitialOffset = 0, int32 InElementSize = 0);
@@ -908,13 +945,19 @@ private:
 
 
 	// Adds a new named register for a fixed plain array from a data pointer (used by compiler)
-	FORCEINLINE int32 AddFixedPlainArray(const FName& InNewName, int32 InElementSize, int32 InCount, const uint8* InDataPtr = nullptr, int32 InSliceCount = 1)
+	FORCEINLINE_DEBUGGABLE int32 AddFixedPlainArray(const FName& InNewName, int32 InElementSize, int32 InCount, const uint8* InDataPtr = nullptr, int32 InSliceCount = 1)
 	{
 		return Allocate(InNewName, InElementSize, InCount, InSliceCount, InDataPtr);
 	}
 
+	template<class T>
+	FORCEINLINE_DEBUGGABLE int32 AddDynamicArray(const FName& InNewName, int32 InCount, bool bIsArrayPerSlice, const T* InDataPtr = nullptr, int32 InSliceCount = 1, ERigVMRegisterType InType = ERigVMRegisterType::Plain)
+	{
+		return AddDynamicArray(InNewName, sizeof(T), InCount, bIsArrayPerSlice, (const uint8*)InDataPtr, InSliceCount, InType);
+	}
+
 	// Adds a new named register for a dynamic plain array from a data pointer (used by compiler)
-	FORCEINLINE int32 AddDynamicPlainArray(const FName& InNewName, int32 InElementSize, int32 InCount, bool bIsArrayPerSlice, const uint8* InDataPtr = nullptr, int32 InSliceCount = 1, ERigVMRegisterType InType = ERigVMRegisterType::Plain)
+	FORCEINLINE_DEBUGGABLE int32 AddDynamicArray(const FName& InNewName, int32 InElementSize, int32 InCount, bool bIsArrayPerSlice, const uint8* InDataPtr = nullptr, int32 InSliceCount = 1, ERigVMRegisterType InType = ERigVMRegisterType::Plain)
 	{
 		int32 Register = INDEX_NONE;
 		
@@ -924,17 +967,26 @@ private:
 			Registers[Register].Type = InType;
 			Registers[Register].bIsDynamic = true;
 			Registers[Register].bIsArray = bIsArrayPerSlice;
+			Registers[Register].ElementSize = InElementSize;
+			Registers[Register].ElementCount = InCount;
+			Registers[Register].SliceCount = InSliceCount;
 
-			FRigVMNestedByteArray& Storage = *(FRigVMNestedByteArray*)GetData(Register);
+			uint8* Ptr = (uint8*)&Data[Registers[Register].GetWorkByteIndex()];
+			FRigVMNestedByteArray& Storage = *(FRigVMNestedByteArray*)Ptr;
 			Storage.SetNum(InSliceCount);
 
 			for (int32 SliceIndex = 0; SliceIndex < InSliceCount; SliceIndex++)
 			{
-				Storage[SliceIndex].SetNumZeroed(InCount);
+				Storage[SliceIndex].SetNumZeroed(InCount * InElementSize);
 				if (InDataPtr)
 				{
 					Copy(Register, INDEX_NONE, ERigVMRegisterType::Plain, InDataPtr, Storage[SliceIndex].GetData(), InElementSize * InCount);
 				}
+			}
+
+			if (InDataPtr == nullptr)
+			{
+				Construct(Register);
 			}
 		}
 		else
@@ -943,21 +995,32 @@ private:
 			Registers[Register].Type = InType;
 			Registers[Register].bIsDynamic = true;
 			Registers[Register].bIsArray = bIsArrayPerSlice;
+			Registers[Register].ElementSize = InElementSize;
+			Registers[Register].ElementCount = InCount;
+			Registers[Register].SliceCount = InSliceCount;
 
-			FRigVMByteArray& Storage = *(FRigVMByteArray*)GetData(Register);
-			Storage.SetNumZeroed(InCount);
+			uint8* Ptr = (uint8*)&Data[Registers[Register].GetWorkByteIndex()];
+			FRigVMByteArray& Storage = *(FRigVMByteArray*)Ptr;
+
+			Storage.SetNumZeroed(InSliceCount * InElementSize);
 			if (InDataPtr)
 			{
-				Copy(Register, INDEX_NONE, ERigVMRegisterType::Plain, InDataPtr, Storage.GetData(), InElementSize * InCount);
+				for (int32 SliceIndex = 0; SliceIndex < InSliceCount; SliceIndex++)
+				{
+					Copy(Register, INDEX_NONE, ERigVMRegisterType::Plain, InDataPtr, &Storage[SliceIndex * InElementSize], InElementSize);
+				}
+			}
+			else
+			{
+				Construct(Register);
 			}
 		}
-
 
 		return Register;
 	}
 
 	// Adds a new named register for a struct given a scriptstruct and a data pointer (used by compiler)
-	FORCEINLINE int32 AddFixedStructArray(const FName& InNewName, UScriptStruct* InScriptStruct, int32 InCount, const uint8* InDataPtr = nullptr, int32 InSliceCount = 1)
+	FORCEINLINE_DEBUGGABLE int32 AddFixedStructArray(const FName& InNewName, UScriptStruct* InScriptStruct, int32 InCount, const uint8* InDataPtr = nullptr, int32 InSliceCount = 1)
 	{
 		int32 Register = Allocate(InNewName, InScriptStruct->GetStructureSize(), InCount, InSliceCount, nullptr, false);
 		if (Register == INDEX_NONE)
@@ -976,13 +1039,10 @@ private:
 		// copy values from the provided data
 		if (InDataPtr != nullptr)
 		{
-			Registers[Register].MoveToFirstSlice();
 			for (uint16 SliceIndex = 0; SliceIndex < Registers[Register].SliceCount; SliceIndex++)
 			{
-				InScriptStruct->CopyScriptStruct(GetData(Register), InDataPtr, InCount);
-				Registers[Register].MoveToNextSlice();
+				InScriptStruct->CopyScriptStruct(GetData(Register, INDEX_NONE, SliceIndex), InDataPtr, InCount);
 			}
-			Registers[Register].MoveToFirstSlice();
 		}
 
 		return Register;
@@ -1033,119 +1093,69 @@ private:
 	UPROPERTY(transient)
 	bool bEncounteredErrorDuringLoad;
 
+	static FRigVMByteArray DefaultByteArray;
+
 	friend class URigVM;
 	friend class URigVMCompiler;
 	friend struct FRigVMCompilerWorkData;
 };
 
 template<>
-FORCEINLINE bool FRigVMMemoryContainer::ChangeRegisterType(int32 InRegisterIndex, const FName* InDataPtr, int32 InNewElementCount, int32 InNewSliceCount)
-{
-	if (!ChangeRegisterType(InRegisterIndex, ERigVMRegisterType::Name, sizeof(FName), nullptr, InNewElementCount, InNewSliceCount))
-	{
-		return false;
-	}
-
-	if (InDataPtr)
-	{
-		Registers[InRegisterIndex].MoveToFirstSlice();
-		for (uint16 SliceIndex = 0; SliceIndex < Registers[InRegisterIndex].SliceCount; SliceIndex++)
-		{
-			FName* DataPtr = (FName*)GetData(InRegisterIndex);
-			for (int32 Index = 0; Index < InNewElementCount; Index++)
-			{
-				DataPtr[Index] = InDataPtr[Index];
-			}
-			Registers[InRegisterIndex].MoveToNextSlice();
-		}
-		Registers[InRegisterIndex].MoveToFirstSlice();
-	}
-
-	return true;
-}
-
-template<>
-FORCEINLINE bool FRigVMMemoryContainer::ChangeRegisterType(int32 InRegisterIndex, const FString* InDataPtr, int32 InNewElementCount, int32 InNewSliceCount)
-{
-	if (!ChangeRegisterType(InRegisterIndex, ERigVMRegisterType::String, sizeof(FString), nullptr, InNewElementCount, InNewSliceCount))
-	{
-		return false;
-	}
-
-	if (InDataPtr)
-	{
-		Registers[InRegisterIndex].MoveToFirstSlice();
-		for (uint16 SliceIndex = 0; SliceIndex < Registers[InRegisterIndex].SliceCount; SliceIndex++)
-		{
-			FString* DataPtr = (FString*)GetData(InRegisterIndex);
-			for (int32 Index = 0; Index < InNewElementCount; Index++)
-			{
-				DataPtr[Index] = InDataPtr[Index];
-			}
-			Registers[InRegisterIndex].MoveToNextSlice();
-		}
-		Registers[InRegisterIndex].MoveToFirstSlice();
-	}
-
-	return true;
-}
-
-template<>
-FORCEINLINE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<FRotator> InArrayView, int32 InSliceCount)
+FORCEINLINE_DEBUGGABLE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<FRotator> InArrayView, int32 InSliceCount)
 {
 	return AddFixedStructArray(InNewName, TBaseStructure<FRotator>::Get(), InArrayView.Num(), (uint8*)InArrayView.GetData(), InSliceCount);
 }
 
 template<>
-FORCEINLINE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<FQuat> InArrayView, int32 InSliceCount)
+FORCEINLINE_DEBUGGABLE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<FQuat> InArrayView, int32 InSliceCount)
 {
 	return AddFixedStructArray(InNewName, TBaseStructure<FQuat>::Get(), InArrayView.Num(), (uint8*)InArrayView.GetData(), InSliceCount);
 }
 
 template<>
-FORCEINLINE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<FTransform> InArrayView, int32 InSliceCount)
+FORCEINLINE_DEBUGGABLE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<FTransform> InArrayView, int32 InSliceCount)
 {
 	return AddFixedStructArray(InNewName, TBaseStructure<FTransform>::Get(), InArrayView.Num(), (uint8*)InArrayView.GetData(), InSliceCount);
 }
 
 template<>
-FORCEINLINE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<FLinearColor> InArrayView, int32 InSliceCount)
+FORCEINLINE_DEBUGGABLE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<FLinearColor> InArrayView, int32 InSliceCount)
 {
 	return AddFixedStructArray(InNewName, TBaseStructure<FLinearColor>::Get(), InArrayView.Num(), (uint8*)InArrayView.GetData(), InSliceCount);
 }
 
 template<>
-FORCEINLINE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<FColor> InArrayView, int32 InSliceCount)
+FORCEINLINE_DEBUGGABLE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<FColor> InArrayView, int32 InSliceCount)
 {
 	return AddFixedStructArray(InNewName, TBaseStructure<FColor>::Get(), InArrayView.Num(), (uint8*)InArrayView.GetData(), InSliceCount);
 }
 
 template<>
-FORCEINLINE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<FPlane> InArrayView, int32 InSliceCount)
+FORCEINLINE_DEBUGGABLE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<FPlane> InArrayView, int32 InSliceCount)
 {
 	return AddFixedStructArray(InNewName, TBaseStructure<FPlane>::Get(), InArrayView.Num(), (uint8*)InArrayView.GetData(), InSliceCount);
 }
 
 template<>
-FORCEINLINE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<FVector> InArrayView, int32 InSliceCount)
+FORCEINLINE_DEBUGGABLE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<FVector> InArrayView, int32 InSliceCount)
 {
 	return AddFixedStructArray(InNewName, TBaseStructure<FVector>::Get(), InArrayView.Num(), (uint8*)InArrayView.GetData(), InSliceCount);
 }
 
 template<>
-FORCEINLINE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<FVector2D> InArrayView, int32 InSliceCount)
+FORCEINLINE_DEBUGGABLE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<FVector2D> InArrayView, int32 InSliceCount)
 {
 	return AddFixedStructArray(InNewName, TBaseStructure<FVector2D>::Get(), InArrayView.Num(), (uint8*)InArrayView.GetData(), InSliceCount);
 }
 
 template<>
-FORCEINLINE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<FVector4> InArrayView, int32 InSliceCount)
+FORCEINLINE_DEBUGGABLE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<FVector4> InArrayView, int32 InSliceCount)
 {
 	return AddFixedStructArray(InNewName, TBaseStructure<FVector4>::Get(), InArrayView.Num(), (uint8*)InArrayView.GetData(), InSliceCount);
 }
 
 template<>
-FORCEINLINE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<FName> InArrayView, int32 InSliceCount)
+FORCEINLINE_DEBUGGABLE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<FName> InArrayView, int32 InSliceCount)
 {
 	int32 Register = Allocate(InNewName, sizeof(FName), InArrayView.Num(), InSliceCount, nullptr);
 	Registers[Register].Type = ERigVMRegisterType::Name;
@@ -1154,24 +1164,21 @@ FORCEINLINE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewNa
 
 	if (InArrayView.Num() > 0)
 	{
-		Registers[Register].MoveToFirstSlice();
 		for (uint16 SliceIndex = 0; SliceIndex < Registers[Register].SliceCount; SliceIndex++)
 		{
-			FName* DataPtr = (FName*)GetData(Register);
+			FName* DataPtr = (FName*)GetData(Register, INDEX_NONE, (int32)SliceIndex);
 			for (int32 Index = 0; Index < InArrayView.Num(); Index++)
 			{
 				DataPtr[Index] = InArrayView[Index];
 			}
-			Registers[Register].MoveToNextSlice();
 		}
-		Registers[Register].MoveToFirstSlice();
 	}
 
 	return Register;
 }
 
 template<>
-FORCEINLINE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<FString> InArrayView, int32 InSliceCount)
+FORCEINLINE_DEBUGGABLE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewName, FRigVMFixedArray<FString> InArrayView, int32 InSliceCount)
 {
 	int32 Register = Allocate(InNewName, sizeof(FString), InArrayView.Num(), InSliceCount, nullptr);
 	Registers[Register].Type = ERigVMRegisterType::String;
@@ -1180,17 +1187,14 @@ FORCEINLINE int32 FRigVMMemoryContainer::AddFixedPlainArray(const FName& InNewNa
 
 	if (InArrayView.Num() > 0)
 	{
-		Registers[Register].MoveToFirstSlice();
 		for (uint16 SliceIndex = 0; SliceIndex < Registers[Register].SliceCount; SliceIndex++)
 		{
-			FString* DataPtr = (FString*)GetData(Register);
+			FString* DataPtr = (FString*)GetData(Register, INDEX_NONE, (int32)SliceIndex);
 			for (int32 Index = 0; Index < InArrayView.Num(); Index++)
 			{
 				DataPtr[Index] = InArrayView[Index];
 			}
-			Registers[Register].MoveToNextSlice();
 		}
-		Registers[Register].MoveToFirstSlice();
 	}
 
 	return Register;

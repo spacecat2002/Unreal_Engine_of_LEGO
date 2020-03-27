@@ -6,6 +6,8 @@
 #include "UObject/Package.h"
 #include "RigVMModule.h"
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 bool FRigVMRegister::Serialize(FArchive& Ar)
 {
 	Ar.UsingCustomVersion(FAnimObjectVersion::GUID);
@@ -14,6 +16,8 @@ bool FRigVMRegister::Serialize(FArchive& Ar)
 	{
 		return false;
 	}
+
+	uint16 SliceIndex = 0;
 
 	Ar << Type;
 	Ar << ByteIndex;
@@ -36,14 +40,26 @@ bool FRigVMRegister::Serialize(FArchive& Ar)
 		{
 			bIsArray = false;
 		}
+
+		if (Ar.CustomVer(FAnimObjectVersion::GUID) >= FAnimObjectVersion::SerializeRigVMRegisterDynamicState)
+		{
+			Ar << bIsDynamic;
+		}
+		else
+		{
+			bIsDynamic = false;
+		}
 	}
 	else
 	{
 		Ar << bIsArray;
+		Ar << bIsDynamic;
 	}
 
 	return true;
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 bool FRigVMRegisterOffset::Serialize(FArchive& Ar)
 {
@@ -292,6 +308,11 @@ uint16 FRigVMRegisterOffset::GetElementSize() const
 	return ElementSize;
 }
 
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+FRigVMByteArray FRigVMMemoryContainer::DefaultByteArray;
+
 FRigVMMemoryContainer::FRigVMMemoryContainer(bool bInUseNames)
 	: bUseNameMap(bInUseNames)
 	, MemoryType(ERigVMMemoryType::Work)
@@ -344,15 +365,7 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 	{
 		for (int32 RegisterIndex = 0; RegisterIndex < Registers.Num(); RegisterIndex++)
 		{
-			Registers[RegisterIndex].MoveToFirstSlice();
 			Destroy(RegisterIndex);
-		}
-	}
-	else
-	{
-		for (int32 RegisterIndex = 0; RegisterIndex < Registers.Num(); RegisterIndex++)
-		{
-			Registers[RegisterIndex].MoveToFirstSlice();
 		}
 	}
 
@@ -392,7 +405,6 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 
 		for (int32 RegisterIndex = 0; RegisterIndex < Registers.Num(); RegisterIndex++)
 		{
-			Registers[RegisterIndex].MoveToFirstSlice();
 			Construct(RegisterIndex);
 		}
 
@@ -491,8 +503,6 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 			{
 				continue;
 			}
-
-			Register.MoveToFirstSlice();
 
 			switch(Register.Type)
 			{
@@ -648,6 +658,7 @@ bool FRigVMMemoryContainer::Copy(
 		return true;
 	}
 
+	// todo: copy between slices!
 	const uint8* SourcePtr = InSourceMemory->GetData(InSourceRegisterIndex, InSourceRegisterOffset);
 	uint8* TargetPtr = GetData(InTargetRegisterIndex, InTargetRegisterOffset);
 	uint16 NumBytes = Target.GetNumBytesPerSlice();
@@ -660,51 +671,6 @@ bool FRigVMMemoryContainer::Copy(
 	}
 
 	return Copy(InTargetRegisterIndex, InTargetRegisterOffset, TargetType, SourcePtr, TargetPtr, NumBytes);
-	/*
-	switch (TargetType)
-	{
-		case ERigVMRegisterType::Plain:
-		{
-			FMemory::Memcpy(TargetPtr, SourcePtr, NumBytes);
-			break;
-		}
-		case ERigVMRegisterType::Struct:
-		{
-			UScriptStruct* ScriptStruct = GetScriptStruct(InTargetRegisterIndex, InTargetRegisterOffset);
-			int32 NumStructs = NumBytes / ScriptStruct->GetStructureSize();
-			ScriptStruct->CopyScriptStruct(TargetPtr, SourcePtr, NumStructs);
-			break;
-		}
-		case ERigVMRegisterType::Name:
-		{
-			int32 NumNames = NumBytes / sizeof(FName);
-			FRigVMFixedArray<FName> TargetNames((FName*)TargetPtr, NumNames);
-			FRigVMFixedArray<FName> SourceNames((FName*)SourcePtr, NumNames);
-			for (int32 Index = 0; Index < NumNames; Index++)
-			{
-				TargetNames[Index] = SourceNames[Index];
-			}
-			break;
-		}
-		case ERigVMRegisterType::String:
-		{
-			int32 NumStrings = NumBytes / sizeof(FString);
-			FRigVMFixedArray<FString> TargetStrings((FString*)TargetPtr, NumStrings);
-			FRigVMFixedArray<FString> SourceStrings((FString*)SourcePtr, NumStrings);
-			for (int32 Index = 0; Index < NumStrings; Index++)
-			{
-				TargetStrings[Index] = SourceStrings[Index];
-			}
-			break;
-		}
-		case ERigVMRegisterType::Invalid:
-		{
-			return false;
-		}
-	}
-	
-	return true;
-	*/
 }
 
 bool FRigVMMemoryContainer::Copy(
@@ -773,13 +739,10 @@ int32 FRigVMMemoryContainer::Allocate(const FName& InNewName, int32 InElementSiz
 
 	if (InDataPtr != nullptr)
 	{
-		NewRegister.MoveToFirstSlice();
 		for (uint16 SliceIndex = 0; SliceIndex < NewRegister.SliceCount; SliceIndex++)
 		{
-			FMemory::Memcpy(&Data[NewRegister.GetWorkByteIndex()], InDataPtr, NewRegister.GetNumBytesPerSlice());
-			NewRegister.MoveToNextSlice();
+			FMemory::Memcpy(&Data[NewRegister.GetWorkByteIndex(SliceIndex)], InDataPtr, NewRegister.GetNumBytesPerSlice());
 		}
-		NewRegister.MoveToFirstSlice();
 	}
 
 	int32 RegisterIndex = Registers.Num();
@@ -808,45 +771,77 @@ bool FRigVMMemoryContainer::Construct(int32 InRegisterIndex, int32 InElementInde
 		return true;
 	}
 
-	switch (Register.Type)
+	int32 ElementIndex = InElementIndex == INDEX_NONE ? 0 : InElementIndex;
+	int32 ElementCount = InElementIndex == INDEX_NONE ? Register.GetTotalElementCount() : 1;
+	int32 NumSlices = 1;
+
+	uint8* TopDataPtr = &Data[Register.GetWorkByteIndex()];
+	if (Register.IsDynamic())
 	{
-		case ERigVMRegisterType::Struct:
+		if (Register.IsNestedDynamic())
 		{
-			int32 DataPtrIndex = InElementIndex == INDEX_NONE ? Register.GetWorkByteIndex() : Register.GetWorkByteIndex() + InElementIndex * Register.ElementSize;
-			uint8* DataPtr = &Data[DataPtrIndex];
-			int32 Count = InElementIndex == INDEX_NONE ? Register.GetTotalElementCount() : 1;
-
-			UScriptStruct* ScriptStruct = GetScriptStruct(InRegisterIndex);
-			ScriptStruct->InitializeStruct(DataPtr, Count);
-			break;
+			FRigVMNestedByteArray& Storage = *(FRigVMNestedByteArray*)TopDataPtr;
+			NumSlices = Storage.Num();
+			TopDataPtr = (uint8*)Storage.GetData();
 		}
-		case ERigVMRegisterType::String:
+		else
 		{
-			FString* DataPtr = (FString*)&Data[InElementIndex == INDEX_NONE ? Register.GetWorkByteIndex() : Register.GetWorkByteIndex() + InElementIndex * Register.ElementSize];
-			int32 Count = InElementIndex == INDEX_NONE ? Register.GetTotalElementCount() : 1;
+			FRigVMByteArray& Storage = *(FRigVMByteArray*)TopDataPtr;
+			ElementCount = Storage.Num() / Register.ElementSize;
+			TopDataPtr = Storage.GetData();
+		}
+	}
 
-			FMemory::Memzero(DataPtr, Count * Register.ElementSize);
-			for (int32 Index = 0; Index < Count; Index++)
+	for (int32 SliceIndex = 0; SliceIndex < NumSlices; SliceIndex++)
+	{
+		uint8* NestedDataPtr = TopDataPtr;
+		if (Register.IsNestedDynamic())
+		{
+			FRigVMByteArray& Storage = *(FRigVMByteArray*)TopDataPtr;
+			ElementCount = Storage.Num() / Register.ElementSize;
+			NestedDataPtr = Storage.GetData();
+		}
+
+		switch (Register.Type)
+		{
+			case ERigVMRegisterType::Struct:
 			{
-				DataPtr[Index] = FString();
+				uint8* DataPtr = NestedDataPtr + ElementIndex * Register.ElementSize;
+				UScriptStruct* ScriptStruct = GetScriptStruct(InRegisterIndex);
+				ScriptStruct->InitializeStruct(DataPtr, ElementCount);
+				break;
 			}
-			break;
-		}
-		case ERigVMRegisterType::Name:
-		{
-			FName* DataPtr = (FName*)&Data[InElementIndex == INDEX_NONE ? Register.GetWorkByteIndex() : Register.GetWorkByteIndex() + InElementIndex * Register.ElementSize];
-			int32 Count = InElementIndex == INDEX_NONE ? Register.GetTotalElementCount() : 1;
-
-			FMemory::Memzero(DataPtr, Count * Register.ElementSize);
-			for (int32 Index = 0; Index < Count; Index++)
+			case ERigVMRegisterType::String:
 			{
-				DataPtr[Index] = FName();
+				FString* DataPtr = (FString*)(NestedDataPtr + ElementIndex * Register.ElementSize);
+
+				FMemory::Memzero(DataPtr, ElementCount * Register.ElementSize);
+				for (int32 Index = 0; Index < ElementCount; Index++)
+				{
+					DataPtr[Index] = FString();
+				}
+				break;
 			}
-			break;
+			case ERigVMRegisterType::Name:
+			{
+				FName* DataPtr = (FName*)(NestedDataPtr + ElementIndex * Register.ElementSize);
+
+				FMemory::Memzero(DataPtr, ElementCount * Register.ElementSize);
+				for (int32 Index = 0; Index < ElementCount; Index++)
+				{
+					DataPtr[Index] = FName();
+				}
+break;
+			}
+			default:
+			{
+				return false;
+			}
 		}
-		default:
+
+		if (Register.IsNestedDynamic())
 		{
-			return false;
+			TopDataPtr = TopDataPtr + sizeof(FRigVMByteArray);
 		}
 	}
 
@@ -864,86 +859,105 @@ bool FRigVMMemoryContainer::Destroy(int32 InRegisterIndex, int32 InElementIndex)
 		return true;
 	}
 
-	if (InElementIndex == INDEX_NONE)
+	int32 ElementIndex = InElementIndex == INDEX_NONE ? 0 : InElementIndex;
+	int32 ElementCount = InElementIndex == INDEX_NONE ? Register.GetTotalElementCount() : 1;
+	int32 NumSlices = 1;
+
+	uint8* TopDataPtr = &Data[Register.GetWorkByteIndex()];
+	if (Register.IsDynamic())
 	{
-		Register.MoveToFirstSlice();
+		if (Register.IsNestedDynamic())
+		{
+			FRigVMNestedByteArray& Storage = *(FRigVMNestedByteArray*)TopDataPtr;
+			NumSlices = Storage.Num();
+			TopDataPtr = (uint8*)Storage.GetData();
+		}
+		else
+		{
+			FRigVMByteArray& Storage = *(FRigVMByteArray*)TopDataPtr;
+			ElementCount = Storage.Num() / Register.ElementSize;
+			TopDataPtr = Storage.GetData();
+		}
 	}
 
-	switch (Register.Type)
+	for (int32 SliceIndex = 0; SliceIndex < NumSlices; SliceIndex++)
 	{
-		case ERigVMRegisterType::Struct:
+		uint8* NestedDataPtr = TopDataPtr;
+		if (Register.IsNestedDynamic())
 		{
-			uint8* DataPtr = &Data[InElementIndex == INDEX_NONE ? Register.GetWorkByteIndex() : Register.GetWorkByteIndex() + InElementIndex * Register.ElementSize];
-			int32 Count = InElementIndex == INDEX_NONE ? Register.GetTotalElementCount() : 1;
-
-			UScriptStruct* ScriptStruct = GetScriptStruct(InRegisterIndex);
-			if (ScriptStruct)
-			{
-				ScriptStruct->DestroyStruct(DataPtr, Count);
-			}
-			else
-			{
-				FMemory::Memzero(DataPtr, Register.GetAllocatedBytes());
-			}
-			break;
+			FRigVMByteArray& Storage = *(FRigVMByteArray*)TopDataPtr;
+			ElementCount = Storage.Num() / Register.ElementSize;
+			NestedDataPtr = Storage.GetData();
 		}
-		case ERigVMRegisterType::String:
-		{
-			FString* DataPtr = (FString*)&Data[InElementIndex == INDEX_NONE ? Register.GetWorkByteIndex() : Register.GetWorkByteIndex() + InElementIndex * Register.ElementSize];
-			int32 Count = InElementIndex == INDEX_NONE ? Register.GetTotalElementCount() : 1;
 
-			for (int32 Index = 0; Index < Count; Index++)
-			{
-				DataPtr[Index] = FString();
-			}
-			break;
-		}
-		case ERigVMRegisterType::Name:
+		switch (Register.Type)
 		{
-			FName* DataPtr = (FName*)&Data[InElementIndex == INDEX_NONE ? Register.GetWorkByteIndex() : Register.GetWorkByteIndex() + InElementIndex * Register.ElementSize];
-			int32 Count = InElementIndex == INDEX_NONE ? Register.GetTotalElementCount() : 1;
+			case ERigVMRegisterType::Struct:
+			{
+				uint8* DataPtr = NestedDataPtr + ElementIndex * Register.ElementSize;
 
-			for (int32 Index = 0; Index < Count; Index++)
-			{
-				DataPtr[Index] = FName();
+				UScriptStruct* ScriptStruct = GetScriptStruct(InRegisterIndex);
+				if (ScriptStruct)
+				{
+					ScriptStruct->DestroyStruct(DataPtr, ElementCount);
+				}
+				else
+				{
+					FMemory::Memzero(DataPtr, Register.GetAllocatedBytes());
+				}
+				break;
 			}
-			break;
+			case ERigVMRegisterType::String:
+			{
+				FString* DataPtr = (FString*)(NestedDataPtr + ElementIndex * Register.ElementSize);
+
+				for (int32 Index = 0; Index < ElementCount; Index++)
+				{
+					DataPtr[Index] = FString();
+				}
+				break;
+			}
+			case ERigVMRegisterType::Name:
+			{
+				FName* DataPtr = (FName*)(NestedDataPtr + ElementIndex * Register.ElementSize);
+
+				for (int32 Index = 0; Index < ElementCount; Index++)
+				{
+					DataPtr[Index] = FName();
+				}
+				break;
+			}
+			default:
+			{
+				if (!Register.IsDynamic())
+				{
+					return false;
+				}
+			}
 		}
-		default:
+
+		if (Register.IsNestedDynamic())
 		{
-			return false;
+			((FRigVMByteArray*)TopDataPtr)->Empty();
+			TopDataPtr = TopDataPtr + sizeof(FRigVMByteArray);
+		}
+	}
+
+	if (Register.IsDynamic())
+	{
+		TopDataPtr = &Data[Register.GetWorkByteIndex()];
+
+		if (Register.IsNestedDynamic())
+		{
+			((FRigVMNestedByteArray*)TopDataPtr)->Empty();
+		}
+		else
+		{
+			((FRigVMByteArray*)TopDataPtr)->Empty();
 		}
 	}
 
 	return true;
-}
-
-bool FRigVMMemoryContainer::Remove(int32 InRegisterIndex)
-{
-	if (InRegisterIndex < 0 || InRegisterIndex >= Registers.Num())
-	{
-		return false;
-	}
-
-	Destroy(InRegisterIndex);
-
-	FRigVMRegister RegisterToRemove = Registers[InRegisterIndex];
-	Data.RemoveAt(RegisterToRemove.ByteIndex, RegisterToRemove.GetAllocatedBytes());
-	Registers.RemoveAt(InRegisterIndex);
-
-	for (int32 Index = InRegisterIndex; Index < Registers.Num(); Index++)
-	{
-		Registers[Index].ByteIndex -= RegisterToRemove.GetAllocatedBytes();
-	}
-
-	UpdateRegisters();
-	return true;
-}
-
-bool FRigVMMemoryContainer::Remove(const FName& InRegisterName)
-{
-	ensure(bUseNameMap);
-	return Remove(GetIndex(InRegisterName));
 }
 
 FName FRigVMMemoryContainer::Rename(int32 InRegisterIndex, const FName& InNewName)
@@ -975,129 +989,6 @@ FName FRigVMMemoryContainer::Rename(const FName& InOldName, const FName& InNewNa
 	}
 
 	return Rename(RegisterIndex, InNewName);
-}
-
-bool FRigVMMemoryContainer::Resize(int32 InRegisterIndex, int32 InNewElementCount, int32 InNewSliceCount)
-{
-	ensure(Registers.IsValidIndex(InRegisterIndex));
-	ensure(Registers[InRegisterIndex].TrailingBytes == 0);
-
-	if (InNewElementCount <= 0 || InNewSliceCount < 0)
-	{
-		return Remove(InRegisterIndex);
-	}
-
-	uint32 NewTotalCount = (uint32)InNewElementCount * (uint32)InNewSliceCount;
-	if (Registers[InRegisterIndex].GetTotalElementCount() == NewTotalCount)
-	{
-		return false;
-	}
-
-	FRigVMRegister& Register = Registers[InRegisterIndex];
-	Register.MoveToFirstSlice();
-
-	if (Register.GetTotalElementCount() > NewTotalCount) // shrink
-	{
-		int32 ElementsToRemove = Register.GetTotalElementCount() - NewTotalCount;
-		int32 NumBytesToRemove = Register.ElementSize * ElementsToRemove;
-		int32 FirstByteToRemove = Register.GetWorkByteIndex() + Register.ElementSize * NewTotalCount;
-
-		for (uint32 ElementIndex = NewTotalCount; ElementIndex < Register.GetTotalElementCount(); ElementIndex++)
-		{
-			Destroy(InRegisterIndex, (uint32)ElementIndex);
-		}
-
-		Data.RemoveAt(FirstByteToRemove, NumBytesToRemove);
-		Register.ElementCount = (uint32)InNewElementCount;
-		Register.SliceCount = (uint32)InNewSliceCount;
-
-		for (int32 RegisterIndex = InRegisterIndex + 1; RegisterIndex < Registers.Num(); RegisterIndex++)
-		{
-			Registers[RegisterIndex].ByteIndex -= NumBytesToRemove;
-		}
-	}
-	else // grow
-	{
-		int32 OldElementCount = Register.GetTotalElementCount();
-		int32 ElementsToAdd = NewTotalCount - Register.GetTotalElementCount();
-		int32 NumBytesToAdd = Register.ElementSize * ElementsToAdd;
-		int32 FirstByteToAdd = Register.GetWorkByteIndex() + Register.ElementSize * Register.GetTotalElementCount();
-
-		Data.InsertZeroed(FirstByteToAdd, NumBytesToAdd);
-		Register.ElementCount = (uint32)InNewElementCount;
-		Register.SliceCount = (uint32)InNewSliceCount;
-
-		for (uint32 ElementIndex = OldElementCount; ElementIndex < NewTotalCount; ElementIndex++)
-		{
-			if (!Construct(InRegisterIndex, (int32)ElementIndex))
-			{
-				break;
-			}
-		}
-
-		for (int32 RegisterIndex = InRegisterIndex + 1; RegisterIndex < Registers.Num(); RegisterIndex++)
-		{
-			Registers[RegisterIndex].ByteIndex += NumBytesToAdd;
-		}
-	}
-
-	UpdateRegisters();
-	return true;
-}
-
-bool FRigVMMemoryContainer::Resize(const FName& InRegisterName, int32 InNewElementCount, int32 InNewSliceCount)
-{
-	ensure(bUseNameMap);
-
-	int32 RegisterIndex = GetIndex(InRegisterName);
-	if (RegisterIndex == INDEX_NONE)
-	{
-		return false;
-	}
-
-	return Resize(RegisterIndex, InNewElementCount, InNewSliceCount);
-}
-
-bool FRigVMMemoryContainer::ChangeRegisterType(int32 InRegisterIndex, ERigVMRegisterType InNewType, int32 InElementSize, const uint8* InDataPtr, int32 InNewElementCount, int32 InNewSliceCount)
-{
-	ensure(Registers.IsValidIndex(InRegisterIndex));
-	
-	FRigVMRegister& Register = Registers[InRegisterIndex];
-	ensure(Register.AlignmentBytes == 0);
-	ensure(InNewType == ERigVMRegisterType::Name || InNewType == ERigVMRegisterType::String || InNewType == ERigVMRegisterType::Plain);
-
-	Register.MoveToFirstSlice();
-
-	if (Register.Type == InNewType && Register.ElementSize == InElementSize && Register.ElementCount == InNewElementCount && Register.SliceCount == InNewSliceCount)
-	{
-		return false;
-	}
-
-	Destroy(InRegisterIndex);
-
-	uint16 OldAllocatedBytes = Register.GetAllocatedBytes();
-	uint16 NewAllocatedBytes = (uint16)InElementSize * (uint16)InNewElementCount * (uint16)InNewSliceCount;
-	ensure(NewAllocatedBytes <= OldAllocatedBytes);
-
-	Register.Type = InNewType;
-	Register.ElementSize = (uint16)InElementSize;
-	Register.ElementCount = (uint16)InNewElementCount;
-	Register.SliceCount = (uint16)InNewSliceCount;
-	Register.TrailingBytes = OldAllocatedBytes - NewAllocatedBytes;
-
-	Construct(InRegisterIndex);
-
-	if (InDataPtr != nullptr)
-	{
-		for (int32 SliceIndex = 0; SliceIndex < Register.SliceCount; SliceIndex++)
-		{
-			FMemory::Memcpy(GetData(InRegisterIndex), InDataPtr, Register.GetNumBytesPerSlice());
-			Register.MoveToNextSlice();
-		}
-		Register.MoveToFirstSlice();
-	}
-
-	return true;
 }
 
 int32 FRigVMMemoryContainer::GetOrAddRegisterOffset(int32 InRegisterIndex, UScriptStruct* InScriptStruct, const FString& InSegmentPath, int32 InInitialOffset, int32 InElementSize)
@@ -1255,10 +1146,9 @@ void FRigVMMemoryContainer::UpdateRegisters()
 	{
 		FRigVMRegister& Register = Registers[RegisterIndex];
 		Register.ByteIndex += AlignmentShift;
-		Register.MoveToFirstSlice();
 
 		UScriptStruct* ScriptStruct = GetScriptStruct(RegisterIndex);
-		if (ScriptStruct != nullptr)
+		if (ScriptStruct != nullptr && !Register.IsDynamic())
 		{
 			UScriptStruct::ICppStructOps* TheCppStructOps = ScriptStruct->GetCppStructOps();
 			if (TheCppStructOps != NULL)

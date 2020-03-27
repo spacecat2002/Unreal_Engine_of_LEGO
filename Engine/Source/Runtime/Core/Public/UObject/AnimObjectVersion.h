@@ -32,6 +32,9 @@ struct CORE_API FAnimObjectVersion
 		// Notifies and sync markers now have Guids
 		NotifyAndSyncMarkerGuids,
 
+		// Serialized register dynamic state for RigVM
+		SerializeRigVMRegisterDynamicState,
+
 		// -----<new versions can be added above this line>-------------------------------------------------
 		VersionPlusOne,
 		LatestVersion = VersionPlusOne - 1

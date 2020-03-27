@@ -230,8 +230,8 @@ public:
 	}
 
 	// constructor from a typed TArray
-	FORCEINLINE FRigVMFixedArray(TArray<T>& InStorage)
-	: Data(InStorage.GetData())
+	FORCEINLINE FRigVMFixedArray(const TArray<T>& InStorage)
+	: Data((T*)InStorage.GetData())
 	, Size(InStorage.Num())
 	{
 	}
