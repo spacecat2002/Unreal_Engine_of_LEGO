@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "RigVMStatistics.h"
+#include "RigVMArray.h"
 #include "RigVMMemory.generated.h"
 
 /**
