@@ -642,7 +642,7 @@ private:
 		struct FAddSubjectPrimitiveOverflowedIndices& OverflowBuffer) const;
 
 	/** Will return if we should draw the static mesh for the shadow, and will perform lazy init of primitive if it wasn't visible */
-	bool ShouldDrawStaticMeshes(FViewInfo& InCurrentView, bool bInCustomDataRelevance, FPrimitiveSceneInfo* InPrimitiveSceneInfo);
+	bool ShouldDrawStaticMeshes(FViewInfo& InCurrentView, FPrimitiveSceneInfo* InPrimitiveSceneInfo);
 
 	bool ShouldDrawStaticMeshes_AnyThread(
 		FViewInfo& InCurrentView,

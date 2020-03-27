@@ -310,12 +310,6 @@ public:
 	/** The number of movable point lights for mobile */
 	int32 NumMobileMovablePointLights;
 
-	/** This indicate that we should call the GetCustomLOD function on the proxy instead of the generic implementation. */
-	bool bIsUsingCustomLODRules : 1;
-	
-	/** This indicate that we should call the GetCustomWholeSceneShadowLOD function on the proxy instead of the generic implementation. */
-	bool bIsUsingCustomWholeSceneShadowLODRules : 1;
-
 #if RHI_RAYTRACING
 	bool bDrawInGame : 1;
 	bool bShouldRenderInMainPass : 1;

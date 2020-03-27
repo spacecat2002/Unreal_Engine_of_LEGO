@@ -257,18 +257,9 @@ public:
 	/** Make sure we account for changes in the signature of GetStaticBatchElementVisibility() */
 	static CONSTEXPR uint32 NumBitsForVisibilityMask()
 	{		
-		return 8 * sizeof(decltype(((FInstancedStaticMeshVertexFactory*)nullptr)->GetStaticBatchElementVisibility(FSceneView(FSceneViewInitOptions()), nullptr)));
+		return 8 * sizeof(uint64);
 	}
 
-	/**
-	* Get a bitmask representing the visibility of each FMeshBatch element.
-	*/
-	virtual uint64 GetStaticBatchElementVisibility(const class FSceneView& View, const struct FMeshBatch* Batch, const void* ViewCustomData = nullptr) const override
-	{
-		const uint32 NumBits = NumBitsForVisibilityMask();
-		const uint32 NumElements = FMath::Min((uint32)Batch->Elements.Num(), NumBits);
-		return NumElements == NumBits ? ~0ULL : (1ULL << (uint64)NumElements) - 1ULL;
-	}
 #if ALLOW_DITHERED_LOD_FOR_INSTANCED_STATIC_MESHES
 	virtual bool SupportsNullPixelShader() const override { return false; }
 #endif

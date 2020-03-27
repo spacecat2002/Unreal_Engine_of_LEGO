@@ -1117,9 +1117,6 @@ public:
 protected:
 	friend class FSceneRenderer;
 
-	/** Custom data per primitives */
-	TArray<void*> PrimitivesCustomData; // Size == MaxPrimitive
-
 public:
 
 	static const int32 NumBufferedSubIsOccludedArrays = 2;
@@ -1299,9 +1296,6 @@ public:
 	/** Current ray tracing debug visualization mode */
 	FName CurrentRayTracingDebugVisualizationMode;
 #endif
-
-	/** Will return custom data associated with the specified primitive index.	*/
-	FORCEINLINE void* GetCustomData(int32 InPrimitiveSceneInfoIndex) const { return PrimitivesCustomData.IsValidIndex(InPrimitiveSceneInfoIndex) ? PrimitivesCustomData[InPrimitiveSceneInfoIndex] : nullptr; }
 };
 
 //////////////////////////////////////////////////////////////////////////

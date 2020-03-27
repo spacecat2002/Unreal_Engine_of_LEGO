@@ -2577,9 +2577,6 @@ public:
 	/** The static meshes in the scene. */
 	TSparseArray<FStaticMeshBatch*> StaticMeshes;
 
-	/** This sparse array is used just to track free indices for FStaticMeshBatch::BatchVisibilityId. */
-	TSparseArray<bool> StaticMeshBatchVisibility;
-
 	/** The exponential fog components in the scene. */
 	TArray<FExponentialHeightFogSceneInfo> ExponentialFogs;
 

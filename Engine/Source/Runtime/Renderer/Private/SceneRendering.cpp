@@ -2011,17 +2011,6 @@ IPooledRenderTarget* FViewInfo::GetTonemappingLUT(FRHICommandList& RHICmdList, c
 	return nullptr;
 }
 
-void FViewInfo::SetCustomData(const FPrimitiveSceneInfo* InPrimitiveSceneInfo, void* InCustomData)
-{
-	check(InPrimitiveSceneInfo != nullptr);
-
-	if (InCustomData != nullptr && PrimitivesCustomData[InPrimitiveSceneInfo->GetIndex()] != InCustomData)
-	{
-		check(PrimitivesCustomData.IsValidIndex(InPrimitiveSceneInfo->GetIndex()));
-		PrimitivesCustomData[InPrimitiveSceneInfo->GetIndex()] = InCustomData;
-	}
-}
-
 void FDisplayInternalsData::Setup(UWorld *World)
 {
 	DisplayInternalsCVarValue = 0;

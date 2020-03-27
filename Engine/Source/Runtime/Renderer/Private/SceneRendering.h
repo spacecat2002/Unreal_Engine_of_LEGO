@@ -59,11 +59,9 @@ public:
 	/** Visibility lists for static meshes that will use expensive CSM shaders. */
 	FSceneBitArray MobilePrimitiveCSMReceiverVisibilityMap;
 	FSceneBitArray MobileCSMStaticMeshVisibilityMap;
-	TArray<uint64, SceneRenderingAllocator> MobileCSMStaticBatchVisibility;
 
 	/** Visibility lists for static meshes that will use the non CSM shaders. */
 	FSceneBitArray MobileNonCSMStaticMeshVisibilityMap;
-	TArray<uint64, SceneRenderingAllocator> MobileNonCSMStaticBatchVisibility;
 
 	/** Initialization constructor. */
 	FMobileCSMVisibilityInfo() : bMobileDynamicCSMInUse(false), bAlwaysUseCSM(false)
@@ -911,10 +909,6 @@ public:
 	/** Will only contain relevant primitives for view and/or shadow */
 	TArray<FLODMask, SceneRenderingAllocator> PrimitivesLODMask;
 
-	/** An array of batch element visibility masks, valid only for meshes
-	 set visible in StaticMeshVisibilityMap. */
-	TArray<uint64,SceneRenderingAllocator> StaticMeshBatchVisibility;
-
 	/** The dynamic primitives with simple lights visible in this view. */
 	TArray<FPrimitiveSceneInfo*, SceneRenderingAllocator> VisibleDynamicPrimitivesWithSimpleLights;
 
@@ -1006,9 +1000,6 @@ public:
 
 	// Used by mobile renderer to determine whether static meshes will be rendered with CSM shaders or not.
 	FMobileCSMVisibilityInfo MobileCSMVisibilityInfo;
-
-	// Primitive CustomData
-	TArray<FMemStackBase, SceneRenderingAllocator> PrimitiveCustomDataMemStack; // Size == 1 global stack + 1 per visibility thread (if multithread)
 
 	/** Parameters for exponential height fog. */
 	FVector4 ExponentialFogParameters;
@@ -1356,18 +1347,6 @@ public:
 	// Get the range in DynamicMeshElements[] for a given PrimitiveIndex
 	// @return range (start is inclusive, end is exclusive)
 	FInt32Range GetDynamicMeshElementRange(uint32 PrimitiveIndex) const;
-
-	/** Set the custom data associated with a primitive scene info.	*/
-	void SetCustomData(const FPrimitiveSceneInfo* InPrimitiveSceneInfo, void* InCustomData);
-
-	/** Custom Data Memstack functions.	*/
-	FORCEINLINE FMemStackBase& GetCustomDataGlobalMemStack() { return PrimitiveCustomDataMemStack[0]; }
-	FORCEINLINE FMemStackBase& AllocateCustomDataMemStack() 
-	{ 
-		// Don't reallocate since we keep references in FRelevancePacket.
-		check(PrimitiveCustomDataMemStack.GetSlack() > 0); 
-		return *new(PrimitiveCustomDataMemStack) FMemStackBase(0);
-	}
 
 private:
 	// Cache of TEXTUREGROUP_World to create view's samplers on render thread.
@@ -1763,9 +1742,8 @@ protected:
 		FGlobalDynamicIndexBuffer& DynamicIndexBuffer,
 		FGlobalDynamicVertexBuffer& DynamicVertexBuffer,
 		FGlobalDynamicReadBuffer& DynamicReadBuffer,
-		const FPrimitiveViewMasks& HasDynamicMeshElementsMasks, 
-		const FPrimitiveViewMasks& HasDynamicEditorMeshElementsMasks, 
-		const FPrimitiveViewMasks& HasViewCustomDataMasks,
+		const FPrimitiveViewMasks& HasDynamicMeshElementsMasks,
+		const FPrimitiveViewMasks& HasDynamicEditorMeshElementsMasks,
 		FMeshElementCollector& Collector);
 
 	/** Initialized the fog constants for each view. */
