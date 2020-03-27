@@ -1384,18 +1384,13 @@ public:
 	// #dxr_todo UE-72159: remove resources from this set when SBT slot entries are replaced
 	Experimental::TSherwoodSet<void*> ReferencedD3D12ResourceSet;
 	TArray<TRefCountPtr<FD3D12Resource>> ReferencedD3D12Resources;
-	TArray<TRefCountPtr<FRHIResource>> ReferencedResources;
-	void AddResourceReference(FD3D12Resource* D3D12Resource, FRHIResource* Resource)
+	void AddResourceReference(FD3D12Resource* D3D12Resource)
 	{
 		bool bIsAlreadyInSet = false;
 		ReferencedD3D12ResourceSet.Add(D3D12Resource, &bIsAlreadyInSet);
 		if (!bIsAlreadyInSet)
 		{
 			ReferencedD3D12Resources.Add(D3D12Resource);
-			if (Resource)
-			{
-				ReferencedResources.Add(Resource);
-			}
 		}
 	}
 	void UpdateResidency(FD3D12CommandContext& CommandContext)
@@ -2085,7 +2080,7 @@ void FD3D12RayTracingGeometry::TransitionBuffers(FD3D12CommandContext& CommandCo
 	// Transition vertex and index resources..
 	if (RHIIndexBuffer)
 	{
-		FD3D12IndexBuffer* IndexBuffer = CommandContext.RetrieveObject<FD3D12IndexBuffer>(RHIIndexBuffer.GetReference());
+		FD3D12Buffer* IndexBuffer = CommandContext.RetrieveObject<FD3D12Buffer>(RHIIndexBuffer.GetReference());
 		if (IndexBuffer->GetResource()->RequiresResourceStateTracking())
 		{
 			FD3D12DynamicRHI::TransitionResource(CommandContext.CommandListHandle, IndexBuffer->GetResource(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, 0);
@@ -2095,7 +2090,7 @@ void FD3D12RayTracingGeometry::TransitionBuffers(FD3D12CommandContext& CommandCo
 	for (const FRayTracingGeometrySegment& Segment : Segments)
 	{
 		const FVertexBufferRHIRef& RHIVertexBuffer = Segment.VertexBuffer;
-		FD3D12VertexBuffer* VertexBuffer = CommandContext.RetrieveObject<FD3D12VertexBuffer>(RHIVertexBuffer.GetReference());
+		FD3D12Buffer* VertexBuffer = CommandContext.RetrieveObject<FD3D12Buffer>(RHIVertexBuffer.GetReference());
 		if (VertexBuffer->GetResource()->RequiresResourceStateTracking())
 		{
 			FD3D12DynamicRHI::TransitionResource(CommandContext.CommandListHandle, VertexBuffer->GetResource(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, 0);
@@ -2143,8 +2138,8 @@ void FD3D12RayTracingGeometry::BuildAccelerationStructure(FD3D12CommandContext& 
 
 	Descs.Reserve(Segments.Num());
 
-	FD3D12IndexBuffer* IndexBuffer = CommandContext.RetrieveObject<FD3D12IndexBuffer>(RHIIndexBuffer.GetReference());
-	FD3D12VertexBuffer* NullTransformBufferD3D12 = CommandContext.RetrieveObject<FD3D12VertexBuffer>(NullTransformBuffer.GetReference());
+	FD3D12Buffer* IndexBuffer = CommandContext.RetrieveObject<FD3D12Buffer>(RHIIndexBuffer.GetReference());
+	FD3D12Buffer* NullTransformBufferD3D12 = CommandContext.RetrieveObject<FD3D12Buffer>(NullTransformBuffer.GetReference());
 
 	for (const FRayTracingGeometrySegment& Segment : Segments)
 	{
@@ -2165,7 +2160,7 @@ void FD3D12RayTracingGeometry::BuildAccelerationStructure(FD3D12CommandContext& 
 			Desc.Flags |= D3D12_RAYTRACING_GEOMETRY_FLAG_NO_DUPLICATE_ANYHIT_INVOCATION;
 		}
 
-		FD3D12VertexBuffer* VertexBuffer = CommandContext.RetrieveObject<FD3D12VertexBuffer>(Segment.VertexBuffer.GetReference());
+		FD3D12Buffer* VertexBuffer = CommandContext.RetrieveObject<FD3D12Buffer>(Segment.VertexBuffer.GetReference());
 			   
 		if (GeometryType == D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES)
 		{
@@ -2433,7 +2428,7 @@ void FD3D12RayTracingScene::BuildAccelerationStructure(FD3D12CommandContext& Com
 			sizeof(D3D12_RAYTRACING_INSTANCE_DESC), InstanceBufferDesc.Width, BUF_UnorderedAccess, CreateInfo);
 
 		D3D12_RAYTRACING_INSTANCE_DESC* MappedData = (D3D12_RAYTRACING_INSTANCE_DESC*)Adapter->GetOwningRHI()->LockBuffer(
-			nullptr, InstanceBuffer.GetReference(), 0, InstanceBufferDesc.Width, RLM_WriteOnly);
+			nullptr, InstanceBuffer.GetReference(), InstanceBuffer->GetSize(), InstanceBuffer->GetUsage(), 0, InstanceBufferDesc.Width, RLM_WriteOnly);
 
 		check(MappedData);
 
@@ -2511,7 +2506,7 @@ void FD3D12RayTracingScene::BuildAccelerationStructure(FD3D12CommandContext& Com
 			TotalPrimitiveCount += Geometry->TotalPrimitiveCount * NumTransforms;
 		}
 
-		Adapter->GetOwningRHI()->UnlockBuffer(nullptr, InstanceBuffer.GetReference());
+		Adapter->GetOwningRHI()->UnlockBuffer(nullptr, InstanceBuffer.GetReference(), InstanceBuffer->GetUsage());
 
 		InstanceBuffer->GetResource()->UpdateResidency(CommandContext.CommandListHandle);
 
@@ -2622,8 +2617,6 @@ FD3D12RayTracingShaderTable* FD3D12RayTracingScene::FindOrCreateShaderTable(cons
 	FD3D12RayTracingShaderTable* CreatedShaderTable = new FD3D12RayTracingShaderTable();
 	ID3D12Device5* RayTracingDevice = Device->GetRayTracingDevice();
 
-	const uint32 GPUIndex = Device->GetGPUIndex();
-
 	const uint32 NumHitGroupSlots = Pipeline->bAllowHitGroupIndexing ? NumTotalSegments * ShaderSlotsPerGeometrySegment : 0;
 
 	checkf(Pipeline->MaxLocalRootSignatureSize >= sizeof(FHitGroupSystemParameters), TEXT("All local root signatures are expected to contain ray tracing system root parameters (2x root buffers + 4x root DWORD)"));
@@ -2664,7 +2657,7 @@ FD3D12RayTracingShaderTable* FD3D12RayTracingScene::FindOrCreateShaderTable(cons
 
 			const uint32 IndexStride = Geometry->IndexStride;
 
-			FD3D12IndexBuffer* IndexBuffer = FD3D12DynamicRHI::ResourceCast(Geometry->RHIIndexBuffer.GetReference(), GPUIndex);
+			FD3D12Buffer* IndexBuffer = FD3D12CommandContext::RetrieveObject<FD3D12Buffer>(Geometry->RHIIndexBuffer.GetReference(), Device);
 
 			// Here, we directly apply the vertex offset to the address but set the offset for index buffer using a RootConstant instead.
 			// Index Buffer has to be 4 bytes aligned.
@@ -2675,7 +2668,7 @@ FD3D12RayTracingShaderTable* FD3D12RayTracingScene::FindOrCreateShaderTable(cons
 
 			if (IndexBuffer)
 			{
-				CreatedShaderTable->AddResourceReference(IndexBuffer->ResourceLocation.GetResource(), IndexBuffer);
+				CreatedShaderTable->AddResourceReference(IndexBuffer->ResourceLocation.GetResource());
 			}
 
 			const uint32 NumSegments = Geometry->Segments.Num();
@@ -2683,8 +2676,8 @@ FD3D12RayTracingShaderTable* FD3D12RayTracingScene::FindOrCreateShaderTable(cons
 			{
 				const FRayTracingGeometrySegment& Segment = Geometry->Segments[SegmentIndex];
 
-				FD3D12VertexBuffer* VertexBuffer = FD3D12DynamicRHI::ResourceCast(Segment.VertexBuffer.GetReference(), GPUIndex);
-				CreatedShaderTable->AddResourceReference(VertexBuffer->ResourceLocation.GetResource(), VertexBuffer);
+				FD3D12Buffer* VertexBuffer = FD3D12CommandContext::RetrieveObject<FD3D12Buffer>(Segment.VertexBuffer.GetReference(), Device);
+				CreatedShaderTable->AddResourceReference(VertexBuffer->ResourceLocation.GetResource());
 
 				const D3D12_GPU_VIRTUAL_ADDRESS VertexBufferAddress = VertexBuffer->ResourceLocation.GetGPUVirtualAddress() + Segment.VertexBufferOffset;
 
@@ -2713,6 +2706,8 @@ FD3D12RayTracingShaderTable* FD3D12RayTracingScene::FindOrCreateShaderTable(cons
 			BaseInstanceIndex += Instance.NumTransforms;
 		}
 	}
+
+	const uint32 GPUIndex = Device->GetGPUIndex();
 
 	ShaderTables[GPUIndex].Add(Pipeline, CreatedShaderTable);
 
@@ -2874,14 +2869,14 @@ struct FD3D12RayTracingLocalResourceBinder
 
 		FMemory::Memcpy(MappedData, Data, DataSize);
 
-		ShaderTable->AddResourceReference(ResourceLocation.GetResource(), nullptr);
+		ShaderTable->AddResourceReference(ResourceLocation.GetResource());
 
 		return ResourceLocation.GetGPUVirtualAddress();
 	}
 
 	void AddResourceReference(FD3D12Resource* D3D12Resource, FRHIResource* RHIResource)
 	{
-		ShaderTable->AddResourceReference(D3D12Resource, RHIResource);
+		ShaderTable->AddResourceReference(D3D12Resource);
 	}
 
 	void AddResourceTransition(FD3D12ShaderResourceView* SRV)
