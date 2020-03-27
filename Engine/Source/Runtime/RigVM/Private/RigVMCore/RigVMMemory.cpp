@@ -623,8 +623,8 @@ bool FRigVMMemoryContainer::Copy(
 		case ERigVMRegisterType::Name:
 		{
 			int32 NumNames = NumBytes / sizeof(FName);
-			TArrayView<FName> TargetNames((FName*)TargetPtr, NumNames);
-			TArrayView<FName> SourceNames((FName*)SourcePtr, NumNames);
+			FRigVMFixedArray<FName> TargetNames((FName*)TargetPtr, NumNames);
+			FRigVMFixedArray<FName> SourceNames((FName*)SourcePtr, NumNames);
 			for (int32 Index = 0; Index < NumNames; Index++)
 			{
 				TargetNames[Index] = SourceNames[Index];
@@ -634,8 +634,8 @@ bool FRigVMMemoryContainer::Copy(
 		case ERigVMRegisterType::String:
 		{
 			int32 NumStrings = NumBytes / sizeof(FString);
-			TArrayView<FString> TargetStrings((FString*)TargetPtr, NumStrings);
-			TArrayView<FString> SourceStrings((FString*)SourcePtr, NumStrings);
+			FRigVMFixedArray<FString> TargetStrings((FString*)TargetPtr, NumStrings);
+			FRigVMFixedArray<FString> SourceStrings((FString*)SourcePtr, NumStrings);
 			for (int32 Index = 0; Index < NumStrings; Index++)
 			{
 				TargetStrings[Index] = SourceStrings[Index];
@@ -1099,32 +1099,32 @@ void FRigVMMemoryContainer::SetRegisterValueFromString(const FRigVMOperand& InOp
 		{
 			if (FCString::IsNumeric(*DefaultValue))
 			{
-				GetArray<uint8>(Register)[Index] = (uint8)FCString::Atoi(*DefaultValue);
+				GetFixedArray<uint8>(Register)[Index] = (uint8)FCString::Atoi(*DefaultValue);
 			}
 			else
 			{
-				GetArray<uint8>(Register)[Index] = (uint8)Enum->GetValueByNameString(DefaultValue);
+				GetFixedArray<uint8>(Register)[Index] = (uint8)Enum->GetValueByNameString(DefaultValue);
 			}
 		}
 		else if (InCPPType == TEXT("bool") && Register.GetNumBytesPerSlice() == sizeof(bool))
 		{
-			GetArray<bool>(Register)[Index] = (DefaultValue == TEXT("True")) || (DefaultValue == TEXT("true")) || (DefaultValue == TEXT("1"));
+			GetFixedArray<bool>(Register)[Index] = (DefaultValue == TEXT("True")) || (DefaultValue == TEXT("true")) || (DefaultValue == TEXT("1"));
 		}
 		else if (InCPPType == TEXT("int32") && Register.GetNumBytesPerSlice() == sizeof(int32))
 		{
-			GetArray<int32>(Register)[Index] = FCString::Atoi(*DefaultValue);
+			GetFixedArray<int32>(Register)[Index] = FCString::Atoi(*DefaultValue);
 		}
 		else if (InCPPType == TEXT("float") && Register.GetNumBytesPerSlice() == sizeof(float))
 		{
-			GetArray<float>(Register)[Index] = FCString::Atof(*DefaultValue);
+			GetFixedArray<float>(Register)[Index] = FCString::Atof(*DefaultValue);
 		}
 		else if (InCPPType == TEXT("FName") && Register.GetNumBytesPerSlice() == sizeof(FName))
 		{
-			GetArray<FName>(Register)[Index] = *DefaultValue;
+			GetFixedArray<FName>(Register)[Index] = *DefaultValue;
 		}
 		else if (InCPPType == TEXT("FString") && Register.GetNumBytesPerSlice() == sizeof(FString))
 		{
-			GetArray<FString>(Register)[Index] = *DefaultValue;
+			GetFixedArray<FString>(Register)[Index] = *DefaultValue;
 		}
 		else
 		{
@@ -1159,27 +1159,27 @@ TArray<FString> FRigVMMemoryContainer::GetRegisterValueAsString(const FRigVMOper
 		}
 		else if (const UEnum* Enum = Cast<const UEnum>(InCPPTypeObject))
 		{
-			DefaultValue = Enum->GetNameStringByValue((int64)GetArray<int32>(Register)[Index]);
+			DefaultValue = Enum->GetNameStringByValue((int64)GetFixedArray<int32>(Register)[Index]);
 		}
 		else if (InCPPType == TEXT("bool") && Register.GetNumBytesPerSlice() == sizeof(bool))
 		{
-			DefaultValue = GetArray<bool>(Register)[Index] ? TEXT("True") : TEXT("False");
+			DefaultValue = GetFixedArray<bool>(Register)[Index] ? TEXT("True") : TEXT("False");
 		}
 		else if (InCPPType == TEXT("int32") && Register.GetNumBytesPerSlice() == sizeof(int32))
 		{
-			DefaultValue = FString::FromInt(GetArray<int32>(Register)[Index]);
+			DefaultValue = FString::FromInt(GetFixedArray<int32>(Register)[Index]);
 		}
 		else if (InCPPType == TEXT("float") && Register.GetNumBytesPerSlice() == sizeof(float))
 		{
-			DefaultValue = FString::Printf(TEXT("%f"), GetArray<float>(Register)[Index]);
+			DefaultValue = FString::Printf(TEXT("%f"), GetFixedArray<float>(Register)[Index]);
 		}
 		else if (InCPPType == TEXT("FName") && Register.GetNumBytesPerSlice() == sizeof(FName))
 		{
-			DefaultValue = GetArray<FName>(Register)[Index].ToString();
+			DefaultValue = GetFixedArray<FName>(Register)[Index].ToString();
 		}
 		else if (InCPPType == TEXT("FString") && Register.GetNumBytesPerSlice() == sizeof(FString))
 		{
-			DefaultValue  = GetArray<FString>(Register)[Index];
+			DefaultValue  = GetFixedArray<FString>(Register)[Index];
 		}
 		else
 		{

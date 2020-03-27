@@ -404,7 +404,7 @@ public:
 	int32 FindEntryIndex(const FName& InEntryName) const;
 
 	// adds an execute operator given its function index operands
-	uint64 AddExecuteOp(uint16 InFunctionIndex, const TArrayView<FRigVMOperand>& InOperands);
+	uint64 AddExecuteOp(uint16 InFunctionIndex, const FRigVMOperandArray& InOperands);
 
 	// adds a zero operator to zero the memory of a given argument
 	uint64 AddZeroOp(const FRigVMOperand& InArg);
@@ -489,31 +489,31 @@ public:
 	}
 
 	// returns a list of operands at a given byte code index
-	FORCEINLINE TArrayView<FRigVMOperand> GetOperandsAt(uint64 InByteCodeIndex, uint16 InArgumentCount) const
+	FORCEINLINE FRigVMOperandArray GetOperandsAt(uint64 InByteCodeIndex, uint16 InArgumentCount) const
 	{
 		ensure(InByteCodeIndex >= 0 && InByteCodeIndex <= ByteCode.Num() - sizeof(FRigVMOperand) * InArgumentCount);
-		return TArrayView<FRigVMOperand>((FRigVMOperand*)(ByteCode.GetData() + InByteCodeIndex), InArgumentCount);
+		return FRigVMOperandArray((FRigVMOperand*)(ByteCode.GetData() + InByteCodeIndex), InArgumentCount);
 	}
 
 	// returns the operands for an execute operator / instruction at a given byte code index
-	FORCEINLINE TArrayView<FRigVMOperand> GetOperandsForExecuteOp(uint64 InByteCodeIndex) const
+	FORCEINLINE FRigVMOperandArray GetOperandsForExecuteOp(uint64 InByteCodeIndex) const
 	{
 		const FRigVMExecuteOp& ExecuteOp = GetOpAt<FRigVMExecuteOp>(InByteCodeIndex);
 		return GetOperandsAt(InByteCodeIndex + sizeof(FRigVMExecuteOp), ExecuteOp.GetOperandCount());
 	}
 
 	// returns the operands for a given execute instruction
-	FORCEINLINE TArrayView<FRigVMOperand> GetOperandsForExecuteOp(const FRigVMInstruction& InInstruction) const
+	FORCEINLINE FRigVMOperandArray GetOperandsForExecuteOp(const FRigVMInstruction& InInstruction) const
 	{
 		const FRigVMExecuteOp& ExecuteOp = GetOpAt<FRigVMExecuteOp>(InInstruction);
 		return GetOperandsAt(InInstruction.ByteCodeIndex + sizeof(FRigVMExecuteOp), ExecuteOp.GetOperandCount());
 	}
 
 	// returns the raw data of the byte code
-	FORCEINLINE const TArrayView<uint8> GetByteCode() const
+	FORCEINLINE const FRigVMFixedArray<uint8> GetByteCode() const
 	{
 		const uint8* Data = ByteCode.GetData();
-		return TArrayView<uint8>((uint8*)Data, ByteCode.Num());
+		return FRigVMFixedArray<uint8>((uint8*)Data, ByteCode.Num());
 	}
 
 	// returns the statistics information

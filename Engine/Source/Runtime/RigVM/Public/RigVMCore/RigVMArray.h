@@ -219,6 +219,13 @@ public:
 	typedef       T* RangedForIteratorType;
 	typedef const T* RangedForConstIteratorType;
 
+	// default constructor
+	FORCEINLINE FRigVMFixedArray()
+	: Data(nullptr)
+	, Size(0)
+	{
+	}
+
 	// constructor from a typed TArray
 	FORCEINLINE FRigVMFixedArray(TArray<T>& InStorage)
 	: Data(InStorage.GetData())
@@ -243,7 +250,7 @@ public:
 	// copy constructor
 	FORCEINLINE FRigVMFixedArray(const FRigVMFixedArray& InOther)
 	: Data(InOther.Data)
-	: Size(InOther.Size)
+	, Size(InOther.Size)
 	{
 	}
 
@@ -295,6 +302,16 @@ public:
 	FORCEINLINE T* GetData()
 	{
 		return Data;
+	}
+
+	FORCEINLINE const FRigVMFixedArray Slice(int32 StartIndex, int32 Count) const
+	{
+		return FRigVMFixedArray((T*)GetData() + StartIndex, Count);
+	}
+
+	FORCEINLINE FRigVMFixedArray Slice(int32 StartIndex, int32 Count)
+	{
+		return FRigVMFixedArray(GetData() + StartIndex, Count);
 	}
 
 	FORCEINLINE RangedForIteratorType      begin()       { return GetData(); }
@@ -469,5 +486,18 @@ FORCEINLINE void FRigVMDynamicArray<FLinearColor>::ConstructElements(FLinearColo
 }
 
 FORCEINLINE void FRigVMDynamicArray<FLinearColor>::DestructElements(FLinearColor* Data, int32 Count)
+{
+}
+
+FORCEINLINE void FRigVMDynamicArray<FPlane>::ConstructElements(FPlane* Data, int32 Count)
+{
+	FMemory::Memzero(Data, sizeof(FPlane) * Count);
+	for (int32 Index = 0; Index < Count; Index++)
+	{
+		Data[Index] = FPlane();
+	}
+}
+
+FORCEINLINE void FRigVMDynamicArray<FPlane>::DestructElements(FPlane* Data, int32 Count)
 {
 }

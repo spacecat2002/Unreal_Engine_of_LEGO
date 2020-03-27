@@ -3,10 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "RigVMArray.h"
 #include "Blueprint/BlueprintSupport.h"
 
-typedef TArrayView<void*> FRigVMOperandMemory;
-typedef TArrayView<void*> FRigVMUserDataArray;
+typedef FRigVMFixedArray<void*> FRigVMOperandMemory;
+typedef FRigVMFixedArray<void*> FRigVMUserDataArray;
 typedef void (*FRigVMFunctionPtr)(const FName& RigVMOperatorName, int32 RigVMOperatorIndex, FRigVMOperandMemory RigVMOperandMemory, const FRigVMUserDataArray& RigVMUserData);
 
 /**

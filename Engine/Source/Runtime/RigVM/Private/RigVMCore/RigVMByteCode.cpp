@@ -287,7 +287,7 @@ uint64 FRigVMByteCode::AddChangeTypeOp(FRigVMOperand InArg, ERigVMRegisterType I
 	return AddOp(Op);
 }
 
-uint64 FRigVMByteCode::AddExecuteOp(uint16 InFunctionIndex, const TArrayView<FRigVMOperand>& InOperands)
+uint64 FRigVMByteCode::AddExecuteOp(uint16 InFunctionIndex, const FRigVMOperandArray& InOperands)
 {
 	FRigVMExecuteOp Op(InFunctionIndex, (uint8)InOperands.Num());
 	uint64 OpByteIndex = AddOp(Op);

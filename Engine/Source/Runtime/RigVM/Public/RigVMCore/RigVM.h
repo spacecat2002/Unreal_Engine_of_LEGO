@@ -131,12 +131,12 @@ public:
 	void CopyFrom(URigVM* InVM, bool bReferenceLiteralMemory = false, bool bReferenceByteCode = false);
 
 	// Initializes all execute ops and their memory.
-	bool Initialize(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> AdditionalArguments);
+	bool Initialize(FRigVMMemoryContainerPtrArray Memory, FRigVMFixedArray<void*> AdditionalArguments);
 
 	// Executes the VM.
 	// You can optionally provide external memory to the execution
 	// and provide optional additional operands.
-	bool Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> AdditionalArguments, const FName& InEntryName = NAME_None);
+	bool Execute(FRigVMMemoryContainerPtrArray Memory, FRigVMFixedArray<void*> AdditionalArguments, const FName& InEntryName = NAME_None);
 
 	// Executes the VM.
 	// You can optionally provide external memory to the execution
@@ -257,7 +257,7 @@ public:
 	{
 		if (InParameter.GetRegisterIndex() != INDEX_NONE)
 		{
-			return WorkMemoryPtr->GetArray<T>(InParameter.GetRegisterIndex())[InArrayIndex];
+			return WorkMemoryPtr->GetFixedArray<T>(InParameter.GetRegisterIndex())[InArrayIndex];
 		}
 		return DefaultValue;
 	}
@@ -283,7 +283,7 @@ public:
 	{
 		if (InParameter.GetRegisterIndex() != INDEX_NONE)
 		{
-			WorkMemoryPtr->GetArray<T>(InParameter.GetRegisterIndex())[InArrayIndex] = InNewValue;
+			WorkMemoryPtr->GetFixedArray<T>(InParameter.GetRegisterIndex())[InArrayIndex] = InNewValue;
 		}
 	}
 
@@ -447,7 +447,7 @@ private:
 	{
 		ensure(InParameterType != ERigVMParameterType::Invalid);
 		int32 ArraySize = InArraySize <= 0 ? 1 : InArraySize;
-		int32 RegisterIndex = WorkMemoryPtr->AddPlainArray(WorkMemoryPtr->SupportsNames() ? InName : NAME_None, InSize, ArraySize, InPtr, 1);
+		int32 RegisterIndex = WorkMemoryPtr->AddFixedPlainArray(WorkMemoryPtr->SupportsNames() ? InName : NAME_None, InSize, ArraySize, InPtr, 1);
 		if (RegisterIndex == INDEX_NONE)
 		{
 			return FRigVMParameter();
@@ -462,7 +462,7 @@ private:
 	{
 		ensure(InParameterType != ERigVMParameterType::Invalid);
 		int32 ArraySize = InArraySize <= 0 ? 1 : InArraySize;
-		int32 RegisterIndex = WorkMemoryPtr->AddStructArray(WorkMemoryPtr->SupportsNames() ? InName : NAME_None, InScriptStruct, ArraySize, InPtr, 1);
+		int32 RegisterIndex = WorkMemoryPtr->AddFixedStructArray(WorkMemoryPtr->SupportsNames() ? InName : NAME_None, InScriptStruct, ArraySize, InPtr, 1);
 		if (RegisterIndex == INDEX_NONE)
 		{
 			return FRigVMParameter();

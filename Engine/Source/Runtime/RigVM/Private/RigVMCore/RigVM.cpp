@@ -520,7 +520,7 @@ void URigVM::CacheMemoryPointersIfRequired(FRigVMMemoryContainerPtrArray InMemor
 	}
 }
 
-bool URigVM::Initialize(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> AdditionalArguments)
+bool URigVM::Initialize(FRigVMMemoryContainerPtrArray Memory, FRigVMFixedArray<void*> AdditionalArguments)
 {
 	ResolveFunctionsIfRequired();
 	RefreshInstructionsIfRequired();
@@ -650,8 +650,8 @@ bool URigVM::Initialize(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> 
 					case ERigVMRegisterType::Name:
 					{
 						int32 NumNames = NumBytes / sizeof(FName);
-						TArrayView<FName> TargetNames((FName*)TargetPtr, NumNames);
-						TArrayView<FName> SourceNames((FName*)SourcePtr, NumNames);
+						FRigVMFixedArray<FName> TargetNames((FName*)TargetPtr, NumNames);
+						FRigVMFixedArray<FName> SourceNames((FName*)SourcePtr, NumNames);
 						for (int32 Index = 0; Index < NumNames; Index++)
 						{
 							TargetNames[Index] = SourceNames[Index];
@@ -661,8 +661,8 @@ bool URigVM::Initialize(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> 
 					case ERigVMRegisterType::String:
 					{
 						int32 NumStrings = NumBytes / sizeof(FString);
-						TArrayView<FString> TargetStrings((FString*)TargetPtr, NumStrings);
-						TArrayView<FString> SourceStrings((FString*)SourcePtr, NumStrings);
+						FRigVMFixedArray<FString> TargetStrings((FString*)TargetPtr, NumStrings);
+						FRigVMFixedArray<FString> SourceStrings((FString*)SourcePtr, NumStrings);
 						for (int32 Index = 0; Index < NumStrings; Index++)
 						{
 							TargetStrings[Index] = SourceStrings[Index];
@@ -712,7 +712,7 @@ bool URigVM::Initialize(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> 
 	return true;
 }
 
-bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> AdditionalArguments, const FName& InEntryName)
+bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, FRigVMFixedArray<void*> AdditionalArguments, const FName& InEntryName)
 {
 	ResolveFunctionsIfRequired();
 	RefreshInstructionsIfRequired();
@@ -874,8 +874,8 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> Add
 					case ERigVMRegisterType::Name:
 					{
 						int32 NumNames = NumBytes / sizeof(FName);
-						TArrayView<FName> TargetNames((FName*)TargetPtr, NumNames);
-						TArrayView<FName> SourceNames((FName*)SourcePtr, NumNames);
+						FRigVMFixedArray<FName> TargetNames((FName*)TargetPtr, NumNames);
+						FRigVMFixedArray<FName> SourceNames((FName*)SourcePtr, NumNames);
 						for (int32 Index = 0; Index < NumNames; Index++)
 						{
 							TargetNames[Index] = SourceNames[Index];
@@ -885,8 +885,8 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> Add
 					case ERigVMRegisterType::String:
 					{
 						int32 NumStrings = NumBytes / sizeof(FString);
-						TArrayView<FString> TargetStrings((FString*)TargetPtr, NumStrings);
-						TArrayView<FString> SourceStrings((FString*)SourcePtr, NumStrings);
+						FRigVMFixedArray<FString> TargetStrings((FString*)TargetPtr, NumStrings);
+						FRigVMFixedArray<FString> SourceStrings((FString*)SourcePtr, NumStrings);
 						for (int32 Index = 0; Index < NumStrings; Index++)
 						{
 							TargetStrings[Index] = SourceStrings[Index];
@@ -947,8 +947,8 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> Add
 						}
 						case ERigVMRegisterType::String:
 						{
-							TArrayView<FString> StringsA = Memory[Op.A.GetContainerIndex()]->GetArray<FString>(Op.A.GetRegisterIndex());
-							TArrayView<FString> StringsB = Memory[Op.B.GetContainerIndex()]->GetArray<FString>(Op.B.GetRegisterIndex());
+							FRigVMFixedArray<FString> StringsA = Memory[Op.A.GetContainerIndex()]->GetFixedArray<FString>(Op.A.GetRegisterIndex());
+							FRigVMFixedArray<FString> StringsB = Memory[Op.B.GetContainerIndex()]->GetFixedArray<FString>(Op.B.GetRegisterIndex());
 
 							Result = true;
 							for (int32 StringIndex = 0; StringIndex < StringsA.Num(); StringIndex++)
@@ -1081,7 +1081,7 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> Add
 
 bool URigVM::Execute(const FName& InEntryName)
 {
-	return Execute(FRigVMMemoryContainerPtrArray(), TArrayView<void*>(), InEntryName);
+	return Execute(FRigVMMemoryContainerPtrArray(), FRigVMFixedArray<void*>(), InEntryName);
 }
 
 void URigVM::SetRegisterValueFromString(const FRigVMOperand& InOperand, const FString& InCPPType, const UObject* InCPPTypeObject, const TArray<FString>& InDefaultValues)

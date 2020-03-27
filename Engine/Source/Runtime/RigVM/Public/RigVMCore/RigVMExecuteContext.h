@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "RigVMArray.h"
 #include "RigVMExecuteContext.generated.h"
 
 /**
@@ -21,5 +22,5 @@ struct RIGVM_API FRigVMExecuteContext
 
 	FName EventName;
 
-	TArrayView<void*> OpaqueArguments;
+	FRigVMFixedArray<void*> OpaqueArguments;
 };
