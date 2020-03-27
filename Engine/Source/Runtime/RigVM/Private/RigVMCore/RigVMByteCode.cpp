@@ -35,6 +35,7 @@ void FRigVMInstructionArray::Empty()
 }
 
 FRigVMByteCode::FRigVMByteCode()
+	: NumInstructions(0)
 {
 }
 
