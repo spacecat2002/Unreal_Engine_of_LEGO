@@ -27,10 +27,14 @@ struct EKnownEventUids
 {
 	static const uint16 Flag_TwoByteUid	= 1 << 0;
 	static const uint16 _UidShift		= 1;
-	static const uint16 NewEvent		= 0;
-	static const uint16 LeaveScope		= 1;
-	static const uint16 EnterScope		= 2;
-	static const uint16 User			= 3; // Bump this when adding known events
+	enum : uint16
+	{
+		NewEvent						= 0,
+		LeaveScope,
+		EnterScope,
+		_WellKnownNum,
+	};
+	static const uint16 User			= _WellKnownNum;
 	static const uint16 Max				= (1 << (16 - _UidShift)) - 1;
 	static const uint16 Invalid			= Max;
 };
