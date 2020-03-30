@@ -437,7 +437,7 @@ public:
 private:
 	FORCEINLINE_DEBUGGABLE uint8* GetData_Internal(const FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE, int32* OutElementCount = nullptr) const
 	{
-		if (Register.ElementCount == 0)
+		if (Register.ElementCount == 0 && !Register.IsNestedDynamic())
 		{
 			if (OutElementCount)
 			{
@@ -733,7 +733,9 @@ public:
 		int32 InTargetRegisterIndex,
 		const FRigVMMemoryContainer* InSourceMemory = nullptr,
 		int32 InSourceRegisterOffset = INDEX_NONE,
-		int32 InTargetRegisterOffset = INDEX_NONE);
+		int32 InTargetRegisterOffset = INDEX_NONE,
+		int32 InSourceSliceIndex = 0,
+		int32 InTargetSliceIndex = 0);
 
 	// Copies the content of a source register to a target register.
 	// The source register can optionally be referencing a specific source memory container.
@@ -743,14 +745,18 @@ public:
 		const FName& InTargetName,
 		const FRigVMMemoryContainer* InSourceMemory = nullptr,
 		int32 InSourceRegisterOffset = INDEX_NONE,
-		int32 InTargetRegisterOffset = INDEX_NONE);
+		int32 InTargetRegisterOffset = INDEX_NONE,
+		int32 InSourceSliceIndex = 0,
+		int32 InTargetSliceIndex = 0);
 
 	// Copies the content of a source register to a target register.
 	// The source register can optionally be referencing a specific source memory container.
 	bool Copy(
 		const FRigVMOperand& InSourceOperand,
 		const FRigVMOperand& InTargetOperand,
-		const FRigVMMemoryContainer* InSourceMemory = nullptr);
+		const FRigVMMemoryContainer* InSourceMemory = nullptr,
+		int32 InSourceSliceIndex = 0,
+		int32 InTargetSliceIndex = 0);
 
 	// Returns the index of a register based on the register name.
 	// Note: This only works if SupportsNames() == true
@@ -870,6 +876,12 @@ public:
 	// Remove a register given its old name
 	// Note: This only works if SupportsNames() == true
 	FName Rename(const FName& InOldName, const FName& InNewName);
+
+	// Adds a register path and returns its index
+	int32 GetOrAddRegisterOffset(int32 InRegisterIndex, int32 InArrayElement = 0);
+
+	// Adds a register path and returns its index
+	int32 GetOrAddRegisterOffset(int32 InRegisterIndex, const FString& InSegmentPath, int32 InArrayElement = 0);
 
 	// Adds a register path and returns its index
 	int32 GetOrAddRegisterOffset(int32 InRegisterIndex, UScriptStruct* InScriptStruct, const FString& InSegmentPath, int32 InInitialOffset = 0, int32 InElementSize = 0);
@@ -1073,10 +1085,10 @@ private:
 	int32 Allocate(int32 InElementSize, int32 InElementCount, int32 InSliceCount, const uint8* InDataPtr = nullptr, bool bUpdateRegisters = true);
 
 	// Performs optional construction of data within a struct register
-	bool Construct(int32 InRegisterIndex, int32 InElementIndex = INDEX_NONE);
+	bool Construct(int32 InRegisterIndex, int32 InElementIndex = INDEX_NONE, int32 InSliceIndex = INDEX_NONE);
 
 	// Performs optional destruction of data within a struct register
-	bool Destroy(int32 InRegisterIndex, int32 InElementIndex = INDEX_NONE);
+	bool Destroy(int32 InRegisterIndex, int32 InElementIndex = INDEX_NONE, int32 InSliceIndex = INDEX_NONE);
 
 	// Fills a register with zero memory
 	void FillWithZeroes(int32 InRegisterIndex);
