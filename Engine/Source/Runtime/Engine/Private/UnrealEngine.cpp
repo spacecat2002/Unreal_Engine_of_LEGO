@@ -3837,7 +3837,7 @@ int InfiniteRecursionFunction(int B)
 void CauseCrtError()
 {
 #if PLATFORM_WINDOWS
-	printf((const char*)nullptr);
+	printf((const char*)nullptr); //-V575
 #endif
 }
 
