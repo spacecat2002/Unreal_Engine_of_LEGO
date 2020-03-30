@@ -403,9 +403,12 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 		
 		Data.SetNumZeroed(TotalBytes);
 
-		for (int32 RegisterIndex = 0; RegisterIndex < Registers.Num(); RegisterIndex++)
+		if (!bEncounteredErrorDuringLoad)
 		{
-			Construct(RegisterIndex);
+			for (int32 RegisterIndex = 0; RegisterIndex < Registers.Num(); RegisterIndex++)
+			{
+				Construct(RegisterIndex);
+			}
 		}
 
 		for (const FRigVMRegister& Register : Registers)
