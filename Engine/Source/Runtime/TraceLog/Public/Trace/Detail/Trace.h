@@ -116,6 +116,11 @@ namespace Trace
 	TRACE_PRIVATE_LOG_PRELUDE(ScopedEnter, LoggerName, EventName, ChannelsExpr, ##__VA_ARGS__) \
 		PREPROCESSOR_JOIN(TheScope, __LINE__).SetActive(), LogScope
 
+#define TRACE_PRIVATE_LOG_SCOPED_T(LoggerName, EventName, ChannelsExpr, ...) \
+	Trace::Private::FScopedStampedLogScope PREPROCESSOR_JOIN(TheScope, __LINE__); \
+	TRACE_PRIVATE_LOG_PRELUDE(ScopedStampedEnter, LoggerName, EventName, ChannelsExpr, ##__VA_ARGS__) \
+		PREPROCESSOR_JOIN(TheScope, __LINE__).SetActive(), LogScope
+
 #else
 
 #define TRACE_PRIVATE_CHANNEL(ChannelName)

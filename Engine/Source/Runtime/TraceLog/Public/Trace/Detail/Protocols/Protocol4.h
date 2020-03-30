@@ -30,8 +30,10 @@ struct EKnownEventUids
 	enum : uint16
 	{
 		NewEvent						= 0,
-		LeaveScope,
 		EnterScope,
+		EnterScope_T,
+		LeaveScope,
+		LeaveScope_T,
 		_WellKnownNum,
 	};
 	static const uint16 User			= _WellKnownNum;

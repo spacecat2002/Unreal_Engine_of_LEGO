@@ -93,7 +93,7 @@ uint64 TimeGetFrequency()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-uint64 TimeGetTimestamp()
+TRACELOG_API uint64 TimeGetTimestamp()
 {
 	return mach_absolute_time();
 }

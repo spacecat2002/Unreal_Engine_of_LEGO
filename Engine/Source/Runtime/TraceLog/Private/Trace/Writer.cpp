@@ -37,6 +37,10 @@ UE_TRACE_EVENT_BEGIN($Trace, Timing, NoSync|Important)
 	UE_TRACE_EVENT_FIELD(uint64, CycleFrequency)
 UE_TRACE_EVENT_END()
 
+UE_TRACE_EVENT_BEGIN($Trace, ThreadTiming, NoSync|Important)
+	UE_TRACE_EVENT_FIELD(uint64, BaseTimestamp)
+UE_TRACE_EVENT_END()
+
 #define TRACE_PRIVATE_PERF 0
 #if TRACE_PRIVATE_PERF
 UE_TRACE_EVENT_BEGIN($Trace, WorkerThread)
@@ -53,25 +57,9 @@ UE_TRACE_EVENT_END()
 
 
 ////////////////////////////////////////////////////////////////////////////////
-static uint64 GStartCycle = 0;
-
-////////////////////////////////////////////////////////////////////////////////
-inline uint64 Writer_GetTimestamp()
-{
-	return TimeGetTimestamp() - GStartCycle;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void Writer_InitializeTiming()
-{
-	GStartCycle = TimeGetTimestamp();
-}
-
-
-
-////////////////////////////////////////////////////////////////////////////////
 static bool						GInitialized;		// = false;
-static FWriteBuffer				GNullWriteBuffer	= { 0, 0, 0, nullptr, nullptr, (uint8*)&GNullWriteBuffer };
+static uint64					GStartCycle;		// = 0;
+static FWriteBuffer				GNullWriteBuffer	= { {}, 0, 0, 0, 0, nullptr, nullptr, (uint8*)&GNullWriteBuffer };
 thread_local FWriteBuffer*		GTlsWriteBuffer		= &GNullWriteBuffer;
 TRACELOG_API uint32 volatile	GLogSerial;			// = 0;
 
@@ -308,6 +296,12 @@ static FWriteBuffer* Writer_NextBufferInternal(uint32 PageSize)
 	if (CurrentBuffer == &GNullWriteBuffer)
 	{
 		NextBuffer->ThreadId = uint16(GTlsContext.GetThreadId());
+		NextBuffer->PrevTimestamp = TimeGetTimestamp();
+
+		GTlsWriteBuffer = NextBuffer;
+
+		UE_TRACE_LOG($Trace, ThreadTiming, TraceLogChannel)
+			<< ThreadTiming.BaseTimestamp(NextBuffer->PrevTimestamp - GStartCycle);
 
 		// Add this next buffer to the active list.
 		for (;; PlatformYield())
@@ -323,13 +317,15 @@ static FWriteBuffer* Writer_NextBufferInternal(uint32 PageSize)
 	{
 		CurrentBuffer->NextBuffer = NextBuffer;
 		NextBuffer->ThreadId = CurrentBuffer->ThreadId;
+		NextBuffer->PrevTimestamp = CurrentBuffer->PrevTimestamp;
+
+		GTlsWriteBuffer = NextBuffer;
 
 		// Retire current buffer.
 		UPTRINT EtxOffset = UPTRINT((uint8*)(CurrentBuffer) - CurrentBuffer->Cursor);
 		AtomicStoreRelease(&(CurrentBuffer->EtxOffset), EtxOffset);
 	}
 
-	GTlsWriteBuffer = NextBuffer;
 	return NextBuffer;
 }
 
@@ -726,13 +722,14 @@ static void Writer_InternalInitializeImpl()
 	{
 		return;
 	}
+
 	GInitialized = true;
+	GStartCycle = TimeGetTimestamp();
 
 	Trace::ThreadRegister(TEXT("MainThread"), 0, -1);
 
 	Writer_InitializeBuffers();
 	Writer_InitializeControl();
-	Writer_InitializeTiming();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

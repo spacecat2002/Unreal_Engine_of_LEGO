@@ -91,7 +91,7 @@ uint64 TimeGetFrequency()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-uint64 TimeGetTimestamp()
+TRACELOG_API uint64 TimeGetTimestamp()
 {
 	// should stay in sync with FPlatformTime::Cycles64() or the timeline will be broken!
 	struct timespec TimeSpec;

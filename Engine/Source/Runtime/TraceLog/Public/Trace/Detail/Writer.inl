@@ -13,9 +13,11 @@ namespace Private {
 ////////////////////////////////////////////////////////////////////////////////
 struct FWriteBuffer
 {
-	uint32						Overflow;
+	uint8						Overflow[8];
 	uint16						Size;
 	uint16						ThreadId;
+	uint32						_TODO_;
+	uint64						PrevTimestamp;
 	FWriteBuffer* __restrict	NextThread;
 	FWriteBuffer* __restrict	NextBuffer;
 	uint8* __restrict			Cursor;
@@ -25,6 +27,7 @@ struct FWriteBuffer
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+TRACELOG_API uint64				TimeGetTimestamp();
 TRACELOG_API FWriteBuffer*		Writer_NextBuffer(int32);
 TRACELOG_API FWriteBuffer*		Writer_GetBuffer();
 
@@ -36,6 +39,14 @@ inline FWriteBuffer* Writer_GetBuffer()
 	return GTlsWriteBuffer;
 }
 #endif // IS_MONOLITHIC
+
+////////////////////////////////////////////////////////////////////////////////
+inline uint64 Writer_GetTimestamp(FWriteBuffer* Buffer)
+{
+	uint64 Ret = TimeGetTimestamp() - Buffer->PrevTimestamp;
+	Buffer->PrevTimestamp += Ret;
+	return Ret;
+}
 
 } // namespace Private
 } // namespace Trace

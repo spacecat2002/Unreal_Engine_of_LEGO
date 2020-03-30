@@ -50,6 +50,15 @@ public:
 	bool	bActive = false;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+class FScopedStampedLogScope
+{
+public:
+			~FScopedStampedLogScope();
+	void	SetActive();
+	bool	bActive = false;
+};
+
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -63,6 +72,7 @@ struct TLogScope
 {
 	static auto Enter(uint32 Uid, uint32 Size);
 	static auto ScopedEnter(uint32 Uid, uint32 Size);
+	static auto ScopedStampedEnter(uint32 Uid, uint32 Size);
 };
 
 } // namespace Private

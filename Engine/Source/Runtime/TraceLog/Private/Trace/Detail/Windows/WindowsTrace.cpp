@@ -92,7 +92,7 @@ uint64 TimeGetFrequency()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-uint64 TimeGetTimestamp()
+TRACELOG_API uint64 TimeGetTimestamp()
 {
 	LARGE_INTEGER Value;
 	QueryPerformanceCounter(&Value);

@@ -22,8 +22,8 @@ void	ThreadJoin(UPTRINT Handle);
 void	ThreadDestroy(UPTRINT Handle);
 
 ////////////////////////////////////////////////////////////////////////////////
-uint64	TimeGetFrequency();
-uint64	TimeGetTimestamp();
+uint64				TimeGetFrequency();
+TRACELOG_API uint64	TimeGetTimestamp();
 
 ////////////////////////////////////////////////////////////////////////////////
 UPTRINT	TcpSocketConnect(const ANSICHAR* Host, uint16 Port);

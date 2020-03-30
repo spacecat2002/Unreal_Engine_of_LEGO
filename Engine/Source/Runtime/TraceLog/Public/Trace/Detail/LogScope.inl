@@ -122,6 +122,32 @@ inline void FScopedLogScope::SetActive()
 
 
 ////////////////////////////////////////////////////////////////////////////////
+inline FScopedStampedLogScope::~FScopedStampedLogScope()
+{
+	if (!bActive)
+	{
+		return;
+	}
+
+	static_assert(sizeof(FWriteBuffer::Overflow) >= sizeof(uint64), "");
+	FWriteBuffer* Buffer = Writer_GetBuffer();
+
+	uint64 Stamp = Writer_GetTimestamp(Buffer);
+	Stamp <<= 8;
+	Stamp += uint8(EKnownEventUids::LeaveScope_T << EKnownEventUids::_UidShift);
+	*(uint64*)(Buffer->Cursor) = Stamp;
+	Buffer->Cursor += sizeof(Stamp);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+inline void FScopedStampedLogScope::SetActive()
+{
+	bActive = true;
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
 template <class T>
 auto TLogScope<T>::Enter(uint32 Uid, uint32 Size)
 {
@@ -136,6 +162,22 @@ auto TLogScope<T>::ScopedEnter(uint32 Uid, uint32 Size)
 	FWriteBuffer* Buffer = Writer_GetBuffer();
 	Buffer->Cursor[0] = uint8(EKnownEventUids::EnterScope << EKnownEventUids::_UidShift);
 	Buffer->Cursor++;
+
+	return Enter(Uid, Size);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+template <class T>
+auto TLogScope<T>::ScopedStampedEnter(uint32 Uid, uint32 Size)
+{
+	static_assert(sizeof(FWriteBuffer::Overflow) >= sizeof(uint64), "");
+	FWriteBuffer* Buffer = Writer_GetBuffer();
+
+	uint64 Stamp = Writer_GetTimestamp(Buffer);
+	Stamp <<= 8;
+	Stamp += uint8(EKnownEventUids::EnterScope_T << EKnownEventUids::_UidShift);
+	*(uint64*)(Buffer->Cursor) = Stamp;
+	Buffer->Cursor += sizeof(Stamp);
 
 	return Enter(Uid, Size);
 }
