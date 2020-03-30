@@ -25,6 +25,18 @@ void	Writer_ShutdownControl();
 
 
 ////////////////////////////////////////////////////////////////////////////////
+UE_TRACE_EVENT_BEGIN($Trace, NewTrace, NoSync|Important)
+	UE_TRACE_EVENT_FIELD(uint32, Serial)
+	UE_TRACE_EVENT_FIELD(uint16, UserUidBias)
+	UE_TRACE_EVENT_FIELD(uint16, Endian)
+	UE_TRACE_EVENT_FIELD(uint8, PointerSize)
+UE_TRACE_EVENT_END()
+
+UE_TRACE_EVENT_BEGIN($Trace, Timing, NoSync|Important)
+	UE_TRACE_EVENT_FIELD(uint64, StartCycle)
+	UE_TRACE_EVENT_FIELD(uint64, CycleFrequency)
+UE_TRACE_EVENT_END()
+
 #define TRACE_PRIVATE_PERF 0
 #if TRACE_PRIVATE_PERF
 UE_TRACE_EVENT_BEGIN($Trace, WorkerThread)
@@ -580,19 +592,6 @@ static void Writer_ConsumeEvents()
 }
 
 
-
-////////////////////////////////////////////////////////////////////////////////
-UE_TRACE_EVENT_BEGIN($Trace, NewTrace, NoSync|Important)
-	UE_TRACE_EVENT_FIELD(uint32, Serial)
-	UE_TRACE_EVENT_FIELD(uint16, UserUidBias)
-	UE_TRACE_EVENT_FIELD(uint16, Endian)
-	UE_TRACE_EVENT_FIELD(uint8, PointerSize)
-UE_TRACE_EVENT_END()
-
-UE_TRACE_EVENT_BEGIN($Trace, Timing, NoSync|Important)
-	UE_TRACE_EVENT_FIELD(uint64, StartCycle)
-	UE_TRACE_EVENT_FIELD(uint64, CycleFrequency)
-UE_TRACE_EVENT_END()
 
 ////////////////////////////////////////////////////////////////////////////////
 static void Writer_LogHeader()
