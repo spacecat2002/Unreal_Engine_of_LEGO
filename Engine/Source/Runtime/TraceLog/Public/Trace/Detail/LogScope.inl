@@ -130,13 +130,6 @@ auto TLogScope<T>::Enter(uint32 Uid, uint32 Size)
 
 ////////////////////////////////////////////////////////////////////////////////
 template <class T>
-auto TLogScope<T>::Enter(uint32 Uid, uint32 Size, uint32 ExtraBytes)
-{
-	return Enter(Uid, Size + ExtraBytes);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-template <class T>
 auto TLogScope<T>::ScopedEnter(uint32 Uid, uint32 Size)
 {
 	static_assert(sizeof(FWriteBuffer::Overflow) >= sizeof(uint8), "");

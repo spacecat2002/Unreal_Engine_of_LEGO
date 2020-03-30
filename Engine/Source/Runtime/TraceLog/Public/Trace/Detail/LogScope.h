@@ -62,7 +62,6 @@ template <class T>
 struct TLogScope
 {
 	static auto Enter(uint32 Uid, uint32 Size);
-	static auto Enter(uint32 Uid, uint32 Size, uint32 ExtraBytes);
 	static auto ScopedEnter(uint32 Uid, uint32 Size);
 };
 

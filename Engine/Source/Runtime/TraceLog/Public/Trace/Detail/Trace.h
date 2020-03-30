@@ -104,8 +104,7 @@ namespace Trace
 	if (TRACE_PRIVATE_CHANNELEXPR_IS_ENABLED(ChannelsExpr)) \
 		if (auto LogScope = Trace::Private::TLogScope<F##LoggerName##EventName##Fields>::EnterFunc( \
 			LoggerName##EventName##Event.GetUid() ? LoggerName##EventName##Event.GetUid() : F##LoggerName##EventName##Fields::Initialize(), \
-			TRACE_PRIVATE_EVENT_SIZE(LoggerName, EventName), \
-			##__VA_ARGS__)) \
+			TRACE_PRIVATE_EVENT_SIZE(LoggerName, EventName) + (0, ##__VA_ARGS__))) \
 				if (const auto& __restrict EventName = *(F##LoggerName##EventName##Fields*)LogScope.GetPointer()) \
 
 #define TRACE_PRIVATE_LOG(LoggerName, EventName, ChannelsExpr, ...) \
