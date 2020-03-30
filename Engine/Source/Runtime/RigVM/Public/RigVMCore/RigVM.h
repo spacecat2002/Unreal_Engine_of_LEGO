@@ -200,35 +200,42 @@ public:
 
 	// Adds a new input / output to the VM
 	template<class T>
-	FORCEINLINE FRigVMParameter AddPlainParameter(ERigVMParameterType InParameterType, const FName& InName, const FString& InCPPType, const TArray<T>& DefaultValue)
+	FORCEINLINE_DEBUGGABLE FRigVMParameter AddParameter(ERigVMParameterType InParameterType, const FName& InName, const FString& InCPPType, const TArray<T>& DefaultValues)
 	{
-		return AddPlainParameter(InParameterType, InName, InCPPType, (uint8*)DefaultValue.GetData(), sizeof(T), DefaultValue.Num());
+		ensure(InParameterType != ERigVMParameterType::Invalid);
+		ensure(DefaultValues.Num() > 0);
+
+		int32 RegisterIndex = INDEX_NONE;
+		
+		if (DefaultValues.Num() == 1)
+		{
+			RegisterIndex = WorkMemoryPtr->Add<T>(WorkMemoryPtr->SupportsNames() ? InName : NAME_None, DefaultValues[0], 1);
+		}
+		else
+		{
+			RegisterIndex = WorkMemoryPtr->AddFixedArray<T>(WorkMemoryPtr->SupportsNames() ? InName : NAME_None, FRigVMFixedArray<T>(DefaultValues), 1);
+		}
+
+		if (RegisterIndex == INDEX_NONE)
+		{
+			return FRigVMParameter();
+		}
+
+		FName Name = WorkMemoryPtr->SupportsNames() ? GetWorkMemory()[RegisterIndex].Name : InName;
+
+		FRigVMParameter Parameter(InParameterType, Name, RegisterIndex, InCPPType, GetWorkMemory().GetScriptStruct(RegisterIndex));
+		ParametersNameMap.Add(Parameter.Name, Parameters.Add(Parameter));
+		return Parameter;
+
 	}
 
 	// Adds a new input / output to the VM
 	template<class T>
-	FORCEINLINE FRigVMParameter AddStructParameter(ERigVMParameterType InParameterType, const FName& InName, const TArray<T>& DefaultValue)
-	{
-		UScriptStruct* ScriptStruct = T::StaticStruct();
-		return AddStructParameter(InParameterType, InName, ScriptStruct, (uint8*)DefaultValue.GetData(), DefaultValue.Num());
-	}
-
-	// Adds a new input / output to the VM
-	template<class T>
-	FORCEINLINE FRigVMParameter AddPlainParameter(ERigVMParameterType InParameterType, const FName& InName, const FString& InCPPType, T DefaultValue)
+	FORCEINLINE_DEBUGGABLE FRigVMParameter AddParameter(ERigVMParameterType InParameterType, const FName& InName, const FString& InCPPType, const T& DefaultValue)
 	{
 		TArray<T> DefaultValues;
 		DefaultValues.Add(DefaultValue);
-		return AddPlainParameter<T>(InParameterType, InName, InCPPType, DefaultValues);
-	}
-
-	// Adds a new input / output to the VM
-	template<class T>
-	FORCEINLINE FRigVMParameter AddStructParameter(ERigVMParameterType InParameterType, const FName& InName, const T& DefaultValue)
-	{
-		TArray<T> DefaultValues;
-		DefaultValues.Add(DefaultValue);
-		return AddStructParameter<T>(InParameterType, InName, DefaultValues);
+		return AddParameter(InParameterType, InName, InCPPType, DefaultValues);
 	}
 
 	// Retrieve the array size of the parameter
@@ -442,36 +449,6 @@ public:
 #endif
 
 private:
-
-	FORCEINLINE FRigVMParameter AddPlainParameter(ERigVMParameterType InParameterType, const FName& InName, const FString& InCPPType, const uint8* InPtr, uint16 InSize, int32 InArraySize)
-	{
-		ensure(InParameterType != ERigVMParameterType::Invalid);
-		int32 ArraySize = InArraySize <= 0 ? 1 : InArraySize;
-		int32 RegisterIndex = WorkMemoryPtr->AddFixedPlainArray(WorkMemoryPtr->SupportsNames() ? InName : NAME_None, InSize, ArraySize, InPtr, 1);
-		if (RegisterIndex == INDEX_NONE)
-		{
-			return FRigVMParameter();
-		}
-		FName Name = WorkMemoryPtr->SupportsNames() ? GetWorkMemory()[RegisterIndex].Name : InName;
-		FRigVMParameter Parameter(InParameterType, Name, RegisterIndex, InCPPType, nullptr);
-		ParametersNameMap.Add(Parameter.Name, Parameters.Add(Parameter));
-		return Parameter;
-	}
-
-	FORCEINLINE FRigVMParameter AddStructParameter(ERigVMParameterType InParameterType, const FName& InName, UScriptStruct* InScriptStruct, const uint8* InPtr, int32 InArraySize)
-	{
-		ensure(InParameterType != ERigVMParameterType::Invalid);
-		int32 ArraySize = InArraySize <= 0 ? 1 : InArraySize;
-		int32 RegisterIndex = WorkMemoryPtr->AddFixedStructArray(WorkMemoryPtr->SupportsNames() ? InName : NAME_None, InScriptStruct, ArraySize, InPtr, 1);
-		if (RegisterIndex == INDEX_NONE)
-		{
-			return FRigVMParameter();
-		}
-		FName Name = WorkMemoryPtr->SupportsNames() ? GetWorkMemory()[RegisterIndex].Name : InName;
-		FRigVMParameter Parameter(InParameterType, Name, RegisterIndex, InScriptStruct->GetName(), InScriptStruct);
-		ParametersNameMap.Add(Parameter.Name, Parameters.Add(Parameter));
-		return Parameter;
-	}
 
 	void ResolveFunctionsIfRequired();
 	void RefreshInstructionsIfRequired();

@@ -814,24 +814,14 @@ bool FRigVMMemoryContainer::Construct(int32 InRegisterIndex, int32 InElementInde
 			case ERigVMRegisterType::String:
 			{
 				FString* DataPtr = (FString*)(NestedDataPtr + ElementIndex * Register.ElementSize);
-
-				FMemory::Memzero(DataPtr, ElementCount * Register.ElementSize);
-				for (int32 Index = 0; Index < ElementCount; Index++)
-				{
-					DataPtr[Index] = FString();
-				}
+				RigVMInitialize<FString>(DataPtr, ElementCount);
 				break;
 			}
 			case ERigVMRegisterType::Name:
 			{
 				FName* DataPtr = (FName*)(NestedDataPtr + ElementIndex * Register.ElementSize);
-
-				FMemory::Memzero(DataPtr, ElementCount * Register.ElementSize);
-				for (int32 Index = 0; Index < ElementCount; Index++)
-				{
-					DataPtr[Index] = FName();
-				}
-break;
+				RigVMInitialize<FName>(DataPtr, ElementCount);
+				break;
 			}
 			default:
 			{
@@ -910,21 +900,13 @@ bool FRigVMMemoryContainer::Destroy(int32 InRegisterIndex, int32 InElementIndex)
 			case ERigVMRegisterType::String:
 			{
 				FString* DataPtr = (FString*)(NestedDataPtr + ElementIndex * Register.ElementSize);
-
-				for (int32 Index = 0; Index < ElementCount; Index++)
-				{
-					DataPtr[Index] = FString();
-				}
+				RigVMDestroy<FString>(DataPtr, ElementCount);
 				break;
 			}
 			case ERigVMRegisterType::Name:
 			{
 				FName* DataPtr = (FName*)(NestedDataPtr + ElementIndex * Register.ElementSize);
-
-				for (int32 Index = 0; Index < ElementCount; Index++)
-				{
-					DataPtr[Index] = FName();
-				}
+				RigVMDestroy<FName>(DataPtr, ElementCount);
 				break;
 			}
 			default:
@@ -1200,6 +1182,11 @@ void FRigVMMemoryContainer::FillWithZeroes(int32 InRegisterIndex)
 
 int32 FRigVMMemoryContainer::FindOrAddScriptStruct(UScriptStruct* InScriptStruct)
 {
+	if (InScriptStruct == nullptr)
+	{
+		return INDEX_NONE;
+	}
+
 	int32 StructIndex = INDEX_NONE;
 	if (ScriptStructs.Find(InScriptStruct, StructIndex))
 	{

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "RigVMTraits.h"
 
 typedef TArray<uint8> FRigVMByteArray;
 typedef TArray<FRigVMByteArray> FRigVMNestedByteArray;
@@ -54,7 +55,7 @@ public:
 	{
 		if (Num() > 0)
 		{
-			DestructElements(GetData(), Num());
+			RigVMDestroy<T>(GetData(), Num());
 		}
 		Storage.Reset();
 	}
@@ -114,7 +115,7 @@ public:
 		int32 LastSize = Num();
 		if (LastSize > InSize)
 		{
-			DestructElements(GetData() + LastSize, InSize - LastSize);
+			RigVMDestroy<T>(GetData() + LastSize, InSize - LastSize);
 		}
 		Storage.SetNumUninitialized(InSize * sizeof(T), false /* no shrinking */);
 	}
@@ -139,7 +140,7 @@ public:
 
 		if (LastSize < InSize)
 		{
-			ConstructElements(GetData() + LastSize, InSize - LastSize);
+			RigVMInitialize<T>(GetData() + LastSize, InSize - LastSize);
 		}
 	}
 
@@ -190,22 +191,6 @@ public:
 	}
 
 private:
-
-	FORCEINLINE void ConstructElements(T* Data, int32 Count)
-	{
-		// if you hit "has no method StaticStruct" here it means that
-		// a template specialization has to be added at the end of
-		// this file.
-		T::StaticStruct()->InitializeStruct(Data, Count);
-	}
-
-	FORCEINLINE void DestructElements(T* Data, int32 Count)
-	{
-		// if you hit "has no method StaticStruct" here it means that
-		// a template specialization has to be added at the end of
-		// this file.
-		T::StaticStruct()->DestroyStruct(Data, Count);
-	}
 
 	FRigVMByteArray& Storage;
 };
@@ -339,196 +324,3 @@ private:
 	int32 Size;
 };
 
-template<>
-FORCEINLINE void FRigVMDynamicArray<bool>::ConstructElements(bool* Data, int32 Count)
-{
-	FMemory::Memzero(Data, sizeof(bool) * Count);
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<bool>::DestructElements(bool* Data, int32 Count)
-{
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<int32>::ConstructElements(int32* Data, int32 Count)
-{
-	FMemory::Memzero(Data, sizeof(int32) * Count);
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<int32>::DestructElements(int32* Data, int32 Count)
-{
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<float>::ConstructElements(float* Data, int32 Count)
-{
-	FMemory::Memzero(Data, sizeof(float) * Count);
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<float>::DestructElements(float* Data, int32 Count)
-{
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<double>::ConstructElements(double* Data, int32 Count)
-{
-	FMemory::Memzero(Data, sizeof(double) * Count);
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<double>::DestructElements(double* Data, int32 Count)
-{
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<FName>::ConstructElements(FName* Data, int32 Count)
-{
-	FMemory::Memzero(Data, sizeof(FName) * Count);
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<FName>::DestructElements(FName* Data, int32 Count)
-{
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<FString>::ConstructElements(FString* Data, int32 Count)
-{
-	FMemory::Memzero(Data, sizeof(FString) * Count);
-	for (int32 Index = 0; Index < Count; Index++)
-	{
-		Data[Index] = FString();
-	}
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<FString>::DestructElements(FString* Data, int32 Count)
-{
-	for (int32 Index = 0; Index < Count; Index++)
-	{
-		Data[Index] = FString();
-	}
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<FVector2D>::ConstructElements(FVector2D* Data, int32 Count)
-{
-	FMemory::Memzero(Data, sizeof(FVector2D) * Count);
-	for (int32 Index = 0; Index < Count; Index++)
-	{
-		Data[Index] = FVector2D();
-	}
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<FVector2D>::DestructElements(FVector2D* Data, int32 Count)
-{
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<FVector>::ConstructElements(FVector* Data, int32 Count)
-{
-	FMemory::Memzero(Data, sizeof(FVector) * Count);
-	for (int32 Index = 0; Index < Count; Index++)
-	{
-		Data[Index] = FVector();
-	}
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<FVector>::DestructElements(FVector* Data, int32 Count)
-{
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<FVector4>::ConstructElements(FVector4* Data, int32 Count)
-{
-	FMemory::Memzero(Data, sizeof(FVector4) * Count);
-	for (int32 Index = 0; Index < Count; Index++)
-	{
-		Data[Index] = FVector4();
-	}
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<FVector4>::DestructElements(FVector4* Data, int32 Count)
-{
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<FQuat>::ConstructElements(FQuat* Data, int32 Count)
-{
-	FMemory::Memzero(Data, sizeof(FQuat) * Count);
-	for (int32 Index = 0; Index < Count; Index++)
-	{
-		Data[Index] = FQuat();
-	}
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<FQuat>::DestructElements(FQuat* Data, int32 Count)
-{
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<FRotator>::ConstructElements(FRotator* Data, int32 Count)
-{
-	FMemory::Memzero(Data, sizeof(FRotator) * Count);
-	for (int32 Index = 0; Index < Count; Index++)
-	{
-		Data[Index] = FRotator();
-	}
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<FRotator>::DestructElements(FRotator* Data, int32 Count)
-{
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<FTransform>::ConstructElements(FTransform* Data, int32 Count)
-{
-	FMemory::Memzero(Data, sizeof(FTransform) * Count);
-	for (int32 Index = 0; Index < Count; Index++)
-	{
-		Data[Index] = FTransform();
-	}
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<FTransform>::DestructElements(FTransform* Data, int32 Count)
-{
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<FLinearColor>::ConstructElements(FLinearColor* Data, int32 Count)
-{
-	FMemory::Memzero(Data, sizeof(FLinearColor) * Count);
-	for (int32 Index = 0; Index < Count; Index++)
-	{
-		Data[Index] = FLinearColor();
-	}
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<FLinearColor>::DestructElements(FLinearColor* Data, int32 Count)
-{
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<FPlane>::ConstructElements(FPlane* Data, int32 Count)
-{
-	FMemory::Memzero(Data, sizeof(FPlane) * Count);
-	for (int32 Index = 0; Index < Count; Index++)
-	{
-		Data[Index] = FPlane();
-	}
-}
-
-template<>
-FORCEINLINE void FRigVMDynamicArray<FPlane>::DestructElements(FPlane* Data, int32 Count)
-{
-}
