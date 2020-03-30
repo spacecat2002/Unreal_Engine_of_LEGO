@@ -122,7 +122,7 @@ static void* Writer_MemoryAllocate(SIZE_T Size, uint32 Alignment)
 	void* Ret = nullptr;
 #if defined(_MSC_VER)
 	Ret = _aligned_malloc(Size, Alignment);
-#elif defined(__ANDROID_API__) && __ANDROID_API__ < 28
+#elif (defined(__ANDROID_API__) && __ANDROID_API__ < 28) || defined(__APPLE__)
 	posix_memalign(&Ret, Alignment, Size);
 #else
 	Ret = aligned_alloc(Alignment, Size);
