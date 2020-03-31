@@ -369,6 +369,23 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 		}
 	}
 
+	if (Ar.IsSaving())
+	{
+		for (FRigVMRegister& Register : Registers)
+		{
+			if (Register.IsNestedDynamic())
+			{
+				FRigVMNestedByteArray* NestedArrayStorage = (FRigVMNestedByteArray*)&Data[Register.GetWorkByteIndex()];
+				Register.SliceCount = NestedArrayStorage->Num();
+			}
+			else if (Register.IsDynamic())
+			{
+				FRigVMByteArray* ArrayStorage = (FRigVMByteArray*)&Data[Register.GetWorkByteIndex()];
+				Register.SliceCount = ArrayStorage->Num();
+			}
+		}
+	}
+
 	Ar << bUseNameMap;
 	Ar << MemoryType;
 	Ar << Registers;
@@ -407,74 +424,207 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 		{
 			for (int32 RegisterIndex = 0; RegisterIndex < Registers.Num(); RegisterIndex++)
 			{
-				Construct(RegisterIndex);
+				if (!Registers[RegisterIndex].IsDynamic())
+				{
+					Construct(RegisterIndex);
+				}
 			}
 		}
 
 		for (const FRigVMRegister& Register : Registers)
 		{
-			if (Register.ElementCount == 0)
+			if (Register.ElementCount == 0 && !Register.IsDynamic())
 			{
 				continue;
 			}
 
-			switch (Register.Type)
+			if (!Register.IsDynamic())
 			{
-				case ERigVMRegisterType::Plain:
+				switch (Register.Type)
 				{
-					FRigVMByteArray View;
-					Ar << View;
-					ensure(View.Num() == Register.GetAllocatedBytes());
-					FMemory::Memcpy(&Data[Register.GetFirstAllocatedByte()], View.GetData(), View.Num());
-					break;
-				}
-				case ERigVMRegisterType::Name:
-				{
-					TArray<FName> View;
-					Ar << View;
-					ensure(View.Num() == Register.GetTotalElementCount());
-					for (uint16 ElementIndex = 0; ElementIndex < Register.GetTotalElementCount(); ElementIndex++)
+					case ERigVMRegisterType::Plain:
 					{
-						*((FName*)&Data[Register.GetWorkByteIndex() + Register.ElementSize * ElementIndex]) = View[ElementIndex];
+						FRigVMByteArray View;
+						Ar << View;
+						ensure(View.Num() == Register.GetAllocatedBytes());
+						FMemory::Memcpy(&Data[Register.GetFirstAllocatedByte()], View.GetData(), View.Num());
+						break;
 					}
-					break;
-				}
-				case ERigVMRegisterType::String:
-				{
-					TArray<FString> View;
-					Ar << View;
-					ensure(View.Num() == Register.GetTotalElementCount());
-					for (uint16 ElementIndex = 0; ElementIndex < Register.GetTotalElementCount(); ElementIndex++)
+					case ERigVMRegisterType::Name:
 					{
-						*((FString*)&Data[Register.GetWorkByteIndex() + Register.ElementSize * ElementIndex]) = View[ElementIndex];
-					}
-					break;
-				}
-				case ERigVMRegisterType::Struct:
-				{
-					TArray<FString> View;
-					Ar << View;
-					ensure(View.Num() == Register.GetTotalElementCount());
-
-					uint8* DataPtr = &Data[Register.GetWorkByteIndex()];
-					UScriptStruct* ScriptStruct = GetScriptStruct(Register);
-					int32 StructureSize = ScriptStruct->GetStructureSize();
-					if (StructureSize != Register.ElementSize)
-					{
-						FString PackagePath = Ar.GetArchiveName();
-						FString ScriptStructPath = ScriptStruct->GetPathName();
-						UE_LOG(LogRigVM, Warning, TEXT("Struct '%s' has changed  size. Asset '%s' needs to be recompiled."), *ScriptStructPath, *PackagePath);
-						bEncounteredErrorDuringLoad = true;
-					}
-					else
-					{
+						TArray<FName> View;
+						Ar << View;
+						ensure(View.Num() == Register.GetTotalElementCount());
 						for (uint16 ElementIndex = 0; ElementIndex < Register.GetTotalElementCount(); ElementIndex++)
 						{
-							ScriptStruct->ImportText(*View[ElementIndex], DataPtr, nullptr, PPF_None, nullptr, ScriptStruct->GetName());
-							DataPtr += Register.ElementSize;
+							*((FName*)&Data[Register.GetWorkByteIndex() + Register.ElementSize * ElementIndex]) = View[ElementIndex];
+						}
+						break;
+					}
+					case ERigVMRegisterType::String:
+					{
+						TArray<FString> View;
+						Ar << View;
+						ensure(View.Num() == Register.GetTotalElementCount());
+						for (uint16 ElementIndex = 0; ElementIndex < Register.GetTotalElementCount(); ElementIndex++)
+						{
+							*((FString*)&Data[Register.GetWorkByteIndex() + Register.ElementSize * ElementIndex]) = View[ElementIndex];
+						}
+						break;
+					}
+					case ERigVMRegisterType::Struct:
+					{
+						TArray<FString> View;
+						Ar << View;
+						ensure(View.Num() == Register.GetTotalElementCount());
+
+						uint8* DataPtr = &Data[Register.GetWorkByteIndex()];
+						UScriptStruct* ScriptStruct = GetScriptStruct(Register);
+						int32 StructureSize = ScriptStruct->GetStructureSize();
+						if (StructureSize != Register.ElementSize)
+						{
+							FString PackagePath = Ar.GetArchiveName();
+							FString ScriptStructPath = ScriptStruct->GetPathName();
+							UE_LOG(LogRigVM, Warning, TEXT("Struct '%s' has changed  size. Asset '%s' needs to be recompiled."), *ScriptStructPath, *PackagePath);
+							bEncounteredErrorDuringLoad = true;
+						}
+						else
+						{
+							for (uint16 ElementIndex = 0; ElementIndex < Register.GetTotalElementCount(); ElementIndex++)
+							{
+								ScriptStruct->ImportText(*View[ElementIndex], DataPtr, nullptr, PPF_None, nullptr, ScriptStruct->GetName());
+								DataPtr += Register.ElementSize;
+							}
+						}
+						break;
+					}
+				}
+			}
+			else if (!Register.IsNestedDynamic())
+			{
+				FRigVMByteArray* ArrayStorage = (FRigVMByteArray*)&Data[Register.GetWorkByteIndex()];
+
+				switch (Register.Type)
+				{
+					case ERigVMRegisterType::Plain:
+					{
+						FRigVMByteArray View;
+						Ar << View;
+						*ArrayStorage = View;
+						break;
+					}
+					case ERigVMRegisterType::Name:
+					{
+						TArray<FName> View;
+						Ar << View;
+
+						FRigVMDynamicArray<FName> ValueArray(*ArrayStorage);
+						ValueArray.Copy(View);
+						break;
+					}
+					case ERigVMRegisterType::String:
+					{
+						TArray<FString> View;
+						Ar << View;
+
+						FRigVMDynamicArray<FString> ValueArray(*ArrayStorage);
+						ValueArray.Copy(View);
+						break;
+					}
+					case ERigVMRegisterType::Struct:
+					{
+						TArray<FString> View;
+						Ar << View;
+
+						UScriptStruct* ScriptStruct = GetScriptStruct(Register);
+						int32 StructureSize = ScriptStruct->GetStructureSize();
+						if (StructureSize != Register.ElementSize)
+						{
+							FString PackagePath = Ar.GetArchiveName();
+							FString ScriptStructPath = ScriptStruct->GetPathName();
+							UE_LOG(LogRigVM, Warning, TEXT("Struct '%s' has changed  size. Asset '%s' needs to be recompiled."), *ScriptStructPath, *PackagePath);
+							bEncounteredErrorDuringLoad = true;
+						}
+						else
+						{
+							ArrayStorage->SetNumZeroed(View.Num() * Register.ElementSize);
+							uint8* DataPtr = ArrayStorage->GetData();
+
+							for (uint16 ElementIndex = 0; ElementIndex < View.Num(); ElementIndex++)
+							{
+								ScriptStruct->ImportText(*View[ElementIndex], DataPtr, nullptr, PPF_None, nullptr, ScriptStruct->GetName());
+								DataPtr += Register.ElementSize;
+							}
+						}
+						break;
+					}
+				}
+			}
+			else
+			{
+				FRigVMNestedByteArray* NestedArrayStorage = (FRigVMNestedByteArray*)&Data[Register.GetWorkByteIndex()];
+				NestedArrayStorage->Reset();
+				NestedArrayStorage->SetNumZeroed(Register.SliceCount);
+
+				for (int32 SliceIndex = 0; SliceIndex < Register.SliceCount; SliceIndex++)
+				{
+					FRigVMByteArray& ArrayStorage = (*NestedArrayStorage)[SliceIndex];
+
+					switch (Register.Type)
+					{
+						case ERigVMRegisterType::Plain:
+						{
+							FRigVMByteArray View;
+							Ar << View;
+							ArrayStorage = View;
+							break;
+						}
+						case ERigVMRegisterType::Name:
+						{
+							TArray<FName> View;
+							Ar << View;
+
+							FRigVMDynamicArray<FName> ValueArray(ArrayStorage);
+							ValueArray.Copy(View);
+							break;
+						}
+						case ERigVMRegisterType::String:
+						{
+							TArray<FString> View;
+							Ar << View;
+
+							FRigVMDynamicArray<FString> ValueArray(ArrayStorage);
+							ValueArray.Copy(View);
+							break;
+						}
+						case ERigVMRegisterType::Struct:
+						{
+							TArray<FString> View;
+							Ar << View;
+
+							UScriptStruct* ScriptStruct = GetScriptStruct(Register);
+							int32 StructureSize = ScriptStruct->GetStructureSize();
+							if (StructureSize != Register.ElementSize)
+							{
+								FString PackagePath = Ar.GetArchiveName();
+								FString ScriptStructPath = ScriptStruct->GetPathName();
+								UE_LOG(LogRigVM, Warning, TEXT("Struct '%s' has changed  size. Asset '%s' needs to be recompiled."), *ScriptStructPath, *PackagePath);
+								bEncounteredErrorDuringLoad = true;
+							}
+							else
+							{
+								ArrayStorage.SetNumZeroed(View.Num() * Register.ElementSize);
+								uint8* DataPtr = ArrayStorage.GetData();
+
+								for (uint16 ElementIndex = 0; ElementIndex < View.Num(); ElementIndex++)
+								{
+									ScriptStruct->ImportText(*View[ElementIndex], DataPtr, nullptr, PPF_None, nullptr, ScriptStruct->GetName());
+									DataPtr += Register.ElementSize;
+								}
+							}
+							break;
 						}
 					}
-					break;
 				}
 			}
 		}
@@ -502,50 +652,144 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 
 		for (FRigVMRegister& Register : Registers)
 		{
-			if (Register.ElementCount == 0)
+			if (Register.ElementCount == 0 && !Register.IsDynamic())
 			{
 				continue;
 			}
 
-			switch(Register.Type)
+			if (!Register.IsDynamic())
 			{
-				case ERigVMRegisterType::Plain:
+				switch (Register.Type)
 				{
-					FRigVMByteArray View;
-					View.Append(&Data[Register.GetFirstAllocatedByte()], Register.GetAllocatedBytes());
-					Ar << View;
-					break;
-				}
-				case ERigVMRegisterType::Name:
-				{
-					TArray<FName> View;
-					View.Append((FName*)&Data[Register.GetWorkByteIndex()], Register.GetTotalElementCount());
-					Ar << View;
-					break;
-				}
-				case ERigVMRegisterType::String:
-				{
-					TArray<FString> View;
-					View.Append((FString*)&Data[Register.GetWorkByteIndex()], Register.GetTotalElementCount());
-					Ar << View;
-					break;
-				}
-				case ERigVMRegisterType::Struct:
-				{
-					uint8* DataPtr = &Data[Register.GetWorkByteIndex()];
-					UScriptStruct* ScriptStruct = GetScriptStruct(Register);
-
-					TArray<FString> View;
-					for (uint16 ElementIndex = 0; ElementIndex < Register.GetTotalElementCount(); ElementIndex++)
+					case ERigVMRegisterType::Plain:
 					{
-						FString Value;
-						ScriptStruct->ExportText(Value, DataPtr, nullptr, nullptr, PPF_None, nullptr);
-						View.Add(Value);
-						DataPtr += Register.ElementSize;
+						FRigVMByteArray View;
+						View.Append(&Data[Register.GetFirstAllocatedByte()], Register.GetAllocatedBytes());
+						Ar << View;
+						break;
 					}
+					case ERigVMRegisterType::Name:
+					{
+						TArray<FName> View;
+						View.Append((FName*)&Data[Register.GetWorkByteIndex()], Register.GetTotalElementCount());
+						Ar << View;
+						break;
+					}
+					case ERigVMRegisterType::String:
+					{
+						TArray<FString> View;
+						View.Append((FString*)&Data[Register.GetWorkByteIndex()], Register.GetTotalElementCount());
+						Ar << View;
+						break;
+					}
+					case ERigVMRegisterType::Struct:
+					{
+						uint8* DataPtr = &Data[Register.GetWorkByteIndex()];
+						UScriptStruct* ScriptStruct = GetScriptStruct(Register);
 
-					Ar << View;
-					break;
+						TArray<FString> View;
+						for (uint16 ElementIndex = 0; ElementIndex < Register.GetTotalElementCount(); ElementIndex++)
+						{
+							FString Value;
+							ScriptStruct->ExportText(Value, DataPtr, nullptr, nullptr, PPF_None, nullptr);
+							View.Add(Value);
+							DataPtr += Register.ElementSize;
+						}
+
+						Ar << View;
+						break;
+					}
+				}
+			}
+			else if (!Register.IsNestedDynamic())
+			{
+				FRigVMByteArray* ArrayStorage = (FRigVMByteArray*)&Data[Register.GetWorkByteIndex()];
+
+				switch (Register.Type)
+				{
+					case ERigVMRegisterType::Plain:
+					{
+						Ar << *ArrayStorage;
+						break;
+					}
+					case ERigVMRegisterType::Name:
+					{
+						TArray<FName> View = FRigVMFixedArray<FName>(*ArrayStorage);
+						Ar << View;
+						break;
+					}
+					case ERigVMRegisterType::String:
+					{
+						TArray<FString> View = FRigVMFixedArray<FString>(*ArrayStorage);
+						Ar << View;
+						break;
+					}
+					case ERigVMRegisterType::Struct:
+					{
+						uint8* DataPtr = ArrayStorage->GetData();
+						uint16 NumElements = (uint16)(ArrayStorage->Num() / Register.ElementSize);
+						UScriptStruct* ScriptStruct = GetScriptStruct(Register);
+
+						TArray<FString> View;
+						for (uint16 ElementIndex = 0; ElementIndex < NumElements; ElementIndex++)
+						{
+							FString Value;
+							ScriptStruct->ExportText(Value, DataPtr, nullptr, nullptr, PPF_None, nullptr);
+							View.Add(Value);
+							DataPtr += Register.ElementSize;
+						}
+
+						Ar << View;
+						break;
+					}
+				}
+			}
+			else
+			{
+				FRigVMNestedByteArray* NestedArrayStorage = (FRigVMNestedByteArray*)&Data[Register.GetWorkByteIndex()];
+
+				for (int32 SliceIndex = 0; SliceIndex < Register.SliceCount; SliceIndex++)
+				{
+					FRigVMByteArray& ArrayStorage = (*NestedArrayStorage)[SliceIndex];
+
+					switch (Register.Type)
+					{
+						case ERigVMRegisterType::Plain:
+						{
+							Ar << ArrayStorage;
+							break;
+						}
+						case ERigVMRegisterType::Name:
+						{
+							TArray<FName> View = FRigVMFixedArray<FName>(ArrayStorage);
+							Ar << View;
+							break;
+						}
+						case ERigVMRegisterType::String:
+						{
+							TArray<FString> View = FRigVMFixedArray<FString>(ArrayStorage);
+							Ar << View;
+							break;
+						}
+						case ERigVMRegisterType::Struct:
+						{
+							uint8* DataPtr = ArrayStorage.GetData();
+							uint16 NumElements = (uint16)(ArrayStorage.Num() / Register.ElementSize);
+							UScriptStruct* ScriptStruct = GetScriptStruct(Register);
+
+							TArray<FString> View;
+							for (uint16 ElementIndex = 0; ElementIndex < NumElements; ElementIndex++)
+							{
+								FString Value;
+								ScriptStruct->ExportText(Value, DataPtr, nullptr, nullptr, PPF_None, nullptr);
+								View.Add(Value);
+								DataPtr += Register.ElementSize;
+							}
+
+							Ar << View;
+							break;
+						}
+					}
 				}
 			}
 		}

@@ -993,13 +993,6 @@ private:
 		return Register;
 	}
 
-	// , ERigVMRegisterType InType = ERigVMRegisterType::Plain
-	template<typename T>
-	FORCEINLINE_DEBUGGABLE int32 AddDynamicArray(const FName& InNewName, int32 InCount, bool bIsArrayPerSlice, const T* InDataPtr, int32 InSliceCount, ERigVMRegisterType InType)
-	{
-		return AddDynamicArray(InNewName, sizeof(T), InCount, bIsArrayPerSlice, (const uint8*)InDataPtr, InSliceCount, InType);
-	}
-
 	// Adds a new named register for a dynamic array from a data pointer (used by compiler)
 	FORCEINLINE_DEBUGGABLE int32 AddDynamicArray(const FName& InNewName, int32 InElementSize, int32 InCount, bool bIsArrayPerSlice, const uint8* InDataPtr, int32 InSliceCount, ERigVMRegisterType InType, UScriptStruct* InScriptStruct)
 	{
@@ -1030,7 +1023,7 @@ private:
 				Storage[SliceIndex].SetNumZeroed(InCount * InElementSize);
 				if (InDataPtr)
 				{
-					Copy(Register, INDEX_NONE, ERigVMRegisterType::Plain, InDataPtr, Storage[SliceIndex].GetData(), InElementSize * InCount);
+					Copy(Register, INDEX_NONE, InType, InDataPtr, Storage[SliceIndex].GetData(), InElementSize * InCount);
 				}
 			}
 
@@ -1063,7 +1056,7 @@ private:
 			{
 				for (int32 SliceIndex = 0; SliceIndex < InSliceCount; SliceIndex++)
 				{
-					Copy(Register, INDEX_NONE, ERigVMRegisterType::Plain, InDataPtr, &Storage[SliceIndex * InElementSize], InElementSize);
+					Copy(Register, INDEX_NONE, InType, InDataPtr, &Storage[SliceIndex * InElementSize], InElementSize);
 				}
 			}
 			else
