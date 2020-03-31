@@ -377,16 +377,12 @@ public:
 	**/
 	void WaitUntilTaskCompletes(const FGraphEventRef& Task, ENamedThreads::Type CurrentThreadIfKnown = ENamedThreads::AnyThread)
 	{
-		FGraphEventArray Prerequistes;
-		Prerequistes.Add(Task);
-		WaitUntilTasksComplete(Prerequistes, CurrentThreadIfKnown);
+		WaitUntilTasksComplete({ Task }, CurrentThreadIfKnown);
 	}
 
 	void WaitUntilTaskCompletes(FGraphEventRef&& Task, ENamedThreads::Type CurrentThreadIfKnown = ENamedThreads::AnyThread)
 	{
-		FGraphEventArray Prerequistes;
-		Prerequistes.Add(MoveTemp(Task));
-		WaitUntilTasksComplete(Prerequistes, CurrentThreadIfKnown);
+		WaitUntilTasksComplete({ MoveTemp(Task) }, CurrentThreadIfKnown);
 	}
 
 	/** 
@@ -403,7 +399,7 @@ public:
 	}
 
 	/**
-	*	Deletegates for shutdown
+	*	Delegates for shutdown
 	*	@param	Callback - function to call prior to shutting down the taskgraph
 	**/
 	virtual void AddShutdownCallback(TFunction<void()>& Callback) = 0;
@@ -1322,7 +1318,7 @@ public:
 };
 
 /** Task class for lambda based tasks. **/
-template<typename Signature>
+template<typename Signature, ESubsequentsMode::Type SubsequentsMode>
 class TFunctionGraphTaskImpl : public FCustomStatIDGraphTaskBase
 {
 private:
@@ -1338,7 +1334,7 @@ public:
 	 *	@param StatId The stat id for this task.
 	 * @param InDesiredThread - Thread to run on
 	 **/
-	TFunctionGraphTaskImpl(TUniqueFunction<Signature>&& InFunction, TStatId StatId = TStatId{}, ENamedThreads::Type InDesiredThread = ENamedThreads::AnyThread)
+	TFunctionGraphTaskImpl(TUniqueFunction<Signature>&& InFunction, TStatId StatId, ENamedThreads::Type InDesiredThread)
 		: FCustomStatIDGraphTaskBase(StatId),
 		Function(MoveTemp(InFunction)),
 		DesiredThread(InDesiredThread)
@@ -1351,7 +1347,7 @@ public:
 
 	static ESubsequentsMode::Type GetSubsequentsMode()
 	{
-		return ESubsequentsMode::TrackSubsequents;
+		return SubsequentsMode;
 	}
 
 	FORCEINLINE void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
@@ -1360,16 +1356,115 @@ public:
 	}
 
 private:
-	static void DoTaskImpl(TUniqueFunction<void()>& Function, ENamedThreads::Type CurrentThread, 
+	FORCEINLINE static void DoTaskImpl(TUniqueFunction<void()>& Function, ENamedThreads::Type CurrentThread,
 		const FGraphEventRef& MyCompletionGraphEvent)
 	{
 		Function();
 	}
 
-	static void DoTaskImpl(TUniqueFunction<void(ENamedThreads::Type, const FGraphEventRef&)>& Function, 
+	FORCEINLINE static void DoTaskImpl(TUniqueFunction<void(const FGraphEventRef&)>& Function,
+		ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
+	{
+		Function(MyCompletionGraphEvent);
+	}
+
+	FORCEINLINE static void DoTaskImpl(TUniqueFunction<void(ENamedThreads::Type, const FGraphEventRef&)>& Function,
 		ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
 	{
 		Function(CurrentThread, MyCompletionGraphEvent);
+	}
+};
+
+class FTask
+{
+private:
+	using FVoidSignature = void();
+	using FParamsSignature = void(const FGraphEventRef&);
+
+public:
+	/**
+	 * Create a task and dispatch it when the prerequisites are complete. Don't track the task.
+	 * @param InFunction - a functor object to execute when the prerequisites are complete, with signature `void()` or `void(ENamedThreads::Type, const FGraphEventRef&)`
+	 * @param InStatId - StatId of task for debugging or analysis tools
+	 * @param InPrerequisites - Handles for prerequisites for this task, can be NULL if there are no prerequisites
+	 * @param InDesiredThread - Thread to run on
+	 * @return completion handle for the new task
+	 **/
+	static void Spawn(TUniqueFunction<FVoidSignature> InFunction, ENamedThreads::Type InDesiredThread = ENamedThreads::AnyThread, const FGraphEventArray* InPrerequisites = nullptr, TStatId InStatId = TStatId{})
+	{
+		TGraphTask<TFunctionGraphTaskImpl<FVoidSignature, ESubsequentsMode::FireAndForget>>::CreateTask(InPrerequisites).ConstructAndDispatchWhenReady(MoveTemp(InFunction), InStatId, InDesiredThread);
+	}
+
+	static void Spawn(TUniqueFunction<FParamsSignature> InFunction, ENamedThreads::Type InDesiredThread = ENamedThreads::AnyThread, const FGraphEventArray* InPrerequisites = nullptr, TStatId InStatId = TStatId{})
+	{
+		TGraphTask<TFunctionGraphTaskImpl<FParamsSignature, ESubsequentsMode::FireAndForget>>::CreateTask(InPrerequisites).ConstructAndDispatchWhenReady(MoveTemp(InFunction), InStatId, InDesiredThread);
+	}
+
+	/**
+	 * Create a task and dispatch it when the prerequisites are complete. The returned event object can be used to track task's execution.
+	 * If tracking is not required `Spawn` function should be used for better performance.
+	 * @param InFunction - a function to execute when the prerequisites are complete, with signature `void()` or `void(ENamedThreads::Type, const FGraphEventRef&)`
+	 * @param InStatId - StatId of task for debugging or analysis tools
+	 * @param InPrerequisites - Handles for prerequisites for this task, can be NULL if there are no prerequisites
+	 * @param InDesiredThread - Thread to run on
+	 * @return completion handle for the new task
+	 **/
+	UE_NODISCARD static FGraphEventRef SpawnAndTrack(TUniqueFunction<FVoidSignature> InFunction, ENamedThreads::Type InDesiredThread = ENamedThreads::AnyThread, const FGraphEventArray* InPrerequisites = nullptr, TStatId InStatId = TStatId{})
+	{
+		return TGraphTask<TFunctionGraphTaskImpl<FVoidSignature, ESubsequentsMode::TrackSubsequents>>::CreateTask(InPrerequisites).ConstructAndDispatchWhenReady(MoveTemp(InFunction), InStatId, InDesiredThread);
+	}
+
+	UE_NODISCARD static FGraphEventRef SpawnAndTrack(TUniqueFunction<FParamsSignature> InFunction, ENamedThreads::Type InDesiredThread = ENamedThreads::AnyThread, const FGraphEventArray* InPrerequisites = nullptr, TStatId InStatId = TStatId{})
+	{
+		return TGraphTask<TFunctionGraphTaskImpl<FParamsSignature, ESubsequentsMode::TrackSubsequents>>::CreateTask(InPrerequisites).ConstructAndDispatchWhenReady(MoveTemp(InFunction), InStatId, InDesiredThread);
+	}
+
+	/**
+	 * Create a task and dispatch it when the prerequisites are complete. Don't track the task.
+	 * @param InFunction - a functor object to execute when the prerequisites are complete, with signature `void()` or `void(ENamedThreads::Type, const FGraphEventRef&)`
+	 * @param InStatId - StatId of task for debugging or analysis tools
+	 * @param InPrerequisites - Handles for prerequisites for this task, can be NULL if there are no prerequisites
+	 * @param InDesiredThread - Thread to run on
+	 * @return completion handle for the new task
+	 **/
+	static void Spawn(TUniqueFunction<FVoidSignature> InFunction, ENamedThreads::Type InDesiredThread, FGraphEventRef InPrerequisite, TStatId InStatId = TStatId{})
+	{
+		FGraphEventArray Prerequisites;
+		check(InPrerequisite.GetReference());
+		Prerequisites.Add(MoveTemp(InPrerequisite));
+		Spawn(MoveTemp(InFunction), InDesiredThread, &Prerequisites, InStatId);
+	}
+
+	static void Spawn(TUniqueFunction<FParamsSignature> InFunction, ENamedThreads::Type InDesiredThread, FGraphEventRef InPrerequisite, TStatId InStatId = TStatId{})
+	{
+		FGraphEventArray Prerequisites;
+		check(InPrerequisite.GetReference());
+		Prerequisites.Add(MoveTemp(InPrerequisite));
+		Spawn(MoveTemp(InFunction), InDesiredThread, &Prerequisites, InStatId);
+	}
+
+	/**
+	* Create a task and dispatch it when the prerequisites are complete. The returned event object can be used to track task's execution.
+	* @param InFunction - a function to execute when the prerequisites are complete, with signature `void()` or `void(ENamedThreads::Type, const FGraphEventRef&)`
+	* @param InStatId - StatId of task for debugging or analysis tools
+	* @param InPrerequisite - Handle for a single prerequisite for this task
+	* @param InDesiredThread - Thread to run on
+	* @return completion handle for the new task
+	**/
+	UE_NODISCARD static FGraphEventRef SpawnAndTrack(TUniqueFunction<FVoidSignature> InFunction, ENamedThreads::Type InDesiredThread, FGraphEventRef InPrerequisite, TStatId InStatId = TStatId{})
+	{
+		FGraphEventArray Prerequisites;
+		check(InPrerequisite.GetReference());
+		Prerequisites.Add(MoveTemp(InPrerequisite));
+		return SpawnAndTrack(MoveTemp(InFunction), InDesiredThread, &Prerequisites, InStatId);
+	}
+
+	UE_NODISCARD static FGraphEventRef SpawnAndTrack(TUniqueFunction<FParamsSignature> InFunction, ENamedThreads::Type InDesiredThread, FGraphEventRef InPrerequisite, TStatId InStatId = TStatId{})
+	{
+		FGraphEventArray Prerequisites;
+		check(InPrerequisite.GetReference());
+		Prerequisites.Add(MoveTemp(InPrerequisite));
+		return SpawnAndTrack(MoveTemp(InFunction), InDesiredThread, &Prerequisites, InStatId);
 	}
 };
 
@@ -1386,12 +1481,12 @@ public:
 	 **/
 	static FGraphEventRef CreateAndDispatchWhenReady(TUniqueFunction<void()> InFunction, TStatId InStatId = TStatId{}, const FGraphEventArray* InPrerequisites = nullptr, ENamedThreads::Type InDesiredThread = ENamedThreads::AnyThread)
 	{
-		return TGraphTask<TFunctionGraphTaskImpl<void()>>::CreateTask(InPrerequisites).ConstructAndDispatchWhenReady(MoveTemp(InFunction), InStatId, InDesiredThread);
+		return TGraphTask<TFunctionGraphTaskImpl<void(), ESubsequentsMode::TrackSubsequents>>::CreateTask(InPrerequisites).ConstructAndDispatchWhenReady(MoveTemp(InFunction), InStatId, InDesiredThread);
 	}
 
 	static FGraphEventRef CreateAndDispatchWhenReady(TUniqueFunction<void(ENamedThreads::Type, const FGraphEventRef&)> InFunction, TStatId InStatId = TStatId{}, const FGraphEventArray* InPrerequisites = nullptr, ENamedThreads::Type InDesiredThread = ENamedThreads::AnyThread)
 	{
-		return TGraphTask<TFunctionGraphTaskImpl<void(ENamedThreads::Type, const FGraphEventRef&)>>::CreateTask(InPrerequisites).ConstructAndDispatchWhenReady(MoveTemp(InFunction), InStatId, InDesiredThread);
+		return TGraphTask<TFunctionGraphTaskImpl<void(ENamedThreads::Type, const FGraphEventRef&), ESubsequentsMode::TrackSubsequents>>::CreateTask(InPrerequisites).ConstructAndDispatchWhenReady(MoveTemp(InFunction), InStatId, InDesiredThread);
 	}
 
 	/**
