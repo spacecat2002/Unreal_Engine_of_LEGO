@@ -21,8 +21,13 @@ static FString GetCookedSandboxDir()
 
 //////////////////////////////////////////////////////////////////////////
 
+TUniquePtr<FSandboxPlatformFile> FSandboxPlatformFile::Create(bool bInEntireEngineWillUseThisSandbox)
+{
+	return TUniquePtr<FSandboxPlatformFile>(new FSandboxPlatformFile(bInEntireEngineWillUseThisSandbox));
+}
+
 FSandboxPlatformFile::FSandboxPlatformFile(bool bInEntireEngineWillUseThisSandbox)
-	: LowerLevel(NULL)
+	: LowerLevel(nullptr)
 	, bEntireEngineWillUseThisSandbox(bInEntireEngineWillUseThisSandbox)
 	, bSandboxEnabled(true)
 {
@@ -834,7 +839,7 @@ class FSandboxFileModule : public IPlatformFileModule
 public:
 	virtual IPlatformFile* GetPlatformFile() override
 	{
-		static TUniquePtr<IPlatformFile> AutoDestroySingleton = MakeUnique<FSandboxPlatformFile>(true);
+		static TUniquePtr<IPlatformFile> AutoDestroySingleton = FSandboxPlatformFile::Create(/* bInEntireEngineWillUseThisSandbox */ true);
 		return AutoDestroySingleton.Get();
 	}
 };

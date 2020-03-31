@@ -86,8 +86,7 @@ class SANDBOXFILE_API FSandboxPlatformFile : public IPlatformFile
 	 * @return true if it is ok to access the non-sandboxed files here
 	 */
 	bool OkForInnerAccess(const TCHAR* InFilenameOrDirectoryName, bool bIsDirectory = false) const;
-	
-public:
+
 	static const TCHAR* GetTypeName()
 	{
 		return TEXT("SandboxFile");
@@ -95,11 +94,12 @@ public:
 
 	/**
 	 * Converts passed in filename to use a sandbox path.
-	 * @param	InLowerLevel						File system to use for actual disk access
-	 * @param	InSandboxDirectory					Directory to use for the sandbox, reads are tried here first and all deletes and writes go here
 	 * @param	bEntireEngineWillUseThisSandbox		If true, the we set up the engine so that subprocesses also use this subdirectory
 	 */
-	FSandboxPlatformFile(bool bInEntireEngineWillUseThisSandbox = false);
+	FSandboxPlatformFile(bool bInEntireEngineWillUseThisSandbox);
+
+public:
+	static TUniquePtr<FSandboxPlatformFile> Create(bool bInEntireEngineWillUseThisSandbox);
 
 	virtual ~FSandboxPlatformFile();
 

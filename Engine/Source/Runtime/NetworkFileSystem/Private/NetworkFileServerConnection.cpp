@@ -99,9 +99,6 @@ FNetworkFileServerClientConnection::~FNetworkFileServerClientConnection( )
 	{
 		delete It.Value();
 	}
-
-	delete Sandbox;
-	Sandbox = NULL;	
 }
 
 /* FStreamingNetworkFileServerConnection implementation
@@ -933,11 +930,11 @@ bool FNetworkFileServerClientConnection::ProcessGetFileList( FArchive& In, FArch
 	SandboxDirectory = FPaths::ConvertRelativePathToFull(SandboxDirectory);
 
 	// delete any existing one first, in case game name somehow changed and client is re-asking for files (highly unlikely)
-	delete Sandbox;
-	Sandbox = new FSandboxPlatformFile(false);
+	Sandbox.Release();
+	Sandbox = FSandboxPlatformFile::Create(false);
 	Sandbox->Initialize(&FPlatformFileManager::Get().GetPlatformFile(), *FString::Printf(TEXT("-sandbox=\"%s\""), *SandboxDirectory));
 
-	GetSandboxRootDirectories(Sandbox, SandboxEngine, SandboxProject, SandboxEnginePlatformExtensions, SandboxProjectPlatformExtensions, LocalEngineDir, LocalProjectDir, LocalEnginePlatformExtensionsDir, LocalProjectPlatformExtensionsDir);
+	GetSandboxRootDirectories(Sandbox.Get(), SandboxEngine, SandboxProject, SandboxEnginePlatformExtensions, SandboxProjectPlatformExtensions, LocalEngineDir, LocalProjectDir, LocalEnginePlatformExtensionsDir, LocalProjectPlatformExtensionsDir);
 
 
 	// make sure the global shaders are up to date before letting the client read any shaders

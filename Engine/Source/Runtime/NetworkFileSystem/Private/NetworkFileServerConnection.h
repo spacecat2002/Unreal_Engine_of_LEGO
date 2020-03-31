@@ -239,7 +239,7 @@ private:
 	TMap<uint64, IFileHandle*> OpenFiles;
 
 	// Holds the file interface for local (to the server) files - all file ops MUST go through here, NOT IFileManager.
-	FSandboxPlatformFile* Sandbox;
+	TUniquePtr<FSandboxPlatformFile> Sandbox;
 
 	// Holds the list of unsolicited files to send in separate packets.
 	TArray<FString> UnsolictedFiles;
