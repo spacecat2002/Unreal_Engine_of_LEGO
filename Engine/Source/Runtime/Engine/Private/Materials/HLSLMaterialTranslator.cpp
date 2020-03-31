@@ -662,7 +662,7 @@ bool FHLSLMaterialTranslator::Translate()
 			MaterialShadingModels = ShadingModelsFromCompilation;
 		}
 
-		if (Domain == MD_Surface && IsSubsurfaceShadingModel(MaterialShadingModels))
+		if (Domain == MD_Volume || (Domain == MD_Surface && IsSubsurfaceShadingModel(MaterialShadingModels)))
 		{
 			// Note we don't test for the blend mode as you can have a translucent material using the subsurface shading model
 
