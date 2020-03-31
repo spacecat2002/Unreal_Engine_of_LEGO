@@ -162,14 +162,6 @@ public:
 		RigVMCopy<T>(GetData(), InOther.GetData(), Num());
 	}
 
-	// copies the contents of one array to this one
-	FORCEINLINE_DEBUGGABLE void Copy(const FRigVMByteArray& InOther)
-	{
-		Reset();
-		SetNumZeroed(InOther.Num() / sizeof(T));
-		RigVMCopy<T>(GetData(), InOther.GetData(), Num());
-	}
-
 	FORCEINLINE_DEBUGGABLE const T& operator[](int32 InIndex) const
 	{
 		return *(const T*)&Storage[InIndex * sizeof(T)];
