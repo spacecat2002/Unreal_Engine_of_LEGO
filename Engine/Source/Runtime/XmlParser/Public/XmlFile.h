@@ -19,9 +19,6 @@ class XMLPARSER_API FXmlFile
 {
 public:
 
-
-public:
-
 	/** Constructs the file without a path */
 	FXmlFile() : RootNode(nullptr), bFileLoaded(false) {}
 	/** 
@@ -31,17 +28,10 @@ public:
 	 * @param	ConstructMethod		Whether to load a file of use the string as a buffer of xml data
 	 */
 	FXmlFile(const FString& InFile, EConstructMethod::Type ConstructMethod = EConstructMethod::ConstructFromFile);
-	/** Dtor */
 	~FXmlFile() { Clear(); };
 
-private:
-
-	/** No conversion allowed */
-	FXmlFile(const FXmlFile& rhs) {}
-	/** No assignment allowed */
-	FXmlFile& operator=(const FXmlFile& rhs) { return *this; };
-
-public:
+	FXmlFile(const FXmlFile& rhs) = delete;
+	FXmlFile& operator=(const FXmlFile& rhs) = delete;
 
 	/** 
 	 * Loads the file with the passed path. Path is either treated as a filename to open, or as a text
