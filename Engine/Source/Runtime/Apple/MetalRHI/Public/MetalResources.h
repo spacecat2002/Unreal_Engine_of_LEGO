@@ -675,6 +675,7 @@ class FMetalPixelShader;
 class FMetalComputeShader;
 class FMetalRHIStagingBuffer;
 class FMetalRHIRenderQuery;
+class FMetalSuballocatedUniformBuffer;
 
 template<class T>
 struct TMetalResourceTraits

@@ -214,13 +214,3 @@ private:
 	FMetalRHICommandContext* AsyncComputeContext;
 	TMap<uint32, FVertexDeclarationRHIRef> VertexDeclarationCache;
 };
-
-/** Implements the Metal module as a dynamic RHI providing module. */
-class FMetalDynamicRHIModule : public IDynamicRHIModule
-{
-public:
-	// IDynamicRHIModule
-	virtual bool IsSupported() override;
-
-	virtual FDynamicRHI* CreateRHI(ERHIFeatureLevel::Type RequestedFeatureLevel = ERHIFeatureLevel::Num) override;
-};

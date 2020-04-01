@@ -4,10 +4,9 @@
 	MetalConstantBuffer.cpp: Metal Constant buffer implementation.
 =============================================================================*/
 
-#include "MetalRHI.h"
-#include "MetalResources.h"
-#include "MetalFrameAllocator.h"
 #include "MetalRHIPrivate.h"
+#include "MetalFrameAllocator.h"
+#include "MetalUniformBuffer.h"
 
 #pragma mark Suballocated Uniform Buffer Implementation
 
@@ -21,19 +20,21 @@ FMetalSuballocatedUniformBuffer::FMetalSuballocatedUniformBuffer(const FRHIUnifo
 #if !UE_BUILD_SHIPPING
     , Validation(InValidation)
 #endif
+{
     // Slate can create SingleDraw uniform buffers and use them several frames later. So it must be included.
-    if(Usage == UniformBuffer_SingleDraw || Usage == UniformBuffer_MultiFrame)
+    if (Usage == UniformBuffer_SingleDraw || Usage == UniformBuffer_MultiFrame)
     {
         Shadow = FMemory::Malloc(this->GetSize());
     }
 }
+
 FMetalSuballocatedUniformBuffer::~FMetalSuballocatedUniformBuffer()
 {
-    if(this->HasShadow())
+    if (this->HasShadow())
     {
         FMemory::Free(Shadow);
     }
-    
+
     // Note: this object does NOT own a reference
     // to the uniform buffer backing store
 }
@@ -45,7 +46,7 @@ bool FMetalSuballocatedUniformBuffer::HasShadow()
 
 void FMetalSuballocatedUniformBuffer::Update(const void* Contents)
 {
-    if(this->HasShadow())
+    if (this->HasShadow())
     {
         FMemory::Memcpy(this->Shadow, Contents, this->GetSize());
     }

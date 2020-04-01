@@ -22,12 +22,8 @@
 
 class FMetalRHICommandContext;
 class FMetalPipelineStateCacheManager;
->>>> ORIGINAL //UE4/Dev-RenderPlat-Staging/Engine/Source/Runtime/Apple/MetalRHI/Private/MetalContext.h#7
-==== THEIRS //UE4/Dev-RenderPlat-Staging/Engine/Source/Runtime/Apple/MetalRHI/Private/MetalContext.h#8
 class FMetalFrameAllocator;
-==== YOURS //juan.canada_Dev-Rendering_Work/Engine/Source/Runtime/Apple/MetalRHI/Private/MetalContext.h
 class FMetalQueryBufferPool;
-<<<<
 
 class FMetalContext
 {
