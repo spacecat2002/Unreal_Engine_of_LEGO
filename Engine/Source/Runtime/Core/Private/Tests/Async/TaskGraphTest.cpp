@@ -13,7 +13,7 @@
 #include "Math/RandomStream.h"
 #include "Containers/CircularQueue.h"
 #include "Containers/Queue.h"
-#include "Containers/WorkStealingQueue.h"
+#include <atomic>
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -1107,42 +1107,6 @@ namespace TaskGraphTests
 			Task->Wait(ENamedThreads::GameThread);
 		}
 
-		//template<uint32 Num, bool Spsc>
-		//void TestAtomicQueue()
-		//{
-		//	atomic_queue::AtomicQueue<uint32, 100, -1, true, true, false, Spsc> Queue;
-		//	TAtomic<bool> bStop = false;
-
-		//	FGraphEventRef Task = FTask::SpawnAndTrack(
-		//		[&bStop, &Queue]
-		//		{
-		//			uint32 El = 0;
-		//			while (!bStop)
-		//			{
-		//				if (Queue.try_push(El))
-		//				{
-		//					++El;
-		//				}
-		//			}
-		//		}
-		//		);
-
-		//	uint32 It = 0;
-		//	while (It != Num)
-		//	{
-		//		uint32 El;
-		//		if (Queue.try_pop(El))
-		//		{
-		//			//check(El == It);
-		//			++It;
-		//		}
-		//	}
-
-		//	bStop = true;
-
-		//	Task->Wait(ENamedThreads::GameThread);
-		//}
-
 		template<uint32 Num>
 		void TestMpscTQueue()
 		{
@@ -1179,51 +1143,12 @@ namespace TaskGraphTests
 			FTaskGraphInterface::Get().WaitUntilTasksComplete(MoveTemp(Tasks), ENamedThreads::GameThread);
 		}
 
-		//template<uint32 Num>
-		//void TestMpscAtomicQueue()
-		//{
-		//	atomic_queue::AtomicQueue<uint32, 100, -1, true, true, false, false> Queue;
-		//	TAtomic<bool> bStop = false;
-
-		//	int32 NumProducers = FPlatformMisc::NumberOfCoresIncludingHyperthreads() - 1;
-		//	FGraphEventArray Tasks;
-		//	for (int32 i = 0; i != NumProducers; ++i)
-		//	{
-		//		Tasks.Add(FTask::SpawnAndTrack(
-		//			[&bStop, &Queue]
-		//			{
-		//				while (!bStop)
-		//				{
-		//					Queue.try_push(0);
-		//				}
-		//			}
-		//			));
-		//	}
-
-		//	uint32 It = 0;
-		//	while (It != Num)
-		//	{
-		//		uint32 El;
-		//		if (Queue.try_pop(El))
-		//		{
-		//			++It;
-		//		}
-		//	}
-
-		//	bStop = true;
-
-		//	FTaskGraphInterface::Get().WaitUntilTasksComplete(MoveTemp(Tasks), ENamedThreads::GameThread);
-		//}
-
 		void Test()
 		{
 			BENCHMARK(5, TestTCircularQueue<10'000'000>);
 			BENCHMARK(5, TestTQueue<10'000'000, EQueueMode::Spsc>);
 			BENCHMARK(5, TestTQueue<10'000'000, EQueueMode::Mpsc>);
-			//BENCHMARK(5, TestAtomicQueue<10'000'000, true>);
-			//BENCHMARK(5, TestAtomicQueue<10'000'000, false>);
 			BENCHMARK(5, TestMpscTQueue<1'000'000>);
-			//BENCHMARK(5, TestMpscAtomicQueue<1'000'000>);
 		}
 	}
 
@@ -1250,103 +1175,6 @@ namespace TaskGraphTests
 		FTaskGraphInterface::Get().WaitUntilTasksComplete(MoveTemp(Tasks), ENamedThreads::GameThread);
 
 		check(CompletedTasks == NumTasks);
-	}
-
-	template<int NumTasks>
-	void TestWorkStealingQueuePerf()
-	{
-		using FQueue = TWorkStealingQueue<uint64>;
-		FQueue Queue;
-		std::atomic<bool> bQuit{ false };
-		std::atomic<uint64> TotalWork{ 0 };
-		std::atomic<uint64> CompletedNum{ 0 };
-		std::atomic<int64> QueueLength{ 0 };
-
-		using FPopOp = FQueue::EPopResult(FQueue::*)(uint64&);
-		// pops a work from the queue using given pop operation and if successful - executes it and returns true
-		auto DoWork = [&Queue, &TotalWork, &QueueLength, &CompletedNum](FPopOp PopOp)
-		{
-			uint64 Work = (uint64)-1;
-			FQueue::EPopResult Res = FQueue::EPopResult::Failure;
-			while (Res == FQueue::EPopResult::Failure)
-			{
-				Res = (Queue.*PopOp)(Work);
-			}
-
-			if (Res != FQueue::EPopResult::Empty)
-			{
-				check(Work != (uint64)-1);
-				TotalWork.fetch_add(Work, std::memory_order_relaxed);
-
-				QueueLength.fetch_sub(1, std::memory_order_relaxed);
-				CompletedNum.fetch_add(1, std::memory_order_relaxed);
-				
-				return true;
-			}
-
-			return false;
-		};
-
-		TFunction<void()> Thief = [&bQuit, &DoWork]
-		{
-			//while (!bQuit.load(std::memory_order_seq_cst))
-			//while (!bQuit.load(std::memory_order_acquire))
-			while (!bQuit.load(std::memory_order_relaxed))
-			//while (!bQuit)
-			{
-				DoWork(&FQueue::Steal);
-			}
-		};
-
-		uint32 ThiefsNum = FTaskGraphInterface::Get().GetNumWorkerThreads() / 2;
-
-		FGraphEventArray Thiefs;
-		for (uint64 ThiefNo = 0; ThiefNo != ThiefsNum; ++ThiefNo)
-		{
-			Thiefs.Add(FTask::SpawnAndTrack(Thief));
-		}
-
-		int64 MaxQueueLength{ 0 };
-		uint64 ExecutedLocallyNum{ 0 };
-		uint64 ExpectedTotalWork{ 0 };
-
-		for (uint64 WorkNo = 0; WorkNo != NumTasks; ++WorkNo)
-		{
-			ExpectedTotalWork += WorkNo;
-			Queue.Push(WorkNo);
-
-			int64 LocalQueueLength = QueueLength.fetch_add(1, std::memory_order_relaxed) + 1;
-			if (LocalQueueLength > MaxQueueLength)
-			{
-				MaxQueueLength = LocalQueueLength;
-			}
-
-			// periodically execute work locally to test "taking" from the queue
-			if (WorkNo % 8 == 0)
-			{
-				if (DoWork(&FQueue::Take))
-				{
-					++ExecutedLocallyNum;
-				}
-			}
-		}
-
-		// finish the queue
-		while (DoWork(&FQueue::Take))
-		{
-			++ExecutedLocallyNum;
-		}
-
-		bQuit.store(true, std::memory_order_relaxed);
-		//bQuit.store(true, std::memory_order_seq_cst);
-		//bQuit = true;
-		FTaskGraphInterface::Get().WaitUntilTasksComplete(Thiefs);
-
-		//std::atomic_thread_fence(std::memory_order_acquire);
-
-		check(CompletedNum.load(std::memory_order_relaxed) == NumTasks && TotalWork.load(std::memory_order_relaxed) == ExpectedTotalWork);
-
-		UE_LOG(LogTemp, Display, TEXT("executed locally %.0f%%, max queue length %d"), 100.0 * ExecutedLocallyNum / NumTasks, MaxQueueLength);
 	}
 
 	template<int NumTasks>
@@ -1423,7 +1251,6 @@ namespace TaskGraphTests
 		BENCHMARK(5, TestBatchSpawning<100'000>);
 
 		//Queues::Test();
-		//BENCHMARK(10, TestWorkStealingQueuePerf<1000000>);
 
 		return true;
 	}
