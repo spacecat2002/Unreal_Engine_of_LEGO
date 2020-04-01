@@ -94,6 +94,11 @@ class ENGINE_API USkyLightComponent : public ULightComponentBase
 {
 	GENERATED_UCLASS_BODY()
 
+	/** When enabled, the sky will be captured and convolved to achieve dynamic diffuse and specular environment lighting. 
+	 * Only the SkyAtmosphere and VolumetricCloud Component are taken into account, sky domes are not captured. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Light)
+	bool bRealTimeCapture;
+
 	/** Indicates where to get the light contribution from. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Light)
 	TEnumAsByte<enum ESkyLightSourceType> SourceType;
@@ -245,6 +250,8 @@ public:
 
 	/** Whether sky occlusion is supported by current feature level */
 	bool IsOcclusionSupported() const;
+
+	bool IsRealTimeCaptureEnabled() const;
 
 	/** 
 	 * Recaptures the scene for the skylight. 

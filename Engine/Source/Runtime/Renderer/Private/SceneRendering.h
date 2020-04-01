@@ -42,6 +42,7 @@ struct FILCUpdatePrimTaskData;
 class FRaytracingLightDataPacked;
 class FRayTracingLocalShaderBindingWriter;
 struct FExposureBufferData;
+struct CloudRenderContext;
 
 DECLARE_STATS_GROUP(TEXT("Command List Markers"), STATGROUP_CommandListMarkers, STATCAT_Advanced);
 
@@ -1113,6 +1114,9 @@ public:
 	TRefCountPtr<IPooledRenderTarget> SkyAtmosphereViewLutTexture;
 	const FAtmosphereUniformShaderParameters* SkyAtmosphereUniformShaderParameters;
 
+	TRefCountPtr<IPooledRenderTarget> VolumetricCloudShadowMap;
+	TUniformBufferRef<FViewUniformShaderParameters> VolumetricRenderTargetViewUniformBuffer;
+
 	/** Used when there is no view state, buffers reallocate every frame. */
 	TUniquePtr<FForwardLightingViewResources> ForwardLightingResourcesStorage;
 
@@ -1361,9 +1365,6 @@ private:
 
 	/** Calculates bounding boxes for the translucency lighting volume cascades. */
 	void CalcTranslucencyLightingVolumeBounds(FBox* InOutCascadeBoundsArray, int32 NumCascades) const;
-
-	/** Sets the sky SH irradiance map coefficients. */
-	void SetupSkyIrradianceEnvironmentMapConstants(FVector4* OutSkyIrradianceEnvironmentMap) const;
 };
 
 
@@ -1616,6 +1617,15 @@ public:
 	}
 
 	static int32 GetRefractionQuality(const FSceneViewFamily& ViewFamily);
+
+	/** Create/Update the scene view irradiance buffer from CPU data or empty if generated fully on GPU. */
+	void UpdateSkyIrradianceGpuBuffer(FRHICommandListImmediate& RHICmdList);
+
+	/** Common function to render a sky using shared LUT resources from any view point (if not using the SkyView and AerialPerspective textures). */
+	void RenderSkyAtmosphereInternal(FRDGBuilder& GraphBuilder, SkyAtmosphereRenderContext& SkyRenderContext);
+
+	/** Common function to render a cloud layer using shared LUT resources. */
+	void  RenderVolumetricCloudsInternal(FRDGBuilder& GraphBuilder, CloudRenderContext& CloudRC);
 	
 protected:
 
@@ -1780,10 +1790,22 @@ protected:
 	/** Render the sky atmosphere over the scene.*/
 	void RenderSkyAtmosphere(FRHICommandListImmediate& RHICmdList);
 
+	/** Initialise volumetric cloud resources.*/
+	void InitVolumetricCloudsForViews(FRHICommandListImmediate& RHICmdList);
+	/** Render volumetric cloud. */
+	void RenderVolumetricCloud(FRHICommandListImmediate& RHICmdList);
+
 	/** Render notification to artist when a sky material is used but it might comtains the camera (and then the sky/background would look black).*/
 	void RenderSkyAtmosphereEditorNotifications(FRHICommandListImmediate& RHICmdList);
 	/** We should render on screen notification only if any of the scene contains a mesh using a sky material.*/
 	bool ShouldRenderSkyAtmosphereEditorNotifications();
+
+	/** Initialise volumetric render target.*/
+	void InitVolumetricRenderTargetForViews(FRHICommandListImmediate& RHICmdList);
+	/** Process the volumetric render target, generating the high resolution version.*/
+	void ReconstructVolumetricRenderTarget(FRHICommandListImmediate& RHICmdList);
+	/** Compose the volumetric render target over the scene.*/
+	void ComposeVolumetricRenderTargetOverScene(FRHICommandListImmediate& RHICmdList);
 
 	void ResolveSceneColor(FRHICommandList& RHICmdList);
 

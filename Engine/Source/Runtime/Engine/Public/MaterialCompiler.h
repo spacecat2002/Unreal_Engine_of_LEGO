@@ -352,12 +352,18 @@ public:
 	virtual int32 EyeAdaptation() = 0;
 	virtual int32 AtmosphericLightVector() = 0;
 	virtual int32 AtmosphericLightColor() = 0;
+
 	virtual int32 SkyAtmosphereLightIlluminance(int32 WorldPosition, int32 LightIndex) = 0;
 	virtual int32 SkyAtmosphereLightDirection(int32 LightIndex) = 0;
 	virtual int32 SkyAtmosphereLightDiskLuminance(int32 LightIndex) = 0;
 	virtual int32 SkyAtmosphereViewLuminance() = 0;
 	virtual int32 SkyAtmosphereAerialPerspective(int32 WorldPosition) = 0;
 	virtual int32 SkyAtmosphereDistantLightScatteredLuminance() = 0;
+
+	virtual int32 GetCloudSampleAltitude() = 0;
+	virtual int32 GetCloudSampleAltitudeInLayer() = 0;
+	virtual int32 GetCloudSampleNormAltitudeInLayer() = 0;
+
 	virtual int32 GetHairUV() = 0;
 	virtual int32 GetHairDimensions() = 0;
 	virtual int32 GetHairSeed() = 0;
@@ -685,6 +691,21 @@ public:
 	virtual int32 SkyAtmosphereDistantLightScatteredLuminance() override
 	{
 		return Compiler->SkyAtmosphereDistantLightScatteredLuminance();
+	}
+
+	virtual int32 GetCloudSampleAltitude() override
+	{
+		return Compiler->GetCloudSampleAltitude();
+	}
+
+	virtual int32 GetCloudSampleAltitudeInLayer() override
+	{
+		return Compiler->GetCloudSampleAltitudeInLayer();
+	}
+
+	virtual int32 GetCloudSampleNormAltitudeInLayer() override
+	{
+		return Compiler->GetCloudSampleNormAltitudeInLayer();
 	}
 	
 	virtual int32 CustomPrimitiveData(int32 OutputIndex, EMaterialValueType Type) override

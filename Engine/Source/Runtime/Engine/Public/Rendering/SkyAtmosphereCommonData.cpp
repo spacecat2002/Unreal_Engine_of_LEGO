@@ -168,4 +168,19 @@ FLinearColor FAtmosphereSetup::GetTransmittanceAtGroundLevel(const FVector& SunD
 	return FLinearColor(FMath::Exp(-OpticalDepthRGB.R), FMath::Exp(-OpticalDepthRGB.G), FMath::Exp(-OpticalDepthRGB.B));
 }
 
+void FAtmosphereSetup::ComputeViewData(FVector WorldCameraOrigin, FVector& SkyWorldCameraOrigin, FVector4& SkyPlanetCenterAndViewHeight) const
+{
+	// The constants below should match the one in SkyAtmosphereCommon.ush
+	const float PlanetRadiusOffset = 0.01f;		// Always force to be 10 meters above the ground/sea level (to always see the sky and not be under the virtual planet occluding ray tracing)
 
+	const float Offset = PlanetRadiusOffset * SkyUnitToCm;
+	const float BottomRadiusWorld = BottomRadiusKm * SkyUnitToCm;
+	const FVector PlanetCenterWorld = PlanetCenterKm * SkyUnitToCm;
+	const FVector PlanetCenterToCameraWorld = WorldCameraOrigin - PlanetCenterWorld;
+	const float DistanceToPlanetCenterWorld = PlanetCenterToCameraWorld.Size();
+
+	// If the camera is below the planet surface, we snap it back onto the surface.
+	// This is to make sure the sky is always visible even if the camera is inside the virtual planet.
+	SkyWorldCameraOrigin = DistanceToPlanetCenterWorld < (BottomRadiusWorld + Offset) ? PlanetCenterWorld + (BottomRadiusWorld + Offset) * (PlanetCenterToCameraWorld / DistanceToPlanetCenterWorld) : WorldCameraOrigin;
+	SkyPlanetCenterAndViewHeight = FVector4(PlanetCenterWorld, (SkyWorldCameraOrigin - PlanetCenterWorld).Size());
+}

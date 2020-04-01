@@ -52,6 +52,7 @@
 #include "RayTracing/RayTracingIESLightProfiles.h"
 #include "Halton.h"
 #endif
+#include "VolumetricRenderTargetViewStateData.h"
 
 /** Factor by which to grow occlusion tests **/
 #define OCCLUSION_SLOP (1.0f)
@@ -1032,6 +1033,8 @@ public:
 	ESequencerState SequencerState;
 
 	FTemporalLODState TemporalLODState;
+
+	FVolumetricRenderTargetViewStateData VolumetricRenderTarget;
 
 	// call after OnFrameRenderingSetup()
 	virtual uint32 GetCurrentTemporalAASampleIndex() const
@@ -2523,6 +2526,13 @@ public:
 	/** The scene's sky light, if any. */
 	FSkyLightSceneProxy* SkyLight;
 
+	/** Contains the sky env map irradiance as spherical harmonics. */
+	FRWBufferStructured SkyIrradianceEnvironmentMap;
+
+	/** If sky light bRealTimeCaptureEnabled is true, use those render target to capture, generate mips and convolve the sky env map. */
+	TRefCountPtr<IPooledRenderTarget> CapturedSkyRenderTarget;	// Needs to be a IPooledRenderTarget because it must be created before the View uniform buffer is created.
+	TRefCountPtr<IPooledRenderTarget> ConvolvedSkyRenderTarget;
+
 	/** Used to track the order that skylights were enabled in. */
 	TArray<FSkyLightSceneProxy*> SkyLightStack;
 
@@ -2588,6 +2598,12 @@ public:
 
 	/** Used to track the order that skylights were enabled in. */
 	TArray<FSkyAtmosphereSceneProxy*> SkyAtmosphereStack;
+
+	/** The sky/atmosphere components of the scene. */
+	FVolumetricCloudRenderSceneInfo* VolumetricCloud;
+
+	/** Used to track the order that skylights were enabled in. */
+	TArray<FVolumetricCloudSceneProxy*> VolumetricCloudStack;
 
 	/** The wind sources in the scene. */
 	TArray<class FWindSourceSceneProxy*> WindSources;
@@ -2702,6 +2718,7 @@ public:
 	virtual void UpdatePlanarReflectionContents(UPlanarReflectionComponent* CaptureComponent, FSceneRenderer& MainSceneRenderer) override;
 	virtual void AllocateReflectionCaptures(const TArray<UReflectionCaptureComponent*>& NewCaptures, const TCHAR* CaptureReason, bool bVerifyOnlyCapturing) override;
 	virtual void UpdateSkyCaptureContents(const USkyLightComponent* CaptureComponent, bool bCaptureEmissiveOnly, UTextureCube* SourceCubemap, FTexture* OutProcessedTexture, float& OutAverageBrightness, FSHVectorRGB3& OutIrradianceEnvironmentMap, TArray<FFloat16Color>* OutRadianceMap) override; 
+	virtual void AllocateAndCaptureFrameSkyEnvMap(FRHICommandListImmediate& RHICmdList, FSceneRenderer& SceneRenderer, FViewInfo& MainView, bool bShouldRenderSkyAtmosphere, bool bShouldRenderVolumetricCloud) override;
 	virtual void AddPrecomputedLightVolume(const class FPrecomputedLightVolume* Volume) override;
 	virtual void RemovePrecomputedLightVolume(const class FPrecomputedLightVolume* Volume) override;
 	virtual bool HasPrecomputedVolumetricLightmap_RenderThread() const override;
@@ -2724,6 +2741,11 @@ public:
 	virtual FSkyAtmosphereRenderSceneInfo* GetSkyAtmosphereSceneInfo() override { return SkyAtmosphere; }
 	virtual const FSkyAtmosphereRenderSceneInfo* GetSkyAtmosphereSceneInfo() const override { return SkyAtmosphere; }
 
+	virtual void AddVolumetricCloud(FVolumetricCloudSceneProxy* VolumetricCloudSceneProxy) override;
+	virtual void RemoveVolumetricCloud(FVolumetricCloudSceneProxy* VolumetricCloudSceneProxy) override;
+	virtual FVolumetricCloudRenderSceneInfo* GetVolumetricCloudSceneInfo() override { return VolumetricCloud; }
+	virtual const FVolumetricCloudRenderSceneInfo* GetVolumetricCloudSceneInfo() const override { return VolumetricCloud; }
+
 	virtual void AddWindSource(UWindDirectionalSourceComponent* WindComponent) override;
 	virtual void RemoveWindSource(UWindDirectionalSourceComponent* WindComponent) override;
 	virtual const TArray<FWindSourceSceneProxy*>& GetWindSources_RenderThread() const override;
@@ -2745,6 +2767,17 @@ public:
 	bool HasSkyAtmosphere() const
 	{
 		return (SkyAtmosphere != NULL);
+	}
+	bool HasVolumetricCloud() const
+	{
+		return (VolumetricCloud != NULL);
+	}
+
+	bool IsSecondAtmosphereLightEnabled()
+	{
+		// If the second light is not null then we enable the second light.
+		// We do not do any light1 to light0 remapping if light0 is null.
+		return AtmosphereLights[1] != nullptr;
 	}
 
 	// Reset all the light to default state "not being affected by atmosphere". Should only be called from render side.

@@ -1081,6 +1081,9 @@ public:
 	float MinOcclusion;
 	FLinearColor OcclusionTint;
 	int32 SamplesPerPixel;
+	bool bRealTimeCaptureEnabled;
+	FVector CapturePosition;
+	uint32 CaptureCubeMapResolution;
 #if RHI_RAYTRACING
 	FSkyLightImportanceSamplingData* ImportanceSamplingData;
 #endif

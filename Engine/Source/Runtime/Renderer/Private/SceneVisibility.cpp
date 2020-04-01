@@ -203,6 +203,14 @@ static FAutoConsoleVariableRef CVarForceSceneHasDecals(
 	ECVF_RenderThreadSafe
 );
 
+static float GCameraCutTranslationThreshold = 10000.0f;
+static FAutoConsoleVariableRef CVarCameraCutTranslationThreshold(
+	TEXT("r.CameraCutTranslationThreshold"),
+	GCameraCutTranslationThreshold,
+	TEXT("The maximum camera translation disatance in centimeters allowed between two frames before a camera cut is automatically inserted."),
+	ECVF_RenderThreadSafe
+);
+
 /** Distance fade cvars */
 static int32 GDisableLODFade = false;
 static FAutoConsoleVariableRef CVarDisableLODFade( TEXT("r.DisableLODFade"), GDisableLODFade, TEXT("Disable fading for distance culling"), ECVF_RenderThreadSafe );
@@ -3259,7 +3267,7 @@ void FSceneRenderer::PreVisibilityFrameSetup(FRHICommandListImmediate& RHICmdLis
 				View,
 				ViewState->PrevFrameViewInfo.ViewMatrices.GetViewMatrix(),
 				ViewState->PrevFrameViewInfo.ViewMatrices.GetViewOrigin(),
-				45.0f, 10000.0f);
+				45.0f, GCameraCutTranslationThreshold);
 			const bool bResetCamera = (bFirstFrameOrTimeWasReset || View.bCameraCut || bIsLargeCameraMovement || View.bForceCameraVisibilityReset);
 			
 #if RHI_RAYTRACING
@@ -4221,6 +4229,10 @@ bool FDeferredShadingSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdLi
 
 	// This has to happen before Scene->IndirectLightingCache.UpdateCache, since primitives in View.IndirectShadowPrimitives need ILC updates
 	CreateIndirectCapsuleShadows();
+
+	// This must happen before we start initialising and using views.
+	UpdateSkyIrradianceGpuBuffer(RHICmdList);
+
 	RHICmdList.ImmediateFlush(EImmediateFlushType::DispatchToRHIThread);
 
 	// Initialise Sky/View resources before the view global uniform buffer is built.

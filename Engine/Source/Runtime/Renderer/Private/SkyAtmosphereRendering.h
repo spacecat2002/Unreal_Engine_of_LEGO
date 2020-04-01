@@ -11,6 +11,8 @@
 #include "RendererInterface.h"
 #include "RenderResource.h"
 #include "Rendering/SkyAtmosphereCommonData.h"
+#include "RenderGraphResources.h"
+#include "SceneView.h"
 
 
 class FScene;
@@ -18,6 +20,10 @@ class FViewInfo;
 class FLightSceneInfo;
 class USkyAtmosphereComponent;
 class FSkyAtmosphereSceneProxy;
+
+class FSkyAtmosphereInternalCommonParameters;
+class FVolumeShadowingShaderParametersGlobal0;
+class FVolumeShadowingShaderParametersGlobal1;
 
 struct FEngineShowFlags;
 
@@ -55,6 +61,56 @@ struct FSkyAtmosphereViewSharedUniformShaderParameters
 	float ApplyCameraAerialPerspectiveVolume;
 };
 
+// Structure with data necessary to specify a sky render.
+struct SkyAtmosphereRenderContext
+{
+	///////////////////////////////////
+	// Per scene parameters
+
+	bool bUseDepthBoundTestIfPossible;
+	bool bForceRayMarching;
+	bool bDisableDepthRead; // Do not apply scene depth texture. As such, only far Z will be considered
+	bool bDisableBlending;	// Do not do any blending. The sky will clear the target when rendering a sky reflection capture for instance.
+
+	bool bMultiScattering;
+	bool bFastSky;
+	bool bFastAerialPerspective;
+	bool bFastAerialPerspectiveDepthTest;
+	bool bSecondAtmosphereLightEnabled;
+	bool bShouldSampleOpaqueShadow;
+
+	FRDGTextureRef TransmittanceLut;
+	FRDGTextureRef MultiScatteredLuminanceLut;
+	FRDGTextureRef SkyAtmosphereViewLutTexture;
+	FRDGTextureRef SkyAtmosphereCameraAerialPerspectiveVolume;
+
+	///////////////////////////////////
+	// Per view parameters
+
+	FViewMatrices* ViewMatrices;			// The actual view matrices we use to render the sky
+	TUniformBufferRef<FViewUniformShaderParameters> ViewUniformBuffer;
+
+	FRenderTargetBindingSlots RenderTargets;
+
+	FIntRect Viewport;
+
+	bool bLightDiskEnabled;
+	bool bRenderSkyPixel;
+	float AerialPerspectiveStartDepthInCm;
+	float NearClippingDistance;
+	ERHIFeatureLevel::Type FeatureLevel;
+
+	TUniformBufferRef<FVolumeShadowingShaderParametersGlobal0> LightShadowShaderParams0UniformBuffer;
+	TUniformBufferRef<FVolumeShadowingShaderParametersGlobal1> LightShadowShaderParams1UniformBuffer;
+
+	bool bShouldSampleCloudShadow;
+	FRDGTextureRef VolumetricCloudShadowMap;
+
+	SkyAtmosphereRenderContext();
+
+private:
+};
+
 
 
 class FSkyAtmosphereRenderSceneInfo
@@ -73,6 +129,8 @@ public:
 	const FAtmosphereUniformShaderParameters* GetAtmosphereShaderParameters() const { return &AtmosphereUniformShaderParameters; }
 	const FSkyAtmosphereSceneProxy& GetSkyAtmosphereSceneProxy() const { return SkyAtmosphereSceneProxy; }
 
+	TUniformBufferRef<FSkyAtmosphereInternalCommonParameters>& GetInternalCommonParametersUniformBuffer() { return InternalCommonParametersUniformBuffer; }
+
 private:
 
 	FSkyAtmosphereSceneProxy& SkyAtmosphereSceneProxy;
@@ -80,6 +138,8 @@ private:
 	FAtmosphereUniformShaderParameters AtmosphereUniformShaderParameters;
 
 	TUniformBufferRef<FAtmosphereUniformShaderParameters> AtmosphereUniformBuffer;
+
+	TUniformBufferRef<FSkyAtmosphereInternalCommonParameters> InternalCommonParametersUniformBuffer;
 
 	TRefCountPtr<IPooledRenderTarget> TransmittanceLutTexture;
 	TRefCountPtr<IPooledRenderTarget> MultiScatteredLuminanceLutTexture;
