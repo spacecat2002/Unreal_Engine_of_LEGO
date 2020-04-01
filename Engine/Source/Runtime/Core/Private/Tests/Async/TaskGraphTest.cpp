@@ -11,7 +11,6 @@
 #include "HAL/ThreadHeartBeat.h"
 #include "ProfilingDebugging/ScopedTimers.h"
 #include "Math/RandomStream.h"
-#include "Containers/AtomicQueue.h"
 #include "Containers/CircularQueue.h"
 #include "Containers/Queue.h"
 #include "Containers/WorkStealingQueue.h"
@@ -1108,41 +1107,41 @@ namespace TaskGraphTests
 			Task->Wait(ENamedThreads::GameThread);
 		}
 
-		template<uint32 Num, bool Spsc>
-		void TestAtomicQueue()
-		{
-			atomic_queue::AtomicQueue<uint32, 100, -1, true, true, false, Spsc> Queue;
-			TAtomic<bool> bStop = false;
+		//template<uint32 Num, bool Spsc>
+		//void TestAtomicQueue()
+		//{
+		//	atomic_queue::AtomicQueue<uint32, 100, -1, true, true, false, Spsc> Queue;
+		//	TAtomic<bool> bStop = false;
 
-			FGraphEventRef Task = FTask::SpawnAndTrack(
-				[&bStop, &Queue]
-				{
-					uint32 El = 0;
-					while (!bStop)
-					{
-						if (Queue.try_push(El))
-						{
-							++El;
-						}
-					}
-				}
-				);
+		//	FGraphEventRef Task = FTask::SpawnAndTrack(
+		//		[&bStop, &Queue]
+		//		{
+		//			uint32 El = 0;
+		//			while (!bStop)
+		//			{
+		//				if (Queue.try_push(El))
+		//				{
+		//					++El;
+		//				}
+		//			}
+		//		}
+		//		);
 
-			uint32 It = 0;
-			while (It != Num)
-			{
-				uint32 El;
-				if (Queue.try_pop(El))
-				{
-					//check(El == It);
-					++It;
-				}
-			}
+		//	uint32 It = 0;
+		//	while (It != Num)
+		//	{
+		//		uint32 El;
+		//		if (Queue.try_pop(El))
+		//		{
+		//			//check(El == It);
+		//			++It;
+		//		}
+		//	}
 
-			bStop = true;
+		//	bStop = true;
 
-			Task->Wait(ENamedThreads::GameThread);
-		}
+		//	Task->Wait(ENamedThreads::GameThread);
+		//}
 
 		template<uint32 Num>
 		void TestMpscTQueue()
@@ -1180,51 +1179,51 @@ namespace TaskGraphTests
 			FTaskGraphInterface::Get().WaitUntilTasksComplete(MoveTemp(Tasks), ENamedThreads::GameThread);
 		}
 
-		template<uint32 Num>
-		void TestMpscAtomicQueue()
-		{
-			atomic_queue::AtomicQueue<uint32, 100, -1, true, true, false, false> Queue;
-			TAtomic<bool> bStop = false;
+		//template<uint32 Num>
+		//void TestMpscAtomicQueue()
+		//{
+		//	atomic_queue::AtomicQueue<uint32, 100, -1, true, true, false, false> Queue;
+		//	TAtomic<bool> bStop = false;
 
-			int32 NumProducers = FPlatformMisc::NumberOfCoresIncludingHyperthreads() - 1;
-			FGraphEventArray Tasks;
-			for (int32 i = 0; i != NumProducers; ++i)
-			{
-				Tasks.Add(FTask::SpawnAndTrack(
-					[&bStop, &Queue]
-					{
-						while (!bStop)
-						{
-							Queue.try_push(0);
-						}
-					}
-					));
-			}
+		//	int32 NumProducers = FPlatformMisc::NumberOfCoresIncludingHyperthreads() - 1;
+		//	FGraphEventArray Tasks;
+		//	for (int32 i = 0; i != NumProducers; ++i)
+		//	{
+		//		Tasks.Add(FTask::SpawnAndTrack(
+		//			[&bStop, &Queue]
+		//			{
+		//				while (!bStop)
+		//				{
+		//					Queue.try_push(0);
+		//				}
+		//			}
+		//			));
+		//	}
 
-			uint32 It = 0;
-			while (It != Num)
-			{
-				uint32 El;
-				if (Queue.try_pop(El))
-				{
-					++It;
-				}
-			}
+		//	uint32 It = 0;
+		//	while (It != Num)
+		//	{
+		//		uint32 El;
+		//		if (Queue.try_pop(El))
+		//		{
+		//			++It;
+		//		}
+		//	}
 
-			bStop = true;
+		//	bStop = true;
 
-			FTaskGraphInterface::Get().WaitUntilTasksComplete(MoveTemp(Tasks), ENamedThreads::GameThread);
-		}
+		//	FTaskGraphInterface::Get().WaitUntilTasksComplete(MoveTemp(Tasks), ENamedThreads::GameThread);
+		//}
 
 		void Test()
 		{
 			BENCHMARK(5, TestTCircularQueue<10'000'000>);
 			BENCHMARK(5, TestTQueue<10'000'000, EQueueMode::Spsc>);
 			BENCHMARK(5, TestTQueue<10'000'000, EQueueMode::Mpsc>);
-			BENCHMARK(5, TestAtomicQueue<10'000'000, true>);
-			BENCHMARK(5, TestAtomicQueue<10'000'000, false>);
+			//BENCHMARK(5, TestAtomicQueue<10'000'000, true>);
+			//BENCHMARK(5, TestAtomicQueue<10'000'000, false>);
 			BENCHMARK(5, TestMpscTQueue<1'000'000>);
-			BENCHMARK(5, TestMpscAtomicQueue<1'000'000>);
+			//BENCHMARK(5, TestMpscAtomicQueue<1'000'000>);
 		}
 	}
 

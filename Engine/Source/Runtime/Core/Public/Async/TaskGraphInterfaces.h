@@ -1375,6 +1375,7 @@ private:
 	}
 };
 
+// provides a preferable method to create and dispatch tasks
 class FTask
 {
 private:
