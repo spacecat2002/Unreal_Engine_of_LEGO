@@ -395,6 +395,20 @@ FScopedEvent::~FScopedEvent()
 	}
 }
 
+
+/*-----------------------------------------------------------------------------
+	FEventRef
+-----------------------------------------------------------------------------*/
+
+FEventRef::FEventRef(EEventMode Mode /* = EEventMode::AutoReset */)
+	: Event(FPlatformProcess::GetSynchEventFromPool(Mode == EEventMode::ManualReset))
+{}
+
+FEventRef::~FEventRef()
+{
+	FPlatformProcess::ReturnSynchEventToPool(Event);
+}
+
 /*-----------------------------------------------------------------------------
 	FRunnableThread
 -----------------------------------------------------------------------------*/
