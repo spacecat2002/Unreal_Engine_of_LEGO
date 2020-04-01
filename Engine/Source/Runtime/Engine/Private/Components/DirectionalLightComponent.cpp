@@ -1115,6 +1115,26 @@ void UDirectionalLightComponent::SetShadowAmount(float NewValue)
 	}
 }
 
+void UDirectionalLightComponent::SetAtmosphereSunLight(bool bNewValue)
+{
+	if (AreDynamicDataChangesAllowed()
+		&& bUsedAsAtmosphereSunLight != bNewValue)
+	{
+		bUsedAsAtmosphereSunLight = bNewValue;
+		MarkRenderStateDirty();
+	}
+}
+
+void UDirectionalLightComponent::SetAtmosphereSunLightIndex(int32 NewValue)
+{
+	if (AreDynamicDataChangesAllowed()
+		&& AtmosphereSunLightIndex != NewValue)
+	{
+		AtmosphereSunLightIndex = FMath::Max(0, NewValue);
+		MarkRenderStateDirty();
+	}
+}
+
 void UDirectionalLightComponent::Serialize(FArchive& Ar)
 {
 	Super::Serialize(Ar);

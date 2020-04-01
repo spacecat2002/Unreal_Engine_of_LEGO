@@ -162,7 +162,7 @@ class ENGINE_API UDirectionalLightComponent : public ULightComponent
 	UPROPERTY(BlueprintReadOnly, interp, Category = Light, meta = (HideAlphaChannel, UIMin = "0", UIMax = "1", ClampMin = "0", ClampMax = "1"), AdvancedDisplay)
 	float ShadowAmount;
 
-	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category=Light, meta=(DisplayName = "Atmosphere / Fog Sun Light"))
+	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category=Light, meta=(DisplayName = "Atmosphere Sun Light"))
 	uint32 bUsedAsAtmosphereSunLight : 1;
 
 	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category = Light, meta = (DisplayName = "Atmosphere Sun Light Index", UIMin = "0", UIMax = "1", ClampMin = "0", ClampMax= "1"))
@@ -200,6 +200,12 @@ class ENGINE_API UDirectionalLightComponent : public ULightComponent
 
 	UFUNCTION(BlueprintCallable, Category="Rendering|Lighting")
 	void SetShadowAmount(float NewValue);
+
+	UFUNCTION(BlueprintCallable, Category="Rendering|Lighting")
+	void SetAtmosphereSunLight(bool bNewValue);
+
+	UFUNCTION(BlueprintCallable, Category = "Rendering|Lighting")
+	void SetAtmosphereSunLightIndex(int32 NewValue);
 
 	//~ Begin ULightComponent Interface
 	virtual FVector4 GetLightPosition() const override;
