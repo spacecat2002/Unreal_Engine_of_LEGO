@@ -69,6 +69,13 @@ public:
 	FORCEINLINE FQuat(float InX, float InY, float InZ, float InW);
 
 	/**
+	 * Creates and initializes a new quaternion from the XYZW values in the given VectorRegister.
+	 *
+	 * @param V XYZW components of the quaternion packed into a single VectorRegister
+	 */
+	explicit FORCEINLINE FQuat(const VectorRegister& V);
+
+	/**
 	 * Creates and initializes a new quaternion from the given matrix.
 	 *
 	 * @param M The rotation matrix to initialize from.
@@ -709,6 +716,13 @@ FORCEINLINE FQuat::FQuat(float InX, float InY, float InZ, float InW)
 }
 
 
+FORCEINLINE FQuat::FQuat(const VectorRegister& V)
+{
+	VectorStoreAligned(V, this);
+	DiagnosticCheckNaN();
+}
+
+
 FORCEINLINE FString FQuat::ToString() const
 {
 	return FString::Printf(TEXT("X=%.9f Y=%.9f Z=%.9f W=%.9f"), X, Y, Z, W);
@@ -757,17 +771,29 @@ FORCEINLINE FQuat::FQuat(FVector Axis, float AngleRad)
 
 
 FORCEINLINE FQuat FQuat::operator+(const FQuat& Q) const
-{		
+{
+#if PLATFORM_ENABLE_VECTORINTRINSICS
+	VectorRegister A = VectorLoadAligned(this);
+	VectorRegister B = VectorLoadAligned(&Q);
+	return FQuat(VectorAdd(A, B));
+#else
 	return FQuat(X + Q.X, Y + Q.Y, Z + Q.Z, W + Q.W);
+#endif // PLATFORM_ENABLE_VECTORINTRINSICS
 }
 
 
 FORCEINLINE FQuat FQuat::operator+=(const FQuat& Q)
 {
+#if PLATFORM_ENABLE_VECTORINTRINSICS
+	VectorRegister A = VectorLoadAligned(this);
+	VectorRegister B = VectorLoadAligned(&Q);
+	VectorStoreAligned(VectorAdd(A, B), this);
+#else
 	this->X += Q.X;
 	this->Y += Q.Y;
 	this->Z += Q.Z;
 	this->W += Q.W;
+#endif // PLATFORM_ENABLE_VECTORINTRINSICS
 
 	DiagnosticCheckNaN();
 
@@ -777,7 +803,13 @@ FORCEINLINE FQuat FQuat::operator+=(const FQuat& Q)
 
 FORCEINLINE FQuat FQuat::operator-(const FQuat& Q) const
 {
+#if PLATFORM_ENABLE_VECTORINTRINSICS
+	VectorRegister A = VectorLoadAligned(this);
+	VectorRegister B = VectorLoadAligned(&Q);
+	return FQuat(VectorSubtract(A, B));
+#else
 	return FQuat(X - Q.X, Y - Q.Y, Z - Q.Z, W - Q.W);
+#endif // PLATFORM_ENABLE_VECTORINTRINSICS
 }
 
 
@@ -804,10 +836,16 @@ FORCEINLINE bool FQuat::IsIdentity(float Tolerance) const
 
 FORCEINLINE FQuat FQuat::operator-=(const FQuat& Q)
 {
+#if PLATFORM_ENABLE_VECTORINTRINSICS
+	VectorRegister A = VectorLoadAligned(this);
+	VectorRegister B = VectorLoadAligned(&Q);
+	VectorStoreAligned(VectorSubtract(A, B), this);
+#else
 	this->X -= Q.X;
 	this->Y -= Q.Y;
 	this->Z -= Q.Z;
 	this->W -= Q.W;
+#endif // PLATFORM_ENABLE_VECTORINTRINSICS
 
 	DiagnosticCheckNaN();
 
@@ -842,10 +880,16 @@ FORCEINLINE FQuat FQuat::operator*=(const FQuat& Q)
 
 FORCEINLINE FQuat FQuat::operator*=(const float Scale)
 {
+#if PLATFORM_ENABLE_VECTORINTRINSICS
+	VectorRegister A = VectorLoadAligned(this);
+	VectorRegister B = VectorSetFloat1(Scale);
+	VectorStoreAligned(VectorMultiply(A, B), this);
+#else
 	X *= Scale;
 	Y *= Scale;
 	Z *= Scale;
 	W *= Scale;
+#endif // PLATFORM_ENABLE_VECTORINTRINSICS
 
 	DiagnosticCheckNaN();
 
@@ -855,17 +899,29 @@ FORCEINLINE FQuat FQuat::operator*=(const float Scale)
 
 FORCEINLINE FQuat FQuat::operator*(const float Scale) const
 {
+#if PLATFORM_ENABLE_VECTORINTRINSICS
+	VectorRegister A = VectorLoadAligned(this);
+	VectorRegister B = VectorSetFloat1(Scale);
+	return FQuat(VectorMultiply(A, B));
+#else
 	return FQuat(Scale * X, Scale * Y, Scale * Z, Scale * W);
+#endif // PLATFORM_ENABLE_VECTORINTRINSICS
 }
 
 
 FORCEINLINE FQuat FQuat::operator/=(const float Scale)
 {
+#if PLATFORM_ENABLE_VECTORINTRINSICS
+	VectorRegister A = VectorLoadAligned(this);
+	VectorRegister B = VectorSetFloat1(Scale);
+	VectorStoreAligned(VectorDivide(A, B), this);
+#else
 	const float Recip = 1.0f / Scale;
 	X *= Recip;
 	Y *= Recip;
 	Z *= Recip;
 	W *= Recip;
+#endif // PLATFORM_ENABLE_VECTORINTRINSICS
 
 	DiagnosticCheckNaN();
 
@@ -875,8 +931,14 @@ FORCEINLINE FQuat FQuat::operator/=(const float Scale)
 
 FORCEINLINE FQuat FQuat::operator/(const float Scale) const
 {
+#if PLATFORM_ENABLE_VECTORINTRINSICS
+	VectorRegister A = VectorLoadAligned(this);
+	VectorRegister B = VectorSetFloat1(Scale);
+	return FQuat(VectorDivide(A, B));
+#else
 	const float Recip = 1.0f / Scale;
 	return FQuat(X * Recip, Y * Recip, Z * Recip, W * Recip);
+#endif // PLATFORM_ENABLE_VECTORINTRINSICS
 }
 
 
@@ -953,7 +1015,13 @@ FORCEINLINE FQuat FQuat::GetNormalized(float Tolerance) const
 
 FORCEINLINE bool FQuat::IsNormalized() const
 {
+#if PLATFORM_ENABLE_VECTORINTRINSICS
+	VectorRegister A = VectorLoadAligned(this);
+	VectorRegister TestValue = VectorAbs(VectorSubtract(VectorOne(), VectorDot4(A, A)));
+	return !VectorAnyGreaterThan(TestValue, GlobalVectorConstants::ThreshQuatNormalized);
+#else
 	return (FMath::Abs(1.f - SizeSquared()) < THRESH_QUAT_NORMALIZED);
+#endif // PLATFORM_ENABLE_VECTORINTRINSICS
 }
 
 
@@ -982,15 +1050,21 @@ FORCEINLINE void FQuat::ToAxisAndAngle(FVector& Axis, float& Angle) const
 
 FORCEINLINE FVector FQuat::GetRotationAxis() const
 {
-	// Ensure we never try to sqrt a neg number
-	const float S = FMath::Sqrt(FMath::Max(1.f - (W * W), 0.f));
-
-	if (S >= 0.0001f) 
-	{ 
-		return FVector(X / S, Y / S, Z / S);
-	} 
-
-	return FVector(1.f, 0.f, 0.f);
+#if PLATFORM_ENABLE_VECTORINTRINSICS
+	FVector V;
+	VectorRegister A = VectorLoadAligned(this);
+	VectorRegister R = VectorNormalizeSafe(VectorSet_W0(A), GlobalVectorConstants::Float1000);
+	VectorStoreFloat3(R, &V);
+	return V;
+#else
+	const float SquareSum = X * X + Y * Y + Z * Z;
+	if (SquareSum < SMALL_NUMBER)
+	{
+		return FVector::XAxisVector;
+	}
+	const float Scale = FMath::InvSqrt(SquareSum);
+	return FVector(X * Scale, Y * Scale, Z * Scale);
+#endif // PLATFORM_ENABLE_VECTORINTRINSICS
 }
 
 float FQuat::AngularDistance(const FQuat& Q) const
@@ -1028,7 +1102,11 @@ FORCEINLINE FQuat FQuat::Inverse() const
 {
 	checkSlow(IsNormalized());
 
+#if PLATFORM_ENABLE_VECTORINTRINSICS
+	return FQuat(VectorQuaternionInverse(VectorLoadAligned(this)));
+#else
 	return FQuat(-X, -Y, -Z, W);
+#endif // PLATFORM_ENABLE_VECTORINTRINSICS
 }
 
 
