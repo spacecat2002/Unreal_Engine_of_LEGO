@@ -377,19 +377,19 @@ public:
 		return GetData();
 	}
 
-	FORCEINLINE_DEBUGGABLE const uint8* GetData(int32 SliceIndex = 0) const
+	FORCEINLINE_DEBUGGABLE const uint8* GetData(int32 SliceIndex = 0, bool bGetArrayData = false) const
 	{
-		return GetData_Internal(SliceIndex);
+		return GetData_Internal(SliceIndex, bGetArrayData);
 	}
 
-	FORCEINLINE_DEBUGGABLE uint8* GetData(int32 SliceIndex = 0)
+	FORCEINLINE_DEBUGGABLE uint8* GetData(int32 SliceIndex = 0, bool bGetArrayData = false)
 	{
-		return GetData_Internal(SliceIndex);
+		return GetData_Internal(SliceIndex, bGetArrayData);
 	}
 
 private:
 
-	FORCEINLINE_DEBUGGABLE uint8* GetData_Internal(int32 SliceIndex) const
+	FORCEINLINE_DEBUGGABLE uint8* GetData_Internal(int32 SliceIndex, bool bGetArrayData = false) const
 	{
 		ensure(SliceIndex >= 0);
 
@@ -407,14 +407,21 @@ private:
 			case FType::Dynamic:
 			{
 				ensure(Offset == UINT16_MAX);
+				if (!bGetArrayData)
+				{
+					return Ptr;
+				}
 				uint8* Data = ((FRigVMByteArray*)Ptr)->GetData();
 				return Data + SliceIndex * Size;
 			}
 			case FType::NestedDynamic:
 			{
 				ensure(Offset == UINT16_MAX);
-				uint8* Data = (*((FRigVMNestedByteArray*)Ptr))[SliceIndex].GetData();
-				return Data + SliceIndex * sizeof(FRigVMByteArray);
+				if (!bGetArrayData)
+				{
+					return (uint8*)&(*((FRigVMNestedByteArray*)Ptr))[SliceIndex];
+				}
+				return (*((FRigVMNestedByteArray*)Ptr))[SliceIndex].GetData();
 			}
 			default:
 			{
@@ -612,7 +619,7 @@ public:
 	{
 		if (Register.IsDynamic())
 		{
-			uint8* Ptr = GetDataPtr(Register);
+			uint8* Ptr = (uint8*)&Data[Register.GetWorkByteIndex()];
 			return FRigVMMemoryHandle(Ptr, Register);
 		}
 
@@ -656,7 +663,7 @@ public:
 	// Returns the current const data pointer for a given register.
 	FORCEINLINE_DEBUGGABLE const uint8* GetData(const FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = 0) const
 	{
-		return GetHandle(Register, InRegisterOffset).GetData(InSliceIndex);
+		return GetHandle(Register, InRegisterOffset).GetData(InSliceIndex, true);
 	}
 
 	// Returns the current const data pointer for a given register index.
@@ -670,7 +677,7 @@ public:
 	// Returns the current data pointer for a given register.
 	FORCEINLINE_DEBUGGABLE uint8* GetData(FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = 0)
 	{
-		return GetHandle(Register, InRegisterOffset).GetData(InSliceIndex);
+		return GetHandle(Register, InRegisterOffset).GetData(InSliceIndex, true);
 	}
 
 	// Returns the current data pointer for a given register index.
@@ -1111,6 +1118,18 @@ private:
 		else
 		{
 			return AddDynamicArray(InNewName, sizeof(T), InCount, bIsArrayPerSlice, InDataPtr, InSliceCount, InType, InScriptStruct);
+		}
+	}
+
+	FORCEINLINE_DEBUGGABLE int32 AddRegisterArray(bool bFixed, const FName& InNewName, int32 InElementSize, int32 InCount, bool bIsArrayPerSlice, const uint8* InDataPtr, int32 InSliceCount, ERigVMRegisterType InType, UScriptStruct* InScriptStruct)
+	{
+		if (bFixed)
+		{
+			return AddFixedArray(InNewName, InElementSize, InCount, bIsArrayPerSlice, InDataPtr, InSliceCount, InType, InScriptStruct);
+		}
+		else
+		{
+			return AddDynamicArray(InNewName, InElementSize, InCount, bIsArrayPerSlice, InDataPtr, InSliceCount, InType, InScriptStruct);
 		}
 	}
 

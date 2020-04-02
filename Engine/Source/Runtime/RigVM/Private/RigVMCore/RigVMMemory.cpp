@@ -550,7 +550,7 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 						Ar << View;
 
 						FRigVMDynamicArray<FName> ValueArray(*ArrayStorage);
-						ValueArray.Copy(View);
+						ValueArray.CopyFrom(View);
 						break;
 					}
 					case ERigVMRegisterType::String:
@@ -559,7 +559,7 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 						Ar << View;
 
 						FRigVMDynamicArray<FString> ValueArray(*ArrayStorage);
-						ValueArray.Copy(View);
+						ValueArray.CopyFrom(View);
 						break;
 					}
 					case ERigVMRegisterType::Struct:
@@ -625,7 +625,7 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 							Ar << View;
 
 							FRigVMDynamicArray<FName> ValueArray(ArrayStorage);
-							ValueArray.Copy(View);
+							ValueArray.CopyFrom(View);
 							break;
 						}
 						case ERigVMRegisterType::String:
@@ -634,7 +634,7 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 							Ar << View;
 
 							FRigVMDynamicArray<FString> ValueArray(ArrayStorage);
-							ValueArray.Copy(View);
+							ValueArray.CopyFrom(View);
 							break;
 						}
 						case ERigVMRegisterType::Struct:

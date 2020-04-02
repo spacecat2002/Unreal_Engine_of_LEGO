@@ -147,7 +147,7 @@ public:
 	}
 
 	// copies the contents of one array to this one
-	FORCEINLINE_DEBUGGABLE void Copy(const FRigVMDynamicArray<T>& InOther)
+	FORCEINLINE_DEBUGGABLE void CopyFrom(const FRigVMDynamicArray<T>& InOther)
 	{
 		Reset();
 		SetNumZeroed(InOther.Num());
@@ -155,11 +155,26 @@ public:
 	}
 
 	// copies the contents of one array to this one
-	FORCEINLINE_DEBUGGABLE void Copy(const TArray<T>& InOther)
+	FORCEINLINE_DEBUGGABLE void CopyFrom(const TArray<T>& InOther)
 	{
 		Reset();
 		SetNumZeroed(InOther.Num());
 		RigVMCopy<T>(GetData(), InOther.GetData(), Num());
+	}
+
+	FORCEINLINE_DEBUGGABLE void CopyTo(FRigVMDynamicArray<T>& InOther) const
+	{
+		InOther.Reset();
+		InOther.SetNumZeroed(Num());
+		RigVMCopy<T>(InOther.GetData(), GetData(), Num());
+	}
+
+	// copies the contents of one array to this one
+	FORCEINLINE_DEBUGGABLE void CopyTo(TArray<T>& InOther) const
+	{
+		InOther.Reset();
+		InOther.SetNumZeroed(Num());
+		RigVMCopy<T>(InOther.GetData(), GetData(), Num());
 	}
 
 	FORCEINLINE_DEBUGGABLE const T& operator[](int32 InIndex) const
