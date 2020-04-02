@@ -8,6 +8,8 @@ D3D12Adapter.cpp:D3D12 Adapter implementation.
 #include "Misc/CommandLine.h"
 #include "Misc/EngineVersion.h"
 #include "Windows/AllowWindowsPlatformTypes.h"
+#include "Windows/WindowsPlatformMisc.h"
+
 #if !PLATFORM_CPU_ARM_FAMILY && (PLATFORM_WINDOWS || PLATFORM_HOLOLENS)
 	#include "amd_ags.h"
 #endif
@@ -467,10 +469,9 @@ void FD3D12Adapter::CreateRootDevice(bool bWithDebug)
 			};
 
 #if D3D12_RHI_RAYTRACING
-			if (bRayTracingSupported)
+			if (bRayTracingSupported && !FWindowsPlatformMisc::VerifyWindowsVersion(10, 0, 18363))
 			{
-				// When the debug layer is enabled and ray tracing is supported, this error is triggered after a CopyDescriptors
-				// call in the DescriptorCache even when ray tracing device is never used. This workaround is still required as of 2018-12-17.
+				// Ignore a known false positive error due to a bug in validation layer in certain Windows versions on DXR-capable hardware.
 				DenyIds.Add(D3D12_MESSAGE_ID_COPY_DESCRIPTORS_INVALID_RANGES);
 			}
 #endif // D3D12_RHI_RAYTRACING
