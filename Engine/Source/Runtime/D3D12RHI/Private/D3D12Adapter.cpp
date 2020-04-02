@@ -407,6 +407,11 @@ void FD3D12Adapter::CreateRootDevice(bool bWithDebug)
 
 			// Be sure to carefully comment the reason for any additions here!  Someone should be able to look at it later and get an idea of whether it is still necessary.
 			TArray<D3D12_MESSAGE_ID, TInlineAllocator<16>> DenyIds = {
+
+				// The Pixel Shader expects a Render Target View bound to slot 0, but the PSO indicates that none will be bound.
+				// This typically happens when a non-depth-only pixel shader is used for depth-only rendering.
+				D3D12_MESSAGE_ID_CREATEGRAPHICSPIPELINESTATE_RENDERTARGETVIEW_NOT_SET,
+
 				// OMSETRENDERTARGETS_INVALIDVIEW - d3d will complain if depth and color targets don't have the exact same dimensions, but actually
 				//	if the color target is smaller then things are ok.  So turn off this error.  There is a manual check in FD3D12DynamicRHI::SetRenderTarget
 				//	that tests for depth smaller than color and MSAA settings to match.
