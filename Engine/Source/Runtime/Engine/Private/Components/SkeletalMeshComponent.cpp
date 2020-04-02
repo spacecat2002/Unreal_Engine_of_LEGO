@@ -3969,6 +3969,16 @@ void USkeletalMeshComponent::SetUpdateAnimationInEditor(const bool NewUpdateStat
 	#endif
 }
 
+void USkeletalMeshComponent::SetUpdateClothInEditor(const bool NewUpdateState)
+{
+#if WITH_EDITOR
+	if (IsRegistered())
+	{
+		bUpdateClothInEditor = NewUpdateState; 
+	}
+#endif
+}
+
 float USkeletalMeshComponent::GetTeleportRotationThreshold() const
 {
 	return TeleportDistanceThreshold;

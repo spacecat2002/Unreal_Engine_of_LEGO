@@ -111,6 +111,7 @@ struct FPreAnimatedAnimationTokenProducer : IMovieScenePreAnimatedTokenProducer
 
 #if WITH_EDITOR
 				bUpdateAnimationInEditor = InComponent->GetUpdateAnimationInEditor();
+				bUpdateClothInEditor = InComponent->GetUpdateClothInEditor();
 #endif
 			}
 
@@ -150,6 +151,7 @@ struct FPreAnimatedAnimationTokenProducer : IMovieScenePreAnimatedTokenProducer
 
 				// Restore pose after unbinding to force the restored pose
 				Component->SetUpdateAnimationInEditor(true);
+				Component->SetUpdateClothInEditor(true);
 				Component->TickAnimation(0.f, false);
 
 				Component->RefreshBoneTransforms();
@@ -161,6 +163,7 @@ struct FPreAnimatedAnimationTokenProducer : IMovieScenePreAnimatedTokenProducer
 				
 #if WITH_EDITOR
 				Component->SetUpdateAnimationInEditor(bUpdateAnimationInEditor);
+				Component->SetUpdateClothInEditor(bUpdateClothInEditor);
 #endif
 				// if not game world, don't clean this up
 				if (Component->GetWorld() != nullptr && Component->GetWorld()->IsGameWorld() == false)
@@ -175,6 +178,7 @@ struct FPreAnimatedAnimationTokenProducer : IMovieScenePreAnimatedTokenProducer
 
 #if WITH_EDITOR
 			bool bUpdateAnimationInEditor;
+			bool bUpdateClothInEditor;
 #endif
 		};
 
