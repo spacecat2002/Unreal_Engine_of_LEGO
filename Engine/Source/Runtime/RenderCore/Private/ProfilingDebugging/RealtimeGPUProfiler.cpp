@@ -4,7 +4,6 @@
 #include "ProfilingDebugging/CsvProfiler.h"
 #include "ProfilingDebugging/TracingProfiler.h"
 #include "RenderCore.h"
-#include "GpuProfilerTrace.h"
 #include "GPUProfiler.h"
 
 // Only exposed for debugging. Disabling this carries a severe performance penalty
@@ -734,6 +733,11 @@ void FRealtimeGPUProfiler::Cleanup()
 	RenderQueryPool.SafeRelease();
 }
 
+namespace GpuProfilerTrace
+{
+UE_TRACE_CHANNEL_MODULE_EXTERN(RHI_API, GpuChannel)
+}
+
 void FRealtimeGPUProfiler::BeginFrame(FRHICommandListImmediate& RHICmdList)
 {
 	if (!AreGPUStatsEnabled())
@@ -755,6 +759,14 @@ bool AreGPUStatsEnabled()
 	{
 		return false;
 	}
+
+#if GPUPROFILERTRACE_ENABLED
+	// Force GPU profiler on if Unreal Insights is running
+	if (UE_TRACE_CHANNELEXPR_IS_ENABLED(GpuProfilerTrace::GpuChannel))
+	{
+		return true;
+	}
+#endif
 
 #if STATS 
 	return true;

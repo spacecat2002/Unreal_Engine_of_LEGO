@@ -37,6 +37,7 @@ UE_TRACE_API bool	ToggleChannel(struct FChannel& Channel, bool bEnabled) UE_TRAC
 ////////////////////////////////////////////////////////////////////////////////
 #define UE_TRACE_CHANNEL(ChannelName)							TRACE_PRIVATE_CHANNEL(ChannelName)
 #define UE_TRACE_CHANNEL_EXTERN(ChannelName)					TRACE_PRIVATE_CHANNEL_EXTERN(ChannelName)
+#define UE_TRACE_CHANNEL_MODULE_EXTERN(ModuleApi, ChannelName)	TRACE_PRIVATE_CHANNEL_MODULE_EXTERN(ModuleApi, ChannelName)
 #define UE_TRACE_CHANNEL_DEFINE(ChannelName)					TRACE_PRIVATE_CHANNEL_DEFINE(ChannelName)
 #define UE_TRACE_CHANNELEXPR_IS_ENABLED(ChannelsExpr)			TRACE_PRIVATE_CHANNELEXPR_IS_ENABLED(ChannelsExpr)
 
