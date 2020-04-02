@@ -16,11 +16,14 @@ struct RIGVM_API FRigVMExecuteContext
 	GENERATED_BODY()
 
 	FRigVMExecuteContext()
-	: EventName(NAME_None)
+		: EventName(NAME_None)
+		, FunctionName(NAME_None)
+		, InstructionIndex(0)
 	{
 	}
 
 	FName EventName;
-
+	FName FunctionName;
+	uint16 InstructionIndex;
 	FRigVMFixedArray<void*> OpaqueArguments;
 };

@@ -411,17 +411,40 @@ private:
 				{
 					return Ptr;
 				}
-				uint8* Data = ((FRigVMByteArray*)Ptr)->GetData();
-				return Data + SliceIndex * Size;
+
+				FRigVMByteArray* ArrayStorage = (FRigVMByteArray*)Ptr;
+				if (ArrayStorage->Num() == 0)
+				{
+					return nullptr;
+				}
+
+				if (SliceIndex > 0)
+				{
+					SliceIndex = FMath::Max(SliceIndex, (ArrayStorage->Num() / Size) - 1);
+				}
+				return (uint8*)&(*ArrayStorage)[SliceIndex * Size];
 			}
 			case FType::NestedDynamic:
 			{
 				ensure(Offset == UINT16_MAX);
+
+				FRigVMNestedByteArray* ArrayStorage = (FRigVMNestedByteArray*)Ptr;
+				if (ArrayStorage->Num() == 0)
+				{
+					return nullptr;
+				}
+
+				if (SliceIndex > 0)
+				{
+					SliceIndex = FMath::Max(SliceIndex, ArrayStorage->Num() - 1);
+				}
+
 				if (!bGetArrayData)
 				{
-					return (uint8*)&(*((FRigVMNestedByteArray*)Ptr))[SliceIndex];
+					return (uint8*)&(*ArrayStorage)[SliceIndex];
 				}
-				return (*((FRigVMNestedByteArray*)Ptr))[SliceIndex].GetData();
+
+				return (*ArrayStorage)[SliceIndex].GetData();
 			}
 			default:
 			{
