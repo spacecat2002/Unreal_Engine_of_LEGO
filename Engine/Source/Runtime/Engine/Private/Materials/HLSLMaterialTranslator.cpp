@@ -1395,9 +1395,6 @@ void FHLSLMaterialTranslator::GetMaterialEnvironment(EShaderPlatform InPlatform,
 
 			OutEnvironment.SetDefine(TEXT("MATERIAL_VOLUMETRIC_ADVANCED_CONSERVATIVE_DENSITY"),
 				VolumetricAdvancedNode->ConservativeDensity.IsConnected() ? TEXT("1") : TEXT("0"));
-
-			OutEnvironment.SetDefine(TEXT("MATERIAL_VOLUMETRIC_ADVANCED_SDF_TO_CONSERVATIVE"),
-				VolumetricAdvancedNode->SignedDistanceField.IsConnected() ? TEXT("1") : TEXT("0"));
 		}
 	}
 }
@@ -6933,6 +6930,11 @@ int32 FHLSLMaterialTranslator::GetCloudSampleAltitudeInLayer()
 int32 FHLSLMaterialTranslator::GetCloudSampleNormAltitudeInLayer()
 {
 	return AddCodeChunk(MCT_Float, TEXT("MaterialExpressionCloudSampleNormAltitudeInLayer(Parameters)"));
+}
+
+int32 FHLSLMaterialTranslator::GetVolumeSampleConservativeDensity()
+{
+	return AddCodeChunk(MCT_Float, TEXT("MaterialExpressionVolumeSampleConservativeDensity(Parameters)"));
 }
 
 int32 FHLSLMaterialTranslator::CustomPrimitiveData(int32 OutputIndex, EMaterialValueType Type)

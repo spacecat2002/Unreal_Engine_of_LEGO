@@ -40,12 +40,8 @@ class UMaterialExpressionVolumetricAdvancedMaterialOutput : public UMaterialExpr
 
 
 	/** Specify here a density conservative around the medium shape. Used to accelerate the ray marching by skipping expensive material evaluation. Density will be multiplied with extinction. A simple top down 2D density texture would be enough to help here. */
-	UPROPERTY(meta = (RequiredInput = "false", ToolTip = "Specify here a density conservative around the medium shape. Used to accelerate the ray marching by skipping expenssive material evaluation. Density will be multiplied with extinction. A simple top down 2D density texture would be enough to help here."))
+	UPROPERTY(meta = (RequiredInput = "false", ToolTip = "A conservative density specifying where participating media material will show up. Used to accelerate the ray marching by skipping the remaining expenssive albedo and extinction evaluation. It is then available to use on the VolumetricAdvancedMaterialInput node. A simple top down 2D density texture would be enough to help here."))
 	FExpressionInput ConservativeDensity;
-
-	/** Distance specified in centimeter use to accelerate the marching if signed distance field data is available, this can help fast skipping empty areas. */
-	UPROPERTY(meta = (RequiredInput = "false", ToolTip = "Experimental: Distance specified in centimeter use to accelerate the marching if signed distance field data is available. This can help fast skipping empty areas."))
-	FExpressionInput SignedDistanceField;
 
 
 	/** Only used if PhaseG is not hooked up. Parameter 'g' input to the phase function  describing how much forward(g<0) or backward (g>0) light scatter around. */

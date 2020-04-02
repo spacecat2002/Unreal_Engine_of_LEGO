@@ -220,6 +220,7 @@
 #include "Materials/MaterialExpressionVertexTangentWS.h"
 #include "Materials/MaterialExpressionViewProperty.h"
 #include "Materials/MaterialExpressionViewSize.h"
+#include "Materials/MaterialExpressionVolumetricAdvancedMaterialInput.h"
 #include "Materials/MaterialExpressionVolumetricAdvancedMaterialOutput.h"
 #include "Materials/MaterialExpressionWorldPosition.h"
 #include "Materials/MaterialExpressionDistanceToNearestSurface.h"
@@ -17649,9 +17650,9 @@ UMaterialExpressionVolumetricAdvancedMaterialOutput::UMaterialExpressionVolumetr
 	// Structure to hold one-time initialization
 	struct FConstructorStatics
 	{
-		FText NAME_VolumetricAdvanced;
+		FText NAME_VolumetricAdvancedOutput;
 		FConstructorStatics()
-			: NAME_VolumetricAdvanced(LOCTEXT("Volume", "Volume"))
+			: NAME_VolumetricAdvancedOutput(LOCTEXT("Volume", "Volume"))
 		{
 		}
 	};
@@ -17668,7 +17669,7 @@ UMaterialExpressionVolumetricAdvancedMaterialOutput::UMaterialExpressionVolumetr
 	ConstMultiScatteringEccentricity = 0.5f;
 
 #if WITH_EDITORONLY_DATA
-	MenuCategories.Add(ConstructorStatics.NAME_VolumetricAdvanced);
+	MenuCategories.Add(ConstructorStatics.NAME_VolumetricAdvancedOutput);
 #endif
 
 #if WITH_EDITOR
@@ -17711,17 +17712,13 @@ int32 UMaterialExpressionVolumetricAdvancedMaterialOutput::Compile(class FMateri
 	{
 		CodeInput = ConservativeDensity.IsConnected() ? ConservativeDensity.Compile(Compiler) : Compiler->Constant(1.0f);
 	}
-	else if (OutputIndex == 7)
-	{
-		CodeInput = SignedDistanceField.IsConnected() ? SignedDistanceField.Compile(Compiler) : Compiler->Constant(0.0f);
-	}
 
 	return Compiler->CustomOutput(this, OutputIndex, CodeInput);
 }
 
 void UMaterialExpressionVolumetricAdvancedMaterialOutput::GetCaption(TArray<FString>& OutCaptions) const
 {
-	OutCaptions.Add(FString(TEXT("Volumetric Advanced")));
+	OutCaptions.Add(FString(TEXT("Volumetric Advanced Output")));
 }
 
 bool UMaterialExpressionVolumetricAdvancedMaterialOutput::GetEvaluatePhaseOncePerPixel() const
@@ -17738,7 +17735,7 @@ uint32 UMaterialExpressionVolumetricAdvancedMaterialOutput::GetMultiScatteringAp
 
 int32 UMaterialExpressionVolumetricAdvancedMaterialOutput::GetNumOutputs() const
 {
-	return 8;
+	return 7;
 }
 
 FString UMaterialExpressionVolumetricAdvancedMaterialOutput::GetFunctionName() const
@@ -17748,8 +17745,53 @@ FString UMaterialExpressionVolumetricAdvancedMaterialOutput::GetFunctionName() c
 
 FString UMaterialExpressionVolumetricAdvancedMaterialOutput::GetDisplayName() const
 {
-	return TEXT("Volumetric Advanced");
+	return TEXT("Volumetric Advanced Ouput");
 }
+
+
+///////////////////////////////////////////////////////////////////////////////
+// UMaterialExpressionVolumetricAdvancedMaterialInput
+///////////////////////////////////////////////////////////////////////////////
+
+UMaterialExpressionVolumetricAdvancedMaterialInput::UMaterialExpressionVolumetricAdvancedMaterialInput(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
+{
+#if WITH_EDITORONLY_DATA
+	// Structure to hold one-time initialization
+	struct FConstructorStatics
+	{
+		FText NAME_VolumetricAdvancedInput;
+		FConstructorStatics()
+			: NAME_VolumetricAdvancedInput(LOCTEXT("Volume", "Volume"))
+		{
+		}
+	};
+	static FConstructorStatics ConstructorStatics;
+	MenuCategories.Add(ConstructorStatics.NAME_VolumetricAdvancedInput);
+
+	bShowOutputNameOnPin = true;
+
+	Outputs.Reset();
+	Outputs.Add(FExpressionOutput(TEXT("ConservativeDensity")));
+#endif
+}
+
+#if WITH_EDITOR
+int32 UMaterialExpressionVolumetricAdvancedMaterialInput::Compile(class FMaterialCompiler* Compiler, int32 OutputIndex)
+{
+	if (OutputIndex == 0)
+	{
+		return Compiler->GetVolumeSampleConservativeDensity();
+	}
+
+	return Compiler->Errorf(TEXT("Invalid input parameter"));
+}
+
+void UMaterialExpressionVolumetricAdvancedMaterialInput::GetCaption(TArray<FString>& OutCaptions) const
+{
+	OutCaptions.Add(TEXT("Volumetric Advanced Input"));
+}
+#endif // WITH_EDITOR
 
 
 ///////////////////////////////////////////////////////////////////////////////

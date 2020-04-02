@@ -363,6 +363,7 @@ public:
 	virtual int32 GetCloudSampleAltitude() = 0;
 	virtual int32 GetCloudSampleAltitudeInLayer() = 0;
 	virtual int32 GetCloudSampleNormAltitudeInLayer() = 0;
+	virtual int32 GetVolumeSampleConservativeDensity() = 0;
 
 	virtual int32 GetHairUV() = 0;
 	virtual int32 GetHairDimensions() = 0;
@@ -706,6 +707,11 @@ public:
 	virtual int32 GetCloudSampleNormAltitudeInLayer() override
 	{
 		return Compiler->GetCloudSampleNormAltitudeInLayer();
+	}
+
+	virtual int32 GetVolumeSampleConservativeDensity() override
+	{
+		return Compiler->GetVolumeSampleConservativeDensity();
 	}
 	
 	virtual int32 CustomPrimitiveData(int32 OutputIndex, EMaterialValueType Type) override
