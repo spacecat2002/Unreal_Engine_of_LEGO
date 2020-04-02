@@ -51,11 +51,11 @@ public:
 
 };
 
-class FD3D12RayTracingScene : public FRHIRayTracingScene
+class FD3D12RayTracingScene : public FRHIRayTracingScene, public FD3D12AdapterChild
 {
 public:
 
-	FD3D12RayTracingScene(FD3D12Adapter& Adapter);
+	FD3D12RayTracingScene(FD3D12Adapter* Adapter);
 	~FD3D12RayTracingScene();
 
 	void BuildAccelerationStructure(FD3D12CommandContext& CommandContext, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS BuildFlags);
