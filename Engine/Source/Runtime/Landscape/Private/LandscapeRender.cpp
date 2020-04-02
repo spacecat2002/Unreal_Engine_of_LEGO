@@ -1663,6 +1663,10 @@ void FLandscapeComponentSceneProxy::CreateRenderThreadResources()
 				Initializer.Segments.Add(Segment);
 				SectionRayTracingStates[SubSectionIdx].Geometry.SetInitializer(Initializer);
 				SectionRayTracingStates[SubSectionIdx].Geometry.InitResource();
+
+				FLandscapeVertexFactoryMVFParameters UniformBufferParams;
+				UniformBufferParams.SubXY = FIntPoint(SubX, SubY);
+				SectionRayTracingStates[SubSectionIdx].UniformBuffer = FLandscapeVertexFactoryMVFUniformBufferRef::CreateUniformBufferImmediate(UniformBufferParams, UniformBuffer_MultiFrame);
 			}
 		}
 	}
@@ -2772,13 +2776,7 @@ void FLandscapeComponentSceneProxy::GetDynamicRayTracingInstances(FRayTracingMat
 
 			SectionRayTracingStates[SubSectionIdx].Geometry.Initializer.IndexBuffer = BatchElement.IndexBuffer->IndexBufferRHI;
 
-			{
-				FLandscapeVertexFactoryMVFParameters UniformBufferParams;
-
-				UniformBufferParams.SubXY = FIntPoint(SubX, SubY);
-
-				BatchElementParams.LandscapeVertexFactoryMVFUniformBuffer = FLandscapeVertexFactoryMVFUniformBufferRef::CreateUniformBufferImmediate(UniformBufferParams, UniformBuffer_SingleFrame);
-			}
+			BatchElementParams.LandscapeVertexFactoryMVFUniformBuffer = SectionRayTracingStates[SubSectionIdx].UniformBuffer;
 
 			bool bNeedsRayTracingGeometryUpdate = false;
 

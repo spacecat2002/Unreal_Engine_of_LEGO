@@ -132,7 +132,7 @@ END_GLOBAL_SHADER_PARAMETER_STRUCT()
 struct FLandscapeBatchElementParams
 {
 #if RHI_RAYTRACING
-	FLandscapeVertexFactoryMVFUniformBufferRef LandscapeVertexFactoryMVFUniformBuffer;
+	FRHIUniformBuffer* LandscapeVertexFactoryMVFUniformBuffer;
 #endif
 	const TUniformBuffer<FLandscapeUniformShaderParameters>* LandscapeUniformShaderParametersResource;
 	const TArray<TUniformBuffer<FLandscapeFixedGridUniformShaderParameters>>* FixedGridUniformShaderParameters;
