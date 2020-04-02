@@ -17668,6 +17668,8 @@ UMaterialExpressionVolumetricAdvancedMaterialOutput::UMaterialExpressionVolumetr
 	ConstMultiScatteringOcclusion = 0.5f;
 	ConstMultiScatteringEccentricity = 0.5f;
 
+	bGroundContribution = true;
+
 #if WITH_EDITORONLY_DATA
 	MenuCategories.Add(ConstructorStatics.NAME_VolumetricAdvancedOutput);
 #endif

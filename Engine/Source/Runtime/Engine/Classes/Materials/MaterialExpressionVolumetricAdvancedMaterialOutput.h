@@ -76,6 +76,10 @@ class UMaterialExpressionVolumetricAdvancedMaterialOutput : public UMaterialExpr
 	UPROPERTY(EditAnywhere, Category = "Multi-Scattering", meta = (OverridingInputProperty = "MultiScatteringEccentricity", UIMin = 0.0f, UIMax = 1.0f, ClampMin = 0.0f, ClampMax = 1.0f))
 	float ConstMultiScatteringEccentricity;
 
+	/** Sample the shadowed lighting contribution from the ground onto the medium (single scattering). This adds some costs to the tracing when enabled.*/
+	UPROPERTY(EditAnywhere, Category = "Options")
+	bool bGroundContribution;
+
 public:
 #if WITH_EDITOR
 	//~ Begin UMaterialExpression Interface
