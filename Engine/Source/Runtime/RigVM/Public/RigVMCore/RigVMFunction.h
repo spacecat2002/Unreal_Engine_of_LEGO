@@ -4,11 +4,12 @@
 
 #include "CoreMinimal.h"
 #include "RigVMArray.h"
+#include "RigVMMemory.h"
 #include "Blueprint/BlueprintSupport.h"
 
-typedef FRigVMFixedArray<void*> FRigVMOperandMemory;
+typedef FRigVMFixedArray<FRigVMMemoryHandle> FRigVMMemoryHandleArray;
 typedef FRigVMFixedArray<void*> FRigVMUserDataArray;
-typedef void (*FRigVMFunctionPtr)(const FName& RigVMOperatorName, int32 RigVMOperatorIndex, FRigVMOperandMemory RigVMOperandMemory, const FRigVMUserDataArray& RigVMUserData);
+typedef void (*FRigVMFunctionPtr)(const FName& RigVMOperatorName, int32 RigVMOperatorIndex, FRigVMMemoryHandleArray RigVMMemoryHandles, const FRigVMUserDataArray& RigVMUserData);
 
 /**
  * The Pin Direction is used to differentiate different kinds of 

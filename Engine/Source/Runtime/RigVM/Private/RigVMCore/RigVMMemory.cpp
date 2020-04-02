@@ -912,9 +912,9 @@ bool FRigVMMemoryContainer::Copy(
 	const FRigVMRegister& Target = Registers[InTargetRegisterIndex];
 
 	// todo: copy between slices!
-	int32 SourceElementCount = 0;
-	const uint8* SourcePtr = InSourceMemory->GetData(InSourceRegisterIndex, InSourceRegisterOffset, InSourceSliceIndex, &SourceElementCount);
-	uint8* TargetPtr = GetData(InTargetRegisterIndex, InTargetRegisterOffset, InTargetSliceIndex);
+	int32 SourceElementCount = Source.ElementCount;
+	const uint8* SourcePtr = InSourceMemory->GetDataPtr(Source, InSourceRegisterOffset, InSourceSliceIndex, false);
+	uint8* TargetPtr = GetDataPtr(Target, InTargetRegisterOffset, InTargetSliceIndex, false);
 	uint16 NumBytes = Target.GetNumBytesPerSlice();
 
 	if (Source.IsNestedDynamic())
@@ -922,25 +922,42 @@ bool FRigVMMemoryContainer::Copy(
 #if WITH_EDITOR
 		ensure(InSourceRegisterOffset == INDEX_NONE);
 #else
-		return true;
+		if (InSourceRegisterOffset != INDEX_NONE)
+		{
+			return true;
+		}
 #endif
-
-		FRigVMByteArray* ArrayStorage = (FRigVMByteArray*)GetData(Source, INDEX_NONE, InSourceSliceIndex);
+		FRigVMByteArray* ArrayStorage = (FRigVMByteArray*)SourcePtr;
+		SourceElementCount = ArrayStorage->Num() / Source.ElementSize;
+		SourcePtr = ArrayStorage->GetData();
+	}
+	else if (Source.IsDynamic())
+	{
+		FRigVMByteArray* ArrayStorage = (FRigVMByteArray*)SourcePtr;
 		SourcePtr = ArrayStorage->GetData();
 	}
 
 	ERigVMRegisterType TargetType = Target.Type;
-	if (Target.IsNestedDynamic())
+	if (Target.IsDynamic() && !Target.bIsArray)
+	{
+		FRigVMByteArray* ArrayStorage = (FRigVMByteArray*)TargetPtr;
+		TargetPtr = ArrayStorage->GetData();
+	}
+	else if (Target.IsNestedDynamic())
 	{
 #if WITH_EDITOR
 		ensure(InTargetRegisterOffset == INDEX_NONE);
 #else
+		if (InTargetRegisterOffset != INDEX_NONE)
+		{
+			return true;
+		}
 		return true;
 #endif
 
 		NumBytes = Source.ElementSize * SourceElementCount;
 
-		FRigVMByteArray* ArrayStorage = (FRigVMByteArray*)GetData(Target, INDEX_NONE, InTargetSliceIndex);
+		FRigVMByteArray* ArrayStorage = (FRigVMByteArray*)TargetPtr;
 		if (ArrayStorage->Num() != NumBytes)
 		{
 			Destroy(InTargetRegisterIndex, INDEX_NONE, InTargetSliceIndex);

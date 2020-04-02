@@ -196,12 +196,9 @@ struct RIGVM_API FRigVMRegister
 	// returns the current address of the register within the data byte array.
 	// this can change over time - as the register is moving through slices.
 	// use GetFirstAllocatedByte to get the fixed first byte.
-	FORCEINLINE_DEBUGGABLE uint64 GetWorkByteIndex(int32 InSliceIndex = INDEX_NONE) const
+	FORCEINLINE_DEBUGGABLE uint64 GetWorkByteIndex(int32 InSliceIndex = 0) const
 	{
-		if (InSliceIndex == INDEX_NONE)
-		{
-			return ByteIndex;
-		}
+		ensure(InSliceIndex >= 0);
 		return ByteIndex + ((uint64)InSliceIndex * GetNumBytesPerSlice());
 	}
 
@@ -307,6 +304,129 @@ private:
 
 	friend struct FRigVMRegisterOffsetBuilder;
 	friend class URigVM;
+};
+
+/**
+ * The FRigVMMemoryHandle is used to access the memory used within a FRigMemoryContainer.
+ */
+struct FRigVMMemoryHandle
+{
+public:
+	enum FType
+	{
+		Plain,
+		Dynamic,
+		NestedDynamic
+	};
+
+	FORCEINLINE_DEBUGGABLE FRigVMMemoryHandle()
+		: Ptr(nullptr)
+		, Type(FType::Plain)
+		, Size(1)
+		, Offset(UINT16_MAX)
+	{}
+
+	FORCEINLINE_DEBUGGABLE FRigVMMemoryHandle(uint8* InPtr, uint16 InSize = 1, FType InType = FType::Plain, int32 InRegisterOffset = INDEX_NONE)
+		: Ptr(InPtr)
+		, Type(InType)
+		, Size(InSize)
+		, Offset((uint16)InRegisterOffset)
+	{}
+
+	FORCEINLINE_DEBUGGABLE FRigVMMemoryHandle(uint8* InPtr, const FRigVMRegister& InRegister, int32 InRegisterOffset = INDEX_NONE)
+		: Ptr(InPtr)
+		, Type(FType::Plain)
+		, Size(InRegister.ElementSize)
+		, Offset((uint16)InRegisterOffset)
+	{
+		if (InRegister.IsNestedDynamic())
+		{
+			Type = FType::NestedDynamic;
+		}
+		else if (InRegister.IsDynamic())
+		{
+			Type = FType::Dynamic;
+		}
+		else
+		{
+			Size = (uint16)InRegister.GetNumBytesPerSlice();
+		}
+	}
+
+	FORCEINLINE_DEBUGGABLE FRigVMMemoryHandle(FRigVMByteArray* InPtr, uint16 InSize = 1, int32 InRegisterOffset = INDEX_NONE)
+		: Ptr((uint8*)InPtr)
+		, Type(FType::Dynamic)
+		, Size(InSize)
+		, Offset((uint16)InRegisterOffset)
+	{}
+
+	FORCEINLINE_DEBUGGABLE FRigVMMemoryHandle(FRigVMNestedByteArray* InPtr, uint16 InSize = 1, int32 InRegisterOffset = INDEX_NONE)
+		: Ptr((uint8*)InPtr)
+		, Type(FType::NestedDynamic)
+		, Size(InSize)
+		, Offset((uint16)InRegisterOffset)
+	{}
+
+	FORCEINLINE_DEBUGGABLE operator const uint8*() const
+	{
+		return GetData();
+	}
+
+	FORCEINLINE_DEBUGGABLE operator uint8*()
+	{
+		return GetData();
+	}
+
+	FORCEINLINE_DEBUGGABLE const uint8* GetData(int32 SliceIndex = 0) const
+	{
+		return GetData_Internal(SliceIndex);
+	}
+
+	FORCEINLINE_DEBUGGABLE uint8* GetData(int32 SliceIndex = 0)
+	{
+		return GetData_Internal(SliceIndex);
+	}
+
+private:
+
+	FORCEINLINE_DEBUGGABLE uint8* GetData_Internal(int32 SliceIndex) const
+	{
+		ensure(SliceIndex >= 0);
+
+		if (Size == 0 || Ptr == nullptr)
+		{
+			return nullptr;
+		}
+
+		switch (Type)
+		{
+			case FType::Plain:
+			{
+				return Ptr + SliceIndex * Size;
+			}
+			case FType::Dynamic:
+			{
+				ensure(Offset == UINT16_MAX);
+				uint8* Data = ((FRigVMByteArray*)Ptr)->GetData();
+				return Data + SliceIndex * Size;
+			}
+			case FType::NestedDynamic:
+			{
+				ensure(Offset == UINT16_MAX);
+				uint8* Data = (*((FRigVMNestedByteArray*)Ptr))[SliceIndex].GetData();
+				return Data + SliceIndex * sizeof(FRigVMByteArray);
+			}
+			default:
+			{
+				return nullptr;
+			}
+		}
+	}
+
+	uint8* Ptr;
+	FType Type;
+	uint16 Size;
+	uint16 Offset;
 };
 
 /**
@@ -435,48 +555,36 @@ public:
 	}
 
 private:
-	FORCEINLINE_DEBUGGABLE uint8* GetData_Internal(const FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE, int32* OutElementCount = nullptr) const
+
+	FORCEINLINE_DEBUGGABLE uint8* GetDataPtr(const FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = 0, bool bArrayContent = false) const
 	{
 		if (Register.ElementCount == 0 && !Register.IsNestedDynamic())
 		{
-			if (OutElementCount)
-			{
-				*OutElementCount = 0;
-			}
 			return nullptr;
 		}
 
 		uint8* Ptr = nullptr;
 		if (Register.IsDynamic())
 		{
-			if (InSliceIndex == INDEX_NONE)
-			{
-				InSliceIndex = 0;
-			}
-
 			Ptr = (uint8*)&Data[Register.GetWorkByteIndex()];
 
 			if (Register.IsNestedDynamic())
 			{
 				FRigVMNestedByteArray* ArrayStorage = (FRigVMNestedByteArray*)Ptr;
-				if (OutElementCount)
-				{
-					*OutElementCount = (*ArrayStorage)[InSliceIndex].Num() / Register.ElementSize;
-				}
 				Ptr = (uint8*)ArrayStorage->GetData();
 
 				if (Ptr)
 				{
 					Ptr = Ptr + InSliceIndex * sizeof(FRigVMByteArray);
+					if (Ptr && bArrayContent)
+					{
+						Ptr = ((FRigVMByteArray*)Ptr)->GetData();
+					}
 				}
 			}
-			else
+			else if(bArrayContent)
 			{
 				FRigVMByteArray* ArrayStorage = (FRigVMByteArray*)Ptr;
-				if (OutElementCount)
-				{
-					*OutElementCount = ArrayStorage->Num() / Register.ElementSize;
-				}
 				Ptr = (uint8*)ArrayStorage->GetData();
 
 				if (Ptr)
@@ -499,42 +607,85 @@ private:
 
 public:
 
-	// Returns the current const data pointer for a given register.
-	// Note: This refers to the active slice - and can change over time.
-	FORCEINLINE_DEBUGGABLE const uint8* GetData(const FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE, int32* OutElementCount = nullptr) const
+	// Returns a memory handle for a given register
+	FORCEINLINE_DEBUGGABLE FRigVMMemoryHandle GetHandle(const FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE) const
 	{
-		return GetData_Internal(Register, InRegisterOffset, InSliceIndex, OutElementCount);
+		if (Register.IsDynamic())
+		{
+			uint8* Ptr = GetDataPtr(Register);
+			return FRigVMMemoryHandle(Ptr, Register);
+		}
+
+		uint8* Ptr = GetDataPtr(Register, InRegisterOffset);
+		return FRigVMMemoryHandle(Ptr, Register.GetNumBytesPerSlice());
 	}
 
-	// Returns the current const data pointer for a given register index.
-	// Note: This refers to the active slice - and can change over time.
-	FORCEINLINE_DEBUGGABLE const uint8* GetData(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE, int32* OutElementCount = nullptr) const
+	// Returns a memory handle for a given register
+	FORCEINLINE_DEBUGGABLE FRigVMMemoryHandle GetHandle(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE) const
 	{
 		ensure(Registers.IsValidIndex(InRegisterIndex));
 		const FRigVMRegister& Register = Registers[InRegisterIndex];
-		return GetData(Register, InRegisterOffset, InSliceIndex, OutElementCount);
+		return GetHandle(Register, InRegisterOffset);
+	}
+
+	// Returns the number of elements for a given slice
+	FORCEINLINE_DEBUGGABLE int32 GetNumElements(const FRigVMRegister& Register, int32 InSliceIndex = 0) const
+	{
+		if (!Register.IsDynamic())
+		{
+			return Register.ElementCount;
+		}
+		
+		if (Register.IsNestedDynamic())
+		{
+			FRigVMNestedByteArray& ArrayStorage = *(FRigVMNestedByteArray*)&Data[Register.GetWorkByteIndex()];
+			return ArrayStorage[InSliceIndex].Num() / Register.ElementSize;
+		}
+
+		return 1;
+	}
+
+	// Returns the number of elements for a given slice
+	FORCEINLINE_DEBUGGABLE int32 GetNumElements(int32 InRegisterIndex, int32 InSliceIndex = 0) const
+	{
+		ensure(Registers.IsValidIndex(InRegisterIndex));
+		const FRigVMRegister& Register = Registers[InRegisterIndex];
+		return GetNumElements(Register, InSliceIndex);
+	}
+
+	// Returns the current const data pointer for a given register.
+	FORCEINLINE_DEBUGGABLE const uint8* GetData(const FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = 0) const
+	{
+		return GetHandle(Register, InRegisterOffset).GetData(InSliceIndex);
+	}
+
+	// Returns the current const data pointer for a given register index.
+	FORCEINLINE_DEBUGGABLE const uint8* GetData(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = 0) const
+	{
+		ensure(Registers.IsValidIndex(InRegisterIndex));
+		const FRigVMRegister& Register = Registers[InRegisterIndex];
+		return GetData(Register, InRegisterOffset, InSliceIndex);
 	}
 
 	// Returns the current data pointer for a given register.
-	// Note: This refers to the active slice - and can change over time.
-	FORCEINLINE_DEBUGGABLE uint8* GetData(FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE, int32* OutElementCount = nullptr)
+	FORCEINLINE_DEBUGGABLE uint8* GetData(FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = 0)
 	{
-		return GetData_Internal(Register, InRegisterOffset, InSliceIndex, OutElementCount);
+		return GetHandle(Register, InRegisterOffset).GetData(InSliceIndex);
 	}
 
 	// Returns the current data pointer for a given register index.
 	// Note: This refers to the active slice - and can change over time.
-	FORCEINLINE_DEBUGGABLE uint8* GetData(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE, int32* OutElementCount = nullptr)
+	FORCEINLINE_DEBUGGABLE uint8* GetData(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = 0)
 	{
 		ensure(Registers.IsValidIndex(InRegisterIndex));
 		FRigVMRegister& Register = Registers[InRegisterIndex];
-		return GetData(Register, InRegisterOffset, InSliceIndex, OutElementCount);
+		return GetData(Register, InRegisterOffset, InSliceIndex);
 	}
 
 	// Returns the current const typed pointer for a given register.
 	// Note: This refers to the active slice - and can change over time.
 	template<typename T>
-	FORCEINLINE_DEBUGGABLE const T* Get(const FRigVMRegister& InRegister, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE) const
+	FORCEINLINE_DEBUGGABLE const T* Get(const FRigVMRegister& InRegister, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = 0) const
 	{
 		return (const T*)GetData(InRegister, InRegisterOffset, InSliceIndex);
 	}
@@ -542,7 +693,7 @@ public:
 	// Returns the current const typed pointer for a given register index.
 	// Note: This refers to the active slice - and can change over time.
 	template<typename T>
-	FORCEINLINE_DEBUGGABLE const T* Get(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE) const
+	FORCEINLINE_DEBUGGABLE const T* Get(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = 0) const
 	{
 		ensure(Registers.IsValidIndex(InRegisterIndex));
 		const FRigVMRegister& Register = Registers[InRegisterIndex];
@@ -552,7 +703,7 @@ public:
 	// Returns the current const typed pointer for a given argument
 	// Note: This refers to the active slice - and can change over time.
 	template<typename T>
-	FORCEINLINE_DEBUGGABLE const T* Get(const FRigVMOperand& InOperand, int32 InSliceIndex = INDEX_NONE) const
+	FORCEINLINE_DEBUGGABLE const T* Get(const FRigVMOperand& InOperand, int32 InSliceIndex = 0) const
 	{
 		return Get<T>(InOperand.GetRegisterIndex(), InOperand.GetRegisterOffset(), InSliceIndex);
 	}
@@ -560,7 +711,7 @@ public:
 	// Returns the current const typed reference for a given register
 	// Note: This refers to the active slice - and can change over time.
 	template<typename T>
-	FORCEINLINE_DEBUGGABLE const T& GetRef(const FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE) const
+	FORCEINLINE_DEBUGGABLE const T& GetRef(const FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = 0) const
 	{
 		return *Get<T>(Register, InRegisterOffset, InSliceIndex);
 	}
@@ -568,7 +719,7 @@ public:
 	// Returns the current const typed reference for a given register index
 	// Note: This refers to the active slice - and can change over time.
 	template<typename T>
-	FORCEINLINE_DEBUGGABLE const T& GetRef(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE) const
+	FORCEINLINE_DEBUGGABLE const T& GetRef(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = 0) const
 	{
 		return *Get<T>(InRegisterIndex, InRegisterOffset, InSliceIndex);
 	}
@@ -576,7 +727,7 @@ public:
 	// Returns the current const typed reference for a given argument
 	// Note: This refers to the active slice - and can change over time.
 	template<typename T>
-	FORCEINLINE_DEBUGGABLE const T& GetRef(const FRigVMOperand& InOperand, int32 InSliceIndex = INDEX_NONE) const
+	FORCEINLINE_DEBUGGABLE const T& GetRef(const FRigVMOperand& InOperand, int32 InSliceIndex = 0) const
 	{
 		return GetRef<T>(InOperand.GetRegisterIndex(), InOperand.GetRegisterOffset(), InSliceIndex);
 	}
@@ -584,7 +735,7 @@ public:
 	// Returns the current typed pointer for a given register
 	// Note: This refers to the active slice - and can change over time.
 	template<typename T>
-	FORCEINLINE_DEBUGGABLE T* Get(FRigVMRegister& InRegister, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE)
+	FORCEINLINE_DEBUGGABLE T* Get(FRigVMRegister& InRegister, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = 0)
 	{
 		return (T*)GetData(InRegister, InRegisterOffset, InSliceIndex);
 	}
@@ -592,7 +743,7 @@ public:
 	// Returns the current typed pointer for a given register index
 	// Note: This refers to the active slice - and can change over time.
 	template<typename T>
-	FORCEINLINE_DEBUGGABLE T* Get(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE)
+	FORCEINLINE_DEBUGGABLE T* Get(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = 0)
 	{
 		ensure(Registers.IsValidIndex(InRegisterIndex));
 		FRigVMRegister& Register = Registers[InRegisterIndex];
@@ -602,7 +753,7 @@ public:
 	// Returns the current typed pointer for a given argument
 	// Note: This refers to the active slice - and can change over time.
 	template<typename T>
-	FORCEINLINE_DEBUGGABLE T* Get(const FRigVMOperand& InOperand, int32 InSliceIndex = INDEX_NONE)
+	FORCEINLINE_DEBUGGABLE T* Get(const FRigVMOperand& InOperand, int32 InSliceIndex = 0)
 	{
 		return Get<T>(InOperand.GetRegisterIndex(), InOperand.GetRegisterOffset(), InSliceIndex);
 	}
@@ -610,7 +761,7 @@ public:
 	// Returns the current typed reference for a given register
 	// Note: This refers to the active slice - and can change over time.
 	template<typename T>
-	FORCEINLINE_DEBUGGABLE T& GetRef(FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE)
+	FORCEINLINE_DEBUGGABLE T& GetRef(FRigVMRegister& Register, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = 0)
 	{
 		return *Get<T>(Register, InRegisterOffset, InSliceIndex);
 	}
@@ -618,7 +769,7 @@ public:
 	// Returns the current typed reference for a given register index
 	// Note: This refers to the active slice - and can change over time.
 	template<typename T>
-	FORCEINLINE_DEBUGGABLE T& GetRef(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE)
+	FORCEINLINE_DEBUGGABLE T& GetRef(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = 0)
 	{
 		return *Get<T>(InRegisterIndex, InRegisterOffset, InSliceIndex);
 	}
@@ -626,33 +777,34 @@ public:
 	// Returns the current typed reference for a given argument
 	// Note: This refers to the active slice - and can change over time.
 	template<typename T>
-	FORCEINLINE_DEBUGGABLE T& GetRef(const FRigVMOperand& InOperand, int32 InSliceIndex = INDEX_NONE)
+	FORCEINLINE_DEBUGGABLE T& GetRef(const FRigVMOperand& InOperand, int32 InSliceIndex = 0)
 	{
 		return GetRef<T>(InOperand.GetRegisterIndex(), InOperand.GetRegisterOffset(), InSliceIndex);
 	}
 
 	// Returns an array view for all elements of the current slice for a given register.
 	template<typename T>
-	FORCEINLINE_DEBUGGABLE FRigVMFixedArray<T> GetFixedArray(FRigVMRegister& InRegister, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE)
+	FORCEINLINE_DEBUGGABLE FRigVMFixedArray<T> GetFixedArray(FRigVMRegister& InRegister, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = 0)
 	{
 		if (InRegisterOffset == INDEX_NONE)
 		{
-			int32 ElementCount = InRegister.ElementCount;
-			uint8* Ptr = (uint8*)GetData(InRegister, INDEX_NONE, InSliceIndex, &ElementCount);
+			uint8* Ptr = (uint8*)GetDataPtr(InRegister, InRegisterOffset, InSliceIndex, false);
 			if (InRegister.IsNestedDynamic())
 			{
 				FRigVMByteArray* ArrayStorage = (FRigVMByteArray*)Ptr;
-				Ptr = (uint8*)ArrayStorage->GetData();
+				return FRigVMFixedArray<T>(*ArrayStorage);
 			}
-			return FRigVMFixedArray<T>((T*)Ptr, ElementCount);
+
+			return FRigVMFixedArray<T>((T*)Ptr, InRegister.ElementCount);
 		}
+
 		TArray<T>* StoredArray = (TArray<T>*)GetData(InRegister, InRegisterOffset, InSliceIndex);
 		return FRigVMFixedArray<T>(StoredArray->GetData(), StoredArray->Num());
 	}
 
 	// Returns an array view for all elements of the current slice for a given register index.
 	template<typename T>
-	FORCEINLINE_DEBUGGABLE FRigVMFixedArray<T> GetFixedArray(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE)
+	FORCEINLINE_DEBUGGABLE FRigVMFixedArray<T> GetFixedArray(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = 0)
 	{
 		ensure(Registers.IsValidIndex(InRegisterIndex));
 		FRigVMRegister& Register = Registers[InRegisterIndex];
@@ -661,42 +813,36 @@ public:
 	
 	// Returns an array view for all elements of the current slice for a given argument.
 	template<typename T>
-	FORCEINLINE_DEBUGGABLE FRigVMFixedArray<T> GetFixedArray(const FRigVMOperand& InOperand, int32 InSliceIndex = INDEX_NONE)
+	FORCEINLINE_DEBUGGABLE FRigVMFixedArray<T> GetFixedArray(const FRigVMOperand& InOperand, int32 InSliceIndex = 0)
 	{
 		return GetFixedArray<T>(InOperand.GetRegisterIndex(), InOperand.GetRegisterOffset(), InSliceIndex);
 	}
 
 	// Returns an array view for all elements of the current slice for a given register.
 	template<typename T>
-	FORCEINLINE_DEBUGGABLE FRigVMDynamicArray<T> GetDynamicArray(FRigVMRegister& InRegister, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE)
+	FORCEINLINE_DEBUGGABLE FRigVMDynamicArray<T> GetDynamicArray(FRigVMRegister& InRegister, int32 InSliceIndex = 0)
 	{
-		if (InRegisterOffset == INDEX_NONE)
+		if (!InRegister.IsDynamic())
 		{
-			uint8* Ptr = (uint8*)GetData(InRegister, INDEX_NONE, InSliceIndex);
-			if (InRegister.IsNestedDynamic())
-			{
-				FRigVMByteArray* ArrayStorage = (FRigVMByteArray*)Ptr;
-				return FRigVMDynamicArray<T>(*ArrayStorage);
-			}
 			return FRigVMDynamicArray<T>(DefaultByteArray);
 		}
-		// todo
-		ensure(false);
-		return FRigVMDynamicArray<T>(DefaultByteArray);
+		
+		FRigVMByteArray* ArrayStorage = (FRigVMByteArray*)GetDataPtr(InRegister, INDEX_NONE, 0, false);
+		return FRigVMDynamicArray<T>(*ArrayStorage);
 	}
 
 	// Returns an array view for all elements of the current slice for a given register index.
 	template<typename T>
-	FORCEINLINE_DEBUGGABLE FRigVMDynamicArray<T> GetDynamicArray(int32 InRegisterIndex, int32 InRegisterOffset = INDEX_NONE, int32 InSliceIndex = INDEX_NONE)
+	FORCEINLINE_DEBUGGABLE FRigVMDynamicArray<T> GetDynamicArray(int32 InRegisterIndex, int32 InSliceIndex = 0)
 	{
 		ensure(Registers.IsValidIndex(InRegisterIndex));
 		FRigVMRegister& Register = Registers[InRegisterIndex];
-		return GetDynamicArray<T>(Register, InRegisterOffset, InSliceIndex);
+		return GetDynamicArray<T>(Register, InSliceIndex);
 	}
 
 	// Returns an array view for all elements of the current slice for a given argument.
 	template<typename T>
-	FORCEINLINE_DEBUGGABLE FRigVMDynamicArray<T> GetDynamicArray(const FRigVMOperand& InOperand, int32 InSliceIndex = INDEX_NONE)
+	FORCEINLINE_DEBUGGABLE FRigVMDynamicArray<T> GetDynamicArray(const FRigVMOperand& InOperand, int32 InSliceIndex = 0)
 	{
 		return GetDynamicArray<T>(InOperand.GetRegisterIndex(), InOperand.GetRegisterOffset(), InSliceIndex);
 	}
@@ -1078,10 +1224,10 @@ private:
 	int32 Allocate(int32 InElementSize, int32 InElementCount, int32 InSliceCount, const uint8* InDataPtr = nullptr, bool bUpdateRegisters = true);
 
 	// Performs optional construction of data within a struct register
-	bool Construct(int32 InRegisterIndex, int32 InElementIndex = INDEX_NONE, int32 InSliceIndex = INDEX_NONE);
+	bool Construct(int32 InRegisterIndex, int32 InElementIndex = INDEX_NONE, int32 InSliceIndex = 0);
 
 	// Performs optional destruction of data within a struct register
-	bool Destroy(int32 InRegisterIndex, int32 InElementIndex = INDEX_NONE, int32 InSliceIndex = INDEX_NONE);
+	bool Destroy(int32 InRegisterIndex, int32 InElementIndex = INDEX_NONE, int32 InSliceIndex = 0);
 
 	// Fills a register with zero memory
 	void FillWithZeroes(int32 InRegisterIndex);

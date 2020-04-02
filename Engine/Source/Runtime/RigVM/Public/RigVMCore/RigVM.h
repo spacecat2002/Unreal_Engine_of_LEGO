@@ -426,7 +426,7 @@ public:
 		Statistics.LiteralMemory = LiteralMemoryPtr->GetStatistics();
 		Statistics.WorkMemory = WorkMemoryPtr->GetStatistics();
 		Statistics.ByteCode = ByteCodePtr->GetStatistics();
-		Statistics.BytesForCaching = FirstPointerForInstruction.GetAllocatedSize() + CachedMemoryPointers.GetAllocatedSize();
+		Statistics.BytesForCaching = FirstHandleForInstruction.GetAllocatedSize() + CachedMemoryHandles.GetAllocatedSize();
 		Statistics.BytesForCDO =
 			Statistics.LiteralMemory.TotalBytes +
 			Statistics.WorkMemory.TotalBytes +
@@ -453,7 +453,7 @@ private:
 	void ResolveFunctionsIfRequired();
 	void RefreshInstructionsIfRequired();
 	void InvalidateCachedMemory();
-	void CacheMemoryPointersIfRequired(FRigVMMemoryContainerPtrArray InMemory);
+	void CacheMemoryHandlesIfRequired(FRigVMMemoryContainerPtrArray InMemory);
 
 #if WITH_EDITOR
 	FString GetOperandLabel(const FRigVMOperand& InOperand) const;
@@ -479,14 +479,16 @@ private:
 	UPROPERTY()
 	TMap<FName, int32> ParametersNameMap;
 
-	TArray<uint32> FirstPointerForInstruction;
-	TArray<void*> CachedMemoryPointers;
+	TArray<uint32> FirstHandleForInstruction;
+	TArray<FRigVMMemoryHandle> CachedMemoryHandles;
 	TArray<FRigVMMemoryContainer*> CachedMemory;
 
 #if WITH_EDITOR
 	TArray<bool> InstructionVisitedDuringLastRun;
 	TArray<int32> InstructionVisitOrder;
 #endif
+
+	void CacheSingleMemoryHandle(const FRigVMOperand& InArg, bool bForExecute = false);
 
 	friend class URigVMCompiler;
 };
