@@ -15,6 +15,7 @@
 #include "Modules/ModuleManager.h"
 #include "DerivedDataCacheInterface.h"
 #include "Misc/PackageName.h"
+#include "Misc/PathViews.h"
 
 #if ENABLE_HTTP_FOR_NETWORK_FILE
 #include "HTTPTransport.h"
@@ -798,11 +799,7 @@ void FNetworkPlatformFile::FillGetFileList(FNetworkFileArchive& Payload)
 
 	TArray<FString> Directories;
 	Directories.Add(EngineRelPath);
-	Directories.Add(EngineRelPluginPath);
 	Directories.Add(GameRelPath);
-	Directories.Add(GameRelPluginPath);
-	Directories.Add(EnginePlatformExtensionsDir);
-	Directories.Add(ProjectPlatformExtensionsDir);
 
 	Payload << TargetPlatformNames;
 	Payload << GameName;
@@ -810,6 +807,8 @@ void FNetworkPlatformFile::FillGetFileList(FNetworkFileArchive& Payload)
 	Payload << GameRelPath;
 	Payload << EnginePlatformExtensionsDir;
 	Payload << ProjectPlatformExtensionsDir;
+	Payload << EngineRelPluginPath;
+	Payload << GameRelPluginPath;
 	Payload << Directories;
 	Payload << ConnectionFlags;
 
@@ -1260,7 +1259,7 @@ void FNetworkPlatformFile::EnsureFileIsLocal(const FString& Filename)
 	FString ReplyFile;
 	Response << ReplyFile;
 	ConvertServerFilenameToClientFilename(ReplyFile);
-	check(ReplyFile == Filename);
+	check((ReplyFile == Filename) || (FPackageName::IsPackageFilename(Filename) && (FPathViews::GetBaseFilename(Filename) == FPathViews::GetBaseFilename(ReplyFile))) );
 
 	// get the server file timestamp
 	FDateTime ServerTimeStamp;

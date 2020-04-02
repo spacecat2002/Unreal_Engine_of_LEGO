@@ -14,6 +14,7 @@
 #include "Misc/PackageName.h"
 #include "Interfaces/ITargetPlatform.h"
 #include "HAL/PlatformTime.h"
+#include "Interfaces/IPluginManager.h"
 
 
 /**
@@ -78,6 +79,7 @@ FNetworkFileServerClientConnection::FNetworkFileServerClientConnection( const FN
 	if (FPaths::IsProjectFilePathSet())
 	{
 		LocalProjectDir = FPaths::GetPath(FPaths::GetProjectFilePath()) + TEXT("/");
+		FPaths::MakeStandardFilename(LocalProjectDir);
 	}
 
 	LocalEngineDirAbs = MakeAbsoluteNormalizedDir(LocalEngineDir);
@@ -113,7 +115,7 @@ void FNetworkFileServerClientConnection::ConvertClientFilenameToServerFilename(F
 	{
 		if ( FPaths::IsProjectFilePathSet() )
 		{
-			FilenameToConvert = FilenameToConvert.Replace(*ConnectedProjectDir, *(FPaths::GetPath(FPaths::GetProjectFilePath()) + TEXT("/")));
+			FilenameToConvert = FilenameToConvert.Replace(*ConnectedProjectDir, *LocalProjectDir);
 		}
 		else
 		{
@@ -780,6 +782,31 @@ void FNetworkFileServerClientConnection::ProcessToAbsolutePathForWrite( FArchive
 	Out << Filename;
 }
 
+static void AddDirectoriesToIgnore(const FString& RootDir, TArray<FString>& OutDirectoriesToSkip, TArray<FString>& OutDirectoriesToNotRecurse)
+{
+	OutDirectoriesToSkip.Add(FString(RootDir / TEXT("Intermediate")));
+	OutDirectoriesToSkip.Add(FString(RootDir / TEXT("Documentation")));
+	OutDirectoriesToSkip.Add(FString(RootDir / TEXT("Extras")));
+	OutDirectoriesToSkip.Add(FString(RootDir / TEXT("Binaries")));
+	OutDirectoriesToSkip.Add(FString(RootDir / TEXT("Source")));
+	OutDirectoriesToSkip.Add(FString(RootDir / TEXT("Saved")));
+	OutDirectoriesToSkip.Add(FString(RootDir / TEXT("Plugins")));
+	OutDirectoriesToSkip.Add(FString(RootDir / TEXT("Programs")));
+	OutDirectoriesToSkip.Add(FString(RootDir / TEXT("Platforms")));
+	OutDirectoriesToSkip.Add(FString(RootDir / TEXT("Build")));
+	OutDirectoriesToNotRecurse.Add(FString(RootDir / TEXT("DerivedDataCache")));
+}
+
+static void ScanExtensionRootDirectory(FSandboxPlatformFile* Sandbox, const FString& RootDir, TMap<FString, FDateTime>& OutFileTimes)
+{
+	TArray<FString> ExtensionDirectoriesToSkip;
+	TArray<FString> ExtensionDirectoriesToNotRecurse;
+	AddDirectoriesToIgnore(RootDir, ExtensionDirectoriesToSkip, ExtensionDirectoriesToNotRecurse);
+	FLocalTimestampDirectoryVisitor ExtensionVisitor(*Sandbox, ExtensionDirectoriesToSkip, ExtensionDirectoriesToNotRecurse, true);
+	Sandbox->IterateDirectory(*RootDir, ExtensionVisitor);
+	OutFileTimes.Append(ExtensionVisitor.FileTimes);
+}
+
 bool FNetworkFileServerClientConnection::ProcessGetFileList( FArchive& In, FArchive& Out )
 {
 	// get the list of directories to process
@@ -789,6 +816,8 @@ bool FNetworkFileServerClientConnection::ProcessGetFileList( FArchive& In, FArch
 	FString GameRelativePath;
 	FString EnginePlatformExtensionsRelativePath;
 	FString ProjectPlatformExtensionsRelativePath;
+	FString EnginePluginsRelativePath;
+	FString ProjectPluginsRelativePath;
 	TArray<FString> RootDirectories;
 	
 	EConnectionFlags ConnectionFlags;
@@ -801,6 +830,8 @@ bool FNetworkFileServerClientConnection::ProcessGetFileList( FArchive& In, FArch
 	In << GameRelativePath;
 	In << EnginePlatformExtensionsRelativePath;
 	In << ProjectPlatformExtensionsRelativePath;
+	In << EnginePluginsRelativePath;
+	In << ProjectPluginsRelativePath;
 	In << RootDirectories;
 	In << ConnectionFlags;
 	In << ClientVersionInfo;
@@ -969,22 +1000,9 @@ bool FNetworkFileServerClientConnection::ProcessGetFileList( FArchive& In, FArch
 	TArray<FString> DirectoriesToSkip;
 	TArray<FString> DirectoriesToNotRecurse;
 	// @todo: This should really be FPlatformMisc::GetSavedDirForGame(ClientGameName), etc
-	for (int32 DirIndex = 0; DirIndex < RootDirectories.Num(); DirIndex++)
+	for (const FString& RootDir : RootDirectories)
 	{
-		DirectoriesToSkip.Add(FString(RootDirectories[DirIndex] / TEXT("Saved/Backup")));
-		DirectoriesToSkip.Add(FString(RootDirectories[DirIndex] / TEXT("Saved/Config")));
-		DirectoriesToSkip.Add(FString(RootDirectories[DirIndex] / TEXT("Saved/Logs")));
-		DirectoriesToSkip.Add(FString(RootDirectories[DirIndex] / TEXT("Saved/Sandboxes")));
-		DirectoriesToSkip.Add(FString(RootDirectories[DirIndex] / TEXT("Saved/Cooked")));
-		DirectoriesToSkip.Add(FString(RootDirectories[DirIndex] / TEXT("Saved/EditorCooked")));
-		DirectoriesToSkip.Add(FString(RootDirectories[DirIndex] / TEXT("Saved/ShaderDebugInfo")));
-		DirectoriesToSkip.Add(FString(RootDirectories[DirIndex] / TEXT("Saved/StagedBuilds")));
-		DirectoriesToSkip.Add(FString(RootDirectories[DirIndex] / TEXT("Intermediate")));
-		DirectoriesToSkip.Add(FString(RootDirectories[DirIndex] / TEXT("Documentation")));
-		DirectoriesToSkip.Add(FString(RootDirectories[DirIndex] / TEXT("Extras")));
-		DirectoriesToSkip.Add(FString(RootDirectories[DirIndex] / TEXT("Binaries")));
-		DirectoriesToSkip.Add(FString(RootDirectories[DirIndex] / TEXT("Source")));
-		DirectoriesToNotRecurse.Add(FString(RootDirectories[DirIndex] / TEXT("DerivedDataCache")));
+		AddDirectoriesToIgnore(RootDir, DirectoriesToSkip, DirectoriesToNotRecurse);
 	}
 
 	UE_LOG(LogFileServer, Display, TEXT("Scanning server files for timestamps..."));
@@ -1010,6 +1028,24 @@ bool FNetworkFileServerClientConnection::ProcessGetFileList( FArchive& In, FArch
 
 		if (!bIsSubDirOfOtherRootDir)
 			Sandbox->IterateDirectory(*RootDirectories[DirIndex], Visitor);
+	}
+
+	// Traverse plugin directories
+	TArray<TSharedRef<IPlugin>> AllPlugins = IPluginManager::Get().GetDiscoveredPlugins();
+	for (TSharedRef<IPlugin> Plugin : AllPlugins)
+	{
+		ScanExtensionRootDirectory(Sandbox.Get(), Plugin->GetBaseDir(), Visitor.FileTimes);
+	}
+
+	// Traverse platform extension directories
+	FString ServerEnginePlatformExtensionsRelativePath = EnginePlatformExtensionsRelativePath;
+	ConvertClientFilenameToServerFilename(ServerEnginePlatformExtensionsRelativePath);
+	FString ServerProjectPlatformExtensionsRelativePath = ProjectPlatformExtensionsRelativePath;
+	ConvertClientFilenameToServerFilename(ServerProjectPlatformExtensionsRelativePath);
+	for (const FString& TargetPlatform : TargetPlatformNames)
+	{
+		ScanExtensionRootDirectory(Sandbox.Get(), ServerEnginePlatformExtensionsRelativePath / TargetPlatform, Visitor.FileTimes);
+		ScanExtensionRootDirectory(Sandbox.Get(), ServerProjectPlatformExtensionsRelativePath / TargetPlatform, Visitor.FileTimes);
 	}
 
 	UE_LOG(LogFileServer, Display, TEXT("Scanned server files, found %d files in %.2f seconds"), Visitor.FileTimes.Num(), FPlatformTime::Seconds() - FileScanStartTime);
