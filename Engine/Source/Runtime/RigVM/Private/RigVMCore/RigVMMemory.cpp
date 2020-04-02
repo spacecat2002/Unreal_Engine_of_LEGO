@@ -308,6 +308,26 @@ uint16 FRigVMRegisterOffset::GetElementSize() const
 	return ElementSize;
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+class FRigVMMemoryContainerImportErrorContext : public FOutputDevice
+{
+public:
+
+	int32 NumErrors;
+
+	FRigVMMemoryContainerImportErrorContext()
+		: FOutputDevice()
+		, NumErrors(0)
+	{
+	}
+
+	virtual void Serialize(const TCHAR* V, ELogVerbosity::Type Verbosity, const class FName& Category) override
+	{
+		UE_LOG(LogRigVM, Error, TEXT("Error Importing To MemoryContainer: %s"), V);
+		NumErrors++;
+	}
+};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -431,8 +451,10 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 			}
 		}
 
-		for (const FRigVMRegister& Register : Registers)
+		for (int32 RegisterIndex=0;RegisterIndex<Registers.Num();RegisterIndex++)
 		{
+			const FRigVMRegister& Register = Registers[RegisterIndex];
+
 			if (Register.ElementCount == 0 && !Register.IsDynamic())
 			{
 				continue;
@@ -494,7 +516,13 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 							{
 								for (uint16 ElementIndex = 0; ElementIndex < Register.GetTotalElementCount(); ElementIndex++)
 								{
-									ScriptStruct->ImportText(*View[ElementIndex], DataPtr, nullptr, PPF_None, nullptr, ScriptStruct->GetName());
+									FRigVMMemoryContainerImportErrorContext ErrorPipe;
+									ScriptStruct->ImportText(*View[ElementIndex], DataPtr, nullptr, PPF_None, &ErrorPipe, ScriptStruct->GetName());
+									if (ErrorPipe.NumErrors > 0)
+									{
+										bEncounteredErrorDuringLoad = true;
+										break;
+									}
 									DataPtr += Register.ElementSize;
 								}
 							}
@@ -557,7 +585,13 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 
 								for (uint16 ElementIndex = 0; ElementIndex < View.Num(); ElementIndex++)
 								{
-									ScriptStruct->ImportText(*View[ElementIndex], DataPtr, nullptr, PPF_None, nullptr, ScriptStruct->GetName());
+									FRigVMMemoryContainerImportErrorContext ErrorPipe;
+									ScriptStruct->ImportText(*View[ElementIndex], DataPtr, nullptr, PPF_None, &ErrorPipe, ScriptStruct->GetName());
+									if (ErrorPipe.NumErrors > 0)
+									{
+										bEncounteredErrorDuringLoad = true;
+										break;
+									}
 									DataPtr += Register.ElementSize;
 								}
 							}
@@ -626,7 +660,13 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 
 									for (uint16 ElementIndex = 0; ElementIndex < View.Num(); ElementIndex++)
 									{
-										ScriptStruct->ImportText(*View[ElementIndex], DataPtr, nullptr, PPF_None, nullptr, ScriptStruct->GetName());
+										FRigVMMemoryContainerImportErrorContext ErrorPipe;
+										ScriptStruct->ImportText(*View[ElementIndex], DataPtr, nullptr, PPF_None, &ErrorPipe, ScriptStruct->GetName());
+										if (ErrorPipe.NumErrors > 0)
+										{
+											bEncounteredErrorDuringLoad = true;
+											break;
+										}
 										DataPtr += Register.ElementSize;
 									}
 								}
@@ -1385,7 +1425,8 @@ void FRigVMMemoryContainer::SetRegisterValueFromString(const FRigVMOperand& InOp
 			{
 				uint8* DataPtr = (uint8*)GetData(Register);
 				DataPtr += Index * ScriptStruct->GetStructureSize();
-				ScriptStruct->ImportText(*DefaultValue, DataPtr, nullptr, PPF_None, nullptr, ScriptStruct->GetName());
+				FRigVMMemoryContainerImportErrorContext ErrorPipe;
+				ScriptStruct->ImportText(*DefaultValue, DataPtr, nullptr, PPF_None, &ErrorPipe, ScriptStruct->GetName());
 			}
 		}
 		else if (const UEnum* Enum = Cast<const UEnum>(InCPPTypeObject))
