@@ -13,6 +13,9 @@
 
 extern void ComputeDiffuseIrradiance(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, FTextureRHIRef LightingSource, int32 LightingSourceMipIndex, FSHVectorRGB3* OutIrradianceEnvironmentMap);
 
+FMatrix CalcCubeFaceViewRotationMatrix(ECubeFace Face);
+FMatrix GetCubeProjectionMatrix(float HalfFovDeg, float CubeMapSize, float NearPlane);
+
 /** Pixel shader used for filtering a mip. */
 class FCubeFilterPS : public FGlobalShader
 {
