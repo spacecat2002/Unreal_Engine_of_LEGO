@@ -366,8 +366,17 @@ public:
 		// Default empty local root signature
 
 		D3D12_VERSIONED_ROOT_SIGNATURE_DESC LocalRootSignatureDesc = {};
-		LocalRootSignatureDesc.Version = D3D_ROOT_SIGNATURE_VERSION_1_0;
-		LocalRootSignatureDesc.Desc_1_0.Flags |= D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
+		if (Device->GetParentAdapter()->GetRootSignatureVersion() >= D3D_ROOT_SIGNATURE_VERSION_1_1)
+		{
+			LocalRootSignatureDesc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
+			LocalRootSignatureDesc.Desc_1_1.Flags |= D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
+		}
+		else
+		{
+			LocalRootSignatureDesc.Version = D3D_ROOT_SIGNATURE_VERSION_1_0;
+			LocalRootSignatureDesc.Desc_1_0.Flags |= D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
+		}
+		
 		DefaultLocalRootSignature.Init(LocalRootSignatureDesc);
 	}
 
