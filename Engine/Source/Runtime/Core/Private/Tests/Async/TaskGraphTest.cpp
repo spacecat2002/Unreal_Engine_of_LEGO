@@ -1049,7 +1049,7 @@ namespace TaskGraphTests
 		void TestTCircularQueue()
 		{
 			TCircularQueue<uint32> Queue{ 100 };
-			TAtomic<bool> bStop = false;
+			std::atomic<bool> bStop{ false };
 
 			FGraphEventRef Task = FTask::SpawnAndTrack(
 				[&bStop, &Queue]
@@ -1080,7 +1080,7 @@ namespace TaskGraphTests
 		void TestTQueue()
 		{
 			TQueue<uint32, Mode> Queue;
-			TAtomic<bool> bStop = false;
+			std::atomic<bool> bStop{ false };
 
 			FGraphEventRef Task = FTask::SpawnAndTrack(
 				[&bStop, &Queue]
@@ -1111,7 +1111,7 @@ namespace TaskGraphTests
 		void TestMpscTQueue()
 		{
 			TQueue<uint32, EQueueMode::Mpsc> Queue;
-			TAtomic<bool> bStop = false;
+			std::atomic<bool> bStop{ false };
 
 			int32 NumProducers = FPlatformMisc::NumberOfCoresIncludingHyperthreads() - 1;
 			FGraphEventArray Tasks;
