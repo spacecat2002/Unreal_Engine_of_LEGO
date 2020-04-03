@@ -4256,13 +4256,15 @@ void FEngineLoop::Exit()
 
 	if ( GEngine != nullptr )
 	{
-		GEngine->ShutdownAudioDeviceManager();
+		GEngine->ReleaseAudioDeviceManager();
 	}
 
 	if ( GEngine != nullptr )
 	{
 		GEngine->PreExit();
 	}
+
+	FAudioDeviceManager::Shutdown();
 
 	// close all windows
 	FSlateApplication::Shutdown();
