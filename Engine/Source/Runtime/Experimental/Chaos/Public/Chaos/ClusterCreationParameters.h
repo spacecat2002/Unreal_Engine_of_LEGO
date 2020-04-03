@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "Chaos/IncludeLvl1.inl"
 #include "Chaos/ParticleHandle.h"
 #include "Chaos/ParticleHandleFwd.h"
 #include "Chaos/Defines.h"
@@ -14,7 +15,7 @@ namespace Chaos
 	template <typename T>
 	struct CHAOS_API FClusterCreationParameters
 	{
-		enum EConnectionMethod { None = 0, PointImplicit, DelaunayTriangulation, MinimalSpanningSubsetDelaunayTriangulation, PointImplicitAugmentedWithMinimalDelaunay };
+		enum EConnectionMethod { PointImplicit = 0, DelaunayTriangulation, MinimalSpanningSubsetDelaunayTriangulation, PointImplicitAugmentedWithMinimalDelaunay,  None };
 
 
 		FClusterCreationParameters(
@@ -22,8 +23,7 @@ namespace Chaos
 			, int32 MaxNumConnectionsIn = 100
 			, bool bCleanCollisionParticlesIn = true
 			, bool bCopyCollisionParticlesIn = true
-			, bool bGenerateConnectionGraphIn = true
-			, EConnectionMethod ConnectionMethodIn = EConnectionMethod::PointImplicitAugmentedWithMinimalDelaunay
+			, bool bGenerateConnectionGraphIn = true, EConnectionMethod ConnectionMethodIn = EConnectionMethod::MinimalSpanningSubsetDelaunayTriangulation
 			, TBVHParticles<float, 3>* CollisionParticlesIn = nullptr
 			, Chaos::TPBDRigidClusteredParticleHandle<float,3>* ClusterParticleHandleIn = nullptr
 		)

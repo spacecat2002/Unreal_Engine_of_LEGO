@@ -37,9 +37,10 @@ namespace EditorSessionWriterDefs
 	static const float HeartbeatPeriodSeconds = 60;
 }
 
-FEditorSessionSummaryWriter::FEditorSessionSummaryWriter()
+FEditorSessionSummaryWriter::FEditorSessionSummaryWriter(uint32 InOutOfProcessMonitorProcessId)
 	: HeartbeatTimeElapsed(0.0f)
 	, bShutdown(false)
+	, OutOfProcessMonitorProcessId(InOutOfProcessMonitorProcessId)
 {
 }
 
@@ -57,10 +58,10 @@ void FEditorSessionSummaryWriter::Initialize()
 
 	UE_LOG(LogEditorSessionSummary, Verbose, TEXT("Initializing EditorSessionSummaryWriter for editor session tracking"));
 
-	if (FEditorAnalyticsSession::Lock()) // System wide locking to write the session file/registry
+	if (FEditorAnalyticsSession::TryLock()) // System wide lock to write the session file/registry. Don't block if already taken, delay initialisation to the next Tick().
 	{
 		// Create a session Session for this session
-		CurrentSession = CreateCurrentSession();
+		CurrentSession = CreateCurrentSession(OutOfProcessMonitorProcessId);
 		CurrentSession->Save();
 
 		UE_LOG(LogEditorSessionSummary, Log, TEXT("EditorSessionSummaryWriter initialized"));
@@ -123,11 +124,14 @@ void FEditorSessionSummaryWriter::Tick(float DeltaTime)
 		return;
 	}
 
-	// Note: Update idle time in Tick() because Slate cannot be invoked from any thread and UpdateTimeStamps() can be called from a crashing thread.
-	//       Compute the idle time from Slate point-of view. Note that some tasks blocking the UI (such as importing large assets) may be considered idle time.
-	CurrentSession->IdleSeconds = FSlateApplication::Get().GetLastUserInteractionTime() != 0 ? // In case Slate did not register any interaction yet (ex the user just launches the Editor and goes away)
-		FMath::FloorToInt(static_cast<float>(FSlateApplication::Get().GetCurrentTime() - FSlateApplication::Get().GetLastUserInteractionTime())) :
-		FMath::FloorToInt(static_cast<float>((FDateTime::UtcNow() - CurrentSession->StartupTimestamp).GetTotalSeconds()));
+	if (CurrentSession != nullptr)
+	{
+		// Note: Update idle time in Tick() because Slate cannot be invoked from any thread and UpdateTimeStamps() can be called from a crashing thread.
+		//       Compute the idle time from Slate point-of view. Note that some tasks blocking the UI (such as importing large assets) may be considered idle time.
+		CurrentSession->IdleSeconds = FSlateApplication::Get().GetLastUserInteractionTime() != 0 ? // In case Slate did not register any interaction yet (ex the user just launches the Editor and goes away)
+			FMath::FloorToInt(static_cast<float>(FSlateApplication::Get().GetCurrentTime() - FSlateApplication::Get().GetLastUserInteractionTime())) :
+			FMath::FloorToInt(static_cast<float>((FDateTime::UtcNow() - CurrentSession->StartupTimestamp).GetTotalSeconds()));
+	}
 
 	HeartbeatTimeElapsed += DeltaTime;
 
@@ -135,7 +139,7 @@ void FEditorSessionSummaryWriter::Tick(float DeltaTime)
 	{
 		HeartbeatTimeElapsed = 0.0f;
 
-		// Try late initialization (in case user toggled the analytics 'Send Data' on during the session).
+		// Try late initialization (in case the global lock was already taken during init and the session couldn't be created or the user just toggled 'send data' on).
 		if (CurrentSession == nullptr)
 		{
 			Initialize();
@@ -203,7 +207,7 @@ void FEditorSessionSummaryWriter::Shutdown()
 	bShutdown = true;
 }
 
-TUniquePtr<FEditorAnalyticsSession> FEditorSessionSummaryWriter::CreateCurrentSession()
+TUniquePtr<FEditorAnalyticsSession> FEditorSessionSummaryWriter::CreateCurrentSession(uint32 OutOfProcessMonitorProcessId)
 {
 	check(FEngineAnalytics::IsAvailable()); // The function assumes the caller checked it before calling.
 
@@ -229,6 +233,7 @@ TUniquePtr<FEditorAnalyticsSession> FEditorSessionSummaryWriter::CreateCurrentSe
 	Session->UserId = AnalyticProvider.GetUserID();
 
 	Session->PlatformProcessID = FPlatformProcess::GetCurrentProcessId();
+	Session->MonitorProcessID = OutOfProcessMonitorProcessId;
 	Session->ProjectName = ProjectSettings.ProjectName;
 	Session->ProjectID = ProjectSettings.ProjectID.ToString(EGuidFormats::DigitsWithHyphens);
 	Session->ProjectDescription = ProjectSettings.Description;
@@ -338,7 +343,7 @@ FString FEditorSessionSummaryWriter::GetUserActivityString()
 
 void FEditorSessionSummaryWriter::TrySaveCurrentSession()
 {
-	if (FEditorAnalyticsSession::Lock()) // Inter-process lock to grant this process exclusive access to the key-store file/registry.
+	if (FEditorAnalyticsSession::TryLock()) // Inter-process lock to grant this process exclusive access to the key-store file/registry.
 	{
 		FScopeLock ScopedLock(&SaveSessionLock); // Intra-process lock to grant the calling thread exclusive access to the key-store file/registry.
 		CurrentSession->Save();

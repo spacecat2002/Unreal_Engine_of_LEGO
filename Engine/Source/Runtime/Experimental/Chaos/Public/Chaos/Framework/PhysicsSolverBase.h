@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 #pragma once
 
+#include "Chaos/IncludeLvl1.inl"
 #include "Chaos/Framework/MultiBufferResource.h"
 #include "Chaos/Matrix.h"
 #include "Misc/ScopeLock.h"
@@ -54,6 +55,20 @@ namespace Chaos
 				ProxiesData.Add(Base);
 			}
 		}
+
+		// Batch proxy insertion, does not check DirtyIdx.
+		template< typename TProxiesArray>
+		void AddMultipleUnsafe(TProxiesArray& ProxiesArray)
+		{
+			int32 Idx = ProxiesData.Num();
+			ProxiesData.Append(ProxiesArray);
+
+			for(IPhysicsProxyBase* Proxy : ProxiesArray)
+			{
+				Proxy->SetDirtyIdx(Idx++);
+			}
+		}
+
 
 		void Remove(IPhysicsProxyBase* Base)
 		{
@@ -171,6 +186,13 @@ namespace Chaos
 		void RemoveDirtyProxy(IPhysicsProxyBase * ProxyBaseIn)
 		{
 			DirtyProxiesDataBuffer.AccessProducerBuffer()->Remove(ProxyBaseIn);
+		}
+
+		// Batch dirty proxies without checking DirtyIdx.
+		template <typename TProxiesArray>
+		void AddDirtyProxiesUnsafe(TProxiesArray& ProxiesArray)
+		{
+			DirtyProxiesDataBuffer.AccessProducerBuffer()->AddMultipleUnsafe(ProxiesArray);
 		}
 
 		void AddDirtyProxyShape(IPhysicsProxyBase* ProxyBaseIn, int32 ShapeIdx)

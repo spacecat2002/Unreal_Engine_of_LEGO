@@ -66,6 +66,11 @@ public:
 		return Analytics.Pin()->StartSession(MoveTemp(Attributes));
 	}
 
+	virtual bool StartSession(FString InSessionID, TArray<FAnalyticsEventAttribute>&& Attributes) override
+	{
+		return Analytics.Pin()->StartSession(MoveTemp(InSessionID), MoveTemp(Attributes));
+	}
+
 	virtual void SetDefaultEventAttributes(TArray<FAnalyticsEventAttribute>&& Attributes) override
 	{
 		Analytics.Pin()->SetDefaultEventAttributes(MoveTemp(Attributes));
@@ -286,14 +291,14 @@ void FEngineAnalytics::Initialize()
 		// Create the session manager singleton
 		if (!SessionManager.IsValid())
 		{
-			SessionManager = MakeShareable(new FEngineSessionManager(EEngineSessionManagerMode::Editor));
+			SessionManager = MakeShared<FEngineSessionManager>(EEngineSessionManagerMode::Editor);
 			SessionManager->Initialize();
 		}
 
 #if WITH_EDITOR
 		if (!SessionSummaryWriter.IsValid())
 		{
-			SessionSummaryWriter = MakeShareable(new FEditorSessionSummaryWriter());
+			SessionSummaryWriter = MakeShared<FEditorSessionSummaryWriter>(FGenericCrashContext::GetOutOfProcessCrashReporterProcessId());
 			SessionSummaryWriter->Initialize();
 		}
 

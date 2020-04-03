@@ -36,8 +36,8 @@ FSingleParticlePhysicsProxy<PARTICLE_TYPE>::GetInitialState() const
 	return InitialState; 
 }
 
-template <Chaos::EParticleType ParticleType>
-void PushToPhysicsStateImp(const Chaos::FDirtyPropertiesManager& Manager, Chaos::TGeometryParticleHandle<float,3>* Handle, int32 DataIdx, const Chaos::FDirtyProxy& Dirty, Chaos::FShapeDirtyData* ShapesData, Chaos::FPhysicsSolver* Solver, const bool bInitialized)
+template <Chaos::EParticleType ParticleType, typename TParticleHandle>
+void PushToPhysicsStateImp(const Chaos::FDirtyPropertiesManager& Manager, TParticleHandle* Handle, int32 DataIdx, const Chaos::FDirtyProxy& Dirty, Chaos::FShapeDirtyData* ShapesData, Chaos::FPhysicsSolver* Solver, const bool bInitialized)
 {
 	using namespace Chaos;
 	constexpr bool bHasKinematicData = ParticleType != EParticleType::Static;
@@ -52,37 +52,18 @@ void PushToPhysicsStateImp(const Chaos::FDirtyPropertiesManager& Manager, Chaos:
 
 		if(NewXR)
 		{
-			Handle->SetX(NewXR->X);
-			Handle->SetR(NewXR->R);
-			if(bHasDynamicData)
-			{
-				RigidHandle->SetP(NewXR->X);
-				RigidHandle->SetQ(NewXR->R);
-			}
+			Handle->SetXR(*NewXR);
 		}
 
 		if(NewNonFrequentData)
 		{
-			Handle->SetSharedGeometry(NewNonFrequentData->Geometry);
-			Handle->SetUniqueIdx(NewNonFrequentData->UniqueIdx);
-			Handle->SetUserData(NewNonFrequentData->UserData);
-
-			if(bHasDynamicData)
-			{
-				RigidHandle->SetLinearEtherDrag(NewNonFrequentData->LinearEtherDrag);
-				RigidHandle->SetAngularEtherDrag(NewNonFrequentData->AngularEtherDrag);
-			}
-			
-#if CHAOS_CHECKED
-			Handle->SetDebugName(NewNonFrequentData->DebugName);
-#endif
+			Handle->SetNonFrequentData(*NewNonFrequentData);
 		}
 
 		auto NewVelocities = bHasKinematicData ? ParticleData.FindVelocities(Manager, DataIdx) : nullptr;
 		if(NewVelocities)
 		{
-			KinematicHandle->SetV(NewVelocities->V);
-			KinematicHandle->SetW(NewVelocities->W);
+			KinematicHandle->SetVelocities(*NewVelocities);
 		}
 
 		if(NewXR || NewNonFrequentData || NewVelocities)
@@ -103,42 +84,24 @@ void PushToPhysicsStateImp(const Chaos::FDirtyPropertiesManager& Manager, Chaos:
 			Solver->GetEvolution()->DirtyParticle(*Handle);
 		}
 
-		if(auto NewData = ParticleData.FindMisc(Manager, DataIdx))
-		{
-			Handle->SetSpatialIdx(NewData->SpatialIdx);
-
-			if(bHasDynamicData)
-			{
-				Solver->GetEvolution()->SetParticleObjectState(RigidHandle,NewData->ObjectState);
-				Solver->GetEvolution()->GetGravityForces().SetEnabled(*RigidHandle,NewData->bGravityEnabled);
-			}
-		}
-
-		if(auto NewData = ParticleData.FindMassProps(Manager, DataIdx))
-		{
-			if(bHasKinematicData)
-			{
-				KinematicHandle->SetCenterOfMass(NewData->CenterOfMass);
-				KinematicHandle->SetRotationOfMass(NewData->RotationOfMass);
-			}
-
-			if(bHasDynamicData)
-			{
-				RigidHandle->SetM(NewData->M);
-				RigidHandle->SetInvM(NewData->InvM);
-				RigidHandle->SetI(NewData->I);
-				RigidHandle->SetInvI(NewData->InvI);
-			}
-		}
-
 		if(bHasDynamicData)
 		{
+			if(auto NewData = ParticleData.FindMassProps(Manager,DataIdx))
+			{
+				RigidHandle->SetMassProps(*NewData);
+			}
+
 			if(auto NewData = ParticleData.FindDynamics(Manager, DataIdx))
 			{
-				RigidHandle->SetF(NewData->F);
-				RigidHandle->SetTorque(NewData->Torque);
-				RigidHandle->SetLinearImpulse(NewData->LinearImpulse);
-				RigidHandle->SetAngularImpulse(NewData->AngularImpulse);
+				RigidHandle->SetDynamics(*NewData);
+			}
+
+			if(auto NewData = ParticleData.FindDynamicMisc(Manager,DataIdx))
+			{
+				Solver->GetEvolution()->SetParticleObjectState(RigidHandle,NewData->ObjectState());
+				Solver->GetEvolution()->GetGravityForces().SetEnabled(*RigidHandle,NewData->GravityEnabled());
+
+				RigidHandle->SetDynamicMisc(*NewData);
 			}
 		}
 
@@ -240,7 +203,7 @@ void FSingleParticlePhysicsProxy<Chaos::TGeometryParticle<float, 3>>::ClearEvent
 template< >
 void FSingleParticlePhysicsProxy<Chaos::TKinematicGeometryParticle<float, 3>>::PushToPhysicsState(const Chaos::FDirtyPropertiesManager& Manager, int32 DataIdx, const Chaos::FDirtyProxy& Dirty, Chaos::FShapeDirtyData* ShapesData)
 {
-	PushToPhysicsStateImp<Chaos::EParticleType::Kinematic>(Manager,Handle,DataIdx,Dirty,ShapesData,GetSolver(),bInitialized);
+	PushToPhysicsStateImp<Chaos::EParticleType::Kinematic>(Manager,Handle->CastToKinematicParticle(),DataIdx,Dirty,ShapesData,GetSolver(),bInitialized);
 #if 0
 	// move the copied game thread data into the handle
 	if(auto* RigidHandle = static_cast<Chaos::TKinematicGeometryParticleHandle<float,3>*>(Handle))
@@ -412,7 +375,7 @@ void FSingleParticlePhysicsProxy<Chaos::TKinematicGeometryParticle<float, 3>>::C
 template< >
 void FSingleParticlePhysicsProxy<Chaos::TPBDRigidParticle<float, 3>>::PushToPhysicsState(const Chaos::FDirtyPropertiesManager& Manager, int32 DataIdx, const Chaos::FDirtyProxy& Dirty, Chaos::FShapeDirtyData* ShapesData)
 {
-	PushToPhysicsStateImp<Chaos::EParticleType::Rigid>(Manager,Handle,DataIdx,Dirty,ShapesData,GetSolver(),bInitialized);
+	PushToPhysicsStateImp<Chaos::EParticleType::Rigid>(Manager,Handle->CastToRigidParticle(),DataIdx,Dirty,ShapesData,GetSolver(),bInitialized);
 #if 0
 	// move the copied game thread data into the handle
 	if (auto* RigidHandle = static_cast<Chaos::TPBDRigidParticleHandle<float, 3>*>(Handle))
@@ -595,7 +558,7 @@ void FSingleParticlePhysicsProxy<Chaos::TPBDRigidParticle<float, 3>>::PullFromPh
 		Particle->UpdateShapeBounds();
 		//if (!Particle->IsDirty(Chaos::EParticleFlags::ObjectState))
 		//question: is it ok to call this when it was one of the other properties that changed?
-		if (!Particle->IsDirty(Chaos::EParticleFlags::Misc))
+		if (!Particle->IsDirty(Chaos::EParticleFlags::DynamicMisc))
 		{
 			Particle->SetObjectState(Buffer->MObjectState, true);
 		}

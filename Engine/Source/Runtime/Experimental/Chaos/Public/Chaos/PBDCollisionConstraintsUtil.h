@@ -1,13 +1,14 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 #pragma once
 
+#include "Chaos/IncludeLvl1.inl"
 #include "Chaos/ExternalCollisionData.h"
 #include "Chaos/PBDCollisionConstraints.h"
 #include "Chaos/CollisionResolutionTypes.h"
 
 namespace Chaos
 {
-	void CHAOS_API ComputeHashTable(const TArray<Chaos::TPBDCollisionConstraints<float, 3>::FPointContactConstraint>& ConstraintsArray,
+	void CHAOS_API ComputeHashTable(const TArray<Chaos::FRigidBodyPointContactConstraint>& ConstraintsArray,
 									const FBox& BoundingBox, TMultiMap<int32, int32>& HashTableMap, const float SpatialHashRadius);
 
 	void CHAOS_API ComputeHashTable(const TArray<TCollisionData<float, 3>>& CollisionsArray,

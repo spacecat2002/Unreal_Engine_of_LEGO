@@ -1,5 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 #pragma once
+#include "Chaos/IncludeLvl1.inl"
 #include "Chaos/Vector.h"
 #include "Chaos/Box.h"
 #include "GeometryParticlesfwd.h"
@@ -407,6 +408,11 @@ public:
 	}
 
 	TValue& FindChecked(const TKey& Key)
+	{
+		return Entries[GetUniqueIdx(Key).Idx].Value;
+	}
+
+	const TValue& FindChecked(const TKey& Key) const
 	{
 		return Entries[GetUniqueIdx(Key).Idx].Value;
 	}

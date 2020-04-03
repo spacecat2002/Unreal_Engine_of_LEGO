@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 #pragma once
 
+#include "Chaos/IncludeLvl1.inl"
 #include "Chaos/ArrayCollectionArray.h"
 #include "Chaos/RigidParticles.h"
 #include "Chaos/Rotation.h"
@@ -115,13 +116,13 @@ class TPBDRigidParticles : public TRigidParticles<T, d>
 			this->InvI(Index) = PMatrix<float, 3, 3>(0);
 		}
 
-		if (CurrentState == EObjectStateType::Dynamic && (InObjectState == EObjectStateType::Kinematic || InObjectState == EObjectStateType::Static))
+		if ((CurrentState == EObjectStateType::Dynamic || CurrentState == EObjectStateType::Sleeping) && (InObjectState == EObjectStateType::Kinematic || InObjectState == EObjectStateType::Static))
 		{
 			// Transitioning from dynamic to static or kinematic, set inverse mass and inertia tensor to zero.
 			this->InvM(Index) = 0.0f;
 			this->InvI(Index) = PMatrix<float, 3, 3>(0);
 		}
-		else if ((CurrentState == EObjectStateType::Kinematic || CurrentState == EObjectStateType::Static || CurrentState == EObjectStateType::Uninitialized) && InObjectState == EObjectStateType::Dynamic)
+		else if ((CurrentState == EObjectStateType::Kinematic || CurrentState == EObjectStateType::Static || CurrentState == EObjectStateType::Uninitialized) && (InObjectState == EObjectStateType::Dynamic || InObjectState == EObjectStateType::Sleeping))
 		{
 			// Transitioning from kinematic or static to dynamic, compute the inverses.
 			checkSlow(this->M(Index) != 0.0);

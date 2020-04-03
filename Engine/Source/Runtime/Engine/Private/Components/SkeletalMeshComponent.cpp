@@ -254,6 +254,8 @@ USkeletalMeshComponent::USkeletalMeshComponent(const FObjectInitializer& ObjectI
 
 	bSkipKinematicUpdateWhenInterpolating = false;
 	bSkipBoundsUpdateWhenInterpolating = false;
+
+	DeferredKinematicUpdateIndex = INDEX_NONE;
 }
 
 void USkeletalMeshComponent::Serialize(FArchive& Ar)
@@ -578,7 +580,7 @@ void USkeletalMeshComponent::OnUnregister()
 		ClothingSimulationContext = nullptr;
 	}
 
-	if (bDeferredKinematicUpdate != 0)
+	if (DeferredKinematicUpdateIndex != INDEX_NONE)
 	{
 		UWorld* World = GetWorld();
 		FPhysScene* PhysScene = World ? World->GetPhysicsScene() : nullptr;
@@ -1393,6 +1395,7 @@ void USkeletalMeshComponent::FillComponentSpaceTransforms(const USkeletalMesh* I
 #endif
 	}
 
+#if 0 		 // temporarily disabling ISPC code due to negative scale issue
 	if (INTEL_ISPC)
 	{
 #if INTEL_ISPC
@@ -1407,6 +1410,7 @@ void USkeletalMeshComponent::FillComponentSpaceTransforms(const USkeletalMesh* I
 #endif
 	}
 	else
+#endif // 0
 	{
 		for (int32 i = 1; i < FillComponentSpaceTransformsRequiredBones.Num(); i++)
 		{
@@ -2582,7 +2586,7 @@ FBoxSphereBounds USkeletalMeshComponent::CalcBounds(const FTransform& LocalToWor
 void USkeletalMeshComponent::SetSkeletalMesh(USkeletalMesh* InSkelMesh, bool bReinitPose)
 {
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_SetSkeletalMesh);
-	SCOPE_CYCLE_UOBJECT(This, this);
+	SCOPE_CYCLE_UOBJECT(NewSkelMesh, InSkelMesh);
 
 	if (InSkelMesh == SkeletalMesh)
 	{
@@ -3732,10 +3736,17 @@ void USkeletalMeshComponent::SetAllowRigidBodyAnimNode(bool bInAllow, bool bRein
 	{
 		bDisableRigidBodyAnimNode = !bInAllow;
 
-		if(bReinitAnim && bRegistered && SkeletalMesh)
+		if(bReinitAnim && bRegistered)
 		{
 			// need to reinitialize rigid body nodes for new setting to take effect
-			InitializeAnimScriptInstance(true);
+			if (AnimScriptInstance)
+			{
+				AnimScriptInstance->InitializeAnimation();
+			}
+			if (PostProcessAnimInstance)
+			{
+				PostProcessAnimInstance->InitializeAnimation();
+			}
 		}
 	}
 }

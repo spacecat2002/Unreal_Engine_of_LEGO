@@ -866,14 +866,16 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 					float MeshScreenSizeSquared = 0;
 					if (SceneInfo->bIsUsingCustomLODRules)
 					{
+						PRAGMA_DISABLE_DEPRECATION_WARNINGS
 						FPrimitiveSceneProxy* SceneProxy = Scene->PrimitiveSceneProxies[PrimitiveIndex];
 						LODToRender = SceneProxy->GetCustomLOD(View, View.LODDistanceFactor, ForcedLODLevel, MeshScreenSizeSquared);
 						LODToRender.ClampToFirstLOD(CurFirstLODIdx);
+						PRAGMA_ENABLE_DEPRECATION_WARNINGS
 					}
 					else
 					{
 						float LODScale = LODScaleCVarValue * View.LODDistanceFactor;
-						LODToRender = ComputeLODForMeshes(SceneInfo->StaticMeshRelevances, View, Bounds.BoxSphereBounds.Origin, Bounds.BoxSphereBounds.SphereRadius, ForcedLODLevel, MeshScreenSizeSquared, CurFirstLODIdx, LODScale, false);
+						LODToRender = ComputeLODForMeshes(SceneInfo->StaticMeshRelevances, View, Bounds.BoxSphereBounds.Origin, Bounds.BoxSphereBounds.SphereRadius, ForcedLODLevel, MeshScreenSizeSquared, CurFirstLODIdx, LODScale, true);
 					}
 
 					FRHIRayTracingGeometry* RayTracingGeometryInstance = SceneInfo->GetStaticRayTracingGeometryInstance(LODToRender.GetRayTracedLOD());
@@ -1108,6 +1110,7 @@ bool FDeferredShadingSceneRenderer::DispatchRayTracingWorldUpdates(FRHICommandLi
 		// #dxr_todo: UE-72565: refactor ray tracing effects to not be member functions of DeferredShadingRenderer. register each effect at startup and just loop over them automatically to gather all required shaders
 		TArray<FRHIRayTracingShader*> RayGenShaders;
 		PrepareRayTracingReflections(View, *Scene, RayGenShaders);
+		PrepareSingleLayerWaterRayTracingReflections(View, *Scene, RayGenShaders);
 		PrepareRayTracingShadows(View, RayGenShaders);
 		PrepareRayTracingAmbientOcclusion(View, RayGenShaders);
 		PrepareRayTracingSkyLight(View, RayGenShaders);
@@ -2227,8 +2230,9 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	{
 		// Clear stencil to 0 now that deferred decals are done using what was setup in the base pass
 		// Shadow passes and other users of stencil assume it is cleared to 0 going in
+		// NB: Depth Load/Write necessary for Vulkan Platforms
 		FRHIRenderPassInfo RPInfo(SceneContext.GetSceneDepthSurface(),
-			EDepthStencilTargetActions::ClearStencilDontLoadDepth_StoreStencilNotDepth);
+			EDepthStencilTargetActions::LoadDepthClearStencil_StoreDepthStencil);
 		RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil = FExclusiveDepthStencil::DepthNop_StencilWrite;
 
 		RHICmdList.TransitionResource(FExclusiveDepthStencil::DepthNop_StencilWrite, SceneContext.GetSceneDepthSurface());
@@ -2280,6 +2284,13 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 			}
 			
 		}
+
+#if RHI_RAYTRACING
+		if (IsRayTracingEnabled())
+		{
+			RenderDitheredLODFadingOutMask(RHICmdList, Views[0]);
+		}
+#endif
 
 		RHICmdList.SetCurrentStat(GET_STATID(STAT_CLM_Lighting));
 		{

@@ -58,7 +58,7 @@ static void SetUniformBufferInternal(FMetalContext* Context, RHIShaderType* Shad
 {
     @autoreleasepool
     {
-        auto Shader = ResourceCast(ShaderRHI);
+        auto Shader = ResourceCast(static_cast<RHIShaderType*>(ShaderRHI));
         Context->GetCurrentState().BindUniformBuffer(Stage, BufferIndex, UBRHI);
         
         auto& Bindings = Shader->Bindings;
@@ -73,37 +73,37 @@ static void SetUniformBufferInternal(FMetalContext* Context, RHIShaderType* Shad
     }
 }
 
-void FMetalRHICommandContext::RHISetShaderUniformBuffer(FRHIVertexShader* VertexShaderRHI, uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
+void FMetalRHICommandContext::RHISetShaderUniformBuffer(FRHIGraphicsShader* ShaderRHI, uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
 {
-    SetUniformBufferInternal<EMetalShaderStages::Vertex, FRHIVertexShader>(Context, VertexShaderRHI, BufferIndex, BufferRHI);
-}
+	@autoreleasepool{
 
-void FMetalRHICommandContext::RHISetShaderUniformBuffer(FRHIHullShader* HullShaderRHI, uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
-{
-#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
-    SetUniformBufferInternal<EMetalShaderStages::Hull, FRHIHullShader>(Context, HullShaderRHI, BufferIndex, BufferRHI);
-#endif
-}
-
-void FMetalRHICommandContext::RHISetShaderUniformBuffer(FRHIDomainShader* DomainShaderRHI, uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
-{
-#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
-    SetUniformBufferInternal<EMetalShaderStages::Domain, FRHIDomainShader>(Context, DomainShaderRHI, BufferIndex, BufferRHI);
-#endif
-}
-
-void FMetalRHICommandContext::RHISetShaderUniformBuffer(FRHIGeometryShader* GeometryShader, uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
-{
-    NOT_SUPPORTED("RHISetShaderUniformBuffer-Geometry");
-}
-
-void FMetalRHICommandContext::RHISetShaderUniformBuffer(FRHIPixelShader* PixelShaderRHI, uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
-{
-    SetUniformBufferInternal<EMetalShaderStages::Pixel, FRHIPixelShader>(Context, PixelShaderRHI, BufferIndex, BufferRHI);
+		EMetalShaderStages Stage = EMetalShaderStages::Num;
+		FMetalShaderBindings* Bindings = nullptr;
+		switch (ShaderRHI->GetFrequency())
+		{
+		case SF_Vertex:
+			SetUniformBufferInternal<EMetalShaderStages::Vertex, FRHIVertexShader>(Context, static_cast<FRHIVertexShader*>(ShaderRHI), BufferIndex, BufferRHI);
+			break;
+	#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
+		case SF_Hull:
+			SetUniformBufferInternal<EMetalShaderStages::Hull, FRHIHullShader>(Context, static_cast<FRHIHullShader*>(ShaderRHI), BufferIndex, BufferRHI);
+			break;
+		case SF_Domain:
+			SetUniformBufferInternal<EMetalShaderStages::Domain, FRHIDomainShader>(Context, static_cast<FRHIDomainShader*>(ShaderRHI), BufferIndex, BufferRHI);
+			break;
+	#endif
+		case SF_Pixel:
+			SetUniformBufferInternal<EMetalShaderStages::Pixel, FRHIDomainShader>(Context, static_cast<FRHIDomainShader*>(ShaderRHI), BufferIndex, BufferRHI);
+			break;
+		default:
+			checkf(0, TEXT("FRHIShader Type %d is invalid or unsupported!"), (int32)ShaderRHI->GetFrequency());
+			NOT_SUPPORTED("RHIShaderStage");
+			break;
+		}
+	}
 }
 
 void FMetalRHICommandContext::RHISetShaderUniformBuffer(FRHIComputeShader* ComputeShaderRHI, uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
 {
-    SetUniformBufferInternal<EMetalShaderStages::Compute, FRHIComputeShader>(Context, ComputeShaderRHI, BufferIndex, BufferRHI);
+	SetUniformBufferInternal<EMetalShaderStages::Compute, FRHIComputeShader>(Context, ComputeShaderRHI, BufferIndex, BufferRHI);
 }
-
