@@ -1339,7 +1339,7 @@ bool FVectorRegisterAbstractionTest::RunTest(const FString& Parameters)
 
 		// Identity -> X Axis
 		Axis = FQuat::Identity.GetRotationAxis();
-		LogTest(TEXT("FQuat::Identity.GetRotationAxis() == FVector(1.0f, 0.0f, 0.0f)"), TestFVector3Equal(Axis, FVector(1.0f, 0.0f, 0.0f)));
+		LogTest(TEXT("FQuat::Identity.GetRotationAxis() == FVector::XAxisVector"), TestFVector3Equal(Axis, FVector::XAxisVector));
 
 		const FQuat QuatArray[] = {
 			FQuat(0.0f, 0.0f, 0.0f, 1.0f),
