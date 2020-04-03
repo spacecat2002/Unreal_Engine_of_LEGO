@@ -114,12 +114,16 @@ protected:
 
 public:
 
+	/** Use the MSB as a mask to prevent clashes between kernel assigned thread ids and fake thread ids */
+	static constexpr uint32 FakeIdReservedBit = 1 << 31;
+
 	/** Constructor. */
 	FFakeThread()
 		: bIsSuspended(false)
 		, SingleThreadRunnable(nullptr)
 	{
 		ThreadID = ThreadIdCounter++;
+		ThreadID |= FakeIdReservedBit;
 		// Auto register with single thread manager.
 		FThreadManager::Get().AddThread(ThreadID, this);
 	}
@@ -210,7 +214,6 @@ void FThreadManager::AddThread(uint32 ThreadId, FRunnableThread* Thread)
 		{ TPri_Lowest,				0x70 },
 	};
 	static_assert(TPri_Num == UE_ARRAY_COUNT(PriRemap), "Please update PriRemap when adding/removing thread priorities. Many thanks.");
-
 	int32 SortHint = UE_ARRAY_COUNT(PriRemap);
 	for (auto Candidate : PriRemap)
 	{
@@ -224,7 +227,15 @@ void FThreadManager::AddThread(uint32 ThreadId, FRunnableThread* Thread)
 	// Note that this must be called from thread being registered.
 	Trace::ThreadRegister(*(Thread->GetThreadName()), Thread->GetThreadID(), SortHint);
 
-	FScopeLock ThreadsLock(&ThreadsCritical);
+	const bool bIsSingleThreadEnvironment = FPlatformProcess::SupportsMultithreading() == false;
+
+	if (bIsSingleThreadEnvironment && Thread->GetThreadType() == FRunnableThread::ThreadType::Real)
+	{
+		checkf((ThreadId & FFakeThread::FakeIdReservedBit) == 0, TEXT("The thread ID  assigned by the kernel clashes with the bit reserved for identifying fake threads. Need to revisit the fake ID assignment algo."));
+	}
+
+	FScopeLock ThreadsLock(&ThreadsCritical);	
+
 	// Some platforms do not support TLS
 	if (!Threads.Contains(ThreadId))
 	{
