@@ -60,7 +60,7 @@ namespace OldTaskGraphTests
 		FThreadSafeCounter Counter;
 		FThreadSafeCounter Cycles;
 
-		if (!FPlatformProcess::SupportsMultithreading())
+		if (!FTaskGraphInterface::IsMultithread())
 		{
 			UE_LOG(LogConsoleResponse, Display, TEXT("WARNING: TaskGraphBenchmark disabled for non multi-threading platforms"));
 			return;
@@ -358,7 +358,7 @@ namespace OldTaskGraphTests
 		FSlowHeartBeatScope SuspendHeartBeat;
 
 
-		if (!FPlatformProcess::SupportsMultithreading())
+		if (!FTaskGraphInterface::IsMultithread())
 		{
 			UE_LOG(LogConsoleResponse, Display, TEXT("WARNING: TestLockFree disabled for non multi-threading platforms"));
 			return;

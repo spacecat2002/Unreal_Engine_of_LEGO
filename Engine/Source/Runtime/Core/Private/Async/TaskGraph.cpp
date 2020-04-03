@@ -23,6 +23,7 @@
 #include "Math/RandomStream.h"
 #include "HAL/IConsoleManager.h"
 #include "Misc/App.h"
+#include "Misc/Fork.h"
 #include "Containers/LockFreeFixedSizeAllocator.h"
 #include "Async/TaskGraphInterfaces.h"
 #include "HAL/LowLevelMemTracker.h"
@@ -79,6 +80,13 @@ static FAutoConsoleVariableRef CVarEnablePowerSavingThreadPriorityReduction(
 	TEXT("TaskGraph.EnablePowerSavingThreadPriorityReduction"),
 	GEnablePowerSavingThreadPriorityReductionCVar,
 	TEXT("If 1, then high pri thread tasks which are marked EPowerSavingEligibility::Eligible can be dropped to normal priority.")
+);
+
+CORE_API bool GAllowTaskGraphForkMultithreading = true;
+static FAutoConsoleVariableRef CVarEnableForkedMultithreading(
+	TEXT("TaskGraph.EnableForkedMultithreading"),
+	GAllowTaskGraphForkMultithreading,
+	TEXT("When false will prevent the task graph from running multithreaded on forked processes.")
 );
 
 #if CREATE_HIPRI_TASK_THREADS || CREATE_BACKGROUND_TASK_THREADS
@@ -581,10 +589,12 @@ public:
 
 		Queue(QueueIndex).QuitForReturn = false;
 		verify(++Queue(QueueIndex).RecursionGuard == 1);
+		const bool bIsMultiThread = FTaskGraphInterface::IsMultithread();
 		do
 		{
-			ProcessTasksNamedThread(QueueIndex, FPlatformProcess::SupportsMultithreading());
-		} while (!Queue(QueueIndex).QuitForReturn && !Queue(QueueIndex).QuitForShutdown && FPlatformProcess::SupportsMultithreading()); // @Hack - quit now when running with only one thread.
+			const bool bAllowStall = bIsMultiThread;
+			ProcessTasksNamedThread(QueueIndex, bAllowStall);
+		} while (!Queue(QueueIndex).QuitForReturn && !Queue(QueueIndex).QuitForShutdown && bIsMultiThread); // @Hack - quit now when running with only one thread.
 		verify(!--Queue(QueueIndex).RecursionGuard);
 	}
 
@@ -857,15 +867,16 @@ public:
 			FMemory::SetupTLSCachesOnCurrentThread();
 		}
 		check(!QueueIndex);
+		const bool bIsMultiThread = FTaskGraphInterface::IsMultithread();
 		do
 		{
 			ProcessTasks();			
-		} while (!Queue.QuitForShutdown && FPlatformProcess::SupportsMultithreading()); // @Hack - quit now when running with only one thread.
+		} while (!Queue.QuitForShutdown && bIsMultiThread); // @Hack - quit now when running with only one thread.
 	}
 
 	virtual uint64 ProcessTasksUntilIdle(int32 QueueIndex) override
 	{
-		if (!FPlatformProcess::SupportsMultithreading())
+		if (FTaskGraphInterface::IsMultithread() == false)
 		{
 			return ProcessTasks();
 		}
@@ -1006,13 +1017,14 @@ private:
 #endif
 
 				TestRandomizedThreads();
-				if (FPlatformProcess::SupportsMultithreading())
+				const bool bIsMultithread = FTaskGraphInterface::IsMultithread();
+				if (bIsMultithread)
 				{
 					FScopeCycleCounter Scope(StallStatId);
 					Queue.StallRestartEvent->Wait(MAX_uint32, bCountAsStall);
 					bDidStall = true;
 				}
-				if (Queue.QuitForShutdown || !FPlatformProcess::SupportsMultithreading())
+				if (Queue.QuitForShutdown || !bIsMultithread)
 				{
 					break;
 				}
@@ -1162,7 +1174,7 @@ public:
 		int32 NumTaskThreads = FPlatformMisc::NumberOfWorkerThreadsToSpawn();
 
 		// if we don't want any performance-based threads, then force the task graph to not create any worker threads, and run in game thread
-		if (!FPlatformProcess::SupportsMultithreading())
+		if (!FTaskGraphInterface::IsMultithread())
 		{
 			// this is the logic that used to be spread over a couple of places, that will make the rest of this function disable a worker thread
 			// @todo: it could probably be made simpler/clearer
@@ -1226,6 +1238,7 @@ public:
 			FString Name;
 			const TCHAR* GroupName = TEXT("TaskGraphNormal");
 			int32 Priority = ThreadIndexToPriorityIndex(ThreadIndex);
+            // These are below normal threads so that they sleep when the named threads are active
 			EThreadPriority ThreadPri;
 			uint64 Affinity = FPlatformAffinity::GetTaskGraphThreadMask();
 			if (Priority == 1)
@@ -1270,7 +1283,16 @@ public:
 				PrevGroupName = GroupName;
 			}
 
-			WorkerThreads[ThreadIndex].RunnableThread = FRunnableThread::Create(&Thread(ThreadIndex), *Name, StackSize, ThreadPri, Affinity); // these are below normal threads so that they sleep when the named threads are active
+            // We only create forkable threads on the Forked instance since the TaskGraph needs to be shutdown and recreated to properly make the switch from singlethread to multithread.
+			if (FForkProcessHelper::IsForkedMultithreadInstance() && GAllowTaskGraphForkMultithreading)
+			{
+				WorkerThreads[ThreadIndex].RunnableThread = FForkProcessHelper::CreateForkableThread(&Thread(ThreadIndex), *Name, StackSize, ThreadPri, Affinity);
+			}
+			else
+			{
+				WorkerThreads[ThreadIndex].RunnableThread = FRunnableThread::Create(&Thread(ThreadIndex), *Name, StackSize, ThreadPri, Affinity); 
+			}
+			
 			WorkerThreads[ThreadIndex].bAttached = true;
 		}
 		Trace::ThreadGroupEnd();
@@ -1320,7 +1342,7 @@ public:
 		if (ENamedThreads::GetThreadIndex(ThreadToExecuteOn) == ENamedThreads::AnyThread)
 		{
 			TASKGRAPH_SCOPE_CYCLE_COUNTER(3, STAT_TaskGraph_QueueTask_AnyThread);
-			if (FPlatformProcess::SupportsMultithreading())
+			if (FTaskGraphInterface::IsMultithread())
 			{
 				uint32 TaskPriority = ENamedThreads::GetTaskPriority(Task->ThreadToExecuteOn);
 				int32 Priority = ENamedThreads::GetThreadPriorityIndex(Task->ThreadToExecuteOn);
@@ -1483,7 +1505,7 @@ public:
 		}
 		else
 		{
-			if (!FPlatformProcess::SupportsMultithreading())
+			if (!FTaskGraphInterface::IsMultithread())
 			{
 				bool bAnyPending = false;
 				for (int32 Index = 0; Index < Tasks.Num(); Index++)
@@ -1712,6 +1734,11 @@ FTaskGraphInterface& FTaskGraphInterface::Get()
 {
 	checkThreadGraph(TaskGraphImplementationSingleton);
 	return *TaskGraphImplementationSingleton;
+}
+
+bool FTaskGraphInterface::IsMultithread()
+{
+	return FPlatformProcess::SupportsMultithreading() || (FForkProcessHelper::IsForkedMultithreadInstance() && GAllowTaskGraphForkMultithreading);
 }
 
 
