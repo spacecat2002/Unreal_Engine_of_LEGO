@@ -223,7 +223,7 @@ namespace OldTaskGraphTests
 			{
 				while (!Output[Index])
 				{
-					FPlatformProcess::Sleep(0.0f);
+					FPlatformProcess::Yield();
 				}
 			}
 			EndTime = FPlatformTime::Seconds();
@@ -242,7 +242,7 @@ namespace OldTaskGraphTests
 			QueueTime = FPlatformTime::Seconds();
 			while (Counter.GetValue() < 1000)
 			{
-				FPlatformProcess::Sleep(0.0f);
+				FPlatformProcess::Yield();
 			}
 			EndTime = FPlatformTime::Seconds();
 		}
@@ -256,7 +256,7 @@ namespace OldTaskGraphTests
 			QueueTime = FPlatformTime::Seconds();
 			while (Counter.GetValue() < 1000)
 			{
-				FPlatformProcess::Sleep(0.0f);
+				FPlatformProcess::Yield();
 			}
 			EndTime = FPlatformTime::Seconds();
 		}
@@ -732,7 +732,7 @@ namespace TaskGraphTests
 			FGraphEventRef Event = FTask::SpawnAndTrack([]()
 				{
 					//UE_LOG(LogTemp, Log, TEXT("Main task"));
-					FPlatformProcess::Sleep(0.1);
+					FPlatformProcess::Sleep(0.1f); // pause for a bit to let waiting start
 				}
 			);
 			check(!Event->IsComplete());
@@ -756,7 +756,7 @@ namespace TaskGraphTests
 			FTask::Spawn(
 				[&Event]
 				{
-					FPlatformProcess::Sleep(0.1);
+					FPlatformProcess::Sleep(0.1f); // pause for a bit to let waiting start
 					Event->DispatchSubsequents();
 				}
 			);
@@ -896,7 +896,7 @@ namespace TaskGraphTests
 
 		while ((CompletedTasks < NumTasks))
 		{
-			FPlatformProcess::Sleep(0.0f);
+			FPlatformProcess::Yield();
 		}
 	}
 
@@ -923,7 +923,7 @@ namespace TaskGraphTests
 
 		while ((CompletedTasks < NumTasks))
 		{
-			FPlatformProcess::Sleep(0.0f);
+			FPlatformProcess::Yield();
 		}
 	}
 
