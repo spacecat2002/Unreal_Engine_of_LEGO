@@ -25,6 +25,10 @@ UE_TRACE_EVENT_END()
 UE_TRACE_EVENT_BEGIN(CpuProfiler, EndCapture, Important)
 UE_TRACE_EVENT_END()
 
+UE_TRACE_EVENT_BEGIN(CpuProfiler, EndThread, NoSync)
+	UE_TRACE_EVENT_FIELD(uint32, ThreadId)
+UE_TRACE_EVENT_END()
+
 struct FCpuProfilerTraceInternal
 {
 	enum
@@ -65,6 +69,12 @@ struct FCpuProfilerTraceInternal
 		FThreadBuffer()
 			: DynamicScopeNamesMemory(0)
 		{
+		}
+
+		virtual ~FThreadBuffer()
+		{
+			UE_TRACE_LOG(CpuProfiler, EndThread, CpuChannel)
+				<< EndThread.ThreadId(FPlatformTLS::GetCurrentThreadId());
 		}
 
 		uint64 LastCycle = 0;
