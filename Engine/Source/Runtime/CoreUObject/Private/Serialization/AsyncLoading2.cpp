@@ -2604,9 +2604,10 @@ FScopedAsyncPackageEvent2::~FScopedAsyncPackageEvent2()
 
 void FAsyncLoadingThreadWorker::StartThread()
 {
+	Trace::ThreadGroupBegin(TEXT("AsyncLoading"));
 	Thread = FRunnableThread::Create(this, TEXT("FAsyncLoadingThreadWorker"), 0, TPri_Normal);
 	ThreadId = Thread->GetThreadID();
-	TRACE_SET_THREAD_GROUP(ThreadId, "AsyncLoading");
+	Trace::ThreadGroupEnd();
 }
 
 uint32 FAsyncLoadingThreadWorker::Run()
