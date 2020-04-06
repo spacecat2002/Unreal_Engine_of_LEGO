@@ -1203,10 +1203,17 @@ void FDistanceFieldAsyncQueue::ProcessAsyncTasks()
 			Task->GeneratedVolumeData->VolumeTexture.Initialize(Task->StaticMesh);
 			FDistanceFieldVolumeData* OldVolumeData = Task->StaticMesh->RenderData->LODResources[0].DistanceFieldData;
 
+			// Renderstates are not initialized between UStaticMesh::PreEditChange() and UStaticMesh::PostEditChange()
+			if (Task->StaticMesh->RenderData->IsInitialized())
 			{
 				// Cause all components using this static mesh to get re-registered, which will recreate their proxies and primitive uniform buffers
 				FStaticMeshComponentRecreateRenderStateContext RecreateRenderStateContext(Task->StaticMesh, false);
 
+				// Assign the new volume data
+				Task->StaticMesh->RenderData->LODResources[0].DistanceFieldData = Task->GeneratedVolumeData;
+			}
+			else
+			{
 				// Assign the new volume data
 				Task->StaticMesh->RenderData->LODResources[0].DistanceFieldData = Task->GeneratedVolumeData;
 			}
