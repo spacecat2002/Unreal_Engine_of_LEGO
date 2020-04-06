@@ -136,6 +136,8 @@ public:
 
 	virtual bool IsInBrushStroke() const { return bInBrushStroke; }
 
+	virtual double GetCurrentBrushRadius() const { return CurrentBrushRadius; }
+
 protected:
 
 	/**
