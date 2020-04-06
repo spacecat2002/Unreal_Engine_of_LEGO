@@ -54,6 +54,15 @@ static TAutoConsoleVariable<int32> CVarSkipShaderCompression(
 	ECVF_ReadOnly | ECVF_Cheat
 	);
 
+static TAutoConsoleVariable<int32> CVarAllowCompilingThroughWorkers(
+	TEXT("r.Shaders.AllowCompilingThroughWorkers"),
+	1,
+	TEXT("Allows shader compilation through external ShaderCompileWorker processes.\n")
+	TEXT("1 - (Default) Allows external shader compiler workers\n") 
+	TEXT("0 - Disallows external shader compiler workers. Will run shader compilation in proc of UE process."),
+	ECVF_ReadOnly
+	);
+
 static TAutoConsoleVariable<int32> CVarShaderCompilerEmitWarningsOnLoad(
 	TEXT("r.ShaderCompiler.EmitWarningsOnLoad"),
 	0,
@@ -184,6 +193,7 @@ FShaderType::FShaderType(
 	Name(InName),
 	TypeName(InName),
 	HashedName(TypeName),
+	HashedSourceFilename(InSourceFilename),
 	SourceFilename(InSourceFilename),
 	FunctionName(InFunctionName),
 	Frequency(InFrequency),

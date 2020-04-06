@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 #pragma once
 
+#include "Chaos/IncludeLvl1.inl"
 #include "Chaos/Core.h"
 #include "Chaos/Declares.h"
 #include "Chaos/GeometryParticlesfwd.h"
@@ -14,11 +15,9 @@ namespace Chaos
 {
 	class FConstraintHandle;
 
-	template<typename T, int d>
-	class TPBDCollisionConstraints;
+	class FPBDCollisionConstraints;
 
-	template<typename T, int d>
-	class TPBDCollisionConstraintHandle;
+	class FPBDCollisionConstraintHandle;
 
 	class FPBDJointConstraintHandle;
 

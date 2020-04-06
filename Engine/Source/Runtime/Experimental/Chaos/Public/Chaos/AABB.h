@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 #pragma once
 
+#include "Chaos/IncludeLvl1.inl"
 #include "Chaos/Vector.h"
 #include "Chaos/Matrix.h"
 #include "Chaos/Plane.h"
@@ -607,6 +608,4 @@ namespace Chaos
 			return SamplePoints;
 		}
 	};
-
-	using FAABB3 = TAABB<FReal, 3>;
 }

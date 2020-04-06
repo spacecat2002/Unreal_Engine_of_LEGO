@@ -1,7 +1,9 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 #pragma once
 
-#include "Chaos/Collision/CollisionReceiver.h"
+#include "Chaos/IncludeLvl1.inl"
+#include "Chaos/Core.h"
+#include "Chaos/Collision/CollisionContext.h"
 #include "Chaos/Collision/StatsData.h"
 #include "Chaos/CollisionResolution.h"
 #include "Chaos/ParticleHandle.h"
@@ -29,10 +31,11 @@ namespace Chaos
 	class CHAOS_API FNarrowPhase
 	{
 	public:
-		FNarrowPhase(const FCollisionContext& InContext)
-			: Context(InContext)
+		FNarrowPhase()
 		{
 		}
+
+		FCollisionContext& GetContext() { return Context; }
 
 		// @todo(chaos): COLLISION Transient Handle version
 		/**
@@ -50,7 +53,7 @@ namespace Chaos
 				//   determine if the constraint is already defined, and then opt out of 
 				//   the creation process. 
 				//
-				Collisions::ConstructConstraints<FReal, 3>(Particle0, Particle1, Particle0->Geometry().Get(), Particle1->Geometry().Get(), FRigidTransform3(), FRigidTransform3(), CullDistance, Context, NewConstraints);
+				Collisions::ConstructConstraints(Particle0, Particle1, Particle0->Geometry().Get(), Particle1->Geometry().Get(), FRigidTransform3(), FRigidTransform3(), CullDistance, Context, NewConstraints);
 
 				CHAOS_COLLISION_STAT(if (NewConstraints.Num()) { StatData.IncrementCountNP(NewConstraints.Num()); });
 				CHAOS_COLLISION_STAT(if (!NewConstraints.Num()) { StatData.IncrementRejectedNP(); });
@@ -58,6 +61,6 @@ namespace Chaos
 		}
 
 	private:
-		const FCollisionContext& Context;
+		FCollisionContext Context;
 	};
 }

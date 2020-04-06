@@ -38,6 +38,7 @@
 #include "Chaos/TriangleMeshImplicitObject.h"
 #include "Chaos/MassProperties.h"
 #include "Chaos/Utilities.h"
+#include "Physics/Experimental/ChaosInterfaceUtils.h"
 
 #if WITH_CHAOS
 #include "Chaos/ParticleHandle.h"
@@ -1188,25 +1189,6 @@ bool FInitBodiesHelperBase::CreateShapesAndActors()
 	return true;
 }
 
-#if WITH_CHAOS
-	Chaos::EChaosCollisionTraceFlag ConvertCollisionTraceFlag(ECollisionTraceFlag Flag)
-	{
-		if (Flag == ECollisionTraceFlag::CTF_UseDefault)
-			return Chaos::EChaosCollisionTraceFlag::Chaos_CTF_UseDefault;
-		if (Flag == ECollisionTraceFlag::CTF_UseSimpleAndComplex)
-			return Chaos::EChaosCollisionTraceFlag::Chaos_CTF_UseSimpleAndComplex;
-		if (Flag == ECollisionTraceFlag::CTF_UseSimpleAsComplex)
-			return Chaos::EChaosCollisionTraceFlag::Chaos_CTF_UseSimpleAsComplex;
-		if (Flag == ECollisionTraceFlag::CTF_UseComplexAsSimple)
-			return Chaos::EChaosCollisionTraceFlag::Chaos_CTF_UseComplexAsSimple;
-		if (Flag == ECollisionTraceFlag::CTF_MAX)
-			return Chaos::EChaosCollisionTraceFlag::Chaos_CTF_MAX;
-		ensure(false);
-		return Chaos::EChaosCollisionTraceFlag::Chaos_CTF_UseDefault;
-	}
-#endif
-
-
 void FInitBodiesHelperBase::InitBodies()
 {
 #if WITH_CHAOS
@@ -1263,7 +1245,7 @@ void FInitBodiesHelperBase::InitBodies()
 							{
 								for (int32 ShapeIndex = 0; ShapeIndex < NumShapes; ++ShapeIndex)
 								{
-									ActorHandle->SetShapeCollisionTraceType(ShapeIndex, ConvertCollisionTraceFlag(BI->BodySetup->CollisionTraceFlag)) ;
+									ActorHandle->SetShapeCollisionTraceType(ShapeIndex, ChaosInterface::ConvertCollisionTraceFlag(BI->BodySetup->CollisionTraceFlag)) ;
 								}
 							}
 
@@ -3163,15 +3145,19 @@ void FBodyInstance::UpdateMassProperties()
 
 				// #PHYS2 Refactor out PxMassProperties (Our own impl?)
 #if WITH_CHAOS
-				const Chaos::TRotation<float, 3> Rotation = Chaos::TransformToLocalSpace(TotalMassProperties.InertiaTensor);
-				const FVector MassSpaceInertiaTensor(TotalMassProperties.InertiaTensor.M[0][0], TotalMassProperties.InertiaTensor.M[1][1], TotalMassProperties.InertiaTensor.M[2][2]);
+				// Only set mass properties if inertia tensor is valid. TODO Remove this once we track down cause of empty tensors.
+				const float InertiaTensorTrace = (TotalMassProperties.InertiaTensor.M[0][0] + TotalMassProperties.InertiaTensor.M[1][1] + TotalMassProperties.InertiaTensor.M[2][2]) / 3;
+				if (CHAOS_ENSURE(InertiaTensorTrace > SMALL_NUMBER))
+				{
+					const Chaos::TRotation<float, 3> Rotation = Chaos::TransformToLocalSpace(TotalMassProperties.InertiaTensor);
+					const FVector MassSpaceInertiaTensor(TotalMassProperties.InertiaTensor.M[0][0], TotalMassProperties.InertiaTensor.M[1][1], TotalMassProperties.InertiaTensor.M[2][2]);
+					FPhysicsInterface::SetMassSpaceInertiaTensor_AssumesLocked(Actor, MassSpaceInertiaTensor);
 
-				FPhysicsInterface::SetMassSpaceInertiaTensor_AssumesLocked(Actor, MassSpaceInertiaTensor);
+					FPhysicsInterface::SetMass_AssumesLocked(Actor, TotalMassProperties.Mass);
 
-				FPhysicsInterface::SetMass_AssumesLocked(Actor, TotalMassProperties.Mass);
-
-				FTransform Com(Rotation, TotalMassProperties.CenterOfMass);
-				FPhysicsInterface::SetComLocalPose_AssumesLocked(Actor, Com);
+					FTransform Com(Rotation, TotalMassProperties.CenterOfMass);
+					FPhysicsInterface::SetComLocalPose_AssumesLocked(Actor, Com);
+				}
 #else
 				PxQuat MassOrientation;
 				const FVector MassSpaceInertiaTensor = P2UVector(PxMassProperties::getMassSpaceInertia(TotalMassProperties.inertiaTensor, MassOrientation));

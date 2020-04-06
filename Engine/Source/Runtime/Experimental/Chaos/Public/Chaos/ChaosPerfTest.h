@@ -1,5 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 #pragma once
+#include "Chaos/IncludeLvl1.inl"
 #include "Misc/OutputDevice.h"
 #include "ProfilingDebugging/ScopedTimers.h"
 
@@ -16,7 +17,7 @@ enum class EChaosPerfUnits
 	Num
 };
 
-class FChaosScopedDurationTimeLogger
+class CHAOS_API FChaosScopedDurationTimeLogger
 {
 public:
 	explicit FChaosScopedDurationTimeLogger(const TCHAR* InLabel)
