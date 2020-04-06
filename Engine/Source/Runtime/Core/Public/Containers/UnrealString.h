@@ -134,6 +134,7 @@ public:
 			}
 		}
 	}
+
 	/**
 	 * Constructor to create FString with specified number of characters from another string with additional character zero
 	 *

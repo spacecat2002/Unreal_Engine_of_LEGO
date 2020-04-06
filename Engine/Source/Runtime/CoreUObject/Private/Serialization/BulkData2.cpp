@@ -26,6 +26,9 @@ IMPLEMENT_TYPE_LAYOUT(FBulkDataBase);
 // If set to 0 then we will pretend that optional data does not exist, useful for testing.
 #define ALLOW_OPTIONAL_DATA 1
 
+// Handy macro to validate FIoStatus return values
+#define CHECK_IOSTATUS( InIoStatus, InMethodName ) checkf(InIoStatus.IsOk(), TEXT("%s failed: %s"), InMethodName, *InIoStatus.ToString());
+
 namespace BulkDataExt
 {
 	// TODO: Maybe expose this and start using everywhere?
@@ -137,7 +140,7 @@ namespace FileTokenSystem
 
 	FRWLock TokenLock;
 
-	FileToken RegisterFileToken( const FName& PackageName, const FString& Filename, uint64 BulkDataOffsetInFile )
+	FBulkDataOrId::FileToken RegisterFileToken( const FName& PackageName, const FString& Filename, uint64 BulkDataOffsetInFile )
 	{
 		FWriteScopeLock LockForScope(TokenLock);
 
@@ -147,11 +150,10 @@ namespace FileTokenSystem
 		Data.PackageName = PackageName;
 		Data.BulkDataOffsetInFile = BulkDataOffsetInFile;
 
-		FileToken FileToken  = TokenData.Add(Data);
-		return FileToken;
+		return TokenData.Add(Data);
 	}
 
-	void UnregisterFileToken(FileToken ID)
+	void UnregisterFileToken(FBulkDataOrId::FileToken ID)
 	{
 		if (ID != FBulkDataBase::InvalidToken)
 		{
@@ -164,7 +166,7 @@ namespace FileTokenSystem
 		}
 	}
 
-	FileToken CopyFileToken(FileToken ID)
+	FBulkDataOrId::FileToken CopyFileToken(FBulkDataOrId::FileToken ID)
 	{
 		if (ID != FBulkDataBase::InvalidToken)
 		{
@@ -188,7 +190,7 @@ namespace FileTokenSystem
 		}
 	}
 
-	Data GetFileData(FileToken ID)
+	Data GetFileData(FBulkDataOrId::FileToken ID)
 	{
 		if (ID == FBulkDataBase::InvalidToken)
 		{
@@ -205,7 +207,7 @@ namespace FileTokenSystem
 		return Output;
 	}
 
-	FString GetFilename(FileToken ID)
+	FString GetFilename(FBulkDataOrId::FileToken ID)
 	{
 		if (ID == FBulkDataBase::InvalidToken)
 		{
@@ -216,7 +218,7 @@ namespace FileTokenSystem
 		return StringTable.Resolve(TokenData[ID].PackageName);
 	}
 
-	uint64 GetBulkDataOffset(FileToken ID)
+	uint64 GetBulkDataOffset(FBulkDataOrId::FileToken ID)
 	{
 		if (ID == FBulkDataBase::InvalidToken)
 		{
@@ -260,6 +262,11 @@ private:
 	}
 };
 
+// TODO: Currently shared between all FReadChunkIdRequest as the PS4/Pak implementation do but it would be
+// worth profiling on some different platforms to see if we lose more perf from the potential increase in 
+// locks vs the gain we get from not creating so many CriticalSections.
+static FCriticalSection FReadChunkIdRequestEvent;
+
 class FReadChunkIdRequest : public IAsyncReadRequest
 {
 public:
@@ -273,17 +280,25 @@ public:
 		{
 			Memory = (uint8*)FMemory::Malloc(InBytesToRead);
 		}
-
-		DoneEvent = FPlatformProcess::GetSynchEventFromPool(true);
-		DoneEvent->Reset();
 		
 		FIoReadOptions Options(InOffset, InBytesToRead);
 		Options.SetTargetVa(Memory);
 
 		auto OnRequestLoaded = [this](TIoStatusOr<FIoBuffer> Result)
 		{
-			SetComplete();
-			ReleaseEvent(true);
+			SetDataComplete();
+			
+			{
+				FScopeLock Lock(&FReadChunkIdRequestEvent);
+				bRequestOutstanding = false;
+
+				if (DoneEvent != nullptr)
+				{
+					DoneEvent->Trigger();
+				}
+
+				SetAllComplete();
+			}
 		};
 
 		FBulkDataBase::GetIoDispatcher()->ReadWithCallback(InChunkId, Options, OnRequestLoaded);
@@ -291,7 +306,8 @@ public:
 
 	virtual ~FReadChunkIdRequest()
 	{
-		ReleaseEvent(false);
+		// Make sure no other thread is waiting on this request
+		checkf(DoneEvent == nullptr, TEXT("A thread is still waiting on a FReadChunkIdRequest that is being destroyed!")); 
 
 		// Free memory if the request allocated it (although if the user accessed the memory after
 		// reading then they will have taken ownership of it anyway, and if they didn't access the
@@ -309,38 +325,56 @@ protected:
 
 	virtual void WaitCompletionImpl(float TimeLimitSeconds) override
 	{
-		if (!PollCompletion())
+		// Make sure no other thread is waiting on this request
+		checkf(DoneEvent == nullptr, TEXT("Multiple threads attempting to wait on the same FReadChunkIdRequest"));
+
 		{
-			uint32 TimeLimitMilliseconds = TimeLimitSeconds <= 0.0f ? (uint32)(TimeLimitSeconds * 1000.0f) : MAX_uint32;
-			DoneEvent->Wait(TimeLimitMilliseconds);
+			FScopeLock Lock(&FReadChunkIdRequestEvent);
+			if (bRequestOutstanding)
+			{
+				check(DoneEvent == nullptr);
+				DoneEvent = FPlatformProcess::GetSynchEventFromPool(true);
+			}
 		}
+
+		if (DoneEvent != nullptr)
+		{
+			uint32 TimeLimitMilliseconds = TimeLimitSeconds <= 0.0f ? MAX_uint32 : (uint32)(TimeLimitSeconds * 1000.0f);
+			DoneEvent->Wait(TimeLimitMilliseconds);
+
+			FScopeLock Lock(&FReadChunkIdRequestEvent);
+			FPlatformProcess::ReturnSynchEventToPool(DoneEvent);
+			DoneEvent = nullptr;
+		}
+
+		// Make sure everything has completed
+		check(bRequestOutstanding == false);
+		check(PollCompletion() == true);
 	}
 
 	virtual void CancelImpl() override
 	{
 		bCanceled = true;
-		SetComplete();
 
-		DoneEvent->Trigger();
-		ReleaseEvent(true);
-	}
-
-	void ReleaseEvent(bool bShouldTrigger)
-	{
-		if (DoneEvent != nullptr)
 		{
-			if (bShouldTrigger)
+			FScopeLock Lock(&FReadChunkIdRequestEvent);
+			bRequestOutstanding = false;
+
+			if (DoneEvent != nullptr)
 			{
 				DoneEvent->Trigger();
 			}
 
-			FPlatformProcess::ReturnSynchEventToPool(DoneEvent);
-			DoneEvent = nullptr;
+			SetComplete();
 		}
 	}
 
+	/** The ChunkId that is being read. */
 	FIoChunkId ChunkId;
-	FEvent* DoneEvent;
+	/** Only actually gets created if WaitCompletion is called. */
+	FEvent* DoneEvent = nullptr;
+	/** True while the request is pending, true once it has either been completed or canceled. */
+	bool bRequestOutstanding = true;
 };
 
 class FAsyncReadChunkIdHandle : public IAsyncReadFileHandle
@@ -389,7 +423,8 @@ public:
 	{
 		for (const FIoChunkId& ChunkId : ChunkIDs)
 		{
-			RequestArray.Push({ChunkId, 0, (uint64)INDEX_NONE});
+			const uint64 Size = FBulkDataBase::GetIoDispatcher()->GetSizeForChunk(ChunkId).ConsumeValueOrDie();
+			RequestArray.Push({ChunkId, 0, Size });
 		}
 
 		if (InCompleteCallback != nullptr)
@@ -400,11 +435,7 @@ public:
 
 	virtual ~FBulkDataIoDispatcherRequest()
 	{
-		if (Task != nullptr)
-		{
-			Task->EnsureCompletion();
-			delete Task;
-		}
+		WaitCompletion(0.0f); // Wait for ever as we cannot leave outstanding requests
 
 		// Free the data is no caller has taken ownership of it and it was allocated by FBulkDataIoDispatcherRequest
 		if (UserSuppliedMemory == nullptr)
@@ -412,25 +443,57 @@ public:
 			FMemory::Free(DataResult);
 			DataResult = nullptr;
 		}
+
+		check(!IoBatch.IsValid()); // Should be freed by the callback!
 	}
 
 	void StartAsyncWork()
-	{
-		check(Task == nullptr);
+	{		
+		check(RequestArray.Num() > 0);
+		check(!IoBatch.IsValid());
 
-		bIsCompleted = false;
-		FPlatformMisc::MemoryBarrier();
+		auto Callback = [this](TIoStatusOr<FIoBuffer> Result)
+		{
+			CHECK_IOSTATUS(Result.Status(), TEXT("FIoBatch::IssueWithCallback"));
+			FIoBuffer IoBuffer = Result.ConsumeValueOrDie();
 
-		if (FPlatformProcess::SupportsMultithreading())
+			SizeResult = IoBuffer.DataSize();
+
+			if (IoBuffer.IsMemoryOwned())
+			{
+				DataResult = IoBuffer.Release().ConsumeValueOrDie();
+			}
+			else
+			{
+				DataResult = IoBuffer.Data();
+			}
+
+			check(DataResult);
+
+			bIsCompleted = true;
+
+			FPlatformMisc::MemoryBarrier();
+
+			if (CompleteCallback)
+			{
+				CompleteCallback(bIsCanceled, this);
+			}
+
+			FBulkDataBase::GetIoDispatcher()->FreeBatch(IoBatch);
+		};
+
+		IoBatch = FBulkDataBase::GetIoDispatcher()->NewBatch();
+
+		for (Request& Request : RequestArray)
 		{
-			Task = new FAsyncTask<FBulkDataIoDispatcherRequestWorker>(*this);
-			Task->StartBackgroundTask(GBackgroundPriorityThreadPool);
+			IoBatch.Read(Request.ChunkId, FIoReadOptions(Request.OffsetInBulkData, Request.BytesToRead));
 		}
-		else
-		{
-			// No multi threading support so just process immediately
-			DoWork();
-		}
+
+		FIoBatchReadOptions BatchReadOptions;
+		BatchReadOptions.SetTargetVa(UserSuppliedMemory);
+
+		FIoStatus Status = IoBatch.IssueWithCallback(BatchReadOptions, Callback);
+		CHECK_IOSTATUS(Status, TEXT("FIoBatch::IssueWithCallback"));
 	}
 
 	virtual bool PollCompletion() const override
@@ -501,110 +564,12 @@ public:
 	}
 
 private:
-
-	void DoWork()
-	{
-		FIoReadOptions IoOptions;
-
-		// TODO: FIoReadOptions is ignored at the moment
-		//IoOptions.SetRange(OffsetInBulkData, BytesToRead);
-		//IoOptions.SetTargetVa((uint64)UserSuppliedMemory);
-
-		FIoBatch NewBatch = FBulkDataBase::GetIoDispatcher()->NewBatch();
-		for (Request& Request : RequestArray)
-		{
-			Request.IoRequest = NewBatch.Read(Request.ChunkId, IoOptions);
-		}
-		NewBatch.Issue();
-
-		// Wait until the request is completed
-		while (!AreRequestsCompleted())
-		{
-			FPlatformProcess::Sleep(0.0f);
-		}
-
-		SizeResult = GetTotalBufferSize();
-
-		uint8* DstBuffer = UserSuppliedMemory != nullptr ? UserSuppliedMemory : (uint8*)FMemory::Malloc(SizeResult);
-		DataResult = DstBuffer;
-
-		for (const Request& Request : RequestArray)
-		{
-			TIoStatusOr<FIoBuffer> Result = Request.IoRequest.GetResult();
-			check(Result.IsOk());
-
-			const FIoBuffer& IoBuffer = Result.ValueOrDie();
-			uint64 BytesToRead = Request.BytesToRead == INDEX_NONE ? IoBuffer.DataSize() : Request.BytesToRead;
-		
-			FMemory::Memcpy(DstBuffer, IoBuffer.Data() + Request.OffsetInBulkData, BytesToRead);
-			DstBuffer += BytesToRead;
-		}
-		
-		FBulkDataBase::GetIoDispatcher()->FreeBatch(NewBatch);
-
-		bIsCompleted = true;
-		FPlatformMisc::MemoryBarrier();
-
-		if (CompleteCallback)
-		{
-			CompleteCallback(bIsCanceled, this);
-		}	
-	}
-
-	class FBulkDataIoDispatcherRequestWorker : public FNonAbandonableTask
-	{
-		FBulkDataIoDispatcherRequest& IoRequest;
-	public:
-		FBulkDataIoDispatcherRequestWorker(FBulkDataIoDispatcherRequest& InIoRequest)
-			: IoRequest(InIoRequest)
-		{
-		}
-
-		void DoWork()
-		{
-			IoRequest.DoWork();
-		}
-
-		FORCEINLINE TStatId GetStatId() const
-		{
-			RETURN_QUICK_DECLARE_CYCLE_STAT(FBulkDataIoDispatcherRequestWorker, STATGROUP_ThreadPoolAsyncTasks);
-		}
-	};
-
-private:
 	struct Request
 	{
 		FIoChunkId ChunkId;
 		uint64 OffsetInBulkData;
 		uint64 BytesToRead;
-
-		FIoRequest IoRequest;
 	};
-
-	bool AreRequestsCompleted() const
-	{
-		for (const Request& Req : RequestArray)
-		{
-			if (!Req.IoRequest.Status().IsCompleted())
-			{
-				return false;
-			}
-		}
-
-		return true;
-	}
-
-	int64 GetTotalBufferSize()  
-	{
-		uint64 Size = 0;
-		for (Request& Req : RequestArray)
-		{
-			TIoStatusOr<FIoBuffer> Result = Req.IoRequest.GetResult();
-			Size += Result.ValueOrDie().DataSize();
-		}
-
-		return Size;
-	}
 
 	TArray<Request, TInlineAllocator<8>> RequestArray;
 
@@ -614,10 +579,10 @@ private:
 	uint8* DataResult = nullptr;
 	int64 SizeResult = 0;
 
-	// Task related members
-	FAsyncTask<FBulkDataIoDispatcherRequestWorker>* Task = nullptr;
 	bool bIsCompleted = false;
 	bool bIsCanceled = false;
+
+	FIoBatch IoBatch;
 };
 
 FBulkDataBase::FBulkDataBase(FBulkDataBase&& Other)
@@ -1804,3 +1769,5 @@ void FBulkDataAllocation::Swap(FBulkDataBase* Owner, void** DstBuffer)
 		Owner->ClearRuntimeBulkDataFlags(BULKDATA_DataIsMemoryMapped);
 	}	
 }
+
+#undef CHECK_IOSTATUS

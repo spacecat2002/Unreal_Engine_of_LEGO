@@ -1751,6 +1751,14 @@ FBulkDataIORequest::FBulkDataIORequest(IAsyncReadFileHandle* InFileHandle)
 {
 }
 
+FBulkDataIORequest::FBulkDataIORequest(IAsyncReadFileHandle* InFileHandle, IAsyncReadRequest* InReadRequest, int64 BytesToRead)
+	: FileHandle(InFileHandle)
+	, ReadRequest(InReadRequest)
+	, Size(BytesToRead)
+{
+
+}
+
 FBulkDataIORequest::~FBulkDataIORequest()
 {
 	delete ReadRequest;

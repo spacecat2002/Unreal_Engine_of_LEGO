@@ -132,7 +132,7 @@ class FFileIoStore
 	: public FRunnable
 {
 public:
-	FFileIoStore(FIoDispatcherEventQueue& InEventQueue);
+	FFileIoStore(FIoDispatcherEventQueue& InEventQueue, bool bInIsMultithreaded);
 	~FFileIoStore();
 	FIoStatus Mount(const FIoStoreEnvironment& Environment);
 	EIoStoreResolveResult Resolve(FIoRequestImpl* Request);
@@ -190,9 +190,11 @@ private:
 	void ScatterBlock(FFileIoStoreCompressedBlock* CompressedBlock, bool bIsAsync);
 	void AllocMemoryForRequest(FIoRequestImpl* Request);
 	void FinalizeCompressedBlock(FFileIoStoreCompressedBlock* CompressedBlock);
+	void ReadPendingBlocks();
 
 	const uint64 ReadBufferSize;
 	FIoDispatcherEventQueue& EventQueue;
+	bool bIsMultithreaded;
 	FFileIoStoreImpl PlatformImpl;
 
 	FRunnableThread* Thread;
@@ -212,6 +214,8 @@ private:
 	FFileIoStoreRawBlock* PendingBlocksTail = nullptr;
 	FFileIoStoreCompressedBlock* ReadyForDecompressionHead = nullptr;
 	FFileIoStoreCompressedBlock* ReadyForDecompressionTail = nullptr;
+	FFileIoStoreRawBlock* ScheduledBlocksHead = nullptr;
+	FFileIoStoreRawBlock* ScheduledBlocksTail = nullptr;
 	FCriticalSection DecompressedBlocksCritical;
 	FFileIoStoreCompressedBlock* FirstDecompressedBlock = nullptr;
 };

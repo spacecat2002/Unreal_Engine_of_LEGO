@@ -95,6 +95,8 @@ public:
 				{
 					FIoStoreWriterBlock* Result = FirstFreeBlock;
 					FirstFreeBlock = FirstFreeBlock->Next;
+					Result->bForceUncompressed = false;
+					Result->Alignment = WriterSettings.CompressionBlockAlignment;
 					return Result;
 				}
 			}
@@ -107,8 +109,6 @@ public:
 
 	void FreeBlock(FIoStoreWriterBlock* Block)
 	{
-		Block->bForceUncompressed = false;
-		Block->Alignment = 0;
 		{
 			FScopeLock Lock(&FreeBlocksCritical);
 			Block->Next = FirstFreeBlock;
@@ -206,6 +206,7 @@ public:
 						{
 							AlignmentPaddingBuffer.SetNumZeroed(int32(Padding), false);
 							FileHandle->Write(AlignmentPaddingBuffer.GetData(), Padding);
+							PaddingSize += Padding;
 						}
 						check(FileHandle->Tell() % CurrentWriteQueueItem->Alignment == 0);
 					}
@@ -283,6 +284,11 @@ public:
 			if (!CurrentBlock)
 			{
 				CurrentBlock = WriterContext->AllocBlock();
+				if (RemainingBytesInChunk >= CurrentBlock->UncompressedData.DataSize())
+				{
+					// Entire block belongs to this chunk, skip patch alignment
+					CurrentBlock->Alignment = 0;
+				}
 			}
 			check(CurrentBlock->UncompressedData.DataSize() > CurrentBlockOffset);
 			CurrentBlock->bForceUncompressed = WriteOptions.bForceUncompressed;
@@ -359,6 +365,11 @@ public:
 		return CompressionInfo;
 	}
 
+	int64 GetPaddingSize()
+	{
+		return PaddingSize;
+	}
+
 private:
 	void CompressBlock(FIoStoreWriterBlock* Block)
 	{
@@ -430,6 +441,7 @@ private:
 
 	FIoStoreWriterContextImpl* WriterContext = nullptr;
 	FIoStoreCompressionInfo CompressionInfo;
+	int64 PaddingSize = 0;
 	TUniquePtr<IFileHandle> FileHandle;
 	uint64 UncompressedOffset = 0;
 	FIoStoreWriterBlock* CurrentBlock = nullptr;
@@ -654,6 +666,7 @@ public:
 
 		Result.TocSize = TocFileHandle->Tell();
 		Result.TocEntryCount = TocHeader.TocEntryCount;
+		Result.PaddingSize = ChunkWriter->GetPaddingSize();
 		Result.UncompressedContainerSize = CompressionInfo.UncompressedContainerSize;
 		Result.CompressedContainerSize = CompressionInfo.CompressedContainerSize;
 
@@ -678,8 +691,7 @@ FIoStoreWriter::FIoStoreWriter(FIoStoreEnvironment& InEnvironment)
 
 FIoStoreWriter::~FIoStoreWriter()
 {
-	TIoStatusOr<FIoStoreWriterResult> Status = Impl->Flush();
-	check(Status.IsOk());
+	(void)Impl->Flush();
 }
 
 FIoStatus FIoStoreWriter::Initialize(const FIoStoreWriterContext& Context, bool bIsContainerCompressed)

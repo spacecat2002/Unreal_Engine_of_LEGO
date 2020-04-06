@@ -11,6 +11,7 @@
 struct FOwnedBulkDataPtr;
 class IMappedFileHandle;
 class IMappedFileRegion;
+class FBulkDataBase;
 
 /**
  * Represents an IO request from the BulkData streaming API.
@@ -32,9 +33,10 @@ public:
 	virtual void Cancel() = 0;
 };
 
-using FileToken = int32;
 struct FBulkDataOrId
 {
+	using FileToken = int32;
+
 	union
 	{
 		// Inline data or fallback path
@@ -66,7 +68,6 @@ DECLARE_INTRINSIC_TYPE_LAYOUT(EBulkDataFlags);
  * Note: We use a flag set in the owning BulkData object to tell us what storage type we are using 
  * so all accessors require that a pointer to the parent object be passed in.
  */
-class FBulkDataBase;
 class FBulkDataAllocation
 {
 public:
@@ -110,7 +111,7 @@ public:
 	static void				SetIoDispatcher(FIoDispatcher* InIoDispatcher) { IoDispatcher = InIoDispatcher; }
 	static FIoDispatcher*	GetIoDispatcher() { return IoDispatcher; }
 public:
-	static constexpr FileToken InvalidToken = INDEX_NONE;
+	static constexpr FBulkDataOrId::FileToken InvalidToken = INDEX_NONE;
 
 	FBulkDataBase()
 	{ 

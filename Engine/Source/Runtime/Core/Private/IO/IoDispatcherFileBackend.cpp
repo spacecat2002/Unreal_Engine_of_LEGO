@@ -210,9 +210,10 @@ IMappedFileHandle* FFileIoStoreReader::GetMappedContainerFileHandle()
 	return new FMappedFileProxy(ContainerFile.MappedFileHandle.Get(), ContainerFile.FileSize);
 }
 
-FFileIoStore::FFileIoStore(FIoDispatcherEventQueue& InEventQueue)
+FFileIoStore::FFileIoStore(FIoDispatcherEventQueue& InEventQueue, bool bInIsMultithreaded)
 	: ReadBufferSize(GIoDispatcherBufferSizeKB > 0 ? uint64(GIoDispatcherBufferSizeKB) << 10 : 256 << 10)
 	, EventQueue(InEventQueue)
+	, bIsMultithreaded(bInIsMultithreaded)
 	, PlatformImpl(InEventQueue, ReadBufferSize)
 	, BufferAvailableEvent(FPlatformProcess::GetSynchEventFromPool())
 	, PendingBlockEvent(FPlatformProcess::GetSynchEventFromPool())
@@ -769,6 +770,10 @@ void FFileIoStore::ReadBlockAndScatter(uint32 ReaderIndex, uint32 BlockIndex, co
 			PendingBlocksTail = NewBlocksTail;
 		}
 		PendingBlockEvent->Trigger();
+		if (!bIsMultithreaded)
+		{
+			ReadPendingBlocks();
+		}
 	}
 }
 
@@ -809,6 +814,10 @@ void FFileIoStore::ReadNoScatter(uint32 ReaderIndex, uint64 Offset, uint64 Size,
 		PendingBlocksTail = RawBlock;
 	}
 	PendingBlockEvent->Trigger();
+	if (!bIsMultithreaded)
+	{
+		ReadPendingBlocks();
+	}
 }
 
 FFileIoStoreBuffer* FFileIoStore::AllocBuffer()
@@ -858,6 +867,68 @@ void FFileIoStore::FreeCompressionContext(FFileIoStoreCompressionContext* Compre
 	FirstFreeCompressionContext = CompressionContext;
 }
 
+void FFileIoStore::ReadPendingBlocks()
+{
+	while (!bStopRequested)
+	{
+		{
+			FScopeLock PendingBlocksLock(&PendingBlocksCritical);
+			if (PendingBlocksHead)
+			{
+				if (!ScheduledBlocksTail)
+				{
+					ScheduledBlocksHead = PendingBlocksHead;
+					ScheduledBlocksTail = PendingBlocksTail;
+				}
+				else
+				{
+					ScheduledBlocksTail->Next = PendingBlocksHead;
+					ScheduledBlocksTail = PendingBlocksTail;
+				}
+				PendingBlocksHead = PendingBlocksTail = nullptr;
+			}
+		}
+
+		if (!ScheduledBlocksHead)
+		{
+			break;
+		}
+
+		FFileIoStoreRawBlock* BlockToRead = ScheduledBlocksHead;
+
+		/*TStringBuilder<256> ScopeName;
+		if (BlockToRead->DirectToRequest)
+		{
+			ScopeName.Appendf(TEXT("ReadNoScatter %lld %lld"), BlockToRead->Offset, BlockToRead->Size);
+		}
+		else
+		{
+			ScopeName.Appendf(TEXT("ReadBlock %d"), BlockToRead->Key.BlockIndex);
+		}
+		TRACE_CPUPROFILER_EVENT_SCOPE_TEXT(*ScopeName);*/
+
+		uint8* Target;
+		if (BlockToRead->DirectToRequest)
+		{
+			Target = BlockToRead->DirectToRequest->IoBuffer.Data() + BlockToRead->DirectToRequestOffset;
+		}
+		else
+		{
+			BlockToRead->Buffer = AllocBuffer();
+			Target = BlockToRead->Buffer->Memory;
+		}
+		
+		ScheduledBlocksHead = ScheduledBlocksHead->Next;
+		if (!ScheduledBlocksHead)
+		{
+			ScheduledBlocksTail = nullptr;
+		}
+		
+		PlatformImpl.ReadBlockFromFile(Target, IoStoreReaders[BlockToRead->Key.FileIndex]->GetContainerFile().FileHandle, BlockToRead);
+	}
+	PlatformImpl.FlushReads();
+}
+
 bool FFileIoStore::Init()
 {
 	return true;
@@ -872,67 +943,9 @@ void FFileIoStore::Stop()
 
 uint32 FFileIoStore::Run()
 {
-	FFileIoStoreRawBlock* ScheduledBlocksHead = nullptr;
-	FFileIoStoreRawBlock* ScheduledBlocksTail = nullptr;
 	while (!bStopRequested)
 	{
-		while (!bStopRequested)
-		{
-			{
-				FScopeLock PendingBlocksLock(&PendingBlocksCritical);
-				if (PendingBlocksHead)
-				{
-					if (!ScheduledBlocksTail)
-					{
-						ScheduledBlocksHead = PendingBlocksHead;
-						ScheduledBlocksTail = PendingBlocksTail;
-					}
-					else
-					{
-						ScheduledBlocksTail->Next = PendingBlocksHead;
-						ScheduledBlocksTail = PendingBlocksTail;
-					}
-					PendingBlocksHead = PendingBlocksTail = nullptr;
-				}
-			}
-
-			if (!ScheduledBlocksHead)
-			{
-				break;
-			}
-			FFileIoStoreRawBlock* BlockToRead = ScheduledBlocksHead;
-
-			/*TStringBuilder<256> ScopeName;
-			if (BlockToRead->DirectToRequest)
-			{
-				ScopeName.Appendf(TEXT("ReadNoScatter %lld %lld"), BlockToRead->Offset, BlockToRead->Size);
-			}
-			else
-			{
-				ScopeName.Appendf(TEXT("ReadBlock %d"), BlockToRead->Key.BlockIndex);
-			}
-			TRACE_CPUPROFILER_EVENT_SCOPE_TEXT(*ScopeName);*/
-
-			uint8* Target;
-			if (BlockToRead->DirectToRequest)
-			{
-				Target = BlockToRead->DirectToRequest->IoBuffer.Data() + BlockToRead->DirectToRequestOffset;
-			}
-			else
-			{
-				BlockToRead->Buffer = AllocBuffer();
-				Target = BlockToRead->Buffer->Memory;
-			}
-			
-			ScheduledBlocksHead = ScheduledBlocksHead->Next;
-			if (!ScheduledBlocksHead)
-			{
-				ScheduledBlocksTail = nullptr;
-			}
-			
-			PlatformImpl.ReadBlockFromFile(Target, IoStoreReaders[BlockToRead->Key.FileIndex]->GetContainerFile().FileHandle, BlockToRead);
-		}
-		PlatformImpl.FlushReads();
+		ReadPendingBlocks();
 		PendingBlockEvent->Wait();
 	}
 	return 0;

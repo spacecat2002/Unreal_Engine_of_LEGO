@@ -90,6 +90,8 @@ class FBulkDataIORequest : public IBulkDataIORequest
 {
 public:
 	FBulkDataIORequest(IAsyncReadFileHandle* InFileHandle);
+	FBulkDataIORequest(IAsyncReadFileHandle* InFileHandle, IAsyncReadRequest* InReadRequest, int64 BytesToRead);
+
 	virtual ~FBulkDataIORequest();
 
 	bool MakeReadRequest(int64 Offset, int64 BytesToRead, EAsyncIOPriorityAndFlags PriorityAndFlags, FBulkDataIORequestCallBack* CompleteCallback, uint8* UserSuppliedMemory);
