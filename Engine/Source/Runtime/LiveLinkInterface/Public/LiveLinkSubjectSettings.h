@@ -37,6 +37,10 @@ public:
 	UPROPERTY()
 	TSubclassOf<ULiveLinkRole> Role;
 
+	/** Last FrameRate estimated by the subject. If in Timecode mode, this will come directly from the QualifiedFrameTime. */
+	UPROPERTY(VisibleAnywhere, Category="LiveLink")
+	FFrameRate FrameRate;
+
 public:
 	//~ Begin UObject interface
 #if WITH_EDITOR
