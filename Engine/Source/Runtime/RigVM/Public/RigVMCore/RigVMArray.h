@@ -113,6 +113,11 @@ public:
 		}
 
 		int32 LastSize = Num();
+		if (LastSize == InSize)
+		{
+			return;
+		}
+
 		if (LastSize > InSize)
 		{
 			int32 LastByte = LastSize * sizeof(T);
@@ -125,6 +130,11 @@ public:
 	FORCEINLINE_DEBUGGABLE void SetNumZeroed(int32 InSize)
 	{
 		int32 LastSize = Num();
+		if (LastSize == InSize)
+		{
+			return;
+		}
+
 		SetNumUninitialized(InSize);
 
 		if (LastSize < InSize)
@@ -138,6 +148,11 @@ public:
 	FORCEINLINE_DEBUGGABLE void SetNum(int32 InSize)
 	{
 		int32 LastSize = Num();
+		if (LastSize == InSize)
+		{
+			return;
+		}
+
 		SetNumUninitialized(InSize);
 
 		if (LastSize < InSize)

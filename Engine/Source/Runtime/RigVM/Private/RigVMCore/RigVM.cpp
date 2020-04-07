@@ -534,7 +534,7 @@ bool URigVM::Initialize(FRigVMMemoryContainerPtrArray Memory, FRigVMFixedArray<v
 	TArray<FName>& FunctionNames = GetFunctionNames();
 #endif
 
-	FRigVMExecuteContext Context;
+	Context.Reset();
 	Context.OpaqueArguments = AdditionalArguments;
 
 	while (Instructions.IsValidIndex(Context.InstructionIndex))
@@ -730,7 +730,7 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, FRigVMFixedArray<void
 	InstructionVisitedDuringLastRun.SetNumZeroed(Instructions.Num());
 #endif
 
-	FRigVMExecuteContext Context;
+	Context.Reset();
 	Context.OpaqueArguments = AdditionalArguments;
 
 	if (!InEntryName.IsNone())

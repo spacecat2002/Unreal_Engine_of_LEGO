@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "RigVMMemory.h"
+#include "RigVMExecuteContext.h"
 #include "RigVMRegistry.h"
 #include "RigVMByteCode.h"
 #include "RigVMStatistics.h"
@@ -461,6 +462,9 @@ private:
 
 	UPROPERTY(transient)
 	FRigVMInstructionArray Instructions;
+
+	UPROPERTY(transient)
+	FRigVMExecuteContext Context;
 
 	UPROPERTY()
 	TArray<FName> FunctionNamesStorage;
