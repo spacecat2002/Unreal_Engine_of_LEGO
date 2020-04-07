@@ -802,8 +802,9 @@ bool FDeferredShadingSceneRenderer::RenderCapsuleDirectShadows(
 				FPlatformMemory::Memcpy(CapsuleShapeLockedData, CapsuleShapeData.GetData(), DataSize);
 				RHIUnlockVertexBuffer(LightSceneInfo.ShadowCapsuleShapesVertexBuffer);
 
-				// #todo-renderpasses Remove once everything is converted to renderpasses
+				PRAGMA_DISABLE_DEPRECATION_WARNINGS
 				UnbindRenderTargets(RHICmdList);
+				PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 				const bool bDirectionalLight = LightSceneInfo.Proxy->GetLightType() == LightType_Directional;
 				FIntRect ScissorRect;
@@ -1324,8 +1325,9 @@ void FDeferredShadingSceneRenderer::RenderIndirectCapsuleShadows(
 					{
 						check(IndirectShadowLightDirectionSRV);
 
-						// #todo-renderpasses remove once everything is converted to renderpasses
+						PRAGMA_DISABLE_DEPRECATION_WARNINGS
 						UnbindRenderTargets(RHICmdList);
+						PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 						FIntRect ScissorRect = View.ViewRect;
 
@@ -1552,8 +1554,9 @@ void FDeferredShadingSceneRenderer::RenderCapsuleShadowsForMovableSkylight(FRHIC
 					{
 						check(IndirectShadowLightDirectionSRV);
 
-						// #todo-renderpasses remove once everything is converted to renderpasses
+						PRAGMA_DISABLE_DEPRECATION_WARNINGS
 						UnbindRenderTargets(RHICmdList);
+						PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 						FIntRect ScissorRect = View.ViewRect;
 

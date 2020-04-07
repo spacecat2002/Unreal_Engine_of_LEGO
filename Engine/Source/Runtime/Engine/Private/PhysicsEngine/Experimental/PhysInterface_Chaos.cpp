@@ -7,7 +7,10 @@
 #include "Physics/Experimental/ChaosInterfaceUtils.h"
 #include "Physics/PhysicsInterfaceTypes.h"
 #include "PhysicsEngine/AggregateGeom.h"
+#include "Templates/UniquePtr.h"
 
+#define CHAOS_INCLUDE_LEVEL_1
+#include "PhysicsSolver.h"
 #include "Chaos/Box.h"
 #include "Chaos/Cylinder.h"
 #include "Chaos/TaperedCylinder.h"
@@ -20,17 +23,16 @@
 #include "Chaos/Sphere.h"
 #include "Chaos/Matrix.h"
 #include "Chaos/MassProperties.h"
-#include "PhysicsSolver.h"
-#include "Templates/UniquePtr.h"
 #include "ChaosSolversModule.h"
 #include "Chaos/ErrorReporter.h"
 #include "Chaos/ImplicitObjectScaled.h"
-#include "Chaos/TriangleMeshImplicitObject.h"
 #include "Chaos/Convex.h"
 #include "Chaos/GeometryQueries.h"
 #include "Chaos/Plane.h"
 #include "ChaosCheck.h"
 #include "Chaos/Particle/ParticleUtilities.h"
+#undef CHAOS_INCLUDE_LEVEL_1
+
 #include "Async/ParallelFor.h"
 #include "Components/PrimitiveComponent.h"
 #include "Physics/PhysicsFiltering.h"
@@ -311,12 +313,30 @@ void FPhysInterface_Chaos::ReleaseMaterial(FPhysicsMaterialHandle& InHandle)
 	Chaos::FPhysicalMaterialManager::Get().Destroy(InHandle);
 }
 
+Chaos::FChaosPhysicsMaterial::ECombineMode UToCCombineMode(EFrictionCombineMode::Type Mode)
+{
+	using namespace Chaos;
+	switch(Mode)
+	{
+	case EFrictionCombineMode::Average: return FChaosPhysicsMaterial::ECombineMode::Avg;
+	case EFrictionCombineMode::Min: return FChaosPhysicsMaterial::ECombineMode::Min;
+	case EFrictionCombineMode::Multiply: return FChaosPhysicsMaterial::ECombineMode::Multiply;
+	case EFrictionCombineMode::Max: return FChaosPhysicsMaterial::ECombineMode::Max;
+	default: ensure(false);
+	}
+
+	return FChaosPhysicsMaterial::ECombineMode::Avg;
+}
+
+
 void FPhysInterface_Chaos::UpdateMaterial(FPhysicsMaterialHandle& InHandle, UPhysicalMaterial* InMaterial)
 {
 	if(Chaos::FChaosPhysicsMaterial* Material = InHandle.Get())
 	{
 		Material->Friction = InMaterial->Friction;
+		Material->FrictionCombineMode = UToCCombineMode(InMaterial->FrictionCombineMode);
 		Material->Restitution = InMaterial->Restitution;
+		Material->RestitutionCombineMode = UToCCombineMode(InMaterial->RestitutionCombineMode);
 		Material->SleepingLinearThreshold = InMaterial->SleepLinearVelocityThreshold;
 		Material->SleepingAngularThreshold = InMaterial->SleepAngularVelocityThreshold;
 		Material->SleepCounterThreshold = InMaterial->SleepCounterThreshold;
@@ -706,7 +726,8 @@ FVector FPhysInterface_Chaos::GetWorldVelocityAtPoint_AssumesLocked(const FPhysi
 		Chaos::TKinematicGeometryParticle<float, 3>* Kinematic = InActorReference->CastToKinematicParticle();
 		if (ensure(Kinematic))
 		{
-			const Chaos::FVec3 COM = Chaos::FParticleUtilitiesGT::GetCoMWorldPosition(Kinematic);
+			const Chaos::TPBDRigidParticle<float,3>* Rigid = Kinematic->CastToRigidParticle();
+			const Chaos::FVec3 COM = Rigid ? Chaos::FParticleUtilitiesGT::GetCoMWorldPosition(Rigid) : Chaos::FParticleUtilitiesGT::GetActorWorldTransform(Rigid).GetTranslation();
 			const Chaos::FVec3 Diff = InPoint - COM;
 			return Kinematic->V() - Chaos::FVec3::CrossProduct(Diff, Kinematic->W());
 		}
@@ -718,9 +739,9 @@ FTransform FPhysInterface_Chaos::GetComTransform_AssumesLocked(const FPhysicsAct
 {
 	if (ensure(FPhysicsInterface::IsValid(InActorReference)))
 	{
-		if (const Chaos::TKinematicGeometryParticle<float, 3>* Kinematic = InActorReference->CastToKinematicParticle())
+		if (const auto* Rigid = InActorReference->CastToRigidParticle())
 		{
-			return Chaos::FParticleUtilitiesGT::GetCoMWorldTransform(Kinematic);
+			return Chaos::FParticleUtilitiesGT::GetCoMWorldTransform(Rigid);
 		}
 	}
 	return FTransform();
@@ -730,9 +751,9 @@ FTransform FPhysInterface_Chaos::GetComTransformLocal_AssumesLocked(const FPhysi
 {
 	if (ensure(FPhysicsInterface::IsValid(InActorReference)))
 	{
-		if (Chaos::TKinematicGeometryParticle<float, 3>* Kinematic = InActorReference->CastToKinematicParticle())
+		if (auto* Rigid = InActorReference->CastToRigidParticle())
 		{
-			return FTransform(Kinematic->RotationOfMass(), Kinematic->CenterOfMass());
+			return FTransform(Rigid->RotationOfMass(), Rigid->CenterOfMass());
 		}
 	}
 	return FTransform();
@@ -912,10 +933,10 @@ void FPhysInterface_Chaos::SetComLocalPose_AssumesLocked(const FPhysicsActorHand
 {
     //@todo(mlentine): What is InComLocalPose? If the center of an object is not the local pose then many things break including the three vector represtnation of inertia.
 
-	if (Chaos::TKinematicGeometryParticle<float, 3>* KinematicParticle = InHandle->CastToKinematicParticle())
+	if (auto Rigid = InHandle->CastToRigidParticle())
 	{
-		KinematicParticle->SetCenterOfMass(InComLocalPose.GetLocation());
-		KinematicParticle->SetRotationOfMass(InComLocalPose.GetRotation());
+		Rigid->SetCenterOfMass(InComLocalPose.GetLocation());
+		Rigid->SetRotationOfMass(InComLocalPose.GetRotation());
 	}
 }
 

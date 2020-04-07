@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 #pragma once
 
+#include "Chaos/IncludeLvl1.inl"
 #include "Chaos/ExternalCollisionData.h"
 #include "Chaos/PBDCollisionConstraints.h"
 #include "Chaos/CollisionResolutionTypes.h"
@@ -12,24 +13,20 @@ namespace Chaos
 
 	namespace Collisions
 	{
-		template<class T = float>
-		struct TContactParticleParameters {
-			T CullDistance;
-			T ShapePadding;
+		struct FContactParticleParameters {
+			FReal CullDistance;
+			FReal ShapePadding;
 			TArrayCollectionArray<bool>* Collided;
 		};
-		using FContactParticleParameters = TContactParticleParameters<FReal>;
 
-		template<class T = float>
-		struct TContactIterationParameters {
-			const T Dt;
+		struct FContactIterationParameters {
+			const FReal Dt;
 			const int32 Iteration;
 			const int32 NumIterations;
 			const int32 NumPairIterations;
 			const ECollisionApplyType ApplyType;	// @todo(chaos): a better way to customize the collision solver
 			bool* NeedsAnotherIteration;
 		};
-		using FContactIterationParameters = TContactIterationParameters<FReal>;
 
 		// Regenerate (one-shot or incremental) the manifold plane and points
 		extern void UpdateManifold(FRigidBodyMultiPointContactConstraint& Constraint, const FReal CullDistance, const FCollisionContext& Context);

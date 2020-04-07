@@ -29,6 +29,7 @@
 #include "PipelineStateCache.h"
 #include "ClearQuad.h"
 #include "RendererModule.h"
+#include "VT/VirtualTextureFeedback.h"
 #include "VT/VirtualTextureSystem.h"
 #include "GPUScene.h"
 #include "RayTracing/RayTracingMaterialHitShaders.h"
@@ -1048,6 +1049,18 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 						const FPrimitiveSceneProxy* SceneProxy = MeshBatchJob.SceneProxy;
 						const uint32 InstanceIndex = MeshBatchJob.InstanceIndex;
 						FDynamicRayTracingMeshCommandContext CommandContext(ReferenceView.DynamicRayTracingMeshCommandStorageParallel[Batch], ReferenceView.VisibleRayTracingMeshCommandsParallel[Batch], SegmentIndex, InstanceIndex);
+			ReferenceView.AddRayTracingMeshBatchTaskList.Add(FFunctionGraphTask::CreateAndDispatchWhenReady(
+				[&ReferenceView, Scene = this->Scene, Batch, BatchStart, BatchEnd]()
+			{
+				for (uint32 Index = BatchStart; Index < BatchEnd; Index++)
+				{
+					FRayTracingMeshBatchWorkItem& MeshBatchJob = ReferenceView.AddRayTracingMeshBatchData[Index];
+					for (uint32 SegmentIndex = 0; SegmentIndex < (uint32) MeshBatchJob.MeshBatches.Num(); SegmentIndex++)
+					{
+						FMeshBatch& MeshBatch = MeshBatchJob.MeshBatches[SegmentIndex];
+						const FPrimitiveSceneProxy* SceneProxy = MeshBatchJob.SceneProxy;
+						const uint32 InstanceIndex = MeshBatchJob.InstanceIndex;
+						FDynamicRayTracingMeshCommandContext CommandContext(ReferenceView.DynamicRayTracingMeshCommandStorageParallel[Batch], ReferenceView.VisibleRayTracingMeshCommandsParallel[Batch], SegmentIndex, InstanceIndex);
 						FMeshPassProcessorRenderState PassDrawRenderState(Scene->UniformBuffers.ViewUniformBuffer, Scene->UniformBuffers.OpaqueBasePassUniformBuffer);
 						FRayTracingMeshProcessor RayTracingMeshProcessor(&CommandContext, Scene, &ReferenceView, PassDrawRenderState);
 						RayTracingMeshProcessor.AddMeshBatch(MeshBatch, 1, SceneProxy);
@@ -1502,6 +1515,11 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		{
 			SCOPED_GPU_STAT(RHICmdList, VirtualTextureUpdate);
 			FVirtualTextureSystem::Get().Update(RHICmdList, FeatureLevel, Scene);
+
+			// Clear virtual texture feedback to default value
+			FUnorderedAccessViewRHIRef FeedbackUAV = SceneContext.GetVirtualTextureFeedbackUAV();
+			RHICmdList.ClearUAVUint(FeedbackUAV, FUintVector4(~0u, ~0u, ~0u, ~0u));
+			RHICmdList.TransitionResource(EResourceTransitionAccess::ERWNoBarrier, EResourceTransitionPipeline::EGfxToGfx, FeedbackUAV);
 		}
 
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
@@ -2300,8 +2318,9 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	{
 		// Clear stencil to 0 now that deferred decals are done using what was setup in the base pass
 		// Shadow passes and other users of stencil assume it is cleared to 0 going in
+		// NB: Depth Load/Write necessary for Vulkan Platforms
 		FRHIRenderPassInfo RPInfo(SceneContext.GetSceneDepthSurface(),
-			EDepthStencilTargetActions::ClearStencilDontLoadDepth_StoreStencilNotDepth);
+			EDepthStencilTargetActions::LoadDepthClearStencil_StoreDepthStencil);
 		RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil = FExclusiveDepthStencil::DepthNop_StencilWrite;
 
 		RHICmdList.TransitionResource(FExclusiveDepthStencil::DepthNop_StencilWrite, SceneContext.GetSceneDepthSurface());
@@ -2602,7 +2621,9 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	}
 	checkSlow(RHICmdList.IsOutsideRenderPass());
 	// Unbind everything in case FX has to read.
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	UnbindRenderTargets(RHICmdList);
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	// Notify the FX system that opaque primitives have been rendered and we now have a valid depth buffer.
 	if (Scene->FXSystem && Views.IsValidIndex(0))
@@ -2735,14 +2756,21 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	if (bUseVirtualTexturing)
 	{
 		SCOPED_GPU_STAT(RHICmdList, VirtualTextureUpdate);
-		// No pass after this can make VT page requests
-		TArray<FIntRect, TInlineAllocator<FVirtualTextureFeedback::MaxRectPerTarget>> ViewRects;
+		
+		// No pass after this should make VT page requests
+		RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EGfxToGfx, SceneContext.VirtualTextureFeedbackUAV);
+
+		TArray<FIntRect, TInlineAllocator<4>> ViewRects;
 		ViewRects.AddUninitialized(Views.Num());
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
 		{
 			ViewRects[ViewIndex] = Views[ViewIndex].ViewRect;
 		}
-		SceneContext.VirtualTextureFeedback.TransferGPUToCPU(RHICmdList, ViewRects);
+
+		FVirtualTextureFeedback::FBufferDesc Desc;
+		Desc.Init2D(SceneContext.GetBufferSizeXY(), ViewRects, SceneContext.GetVirtualTextureFeedbackScale());
+
+		GVirtualTextureFeedback.TransferGPUToCPU(RHICmdList, SceneContext.VirtualTextureFeedback, Desc);
 	}
 
 #if RHI_RAYTRACING

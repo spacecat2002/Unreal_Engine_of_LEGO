@@ -353,7 +353,9 @@ void FDeferredShadingSceneRenderer::RenderTiledDeferredLighting(FRHICommandListI
 		INC_DWORD_STAT_BY(STAT_NumLightsUsingSimpleTiledDeferred, SimpleLights.InstanceData.Num());
 		SCOPE_CYCLE_COUNTER(STAT_DirectLightRenderingTime);
 
+		PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		UnbindRenderTargets(RHICmdList);
+		PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 		FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(SceneContext, FeatureLevel, ESceneTextureSetupMode::All, UniformBuffer_SingleFrame);
 

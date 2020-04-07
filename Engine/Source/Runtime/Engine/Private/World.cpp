@@ -126,7 +126,9 @@
 #include "ObjectTrace.h"
 
 #if INCLUDE_CHAOS
+#define CHAOS_INCLUDE_LEVEL_1
 #include "ChaosSolversModule.h"
+#undef CHAOS_INCLUDE_LEVEL_1
 #endif
 
 DEFINE_LOG_CATEGORY_STATIC(LogWorld, Log, All);
@@ -1419,6 +1421,10 @@ void UWorld::InitWorld(const InitializationValues IVS)
 
 	Levels.Empty(1);
 	Levels.Add( PersistentLevel );
+	if (FLevelCollection* Collection = PersistentLevel->GetCachedLevelCollection())
+	{
+		Collection->RemoveLevel(PersistentLevel);
+	}
 	PersistentLevel->OwningWorld = this;
 	PersistentLevel->bIsVisible = true;
 

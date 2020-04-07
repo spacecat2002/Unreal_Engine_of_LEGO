@@ -372,6 +372,10 @@ public:
 	virtual int32 GetHairRootUV() = 0;
 	virtual int32 GetHairBaseColor() = 0;
 	virtual int32 GetHairRoughness() = 0;
+	
+	// Water
+	virtual int32 SceneDepthWithoutWater(int32 Offset, int32 ViewportUV, bool bUseOffset, float FallbackDepth) = 0;
+
 	virtual int32 CustomPrimitiveData(int32 OutputIndex, EMaterialValueType Type) = 0;
 	virtual int32 ShadingModel(EMaterialShadingModel InSelectedShadingModel) = 0;
 
@@ -714,6 +718,11 @@ public:
 		return Compiler->GetVolumeSampleConservativeDensity();
 	}
 	
+	virtual int32 SceneDepthWithoutWater(int32 Offset, int32 ViewportUV, bool bUseOffset, float FallbackDepth) override
+	{
+		return Compiler->SceneDepthWithoutWater(Offset, ViewportUV, bUseOffset, FallbackDepth);
+	}
+
 	virtual int32 CustomPrimitiveData(int32 OutputIndex, EMaterialValueType Type) override
 	{
 		return Compiler->CustomPrimitiveData(OutputIndex, Type);

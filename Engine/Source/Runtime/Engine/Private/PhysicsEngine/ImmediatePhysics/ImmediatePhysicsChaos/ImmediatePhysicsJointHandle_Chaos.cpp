@@ -3,8 +3,10 @@
 #include "Physics/ImmediatePhysics/ImmediatePhysicsChaos/ImmediatePhysicsJointHandle_Chaos.h"
 #include "Physics/ImmediatePhysics/ImmediatePhysicsChaos/ImmediatePhysicsActorHandle_Chaos.h"
 
+#define CHAOS_INCLUDE_LEVEL_1
 #include "Chaos/Particle/ParticleUtilities.h"
 #include "Chaos/PBDJointConstraints.h"
+#undef CHAOS_INCLUDE_LEVEL_1
 
 #include "PhysicsEngine/ConstraintInstance.h"
 
@@ -36,7 +38,7 @@ namespace ImmediatePhysics_Chaos
 	float ChaosImmediate_SoftAngularDampingScale = 1000;
 
 	float ChaosImmediate_JointMinLinearProjection = 0.0f;
-	float ChaosImmediate_JointMaxLinearProjection = 0.8f;
+	float ChaosImmediate_JointMaxLinearProjection = 1.0f;
 	float ChaosImmediate_JointMinAngularProjection = 0.0f;
 	float ChaosImmediate_JointMaxAngularProjection = 0.1f;
 

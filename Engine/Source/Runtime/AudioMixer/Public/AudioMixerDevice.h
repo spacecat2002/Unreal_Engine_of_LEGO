@@ -130,6 +130,8 @@ namespace Audio
 		virtual void StopSpectrumAnalysis(USoundSubmix* InSubmix) override;
 		virtual void GetMagnitudesForFrequencies(USoundSubmix* InSubmix, const TArray<float>& InFrequencies, TArray<float>& OutMagnitudes);
 		virtual void GetPhasesForFrequencies(USoundSubmix* InSubmix, const TArray<float>& InFrequencies, TArray<float>& OutPhases);
+		virtual void AddSpectralAnalysisDelegate(USoundSubmix* InSubmix, const TArray<FSoundSubmixSpectralAnalysisBandSettings>& InBandSettings, const FOnSubmixSpectralAnalysisBP& OnSubmixSpectralAnalysisBP, float UpdateRate) override;
+		virtual void RemoveSpectralAnalysisDelegate(USoundSubmix* InSubmixconst, const FOnSubmixSpectralAnalysisBP& OnSubmixSpectralAnalysisBP) override;
 
 		// Submix buffer listener callbacks
 		virtual void RegisterSubmixBufferListener(ISubmixBufferListener* InSubmixBufferListener, USoundSubmix* InSubmix = nullptr) override;
@@ -338,7 +340,7 @@ namespace Audio
 		FCriticalSection EndpointSubmixesMutationLock;
 
 		/** Which submixes have been told to envelope follow with this audio device. */
-		TArray<USoundSubmix*> EnvelopeFollowingSubmixes;
+		TArray<USoundSubmix*> DelegateBoundSubmixes;
 
 		/** Queue of mixer source voices. */
 		TQueue<FMixerSourceVoice*> SourceVoices;

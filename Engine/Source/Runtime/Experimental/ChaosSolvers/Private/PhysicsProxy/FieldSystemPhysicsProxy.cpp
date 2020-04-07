@@ -170,7 +170,8 @@ void FFieldSystemPhysicsProxy::FieldParameterUpdateCallback(
 						// not be dynamic.  Har.
 						if(Chaos::TPBDRigidParticleHandle<float, 3>* RigidHandle = Handle->CastToRigidParticle())
 						{
-							const bool bIsGC = (Handle->GetParticleType() == Chaos::EParticleType::GeometryCollection);
+							const bool bIsGC = (Handle->GetParticleType() == Chaos::EParticleType::GeometryCollection) || 
+								(Handle->GetParticleType() == Chaos::EParticleType::Clustered && !Handle->CastToClustered()->InternalCluster());
 							const EObjectStateType HandleState = RigidHandle->ObjectState();
 
 							// Non-Geometry Collection rigid bodies are more restricted as to how
@@ -386,12 +387,13 @@ void FFieldSystemPhysicsProxy::FieldParameterUpdateCallback(
 
 								for(TPBDRigidParticleHandle<FReal, 3>* Handle : Activated)
 								{
-									if(!CurrentSolver->GetProxy(Handle))
+									if(!CurrentSolver->GetProxies(Handle))
 									{
-										IPhysicsProxyBase* ParentProxy = CurrentSolver->GetProxy(Iter.Key);
-										if(ensure(ParentProxy))
+										const TSet<IPhysicsProxyBase*> * ParentProxies = CurrentSolver->GetProxies(Iter.Key);
+										if(ensure(ParentProxies))
 										{
-											CurrentSolver->AddParticleToProxy(Handle, ParentProxy);
+											for( IPhysicsProxyBase* ParentProxy : *ParentProxies)
+												CurrentSolver->AddParticleToProxy(Handle, ParentProxy);
 										}
 									}
 								}

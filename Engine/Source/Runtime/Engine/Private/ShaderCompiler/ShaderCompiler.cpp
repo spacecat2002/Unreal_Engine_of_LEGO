@@ -98,6 +98,12 @@ uint32 FShaderCommonCompileJob::GetNextJobId()
 static float GRegularWorkerTimeToLive = 20.0f;
 static float GBuildWorkerTimeToLive = 600.0f;
 
+// Configuration to retry shader compile through wrokers after a worker has been abandoned
+static constexpr int32 GSingleThreadedRunsIdle = -1;
+static constexpr int32 GSingleThreadedRunsDisabled = -2;
+static constexpr int32 GSingleThreadedRunsIncreaseFactor = 8;
+static constexpr int32 GSingleThreadedRunsMaxCount = (1 << 24);
+
 static void ModalErrorOrLog(const FString& Text, int64 CurrentFilePos = 0, int64 ExpectedFileSize = 0)
 {
 	FString BadFile;
@@ -1365,7 +1371,7 @@ bool FShaderCompileThreadRunnable::LaunchWorkersIfNeeded()
 	for (int32 WorkerIndex = 0; WorkerIndex < WorkerInfos.Num(); WorkerIndex++)
 	{
 		FShaderCompileWorkerInfo& CurrentWorkerInfo = *WorkerInfos[WorkerIndex];
-		if (CurrentWorkerInfo.QueuedJobs.Num() == 0 )
+		if (CurrentWorkerInfo.QueuedJobs.Num() == 0)
 		{
 			// Skip if nothing to do
 			// Also, use the opportunity to free OS resources by cleaning up handles of no more running processes
@@ -1595,6 +1601,23 @@ int32 FShaderCompileThreadRunnable::CompilingLoop()
 			// Fall back to local compiles if the SCW crashed.
 			// This is nasty but needed to work around issues where message passing through files to SCW is unreliable on random PCs
 			Manager->bAllowCompilingThroughWorkers = false;
+
+			// Try to recover from abandoned workers after a certain amount of single-threaded compilations
+			if (Manager->NumSingleThreadedRunsBeforeRetry == GSingleThreadedRunsIdle)
+			{
+				// First try to recover, only run single-threaded approach once
+				Manager->NumSingleThreadedRunsBeforeRetry = 1;
+			}
+			else if (Manager->NumSingleThreadedRunsBeforeRetry > GSingleThreadedRunsMaxCount)
+			{
+				// Stop retry approach after too many retries have failed
+				Manager->NumSingleThreadedRunsBeforeRetry = GSingleThreadedRunsDisabled;
+			}
+			else
+			{
+				// Next time increase runs by factor X
+				Manager->NumSingleThreadedRunsBeforeRetry *= GSingleThreadedRunsIncreaseFactor;
+			}
 		}
 		else
 		{
@@ -1604,7 +1627,19 @@ int32 FShaderCompileThreadRunnable::CompilingLoop()
 	}
 	else
 	{
+		// Execute all pending worker tasks single-threaded
 		CompileDirectlyThroughDll();
+
+		// If single-threaded mode was enabled by an abandoned worker, try to recover after the given amount of runs
+		if (Manager->NumSingleThreadedRunsBeforeRetry > 0)
+		{
+			Manager->NumSingleThreadedRunsBeforeRetry--;
+			if (Manager->NumSingleThreadedRunsBeforeRetry == 0)
+			{
+				UE_LOG(LogShaderCompilers, Display, TEXT("Retry shader compiling through workers."));
+				Manager->bAllowCompilingThroughWorkers = true;
+			}
+		}
 	}
 
 	return NumActiveThreads;
@@ -1817,6 +1852,7 @@ FShaderCompilingManager::FShaderCompilingManager() :
 	bCompilingDuringGame(false),
 	NumOutstandingJobs(0),
 	NumExternalJobs(0),
+	NumSingleThreadedRunsBeforeRetry(GSingleThreadedRunsIdle),
 #if PLATFORM_MAC
 	ShaderCompileWorkerName(FPaths::EngineDir() / TEXT("Binaries/Mac/ShaderCompileWorker")),
 #elif PLATFORM_LINUX
@@ -1836,7 +1872,8 @@ FShaderCompilingManager::FShaderCompilingManager() :
 	verify(GConfig->GetBool( TEXT("DevOptions.Shaders"), TEXT("bAllowAsynchronousShaderCompiling"), bAllowAsynchronousShaderCompiling, GEngineIni ));
 
 	// override the use of workers, can be helpful for debugging shader compiler code
-	if (!FPlatformProcess::SupportsMultithreading() || FParse::Param(FCommandLine::Get(),TEXT("noshaderworker")))
+	static const IConsoleVariable* CVarAllowCompilingThroughWorkers = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Shaders.AllowCompilingThroughWorkers"), false);
+	if (!FPlatformProcess::SupportsMultithreading() || FParse::Param(FCommandLine::Get(), TEXT("noshaderworker")) || (CVarAllowCompilingThroughWorkers && CVarAllowCompilingThroughWorkers->GetInt() == 0))
 	{
 		bAllowCompilingThroughWorkers = false;
 	}
@@ -4995,7 +5032,7 @@ static inline FShader* ProcessCompiledJob(FShaderCompileJob* SingleJob, const FS
 		EShaderPlatform Platform = (EShaderPlatform)SingleJob->Input.Target.Platform;
 		if (!Pipeline || !Pipeline->ShouldOptimizeUnusedOutputs(Platform))
 		{
-			Shader = GGlobalShaderMap[Platform]->FindOrAddShader(GlobalShaderType, Shader);
+			Shader = GGlobalShaderMap[Platform]->FindOrAddShader(GlobalShaderType, SingleJob->PermutationId, Shader);
 			// Add this shared pipeline to the list
 			if (!Pipeline)
 			{
@@ -5041,21 +5078,19 @@ void ProcessCompiledGlobalShaders(const TArray<TSharedRef<FShaderCommonCompileJo
 		{
 			const auto* PipelineJob = CurrentJob.GetShaderPipelineJob();
 			check(PipelineJob);
-			TArray<FShader*> ShaderStages;
+
+			FShaderPipeline* ShaderPipeline = new FShaderPipeline(PipelineJob->ShaderPipeline);
 			for (int32 Index = 0; Index < PipelineJob->StageJobs.Num(); ++Index)
 			{
 				SingleJob = PipelineJob->StageJobs[Index]->GetSingleShaderJob();
 				FShader* Shader = ProcessCompiledJob(SingleJob, PipelineJob->ShaderPipeline, ShaderPlatformsProcessed, SharedPipelines);
-				ShaderStages.Add(Shader);
+				ShaderPipeline->AddShader(Shader, SingleJob->PermutationId);
 			}
+			ShaderPipeline->Validate(PipelineJob->ShaderPipeline);
 
-			FShaderPipeline* ShaderPipeline = new FShaderPipeline(PipelineJob->ShaderPipeline, ShaderStages);
-			if (ShaderPipeline)
-			{
-				EShaderPlatform Platform = (EShaderPlatform)PipelineJob->StageJobs[0]->GetSingleShaderJob()->Input.Target.Platform;
-				check(ShaderPipeline && !GGlobalShaderMap[Platform]->HasShaderPipeline(PipelineJob->ShaderPipeline));
-				GGlobalShaderMap[Platform]->FindOrAddShaderPipeline(PipelineJob->ShaderPipeline, ShaderPipeline);
-			}
+			EShaderPlatform Platform = (EShaderPlatform)PipelineJob->StageJobs[0]->GetSingleShaderJob()->Input.Target.Platform;
+			check(ShaderPipeline && !GGlobalShaderMap[Platform]->HasShaderPipeline(PipelineJob->ShaderPipeline));
+			GGlobalShaderMap[Platform]->FindOrAddShaderPipeline(PipelineJob->ShaderPipeline, ShaderPipeline);
 		}
 	}
 
@@ -5071,7 +5106,8 @@ void ProcessCompiledGlobalShaders(const TArray<TSharedRef<FShaderCommonCompileJo
 				if (!GlobalShaderMap->HasShaderPipeline(ShaderPipelineType))
 				{
 					auto& StageTypes = ShaderPipelineType->GetStages();
-					TArray<FShader*> ShaderStages;
+
+					FShaderPipeline* ShaderPipeline = new FShaderPipeline(ShaderPipelineType);
 					for (int32 Index = 0; Index < StageTypes.Num(); ++Index)
 					{
 						FGlobalShaderType* GlobalShaderType = ((FShaderType*)(StageTypes[Index]))->GetGlobalShaderType();
@@ -5079,16 +5115,14 @@ void ProcessCompiledGlobalShaders(const TArray<TSharedRef<FShaderCommonCompileJo
 						{
 							TShaderRef<FShader> Shader = GlobalShaderMap->GetShader(GlobalShaderType, kUniqueShaderPermutationId);
 							check(Shader.IsValid());
-							ShaderStages.Add(Shader.GetShader());
+							ShaderPipeline->AddShader(Shader.GetShader(), kUniqueShaderPermutationId);
 						}
 						else
 						{
 							break;
 						}
 					}
-
-					checkf(StageTypes.Num() == ShaderStages.Num(), TEXT("Internal Error adding Global ShaderPipeline %s"), ShaderPipelineType->GetName());
-					FShaderPipeline* ShaderPipeline = new FShaderPipeline(ShaderPipelineType, ShaderStages);
+					ShaderPipeline->Validate(ShaderPipelineType);
 					GlobalShaderMap->FindOrAddShaderPipeline(ShaderPipelineType, ShaderPipeline);
 				}
 			}

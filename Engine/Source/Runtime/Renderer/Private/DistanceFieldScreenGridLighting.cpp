@@ -510,7 +510,9 @@ void FDeferredShadingSceneRenderer::RenderDistanceFieldAOScreenGrid(
 	}
 	ScreenGridResources->AcquireTransientResource();
 
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	UnbindRenderTargets(RHICmdList);
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 	FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(SceneContext, View.GetFeatureLevel(), ESceneTextureSetupMode::All, UniformBuffer_SingleFrame);

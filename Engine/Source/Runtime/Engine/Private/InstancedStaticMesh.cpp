@@ -1138,6 +1138,11 @@ void FInstancedStaticMeshSceneProxy::GetDynamicRayTracingInstances(struct FRayTr
 	{
 		return;
 	}
+	
+	if (!InstancedRenderData.PerInstanceRenderData.IsValid())
+	{
+		return;
+	}
 
 	uint32 LOD = GetCurrentFirstLODIdx_RenderThread();
 	const int32 InstanceCount = InstancedRenderData.PerInstanceRenderData->InstanceBuffer.GetNumInstances();
@@ -1248,6 +1253,11 @@ void FInstancedStaticMeshSceneProxy::GetDynamicRayTracingInstances(struct FRayTr
 void FInstancedStaticMeshSceneProxy::SetupRayTracingCullClusters()
 {
 	if (!IsRayTracingEnabled())
+	{
+		return;
+	}
+	
+	if (!InstancedRenderData.PerInstanceRenderData.IsValid())
 	{
 		return;
 	}
@@ -1732,6 +1742,11 @@ void UInstancedStaticMeshComponent::OnCreatePhysicsState()
 	CreateAllInstanceBodies();
 
 	USceneComponent::OnCreatePhysicsState();
+
+	// Since StaticMeshComponent was not called
+	// Navigation relevancy needs to be handled here
+	bNavigationRelevant = IsNavigationRelevant();
+	FNavigationSystem::UpdateComponentData(*this);
 }
 
 void UInstancedStaticMeshComponent::OnDestroyPhysicsState()
@@ -1740,6 +1755,11 @@ void UInstancedStaticMeshComponent::OnDestroyPhysicsState()
 
 	// Release all physics representations
 	ClearAllInstanceBodies();
+
+	// Since StaticMeshComponent was not called
+	// Navigation relevancy needs to be handled here
+	bNavigationRelevant = IsNavigationRelevant();
+	FNavigationSystem::UpdateComponentData(*this);
 }
 
 bool UInstancedStaticMeshComponent::CanEditSimulatePhysics()

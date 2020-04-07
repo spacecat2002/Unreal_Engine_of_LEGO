@@ -849,6 +849,7 @@ protected:
 	// Storage for static draw list batch params
 	TArray<FLandscapeBatchElementParams> StaticBatchParamArray;
 
+
 #if WITH_EDITOR
 	// Precomputed grass rendering MeshBatch and per-LOD params
 	FMeshBatch                           GrassMeshBatch;
@@ -934,15 +935,10 @@ protected:
 	virtual const ULandscapeComponent* GetLandscapeComponent() const { return LandscapeComponent; }
 	int8 GetLODFromScreenSize(float InScreenSizeSquared, float InViewLODScale) const;
 
-	FORCEINLINE FVector4 GetShaderLODBias() const;
-	static FVector4 GetShaderLODValues(int32 InSubsectionSizeVerts, int8 BatchElementCurrentLOD);
-
 	bool GetMeshElementForVirtualTexture(int32 InLodIndex, ERuntimeVirtualTextureMaterialType MaterialType, UMaterialInterface* InMaterialInterface, FMeshBatch& OutMeshBatch, TArray<FLandscapeBatchElementParams>& OutStaticBatchParamArray) const;
 	template<class ArrayType> bool GetStaticMeshElement(int32 LODIndex, bool bForToolMesh, bool bForcedLOD, FMeshBatch& MeshBatch, ArrayType& OutStaticBatchParamArray) const;
 	
 	virtual void ApplyMeshElementModifier(FMeshBatchElement& InOutMeshElement, int32 InLodIndex) const {}
-
-	float GetComponentScreenSize(const class FSceneView* View, const FVector& Origin,  float MaxExtend, float ElementRadius) const;
 
 public:
 	// constructor

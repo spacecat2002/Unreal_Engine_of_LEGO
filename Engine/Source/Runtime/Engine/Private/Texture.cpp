@@ -94,7 +94,8 @@ UTexture::UTexture(const FObjectInitializer& ObjectInitializer)
 	ChromaKeyThreshold = 1.0f / 255.0f;
 	VirtualTextureStreaming = 0;
 	CompressionYCoCg = 0;
-	
+	Downscale = 0.f;
+	DownscaleOptions = ETextureDownscaleOptions::Default;
 #endif // #if WITH_EDITORONLY_DATA
 
 	if (FApp::CanEverRender() && !IsTemplate())
@@ -111,9 +112,12 @@ void UTexture::ReleaseResource()
 		check( !Texture2D  || !Texture2D->HasPendingUpdate() );
 
 		// Free the resource.
-		ReleaseResourceAndFlush(Resource);
-		delete Resource;
-		Resource = NULL;
+		BeginReleaseResource(Resource);
+		ENQUEUE_RENDER_COMMAND(DeleteResource)([ToDelete = Resource](FRHICommandListImmediate& RHICmdList)
+		{
+			delete ToDelete;
+		});
+		Resource = nullptr;
 	}
 }
 

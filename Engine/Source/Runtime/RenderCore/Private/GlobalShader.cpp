@@ -298,8 +298,7 @@ FGlobalShaderMap::~FGlobalShaderMap()
 
 TShaderRef<FShader> FGlobalShaderMap::GetShader(FShaderType* ShaderType, int32 PermutationId) const
 {
-	const FHashedName HashedFilename(ShaderType->GetShaderFilename());
-	FGlobalShaderMapSection* const* Section = SectionMap.Find(HashedFilename);
+	FGlobalShaderMapSection* const* Section = SectionMap.Find(ShaderType->GetHashedShaderFilename());
 	return Section ? (*Section)->GetShader(ShaderType, PermutationId) : TShaderRef<FShader>();
 }
 
@@ -357,15 +356,15 @@ void FGlobalShaderMap::Empty()
 	}
 }
 
-FShader* FGlobalShaderMap::FindOrAddShader(const FShaderType* ShaderType, FShader* Shader)
+FShader* FGlobalShaderMap::FindOrAddShader(const FShaderType* ShaderType, int32 PermutationId, FShader* Shader)
 {
-	const FHashedName HashedFilename(ShaderType->GetShaderFilename());
+	const FHashedName HashedFilename(ShaderType->GetHashedShaderFilename());
 	FGlobalShaderMapSection*& Section = SectionMap.FindOrAdd(HashedFilename);
 	if (!Section)
 	{
 		Section = new FGlobalShaderMapSection(Platform, HashedFilename);
 	}
-	return Section->GetMutableContent()->FindOrAddShader(Shader);
+	return Section->GetMutableContent()->FindOrAddShader(ShaderType->GetHashedName(), PermutationId, Shader);
 }
 
 FShaderPipeline* FGlobalShaderMap::FindOrAddShaderPipeline(const FShaderPipelineType* ShaderPipelineType, FShaderPipeline* ShaderPipeline)
@@ -380,11 +379,10 @@ FShaderPipeline* FGlobalShaderMap::FindOrAddShaderPipeline(const FShaderPipeline
 
 void FGlobalShaderMap::RemoveShaderTypePermutaion(const FShaderType* Type, int32 PermutationId)
 {
-	const FHashedName HashedFilename(Type->GetShaderFilename());
-	FGlobalShaderMapSection** Section = SectionMap.Find(HashedFilename);
+	FGlobalShaderMapSection** Section = SectionMap.Find(Type->GetHashedShaderFilename());
 	if (Section)
 	{
-		(*Section)->GetMutableContent()->RemoveShaderTypePermutaion(Type, PermutationId);
+		(*Section)->GetMutableContent()->RemoveShaderTypePermutaion(Type->GetHashedName(), PermutationId);
 	}
 }
 
@@ -413,7 +411,7 @@ FGlobalShaderMapSection* FGlobalShaderMap::FindSection(const FHashedName& Hashed
 
 FGlobalShaderMapSection* FGlobalShaderMap::FindOrAddSection(const FShaderType* ShaderType)
 {
-	const FHashedName HashedFilename(ShaderType->GetShaderFilename());
+	const FHashedName HashedFilename(ShaderType->GetHashedShaderFilename());
 	FGlobalShaderMapSection* Section = FindSection(HashedFilename);
 	if(!Section)
 	{

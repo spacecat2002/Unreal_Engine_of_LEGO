@@ -462,7 +462,7 @@ void ReportHang(const TCHAR* ErrorMessage, const uint64* StackFrames, int32 NumS
 /** Implement platform specific static cleanup function */
 void FGenericCrashContext::CleanupPlatformSpecificFiles()
 {
-	FString CrashVideoPath = FPaths::GameLogDir() / TEXT("CrashVideo.avi");
+	FString CrashVideoPath = FPaths::ProjectLogDir() / TEXT("CrashVideo.avi");
 	IFileManager::Get().Delete(*CrashVideoPath);
 }
 

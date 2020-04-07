@@ -46,6 +46,12 @@ FAutoConsoleVariableRef CVarChaosSolverCollisionDefaultPushoutIterations(TEXT("p
 int32 ChaosSolverCleanupCommandsOnDestruction = 1;
 FAutoConsoleVariableRef CVarChaosSolverCleanupCommandsOnDestruction(TEXT("p.Chaos.Solver.CleanupCommandsOnDestruction"), ChaosSolverCleanupCommandsOnDestruction, TEXT("Whether or not to run internal command queue cleanup on solver destruction (0 = no cleanup, >0 = cleanup all commands)"));
 
+int32 ChaosSolverCollisionDeferNarrowPhase = 0;
+FAutoConsoleVariableRef CVarChaosSolverCollisionDeferNarrowPhase(TEXT("p.Chaos.Solver.Collision.DeferNarrowPhase"), ChaosSolverCollisionDeferNarrowPhase, TEXT("Create contacts for all broadphase pairs, perform NarrowPhase later."));
+
+int32 ChaosSolverCollisionUseManifolds = 0;
+FAutoConsoleVariableRef CVarChaosSolverCollisionUseManifolds(TEXT("p.Chaos.Solver.Collision.UseManifolds"), ChaosSolverCollisionUseManifolds, TEXT("Enable/Disable use of manifoldes in collision."));
+
 
 
 namespace Chaos
@@ -68,6 +74,8 @@ namespace Chaos
 		{
 			LLM_SCOPE(ELLMTag::Chaos);
 			UE_LOG(LogPBDRigidsSolver, Verbose, TEXT("AdvanceOneTimeStepTask::DoWork()"));
+
+			MSolver->GetEvolution()->GetRigidClustering().ResetAllClusterBreakings();
 
 			{
 				SCOPE_CYCLE_COUNTER(STAT_UpdateParams);
@@ -145,10 +153,6 @@ namespace Chaos
 				// If time remains, then log why we have lost energy over the timestep.
 				if (TimeRemaining > 0.f)
 				{
-					auto& GeomCollectionParticles = MSolver->GetEvolution()->GetParticles().GetGeometryCollectionParticles();
-					Obj->FieldForcesUpdateCallback(MSolver, GeomCollectionParticles, Forces, Torques, MSolver->GetSolverTime());
-					auto& ClusteredParticles = MSolver->GetEvolution()->GetParticles().GetClusteredParticles();
-					Obj->FieldForcesUpdateCallback(MSolver, ClusteredParticles, Forces, Torques, MSolver->GetSolverTime());
 					if (StepsRemaining == 0)
 					{
 						UE_LOG(LogPBDRigidsSolver, Warning, TEXT("AdvanceOneTimeStepTask::DoWork() - Energy lost over %fs due to too many substeps over large timestep"), TimeRemaining);
@@ -216,6 +220,17 @@ namespace Chaos
 	{
 		UE_LOG(LogPBDRigidsSolver, Verbose, TEXT("PBDRigidsSolver::PBDRigidsSolver()"));
 		Reset();
+
+		MEvolution->SetInternalParticleInitilizationFunction(
+			[this](const Chaos::TGeometryParticleHandle<float, 3>* OldParticle, const Chaos::TGeometryParticleHandle<float, 3>* NewParticle) {
+				if (const TSet<IPhysicsProxyBase*>* Proxies = GetProxies(OldParticle))
+				{
+					for (IPhysicsProxyBase* Proxy : *Proxies)
+					{
+						this->AddParticleToProxy(NewParticle, Proxy);
+					}
+				}
+			});
 	}
 
 	FPBDRigidsSolver::~FPBDRigidsSolver()
@@ -361,7 +376,7 @@ namespace Chaos
 			UE_LOG(LogPBDRigidsSolver, Verbose, TEXT("FPBDRigidsSolver::UnregisterObject() ~ Dequeue"));
 
 				// Generally need to remove stale events for particles that no longer exist
-				Solver->GetEventManager()->ClearEvents<FCollisionEventData>([InProxy]
+				Solver->GetEventManager()->ClearEvents<FCollisionEventData>(EEventType::Collision, [InProxy]
 				(FCollisionEventData& EventDataInOut)
 				{
 					Chaos::FCollisionDataArray const& CollisionData = EventDataInOut.CollisionData.AllCollisionsArray;
@@ -555,13 +570,15 @@ namespace Chaos
 
 	void FPBDRigidsSolver::AdvanceSolverBy(float DeltaTime)
 	{
+		MEvolution->GetCollisionDetector().GetNarrowPhase().GetContext().bDeferUpdate = (ChaosSolverCollisionDeferNarrowPhase != 0);
+		MEvolution->GetCollisionDetector().GetNarrowPhase().GetContext().bAllowManifolds = (ChaosSolverCollisionUseManifolds != 0);
+
 		UE_LOG(LogPBDRigidsSolver, Verbose, TEXT("PBDRigidsSolver::Tick(%3.5f)"), DeltaTime);
 		if (bEnabled)
 		{
 			MLastDt = DeltaTime;
 			AdvanceOneTimeStepTask(this, DeltaTime).DoWork();
 		}
-
 	}
 
 	void FPBDRigidsSolver::SyncEvents_GameThread()
@@ -790,13 +807,21 @@ namespace Chaos
 				if(!bIsSingleThreaded && bIsNew)
 				{
 					const auto* NonFrequentData = Dirty.ParticleData.FindNonFrequentData(*Manager,DataIdx);
-					const FUniqueIdx* UniqueIdx = NonFrequentData ? &NonFrequentData->UniqueIdx : nullptr;
+					const FUniqueIdx* UniqueIdx = NonFrequentData ? &NonFrequentData->UniqueIdx() : nullptr;
 					Proxy->SetHandle(CreateHandleFunc(UniqueIdx));
 				}
 
 				if(RewindData)
 				{
-					RewindData->PushGTDirtyData(*Manager,DataIdx,Dirty);
+					//may want to remove branch by templatizing lambda
+					if(RewindData->IsResim())
+					{
+						RewindData->PushGTDirtyData<true>(*Manager,DataIdx,Dirty);
+					}
+					else
+					{
+						RewindData->PushGTDirtyData<false>(*Manager,DataIdx,Dirty);
+					}
 				}
 
 				Proxy->PushToPhysicsState(*Manager, DataIdx, Dirty, ShapeDirtyData);
@@ -805,7 +830,7 @@ namespace Chaos
 				{
 					auto Handle = Proxy->GetHandle();
 					Handle->GTGeometryParticle() = Proxy->GetParticle();
-					Solver->MParticleToProxy.Add(Handle,Proxy);
+					Solver->AddParticleToProxy(Handle,Proxy);
 					Solver->GetEvolution()->CreateParticle(Handle);
 					Proxy->SetInitialized(true);
 				}
@@ -859,28 +884,33 @@ namespace Chaos
 		TParticleView<TPBDRigidParticles<float, 3>>& ActiveParticles = GetParticles().GetActiveParticlesView();
 		for (Chaos::TPBDRigidParticleHandleImp<float, 3, false>& ActiveObject : ActiveParticles)
 		{
-			IPhysicsProxyBase* Proxy = GetProxy(ActiveObject.Handle());
-			if (ensure(Proxy))
+			if( const TSet<IPhysicsProxyBase*>* Proxies = GetProxies(ActiveObject.Handle()))
 			{
-				switch (ActiveObject.GetParticleType())
+				for (IPhysicsProxyBase* Proxy : *Proxies)
 				{
-				case Chaos::EParticleType::Rigid:
-					((FRigidParticlePhysicsProxy*)(Proxy))->BufferPhysicsResults();
-					break;
-				case Chaos::EParticleType::Kinematic:
-					((FKinematicGeometryParticlePhysicsProxy*)(Proxy))->BufferPhysicsResults();
-					break;
-				case Chaos::EParticleType::Static:
-					((FGeometryParticlePhysicsProxy*)(Proxy))->BufferPhysicsResults();
-					break;
-				case Chaos::EParticleType::GeometryCollection:
-					ActiveGC.AddUnique((FGeometryCollectionPhysicsProxy*)(Proxy));
-					break;
-				case Chaos::EParticleType::Clustered:
-					ActiveGC.AddUnique((FGeometryCollectionPhysicsProxy*)(Proxy));
-					break;
-				default:
-					check(false);
+					if (Proxy != nullptr)
+					{
+						switch (ActiveObject.GetParticleType())
+						{
+						case Chaos::EParticleType::Rigid:
+							((FRigidParticlePhysicsProxy*)(Proxy))->BufferPhysicsResults();
+							break;
+						case Chaos::EParticleType::Kinematic:
+							((FKinematicGeometryParticlePhysicsProxy*)(Proxy))->BufferPhysicsResults();
+							break;
+						case Chaos::EParticleType::Static:
+							((FGeometryParticlePhysicsProxy*)(Proxy))->BufferPhysicsResults();
+							break;
+						case Chaos::EParticleType::GeometryCollection:
+							ActiveGC.AddUnique((FGeometryCollectionPhysicsProxy*)(Proxy));
+							break;
+						case Chaos::EParticleType::Clustered:
+							ActiveGC.AddUnique((FGeometryCollectionPhysicsProxy*)(Proxy));
+							break;
+						default:
+							check(false);
+						}
+					}
 				}
 			}
 		}
@@ -900,28 +930,33 @@ namespace Chaos
 		TParticleView<TPBDRigidParticles<float, 3>>& ActiveParticles = GetParticles().GetActiveParticlesView();
 		for (Chaos::TPBDRigidParticleHandleImp<float, 3, false>& ActiveObject : ActiveParticles)
 		{
-			IPhysicsProxyBase* Proxy = GetProxy(ActiveObject.Handle());
-			if (ensure(Proxy))
+			if (const TSet<IPhysicsProxyBase*>* Proxies = GetProxies(ActiveObject.Handle()))
 			{
-				switch (ActiveObject.GetParticleType())
+				for (IPhysicsProxyBase* Proxy : *Proxies)
 				{
-				case Chaos::EParticleType::Rigid:
-					((FRigidParticlePhysicsProxy*)(Proxy))->FlipBuffer();
-					break;
-				case Chaos::EParticleType::Kinematic:
-					((FKinematicGeometryParticlePhysicsProxy*)(Proxy))->FlipBuffer();
-					break;
-				case Chaos::EParticleType::Static:
-					((FGeometryParticlePhysicsProxy*)(Proxy))->FlipBuffer();
-					break;
-				case Chaos::EParticleType::GeometryCollection:
-					ActiveGC.AddUnique((FGeometryCollectionPhysicsProxy*)(Proxy));
-					break;
-				case Chaos::EParticleType::Clustered:
-					ActiveGC.AddUnique((FGeometryCollectionPhysicsProxy*)(Proxy));
-					break;
-				default:
-					check(false);
+					if (Proxy != nullptr)
+					{
+						switch (ActiveObject.GetParticleType())
+						{
+						case Chaos::EParticleType::Rigid:
+							((FRigidParticlePhysicsProxy*)(Proxy))->FlipBuffer();
+							break;
+						case Chaos::EParticleType::Kinematic:
+							((FKinematicGeometryParticlePhysicsProxy*)(Proxy))->FlipBuffer();
+							break;
+						case Chaos::EParticleType::Static:
+							((FGeometryParticlePhysicsProxy*)(Proxy))->FlipBuffer();
+							break;
+						case Chaos::EParticleType::GeometryCollection:
+							ActiveGC.AddUnique((FGeometryCollectionPhysicsProxy*)(Proxy));
+							break;
+						case Chaos::EParticleType::Clustered:
+							ActiveGC.AddUnique((FGeometryCollectionPhysicsProxy*)(Proxy));
+							break;
+						default:
+							check(false);
+						}
+					}
 				}
 			}
 		}
@@ -946,28 +981,33 @@ namespace Chaos
 		TParticleView<TPBDRigidParticles<float, 3>>& ActiveParticles = GetParticles().GetActiveParticlesView();
 		for (Chaos::TPBDRigidParticleHandleImp<float, 3, false>& ActiveObject : ActiveParticles)
 		{
-			IPhysicsProxyBase* Proxy = GetProxy(ActiveObject.Handle());
-			if (ensure(Proxy))
+			if (const TSet<IPhysicsProxyBase*>* Proxies = GetProxies(ActiveObject.Handle()))
 			{
-				switch (ActiveObject.GetParticleType())
+				for (IPhysicsProxyBase* Proxy : *Proxies)
 				{
-				case Chaos::EParticleType::Rigid:
-					((FRigidParticlePhysicsProxy*)(Proxy))->PullFromPhysicsState();
-					break;
-				case Chaos::EParticleType::Kinematic:
-					((FKinematicGeometryParticlePhysicsProxy*)(Proxy))->PullFromPhysicsState();
-					break;
-				case Chaos::EParticleType::Static:
-					((FGeometryParticlePhysicsProxy*)(Proxy))->PullFromPhysicsState();
-					break;
-				case Chaos::EParticleType::GeometryCollection:
-					ActiveGC.AddUnique((FGeometryCollectionPhysicsProxy*)(Proxy));
-					break;
-				case Chaos::EParticleType::Clustered:
-					ActiveGC.AddUnique((FGeometryCollectionPhysicsProxy*)(Proxy));
-					break;
-				default:
-					check(false);
+					if (Proxy != nullptr)
+					{
+						switch (ActiveObject.GetParticleType())
+						{
+						case Chaos::EParticleType::Rigid:
+							((FRigidParticlePhysicsProxy*)(Proxy))->PullFromPhysicsState();
+							break;
+						case Chaos::EParticleType::Kinematic:
+							((FKinematicGeometryParticlePhysicsProxy*)(Proxy))->PullFromPhysicsState();
+							break;
+						case Chaos::EParticleType::Static:
+							((FGeometryParticlePhysicsProxy*)(Proxy))->PullFromPhysicsState();
+							break;
+						case Chaos::EParticleType::GeometryCollection:
+							ActiveGC.AddUnique((FGeometryCollectionPhysicsProxy*)(Proxy));
+							break;
+						case Chaos::EParticleType::Clustered:
+							ActiveGC.AddUnique((FGeometryCollectionPhysicsProxy*)(Proxy));
+							break;
+						default:
+							check(false);
+						}
+					}
 				}
 			}
 		}
@@ -1039,15 +1079,28 @@ namespace Chaos
 		{
 			QUICK_SCOPE_CYCLE_COUNTER(RecordRewindData);
 
-			int32 DataIdx = MRewindData->PrepareFrameForPTDirty(ActiveParticles.Num());
+			MRewindData->PrepareFrameForPTDirty(ActiveParticles.Num());
 			
+			int32 DataIdx = 0;
 			for(TPBDRigidParticleHandleImp<float,3,false>& ActiveObject : ActiveParticles)
 			{
-				const IPhysicsProxyBase* Proxy = GetProxy(ActiveObject.Handle());
+				if (const TSet<IPhysicsProxyBase*>* Proxies = GetProxies(ActiveObject.Handle()))
 				{
-					if(ActiveObject.GetParticleType() == EParticleType::Rigid)
+					for (IPhysicsProxyBase* Proxy : *Proxies)
 					{
-						MRewindData->PushPTDirtyData(*static_cast<const FRigidParticlePhysicsProxy*>(Proxy)->GetHandle(), DataIdx++);
+
+						if (ActiveObject.GetParticleType() == EParticleType::Rigid)
+						{
+							//may want to remove branch using templates outside loop
+							if (MRewindData->IsResim())
+							{
+								MRewindData->PushPTDirtyData<true>(*static_cast<const FRigidParticlePhysicsProxy*>(Proxy)->GetHandle(), DataIdx++);
+							}
+							else
+							{
+								MRewindData->PushPTDirtyData<false>(*static_cast<const FRigidParticlePhysicsProxy*>(Proxy)->GetHandle(), DataIdx++);
+							}
+						}
 					}
 				}
 			}

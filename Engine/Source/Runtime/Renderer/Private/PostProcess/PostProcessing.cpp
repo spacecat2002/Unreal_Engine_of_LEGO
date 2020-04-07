@@ -1293,6 +1293,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 		FPostprocessContext Context(RHICmdList, CompositeContext.Graph, View);
 		FRenderingCompositeOutputRef BloomOutput;
 		FRenderingCompositeOutputRef DofOutput;
+		FRenderingCompositeOutputRef PostProcessSunShaftAndDof;
 
 		bool bUseAa = View.AntiAliasingMethod == AAM_TemporalAA;
 
@@ -1384,7 +1385,6 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 			// Optional fixed pass processes
 			if (bUsePost && (bUseSun | bUseDof | bUseBloom | bUseVignette | bUseBasicEyeAdaptation | bUseHistogramEyeAdaptation))
 			{
-				FRenderingCompositeOutputRef PostProcessSunShaftAndDof;
 				if (bUseSun || bUseDof)
 				{
 					bool bUseDepthTexture = Context.FinalOutput.GetOutput()->RenderTargetDesc.Format == PF_FloatR11G11B10;
@@ -1470,6 +1470,18 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 							Pass->SetInput(ePId_Input1, PostProcessNear);
 							PostProcessDofBlur = FRenderingCompositeOutputRef(Pass);
 							DofOutput = PostProcessDofBlur;
+						}
+
+						if (bUseTonemapperFilm)
+						{
+							FRenderingCompositeOutputRef PostProcessIntegrateDof;
+							{
+								FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassIntegrateDofES2(FinalOutputViewRect.Size()));
+								Pass->SetInput(ePId_Input0, Context.FinalOutput);
+								Pass->SetInput(ePId_Input1, DofOutput);
+								Pass->SetInput(ePId_Input2, PostProcessSunShaftAndDof);
+								Context.FinalOutput = FRenderingCompositeOutputRef(Pass);
+							}
 						}
 					}
 					else
@@ -1697,6 +1709,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 				}
 				PostProcessTonemap->SetInput(ePId_Input2, DofOutput);
 				PostProcessTonemap->SetInput(ePId_Input3, PostProcessEyeAdaptation);
+				PostProcessTonemap->SetInput(ePId_Input4, PostProcessSunShaftAndDof);
 
 				Context.FinalOutput = FRenderingCompositeOutputRef(PostProcessTonemap);
 

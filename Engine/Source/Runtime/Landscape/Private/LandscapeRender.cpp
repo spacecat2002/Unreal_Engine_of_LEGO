@@ -2025,7 +2025,7 @@ void FLandscapeComponentSceneProxy::OnTransformChanged()
 	if (NormalmapTexture)
 	{
 		LandscapeParams.NormalmapTexture = NormalmapTexture->TextureReference.TextureReferenceRHI;
-		LandscapeParams.NormalmapTextureSampler = NormalmapTexture->Resource->SamplerStateRHI;
+		LandscapeParams.NormalmapTextureSampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
 	}
 	else
 	{
@@ -2045,37 +2045,6 @@ void FLandscapeComponentSceneProxy::OnTransformChanged()
 
 	// Recache mesh draw commands for changed uniform buffers
 	GetScene().UpdateCachedRenderStates(this);
-}
-
-float FLandscapeComponentSceneProxy::GetComponentScreenSize(const FSceneView* View, const FVector& Origin, float MaxExtend, float ElementRadius) const
-{
-	float SquaredScreenRadius = 0.f;
-
-	if (!View->ViewMatrices.IsPerspectiveProjection())
-	{
-		FMatrix ProjMatrix = View->ViewMatrices.GetProjectionMatrix();
-		const float ScreenMultiple = FMath::Max(0.5f * ProjMatrix.M[0][0], 0.5f * ProjMatrix.M[1][1]);
-		SquaredScreenRadius = FMath::Square(ScreenMultiple * ElementRadius);
-	}
-	else
-	{
-		FVector CameraOrigin = View->ViewMatrices.GetViewOrigin();
-		FMatrix ProjMatrix = View->ViewMatrices.GetProjectionMatrix();
-
-		const FVector OriginToCamera = (CameraOrigin - Origin).GetAbs();
-		const FVector ClosestPoint = OriginToCamera.ComponentMin(FVector(MaxExtend));
-		const float DistSquared = (OriginToCamera - ClosestPoint).SizeSquared();
-
-		// Get projection multiple accounting for view scaling.
-		const float ScreenMultiple = FMath::Max(0.5f * ProjMatrix.M[0][0], 0.5f * ProjMatrix.M[1][1]);
-
-		// Calculate screen-space projected radius
-		SquaredScreenRadius = FMath::Square(ScreenMultiple * ElementRadius) / FMath::Max(1.0f, DistSquared);
-	}
-
-	// If we hit NaN check see UE-64538
-	check(FMath::IsFinite(SquaredScreenRadius));
-	return SquaredScreenRadius * 2.0f;
 }
 
 /** Creates a mesh batch for virtual texture rendering. Will render a simple fixed grid with combined subsections. */
@@ -2278,24 +2247,6 @@ int8 FLandscapeComponentSceneProxy::GetLODFromScreenSize(float InScreenSizeSquar
 	float FractionalLOD;
 
 	return FLandscapeRenderSystem::GetLODFromScreenSize(LODSettings, InScreenSizeSquared, InViewLODScale, FractionalLOD);
-}
-
-FVector4 FLandscapeComponentSceneProxy::GetShaderLODBias() const
-{
-	return FVector4(
-		0.0f, // unused
-		0.0f, // unused
-		((FTexture2DResource*)HeightmapTexture->Resource)->GetCurrentFirstMip(),
-		XYOffsetmapTexture ? ((FTexture2DResource*)XYOffsetmapTexture->Resource)->GetCurrentFirstMip() : 0.0f);
-}
-
-FVector4 FLandscapeComponentSceneProxy::GetShaderLODValues(int32 InSubsectionSizeVerts, int8 InBatchElementCurrentLOD)
-{
-	return FVector4(
-		InBatchElementCurrentLOD,
-		0.0f, // unused
-		(float)((InSubsectionSizeVerts >> InBatchElementCurrentLOD) - 1),
-		1.f / (float)((InSubsectionSizeVerts >> InBatchElementCurrentLOD) - 1));
 }
 
 namespace

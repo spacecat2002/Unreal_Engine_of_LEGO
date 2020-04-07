@@ -129,7 +129,10 @@ UnrealEngine.cpp: Implements the UEngine class and helpers.
 #include "HAL/LowLevelMemTracker.h"
 #include "HAL/PlatformApplicationMisc.h"
 #include "DynamicResolutionState.h"
+
+#define CHAOS_INCLUDE_LEVEL_1
 #include "Chaos/TriangleMeshImplicitObject.h"
+#undef CHAOS_INCLUDE_LEVEL_1
 
 #include "Particles/Spawn/ParticleModuleSpawn.h"
 #include "Particles/TypeData/ParticleModuleTypeDataMesh.h"
@@ -395,6 +398,11 @@ ENGINE_API FString GPlayInEditorContextString(TEXT("invalid"));
 ENGINE_API void UpdatePlayInEditorWorldDebugString(const FWorldContext* WorldContext)
 {
 #if WITH_EDITOR
+	if (!GIsEditor)
+	{
+		return;
+	}
+
 	if (WorldContext == nullptr)
 	{
 		ensure(GPlayInEditorID == INDEX_NONE);
@@ -1772,21 +1780,11 @@ void UEngine::OnExternalUIChange(bool bInIsOpening)
 	FSlateApplication::Get().ExternalUIChange(bInIsOpening);
 }
 
-void UEngine::ShutdownAudioDeviceManager()
+void UEngine::ReleaseAudioDeviceManager()
 {
-	// Shutdown the main audio device in the UEEngine
-	if (AudioDeviceManager)
-	{
-		FAudioCommandFence Fence;
-		Fence.BeginFence();
-		Fence.Wait();
-
-		FAudioThread::StopAudioThread();
-
-		MainAudioDeviceHandle.Reset();
-		delete AudioDeviceManager;
-		AudioDeviceManager = NULL;
-	}
+	// Release the main audio device handle.
+	MainAudioDeviceHandle.Reset();
+	AudioDeviceManager = nullptr;
 }
 
 void UEngine::PreExit()
@@ -2280,17 +2278,6 @@ void UEngine::UpdateTimecode()
 
 void UEngine::ParseCommandline()
 {
-	// If dedicated server, the -nosound, or -benchmark parameters are used, disable sound.
-	if(FParse::Param(FCommandLine::Get(),TEXT("nosound")) || FApp::IsBenchmarking() || IsRunningDedicatedServer() || (IsRunningCommandlet() && !IsAllowCommandletAudio()))
-	{
-		bUseSound = false;
-	}
-
-	if (FParse::Param(FCommandLine::Get(), TEXT("enablesound")))
-	{
-		bUseSound = true;
-	}
-
 	if( FParse::Param( FCommandLine::Get(), TEXT("noailogging")) )
 	{
 		bDisableAILogging = true;
@@ -2767,7 +2754,7 @@ void UEngine::FinishDestroy()
 	{
 		// shut down all subsystems.
 		GEngine = NULL;
-		ShutdownAudioDeviceManager();
+		ReleaseAudioDeviceManager();
 
 		FURL::StaticExit();
 	}
@@ -2924,23 +2911,19 @@ FAudioDeviceHandle UEngine::GetActiveAudioDevice()
 
 void UEngine::InitializeAudioDeviceManager()
 {
-	if (AudioDeviceManager == nullptr && bUseSound)
+	FAudioDeviceManager::Initialize();
+
+	AudioDeviceManager = FAudioDeviceManager::Get();
+
+	if (AudioDeviceManager)
 	{
-		AudioDeviceManager = new FAudioDeviceManager();
-		if (AudioDeviceManager->Initialize())
-		{
-			MainAudioDeviceHandle = AudioDeviceManager->GetMainAudioDeviceHandle();
-		}
-		else
-		{
-			ShutdownAudioDeviceManager();
-		}
+		MainAudioDeviceHandle = AudioDeviceManager->GetMainAudioDeviceHandle();
 	}
 }
 
 bool UEngine::UseSound() const
 {
-	return (bUseSound && AudioDeviceManager != nullptr);
+	return AudioDeviceManager != nullptr;
 }
 /**
 * A fake stereo rendering device used to test stereo rendering without an attached device.
