@@ -8,7 +8,7 @@ public class IntelISPCTexComp : ModuleRules
 	{
 		Type = ModuleType.External;
 
-		string LibraryPath = Target.UEThirdPartySourceDirectory + "IntelISPCTexComp/ispc_texcomp/";
+		string LibraryPath = Target.UEThirdPartySourceDirectory + "Intel/ISPCTexComp/ispc_texcomp/";
         string BinaryFolder = Target.UEThirdPartyBinariesDirectory + "IntelISPCTexComp/";
 		PublicIncludePaths.Add(LibraryPath);
 

@@ -10,10 +10,10 @@ public class IntelOIDN : ModuleRules
 
         if (Target.Platform.IsInGroup(UnrealPlatformGroup.Windows) && Target.WindowsPlatform.Architecture == WindowsArchitecture.x64)
         {
-            PublicSystemIncludePaths.Add(Target.UEThirdPartySourceDirectory + "IntelOIDN/include/");
-            PublicSystemLibraryPaths.Add(Target.UEThirdPartySourceDirectory + "IntelOIDN/lib/");
-            PublicAdditionalLibraries.Add(Target.UEThirdPartySourceDirectory + "IntelOIDN/lib/OpenImageDenoise.lib");
-			RuntimeDependencies.Add("$(EngineDir)/Binaries/Win64/OpenImageDenoise.dll", Target.UEThirdPartySourceDirectory + "IntelOIDN/bin/OpenImageDenoise.dll");
+            PublicSystemIncludePaths.Add(Target.UEThirdPartySourceDirectory + "Intel/OIDN/include/");
+            PublicSystemLibraryPaths.Add(Target.UEThirdPartySourceDirectory + "Intel/OIDN/lib/");
+            PublicAdditionalLibraries.Add(Target.UEThirdPartySourceDirectory + "Intel/OIDN/lib/OpenImageDenoise.lib");
+			RuntimeDependencies.Add("$(EngineDir)/Binaries/Win64/OpenImageDenoise.dll", Target.UEThirdPartySourceDirectory + "Intel/OIDN/bin/OpenImageDenoise.dll");
 
 			PublicDefinitions.Add("WITH_INTELOIDN=1");
         }
