@@ -1049,18 +1049,6 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 						const FPrimitiveSceneProxy* SceneProxy = MeshBatchJob.SceneProxy;
 						const uint32 InstanceIndex = MeshBatchJob.InstanceIndex;
 						FDynamicRayTracingMeshCommandContext CommandContext(ReferenceView.DynamicRayTracingMeshCommandStorageParallel[Batch], ReferenceView.VisibleRayTracingMeshCommandsParallel[Batch], SegmentIndex, InstanceIndex);
-			ReferenceView.AddRayTracingMeshBatchTaskList.Add(FFunctionGraphTask::CreateAndDispatchWhenReady(
-				[&ReferenceView, Scene = this->Scene, Batch, BatchStart, BatchEnd]()
-			{
-				for (uint32 Index = BatchStart; Index < BatchEnd; Index++)
-				{
-					FRayTracingMeshBatchWorkItem& MeshBatchJob = ReferenceView.AddRayTracingMeshBatchData[Index];
-					for (uint32 SegmentIndex = 0; SegmentIndex < (uint32) MeshBatchJob.MeshBatches.Num(); SegmentIndex++)
-					{
-						FMeshBatch& MeshBatch = MeshBatchJob.MeshBatches[SegmentIndex];
-						const FPrimitiveSceneProxy* SceneProxy = MeshBatchJob.SceneProxy;
-						const uint32 InstanceIndex = MeshBatchJob.InstanceIndex;
-						FDynamicRayTracingMeshCommandContext CommandContext(ReferenceView.DynamicRayTracingMeshCommandStorageParallel[Batch], ReferenceView.VisibleRayTracingMeshCommandsParallel[Batch], SegmentIndex, InstanceIndex);
 						FMeshPassProcessorRenderState PassDrawRenderState(Scene->UniformBuffers.ViewUniformBuffer, Scene->UniformBuffers.OpaqueBasePassUniformBuffer);
 						FRayTracingMeshProcessor RayTracingMeshProcessor(&CommandContext, Scene, &ReferenceView, PassDrawRenderState);
 						RayTracingMeshProcessor.AddMeshBatch(MeshBatch, 1, SceneProxy);
