@@ -194,7 +194,7 @@ protected:
 		UInteractiveToolPropertySet* CDO = GetMutableDefault<UInteractiveToolPropertySet>(GetClass());
 		if (CDO->CachedProperties == nullptr)
 		{
-			CDO->CachedProperties = NewObject<UInteractiveToolPropertySet>(GetTransientPackage(), GetClass());
+			CDO->CachedProperties = NewObject<UInteractiveToolPropertySet>((UObject*)GetTransientPackage(), GetClass());
 		}
 		return CDO->CachedProperties;
 	}
