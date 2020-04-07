@@ -271,7 +271,7 @@ class INTERACTIVETOOLSFRAMEWORK_API UInteractiveTool : public UObject, public II
 	GENERATED_BODY()
 
 public:
-	UInteractiveTool(const FObjectInitializer&);
+	UInteractiveTool();
 
 	/**
 	 * Called by ToolManager to initialize the Tool *after* ToolBuilder::BuildTool() has been called

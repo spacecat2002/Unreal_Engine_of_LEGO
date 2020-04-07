@@ -17,7 +17,7 @@ void UInteractiveToolPropertySet::PostEditChangeProperty(FPropertyChangedEvent& 
 }
 #endif
 
-UInteractiveTool::UInteractiveTool(const FObjectInitializer&)
+UInteractiveTool::UInteractiveTool()
 {
 	// tools need to be transactional or undo/redo won't work on their uproperties
 	SetFlags(RF_Transactional);
