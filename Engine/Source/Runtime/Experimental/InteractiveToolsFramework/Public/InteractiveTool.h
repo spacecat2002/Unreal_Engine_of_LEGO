@@ -7,6 +7,7 @@
 #include "InteractiveToolActionSet.h"
 #include "Shader.h"
 #include "ToolContextInterfaces.h"
+#include "UObject/UObjectGlobals.h"
 #include "InteractiveTool.generated.h"
 
 class UInteractiveToolManager;
@@ -188,6 +189,16 @@ protected:
 		return CastChecked<ObjType>(CDO->CachedProperties);
 	}
 
+	UInteractiveToolPropertySet* GetDynamicPropertyCache()
+	{
+		UInteractiveToolPropertySet* CDO = GetMutableDefault<UInteractiveToolPropertySet>(GetClass());
+		if (CDO->CachedProperties == nullptr)
+		{
+			CDO->CachedProperties = NewObject<UInteractiveToolPropertySet>(GetTransientPackage(), GetClass());
+		}
+		return CDO->CachedProperties;
+	}
+
 	/**
 	 * Subclass this to save and restore in a single function. Use the SaveRestoryProperty function for each member:
 	 *   UMyPropertySetSubclass* PropertyCache = GetPropertyCache<UMyPropertySetSubclass>();
@@ -260,7 +271,7 @@ class INTERACTIVETOOLSFRAMEWORK_API UInteractiveTool : public UObject, public II
 	GENERATED_BODY()
 
 public:
-	UInteractiveTool();
+	UInteractiveTool(const FObjectInitializer&);
 
 	/**
 	 * Called by ToolManager to initialize the Tool *after* ToolBuilder::BuildTool() has been called
