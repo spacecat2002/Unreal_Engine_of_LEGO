@@ -28,6 +28,8 @@
 #include "Logging/TokenizedMessage.h"
 #include "Logging/MessageLog.h"
 #include "Misc/UObjectToken.h"
+
+#define CHAOS_INCLUDE_LEVEL_1
 #include "ChaosCheck.h"
 #include "Chaos/Capsule.h"
 #include "Chaos/Convex.h"
@@ -43,6 +45,7 @@
 #if WITH_CHAOS
 #include "Chaos/ParticleHandle.h"
 #endif // WITH_CHAOS
+#undef CHAOS_INCLUDE_LEVEL_1
 
 #if PHYSICS_INTERFACE_PHYSX
 	#include "PhysXPublic.h"
@@ -908,7 +911,7 @@ void FBodyInstance::UpdatePhysicsFilterData()
 
 #if WITH_CHAOS
 				// If this shape shouldn't collide in the sim we disable it here until we have more support.
-				Shape.Shape->SetDisable(!CollisionEnabledHasPhysics(GetCollisionEnabled()));
+				Shape.Shape->SetSimEnabled(CollisionEnabledHasPhysics(GetCollisionEnabled()));
 #endif
 
 				// Apply new collision settings to this shape
@@ -1238,7 +1241,7 @@ void FInitBodiesHelperBase::InitBodies()
 							{
 								for(int32 ShapeIndex = 0; ShapeIndex < NumShapes; ++ShapeIndex)
 								{
-									ActorHandle->SetShapeCollisionDisable(ShapeIndex, true);
+									ActorHandle->SetShapeSimCollisionEnabled(ShapeIndex, false);
 								}
 							}
 							if (BI->BodySetup.IsValid())
