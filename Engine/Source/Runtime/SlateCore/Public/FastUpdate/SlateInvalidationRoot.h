@@ -90,6 +90,7 @@ protected:
 
 	void SetInvalidationRootWidget(SWidget& InInvalidationRootWidget) { InvalidationRootWidget = &InInvalidationRootWidget; }
 	void SetInvalidationRootHittestGrid(FHittestGrid& InHittestGrid) { RootHittestGrid = &InHittestGrid; }
+	int32 GetCachedMaxLayerId() const { return CachedMaxLayerId; }
 
 	SLATECORE_API bool ProcessInvalidation();
 

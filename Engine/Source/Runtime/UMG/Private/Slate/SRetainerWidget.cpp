@@ -524,7 +524,7 @@ int32 SRetainerWidget::OnPaint(const FPaintArgs& Args, const FGeometry& Allotted
 		// add our widgets to the root hit test grid
 		Context.PaintArgs->RootGrid.AppendGrid(HittestGrid);
 
-		return Context.IncomingLayerId;
+		return GetCachedMaxLayerId();
 	}
 	else
 	{
