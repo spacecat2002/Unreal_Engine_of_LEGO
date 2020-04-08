@@ -27,6 +27,10 @@
 #include "Misc/Paths.h"
 #include "Misc/PackageName.h"
 
+#if WITH_CHAOS
+#include "Chaos/PhysicalMaterials.h"
+#endif
+
 #endif
 
 DEFINE_LOG_CATEGORY_STATIC(LogPhysicalMaterialMask, Log, All);
@@ -93,14 +97,21 @@ UPhysicalMaterialMask::UPhysicalMaterialMask(const FObjectInitializer& ObjectIni
 {
 }
 
+UPhysicalMaterialMask::UPhysicalMaterialMask(FVTableHelper& Helper)
+	: Super(Helper)
+{
+}
+
+UPhysicalMaterialMask::~UPhysicalMaterialMask() = default;
+
 #if WITH_EDITOR
 
 void UPhysicalMaterialMask::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
 #if WITH_CHAOS
-	if (MaterialMaskHandle.IsValid())
+	if (MaterialMaskHandle && MaterialMaskHandle->IsValid())
 	{
-		FPhysicsInterface::UpdateMaterialMask(MaterialMaskHandle, this);
+		FPhysicsInterface::UpdateMaterialMask(*MaterialMaskHandle, this);
 	}
 #endif
 
@@ -136,7 +147,10 @@ void UPhysicalMaterialMask::PostLoad()
 void UPhysicalMaterialMask::FinishDestroy()
 {
 #if WITH_CHAOS
-	FPhysicsInterface::ReleaseMaterialMask(MaterialMaskHandle);
+	if(MaterialMaskHandle)
+	{
+		FPhysicsInterface::ReleaseMaterialMask(*MaterialMaskHandle);
+	}
 #endif
 	Super::FinishDestroy();
 }
@@ -228,15 +242,21 @@ void UPhysicalMaterialMask::DumpMaskData()
 
 FPhysicsMaterialMaskHandle& UPhysicalMaterialMask::GetPhysicsMaterialMask()
 {
-	if (!MaterialMaskHandle.IsValid())
+	if(!MaterialMaskHandle)
 	{
-		MaterialMaskHandle = FPhysicsInterface::CreateMaterialMask(this);
-		check(MaterialMaskHandle.IsValid());
-
-		FPhysicsInterface::UpdateMaterialMask(MaterialMaskHandle, this);
+		//need to use ptr to avoid polluting engine headers
+		MaterialMaskHandle = MakeUnique<FPhysicsMaterialMaskHandle>();
 	}
 
-	return MaterialMaskHandle;
+	if (!MaterialMaskHandle->IsValid())
+	{
+		*MaterialMaskHandle = FPhysicsInterface::CreateMaterialMask(this);
+		check(MaterialMaskHandle->IsValid());
+
+		FPhysicsInterface::UpdateMaterialMask(*MaterialMaskHandle, this);
+	}
+
+	return *MaterialMaskHandle;
 }
 
 #endif
