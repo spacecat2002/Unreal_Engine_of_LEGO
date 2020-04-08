@@ -89,6 +89,12 @@ DECLARE_MEMORY_STAT(TEXT("Total Used Video Memory"), STAT_D3D12RayTracingUsedVid
 DECLARE_CYCLE_STAT(TEXT("RTPSO Compile Shader"), STAT_RTPSO_CompileShader, STATGROUP_D3D12RayTracing);
 DECLARE_CYCLE_STAT(TEXT("RTPSO Create Pipeline"), STAT_RTPSO_CreatePipeline, STATGROUP_D3D12RayTracing);
 
+DECLARE_CYCLE_STAT(TEXT("SetRayTracingHitGroups"), STAT_D3D12SetRayTracingHitGroups, STATGROUP_D3D12RayTracing);
+DECLARE_CYCLE_STAT(TEXT("CreateShaderTable"), STAT_D3D12CreateShaderTable, STATGROUP_D3D12RayTracing);
+DECLARE_CYCLE_STAT(TEXT("BuildTopLevel"), STAT_D3D12BuildTLAS, STATGROUP_D3D12RayTracing);
+DECLARE_CYCLE_STAT(TEXT("BuildBottomLevel"), STAT_D3D12BuildBLAS, STATGROUP_D3D12RayTracing);
+DECLARE_CYCLE_STAT(TEXT("DispatchRays"), STAT_D3D12DispatchRays, STATGROUP_D3D12RayTracing);
+
 // Built-in local root parameters that are always bound to all hit shaders
 struct FHitGroupSystemParameters
 {
@@ -2149,6 +2155,7 @@ static void CreateAccelerationStructureBuffers(TRefCountPtr<FD3D12MemBuffer>& Ac
 void FD3D12RayTracingGeometry::BuildAccelerationStructure(FD3D12CommandContext& CommandContext, EAccelerationStructureBuildMode BuildMode)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(BuildAccelerationStructure_BottomLevel);
+	SCOPE_CYCLE_COUNTER(STAT_D3D12BuildBLAS);
 
 	const bool bIsUpdate = BuildMode == EAccelerationStructureBuildMode::Update;
 	static constexpr uint32 IndicesPerPrimitive = 3; // Only triangle meshes are supported
@@ -2488,6 +2495,7 @@ FD3D12RayTracingScene::~FD3D12RayTracingScene()
 void FD3D12RayTracingScene::BuildAccelerationStructure(FD3D12CommandContext& CommandContext, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS BuildFlags)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(BuildAccelerationStructure_TopLevel);
+	SCOPE_CYCLE_COUNTER(STAT_D3D12BuildTLAS);
 
 	TRefCountPtr<FD3D12StructuredBuffer> InstanceBuffer;
 	TRefCountPtr<FD3D12MemBuffer> ScratchBuffer;
@@ -2641,7 +2649,7 @@ void FD3D12RayTracingScene::BuildAccelerationStructure(FD3D12CommandContext& Com
 				MappedData[DxrInstanceIndex++] = InstanceDesc;
 			}
 
-			TotalPrimitiveCount += Geometry->TotalPrimitiveCount * NumTransforms;
+			TotalPrimitiveCount += uint64(Geometry->TotalPrimitiveCount) * NumTransforms;
 		}
 
 		Adapter->GetOwningRHI()->UnlockBuffer(nullptr, InstanceBuffer.GetReference(), InstanceBuffer->GetUsage());
@@ -2753,6 +2761,7 @@ FD3D12RayTracingShaderTable* FD3D12RayTracingScene::FindOrCreateShaderTable(cons
 	}
 
 	TRACE_CPUPROFILER_EVENT_SCOPE(FindOrCreateShaderTable);
+	SCOPE_CYCLE_COUNTER(STAT_D3D12CreateShaderTable);
 
 	FD3D12RayTracingShaderTable* CreatedShaderTable = new FD3D12RayTracingShaderTable();
 	ID3D12Device5* RayTracingDevice = Device->GetRayTracingDevice();
@@ -3368,6 +3377,8 @@ static void DispatchRays(FD3D12CommandContext& CommandContext,
 	FD3D12RayTracingShaderTable* OptShaderTable,
 	const D3D12_DISPATCH_RAYS_DESC& DispatchDesc)
 {
+	 SCOPE_CYCLE_COUNTER(STAT_D3D12DispatchRays);
+
 	// Setup state for RT dispatch
 	
 	// #dxr_todo UE-72158: RT and non-RT descriptors should use the same global heap that's dynamically sub-allocated.
@@ -3599,6 +3610,7 @@ void FD3D12CommandContext::RHISetRayTracingHitGroups(
 	uint32 NumBindings, const FRayTracingLocalShaderBindings* Bindings)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(SetRayTracingHitGroups);
+	SCOPE_CYCLE_COUNTER(STAT_D3D12SetRayTracingHitGroups);
 
 	FD3D12RayTracingScene* Scene = FD3D12DynamicRHI::ResourceCast(InScene);
 	FD3D12RayTracingPipelineState* Pipeline = FD3D12DynamicRHI::ResourceCast(InPipeline);
