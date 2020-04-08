@@ -6,6 +6,7 @@
 #include "Containers/ContainerAllocationPolicies.h"
 #include "Serialization/MemoryImageWriter.h"
 #include "Serialization/MemoryLayout.h"
+#include "Serialization/MemoryImageWriter.h"
 #include "Misc/AssertionMacros.h"
 #include "HAL/UnrealMemory.h"
 #include "Math/UnrealMathUtility.h"
