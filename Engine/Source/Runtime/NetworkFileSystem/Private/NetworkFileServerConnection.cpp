@@ -219,7 +219,7 @@ FString FNetworkFileServerClientConnection::FixupSandboxPathForClient(const FStr
 	return Fixed;
 }
 
-/*void FNetworkFileServerClientConnection::ConvertServerFilenameToClientFilename(FString& FilenameToConvert)
+static void ConvertServerFilenameToClientFilename(FString& FilenameToConvert, const FString& ConnectedEngineDir, const FString& ConnectedProjectDir)
 {
 
 	if (FilenameToConvert.StartsWith(FPaths::EngineDir()))
@@ -241,7 +241,7 @@ FString FNetworkFileServerClientConnection::FixupSandboxPathForClient(const FStr
 			FilenameToConvert = FilenameToConvert.Replace(*(FPaths::ProjectDir()), *ConnectedProjectDir);
 	}
 #endif
-}*/
+}
 
 static FCriticalSection SocketCriticalSection;
 
@@ -351,8 +351,8 @@ bool FNetworkFileServerClientConnection::ProcessPayload(FArchive& Ar)
 			break;
 
 		case NFS_Messages::SyncFile:
-			 ProcessSyncFile(Ar, Out);
-			 bSendUnsolicitedFiles = true;
+			ProcessSyncFile(Ar, Out);
+			bSendUnsolicitedFiles = true;
 			break;
 
 		case NFS_Messages::RecompileShaders:
@@ -408,9 +408,10 @@ bool FNetworkFileServerClientConnection::ProcessPayload(FArchive& Ar)
 			for (int32 Index = 0; Index < NumUnsolictedFiles; Index++)
 			{
 				FBufferArchive OutUnsolicitedFile;
-
 				ConvertLocalFilenameToServerFilename(UnsolictedFiles[Index]);
-				PackageFile(UnsolictedFiles[Index], OutUnsolicitedFile);
+				FString TargetFilename = UnsolictedFiles[Index];
+				ConvertServerFilenameToClientFilename(TargetFilename, ConnectedEngineDir, ConnectedProjectDir);
+				PackageFile(UnsolictedFiles[Index], TargetFilename, OutUnsolicitedFile);
 
 				UE_LOG(LogFileServer, Display, TEXT("Returning unsolicited file %s with %d bytes"), *UnsolictedFiles[Index], OutUnsolicitedFile.Num());
 
@@ -819,10 +820,13 @@ bool FNetworkFileServerClientConnection::ProcessGetFileList( FArchive& In, FArch
 	FString EnginePluginsRelativePath;
 	FString ProjectPluginsRelativePath;
 	TArray<FString> RootDirectories;
+	TMap<FString,FString> CustomPlatformData;
+
 	
 	EConnectionFlags ConnectionFlags;
 
 	FString ClientVersionInfo;
+	FString TargetAddress;
 
 	In << TargetPlatformNames;
 	In << GameName;
@@ -835,6 +839,8 @@ bool FNetworkFileServerClientConnection::ProcessGetFileList( FArchive& In, FArch
 	In << RootDirectories;
 	In << ConnectionFlags;
 	In << ClientVersionInfo;
+	In << TargetAddress;
+	In << CustomPlatformData;
 
 	if ( NetworkFileDelegates->NewConnectionDelegate.IsBound() )
 	{
@@ -853,6 +859,10 @@ bool FNetworkFileServerClientConnection::ProcessGetFileList( FArchive& In, FArch
 	const bool bIsPrecookedIterativeRequest = (ConnectionFlags & EConnectionFlags::PreCookedIterative) == EConnectionFlags::PreCookedIterative;
 
 	ConnectedPlatformName = TEXT("");
+	ConnectedTargetPlatform = nullptr;
+	ConnectedIPAddress = TEXT("");
+	ConnectedTargetCustomData.Reset();
+
 
 	// if we didn't find one (and this is a dumb server - no active platforms), then just use what was sent
 	if (ActiveTargetPlatforms.Num() == 0)
@@ -875,6 +885,9 @@ bool FNetworkFileServerClientConnection::ProcessGetFileList( FArchive& In, FArch
 				{
 					bSendLowerCase = ActiveTargetPlatforms[ActiveTPIndex]->SendLowerCaseFilePaths();
 					ConnectedPlatformName = ActiveTargetPlatforms[ActiveTPIndex]->PlatformName();
+					ConnectedTargetPlatform = ActiveTargetPlatforms[ActiveTPIndex];
+					ConnectedIPAddress = TargetAddress;
+					ConnectedTargetCustomData = MoveTemp(CustomPlatformData);
 					break;
 				}
 			}
@@ -1027,7 +1040,7 @@ bool FNetworkFileServerClientConnection::ProcessGetFileList( FArchive& In, FArch
 		}
 
 		if (!bIsSubDirOfOtherRootDir)
-			Sandbox->IterateDirectory(*RootDirectories[DirIndex], Visitor);
+		Sandbox->IterateDirectory(*RootDirectories[DirIndex], Visitor);
 	}
 
 	// Traverse plugin directories
@@ -1178,10 +1191,22 @@ void FNetworkFileServerClientConnection::ProcessHeartbeat( FArchive& In, FArchiv
 /* FStreamingNetworkFileServerConnection callbacks
  *****************************************************************************/
 
-bool FNetworkFileServerClientConnection::PackageFile( FString& Filename, FArchive& Out )
+bool FNetworkFileServerClientConnection::PackageFile( FString& Filename, FString& TargetFilename, FArchive& Out )
 {
 	// get file timestamp and send it to client
 	FDateTime ServerTimeStamp = Sandbox->GetTimeStamp(*Filename);
+
+	FString AbsHostFile = Sandbox->ConvertToAbsolutePathForExternalAppForRead(*Filename);
+	if (ConnectedTargetPlatform != nullptr && ConnectedTargetPlatform->CopyFileToTarget(ConnectedIPAddress, AbsHostFile, TargetFilename, ConnectedTargetCustomData))
+	{
+		Out << Filename;
+		Out << ServerTimeStamp;
+		// MAX_uint64 here indicates that it was copied already
+		uint64 FileSize = MAX_uint64;
+		Out << FileSize;
+
+		return true;
+	}
 
 	TArray<uint8> Contents;
 	// open file
@@ -1261,6 +1286,7 @@ bool FNetworkFileServerClientConnection::ProcessSyncFile( FArchive& In, FArchive
 	
 	UE_LOG(LogFileServer, Verbose, TEXT("Try sync file %s"), *Filename);
 
+	FString ClientFilename = Filename;
 	ConvertClientFilenameToServerFilename(Filename);
 	
 	//FString AbsFile(FString(*Sandbox->ConvertToAbsolutePathForExternalApp(*Filename)).MakeStandardFilename());
@@ -1282,7 +1308,7 @@ bool FNetworkFileServerClientConnection::ProcessSyncFile( FArchive& In, FArchive
 		}
 	}
 
-	bool bRetVal = PackageFile(Filename, Out);
+	bool bRetVal = PackageFile(Filename, ClientFilename, Out);
 
 	PackageFileTime += 1000.0f * float(FPlatformTime::Seconds() - StartTime);
 
