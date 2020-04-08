@@ -12,9 +12,10 @@
 #include "Components/PrimitiveComponent.h"
 #include "Serialization/BulkData.h"
 
-#define TEMP_HEADER_CHAOS_LEVEL_1
+#if WITH_CHAOS
+//TODO: remove this, just putting back in to unblock CIS
 #include "Chaos/HeightField.h"
-#undef TEMP_HEADER_CHAOS_LEVEL_1
+#endif
 
 #include "LandscapeHeightfieldCollisionComponent.generated.h"
 
@@ -28,6 +29,11 @@ struct FConvexVolume;
 struct FEngineShowFlags;
 struct FNavigableGeometryExport;
 
+namespace Chaos
+{
+class FHeightField;
+}
+
 #if WITH_PHYSX
 namespace physx
 {
@@ -40,6 +46,9 @@ UCLASS(MinimalAPI, Within=LandscapeProxy)
 class ULandscapeHeightfieldCollisionComponent : public UPrimitiveComponent
 {
 	GENERATED_UCLASS_BODY()
+
+	ULandscapeHeightfieldCollisionComponent(FVTableHelper& Helper);
+	virtual ~ULandscapeHeightfieldCollisionComponent();
 
 	/** List of layers painted on this component. Matches the WeightmapLayerAllocations array in the LandscapeComponent. */
 	UPROPERTY()
