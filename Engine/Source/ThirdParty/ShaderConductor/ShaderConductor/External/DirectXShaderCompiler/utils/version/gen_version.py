@@ -38,19 +38,19 @@ def get_output_of(cmd):
 def get_last_commit_sha():
     try:
         return get_output_of([ "git", "describe", "--always", "--dirty" ])
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, FileNotFoundError):
         return "00000000"
 
 def get_current_branch():
     try:
         return get_output_of([ "git", "rev-parse", "--abbrev-ref", "HEAD" ])
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, FileNotFoundError):
         return "private"
 
 def get_commit_count(sha):
     try:
         return get_output_of([ "git", "rev-list", "--count", sha ])
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, FileNotFoundError):
         return 0
     
 def read_latest_release_info():

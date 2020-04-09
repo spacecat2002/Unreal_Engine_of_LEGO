@@ -1,0 +1,17 @@
+
+WINDOWS:
+	Prerequistits:
+		VisualStudio 15.0 (2017), cmake, python3
+	Build:
+		Run "UE4_BuildThirdPartyLib.bat" script. Intermediate files, including VisualStudio solution,
+		will be stored at "%ROOT_UE4_PATH%\Intermediate\ShaderConductor" where %ROOT_UE4_PATH% is the
+		path to your UE4 Perforce repository.
+
+MAC:
+	Prerequistits:
+		git, ninja, cmake, clang, python3
+	Build:
+		Run "UE4_Build_ShaderConductor_Mac.command". Intermediate files will be stored at "Build/"
+		in the current working directory.
+		This command takes one optional command line argument "-debug" to generate ShaderConductor
+		with debug symbols and without optomization.
