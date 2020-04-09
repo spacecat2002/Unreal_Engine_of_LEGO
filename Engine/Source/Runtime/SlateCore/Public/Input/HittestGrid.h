@@ -74,7 +74,12 @@ public:
 	 */
 	TSharedPtr<SWidget> FindNextFocusableWidget(const FArrangedWidget& StartingWidget, const EUINavigation Direction, const FNavigationReply& NavigationReply, const FArrangedWidget& RuleWidget, int32 UserIndex);
 
+	/** Append an already existing grid that occupy the same space. */
+	UE_DEPRECATED(4.26, "Deprecated. Use the FHittestGrid::AppendGrid method that takes a non-optional SlateRect parameter instead")
 	void AppendGrid(FHittestGrid& OtherGrid);
+
+	/** Append an already existing grid that occupy the same space. */
+	void AppendGrid(FHittestGrid& OtherGrid, const FSlateRect& MyCullingRect);
 
 	FVector2D GetGridSize() const { return GridSize; }
 	FVector2D GetGridOrigin() const { return GridOrigin; }
@@ -128,6 +133,7 @@ private:
 			, PrimarySort(InPrimarySort)
 			, SecondarySort(InSecondarySort)
 			, UserIndex(InUserIndex)
+			, CullingRectIndex(INDEX_NONE)
 		{}
 		TWeakPtr<SWidget> WeakWidget;
 		TWeakPtr<ICustomHitTestPath> CustomPath;
@@ -136,6 +142,7 @@ private:
 		int64 PrimarySort;
 		int32 SecondarySort;
 		int32 UserIndex;
+		int32 CullingRectIndex;
 
 		TSharedPtr<SWidget> GetWidget() const { return WeakWidget.Pin(); }
 	};
@@ -203,6 +210,8 @@ private:
 		return Cells[Y*NumCells.X + X];
 	}
 
+	void AppendGrid(FHittestGrid& OtherGrid, int32 CullingRectIndex);
+
 	/** Map of all the widgets currently in the hit test grid to their stable index. */
 	TMap<SWidget*, int32> WidgetMap;
 
@@ -211,6 +220,9 @@ private:
 
 	/** The cells that make up the space partition. */
 	TArray<FCell> Cells;
+
+	/** Culling Rect for appended grids. */
+	TArray<FSlateRect> WidgetCullingRects;
 
 	/** The size of the grid in cells. */
 	FIntPoint NumCells;

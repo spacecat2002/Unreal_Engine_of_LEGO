@@ -522,7 +522,7 @@ int32 SRetainerWidget::OnPaint(const FPaintArgs& Args, const FGeometry& Allotted
 		}
 
 		// add our widgets to the root hit test grid
-		Context.PaintArgs->RootGrid.AppendGrid(HittestGrid);
+		Context.PaintArgs->RootGrid.AppendGrid(HittestGrid, MyCullingRect);
 
 		return GetCachedMaxLayerId();
 	}

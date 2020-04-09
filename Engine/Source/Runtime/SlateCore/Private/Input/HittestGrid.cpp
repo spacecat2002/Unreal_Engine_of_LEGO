@@ -164,6 +164,7 @@ FHittestGrid::FHittestGrid()
 	: WidgetMap()
 	, WidgetArray()
 	, Cells()
+	, WidgetCullingRects()
 	, NumCells(0, 0)
 	, GridOrigin(0, 0)
 	, GridSize(0, 0)
@@ -299,6 +300,7 @@ bool FHittestGrid::SetHittestArea(const FVector2D& HittestPositionInDesktop, con
 
 		WidgetMap.Reset();
 		WidgetArray.Reset();
+		WidgetCullingRects.Reset();
 
 		bWasCleared = true;
 	}
@@ -318,6 +320,7 @@ void FHittestGrid::Clear()
 
 	WidgetMap.Reset();
 	WidgetArray.Reset();
+	WidgetCullingRects.Reset();
 }
 
 bool FHittestGrid::IsDescendantOf(const TSharedRef<SWidget> Parent, const FWidgetData& ChildData)
@@ -638,6 +641,21 @@ bool FHittestGrid::IsValidCellCoord(const int32 XCoord, const int32 YCoord) cons
 
 void FHittestGrid::AppendGrid(FHittestGrid& OtherGrid)
 {
+	AppendGrid(OtherGrid, INDEX_NONE);
+}
+
+void FHittestGrid::AppendGrid(FHittestGrid& OtherGrid, const FSlateRect& ClippingRect)
+{
+	int32 CullingRectIndex = INDEX_NONE;
+	if (ClippingRect.IsValid())
+	{
+		CullingRectIndex = WidgetCullingRects.Add(ClippingRect);
+	}
+	AppendGrid(OtherGrid, CullingRectIndex);
+}
+
+void FHittestGrid::AppendGrid(FHittestGrid& OtherGrid, int32 CullingRectIndex)
+{
 	// The two grids must occupy the same space
 	if (ensure(this != &OtherGrid && GridOrigin == OtherGrid.GridOrigin && GridWindowOrigin == OtherGrid.GridWindowOrigin && GridSize == OtherGrid.GridSize))
 	{
@@ -648,8 +666,8 @@ void FHittestGrid::AppendGrid(FHittestGrid& OtherGrid)
 			
 			// Get the already created widget data out of the other widget array
 			const FWidgetData& OtherData = OtherGrid.WidgetArray[Pair.Value];
-
-			WidgetIndex = WidgetArray.Add(OtherData); 
+			WidgetIndex = WidgetArray.Add(OtherData);
+			WidgetArray[WidgetIndex].CullingRectIndex = CullingRectIndex;
 
 			// Add the new widget index to the correct cells in this grid
 			for (int32 XIndex = OtherData.UpperLeftCell.X; XIndex <= OtherData.LowerRightCell.X; ++XIndex)
@@ -849,6 +867,8 @@ FHittestGrid::FIndexAndDistance FHittestGrid::GetHitIndexFromCellIndex(const FGr
 		{
 			int32 WidgetIndex;
 			int64 PrimarySort;
+			int32 SecondarySort;
+			int32 CullingRectIndex;
 			FName WidgetType;
 			FName WidgetLoc;
 			TSharedPtr<SWidget> Widget;
@@ -860,6 +880,8 @@ FHittestGrid::FIndexAndDistance FHittestGrid::GetHitIndexFromCellIndex(const FGr
 			FDebugData& Cur = DebugData.AddDefaulted_GetRef();
 			Cur.WidgetIndex = IndexesInCell[i];
 			Cur.PrimarySort = WidgetArray[Cur.WidgetIndex].PrimarySort;
+			Cur.SecondarySort = WidgetArray[Cur.WidgetIndex].SecondarySort;
+			Cur.CullingRectIndex = WidgetArray[Cur.WidgetIndex].CullingRectIndex;
 			Cur.Widget = WidgetArray[Cur.WidgetIndex].GetWidget();
 			Cur.WidgetType = Cur.Widget.IsValid() ? Cur.Widget->GetType() : NAME_None;
 			Cur.WidgetLoc = Cur.Widget.IsValid() ? Cur.Widget->GetCreatedInLocation() : NAME_None;
@@ -887,11 +909,20 @@ FHittestGrid::FIndexAndDistance FHittestGrid::GetHitIndexFromCellIndex(const FGr
 				const FGeometry& TestGeometry = TestWidget->GetPaintSpaceGeometry();
 
 				bool bPointInsideClipMasks = true;
-				const TOptional<FSlateClippingState>& WidgetClippingState = TestWidget->GetCurrentClippingState();
-				if (WidgetClippingState.IsSet())
+
+				if (WidgetCullingRects.IsValidIndex(TestCandidate.CullingRectIndex))
 				{
-					// TODO: Solve non-zero radius cursors?
-					bPointInsideClipMasks = WidgetClippingState->IsPointInside(WindowSpaceCoordinate);
+					bPointInsideClipMasks = WidgetCullingRects[TestCandidate.CullingRectIndex].ContainsPoint(WindowSpaceCoordinate);
+				}
+
+				if (bPointInsideClipMasks)
+				{
+					const TOptional<FSlateClippingState>& WidgetClippingState = TestWidget->GetCurrentClippingState();
+					if (WidgetClippingState.IsSet())
+					{
+						// TODO: Solve non-zero radius cursors?
+						bPointInsideClipMasks = WidgetClippingState->IsPointInside(WindowSpaceCoordinate);
+					}
 				}
 
 				if (bPointInsideClipMasks)
