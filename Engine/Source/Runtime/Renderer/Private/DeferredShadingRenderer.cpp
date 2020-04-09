@@ -1040,6 +1040,8 @@ bool FDeferredShadingSceneRenderer::GatherRayTracingWorldInstances(FRHICommandLi
 			ReferenceView.AddRayTracingMeshBatchTaskList.Add(FFunctionGraphTask::CreateAndDispatchWhenReady(
 				[&ReferenceView, Scene = this->Scene, Batch, BatchStart, BatchEnd]()
 			{
+				TRACE_CPUPROFILER_EVENT_SCOPE(RayTracingMeshBatchTask);
+
 				for (uint32 Index = BatchStart; Index < BatchEnd; Index++)
 				{
 					FRayTracingMeshBatchWorkItem& MeshBatchJob = ReferenceView.AddRayTracingMeshBatchData[Index];
