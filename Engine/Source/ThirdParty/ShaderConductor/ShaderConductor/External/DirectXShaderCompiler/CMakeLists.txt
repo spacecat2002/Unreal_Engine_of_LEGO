@@ -90,7 +90,7 @@ option(HLSL_OPTIONAL_PROJS_IN_DEFAULT "Include optional projects in default buil
 option(HLSL_BUILD_DXILCONV "Include DXBC to DXIL converter and tools." ON) # HLSL Change
 
 # HLSL Change Starts - support commit querying
-option(HLSL_SUPPORT_QUERY_GIT_COMMIT_INFO "Supports querying Git commit info." ON)
+option(HLSL_SUPPORT_QUERY_GIT_COMMIT_INFO "Supports querying Git commit info." OFF)
 if ( HLSL_SUPPORT_QUERY_GIT_COMMIT_INFO )
   add_definitions(-DSUPPORT_QUERY_GIT_COMMIT_INFO)
 endif()
