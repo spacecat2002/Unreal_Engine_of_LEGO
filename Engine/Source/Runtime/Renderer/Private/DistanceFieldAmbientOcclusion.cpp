@@ -371,10 +371,6 @@ void ComputeDistanceFieldNormal(FRHICommandListImmediate& RHICmdList, const TArr
 
 	if (GAOComputeShaderNormalCalculation)
 	{
-		PRAGMA_DISABLE_DEPRECATION_WARNINGS
-		UnbindRenderTargets(RHICmdList);
-		PRAGMA_ENABLE_DEPRECATION_WARNINGS
-
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{
 			const FViewInfo& View = Views[ViewIndex];

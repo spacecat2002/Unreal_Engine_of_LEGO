@@ -855,9 +855,6 @@ void ScatterObjectsToShadowTiles(
 	}
 	RHICmdList.EndRenderPass();
 
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	UnbindRenderTargets(RHICmdList);
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EGfxToCompute, UAVs.GetData(), UAVs.Num());
 }
 
@@ -1201,10 +1198,6 @@ void FProjectedShadowInfo::BeginRenderRayTracedDistanceFieldProjection(FRHIComma
 		{
 			check(!Scene->DistanceFieldSceneData.HasPendingOperations());
 
-			PRAGMA_DISABLE_DEPRECATION_WARNINGS
-			UnbindRenderTargets(RHICmdList);
-			PRAGMA_ENABLE_DEPRECATION_WARNINGS
-
 			int32 NumPlanes = 0;
 			const FPlane* PlaneData = NULL;
 			FVector4 ShadowBoundingSphereValue(0, 0, 0, 0);
@@ -1252,10 +1245,6 @@ void FProjectedShadowInfo::BeginRenderRayTracedDistanceFieldProjection(FRHIComma
 			}
 
 			SCOPED_DRAW_EVENT(RHICmdList, RayTraceShadows);
-			PRAGMA_DISABLE_DEPRECATION_WARNINGS
-			UnbindRenderTargets(RHICmdList);
-			PRAGMA_ENABLE_DEPRECATION_WARNINGS
-
 			RayTraceShadows(RHICmdList, View, this, TileIntersectionResources);
 
 			if (bBufferAliasingEnabled)
@@ -1275,10 +1264,6 @@ void FProjectedShadowInfo::BeginRenderRayTracedDistanceFieldProjection(FRHIComma
 		SCOPED_DRAW_EVENT(RHICmdList, BeginRenderRayTracedHeightFieldShadows);
 
 		check(!Scene->DistanceFieldSceneData.HasPendingHeightFieldOperations());
-
-		PRAGMA_DISABLE_DEPRECATION_WARNINGS
-		UnbindRenderTargets(RHICmdList);
-		PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 		const int32 NumPlanes = CascadeSettings.ShadowBoundsAccurate.Planes.Num();
 		const FPlane* PlaneData = CascadeSettings.ShadowBoundsAccurate.Planes.GetData();
@@ -1315,10 +1300,6 @@ void FProjectedShadowInfo::BeginRenderRayTracedDistanceFieldProjection(FRHIComma
 		}
 
 		SCOPED_DRAW_EVENT(RHICmdList, RayTraceHeightFieldShadows);
-		PRAGMA_DISABLE_DEPRECATION_WARNINGS
-		UnbindRenderTargets(RHICmdList);
-		PRAGMA_ENABLE_DEPRECATION_WARNINGS
-
 		RayTraceHeightFieldShadows(RHICmdList, View, this, TileIntersectionResources, bHasPrevOutput, PrevOutputRT ? PrevOutputRT->GetRenderTargetItem().ShaderResourceTexture : nullptr);
 
 		if (bBufferAliasingEnabled)

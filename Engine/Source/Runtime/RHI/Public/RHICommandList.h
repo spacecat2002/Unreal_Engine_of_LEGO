@@ -1105,33 +1105,6 @@ FRHICOMMAND_MACRO(FRHICommandSetScissorRect)
 	RHI_API void Execute(FRHICommandListBase& CmdList);
 };
 
-FRHICOMMAND_MACRO(FRHICommandSetRenderTargets)
-{
-	uint32 NewNumSimultaneousRenderTargets;
-	FRHIRenderTargetView NewRenderTargetsRHI[MaxSimultaneousRenderTargets];
-	FRHIDepthRenderTargetView NewDepthStencilTarget;
-
-	FORCEINLINE_DEBUGGABLE FRHICommandSetRenderTargets(
-		uint32 InNewNumSimultaneousRenderTargets,
-		const FRHIRenderTargetView* InNewRenderTargetsRHI,
-		const FRHIDepthRenderTargetView* InNewDepthStencilTargetRHI
-		)
-		: NewNumSimultaneousRenderTargets(InNewNumSimultaneousRenderTargets)
-
-	{
-		check(InNewNumSimultaneousRenderTargets <= MaxSimultaneousRenderTargets);
-		for (uint32 Index = 0; Index < NewNumSimultaneousRenderTargets; Index++)
-		{
-			NewRenderTargetsRHI[Index] = InNewRenderTargetsRHI[Index];
-		}
-		if (InNewDepthStencilTargetRHI)
-		{
-			NewDepthStencilTarget = *InNewDepthStencilTargetRHI;
-		}		
-	}
-	RHI_API void Execute(FRHICommandListBase& CmdList);
-};
-
 FRHICOMMAND_MACRO(FRHICommandBeginRenderPass)
 {
 	FRHIRenderPassInfo Info;
@@ -1224,27 +1197,6 @@ FRHICOMMAND_MACRO(FRHICommandEndRenderSubPass)
 	FRHICommandEndRenderSubPass(FLocalCmdListParallelRenderPass* InLocalRenderPass, FLocalCmdListRenderSubPass* InLocalRenderSubPass)
 		: LocalRenderPass(InLocalRenderPass)
 		, LocalRenderSubPass(InLocalRenderSubPass)
-	{
-	}
-
-	RHI_API void Execute(FRHICommandListBase& CmdList);
-};
-
-FRHICOMMAND_MACRO(FRHICommandBeginComputePass)
-{
-	const TCHAR* Name;
-
-	FRHICommandBeginComputePass(const TCHAR* InName)
-		: Name(InName)
-	{
-	}
-
-	RHI_API void Execute(FRHICommandListBase& CmdList);
-};
-
-FRHICOMMAND_MACRO(FRHICommandEndComputePass)
-{
-	FRHICommandEndComputePass()
 	{
 	}
 
@@ -3135,34 +3087,6 @@ public:
 		GraphicsPSOInit.bHasFragmentDensityAttachment = PSOContext.HasFragmentDensityAttachment;
 	}
 
-	UE_DEPRECATED(4.22, "SetRenderTargets API is deprecated; please use RHIBegin/EndRenderPass instead.")
-	FORCEINLINE_DEBUGGABLE void SetRenderTargets(
-		uint32 NewNumSimultaneousRenderTargets,
-		const FRHIRenderTargetView* NewRenderTargetsRHI,
-		const FRHIDepthRenderTargetView* NewDepthStencilTargetRHI)
-	{
-		check(IsOutsideRenderPass());
-		CacheActiveRenderTargets(
-			NewNumSimultaneousRenderTargets, 
-			NewRenderTargetsRHI, 
-			NewDepthStencilTargetRHI,
-			false
-			);
-
-		if (Bypass())
-		{
-			GetContext().RHISetRenderTargets(
-				NewNumSimultaneousRenderTargets,
-				NewRenderTargetsRHI,
-				NewDepthStencilTargetRHI);
-			return;
-		}
-		ALLOC_COMMAND(FRHICommandSetRenderTargets)(
-			NewNumSimultaneousRenderTargets,
-			NewRenderTargetsRHI,
-			NewDepthStencilTargetRHI);
-	}
-
 	FORCEINLINE_DEBUGGABLE void BindClearMRTValues(bool bClearColor, bool bClearDepth, bool bClearStencil)
 	{
 		//check(IsOutsideRenderPass());
@@ -3521,40 +3445,6 @@ public:
 			ALLOC_COMMAND(FRHICommandNextSubpass)();
 		}
 		IncrementSubpass();
-	}
-
-	UE_DEPRECATED(4.25, "BeginComputePass API is deprecated. Use SetComputeShader() instead.")
-	FORCEINLINE_DEBUGGABLE void BeginComputePass(const TCHAR* Name)
-	{
-		check(!IsInsideRenderPass());
-		check(!IsInsideComputePass());
-
-		if (Bypass())
-		{
-			GetContext().RHIBeginComputePass(Name);
-		}
-		else
-		{
-			TCHAR* NameCopy  = AllocString(Name);
-			ALLOC_COMMAND(FRHICommandBeginComputePass)(NameCopy);
-		}
-		Data.bInsideComputePass = true;
-	}
-
-	UE_DEPRECATED(4.25, "EndComputePass API is deprecated. BeginRenderPass() or SetComputeShader() instead.")
-	void EndComputePass()
-	{
-		check(IsInsideComputePass());
-		check(!IsInsideRenderPass());
-		if (Bypass())
-		{
-			GetContext().RHIEndComputePass();
-		}
-		else
-		{
-			ALLOC_COMMAND(FRHICommandEndComputePass)();
-		}
-		Data.bInsideComputePass = false;
 	}
 
 	// These 6 are special in that they must be called on the immediate command list and they force a flush only when we are not doing RHI thread

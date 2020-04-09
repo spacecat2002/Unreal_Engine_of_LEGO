@@ -901,7 +901,7 @@ void FD3D12CommandContextBase::RHIBeginDrawingViewport(FRHIViewport* ViewportRHI
 
 	// Set the render target.
 	const FRHIRenderTargetView RTView(RenderTargetRHI, ERenderTargetLoadAction::ELoad);
-	RHISetRenderTargets(1, &RTView, nullptr);
+	SetRenderTargets(1, &RTView, nullptr);
 }
 
 void FD3D12CommandContextBase::RHIEndDrawingViewport(FRHIViewport* ViewportRHI, bool bPresent, bool bLockToVsync)

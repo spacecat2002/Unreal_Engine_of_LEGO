@@ -41,6 +41,8 @@ public:
 	void RHIBeginFrame() final override;
 	void RHIEndFrame() final override;
 
+	virtual void SetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, const FRHIDepthRenderTargetView* NewDepthStencilTarget) = 0;
+
 	void RHIWaitComputeFence(FRHIComputeFence* InFence) final override;
 
 	virtual void UpdateMemoryStats();
@@ -278,8 +280,8 @@ public:
 	virtual void RHISetShaderParameter(FRHIGraphicsShader* Shader, uint32 BufferIndex, uint32 BaseIndex, uint32 NumBytes, const void* NewValue) final override;
 	virtual void RHISetStencilRef(uint32 StencilRef) final override;
 	virtual void RHISetBlendFactor(const FLinearColor& BlendFactor) final override;
-	virtual void RHISetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, const FRHIDepthRenderTargetView* NewDepthStencilTarget) final override;
-	virtual void RHISetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo) final override;
+	virtual void SetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, const FRHIDepthRenderTargetView* NewDepthStencilTarget) final override;
+	void SetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo);
 	virtual void RHIBindClearMRTValues(bool bClearColor, bool bClearDepth, bool bClearStencil) final override;
 	virtual void RHIDrawPrimitive(uint32 BaseVertexIndex, uint32 NumPrimitives, uint32 NumInstances) final override;
 	virtual void RHIDrawPrimitiveIndirect(FRHIVertexBuffer* ArgumentBuffer, uint32 ArgumentOffset) final override;
@@ -291,22 +293,71 @@ public:
 
 	virtual void RHIClearMRTImpl(bool bClearColor, int32 NumClearColors, const FLinearColor* ColorArray, bool bClearDepth, float Depth, bool bClearStencil, uint32 Stencil);
 
-	virtual void RHIBeginRenderPass(const FRHIRenderPassInfo& InInfo, const TCHAR* InName) final override
+
+	virtual void RHIBeginRenderPass(const FRHIRenderPassInfo& InInfo, const TCHAR* InName)
 	{
-		IRHICommandContext::RHIBeginRenderPass(InInfo, InName);
+		if (InInfo.bGeneratingMips)
+		{
+			FRHITexture* Textures[MaxSimultaneousRenderTargets];
+			FRHITexture** LastTexture = Textures;
+			for (int32 Index = 0; Index < MaxSimultaneousRenderTargets; ++Index)
+			{
+				if (!InInfo.ColorRenderTargets[Index].RenderTarget)
+				{
+					break;
+				}
+
+				*LastTexture = InInfo.ColorRenderTargets[Index].RenderTarget;
+				++LastTexture;
+			}
+
+			//Use RWBarrier since we don't transition individual subresources.  Basically treat the whole texture as R/W as we walk down the mip chain.
+			int32 NumTextures = (int32)(LastTexture - Textures);
+			if (NumTextures)
+			{
+				RHITransitionResources(EResourceTransitionAccess::ERWSubResBarrier, Textures, NumTextures);
+			}
+		}
+
+		FRHISetRenderTargetsInfo RTInfo;
+		InInfo.ConvertToRenderTargetsInfo(RTInfo);
+		SetRenderTargetsAndClear(RTInfo);
+
+		RenderPassInfo = InInfo;
+
 		if (InInfo.bOcclusionQueries)
 		{
 			RHIBeginOcclusionQueryBatch(InInfo.NumOcclusionQueries);
 		}
 	}
 
-	virtual void RHIEndRenderPass() final override
+	virtual void RHIEndRenderPass()
 	{
 		if (RenderPassInfo.bOcclusionQueries)
 		{
 			RHIEndOcclusionQueryBatch();
 		}
-		IRHICommandContext::RHIEndRenderPass();
+
+		for (int32 Index = 0; Index < MaxSimultaneousRenderTargets; ++Index)
+		{
+			if (!RenderPassInfo.ColorRenderTargets[Index].RenderTarget)
+			{
+				break;
+			}
+			if (RenderPassInfo.ColorRenderTargets[Index].ResolveTarget)
+			{
+				RHICopyToResolveTarget(RenderPassInfo.ColorRenderTargets[Index].RenderTarget, RenderPassInfo.ColorRenderTargets[Index].ResolveTarget, RenderPassInfo.ResolveParameters);
+			}
+		}
+
+		if (RenderPassInfo.DepthStencilRenderTarget.DepthStencilTarget && RenderPassInfo.DepthStencilRenderTarget.ResolveTarget)
+		{
+			RHICopyToResolveTarget(RenderPassInfo.DepthStencilRenderTarget.DepthStencilTarget, RenderPassInfo.DepthStencilRenderTarget.ResolveTarget, RenderPassInfo.ResolveParameters);
+		}
+
+		FRHIRenderTargetView RTV(nullptr, ERenderTargetLoadAction::ENoAction);
+		FRHIDepthRenderTargetView DepthRTV(nullptr, ERenderTargetLoadAction::ENoAction, ERenderTargetStoreAction::ENoAction);
+		SetRenderTargets(1, &RTV, &DepthRTV);
 	}
 
 	// When using Alternate Frame Rendering some temporal effects i.e. effects which consume GPU work from previous frames must synchronize their resources
@@ -634,13 +685,13 @@ public:
 	{
 		ContextRedirect(RHISetBlendFactor(BlendFactor));
 	}
-	FORCEINLINE virtual void RHISetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, const FRHIDepthRenderTargetView* NewDepthStencilTarget) final override
+	FORCEINLINE virtual void SetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, const FRHIDepthRenderTargetView* NewDepthStencilTarget) final override
 	{
-		ContextRedirect(RHISetRenderTargets(NumSimultaneousRenderTargets, NewRenderTargets, NewDepthStencilTarget));
+		ContextRedirect(SetRenderTargets(NumSimultaneousRenderTargets, NewRenderTargets, NewDepthStencilTarget));
 	}
-	FORCEINLINE virtual void RHISetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo) final override
+	FORCEINLINE void SetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo)
 	{
-		ContextRedirect(RHISetRenderTargetsAndClear(RenderTargetsInfo));
+		ContextRedirect(SetRenderTargetsAndClear(RenderTargetsInfo));
 	}
 	FORCEINLINE virtual void RHIBindClearMRTValues(bool bClearColor, bool bClearDepth, bool bClearStencil) final override
 	{

@@ -580,10 +580,6 @@ public:
 
 	virtual void RHISetBlendFactor(const FLinearColor& BlendFactor) {}
 
-	virtual void RHISetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, const FRHIDepthRenderTargetView* NewDepthStencilTarget) = 0;
-
-	virtual void RHISetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo) = 0;
-
 	// Bind the clear state of the currently set render targets. This is used by platforms which
 	// need the state of the target when finalizing a hardware clear or a resource transition to SRV
 	// The explicit bind is needed to support parallel rendering (propagate state between contexts).
@@ -610,68 +606,11 @@ public:
 
 	virtual void RHIUpdateTextureReference(FRHITextureReference* TextureRef, FRHITexture* NewTexture) = 0;
 
-	virtual void RHIBeginRenderPass(const FRHIRenderPassInfo& InInfo, const TCHAR* InName)
-	{
-		if (InInfo.bGeneratingMips)
-		{
-			FRHITexture* Textures[MaxSimultaneousRenderTargets];
-			FRHITexture** LastTexture = Textures;
-			for (int32 Index = 0; Index < MaxSimultaneousRenderTargets; ++Index)
-			{
-				if (!InInfo.ColorRenderTargets[Index].RenderTarget)
-				{
-					break;
-				}
+	virtual void RHIBeginRenderPass(const FRHIRenderPassInfo& InInfo, const TCHAR* InName) = 0;
 
-				*LastTexture = InInfo.ColorRenderTargets[Index].RenderTarget;
-				++LastTexture;
-			}
+	virtual void RHIEndRenderPass() = 0;
 
-			//Use RWBarrier since we don't transition individual subresources.  Basically treat the whole texture as R/W as we walk down the mip chain.
-			int32 NumTextures = (int32)(LastTexture - Textures);
-			if (NumTextures)
-			{
-				RHITransitionResources(EResourceTransitionAccess::ERWSubResBarrier, Textures, NumTextures);
-			}
-		}
-
-		FRHISetRenderTargetsInfo RTInfo;
-		InInfo.ConvertToRenderTargetsInfo(RTInfo);
-		RHISetRenderTargetsAndClear(RTInfo);
-
-		RenderPassInfo = InInfo;
-	}
-
-	virtual void RHIEndRenderPass()
-	{
-		for (int32 Index = 0; Index < MaxSimultaneousRenderTargets; ++Index)
-		{
-			if (!RenderPassInfo.ColorRenderTargets[Index].RenderTarget)
-			{
-				break;
-			}
-			if (RenderPassInfo.ColorRenderTargets[Index].ResolveTarget)
-			{
-				RHICopyToResolveTarget(RenderPassInfo.ColorRenderTargets[Index].RenderTarget, RenderPassInfo.ColorRenderTargets[Index].ResolveTarget, RenderPassInfo.ResolveParameters);
-			}
-		}
-
-		if (RenderPassInfo.DepthStencilRenderTarget.DepthStencilTarget && RenderPassInfo.DepthStencilRenderTarget.ResolveTarget)
-		{
-			RHICopyToResolveTarget(RenderPassInfo.DepthStencilRenderTarget.DepthStencilTarget, RenderPassInfo.DepthStencilRenderTarget.ResolveTarget, RenderPassInfo.ResolveParameters);
-		}
-	}
-	
 	virtual void RHINextSubpass()
-	{
-	}
-
-	virtual void RHIBeginComputePass(const TCHAR* InName)
-	{
-		RHISetRenderTargets(0, nullptr, nullptr);
-	}
-
-	virtual void RHIEndComputePass()
 	{
 	}
 

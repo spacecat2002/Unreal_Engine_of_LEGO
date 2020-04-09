@@ -183,10 +183,6 @@ void FDeferredShadingSceneRenderer::RenderMeshDistanceFieldVisualization(FRHICom
 			FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(SceneContext, View.GetFeatureLevel(), ESceneTextureSetupMode::All, UniformBuffer_SingleFrame);
 
 			{
-				PRAGMA_DISABLE_DEPRECATION_WARNINGS
-				UnbindRenderTargets(RHICmdList);
-				PRAGMA_ENABLE_DEPRECATION_WARNINGS
-
 				for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 				{
 					const FViewInfo& ViewInfo = Views[ViewIndex];

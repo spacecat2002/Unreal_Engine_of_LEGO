@@ -959,7 +959,7 @@ FRTVDesc GetRenderTargetViewDesc(FD3D12RenderTargetView* RenderTargetView)
 	return ret;
 }
 
-void FD3D12CommandContext::RHISetRenderTargets(
+void FD3D12CommandContext::SetRenderTargets(
 	uint32 NewNumSimultaneousRenderTargets,
 	const FRHIRenderTargetView* NewRenderTargetsRHI,
 	const FRHIDepthRenderTargetView* NewDepthStencilTargetRHI
@@ -1046,11 +1046,11 @@ void FD3D12CommandContext::RHISetRenderTargets(
 	}
 }
 
-void FD3D12CommandContext::RHISetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo)
+void FD3D12CommandContext::SetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo)
 {
 	FRHIUnorderedAccessView* UAVs[MaxSimultaneousUAVs] = {};
 
-	this->RHISetRenderTargets(RenderTargetsInfo.NumColorRenderTargets,
+	this->SetRenderTargets(RenderTargetsInfo.NumColorRenderTargets,
 		RenderTargetsInfo.ColorRenderTarget,
 		&RenderTargetsInfo.DepthStencilRenderTarget);
 
