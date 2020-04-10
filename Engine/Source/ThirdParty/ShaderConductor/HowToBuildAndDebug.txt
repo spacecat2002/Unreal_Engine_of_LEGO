@@ -1,14 +1,16 @@
 
 WINDOWS:
-	Prerequistits:
+	Prerequisites:
 		VisualStudio 15.0 (2017), cmake, python3, Windows Driver Kit (WDK) [1]
 	Build:
+		Open a Visual Studio Developer Command Prompt.		
 		Run "UE4_BuildThirdPartyLib.bat" script. Intermediate files, including VisualStudio solution,
 		will be stored at "%ROOT_UE4_PATH%\Intermediate\ShaderConductor" where %ROOT_UE4_PATH% is the
 		path to your UE4 Perforce repository.
+		Set project debugging working dir to %ROOT_UE4_PATH%\Binaries\ThirdParty\ShaderConductor\Win64 so it can find dxcompiler_sc.dll.
 
 MAC:
-	Prerequistits:
+	Prerequisites:
 		git, ninja, cmake, clang, python3
 	Build:
 		Run "UE4_Build_ShaderConductor_Mac.command". Intermediate files will be stored at "Build/"
