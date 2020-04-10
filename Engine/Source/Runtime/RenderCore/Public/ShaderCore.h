@@ -176,6 +176,7 @@ enum ECompilerFlags
 	CFLAG_ForceOptimization,
 	// Shader should use on chip memory instead of main memory ring buffer memory.
 	CFLAG_OnChip,
+	// Shader should insert debug/name info at the risk of generating non-deterministic libraries
 	CFLAG_KeepDebugInfo,
 	CFLAG_NoFastMath,
 	// Explicitly enforce zero initialization on shader platforms that may omit it.
