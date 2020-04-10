@@ -1,7 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 #pragma once
 
-#include "Chaos/IncludeLvl1.inl"
 #include "CoreMinimal.h"
 
 #include "Chaos/PBDJointConstraintTypes.h"
@@ -122,6 +121,9 @@ namespace Chaos
 			, Lambda(0)
 		{
 		}
+
+		// Reset state that persists over all iterations, but must be cleared at start of each tick.
+		FORCEINLINE void TickReset();
 
 		// Reset calculated values ready for next iteration. Note: Lambda is not reset here,
 		// it accumulates over the whole timestep.

@@ -2,7 +2,6 @@
 
 #pragma once
 
-#include "Chaos/IncludeLvl1.inl"
 #include "CoreMinimal.h"
 #include "Containers/Array.h"
 #include "Containers/ArrayView.h"
@@ -609,6 +608,8 @@ public:
 
 	virtual FFieldNodeBase* NewEvaluationGraph(TArray<const UFieldNodeBase*>& Nodes) const override;
 
+	virtual FFieldNodeBase::EFieldType Type() const override;
+
 	UFUNCTION(BlueprintPure, Category = "Field")
 	UCullingField* SetCullingField( const UFieldNodeBase* Culling, const UFieldNodeBase* Field, EFieldCullingOperationType Operation);
 
@@ -620,7 +621,6 @@ public:
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Field")
 	TEnumAsByte<EFieldCullingOperationType> Operation;
-
 };
 
 /**

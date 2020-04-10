@@ -121,7 +121,7 @@ Chaos::TTriangleMesh<float>* CreateTriangleMesh(
 		if (Visible[Idx])
 		{
 			const FIntVector& Tri = Indices[Idx];
-			Faces.Add(Chaos::TVector<int32, 3>(Tri.X, Tri.Y, Tri.Z));
+			Faces.Add(Chaos::TVector<int32, 3>(Tri.Z, Tri.Y, Tri.X));
 		}
 	}
 	return new Chaos::TTriangleMesh<float>(MoveTemp(Faces)); // Culls geometrically degenerate faces
@@ -243,18 +243,18 @@ void PopulateSimulatedParticle(
 	{
 		Handle->SetObjectState(Chaos::EObjectStateType::Uninitialized);
 
-		if (ensureMsgf(FMath::IsWithinInclusive(MassIn, SharedParams.MinimumMassClamp, SharedParams.MaximumMassClamp),
+		if (!ensureMsgf(FMath::IsWithinInclusive(MassIn, SharedParams.MinimumMassClamp, SharedParams.MaximumMassClamp),
 			TEXT("Clamped mass[%3.5f] to range [%3.5f,%3.5f]"), MassIn, SharedParams.MinimumMassClamp, SharedParams.MaximumMassClamp))
 		{
 			MassIn = FMath::Clamp(MassIn, SharedParams.MinimumMassClamp, SharedParams.MaximumMassClamp);
 		}
 
-		if (ensureMsgf(!FMath::IsNaN(InertiaTensorVec[0]) && !FMath::IsNaN(InertiaTensorVec[1]) && !FMath::IsNaN(InertiaTensorVec[2]),
+		if (!ensureMsgf(!FMath::IsNaN(InertiaTensorVec[0]) && !FMath::IsNaN(InertiaTensorVec[1]) && !FMath::IsNaN(InertiaTensorVec[2]),
 			TEXT("Nan Tensor, reset to unit tesor")))
 		{
 			InertiaTensorVec = FVector(1);
 		}
-		else if (ensureMsgf(FMath::IsWithinInclusive(InertiaTensorVec[0], SharedParams.MinimumInertiaTensorDiagonalClamp, SharedParams.MaximumInertiaTensorDiagonalClamp)
+		else if (!ensureMsgf(FMath::IsWithinInclusive(InertiaTensorVec[0], SharedParams.MinimumInertiaTensorDiagonalClamp, SharedParams.MaximumInertiaTensorDiagonalClamp)
 			&& FMath::IsWithinInclusive(InertiaTensorVec[1], SharedParams.MinimumInertiaTensorDiagonalClamp, SharedParams.MaximumInertiaTensorDiagonalClamp)
 			&& FMath::IsWithinInclusive(InertiaTensorVec[2], SharedParams.MinimumInertiaTensorDiagonalClamp, SharedParams.MaximumInertiaTensorDiagonalClamp),
 			TEXT("Clamped Inertia tensor[%3.5f,%3.5f,%3.5f]. Clamped each element to [%3.5f, %3.5f,]"), InertiaTensorVec[0], InertiaTensorVec[1], InertiaTensorVec[2],
@@ -1444,6 +1444,11 @@ void FGeometryCollectionPhysicsProxy::BufferPhysicsResults()
 
 	{ SCOPE_CYCLE_COUNTER(STAT_CalcParticleToWorld);
 
+		// initialize Target Results
+		TargetResults.Transforms.Init(PhysicsThreadCollection.Transform);
+		TargetResults.Children.Init(PhysicsThreadCollection.Children);
+		TargetResults.Parent.Init(PhysicsThreadCollection.Parent);
+
 		for (int32 TransformGroupIndex = 0; TransformGroupIndex < NumTransformGroupElements; ++TransformGroupIndex)
 		{
 			TargetResults.DisabledStates[TransformGroupIndex] = true;
@@ -1496,6 +1501,8 @@ void FGeometryCollectionPhysicsProxy::BufferPhysicsResults()
 
 				TargetResults.Transforms[TransformGroupIndex] = PhysicsThreadCollection.MassToLocal[TransformGroupIndex].GetRelativeTransformReverse(ParticleToWorld).GetRelativeTransform(ActorToWorld);
 				TargetResults.Transforms[TransformGroupIndex].NormalizeRotation();
+
+				PhysicsThreadCollection.Transform[TransformGroupIndex] = TargetResults.Transforms[TransformGroupIndex];
 
 				// Indicate that this object needs to be updated and the proxy is active.
 				TargetResults.DisabledStates[TransformGroupIndex] = false;
@@ -1563,9 +1570,15 @@ void FGeometryCollectionPhysicsProxy::BufferPhysicsResults()
 							TargetResults.Transforms[TransformGroupIndex] = MassToLocal.GetRelativeTransformReverse(ClusterChildToWorld).GetRelativeTransform(ActorToWorld);
 							TargetResults.Transforms[TransformGroupIndex].NormalizeRotation();
 
+							PhysicsThreadCollection.Transform[TransformGroupIndex] = TargetResults.Transforms[TransformGroupIndex];
+
 							// Indicate that this object needs to be updated and the proxy is active.
 							TargetResults.DisabledStates[TransformGroupIndex] = false;
 							IsObjectDynamic = true;
+
+							ProxyElementHandle->X() = ClusterChildToWorld.GetTranslation();
+							ProxyElementHandle->R() = ClusterChildToWorld.GetRotation();
+							GetSolver()->GetEvolution()->DirtyParticle(*ProxyElementHandle);
 						}
 					}
 				}
@@ -1837,22 +1850,36 @@ void FGeometryCollectionPhysicsProxy::InitializeSharedCollisionStructures(
 				else
 				{
 					CalculateVolumeAndCenterOfMass(MassSpaceParticles, TriMesh->GetElements(), MassProperties.Volume, MassProperties.CenterOfMass);
+					InertiaComputationNeeded[GeometryIndex] = true;
+
+					if(MassProperties.Volume == 0)
+					{
+						FVector Extents = BoundingBox[GeometryIndex].GetExtent();
+						MassProperties.Volume = Extents.X * Extents.Y * Extents.Z;
+						float ExtentsYZ = Extents.Y * Extents.Y + Extents.Z * Extents.Z;
+						float ExtentsXZ = Extents.X * Extents.X + Extents.Z * Extents.Z;
+						float ExtentsXY = Extents.X * Extents.X + Extents.Y * Extents.Y;
+						MassProperties.InertiaTensor = PMatrix<float, 3, 3>(ExtentsYZ / 12., ExtentsXZ / 12., ExtentsXY / 12.);
+						MassProperties.CenterOfMass = BoundingBox[GeometryIndex].GetCenter();
+						InertiaComputationNeeded[GeometryIndex] = false;
+					}
 
 					if (MassProperties.Volume < MinVolume)
 					{
 						// For rigid bodies outside of range just defaut to a clamped bounding box, and warn the user.
 						MassProperties.Volume = MinVolume;
 						CollectionMassToLocal[TransformGroupIndex] = FTransform(FQuat::Identity, BoundingBox[GeometryIndex].GetCenter());
+						InertiaComputationNeeded[GeometryIndex] = false;
 					}
 					else if (MaxVolume < MassProperties.Volume)
 					{
 						// For rigid bodies outside of range just defaut to a clamped bounding box, and warn the user
 						MassProperties.Volume = MaxVolume;
 						CollectionMassToLocal[TransformGroupIndex] = FTransform(FQuat::Identity, BoundingBox[GeometryIndex].GetCenter());
+						InertiaComputationNeeded[GeometryIndex] = false;
 					}
 					else
 					{
-						InertiaComputationNeeded[GeometryIndex] = true;
 						CollectionMassToLocal[TransformGroupIndex] = FTransform(FQuat::Identity, MassProperties.CenterOfMass);
 					}
 
@@ -2470,9 +2497,42 @@ void FGeometryCollectionPhysicsProxy::ProcessCommands(FParticlesType& Particles,
 							SamplesView,
 							Command.MetaData };
 
-						TArrayView<int32> DynamicStateView(&(Collection.DynamicState[0]), Collection.DynamicState.Num());
-						static_cast<const FFieldNode<int32> *>(Command.RootNode.Get())->Evaluate(Context, DynamicStateView);
+						TArray<int32> DynamicState; // #BGTODO Enum class support (so we can size the underlying type to be more appropriate)
+						DynamicState.AddUninitialized(Handles.Num());
+						int32 i = 0;
+						for (Chaos::TGeometryParticleHandle<float, 3> * Handle : Handles)
+						{
+							const Chaos::EObjectStateType ObjectState = Handle->ObjectState();
+							switch (ObjectState)
+							{
+							case Chaos::EObjectStateType::Kinematic:
+								DynamicState[i++] = (int)EObjectStateTypeEnum::Chaos_Object_Kinematic;
+								break;
+							case Chaos::EObjectStateType::Static:
+								DynamicState[i++] = (int)EObjectStateTypeEnum::Chaos_Object_Static;
+								break;
+							case Chaos::EObjectStateType::Sleeping:
+								DynamicState[i++] = (int)EObjectStateTypeEnum::Chaos_Object_Sleeping;
+								break;
+							case Chaos::EObjectStateType::Dynamic:
+							case Chaos::EObjectStateType::Uninitialized:
+							default:
+								DynamicState[i++] = (int)EObjectStateTypeEnum::Chaos_Object_Dynamic;
+								break;
+							}
+						}
+						
+						TArrayView<int32> DynamicStateView(&(DynamicState[0]), DynamicState.Num());						
+						static_cast<const FFieldNode<int32>*>(Command.RootNode.Get())->Evaluate(Context, DynamicStateView);
+						
+						for (const ContextIndex& Index : Context.GetEvaluatedSamples())
+						{
+							Chaos::TGeometryParticleHandle<float, 3>* Handle = Handles[Index.Sample];
 
+							Collection.DynamicState[HandleToTransformGroupIndex[Handle->CastToRigidParticle()]] = DynamicStateView[Index.Result];
+						} // end for all samples
+
+						// push values back to dynamic collection					
 						PushKinematicStateToSolver(Particles);
 					}
 				}

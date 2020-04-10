@@ -593,7 +593,7 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 
 	UPROPERTY(config, EditAnywhere, Category = Debugging, meta = (
 		ConsoleVariable = "r.GPUCrashDebugging", DisplayName = "Enable vendor specific GPU crash analysis tools",
-		ToolTip = "Enables vendor specific GPU crash analysis tools.  Currently only supports NVIDIA Aftermath on DX11.",
+		ToolTip = "Enables vendor specific GPU crash analysis tools.",
 		ConfigRestartRequired = true))
 		uint32 bNvidiaAftermathEnabled : 1;
 
@@ -633,6 +633,12 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ToolTip = "Enable Omni-directional Stereo Capture.",
 		ConfigRestartRequired = true))
 		uint32 bODSCapture : 1;
+
+	UPROPERTY(config, EditAnywhere, Category = Experimental, meta = (
+		ConsoleVariable="r.MeshStreaming",DisplayName="Mesh Streaming",
+		ToolTip="When enabled mesh will stream in based on what is visible on screen.",
+		ConfigRestartRequired = true))
+		uint32 bMeshStreaming : 1;
 
 	UPROPERTY(config, EditAnywhere, Category=Editor, meta=(
 		ConsoleVariable="r.WireframeCullThreshold",DisplayName="Wireframe Cull Threshold",
