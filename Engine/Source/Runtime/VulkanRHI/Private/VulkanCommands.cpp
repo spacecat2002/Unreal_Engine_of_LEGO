@@ -443,11 +443,7 @@ inline void /*FVulkanCommandListContext::*/SetShaderUniformBufferResources(FVulk
 			}
 			else
 			{
-#if VULKAN_ENABLE_SHADER_DEBUG_NAMES
 				UE_LOG(LogVulkanRHI, Warning, TEXT("Invalid sampler in SRT table for shader '%s'"), *Shader->GetDebugName());
-#else
-				UE_LOG(LogVulkanRHI, Warning, TEXT("Invalid sampler in SRT table"));
-#endif
 			}
 		}
 			break;
@@ -465,11 +461,7 @@ inline void /*FVulkanCommandListContext::*/SetShaderUniformBufferResources(FVulk
 			}
 			else
 			{
-#if VULKAN_ENABLE_SHADER_DEBUG_NAMES
 				UE_LOG(LogVulkanRHI, Warning, TEXT("Invalid texture in SRT table for shader '%s'"), *Shader->GetDebugName());
-#else
-				UE_LOG(LogVulkanRHI, Warning, TEXT("Invalid texture in SRT table"));
-#endif
 			}
 		}
 			break;
@@ -488,11 +480,7 @@ inline void /*FVulkanCommandListContext::*/SetShaderUniformBufferResources(FVulk
 			}
 			else
 			{
-#if VULKAN_ENABLE_SHADER_DEBUG_NAMES
 				UE_LOG(LogVulkanRHI, Warning, TEXT("Invalid texture in SRT table for shader '%s'"), *Shader->GetDebugName());
-#else
-				UE_LOG(LogVulkanRHI, Warning, TEXT("Invalid texture in SRT table"));
-#endif
 			}
 		}
 		break;
@@ -510,11 +498,7 @@ inline void /*FVulkanCommandListContext::*/SetShaderUniformBufferResources(FVulk
 			}
 			else
 			{
-#if VULKAN_ENABLE_SHADER_DEBUG_NAMES
 				UE_LOG(LogVulkanRHI, Warning, TEXT("Invalid texture in SRT table for shader '%s'"), *Shader->GetDebugName());
-#else
-				UE_LOG(LogVulkanRHI, Warning, TEXT("Invalid texture in SRT table"));
-#endif
 			}
 		}
 		break;
