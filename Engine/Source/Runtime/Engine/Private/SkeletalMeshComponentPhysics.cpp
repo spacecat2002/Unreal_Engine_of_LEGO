@@ -71,7 +71,11 @@ DECLARE_CYCLE_STAT(TEXT("Cloth Writeback"), STAT_ClothWriteback, STATGROUP_Physi
 void FSkeletalMeshComponentClothTickFunction::ExecuteTick(float DeltaTime, enum ELevelTick TickType, ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
 {
 	QUICK_SCOPE_CYCLE_COUNTER(FSkeletalMeshComponentClothTickFunction_ExecuteTick);
-	FActorComponentTickFunction::ExecuteTickHelper(Target,Target->bUpdateClothInEditor, DeltaTime, TickType, [this](float DilatedTime)
+#if WITH_EDITOR
+	FActorComponentTickFunction::ExecuteTickHelper(Target, Target->bUpdateClothInEditor, DeltaTime, TickType, [this](float DilatedTime)
+#else
+	FActorComponentTickFunction::ExecuteTickHelper(Target,true, DeltaTime, TickType, [this](float DilatedTime)
+#endif
 	{
 		Target->TickClothing(DilatedTime, *this);
 	});
