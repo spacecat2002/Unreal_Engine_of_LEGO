@@ -154,25 +154,25 @@ public:
 	// Setting saving/serialization
 	//
 	/**
-	 * Save values of current Tool Properties. Implementing these functions is *optional*
-	 * and how it is implemented is up to the PropertySet implementation.
-	 * It is not necessary to save/restore all possible Properties (in many cases this would not make sense).
-	 * GetPropertyCache() can be used to return an instance of subclasses that is an easy
-	 * place to save/restore these properties
+	 * Save and restore values of current Tool Properties between tool invocations
+	 *
+	 * The default behaviour of these functions is to Save or Restore every property in the property set.  It is not
+	 * necessary to save/restore all possible Properties (in many cases this would not make sense), so individual
+	 * properties may be skipped by adding the "TransientToolProperty" tag to their metadata on a property by property
+	 * basis.
+	 *
+	 * Property sets which need more exotic behaviour upon Save and Restore may override these routines
+	 *
+	 * GetPropertyCache() and GetDynamicPropertyCache() can be used to return an instance of either the static or the
+	 * dynamic type of the specified property set subclass which may be used as a place to save/restore these properties
+	 * by customized Save/Restore functions
 	 */
-	virtual void SaveProperties(UInteractiveTool* SaveFromTool)
-	{
-		SaveRestoreProperties(SaveFromTool, true);
-	}
+	virtual void SaveProperties(UInteractiveTool* SaveFromTool);
+	virtual void RestoreProperties(UInteractiveTool* RestoreToTool);
+private:
 
-	/**
-	 * Restore saved property values
-	 */
-	virtual void RestoreProperties(UInteractiveTool* RestoreToTool)
-	{
-		SaveRestoreProperties(RestoreToTool, false);
-	}
-
+	// Utility func used to implement the default Save/RestoreProperties funcs
+	void SaveRestoreProperties(UInteractiveTool* RestoreToTool, bool bSaving);
 protected:
 	/**
 	 * GetPropertyCache returns a class-internal object that subclasses can use to save/restore properties.
@@ -197,29 +197,6 @@ protected:
 			CDO->CachedProperties = NewObject<UInteractiveToolPropertySet>((UObject*)GetTransientPackage(), GetClass());
 		}
 		return CDO->CachedProperties;
-	}
-
-	/**
-	 * Subclass this to save and restore in a single function. Use the SaveRestoryProperty function for each member:
-	 *   UMyPropertySetSubclass* PropertyCache = GetPropertyCache<UMyPropertySetSubclass>();
-	 *	 SaveRestoreProperty(PropertyCache->PropSetMember, this->PropSetMember, bSaving);
-	 */
-	virtual void SaveRestoreProperties(UInteractiveTool* RestoreToTool, bool bSaving) {}
-
-	/**
-	 * Call this from SaveRestoreProperties to either save or restore a given property value
-	 */
-	template<typename T>
-	void SaveRestoreProperty(T& CacheValue, T& PropsValue, bool bSaving)
-	{
-		if (bSaving)
-		{
-			CacheValue = PropsValue;
-		}
-		else
-		{
-			PropsValue = CacheValue;
-		}
 	}
 
 public:

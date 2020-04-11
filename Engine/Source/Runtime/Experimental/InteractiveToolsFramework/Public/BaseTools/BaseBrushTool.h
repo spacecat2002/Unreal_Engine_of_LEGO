@@ -40,17 +40,12 @@ public:
 	float BrushFalloffAmount;
 
 	/** If false, then BrushStrength will not be shown in DetailsView panels (otherwise no effect) */
-	UPROPERTY()
+	UPROPERTY( meta = (TransientToolProperty))
 	bool bShowStrength = true;
 
 	/** If false, then BrushFalloffAmount will not be shown in DetailsView panels (otherwise no effect) */
-	UPROPERTY()
+	UPROPERTY(meta = (TransientToolProperty))
 	bool bShowFalloff = true;
-
-	//
-	// save/restore support
-	//
-	virtual void SaveRestoreProperties(UInteractiveTool* Tool, bool bSaving) override;
 };
 
 

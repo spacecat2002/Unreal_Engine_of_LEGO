@@ -155,7 +155,37 @@ TArray<UObject*> UInteractiveTool::GetToolProperties(bool bEnabledOnly) const
 	return Properties;
 }
 
+void
+UInteractiveToolPropertySet::SaveProperties(UInteractiveTool* SaveFromTool)
+{
+	SaveRestoreProperties(SaveFromTool, true);
+}
 
+void
+UInteractiveToolPropertySet::RestoreProperties(UInteractiveTool* RestoreToTool)
+{
+	SaveRestoreProperties(RestoreToTool, false);
+}
+
+void UInteractiveToolPropertySet::SaveRestoreProperties(UInteractiveTool* RestoreToTool, bool bSaving)
+{
+	UInteractiveToolPropertySet* PropertyCache = GetDynamicPropertyCache();
+	for ( FProperty* Prop : TFieldRange<FProperty>(GetClass()) )
+	{
+#if WITH_EDITOR
+		if (!Prop->HasMetaData(TEXT("TransientToolProperty")))
+#endif
+		{
+			void* DestValue = Prop->ContainerPtrToValuePtr<void>(this);
+			void* SrcValue = Prop->ContainerPtrToValuePtr<void>(PropertyCache);
+			if ( bSaving )
+			{
+				Swap(SrcValue, DestValue);
+			}
+			Prop->CopySingleValue(DestValue, SrcValue);
+		}
+	}
+}
 
 void UInteractiveTool::RegisterActions(FInteractiveToolActionSet& ActionSet)
 {
