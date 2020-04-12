@@ -48,10 +48,9 @@ enum class EMultiBlockType : uint8
 	EditableText,
 	Heading,
 	MenuEntry,
-	MenuSeparator,
+	Separator,
 	ToolBarButton,
 	ToolBarComboButton,
-	ToolBarSeparator,
 	Widget,
 };
 
