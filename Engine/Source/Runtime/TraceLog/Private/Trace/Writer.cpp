@@ -11,6 +11,7 @@
 #include "Trace/Trace.inl"
 #include "WriteBufferRedirect.h"
 
+#include <limits.h>
 #include <stdlib.h>
 
 namespace Trace {
@@ -664,6 +665,8 @@ static volatile bool	GWorkerThreadQuit;	// = false;
 ////////////////////////////////////////////////////////////////////////////////
 static void Writer_WorkerUpdate()
 {
+	Trace::ThreadRegister(TEXT("Trace"), 0, INT_MAX);
+
 	Writer_UpdateControl();
 	Writer_UpdateData();
 	Writer_DescribeAnnounce();
