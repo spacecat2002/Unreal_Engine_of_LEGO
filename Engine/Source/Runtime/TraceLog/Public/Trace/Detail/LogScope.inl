@@ -183,6 +183,8 @@ auto TLogScope<T>::ScopedEnter(uint32 Uid, uint32 Size)
 	Buffer->Cursor[0] = EnterUid;
 	Buffer->Cursor += sizeof(EnterUid);
 
+	AtomicStoreRelease<uint8* __restrict>(&(Buffer->Committed), Buffer->Cursor);
+
 	return Enter(Uid, Size);
 }
 
@@ -201,6 +203,8 @@ auto TLogScope<T>::ScopedStampedEnter(uint32 Uid, uint32 Size)
 	Stamp += uint8(EKnownEventUids::EnterScope_T << EKnownEventUids::_UidShift);
 	*(uint64*)(Buffer->Cursor) = Stamp;
 	Buffer->Cursor += sizeof(Stamp);
+
+	AtomicStoreRelease<uint8* __restrict>(&(Buffer->Committed), Buffer->Cursor);
 
 	return Enter(Uid, Size);
 }
