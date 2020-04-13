@@ -118,6 +118,8 @@ inline FScopedLogScope::~FScopedLogScope()
 
 	Buffer->Cursor[0] = LeaveUid;
 	Buffer->Cursor += sizeof(LeaveUid);
+
+	AtomicStoreRelease<uint8* __restrict>(&(Buffer->Committed), Buffer->Cursor);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -147,6 +149,8 @@ inline FScopedStampedLogScope::~FScopedStampedLogScope()
 	Stamp += uint8(EKnownEventUids::LeaveScope_T << EKnownEventUids::_UidShift);
 	*(uint64*)(Buffer->Cursor) = Stamp;
 	Buffer->Cursor += sizeof(Stamp);
+
+	AtomicStoreRelease<uint8* __restrict>(&(Buffer->Committed), Buffer->Cursor);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
