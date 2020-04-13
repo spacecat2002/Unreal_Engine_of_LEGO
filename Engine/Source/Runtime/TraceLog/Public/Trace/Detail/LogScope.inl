@@ -108,10 +108,16 @@ inline FScopedLogScope::~FScopedLogScope()
 		return;
 	}
 
-	static_assert(sizeof(FWriteBuffer::Overflow) >= sizeof(uint8), "");
+	uint8 LeaveUid = uint8(EKnownEventUids::LeaveScope << EKnownEventUids::_UidShift);
+
 	FWriteBuffer* Buffer = Writer_GetBuffer();
-	Buffer->Cursor[0] = uint8(EKnownEventUids::LeaveScope << EKnownEventUids::_UidShift);
-	Buffer->Cursor++;
+	if (UNLIKELY(PTRINT(Buffer) - PTRINT(Buffer->Cursor) < sizeof(LeaveUid)))
+	{
+		Buffer = Writer_NextBuffer(0);
+	}
+
+	Buffer->Cursor[0] = LeaveUid;
+	Buffer->Cursor += sizeof(LeaveUid);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -130,8 +136,11 @@ inline FScopedStampedLogScope::~FScopedStampedLogScope()
 		return;
 	}
 
-	static_assert(sizeof(FWriteBuffer::Overflow) >= sizeof(uint64), "");
 	FWriteBuffer* Buffer = Writer_GetBuffer();
+	if (UNLIKELY(PTRINT(Buffer) - PTRINT(Buffer->Cursor) < sizeof(uint64)))
+	{
+		Buffer = Writer_NextBuffer(0);
+	}
 
 	uint64 Stamp = Writer_GetTimestamp(Buffer);
 	Stamp <<= 8;
@@ -159,10 +168,16 @@ auto TLogScope<T>::Enter(uint32 Uid, uint32 Size)
 template <class T>
 auto TLogScope<T>::ScopedEnter(uint32 Uid, uint32 Size)
 {
-	static_assert(sizeof(FWriteBuffer::Overflow) >= sizeof(uint8), "");
+	uint8 EnterUid = uint8(EKnownEventUids::EnterScope << EKnownEventUids::_UidShift);
+
 	FWriteBuffer* Buffer = Writer_GetBuffer();
-	Buffer->Cursor[0] = uint8(EKnownEventUids::EnterScope << EKnownEventUids::_UidShift);
-	Buffer->Cursor++;
+	if (UNLIKELY(PTRINT(Buffer) - PTRINT(Buffer->Cursor) < sizeof(EnterUid)))
+	{
+		Buffer = Writer_NextBuffer(0);
+	}
+
+	Buffer->Cursor[0] = EnterUid;
+	Buffer->Cursor += sizeof(EnterUid);
 
 	return Enter(Uid, Size);
 }
@@ -171,8 +186,11 @@ auto TLogScope<T>::ScopedEnter(uint32 Uid, uint32 Size)
 template <class T>
 auto TLogScope<T>::ScopedStampedEnter(uint32 Uid, uint32 Size)
 {
-	static_assert(sizeof(FWriteBuffer::Overflow) >= sizeof(uint64), "");
 	FWriteBuffer* Buffer = Writer_GetBuffer();
+	if (UNLIKELY(PTRINT(Buffer) - PTRINT(Buffer->Cursor) < sizeof(uint64)))
+	{
+		Buffer = Writer_NextBuffer(0);
+	}
 
 	uint64 Stamp = Writer_GetTimestamp(Buffer);
 	Stamp <<= 8;

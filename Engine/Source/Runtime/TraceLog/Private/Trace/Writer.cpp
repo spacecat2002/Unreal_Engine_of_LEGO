@@ -59,7 +59,7 @@ UE_TRACE_EVENT_END()
 ////////////////////////////////////////////////////////////////////////////////
 static bool						GInitialized;		// = false;
 static uint64					GStartCycle;		// = 0;
-static FWriteBuffer				GNullWriteBuffer	= { {}, 0, 0, 0, 0, nullptr, nullptr, (uint8*)&GNullWriteBuffer };
+static FWriteBuffer				GNullWriteBuffer	= { 0, 0, 0, 0, nullptr, nullptr, (uint8*)&GNullWriteBuffer };
 thread_local FWriteBuffer*		GTlsWriteBuffer		= &GNullWriteBuffer;
 TRACELOG_API uint32 volatile	GLogSerial;			// = 0;
 
