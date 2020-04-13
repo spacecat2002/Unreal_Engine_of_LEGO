@@ -8,6 +8,7 @@
 
 #include "EventNode.h"
 #include "LogScope.h"
+#include "Writer.inl"
 
 namespace Trace {
 namespace Private {
