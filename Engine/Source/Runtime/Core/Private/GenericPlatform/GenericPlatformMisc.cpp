@@ -1075,7 +1075,7 @@ const TCHAR* FGenericPlatformMisc::GamePersistentDownloadDir()
 
 	if (GamePersistentDownloadDir.Len() == 0)
 	{
-		GamePersistentDownloadDir = Paths::ProjectSavedDir() / TEXT("PersistentDownloadDir");
+		GamePersistentDownloadDir = FPaths::ProjectSavedDir() / TEXT("PersistentDownloadDir");
 	}
 	return *GamePersistentDownloadDir;
 }
