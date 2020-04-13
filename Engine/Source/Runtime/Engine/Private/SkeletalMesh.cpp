@@ -474,6 +474,12 @@ void USkeletalMesh::ValidateBoundsExtension()
 /* Return true if the reduction settings are setup to reduce a LOD*/
 bool USkeletalMesh::IsReductionActive(int32 LODIndex) const
 {
+	//Invalid LOD are not reduced
+	if(!IsValidLODIndex(LODIndex))
+	{
+		return false;
+	}
+
 	bool bReductionActive = false;
 	if (IMeshReduction* ReductionModule = FModuleManager::Get().LoadModuleChecked<IMeshReductionManagerModule>("MeshReductionInterface").GetSkeletalMeshReductionInterface())
 	{
