@@ -521,6 +521,8 @@ private:
 
 	bool bCsvWriterEnabled;
 
+	bool bTraceWriterEnabled;
+
 	bool bInitialisedTrackers;
 
 	FLLMCustomTag CustomTags[LLM_CUSTOM_TAG_COUNT];

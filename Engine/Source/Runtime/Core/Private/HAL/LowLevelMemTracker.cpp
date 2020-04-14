@@ -11,6 +11,36 @@
 
 #if ENABLE_LOW_LEVEL_MEM_TRACKER
 #include "MemPro/MemProProfiler.h"
+#include "Trace/Trace.inl"
+
+UE_TRACE_CHANNEL(MemoryChannel);
+//UE_TRACE_CHANNEL(MemoryDetailChannel);
+
+UE_TRACE_EVENT_BEGIN(LLM, TagsSpec, Important)
+	UE_TRACE_EVENT_FIELD(int64, TagId)
+	UE_TRACE_EVENT_FIELD(int64, ParentId)
+UE_TRACE_EVENT_END()
+
+UE_TRACE_EVENT_BEGIN(LLM, TrackerSpec, Important)
+	UE_TRACE_EVENT_FIELD(uint8, TrackerId)
+UE_TRACE_EVENT_END()
+
+UE_TRACE_EVENT_BEGIN(LLM, TagValue)
+	UE_TRACE_EVENT_FIELD(uint8, TrackerId)
+	UE_TRACE_EVENT_FIELD(uint64, Cycle)
+	UE_TRACE_EVENT_FIELD(int64[], Tags)
+	UE_TRACE_EVENT_FIELD(int64[], Values)
+UE_TRACE_EVENT_END()
+
+UE_TRACE_EVENT_BEGIN(LLM, Allocation)
+	UE_TRACE_EVENT_FIELD(int64, Tag)
+	UE_TRACE_EVENT_FIELD(uint64, Ptr)
+	UE_TRACE_EVENT_FIELD(uint64, Size)
+UE_TRACE_EVENT_END()
+
+UE_TRACE_EVENT_BEGIN(LLM, Free)
+	UE_TRACE_EVENT_FIELD(uint64, Ptr)
+UE_TRACE_EVENT_END()
 
 // There is a little memory and cpu overhead in tracking peak memory but it is generally more useful than current memory.
 // Disable if you need a little more memory or speed
@@ -302,8 +332,6 @@ private:
 
 	void Write(const FString& Text);
 
-	static FString GetTagName(int64 Tag, FLLMCustomTag* CustomTags, const int32* ParentTags);
-
 	static const TCHAR* GetTrackerCsvName(ELLMTracker InTracker);
 
 	struct StatValue
@@ -331,6 +359,32 @@ private:
 	FArchive* Archive;
 
 	int32 LastWriteStatValueCount;
+};
+
+/**
+ * Outputs the LLM to TraceLog events.
+ */
+class FLLMTraceWriter
+{
+public:
+	FLLMTraceWriter();
+	void SetTracker(ELLMTracker InTracker);
+	void SetAllocator(FLLMAllocator* Allocator);
+	void Clear();
+	void AddStat(int64 Tag, int64 Value);
+	void SetStat(int64 Tag, int64 Value);
+	void Update(FLLMCustomTag* CustomTags, const int32* ParentTags);
+	static void TraceGenericTags(const int32* ParentTags);
+
+private:
+	ELLMTracker			Tracker;
+	FLLMAllocator*		Allocator;
+	FLLMArray<int64>	StatTags;
+	FLLMArray<int64>	StatValues;
+	FLLMArray<int64>	StatTagsSnapshot;
+	FLLMArray<int64>	StatValuesSnapshot;
+	FCriticalSection	StatValuesLock;
+	int32				LastTracedTagCount;
 };
 
 /*
@@ -368,6 +422,7 @@ public:
 	void SetCSVEnabled(bool Value);
 
 	void WriteCsv(FLLMCustomTag* CustomTags, const int32* ParentTags);
+	void WriteToTrace(FLLMCustomTag* CustomTags, const int32* ParentTags);
 
 #define LLM_USE_ALLOC_INFO_STRUCT (LLM_STAT_TAGS_ENABLED || LLM_ALLOW_ASSETS_TAGS)
 
@@ -435,6 +490,7 @@ protected:
 			ELLMTag InUntaggedTotalTag,
 			FLLMThreadState& InStateCopy,
 			FLLMCsvWriter& CsvWriter,
+			FLLMTraceWriter& TraceWriter,
 			FLLMCustomTag* CustomTags,
 			int64* EnumTagAmounts,
 			int64* OutAllocTypeAmounts);
@@ -490,6 +546,7 @@ protected:
 	FLLMThreadState StateCopy;
 
 	FLLMCsvWriter CsvWriter;
+	FLLMTraceWriter TraceWriter;
 
 	double LastTrimTime;
 
@@ -544,6 +601,7 @@ FLowLevelMemTracker::FLowLevelMemTracker()
 	: bFirstTimeUpdating(true)
 	, bCanEnable(true)
 	, bCsvWriterEnabled(false)
+	, bTraceWriterEnabled(false)
 	, bInitialisedTrackers(false)
 {
 	// set the LLMMap alloc functions
@@ -695,6 +753,12 @@ void FLowLevelMemTracker::UpdateStatsPerFrame(const TCHAR* LogName)
 		GetTracker(ELLMTracker::Platform)->WriteCsv(CustomTags,ParentTags);
 	}
 
+	if (bTraceWriterEnabled)
+	{
+		GetTracker(ELLMTracker::Default)->WriteToTrace(CustomTags, ParentTags);
+		GetTracker(ELLMTracker::Platform)->WriteToTrace(CustomTags, ParentTags);
+	}
+
 	if (LogName != nullptr)
 	{
 		FPlatformMisc::LowLevelOutputDebugStringf(TEXT("---> Untracked memory at %s = %.2f mb\n"), LogName, (double)PlatformTotalUntracked / (1024.0 * 1024.0));
@@ -746,13 +810,14 @@ void FLowLevelMemTracker::ProcessCommandLine(const TCHAR* CmdLine)
 	}
 
 	bCsvWriterEnabled = FParse::Param(CmdLine, TEXT("LLMCSV"));
+	bTraceWriterEnabled = UE_TRACE_CHANNELEXPR_IS_ENABLED(MemoryChannel);
 	for (int32 TrackerIndex = 0; TrackerIndex < (int32)ELLMTracker::Max; ++TrackerIndex)
 	{
 		GetTracker((ELLMTracker)TrackerIndex)->SetCSVEnabled(bCsvWriterEnabled);
 	}
 
-	// automatically enable LLM if only LLMCSV is there
-	if (bCsvWriterEnabled && bIsDisabled && bCanEnable)
+	// automatically enable LLM if only csv or trace output is active
+	if ((bCsvWriterEnabled || bTraceWriterEnabled) && bIsDisabled && bCanEnable)
 	{
 		bIsDisabled = false;
 	}
@@ -1223,6 +1288,7 @@ void FLLMTracker::Initialise(
 	FLLMAllocator* InAllocator)
 {
 	CsvWriter.SetTracker(Tracker);
+	TraceWriter.SetTracker(Tracker);
 
 	Allocator = InAllocator;
 
@@ -1231,6 +1297,7 @@ void FLLMTracker::Initialise(
 	StateCopy.SetAllocator(InAllocator);
 
 	CsvWriter.SetAllocator(InAllocator);
+	TraceWriter.SetAllocator(InAllocator);
 
 	ThreadStateAllocator.SetAllocator(Allocator);
 	ThreadStates.SetAllocator(Allocator);
@@ -1439,6 +1506,7 @@ void FLLMTracker::Clear()
 
 	AllocationMap.Clear();
 	CsvWriter.Clear();
+	TraceWriter.Clear();
 	ThreadStateAllocator.Clear();
 }
 
@@ -1481,7 +1549,7 @@ void FLLMTracker::Update(FLLMCustomTag* CustomTags, const int32* ParentTags)
 	for (int32 ThreadIndex = 0; ThreadIndex < ThreadStateNum; ThreadIndex++)
 	{
 		ThreadStates[ThreadIndex]->UpdateFrameStatGroups(CustomTags,ParentTags);
-		ThreadStates[ThreadIndex]->GetFrameStatTotals(UntaggedTotalTag, StateCopy, CsvWriter, CustomTags, EnumTagAmounts, AllocTypeAmounts);
+		ThreadStates[ThreadIndex]->GetFrameStatTotals(UntaggedTotalTag, StateCopy, CsvWriter, TraceWriter, CustomTags, EnumTagAmounts, AllocTypeAmounts);
 	}
 
 	EnumTagAmounts[(int32)TrackedTotalTag] = TrackedMemoryOverFrames;
@@ -1508,6 +1576,7 @@ void FLLMTracker::UpdateTotals()
 #else
 	CsvWriter.SetStat((int64)TrackedTotalTag, TrackedMemoryOverFrames);
 #endif
+	TraceWriter.SetStat((int64)TrackedTotalTag, TrackedMemoryOverFrames);
 
 	if (FPlatformTime::Seconds() - LastTrimTime > 10)
 	{
@@ -1519,6 +1588,11 @@ void FLLMTracker::UpdateTotals()
 void FLLMTracker::WriteCsv(FLLMCustomTag* CustomTags, const int32* ParentTags)
 {
 	CsvWriter.Update(CustomTags,ParentTags);
+}
+
+void FLLMTracker::WriteToTrace(FLLMCustomTag* CustomTags, const int32* ParentTags)
+{
+	TraceWriter.Update(CustomTags, ParentTags);
 }
 
 int64 FLLMTracker::GetActiveTag()
@@ -1703,6 +1777,7 @@ void FLLMTracker::SetTagAmount(ELLMTag Tag, int64 Amount, bool AddToTotal)
 	EnumTagAmounts[(int32)Tag] = Amount;
 
 	CsvWriter.SetStat((int64)Tag, Amount);
+	TraceWriter.SetStat((int64)Tag, Amount);
 }
 
 int64 FLLMTracker::GetAllocTypeAmount(ELLMAllocType AllocType)
@@ -1736,6 +1811,11 @@ void FLLMTracker::FLLMThreadState::TrackAllocation(const void* Ptr, uint64 Size,
 		MEMPRO_TRACK_ALLOC((void*)Ptr, (size_t)Size);
 	}
 #endif
+
+	//UE_TRACE_LOG(LLM, Allocation, MemoryDetailChannel)
+	//	<< Allocation.Tag(Tag)
+	//	<< Allocation.Ptr((uint64)Ptr)
+	//	<< Allocation.Size(Size);
 }
 
 void FLLMTracker::FLLMThreadState::TrackFree(const void* Ptr, int64 Tag, uint64 Size, bool bTrackedUntagged, ELLMTracker Tracker, ELLMAllocType AllocType)
@@ -1757,6 +1837,9 @@ void FLLMTracker::FLLMThreadState::TrackFree(const void* Ptr, int64 Tag, uint64 
 		MEMPRO_TRACK_FREE((void*)Ptr);
 	}
 #endif
+
+	//UE_TRACE_LOG(LLM, Free, MemoryDetailChannel)
+	//	<< Free.Ptr((uint64)Ptr);
 }
 
 /**
@@ -1767,6 +1850,7 @@ void FLLMTracker::FLLMThreadState::GetFrameStatTotals(
 	ELLMTag InUntaggedTotalTag,
 	FLLMThreadState& InStateCopy,
 	FLLMCsvWriter& InCsvWriter,
+	FLLMTraceWriter& InTraceWriter,
 	FLLMCustomTag* CustomTags,
 	int64* OutEnumTagAmounts,
 	int64* OutAllocTypeAmounts)
@@ -1806,6 +1890,7 @@ void FLLMTracker::FLLMThreadState::GetFrameStatTotals(
 #else
 	InCsvWriter.AddStat((int64)InUntaggedTotalTag, InStateCopy.UntaggedAllocs);
 #endif
+	InTraceWriter.AddStat((int64)InUntaggedTotalTag, InStateCopy.UntaggedAllocs);
 
 	for (int32 Index = 0; Index < (int32)ELLMAllocType::Count; ++Index)
 	{
@@ -1826,6 +1911,7 @@ void FLLMTracker::FLLMThreadState::GetFrameStatTotals(
 #else
 		InCsvWriter.AddStat(Tag, Amount);
 #endif
+		InTraceWriter.AddStat(Tag, Amount);
 
 		//---------------------
 		// update the stats
@@ -1889,6 +1975,56 @@ void FLLMTracker::FLLMThreadState::ClearAllocTypeAmounts()
 	{
 		AllocTypeAmounts[Index] = 0;
 	}
+}
+
+/*
+ * convert a Tag to a string. If the Tag is actually a Stat then extract the name of the stat.
+*/
+FString GetTagName(int64 Tag, FLLMCustomTag* CustomTags, const int32* ParentTags)
+{
+	FString Result;
+
+	if (Tag >= (int64)LLM_TAG_COUNT)
+	{
+		FString Name = TagToFName(Tag).ToString();
+
+		// if it has a trible slash assume it is a Stat string and extract the descriptive name
+		int32 StartIndex = Name.Find(TEXT("///"), ESearchCase::CaseSensitive);
+		if (StartIndex != -1)
+		{
+			StartIndex += 3;
+			int32 EndIndex = Name.Find(TEXT("///"), ESearchCase::CaseSensitive, ESearchDir::FromStart, StartIndex);
+			if (EndIndex != -1)
+			{
+				Name.MidInline(StartIndex, EndIndex - StartIndex, false);
+			}
+		}
+
+		Result = Name;
+	}
+	else if (Tag >= LLM_CUSTOM_TAG_START && Tag <= LLM_CUSTOM_TAG_END)
+	{
+		if (ParentTags != nullptr && ParentTags[Tag] != -1)
+		{
+			Result = GetTagName(ParentTags[Tag], CustomTags, nullptr) + TEXT("/");
+		}
+
+		LLMCheckf(CustomTags[Tag - LLM_CUSTOM_TAG_START].Name != nullptr, TEXT("Tag %lld has no name"), Tag);
+		Result += CustomTags[Tag - LLM_CUSTOM_TAG_START].Name;
+	}
+	else
+	{
+		LLMCheck(Tag >= 0 && LLMGetTagName((ELLMTag)Tag) != nullptr);
+
+		if (ParentTags != nullptr && ParentTags[Tag] != -1)
+		{
+			Result = GetTagName(ParentTags[Tag], CustomTags, nullptr) + TEXT("/");
+		}
+
+		Result += LLMGetTagName((ELLMTag)Tag);
+	}
+
+	return Result;
 }
 
 /*
@@ -2109,54 +2245,134 @@ void FLLMCsvWriter::WriteGraph(FLLMCustomTag* CustomTags, const int32* ParentTag
 }
 
 /*
- * convert a Tag to a string. If the Tag is actually a Stat then extract the name of the stat.
+ * FLLMTraceWriter implementation
 */
-FString FLLMCsvWriter::GetTagName(int64 Tag, FLLMCustomTag* CustomTags, const int32* ParentTags)
+
+
+FLLMTraceWriter::FLLMTraceWriter()
+	: Allocator(nullptr)
+	, LastTracedTagCount(0)
 {
-	FString Result;
 
-	if (Tag >= (int64)LLM_TAG_COUNT)
+}
+
+inline void FLLMTraceWriter::SetTracker(ELLMTracker InTracker)
+{ 
+	Tracker = InTracker;
+	static const ANSICHAR* TrackerNames[] = {"System", "Default", 0};
+	const ANSICHAR* TrackerName = TrackerNames[(uint8)Tracker];
+	const uint32 TrackerNameBytes = FCStringAnsi::Strlen(TrackerName) + 1;
+	UE_TRACE_LOG(LLM, TrackerSpec, MemoryChannel, TrackerNameBytes)
+		<< TrackerSpec.TrackerId((uint8)InTracker)
+		<< TrackerSpec.Attachment(TrackerName, TrackerNameBytes);
+}
+
+void FLLMTraceWriter::SetAllocator(FLLMAllocator* InAllocator)
+{
+	Allocator = InAllocator;
+	StatTags.SetAllocator(Allocator);
+	StatValues.SetAllocator(Allocator);
+	StatTagsSnapshot.SetAllocator(Allocator);
+	StatValuesSnapshot.SetAllocator(Allocator);
+}
+
+void FLLMTraceWriter::Clear()
+{
+	StatTags.Clear(true);
+	StatValues.Clear(true);
+	StatTagsSnapshot.Clear(true);
+	StatValuesSnapshot.Clear(true);
+}
+
+void FLLMTraceWriter::AddStat(int64 Tag, int64 Value)
+{
+	FScopeLock lock(&StatValuesLock);
+	int StatValueCount = StatTags.Num();
+	for (int32 i = 0; i < StatValueCount; ++i)
 	{
-		FString Name = TagToFName(Tag).ToString();
-
-		// if it has a trible slash assume it is a Stat string and extract the descriptive name
-		int32 StartIndex = Name.Find(TEXT("///"), ESearchCase::CaseSensitive);
-		if (StartIndex != -1)
+		if (StatTags[i] == Tag)
 		{
-			StartIndex += 3;
-			int32 EndIndex = Name.Find(TEXT("///"), ESearchCase::CaseSensitive, ESearchDir::FromStart, StartIndex);
-			if (EndIndex != -1)
-			{
-				Name.MidInline(StartIndex, EndIndex - StartIndex, false);
-			}
+			StatValues[i] += Value;
+			return;
 		}
-
-		Result = Name;
 	}
-	else if (Tag >= LLM_CUSTOM_TAG_START && Tag <= LLM_CUSTOM_TAG_END)
+
+	check(StatTags.Num() == StatValues.Num());
+	StatTags.Add(Tag);
+	StatValues.Add(Value);
+}
+
+void FLLMTraceWriter::SetStat(int64 Tag, int64 Value)
+{
+	FScopeLock lock(&StatValuesLock);
+	int StatValueCount = StatValues.Num();
+	for (int32 i = 0; i < StatValueCount; ++i)
 	{
-		if (ParentTags != nullptr && ParentTags[Tag] != -1)
+		if (StatTags[i] == Tag)
 		{
-			Result = GetTagName( ParentTags[Tag], CustomTags, nullptr ) + TEXT("/");
+			StatValues[i] = Value;
+			return;
 		}
-
-		LLMCheckf(CustomTags[Tag - LLM_CUSTOM_TAG_START].Name != nullptr, TEXT("Tag %lld has no name"), Tag ); 
-		Result += CustomTags[Tag - LLM_CUSTOM_TAG_START].Name;
 	}
-	else
+
+	check(StatTags.Num() == StatValues.Num());
+	StatTags.Add(Tag);
+	StatValues.Add(Value);
+}
+
+void FLLMTraceWriter::Update(FLLMCustomTag* CustomTags, const int32* ParentTags)
+{
+	if (!UE_TRACE_CHANNELEXPR_IS_ENABLED(MemoryChannel))
 	{
-		LLMCheck(Tag >= 0 && LLMGetTagName((ELLMTag)Tag) != nullptr);
-
-		if (ParentTags != nullptr && ParentTags[Tag] != -1)
-		{
-			Result = GetTagName( ParentTags[Tag], CustomTags, nullptr ) + TEXT("/");
-		}
-
-		Result += LLMGetTagName((ELLMTag)Tag);
+		return;
 	}
 
-	return Result;
+	{
+		FScopeLock lock(&StatValuesLock);
+		StatTagsSnapshot = StatTags;
+		StatValuesSnapshot = StatValues;
+	}
+
+	const int32 TagCount = StatTagsSnapshot.Num();
+
+	// Trace tags, if we have found a new one.
+	if (TagCount != LastTracedTagCount)
+	{
+		for (int32 i = LastTracedTagCount; i < TagCount; ++i)
+		{
+			const int64 Tag = StatTagsSnapshot[i];
+			//FString TagName = GetTagName(Tag, CustomTags, ParentTags); // prefix with parent tag
+			FString TagName = GetTagName(Tag, CustomTags, nullptr);
+			const uint32 TagNameSize = TagName.Len() * sizeof(TCHAR);
+			UE_TRACE_LOG(LLM, TagsSpec, MemoryChannel, TagNameSize)
+				<< TagsSpec.TagId(Tag)
+				<< TagsSpec.ParentId(ParentTags[Tag])
+				<< TagsSpec.Attachment(*TagName, TagNameSize);
+		}
+		LastTracedTagCount = TagCount;
+	}
+
+	const uint64 Cycle = FPlatformTime::Cycles64();
+	const int64* Tags = StatTagsSnapshot.GetData();
+	const int64* Values = StatValuesSnapshot.GetData();
+	UE_TRACE_LOG(LLM, TagValue, MemoryChannel)
+		<< TagValue.TrackerId((uint8)Tracker)
+		<< TagValue.Cycle(Cycle)
+		<< TagValue.Tags(Tags, TagCount)
+		<< TagValue.Values(Values, TagCount);
+}
+
+void FLLMTraceWriter::TraceGenericTags(const int32* ParentTags)
+{
+	for (int32 GenericTagIndex = 0; GenericTagIndex < (int32)ELLMTag::GenericTagCount; GenericTagIndex++)
+	{
+		FString TagName = GetTagName(GenericTagIndex, nullptr, ParentTags);
+		const uint32 TagNameSize = TagName.Len() * sizeof(TCHAR);
+		UE_TRACE_LOG(LLM, TagsSpec, MemoryChannel, TagNameSize)
+			<< TagsSpec.TagId(GenericTagIndex)
+			<< TagsSpec.ParentId(ParentTags[GenericTagIndex])
+			<< TagsSpec.Attachment(*TagName, TagNameSize);
+	}
 }
 
 #endif		// #if ENABLE_LOW_LEVEL_MEM_TRACKER
-
