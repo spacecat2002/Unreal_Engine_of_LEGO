@@ -14,7 +14,6 @@
 #include "Trace/Trace.inl"
 
 UE_TRACE_CHANNEL(MemoryChannel);
-//UE_TRACE_CHANNEL(MemoryDetailChannel);
 
 UE_TRACE_EVENT_BEGIN(LLM, TagsSpec, Important)
 	UE_TRACE_EVENT_FIELD(int64, TagId)
@@ -30,16 +29,6 @@ UE_TRACE_EVENT_BEGIN(LLM, TagValue)
 	UE_TRACE_EVENT_FIELD(uint64, Cycle)
 	UE_TRACE_EVENT_FIELD(int64[], Tags)
 	UE_TRACE_EVENT_FIELD(int64[], Values)
-UE_TRACE_EVENT_END()
-
-UE_TRACE_EVENT_BEGIN(LLM, Allocation)
-	UE_TRACE_EVENT_FIELD(int64, Tag)
-	UE_TRACE_EVENT_FIELD(uint64, Ptr)
-	UE_TRACE_EVENT_FIELD(uint64, Size)
-UE_TRACE_EVENT_END()
-
-UE_TRACE_EVENT_BEGIN(LLM, Free)
-	UE_TRACE_EVENT_FIELD(uint64, Ptr)
 UE_TRACE_EVENT_END()
 
 // There is a little memory and cpu overhead in tracking peak memory but it is generally more useful than current memory.
@@ -1811,11 +1800,6 @@ void FLLMTracker::FLLMThreadState::TrackAllocation(const void* Ptr, uint64 Size,
 		MEMPRO_TRACK_ALLOC((void*)Ptr, (size_t)Size);
 	}
 #endif
-
-	//UE_TRACE_LOG(LLM, Allocation, MemoryDetailChannel)
-	//	<< Allocation.Tag(Tag)
-	//	<< Allocation.Ptr((uint64)Ptr)
-	//	<< Allocation.Size(Size);
 }
 
 void FLLMTracker::FLLMThreadState::TrackFree(const void* Ptr, int64 Tag, uint64 Size, bool bTrackedUntagged, ELLMTracker Tracker, ELLMAllocType AllocType)
@@ -1837,9 +1821,6 @@ void FLLMTracker::FLLMThreadState::TrackFree(const void* Ptr, int64 Tag, uint64 
 		MEMPRO_TRACK_FREE((void*)Ptr);
 	}
 #endif
-
-	//UE_TRACE_LOG(LLM, Free, MemoryDetailChannel)
-	//	<< Free.Ptr((uint64)Ptr);
 }
 
 /**
