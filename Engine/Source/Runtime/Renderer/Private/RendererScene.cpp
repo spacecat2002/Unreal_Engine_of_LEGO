@@ -1133,6 +1133,8 @@ FScene::FScene(UWorld* InWorld, bool bInRequiresHitProxies, bool bInIsEditorScen
 ,	bScenesPrimitivesNeedStaticMeshElementUpdate(false)
 ,	bPathTracingNeedsInvalidation(true)
 ,	SkyLight(NULL)
+,	bRealTimeSlicedReflectionCaptureFirstFrame(true)
+,	RealTimeSlicedReflectionCaptureState(0)
 ,	SimpleDirectionalLight(NULL)
 ,	ReflectionSceneData(InFeatureLevel)
 ,	IndirectLightingCache(InFeatureLevel)

@@ -1879,6 +1879,7 @@ struct FRelevancePacket
 
 	TArray<FMeshDecalBatch> MeshDecalBatches;
 	TArray<FVolumetricMeshBatch> VolumetricMeshBatches;
+	TArray<FVolumetricMeshBatch> SkyMesheBatches;
 	FDrawCommandRelevancePacket DrawCommandPacket;
 
 	struct FPrimitiveLODMask
@@ -2367,6 +2368,14 @@ struct FRelevancePacket
 							BatchAndProxy.Proxy = PrimitiveSceneInfo->Proxy;
 						}
 
+						if (ViewRelevance.bUsesSkyMaterial)
+						{
+							SkyMesheBatches.AddUninitialized(1);
+							FVolumetricMeshBatch& BatchAndProxy = SkyMesheBatches.Last();
+							BatchAndProxy.Mesh = &StaticMesh;
+							BatchAndProxy.Proxy = PrimitiveSceneInfo->Proxy;
+						}
+
 						if (ViewRelevance.bRenderInMainPass && ViewRelevance.bDecal)
 						{
 							MeshDecalBatches.AddUninitialized(1);
@@ -2417,6 +2426,7 @@ struct FRelevancePacket
 
 		WriteView.MeshDecalBatches.Append(MeshDecalBatches);
 		WriteView.VolumetricMeshBatches.Append(VolumetricMeshBatches);
+		WriteView.SkyMesheBatches.Append(SkyMesheBatches);
 
 		for (int32 Index = 0; Index < RecachedReflectionCapturePrimitives.NumPrims; ++Index)
 		{
@@ -2773,6 +2783,14 @@ void ComputeDynamicMeshRelevance(EShadingPath ShadingPath, bool bAddLightmapDens
 	{
 		View.VolumetricMeshBatches.AddUninitialized(1);
 		FVolumetricMeshBatch& BatchAndProxy = View.VolumetricMeshBatches.Last();
+		BatchAndProxy.Mesh = MeshBatch.Mesh;
+		BatchAndProxy.Proxy = MeshBatch.PrimitiveSceneProxy;
+	}
+
+	if (ViewRelevance.bUsesSkyMaterial)
+	{
+		View.SkyMesheBatches.AddUninitialized(1);
+		FVolumetricMeshBatch& BatchAndProxy = View.SkyMesheBatches.Last();
 		BatchAndProxy.Mesh = MeshBatch.Mesh;
 		BatchAndProxy.Proxy = MeshBatch.PrimitiveSceneProxy;
 	}

@@ -2530,9 +2530,22 @@ public:
 	/** Contains the sky env map irradiance as spherical harmonics. */
 	FRWBufferStructured SkyIrradianceEnvironmentMap;
 
-	/** If sky light bRealTimeCaptureEnabled is true, use those render target to capture, generate mips and convolve the sky env map. */
+	/** The SkyView LUT used when rendering sky material sampling this lut into the realtime capture sky env map. It must be generated at the skylight position*/
+	TRefCountPtr<IPooledRenderTarget> RealTimeReflectionCaptureSkyAtmosphereViewLutTexture;
+	/** The Camera 360 AP is used when rendering sky material sampling this lut or volumetric clouds into the realtime capture sky env map. It must be generated at the skylight position*/
+	TRefCountPtr<IPooledRenderTarget> RealTimeReflectionCaptureCamera360APLutTexture;
+
+	/** If sky light bRealTimeCaptureEnabled is true, used to render the sky env map (sky, sky dome mesh or clouds). */
 	TRefCountPtr<IPooledRenderTarget> CapturedSkyRenderTarget;	// Needs to be a IPooledRenderTarget because it must be created before the View uniform buffer is created.
+	/** If sky light bRealTimeCaptureEnabled is true, use to store the result of the sky env map GGX specular convolution. */
 	TRefCountPtr<IPooledRenderTarget> ConvolvedSkyRenderTarget;
+	/** If the real time sky capture is time sliced, this stores the currently processed/generated sky env map.*/
+	TRefCountPtr<IPooledRenderTarget> ProcessedSkyRenderTarget;
+
+	/** True if no real time reflection capture has been entirely processed. We always enforce a complete one the first frame even with time slicing for correct start up lighting.*/
+	bool bRealTimeSlicedReflectionCaptureFirstFrame;
+	/** The current progress of the real time reflection capture when time sliced. */
+	uint32 RealTimeSlicedReflectionCaptureState;
 
 	/** Used to track the order that skylights were enabled in. */
 	TArray<FSkyLightSceneProxy*> SkyLightStack;

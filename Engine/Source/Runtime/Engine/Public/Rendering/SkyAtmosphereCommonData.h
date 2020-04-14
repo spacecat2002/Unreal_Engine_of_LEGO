@@ -51,7 +51,8 @@ struct FAtmosphereSetup
 
 	ENGINE_API void UpdateTransform(const FTransform& ComponentTransform, uint8 TranformMode);
 
-	ENGINE_API void ComputeViewData(FVector WorldCameraOrigin, FVector& SkyWorldCameraOrigin, FVector4& SkyPlanetCenterAndViewHeight) const;
+	ENGINE_API void ComputeViewData(const FVector& WorldCameraOrigin, const FVector& ViewForward, const FVector& ViewRight, 
+		FVector& SkyWorldCameraOrigin, FVector4& SkyPlanetCenterAndViewHeight, FMatrix& SkyViewLutReferential) const;
 };
 
 

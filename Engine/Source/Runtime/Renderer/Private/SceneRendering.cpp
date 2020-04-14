@@ -1218,6 +1218,7 @@ void FViewInfo::SetupUniformBufferParameters(
 		FSkyAtmosphereViewSharedUniformShaderParameters OutParameters;
 		SetupSkyAtmosphereViewSharedUniformShaderParameters(*this, OutParameters);
 		ViewUniformShaderParameters.SkyAtmosphereAerialPerspectiveStartDepthKm = OutParameters.AerialPerspectiveStartDepthKm;
+		ViewUniformShaderParameters.SkyAtmosphereCameraAerialPerspectiveVolumeSizeAndInvSize = OutParameters.CameraAerialPerspectiveVolumeSizeAndInvSize;
 		ViewUniformShaderParameters.SkyAtmosphereCameraAerialPerspectiveVolumeDepthResolution = OutParameters.CameraAerialPerspectiveVolumeDepthResolution;
 		ViewUniformShaderParameters.SkyAtmosphereCameraAerialPerspectiveVolumeDepthResolutionInv = OutParameters.CameraAerialPerspectiveVolumeDepthResolutionInv;
 		ViewUniformShaderParameters.SkyAtmosphereCameraAerialPerspectiveVolumeDepthSliceLengthKm = OutParameters.CameraAerialPerspectiveVolumeDepthSliceLengthKm;
@@ -1246,7 +1247,9 @@ void FViewInfo::SetupUniformBufferParameters(
 			}
 		}
 
-		AtmosphereSetup.ComputeViewData(ViewUniformShaderParameters.WorldCameraOrigin, ViewUniformShaderParameters.SkyWorldCameraOrigin, ViewUniformShaderParameters.SkyPlanetCenterAndViewHeight);
+		// Regular view sampling of the SkyViewLUT. This is only changed when sampled from a sky material for the real time reflection capture around sky light position)
+		AtmosphereSetup.ComputeViewData(ViewUniformShaderParameters.WorldCameraOrigin, ViewUniformShaderParameters.ViewForward, ViewUniformShaderParameters.ViewRight,
+			ViewUniformShaderParameters.SkyWorldCameraOrigin, ViewUniformShaderParameters.SkyPlanetCenterAndViewHeight, ViewUniformShaderParameters.SkyViewLutReferential);
 	}
 	else
 	{
@@ -1256,6 +1259,7 @@ void FViewInfo::SetupUniformBufferParameters(
 		ViewUniformShaderParameters.SkyAtmosphereBottomRadiusKm = 1.0f;
 		ViewUniformShaderParameters.SkyAtmosphereTopRadiusKm = 1.0f;
 		ViewUniformShaderParameters.SkyAtmosphereSkyLuminanceFactor = FLinearColor::White;
+		ViewUniformShaderParameters.SkyAtmosphereCameraAerialPerspectiveVolumeSizeAndInvSize = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
 		ViewUniformShaderParameters.SkyAtmosphereAerialPerspectiveStartDepthKm = 1.0f;
 		ViewUniformShaderParameters.SkyAtmosphereCameraAerialPerspectiveVolumeDepthResolution = 1.0f;
 		ViewUniformShaderParameters.SkyAtmosphereCameraAerialPerspectiveVolumeDepthResolutionInv = 1.0f;
@@ -1264,6 +1268,7 @@ void FViewInfo::SetupUniformBufferParameters(
 		ViewUniformShaderParameters.SkyAtmosphereApplyCameraAerialPerspectiveVolume = 1.0f;
 		ViewUniformShaderParameters.SkyWorldCameraOrigin = ViewUniformShaderParameters.WorldCameraOrigin;
 		ViewUniformShaderParameters.SkyPlanetCenterAndViewHeight = FVector4(ForceInitToZero);
+		ViewUniformShaderParameters.SkyViewLutReferential = FMatrix::Identity;
 
 		if(!bShouldRenderAtmosphericFog && Scene)
 		{
@@ -1464,6 +1469,8 @@ void FViewInfo::SetupUniformBufferParameters(
 	ViewUniformShaderParameters.NormalCurvatureToRoughnessScaleBias.Z = FMath::Clamp(CVarNormalCurvatureToRoughnessExponent.GetValueOnAnyThread(), .05f, 20.0f);
 
 	ViewUniformShaderParameters.RenderingReflectionCaptureMask = bIsReflectionCapture ? 1.0f : 0.0f;
+	ViewUniformShaderParameters.RealTimeReflectionCapture = 0.0f;
+	ViewUniformShaderParameters.RealTimeReflectionCapturePreExposure = 1.0f; // This must be 1 for now. If changed, we need to update the SkyLight AverageExposure and take it into account when sampling sky specular and diffuse irradiance.
 
 	ViewUniformShaderParameters.AmbientCubemapTint = FinalPostProcessSettings.AmbientCubemapTint;
 	ViewUniformShaderParameters.AmbientCubemapIntensity = FinalPostProcessSettings.AmbientCubemapIntensity;
@@ -4220,20 +4227,20 @@ void FSceneRenderer::UpdateSkyIrradianceGpuBuffer(FRHICommandListImmediate& RHIC
 	{
 		const FSHVectorRGB3& SkyIrradiance = Scene->SkyLight->IrradianceEnvironmentMap;
 		SetupSkyIrradianceEnvironmentMapConstantsFromSkyIrradiance(OutSkyIrradianceEnvironmentMap, SkyIrradiance);
+
+		// Create a buffer for this frame 
+		Scene->SkyIrradianceEnvironmentMap.Release();
+		Scene->SkyIrradianceEnvironmentMap.Initialize(sizeof(FVector4), 7, 0, TEXT("SkyIrradianceEnvironmentMap"));
+
+		// Set the captured environment map data
+		void* DataPtr = FRHICommandListExecutor::GetImmediateCommandList().LockStructuredBuffer(Scene->SkyIrradianceEnvironmentMap.Buffer, 0, Scene->SkyIrradianceEnvironmentMap.NumBytes, RLM_WriteOnly);
+		FPlatformMemory::Memcpy(DataPtr, &OutSkyIrradianceEnvironmentMap, sizeof(OutSkyIrradianceEnvironmentMap));
+		FRHICommandListExecutor::GetImmediateCommandList().UnlockStructuredBuffer(Scene->SkyIrradianceEnvironmentMap.Buffer);
 	}
-	else
+	else if(Scene->SkyIrradianceEnvironmentMap.NumBytes == 0)
 	{
-		FMemory::Memzero(OutSkyIrradianceEnvironmentMap, sizeof(FVector4) * 7);
+		Scene->SkyIrradianceEnvironmentMap.Initialize(sizeof(FVector4), 7, 0, TEXT("SkyIrradianceEnvironmentMap"));
 	}
-
-	// Create a buffer for this frame 
-	Scene->SkyIrradianceEnvironmentMap.Release();
-	Scene->SkyIrradianceEnvironmentMap.Initialize(sizeof(FVector4), 7, 0, TEXT("SkyIrradianceEnvironmentMap"));
-
-	// Set the captured environment map data
-	void* DataPtr = FRHICommandListExecutor::GetImmediateCommandList().LockStructuredBuffer(Scene->SkyIrradianceEnvironmentMap.Buffer, 0, Scene->SkyIrradianceEnvironmentMap.NumBytes, RLM_WriteOnly);
-	FPlatformMemory::Memcpy(DataPtr, &OutSkyIrradianceEnvironmentMap, sizeof(OutSkyIrradianceEnvironmentMap));
-	FRHICommandListExecutor::GetImmediateCommandList().UnlockStructuredBuffer(Scene->SkyIrradianceEnvironmentMap.Buffer);
 
 	// This buffer is now going to be read for rendering.
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EGfxToGfx, Scene->SkyIrradianceEnvironmentMap.UAV);
