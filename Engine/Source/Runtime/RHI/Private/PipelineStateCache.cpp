@@ -615,9 +615,6 @@ FAutoConsoleTaskPriority CPrio_FCompilePipelineStateTask(
 // This cache uses a single internal lock and therefore is not designed for highly concurrent operations.
 class FRayTracingPipelineCache
 {
-	// #dxr_todo: UE-72566 Should support eviction of stale pipelines.
-	// #dxr_todo: we will likely also need an explicit ray tracing pipeline sub-object cache to hold closest hit shaders
-
 public:
 	FRayTracingPipelineCache()
 	{}
@@ -1097,8 +1094,6 @@ FRayTracingPipelineState* PipelineStateCache::GetAndOrCreateRayTracingPipelineSt
 
 	if (bWasFound == false)
 	{
-		// #dxr_todo UE-68235: RT PSO disk caching
-
 		// Remove old pipelines once per frame
 		const int32 TargetCacheSize = CVarRTPSOCacheSize.GetValueOnAnyThread();
 		if (TargetCacheSize > 0 && GRayTracingPipelineCache.GetLastTrimFrame() != GFrameCounter)
