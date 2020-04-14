@@ -41,6 +41,13 @@ static FChannel* volatile	GNewChannelList;		// = nullptr;
 ////////////////////////////////////////////////////////////////////////////////
 static uint32 GetChannelHash(const ANSICHAR* Input, int32 Length)
 {
+	// Make channel names tolerant to ending 's' (or 'S').
+	// Example: "Log", "log", "logs", "LOGS" and "LogsChannel" will all match as being the same channel.
+	if (Length > 0 && (Input[Length - 1] | 0x20) == 's')
+	{
+		--Length;
+	}
+
 	uint32 Result = 0x811c9dc5;
 	for (; Length; ++Input, --Length)
 	{
