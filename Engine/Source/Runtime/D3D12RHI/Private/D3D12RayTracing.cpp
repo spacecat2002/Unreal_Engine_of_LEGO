@@ -440,6 +440,8 @@ public:
 		static constexpr uint32 MaxExports = 4;
 		TArray<FString, TFixedAllocator<MaxExports>> ExportNames;
 		TArray<D3D12_EXPORT_DESC, TFixedAllocator<MaxExports>> ExportDescs;
+
+		float CompileTimeMS = 0.0f;
 	};
 
 	enum class ECollectionType
@@ -490,6 +492,9 @@ public:
 		void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
 		{
 			SCOPE_CYCLE_COUNTER(STAT_RTPSO_CompileShader);
+
+			uint64 CompileTimeCycles = 0;
+			CompileTimeCycles -= FPlatformTime::Cycles64();
 
 			FD3D12RayTracingShader* Shader = Entry.Shader;
 
@@ -579,6 +584,10 @@ public:
 				{}, // LocalRootSignatureAssociations (single RS will be used for all exports since this is null)
 				{}, // ExistingCollections
 				D3D12_STATE_OBJECT_TYPE_COLLECTION);
+
+			CompileTimeCycles += FPlatformTime::Cycles64();
+
+			Entry.CompileTimeMS = float(FPlatformTime::ToMilliseconds64(CompileTimeCycles));
 		}
 
 		FORCEINLINE TStatId GetStatId() const
@@ -1819,22 +1828,43 @@ public:
 			DefaultShaderTables[GPUIndex].SetDefaultHitGroupIdentifier(HitGroupShaders.Identifiers[0]);
 		}
 
+		PipelineStackSize = PipelineProperties->GetPipelineStackSize();
+
 		TotalCreationTime += FPlatformTime::Cycles64();
 
 		// Report stats for pipelines that take a long time to create
 
 #if !NO_LOGGING
-		const double TotalCreatimTimeMS = 1000.0 * FPlatformTime::ToSeconds64(TotalCreationTime);
+
+		// Gather PSO stats
+		ShaderStats.Reserve(UniqueShaderCollections.Num());
+		for (FD3D12RayTracingPipelineCache::FEntry* Entry : UniqueShaderCollections)
+		{
+			FShaderStats Stats;
+			Stats.Name = *(Entry->Shader->EntryPoint);
+			Stats.ShaderSize = uint32(Entry->Shader->ShaderBytecode.GetShaderBytecode().BytecodeLength);
+			Stats.CompileTimeMS = Entry->CompileTimeMS;
+			if (Entry->Shader->GetFrequency() == SF_RayGen)
+			{
+				Stats.StackSize = uint32(PipelineProperties->GetShaderStackSize(*(Entry->ExportNames[0])));
+			}
+			ShaderStats.Add(Stats);
+		}
+
+		ShaderStats.Sort([](const FShaderStats& A, const FShaderStats& B) { return B.CompileTimeMS < A.CompileTimeMS; });
+
+		const double TotalCreationTimeMS = 1000.0 * FPlatformTime::ToSeconds64(TotalCreationTime);
 		const float CreationTimeWarningThresholdMS = 10.0f;
-		if (TotalCreatimTimeMS > CreationTimeWarningThresholdMS)
+		if (TotalCreationTimeMS > CreationTimeWarningThresholdMS)
 		{
 			const double CompileTimeMS = 1000.0 * FPlatformTime::ToSeconds64(CompileTime);
 			const double LinkTimeMS = 1000.0 * FPlatformTime::ToSeconds64(LinkTime);
 			uint32 NumUniqueShaders = UniqueShaderCollections.Num();
 			UE_LOG(LogD3D12RHI, Log,
 				TEXT("Creating RTPSO with %d shaders (%d cached, %d new) took %.2f ms. Compile time %.2f ms, link time %.2f ms."),
-				NumUniqueShaders, NumCacheHits, NumUniqueShaders - NumCacheHits, TotalCreatimTimeMS, CompileTimeMS, LinkTimeMS);
+				NumUniqueShaders, NumCacheHits, NumUniqueShaders - NumCacheHits, TotalCreationTimeMS, CompileTimeMS, LinkTimeMS);
 		}
+
 #endif //!NO_LOGGING
 	}
 
@@ -1857,6 +1887,19 @@ public:
 
 	uint32 MaxLocalRootSignatureSize = 0;
 	uint32 MaxHitGroupViewDescriptors = 0;
+
+	uint32 PipelineStackSize = 0;
+
+#if !NO_LOGGING
+	struct FShaderStats
+	{
+		const TCHAR* Name = nullptr;
+		float CompileTimeMS = 0;
+		uint32 StackSize = 0;
+		uint32 ShaderSize = 0;
+	};
+	TArray<FShaderStats> ShaderStats;
+#endif // !NO_LOGGING
 };
 
 class FD3D12BasicRayTracingPipeline
