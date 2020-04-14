@@ -824,7 +824,7 @@ namespace TaskGraphTests
 		return true;
 	}
 
-	IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTaskGraphRecursionTest, "System.Core.Async.TaskGraph.RecursionTest", EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::EngineFilter);
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTaskGraphRecursionTest, "System.Core.Async.TaskGraph.RecursionTest", EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::Disabled);
 
 	bool FTaskGraphRecursionTest::RunTest(const FString& Parameters)
 	{
