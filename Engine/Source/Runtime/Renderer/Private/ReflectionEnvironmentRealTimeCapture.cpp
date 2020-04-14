@@ -7,6 +7,7 @@
 #include "ReflectionEnvironmentCapture.h"
 #include "ClearQuad.h"
 #include "MeshPassProcessor.h"
+#include "PrimitiveSceneProxy.h"
 #include "MeshPassProcessor.inl"
 #include "ScenePrivate.h"
 #include "SkyPassRendering.h"
