@@ -596,7 +596,10 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHI
 {
 	check(RHICmdList.IsOutsideRenderPass());
 
-	if (ViewFamily.EngineShowFlags.VisualizeLightCulling || !ViewFamily.EngineShowFlags.Lighting)
+	if (ViewFamily.EngineShowFlags.VisualizeLightCulling 
+		|| ViewFamily.EngineShowFlags.RayTracingDebug
+		|| ViewFamily.EngineShowFlags.PathTracing
+		|| !ViewFamily.EngineShowFlags.Lighting)
 	{
 		return;
 	}
