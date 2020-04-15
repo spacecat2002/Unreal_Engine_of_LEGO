@@ -44,9 +44,4 @@ class UVirtualTexture2D : public UTexture2D
 	virtual void BeginCacheForCookedPlatformData(const ITargetPlatform* TargetPlatform) override;
 #endif
 	//~ End UTexture Interface.
-
-	inline bool HasLayerForType(ELightMapVirtualTextureType InType) const { return GetLayerForType(InType) != ~0u; }
-	
-	/** Whether this virtual texture is used for preview lightmaps (no underlying FVirtualTexture2DResource) */
-	bool bPreviewLightmap;
 };
