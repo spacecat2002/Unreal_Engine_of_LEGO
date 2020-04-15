@@ -3342,6 +3342,34 @@ static void SetRayTracingShaderResources(
 			}
 		}
 
+		// UAVs
+
+		{
+			const TRefCountPtr<FRHIResource>* RESTRICT Resources = Buffer->ResourceTable.GetData();
+			const TArray<uint32>& ResourceMap = ShaderResourceTable.UnorderedAccessViewMap;
+			const uint32 BufferOffset = ResourceMap[BufferIndex];
+			if (BufferOffset > 0)
+			{
+				const uint32* RESTRICT ResourceInfos = &ResourceMap[BufferOffset];
+				uint32 ResourceInfo = *ResourceInfos++;
+				do
+				{
+					checkSlow(FRHIResourceTableEntry::GetUniformBufferIndex(ResourceInfo) == BufferIndex);
+					const uint16 ResourceIndex = FRHIResourceTableEntry::GetResourceIndex(ResourceInfo);
+					const uint8 BindIndex = FRHIResourceTableEntry::GetBindIndex(ResourceInfo);
+
+					FD3D12UnorderedAccessView* UAV = FD3D12CommandContext::RetrieveObject<FD3D12UnorderedAccessView>((FRHIUnorderedAccessView*)(Resources[ResourceIndex].GetReference()), Device);
+					LocalUAVs[BindIndex] = UAV->GetView();
+					BoundUAVMask |= 1ull << BindIndex;
+
+					ReferencedResources.Add({ UAV->GetResource(), UAV });
+					Binder.AddResourceTransition(UAV);
+
+					ResourceInfo = *ResourceInfos++;
+				} while (FRHIResourceTableEntry::GetUniformBufferIndex(ResourceInfo) == BufferIndex);
+			}
+		}
+
 		// Samplers
 
 		{
