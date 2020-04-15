@@ -8,6 +8,7 @@
 #include "Engine/Scene.h"
 #include "Engine/DeveloperSettings.h"
 #include "PixelFormat.h"
+#include "PerPlatformProperties.h"
 
 #include "RendererSettings.generated.h"
 
@@ -593,7 +594,7 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 
 	UPROPERTY(config, EditAnywhere, Category = Debugging, meta = (
 		ConsoleVariable = "r.GPUCrashDebugging", DisplayName = "Enable vendor specific GPU crash analysis tools",
-		ToolTip = "Enables vendor specific GPU crash analysis tools.  Currently only supports NVIDIA Aftermath on DX11.",
+		ToolTip = "Enables vendor specific GPU crash analysis tools.",
 		ConfigRestartRequired = true))
 		uint32 bNvidiaAftermathEnabled : 1;
 
@@ -633,6 +634,12 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ToolTip = "Enable Omni-directional Stereo Capture.",
 		ConfigRestartRequired = true))
 		uint32 bODSCapture : 1;
+
+	UPROPERTY(config, EditAnywhere, Category = Experimental, meta = (
+		ConsoleVariable="r.MeshStreaming",DisplayName="Mesh Streaming",
+		ToolTip="When enabled mesh will stream in based on what is visible on screen.",
+		ConfigRestartRequired = true))
+		uint32 bMeshStreaming : 1;
 
 	UPROPERTY(config, EditAnywhere, Category=Editor, meta=(
 		ConsoleVariable="r.WireframeCullThreshold",DisplayName="Wireframe Cull Threshold",
@@ -803,6 +810,16 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ToolTip = "Whether to allow the usage and compilation of Light Propagation Volumes.",
 		ConfigRestartRequired = true))
 		uint32 bLPV : 1;
+
+	UPROPERTY(config, EditAnywhere, Category="Experimental|LOD Streaming|Skeletal Mesh", meta=(
+		DisplayName="Stream LODs by default",
+		ToolTip="Whether to stream skeletal mesh LODs by default."))
+	FPerPlatformBool bStreamSkeletalMeshLODs;
+
+	UPROPERTY(config, EditAnywhere, Category="Experimental|LOD Streaming|Skeletal Mesh", meta=(
+		DisplayName="Discard optional LODs",
+		ToolTip="Whether to discard skeletal mesh LODs below minimum LOD levels at cook time."))
+	FPerPlatformBool bDiscardSkeletalMeshOptionalLODs;
 
 public:
 
