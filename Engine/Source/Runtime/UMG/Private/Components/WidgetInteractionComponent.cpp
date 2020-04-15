@@ -45,6 +45,8 @@ UWidgetInteractionComponent::UWidgetInteractionComponent(const FObjectInitialize
 
 void UWidgetInteractionComponent::OnComponentCreated()
 {
+	Super::OnComponentCreated();
+	
 #if WITH_EDITORONLY_DATA
 	if ( ArrowComponent )
 	{
