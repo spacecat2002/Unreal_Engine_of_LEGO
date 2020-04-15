@@ -3813,6 +3813,8 @@ int InfiniteRecursionFunction(int B)
 void CauseCrtError()
 {
 #if PLATFORM_WINDOWS
+	CA_SUPPRESS(6387);	// Suppress the warning about nullptr not being valid for printf as we are trying
+						// to invoke this exact error for testing purposes.
 	printf((const char*)nullptr); //-V575
 #endif
 }
