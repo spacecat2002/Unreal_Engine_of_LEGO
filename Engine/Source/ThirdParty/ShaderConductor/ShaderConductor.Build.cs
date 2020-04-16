@@ -35,7 +35,7 @@ public class ShaderConductor : ModuleRules
 			PublicAdditionalLibraries.Add(LibPath);
 
 			string SCBinariesDir = String.Format("$(EngineDir)/Binaries/ThirdParty/ShaderConductor/Win64/");
-			AddDependency(SCBinariesDir, "dxcompiler_sc.dll", false);
+			AddDependency(SCBinariesDir, "dxcompiler.dll", false);
 			AddDependency(SCBinariesDir, "ShaderConductor.dll", true);
 		}
 		else

@@ -132,7 +132,7 @@ namespace
             }
 
 #ifdef _WIN32
-            const char* dllName = "dxcompiler_sc.dll";
+            const char* dllName = "dxcompiler.dll";
 #elif __APPLE__
             const char* dllName = "libdxcompiler.3.7.dylib";
 #else

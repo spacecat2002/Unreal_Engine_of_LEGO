@@ -34,18 +34,18 @@ pushd ..\..\..\Intermediate\ShaderConductor
 	echo 
 	echo ************************************
 	echo *** CMake
-	cmake -G "Visual Studio 15" -T host=x64 -A x64 %ENGINE_THIRD_PARTY_SOURCE%\ShaderConductor
+	cmake -G "Visual Studio 16" -T host=x64 -A x64 %ENGINE_THIRD_PARTY_SOURCE%\ShaderConductor
 
 	echo 
 	echo ************************************
 	echo *** MSBuild
-	"%ProgramFiles(x86)%\Microsoft Visual Studio\2017\Professional\MSBuild\15.0\Bin\MSbuild.exe" ALL_BUILD.vcxproj /nologo /v:m /p:Platform=x64;Configuration="%CONFIG%"
+	"%ProgramFiles(x86)%\Microsoft Visual Studio\2019\Professional\MSBuild\Current\Bin\MSbuild.exe" ALL_BUILD.vcxproj -nologo -v:m -maxCpuCount -p:Platform=x64;Configuration="%CONFIG%"
 	
 	echo 
 	echo ************************************
 	echo *** Copying to final destination
-	REM Currently renamed to dxcompiler_sc so we know it came from ShaderConductor (as opposed to the Win SDK)
- 	xcopy Bin\%CONFIG%\dxcompiler.dll       %ENGINE_THIRD_PARTY_BIN%\dxcompiler_sc.dll  /F /Y
+ 	xcopy External\DirectXShaderCompiler\%CONFIG%\bin\dxcompiler.pdb	%ENGINE_THIRD_PARTY_BIN%\dxcompiler.pdb  /F /Y
+ 	xcopy Bin\%CONFIG%\dxcompiler.dll       %ENGINE_THIRD_PARTY_BIN%\dxcompiler.dll  /F /Y
  	xcopy Bin\%CONFIG%\ShaderConductor.dll  %ENGINE_THIRD_PARTY_BIN%\ShaderConductor.dll  /F /Y
  	xcopy Bin\%CONFIG%\ShaderConductor.pdb  %ENGINE_THIRD_PARTY_BIN%\ShaderConductor.pdb  /F /Y
 	xcopy Lib\%CONFIG%\ShaderConductor.lib  %ENGINE_THIRD_PARTY_SOURCE%\ShaderConductor\lib\Win64 /F /Y
