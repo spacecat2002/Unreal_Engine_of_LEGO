@@ -121,7 +121,7 @@ public:
 		if (LastSize > InSize)
 		{
 			int32 LastByte = LastSize * sizeof(T);
-			RigVMDestroy<T>(GetData() + LastSize, InSize - LastSize);
+			RigVMDestroy<T>(GetData() + LastSize, LastSize - InSize);
 		}
 		Storage.SetNumUninitialized(InSize * sizeof(T), false /* no shrinking */);
 	}

@@ -69,7 +69,7 @@ public:
 
 	FORCEINLINE float GetRelativeRatio() const
 	{
-		return float(GetRelativeIndex()) / float(FMath::Max<int32>(1, Num()));
+		return float(GetRelativeIndex()) / float(FMath::Max<int32>(1, Num() - 1));
 	}
 
 	FORCEINLINE int32 Num() const

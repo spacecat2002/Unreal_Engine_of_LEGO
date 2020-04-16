@@ -65,15 +65,16 @@ bool FRigVMStruct::ValidateStruct(UScriptStruct* InStruct, FString* OutErrorMess
 		else
 		{
 			if (!CheckPinDirection(InStruct, ForLoopCountPinName, InputMetaName) &&
+				!CheckPinDirection(InStruct, ForLoopCountPinName, OutputMetaName) &&
 				!CheckPinDirection(InStruct, ForLoopCountPinName, HiddenMetaName))
 			{
 				if (OutErrorMessage)
 				{
-					*OutErrorMessage = FString::Printf(TEXT("The '%s' pin needs to be either hidden or an input."), *ForLoopCountPinName.ToString());
+					*OutErrorMessage = FString::Printf(TEXT("The '%s' pin needs to be either hidden, an input or an output."), *ForLoopCountPinName.ToString());
 				}
 				return false;
 			}
-			if (!CheckMetadata(InStruct, ForLoopContinuePinName, SingletonMetaName, OutErrorMessage))
+			if (!CheckMetadata(InStruct, ForLoopCountPinName, SingletonMetaName, OutErrorMessage))
 			{
 				return false;
 			}
@@ -105,11 +106,12 @@ bool FRigVMStruct::ValidateStruct(UScriptStruct* InStruct, FString* OutErrorMess
 		}
 		else
 		{
-			if (!CheckPinDirection(InStruct, ForLoopIndexPinName, HiddenMetaName))
+			if (!CheckPinDirection(InStruct, ForLoopIndexPinName, HiddenMetaName) &&
+				!CheckPinDirection(InStruct, ForLoopIndexPinName, OutputMetaName))
 			{
 				if (OutErrorMessage)
 				{
-					*OutErrorMessage = FString::Printf(TEXT("The '%s' pin needs to be hidden."), *ForLoopIndexPinName.ToString());
+					*OutErrorMessage = FString::Printf(TEXT("The '%s' pin needs to be hidden or an output."), *ForLoopIndexPinName.ToString());
 				}
 				return false;
 			}

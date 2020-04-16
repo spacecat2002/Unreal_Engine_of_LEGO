@@ -10,7 +10,8 @@
 #include "RigVMMemory.generated.h"
 
 #ifdef UE_BUILD_DEBUG
-	#define DEBUG_RIGVMMEMORY WITH_EDITOR
+	#define DEBUG_RIGVMMEMORY 0
+	//#define DEBUG_RIGVMMEMORY WITH_EDITOR
 #else
 	#define DEBUG_RIGVMMEMORY 0
 #endif
