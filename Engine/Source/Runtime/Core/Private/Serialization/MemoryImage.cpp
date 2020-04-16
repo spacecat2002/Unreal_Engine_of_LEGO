@@ -9,6 +9,7 @@
 #include "ProfilingDebugging/LoadTimeTracker.h"
 #include "Misc/ScopeRWLock.h"
 #include "Misc/DataDrivenPlatformInfoRegistry.h"
+#include "Misc/MemStack.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogMemoryImage, Log, All);
 
