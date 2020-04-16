@@ -1420,6 +1420,8 @@ public:
 			{
 				AddResourceReference(Resource, 0);
 			}
+			
+			ReferencedD3D12Resources[WorkerIndex].Empty();
 		}
 
 		// Use the main (merged) set data to actually update resource residency
@@ -1463,6 +1465,9 @@ public:
 			{
 				AddResourceTransition(UAV, 0);
 			}
+
+			TransitionSRVs[WorkerIndex].Empty();
+			TransitionUAVs[WorkerIndex].Empty();
 		}
 
 		// Use the main (merged) set data to perform resource transitions
