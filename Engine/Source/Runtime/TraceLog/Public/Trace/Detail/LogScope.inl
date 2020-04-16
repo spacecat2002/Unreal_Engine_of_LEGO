@@ -23,6 +23,13 @@ inline uint8* FLogScope::GetPointer() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+inline void FLogScope::Commit() const
+{
+	FWriteBuffer* Buffer = Instance.Buffer;
+	AtomicStoreRelease<uint8* __restrict>(&(Buffer->Committed), Buffer->Cursor);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 inline const FLogScope& FLogScope::operator << (bool) const
 {
 	return *this;
@@ -31,8 +38,7 @@ inline const FLogScope& FLogScope::operator << (bool) const
 ////////////////////////////////////////////////////////////////////////////////
 inline void FLogScope::operator += (const FLogScope&) const
 {
-	FWriteBuffer* Buffer = Instance.Buffer;
-	AtomicStoreRelease<uint8* __restrict>(&(Buffer->Committed), Buffer->Cursor);
+	Commit();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

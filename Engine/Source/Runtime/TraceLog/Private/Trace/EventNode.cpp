@@ -153,6 +153,8 @@ void FEventNode::Describe() const
 		const FFieldDesc& Field = Info->Fields[i];
 		WriteName(Field.Name, Field.NameSize);
 	}
+
+	LogScope.Commit();
 }
 
 } // namespace Private

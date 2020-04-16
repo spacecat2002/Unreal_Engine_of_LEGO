@@ -19,6 +19,7 @@ class FLogScope
 public:
 	constexpr explicit		operator bool () const { return true; }
 	uint8*					GetPointer() const;
+	void					Commit() const;
 	const FLogScope&		operator << (bool) const;
 	void					operator += (const FLogScope&) const;
 	template <uint32 Flags>
