@@ -9,7 +9,7 @@ public class IntelISPCTexComp : ModuleRules
 		Type = ModuleType.External;
 
 		string LibraryPath = Target.UEThirdPartySourceDirectory + "Intel/ISPCTexComp/ispc_texcomp/";
-        string BinaryFolder = Target.UEThirdPartyBinariesDirectory + "IntelISPCTexComp/";
+        string BinaryFolder = Target.UEThirdPartyBinariesDirectory + "Intel/ISPCTexComp/";
 		PublicIncludePaths.Add(LibraryPath);
 
         //NOTE: If you change bUseDebugBuild, you must also change FTextureFormatIntelISPCTexCompModule.GetTextureFormat() to load the corresponding DLL
