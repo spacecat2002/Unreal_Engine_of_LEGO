@@ -8,7 +8,7 @@
 
 #include "Containers/UnrealString.h"
 #include "HAL/FileManager.h"
-#include "HAL/PlatformFileManager.h"
+#include "HAL/PlatformFilemanager.h"
 #include "Misc/Paths.h"
 #include "Misc/Stringbuilder.h"
 
