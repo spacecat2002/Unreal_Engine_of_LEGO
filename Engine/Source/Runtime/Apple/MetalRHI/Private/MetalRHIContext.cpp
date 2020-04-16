@@ -225,15 +225,6 @@ void FMetalRHICommandContext::RHIEndRenderPass()
 	}
 }
 
-void FMetalRHICommandContext::RHIBeginComputePass(const TCHAR* InName)
-{
-	RHISetRenderTargets(0, nullptr, nullptr);
-}
-
-void FMetalRHICommandContext::RHIEndComputePass()
-{
-}
-
 void FMetalRHICommandContext::RHIBeginRenderQuery(FRHIRenderQuery* QueryRHI)
 {
 	@autoreleasepool {

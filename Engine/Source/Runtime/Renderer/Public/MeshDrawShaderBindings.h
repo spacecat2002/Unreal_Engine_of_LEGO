@@ -103,6 +103,7 @@ public:
 		FMeshDrawShaderBindingsLayout(InLayout)
 	{
 		Data = InData;
+		memset(GetLooseDataStart(), 0, GetLooseDataSizeBytes());
 	}
 
 	template<typename UniformBufferStructType>

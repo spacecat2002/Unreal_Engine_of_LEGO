@@ -647,12 +647,12 @@ void FMetalRHIImmediateCommandContext::RHIBeginDrawingViewport(FRHIViewport* Vie
 	if (RenderTargetRHI)
 	{
 		FRHIRenderTargetView RTV(RenderTargetRHI, GIsEditor ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad);
-		RHISetRenderTargets(1, &RTV, nullptr);
+		SetRenderTargets(1, &RTV, nullptr);
 	}
 	else
 	{
 		FRHIRenderTargetView RTV(Viewport->GetBackBuffer(EMetalViewportAccessRHI), GIsEditor ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad);
-		RHISetRenderTargets(1, &RTV, nullptr);
+		SetRenderTargets(1, &RTV, nullptr);
 	}
 	}
 }
