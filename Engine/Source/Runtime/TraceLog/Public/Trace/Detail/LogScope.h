@@ -17,10 +17,10 @@ struct FWriteBuffer;
 class FLogScope
 {
 public:
-	void					operator += (const FLogScope&) const;
 	constexpr explicit		operator bool () const { return true; }
 	uint8*					GetPointer() const;
 	const FLogScope&		operator << (bool) const;
+	void					operator += (const FLogScope&) const;
 	template <uint32 Flags>
 	static FLogScope		Enter(uint32 Uid, uint32 Size);
 
