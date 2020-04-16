@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+ // Copyright Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ShaderCompiler.cpp: Platform independent shader compilations.
@@ -48,6 +48,7 @@
 #include "ShaderParameterMetadata.h"
 #include "ProfilingDebugging/DiagnosticTable.h"
 #include "ProfilingDebugging/LoadTimeTracker.h"
+#include "ShaderCore.h"
 #if WITH_EDITOR
 #include "Rendering/StaticLightingSystemInterface.h"
 #endif
@@ -341,20 +342,6 @@ namespace ShaderCompilerCookStats
 // Make functions so the crash reporter can disambiguate the actual error because of the different callstacks
 namespace SCWErrorCode
 {
-	enum EErrors
-	{
-		Success,
-		GeneralCrash,
-		BadShaderFormatVersion,
-		BadInputVersion,
-		BadSingleJobHeader,
-		BadPipelineJobHeader,
-		CantDeleteInputFile,
-		CantSaveOutputFile,
-		NoTargetShaderFormatsFound,
-		CantCompileForSpecificFormat,
-	};
-
 	void HandleGeneralCrash(const TCHAR* ExceptionInfo, const TCHAR* Callstack)
 	{
 		GLog->PanicFlushThreadedLogs();
@@ -409,6 +396,11 @@ namespace SCWErrorCode
 	void HandleOutputFileCorrupted(const TCHAR* Filename, int64 ExpectedSize, int64 ActualSize)
 	{
 		ModalErrorOrLog(FString::Printf(TEXT("Output file corrupted (expected %I64d bytes, but only got %I64d): %s"), ExpectedSize, ActualSize, Filename));
+	}
+
+	void HandleCrashInsidePlatformCompiler(const TCHAR* Data)
+	{
+		ModalErrorOrLog(FString::Printf(TEXT("Crash inside the platform compiler!\n%s"), Data));
 	}
 }
 
@@ -736,7 +728,7 @@ static void HandleWorkerCrash(const TArray<TSharedRef<FShaderCommonCompileJob, E
 	switch (ErrorCode)
 	{
 	default:
-	case SCWErrorCode::GeneralCrash:
+	case ESCWErrorCode::GeneralCrash:
 	{
 		if (GDumpSCWJobInfoOnCrash != 0 || GIsBuildMachine)
 		{
@@ -778,31 +770,34 @@ static void HandleWorkerCrash(const TArray<TSharedRef<FShaderCommonCompileJob, E
 		SCWErrorCode::HandleGeneralCrash(ExceptionInfo.GetData(), Callstack.GetData());
 	}
 	break;
-	case SCWErrorCode::BadShaderFormatVersion:
+	case ESCWErrorCode::BadShaderFormatVersion:
 		SCWErrorCode::HandleBadShaderFormatVersion(ExceptionInfo.GetData());
 		break;
-	case SCWErrorCode::BadInputVersion:
+	case ESCWErrorCode::BadInputVersion:
 		SCWErrorCode::HandleBadInputVersion(ExceptionInfo.GetData());
 		break;
-	case SCWErrorCode::BadSingleJobHeader:
+	case ESCWErrorCode::BadSingleJobHeader:
 		SCWErrorCode::HandleBadSingleJobHeader(ExceptionInfo.GetData());
 		break;
-	case SCWErrorCode::BadPipelineJobHeader:
+	case ESCWErrorCode::BadPipelineJobHeader:
 		SCWErrorCode::HandleBadPipelineJobHeader(ExceptionInfo.GetData());
 		break;
-	case SCWErrorCode::CantDeleteInputFile:
+	case ESCWErrorCode::CantDeleteInputFile:
 		SCWErrorCode::HandleCantDeleteInputFile(ExceptionInfo.GetData());
 		break;
-	case SCWErrorCode::CantSaveOutputFile:
+	case ESCWErrorCode::CantSaveOutputFile:
 		SCWErrorCode::HandleCantSaveOutputFile(ExceptionInfo.GetData());
 		break;
-	case SCWErrorCode::NoTargetShaderFormatsFound:
+	case ESCWErrorCode::NoTargetShaderFormatsFound:
 		SCWErrorCode::HandleNoTargetShaderFormatsFound(ExceptionInfo.GetData());
 		break;
-	case SCWErrorCode::CantCompileForSpecificFormat:
+	case ESCWErrorCode::CantCompileForSpecificFormat:
 		SCWErrorCode::HandleCantCompileForSpecificFormat(ExceptionInfo.GetData());
 		break;
-	case SCWErrorCode::Success:
+	case ESCWErrorCode::CrashInsidePlatformCompiler:
+		SCWErrorCode::HandleCrashInsidePlatformCompiler(ExceptionInfo.GetData());
+		break;
+	case ESCWErrorCode::Success:
 		// Can't get here...
 		break;
 	}
@@ -848,7 +843,7 @@ void FShaderCompileUtilities::DoReadTaskResults(const TArray<TSharedRef<FShaderC
 	OutputFile << ExceptionInfoLength;
 
 	// Worker crashed
-	if (ErrorCode != SCWErrorCode::Success)
+	if (ErrorCode != (int32)ESCWErrorCode::Success)
 	{
 		HandleWorkerCrash(QueuedJobs, OutputFile, OutputVersion, FileSize, ErrorCode, NumProcessedJobs, CallstackLength, ExceptionInfoLength);
 	}
@@ -1673,7 +1668,7 @@ void FShaderCompilerStats::WriteStats()
 		{
 			if(PlatformStats.IsValidIndex(Platform))
 			{
-				const ShaderCompilerStats& Stats = PlatformStats[Platform];	
+				const ShaderCompilerStats& Stats = PlatformStats[Platform];
 				for (const auto& Pair : Stats)
 				{
 					const FString& Path = Pair.Key;
