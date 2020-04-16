@@ -5343,11 +5343,6 @@ bool FSlateApplication::OnMouseMove()
 			PlatformApplication->GetModifierKeys()
 			);
 
-		if (InputPreProcessors.HandleMouseMoveEvent(*this, MouseEvent))
-		{
-			return true;
-		}
-
 		Result = ProcessMouseMoveEvent( MouseEvent );
 	}
 
@@ -5381,11 +5376,6 @@ bool FSlateApplication::OnRawMouseMove( const int32 X, const int32 Y )
 			PlatformApplication->GetModifierKeys()
 		);
 
-		if (InputPreProcessors.HandleMouseMoveEvent(*this, MouseEvent))
-		{
-			return true;
-		}
-
 		ProcessMouseMoveEvent(MouseEvent);
 	}
 	
@@ -5398,6 +5388,11 @@ bool FSlateApplication::ProcessMouseMoveEvent( const FPointerEvent& MouseEvent, 
 
 	if ( !bIsSynthetic )
 	{
+		if (InputPreProcessors.HandleMouseMoveEvent(*this, MouseEvent))
+		{
+			return true;
+		}
+
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_ProcessMouseMove_Tooltip);
 		
 		GetOrCreateUser(MouseEvent)->UpdateTooltip(MenuStack, /*bCanSpawnNewTooltip =*/true);
