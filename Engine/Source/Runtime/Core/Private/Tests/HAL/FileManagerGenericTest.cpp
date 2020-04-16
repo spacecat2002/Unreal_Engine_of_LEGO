@@ -10,7 +10,7 @@
 #include "HAL/FileManager.h"
 #include "HAL/PlatformFilemanager.h"
 #include "Misc/Paths.h"
-#include "Misc/Stringbuilder.h"
+#include "Misc/StringBuilder.h"
 
 class FArchiveFileReaderGenericTest : public FAutomationTestBase
 {
