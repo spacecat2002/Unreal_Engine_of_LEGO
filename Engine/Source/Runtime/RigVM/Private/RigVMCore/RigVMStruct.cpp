@@ -22,16 +22,14 @@ const FName FRigVMStruct::PrototypeNameMetaName("PrototypeName");
 const FName FRigVMStruct::ExpandPinByDefaultMetaName("ExpandByDefault");
 const FName FRigVMStruct::DefaultArraySizeMetaName("DefaultArraySize");
 const FName FRigVMStruct::VaryingMetaName("Varying");
+const FName FRigVMStruct::SingletonMetaName("Singleton");
 const FName FRigVMStruct::SliceContextMetaName("SliceContext");
 const FName FRigVMStruct::ExecuteName = TEXT("Execute");
 const FName FRigVMStruct::ExecuteContextName = TEXT("ExecuteContext");
-const FName FRigVMStruct::ForLoopRangePinName("Range");
 const FName FRigVMStruct::ForLoopCountPinName("Count");
-const FName FRigVMStruct::ForLoopExitConditionPinName("IsCompleted");
+const FName FRigVMStruct::ForLoopContinuePinName("Continue");
 const FName FRigVMStruct::ForLoopCompletedPinName("Completed");
 const FName FRigVMStruct::ForLoopIndexPinName("Index");
-const FName FRigVMStruct::ForLoopRatioPinName("Ratio");
-const FName FRigVMStruct::ForLoopElementPinName("Element");
 
 float FRigVMStruct::GetRatioFromIndex(int32 InIndex, int32 InCount)
 {
@@ -39,7 +37,7 @@ float FRigVMStruct::GetRatioFromIndex(int32 InIndex, int32 InCount)
 	{
 		return 0.f;
 	}
-	return ((float)FMath::Clamp<int32>(InIndex, 0, InCount - 1)) / ((float)InCount);
+	return ((float)FMath::Clamp<int32>(InIndex, 0, InCount - 1)) / ((float)(InCount - 1));
 }
 
 #if WITH_EDITOR
@@ -75,20 +73,28 @@ bool FRigVMStruct::ValidateStruct(UScriptStruct* InStruct, FString* OutErrorMess
 				}
 				return false;
 			}
+			if (!CheckMetadata(InStruct, ForLoopContinuePinName, SingletonMetaName, OutErrorMessage))
+			{
+				return false;
+			}
 		}
 
-		if (!CheckPinExists(InStruct, ForLoopExitConditionPinName, TEXT("bool"), OutErrorMessage))
+		if (!CheckPinExists(InStruct, ForLoopContinuePinName, TEXT("bool"), OutErrorMessage))
 		{
 			return false;
 		}
 		else
 		{
-			if (!CheckPinDirection(InStruct, ForLoopExitConditionPinName, HiddenMetaName))
+			if (!CheckPinDirection(InStruct, ForLoopContinuePinName, HiddenMetaName))
 			{
 				if (OutErrorMessage)
 				{
-					*OutErrorMessage = FString::Printf(TEXT("The '%s' pin needs to be hidden."), *ForLoopExitConditionPinName.ToString());
+					*OutErrorMessage = FString::Printf(TEXT("The '%s' pin needs to be hidden."), *ForLoopContinuePinName.ToString());
 				}
+				return false;
+			}
+			if (!CheckMetadata(InStruct, ForLoopContinuePinName, SingletonMetaName, OutErrorMessage))
+			{
 				return false;
 			}
 		}
@@ -99,33 +105,20 @@ bool FRigVMStruct::ValidateStruct(UScriptStruct* InStruct, FString* OutErrorMess
 		}
 		else
 		{
-			if (!CheckPinDirection(InStruct, ForLoopIndexPinName, OutputMetaName) &&
-				!CheckPinDirection(InStruct, ForLoopIndexPinName, HiddenMetaName))
+			if (!CheckPinDirection(InStruct, ForLoopIndexPinName, HiddenMetaName))
 			{
 				if (OutErrorMessage)
 				{
-					*OutErrorMessage = FString::Printf(TEXT("The '%s' pin needs to be either hidden or an output."), *ForLoopIndexPinName.ToString());
+					*OutErrorMessage = FString::Printf(TEXT("The '%s' pin needs to be hidden."), *ForLoopIndexPinName.ToString());
 				}
+				return false;
+			}
+			if (!CheckMetadata(InStruct, ForLoopContinuePinName, SingletonMetaName, OutErrorMessage))
+			{
 				return false;
 			}
 		}
 		
-		if(CheckPinExists(InStruct, ForLoopRatioPinName))
-		{
-			if (!CheckPinType(InStruct, ForLoopRatioPinName, TEXT("float"), OutErrorMessage))
-			{
-				return false;
-			}
-			if (!CheckPinDirection(InStruct, ForLoopRatioPinName, OutputMetaName))
-			{
-				if (OutErrorMessage)
-				{
-					*OutErrorMessage = FString::Printf(TEXT("The '%s' pin needs to be an output."), *ForLoopRatioPinName.ToString());
-				}
-				return false;
-			}
-		}
-
 		if (!CheckPinExists(InStruct, ExecuteContextName, FString(), OutErrorMessage))
 		{
 			return false;
@@ -218,16 +211,55 @@ bool FRigVMStruct::CheckPinExists(UScriptStruct* InStruct, const FName& PinName,
 		{
 			if (ExpectedType.IsEmpty())
 			{
-				*OutErrorMessage = FString::Printf(TEXT("A for loop struct requires a '%s' property."), *ForLoopCountPinName.ToString());;
+				*OutErrorMessage = FString::Printf(TEXT("Struct requires a '%s' property."), *ForLoopCountPinName.ToString());;
 			}
 			else
 			{
-				*OutErrorMessage = FString::Printf(TEXT("A for loop struct requires a '%s' property of type '%s'."), *ForLoopCountPinName.ToString(), *ExpectedType);;
+				*OutErrorMessage = FString::Printf(TEXT("Struct requires a '%s' property of type '%s'."), *ForLoopCountPinName.ToString(), *ExpectedType);;
 			}
 		}
 		return false;
 	}
 
+	return true;
+}
+
+bool FRigVMStruct::CheckMetadata(UScriptStruct* InStruct, const FName& PinName, const FName& InMetadataKey, FString* OutErrorMessage)
+{
+	if (FProperty* Property = InStruct->FindPropertyByName(PinName))
+	{
+		if (!Property->HasMetaData(InMetadataKey))
+		{
+			if (OutErrorMessage)
+			{
+				*OutErrorMessage = FString::Printf(TEXT("Property '%s' requires a '%s' metadata tag."), *PinName.ToString(), *InMetadataKey.ToString());;
+			}
+			return false;
+		}
+	}
+	else
+	{
+		if (OutErrorMessage)
+		{
+			*OutErrorMessage = FString::Printf(TEXT("Struct requires a '%s' property."), *PinName.ToString());;
+		}
+		return false;
+	}
+
+	return true;
+}
+
+bool FRigVMStruct::CheckFunctionExists(UScriptStruct* InStruct, const FName& FunctionName, FString* OutErrorMessage)
+{
+	FString Key = FString::Printf(TEXT("%s::%s"), *InStruct->GetStructCPPName(), *FunctionName.ToString());
+	if (FRigVMRegistry::Get().FindFunction(*Key) == nullptr)
+	{
+		if (OutErrorMessage)
+		{
+			*OutErrorMessage = FString::Printf(TEXT("Function '%s' not found, required for this type of struct."), *Key);
+		}
+		return false;
+	}
 	return true;
 }
 

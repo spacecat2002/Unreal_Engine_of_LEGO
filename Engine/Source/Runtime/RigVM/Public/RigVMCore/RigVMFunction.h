@@ -10,7 +10,7 @@
 
 typedef FRigVMFixedArray<FRigVMMemoryHandle> FRigVMMemoryHandleArray;
 typedef FRigVMFixedArray<void*> FRigVMUserDataArray;
-typedef void (*FRigVMFunctionPtr)(const FRigVMExecuteContext& RigVMExecuteContext, FRigVMMemoryHandleArray RigVMMemoryHandles);
+typedef void (*FRigVMFunctionPtr)(FRigVMExecuteContext& RigVMExecuteContext, FRigVMMemoryHandleArray RigVMMemoryHandles);
 
 /**
  * The Pin Direction is used to differentiate different kinds of 

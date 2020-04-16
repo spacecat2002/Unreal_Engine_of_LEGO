@@ -94,6 +94,8 @@ enum class ERigVMOpCode : uint8
 	JumpBackwardIf, // jump backwards given a relative instruction index offset based on a condition register
 	ChangeType, // change the type of a register
 	Exit, // exit the execution loop
+	BeginBlock, // begins a new memory slice / block
+	EndBlock, // ends the last memory slice / block
 	Invalid
 };
 
@@ -156,6 +158,30 @@ struct RIGVM_API FRigVMUnaryOp : public FRigVMBaseOp
 	}
 
 	FRigVMOperand Arg;
+};
+
+// operator used for beginblock
+struct RIGVM_API FRigVMBinaryOp : public FRigVMBaseOp
+{
+	FRigVMBinaryOp()
+		: FRigVMBaseOp(ERigVMOpCode::Invalid)
+		, ArgA()
+		, ArgB()
+	{
+	}
+
+	FRigVMBinaryOp(ERigVMOpCode InOpCode, FRigVMOperand InArgA, FRigVMOperand InArgB)
+		: FRigVMBaseOp(InOpCode)
+		, ArgA(InArgA)
+		, ArgB(InArgB)
+	{
+		ensure(
+			uint8(InOpCode) == uint8(ERigVMOpCode::BeginBlock)
+		);
+	}
+
+	FRigVMOperand ArgA;
+	FRigVMOperand ArgB;
 };
 
 // copy the content of one register to another
@@ -441,6 +467,12 @@ public:
 
 	// adds an exit operator to exit the execution loop
 	uint64 AddExitOp();
+
+	// adds an operator to end the last memory slice
+	uint64 AddBeginBlockOp(FRigVMOperand InCountArg, FRigVMOperand InIndexArg);
+
+	// adds an operator to end the last memory slice
+	uint64 AddEndBlockOp();
 
 	// returns an instruction array for iterating over all operators
 	FORCEINLINE FRigVMInstructionArray GetInstructions() const

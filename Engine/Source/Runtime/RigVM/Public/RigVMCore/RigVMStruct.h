@@ -33,6 +33,8 @@ public:
 	static bool CheckPinDirection(UScriptStruct* InStruct, const FName& PinName, const FName& InDirectionMetaName);
 	static ERigVMPinDirection GetPinDirectionFromProperty(FProperty* InProperty);
 	static bool CheckPinExists(UScriptStruct* InStruct, const FName& PinName, const FString& ExpectedType = FString(), FString* OutErrorMessage = nullptr);
+	static bool CheckMetadata(UScriptStruct* InStruct, const FName& PinName, const FName& InMetadataKey, FString* OutErrorMessage = nullptr);
+	static bool CheckFunctionExists(UScriptStruct* InStruct, const FName& FunctionName, FString* OutErrorMessage = nullptr);
 #endif
 
 	static const FName DeprecatedMetaName;
@@ -54,16 +56,14 @@ public:
 	static const FName ExpandPinByDefaultMetaName;
 	static const FName DefaultArraySizeMetaName;
 	static const FName VaryingMetaName;
+	static const FName SingletonMetaName;
 	static const FName SliceContextMetaName;
 	static const FName ExecuteName;
 	static const FName ExecuteContextName;
-	static const FName ForLoopRangePinName;
 	static const FName ForLoopCountPinName;
-	static const FName ForLoopExitConditionPinName;
+	static const FName ForLoopContinuePinName;
 	static const FName ForLoopCompletedPinName;
 	static const FName ForLoopIndexPinName;
-	static const FName ForLoopRatioPinName;
-	static const FName ForLoopElementPinName;
 
 protected:
 

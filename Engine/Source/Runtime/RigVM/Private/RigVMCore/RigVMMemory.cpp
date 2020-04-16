@@ -6,6 +6,10 @@
 #include "UObject/Package.h"
 #include "RigVMModule.h"
 
+#if DEBUG_RIGVMMEMORY
+	DEFINE_LOG_CATEGORY(LogRigVMMemory);
+#endif
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 bool FRigVMRegister::Serialize(FArchive& Ar)
@@ -365,6 +369,18 @@ FRigVMMemoryContainer& FRigVMMemoryContainer::operator= (const FRigVMMemoryConta
 
 	for (int32 Index = 0; Index < Registers.Num(); Index++)
 	{
+		const FRigVMRegister& Register = Registers[Index];
+		if (Register.IsNestedDynamic())
+		{
+			FMemory::Memzero(&Data[Register.GetWorkByteIndex()], sizeof(FRigVMNestedByteArray));
+			*(FRigVMNestedByteArray*)&Data[Register.GetWorkByteIndex()] = FRigVMNestedByteArray();
+		}
+		else if(Register.IsDynamic())
+		{
+			FMemory::Memzero(&Data[Register.GetWorkByteIndex()], sizeof(FRigVMByteArray));
+			*(FRigVMByteArray*)&Data[Register.GetWorkByteIndex()] = FRigVMByteArray();
+		}
+
 		Construct(Index);
 		Copy(Index, Index, &InOther);
 	}
@@ -413,6 +429,10 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 
 	if (Ar.IsLoading())
 	{
+#if DEBUG_RIGVMMEMORY
+		UE_LOG_RIGVMMEMORY(TEXT("%d Memory - Begin Loading..."), (int32)GetMemoryType());
+#endif
+
 		bEncounteredErrorDuringLoad = false;
 
 		ScriptStructs.Reset();
@@ -453,7 +473,7 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 
 		for (int32 RegisterIndex=0;RegisterIndex<Registers.Num();RegisterIndex++)
 		{
-			const FRigVMRegister& Register = Registers[RegisterIndex];
+			FRigVMRegister& Register = Registers[RegisterIndex];
 
 			if (Register.ElementCount == 0 && !Register.IsDynamic())
 			{
@@ -680,12 +700,19 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 
 		if (bEncounteredErrorDuringLoad)
 		{
+#if DEBUG_RIGVMMEMORY
+			UE_LOG_RIGVMMEMORY(TEXT("%d Memory - Encountered errors during load."), (int32)GetMemoryType());
+#endif
 			Reset();
 		}
 		else
 		{
 			UpdateRegisters();
 		}
+
+#if DEBUG_RIGVMMEMORY
+		UE_LOG_RIGVMMEMORY(TEXT("%d Memory - Finished Loading."), (int32)GetMemoryType());
+#endif
 	}
 	else
 	{
@@ -777,6 +804,7 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 					{
 						uint8* DataPtr = ArrayStorage->GetData();
 						uint16 NumElements = (uint16)(ArrayStorage->Num() / Register.ElementSize);
+						ensure(NumElements * Register.ElementSize == ArrayStorage->Num());
 						UScriptStruct* ScriptStruct = GetScriptStruct(Register);
 
 						TArray<FString> View;
@@ -824,6 +852,7 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 						{
 							uint8* DataPtr = ArrayStorage.GetData();
 							uint16 NumElements = (uint16)(ArrayStorage.Num() / Register.ElementSize);
+							ensure(NumElements * Register.ElementSize == ArrayStorage.Num());
 							UScriptStruct* ScriptStruct = GetScriptStruct(Register);
 
 							TArray<FString> View;
@@ -892,12 +921,14 @@ bool FRigVMMemoryContainer::Copy(
 		{
 			UScriptStruct* ScriptStruct = GetScriptStruct(InTargetRegisterIndex, InTargetRegisterOffset);
 			int32 NumStructs = InNumBytes / ScriptStruct->GetStructureSize();
+			ensure(NumStructs * ScriptStruct->GetStructureSize() == InNumBytes);
 			ScriptStruct->CopyScriptStruct(InTargetPtr, InSourcePtr, NumStructs);
 			break;
 		}
 		case ERigVMRegisterType::Name:
 		{
 			int32 NumNames = InNumBytes / sizeof(FName);
+			ensure(NumNames * sizeof(FName) == InNumBytes);
 			FRigVMFixedArray<FName> TargetNames((FName*)InTargetPtr, NumNames);
 			FRigVMFixedArray<FName> SourceNames((FName*)InSourcePtr, NumNames);
 			for (int32 Index = 0; Index < NumNames; Index++)
@@ -909,6 +940,7 @@ bool FRigVMMemoryContainer::Copy(
 		case ERigVMRegisterType::String:
 		{
 			int32 NumStrings = InNumBytes / sizeof(FString);
+			ensure(NumStrings * sizeof(FString) == InNumBytes);
 			FRigVMFixedArray<FString> TargetStrings((FString*)InTargetPtr, NumStrings);
 			FRigVMFixedArray<FString> SourceStrings((FString*)InSourcePtr, NumStrings);
 			for (int32 Index = 0; Index < NumStrings; Index++)
@@ -1093,6 +1125,13 @@ int32 FRigVMMemoryContainer::Allocate(const FName& InNewName, int32 InElementSiz
 
 	Data.AddZeroed(NewRegister.GetAllocatedBytes());
 
+#if DEBUG_RIGVMMEMORY
+	if (NewRegister.ElementCount > 0)
+	{
+		UE_LOG_RIGVMMEMORY(TEXT("%d.%04d: Allocated %04d bytes at %04d (%s)."), (int32)GetMemoryType(), Registers.Num(), NewRegister.GetAllocatedBytes(), (int32)reinterpret_cast<long long>(&Data[NewRegister.ByteIndex]), *NewRegister.Name.ToString());
+	}
+#endif
+
 	if (InDataPtr != nullptr)
 	{
 		for (uint16 SliceIndex = 0; SliceIndex < NewRegister.SliceCount; SliceIndex++)
@@ -1122,7 +1161,7 @@ bool FRigVMMemoryContainer::Construct(int32 InRegisterIndex, int32 InElementInde
 
 	const FRigVMRegister& Register = Registers[InRegisterIndex];
 
-	if (Register.ElementCount == 0)
+	if (Register.ElementCount == 0 || (Register.Type == ERigVMRegisterType::Plain && !Register.IsDynamic()))
 	{
 		return true;
 	}
@@ -1144,6 +1183,12 @@ bool FRigVMMemoryContainer::Construct(int32 InRegisterIndex, int32 InElementInde
 		{
 			FRigVMByteArray& Storage = *(FRigVMByteArray*)TopDataPtr;
 			ElementCount = Storage.Num() / Register.ElementSize;
+			if (ElementCount == 0)
+			{
+				Storage.AddZeroed(Register.ElementSize);
+				ElementCount = 1;
+			}
+			ensure(ElementCount * Register.ElementSize == Storage.Num());
 			TopDataPtr = Storage.GetData();
 		}
 	}
@@ -1165,6 +1210,7 @@ bool FRigVMMemoryContainer::Construct(int32 InRegisterIndex, int32 InElementInde
 		{
 			FRigVMByteArray& Storage = *(FRigVMByteArray*)TopDataPtr;
 			ElementCount = Storage.Num() / Register.ElementSize;
+			ensure(ElementCount * Register.ElementSize == Storage.Num());
 			NestedDataPtr = Storage.GetData();
 		}
 
@@ -1174,19 +1220,35 @@ bool FRigVMMemoryContainer::Construct(int32 InRegisterIndex, int32 InElementInde
 			{
 				uint8* DataPtr = NestedDataPtr + ElementIndex * Register.ElementSize;
 				UScriptStruct* ScriptStruct = GetScriptStruct(InRegisterIndex);
-				ScriptStruct->InitializeStruct(DataPtr, ElementCount);
+
+				if (ScriptStruct)
+				{
+					if (Register.ElementSize == ScriptStruct->GetStructureSize())
+					{
+						ScriptStruct->InitializeStruct(DataPtr, ElementCount);
+#if DEBUG_RIGVMMEMORY
+						UE_LOG_RIGVMMEMORY(TEXT("%d.%04d: Initialized struct, %04d bytes at %04d (%s)."), (int32)GetMemoryType(), InRegisterIndex, ElementCount * ScriptStruct->GetStructureSize(), (int32)reinterpret_cast<long long>(DataPtr), *Register.Name.ToString());
+#endif
+					}
+				}
 				break;
 			}
 			case ERigVMRegisterType::String:
 			{
 				FString* DataPtr = (FString*)(NestedDataPtr + ElementIndex * Register.ElementSize);
 				RigVMInitialize<FString>(DataPtr, ElementCount);
+#if DEBUG_RIGVMMEMORY
+				UE_LOG_RIGVMMEMORY(TEXT("%d.%04d: Initialized string, %04d bytes at %04d (%s)."), (int32)GetMemoryType(), InRegisterIndex, ElementCount * Register.ElementSize, (int32)reinterpret_cast<long long>(DataPtr), *Register.Name.ToString());
+#endif
 				break;
 			}
 			case ERigVMRegisterType::Name:
 			{
 				FName* DataPtr = (FName*)(NestedDataPtr + ElementIndex * Register.ElementSize);
 				RigVMInitialize<FName>(DataPtr, ElementCount);
+#if DEBUG_RIGVMMEMORY
+				UE_LOG_RIGVMMEMORY(TEXT("%d.%04d: Initialized name, %04d bytes at %04d (%s)."), (int32)GetMemoryType(), InRegisterIndex, ElementCount * Register.ElementSize, (int32)reinterpret_cast<long long>(DataPtr), *Register.Name.ToString());
+#endif
 				break;
 			}
 			default:
@@ -1211,11 +1273,9 @@ bool FRigVMMemoryContainer::Construct(int32 InRegisterIndex, int32 InElementInde
 
 bool FRigVMMemoryContainer::Destroy(int32 InRegisterIndex, int32 InElementIndex, int32 InSliceIndex)
 {
-	ensure(Registers.IsValidIndex(InRegisterIndex));
-
 	FRigVMRegister& Register = Registers[InRegisterIndex];
 
-	if (Register.ElementCount == 0)
+	if (Register.ElementCount == 0 || (Register.Type == ERigVMRegisterType::Plain && !Register.IsDynamic()))
 	{
 		return true;
 	}
@@ -1237,6 +1297,7 @@ bool FRigVMMemoryContainer::Destroy(int32 InRegisterIndex, int32 InElementIndex,
 		{
 			FRigVMByteArray& Storage = *(FRigVMByteArray*)TopDataPtr;
 			ElementCount = Storage.Num() / Register.ElementSize;
+			ensure(ElementCount * Register.ElementSize == Storage.Num());
 			TopDataPtr = Storage.GetData();
 		}
 	}
@@ -1258,6 +1319,7 @@ bool FRigVMMemoryContainer::Destroy(int32 InRegisterIndex, int32 InElementIndex,
 		{
 			FRigVMByteArray& Storage = *(FRigVMByteArray*)TopDataPtr;
 			ElementCount = Storage.Num() / Register.ElementSize;
+			ensure(ElementCount * Register.ElementSize == Storage.Num());
 			NestedDataPtr = Storage.GetData();
 		}
 
@@ -1270,11 +1332,27 @@ bool FRigVMMemoryContainer::Destroy(int32 InRegisterIndex, int32 InElementIndex,
 				UScriptStruct* ScriptStruct = GetScriptStruct(InRegisterIndex);
 				if (ScriptStruct)
 				{
-					ScriptStruct->DestroyStruct(DataPtr, ElementCount);
+					if (Register.ElementSize != ScriptStruct->GetStructureSize())
+					{
+						FMemory::Memzero(DataPtr, Register.ElementSize * ElementCount);
+#if DEBUG_RIGVMMEMORY
+						UE_LOG_RIGVMMEMORY(TEXT("%d.%04d: Zeroed struct, %04d bytes at %04d (%s)."), (int32)GetMemoryType(), InRegisterIndex, Register.ElementSize * ElementCount, (int32)reinterpret_cast<long long>(DataPtr), *Register.Name.ToString());
+#endif
+					}
+					else
+					{
+						ScriptStruct->DestroyStruct(DataPtr, ElementCount);
+#if DEBUG_RIGVMMEMORY
+						UE_LOG_RIGVMMEMORY(TEXT("%d.%04d: Destroyed struct, %04d bytes at %04d (%s)."), (int32)GetMemoryType(), InRegisterIndex, ScriptStruct->GetStructureSize() * ElementCount, (int32)reinterpret_cast<long long>(DataPtr), *Register.Name.ToString());
+#endif
+					}
 				}
 				else
 				{
-					FMemory::Memzero(DataPtr, Register.GetAllocatedBytes());
+					FMemory::Memzero(DataPtr, Register.ElementSize * ElementCount);
+#if DEBUG_RIGVMMEMORY
+					UE_LOG_RIGVMMEMORY(TEXT("%d.%04d: Zeroed struct, %04d bytes at %04d (%s)."), (int32)GetMemoryType(), InRegisterIndex, Register.ElementSize * ElementCount, (int32)reinterpret_cast<long long>(DataPtr), *Register.Name.ToString());
+#endif
 				}
 				break;
 			}
@@ -1282,12 +1360,18 @@ bool FRigVMMemoryContainer::Destroy(int32 InRegisterIndex, int32 InElementIndex,
 			{
 				FString* DataPtr = (FString*)(NestedDataPtr + ElementIndex * Register.ElementSize);
 				RigVMDestroy<FString>(DataPtr, ElementCount);
+#if DEBUG_RIGVMMEMORY
+				UE_LOG_RIGVMMEMORY(TEXT("%d.%04d: Destroyed string, %04d bytes at %04d (%s)."), (int32)GetMemoryType(), InRegisterIndex, ElementCount * Register.ElementSize, (int32)reinterpret_cast<long long>(DataPtr), *Register.Name.ToString());
+#endif
 				break;
 			}
 			case ERigVMRegisterType::Name:
 			{
 				FName* DataPtr = (FName*)(NestedDataPtr + ElementIndex * Register.ElementSize);
 				RigVMDestroy<FName>(DataPtr, ElementCount);
+#if DEBUG_RIGVMMEMORY
+				UE_LOG_RIGVMMEMORY(TEXT("%d.%04d: Destroyed name, %04d bytes at %04d (%s)."), (int32)GetMemoryType(), InRegisterIndex, ElementCount * Register.ElementSize, (int32)reinterpret_cast<long long>(DataPtr), *Register.Name.ToString());
+#endif
 				break;
 			}
 			default:

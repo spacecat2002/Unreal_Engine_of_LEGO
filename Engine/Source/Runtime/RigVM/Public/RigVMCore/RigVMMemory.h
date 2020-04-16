@@ -9,6 +9,19 @@
 #include "RigVMArray.h"
 #include "RigVMMemory.generated.h"
 
+#ifdef UE_BUILD_DEBUG
+	#define DEBUG_RIGVMMEMORY WITH_EDITOR
+#else
+	#define DEBUG_RIGVMMEMORY 0
+#endif
+
+#if DEBUG_RIGVMMEMORY
+	RIGVM_API DECLARE_LOG_CATEGORY_EXTERN(LogRigVMMemory, Log, All);
+	#define UE_LOG_RIGVMMEMORY(Format, ...) UE_LOG(LogRigVMMemory, Display, (Format), ##__VA_ARGS__)
+#else
+	#define UE_LOG_RIGVMMEMORY(Format, ...)
+#endif
+
 /**
  * The type of memory used. Typically we differentiate between
  * Work (Mutable) and Literal (Constant) memory.

@@ -52,6 +52,26 @@ public:
 		return Index;
 	}
 
+	FORCEINLINE void SetIndex(int32 InIndex)
+	{
+		Index = InIndex;
+	}
+
+	FORCEINLINE int32 GetRelativeIndex() const
+	{
+		return Index - LowerBound;
+	}
+
+	FORCEINLINE void SetRelativeIndex(int32 InIndex)
+	{
+		Index = InIndex + LowerBound;
+	}
+
+	FORCEINLINE float GetRelativeRatio() const
+	{
+		return float(GetRelativeIndex()) / float(FMath::Max<int32>(1, Num()));
+	}
+
 	FORCEINLINE int32 Num() const
 	{
 		return 1 + UpperBound - LowerBound;
@@ -146,18 +166,26 @@ struct RIGVM_API FRigVMExecuteContext
 	{
 		Slices.Reset();
 		Slices.Add(FRigVMSlice());
+		SliceOffsets.Reset();
 		InstructionIndex = 0;
 	}
 
 	FORCEINLINE const FRigVMSlice& GetSlice() const
 	{
-		return Slices.Last();
+		const int32 SliceOffset = (int32)SliceOffsets[InstructionIndex];
+		if (SliceOffset == 0)
+		{
+			return Slices.Last();
+		}
+		const int32 UpperBound = Slices.Num() - 1;
+		return Slices[FMath::Clamp<int32>(UpperBound - SliceOffset, 0, UpperBound)];
 	}
 
-	FORCEINLINE void BeginSlice(int32 InCount)
+	FORCEINLINE void BeginSlice(int32 InCount, int32 InRelativeIndex = 0)
 	{
 		ensure(!IsSliceComplete());
 		Slices.Add(FRigVMSlice(InCount, Slices.Last()));
+		Slices.Last().SetRelativeIndex(InRelativeIndex);
 	}
 
 	FORCEINLINE void EndSlice()
@@ -182,4 +210,5 @@ struct RIGVM_API FRigVMExecuteContext
 	uint16 InstructionIndex;
 	FRigVMFixedArray<void*> OpaqueArguments;
 	TArray<FRigVMSlice> Slices;
+	TArray<uint16> SliceOffsets;
 };

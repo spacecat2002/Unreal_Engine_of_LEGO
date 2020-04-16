@@ -209,6 +209,14 @@ uint64 FRigVMByteCode::GetOpNumBytesAt(uint64 InByteCodeIndex, bool bIncludeOper
 		{
 			return (uint64)sizeof(FRigVMBaseOp);
 		}
+		case ERigVMOpCode::BeginBlock:
+		{
+			return (uint64)sizeof(FRigVMBinaryOp);
+		}
+		case ERigVMOpCode::EndBlock:
+		{
+			return (uint64)sizeof(FRigVMBaseOp);
+		}
 		case ERigVMOpCode::Invalid:
 		{
 			ensure(false);
@@ -299,6 +307,18 @@ uint64 FRigVMByteCode::AddExecuteOp(uint16 InFunctionIndex, const FRigVMOperandA
 uint64 FRigVMByteCode::AddExitOp()
 {
 	FRigVMBaseOp Op(ERigVMOpCode::Exit);
+	return AddOp(Op);
+}
+
+uint64 FRigVMByteCode::AddBeginBlockOp(FRigVMOperand InCountArg, FRigVMOperand InIndexArg)
+{
+	FRigVMBinaryOp Op(ERigVMOpCode::BeginBlock, InCountArg, InIndexArg);
+	return AddOp(Op);
+}
+
+uint64 FRigVMByteCode::AddEndBlockOp()
+{
+	FRigVMBaseOp Op(ERigVMOpCode::EndBlock);
 	return AddOp(Op);
 }
 
