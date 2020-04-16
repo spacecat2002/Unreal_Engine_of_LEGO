@@ -17,7 +17,7 @@ namespace Private {
 extern TRACELOG_API uint32 volatile	GLogSerial;
 
 ////////////////////////////////////////////////////////////////////////////////
-inline FLogScope::~FLogScope()
+inline void FLogScope::operator += (const FLogScope&) const
 {
 	FWriteBuffer* Buffer = Instance.Buffer;
 	AtomicStoreRelease<uint8* __restrict>(&(Buffer->Committed), Buffer->Cursor);

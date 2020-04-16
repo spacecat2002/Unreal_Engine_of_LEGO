@@ -107,19 +107,24 @@ namespace Trace
 			TRACE_PRIVATE_EVENT_SIZE(LoggerName, EventName) + (0, ##__VA_ARGS__))) \
 				if (const auto& __restrict EventName = *(F##LoggerName##EventName##Fields*)LogScope.GetPointer()) \
 
+#define TRACE_PRIVATE_LOG_EPILOG() \
+					LogScope += LogScope
+
 #define TRACE_PRIVATE_LOG(LoggerName, EventName, ChannelsExpr, ...) \
 	TRACE_PRIVATE_LOG_PRELUDE(Enter, LoggerName, EventName, ChannelsExpr, ##__VA_ARGS__) \
-		LogScope
+		TRACE_PRIVATE_LOG_EPILOG()
 
 #define TRACE_PRIVATE_LOG_SCOPED(LoggerName, EventName, ChannelsExpr, ...) \
 	Trace::Private::FScopedLogScope PREPROCESSOR_JOIN(TheScope, __LINE__); \
 	TRACE_PRIVATE_LOG_PRELUDE(ScopedEnter, LoggerName, EventName, ChannelsExpr, ##__VA_ARGS__) \
-		PREPROCESSOR_JOIN(TheScope, __LINE__).SetActive(), LogScope
+		PREPROCESSOR_JOIN(TheScope, __LINE__).SetActive(), \
+		TRACE_PRIVATE_LOG_EPILOG()
 
 #define TRACE_PRIVATE_LOG_SCOPED_T(LoggerName, EventName, ChannelsExpr, ...) \
 	Trace::Private::FScopedStampedLogScope PREPROCESSOR_JOIN(TheScope, __LINE__); \
 	TRACE_PRIVATE_LOG_PRELUDE(ScopedStampedEnter, LoggerName, EventName, ChannelsExpr, ##__VA_ARGS__) \
-		PREPROCESSOR_JOIN(TheScope, __LINE__).SetActive(), LogScope
+		PREPROCESSOR_JOIN(TheScope, __LINE__).SetActive(), \
+		TRACE_PRIVATE_LOG_EPILOG()
 
 #else
 
