@@ -16,6 +16,7 @@
 #include "UObject/ObjectRedirector.h"
 #include "Misc/PackageName.h"
 #include "Blueprint/BlueprintSupport.h"
+#include "Misc/PreloadableFile.h"
 #include "Misc/SecureHash.h"
 #include "Misc/StringBuilder.h"
 #include "ProfilingDebugging/DebuggingDefines.h"
@@ -1050,6 +1051,12 @@ FLinkerLoad::ELinkerStatus FLinkerLoad::CreateLoader(
 							GEventDrivenLoaderEnabled ? Forward<TFunction<void()>>(InSummaryReadyCallback) : TFunction<void()>([]() {})
 						);
 				}
+#if WITH_EDITOR
+				else if (FLinkerLoad::GetPreloadingEnabled() && FLinkerLoad::TryGetPreloadedLoader(Loader, *Filename))
+				{
+					// Loader set by TryGetPreloadedLoader
+				}
+#endif
 				else
 				{
 					Loader = IFileManager::Get().CreateFileReader(*Filename);
@@ -5884,6 +5891,23 @@ void FixupPackageEditorOnlyFlag(FName PackageThatGotEditorOnlyFlagCleared, bool 
 	{
 		INC_FLOAT_STAT_BY(STAT_EditorOnlyFixupTime, ThisTime);
 	}
+}
+#endif
+
+#if WITH_EDITOR
+bool FLinkerLoad::bPreloadingEnabled = false;
+bool FLinkerLoad::GetPreloadingEnabled()
+{
+	return bPreloadingEnabled;
+}
+void FLinkerLoad::SetPreloadingEnabled(bool bEnabled)
+{
+	bPreloadingEnabled = bEnabled;
+}
+bool FLinkerLoad::TryGetPreloadedLoader(FArchive*& OutLoader, const TCHAR* FileName)
+{
+	OutLoader = FPreloadableFile::TryTakeArchive(FileName);
+	return OutLoader != nullptr;
 }
 #endif
 
