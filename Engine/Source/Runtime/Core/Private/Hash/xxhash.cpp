@@ -2,8 +2,7 @@
 
 //////////////////////////////////////////////////////////////////////////
 
-#pragma warning(push)
-#pragma warning(disable: 4459)
+PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 
 namespace xxhash_ue4 {
 
@@ -12,7 +11,7 @@ namespace xxhash_ue4 {
 
 }
 
-#pragma warning(pop)
+PRAGMA_ENABLE_SHADOW_VARIABLE_WARNINGS
 
 //////////////////////////////////////////////////////////////////////////
 
