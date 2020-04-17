@@ -1,7 +1,15 @@
 #include "Hash/xxhash.h"
 
+//////////////////////////////////////////////////////////////////////////
+
+namespace xxhash_ue4 {
+
 #include "ThirdParty/xxhash/xxhash.c"
 #include "ThirdParty/xxhash/xxh3.h"
+
+}
+
+//////////////////////////////////////////////////////////////////////////
 
 uint32 
 FXxHash::HashBuffer32(const void* BlockPtr, SIZE_T BlockSize)
