@@ -148,7 +148,7 @@ inline FScopedStampedLogScope::~FScopedStampedLogScope()
 
 	uint64 Stamp = Writer_GetTimestamp(Buffer);
 
-	if (UNLIKELY(int32((uint8*)Buffer - Buffer->Cursor) < int32(sizeof(uint64))))
+	if (UNLIKELY(int32((uint8*)Buffer - Buffer->Cursor) < int32(sizeof(Stamp))))
 	{
 		Buffer = Writer_NextBuffer(0);
 	}
@@ -200,13 +200,15 @@ auto TLogScope<T>::ScopedEnter(uint32 Uid, uint32 Size)
 template <class T>
 auto TLogScope<T>::ScopedStampedEnter(uint32 Uid, uint32 Size)
 {
+	uint64 Stamp;
+
 	FWriteBuffer* Buffer = Writer_GetBuffer();
-	if (UNLIKELY(int32((uint8*)Buffer - Buffer->Cursor) < int32(sizeof(uint64))))
+	if (UNLIKELY(int32((uint8*)Buffer - Buffer->Cursor) < int32(sizeof(Stamp))))
 	{
 		Buffer = Writer_NextBuffer(0);
 	}
 
-	uint64 Stamp = Writer_GetTimestamp(Buffer);
+	Stamp = Writer_GetTimestamp(Buffer);
 	Stamp <<= 8;
 	Stamp += uint8(EKnownEventUids::EnterScope_T << EKnownEventUids::_UidShift);
 	*(uint64*)(Buffer->Cursor) = Stamp;
