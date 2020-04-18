@@ -145,12 +145,14 @@ inline FScopedStampedLogScope::~FScopedStampedLogScope()
 	}
 
 	FWriteBuffer* Buffer = Writer_GetBuffer();
+
+	uint64 Stamp = Writer_GetTimestamp(Buffer);
+
 	if (UNLIKELY(int32((uint8*)Buffer - Buffer->Cursor) < int32(sizeof(uint64))))
 	{
 		Buffer = Writer_NextBuffer(0);
 	}
 
-	uint64 Stamp = Writer_GetTimestamp(Buffer);
 	Stamp <<= 8;
 	Stamp += uint8(EKnownEventUids::LeaveScope_T << EKnownEventUids::_UidShift);
 	*(uint64*)(Buffer->Cursor) = Stamp;
