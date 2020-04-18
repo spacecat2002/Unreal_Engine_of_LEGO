@@ -9,6 +9,7 @@
 #include "Atomic.h"
 #include "Protocol.h"
 #include "Templates/UnrealTemplate.h"
+#include "Writer.inl"
 
 namespace Trace {
 namespace Private {
