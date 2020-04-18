@@ -117,7 +117,7 @@ inline FScopedLogScope::~FScopedLogScope()
 	uint8 LeaveUid = uint8(EKnownEventUids::LeaveScope << EKnownEventUids::_UidShift);
 
 	FWriteBuffer* Buffer = Writer_GetBuffer();
-	if (UNLIKELY(PTRINT(Buffer) - PTRINT(Buffer->Cursor) < sizeof(LeaveUid)))
+	if (UNLIKELY(int32((uint8*)Buffer - Buffer->Cursor)) < int32(sizeof(LeaveUid)))
 	{
 		Buffer = Writer_NextBuffer(0);
 	}
@@ -145,7 +145,7 @@ inline FScopedStampedLogScope::~FScopedStampedLogScope()
 	}
 
 	FWriteBuffer* Buffer = Writer_GetBuffer();
-	if (UNLIKELY(PTRINT(Buffer) - PTRINT(Buffer->Cursor) < sizeof(uint64)))
+	if (UNLIKELY(int32((uint8*)Buffer - Buffer->Cursor) < int32(sizeof(uint64))))
 	{
 		Buffer = Writer_NextBuffer(0);
 	}
@@ -181,7 +181,7 @@ auto TLogScope<T>::ScopedEnter(uint32 Uid, uint32 Size)
 	uint8 EnterUid = uint8(EKnownEventUids::EnterScope << EKnownEventUids::_UidShift);
 
 	FWriteBuffer* Buffer = Writer_GetBuffer();
-	if (UNLIKELY(PTRINT(Buffer) - PTRINT(Buffer->Cursor) < sizeof(EnterUid)))
+	if (UNLIKELY(int32((uint8*)Buffer - Buffer->Cursor)) < int32(sizeof(EnterUid)))
 	{
 		Buffer = Writer_NextBuffer(0);
 	}
@@ -199,7 +199,7 @@ template <class T>
 auto TLogScope<T>::ScopedStampedEnter(uint32 Uid, uint32 Size)
 {
 	FWriteBuffer* Buffer = Writer_GetBuffer();
-	if (UNLIKELY(PTRINT(Buffer) - PTRINT(Buffer->Cursor) < sizeof(uint64)))
+	if (UNLIKELY(int32((uint8*)Buffer - Buffer->Cursor) < int32(sizeof(uint64))))
 	{
 		Buffer = Writer_NextBuffer(0);
 	}
