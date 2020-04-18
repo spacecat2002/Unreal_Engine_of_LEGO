@@ -13,7 +13,10 @@
 namespace Trace {
 namespace Private {
 
+////////////////////////////////////////////////////////////////////////////////
 UE_TRACE_API void Field_WriteAuxData(uint32, const uint8*, int32);
+UE_TRACE_API void Field_WriteString(uint32, const ANSICHAR*, int32);
+UE_TRACE_API void Field_WriteString(uint32, const TCHAR*, int32);
 
 } // namespace Private
 
@@ -54,6 +57,9 @@ struct TFieldType<T[N]>
 	};
 };
 #endif // 0
+
+template <> struct TFieldType<Trace::AnsiString> { enum { Tid  = int(EFieldType::AnsiString), Size = 0, }; };
+template <> struct TFieldType<Trace::WideString> { enum { Tid  = int(EFieldType::WideString), Size = 0, }; };
 
 
 
@@ -148,6 +154,47 @@ struct TField<InIndex, InOffset, Type[Count]>
 	}
 };
 #endif
+
+////////////////////////////////////////////////////////////////////////////////
+template <int InIndex, int InOffset>
+struct TField<InIndex, InOffset, Trace::AnsiString>
+{
+	TRACE_PRIVATE_FIELD(InIndex|int(EIndexPack::MaybeHasAux), InOffset, Trace::AnsiString);
+
+	FORCENOINLINE static void Set(uint8*, const ANSICHAR* String, int32 Length=-1)
+	{
+		if (Length < 0)
+		{
+			Length = int32(strlen(String));
+		}
+
+		if (Length)
+		{
+			Private::Field_WriteString(Index, String, Length);
+		}
+	}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+template <int InIndex, int InOffset>
+struct TField<InIndex, InOffset, Trace::WideString>
+{
+	TRACE_PRIVATE_FIELD(InIndex|int(EIndexPack::MaybeHasAux), InOffset, Trace::WideString);
+
+	FORCENOINLINE static void Set(uint8*, const TCHAR* String, int32 Length=-1)
+	{
+		if (Length < 0)
+		{
+			Length = 0;
+			for (const TCHAR* c = String; *c; ++c, ++Length);
+		}
+
+		if (Length)
+		{
+			Private::Field_WriteString(Index, String, Length);
+		}
+	}
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 template <int InIndex, int InOffset, typename Type>

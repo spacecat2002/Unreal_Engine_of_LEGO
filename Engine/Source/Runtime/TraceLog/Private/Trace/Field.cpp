@@ -63,6 +63,20 @@ void Field_WriteAuxData(uint32 Index, const uint8* Data, int32 Size)
 	}
 }
 
+////////////////////////////////////////////////////////////////////////////////
+void Field_WriteString(uint32 Index, const ANSICHAR* String, int32 Length)
+{
+	Length &= (FAuxHeader::SizeLimit - 1); // a very crude "clamp"
+	return Field_WriteAuxData(Index, (const uint8*)String, Length * sizeof(String[0]));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void Field_WriteString(uint32 Index, const TCHAR* String, int32 Length)
+{
+	Length &= (FAuxHeader::SizeLimit - 1); // (see above)
+	return Field_WriteAuxData(Index, (const uint8*)String, Length * sizeof(String[0]));
+}
+
 } // namespace Private
 } // namespace Trace
 

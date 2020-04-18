@@ -17,6 +17,10 @@
 namespace Trace
 {
 
+// Field types
+enum AnsiString {};
+enum WideString {};
+
 struct FInitializeDesc
 {
 	bool			bUseWorkerThread	= true;
