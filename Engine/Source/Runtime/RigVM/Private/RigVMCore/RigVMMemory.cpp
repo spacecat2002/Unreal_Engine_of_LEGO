@@ -464,6 +464,22 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 		{
 			for (int32 RegisterIndex = 0; RegisterIndex < Registers.Num(); RegisterIndex++)
 			{
+				const FRigVMRegister& Register = Registers[RegisterIndex];
+
+				UScriptStruct* ScriptStruct = GetScriptStruct(Register);
+				if (ScriptStruct)
+				{
+					int32 StructureSize = ScriptStruct->GetStructureSize();
+					if (StructureSize != Register.ElementSize)
+					{
+						FString PackagePath = Ar.GetArchiveName();
+						FString ScriptStructPath = ScriptStruct->GetPathName();
+						UE_LOG(LogRigVM, Warning, TEXT("Struct '%s' has changed  size. Asset '%s' needs to be recompiled."), *ScriptStructPath, *PackagePath);
+						bEncounteredErrorDuringLoad = true;
+						continue;
+					}
+				}
+
 				if (!Registers[RegisterIndex].IsDynamic())
 				{
 					Construct(RegisterIndex);
@@ -522,29 +538,20 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 
 						uint8* DataPtr = &Data[Register.GetWorkByteIndex()];
 						UScriptStruct* ScriptStruct = GetScriptStruct(Register);
-						if (ScriptStruct)
+						if (ScriptStruct && !bEncounteredErrorDuringLoad)
 						{
-							int32 StructureSize = ScriptStruct->GetStructureSize();
-							if (StructureSize != Register.ElementSize)
+							ensure(ScriptStruct->GetStructureSize() == Register.ElementSize);
+
+							for (uint16 ElementIndex = 0; ElementIndex < Register.GetTotalElementCount(); ElementIndex++)
 							{
-								FString PackagePath = Ar.GetArchiveName();
-								FString ScriptStructPath = ScriptStruct->GetPathName();
-								UE_LOG(LogRigVM, Warning, TEXT("Struct '%s' has changed  size. Asset '%s' needs to be recompiled."), *ScriptStructPath, *PackagePath);
-								bEncounteredErrorDuringLoad = true;
-							}
-							else
-							{
-								for (uint16 ElementIndex = 0; ElementIndex < Register.GetTotalElementCount(); ElementIndex++)
+								FRigVMMemoryContainerImportErrorContext ErrorPipe;
+								ScriptStruct->ImportText(*View[ElementIndex], DataPtr, nullptr, PPF_None, &ErrorPipe, ScriptStruct->GetName());
+								if (ErrorPipe.NumErrors > 0)
 								{
-									FRigVMMemoryContainerImportErrorContext ErrorPipe;
-									ScriptStruct->ImportText(*View[ElementIndex], DataPtr, nullptr, PPF_None, &ErrorPipe, ScriptStruct->GetName());
-									if (ErrorPipe.NumErrors > 0)
-									{
-										bEncounteredErrorDuringLoad = true;
-										break;
-									}
-									DataPtr += Register.ElementSize;
+									bEncounteredErrorDuringLoad = true;
+									break;
 								}
+								DataPtr += Register.ElementSize;
 							}
 						}
 						break;
@@ -588,32 +595,23 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 						Ar << View;
 
 						UScriptStruct* ScriptStruct = GetScriptStruct(Register);
-						if (ScriptStruct)
+						if (ScriptStruct && !bEncounteredErrorDuringLoad)
 						{
-							int32 StructureSize = ScriptStruct->GetStructureSize();
-							if (StructureSize != Register.ElementSize)
-							{
-								FString PackagePath = Ar.GetArchiveName();
-								FString ScriptStructPath = ScriptStruct->GetPathName();
-								UE_LOG(LogRigVM, Warning, TEXT("Struct '%s' has changed  size. Asset '%s' needs to be recompiled."), *ScriptStructPath, *PackagePath);
-								bEncounteredErrorDuringLoad = true;
-							}
-							else
-							{
-								ArrayStorage->SetNumZeroed(View.Num() * Register.ElementSize);
-								uint8* DataPtr = ArrayStorage->GetData();
+							ensure(ScriptStruct->GetStructureSize() == Register.ElementSize);
 
-								for (uint16 ElementIndex = 0; ElementIndex < View.Num(); ElementIndex++)
+							ArrayStorage->SetNumZeroed(View.Num() * Register.ElementSize);
+							uint8* DataPtr = ArrayStorage->GetData();
+
+							for (uint16 ElementIndex = 0; ElementIndex < View.Num(); ElementIndex++)
+							{
+								FRigVMMemoryContainerImportErrorContext ErrorPipe;
+								ScriptStruct->ImportText(*View[ElementIndex], DataPtr, nullptr, PPF_None, &ErrorPipe, ScriptStruct->GetName());
+								if (ErrorPipe.NumErrors > 0)
 								{
-									FRigVMMemoryContainerImportErrorContext ErrorPipe;
-									ScriptStruct->ImportText(*View[ElementIndex], DataPtr, nullptr, PPF_None, &ErrorPipe, ScriptStruct->GetName());
-									if (ErrorPipe.NumErrors > 0)
-									{
-										bEncounteredErrorDuringLoad = true;
-										break;
-									}
-									DataPtr += Register.ElementSize;
+									bEncounteredErrorDuringLoad = true;
+									break;
 								}
+								DataPtr += Register.ElementSize;
 							}
 						}
 						break;
@@ -663,32 +661,23 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 							Ar << View;
 
 							UScriptStruct* ScriptStruct = GetScriptStruct(Register);
-							if (ScriptStruct)
+							if (ScriptStruct && !bEncounteredErrorDuringLoad)
 							{
-								int32 StructureSize = ScriptStruct->GetStructureSize();
-								if (StructureSize != Register.ElementSize)
-								{
-									FString PackagePath = Ar.GetArchiveName();
-									FString ScriptStructPath = ScriptStruct->GetPathName();
-									UE_LOG(LogRigVM, Warning, TEXT("Struct '%s' has changed  size. Asset '%s' needs to be recompiled."), *ScriptStructPath, *PackagePath);
-									bEncounteredErrorDuringLoad = true;
-								}
-								else
-								{
-									ArrayStorage.SetNumZeroed(View.Num() * Register.ElementSize);
-									uint8* DataPtr = ArrayStorage.GetData();
+								ensure(ScriptStruct->GetStructureSize() == Register.ElementSize);
 
-									for (uint16 ElementIndex = 0; ElementIndex < View.Num(); ElementIndex++)
+								ArrayStorage.SetNumZeroed(View.Num() * Register.ElementSize);
+								uint8* DataPtr = ArrayStorage.GetData();
+
+								for (uint16 ElementIndex = 0; ElementIndex < View.Num(); ElementIndex++)
+								{
+									FRigVMMemoryContainerImportErrorContext ErrorPipe;
+									ScriptStruct->ImportText(*View[ElementIndex], DataPtr, nullptr, PPF_None, &ErrorPipe, ScriptStruct->GetName());
+									if (ErrorPipe.NumErrors > 0)
 									{
-										FRigVMMemoryContainerImportErrorContext ErrorPipe;
-										ScriptStruct->ImportText(*View[ElementIndex], DataPtr, nullptr, PPF_None, &ErrorPipe, ScriptStruct->GetName());
-										if (ErrorPipe.NumErrors > 0)
-										{
-											bEncounteredErrorDuringLoad = true;
-											break;
-										}
-										DataPtr += Register.ElementSize;
+										bEncounteredErrorDuringLoad = true;
+										break;
 									}
+									DataPtr += Register.ElementSize;
 								}
 							}
 							break;
