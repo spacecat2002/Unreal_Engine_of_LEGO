@@ -1368,7 +1368,7 @@ void FSceneRenderTargets::AllocGBufferTargets(FRHICommandList& RHICmdList)
 
 	if (bAllocateVelocityGBuffer)
 	{
-		FPooledRenderTargetDesc VelocityRTDesc = FVelocityRendering::GetRenderTargetDesc();
+		FPooledRenderTargetDesc VelocityRTDesc = FVelocityRendering::GetRenderTargetDesc(ShaderPlatform);
 		VelocityRTDesc.Flags |= GFastVRamConfig.GBufferVelocity;
 		GRenderTargetPool.FindFreeElement(RHICmdList, VelocityRTDesc, SceneVelocity, TEXT("GBufferVelocity"));
 	}
@@ -2597,6 +2597,8 @@ void FSceneRenderTargets::AllocateLightingChannelTexture(FRHICommandList& RHICmd
 
 void FSceneRenderTargets::AllocateDeferredShadingPathRenderTargets(FRHICommandListImmediate& RHICmdList, const int32 NumViews)
 {
+	const EShaderPlatform ShaderPlatform = GetFeatureLevelShaderPlatform(CurrentFeatureLevel);
+
 	AllocateCommonDepthTargets(RHICmdList);
 
 	// Create a quarter-sized version of the scene depth.
@@ -2719,7 +2721,7 @@ void FSceneRenderTargets::AllocateDeferredShadingPathRenderTargets(FRHICommandLi
 
 	if (bAllocateVelocityGBuffer)
 	{
-		FPooledRenderTargetDesc VelocityRTDesc = FVelocityRendering::GetRenderTargetDesc();
+		FPooledRenderTargetDesc VelocityRTDesc = FVelocityRendering::GetRenderTargetDesc(ShaderPlatform);
 		VelocityRTDesc.Flags |= GFastVRamConfig.GBufferVelocity;
 		GRenderTargetPool.FindFreeElement(RHICmdList, VelocityRTDesc, SceneVelocity, TEXT("GBufferVelocity"));
 	}
