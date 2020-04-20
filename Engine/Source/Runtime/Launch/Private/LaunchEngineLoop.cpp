@@ -4973,6 +4973,21 @@ void FEngineLoop::Tick()
 		}
 #endif
 
+		// Tick the platform and input portion of Slate application, we need to do this before we run things
+		// concurrent with networking.
+		if (FSlateApplication::IsInitialized() && !bIdleMode)
+		{
+			{
+				QUICK_SCOPE_CYCLE_COUNTER(STAT_FEngineLoop_ProcessPlayerControllersSlateOperations);
+				check(!IsRunningDedicatedServer());
+
+				// Process slate operations accumulated in the world ticks.
+				ProcessLocalPlayerSlateOperations();
+			}
+
+			FSlateApplication::Get().Tick(ESlateTickType::PlatformAndInput);
+		}
+
 #if WITH_ENGINE
 		// process concurrent Slate tasks
 		FGraphEventRef ConcurrentTask;
@@ -5013,18 +5028,11 @@ void FEngineLoop::Tick()
 		}
 #endif
 
-		// tick Slate application
+		// Tick(Advance) Time for the application and then tick and paint slate application widgets.
+		// We split separate this action from the one above to permit running network replication concurrent with slate widget ticking and painting.
 		if (FSlateApplication::IsInitialized() && !bIdleMode)
 		{
-			{
-				QUICK_SCOPE_CYCLE_COUNTER(STAT_FEngineLoop_ProcessPlayerControllersSlateOperations);
-				check(!IsRunningDedicatedServer());
-
-				// Process slate operations accumulated in the world ticks.
-				ProcessLocalPlayerSlateOperations();
-			}
-
-			FSlateApplication::Get().Tick();
+			FSlateApplication::Get().Tick(ESlateTickType::TimeAndWidgets);
 		}
 
 #if WITH_ENGINE
