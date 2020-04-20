@@ -1,7 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
-	ShaderCore.h: Shader core module implementation.
+	ShaderCore.cpp: Shader core module implementation.
 =============================================================================*/
 
 #include "ShaderCore.h"
@@ -12,6 +12,7 @@
 #include "Stats/StatsMisc.h"
 #include "Misc/ScopedSlowTask.h"
 #include "Shader.h"
+#include "ShaderCompilerCore.h"
 #include "VertexFactory.h"
 #include "Modules/ModuleManager.h"
 #include "Interfaces/IShaderFormat.h"

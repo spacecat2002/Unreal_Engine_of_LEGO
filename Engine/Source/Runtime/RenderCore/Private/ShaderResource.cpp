@@ -22,6 +22,7 @@
 #include "UObject/FortniteMainBranchObjectVersion.h"
 #include "ProfilingDebugging/LoadTimeTracker.h"
 #include "Misc/MemStack.h"
+#include "ShaderCompilerCore.h"
 
 #if WITH_EDITORONLY_DATA
 #include "Interfaces/IShaderFormat.h"
@@ -249,6 +250,14 @@ int32 FShaderMapResourceBuilder::FindOrAddCode(EShaderFrequency InFrequency, con
 	}
 
 	return Index;
+}
+
+int32 FShaderMapResourceBuilder::FindOrAddCode(const FShaderCompilerOutput& Output)
+{
+#if WITH_EDITORONLY_DATA
+	AddPlatformDebugData(Output.PlatformDebugData);
+#endif
+	return FindOrAddCode(Output.Target.GetFrequency(), Output.OutputHash, Output.ShaderCode.GetReadAccess());
 }
 
 #if WITH_EDITORONLY_DATA

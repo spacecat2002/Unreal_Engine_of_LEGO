@@ -18,6 +18,7 @@
 #include "UniformBuffer.h"
 #include "ShaderParameters.h"
 #include "Shader.h"
+#include "ShaderCompilerCore.h"
 #include "VertexFactory.h"
 #include "RHIStaticStates.h"
 #include "GlobalDistanceFieldParameters.h"

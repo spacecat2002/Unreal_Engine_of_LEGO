@@ -38,6 +38,7 @@ class FShaderType;
 class FVertexFactoryType;
 class FShaderParametersMetadata;
 class FShaderMapPointerTable;
+struct FShaderCompilerOutput;
 
 /** Define a shader permutation uniquely according to its type, and permutation id.*/
 template<typename MetaShaderType>
@@ -352,13 +353,7 @@ class FShaderMapResourceBuilder
 public:
 	RENDERCORE_API explicit FShaderMapResourceBuilder(FShaderMapResourceCode* InCode);
 
-	inline int32 FindOrAddCode(const FShaderCompilerOutput& Output)
-	{
-#if WITH_EDITORONLY_DATA
-		AddPlatformDebugData(Output.PlatformDebugData);
-#endif
-		return FindOrAddCode(Output.Target.GetFrequency(), Output.OutputHash, Output.ShaderCode.GetReadAccess());
-	}
+	RENDERCORE_API int32 FindOrAddCode(const FShaderCompilerOutput& Output);
 
 	RENDERCORE_API int32 FindCode(const FSHAHash& InHash, uint32 InKey) const;
 	RENDERCORE_API int32 FindOrAddCode(EShaderFrequency InFrequency, const FSHAHash& InHash, const TConstArrayView<uint8>& InCode);
@@ -628,7 +623,7 @@ struct FShadereCompiledShaderInitializerType
 	uint32 CodeSize;
 	int32 PermutationId;
 
-	FShadereCompiledShaderInitializerType(
+	RENDERCORE_API FShadereCompiledShaderInitializerType(
 		FShaderType* InType,
 		int32 InPermutationId,
 		const FShaderCompilerOutput& CompilerOutput,
@@ -636,21 +631,7 @@ struct FShadereCompiledShaderInitializerType
 		const FSHAHash& InMaterialShaderMapHash,
 		const FShaderPipelineType* InShaderPipeline,
 		FVertexFactoryType* InVertexFactoryType
-	) :
-		Type(InType),
-		Target(CompilerOutput.Target),
-		Code(CompilerOutput.ShaderCode.GetReadAccess()),
-		ParameterMap(CompilerOutput.ParameterMap),
-		OutputHash(CompilerOutput.OutputHash),
-		MaterialShaderMapHash(InMaterialShaderMapHash),
-		ShaderPipeline(InShaderPipeline),
-		VertexFactoryType(InVertexFactoryType),
-		ResourceIndex(InResourceIndex),
-		NumInstructions(CompilerOutput.NumInstructions),
-		NumTextureSamplers(CompilerOutput.NumTextureSamplers),
-		CodeSize(CompilerOutput.ShaderCode.GetShaderCodeSize()),
-		PermutationId(InPermutationId)
-	{}
+	);
 };
 
 DECLARE_EXPORTED_TEMPLATE_INTRINSIC_TYPE_LAYOUT(template<>, TIndexedPtr<FShaderType>, RENDERCORE_API);
