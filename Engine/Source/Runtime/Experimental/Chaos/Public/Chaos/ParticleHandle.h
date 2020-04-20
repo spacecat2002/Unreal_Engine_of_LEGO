@@ -1583,10 +1583,10 @@ public:
 	void SetIgnoreAnalyticCollisionsImp(FImplicitObject* Implicit, bool bIgnoreAnalyticCollisions);
 	void SetIgnoreAnalyticCollisions(bool bIgnoreAnalyticCollisions)
 	{
-		if (MGeometry)
-		{
-			SetIgnoreAnalyticCollisionsImp(MGeometry.Get(), bIgnoreAnalyticCollisions);
-		}
+		//if (MGeometry)
+		//{
+		//	SetIgnoreAnalyticCollisionsImp(MGeometry.Get(), bIgnoreAnalyticCollisions);
+		//}
 	}
 
 	TSerializablePtr<FImplicitObject> Geometry() const { return MakeSerializable(MNonFrequentData.Read().Geometry()); }
