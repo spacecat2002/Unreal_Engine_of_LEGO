@@ -1,3 +1,5 @@
+// Copyright Epic Games, Inc. All Rights Reserved.
+
 #include "Rendering/StaticLightingSystemInterface.h"
 #include "RenderingThread.h"
 #include "ComponentRecreateRenderStateContext.h"
