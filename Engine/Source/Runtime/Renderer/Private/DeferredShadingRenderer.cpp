@@ -1270,7 +1270,28 @@ bool FDeferredShadingSceneRenderer::DispatchRayTracingWorldUpdates(FRHICommandLi
 
 void FDeferredShadingSceneRenderer::WaitForRayTracingScene(FRHICommandListImmediate& RHICmdList)
 {
-	if (!IsRayTracingEnabled()) return;
+	if (!IsRayTracingEnabled() || Views.Num() == 0)
+	{
+		return;
+	}
+
+	bool bAnyRayTracingPassEnabled = false;
+	bool bPathTracingOrDebugViewEnabled = false;
+	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+	{
+		bAnyRayTracingPassEnabled |= AnyRayTracingPassEnabled(Scene, Views[ViewIndex]);
+		bPathTracingOrDebugViewEnabled |= !CanOverlayRayTracingOutput(Views[ViewIndex]);
+	}
+
+	if (!bAnyRayTracingPassEnabled)
+	{
+		return;
+	}
+
+	if (GetForceRayTracingEffectsCVarValue() == 0 && !bPathTracingOrDebugViewEnabled)
+	{
+		return;
+	}
 
 	TRACE_CPUPROFILER_EVENT_SCOPE(FDeferredShadingSceneRenderer::WaitForRayTracingScene);
 
