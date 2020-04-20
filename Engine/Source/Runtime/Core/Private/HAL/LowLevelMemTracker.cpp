@@ -742,7 +742,7 @@ void FLowLevelMemTracker::UpdateStatsPerFrame(const TCHAR* LogName)
 		GetTracker(ELLMTracker::Platform)->WriteCsv(CustomTags,ParentTags);
 	}
 
-	if (/*bTraceWriterEnabled*/ UE_TRACE_CHANNELEXPR_IS_ENABLED(MemoryChannel))
+	if (bTraceWriterEnabled)
 	{
 		GetTracker(ELLMTracker::Default)->WriteToTrace(CustomTags, ParentTags);
 		GetTracker(ELLMTracker::Platform)->WriteToTrace(CustomTags, ParentTags);
@@ -799,7 +799,7 @@ void FLowLevelMemTracker::ProcessCommandLine(const TCHAR* CmdLine)
 	}
 
 	bCsvWriterEnabled = FParse::Param(CmdLine, TEXT("LLMCSV"));
-	bTraceWriterEnabled = false; // UE_TRACE_CHANNELEXPR_IS_ENABLED(MemoryChannel);
+	bTraceWriterEnabled = UE_TRACE_CHANNELEXPR_IS_ENABLED(MemoryChannel);
 	for (int32 TrackerIndex = 0; TrackerIndex < (int32)ELLMTracker::Max; ++TrackerIndex)
 	{
 		GetTracker((ELLMTracker)TrackerIndex)->SetCSVEnabled(bCsvWriterEnabled);
