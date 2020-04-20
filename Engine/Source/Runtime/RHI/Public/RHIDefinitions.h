@@ -28,6 +28,12 @@ enum EShaderFrequency : uint8
 	SF_Pixel			= 3,
 	SF_Geometry			= 4,
 	SF_Compute			= 5,
+	SF_RayGen			= 6,
+	SF_RayMiss			= 7,
+	SF_RayHitGroup		= 8,
+	SF_RayCallable		= 9,
+
+	SF_NumFrequencies	= 10,
 
 	// Number of standard SM5-style shader frequencies for graphics pipeline (excluding compute)
 	SF_NumGraphicsFrequencies = 5,
@@ -35,12 +41,6 @@ enum EShaderFrequency : uint8
 	// Number of standard SM5-style shader frequencies (including compute)
 	SF_NumStandardFrequencies = 6,
 
-	SF_RayGen			= 6,
-	SF_RayMiss			= 7,
-	SF_RayHitGroup		= 8,
-	SF_RayCallable		= 9,
-
-	SF_NumFrequencies	= 10,
 	SF_NumBits			= 4,
 };
 static_assert(SF_NumFrequencies <= (1 << SF_NumBits), "SF_NumFrequencies will not fit on SF_NumBits");
