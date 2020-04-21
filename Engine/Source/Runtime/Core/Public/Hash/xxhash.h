@@ -1,8 +1,8 @@
-// Copyright (c) Epic Games
+// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
-#include "ThirdParty/xxhash/xxh3.h"
+#include "CoreTypes.h"
 
 struct FXxHash
 {

@@ -1,17 +1,15 @@
+// Copyright Epic Games, Inc. All Rights Reserved.
+
 #include "Hash/xxhash.h"
 
 //////////////////////////////////////////////////////////////////////////
 
-PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
-
-namespace xxhash_ue4 {
+THIRD_PARTY_INCLUDES_START
 
 #include "ThirdParty/xxhash/xxhash.c"
 #include "ThirdParty/xxhash/xxh3.h"
 
-}
-
-PRAGMA_ENABLE_SHADOW_VARIABLE_WARNINGS
+THIRD_PARTY_INCLUDES_END
 
 //////////////////////////////////////////////////////////////////////////
 
