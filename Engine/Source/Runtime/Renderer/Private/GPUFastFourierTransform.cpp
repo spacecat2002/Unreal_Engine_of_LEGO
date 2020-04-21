@@ -4,7 +4,7 @@
 #include "SceneUtils.h"
 #include "GlobalShader.h"
 #include "RenderTargetPool.h" // used for on-the-fly acquisition of 
-
+#include "ShaderCompilerCore.h"
 
 uint32 GPUFFT::MaxScanLineLength() 
 {
