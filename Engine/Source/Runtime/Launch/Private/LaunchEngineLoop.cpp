@@ -1464,6 +1464,18 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 
 	FMemory::SetupTLSCachesOnCurrentThread();
 
+	// disable/enable LLM based on commandline
+	{
+		SCOPED_BOOT_TIMING("LLM Init");
+		LLM(FLowLevelMemTracker::Get().ProcessCommandLine(CmdLine));
+	}
+	LLM_SCOPE(ELLMTag::EnginePreInitMemory);
+
+	{
+		SCOPED_BOOT_TIMING("InitTaggedStorage");
+		FPlatformMisc::InitTaggedStorage(1024);
+	}
+
 	if (FParse::Param(CmdLine, TEXT("UTF8Output")))
 	{
 		FPlatformMisc::SetUTF8Output();
@@ -1483,42 +1495,16 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 	// Avoiding potential exploits by not exposing command line overrides in the shipping games.
 #if !UE_BUILD_SHIPPING && WITH_EDITORONLY_DATA
 	// Retrieve additional command line arguments from environment variable.
+	FString Env = FPlatformMisc::GetEnvironmentVariable(TEXT("UE-CmdLineArgs")).TrimStart();
+	if (Env.Len())
 	{
-		FString Env = FPlatformMisc::GetEnvironmentVariable(TEXT("UE-CmdLineArgs")).TrimStart();
-		if (Env.Len())
-		{
-			// Append the command line environment after inserting a space as we can't set it in the
-			// environment.
-			FCommandLine::Append(TEXT(" -EnvAfterHere "));
-			FCommandLine::Append(*Env);
-			CmdLine = FCommandLine::Get();
-		}
+		// Append the command line environment after inserting a space as we can't set it in the
+		// environment.
+		FCommandLine::Append(TEXT(" -EnvAfterHere "));
+		FCommandLine::Append(*Env);
+		CmdLine = FCommandLine::Get();
 	}
 #endif
-
-	// Initialize trace channels
-	{
-		TCHAR Parameter[1024] = { 0 };
-		if (!InitializeTraceChannels(CmdLine) && FParse::Value(CmdLine, TEXT("-trace"), Parameter, UE_ARRAY_COUNT(Parameter), false))
-		{
-			Trace::ToggleChannel(TEXT("bookmark"), true);
-			Trace::ToggleChannel(TEXT("cpu"), true);
-			Trace::ToggleChannel(TEXT("frame"), true);
-			Trace::ToggleChannel(TEXT("log"), true);
-		}
-	}
-
-	// disable/enable LLM based on commandline
-	{
-		SCOPED_BOOT_TIMING("LLM Init");
-		LLM(FLowLevelMemTracker::Get().ProcessCommandLine(CmdLine));
-	}
-	LLM_SCOPE(ELLMTag::EnginePreInitMemory);
-
-	{
-		SCOPED_BOOT_TIMING("InitTaggedStorage");
-		FPlatformMisc::InitTaggedStorage(1024);
-	}
 
 	// Initialize trace
 	{
@@ -1543,6 +1529,14 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 		else if (FParse::Value(CmdLine, TEXT("-tracefile="), Parameter))
 		{
 			Trace::WriteTo(*Parameter);
+		}
+
+		if (!InitializeTraceChannels(CmdLine) && FParse::Value(CmdLine, TEXT("-trace"), Parameter, false))
+		{
+			Trace::ToggleChannel(TEXT("bookmark"), true);
+			Trace::ToggleChannel(TEXT("cpu"), true);
+			Trace::ToggleChannel(TEXT("frame"), true);
+			Trace::ToggleChannel(TEXT("log"), true);
 		}
 
 		TRACE_CPUPROFILER_INIT(CmdLine);
