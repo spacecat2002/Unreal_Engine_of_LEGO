@@ -1003,9 +1003,9 @@ UParticleSystemComponent* UGameplayStatics::InternalSpawnEmitterAtLocation(UWorl
 {
 	check(World && EmitterTemplate);
 
-	if (UParticleSystemComponent* PSC = CreateParticleSystem(EmitterTemplate, World, World->GetWorldSettings(), bAutoDestroy, PoolingMethod))
+	UParticleSystemComponent* PSC = CreateParticleSystem(EmitterTemplate, World, World->GetWorldSettings(), bAutoDestroy, PoolingMethod);
+	if (PSC)
 	{
-
 		PSC->SetUsingAbsoluteLocation(true);
 		PSC->SetUsingAbsoluteRotation(true);
 		PSC->SetUsingAbsoluteScale(true);
