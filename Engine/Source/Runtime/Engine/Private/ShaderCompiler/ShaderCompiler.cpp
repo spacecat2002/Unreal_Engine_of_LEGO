@@ -3522,75 +3522,56 @@ void GlobalBeginCompileShader(
 		}
 	}
 
+	if (CVarShaderFastMath.GetValueOnAnyThread() == 0)
 	{
-		static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Shaders.FastMath"));
-		if (CVar && CVar->GetInt() == 0)
-		{
-			Input.Environment.CompilerFlags.Add(CFLAG_NoFastMath);
-		}
+		Input.Environment.CompilerFlags.Add(CFLAG_NoFastMath);
 	}
 	
 	{
-		static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Shaders.FlowControlMode"));
-		if (CVar)
+		int32 FlowControl = CVarShaderFlowControl.GetValueOnAnyThread();
+		switch (FlowControl)
 		{
-			switch(CVar->GetInt())
-			{
-				case 2:
-					Input.Environment.CompilerFlags.Add(CFLAG_AvoidFlowControl);
-					break;
-				case 1:
-					Input.Environment.CompilerFlags.Add(CFLAG_PreferFlowControl);
-					break;
-				case 0:
-				default:
-					break;
-			}
+			case 2:
+				Input.Environment.CompilerFlags.Add(CFLAG_AvoidFlowControl);
+				break;
+			case 1:
+				Input.Environment.CompilerFlags.Add(CFLAG_PreferFlowControl);
+				break;
+			case 0:
+				// Fallback to nothing...
+			default:
+				break;
 		}
 	}
 
 	if (IsD3DPlatform((EShaderPlatform)Target.Platform, false))
 	{
+		if (CVarD3DRemoveUnusedInterpolators.GetValueOnAnyThread() != 0)
 		{
-			static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.D3D.RemoveUnusedInterpolators"));
-			if (CVar && CVar->GetInt() != 0)
-			{
-				Input.Environment.CompilerFlags.Add(CFLAG_ForceRemoveUnusedInterpolators);
-			}
+			Input.Environment.CompilerFlags.Add(CFLAG_ForceRemoveUnusedInterpolators);
 		}
+
+		if (CVarD3DForceDXC.GetValueOnAnyThread() != 0)
 		{
-			static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.D3D.ForceDXC"));
-			if (CVar && CVar->GetInt() != 0)
-			{
-				Input.Environment.CompilerFlags.Add(CFLAG_ForceDXC);
-			}
+			Input.Environment.CompilerFlags.Add(CFLAG_ForceDXC);
 		}
+
+		if (CVarD3DCheckedForTypedUAVs.GetValueOnAnyThread() == 0)
 		{
-			static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.D3D.CheckedForTypedUAVs"));
-			if (CVar && CVar->GetInt() == 0)
-			{
-				Input.Environment.CompilerFlags.Add(CFLAG_AllowTypedUAVLoads);
-			}
+			Input.Environment.CompilerFlags.Add(CFLAG_AllowTypedUAVLoads);
 		}
 	}
 
 	if (IsMetalPlatform((EShaderPlatform)Target.Platform))
 	{
+		if (CVarShaderZeroInitialise.GetValueOnAnyThread() != 0)
 		{
-			static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Shaders.ZeroInitialise"));
-			
-			if (CVar->GetInt() != 0)
-			{
-				Input.Environment.CompilerFlags.Add(CFLAG_ZeroInitialise);
-			}
+			Input.Environment.CompilerFlags.Add(CFLAG_ZeroInitialise);
 		}
+
+		if (CVarShaderBoundsChecking.GetValueOnAnyThread() != 0)
 		{
-			static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Shaders.BoundsChecking"));
-			
-			if (CVar->GetInt() != 0)
-			{
-				Input.Environment.CompilerFlags.Add(CFLAG_BoundsChecking);
-			}
+			Input.Environment.CompilerFlags.Add(CFLAG_BoundsChecking);
 		}
 		
 		// Check whether we can compile metal shaders to bytecode - avoids poisoning the DDC
@@ -3661,19 +3642,16 @@ void GlobalBeginCompileShader(
 				Input.Environment.CompilerFlags.Add(CFLAG_NoFastMath);
 			}
 		}
+
+		if (CVarMetalForceDXC.GetValueOnAnyThread() != 0)
 		{
-			static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Metal.ForceDXC"));
-			if (CVar && CVar->GetInt() != 0)
-			{
-				Input.Environment.CompilerFlags.Add(CFLAG_ForceDXC);
-			}
+			Input.Environment.CompilerFlags.Add(CFLAG_ForceDXC);
 		}
 	}
 
 	if (IsOpenGLPlatform((EShaderPlatform)Target.Platform))
 	{
-		static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.OpenGL.ForceDXC"));
-		if (CVar && CVar->GetInt() != 0)
+		if (CVarOpenGLForceDXC.GetValueOnAnyThread() != 0)
 		{
 			Input.Environment.CompilerFlags.Add(CFLAG_ForceDXC);
 		}
@@ -3681,8 +3659,7 @@ void GlobalBeginCompileShader(
 
 	if (IsVulkanPlatform((EShaderPlatform)Target.Platform))
 	{
-		static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Vulkan.ForceDXC"));
-		if (CVar && CVar->GetInt() != 0)
+		if (CVarVulkanForceDXC.GetValueOnAnyThread() != 0)
 		{
 			Input.Environment.CompilerFlags.Add(CFLAG_ForceDXC);
 		}
