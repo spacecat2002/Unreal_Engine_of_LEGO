@@ -6,6 +6,8 @@
 
 THIRD_PARTY_INCLUDES_START
 
+#define XXH_NAMESPACE UE4XXH
+
 #include "ThirdParty/xxhash/xxhash.c"
 #include "ThirdParty/xxhash/xxh3.h"
 
