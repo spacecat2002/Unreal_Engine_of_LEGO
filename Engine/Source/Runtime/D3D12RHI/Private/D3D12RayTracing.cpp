@@ -5,6 +5,7 @@
 #if D3D12_RHI_RAYTRACING
 
 #include "D3D12Resources.h"
+#include "D3D12Util.h"
 #include "Containers/DynamicRHIResourceArray.h"
 #include "Experimental/Containers/SherwoodHashTable.h"
 #include "BuiltInRayTracingShaders.h"
@@ -359,6 +360,7 @@ public:
 
 	FD3D12RayTracingPipelineCache(FD3D12Device* Device)
 		: DefaultLocalRootSignature(Device->GetParentAdapter())
+		, DefaultGlobalRootSignature(Device->GetParentAdapter())
 	{
 		// Default empty local root signature
 
@@ -375,6 +377,8 @@ public:
 		}
 		
 		DefaultLocalRootSignature.Init(LocalRootSignatureDesc);
+
+		DefaultGlobalRootSignature.Init(GetRayTracingGlobalRootSignatureDesc());
 	}
 
 	~FD3D12RayTracingPipelineCache()
@@ -698,11 +702,17 @@ public:
 		Cache.Reset();
 	}
 
+	ID3D12RootSignature* GetGlobalRootSignature()
+	{
+		return DefaultGlobalRootSignature.GetRootSignature();
+	}
+
 private:
 
 	FCriticalSection CriticalSection;
 	TMap<FKey, FEntry*> Cache;
 	FD3D12RootSignature DefaultLocalRootSignature; // Default empty root signature used for default hit shaders.
+	FD3D12RootSignature DefaultGlobalRootSignature; // Conservative root signature used for all ray tracing shaders
 };
 
 // #dxr_todo UE-72158: FD3D12Device::GlobalViewHeap/GlobalSamplerHeap should be used instead of ad-hoc heaps here.
@@ -1575,9 +1585,13 @@ public:
 
 		const uint32 MaxTotalShaders = InitializerRayGenShaders.Num() + InitializerMissShaders.Num() + InitializerHitGroups.Num() + InitializerCallableShaders.Num();
 
-		// All raygen shaders must share the same global root signature, so take the first one and validate the rest
+		FD3D12RayTracingPipelineCache* PipelineCache = Device->GetRayTracingPipelineCache();
 
-		GlobalRootSignature = FD3D12DynamicRHI::ResourceCast(InitializerRayGenShaders[0])->pRootSignature->GetRootSignature();
+		// All raygen shaders must share the same global root signature (this is validated below)
+
+		GlobalRootSignature = PipelineCache->GetGlobalRootSignature();
+
+		FD3D12DynamicRHI::ResourceCast(InitializerRayGenShaders[0])->pRootSignature->GetRootSignature();
 
 		// Helper function to acquire a D3D12_EXISTING_COLLECTION_DESC for a compiled shader via cache
 
@@ -1589,8 +1603,6 @@ public:
 
 		FGraphEventArray CompileCompletionList;
 		CompileCompletionList.Reserve(MaxTotalShaders);
-
-		FD3D12RayTracingPipelineCache* PipelineCache = Device->GetRayTracingPipelineCache();
 
 		auto AddShaderCollection = [Device, RayTracingDevice, GlobalRootSignature = this->GlobalRootSignature, PipelineCache,
 										&UniqueShaderHashes, &UniqueShaderCollections, &Initializer, &NumCacheHits, &CompileTime,
