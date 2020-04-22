@@ -76,6 +76,10 @@ TMap<FString, TSharedPtr<FPreloadableFile>> FPreloadableFile::RegisteredFiles;
 FPreloadableFile::FPreloadableFile(const TCHAR* InFileName)
 	: FArchive()
 	, FileName(InFileName)
+	, bInitialized(false)
+	, bIsPreloading(false)
+	, bIsPreloadingPaused(false)
+	, CacheEnd(0)
 {
 	PendingAsyncComplete = FPlatformProcess::GetSynchEventFromPool(true);
 	PendingAsyncComplete->Trigger();
@@ -158,8 +162,9 @@ void FPreloadableFile::InitializeInternal(uint32 InFlags, int64 PrimeSize)
 			}
 		}
 	}
-	else if (Mode == Flags::PreloadHandle)
+	else
 	{
+		checkf(Mode == Flags::PreloadHandle, TEXT("Invalid mode %u."), Mode);
 		ConstructSynchronousArchive();
 		if (SynchronousArchive)
 		{
@@ -169,10 +174,6 @@ void FPreloadableFile::InitializeInternal(uint32 InFlags, int64 PrimeSize)
 				SynchronousArchive->Precache(0, PrimeSize);
 			}
 		}
-	}
-	else
-	{
-		checkf(false, TEXT("Invalid mode %u."), Mode);
 	}
 
 #if FPRELOADABLEFILE_TEST_ENABLED
@@ -576,12 +577,13 @@ void FPreloadableFile::SerializeInternal(void* V, int64 Length)
 	}
 
 	bool bLocalIsPreloading = bIsPreloading;
+	int64 LocalCacheEnd = CacheEnd;
 	int64 EndPos = Pos + Length;
 	while (Pos < EndPos)
 	{
-		if (CacheEnd > Pos)
+		if (LocalCacheEnd > Pos)
 		{
-			int64 ReadLength = FMath::Min(CacheEnd, EndPos) - Pos;
+			int64 ReadLength = FMath::Min(LocalCacheEnd, EndPos) - Pos;
 			FMemory::Memcpy(V, CacheBytes + Pos, ReadLength);
 			V = ((uint8*)V) + ReadLength;
 			Pos += ReadLength;
@@ -592,7 +594,8 @@ void FPreloadableFile::SerializeInternal(void* V, int64 Length)
 			{
 				PausePreload();
 				check(PendingAsyncComplete->Wait(0));
-				if (CacheEnd > Pos)
+				LocalCacheEnd = CacheEnd;
+				if (LocalCacheEnd > Pos)
 				{
 					// The page we just finished Preloading contains the position. Resume Preloading and continue in the loop to read from the now-available page.
 					FScopeLock ScopeLock(&PreloadLock);

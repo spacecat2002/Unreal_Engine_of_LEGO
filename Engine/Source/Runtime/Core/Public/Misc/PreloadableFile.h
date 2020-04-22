@@ -8,6 +8,7 @@
 #include "Containers/UnrealString.h"
 #include "HAL/CriticalSection.h"
 #include "Serialization/Archive.h"
+#include "Templates/Atomic.h"
 #include "Templates/Function.h"
 #include "Templates/SharedPointer.h"
 #include "Templates/UniquePtr.h"
@@ -147,11 +148,11 @@ private:
 	/** An Event used for synchronization with asynchronous tasks - InitializingAsync or receiving ReadRequests from the AsynchronousHandle. */
 	FEvent* PendingAsyncComplete = nullptr;
 	/** Threadsafe variable that returns true only after all asynchronous initialization is complete. Is also reset to false when public-interface users call Close(). */
-	bool bInitialized = false;
+	TAtomic<bool> bInitialized;
 	/** Threadsafe variable that is true only during the period between initialization until Preloading stops (either due to EOF reached or due to Serialize turning it off. */
-	bool bIsPreloading = false;
+	TAtomic<bool> bIsPreloading;
 	/** Variable that is set to true from the public interface thread to signal that (temporarily) no further ReadRequests should be sent when the currently active one completes. */
-	bool bIsPreloadingPaused = false;
+	TAtomic<bool> bIsPreloadingPaused;
 
 	/** An array of bytes of size Size. Non-null only in PreloadBytes mode and in-between calls to AllocateCache/ReleaseCache. */
 	uint8* CacheBytes = nullptr;
@@ -160,7 +161,7 @@ private:
 	 * This variable is read-only threadsafe. It is guaranteed to be written only after the bytes in CacheBytes have finished writing, and it is guaranteed to be written before bIsPreloading is written.
 	 * It is not fully threadsafe; threads that need to write to CacheEnd need to do their Read/Write within the PreloadLock CriticalSection.
 	 */
-	int64 CacheEnd = 0;
+	TAtomic<int64> CacheEnd;
 
 	/** The handle used for PreloadBytes mode, to fulfull ReadReqeusts. */
 	TUniquePtr<IAsyncReadFileHandle> AsynchronousHandle;
