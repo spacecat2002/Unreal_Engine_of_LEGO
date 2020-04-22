@@ -1591,8 +1591,6 @@ public:
 
 		GlobalRootSignature = PipelineCache->GetGlobalRootSignature();
 
-		FD3D12DynamicRHI::ResourceCast(InitializerRayGenShaders[0])->pRootSignature->GetRootSignature();
-
 		// Helper function to acquire a D3D12_EXISTING_COLLECTION_DESC for a compiled shader via cache
 
 		TSet<uint64> UniqueShaderHashes;
