@@ -49,6 +49,9 @@ namespace Chaos
 
 	float CollisionRestitutionOverride = -1.0f;
 	FAutoConsoleVariableRef CVarCollisionRestitutionOverride(TEXT("p.CollisionRestitution"), CollisionRestitutionOverride, TEXT("Collision restitution for all contacts if >= 0"));
+	
+	float CollisionAngularFrictionOverride = -1.0f;
+	FAutoConsoleVariableRef CVarCollisionAngularFrictionOverride(TEXT("p.CollisionAngularFriction"), CollisionAngularFrictionOverride, TEXT("Collision angular friction for all contacts if >= 0"));
 
 	CHAOS_API int32 EnableCollisions = 1;
 	FAutoConsoleVariableRef CVarEnableCollisions(TEXT("p.EnableCollisions"), EnableCollisions, TEXT("Enable/Disable collisions on the Chaos solver."));
@@ -96,7 +99,6 @@ namespace Chaos
 		, MApplyPushOutPairIterations(InApplyPushOutPairIterations)
 		, MCullDistance(CullDistance)
 		, MShapePadding(ShapePadding)
-		, MAngularFriction(0)
 		, bUseCCD(false)
 		, bEnableCollisions(true)
 		, bHandlesEnabled(true)
@@ -179,23 +181,26 @@ namespace Chaos
 
 			const FChaosPhysicsMaterial::ECombineMode FrictionCombineMode = FChaosPhysicsMaterial::ChooseCombineMode(PhysicsMaterial0->FrictionCombineMode,PhysicsMaterial1->FrictionCombineMode);
 			Contact.Friction = FChaosPhysicsMaterial::CombineHelper(PhysicsMaterial0->Friction,PhysicsMaterial1->Friction, FrictionCombineMode);
+			Contact.AngularFriction = FChaosPhysicsMaterial::CombineHelper(PhysicsMaterial0->StaticFriction, PhysicsMaterial1->StaticFriction, FrictionCombineMode);
 		}
 		else if (PhysicsMaterial0)
 		{
 			Contact.Restitution = PhysicsMaterial0->Restitution;
 			Contact.Friction = PhysicsMaterial0->Friction;
+			Contact.AngularFriction = PhysicsMaterial0->StaticFriction;
 		}
 		else if (PhysicsMaterial1)
 		{
 			Contact.Restitution = PhysicsMaterial1->Restitution;
 			Contact.Friction = PhysicsMaterial1->Friction;
+			Contact.AngularFriction = PhysicsMaterial1->StaticFriction;
 		}
 		else
 		{
 			Contact.Friction = DefaultCollisionFriction;
+			Contact.AngularFriction = 0;
 			Contact.Restitution = DefaultCollisionRestitution;
 		}
-		Contact.AngularFriction = MAngularFriction;
 
 		// Overrides for testing
 		if (CollisionFrictionOverride >= 0)
@@ -205,6 +210,10 @@ namespace Chaos
 		if (CollisionRestitutionOverride >= 0)
 		{
 			Contact.Restitution = CollisionRestitutionOverride;
+		}
+		if (CollisionAngularFrictionOverride >= 0)
+		{
+			Contact.AngularFriction = CollisionAngularFrictionOverride;
 		}
 	}
 
@@ -311,7 +320,6 @@ namespace Chaos
 		Handles.Reset();
 #endif
 
-		MAngularFriction = 0;
 		bUseCCD = false;
 	}
 

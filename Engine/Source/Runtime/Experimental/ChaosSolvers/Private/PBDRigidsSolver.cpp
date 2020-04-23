@@ -37,10 +37,10 @@ FAutoConsoleVariableRef CVarChaosSolverUseParticlePool(TEXT("p.Chaos.Solver.UseP
 int32 ChaosSolverParticlePoolNumFrameUntilShrink = 30;
 FAutoConsoleVariableRef CVarChaosSolverParticlePoolNumFrameUntilShrink(TEXT("p.Chaos.Solver.ParticlePoolNumFrameUntilShrink"), ChaosSolverParticlePoolNumFrameUntilShrink, TEXT("Num Frame until we can potentially shrink the pool"));
 
-int32 ChaosSolverCollisionDefaultIterationsCVar = 4;
+int32 ChaosSolverCollisionDefaultIterationsCVar = 1;
 FAutoConsoleVariableRef CVarChaosSolverCollisionDefaultIterations(TEXT("p.ChaosSolverCollisionDefaultIterations"), ChaosSolverCollisionDefaultIterationsCVar, TEXT("Default collision iterations for the solver.[def:1]"));
 
-int32 ChaosSolverCollisionDefaultPushoutIterationsCVar = 4;
+int32 ChaosSolverCollisionDefaultPushoutIterationsCVar = 3;
 FAutoConsoleVariableRef CVarChaosSolverCollisionDefaultPushoutIterations(TEXT("p.ChaosSolverCollisionDefaultPushoutIterations"), ChaosSolverCollisionDefaultPushoutIterationsCVar, TEXT("Default collision pushout iterations for the solver.[def:1]"));
 
 int32 ChaosSolverCleanupCommandsOnDestruction = 1;
@@ -108,7 +108,7 @@ namespace Chaos
 
 			if(FRewindData* RewindData = MSolver->GetRewindData())
 			{
-				RewindData->AdvanceFrame();
+				RewindData->AdvanceFrame(MDeltaTime);
 			}
 
 			{
@@ -206,7 +206,7 @@ namespace Chaos
 		, MTime(0.0)
 		, MLastDt(0.0)
 		, MMaxDeltaTime(0.0)
-		, MMinDeltaTime(1.e-10f)
+		, MMinDeltaTime(SMALL_NUMBER)
 		, MMaxSubSteps(1)
 		, bEnabled(false)
 		, bHasFloor(true)
@@ -543,7 +543,7 @@ namespace Chaos
 		bEnabled = false;
 		CurrentFrame = 0;
 		MMaxDeltaTime = 1.f;
-		MMinDeltaTime = 1.e-10f;
+		MMinDeltaTime = SMALL_NUMBER;
 		MMaxSubSteps = 1;
 		MEvolution = TUniquePtr<FPBDRigidsEvolution>(new FPBDRigidsEvolution(Particles, SimMaterials, ChaosSolverCollisionDefaultIterationsCVar, ChaosSolverCollisionDefaultPushoutIterationsCVar, BufferMode == EMultiBufferMode::Single)); 
 
@@ -677,14 +677,32 @@ namespace Chaos
 	void PushPhysicsStateExec(FPBDRigidsSolver* Solver, FGeometryCollectionPhysicsProxy* Proxy, Chaos::IDispatcher* Dispatcher)
 	{
 		Proxy->NewData();
+
 		auto Cmd = [Proxy, Solver](Chaos::FPersistentPhysicsTask* PhysThread)
 		{
-			auto* Evolution = Solver->GetEvolution();
+			FPBDRigidsSolver::FPBDRigidsEvolution* Evolution = Solver->GetEvolution();
+			
 			TArray<FGeometryCollectionPhysicsProxy::FClusterHandle*>& Handles = Proxy->GetSolverParticleHandles();
-			for (auto* Handle : Handles) if (Handle) Evolution->DirtyParticle(*Handle);
+			for(FGeometryCollectionPhysicsProxy::FClusterHandle* Handle : Handles)
+			{
+				if(Handle && !Handle->Disabled())
+				{
+					Evolution->DirtyParticle(*Handle);
+				}
+			}
+
 			Proxy->PushToPhysicsState(nullptr);
 		};
-		if (Dispatcher) Dispatcher->EnqueueCommandImmediate(Cmd);  else Cmd(nullptr);
+
+		if(Dispatcher)
+		{
+			Dispatcher->EnqueueCommandImmediate(Cmd);
+		}
+		else
+		{
+			Cmd(nullptr);
+		}
+
 		Proxy->ClearAccumulatedData();
 		Solver->RemoveDirtyProxy(Proxy);
 	}
@@ -692,15 +710,21 @@ namespace Chaos
 	void PushPhysicsStateExec(FPBDRigidsSolver* Solver, FFieldSystemPhysicsProxy* Proxy, Chaos::IDispatcher* Dispatcher)
 	{
 		Chaos::FParticleData* ProxyData = Proxy->NewData();
+
 		auto Cmd = [Proxy, Solver, ProxyData](Chaos::FPersistentPhysicsTask* PhysThread)
 		{
 			Proxy->PushToPhysicsState(nullptr);
 		};
 
-		if (Dispatcher)
+		if(Dispatcher)
+		{
 			Dispatcher->EnqueueCommandImmediate(Cmd);
+		}
 		else
+		{
 			Cmd(nullptr);
+		}
+
 		Proxy->ClearAccumulatedData();
 		Solver->RemoveDirtyProxy(Proxy);
 	}
