@@ -1,4 +1,4 @@
-// Copyright (C) Microsoft. All rights reserved. 
+// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 

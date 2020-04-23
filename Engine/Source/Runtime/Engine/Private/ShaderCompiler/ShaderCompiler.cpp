@@ -1,4 +1,4 @@
- // Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ShaderCompiler.cpp: Platform independent shader compilations.
