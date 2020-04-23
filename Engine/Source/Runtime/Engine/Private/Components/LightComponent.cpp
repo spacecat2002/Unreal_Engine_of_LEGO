@@ -1449,7 +1449,7 @@ void ULightComponent::ReassignStationaryLightChannels(UWorld* TargetWorld, bool 
 			if (!LightingScenario || !LightLevel->bIsLightingScenario || LightLevel == LightingScenario)
 			{				
 				if (LightComponent->bAffectsWorld
-					&& LightComponent->CastShadows 
+					&& (LightComponent->CastShadows || LightComponent->LightFunctionMaterial)
 					&& LightComponent->CastStaticShadows)
 				{
 					LightToOverlapMap.Add(new FLightAndChannel(LightComponent), TArray<FLightAndChannel*>());

@@ -13,6 +13,8 @@
 #include "HAL/Event.h"
 #include "Chaos/PBDRigidsSOAs.h"
 #include "Chaos/SpatialAccelerationCollection.h"
+#include "Chaos/EvolutionTraits.h"
+#include "Chaos/PBDRigidsEvolutionFwd.h"
 
 
 extern int32 ChaosRigidsEvolutionApplyAllowEarlyOutCVar;
@@ -205,6 +207,9 @@ struct CHAOS_API ISpatialAccelerationCollectionFactory
 	//Create an empty acceleration collection with the desired buckets. Chaos enqueues acceleration structure operations per bucket
 	virtual TUniquePtr<ISpatialAccelerationCollection<TAccelerationStructureHandle<FReal, 3>, FReal, 3>> CreateEmptyCollection() = 0;
 
+	// Determines if bucket implements time slicing.
+	virtual bool IsBucketTimeSliced(uint16 BucketIdx) const = 0;
+
 	//Chaos creates new acceleration structures per bucket. Factory can change underlying type at runtime as well as number of buckets to AB test
 	virtual TUniquePtr<ISpatialAcceleration<TAccelerationStructureHandle<FReal, 3>, FReal, 3>> CreateAccelerationPerBucket_Threaded(const TConstParticleView<FSpatialAccelerationCache>& Particles, uint16 BucketIdx, bool ForceFullBuild) = 0;
 
@@ -217,7 +222,8 @@ struct CHAOS_API ISpatialAccelerationCollectionFactory
 	virtual ~ISpatialAccelerationCollectionFactory() = default;
 };
 
-class FPBDRigidsEvolutionBase
+template <typename Traits>
+class TPBDRigidsEvolutionBase
 {
   public:
 	typedef TFunction<void(TTransientPBDRigidParticleHandle<FReal, 3>& Particle, const FReal)> FForceRule;
@@ -228,8 +234,8 @@ class FPBDRigidsEvolutionBase
 
 	friend void ChaosTest::TestPendingSpatialDataHandlePointerConflict();
 
-	CHAOS_API FPBDRigidsEvolutionBase(TPBDRigidsSOAs<FReal, 3>& InParticles, THandleArray<FChaosPhysicsMaterial>& InSolverPhysicsMaterials, int32 InNumIterations = 1, int32 InNumPushOutIterations = 1, bool InIsSingleThreaded = false);
-	CHAOS_API virtual ~FPBDRigidsEvolutionBase();
+	CHAOS_API TPBDRigidsEvolutionBase(TPBDRigidsSOAs<FReal, 3>& InParticles, THandleArray<FChaosPhysicsMaterial>& InSolverPhysicsMaterials, int32 InNumIterations = 1, int32 InNumPushOutIterations = 1, bool InIsSingleThreaded = false);
+	CHAOS_API virtual ~TPBDRigidsEvolutionBase();
 
 	CHAOS_API TArray<TGeometryParticleHandle<FReal, 3>*> CreateStaticParticles(int32 NumParticles, const FUniqueIdx* ExistingIndices = nullptr, const TGeometryParticleParameters<FReal, 3>& Params = TGeometryParticleParameters<FReal, 3>())
 	{
@@ -384,7 +390,7 @@ class FPBDRigidsEvolutionBase
 		ExternalSpatialData = SpatialData;
 	}
 
-	void DestroyParticle(TGeometryParticleHandle<FReal, 3>* Particle)
+	CHAOS_API void DestroyParticle(TGeometryParticleHandle<FReal, 3>* Particle)
 	{
 		RemoveParticleFromAccelerationStructure(*Particle);
 		ConstraintGraph.RemoveParticle(Particle);
@@ -905,5 +911,13 @@ protected:
 	int32 NumPushOutIterations;
 	TUniquePtr<ISpatialAccelerationCollectionFactory> SpatialCollectionFactory;
 };
+
+#if PLATFORM_MAC
+#define EVOLUTION_TRAIT(Trait) extern template class CHAOS_API TPBDRigidsEvolutionBase<Trait>;
+#else
+#define EVOLUTION_TRAIT(Trait) extern template class TPBDRigidsEvolutionBase<Trait>;
+#endif
+#include "Chaos/EvolutionTraits.inl"
+#undef EVOLUTION_TRAIT
 
 }

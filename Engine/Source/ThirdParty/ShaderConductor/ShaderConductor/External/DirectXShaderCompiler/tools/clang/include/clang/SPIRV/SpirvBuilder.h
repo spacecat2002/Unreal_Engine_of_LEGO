@@ -519,6 +519,11 @@ public:
   /// \brief Decorates the given target with NoContraction
   void decorateNoContraction(SpirvInstruction *target, SourceLocation);
 
+  // UE Change Begin
+  /// \brief Decorates the given target with invariant
+  void decorateInvariant(SpirvInstruction *target, SourceLocation);
+  // UE Change Begin
+
   /// \brief Decorates the given target with PerPrimitiveNV
   void decoratePerPrimitiveNV(SpirvInstruction *target, SourceLocation);
 

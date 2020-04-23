@@ -111,8 +111,6 @@ UGeometryCollectionComponent::UGeometryCollectionComponent(const FObjectInitiali
 	, ClusterConnectionType(EClusterConnectionTypeEnum::Chaos_PointImplicit)
 	, CollisionGroup(0)
 	, CollisionSampleFraction(1.0)
-	, LinearEtherDrag(0.0)
-	, AngularEtherDrag(0.0)
 	, InitialVelocityType(EInitialVelocityTypeEnum::Chaos_Initial_Velocity_User_Defined)
 	, InitialLinearVelocity(0.f, 0.f, 0.f)
 	, InitialAngularVelocity(0.f, 0.f, 0.f)
@@ -145,8 +143,6 @@ UGeometryCollectionComponent::UGeometryCollectionComponent(const FObjectInitiali
 	GlobalNavMeshInvalidationCounter += 3;
 	NavmeshInvalidationTimeSliceIndex = GlobalNavMeshInvalidationCounter;
 
-	ChaosMaterial = MakeUnique<Chaos::FChaosPhysicsMaterial>();
-
 	WorldBounds = FBoxSphereBounds(FBox(ForceInit));	
 
 	// default current cache time
@@ -160,6 +156,8 @@ UGeometryCollectionComponent::UGeometryCollectionComponent(const FObjectInitiali
 
 	// By default use the destructible object channel unless the user specifies otherwise
 	BodyInstance.SetObjectType(ECC_Destructible);
+
+	EventDispatcher = ObjectInitializer.CreateDefaultSubobject<UChaosGameplayEventDispatcher>(this, TEXT("GameplayEventDispatcher"));
 }
 
 Chaos::FPhysicsSolver* GetSolver(const UGeometryCollectionComponent& GeometryCollectionComponent)
@@ -434,57 +432,45 @@ void UGeometryCollectionComponent::RegisterForEvents()
 {
 	if (BodyInstance.bNotifyRigidBodyCollision || bNotifyBreaks || bNotifyCollisions)
 	{
-		if (AChaosSolverActor* const SolverActor = GetPhysicsSolverActor())
+		if (bNotifyCollisions || BodyInstance.bNotifyRigidBodyCollision)
 		{
-			if (UChaosGameplayEventDispatcher* const EventDispatcher = SolverActor->GetGameplayEventDispatcher())
-			{
-				if (bNotifyCollisions || BodyInstance.bNotifyRigidBodyCollision)
-				{
-					EventDispatcher->RegisterForCollisionEvents(this, this);
-				}
+			EventDispatcher->RegisterForCollisionEvents(this, this);
+#if INCLUDE_CHAOS
+			GetWorld()->GetPhysicsScene()->GetScene().GetSolver()->SetGenerateCollisionData(true);
+#endif
+		}
 
-				if (bNotifyBreaks)
-				{
-					EventDispatcher->RegisterForBreakEvents(this, &DispatchGeometryCollectionBreakEvent);
-				}
-			}
+		if (bNotifyBreaks)
+		{
+			EventDispatcher->RegisterForBreakEvents(this, &DispatchGeometryCollectionBreakEvent);
+#if INCLUDE_CHAOS
+			GetWorld()->GetPhysicsScene()->GetScene().GetSolver()->SetGenerateBreakingData(true);
+#endif
 		}
 	}
 }
 
 void UGeometryCollectionComponent::UpdateRBCollisionEventRegistration()
 {
-	if (AChaosSolverActor* const SolverActor = GetPhysicsSolverActor())
+	if (bNotifyCollisions || BodyInstance.bNotifyRigidBodyCollision)
 	{
-		if (UChaosGameplayEventDispatcher* const EventDispatcher = SolverActor->GetGameplayEventDispatcher())
-		{
-			if (bNotifyCollisions || BodyInstance.bNotifyRigidBodyCollision)
-			{
-				EventDispatcher->RegisterForCollisionEvents(this, this);
-			}
-			else
-			{
-				EventDispatcher->UnRegisterForCollisionEvents(this, this);
-			}
-		}
+		EventDispatcher->RegisterForCollisionEvents(this, this);
+	}
+	else
+	{
+		EventDispatcher->UnRegisterForCollisionEvents(this, this);
 	}
 }
 
 void UGeometryCollectionComponent::UpdateBreakEventRegistration()
 {
-	if (AChaosSolverActor* const SolverActor = GetPhysicsSolverActor())
+	if (bNotifyBreaks)
 	{
-		if (UChaosGameplayEventDispatcher* const EventDispatcher = SolverActor->GetGameplayEventDispatcher())
-		{
-			if (bNotifyBreaks)
-			{
-				EventDispatcher->RegisterForBreakEvents(this, &DispatchGeometryCollectionBreakEvent);
-			}
-			else
-			{
-				EventDispatcher->UnRegisterForBreakEvents(this);
-			}
-		}
+		EventDispatcher->RegisterForBreakEvents(this, &DispatchGeometryCollectionBreakEvent);
+	}
+	else
+	{
+		EventDispatcher->UnRegisterForBreakEvents(this);
 	}
 }
 
@@ -1124,12 +1110,13 @@ void UGeometryCollectionComponent::OnCreatePhysicsState()
 		const bool bValidCollection = DynamicCollection && DynamicCollection->Transform.Num() > 0;
 		if (bValidWorld && bValidCollection)
 		{
+			if (!ChaosMaterial)
+			{
+				ChaosMaterial.Reset(new Chaos::FChaosPhysicsMaterial());
+			}
 			if (PhysicalMaterial)
 			{
-				ChaosMaterial->Friction = PhysicalMaterial->Friction;
-				ChaosMaterial->Restitution = PhysicalMaterial->Restitution;
-				ChaosMaterial->SleepingLinearThreshold = PhysicalMaterial->SleepingLinearVelocityThreshold;
-				ChaosMaterial->SleepingAngularThreshold = PhysicalMaterial->SleepingAngularVelocityThreshold;
+				PhysicalMaterial->CopyTo(*ChaosMaterial);
 			}
 
 			FPhysxUserData::Set<UPrimitiveComponent>(&PhysicsUserData, this);
@@ -1152,8 +1139,6 @@ void UGeometryCollectionComponent::OnCreatePhysicsState()
 				SimulationParameters.ClusterConnectionMethod = (Chaos::FClusterCreationParameters<float>::EConnectionMethod)ClusterConnectionType;
 				SimulationParameters.CollisionGroup = CollisionGroup;
 				SimulationParameters.CollisionSampleFraction = CollisionSampleFraction;
-				SimulationParameters.LinearEtherDrag = LinearEtherDrag;
-				SimulationParameters.AngularEtherDrag = AngularEtherDrag;
 				SimulationParameters.InitialVelocityType = InitialVelocityType;
 				SimulationParameters.InitialLinearVelocity = InitialLinearVelocity;
 				SimulationParameters.InitialAngularVelocity = InitialAngularVelocity;
@@ -1181,6 +1166,7 @@ void UGeometryCollectionComponent::OnCreatePhysicsState()
 				SimulationParameters.RemoveOnFractureEnabled = SimulationParameters.Shared.RemoveOnFractureIndices.Num() > 0;
 				SimulationParameters.WorldTransform = GetComponentToWorld();
 				SimulationParameters.UserData = static_cast<void*>(&PhysicsUserData);
+				SimulationParameters.PhysicalMaterial = Chaos::MakeSerializable(ChaosMaterial);
 			}
 
 

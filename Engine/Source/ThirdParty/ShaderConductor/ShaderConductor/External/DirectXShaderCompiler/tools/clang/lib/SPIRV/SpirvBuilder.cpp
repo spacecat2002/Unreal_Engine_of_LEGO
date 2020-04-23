@@ -974,6 +974,15 @@ void SpirvBuilder::decoratePerPrimitiveNV(SpirvInstruction *target,
   mod->addDecoration(decor);
 }
 
+// UE Change Begin
+void SpirvBuilder::decorateInvariant(SpirvInstruction *target,
+                                     SourceLocation srcLoc) {
+  auto *decor = new (context)
+      SpirvDecoration(srcLoc, target, spv::Decoration::Invariant);
+  module->addDecoration(decor);
+}
+// UE Change End
+
 void SpirvBuilder::decoratePerTaskNV(SpirvInstruction *target, uint32_t offset,
                                      SourceLocation srcLoc) {
   auto *decor =

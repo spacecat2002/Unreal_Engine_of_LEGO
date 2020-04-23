@@ -1139,7 +1139,7 @@ bool FTexturePlatformData::TryLoadMips(int32 FirstMipToLoad, void** OutMipData, 
 				// is it possible for streaming mips to be loaded in non streaming ways.
 				if (CVarSetTextureStreaming.GetValueOnAnyThread() != 0)
 				{
-					UE_CLOG(Mip.BulkData.IsInSeperateFile(), LogTexture, Error, TEXT("Loading non-streamed mips from an external bulk file.  This is not desireable.  File %s"), *(Mip.BulkData.GetFilename() ) );
+					UE_CLOG(Mip.BulkData.IsInSeparateFile(), LogTexture, Error, TEXT("Loading non-streamed mips from an external bulk file.  This is not desireable.  File %s"), *(Mip.BulkData.GetFilename() ) );
 				}
 #endif
 				Mip.BulkData.GetCopy(&OutMipData[MipIndex - FirstMipToLoad], true);
@@ -1172,6 +1172,12 @@ bool FTexturePlatformData::TryLoadMips(int32 FirstMipToLoad, void** OutMipData, 
 					Ar.Serialize(OutMipData[MipIndex - FirstMipToLoad], MipSize);
 				}
 			}
+			else
+			{
+				UE_LOG(LogTexture, Warning, TEXT("DDC.GetAsynchronousResults() failed for %s, MipIndex: %d"),
+					Texture ? *Texture->GetPathName() : TEXT("nullptr"),
+					MipIndex);
+			}
 			TempData.Reset();
 		}
 	}
@@ -1179,9 +1185,20 @@ bool FTexturePlatformData::TryLoadMips(int32 FirstMipToLoad, void** OutMipData, 
 
 	if (NumMipsCached != (LoadableMips - FirstMipToLoad))
 	{
+		UE_LOG(LogTexture, Warning, TEXT("TryLoadMips failed for %s, NumMipsCached: %d, LoadableMips: %d, FirstMipToLoad: %d"),
+			Texture ? *Texture->GetPathName() : TEXT("nullptr"),
+			NumMipsCached,
+			LoadableMips,
+			FirstMipToLoad);
+
 		// Unable to cache all mips. Release memory for those that were cached.
 		for (int32 MipIndex = FirstMipToLoad; MipIndex < LoadableMips; ++MipIndex)
 		{
+			FTexture2DMipMap& Mip = Mips[MipIndex];
+			UE_LOG(LogTexture, Warning, TEXT("  Mip %d, BulkDataSize: %d"),
+				MipIndex,
+				(int32)Mip.BulkData.GetBulkDataSize());
+
 			if (OutMipData && OutMipData[MipIndex - FirstMipToLoad])
 			{
 				FMemory::Free(OutMipData[MipIndex - FirstMipToLoad]);
@@ -1203,7 +1220,7 @@ int32 FTexturePlatformData::GetNumNonStreamingMips() const
 
 		for (const FTexture2DMipMap& Mip : Mips)
 		{
-			if ( Mip.BulkData.IsInSeperateFile() || !Mip.BulkData.IsInlined() )
+			if ( Mip.BulkData.IsInSeparateFile() || !Mip.BulkData.IsInlined() )
 			{
 				--NumNonStreamingMips;
 			}

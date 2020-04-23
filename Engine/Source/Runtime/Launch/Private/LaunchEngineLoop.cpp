@@ -3053,6 +3053,16 @@ int32 FEngineLoop::PreInitPostStartupScreen(const TCHAR* CmdLine)
 				FShaderPipelineCache::OpenPipelineFileCache(GMaxRHIShaderPlatform);
 			}
 		}
+		else
+		{
+			// TEMPORARY FIX UNTIL WE FIGURE OUT WHY A DEFAULT MATERIAL IS USING A GAME LIBRARY SHADER
+			// Open the game library which contains the material shaders.
+			FShaderCodeLibrary::OpenLibrary(FApp::GetProjectName(), FPaths::ProjectContentDir());
+			for (const FString& RootDir : FPlatformMisc::GetAdditionalRootDirectories())
+			{
+				FShaderCodeLibrary::OpenLibrary(FApp::GetProjectName(), FPaths::Combine(RootDir, FApp::GetProjectName(), TEXT("Content")));
+			}
+		}
 
 		InitGameTextLocalization();
 
@@ -4940,6 +4950,21 @@ void FEngineLoop::Tick()
 		}
 #endif
 
+		// Tick the platform and input portion of Slate application, we need to do this before we run things
+		// concurrent with networking.
+		if (FSlateApplication::IsInitialized() && !bIdleMode)
+		{
+			{
+				QUICK_SCOPE_CYCLE_COUNTER(STAT_FEngineLoop_ProcessPlayerControllersSlateOperations);
+				check(!IsRunningDedicatedServer());
+
+				// Process slate operations accumulated in the world ticks.
+				ProcessLocalPlayerSlateOperations();
+			}
+
+			FSlateApplication::Get().Tick(ESlateTickType::PlatformAndInput);
+		}
+
 #if WITH_ENGINE
 		// process concurrent Slate tasks
 		FGraphEventRef ConcurrentTask;
@@ -4980,18 +5005,11 @@ void FEngineLoop::Tick()
 		}
 #endif
 
-		// tick Slate application
+		// Tick(Advance) Time for the application and then tick and paint slate application widgets.
+		// We split separate this action from the one above to permit running network replication concurrent with slate widget ticking and painting.
 		if (FSlateApplication::IsInitialized() && !bIdleMode)
 		{
-			{
-				QUICK_SCOPE_CYCLE_COUNTER(STAT_FEngineLoop_ProcessPlayerControllersSlateOperations);
-				check(!IsRunningDedicatedServer());
-
-				// Process slate operations accumulated in the world ticks.
-				ProcessLocalPlayerSlateOperations();
-			}
-
-			FSlateApplication::Get().Tick();
+			FSlateApplication::Get().Tick(ESlateTickType::TimeAndWidgets);
 		}
 
 #if WITH_ENGINE

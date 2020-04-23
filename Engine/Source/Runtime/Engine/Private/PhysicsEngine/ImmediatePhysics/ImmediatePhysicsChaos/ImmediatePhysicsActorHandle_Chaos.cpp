@@ -175,7 +175,8 @@ namespace ImmediatePhysics_Chaos
 		NewShape->SetGeometry(MakeSerializable(ImplicitSphere));
 		NewShape->UpdateShapeBounds(FTransform::Identity);
 		NewShape->SetUserData(nullptr);
-		NewShape->SetSimulate(false);
+		NewShape->SetQueryEnabled(false);
+		NewShape->SetSimEnabled(false);
 
 		OutMass = Mass;
 		OutInertia = TSphere<FReal, 3>::GetInertiaTensor(Mass, Radius).GetDiagonal();
@@ -190,8 +191,9 @@ namespace ImmediatePhysics_Chaos
 	{
 		using namespace Chaos;
 
-		if (BodyInstance == nullptr)
+		if ((BodyInstance == nullptr) || (BodyInstance->BodySetup == nullptr))
 		{
+			// @todo(ccaulfield): fix this path
 			return CreateDefaultGeometry(Scale, OutMass, OutInertia, OutCoMTransform, OutGeom, OutShapes);
 		}
 

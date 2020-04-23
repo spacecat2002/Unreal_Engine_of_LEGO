@@ -415,12 +415,12 @@ public:
 	float CollisionSampleFraction;
 
 	/** Uniform linear ether drag. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|Ether Drag")
-	float LinearEtherDrag;
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Use PhysicalMaterial instead."))
+	float LinearEtherDrag_DEPRECATED;
 
 	/** Uniform angular ether drag. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|Ether Drag")
-	float AngularEtherDrag;
+	UPROPERTY(meta=(DeprecatedProperty, DeprecationMessage="Use PhysicalMaterial instead."))
+	float AngularEtherDrag_DEPRECATED;
 
 	/** Physical Properties */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ChaosPhysics")
@@ -633,6 +633,8 @@ private:
 	bool IsEqual(const TArray<FMatrix> &A, const TArray<FMatrix> &B, const float Tolerance = 1e-6);
 	TArray<bool> TransformsAreEqual;	
 	int32 TransformsAreEqualIndex;
+
+	UChaosGameplayEventDispatcher* EventDispatcher;
 
 #if GEOMETRYCOLLECTION_EDITOR_SELECTION
 	bool bIsTransformSelectionModeEnabled;

@@ -1047,6 +1047,8 @@ void AddDebugPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& Vi
 
 			break;
 		}
+		case DVSM_LODColoration:
+			break;
 		default:
 			ensure(false);
 			break;

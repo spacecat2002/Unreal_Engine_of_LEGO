@@ -275,7 +275,10 @@ struct FMetalGraphicsPipelineKey
 	FMetalRenderPipelineHash RenderPipelineHash;
 	FMetalHashedVertexDescriptor VertexDescriptorHash;
 	FSHAHash VertexFunction;
+#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
+	FSHAHash HullFunction;
 	FSHAHash DomainFunction;
+#endif
 	FSHAHash PixelFunction;
 
 	template<typename Type>
@@ -299,7 +302,10 @@ struct FMetalGraphicsPipelineKey
 		return (RenderPipelineHash == Other.RenderPipelineHash
 		&& VertexDescriptorHash == Other.VertexDescriptorHash
 		&& VertexFunction == Other.VertexFunction
+#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
+		&& HullFunction == Other.HullFunction
 		&& DomainFunction == Other.DomainFunction
+#endif
 		&& PixelFunction == Other.PixelFunction);
 	}
 	
@@ -307,7 +313,10 @@ struct FMetalGraphicsPipelineKey
 	{
 		uint32 H = FCrc::MemCrc32(&Key.RenderPipelineHash, sizeof(Key.RenderPipelineHash), GetTypeHash(Key.VertexDescriptorHash));
 		H = FCrc::MemCrc32(Key.VertexFunction.Hash, sizeof(Key.VertexFunction.Hash), H);
+#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
+		H = FCrc::MemCrc32(Key.HullFunction.Hash, sizeof(Key.HullFunction.Hash), H);
 		H = FCrc::MemCrc32(Key.DomainFunction.Hash, sizeof(Key.DomainFunction.Hash), H);
+#endif
 		H = FCrc::MemCrc32(Key.PixelFunction.Hash, sizeof(Key.PixelFunction.Hash), H);
 		return H;
 	}
@@ -403,8 +412,10 @@ struct FMetalGraphicsPipelineKey
 
 #if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
 		FMetalDomainShader* DomainShader = (FMetalDomainShader*)Init.BoundShaderState.DomainShaderRHI;
-		if (DomainShader)
+		FMetalHullShader* HullShader = (FMetalHullShader*)Init.BoundShaderState.HullShaderRHI;
+		if (DomainShader && HullShader)
 		{
+			Key.HullFunction = HullShader->GetHash();
 			Key.DomainFunction = DomainShader->GetHash();
 			Key.SetHashValue(Offset_IndexType, NumBits_IndexType, IndexType);
 		}

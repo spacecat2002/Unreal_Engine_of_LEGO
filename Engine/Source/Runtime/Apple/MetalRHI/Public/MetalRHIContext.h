@@ -238,6 +238,8 @@ public:
 	virtual void RHIBeginRenderPass(const FRHIRenderPassInfo& InInfo, const TCHAR* InName) final override;
 
 	virtual void RHIEndRenderPass() final override;
+	
+	virtual void RHINextSubpass() final override;
 
 protected:
 	static TGlobalResource<TBoundShaderStateHistory<10000>> BoundShaderStateHistory;

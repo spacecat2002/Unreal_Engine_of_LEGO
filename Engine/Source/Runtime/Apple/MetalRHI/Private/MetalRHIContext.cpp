@@ -225,6 +225,17 @@ void FMetalRHICommandContext::RHIEndRenderPass()
 	}
 }
 
+void FMetalRHICommandContext::RHINextSubpass()
+{
+#if PLATFORM_MAC
+	if (RenderPassInfo.SubpassHint == ESubpassHint::DepthReadSubpass)
+	{
+		FMetalRenderPass& RP = Context->GetCurrentRenderPass();
+		RP.InsertTextureBarrier();
+	}
+#endif
+}
+
 void FMetalRHICommandContext::RHIBeginRenderQuery(FRHIRenderQuery* QueryRHI)
 {
 	@autoreleasepool {
