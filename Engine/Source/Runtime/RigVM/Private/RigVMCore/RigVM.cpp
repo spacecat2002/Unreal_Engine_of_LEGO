@@ -3,6 +3,7 @@
 #include "RigVMCore/RigVM.h"
 #include "UObject/Package.h"
 #include "UObject/AnimObjectVersion.h"
+#include "HAL/PlatformTLS.h"
 
 bool FRigVMParameter::Serialize(FArchive& Ar)
 {
@@ -41,11 +42,12 @@ UScriptStruct* FRigVMParameter::GetScriptStruct() const
 }
 
 URigVM::URigVM()
-: WorkMemoryPtr(&WorkMemoryStorage)
-, LiteralMemoryPtr(&LiteralMemoryStorage)
-, ByteCodePtr(&ByteCodeStorage)
-, FunctionNamesPtr(&FunctionNamesStorage)
-, FunctionsPtr(&FunctionsStorage)
+	: ThreadId(INDEX_NONE)
+    , WorkMemoryPtr(&WorkMemoryStorage)
+    , LiteralMemoryPtr(&LiteralMemoryStorage)
+    , ByteCodePtr(&ByteCodeStorage)
+    , FunctionNamesPtr(&FunctionNamesStorage)
+    , FunctionsPtr(&FunctionsStorage)
 {
 	GetWorkMemory().SetMemoryType(ERigVMMemoryType::Work);
 	GetLiteralMemory().SetMemoryType(ERigVMMemoryType::Literal);
@@ -290,6 +292,12 @@ void URigVM::InvalidateCachedMemory()
 
 void URigVM::CacheMemoryHandlesIfRequired(FRigVMMemoryContainerPtrArray InMemory)
 {
+	if (ThreadId != INDEX_NONE)
+	{
+		ensureMsgf(ThreadId == FPlatformTLS::GetCurrentThreadId(), TEXT("RigVM from multiple threads (%d and %d)"), ThreadId, (int32)FPlatformTLS::GetCurrentThreadId());
+	}
+	TGuardValue<int32> GuardThreadId(ThreadId, FPlatformTLS::GetCurrentThreadId());
+
 	RefreshInstructionsIfRequired();
 
 	if (Instructions.Num() == 0 || InMemory.Num() == 0)
@@ -622,7 +630,7 @@ bool URigVM::Initialize(FRigVMMemoryContainerPtrArray Memory, FRigVMFixedArray<v
 			case ERigVMOpCode::Execute_62_Operands:
 			case ERigVMOpCode::Execute_63_Operands:
 			case ERigVMOpCode::Execute_64_Operands:
-			{
+		{
 				const FRigVMExecuteOp& Op = ByteCode.GetOpAt<FRigVMExecuteOp>(Instruction);
 				int32 OperandCount = FirstHandleForInstruction[Context.InstructionIndex + 1] - FirstHandleForInstruction[Context.InstructionIndex];
 				FRigVMMemoryHandleArray OpHandles(&CachedMemoryHandles[FirstHandleForInstruction[Context.InstructionIndex]], OperandCount);
@@ -630,14 +638,14 @@ bool URigVM::Initialize(FRigVMMemoryContainerPtrArray Memory, FRigVMFixedArray<v
 				Context.FunctionName = FunctionNames[Op.FunctionIndex];
 #endif
 				(*Functions[Op.FunctionIndex])(Context, OpHandles);
-				break;
-			}
+			break;
+		}
 			case ERigVMOpCode::Zero:
 			case ERigVMOpCode::BoolFalse:
 			case ERigVMOpCode::BoolTrue:
 			{
 				break;
-			}
+	}
 			case ERigVMOpCode::Copy:
 			{
 				const FRigVMCopyOp& Op = ByteCode.GetOpAt<FRigVMCopyOp>(Instruction);
@@ -710,13 +718,13 @@ bool URigVM::Initialize(FRigVMMemoryContainerPtrArray Memory, FRigVMFixedArray<v
 				break;
 			}
 			case ERigVMOpCode::Invalid:
-			{
+	{
 				ensure(false);
 				return false;
 			}
-		}
-		Context.InstructionIndex++;
 	}
+		Context.InstructionIndex++;
+}
 
 	return true;
 }
@@ -1404,7 +1412,7 @@ FString URigVM::GetOperandLabel(const FRigVMOperand& InOperand) const
 	}
 
 	return Register.Name.ToString();
-}
+	}
 
 #endif
 
@@ -1420,7 +1428,7 @@ void URigVM::CacheSingleMemoryHandle(const FRigVMOperand& InArg, bool bForExecut
 	if (bForExecute)
 	{
 		if (Register.IsArray() && !Register.IsDynamic())
-		{
+	{
 			void* ElementsForArray = reinterpret_cast<void*>(Register.ElementCount);
 			CachedMemoryHandles.Add(FRigVMMemoryHandle((uint8*)ElementsForArray));
 		}

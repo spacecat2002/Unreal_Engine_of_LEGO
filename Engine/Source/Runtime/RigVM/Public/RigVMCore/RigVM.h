@@ -213,14 +213,14 @@ public:
 			RegisterIndex = WorkMemoryPtr->Add<T>(WorkMemoryPtr->SupportsNames() ? InName : NAME_None, DefaultValues[0], 1);
 		}
 		else
-		{
+	{
 			RegisterIndex = WorkMemoryPtr->AddFixedArray<T>(WorkMemoryPtr->SupportsNames() ? InName : NAME_None, FRigVMFixedArray<T>(DefaultValues), 1);
-		}
+	}
 
 		if (RegisterIndex == INDEX_NONE)
-		{
+	{
 			return FRigVMParameter();
-		}
+	}
 
 		FName Name = WorkMemoryPtr->SupportsNames() ? GetWorkMemory()[RegisterIndex].Name : InName;
 
@@ -493,6 +493,8 @@ private:
 #endif
 
 	void CacheSingleMemoryHandle(const FRigVMOperand& InArg, bool bForExecute = false);
+
+	int32 ThreadId;
 
 	friend class URigVMCompiler;
 };
