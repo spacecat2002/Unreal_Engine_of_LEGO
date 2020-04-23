@@ -15798,7 +15798,11 @@ static FAutoConsoleCommand PakFileTestCmd(
 int32 UEngine::RenderStatSoundReverb(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation, const FRotator* ViewRotation)
 {
 #if ENABLE_AUDIO_DEBUG
-	return FAudioDebugger::RenderStatReverb(World, Viewport, Canvas, X, Y, ViewLocation, ViewRotation);
+	const int32 FontHeight = GetStatsFont()->GetMaxCharHeight() + 2.0f;
+	Canvas->DrawShadowedString(X, Y, TEXT("'stat soundreverb' is deprecated. Please use au.Debug.SoundReverb"), GetStatsFont(), FLinearColor::Yellow);
+	Y += FontHeight;
+
+	return Audio::FAudioDebugger::RenderStatReverb(World, Viewport, Canvas, X, Y);
 #else // !ENABLE_AUDIO_DEBUG
 	return Y;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -15808,7 +15812,11 @@ int32 UEngine::RenderStatSoundReverb(UWorld* World, FViewport* Viewport, FCanvas
 int32 UEngine::RenderStatSoundMixes(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation, const FRotator* ViewRotation)
 {
 #if ENABLE_AUDIO_DEBUG
-	return FAudioDebugger::RenderStatMixes(World, Viewport, Canvas, X, Y, ViewLocation, ViewRotation);
+	const int32 FontHeight = GetStatsFont()->GetMaxCharHeight() + 2.0f;
+	Canvas->DrawShadowedString(X, Y, TEXT("'stat soundmixes' is deprecated. Use au.Debug.SoundMixes"), GetStatsFont(), FLinearColor::Yellow);
+	Y += FontHeight;
+
+	return Audio::FAudioDebugger::RenderStatMixes(World, Viewport, Canvas, X, Y);
 #else // !ENABLE_AUDIO_DEBUG
 	return Y;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -15818,7 +15826,11 @@ int32 UEngine::RenderStatSoundMixes(UWorld* World, FViewport* Viewport, FCanvas*
 int32 UEngine::RenderStatSoundModulators(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation, const FRotator* ViewRotation)
 {
 #if ENABLE_AUDIO_DEBUG
-	return FAudioDebugger::RenderStatModulators(World, Viewport, Canvas, X, Y, ViewLocation, ViewRotation);
+	const int32 FontHeight = GetStatsFont()->GetMaxCharHeight() + 2.0f;
+	Canvas->DrawShadowedString(X, Y, TEXT("'stat soundmodulators' is deprecated. Use au.Debug.Modulators"), GetStatsFont(), FLinearColor::Yellow);
+	Y += FontHeight;
+
+	return Audio::FAudioDebugger::RenderStatModulators(World, Viewport, Canvas, X, Y, ViewLocation, ViewRotation);
 #else // !ENABLE_AUDIO_DEBUG
 	return Y;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -15828,7 +15840,7 @@ int32 UEngine::RenderStatSoundModulators(UWorld* World, FViewport* Viewport, FCa
 bool UEngine::ToggleStatSoundWaves(UWorld* World, FCommonViewportClient* ViewportClient, const TCHAR* Stream)
 {
 #if ENABLE_AUDIO_DEBUG
-	return FAudioDebugger::ToggleStatWaves(World, ViewportClient, Stream);
+	return Audio::FAudioDebugger::ToggleStatWaves(World, ViewportClient, Stream);
 #else // !ENABLE_AUDIO_DEBUG
 	return false;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -15838,7 +15850,7 @@ bool UEngine::ToggleStatSoundWaves(UWorld* World, FCommonViewportClient* Viewpor
 bool UEngine::ToggleStatSoundCues(UWorld* World, FCommonViewportClient* ViewportClient, const TCHAR* Stream)
 {
 #if ENABLE_AUDIO_DEBUG
-	return FAudioDebugger::ToggleStatCues(World, ViewportClient, Stream);
+	return Audio::FAudioDebugger::ToggleStatCues(World, ViewportClient, Stream);
 #else // !ENABLE_AUDIO_DEBUG
 	return false;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -15854,7 +15866,7 @@ bool UEngine::ToggleStatAudioStreaming(UWorld* World, FCommonViewportClient* Vie
 bool UEngine::ToggleStatSoundMixes(UWorld* World, FCommonViewportClient* ViewportClient, const TCHAR* Stream)
 {
 #if ENABLE_AUDIO_DEBUG
-	return FAudioDebugger::ToggleStatMixes(World, ViewportClient, Stream);
+	return Audio::FAudioDebugger::ToggleStatMixes(World, ViewportClient, Stream);
 #else // !ENABLE_AUDIO_DEBUG
 	return false;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -15864,7 +15876,7 @@ bool UEngine::ToggleStatSoundMixes(UWorld* World, FCommonViewportClient* Viewpor
 bool UEngine::PostStatSoundModulatorHelp(UWorld* World, FCommonViewportClient* ViewportClient, const TCHAR* Stream)
 {
 #if ENABLE_AUDIO_DEBUG
-	return FAudioDebugger::PostStatModulatorHelp(World, ViewportClient, Stream);
+	return Audio::FAudioDebugger::PostStatModulatorHelp(World, ViewportClient, Stream);
 #else // !ENABLE_AUDIO_DEBUG
 	return false;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -15874,7 +15886,7 @@ bool UEngine::PostStatSoundModulatorHelp(UWorld* World, FCommonViewportClient* V
 bool UEngine::ToggleStatSoundModulators(UWorld* World, FCommonViewportClient* ViewportClient, const TCHAR* Stream)
 {
 #if ENABLE_AUDIO_DEBUG
-	return FAudioDebugger::ToggleStatModulators(World, ViewportClient, Stream);
+	return Audio::FAudioDebugger::ToggleStatModulators(World, ViewportClient, Stream);
 #else // !ENABLE_AUDIO_DEBUG
 	return false;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -15884,7 +15896,11 @@ bool UEngine::ToggleStatSoundModulators(UWorld* World, FCommonViewportClient* Vi
 int32 UEngine::RenderStatSoundWaves(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation, const FRotator* ViewRotation)
 {
 #if ENABLE_AUDIO_DEBUG
-	return FAudioDebugger::RenderStatWaves(World, Viewport, Canvas, X, Y, ViewLocation, ViewRotation);
+	const int32 FontHeight = GetStatsFont()->GetMaxCharHeight() + 2.0f;
+	Canvas->DrawShadowedString(X, Y, TEXT("'stat soundwaves' is deprecated. Use au.Debug.SoundWaves"), GetStatsFont(), FLinearColor::Yellow);
+	Y += FontHeight;
+
+	return Audio::FAudioDebugger::RenderStatWaves(World, Viewport, Canvas, X, Y);
 #else // !ENABLE_AUDIO_DEBUG
 	return Y;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -15900,7 +15916,11 @@ int32 UEngine::RenderStatAudioStreaming(UWorld* World, FViewport* Viewport, FCan
 int32 UEngine::RenderStatSoundCues(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation, const FRotator* ViewRotation)
 {
 #if ENABLE_AUDIO_DEBUG
-	return FAudioDebugger::RenderStatCues(World, Viewport, Canvas, X, Y, ViewLocation, ViewRotation);
+	const int32 FontHeight = GetStatsFont()->GetMaxCharHeight() + 2.0f;
+	Canvas->DrawShadowedString(X, Y, TEXT("'stat soundcues' is deprecated. Use au.Debug.SoundCues"), GetStatsFont(), FLinearColor::Yellow);
+	Y += FontHeight;
+
+	return Audio::FAudioDebugger::RenderStatCues(World, Viewport, Canvas, X, Y);
 #else // !ENABLE_AUDIO_DEBUG
 	return Y;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -15910,7 +15930,7 @@ int32 UEngine::RenderStatSoundCues(UWorld* World, FViewport* Viewport, FCanvas* 
 bool UEngine::ToggleStatSounds(UWorld* World, FCommonViewportClient* ViewportClient, const TCHAR* Stream)
 {
 #if ENABLE_AUDIO_DEBUG
-	return FAudioDebugger::ToggleStatSounds(World, ViewportClient, Stream);
+	return Audio::FAudioDebugger::ToggleStatSounds(World, ViewportClient, Stream);
 #else // !ENABLE_AUDIO_DEBUG
 	return false;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -15919,7 +15939,11 @@ bool UEngine::ToggleStatSounds(UWorld* World, FCommonViewportClient* ViewportCli
 int32 UEngine::RenderStatSounds(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation, const FRotator* ViewRotation)
 {
 #if ENABLE_AUDIO_DEBUG
-	return FAudioDebugger::RenderStatSounds(World, Viewport, Canvas, X, Y, ViewLocation, ViewRotation);
+	const int32 FontHeight = GetStatsFont()->GetMaxCharHeight() + 2.0f;
+	Canvas->DrawShadowedString(X, Y, TEXT("'stat sounds' is deprecated. Use au.Debug.Sounds"), GetStatsFont(), FLinearColor::Yellow);
+	Y += FontHeight;
+
+	return Audio::FAudioDebugger::RenderStatSounds(World, Viewport, Canvas, X, Y);
 #else // !ENABLE_AUDIO_DEBUG
 	return Y;
 #endif // !ENABLE_AUDIO_DEBUG
