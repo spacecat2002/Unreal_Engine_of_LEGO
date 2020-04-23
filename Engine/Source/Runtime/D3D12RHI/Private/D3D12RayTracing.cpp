@@ -1553,7 +1553,7 @@ public:
 	{
 		SCOPE_CYCLE_COUNTER(STAT_RTPSO_CreatePipeline);
 
-		checkf(Initializer.GetRayGenTable().Num() > 0, TEXT("Ray tracing pipelines must have at leat one ray generation shader."));
+		checkf(Initializer.GetRayGenTable().Num() > 0 || Initializer.bPartial, TEXT("Ray tracing pipelines must have at leat one ray generation shader."));
 
 		uint64 TotalCreationTime = 0;
 		uint64 CompileTime = 0;
@@ -1569,14 +1569,14 @@ public:
 		FRHIRayTracingShader* DefaultHitShader = GetBuildInRayTracingShader<FDefaultMainCHS>();
 		FRHIRayTracingShader* DefaultHitGroupTable[] = { DefaultHitShader };
 
-		TArrayView<FRHIRayTracingShader*> InitializerHitGroups = Initializer.GetHitGroupTable().Num()
+		TArrayView<FRHIRayTracingShader*> InitializerHitGroups = (Initializer.GetHitGroupTable().Num() || Initializer.bPartial)
 			? Initializer.GetHitGroupTable()
 			: DefaultHitGroupTable;
 
 		FRHIRayTracingShader* DefaultMissShader = GetBuildInRayTracingShader<FDefaultMainMS>();
 		FRHIRayTracingShader* DefaultMissTable[] = { DefaultMissShader };
 
-		TArrayView<FRHIRayTracingShader*> InitializerMissShaders = Initializer.GetMissTable().Num()
+		TArrayView<FRHIRayTracingShader*> InitializerMissShaders = (Initializer.GetMissTable().Num() || Initializer.bPartial)
 			? Initializer.GetMissTable()
 			: DefaultMissTable;
 
@@ -1584,6 +1584,7 @@ public:
 		TArrayView<FRHIRayTracingShader*> InitializerCallableShaders = Initializer.GetCallableTable();
 
 		const uint32 MaxTotalShaders = InitializerRayGenShaders.Num() + InitializerMissShaders.Num() + InitializerHitGroups.Num() + InitializerCallableShaders.Num();
+		checkf(MaxTotalShaders >= 1, TEXT("Ray tracing pipelines are expected to contain at least one shader"));
 
 		FD3D12RayTracingPipelineCache* PipelineCache = Device->GetRayTracingPipelineCache();
 
@@ -1684,6 +1685,7 @@ public:
 		}
 
 		// Ensure miss shader 0 (default) requires no parameters
+		if (!Initializer.bPartial)
 		{
 			FD3D12RayTracingShader* Shader = FD3D12DynamicRHI::ResourceCast(InitializerMissShaders[0]);
 
@@ -1746,6 +1748,11 @@ public:
 
 		CompileTime += FPlatformTime::Cycles64();
 
+		if (Initializer.bPartial)
+		{
+			// Partial pipelines don't have a linking phase, so exit immediately after compilation tasks are complete.
+			return;
+		}
 
 		TArray<D3D12_EXISTING_COLLECTION_DESC> UniqueShaderCollectionDescs;
 		UniqueShaderCollectionDescs.Reserve(MaxTotalShaders);
