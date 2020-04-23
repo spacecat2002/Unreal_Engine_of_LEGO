@@ -169,4 +169,12 @@ namespace Trace
 	if (const auto& EventName = *(F##LoggerName##EventName##Dummy*)1) \
 		EventName
 
+#define TRACE_PRIVATE_LOG_SCOPED(LoggerName, EventName, ...) \
+	if (const auto& EventName = *(F##LoggerName##EventName##Dummy*)1) \
+		EventName
+
+#define TRACE_PRIVATE_LOG_SCOPED_T(LoggerName, EventName, ...) \
+	if (const auto& EventName = *(F##LoggerName##EventName##Dummy*)1) \
+		EventName
+
 #endif // UE_TRACE_ENABLED

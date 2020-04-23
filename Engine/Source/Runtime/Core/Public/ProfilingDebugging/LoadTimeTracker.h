@@ -10,9 +10,9 @@
 #include "Containers/Array.h"
 #include "Containers/Map.h"
 #include "UObject/NameTypes.h"
+#include "Trace/Trace.inl"
 #include "ProfilingDebugging/CpuProfilerTrace.h"
 #include "ProfilingDebugging/ScopedTimers.h"
-#include "Trace/Config.h"
 #include "Serialization/LoadTimeTrace.h"
 #include "Stats/Stats.h"
 #include "Misc/Optional.h"
@@ -220,7 +220,7 @@ struct CORE_API FScopedLoadTimeAccumulatorTimer : public FScopedDurationTimer
 #define SCOPED_LOADTIMER_TEXT(TimerName)
 #define SCOPED_LOADTIMER(TimerName) FScopedDurationTimer DurationTimer_##TimerName(FLoadTimeTracker::Get().TimerName);
 #define SCOPED_LOADTIMER_CNT(TimerName) FScopedDurationTimer DurationTimer_##TimerName(FLoadTimeTracker::Get().TimerName); FLoadTimeTracker::Get().TimerName##Cnt++;
-#define ADD_LOADTIMER_META(key, value)
+#define ADD_CUSTOM_LOADTIMER_META(key, value)
 #else
 
 #if CPUPROFILERTRACE_ENABLED
@@ -234,11 +234,13 @@ struct CORE_API FScopedLoadTimeAccumulatorTimer : public FScopedDurationTimer
 #define SCOPED_LOADTIMER_TEXT(TimerName)
 #endif
 
+#define CUSTOM_LOADTIMER_LOG Cpu
+
 #define SCOPED_LOADTIMER(TimerName) TRACE_CPUPROFILER_EVENT_SCOPE_ON_CHANNEL(TimerName, LoadTimeChannel)
+#define SCOPED_CUSTOM_LOADTIMER(TimerName) UE_TRACE_LOG_SCOPED_T(CUSTOM_LOADTIMER_LOG, TimerName, LoadTimeChannel)
 #define SCOPED_LOADTIMER_CNT(TimerName)
 
-// TODO: Instead of creating a dynamic scope, this should instead store metadata on the scoped event it is associated with
-#define ADD_LOADTIMER_META(key, value) ; SCOPED_LOADTIMER_TEXT(value)
+#define ADD_CUSTOM_LOADTIMER_META(TimerName, Key, Value) << TimerName.Key(Value)
 #endif
 
 #if ENABLE_LOADTIME_TRACKING_WITH_STATS && STATS
