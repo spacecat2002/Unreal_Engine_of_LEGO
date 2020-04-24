@@ -77,8 +77,6 @@ enum ECompilerFlags
 	CFLAG_SkipOptimizationsDXC,
 	// Typed UAV loads are disallowed by default, as Windows 7 D3D 11.0 does not support them; this flag allows a shader to use them.
 	CFLAG_AllowTypedUAVLoads,
-	// Temporary flag: Use ShaderConductor's DXC instead of the prebuilt one
-	CFLAG_UseShaderConductorDXC,
 
 	CFLAG_Max,
 };
