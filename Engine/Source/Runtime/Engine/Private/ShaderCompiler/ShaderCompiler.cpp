@@ -172,14 +172,6 @@ static FAutoConsoleVariableRef CVarDumpShaderDebugSCWCommandLine(
 	TEXT("When set to 1, it will generate a file that can be used with ShaderCompileWorker's -directcompile.")
 	);
 
-static int32 GDumpSCWJobInfoOnCrash = 0;
-static FAutoConsoleVariableRef CVarDumpSCWJobInfoOnCrash(
-	TEXT("r.ShaderCompiler.DumpQueuedJobs"),
-	GDumpSCWJobInfoOnCrash,
-	TEXT("When set to 1, it will dump a job list to help track down crashes that happened on ShaderCompileWorker.")
-);
-
-
 static int32 GLogShaderCompilerStats = 0;
 static FAutoConsoleVariableRef CVarLogShaderCompilerStats(
 	TEXT("r.LogShaderCompilerStats"),
@@ -687,7 +679,52 @@ static bool ReadSingleJob(FShaderCompileJob* CurrentJob, FArchive& OutputFile)
 	}
 
 	return false;
-};
+}
+
+static void DumpCompilationJobs(const TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>>& QueuedJobs, int32 NumProcessedJobs)
+{
+	if (NumProcessedJobs == -1)
+	{
+		UE_LOG(LogShaderCompilers, Error, TEXT("SCW %d Queued Jobs, Unknown number of processed jobs!"), QueuedJobs.Num());
+	}
+	else
+	{
+		UE_LOG(LogShaderCompilers, Error, TEXT("SCW %d Queued Jobs, Finished %d single jobs"), QueuedJobs.Num(), NumProcessedJobs);
+	}
+
+	auto GetSingleJobCompilationDump = [](FShaderCompileJob* SingleJob) -> FString
+	{
+		if (!SingleJob)
+		{
+			return TEXT("Internal error, not a Job!");
+		}
+		FString String = SingleJob->Input.GenerateShaderName();
+		if (SingleJob->VFType)
+		{
+			String += FString::Printf(TEXT(" VF '%s'"), SingleJob->VFType->GetName());
+		}
+		String += FString::Printf(TEXT(" Type '%s'"), SingleJob->ShaderType->GetName());
+		String += FString::Printf(TEXT(" '%s' Entry '%s' Permutation %i "), *SingleJob->Input.VirtualSourceFilePath, *SingleJob->Input.EntryPointName, SingleJob->PermutationId);
+		return String;
+	};
+
+	for (int32 Index = 0; Index < QueuedJobs.Num(); ++Index)
+	{
+		if (FShaderCompileJob* SingleJob = QueuedJobs[Index]->GetSingleShaderJob())
+		{
+			UE_LOG(LogShaderCompilers, Error, TEXT("Job %d [Single] %s"), Index, *GetSingleJobCompilationDump(SingleJob));
+		}
+		else
+		{
+			FShaderPipelineCompileJob* PipelineJob = QueuedJobs[Index]->GetShaderPipelineJob();
+			UE_LOG(LogShaderCompilers, Error, TEXT("Job %d: Pipeline %s "), Index, PipelineJob->ShaderPipeline->GetName());
+			for (int32 JobIndex = 0; JobIndex < PipelineJob->StageJobs.Num(); ++JobIndex)
+			{
+				UE_LOG(LogShaderCompilers, Error, TEXT("PipelineJob %d %s"), JobIndex, *GetSingleJobCompilationDump(PipelineJob->StageJobs[JobIndex]->GetSingleShaderJob()));
+			}
+		}
+	}
+}
 
 // Disable optimization for this crash handler to get full access to the entire stack frame when debugging a crash dump
 PRAGMA_DISABLE_OPTIMIZATION;
@@ -755,43 +792,7 @@ static void HandleWorkerCrash(const TArray<TSharedRef<FShaderCommonCompileJob, E
 	default:
 	case ESCWErrorCode::GeneralCrash:
 	{
-		if (GDumpSCWJobInfoOnCrash != 0 || GIsBuildMachine)
-		{
-			auto DumpSingleJob = [](FShaderCompileJob* SingleJob) -> FString
-			{
-				if (!SingleJob)
-				{
-					return TEXT("Internal error, not a Job!");
-				}
-				FString String = SingleJob->Input.GenerateShaderName();
-				if (SingleJob->VFType)
-				{
-					String += FString::Printf(TEXT(" VF '%s'"), SingleJob->VFType->GetName());
-				}
-				String += FString::Printf(TEXT(" Type '%s'"), SingleJob->ShaderType->GetName());
-				String += FString::Printf(TEXT(" '%s' Entry '%s' Permutation %i "), *SingleJob->Input.VirtualSourceFilePath, *SingleJob->Input.EntryPointName, SingleJob->PermutationId);
-				return String;
-			};
-			UE_LOG(LogShaderCompilers, Error, TEXT("SCW %d Queued Jobs, Finished %d single jobs"), QueuedJobs.Num(), NumProcessedJobs);
-			for (int32 Index = 0; Index < QueuedJobs.Num(); ++Index)
-			{
-				auto CommonJob = QueuedJobs[Index];
-				FShaderCompileJob* SingleJob = CommonJob->GetSingleShaderJob();
-				if (SingleJob)
-				{
-					UE_LOG(LogShaderCompilers, Error, TEXT("Job %d [Single] %s"), Index, *DumpSingleJob(SingleJob));
-				}
-				else
-				{
-					FShaderPipelineCompileJob* PipelineJob = CommonJob->GetShaderPipelineJob();
-					UE_LOG(LogShaderCompilers, Error, TEXT("Job %d: Pipeline %s "), Index, PipelineJob->ShaderPipeline->GetName());
-					for (int32 Job = 0; Job < PipelineJob->StageJobs.Num(); ++Job)
-					{
-						UE_LOG(LogShaderCompilers, Error, TEXT("PipelineJob %d %s"), Job, *DumpSingleJob(PipelineJob->StageJobs[Job]->GetSingleShaderJob()));
-					}
-				}
-			}
-		}
+		DumpCompilationJobs(QueuedJobs, NumProcessedJobs);
 		SCWErrorCode::HandleGeneralCrash(ExceptionInfo.GetData(), Callstack.GetData());
 	}
 	break;
@@ -1453,7 +1454,8 @@ bool FShaderCompileThreadRunnable::LaunchWorkersIfNeeded()
 					}
 					else
 					{
-						UE_LOG(LogShaderCompilers, Warning, TEXT("ShaderCompileWorker terminated unexpectedly!  Falling back to directly compiling which will be very slow.  Thread %u."), WorkerIndex);
+						UE_LOG(LogShaderCompilers, Error, TEXT("ShaderCompileWorker terminated unexpectedly!  Falling back to directly compiling which will be very slow.  Thread %u."), WorkerIndex);
+						DumpCompilationJobs(CurrentWorkerInfo.QueuedJobs, -1);
 
 						bAbandonWorkers = true;
 						break;
