@@ -50,7 +50,7 @@ FString GetRequestedCulture(const TCHAR* InCommandLineKey, const TCHAR* InConfig
 {
 	FString RequestedCulture;
 
-	auto ReadSettingsFromCommandLine = [&RequestedCulture, &InCommandLineKey, &OutOverrideLevel]()
+	auto ReadSettingsFromCommandLine = [&RequestedCulture, &InCommandLineKey, &InConfigKey, &OutOverrideLevel]()
 	{
 #if ENABLE_LOC_TESTING
 		if (RequestedCulture.IsEmpty() && FParse::Param(FCommandLine::Get(), *FLeetCulture::StaticGetName()))
@@ -59,6 +59,17 @@ FString GetRequestedCulture(const TCHAR* InCommandLineKey, const TCHAR* InConfig
 			OutOverrideLevel = ERequestedCultureOverrideLevel::CommandLine;
 		}
 #endif
+
+		if (RequestedCulture.IsEmpty() && FParse::Value(FCommandLine::Get(), TEXT("CULTUREFORCOOKING="), RequestedCulture))
+		{
+			OutOverrideLevel = ERequestedCultureOverrideLevel::CommandLine;
+
+			// Write the culture passed in if first install...
+			if (FParse::Param(FCommandLine::Get(), TEXT("firstinstall")) && InConfigKey)
+			{
+				GConfig->SetString(TEXT("Internationalization"), InConfigKey, *RequestedCulture, GEngineIni);
+			}
+		}
 
 		if (RequestedCulture.IsEmpty() && InCommandLineKey && FParse::Value(FCommandLine::Get(), InCommandLineKey, RequestedCulture))
 		{
