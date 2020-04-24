@@ -1308,6 +1308,7 @@ void FSceneView::OverridePostProcessSettings(const FPostProcessSettings& Src, fl
 
 		LERP_PP(BlueCorrection);
 		LERP_PP(ExpandGamut);
+		LERP_PP(ToneCurveAmount);
 
 		LERP_PP(FilmWhitePoint);
 		LERP_PP(FilmSaturation);
