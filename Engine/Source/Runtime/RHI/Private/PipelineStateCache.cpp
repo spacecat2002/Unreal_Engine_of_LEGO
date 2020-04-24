@@ -1093,9 +1093,11 @@ private:
 	TArray<FRHIRayTracingShader*> HitGroupTable;
 	TArray<FRHIRayTracingShader*> CallableTable;
 };
+#endif // RHI_RAYTRACING
 
 FRayTracingPipelineState* PipelineStateCache::GetAndOrCreateRayTracingPipelineState(FRHICommandList& RHICmdList, const FRayTracingPipelineStateInitializer& Initializer)
 {
+#if RHI_RAYTRACING
 	LLM_SCOPE(ELLMTag::PSO);
 
 	check(IsInRenderingThread() || IsInParallelRenderingThread());
@@ -1140,8 +1142,10 @@ FRayTracingPipelineState* PipelineStateCache::GetAndOrCreateRayTracingPipelineSt
 	}
 
 	return OutCachedState;
-}
+#else // RHI_RAYTRACING
+	return nullptr;
 #endif // RHI_RAYTRACING
+}
 
 FRHIComputePipelineState* ExecuteSetComputePipelineState(FComputePipelineState* ComputePipelineState)
 {
