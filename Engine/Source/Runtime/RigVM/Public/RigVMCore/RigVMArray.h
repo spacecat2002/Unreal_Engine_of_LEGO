@@ -161,6 +161,23 @@ public:
 		}
 	}
 
+	// sets the number of elements in this array
+	FORCEINLINE_DEBUGGABLE void EnsureMinimumSize(int32 InSize)
+	{
+		int32 LastSize = Num();
+		if (LastSize >= InSize)
+		{
+			return;
+		}
+
+		SetNumUninitialized(InSize);
+
+		if (LastSize < InSize)
+		{
+			RigVMInitialize<T>(GetData() + LastSize, InSize - LastSize);
+		}
+	}
+
 	// copies the contents of one array to this one
 	FORCEINLINE_DEBUGGABLE void CopyFrom(const FRigVMDynamicArray<T>& InOther)
 	{
