@@ -979,7 +979,7 @@ void SpirvBuilder::decorateInvariant(SpirvInstruction *target,
                                      SourceLocation srcLoc) {
   auto *decor = new (context)
       SpirvDecoration(srcLoc, target, spv::Decoration::Invariant);
-  module->addDecoration(decor);
+  mod->addDecoration(decor);
 }
 // UE Change End
 
