@@ -55,6 +55,7 @@ FString GetRequestedCulture(const TCHAR* InCommandLineKey, const TCHAR* InConfig
 #if ENABLE_LOC_TESTING
 		if (RequestedCulture.IsEmpty() && FParse::Param(FCommandLine::Get(), *FLeetCulture::StaticGetName()))
 		{
+			RequestedCulture = FLeetCulture::StaticGetName();
 			OutOverrideLevel = ERequestedCultureOverrideLevel::CommandLine;
 		}
 #endif
