@@ -143,7 +143,9 @@ void FPreloadableFile::InitializeInternal(uint32 InFlags, int64 PrimeSize)
 
 	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
 	uint32 Mode = InFlags & Flags::ModeBits;
-	if (Mode == Flags::PreloadBytes)
+	switch (Mode)
+	{
+	case Flags::PreloadBytes:
 	{
 		AsynchronousHandle.Reset(PlatformFile.OpenAsyncRead(*FileName));
 		if (AsynchronousHandle)
@@ -161,10 +163,10 @@ void FPreloadableFile::InitializeInternal(uint32 InFlags, int64 PrimeSize)
 				delete SizeRequest;
 			}
 		}
+		break;
 	}
-	else
+	case Flags::PreloadHandle:
 	{
-		checkf(Mode == Flags::PreloadHandle, TEXT("Invalid mode %u."), Mode);
 		ConstructSynchronousArchive();
 		if (SynchronousArchive)
 		{
@@ -174,6 +176,13 @@ void FPreloadableFile::InitializeInternal(uint32 InFlags, int64 PrimeSize)
 				SynchronousArchive->Precache(0, PrimeSize);
 			}
 		}
+		break;
+	}
+	default:
+	{
+		checkf(false, TEXT("Invalid mode %u."), Mode);
+		break;
+	}
 	}
 
 #if FPRELOADABLEFILE_TEST_ENABLED
