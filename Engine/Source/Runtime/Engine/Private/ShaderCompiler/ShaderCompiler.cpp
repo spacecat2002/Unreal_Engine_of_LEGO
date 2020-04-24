@@ -724,6 +724,9 @@ static void DumpCompilationJobs(const TArray<TSharedRef<FShaderCommonCompileJob,
 			}
 		}
 	}
+
+	// Force a log flush so we can track the crash before the cooker potentially crashes before the output shows up
+	GLog->PanicFlushThreadedLogs();
 }
 
 // Disable optimization for this crash handler to get full access to the entire stack frame when debugging a crash dump
