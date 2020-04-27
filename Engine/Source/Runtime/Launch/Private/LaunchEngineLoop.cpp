@@ -2842,7 +2842,12 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 
 int32 FEngineLoop::PreInitPostStartupScreen(const TCHAR* CmdLine)
 {
-	SCOPED_BOOT_TIMING("FEngineLoop::PreInitPostStartupScreen");
+	//Long duration timing scopes have negative performance consequences on UnrealInsights, so taking special steps to avoid
+	//having the PreInitPostStartupScreen scope from encompassing commandlet execution, which may be long duration.
+#if CPUPROFILERTRACE_ENABLED
+	TOptional<FCpuProfilerTrace::FDynamicEventScope> PreInitPostStartupScreenTraceScope(InPlace, "FEngineLoop::PreInitPostStartupScreen", CpuChannel);
+#endif
+	FScopedBootTiming ANONYMOUS_VARIABLE(BootTiming_)("FEngineLoop::PreInitPostStartupScreen");
 
 	if (IsEngineExitRequested())
 	{
@@ -3442,7 +3447,13 @@ int32 FEngineLoop::PreInitPostStartupScreen(const TCHAR* CmdLine)
 			CycleCount_AfterStats.StopAndResetStatId();
 #endif // STATS
 			FStats::TickCommandletStats();
+#if CPUPROFILERTRACE_ENABLED
+			PreInitPostStartupScreenTraceScope.Reset(); // Exclude the commandlet main function from this scope's duration
 			int32 ErrorLevel = Commandlet->Main( CommandletCommandLine );
+			PreInitPostStartupScreenTraceScope.Emplace("FEngineLoop::PreInitPostStartupScreen", CpuChannel);
+#else
+			int32 ErrorLevel = Commandlet->Main( CommandletCommandLine );
+#endif
 			FStats::TickCommandletStats();
 
 			RequestEngineExit(FString::Printf(TEXT("Commandlet %s finished execution (result %d)"), *Commandlet->GetName(), ErrorLevel));
