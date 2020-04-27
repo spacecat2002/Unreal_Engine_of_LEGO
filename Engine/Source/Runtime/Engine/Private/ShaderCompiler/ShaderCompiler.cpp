@@ -689,6 +689,23 @@ static bool ReadSingleJob(FShaderCompileJob* CurrentJob, FArchive& OutputFile)
 	return false;
 }
 
+static FString GetSingleJobCompilationDump(const FShaderCompileJob* SingleJob)
+{
+	if (!SingleJob)
+	{
+		return TEXT("Internal error, not a Job!");
+	}
+	FString String = SingleJob->Input.GenerateShaderName();
+	if (SingleJob->VFType)
+	{
+		String += FString::Printf(TEXT(" VF '%s'"), SingleJob->VFType->GetName());
+	}
+	String += FString::Printf(TEXT(" Type '%s'"), SingleJob->ShaderType->GetName());
+	String += FString::Printf(TEXT(" '%s' Entry '%s' Permutation %i "), *SingleJob->Input.VirtualSourceFilePath, *SingleJob->Input.EntryPointName, SingleJob->PermutationId);
+	return String;
+}
+
+
 static void DumpCompilationJobs(const TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>>& QueuedJobs, int32 NumProcessedJobs)
 {
 	if (NumProcessedJobs == -1)
@@ -699,22 +716,6 @@ static void DumpCompilationJobs(const TArray<TSharedRef<FShaderCommonCompileJob,
 	{
 		UE_LOG(LogShaderCompilers, Error, TEXT("SCW %d Queued Jobs, Finished %d single jobs"), QueuedJobs.Num(), NumProcessedJobs);
 	}
-
-	auto GetSingleJobCompilationDump = [](FShaderCompileJob* SingleJob) -> FString
-	{
-		if (!SingleJob)
-		{
-			return TEXT("Internal error, not a Job!");
-		}
-		FString String = SingleJob->Input.GenerateShaderName();
-		if (SingleJob->VFType)
-		{
-			String += FString::Printf(TEXT(" VF '%s'"), SingleJob->VFType->GetName());
-		}
-		String += FString::Printf(TEXT(" Type '%s'"), SingleJob->ShaderType->GetName());
-		String += FString::Printf(TEXT(" '%s' Entry '%s' Permutation %i "), *SingleJob->Input.VirtualSourceFilePath, *SingleJob->Input.EntryPointName, SingleJob->PermutationId);
-		return String;
-	};
 
 	for (int32 Index = 0; Index < QueuedJobs.Num(); ++Index)
 	{
@@ -1067,9 +1068,16 @@ static bool CheckSingleJob(FShaderCompileJob* SingleJob, const TArray<FMaterial*
 	return bSucceeded;
 };
 
-static void AddErrorsForFailedJob(const FShaderCompileJob& CurrentJob, TArray<EShaderPlatform>& ErrorPlatforms, TArray<FString>& UniqueErrors, TArray<const FShaderCommonCompileJob*>& ErrorJobs)
+static void AddErrorsForFailedJob(FShaderCompileJob& CurrentJob, TArray<EShaderPlatform>& ErrorPlatforms, TArray<FString>& UniqueErrors, TArray<FShaderCommonCompileJob*>& ErrorJobs)
 {
 	ErrorPlatforms.AddUnique((EShaderPlatform)CurrentJob.Input.Target.Platform);
+
+	if (CurrentJob.Output.Errors.Num() == 0)
+	{
+		// Job hard crashed
+		FShaderCompilerError Error(*(FString("Internal Error!\n\t") + GetSingleJobCompilationDump(&CurrentJob)));
+		CurrentJob.Output.Errors.Add(Error);
+	}
 
 	for (int32 ErrorIndex = 0; ErrorIndex < CurrentJob.Output.Errors.Num(); ErrorIndex++)
 	{
@@ -1082,7 +1090,7 @@ static void AddErrorsForFailedJob(const FShaderCompileJob& CurrentJob, TArray<ES
 			ErrorJobs.AddUnique(&CurrentJob);
 		}
 	}
-};
+}
 
 /** Information tracked for each shader compile worker process instance. */
 struct FShaderCompileWorkerInfo
@@ -2779,25 +2787,25 @@ bool FShaderCompilingManager::HandlePotentialRetryOnError(TMap<int32, FShaderMap
 				|| bSpecialEngineMaterial 
 				|| It.Key() == GlobalShaderMapId)
 			{
-				const TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>>& CompleteJobs = Results.FinishedJobs;
-				TArray<const FShaderCommonCompileJob*> ErrorJobs;
+				TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>>& CompleteJobs = Results.FinishedJobs;
+				TArray<FShaderCommonCompileJob*> ErrorJobs;
 				TArray<FString> UniqueErrors;
 				TArray<EShaderPlatform> ErrorPlatforms;
 
 				// Gather unique errors
 				for (int32 JobIndex = 0; JobIndex < CompleteJobs.Num(); JobIndex++)
 				{
-					const FShaderCommonCompileJob& CurrentJob = *CompleteJobs[JobIndex];
+					FShaderCommonCompileJob& CurrentJob = *CompleteJobs[JobIndex];
 					if (!CurrentJob.bSucceeded)
 					{
-						const auto* SingleJob = CurrentJob.GetSingleShaderJob();
+						FShaderCompileJob* SingleJob = CurrentJob.GetSingleShaderJob();
 						if (SingleJob)
 						{
 							AddErrorsForFailedJob(*SingleJob, ErrorPlatforms, UniqueErrors, ErrorJobs);
 						}
 						else
 						{
-							const auto* PipelineJob = CurrentJob.GetShaderPipelineJob();
+							FShaderPipelineCompileJob* PipelineJob = CurrentJob.GetShaderPipelineJob();
 							check(PipelineJob);
 							for (auto CommonJob : PipelineJob->StageJobs)
 							{
