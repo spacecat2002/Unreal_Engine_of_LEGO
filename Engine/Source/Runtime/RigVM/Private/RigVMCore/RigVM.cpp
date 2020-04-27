@@ -630,22 +630,50 @@ bool URigVM::Initialize(FRigVMMemoryContainerPtrArray Memory, FRigVMFixedArray<v
 			case ERigVMOpCode::Execute_62_Operands:
 			case ERigVMOpCode::Execute_63_Operands:
 			case ERigVMOpCode::Execute_64_Operands:
-		{
+			{
 				const FRigVMExecuteOp& Op = ByteCode.GetOpAt<FRigVMExecuteOp>(Instruction);
 				int32 OperandCount = FirstHandleForInstruction[Context.InstructionIndex + 1] - FirstHandleForInstruction[Context.InstructionIndex];
 				FRigVMMemoryHandleArray OpHandles(&CachedMemoryHandles[FirstHandleForInstruction[Context.InstructionIndex]], OperandCount);
 #if WITH_EDITOR
 				Context.FunctionName = FunctionNames[Op.FunctionIndex];
 #endif
-				(*Functions[Op.FunctionIndex])(Context, OpHandles);
-			break;
-		}
+
+				// find out the largest slice count
+				int32 MaxSliceCount = 1;
+				for (const FRigVMMemoryHandle& OpHandle : OpHandles)
+				{
+					if (OpHandle.Type == FRigVMMemoryHandle::Dynamic)
+					{
+						if (const FRigVMByteArray* Storage = (const FRigVMByteArray*)OpHandle.Ptr)
+						{
+							MaxSliceCount = FMath::Max<int32>(MaxSliceCount, Storage->Num() / OpHandle.Size);
+						}
+					}
+					else if (OpHandle.Type == FRigVMMemoryHandle::NestedDynamic)
+					{
+						if (const FRigVMNestedByteArray* Storage = (const FRigVMNestedByteArray*)OpHandle.Ptr)
+						{
+							MaxSliceCount = FMath::Max<int32>(MaxSliceCount, Storage->Num());
+						}
+					}
+				}
+
+				Context.BeginSlice(MaxSliceCount);
+				for (int32 SliceIndex = 0; SliceIndex < MaxSliceCount; SliceIndex++)
+				{
+					(*Functions[Op.FunctionIndex])(Context, OpHandles);
+					Context.IncrementSlice();
+				}
+				Context.EndSlice();
+
+				break;
+			}
 			case ERigVMOpCode::Zero:
 			case ERigVMOpCode::BoolFalse:
 			case ERigVMOpCode::BoolTrue:
 			{
 				break;
-	}
+			}
 			case ERigVMOpCode::Copy:
 			{
 				const FRigVMCopyOp& Op = ByteCode.GetOpAt<FRigVMCopyOp>(Instruction);

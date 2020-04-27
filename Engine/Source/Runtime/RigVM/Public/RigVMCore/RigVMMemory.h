@@ -471,6 +471,8 @@ private:
 	FType Type;
 	uint16 Size;
 	uint16 Offset;
+
+	friend class URigVM;
 };
 
 /**
