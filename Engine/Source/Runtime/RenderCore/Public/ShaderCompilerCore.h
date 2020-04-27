@@ -78,6 +78,9 @@ enum ECompilerFlags
 	// Typed UAV loads are disallowed by default, as Windows 7 D3D 11.0 does not support them; this flag allows a shader to use them.
 	CFLAG_AllowTypedUAVLoads,
 
+	// Force using the SC rewrite functionality before calling DXC on D3D12
+	CFLAG_D3D12ForceShaderConductorRewrite,
+
 	CFLAG_Max,
 };
 static_assert(CFLAG_Max < 32, "Out of bitfields!");
