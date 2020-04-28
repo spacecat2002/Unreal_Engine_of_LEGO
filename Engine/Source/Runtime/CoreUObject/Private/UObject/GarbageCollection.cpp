@@ -569,6 +569,8 @@ void ShutdownGarbageCollection()
 /**
 * Handles UObject references found by TFastReferenceCollector
 */
+
+#if UE_WITH_GC
 template <bool bParallel, bool bWithClusters>
 class FGCReferenceProcessor
 {
@@ -943,7 +945,6 @@ public:
 	}
 };
 
-
 template <bool bParallel, bool bWithClusters>
 FGCCollector<bParallel, bWithClusters>::FGCCollector(FGCReferenceProcessor<bParallel, bWithClusters>& InProcessor, FGCArrayStruct& InObjectArrayStruct)
 		: ReferenceProcessor(InProcessor)
@@ -982,6 +983,7 @@ void FGCCollector<bParallel, bWithClusters>::HandleObjectReferences(UObject** In
 			InternalHandleObjectReference(Object, InReferencingObject, InReferencingProperty);
 		}
 }
+#endif	// UE_WITH_GC
 
 /*----------------------------------------------------------------------------
 	FReferenceFinder.
@@ -1055,6 +1057,9 @@ void FReferenceFinder::HandleObjectReference( UObject*& InObject, const UObject*
  * is used to deal with object references from types that aren't supported by the reflectable type system.
  * interface doesn't make sense to implement for.
  */
+
+#if UE_WITH_GC
+
 class FRealtimeGC : public FGarbageCollectionTracer
 {
 	typedef void(FRealtimeGC::*MarkObjectsFn)(TArray<UObject*>&, const EObjectFlags);
@@ -1337,6 +1342,7 @@ public:
 		(this->*ReachabilityAnalysisFunctions[GetGCFunctionIndex(!bForceSingleThreaded, bWithClusters)])(ArrayStruct);
 	}
 };
+#endif // UE_WITH_GC
 
 // Allow parallel GC to be overridden to single threaded via console command.
 static int32 GAllowParallelGC = 1;
@@ -1344,7 +1350,7 @@ static int32 GAllowParallelGC = 1;
 static FAutoConsoleVariableRef CVarAllowParallelGC(
 	TEXT("gc.AllowParallelGC"),
 	GAllowParallelGC,
-	TEXT("sed to control parallel GC."),
+	TEXT("Used to control parallel GC."),
 	ECVF_Default
 );
 
@@ -1411,6 +1417,9 @@ static bool IncrementalDestroyGarbage(bool bUseTimeLimit, float TimeLimit);
  */
 void IncrementalPurgeGarbage(bool bUseTimeLimit, float TimeLimit)
 {
+#if !UE_WITH_GC
+	return;
+#else
 	SCOPED_NAMED_EVENT(IncrementalPurgeGarbage, FColor::Red);
 	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("IncrementalPurgeGarbage"), STAT_IncrementalPurgeGarbage, STATGROUP_GC);
 	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(GarbageCollection);
@@ -1470,8 +1479,10 @@ void IncrementalPurgeGarbage(bool bUseTimeLimit, float TimeLimit)
 	{
 		bCompleted = IncrementalDestroyGarbage(bUseTimeLimit, TimeLimit);
 	}
+#endif // !UE_WITH_GC
 }
 
+#if UE_WITH_GC
 bool IncrementalDestroyGarbage(bool bUseTimeLimit, float TimeLimit)
 {
 	const bool bMultithreadedPurge = !ShouldForceSingleThreadedGC() && GMultithreadedDestructionEnabled;
@@ -1773,6 +1784,7 @@ bool IncrementalDestroyGarbage(bool bUseTimeLimit, float TimeLimit)
 
 	return bCompleted;
 }
+#endif // UE_WITH_GC
 
 /**
  * Returns whether an incremental purge is still pending/ in progress.
@@ -1895,6 +1907,9 @@ void GatherUnreachableObjects(bool bForceSingleThreaded)
  */
 void CollectGarbageInternal(EObjectFlags KeepFlags, bool bPerformFullPurge)
 {
+#if !UE_WITH_GC
+	return;
+#else
 	if (GIsInitialLoad)
 	{
 		// During initial load classes may not yet have their GC token streams assembled
@@ -2038,6 +2053,7 @@ void CollectGarbageInternal(EObjectFlags KeepFlags, bool bPerformFullPurge)
 	FCoreUObjectDelegates::GetPostGarbageCollect().Broadcast();
 
 	STAT_ADD_CUSTOMMESSAGE_NAME( STAT_NamedMarker, TEXT( "GarbageCollection - End" ) );
+#endif	// UE_WITH_GC
 }
 
 bool IsIncrementalUnhashPending()
