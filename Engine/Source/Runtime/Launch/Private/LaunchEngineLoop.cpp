@@ -1412,17 +1412,28 @@ UE_TRACE_EVENT_END()
 static bool InitializeTraceChannels(const TCHAR* CmdLine)
 {
 	FString Parameter;
+	// Bit mask to track which arguments has been parsed if this method is 
+	// called multiple times. If less than 32 channel arguments this is only
+	// inlined memory.
+	static TBitArray<FDefaultBitArrayAllocator> ProcessedTokens(false, 32);
+
 	if (!FParse::Value(CmdLine, TEXT("-trace="), Parameter, false))
 	{
 		return false;
 	}
 
-	UE::String::ParseTokens(Parameter, TEXT(","), [] (const FStringView& Token)
+	uint32 TokenIndex = 0;
+	UE::String::ParseTokens(Parameter, TEXT(","), [&TokenIndex] (const FStringView& Token)
 	{
 		TCHAR ChannelName[64];
 		const size_t ChannelNameSize = Token.CopyString(ChannelName, 63);
 		ChannelName[ChannelNameSize] = '\0';
-		Trace::ToggleChannel(ChannelName, true);
+		if (Trace::IsChannel(ChannelName) && !ProcessedTokens[TokenIndex])
+		{
+			Trace::ToggleChannel(ChannelName, true);
+			ProcessedTokens[TokenIndex].AtomicSet(true);
+		}
+		TokenIndex++;
 	});
 
 	return true;
@@ -1463,18 +1474,6 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 #endif
 
 	FMemory::SetupTLSCachesOnCurrentThread();
-
-	// disable/enable LLM based on commandline
-	{
-		SCOPED_BOOT_TIMING("LLM Init");
-		LLM(FLowLevelMemTracker::Get().ProcessCommandLine(CmdLine));
-	}
-	LLM_SCOPE(ELLMTag::EnginePreInitMemory);
-
-	{
-		SCOPED_BOOT_TIMING("InitTaggedStorage");
-		FPlatformMisc::InitTaggedStorage(1024);
-	}
 
 	if (FParse::Param(CmdLine, TEXT("UTF8Output")))
 	{
@@ -1542,6 +1541,18 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 		TRACE_CPUPROFILER_INIT(CmdLine);
 		TRACE_PLATFORMFILE_INIT(CmdLine);
 		TRACE_COUNTERS_INIT(CmdLine);
+	}
+
+	// disable/enable LLM based on commandline
+	{
+		SCOPED_BOOT_TIMING("LLM Init");
+		LLM(FLowLevelMemTracker::Get().ProcessCommandLine(CmdLine));
+	}
+	LLM_SCOPE(ELLMTag::EnginePreInitMemory);
+
+	{
+		SCOPED_BOOT_TIMING("InitTaggedStorage");
+		FPlatformMisc::InitTaggedStorage(1024);
 	}
 
 	// Trace out information about this session
