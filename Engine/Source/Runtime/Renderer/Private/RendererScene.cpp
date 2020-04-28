@@ -2402,7 +2402,7 @@ bool FVolumetricLightmapSceneData::HasData() const
 		return true;
 	}
 #endif
-	return GlobalVolumetricLightmapData.IndirectionTexture.Data.Num() && LevelVolumetricLightmaps.Num() > 0;
+	return LevelVolumetricLightmaps.Num() > 0;
 }
 
 bool FScene::HasPrecomputedVolumetricLightmap_RenderThread() const
