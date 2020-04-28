@@ -833,6 +833,7 @@ static void HandleWorkerCrash(const TArray<TSharedRef<FShaderCommonCompileJob, E
 		SCWErrorCode::HandleCantCompileForSpecificFormat(ExceptionInfo.GetData());
 		break;
 	case ESCWErrorCode::CrashInsidePlatformCompiler:
+		DumpCompilationJobs(QueuedJobs, NumProcessedJobs);
 		SCWErrorCode::HandleCrashInsidePlatformCompiler(ExceptionInfo.GetData());
 		break;
 	case ESCWErrorCode::Success:
