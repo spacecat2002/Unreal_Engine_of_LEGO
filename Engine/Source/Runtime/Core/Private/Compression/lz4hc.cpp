@@ -33,6 +33,7 @@
 */
 /* note : lz4hc is not an independent module, it requires lz4.h/lz4.c for proper compilation */
 
+PRAGMA_ENABLE_OPTIMIZATION
 
 /* *************************************
 *  Tuning Parameter
