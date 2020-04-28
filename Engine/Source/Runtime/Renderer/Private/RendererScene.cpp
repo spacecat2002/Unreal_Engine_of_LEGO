@@ -2402,7 +2402,19 @@ bool FVolumetricLightmapSceneData::HasData() const
 		return true;
 	}
 #endif
-	return LevelVolumetricLightmaps.Num() > 0;
+	if (LevelVolumetricLightmaps.Num() > 0)
+	{
+		if (Scene->GetFeatureLevel() >= ERHIFeatureLevel::SM5)
+		{
+			return GlobalVolumetricLightmapData.IndirectionTexture.Texture.IsValid();
+		}
+		else
+		{
+			return GlobalVolumetricLightmapData.IndirectionTexture.Data.Num() > 0;
+		}
+	}
+
+	return false;
 }
 
 bool FScene::HasPrecomputedVolumetricLightmap_RenderThread() const
