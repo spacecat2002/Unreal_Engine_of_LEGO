@@ -34,7 +34,6 @@ UE_TRACE_EVENT_BEGIN(Trace, ChannelToggle, Important)
 UE_TRACE_EVENT_END()
 
 ///////////////////////////////////////////////////////////////////////////////
-static bool					GChannelInitDisabled;	// = false;
 static FChannel* volatile	GHeadChannel;			// = nullptr;
 static FChannel* volatile	GNewChannelList;		// = nullptr;
 
@@ -136,7 +135,6 @@ void FChannel::Initialize(const ANSICHAR* InChannelName)
 {
 	using namespace Private;
 
-	bDisabled = GChannelInitDisabled;
 	Name.Ptr = InChannelName;
 	Name.Len = GetChannelNameLength(Name.Ptr);
 	Name.Hash = GetChannelHash(Name.Ptr, Name.Len);
@@ -163,7 +161,7 @@ void FChannel::Announce() const
 
 	UE_TRACE_LOG(Trace, ChannelAnnounce, TraceLogChannel, Count + 1)
 		<< ChannelAnnounce.Id(Name.Hash)
-		<< ChannelAnnounce.IsEnabled(!bDisabled)
+		<< ChannelAnnounce.IsEnabled(IsEnabled())
 		<< ChannelAnnounce.Attachment(Buffer, Count + 1);
 }
 
@@ -184,26 +182,10 @@ void FChannel::ToggleAll(bool bEnabled)
 			Channel->Toggle(bEnabled);
 		}
 	}
-
-	GChannelInitDisabled = true;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-bool FChannel::Toggle(bool bEnabled)
-{
-	const bool bWasEnabled = !bDisabled;
-	if (bWasEnabled != bEnabled)
-	{
-		bDisabled = !bEnabled;
-		UE_TRACE_LOG(Trace, ChannelToggle, TraceLogChannel)
-			<< ChannelToggle.Id(Name.Hash)
-			<< ChannelToggle.IsEnabled(bEnabled);
-	}
-	return bWasEnabled;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-bool FChannel::Toggle(const ANSICHAR* ChannelName, bool bEnabled)
+FChannel* FChannel::FindChannel(const ANSICHAR* ChannelName)
 {
 	using namespace Private;
 
@@ -221,11 +203,34 @@ bool FChannel::Toggle(const ANSICHAR* ChannelName, bool bEnabled)
 		{
 			if (Channel->Name.Hash == ChannelNameHash)
 			{
-				return Channel->Toggle(bEnabled);
+				return Channel;
 			}
 		}
 	}
 
+	return nullptr;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+bool FChannel::Toggle(bool bEnabled)
+{
+	using namespace Private;
+	int64 OldRefCnt = AtomicAddRelaxed(&Enabled, bEnabled ? 1 : -1);
+
+	UE_TRACE_LOG(Trace, ChannelToggle, TraceLogChannel)
+		<< ChannelToggle.Id(Name.Hash)
+		<< ChannelToggle.IsEnabled(IsEnabled());
+
+	return IsEnabled();
+}
+
+///////////////////////////////////////////////////////////////////////////////
+bool FChannel::Toggle(const ANSICHAR* ChannelName, bool bEnabled)
+{
+	if (FChannel* Channel = FChannel::FindChannel(ChannelName))
+	{
+		return Channel->Toggle(bEnabled);
+	}
 	return false;
 }
 

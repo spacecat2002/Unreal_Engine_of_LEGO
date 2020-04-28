@@ -69,6 +69,14 @@ bool WriteTo(const TCHAR* InPath)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+bool IsChannel(const TCHAR* ChannelName)
+{
+	ANSICHAR ChannelNameA[64];
+	ToAnsiCheap(ChannelNameA, ChannelName);
+	return FChannel::FindChannel(ChannelNameA) != nullptr;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 bool ToggleChannel(const TCHAR* ChannelName, bool bEnabled)
 {
 	ANSICHAR ChannelNameA[64];
