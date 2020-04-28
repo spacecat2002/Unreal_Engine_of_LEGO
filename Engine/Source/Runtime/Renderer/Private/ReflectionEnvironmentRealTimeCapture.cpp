@@ -194,13 +194,12 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 
 			// Global data constant between faces
 			const FAtmosphereSetup& AtmosphereSetup = SkyAtmosphereSceneProxy.GetAtmosphereSetup();
-			SkyRC.bMultiScattering = SkyAtmosphereSceneProxy.IsMultiScatteringEnabled();
 			SkyRC.bFastSky = false;
 			SkyRC.bFastAerialPerspective = false;
 			SkyRC.bFastAerialPerspectiveDepthTest = false;
 			SkyRC.bSecondAtmosphereLightEnabled = IsSecondAtmosphereLightEnabled();
 
-			SkyRC.bShouldSampleOpaqueShadow = false;	// No atmospheric light shadow
+			SkyRC.bShouldSampleOpaqueShadow = false;	// No atmospheric light shadow from opaque
 			SkyRC.bUseDepthBoundTestIfPossible = false;
 			SkyRC.bForceRayMarching = true;				// We do not have any valid view LUT
 			SkyRC.bDisableDepthRead = true;
@@ -266,7 +265,8 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 					const FVector SkyViewLutReferentialForward = FVector(1.0f, 0.0f, 0.0f);
 					const FVector SkyViewLutReferentialRight = FVector(0.0f, 0.0f, -1.0f);
 					AtmosphereSetup.ComputeViewData(SkyLight->CapturePosition, SkyViewLutReferentialForward, SkyViewLutReferentialRight,
-						CubeView.CachedViewUniformShaderParameters->SkyWorldCameraOrigin, CubeView.CachedViewUniformShaderParameters->SkyPlanetCenterAndViewHeight, CubeView.CachedViewUniformShaderParameters->SkyViewLutReferential);
+						CubeView.CachedViewUniformShaderParameters->SkyWorldCameraOrigin, CubeView.CachedViewUniformShaderParameters->SkyPlanetCenterAndViewHeight, 
+						CubeView.CachedViewUniformShaderParameters->SkyViewLutReferential);
 
 					CubeView.CachedViewUniformShaderParameters->SkyViewLutTexture = RealTimeReflectionCaptureSkyAtmosphereViewLutTexture->GetRenderTargetItem().ShaderResourceTexture;
 #else
@@ -302,8 +302,11 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 				//SkyRC.LightShadowShaderParams0UniformBuffer = nullptr;
 				//SkyRC.LightShadowShaderParams1UniformBuffer = nullptr;
 
-				SkyRC.bShouldSampleCloudShadow = false;
-				SkyRC.VolumetricCloudShadowMap = BlackDummy2dTex;
+				SkyRC.bShouldSampleCloudShadow = HasVolumetricCloud() && MainView.VolumetricCloudShadowMap.IsValid();
+				SkyRC.VolumetricCloudShadowMap = GraphBuilder.RegisterExternalTexture(SkyRC.bShouldSampleCloudShadow ? MainView.VolumetricCloudShadowMap : GSystemTextures.BlackDummy);
+
+				SkyRC.bShouldSampleCloudSkyAO = HasVolumetricCloud() && MainView.VolumetricCloudSkyAO.IsValid();
+				SkyRC.VolumetricCloudSkyAO = GraphBuilder.RegisterExternalTexture(SkyRC.bShouldSampleCloudSkyAO ? MainView.VolumetricCloudSkyAO : GSystemTextures.BlackDummy);
 
 				if (bExecuteSky)
 				{

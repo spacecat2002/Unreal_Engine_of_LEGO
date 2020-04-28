@@ -844,6 +844,7 @@ void FViewInfo::Init()
 	SkyAtmosphereUniformShaderParameters = nullptr;
 
 	VolumetricCloudShadowMap = nullptr;
+	VolumetricCloudSkyAO = nullptr;
 
 	bUseDirectionalInscattering = false;
 	DirectionalInscatteringExponent = 0;

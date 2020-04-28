@@ -1141,6 +1141,7 @@ public:
 	const FAtmosphereUniformShaderParameters* SkyAtmosphereUniformShaderParameters;
 
 	TRefCountPtr<IPooledRenderTarget> VolumetricCloudShadowMap;
+	TRefCountPtr<IPooledRenderTarget> VolumetricCloudSkyAO;
 	TUniformBufferRef<FViewUniformShaderParameters> VolumetricRenderTargetViewUniformBuffer;
 
 	/** Used when there is no view state, buffers reallocate every frame. */

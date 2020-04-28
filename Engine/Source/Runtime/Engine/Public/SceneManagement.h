@@ -1111,7 +1111,6 @@ public:
 	FSkyAtmosphereSceneProxy(const USkyAtmosphereComponent* InComponent);
 	~FSkyAtmosphereSceneProxy();
 
-	bool IsMultiScatteringEnabled() const { return AtmosphereSetup.MultiScatteringFactor > 0.0f; }
 	FLinearColor GetSkyLuminanceFactor() const { return SkyLuminanceFactor; }
 	FLinearColor GetTransmittanceAtZenith() const { return TransmittanceAtZenith; };
 	float GetAerialPespectiveViewDistanceScale() const { return AerialPespectiveViewDistanceScale; }

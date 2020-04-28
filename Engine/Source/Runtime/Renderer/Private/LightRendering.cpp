@@ -408,7 +408,7 @@ class FDeferredLightPS : public FGlobalShader
 		CloudShadowmapTexture.Bind(Initializer.ParameterMap, TEXT("CloudShadowmapTexture"));
 		CloudShadowmapSampler.Bind(Initializer.ParameterMap, TEXT("CloudShadowmapSampler"));
 		CloudShadowmapFarDepthKm.Bind(Initializer.ParameterMap, TEXT("CloudShadowmapFarDepthKm"));
-		CloudWorldToLightClipShadowMatrix.Bind(Initializer.ParameterMap, TEXT("CloudWorldToLightClipShadowMatrix"));
+		CloudShadowmapWorldToLightClipMatrix.Bind(Initializer.ParameterMap, TEXT("CloudShadowmapWorldToLightClipMatrix"));
 	}
 
 	FDeferredLightPS()
@@ -680,7 +680,7 @@ private:
 				SetShaderValue(
 					RHICmdList,
 					ShaderRHI,
-					CloudWorldToLightClipShadowMatrix,
+					CloudShadowmapWorldToLightClipMatrix,
 					RenderLightParams->Cloud_WorldToLightClipShadowMatrix);
 			}
 		}
@@ -718,7 +718,7 @@ private:
 	LAYOUT_FIELD(FShaderResourceParameter, CloudShadowmapTexture);
 	LAYOUT_FIELD(FShaderResourceParameter, CloudShadowmapSampler);
 	LAYOUT_FIELD(FShaderParameter, CloudShadowmapFarDepthKm);
-	LAYOUT_FIELD(FShaderParameter, CloudWorldToLightClipShadowMatrix);
+	LAYOUT_FIELD(FShaderParameter, CloudShadowmapWorldToLightClipMatrix);
 };
 
 IMPLEMENT_GLOBAL_SHADER(FDeferredLightPS, "/Engine/Private/DeferredLightPixelShaders.usf", "DeferredLightPixelMain", SF_Pixel);
@@ -2153,8 +2153,8 @@ void FDeferredShadingSceneRenderer::RenderLight(FRHICommandList& RHICmdList, con
 				if (bCloudPerPixelTransmittance)
 				{
 					RenderLightParams.Cloud_ShadowmapTexture = View.VolumetricCloudShadowMap;
-					RenderLightParams.Cloud_ShadowmapFarDepthKm = CloudInfo->GetVolumetricCloudCommonShaderParameters().ShadowmapFarDepthKm;
-					RenderLightParams.Cloud_WorldToLightClipShadowMatrix = CloudInfo->GetVolumetricCloudCommonShaderParameters().WorldToLightClipShadowMatrix;
+					RenderLightParams.Cloud_ShadowmapFarDepthKm = CloudInfo->GetVolumetricCloudCommonShaderParameters().CloudShadowmapFarDepthKm;
+					RenderLightParams.Cloud_WorldToLightClipShadowMatrix = CloudInfo->GetVolumetricCloudCommonShaderParameters().CloudShadowmapWorldToLightClipMatrix;
 				}
 
 				FDeferredLightPS::FPermutationDomain PermutationVector;

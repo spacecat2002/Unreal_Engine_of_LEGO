@@ -24,7 +24,7 @@ static TAutoConsoleVariable<float> CVarVolumetricRenderTargetUvNoiseScale(
 	ECVF_SetByScalability);
 
 static TAutoConsoleVariable<int32> CVarVolumetricRenderTargetMode(
-	TEXT("r.VolumetricRenderTarget.Mode"), 0,	// Could also have an option to ray trace at half res and upsample without reconstruction
+	TEXT("r.VolumetricRenderTarget.Mode"), 0,
 	TEXT("0: trace quarter resolution + reconstruct at half resolution + upsample, 1: trace half res + reconstruct full res + upsample, 2: trace at quarter resolution + reconstruct full resolution"),
 	ECVF_SetByScalability);
 
@@ -399,6 +399,7 @@ class FReconstructVolumetricRenderTargetPS : public FGlobalShader
 		SHADER_PARAMETER(FVector4, PreviousVolumetricTextureSizeAndInvSize)
 		SHADER_PARAMETER(FIntPoint, CurrentTracingPixelOffset)
 		SHADER_PARAMETER(int32, DownSampleFactor)
+		SHADER_PARAMETER(int32, VolumetricRenderTargetMode)
 		SHADER_PARAMETER(FUintVector4, TracingVolumetricTextureValidCoordRect)
 		SHADER_PARAMETER(FVector4, TracingVolumetricTextureValidUvRect)
 		SHADER_PARAMETER(FUintVector4, PreviousFrameVolumetricTextureValidCoordRect)
@@ -476,6 +477,7 @@ void FSceneRenderer::ReconstructVolumetricRenderTarget(FRHICommandListImmediate&
 		PassParameters->LinearTextureSampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
 		PassParameters->CurrentTracingPixelOffset = VolumetricRT.GetCurrentTracingPixelOffset();
 		PassParameters->DownSampleFactor = TracingVolumetricRTDownSample;
+		PassParameters->VolumetricRenderTargetMode = GetVolumetricRenderTargetMode();
 		GetTextureSafeUvCoordBound(SrcTracingVolumetric, PassParameters->TracingVolumetricTextureValidCoordRect, PassParameters->TracingVolumetricTextureValidUvRect);
 		GetTextureSafeUvCoordBound(PreviousFrameVolumetricTexture, PassParameters->PreviousFrameVolumetricTextureValidCoordRect, PassParameters->PreviousFrameVolumetricTextureValidUvRect);
 		PassParameters->TemporalFactor = FMath::Clamp(CVarVolumetricRenderTargetTemporalFactor.GetValueOnAnyThread(), 0.0f, 1.0f);
@@ -568,7 +570,10 @@ void FSceneRenderer::ComposeVolumetricRenderTargetOverScene(FRHICommandListImmed
 		FRDGTextureRef VolumetricDepthTexture = VolumetricRT.GetOrCreateDstVolumetricReconstructRTDepth(GraphBuilder);
 
 		int UpsamplingMode = FMath::Clamp(CVarVolumetricRenderTargetUpsamplingMode.GetValueOnAnyThread(), 0, 3);
-		UpsamplingMode = GetMainDownsampleFactor() == 1 ? 0 : UpsamplingMode; // Force default if there is 100% match between the resolution at which we reconstruct (no smart upsampling required).
+
+		// When reconstructed and back buffer resolution matches, force using a pixel perfect upsampling.
+		uint32 VRTMode = GetVolumetricRenderTargetMode();
+		UpsamplingMode = UpsamplingMode == 3 && (VRTMode == 1 || VRTMode == 2) ? 2 : UpsamplingMode;
 
 		FComposeVolumetricRTOverScenePS::FPermutationDomain PermutationVector; 
 		PermutationVector.Set<FComposeVolumetricRTOverScenePS::FUpsamplingMode>(UpsamplingMode);
