@@ -60,7 +60,7 @@ uint32 FEventNode::Initialize(const FEventInfo* InInfo)
 
 	// Assign a unique ID for this event
 	static uint32 volatile EventUidCounter; // = 0;
-	uint32 NewUid = AtomicIncrementRelaxed(&EventUidCounter) + EKnownEventUids::User;
+	uint32 NewUid = AtomicAddRelaxed(&EventUidCounter, 1u) + EKnownEventUids::User;
 	if (NewUid >= uint32(EKnownEventUids::Max))
 	{
 		return Uid = EKnownEventUids::Invalid;

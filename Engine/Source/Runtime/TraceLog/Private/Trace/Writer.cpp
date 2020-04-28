@@ -103,7 +103,7 @@ uint32 FWriteTlsContext::GetThreadId()
 	}
 
 	static uint32 volatile Counter;
-	ThreadId = AtomicIncrementRelaxed(&Counter) + 1;
+	ThreadId = AtomicAddRelaxed(&Counter, 1u) + 1;
 	return ThreadId + Tid_Process;
 }
 
@@ -531,7 +531,7 @@ static void Writer_ConsumeEvents()
 			// For each of the thread's buffers...
 			for (FWriteBuffer* __restrict NextBuffer; Buffer != nullptr; Buffer = NextBuffer)
 			{
-				uint8* Committed = AtomicLoadRelaxed(&Buffer->Committed);
+				uint8* Committed = AtomicLoadRelaxed((uint8**)&Buffer->Committed);
 
 				// Send as much as we can.
 				if (uint32 SizeToReap = uint32(Committed - Buffer->Reaped))

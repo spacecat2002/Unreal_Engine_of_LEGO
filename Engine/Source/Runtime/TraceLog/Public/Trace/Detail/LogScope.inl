@@ -26,7 +26,7 @@ inline uint8* FLogScope::GetPointer() const
 inline void FLogScope::Commit() const
 {
 	FWriteBuffer* Buffer = Instance.Buffer;
-	AtomicStoreRelease<uint8* __restrict>(&(Buffer->Committed), Buffer->Cursor);
+	AtomicStoreRelease((uint8**) &(Buffer->Committed), Buffer->Cursor);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -88,7 +88,7 @@ inline void FLogScope::Enter(uint32 Uid, uint32 Size, bool bMaybeHasAux)
 
 	// Event header
 	auto* Header = (uint16*)(Instance.Ptr - sizeof(FEventHeaderSync::SerialHigh)); // FEventHeader1
-	*(uint32*)(Header - 1) = uint32(AtomicIncrementRelaxed(&GLogSerial));
+	*(uint32*)(Header - 1) = uint32(AtomicAddRelaxed(&GLogSerial, 1u));
 	Header[-2] = uint16(Size);
 	Header[-3] = uint16(Uid)|int(EKnownEventUids::Flag_TwoByteUid);
 }
@@ -125,7 +125,7 @@ inline FScopedLogScope::~FScopedLogScope()
 	Buffer->Cursor[0] = LeaveUid;
 	Buffer->Cursor += sizeof(LeaveUid);
 
-	AtomicStoreRelease<uint8* __restrict>(&(Buffer->Committed), Buffer->Cursor);
+	AtomicStoreRelease((uint8**) &(Buffer->Committed), Buffer->Cursor);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -158,7 +158,7 @@ inline FScopedStampedLogScope::~FScopedStampedLogScope()
 	*(uint64*)(Buffer->Cursor) = Stamp;
 	Buffer->Cursor += sizeof(Stamp);
 
-	AtomicStoreRelease<uint8* __restrict>(&(Buffer->Committed), Buffer->Cursor);
+	AtomicStoreRelease((uint8**) &(Buffer->Committed), Buffer->Cursor);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -191,7 +191,7 @@ auto TLogScope<T>::ScopedEnter(uint32 Uid, uint32 Size)
 	Buffer->Cursor[0] = EnterUid;
 	Buffer->Cursor += sizeof(EnterUid);
 
-	AtomicStoreRelease<uint8* __restrict>(&(Buffer->Committed), Buffer->Cursor);
+	AtomicStoreRelease((uint8**) &(Buffer->Committed), Buffer->Cursor);
 
 	return Enter(Uid, Size);
 }
@@ -214,7 +214,7 @@ auto TLogScope<T>::ScopedStampedEnter(uint32 Uid, uint32 Size)
 	*(uint64*)(Buffer->Cursor) = Stamp;
 	Buffer->Cursor += sizeof(Stamp);
 
-	AtomicStoreRelease<uint8* __restrict>(&(Buffer->Committed), Buffer->Cursor);
+	AtomicStoreRelease((uint8**) &(Buffer->Committed), Buffer->Cursor);
 
 	return Enter(Uid, Size);
 }
