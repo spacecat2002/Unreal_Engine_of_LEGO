@@ -1,6 +1,19 @@
 Version History
 ---------------
 
+### Changes in v1.2.0:
+
+-   Added neural network training code
+-   Added support for specifying user-trained models at runtime
+-   Slightly improved denoising quality (e.g. less ringing artifacts, less
+    blurriness in some cases)
+-   Improved denoising speed by about 7-38% (mostly depending on the compiler)
+-   Added `OIDN_STATIC_RUNTIME` CMake option (for Windows only)
+-   Added support for OpenImageIO to the example apps (disabled by default)
+-   Added check for minimum supported TBB version
+-   Find debug versions of TBB
+-   Added testing
+
 ### Changes in v1.1.0:
 
 -   Added `RTLightmap` filter optimized for lightmaps
@@ -39,7 +52,7 @@ Version History
     separate devices with AVX-512 support. Currently the filter executions are
     serialized as a temporary workaround, and a full fix will be included in a
     future release.
--   Added OIDN_STATIC_LIB CMake option for building as a static library
+-   Added `OIDN_STATIC_LIB` CMake option for building as a static library
     (requires CMake 3.13.0 or later)
 -   Fixed CMake error when adding the library with add_subdirectory() to a project
 
