@@ -132,6 +132,10 @@ static void DumpAccessibilityStatsForwarder()
 						Element.Bounds = Bounds;
 						[Element SetAccessibilityTrait:UIAccessibilityTraitNotEnabled Set:!bIsEnabled];
 						Element.bIsVisible = bIsVisible;
+						if ([Element ShouldEmptyCachedStrings])
+						{
+							[Element EmptyCachedStrings];
+						}
 					});
 				}
 			}

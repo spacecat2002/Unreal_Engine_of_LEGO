@@ -63,6 +63,12 @@
 -(void)SetParent:(AccessibleWidgetId)InParentId;
 /** Check if LastCachedStringTime was updated recently. */
 -(bool)ShouldCacheStrings;
+/** Check to see if cached strings are stale and should be emptied to save memory. */
+-(bool)ShouldEmptyCachedStrings;
+/** Empty all cached strings. */
+-(void)EmptyCachedStrings;
+/** Cache the strings by retrieving the data from the Slate thread. */
+-(void)CacheStrings;
 /**  Toggle an individual trait on or off */
 -(void)SetAccessibilityTrait:(UIAccessibilityTraits)Trait Set:(bool)IsEnabled;
 /** A cached version of the name of the widget. */

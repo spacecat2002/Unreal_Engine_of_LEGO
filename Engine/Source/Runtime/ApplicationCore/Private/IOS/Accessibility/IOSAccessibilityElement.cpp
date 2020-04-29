@@ -426,8 +426,51 @@ if (!_AccessibilityChildren)
 	return FPlatformTime::Seconds() - LastCachedStringTime > 1.0;
 }
 
+-(bool)ShouldEmptyCachedStrings
+{
+	return FPlatformTime::Seconds() - LastCachedStringTime > 5.0;
+}
+
+-(void)EmptyCachedStrings
+{
+	Label.Empty();
+	Hint.Empty();
+	Value.Empty();
+}
+
+-(void)CacheStrings
+{
+	FString TempLabel, TempHint, TempValue;
+	const AccessibleWidgetId SelfId = self.Id;
+	[IOSAppDelegate WaitAndRunOnGameThread:[SelfId, &TempLabel, &TempHint, &TempValue]()
+	{
+		const TSharedPtr<IAccessibleWidget> Widget = [IOSAppDelegate GetDelegate].IOSApplication->GetAccessibleMessageHandler()->GetAccessibleWidgetFromId(SelfId);
+		if (Widget.IsValid())
+		{
+			TempLabel = Widget->GetWidgetName();
+			TempHint = Widget->GetHelpText();
+			if (Widget->AsProperty())
+			{
+				TempValue = Widget->AsProperty()->GetValue();
+			}
+		}
+	}];
+	self.Label = MoveTemp(TempLabel);
+	self.Hint = MoveTemp(TempHint);
+	self.Value = MoveTemp(TempValue);
+	self.LastCachedStringTime = FPlatformTime::Seconds();
+}
+
 -(NSString*)accessibilityLabel
 {
+	// when we focus on an accessibility element via swiping, this function is always called.  ,
+	// label, hint and value are most likely all requested in quick succession of each other.
+	// So we only cache the strings here as an optimization
+	// Assumption: hint and value will  never be called standalone.
+	if ([self ShouldCacheStrings])
+	{
+		[self CacheStrings];
+	}
 	if (!self.Label.IsEmpty())
 	{
 		return [NSString stringWithFString:self.Label];
