@@ -678,10 +678,35 @@ bool URigVM::Initialize(FRigVMMemoryContainerPtrArray Memory, FRigVMFixedArray<v
 			{
 				const FRigVMCopyOp& Op = ByteCode.GetOpAt<FRigVMCopyOp>(Instruction);
 
-				void* SourcePtr = CachedMemoryHandles[FirstHandleForInstruction[Context.InstructionIndex]];
-				void* TargetPtr = CachedMemoryHandles[FirstHandleForInstruction[Context.InstructionIndex] + 1];
+				FRigVMMemoryHandle& SourceHandle = CachedMemoryHandles[FirstHandleForInstruction[Context.InstructionIndex]];
+				FRigVMMemoryHandle& TargetHandle = CachedMemoryHandles[FirstHandleForInstruction[Context.InstructionIndex] + 1];
+				void* SourcePtr = SourceHandle;
+				void* TargetPtr = TargetHandle;
+
 				uint64 NumBytes = reinterpret_cast<uint64>(CachedMemoryHandles[FirstHandleForInstruction[Context.InstructionIndex] + 2].GetData());
 				ERigVMRegisterType MemoryType = (ERigVMRegisterType)reinterpret_cast<uint64>(CachedMemoryHandles[FirstHandleForInstruction[Context.InstructionIndex] + 3].GetData());
+
+				if (TargetHandle.Type == FRigVMMemoryHandle::Dynamic)
+				{
+					FRigVMByteArray* Storage = (FRigVMByteArray*)TargetHandle.Ptr;
+					if (Context.GetSlice().GetIndex() == 0)
+					{
+						Storage->Reset();
+					}
+					int32 ByteIndex = Storage->AddZeroed(NumBytes);
+					TargetPtr = Storage->GetData() + ByteIndex;
+				}
+				else if (TargetHandle.Type == FRigVMMemoryHandle::NestedDynamic)
+				{
+					FRigVMNestedByteArray* Storage = (FRigVMNestedByteArray*)TargetHandle.Ptr;
+					if (Context.GetSlice().GetIndex() == 0)
+					{
+						Storage->Reset();
+					}
+					int32 ArrayIndex = Storage->Add(FRigVMByteArray());
+					(*Storage)[ArrayIndex].AddZeroed(NumBytes);
+					TargetPtr = (*Storage)[ArrayIndex].GetData();
+				}
 
 				switch (MemoryType)
 				{
@@ -907,10 +932,35 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, FRigVMFixedArray<void
 			{
 				const FRigVMCopyOp& Op = ByteCode.GetOpAt<FRigVMCopyOp>(Instruction);
 
-				void* SourcePtr = CachedMemoryHandles[FirstHandleForInstruction[Context.InstructionIndex]].GetData();
-				void* TargetPtr = CachedMemoryHandles[FirstHandleForInstruction[Context.InstructionIndex] + 1].GetData();
+				FRigVMMemoryHandle& SourceHandle = CachedMemoryHandles[FirstHandleForInstruction[Context.InstructionIndex]];
+				FRigVMMemoryHandle& TargetHandle = CachedMemoryHandles[FirstHandleForInstruction[Context.InstructionIndex] + 1];
+				void* SourcePtr = SourceHandle;
+				void* TargetPtr = TargetHandle;
+
 				uint64 NumBytes = reinterpret_cast<uint64>(CachedMemoryHandles[FirstHandleForInstruction[Context.InstructionIndex] + 2].GetData());
 				ERigVMRegisterType MemoryType = (ERigVMRegisterType)reinterpret_cast<uint64>(CachedMemoryHandles[FirstHandleForInstruction[Context.InstructionIndex] + 3].GetData());
+
+				if (TargetHandle.Type == FRigVMMemoryHandle::Dynamic)
+				{
+					FRigVMByteArray* Storage = (FRigVMByteArray*)TargetHandle.Ptr;
+					if (Context.GetSlice().GetIndex() == 0)
+					{
+						Storage->Reset();
+					}
+					int32 ByteIndex = Storage->AddZeroed(NumBytes);
+					TargetPtr = Storage->GetData() + ByteIndex;
+				}
+				else if (TargetHandle.Type == FRigVMMemoryHandle::NestedDynamic)
+				{
+					FRigVMNestedByteArray* Storage = (FRigVMNestedByteArray*)TargetHandle.Ptr;
+					if (Context.GetSlice().GetIndex() == 0)
+					{
+						Storage->Reset();
+					}
+					int32 ArrayIndex = Storage->Add(FRigVMByteArray());
+					(*Storage)[ArrayIndex].AddZeroed(NumBytes);
+					TargetPtr = (*Storage)[ArrayIndex].GetData();
+				}
 
 				switch (MemoryType)
 				{
@@ -1448,9 +1498,6 @@ void URigVM::CacheSingleMemoryHandle(const FRigVMOperand& InArg, bool bForExecut
 {
 	const FRigVMRegister& Register = CachedMemory[InArg.GetContainerIndex()]->GetRegister(InArg);
 	
-	// we only allow dynamic registers in an execute instruction!
-	ensure(bForExecute || !Register.IsDynamic());
-
 	CachedMemoryHandles.Add(CachedMemory[InArg.GetContainerIndex()]->GetHandle(Register, InArg.GetRegisterOffset()));
 
 	if (bForExecute)

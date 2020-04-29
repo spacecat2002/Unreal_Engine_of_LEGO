@@ -837,8 +837,13 @@ public:
 			uint8* Ptr = (uint8*)GetDataPtr(InRegister, InRegisterOffset, InSliceIndex, false);
 			if (InRegister.IsNestedDynamic())
 			{
-				FRigVMByteArray* ArrayStorage = (FRigVMByteArray*)Ptr;
-				return FRigVMFixedArray<T>(*ArrayStorage);
+				FRigVMByteArray* Storage = (FRigVMByteArray*)Ptr;
+				return FRigVMFixedArray<T>(*Storage);
+			}
+			else if (InRegister.IsDynamic())
+			{
+				FRigVMByteArray* Storage = (FRigVMByteArray*)Ptr;
+				Ptr = Storage->GetData() + InSliceIndex * InRegister.GetNumBytesPerSlice();
 			}
 
 			return FRigVMFixedArray<T>((T*)Ptr, InRegister.ElementCount);

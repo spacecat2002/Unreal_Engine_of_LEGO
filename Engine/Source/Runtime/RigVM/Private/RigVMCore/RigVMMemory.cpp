@@ -358,6 +358,7 @@ FRigVMMemoryContainer& FRigVMMemoryContainer::operator= (const FRigVMMemoryConta
 {
 	Reset();
 
+	MemoryType = InOther.MemoryType;
 	bUseNameMap = InOther.bUseNameMap;
 	bEncounteredErrorDuringLoad = false;
 	Data.Append(InOther.Data);
@@ -382,7 +383,11 @@ FRigVMMemoryContainer& FRigVMMemoryContainer::operator= (const FRigVMMemoryConta
 		}
 
 		Construct(Index);
-		Copy(Index, Index, &InOther);
+
+		if (MemoryType == ERigVMMemoryType::Literal)
+		{
+			Copy(Index, Index, &InOther);
+		}
 	}
 
 	return *this;
@@ -1550,50 +1555,75 @@ TArray<FString> FRigVMMemoryContainer::GetRegisterValueAsString(const FRigVMOper
 	}
 
 	FRigVMRegister& Register = Registers[InOperand.GetRegisterIndex()];
-	for (int32 Index = 0; Index < Register.ElementCount; Index++)
+
+	int32 SliceCount = Register.ElementCount;
+	
+	if (Register.IsNestedDynamic())
 	{
-		FString DefaultValue;
+		FRigVMNestedByteArray* Storage = (FRigVMNestedByteArray*)&Data[Register.GetWorkByteIndex()];
+		SliceCount = Storage->Num();
+	}
+	else if (Register.IsDynamic())
+	{
+		FRigVMByteArray* Storage = (FRigVMByteArray*)&Data[Register.GetWorkByteIndex()];
+		SliceCount = Storage->Num() / Register.ElementSize;
+	}
 
-		if (Register.ScriptStructIndex != INDEX_NONE)
+	for (int32 SliceIndex = 0; SliceIndex < SliceCount; SliceIndex++)
+	{
+		int32 ElementCount = Register.ElementCount;
+		if (Register.IsNestedDynamic())
 		{
-			UScriptStruct* ScriptStruct = GetScriptStruct(Register);
-			if (ScriptStruct == InCPPTypeObject)
+			FRigVMNestedByteArray* Storage = (FRigVMNestedByteArray*)&Data[Register.GetWorkByteIndex()];
+			ElementCount = (*Storage)[SliceIndex].Num() / Register.ElementSize;
+		}
+
+		for (int32 ElementIndex = 0; ElementIndex < ElementCount; ElementIndex++)
+		{
+			FString DefaultValue;
+
+			if (Register.ScriptStructIndex != INDEX_NONE)
 			{
-				uint8* DataPtr = (uint8*)GetData(Register);
-				DataPtr += Index * ScriptStruct->GetStructureSize();
-				ScriptStruct->ExportText(DefaultValue, DataPtr, nullptr, nullptr, PPF_None, nullptr);
+				UScriptStruct* ScriptStruct = GetScriptStruct(Register);
+				if (ScriptStruct == InCPPTypeObject)
+				{
+					uint8* DataPtr = (uint8*)GetData(Register, INDEX_NONE, SliceIndex);
+					DataPtr += ElementIndex * ScriptStruct->GetStructureSize();
+					ScriptStruct->ExportText(DefaultValue, DataPtr, nullptr, nullptr, PPF_None, nullptr);
+				}
 			}
-		}
-		else if (const UEnum* Enum = Cast<const UEnum>(InCPPTypeObject))
-		{
-			DefaultValue = Enum->GetNameStringByValue((int64)GetFixedArray<int32>(Register)[Index]);
-		}
-		else if (InCPPType == TEXT("bool") && Register.GetNumBytesPerSlice() == sizeof(bool))
-		{
-			DefaultValue = GetFixedArray<bool>(Register)[Index] ? TEXT("True") : TEXT("False");
-		}
-		else if (InCPPType == TEXT("int32") && Register.GetNumBytesPerSlice() == sizeof(int32))
-		{
-			DefaultValue = FString::FromInt(GetFixedArray<int32>(Register)[Index]);
-		}
-		else if (InCPPType == TEXT("float") && Register.GetNumBytesPerSlice() == sizeof(float))
-		{
-			DefaultValue = FString::Printf(TEXT("%f"), GetFixedArray<float>(Register)[Index]);
-		}
-		else if (InCPPType == TEXT("FName") && Register.GetNumBytesPerSlice() == sizeof(FName))
-		{
-			DefaultValue = GetFixedArray<FName>(Register)[Index].ToString();
-		}
-		else if (InCPPType == TEXT("FString") && Register.GetNumBytesPerSlice() == sizeof(FString))
-		{
-			DefaultValue  = GetFixedArray<FString>(Register)[Index];
-		}
-		else
-		{
-			ensure(false);
-		}
+			else if (const UEnum* Enum = Cast<const UEnum>(InCPPTypeObject))
+			{
+				DefaultValue = Enum->GetNameStringByValue((int64)GetFixedArray<int32>(Register, INDEX_NONE, SliceIndex)[ElementIndex]);
+			}
+			else if (InCPPType == TEXT("bool") && Register.GetNumBytesPerSlice() == sizeof(bool))
+			{
+				DefaultValue = GetFixedArray<bool>(Register, INDEX_NONE, SliceIndex)[ElementIndex] ? TEXT("True") : TEXT("False");
+			}
+			else if (InCPPType == TEXT("int32") && Register.GetNumBytesPerSlice() == sizeof(int32))
+			{
+				DefaultValue = FString::FromInt(GetFixedArray<int32>(Register, INDEX_NONE, SliceIndex)[ElementIndex]);
+			}
+			else if (InCPPType == TEXT("float") && Register.GetNumBytesPerSlice() == sizeof(float))
+			{
+				float Value = GetFixedArray<float>(Register, INDEX_NONE, SliceIndex)[ElementIndex];
+				DefaultValue = FString::Printf(TEXT("%f"), Value);
+			}
+			else if (InCPPType == TEXT("FName") && Register.GetNumBytesPerSlice() == sizeof(FName))
+			{
+				DefaultValue = GetFixedArray<FName>(Register, INDEX_NONE, SliceIndex)[ElementIndex].ToString();
+			}
+			else if (InCPPType == TEXT("FString") && Register.GetNumBytesPerSlice() == sizeof(FString))
+			{
+				DefaultValue = GetFixedArray<FString>(Register, INDEX_NONE, SliceIndex)[ElementIndex];
+			}
+			else
+			{
+				ensure(false);
+			}
 
-		DefaultValues.Add(DefaultValue);
+			DefaultValues.Add(DefaultValue);
+		}
 	}
 
 	return DefaultValues;
