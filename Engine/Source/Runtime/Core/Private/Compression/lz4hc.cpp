@@ -33,7 +33,12 @@
 */
 /* note : lz4hc is not an independent module, it requires lz4.h/lz4.c for proper compilation */
 
+
+// Force optimized code in Debug builds
+#if UE_BUILD_DEBUG
 PRAGMA_ENABLE_OPTIMIZATION
+#endif
+
 
 /* *************************************
 *  Tuning Parameter
@@ -1547,3 +1552,7 @@ static int LZ4HC_compress_optimal ( LZ4HC_CCtx_internal* ctx,
      }
      return 0;
  }
+
+#if UE_BUILD_DEBUG
+PRAGMA_DISABLE_OPTIMIZATION
+#endif
