@@ -34,12 +34,6 @@
 /* note : lz4hc is not an independent module, it requires lz4.h/lz4.c for proper compilation */
 
 
-// Force optimized code in Debug builds
-#if UE_BUILD_DEBUG
-PRAGMA_ENABLE_OPTIMIZATION
-#endif
-
-
 /* *************************************
 *  Tuning Parameter
 ***************************************/
@@ -69,6 +63,13 @@ PRAGMA_ENABLE_OPTIMIZATION
 
 /*===   Enums   ===*/
 typedef enum { noDictCtx, usingDictCtxHc } dictCtx_directive;
+
+
+#include "Misc/Build.h"
+// Force optimized code in Debug builds
+#if UE_BUILD_DEBUG
+PRAGMA_ENABLE_OPTIMIZATION
+#endif
 
 
 #define LZ4_COMMONDEFS_ONLY
