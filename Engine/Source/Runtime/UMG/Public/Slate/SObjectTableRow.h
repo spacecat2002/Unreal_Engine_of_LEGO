@@ -383,7 +383,7 @@ public:
 							OwnerTable->Private_ClearSelection();
 							bSignalSelectionChanged = true;
 						}
-						else if (SelectionMode == ESelectionMode::Multi &&
+						else if (!bSignalSelectionChanged && SelectionMode == ESelectionMode::Multi &&
 							OwnerTable->Private_GetNumSelectedItems() > 1 &&
 							OwnerTable->Private_IsItemSelected(*MyItemPtr))
 						{
