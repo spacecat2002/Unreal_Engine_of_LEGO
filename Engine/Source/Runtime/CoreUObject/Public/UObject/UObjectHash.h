@@ -182,6 +182,13 @@ UPackage* GetObjectExternalPackageInternal(const class UObjectBase* Object);
 COREUOBJECT_API void ShrinkUObjectHashTables();
 
 /**
+* Get a version number representing the current state of registered classes.
+*
+* Can be stored and then compared to invalidate external caching of classes hierarchy whenever it changes. 
+*/
+COREUOBJECT_API uint64 GetRegisteredClassesVersionNumber();
+
+/**
  * Logs out information about the object hash for debug purposes
  *
  * @param Ar the archive to write the log data to
