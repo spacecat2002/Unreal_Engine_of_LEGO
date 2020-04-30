@@ -118,9 +118,9 @@ public:
 	 */
 	virtual TSharedPtr<IAccessibleWidget> GetChildAtPosition(int32 X, int32 Y) = 0;
 	/**
-	 * Retrieves the currently-focused widget, if it is accessible.
+	 * Retrieves the currently accessibilit focused widget
 	 *
-	 * @return The widget that has focus, or nullptr if the focused widget is not accessible.
+	 * @return The widget that has accessibility focus.
 	 */
 	virtual TSharedPtr<IAccessibleWidget> GetFocusedWidget() const = 0;
 	/**
@@ -368,18 +368,20 @@ public:
 	 */
 	virtual bool IsHidden() const = 0;
 	/**
-	 * Whether the widget supports keyboard focus or not.
+	 * Whether the widget supports accessibility focus or not.
 	 *
-	 * @return true if the widget can receive keyboard focus.
+	 * @return true if the widget can receive accessibility focus.
 	 */
 	virtual bool SupportsFocus() const = 0;
 	/**
-	 * Whether the widget has keyboard focus or not.
+	 * Whether the widget has accessibility focus or not.
 	 *
-	 * @return true if the widget currently has keyboard focus.
+	 * @return true if the widget currently has accessibility focus.
 	 */
 	virtual bool HasFocus() const = 0;
-	/** Assign keyboard focus to this widget, if it supports it. If not, focus should not be affected. */
+	/** Assign keyboard/gamepad focus to this widget, if it supports it. If not, focus should not be affected. 
+	* Note: For widgets that support accessibility focus but not keyboard/gamepad focus, this should NOT repreplace the widget with accessibility focus. 
+	*/
 	virtual void SetFocus() = 0;
 
 	/**
@@ -525,13 +527,14 @@ public:
 	 * @param Thread The thread to run the Function in.
 	 */
 	virtual void RunInThread(const TFunction<void()>& Function, bool bWaitForCompletion = true, ENamedThreads::Type Thread = ENamedThreads::GameThread) { }
-	
+
 	/**
 	 * Request a string to be announced to the user.
 	 * Note: Currently only supported on Win10, Mac, iOS. If requests are made too close together,
 	 * earlier announcement requests will get stomped by later announcements on certain platforms.
 	 */
 	virtual void MakeAccessibleAnnouncement(const FString& AnnouncementString) { }
+
 protected:
 	/** Triggered when bIsActive changes from false to true. */
 	virtual void OnActivate() {}
