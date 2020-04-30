@@ -66,6 +66,8 @@ typedef enum { noDictCtx, usingDictCtxHc } dictCtx_directive;
 
 
 #include "Misc/Build.h"
+#include "Misc/CoreMiscDefines.h"
+
 // Force optimized code in Debug builds
 #if UE_BUILD_DEBUG
 PRAGMA_ENABLE_OPTIMIZATION
