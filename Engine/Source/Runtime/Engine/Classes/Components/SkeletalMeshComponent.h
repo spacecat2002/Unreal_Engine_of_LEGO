@@ -31,6 +31,8 @@
 
 class Error;
 class FPrimitiveDrawInterface;
+class FCanvas;
+class FSceneView;
 class UAnimInstance;
 class UPhysicalMaterial;
 class USkeletalMeshComponent;
@@ -1431,6 +1433,13 @@ public:
 	 * @param PDI The draw interface to use
 	 */
 	void DebugDrawClothing(FPrimitiveDrawInterface* PDI);
+
+	/**
+	 * Draw the currently clothing state, using the editor extender interface
+	 * @param Canvas The canvas to draw the text on
+	 * @param SceneView The view to project the text with
+	 */
+	void DebugDrawClothingTexts(FCanvas* Canvas, const FSceneView* SceneView);
 
 	/** Changes the value of bNotifyRigidBodyCollision
 	* @param bNewNotifyRigidBodyCollision - The value to assign to bNotifyRigidBodyCollision
