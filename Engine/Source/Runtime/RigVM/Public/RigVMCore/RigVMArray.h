@@ -239,6 +239,30 @@ public:
 		return (T*)Storage.GetData();
 	}
 
+	FORCEINLINE_DEBUGGABLE int32 Find(const T& InItem) const
+	{
+		for (int32 Index = 0; Index < Num(); Index++)
+		{
+			if (InItem == operator[](Index))
+			{
+				return Index;
+			}
+		}
+		return INDEX_NONE;
+	}
+
+	FORCEINLINE_DEBUGGABLE bool Contains(const T& InItem) const
+	{
+		for (const T& Item : *this)
+		{
+			if (Item == InItem)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 	FORCEINLINE_DEBUGGABLE RangedForIteratorType      begin()       { return GetData(); }
 	FORCEINLINE_DEBUGGABLE RangedForConstIteratorType begin() const { return GetData(); }
 	FORCEINLINE_DEBUGGABLE RangedForIteratorType      end()         { return GetData() + Num(); }
@@ -365,6 +389,30 @@ public:
 	FORCEINLINE_DEBUGGABLE FRigVMFixedArray Slice(int32 StartIndex, int32 Count)
 	{
 		return FRigVMFixedArray(GetData() + StartIndex, Count);
+	}
+
+	FORCEINLINE_DEBUGGABLE int32 Find(const T& InItem) const
+	{
+		for (int32 Index = 0; Index < Num(); Index++)
+		{
+			if (InItem == operator[](Index))
+			{
+				return Index;
+			}
+		}
+		return INDEX_NONE;
+	}
+
+	FORCEINLINE_DEBUGGABLE bool Contains(const T& InItem) const
+	{
+		for (const T& Item : *this)
+		{
+			if (Item == InItem)
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	FORCEINLINE_DEBUGGABLE RangedForIteratorType      begin()       { return GetData(); }
