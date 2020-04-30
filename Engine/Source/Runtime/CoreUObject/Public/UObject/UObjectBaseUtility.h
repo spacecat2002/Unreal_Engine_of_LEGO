@@ -658,6 +658,9 @@ public:
 	FORCEINLINE void ResetStatID()
 	{
 		GUObjectArray.IndexToObject(InternalIndex)->StatID = TStatId();
+#if ENABLE_STATNAMEDEVENTS_UOBJECT
+		GUObjectArray.IndexToObject(InternalIndex)->StatIDStringStorage = nullptr;
+#endif
 	}
 #endif
 	/**
