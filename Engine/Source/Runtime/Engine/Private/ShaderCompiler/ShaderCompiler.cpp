@@ -2250,7 +2250,6 @@ FProcHandle FShaderCompilingManager::LaunchWorker(const FString& WorkingDirector
 	WorkerParameters += FString(TEXT(" -communicatethroughfile "));
 	if ( GIsBuildMachine )
 	{
-		WorkerParameters += FString(TEXT(" -buildmachine "));
 		WorkerParameters += FString::Printf(TEXT(" -TimeToLive=%f"), GBuildWorkerTimeToLive);
 	}
 	else
