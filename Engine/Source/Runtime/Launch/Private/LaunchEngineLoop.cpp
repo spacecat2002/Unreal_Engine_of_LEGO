@@ -1402,9 +1402,10 @@ static void UpdateGInputTime()
 DECLARE_CYCLE_STAT(TEXT("FEngineLoop::PreInitPreStartupScreen.AfterStats"), STAT_FEngineLoop_PreInitPreStartupScreen_AfterStats, STATGROUP_LoadTime);
 DECLARE_CYCLE_STAT(TEXT("FEngineLoop::PreInitPostStartupScreen.AfterStats"), STAT_FEngineLoop_PreInitPostStartupScreen_AfterStats, STATGROUP_LoadTime);
 
-UE_TRACE_EVENT_BEGIN(Diagnostics, Session, Important)
-	UE_TRACE_EVENT_FIELD(uint8, AppNameOffset)
-	UE_TRACE_EVENT_FIELD(uint8, CommandLineOffset)
+UE_TRACE_EVENT_BEGIN(Diagnostics, Session2, Important)
+	UE_TRACE_EVENT_FIELD(Trace::AnsiString, Platform)
+	UE_TRACE_EVENT_FIELD(Trace::AnsiString, AppName)
+	UE_TRACE_EVENT_FIELD(Trace::WideString, CommandLine)
 	UE_TRACE_EVENT_FIELD(uint8, ConfigurationType)
 	UE_TRACE_EVENT_FIELD(uint8, TargetType)
 UE_TRACE_EVENT_END()
@@ -1557,31 +1558,12 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 
 	// Trace out information about this session
 	{
-		uint8 Payload[1024];
-		int32 PayloadSize = 0;
-
-		auto AddToPayload = [&] (const TCHAR* String) -> uint8
-		{
-			int32 Length = FCString::Strlen(String);
-			Length = FMath::Min<int32>(Length, sizeof(Payload) - PayloadSize - 1);
-			for (int32 i = 0, n = Length; i < n; ++i)
-			{
-				Payload[PayloadSize] = uint8(String[i] & 0x7f);
-				++PayloadSize;
-			}
-			return uint8(PayloadSize - Length);
-		};
-
-		AddToPayload(FGenericPlatformMisc::GetUBTPlatform());
-		uint8 AppNameOffset = AddToPayload(TEXT(UE_APP_NAME));
-		uint8 CommandLineOffset = AddToPayload(CmdLine);
-
-		UE_TRACE_LOG(Diagnostics, Session, Trace::TraceLogChannel, PayloadSize)
-			<< Session.AppNameOffset(AppNameOffset)
-			<< Session.CommandLineOffset(CommandLineOffset)
-			<< Session.ConfigurationType(uint8(FApp::GetBuildConfiguration()))
-			<< Session.TargetType(uint8(FApp::GetBuildTargetType()))
-			<< Session.Attachment(Payload, PayloadSize);
+		UE_TRACE_LOG(Diagnostics, Session2, Trace::TraceLogChannel)
+			<< Session2.Platform(PREPROCESSOR_TO_STRING(UBT_COMPILED_PLATFORM))
+			<< Session2.AppName(UE_APP_NAME)
+			<< Session2.CommandLine(CmdLine)
+			<< Session2.ConfigurationType(uint8(FApp::GetBuildConfiguration()))
+			<< Session2.TargetType(uint8(FApp::GetBuildTargetType()));
 	}
 
 #if WITH_ENGINE
