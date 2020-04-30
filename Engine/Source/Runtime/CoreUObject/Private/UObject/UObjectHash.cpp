@@ -288,6 +288,7 @@ public:
 	TMap<UObjectBase*, FHashBucket> ObjectOuterMap;
 	TMap<UClass*, FHashBucket> ClassToObjectListMap;
 	TMap<UClass*, TSet<UClass*>> ClassToChildListMap;
+	TAtomic<uint64> ClassToChildListMapVersion;
 
 	/** Map of package to the object their contain. */
 	TMap<UPackage*, FHashBucket> PackageToObjectListMap;
@@ -295,6 +296,7 @@ public:
 	TMap<UObjectBase*, UPackage*> ObjectToPackageMap;
 
 	FUObjectHashTables()
+		: ClassToChildListMapVersion(0)
 	{
 	}
 
@@ -752,6 +754,7 @@ FORCEINLINE static void AddToClassMap(FUObjectHashTables& ThreadHash, UObjectBas
 			TSet<UClass*>& ChildList = ThreadHash.ClassToChildListMap.FindOrAdd(SuperClass);
 			bool bIsAlreadyInSetPtr = false;
 			ChildList.Add(Class, &bIsAlreadyInSetPtr);
+			ThreadHash.ClassToChildListMapVersion++;
 			check(!bIsAlreadyInSetPtr); // if it already exists, something is wrong with the external code
 		}
 	}
@@ -828,6 +831,7 @@ FORCEINLINE static void RemoveFromClassMap(FUObjectHashTables& ThreadHash, UObje
 			{
 				ThreadHash.ClassToChildListMap.Remove(SuperClass);
 			}
+			ThreadHash.ClassToChildListMapVersion++;
 		}
 	}
 }
@@ -861,6 +865,12 @@ void ShrinkUObjectHashTables()
 	FUObjectHashTables& ThreadHash = FUObjectHashTables::Get();
 	FHashTableLock HashLock(ThreadHash);
 	ThreadHash.ShrinkMaps();
+}
+
+uint64 GetRegisteredClassesVersionNumber()
+{
+	FUObjectHashTables& ThreadHash = FUObjectHashTables::Get();
+	return ThreadHash.ClassToChildListMapVersion;
 }
 
 static void ShrinkUObjectHashTablesDel(const TArray<FString>& Args)
