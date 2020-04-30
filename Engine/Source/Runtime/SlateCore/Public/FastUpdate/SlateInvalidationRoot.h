@@ -85,6 +85,9 @@ public:
 	SLATECORE_API FSlateInvalidationResult PaintInvalidationRoot(const FSlateInvalidationContext& Context);
 
 	void OnWidgetDestroyed(const SWidget* Widget);
+
+	SLATECORE_API static void ClearAllWidgetUpdatesPending();
+
 protected:
 	virtual int32 PaintSlowPath(const FSlateInvalidationContext& Context) = 0;
 
@@ -131,4 +134,6 @@ private:
 	bool bChildOrderInvalidated;
 	bool bNeedsSlowPath;
 	bool bNeedScreenPositionShift;
+
+	static TArray<FSlateInvalidationRoot*> ClearUpdateList;
 };
