@@ -204,7 +204,9 @@ void UObjectBase::AddObject(FName InName, EInternalObjectFlags InSetInternalFlag
  */
 void UObjectBase::LowLevelRename(FName NewName,UObject *NewOuter)
 {
-	STAT(((UObject*)this)->ResetStatID()); // reset the stat id since this thing now has a different name
+#if STATS || ENABLE_STATNAMEDEVENTS_UOBJECT
+	((UObject*)this)->ResetStatID(); // reset the stat id since this thing now has a different name
+#endif
 	UnhashObject(this);
 	check(InternalIndex >= 0);
 	NamePrivate = NewName;
@@ -257,7 +259,9 @@ void UObjectBase::SetExternalPackage(UPackage* InPackage)
 
 void UObjectBase::SetClass(UClass* NewClass)
 {
-	STAT(((UObject*)this)->ResetStatID()); // reset the stat id since this thing now has a different name
+#if STATS || ENABLE_STATNAMEDEVENTS_UOBJECT
+	((UObject*)this)->ResetStatID(); // reset the stat id since this thing now has a different name
+#endif
 
 	UnhashObject(this);
 #if USE_UBER_GRAPH_PERSISTENT_FRAME
