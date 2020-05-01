@@ -8,7 +8,9 @@ D3D12Adapter.cpp:D3D12 Adapter implementation.
 #include "Misc/CommandLine.h"
 #include "Misc/EngineVersion.h"
 #include "Windows/AllowWindowsPlatformTypes.h"
+#if PLATFORM_WINDOWS
 #include "Windows/WindowsPlatformMisc.h"
+#endif
 
 #if !PLATFORM_CPU_ARM_FAMILY && (PLATFORM_WINDOWS || PLATFORM_HOLOLENS)
 	#include "amd_ags.h"
@@ -421,6 +423,7 @@ void FD3D12Adapter::CreateRootDevice(bool bWithDebug)
 	}
 #endif // D3D12_RHI_RAYTRACING
 
+#if PLATFORM_WINDOWS
 	{
 		D3D12_FEATURE_DATA_D3D12_OPTIONS7 Features = {};
 		if (SUCCEEDED(RootDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS7, &Features, sizeof(Features))))
@@ -428,6 +431,7 @@ void FD3D12Adapter::CreateRootDevice(bool bWithDebug)
 			bHeapNotZeroedSupported = true;
 		}
 	}
+#endif
 
 #if NV_AFTERMATH
 	// Enable aftermath when GPU crash debugging is enabled
