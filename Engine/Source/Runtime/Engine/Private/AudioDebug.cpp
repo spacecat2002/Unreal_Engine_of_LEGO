@@ -1042,13 +1042,14 @@ namespace Audio
 					UWorld* EditorWorld = ViewportClient->GetWorld();
 					if (EditorWorld && EditorWorld == &World)
 					{
+						const FText SystemDisplayName = NSLOCTEXT("AudioDebugger", "AudioDebugger_DrawDebugData", "Audio Debug Data");
 						if (DrawDebugStatsEnabled())
 						{
-							ViewportClient->SetRealtimeOverride(true, NSLOCTEXT("AudioDebugger", "AudioDebugger_DrawDebugData", "Audio Debug Data"));
+							ViewportClient->AddRealtimeOverride(true, SystemDisplayName);
 						}
 						else if (!bAllowUsingDeprecatedDebugStats)
 						{
-							ViewportClient->RemoveRealtimeOverride();
+							ViewportClient->RemoveRealtimeOverride(SystemDisplayName);
 						}
 						DrawDebugStats(World, *ViewportClient->Viewport);
 					}
