@@ -5,7 +5,6 @@
 #include "LightMapRendering.h"
 #include "ScenePrivate.h"
 #include "MeshPassProcessor.inl"
-#include "RayTracing/RayTracingMaterialHitShaders.h"
 
 #if RHI_RAYTRACING
 
