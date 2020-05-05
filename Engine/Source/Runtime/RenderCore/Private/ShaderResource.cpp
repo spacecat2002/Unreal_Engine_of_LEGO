@@ -159,6 +159,14 @@ int32 FShaderMapResourceCode::FindShaderIndex(const FSHAHash& InHash) const
 	return Algo::BinarySearch(ShaderHashes, InHash);
 }
 
+void FShaderMapResourceCode::AddShaderCompilerOutput(const FShaderCompilerOutput& Output)
+{
+#if WITH_EDITORONLY_DATA
+	AddPlatformDebugData(Output.PlatformDebugData);
+#endif
+	AddShaderCode(Output.Target.GetFrequency(), Output.OutputHash, Output.ShaderCode.GetReadAccess());
+}
+
 void FShaderMapResourceCode::AddShaderCode(EShaderFrequency InFrequency, const FSHAHash& InHash, TConstArrayView<uint8> InCode)
 {
 	const int32 Index = Algo::LowerBound(ShaderHashes, InHash);
