@@ -479,31 +479,6 @@ void FShaderMapPointerTable::LoadFromArchive(FArchive& Ar, void* FrozenContent, 
 	}
 }
 
-FShadereCompiledShaderInitializerType::FShadereCompiledShaderInitializerType(
-	FShaderType* InType,
-	int32 InPermutationId,
-	const FShaderCompilerOutput& CompilerOutput,
-	int32 InResourceIndex,
-	const FSHAHash& InMaterialShaderMapHash,
-	const FShaderPipelineType* InShaderPipeline,
-	FVertexFactoryType* InVertexFactoryType
-) :
-	Type(InType),
-	Target(CompilerOutput.Target),
-	Code(CompilerOutput.ShaderCode.GetReadAccess()),
-	ParameterMap(CompilerOutput.ParameterMap),
-	OutputHash(CompilerOutput.OutputHash),
-	MaterialShaderMapHash(InMaterialShaderMapHash),
-	ShaderPipeline(InShaderPipeline),
-	VertexFactoryType(InVertexFactoryType),
-	ResourceIndex(InResourceIndex),
-	NumInstructions(CompilerOutput.NumInstructions),
-	NumTextureSamplers(CompilerOutput.NumTextureSamplers),
-	CodeSize(CompilerOutput.ShaderCode.GetShaderCodeSize()),
-	PermutationId(InPermutationId)
-{
-}
-
 /** 
  * Used to construct a shader for deserialization.
  * This still needs to initialize members to safe values since FShaderType::GenerateSerializationHistory uses this constructor.

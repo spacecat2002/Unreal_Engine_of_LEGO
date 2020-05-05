@@ -318,13 +318,7 @@ public:
 
 	RENDERCORE_API uint32 GetSizeBytes() const;
 
-	inline void AddShaderCompilerOutput(const FShaderCompilerOutput& Output)
-	{
-#if WITH_EDITORONLY_DATA
-		AddPlatformDebugData(Output.PlatformDebugData);
-#endif
-		AddShaderCode(Output.Target.GetFrequency(), Output.OutputHash, Output.ShaderCode.GetReadAccess());
-	}
+	RENDERCORE_API void AddShaderCompilerOutput(const FShaderCompilerOutput& Output);
 
 	int32 FindShaderIndex(const FSHAHash& InHash) const;
 
@@ -356,23 +350,6 @@ public:
 	virtual TRefCountPtr<FRHIShader> CreateRHIShader(int32 ShaderIndex) override;
 	virtual uint32 GetSizeBytes() const override { return sizeof(*this) + GetAllocatedSize(); }
 
-	TRefCountPtr<FShaderMapResourceCode> Code;
-};
-
-class FShaderMapResourceBuilder
-{
-public:
-	RENDERCORE_API explicit FShaderMapResourceBuilder(FShaderMapResourceCode* InCode);
-
-	RENDERCORE_API int32 FindOrAddCode(const FShaderCompilerOutput& Output);
-
-	RENDERCORE_API int32 FindCode(const FSHAHash& InHash, uint32 InKey) const;
-	RENDERCORE_API int32 FindOrAddCode(EShaderFrequency InFrequency, const FSHAHash& InHash, const TConstArrayView<uint8>& InCode);
-#if WITH_EDITORONLY_DATA
-	RENDERCORE_API void AddPlatformDebugData(TConstArrayView<uint8> InPlatformDebugData);
-#endif // WITH_EDITORONLY_DATA
-private:
-	FHashTable ShaderHashTable;
 	TRefCountPtr<FShaderMapResourceCode> Code;
 };
 
