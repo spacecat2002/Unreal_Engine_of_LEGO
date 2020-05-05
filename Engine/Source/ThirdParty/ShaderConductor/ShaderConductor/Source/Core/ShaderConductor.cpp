@@ -134,7 +134,7 @@ namespace
 #ifdef _WIN32
             const char* dllName = "dxcompiler.dll";
 #elif __APPLE__
-            const char* dllName = "libdxcompiler.3.7.dylib";
+            const char* dllName = "libdxcompiler.dylib";
 #else
             const char* dllName = "libdxcompiler.so";
 #endif
@@ -425,7 +425,7 @@ namespace
 		else
 		{
 			CComPtr<IDxcBlobEncoding> errorMsg;
-			IFT(rewriteResult->GetResult((IDxcBlob**)&errorMsg));
+			IFT(rewriteResult->GetErrorBuffer((IDxcBlobEncoding**)&errorMsg));
 			ret.errorWarningMsg = CreateBlob(errorMsg->GetBufferPointer(), static_cast<uint32_t>(errorMsg->GetBufferSize()));
 		}
         

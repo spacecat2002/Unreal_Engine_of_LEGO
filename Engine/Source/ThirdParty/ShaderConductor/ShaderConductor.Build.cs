@@ -10,33 +10,22 @@ public class ShaderConductor : ModuleRules
 	{
 		Type = ModuleType.External;
 
-		PublicSystemIncludePaths.Add(Target.UEThirdPartySourceDirectory + "ShaderConductor/ShaderConductor/Include");
+		PublicSystemIncludePaths.Add(Path.Combine(Target.UEThirdPartySourceDirectory, "ShaderConductor", "ShaderConductor", "Include"));
 
 		if (Target.Platform == UnrealTargetPlatform.Mac)
 		{
-			string[] DynamicLibrariesMac = new string[] {
-				"/libdxcompiler.dylib",
-                "/libShaderConductor.dylib",
-			};
-
-			string BinariesDir = Target.UEThirdPartyBinariesDirectory + "../Mac";
-            foreach (string Lib in DynamicLibrariesMac)
-			{
-				string LibraryPath = BinariesDir + Lib;
-				PublicDelayLoadDLLs.Add(LibraryPath);
-				RuntimeDependencies.Add(LibraryPath);
-				PublicAdditionalLibraries.Add(LibraryPath);
-			}
-			RuntimeDependencies.Add(BinariesDir + "/libdxcompiler.3.7.dylib");
+			string SCBinariesDir = Path.Combine(Target.UEThirdPartyBinariesDirectory, "ShaderConductor", "Mac");
+			AddDependency(SCBinariesDir, "libdxcompiler.dylib");
+			AddDependency(SCBinariesDir, "libShaderConductor.dylib");
 		}
         else if (Target.Platform == UnrealTargetPlatform.Win64)
         {
-			string LibPath = Target.UEThirdPartySourceDirectory + "ShaderConductor/ShaderConductor/lib/Win64/ShaderConductor.lib";
-			PublicAdditionalLibraries.Add(LibPath);
-
-			string SCBinariesDir = String.Format("$(EngineDir)/Binaries/ThirdParty/ShaderConductor/Win64/");
-			AddDependency(SCBinariesDir, "dxcompiler.dll", false);
-			AddDependency(SCBinariesDir, "ShaderConductor.dll", true);
+			string SCBinariesDir = Path.Combine(Target.UEThirdPartyBinariesDirectory, "ShaderConductor", "Win64");
+			AddDependency(SCBinariesDir, "dxcompiler.dll");
+			AddDependency(SCBinariesDir, "ShaderConductor.dll", bAddPDB: true);
+			
+			string SCLibPath = Path.Combine(Target.UEThirdPartySourceDirectory, "ShaderConductor", "ShaderConductor", "lib", "Win64", "ShaderConductor.lib");
+			PublicAdditionalLibraries.Add(SCLibPath);
 		}
 		else
 		{
@@ -45,15 +34,24 @@ public class ShaderConductor : ModuleRules
 			throw new BuildException(Err);
 		}
 	}
-
-	private void AddDependency(string SCBinariesDir, string InDLL, bool bAddPDB)
+	
+	private void AddDependency(string BinariesDir, string Filename, bool bAddPDB = false)
 	{
-		string FileName = Path.Combine(SCBinariesDir, InDLL);
-		RuntimeDependencies.Add(FileName, StagedFileType.NonUFS);
-		if (bAddPDB)
+		string FullPath = Path.Combine(BinariesDir, Filename);
+		if (Target.Platform == UnrealTargetPlatform.Win64)
 		{
-			RuntimeDependencies.Add(Path.ChangeExtension(FileName, ".pdb"), StagedFileType.DebugNonUFS);
+			PublicDelayLoadDLLs.Add(Filename);
+			RuntimeDependencies.Add(FullPath, StagedFileType.NonUFS);
+			if (bAddPDB)
+			{
+				RuntimeDependencies.Add(Path.ChangeExtension(FullPath, ".pdb"), StagedFileType.DebugNonUFS);
+			}
 		}
-		PublicDelayLoadDLLs.Add(InDLL);
+		if (Target.Platform == UnrealTargetPlatform.Mac)
+		{
+			PublicDelayLoadDLLs.Add(FullPath);
+			RuntimeDependencies.Add(FullPath);
+			PublicAdditionalLibraries.Add(FullPath);
+		}
 	}
 }
