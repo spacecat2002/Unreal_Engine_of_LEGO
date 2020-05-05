@@ -1320,6 +1320,13 @@ FRHICommandListImmediate& GetImmediateCommandList_ForRenderCommand()
 	return FRHICommandListExecutor::GetImmediateCommandList();
 }
 
+static bool bEnablePendingCleanupObjectsCommandBatching = false;
+static FAutoConsoleVariableRef CVarEnablePendingCleanupObjectsCommandBatching(
+	TEXT("g.bEnablePendingCleanupObjectsCommandBatching"),
+	bEnablePendingCleanupObjectsCommandBatching,
+	TEXT("Enable batching PendingCleanupObjects destruction.")
+);
+
 #if WITH_EDITOR || IS_PROGRAM
 
 // mainly concerned about the cooker here, but anyway, the editor can run without a frame for a very long time (hours) and we do not have enough lock free links. 
@@ -1341,12 +1348,19 @@ FPendingCleanupObjects::~FPendingCleanupObjects()
 {
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_FPendingCleanupObjects_Destruct);
 
-	StartRenderCommandFenceBundler();
+	const bool bBatchingEnabled = bEnablePendingCleanupObjectsCommandBatching;
+	if (bBatchingEnabled)
+	{
+		StartRenderCommandFenceBundler();
+	}
 	for (int32 ObjectIndex = 0; ObjectIndex < CleanupArray.Num(); ObjectIndex++)
 	{
 		delete CleanupArray[ObjectIndex];
 	}
-	StopRenderCommandFenceBundler();
+	if (bBatchingEnabled)
+	{
+		StopRenderCommandFenceBundler();
+	}
 }
 
 void BeginCleanup(FDeferredCleanupInterface* CleanupObject)
@@ -1372,12 +1386,19 @@ FPendingCleanupObjects::~FPendingCleanupObjects()
 {
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_FPendingCleanupObjects_Destruct);
 
-	StartRenderCommandFenceBundler();
+	const bool bBatchingEnabled = bEnablePendingCleanupObjectsCommandBatching;
+	if (bBatchingEnabled)
+	{
+		StartRenderCommandFenceBundler();
+	}
 	for (int32 ObjectIndex = 0; ObjectIndex < CleanupArray.Num(); ObjectIndex++)
 	{
 		delete CleanupArray[ObjectIndex];
 	}
-	StopRenderCommandFenceBundler();
+	if (bBatchingEnabled)
+	{
+		StopRenderCommandFenceBundler();
+	}
 }
 
 void BeginCleanup(FDeferredCleanupInterface* CleanupObject)
