@@ -1541,7 +1541,7 @@ void FSceneView::OverridePostProcessSettings(const FPostProcessSettings& Src, fl
 			Dest.BloomDirtMask = Src.BloomDirtMask;
 		}
 
-		IF_PP(BloomMethod)
+		if (Src.bOverride_BloomMethod)
 		{
 			Dest.BloomMethod = Src.BloomMethod;
 		}
