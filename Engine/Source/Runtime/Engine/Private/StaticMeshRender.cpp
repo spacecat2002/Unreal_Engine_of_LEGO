@@ -153,7 +153,7 @@ FStaticMeshSceneProxy::FStaticMeshSceneProxy(UStaticMeshComponent* InComponent, 
 
 	const auto FeatureLevel = GetScene().GetFeatureLevel();
 
-	const int32 SMCurrentMinLOD = InComponent->GetStaticMesh()->MinLOD.GetValueForFeatureLevel(FeatureLevel);
+	const int32 SMCurrentMinLOD = InComponent->GetStaticMesh()->MinLOD.GetValue();
 	int32 EffectiveMinLOD = InComponent->bOverrideMinLOD ? InComponent->MinLOD : SMCurrentMinLOD;
 
 #if WITH_EDITOR
@@ -1647,7 +1647,7 @@ void FStaticMeshSceneProxy::GetDynamicRayTracingInstances(FRayTracingMaterialGat
 	}
 
 	uint8 PrimitiveDPG = GetStaticDepthPriorityGroup();
-	const uint32 LODIndex = GetLOD(Context.ReferenceView);
+	const uint32 LODIndex = FMath::Max(GetLOD(Context.ReferenceView), (int32)GetCurrentFirstLODIdx_RenderThread());
 	const FStaticMeshLODResources& LODModel = RenderData->LODResources[LODIndex];
 
 	FRayTracingGeometry& Geometry = DynamicRayTracingGeometries[LODIndex];
@@ -2117,7 +2117,7 @@ FLightInteraction FStaticMeshSceneProxy::FLODInfo::GetInteraction(const FLightSc
 
 float FStaticMeshSceneProxy::GetScreenSize( int32 LODIndex ) const
 {
-	return RenderData->ScreenSize[LODIndex].GetValueForFeatureLevel(GetScene().GetFeatureLevel());
+	return RenderData->ScreenSize[LODIndex].GetValue();
 }
 
 /**

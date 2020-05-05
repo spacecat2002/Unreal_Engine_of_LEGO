@@ -14,6 +14,7 @@
 #include "ScreenRendering.h"
 #include "PostProcess/SceneFilterRendering.h"
 #include "PostProcess/PostProcessSubsurface.h"
+#include "PostProcess/PostProcessVisualizeCalibrationMaterial.h"
 #include "CompositionLighting/CompositionLighting.h"
 #include "FXSystem.h"
 #include "OneColorShader.h"
@@ -1298,6 +1299,12 @@ void FDeferredShadingSceneRenderer::WaitForRayTracingScene(FRHICommandListImmedi
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
 	{
 		FViewInfo& View = Views[ViewIndex];
+		if (!View.RayTracingMaterialPipeline)
+		{
+			check(View.RayTracingMaterialBindings.Num() == 0);
+			continue;
+		}
+
 		if (View.RayTracingMaterialBindings.Num())
 		{
 			FTaskGraphInterface::Get().WaitUntilTaskCompletes(View.RayTracingMaterialBindingsTask, ENamedThreads::GetRenderThread_Local());
@@ -1558,6 +1565,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 			// Clear virtual texture feedback to default value
 			FUnorderedAccessViewRHIRef FeedbackUAV = SceneContext.GetVirtualTextureFeedbackUAV();
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToGfx, FeedbackUAV);
 			RHICmdList.ClearUAVUint(FeedbackUAV, FUintVector4(~0u, ~0u, ~0u, ~0u));
 			RHICmdList.TransitionResource(EResourceTransitionAccess::ERWNoBarrier, EResourceTransitionPipeline::EGfxToGfx, FeedbackUAV);
 		}
@@ -2067,8 +2075,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		// if we didn't to the prepass above, then we will need to clear now, otherwise, it's already been cleared and rendered to
 		ERenderTargetLoadAction ColorLoadAction = ERenderTargetLoadAction::ELoad;
 
-		bool bRequiresLoad = IsMetalPlatform(ShaderPlatform) || IsVulkanMobileSM5Platform(ShaderPlatform);
-		ERenderTargetLoadAction DepthLoadAction = bClearDepth ? ERenderTargetLoadAction::EClear : (!bRequiresLoad ? ERenderTargetLoadAction::ENoAction : ERenderTargetLoadAction::ELoad);
+		ERenderTargetLoadAction DepthLoadAction = bClearDepth ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
 
 		const bool bClearBlack = ViewFamily.EngineShowFlags.ShaderComplexity || ViewFamily.EngineShowFlags.StationaryLightOverlap;
 		const float ClearAlpha = GetSceneColorClearAlpha();
@@ -2123,8 +2130,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		// Make sure we have began the renderpass
 		ERenderTargetLoadAction DepthLoadAction = bDepthWasCleared ? ERenderTargetLoadAction::ELoad : ERenderTargetLoadAction::EClear;
 
-		bool bRequiresLoad = IsMetalPlatform(ShaderPlatform) || IsVulkanMobileSM5Platform(ShaderPlatform);
-		SceneContext.BeginRenderingGBuffer(RHICmdList, (!bRequiresLoad ? ERenderTargetLoadAction::ENoAction : ERenderTargetLoadAction::ELoad), DepthLoadAction, BasePassDepthStencilAccess, ViewFamily.EngineShowFlags.ShaderComplexity);
+		SceneContext.BeginRenderingGBuffer(RHICmdList, ERenderTargetLoadAction::ELoad, DepthLoadAction, BasePassDepthStencilAccess, ViewFamily.EngineShowFlags.ShaderComplexity);
 	}
 	// Wait for Async SSAO before rendering base pass with forward rendering
 	if (IsForwardShadingEnabled(ShaderPlatform))
@@ -2656,8 +2662,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		SetupSceneTextureUniformParameters(SceneContext, FeatureLevel, ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers, SceneTextureParameters);
 		TUniformBufferRef<FSceneTexturesUniformParameters> SceneTextureUniformBuffer = TUniformBufferRef<FSceneTexturesUniformParameters>::CreateUniformBufferImmediate(SceneTextureParameters, UniformBuffer_SingleFrame);
 
-		bool bRequiresLoad = IsMetalPlatform(ShaderPlatform) || IsVulkanMobileSM5Platform(ShaderPlatform);
-        SceneContext.BeginRenderingSceneColor(RHICmdList, (!bRequiresLoad ? ESimpleRenderTargetMode::EUninitializedColorExistingDepth : ESimpleRenderTargetMode::EExistingColorAndDepth));
+        SceneContext.BeginRenderingSceneColor(RHICmdList, ESimpleRenderTargetMode::EExistingColorAndDepth);
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
 		{
 			const FViewInfo& View = Views[ViewIndex];
@@ -2927,18 +2932,37 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 				SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
 				RDG_EVENT_SCOPE_CONDITIONAL(GraphBuilder, Views.Num() > 1, "View%d", ViewIndex);
-				AddDebugPostProcessingPasses(GraphBuilder, View, PostProcessingInputs);
+				AddDebugViewPostProcessingPasses(GraphBuilder, View, PostProcessingInputs);
 			}
 		}
-		else
+		else 
 		{
 			for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 			{
 				FViewInfo& View = Views[ViewIndex];
 
-				SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
-				RDG_EVENT_SCOPE_CONDITIONAL(GraphBuilder, Views.Num() > 1, "View%d", ViewIndex);
-				AddPostProcessingPasses(GraphBuilder, View, PostProcessingInputs);
+#if !(UE_BUILD_SHIPPING)
+
+				if (IsPostProcessVisualizeCalibrationMaterialEnabled(View))
+				{
+					const UMaterialInterface* DebugMaterialInterface = GetPostProcessVisualizeCalibrationMaterialInterface(View);
+					check(DebugMaterialInterface);
+
+					SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+					RDG_EVENT_SCOPE_CONDITIONAL(GraphBuilder, Views.Num() > 1, "View%d", ViewIndex);
+					AddVisualizeCalibrationMaterialPostProcessingPasses(GraphBuilder, View, PostProcessingInputs, DebugMaterialInterface);
+
+				}
+				else
+				{
+#endif
+					SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+					RDG_EVENT_SCOPE_CONDITIONAL(GraphBuilder, Views.Num() > 1, "View%d", ViewIndex);
+					AddPostProcessingPasses(GraphBuilder, View, PostProcessingInputs);
+
+#if !(UE_BUILD_SHIPPING)
+				}
+#endif
 			}
 		}
 

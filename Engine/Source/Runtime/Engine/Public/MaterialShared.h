@@ -798,7 +798,12 @@ public:
 	/** A hash of the base property overrides for this material instance. */
 	FSHAHash BasePropertyOverridesHash;
 #endif // WITH_EDITOR
-	
+
+	/*
+	 * Type layout parameters of the memory image
+	 */
+	FPlatformTypeLayoutParameters LayoutParams;
+
 	FMaterialShaderMapId()
 		: QualityLevel(EMaterialQualityLevel::High)
 		, FeatureLevel(ERHIFeatureLevel::SM5)
@@ -884,7 +889,7 @@ public:
 	void UpdateFromParameterSet(const FStaticParameterSet& StaticParameters);
 
 	/** Appends string representations of this Id to a key string. */
-	void AppendKeyString(const FPlatformTypeLayoutParameters& LayoutParameters, FString& KeyString) const;
+	void AppendKeyString(FString& KeyString) const;
 
 	const TArray<FStaticSwitchParameter> &GetStaticSwitchParameters() const 					{ return StaticSwitchParameters; }
 	const TArray<FStaticComponentMaskParameter> &GetStaticComponentMaskParameters() const 		{ return StaticComponentMaskParameters; }
@@ -1037,7 +1042,7 @@ public:
 
 	/**
 	 * Finds the shader map for a material.
-	 * @param StaticParameterSet - The static parameter set identifying the shader map
+	 * @param ShaderMapId - The static parameter set and other properties identifying the shader map
 	 * @param Platform - The platform to lookup for
 	 * @return NULL if no cached shader map was found.
 	 */
@@ -1280,7 +1285,7 @@ private:
 	float CompileTime;
 #endif
 
-	/** The static parameter set that this shader map was compiled with */
+	/** The static parameter set that this shader map was compiled with and other parameters unique to this shadermap */
 	FMaterialShaderMapId ShaderMapId;
 
 	/** The platform being compiled, or nullptr for current platform */
@@ -1311,7 +1316,7 @@ private:
 	/** Indicates whether the shader map should be stored in the shader cache. */
 	uint32 bIsPersistent : 1;
 
-	FShader* ProcessCompilationResultsForSingleJob(class FShaderCompileJob* SingleJob, const FShaderPipelineType* ShaderPipeline, const FSHAHash& MaterialShaderMapHash, FShaderMapResourceBuilder& ResourceBuilder);
+	FShader* ProcessCompilationResultsForSingleJob(class FShaderCompileJob* SingleJob, const FShaderPipelineType* ShaderPipeline, const FSHAHash& MaterialShaderMapHash);
 
 	friend ENGINE_API void DumpMaterialStats( EShaderPlatform Platform );
 	friend class FShaderCompilingManager;
@@ -1516,7 +1521,7 @@ public:
 	void DiscardShaderMap();
 
 	// Material properties.
-	ENGINE_API virtual void GetShaderMapId(EShaderPlatform Platform, FMaterialShaderMapId& OutId) const;
+	ENGINE_API virtual void GetShaderMapId(EShaderPlatform Platform, const ITargetPlatform* TargetPlatform, FMaterialShaderMapId& OutId) const;
 #if WITH_EDITORONLY_DATA
 	ENGINE_API virtual void GetStaticParameterSet(EShaderPlatform Platform, FStaticParameterSet& OutSet) const;
 #endif // WITH_EDITORONLY_DATA
@@ -1621,7 +1626,7 @@ public:
 	virtual uint32 GetStencilCompare() const { return 0; }
 	virtual bool HasRuntimeVirtualTextureOutput() const { return false; }
 	virtual bool CastsRayTracedShadows() const { return true; }
-
+	virtual EMaterialShadingRate GetShadingRate() const { return MSR_1x1; }
 	/**
 	 * Should shaders compiled for this material be saved to disk?
 	 */
@@ -2323,7 +2328,7 @@ public:
 	ENGINE_API virtual FString GetMaterialUsageDescription() const override;
 
 	// FMaterial interface.
-	ENGINE_API virtual void GetShaderMapId(EShaderPlatform Platform, FMaterialShaderMapId& OutId) const override;
+	ENGINE_API virtual void GetShaderMapId(EShaderPlatform Platform, const ITargetPlatform* TargetPlatform, FMaterialShaderMapId& OutId) const override;
 #if WITH_EDITORONLY_DATA
 	ENGINE_API virtual void GetStaticParameterSet(EShaderPlatform Platform, FStaticParameterSet& OutSet) const override;
 #endif
@@ -2350,6 +2355,7 @@ public:
 	ENGINE_API virtual bool IsDeferredDecal() const override;
 	ENGINE_API virtual bool IsVolumetricPrimitive() const override;
 	ENGINE_API virtual bool IsWireframe() const override;
+	ENGINE_API virtual EMaterialShadingRate  GetShadingRate() const override;
 	ENGINE_API virtual bool IsUIMaterial() const override;
 	ENGINE_API virtual bool IsSpecialEngineMaterial() const override;
 	ENGINE_API virtual bool IsUsedWithSkeletalMesh() const override;
@@ -2855,7 +2861,7 @@ private:
 	const FMaterialResource& Resource;
 };
 
-class FMaterialResourceProxyReader final : public FArchiveProxy
+class FMaterialResourceProxyReader final : private TUniquePtr<FArchive>, public FArchiveProxy
 {
 public:
 	FMaterialResourceProxyReader(
@@ -2894,7 +2900,6 @@ private:
 	TArray<FName> Names;
 	int64 OffsetToFirstResource;
 	int64 OffsetToEnd;
-	bool bReleaseInnerArchive;
 
 	void Initialize(
 		ERHIFeatureLevel::Type FeatureLevel,

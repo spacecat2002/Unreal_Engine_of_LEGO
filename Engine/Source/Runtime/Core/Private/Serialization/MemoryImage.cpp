@@ -3,22 +3,32 @@
 #include "Serialization/MemoryImage.h"
 #include "Containers/UnrealString.h"
 #include "Misc/SecureHash.h"
+#include "Misc/StringBuilder.h"
 #include "Interfaces/ITargetPlatform.h"
 #include "UObject/NameTypes.h"
 #include "Hash/CityHash.h"
 #include "ProfilingDebugging/LoadTimeTracker.h"
 #include "Misc/ScopeRWLock.h"
 #include "Misc/DataDrivenPlatformInfoRegistry.h"
+#include "Serialization/Archive.h"
 #include "Misc/MemStack.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogMemoryImage, Log, All);
 
 IMPLEMENT_TYPE_LAYOUT(FMemoryImageString);
+IMPLEMENT_TYPE_LAYOUT(FPlatformTypeLayoutParameters);
 IMPLEMENT_TYPE_LAYOUT(FHashedName);
 
 static const uint32 NumTypeLayoutDescHashBuckets = 4357u;
 static const FTypeLayoutDesc* GTypeLayoutHashBuckets[NumTypeLayoutDescHashBuckets] = { nullptr };
 static uint32 GNumTypeLayoutsRegistered = 0u;
+
+bool FPlatformTypeLayoutParameters::IsCurrentPlatform() const
+{
+	FPlatformTypeLayoutParameters CurrentPlatform;
+	CurrentPlatform.InitializeForCurrent();
+	return *this == CurrentPlatform;
+}
 
 void FPlatformTypeLayoutParameters::InitializeForArchive(FArchive& Ar)
 {
@@ -37,23 +47,26 @@ void FPlatformTypeLayoutParameters::InitializeForPlatform(const FString& Platfor
 {
 	const FDataDrivenPlatformInfoRegistry::FPlatformInfo& PlatformInfo = FDataDrivenPlatformInfoRegistry::GetPlatformInfo(PlatformName);
 
-	bWithEditorOnly = bHasEditorOnlyData;
-	bWithRayTracing = PlatformInfo.Freezing_bWithRayTracing;
-	b32Bit = PlatformInfo.Freezing_b32Bit;
-	bForce64BitMemoryImagePointers = PlatformInfo.Freezing_bForce64BitMemoryImagePointers;
-	bAlignBases = PlatformInfo.Freezing_bAlignBases;
+	Flags = Flag_Initialized;
+	if (bHasEditorOnlyData) Flags |= Flag_WithEditorOnly;
+	if (PlatformInfo.Freezing_bWithRayTracing) Flags |= Flag_WithRaytracing;
+	if (PlatformInfo.Freezing_b32Bit) Flags |= Flag_Is32Bit;
+	if (PlatformInfo.Freezing_bForce64BitMemoryImagePointers) Flags |= Flag_Force64BitMemoryImagePointers;
+	if (PlatformInfo.Freezing_bAlignBases) Flags |= Flag_AlignBases;
+
 	MaxFieldAlignment = PlatformInfo.Freezing_MaxFieldAlignment;
 }
 
 void FPlatformTypeLayoutParameters::InitializeForCurrent()
 {
-	bWithEditorOnly = WITH_EDITORONLY_DATA;
-	bWithRayTracing = WITH_RAYTRACING;
-	b32Bit = PLATFORM_32BITS;
-	bForce64BitMemoryImagePointers = UE_FORCE_64BIT_MEMORY_IMAGE_POINTERS;
+	Flags = Flag_Initialized;
+	if (WITH_EDITORONLY_DATA) Flags |= Flag_WithEditorOnly;
+	if (WITH_RAYTRACING) Flags |= Flag_WithRaytracing;
+	if (PLATFORM_32BITS) Flags |= Flag_Is32Bit;
+	if (UE_FORCE_64BIT_MEMORY_IMAGE_POINTERS) Flags |= Flag_Force64BitMemoryImagePointers;
+
 	check(GetRawPointerSize() == sizeof(void*));
 	check(GetMemoryImagePointerSize() == sizeof(FMemoryImagePtrInt));
-	bIsCurrentPlatform = true;
 
 #if defined(__clang__)
 	InitializeForClang();
@@ -64,20 +77,27 @@ void FPlatformTypeLayoutParameters::InitializeForCurrent()
 
 void FPlatformTypeLayoutParameters::InitializeForMSVC()
 {
-	bAlignBases = true;
+	Flags |= Flag_AlignBases;
 
 	// This corresponds to the value used by /Zp#
-	MaxFieldAlignment = b32Bit ? 4u : 8u;
+	MaxFieldAlignment = Is32Bit() ? 4u : 8u;
 }
 
 void FPlatformTypeLayoutParameters::InitializeForClang()
 {
-	bAlignBases = false;
+	// nothing
+}
+
+FArchive& FPlatformTypeLayoutParameters::Serialize(FArchive& Ar)
+{
+	// if you change this code, please bump MATERIALSHADERMAP_DERIVEDDATA_VER (see FMaterialShaderMap::Serialize)
+	// since this is a part of ShaderMapId
+	return Ar << MaxFieldAlignment << Flags;
 }
 
 void FPlatformTypeLayoutParameters::AppendKeyString(FString& KeyString) const
 {
-	if (b32Bit && bForce64BitMemoryImagePointers)
+	if (Is32Bit() && HasForce64BitMemoryImagePointers())
 	{
 		KeyString += TEXT("FIX_");
 	}
@@ -153,7 +173,7 @@ static void InitializeSizeFromFields(FTypeLayoutDesc& TypeLayout, const FPlatfor
 
 			if (PaddedFieldSize > 0u)
 			{
-				if (!bIsBase || PlatformLayoutParams.bAlignBases)
+				if (!bIsBase || PlatformLayoutParams.HasAlignBases())
 				{
 					const uint32 FieldSize = Align(PaddedFieldSize, FieldTypeAlignment);
 					check(FieldSize == FieldType.Size);
@@ -311,11 +331,11 @@ bool Freeze::IncludeField(const FFieldLayoutDesc* FieldDesc, const FPlatformType
 	const bool bIsEditorOnly = (FieldDesc->Flags & EFieldLayoutFlags::WithEditorOnly) != 0u;
 	const bool bIsRayTracing = (FieldDesc->Flags & EFieldLayoutFlags::WithRayTracing) != 0u;
 
-	if (bIsEditorOnly && !LayoutParams.bWithEditorOnly)
+	if (bIsEditorOnly && !LayoutParams.WithEditorOnly())
 	{
 		return false;
 	}
-	if (bIsRayTracing && !LayoutParams.bWithRayTracing)
+	if (bIsRayTracing && !LayoutParams.WithRaytracing())
 	{
 		return false;
 	}
@@ -430,7 +450,7 @@ void Freeze::DefaultWriteMemoryImage(FMemoryImageWriter& Writer, const void* Obj
 								Object,
 								FieldObject + ArrayIndex * FieldType.Size,
 								FieldType, bIsBase ? DerivedTypeDesc : FieldType);
-							if (!bIsBase || TargetLayoutParams.bAlignBases)
+							if (!bIsBase || TargetLayoutParams.HasAlignBases())
 							{
 								// Align the field size
 								const uint32 FieldSize = Writer.GetOffset() - FieldOffset;
@@ -538,10 +558,10 @@ uint32 Freeze::DefaultAppendHash(const FTypeLayoutDesc& TypeLayout, const FPlatf
 				const bool bIsBase = (FieldIndex < TypeLayout.NumBases);
 				const uint32 FieldTypeAlignment = GetTargetAlignment(FieldType, LayoutParams);
 				const uint32 FieldAlignment = FMath::Min(FieldTypeAlignment, LayoutParams.MaxFieldAlignment);
-				check(!LayoutParams.bIsCurrentPlatform || FieldTypeAlignment == FieldType.Alignment);
+				check(!LayoutParams.IsCurrentPlatform() || FieldTypeAlignment == FieldType.Alignment);
 
 				Offset = Align(Offset, FieldAlignment);
-				check(!LayoutParams.bIsCurrentPlatform || CheckOffsetMatch(Offset, Field->Offset, FieldType, bIsBase));
+				check(!LayoutParams.IsCurrentPlatform() || CheckOffsetMatch(Offset, Field->Offset, FieldType, bIsBase));
 
 				Hasher.Update((uint8*)&Offset, sizeof(Offset));
 				Hasher.Update((uint8*)&Field->NumArray, sizeof(Field->NumArray));
@@ -570,7 +590,7 @@ uint32 Freeze::DefaultAppendHash(const FTypeLayoutDesc& TypeLayout, const FPlatf
 
 				if (PaddedFieldSize > 0u)
 				{
-					if (!bIsBase || LayoutParams.bAlignBases)
+					if (!bIsBase || LayoutParams.HasAlignBases())
 					{
 						const uint32 FieldSize = Align(PaddedFieldSize, FieldTypeAlignment);
 						Offset += FieldSize * Field->NumArray;
@@ -611,7 +631,7 @@ uint32 Freeze::DefaultAppendHash(const FTypeLayoutDesc& TypeLayout, const FPlatf
 		Field = Field->Next;
 	}
 
-	check(!LayoutParams.bIsCurrentPlatform || Offset == TypeLayout.SizeFromFields);
+	check(!LayoutParams.IsCurrentPlatform() || Offset == TypeLayout.SizeFromFields);
 	return Offset;
 }
 
@@ -644,6 +664,142 @@ uint32 Freeze::DefaultGetTargetAlignment(const FTypeLayoutDesc& TypeDesc, const 
 	}
 
 	return Alignment;
+}
+
+void FMemoryToStringContext::AppendNullptr()
+{
+	String->Append(TEXT("nullptr\n"));
+}
+
+void FMemoryToStringContext::AppendIndent()
+{
+	for (int32 i = 0; i < Indent; ++i)
+	{
+		String->Append(TEXT("    "));
+	}
+}
+
+void Freeze::DefaultToString(const void* Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext)
+{
+	OutContext.String->Appendf(TEXT("%s\n"), TypeDesc.Name);
+	++OutContext.Indent;
+
+	const FFieldLayoutDesc* FieldDesc = TypeDesc.Fields;
+	while (FieldDesc)
+	{
+		if (Freeze::IncludeField(FieldDesc, LayoutParams))
+		{
+			const FTypeLayoutDesc& FieldType = *FieldDesc->Type;
+			const uint8* FieldObject = (uint8*)Object + FieldDesc->Offset;
+
+			OutContext.AppendIndent();
+			OutContext.String->Appendf(TEXT("%s: "), FieldDesc->Name);
+
+			if (FieldDesc->BitFieldSize == 0u)
+			{
+				FieldType.ToStringFunc(FieldObject, FieldType, LayoutParams, OutContext);
+			}
+			else
+			{
+				OutContext.String->Append(TEXT("(BITFIELD)\n"));
+			}
+		}
+
+		FieldDesc = FieldDesc->Next;
+	}
+
+	--OutContext.Indent;
+}
+
+uint32 Freeze::IntrinsicAppendHash(void* const* DummyObject, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FSHA1& Hasher)
+{
+	return AppendHashForNameAndSize(TypeDesc.Name, LayoutParams.GetRawPointerSize(), Hasher);
+}
+
+uint32 Freeze::IntrinsicGetTargetAlignment(void* const* DummyObject, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams)
+{
+	return LayoutParams.GetRawPointerSize();
+}
+
+void Freeze::IntrinsicToString(char Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext)
+{
+	OutContext.String->Appendf(TEXT("%d\n"), Object);
+}
+void Freeze::IntrinsicToString(short Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext)
+{
+	OutContext.String->Appendf(TEXT("%d\n"), Object);
+}
+void Freeze::IntrinsicToString(int Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext)
+{
+	OutContext.String->Appendf(TEXT("%d\n"), Object);
+}
+void Freeze::IntrinsicToString(int8 Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext)
+{
+	OutContext.String->Appendf(TEXT("%d\n"), Object);
+}
+void Freeze::IntrinsicToString(long Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext)
+{
+	OutContext.String->Appendf(TEXT("%d\n"), Object);
+}
+void Freeze::IntrinsicToString(long long Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext)
+{
+	OutContext.String->Appendf(TEXT("%d\n"), Object);
+}
+void Freeze::IntrinsicToString(unsigned char Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext)
+{
+	OutContext.String->Appendf(TEXT("%d\n"), Object);
+}
+void Freeze::IntrinsicToString(unsigned short Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext)
+{
+	OutContext.String->Appendf(TEXT("%d\n"), Object);
+}
+void Freeze::IntrinsicToString(unsigned int Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext)
+{
+	OutContext.String->Appendf(TEXT("%d\n"), Object);
+}
+void Freeze::IntrinsicToString(unsigned long Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext)
+{
+	OutContext.String->Appendf(TEXT("%d\n"), Object);
+}
+void Freeze::IntrinsicToString(unsigned long long Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext)
+{
+	OutContext.String->Appendf(TEXT("%d\n"), Object);
+}
+void Freeze::IntrinsicToString(float Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext)
+{
+	OutContext.String->Appendf(TEXT("%g\n"), Object);
+}
+void Freeze::IntrinsicToString(double Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext)
+{
+	OutContext.String->Appendf(TEXT("%g\n"), Object);
+}
+void Freeze::IntrinsicToString(wchar_t Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext)
+{
+	OutContext.String->Appendf(TEXT("%d\n"), Object);
+}
+void Freeze::IntrinsicToString(char16_t Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext)
+{
+	OutContext.String->Appendf(TEXT("%d\n"), Object);
+}
+void Freeze::IntrinsicToString(void* Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext)
+{
+	OutContext.String->Appendf(TEXT("%p\n"), Object);
+}
+void Freeze::IntrinsicToString(const FHashedName& Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext)
+{
+	OutContext.String->Appendf(TEXT("%016llX\n"), Object.GetHash());
+}
+
+void FMemoryImageString::ToString(FMemoryToStringContext& OutContext) const
+{
+	if (Data.Num() > 0)
+	{
+		OutContext.String->Appendf(TEXT("\"%s\"\n"), Data.GetData());
+	}
+	else
+	{
+		OutContext.String->Append(TEXT("\"\"\n"));
+	}
 }
 
 uint32 Freeze::AppendHash(const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FSHA1& Hasher)
@@ -1160,7 +1316,7 @@ FMemoryImageSection* FMemoryImageSection::WritePointer(const FString& SectionNam
 
 uint32 FMemoryImageSection::WriteRawPointerSizedBytes(uint64 PointerValue)
 {
-	if (ParentImage->TargetLayoutParameters.b32Bit)
+	if (ParentImage->TargetLayoutParameters.Is32Bit())
 	{
 		return WriteBytes((uint32)PointerValue);
 	}
@@ -1199,7 +1355,7 @@ uint32 FMemoryImageSection::WriteFName(const FName& Name)
 {
 	const FPlatformTypeLayoutParameters& TargetLayoutParameters = ParentImage->TargetLayoutParameters;
 	uint32 Offset = 0u;
-	if (TargetLayoutParameters.bWithEditorOnly)
+	if (TargetLayoutParameters.WithEditorOnly())
 	{
 		Offset = WriteBytes(FScriptName());
 	}

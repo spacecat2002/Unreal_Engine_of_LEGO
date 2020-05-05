@@ -178,6 +178,7 @@ public:
 	LAYOUT_FIELD(TMemoryImageArray<FShaderParameterInfo>, TextureSamplers);
 	LAYOUT_FIELD(TMemoryImageArray<FShaderParameterInfo>, SRVs);
 	LAYOUT_FIELD(TMemoryImageArray<FShaderLooseParameterBufferInfo>, LooseParameterBuffers);
+	LAYOUT_FIELD(uint64, Hash);
 
 	friend FArchive& operator<<(FArchive& Ar,FShaderParameterMapInfo& Info)
 	{
@@ -185,15 +186,13 @@ public:
 		Ar << Info.TextureSamplers;
 		Ar << Info.SRVs;
 		Ar << Info.LooseParameterBuffers;
+		Ar << Info.Hash;
 		return Ar;
 	}
 
 	inline bool operator==(const FShaderParameterMapInfo& Rhs) const
 	{
-		return UniformBuffers == Rhs.UniformBuffers
-			&& TextureSamplers == Rhs.TextureSamplers
-			&& SRVs == Rhs.SRVs
-			&& LooseParameterBuffers == Rhs.LooseParameterBuffers;
+		return Hash == Rhs.Hash;
 	}
 };
 
@@ -282,15 +281,14 @@ class FShaderMapResourceCode : public FThreadSafeRefCountedObject
 public:
 	struct FShaderEntry
 	{
-		uint32 Offset;
-		uint32 UncompressedSize;
-		uint32 CompressedSize;
+		TArray<uint8> Code;
+		int32 UncompressedSize;
 		EShaderFrequency Frequency;
 
 		friend FArchive& operator<<(FArchive& Ar, FShaderEntry& Entry)
 		{
 			uint8 Freq = Entry.Frequency;
-			Ar << Entry.Offset << Entry.UncompressedSize << Entry.CompressedSize << Freq;
+			Ar << Entry.Code << Entry.UncompressedSize << Freq;
 			Entry.Frequency = (EShaderFrequency)Freq;
 			return Ar;
 		}
@@ -318,18 +316,31 @@ public:
 	RENDERCORE_API void NotifyShadersCooked(const ITargetPlatform* TargetPlatform);
 #endif // WITH_EDITORONLY_DATA
 
-	inline const uint32 GetSizeBytes() const
+	RENDERCORE_API uint32 GetSizeBytes() const;
+
+	inline void AddShaderCompilerOutput(const FShaderCompilerOutput& Output)
 	{
-		return sizeof(*this) + ShaderHashes.GetAllocatedSize() + ShaderEntries.GetAllocatedSize() + ShaderCode.GetAllocatedSize();
+#if WITH_EDITORONLY_DATA
+		AddPlatformDebugData(Output.PlatformDebugData);
+#endif
+		AddShaderCode(Output.Target.GetFrequency(), Output.OutputHash, Output.ShaderCode.GetReadAccess());
 	}
+
+	int32 FindShaderIndex(const FSHAHash& InHash) const;
+
+	RENDERCORE_API void AddShaderCode(EShaderFrequency InFrequency, const FSHAHash& InHash, TConstArrayView<uint8> InCode);
+#if WITH_EDITORONLY_DATA
+	RENDERCORE_API void AddPlatformDebugData(TConstArrayView<uint8> InPlatformDebugData);
+#endif
+
+	RENDERCORE_API void ToString(FStringBuilderBase& OutString) const;
 
 	FSHAHash ResourceHash;
 	TArray<FSHAHash> ShaderHashes;
 	TArray<FShaderEntry> ShaderEntries;
-	TArray<uint8> ShaderCode;
 #if WITH_EDITORONLY_DATA
-	TArray<FPlatformDebugEntry> PlatformDebugEntries;
-	TArray<uint8> PlatformDebugData;
+	TArray<TArray<uint8>> PlatformDebugData;
+	TArray<FSHAHash> PlatformDebugDataHashes;
 #endif // WITH_EDITORONLY_DATA
 };
 	
@@ -617,7 +628,6 @@ struct FShadereCompiledShaderInitializerType
 	FSHAHash MaterialShaderMapHash;
 	const FShaderPipelineType* ShaderPipeline;
 	FVertexFactoryType* VertexFactoryType;
-	int32 ResourceIndex;
 	uint32 NumInstructions;
 	uint32 NumTextureSamplers;
 	uint32 CodeSize;
@@ -627,12 +637,17 @@ struct FShadereCompiledShaderInitializerType
 		FShaderType* InType,
 		int32 InPermutationId,
 		const FShaderCompilerOutput& CompilerOutput,
-		int32 InResourceIndex,
 		const FSHAHash& InMaterialShaderMapHash,
 		const FShaderPipelineType* InShaderPipeline,
 		FVertexFactoryType* InVertexFactoryType
 	);
 };
+
+namespace Freeze
+{
+	RENDERCORE_API void IntrinsicToString(const TIndexedPtr<FShaderType>& Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext);
+	RENDERCORE_API void IntrinsicToString(const TIndexedPtr<FVertexFactoryType>& Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext);
+}
 
 DECLARE_EXPORTED_TEMPLATE_INTRINSIC_TYPE_LAYOUT(template<>, TIndexedPtr<FShaderType>, RENDERCORE_API);
 DECLARE_EXPORTED_TEMPLATE_INTRINSIC_TYPE_LAYOUT(template<>, TIndexedPtr<FVertexFactoryType>, RENDERCORE_API);
@@ -677,13 +692,15 @@ public:
 	
 	const FSHAHash& GetOutputHash() const;
 
+	void Finalize(const FShaderMapResourceCode* Code);
+
 	// Accessors.
 	inline FShaderType* GetType(const FShaderMapPointerTable& InPointerTable) const { return Type.Get(InPointerTable.ShaderTypes); }
 	inline FShaderType* GetType(const FPointerTableBase* InPointerTable) const { return Type.Get(InPointerTable); }
 	inline FVertexFactoryType* GetVertexFactoryType(const FShaderMapPointerTable& InPointerTable) const { return VFType.Get(InPointerTable.VFTypes); }
 	inline FVertexFactoryType* GetVertexFactoryType(const FPointerTableBase* InPointerTable) const { return VFType.Get(InPointerTable); }
 	inline FShaderType* GetTypeUnfrozen() const { return Type.GetUnfrozen(); }
-	inline int32 GetResourceIndex() const { return ResourceIndex; }
+	inline int32 GetResourceIndex() const { checkSlow(ResourceIndex != INDEX_NONE); return ResourceIndex; }
 	inline EShaderPlatform GetShaderPlatform() const { return Target.GetPlatform(); }
 	inline EShaderFrequency GetFrequency() const { return Target.GetFrequency(); }
 	inline const FShaderTarget GetTarget() const { return Target; }
@@ -1642,6 +1659,8 @@ public:
 
 	void Validate(const FShaderPipelineType* InPipelineType) const;
 
+	void Finalize(const FShaderMapResourceCode* Code);
+
 	enum EFilter
 	{
 		EAll,			// All pipelines
@@ -1843,7 +1862,7 @@ public:
 
 	uint32 GetMaxNumInstructionsForShader(const FShaderMapBase& InShaderMap, FShaderType* ShaderType) const;
 
-	void Finalize();
+	void Finalize(const FShaderMapResourceCode* Code);
 
 	void UpdateHash(FSHA1& Hasher) const;
 
@@ -1885,6 +1904,8 @@ public:
 	void FinalizeContent();
 	void UnfreezeContent();
 	bool Serialize(FArchive& Ar, bool bInlineShaderResources, bool bLoadedByCookedMaterial);
+
+	FString ToString() const;
 
 #if WITH_EDITOR
 	inline void GetOutdatedTypes(TArray<const FShaderType*>& OutdatedShaderTypes, TArray<const FShaderPipelineType*>& OutdatedShaderPipelineTypes, TArray<const FVertexFactoryType*>& OutdatedFactoryTypes) const
@@ -1936,7 +1957,9 @@ public:
 
 	void FinalizeContent()
 	{
-		this->GetMutableContent()->Finalize();
+		ContentType* LocalContent = this->GetMutableContent();
+		check(LocalContent);
+		LocalContent->Finalize(this->GetResourceCode());
 		FShaderMapBase::FinalizeContent();
 	}
 

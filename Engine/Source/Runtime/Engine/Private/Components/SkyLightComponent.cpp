@@ -188,6 +188,7 @@ FSkyLightSceneProxy::FSkyLightSceneProxy(const USkyLightComponent* InLightCompon
 	, bCastRayTracedShadow(InLightComponent->bCastRaytracedShadow)
 	, bAffectReflection(InLightComponent->bAffectReflection)
 	, bAffectGlobalIllumination(InLightComponent->bAffectGlobalIllumination)
+	, bTransmission(InLightComponent->bTransmission)
 	, OcclusionCombineMode(InLightComponent->OcclusionCombineMode)
 	, IndirectLightingIntensity(InLightComponent->IndirectLightingIntensity)
 	, VolumetricScatteringIntensity(FMath::Max(InLightComponent->VolumetricScatteringIntensity, 0.0f))
