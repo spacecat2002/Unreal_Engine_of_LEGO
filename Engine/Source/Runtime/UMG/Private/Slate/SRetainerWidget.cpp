@@ -223,7 +223,13 @@ bool SRetainerWidget::IsAnythingVisibleToRender() const
 
 void SRetainerWidget::OnRetainerModeChanged()
 {
+	if (MyWidget.IsValid())
+	{
+		InvalidateChildRemovedFromTree(*MyWidget.Get());
+	}
+
 	RefreshRenderingMode();
+
 	// Invalidate myself 
 	InvalidateRoot();
 
@@ -252,9 +258,11 @@ void SRetainerWidget::OnRetainerModeCVarChanged( IConsoleVariable* CVar )
 
 void SRetainerWidget::SetRetainedRendering(bool bRetainRendering)
 {
-	bEnableRetainedRenderingDesire = bRetainRendering;
-
-	RefreshRenderingMode();
+	if (bEnableRetainedRenderingDesire != bRetainRendering)
+	{
+		bEnableRetainedRenderingDesire = bRetainRendering;
+		OnRetainerModeChanged();
+	}
 }
 
 void SRetainerWidget::RefreshRenderingMode()
