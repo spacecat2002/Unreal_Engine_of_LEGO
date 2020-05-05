@@ -52,7 +52,7 @@ float BoundsThicknessVelocityMultiplier = 2.0f;
 FAutoConsoleVariableRef CVarBoundsThickness(TEXT("p.CollisionBoundsThickness"), BoundsThickness, TEXT("Collision inflation for speculative contact generation.[def:0.0]"));
 FAutoConsoleVariableRef CVarBoundsThicknessVelocityMultiplier(TEXT("p.CollisionBoundsVelocityInflation"), BoundsThicknessVelocityMultiplier, TEXT("Collision velocity inflation for speculatibe contact generation.[def:2.0]"));
 
-float HackCCD_EnableThreshold = -1.f;//0.3f;
+float HackCCD_EnableThreshold = -1.f;
 FAutoConsoleVariableRef CVarHackCCDVelThreshold(TEXT("p.Chaos.CCD.EnableThreshold"), HackCCD_EnableThreshold, TEXT("If distance moved is greater than this times the minimum object dimension, use CCD"));
 
 float HackCCD_DepthThreshold = 0.05f;
@@ -449,7 +449,7 @@ template <typename Traits>
 TPBDRigidsEvolutionGBF<Traits>::TPBDRigidsEvolutionGBF(TPBDRigidsSOAs<FReal,3>& InParticles,THandleArray<FChaosPhysicsMaterial>& SolverPhysicsMaterials,int32 InNumIterations,int32 InNumPushoutIterations,bool InIsSingleThreaded)
 	: Base(InParticles, SolverPhysicsMaterials, InNumIterations, InNumPushoutIterations, InIsSingleThreaded)
 	, Clustering(*this, Particles.GetClusteredParticles())
-	, CollisionConstraints(InParticles, Collided, PhysicsMaterials, DefaultNumPairIterations, DefaultNumPushOutPairIterations)
+	, CollisionConstraints(InParticles, Collided, PhysicsMaterials, PerParticlePhysicsMaterials, DefaultNumPairIterations, DefaultNumPushOutPairIterations)
 	, CollisionRule(CollisionConstraints)
 	, BroadPhase(InParticles, BoundsThickness, BoundsThicknessVelocityMultiplier)
 	, NarrowPhase()

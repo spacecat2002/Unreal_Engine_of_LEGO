@@ -15,6 +15,7 @@
 #include "Chaos/SpatialAccelerationCollection.h"
 #include "Chaos/EvolutionTraits.h"
 #include "Chaos/PBDRigidsEvolutionFwd.h"
+#include "Chaos/Defines.h"
 
 
 extern int32 ChaosRigidsEvolutionApplyAllowEarlyOutCVar;
@@ -23,7 +24,11 @@ extern int32 ChaosNumPushOutIterationsOverride;
 extern int32 ChaosNumContactIterationsOverride;
 
 // Declaring so it can be friended for tests.
-namespace ChaosTest { void TestPendingSpatialDataHandlePointerConflict(); } 
+namespace ChaosTest
+{
+	template <typename TEvolution>
+	void TestPendingSpatialDataHandlePointerConflict();
+} 
 
 namespace Chaos
 {
@@ -232,6 +237,7 @@ class TPBDRigidsEvolutionBase
 	typedef TFunction<void(TPBDRigidParticles<FReal, 3>&, const FReal, const FReal, const int32)> FKinematicUpdateRule;
 	typedef TFunction<void(TParticleView<TPBDRigidParticles<FReal,3>>&)> FCaptureRewindRule;
 
+	template <typename TEvolution>
 	friend void ChaosTest::TestPendingSpatialDataHandlePointerConflict();
 
 	CHAOS_API TPBDRigidsEvolutionBase(TPBDRigidsSOAs<FReal, 3>& InParticles, THandleArray<FChaosPhysicsMaterial>& InSolverPhysicsMaterials, int32 InNumIterations = 1, int32 InNumPushOutIterations = 1, bool InIsSingleThreaded = false);
@@ -328,7 +334,6 @@ class TPBDRigidsEvolutionBase
 		RemoveParticleFromAccelerationStructure(*Particle);
 		Particles.DisableParticle(Particle);
 		ConstraintGraph.DisableParticle(Particle);
-
 		RemoveConstraints(TSet<TGeometryParticleHandle<FReal, 3>*>({ Particle }));
 	}
 
@@ -432,7 +437,6 @@ class TPBDRigidsEvolutionBase
 		}
 
 		ConstraintGraph.DisableParticles(InParticles);
-
 		RemoveConstraints(InParticles);
 	}
 
@@ -449,9 +453,13 @@ class TPBDRigidsEvolutionBase
 	// @todo(ccaulfield): Remove the uint version
 	CHAOS_API void RemoveConstraints(const TSet<TGeometryParticleHandle<FReal, 3>*>& RemovedParticles)
 	{
-		for (FPBDConstraintGraphRule* ConstraintRule : ConstraintRules)
+		// Only remove constraints if we have the possibility of rewinding state. Otherwise they will be rebuilt next frame
+		if(ChaosClusteringChildrenInheritVelocity < 1.0f)
 		{
-			ConstraintRule->RemoveConstraints(RemovedParticles);
+			for(FPBDConstraintGraphRule* ConstraintRule : ConstraintRules)
+			{
+				ConstraintRule->RemoveConstraints(RemovedParticles);
+			}
 		}
 	}
 
@@ -465,7 +473,6 @@ class TPBDRigidsEvolutionBase
 
 	CHAOS_API void SetPerParticlePhysicsMaterial(TGeometryParticleHandle<FReal, 3>* Particle, TUniquePtr<FChaosPhysicsMaterial> &InMaterial)
 	{
-		check(!Particle->AuxilaryValue(PerParticlePhysicsMaterials)); //shouldn't be setting non unique material if a unique one already exists
 		Particle->AuxilaryValue(PerParticlePhysicsMaterials) = MoveTemp(InMaterial);
 	}
 
@@ -573,7 +580,7 @@ class TPBDRigidsEvolutionBase
 				// Nothing to do
 				break;
 
-			case EKinematicTargetMode::Zero:
+			case EKinematicTargetMode::Reset:
 			{
 				// Reset velocity and then switch to do-nothing mode
 				Particle.V() = FVec3(0, 0, 0);
@@ -592,7 +599,7 @@ class TPBDRigidsEvolutionBase
 				{
 					TargetPos = KinematicTarget.GetTarget().GetLocation();
 					TargetRot = KinematicTarget.GetTarget().GetRotation();
-					KinematicTarget.SetMode(EKinematicTargetMode::Zero);
+					KinematicTarget.SetMode(EKinematicTargetMode::Reset);
 				}
 				else
 				{
@@ -912,11 +919,7 @@ protected:
 	TUniquePtr<ISpatialAccelerationCollectionFactory> SpatialCollectionFactory;
 };
 
-#if PLATFORM_MAC
-#define EVOLUTION_TRAIT(Trait) extern template class CHAOS_API TPBDRigidsEvolutionBase<Trait>;
-#else
-#define EVOLUTION_TRAIT(Trait) extern template class TPBDRigidsEvolutionBase<Trait>;
-#endif
+#define EVOLUTION_TRAIT(Trait) extern template class CHAOS_TEMPLATE_API TPBDRigidsEvolutionBase<Trait>;
 #include "Chaos/EvolutionTraits.inl"
 #undef EVOLUTION_TRAIT
 

@@ -570,7 +570,7 @@ UMaterialInterface* ULandscapeComponent::GetLandscapeMaterial(int8 InLODIndex) c
 		{
 			for (const FLandscapeComponentMaterialOverride& Material : OverrideMaterials)
 			{
-				if (Material.LODIndex.GetValueForFeatureLevel(World->FeatureLevel) == InLODIndex)
+				if (Material.LODIndex.GetValue() == InLODIndex)
 				{
 					if (Material.Material != nullptr)
 					{
@@ -2099,11 +2099,12 @@ void ALandscapeProxy::PreSave(const class ITargetPlatform* TargetPlatform)
 
 #if WITH_EDITOR
 	// Work out whether we have grass or not for the next game run
-	if (!HasAnyFlags(RF_ClassDefaultObject))
-	{
-		bHasLandscapeGrass = LandscapeComponents.ContainsByPredicate([](ULandscapeComponent* Component) { return Component->MaterialHasGrass(); });
+	BuildGrassMaps();
 
-		UpdateGrassData();
+	for (ULandscapeComponent* Component : LandscapeComponents)
+	{
+		// Reset flag
+		Component->GrassData->bIsDirty = false;
 	}
 
 	if (ALandscape* Landscape = GetLandscapeActor())
@@ -2738,7 +2739,7 @@ UMaterialInterface* ALandscapeProxy::GetLandscapeMaterial(int8 InLODIndex) const
 		{
 			for (const FLandscapeProxyMaterialOverride& OverrideMaterial : LandscapeMaterialsOverride)
 			{
-				if (OverrideMaterial.LODIndex.GetValueForFeatureLevel(World->FeatureLevel) == InLODIndex)
+				if (OverrideMaterial.LODIndex.GetValue() == InLODIndex)
 				{
 					if (OverrideMaterial.Material != nullptr)
 					{
@@ -2773,7 +2774,7 @@ UMaterialInterface* ALandscapeStreamingProxy::GetLandscapeMaterial(int8 InLODInd
 		{
 			for (const FLandscapeProxyMaterialOverride& OverrideMaterial : LandscapeMaterialsOverride)
 			{
-				if (OverrideMaterial.LODIndex.GetValueForFeatureLevel(World->FeatureLevel) == InLODIndex)
+				if (OverrideMaterial.LODIndex.GetValue() == InLODIndex)
 				{
 					if (OverrideMaterial.Material != nullptr)
 					{
