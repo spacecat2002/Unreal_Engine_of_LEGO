@@ -1510,7 +1510,8 @@ public:
 				bool bAnyPending = false;
 				for (int32 Index = 0; Index < Tasks.Num(); Index++)
 				{
-					if (!Tasks[Index]->IsComplete())
+					FGraphEvent* Task = Tasks[Index].GetReference();
+					if (Task && !Task->IsComplete())
 					{
 						bAnyPending = true;
 						break;
@@ -1532,7 +1533,8 @@ public:
 				bool bAnyPending = false;
 				for (int32 Index = 0; Index < Tasks.Num(); Index++)
 				{
-					if (!Tasks[Index]->IsComplete())
+					FGraphEvent* Task = Tasks[Index].GetReference();
+					if (Task && !Task->IsComplete())
 					{
 						bAnyPending = true;
 						break;
@@ -1559,7 +1561,8 @@ public:
 			bAnyPending = false;
 			for (int32 Index = 0; Index < Tasks.Num(); Index++)
 			{
-				if (!Tasks[Index]->IsComplete())
+				FGraphEvent* Task = Tasks[Index].GetReference();
+				if (Task && !Task->IsComplete())
 				{
 					bAnyPending = true;
 					break;
