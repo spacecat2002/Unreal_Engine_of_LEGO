@@ -368,17 +368,25 @@ AActor* UWorld::SpawnActor( UClass* Class, FTransform const* UserTransformPtr, c
 		UE_LOG(LogSpawn, Warning, TEXT("SpawnActor failed because the given transform (%s) is invalid"), *(UserTransformPtr->ToString()));
 		return NULL;
 	}
+	
+#if WITH_EDITOR
+	if (SpawnParameters.OverridePackage && SpawnParameters.bCreateActorPackage)
+	{
+		UE_LOG(LogSpawn, Warning, TEXT("SpawnActor failed because both the OverridePackage and bCreateActorPackage are set"));
+		return nullptr;
+	}
+#endif
 
 	ULevel* LevelToSpawnIn = SpawnParameters.OverrideLevel;
 	if (LevelToSpawnIn == NULL)
 	{
-		// Spawn in the same level as the owner if we have one. @warning: this relies on the outer of an actor being the level.
-		LevelToSpawnIn = (SpawnParameters.Owner != NULL) ? CastChecked<ULevel>(SpawnParameters.Owner->GetOuter()) : CurrentLevel;
+		// Spawn in the same level as the owner if we have one.
+		LevelToSpawnIn = (SpawnParameters.Owner != NULL) ? SpawnParameters.Owner->GetLevel() : CurrentLevel;
 	}
 
 	FName NewActorName = SpawnParameters.Name;
 	AActor* Template = SpawnParameters.Template;
-
+		
 	if( !Template )
 	{
 		// Use class's default actor as a template.
@@ -468,9 +476,13 @@ AActor* UWorld::SpawnActor( UClass* Class, FTransform const* UserTransformPtr, c
 		}
 	}
 
+	EObjectFlags ActorFlags = SpawnParameters.ObjectFlags;
+
 	// actually make the actor object
-	AActor* const Actor = NewObject<AActor>(LevelToSpawnIn, Class, NewActorName, SpawnParameters.ObjectFlags, Template);
+	AActor* const Actor = NewObject<AActor>(LevelToSpawnIn, Class, NewActorName, ActorFlags, Template);
+	
 	check(Actor);
+	check(Actor->GetLevel() == LevelToSpawnIn);
 
 #if ENABLE_SPAWNACTORTIMER
 	SpawnTimer.SetActorName(Actor->GetFName());
@@ -478,6 +490,26 @@ AActor* UWorld::SpawnActor( UClass* Class, FTransform const* UserTransformPtr, c
 
 #if WITH_EDITOR
 	Actor->ClearActorLabel(); // Clear label on newly spawned actors
+
+	// Set actor's Guid
+	check(!Actor->GetActorGuid().IsValid());
+
+	FGuid ActorGuid;
+	if (SpawnParameters.OverrideActorGuid.IsValid())
+	{
+		ActorGuid = SpawnParameters.OverrideActorGuid;
+	}
+	else
+	{
+		ActorGuid = FGuid::NewGuid();
+	}
+
+	FSetActorGuid SetActorGuid(Actor, ActorGuid);
+
+	if (SpawnParameters.OverrideParentComponent)
+	{
+		FActorParentComponentSetter::Set(Actor, SpawnParameters.OverrideParentComponent);
+	}
 #endif // WITH_EDITOR
 
 	if ( GUndo )
@@ -486,6 +518,18 @@ AActor* UWorld::SpawnActor( UClass* Class, FTransform const* UserTransformPtr, c
 	}
 	LevelToSpawnIn->Actors.Add( Actor );
 	LevelToSpawnIn->ActorsForGC.Add(Actor);
+
+#if WITH_EDITOR
+	// Set actor's package
+	if (SpawnParameters.OverridePackage)
+	{
+		Actor->SetExternalPackage(SpawnParameters.OverridePackage);
+	}
+	else if (LevelToSpawnIn->bUseExternalActors && SpawnParameters.bCreateActorPackage && !(SpawnParameters.ObjectFlags & RF_Transient))
+	{
+		Actor->SetPackageExternal(true, false);
+	}
+#endif
 
 #if PERF_SHOW_MULTI_PAWN_SPAWN_FRAMES
 	if( Cast<APawn>(Actor) )
@@ -531,7 +575,6 @@ AActor* UWorld::SpawnActor( UClass* Class, FTransform const* UserTransformPtr, c
 
 	return Actor;
 }
-
 
 ABrush* UWorld::SpawnBrush()
 {
@@ -739,7 +782,7 @@ bool UWorld::DestroyActor( AActor* ThisActor, bool bNetForce, bool bShouldModify
 		GEngine->BroadcastLevelActorDeleted(ThisActor);
 #endif
 	}
-		
+
 	// Clean up the actor's components.
 	ThisActor->UnregisterAllComponents();
 

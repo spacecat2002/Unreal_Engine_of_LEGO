@@ -1770,7 +1770,7 @@ EAsyncPackageState::Type FAsyncPackage::LoadImports_Event()
 				PendingPackage->Desc.SetInstancingContext(Linker->GetInstancingContext());
 				if (bIsPrestreamRequest)
 				{
-					UE_LOG(LogStreaming, Display, TEXT("%s is prestreaming %s"), *Desc.NameToLoad.ToString(), *Import->ObjectName.ToString());
+					UE_LOG(LogStreaming, Display, TEXT("%s is prestreaming %s"), *Desc.NameToLoad.ToString(), *ImportPackageToLoad.ToString());
 				}
 				TRACE_LOADTIME_ASYNC_PACKAGE_IMPORT_DEPENDENCY(this, PendingPackage);
 				AsyncLoadingThread.InsertPackage(PendingPackage);
@@ -6861,7 +6861,7 @@ void FAsyncPackage::UpdateLoadPercentage()
 	LoadPercentage = FMath::Max(NewLoadPercentage, LoadPercentage);
 }
 
-int32 FAsyncLoadingThread::LoadPackage(const FString& InName, const FGuid* InGuid, const TCHAR* InPackageToLoadFrom, FLoadPackageAsyncDelegate InCompletionDelegate, EPackageFlags InPackageFlags, int32 InPIEInstanceID, int32 InPackagePriority)
+int32 FAsyncLoadingThread::LoadPackage(const FString& InName, const FGuid* InGuid, const TCHAR* InPackageToLoadFrom, FLoadPackageAsyncDelegate InCompletionDelegate, EPackageFlags InPackageFlags, int32 InPIEInstanceID, int32 InPackagePriority, FLinkerInstancingContext* InstancingContext)
 {
 	int32 RequestID = INDEX_NONE;
 
@@ -6937,6 +6937,10 @@ int32 FAsyncLoadingThread::LoadPackage(const FString& InName, const FGuid* InGui
 
 		// Add new package request
 		FAsyncPackageDesc PackageDesc(RequestID, *PackageName, *PackageNameToLoad, InGuid ? *InGuid : FGuid(), MoveTemp(CompletionDelegatePtr), InPackageFlags, InPIEInstanceID, InPackagePriority);
+		if (InstancingContext)
+		{
+			PackageDesc.SetInstancingContext(*InstancingContext);
+		}
 		QueuePackage(PackageDesc);
 	}
 	else

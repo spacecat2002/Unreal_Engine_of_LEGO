@@ -58,6 +58,7 @@ Level.cpp: Level-related functions
 #include "Engine/LevelActorContainer.h"
 #include "Engine/StaticMeshActor.h"
 #include "ComponentRecreateRenderStateContext.h"
+#include "HAL/FileManager.h"
 #include "Algo/Copy.h"
 #include "HAL/LowLevelMemTracker.h"
 #include "ObjectTrace.h"
@@ -320,6 +321,7 @@ ULevel::ULevel( const FObjectInitializer& ObjectInitializer )
 	LevelColor = FLinearColor::White;
 	FixupOverrideVertexColorsTime = 0;
 	FixupOverrideVertexColorsCount = 0;
+	bUseExternalActors = false;
 #endif	
 	bActorClusterCreated = false;
 	bStaticComponentsRegisteredInStreamingManager = false;
@@ -354,6 +356,23 @@ void ULevel::AddReferencedObjects(UObject* InThis, FReferenceCollector& Collecto
 	Super::AddReferencedObjects( This, Collector );
 }
 
+void ULevel::CleanupLevel()
+{
+	OnCleanupLevel.Broadcast();
+	// if the level contains any actor with an external package, clear their metadata standalone flag so that the packages can be properly unloaded.
+	for (AActor* Actor : Actors)
+	{
+		if (Actor && Actor->GetExternalPackage())
+		{
+			ForEachObjectWithPackage(Actor->GetExternalPackage(), [](UObject* Object)
+			{
+				Object->ClearFlags(RF_Standalone);
+				return true;
+			}, false);
+		}
+	}
+}
+
 void ULevel::PostInitProperties()
 {
 	Super::PostInitProperties();
@@ -371,22 +390,57 @@ void ULevel::Serialize( FArchive& Ar )
 	Ar.UsingCustomVersion(FReleaseObjectVersion::GUID);
 	Ar.UsingCustomVersion(FRenderingObjectVersion::GUID);
 
-	if (Ar.IsLoading() && Ar.CustomVer(FReleaseObjectVersion::GUID) < FReleaseObjectVersion::LevelTransArrayConvertedToTArray)
+	if (Ar.IsLoading())
 	{
-		TTransArray<AActor*> OldActors(this);
-		Ar << OldActors;
-		Actors.Reserve(OldActors.Num());
-		for (AActor* Actor : OldActors)
+		if (Ar.CustomVer(FReleaseObjectVersion::GUID) < FReleaseObjectVersion::LevelTransArrayConvertedToTArray)
 		{
-			Actors.Push(Actor);
+			TTransArray<AActor*> OldActors(this);
+			Ar << OldActors;
+			Actors.Reserve(OldActors.Num());
+			for (AActor* Actor : OldActors)
+			{
+				Actors.Push(Actor);
+			}
+		}
+		else
+		{
+			Ar << Actors;
 		}
 	}
 	else if (Ar.IsSaving() && Ar.IsPersistent())
 	{
-		TArray<AActor*> NonTransientActors;
-		NonTransientActors.Reserve(Actors.Num());
-		Algo::CopyIf(Actors, NonTransientActors, [](AActor* Actor) { return Actor && !Actor->HasAnyFlags(RF_Transient); });
-		Ar << NonTransientActors;
+		UPackage* LevelPackage = GetOutermost();
+		TArray<AActor*> EmbeddedActors;
+		EmbeddedActors.Reserve(Actors.Num());
+
+		Algo::CopyIf(Actors, EmbeddedActors, [&](AActor* Actor)
+		{
+			if (!Actor)
+			{
+				return false;
+			}
+
+			check(Actor->GetLevel() == this);
+
+			if (Actor->HasAnyFlags(RF_Transient))
+			{
+				return false;
+			}
+
+#if WITH_EDITOR
+			// Otherwise, don't filter out external actors if duplicating the world to get the actors properly duplicated.
+			if (bUseExternalActors && ((Ar.GetPortFlags() & PPF_DuplicateForPIE) || !(Ar.GetPortFlags() & PPF_Duplicate)))
+			{
+				if (Actor->IsPackageExternal())
+				{
+					return false;
+				}
+			}
+#endif
+			return true;
+		});
+
+		Ar << EmbeddedActors;
 	}
 	else
 	{
@@ -606,10 +660,73 @@ void ULevel::PreSave(const class ITargetPlatform* TargetPlatform)
 #endif // WITH_EDITOR
 }
 
-
 void ULevel::PostLoad()
 {
 	Super::PostLoad();
+
+#if WITH_EDITOR
+	// if we use external actors, load dynamic actors here
+	if (bUseExternalActors)
+	{
+		UPackage* LevelPackage = GetOutermost();
+		bool bPackageForPIE = LevelPackage->HasAnyPackageFlags(PKG_PlayInEditor);
+		bool bInstanced = !LevelPackage->FileName.IsNone() && (LevelPackage->FileName != LevelPackage->GetFName());
+
+		// if the level is instanced, create an instancing context for remapping the actor imports
+		FLinkerInstancingContext InstancingContext;
+		if (bInstanced)
+		{
+			InstancingContext.AddMapping(LevelPackage->FileName, LevelPackage->GetFName());
+		}
+
+		TArray<FString> ActorFiles;
+		IFileManager::Get().IterateDirectoryRecursively(*FPackageName::LongPackageNameToFilename(GetExternalActorsPath()), [&ActorFiles](const TCHAR* FilenameOrDirectory, bool bIsDirectory)
+		{
+			if (!bIsDirectory)
+			{
+				ActorFiles.Add(FilenameOrDirectory);
+			}
+			return true;
+		});
+
+		TArray<FString> InstancePackageNames;
+		for (const FString& ActorFile: ActorFiles)
+		{
+			if (bInstanced)
+			{
+				const FString ActorPackageName = FPaths::GetBaseFilename(ActorFile);
+				const FString InstancedName = FString::Printf(TEXT("%s_InstanceOf_%s"), *LevelPackage->GetName(), *ActorPackageName);
+				InstancePackageNames.Add(InstancedName);
+
+				const FString LongActorPackageName = FPackageName::FilenameToLongPackageName(ActorFile);
+				InstancingContext.AddMapping(FName(*LongActorPackageName), FName(*InstancedName));
+			}
+		}
+
+		for (int32 i=0; i<ActorFiles.Num(); i++)
+		{
+			const FString& ActorFile = ActorFiles[i];
+
+			UPackage* ActorPackage = bInstanced ? CreatePackage(nullptr, *InstancePackageNames[i]) : nullptr;
+
+			ActorPackage = LoadPackage(ActorPackage, *ActorFile, bPackageForPIE ? LOAD_PackageForPIE : LOAD_None, nullptr, &InstancingContext);
+
+			AActor* LoadedActor = nullptr;
+			ForEachObjectWithPackage(ActorPackage, [&LoadedActor](UObject* PackageObject)
+			{
+				if (PackageObject->IsA<AActor>())
+				{
+					check(!LoadedActor);
+					LoadedActor = (AActor*)PackageObject;
+				}
+				return true;
+			}, false);
+
+			check(LoadedActor);
+			Actors.Add(LoadedActor);
+		}
+	}
+#endif
 
 	// Ensure that the level is pointed to the owning world.  For streamed levels, this will be the world of the P map
 	// they are streamed in to which we cached when the package loading was invoked
@@ -722,6 +839,28 @@ void ULevel::CreateCluster()
 		}
 		bActorClusterCreated = true;
 	}
+}
+
+void ULevel::PreDuplicate(FObjectDuplicationParameters& DupParams)
+{
+	Super::PreDuplicate(DupParams);
+
+#if WITH_EDITOR
+	if (DupParams.DuplicateMode != EDuplicateMode::PIE && DupParams.bAssignExternalPackages)
+	{
+		UPackage* DestOutermost = DupParams.DestOuter->GetOutermost();
+		for (AActor* Actor : Actors)
+		{
+			UPackage* ActorPackage = Actor ? Actor->GetExternalPackage() : nullptr;
+			if (ActorPackage)
+			{
+				UPackage* DupActorPackage = CreateActorPackage(FGuid::NewGuid());
+				DupActorPackage->MarkAsFullyLoaded();
+				DupParams.DuplicationSeed.Add(ActorPackage, DupActorPackage);
+			}
+		}
+	}
+#endif
 }
 
 void ULevel::PostDuplicate(bool bDuplicateForPIE)
@@ -1946,19 +2085,6 @@ void ULevel::SetLightingScenario(bool bNewIsLightingScenario)
 	OwningWorld->PropagateLightingScenarioChange();
 }
 
-#if WITH_EDITOR
-void ULevel::OnApplyNewLightingData(bool bLightingSuccessful)
-{
-	// Store level offset that was used during static light data build
-	// This will be used to find correct world position of precomputed lighting samples during origin rebasing
-	LightBuildLevelOffset = FIntVector::ZeroValue;
-	if (bLightingSuccessful && OwningWorld && OwningWorld->WorldComposition)
-	{
-		LightBuildLevelOffset = OwningWorld->WorldComposition->GetLevelOffset(this);
-	}
-}
-#endif
-
 bool ULevel::HasAnyActorsOfType(UClass *SearchType)
 {
 	// just search the actors array
@@ -1978,6 +2104,97 @@ bool ULevel::HasAnyActorsOfType(UClass *SearchType)
 }
 
 #if WITH_EDITOR
+
+bool ULevel::CanConvertActorToExternalPackaging(AActor* Actor)
+{
+	check(Actor);
+
+	if (Actor->HasAllFlags(RF_Transient))
+	{
+		return false;
+	}
+
+	if (Actor == Actor->GetLevel()->GetDefaultBrush())
+	{
+		return false;
+	}
+
+	return Actor->SupportsExternalPackaging();
+}
+
+void ULevel::ConvertAllActorsToPackaging(bool bExternal)
+{
+	for (AActor* Actor : Actors)
+	{
+		if (Actor && CanConvertActorToExternalPackaging(Actor))
+		{
+			check(Actor->GetLevel() == this);
+			Actor->SetPackageExternal(bExternal);
+		}
+	}
+}
+
+FString ULevel::GetExternalActorsPath() const
+{
+	return GetPackage()->FileName.ToString();
+}
+
+UPackage* ULevel::CreateActorPackage(const FGuid& InGuid) const
+{
+	check(InGuid.IsValid());
+	FString GuidBase36 = InGuid.ToString(EGuidFormats::Base36Encoded);
+	check(GuidBase36.Len());
+
+	const FString BaseDir = GetExternalActorsPath();
+	const int32 GuidBase36Len = GuidBase36.Len();
+	FString OwnedPackageName =
+		FString::Printf(
+			TEXT("%s/%c%c/%c%c/%s"),
+			*BaseDir,
+			GuidBase36[0],
+			(GuidBase36Len > 1) ? GuidBase36[1] : '0',
+			(GuidBase36Len > 2) ? GuidBase36[2] : '0',
+			(GuidBase36Len > 3) ? GuidBase36[3] : '0',
+			*GuidBase36 + FMath::Min(GuidBase36Len - 1, 4)
+		);
+
+	return CreatePackage(nullptr, *OwnedPackageName);
+}
+
+void ULevel::DetachAttachAllActorsPackages(bool bReattach)
+{
+	if (bReattach)
+	{
+		for (AActor* Actor : Actors)
+		{
+			if (Actor)
+			{
+				Actor->ReattachExternalPackage();
+			}
+		}
+	}
+	else
+	{
+		for (AActor* Actor : Actors)
+		{
+			if (Actor)
+			{
+				Actor->DetachExternalPackage();
+			}
+		}
+	}
+}
+
+void ULevel::OnApplyNewLightingData(bool bLightingSuccessful)
+{
+	// Store level offset that was used during static light data build
+	// This will be used to find correct world position of precomputed lighting samples during origin rebasing
+	LightBuildLevelOffset = FIntVector::ZeroValue;
+	if (bLightingSuccessful && OwningWorld && OwningWorld->WorldComposition)
+	{
+		LightBuildLevelOffset = OwningWorld->WorldComposition->GetLevelOffset(this);
+	}
+}
 
 TArray<UBlueprint*> ULevel::GetLevelBlueprints() const
 {
@@ -2081,7 +2298,7 @@ void ULevel::OnLevelScriptBlueprintChanged(ULevelScriptBlueprint* InBlueprint)
 			}
 
 			LevelScriptActor->ClearFlags(RF_Transactional);
-			check(LevelScriptActor->GetOuter() == this);
+			check(LevelScriptActor->GetLevel() == this);
 			// Finally, fixup all the bound events to point to their new LSA
 			FBlueprintEditorUtils::FixLevelScriptActorBindings(LevelScriptActor, InBlueprint);
 		}		

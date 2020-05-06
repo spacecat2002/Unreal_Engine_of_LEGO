@@ -2629,7 +2629,7 @@ struct FPackageExportTagger
 			{
 				UObject* Obj = ObjectsInPackage[Index];
 				// Allowed object that have any of the top level flags or have an assigned that we are saving
-				if( Obj->HasAnyFlags(TopLevelFlags))
+				if (Obj->HasAnyFlags(TopLevelFlags))
 				{
 					ExportTagger.ProcessBaseObject(Obj);
 				}
@@ -3270,11 +3270,16 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 	// Sanity checks
 	check(InOuter);
 	check(Filename);
-	FString PackageFilename(Filename);
 	const bool bIsCooking = TargetPlatform != nullptr;
 
 #if WITH_EDITOR
 	TMap<UObject*, UObject*> ReplacedImportOuters;
+
+	// Add the external package flag when not cooking
+	if (TopLevelFlags != RF_NoFlags && !bIsCooking)
+	{
+		TopLevelFlags |= RF_HasExternalPackage;
+	}
 #endif //WITH_EDITOR
 
 	const bool bSavingConcurrent = !!(SaveFlags & ESaveFlags::SAVE_Concurrent);
@@ -4558,6 +4563,7 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 				}
 				
 				// Sort exports for seek-free loading.
+				if (Linker->IsCooking() || Conform)
 				{
 					TRACE_CPUPROFILER_EVENT_SCOPE(UPackage_Save_SortExportsForSeekFree);
 					COOK_STAT(FScopedDurationTimer SaveTimer(SavePackageStats::SortExportsSeekfreeInnerTimeSec));
@@ -5935,6 +5941,13 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 
 		if (Success)
 		{
+			// if the save was successful, update the internal package filename path if we aren't currently cooking
+			FString PackageFilename(Filename);
+			if (TargetPlatform == nullptr && FPackageName::TryConvertFilenameToLongPackageName(PackageFilename, PackageFilename))
+			{
+				InOuter->FileName = *PackageFilename;
+			}
+
 			auto HashCompletionFunc = [](FMD5& State)
 			{
 				FMD5Hash OutputHash;
@@ -6446,7 +6459,7 @@ bool UPackage::IsEmptyPackage(UPackage* Package, const UObject* LastReferencer)
 		ForEachObjectWithPackage(Package, [LastReferencer, &bIsEmpty](UObject* InObject)
 		{
 			// if the package contains at least one object that has asset registry data and isn't the `LastReferencer` consider it not empty
-			if (InObject->IsAsset()/*HasAssetRegistryData()*/ && InObject != LastReferencer)
+			if (InObject->IsAsset() && InObject != LastReferencer)
 			{
 				bIsEmpty = false;
 				// we can break out of the iteration as soon as we find one valid object

@@ -1901,12 +1901,13 @@ FObjectDuplicationParameters::FObjectDuplicationParameters( UObject* InSourceObj
 : SourceObject(InSourceObject)
 , DestOuter(InDestOuter)
 , DestName(NAME_None)
-, FlagMask(RF_AllFlags & ~(RF_MarkAsRootSet|RF_MarkAsNative))
+, FlagMask(RF_AllFlags & ~(RF_MarkAsRootSet|RF_MarkAsNative|RF_HasExternalPackage))
 , InternalFlagMask(EInternalObjectFlags::AllFlags)
 , ApplyFlags(RF_NoFlags)
 , ApplyInternalFlags(EInternalObjectFlags::None)
 , PortFlags(PPF_None)
 , DuplicateMode(EDuplicateMode::Normal)
+, bAssignExternalPackages(true)
 , DestClass(NULL)
 , CreatedObjects(NULL)
 {
@@ -1949,7 +1950,8 @@ UObject* StaticDuplicateObject(UObject const* SourceObject, UObject* DestOuter, 
 	{
 		Parameters.DestClass = DestClass;
 	}
-	Parameters.FlagMask = FlagMask;
+	// do not allow duplication of the Mark flags nor the OverriddenPackage flag
+	Parameters.FlagMask = FlagMask & ~(RF_MarkAsRootSet | RF_MarkAsNative | RF_HasExternalPackage);
 	Parameters.InternalFlagMask = InternalFlagsMask;
 	Parameters.DuplicateMode = DuplicateMode;
 
@@ -1988,6 +1990,8 @@ UObject* StaticDuplicateObjectEx( FObjectDuplicationParameters& Parameters )
 	// will be changing the archetype's ObjectArchetype to the wrong object (typically the CDO or something)
 	InstanceGraph.SetLoadingObject(true);
 
+	Parameters.SourceObject->PreDuplicate(Parameters);
+
 	UObject* DupRootObject = Parameters.DuplicationSeed.FindRef(Parameters.SourceObject);
 	if ( DupRootObject == NULL )
 	{
@@ -2025,16 +2029,17 @@ UObject* StaticDuplicateObjectEx( FObjectDuplicationParameters& Parameters )
 
 	// Read from the source object(s)
 	FDuplicateDataWriter Writer(
-		DuplicatedObjectAnnotation,	// Ref: Object annotation which stores the duplicated object for each source object
-		ObjectData,					// Out: Serialized object data
-		Parameters.SourceObject,	// Source object to copy
-		DupRootObject,				// Destination object to copy into
-		Parameters.FlagMask,		// Flags to be copied for duplicated objects
-		Parameters.ApplyFlags,		// Flags to always set on duplicated objects
-		Parameters.InternalFlagMask,		// Internal Flags to be copied for duplicated objects
-		Parameters.ApplyInternalFlags,		// Internal Flags to always set on duplicated objects
-		&InstanceGraph,				// Instancing graph
-		Parameters.PortFlags );		// PortFlags
+		DuplicatedObjectAnnotation,				// Ref: Object annotation which stores the duplicated object for each source object
+		ObjectData,								// Out: Serialized object data
+		Parameters.SourceObject,				// Source object to copy
+		DupRootObject,							// Destination object to copy into
+		Parameters.FlagMask,					// Flags to be copied for duplicated objects
+		Parameters.ApplyFlags,					// Flags to always set on duplicated objects
+		Parameters.InternalFlagMask,			// Internal Flags to be copied for duplicated objects
+		Parameters.ApplyInternalFlags,			// Internal Flags to always set on duplicated objects
+		&InstanceGraph,							// Instancing graph
+		Parameters.PortFlags,					// PortFlags	
+		Parameters.bAssignExternalPackages);	// Assign duplicate external packages
 
 	TArray<UObject*> SerializedObjects;
 

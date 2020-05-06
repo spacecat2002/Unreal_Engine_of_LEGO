@@ -23,11 +23,11 @@
 #include "AssetRegistryModule.h"
 #include "Serialization/LargeMemoryReader.h"
 #include "Misc/ScopeExit.h"
+#include "HAL/ThreadHeartBeat.h"
 
 #if WITH_EDITOR
 #include "IDirectoryWatcher.h"
 #include "DirectoryWatcherModule.h"
-#include "HAL/ThreadHeartBeat.h"
 #include "HAL/PlatformProcess.h"
 #endif // WITH_EDITOR
 
@@ -524,13 +524,7 @@ void UAssetRegistryImpl::SearchAllAssets(bool bSynchronousSearch)
 			// Force a flush of the current gatherer instead
 			UE_LOG(LogAssetRegistry, Log, TEXT("Flushing asset discovery search because of synchronous request, this can take several seconds..."));
 
-			while (IsLoadingAssets())
-			{
-				Tick(-1.0f);
-
-				FThreadHeartBeat::Get().HeartBeat();
-				FPlatformProcess::SleepNoStats(0.0001f);
-			}
+			WaitForCompletion();
 		}
 		else
 #endif
@@ -552,6 +546,17 @@ void UAssetRegistryImpl::SearchAllAssets(bool bSynchronousSearch)
 	{
 		// if the BackgroundAssetSearch is already valid then we have already called it before
 		BackgroundAssetSearch = MakeShareable(new FAssetDataGatherer(PathsToSearch, TArray<FString>(), bSynchronousSearch, EAssetDataCacheMode::UseMonolithicCache));
+	}
+}
+
+void UAssetRegistryImpl::WaitForCompletion()
+{
+	while (IsLoadingAssets())
+	{
+		Tick(-1.0f);
+
+		FThreadHeartBeat::Get().HeartBeat();
+		FPlatformProcess::SleepNoStats(0.0001f);
 	}
 }
 
@@ -655,6 +660,9 @@ bool UAssetRegistryImpl::EnumerateAssets(const FARCompiledFilter& InFilter, TFun
 	TSet<FName> PackagesToSkip = CachedEmptyPackages;
 	if (!InFilter.bIncludeOnlyOnDiskAssets)
 	{
+		// Skip assets that were loaded for diffing
+		const uint32 FilterWithoutPackageFlags = InFilter.WithoutPackageFlags | PKG_ForDiffing;
+		const uint32 FilterWithPackageFlags = InFilter.WithPackageFlags;
 		// Reusable structures to avoid memory allocations
 		TArray<UObject::FAssetRegistryTag> ObjectTags;
 
@@ -662,10 +670,22 @@ bool UAssetRegistryImpl::EnumerateAssets(const FARCompiledFilter& InFilter, TFun
 		{
 			if (Obj->IsAsset())
 			{
+				// Skip assets that are currently loading
+				if (Obj->HasAnyFlags(RF_NeedLoad))
+				{
+					return;
+				}
+
 				UPackage* InMemoryPackage = Obj->GetOutermost();
 
-				// Skip assets that were loaded for diffing
-				if (InMemoryPackage->HasAnyPackageFlags(PKG_ForDiffing))
+				// Skip assets with any of the specified 'without' package flags 
+				if (InMemoryPackage->HasAnyPackageFlags(FilterWithoutPackageFlags))
+				{
+					return;
+				}
+
+				// Skip assets without any the specified 'with' packages flags
+				if (!InMemoryPackage->HasAllPackagesFlags(FilterWithPackageFlags))
 				{
 					return;
 				}
@@ -1168,7 +1188,6 @@ void UAssetRegistryImpl::RunAssetsThroughFilterImpl(TArray<FAssetData>& AssetDat
 			continue;
 		}
 	}
-
 	if (OriginalArrayCount > AssetDataList.Num())
 	{
 		AssetDataList.Shrink();
@@ -1187,6 +1206,8 @@ void UAssetRegistryImpl::ExpandRecursiveFilter(const FARFilter& InFilter, FARFil
 	ExpandedFilter.ClassNames = CompiledFilter.ClassNames.Array();
 	ExpandedFilter.TagsAndValues = CompiledFilter.TagsAndValues;
 	ExpandedFilter.bIncludeOnlyOnDiskAssets = CompiledFilter.bIncludeOnlyOnDiskAssets;
+	ExpandedFilter.WithoutPackageFlags = CompiledFilter.WithoutPackageFlags;
+	ExpandedFilter.WithPackageFlags = CompiledFilter.WithPackageFlags;
 }
 
 void UAssetRegistryImpl::CompileFilter(const FARFilter& InFilter, FARCompiledFilter& OutCompiledFilter) const
@@ -1198,6 +1219,8 @@ void UAssetRegistryImpl::CompileFilter(const FARFilter& InFilter, FARCompiledFil
 	OutCompiledFilter.ClassNames.Append(InFilter.ClassNames);
 	OutCompiledFilter.TagsAndValues = InFilter.TagsAndValues;
 	OutCompiledFilter.bIncludeOnlyOnDiskAssets = InFilter.bIncludeOnlyOnDiskAssets;
+	OutCompiledFilter.WithoutPackageFlags = InFilter.WithoutPackageFlags;
+	OutCompiledFilter.WithPackageFlags = InFilter.WithPackageFlags;
 
 	if (InFilter.bRecursivePaths)
 	{

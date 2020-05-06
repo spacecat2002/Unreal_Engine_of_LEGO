@@ -21,6 +21,8 @@
 #include "ActorEditorUtils.h"
 #include "EngineGlobals.h"
 
+#include "AssetRegistryModule.h"
+
 #if WITH_EDITOR
 
 #include "Editor.h"
@@ -757,6 +759,52 @@ bool AActor::IsListedInSceneOutliner() const
 bool AActor::EditorCanAttachTo(const AActor* InParent, FText& OutReason) const
 {
 	return true;
+}
+
+void AActor::SetPackageExternal(bool bExternal, bool bShouldDirty)
+{
+	if (bExternal == IsPackageExternal())
+	{
+		return;
+	}
+
+    // Mark the current actor & package as dirty
+	Modify(bShouldDirty);
+
+	UPackage* LevelPackage = GetLevel()->GetOutermost();
+	if (bExternal)
+	{
+		ActorGuid = ActorGuid.IsValid() ? ActorGuid : FGuid::NewGuid();
+		UPackage* NewActorPackage = GetLevel()->CreateActorPackage(ActorGuid);
+		SetExternalPackage(NewActorPackage);
+		// should be removed but needed for now so the package creation is visible to Multi-User
+		FAssetRegistryModule::AssetCreated(this);
+	}
+	// if the actor package is different, embed the actor back in the level
+	else 
+	{
+		UPackage* ActorPackage = GetExternalPackage();
+		// should be removed but needed for now so the package deletion is visible to Multi-User
+		FAssetRegistryModule::AssetDeleted(this);
+		SetExternalPackage(nullptr);
+		// Clear the standalone flag on the package metadata so it can be garbage collected properly
+		ForEachObjectWithPackage(ActorPackage, [](UObject* Object)
+		{
+			Object->ClearFlags(RF_Standalone);
+			return true;
+		}, false);
+	}
+
+	for (UActorComponent* ActorComponent : GetComponents())
+	{
+		if (ActorComponent && ActorComponent->IsRegistered())
+		{
+			ActorComponent->SetPackageExternal(bExternal, bShouldDirty);
+		}
+	}
+	
+	// Mark the new actor package dirty
+	MarkPackageDirty();
 }
 
 const FString& AActor::GetActorLabel() const

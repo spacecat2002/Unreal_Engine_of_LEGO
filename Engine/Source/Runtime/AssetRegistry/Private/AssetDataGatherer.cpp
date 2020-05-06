@@ -51,7 +51,7 @@ namespace
 
 FAssetDataDiscovery::FAssetDataDiscovery(const TArray<FString>& InPaths, bool bInIsSynchronous)
 	: bIsSynchronous(bInIsSynchronous)
-	, bIsDiscoveringFiles(false)
+	, bIsDiscoveringFiles(true)
 	, StopTaskCounter(0)
 	, Thread(nullptr)
 {
