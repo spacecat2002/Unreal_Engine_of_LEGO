@@ -395,7 +395,10 @@ bool D3D12RHI::FD3DGPUProfiler::CheckGpuHeartbeat() const
 									UE_LOG(LogRHI, Error, TEXT("[Aftermath] %i: %s"), i, *(*Frame));
 								}
 							}
-							UE_LOG(LogRHI, Error, TEXT("[Aftermath] GPU Stack Dump"));
+							if (NumCRCs > 0)
+							{
+								UE_LOG(LogRHI, Error, TEXT("[Aftermath] GPU Stack Dump"));
+							}
 						}
 					}
 				}

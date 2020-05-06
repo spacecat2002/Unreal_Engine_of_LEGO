@@ -420,6 +420,7 @@ static bool LogDREDData(ID3D12Device* Device)
 			FString ContextStr;
 			TMap<int32, const wchar_t*> ContextStrings;
 
+			uint32 TracedCommandLists = 0;
 			auto Node = Dred.BreadcrumbHead;
 			while (Node)
 			{
@@ -428,6 +429,7 @@ static bool LogDREDData(ID3D12Device* Device)
 				if (LastCompletedOp != Node->BreadcrumbCount && LastCompletedOp != 0)
 				{
 					UE_LOG(LogD3D12RHI, Error, TEXT("DRED: Commandlist \"%s\" on CommandQueue \"%s\", %d completed of %d"), Node->pCommandListDebugNameW, Node->pCommandQueueDebugNameW, LastCompletedOp, Node->BreadcrumbCount);
+					TracedCommandLists++;
 
 					int32 FirstOp = FMath::Max(LastCompletedOp - 100, 0);
 					int32 LastOp = FMath::Min(LastCompletedOp + 20, int32(Node->BreadcrumbCount) - 1);
@@ -460,6 +462,11 @@ static bool LogDREDData(ID3D12Device* Device)
 				}
 
 				Node = Node->pNext;
+			}
+
+			if (TracedCommandLists == 0)
+			{
+				UE_LOG(LogD3D12RHI, Error, TEXT("DRED: No command list found with active outstanding operations (all finished or not started yet)."));
 			}
 		}
 
@@ -495,6 +502,10 @@ static bool LogDREDData(ID3D12Device* Device)
 					Node = Node->pNext;
 				}
 			}
+		}
+		else
+		{
+			UE_LOG(LogD3D12RHI, Error, TEXT("DRED: No PageFault data."));
 		}
 
 		return true;
@@ -594,7 +605,7 @@ namespace D3D12RHI
 		GLog->Flush();
 
 		// Show message box or trace information
-		if (!FApp::IsUnattended())
+		if (!FApp::IsUnattended() && !IsDebuggerPresent())
 		{
 			FPlatformMisc::MessageBoxExt(EAppMsgType::Ok, *ErrorMessage.ToText().ToString(), TEXT("Error"));
 		}
@@ -627,6 +638,12 @@ namespace D3D12RHI
 			// Make sure the log is flushed!
 			GLog->PanicFlushThreadedLogs();
 			GLog->Flush();
+		}
+
+		// hard break here when the debugger is attached
+		if (IsDebuggerPresent())
+		{
+			UE_DEBUG_BREAK();
 		}
 
 		// Force shutdown, we can't do anything useful anymore.
