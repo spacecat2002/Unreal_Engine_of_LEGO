@@ -449,7 +449,7 @@ void FPrimitiveSceneInfo::RemoveCachedMeshDrawCommands()
 			StateBucketCount.Num--;
 			if (StateBucketCount.Num == 0)
 			{
-				check(Scene->CachedMeshDrawCommandStateBuckets[PassIndex].RemoveByElementId(CachedCommand.StateBucketId));
+				Scene->CachedMeshDrawCommandStateBuckets[PassIndex].RemoveByElementId(CachedCommand.StateBucketId);
 			}
 
 			FGraphicsMinimalPipelineStateId::RemovePersistentId(CachedPipelineId);
