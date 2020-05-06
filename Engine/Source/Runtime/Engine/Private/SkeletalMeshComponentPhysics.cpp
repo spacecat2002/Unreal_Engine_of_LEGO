@@ -2410,7 +2410,11 @@ void USkeletalMeshComponent::RecreateClothingActors()
 		{
 			// Only create cloth sim actors when the world is ready for it
 			const UWorld* const World = GetWorld();
+#if WITH_EDITORONLY_DATA
+			if (World && (World->bShouldSimulatePhysics || bUpdateClothInEditor) && World->GetPhysicsScene())
+#else
 			if (World && World->bShouldSimulatePhysics && World->GetPhysicsScene())
+#endif
 			{
 				TArray<UClothingAssetBase*> AssetsInUse;
 				SkeletalMesh->GetClothingAssetsInUse(AssetsInUse);
