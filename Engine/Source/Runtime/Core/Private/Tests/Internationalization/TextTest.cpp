@@ -983,7 +983,9 @@ bool FTextNumericParsingTest::RunTest(const FString& Parameters)
 			const FString NegativeASCIIString = FString::Printf(TEXT("-135%c456"), FormattingRules.DecimalSeparatorCharacter);
 			const FString GroupSeparatedString = FString::Printf(TEXT("1%c234%c5"), FormattingRules.GroupingSeparatorCharacter, FormattingRules.DecimalSeparatorCharacter);
 
-			FTextNumericParsingTestUtil::DoAllTests<int8>(this, *UnsignedString, FormattingRules, static_cast<int8>(135), TNumericLimits<int8>::Max(), true, false, *BuildDescription(*UnsignedString, TEXT("int8")));
+			const double Number135 = 135.456;
+
+			FTextNumericParsingTestUtil::DoAllTests<int8>(this, *UnsignedString, FormattingRules, static_cast<int8>(Number135), TNumericLimits<int8>::Max(), true, false, *BuildDescription(*UnsignedString, TEXT("int8")));
 			FTextNumericParsingTestUtil::DoAllTests<uint8>(this, *UnsignedString, FormattingRules, 135, 135, true, true, *BuildDescription(*UnsignedString, TEXT("uint8")));
 			FTextNumericParsingTestUtil::DoGroupingTest<int16>(this, *UnsignedString, FormattingRules, 135, true, *BuildDescription(*UnsignedString, TEXT("int16")));
 			FTextNumericParsingTestUtil::DoGroupingTest<uint16>(this, *UnsignedString, FormattingRules, 135, true, *BuildDescription(*UnsignedString, TEXT("uint16")));
@@ -992,14 +994,14 @@ bool FTextNumericParsingTest::RunTest(const FString& Parameters)
 			FTextNumericParsingTestUtil::DoGroupingTest<int64>(this, *UnsignedString, FormattingRules, 135, true, *BuildDescription(*UnsignedString, TEXT("int64")));
 			FTextNumericParsingTestUtil::DoGroupingTest<uint16>(this, *UnsignedString, FormattingRules, 135, true, *BuildDescription(*UnsignedString, TEXT("uint64")));
 			FTextNumericParsingTestUtil::DoGroupingTest<float>(this, *UnsignedString, FormattingRules, 135.456f, true, *BuildDescription(*UnsignedString, TEXT("float")));
-			FTextNumericParsingTestUtil::DoGroupingTest<double>(this, *UnsignedString, FormattingRules, 135.456, true, *BuildDescription(*UnsignedString, TEXT("double")));
+			FTextNumericParsingTestUtil::DoGroupingTest<double>(this, *UnsignedString, FormattingRules, Number135, true, *BuildDescription(*UnsignedString, TEXT("double")));
 
 			FTextNumericParsingTestUtil::DoGroupingTest<int32>(this, *PositiveString, FormattingRules, 135, true, *BuildDescription(*PositiveString, TEXT("int32")));
 			FTextNumericParsingTestUtil::DoGroupingTest<uint32>(this, *PositiveString, FormattingRules, 135, true, *BuildDescription(*PositiveString, TEXT("uint32")));
 			FTextNumericParsingTestUtil::DoGroupingTest<float>(this, *PositiveString, FormattingRules, 135.456f, true, *BuildDescription(*PositiveString, TEXT("float")));
 			FTextNumericParsingTestUtil::DoGroupingTest<double>(this, *PositiveString, FormattingRules, 135.456, true, *BuildDescription(*PositiveString, TEXT("double")));
 
-			FTextNumericParsingTestUtil::DoAllTests<int8>(this, *NegativeString, FormattingRules, static_cast<int8>(-135), TNumericLimits<int8>::Lowest(), true, false, *BuildDescription(*NegativeString, TEXT("int8")));
+			FTextNumericParsingTestUtil::DoAllTests<int8>(this, *NegativeString, FormattingRules, static_cast<int8>(-Number135), TNumericLimits<int8>::Lowest(), true, false, *BuildDescription(*NegativeString, TEXT("int8")));
 			FTextNumericParsingTestUtil::DoAllTests<int32>(this, *NegativeString, FormattingRules, -135, -135, true, true, *BuildDescription(*NegativeString, TEXT("int32")));
 			FTextNumericParsingTestUtil::DoAllTests<uint32>(this, *NegativeString, FormattingRules, -135, 0, true, false, *BuildDescription(*NegativeString, TEXT("uint32")));
 			FTextNumericParsingTestUtil::DoGroupingTest<float>(this, *NegativeString, FormattingRules, -135.456f, true, *BuildDescription(*NegativeString, TEXT("float")));
@@ -1010,7 +1012,8 @@ bool FTextNumericParsingTest::RunTest(const FString& Parameters)
 			FTextNumericParsingTestUtil::DoGroupingTest<float>(this, *PositiveASCIIString, FormattingRules, 135.456f, true, *BuildDescription(*PositiveASCIIString, TEXT("float")));
 			FTextNumericParsingTestUtil::DoGroupingTest<float>(this, *NegativeASCIIString, FormattingRules, -135.456f, true, *BuildDescription(*PositiveASCIIString, TEXT("float")));
 
-			FTextNumericParsingTestUtil::DoAllTests<uint8>(this, *GroupSeparatedString, FormattingRules, static_cast<uint8>(1234), TNumericLimits<uint8>::Max(), true, false, *BuildDescription(*GroupSeparatedString, TEXT("int32")));
+			const int32 Number1234 = 1234;
+			FTextNumericParsingTestUtil::DoAllTests<uint8>(this, *GroupSeparatedString, FormattingRules, static_cast<uint8>(Number1234), TNumericLimits<uint8>::Max(), true, false, *BuildDescription(*GroupSeparatedString, TEXT("int32")));
 			FTextNumericParsingTestUtil::DoGroupingTest<int32>(this, *GroupSeparatedString, FormattingRules, 1234, true, *BuildDescription(*GroupSeparatedString, TEXT("int32")));
 			FTextNumericParsingTestUtil::DoGroupingTest<uint32>(this, *GroupSeparatedString, FormattingRules, 1234, true, *BuildDescription(*GroupSeparatedString, TEXT("uint32")));
 			FTextNumericParsingTestUtil::DoGroupingTest<float>(this, *GroupSeparatedString, FormattingRules, 1234.5f, true, *BuildDescription(*GroupSeparatedString, TEXT("float")));
@@ -1078,20 +1081,29 @@ bool FTextNumericParsingTest::RunTest(const FString& Parameters)
 		FTextNumericParsingTestUtil::DoAllTests<uint64>(this, TEXT("18446744073709551615"), AgnosticFormattingRules, TNumericLimits<uint64>::Max(), TNumericLimits<uint64>::Max(), true, true, TEXT("Parsing uint64 max"));
 
 		// test limits +- 1
-#if 0 // this doesn't compile on some platform due to overflow
-		FTextNumericParsingTestUtil::DoAllTests<int8>(this, TEXT("-129"), AgnosticFormattingRules, TNumericLimits<int8>::Lowest() - 1, TNumericLimits<int8>::Lowest(), true, false, TEXT("Parsing int8 +/-1 lowest"));
-		FTextNumericParsingTestUtil::DoAllTests<int8>(this, TEXT("128"), AgnosticFormattingRules, TNumericLimits<int8>::Max() + 1, TNumericLimits<int8>::Max(), true, false, TEXT("Parsing int8 +/-1 max"));
-		FTextNumericParsingTestUtil::DoAllTests<uint8>(this, TEXT("-1"), AgnosticFormattingRules, TNumericLimits<uint8>::Lowest() - 1, TNumericLimits<uint8>::Lowest(), true, false, TEXT("Parsing uint8 +/-1 lowest"));
-		FTextNumericParsingTestUtil::DoAllTests<uint8>(this, TEXT("256"), AgnosticFormattingRules, TNumericLimits<uint8>::Max() + 1, TNumericLimits<uint8>::Max(), true, false, TEXT("Parsing uint8 +/-1 max"));
-		FTextNumericParsingTestUtil::DoAllTests<int64>(this, TEXT("-9223372036854775809"), AgnosticFormattingRules, static_cast<int64>(TNumericLimits<int64>::Lowest() - 1), TNumericLimits<int64>::Lowest(), true, false, TEXT("Parsing int64 +/-1 lowest"));
-		FTextNumericParsingTestUtil::DoAllTests<int64>(this, TEXT("9223372036854775808"), AgnosticFormattingRules, static_cast<int64>(TNumericLimits<int64>::Max() + 1), TNumericLimits<int64>::Max(), true, false, TEXT("Parsing +/-1 int64 max"));
-		FTextNumericParsingTestUtil::DoAllTests<uint64>(this, TEXT("-1"), AgnosticFormattingRules, static_cast<uint64>(TNumericLimits<uint64>::Lowest() - 1), TNumericLimits<uint64>::Lowest(), true, false, TEXT("Parsing uint64 +/-1 lowest"));
-		FTextNumericParsingTestUtil::DoAllTests<uint64>(this, TEXT("18446744073709551616"), AgnosticFormattingRules, static_cast<uint64>(TNumericLimits<uint64>::Max() + 1), TNumericLimits<uint64>::Max(), true, false, TEXT("Parsing +/-1 uint64 max"));
+		int32 Number129 = 129;
+		int32 Number128 = 128;
+		int32 Number1 = 1;
+		int32 Number256 = 256;
+		FTextNumericParsingTestUtil::DoAllTests<int8>(this, TEXT("-129"), AgnosticFormattingRules, static_cast<int8>(-Number129), TNumericLimits<int8>::Lowest(), true, false, TEXT("Parsing int8 +/-1 lowest"));
+		FTextNumericParsingTestUtil::DoAllTests<int8>(this, TEXT("128"), AgnosticFormattingRules, static_cast<int8>(Number128), TNumericLimits<int8>::Max(), true, false, TEXT("Parsing int8 +/-1 max"));
+		FTextNumericParsingTestUtil::DoAllTests<uint8>(this, TEXT("-1"), AgnosticFormattingRules, static_cast<uint8>(-Number1), TNumericLimits<uint8>::Lowest(), true, false, TEXT("Parsing uint8 +/-1 lowest"));
+		FTextNumericParsingTestUtil::DoAllTests<uint8>(this, TEXT("256"), AgnosticFormattingRules, static_cast<uint8>(Number256), TNumericLimits<uint8>::Max(), true, false, TEXT("Parsing uint8 +/-1 max"));
+
+		int64 Number9223372036854775809 = TNumericLimits<int64>::Lowest();
+		--Number9223372036854775809;
+		int64 Number9223372036854775808 = TNumericLimits<int64>::Max();
+		++Number9223372036854775808;
+		uint64 Number18446744073709551616 = TNumericLimits<uint64>::Max();
+		++Number18446744073709551616;
+		FTextNumericParsingTestUtil::DoAllTests<int64>(this, TEXT("-9223372036854775809"), AgnosticFormattingRules, Number9223372036854775809, TNumericLimits<int64>::Lowest(), true, false, TEXT("Parsing int64 +/-1 lowest"));
+		FTextNumericParsingTestUtil::DoAllTests<int64>(this, TEXT("9223372036854775808"), AgnosticFormattingRules, Number9223372036854775808, TNumericLimits<int64>::Max(), true, false, TEXT("Parsing +/-1 int64 max"));
+		FTextNumericParsingTestUtil::DoAllTests<uint64>(this, TEXT("-1"), AgnosticFormattingRules, static_cast<uint64>(-Number1), TNumericLimits<uint64>::Lowest(), true, false, TEXT("Parsing uint64 +/-1 lowest"));
+		FTextNumericParsingTestUtil::DoAllTests<uint64>(this, TEXT("18446744073709551616"), AgnosticFormattingRules, Number18446744073709551616, TNumericLimits<uint64>::Max(), true, false, TEXT("Parsing +/-1 uint64 max"));
 
 		FTextNumericParsingTestUtil::DoGroupingTest<int64>(this, TEXT("-18446744073709551616"), AgnosticFormattingRules, 0, true, TEXT("Parsing negative overflow int64 max"));
 		FTextNumericParsingTestUtil::DoLimitsTest<int64>(this, TEXT("-18446744073709551616"), AgnosticFormattingRules, 0, false, TEXT("Parsing negative overflow int64 max"));
 		FTextNumericParsingTestUtil::DoClampTest<int64>(this, TEXT("-18446744073709551616"), AgnosticFormattingRules, TNumericLimits<int64>::Lowest(), true, TEXT("Parsing negative overflow int64 max"));
-#endif
 	}
 
 	return true;
