@@ -492,8 +492,6 @@ AActor* UWorld::SpawnActor( UClass* Class, FTransform const* UserTransformPtr, c
 	Actor->ClearActorLabel(); // Clear label on newly spawned actors
 
 	// Set actor's Guid
-	check(!Actor->GetActorGuid().IsValid());
-
 	FGuid ActorGuid;
 	if (SpawnParameters.OverrideActorGuid.IsValid())
 	{
