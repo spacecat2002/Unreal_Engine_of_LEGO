@@ -1299,6 +1299,7 @@ FLinkerLoad::ELinkerStatus FLinkerLoad::SerializePackageFileSummary()
 		if (Status == LINKER_Failed && bIsAsyncLoader)
 		{
 			GetAsyncLoader()->EndReadingHeader();
+			return Status;
 		}
 
 		ELinkerStatus UpdateStatus = UpdateFromPackageFileSummary();
