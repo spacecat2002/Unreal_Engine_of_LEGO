@@ -308,7 +308,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBasicMathExpressionEvaluatorTest, "System.Core
 // Evaluates valid math expressions.
 bool FBasicMathExpressionEvaluatorTest::RunTest(const FString& Parameters)
 {
-	TestTrue(TEXT("Valid expression, '+2', evaluated incorrectly."), TestExpression(this, TEXT("+1"), 1));
+	TestTrue(TEXT("Valid expression, '+1', evaluated incorrectly."), TestExpression(this, TEXT("+1"), 1));
 	TestTrue(TEXT("Valid expression, '-20', evaluated incorrectly."), TestExpression(this, TEXT("-20"), -20));
 	TestTrue(TEXT("Valid expression, '-+-2', evaluated incorrectly."), TestExpression(this, TEXT("-+-2"), 2));
 	TestTrue(TEXT("Valid expression, '1 + 2', evaluated incorrectly."), TestExpression(this, TEXT("1 + 2"), 3));
