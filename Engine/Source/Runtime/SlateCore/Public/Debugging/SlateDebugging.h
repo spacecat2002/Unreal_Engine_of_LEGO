@@ -35,23 +35,29 @@ enum class ESlateDebuggingInputEvent : uint8
 	MouseMove = 0,
 	MouseEnter,
 	MouseLeave,
+	PreviewMouseButtonDown,
 	MouseButtonDown,
 	MouseButtonUp,
 	MouseButtonDoubleClick,
 	MouseWheel,
 	TouchStart,
 	TouchEnd,
+	TouchForceChanged,
+	TouchFirstMove,
+	TouchMoved,
 	DragDetected,
 	DragEnter,
 	DragLeave,
 	DragOver,
 	DragDrop,
 	DropMessage,
+	PreviewKeyDown,
 	KeyDown,
 	KeyUp,
 	KeyChar,
 	AnalogInput,
 	TouchGesture,
+	MotionDetected,
 	MAX,
 };
 
@@ -238,6 +244,43 @@ public:
 	static void BroadcastInputEvent(ESlateDebuggingInputEvent InputEventType, const TSharedPtr<SWidget>& HandlerWidget);
 	static void BroadcastInputEvent(ESlateDebuggingInputEvent InputEventType, const FReply& InReply, const TSharedPtr<SWidget>& HandlerWidget);
 	static void BroadcastInputEvent(ESlateDebuggingInputEvent InputEventType, const FReply& InReply, const TSharedPtr<SWidget>& HandlerWidget, const FString& AdditionalContent);
+	static void BroadcastInputEvent(ESlateDebuggingInputEvent InputEventType, const FReply& InReply, const TSharedPtr<SWidget>& HandlerWidget, const FName& AdditionalContent);
+	static void BroadcastInputEvent(ESlateDebuggingInputEvent InputEventType, const FReply& InReply, const TSharedPtr<SWidget>& HandlerWidget, const TCHAR AdditionalContent);
+	static void BroadcastNoReplyInputEvent(ESlateDebuggingInputEvent InputEventType, const TSharedPtr<SWidget>& HandlerWidget);
+
+public:
+	/** */
+	struct SLATECORE_API FScopeProcessInputEvent
+	{
+		ESlateDebuggingInputEvent InputEvent;
+		FScopeProcessInputEvent(ESlateDebuggingInputEvent InputEvent, const FInputEvent& Event);
+		~FScopeProcessInputEvent();
+	};
+
+	/** */
+	struct SLATECORE_API FScopeRouteInputEvent
+	{
+		ESlateDebuggingInputEvent InputEvent;
+		FScopeRouteInputEvent(ESlateDebuggingInputEvent InputEvent, const FName& RoutingType);
+		~FScopeRouteInputEvent();
+	};
+
+	/** */
+	static void BroadcastPreProcessInputEvent(ESlateDebuggingInputEvent InputEventType, const TCHAR* InputPrecessorName, bool bHandled);
+
+	/** */
+	struct IWidgetInputRoutingEvent
+	{
+		virtual void OnProcessInput(ESlateDebuggingInputEvent InputEventType, const FInputEvent& Event) = 0;
+		virtual void OnPreProcessInput(ESlateDebuggingInputEvent InputEventType, const TCHAR* InputPrecessorName, bool bHandled) = 0;
+		virtual void OnRouteInput(ESlateDebuggingInputEvent InputEventType, const FName& RoutedType) = 0;
+		virtual void OnInputEvent(ESlateDebuggingInputEvent InputEventType, const FReply& InReply, const TSharedPtr<SWidget>& HandlerWidget) = 0;
+		virtual void OnInputRouted(ESlateDebuggingInputEvent InputEventType) = 0;
+		virtual void OnInputProcessed(ESlateDebuggingInputEvent InputEventType) = 0;
+	};
+
+	static void RegisterWidgetInputRoutingEvent(IWidgetInputRoutingEvent* Event);
+	static void UnregisterWidgetInputRoutingEvent(IWidgetInputRoutingEvent* Event);
 
 public:
 	/**  */
@@ -301,6 +344,8 @@ private:
 		EMouseCursor::Type MouseCursor;
 	};
 	static FLastCursorQuery LastCursorQuery;
+
+	static TArray<IWidgetInputRoutingEvent*> RoutingEvents;
 };
 
 #endif

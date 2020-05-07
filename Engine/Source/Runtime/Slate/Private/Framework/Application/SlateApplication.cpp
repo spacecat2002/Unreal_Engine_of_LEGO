@@ -181,6 +181,8 @@ public:
 		{
 		}
 
+		static FName Name;
+
 		bool ShouldKeepGoing() const
 		{
 			return !bEventSent;
@@ -222,6 +224,8 @@ public:
 		{
 		}
 
+		static FName Name;
+
 		bool ShouldKeepGoing() const
 		{
 			return !bEventSent && RoutingPath.Widgets.Num() > 0;
@@ -262,6 +266,8 @@ public:
 		{
 		}
 
+		static FName Name;
+
 		bool ShouldKeepGoing() const
 		{
 			return WidgetIndex < RoutingPath.Widgets.Num();
@@ -300,6 +306,8 @@ public:
 		, RoutingPath (InRoutingPath)
 		{
 		}
+
+		static FName Name;
 
 		bool ShouldKeepGoing() const
 		{
@@ -348,21 +356,25 @@ public:
 	 * Shift Tab, clicks on a focusable widget, or navigation with keyboard/game pad.)
 	 */
 	template< typename RoutingPolicyType, typename FuncType, typename EventType >
-	static FReply RouteAlongFocusPath( FSlateApplication* ThisApplication, RoutingPolicyType RoutingPolicy, EventType KeyEventCopy, const FuncType& Lambda )
+	static FReply RouteAlongFocusPath( FSlateApplication* ThisApplication, RoutingPolicyType RoutingPolicy, EventType KeyEventCopy, const FuncType& Lambda, ESlateDebuggingInputEvent DebuggingInputEvent)
 	{
-		return Route<FReply>(ThisApplication, RoutingPolicy, KeyEventCopy, Lambda);
+		return Route<FReply>(ThisApplication, RoutingPolicy, KeyEventCopy, Lambda, DebuggingInputEvent);
 	}
 
 	/**
 	 * Route an event based on the Routing Policy.
 	 */
 	template< typename ReplyType, typename RoutingPolicyType, typename EventType, typename FuncType >
-	static ReplyType Route( FSlateApplication* ThisApplication, RoutingPolicyType RoutingPolicy, EventType EventCopy, const FuncType& Lambda )
+	static ReplyType Route( FSlateApplication* ThisApplication, RoutingPolicyType RoutingPolicy, EventType EventCopy, const FuncType& Lambda, ESlateDebuggingInputEvent DebuggingInputEvent)
 	{
 		ReplyType Reply = ReplyType::Unhandled();
 		const FWidgetPath& RoutingPath = RoutingPolicy.GetRoutingPath();
 		const FWidgetPath* WidgetsUnderCursor = RoutingPolicy.GetWidgetsUnderCursor();
 		
+#if WITH_SLATE_DEBUGGING
+		FSlateDebugging::FScopeRouteInputEvent Scope(DebuggingInputEvent, RoutingPolicyType::Name);
+#endif
+
 		EventCopy.SetEventPath( RoutingPath );
 
 		for ( ; !Reply.IsEventHandled() && RoutingPolicy.ShouldKeepGoing(); RoutingPolicy.Next() )
@@ -408,6 +420,10 @@ public:
 
 };
 
+FName FEventRouter::FDirectPolicy::Name = "Direct";
+FName FEventRouter::FToLeafmostPolicy::Name = "ToLeafmost";
+FName FEventRouter::FTunnelPolicy::Name = "Tunnel";
+FName FEventRouter::FBubblePolicy::Name = "Bubble";
 
 template<>
 struct FEventRouter::Translate<FPointerEvent>
@@ -2576,6 +2592,9 @@ bool FSlateApplication::SetUserFocus(FSlateUser& User, const FWidgetPath& InFocu
 		TSharedRef<SWindow> Window = InFocusPath.GetWindow();
 		if (ActiveModalWindows.Num() != 0 && !(Window->IsDescendantOf(GetActiveModalWindow()) || ActiveModalWindows.Top() == Window))
 		{
+#if WITH_SLATE_DEBUGGING
+			FSlateDebugging::BroadcastWarning(NSLOCTEXT("SlateDebugging", "SetUserFocusInvalidWindowFailed", "Ignoring SetUserFocus because it's not an active modal Window"), Window);
+#endif
 			UE_LOG(LogSlate, Warning, TEXT("Ignoring SetUserFocus because it's not an active modal Window (user %i not set to %s."), User.GetUserIndex(), *InFocusPath.GetLastWidget()->ToString());
 			return false;
 		}
@@ -3019,15 +3038,21 @@ void FSlateApplication::ProcessReply( const FWidgetPath& CurrentEventPath, const
 		FEventRouter::Route<FNoReply>(this, FEventRouter::FBubblePolicy(LastWidgetsUnderCursor.ToWidgetPath()), *InMouseEvent, [](const FArrangedWidget& SomeWidget, const FPointerEvent& PointerEvent)
 		{
 			SomeWidget.Widget->OnMouseLeave( PointerEvent );
+#if WITH_SLATE_DEBUGGING
+			FSlateDebugging::BroadcastNoReplyInputEvent(ESlateDebuggingInputEvent::MouseLeave, SomeWidget.Widget);
+#endif
 			return FNoReply();
-		});
+		}, ESlateDebuggingInputEvent::MouseLeave);
 
 		// Then, the original widget started the drag receives OnDragEnter.
 		FEventRouter::Route<FNoReply>(this, FEventRouter::FBubblePolicy(CurrentEventPath), FDragDropEvent( *InMouseEvent, ReplyDragDropContent ), [](const FArrangedWidget& SomeWidget, const FDragDropEvent& DragDropEvent )
 		{
 			SomeWidget.Widget->OnDragEnter( SomeWidget.Geometry, DragDropEvent );
+#if WITH_SLATE_DEBUGGING
+			FSlateDebugging::BroadcastNoReplyInputEvent(ESlateDebuggingInputEvent::DragEnter, SomeWidget.Widget);
+#endif
 			return FNoReply();
-		});
+		}, ESlateDebuggingInputEvent::DragEnter);
 
 		// If the cursor is not currently over the widget on which the drag
 		// operation started (which should only be the case due to cursor
@@ -4117,6 +4142,10 @@ bool FSlateApplication::ProcessKeyCharEvent( const FCharacterEvent& InCharacterE
 {
 	SCOPE_CYCLE_COUNTER(STAT_ProcessKeyChar);
 
+#if WITH_SLATE_DEBUGGING
+	FSlateDebugging::FScopeProcessInputEvent Scope(ESlateDebuggingInputEvent::KeyChar, InCharacterEvent);
+#endif
+
 	TScopeCounter<int32> BeginInput(ProcessingInput);
 
 	FReply Reply = FReply::Unhandled();
@@ -4141,13 +4170,13 @@ bool FSlateApplication::ProcessKeyCharEvent( const FCharacterEvent& InCharacterE
 				{
 					const FReply TempReply = SomeWidgetGettingEvent.Widget->OnKeyChar(SomeWidgetGettingEvent.Geometry, Event);
 #if WITH_SLATE_DEBUGGING
-					FSlateDebugging::BroadcastInputEvent(ESlateDebuggingInputEvent::KeyChar, TempReply, SomeWidgetGettingEvent.Widget, FString::Printf(TEXT("%c"), Event.GetCharacter()));
+					FSlateDebugging::BroadcastInputEvent(ESlateDebuggingInputEvent::KeyChar, TempReply, SomeWidgetGettingEvent.Widget, Event.GetCharacter());
 #endif
 					return TempReply;
 				}
 
 				return FReply::Unhandled();
-			});
+			}, ESlateDebuggingInputEvent::KeyChar);
 	}
 
 	return Reply.IsEventHandled();
@@ -4163,8 +4192,13 @@ bool FSlateApplication::OnKeyDown( const int32 KeyCode, const uint32 CharacterCo
 
 bool FSlateApplication::ProcessKeyDownEvent( const FKeyEvent& InKeyEvent )
 {
-	TScopeCounter<int32> BeginInput(ProcessingInput);
 	SCOPE_CYCLE_COUNTER(STAT_ProcessKeyDown);
+
+#if WITH_SLATE_DEBUGGING
+	FSlateDebugging::FScopeProcessInputEvent Scope(ESlateDebuggingInputEvent::KeyDown, InKeyEvent);
+#endif
+
+	TScopeCounter<int32> BeginInput(ProcessingInput);
 
 	TSharedRef<FSlateUser> SlateUser = GetOrCreateUser(InKeyEvent);
 
@@ -4236,14 +4270,22 @@ bool FSlateApplication::ProcessKeyDownEvent( const FKeyEvent& InKeyEvent )
 		// Tunnel the keyboard event
 		Reply = FEventRouter::RouteAlongFocusPath(this, FEventRouter::FTunnelPolicy(EventPath), InKeyEvent, [] (const FArrangedWidget& CurrentWidget, const FKeyEvent& Event)
 		{
+			if (CurrentWidget.Widget->IsEnabled())
+			{
+				const FReply TempReply = CurrentWidget.Widget->OnPreviewKeyDown(CurrentWidget.Geometry, Event);
 #if WITH_SLATE_DEBUGGING
-			// TODO
+				FSlateDebugging::BroadcastInputEvent(ESlateDebuggingInputEvent::PreviewKeyDown, TempReply, CurrentWidget.Widget, Event.GetKey().GetFName());
 #endif
-
-			return ( CurrentWidget.Widget->IsEnabled() )
-				? CurrentWidget.Widget->OnPreviewKeyDown(CurrentWidget.Geometry, Event)
-				: FReply::Unhandled();
-		});
+				return TempReply;
+			}
+			else
+			{
+#if WITH_SLATE_DEBUGGING
+				FSlateDebugging::BroadcastNoReplyInputEvent(ESlateDebuggingInputEvent::PreviewKeyDown, CurrentWidget.Widget);
+#endif
+			}
+			return FReply::Unhandled();
+		}, ESlateDebuggingInputEvent::PreviewKeyDown);
 
 		// Send out key down events.
 		if ( !Reply.IsEventHandled() )
@@ -4254,13 +4296,19 @@ bool FSlateApplication::ProcessKeyDownEvent( const FKeyEvent& InKeyEvent )
 				{
 					const FReply TempReply = SomeWidgetGettingEvent.Widget->OnKeyDown(SomeWidgetGettingEvent.Geometry, Event);
 #if WITH_SLATE_DEBUGGING
-					FSlateDebugging::BroadcastInputEvent(ESlateDebuggingInputEvent::KeyDown, TempReply, SomeWidgetGettingEvent.Widget, Event.GetKey().ToString());
+					FSlateDebugging::BroadcastInputEvent(ESlateDebuggingInputEvent::KeyDown, TempReply, SomeWidgetGettingEvent.Widget, Event.GetKey().GetFName());
 #endif
 					return TempReply;
 				}
+				else
+				{
+#if WITH_SLATE_DEBUGGING
+					FSlateDebugging::BroadcastNoReplyInputEvent(ESlateDebuggingInputEvent::KeyDown, SomeWidgetGettingEvent.Widget);
+#endif
+				}
 
 				return FReply::Unhandled();
-			});
+			}, ESlateDebuggingInputEvent::KeyDown);
 		}
 
 		// If the key event was not processed by any widget...
@@ -4284,6 +4332,10 @@ bool FSlateApplication::OnKeyUp( const int32 KeyCode, const uint32 CharacterCode
 bool FSlateApplication::ProcessKeyUpEvent( const FKeyEvent& InKeyEvent )
 {
 	SCOPE_CYCLE_COUNTER(STAT_ProcessKeyUp);
+
+#if WITH_SLATE_DEBUGGING
+	FSlateDebugging::FScopeProcessInputEvent Scope(ESlateDebuggingInputEvent::KeyUp, InKeyEvent);
+#endif
 
 	TScopeCounter<int32> BeginInput(ProcessingInput);
 
@@ -4318,7 +4370,7 @@ bool FSlateApplication::ProcessKeyUpEvent( const FKeyEvent& InKeyEvent )
 			}
 
 			return FReply::Unhandled();
-		});
+		}, ESlateDebuggingInputEvent::KeyUp);
 
 		// If the key event was not processed by any widget...
 		if (!Reply.IsEventHandled() && UnhandledKeyUpEventHandler.IsBound())
@@ -4337,6 +4389,10 @@ void FSlateApplication::OnInputLanguageChanged()
 bool FSlateApplication::ProcessAnalogInputEvent(const FAnalogInputEvent& InAnalogInputEvent)
 {
 	SCOPE_CYCLE_COUNTER(STAT_ProcessAnalogInput);
+
+#if WITH_SLATE_DEBUGGING
+	FSlateDebugging::FScopeProcessInputEvent Scope(ESlateDebuggingInputEvent::AnalogInput, InAnalogInputEvent);
+#endif
 
 	TScopeCounter<int32> BeginInput(ProcessingInput);
 
@@ -4371,7 +4427,7 @@ bool FSlateApplication::ProcessAnalogInputEvent(const FAnalogInputEvent& InAnalo
 				}
 
 				return FReply::Unhandled();
-			});
+			}, ESlateDebuggingInputEvent::AnalogInput);
 	}
 
 	// If no one handled this, it was probably motion in the deadzone.  Don't treat it as activity.
@@ -4469,6 +4525,10 @@ bool FSlateApplication::ProcessMouseButtonDownEvent( const TSharedPtr< FGenericW
 	
 	TScopeCounter<int32> BeginInput(ProcessingInput);
 
+#if WITH_SLATE_DEBUGGING
+	FSlateDebugging::FScopeProcessInputEvent Scope(ESlateDebuggingInputEvent::MouseButtonDown, MouseEvent);
+#endif
+
 #if WITH_EDITOR
 	//Send the key input to all pre input key down listener function
 	if (OnApplicationMousePreInputButtonDownListenerEvent.IsBound())
@@ -4514,8 +4574,12 @@ bool FSlateApplication::ProcessMouseButtonDownEvent( const TSharedPtr< FGenericW
 
 			Reply = FEventRouter::Route<FReply>(this, FEventRouter::FToLeafmostPolicy(MouseCaptorPath), MouseEvent, [] (const FArrangedWidget& InMouseCaptorWidget, const FPointerEvent& Event)
 			{
-				return InMouseCaptorWidget.Widget->OnPreviewMouseButtonDown(InMouseCaptorWidget.Geometry, Event);
-			});
+				const FReply TempReply = InMouseCaptorWidget.Widget->OnPreviewMouseButtonDown(InMouseCaptorWidget.Geometry, Event);
+#if WITH_SLATE_DEBUGGING
+				FSlateDebugging::BroadcastInputEvent(ESlateDebuggingInputEvent::PreviewMouseButtonDown, TempReply, InMouseCaptorWidget.Widget);
+#endif
+				return TempReply;
+			}, ESlateDebuggingInputEvent::PreviewMouseButtonDown);
 
 			if ( !Reply.IsEventHandled() )
 			{
@@ -4538,7 +4602,7 @@ bool FSlateApplication::ProcessMouseButtonDownEvent( const TSharedPtr< FGenericW
 #endif
 					}
 					return TempReply;
-				});
+				}, ESlateDebuggingInputEvent::MouseButtonDown);
 			}
 		}
 		else
@@ -4593,8 +4657,12 @@ FReply FSlateApplication::RoutePointerDownEvent(const FWidgetPath& WidgetsUnderP
 
 	FReply Reply = FEventRouter::Route<FReply>( this, FEventRouter::FTunnelPolicy( WidgetsUnderPointer ), PointerEvent, []( const FArrangedWidget TargetWidget, const FPointerEvent& Event )
 	{
-		return TargetWidget.Widget->OnPreviewMouseButtonDown( TargetWidget.Geometry, Event );
-	} );
+		const FReply TempReply = TargetWidget.Widget->OnPreviewMouseButtonDown(TargetWidget.Geometry, Event);
+#if WITH_SLATE_DEBUGGING
+		FSlateDebugging::BroadcastInputEvent(ESlateDebuggingInputEvent::PreviewMouseButtonDown, TempReply, TargetWidget.Widget);
+#endif
+		return TempReply;
+	}, ESlateDebuggingInputEvent::PreviewMouseButtonDown);
 
 	if( !Reply.IsEventHandled() )
 	{
@@ -4619,7 +4687,7 @@ FReply FSlateApplication::RoutePointerDownEvent(const FWidgetPath& WidgetsUnderP
 				}
 			}
 			return TempReply;
-		} );
+		}, ESlateDebuggingInputEvent::MouseButtonDown);
 
 		// When we perform a touch begin, we need to also send a mouse enter as if it were a cursor.
 		if (PointerEvent.IsTouchEvent() && !IsFakingTouchEvents())
@@ -4742,7 +4810,7 @@ FReply FSlateApplication::RoutePointerUpEvent(const FWidgetPath& WidgetsUnderPoi
 					}
 
 					return TempReply;
-				});
+				}, ESlateDebuggingInputEvent::MouseButtonUp);
 		}
 	}
 	else
@@ -4793,7 +4861,7 @@ FReply FSlateApplication::RoutePointerUpEvent(const FWidgetPath& WidgetsUnderPoi
 			}
 
 			return TempReply;
-		});
+		}, ESlateDebuggingInputEvent::MouseButtonUp);
 	}
 
 	SlateUser->NotifyPointerReleased(PointerEvent, LocalWidgetsUnderPointer, LocalDragDropContent, Reply.IsEventHandled());
@@ -4865,7 +4933,7 @@ bool FSlateApplication::RoutePointerMoveEvent(const FWidgetPath& WidgetsUnderPoi
 					FSlateDebugging::BroadcastInputEvent(ESlateDebuggingInputEvent::DragDetected, TempReply, InDetectDragForMe.Widget);
 #endif
 					return TempReply;
-				});
+				}, ESlateDebuggingInputEvent::DragDetected);
 		}
 	}
 
@@ -4952,10 +5020,13 @@ bool FSlateApplication::RoutePointerMoveEvent(const FWidgetPath& WidgetsUnderPoi
 						if (MouseCaptorPath.ContainsWidget(WidgetUnderCursor.Widget))
 						{
 							WidgetUnderCursor.Widget->OnMouseEnter(WidgetUnderCursor.Geometry, Event);
+#if WITH_SLATE_DEBUGGING
+							FSlateDebugging::BroadcastNoReplyInputEvent(ESlateDebuggingInputEvent::MouseEnter, WidgetUnderCursor.Widget);
+#endif
 						}
 					}
 					return FNoReply();
-				});
+				}, ESlateDebuggingInputEvent::MouseEnter);
 
 			FReply Reply = FEventRouter::Route<FReply>(this, FEventRouter::FToLeafmostPolicy(MouseCaptorPath), PointerEvent, [this](const FArrangedWidget& MouseCaptorWidget, const FPointerEvent& Event)
 				{
@@ -4968,7 +5039,7 @@ bool FSlateApplication::RoutePointerMoveEvent(const FWidgetPath& WidgetsUnderPoi
 						{
 							TempReply = MouseCaptorWidget.Widget->OnTouchForceChanged(MouseCaptorWidget.Geometry, Event);
 #if WITH_SLATE_DEBUGGING
-							//TODO FSlateDebugging
+							FSlateDebugging::BroadcastInputEvent(ESlateDebuggingInputEvent::TouchForceChanged, TempReply, MouseCaptorWidget.Widget);
 #endif
 							bAllowMouseFallback = false;
 						}
@@ -4976,13 +5047,16 @@ bool FSlateApplication::RoutePointerMoveEvent(const FWidgetPath& WidgetsUnderPoi
 						{
 							TempReply = MouseCaptorWidget.Widget->OnTouchFirstMove(MouseCaptorWidget.Geometry, Event);
 #if WITH_SLATE_DEBUGGING
-							//TODO FSlateDebugging
+							FSlateDebugging::BroadcastInputEvent(ESlateDebuggingInputEvent::TouchFirstMove, TempReply, MouseCaptorWidget.Widget);
 #endif
 							bAllowMouseFallback = false;
 						}
 						else
 						{
 							TempReply = MouseCaptorWidget.Widget->OnTouchMoved(MouseCaptorWidget.Geometry, Event);
+#if WITH_SLATE_DEBUGGING
+							FSlateDebugging::BroadcastInputEvent(ESlateDebuggingInputEvent::TouchMoved, TempReply, MouseCaptorWidget.Widget);
+#endif
 						}
 					}
 					if ((!Event.IsTouchEvent() && bAllowMouseFallback) || (!TempReply.IsEventHandled() && this->bTouchFallbackToMouse))
@@ -4993,7 +5067,7 @@ bool FSlateApplication::RoutePointerMoveEvent(const FWidgetPath& WidgetsUnderPoi
 #endif
 					}
 					return TempReply;
-				});
+				}, ESlateDebuggingInputEvent::MouseEnter);
 			bHandled = Reply.IsEventHandled();
 		}
 	}
@@ -5013,9 +5087,12 @@ bool FSlateApplication::RoutePointerMoveEvent(const FWidgetPath& WidgetsUnderPoi
 				if (!LastWidgetsUnderPointer.ContainsWidget(WidgetUnderCursor.Widget))
 				{
 					WidgetUnderCursor.Widget->OnDragEnter(WidgetUnderCursor.Geometry, InDragDropEvent);
+#if WITH_SLATE_DEBUGGING
+					FSlateDebugging::BroadcastNoReplyInputEvent(ESlateDebuggingInputEvent::DragEnter, WidgetUnderCursor.Widget);
+#endif
 				}
 				return FNoReply();
-			});
+			}, ESlateDebuggingInputEvent::DragEnter);
 		}
 		else
 		{
@@ -5024,9 +5101,12 @@ bool FSlateApplication::RoutePointerMoveEvent(const FWidgetPath& WidgetsUnderPoi
 				if (!LastWidgetsUnderPointer.ContainsWidget(WidgetUnderCursor.Widget))
 				{
 					WidgetUnderCursor.Widget->OnMouseEnter(WidgetUnderCursor.Geometry, Event);
+#if WITH_SLATE_DEBUGGING
+					FSlateDebugging::BroadcastNoReplyInputEvent(ESlateDebuggingInputEvent::MouseEnter, WidgetUnderCursor.Widget);
+#endif
 				}
 				return FNoReply();
-			});
+			}, ESlateDebuggingInputEvent::MouseEnter);
 		}
 
 		// Bubble the MouseMove event.
@@ -5050,7 +5130,7 @@ bool FSlateApplication::RoutePointerMoveEvent(const FWidgetPath& WidgetsUnderPoi
 					{
 						TempReply = CurWidget.Widget->OnTouchForceChanged(CurWidget.Geometry, Event);
 #if WITH_SLATE_DEBUGGING
-						//TODO FSlateDebugging
+						FSlateDebugging::BroadcastInputEvent(ESlateDebuggingInputEvent::TouchForceChanged, TempReply, CurWidget.Widget);
 #endif
 						bAllowMouseFallback = false;
 					}
@@ -5058,7 +5138,7 @@ bool FSlateApplication::RoutePointerMoveEvent(const FWidgetPath& WidgetsUnderPoi
 					{
 						TempReply = CurWidget.Widget->OnTouchFirstMove(CurWidget.Geometry, Event);
 #if WITH_SLATE_DEBUGGING
-						//TODO FSlateDebugging
+						FSlateDebugging::BroadcastInputEvent(ESlateDebuggingInputEvent::TouchFirstMove, TempReply, CurWidget.Widget);
 #endif
 						bAllowMouseFallback = false;
 					}
@@ -5066,7 +5146,7 @@ bool FSlateApplication::RoutePointerMoveEvent(const FWidgetPath& WidgetsUnderPoi
 					{
 						TempReply = CurWidget.Widget->OnTouchMoved(CurWidget.Geometry, Event);
 #if WITH_SLATE_DEBUGGING
-						//TODO FSlateDebugging
+						FSlateDebugging::BroadcastInputEvent(ESlateDebuggingInputEvent::TouchMoved, TempReply, CurWidget.Widget);
 #endif
 					}
 				}
@@ -5080,7 +5160,7 @@ bool FSlateApplication::RoutePointerMoveEvent(const FWidgetPath& WidgetsUnderPoi
 			}
 
 			return TempReply;
-		});
+		}, ESlateDebuggingInputEvent::MouseMove);
 
 		bHandled = Reply.IsEventHandled();
 	}
@@ -5122,6 +5202,10 @@ bool FSlateApplication::OnMouseDoubleClick( const TSharedPtr< FGenericWindow >& 
 bool FSlateApplication::ProcessMouseButtonDoubleClickEvent( const TSharedPtr< FGenericWindow >& PlatformWindow, const FPointerEvent& InMouseEvent )
 {
 	SCOPE_CYCLE_COUNTER(STAT_ProcessMouseButtonDoubleClick);
+
+#if WITH_SLATE_DEBUGGING
+	FSlateDebugging::FScopeProcessInputEvent Scope(ESlateDebuggingInputEvent::MouseButtonDoubleClick, InMouseEvent);
+#endif
 
 	SetLastUserInteractionTime(this->GetCurrentTime());
 	LastUserInteractionTimeForThrottling = LastUserInteractionTime;
@@ -5169,7 +5253,7 @@ FReply FSlateApplication::RoutePointerDoubleClickEvent(const FWidgetPath& Widget
 		FSlateDebugging::BroadcastInputEvent(ESlateDebuggingInputEvent::MouseButtonDoubleClick, TempReply, TargetWidget.Widget);
 #endif
 		return TempReply;
-	} );
+	}, ESlateDebuggingInputEvent::MouseButtonDoubleClick);
 
 	return Reply;
 }
@@ -5208,6 +5292,10 @@ bool FSlateApplication::OnMouseUp( const EMouseButtons::Type Button, const FVect
 bool FSlateApplication::ProcessMouseButtonUpEvent( const FPointerEvent& MouseEvent )
 {
 	SCOPE_CYCLE_COUNTER(STAT_ProcessMouseButtonUp);
+
+#if WITH_SLATE_DEBUGGING
+	FSlateDebugging::FScopeProcessInputEvent Scope(ESlateDebuggingInputEvent::MouseButtonUp, MouseEvent);
+#endif
 
 	// If in responsive mode throttle, leave it on mouse up.  Release this before dispatching the event to prevent being stuck in this mode
 	// until the next click if a modal dialog is opened.
@@ -5267,6 +5355,10 @@ bool FSlateApplication::OnMouseWheel( const float Delta, const FVector2D CursorP
 bool FSlateApplication::ProcessMouseWheelOrGestureEvent( const FPointerEvent& InWheelEvent, const FPointerEvent* InGestureEvent )
 {
 	SCOPE_CYCLE_COUNTER(STAT_ProcessMouseWheelGesture);
+
+#if WITH_SLATE_DEBUGGING
+	FSlateDebugging::FScopeProcessInputEvent Scope(ESlateDebuggingInputEvent::MouseWheel, InWheelEvent);
+#endif
 
 	bool bShouldProcessEvent = false;
 
@@ -5346,7 +5438,7 @@ FReply FSlateApplication::RouteMouseWheelOrGestureEvent(const FWidgetPath& Widge
 		}
 
 		return TempReply;
-	});
+	}, ESlateDebuggingInputEvent::MouseWheel);
 
 	return Reply;
 }
@@ -5426,6 +5518,10 @@ bool FSlateApplication::OnRawMouseMove( const int32 X, const int32 Y )
 bool FSlateApplication::ProcessMouseMoveEvent( const FPointerEvent& MouseEvent, bool bIsSynthetic )
 {
 	SCOPE_CYCLE_COUNTER(STAT_ProcessMouseMove);
+
+#if WITH_SLATE_DEBUGGING
+	FSlateDebugging::FScopeProcessInputEvent Scope(ESlateDebuggingInputEvent::MouseMove, MouseEvent);
+#endif
 
 	if ( !bIsSynthetic )
 	{
@@ -5724,6 +5820,10 @@ bool FSlateApplication::OnTouchStarted( const TSharedPtr< FGenericWindow >& Plat
 
 void FSlateApplication::ProcessTouchStartedEvent( const TSharedPtr< FGenericWindow >& PlatformWindow, const FPointerEvent& InTouchEvent )
 {
+#if WITH_SLATE_DEBUGGING
+	FSlateDebugging::FScopeProcessInputEvent Scope(ESlateDebuggingInputEvent::TouchStart, InTouchEvent);
+#endif
+
 	GetOrCreateUser(InTouchEvent)->NotifyTouchStarted(InTouchEvent);
 	ProcessMouseButtonDownEvent(PlatformWindow, InTouchEvent);
 }
@@ -5750,6 +5850,10 @@ bool FSlateApplication::OnTouchMoved( const FVector2D& Location, float Force, in
 
 void FSlateApplication::ProcessTouchMovedEvent( const FPointerEvent& PointerEvent )
 {
+#if WITH_SLATE_DEBUGGING
+	FSlateDebugging::FScopeProcessInputEvent Scope(ESlateDebuggingInputEvent::TouchMoved, PointerEvent);
+#endif
+
 	ProcessMouseMoveEvent(PointerEvent);
 }
 
@@ -5779,6 +5883,10 @@ bool FSlateApplication::OnTouchEnded( const FVector2D& Location, int32 TouchInde
 
 void FSlateApplication::ProcessTouchEndedEvent(const FPointerEvent& PointerEvent)
 {
+#if WITH_SLATE_DEBUGGING
+	FSlateDebugging::FScopeProcessInputEvent Scope(ESlateDebuggingInputEvent::TouchEnd, PointerEvent);
+#endif
+
 	ProcessMouseButtonUpEvent(PointerEvent);
 }
 
@@ -5849,6 +5957,10 @@ bool FSlateApplication::OnMotionDetected(const FVector& Tilt, const FVector& Rot
 
 void FSlateApplication::ProcessMotionDetectedEvent( const FMotionEvent& MotionEvent )
 {
+#if WITH_SLATE_DEBUGGING
+	FSlateDebugging::FScopeProcessInputEvent Scope(ESlateDebuggingInputEvent::MotionDetected, MotionEvent);
+#endif
+
 	SetLastUserInteractionTime(this->GetCurrentTime());
 	
 	if (!InputPreProcessors.HandleMotionDetectedEvent(*this, MotionEvent))
@@ -5864,8 +5976,12 @@ void FSlateApplication::ProcessMotionDetectedEvent( const FMotionEvent& MotionEv
 
 			FReply Reply = FEventRouter::Route<FReply>(this, FEventRouter::FBubblePolicy(EventPath), MotionEvent, [](const FArrangedWidget& SomeWidget, const FMotionEvent& InMotionEvent)
 				{
-					return SomeWidget.Widget->OnMotionDetected(SomeWidget.Geometry, InMotionEvent);
-				});
+					const FReply TempReply = SomeWidget.Widget->OnMotionDetected(SomeWidget.Geometry, InMotionEvent);
+#if WITH_SLATE_DEBUGGING
+					FSlateDebugging::BroadcastInputEvent(ESlateDebuggingInputEvent::MotionDetected, TempReply, SomeWidget.Widget);
+#endif
+					return TempReply;
+				}, ESlateDebuggingInputEvent::MotionDetected);
 		}
 	}
 }
@@ -6380,6 +6496,10 @@ EDropEffect::Type FSlateApplication::OnDragEnter( const TSharedRef< SWindow >& W
 
 bool FSlateApplication::ProcessDragEnterEvent( TSharedRef<SWindow> WindowEntered, const FDragDropEvent& DragDropEvent )
 {
+#if WITH_SLATE_DEBUGGING
+	FSlateDebugging::FScopeProcessInputEvent Scope(ESlateDebuggingInputEvent::DragDrop, DragDropEvent);
+#endif
+
 	SetLastUserInteractionTime(this->GetCurrentTime());
 	
 	FWidgetPath WidgetsUnderCursor = LocateWindowUnderMouse( DragDropEvent.GetScreenSpacePosition(), GetInteractiveTopLevelWindows(), false, DragDropEvent.GetUserIndex());
@@ -6606,47 +6726,56 @@ void FSlateApplication::InputPreProcessorsHelper::Tick(const float DeltaTime, FS
 
 bool FSlateApplication::InputPreProcessorsHelper::HandleKeyDownEvent(FSlateApplication& SlateApp, const FKeyEvent& InKeyEvent)
 {
-	return PreProcessInput([&SlateApp, &InKeyEvent](IInputProcessor& Processor) { return Processor.HandleKeyDownEvent(SlateApp, InKeyEvent); });
+	return PreProcessInput(ESlateDebuggingInputEvent::KeyDown
+		, [&SlateApp, &InKeyEvent](IInputProcessor& Processor) { return Processor.HandleKeyDownEvent(SlateApp, InKeyEvent); });
 }
 
 bool FSlateApplication::InputPreProcessorsHelper::HandleKeyUpEvent(FSlateApplication& SlateApp, const FKeyEvent& InKeyEvent)
 {
-	return PreProcessInput([&SlateApp, &InKeyEvent](IInputProcessor& Processor) { return Processor.HandleKeyUpEvent(SlateApp, InKeyEvent); });
+	return PreProcessInput(ESlateDebuggingInputEvent::KeyUp
+		, [&SlateApp, &InKeyEvent](IInputProcessor& Processor) { return Processor.HandleKeyUpEvent(SlateApp, InKeyEvent); });
 }
 
 bool FSlateApplication::InputPreProcessorsHelper::HandleAnalogInputEvent(FSlateApplication& SlateApp, const FAnalogInputEvent& InAnalogInputEvent)
 {
-	return PreProcessInput([&SlateApp, &InAnalogInputEvent](IInputProcessor& Processor) { return Processor.HandleAnalogInputEvent(SlateApp, InAnalogInputEvent); });
+	return PreProcessInput(ESlateDebuggingInputEvent::AnalogInput
+		, [&SlateApp, &InAnalogInputEvent](IInputProcessor& Processor) { return Processor.HandleAnalogInputEvent(SlateApp, InAnalogInputEvent); });
 }
 
 bool FSlateApplication::InputPreProcessorsHelper::HandleMouseMoveEvent(FSlateApplication& SlateApp, const FPointerEvent& MouseEvent)
 {
-	return PreProcessInput([&SlateApp, &MouseEvent](IInputProcessor& Processor) { return Processor.HandleMouseMoveEvent(SlateApp, MouseEvent); });
+	return PreProcessInput(ESlateDebuggingInputEvent::MouseMove
+		, [&SlateApp, &MouseEvent](IInputProcessor& Processor) { return Processor.HandleMouseMoveEvent(SlateApp, MouseEvent); });
 }
 
 bool FSlateApplication::InputPreProcessorsHelper::HandleMouseButtonDownEvent(FSlateApplication& SlateApp, const FPointerEvent& MouseEvent)
 {
-	return PreProcessInput([&SlateApp, &MouseEvent](IInputProcessor& Processor) { return Processor.HandleMouseButtonDownEvent(SlateApp, MouseEvent); });
+	return PreProcessInput(ESlateDebuggingInputEvent::MouseButtonDown
+		, [&SlateApp, &MouseEvent](IInputProcessor& Processor) { return Processor.HandleMouseButtonDownEvent(SlateApp, MouseEvent); });
 }
 
 bool FSlateApplication::InputPreProcessorsHelper::HandleMouseButtonUpEvent(FSlateApplication& SlateApp, const FPointerEvent& MouseEvent)
 {
-	return PreProcessInput([&SlateApp, &MouseEvent](IInputProcessor& Processor) { return Processor.HandleMouseButtonUpEvent(SlateApp, MouseEvent); });
+	return PreProcessInput(ESlateDebuggingInputEvent::MouseButtonUp
+		, [&SlateApp, &MouseEvent](IInputProcessor& Processor) { return Processor.HandleMouseButtonUpEvent(SlateApp, MouseEvent); });
 }
 
 bool FSlateApplication::InputPreProcessorsHelper::HandleMouseButtonDoubleClickEvent(FSlateApplication& SlateApp, const FPointerEvent& MouseEvent)
 {
-	return PreProcessInput([&SlateApp, &MouseEvent](IInputProcessor& Processor) { return Processor.HandleMouseButtonDoubleClickEvent(SlateApp, MouseEvent); });
+	return PreProcessInput(ESlateDebuggingInputEvent::MouseButtonDoubleClick
+		, [&SlateApp, &MouseEvent](IInputProcessor& Processor) { return Processor.HandleMouseButtonDoubleClickEvent(SlateApp, MouseEvent); });
 }
 
 bool FSlateApplication::InputPreProcessorsHelper::HandleMouseWheelOrGestureEvent(FSlateApplication& SlateApp, const FPointerEvent& WheelEvent, const FPointerEvent* GestureEvent)
 {
-	return PreProcessInput([&SlateApp, &WheelEvent, &GestureEvent](IInputProcessor& Processor) { return Processor.HandleMouseWheelOrGestureEvent(SlateApp, WheelEvent, GestureEvent); });
+	return PreProcessInput(ESlateDebuggingInputEvent::MouseWheel
+		, [&SlateApp, &WheelEvent, &GestureEvent](IInputProcessor& Processor) { return Processor.HandleMouseWheelOrGestureEvent(SlateApp, WheelEvent, GestureEvent); });
 }
 
 bool FSlateApplication::InputPreProcessorsHelper::HandleMotionDetectedEvent(FSlateApplication& SlateApp, const FMotionEvent& MotionEvent)
 {
-	return PreProcessInput([&SlateApp, &MotionEvent](IInputProcessor& Processor) { return Processor.HandleMotionDetectedEvent(SlateApp, MotionEvent); });
+	return PreProcessInput(ESlateDebuggingInputEvent::MotionDetected
+		, [&SlateApp, &MotionEvent](IInputProcessor& Processor) { return Processor.HandleMotionDetectedEvent(SlateApp, MotionEvent); });
 }
 
 bool FSlateApplication::InputPreProcessorsHelper::Add(TSharedPtr<IInputProcessor> InputProcessor, const int32 Index /*= INDEX_NONE*/)
@@ -6719,20 +6848,30 @@ int32 FSlateApplication::InputPreProcessorsHelper::Find(TSharedPtr<IInputProcess
 	return InputPreProcessorList.Find(InputProcessor);
 }
 
-bool FSlateApplication::InputPreProcessorsHelper::PreProcessInput(TFunctionRef<bool(IInputProcessor&)> InputProcessFunc)
+bool FSlateApplication::InputPreProcessorsHelper::PreProcessInput(ESlateDebuggingInputEvent InputEvent, TFunctionRef<bool(IInputProcessor&)> InputProcessFunc)
 {
 	TGuardValue<bool> IteratingGuard(bIsIteratingPreProcessors, true);
 
 	bool bShouldExit = false;
 	for (const TSharedPtr<IInputProcessor>& InputPreProcessor : InputPreProcessorList)
 	{
-		if (InputPreProcessor && InputProcessFunc(*InputPreProcessor))
+		if (InputPreProcessor)
 		{
-			bShouldExit = true;
-			break;
+			bShouldExit = InputProcessFunc(*InputPreProcessor);
+#if WITH_SLATE_DEBUGGING
+			FSlateDebugging::BroadcastPreProcessInputEvent(InputEvent, InputPreProcessor->GetDebugName(), bShouldExit);
+#endif
+			if (bShouldExit)
+			{
+				break;
+			}
 		}
 	}
 
+	for (int32 Index = ProcessorsPendingRemoval.Num() - 1; Index >= 0; --Index)
+	{
+		InputPreProcessorList.RemoveSingleSwap(ProcessorsPendingRemoval[Index]);
+	}
 	InputPreProcessorList.RemoveAll([this](const TSharedPtr<IInputProcessor> Processor) { return ProcessorsPendingRemoval.Contains(Processor); });
 	ProcessorsPendingRemoval.Reset();
 
