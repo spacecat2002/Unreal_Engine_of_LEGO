@@ -10,9 +10,12 @@
 #include "MovieSceneSequence.h"
 #include "Sections/MovieSceneSubSection.h"
 #include "Algo/Sort.h"
+#include "Sound/DialogueSoundWaveProxy.h"
+#include "Sound/DialogueWave.h"
 #include "Sound/SoundWave.h"
 #include "Sound/SoundCue.h"
 #include "Sound/SoundNodeWavePlayer.h"
+#include "Sound/SoundNodeDialoguePlayer.h"
 #include "MovieSceneTrack.h"
 
 UMovieSceneSection* MovieSceneHelpers::FindSectionAtTime( const TArray<UMovieSceneSection*>& Sections, FFrameNumber Time )
@@ -325,6 +328,16 @@ float MovieSceneHelpers::GetSoundDuration(USoundBase* Sound)
 			if (AllNodes[i]->IsA<USoundNodeWavePlayer>())
 			{
 				SoundWave = Cast<USoundNodeWavePlayer>(AllNodes[i])->GetSoundWave();
+			}
+			else if (AllNodes[i]->IsA<USoundNodeDialoguePlayer>())
+			{
+				USoundNodeDialoguePlayer* DialoguePlayer = Cast<USoundNodeDialoguePlayer>(AllNodes[i]);
+
+				if (DialoguePlayer && DialoguePlayer->GetDialogueWave())
+				{
+					UDialogueSoundWaveProxy* Proxy = Cast<UDialogueSoundWaveProxy>(DialoguePlayer->GetDialogueWave()->GetWaveFromContext(DialoguePlayer->DialogueWaveParameter.Context));
+					SoundWave = Proxy ? Proxy->SoundWave : nullptr;
+				}
 			}
 		}
 #endif
