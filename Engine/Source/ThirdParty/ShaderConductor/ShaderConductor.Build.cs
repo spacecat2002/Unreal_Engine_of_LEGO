@@ -47,7 +47,7 @@ public class ShaderConductor : ModuleRules
 				RuntimeDependencies.Add(Path.ChangeExtension(FullPath, ".pdb"), StagedFileType.DebugNonUFS);
 			}
 		}
-		if (Target.Platform == UnrealTargetPlatform.Mac)
+		else if (Target.Platform == UnrealTargetPlatform.Mac)
 		{
 			PublicDelayLoadDLLs.Add(FullPath);
 			RuntimeDependencies.Add(FullPath);

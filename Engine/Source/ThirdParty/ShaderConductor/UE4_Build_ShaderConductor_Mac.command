@@ -40,6 +40,11 @@ fi
 cp -f Build/ninja-osx-clang-x64-RelWithDebInfo/Lib/libdxcompiler.dylib "$DST_DIR/libdxcompiler.dylib"
 cp -f Build/ninja-osx-clang-x64-RelWithDebInfo/Lib/libShaderConductor.dylib "$DST_DIR/libShaderConductor.dylib"
 
+# Replace dummy RPATH value, so ShaderConductor can manually load libdxcompiler.dylib via the 'dlopen' API
+install_name_tool -rpath RPATH_DUMMY ../ThirdParty/ShaderConductor/Mac "$DST_DIR/libShaderConductor.dylib"
+install_name_tool -rpath RPATH_DUMMY ../ThirdParty/ShaderConductor/Mac "$DST_DIR/libdxcompiler.dylib"
+
+# Link DWARF debug symbols
 dsymutil "$DST_DIR/libdxcompiler.dylib"
 dsymutil "$DST_DIR/libShaderConductor.dylib"
 
