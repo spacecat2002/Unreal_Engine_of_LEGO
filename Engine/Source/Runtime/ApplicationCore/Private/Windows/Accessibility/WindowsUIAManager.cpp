@@ -65,6 +65,8 @@ FWindowsUIAManager::FWindowsUIAManager(const FWindowsApplication& InApplication)
 			WidgetTypeToWindowsTypeMap.Add(EAccessibleWidgetType::Text, UIA_TextControlTypeId);
 			WidgetTypeToWindowsTypeMap.Add(EAccessibleWidgetType::TextEdit, UIA_EditControlTypeId);
 			WidgetTypeToWindowsTypeMap.Add(EAccessibleWidgetType::Window, UIA_WindowControlTypeId);
+			WidgetTypeToWindowsTypeMap.Add(EAccessibleWidgetType::List, UIA_ListControlTypeId);
+			WidgetTypeToWindowsTypeMap.Add(EAccessibleWidgetType::ListItem, UIA_ListItemControlTypeId);
 
 			WidgetTypeToTextMap.Add(EAccessibleWidgetType::Button, LOCTEXT("ControlTypeButton", "button"));
 			WidgetTypeToTextMap.Add(EAccessibleWidgetType::CheckBox, LOCTEXT("ControlTypeCheckBox", "check box"));
@@ -77,6 +79,8 @@ FWindowsUIAManager::FWindowsUIAManager(const FWindowsApplication& InApplication)
 			WidgetTypeToTextMap.Add(EAccessibleWidgetType::Text, LOCTEXT("ControlTypeText", "text"));
 			WidgetTypeToTextMap.Add(EAccessibleWidgetType::TextEdit, LOCTEXT("ControlTypeTextEdit", "edit"));
 			WidgetTypeToTextMap.Add(EAccessibleWidgetType::Window, LOCTEXT("ControlTypeWindow", "window"));
+			WidgetTypeToTextMap.Add(EAccessibleWidgetType::List, LOCTEXT("ControlTypeList", "List"));
+			WidgetTypeToTextMap.Add(EAccessibleWidgetType::ListItem, LOCTEXT("ControlTypeListItem", "ListItem"));
 	}
 }
 

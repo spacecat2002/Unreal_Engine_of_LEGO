@@ -401,6 +401,18 @@ bool FWindowsUIAWidgetProvider::SupportsInterface(PATTERNID PatternId) const
 			ReturnValue = Property && FMath::IsNearlyZero(Property->GetStepSize());
 			break;
 		}
+		case UIA_SelectionPatternId:
+		{
+			IAccessibleTable* Table = Widget->AsTable();
+			ReturnValue = Table != nullptr;
+			break;
+		}
+		case UIA_SelectionItemPatternId:
+		{
+			IAccessibleTableRow* TableRow = Widget->AsTableRow();
+			ReturnValue = TableRow != nullptr;
+			break;
+		}
 		}
 	});
 	return ReturnValue;
@@ -442,6 +454,12 @@ HRESULT STDCALL FWindowsUIAWidgetProvider::GetPatternProvider(PATTERNID patternI
 					break;
 				case UIA_ValuePatternId:
 					*pRetVal = static_cast<IValueProvider*>(ControlProvider);
+					break;
+				case UIA_SelectionPatternId:
+					*pRetVal = static_cast<ISelectionProvider*>(ControlProvider);
+					break;
+				case UIA_SelectionItemPatternId:
+					*pRetVal = static_cast<ISelectionItemProvider*>(ControlProvider);
 					break;
 				default:
 					UE_LOG(LogAccessibility, Error, TEXT("FWindowsUIAWidgetProvider::SupportsInterface() returned true, but was unhandled in GetPatternProvider(). PatternId = %i"), patternId);

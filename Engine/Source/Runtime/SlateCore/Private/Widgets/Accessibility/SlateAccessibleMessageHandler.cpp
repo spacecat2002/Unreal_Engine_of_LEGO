@@ -215,6 +215,21 @@ void FSlateAccessibleMessageHandler::OnWidgetEventRaised(TSharedRef<SWidget> Wid
 				// If the Widget is gaining focus 
 				if (NewValue.GetValue<bool>())
 				{
+					// For widgets that are non-keyboard focusable but support accessibility, 
+					// we ened to manually raise a focus change event 
+					// to signal the platform that the currently accessibility focused widget is losing focus 
+					// As regular navigation focus in FSlateApplication doesn't apply to these widgets
+					if (!Widget->SupportsKeyboardFocus())
+					{
+						TSharedPtr<IAccessibleWidget> CurrentAccessibilityFocusedWidget = GetAccessibilityFocusedWidget();
+						if (CurrentAccessibilityFocusedWidget.IsValid())
+						{
+							// We manually raise a focus change event here   to allow platforms to unfocus 
+							// from the currently focused widget 
+							FSlateAccessibleMessageHandler::RaiseEvent(CurrentAccessibilityFocusedWidget.ToSharedRef(), EAccessibleEvent::FocusChange, true, false);
+						}
+					}
+					// Update the widget that currently has accessibility focus 
 					SetAccessibilityFocusedWidget(AccessibleWidget);
 				}
 			}
@@ -222,6 +237,7 @@ void FSlateAccessibleMessageHandler::OnWidgetEventRaised(TSharedRef<SWidget> Wid
 		}
 	}
 }
+
 
 int32 GAccessibleWidgetsProcessedPerTick = 100;
 FAutoConsoleVariableRef AccessibleWidgetsProcessedPerTickRef(
