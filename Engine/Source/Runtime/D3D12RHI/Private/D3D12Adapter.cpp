@@ -47,66 +47,90 @@ static TAutoConsoleVariable<int32> CVarD3D12GPUCrashDebuggingMode(
 	ECVF_RenderThreadSafe | ECVF_ReadOnly
 );
 
+static bool CheckD3DStoredMessages()
+{
+	bool bResult = false;
+
+	TRefCountPtr<ID3D12Debug> d3dDebug;
+	if (SUCCEEDED(D3D12GetDebugInterface(__uuidof(ID3D12Debug), (void**)d3dDebug.GetInitReference())))
+	{
+		FD3D12DynamicRHI* D3D12RHI = (FD3D12DynamicRHI*)GDynamicRHI;
+		TRefCountPtr<ID3D12InfoQueue> d3dInfoQueue;
+		if (SUCCEEDED(D3D12RHI->GetAdapter().GetD3DDevice()->QueryInterface(__uuidof(ID3D12InfoQueue), (void**)d3dInfoQueue.GetInitReference())))
+		{
+			D3D12_MESSAGE* d3dMessage = nullptr;
+			SIZE_T AllocateSize = 0;
+
+			int StoredMessageCount = d3dInfoQueue->GetNumStoredMessagesAllowedByRetrievalFilter();
+			for (int MessageIndex = 0; MessageIndex < StoredMessageCount; MessageIndex++)
+			{
+				SIZE_T MessageLength = 0;
+				HRESULT hr = d3dInfoQueue->GetMessage(MessageIndex, nullptr, &MessageLength);
+
+				// Ideally the exception handler should not allocate any memory because it could fail
+				// and can cause another exception to be triggered and possible even cause a deadlock.
+				// But for these D3D error message it should be fine right now because they are requested
+				// exceptions when making an error against the API.
+				// Not allocating memory for the messages is easy (cache memory in Adapter), but ANSI_TO_TCHAR
+				// and UE_LOG will also allocate memory and aren't that easy to fix.
+
+				// realloc the message
+				if (MessageLength > AllocateSize)
+				{
+					if (d3dMessage)
+					{
+						FMemory::Free(d3dMessage);
+						d3dMessage = nullptr;
+						AllocateSize = 0;
+					}
+
+					d3dMessage = (D3D12_MESSAGE*)FMemory::Malloc(MessageLength);
+					AllocateSize = MessageLength;
+				}
+
+				if (d3dMessage)
+				{
+					// get the actual message data from the queue
+					hr = d3dInfoQueue->GetMessage(MessageIndex, d3dMessage, &MessageLength);
+
+					if (d3dMessage->Severity == D3D12_MESSAGE_SEVERITY_ERROR)
+					{
+						UE_LOG(LogD3D12RHI, Error, TEXT("%s"), ANSI_TO_TCHAR(d3dMessage->pDescription));
+					}
+					else if (d3dMessage->Severity == D3D12_MESSAGE_SEVERITY_ERROR)
+					{
+						UE_LOG(LogD3D12RHI, Warning, TEXT("%s"), ANSI_TO_TCHAR(d3dMessage->pDescription));
+					}
+					else 
+					{
+						UE_LOG(LogD3D12RHI, Log, TEXT("%s"), ANSI_TO_TCHAR(d3dMessage->pDescription));
+					}
+				}
+
+				// we got messages
+				bResult = true;
+			}
+
+			if (AllocateSize > 0)
+			{
+				FMemory::Free(d3dMessage);
+			}
+		}
+	}
+
+	return bResult;
+}
+
 /** Handle d3d messages and write them to the log file **/
 static LONG __stdcall D3DVectoredExceptionHandler(EXCEPTION_POINTERS* InInfo)
 {
 	// Only handle D3D error codes here
 	if (InInfo->ExceptionRecord->ExceptionCode == _FACDXGI)
 	{
-		TRefCountPtr<ID3D12Debug> d3dDebug;
-		if (SUCCEEDED(D3D12GetDebugInterface(__uuidof(ID3D12Debug), (void**)d3dDebug.GetInitReference())))
+		if (CheckD3DStoredMessages())
 		{
-			FD3D12DynamicRHI* D3D12RHI = (FD3D12DynamicRHI*)GDynamicRHI;
-			TRefCountPtr<ID3D12InfoQueue> d3dInfoQueue;
-			if (SUCCEEDED(D3D12RHI->GetAdapter().GetD3DDevice()->QueryInterface(__uuidof(ID3D12InfoQueue), (void**)d3dInfoQueue.GetInitReference())))
-			{
-				D3D12_MESSAGE* d3dMessage = nullptr;
-				SIZE_T AllocateSize = 0;
-
-				int StoredMessageCount = d3dInfoQueue->GetNumStoredMessagesAllowedByRetrievalFilter();
-				for (int MessageIndex = 0; MessageIndex < StoredMessageCount; MessageIndex++)
-				{
-					SIZE_T MessageLength = 0;
-					HRESULT hr = d3dInfoQueue->GetMessage(MessageIndex, nullptr, &MessageLength);
-
-					// Ideally the exception handler should not allocate any memory because it could fail
-					// and can cause another exception to be triggered and possible even cause a deadlock.
-					// But for these D3D error message it should be fine right now because they are requested
-					// exceptions when making an error against the API.
-					// Not allocating memory for the messages is easy (cache memory in Adapter), but ANSI_TO_TCHAR
-					// and UE_LOG will also allocate memory and aren't that easy to fix.
-
-					// realloc the message
-					if (MessageLength > AllocateSize)
-					{
-						if (d3dMessage)
-						{
-							FMemory::Free(d3dMessage);
-							d3dMessage = nullptr;
-							AllocateSize = 0;
-						}
-
-						d3dMessage = (D3D12_MESSAGE*) FMemory::Malloc(MessageLength);
-						AllocateSize = MessageLength;
-					}
-
-					if (d3dMessage)
-					{
-						// get the actual message data from the queue
-						hr = d3dInfoQueue->GetMessage(MessageIndex, d3dMessage, &MessageLength);
-
-						UE_LOG(LogD3D12RHI, Error, TEXT("%s"), ANSI_TO_TCHAR(d3dMessage->pDescription));
-					}
-				}
-
-				// when we get here, then it means that BreakOnSeverity was set for this error message, so request the debug break here as well
-				UE_DEBUG_BREAK();
-
-				if (AllocateSize > 0)
-				{
-					FMemory::Free(d3dMessage);
-				}
-			}
+			// when we get here, then it means that BreakOnSeverity was set for this error message, so request the debug break here as well
+			UE_DEBUG_BREAK();
 		}
 
 		// Handles the exception
@@ -504,6 +528,23 @@ void FD3D12Adapter::CreateRootDevice(bool bWithDebug)
 	{
 		// add vectored exception handler to write the debug device warning & error messages to the log
 		ExceptionHandlerHandle = AddVectoredExceptionHandler(1, D3DVectoredExceptionHandler);
+
+		// Manually load dxgi debug if available
+		HMODULE DxgiDebugDLL = (HMODULE)FPlatformProcess::GetDllHandle(TEXT("dxgidebug.dll"));
+		if (DxgiDebugDLL)
+		{
+			typedef HRESULT(WINAPI* FDXGIGetDebugInterface)(REFIID, void**);
+#pragma warning(push)
+#pragma warning(disable: 4191) // disable the "unsafe conversion from 'FARPROC' to 'blah'" warning
+			FDXGIGetDebugInterface DXGIGetDebugInterfaceFnPtr = (FDXGIGetDebugInterface)(GetProcAddress(DxgiDebugDLL, "DXGIGetDebugInterface"));
+#pragma warning(pop)
+			if (DXGIGetDebugInterfaceFnPtr != nullptr)
+			{
+				DXGIGetDebugInterfaceFnPtr(__uuidof(IDXGIDebug), (void**)DXGIDebug.GetInitReference());
+			}
+
+			FPlatformProcess::FreeDllHandle(DxgiDebugDLL);
+		}
 	}
 #endif //  (PLATFORM_WINDOWS || PLATFORM_HOLOLENS)
 
@@ -899,13 +940,6 @@ void FD3D12Adapter::Cleanup()
 	}
 #endif
 
-#if (PLATFORM_WINDOWS || PLATFORM_HOLOLENS)
-	if (ExceptionHandlerHandle != INVALID_HANDLE_VALUE)
-	{
-		RemoveVectoredExceptionHandler(ExceptionHandlerHandle);
-	}
-#endif //  (PLATFORM_WINDOWS || PLATFORM_HOLOLENS)
-
 	// Ask all initialized FRenderResources to release their RHI resources.
 	FRenderResource::ReleaseRHIForAllResources();
 
@@ -960,6 +994,22 @@ void FD3D12Adapter::Cleanup()
 	DispatchIndirectCommandSignature.SafeRelease();
 
 	FenceCorePool.Destroy();
+
+#if (PLATFORM_WINDOWS || PLATFORM_HOLOLENS)
+	// trace all leak D3D resource
+	if (DXGIDebug != nullptr)
+	{
+		DXGIDebug->ReportLiveObjects(DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_FLAGS(DXGI_DEBUG_RLO_DETAIL | DXGI_DEBUG_RLO_IGNORE_INTERNAL));
+		DXGIDebug.SafeRelease();
+
+		CheckD3DStoredMessages();
+	}
+
+	if (ExceptionHandlerHandle != INVALID_HANDLE_VALUE)
+	{
+		RemoveVectoredExceptionHandler(ExceptionHandlerHandle);
+	}
+#endif //  (PLATFORM_WINDOWS || PLATFORM_HOLOLENS)
 }
 
 void FD3D12Adapter::EndFrame()

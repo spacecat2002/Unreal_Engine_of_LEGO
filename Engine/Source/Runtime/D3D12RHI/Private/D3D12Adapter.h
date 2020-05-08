@@ -35,6 +35,10 @@ This structure allows a single RHI to control several different hardware setups.
 
 #pragma once
 
+#if PLATFORM_WINDOWS || PLATFORM_HOLOLENS
+#include "dxgidebug.h"
+#endif // PLATFORM_WINDOWS || PLATFORM_HOLOLENS
+
 class FD3D12DynamicRHI;
 
 struct FD3D12AdapterDesc
@@ -319,6 +323,7 @@ protected:
 	TRefCountPtr<ID3D12Device1> RootDevice1;
 #if PLATFORM_WINDOWS || PLATFORM_HOLOLENS
 	TRefCountPtr<ID3D12Device2> RootDevice2;
+	TRefCountPtr<IDXGIDebug> DXGIDebug;
 
 	HANDLE ExceptionHandlerHandle = INVALID_HANDLE_VALUE;
 #endif
