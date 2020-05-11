@@ -16,8 +16,8 @@ namespace Private {
 
 ////////////////////////////////////////////////////////////////////////////////
 UE_TRACE_API void Field_WriteAuxData(uint32, const uint8*, int32);
-UE_TRACE_API void Field_WriteString(uint32, const ANSICHAR*, int32);
-UE_TRACE_API void Field_WriteString(uint32, const TCHAR*, int32);
+UE_TRACE_API void Field_WriteStringAnsi(uint32, const ANSICHAR*, int32);
+UE_TRACE_API void Field_WriteStringWide(uint32, const TCHAR*, int32);
 
 } // namespace Private
 
@@ -171,7 +171,7 @@ struct TField<InIndex, InOffset, Trace::AnsiString>
 
 		if (Length)
 		{
-			Private::Field_WriteString(Index, String, Length);
+			Private::Field_WriteStringAnsi(Index, String, Length);
 		}
 	}
 };
@@ -192,7 +192,7 @@ struct TField<InIndex, InOffset, Trace::WideString>
 
 		if (Length)
 		{
-			Private::Field_WriteString(Index, String, Length);
+			Private::Field_WriteStringWide(Index, String, Length);
 		}
 	}
 };
