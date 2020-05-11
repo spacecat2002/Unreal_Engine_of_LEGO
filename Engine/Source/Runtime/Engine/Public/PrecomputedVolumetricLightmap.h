@@ -70,13 +70,17 @@ public:
 	bool bNeedsCPUAccess;
 };
 
-class FVolumetricLightmapBrickData
+struct FVolumetricLightmapBasicBrickDataLayers
 {
-public:
 	FVolumetricLightmapDataLayer AmbientVector;
 	FVolumetricLightmapDataLayer SHCoefficients[6];
 	FVolumetricLightmapDataLayer SkyBentNormal;
 	FVolumetricLightmapDataLayer DirectionalLightShadowing;
+};
+
+class FVolumetricLightmapBrickData : public FVolumetricLightmapBasicBrickDataLayers
+{
+public:
 	// Mobile LQ layers:
 	FVolumetricLightmapDataLayer LQLightColor;
 	FVolumetricLightmapDataLayer LQLightDirection;
@@ -519,14 +523,9 @@ class FMoveWholeIndirectionTextureCS : public FGlobalShader
 	END_SHADER_PARAMETER_STRUCT()
 };
 
-struct FVolumetricLightmapBrickTextureSet
+struct FVolumetricLightmapBrickTextureSet : public FVolumetricLightmapBasicBrickDataLayers
 {
 	FIntVector BrickDataDimensions;
-
-	FVolumetricLightmapDataLayer AmbientVector;
-	FVolumetricLightmapDataLayer SHCoefficients[6];
-	FVolumetricLightmapDataLayer SkyBentNormal;
-	FVolumetricLightmapDataLayer DirectionalLightShadowing;
 
 	template<class VolumetricLightmapBrickDataType> // Can be either FVolumetricLightmapBrickData or FVolumetricLightmapBrickTextureSet
 	void Initialize(FIntVector InBrickDataDimensions, VolumetricLightmapBrickDataType& BrickData)

@@ -59,6 +59,9 @@
 #include "DiaphragmDOF.h" 
 #include "SingleLayerWaterRendering.h"
 #include "HairStrands/HairStrandsVisibility.h"
+#if WITH_EDITOR
+#include "Rendering/StaticLightingSystemInterface.h"
+#endif
 
 /*-----------------------------------------------------------------------------
 	Globals
@@ -981,22 +984,37 @@ void SetupPrecomputedVolumetricLightmapUniformBufferParameters(const FScene* Sce
 	{
 		const FPrecomputedVolumetricLightmapData* VolumetricLightmapData = Scene->VolumetricLightmapSceneData.GetLevelVolumetricLightmap()->Data;
 
+		FVector BrickDimensions;
+		const FVolumetricLightmapBasicBrickDataLayers* BrickData = nullptr;
+
+#if WITH_EDITOR
+		if (FStaticLightingSystemInterface::GetPrecomputedVolumetricLightmap(Scene->GetWorld()))
+		{
+			BrickDimensions = FVector(VolumetricLightmapData->BrickDataDimensions);
+			BrickData = &VolumetricLightmapData->BrickData;
+		}
+		else
+#endif
+		{
+			BrickDimensions = FVector(GVolumetricLightmapBrickAtlas.TextureSet.BrickDataDimensions);
+			BrickData = &GVolumetricLightmapBrickAtlas.TextureSet;
+		}
+
 		ViewUniformShaderParameters.VolumetricLightmapIndirectionTexture = OrBlack3DUintIfNull(VolumetricLightmapData->IndirectionTexture.Texture);
-		ViewUniformShaderParameters.VolumetricLightmapBrickAmbientVector = OrBlack3DIfNull(GVolumetricLightmapBrickAtlas.TextureSet.AmbientVector.Texture);
-		ViewUniformShaderParameters.VolumetricLightmapBrickSHCoefficients0 = OrBlack3DIfNull(GVolumetricLightmapBrickAtlas.TextureSet.SHCoefficients[0].Texture);
-		ViewUniformShaderParameters.VolumetricLightmapBrickSHCoefficients1 = OrBlack3DIfNull(GVolumetricLightmapBrickAtlas.TextureSet.SHCoefficients[1].Texture);
-		ViewUniformShaderParameters.VolumetricLightmapBrickSHCoefficients2 = OrBlack3DIfNull(GVolumetricLightmapBrickAtlas.TextureSet.SHCoefficients[2].Texture);
-		ViewUniformShaderParameters.VolumetricLightmapBrickSHCoefficients3 = OrBlack3DIfNull(GVolumetricLightmapBrickAtlas.TextureSet.SHCoefficients[3].Texture);
-		ViewUniformShaderParameters.VolumetricLightmapBrickSHCoefficients4 = OrBlack3DIfNull(GVolumetricLightmapBrickAtlas.TextureSet.SHCoefficients[4].Texture);
-		ViewUniformShaderParameters.VolumetricLightmapBrickSHCoefficients5 = OrBlack3DIfNull(GVolumetricLightmapBrickAtlas.TextureSet.SHCoefficients[5].Texture);
-		ViewUniformShaderParameters.SkyBentNormalBrickTexture = OrBlack3DIfNull(GVolumetricLightmapBrickAtlas.TextureSet.SkyBentNormal.Texture);
-		ViewUniformShaderParameters.DirectionalLightShadowingBrickTexture = OrBlack3DIfNull(GVolumetricLightmapBrickAtlas.TextureSet.DirectionalLightShadowing.Texture);
+		ViewUniformShaderParameters.VolumetricLightmapBrickAmbientVector = OrBlack3DIfNull(BrickData->AmbientVector.Texture);
+		ViewUniformShaderParameters.VolumetricLightmapBrickSHCoefficients0 = OrBlack3DIfNull(BrickData->SHCoefficients[0].Texture);
+		ViewUniformShaderParameters.VolumetricLightmapBrickSHCoefficients1 = OrBlack3DIfNull(BrickData->SHCoefficients[1].Texture);
+		ViewUniformShaderParameters.VolumetricLightmapBrickSHCoefficients2 = OrBlack3DIfNull(BrickData->SHCoefficients[2].Texture);
+		ViewUniformShaderParameters.VolumetricLightmapBrickSHCoefficients3 = OrBlack3DIfNull(BrickData->SHCoefficients[3].Texture);
+		ViewUniformShaderParameters.VolumetricLightmapBrickSHCoefficients4 = OrBlack3DIfNull(BrickData->SHCoefficients[4].Texture);
+		ViewUniformShaderParameters.VolumetricLightmapBrickSHCoefficients5 = OrBlack3DIfNull(BrickData->SHCoefficients[5].Texture);
+		ViewUniformShaderParameters.SkyBentNormalBrickTexture = OrBlack3DIfNull(BrickData->SkyBentNormal.Texture);
+		ViewUniformShaderParameters.DirectionalLightShadowingBrickTexture = OrBlack3DIfNull(BrickData->DirectionalLightShadowing.Texture);
 
 		const FBox VolumeBounds = VolumetricLightmapData->GetBounds();
 		const FVector VolumeSize = VolumeBounds.GetSize();
 		const FVector InvVolumeSize = VolumeSize.Reciprocal();
 
-		const FVector BrickDimensions(GVolumetricLightmapBrickAtlas.TextureSet.BrickDataDimensions);
 		const FVector InvBrickDimensions = BrickDimensions.Reciprocal();
 
 		ViewUniformShaderParameters.VolumetricLightmapWorldToUVScale = InvVolumeSize;
