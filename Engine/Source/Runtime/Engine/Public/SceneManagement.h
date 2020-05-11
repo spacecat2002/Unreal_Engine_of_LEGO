@@ -1120,6 +1120,7 @@ public:
 	const FAtmosphereSetup& GetAtmosphereSetup() const { return AtmosphereSetup; }
 
 	void UpdateTransform(const FTransform& ComponentTransform, uint8 TranformMode) { AtmosphereSetup.UpdateTransform(ComponentTransform, TranformMode); }
+	void ApplyWorldOffset(const FVector& InOffset) { AtmosphereSetup.ApplyWorldOffset(InOffset); }
 
 	FVector GetAtmosphereLightDirection(int32 AtmosphereLightIndex, const FVector& DefaultDirection) const;
 

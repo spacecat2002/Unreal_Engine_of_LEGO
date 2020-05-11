@@ -3584,6 +3584,13 @@ void FScene::ApplyWorldOffset_RenderThread(const FVector& InOffset)
 			FogData.Height += InOffset.Z;
 		}
 	}
+
+	// SkyAtmospheres
+	for (FSkyAtmosphereSceneProxy* SkyAtmosphereProxy : SkyAtmosphereStack)
+	{
+		SkyAtmosphereProxy->ApplyWorldOffset(InOffset);
+	}
+	
 	
 	VelocityData.ApplyOffset(InOffset);
 }
