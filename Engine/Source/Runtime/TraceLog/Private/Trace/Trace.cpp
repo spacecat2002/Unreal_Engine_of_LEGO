@@ -92,9 +92,11 @@ UE_TRACE_CHANNEL_EXTERN(TraceLogChannel)
 UE_TRACE_EVENT_BEGIN($Trace, ThreadInfo)
 	UE_TRACE_EVENT_FIELD(uint32, SystemId)
 	UE_TRACE_EVENT_FIELD(int32, SortHint)
+	UE_TRACE_EVENT_FIELD(Trace::AnsiString, Name)
 UE_TRACE_EVENT_END()
 
 UE_TRACE_EVENT_BEGIN($Trace, ThreadGroupBegin)
+	UE_TRACE_EVENT_FIELD(Trace::AnsiString, Name)
 UE_TRACE_EVENT_END()
 
 UE_TRACE_EVENT_BEGIN($Trace, ThreadGroupEnd)
@@ -103,23 +105,17 @@ UE_TRACE_EVENT_END()
 ////////////////////////////////////////////////////////////////////////////////
 void ThreadRegister(const TCHAR* Name, uint32 SystemId, int32 SortHint)
 {
-	ANSICHAR NameA[64];
-	uint32 NameLength = ToAnsiCheap(NameA, Name);
-
-	UE_TRACE_LOG($Trace, ThreadInfo, TraceLogChannel, NameLength)
+	UE_TRACE_LOG($Trace, ThreadInfo, TraceLogChannel)
 		<< ThreadInfo.SystemId(SystemId)
 		<< ThreadInfo.SortHint(SortHint)
-		<< ThreadInfo.Attachment(NameA, NameLength);
+		<< ThreadInfo.Name(Name);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 void ThreadGroupBegin(const TCHAR* Name)
 {
-	ANSICHAR NameA[64];
-	uint32 NameLength = ToAnsiCheap(NameA, Name);
-
-	UE_TRACE_LOG($Trace, ThreadGroupBegin, TraceLogChannel, NameLength)
-		<< ThreadGroupBegin.Attachment(NameA, NameLength);
+	UE_TRACE_LOG($Trace, ThreadGroupBegin, TraceLogChannel)
+		<< ThreadGroupBegin.Name(Name);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
