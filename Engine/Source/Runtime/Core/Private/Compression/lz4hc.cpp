@@ -65,15 +65,6 @@
 typedef enum { noDictCtx, usingDictCtxHc } dictCtx_directive;
 
 
-#include "Misc/Build.h"
-#include "Misc/CoreMiscDefines.h"
-
-// Force optimized code in Debug builds
-#if UE_BUILD_DEBUG
-PRAGMA_ENABLE_OPTIMIZATION
-#endif
-
-
 #define LZ4_COMMONDEFS_ONLY
 #ifndef LZ4_SRC_INCLUDED
 #include "lz4.cpp"   /* LZ4_count, constants, mem */
@@ -1555,7 +1546,3 @@ static int LZ4HC_compress_optimal ( LZ4HC_CCtx_internal* ctx,
      }
      return 0;
  }
-
-#if UE_BUILD_DEBUG
-PRAGMA_DISABLE_OPTIMIZATION
-#endif
