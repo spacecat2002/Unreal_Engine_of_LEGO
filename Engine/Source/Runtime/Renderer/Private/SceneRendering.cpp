@@ -1940,6 +1940,28 @@ void FViewInfo::SetValidEyeAdaptation() const
 	}
 }
 
+#if WITH_MGPU
+void FViewInfo::WaitForEyeAdaptationTemporalEffect(FRHICommandList& RHICmdList)
+{
+	FSceneViewState* EffectiveViewState = GetEffectiveViewState();
+
+	if (EffectiveViewState)
+	{
+		EffectiveViewState->WaitForEyeAdaptationTemporalEffect(RHICmdList);
+	}
+}
+
+void FViewInfo::BroadcastEyeAdaptationTemporalEffect(FRHICommandList& RHICmdList)
+{
+	FSceneViewState* EffectiveViewState = GetEffectiveViewState();
+
+	if (EffectiveViewState)
+	{
+		EffectiveViewState->BroadcastEyeAdaptationTemporalEffect(RHICmdList);
+	}
+}
+#endif // WITH_MGPU
+
 float FViewInfo::GetLastEyeAdaptationExposure() const
 {
 	const FSceneViewState* EffectiveViewState = GetEffectiveViewState();	
@@ -2445,10 +2467,14 @@ void FSceneRenderer::ComputeViewGPUMasks(FRHIGPUMask RenderTargetGPUMask)
 	if (GNumExplicitGPUsForRendering > 1 && CVarEnableMultiGPUForkAndJoin.GetValueOnAnyThread() != 0)
 	{
 		// Check whether this looks like an AFR setup (note that the logic also applies when there is only one AFR group).
-			// Each AFR group uses multiple GPU. AFRGroup(i) = { i, NumAFRGroups + i,  2 * NumAFRGroups + i, ... } up to NumGPUs.
-			// Each view rendered gets assigned to the next GPU in that group. 
-		FRHIGPUMask UsableGPUMask = AFRUtils::GetGPUMaskForGroup(RenderTargetGPUMask);
-		FRHIGPUMask::FIterator GPUIterator(UsableGPUMask);
+		// Each AFR group uses multiple GPU. AFRGroup(i) = { i, NumAFRGroups + i,  2 * NumAFRGroups + i, ... } up to NumGPUs.
+		// Each view rendered gets assigned to the next GPU in that group. 
+		const FRHIGPUMask UsableGPUMask = AFRUtils::GetGPUMaskForGroup(RenderTargetGPUMask);
+
+		// Start iterating from RenderTargetGPUMask and then wrap around. This avoids an
+		// unnecessary cross-gpu transfer in cases where you only have 1 view and the
+		// render target is located on a GPU other than GPU 0.
+		FRHIGPUMask::FIterator GPUIterator(FRHIGPUMask::FilterGPUsBefore(RenderTargetGPUMask.GetFirstIndex()) & UsableGPUMask);
 		for (FViewInfo& ViewInfo : Views)
 		{
 			// Only handle views that are to be rendered (this excludes instance stereo).
@@ -2457,7 +2483,7 @@ void FSceneRenderer::ComputeViewGPUMasks(FRHIGPUMask RenderTargetGPUMask)
 				// Multi-GPU support : This is inefficient for AFR if the reflection capture
 				// updates every frame. Work is wasted on the GPUs that are not involved in
 				// rendering the current frame.
-				if (ViewInfo.bIsReflectionCapture || ViewInfo.bIsPlanarReflection)
+				if (ViewInfo.bIsReflectionCapture)
 				{
 					ViewInfo.GPUMask = FRHIGPUMask::All();
 				}

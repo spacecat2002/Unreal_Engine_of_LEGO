@@ -291,6 +291,16 @@ static void UpdatePlanarReflectionContents_RenderThread(
 
 	FMemMark MemStackMark(FMemStack::Get());
 
+	// Make sure we render to the same set of GPUs as the main scene renderer.
+	if (MainSceneRenderer->ViewFamily.RenderTarget != nullptr)
+	{
+		RenderTarget->SetActiveGPUMask(MainSceneRenderer->ViewFamily.RenderTarget->GetGPUMask(RHICmdList));
+	}
+	else
+	{
+		RenderTarget->SetActiveGPUMask(FRHIGPUMask::GPU0());
+	}
+
 	FBox PlanarReflectionBounds = SceneProxy->WorldBounds;
 
 	bool bIsInAnyFrustum = false;

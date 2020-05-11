@@ -1227,6 +1227,11 @@ public:
 		bValidEyeAdaptation = true;
 	}
 
+#if WITH_MGPU
+	void BroadcastEyeAdaptationTemporalEffect(FRHICommandList& RHICmdList);
+	void WaitForEyeAdaptationTemporalEffect(FRHICommandList& RHICmdList);
+#endif
+
 	float GetLastEyeAdaptationExposure() const
 	{
 		return EyeAdaptationRTManager.GetLastExposure();

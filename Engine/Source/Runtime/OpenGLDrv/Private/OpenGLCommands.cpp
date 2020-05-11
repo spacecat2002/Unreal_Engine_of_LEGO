@@ -3112,6 +3112,7 @@ void FOpenGLDynamicRHI::RHISubmitCommandsAndFlushGPU()
  */
 uint32 FOpenGLDynamicRHI::RHIGetGPUFrameCycles(uint32 GPUIndex)
 {
+	check(GPUIndex == 0);
 	return GGPUFrameTime;
 }
 

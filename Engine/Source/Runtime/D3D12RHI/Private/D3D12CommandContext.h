@@ -417,64 +417,26 @@ public:
 		uint32 UserData) final override;
 #endif // D3D12_RHI_RAYTRACING
 
-	template<typename ObjectType, typename RHIType, typename Predicate>
-	static FORCEINLINE_DEBUGGABLE ObjectType* RetrieveObject(RHIType RHIObject, Predicate Func)
-	{
-		ObjectType* Object = FD3D12DynamicRHI::ResourceCast(RHIObject);
-#if WITH_MGPU
-		if (Object && GNumExplicitGPUsForRendering > 1)
-		{
-			while (Object && !Func(Object))
-			{
-				Object = Object->GetNextObject();
-			}
-			check(Object)
-		}
-#endif // WITH_MGPU
-		return Object;
-	}
-
 	template<typename ObjectType, typename RHIType>
-	static FORCEINLINE_DEBUGGABLE ObjectType* RetrieveObject(RHIType RHIObject, FD3D12Device* Device)
+	static FORCEINLINE_DEBUGGABLE ObjectType* RetrieveObject(RHIType RHIObject, uint32 GPUIndex)
 	{
-		return RetrieveObject<ObjectType, RHIType>(RHIObject, [&](ObjectType* Object)
-		{
-			return Object->GetParentDevice() == Device;
-		});
+		return FD3D12DynamicRHI::ResourceCast(RHIObject, GPUIndex);
 	}
 
 	template<typename ObjectType, typename RHIType>
 	FORCEINLINE_DEBUGGABLE ObjectType* RetrieveObject(RHIType RHIObject)
 	{
-		return RetrieveObject<ObjectType, RHIType>(RHIObject, GetParentDevice());
+		return RetrieveObject<ObjectType, RHIType>(RHIObject, GetGPUIndex());
 	}
 
-	template<typename Predicate>
-	static inline FD3D12TextureBase* RetrieveTextureBase(FRHITexture* Texture, Predicate Func)
+	static inline FD3D12TextureBase* RetrieveTextureBase(FRHITexture* Texture, uint32 GPUIndex)
 	{
-		FD3D12TextureBase* Result = Texture ? (FD3D12TextureBase*)Texture->GetTextureBaseRHI() : nullptr;
-#if WITH_MGPU
-		if (Result && GNumExplicitGPUsForRendering > 1)
-		{
-			if (Result->GetBaseShaderResource() != Result)
-			{
-				Result = (FD3D12TextureBase*)Result->GetBaseShaderResource();
-			}
-			while (Result && !Func(Result->GetParentDevice()))
-			{
-				Result = Result->GetNextObject();
-			}
-		}
-#endif // WITH_MGPU
-		return Result;
+		return Texture ? static_cast<FD3D12TextureBase*>(Texture->GetTextureBaseRHI())->GetLinkedObject(GPUIndex) : nullptr;
 	}
 
 	FORCEINLINE_DEBUGGABLE FD3D12TextureBase* RetrieveTextureBase(FRHITexture* Texture)
 	{
-		return RetrieveTextureBase(Texture, [&](FD3D12Device* Device)
-		{
-			return Device == GetParentDevice();
-		});
+		return RetrieveTextureBase(Texture, GetGPUIndex());
 	}
 
 	uint32 GetGPUIndex() const { return GPUMask.ToIndex(); }

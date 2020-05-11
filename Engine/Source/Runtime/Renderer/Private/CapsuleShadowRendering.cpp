@@ -748,6 +748,7 @@ bool FDeferredShadingSceneRenderer::RenderCapsuleDirectShadows(
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{
 			const FViewInfo& View = Views[ViewIndex];
+			SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
 			SCOPED_DRAW_EVENT(RHICmdList, CapsuleShadows);
 			SCOPED_GPU_STAT(RHICmdList, CapsuleShadows);
 
@@ -1306,6 +1307,7 @@ void FDeferredShadingSceneRenderer::RenderIndirectCapsuleShadows(
 
 				if (View.IndirectShadowPrimitives.Num() > 0 && View.ViewState)
 				{
+					SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
 					SCOPED_GPU_STAT(RHICmdList, CapsuleShadows);
 
 					FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
@@ -1528,6 +1530,7 @@ void FDeferredShadingSceneRenderer::RenderCapsuleShadowsForMovableSkylight(FRHIC
 
 				if (View.IndirectShadowPrimitives.Num() > 0 && View.ViewState)
 				{
+					SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
 					SCOPED_DRAW_EVENT(RHICmdList, IndirectCapsuleShadows);
 					SCOPED_GPU_STAT(RHICmdList, CapsuleShadows);
 		

@@ -875,6 +875,7 @@ void FVulkanDynamicRHI::RHIBlockUntilGPUIdle()
 
 uint32 FVulkanDynamicRHI::RHIGetGPUFrameCycles(uint32 GPUIndex)
 {
+	check(GPUIndex == 0);
 	return GGPUFrameTime;
 }
 

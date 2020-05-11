@@ -979,6 +979,7 @@ void FDeferredShadingSceneRenderer::ComputeVolumetricFog(FRHICommandListImmediat
 			FMatrix LightFunctionWorldToShadow;
 
 			RDG_EVENT_SCOPE(GraphBuilder, "VolumetricFog");
+
 #if WITH_MGPU
 			static const FName NameForTemporalEffect("ComputeVolumetricFog");
 			GraphBuilder.SetNameForTemporalEffect(FName(NameForTemporalEffect, View.ViewState ? View.ViewState->UniqueID : 0));

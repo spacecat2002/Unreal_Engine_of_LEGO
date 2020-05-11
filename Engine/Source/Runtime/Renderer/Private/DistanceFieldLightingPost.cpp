@@ -14,6 +14,10 @@
 
 IMPLEMENT_TYPE_LAYOUT(FLightTileIntersectionParameters);
 
+#if WITH_MGPU
+DECLARE_GPU_STAT(AFRWaitForDistanceFieldAOHistory);
+#endif
+
 int32 GAOUseHistory = 1;
 FAutoConsoleVariableRef CVarAOUseHistory(
 	TEXT("r.AOUseHistory"),
@@ -500,7 +504,10 @@ void UpdateHistory(
 	{
 #if WITH_MGPU
 		static const FName NameForTemporalEffect("DistanceFieldAOHistory");
-		RHICmdList.WaitForTemporalEffect(FName(NameForTemporalEffect, View.ViewState->UniqueID));
+		{
+			SCOPED_GPU_STAT(RHICmdList, AFRWaitForDistanceFieldAOHistory);
+			RHICmdList.WaitForTemporalEffect(FName(NameForTemporalEffect, View.ViewState->UniqueID));
+		}
 #endif
 
 		FIntPoint BufferSize = GetBufferSizeForAO();

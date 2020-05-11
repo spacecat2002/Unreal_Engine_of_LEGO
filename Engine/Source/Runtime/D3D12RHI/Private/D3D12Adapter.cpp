@@ -157,8 +157,7 @@ FD3D12Adapter::FD3D12Adapter(FD3D12AdapterDesc& DescIn)
 	, FenceCorePool(this)
 	, DeferredDeletionQueue(this)
 	, DefaultContextRedirector(this, true, false)
-	, DefaultAsyncComputeContextRedirector(this, false, true)
-	, GPUProfilingData(this)
+	, DefaultAsyncComputeContextRedirector(this, true, true)
 	, DebugFlags(0)
 {
 	FMemory::Memzero(&UploadHeapAllocator, sizeof(UploadHeapAllocator));
@@ -835,9 +834,6 @@ void FD3D12Adapter::InitializeDevices()
 				DefaultAsyncComputeContextRedirector.SetPhysicalContext(&Devices[GPUIndex]->GetDefaultAsyncComputeContext());
 			}
 		}
-
-		GPUProfilingData.Init();
-
 		const FString Name(L"Upload Buffer Allocator");
 
 		for (uint32 GPUIndex : FRHIGPUMask::All())
@@ -959,9 +955,6 @@ void FD3D12Adapter::Cleanup()
 		delete(Devices[GPUIndex]);
 		Devices[GPUIndex] = nullptr;
 	}
-
-	// Release buffered timestamp queries
-	GPUProfilingData.FrameTiming.ReleaseResource();
 
 	Viewports.Empty();
 	DrawingViewport = nullptr;

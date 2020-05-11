@@ -415,7 +415,7 @@ void FD3D12CommandListManager::Create(const TCHAR* Name, uint32 NumCommandLists,
 		if (SUCCEEDED(hr))
 		{
 			// find out how many entries we can much push in a single event (limit to MAX_GPU_BREADCRUMB_DEPTH)
-			int32 GPUCrashDataDepth = GetParentDevice()->GetParentAdapter()->GetGPUProfiler().GPUCrashDataDepth;
+			int32 GPUCrashDataDepth = GetParentDevice()->GetGPUProfiler().GPUCrashDataDepth;
 			int32 MaxEventCount = GPUCrashDataDepth > 0 ? FMath::Min(GPUCrashDataDepth, MAX_GPU_BREADCRUMB_DEPTH) : MAX_GPU_BREADCRUMB_DEPTH;			
 
 			// Allocate persistent CPU readable memory which will still be valid after a device lost and wrap this data in a placed resource

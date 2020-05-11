@@ -180,8 +180,6 @@ public:
 		return *(UploadHeapAllocator[GPUIndex]); 
 	}
 
-	FORCEINLINE FD3DGPUProfiler& GetGPUProfiler() { return GPUProfilingData; }
-
 	FORCEINLINE uint32 GetDebugFlags() const { return DebugFlags; }
 
 	void Cleanup();
@@ -238,55 +236,24 @@ public:
 		uint32 Alignment, uint32 Stride, uint32 Size, uint32 InUsage,
 		FRHIResourceCreateInfo& CreateInfo);
 
-	template<typename ObjectType, typename CreationCoreFunction>
+	template <typename ObjectType, typename CreationCoreFunction>
 	inline ObjectType* CreateLinkedObject(FRHIGPUMask GPUMask, const CreationCoreFunction& pfnCreationCore)
 	{
-		ObjectType* ObjectOut = nullptr;
-		ObjectType* Previous = nullptr;
-
-		for (uint32 GPUIndex : GPUMask)
-		{
-			ObjectType* NewObject = pfnCreationCore(GetDevice(GPUIndex));
-
-			// For AFR link up the resources so they can be implicitly destroyed.
-			if (!Previous)
-			{
-				ObjectOut = NewObject;
-			}
-			else // This will also configure the head link flag.
-			{
-				Previous->SetNextObject(NewObject);
-			}
-
-			Previous = NewObject;
-		}
-
-		return ObjectOut;
+		return FD3D12LinkedAdapterObject<typename ObjectType::LinkedObjectType>::CreateLinkedObjects<ObjectType>(
+			GPUMask,
+			[this](uint32 GPUIndex) { return GetDevice(GPUIndex); },
+			pfnCreationCore
+		);
 	}
 
-	template<typename ResourceType, typename ViewType, typename CreationCoreFunction>
+	template <typename ResourceType, typename ViewType, typename CreationCoreFunction>
 	inline ViewType* CreateLinkedViews(ResourceType* Resource, const CreationCoreFunction& pfnCreationCore)
 	{
-		ViewType* ViewOut = nullptr;
-		ViewType* Previous = nullptr;
-
-		while (Resource)
-		{
-			ViewType* NewView = pfnCreationCore(Resource);
-			// For AFR link up the resources so they can be implicitly destroyed
-			if (!Previous)
-			{
-				ViewOut = NewView;
-			}
-			else // This will also configure the head link flag.
-			{
-				Previous->SetNextObject(NewView);
-			}
-			Previous = NewView;
-			Resource = (ResourceType*)Resource->GetNextObject();
-		}
-
-		return ViewOut;
+		return FD3D12LinkedAdapterObject<typename ViewType::LinkedObjectType>::CreateLinkedObjects<ViewType>(
+			Resource->GetLinkedObjectsGPUMask(),
+			[Resource](uint32 GPUIndex) { return static_cast<ResourceType*>(Resource->GetLinkedObject(GPUIndex)); },
+			pfnCreationCore
+		);
 	}
 
 	inline FD3D12CommandContextRedirector& GetDefaultContextRedirector() { return DefaultContextRedirector; }
@@ -378,8 +345,6 @@ protected:
 
 	FD3D12CommandContextRedirector DefaultContextRedirector;
 	FD3D12CommandContextRedirector DefaultAsyncComputeContextRedirector;
-
-	FD3DGPUProfiler GPUProfilingData;
 
 #if WITH_MGPU
 	TMap<FName, FD3D12TemporalEffect> TemporalEffectMap;

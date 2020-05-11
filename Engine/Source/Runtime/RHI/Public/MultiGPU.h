@@ -110,6 +110,7 @@ public:
 
 	FORCEINLINE static const FRHIGPUMask GPU0() { return FRHIGPUMask(1); }
 	FORCEINLINE static const FRHIGPUMask All() { return FRHIGPUMask((1 << GNumExplicitGPUsForRendering) - 1); }
+	FORCEINLINE static const FRHIGPUMask FilterGPUsBefore(uint32 GPUIndex) { return FRHIGPUMask(~((1u << GPUIndex) - 1)) & All(); }
 
 	struct FIterator
 	{

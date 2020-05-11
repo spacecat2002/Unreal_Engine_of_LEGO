@@ -4538,7 +4538,7 @@ public:
 	
 	FORCEINLINE uint32 GetGPUFrameCycles()
 	{
-		return RHIGetGPUFrameCycles();
+		return RHIGetGPUFrameCycles(GetGPUMask().ToIndex());
 	}
 	
 	FORCEINLINE FViewportRHIRef CreateViewport(void* WindowHandle, uint32 SizeX, uint32 SizeY, bool bIsFullscreen, EPixelFormat PreferredPixelFormat)

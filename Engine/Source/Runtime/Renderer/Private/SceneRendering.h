@@ -1312,6 +1312,11 @@ public:
 	/** Informs sceneinfo that eyedaptation has queued commands to compute it at least once and that it can be used */
 	void SetValidEyeAdaptation() const;
 
+#if WITH_MGPU
+	void BroadcastEyeAdaptationTemporalEffect(FRHICommandList& RHICmdList);
+	void WaitForEyeAdaptationTemporalEffect(FRHICommandList& RHICmdList);
+#endif
+
 	/** Get the last valid exposure value for eye adapation. */
 	float GetLastEyeAdaptationExposure() const;
 

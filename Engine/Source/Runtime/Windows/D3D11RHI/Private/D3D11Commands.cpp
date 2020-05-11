@@ -1898,6 +1898,7 @@ void FD3D11DynamicRHI::RHIBlockUntilGPUIdle()
  */
 uint32 FD3D11DynamicRHI::RHIGetGPUFrameCycles(uint32 GPUIndex)
 {
+	check(GPUIndex == 0);
 #if INTEL_METRICSDISCOVERY
 	if (GDX11IntelMetricsDiscoveryEnabled)
 	{

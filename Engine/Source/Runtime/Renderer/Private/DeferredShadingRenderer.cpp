@@ -1534,13 +1534,21 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	}
 #endif // RHI_RAYTRACING
 
-	if (GRHICommandList.UseParallelAlgorithms())
+	if (GRHICommandList.UseParallelAlgorithms() || GNumAlternateFrameRenderingGroups > 1)
 	{
 		// there are dynamic attempts to get this target during parallel rendering
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{
 			FViewInfo& View = Views[ViewIndex];
 			SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+#if WITH_MGPU
+			if (GNumAlternateFrameRenderingGroups > 1)
+			{
+				// Multi-GPU support : Ideally we should put this wait just before the first time
+				// eye adaptation is used in the base pass.
+				View.WaitForEyeAdaptationTemporalEffect(RHICmdList);
+			}
+#endif
 			View.GetEyeAdaptation(RHICmdList);
 		}	
 	}
@@ -2907,6 +2915,11 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 		FRDGBuilder GraphBuilder(RHICmdList);
 
+#if WITH_MGPU
+		static const FName NAME_PostProcessing(TEXT("PostProcessing"));
+		GraphBuilder.SetNameForTemporalEffect(NAME_PostProcessing);
+#endif
+
 		FSceneTextureParameters SceneTextures;
 		SetupSceneTextureParameters(GraphBuilder, &SceneTextures);
 
@@ -2972,6 +2985,20 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		SceneContext.AdjustGBufferRefCount(GraphBuilder.RHICmdList, -1);
 
 		GraphBuilder.Execute();
+
+#if WITH_MGPU
+		if (GNumAlternateFrameRenderingGroups > 1)
+		{
+			for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+			{
+				FViewInfo& View = Views[ViewIndex];
+				SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+				// Multi-GPU support : Ideally we should broadcast immediately after the eye
+				// adaptation histogram pass runs.
+				View.BroadcastEyeAdaptationTemporalEffect(RHICmdList);
+			}
+		}
+#endif // WITH_MGPU
 
 		GRenderTargetPool.AddPhaseEvent(TEXT("AfterPostprocessing"));
 

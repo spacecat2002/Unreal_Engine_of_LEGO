@@ -269,11 +269,11 @@ static void LogBreadcrumbData(ID3D12Device* Device)
 	// Check all the devices
 	FD3D12DynamicRHI* D3D12RHI = (FD3D12DynamicRHI*)GDynamicRHI;
 	D3D12RHI->ForEachDevice(Device, [&](FD3D12Device* Device)
-		{
-			bValidData = bValidData && LogBreadcrumbData(Device->GetParentAdapter()->GetGPUProfiler(), Device->GetCommandListManager());
-			bValidData = bValidData && LogBreadcrumbData(Device->GetParentAdapter()->GetGPUProfiler(), Device->GetAsyncCommandListManager());
-			bValidData = bValidData && LogBreadcrumbData(Device->GetParentAdapter()->GetGPUProfiler(), Device->GetCopyCommandListManager());
-		});
+	{
+		bValidData = bValidData && LogBreadcrumbData(Device->GetGPUProfiler(), Device->GetCommandListManager());
+		bValidData = bValidData && LogBreadcrumbData(Device->GetGPUProfiler(), Device->GetAsyncCommandListManager());
+		bValidData = bValidData && LogBreadcrumbData(Device->GetGPUProfiler(), Device->GetCopyCommandListManager());
+	});
 
 	if (!bValidData)
 	{

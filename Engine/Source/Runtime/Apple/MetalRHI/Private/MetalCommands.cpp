@@ -683,6 +683,7 @@ void FMetalDynamicRHI::RHIBlockUntilGPUIdle()
 
 uint32 FMetalDynamicRHI::RHIGetGPUFrameCycles(uint32 GPUIndex)
 {
+	check(GPUIndex == 0);
 	return GGPUFrameTime;
 }
 
