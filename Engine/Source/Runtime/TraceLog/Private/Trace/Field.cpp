@@ -10,7 +10,8 @@ namespace Trace {
 namespace Private {
 
 ////////////////////////////////////////////////////////////////////////////////
-void Field_WriteAuxData(uint32 Index, const uint8* Data, int32 Size)
+template <typename CallbackType>
+static void Field_WriteAuxData(uint32 Index, int32 Size, CallbackType&& Callback)
 {
 	static_assert(sizeof(Private::FWriteBuffer::Overflow) >= sizeof(FAuxHeader), "FWriteBuffer::Overflow is not large enough");
 
@@ -41,7 +42,7 @@ void Field_WriteAuxData(uint32 Index, const uint8* Data, int32 Size)
 
 		int32 Remaining = int32((uint8*)Buffer - Buffer->Cursor);
 		int32 SegmentSize = (Remaining < Size) ? Remaining : Size;
-		memcpy(Buffer->Cursor, Data, SegmentSize);
+		Callback(Buffer->Cursor, SegmentSize);
 		Buffer->Cursor += SegmentSize;
 
 		Size -= SegmentSize;
@@ -49,8 +50,6 @@ void Field_WriteAuxData(uint32 Index, const uint8* Data, int32 Size)
 		{
 			break;
 		}
-
-		Data += SegmentSize;
 	}
 
 	// The auxilary data null terminator.
@@ -61,6 +60,17 @@ void Field_WriteAuxData(uint32 Index, const uint8* Data, int32 Size)
 	{
 		AtomicStoreRelease(&(uint8* volatile&)(Buffer->Committed), Buffer->Cursor);
 	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void Field_WriteAuxData(uint32 Index, const uint8* Data, int32 Size)
+{
+	auto MemcpyLambda = [&Data] (uint8* Cursor, int32 NumBytes)
+	{
+		memcpy(Cursor, Data, NumBytes);
+		Data += NumBytes;
+	};
+	return Field_WriteAuxData(Index, Size, MemcpyLambda);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
