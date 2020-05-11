@@ -4114,7 +4114,8 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 						if( Obj->HasAnyMarks(OBJECTMARK_TagImp) )
 						{
 							// Make sure the package name of an import is referenced as it might be different than its outer
-							UPackage* ObjPackage = Obj->GetOutermost();
+							UPackage* ObjPackage = Obj->GetPackage();
+							check(ObjPackage);
 							NameMapSaver.MarkNameAsReferenced(ObjPackage->GetFName());
 
 							NameMapSaver.MarkNameAsReferenced(Obj->GetClass()->GetFName());
@@ -4158,7 +4159,7 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 							}
 
 							// See whether the object we are referencing is in another map package.
-							if( ObjPackage && ObjPackage->ContainsMap() )
+							if(ObjPackage->ContainsMap())
 							{
 								if ( ObjPackage != Obj && Obj->GetFName() != NAME_PersistentLevel && Obj->GetClass()->GetFName() != WorldClassName )
 								{
