@@ -74,6 +74,25 @@ void Field_WriteAuxData(uint32 Index, const uint8* Data, int32 Size)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+void Field_WriteStringAnsi(uint32 Index, const TCHAR* String, int32 Length)
+{
+	int32 Size = Length;
+	Size &= (FAuxHeader::SizeLimit - 1);
+
+	auto WriteLambda = [&String] (uint8* Cursor, int32 NumBytes)
+	{
+		for (int32 i = 0; i < NumBytes; ++i)
+		{
+			*Cursor = uint8(*String & 0x7f);
+			Cursor++;
+			String++;
+		}
+	};
+
+	return Field_WriteAuxData(Index, Size, WriteLambda);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 void Field_WriteStringAnsi(uint32 Index, const ANSICHAR* String, int32 Length)
 {
 	int32 Size = Length * sizeof(String[0]);

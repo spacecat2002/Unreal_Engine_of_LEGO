@@ -17,6 +17,7 @@ namespace Private {
 ////////////////////////////////////////////////////////////////////////////////
 UE_TRACE_API void Field_WriteAuxData(uint32, const uint8*, int32);
 UE_TRACE_API void Field_WriteStringAnsi(uint32, const ANSICHAR*, int32);
+UE_TRACE_API void Field_WriteStringAnsi(uint32, const TCHAR*, int32);
 UE_TRACE_API void Field_WriteStringWide(uint32, const TCHAR*, int32);
 
 } // namespace Private
@@ -161,6 +162,17 @@ template <int InIndex, int InOffset>
 struct TField<InIndex, InOffset, Trace::AnsiString>
 {
 	TRACE_PRIVATE_FIELD(InIndex|int(EIndexPack::MaybeHasAux), InOffset, Trace::AnsiString);
+
+	FORCENOINLINE static void Set(uint8*, const TCHAR* String, int32 Length=-1)
+	{
+		if (Length < 0)
+		{
+			Length = 0;
+			for (const TCHAR* c = String; *c; ++c, ++Length);
+		}
+
+		Private::Field_WriteStringAnsi(Index, String, Length);
+	}
 
 	FORCENOINLINE static void Set(uint8*, const ANSICHAR* String, int32 Length=-1)
 	{
