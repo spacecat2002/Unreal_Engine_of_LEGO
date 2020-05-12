@@ -18,10 +18,12 @@ UE_TRACE_CHANNEL(MemoryChannel);
 UE_TRACE_EVENT_BEGIN(LLM, TagsSpec, Important)
 	UE_TRACE_EVENT_FIELD(int64, TagId)
 	UE_TRACE_EVENT_FIELD(int64, ParentId)
+	UE_TRACE_EVENT_FIELD(Trace::AnsiString, Name)
 UE_TRACE_EVENT_END()
 
 UE_TRACE_EVENT_BEGIN(LLM, TrackerSpec, Important)
 	UE_TRACE_EVENT_FIELD(uint8, TrackerId)
+	UE_TRACE_EVENT_FIELD(Trace::AnsiString, Name)
 UE_TRACE_EVENT_END()
 
 UE_TRACE_EVENT_BEGIN(LLM, TagValue)
@@ -2240,12 +2242,11 @@ FLLMTraceWriter::FLLMTraceWriter()
 inline void FLLMTraceWriter::SetTracker(ELLMTracker InTracker)
 { 
 	Tracker = InTracker;
-	static const ANSICHAR* TrackerNames[] = {"System", "Default", 0};
-	const ANSICHAR* TrackerName = TrackerNames[(uint8)Tracker];
-	const uint32 TrackerNameBytes = FCStringAnsi::Strlen(TrackerName) + 1;
-	UE_TRACE_LOG(LLM, TrackerSpec, MemoryChannel, TrackerNameBytes)
+	static const ANSICHAR* TrackerNames[] = {"System", "Default"};
+	static_assert(UE_ARRAY_COUNT(TrackerNames) == int(ELLMTracker::Max), "");
+	UE_TRACE_LOG(LLM, TrackerSpec, MemoryChannel)
 		<< TrackerSpec.TrackerId((uint8)InTracker)
-		<< TrackerSpec.Attachment(TrackerName, TrackerNameBytes);
+		<< TrackerSpec.Name(TrackerNames[(uint8)Tracker]);
 }
 
 void FLLMTraceWriter::SetAllocator(FLLMAllocator* InAllocator)
@@ -2328,7 +2329,7 @@ void FLLMTraceWriter::Update(FLLMCustomTag* CustomTags, const int32* ParentTags)
 			UE_TRACE_LOG(LLM, TagsSpec, MemoryChannel, TagNameSize)
 				<< TagsSpec.TagId(Tag)
 				<< TagsSpec.ParentId(ParentTags[Tag])
-				<< TagsSpec.Attachment(*TagName, TagNameSize);
+				<< TagsSpec.Name(*TagName);
 		}
 		LastTracedTagCount = TagCount;
 	}
@@ -2352,7 +2353,7 @@ void FLLMTraceWriter::TraceGenericTags(const int32* ParentTags)
 		UE_TRACE_LOG(LLM, TagsSpec, MemoryChannel, TagNameSize)
 			<< TagsSpec.TagId(GenericTagIndex)
 			<< TagsSpec.ParentId(ParentTags[GenericTagIndex])
-			<< TagsSpec.Attachment(*TagName, TagNameSize);
+			<< TagsSpec.Name(*TagName);
 	}
 }
 
