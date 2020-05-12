@@ -44,11 +44,11 @@ public:
 	bool ReadDependencyData(FPackageDependencyData& OutDependencyData);
 
 	/** Serializers for different package maps */
-	void SerializeNameMap();
-	void SerializeImportMap(TArray<FObjectImport>& OutImportMap);
-	void SerializeExportMap(TArray<FObjectExport>& OutExportMap);
-	void SerializeSoftPackageReferenceList(TArray<FName>& OutSoftPackageReferenceList);
-	void SerializeSearchableNamesMap(FPackageDependencyData& OutDependencyData);
+	bool SerializeNameMap();
+	bool SerializeImportMap(TArray<FObjectImport>& OutImportMap);
+	bool SerializeExportMap(TArray<FObjectExport>& OutExportMap);
+	bool SerializeSoftPackageReferenceList(TArray<FName>& OutSoftPackageReferenceList);
+	bool SerializeSearchableNamesMap(FPackageDependencyData& OutDependencyData);
 
 	/** Returns flags the asset package was saved with */
 	uint32 GetPackageFlags() const;
@@ -66,6 +66,8 @@ public:
 	}
 
 private:
+	bool StartSerializeSection(int64 Offset);
+
 	FString PackageFilename;
 	FArchive* Loader;
 	FPackageFileSummary PackageFileSummary;
