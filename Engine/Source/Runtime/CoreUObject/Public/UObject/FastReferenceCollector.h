@@ -787,7 +787,7 @@ private:
 					case GCRT_AddStructReferencedObjects:
 					{
 						// We're dealing with a function call
-						void const*	StructPtr = (void*)(StackEntryData + ReferenceInfo.Offset);
+						void* StructPtr = (void*)(StackEntryData + ReferenceInfo.Offset);
 						TokenReturnCount = ReferenceInfo.ReturnCount;
 						UScriptStruct::ICppStructOps::TPointerToAddStructReferencedObjects Func = (UScriptStruct::ICppStructOps::TPointerToAddStructReferencedObjects) TokenStream->ReadPointer(TokenStreamIndex);
 						Func(StructPtr, ReferenceCollector);
