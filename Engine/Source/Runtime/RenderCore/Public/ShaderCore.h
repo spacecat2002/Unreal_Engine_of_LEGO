@@ -701,6 +701,7 @@ public:
 	}
 
 	// inefficient, will/should be replaced by GetShaderCodeToRead()
+	UE_DEPRECATED(4.26, "Please switch to GetShaderCodeToRead()")
 	void GetShaderCodeLegacy(TArray<uint8>& Out) const
 	{
 		Out.Empty();
