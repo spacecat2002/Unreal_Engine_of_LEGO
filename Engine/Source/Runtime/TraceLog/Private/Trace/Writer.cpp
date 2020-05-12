@@ -116,7 +116,7 @@ thread_local FWriteTlsContext	GTlsContext;
 static uint32 Writer_SendData(uint32, uint8* __restrict, uint32);
 
 ////////////////////////////////////////////////////////////////////////////////
-static void* Writer_MemoryAllocate(SIZE_T Size, uint32 Alignment)
+void* Writer_MemoryAllocate(SIZE_T Size, uint32 Alignment)
 {
 	TWriteBufferRedirect<6 << 10> TraceData;
 
@@ -139,7 +139,7 @@ static void* Writer_MemoryAllocate(SIZE_T Size, uint32 Alignment)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-static void Writer_MemoryFree(void* Address, SIZE_T Size, uint32 Alignment)
+void Writer_MemoryFree(void* Address, SIZE_T Size, uint32 Alignment)
 {
 	TWriteBufferRedirect<6 << 10> TraceData;
 
