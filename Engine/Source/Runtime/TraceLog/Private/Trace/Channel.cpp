@@ -26,6 +26,7 @@ FChannel&				TraceLogChannel			= TraceLogChannelDetail;
 UE_TRACE_EVENT_BEGIN(Trace, ChannelAnnounce, Important)
 	UE_TRACE_EVENT_FIELD(uint32, Id)
 	UE_TRACE_EVENT_FIELD(bool, IsEnabled)
+	UE_TRACE_EVENT_FIELD(Trace::AnsiString, Name)
 UE_TRACE_EVENT_END()
 
 UE_TRACE_EVENT_BEGIN(Trace, ChannelToggle, Important)
@@ -154,15 +155,10 @@ void FChannel::Initialize(const ANSICHAR* InChannelName)
 ///////////////////////////////////////////////////////////////////////////////
 void FChannel::Announce() const
 {
-	ANSICHAR Buffer[128];
-	uint32 Count = FMath::Min<uint32>(sizeof(Buffer) - 1, Name.Len);
-	memcpy(Buffer, Name.Ptr, Count);
-	Buffer[Count] = '\0';
-
-	UE_TRACE_LOG(Trace, ChannelAnnounce, TraceLogChannel, Count + 1)
+	UE_TRACE_LOG(Trace, ChannelAnnounce, TraceLogChannel)
 		<< ChannelAnnounce.Id(Name.Hash)
 		<< ChannelAnnounce.IsEnabled(IsEnabled())
-		<< ChannelAnnounce.Attachment(Buffer, Count + 1);
+		<< ChannelAnnounce.Name(Name.Ptr);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
