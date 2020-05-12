@@ -1906,6 +1906,7 @@ void FLLMTracker::FLLMThreadState::GetFrameStatTotals(
 		{
 			IncMemoryStatByFName(CustomTags[Tag - LLM_CUSTOM_TAG_START].StatName, int64(Amount));
 			IncMemoryStatByFName(CustomTags[Tag - LLM_CUSTOM_TAG_START].SummaryStatName, int64(Amount));
+			OutEnumTagAmounts[Tag] += Amount;
 		}
 		else
 		{
