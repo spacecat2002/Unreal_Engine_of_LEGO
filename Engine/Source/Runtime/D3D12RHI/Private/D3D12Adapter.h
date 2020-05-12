@@ -239,7 +239,7 @@ public:
 	template <typename ObjectType, typename CreationCoreFunction>
 	inline ObjectType* CreateLinkedObject(FRHIGPUMask GPUMask, const CreationCoreFunction& pfnCreationCore)
 	{
-		return FD3D12LinkedAdapterObject<typename ObjectType::LinkedObjectType>::CreateLinkedObjects<ObjectType>(
+		return FD3D12LinkedAdapterObject<typename ObjectType::LinkedObjectType>::template CreateLinkedObjects<ObjectType>(
 			GPUMask,
 			[this](uint32 GPUIndex) { return GetDevice(GPUIndex); },
 			pfnCreationCore
@@ -249,7 +249,7 @@ public:
 	template <typename ResourceType, typename ViewType, typename CreationCoreFunction>
 	inline ViewType* CreateLinkedViews(ResourceType* Resource, const CreationCoreFunction& pfnCreationCore)
 	{
-		return FD3D12LinkedAdapterObject<typename ViewType::LinkedObjectType>::CreateLinkedObjects<ViewType>(
+		return FD3D12LinkedAdapterObject<typename ViewType::LinkedObjectType>::template CreateLinkedObjects<ViewType>(
 			Resource->GetLinkedObjectsGPUMask(),
 			[Resource](uint32 GPUIndex) { return static_cast<ResourceType*>(Resource->GetLinkedObject(GPUIndex)); },
 			pfnCreationCore
