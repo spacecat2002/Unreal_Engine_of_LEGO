@@ -6,6 +6,7 @@
 #include "HAL/RunnableThread.h"
 #include "HAL/Runnable.h"
 #include "HAL/Event.h"
+#include "HAL/ThreadManager.h"
 #include "Containers/StringConv.h"
 #include "HoloLens/WindowsHWrapper.h"
 #include "HoloLens/HoloLensPlatformProcess.h"
