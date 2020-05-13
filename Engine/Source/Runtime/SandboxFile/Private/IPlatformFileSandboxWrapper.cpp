@@ -16,7 +16,7 @@ DEFINE_LOG_CATEGORY(SandboxFile);
 	#define PLATFORM_SUPPORTS_DEFAULT_SANDBOX PLATFORM_DESKTOP
 #endif
 
-#if PLATFORM_DESKTOP && (UE_GAME || UE_SERVER)
+#if PLATFORM_SUPPORTS_DEFAULT_SANDBOX && (UE_GAME || UE_SERVER)
 static FString GetCookedSandboxDir()
 {
 	return FPaths::Combine(*(FPaths::ProjectSavedDir()), TEXT("Cooked"), ANSI_TO_TCHAR(FPlatformProperties::PlatformName()));
