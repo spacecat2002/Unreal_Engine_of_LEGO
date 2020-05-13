@@ -473,7 +473,7 @@ private:
 	FShaderCompilerDefinitions Definitions;
 };
 
-// if this changes you need to make sure all D3D11 shaders get invalidated
+// if this changes you need to make sure all shaders get invalidated
 struct FShaderCodePackedResourceCounts
 {
 	// for FindOptionalData() and AddOptionalData()
@@ -486,6 +486,16 @@ struct FShaderCodePackedResourceCounts
 	uint8 NumUAVs;
 };
 
+// if this changes you need to make sure all shaders get invalidated
+struct FShaderCodeFeatures
+{
+	// for FindOptionalData() and AddOptionalData()
+	static const uint8 Key = 'x';
+
+	bool bUsesWaveOps;
+};
+
+// if this changes you need to make sure all shaders get invalidated
 struct FShaderCodeVendorExtension
 {
 	// for FindOptionalData() and AddOptionalData()
