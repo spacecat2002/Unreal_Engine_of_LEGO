@@ -58,12 +58,12 @@ bool FPackageReader::OpenPackageFile(EOpenPackageResult* OutErrorCode)
 	}
 
 	// Read package file summary from the file
-	*Loader << PackageFileSummary;
+	*this << PackageFileSummary;
 
 	// Validate the summary.
 
 	// Make sure this is indeed a package
-	if( PackageFileSummary.Tag != PACKAGE_FILE_TAG || Loader->IsError() )
+	if( PackageFileSummary.Tag != PACKAGE_FILE_TAG || IsError())
 	{
 		// Unrecognized or malformed package file
 		SetPackageErrorCode(EOpenPackageResult::MalformedTag);
@@ -104,15 +104,9 @@ bool FPackageReader::OpenPackageFile(EOpenPackageResult* OutErrorCode)
 	SetUE4Ver(PackageFileSummary.GetFileVersionUE4());
 	SetLicenseeUE4Ver(PackageFileSummary.GetFileVersionLicenseeUE4());
 	SetEngineVer(PackageFileSummary.SavedByEngineVersion);
-	Loader->SetUE4Ver(PackageFileSummary.GetFileVersionUE4());
-	Loader->SetLicenseeUE4Ver(PackageFileSummary.GetFileVersionLicenseeUE4());
-	Loader->SetEngineVer(PackageFileSummary.SavedByEngineVersion);
-
-	SetByteSwapping(Loader->ForceByteSwapping());
 
 	const FCustomVersionContainer& PackageFileSummaryVersions = PackageFileSummary.GetCustomVersionContainer();
 	SetCustomVersions(PackageFileSummaryVersions);
-	Loader->SetCustomVersions(PackageFileSummaryVersions);
 
 	PackageFileSize = Loader->TotalSize();
 
@@ -130,7 +124,7 @@ bool FPackageReader::StartSerializeSection(int64 Offset)
 	ClearError();
 	Loader->ClearError();
 	Seek(Offset);
-	return true;
+	return !IsError();
 }
 
 #define UE_PACKAGEREADER_CORRUPTPACKAGE_WARNING(MessageKey, PackageFileName) \
@@ -158,7 +152,7 @@ bool FPackageReader::ReadAssetRegistryData (TArray<FAssetData*>& AssetDataList)
 	int32 ObjectCount = 0;
 	*this << ObjectCount;
 	const int32 MinBytesPerObject = 1;
-	if (IsError() || Loader->IsError() || ObjectCount < 0 || PackageFileSize < Tell() + ObjectCount * MinBytesPerObject)
+	if (IsError() || ObjectCount < 0 || PackageFileSize < Tell() + ObjectCount * MinBytesPerObject)
 	{
 		UE_PACKAGEREADER_CORRUPTPACKAGE_WARNING("ReadAssetRegistryDataInvalidObjectCount", PackageFilename);
 		return false;
@@ -187,7 +181,7 @@ bool FPackageReader::ReadAssetRegistryData (TArray<FAssetData*>& AssetDataList)
 		*this << ObjectPath;
 		*this << ObjectClassName;
 		*this << TagCount;
-		if (IsError() || Loader->IsError() || TagCount < 0 || PackageFileSize < Tell() + TagCount * MinBytesPerTag)
+		if (IsError() || TagCount < 0 || PackageFileSize < Tell() + TagCount * MinBytesPerTag)
 		{
 			UE_PACKAGEREADER_CORRUPTPACKAGE_WARNING("ReadAssetRegistryDataInvalidTagCount", PackageFilename);
 			return false;
@@ -202,7 +196,7 @@ bool FPackageReader::ReadAssetRegistryData (TArray<FAssetData*>& AssetDataList)
 			FString Value;
 			*this << Key;
 			*this << Value;
-			if (IsError() || Loader->IsError())
+			if (IsError())
 			{
 				UE_PACKAGEREADER_CORRUPTPACKAGE_WARNING("ReadAssetRegistryDataInvalidTag", PackageFilename);
 				return false;
@@ -267,7 +261,7 @@ bool FPackageReader::ReadAssetDataFromThumbnailCache(TArray<FAssetData*>& AssetD
 	int32 ObjectCount = 0;
 	*this << ObjectCount;
 	const int32 MinBytesPerObject = 1;
-	if (IsError() || Loader->IsError() || ObjectCount < 0 || PackageFileSize < Tell() + ObjectCount * MinBytesPerObject)
+	if (IsError() || ObjectCount < 0 || PackageFileSize < Tell() + ObjectCount * MinBytesPerObject)
 	{
 		UE_PACKAGEREADER_CORRUPTPACKAGE_WARNING("ReadAssetDataFromThumbnailCacheInvalidObjectCount", PackageFilename);
 		return false;
@@ -288,7 +282,7 @@ bool FPackageReader::ReadAssetDataFromThumbnailCache(TArray<FAssetData*>& AssetD
 		int32 FileOffset = 0;
 		*this << FileOffset;
 
-		if (IsError() || Loader->IsError())
+		if (IsError())
 		{
 			UE_PACKAGEREADER_CORRUPTPACKAGE_WARNING("ReadAssetDataFromThumbnailCacheInvalidObject", PackageFilename);
 			return false;
@@ -423,7 +417,7 @@ bool FPackageReader::SerializeNameMap()
 			// Read the name entry from the file.
 			FNameEntrySerialized NameEntry(ENAME_LinkerConstructor);
 			*this << NameEntry;
-			if (IsError() || Loader->IsError())
+			if (IsError())
 			{
 				UE_PACKAGEREADER_CORRUPTPACKAGE_WARNING("SerializeNameMapInvalidName", PackageFilename);
 				return false;
@@ -455,7 +449,7 @@ bool FPackageReader::SerializeImportMap(TArray<FObjectImport>& OutImportMap)
 		{
 			FObjectImport* Import = new(OutImportMap)FObjectImport;
 			*this << *Import;
-			if (IsError() || Loader->IsError())
+			if (IsError())
 			{
 				UE_PACKAGEREADER_CORRUPTPACKAGE_WARNING("SerializeImportMapInvalidImport", PackageFilename);
 				return false;
@@ -486,7 +480,7 @@ bool FPackageReader::SerializeExportMap(TArray<FObjectExport>& OutExportMap)
 		{
 			FObjectExport* Export = new(OutExportMap)FObjectExport;
 			*this << *Export;
-			if (IsError() || Loader->IsError())
+			if (IsError())
 			{
 				UE_PACKAGEREADER_CORRUPTPACKAGE_WARNING("SerializeExportMapInvalidExport", PackageFilename);
 				return false;
@@ -519,7 +513,7 @@ bool FPackageReader::SerializeSoftPackageReferenceList(TArray<FName>& OutSoftPac
 			{
 				FString PackageName;
 				*this << PackageName;
-				if (IsError() || Loader->IsError())
+				if (IsError())
 				{
 					UE_PACKAGEREADER_CORRUPTPACKAGE_WARNING("SerializeSoftPackageReferenceListInvalidReferencePreSoftObjectPath", PackageFilename);
 					return false;
@@ -543,7 +537,7 @@ bool FPackageReader::SerializeSoftPackageReferenceList(TArray<FName>& OutSoftPac
 			{
 				FName PackageName;
 				*this << PackageName;
-				if (IsError() || Loader->IsError())
+				if (IsError())
 				{
 					UE_PACKAGEREADER_CORRUPTPACKAGE_WARNING("SerializeSoftPackageReferenceListInvalidReference", PackageFilename);
 					return false;
@@ -568,7 +562,7 @@ bool FPackageReader::SerializeSearchableNamesMap(FPackageDependencyData& OutDepe
 		}
 
 		OutDependencyData.SerializeSearchableNamesMap(*this);
-		if (IsError() || Loader->IsError())
+		if (IsError())
 		{
 			UE_PACKAGEREADER_CORRUPTPACKAGE_WARNING("SerializeSearchableNamesMapInvalidSearchableNamesMap", PackageFilename);
 			return false;
@@ -582,6 +576,10 @@ void FPackageReader::Serialize( void* V, int64 Length )
 {
 	check(Loader);
 	Loader->Serialize( V, Length );
+	if (Loader->IsError())
+	{
+		SetError();
+	}
 }
 
 bool FPackageReader::Precache( int64 PrecacheOffset, int64 PrecacheSize )
@@ -594,6 +592,10 @@ void FPackageReader::Seek( int64 InPos )
 {
 	check(Loader);
 	Loader->Seek( InPos );
+	if (Loader->IsError())
+	{
+		SetError();
+	}
 }
 
 int64 FPackageReader::Tell()
@@ -615,8 +617,6 @@ uint32 FPackageReader::GetPackageFlags() const
 
 FArchive& FPackageReader::operator<<( FName& Name )
 {
-	check(Loader);
-
 	int32 NameIndex;
 	FArchive& Ar = *this;
 	Ar << NameIndex;
