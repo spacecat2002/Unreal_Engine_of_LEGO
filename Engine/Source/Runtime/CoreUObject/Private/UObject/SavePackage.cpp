@@ -3708,6 +3708,8 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 					}
 					else if ((!!TargetPlatform) && FParse::Value(FCommandLine::Get(), TEXT("DiffCookedPackages="), DiffCookedPackagesPath))
 					{
+						UE_LOG(LogSavePackage, Warning, TEXT("The DiffCookedPackages command line argument is now deprecated, please use the -diffonly commandline for the cook commandlet instead."));
+
 						FString TestArchiveFilename = Filename;
 						// TestArchiveFilename.ReplaceInline(TEXT("Cooked"), TEXT("CookedDiff"));
 						DiffCookedPackagesPath.ReplaceInline(TEXT("\\"), TEXT("/"));
@@ -3926,6 +3928,7 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 									FString LocalObjectName;
 									if (FParse::Value(CommandLine, TEXT("dumpsavestate="), LocalObjectName))
 									{
+										UE_LOG(LogSavePackage, Warning, TEXT("The -dumpsavestate command line argument is now deprecated. It will soon be removed in a future release."));
 										ObjectName = MoveTemp(LocalObjectName);
 									}
 
@@ -3933,6 +3936,7 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 									FString LocalArchetypeName;
 									if (FParse::Value(CommandLine, TEXT("dumpsavestatebyarchetype="), LocalArchetypeName))
 									{
+										UE_LOG(LogSavePackage, Warning, TEXT("The -dumpsavestatebyarchetype command line argument is now deprecated. It will soon be removed in a future release."));
 										ArchetypeName = MoveTemp(LocalArchetypeName);
 									}
 								}
