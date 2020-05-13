@@ -12,7 +12,7 @@ struct FActiveSound;
 struct FSoundParseParameters;
 
 UCLASS()
-class ENGINE_API UDialogueSoundWaveProxy : public USoundBase
+class UDialogueSoundWaveProxy : public USoundBase
 {
 	GENERATED_UCLASS_BODY()
 
