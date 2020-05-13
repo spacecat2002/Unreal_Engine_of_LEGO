@@ -2,6 +2,8 @@
 
 #include "Hash/xxhash.h"
 
+#if 0	// Temporary workaround for Mac build
+
 //////////////////////////////////////////////////////////////////////////
 
 THIRD_PARTY_INCLUDES_START
@@ -34,3 +36,23 @@ FXxHash::HashBuffer64(const void* BlockPtr, SIZE_T BlockSize)
 	XXH64_update(&State, BlockPtr, BlockSize);
 	return XXH64_digest(&State);
 }
+
+#else
+
+uint32
+FXxHash::HashBuffer32(const void* BlockPtr, SIZE_T BlockSize)
+{
+	unimplemented();
+
+	return 0;
+}
+
+uint64
+FXxHash::HashBuffer64(const void* BlockPtr, SIZE_T BlockSize)
+{
+	unimplemented();
+
+	return 0;
+}
+
+#endif
