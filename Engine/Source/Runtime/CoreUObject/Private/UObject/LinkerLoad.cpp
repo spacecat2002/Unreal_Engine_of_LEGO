@@ -882,10 +882,14 @@ FLinkerLoad::FLinkerLoad(UPackage* InParent, const TCHAR* InFilename, uint32 InL
 
 #if WITH_EDITOR
 	// Check if the linker is instanced @todo: pass through a load flag?
-	FName PackageNameToLoad = *FPackageName::FilenameToLongPackageName(InFilename);
-	if (LinkerRoot->GetFName() != PackageNameToLoad)
+	FString PackageName;
+	if (FPackageName::TryConvertFilenameToLongPackageName(Filename, PackageName))
 	{
-		InstancingContext.AddMapping(PackageNameToLoad, LinkerRoot->GetFName());
+		FName PackageNameToLoad = *PackageName;
+		if (LinkerRoot->GetFName() != PackageNameToLoad)
+		{
+			InstancingContext.AddMapping(PackageNameToLoad, LinkerRoot->GetFName());
+		}
 	}
 #endif
 }
