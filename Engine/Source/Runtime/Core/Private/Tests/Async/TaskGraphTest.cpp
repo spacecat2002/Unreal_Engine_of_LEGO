@@ -76,12 +76,12 @@ namespace OldTaskGraphTests
 					ParallelFor(1000,
 						[&Counter, &Cycles](int32 Index)
 						{
-							FTask::Spawn(
-								[&Counter, &Cycles](const FGraphEventRef& CompletionEvent)
+							FFunctionGraphTask::CreateAndDispatchWhenReady(
+								[&Counter, &Cycles](ENamedThreads::Type CurrentThread, const FGraphEventRef& CompletionEvent)
 								{
 									DoWork(&CompletionEvent, Counter, Cycles, -1);
 								},
-								ENamedThreads::GameThread
+								TStatId{}, nullptr, ENamedThreads::GameThread
 							);
 						}
 					);
@@ -97,7 +97,7 @@ namespace OldTaskGraphTests
 			Tasks.Reserve(1000);
 			for (int32 Index = 0; Index < 1000; Index++)
 			{
-				Tasks.Add(FTask::SpawnAndTrack([] {}, ENamedThreads::GameThread));
+				Tasks.Add(FFunctionGraphTask::CreateAndDispatchWhenReady([] {}, TStatId{}, nullptr, ENamedThreads::GameThread));
 			}
 			QueueTime = FPlatformTime::Seconds();
 			FTaskGraphInterface::Get().WaitUntilTasksComplete(MoveTemp(Tasks), ENamedThreads::GameThread);
@@ -110,12 +110,12 @@ namespace OldTaskGraphTests
 			Tasks.Reserve(1000);
 			for (int32 Index = 0; Index < 1000; Index++)
 			{
-				Tasks.Add(FTask::SpawnAndTrack(
-					[&Counter, &Cycles](const FGraphEventRef& CompletionEvent)
+				Tasks.Add(FFunctionGraphTask::CreateAndDispatchWhenReady(
+					[&Counter, &Cycles](ENamedThreads::Type CurrentThread, const FGraphEventRef& CompletionEvent)
 					{
 						DoWork(&CompletionEvent, Counter, Cycles, 100);
 					},
-					ENamedThreads::GameThread
+					TStatId{}, nullptr, ENamedThreads::GameThread
 				));
 			}
 			QueueTime = FPlatformTime::Seconds();
@@ -131,7 +131,7 @@ namespace OldTaskGraphTests
 			ParallelFor(1000,
 				[&Tasks](int32 Index)
 				{
-					Tasks[Index] = FTask::SpawnAndTrack([] {});
+					Tasks[Index] = FFunctionGraphTask::CreateAndDispatchWhenReady([] {});
 				}
 			);
 			QueueTime = FPlatformTime::Seconds();
@@ -151,10 +151,10 @@ namespace OldTaskGraphTests
 					InnerTasks.AddZeroed(100);
 					for (int32 InnerIndex = 0; InnerIndex < 100; InnerIndex++)
 					{
-						InnerTasks[InnerIndex] = FTask::SpawnAndTrack([] {});
+						InnerTasks[InnerIndex] = FFunctionGraphTask::CreateAndDispatchWhenReady([] {});
 					}
 					// join the above tasks
-					Tasks[Index] = FTask::SpawnAndTrack([] {}, ENamedThreads::AnyThread, &InnerTasks);
+					Tasks[Index] = FFunctionGraphTask::CreateAndDispatchWhenReady([] {}, TStatId{}, &InnerTasks, ENamedThreads::AnyThread);
 				}
 			);
 			QueueTime = FPlatformTime::Seconds();
@@ -175,10 +175,10 @@ namespace OldTaskGraphTests
 					InnerTasks.AddZeroed(10);
 					for (int32 InnerIndex = 0; InnerIndex < 10; InnerIndex++)
 					{
-						InnerTasks[InnerIndex] = FTask::SpawnAndTrack([] {});
+						InnerTasks[InnerIndex] = FFunctionGraphTask::CreateAndDispatchWhenReady([] {});
 					}
 					// join the above tasks
-					Tasks[Index] = FTask::SpawnAndTrack([] {}, ENamedThreads::AnyThread, &InnerTasks);
+					Tasks[Index] = FFunctionGraphTask::CreateAndDispatchWhenReady([] {}, TStatId{}, &InnerTasks, ENamedThreads::AnyThread);
 				}
 			);
 			QueueTime = FPlatformTime::Seconds();
@@ -193,7 +193,7 @@ namespace OldTaskGraphTests
 			ParallelFor(1000,
 				[&Counter, &Cycles](int32 Index)
 				{
-					FTask::Spawn([&Counter, &Cycles](const FGraphEventRef& CompletionEvent) { DoWork(&CompletionEvent, Counter, Cycles, 0); });
+					FFunctionGraphTask::CreateAndDispatchWhenReady([&Counter, &Cycles](ENamedThreads::Type CurrentThread, const FGraphEventRef& CompletionEvent) { DoWork(&CompletionEvent, Counter, Cycles, 0); });
 				}
 			);
 			QueueTime = FPlatformTime::Seconds();
@@ -215,7 +215,7 @@ namespace OldTaskGraphTests
 				[](int32 Index)
 				{
 					bool& Out = Output[Index];
-					FTask::Spawn([&Out] { Out = true; });
+					FFunctionGraphTask::CreateAndDispatchWhenReady([&Out] { Out = true; });
 				}
 			);
 			QueueTime = FPlatformTime::Seconds();
@@ -236,7 +236,7 @@ namespace OldTaskGraphTests
 			ParallelFor(1000,
 				[&Counter, &Cycles](int32 Index)
 				{
-					FTask::Spawn([&Counter, &Cycles](const FGraphEventRef& CompletionEvent) { DoWork(&CompletionEvent, Counter, Cycles, 1000); });
+					FFunctionGraphTask::CreateAndDispatchWhenReady([&Counter, &Cycles](ENamedThreads::Type CurrentThread, const FGraphEventRef& CompletionEvent) { DoWork(&CompletionEvent, Counter, Cycles, 1000); });
 				}
 			);
 			QueueTime = FPlatformTime::Seconds();
@@ -251,7 +251,7 @@ namespace OldTaskGraphTests
 			StartTime = FPlatformTime::Seconds();
 			for (int32 Index = 0; Index < 1000; Index++)
 			{
-				FTask::Spawn([&Counter, &Cycles](const FGraphEventRef& CompletionEvent) { DoWork(&CompletionEvent, Counter, Cycles, 1000); });
+				FFunctionGraphTask::CreateAndDispatchWhenReady([&Counter, &Cycles](ENamedThreads::Type CurrentThread, const FGraphEventRef& CompletionEvent) { DoWork(&CompletionEvent, Counter, Cycles, 1000); });
 			}
 			QueueTime = FPlatformTime::Seconds();
 			while (Counter.GetValue() < 1000)
@@ -267,12 +267,12 @@ namespace OldTaskGraphTests
 			ParallelFor(1000,
 				[&Counter, &Cycles](int32 Index)
 				{
-					FTask::Spawn(
-						[&Counter, &Cycles](const FGraphEventRef& CompletionEvent)
+					FFunctionGraphTask::CreateAndDispatchWhenReady(
+						[&Counter, &Cycles](ENamedThreads::Type CurrentThread, const FGraphEventRef& CompletionEvent)
 						{
 							DoWork(&CompletionEvent, Counter, Cycles, -1);
 						},
-						ENamedThreads::GameThread
+						TStatId{}, nullptr, ENamedThreads::GameThread
 					);
 				}
 			);
@@ -382,7 +382,7 @@ namespace OldTaskGraphTests
 			for (uint32 Index = 0; Index < NumWorkersForTest; Index++)
 			{
 				TUniqueFunction<void()> WorkerTaskWithIndex{ [Index, &WorkerTask] { WorkerTask(Index); } };
-				Tasks.Add(FTask::SpawnAndTrack(MoveTemp(WorkerTaskWithIndex), ENamedThreads::AnyNormalThreadHiPriTask));
+				Tasks.Add(FFunctionGraphTask::CreateAndDispatchWhenReady(MoveTemp(WorkerTaskWithIndex), TStatId{}, nullptr, ENamedThreads::AnyNormalThreadHiPriTask));
 			}
 			FTaskGraphInterface::Get().WaitUntilTasksComplete(MoveTemp(Tasks));
 		};
@@ -652,7 +652,7 @@ namespace OldTaskGraphTests
 			FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Latency %6.2fus\r\n"), Latency);
 		};
 
-		auto BackgroundTask = [&ForegroundTask](const FGraphEventRef& CompletionEvent)
+		auto BackgroundTask = [&ForegroundTask](ENamedThreads::Type CurrentThread, const FGraphEventRef& CompletionEvent)
 		{
 			while (true)
 			{
@@ -662,7 +662,7 @@ namespace OldTaskGraphTests
 					FCrc::MemCrc32(CompletionEvent.GetReference(), sizeof(FGraphEvent), RunningCrc);
 				}
 				uint64 StartTime = FPlatformTime::Cycles64();
-				FTask::Spawn([StartTime, &ForegroundTask] { ForegroundTask(StartTime); }, ENamedThreads::AnyHiPriThreadHiPriTask);
+				FFunctionGraphTask::CreateAndDispatchWhenReady([StartTime, &ForegroundTask] { ForegroundTask(StartTime); }, TStatId{}, nullptr, ENamedThreads::AnyHiPriThreadHiPriTask);
 			}
 		};
 
@@ -671,18 +671,18 @@ namespace OldTaskGraphTests
 		const int NumNormalTasks = 32;
 		for (int32 Index = 0; Index < NumBackgroundTasks; Index++)
 		{
-			FTask::Spawn(BackgroundTask, TStatId{}, nullptr, ENamedThreads::AnyNormalThreadNormalTask);
+			FFunctionGraphTask::CreateAndDispatchWhenReady(BackgroundTask, TStatId{}, nullptr, ENamedThreads::AnyNormalThreadNormalTask);
 		}
 		for (int32 Index = 0; Index < NumNormalTasks; Index++)
 		{
-			FTask::Spawn(BackgroundTask, TStatId{}, nullptr, ENamedThreads::AnyBackgroundThreadNormalTask);
+			FFunctionGraphTask::CreateAndDispatchWhenReady(BackgroundTask, TStatId{}, nullptr, ENamedThreads::AnyBackgroundThreadNormalTask);
 		}
 		while (true)
 		{
 			FPlatformProcess::Sleep(25.0f);
 		}
 #else
-		FTask::Spawn(MoveTemp(BackgroundTask), ENamedThreads::AnyBackgroundThreadNormalTask);
+		FFunctionGraphTask::CreateAndDispatchWhenReady(MoveTemp(BackgroundTask), TStatId{}, nullptr, ENamedThreads::AnyBackgroundThreadNormalTask);
 #endif
 	}
 
@@ -718,7 +718,7 @@ namespace TaskGraphTests
 	bool FGraphEventTest::RunTest(const FString& Parameters)
 	{
 		{	// task completes before it's waited for
-			FGraphEventRef Event = FTask::SpawnAndTrack(
+			FGraphEventRef Event = FFunctionGraphTask::CreateAndDispatchWhenReady(
 				[]
 				{
 					//UE_LOG(LogTemp, Log, TEXT("Main task"));
@@ -729,7 +729,7 @@ namespace TaskGraphTests
 		}
 
 		{	// task completes after it's waited for
-			FGraphEventRef Event = FTask::SpawnAndTrack([]()
+			FGraphEventRef Event = FFunctionGraphTask::CreateAndDispatchWhenReady([]()
 				{
 					//UE_LOG(LogTemp, Log, TEXT("Main task"));
 					FPlatformProcess::Sleep(0.1f); // pause for a bit to let waiting start
@@ -741,7 +741,7 @@ namespace TaskGraphTests
 
 		{	// event w/o a task, signaled by explicit call to DispatchSubsequents before it's waited for
 			FGraphEventRef Event = FGraphEvent::CreateGraphEvent();
-			FTask::Spawn(
+			FFunctionGraphTask::CreateAndDispatchWhenReady(
 				[&Event]
 				{
 					Event->DispatchSubsequents();
@@ -753,7 +753,7 @@ namespace TaskGraphTests
 
 		{	// event w/o a task, signaled by explicit call to DispatchSubsequents after it's waited for
 			FGraphEventRef Event = FGraphEvent::CreateGraphEvent();
-			FTask::Spawn(
+			FFunctionGraphTask::CreateAndDispatchWhenReady(
 				[&Event]
 				{
 					FPlatformProcess::Sleep(0.1f); // pause for a bit to let waiting start
@@ -765,15 +765,15 @@ namespace TaskGraphTests
 		}
 
 		{	// wait for prereq by DontCompleteUntil
-			FGraphEventRef Event = FTask::SpawnAndTrack(
-				[](const FGraphEventRef& MyCompletionGraphEvent)
+			FGraphEventRef Event = FFunctionGraphTask::CreateAndDispatchWhenReady(
+				[](ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
 				{
 					//UE_LOG(LogTemp, Log, TEXT("Main task"));
 
 					FGraphEventRef PrereqHolder = FGraphEvent::CreateGraphEvent();
 					PrereqHolder->SetDebugName(TEXT("PrereqHolder"));
 
-					FGraphEventRef Prereq = FTask::SpawnAndTrack(
+					FGraphEventRef Prereq = FFunctionGraphTask::CreateAndDispatchWhenReady(
 						[PrereqHolder]
 						{
 							//UE_LOG(LogTemp, Log, TEXT("Prereq"));
@@ -796,7 +796,7 @@ namespace TaskGraphTests
 		}
 
 		{	// prereq is completed when DontCompleteUntil is called
-			FGraphEventRef Prereq = FTask::SpawnAndTrack(
+			FGraphEventRef Prereq = FFunctionGraphTask::CreateAndDispatchWhenReady(
 				[]
 				{
 					//UE_LOG(LogTemp, Log, TEXT("Prereq"));
@@ -805,8 +805,8 @@ namespace TaskGraphTests
 			Prereq->SetDebugName(TEXT("Prereq"));
 			Prereq->Wait(ENamedThreads::GameThread);
 
-			FGraphEventRef Event = FTask::SpawnAndTrack(
-				[&Prereq](const FGraphEventRef& MyCompletionGraphEvent)
+			FGraphEventRef Event = FFunctionGraphTask::CreateAndDispatchWhenReady(
+				[&Prereq](ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
 				{
 					MyCompletionGraphEvent->DontCompleteUntil(Prereq);
 					//UE_LOG(LogTemp, Log, TEXT("Main task"));
@@ -829,25 +829,25 @@ namespace TaskGraphTests
 	bool FTaskGraphRecursionTest::RunTest(const FString& Parameters)
 	{
 		{	// recursive call on game thread
-			FGraphEventRef Event = FTask::SpawnAndTrack(
+			FGraphEventRef Event = FFunctionGraphTask::CreateAndDispatchWhenReady(
 				[]
 				{
-					FGraphEventRef Inner = FTask::SpawnAndTrack(
+					FGraphEventRef Inner = FFunctionGraphTask::CreateAndDispatchWhenReady(
 						[]
 						{
 							check(IsInGameThread());
 						},
-						ENamedThreads::GameThread
+						TStatId{}, nullptr, ENamedThreads::GameThread
 					);
 					Inner->Wait(ENamedThreads::GameThread);
 				},
-				ENamedThreads::GameThread
+				TStatId{}, nullptr, ENamedThreads::GameThread
 			);
 			Event->Wait(ENamedThreads::GameThread);
 		}
 
 		//{	// didn't work in the old version
-		//	FGraphEventRef Event = FTask::SpawnAndTrack([] {}, ENamedThreads::GameThread_Local);
+		//	FGraphEventRef Event = FFunctionGraphTask::CreateAndDispatchWhenReady([] {}, TStatId{}, nullptr, ENamedThreads::GameThread_Local);
 		//	Event->Wait(ENamedThreads::GameThread);
 		//}
 
@@ -891,7 +891,7 @@ namespace TaskGraphTests
 
 		for (int32 TaskIndex = 0; TaskIndex < NumTasks; ++TaskIndex)
 		{
-			FTask::Spawn([&CompletedTasks] { FPlatformAtomics::InterlockedIncrement(&CompletedTasks); });
+			FFunctionGraphTask::CreateAndDispatchWhenReady([&CompletedTasks] { FPlatformAtomics::InterlockedIncrement(&CompletedTasks); });
 		}
 
 		while ((CompletedTasks < NumTasks))
@@ -910,12 +910,12 @@ namespace TaskGraphTests
 
 		for (int32 BatchIndex = 0; BatchIndex < NumBatches; ++BatchIndex)
 		{
-			FTask::Spawn(
+			FFunctionGraphTask::CreateAndDispatchWhenReady(
 				[&CompletedTasks]
 				{
 					for (int32 TaskIndex = 0; TaskIndex < BatchSize; ++TaskIndex)
 					{
-						FTask::Spawn([&CompletedTasks] { FPlatformAtomics::InterlockedIncrement(&CompletedTasks); });
+						FFunctionGraphTask::CreateAndDispatchWhenReady([&CompletedTasks] { FPlatformAtomics::InterlockedIncrement(&CompletedTasks); });
 					}
 				}
 			);
@@ -938,18 +938,17 @@ namespace TaskGraphTests
 
 		for (int32 BatchIndex = 0; BatchIndex < NumBatches; ++BatchIndex)
 		{
-			AllDone.Add(FTask::SpawnAndTrack(
-				[] (const FGraphEventRef& CompletionEvent)
+			AllDone.Add(FFunctionGraphTask::CreateAndDispatchWhenReady(
+				[] (ENamedThreads::Type CurrentThread, const FGraphEventRef& CompletionEvent)
 				{
 					FGraphEventRef RunSignal = FGraphEvent::CreateGraphEvent();
 					for (int32 TaskIndex = 0; TaskIndex < BatchSize; ++TaskIndex)
 					{
-						CompletionEvent->DontCompleteUntil(FTask::SpawnAndTrack([] {}, ENamedThreads::AnyThread, RunSignal));
+						CompletionEvent->DontCompleteUntil(FFunctionGraphTask::CreateAndDispatchWhenReady([] {}, TStatId{}, RunSignal, ENamedThreads::AnyThread));
 					}
 					RunSignal->DispatchSubsequents();
 				},
-				ENamedThreads::AnyThread, 
-				SpawnSignal
+				TStatId{}, SpawnSignal
 			));
 		}
 
@@ -962,7 +961,7 @@ namespace TaskGraphTests
 	{
 		for (uint32 TaskIndex = 0; TaskIndex != NumTasks; ++TaskIndex)
 		{
-			FGraphEventRef GraphEvent = FTask::SpawnAndTrack([] {});
+			FGraphEventRef GraphEvent = FFunctionGraphTask::CreateAndDispatchWhenReady([] {});
 			GraphEvent->Wait(ENamedThreads::GameThread);
 		}
 	}
@@ -979,8 +978,8 @@ namespace TaskGraphTests
 			std::atomic<int64> F1{ -1 };
 			std::atomic<int64> F2{ -1 };
 			FGraphEventArray GraphEvents;
-			GraphEvents.Add(FTask::SpawnAndTrack([&F1, N] { F1 = Fibonacci(N - 1); }));
-			GraphEvents.Add(FTask::SpawnAndTrack([&F2, N] { F2 = Fibonacci(N - 2); }));
+			GraphEvents.Add(FFunctionGraphTask::CreateAndDispatchWhenReady([&F1, N] { F1 = Fibonacci(N - 1); }));
+			GraphEvents.Add(FFunctionGraphTask::CreateAndDispatchWhenReady([&F2, N] { F2 = Fibonacci(N - 2); }));
 
 			FTaskGraphInterface::Get().WaitUntilTasksComplete(MoveTemp(GraphEvents));
 			check(F1 > 0 && F2 > 0);
@@ -1007,10 +1006,10 @@ namespace TaskGraphTests
 
 			auto FibTask = [](int64 N, int64* Res)
 			{
-				return FTask::SpawnAndTrack
+				return FFunctionGraphTask::CreateAndDispatchWhenReady
 				(
 					[N, Res]
-					(const FGraphEventRef& CompletionEvent)
+					(ENamedThreads::Type, const FGraphEventRef& CompletionEvent)
 					{
 						FGraphEventRef ResEvent = Fib(N, Res);
 						CompletionEvent->DontCompleteUntil(ResEvent);
@@ -1021,13 +1020,13 @@ namespace TaskGraphTests
 			SubTasks.Add(FibTask(N - 1, F1.Get()));
 			SubTasks.Add(FibTask(N - 2, F2.Get()));
 
-			FGraphEventRef ResEvent = FTask::SpawnAndTrack
+			FGraphEventRef ResEvent = FFunctionGraphTask::CreateAndDispatchWhenReady
 			(
 				[F1 = MoveTemp(F1), F2 = MoveTemp(F2), Res]
 				{
 					*Res = *F1 + *F2;
 				}, 
-				ENamedThreads::AnyThread, &SubTasks
+				TStatId{}, &SubTasks
 			);
 
 			return ResEvent;
@@ -1051,7 +1050,7 @@ namespace TaskGraphTests
 			TCircularQueue<uint32> Queue{ 100 };
 			std::atomic<bool> bStop{ false };
 
-			FGraphEventRef Task = FTask::SpawnAndTrack(
+			FGraphEventRef Task = FFunctionGraphTask::CreateAndDispatchWhenReady(
 				[&bStop, &Queue]
 				{
 					while (!bStop)
@@ -1082,7 +1081,7 @@ namespace TaskGraphTests
 			TQueue<uint32, Mode> Queue;
 			std::atomic<bool> bStop{ false };
 
-			FGraphEventRef Task = FTask::SpawnAndTrack(
+			FGraphEventRef Task = FFunctionGraphTask::CreateAndDispatchWhenReady(
 				[&bStop, &Queue]
 				{
 					while (!bStop)
@@ -1117,7 +1116,7 @@ namespace TaskGraphTests
 			FGraphEventArray Tasks;
 			for (int32 i = 0; i != NumProducers; ++i)
 			{
-				Tasks.Add(FTask::SpawnAndTrack(
+				Tasks.Add(FFunctionGraphTask::CreateAndDispatchWhenReady(
 					[&bStop, &Queue]
 					{
 						while (!bStop)
@@ -1186,7 +1185,7 @@ namespace TaskGraphTests
 			double StartTime = FPlatformTime::Seconds();
 			for (uint32 TaskNo = 0; TaskNo != NumTasks; ++TaskNo)
 			{
-				Tasks.Add(FTask::SpawnAndTrack([] {}));
+				Tasks.Add(FFunctionGraphTask::CreateAndDispatchWhenReady([] {}));
 			}
 
 			double Duration = FPlatformTime::Seconds() - StartTime;
@@ -1198,7 +1197,7 @@ namespace TaskGraphTests
 			double StartTime = FPlatformTime::Seconds();
 			for (uint32 TaskNo = 0; TaskNo != NumTasks; ++TaskNo)
 			{
-				FTask::Spawn([] {});
+				FFunctionGraphTask::CreateAndDispatchWhenReady([] {});
 			}
 
 			double Duration = FPlatformTime::Seconds() - StartTime;
@@ -1213,7 +1212,7 @@ namespace TaskGraphTests
 			FGraphEventRef Trigger = FGraphEvent::CreateGraphEvent();
 			for (uint32 TaskNo = 0; TaskNo != NumTasks; ++TaskNo)
 			{
-				FTask::Spawn([] {}, ENamedThreads::AnyThread, Trigger);
+				FFunctionGraphTask::CreateAndDispatchWhenReady([] {}, TStatId{}, Trigger);
 			}
 
 			double SpawnedTime = FPlatformTime::Seconds();
