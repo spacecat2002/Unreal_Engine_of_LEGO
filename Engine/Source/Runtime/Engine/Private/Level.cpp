@@ -668,7 +668,7 @@ void ULevel::PostLoad()
 	// if we use external actors, load dynamic actors here
 	if (bUseExternalActors)
 	{
-		UPackage* LevelPackage = GetOutermost();
+		UPackage* LevelPackage = GetPackage();
 		bool bPackageForPIE = LevelPackage->HasAnyPackageFlags(PKG_PlayInEditor);
 		bool bInstanced = !LevelPackage->FileName.IsNone() && (LevelPackage->FileName != LevelPackage->GetFName());
 
@@ -680,7 +680,7 @@ void ULevel::PostLoad()
 		}
 
 		TArray<FString> ActorFiles;
-		IFileManager::Get().IterateDirectoryRecursively(*FPackageName::LongPackageNameToFilename(GetExternalActorsPath()), [&ActorFiles](const TCHAR* FilenameOrDirectory, bool bIsDirectory)
+		IFileManager::Get().IterateDirectoryRecursively(*FPackageName::LongPackageNameToFilename(GetExternalActorsPath(LevelPackage)), [&ActorFiles](const TCHAR* FilenameOrDirectory, bool bIsDirectory)
 		{
 			if (!bIsDirectory)
 			{
@@ -848,13 +848,13 @@ void ULevel::PreDuplicate(FObjectDuplicationParameters& DupParams)
 #if WITH_EDITOR
 	if (DupParams.DuplicateMode != EDuplicateMode::PIE && DupParams.bAssignExternalPackages)
 	{
-		UPackage* DestOutermost = DupParams.DestOuter->GetOutermost();
+		UPackage* DestPackage = DupParams.DestOuter->GetPackage();
 		for (AActor* Actor : Actors)
 		{
 			UPackage* ActorPackage = Actor ? Actor->GetExternalPackage() : nullptr;
 			if (ActorPackage)
 			{
-				UPackage* DupActorPackage = CreateActorPackage(FGuid::NewGuid());
+				UPackage* DupActorPackage = CreateActorPackage(DestPackage, FGuid::NewGuid());
 				DupActorPackage->MarkAsFullyLoaded();
 				DupParams.DuplicationSeed.Add(ActorPackage, DupActorPackage);
 			}
@@ -2134,20 +2134,21 @@ void ULevel::ConvertAllActorsToPackaging(bool bExternal)
 	}
 }
 
-FString ULevel::GetExternalActorsPath() const
+FString ULevel::GetExternalActorsPath(UPackage* InLevelPackage)
 {
-	return GetPackage()->FileName.ToString();
+	check(InLevelPackage);
+	return InLevelPackage->GetName();
 }
 
-UPackage* ULevel::CreateActorPackage(const FGuid& InGuid) const
+UPackage* ULevel::CreateActorPackage(UPackage* InLevelPackage, const FGuid& InGuid)
 {
 	check(InGuid.IsValid());
 	FString GuidBase36 = InGuid.ToString(EGuidFormats::Base36Encoded);
 	check(GuidBase36.Len());
 
-	const FString BaseDir = GetExternalActorsPath();
 	const int32 GuidBase36Len = GuidBase36.Len();
-	FString OwnedPackageName =
+	FString BaseDir = GetExternalActorsPath(InLevelPackage);
+	FString ActorPackageName =
 		FString::Printf(
 			TEXT("%s/%c%c/%c%c/%s"),
 			*BaseDir,
@@ -2158,7 +2159,7 @@ UPackage* ULevel::CreateActorPackage(const FGuid& InGuid) const
 			*GuidBase36 + FMath::Min(GuidBase36Len - 1, 4)
 		);
 
-	return CreatePackage(nullptr, *OwnedPackageName);
+	return CreatePackage(nullptr, *ActorPackageName);
 }
 
 void ULevel::DetachAttachAllActorsPackages(bool bReattach)

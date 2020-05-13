@@ -929,14 +929,14 @@ public:
 	 * Get the folder containg the external actors for this level
 	 * @return the folder
 	 */
-	ENGINE_API FString GetExternalActorsPath() const;
+	static ENGINE_API FString GetExternalActorsPath(UPackage* InLevelPackage);
 
 	/**
 	 * Create an package for this actor
 	 * @param InGuid the guid to generate the name from.
 	 * @return the created package
 	 */
-	ENGINE_API UPackage* CreateActorPackage(const FGuid& InGuid) const;
+	static ENGINE_API UPackage* CreateActorPackage(UPackage* InLevelPackage, const FGuid& InGuid);
 
 	/**
 	 * Detach or reattach all level actors to from/to their external package

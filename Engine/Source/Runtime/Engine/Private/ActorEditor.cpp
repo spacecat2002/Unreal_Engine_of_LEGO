@@ -771,11 +771,11 @@ void AActor::SetPackageExternal(bool bExternal, bool bShouldDirty)
     // Mark the current actor & package as dirty
 	Modify(bShouldDirty);
 
-	UPackage* LevelPackage = GetLevel()->GetOutermost();
+	UPackage* LevelPackage = GetLevel()->GetPackage();
 	if (bExternal)
 	{
 		ActorGuid = ActorGuid.IsValid() ? ActorGuid : FGuid::NewGuid();
-		UPackage* NewActorPackage = GetLevel()->CreateActorPackage(ActorGuid);
+		UPackage* NewActorPackage = ULevel::CreateActorPackage(LevelPackage,  ActorGuid);
 		SetExternalPackage(NewActorPackage);
 		// should be removed but needed for now so the package creation is visible to Multi-User
 		FAssetRegistryModule::AssetCreated(this);
