@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Hash/xxhash.h"
+#include "Misc/AssertionMacros.h"
 
 #if 0	// Temporary workaround for Mac build
 
