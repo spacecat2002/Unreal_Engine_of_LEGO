@@ -720,7 +720,7 @@ public:
 
 bool CanCreateObjectClusters()
 {
-	return FPlatformProperties::RequiresCookedData() && !GIsInitialLoad && GCreateGCClusters && GAssetClustreringEnabled && !GUObjectArray.IsOpenForDisregardForGC() && GUObjectArray.DisregardForGCEnabled();
+	return FPlatformProperties::RequiresCookedData() && !GIsInitialLoad && GCreateGCClusters && GAssetClustreringEnabled && !GUObjectArray.IsOpenForDisregardForGC();
 }
 
 /** Looks through objects loaded with a package and creates clusters from them */
