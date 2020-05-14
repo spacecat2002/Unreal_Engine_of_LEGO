@@ -1807,7 +1807,7 @@ void TD3D12Texture2D<RHIResourceType>::Unlock(class FRHICommandListImmediate* RH
 }
 
 template<typename RHIResourceType>
-void TD3D12Texture2D<RHIResourceType>::UnlockInternal(class FRHICommandListImmediate* RHICmdList, TD3D12Texture2D<RHIResourceType>::FLinkedObjectIterator NextObject, uint32 MipIndex, uint32 ArrayIndex)
+void TD3D12Texture2D<RHIResourceType>::UnlockInternal(class FRHICommandListImmediate* RHICmdList, FLinkedObjectIterator NextObject, uint32 MipIndex, uint32 ArrayIndex)
 {
 	// Calculate the subresource index corresponding to the specified mip-map.
 	const uint32 Subresource = CalcSubresource(MipIndex, ArrayIndex, this->GetNumMips());

@@ -340,7 +340,7 @@ public:
 
 private:
 	/** Unlocks a previously locked mip-map. */
-	void UnlockInternal(class FRHICommandListImmediate* RHICmdList, TD3D12Texture2D::FLinkedObjectIterator NextObject, uint32 MipIndex, uint32 ArrayIndex);
+	void UnlockInternal(class FRHICommandListImmediate* RHICmdList, FLinkedObjectIterator NextObject, uint32 MipIndex, uint32 ArrayIndex);
 
 	/** Whether the texture is a cube-map. */
 	const uint32 bCubemap : 1;
