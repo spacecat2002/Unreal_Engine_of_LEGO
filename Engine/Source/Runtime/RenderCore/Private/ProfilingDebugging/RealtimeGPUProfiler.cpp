@@ -101,15 +101,13 @@ void FDrawEventRHIExecute::Stop()
 
 #if HAS_GPU_STATS
 static const int32 NumGPUProfilerBufferedFrames = 4;
+static const uint64 InvalidQueryResult = 0xFFFFFFFFFFFFFFFFull;
 
 /*-----------------------------------------------------------------------------
 FRealTimeGPUProfilerEvent class
 -----------------------------------------------------------------------------*/
 class FRealtimeGPUProfilerEvent
 {
-public:
-	static const uint64 InvalidQueryResult = 0xFFFFFFFFFFFFFFFFull;
-
 public:
 	FRealtimeGPUProfilerEvent(FRHIRenderQueryPool& RenderQueryPool)
 		: StartResultMicroseconds(InvalidQueryResult)
@@ -138,8 +136,8 @@ public:
 
 		Name = NewName;
 		STAT(StatName = NewStatName;)
-		StartResultMicroseconds = {InvalidQueryResult};
-		EndResultMicroseconds = {InvalidQueryResult};
+		StartResultMicroseconds = TStaticArray<uint64, MAX_NUM_GPUS>(InvalidQueryResult);
+		EndResultMicroseconds = TStaticArray<uint64, MAX_NUM_GPUS>(InvalidQueryResult);
 #if REALTIME_GPU_PROFILER_EVENT_TRACK_FRAME_NUMBER
 		FrameNumber = GFrameNumberRenderThread;
 #endif

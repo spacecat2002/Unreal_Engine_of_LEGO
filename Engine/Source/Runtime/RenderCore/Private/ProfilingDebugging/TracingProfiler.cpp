@@ -294,7 +294,7 @@ void FTracingProfiler::WriteCaptureToFile()
 
 	// Align GPU and CPU timestamps
 
-	TStaticArray<FGPUTimingCalibrationTimestamp, MAX_NUM_GPUS> CalibrationTimestamps({});
+	TStaticArray<FGPUTimingCalibrationTimestamp, MAX_NUM_GPUS> CalibrationTimestamps(FGPUTimingCalibrationTimestamp{});
 	for (uint32 GPUIndex : FRHIGPUMask::All())
 	{
 		FGPUTimingCalibrationTimestamp& CalibrationTimestamp = CalibrationTimestamps[GPUIndex];
