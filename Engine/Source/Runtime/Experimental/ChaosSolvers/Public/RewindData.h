@@ -6,6 +6,7 @@
 #include "PhysicsProxy/SingleParticlePhysicsProxyFwd.h"
 #include "Chaos/Framework/PhysicsSolverBase.h"
 #include "Containers/CircularBuffer.h"
+#include "Chaos/ResimCacheBase.h"
 
 namespace Chaos
 {
@@ -322,6 +323,33 @@ public:
 		{
 			Data = Dirty.GetDynamics(*SrcManager.Ptr,SrcManager.DataIdx);
 		});
+	}
+
+	bool IsSimWritableDesynced(TPBDRigidParticleHandle<FReal,3>& Particle) const
+	{
+		const FParticlePositionRotation& XR = ParticlePositionRotation.Read();
+		if(XR.X() != Particle.X())
+		{
+			return true;
+		}
+
+		if(XR.R() != Particle.R())
+		{
+			return true;
+		}
+
+		const FParticleVelocities& Vels = Velocities.Read();
+		if(Vels.V() != Particle.V())
+		{
+			return true;
+		}
+
+		if(Vels.W() != Particle.W())
+		{
+			return true;
+		}
+
+		return false;
 	}
 
 	template <typename TParticle>
@@ -719,7 +747,7 @@ enum class EFutureQueryResult
 class FRewindData
 {
 public:
-	FRewindData(int32 NumFrames)
+	FRewindData(int32 NumFrames, bool InResimOptimization)
 	: Managers(NumFrames+1)	//give 1 extra for saving at head
 	, CurFrame(0)
 	, LatestFrame(-1)
@@ -727,6 +755,7 @@ public:
 	, FramesSaved(0)
 	, DataIdxOffset(0)
 	, bNeedsSave(false)
+	, bResimOptimization(InResimOptimization)
 	{
 	}
 
@@ -863,18 +892,59 @@ public:
 		return EFutureQueryResult::Untracked;
 	}
 
-	void AdvanceFrame(FReal DeltaTime)
+	IResimCacheBase* GetCurrentStepResimCache() const
+	{
+		return bResimOptimization ? Managers[CurFrame].ExternalResimCache.Get() : nullptr;
+	}
+
+	template <typename CreateCache>
+	void AdvanceFrame(FReal DeltaTime, const CreateCache& CreateCacheFunc)
 	{
 		QUICK_SCOPE_CYCLE_COUNTER(RewindDataAdvance);
 		Managers[CurFrame].DeltaTime = DeltaTime;
+		TUniquePtr<IResimCacheBase>& ResimCache = Managers[CurFrame].ExternalResimCache;
+
+		if(bResimOptimization)
+		{
+			if(IsResim())
+			{
+				if(ResimCache)
+				{
+					ResimCache->SetResimming(true);
+				}
+			}
+			else
+			{
+				if(ResimCache)
+				{
+					ResimCache->ResetCache();
+				} else
+				{
+					ResimCache = CreateCacheFunc();
+				}
+				ResimCache->SetResimming(false);
+			}
+		}
+		else
+		{
+			ResimCache.Reset();
+		}
+		
 
 		FramesSaved = FMath::Min(FramesSaved+1,static_cast<int32>(Managers.Capacity()));
 		
 		const int32 EarliestFrame = CurFrame - 1 - FramesSaved;
-		//remove any old dirty particles
+		
+		TArray<TGeometryParticleHandle<FReal,3>*> DesyncedParticles;
+		if(IsResim() && ResimCache)
+		{
+			DesyncedParticles.Reserve(AllDirtyParticles.Num());
+		}
+
 		for(int32 DirtyIdx = AllDirtyParticles.Num() - 1; DirtyIdx >= 0; --DirtyIdx)
 		{
 			FDirtyParticleInfo& Info = AllDirtyParticles[DirtyIdx];
+			//if hasn't changed in a while stop tracking
 			if(Info.LastDirtyFrame < EarliestFrame)
 			{
 				RemoveParticle(AllDirtyParticles[DirtyIdx].CachedUniqueIdx);
@@ -882,25 +952,69 @@ public:
 			else if(IsResim())
 			{
 				EResimType ResimType = EResimType::FullResim;
-				if(auto* Rigid = Info.GetPTParticle()->CastToRigidParticle())
+				auto* Rigid = Info.GetPTParticle()->CastToRigidParticle();
+				if(Rigid)
 				{
 					ResimType = Rigid->ResimType();
 				}
 
-				//During a resim it's possible the user will not dirty a particle that was previously dirty.
-				//If this happens we need to mark the particle as desynced
-				if(ResimType == EResimType::FullResim && !Info.bDesync && Info.GTDirtyOnFrame[CurFrame].MissingWrite(CurFrame, CurWave))
+				if(ResimType == EResimType::FullResim && !Info.bDesync)
 				{
-					Info.Desync(CurFrame, LatestFrame);
+					//During a resim it's possible the user will not dirty a particle that was previously dirty.
+					//If this happens we need to mark the particle as desynced
+					if(Info.GTDirtyOnFrame[CurFrame].MissingWrite(CurFrame, CurWave))
+					{
+						Info.Desync(CurFrame, LatestFrame);
+					}
+					else if(Rigid)
+					{
+						//If we have a simulated particle, make sure its sim-writable properties are still in sync
+						const FGeometryParticleStateBase* ExpectedState = GetStateAtFrameImp(Info,CurFrame);
+						if(ensure(ExpectedState))
+						{
+							if(ExpectedState->IsSimWritableDesynced(*Rigid))
+							{
+								Info.Desync(CurFrame,LatestFrame);
+							}
+							else if(!Info.bDesync)
+							{
+								//Particle may have been marked as soft desync "may desync", but we see it's in sync so mark it as such
+								Rigid->SetSyncState(ESyncState::InSync);
+							}
+						}
+					}
+				}
+				else if(ResimType == EResimType::ResimAsSlave)
+				{
+					//Resim as slave means we snap everything as it was regardless of divergence
+					//We do this in FinishFrame and AdvanceFrame because the state must be preserved before and after 
+					//This is because gameplay code could modify state before or after
+					const FGeometryParticleStateBase* ExpectedState = GetStateAtFrameImp(Info,CurFrame);
+					ensure(!Info.bDesync);
+					if(ensure(ExpectedState != nullptr))
+					{
+						ExpectedState->SyncToParticle(*Rigid);
+					}
 				}
 
 				if(Info.bDesync)
 				{
 					//Any desync from GT is considered a hard desync - in theory we could make this more fine grained
 					Info.GetPTParticle()->SetSyncState(ESyncState::HardDesync);
+
+					if(ResimCache)
+					{
+						DesyncedParticles.Add(Info.GetPTParticle());
+					}
 				}
 			}
 		}
+
+		if(IsResim() && ResimCache)
+		{
+			ResimCache->SetDesyncedParticles(MoveTemp(DesyncedParticles));
+		}
+
 	}
 
 	void FinishFrame()
@@ -917,13 +1031,16 @@ public:
 			{
 				if(auto* Rigid = Info.GetPTParticle()->CastToRigidParticle())
 				{
-					if(Rigid->ResimType() == EResimType::ResimAsSlave)
+					const bool bSnapFromCache = bResimOptimization && Rigid->SyncState() == ESyncState::InSync;
+					if(Rigid->ResimType() == EResimType::ResimAsSlave || bSnapFromCache)
 					{
-						ensure(!Info.bDesync);
-						const FGeometryParticleStateBase* State = GetStateAtFrameImp(Info,CurFrame+1);
-						if(ensure(State != nullptr))
+						//Resim as slave means we snap everything as it was regardless of divergence
+						//We do this in FinishFrame and AdvanceFrame because the state must be preserved before and after
+						//This is because gameplay code could modify state before or after
+						ensure(!Info.bDesync);	
+						if(const FSimWritableState* SimWritableState = GetSimWritableStateAtFrame(Info, CurFrame))
 						{
-							State->SyncToParticle(*Rigid);
+							SimWritableState->SyncToParticle(*Rigid);
 						}
 					}
 				}
@@ -1080,18 +1197,25 @@ public:
 		const int32 DestDataIdx = SrcDataIdx + DataIdxOffset;
 
 		//during resim only full resim objects should modify future
-		if(bResim && Rigid.ResimType() != EResimType::FullResim)
+		if(bResim)
 		{
-			if(FindParticle(Rigid.UniqueIdx()) == nullptr)
+			if(Rigid.ResimType() != EResimType::FullResim)
 			{
-				//no history but collision moved/woke us up so snap back manually (if history exists we'll snap in FinishFrame
-				Rigid.SetP(Rigid.X());
-				Rigid.SetQ(Rigid.R());
-				Rigid.SetV(Rigid.PreV());
-				Rigid.SetW(Rigid.PreW());
+				if(FindParticle(Rigid.UniqueIdx()) == nullptr)
+				{
+					//no history but collision moved/woke us up so snap back manually (if history exists we'll snap in FinishFrame
+					Rigid.SetP(Rigid.X());
+					Rigid.SetQ(Rigid.R());
+					Rigid.SetV(Rigid.PreV());
+					Rigid.SetW(Rigid.PreW());
+				}
+				return;
 			}
-			
-			return;
+			else if(bResimOptimization && Rigid.SyncState() == ESyncState::InSync)
+			{
+				//fully in sync means no sim was done - don't write current intermediate values since we snap later anyway
+				return;
+			}
 		}
 
 		//todo: is this check needed? why do we pass sleeping rigids into this function?
@@ -1107,12 +1231,45 @@ public:
 			FGeometryParticleStateBase& LatestState = Info.AddFrame(CurFrame);
 			LatestState.SyncSimWritablePropsFromSim(DestManagerWrapper,Rigid);
 
+			//copy results of end of frame in case user changes inputs of next frame (for example they can teleport at start frame)
+			Info.Frames[CurFrame].GetSimWritableStateChecked(CurFrame).SyncSimWritablePropsFromSim(Rigid);
+
 			//update any previous frames that were pointing at head
 			CoalesceBack(Info.Frames,CurFrame);
 		}
 	}
 
 private:
+
+	struct FSimWritableState
+	{
+		void SyncSimWritablePropsFromSim(const TPBDRigidParticleHandle<FReal,3>& Rigid)
+		{
+			MX = Rigid.P();
+			MR = Rigid.Q();
+			MV = Rigid.V();
+			MW = Rigid.W();
+		}
+
+		void SyncToParticle(TPBDRigidParticleHandle<FReal,3>& Rigid) const
+		{
+			Rigid.SetX(MX);
+			Rigid.SetR(MR);
+			Rigid.SetV(MV);
+			Rigid.SetW(MW);
+		}
+
+		const FVec3& X() const { return MX; }
+		const FQuat& R() const { return MR; }
+		const FVec3& V() const { return MV; }
+		const FVec3& W() const { return MW; }
+
+	private:
+		FVec3 MX;
+		FQuat MR;
+		FVec3 MV;
+		FVec3 MW;
+	};
 
 	struct FDirtyFrameInfo
 	{
@@ -1163,6 +1320,28 @@ private:
 			return State;
 		}
 
+		FSimWritableState* GetSimWritableState(int32 Frame)
+		{
+			return (bSet && Frame == RecordedFrame) ? &SimWritableState : nullptr;
+		}
+
+		const FSimWritableState* GetSimWritableState(int32 Frame) const
+		{
+			return (bSet && Frame == RecordedFrame) ? &SimWritableState : nullptr;
+		}
+
+		FSimWritableState& GetSimWritableStateChecked(int32 Frame)
+		{
+			check(bSet && Frame == RecordedFrame);
+			return SimWritableState;
+		}
+
+		const FSimWritableState& GetSimWritableStateChecked(int32 Frame) const
+		{
+			check(bSet && Frame == RecordedFrame);
+			return SimWritableState;
+		}
+
 		FGeometryParticleStateBase& NewState(int32 Frame)
 		{
 			RecordedFrame = Frame;
@@ -1178,6 +1357,7 @@ private:
 
 	private:
 		FGeometryParticleStateBase State;
+		FSimWritableState SimWritableState;
 		int32 RecordedFrame;
 		bool bSet;
 	};
@@ -1202,6 +1382,7 @@ private:
 	struct FFrameManagerInfo
 	{
 		TUniquePtr<FDirtyPropertiesManager> Manager;
+		TUniquePtr<IResimCacheBase> ExternalResimCache;
 
 		//Note that this is not exactly the same as which frame this manager represents. 
 		//A manager can have data for two frames at once, the important part is just knowing which frame it was created on so we know whether the physics data can rely on it
@@ -1265,6 +1446,12 @@ private:
 			}
 		}
 	};
+
+	const FSimWritableState* GetSimWritableStateAtFrame(const FDirtyParticleInfo& Info, int32 Frame) const
+	{
+		const TCircularBuffer<FFrameInfo>& Frames = Info.Frames;
+		return Frames[Frame].GetSimWritableState(Frame);
+	}
 
 	const FGeometryParticleStateBase* GetStateAtFrameImp(const FDirtyParticleInfo& Info,int32 Frame) const
 	{
@@ -1346,5 +1533,6 @@ private:
 	int32 FramesSaved;
 	int32 DataIdxOffset;
 	bool bNeedsSave;	//Indicates that some data is pointing at head and requires saving before a rewind
+	bool bResimOptimization;
 };
 }

@@ -111,6 +111,8 @@ FMetalDynamicRHI::FMetalDynamicRHI(ERHIFeatureLevel::Type RequestedFeatureLevel)
 	check( IsInGameThread() );
 	check( !GIsThreadedRendering );
 	
+	GRHISupportsMultithreading = true;
+	
 	// we cannot render to a volume texture without geometry shader or vertex-shader-layer support, so initialise to false and enable based on platform feature availability
 	GSupportsVolumeTextureRendering = false;
 	
@@ -245,6 +247,10 @@ FMetalDynamicRHI::FMetalDynamicRHI(ERHIFeatureLevel::Type RequestedFeatureLevel)
 	// 10.12.4+ for Intel
 	bool bSupportsSM5 = true;
 	bool bIsIntelHaswell = false;
+	
+	// All should work on Catalina+ using GPU end time
+	GSupportsTimestampRenderQueries = FPlatformMisc::MacOSXVersionCompare(10,15,0) >= 0;
+	
 	if(GRHIAdapterName.Contains("Nvidia"))
 	{
 		bSupportsPointLights = true;
@@ -265,7 +271,7 @@ FMetalDynamicRHI::FMetalDynamicRHI(ERHIFeatureLevel::Type RequestedFeatureLevel)
 		bSupportsDistanceFields = (FPlatformMisc::MacOSXVersionCompare(10,11,4) >= 0);
 		bSupportsRHIThread = true;
 		
-		// Current timestamp render query implementation using a completion handler only works reliably on AMD
+		// On AMD can also use completion handler time stamp if macOS < Catalina
 		GSupportsTimestampRenderQueries = true;
 	}
 	else if(GRHIAdapterName.Contains("Intel"))

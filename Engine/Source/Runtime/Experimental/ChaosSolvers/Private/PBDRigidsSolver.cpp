@@ -109,7 +109,10 @@ namespace Chaos
 
 			if(FRewindData* RewindData = MSolver->GetRewindData())
 			{
-				RewindData->AdvanceFrame(MDeltaTime);
+				RewindData->AdvanceFrame(MDeltaTime,[Evolution = MSolver->GetEvolution()]()
+				{
+					return Evolution->CreateExternalResimCache();
+				});
 			}
 
 			{
@@ -127,6 +130,7 @@ namespace Chaos
 				const float MaxDeltaTime = MSolver->GetMaxDeltaTime();
 				int32 StepsRemaining = MSolver->GetMaxSubSteps();
 				float TimeRemaining = MDeltaTime;
+				bool bFirstStep = true;
 				while (StepsRemaining > 0 && TimeRemaining > MinDeltaTime)
 				{
 					--StepsRemaining;
@@ -147,7 +151,14 @@ namespace Chaos
 						Obj->ParameterUpdateCallback(MSolver->GetEvolution()->GetParticles().GetGeometryCollectionParticles(), MSolver->GetSolverTime());
 					}
 
+					if(FRewindData* RewindData = MSolver->GetRewindData())
+					{
+						//todo: make this work with sub-stepping
+						MSolver->GetEvolution()->SetCurrentStepResimCache(bFirstStep ? RewindData->GetCurrentStepResimCache() : nullptr);
+					}
+
 					MSolver->GetEvolution()->AdvanceOneTimeStep(DeltaTime);
+					bFirstStep = false;
 				}
 
 #if CHAOS_CHECKED
@@ -224,6 +235,7 @@ namespace Chaos
 		, MSolverEventFilters(new FSolverEventFilters())
 		, MActiveParticlesBuffer(new FActiveParticlesBuffer(BufferingModeIn, BufferingModeIn == Chaos::EMultiBufferMode::Single))
 		, MCurrentLock(new FCriticalSection())
+		, bUseCollisionResimCache(false)
 	{
 		UE_LOG(LogPBDRigidsSolver, Verbose, TEXT("PBDRigidsSolver::PBDRigidsSolver()"));
 		Reset();
@@ -519,6 +531,45 @@ namespace Chaos
 	}
 
 	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::RegisterObject(Chaos::FJointConstraint* GTConstraint)
+	{
+		FJointConstraintPhysicsProxy* JointProxy = new FJointConstraintPhysicsProxy(GTConstraint, nullptr);
+		JointProxy->SetSolver(this);
+
+		JointConstraintPhysicsProxies.AddUnique(JointProxy);
+		AddDirtyProxy(JointProxy);
+
+		// Finish registration on the physics thread...
+		FChaosSolversModule::GetModule()->GetDispatcher()->EnqueueCommandImmediate(
+			[JointProxy, this]()
+			{
+				JointProxy->InitializeOnPhysicsThread(this);
+			});
+	}
+
+	template <typename Traits>
+	bool TPBDRigidsSolver<Traits>::UnregisterObject(Chaos::FJointConstraint* GTConstraint)
+	{
+		FJointConstraintPhysicsProxy* JointProxy = GTConstraint->GetProxy<FJointConstraintPhysicsProxy>();
+		check(JointProxy);
+
+		JointProxy->SetSolver(static_cast<TPBDRigidsSolver<Traits>*>(nullptr));
+		RemoveDirtyProxy(JointProxy);
+
+		int32 NumRemoved = JointConstraintPhysicsProxies.Remove(JointProxy);
+
+		// Enqueue a command to remove the constraint and delete the proxy
+		EnqueueCommandImmediate(
+			[JointProxy, this]()
+			{
+				JointProxy->DestroyOnPhysicsThread(this);
+				delete JointProxy;
+			});
+
+		return NumRemoved==1;
+	}
+
+	template <typename Traits>
 	bool TPBDRigidsSolver<Traits>::IsSimulating() const
 	{
 		for (FGeometryParticlePhysicsProxy* Obj : GeometryParticlePhysicsProxies)
@@ -540,6 +591,9 @@ namespace Chaos
 			if (Obj->IsSimulating())
 				return true;
 		for (FFieldSystemPhysicsProxy* Obj : FieldSystemPhysicsProxies)
+			if (Obj->IsSimulating())
+				return true;
+		for (FJointConstraintPhysicsProxy* Obj : JointConstraintPhysicsProxies)
 			if (Obj->IsSimulating())
 				return true;
 		return false;
@@ -566,7 +620,7 @@ namespace Chaos
 
 		if(RewindCaptureNumFrames >= 0)
 		{
-			EnableRewindCapture(20);
+			EnableRewindCapture(20, bUseCollisionResimCache);
 		}
 
 		MEvolution->SetCaptureRewindDataFunction([this](const TParticleView<TPBDRigidParticles<FReal,3>>& ActiveParticles)
@@ -744,6 +798,11 @@ namespace Chaos
 				// Not invalid but doesn't currently use the remote data process
 				break;
 			}
+			case EPhysicsProxyType::JointConstraintType:
+			{
+				// Not invalid but doesn't currently use the remote data process
+				break;
+			}
 			default:
 			ensure(0 && TEXT("Unknown proxy type in physics solver."));
 			}
@@ -834,6 +893,13 @@ namespace Chaos
 					Dirty.Proxy->ResetDirtyIdx();
 					break;
 				}
+				case EPhysicsProxyType::JointConstraintType:
+				{
+					// Currently no push needed for joint constraint and they handle the constraint creation internally
+					// #TODO This skips the rewind data push so joints will not be rewindable until resolved.
+					Dirty.Proxy->ResetDirtyIdx();
+					break;
+				}
 				default:
 				{
 					ensure(0 && TEXT("Unknown proxy type in physics solver."));
@@ -910,29 +976,29 @@ namespace Chaos
 				for (IPhysicsProxyBase* Proxy : *Proxies)
 				{
 					if (Proxy != nullptr)
-			{
-				switch (ActiveObject.GetParticleType())
-				{
-				case Chaos::EParticleType::Rigid:
-					((FRigidParticlePhysicsProxy*)(Proxy))->FlipBuffer();
-					break;
-				case Chaos::EParticleType::Kinematic:
-					((FKinematicGeometryParticlePhysicsProxy*)(Proxy))->FlipBuffer();
-					break;
-				case Chaos::EParticleType::Static:
-					((FGeometryParticlePhysicsProxy*)(Proxy))->FlipBuffer();
-					break;
-				case Chaos::EParticleType::GeometryCollection:
-					ActiveGC.AddUnique((TGeometryCollectionPhysicsProxy<Traits>*)(Proxy));
-					break;
-				case Chaos::EParticleType::Clustered:
-					ActiveGC.AddUnique((TGeometryCollectionPhysicsProxy<Traits>*)(Proxy));
-					break;
-				default:
-					check(false);
+					{
+						switch (ActiveObject.GetParticleType())
+						{
+						case Chaos::EParticleType::Rigid:
+							((FRigidParticlePhysicsProxy*)(Proxy))->FlipBuffer();
+							break;
+						case Chaos::EParticleType::Kinematic:
+							((FKinematicGeometryParticlePhysicsProxy*)(Proxy))->FlipBuffer();
+							break;
+						case Chaos::EParticleType::Static:
+							((FGeometryParticlePhysicsProxy*)(Proxy))->FlipBuffer();
+							break;
+						case Chaos::EParticleType::GeometryCollection:
+							ActiveGC.AddUnique((TGeometryCollectionPhysicsProxy<Traits>*)(Proxy));
+							break;
+						case Chaos::EParticleType::Clustered:
+							ActiveGC.AddUnique((TGeometryCollectionPhysicsProxy<Traits>*)(Proxy));
+							break;
+						default:
+							check(false);
+						}
+					}
 				}
-			}
-		}
 			}
 		}
 
@@ -962,29 +1028,29 @@ namespace Chaos
 				for (IPhysicsProxyBase* Proxy : *Proxies)
 				{
 					if (Proxy != nullptr)
-			{
-				switch (ActiveObject.GetParticleType())
-				{
-				case Chaos::EParticleType::Rigid:
-					((FRigidParticlePhysicsProxy*)(Proxy))->PullFromPhysicsState();
-					break;
-				case Chaos::EParticleType::Kinematic:
-					((FKinematicGeometryParticlePhysicsProxy*)(Proxy))->PullFromPhysicsState();
-					break;
-				case Chaos::EParticleType::Static:
-					((FGeometryParticlePhysicsProxy*)(Proxy))->PullFromPhysicsState();
-					break;
-				case Chaos::EParticleType::GeometryCollection:
-					ActiveGC.AddUnique((TGeometryCollectionPhysicsProxy<Traits>*)(Proxy));
-					break;
-				case Chaos::EParticleType::Clustered:
-					ActiveGC.AddUnique((TGeometryCollectionPhysicsProxy<Traits>*)(Proxy));
-					break;
-				default:
-					check(false);
+					{
+						switch (ActiveObject.GetParticleType())
+						{
+						case Chaos::EParticleType::Rigid:
+							((FRigidParticlePhysicsProxy*)(Proxy))->PullFromPhysicsState();
+							break;
+						case Chaos::EParticleType::Kinematic:
+							((FKinematicGeometryParticlePhysicsProxy*)(Proxy))->PullFromPhysicsState();
+							break;
+						case Chaos::EParticleType::Static:
+							((FGeometryParticlePhysicsProxy*)(Proxy))->PullFromPhysicsState();
+							break;
+						case Chaos::EParticleType::GeometryCollection:
+							ActiveGC.AddUnique((TGeometryCollectionPhysicsProxy<Traits>*)(Proxy));
+							break;
+						case Chaos::EParticleType::Clustered:
+							ActiveGC.AddUnique((TGeometryCollectionPhysicsProxy<Traits>*)(Proxy));
+							break;
+						default:
+							check(false);
+						}
+					}
 				}
-			}
-		}
 			}
 		}
 
@@ -1049,10 +1115,11 @@ namespace Chaos
 	}
 
 	template <typename Traits>
-	void TPBDRigidsSolver<Traits>::EnableRewindCapture(int32 NumFrames)
+	void TPBDRigidsSolver<Traits>::EnableRewindCapture(int32 NumFrames, bool InUseCollisionResimCache)
 	{
 		check(Traits::IsRewindable());
-		MRewindData = MakeUnique<FRewindData>(NumFrames);
+		MRewindData = MakeUnique<FRewindData>(NumFrames, InUseCollisionResimCache);
+		bUseCollisionResimCache = InUseCollisionResimCache;
 	}
 
 	template <typename Traits>

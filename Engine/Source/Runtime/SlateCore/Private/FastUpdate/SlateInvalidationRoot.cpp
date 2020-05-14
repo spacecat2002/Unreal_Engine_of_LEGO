@@ -43,8 +43,7 @@ FSlateInvalidationRoot::FSlateInvalidationRoot()
 	, bNeedsSlowPath(true)
 	, bNeedScreenPositionShift(false)
 {
-	FSlateApplicationBase::Get().OnInvalidateAllWidgets().AddRaw(this, &FSlateInvalidationRoot::OnInvalidateAllWidgets);
-
+	FSlateApplicationBase::Get().OnInvalidateAllWidgets().AddRaw(this, &FSlateInvalidationRoot::HandleInvalidateAllWidgets);
 }
 
 FSlateInvalidationRoot::~FSlateInvalidationRoot()
@@ -711,7 +710,13 @@ void FSlateInvalidationRoot::ClearAllFastPathData(bool bClearResourcesImmediatel
 	FinalUpdateList.Empty();
 }
 
-void FSlateInvalidationRoot::OnInvalidateAllWidgets(bool bClearResourcesImmediately)
+void FSlateInvalidationRoot::HandleInvalidateAllWidgets(bool bClearResourcesImmediately)
+{
+	Advanced_ResetInvalidation(bClearResourcesImmediately);
+	OnRootInvalidated();
+}
+
+void FSlateInvalidationRoot::Advanced_ResetInvalidation(bool bClearResourcesImmediately)
 {
 	InvalidateChildOrder();
 
@@ -721,5 +726,6 @@ void FSlateInvalidationRoot::OnInvalidateAllWidgets(bool bClearResourcesImmediat
 	{
 		ClearAllFastPathData(true);
 	}
+
 	bNeedsSlowPath = true;
 }
