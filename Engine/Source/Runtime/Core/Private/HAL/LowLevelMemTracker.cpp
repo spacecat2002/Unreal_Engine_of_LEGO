@@ -376,6 +376,7 @@ private:
 	FLLMArray<int64>	StatValuesSnapshot;
 	FCriticalSection	StatValuesLock;
 	int32				LastTracedTagCount;
+	bool				bTrackerSpecSent = false;
 };
 
 /*
@@ -2243,11 +2244,6 @@ FLLMTraceWriter::FLLMTraceWriter()
 inline void FLLMTraceWriter::SetTracker(ELLMTracker InTracker)
 { 
 	Tracker = InTracker;
-	static const ANSICHAR* TrackerNames[] = {"System", "Default"};
-	static_assert(UE_ARRAY_COUNT(TrackerNames) == int(ELLMTracker::Max), "");
-	UE_TRACE_LOG(LLM, TrackerSpec, MemoryChannel)
-		<< TrackerSpec.TrackerId((uint8)InTracker)
-		<< TrackerSpec.Name(TrackerNames[(uint8)Tracker]);
 }
 
 void FLLMTraceWriter::SetAllocator(FLLMAllocator* InAllocator)
@@ -2308,6 +2304,16 @@ void FLLMTraceWriter::Update(FLLMCustomTag* CustomTags, const int32* ParentTags)
 	if (!UE_TRACE_CHANNELEXPR_IS_ENABLED(MemoryChannel))
 	{
 		return;
+	}
+
+	if (!bTrackerSpecSent)
+	{
+		bTrackerSpecSent = true;
+		static const ANSICHAR* TrackerNames[] = {"System", "Default"};
+		static_assert(UE_ARRAY_COUNT(TrackerNames) == int(ELLMTracker::Max), "");
+		UE_TRACE_LOG(LLM, TrackerSpec, MemoryChannel)
+			<< TrackerSpec.TrackerId((uint8)Tracker)
+			<< TrackerSpec.Name(TrackerNames[(uint8)Tracker]);
 	}
 
 	{
