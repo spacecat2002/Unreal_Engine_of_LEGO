@@ -164,6 +164,9 @@ public:
 
 		SLATE_EVENT(FOnTableViewBadState, OnEnteredBadState);
 
+		/** Callback delegate to have first chance handling of the OnKeyDown event */
+		SLATE_EVENT(FOnKeyDown, OnKeyDownHandler)
+
 	SLATE_END_ARGS()
 
 	/**
@@ -209,6 +212,8 @@ public:
 			? InArgs._OnItemToString_Debug
 			: GetDefaultDebugDelegate();
 		OnEnteredBadState = InArgs._OnEnteredBadState;
+
+		this->OnKeyDownHandler = InArgs._OnKeyDownHandler;
 
 		// Check for any parameters that the coder forgot to specify.
 		FString ErrorString;
@@ -271,6 +276,15 @@ public:
 
 	virtual FReply OnKeyDown( const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent ) override
 	{
+		if (OnKeyDownHandler.IsBound())
+		{
+			FReply Reply = OnKeyDownHandler.Execute(MyGeometry, InKeyEvent);
+			if (Reply.IsEventHandled())
+			{
+				return Reply;
+			}
+		}
+
 		const TArray<ItemType>& ItemsSourceRef = (*this->ItemsSource);
 
 		// Don't respond to key-presses containing "Alt" as a modifier
@@ -409,6 +423,12 @@ public:
 
 		return STableViewBase::OnKeyDown(MyGeometry, InKeyEvent);
 	}
+
+private:
+
+	FOnKeyDown OnKeyDownHandler;
+
+public:
 
 	virtual FNavigationReply OnNavigation(const FGeometry& MyGeometry, const FNavigationEvent& InNavigationEvent) override
 	{
