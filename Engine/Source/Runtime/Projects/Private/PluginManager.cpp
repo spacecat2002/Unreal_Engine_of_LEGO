@@ -14,6 +14,7 @@
 #include "Misc/App.h"
 #include "Misc/EngineVersion.h"
 #include "Misc/FileHelper.h"
+#include "Misc/FeedbackContext.h"
 #include "ProjectDescriptor.h"
 #include "Interfaces/IProjectManager.h"
 #include "Modules/ModuleManager.h"
@@ -1481,13 +1482,20 @@ TArray< FPluginStatus > FPluginManager::QueryStatusForAllPlugins() const
 	return PluginStatuses;
 }
 
-void FPluginManager::AddPluginSearchPath(const FString& ExtraDiscoveryPath, bool bRefresh)
+bool FPluginManager::AddPluginSearchPath(const FString& ExtraDiscoveryPath, bool bRefresh)
 {
-	PluginDiscoveryPaths.Add(ExtraDiscoveryPath);
+	bool bAlreadyExists = false;
+	PluginDiscoveryPaths.Add(FPaths::ConvertRelativePathToFull(ExtraDiscoveryPath), &bAlreadyExists);
 	if (bRefresh)
 	{
 		RefreshPluginsList();
 	}
+	return !bAlreadyExists;
+}
+
+const TSet<FString>& FPluginManager::GetAdditionalPluginSearchPaths() const
+{
+	return PluginDiscoveryPaths;
 }
 
 TArray<TSharedRef<IPlugin>> FPluginManager::GetPluginsWithPakFile() const
@@ -1531,6 +1539,11 @@ void FPluginManager::MountExplicitlyLoadedPlugin(const FString& PluginName)
 
 void FPluginManager::MountPluginFromExternalSource(const TSharedRef<FPlugin>& Plugin)
 {
+	if (GWarn)
+	{
+		GWarn->BeginSlowTask(FText::Format(LOCTEXT("MountingPluginFiles", "Mounting plugin {0}..."), FText::FromString(Plugin->GetFriendlyName())), /*ShowProgressDialog*/ true, /*bShowCancelButton*/ false);
+	}
+
 	// Mark the plugin as enabled
 	Plugin->bEnabled = true;
 
@@ -1568,6 +1581,11 @@ void FPluginManager::MountPluginFromExternalSource(const TSharedRef<FPlugin>& Pl
 				TryLoadModulesForPlugin(Plugin.Get(), LoadingPhase);
 			}
 		}
+	}
+
+	if (GWarn)
+	{
+		GWarn->EndSlowTask();
 	}
 }
 

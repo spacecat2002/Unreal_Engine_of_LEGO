@@ -105,6 +105,8 @@ bool FPackageReader::OpenPackageFile(EOpenPackageResult* OutErrorCode)
 	SetLicenseeUE4Ver(PackageFileSummary.GetFileVersionLicenseeUE4());
 	SetEngineVer(PackageFileSummary.SavedByEngineVersion);
 
+	SetByteSwapping(Loader->ForceByteSwapping());
+
 	const FCustomVersionContainer& PackageFileSummaryVersions = PackageFileSummary.GetCustomVersionContainer();
 	SetCustomVersions(PackageFileSummaryVersions);
 
@@ -113,7 +115,6 @@ bool FPackageReader::OpenPackageFile(EOpenPackageResult* OutErrorCode)
 	SetPackageErrorCode(EOpenPackageResult::Success);
 	return true;
 }
-
 bool FPackageReader::StartSerializeSection(int64 Offset)
 {
 	check(Loader);

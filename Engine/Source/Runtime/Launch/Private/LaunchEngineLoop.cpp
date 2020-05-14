@@ -620,7 +620,7 @@ bool LaunchSetGameName(const TCHAR *InCmdLine, FString& OutGameProjectFilePathUn
 				// Non-agnostic exes that require cooked data cannot load projects, so make sure that the LocalGameName is the GameName
 				if (LocalGameName != FApp::GetProjectName())
 				{
-					UE_LOG(LogInit, Fatal, TEXT("Non-agnostic games cannot load projects on cooked platforms - try running UE4Game."));
+					UE_LOG(LogInit, Fatal, TEXT("Non-agnostic games cannot load projects on cooked platforms - expected [%s], found [%s]"), FApp::GetProjectName(), *LocalGameName);
 				}
 			}
 			// Only set the game name if this is NOT a program...
@@ -3026,6 +3026,9 @@ int32 FEngineLoop::PreInitPostStartupScreen(const TCHAR* CmdLine)
 				TArray<FString> PakFolders;
 				PakFolders.Add(InstalledGameContentDir);
 				FCoreDelegates::OnMountAllPakFiles.Execute(PakFolders);
+
+				// Look for any plugins after EarlyLoadScreen
+				IPluginManager::Get().RefreshPluginsList();
 			}
 
 			DumpEarlyReads(bDumpEarlyConfigReads, bDumpEarlyPakFileReads, bForceQuitAfterEarlyReads);
@@ -3051,16 +3054,6 @@ int32 FEngineLoop::PreInitPostStartupScreen(const TCHAR* CmdLine)
 
 				// Now our shader code main library is opened, kick off the precompile, if already initialized
 				FShaderPipelineCache::OpenPipelineFileCache(GMaxRHIShaderPlatform);
-			}
-		}
-		else
-		{
-			// TEMPORARY FIX UNTIL WE FIGURE OUT WHY A DEFAULT MATERIAL IS USING A GAME LIBRARY SHADER
-			// Open the game library which contains the material shaders.
-			FShaderCodeLibrary::OpenLibrary(FApp::GetProjectName(), FPaths::ProjectContentDir());
-			for (const FString& RootDir : FPlatformMisc::GetAdditionalRootDirectories())
-			{
-				FShaderCodeLibrary::OpenLibrary(FApp::GetProjectName(), FPaths::Combine(RootDir, FApp::GetProjectName(), TEXT("Content")));
 			}
 		}
 
@@ -5032,7 +5025,7 @@ void FEngineLoop::Tick()
 
 		if (ConcurrentTask.GetReference())
 		{
-			CSV_SCOPED_TIMING_STAT(Basic, ConcurrentWithSlateTickTasks_Wait);
+			CSV_SCOPED_SET_WAIT_STAT(Slate);
 
 			QUICK_SCOPE_CYCLE_COUNTER(STAT_ConcurrentWithSlateTickTasks_Wait);
 			FTaskGraphInterface::Get().WaitUntilTaskCompletes(ConcurrentTask);
