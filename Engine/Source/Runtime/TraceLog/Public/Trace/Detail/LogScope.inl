@@ -155,7 +155,7 @@ inline FScopedStampedLogScope::~FScopedStampedLogScope()
 
 	Stamp <<= 8;
 	Stamp += uint8(EKnownEventUids::LeaveScope_T << EKnownEventUids::_UidShift);
-	*(uint64*)(Buffer->Cursor) = Stamp;
+	memcpy((uint64*)(Buffer->Cursor), &Stamp, sizeof(Stamp));
 	Buffer->Cursor += sizeof(Stamp);
 
 	AtomicStoreRelease((uint8**) &(Buffer->Committed), Buffer->Cursor);
@@ -211,7 +211,7 @@ auto TLogScope<T>::ScopedStampedEnter(uint32 Uid, uint32 Size)
 	Stamp = Writer_GetTimestamp(Buffer);
 	Stamp <<= 8;
 	Stamp += uint8(EKnownEventUids::EnterScope_T << EKnownEventUids::_UidShift);
-	*(uint64*)(Buffer->Cursor) = Stamp;
+	memcpy((uint64*)(Buffer->Cursor), &Stamp, sizeof(Stamp));
 	Buffer->Cursor += sizeof(Stamp);
 
 	AtomicStoreRelease((uint8**) &(Buffer->Committed), Buffer->Cursor);
