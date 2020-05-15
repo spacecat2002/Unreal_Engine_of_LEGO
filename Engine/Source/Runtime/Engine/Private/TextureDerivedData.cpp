@@ -1108,36 +1108,6 @@ bool FTexturePlatformData::TryLoadMips(int32 FirstMipToLoad, void** OutMipData, 
 		{
 			if (OutMipData != nullptr)
 			{
-#if TEXTURE2DMIPMAP_USE_COMPACT_BULKDATA
-				if (Mip.BulkData.IsInlined())
-				{
-					Mip.BulkData.GetCopy(&OutMipData[MipIndex - FirstMipToLoad], true);
-				}
-				else
-				{
-					check(Texture);
-					FString FileName;
-					verify(Texture->GetMipDataFilename(MipIndex, FileName));
-
-					check(FileName.EndsWith(TEXT(".ubulk")) || FileName.EndsWith(TEXT(".uptnl")));
-					check(!Mip.BulkData.IsStoredCompressedOnDisk() && Mip.BulkData.GetBulkDataSize() > 0);
-
-					FArchive* Ar = IFileManager::Get().CreateFileReader(*FileName, FILEREAD_Silent);
-					if (!Ar)
-					{
-						continue;
-					}
-
-					void*& Dest = OutMipData[MipIndex - FirstMipToLoad];
-					if (!Dest)
-					{
-						Dest = FMemory::Malloc(Mip.BulkData.GetBulkDataSize());
-					}
-					Ar->Seek(Mip.BulkData.GetBulkDataOffsetInFile());
-					Ar->Serialize(Dest, Mip.BulkData.GetBulkDataSize());
-					delete Ar;
-				}
-#else
 #if PLATFORM_SUPPORTS_TEXTURE_STREAMING
 				// We want to make sure that any non-streamed mips are coming from the texture asset file, and not from an external bulk file.
 				// But because "r.TextureStreaming" is driven by the project setting as well as the command line option "-NoTextureStreaming", 
@@ -1148,7 +1118,6 @@ bool FTexturePlatformData::TryLoadMips(int32 FirstMipToLoad, void** OutMipData, 
 				}
 #endif
 				Mip.BulkData.GetCopy(&OutMipData[MipIndex - FirstMipToLoad], true);
-#endif
 			}
 			NumMipsCached++;
 		}
@@ -1612,6 +1581,10 @@ void UTexture::CachePlatformData(bool bAsyncCache, bool bAllowAsyncBuild, bool b
 				if (PlatformDataLink)
 				{
 					ReleaseResource();
+
+					// Need to wait for any previous InitRHI() to complete before modifying PlatformData
+					// We could remove this flush if InitRHI() was modified to not access PlatformData directly
+					FlushRenderingCommands();
 				}
 				else
 				{

@@ -142,16 +142,20 @@ void FPreLoadScreenManager::HandleEarlyStartupPlay()
     if (ensureAlwaysMsgf(HasActivePreLoadScreenType(EPreLoadScreenTypes::EarlyStartupScreen), TEXT("Invalid Active PreLoadScreen!")))
     {
         IPreLoadScreen* PreLoadScreen = GetActivePreLoadScreen();
-        if (PreLoadScreen && MainWindow.IsValid())
+        if (PreLoadScreen)
         {
 			SCOPED_BOOT_TIMING("FPreLoadScreenManager::HandleEarlyStartupPlay()");
 
-            PreLoadScreen->OnPlay(MainWindow.Pin());
+			PreLoadScreen->OnPlay(MainWindow);
 
-            if (PreLoadScreen->GetWidget().IsValid())
-            {
-                MainWindow.Pin()->SetContent(PreLoadScreen->GetWidget().ToSharedRef());
-            }
+			{
+				TSharedPtr<SWindow> MainWindowPtr = MainWindow.IsValid() ? MainWindow.Pin() : TSharedPtr<SWindow>();
+
+				if (MainWindowPtr.IsValid() && PreLoadScreen->GetWidget().IsValid())
+				{
+					MainWindowPtr->SetContent(PreLoadScreen->GetWidget().ToSharedRef());
+				}
+			}
 
 			bool bDidDisableScreensaver = false;
 			if (FPlatformApplicationMisc::IsScreensaverEnabled())
@@ -372,6 +376,10 @@ void FPreLoadScreenManager::PlatformSpecificGameLogicFrameTick()
 #if PLATFORM_IOS
 	IOS_PlatformSpecificGameLogicFrameTick();
 #endif //PLATFORM_IOS
+
+#if PLATFORM_XBOXONE
+	XboxOne_PlatformSpecificGameLogicFrameTick();
+#endif // PLATFORM_XBOXONE
 }
 
 bool FPreLoadScreenManager::ShouldRender()
@@ -586,4 +594,12 @@ void FPreLoadScreenManager::IOS_PlatformSpecificGameLogicFrameTick()
 	// drain the async task queue from the game thread
 	[FIOSAsyncTask ProcessAsyncTasks];
 }
-#endif
+#endif //PLATFORM_IOS
+
+#if PLATFORM_XBOXONE
+void FPreLoadScreenManager::XboxOne_PlatformSpecificGameLogicFrameTick()
+{
+	// Xbox doesn't run engine init on the main thread, so we need to flush logging periodically
+	GLog->FlushThreadedLogs();
+}
+#endif //PLATFORM_XBOXONE

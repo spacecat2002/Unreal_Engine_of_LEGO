@@ -66,32 +66,32 @@ TAutoConsoleVariable<int32> CVarMinLOD(
 	ECVF_Scalability | ECVF_Default);
 
 static TAutoConsoleVariable<int32> CVarRayTracingRenderInstances(
-	TEXT("r.RayTracing.InstancedStaticMeshes"),
+	TEXT("r.RayTracing.Geometry.InstancedStaticMeshes"),
 	1,
 	TEXT("Include static mesh instances in ray tracing effects (default = 1 (Instances enabled in ray tracing))"));
 
 static TAutoConsoleVariable<int32> CVarRayTracingRenderInstancesCulling(
-	TEXT("r.RayTracing.InstancedStaticMeshes.Culling"),
+	TEXT("r.RayTracing.Geometry.InstancedStaticMeshes.Culling"),
 	1,
 	TEXT("Enable culling for instances in ray tracing (default = 1 (Culling enabled))"));
 
 static TAutoConsoleVariable<float> CVarRayTracingInstancesCullClusterMaxRadiusMultiplier(
-	TEXT("r.RayTracing.InstancedStaticMeshes.CullClusterMaxRadiusMultiplier"),
+	TEXT("r.RayTracing.Geometry.InstancedStaticMeshes.CullClusterMaxRadiusMultiplier"),
 	20.0f, 
 	TEXT("Multiplier for the maximum instance size (default = 20)"));
 
 static TAutoConsoleVariable<float> CVarRayTracingInstancesCullClusterRadius(
-	TEXT("r.RayTracing.InstancedStaticMeshes.CullClusterRadius"),
+	TEXT("r.RayTracing.Geometry.InstancedStaticMeshes.CullClusterRadius"),
 	10000.0f, // 100 m
 	TEXT("Ignore instances outside of this radius in ray tracing effects (default = 10000 (100m))"));
 
 static TAutoConsoleVariable<float> CVarRayTracingInstancesLowScaleThreshold(
-	TEXT("r.RayTracing.InstancedStaticMeshes.LowScaleRadiusThreshold"),
+	TEXT("r.RayTracing.Geometry.InstancedStaticMeshes.LowScaleRadiusThreshold"),
 	50.0f, // Instances with a radius smaller than this threshold get culled after CVarRayTracingInstancesLowScaleCullRadius
 	TEXT("Threshold that classifies instances as small (default = 50cm))"));
 
 static TAutoConsoleVariable<float> CVarRayTracingInstancesLowScaleCullRadius(
-	TEXT("r.RayTracing.InstancedStaticMeshes.LowScaleCullRadius"),
+	TEXT("r.RayTracing.Geometry.InstancedStaticMeshes.LowScaleCullRadius"),
 	1000.0f, 
 	TEXT("Cull radius for small instances (default = 1000 (10m))"));
 
@@ -1186,29 +1186,32 @@ void FInstancedStaticMeshSceneProxy::GetDynamicRayTracingInstances(struct FRayTr
 			{
 				const uint32 InstanceIdx = Node.Instance;
 
-				FVector InstanceLocation = Node.Center;
-				FVector VToInstanceCenter = Context.ReferenceView->ViewLocation - InstanceLocation;
-				float DistanceToInstanceCenter = VToInstanceCenter.Size();
-				float InstanceRadius = Node.Radius;
-				float DistanceToInstanceStart = DistanceToInstanceCenter - InstanceRadius;
-
-				// Cull instance based on distance
-				if (DistanceToInstanceStart > BVHCullRadius && ApplyGeneralCulling)
-					continue;
-
-				// Special culling for small scale objects
-				if (InstanceRadius < BVHLowScaleThreshold && ApplyLowScaleCulling)
+				if (InstancedRenderData.Component->PerInstanceSMData.IsValidIndex(InstanceIdx))
 				{
-					if (DistanceToInstanceStart > BVHLowScaleRadius)
+					FVector InstanceLocation = Node.Center;
+					FVector VToInstanceCenter = Context.ReferenceView->ViewLocation - InstanceLocation;
+					float DistanceToInstanceCenter = VToInstanceCenter.Size();
+					float InstanceRadius = Node.Radius;
+					float DistanceToInstanceStart = DistanceToInstanceCenter - InstanceRadius;
+
+					// Cull instance based on distance
+					if (DistanceToInstanceStart > BVHCullRadius && ApplyGeneralCulling)
 						continue;
-				}
 
-				FMatrix Transform;
-				InstancedRenderData.PerInstanceRenderData->InstanceBuffer.GetInstanceTransform(InstanceIdx, Transform);
-				Transform.M[3][3] = 1.0f;
-				FMatrix InstanceTransform = Transform * GetLocalToWorld();
+					// Special culling for small scale objects
+					if (InstanceRadius < BVHLowScaleThreshold && ApplyLowScaleCulling)
+					{
+						if (DistanceToInstanceStart > BVHLowScaleRadius)
+							continue;
+					}
 
-				RayTracingInstanceTemplate.InstanceTransforms.Add(InstanceTransform);
+					FMatrix Transform;
+					InstancedRenderData.PerInstanceRenderData->InstanceBuffer.GetInstanceTransform(InstanceIdx, Transform);
+					Transform.M[3][3] = 1.0f;
+					FMatrix InstanceTransform = Transform * GetLocalToWorld();
+
+					RayTracingInstanceTemplate.InstanceTransforms.Add(InstanceTransform);
+                }
 			}
 		}
 	}
@@ -1217,12 +1220,15 @@ void FInstancedStaticMeshSceneProxy::GetDynamicRayTracingInstances(struct FRayTr
 		// No culling
 		for (int32 InstanceIdx = 0; InstanceIdx < InstanceCount; ++InstanceIdx)
 		{
-			FMatrix Transform;
-			InstancedRenderData.PerInstanceRenderData->InstanceBuffer.GetInstanceTransform(InstanceIdx, Transform);
-			Transform.M[3][3] = 1.0f;
-			FMatrix InstanceTransform = Transform * GetLocalToWorld();
+			if (InstancedRenderData.Component->PerInstanceSMData.IsValidIndex(InstanceIdx))
+			{
+				FMatrix Transform;
+				InstancedRenderData.PerInstanceRenderData->InstanceBuffer.GetInstanceTransform(InstanceIdx, Transform);
+				Transform.M[3][3] = 1.0f;
+				FMatrix InstanceTransform = Transform * GetLocalToWorld();
 
-			RayTracingInstanceTemplate.InstanceTransforms.Add(InstanceTransform);
+				RayTracingInstanceTemplate.InstanceTransforms.Add(InstanceTransform);
+			}
 		}
 	}
 
@@ -2250,6 +2256,60 @@ int32 UInstancedStaticMeshComponent::AddInstanceInternal(int32 InstanceIndex, FI
 int32 UInstancedStaticMeshComponent::AddInstance(const FTransform& InstanceTransform)
 {
 	return AddInstanceInternal(PerInstanceSMData.Num(), nullptr, InstanceTransform);
+}
+
+TArray<int32> UInstancedStaticMeshComponent::AddInstancesInternal(int32 Count, const TArray<FTransform>& InstanceTransforms, bool bShouldReturnIndices)
+{
+	TArray<int32> NewInstanceIndices;
+
+	if (bShouldReturnIndices)
+	{
+		NewInstanceIndices.Reserve(Count);
+	}
+
+	int32 InstanceIndex = PerInstanceSMData.Num();
+
+	PerInstanceSMCustomData.AddZeroed(NumCustomDataFloats * Count);
+
+#if WITH_EDITOR
+	SelectedInstances.Add(false, Count);
+#endif
+
+	for (int32 i = 0; i < Count; ++i)
+	{
+		FInstancedStaticMeshInstanceData* NewInstanceData = new(PerInstanceSMData) FInstancedStaticMeshInstanceData();
+
+		SetupNewInstanceData(*NewInstanceData, InstanceIndex, InstanceTransforms[i]);
+
+		if (bShouldReturnIndices)
+		{
+			NewInstanceIndices.Add(InstanceIndex);
+		}
+
+		if (SupportsPartialNavigationUpdate())
+		{
+			PartialNavigationUpdate(InstanceIndex);
+		}
+
+		++InstanceIndex;
+	}
+
+	if (!SupportsPartialNavigationUpdate())
+	{
+		// Index parameter is ignored if partial navigation updates are not supported
+		PartialNavigationUpdate(0);
+	}
+
+	// Batch update the render state after all instances are finished building
+	InstanceUpdateCmdBuffer.Edit();
+	MarkRenderStateDirty();
+
+	return NewInstanceIndices;
+}
+
+TArray<int32> UInstancedStaticMeshComponent::AddInstances(const TArray<FTransform>& InstanceTransforms, bool bShouldReturnIndices)
+{
+	return AddInstancesInternal(InstanceTransforms.Num(), InstanceTransforms, bShouldReturnIndices);
 }
 
 int32 UInstancedStaticMeshComponent::AddInstanceWorldSpace(const FTransform& WorldTransform)

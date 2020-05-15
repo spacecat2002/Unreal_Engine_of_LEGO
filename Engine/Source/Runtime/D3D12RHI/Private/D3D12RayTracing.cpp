@@ -2027,6 +2027,8 @@ FD3D12RayTracingGeometry::FD3D12RayTracingGeometry(const FRayTracingGeometryInit
 {
 	INC_DWORD_STAT(STAT_D3D12RayTracingAllocatedBLAS);
 
+	DebugName = Initializer.DebugName;
+
 	if(!FD3D12RayTracingGeometry::NullTransformBuffer.IsValid())
 	{
 		TResourceArray<float> NullTransformData;
@@ -2040,12 +2042,6 @@ FD3D12RayTracingGeometry::FD3D12RayTracingGeometry(const FRayTracingGeometryInit
 
 	FMemory::Memzero(PostBuildInfoBufferReadbackFences);
 
-	if (Initializer.IndexBuffer)
-	{
-		checkf(Initializer.IndexBuffer->GetStride() == 2 || Initializer.IndexBuffer->GetStride() == 4, TEXT("Index buffer must be 16 or 32 bit."));
-	}
-
-	IndexStride = Initializer.IndexBuffer ? Initializer.IndexBuffer->GetStride() : 0; // stride 0 means implicit triangle list for non-indexed geometry
 	IndexOffsetInBytes = Initializer.IndexBufferOffset;
 	TotalPrimitiveCount = Initializer.TotalPrimitiveCount;
 
@@ -2184,7 +2180,12 @@ void FD3D12RayTracingGeometry::TransitionBuffers(FD3D12CommandContext& CommandCo
 	}
 }
 
-static void CreateAccelerationStructureBuffers(TRefCountPtr<FD3D12MemBuffer>& AccelerationStructureBuffer, TRefCountPtr<FD3D12MemBuffer>&  ScratchBuffer, FD3D12Adapter* Adapter, uint32 GPUIndex, const D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO& PrebuildInfo)
+static void CreateAccelerationStructureBuffers(
+	TRefCountPtr<FD3D12MemBuffer>& AccelerationStructureBuffer,
+	TRefCountPtr<FD3D12MemBuffer>&  ScratchBuffer,
+	FD3D12Adapter* Adapter, uint32 GPUIndex,
+	const D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO& PrebuildInfo,
+	const TCHAR* DebugName)
 {
 	check(IsInRHIThread() || !IsRunningRHIInSeparateThread());
 
@@ -2194,12 +2195,12 @@ static void CreateAccelerationStructureBuffers(TRefCountPtr<FD3D12MemBuffer>& Ac
 		PrebuildInfo.ResultDataMaxSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 
 	CreateInfo.GPUMask = FRHIGPUMask::FromIndex(GPUIndex);
-	CreateInfo.DebugName = TEXT("AccelerationStructureBuffer");
+	CreateInfo.DebugName = DebugName;
 	AccelerationStructureBuffer = Adapter->CreateRHIBuffer<FD3D12MemBuffer>(
 		nullptr, AccelerationStructureBufferDesc, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT,
 		0, AccelerationStructureBufferDesc.Width, BUF_AccelerationStructure, CreateInfo);
 
-	SetName(AccelerationStructureBuffer->GetResource(), TEXT("Acceleration structure"));
+	SetName(AccelerationStructureBuffer->GetResource(), DebugName);
 
 	// #dxr_todo UE-72161: scratch buffers can be pooled and reused for different scenes and geometries
 	D3D12_RESOURCE_DESC ScratchBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(
@@ -2218,6 +2219,13 @@ void FD3D12RayTracingGeometry::BuildAccelerationStructure(FD3D12CommandContext& 
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(BuildAccelerationStructure_BottomLevel);
 	SCOPE_CYCLE_COUNTER(STAT_D3D12BuildBLAS);
+
+	if (RHIIndexBuffer)
+	{
+		checkf(RHIIndexBuffer->GetStride() == 2 || RHIIndexBuffer->GetStride() == 4, TEXT("Index buffer must be 16 or 32 bit."));
+	}
+
+	IndexStride = RHIIndexBuffer ? RHIIndexBuffer->GetStride() : 0; // stride 0 means implicit triangle list for non-indexed geometry
 
 	const bool bIsUpdate = BuildMode == EAccelerationStructureBuildMode::Update;
 	static constexpr uint32 IndicesPerPrimitive = 3; // Only triangle meshes are supported
@@ -2372,7 +2380,12 @@ void FD3D12RayTracingGeometry::BuildAccelerationStructure(FD3D12CommandContext& 
 
 		RayTracingDevice->GetRaytracingAccelerationStructurePrebuildInfo(&PrebuildDescInputs, &PrebuildInfo);
 
-		CreateAccelerationStructureBuffers(AccelerationStructureBuffers[GPUIndex], ScratchBuffers[GPUIndex], Adapter, GPUIndex, PrebuildInfo);
+		CreateAccelerationStructureBuffers(
+			AccelerationStructureBuffers[GPUIndex],
+			ScratchBuffers[GPUIndex],
+			Adapter, GPUIndex,
+			PrebuildInfo, 
+			DebugName.IsValid() ? *DebugName.ToString() : TEXT("BLAS"));
 
 		INC_MEMORY_STAT_BY(STAT_D3D12RayTracingUsedVideoMemory, AccelerationStructureBuffers[GPUIndex]->GetSize());
 		INC_MEMORY_STAT_BY(STAT_D3D12RayTracingUsedVideoMemory, ScratchBuffers[GPUIndex]->GetSize());
@@ -2546,6 +2559,8 @@ FD3D12RayTracingScene::FD3D12RayTracingScene(FD3D12Adapter* Adapter, const FRayT
 {
 	INC_DWORD_STAT(STAT_D3D12RayTracingAllocatedTLAS);
 
+	DebugName = Initializer.DebugName;
+
 	ShaderResourceView = Adapter->CreateLinkedObject<FD3D12ShaderResourceView>(FRHIGPUMask::All(), [&](FD3D12Device* Device)
 	{
 		return new FD3D12ShaderResourceView(Device);
@@ -2638,7 +2653,12 @@ void FD3D12RayTracingScene::BuildAccelerationStructure(FD3D12CommandContext& Com
 
 	TRefCountPtr<FD3D12MemBuffer>& AccelerationStructureBuffer = AccelerationStructureBuffers[GPUIndex];
 
-	CreateAccelerationStructureBuffers(AccelerationStructureBuffer, ScratchBuffer, Adapter, GPUIndex, PrebuildInfo);
+	CreateAccelerationStructureBuffers(
+		AccelerationStructureBuffer,
+		ScratchBuffer,
+		Adapter, GPUIndex,
+		PrebuildInfo,
+		DebugName.IsValid() ? *DebugName.ToString() : TEXT("TLAS"));
 
 	INC_MEMORY_STAT_BY(STAT_D3D12RayTracingUsedVideoMemory, AccelerationStructureBuffer->GetSize());
 	INC_MEMORY_STAT_BY(STAT_D3D12RayTracingTLASMemory, AccelerationStructureBuffer->GetSize());

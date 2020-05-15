@@ -23,7 +23,9 @@ struct FIoStoreTocHeader
 	uint32	CompressionMethodNameLength;
 	uint32	CompressionBlockSize;
 	FIoContainerId ContainerId;
-	uint8 Pad[70];
+	FGuid	EncryptionKeyGuid;
+	EIoContainerFlags ContainerFlags;
+	uint8	Pad[53];
 
 	void MakeMagic()
 	{
@@ -193,6 +195,21 @@ public:
 		return Header->ContainerId;
 	}
 
+	const FGuid& GetEncryptionKeyGuid() const
+	{
+		return Header->EncryptionKeyGuid;
+	}
+
+	EIoContainerFlags GetContainerFlags() const
+	{
+		return Header->ContainerFlags;
+	}
+
+	TArrayView<const FSHAHash> GetBlockSignatureHashes()
+	{
+		return BlockSignatureHashes;
+	}
+
 private:
 	TArray<FName> CompressionMethodNames;
 	TUniquePtr<uint8[]> TocBuffer;
@@ -203,5 +220,6 @@ private:
 	uint32 EntryCount = 0;
 	uint32 PartialEntryCount = 0;
 	uint32 CompressedBlockEntryCount = 0;
+	TArrayView<const FSHAHash> BlockSignatureHashes;
 };
 

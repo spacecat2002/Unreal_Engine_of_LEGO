@@ -4,6 +4,7 @@
 #include "Containers/UnrealString.h"
 #include "Misc/SecureHash.h"
 #include "Misc/StringBuilder.h"
+#include "Misc/MemStack.h"
 #include "Interfaces/ITargetPlatform.h"
 #include "UObject/NameTypes.h"
 #include "Hash/CityHash.h"
@@ -16,6 +17,7 @@
 DEFINE_LOG_CATEGORY_STATIC(LogMemoryImage, Log, All);
 
 IMPLEMENT_TYPE_LAYOUT(FMemoryImageString);
+IMPLEMENT_TYPE_LAYOUT(FHashedName);
 IMPLEMENT_TYPE_LAYOUT(FPlatformTypeLayoutParameters);
 IMPLEMENT_TYPE_LAYOUT(FHashedName);
 
