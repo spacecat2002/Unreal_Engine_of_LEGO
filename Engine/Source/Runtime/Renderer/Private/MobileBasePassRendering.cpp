@@ -163,7 +163,7 @@ void SetupMobileBasePassUniformParameters(
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 	SetupMobileSceneTextureUniformParameters(SceneContext, View.FeatureLevel, bTranslucentPass, View.bCustomDepthStencilValid, BasePassParameters.SceneTextures);
 	BasePassParameters.UseCSM = bCanUseCSM ? 1 : 0;
-	if (View.HasValidEyeAdaptation()
+	if (View.HasValidEyeAdaptation())
 	{
 		if (const FExposureBufferData* ExposureBufferData = View.GetEyeAdaptationBuffer())
 		{

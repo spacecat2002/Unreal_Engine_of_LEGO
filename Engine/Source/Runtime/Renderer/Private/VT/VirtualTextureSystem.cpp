@@ -1634,7 +1634,6 @@ void FVirtualTextureSystem::GatherRequestsTask(const FGatherRequestsParameters& 
 				PagePool.UpdateUsage(Frame, Buffer.PhysicalAddresses[i]);
 			}
 		}
-#endif
 		
 		INC_DWORD_STAT_BY(STAT_NumPageUpdate, Buffer.NumPageUpdates);
 	}
