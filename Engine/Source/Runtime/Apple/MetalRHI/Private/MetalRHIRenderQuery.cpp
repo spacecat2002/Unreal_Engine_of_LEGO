@@ -10,6 +10,7 @@
 #include "MetalProfiler.h"
 #include "MetalLLM.h"
 #include "MetalCommandBuffer.h"
+#include "HAL/PThreadEvent.h"
 
 #if METAL_STATISTICS
 extern int32 GMetalProfilerStatisticsTiming;
@@ -262,6 +263,9 @@ void FMetalRHIRenderQuery::End(FMetalContext* Context)
 			Result = 0;
 			bAvailable = false;
 
+			QueryWrittenEvent = MakeShareable(new FPThreadEvent());
+			QueryWrittenEvent->Create(true);
+			
 #if METAL_STATISTICS
 			class IMetalStatistics* Stats = Context->GetCommandQueue().GetStatistics();
 			if (Stats && GMetalProfilerStatisticsTiming)
@@ -283,6 +287,8 @@ void FMetalRHIRenderQuery::End(FMetalContext* Context)
 						Result = (FPlatformTime::ToMilliseconds64(StatSample.Array[0]) * 1000.0);
 					}
 					[StatSample release];
+					
+					QueryWrittenEvent->Trigger();
 					this->Release();
 				});
 			}
@@ -290,9 +296,26 @@ void FMetalRHIRenderQuery::End(FMetalContext* Context)
 #endif // METAL_STATISTICS
 			{
 				// Insert the fence to wait on the current command buffer
-				Context->InsertCommandBufferFence(*(Buffer.CommandBufferFence), [this](mtlpp::CommandBuffer const&)
+				Context->InsertCommandBufferFence(*(Buffer.CommandBufferFence), [this](mtlpp::CommandBuffer const& CmdBuffer)
 				{
-					Result = (FPlatformTime::ToMilliseconds64(mach_absolute_time()) * 1000.0);
+					Result = 0;
+					
+#if PLATFORM_MAC
+					if(FPlatformMisc::MacOSXVersionCompare(10,15,0) >= 0)
+#endif
+					{
+						// If there are no commands in the command buffer then this can be zero
+						// In this case GPU start time is also not correct - we need to fall back standard behaviour
+						// Only seen empty command buffers at the very end of a frame
+						Result = uint64((CmdBuffer.GetGpuEndTime() / 1000.0) / FPlatformTime::GetSecondsPerCycle64());
+					}
+					
+					if(Result == 0)
+					{
+						Result = (FPlatformTime::ToMilliseconds64(mach_absolute_time()) * 1000.0);
+					}
+
+					QueryWrittenEvent->Trigger();
 					this->Release();
 				});
 
@@ -321,7 +344,7 @@ bool FMetalRHIRenderQuery::GetResult(uint64& OutNumPixels, bool bWait, uint32 GP
 		bool const bCmdBufferIncomplete = !Buffer.bCompleted;
 
 		// timer queries are used for Benchmarks which can stall a bit more
-		uint64 WaitMS = (Type == RQT_AbsoluteTime) ? 2000 : 500;
+		uint64 WaitMS = (Type == RQT_AbsoluteTime) ? 30000 : 500;
 		if (bWait)
 		{
 			// RHI thread *must* be flushed at this point if the internal handles we rely upon are not yet valid.
@@ -335,6 +358,14 @@ bool FMetalRHIRenderQuery::GetResult(uint64& OutNumPixels, bool bWait, uint32 GP
 			uint32 IdleStart = FPlatformTime::Cycles();
 
 			bOK = Buffer.Wait(WaitMS);
+
+			// Result is written in one of potentially many command buffer completion handlers
+			// But the command buffer wait above may return before the query completion handler fires
+			// We need to wait here until that has happenned, also make sure the command buffer actually completed due to timeout
+			if (bOK && (Type == RQT_AbsoluteTime) && QueryWrittenEvent.IsValid())
+			{
+				QueryWrittenEvent->Wait();
+			}
 
 			if (IsInRHIThread())
 			{
