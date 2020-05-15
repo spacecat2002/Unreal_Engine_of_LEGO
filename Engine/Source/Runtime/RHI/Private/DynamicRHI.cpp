@@ -321,7 +321,7 @@ void RHIExit()
 	}
 
 #if NV_GEFORCENOW
-	if (!!CVarDisableDriverWarningPopupIfGFN.GetValueOnAnyThread())
+	if (IsRHIDeviceNVIDIA() && !!CVarDisableDriverWarningPopupIfGFN.GetValueOnAnyThread())
 	{
 		GfnRuntimeSdk::gfnShutdownRuntimeSdk();
 	}
