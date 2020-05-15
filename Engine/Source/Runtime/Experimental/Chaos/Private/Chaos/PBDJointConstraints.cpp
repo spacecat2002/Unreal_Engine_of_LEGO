@@ -77,6 +77,16 @@ namespace Chaos
 		return ConstraintContainer->GetConstraintBatch(ConstraintIndex);
 	}
 
+	FVec3 FPBDJointConstraintHandle::GetLinearImpulse() const
+	{
+		return ConstraintContainer->GetConstraintLinearImpulse(ConstraintIndex);
+	}
+
+	FVec3 FPBDJointConstraintHandle::GetAngularImpulse() const
+	{
+		return ConstraintContainer->GetConstraintAngularImpulse(ConstraintIndex);
+	}
+
 	
 	const FPBDJointSettings& FPBDJointConstraintHandle::GetSettings() const
 	{
@@ -103,6 +113,8 @@ namespace Chaos
 		, LinearProjection(0)
 		, AngularProjection(0)
 		, ParentInvMassScale(1)
+		, bProjectionEnabled(false)
+		, bSoftProjectionEnabled(false)
 		, LinearMotionTypes({ EJointMotionType::Locked, EJointMotionType::Locked, EJointMotionType::Locked })
 		, LinearLimit(FLT_MAX)
 		, AngularMotionTypes({ EJointMotionType::Free, EJointMotionType::Free, EJointMotionType::Free })
@@ -170,6 +182,54 @@ namespace Chaos
 		{
 			AngularLimits[(int32)EJointAngularConstraintIndex::Swing2] = 0;
 		}
+
+		// If we have a zero degree limit angle, lock the joint, or set a non-zero limit (to avoid division by zero in axis calculations)
+		const FReal MinAngularLimit = 0.01f;
+		if ((AngularMotionTypes[(int32)EJointAngularConstraintIndex::Twist] == EJointMotionType::Limited) && (AngularLimits[(int32)EJointAngularConstraintIndex::Twist] == 0))
+		{
+			if (bSoftTwistLimitsEnabled)
+			{
+				AngularLimits[(int32)EJointAngularConstraintIndex::Twist] = MinAngularLimit;
+			}
+			else
+			{
+				AngularMotionTypes[(int32)EJointAngularConstraintIndex::Twist] = EJointMotionType::Locked;
+			}
+		}
+		if ((AngularMotionTypes[(int32)EJointAngularConstraintIndex::Swing1] == EJointMotionType::Limited) && (AngularLimits[(int32)EJointAngularConstraintIndex::Swing1] == 0))
+		{
+			if (bSoftSwingLimitsEnabled)
+			{
+				AngularLimits[(int32)EJointAngularConstraintIndex::Swing1] = MinAngularLimit;
+			}
+			else
+			{
+				AngularMotionTypes[(int32)EJointAngularConstraintIndex::Swing1] = EJointMotionType::Locked;
+			}
+		}
+		if ((AngularMotionTypes[(int32)EJointAngularConstraintIndex::Swing2] == EJointMotionType::Limited) && (AngularLimits[(int32)EJointAngularConstraintIndex::Swing2] == 0))
+		{
+			if (bSoftSwingLimitsEnabled)
+			{
+				AngularLimits[(int32)EJointAngularConstraintIndex::Swing2] = MinAngularLimit;
+			}
+			else
+			{
+				AngularMotionTypes[(int32)EJointAngularConstraintIndex::Swing2] = EJointMotionType::Locked;
+			}
+		}
+
+		// SLerp drive is only allowed if no angular dofs are locked
+		if (bAngularSLerpPositionDriveEnabled || bAngularSLerpVelocityDriveEnabled)
+		{
+			if ((AngularMotionTypes[(int32)EJointAngularConstraintIndex::Twist] == EJointMotionType::Locked)
+				|| (AngularMotionTypes[(int32)EJointAngularConstraintIndex::Swing1] == EJointMotionType::Locked)
+				|| (AngularMotionTypes[(int32)EJointAngularConstraintIndex::Swing2] == EJointMotionType::Locked))
+			{
+				bAngularSLerpPositionDriveEnabled = false;
+				bAngularSLerpVelocityDriveEnabled = false;
+			}
+		}
 	}
 
 	
@@ -180,6 +240,8 @@ namespace Chaos
 		, Color(INDEX_NONE)
 		, IslandSize(0)
 		, bDisabled(false)
+		, LinearImpulse(FVec3(0))
+		, AngularImpulse(FVec3(0))
 	{
 	}
 
@@ -197,9 +259,6 @@ namespace Chaos
 		, AngleTolerance(0)
 		, MinParentMassRatio(0)
 		, MaxInertiaRatio(0)
-		, AngularConstraintPositionCorrection(1.0f)
-		, ProjectionInvMassScale(0)
-		, VelProjectionInvMassScale(0)
 		, bEnableTwistLimits(true)
 		, bEnableSwingLimits(true)
 		, bEnableDrives(true)
@@ -522,6 +581,16 @@ namespace Chaos
 		return ConstraintStates[ConstraintIndex].Batch;
 	}
 
+	FVec3 FPBDJointConstraints::GetConstraintLinearImpulse(int32 ConstraintIndex) const
+	{
+		return ConstraintStates[ConstraintIndex].LinearImpulse;
+	}
+
+	FVec3 FPBDJointConstraints::GetConstraintAngularImpulse(int32 ConstraintIndex) const
+	{
+		return ConstraintStates[ConstraintIndex].AngularImpulse;
+	}
+
 
 	void FPBDJointConstraints::UpdatePositionBasedState(const FReal Dt)
 	{
@@ -642,6 +711,36 @@ namespace Chaos
 	void FPBDJointConstraints::UnprepareIteration(FReal Dt)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_Joints_UnprepareIteration);
+
+		if (!bChaos_Joint_Batching)
+		{
+			for (int32 JointIndex = 0; JointIndex < NumConstraints(); ++JointIndex)
+			{
+				FPBDJointState& JointState = ConstraintStates[JointIndex];
+				FJointSolverGaussSeidel& Solver = ConstraintSolvers[JointIndex];
+
+				int32 Index0, Index1;
+				GetConstrainedParticleIndices(JointIndex, Index0, Index1);
+
+				// NOTE: LinearImpulse/AngularImpulse in the solver are not really impulses - they are mass-weighted position/rotation delta, or (impulse x dt).
+				if (Dt > SMALL_NUMBER)
+				{
+					JointState.LinearImpulse = Solver.GetNetLinearImpulse() / Dt;
+					JointState.AngularImpulse = Solver.GetNetAngularImpulse() / Dt;
+					if (Index0 != 0)
+					{
+						// Particles were flipped in the solver...
+						JointState.LinearImpulse = -JointState.LinearImpulse;
+						JointState.AngularImpulse = -JointState.AngularImpulse;
+					}
+				}
+				else
+				{
+					JointState.LinearImpulse = FVec3(0);
+					JointState.AngularImpulse = FVec3(0);
+				}
+			}
+		}
 	}
 
 	
@@ -1175,7 +1274,7 @@ namespace Chaos
 	{
 		const FPBDJointSettings& JointSettings = ConstraintSettings[ConstraintIndex];
 
-		// NOTE: LinearImpulse/AngularImpulse are not really an impulses - it is a mass-weighted position/rotation delta, or (impulse x dt).
+		// NOTE: LinearImpulse/AngularImpulse are not really impulses - they are mass-weighted position/rotation delta, or (impulse x dt).
 		// The Threshold is a force limit, so we need to convert it to a position delta caused by that force in one timestep
 
 		bool bBreak = false;
