@@ -17,7 +17,6 @@
 DEFINE_LOG_CATEGORY_STATIC(LogMemoryImage, Log, All);
 
 IMPLEMENT_TYPE_LAYOUT(FMemoryImageString);
-IMPLEMENT_TYPE_LAYOUT(FHashedName);
 IMPLEMENT_TYPE_LAYOUT(FPlatformTypeLayoutParameters);
 IMPLEMENT_TYPE_LAYOUT(FHashedName);
 
