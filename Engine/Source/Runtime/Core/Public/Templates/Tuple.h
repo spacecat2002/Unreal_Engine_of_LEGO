@@ -263,21 +263,13 @@ namespace UE4Tuple_Private
 		TTupleImpl& operator=(const TTupleImpl& Other) = default;
 
 		template <typename FuncType, typename... ArgTypes>
-		#if PLATFORM_COMPILER_HAS_DECLTYPE_AUTO
-			decltype(auto) ApplyAfter(FuncType&& Func, ArgTypes&&... Args) const
-		#else
-			auto ApplyAfter(FuncType&& Func, ArgTypes&&... Args) const -> decltype(Func(Forward<ArgTypes>(Args)..., this->Get<Indices>()...))
-		#endif
+		decltype(auto) ApplyAfter(FuncType&& Func, ArgTypes&&... Args) const
 		{
 			return Func(Forward<ArgTypes>(Args)..., this->template Get<Indices>()...);
 		}
 
 		template <typename FuncType, typename... ArgTypes>
-		#if PLATFORM_COMPILER_HAS_DECLTYPE_AUTO
-			decltype(auto) ApplyBefore(FuncType&& Func, ArgTypes&&... Args) const
-		#else
-			auto ApplyBefore(FuncType&& Func, ArgTypes&&... Args) const -> decltype(Func(this->Get<Indices>()..., Forward<ArgTypes>(Args)...))
-		#endif
+		decltype(auto) ApplyBefore(FuncType&& Func, ArgTypes&&... Args) const
 		{
 			return Func(this->template Get<Indices>()..., Forward<ArgTypes>(Args)...);
 		}
@@ -344,11 +336,7 @@ namespace UE4Tuple_Private
 	struct TTransformTuple_Impl<TIntegerSequence<uint32, Indices...>>
 	{
 		template <typename TupleType, typename FuncType>
-		#if PLATFORM_COMPILER_HAS_DECLTYPE_AUTO
-			static decltype(auto) Do(TupleType&& Tuple, FuncType Func)
-		#else
-			static auto Do(TupleType&& Tuple, FuncType Func) -> decltype(MakeTuple(Func(Forward<TupleType>(Tuple).template Get<Indices>())...))
-		#endif
+		static decltype(auto) Do(TupleType&& Tuple, FuncType Func)
 		{
 			return MakeTupleImpl(Func(Forward<TupleType>(Tuple).template Get<Indices>())...);
 		}
@@ -538,21 +526,13 @@ FORCEINLINE TTuple<typename TDecay<Types>::Type...> MakeTuple(Types&&... Args)
  * }
  */
 template <typename FuncType, typename... Types>
-#if PLATFORM_COMPILER_HAS_DECLTYPE_AUTO
-	FORCEINLINE decltype(auto) TransformTuple(TTuple<Types...>&& Tuple, FuncType Func)
-#else
-	FORCEINLINE auto TransformTuple(TTuple<Types...>&& Tuple, FuncType Func) -> decltype(UE4Tuple_Private::TTransformTuple_Impl<TMakeIntegerSequence<uint32, sizeof...(Types)>>::Do(MoveTemp(Tuple), MoveTemp(Func)))
-#endif
+FORCEINLINE decltype(auto) TransformTuple(TTuple<Types...>&& Tuple, FuncType Func)
 {
 	return UE4Tuple_Private::TTransformTuple_Impl<TMakeIntegerSequence<uint32, sizeof...(Types)>>::Do(MoveTemp(Tuple), MoveTemp(Func));
 }
 
 template <typename FuncType, typename... Types>
-#if PLATFORM_COMPILER_HAS_DECLTYPE_AUTO
-	FORCEINLINE decltype(auto) TransformTuple(const TTuple<Types...>& Tuple, FuncType Func)
-#else
-	FORCEINLINE auto TransformTuple(const TTuple<Types...>& Tuple, FuncType Func) -> decltype(UE4Tuple_Private::TTransformTuple_Impl<TMakeIntegerSequence<uint32, sizeof...(Types)>>::Do(Tuple, MoveTemp(Func)))
-#endif
+FORCEINLINE decltype(auto) TransformTuple(const TTuple<Types...>& Tuple, FuncType Func)
 {
 	return UE4Tuple_Private::TTransformTuple_Impl<TMakeIntegerSequence<uint32, sizeof...(Types)>>::Do(Tuple, MoveTemp(Func));
 }
