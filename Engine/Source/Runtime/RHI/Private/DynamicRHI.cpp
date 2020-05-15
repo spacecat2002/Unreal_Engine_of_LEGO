@@ -273,7 +273,7 @@ void RHIInit(bool bHasEditorToken)
 #if PLATFORM_WINDOWS || PLATFORM_MAC
 #if NV_GEFORCENOW
 	bool bDetectAndWarnBadDrivers = true;
-	if (!!CVarDisableDriverWarningPopupIfGFN.GetValueOnAnyThread())
+	if (IsRHIDeviceNVIDIA() && !!CVarDisableDriverWarningPopupIfGFN.GetValueOnAnyThread())
 	{
 		const GfnRuntimeSdk::GfnRuntimeError GfnResult = GfnRuntimeSdk::gfnInitializeRuntimeSdk(GfnRuntimeSdk::gfnDefaultLanguage);
 		const bool bGfnRuntimeSDKInitialized = GfnResult == GfnRuntimeSdk::gfnSuccess || GfnResult == GfnRuntimeSdk::gfnInitSuccessClientOnly;
