@@ -479,7 +479,7 @@ void FShaderMapPointerTable::LoadFromArchive(FArchive& Ar, void* FrozenContent, 
 	}
 }
 
-FShadereCompiledShaderInitializerType::FShadereCompiledShaderInitializerType(
+FShaderCompiledShaderInitializerType::FShaderCompiledShaderInitializerType(
 	FShaderType* InType,
 	int32 InPermutationId,
 	const FShaderCompilerOutput& CompilerOutput,

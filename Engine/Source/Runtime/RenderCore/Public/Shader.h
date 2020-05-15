@@ -595,7 +595,7 @@ struct FShaderPermutationParameters
 	{}
 };
 
-struct FShadereCompiledShaderInitializerType
+struct FShaderCompiledShaderInitializerType
 {
 	FShaderType* Type;
 	FShaderTarget Target;
@@ -610,7 +610,7 @@ struct FShadereCompiledShaderInitializerType
 	uint32 CodeSize;
 	int32 PermutationId;
 
-	RENDERCORE_API FShadereCompiledShaderInitializerType(
+	RENDERCORE_API FShaderCompiledShaderInitializerType(
 		FShaderType* InType,
 		int32 InPermutationId,
 		const FShaderCompilerOutput& CompilerOutput,
@@ -619,6 +619,9 @@ struct FShadereCompiledShaderInitializerType
 		FVertexFactoryType* InVertexFactoryType
 	);
 };
+
+UE_DEPRECATED(4.26, "FShadereCompiledShaderInitializerType is deprecated. Use FShaderCompiledShaderInitializerType.")
+typedef FShaderCompiledShaderInitializerType FShadereCompiledShaderInitializerType;
 
 namespace Freeze
 {
@@ -637,7 +640,7 @@ class RENDERCORE_API FShader
 public:
 	using FPermutationDomain = FShaderPermutationNone;
 	using FPermutationParameters = FShaderPermutationParameters;
-	using CompiledShaderInitializerType = FShadereCompiledShaderInitializerType;
+	using CompiledShaderInitializerType = FShaderCompiledShaderInitializerType;
 	using ShaderMetaType = FShaderType;
 
 	/** 
