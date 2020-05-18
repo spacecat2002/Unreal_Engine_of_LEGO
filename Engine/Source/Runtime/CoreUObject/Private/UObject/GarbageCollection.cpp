@@ -576,10 +576,19 @@ void ShutdownGarbageCollection()
 */
 
 #if UE_WITH_GC
-template <bool bParallel, bool bWithClusters>
+template <EFastReferenceCollectorOptions Options>
 class FGCReferenceProcessor
 {
 public:
+
+	constexpr static FORCEINLINE bool IsParallel()
+	{
+		return !!(Options & EFastReferenceCollectorOptions::Parallel);
+	}
+	constexpr static FORCEINLINE bool IsWithClusters()
+	{
+		return !!(Options & EFastReferenceCollectorOptions::WithClusters);
+	}
 
 	FGCReferenceProcessor()
 	{
@@ -626,7 +635,7 @@ public:
 	/** Marks all objects that can't be directly in a cluster but are referenced by it as reachable */
 	static FORCEINLINE bool MarkClusterMutableObjectsAsReachable(FUObjectCluster& Cluster, TArray<UObject*>& ObjectsToSerialize)
 	{
-		check(bWithClusters);
+		check(IsWithClusters());
 
 		// This is going to be the return value and basically means that we ran across some pending kill objects
 		bool bAddClusterObjectsToSerialize = false;
@@ -635,7 +644,7 @@ public:
 			if (ReferencedMutableObjectIndex >= 0) // Pending kill support
 			{
 				FUObjectItem* ReferencedMutableObjectItem = GUObjectArray.IndexToObjectUnsafeForGC(ReferencedMutableObjectIndex);
-				if (bParallel)
+				if (IsParallel())
 				{
 					if (!ReferencedMutableObjectItem->IsPendingKill())
 					{
@@ -720,7 +729,7 @@ public:
 	/** Marks all clusters referenced by another cluster as reachable */
 	static FORCEINLINE void MarkReferencedClustersAsReachable(int32 ClusterIndex, TArray<UObject*>& ObjectsToSerialize)
 	{
-		check(bWithClusters);
+		check(IsWithClusters());
 
 		// If we run across some PendingKill objects we need to add all objects from this cluster
 		// to ObjectsToSerialize so that we can properly null out all the references.
@@ -737,7 +746,7 @@ public:
 				if (!ReferencedClusterRootObjectItem->IsPendingKill())
 				{
 					// This condition should get collapsed by the compiler based on the template argument
-					if (bParallel)
+					if (IsParallel())
 					{
 						if (ReferencedClusterRootObjectItem->IsUnreachable())
 						{
@@ -814,7 +823,7 @@ public:
 		// Add encountered object reference to list of to be serialized objects if it hasn't already been added.
 		else if (ObjectItem->IsUnreachable())
 		{
-			if (bParallel)
+			if (IsParallel())
 			{
 				// Mark it as reachable.
 				if (ObjectItem->ThisThreadAtomicallyClearedRFUnreachable())
@@ -822,7 +831,7 @@ public:
 					// Objects that are part of a GC cluster should never have the unreachable flag set!
 					checkSlow(ObjectItem->GetOwnerIndex() <= 0);
 
-					if (!bWithClusters || !ObjectItem->HasAnyFlags(EInternalObjectFlags::ClusterRoot))
+					if (!IsWithClusters() || !ObjectItem->HasAnyFlags(EInternalObjectFlags::ClusterRoot))
 					{
 						// Add it to the list of objects to serialize.
 						ObjectsToSerialize.Add(Object);
@@ -856,7 +865,7 @@ public:
 				// Objects that are part of a GC cluster should never have the unreachable flag set!
 				checkSlow(ObjectItem->GetOwnerIndex() <= 0);
 
-				if (!bWithClusters || !ObjectItem->HasAnyFlags(EInternalObjectFlags::ClusterRoot))
+				if (!IsWithClusters() || !ObjectItem->HasAnyFlags(EInternalObjectFlags::ClusterRoot))
 				{
 					// Add it to the list of objects to serialize.
 					ObjectsToSerialize.Add(Object);
@@ -868,10 +877,10 @@ public:
 				}
 			}
 		}
-		else if (bWithClusters && (ObjectItem->GetOwnerIndex() > 0 && !ObjectItem->HasAnyFlags(EInternalObjectFlags::ReachableInCluster)))
+		else if (IsWithClusters() && (ObjectItem->GetOwnerIndex() > 0 && !ObjectItem->HasAnyFlags(EInternalObjectFlags::ReachableInCluster)))
 		{
 			bool bNeedsDoing = true;
-			if (bParallel)
+			if (IsParallel())
 			{
 				bNeedsDoing = ObjectItem->ThisThreadAtomicallySetFlag(EInternalObjectFlags::ReachableInCluster);
 			}
@@ -885,7 +894,7 @@ public:
 				const int32 OwnerIndex = ObjectItem->GetOwnerIndex();
 				FUObjectItem* RootObjectItem = GUObjectArray.IndexToObjectUnsafeForGC(OwnerIndex);
 				checkSlow(RootObjectItem->HasAnyFlags(EInternalObjectFlags::ClusterRoot));
-				if (bParallel)
+				if (IsParallel())
 				{
 					if (RootObjectItem->ThisThreadAtomicallyClearedRFUnreachable())
 					{
@@ -950,16 +959,16 @@ public:
 	}
 };
 
-template <bool bParallel, bool bWithClusters>
-FGCCollector<bParallel, bWithClusters>::FGCCollector(FGCReferenceProcessor<bParallel, bWithClusters>& InProcessor, FGCArrayStruct& InObjectArrayStruct)
+template <EFastReferenceCollectorOptions Options>
+FGCCollector<Options>::FGCCollector(FGCReferenceProcessor<Options>& InProcessor, FGCArrayStruct& InObjectArrayStruct)
 		: ReferenceProcessor(InProcessor)
 		, ObjectArrayStruct(InObjectArrayStruct)
 		, bAllowEliminatingReferences(true)
 {
 }
 
-template <bool bParallel, bool bWithClusters>
-FORCEINLINE void FGCCollector<bParallel, bWithClusters>::InternalHandleObjectReference(UObject*& Object, const UObject* ReferencingObject, const FProperty* ReferencingProperty)
+template <EFastReferenceCollectorOptions Options>
+FORCEINLINE void FGCCollector<Options>::InternalHandleObjectReference(UObject*& Object, const UObject* ReferencingObject, const FProperty* ReferencingProperty)
 {
 #if ENABLE_GC_OBJECT_CHECKS
 		if (Object && !Object->IsValidLowLevelFast())
@@ -973,14 +982,14 @@ FORCEINLINE void FGCCollector<bParallel, bWithClusters>::InternalHandleObjectRef
 		ReferenceProcessor.HandleObjectReference(ObjectArrayStruct.ObjectsToSerialize, const_cast<UObject*>(ReferencingObject), Object, bAllowEliminatingReferences);
 }
 
-template <bool bParallel, bool bWithClusters>
-void FGCCollector<bParallel, bWithClusters>::HandleObjectReference(UObject*& Object, const UObject* ReferencingObject, const FProperty* ReferencingProperty)
+template <EFastReferenceCollectorOptions Options>
+void FGCCollector<Options>::HandleObjectReference(UObject*& Object, const UObject* ReferencingObject, const FProperty* ReferencingProperty)
 {
 		InternalHandleObjectReference(Object, ReferencingObject, ReferencingProperty);
 }
 
-template <bool bParallel, bool bWithClusters>
-void FGCCollector<bParallel, bWithClusters>::HandleObjectReferences(UObject** InObjects, const int32 ObjectNum, const UObject* InReferencingObject, const FProperty* InReferencingProperty)
+template <EFastReferenceCollectorOptions Options>
+void FGCCollector<Options>::HandleObjectReferences(UObject** InObjects, const int32 ObjectNum, const UObject* InReferencingObject, const FProperty* InReferencingProperty)
 {
 		for (int32 ObjectIndex = 0; ObjectIndex < ObjectNum; ++ObjectIndex)
 		{
@@ -1075,18 +1084,18 @@ class FRealtimeGC : public FGarbageCollectionTracer
 	/** Pointers to functions used for Reachability Analysis */
 	ReachabilityAnalysisFn ReachabilityAnalysisFunctions[4];
 
-	template <bool bParallel, bool bWithClusters>
+	template <EFastReferenceCollectorOptions CollectorOptions>
 	void PerformReachabilityAnalysisOnObjectsInternal(FGCArrayStruct* ArrayStruct)
 	{
-		FGCReferenceProcessor<bParallel, bWithClusters> ReferenceProcessor;
+		FGCReferenceProcessor<CollectorOptions> ReferenceProcessor;
 		// NOTE: we want to run with automatic token stream generation off as it should be already generated at this point,
 		// BUT we want to be ignoring Noop tokens as they're only pointing either at null references or at objects that never get GC'd (native classes)
-		TFastReferenceCollector<bParallel, 
-			FGCReferenceProcessor<bParallel, bWithClusters>, 
-			FGCCollector<bParallel, bWithClusters>, 
-			FGCArrayPool, 
-			/* bAutoGenerateTokenStream = */ false, 
-			/* bIgnoreNoopTokens = */ true> ReferenceCollector(ReferenceProcessor, FGCArrayPool::Get());
+		TFastReferenceCollector<
+			FGCReferenceProcessor<CollectorOptions>,
+			FGCCollector<CollectorOptions>,
+			FGCArrayPool,
+			CollectorOptions | EFastReferenceCollectorOptions::IgnoreNoOpTokens
+			>  ReferenceCollector(ReferenceProcessor, FGCArrayPool::Get());
 		ReferenceCollector.CollectReferences(*ArrayStruct);
 	}
 
@@ -1105,10 +1114,10 @@ public:
 		MarkObjectsFunctions[GetGCFunctionIndex(false, true)] = &FRealtimeGC::MarkObjectsAsUnreachable<false, true>;
 		MarkObjectsFunctions[GetGCFunctionIndex(true, true)] = &FRealtimeGC::MarkObjectsAsUnreachable<true, true>;
 
-		ReachabilityAnalysisFunctions[GetGCFunctionIndex(false, false)] = &FRealtimeGC::PerformReachabilityAnalysisOnObjectsInternal<false, false>;
-		ReachabilityAnalysisFunctions[GetGCFunctionIndex(true, false)] = &FRealtimeGC::PerformReachabilityAnalysisOnObjectsInternal<true, false>;
-		ReachabilityAnalysisFunctions[GetGCFunctionIndex(false, true)] = &FRealtimeGC::PerformReachabilityAnalysisOnObjectsInternal<false, true>;
-		ReachabilityAnalysisFunctions[GetGCFunctionIndex(true, true)] = &FRealtimeGC::PerformReachabilityAnalysisOnObjectsInternal<true, true>;
+		ReachabilityAnalysisFunctions[GetGCFunctionIndex(false, false)] = &FRealtimeGC::PerformReachabilityAnalysisOnObjectsInternal<EFastReferenceCollectorOptions::None | EFastReferenceCollectorOptions::None>;
+		ReachabilityAnalysisFunctions[GetGCFunctionIndex(true, false)] = &FRealtimeGC::PerformReachabilityAnalysisOnObjectsInternal<EFastReferenceCollectorOptions::Parallel | EFastReferenceCollectorOptions::None>;
+		ReachabilityAnalysisFunctions[GetGCFunctionIndex(false, true)] = &FRealtimeGC::PerformReachabilityAnalysisOnObjectsInternal<EFastReferenceCollectorOptions::None | EFastReferenceCollectorOptions::WithClusters>;
+		ReachabilityAnalysisFunctions[GetGCFunctionIndex(true, true)] = &FRealtimeGC::PerformReachabilityAnalysisOnObjectsInternal<EFastReferenceCollectorOptions::Parallel | EFastReferenceCollectorOptions::WithClusters>;
 	}
 
 	/** 
@@ -1279,7 +1288,7 @@ public:
 						{
 							RootObjectItem->ClearFlags(EInternalObjectFlags::Unreachable);
 							// Make sure all referenced clusters are marked as reachable too
-							FGCReferenceProcessor<false, bWithClusters>::MarkReferencedClustersAsReachable(RootObjectItem->GetClusterIndex(), ObjectsToSerialize);
+							FGCReferenceProcessor<EFastReferenceCollectorOptions::WithClusters>::MarkReferencedClustersAsReachable(RootObjectItem->GetClusterIndex(), ObjectsToSerialize);
 						}
 					}
 				}
@@ -1288,7 +1297,7 @@ public:
 					checkSlow(ObjectItem->HasAnyFlags(EInternalObjectFlags::ClusterRoot));
 					// this thing is definitely not marked unreachable, so don't test it here
 					// Make sure all referenced clusters are marked as reachable too
-					FGCReferenceProcessor<false, bWithClusters>::MarkReferencedClustersAsReachable(ObjectItem->GetClusterIndex(), ObjectsToSerialize);
+					FGCReferenceProcessor<EFastReferenceCollectorOptions::WithClusters>::MarkReferencedClustersAsReachable(ObjectItem->GetClusterIndex(), ObjectsToSerialize);
 				}
 			}
 		}

@@ -749,7 +749,7 @@ void UObjectBaseUtility::AddToCluster(UObjectBaseUtility* ClusterRootOrObjectFro
 		if (!bAddAsMutableObject)
 		{
 			FClusterReferenceProcessor Processor(ClusterRootIndex, *Cluster);
-			TFastReferenceCollector<false, FClusterReferenceProcessor, TDefaultReferenceCollector<FClusterReferenceProcessor>, FGCArrayPool, true> ReferenceCollector(Processor, FGCArrayPool::Get());
+			TFastReferenceCollector<FClusterReferenceProcessor, TDefaultReferenceCollector<FClusterReferenceProcessor>, FGCArrayPool, EFastReferenceCollectorOptions::AutogenerateTokenStream> ReferenceCollector(Processor, FGCArrayPool::Get());
 			FGCArrayStruct ArrayStruct;
 			TArray<UObject*>& ObjectsToProcess = ArrayStruct.ObjectsToSerialize;
 			UObject* ThisObject = static_cast<UObject*>(this);
@@ -817,7 +817,7 @@ void UObjectBaseUtility::CreateCluster()
 
 	// Collect all objects referenced by cluster root and by all objects it's referencing
 	FClusterReferenceProcessor Processor(InternalIndex, Cluster);
-	TFastReferenceCollector<false, FClusterReferenceProcessor, TDefaultReferenceCollector<FClusterReferenceProcessor>, FGCArrayPool, true> ReferenceCollector(Processor, FGCArrayPool::Get());
+	TFastReferenceCollector<FClusterReferenceProcessor, TDefaultReferenceCollector<FClusterReferenceProcessor>, FGCArrayPool, EFastReferenceCollectorOptions::AutogenerateTokenStream> ReferenceCollector(Processor, FGCArrayPool::Get());
 	FGCArrayStruct ArrayStruct;
 	TArray<UObject*>& ObjectsToProcess = ArrayStruct.ObjectsToSerialize;
 	ObjectsToProcess.Add(static_cast<UObject*>(this));

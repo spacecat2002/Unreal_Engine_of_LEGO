@@ -443,7 +443,7 @@ void FReferenceChainSearch::FindDirectReferencesForObjects()
 {
 	TSet<FObjectReferenceInfo> ReferencedObjects;
 	FDirectReferenceProcessor Processor(ObjectToFindReferencesTo, ReferencedObjects);
-	TFastReferenceCollector<false, FDirectReferenceProcessor, FDirectReferenceCollector, FGCArrayPool, true> ReferenceCollector(Processor, FGCArrayPool::Get());
+	TFastReferenceCollector<FDirectReferenceProcessor, FDirectReferenceCollector, FGCArrayPool, EFastReferenceCollectorOptions::AutogenerateTokenStream> ReferenceCollector(Processor, FGCArrayPool::Get());
 	FGCArrayStruct ArrayStruct;
 	TArray<UObject*>& ObjectsToProcess = ArrayStruct.ObjectsToSerialize;
 

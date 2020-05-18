@@ -102,7 +102,7 @@ void VerifyGCAssumptions()
 	int32 MaxNumberOfObjects = GUObjectArray.GetObjectArrayNumPermanent();
 
 	FDisregardSetReferenceProcessor Processor;
-	TFastReferenceCollector<false, FDisregardSetReferenceProcessor, FDisregardSetReferenceCollector, FGCArrayPool, true> ReferenceCollector(Processor, FGCArrayPool::Get());
+	TFastReferenceCollector<FDisregardSetReferenceProcessor, FDisregardSetReferenceCollector, FGCArrayPool, EFastReferenceCollectorOptions::AutogenerateTokenStream> ReferenceCollector(Processor, FGCArrayPool::Get());
 
 	int32 NumThreads = FMath::Max(1, FTaskGraphInterface::Get().GetNumWorkerThreads());
 	int32 NumberOfObjectsPerThread = (MaxNumberOfObjects / NumThreads) + 1;
@@ -290,7 +290,7 @@ void VerifyClustersAssumptions()
 		FGCArrayStruct& ArrayStruct = ArrayStructs[ThreadIndex];
 		
 		FClusterVerifyReferenceProcessor Processor;
-		TFastReferenceCollector<false, FClusterVerifyReferenceProcessor, FClusterVerifyReferenceCollector, FGCArrayPool, true> ReferenceCollector(Processor, FGCArrayPool::Get());
+		TFastReferenceCollector<FClusterVerifyReferenceProcessor, FClusterVerifyReferenceCollector, FGCArrayPool, EFastReferenceCollectorOptions::AutogenerateTokenStream> ReferenceCollector(Processor, FGCArrayPool::Get());
 
 		for (int32 ClusterIndex = 0; ClusterIndex < NumClusters && (FirstClusterIndex + ClusterIndex) < MaxNumberOfClusters; ++ClusterIndex)
 		{

@@ -13,6 +13,7 @@
 #include "HAL/PlatformProcess.h"
 #include "UObject/FieldPath.h"
 #include "UObject/UObjectArray.h"
+#include "UObject/FastReferenceCollectorOptions.h"
 
 struct FStackEntry;
 
@@ -265,10 +266,28 @@ private:
 		 void ReturnToPool(FGCArrayStruct* ArrayStruct);
 	 };
  */
-template <bool bParallel, typename ReferenceProcessorType, typename CollectorType, typename ArrayPoolType, bool bAutoGenerateTokenStream = false, bool bIgnoreNoopTokens = false>
+
+template <typename ReferenceProcessorType, typename CollectorType, typename ArrayPoolType, EFastReferenceCollectorOptions Options = EFastReferenceCollectorOptions::None>
 class TFastReferenceCollector
 {
 private:
+
+	constexpr FORCEINLINE bool IsParallel() const
+	{
+		return !!(Options & EFastReferenceCollectorOptions::Parallel);
+	}
+	constexpr FORCEINLINE bool CanAutogenerateTokenStream() const
+	{
+		return !!(Options & EFastReferenceCollectorOptions::AutogenerateTokenStream);
+	}
+	constexpr FORCEINLINE bool ShouldIgnoreNoOpTokens() const
+	{
+		return !!(Options & EFastReferenceCollectorOptions::IgnoreNoOpTokens);
+	}
+	constexpr FORCEINLINE bool ShouldIgnoreWeakReferences() const
+	{
+		return !!(Options & EFastReferenceCollectorOptions::IgnoreWeakReferences);
+	}
 
 	class FCollectorTaskQueue
 	{
@@ -495,7 +514,7 @@ public:
 		TArray<UObject*>& ObjectsToCollectReferencesFor = ArrayStruct.ObjectsToSerialize;
 		if (ObjectsToCollectReferencesFor.Num())
 		{
-			if (!bParallel)
+			if (!IsParallel())
 			{
 				FGraphEventRef InvalidRef;
 				ProcessObjectArray(ArrayStruct, InvalidRef);
@@ -593,7 +612,7 @@ private:
 				//@todo rtgc: we need to handle object references in struct defaults
 
 				// Make sure that token stream has been assembled at this point as the below code relies on it.
-				if (!bParallel && bAutoGenerateTokenStream)
+				if (!IsParallel() && CanAutogenerateTokenStream())
 				{
 					UClass* ObjectClass = CurrentObject->GetClass();
 					if (!ObjectClass->HasAnyClassFlags(CLASS_TokenStreamAssembled))
@@ -607,7 +626,7 @@ private:
 					UE_LOG(LogGarbage, Fatal, TEXT("%s does not yet have a token stream assembled."), *GetFullNameSafe(CurrentObject->GetClass()));
 				}
 #endif
-				if (!bParallel)
+				if (!IsParallel())
 				{
 					ReferenceProcessor.SetCurrentObject(CurrentObject);
 				}
@@ -669,7 +688,7 @@ private:
 					case GCRT_Object:
 					case GCRT_Class:
 					{
-						// We're dealing with an object reference (this code should be identical to GCRT_NoopClass if !bIgnoreNoopTokens)
+						// We're dealing with an object reference (this code should be identical to GCRT_NoopClass if !ShouldIgnoreNoOpTokens())
 						UObject**	ObjectPtr = (UObject**)(StackEntryData + ReferenceInfo.Offset);
 						UObject*&	Object = *ObjectPtr;
 						TokenReturnCount = ReferenceInfo.ReturnCount;
@@ -754,7 +773,7 @@ private:
 					break;
 					case GCRT_PersistentObject:
 					{
-						// We're dealing with an object reference (this code should be identical to GCRT_NoopPersistentObject if !bIgnoreNoopTokens)
+						// We're dealing with an object reference (this code should be identical to GCRT_NoopPersistentObject if !ShouldIgnoreNoOpTokens())
 						UObject**	ObjectPtr = (UObject**)(StackEntryData + ReferenceInfo.Offset);
 						UObject*&	Object = *ObjectPtr;
 						TokenReturnCount = ReferenceInfo.ReturnCount;
@@ -874,7 +893,7 @@ private:
 					break;
 					case GCRT_NoopPersistentObject:
 					{
-						if (!bIgnoreNoopTokens)
+						if (!ShouldIgnoreNoOpTokens())
 						{
 							// We're dealing with an object reference (this code should be identical to GCRT_PersistentObject)
 							UObject**	ObjectPtr = (UObject**)(StackEntryData + ReferenceInfo.Offset);
@@ -890,7 +909,7 @@ private:
 					break;
 					case GCRT_NoopClass:
 					{
-						if (!bIgnoreNoopTokens)
+						if (!ShouldIgnoreNoOpTokens())
 						{
 							// We're dealing with an object reference (this code should be identical to GCRT_Object and GCRT_Class)
 							UObject**	ObjectPtr = (UObject**)(StackEntryData + ReferenceInfo.Offset);
@@ -920,7 +939,7 @@ private:
 EndLoop:
 				check(StackEntry == Stack.GetData());
 
-				if (bParallel && NewObjectsToSerialize.Num() >= MinDesiredObjectsPerSubTask)
+				if (IsParallel() && NewObjectsToSerialize.Num() >= MinDesiredObjectsPerSubTask)
 				{
 					// This will start queueing task with objects from the end of array until there's less objects than worth to queue
 					const int32 ObjectsPerSubTask = FMath::Max<int32>(MinDesiredObjectsPerSubTask, NewObjectsToSerialize.Num() / FTaskGraphInterface::Get().GetNumWorkerThreads());
@@ -942,12 +961,12 @@ EndLoop:
 
 #if PERF_DETAILED_PER_CLASS_GC_STATS
 				// Detailed per class stats should not be performed when parallel GC is running
-				check(!bParallel);
+				check(!IsParallel());
 				ReferenceProcessor.UpdateDetailedStats(CurrentObject, FPlatformTime::Cycles() - StartCycles);
 #endif
 			}
 
-			if (bParallel && NewObjectsToSerialize.Num() >= MinDesiredObjectsPerSubTask)
+			if (IsParallel() && NewObjectsToSerialize.Num() >= MinDesiredObjectsPerSubTask)
 			{
 				const int32 ObjectsPerSubTask = FMath::Max<int32>(MinDesiredObjectsPerSubTask, NewObjectsToSerialize.Num() / FTaskGraphInterface::Get().GetNumWorkerThreads());
 				int32 StartIndex = 0;
@@ -981,7 +1000,7 @@ EndLoop:
 
 #if PERF_DETAILED_PER_CLASS_GC_STATS
 		// Detailed per class stats should not be performed when parallel GC is running
-		check(!bParallel);
+		check(!IsParallel());
 		ReferenceProcessor.LogDetailedStatsSummary();
 #endif
 
