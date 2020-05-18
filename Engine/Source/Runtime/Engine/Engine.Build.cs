@@ -193,6 +193,7 @@ public class Engine : ModuleRules
 
 		if (Target.Type == TargetType.Editor)
 		{
+			PrivateDependencyModuleNames.Add("EditorStyle");
 			PrivateIncludePathModuleNames.Add("Foliage");
 		}
 
