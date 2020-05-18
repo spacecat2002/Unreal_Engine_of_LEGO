@@ -97,7 +97,7 @@ static bool CheckD3DStoredMessages()
 					{
 						UE_LOG(LogD3D12RHI, Error, TEXT("%s"), ANSI_TO_TCHAR(d3dMessage->pDescription));
 					}
-					else if (d3dMessage->Severity == D3D12_MESSAGE_SEVERITY_ERROR)
+					else if (d3dMessage->Severity == D3D12_MESSAGE_SEVERITY_WARNING)
 					{
 						UE_LOG(LogD3D12RHI, Warning, TEXT("%s"), ANSI_TO_TCHAR(d3dMessage->pDescription));
 					}
