@@ -303,10 +303,12 @@ static TAutoConsoleVariable<int32> CVarOpenGLForceDXC(
 
 static TAutoConsoleVariable<int32> CVarVulkanForceDXC(
 	TEXT("r.Vulkan.ForceDXC"),
-	0,
+	1,
 	TEXT("Forces DirectX Shader Compiler (DXC) to be used for all Vulkan shaders instead of hlslcc.\n")
-	TEXT(" 0: Disable (default)\n")
-	TEXT(" 1: Force new compiler for all shaders"),
+	TEXT(" 0: Disable (hlslcc/glslang)\n")
+	TEXT(" 1: Enabled on desktop platforms only (default)\n")
+	TEXT(" 2: Enabled on mobile platforms only\n")
+	TEXT(" 3: Enabled on all platforms"),
 	ECVF_ReadOnly);
 
 int32 GCreateShadersOnLoad = 0;
@@ -3776,7 +3778,12 @@ void GlobalBeginCompileShader(
 
 	if (IsVulkanPlatform((EShaderPlatform)Target.Platform))
 	{
-		if (CVarVulkanForceDXC.GetValueOnAnyThread() != 0)
+		int32 VulkanForceDXC = CVarVulkanForceDXC.GetValueOnAnyThread();
+		const bool bIsVulkanMobile = IsVulkanMobilePlatform((EShaderPlatform)Target.Platform);
+		const bool bIsDXCEnabledForDesktop = (VulkanForceDXC == 1 && !bIsVulkanMobile);
+		const bool bIsDXCEnabledForMobile = (VulkanForceDXC == 2 && bIsVulkanMobile);
+		const bool bIsDXCEnableForAll = (VulkanForceDXC == 3);
+		if (bIsDXCEnabledForDesktop || bIsDXCEnabledForMobile || bIsDXCEnableForAll)
 		{
 			Input.Environment.CompilerFlags.Add(CFLAG_ForceDXC);
 		}
