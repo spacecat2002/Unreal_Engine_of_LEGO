@@ -4446,8 +4446,8 @@ void VerifyGlobalShaders(EShaderPlatform Platform, bool bLoadedFromCacheFile)
 				{
 					checkf(
 						Shader->Bindings.StructureLayoutHash == ParameterStructMetadata->GetLayoutHash(),
-						TEXT("Seems shader %s's parameter structure has changed without recompilation of the shader"),
-						GlobalShaderType->GetName());
+						TEXT("Seems shader %s's (permutation %i) parameter structure has changed without recompilation of the shader"),
+						GlobalShaderType->GetName(), PermutationId);
 				}
 			}
 			else
