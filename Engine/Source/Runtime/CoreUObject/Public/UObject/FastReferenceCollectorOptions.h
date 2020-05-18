@@ -8,7 +8,7 @@
 	FastReferenceCollectorOptions.h: Global TFastReferenceCollector enums and defines
 =====================================================================================*/
 
-enum class EFastReferenceCollectorOptions : int32
+enum class EFastReferenceCollectorOptions : uint32
 {
 	None = 0,
 	Parallel = 1 << 0,
