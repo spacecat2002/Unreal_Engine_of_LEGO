@@ -113,7 +113,7 @@ enum class EARFaceTrackingUpdate : uint8
 };
 
 /**
- * Tells the AR system how much of the face work to perform
+ * Additional tracking features to be enabled if the device supports it
  */
 UENUM(BlueprintType)
 enum class EARSessionTrackingFeature : uint8
@@ -129,6 +129,22 @@ enum class EARSessionTrackingFeature : uint8
 	
 	/** Person segmentation with depth info is enabled */
 	PersonSegmentationWithDepth,
+};
+
+/**
+ * Possible scene reconstruction methods
+ */
+UENUM(BlueprintType)
+enum class EARSceneReconstruction : uint8
+{
+	/** Scene reconstruction is disabled */
+	None,
+	
+	/** A mesh approximation of the environment is constructed */
+	MeshOnly,
+	
+	/** A mesh approximation of the environment, including classification of the objects is constructed */
+	MeshWithClassification,
 };
 
 UCLASS(BlueprintType, Category="AR Settings")
@@ -251,9 +267,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AR Settings")
 	EARSessionTrackingFeature GetEnabledSessionTrackingFeature() const;
 	
+	/** @see SceneReconstructionMethod */
+	UFUNCTION(BlueprintCallable, Category = "AR Settings")
+	EARSceneReconstruction GetSceneReconstructionMethod() const;
+	
 	/** @see EnabledSessionTrackingFeatures */
 	UFUNCTION(BlueprintCallable, Category = "AR Settings")
 	void SetSessionTrackingFeatureToEnable(EARSessionTrackingFeature InSessionTrackingFeature);
+	
+	/** @see SceneReconstructionMethod */
+	UFUNCTION(BlueprintCallable, Category = "AR Settings")
+	void SetSceneReconstructionMethod(EARSceneReconstruction InSceneReconstructionMethod);
 
 	bool ShouldDoHorizontalPlaneDetection() const { return bHorizontalPlaneDetection; }
 	bool ShouldDoVerticalPlaneDetection() const { return bVerticalPlaneDetection; }
@@ -382,7 +406,11 @@ protected:
 	UPROPERTY()
 	TArray<uint8> SerializedARCandidateImageDatabase;
 	
-	/** A list of session features  to enable */
+	/** A list of session features to enable */
 	UPROPERTY(EditAnywhere, Category="AR Settings")
 	EARSessionTrackingFeature EnabledSessionTrackingFeature = EARSessionTrackingFeature::None;
+	
+	/** Which scene reconstruction method to use */
+	UPROPERTY(EditAnywhere, Category="AR Settings")
+	EARSceneReconstruction SceneReconstructionMethod = EARSceneReconstruction::None;
 };

@@ -120,6 +120,9 @@ public:
 	
 	/** \see UARBlueprintLibrary::GetPersonSegmentationDepthImage() */
 	UARTextureCameraImage* GetPersonSegmentationDepthImage() const;
+	
+	/** \see UARBlueprintLibrary::IsSceneReconstructionSupported() */
+	bool IsSceneReconstructionSupported(EARSessionType SessionType, EARSceneReconstruction SceneReconstructionMethod) const;
 
 	//~ FGCObject
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;

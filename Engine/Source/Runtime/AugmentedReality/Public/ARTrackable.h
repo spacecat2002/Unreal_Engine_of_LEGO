@@ -433,3 +433,21 @@ private:
 	/** The detailed info of the tracked pose */
 	FARPose3D TrackedPose;
 };
+
+UCLASS(BlueprintType)
+class AUGMENTEDREALITY_API UARMeshGeometry : public UARTrackedGeometry
+{
+	GENERATED_BODY()
+	
+public:
+	/**
+	 * Try to determine the classification of the object at a world space location
+	 * @InWorldLocation: the world location where the classification is needed
+	 * @OutClassification: the classification result
+	 * @OutClassificationLocation: the world location at where the classification is calculated
+	 * @MaxLocationDiff: the max distance between the specified world location and the classification location
+	 * @return: whether a valid classification result is calculated
+	 */
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Classification")
+	virtual bool GetObjectClassificationAtLocation(const FVector& InWorldLocation, EARObjectClassification& OutClassification, FVector& OutClassificationLocation, float MaxLocationDiff = 10.f) { return false; }
+};

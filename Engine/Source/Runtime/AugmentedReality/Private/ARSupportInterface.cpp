@@ -359,6 +359,15 @@ UARTextureCameraImage* FARSupportInterface::GetPersonSegmentationDepthImage() co
 	return nullptr;
 }
 
+bool FARSupportInterface::IsSceneReconstructionSupported(EARSessionType SessionType, EARSceneReconstruction SceneReconstructionMethod) const
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->OnIsSceneReconstructionSupported(SessionType, SceneReconstructionMethod);
+	}
+	return false;
+}
+
 #define DEFINE_AR_SI_DELEGATE_FUNCS(DelegateName) \
 FDelegateHandle FARSupportInterface::Add##DelegateName##Delegate_Handle(const F##DelegateName##Delegate& Delegate) \
 { \

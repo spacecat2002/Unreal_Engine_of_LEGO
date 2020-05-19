@@ -171,6 +171,10 @@ enum class EARObjectClassification : uint8
 	SceneObject,
 	/** A user's hand */
 	HandMesh,
+	/** A door */
+	Door,
+	/** A window */
+	Window,
 	// Add other types here...
 };
 

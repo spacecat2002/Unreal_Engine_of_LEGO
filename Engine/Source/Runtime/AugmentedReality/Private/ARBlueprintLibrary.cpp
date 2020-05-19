@@ -357,6 +357,17 @@ TArray<UARPlaneGeometry*> UARBlueprintLibrary::GetAllTrackedPlanes()
 	return ResultList;
 }
 
+TArray<UARTrackedGeometry*> UARBlueprintLibrary::GetAllTrackedGeometries()
+{
+	auto ARSystem = GetARSystem();
+	if (ARSystem.IsValid())
+	{
+		auto PinnedARSystem = ARSystem.Pin();
+		return PinnedARSystem->GetAllTrackedGeometries();
+	}
+	return {};
+}
+
 TArray<UARTrackedPoint*> UARBlueprintLibrary::GetAllTrackedPoints()
 {
 	TArray<UARTrackedPoint*> ResultList;
@@ -558,4 +569,34 @@ UARTextureCameraImage* UARBlueprintLibrary::GetPersonSegmentationDepthImage()
 	{
 		return nullptr;
 	}
+}
+
+bool UARBlueprintLibrary::IsSceneReconstructionSupported(EARSessionType SessionType, EARSceneReconstruction SceneReconstructionMethod)
+{
+	auto ARSystem = GetARSystem();
+	if (ARSystem.IsValid())
+	{
+		return ARSystem.Pin()->IsSceneReconstructionSupported(SessionType, SceneReconstructionMethod);
+	}
+	else
+	{
+		return false;
+	}
+}
+
+bool UARBlueprintLibrary::GetObjectClassificationAtLocation(const FVector& InWorldLocation, EARObjectClassification& OutClassification, FVector& OutClassificationLocation, float MaxLocationDiff)
+{
+	auto AllGeometries = GetAllGeometries();
+	for (auto Geometry : AllGeometries)
+	{
+		if (auto MeshGeometry = Cast<UARMeshGeometry>(Geometry))
+		{
+			if (MeshGeometry->GetObjectClassificationAtLocation(InWorldLocation, OutClassification, OutClassificationLocation, MaxLocationDiff))
+			{
+				return true;
+			}
+		}
+	}
+	
+	return false;
 }

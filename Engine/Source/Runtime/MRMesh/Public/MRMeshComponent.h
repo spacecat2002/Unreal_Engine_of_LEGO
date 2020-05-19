@@ -6,6 +6,7 @@
 #include "Components/PrimitiveComponent.h"
 #include "Interfaces/Interface_CollisionDataProvider.h"
 #include "PackedNormal.h"
+#include "MRMeshBufferDefines.h"
 
 #include "MRMeshComponent.generated.h"
 
@@ -21,12 +22,6 @@ DEFINE_LOG_CATEGORY_STATIC(LogMrMesh, Warning, All);
 //@todo JoeG - remove
 #ifndef PLATFORM_HOLOLENS
 #define PLATFORM_HOLOLENS 0
-#endif
-
-#if (PLATFORM_HOLOLENS || PLATFORM_IOS)
-	#define MRMESH_INDEX_TYPE uint16
-#else
-	#define MRMESH_INDEX_TYPE uint32
 #endif
 
 class IMRMesh
@@ -63,12 +58,17 @@ public:
 
 
 UCLASS(hideCategories=(Physics), meta = (BlueprintSpawnableComponent, Experimental), ClassGroup = Rendering)
-class MRMESH_API UMRMeshComponent : public UPrimitiveComponent, public IMRMesh
+class MRMESH_API UMRMeshComponent : public UPrimitiveComponent, public IMRMesh, public IInterface_CollisionDataProvider
 {
 public:
 	friend class FMRMeshProxy;
 
 	GENERATED_UCLASS_BODY()
+	
+	//~ IInterface_CollisionDataProvider
+	virtual bool GetPhysicsTriMeshData(struct FTriMeshCollisionData* CollisionData, bool InUseAllTriData) override;
+	virtual bool ContainsPhysicsTriMeshData(bool InUseAllTriData) const override;
+	//~ IInterface_CollisionDataProvider
 
 	virtual void BeginPlay() override;
 	void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -91,11 +91,25 @@ public:
 	/** Updates from HoloLens or iOS */
 	void UpdateMesh(const FVector& InLocation, const FQuat& InRotation, const FVector& Scale, TArray<FVector>& Vertices, TArray<MRMESH_INDEX_TYPE>& Indices);
 
+	UFUNCTION(BlueprintCallable, Category = "Mesh Reconstruction")
 	void SetEnableMeshOcclusion(bool bEnable);
+	
+	UFUNCTION(BlueprintPure, Category = "Mesh Reconstruction")
 	bool GetEnableMeshOcclusion() const { return bEnableOcclusion; }
-	void SetUseWireframe(bool bUseWireframe) { bUseWireframeForNoMaterial = bUseWireframe; }
+	
+	UFUNCTION(BlueprintCallable, Category = "Mesh Reconstruction")
+	void SetUseWireframe(bool bUseWireframe);
+	
+	UFUNCTION(BlueprintPure, Category = "Mesh Reconstruction")
 	bool GetUseWireframe() const { return bUseWireframeForNoMaterial; }
-
+	
+	UFUNCTION(BlueprintCallable, Category = "Mesh Reconstruction")
+	void SetWireframeColor(const FLinearColor& InColor);
+	
+	UFUNCTION(BlueprintPure, Category = "Mesh Reconstruction")
+	const FLinearColor& GetWireframeColor() const { return WireframeColor; }
+	
+	UMaterialInterface* GetMaterialToUse() const;
 
 protected:
 	virtual void OnActorEnableCollisionChanged() override;
@@ -180,4 +194,10 @@ private:
 	TArray<IMRMesh::FBrickId> BodyIds;
 
 	FOnClear OnClearEvent;
+	
+	FLinearColor WireframeColor = FLinearColor::White;
+	
+	/** Temporarily saved data pointers used for constructing the collision mesh */
+	const TArray<FVector>* TempPosition = nullptr;
+	const TArray<MRMESH_INDEX_TYPE>* TempIndices = nullptr;
 };
