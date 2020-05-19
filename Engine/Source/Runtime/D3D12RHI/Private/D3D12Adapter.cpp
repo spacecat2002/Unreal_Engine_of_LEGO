@@ -47,15 +47,6 @@ static TAutoConsoleVariable<int32> CVarD3D12GPUCrashDebuggingMode(
 	ECVF_RenderThreadSafe | ECVF_ReadOnly
 );
 
-static int32 GD3D12AllowMultiGPUInEditor = 0;
-
-static TAutoConsoleVariable<int32> CVarD3D12AllowMultiGPUInEditor(
-	TEXT("D3D12.AllowMultiGPUInEditor"),
-	GD3D12AllowMultiGPUInEditor,
-	TEXT("Enable experimental multi-GPU support in editor"),
-	ECVF_RenderThreadSafe | ECVF_ReadOnly
-);
-
 static bool CheckD3DStoredMessages()
 {
 	bool bResult = false;
@@ -681,7 +672,10 @@ void FD3D12Adapter::CreateRootDevice(bool bWithDebug)
 	GNumExplicitGPUsForRendering = 1;
 	if (Desc.NumDeviceNodes > 1)
 	{
-		if (GIsEditor && GD3D12AllowMultiGPUInEditor == 0)
+		// Can't access GAllowMultiGPUInEditor directly as its value is cached but hasn't been set by console manager due to module loading order
+		static IConsoleVariable* AllowMultiGPUInEditor = IConsoleManager::Get().FindConsoleVariable(TEXT("r.AllowMultiGPUInEditor"));
+
+		if (GIsEditor && AllowMultiGPUInEditor->GetInt() == 0)
 		{
 			UE_LOG(LogD3D12RHI, Log, TEXT("Multi-GPU is available, but skipping due to editor mode."));
 		}
