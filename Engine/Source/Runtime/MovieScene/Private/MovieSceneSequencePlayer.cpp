@@ -654,7 +654,7 @@ void UMovieSceneSequencePlayer::Initialize(UMovieSceneSequence* InSequence, cons
 		FFrameTime StartingTimeOffset = PlaybackSettings.bRandomStartTime
 			? FFrameTime(FMath::Rand() % GetFrameDuration())
 			: FMath::Clamp<FFrameTime>(SpecifiedStartOffset, 0, GetFrameDuration()-1);
-
+			
 		StartTimeWithOffset = StartTime + StartingTimeOffset;
 
 		ClockToUse = MovieScene->GetClockSource();
