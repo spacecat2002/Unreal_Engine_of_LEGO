@@ -2231,7 +2231,7 @@ bool UObject::IsDestructionThreadSafe() const
  *
  * @return true if property (or sub- properties) contain a UObject reference, false otherwise
  */
-bool FProperty::ContainsObjectReference(TArray<const FStructProperty*>& EncounteredStructProps) const
+bool FProperty::ContainsObjectReference(TArray<const FStructProperty*>& EncounteredStructProps, EPropertyObjectReferenceType InReferenceType /*= EPropertyObjectReferenceType::Strong*/) const
 {
 	return false;
 }
@@ -2242,10 +2242,10 @@ bool FProperty::ContainsObjectReference(TArray<const FStructProperty*>& Encounte
  *
  * @return true if property (or sub- properties) contain a UObject reference, false otherwise
  */
-bool FArrayProperty::ContainsObjectReference(TArray<const FStructProperty*>& EncounteredStructProps) const
+bool FArrayProperty::ContainsObjectReference(TArray<const FStructProperty*>& EncounteredStructProps, EPropertyObjectReferenceType InReferenceType /*= EPropertyObjectReferenceType::Strong*/) const
 {
 	check(Inner);
-	return Inner->ContainsObjectReference(EncounteredStructProps);
+	return Inner->ContainsObjectReference(EncounteredStructProps, InReferenceType);
 }
 
 /**
@@ -2254,11 +2254,11 @@ bool FArrayProperty::ContainsObjectReference(TArray<const FStructProperty*>& Enc
  *
  * @return true if property (or sub- properties) contain a UObject reference, false otherwise
  */
-bool FMapProperty::ContainsObjectReference(TArray<const FStructProperty*>& EncounteredStructProps) const
+bool FMapProperty::ContainsObjectReference(TArray<const FStructProperty*>& EncounteredStructProps, EPropertyObjectReferenceType InReferenceType /*= EPropertyObjectReferenceType::Strong*/) const
 {
 	check(KeyProp);
 	check(ValueProp);
-	return KeyProp->ContainsObjectReference(EncounteredStructProps) || ValueProp->ContainsObjectReference(EncounteredStructProps);
+	return KeyProp->ContainsObjectReference(EncounteredStructProps, InReferenceType) || ValueProp->ContainsObjectReference(EncounteredStructProps, InReferenceType);
 }
 
 /**
@@ -2267,10 +2267,10 @@ bool FMapProperty::ContainsObjectReference(TArray<const FStructProperty*>& Encou
 *
 * @return true if property (or sub- properties) contain a UObject reference, false otherwise
 */
-bool FSetProperty::ContainsObjectReference(TArray<const FStructProperty*>& EncounteredStructProps) const
+bool FSetProperty::ContainsObjectReference(TArray<const FStructProperty*>& EncounteredStructProps, EPropertyObjectReferenceType InReferenceType /*= EPropertyObjectReferenceType::Strong*/) const
 {
 	check(ElementProp);
-	return ElementProp->ContainsObjectReference(EncounteredStructProps);
+	return ElementProp->ContainsObjectReference(EncounteredStructProps, InReferenceType);
 }
 
 /**
@@ -2279,7 +2279,7 @@ bool FSetProperty::ContainsObjectReference(TArray<const FStructProperty*>& Encou
  *
  * @return true if property (or sub- properties) contain a UObject reference, false otherwise
  */
-bool FStructProperty::ContainsObjectReference(TArray<const FStructProperty*>& EncounteredStructProps) const
+bool FStructProperty::ContainsObjectReference(TArray<const FStructProperty*>& EncounteredStructProps, EPropertyObjectReferenceType InReferenceType /*= EPropertyObjectReferenceType::Strong*/) const
 {
 	if (EncounteredStructProps.Contains(this))
 	{
@@ -2297,7 +2297,7 @@ bool FStructProperty::ContainsObjectReference(TArray<const FStructProperty*>& En
 			FProperty* Property = Struct->PropertyLink;
 			while( Property )
 			{
-				if (Property->ContainsObjectReference(EncounteredStructProps))
+				if (Property->ContainsObjectReference(EncounteredStructProps, InReferenceType))
 				{
 					EncounteredStructProps.RemoveSingleSwap(this);
 					return true;
@@ -2310,82 +2310,21 @@ bool FStructProperty::ContainsObjectReference(TArray<const FStructProperty*>& En
 	}
 }
 
-bool FFieldPathProperty::ContainsObjectReference(TArray<const FStructProperty*>& EncounteredStructProps) const
+bool FFieldPathProperty::ContainsObjectReference(TArray<const FStructProperty*>& EncounteredStructProps, EPropertyObjectReferenceType InReferenceType /*= EPropertyObjectReferenceType::Strong*/) const
 {
-	return true;
-}
-
-
-// Returns true if this property contains a weak UObject reference.
-bool FProperty::ContainsWeakObjectReference() const
-{
-	return false;
+	return !!(InReferenceType & EPropertyObjectReferenceType::Strong);
 }
 
 // Returns true if this property contains a weak UObject reference.
-bool FArrayProperty::ContainsWeakObjectReference() const
+bool FDelegateProperty::ContainsObjectReference(TArray<const FStructProperty*>& EncounteredStructProps, EPropertyObjectReferenceType InReferenceType /*= EPropertyObjectReferenceType::Strong*/) const
 {
-	check(Inner);
-	return Inner->ContainsWeakObjectReference();
+	return !!(InReferenceType & EPropertyObjectReferenceType::Weak);
 }
 
 // Returns true if this property contains a weak UObject reference.
-bool FMapProperty::ContainsWeakObjectReference() const
+bool FMulticastDelegateProperty::ContainsObjectReference(TArray<const FStructProperty*>& EncounteredStructProps, EPropertyObjectReferenceType InReferenceType /*= EPropertyObjectReferenceType::Strong*/) const
 {
-	check(KeyProp);
-	check(ValueProp);
-	return KeyProp->ContainsWeakObjectReference() || ValueProp->ContainsWeakObjectReference();
-}
-
-// Returns true if this property contains a weak UObject reference.
-bool FSetProperty::ContainsWeakObjectReference() const
-{
-	check(ElementProp);
-	return ElementProp->ContainsWeakObjectReference();
-}
-
-// Returns true if this property contains a weak UObject reference.
-bool FStructProperty::ContainsWeakObjectReference() const
-{
-	// prevent recursion in the case of structs containing dynamic arrays of themselves
-	static TArray<const FStructProperty*> EncounteredStructProps;
-
-	if (!EncounteredStructProps.Contains(this))
-	{
-		if (!Struct)
-		{
-			UE_LOG(LogGarbage, Warning, TEXT("Broken FStructProperty does not have a UStruct: %s"), *GetFullName() );
-		}
-		else
-		{
-			EncounteredStructProps.Add(this);
-
-			for (FProperty* Property = Struct->PropertyLink; Property != NULL; Property = Property->PropertyLinkNext)
-			{
-				if (Property->ContainsWeakObjectReference())
-				{
-					EncounteredStructProps.RemoveSingleSwap(this);
-					return true;
-				}
-			}
-
-			EncounteredStructProps.RemoveSingleSwap(this);
-		}
-	}
-	
-	return false;
-}
-
-// Returns true if this property contains a weak UObject reference.
-bool FDelegateProperty::ContainsWeakObjectReference() const
-{
-	return true;
-}
-
-// Returns true if this property contains a weak UObject reference.
-bool FMulticastDelegateProperty::ContainsWeakObjectReference() const
-{
-	return true;
+	return !!(InReferenceType & EPropertyObjectReferenceType::Weak);
 }
 
 /**
@@ -2457,7 +2396,7 @@ void FObjectProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TA
  */
 void FArrayProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const FStructProperty*>& EncounteredStructProps)
 {
-	if (Inner->ContainsObjectReference(EncounteredStructProps))
+	if (Inner->ContainsObjectReference(EncounteredStructProps, EPropertyObjectReferenceType::Strong))
 	{
 		bool bUsesFreezableAllocator = EnumHasAnyFlags(ArrayFlags, EArrayPropertyFlags::UsesMemoryImageAllocator);
 
@@ -2505,7 +2444,7 @@ void FArrayProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TAr
  */
 void FMapProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const FStructProperty*>& EncounteredStructProps)
 {
-	if (ContainsObjectReference(EncounteredStructProps))
+	if (ContainsObjectReference(EncounteredStructProps, EPropertyObjectReferenceType::Strong))
 	{
 		OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_AddTMapReferencedObjects);
 		OwnerClass.ReferenceTokenStream.EmitPointer((const void*)this);
@@ -2518,7 +2457,7 @@ void FMapProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArra
 */
 void FSetProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const FStructProperty*>& EncounteredStructProps)
 {
-	if (ContainsObjectReference(EncounteredStructProps))
+	if (ContainsObjectReference(EncounteredStructProps, EPropertyObjectReferenceType::Strong))
 	{
 		OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_AddTSetReferencedObjects);
 		OwnerClass.ReferenceTokenStream.EmitPointer((const void*)this);
@@ -2545,7 +2484,7 @@ void FStructProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TA
 		return;
 	}
 	check(Struct);
-	if (ContainsObjectReference(EncounteredStructProps))
+	if (ContainsObjectReference(EncounteredStructProps, EPropertyObjectReferenceType::Strong))
 	{
 		FGCReferenceFixedArrayTokenHelper FixedArrayHelper(OwnerClass, BaseOffset + GetOffset_ForGC(), ArrayDim, ElementSize, *this);
 
