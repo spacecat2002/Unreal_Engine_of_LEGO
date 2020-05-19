@@ -28,7 +28,7 @@ limitations under the License.
 #endif
 
 #define OVRP_MAJOR_VERSION 1
-#define OVRP_MINOR_VERSION 45
+#define OVRP_MINOR_VERSION 47
 #define OVRP_PATCH_VERSION 0
 
 #define OVRP_VERSION OVRP_MAJOR_VERSION, OVRP_MINOR_VERSION, OVRP_PATCH_VERSION
@@ -45,6 +45,8 @@ limitations under the License.
 #ifndef OVRP_EXPORT
 #ifdef _WIN32
 #define OVRP_EXPORT __declspec(dllexport)
+#elif __ANDROID__
+#define OVRP_EXPORT __attribute__ ((visibility ("default")))
 #else
 #define OVRP_EXPORT
 #endif
@@ -63,6 +65,8 @@ limitations under the License.
 #define OVRP_CONSTREF(Type) const Type*
 #define OVRP_DEFAULTVALUE(Value)
 #endif
+
+#define OVRP_UNUSED(x) ((void)(x))
 
 #ifndef OVRP_MIXED_REALITY_PRIVATE
 #define OVRP_MIXED_REALITY_PRIVATE 0
@@ -352,7 +356,7 @@ typedef enum {
   ovrpController_LHand = 0x20,
   ovrpController_RHand = 0x40,
   ovrpController_Hands = ovrpController_LHand | ovrpController_RHand,
-  ovrpController_Touchpad = 0x08000000,
+  ovrpController_Touchpad_DEPRECATED = 0x08000000,
   ovrpController_LTrackedRemote = 0x01000000,
   ovrpController_RTrackedRemote = 0x02000000,
   ovrpController_Active = 0x80000000,
@@ -698,7 +702,7 @@ typedef enum {
   ovrpCameraDevice_WebCamera0 = ovrpCameraDevice_WebCamera_First + 0,
   ovrpCameraDevice_WebCamera1 = ovrpCameraDevice_WebCamera_First + 1,
   ovrpCameraDevice_WebCamera_Last = ovrpCameraDevice_WebCamera1,
-  ovrpCameraDevice_ZEDStereoCamera = 300,
+  ovrpCameraDevice_DEPRECATED_DEVICE = 300, // ovrpCameraDevice_ZEDStereoCamera before deprecation
   ovrpCameraDevice_EnumSize = 0x7fffffff
 } ovrpCameraDevice;
 #endif
@@ -1184,7 +1188,7 @@ typedef struct ovrpHandState_ {
 
   // World space position and translation of the pointer attached to the hand.
   ovrpPosef PointerPose;
-  
+
   float HandScale;
 
   // Tracking confidence. Range [0,1], 0.0 = lowest confidence, 1.0 = highest confidence.
@@ -1202,6 +1206,30 @@ typedef struct ovrpHandState_ {
   // Time stamp of the captured sample that the pose was extrapolated from.
   double SampleTimeStamp;
 } ovrpHandState;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -563,6 +563,12 @@ OVRP_EXPORT ovrpResult ovrp_GetTiledMultiResLevel(ovrpTiledMultiResLevel* level)
 /// Sets MultiRes levels
 OVRP_EXPORT ovrpResult ovrp_SetTiledMultiResLevel(ovrpTiledMultiResLevel level);
 
+/// Return if MultiRes is dynamic or not
+OVRP_EXPORT ovrpResult ovrp_GetTiledMultiResDynamic(ovrpBool* isDynamic);
+
+/// Sets if MultiRes is dynamic or not
+OVRP_EXPORT ovrpResult ovrp_SetTiledMultiResDynamic(ovrpBool isDynamic);
+
 /// Return true if the device supports GPU Util querying
 OVRP_EXPORT ovrpResult ovrp_GetGPUUtilSupported(ovrpBool* gpuUtilSupported);
 
@@ -631,6 +637,7 @@ OVRP_EXPORT ovrpResult ovrp_GetPredictedDisplayTime(int frameIndex, double* pred
 
 OVRP_EXPORT ovrpResult ovrp_GetHandTrackingEnabled(ovrpBool* handTrackingEnabled);
 OVRP_EXPORT ovrpResult ovrp_GetHandState(ovrpStep step, ovrpHand hand, ovrpHandState* handState);
+OVRP_EXPORT ovrpResult ovrp_GetHandState2(ovrpStep step, int frameIndex, ovrpHand hand, ovrpHandState* handState);
 OVRP_EXPORT ovrpResult ovrp_GetSkeleton(ovrpSkeletonType skeletonType, ovrpSkeleton* skeleton);
 OVRP_EXPORT ovrpResult ovrp_GetMesh(ovrpMeshType meshType, ovrpMesh* mesh);
 
@@ -638,6 +645,9 @@ OVRP_EXPORT ovrpResult ovrp_GetLocalTrackingSpaceRecenterCount(int* recenterCoun
 
 // Returns true if the system Hmd is in 3dof mode
 OVRP_EXPORT ovrpResult ovrp_GetSystemHmd3DofModeEnabled(ovrpBool* enabled);
+
+
+
 
 
 
