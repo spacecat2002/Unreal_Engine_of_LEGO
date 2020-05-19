@@ -3040,6 +3040,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		// Release resources that were bound to the ray tracing scene to allow them to be immediately recycled.
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
 		{
+			SCOPED_GPU_MASK(RHICmdList, FRHIGPUMask::All());
 			FViewInfo& View = Views[ViewIndex];
 			if (View.RayTracingScene.RayTracingSceneRHI)
 			{
