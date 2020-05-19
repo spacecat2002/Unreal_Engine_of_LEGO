@@ -1245,6 +1245,11 @@ public:
 		return bIsBakedAnalysisEnabled;
 	}
 
+	virtual bool IsNonRealtime() const
+	{
+		return false;
+	}
+
 	/** Updates the source's modulation controls. */
 	virtual void UpdateModulationControls(const uint32 SourceId, const FSoundModulationControls& InControls) {}
 
