@@ -8,6 +8,7 @@
 #include "Templates/EnableIf.h"
 #include "Templates/AndOrNot.h"
 #include "Templates/AreTypesEqual.h"
+#include "Templates/CopyQualifiersAndRefsFromTo.h"
 #include "Templates/IsArithmetic.h"
 #include "Templates/UnrealTypeTraits.h"
 #include "Templates/RemoveReference.h"
@@ -604,4 +605,28 @@ template <typename T>
 FORCEINLINE T ImplicitConv(typename TIdentity<T>::Type Obj)
 {
     return Obj;
+}
+
+/**
+ * ForwardAsBase will cast a reference to an rvalue reference of a base type.
+ * This allows the perfect forwarding of a reference as a base class.
+ */
+template <
+	typename T,
+	typename Base,
+	decltype(ImplicitConv<const volatile Base*>((typename TRemoveReference<T>::Type*)nullptr))* = nullptr
+>
+FORCEINLINE decltype(auto) ForwardAsBase(typename TRemoveReference<T>::Type& Obj)
+{
+	return (TCopyQualifiersAndRefsFromTo_T<T&&, Base>)Obj;
+}
+
+template <
+	typename T,
+	typename Base,
+	decltype(ImplicitConv<const volatile Base*>((typename TRemoveReference<T>::Type*)nullptr))* = nullptr
+>
+FORCEINLINE decltype(auto) ForwardAsBase(typename TRemoveReference<T>::Type&& Obj)
+{
+	return (TCopyQualifiersAndRefsFromTo_T<T&&, Base>)Obj;
 }
