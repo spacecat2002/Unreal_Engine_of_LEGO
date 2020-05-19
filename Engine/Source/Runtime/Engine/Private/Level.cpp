@@ -146,6 +146,23 @@ void FLevelPartitionOperationScope::DestroyTransientLevel(ULevel* Level)
 ULevel implementation.
 -----------------------------------------------------------------------------*/
 
+namespace LevelUtil
+{
+	TArray<FString> GetLevelExternalActorPackageNamesFromFiles(const ULevel* Level)
+	{
+		check(Level);
+		TArray<FString> ActorPackageNames;
+		IFileManager::Get().IterateDirectoryRecursively(*FPackageName::LongPackageNameToFilename(ULevel::GetExternalActorsPath(Level->GetPackage())), [&ActorPackageNames](const TCHAR* FilenameOrDirectory, bool bIsDirectory)
+			{
+				if (!bIsDirectory)
+				{
+					ActorPackageNames.Add(FPackageName::FilenameToLongPackageName(FilenameOrDirectory));
+				}
+				return true;
+			});
+		return ActorPackageNames;
+	}
+}
 
 /** Called when a level package has been dirtied. */
 FSimpleMulticastDelegate ULevel::LevelDirtiedEvent;
@@ -679,51 +696,37 @@ void ULevel::PostLoad()
 			InstancingContext.AddMapping(LevelPackage->FileName, LevelPackage->GetFName());
 		}
 
-		TArray<FString> ActorFiles;
-		IFileManager::Get().IterateDirectoryRecursively(*FPackageName::LongPackageNameToFilename(GetExternalActorsPath(LevelPackage)), [&ActorFiles](const TCHAR* FilenameOrDirectory, bool bIsDirectory)
-		{
-			if (!bIsDirectory)
-			{
-				ActorFiles.Add(FilenameOrDirectory);
-			}
-			return true;
-		});
-
+		TArray<FString> ActorPackageNames = LevelUtil::GetLevelExternalActorPackageNamesFromFiles(this);
 		TArray<FString> InstancePackageNames;
-		for (const FString& ActorFile: ActorFiles)
+		for (const FString& ActorPackageName : ActorPackageNames)
 		{
 			if (bInstanced)
 			{
-				const FString ActorPackageName = FPaths::GetBaseFilename(ActorFile);
-				const FString InstancedName = FString::Printf(TEXT("%s_InstanceOf_%s"), *LevelPackage->GetName(), *ActorPackageName);
+				const FString ActorShortPackageName = FPackageName::GetShortName(ActorPackageName);
+				const FString InstancedName = FString::Printf(TEXT("%s_InstanceOf_%s"), *LevelPackage->GetName(), *ActorShortPackageName);
 				InstancePackageNames.Add(InstancedName);
 
-				const FString LongActorPackageName = FPackageName::FilenameToLongPackageName(ActorFile);
-				InstancingContext.AddMapping(FName(*LongActorPackageName), FName(*InstancedName));
+				InstancingContext.AddMapping(FName(*ActorPackageName), FName(*InstancedName));
 			}
 		}
 
-		for (int32 i=0; i<ActorFiles.Num(); i++)
+		for (int32 i=0; i < ActorPackageNames.Num(); i++)
 		{
-			const FString& ActorFile = ActorFiles[i];
+			const FString& ActorPackageName = ActorPackageNames[i];
 
 			UPackage* ActorPackage = bInstanced ? CreatePackage(nullptr, *InstancePackageNames[i]) : nullptr;
 
-			ActorPackage = LoadPackage(ActorPackage, *ActorFile, bPackageForPIE ? LOAD_PackageForPIE : LOAD_None, nullptr, &InstancingContext);
+			ActorPackage = LoadPackage(ActorPackage, *ActorPackageName, bPackageForPIE ? LOAD_PackageForPIE : LOAD_None, nullptr, &InstancingContext);
 
-			AActor* LoadedActor = nullptr;
-			ForEachObjectWithPackage(ActorPackage, [&LoadedActor](UObject* PackageObject)
+			ForEachObjectWithPackage(ActorPackage, [this](UObject* PackageObject)
 			{
-				if (PackageObject->IsA<AActor>())
+				// There might be multiple actors per package in the case where an actor as a child actor component as we put child actor in the same package as their parent
+				if (PackageObject->IsA<AActor>() && !PackageObject->IsTemplate())
 				{
-					check(!LoadedActor);
-					LoadedActor = (AActor*)PackageObject;
+					Actors.Add((AActor*)PackageObject);
 				}
 				return true;
 			}, false);
-
-			check(LoadedActor);
-			Actors.Add(LoadedActor);
 		}
 	}
 #endif
@@ -1548,7 +1551,12 @@ void ULevel::UpdateModelComponents()
 #if WITH_EDITOR
 void ULevel::PreEditUndo()
 {
-	Super::PreEditUndo();
+	// if we are using external actors do not call into the parent `PreEditUndo` which in the end just calls Modify and dirties the level, which we want to avoid
+	// Unfortunately we cannot determine here if the properties modified through the undo are actually related to external actors...
+	if (!bUseExternalActors)
+	{
+		Super::PreEditUndo();
+	}
 
 	// Detach existing model components.  These are left in the array, so they are saved for undoing the undo.
 	for(int32 ComponentIndex = 0;ComponentIndex < ModelComponents.Num();ComponentIndex++)
@@ -2132,6 +2140,24 @@ void ULevel::ConvertAllActorsToPackaging(bool bExternal)
 			Actor->SetPackageExternal(bExternal);
 		}
 	}
+}
+
+TArray<UPackage*> ULevel::GetExternalActorPackages() const
+{
+	// Only GetExternalPackages is not enough to get to empty packages or deleted actors
+	TSet<UPackage*> ActorPackages;
+	TArray<FString> ActorPackageNames = LevelUtil::GetLevelExternalActorPackageNamesFromFiles(this);
+
+	for (const FString& PackageName : ActorPackageNames)
+	{
+		UPackage* ActorPackage = FindObject<UPackage>(nullptr, *PackageName);
+		if (ActorPackage)
+		{
+			ActorPackages.Add(ActorPackage);
+		}
+	}
+	ActorPackages.Append(GetPackage()->GetExternalPackages());
+	return ActorPackages.Array();
 }
 
 FString ULevel::GetExternalActorsPath(UPackage* InLevelPackage)

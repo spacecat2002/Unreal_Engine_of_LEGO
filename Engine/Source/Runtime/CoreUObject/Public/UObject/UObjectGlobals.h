@@ -1196,12 +1196,13 @@ COREUOBJECT_API void CheckIsClassChildOf_Internal(const UClass* Parent, const UC
  * @param	Template	the object to use for initializing the new object.  If not specified, the class's default object will be used
  * @param	bCopyTransientsFromClassDefaults	if true, copy transient from the class defaults instead of the pass in archetype ptr (often these are the same)
  * @param	InInstanceGraph						contains the mappings of instanced objects and components to their templates
+ * @param	ExternalPackage						Assign an external Package to the created object if non-null
  *
  * @return	a pointer of type T to a new object of the specified class
  */
 template< class T >
 FUNCTION_NON_NULL_RETURN_START
-	T* NewObject(UObject* Outer, const UClass* Class, FName Name = NAME_None, EObjectFlags Flags = RF_NoFlags, UObject* Template = nullptr, bool bCopyTransientsFromClassDefaults = false, FObjectInstancingGraph* InInstanceGraph = nullptr)
+	T* NewObject(UObject* Outer, const UClass* Class, FName Name = NAME_None, EObjectFlags Flags = RF_NoFlags, UObject* Template = nullptr, bool bCopyTransientsFromClassDefaults = false, FObjectInstancingGraph* InInstanceGraph = nullptr, UPackage* ExternalPackage = nullptr)
 FUNCTION_NON_NULL_RETURN_END
 {
 	if (Name == NAME_None)
@@ -1214,7 +1215,7 @@ FUNCTION_NON_NULL_RETURN_END
 	CheckIsClassChildOf_Internal(T::StaticClass(), Class);
 #endif
 
-	return static_cast<T*>(StaticConstructObject_Internal(Class, Outer, Name, Flags, EInternalObjectFlags::None, Template, bCopyTransientsFromClassDefaults, InInstanceGraph));
+	return static_cast<T*>(StaticConstructObject_Internal(Class, Outer, Name, Flags, EInternalObjectFlags::None, Template, bCopyTransientsFromClassDefaults, InInstanceGraph, false/*bAssumeTemplateIsArchetype*/, ExternalPackage));
 }
 
 template< class T >

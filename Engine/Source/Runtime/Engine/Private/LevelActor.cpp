@@ -478,8 +478,34 @@ AActor* UWorld::SpawnActor( UClass* Class, FTransform const* UserTransformPtr, c
 
 	EObjectFlags ActorFlags = SpawnParameters.ObjectFlags;
 
+	// Generate the actor's Guid
+	FGuid ActorGuid;
+	if (SpawnParameters.OverrideActorGuid.IsValid())
+	{
+		ActorGuid = SpawnParameters.OverrideActorGuid;
+	}
+	else
+	{
+		ActorGuid = FGuid::NewGuid();
+	}
+
+	// Generate and set the actor's external package if needed
+	UPackage* ExternalPackage = nullptr;
+#if WITH_EDITOR
+	// Set actor's package
+	if (SpawnParameters.OverridePackage)
+	{
+		ExternalPackage = SpawnParameters.OverridePackage;
+	}
+	else if (LevelToSpawnIn->bUseExternalActors && SpawnParameters.bCreateActorPackage && !(SpawnParameters.ObjectFlags & RF_Transient))
+	{
+		// @todo FH: needs to handle mark package dirty and asset creation notification
+		ExternalPackage = ULevel::CreateActorPackage(LevelToSpawnIn->GetPackage(), ActorGuid);
+	}
+#endif
+
 	// actually make the actor object
-	AActor* const Actor = NewObject<AActor>(LevelToSpawnIn, Class, NewActorName, ActorFlags, Template);
+	AActor* const Actor = NewObject<AActor>(LevelToSpawnIn, Class, NewActorName, ActorFlags, Template, false/*bCopyTransientsFromClassDefaults*/, nullptr/*InInstanceGraph*/, ExternalPackage);
 	
 	check(Actor);
 	check(Actor->GetLevel() == LevelToSpawnIn);
@@ -491,17 +517,7 @@ AActor* UWorld::SpawnActor( UClass* Class, FTransform const* UserTransformPtr, c
 #if WITH_EDITOR
 	Actor->ClearActorLabel(); // Clear label on newly spawned actors
 
-	// Set actor's Guid
-	FGuid ActorGuid;
-	if (SpawnParameters.OverrideActorGuid.IsValid())
-	{
-		ActorGuid = SpawnParameters.OverrideActorGuid;
-	}
-	else
-	{
-		ActorGuid = FGuid::NewGuid();
-	}
-
+	// Set the actor's guid
 	FSetActorGuid SetActorGuid(Actor, ActorGuid);
 
 	if (SpawnParameters.OverrideParentComponent)
@@ -516,18 +532,6 @@ AActor* UWorld::SpawnActor( UClass* Class, FTransform const* UserTransformPtr, c
 	}
 	LevelToSpawnIn->Actors.Add( Actor );
 	LevelToSpawnIn->ActorsForGC.Add(Actor);
-
-#if WITH_EDITOR
-	// Set actor's package
-	if (SpawnParameters.OverridePackage)
-	{
-		Actor->SetExternalPackage(SpawnParameters.OverridePackage);
-	}
-	else if (LevelToSpawnIn->bUseExternalActors && SpawnParameters.bCreateActorPackage && !(SpawnParameters.ObjectFlags & RF_Transient))
-	{
-		Actor->SetPackageExternal(true, false);
-	}
-#endif
 
 #if PERF_SHOW_MULTI_PAWN_SPAWN_FRAMES
 	if( Cast<APawn>(Actor) )
@@ -549,6 +553,11 @@ AActor* UWorld::SpawnActor( UClass* Class, FTransform const* UserTransformPtr, c
 #endif //WITH_EDITOR
 
 	Actor->PostSpawnInitialize(UserTransform, SpawnParameters.Owner, SpawnParameters.Instigator, SpawnParameters.IsRemoteOwned(), SpawnParameters.bNoFail, SpawnParameters.bDeferConstruction);
+
+	if (ExternalPackage)
+	{
+		LevelToSpawnIn->GetPackage()->SetDirtyFlag(false);
+	}
 
 	if (Actor->IsPendingKill() && !SpawnParameters.bNoFail)
 	{
