@@ -5581,7 +5581,7 @@ struct TFieldRange
 // Find a typed field in a struct.
 //
 template <class T>
-UE_DEPRECATED(4.25, "FindField will no longer return properties. Use FindProperty instead or FindUField if you want to find functions or enums.")
+UE_DEPRECATED(4.25, "FindField will no longer return properties. Use FindFProperty instead or FindUField if you want to find functions or enums.")
  T* FindField( const UStruct* Owner, FName FieldName )
 {
 	// We know that a "none" field won't exist in this Struct
