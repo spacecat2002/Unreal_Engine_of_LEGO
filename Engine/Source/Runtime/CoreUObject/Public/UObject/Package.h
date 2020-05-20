@@ -275,7 +275,15 @@ public:
 #endif
 
 	/**
-	* Marks/Unmarks the package's bDirty flag
+	 * Clear the package dirty flag without any transaction tracking
+	 */
+	void ClearDirtyFlag()
+	{
+		bDirty = false;
+	}
+
+	/**
+	* Marks/Unmarks the package's bDirty flag, save the package to the transaction buffer if a transaction is ongoing
 	*/
 	void SetDirtyFlag( bool bIsDirty );
 

@@ -478,6 +478,8 @@ AActor* UWorld::SpawnActor( UClass* Class, FTransform const* UserTransformPtr, c
 
 	EObjectFlags ActorFlags = SpawnParameters.ObjectFlags;
 
+	UPackage* ExternalPackage = nullptr;
+#if WITH_EDITOR
 	// Generate the actor's Guid
 	FGuid ActorGuid;
 	if (SpawnParameters.OverrideActorGuid.IsValid())
@@ -490,8 +492,6 @@ AActor* UWorld::SpawnActor( UClass* Class, FTransform const* UserTransformPtr, c
 	}
 
 	// Generate and set the actor's external package if needed
-	UPackage* ExternalPackage = nullptr;
-#if WITH_EDITOR
 	// Set actor's package
 	if (SpawnParameters.OverridePackage)
 	{
@@ -528,6 +528,12 @@ AActor* UWorld::SpawnActor( UClass* Class, FTransform const* UserTransformPtr, c
 
 	if ( GUndo )
 	{
+		// if we are spawning an external actor, clear the dirty flag without capturing in the transaction beforehand
+		// This allows the transaction to capture the package as not being dirty when capturing its current state, which is what we need for proper external actor behavior
+		if (ExternalPackage)
+		{
+			LevelToSpawnIn->GetPackage()->ClearDirtyFlag();
+		}
 		ModifyLevel( LevelToSpawnIn );
 	}
 	LevelToSpawnIn->Actors.Add( Actor );
@@ -554,9 +560,10 @@ AActor* UWorld::SpawnActor( UClass* Class, FTransform const* UserTransformPtr, c
 
 	Actor->PostSpawnInitialize(UserTransform, SpawnParameters.Owner, SpawnParameters.Instigator, SpawnParameters.IsRemoteOwned(), SpawnParameters.bNoFail, SpawnParameters.bDeferConstruction);
 
+	// if we are spawning an external actor, clear the dirty flag after post spawn initialize which might have dirtied the level package through running construction scripts
 	if (ExternalPackage)
 	{
-		LevelToSpawnIn->GetPackage()->SetDirtyFlag(false);
+		LevelToSpawnIn->GetPackage()->ClearDirtyFlag();
 	}
 
 	if (Actor->IsPendingKill() && !SpawnParameters.bNoFail)

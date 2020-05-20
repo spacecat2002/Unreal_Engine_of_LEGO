@@ -145,7 +145,7 @@ void FLevelPartitionOperationScope::DestroyTransientLevel(ULevel* Level)
 /*-----------------------------------------------------------------------------
 ULevel implementation.
 -----------------------------------------------------------------------------*/
-
+#if WITH_EDITOR
 namespace LevelUtil
 {
 	TArray<FString> GetLevelExternalActorPackageNamesFromFiles(const ULevel* Level)
@@ -163,6 +163,7 @@ namespace LevelUtil
 		return ActorPackageNames;
 	}
 }
+#endif
 
 /** Called when a level package has been dirtied. */
 FSimpleMulticastDelegate ULevel::LevelDirtiedEvent;
