@@ -284,10 +284,6 @@ private:
 	{
 		return !!(Options & EFastReferenceCollectorOptions::IgnoreNoOpTokens);
 	}
-	constexpr FORCEINLINE bool ShouldIgnoreWeakReferences() const
-	{
-		return !!(Options & EFastReferenceCollectorOptions::IgnoreWeakReferences);
-	}
 
 	class FCollectorTaskQueue
 	{
