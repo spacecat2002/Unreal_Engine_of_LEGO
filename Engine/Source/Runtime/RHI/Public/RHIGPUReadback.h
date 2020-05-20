@@ -99,7 +99,7 @@ public:
 	void* Lock(uint32 NumBytes) override;
 	void Unlock() override;
 
-	void LockTexture(void*& OutBufferPtr, int32& OutRowPitchInPixels);
+	void LockTexture(FRHICommandListImmediate& RHICmdList, void*& OutBufferPtr, int32& OutRowPitchInPixels);
 
 private:
 
