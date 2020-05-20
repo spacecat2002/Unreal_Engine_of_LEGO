@@ -424,8 +424,6 @@ public:
 
 			D3D12_EXISTING_COLLECTION_DESC Result = {};
 			Result.pExistingCollection = StateObject;
-			Result.pExports = ExportDescs.GetData();
-			Result.NumExports = ExportDescs.Num();
 
 			return Result;
 		}
@@ -443,7 +441,6 @@ public:
 
 		static constexpr uint32 MaxExports = 4;
 		TArray<FString, TFixedAllocator<MaxExports>> ExportNames;
-		TArray<D3D12_EXPORT_DESC, TFixedAllocator<MaxExports>> ExportDescs;
 
 		float CompileTimeMS = 0.0f;
 	};
@@ -557,20 +554,9 @@ public:
 				RenamedEntryPoints.Add(Entry.GetPrimaryExportNameChars());
 			}
 
-
-			for (const FString& ExportName : Entry.ExportNames)
-			{
-				D3D12_EXPORT_DESC ExportDesc = {};
-				ExportDesc.Name = *ExportName;
-				ExportDesc.Flags = D3D12_EXPORT_FLAG_NONE;
-				Entry.ExportDescs.Add(ExportDesc);
-			}
-
 			// Validate that memory reservation was correct
 
 			check(Entry.ExportNames.Num() <= Entry.MaxExports);
-			check(Entry.ExportDescs.Num() <= Entry.MaxExports);
-			check(Entry.ExportDescs.Num() != 0);
 
 			FDXILLibrary Library;
 			Library.InitFromDXIL(Shader->ShaderBytecode, OriginalEntryPoints.GetData(), RenamedEntryPoints.GetData(), OriginalEntryPoints.Num());
