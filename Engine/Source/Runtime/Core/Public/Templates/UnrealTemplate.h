@@ -101,10 +101,16 @@ template <typename T, SIZE_T N> CONSTEXPR SIZE_T GetNum(      T (&&Container)[N]
 template <typename T, SIZE_T N> CONSTEXPR SIZE_T GetNum(const T (& Container)[N]) { return N; }
 template <typename T, SIZE_T N> CONSTEXPR SIZE_T GetNum(const T (&&Container)[N]) { return N; }
 
+/**
+ * Gets the number of items in an initializer list.
+ *
+ * The return type is int32 for compatibility with other code in the engine.
+ * Realistically, an initializer list should not exceed the limits of int32.
+ */
 template <typename T>
-CONSTEXPR SIZE_T GetNum(std::initializer_list<T> List)
+CONSTEXPR int32 GetNum(std::initializer_list<T> List)
 {
-	return List.size();
+	return static_cast<int32>(List.size());
 }
 
 /**
