@@ -7,6 +7,7 @@
 #include "MetalRHIPrivate.h"
 #include "MetalShaderTypes.h"
 #include "MetalGraphicsPipelineState.h"
+#include "MetalCommandBufferFence.h"
 #include "MetalCommandEncoder.h"
 #include "MetalCommandBuffer.h"
 #include "MetalComputeCommandEncoder.h"
