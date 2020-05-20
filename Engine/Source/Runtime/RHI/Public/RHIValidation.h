@@ -582,6 +582,10 @@ public:
 	{
 		RHI->RHITransferTexture(Texture, Rect, SrcGPUIndex, DestGPUIndex, bPullData);
 	}
+	virtual void RHITransferTextures(const TArrayView<const FTransferTextureParams> Params) override final
+	{
+		RHI->RHITransferTextures(Params);
+	}
 
 	/**
 	* Creates a Array RHI texture resource

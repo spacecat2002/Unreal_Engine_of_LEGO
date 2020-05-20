@@ -295,6 +295,15 @@ struct FCopyBufferRegionParams
 	uint64 NumBytes;
 };
 
+struct FTransferTextureParams
+{
+	FRHITexture2D* Texture;
+	FIntRect Rect;
+	uint32 SrcGPUIndex;
+	uint32 DestGPUIndex;
+	bool PullData;
+};
+
 /** The interface RHI command context. Sometimes the RHI handles these. On platforms that can processes command lists in parallel, it is a separate object. */
 class IRHICommandContext : public IRHIComputeContext
 {

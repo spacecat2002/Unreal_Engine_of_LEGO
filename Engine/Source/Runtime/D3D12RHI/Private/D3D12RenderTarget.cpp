@@ -538,6 +538,71 @@ void FD3D12DynamicRHI::RHITransferTexture(FRHITexture2D* TextureRHI, FIntRect Re
 	DEBUG_RHI_EXECUTE_COMMAND_LIST(this);
 }
 
+void FD3D12DynamicRHI::RHITransferTextures(const TArrayView<const FTransferTextureParams> Params)
+{
+	FD3D12Adapter& Adapter = GetAdapter();
+
+	FRHIGPUMask SrcAndDestMask;
+
+	for (const auto& Param : Params)
+	{
+		FRHITexture2D* TextureRHI = Param.Texture;
+		FIntRect Rect = Param.Rect;
+		uint32 SrcGPUIndex = Param.SrcGPUIndex;
+		uint32 DestGPUIndex = Param.DestGPUIndex;
+		bool PullData = Param.PullData;
+
+		FD3D12Texture2D* SrcTexture2D = ResourceCast(TextureRHI->GetTexture2D(), SrcGPUIndex);
+		FD3D12Texture2D* DestTexture2D = ResourceCast(TextureRHI->GetTexture2D(), DestGPUIndex);
+
+		SrcAndDestMask |= FRHIGPUMask::FromIndex(SrcGPUIndex) | FRHIGPUMask::FromIndex(DestGPUIndex);
+
+		{
+			FD3D12CommandContext& SrcContext = Adapter.GetDevice(SrcGPUIndex)->GetDefaultCommandContext();
+			FD3D12DynamicRHI::TransitionResource(SrcContext.CommandListHandle, SrcTexture2D->GetResource(), D3D12_RESOURCE_STATE_COPY_SOURCE, 0);
+
+			FD3D12CommandContext& DestContext = Adapter.GetDevice(DestGPUIndex)->GetDefaultCommandContext();
+			FD3D12DynamicRHI::TransitionResource(DestContext.CommandListHandle, DestTexture2D->GetResource(), D3D12_RESOURCE_STATE_COPY_DEST, 0);
+		}
+	}
+
+	RHIMultiGPULockstep(SrcAndDestMask);
+
+	for (const auto& Param : Params)
+	{
+		FRHITexture2D* TextureRHI = Param.Texture;
+		FIntRect Rect = Param.Rect;
+		uint32 SrcGPUIndex = Param.SrcGPUIndex;
+		uint32 DestGPUIndex = Param.DestGPUIndex;
+		bool PullData = Param.PullData;
+
+		FD3D12Texture2D* SrcTexture2D = ResourceCast(TextureRHI->GetTexture2D(), SrcGPUIndex);
+		FD3D12Texture2D* DestTexture2D = ResourceCast(TextureRHI->GetTexture2D(), DestGPUIndex);
+
+		ensureMsgf(Rect.Min.X >= 0 && Rect.Min.Y >= 0 && Rect.Max.X >= 0 && Rect.Max.Y >= 0, TEXT("Invalid rect for texture transfer: %i, %i, %i, %i"), Rect.Min.X, Rect.Min.Y, Rect.Max.X, Rect.Max.Y);
+		D3D12_BOX Box = { (UINT)Rect.Min.X, (UINT)Rect.Min.Y, 0, (UINT)Rect.Max.X, (UINT)Rect.Max.Y, 1 };
+
+		CD3DX12_TEXTURE_COPY_LOCATION SrcLocation(SrcTexture2D->GetResource()->GetResource(), 0);
+		CD3DX12_TEXTURE_COPY_LOCATION DestLocation(DestTexture2D->GetResource()->GetResource(), 0);
+
+		FD3D12CommandContext& Context = Adapter.GetDevice(PullData ? DestGPUIndex : SrcGPUIndex)->GetDefaultCommandContext();
+
+		Context.CommandListHandle->CopyTextureRegion(
+			&DestLocation,
+			Box.left, Box.top, Box.front,
+			&SrcLocation,
+			&Box);
+
+		Context.numCopies++;
+
+	}
+
+	RHIMultiGPULockstep(SrcAndDestMask);
+
+	DEBUG_RHI_EXECUTE_COMMAND_LIST(this);
+}
+
+
 static uint32 ComputeBytesPerPixel(DXGI_FORMAT Format)
 {
 	uint32 BytesPerPixel = 0;

@@ -771,6 +771,7 @@ public:
 	*/
 	// FlushType: Flush RHI Thread
 	virtual void RHITransferTexture(FRHITexture2D* Texture, FIntRect Rect, uint32 SrcGPUIndex, uint32 DestGPUIndex, bool PullData) { unimplemented(); };
+	virtual void RHITransferTextures(const TArrayView<const FTransferTextureParams> Params) { unimplemented(); };
 
 	/**
 	* Creates a Array RHI texture resource
