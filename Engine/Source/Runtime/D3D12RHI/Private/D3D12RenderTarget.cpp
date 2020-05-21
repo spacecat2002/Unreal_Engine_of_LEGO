@@ -547,22 +547,21 @@ void FD3D12DynamicRHI::RHITransferTextures(const TArrayView<const FTransferTextu
 	for (const auto& Param : Params)
 	{
 		FRHITexture2D* TextureRHI = Param.Texture;
-		FIntRect Rect = Param.Rect;
 		uint32 SrcGPUIndex = Param.SrcGPUIndex;
 		uint32 DestGPUIndex = Param.DestGPUIndex;
 		bool PullData = Param.PullData;
 
-		FD3D12Texture2D* SrcTexture2D = ResourceCast(TextureRHI->GetTexture2D(), SrcGPUIndex);
-		FD3D12Texture2D* DestTexture2D = ResourceCast(TextureRHI->GetTexture2D(), DestGPUIndex);
+		FD3D12TextureBase* SrcTexture = FD3D12CommandContext::RetrieveTextureBase(TextureRHI, SrcGPUIndex);
+		FD3D12TextureBase* DestTexture = FD3D12CommandContext::RetrieveTextureBase(TextureRHI, DestGPUIndex);
 
 		SrcAndDestMask |= FRHIGPUMask::FromIndex(SrcGPUIndex) | FRHIGPUMask::FromIndex(DestGPUIndex);
 
 		{
 			FD3D12CommandContext& SrcContext = Adapter.GetDevice(SrcGPUIndex)->GetDefaultCommandContext();
-			FD3D12DynamicRHI::TransitionResource(SrcContext.CommandListHandle, SrcTexture2D->GetResource(), D3D12_RESOURCE_STATE_COPY_SOURCE, 0);
+			FD3D12DynamicRHI::TransitionResource(SrcContext.CommandListHandle, SrcTexture->GetResource(), D3D12_RESOURCE_STATE_COPY_SOURCE, 0);
 
 			FD3D12CommandContext& DestContext = Adapter.GetDevice(DestGPUIndex)->GetDefaultCommandContext();
-			FD3D12DynamicRHI::TransitionResource(DestContext.CommandListHandle, DestTexture2D->GetResource(), D3D12_RESOURCE_STATE_COPY_DEST, 0);
+			FD3D12DynamicRHI::TransitionResource(DestContext.CommandListHandle, DestTexture->GetResource(), D3D12_RESOURCE_STATE_COPY_DEST, 0);
 		}
 	}
 
@@ -571,19 +570,22 @@ void FD3D12DynamicRHI::RHITransferTextures(const TArrayView<const FTransferTextu
 	for (const auto& Param : Params)
 	{
 		FRHITexture2D* TextureRHI = Param.Texture;
-		FIntRect Rect = Param.Rect;
 		uint32 SrcGPUIndex = Param.SrcGPUIndex;
 		uint32 DestGPUIndex = Param.DestGPUIndex;
 		bool PullData = Param.PullData;
 
-		FD3D12Texture2D* SrcTexture2D = ResourceCast(TextureRHI->GetTexture2D(), SrcGPUIndex);
-		FD3D12Texture2D* DestTexture2D = ResourceCast(TextureRHI->GetTexture2D(), DestGPUIndex);
+		FD3D12TextureBase* SrcTexture = FD3D12CommandContext::RetrieveTextureBase(TextureRHI, SrcGPUIndex);
+		FD3D12TextureBase* DestTexture = FD3D12CommandContext::RetrieveTextureBase(TextureRHI, DestGPUIndex);
 
-		ensureMsgf(Rect.Min.X >= 0 && Rect.Min.Y >= 0 && Rect.Max.X >= 0 && Rect.Max.Y >= 0, TEXT("Invalid rect for texture transfer: %i, %i, %i, %i"), Rect.Min.X, Rect.Min.Y, Rect.Max.X, Rect.Max.Y);
-		D3D12_BOX Box = { (UINT)Rect.Min.X, (UINT)Rect.Min.Y, 0, (UINT)Rect.Max.X, (UINT)Rect.Max.Y, 1 };
+		ensureMsgf(
+			Param.Min.X >= 0 && Param.Min.Y >= 0 && Param.Min.Z >= 0 &&
+			Param.Max.X >= 0 && Param.Max.Y >= 0 && Param.Max.Z >= 0,
+			TEXT("Invalid rect for texture transfer: %i, %i, %i, %i"), Param.Min.X, Param.Min.Y, Param.Min.Z, Param.Max.X, Param.Max.Y, Param.Max.Z);
 
-		CD3DX12_TEXTURE_COPY_LOCATION SrcLocation(SrcTexture2D->GetResource()->GetResource(), 0);
-		CD3DX12_TEXTURE_COPY_LOCATION DestLocation(DestTexture2D->GetResource()->GetResource(), 0);
+		D3D12_BOX Box = { (UINT)Param.Min.X, (UINT)Param.Min.Y, (UINT)Param.Min.Z, (UINT)Param.Max.X, (UINT)Param.Max.Y, (UINT)Param.Max.Z };
+
+		CD3DX12_TEXTURE_COPY_LOCATION SrcLocation(SrcTexture->GetResource()->GetResource(), 0);
+		CD3DX12_TEXTURE_COPY_LOCATION DestLocation(DestTexture->GetResource()->GetResource(), 0);
 
 		FD3D12CommandContext& Context = Adapter.GetDevice(PullData ? DestGPUIndex : SrcGPUIndex)->GetDefaultCommandContext();
 

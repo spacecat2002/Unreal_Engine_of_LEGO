@@ -298,7 +298,8 @@ struct FCopyBufferRegionParams
 struct FTransferTextureParams
 {
 	FRHITexture2D* Texture;
-	FIntRect Rect;
+	FIntVector Min;
+	FIntVector Max;
 	uint32 SrcGPUIndex;
 	uint32 DestGPUIndex;
 	bool PullData;
