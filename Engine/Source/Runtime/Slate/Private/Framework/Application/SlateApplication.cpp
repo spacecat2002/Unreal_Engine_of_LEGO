@@ -339,15 +339,6 @@ public:
 		const FWidgetPath& RoutingPath;
 	};
 
-	static void LogEvent( FSlateApplication* ThisApplication, const FInputEvent& Event, const FReplyBase& Reply )
-	{
-		TSharedPtr<IWidgetReflector> Reflector = ThisApplication->WidgetReflectorPtr.Pin();
-		if (Reflector.IsValid() && Reply.IsEventHandled())
-		{
-			Reflector->OnEventProcessed( Event, Reply );
-		}
-	}
-
 	/**
 	 * Route an event along a focus path (as opposed to PointerPath)
 	 *
@@ -384,8 +375,6 @@ public:
 			Reply = Lambda( ArrangedWidget, TranslatedEvent ).SetHandler( ArrangedWidget.Widget );
 			ProcessReply(ThisApplication, RoutingPath, Reply, WidgetsUnderCursor, &TranslatedEvent);
 		}
-
-		LogEvent(ThisApplication, EventCopy, Reply);
 
 		return Reply;
 	}
@@ -1059,13 +1048,6 @@ void FSlateApplication::DrawWindowAndChildren( const TSharedRef<SWindow>& Window
 		if ( bCapturingFromThisWindow || (WidgetReflector.IsValid() && WidgetReflector->ReflectorNeedsToDrawIn(WindowToDraw)) )
 		{
 			MaxLayerId = WidgetReflector->Visualize( DrawWindowArgs.WidgetsToVisualizeUnderCursor, WindowElementList, MaxLayerId );
-		}
-
-		// Visualize pointer presses and pressed keys for demo-recording purposes.
-		const bool bVisualiseMouseClicks = WidgetReflector.IsValid() && PlatformApplication->Cursor.IsValid() && PlatformApplication->Cursor->GetType() != EMouseCursor::None;
-		if (bVisualiseMouseClicks )
-		{
-			MaxLayerId = WidgetReflector->VisualizeCursorAndKeys( WindowElementList, MaxLayerId );
 		}
 
 #endif
