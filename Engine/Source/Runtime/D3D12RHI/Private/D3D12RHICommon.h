@@ -171,12 +171,16 @@ public:
 			}
 			ObjectOut->LinkedObjects.Objects[GPUIndex] = NewObject;
 		}
-		ObjectOut->LinkedObjects.GPUMask = GPUMask;
 
-		// Copy the LinkedObjects array to all of the other linked objects.
-		for (auto GPUIterator = ++FRHIGPUMask::FIterator(GPUMask); GPUIterator; ++GPUIterator)
+		if (ObjectOut != nullptr)
 		{
-			ObjectOut->GetLinkedObject(*GPUIterator)->LinkedObjects = ObjectOut->LinkedObjects;
+			ObjectOut->LinkedObjects.GPUMask = GPUMask;
+
+			// Copy the LinkedObjects array to all of the other linked objects.
+			for (auto GPUIterator = ++FRHIGPUMask::FIterator(GPUMask); GPUIterator; ++GPUIterator)
+			{
+				ObjectOut->GetLinkedObject(*GPUIterator)->LinkedObjects = ObjectOut->LinkedObjects;
+			}
 		}
 #else
 		check(GPUMask == FRHIGPUMask::GPU0());
