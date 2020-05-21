@@ -4,35 +4,35 @@
 #include "UObject/SavePackage.h"
 
 #if UE_WITH_SAVEPACKAGE
-#include "UObject/SavePackageUtilities.h"
-#include "UObject/ObjectMacros.h"
-#include "UObject/UObjectGlobals.h"
-#include "UObject/UObjectHash.h"
-#include "UObject/Object.h"
-#include "UObject/LinkerSave.h"
-#include "UObject/EditorObjectVersion.h"
-#include "UObject/AsyncWorkSequence.h"
-#include "UObject/DebugSerializationFlags.h"
-
+#include "Async/ParallelFor.h"
 #include "Blueprint/BlueprintSupport.h"
-
+#include "HAL/FileManager.h"
+#include "Internationalization/TextPackageNamespaceUtil.h"
+#include "IO/IoDispatcher.h"
+#include "Misc/ConfigCacheIni.h"
+#include "Misc/FeedbackContext.h"
+#include "Misc/MessageDialog.h"
+#include "Misc/PackageName.h"
+#include "Misc/ScopedSlowTask.h"
+#include "Misc/SecureHash.h"
+#include "ProfilingDebugging/CookStats.h"
+#include "Serialization/ArchiveUObjectFromStructuredArchive.h"
+#include "Serialization/ArchiveStackTrace.h"
+#include "Serialization/Formatters/JsonArchiveOutputFormatter.h"
+#include "Serialization/LargeMemoryWriter.h"
 #include "Serialization/PropertyLocalizationDataGathering.h"
 #include "Serialization/UnversionedPropertySerialization.h"
-#include "Serialization/LargeMemoryWriter.h"
-#include "Serialization/ArchiveUObjectFromStructuredArchive.h"
-#include "Serialization/Formatters/JsonArchiveOutputFormatter.h"
-#include "Serialization/ArchiveStackTrace.h"
-
-#include "IO/IoDispatcher.h"
-
-#include "ProfilingDebugging/CookStats.h"
-#include "Misc/MessageDialog.h"
-#include "Misc/SecureHash.h"
-#include "Misc/ConfigCacheIni.h"
-#include "Misc/ScopedSlowTask.h"
-#include "Misc/FeedbackContext.h"
-
-#include "Async/ParallelFor.h"
+#include "UObject/AsyncWorkSequence.h"
+#include "UObject/DebugSerializationFlags.h"
+#include "UObject/EditorObjectVersion.h"
+#include "UObject/LinkerSave.h"
+#include "UObject/Object.h"
+#include "UObject/ObjectMacros.h"
+#include "UObject/ObjectRedirector.h"
+#include "UObject/Package.h"
+#include "UObject/SavePackageUtilities.h"
+#include "UObject/UObjectGlobals.h"
+#include "UObject/UObjectHash.h"
 
 #if ENABLE_COOK_STATS
 #include "ProfilingDebugging/ScopedTimers.h"
@@ -1784,7 +1784,7 @@ ESavePackageResult ValidateImports(FSaveContext& SaveContext)
 		}
 
 		// if this import shares a outer with top level object of this package then the reference is acceptable
-		if (!SaveContext.IsCooking() && IsInAnyTopLevelObject(Import) || AnyTopLevelObjectIsIn(Import) || AnyTopLevelObjectHasSameOutermostObject(Import))
+		if (!SaveContext.IsCooking() && (IsInAnyTopLevelObject(Import) || AnyTopLevelObjectIsIn(Import) || AnyTopLevelObjectHasSameOutermostObject(Import)))
 		{
 			continue;
 		}

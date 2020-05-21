@@ -5,8 +5,8 @@
 #include "CoreMinimal.h"
 
 class FLinker;
-class FOutputDevice;
 struct FLinkerExportObject;
+class FOutputDevice;
 
 class FLinkerDiff
 {

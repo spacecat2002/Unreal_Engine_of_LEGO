@@ -1,14 +1,14 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "UObject/LinkerDiff.h"
-#include "UObject/Linker.h"
 
-#include "Misc/OutputDevice.h"
 #include "Algo/Transform.h"
-
 #include "Containers/StringFwd.h"
+#include "Misc/OutputDevice.h"
 #include "Misc/StringBuilder.h"
-
+#include "UObject/Linker.h"
+#include "UObject/LinkerSave.h"
+#include "UObject/Package.h"
 
 FLinkerDiff FLinkerDiff::CompareLinkers(FLinker* LHSLinker, FLinker* RHSLinker)
 {

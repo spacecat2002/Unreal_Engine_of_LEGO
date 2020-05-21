@@ -1,18 +1,30 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "UObject/SavePackageUtilities.h"
-#include "UObject/SavePackage.h"
+
+#include "Blueprint/BlueprintSupport.h"
 #include "CoreMinimal.h"
-
+#include "HAL/FileManager.h"
 #include "Interfaces/ITargetPlatform.h"
-#include "UObject/AsyncWorkSequence.h"
-#include "UObject/GCScopeLock.h"
-
+#include "Misc/ConfigCacheIni.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Paths.h"
+#include "Misc/ScopedSlowTask.h"
 #include "Serialization/BulkData.h"
 #include "Serialization/BulkDataManifest.h"
 #include "Serialization/LargeMemoryWriter.h"
-
-#include "Misc/ScopedSlowTask.h"
+#include "UObject/AsyncWorkSequence.h"
+#include "UObject/Class.h"
+#include "UObject/GCScopeLock.h"
+#include "UObject/Linker.h"
+#include "UObject/LinkerLoad.h"
+#include "UObject/LinkerSave.h"
+#include "UObject/Object.h"
+#include "UObject/Package.h"
+#include "UObject/SavePackage.h"
+#include "UObject/UnrealType.h"
+#include "UObject/UObjectHash.h"
+#include "UObject/UObjectThreadContext.h"
 
 DEFINE_LOG_CATEGORY(LogSavePackage);
 

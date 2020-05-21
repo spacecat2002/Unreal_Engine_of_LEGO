@@ -3,14 +3,17 @@
 #pragma once
 
 #include "Containers/Array.h"
-#include "Containers/Set.h"
 #include "Containers/Map.h"
-#include "UObject/NameTypes.h"
+#include "Containers/Set.h"
+#include "HAL/ThreadSingleton.h"
+#include "ProfilingDebugging/CookStats.h"
 #include "Serialization/ArchiveObjectCrc32.h"
 #include "Serialization/ArchiveStackTrace.h"
-#include "ProfilingDebugging/CookStats.h"
+#include "UObject/NameTypes.h"
+#include "UObject/UObjectMarks.h"
 
 class FMD5;
+class FSavePackageContext;
 template<typename StateType> class TAsyncWorkSequence;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogSavePackage, Log, All);
