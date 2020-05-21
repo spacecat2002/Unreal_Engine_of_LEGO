@@ -35,9 +35,11 @@ This structure allows a single RHI to control several different hardware setups.
 
 #pragma once
 
+THIRD_PARTY_INCLUDES_START
 #if PLATFORM_WINDOWS || PLATFORM_HOLOLENS
 #include "dxgidebug.h"
 #endif // PLATFORM_WINDOWS || PLATFORM_HOLOLENS
+THIRD_PARTY_INCLUDES_END
 
 class FD3D12DynamicRHI;
 
