@@ -4,7 +4,7 @@
 	InstancedStaticMesh.cpp: Static mesh rendering code.
 =============================================================================*/
 
-#include "InstancedStaticMesh.h"
+#include "Engine/InstancedStaticMesh.h"
 #include "AI/NavigationSystemBase.h"
 #include "Engine/MapBuildDataRegistry.h"
 #include "Components/LightComponent.h"
@@ -45,6 +45,10 @@
 #include "UObject/EditorObjectVersion.h"
 #include "UObject/RenderingObjectVersion.h"
 
+
+#if WITH_EDITOR
+#include "Rendering/StaticLightingSystemInterface.h"
+#endif
 
 IMPLEMENT_TYPE_LAYOUT(FInstancedStaticMeshVertexFactoryShaderParameters);
 
@@ -659,9 +663,10 @@ void FInstancedStaticMeshVertexFactory::InitRHI()
 			FVertexDeclarationElementList StreamElements;
 			StreamElements.Add(AccessPositionStreamComponent(Data.PositionComponent, 0));
 
+			bAddNormal = bAddNormal && Data.TangentBasisComponents[1].VertexBuffer != NULL;
 			if (bAddNormal)
 			{
-				StreamElements.Add(AccessPositionStreamComponent(Data.TangentBasisComponents[2], 2));
+				StreamElements.Add(AccessStreamComponent(Data.TangentBasisComponents[1], 2, InputStreamType));
 			}
 
 			if (bInstanced)
@@ -1470,6 +1475,15 @@ void UInstancedStaticMeshComponent::ApplyComponentInstanceData(FInstancedStaticM
 #endif
 }
 
+void UInstancedStaticMeshComponent::FlushInstanceUpdateCommands()
+{
+	InstanceUpdateCmdBuffer.Reset();
+
+	FStaticMeshInstanceData RenderInstanceData = FStaticMeshInstanceData(GVertexElementTypeSupport.IsSupported(VET_Half2));
+	BuildRenderData(RenderInstanceData, PerInstanceRenderData->HitProxies);
+	PerInstanceRenderData->UpdateFromPreallocatedData(RenderInstanceData);
+}
+
 FPrimitiveSceneProxy* UInstancedStaticMeshComponent::CreateSceneProxy()
 {
 	LLM_SCOPE(ELLMTag::InstancedMesh);
@@ -1494,11 +1508,7 @@ FPrimitiveSceneProxy* UInstancedStaticMeshComponent::CreateSceneProxy()
 		// generally happens only in editor 
 		if (InstanceUpdateCmdBuffer.NumTotalCommands() != 0)
 		{
-			InstanceUpdateCmdBuffer.Reset();
-
-			FStaticMeshInstanceData RenderInstanceData = FStaticMeshInstanceData(GVertexElementTypeSupport.IsSupported(VET_Half2));
-			BuildRenderData(RenderInstanceData, PerInstanceRenderData->HitProxies);
-			PerInstanceRenderData->UpdateFromPreallocatedData(RenderInstanceData);
+			FlushInstanceUpdateCommands();
 		}
 		
 		ProxySize = PerInstanceRenderData->ResourceSize;
@@ -1546,7 +1556,12 @@ void UInstancedStaticMeshComponent::BuildRenderData(FStaticMeshInstanceData& Out
 	OutData.AllocateInstances(NumInstances, NumCustomDataFloats, GIsEditor ? EResizeBufferFlags::AllowSlackOnGrow | EResizeBufferFlags::AllowSlackOnReduce : EResizeBufferFlags::None, true); // In Editor always permit overallocation, to prevent too much realloc
 
 	const FMeshMapBuildData* MeshMapBuildData = nullptr;
-	if (LODData.Num() > 0)
+
+#if WITH_EDITOR
+	MeshMapBuildData = FStaticLightingSystemInterface::GetPrimitiveMeshMapBuildData(this, 0);
+#endif
+
+	if (MeshMapBuildData == nullptr && LODData.Num() > 0)
 	{
 		MeshMapBuildData = GetMeshMapBuildData(LODData[0], false);
 	}
@@ -2089,11 +2104,7 @@ void UInstancedStaticMeshComponent::SerializeRenderData(FArchive& Ar)
 				// This will usually happen when having a BP adding instance through the construct script
 				if (PerInstanceRenderData->InstanceBuffer.GetNumInstances() != PerInstanceSMData.Num() || InstanceUpdateCmdBuffer.NumTotalCommands() > 0)
 				{
-					InstanceUpdateCmdBuffer.Reset();
-
-					FStaticMeshInstanceData RenderInstanceData = FStaticMeshInstanceData(GVertexElementTypeSupport.IsSupported(VET_Half2));
-					BuildRenderData(RenderInstanceData, PerInstanceRenderData->HitProxies);
-					PerInstanceRenderData->UpdateFromPreallocatedData(RenderInstanceData);
+					FlushInstanceUpdateCommands();
 					MarkRenderStateDirty();
 				}
 			}
@@ -3261,7 +3272,6 @@ void FInstancedStaticMeshVertexFactoryShaderParameters::GetElementShaderBindings
 		ShaderBindings.Add(VertexFetch_InstanceLightmapBufferParameter, InstancedVertexFactory->GetInstanceLightmapSRV());
 		ShaderBindings.Add(InstanceOffset, InstanceOffsetValue);
 	}
-
 	if (InstanceOffsetValue > 0 && VertexStreams.Num() > 0)
 	{
 		VertexFactory->OffsetInstanceStreams(InstanceOffsetValue, InputStreamType, VertexStreams);

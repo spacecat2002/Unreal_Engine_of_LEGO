@@ -345,13 +345,15 @@ void FD3D12CommandListManager::Destroy()
 	// Wait for the queue to empty
 	WaitForCommandQueueFlush();
 
-	D3DCommandQueue.SafeRelease();
-
-	FD3D12CommandListHandle hList;
-	while (!ReadyLists.IsEmpty())
 	{
-		ReadyLists.Dequeue(hList);
+		FD3D12CommandListHandle hList;
+		while (!ReadyLists.IsEmpty())
+		{
+			ReadyLists.Dequeue(hList);
+		}
 	}
+
+	D3DCommandQueue.SafeRelease();
 
 	if (CommandListFence)
 	{
@@ -389,7 +391,8 @@ void FD3D12CommandListManager::Create(const TCHAR* Name, uint32 NumCommandLists,
 	CommandQueueDesc.NodeMask = GetGPUMask().GetNative();
 	CommandQueueDesc.Priority = Priority;
 	CommandQueueDesc.Type = CommandListType;
-	D3DCommandQueue = Adapter->GetOwningRHI()->CreateCommandQueue(Device, CommandQueueDesc);
+	Adapter->GetOwningRHI()->CreateCommandQueue(Device, CommandQueueDesc, D3DCommandQueue);
+	
 	SetName(D3DCommandQueue.GetReference(), Name);
 
 	if (NumCommandLists > 0)
@@ -412,12 +415,13 @@ void FD3D12CommandListManager::Create(const TCHAR* Name, uint32 NumCommandLists,
 		if (SUCCEEDED(hr))
 		{
 			// find out how many entries we can much push in a single event (limit to MAX_GPU_BREADCRUMB_DEPTH)
-			int32 GPUCrashDataDepth = GetParentDevice()->GetParentAdapter()->GetGPUProfiler().GPUCrashDataDepth;
+			int32 GPUCrashDataDepth = GetParentDevice()->GetGPUProfiler().GPUCrashDataDepth;
 			int32 MaxEventCount = GPUCrashDataDepth > 0 ? FMath::Min(GPUCrashDataDepth, MAX_GPU_BREADCRUMB_DEPTH) : MAX_GPU_BREADCRUMB_DEPTH;			
 
-			// Allocate persistent CPU reabable memory which will still be valid after a device lost and wrap this data in a placed resource
+			// Allocate persistent CPU readable memory which will still be valid after a device lost and wrap this data in a placed resource
 			// so the GPU command list can write to it
-			BreadCrumbResourceAddress = VirtualAlloc(nullptr, MaxEventCount, MEM_COMMIT, PAGE_READWRITE);
+			const uint32 BreadCrumbBufferSize = MaxEventCount * sizeof(uint32);
+			BreadCrumbResourceAddress = VirtualAlloc(nullptr, BreadCrumbBufferSize, MEM_COMMIT, PAGE_READWRITE);
 			if (BreadCrumbResourceAddress)
 			{
 				TRefCountPtr<ID3D12Heap> D3D12Heap;
@@ -430,7 +434,7 @@ void FD3D12CommandListManager::Create(const TCHAR* Name, uint32 NumCommandLists,
 					TCHAR TempStr[MAX_SPRINTF] = TEXT("");
 					FCString::Sprintf(TempStr, TEXT("BreadCrumbResource_%s"), Name);
 
-					const D3D12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(MaxEventCount * sizeof(uint32), D3D12_RESOURCE_FLAG_ALLOW_CROSS_ADAPTER);
+					const D3D12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(BreadCrumbBufferSize, D3D12_RESOURCE_FLAG_ALLOW_CROSS_ADAPTER);
 					hr = Adapter->CreatePlacedResource(BufferDesc, BreadCrumbHeap.GetReference(), 0, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, BreadCrumbResource.GetInitReference(), TempStr, false);
 					if (SUCCEEDED(hr))
 					{

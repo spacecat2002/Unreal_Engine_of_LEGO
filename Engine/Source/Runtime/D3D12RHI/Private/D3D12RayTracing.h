@@ -106,7 +106,7 @@ public:
 	uint32 NumTotalSegments = 0;
 	uint32 GetHitRecordBaseIndex(uint32 InstanceIndex, uint32 SegmentIndex) const { return (SegmentPrefixSum[InstanceIndex] + SegmentIndex) * ShaderSlotsPerGeometrySegment; }
 
-	uint32 TotalPrimitiveCount = 0; // Combined number of primitives in all geometry instances
+	uint64 TotalPrimitiveCount = 0; // Combined number of primitives in all geometry instances
 
 	uint32 NumCallableShaderSlots = 0;
 	uint32 NumMissShaderSlots = 1; // always at least the default
@@ -119,6 +119,8 @@ public:
 
 	ERayTracingSceneLifetime Lifetime = RTSL_SingleFrame;
 	uint64 CreatedFrameFenceValue = 0;
+
+	uint64 LastCommandListID = 0;
 
 	FName DebugName;
 };
