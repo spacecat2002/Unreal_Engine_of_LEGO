@@ -141,7 +141,7 @@ void FD3D12CommandContext::RHIDispatchComputeShader(uint32 ThreadGroupCountX, ui
 
 void FD3D12CommandContext::RHIDispatchIndirectComputeShader(FRHIVertexBuffer* ArgumentBufferRHI, uint32 ArgumentOffset)
 {
-	FD3D12VertexBuffer* ArgumentBuffer = FD3D12DynamicRHI::ResourceCast(ArgumentBufferRHI);
+	FD3D12VertexBuffer* ArgumentBuffer = RetrieveObject<FD3D12VertexBuffer>(ArgumentBufferRHI);
 
 	if (IsDefaultContext())
 	{
@@ -398,13 +398,11 @@ void FD3D12CommandContext::RHICopyToStagingBuffer(FRHIVertexBuffer* SourceBuffer
 	check(StagingBuffer);
 	ensureMsgf(!StagingBuffer->bIsLocked, TEXT("Attempting to Copy to a locked staging buffer. This may have undefined behavior"));
 
-	FD3D12VertexBuffer* VertexBuffer = FD3D12DynamicRHI::ResourceCast(SourceBufferRHI);
+	FD3D12VertexBuffer* VertexBuffer = RetrieveObject<FD3D12VertexBuffer>(SourceBufferRHI);
 	check(VertexBuffer);
 
 	ensureMsgf((SourceBufferRHI->GetUsage() & BUF_SourceCopy) != 0, TEXT("Buffers used as copy source need to be created with BUF_SourceCopy"));
 
-	// Only get data from the first gpu for now.
-	FD3D12Device* StagingDevice = VertexBuffer->GetParentDevice();
 
 	// Ensure our shadow buffer is large enough to hold the readback.
 	if (!StagingBuffer->StagedRead || StagingBuffer->ShadowBufferSize < NumBytes)
@@ -964,7 +962,7 @@ FRTVDesc GetRenderTargetViewDesc(FD3D12RenderTargetView* RenderTargetView)
 	return ret;
 }
 
-void FD3D12CommandContext::RHISetRenderTargets(
+void FD3D12CommandContext::SetRenderTargets(
 	uint32 NewNumSimultaneousRenderTargets,
 	const FRHIRenderTargetView* NewRenderTargetsRHI,
 	const FRHIDepthRenderTargetView* NewDepthStencilTargetRHI
@@ -1051,11 +1049,11 @@ void FD3D12CommandContext::RHISetRenderTargets(
 	}
 }
 
-void FD3D12CommandContext::RHISetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo)
+void FD3D12CommandContext::SetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo)
 {
 	FRHIUnorderedAccessView* UAVs[MaxSimultaneousUAVs] = {};
 
-	this->RHISetRenderTargets(RenderTargetsInfo.NumColorRenderTargets,
+	this->SetRenderTargets(RenderTargetsInfo.NumColorRenderTargets,
 		RenderTargetsInfo.ColorRenderTarget,
 		&RenderTargetsInfo.DepthStencilRenderTarget);
 
@@ -1822,7 +1820,7 @@ void FD3D12DynamicRHI::RHISubmitCommandsAndFlushGPU()
 */
 uint32 FD3D12DynamicRHI::RHIGetGPUFrameCycles(uint32 GPUIndex)
 {
-	return GGPUFrameTime;
+	return D3D12RHI::FD3DGPUProfiler::GetGPUFrameCycles(GPUIndex);
 }
 
 void FD3D12DynamicRHI::RHIExecuteCommandList(FRHICommandList* CmdList)
@@ -1933,7 +1931,6 @@ void FD3D12CommandContext::RHIWaitForTemporalEffect(const FName& InEffectName)
 		return;
 	}
 
-#if USE_COPY_QUEUE_FOR_RESOURCE_SYNC
 	FD3D12Adapter* Adapter = GetParentAdapter();
 	FD3D12TemporalEffect* Effect = Adapter->GetTemporalEffect(InEffectName);
 
@@ -1945,7 +1942,6 @@ void FD3D12CommandContext::RHIWaitForTemporalEffect(const FName& InEffectName)
 
 		Effect->WaitForPrevious(GPUIndex, bIsAsyncComputeContext ? ED3D12CommandQueueType::Async : ED3D12CommandQueueType::Default);
 	}
-#endif
 #endif // WITH_MGPU
 }
 
@@ -1960,13 +1956,13 @@ void FD3D12CommandContext::RHIBroadcastTemporalEffect(const FName& InEffectName,
 	}
 
 	const uint32 GPUIndex = GetGPUIndex();
-	TArray<FD3D12TextureBase*, TInlineAllocator<8>> SrcTextures, DstTextures;
+	TArray<FD3D12TextureBase*, TInlineAllocator<MAX_NUM_GPUS>> SrcTextures, DstTextures;
 	const int32 NumTextures = InTextures.Num();
 	for (int32 i = 0; i < NumTextures; i++)
 	{
 		SrcTextures.Emplace(RetrieveTextureBase(InTextures[i]));
 		const uint32 NextSiblingGPUIndex = AFRUtils::GetNextSiblingGPUIndex(GPUIndex);
-		DstTextures.Emplace(RetrieveTextureBase(InTextures[i], [NextSiblingGPUIndex](FD3D12Device* Device) { return Device->GetGPUIndex() == NextSiblingGPUIndex; }));
+		DstTextures.Emplace(RetrieveTextureBase(InTextures[i], NextSiblingGPUIndex));
 	}
 
 #if USE_COPY_QUEUE_FOR_RESOURCE_SYNC
@@ -2023,6 +2019,10 @@ void FD3D12CommandContext::RHIBroadcastTemporalEffect(const FName& InEffectName,
 		numCopies++;
 		CommandListHandle->CopyResource(DstTextures[i]->GetResource()->GetResource(), SrcTextures[i]->GetResource()->GetResource());
 	}
+
+	FlushCommands();
+
+	Effect->SignalSyncComplete(GPUIndex, bIsAsyncComputeContext ? ED3D12CommandQueueType::Async : ED3D12CommandQueueType::Default);
 
 #endif // USE_COPY_QUEUE_FOR_RESOURCE_SYNC
 #endif // WITH_MGPU

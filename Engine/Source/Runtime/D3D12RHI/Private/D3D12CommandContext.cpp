@@ -152,7 +152,7 @@ void FD3D12CommandContext::WriteGPUEventStackToBreadCrumbData(bool bBeginEvent)
 
 void FD3D12CommandContext::RHIPushEvent(const TCHAR* Name, FColor Color)
 {
-	D3D12RHI::FD3DGPUProfiler& GPUProfiler = GetParentDevice()->GetParentAdapter()->GetGPUProfiler();
+	D3D12RHI::FD3DGPUProfiler& GPUProfiler = GetParentDevice()->GetGPUProfiler();
 
 	// forward event to profiler if it's the default context
 	if (IsDefaultContext())
@@ -195,7 +195,7 @@ void FD3D12CommandContext::RHIPushEvent(const TCHAR* Name, FColor Color)
 
 void FD3D12CommandContext::RHIPopEvent()
 {
-	D3D12RHI::FD3DGPUProfiler& GPUProfiler = GetParentDevice()->GetParentAdapter()->GetGPUProfiler();
+	D3D12RHI::FD3DGPUProfiler& GPUProfiler = GetParentDevice()->GetGPUProfiler();
 	
 	if (IsDefaultContext())
 	{
@@ -381,12 +381,14 @@ void FD3D12CommandContext::Finish(TArray<FD3D12CommandListHandle>& CommandLists)
 
 void FD3D12CommandContextBase::RHIBeginFrame()
 {
-	bTrackingEvents = bIsDefaultContext && ParentAdapter->GetGPUProfiler().bTrackingEvents;
+	bTrackingEvents = false;
 
 	RHIPrivateBeginFrame();
 	for (uint32 GPUIndex : GPUMask)
 	{
 		FD3D12Device* Device = ParentAdapter->GetDevice(GPUIndex);
+
+		bTrackingEvents |= bIsDefaultContext && Device->GetGPUProfiler().bTrackingEvents;
 
 		// Resolve the last frame's timestamp queries
 		FD3D12CommandContext* ContextAtIndex = GetContext(GPUIndex);
@@ -416,9 +418,9 @@ void FD3D12CommandContextBase::RHIBeginFrame()
 		}
 
 		Device->GetGlobalSamplerHeap().ToggleDescriptorTablesDirtyFlag(false);
-	}
 
-	ParentAdapter->GetGPUProfiler().BeginFrame(ParentAdapter->GetOwningRHI());
+		Device->GetGPUProfiler().BeginFrame(ParentAdapter->GetOwningRHI());
+	}
 }
 
 void FD3D12CommandContext::ClearState()
@@ -512,13 +514,20 @@ void FD3D12CommandContextBase::RHIEndFrame()
 	{
 		FD3D12Device* Device = ParentAdapter->GetDevice(GPUIndex);
 		Device->GetCommandListManager().ReleaseResourceBarrierCommandListAllocator();
+
+		// Stop Timing at the very last moment
+		D3D12RHI::FD3DGPUProfiler& GPUProfiler = Device->GetGPUProfiler();
+		GPUProfiler.EndFrame(ParentAdapter->GetOwningRHI());
+		if (GPUIndex == 0)
+		{
+			// Multi-GPU support : For now, set GGPUFrameTime to GPU 0's frame time to be
+			// consistent with code that calls RHIGetGPUFrameCycles and is not MGPU-aware.
+			// Perhaps we should change it to get the max frame time of all GPUs?
+			GGPUFrameTime = GPUProfiler.GetGPUFrameCycles(GPUIndex);
+		}
 	}
 
 	UpdateMemoryStats();
-
-	// Stop Timing at the very last moment
-    
-	ParentAdapter->GetGPUProfiler().EndFrame(ParentAdapter->GetOwningRHI());
 }
 
 void FD3D12CommandContextBase::UpdateMemoryStats()

@@ -33,33 +33,30 @@
 /** Pixel shader used to copy scene color into another texture so that materials can read from scene color with a node. */
 class FMobileCopySceneAlphaPS : public FGlobalShader
 {
-	DECLARE_SHADER_TYPE(FMobileCopySceneAlphaPS,Global);
 public:
+	DECLARE_GLOBAL_SHADER(FMobileCopySceneAlphaPS);
 
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters) { return IsMobilePlatform(Parameters.Platform); }
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsMobilePlatform(Parameters.Platform);
+	}
 
+	FMobileCopySceneAlphaPS() = default;
 	FMobileCopySceneAlphaPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer):
 		FGlobalShader(Initializer)
-	{
-		SceneTextureParameters.Bind(Initializer);
-	}
-	FMobileCopySceneAlphaPS() {}
-
-	void SetParameters(FRHICommandList& RHICmdList, const FSceneView& View)
-	{
-		SceneTextureParameters.Set(RHICmdList, RHICmdList.GetBoundPixelShader(), View.FeatureLevel, ESceneTextureSetupMode::All);
-	}
-
-private:
-	LAYOUT_FIELD(FSceneTextureShaderParameters, SceneTextureParameters)
+	{}
 };
 
-IMPLEMENT_SHADER_TYPE(,FMobileCopySceneAlphaPS,TEXT("/Engine/Private/TranslucentLightingShaders.usf"),TEXT("CopySceneAlphaMain"),SF_Pixel);
+IMPLEMENT_GLOBAL_SHADER(FMobileCopySceneAlphaPS, "/Engine/Private/TranslucentLightingShaders.usf", "CopySceneAlphaMain", SF_Pixel);
 
 void FMobileSceneRenderer::CopySceneAlpha(FRHICommandListImmediate& RHICmdList, const FViewInfo& View)
 {
 	SCOPED_DRAW_EVENTF(RHICmdList, EventCopy, TEXT("CopySceneAlpha"));
+
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+	FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(SceneContext, View.GetFeatureLevel(), ESceneTextureSetupMode::All, UniformBuffer_SingleDraw);
+	FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
+	SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
 
 	RHICmdList.CopyToResolveTarget(SceneContext.GetSceneColorSurface(), SceneContext.GetSceneColorTexture(), FResolveRect(0, 0, FamilySize.X, FamilySize.Y));
 
@@ -86,8 +83,6 @@ void FMobileSceneRenderer::CopySceneAlpha(FRHICommandListImmediate& RHICmdList, 
 	GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 	SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
-
-	PixelShader->SetParameters(RHICmdList, View);
 
 	DrawRectangle( 
 		RHICmdList,

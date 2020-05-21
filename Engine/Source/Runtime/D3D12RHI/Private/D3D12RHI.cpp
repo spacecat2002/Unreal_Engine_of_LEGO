@@ -155,6 +155,7 @@ FD3D12DynamicRHI::FD3D12DynamicRHI(const TArray<TSharedPtr<FD3D12Adapter>>& Chos
 	GPixelFormats[PF_BC6H			].PlatformFormat = DXGI_FORMAT_BC6H_UF16;
 	GPixelFormats[PF_BC7			].PlatformFormat = DXGI_FORMAT_BC7_TYPELESS;
 	GPixelFormats[PF_R8_UINT		].PlatformFormat = DXGI_FORMAT_R8_UINT;
+	GPixelFormats[PF_R8				].PlatformFormat = DXGI_FORMAT_R8_UNORM;
 
 	GPixelFormats[PF_R16G16B16A16_UNORM].PlatformFormat = DXGI_FORMAT_R16G16B16A16_UNORM;
 	GPixelFormats[PF_R16G16B16A16_SNORM].PlatformFormat = DXGI_FORMAT_R16G16B16A16_SNORM;
@@ -260,11 +261,9 @@ FD3D12CommandContext* FD3D12DynamicRHI::CreateCommandContext(FD3D12Device* InPar
 	return NewContext;
 }
 
-ID3D12CommandQueue* FD3D12DynamicRHI::CreateCommandQueue(FD3D12Device* Device, const D3D12_COMMAND_QUEUE_DESC& Desc)
+void FD3D12DynamicRHI::CreateCommandQueue(FD3D12Device* Device, const D3D12_COMMAND_QUEUE_DESC& Desc, TRefCountPtr<ID3D12CommandQueue>& OutCommandQueue)
 {
-	ID3D12CommandQueue* pCommandQueue = nullptr;
-	VERIFYD3D12RESULT(Device->GetDevice()->CreateCommandQueue(&Desc, IID_PPV_ARGS(&pCommandQueue)));
-	return pCommandQueue;
+	VERIFYD3D12RESULT(Device->GetDevice()->CreateCommandQueue(&Desc, IID_PPV_ARGS(OutCommandQueue.GetInitReference())));
 }
 
 IRHICommandContext* FD3D12DynamicRHI::RHIGetDefaultContext()
@@ -469,5 +468,10 @@ uint32 FD3D12DynamicRHI::GetDebugFlags()
 
 bool FD3D12DynamicRHI::CheckGpuHeartbeat() const
 {
-	return ChosenAdapters[0]->GetGPUProfiler().CheckGpuHeartbeat();
+	bool bResult = false;
+	for (uint32 GPUIndex : FRHIGPUMask::All())
+	{
+		bResult |= ChosenAdapters[0]->GetDevice(GPUIndex)->GetGPUProfiler().CheckGpuHeartbeat();
+	}
+	return bResult;
 }

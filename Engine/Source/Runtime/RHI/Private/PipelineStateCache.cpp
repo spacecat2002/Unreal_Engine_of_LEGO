@@ -615,9 +615,6 @@ FAutoConsoleTaskPriority CPrio_FCompilePipelineStateTask(
 // This cache uses a single internal lock and therefore is not designed for highly concurrent operations.
 class FRayTracingPipelineCache
 {
-	// #dxr_todo: UE-72566 Should support eviction of stale pipelines.
-	// #dxr_todo: we will likely also need an explicit ray tracing pipeline sub-object cache to hold closest hit shaders
-
 public:
 	FRayTracingPipelineCache()
 	{}
@@ -628,6 +625,8 @@ public:
 	bool Find(const FRayTracingPipelineStateInitializer& Initializer, FRayTracingPipelineState*& OutCachedState) const
 	{
 		FScopeLock ScopeLock(&CriticalSection);
+
+		const FPipelineMap& Cache = Initializer.bPartial ? PartialPipelines : FullPipelines;
 
 		FRayTracingPipelineState* const* FoundState = Cache.Find(Initializer);
 		if (FoundState)
@@ -646,6 +645,9 @@ public:
 	void Add(const FRayTracingPipelineStateInitializer& Initializer, FRayTracingPipelineState* State)
 	{
 		FScopeLock ScopeLock(&CriticalSection);
+
+		FPipelineMap& Cache = Initializer.bPartial ? PartialPipelines : FullPipelines;
+
 		Cache.Add(Initializer, State);
 		State->AddHit();
 	}
@@ -653,7 +655,11 @@ public:
 	void Shutdown()
 	{
 		FScopeLock ScopeLock(&CriticalSection);
-		for (auto& It : Cache)
+		for (auto& It : FullPipelines)
+		{
+			delete It.Value;
+		}
+		for (auto& It : PartialPipelines)
 		{
 			delete It.Value;
 		}
@@ -662,7 +668,10 @@ public:
 	void Trim(int32 TargetNumEntries)
 	{
 		FScopeLock ScopeLock(&CriticalSection);
-		
+
+		// Only full pipeline cache is automatically trimmed.
+		FPipelineMap& Cache = FullPipelines;
+
 		if (Cache.Num() < TargetNumEntries)
 		{
 			return;
@@ -725,7 +734,9 @@ public:
 private:
 
 	mutable FCriticalSection CriticalSection;
-	TMap<FRayTracingPipelineStateInitializer, FRayTracingPipelineState*> Cache;
+	using FPipelineMap = TMap<FRayTracingPipelineStateInitializer, FRayTracingPipelineState*>;
+	FPipelineMap FullPipelines;
+	FPipelineMap PartialPipelines;
 	uint64 LastTrimFrame = 0;
 };
 
@@ -1082,9 +1093,11 @@ private:
 	TArray<FRHIRayTracingShader*> HitGroupTable;
 	TArray<FRHIRayTracingShader*> CallableTable;
 };
+#endif // RHI_RAYTRACING
 
 FRayTracingPipelineState* PipelineStateCache::GetAndOrCreateRayTracingPipelineState(FRHICommandList& RHICmdList, const FRayTracingPipelineStateInitializer& Initializer)
 {
+#if RHI_RAYTRACING
 	LLM_SCOPE(ELLMTag::PSO);
 
 	check(IsInRenderingThread() || IsInParallelRenderingThread());
@@ -1097,7 +1110,7 @@ FRayTracingPipelineState* PipelineStateCache::GetAndOrCreateRayTracingPipelineSt
 
 	if (bWasFound == false)
 	{
-		// #dxr_todo UE-68235: RT PSO disk caching
+		FPipelineFileCache::CacheRayTracingPSO(Initializer);
 
 		// Remove old pipelines once per frame
 		const int32 TargetCacheSize = CVarRTPSOCacheSize.GetValueOnAnyThread();
@@ -1114,7 +1127,11 @@ FRayTracingPipelineState* PipelineStateCache::GetAndOrCreateRayTracingPipelineSt
 				OutCachedState,
 				Initializer);
 
-			RHICmdList.AddDispatchPrerequisite(OutCachedState->CompletionEvent);
+			// Partial pipelines can't be used for rendering, therefore this command list does not need to depend on them.
+			if (!Initializer.bPartial)
+			{
+				RHICmdList.AddDispatchPrerequisite(OutCachedState->CompletionEvent);
+			}
 		}
 		else
 		{
@@ -1125,8 +1142,10 @@ FRayTracingPipelineState* PipelineStateCache::GetAndOrCreateRayTracingPipelineSt
 	}
 
 	return OutCachedState;
-}
+#else // RHI_RAYTRACING
+	return nullptr;
 #endif // RHI_RAYTRACING
+}
 
 FRHIComputePipelineState* ExecuteSetComputePipelineState(FComputePipelineState* ComputePipelineState)
 {
