@@ -77,8 +77,6 @@ UE_TRACE_CHANNEL(SaveTimeChannel)
 #define SCOPED_SAVETIMER(TimerName)
 #endif
 
-static const FName WorldClassName = FName("World");
-static const FName PrestreamPackageClassName = FName("PrestreamPackage");
 static FCriticalSection InitializeCoreClassesCritSec;
 
 #define VALIDATE_INITIALIZECORECLASSES 0
@@ -2932,7 +2930,7 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 							// the OBJECTMARK_MarkedByCooker check below
 							if (PrestreamPackages.Contains(ObjPackage))
 							{
-								NameMapSaver.MarkNameAsReferenced(PrestreamPackageClassName);
+								NameMapSaver.MarkNameAsReferenced(SavePackageUtilities::NAME_PrestreamPackage);
 								// These are not errors
 								UE_LOG(LogSavePackage, Display, TEXT("Prestreaming package %s "), *ObjPackage->GetPathName()); //-V595
 								continue;
@@ -2955,7 +2953,7 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 							// See whether the object we are referencing is in another map package.
 							if(ObjPackage->ContainsMap())
 							{
-								if ( ObjPackage != Obj && Obj->GetFName() != NAME_PersistentLevel && Obj->GetClass()->GetFName() != WorldClassName )
+								if ( ObjPackage != Obj && Obj->GetFName() != NAME_PersistentLevel && Obj->GetClass()->GetFName() != SavePackageUtilities::NAME_World )
 								{
 									ObjectsInOtherMaps.Add(Obj);
 
@@ -3280,7 +3278,7 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 
 						if (PrestreamPackages.Contains((UPackage*)Obj))
 						{
-							LocObjectImport->ClassName = PrestreamPackageClassName;
+							LocObjectImport->ClassName = SavePackageUtilities::NAME_PrestreamPackage;
 						}
 #if WITH_EDITOR
 						if (ReplacedName != NAME_None)

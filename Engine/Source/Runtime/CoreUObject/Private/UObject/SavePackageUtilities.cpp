@@ -28,8 +28,6 @@
 
 DEFINE_LOG_CATEGORY(LogSavePackage);
 
-static const FName WorldClassName = FName("World");
-
 #if ENABLE_COOK_STATS
 #include "ProfilingDebugging/ScopedTimers.h"
 
@@ -167,6 +165,10 @@ static FThreadSafeCounter OutstandingAsyncWrites;
 
 namespace SavePackageUtilities
 {
+const FName NAME_World("World");
+const FName NAME_Level("Level");
+const FName NAME_PrestreamPackage("PrestreamPackage");
+
 void IncrementOutstandingAsyncWrites()
 {
 	OutstandingAsyncWrites.Increment();
@@ -444,7 +446,7 @@ void FindMostLikelyCulprit(TArray<UObject*> BadObjects, UObject*& MostLikelyCulp
 				UObject* RefObj = Refs.ExternalReferences[i].Referencer;
 				if (RefObj->HasAnyMarks(EObjectMark(OBJECTMARK_TagExp | OBJECTMARK_TagImp)))
 				{
-					if (RefObj->GetFName() == NAME_PersistentLevel || RefObj->GetClass()->GetFName() == WorldClassName)
+					if (RefObj->GetFName() == NAME_PersistentLevel || RefObj->GetClass()->GetFName() == NAME_World)
 					{
 						// these types of references should be ignored
 						continue;

@@ -184,6 +184,10 @@ class COREUOBJECT_API FArchiveObjectCrc32NonEditorProperties : public FArchiveOb
 
 namespace SavePackageUtilities
 {
+	extern const FName NAME_World;
+	extern const FName NAME_Level;
+	extern const FName NAME_PrestreamPackage;
+
 	void IncrementOutstandingAsyncWrites();
 	void DecrementOutstandingAsyncWrites();
 

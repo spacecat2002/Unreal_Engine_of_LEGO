@@ -784,6 +784,7 @@ bool IsUnsaveable(FSaveContext& SaveContext, UObject* InObject)
 
 bool DoesObjectNeedLoadForEditorGame(UObject* InObject)
 {
+	check(InObject);
 	bool bNeedsLoadForEditorGame = false;
 	// NeedsLoadForEditor game is inherited to child objects, so check outer chain
 	UObject* Outer = InObject;
@@ -1428,8 +1429,6 @@ ESavePackageResult RoutePresave(FSaveContext& SaveContext)
 	return ReturnSuccessOrCancel();
 }
 
-static const FName NAME_PrestreamPackage = FName("PrestreamPackage");
-
 ESavePackageResult HarvestPackage(FSaveContext& SaveContext)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UPackage_Save_HarvestPackage);
@@ -1470,7 +1469,7 @@ ESavePackageResult HarvestPackage(FSaveContext& SaveContext)
 	// Harvest Prestream package class name if needed
 	if (SaveContext.GetPrestreamPackages().Num() > 0)
 	{
-		Harvester.HarvestName(NAME_PrestreamPackage);
+		Harvester.HarvestName(SavePackageUtilities::NAME_PrestreamPackage);
 		
 		//@todo FH: is this really needed?
 		//TSet<UPackage*> KeptPrestreamPackages;
@@ -1503,8 +1502,6 @@ ESavePackageResult HarvestPackage(FSaveContext& SaveContext)
 	return ReturnSuccessOrCancel();
 }
 
-static FName NAME_World("World");
-static FName NAME_Level("Level");
 static FNameEntryId NAME_UniqueObjectNameForCookingComparisonIndex = FName("UniqueObjectNameForCooking").GetComparisonIndex();
 
 ESavePackageResult ValidateExports(FSaveContext& SaveContext)
@@ -1552,7 +1549,7 @@ ESavePackageResult ValidateExports(FSaveContext& SaveContext)
 			if (Object)
 			{
 				FName ClassName = Object->GetClass()->GetFName();
-				bContainsMap |= (ClassName == NAME_World || ClassName == NAME_Level);
+				bContainsMap |= (ClassName == SavePackageUtilities::NAME_World || ClassName == SavePackageUtilities::NAME_Level);
 			}
 		}
 		if (!bContainsMap)
@@ -2013,7 +2010,7 @@ ESavePackageResult BuildLinker(FSaveContext& SaveContext)
 			//@todo FH: validate this
 			if (SaveContext.GetPrestreamPackages().Contains((UPackage*)Import))
 			{
-				ObjectImport.ClassName = NAME_PrestreamPackage;
+				ObjectImport.ClassName = SavePackageUtilities::NAME_PrestreamPackage;
 			}
 
 			if (ReplacedName != NAME_None)
