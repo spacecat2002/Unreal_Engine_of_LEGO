@@ -16,6 +16,7 @@
 #include "UObject/ObjectRedirector.h"
 #include "Misc/PackageName.h"
 #include "Blueprint/BlueprintSupport.h"
+#include "Misc/PreloadableFile.h"
 #include "Misc/SecureHash.h"
 #include "Misc/StringBuilder.h"
 #include "ProfilingDebugging/DebuggingDefines.h"
@@ -881,10 +882,14 @@ FLinkerLoad::FLinkerLoad(UPackage* InParent, const TCHAR* InFilename, uint32 InL
 
 #if WITH_EDITOR
 	// Check if the linker is instanced @todo: pass through a load flag?
-	FName PackageNameToLoad = *FPackageName::FilenameToLongPackageName(InFilename);
-	if (LinkerRoot->GetFName() != PackageNameToLoad)
+	FString PackageName;
+	if (FPackageName::TryConvertFilenameToLongPackageName(Filename, PackageName))
 	{
-		InstancingContext.AddMapping(PackageNameToLoad, LinkerRoot->GetFName());
+		FName PackageNameToLoad = *PackageName;
+		if (LinkerRoot->GetFName() != PackageNameToLoad)
+		{
+			InstancingContext.AddMapping(PackageNameToLoad, LinkerRoot->GetFName());
+		}
 	}
 #endif
 }
@@ -1050,6 +1055,12 @@ FLinkerLoad::ELinkerStatus FLinkerLoad::CreateLoader(
 							GEventDrivenLoaderEnabled ? Forward<TFunction<void()>>(InSummaryReadyCallback) : TFunction<void()>([]() {})
 						);
 				}
+#if WITH_EDITOR
+				else if (FLinkerLoad::GetPreloadingEnabled() && FLinkerLoad::TryGetPreloadedLoader(Loader, *Filename))
+				{
+					// Loader set by TryGetPreloadedLoader
+				}
+#endif
 				else
 				{
 					Loader = IFileManager::Get().CreateFileReader(*Filename);
@@ -1243,7 +1254,7 @@ FLinkerLoad::ELinkerStatus FLinkerLoad::SerializePackageFileSummaryInternal()
 			*GetArchiveName())
 	}
 
-#if PLATFORM_WINDOWS
+#if PLATFORM_WINDOWS && DO_GUARD_SLOW
 	if (!FPlatformProperties::RequiresCookedData() &&
 		// We can't check the post tag if the file is an EDL cooked package
 		!((Summary.PackageFlags & PKG_FilterEditorOnly) && Summary.PreloadDependencyCount > 0 && Summary.PreloadDependencyOffset > 0)
@@ -2497,34 +2508,33 @@ UObject* FLinkerLoad::FindExistingImport(int32 ImportIndex)
 
 void FLinkerLoad::Verify()
 {
-	if(!FApp::IsGame() || GIsEditor || IsRunningCommandlet())
+#if WITH_EDITOR
 	{
 		if (!bHaveImportsBeenVerified)
 		{
-#if WITH_EDITOR
 			TOptional<FScopedSlowTask> SlowTask;
 			if (ShouldCreateThrottledSlowTask())
 			{
 				static const FText LoadingImportsText = NSLOCTEXT("Core", "LinkerLoad_Imports", "Loading Imports");
 				SlowTask.Emplace(Summary.ImportCount, LoadingImportsText);
 			}
-#endif
+
 			// Validate all imports and map them to their remote linkers.
 			for (int32 ImportIndex = 0; ImportIndex < Summary.ImportCount; ImportIndex++)
 			{
 				FObjectImport& Import = ImportMap[ImportIndex];
 
-#if WITH_EDITOR
 				if (SlowTask)
 				{
 					static const FText LoadingImportText = NSLOCTEXT("Core", "LinkerLoad_LoadingImportName", "Loading Import '{0}'");
 					SlowTask->EnterProgressFrame(1, FText::Format(LoadingImportText, FText::FromString(Import.ObjectName.ToString())));
 				}
-#endif
+
 				VerifyImport( ImportIndex );
 			}
 		}
 	}
+#endif // WITH_EDITOR
 
 	bHaveImportsBeenVerified = true;
 }
@@ -2929,6 +2939,7 @@ UPackage* LoadPackageInternal(UPackage* InOuter, const TCHAR* InLongPackageName,
  */
 bool FLinkerLoad::VerifyImportInner(const int32 ImportIndex, FString& WarningSuffix)
 {
+	SCOPED_LOADTIMER(LinkerLoad_VerifyImportInner);
 	// Lambda used to load an import package
 	auto LoadImportPackage = [this](FObjectImport& Import, TOptional<FScopedSlowTask>& SlowTask) -> UPackage*
 	{
@@ -3086,15 +3097,10 @@ bool FLinkerLoad::VerifyImportInner(const int32 ImportIndex, FString& WarningSuf
 		// if we have an assigned package, load it, this will also assign the import source linker (Import.SourceLinker)
 		if (Import.HasPackageName())
 		{
-#if WITH_EDITOR
-			if (SlowTask)
-			{
-				SlowTask->TotalAmountOfWork += 100;
-			}
-#endif
 			Pkg = LoadImportPackage(Import, SlowTask);
 		}
 		
+				SlowTask->TotalAmountOfWork += 100;
 		// this import outer is also an import, so recurse verify into it.
 		if (Import.OuterIndex.IsImport())
 		{
@@ -3512,6 +3518,7 @@ int32 FLinkerLoad::LoadMetaDataFromExportMap(bool bForcePreload)
  */
 void FLinkerLoad::LoadAllObjects(bool bForcePreload)
 {
+	SCOPED_LOADTIMER(LinkerLoad_LoadAllObjects);
 #if WITH_EDITOR
 	TOptional<FScopedSlowTask> SlowTask;
 	if (ShouldCreateThrottledSlowTask())
@@ -3989,6 +3996,9 @@ void FLinkerLoad::Preload( UObject* Object )
 						FArchive::FScopeAddDebugData C(*this, Object->GetClass()->GetFName());
 #endif
 						check(CurrentLoadContext);
+#if WITH_EDITOR
+						SCOPED_LOADTIMER_TEXT(*((Object->GetClass()->IsChildOf(UDynamicClass::StaticClass()) ? UDynamicClass::StaticClass() : Object->GetClass())->GetName() + TEXT("_Serialize")));
+#endif
 
 						// Maintain the current SerializedObjects.
 						UObject* PrevSerializedObject = CurrentLoadContext->SerializedObject;
@@ -5886,6 +5896,23 @@ void FixupPackageEditorOnlyFlag(FName PackageThatGotEditorOnlyFlagCleared, bool 
 	{
 		INC_FLOAT_STAT_BY(STAT_EditorOnlyFixupTime, ThisTime);
 	}
+}
+#endif
+
+#if WITH_EDITOR
+bool FLinkerLoad::bPreloadingEnabled = false;
+bool FLinkerLoad::GetPreloadingEnabled()
+{
+	return bPreloadingEnabled;
+}
+void FLinkerLoad::SetPreloadingEnabled(bool bEnabled)
+{
+	bPreloadingEnabled = bEnabled;
+}
+bool FLinkerLoad::TryGetPreloadedLoader(FArchive*& OutLoader, const TCHAR* FileName)
+{
+	OutLoader = FPreloadableFile::TryTakeArchive(FileName);
+	return OutLoader != nullptr;
 }
 #endif
 

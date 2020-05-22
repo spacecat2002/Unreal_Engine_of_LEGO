@@ -84,6 +84,14 @@ FAutoConsoleVariableRef CVarStreamCacheSizeOverrideMB(
 	TEXT("0: use cache size from project settings. n: the new cache size in megabytes."),
 	ECVF_Default);
 
+static int32 SaveAudioMemReportOnCacheOverflowCVar = 0;
+FAutoConsoleVariableRef CVarSaveAudiomemReportOnCacheOverflow(
+	TEXT("au.streamcaching.SaveAudiomemReportOnCacheOverflow"),
+	SaveAudioMemReportOnCacheOverflowCVar,
+	TEXT("When set to one, we print an audiomemreport when the cache has overflown.\n")
+	TEXT("0: Disabled, 1: Enabled"),
+	ECVF_Default);
+
 static FAutoConsoleCommand GFlushAudioCacheCommand(
 	TEXT("au.streamcaching.FlushAudioCache"),
 	TEXT("This will flush any non retained audio from the cache when Stream Caching is enabled."),
@@ -327,7 +335,7 @@ FAudioChunkHandle FCachedAudioStreamingManager::GetLoadedChunk(const USoundWave*
 		TArrayView<uint8> LoadedChunk = Cache->GetChunk(ChunkKey, bBlockForLoad, (bForImmediatePlayback || bBlockForLoad), LookupIDForChunk);
 		
 		// Ensure that, if we requested a synchronous load of this chunk, we didn't fail to load said chunk.
-		ensureAlwaysMsgf(!bBlockForLoad || LoadedChunk.GetData(), TEXT("Synchronous load of chunk index %d for SoundWave %s failed to return any data."), ChunkIndex, *SoundWave->GetName());
+		UE_CLOG(bBlockForLoad && !LoadedChunk.GetData(), LogAudio, Display, TEXT("Synchronous load of chunk index %d for SoundWave %s failed to return any data. Likely because the cache was blown."), ChunkIndex, *SoundWave->GetName());
 
 		// Set the updated cache offset for this chunk index.
 		ChunkKey.SoundWave->SetCacheLookupIDForChunk(ChunkIndex, LookupIDForChunk);
@@ -358,13 +366,18 @@ FAudioChunkHandle FCachedAudioStreamingManager::GetLoadedChunk(const USoundWave*
 				if (!bCacheCurrentlyBlown)
 				{
 					bCacheCurrentlyBlown = true;
+					Cache->IncrementCacheOverflowCounter();
+
 					UE_LOG(LogAudio, Warning, TEXT("Cache overflow!!! couldn't load chunk %d for sound %s!"), ChunkIndex, *SoundWave->GetName());
+
 					AsyncTask(ENamedThreads::GameThread, []()
 					{
-						if (GEngine && GEngine->GetMainAudioDevice())
+#if !UE_BUILD_SHIPPING && !UE_BUILD_TEST
+						if (SaveAudioMemReportOnCacheOverflowCVar && GEngine && GEngine->GetMainAudioDevice())
 						{
 							GEngine->GetMainAudioDevice()->Exec(nullptr, TEXT("audiomemreport"));
 						}
+#endif // !UE_BUILD_SHIPPING && !UE_BUILD_TEST
 						int32 NumChunksReleased = 0;
 						for (TObjectIterator<USoundWave> It; It; ++It)
 						{
@@ -666,6 +679,7 @@ TArrayView<uint8> FAudioChunkCache::GetChunk(const FChunkKey& InKey, bool bBlock
 		if (!FoundElement)
 		{
 			OutCacheOffset = InvalidAudioStreamCacheLookupID;
+			UE_LOG(LogAudio, Display, TEXT("GetChunk failed to find an available chunk slot in the cache, likely because the cache is blown."));
 			return TArrayView<uint8>();
 		}
 		
@@ -1114,6 +1128,7 @@ FAudioChunkCache::FCacheElement* FAudioChunkCache::InsertChunk(const FChunkKey& 
 
 			if (!CacheElement)
 			{
+				UE_LOG(LogAudio, Display, TEXT("Failed to find an available chunk slot in the audio streaming manager, likely because the cache was blown."));
 				return nullptr;
 			}
 		}
@@ -1284,7 +1299,8 @@ void FAudioChunkCache::KickOffAsyncLoad(FCacheElement* CacheElement, const FChun
 
 		if (CacheElement->DDCTask.IsValid())
 		{
-			check(CacheElement->DDCTask->IsDone());
+			UE_CLOG(!CacheElement->DDCTask->IsDone(), LogAudio, Display, TEXT("DDC work was not finished for a requested audio streaming chunk slot berfore reuse; This may cause a hitch."));
+			CacheElement->DDCTask->EnsureCompletion();
 		}
 
 #if DEBUG_STREAM_CACHE

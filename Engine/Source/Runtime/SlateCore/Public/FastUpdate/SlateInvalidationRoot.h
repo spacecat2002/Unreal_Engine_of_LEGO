@@ -102,8 +102,10 @@ protected:
 	SLATECORE_API void ClearAllFastPathData(bool bClearResourcesImmediately);
 
 private:
-	void OnInvalidateAllWidgets(bool bClearResourcesImmediately);
-
+	void HandleInvalidateAllWidgets(bool bClearResourcesImmediately);
+protected:
+	virtual void OnRootInvalidated() { }
+private:
 	bool PaintFastPath(const FSlateInvalidationContext& Context);
 
 	void BuildFastPathList(SWidget* RootWidget);

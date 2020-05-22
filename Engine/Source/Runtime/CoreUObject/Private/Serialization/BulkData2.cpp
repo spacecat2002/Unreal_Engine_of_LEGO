@@ -531,6 +531,8 @@ public:
 				InRequest->DataResult = IoBuffer.Data();
 			}
 
+			bDataIsReady = true;
+
 			// Note that freeing the batch will invalidate the current callback!
 			FBulkDataBase::GetIoDispatcher()->FreeBatch(InRequest->IoBatch);
 
@@ -598,7 +600,7 @@ public:
 
 	virtual uint8* GetReadResults() override
 	{
-		if (bIsCompleted && !bIsCanceled)
+		if (bDataIsReady && !bIsCanceled)
 		{
 			uint8* Result = DataResult;
 			DataResult = nullptr;
@@ -613,7 +615,7 @@ public:
 
 	virtual int64 GetSize() const override
 	{
-		if (bIsCompleted && !bIsCanceled)
+		if (bDataIsReady && !bIsCanceled)
 		{
 			return SizeResult;
 		}
@@ -648,6 +650,8 @@ private:
 
 	uint8* DataResult = nullptr;
 	int64 SizeResult = 0;
+
+	bool bDataIsReady = false;
 
 	bool bIsCompleted = false;
 	bool bIsCanceled = false;
@@ -1080,16 +1084,8 @@ int64 FBulkDataBase::GetBulkDataSize() const
 {
 	if (IsUsingIODispatcher())
 	{
-		// If not available, return a size of 0 so that the high level fallbacks.
 		TIoStatusOr<uint64> Result = IoDispatcher->GetSizeForChunk(Data.ChunkID);
-		if (Result.IsOk())
-		{
-			return Result.ValueOrDie();
-		}
-		else
-		{
-			return 0;
-		}
+		return Result.ValueOrDie(); // TODO: Consider logging errors instead of relying on ::ValueOrDie
 	}
 	else
 	{
@@ -1566,6 +1562,11 @@ void FBulkDataBase::InternalLoadFromIoStoreAsync(void** DstBuffer, AsyncCallback
 	// Set up our options (we only need to set the target)
 	FIoReadOptions Options;
 	Options.SetTargetVa(*DstBuffer);
+
+	auto OnRequestLoaded = [Callback](TIoStatusOr<FIoBuffer> Result)
+	{
+		Callback(Result);
+	};
 
 	GetIoDispatcher()->ReadWithCallback(Data.ChunkID, Options, MoveTemp(Callback));
 }

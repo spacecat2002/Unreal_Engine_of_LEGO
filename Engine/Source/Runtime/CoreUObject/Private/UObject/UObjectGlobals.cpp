@@ -56,6 +56,7 @@
 #include "HAL/LowLevelMemStats.h"
 #include "Misc/CoreDelegates.h"
 #include "ProfilingDebugging/CsvProfiler.h"
+#include "ProfilingDebugging/LoadTimeTracker.h"
 
 DEFINE_LOG_CATEGORY(LogUObjectGlobals);
 
@@ -298,6 +299,24 @@ UObject* StaticFindObjectFast(UClass* ObjectClass, UObject* ObjectPackage, FName
 	if (!FoundObject)
 	{
 		FoundObject = StaticFindObjectWithChangedLegacyPath(ObjectClass, ObjectPackage, ObjectName, ExactClass);
+	}
+
+	return FoundObject;
+}
+
+UObject* StaticFindObjectFastSafe(UClass* ObjectClass, UObject* ObjectPackage, FName ObjectName, bool ExactClass, bool AnyPackage, EObjectFlags ExclusiveFlags, EInternalObjectFlags ExclusiveInternalFlags)
+{
+	UObject* FoundObject = nullptr;
+	
+	if (!GIsSavingPackage && !IsGarbageCollectingOnGameThread())
+	{
+		// We don't want to return any objects that are currently being background loaded unless we're using FindObject during async loading.
+		ExclusiveInternalFlags |= IsInAsyncLoadingThread() ? EInternalObjectFlags::None : EInternalObjectFlags::AsyncLoading;
+		FoundObject = StaticFindObjectFastInternal(ObjectClass, ObjectPackage, ObjectName, ExactClass, AnyPackage, ExclusiveFlags, ExclusiveInternalFlags);
+		if (!FoundObject)
+		{
+			FoundObject = StaticFindObjectWithChangedLegacyPath(ObjectClass, ObjectPackage, ObjectName, ExactClass);
+		}
 	}
 
 	return FoundObject;
@@ -1059,9 +1078,15 @@ public:
 // @todo: remove this in the new loader
 static int32 GGameThreadLoadCounter = 0;
 
+UE_TRACE_EVENT_BEGIN(CUSTOM_LOADTIMER_LOG, LoadPackageInternal, NoSync)
+	UE_TRACE_EVENT_FIELD(Trace::WideString, PackageName)
+UE_TRACE_EVENT_END()
+
 UPackage* LoadPackageInternal(UPackage* InOuter, const TCHAR* InLongPackageNameOrFilename, uint32 LoadFlags, FLinkerLoad* ImportLinker, FArchive* InReaderOverride, FLinkerInstancingContext* InstancingContext)
 {
 	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("LoadPackageInternal"), STAT_LoadPackageInternal, STATGROUP_ObjectVerbose);
+	SCOPED_CUSTOM_LOADTIMER(LoadPackageInternal)
+		ADD_CUSTOM_LOADTIMER_META(LoadPackageInternal, PackageName, InLongPackageNameOrFilename);
 
 	checkf(IsInGameThread(), TEXT("Unable to load %s. Objects and Packages can only be loaded from the game thread."), InLongPackageNameOrFilename);
 
@@ -1511,6 +1536,7 @@ void EndLoad(FUObjectSerializeContext* LoadContext)
 		LoadContext->DecrementBeginLoadCount();
 		return;
 	}
+	SCOPED_LOADTIMER(EndLoad);
 
 #if WITH_EDITOR
 	TOptional<FScopedSlowTask> SlowTask;
@@ -1545,14 +1571,17 @@ void EndLoad(FUObjectSerializeContext* LoadContext)
 			ObjLoaded.Sort(FCompareUObjectByLinkerAndOffset());
 
 			// Finish loading everything.
-			for (int32 i = 0; i < ObjLoaded.Num(); i++)
 			{
-				// Preload.
-				UObject* Obj = ObjLoaded[i];
-				if (Obj->HasAnyFlags(RF_NeedLoad))
+				SCOPED_LOADTIMER(PreLoadAndSerialize);
+				for (int32 i = 0; i < ObjLoaded.Num(); i++)
 				{
-					check(Obj->GetLinker());
-					Obj->GetLinker()->Preload(Obj);
+					// Preload.
+					UObject* Obj = ObjLoaded[i];
+					if (Obj->HasAnyFlags(RF_NeedLoad))
+					{
+						check(Obj->GetLinker());
+						Obj->GetLinker()->Preload(Obj);
+					}
 				}
 			}
 
@@ -1585,6 +1614,7 @@ void EndLoad(FUObjectSerializeContext* LoadContext)
 			}
 
 			{
+				SCOPED_LOADTIMER(PostLoad);
 				// set this so that we can perform certain operations in which are only safe once all objects have been de-serialized.
 				TGuardValue<bool> GuardIsRoutingPostLoad(FUObjectThreadContext::Get().IsRoutingPostLoad, true);
 				FLinkerLoad* VisitedLinkerLoad = nullptr;
@@ -3912,7 +3942,7 @@ namespace UE4CodeGen_Private
 {
 	void ConstructFProperty(FFieldVariant Outer, const FPropertyParamsBase* const*& PropertyArray, int32& NumProperties)
 	{
-		const FPropertyParamsBase* PropBase = *PropertyArray++;
+		const FPropertyParamsBase* PropBase = *--PropertyArray;
 
 		uint32 ReadMore = 0;
 
@@ -4380,8 +4410,10 @@ namespace UE4CodeGen_Private
 		}
 	}
 
-	void ConstructUProperties(UObject* Outer, const FPropertyParamsBase* const* PropertyArray, int32 NumProperties)
+	void ConstructFProperties(UObject* Outer, const FPropertyParamsBase* const* PropertyArray, int32 NumProperties)
 	{
+		// Move pointer to the end, because we'll iterate backwards over the properties
+		PropertyArray += NumProperties;
 		while (NumProperties)
 		{
 			ConstructFProperty(Outer, PropertyArray, NumProperties);
@@ -4457,7 +4489,7 @@ namespace UE4CodeGen_Private
 		NewFunction->RPCId = Params.RPCId;
 		NewFunction->RPCResponseId = Params.RPCResponseId;
 
-		ConstructUProperties(NewFunction, Params.PropertyArray, Params.NumProperties);
+		ConstructFProperties(NewFunction, Params.PropertyArray, Params.NumProperties);
 
 		NewFunction->Bind();
 		NewFunction->StaticLink();
@@ -4515,7 +4547,7 @@ namespace UE4CodeGen_Private
 		UScriptStruct* NewStruct = new(EC_InternalUseOnlyConstructor, Outer, UTF8_TO_TCHAR(Params.NameUTF8), Params.ObjectFlags) UScriptStruct(FObjectInitializer(), Super, StructOps, (EStructFlags)Params.StructFlags, Params.SizeOf, Params.AlignOf);
 		OutStruct = NewStruct;
 
-		ConstructUProperties(NewStruct, Params.PropertyArray, Params.NumProperties);
+		ConstructFProperties(NewStruct, Params.PropertyArray, Params.NumProperties);
 
 		NewStruct->StaticLink();
 
@@ -4598,7 +4630,7 @@ namespace UE4CodeGen_Private
 		}
 		NewClass->CreateLinkAndAddChildFunctionsToMap(Params.FunctionLinkArray, Params.NumFunctions);
 
-		ConstructUProperties(NewClass, Params.PropertyArray, Params.NumProperties);
+		ConstructFProperties(NewClass, Params.PropertyArray, Params.NumProperties);
 
 		if (Params.ClassConfigNameUTF8)
 		{

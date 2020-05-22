@@ -771,18 +771,7 @@ bool FAudioDeviceManager::Initialize()
 {
 	if (!Singleton)
 	{
-		bool bUseSound = true;
-
-		// If dedicated server, the -nosound, or -benchmark parameters are used, disable sound.
-		if (FParse::Param(FCommandLine::Get(), TEXT("nosound")) || FApp::IsBenchmarking() || IsRunningDedicatedServer() || (IsRunningCommandlet() && !IsAllowCommandletAudio()))
-		{
-			bUseSound = false;
-		}
-
-		if (FParse::Param(FCommandLine::Get(), TEXT("enablesound")))
-		{
-			bUseSound = true;
-		}
+		bool bUseSound = FApp::CanEverRenderAudio();
 
 		if (bUseSound)
 		{
@@ -884,7 +873,7 @@ void FAudioDeviceManager::UpdateActiveAudioDevices(bool bGameTicking)
 	}
 }
 
-void FAudioDeviceManager::IterateOverAllDevices(TFunction<void(Audio::FDeviceId, FAudioDevice*)> ForEachDevice)
+void FAudioDeviceManager::IterateOverAllDevices(TUniqueFunction<void(Audio::FDeviceId, FAudioDevice*)> ForEachDevice)
 {
 	FScopeLock ScopeLock(&DeviceMapCriticalSection);
 	for (auto& DeviceContainer : Devices)
@@ -893,7 +882,7 @@ void FAudioDeviceManager::IterateOverAllDevices(TFunction<void(Audio::FDeviceId,
 	}
 }
 
-void FAudioDeviceManager::IterateOverAllDevices(TFunction<void(Audio::FDeviceId, const FAudioDevice*)> ForEachDevice) const
+void FAudioDeviceManager::IterateOverAllDevices(TUniqueFunction<void(Audio::FDeviceId, const FAudioDevice*)> ForEachDevice) const
 {
 	// We have to cheat a little to make this safe: we cast our crit section to a mutable pointer in order to scope lock.
 	FCriticalSection* ConstCastCritSection = const_cast<FCriticalSection*>(&DeviceMapCriticalSection);

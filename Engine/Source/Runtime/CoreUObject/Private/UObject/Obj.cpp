@@ -1067,6 +1067,9 @@ void UObject::ConditionalPostLoad()
 			}
 			else
 			{
+#if WITH_EDITOR
+				SCOPED_LOADTIMER_TEXT(*((GetClass()->IsChildOf(UDynamicClass::StaticClass()) ? UDynamicClass::StaticClass() : GetClass())->GetName() + TEXT("_PostLoad")));
+#endif
 				LLM_SCOPED_TAG_WITH_OBJECT_IN_SET(GetOutermost(), ELLMTagSet::Assets);
 				LLM_SCOPED_TAG_WITH_OBJECT_IN_SET(GetClass()->IsChildOf(UDynamicClass::StaticClass()) ? UDynamicClass::StaticClass() : GetClass(), ELLMTagSet::AssetClasses);
 

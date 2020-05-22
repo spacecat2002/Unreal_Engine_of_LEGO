@@ -25,7 +25,11 @@ namespace Chaos
 		class Params
 		{
 		public:
-			FReal HorizonEpsilon = 1e-1;
+			Params()
+				: HorizonEpsilon(0.1f)
+			{}
+
+			FReal HorizonEpsilon;
 		};
 
 		static FReal SuggestEpsilon(const TParticles<FReal, 3>& InParticles)

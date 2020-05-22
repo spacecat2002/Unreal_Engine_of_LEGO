@@ -130,7 +130,6 @@ void UObjectBaseUtility::DetachExternalPackage()
 
 void UObjectBaseUtility::ReattachExternalPackage()
 {
-	// GetObjectExternalPackageThreadSafe doesn't check for the RF_HasExternalPackage before looking up the external package
 	if (!HasAnyFlags(RF_HasExternalPackage) && GetObjectExternalPackageThreadSafe(this))
 	{
 		SetFlags(RF_HasExternalPackage);
@@ -284,7 +283,8 @@ UObject* UObjectBaseUtility::GetTypedOuter(UClass* Target) const
  */
 bool UObjectBaseUtility::IsIn( const UObject* SomeOuter ) const
 {
-	if (SomeOuter->IsA<UPackage>())
+	// uncomment the ensure to more easily find where IsIn should be changed to IsInPackage
+	if (!/*ensure*/(!SomeOuter->IsA<UPackage>()))
 	{
 		return IsInPackage(static_cast<const UPackage*>(SomeOuter));
 	}

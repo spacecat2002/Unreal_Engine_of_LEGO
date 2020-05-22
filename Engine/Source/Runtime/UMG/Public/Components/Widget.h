@@ -892,7 +892,6 @@ public:
 	// Begin UObject
 	virtual UWorld* GetWorld() const override;
 	virtual void FinishDestroy() override;
-	virtual bool IsDestructionThreadSafe() const override { return false; }
 	virtual void PreSave(const class ITargetPlatform* TargetPlatform) override;
 	// End UObject
 
