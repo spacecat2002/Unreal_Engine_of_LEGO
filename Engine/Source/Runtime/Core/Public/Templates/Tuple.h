@@ -11,6 +11,7 @@
 #include "Serialization/StructuredArchive.h"
 #include "Serialization/MemoryLayout.h"
 #include "Templates/TypeHash.h"
+#include "Templates/IsConstructible.h"
 
 class FArchive;
 
@@ -19,29 +20,21 @@ struct TTuple;
 
 namespace UE4Tuple_Private
 {
-	template <typename T, typename... Types>
-	struct TDecayedFrontOfParameterPackIsSameType
-	{
-		enum { Value = TAreTypesEqual<T, typename TDecay<typename TNthTypeFromParameterPack<0, Types...>::Type>::Type>::Value };
-	};
+	enum EForwardingConstructor { ForwardingConstructor };
+
+	// This only exists to have something to expand a parameter pack into, for concept checking
+	template <typename... ArgTypes>
+	void ConceptCheckingHelper(ArgTypes&&...);
 
 	template <typename T, uint32 Index>
 	struct TTupleElement
 	{
 		template <
-			typename... ArgTypes,
-			typename = typename TEnableIf<
-				TAndValue<
-					sizeof...(ArgTypes) != 0,
-					TOrValue<
-						sizeof...(ArgTypes) != 1,
-						TNot<UE4Tuple_Private::TDecayedFrontOfParameterPackIsSameType<TTupleElement, ArgTypes...>>
-					>
-				>::Value
-			>::Type
+			typename ArgType,
+			typename TEnableIf<TIsConstructible<T, ArgType&&>::Value>::Type* = nullptr
 		>
-		explicit TTupleElement(ArgTypes&&... Args)
-			: Value(Forward<ArgTypes>(Args)...)
+		explicit TTupleElement(EForwardingConstructor, ArgType&& Arg)
+			: Value(Forward<ArgType>(Arg))
 		{
 		}
 
@@ -155,18 +148,10 @@ namespace UE4Tuple_Private
 	{
 		template <
 			typename... ArgTypes,
-			typename = typename TEnableIf<
-				TAndValue<
-					sizeof...(ArgTypes) == sizeof...(Types) && sizeof...(ArgTypes) != 0,
-					TOrValue<
-						sizeof...(ArgTypes) != 1,
-						TNot<UE4Tuple_Private::TDecayedFrontOfParameterPackIsSameType<TTupleStorage, ArgTypes...>>
-					>
-				>::Value
-			>::Type
+			decltype(ConceptCheckingHelper(TTupleElement<Types, Indices>(ForwardingConstructor, DeclVal<ArgTypes&&>())...))* = nullptr
 		>
-		explicit TTupleStorage(ArgTypes&&... Args)
-			: TTupleElement<Types, Indices>(Forward<ArgTypes>(Args))...
+		explicit TTupleStorage(EForwardingConstructor, ArgTypes&&... Args)
+			: TTupleElement<Types, Indices>(ForwardingConstructor, Forward<ArgTypes>(Args))...
 		{
 		}
 
@@ -189,8 +174,12 @@ namespace UE4Tuple_Private
 		typedef InKeyType   KeyType;
 		typedef InValueType ValueType;
 
-		template <typename KeyInitType, typename ValueInitType>
-		explicit TTupleStorage(KeyInitType&& KeyInit, ValueInitType&& ValueInit)
+		template <
+			typename KeyInitType,
+			typename ValueInitType,
+			typename TEnableIf<TAnd<TIsConstructible<KeyType, KeyInitType&&>, TIsConstructible<ValueType, ValueInitType&&>>::Value>::Type* = nullptr
+		>
+		explicit TTupleStorage(EForwardingConstructor, KeyInitType&& KeyInit, ValueInitType&& ValueInit)
 			: Key  (Forward<KeyInitType  >(KeyInit  ))
 			, Value(Forward<ValueInitType>(ValueInit))
 		{
@@ -230,18 +219,10 @@ namespace UE4Tuple_Private
 
 		template <
 			typename... ArgTypes,
-			typename = typename TEnableIf<
-				TAndValue<
-					sizeof...(ArgTypes) == sizeof...(Types) && sizeof...(ArgTypes) != 0,
-					TOrValue<
-						sizeof...(ArgTypes) != 1,
-						TNot<UE4Tuple_Private::TDecayedFrontOfParameterPackIsSameType<TTupleImpl, ArgTypes...>>
-					>
-				>::Value
-			>::Type
+			decltype(ConceptCheckingHelper(Super(ForwardingConstructor, DeclVal<ArgTypes&&>()...)))* = nullptr
 		>
-		explicit TTupleImpl(ArgTypes&&... Args)
-			: Super(Forward<ArgTypes>(Args)...)
+		explicit TTupleImpl(EForwardingConstructor, ArgTypes&&... Args)
+			: Super(ForwardingConstructor, Forward<ArgTypes>(Args)...)
 		{
 		}
 
@@ -310,7 +291,6 @@ namespace UE4Tuple_Private
 			return !(Lhs < Rhs);
 		}
 	};
-
 
 	template <typename... Types>
 	FORCEINLINE TTuple<typename TDecay<Types>::Type...> MakeTupleImpl(Types&&... Args)
@@ -394,18 +374,10 @@ private:
 public:
 	template <
 		typename... ArgTypes,
-		typename = typename TEnableIf<
-			TAndValue<
-				sizeof...(ArgTypes) == sizeof...(Types) && sizeof...(ArgTypes) != 0,
-				TOrValue<
-					sizeof...(ArgTypes) != 1,
-					TNot<UE4Tuple_Private::TDecayedFrontOfParameterPackIsSameType<TTuple, ArgTypes...>>
-				>
-			>::Value
-		>::Type
+		decltype(UE4Tuple_Private::ConceptCheckingHelper(Super(UE4Tuple_Private::ForwardingConstructor, DeclVal<ArgTypes&&>()...)))* = nullptr
 	>
 	explicit TTuple(ArgTypes&&... Args)
-		: Super(Forward<ArgTypes>(Args)...)
+		: Super(UE4Tuple_Private::ForwardingConstructor, Forward<ArgTypes>(Args)...)
 	{
 		// This constructor is disabled for TTuple and zero parameters because VC is incorrectly instantiating it as a move/copy/default constructor.
 	}
