@@ -58,28 +58,43 @@ namespace UE4Tuple_Private
 		T Value;
 	};
 
-	template <uint32 IterIndex, uint32 Index, typename... Types>
-	struct TTupleElementHelperImpl;
-
-	template <uint32 IterIndex, uint32 Index, typename ElementType, typename... Types>
-	struct TTupleElementHelperImpl<IterIndex, Index, ElementType, Types...> : TTupleElementHelperImpl<IterIndex + 1, Index, Types...>
+	template <uint32 Index, uint32 TupleSize>
+	struct TTupleElementHelper
 	{
+		template <typename DeducedType, typename TupleType>
+		static FORCEINLINE decltype(auto) GetImpl(const volatile TTupleElement<DeducedType, Index>&, TupleType&& Tuple)
+		{
+			// Brackets are important here - we want a reference type to be returned, not object type
+			return (ForwardAsBase<TupleType, TTupleElement<DeducedType, Index>>(Tuple).Value);
+		}
+
+		template <typename TupleType>
+		static FORCEINLINE decltype(auto) Get(TupleType&& Tuple)
+		{
+			return GetImpl(Tuple, Forward<TupleType>(Tuple));
+		}
 	};
 
-	template <uint32 Index, typename ElementType, typename... Types>
-	struct TTupleElementHelperImpl<Index, Index, ElementType, Types...>
+	template <>
+	struct TTupleElementHelper<0, 2>
 	{
 		template <typename TupleType>
 		static FORCEINLINE decltype(auto) Get(TupleType&& Tuple)
 		{
 			// Brackets are important here - we want a reference type to be returned, not object type
-			return (ForwardAsBase<TupleType, TTupleElement<ElementType, Index>>(Tuple).Value);
+			return (Forward<TupleType>(Tuple).Key);
 		}
 	};
 
-	template <uint32 WantedIndex, typename... Types>
-	struct TTupleElementHelper : TTupleElementHelperImpl<0, WantedIndex, Types...>
+	template <>
+	struct TTupleElementHelper<1, 2>
 	{
+		template <typename TupleType>
+		static FORCEINLINE decltype(auto) Get(TupleType&& Tuple)
+		{
+			// Brackets are important here - we want a reference type to be returned, not object type
+			return (Forward<TupleType>(Tuple).Value);
+		}
 	};
 
 	template <uint32 ArgCount, uint32 ArgToCompare>
@@ -161,43 +176,16 @@ namespace UE4Tuple_Private
 		TTupleStorage& operator=(TTupleStorage&&) = default;
 		TTupleStorage& operator=(const TTupleStorage&) = default;
 
-		template <uint32 Index> FORCEINLINE decltype(auto) Get() const&  { return TTupleElementHelper<Index, Types...>::Get(         *this ); }
-		template <uint32 Index> FORCEINLINE decltype(auto) Get() const&& { return TTupleElementHelper<Index, Types...>::Get(MoveTemp(*this)); }
-		template <uint32 Index> FORCEINLINE decltype(auto) Get()      &  { return TTupleElementHelper<Index, Types...>::Get(         *this ); }
-		template <uint32 Index> FORCEINLINE decltype(auto) Get()      && { return TTupleElementHelper<Index, Types...>::Get(MoveTemp(*this)); }
+		template <uint32 Index> FORCEINLINE decltype(auto) Get() const&  { return TTupleElementHelper<Index, sizeof...(Types)>::Get(         *this ); }
+		template <uint32 Index> FORCEINLINE decltype(auto) Get() const&& { return TTupleElementHelper<Index, sizeof...(Types)>::Get(MoveTemp(*this)); }
+		template <uint32 Index> FORCEINLINE decltype(auto) Get()      &  { return TTupleElementHelper<Index, sizeof...(Types)>::Get(         *this ); }
+		template <uint32 Index> FORCEINLINE decltype(auto) Get()      && { return TTupleElementHelper<Index, sizeof...(Types)>::Get(MoveTemp(*this)); }
 	};
 
 	// Specialization of 2-TTuple to give it the API of TPair.
 	template <typename InKeyType, typename InValueType>
 	struct TTupleStorage<TIntegerSequence<uint32, 0, 1>, InKeyType, InValueType>
 	{
-	private:
-		template <uint32 Index, typename Dummy> // Dummy needed for partial template specialization workaround
-		struct TGetHelper;
-
-		template <typename Dummy>
-		struct TGetHelper<0, Dummy>
-		{
-			template <typename TupleType>
-			static decltype(auto) Get(TupleType&& Tuple)
-			{
-				// Brackets are important here - we want a reference type to be returned, not object type
-				return (Forward<TupleType>(Tuple).Key);
-			}
-		};
-
-		template <typename Dummy>
-		struct TGetHelper<1, Dummy>
-		{
-			template <typename TupleType>
-			static decltype(auto) Get(TupleType&& Tuple)
-			{
-				// Brackets are important here - we want a reference type to be returned, not object type
-				return (Forward<TupleType>(Tuple).Value);
-			}
-		};
-
-	public:
 		typedef InKeyType   KeyType;
 		typedef InValueType ValueType;
 
@@ -219,10 +207,10 @@ namespace UE4Tuple_Private
 		TTupleStorage& operator=(TTupleStorage&&) = default;
 		TTupleStorage& operator=(const TTupleStorage&) = default;
 
-		template <uint32 Index> FORCEINLINE decltype(auto) Get() const&  { return TGetHelper<Index, void>::Get(         *this ); }
-		template <uint32 Index> FORCEINLINE decltype(auto) Get() const&& { return TGetHelper<Index, void>::Get(MoveTemp(*this)); }
-		template <uint32 Index> FORCEINLINE decltype(auto) Get()      &  { return TGetHelper<Index, void>::Get(         *this ); }
-		template <uint32 Index> FORCEINLINE decltype(auto) Get()      && { return TGetHelper<Index, void>::Get(MoveTemp(*this)); }
+		template <uint32 Index> FORCEINLINE decltype(auto) Get() const&  { return TTupleElementHelper<Index, 2>::Get(         *this ); }
+		template <uint32 Index> FORCEINLINE decltype(auto) Get() const&& { return TTupleElementHelper<Index, 2>::Get(MoveTemp(*this)); }
+		template <uint32 Index> FORCEINLINE decltype(auto) Get()      &  { return TTupleElementHelper<Index, 2>::Get(         *this ); }
+		template <uint32 Index> FORCEINLINE decltype(auto) Get()      && { return TTupleElementHelper<Index, 2>::Get(MoveTemp(*this)); }
 
 		InKeyType   Key;
 		InValueType Value;
