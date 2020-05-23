@@ -110,13 +110,13 @@ void FTexture2DStreamIn_IO::ReportIOError(const FContext& Context)
 	if (bFailedOnIOError && Context.Texture)
 	{
 		IRenderAssetStreamingManager& StreamingManager = IStreamingManager::Get().GetTextureStreamingManager();
-		const int32 CurrentFirstMip = Context.Resource->GetCurrentFirstMip();
+		const int32 CurrentFirstMip = Context.Resource ? Context.Resource->GetCurrentFirstMip() : PendingFirstMip + 1;
+		// Need to start at index 0 because the streamer only gets the hash for the first optional mip (and we don't know which one it is).
 		for (int32 MipIndex = 0; MipIndex < CurrentFirstMip; ++MipIndex)
 		{
 			StreamingManager.MarkMountedStateDirty(Context.Texture->GetMipIoFilenameHash(MipIndex));
 		}
-
-		UE_LOG(LogContentStreaming, Warning, TEXT("[%s] Stream in request failed due to IO error."), *Context.Texture->GetName());
+		UE_LOG(LogContentStreaming, Warning, TEXT("[%s] Texture stream in request failed due to IO error (Mip %d-%d)."), *Context.Texture->GetName(), PendingFirstMip, CurrentFirstMip - 1);
 	}
 }
 
