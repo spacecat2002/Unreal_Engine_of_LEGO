@@ -21,6 +21,7 @@ struct TTuple;
 namespace UE4Tuple_Private
 {
 	enum EForwardingConstructor { ForwardingConstructor };
+	enum EOtherTupleConstructor { OtherTupleConstructor };
 
 	// This only exists to have something to expand a parameter pack into, for concept checking
 	template <typename... ArgTypes>
@@ -226,6 +227,15 @@ namespace UE4Tuple_Private
 		{
 		}
 
+		template <
+			typename TupleType,
+			decltype(ConceptCheckingHelper(Super(ForwardingConstructor, DeclVal<TupleType&&>().template Get<Indices>()...)))* = nullptr
+		>
+		explicit TTupleImpl(EOtherTupleConstructor, TupleType&& Other)
+			: Super(ForwardingConstructor, Forward<TupleType>(Other).template Get<Indices>()...)
+		{
+		}
+
 		TTupleImpl() = default;
 		TTupleImpl(TTupleImpl&& Other) = default;
 		TTupleImpl(const TTupleImpl& Other) = default;
@@ -291,6 +301,19 @@ namespace UE4Tuple_Private
 			return !(Lhs < Rhs);
 		}
 	};
+
+	template <
+		typename LhsType,
+		typename RhsType,
+		uint32... Indices,
+		decltype(ConceptCheckingHelper((DeclVal<LhsType&>().template Get<Indices>() = DeclVal<RhsType&&>().template Get<Indices>(), 0)...))* = nullptr
+	>
+	static void Assign(LhsType& Lhs, RhsType&& Rhs, TIntegerSequence<uint32, Indices...>)
+	{
+		// This should be implemented with a fold expression when our compilers support it
+		int Temp[] = { 0, (Lhs.template Get<Indices>() = Forward<RhsType>(Rhs).template Get<Indices>(), 0)... };
+		(void)Temp;
+	}
 
 	template <typename... Types>
 	FORCEINLINE TTuple<typename TDecay<Types>::Type...> MakeTupleImpl(Types&&... Args)
@@ -382,11 +405,51 @@ public:
 		// This constructor is disabled for TTuple and zero parameters because VC is incorrectly instantiating it as a move/copy/default constructor.
 	}
 
+	template <
+		typename... OtherTypes,
+		decltype(UE4Tuple_Private::ConceptCheckingHelper(Super(UE4Tuple_Private::OtherTupleConstructor, DeclVal<TTuple<OtherTypes...>&&>())))* = nullptr
+	>
+	TTuple(TTuple<OtherTypes...>&& Other)
+		: Super(UE4Tuple_Private::OtherTupleConstructor, MoveTemp(Other))
+	{
+	}
+
+	template <
+		typename... OtherTypes,
+		decltype(UE4Tuple_Private::ConceptCheckingHelper(Super(UE4Tuple_Private::OtherTupleConstructor, DeclVal<const TTuple<OtherTypes...>&>())))* = nullptr
+	>
+	TTuple(const TTuple<OtherTypes...>& Other)
+		: Super(UE4Tuple_Private::OtherTupleConstructor, Other)
+	{
+	}
+
 	TTuple() = default;
 	TTuple(TTuple&&) = default;
 	TTuple(const TTuple&) = default;
 	TTuple& operator=(TTuple&&) = default;
 	TTuple& operator=(const TTuple&) = default;
+
+	template <
+		typename... OtherTypes,
+		typename TEnableIf<sizeof...(Types) == sizeof...(OtherTypes)>::Type* = nullptr,
+		decltype(UE4Tuple_Private::Assign(DeclVal<TTuple&>(), DeclVal<const TTuple<OtherTypes...>&>(), TMakeIntegerSequence<uint32, sizeof...(Types)>{}))* = nullptr
+	>
+	TTuple& operator=(const TTuple<OtherTypes...>& Other)
+	{
+		UE4Tuple_Private::Assign(*this, Other, TMakeIntegerSequence<uint32, sizeof...(Types)>{});
+		return *this;
+	}
+
+	template <
+		typename... OtherTypes,
+		typename TEnableIf<sizeof...(Types) == sizeof...(OtherTypes)>::Type* = nullptr,
+		decltype(UE4Tuple_Private::Assign(DeclVal<TTuple&>(), DeclVal<TTuple<OtherTypes...>&&>(), TMakeIntegerSequence<uint32, sizeof...(OtherTypes)>{}))* = nullptr
+	>
+	TTuple& operator=(TTuple<OtherTypes...>&& Other)
+	{
+		UE4Tuple_Private::Assign(*this, MoveTemp(Other), TMakeIntegerSequence<uint32, sizeof...(OtherTypes)>{});
+		return *this;
+	}
 };
 
 template <typename... Types>
