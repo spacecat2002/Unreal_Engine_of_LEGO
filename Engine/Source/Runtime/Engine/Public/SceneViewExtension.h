@@ -79,6 +79,8 @@ class FSceneView;
 class FSceneViewFamily;
 struct FMinimalViewInfo;
 struct FSceneViewProjectionData;
+class FRDGBuilder;
+struct FPostProcessingInputs;
 
 class ISceneViewExtension
 {
@@ -124,6 +126,11 @@ public:
 	 * Called right after Base Pass rendering finished
 	 */
 	virtual void PostRenderBasePass_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& InView) {};
+
+	/**
+	 * Called right before Post Processing rendering begins
+	 */
+	virtual void PrePostProcessPass_RenderThread(FRDGBuilder& GraphBuilder, const FSceneView& View, const FPostProcessingInputs& Inputs) {};
 
 	/**
 	 * Allows to render content after the 3D content scene, useful for debugging
