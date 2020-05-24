@@ -107,7 +107,8 @@ class FRayTracingDeferredReflectionsRGS : public FGlobalShader
 	SHADER_USE_ROOT_PARAMETER_STRUCT(FRayTracingDeferredReflectionsRGS, FGlobalShader)
 
 	class FDeferredMaterialMode : SHADER_PERMUTATION_ENUM_CLASS("DIM_DEFERRED_MATERIAL_MODE", EDeferredMaterialMode);
-	using FPermutationDomain = TShaderPermutationDomain<FDeferredMaterialMode>;
+	class FGenerateRays : SHADER_PERMUTATION_BOOL("DIM_GENERATE_RAYS"); // Whether to generate rays in the RGS or in a separate CS
+	using FPermutationDomain = TShaderPermutationDomain<FDeferredMaterialMode, FGenerateRays>;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, RayTracingResolution)
@@ -138,6 +139,12 @@ class FRayTracingDeferredReflectionsRGS : public FGlobalShader
 
 		FPermutationDomain PermutationVector(Parameters.PermutationId);
 		if (PermutationVector.Get<FDeferredMaterialMode>() == EDeferredMaterialMode::None)
+		{
+			return false;
+		}
+
+		if (PermutationVector.Get<FDeferredMaterialMode>() != EDeferredMaterialMode::Gather 
+			&& PermutationVector.Get<FGenerateRays>())
 		{
 			return false;
 		}
@@ -208,6 +215,8 @@ void FDeferredShadingSceneRenderer::RenderRayTracingDeferredReflections(
 	const FRayTracingReflectionOptions& Options,
 	IScreenSpaceDenoiser::FReflectionsInputs* OutDenoiserInputs)
 {
+	const bool bGenerateRaysWithRGS = true; // TODO: somehow need to select between RGS or CS ray generation automatically
+
 	FRDGTextureDesc OutputDesc = FPooledRenderTargetDesc::Create2DDesc(
 		FSceneRenderTargets::Get_FrameConstantsOnly().GetBufferSizeXY(),
 		PF_FloatRGBA, FClearValueBinding(FLinearColor(0, 0, 0, 0)),
@@ -249,7 +258,10 @@ void FDeferredShadingSceneRenderer::RenderRayTracingDeferredReflections(
 	const FRDGBufferDesc BookmarkBufferDesc = FRDGBufferDesc::CreateStructuredDesc(sizeof(FRayIntersectionBookmark), TileAlignedNumRays);
 	FRDGBufferRef BookmarkBuffer            = GraphBuilder.CreateBuffer(BookmarkBufferDesc, TEXT("RayTracingReflectionsBookmarkBuffer"));
 
-	AddGenerateReflectionRaysPass(GraphBuilder, View, SortedRayBuffer, CommonParameters);
+	if (!bGenerateRaysWithRGS)
+	{
+		AddGenerateReflectionRaysPass(GraphBuilder, View, SortedRayBuffer, CommonParameters);
+	}
 
 	// Trace reflection material gather rays
 
@@ -264,6 +276,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingDeferredReflections(
 
 		FRayTracingDeferredReflectionsRGS::FPermutationDomain PermutationVector;
 		PermutationVector.Set<FRayTracingDeferredReflectionsRGS::FDeferredMaterialMode>(EDeferredMaterialMode::Gather);
+		PermutationVector.Set<FRayTracingDeferredReflectionsRGS::FGenerateRays>(bGenerateRaysWithRGS);
 
 		auto RayGenShader = View.ShaderMap->GetShader<FRayTracingDeferredReflectionsRGS>(PermutationVector);
 		ClearUnusedGraphResources(RayGenShader, &PassParameters);
@@ -300,6 +313,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingDeferredReflections(
 
 		FRayTracingDeferredReflectionsRGS::FPermutationDomain PermutationVector;
 		PermutationVector.Set<FRayTracingDeferredReflectionsRGS::FDeferredMaterialMode>(EDeferredMaterialMode::Shade);
+		PermutationVector.Set<FRayTracingDeferredReflectionsRGS::FGenerateRays>(false);
 
 		auto RayGenShader = View.ShaderMap->GetShader<FRayTracingDeferredReflectionsRGS>(PermutationVector);
 		ClearUnusedGraphResources(RayGenShader, &PassParameters);
