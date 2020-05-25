@@ -3097,6 +3097,12 @@ bool FLinkerLoad::VerifyImportInner(const int32 ImportIndex, FString& WarningSuf
 		// if we have an assigned package, load it, this will also assign the import source linker (Import.SourceLinker)
 		if (Import.HasPackageName())
 		{
+#if WITH_EDITOR
+			if (SlowTask)
+			{
+				SlowTask->TotalAmountOfWork += 100;
+			}
+#endif
 			Pkg = LoadImportPackage(Import, SlowTask);
 		}
 		
