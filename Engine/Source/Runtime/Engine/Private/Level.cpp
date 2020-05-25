@@ -2164,7 +2164,8 @@ TArray<UPackage*> ULevel::GetExternalActorPackages() const
 FString ULevel::GetExternalActorsPath(UPackage* InLevelPackage)
 {
 	check(InLevelPackage);
-	return InLevelPackage->GetName();
+	FString LevelPackageName = InLevelPackage->GetName();
+	return FString::Printf(TEXT("/%s/__ExternalActors__/%s"), *FPackageName::GetPackageMountPoint(LevelPackageName).ToString(), *FPackageName::GetShortName(LevelPackageName));
 }
 
 UPackage* ULevel::CreateActorPackage(UPackage* InLevelPackage, const FGuid& InGuid)
