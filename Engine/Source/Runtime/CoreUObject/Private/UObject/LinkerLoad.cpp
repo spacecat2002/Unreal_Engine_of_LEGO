@@ -3100,7 +3100,6 @@ bool FLinkerLoad::VerifyImportInner(const int32 ImportIndex, FString& WarningSuf
 			Pkg = LoadImportPackage(Import, SlowTask);
 		}
 		
-				SlowTask->TotalAmountOfWork += 100;
 		// this import outer is also an import, so recurse verify into it.
 		if (Import.OuterIndex.IsImport())
 		{
