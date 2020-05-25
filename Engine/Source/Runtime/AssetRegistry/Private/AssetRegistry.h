@@ -147,8 +147,8 @@ private:
 	void InitRedirectors();
 
 	/** Internal handler for ScanPathsSynchronous */
-	void ScanPathsAndFilesSynchronous(const TArray<FString>& InPaths, const TArray<FString>& InSpecificFiles, bool bForceRescan, EAssetDataCacheMode AssetDataCacheMode);
-	void ScanPathsAndFilesSynchronous(const TArray<FString>& InPaths, const TArray<FString>& InSpecificFiles, bool bForceRescan, EAssetDataCacheMode AssetDataCacheMode, TArray<FName>* OutFoundAssets, TArray<FName>* OutFoundPaths);
+	void ScanPathsAndFilesSynchronous(const TArray<FString>& InPaths, const TArray<FString>& InSpecificFiles, const TArray<FString>& InBlacklistScanFilters, bool bForceRescan, EAssetDataCacheMode AssetDataCacheMode);
+	void ScanPathsAndFilesSynchronous(const TArray<FString>& InPaths, const TArray<FString>& InSpecificFiles, const TArray<FString>& InBlacklistScanFilters, bool bForceRescan, EAssetDataCacheMode AssetDataCacheMode, TArray<FName>* OutFoundAssets, TArray<FName>* OutFoundPaths);
 
 	/** Called every tick to when data is retrieved by the background asset search. If TickStartTime is < 0, the entire list of gathered assets will be cached. Also used in sychronous searches */
 	void AssetSearchDataGathered(const double TickStartTime, TBackgroundGatherResults<FAssetData*>& AssetResults);
@@ -250,6 +250,9 @@ private:
 	/** This will always read the ini, public version may return cache */
 	void InitializeSerializationOptionsFromIni(FAssetRegistrySerializationOptions& Options, const FString& PlatformIniName) const;
 
+	/** Initialize the scan filters from the ini */
+	void InitializeBlacklistScanFiltersFromIni();
+
 	bool ResolveRedirect(const FString& InPackageName, FString& OutPackageName);
 
 	/** Internal helper which processes a given state and adds its contents to the current registry */
@@ -278,6 +281,12 @@ private:
 	 *  - If the filter is empty, then the array will be untouched.
 	 */
 	void RunAssetsThroughFilterImpl(TArray<FAssetData>& AssetDataList, const FARFilter& Filter, const EARFilterMode FilterMode) const;
+
+	/**
+	 * Add sub content blacklist filter for a new mount point
+	 * @param InMount The mount point
+	 */
+	void AddSubContentBlacklist(const FString& InMount);
 
 private:
 	
@@ -320,6 +329,12 @@ private:
 
 	/** The tree of known cached paths that assets may reside within */
 	FPathTree CachedPathTree;
+
+	/** Set of blacklist paths to filter during full asset scans. */
+	TArray<FString> BlacklistScanFilters;
+
+	/** List of sub content path to filter on every mount during full asset scans. */
+	TArray<FString> BlacklistContentSubPaths;
 
 	/** Async task that gathers asset information from disk */
 	TSharedPtr< class FAssetDataGatherer > BackgroundAssetSearch;
