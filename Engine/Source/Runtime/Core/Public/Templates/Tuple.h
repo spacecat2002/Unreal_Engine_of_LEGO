@@ -162,10 +162,10 @@ namespace UE4Tuple_Private
 		TTupleStorage& operator=(TTupleStorage&&) = default;
 		TTupleStorage& operator=(const TTupleStorage&) = default;
 
-		template <uint32 Index> FORCEINLINE decltype(auto) Get() const&  { return TTupleElementHelper<Index, sizeof...(Types)>::Get(         *this ); }
-		template <uint32 Index> FORCEINLINE decltype(auto) Get() const&& { return TTupleElementHelper<Index, sizeof...(Types)>::Get(MoveTemp(*this)); }
-		template <uint32 Index> FORCEINLINE decltype(auto) Get()      &  { return TTupleElementHelper<Index, sizeof...(Types)>::Get(         *this ); }
-		template <uint32 Index> FORCEINLINE decltype(auto) Get()      && { return TTupleElementHelper<Index, sizeof...(Types)>::Get(MoveTemp(*this)); }
+		template <uint32 Index> FORCEINLINE decltype(auto) Get() const&  { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<const TTupleStorage& >(*this)); }
+		template <uint32 Index> FORCEINLINE decltype(auto) Get() const&& { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<const TTupleStorage&&>(*this)); }
+		template <uint32 Index> FORCEINLINE decltype(auto) Get()      &  { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<      TTupleStorage& >(*this)); }
+		template <uint32 Index> FORCEINLINE decltype(auto) Get()      && { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<      TTupleStorage&&>(*this)); }
 	};
 
 	// Specialization of 2-TTuple to give it the API of TPair.
@@ -197,10 +197,10 @@ namespace UE4Tuple_Private
 		TTupleStorage& operator=(TTupleStorage&&) = default;
 		TTupleStorage& operator=(const TTupleStorage&) = default;
 
-		template <uint32 Index> FORCEINLINE decltype(auto) Get() const&  { return TTupleElementHelper<Index, 2>::Get(         *this ); }
-		template <uint32 Index> FORCEINLINE decltype(auto) Get() const&& { return TTupleElementHelper<Index, 2>::Get(MoveTemp(*this)); }
-		template <uint32 Index> FORCEINLINE decltype(auto) Get()      &  { return TTupleElementHelper<Index, 2>::Get(         *this ); }
-		template <uint32 Index> FORCEINLINE decltype(auto) Get()      && { return TTupleElementHelper<Index, 2>::Get(MoveTemp(*this)); }
+		template <uint32 Index> FORCEINLINE decltype(auto) Get() const&  { return TTupleElementHelper<Index, 2>::Get(static_cast<const TTupleStorage& >(*this)); }
+		template <uint32 Index> FORCEINLINE decltype(auto) Get() const&& { return TTupleElementHelper<Index, 2>::Get(static_cast<const TTupleStorage&&>(*this)); }
+		template <uint32 Index> FORCEINLINE decltype(auto) Get()      &  { return TTupleElementHelper<Index, 2>::Get(static_cast<      TTupleStorage& >(*this)); }
+		template <uint32 Index> FORCEINLINE decltype(auto) Get()      && { return TTupleElementHelper<Index, 2>::Get(static_cast<      TTupleStorage&&>(*this)); }
 
 		InKeyType   Key;
 		InValueType Value;
