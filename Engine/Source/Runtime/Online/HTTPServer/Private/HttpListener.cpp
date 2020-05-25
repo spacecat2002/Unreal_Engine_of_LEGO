@@ -82,8 +82,8 @@ bool FHttpListener::StartListening()
 	if (!ListenSocket->Bind(*BindAddress))
 	{
 		UE_LOG(LogHttpListener, Error, 
-			TEXT("HttpListener unable to bind to %s:%u"),
-			*BindAddress->ToString(true), ListenPort);
+			TEXT("HttpListener unable to bind to %s"),
+			*BindAddress->ToString(true));
 		return false;
 	}
 
@@ -104,8 +104,8 @@ bool FHttpListener::StartListening()
 	}
 
 	UE_LOG(LogHttpListener, Log, 
-		TEXT("Created new HttpListener on %s:%u"), 
-		*BindAddress->ToString(true), ListenPort);
+		TEXT("Created new HttpListener on %s"), 
+		*BindAddress->ToString(true));
 	return true;
 }
 
