@@ -280,9 +280,9 @@ private:
 	{
 		return !!(Options & EFastReferenceCollectorOptions::AutogenerateTokenStream);
 	}
-	constexpr FORCEINLINE bool ShouldIgnoreNoOpTokens() const
+	constexpr FORCEINLINE bool ShouldProcessNoOpTokens() const
 	{
-		return !!(Options & EFastReferenceCollectorOptions::IgnoreNoOpTokens);
+		return !!(Options & EFastReferenceCollectorOptions::ProcessNoOpTokens);
 	}
 
 	class FCollectorTaskQueue
@@ -684,7 +684,7 @@ private:
 					case GCRT_Object:
 					case GCRT_Class:
 					{
-						// We're dealing with an object reference (this code should be identical to GCRT_NoopClass if !ShouldIgnoreNoOpTokens())
+						// We're dealing with an object reference (this code should be identical to GCRT_NoopClass if ShouldProcessNoOpTokens())
 						UObject**	ObjectPtr = (UObject**)(StackEntryData + ReferenceInfo.Offset);
 						UObject*&	Object = *ObjectPtr;
 						TokenReturnCount = ReferenceInfo.ReturnCount;
@@ -769,7 +769,7 @@ private:
 					break;
 					case GCRT_PersistentObject:
 					{
-						// We're dealing with an object reference (this code should be identical to GCRT_NoopPersistentObject if !ShouldIgnoreNoOpTokens())
+						// We're dealing with an object reference (this code should be identical to GCRT_NoopPersistentObject if ShouldProcessNoOpTokens())
 						UObject**	ObjectPtr = (UObject**)(StackEntryData + ReferenceInfo.Offset);
 						UObject*&	Object = *ObjectPtr;
 						TokenReturnCount = ReferenceInfo.ReturnCount;
@@ -889,7 +889,7 @@ private:
 					break;
 					case GCRT_NoopPersistentObject:
 					{
-						if (!ShouldIgnoreNoOpTokens())
+						if (ShouldProcessNoOpTokens())
 						{
 							// We're dealing with an object reference (this code should be identical to GCRT_PersistentObject)
 							UObject**	ObjectPtr = (UObject**)(StackEntryData + ReferenceInfo.Offset);
@@ -905,7 +905,7 @@ private:
 					break;
 					case GCRT_NoopClass:
 					{
-						if (!ShouldIgnoreNoOpTokens())
+						if (ShouldProcessNoOpTokens())
 						{
 							// We're dealing with an object reference (this code should be identical to GCRT_Object and GCRT_Class)
 							UObject**	ObjectPtr = (UObject**)(StackEntryData + ReferenceInfo.Offset);

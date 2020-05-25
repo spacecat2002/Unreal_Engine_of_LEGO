@@ -1094,7 +1094,7 @@ class FRealtimeGC : public FGarbageCollectionTracer
 			FGCReferenceProcessor<CollectorOptions>,
 			FGCCollector<CollectorOptions>,
 			FGCArrayPool,
-			CollectorOptions | EFastReferenceCollectorOptions::IgnoreNoOpTokens
+			CollectorOptions
 			>  ReferenceCollector(ReferenceProcessor, FGCArrayPool::Get());
 		ReferenceCollector.CollectReferences(*ArrayStruct);
 	}

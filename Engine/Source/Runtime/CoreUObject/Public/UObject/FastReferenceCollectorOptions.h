@@ -13,7 +13,7 @@ enum class EFastReferenceCollectorOptions : uint32
 	None = 0,
 	Parallel = 1 << 0,
 	AutogenerateTokenStream = 1 << 1,
-	IgnoreNoOpTokens = 1 << 2,
+	ProcessNoOpTokens = 1 << 2,
 	WithClusters = 1 << 3, 
 };
 ENUM_CLASS_FLAGS(EFastReferenceCollectorOptions);
