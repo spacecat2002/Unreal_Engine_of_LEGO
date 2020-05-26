@@ -585,3 +585,24 @@ FORCEINLINE void VisitTupleElements(FuncType&& Func, FirstTupleType&& FirstTuple
 {
 	UE4Tuple_Private::TVisitTupleElements_Impl<TMakeIntegerSequence<uint32, TTupleArity<typename TDecay<FirstTupleType>::Type>::Value>>::Do(Forward<FuncType>(Func), Forward<FirstTupleType>(FirstTuple), Forward<TupleTypes>(Tuples)...);
 }
+
+/**
+ * Tie function for structured unpacking of tuples into individual variables.
+ *
+ * Example:
+ *
+ * TTuple<FString, float, TArray<int32>> SomeFunction();
+ *
+ * FString Ret1;
+ * float Ret2;
+ * TArray<int32> Ret3;
+ *
+ * Tie(Ret1, Ret2, Ret3) = SomeFunction();
+ *
+ * // Now Ret1, Ret2 and Ret3 contain the unpacked return values.
+ */
+template <typename... Types>
+FORCEINLINE TTuple<Types&...> Tie(Types&... Args)
+{
+	return TTuple<Types&...>(Args...);
+}
