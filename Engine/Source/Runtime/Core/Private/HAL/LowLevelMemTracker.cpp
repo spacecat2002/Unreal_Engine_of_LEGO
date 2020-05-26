@@ -431,7 +431,7 @@ public:
 	typedef ELLMTag FLowLevelAllocInfo;
 #endif
 
-	typedef LLMMap<PointerKey, uint32, FLowLevelAllocInfo> LLMMap;	// pointer, size, info
+	typedef LLMMap<PointerKey, uint32, FLowLevelAllocInfo, LLMNumAllocsType> LLMMap;	// pointer, size, info, Capacity SizeType
 
 	LLMMap& GetAllocationMap()
 	{
@@ -1411,7 +1411,7 @@ void FLLMTracker::TrackFree(const void* Ptr, ELLMTracker Tracker, ELLMAllocType 
 		return;
 	}
 	LLMMap::Values Values = GetAllocationMap().Remove(Ptr);
-	uint64 Size = Values.Value1;
+	uint32 Size = Values.Value1;
 	FLLMTracker::FLowLevelAllocInfo AllocInfo = Values.Value2;
 
 	// track the total quickly
@@ -1515,20 +1515,20 @@ void FLLMTracker::SetTotalTags(ELLMTag InUntaggedTotalTag, ELLMTag InTrackedTota
 
 void FLLMTracker::Update(FLLMCustomTag* CustomTags, const int32* ParentTags)
 {
-	int ThreadStateNum = ThreadStates.Num();
+	int32 ThreadStateNum = ThreadStates.Num();
 
 	// Consume pending thread states
 	// We must be careful to do all allocations outside of the PendingThreadStatesGuard guard as that can lead to a deadlock due to contention with PendingThreadStatesGuard & Locks inside the underlying allocator (i.e. MallocBinned2 -> Mutex)
 	{
 		PendingThreadStatesGuard.Lock();
-		const int NumPendingThreadStatesToConsume = PendingThreadStates.Num();
+		const int32 NumPendingThreadStatesToConsume = PendingThreadStates.Num();
 		if (NumPendingThreadStatesToConsume > 0 )
 		{
 			PendingThreadStatesGuard.Unlock();
 			ThreadStates.Reserve(ThreadStateNum + NumPendingThreadStatesToConsume);
 			PendingThreadStatesGuard.Lock();
 
-			for ( int32 i=0; i < NumPendingThreadStatesToConsume; ++i )
+			for (int32 i=0; i < NumPendingThreadStatesToConsume; ++i )
 			{
 				ThreadStates.Add(PendingThreadStates.RemoveLast());
 			}
@@ -2055,7 +2055,7 @@ void FLLMCsvWriter::AddStat(int64 Tag, int64 Value)
 		return;
 	}
 
-	int StatValueCount = StatValues.Num();
+	int32 StatValueCount = StatValues.Num();
 	for (int32 i = 0; i < StatValueCount; ++i)
 	{
 		if (StatValues[i].Tag == Tag)
@@ -2092,7 +2092,7 @@ void FLLMCsvWriter::SetStat(int64 Tag, int64 Value)
 {
 	FScopeLock lock(&StatValuesLock);
 
-	int StatValueCount = StatValues.Num();
+	int32 StatValueCount = StatValues.Num();
 	for (int32 i = 0; i < StatValueCount; ++i)
 	{
 		if (StatValues[i].Tag == Tag)
@@ -2266,7 +2266,7 @@ void FLLMTraceWriter::Clear()
 void FLLMTraceWriter::AddStat(int64 Tag, int64 Value)
 {
 	FScopeLock lock(&StatValuesLock);
-	int StatValueCount = StatTags.Num();
+	int32 StatValueCount = StatTags.Num();
 	for (int32 i = 0; i < StatValueCount; ++i)
 	{
 		if (StatTags[i] == Tag)
@@ -2284,7 +2284,7 @@ void FLLMTraceWriter::AddStat(int64 Tag, int64 Value)
 void FLLMTraceWriter::SetStat(int64 Tag, int64 Value)
 {
 	FScopeLock lock(&StatValuesLock);
-	int StatValueCount = StatValues.Num();
+	int32 StatValueCount = StatValues.Num();
 	for (int32 i = 0; i < StatValueCount; ++i)
 	{
 		if (StatTags[i] == Tag)
