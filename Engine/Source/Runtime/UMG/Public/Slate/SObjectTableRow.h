@@ -376,14 +376,15 @@ public:
 				if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && HasMouseCapture())
 				{
 					bool bSignalSelectionChanged = bChangedSelectionOnMouseDown;
-					if (IsItemSelectable() && MyGeometry.IsUnderLocation(MouseEvent.GetScreenSpacePosition()))
+					// Don't change selection on mouse up if it already changed on mouse down
+					if (!bChangedSelectionOnMouseDown && IsItemSelectable() && MyGeometry.IsUnderLocation(MouseEvent.GetScreenSpacePosition()))
 					{
 						if (SelectionMode == ESelectionMode::SingleToggle)
 						{
 							OwnerTable->Private_ClearSelection();
 							bSignalSelectionChanged = true;
 						}
-						else if (!bSignalSelectionChanged && SelectionMode == ESelectionMode::Multi &&
+						else if (SelectionMode == ESelectionMode::Multi &&
 							OwnerTable->Private_GetNumSelectedItems() > 1 &&
 							OwnerTable->Private_IsItemSelected(*MyItemPtr))
 						{
