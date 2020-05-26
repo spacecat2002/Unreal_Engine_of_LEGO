@@ -210,10 +210,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Pin", meta = (Keywords = "ar augmentedreality augmented reality tracking pin anchor"))
 	static TArray<UARPin*> GetAllPins();
 	
-	/** @return a list of all the tracked geometries as currently seen by the Augmented Reality system */
-	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Tracking", meta = (DisplayName="Get All AR Tracked Geometries", Keywords = "ar augmentedreality augmented reality tracking geometry anchor"))
-	static TArray<UARTrackedGeometry*> GetAllTrackedGeometries();
-	
 	/** @return a list of all the tracked planes as currently seen by the Augmented Reality system */
 	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Tracking", meta = (DisplayName="Get All AR Tracked Planes", Keywords = "ar augmentedreality augmented reality tracking geometry anchor"))
 	static TArray<UARPlaneGeometry*> GetAllTrackedPlanes();

@@ -357,17 +357,6 @@ TArray<UARPlaneGeometry*> UARBlueprintLibrary::GetAllTrackedPlanes()
 	return ResultList;
 }
 
-TArray<UARTrackedGeometry*> UARBlueprintLibrary::GetAllTrackedGeometries()
-{
-	auto ARSystem = GetARSystem();
-	if (ARSystem.IsValid())
-	{
-		auto PinnedARSystem = ARSystem.Pin();
-		return PinnedARSystem->GetAllTrackedGeometries();
-	}
-	return {};
-}
-
 TArray<UARTrackedPoint*> UARBlueprintLibrary::GetAllTrackedPoints()
 {
 	TArray<UARTrackedPoint*> ResultList;
