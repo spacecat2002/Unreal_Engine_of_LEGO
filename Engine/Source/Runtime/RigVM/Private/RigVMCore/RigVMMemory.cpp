@@ -12,6 +12,14 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+bool FRigVMOperand::Serialize(FArchive& Ar)
+{
+	Ar << MemoryType;
+	Ar << RegisterIndex;
+	Ar << RegisterOffset;
+	return true;
+}
+
 bool FRigVMRegister::Serialize(FArchive& Ar)
 {
 	Ar.UsingCustomVersion(FAnimObjectVersion::GUID);
