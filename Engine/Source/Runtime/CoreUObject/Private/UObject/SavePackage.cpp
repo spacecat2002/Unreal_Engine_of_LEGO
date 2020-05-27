@@ -3,7 +3,7 @@
 #include "UObject/SavePackage.h"
 
 #if UE_WITH_SAVEPACKAGE
-#include "UObject/SavePackageUtilities.h"
+#include "UObject/SavePackage/SavePackageUtilities.h"
 #include "CoreMinimal.h"
 #include "Misc/MessageDialog.h"
 #include "HAL/FileManager.h"

@@ -12,6 +12,8 @@
 #include "UObject/NameTypes.h"
 #include "UObject/UObjectMarks.h"
 
+// This file contains private utilities shared by UPackage::Save and UPackage::Save2 
+
 class FMD5;
 class FSavePackageContext;
 template<typename StateType> class TAsyncWorkSequence;
@@ -63,6 +65,7 @@ struct FCanSkipEditorReferencedPackagesWhenCooking
 
 /**
  * Helper structure to encapsulate sorting a linker's export table alphabetically, taking into account conforming to other linkers.
+ * @note Save2 should not have to use this sorting long term
  */
 struct FObjectExportSortHelper
 {
@@ -106,6 +109,9 @@ private:
 	TMap<UObject*, FString>			ObjectToFullNameMap;
 };
 
+/**
+ * Helper struct used during cooking to validate EDL dependencies
+ */
 struct FEDLCookChecker : public TThreadSingleton<FEDLCookChecker>
 {
 	friend TThreadSingleton<FEDLCookChecker>;
@@ -152,7 +158,7 @@ struct FEDLCookChecker : public TThreadSingleton<FEDLCookChecker>
 #if WITH_EDITORONLY_DATA
 
 /**
- * Calculates a checksum on an object's serialized data stream, but only of its non-editor properties.
+ * Archive to calculate a checksum on an object's serialized data stream, but only of its non-editor properties.
  */
 class FArchiveObjectCrc32NonEditorProperties : public FArchiveObjectCrc32
 {
@@ -182,11 +188,14 @@ class COREUOBJECT_API FArchiveObjectCrc32NonEditorProperties : public FArchiveOb
 
 #endif
 
+// Utility functions used by both UPackage::Save and/or UPackage::Save2
 namespace SavePackageUtilities
 {
 	extern const FName NAME_World;
 	extern const FName NAME_Level;
 	extern const FName NAME_PrestreamPackage;
+
+	void GetBlueprintNativeCodeGenReplacement(UObject* InObj, UClass*& ObjClass, UObject*& ObjOuter, FName& ObjName, const ITargetPlatform* TargetPlatform);
 
 	void IncrementOutstandingAsyncWrites();
 	void DecrementOutstandingAsyncWrites();
