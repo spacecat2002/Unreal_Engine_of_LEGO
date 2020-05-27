@@ -2212,15 +2212,9 @@ void FTexture2DArrayResource::InitRHI()
 		}
 	}
 
-#if WITH_EDITORONLY_DATA
-		SamplerXAddress = Owner ? (ESamplerAddressMode)Owner->AddressX.GetValue() : AM_Clamp;
-		SamplerYAddress = Owner ? (ESamplerAddressMode)Owner->AddressY.GetValue() : AM_Clamp;
-		SamplerZAddress = Owner ? (ESamplerAddressMode)Owner->AddressZ.GetValue() : AM_Clamp;
-#endif
-
 	FSamplerStateInitializerRHI SamplerStateInitializer
 	(
-		Filter,
+		SamplerFilter,
 		SamplerXAddress,
 		SamplerYAddress,
 		SamplerZAddress
@@ -2273,7 +2267,11 @@ FTexture2DArrayResource::FTexture2DArrayResource(UTexture2DArray* InOwner)
 	bDirty = true;
 	bPreventingReallocation = false;
 	bSRGB = InOwner->SRGB;
-	Filter = (ESamplerFilter)UDeviceProfileManager::Get().GetActiveProfile()->GetTextureLODSettings()->GetSamplerFilter(InOwner);
+	SamplerFilter = (ESamplerFilter)UDeviceProfileManager::Get().GetActiveProfile()->GetTextureLODSettings()->GetSamplerFilter(InOwner);
+	Owner->AddressX == TA_Wrap ? AM_Wrap : (Owner->AddressX == TA_Clamp ? AM_Clamp : AM_Mirror),
+	Owner->AddressY == TA_Wrap ? AM_Wrap : (Owner->AddressY == TA_Clamp ? AM_Clamp : AM_Mirror),
+	Owner->AddressZ == TA_Wrap ? AM_Wrap : (Owner->AddressZ == TA_Clamp ? AM_Clamp : AM_Mirror),
+
 	STAT(LODGroupStatName = TextureGroupStatFNames[InOwner->LODGroup]);
 
 	TIndirectArray<FTexture2DMipMap>& Mips = InOwner->PlatformData->Mips;
@@ -2337,9 +2335,8 @@ void FTexture2DArrayResource::AddTexture2D(UTexture2D* NewTexture, const FIncomi
 		SizeX = InEntry->SizeX;
 		SizeY = InEntry->SizeY;
 		NumMips = InEntry->NumMips;
-		LODGroup = InEntry->LODGroup;
 		Format = InEntry->Format;
-		Filter = InEntry->Filter;
+		SamplerFilter = InEntry->Filter;
 		bSRGB = InEntry->bSRGB;
 
 		bValidTexture = true;
@@ -2347,7 +2344,6 @@ void FTexture2DArrayResource::AddTexture2D(UTexture2D* NewTexture, const FIncomi
 	else if (SizeX == InEntry->SizeX
 		&& SizeY == InEntry->SizeY
 		&& NumMips == InEntry->NumMips
-		&& LODGroup == InEntry->LODGroup
 		&& Format == InEntry->Format
 		&& bSRGB == InEntry->bSRGB)
 	{
