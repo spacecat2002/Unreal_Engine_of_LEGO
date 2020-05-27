@@ -42,6 +42,8 @@ public:
 	static const FName OutputMetaName;
 	static const FName IOMetaName;
 	static const FName HiddenMetaName;
+	static const FName VisibleMetaName;
+	static const FName DetailsOnlyMetaName;
 	static const FName AbstractMetaName;
 	static const FName CategoryMetaName;
 	static const FName DisplayNameMetaName;

@@ -8,6 +8,8 @@ const FName FRigVMStruct::InputMetaName("Input");
 const FName FRigVMStruct::OutputMetaName("Output");
 const FName FRigVMStruct::IOMetaName("IO");
 const FName FRigVMStruct::HiddenMetaName("Hidden");
+const FName FRigVMStruct::VisibleMetaName("Visible");
+const FName FRigVMStruct::DetailsOnlyMetaName("DetailsOnly");
 const FName FRigVMStruct::AbstractMetaName("Abstract");
 const FName FRigVMStruct::CategoryMetaName("Category");
 const FName FRigVMStruct::DisplayNameMetaName("DisplayName");
@@ -269,13 +271,24 @@ ERigVMPinDirection FRigVMStruct::GetPinDirectionFromProperty(FProperty* InProper
 {
 	bool bIsInput = InProperty->HasMetaData(InputMetaName);
 	bool bIsOutput = InProperty->HasMetaData(OutputMetaName);
+	bool bIsVisible = InProperty->HasMetaData(VisibleMetaName);
 
+	if (bIsVisible)
+	{
+		return ERigVMPinDirection::Visible;
+	}
+	
 	if (bIsInput)
 	{
 		return bIsOutput ? ERigVMPinDirection::IO : ERigVMPinDirection::Input;
 	} 
+	
+	if(bIsOutput)
+	{
+		return ERigVMPinDirection::Output;
+	}
 
-	return bIsOutput ? ERigVMPinDirection::Output : ERigVMPinDirection::Hidden;
+	return ERigVMPinDirection::Hidden;
 }
 
 #endif
