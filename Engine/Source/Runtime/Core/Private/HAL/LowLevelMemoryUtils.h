@@ -658,8 +658,9 @@ struct PointerKey
 	PointerKey(const void* InPointer) : Pointer(InPointer) {}
 	LLMNumAllocsType GetHashCode() const
 	{
-		static_assert((sizeof(LLMNumAllocsType) == 4 && sizeof(void*) == 8)
-			|| (sizeof(LLMNumAllocsType) == 8 && sizeof(void*) == 8),
+		static_assert((sizeof(LLMNumAllocsType) == 4 && sizeof(void*) == 4) ||
+			(sizeof(LLMNumAllocsType) == 4 && sizeof(void*) == 8) ||
+			(sizeof(LLMNumAllocsType) == 8 && sizeof(void*) == 8),
 			"Converting void* to a LLMNumAllocsType-sized hashkey is not implemented for the current sizes.");
 		if (sizeof(LLMNumAllocsType) == 8 && sizeof(void*) == 8)
 		{
@@ -674,9 +675,10 @@ struct PointerKey
 			Key = Key + (Key << 31);
 			return (LLMNumAllocsType)Key;
 		}
-		else if (sizeof(LLMNumAllocsType) == 4 && sizeof(void*) == 8)
+		else if ((sizeof(LLMNumAllocsType) == 4 && sizeof(void*) == 8) ||
+			(sizeof(LLMNumAllocsType) == 4 && sizeof(void*) == 4))
 		{
-			// 64 bit pointer to 32 bit Hash
+			// 64 bit pointer or 32 bit pointer to 32 bit Hash
 			uint64 Key = (uint64)Pointer;
 			Key = (~Key) + (Key << 18);
 			Key = Key ^ (Key >> 31);
