@@ -224,8 +224,9 @@ static TRefCountPtr<ID3D12StateObject> CreateRayTracingStateObject(
 	// 1) D3D12_RAYTRACING_SHADER_CONFIG
 	// 2) D3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION
 	// 3) D3D12_RAYTRACING_PIPELINE_CONFIG
-	// 4) Global root signature
-	static constexpr uint32 NumRequiredSubobjects = 4;
+	// 4) D3D12_STATE_OBJECT_CONFIG
+	// 5) Global root signature
+	static constexpr uint32 NumRequiredSubobjects = 5;
 
 	TArray<D3D12_STATE_SUBOBJECT> Subobjects;
 	Subobjects.SetNumUninitialized(NumRequiredSubobjects
@@ -279,6 +280,15 @@ static TRefCountPtr<ID3D12StateObject> CreateRayTracingStateObject(
 	PipelineConfig.MaxTraceRecursionDepth = 1; // Only allow ray tracing from RayGen shader
 	const uint32 PipelineConfigIndex = Index;
 	Subobjects[Index++] = D3D12_STATE_SUBOBJECT{ D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_PIPELINE_CONFIG, &PipelineConfig };
+
+	// State object config
+
+	D3D12_STATE_OBJECT_CONFIG StateObjectConfig = {};
+	if (GRHISupportsRayTracingPSOAdditions)
+	{
+		StateObjectConfig.Flags = D3D12_STATE_OBJECT_FLAG_ALLOW_STATE_OBJECT_ADDITIONS;
+	}
+	Subobjects[Index++] = D3D12_STATE_SUBOBJECT{ D3D12_STATE_SUBOBJECT_TYPE_STATE_OBJECT_CONFIG, &StateObjectConfig };
 
 	// Global root signature
 
@@ -1601,7 +1611,7 @@ public:
 
 		TotalCreationTime -= FPlatformTime::Cycles64();
 
-		ID3D12Device5* RayTracingDevice = Device->GetRayTracingDevice();
+		ID3D12Device5* RayTracingDevice = Device->GetDevice5();
 
 		// Use hit and miss shaders from initializer or fall back to default ones if none were provided
 
@@ -1631,10 +1641,15 @@ public:
 
 		GlobalRootSignature = PipelineCache->GetGlobalRootSignature();
 
-		// Helper function to acquire a D3D12_EXISTING_COLLECTION_DESC for a compiled shader via cache
+		const FD3D12RayTracingPipelineState* BasePipeline = GRHISupportsRayTracingPSOAdditions 
+			? FD3D12DynamicRHI::ResourceCast(Initializer.BasePipeline.GetReference())
+			: nullptr;
 
-		TSet<uint64> UniqueShaderHashes;
-		UniqueShaderHashes.Reserve(MaxTotalShaders);
+		if (BasePipeline)
+		{
+			PipelineShaderHashes = BasePipeline->PipelineShaderHashes;
+		}
+		PipelineShaderHashes.Reserve(MaxTotalShaders);
 
 		TArray<FD3D12RayTracingPipelineCache::FEntry*> UniqueShaderCollections;
 		UniqueShaderCollections.Reserve(MaxTotalShaders);
@@ -1642,8 +1657,10 @@ public:
 		FGraphEventArray CompileCompletionList;
 		CompileCompletionList.Reserve(MaxTotalShaders);
 
+		// Helper function to acquire a D3D12_EXISTING_COLLECTION_DESC for a compiled shader via cache
+
 		auto AddShaderCollection = [Device, RayTracingDevice, GlobalRootSignature = this->GlobalRootSignature, PipelineCache,
-										&UniqueShaderHashes, &UniqueShaderCollections, &Initializer, &NumCacheHits, &CompileTime,
+										&UniqueShaderHashes = this->PipelineShaderHashes, &UniqueShaderCollections, &Initializer, &NumCacheHits, &CompileTime,
 										&CompileCompletionList]
 			(FD3D12RayTracingShader* Shader, FD3D12RayTracingPipelineCache::ECollectionType CollectionType)
 		{
@@ -1803,17 +1820,58 @@ public:
 		// Link final RTPSO from shader collections
 
 		LinkTime -= FPlatformTime::Cycles64();
-		StateObject = CreateRayTracingStateObject(
-			RayTracingDevice,
-			{}, // Libraries,
-			{}, // LibraryExports,
-			Initializer.MaxPayloadSizeInBytes,
-			{}, // HitGroups
-			GlobalRootSignature,
-			{}, // LocalRootSignatures
-			{}, // LocalRootSignatureAssociations,
-			UniqueShaderCollectionDescs,
-			D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE);
+
+		if (BasePipeline)
+		{
+			if (UniqueShaderCollectionDescs.Num() == 0)
+			{
+				// New PSO does not actually have any new shaders that were not in the base
+				StateObject = BasePipeline->StateObject.GetReference();
+			}
+			else
+			{
+
+				TArray<D3D12_STATE_SUBOBJECT> Subobjects;
+
+				int32 SubobjectIndex = 0;
+				Subobjects.Reserve(UniqueShaderCollectionDescs.Num() + 1);
+
+				D3D12_STATE_OBJECT_CONFIG StateObjectConfig = {};
+				StateObjectConfig.Flags = D3D12_STATE_OBJECT_FLAG_ALLOW_STATE_OBJECT_ADDITIONS;
+				Subobjects.Add(D3D12_STATE_SUBOBJECT{ D3D12_STATE_SUBOBJECT_TYPE_STATE_OBJECT_CONFIG, &StateObjectConfig });
+
+				for (const D3D12_EXISTING_COLLECTION_DESC& Collection : UniqueShaderCollectionDescs)
+				{
+					Subobjects.Add(D3D12_STATE_SUBOBJECT{ D3D12_STATE_SUBOBJECT_TYPE_EXISTING_COLLECTION, &Collection });
+				}
+
+				D3D12_STATE_OBJECT_DESC Desc = {};
+				Desc.Type = D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE;
+				Desc.NumSubobjects = Subobjects.Num();
+				Desc.pSubobjects = Subobjects.GetData();
+
+				ID3D12Device7* Device7 = Device->GetDevice7();
+
+				VERIFYD3D12RESULT(Device7->AddToStateObject(&Desc,
+					BasePipeline->StateObject.GetReference(),
+					IID_PPV_ARGS(StateObject.GetInitReference())));
+			}
+		}
+		else
+		{
+			StateObject = CreateRayTracingStateObject(
+				RayTracingDevice,
+				{}, // Libraries,
+				{}, // LibraryExports,
+				Initializer.MaxPayloadSizeInBytes,
+				{}, // HitGroups
+				GlobalRootSignature,
+				{}, // LocalRootSignatures
+				{}, // LocalRootSignatureAssociations,
+				UniqueShaderCollectionDescs,
+				D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE);
+		}
+
 		LinkTime += FPlatformTime::Cycles64();
 
 		HRESULT QueryInterfaceResult = StateObject->QueryInterface(IID_PPV_ARGS(PipelineProperties.GetInitReference()));
@@ -1923,7 +1981,7 @@ public:
 			uint32 NumUniqueShaders = UniqueShaderCollections.Num();
 			UE_LOG(LogD3D12RHI, Log,
 				TEXT("Creating RTPSO with %d shaders (%d cached, %d new) took %.2f ms. Compile time %.2f ms, link time %.2f ms."),
-				NumUniqueShaders, NumCacheHits, NumUniqueShaders - NumCacheHits, TotalCreationTimeMS, CompileTimeMS, LinkTimeMS);
+				PipelineShaderHashes.Num(), NumCacheHits, NumUniqueShaders - NumCacheHits, TotalCreationTimeMS, CompileTimeMS, LinkTimeMS);
 		}
 
 #endif //!NO_LOGGING
@@ -1948,6 +2006,8 @@ public:
 
 	uint32 MaxLocalRootSignatureSize = 0;
 	uint32 MaxHitGroupViewDescriptors = 0;
+
+	TSet<uint64> PipelineShaderHashes;
 
 	uint32 PipelineStackSize = 0;
 
@@ -2391,7 +2451,7 @@ void FD3D12RayTracingGeometry::BuildAccelerationStructure(FD3D12CommandContext& 
 	const uint32 GPUIndex = CommandContext.GetGPUIndex();
 	FD3D12Adapter* Adapter = CommandContext.GetParentAdapter();
 
-	ID3D12Device5* RayTracingDevice = CommandContext.GetParentDevice()->GetRayTracingDevice();
+	ID3D12Device5* RayTracingDevice = CommandContext.GetParentDevice()->GetDevice5();
 
 	D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS LocalBuildFlags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS(BuildFlags);
 
@@ -2669,7 +2729,7 @@ void FD3D12RayTracingScene::BuildAccelerationStructure(FD3D12CommandContext& Com
 
 	const uint32 GPUIndex = CommandContext.GetGPUIndex();
 	FD3D12Adapter* Adapter = CommandContext.GetParentAdapter();
-	ID3D12Device5* RayTracingDevice = CommandContext.GetParentDevice()->GetRayTracingDevice();
+	ID3D12Device5* RayTracingDevice = CommandContext.GetParentDevice()->GetDevice5();
 
 	const uint32 NumSceneInstances = Instances.Num();
 
@@ -2986,7 +3046,7 @@ FD3D12RayTracingShaderTable* FD3D12RayTracingScene::FindOrCreateShaderTable(cons
 	SCOPE_CYCLE_COUNTER(STAT_D3D12CreateShaderTable);
 
 	FD3D12RayTracingShaderTable* CreatedShaderTable = new FD3D12RayTracingShaderTable();
-	ID3D12Device5* RayTracingDevice = Device->GetRayTracingDevice();
+	ID3D12Device5* RayTracingDevice = Device->GetDevice5();
 	const uint32 GPUIndex = Device->GetGPUIndex();
 
 	const uint32 NumHitGroupSlots = Pipeline->bAllowHitGroupIndexing ? NumTotalSegments * ShaderSlotsPerGeometrySegment : 0;

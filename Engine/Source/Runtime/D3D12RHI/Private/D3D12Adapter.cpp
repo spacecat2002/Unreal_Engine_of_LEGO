@@ -420,9 +420,9 @@ void FD3D12Adapter::CreateRootDevice(bool bWithDebug)
 	bool bRayTracingSupported = false;
 
 	{
-		D3D12_FEATURE_DATA_D3D12_OPTIONS5 Features = {};
-		if (SUCCEEDED(RootDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &Features, sizeof(Features)))
-			&& Features.RaytracingTier >= D3D12_RAYTRACING_TIER_1_0)
+		D3D12_FEATURE_DATA_D3D12_OPTIONS5 Features5 = {};
+		if (SUCCEEDED(RootDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &Features5, sizeof(Features5)))
+			&& Features5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_0)
 		{
 			bRayTracingSupported = true;
 		}
@@ -436,8 +436,10 @@ void FD3D12Adapter::CreateRootDevice(bool bWithDebug)
 
  	if (bRayTracingSupported && GetRayTracingCVarValue() && !FParse::Param(FCommandLine::Get(), TEXT("noraytracing")))
 	{
-		RootDevice->QueryInterface(IID_PPV_ARGS(RootRayTracingDevice.GetInitReference()));
-		if (RootRayTracingDevice)
+		RootDevice->QueryInterface(IID_PPV_ARGS(RootDevice5.GetInitReference())); // DXR 1.0 (required)
+		RootDevice->QueryInterface(IID_PPV_ARGS(RootDevice7.GetInitReference())); // DXR 1.1 (optional)
+
+		if (RootDevice5)
 		{
 			UE_LOG(LogD3D12RHI, Log, TEXT("D3D12 ray tracing enabled."));
 
@@ -866,7 +868,6 @@ void FD3D12Adapter::InitializeDevices()
 		ID3D12RootSignature* StaticGraphicsRS = (GetStaticGraphicsRootSignature()) ? GetStaticGraphicsRootSignature()->GetRootSignature() : nullptr;
 		ID3D12RootSignature* StaticComputeRS = (GetStaticComputeRootSignature()) ? GetStaticComputeRootSignature()->GetRootSignature() : nullptr;
 
-		// #dxr_todo UE-68235: verify that disk cache works correctly with DXR
 		PipelineStateCache.RebuildFromDiskCache(StaticGraphicsRS, StaticComputeRS);
 	}
 }
@@ -876,7 +877,7 @@ void FD3D12Adapter::InitializeRayTracing()
 #if D3D12_RHI_RAYTRACING
 	for (uint32 GPUIndex : FRHIGPUMask::All())
 	{
-		if (Devices[GPUIndex]->GetRayTracingDevice())
+		if (Devices[GPUIndex]->GetDevice5())
 		{
 			Devices[GPUIndex]->InitRayTracing();
 		}
