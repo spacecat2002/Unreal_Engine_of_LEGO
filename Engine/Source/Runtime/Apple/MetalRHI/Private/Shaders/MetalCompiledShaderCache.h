@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include "Misc/ScopeRWLock.h"
+
 struct FMetalCompiledShaderCache
 {
 public:
