@@ -421,10 +421,10 @@ void FD3D12Adapter::CreateRootDevice(bool bWithDebug)
 
 	{
 		D3D12_FEATURE_DATA_D3D12_OPTIONS5 Features5 = {};
-		if (SUCCEEDED(RootDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &Features5, sizeof(Features5)))
-			&& Features5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_0)
+		if (SUCCEEDED(RootDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &Features5, sizeof(Features5))))
 		{
-			bRayTracingSupported = true;
+			bRayTracingSupported = Features5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_0;
+			GRHISupportsRayTracingPSOAdditions = Features5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_1;
 		}
 	}
 
