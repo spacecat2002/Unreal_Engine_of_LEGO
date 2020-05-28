@@ -196,6 +196,13 @@ struct RIGVM_API FRigVMBinaryOp : public FRigVMBaseOp
 
 	FRigVMOperand ArgA;
 	FRigVMOperand ArgB;
+
+	bool Serialize(FArchive& Ar);
+	FORCEINLINE friend FArchive& operator<<(FArchive& Ar, FRigVMBinaryOp& P)
+	{
+		P.Serialize(Ar);
+		return Ar;
+	}
 };
 
 // copy the content of one register to another

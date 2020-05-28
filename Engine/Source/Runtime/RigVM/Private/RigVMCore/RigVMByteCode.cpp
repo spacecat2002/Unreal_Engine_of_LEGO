@@ -18,6 +18,14 @@ bool FRigVMUnaryOp::Serialize(FArchive& Ar)
 	return true;
 }
 
+bool FRigVMBinaryOp::Serialize(FArchive& Ar)
+{
+	Ar << OpCode;
+	Ar << ArgA;
+	Ar << ArgB;
+	return true;
+}
+
 bool FRigVMCopyOp::Serialize(FArchive& Ar)
 {
 	Ar << OpCode;
@@ -332,6 +340,34 @@ bool FRigVMByteCode::Serialize(FArchive& Ar)
 				else
 				{
 					AddExitOp();
+				}
+				break;
+			}
+			case ERigVMOpCode::BeginBlock:
+			{
+				if (Ar.IsSaving())
+				{
+					FRigVMBinaryOp Op = GetOpAt<FRigVMBinaryOp>(Instruction.ByteCodeIndex);
+					Ar << Op;
+				}
+				else
+				{
+					FRigVMBinaryOp Op;
+					Ar << Op;
+					AddOp<FRigVMBinaryOp>(Op);
+				}
+				break;
+			}
+			case ERigVMOpCode::EndBlock:
+			{
+				if (Ar.IsSaving())
+				{
+					// nothing todo, the EndBlock has no custom data inside of it
+					// so all we need is the previously saved OpCode.
+				}
+				else
+				{
+					AddEndBlockOp();
 				}
 				break;
 			}
