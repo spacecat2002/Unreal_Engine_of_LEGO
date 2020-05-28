@@ -2017,7 +2017,7 @@ bool UAssetManager::OnAssetRegistryAvailableAfterInitialization(FName InName, FA
 
 FPrimaryAssetData* UAssetManager::GetNameData(const FPrimaryAssetId& PrimaryAssetId, bool bCheckRedirector)
 {
-	return const_cast<FPrimaryAssetData*>(AsConst(this)->GetNameData(PrimaryAssetId));
+	return const_cast<FPrimaryAssetData*>(AsConst(*this).GetNameData(PrimaryAssetId));
 }
 
 const FPrimaryAssetData* UAssetManager::GetNameData(const FPrimaryAssetId& PrimaryAssetId, bool bCheckRedirector) const

@@ -117,7 +117,18 @@ CONSTEXPR int32 GetNum(std::initializer_list<T> List)
  * Returns a non-const pointer type as const.
  */
 template <typename T>
-FORCEINLINE const T* AsConst(T* Ptr)
+UE_DEPRECATED(4.26, "Call with a reference instead of a pointer.")
+constexpr FORCEINLINE const T* AsConst(T* const& Ptr)
+{
+	return Ptr;
+}
+
+/**
+ * Returns a non-const pointer type as const.
+ */
+template <typename T>
+UE_DEPRECATED(4.26, "Call with a reference instead of a pointer.")
+constexpr FORCEINLINE const T* AsConst(T* const&& Ptr)
 {
 	return Ptr;
 }
@@ -126,9 +137,25 @@ FORCEINLINE const T* AsConst(T* Ptr)
  * Returns a non-const reference type as const.
  */
 template <typename T>
-FORCEINLINE const T& AsConst(T& Ref)
+constexpr FORCEINLINE const T& AsConst(T& Ref)
 {
 	return Ref;
+}
+
+/**
+ * Disallowed for rvalue references because it cannot extend their lifetime.
+ */
+template <typename T>
+void AsConst(const T&& Ref) = delete;
+
+/**
+ * Returns a non-const reference type as const.
+ * This overload is only required until the pointer overloads are removed.
+ */
+template <typename T, SIZE_T N>
+constexpr FORCEINLINE const T (&AsConst(T (&Array)[N]))[N]
+{
+	return Array;
 }
 
 /*----------------------------------------------------------------------------
