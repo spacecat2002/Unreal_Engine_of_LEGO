@@ -1712,7 +1712,7 @@ public:
 
 	uint32 MaterialShaderIndex = UINT_MAX;
 
-	uint8 GeometrySegmentIndex = 0xFF;
+	uint32 GeometrySegmentIndex = ~0u;
 	uint8 InstanceMask = 0xFF;
 
 	bool bCastRayTracedShadows = true;
@@ -1787,7 +1787,7 @@ public:
 	(
 		FDynamicRayTracingMeshCommandStorage& InDynamicCommandStorage,
 		FRayTracingMeshCommandOneFrameArray& InVisibleCommands,
-		uint8 InGeometrySegmentIndex = 0xFF,
+		uint32 InGeometrySegmentIndex = ~0u,
 		uint32 InRayTracingInstanceIndex = ~0u
 	) :
 		DynamicCommandStorage(InDynamicCommandStorage),
@@ -1815,6 +1815,6 @@ public:
 private:
 	FDynamicRayTracingMeshCommandStorage& DynamicCommandStorage;
 	FRayTracingMeshCommandOneFrameArray& VisibleCommands;
-	uint8 GeometrySegmentIndex;
+	uint32 GeometrySegmentIndex;
 	uint32 RayTracingInstanceIndex;
 };
