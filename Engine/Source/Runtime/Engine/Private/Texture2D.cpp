@@ -2268,9 +2268,9 @@ FTexture2DArrayResource::FTexture2DArrayResource(UTexture2DArray* InOwner)
 	bPreventingReallocation = false;
 	bSRGB = InOwner->SRGB;
 	SamplerFilter = (ESamplerFilter)UDeviceProfileManager::Get().GetActiveProfile()->GetTextureLODSettings()->GetSamplerFilter(InOwner);
-	SamplerXAddress = Owner->AddressX == TA_Wrap ? AM_Wrap : (Owner->AddressX == TA_Clamp ? AM_Clamp : AM_Mirror),
-	SamplerYAddress = Owner->AddressY == TA_Wrap ? AM_Wrap : (Owner->AddressY == TA_Clamp ? AM_Clamp : AM_Mirror),
-	SamplerZAddress = Owner->AddressZ == TA_Wrap ? AM_Wrap : (Owner->AddressZ == TA_Clamp ? AM_Clamp : AM_Mirror),
+	SamplerXAddress = Owner->AddressX == TA_Wrap ? AM_Wrap : (Owner->AddressX == TA_Clamp ? AM_Clamp : AM_Mirror);
+	SamplerYAddress = Owner->AddressY == TA_Wrap ? AM_Wrap : (Owner->AddressY == TA_Clamp ? AM_Clamp : AM_Mirror);
+	SamplerZAddress = Owner->AddressZ == TA_Wrap ? AM_Wrap : (Owner->AddressZ == TA_Clamp ? AM_Clamp : AM_Mirror);
 
 	STAT(LODGroupStatName = TextureGroupStatFNames[InOwner->LODGroup]);
 
