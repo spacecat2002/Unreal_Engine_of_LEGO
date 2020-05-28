@@ -450,7 +450,7 @@ private:
 				ensure(Offset == UINT16_MAX);
 
 				FRigVMNestedByteArray* ArrayStorage = (FRigVMNestedByteArray*)Ptr;
-				if (ArrayStorage->Num() == 0)
+				if (ArrayStorage->Num() == 0 && bGetArrayData)
 				{
 					return nullptr;
 				}
@@ -462,7 +462,7 @@ private:
 
 				if (!bGetArrayData)
 				{
-					return (uint8*)&(*ArrayStorage)[SliceIndex];
+					return Ptr;
 				}
 
 				return (*ArrayStorage)[SliceIndex].GetData();
