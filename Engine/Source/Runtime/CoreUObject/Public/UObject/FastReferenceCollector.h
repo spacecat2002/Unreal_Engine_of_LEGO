@@ -284,7 +284,11 @@ private:
 	{
 		return !!(Options & EFastReferenceCollectorOptions::ProcessNoOpTokens);
 	}
-
+	constexpr FORCEINLINE bool ShouldProcessWeakReferences() const
+	{
+		return !!(Options & EFastReferenceCollectorOptions::ProcessWeakReferences);
+	}
+	
 	class FCollectorTaskQueue
 	{
 		TFastReferenceCollector*	Owner;
@@ -553,6 +557,19 @@ public:
 	}
 
 private:
+
+	/**
+	 * Handles weak object pointer references
+	 * @param WeakPtr weak object pointer
+	 * @param NewObjectsToSerialize List of new objects to process as a result of processing this reference
+	 * @param CurrentObject current object being processed (owner of the weak object pointer)
+	 * @param ReferenceTokenStreamIndex GC token stream index (for debugging)
+	 */
+	FORCEINLINE void HandleWeakObjectPtr(FWeakObjectPtr& WeakPtr, TArray<UObject*>& NewObjectsToSerialize, UObject* CurrentObject, int32 ReferenceTokenStreamIndex)
+	{
+		UObject* WeakObject = WeakPtr.Get(true);
+		ReferenceProcessor.HandleTokenStreamObjectReference(NewObjectsToSerialize, CurrentObject, WeakObject, ReferenceTokenStreamIndex, true);
+	}
 
 	/**
 	 * Traverses UObject token stream to find existing references
@@ -889,33 +906,155 @@ private:
 					break;
 					case GCRT_NoopPersistentObject:
 					{
+						TokenReturnCount = ReferenceInfo.ReturnCount;
 						if (ShouldProcessNoOpTokens())
 						{
 							// We're dealing with an object reference (this code should be identical to GCRT_PersistentObject)
 							UObject**	ObjectPtr = (UObject**)(StackEntryData + ReferenceInfo.Offset);
 							UObject*&	Object = *ObjectPtr;
-							TokenReturnCount = ReferenceInfo.ReturnCount;
 							ReferenceProcessor.HandleTokenStreamObjectReference(NewObjectsToSerialize, CurrentObject, Object, ReferenceTokenStreamIndex, false);
-						}
-						else
-						{
-							TokenReturnCount = ReferenceInfo.ReturnCount;
 						}
 					}
 					break;
 					case GCRT_NoopClass:
 					{
+						TokenReturnCount = ReferenceInfo.ReturnCount;
 						if (ShouldProcessNoOpTokens())
 						{
 							// We're dealing with an object reference (this code should be identical to GCRT_Object and GCRT_Class)
 							UObject**	ObjectPtr = (UObject**)(StackEntryData + ReferenceInfo.Offset);
 							UObject*&	Object = *ObjectPtr;
-							TokenReturnCount = ReferenceInfo.ReturnCount;
 							ReferenceProcessor.HandleTokenStreamObjectReference(NewObjectsToSerialize, CurrentObject, Object, ReferenceTokenStreamIndex, true);
 						}
-						else
-						{
+					}
+					break;
+					case GCRT_WeakObject:
+					{
+						TokenReturnCount = ReferenceInfo.ReturnCount;
+						if (ShouldProcessWeakReferences())
+						{							
+							FWeakObjectPtr& WeakPtr = *(FWeakObjectPtr*)(StackEntryData + ReferenceInfo.Offset);
+							HandleWeakObjectPtr(WeakPtr, NewObjectsToSerialize, CurrentObject, ReferenceTokenStreamIndex);
+						}
+					}
+					break;
+					case GCRT_ArrayWeakObject:
+					{
+						TokenReturnCount = ReferenceInfo.ReturnCount;
+						if (ShouldProcessWeakReferences())
+						{							
+							TArray<FWeakObjectPtr>& WeakPtrArray = *((TArray<FWeakObjectPtr>*)(StackEntryData + ReferenceInfo.Offset));
+							for (FWeakObjectPtr& WeakPtr : WeakPtrArray)
+							{
+								HandleWeakObjectPtr(WeakPtr, NewObjectsToSerialize, CurrentObject, ReferenceTokenStreamIndex);
+							}
+						}
+					}
+					break;
+					case GCRT_LazyObject:
+					{
+						TokenReturnCount = ReferenceInfo.ReturnCount;
+						if (ShouldProcessWeakReferences())
+						{							
+							FLazyObjectPtr& LazyPtr = *(FLazyObjectPtr*)(StackEntryData + ReferenceInfo.Offset);
+							FWeakObjectPtr& WeakPtr = LazyPtr.WeakPtr;
+							HandleWeakObjectPtr(WeakPtr, NewObjectsToSerialize, CurrentObject, ReferenceTokenStreamIndex);
+						}
+					}
+					break;
+					case GCRT_ArrayLazyObject:
+					{
+						TokenReturnCount = ReferenceInfo.ReturnCount;
+						if (ShouldProcessWeakReferences())
+						{							
+							TArray<FLazyObjectPtr>& LazyPtrArray = *((TArray<FLazyObjectPtr>*)(StackEntryData + ReferenceInfo.Offset));
 							TokenReturnCount = ReferenceInfo.ReturnCount;
+							for (FLazyObjectPtr& LazyPtr : LazyPtrArray)
+							{
+								FWeakObjectPtr& WeakPtr = LazyPtr.WeakPtr;
+								HandleWeakObjectPtr(WeakPtr, NewObjectsToSerialize, CurrentObject, ReferenceTokenStreamIndex);
+							}
+						}
+					}
+					break;
+					case GCRT_SoftObject:
+					{
+						TokenReturnCount = ReferenceInfo.ReturnCount;
+						if (ShouldProcessWeakReferences())
+						{							
+							FSoftObjectPtr& SoftPtr = *(FSoftObjectPtr*)(StackEntryData + ReferenceInfo.Offset);
+							FWeakObjectPtr& WeakPtr = SoftPtr.WeakPtr;
+							HandleWeakObjectPtr(WeakPtr, NewObjectsToSerialize, CurrentObject, ReferenceTokenStreamIndex);
+						}
+					}
+					break;
+					case GCRT_ArraySoftObject:
+					{
+						TokenReturnCount = ReferenceInfo.ReturnCount;
+						if (ShouldProcessWeakReferences())
+						{							
+							TArray<FSoftObjectPtr>& SoftPtrArray = *((TArray<FSoftObjectPtr>*)(StackEntryData + ReferenceInfo.Offset));
+							for (FSoftObjectPtr& SoftPtr : SoftPtrArray)
+							{
+								FWeakObjectPtr& WeakPtr = SoftPtr.WeakPtr;
+								HandleWeakObjectPtr(WeakPtr, NewObjectsToSerialize, CurrentObject, ReferenceTokenStreamIndex);
+							}
+						}
+					}
+					break;
+					case GCRT_Delegate:
+					{
+						TokenReturnCount = ReferenceInfo.ReturnCount;
+						if (ShouldProcessWeakReferences())
+						{							
+							FScriptDelegate& Delegate = *(FScriptDelegate*)(StackEntryData + ReferenceInfo.Offset);
+							UObject* DelegateObject = Delegate.GetUObject();
+							ReferenceProcessor.HandleTokenStreamObjectReference(NewObjectsToSerialize, CurrentObject, DelegateObject, ReferenceTokenStreamIndex, false);
+						}
+					}
+					break;
+					case GCRT_ArrayDelegate:
+					{
+						TokenReturnCount = ReferenceInfo.ReturnCount;
+						if (ShouldProcessWeakReferences())
+						{							
+							TArray<FScriptDelegate>& DelegateArray = *((TArray<FScriptDelegate>*)(StackEntryData + ReferenceInfo.Offset));
+							for (FScriptDelegate& Delegate : DelegateArray)
+							{
+								UObject* DelegateObject = Delegate.GetUObject();
+								ReferenceProcessor.HandleTokenStreamObjectReference(NewObjectsToSerialize, CurrentObject, DelegateObject, ReferenceTokenStreamIndex, false);
+							}
+						}
+					}
+					break;
+					case GCRT_MulticastDelegate:
+					{
+						TokenReturnCount = ReferenceInfo.ReturnCount;
+						if (ShouldProcessWeakReferences())
+						{							
+							FMulticastScriptDelegate& Delegate = *(FMulticastScriptDelegate*)(StackEntryData + ReferenceInfo.Offset);
+							TArray<UObject*> DelegateObjects(Delegate.GetAllObjects());
+							for (UObject* DelegateObject : DelegateObjects)
+							{
+								ReferenceProcessor.HandleTokenStreamObjectReference(NewObjectsToSerialize, CurrentObject, DelegateObject, ReferenceTokenStreamIndex, false);
+							}
+						}
+					}
+					break;
+					case GCRT_ArrayMulticastDelegate:
+					{
+						TokenReturnCount = ReferenceInfo.ReturnCount;
+						if (ShouldProcessWeakReferences())
+						{							
+							TArray<FMulticastScriptDelegate>& DelegateArray = *((TArray<FMulticastScriptDelegate>*)(StackEntryData + ReferenceInfo.Offset));
+							for (FMulticastScriptDelegate& Delegate : DelegateArray)
+							{
+								TArray<UObject*> DelegateObjects(Delegate.GetAllObjects());
+								for (UObject* DelegateObject : DelegateObjects)
+								{
+									ReferenceProcessor.HandleTokenStreamObjectReference(NewObjectsToSerialize, CurrentObject, DelegateObject, ReferenceTokenStreamIndex, false);
+								}
+							}
 						}
 					}
 					break;

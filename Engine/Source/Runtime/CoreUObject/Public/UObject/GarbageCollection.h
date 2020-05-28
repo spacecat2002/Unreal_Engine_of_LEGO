@@ -63,6 +63,16 @@ enum EGCReferenceType
 	GCRT_NoopClass,
 	GCRT_ArrayObjectFreezable,
 	GCRT_ArrayStructFreezable,
+	GCRT_WeakObject,
+	GCRT_ArrayWeakObject,
+	GCRT_LazyObject,
+	GCRT_ArrayLazyObject,
+	GCRT_SoftObject,
+	GCRT_ArraySoftObject,
+	GCRT_Delegate,
+	GCRT_ArrayDelegate,
+	GCRT_MulticastDelegate,
+	GCRT_ArrayMulticastDelegate,
 };
 
 /** 
