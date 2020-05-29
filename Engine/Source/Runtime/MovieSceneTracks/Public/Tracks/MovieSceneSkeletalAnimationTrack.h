@@ -5,7 +5,30 @@
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "MovieSceneNameableTrack.h"
+#include "Sections/MovieSceneSkeletalAnimationSection.h"
 #include "MovieSceneSkeletalAnimationTrack.generated.h"
+
+
+/**Struct to hold the cached root motion positions based upon how we calculated them.
+* Also provides way to get the root motion at a particular time.
+*/
+
+USTRUCT()
+struct FMovieSceneSkeletalAnimRootMotionTrackParams
+{
+	GENERATED_BODY()
+
+	FFrameTime FrameTick; 
+	FFrameTime StartFrame;
+	FFrameTime EndFrame;
+	bool bRootMotionsDirty;
+	TArray<FTransform> RootTransforms;
+
+	/** Get the Root Motion transform at the specified time.*/
+	MOVIESCENETRACKS_API FTransform GetRootMotion(FFrameTime CurrentTime) const;
+	FMovieSceneSkeletalAnimRootMotionTrackParams() : bRootMotionsDirty(false) {}
+
+};
 
 /**
  * Handles animation of skeletal mesh actors
@@ -32,6 +55,11 @@ public:
 	// UMovieSceneTrack interface
 
 	virtual void PostLoad() override;
+#if WITH_EDITOR
+	virtual void PostEditImport() override;
+	virtual void PostEditUndo() override;
+#endif
+
 	virtual void RemoveAllAnimationData() override;
 	virtual bool HasSection(const UMovieSceneSection& Section) const override;
 	virtual void AddSection(UMovieSceneSection& Section) override;
@@ -43,12 +71,35 @@ public:
 	virtual UMovieSceneSection* CreateNewSection() override;
 	virtual FMovieSceneTrackRowSegmentBlenderPtr GetRowSegmentBlender() const override;
 	virtual bool SupportsMultipleRows() const override;
-
+	virtual void UpdateEasing() override;
 #if WITH_EDITORONLY_DATA
 	virtual FText GetDefaultDisplayName() const override;
 #endif
 
+#if WITH_EDITOR
+		virtual void OnSectionMoved(UMovieSceneSection& Section, const FMovieSceneSectionMovedParams& Params) override;
+#endif
+
+
 private:
+	void SortSections();
+public:
+
+	void SetRootMotionsDirty();
+	void SetUpRootMotions(bool bForce);
+	void FindBestBlendPoint(USkeletalMeshComponent* SkelMeshComp,UMovieSceneSkeletalAnimationSection* FirstSection);
+	void MatchSectionByBoneTransform(bool bMatchWithPrevious, USkeletalMeshComponent* SkelMeshComp, UMovieSceneSkeletalAnimationSection* CurrentSection, FFrameTime CurrentFrame, FFrameRate FrameRate,
+		const FName& BoneName, FTransform& SecondSectionRootDiff, FVector& TranslationDiff, FQuat& RotationDiff); //add options for z and for rotation.
+	MOVIESCENETRACKS_API void ToggleAutoMatchClipsRootMotions();
+#if WITH_EDITORONLY_DATA
+
+	MOVIESCENETRACKS_API void ToggleShowRootMotionTrail();
+#endif
+
+private:
+	//Not called yet, will be used to automatch a section when it's added to another
+	void AutoMatchSectionRoot(UMovieSceneSkeletalAnimationSection* AnimSection);
+public:
 
 	/** List of all animation sections */
 	UPROPERTY()
@@ -56,4 +107,30 @@ private:
 
 	UPROPERTY()
 	bool bUseLegacySectionIndexBlend;
+
+	/** Automatically align adjacent clips roots to preceeding clip positions*/
+	//MZ todo will need to figure out how to get skelmesh when adding moving clip
+	//UPROPERTY()
+	bool bAutoMatchClipsRootMotions;
+
+	UPROPERTY()
+	FMovieSceneSkeletalAnimRootMotionTrackParams RootMotionParams;
+
+
+#if WITH_EDITORONLY_DATA
+public:
+
+	/** Whether to show the position of the root for this sections */
+	UPROPERTY(EditAnywhere, Category = "Root Motions")
+	bool bShowRootMotionTrail;
+#endif
+
 };
+
+
+
+
+
+
+
+
