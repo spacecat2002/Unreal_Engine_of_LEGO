@@ -271,7 +271,7 @@ void FShaderParameterBindings::BindForLegacyShaderParameters(const FShader* Shad
 	if (bShouldBindEverything && BindingContext.ShaderGlobalScopeBindings.Num() != AllParameterNames.Num())
 	{
 		FString ErrorString = FString::Printf(
-			TEXT("Shader %s has unbound parameters not represented in the parameter struct:"), Type->GetName());
+			TEXT("Shader %s, permutation %d has unbound parameters not represented in the parameter struct:"), Type->GetName(), PermutationId);
 
 		for (const FString& GlobalParameterName : AllParameterNames)
 		{
@@ -339,7 +339,8 @@ void FShaderParameterBindings::BindForRootShaderParameters(const FShader* Shader
 	if (BindingContext.ShaderGlobalScopeBindings.Num() != AllParameterNames.Num())
 	{
 		FString ErrorString = FString::Printf(
-			TEXT("Shader %s has unbound parameters not represented in the parameter struct:"), Type->GetName());
+			TEXT("Shader %s, permutation %d has unbound parameters not represented in the parameter struct:"),
+			Type->GetName(), PermutationId);
 
 		for (const FString& GlobalParameterName : AllParameterNames)
 		{
@@ -443,7 +444,7 @@ void ValidateShaderParameters(const TShaderRef<FShader>& Shader, const FShaderPa
 	const uint8* Base = reinterpret_cast<const uint8*>(Parameters);
 
 	const TCHAR* ShaderClassName = Shader.GetType()->GetName();
-	const TCHAR* ShaderParemeterStructName = ParametersMetadata->GetStructTypeName();
+	const TCHAR* ShaderParameterStructName = ParametersMetadata->GetStructTypeName();
 
 	for (const FShaderParameterBindings::FResourceParameter& ParameterBinding : Bindings.ResourceParameters)
 	{
@@ -475,7 +476,7 @@ void ValidateShaderParameters(const TShaderRef<FShader>& Shader, const FShaderPa
 
 					UE_LOG(LogShaders, Error,
 						TEXT("Attempting to set shader %s parameter %s::%s with the RDG texture %s which was not created with TexCreate_ShaderResource"),
-						ShaderClassName, ShaderParemeterStructName, *MemberName, GraphTexture->Name);
+						ShaderClassName, ShaderParameterStructName, *MemberName, GraphTexture->Name);
 				}
 			}
 			break;
