@@ -284,8 +284,7 @@ void FD3D12CommandContext::RHICopyToResolveTarget(FRHITexture* SourceTextureRHI,
 						// currently no support for readback buffers
 						check(ResolveTargetDesc.Dimension != D3D12_RESOURCE_DIMENSION_BUFFER);
 
-						const FResolveRect& SrcRect = ResolveParams.Rect.IsValid() ? ResolveParams.Rect : FResolveRect(0,0,srcDesc.Width, srcDesc.Height);
-
+						const FResolveRect& SrcRect = ResolveParams.Rect.IsValid() ? ResolveParams.Rect : FResolveRect(0, 0, srcDesc.Width, srcDesc.Height);
 						D3D12_BOX SrcBox;
 
 						SrcBox.left = SrcRect.X1;
