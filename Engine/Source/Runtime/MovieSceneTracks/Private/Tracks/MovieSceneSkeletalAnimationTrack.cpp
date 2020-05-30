@@ -613,7 +613,7 @@ void UMovieSceneSkeletalAnimationTrack::ToggleShowRootMotionTrail()
 {
 	bShowRootMotionTrail = bShowRootMotionTrail ? false : true;
 }
-
+#endif
 FTransform FMovieSceneSkeletalAnimRootMotionTrackParams::GetRootMotion(FFrameTime CurrentTime)  const
 {
 	if (RootTransforms.Num() > 0)
@@ -651,7 +651,6 @@ FTransform FMovieSceneSkeletalAnimRootMotionTrackParams::GetRootMotion(FFrameTim
 	return FTransform::Identity;
 }
 
-#endif
 
 //MZ To Do need way to get passed the skelmeshcomp when we add or move a section.
 void UMovieSceneSkeletalAnimationTrack::AutoMatchSectionRoot(UMovieSceneSkeletalAnimationSection* CurrentSection)

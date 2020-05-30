@@ -41,8 +41,9 @@ UMovieSceneSkeletalAnimationSection::UMovieSceneSkeletalAnimationSection( const 
 	PlayRate_DEPRECATED = 1.f;
 	bReverse_DEPRECATED = false;
 	SlotName_DEPRECATED = DefaultSlotName;
+#if WITH_EDITORONLY_DATA
 	bShowSkeleton = false;
-
+#endif
 
 	BlendType = EMovieSceneBlendType::Absolute;
 	EvalOptions.EnableAndSetCompletionMode
