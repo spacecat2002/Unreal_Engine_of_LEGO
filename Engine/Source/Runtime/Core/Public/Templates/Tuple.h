@@ -386,6 +386,12 @@ namespace UE4Tuple_Private
 			return Hash;
 		}
 	};
+
+	template <typename... Given, typename... Deduced>
+	std::enable_if_t<TAnd<TIsConstructible<Given, Deduced&&>...>::Value> ConstructibleConceptCheck(Deduced&&...);
+
+	template <typename... Given, typename... Deduced>
+	decltype(ConceptCheckingHelper((DeclVal<Given>() = DeclVal<Deduced&&>(), 0)...)) AssignableConceptCheck(Deduced&&...);
 }
 
 template <typename... Types>
@@ -397,17 +403,16 @@ private:
 public:
 	template <
 		typename... ArgTypes,
-		decltype(UE4Tuple_Private::ConceptCheckingHelper(Super(UE4Tuple_Private::ForwardingConstructor, DeclVal<ArgTypes&&>()...)))* = nullptr
+		decltype(UE4Tuple_Private::ConstructibleConceptCheck<Types...>(DeclVal<ArgTypes&&>()...))* = nullptr
 	>
 	explicit TTuple(ArgTypes&&... Args)
 		: Super(UE4Tuple_Private::ForwardingConstructor, Forward<ArgTypes>(Args)...)
 	{
-		// This constructor is disabled for TTuple and zero parameters because VC is incorrectly instantiating it as a move/copy/default constructor.
 	}
 
 	template <
 		typename... OtherTypes,
-		decltype(UE4Tuple_Private::ConceptCheckingHelper(Super(UE4Tuple_Private::OtherTupleConstructor, DeclVal<TTuple<OtherTypes...>&&>())))* = nullptr
+		decltype(UE4Tuple_Private::ConstructibleConceptCheck<Types...>(DeclVal<OtherTypes&&>()...))* = nullptr
 	>
 	TTuple(TTuple<OtherTypes...>&& Other)
 		: Super(UE4Tuple_Private::OtherTupleConstructor, MoveTemp(Other))
@@ -416,7 +421,7 @@ public:
 
 	template <
 		typename... OtherTypes,
-		decltype(UE4Tuple_Private::ConceptCheckingHelper(Super(UE4Tuple_Private::OtherTupleConstructor, DeclVal<const TTuple<OtherTypes...>&>())))* = nullptr
+		decltype(UE4Tuple_Private::ConstructibleConceptCheck<Types...>(DeclVal<const OtherTypes&>()...))* = nullptr
 	>
 	TTuple(const TTuple<OtherTypes...>& Other)
 		: Super(UE4Tuple_Private::OtherTupleConstructor, Other)
@@ -431,8 +436,7 @@ public:
 
 	template <
 		typename... OtherTypes,
-		typename TEnableIf<sizeof...(Types) == sizeof...(OtherTypes)>::Type* = nullptr,
-		decltype(UE4Tuple_Private::Assign(DeclVal<TTuple&>(), DeclVal<const TTuple<OtherTypes...>&>(), TMakeIntegerSequence<uint32, sizeof...(Types)>{}))* = nullptr
+		decltype(UE4Tuple_Private::AssignableConceptCheck<Types&...>(DeclVal<const OtherTypes&>()...))* = nullptr
 	>
 	TTuple& operator=(const TTuple<OtherTypes...>& Other)
 	{
@@ -442,8 +446,7 @@ public:
 
 	template <
 		typename... OtherTypes,
-		typename TEnableIf<sizeof...(Types) == sizeof...(OtherTypes)>::Type* = nullptr,
-		decltype(UE4Tuple_Private::Assign(DeclVal<TTuple&>(), DeclVal<TTuple<OtherTypes...>&&>(), TMakeIntegerSequence<uint32, sizeof...(OtherTypes)>{}))* = nullptr
+		decltype(UE4Tuple_Private::AssignableConceptCheck<Types&...>(DeclVal<OtherTypes&&>()...))* = nullptr
 	>
 	TTuple& operator=(TTuple<OtherTypes...>&& Other)
 	{
