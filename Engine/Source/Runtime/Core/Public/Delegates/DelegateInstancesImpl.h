@@ -92,40 +92,40 @@ public:
 
 #if USE_DELEGATE_TRYGETBOUNDFUNCTIONNAME
 
-	virtual FName TryGetBoundFunctionName() const override final
+	FName TryGetBoundFunctionName() const final
 	{
 		return FunctionName;
 	}
 
 #endif
 
-	virtual UObject* GetUObject( ) const override final
+	UObject* GetUObject( ) const final
 	{
 		return (UObject*)UserObjectPtr.Get();
 	}
 
-	virtual const void* GetObjectForTimerManager() const override final
+	const void* GetObjectForTimerManager() const final
 	{
 		return UserObjectPtr.Get();
 	}
 
-	virtual uint64 GetBoundProgramCounterForTimerManager() const override final
+	uint64 GetBoundProgramCounterForTimerManager() const final
 	{
 		return 0;
 	}
 
 	// Deprecated
-	virtual bool HasSameObject( const void* InUserObject ) const override final
+	bool HasSameObject( const void* InUserObject ) const final
 	{
 		return (UserObjectPtr.Get() == InUserObject);
 	}
 
-	virtual bool IsCompactable( ) const override final
+	bool IsCompactable( ) const final
 	{
 		return !UserObjectPtr.Get(true);
 	}
 
-	virtual bool IsSafeToExecute( ) const override final
+	bool IsSafeToExecute( ) const final
 	{
 		return UserObjectPtr.IsValid();
 	}
@@ -134,12 +134,12 @@ public:
 
 	// IBaseDelegateInstance interface
 
-	virtual void CreateCopy(FDelegateBase& Base) override final
+	void CreateCopy(FDelegateBase& Base) final
 	{
 		new (Base) UnwrappedThisType(*(UnwrappedThisType*)this);
 	}
 
-	virtual RetValType Execute(ParamTypes... Params) const override final
+	RetValType Execute(ParamTypes... Params) const final
 	{
 		typedef TPayload<RetValType (typename TDecay<ParamTypes>::Type..., typename TDecay<VarTypes> ::Type...)> FParmsWithPayload;
 
@@ -194,7 +194,7 @@ public:
 	{
 	}
 
-	virtual bool ExecuteIfSafe(ParamTypes... Params) const override final
+	bool ExecuteIfSafe(ParamTypes... Params) const final
 	{
 		if (Super::IsSafeToExecute())
 		{
@@ -242,24 +242,24 @@ public:
 
 #if USE_DELEGATE_TRYGETBOUNDFUNCTIONNAME
 
-	virtual FName TryGetBoundFunctionName() const override final
+	FName TryGetBoundFunctionName() const final
 	{
 		return NAME_None;
 	}
 
 #endif
 
-	virtual UObject* GetUObject() const override final
+	UObject* GetUObject() const final
 	{
 		return nullptr;
 	}
 
-	virtual const void* GetObjectForTimerManager() const override final
+	const void* GetObjectForTimerManager() const final
 	{
 		return UserObject.Pin().Get();
 	}
 
-	virtual uint64 GetBoundProgramCounterForTimerManager() const override final
+	uint64 GetBoundProgramCounterForTimerManager() const final
 	{
 #if PLATFORM_64BITS
 		return *((uint64*)&MethodPtr);
@@ -269,12 +269,12 @@ public:
 	}
 
 	// Deprecated
-	virtual bool HasSameObject(const void* InUserObject) const override final
+	bool HasSameObject(const void* InUserObject) const final
 	{
 		return UserObject.HasSameObject(InUserObject);
 	}
 
-	virtual bool IsSafeToExecute() const override final
+	bool IsSafeToExecute() const final
 	{
 		return UserObject.IsValid();
 	}
@@ -283,12 +283,12 @@ public:
 
 	// IBaseDelegateInstance interface
 
-	virtual void CreateCopy(FDelegateBase& Base) override final
+	void CreateCopy(FDelegateBase& Base) final
 	{
 		new (Base) UnwrappedThisType(*(UnwrappedThisType*)this);
 	}
 
-	virtual RetValType Execute(ParamTypes... Params) const override final
+	RetValType Execute(ParamTypes... Params) const final
 	{
 		typedef typename TRemoveConst<UserClass>::Type MutableUserClass;
 
@@ -364,7 +364,7 @@ public:
 	{
 	}
 
-	virtual bool ExecuteIfSafe(ParamTypes... Params) const override final
+	bool ExecuteIfSafe(ParamTypes... Params) const final
 	{
 		// Verify that the user object is still valid.  We only have a weak reference to it.
 		auto SharedUserObject = Super::UserObject.Pin();
@@ -418,24 +418,24 @@ public:
 
 #if USE_DELEGATE_TRYGETBOUNDFUNCTIONNAME
 
-	virtual FName TryGetBoundFunctionName() const override final
+	FName TryGetBoundFunctionName() const final
 	{
 		return NAME_None;
 	}
 
 #endif
 
-	virtual UObject* GetUObject( ) const override final
+	UObject* GetUObject( ) const final
 	{
 		return nullptr;
 	}
 
-	virtual const void* GetObjectForTimerManager() const override final
+	const void* GetObjectForTimerManager() const final
 	{
 		return UserObject;
 	}
 
-	virtual uint64 GetBoundProgramCounterForTimerManager() const override final
+	uint64 GetBoundProgramCounterForTimerManager() const final
 	{
 #if PLATFORM_64BITS
 		return *((uint64*)&MethodPtr);
@@ -445,12 +445,12 @@ public:
 	}
 
 	// Deprecated
-	virtual bool HasSameObject( const void* InUserObject ) const override final
+	bool HasSameObject( const void* InUserObject ) const final
 	{
 		return UserObject == InUserObject;
 	}
 
-	virtual bool IsSafeToExecute( ) const override final
+	bool IsSafeToExecute( ) const final
 	{
 		// We never know whether or not it is safe to deference a C++ pointer, but we have to
 		// trust the user in this case.  Prefer using a shared-pointer based delegate type instead!
@@ -461,12 +461,12 @@ public:
 
 	// IBaseDelegateInstance interface
 
-	virtual void CreateCopy(FDelegateBase& Base) override final
+	void CreateCopy(FDelegateBase& Base) final
 	{
 		new (Base) UnwrappedThisType(*(UnwrappedThisType*)this);
 	}
 
-	virtual RetValType Execute(ParamTypes... Params) const override final
+	RetValType Execute(ParamTypes... Params) const final
 	{
 		typedef typename TRemoveConst<UserClass>::Type MutableUserClass;
 
@@ -522,7 +522,7 @@ public:
 	{
 	}
 
-	virtual bool ExecuteIfSafe(ParamTypes... Params) const override final
+	bool ExecuteIfSafe(ParamTypes... Params) const final
 	{
 		// We never know whether or not it is safe to deference a C++ pointer, but we have to
 		// trust the user in this case.  Prefer using a shared-pointer based delegate type instead!
@@ -566,24 +566,24 @@ public:
 
 #if USE_DELEGATE_TRYGETBOUNDFUNCTIONNAME
 
-	virtual FName TryGetBoundFunctionName() const override final
+	FName TryGetBoundFunctionName() const final
 	{
 		return NAME_None;
 	}
 
 #endif
 
-	virtual UObject* GetUObject( ) const override final
+	UObject* GetUObject( ) const final
 	{
 		return (UObject*)UserObject.Get();
 	}
 
-	virtual const void* GetObjectForTimerManager() const override final
+	const void* GetObjectForTimerManager() const final
 	{
 		return UserObject.Get();
 	}
 
-	virtual uint64 GetBoundProgramCounterForTimerManager() const override final
+	uint64 GetBoundProgramCounterForTimerManager() const final
 	{
 #if PLATFORM_64BITS
 		return *((uint64*)&MethodPtr);
@@ -593,17 +593,17 @@ public:
 	}
 
 	// Deprecated
-	virtual bool HasSameObject( const void* InUserObject ) const override final
+	bool HasSameObject( const void* InUserObject ) const final
 	{
 		return (UserObject.Get() == InUserObject);
 	}
 
-	virtual bool IsCompactable( ) const override final
+	bool IsCompactable( ) const final
 	{
 		return !UserObject.Get(true);
 	}
 
-	virtual bool IsSafeToExecute( ) const override final
+	bool IsSafeToExecute( ) const final
 	{
 		return !!UserObject.Get();
 	}
@@ -612,12 +612,12 @@ public:
 
 	// IBaseDelegateInstance interface
 
-	virtual void CreateCopy(FDelegateBase& Base) override final
+	void CreateCopy(FDelegateBase& Base) final
 	{
 		new (Base) UnwrappedThisType(*(UnwrappedThisType*)this);
 	}
 
-	virtual RetValType Execute(ParamTypes... Params) const override final
+	RetValType Execute(ParamTypes... Params) const final
 	{
 		typedef typename TRemoveConst<UserClass>::Type MutableUserClass;
 
@@ -676,7 +676,7 @@ public:
 	{
 	}
 
-	virtual bool ExecuteIfSafe(ParamTypes... Params) const override final
+	bool ExecuteIfSafe(ParamTypes... Params) const final
 	{
 		// Verify that the user object is still valid.  We only have a weak reference to it.
 		auto ActualUserObject = Super::UserObject.Get();
@@ -719,24 +719,24 @@ public:
 
 #if USE_DELEGATE_TRYGETBOUNDFUNCTIONNAME
 
-	virtual FName TryGetBoundFunctionName() const override final
+	FName TryGetBoundFunctionName() const final
 	{
 		return NAME_None;
 	}
 
 #endif
 
-	virtual UObject* GetUObject( ) const override final
+	UObject* GetUObject( ) const final
 	{
 		return nullptr;
 	}
 
-	virtual const void* GetObjectForTimerManager() const override final
+	const void* GetObjectForTimerManager() const final
 	{
 		return nullptr;
 	}
 
-	virtual uint64 GetBoundProgramCounterForTimerManager() const override final
+	uint64 GetBoundProgramCounterForTimerManager() const final
 	{
 #if PLATFORM_64BITS
 		return *((uint64*)&StaticFuncPtr);
@@ -746,13 +746,13 @@ public:
 	}
 
 	// Deprecated
-	virtual bool HasSameObject( const void* UserObject ) const override final
+	bool HasSameObject( const void* UserObject ) const final
 	{
 		// Raw Delegates aren't bound to an object so they can never match
 		return false;
 	}
 
-	virtual bool IsSafeToExecute( ) const override final
+	bool IsSafeToExecute( ) const final
 	{
 		// Static functions are always safe to execute!
 		return true;
@@ -762,12 +762,12 @@ public:
 
 	// IBaseDelegateInstance interface
 
-	virtual void CreateCopy(FDelegateBase& Base) override final
+	void CreateCopy(FDelegateBase& Base) final
 	{
 		new (Base) UnwrappedThisType(*(UnwrappedThisType*)this);
 	}
 
-	virtual RetValType Execute(ParamTypes... Params) const override final
+	RetValType Execute(ParamTypes... Params) const final
 	{
 		// Call the static function
 		checkSlow(StaticFuncPtr != nullptr);
@@ -810,7 +810,7 @@ public:
 	{
 	}
 
-	virtual bool ExecuteIfSafe(ParamTypes... Params) const override final
+	bool ExecuteIfSafe(ParamTypes... Params) const final
 	{
 		Super::Execute(Params...);
 
@@ -851,36 +851,36 @@ public:
 
 #if USE_DELEGATE_TRYGETBOUNDFUNCTIONNAME
 
-	virtual FName TryGetBoundFunctionName() const override final
+	FName TryGetBoundFunctionName() const final
 	{
 		return NAME_None;
 	}
 
 #endif
 
-	virtual UObject* GetUObject() const override final
+	UObject* GetUObject() const final
 	{
 		return nullptr;
 	}
 
-	virtual const void* GetObjectForTimerManager() const override final
+	const void* GetObjectForTimerManager() const final
 	{
 		return nullptr;
 	}
 
-	virtual uint64 GetBoundProgramCounterForTimerManager() const override final
+	uint64 GetBoundProgramCounterForTimerManager() const final
 	{
 		return 0;
 	}
 
 	// Deprecated
-	virtual bool HasSameObject(const void* UserObject) const override final
+	bool HasSameObject(const void* UserObject) const final
 	{
 		// Functor Delegates aren't bound to a user object so they can never match
 		return false;
 	}
 
-	virtual bool IsSafeToExecute() const override final
+	bool IsSafeToExecute() const final
 	{
 		// Functors are always considered safe to execute!
 		return true;
@@ -888,12 +888,12 @@ public:
 
 public:
 	// IBaseDelegateInstance interface
-	virtual void CreateCopy(FDelegateBase& Base) override final
+	void CreateCopy(FDelegateBase& Base) final
 	{
 		new (Base) UnwrappedThisType(*(UnwrappedThisType*)this);
 	}
 
-	virtual RetValType Execute(ParamTypes... Params) const override final
+	RetValType Execute(ParamTypes... Params) const final
 	{
 		return this->Payload.ApplyAfter(Functor, Params...);
 	}
@@ -942,7 +942,7 @@ public:
 	{
 	}
 
-	virtual bool ExecuteIfSafe(ParamTypes... Params) const override final
+	bool ExecuteIfSafe(ParamTypes... Params) const final
 	{
 		// Functors are always considered safe to execute!
 		Super::Execute(Params...);
@@ -986,52 +986,52 @@ public:
 
 #if USE_DELEGATE_TRYGETBOUNDFUNCTIONNAME
 
-	virtual FName TryGetBoundFunctionName() const override final
+	FName TryGetBoundFunctionName() const final
 	{
 		return NAME_None;
 	}
 
 #endif
 
-	virtual UObject* GetUObject() const override final
+	UObject* GetUObject() const final
 	{
 		return ContextObject.Get();
 	}
 
-	virtual const void* GetObjectForTimerManager() const override final
+	const void* GetObjectForTimerManager() const final
 	{
 		return ContextObject.Get();
 	}
 
-	virtual uint64 GetBoundProgramCounterForTimerManager() const override final
+	uint64 GetBoundProgramCounterForTimerManager() const final
 	{
 		return 0;
 	}
 
 	// Deprecated
-	virtual bool HasSameObject(const void* InContextObject) const override final
+	bool HasSameObject(const void* InContextObject) const final
 	{
 		return GetUObject() == InContextObject;
 	}
 
-	virtual bool IsCompactable() const override final
+	bool IsCompactable() const final
 	{
 		return !ContextObject.Get(true);
 	}
 
-	virtual bool IsSafeToExecute() const override final
+	bool IsSafeToExecute() const final
 	{
 		return ContextObject.IsValid();
 	}
 
 public:
 	// IBaseDelegateInstance interface
-	virtual void CreateCopy(FDelegateBase& Base) override final
+	void CreateCopy(FDelegateBase& Base) final
 	{
 		new (Base) UnwrappedThisType(*(UnwrappedThisType*)this);
 	}
 
-	virtual RetValType Execute(ParamTypes... Params) const override final
+	RetValType Execute(ParamTypes... Params) const final
 	{
 		return this->Payload.ApplyAfter(Functor, Params...);
 	}
@@ -1084,7 +1084,7 @@ public:
 	{
 	}
 
-	virtual bool ExecuteIfSafe(ParamTypes... Params) const override final
+	bool ExecuteIfSafe(ParamTypes... Params) const final
 	{
 		if (Super::IsSafeToExecute())
 		{
