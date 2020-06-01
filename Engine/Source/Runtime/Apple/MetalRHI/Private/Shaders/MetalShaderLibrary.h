@@ -32,8 +32,8 @@ public:
 	virtual int32 FindShaderMapIndex(const FSHAHash& Hash) override;
 	virtual int32 FindShaderIndex(const FSHAHash& Hash) override;
 
-	virtual FGraphEventRef PreloadShader(int32 ShaderIndex) override;
-	virtual FGraphEventRef PreloadShaderMap(int32 ShaderMapIndex) override;
+	virtual bool PreloadShader(int32 ShaderIndex, FGraphEventArray& OutCompletionEvents) override { return false; }
+	virtual bool PreloadShaderMap(int32 ShaderMapIndex, FGraphEventArray& OutCompletionEvents) override { return false; }
 
 	virtual TRefCountPtr<FRHIShader> CreateShader(int32 Index) override;
 
