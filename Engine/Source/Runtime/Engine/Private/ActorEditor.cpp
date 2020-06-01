@@ -1048,6 +1048,12 @@ bool AActor::GetReferencedContentObjects( TArray<UObject*>& Objects ) const
 
 EDataValidationResult AActor::IsDataValid(TArray<FText>& ValidationErrors)
 {
+	// Do not run asset validation on external actors, validation will be caught through map check
+	if (IsPackageExternal())
+	{
+		return EDataValidationResult::NotValidated;
+	}
+
 	bool bSuccess = CheckDefaultSubobjects();
 	if (!bSuccess)
 	{
