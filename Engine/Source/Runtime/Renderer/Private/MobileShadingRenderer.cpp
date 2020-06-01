@@ -450,17 +450,8 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 
 	// Allocate the maximum scene render target space for the current view family.
-	SceneContext.ReleaseSceneColor();
 	SceneContext.SetKeepDepthContent(bKeepDepthContent);
 	SceneContext.Allocate(RHICmdList, this);
-
-	const bool bUseVirtualTexturing = UseVirtualTexturing(ViewFeatureLevel);
-	if (bUseVirtualTexturing)
-	{
-		// AllocateResources needs to be called before RHIBeginScene
-		FVirtualTextureSystem::Get().AllocateResources(RHICmdList, ViewFeatureLevel);
-		FVirtualTextureSystem::Get().CallPendingCallbacks();
-	}
 
 	//make sure all the targets we're going to use will be safely writable.
 	GRenderTargetPool.TransitionTargetsWritable(RHICmdList);
@@ -494,6 +485,7 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		RenderSkyAtmosphereLookUpTables(RHICmdList);
 	}
 
+	const bool bUseVirtualTexturing = UseVirtualTexturing(FeatureLevel);
 	if (bUseVirtualTexturing)
 	{
 		FVirtualTextureSystem::Get().Update(RHICmdList, ViewFeatureLevel, Scene);
@@ -897,7 +889,7 @@ void FMobileSceneRenderer::RenderMobileDebugView(FRHICommandListImmediate& RHICm
 
 		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 		FDebugViewModePassPassUniformParameters PassParameters;
-		SetupDebugViewModePassUniformBuffer(SceneContext, View.GetFeatureLevel(), PassParameters);
+		SetupDebugViewModePassUniformBuffer(SceneContext, View, PassParameters);
 		Scene->UniformBuffers.DebugViewModePassUniformBuffer.UpdateUniformBufferImmediate(PassParameters);
 		
 		RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1);

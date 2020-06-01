@@ -17,6 +17,7 @@
 #include "Async/TaskGraphInterfaces.h"
 #include "ProfilingDebugging/CsvProfiler.h"
 #include "Misc/App.h"
+#include "Misc/Fork.h"
 
 #if PLATFORM_SWITCH
 #include "SwitchPlatformCrashContext.h"
@@ -31,6 +32,10 @@
 
 #ifndef WALK_STACK_ON_HITCH_DETECTED
 	#define WALK_STACK_ON_HITCH_DETECTED 0
+#endif
+
+#ifndef NEEDS_DEBUG_INFO_ON_PRESENT_HANG
+#define NEEDS_DEBUG_INFO_ON_PRESENT_HANG 0
 #endif
 
 // Enabling AttempStuckThreadResuscitation will add a check for early hung thread detection and pass the ThreadId through the OnStuck
@@ -171,6 +176,22 @@ void FORCENOINLINE FThreadHeartBeat::OnPresentHang(double HangDuration)
 	LastHungThreadId = FThreadHeartBeat::PresentThreadId;
 #if PLATFORM_SWITCH
 	FPlatformCrashContext::UpdateDynamicData();
+#endif
+#if NEEDS_DEBUG_INFO_ON_PRESENT_HANG
+	extern void GetRenderThreadSublistDispatchTaskDebugInfo(bool&, bool&, bool&, bool&, int32&);
+
+	bool bTmpIsNull;
+	bool bTmpIsComplete;
+	bool bTmpClearedOnGT;
+	bool bTmpClearedOnRT;
+	int32 TmpNumIncompletePrereqs;
+	GetRenderThreadSublistDispatchTaskDebugInfo(bTmpIsNull, bTmpIsComplete, bTmpClearedOnGT, bTmpClearedOnRT, TmpNumIncompletePrereqs);
+
+	volatile bool bIsNull = bTmpIsNull;
+	volatile bool bIsComplete = bTmpIsComplete;
+	volatile bool bClearedOnGT = bTmpClearedOnGT;
+	volatile bool bClearedOnRT = bTmpClearedOnRT;
+	volatile int32 NumIncompletePrereqs = TmpNumIncompletePrereqs;
 #endif
 	// We want to avoid all memory allocations if a hang is detected.
 	// Force a crash in a way that will generate a crash report.
@@ -346,7 +367,13 @@ void FThreadHeartBeat::InitSettings()
 
 	// Default to 25 seconds if not overridden in config.
 	double NewHangDuration = 25.0;
+
+#if	PLATFORM_PRESENT_HANG_DETECTION_ON_BY_DEFAULT
+	double NewPresentDuration = 25.0;
+#else
 	double NewPresentDuration = 0.0;
+#endif //PLATFORM_PRESENT_HANG_DETECTION_ON_BY_DEFAULT
+
 	bool bNewHangsAreFatal = !!(UE_ASSERT_ON_HANG);
 
 	if (GConfig)
@@ -861,9 +888,9 @@ void FGameThreadHitchHeartBeatThreaded::InitSettings()
 	}
 	
 	// Start the heart beat thread if it hasn't already been started.
-	if (Thread == nullptr && FPlatformProcess::SupportsMultithreading() && HangDuration > 0)
+	if (Thread == nullptr && (FPlatformProcess::SupportsMultithreading() || FForkProcessHelper::SupportsMultithreadingPostFork()) && HangDuration > 0)
 	{
-		Thread = FRunnableThread::Create(this, TEXT("FGameThreadHitchHeartBeatThreaded"), 0, TPri_AboveNormal);
+		Thread = FForkProcessHelper::CreateForkableThread(this, TEXT("FGameThreadHitchHeartBeatThreaded"), 0, TPri_AboveNormal);
 	}
 #endif
 }

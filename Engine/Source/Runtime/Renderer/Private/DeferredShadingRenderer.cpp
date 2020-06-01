@@ -245,7 +245,7 @@ DECLARE_GPU_STAT(HZB);
 DECLARE_GPU_STAT_NAMED(Unaccounted, TEXT("[unaccounted]"));
 DECLARE_GPU_DRAWCALL_STAT(WaterRendering);
 DECLARE_GPU_STAT(HairRendering);
-DECLARE_GPU_DRAWCALL_STAT(VirtualTextureUpdate);
+DECLARE_GPU_DRAWCALL_STAT(VirtualTextureFeedback);
 DECLARE_GPU_STAT(UploadDynamicBuffers);
 DECLARE_GPU_STAT(PostOpaqueExtensions);
 
@@ -1450,6 +1450,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	SceneContext.ReleaseSceneColor();
 
 	const bool bDBuffer = !ViewFamily.EngineShowFlags.ShaderComplexity && ViewFamily.EngineShowFlags.Decals && IsUsingDBuffers(ShaderPlatform);
+	const bool bUseVirtualTexturing = UseVirtualTexturing(FeatureLevel);
 
 	WaitOcclusionTests(RHICmdList);
 
@@ -1472,15 +1473,6 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 		// Allocate the maximum scene render target space for the current view family.
 		SceneContext.Allocate(RHICmdList, this);
-	}
-
-	const bool bUseVirtualTexturing = UseVirtualTexturing(FeatureLevel);
-	if (bUseVirtualTexturing)
-	{
-		SCOPED_GPU_STAT(RHICmdList, VirtualTextureUpdate);
-		// AllocateResources needs to be called before RHIBeginScene
-		FVirtualTextureSystem::Get().AllocateResources(RHICmdList, FeatureLevel);
-		FVirtualTextureSystem::Get().CallPendingCallbacks();
 	}
 
 	const bool bIsWireframe = ViewFamily.EngineShowFlags.Wireframe;
@@ -1574,7 +1566,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 		if (bUseVirtualTexturing)
 		{
-			SCOPED_GPU_STAT(RHICmdList, VirtualTextureUpdate);
+			SCOPED_GPU_STAT(RHICmdList, VirtualTextureFeedback);
 			FVirtualTextureSystem::Get().Update(RHICmdList, FeatureLevel, Scene);
 
 			// Clear virtual texture feedback to default value
@@ -2818,7 +2810,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	if (bUseVirtualTexturing)
 	{
-		SCOPED_GPU_STAT(RHICmdList, VirtualTextureUpdate);
+		SCOPED_GPU_STAT(RHICmdList, VirtualTextureFeedback);
 		
 		// No pass after this should make VT page requests
 		RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EGfxToGfx, SceneContext.VirtualTextureFeedbackUAV);
