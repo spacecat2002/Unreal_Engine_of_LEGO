@@ -44,14 +44,14 @@ public class IntelTBB : ModuleRules
 		{
 			PublicSystemIncludePaths.AddRange(
 				new string[] {
-					Target.UEThirdPartySourceDirectory + "IntelTBB/IntelTBB-2019u8/include",
+					Target.UEThirdPartySourceDirectory + "Intel/TBB/IntelTBB-2019u8/include",
 				}
 			);
 
 			PublicAdditionalLibraries.AddRange(
 				new string[] {
-					Target.UEThirdPartySourceDirectory + "IntelTBB/IntelTBB-2019u8/lib/Mac/libtbb.a",
-					Target.UEThirdPartySourceDirectory + "IntelTBB/IntelTBB-2019u8/lib/Mac/libtbbmalloc.a",
+					Target.UEThirdPartySourceDirectory + "Intel/TBB/IntelTBB-2019u8/lib/Mac/libtbb.a",
+					Target.UEThirdPartySourceDirectory + "Intel/TBB/IntelTBB-2019u8/lib/Mac/libtbbmalloc.a",
 				}
 			);
 		}
