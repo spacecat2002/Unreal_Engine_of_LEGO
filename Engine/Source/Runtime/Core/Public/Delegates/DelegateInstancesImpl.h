@@ -117,7 +117,7 @@ public:
 	// Deprecated
 	bool HasSameObject(const void* InUserObject) const final
 	{
-		return (UserObjectPtr.Get() == InUserObject);
+		return UserObjectPtr.Get() == InUserObject;
 	}
 
 	bool IsCompactable() const final
@@ -293,13 +293,13 @@ public:
 		typedef typename TRemoveConst<UserClass>::Type MutableUserClass;
 
 		// Verify that the user object is still valid.  We only have a weak reference to it.
-		auto SharedUserObject = UserObject.Pin();
+		TSharedPtr<UserClass, SPMode> SharedUserObject = UserObject.Pin();
 		checkSlow(SharedUserObject.IsValid());
 
 		// Safely remove const to work around a compiler issue with instantiating template permutations for 
 		// overloaded functions that take a function pointer typedef as a member of a templated class.  In
 		// all cases where this code is actually invoked, the UserClass will already be a const pointer.
-		auto MutableUserObject = const_cast<MutableUserClass*>(SharedUserObject.Get());
+		MutableUserClass* MutableUserObject = const_cast<MutableUserClass*>(SharedUserObject.Get());
 
 		// Call the member function on the user's object.  And yes, this is the correct C++ syntax for calling a
 		// pointer-to-member function.
@@ -334,7 +334,7 @@ public:
 	FORCEINLINE static void Create(FDelegateBase& Base, UserClass* InUserObject, FMethodPtr InFunc, VarTypes... Vars)
 	{
 		// We expect the incoming InUserObject to derived from TSharedFromThis.
-		auto UserObjectRef = StaticCastSharedRef<UserClass>(InUserObject->AsShared());
+		TSharedRef<UserClass, SPMode> UserObjectRef = StaticCastSharedRef<UserClass>(InUserObject->AsShared());
 		Create(Base, UserObjectRef, InFunc, Vars...);
 	}
 
@@ -367,7 +367,7 @@ public:
 	bool ExecuteIfSafe(ParamTypes... Params) const final
 	{
 		// Verify that the user object is still valid.  We only have a weak reference to it.
-		auto SharedUserObject = Super::UserObject.Pin();
+		TSharedPtr<UserClass, SPMode> SharedUserObject = Super::UserObject.Pin();
 		if (SharedUserObject.IsValid())
 		{
 			Super::Execute(Params...);
@@ -473,7 +473,7 @@ public:
 		// Safely remove const to work around a compiler issue with instantiating template permutations for 
 		// overloaded functions that take a function pointer typedef as a member of a templated class.  In
 		// all cases where this code is actually invoked, the UserClass will already be a const pointer.
-		auto MutableUserObject = const_cast<MutableUserClass*>(UserObject);
+		MutableUserClass* MutableUserObject = const_cast<MutableUserClass*>(UserObject);
 
 		// Call the member function on the user's object.  And yes, this is the correct C++ syntax for calling a
 		// pointer-to-member function.
@@ -627,7 +627,7 @@ public:
 		// Safely remove const to work around a compiler issue with instantiating template permutations for 
 		// overloaded functions that take a function pointer typedef as a member of a templated class.  In
 		// all cases where this code is actually invoked, the UserClass will already be a const pointer.
-		auto MutableUserObject = const_cast<MutableUserClass*>(UserObject.Get());
+		MutableUserClass* MutableUserObject = const_cast<MutableUserClass*>(UserObject.Get());
 
 		// Call the member function on the user's object.  And yes, this is the correct C++ syntax for calling a
 		// pointer-to-member function.
@@ -679,7 +679,7 @@ public:
 	bool ExecuteIfSafe(ParamTypes... Params) const final
 	{
 		// Verify that the user object is still valid.  We only have a weak reference to it.
-		auto ActualUserObject = Super::UserObject.Get();
+		UserClass* ActualUserObject = Super::UserObject.Get();
 		if (ActualUserObject != nullptr)
 		{
 			Super::Execute(Params...);
