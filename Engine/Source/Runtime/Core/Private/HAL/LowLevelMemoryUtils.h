@@ -8,7 +8,7 @@
 
 #define LLM_PAGE_SIZE (16*1024)
 
-#if WITH_EDITOR
+#if WITH_EDITOR && PLATFORM_64BITS
 // When cooking, the number of simultaneous allocations can reach the danger zone of tens of millions, and our margin*capacity calculation ~ 100*capacity will rise over MAX_uint32
 typedef uint64 LLMNumAllocsType;
 #else
@@ -658,43 +658,62 @@ struct PointerKey
 	PointerKey(const void* InPointer) : Pointer(InPointer) {}
 	LLMNumAllocsType GetHashCode() const
 	{
-		static_assert((sizeof(LLMNumAllocsType) == 4 && sizeof(void*) == 4) ||
-			(sizeof(LLMNumAllocsType) == 4 && sizeof(void*) == 8) ||
-			(sizeof(LLMNumAllocsType) == 8 && sizeof(void*) == 8),
-			"Converting void* to a LLMNumAllocsType-sized hashkey is not implemented for the current sizes.");
-		if (sizeof(LLMNumAllocsType) == 8 && sizeof(void*) == 8)
-		{
-			// 64 bit pointer to 64 bit hash
-			uint64 Key = (uint64)Pointer;
-			Key = (~Key) + (Key << 21);
-			Key = Key ^ (Key >> 24);
-			Key = Key * 265;
-			Key = Key ^ (Key >> 14);
-			Key = Key * 21;
-			Key = Key ^ (Key >> 28);
-			Key = Key + (Key << 31);
-			return (LLMNumAllocsType)Key;
-		}
-		else if ((sizeof(LLMNumAllocsType) == 4 && sizeof(void*) == 8) ||
-			(sizeof(LLMNumAllocsType) == 4 && sizeof(void*) == 4))
-		{
-			// 64 bit pointer or 32 bit pointer to 32 bit Hash
-			uint64 Key = (uint64)Pointer;
-			Key = (~Key) + (Key << 18);
-			Key = Key ^ (Key >> 31);
-			Key = Key * 21;
-			Key = Key ^ (Key >> 11);
-			Key = Key + (Key << 6);
-			Key = Key ^ (Key >> 22);
-			return (LLMNumAllocsType)Key;
-		}
-		else
-		{
-			return (LLMNumAllocsType)(intptr_t)Pointer;
-		}
+		return GetHashCodeImpl<sizeof(LLMNumAllocsType), sizeof(void*)>();
 	}
 	bool operator==(const PointerKey& other) const { return Pointer == other.Pointer; }
 	const void* Pointer;
+
+private:
+	template <int HashSize, int PointerSize>
+	LLMNumAllocsType GetHashCodeImpl() const
+	{
+		static_assert(HashSize == 0 && PointerSize == 0, "Converting void* to a LLMNumAllocsType - sized hashkey is not implemented for the current sizes.");
+		return (LLMNumAllocsType)(intptr_t)Pointer;
+	}
+
+	template <>
+	LLMNumAllocsType GetHashCodeImpl<8,8>() const
+	{
+		// 64 bit pointer to 64 bit hash
+		uint64 Key = (uint64)Pointer;
+		Key = (~Key) + (Key << 21);
+		Key = Key ^ (Key >> 24);
+		Key = Key * 265;
+		Key = Key ^ (Key >> 14);
+		Key = Key * 21;
+		Key = Key ^ (Key >> 28);
+		Key = Key + (Key << 31);
+		return (LLMNumAllocsType)Key;
+	}
+
+	template <>
+	LLMNumAllocsType GetHashCodeImpl<4, 8>() const
+	{
+		// 64 bit pointer to 32 bit hash
+		uint64 Key = (uint64)Pointer;
+		Key = (~Key) + (Key << 21);
+		Key = Key ^ (Key >> 24);
+		Key = Key * 265;
+		Key = Key ^ (Key >> 14);
+		Key = Key * 21;
+		Key = Key ^ (Key >> 28);
+		Key = Key + (Key << 31);
+		return (LLMNumAllocsType)Key;
+	}
+
+	template <>
+	LLMNumAllocsType GetHashCodeImpl<4, 4>() const
+	{
+		// 32 bit pointer to 32 bit Hash
+		uint64 Key = (uint64)Pointer;
+		Key = (~Key) + (Key << 18);
+		Key = Key ^ (Key >> 31);
+		Key = Key * 21;
+		Key = Key ^ (Key >> 11);
+		Key = Key + (Key << 6);
+		Key = Key ^ (Key >> 22);
+		return (LLMNumAllocsType)Key;
+	}
 };
 
 #endif		// #if ENABLE_LOW_LEVEL_MEM_TRACKER
