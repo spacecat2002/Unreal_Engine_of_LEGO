@@ -45,6 +45,7 @@
 #include "Chaos/Box.h"
 #include "ChaosSolvers/Public/EventsData.h"
 #include "ChaosSolvers/Public/EventManager.h"
+#include "ChaosSolvers/Public/RewindData.h"
 
 
 #if !UE_BUILD_SHIPPING
@@ -1198,6 +1199,13 @@ FPhysScene_ChaosInterface::FPhysScene_ChaosInterface(const AWorldSettings* InSet
 	Scene.GetSolver()->PhysSceneHack = this;
 
 	Scene.GetSolver()->GetEvolution()->SetCollisionModifierCallback(CollisionModifierCallback);
+
+	FPhysicsDelegates::OnPhysSceneInit.Broadcast(this);
+}
+
+FPhysScene_ChaosInterface::~FPhysScene_ChaosInterface()
+{
+	FPhysicsDelegates::OnPhysSceneTerm.Broadcast(this);
 }
 
 void FPhysScene_ChaosInterface::OnWorldBeginPlay()
@@ -1899,15 +1907,23 @@ void FPhysScene_ChaosInterface::ApplyWorldOffset(FVector InOffset)
 	check(InOffset.Size() == 0);
 }
 
-void FPhysScene_ChaosInterface::SetUpForFrame(const FVector* NewGrav, float InDeltaSeconds /*= 0.0f*/, float InMaxPhysicsDeltaTime /*= 0.0f*/, float InMaxSubstepDeltaTime /*= 0.0f*/, int32 InMaxSubsteps)
+void FPhysScene_ChaosInterface::SetUpForFrame(const FVector* NewGrav, float InDeltaSeconds /*= 0.0f*/, float InMaxPhysicsDeltaTime /*= 0.0f*/, float InMaxSubstepDeltaTime /*= 0.0f*/, int32 InMaxSubsteps, bool bSubstepping)
 {
 	SetGravity(*NewGrav);
 	MDeltaTime = InMaxPhysicsDeltaTime > 0.f ? FMath::Min(InDeltaSeconds, InMaxPhysicsDeltaTime) : InDeltaSeconds;
 
 	if (Chaos::FPhysicsSolver* Solver = GetSolver())
 	{
-		Solver->SetMaxDeltaTime(InMaxSubstepDeltaTime);
-		Solver->SetMaxSubSteps(InMaxSubsteps);
+		if(bSubstepping)
+		{
+			Solver->SetMaxDeltaTime(InMaxSubstepDeltaTime);
+			Solver->SetMaxSubSteps(InMaxSubsteps);
+		}
+		else
+		{
+			Solver->SetMaxDeltaTime(InMaxPhysicsDeltaTime);
+			Solver->SetMaxSubSteps(1);
+		}
 	}
 }
 
@@ -2341,16 +2357,61 @@ void FPhysScene_ChaosInterface::SyncBodies(TSolver* Solver)
 	}
 }
 
-FPhysicsConstraintReference_Chaos 
+FPhysicsConstraintHandle 
 FPhysScene_ChaosInterface::AddSpringConstraint(const TArray< TPair<FPhysicsActorHandle, FPhysicsActorHandle> >& Constraint)
 {
 	// #todo : Implement
-	return FPhysicsConstraintReference_Chaos();
+	return FPhysicsConstraintHandle();
 }
 
-void FPhysScene_ChaosInterface::RemoveSpringConstraint(const FPhysicsConstraintReference_Chaos& Constraint)
+void FPhysScene_ChaosInterface::RemoveSpringConstraint(const FPhysicsConstraintHandle& Constraint)
 {
 	// #todo : Implement
+}
+
+void FPhysScene_ChaosInterface::ResimNFrames(const int32 NumFramesRequested)
+{
+	QUICK_SCOPE_CYCLE_COUNTER(ResimNFrames);
+	using namespace Chaos;
+	auto Solver = GetSolver();
+	if(FRewindData* RewindData = Solver->GetRewindData())
+	{
+		const int32 FramesSaved = RewindData->GetFramesSaved() - 2;	//give 2 frames buffer because right at edge we have a hard time
+		const int32 NumFrames = FMath::Min(NumFramesRequested,FramesSaved);
+		if(NumFrames > 0)
+		{
+			const int32 LatestFrame = RewindData->CurrentFrame();
+			const int32 FirstFrame = LatestFrame - NumFrames;
+			if(ensure(Solver->GetRewindData()->RewindToFrame(FirstFrame)))
+			{
+				for(int Frame = FirstFrame; Frame < LatestFrame; ++Frame)
+				{
+					Solver->PushPhysicsState();
+					FPhysicsSolverAdvanceTask AdvanceTask(Solver,RewindData->GetDeltaTimeForFrame(Frame));
+					AdvanceTask.DoTask(ENamedThreads::GameThread,FGraphEventRef());
+					Solver->BufferPhysicsResults();
+					Solver->FlipBuffers();
+					Solver->UpdateGameThreadStructures();
+				}
+
+#if !UE_BUILD_SHIPPING
+				const TArray<FDesyncedParticleInfo> DesyncedParticles = Solver->GetRewindData()->ComputeDesyncInfo();
+				if(DesyncedParticles.Num())
+				{
+					UE_LOG(LogChaos,Log,TEXT("Resim had %d desyncs"),DesyncedParticles.Num());
+					for(const FDesyncedParticleInfo& Info : DesyncedParticles)
+					{
+						const FBodyInstance* BI = FPhysicsUserData_Chaos::Get<FBodyInstance>(Info.Particle->UserData());
+						const FBox Bounds = BI->GetBodyBounds();
+						FVector Center,Extents;
+						Bounds.GetCenterAndExtents(Center,Extents);
+						DrawDebugBox(GetOwningWorld(),Center,Extents,FQuat::Identity, Info.MostDesynced == ESyncState::HardDesync ? FColor::Red : FColor::Yellow, /*bPersistentLines=*/ false, /*LifeTime=*/ 3);
+					}
+				}
+#endif
+			}
+		}
+	}
 }
 
 void FPhysScene_ChaosInterface::CompleteSceneSimulation(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)

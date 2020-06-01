@@ -2988,7 +2988,7 @@ void FScene::GetWindParameters_GameThread(const FVector& Position, FVector& OutD
 	{
 		float Weight = 0.0f;
 		FWindData CurrentComponentData;
-		if(Component->GetWindParameters(Position, CurrentComponentData, Weight))
+		if(Component && Component->GetWindParameters(Position, CurrentComponentData, Weight))
 		{
 			AccumWindData.AddWeighted(CurrentComponentData, Weight);
 			TotalWeight += Weight;

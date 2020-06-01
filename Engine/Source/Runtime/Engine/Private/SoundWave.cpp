@@ -236,6 +236,24 @@ void USoundWave::GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize)
 		return;
 	}
 
+	// First, add any UProperties that are on the USoundwave itself:
+	CumulativeResourceSize.AddDedicatedSystemMemoryBytes(sizeof(USoundWave));
+
+	// Add all cooked spectral and envelope data:
+	CumulativeResourceSize.AddDedicatedSystemMemoryBytes(FrequenciesToAnalyze.Num() * sizeof(float));
+	CumulativeResourceSize.AddDedicatedSystemMemoryBytes(CookedSpectralTimeData.Num() * sizeof(FSoundWaveSpectralTimeData));
+
+	for (FSoundWaveSpectralTimeData& Entry : CookedSpectralTimeData)
+	{
+		CumulativeResourceSize.AddDedicatedSystemMemoryBytes(Entry.Data.Num() * sizeof(FSoundWaveSpectralDataEntry));
+	}
+
+	CumulativeResourceSize.AddDedicatedSystemMemoryBytes(CookedEnvelopeTimeData.Num() * sizeof(FSoundWaveEnvelopeTimeData));
+
+	// Add zeroth chunk data, if it's used (if this USoundWave isn't streaming, this won't report).
+	CumulativeResourceSize.AddDedicatedSystemMemoryBytes(ZerothChunkData.GetView().Num());
+
+	// Finally, report the actual audio memory being used, if this asset isn't using the stream cache.
 	if (FAudioDevice* LocalAudioDevice = GEngine->GetMainAudioDeviceRaw())
 	{
 		if (LocalAudioDevice->HasCompressedAudioInfoClass(this) && DecompressionType == DTYPE_Native)
@@ -375,6 +393,14 @@ void USoundWave::Serialize( FArchive& Ar )
 
 	if (bCooked)
 	{
+#if WITH_EDITOR
+		// Temporary workaround for allowing editors to load data that was saved for platforms that had streaming disabled. There is nothing int
+		// the serialized data that lets us know what is actually stored on disc, so we have to be explicitly told. Ideally, we'd just store something
+		// on disc to say how the serialized data is arranged, but doing so would cause a major patch delta.
+		static const bool bSoundWaveDataHasStreamingDisabled = FParse::Param(FCommandLine::Get(), TEXT("SoundWaveDataHasStreamingDisabled"));
+		bShouldStreamSound = bShouldStreamSound && !bSoundWaveDataHasStreamingDisabled;
+#endif
+
 		// Only want to cook/load full data if we don't support streaming
 		if (!bShouldStreamSound || !bSupportsStreaming)
 		{
@@ -904,7 +930,7 @@ void USoundWave::PostLoad()
 	}
 
 	// Only add this streaming sound if the platform supports streaming
-	if (IsStreaming(nullptr) && FPlatformProperties::SupportsAudioStreaming())
+	if (FApp::CanEverRenderAudio() && IsStreaming(nullptr) && FPlatformProperties::SupportsAudioStreaming())
 	{
 #if WITH_EDITORONLY_DATA
 		FinishCachePlatformData();
@@ -1748,7 +1774,10 @@ void USoundWave::FinishDestroy()
 	}
 #endif
 
-	IStreamingManager::Get().GetAudioStreamingManager().RemoveStreamingSoundWave(this);
+	if (FApp::CanEverRenderAudio())
+	{
+		IStreamingManager::Get().GetAudioStreamingManager().RemoveStreamingSoundWave(this);
+	}
 }
 
 void USoundWave::Parse(FAudioDevice* AudioDevice, const UPTRINT NodeWaveInstanceHash, FActiveSound& ActiveSound, const FSoundParseParameters& ParseParams, TArray<FWaveInstance*>& WaveInstances)
@@ -2544,7 +2573,7 @@ void USoundWave::RetainCompressedAudio(bool bForceSync /*= false*/)
 	else if (bForceSync)
 	{
 		FirstChunk = IStreamingManager::Get().GetAudioStreamingManager().GetLoadedChunk(this, 1, true);
-		ensureAlwaysMsgf(FirstChunk.IsValid(), TEXT("First chunk was invalid after synchronous load in RetainCompressedAudio()!"));
+		UE_CLOG(!FirstChunk.IsValid(), LogAudio, Display, TEXT("First chunk was invalid after synchronous load in RetainCompressedAudio(). This was likely because the cache was blown. Sound: %s"), *GetFullName());
 	}
 	else
 	{
@@ -2599,7 +2628,6 @@ void USoundWave::OverrideLoadingBehavior(ESoundWaveLoadingBehavior InLoadingBeha
 	// record the new loading behavior
 	// (if this soundwave isn't loaded yet, 
 	// CachedSoundWaveLoadingBehavior will take precedence when it does load)
-	LoadingBehavior = InLoadingBehavior;
 	CachedSoundWaveLoadingBehavior = InLoadingBehavior;
 	bLoadingBehaviorOverridden = true;
 
@@ -2653,7 +2681,6 @@ void USoundWave::CacheInheritedLoadingBehavior()
  	else if (bLoadingBehaviorOverridden)
  	{
  		ensureMsgf(CachedSoundWaveLoadingBehavior != ESoundWaveLoadingBehavior::Inherited, TEXT("SoundCue set loading behavior to Inherited on SoudWave: %s"), *GetFullName());
- 		LoadingBehavior = CachedSoundWaveLoadingBehavior;
  	}
 	else
 	{

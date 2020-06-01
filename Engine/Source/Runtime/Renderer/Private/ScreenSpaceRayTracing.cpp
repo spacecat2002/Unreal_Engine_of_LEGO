@@ -828,6 +828,7 @@ void RenderScreenSpaceReflections(
 			SetShaderParameters(RHICmdList, PixelShader, PixelShader.GetPixelShader(), *PassParameters);
 
 			PassParameters->IndirectDrawParameter->MarkResourceAsUsed();
+
 			RHICmdList.DrawPrimitiveIndirect(PassParameters->IndirectDrawParameter->GetIndirectRHICallBuffer(), 0);
 		});
 	}
