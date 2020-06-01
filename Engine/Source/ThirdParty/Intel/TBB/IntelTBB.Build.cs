@@ -11,7 +11,7 @@ public class IntelTBB : ModuleRules
 		if (Target.Platform.IsInGroup(UnrealPlatformGroup.Windows) ||
 			(Target.Platform == UnrealTargetPlatform.HoloLens))
 		{
-			string IntelTBBPath = Target.UEThirdPartySourceDirectory + "IntelTBB/IntelTBB-2019u8/";
+			string IntelTBBPath = Target.UEThirdPartySourceDirectory + "Intel/TBB/IntelTBB-2019u8/";
 			string PlatformSubpath = (Target.WindowsPlatform.Architecture == WindowsArchitecture.ARM32 || Target.WindowsPlatform.Architecture == WindowsArchitecture.x86) ? "Win32" : "Win64";
 
 			string LibDir;
