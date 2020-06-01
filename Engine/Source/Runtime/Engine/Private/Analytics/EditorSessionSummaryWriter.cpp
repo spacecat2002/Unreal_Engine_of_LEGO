@@ -120,11 +120,10 @@ void FEditorSessionSummaryWriter::UpdateSessionDuration(double CurrTimeSecs)
 	int32 NewSessionDuration = FMath::FloorToInt(static_cast<float>(CurrTimeSecs - SessionStartTimeSecs));
 	do
 	{
-		// WARNING: To avoid breaking public API in 4.25.1, TotalUserInactivitySeconds field was repurposed to store the session duration. It should be renamed appropriately in 4.26.
-		int32 OldSessionDurationSecs = FPlatformAtomics::AtomicRead(&CurrentSession->TotalUserInactivitySeconds);
+		int32 OldSessionDurationSecs = FPlatformAtomics::AtomicRead(&CurrentSession->SessionDuration);
 		if (NewSessionDuration > OldSessionDurationSecs)
 		{
-			if (FPlatformAtomics::InterlockedCompareExchange(&CurrentSession->TotalUserInactivitySeconds, NewSessionDuration, OldSessionDurationSecs) == OldSessionDurationSecs)
+			if (FPlatformAtomics::InterlockedCompareExchange(&CurrentSession->SessionDuration, NewSessionDuration, OldSessionDurationSecs) == OldSessionDurationSecs)
 			{
 				return; // Value was exchanged successfully.
 			}
