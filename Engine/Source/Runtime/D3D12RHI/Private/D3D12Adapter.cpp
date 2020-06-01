@@ -177,7 +177,6 @@ FD3D12Adapter::FD3D12Adapter(FD3D12AdapterDesc& DescIn)
 	, DeferredDeletionQueue(this)
 	, DefaultContextRedirector(this, true, false)
 	, DefaultAsyncComputeContextRedirector(this, true, true)
-	, GPUProfilingData(this)
 	, FrameCounter(0)
 #if D3D12_SUBMISSION_GAP_RECORDER
 	, CurrentContextIndex(0)

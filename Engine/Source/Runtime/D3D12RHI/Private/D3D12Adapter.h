@@ -356,7 +356,6 @@ protected:
 	FD3D12CommandContextRedirector DefaultContextRedirector;
 	FD3D12CommandContextRedirector DefaultAsyncComputeContextRedirector;
 
-	FD3DGPUProfiler GPUProfilingData;
 	uint32 FrameCounter;
 
 #if D3D12_SUBMISSION_GAP_RECORDER

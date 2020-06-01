@@ -444,8 +444,7 @@ static int32 FindCmdListTimingPairIndex(const TArray<uint64>& CmdListStartTimest
 
 uint64 D3D12RHI::FD3DGPUProfiler::CalculateIdleTime(uint64 StartTime, uint64 EndTime)
 {
-	FD3D12Adapter* Adapter = GetParentAdapter();
-	FD3D12Device* Device = Adapter->GetDevice(0);
+	FD3D12Device* Device = GetParentDevice();
 
 	FD3D12CommandListManager &CLManager = Device->GetCommandListManager();
 
@@ -479,7 +478,7 @@ void D3D12RHI::FD3DGPUProfiler::DoPostProfileGPUWork()
 	constexpr EFlushCmdsAction FlushAction = EFlushCmdsAction::FCEA_EndProfilingGPU;
 
 	TArray<FResolvedCmdListExecTime> CmdListExecTimes;
-	FD3D12Adapter* Adapter = GetParentAdapter();
+	FD3D12Adapter* Adapter = GetParentDevice()->GetParentAdapter();
 	for (uint32 GPUIdx : FRHIGPUMask::All())
 	{
 		FD3D12Device* Device = Adapter->GetDevice(GPUIdx);
