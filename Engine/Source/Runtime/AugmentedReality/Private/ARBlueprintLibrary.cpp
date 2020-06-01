@@ -25,13 +25,12 @@ EARTrackingQuality UARBlueprintLibrary::GetTrackingQuality()
 
 EARTrackingQualityReason UARBlueprintLibrary::GetTrackingQualityReason()
 {
-	// @todo merge-check
-// 	auto ARSystem = GetARSystem();
-// 	if (ARSystem.IsValid())
-// 	{
-// 		return ARSystem->GetTrackingQualityReason();
-// 	}
-// 	else
+	auto ARSystem = GetARSystem();
+ 	if (ARSystem.IsValid())
+ 	{
+ 		return ARSystem.Pin()->GetTrackingQualityReason();
+ 	}
+ 	else
 	{
 		return EARTrackingQualityReason::None;
 	}

@@ -1303,6 +1303,12 @@ namespace WindowsMixedReality
 		{
 			OnLocatabilityChanged(sender, args);
 		});
+		
+		// Broadcast initial tracking state after setting LocatabilityChanged.
+		if (OnTrackingChanged != nullptr)
+		{
+			OnTrackingChanged(HMDSpatialLocatability(Locator.Locatability()));
+		}
 
 		CameraAddedToken = holographicSpace.CameraAdded(
 			[=](const HolographicSpace & sender, const HolographicSpaceCameraAddedEventArgs & args)

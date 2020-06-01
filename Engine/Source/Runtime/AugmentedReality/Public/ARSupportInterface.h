@@ -46,6 +46,8 @@ public:
 
 	/** \see UARBlueprintLibrary::GetTrackingQuality() */
 	EARTrackingQuality GetTrackingQuality() const;
+	/** \see UARBlueprintLibrary::GetTrackingQualityReason() */
+	EARTrackingQualityReason GetTrackingQualityReason() const;
 	/** \see UARBlueprintLibrary::StartARSession() */
 	void StartARSession(UARSessionConfig* InSessionConfig);
 	/** \see UARBlueprintLibrary::PauseARSession() */

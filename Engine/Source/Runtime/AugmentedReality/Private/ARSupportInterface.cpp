@@ -76,6 +76,15 @@ EARTrackingQuality FARSupportInterface ::GetTrackingQuality() const
 	return EARTrackingQuality::NotTracking;
 }
 
+EARTrackingQualityReason FARSupportInterface::GetTrackingQualityReason() const
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->OnGetTrackingQualityReason();
+	}
+	return EARTrackingQualityReason::None;
+}
+
 void FARSupportInterface ::StartARSession(UARSessionConfig* InSessionConfig)
 {
 	if (ARImplemention)
