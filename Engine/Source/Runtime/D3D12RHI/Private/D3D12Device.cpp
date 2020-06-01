@@ -37,7 +37,7 @@ FD3D12Device::FD3D12Device(FRHIGPUMask InGPUMask, FD3D12Adapter* InAdapter) :
 	GlobalViewHeap(this, InGPUMask),
 	OcclusionQueryHeap(this, D3D12_QUERY_TYPE_OCCLUSION, 65536, 4 /*frames to keep results */ * 1 /*batches per frame*/),
 	TimestampQueryHeap(this, D3D12_QUERY_TYPE_TIMESTAMP, 8192, 4 /*frames to keep results */ * 5 /*batches per frame*/ ),
-#if WITH_PROFILEGPU
+#if WITH_PROFILEGPU || D3D12_SUBMISSION_GAP_RECORDER
 	CmdListExecTimeQueryHeap(this, D3D12_QUERY_HEAP_TYPE_TIMESTAMP, 8192),
 #endif
 	DefaultBufferAllocator(this, InGPUMask), //Note: Cross node buffers are possible 
@@ -81,7 +81,7 @@ ID3D12Device5* FD3D12Device::GetRayTracingDevice()
 
 FD3D12LinearQueryHeap* FD3D12Device::GetCmdListExecTimeQueryHeap()
 {
-#if WITH_PROFILEGPU
+#if WITH_PROFILEGPU || D3D12_SUBMISSION_GAP_RECORDER
 	return &CmdListExecTimeQueryHeap;
 #else
 	return nullptr;
@@ -369,6 +369,13 @@ void FD3D12Device::Cleanup()
 	{
 		delete CommandContextArray[i];
 		CommandContextArray[i] = nullptr;
+	}
+
+	// Delete array index 0 last
+	for (int32 i = AsyncComputeContextArray.Num() - 1; i >= 0; i--)
+	{
+		delete AsyncComputeContextArray[i];
+		AsyncComputeContextArray[i] = nullptr;
 	}
 
 	// Flush all pending deletes before destroying the device.

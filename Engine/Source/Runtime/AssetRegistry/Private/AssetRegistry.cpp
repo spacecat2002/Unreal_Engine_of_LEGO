@@ -184,6 +184,17 @@ UAssetRegistryImpl::UAssetRegistryImpl(const FObjectInitializer& ObjectInitializ
 	}
 #endif // WITH_EDITOR
 
+	// Content roots always exist
+	{
+		TArray<FString> RootContentPaths;
+		FPackageName::QueryRootContentPaths(RootContentPaths);
+
+		for (const FString& AssetPath : RootContentPaths)
+		{
+			AddPath(AssetPath);
+		}
+	}
+
 	// Listen for new content paths being added or removed at runtime.  These are usually plugin-specific asset paths that
 	// will be loaded a bit later on.
 	FPackageName::OnContentPathMounted().AddUObject(this, &UAssetRegistryImpl::OnContentPathMounted);
@@ -2223,13 +2234,10 @@ bool UAssetRegistryImpl::RemoveEmptyPackage(FName PackageName)
 
 bool UAssetRegistryImpl::AddAssetPath(FName PathToAdd)
 {
-	if (CachedPathTree.CachePath(PathToAdd))
+	return CachedPathTree.CachePath(PathToAdd, [this](FName AddedPath)
 	{
-		PathAddedEvent.Broadcast(PathToAdd.ToString());
-		return true;
-	}
-
-	return false;
+		PathAddedEvent.Broadcast(AddedPath.ToString());
+	});
 }
 
 bool UAssetRegistryImpl::RemoveAssetPath(FName PathToRemove, bool bEvenIfAssetsStillExist)
@@ -2246,16 +2254,10 @@ bool UAssetRegistryImpl::RemoveAssetPath(FName PathToRemove, bool bEvenIfAssetsS
 		}
 	}
 
-	if (CachedPathTree.RemovePath(PathToRemove))
+	return CachedPathTree.RemovePath(PathToRemove, [this](FName RemovedPath)
 	{
-		PathRemovedEvent.Broadcast(PathToRemove.ToString());
-		return true;
-	}
-	else
-	{
-		// The folder did not exist in the tree, fail the remove
-		return false;
-	}
+		PathRemovedEvent.Broadcast(RemovedPath.ToString());
+	});
 }
 
 FString UAssetRegistryImpl::ExportTextPathToObjectName(const FString& InExportTextPath) const
@@ -2665,6 +2667,9 @@ void UAssetRegistryImpl::OnContentPathMounted(const FString& InAssetPath, const 
 		// We actually want a trailing slash here so the path can be properly converted while searching for assets
 		AssetPath = AssetPath + TEXT("/");
 	}
+
+	// Content roots always exist
+	AddPath(AssetPath);
 
 	// Add this to our list of root paths to process
 	AddPathToSearch(AssetPath);

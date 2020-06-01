@@ -338,6 +338,8 @@ public:
 #endif
 	);
 
+	ENGINE_API ~FPhysScene_ChaosInterface();
+
 	// Scene
 	void OnWorldBeginPlay();
 	void OnWorldEndPlay();
@@ -480,8 +482,8 @@ private:
 		// #todo : Implement
 	}
 
-	FPhysicsConstraintReference_Chaos AddSpringConstraint(const TArray< TPair<FPhysicsActorHandle, FPhysicsActorHandle> >& Constraint);
-	void RemoveSpringConstraint(const FPhysicsConstraintReference_Chaos& Constraint);
+	FPhysicsConstraintHandle AddSpringConstraint(const TArray< TPair<FPhysicsActorHandle, FPhysicsActorHandle> >& Constraint);
+	void RemoveSpringConstraint(const FPhysicsConstraintHandle& Constraint);
 
 	void AddForce(const Chaos::TVector<float, 3>& Force, FPhysicsActorHandle& Handle)
 	{

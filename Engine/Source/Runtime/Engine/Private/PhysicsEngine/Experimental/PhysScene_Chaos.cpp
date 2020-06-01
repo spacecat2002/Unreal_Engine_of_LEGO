@@ -1199,6 +1199,13 @@ FPhysScene_ChaosInterface::FPhysScene_ChaosInterface(const AWorldSettings* InSet
 	Scene.GetSolver()->PhysSceneHack = this;
 
 	Scene.GetSolver()->GetEvolution()->SetCollisionModifierCallback(CollisionModifierCallback);
+
+	FPhysicsDelegates::OnPhysSceneInit.Broadcast(this);
+}
+
+FPhysScene_ChaosInterface::~FPhysScene_ChaosInterface()
+{
+	FPhysicsDelegates::OnPhysSceneTerm.Broadcast(this);
 }
 
 void FPhysScene_ChaosInterface::OnWorldBeginPlay()
@@ -1914,7 +1921,7 @@ void FPhysScene_ChaosInterface::SetUpForFrame(const FVector* NewGrav, float InDe
 		}
 		else
 		{
-			Solver->SetMaxDeltaTime(MDeltaTime);
+			Solver->SetMaxDeltaTime(InMaxPhysicsDeltaTime);
 			Solver->SetMaxSubSteps(1);
 		}
 	}
@@ -2350,14 +2357,14 @@ void FPhysScene_ChaosInterface::SyncBodies(TSolver* Solver)
 	}
 }
 
-FPhysicsConstraintReference_Chaos 
+FPhysicsConstraintHandle 
 FPhysScene_ChaosInterface::AddSpringConstraint(const TArray< TPair<FPhysicsActorHandle, FPhysicsActorHandle> >& Constraint)
 {
 	// #todo : Implement
-	return FPhysicsConstraintReference_Chaos();
+	return FPhysicsConstraintHandle();
 }
 
-void FPhysScene_ChaosInterface::RemoveSpringConstraint(const FPhysicsConstraintReference_Chaos& Constraint)
+void FPhysScene_ChaosInterface::RemoveSpringConstraint(const FPhysicsConstraintHandle& Constraint)
 {
 	// #todo : Implement
 }
@@ -2386,6 +2393,22 @@ void FPhysScene_ChaosInterface::ResimNFrames(const int32 NumFramesRequested)
 					Solver->FlipBuffers();
 					Solver->UpdateGameThreadStructures();
 				}
+
+#if !UE_BUILD_SHIPPING
+				const TArray<FDesyncedParticleInfo> DesyncedParticles = Solver->GetRewindData()->ComputeDesyncInfo();
+				if(DesyncedParticles.Num())
+				{
+					UE_LOG(LogChaos,Log,TEXT("Resim had %d desyncs"),DesyncedParticles.Num());
+					for(const FDesyncedParticleInfo& Info : DesyncedParticles)
+					{
+						const FBodyInstance* BI = FPhysicsUserData_Chaos::Get<FBodyInstance>(Info.Particle->UserData());
+						const FBox Bounds = BI->GetBodyBounds();
+						FVector Center,Extents;
+						Bounds.GetCenterAndExtents(Center,Extents);
+						DrawDebugBox(GetOwningWorld(),Center,Extents,FQuat::Identity, Info.MostDesynced == ESyncState::HardDesync ? FColor::Red : FColor::Yellow, /*bPersistentLines=*/ false, /*LifeTime=*/ 3);
+					}
+				}
+#endif
 			}
 		}
 	}

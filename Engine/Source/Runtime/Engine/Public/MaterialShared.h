@@ -277,15 +277,11 @@ public:
 	void WriteName(const FHashedName& Name);
 
 	template<typename T>
-	FMaterialPreshaderData& Write(const T& Value) { WriteData(&Value, sizeof(T)); return *this; }
+	inline FMaterialPreshaderData& Write(const T& Value) { WriteData(&Value, sizeof(T)); return *this; }
 
-	template<>
-	FMaterialPreshaderData& Write<FHashedName>(const FHashedName& Value) { WriteName(Value); return *this; }
-
-	template<>
-	FMaterialPreshaderData& Write<FHashedMaterialParameterInfo>(const FHashedMaterialParameterInfo& Value) { return Write(Value.Name).Write(Value.Index).Write(Value.Association); }
-
-	inline FMaterialPreshaderData& WriteOpcode(EMaterialPreshaderOpcode Op) { return Write<uint8>((uint8)Op); }
+	inline FMaterialPreshaderData& Write(const FHashedName& Value) { WriteName(Value); return *this; }
+	inline FMaterialPreshaderData& Write(const FHashedMaterialParameterInfo& Value) { return Write(Value.Name).Write(Value.Index).Write(Value.Association); }
+	inline FMaterialPreshaderData& WriteOpcode(EMaterialPreshaderOpcode Op) { return Write((uint8)Op); }
 
 	LAYOUT_FIELD(TMemoryImageArray<FHashedName>, Names);
 	LAYOUT_FIELD(TMemoryImageArray<uint8>, Data);
@@ -1742,10 +1738,11 @@ public:
 		checkSlow(IsInGameThread() || IsInAsyncLoadingThread());
 		GameThreadShaderMap = InMaterialShaderMap;
 
+		TRefCountPtr<FMaterialShaderMap> ShaderMap = GameThreadShaderMap;
 		FMaterial* Material = this;
-		ENQUEUE_RENDER_COMMAND(SetGameThreadShaderMap)([Material](FRHICommandListImmediate& RHICmdList)
+		ENQUEUE_RENDER_COMMAND(SetGameThreadShaderMap)([Material, ShaderMap = MoveTemp(ShaderMap)](FRHICommandListImmediate& RHICmdList) mutable
 		{
-			Material->RenderingThreadShaderMap = Material->GameThreadShaderMap;
+			Material->RenderingThreadShaderMap = MoveTemp(ShaderMap);
 		});
 	}
 
@@ -1756,17 +1753,18 @@ public:
 		bContainsInlineShaders = true;
 		bLoadedCookedShaderMapId = true;
 
+		TRefCountPtr<FMaterialShaderMap> ShaderMap = GameThreadShaderMap;
 		FMaterial* Material = this;
-		ENQUEUE_RENDER_COMMAND(SetInlineShaderMap)([Material](FRHICommandListImmediate& RHICmdList)
+		ENQUEUE_RENDER_COMMAND(SetInlineShaderMap)([Material, ShaderMap = MoveTemp(ShaderMap)](FRHICommandListImmediate& RHICmdList) mutable
 		{
-			Material->RenderingThreadShaderMap = Material->GameThreadShaderMap;
+			Material->RenderingThreadShaderMap = MoveTemp(ShaderMap);
 		});
 	}
 
 	ENGINE_API class FMaterialShaderMap* GetRenderingThreadShaderMap() const;
 
 	/** Note: SetGameThreadShaderMap must also be called with the same value, but from the game thread. */
-	ENGINE_API void SetRenderingThreadShaderMap(FMaterialShaderMap* InMaterialShaderMap);
+	ENGINE_API void SetRenderingThreadShaderMap(const TRefCountPtr<FMaterialShaderMap>& InMaterialShaderMap);
 
 #if WITH_EDITOR
 	void RemoveOutstandingCompileId(const int32 OldOutstandingCompileShaderMapId )
@@ -1937,7 +1935,7 @@ private:
 	 * Shader map for this material resource which is accessible by the rendering thread. 
 	 * This must be updated along with GameThreadShaderMap, but on the rendering thread.
 	 */
-	FMaterialShaderMap* RenderingThreadShaderMap;
+	TRefCountPtr<FMaterialShaderMap> RenderingThreadShaderMap;
 
 #if WITH_EDITOR
 	/** 

@@ -393,6 +393,14 @@ void USoundWave::Serialize( FArchive& Ar )
 
 	if (bCooked)
 	{
+#if WITH_EDITOR
+		// Temporary workaround for allowing editors to load data that was saved for platforms that had streaming disabled. There is nothing int
+		// the serialized data that lets us know what is actually stored on disc, so we have to be explicitly told. Ideally, we'd just store something
+		// on disc to say how the serialized data is arranged, but doing so would cause a major patch delta.
+		static const bool bSoundWaveDataHasStreamingDisabled = FParse::Param(FCommandLine::Get(), TEXT("SoundWaveDataHasStreamingDisabled"));
+		bShouldStreamSound = bShouldStreamSound && !bSoundWaveDataHasStreamingDisabled;
+#endif
+
 		// Only want to cook/load full data if we don't support streaming
 		if (!bShouldStreamSound || !bSupportsStreaming)
 		{
@@ -922,7 +930,7 @@ void USoundWave::PostLoad()
 	}
 
 	// Only add this streaming sound if the platform supports streaming
-	if (IsStreaming(nullptr) && FPlatformProperties::SupportsAudioStreaming())
+	if (FApp::CanEverRenderAudio() && IsStreaming(nullptr) && FPlatformProperties::SupportsAudioStreaming())
 	{
 #if WITH_EDITORONLY_DATA
 		FinishCachePlatformData();
@@ -1766,7 +1774,10 @@ void USoundWave::FinishDestroy()
 	}
 #endif
 
-	IStreamingManager::Get().GetAudioStreamingManager().RemoveStreamingSoundWave(this);
+	if (FApp::CanEverRenderAudio())
+	{
+		IStreamingManager::Get().GetAudioStreamingManager().RemoveStreamingSoundWave(this);
+	}
 }
 
 void USoundWave::Parse(FAudioDevice* AudioDevice, const UPTRINT NodeWaveInstanceHash, FActiveSound& ActiveSound, const FSoundParseParameters& ParseParams, TArray<FWaveInstance*>& WaveInstances)

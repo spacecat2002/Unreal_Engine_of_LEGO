@@ -17,6 +17,7 @@
 #include "Async/TaskGraphInterfaces.h"
 #include "ProfilingDebugging/CsvProfiler.h"
 #include "Misc/App.h"
+#include "Misc/Fork.h"
 
 #if PLATFORM_SWITCH
 #include "SwitchPlatformCrashContext.h"
@@ -366,7 +367,13 @@ void FThreadHeartBeat::InitSettings()
 
 	// Default to 25 seconds if not overridden in config.
 	double NewHangDuration = 25.0;
+
+#if	PLATFORM_PRESENT_HANG_DETECTION_ON_BY_DEFAULT
+	double NewPresentDuration = 25.0;
+#else
 	double NewPresentDuration = 0.0;
+#endif //PLATFORM_PRESENT_HANG_DETECTION_ON_BY_DEFAULT
+
 	bool bNewHangsAreFatal = !!(UE_ASSERT_ON_HANG);
 
 	if (GConfig)
@@ -881,9 +888,9 @@ void FGameThreadHitchHeartBeatThreaded::InitSettings()
 	}
 	
 	// Start the heart beat thread if it hasn't already been started.
-	if (Thread == nullptr && FPlatformProcess::SupportsMultithreading() && HangDuration > 0)
+	if (Thread == nullptr && (FPlatformProcess::SupportsMultithreading() || FForkProcessHelper::SupportsMultithreadingPostFork()) && HangDuration > 0)
 	{
-		Thread = FRunnableThread::Create(this, TEXT("FGameThreadHitchHeartBeatThreaded"), 0, TPri_AboveNormal);
+		Thread = FForkProcessHelper::CreateForkableThread(this, TEXT("FGameThreadHitchHeartBeatThreaded"), 0, TPri_AboveNormal);
 	}
 #endif
 }

@@ -437,6 +437,10 @@ void FD3D12Viewport::Resize(uint32 InSizeX, uint32 InSizeY, bool bInIsFullscreen
 		if (IsValidRef(BackBuffers[i]))
 		{
 			// Tell the back buffer to delete immediately so that we can call resize.
+			if (BackBuffers[i]->GetRefCount() != 1)
+			{
+				UE_LOG(LogD3D12RHI, Log, TEXT("Backbuffer %d leaking with %d refs during Resize."), i, BackBuffers[i]->GetRefCount());
+			}
 			check(BackBuffers[i]->GetRefCount() == 1);
 
 			for (FD3D12Texture2D* Tex = BackBuffers[i]; Tex; Tex = (FD3D12Texture2D*)Tex->GetNextObject())
@@ -451,6 +455,10 @@ void FD3D12Viewport::Resize(uint32 InSizeX, uint32 InSizeY, bool bInIsFullscreen
 
 		if (IsValidRef(SDRBackBuffers[i]))
 		{
+			if (SDRBackBuffers[i]->GetRefCount() != 1)
+			{
+				UE_LOG(LogD3D12RHI, Log, TEXT("SDR Backbuffer %d leaking with %d refs during Resize."), i, SDRBackBuffers[i]->GetRefCount());
+			}
 			check(SDRBackBuffers[i]->GetRefCount() == 1);
 
 			for (FD3D12Texture2D* Tex = SDRBackBuffers[i]; Tex; Tex = (FD3D12Texture2D*)Tex->GetNextObject())
@@ -920,6 +928,11 @@ void FD3D12CommandContextBase::RHIEndDrawingViewport(FRHIViewport* ViewportRHI, 
 	check(ParentAdapter->GetDrawingViewport() == Viewport);
 	ParentAdapter->SetDrawingViewport(nullptr);
 
+#if D3D12_SUBMISSION_GAP_RECORDER
+	int32 CurrentSlotIdx = ParentAdapter->GetDevice(0)->GetCmdListExecTimeQueryHeap()->GetNextFreeIdx();
+	ParentAdapter->SubmissionGapRecorder.SetPresentSlotIdx(CurrentSlotIdx);
+#endif
+
 	const bool bNativelyPresented = Viewport->Present(bLockToVsync);
 
 	// Multi-GPU support : here each GPU wait's for it's own frame completion. Note that even in AFR, each GPU renders an (empty) frame.
@@ -995,6 +1008,10 @@ void FD3D12DynamicRHI::RHIAdvanceFrameFence()
 		// This must be done in a deferred way even if RHI thread is disabled, just for correct ordering of operations.
 		ALLOC_COMMAND_CL(RHICmdList, FRHICommandSignalFrameFence)(ED3D12CommandQueueType::Default, FrameFence, PreviousFence);
 	}
+#if D3D12_SUBMISSION_GAP_RECORDER
+	FD3D12Adapter* Adapter = &GetAdapter();
+	Adapter->SubmissionGapRecorder.OnRenderThreadAdvanceFrame();
+#endif
 }
 
 void FD3D12DynamicRHI::RHIAdvanceFrameForGetViewportBackBuffer(FRHIViewport* ViewportRHI)

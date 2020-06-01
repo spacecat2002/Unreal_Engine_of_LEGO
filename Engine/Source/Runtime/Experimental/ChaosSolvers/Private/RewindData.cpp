@@ -390,6 +390,7 @@ bool FRewindData::RewindToFrame(int32 Frame)
 	for(FDirtyParticleInfo& DirtyParticleInfo : AllDirtyParticles)
 	{
 		DirtyParticleInfo.bDesync = false;	//after rewind particle is pristine
+		DirtyParticleInfo.MostDesynced = ESyncState::InSync;
 
 		const auto ObjectState = DirtyParticleInfo.GetGTParticle()->ObjectState();
 		//don't sync kinematics
@@ -566,11 +567,12 @@ void FRewindData::AdvanceFrameImp(IResimCacheBase* ResimCache)
 				if(Info.GTDirtyOnFrame[CurFrame].MissingWrite(CurFrame,CurWave))
 				{
 					Info.Desync(CurFrame,LatestFrame);
-				} else if(Rigid)
+				}
+				else if(Rigid && Rigid->ObjectState() != EObjectStateType::Kinematic)
 				{
 					//If we have a simulated particle, make sure its sim-writable properties are still in sync
 					const FGeometryParticleStateBase* ExpectedState = GetStateAtFrameImp(Info,CurFrame);
-					if(ExpectedState)	//this if is here because dynamics can be set up as kinematics, in that case we might have no state
+					if(ExpectedState)
 					{
 						if(ExpectedState->IsSimWritableDesynced(*Rigid))
 						{
@@ -582,13 +584,15 @@ void FRewindData::AdvanceFrameImp(IResimCacheBase* ResimCache)
 						}
 					}
 				}
-			} else if(ResimType == EResimType::ResimAsSlave)
+			}
+			else if(ResimType == EResimType::ResimAsSlave)
 			{
 				//Resim as slave means we snap everything as it was regardless of divergence
 				//We do this in FinishFrame and AdvanceFrame because the state must be preserved before and after 
 				//This is because gameplay code could modify state before or after
 				const FGeometryParticleStateBase* ExpectedState = GetStateAtFrameImp(Info,CurFrame);
 				ensure(!Info.bDesync);
+				ensure(Info.MostDesynced == ESyncState::InSync);
 				if(ensure(ExpectedState != nullptr))
 				{
 					ExpectedState->SyncToParticle(*Rigid);
@@ -605,6 +609,11 @@ void FRewindData::AdvanceFrameImp(IResimCacheBase* ResimCache)
 					DesyncedParticles.Add(Info.GetPTParticle());
 				}
 			}
+		}
+		else
+		{
+			//not a resim so reset most desynced (this can't be done during resim because user may need info after final resim but before first normal sim)
+			Info.MostDesynced = ESyncState::InSync;
 		}
 	}
 
@@ -791,7 +800,19 @@ void FRewindData::PushPTDirtyData(TPBDRigidParticleHandle<FReal,3>& Rigid,const 
 		LatestState.SyncSimWritablePropsFromSim(DestManagerWrapper,Rigid);
 
 		//copy results of end of frame in case user changes inputs of next frame (for example they can teleport at start frame)
-		Info.Frames[CurFrame].GetSimWritableStateChecked(CurFrame).SyncSimWritablePropsFromSim(Rigid);
+		const bool bDesynced = Info.Frames[CurFrame].GetSimWritableStateChecked(CurFrame).SyncSimWritablePropsFromSim<bResim>(Rigid);
+
+		if(bResim)
+		{
+			if(bDesynced)
+			{
+				Info.Desync(CurFrame+1,LatestFrame);	//next frame must be desynced since results of this frame are different
+				Rigid.SetSyncState(ESyncState::HardDesync);
+			}
+			
+			//If we are only at soft desync, make sure to record as such
+			Info.MostDesynced = Rigid.SyncState();
+		}
 
 		//update any previous frames that were pointing at head
 		CoalesceBack(Info.Frames,CurFrame);
@@ -837,12 +858,24 @@ FRewindData::FDirtyParticleInfo& FRewindData::FindOrAddParticle(TGeometryParticl
 	return AllDirtyParticles[DirtyIdx];
 }
 
-void FRewindData::FSimWritableState::SyncSimWritablePropsFromSim(const TPBDRigidParticleHandle<FReal,3>& Rigid)
+template <bool bResim>
+bool FRewindData::FSimWritableState::SyncSimWritablePropsFromSim(const TPBDRigidParticleHandle<FReal,3>& Rigid)
 {
+	bool bDesynced = false;
+	if(bResim)
+	{
+		bDesynced |= Rigid.P() != MX;
+		bDesynced |= Rigid.Q() != MR;
+		bDesynced |= Rigid.V() != MV;
+		bDesynced |= Rigid.W() != MW;
+	}
+
 	MX = Rigid.P();
 	MR = Rigid.Q();
 	MV = Rigid.V();
 	MW = Rigid.W();
+
+	return bDesynced;
 }
 
 void FRewindData::FSimWritableState::SyncToParticle(TPBDRigidParticleHandle<FReal,3>& Rigid) const
@@ -867,10 +900,27 @@ FGeometryParticleStateBase& FRewindData::FDirtyParticleInfo::AddFrame(int32 Fram
 void FRewindData::FDirtyParticleInfo::Desync(int32 StartDesync,int32 LastFrame)
 {
 	bDesync = true;
+	MostDesynced = ESyncState::HardDesync;
 	for(int32 Frame = StartDesync; Frame <= LastFrame; ++Frame)
 	{
 		Frames[Frame].ClearState();
 	}
+}
+
+TArray<FDesyncedParticleInfo> FRewindData::ComputeDesyncInfo() const
+{
+	TArray<FDesyncedParticleInfo> Results;
+	Results.Reserve(AllDirtyParticles.Num());
+
+	for(const FDirtyParticleInfo& Info : AllDirtyParticles)
+	{
+		if(Info.MostDesynced != ESyncState::InSync)
+		{
+			Results.Add(FDesyncedParticleInfo{Info.GetGTParticle(),Info.MostDesynced});
+		}
+	}
+
+	return Results;
 }
 
 template void FRewindData::PushGTDirtyData<true>(const FDirtyPropertiesManager& SrcManager,const int32 SrcDataIdx,const FDirtyProxy& Dirty);

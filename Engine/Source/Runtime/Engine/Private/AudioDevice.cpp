@@ -163,6 +163,13 @@ FAutoConsoleVariableRef CVarDisableBinauralSpatialization(
 	TEXT("Disables binaural spatialization.\n"),
 	ECVF_Default);
 
+static int32 FlushAudioRenderThreadOnGCCVar = 0;
+FAutoConsoleVariableRef CVarFlushAudioRenderThreadOnGC(
+	TEXT("au.FlushAudioRenderThreadOnGC"),
+	FlushAudioRenderThreadOnGCCVar,
+	TEXT("When set to 1, every time the GC runs, we flush all pending audio render thread commands.\n"),
+	ECVF_Default);
+
 namespace
 {
 	using FVirtualLoopPair = TPair<FActiveSound*, FAudioVirtualLoop>;
@@ -532,7 +539,18 @@ bool FAudioDevice::Init(Audio::FDeviceId InDeviceID, int32 InMaxSources)
 
 	bIsInitialized = true;
 
+	FCoreUObjectDelegates::GetPreGarbageCollectDelegate().AddRaw(this, &FAudioDevice::OnPreGarbageCollect);
+	FCoreUObjectDelegates::PreGarbageCollectConditionalBeginDestroy.AddRaw(this, &FAudioDevice::OnPreGarbageCollect);
+
 	return true;
+}
+
+void FAudioDevice::OnPreGarbageCollect()
+{
+	if (FlushAudioRenderThreadOnGCCVar)
+	{
+		FlushAudioRenderingCommands();
+	}
 }
 
 float FAudioDevice::GetLowPassFilterResonance() const
@@ -725,6 +743,9 @@ void FAudioDevice::Teardown()
 #if ENABLE_AUDIO_DEBUG
 	Audio::FAudioDebugger::RemoveDevice(*this);
 #endif // ENABLE_AUDIO_DEBUG
+
+	FCoreUObjectDelegates::GetPreGarbageCollectDelegate().RemoveAll(this);
+	FCoreUObjectDelegates::PreGarbageCollectConditionalBeginDestroy.RemoveAll(this);
 }
 
 void FAudioDevice::Suspend(bool bGameTicking)
@@ -4205,23 +4226,6 @@ void FAudioDevice::Update(bool bGameTicking)
 	{
 		// Make sure our referenced sound waves is up-to-date
 		UpdateReferencedSoundWaves();
-
-#if ENABLE_AUDIO_DEBUG
-		if (GEngine)
-		{
-			if (FAudioDeviceManager* DeviceManager = GEngine->GetAudioDeviceManager())
-			{
-				TArray<UWorld*> Worlds = DeviceManager->GetWorldsUsingAudioDevice(DeviceID);
-				for (UWorld* World : Worlds)
-				{
-					if (World)
-					{
-						Audio::FAudioDebugger::DrawDebugStats(*World);
-					}
-				}
-			}
-		}
-#endif // ENABLE_AUDIO_DEBUG
 	}
 
 	if (!IsInAudioThread())
@@ -5838,7 +5842,7 @@ void FAudioDevice::Flush(UWorld* WorldToFlush, bool bClearActivatedReverb)
 	}
 
 	// Make sure we update any hardware changes that need to happen after flushing
-	if (IsAudioMixerEnabled() && (WorldToFlush == nullptr || WorldToFlush->bIsTearingDown))
+	if (IsAudioMixerEnabled())
 	{
 		UpdateHardware();
 

@@ -3027,8 +3027,9 @@ int32 FEngineLoop::PreInitPostStartupScreen(const TCHAR* CmdLine)
 				PakFolders.Add(InstalledGameContentDir);
 				FCoreDelegates::OnMountAllPakFiles.Execute(PakFolders);
 
-				// Look for any plugins after EarlyLoadScreen
+				// Look for any plugins installed during EarlyStartupScreen
 				IPluginManager::Get().RefreshPluginsList();
+				IPluginManager::Get().LoadModulesForEnabledPlugins(ELoadingPhase::PreEarlyLoadingScreen);
 			}
 
 			DumpEarlyReads(bDumpEarlyConfigReads, bDumpEarlyPakFileReads, bForceQuitAfterEarlyReads);
@@ -4775,7 +4776,7 @@ void FEngineLoop::Tick()
 			// When not in editor, we emit dynamic resolution's begin frame right after RHI's.
 			GEngine->EmitDynamicResolutionEvent(EDynamicResolutionStateEvent::BeginFrame);
 		}
-		#endif
+#endif
 
 		// tick performance monitoring
 		{
@@ -4786,11 +4787,13 @@ void FEngineLoop::Tick()
 			ResetAsyncLoadingStats();
 		}
 
+#if UPDATE_MALLOC_STATS
 		// update memory allocator stats
 		{
 			QUICK_SCOPE_CYCLE_COUNTER(STAT_FEngineLoop_Malloc_UpdateStats);
 			GMalloc->UpdateStats();
 		}
+#endif
 	}
 
 	FStats::AdvanceFrame( false, FStats::FOnAdvanceRenderingThreadStats::CreateStatic( &AdvanceRenderingThreadStatsGT ) );
