@@ -68,9 +68,9 @@ template <class UserClass, typename WrappedRetValType, typename... ParamTypes, t
 class TBaseUFunctionDelegateInstance<UserClass, WrappedRetValType(ParamTypes...), VarTypes...> : public TCommonDelegateInstanceState<WrappedRetValType(ParamTypes...), VarTypes...>
 {
 private:
-	typedef TCommonDelegateInstanceState<WrappedRetValType(ParamTypes...), VarTypes...>       Super;
-	typedef typename Super::RetValType                                                        RetValType;
-	typedef TBaseUFunctionDelegateInstance<UserClass, RetValType(ParamTypes...), VarTypes...> UnwrappedThisType;
+	using Super             = TCommonDelegateInstanceState<WrappedRetValType(ParamTypes...), VarTypes...>;
+	using RetValType        = typename Super::RetValType;
+	using UnwrappedThisType = TBaseUFunctionDelegateInstance<UserClass, RetValType(ParamTypes...), VarTypes...>;
 
 	static_assert(UE4Delegates_Private::IsUObjectPtr((UserClass*)nullptr), "You cannot use UFunction delegates with non UObject classes.");
 
@@ -141,7 +141,7 @@ public:
 
 	RetValType Execute(ParamTypes... Params) const final
 	{
-		typedef TPayload<RetValType(typename TDecay<ParamTypes>::Type..., typename TDecay<VarTypes> ::Type...)> FParmsWithPayload;
+		using FParmsWithPayload = TPayload<RetValType(typename TDecay<ParamTypes>::Type..., typename TDecay<VarTypes> ::Type...)>;
 
 		checkSlow(IsSafeToExecute());
 
@@ -180,7 +180,7 @@ public:
 template <class UserClass, typename... ParamTypes, typename... VarTypes>
 class TBaseUFunctionDelegateInstance<UserClass, void(ParamTypes...), VarTypes...> : public TBaseUFunctionDelegateInstance<UserClass, TTypeWrapper<void>(ParamTypes...), VarTypes...>
 {
-	typedef TBaseUFunctionDelegateInstance<UserClass, TTypeWrapper<void>(ParamTypes...), VarTypes...> Super;
+	using Super = TBaseUFunctionDelegateInstance<UserClass, TTypeWrapper<void>(ParamTypes...), VarTypes...>;
 
 public:
 	/**
@@ -221,12 +221,12 @@ template <bool bConst, class UserClass, ESPMode SPMode, typename WrappedRetValTy
 class TBaseSPMethodDelegateInstance<bConst, UserClass, SPMode, WrappedRetValType(ParamTypes...), VarTypes...> : public TCommonDelegateInstanceState<WrappedRetValType(ParamTypes...), VarTypes...>
 {
 private:
-	typedef TCommonDelegateInstanceState<WrappedRetValType(ParamTypes...), VarTypes...>                      Super;
-	typedef typename Super::RetValType                                                                       RetValType;
-	typedef TBaseSPMethodDelegateInstance<bConst, UserClass, SPMode, RetValType(ParamTypes...), VarTypes...> UnwrappedThisType;
+	using Super             = TCommonDelegateInstanceState<WrappedRetValType(ParamTypes...), VarTypes...>;
+	using RetValType        = typename Super::RetValType;
+	using UnwrappedThisType = TBaseSPMethodDelegateInstance<bConst, UserClass, SPMode, RetValType(ParamTypes...), VarTypes...>;
 
 public:
-	typedef typename TMemFunPtrType<bConst, UserClass, RetValType(ParamTypes..., VarTypes...)>::Type FMethodPtr;
+	using FMethodPtr = typename TMemFunPtrType<bConst, UserClass, RetValType(ParamTypes..., VarTypes...)>::Type;
 
 	TBaseSPMethodDelegateInstance(const TSharedPtr<UserClass, SPMode>& InUserObject, FMethodPtr InMethodPtr, VarTypes... Vars)
 		: Super     (Vars...)
@@ -290,7 +290,7 @@ public:
 
 	RetValType Execute(ParamTypes... Params) const final
 	{
-		typedef typename TRemoveConst<UserClass>::Type MutableUserClass;
+		using MutableUserClass = typename TRemoveConst<UserClass>::Type;
 
 		// Verify that the user object is still valid.  We only have a weak reference to it.
 		TSharedPtr<UserClass, SPMode> SharedUserObject = UserObject.Pin();
@@ -350,7 +350,7 @@ protected:
 template <bool bConst, class UserClass, ESPMode SPMode, typename... ParamTypes, typename... VarTypes>
 class TBaseSPMethodDelegateInstance<bConst, UserClass, SPMode, void(ParamTypes...), VarTypes...> : public TBaseSPMethodDelegateInstance<bConst, UserClass, SPMode, TTypeWrapper<void>(ParamTypes...), VarTypes...>
 {
-	typedef TBaseSPMethodDelegateInstance<bConst, UserClass, SPMode, TTypeWrapper<void>(ParamTypes...), VarTypes...> Super;
+	using Super = TBaseSPMethodDelegateInstance<bConst, UserClass, SPMode, TTypeWrapper<void>(ParamTypes...), VarTypes...>;
 
 public:
 	/**
@@ -392,12 +392,12 @@ class TBaseRawMethodDelegateInstance<bConst, UserClass, WrappedRetValType(ParamT
 private:
 	static_assert(!UE4Delegates_Private::IsUObjectPtr((UserClass*)nullptr), "You cannot use raw method delegates with UObjects.");
 
-	typedef TCommonDelegateInstanceState<WrappedRetValType(ParamTypes...), VarTypes...>               Super;
-	typedef typename Super::RetValType                                                                RetValType;
-	typedef TBaseRawMethodDelegateInstance<bConst, UserClass, RetValType(ParamTypes...), VarTypes...> UnwrappedThisType;
+	using Super             = TCommonDelegateInstanceState<WrappedRetValType(ParamTypes...), VarTypes...>;
+	using RetValType        = typename Super::RetValType;
+	using UnwrappedThisType = TBaseRawMethodDelegateInstance<bConst, UserClass, RetValType(ParamTypes...), VarTypes...>;
 
 public:
-	typedef typename TMemFunPtrType<bConst, UserClass, RetValType(ParamTypes..., VarTypes...)>::Type FMethodPtr;
+	using FMethodPtr = typename TMemFunPtrType<bConst, UserClass, RetValType(ParamTypes..., VarTypes...)>::Type;
 
 	/**
 	 * Creates and initializes a new instance.
@@ -468,7 +468,7 @@ public:
 
 	RetValType Execute(ParamTypes... Params) const final
 	{
-		typedef typename TRemoveConst<UserClass>::Type MutableUserClass;
+		using MutableUserClass = typename TRemoveConst<UserClass>::Type;
 
 		// Safely remove const to work around a compiler issue with instantiating template permutations for 
 		// overloaded functions that take a function pointer typedef as a member of a templated class.  In
@@ -508,7 +508,7 @@ protected:
 template <bool bConst, class UserClass, typename... ParamTypes, typename... VarTypes>
 class TBaseRawMethodDelegateInstance<bConst, UserClass, void(ParamTypes...), VarTypes...> : public TBaseRawMethodDelegateInstance<bConst, UserClass, TTypeWrapper<void>(ParamTypes...), VarTypes...>
 {
-	typedef TBaseRawMethodDelegateInstance<bConst, UserClass, TTypeWrapper<void>(ParamTypes...), VarTypes...> Super;
+	using Super = TBaseRawMethodDelegateInstance<bConst, UserClass, TTypeWrapper<void>(ParamTypes...), VarTypes...>;
 
 public:
 	/**
@@ -543,14 +543,14 @@ template <bool bConst, class UserClass, typename WrappedRetValType, typename... 
 class TBaseUObjectMethodDelegateInstance<bConst, UserClass, WrappedRetValType(ParamTypes...), VarTypes...> : public TCommonDelegateInstanceState<WrappedRetValType(ParamTypes...), VarTypes...>
 {
 private:
-	typedef TCommonDelegateInstanceState<WrappedRetValType(ParamTypes...), VarTypes...>                   Super;
-	typedef typename Super::RetValType                                                                    RetValType;
-	typedef TBaseUObjectMethodDelegateInstance<bConst, UserClass, RetValType(ParamTypes...), VarTypes...> UnwrappedThisType;
+	using Super             = TCommonDelegateInstanceState<WrappedRetValType(ParamTypes...), VarTypes...>;
+	using RetValType        = typename Super::RetValType;
+	using UnwrappedThisType = TBaseUObjectMethodDelegateInstance<bConst, UserClass, RetValType(ParamTypes...), VarTypes...>;
 
 	static_assert(UE4Delegates_Private::IsUObjectPtr((UserClass*)nullptr), "You cannot use UObject method delegates with raw pointers.");
 
 public:
-	typedef typename TMemFunPtrType<bConst, UserClass, RetValType(ParamTypes..., VarTypes...)>::Type FMethodPtr;
+	using FMethodPtr = typename TMemFunPtrType<bConst, UserClass, RetValType(ParamTypes..., VarTypes...)>::Type;
 
 	TBaseUObjectMethodDelegateInstance(UserClass* InUserObject, FMethodPtr InMethodPtr, VarTypes... Vars)
 		: Super     (Vars...)
@@ -619,7 +619,7 @@ public:
 
 	RetValType Execute(ParamTypes... Params) const final
 	{
-		typedef typename TRemoveConst<UserClass>::Type MutableUserClass;
+		using MutableUserClass = typename TRemoveConst<UserClass>::Type;
 
 		// Verify that the user object is still valid.  We only have a weak reference to it.
 		checkSlow(UserObject.IsValid());
@@ -662,7 +662,7 @@ protected:
 template <bool bConst, class UserClass, typename... ParamTypes, typename... VarTypes>
 class TBaseUObjectMethodDelegateInstance<bConst, UserClass, void(ParamTypes...), VarTypes...> : public TBaseUObjectMethodDelegateInstance<bConst, UserClass, TTypeWrapper<void>(ParamTypes...), VarTypes...>
 {
-	typedef TBaseUObjectMethodDelegateInstance<bConst, UserClass, TTypeWrapper<void>(ParamTypes...), VarTypes...> Super;
+	using Super = TBaseUObjectMethodDelegateInstance<bConst, UserClass, TTypeWrapper<void> (ParamTypes...), VarTypes...>;
 
 public:
 	/**
@@ -701,12 +701,12 @@ template <typename WrappedRetValType, typename... ParamTypes, typename... VarTyp
 class TBaseStaticDelegateInstance<WrappedRetValType(ParamTypes...), VarTypes...> : public TCommonDelegateInstanceState<WrappedRetValType(ParamTypes...), VarTypes...>
 {
 private:
-	typedef TCommonDelegateInstanceState<WrappedRetValType(ParamTypes...), VarTypes...> Super;
-	typedef typename Super::RetValType                                                  RetValType;
-	typedef TBaseStaticDelegateInstance<RetValType(ParamTypes...), VarTypes...>         UnwrappedThisType;
+	using Super             = TCommonDelegateInstanceState<WrappedRetValType(ParamTypes...), VarTypes...>;
+	using RetValType        = typename Super::RetValType;
+	using UnwrappedThisType = TBaseStaticDelegateInstance<RetValType(ParamTypes...), VarTypes...>;
 
 public:
-	typedef RetValType(*FFuncPtr)(ParamTypes..., VarTypes...);
+	using FFuncPtr = RetValType(*)(ParamTypes..., VarTypes...);
 
 	TBaseStaticDelegateInstance(FFuncPtr InStaticFuncPtr, VarTypes... Vars)
 		: Super        (Vars...)
@@ -797,7 +797,7 @@ private:
 template <typename... ParamTypes, typename... VarTypes>
 class TBaseStaticDelegateInstance<void(ParamTypes...), VarTypes...> : public TBaseStaticDelegateInstance<TTypeWrapper<void>(ParamTypes...), VarTypes...>
 {
-	typedef TBaseStaticDelegateInstance<TTypeWrapper<void>(ParamTypes...), VarTypes...> Super;
+	using Super = TBaseStaticDelegateInstance<TTypeWrapper<void> (ParamTypes...), VarTypes...>;
 
 public:
 	/**
@@ -830,9 +830,9 @@ class TBaseFunctorDelegateInstance<WrappedRetValType(ParamTypes...), FunctorType
 private:
 	static_assert(TAreTypesEqual<FunctorType, typename TRemoveReference<FunctorType>::Type>::Value, "FunctorType cannot be a reference");
 
-	typedef TCommonDelegateInstanceState<WrappedRetValType(ParamTypes...), VarTypes...>       Super;
-	typedef typename Super::RetValType                                                        RetValType;
-	typedef TBaseFunctorDelegateInstance<RetValType(ParamTypes...), FunctorType, VarTypes...> UnwrappedThisType;
+	using Super             = TCommonDelegateInstanceState<WrappedRetValType(ParamTypes...), VarTypes...>;
+	using RetValType        = typename Super::RetValType;
+	using UnwrappedThisType = TBaseFunctorDelegateInstance<RetValType(ParamTypes...), FunctorType, VarTypes...>;
 
 public:
 	TBaseFunctorDelegateInstance(const FunctorType& InFunctor, VarTypes... Vars)
@@ -925,7 +925,7 @@ private:
 template <typename FunctorType, typename... ParamTypes, typename... VarTypes>
 class TBaseFunctorDelegateInstance<void(ParamTypes...), FunctorType, VarTypes...> : public TBaseFunctorDelegateInstance<TTypeWrapper<void>(ParamTypes...), FunctorType, VarTypes...>
 {
-	typedef TBaseFunctorDelegateInstance<TTypeWrapper<void>(ParamTypes...), FunctorType, VarTypes...> Super;
+	using Super = TBaseFunctorDelegateInstance<TTypeWrapper<void>(ParamTypes...), FunctorType, VarTypes...>;
 
 public:
 	/**
@@ -963,9 +963,9 @@ class TWeakBaseFunctorDelegateInstance<UserClass, WrappedRetValType(ParamTypes..
 private:
 	static_assert(TAreTypesEqual<FunctorType, typename TRemoveReference<FunctorType>::Type>::Value, "FunctorType cannot be a reference");
 
-	typedef TCommonDelegateInstanceState<WrappedRetValType(ParamTypes...), VarTypes...>                      Super;
-	typedef typename Super::RetValType                                                                       RetValType;
-	typedef TWeakBaseFunctorDelegateInstance<UserClass, RetValType(ParamTypes...), FunctorType, VarTypes...> UnwrappedThisType;
+	using Super             = TCommonDelegateInstanceState<WrappedRetValType(ParamTypes...), VarTypes...>;
+	using RetValType        = typename Super::RetValType;
+	using UnwrappedThisType = TWeakBaseFunctorDelegateInstance<UserClass, RetValType(ParamTypes...), FunctorType, VarTypes...>;
 
 public:
 	TWeakBaseFunctorDelegateInstance(UserClass* InContextObject, const FunctorType& InFunctor, VarTypes... Vars)
@@ -1066,7 +1066,7 @@ private:
 template <typename UserClass, typename FunctorType, typename... ParamTypes, typename... VarTypes>
 class TWeakBaseFunctorDelegateInstance<UserClass, void(ParamTypes...), FunctorType, VarTypes...> : public TWeakBaseFunctorDelegateInstance<UserClass, TTypeWrapper<void>(ParamTypes...), FunctorType, VarTypes...>
 {
-	typedef TWeakBaseFunctorDelegateInstance<UserClass, TTypeWrapper<void>(ParamTypes...), FunctorType, VarTypes...> Super;
+	using Super = TWeakBaseFunctorDelegateInstance<UserClass, TTypeWrapper<void>(ParamTypes...), FunctorType, VarTypes...>;
 
 public:
 	/**
