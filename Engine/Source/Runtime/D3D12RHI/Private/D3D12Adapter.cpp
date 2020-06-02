@@ -425,6 +425,16 @@ void FD3D12Adapter::CreateRootDevice(bool bWithDebug)
 		{
 			bRayTracingSupported = Features5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_0;
 			GRHISupportsRayTracingPSOAdditions = Features5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_1;
+
+			if (Features5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_1)
+			{
+				UE_LOG(LogD3D12RHI, Log, TEXT("D3D12 ray tracing 1.1 is supported."));
+			}
+			else if (Features5.RaytracingTier == D3D12_RAYTRACING_TIER_1_0)
+			{
+				UE_LOG(LogD3D12RHI, Log, TEXT("D3D12 ray tracing 1.0 is supported."));
+			}
+
 		}
 	}
 
