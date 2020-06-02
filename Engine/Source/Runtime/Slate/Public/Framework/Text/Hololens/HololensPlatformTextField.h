@@ -5,21 +5,10 @@
 #include "CoreMinimal.h"
 #include "Framework/Application/IPlatformTextField.h"
 
-#include "MixedRealityInterop.h"
 
-class FHoloLensPlatformTextField : public IPlatformTextField
+class SLATE_API FHoloLensPlatformTextField : public IPlatformTextField
 {
-	virtual void ShowVirtualKeyboard(bool bShow, int32 UserIndex, TSharedPtr<IVirtualKeyboardEntry> TextEntryWidget) override
-	{
-		if (bShow)
-		{
-			WindowsMixedReality::MixedRealityInterop::ShowSystemKeyboard();
-		}
-		else
-		{
-			WindowsMixedReality::MixedRealityInterop::HideSystemKeyboard();
-		}
-	}
+	virtual void ShowVirtualKeyboard(bool bShow, int32 UserIndex, TSharedPtr<IVirtualKeyboardEntry> TextEntryWidget) override;
 };
 
 typedef FHoloLensPlatformTextField FPlatformTextField;
