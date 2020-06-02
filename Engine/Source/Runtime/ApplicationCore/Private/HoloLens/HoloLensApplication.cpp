@@ -31,6 +31,10 @@ using CurrentStoreApp = Windows::ApplicationModel::Store::CurrentAppSimulator;
 static FHoloLensApplication* HoloLensApplication = NULL;
 FVector2D FHoloLensApplication::DesktopSize;
 
+#if PLATFORM_HOLOLENS
+Windows::Graphics::Holographic::HolographicSpace^ FHoloLensApplication::HoloSpace;
+#endif
+
 FHoloLensApplication* FHoloLensApplication::CreateHoloLensApplication()
 {
 	check( HoloLensApplication == NULL );
