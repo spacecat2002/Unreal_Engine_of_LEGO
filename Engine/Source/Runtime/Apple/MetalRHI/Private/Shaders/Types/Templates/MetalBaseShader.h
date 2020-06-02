@@ -6,7 +6,8 @@
 
 #pragma once
 
-
+#include "Misc/Paths.h"
+#include "HAL/FileManager.h"
 #include "Shaders/Debugging/MetalShaderDebugCache.h"
 #include "Shaders/MetalCompiledShaderKey.h"
 #include "Shaders/MetalCompiledShaderCache.h"
