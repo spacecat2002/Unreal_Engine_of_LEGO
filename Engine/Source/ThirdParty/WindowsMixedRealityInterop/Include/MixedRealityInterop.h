@@ -533,6 +533,9 @@ namespace WindowsMixedReality
 		bool CreateHolographicSpace(HWND hwnd);
 #endif
 		void SetInteractionManagerForCurrentView();
+		
+		static bool ShowSystemKeyboard();
+		static bool HideSystemKeyboard();
 
 		// Third camera
 		bool IsThirdCameraActive();
