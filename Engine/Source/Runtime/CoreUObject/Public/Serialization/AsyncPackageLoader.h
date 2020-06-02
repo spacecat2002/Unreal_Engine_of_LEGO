@@ -105,7 +105,7 @@ public:
 			EPackageFlags InPackageFlags,
 			int32 InPIEInstanceID,
 			int32 InPackagePriority,
-			FLinkerInstancingContext* InstancingContext) = 0;
+			const FLinkerInstancingContext* InstancingContext) = 0;
 
 	/**
 	 * Process all currently loading package requests.

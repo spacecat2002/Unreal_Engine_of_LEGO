@@ -646,7 +646,7 @@ FLinkerLoad* GetPackageLinker
 	FArchive*		InReaderOverride,
 	FUObjectSerializeContext** InOutLoadContext,
 	FLinkerLoad*	ImportLinker,
-	FLinkerInstancingContext* InstancingContext
+	const FLinkerInstancingContext* InstancingContext
 )
 {
 	FUObjectSerializeContext* InExistingContext = InOutLoadContext ? *InOutLoadContext : nullptr;
