@@ -2165,7 +2165,16 @@ FString ULevel::GetExternalActorsPath(UPackage* InLevelPackage)
 {
 	check(InLevelPackage);
 	FString LevelPackageName = InLevelPackage->GetName();
-	return FString::Printf(TEXT("/%s/__ExternalActors__/%s"), *FPackageName::GetPackageMountPoint(LevelPackageName).ToString(), *FPackageName::GetShortName(LevelPackageName));
+	FString ShortLevelPackageName = FPackageName::GetShortName(LevelPackageName);
+
+	if (InLevelPackage->PIEInstanceID != INDEX_NONE)
+	{
+		check(ShortLevelPackageName.StartsWith(PLAYWORLD_PACKAGE_PREFIX));
+		const int32 PrefixLen = UWorld::BuildPIEPackagePrefix(InLevelPackage->PIEInstanceID).Len();
+		ShortLevelPackageName.MidInline(PrefixLen, MAX_int32, false);
+	}
+
+	return FString::Printf(TEXT("/%s/__ExternalActors__/%s"), *FPackageName::GetPackageMountPoint(LevelPackageName).ToString(), *ShortLevelPackageName);
 }
 
 UPackage* ULevel::CreateActorPackage(UPackage* InLevelPackage, const FGuid& InGuid)
