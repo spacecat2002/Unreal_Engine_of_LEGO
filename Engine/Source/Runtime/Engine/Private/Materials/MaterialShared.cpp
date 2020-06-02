@@ -2248,7 +2248,7 @@ void FMaterialVirtualTextureStack::GetTextureValues(const FMaterialRenderContext
 
 void FMaterialVirtualTextureStack::GetTextureValue(const FMaterialRenderContext& Context, const FUniformExpressionSet& UniformExpressionSet, const URuntimeVirtualTexture*& OutValue) const
 {
-	OutValue = GetIndexedTexture<URuntimeVirtualTexture>(Context.Material, PreallocatedStackTextureIndex);
+	UniformExpressionSet.GetTextureValue(PreallocatedStackTextureIndex, Context, Context.Material, OutValue);
 }
 
 void FMaterialVirtualTextureStack::Serialize(FArchive& Ar)
