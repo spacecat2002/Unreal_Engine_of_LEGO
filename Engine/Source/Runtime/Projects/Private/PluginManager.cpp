@@ -157,8 +157,6 @@ bool FPlugin::UpdateDescriptor(const FPluginDescriptor& NewDescriptor, FText& Ou
 }
 
 FPluginManager::FPluginManager()
-	: bHaveConfiguredEnabledPlugins(false)
-	, bHaveAllRequiredPlugins(false)
 {
 	SCOPED_BOOT_TIMING("DiscoverAllPlugins");
 	DiscoverAllPlugins();
@@ -202,7 +200,9 @@ void FPluginManager::RefreshPluginsList()
 		const TSharedRef<FPlugin>& NewPlugin = NewPluginPair.Value;
 		if(!EnabledPluginFileNames.Contains(NewPlugin->FileName))
 		{
-			AllPlugins.Add(NewPlugin->GetName(), NewPlugin);
+			uint32 PluginNameHash = GetTypeHash(NewPlugin->GetName());
+			AllPlugins.AddByHash(PluginNameHash, NewPlugin->GetName(), NewPlugin);
+			PluginsToConfigure.AddByHash(PluginNameHash, NewPlugin->GetName());
 		}
 	}
 }
@@ -272,6 +272,12 @@ void FPluginManager::DiscoverAllPlugins()
 
 	PluginSystemDefs::GetAdditionalPluginPaths(PluginDiscoveryPaths);
 	ReadAllPlugins(AllPlugins, PluginDiscoveryPaths);
+
+	PluginsToConfigure.Reserve(AllPlugins.Num());
+	for (const TPair<FString, TSharedRef<FPlugin>>& PluginPair : AllPlugins)
+	{
+		PluginsToConfigure.Add(PluginPair.Key);
+	}
 }
 
 void FPluginManager::ReadAllPlugins(TMap<FString, TSharedRef<FPlugin>>& Plugins, const TSet<FString>& ExtraSearchPaths)
@@ -295,7 +301,8 @@ void FPluginManager::ReadAllPlugins(TMap<FString, TSharedRef<FPlugin>>& Plugins,
 	if (ManifestFileNames.Num() == 0)
 	{
 		// Find "built-in" plugins.  That is, plugins situated right within the Engine directory.
-		for (const FString& EnginePluginDir : FPaths::GetExtensionDirs(FPaths::EngineDir(), TEXT("Plugins")))
+		TArray<FString> EnginePluginDirs = FPaths::GetExtensionDirs(FPaths::EngineDir(), TEXT("Plugins"));
+		for (const FString& EnginePluginDir : EnginePluginDirs)
 		{
 			ReadPluginsInDirectory(EnginePluginDir, EPluginType::Engine, Plugins, ChildPlugins);
 		}
@@ -304,7 +311,8 @@ void FPluginManager::ReadAllPlugins(TMap<FString, TSharedRef<FPlugin>>& Plugins,
 		// assume that the game plugin version is preferred.
 		if (Project != nullptr)
 		{
-			for (const FString& ProjectPluginDir : FPaths::GetExtensionDirs(FPaths::GetPath(FPaths::GetProjectFilePath()), TEXT("Plugins")))
+			TArray<FString> ProjectPluginDirs = FPaths::GetExtensionDirs(FPaths::GetPath(FPaths::GetProjectFilePath()), TEXT("Plugins"));
+			for (const FString& ProjectPluginDir : ProjectPluginDirs)
 			{
 				ReadPluginsInDirectory(ProjectPluginDir, EPluginType::Project, Plugins, ChildPlugins);
 			}
@@ -568,12 +576,11 @@ public:
 
 bool FPluginManager::ConfigureEnabledPlugins()
 {
-	if(!bHaveConfiguredEnabledPlugins)
+	if(PluginsToConfigure.Num() > 0)
 	{
 		SCOPED_BOOT_TIMING("FPluginManager::ConfigureEnabledPlugins");
 
-		// Don't need to run this again
-		bHaveConfiguredEnabledPlugins = true;
+		bHaveAllRequiredPlugins = false;
 
 		// Set of all the plugins which have been enabled
 		TMap<FString, FPlugin*> EnabledPlugins;
@@ -596,7 +603,7 @@ bool FPluginManager::ConfigureEnabledPlugins()
 			TArray<FString> ExtraPluginsToEnable;
 			if (FParse::Param(FCommandLine::Get(), TEXT("EnableAllPlugins")))
 			{
-				AllPlugins.GenerateKeyArray(ExtraPluginsToEnable);
+				ExtraPluginsToEnable = PluginsToConfigure.Array();
 			}
 			else
 			{
@@ -727,15 +734,16 @@ bool FPluginManager::ConfigureEnabledPlugins()
 			}
 
 			// Add the plugins which are enabled by default
-			for (const TPair<FString, TSharedRef<FPlugin>>& PluginPair : AllPlugins)
+			for(const FString& PluginName : PluginsToConfigure)
 			{
-				if (PluginPair.Value->IsEnabledByDefault(bAllowEnginePluginsEnabledByDefault) && !ConfiguredPluginNames.Contains(PluginPair.Key))
+				const TSharedRef<FPlugin>& Plugin = AllPlugins.FindChecked(PluginName);
+				if (Plugin->IsEnabledByDefault(bAllowEnginePluginsEnabledByDefault) && !ConfiguredPluginNames.Contains(PluginName))
 				{
-					if (!ConfigureEnabledPluginForCurrentTarget(FPluginReferenceDescriptor(PluginPair.Key, true), EnabledPlugins))
+					if (!ConfigureEnabledPluginForCurrentTarget(FPluginReferenceDescriptor(PluginName, true), EnabledPlugins))
 					{
 						return false;
 					}
-					ConfiguredPluginNames.Add(PluginPair.Key);
+					ConfiguredPluginNames.Add(PluginName);
 				}
 			}
 		}
@@ -785,9 +793,9 @@ bool FPluginManager::ConfigureEnabledPlugins()
 		bHaveAllRequiredPlugins = true;
 
 		// Mount all the enabled plugins
-		for(const TPair<FString, TSharedRef<FPlugin>>& PluginPair: AllPlugins)
+		for (const FString& PluginName : PluginsToConfigure)
 		{
-			const FPlugin& Plugin = *PluginPair.Value;
+			const FPlugin& Plugin = *AllPlugins.FindChecked(PluginName);
 			if (Plugin.bEnabled && !Plugin.Descriptor.bExplicitlyLoaded)
 			{
 				UE_LOG(LogPluginManager, Log, TEXT("Mounting plugin %s"), *Plugin.GetName());
@@ -899,6 +907,8 @@ bool FPluginManager::ConfigureEnabledPlugins()
 				}
 			}
 		}
+
+		PluginsToConfigure.Empty();
 	}
 	return bHaveAllRequiredPlugins;
 }

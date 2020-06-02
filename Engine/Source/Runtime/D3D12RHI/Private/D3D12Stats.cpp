@@ -444,17 +444,21 @@ static int32 FindCmdListTimingPairIndex(const TArray<uint64>& CmdListStartTimest
 
 uint64 D3D12RHI::FD3DGPUProfiler::CalculateIdleTime(uint64 StartTime, uint64 EndTime)
 {
-	const int32 NumTimingPairs = CmdListStartTimestamps.Num();
-	check(NumTimingPairs == CmdListEndTimestamps.Num() && NumTimingPairs == IdleTimeCDF.Num());
+	FD3D12Device* Device = GetParentDevice();
+
+	FD3D12CommandListManager &CLManager = Device->GetCommandListManager();
+
+	const int32 NumTimingPairs = CLManager.GetStartTimestamps().Num();
+	check(NumTimingPairs == CLManager.GetEndTimestamps().Num() && NumTimingPairs == CLManager.GetIdleTime().Num());
 	
 	if (!NumTimingPairs)
 	{
 		return 0;
 	}
 
-	const int32 StartIdx = FindCmdListTimingPairIndex(CmdListStartTimestamps, StartTime);
-	const int32 EndIdx = FindCmdListTimingPairIndex(CmdListStartTimestamps, EndTime);
-	return IdleTimeCDF[EndIdx] - IdleTimeCDF[StartIdx];
+	const int32 StartIdx = FindCmdListTimingPairIndex(CLManager.GetStartTimestamps(), StartTime);
+	const int32 EndIdx = FindCmdListTimingPairIndex(CLManager.GetStartTimestamps(), EndTime);
+	return CLManager.GetIdleTime()[EndIdx] - CLManager.GetIdleTime()[StartIdx];
 }
 
 void D3D12RHI::FD3DGPUProfiler::DoPreProfileGPUWork()
@@ -474,11 +478,15 @@ void D3D12RHI::FD3DGPUProfiler::DoPostProfileGPUWork()
 	constexpr EFlushCmdsAction FlushAction = EFlushCmdsAction::FCEA_EndProfilingGPU;
 
 	TArray<FResolvedCmdListExecTime> CmdListExecTimes;
-	FD3D12Device* Device = GetParentDevice();
-	Device->GetDefaultCommandContext().FlushCommands(bWaitForCommands, FlushAction);
-	TArray<FResolvedCmdListExecTime> TimingPairs;
-	Device->GetCommandListManager().GetCommandListTimingResults(TimingPairs);
-	CmdListExecTimes.Append(MoveTemp(TimingPairs));
+	FD3D12Adapter* Adapter = GetParentDevice()->GetParentAdapter();
+	for (uint32 GPUIdx : FRHIGPUMask::All())
+	{
+		FD3D12Device* Device = Adapter->GetDevice(GPUIdx);
+		Device->GetDefaultCommandContext().FlushCommands(bWaitForCommands, FlushAction);
+		TArray<FResolvedCmdListExecTime> TimingPairs;
+		Device->GetCommandListManager().GetCommandListTimingResults(TimingPairs);
+		CmdListExecTimes.Append(MoveTemp(TimingPairs));
+	}
 
 	const int32 NumTimingPairs = CmdListExecTimes.Num();
 	CmdListStartTimestamps.Empty(NumTimingPairs);

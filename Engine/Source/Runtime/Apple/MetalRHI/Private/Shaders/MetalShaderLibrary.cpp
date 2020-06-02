@@ -118,16 +118,6 @@ int32 FMetalShaderLibrary::FindShaderIndex(const FSHAHash& Hash)
 	return SerializedShaders.FindShader(Hash);
 }
 
-FGraphEventRef FMetalShaderLibrary::PreloadShader(int32 ShaderIndex)
-{
-	return FGraphEventRef();
-}
-
-FGraphEventRef FMetalShaderLibrary::PreloadShaderMap(int32 ShaderMapIndex)
-{
-	return FGraphEventRef();
-}
-
 TRefCountPtr<FRHIShader> FMetalShaderLibrary::CreateShader(int32 Index)
 {
 	const FShaderCodeEntry& ShaderEntry = SerializedShaders.ShaderEntries[Index];

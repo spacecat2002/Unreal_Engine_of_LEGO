@@ -109,10 +109,9 @@ namespace Chaos
 
 			if(FRewindData* RewindData = MSolver->GetRewindData())
 			{
-				RewindData->AdvanceFrame(MDeltaTime,[Evolution = MSolver->GetEvolution(),
-				bUseCollisionResimCache = MSolver->RewindUsesCollisionResimCache() ]()
+				RewindData->AdvanceFrame(MDeltaTime,[Evolution = MSolver->GetEvolution()]()
 				{
-					return Evolution->CreateExternalResimCache(bUseCollisionResimCache);
+					return Evolution->CreateExternalResimCache();
 				});
 			}
 
@@ -237,9 +236,11 @@ namespace Chaos
 		, MActiveParticlesBuffer(new FActiveParticlesBuffer(BufferingModeIn, BufferingModeIn == Chaos::EMultiBufferMode::Single))
 		, MCurrentLock(new FCriticalSection())
 		, bUseCollisionResimCache(false)
+		, JointConstraintRule(JointConstraints)
 	{
 		UE_LOG(LogPBDRigidsSolver, Verbose, TEXT("PBDRigidsSolver::PBDRigidsSolver()"));
 		Reset();
+		MEvolution->AddConstraintRule(&JointConstraintRule);
 
 		MEvolution->SetInternalParticleInitilizationFunction(
 			[this](const Chaos::TGeometryParticleHandle<float, 3>* OldParticle, const Chaos::TGeometryParticleHandle<float, 3>* NewParticle) {
@@ -539,13 +540,6 @@ namespace Chaos
 
 		JointConstraintPhysicsProxies.AddUnique(JointProxy);
 		AddDirtyProxy(JointProxy);
-
-		// Finish registration on the physics thread...
-		FChaosSolversModule::GetModule()->GetDispatcher()->EnqueueCommandImmediate(
-			[JointProxy, this]()
-			{
-				JointProxy->InitializeOnPhysicsThread(this);
-			});
 	}
 
 	template <typename Traits>
@@ -558,10 +552,12 @@ namespace Chaos
 		RemoveDirtyProxy(JointProxy);
 
 		int32 NumRemoved = JointConstraintPhysicsProxies.Remove(JointProxy);
+		GTConstraint->SetProxy(static_cast<FJointConstraintPhysicsProxy*>(nullptr));
 
-		// Enqueue a command to remove the constraint and delete the proxy
-		EnqueueCommandImmediate(
-			[JointProxy, this]()
+		FParticlesType* InParticles = &GetParticles();
+
+		// Finish registration on the physics thread...
+		EnqueueCommandImmediate([InParticles, JointProxy, this]()
 			{
 				JointProxy->DestroyOnPhysicsThread(this);
 				delete JointProxy;
@@ -602,6 +598,9 @@ namespace Chaos
 
 	int32 RewindCaptureNumFrames = -1;
 	FAutoConsoleVariableRef CVarRewindCaptureNumFrames(TEXT("p.RewindCaptureNumFrames"),RewindCaptureNumFrames,TEXT("The number of frames to capture rewind for. Requires restart of solver"));
+
+	int32 UseResimCache = 0;
+	FAutoConsoleVariableRef CVarUseResimCache(TEXT("p.UseResimCache"),UseResimCache,TEXT("Whether resim uses cache to skip work, requires recreating world to take effect"));
 	
 	template <typename Traits>
 	void TPBDRigidsSolver<Traits>::Reset()
@@ -621,7 +620,7 @@ namespace Chaos
 
 		if(RewindCaptureNumFrames >= 0)
 		{
-			EnableRewindCapture(20, bUseCollisionResimCache);
+			EnableRewindCapture(RewindCaptureNumFrames, bUseCollisionResimCache || !!UseResimCache);
 		}
 
 		MEvolution->SetCaptureRewindDataFunction([this](const TParticleView<TPBDRigidParticles<FReal,3>>& ActiveParticles)
@@ -896,8 +895,13 @@ namespace Chaos
 				}
 				case EPhysicsProxyType::JointConstraintType:
 				{
-					// Currently no push needed for joint constraint and they handle the constraint creation internally
-					// #TODO This skips the rewind data push so joints will not be rewindable until resolved.
+					auto JointProxy = static_cast<FJointConstraintPhysicsProxy*>(Dirty.Proxy);
+					const bool bIsNew = !JointProxy->IsInitialized();
+					if (bIsNew)
+					{
+						JointProxy->InitializeOnPhysicsThread(this);
+						JointProxy->SetInitialized();
+					}
 					Dirty.Proxy->ResetDirtyIdx();
 					break;
 				}
@@ -1119,7 +1123,7 @@ namespace Chaos
 	void TPBDRigidsSolver<Traits>::EnableRewindCapture(int32 NumFrames, bool InUseCollisionResimCache)
 	{
 		check(Traits::IsRewindable());
-		MRewindData = MakeUnique<FRewindData>(NumFrames);
+		MRewindData = MakeUnique<FRewindData>(NumFrames, InUseCollisionResimCache);
 		bUseCollisionResimCache = InUseCollisionResimCache;
 	}
 
@@ -1137,24 +1141,14 @@ namespace Chaos
 			int32 DataIdx = 0;
 			for(TPBDRigidParticleHandleImp<float,3,false>& ActiveObject : ActiveParticles)
 			{
-				if (const TSet<IPhysicsProxyBase*>* Proxies = GetProxies(ActiveObject.Handle()))
+				//may want to remove branch using templates outside loop
+				if (MRewindData->IsResim())
 				{
-					for (IPhysicsProxyBase* Proxy : *Proxies)
-					{
-
-						if (ActiveObject.GetParticleType() == EParticleType::Rigid)
-						{
-							//may want to remove branch using templates outside loop
-							if (MRewindData->IsResim())
-							{
-									MRewindData->PushPTDirtyData<true>(*static_cast<FRigidParticlePhysicsProxy*>(Proxy)->GetHandle(), DataIdx++);
-							}
-							else
-							{
-								MRewindData->PushPTDirtyData<false>(*static_cast<FRigidParticlePhysicsProxy*>(Proxy)->GetHandle(), DataIdx++);
-							}
-						}
-					}
+					MRewindData->PushPTDirtyData<true>(*ActiveObject.Handle(), DataIdx++);
+				}
+				else
+				{
+					MRewindData->PushPTDirtyData<false>(*ActiveObject.Handle(), DataIdx++);
 				}
 			}
 		}

@@ -489,9 +489,7 @@ struct FVulkanTextureBase : public FVulkanBaseShaderResource
 	inline static FVulkanTextureBase* Cast(FRHITexture* Texture)
 	{
 		check(Texture);
-		FVulkanTextureBase* OutTexture = (FVulkanTextureBase*)Texture->GetTextureBaseRHI();
-		check(OutTexture);
-		return OutTexture;
+		return (FVulkanTextureBase*)Texture->GetTextureBaseRHI();
 	}
 
 	FVulkanTextureBase(FVulkanDevice& Device, VkImageViewType ResourceType, EPixelFormat Format, uint32 SizeX, uint32 SizeY, uint32 SizeZ, uint32 ArraySize, uint32 NumMips, uint32 NumSamples, uint32 UEFlags, const FRHIResourceCreateInfo& CreateInfo);
@@ -704,7 +702,7 @@ public:
 
 	virtual void* GetTextureBaseRHI() override final
 	{
-		return GetReferencedTexture()->GetTextureBaseRHI();
+		return GetReferencedTexture() ? GetReferencedTexture()->GetTextureBaseRHI() : nullptr;
 	}
 
 	virtual void* GetNativeResource() const

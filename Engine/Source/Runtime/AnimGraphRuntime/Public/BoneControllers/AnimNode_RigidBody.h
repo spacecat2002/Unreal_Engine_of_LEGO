@@ -241,6 +241,18 @@ private:
 		FVector& SpaceLinearAcc,
 		FVector& SpaceAngularAcc);
 
+	// Gather nearby world objects and add them to the sim
+	void CollectWorldObjects();
+
+	// Flag invalid world objects to be removed from the sim
+	void ExpireWorldObjects();
+
+	// Remove simulation objects that are flagged as expired
+	void PurgeExpiredWorldObjects();
+
+	// Update sim-space transforms of world objects
+	void UpdateWorldObjects(const FTransform& SpaceTransform);
+
 private:
 
 	float AccumulatedDeltaTime;
@@ -295,6 +307,16 @@ private:
 		bool bBodyTransformInitialized : 1;
 	};
 
+	struct FWorldObject
+	{
+		FWorldObject() : ActorHandle(nullptr), LastSeenTick(0), bExpired(false) {}
+		FWorldObject(ImmediatePhysics::FActorHandle* InActorHandle, int32 InLastSeenTick) : ActorHandle(InActorHandle), LastSeenTick(InLastSeenTick), bExpired(false) {}
+
+		ImmediatePhysics::FActorHandle* ActorHandle;
+		int32 LastSeenTick;
+		bool bExpired;
+	};
+
 	TArray<FOutputBoneData> OutputBoneData;
 	TArray<ImmediatePhysics::FActorHandle*> Bodies;
 	TArray<int32> SkeletonBoneIndexToBodyIndex;
@@ -303,14 +325,14 @@ private:
 	TArray<FPhysicsConstraintHandle*> Constraints;
 	TArray<USkeletalMeshComponent::FPendingRadialForces> PendingRadialForces;
 
-	TSet<UPrimitiveComponent*> ComponentsInSim;
+	TMap<const UPrimitiveComponent*, FWorldObject> ComponentsInSim;
+	int32 ComponentsInSimTick;
 
 	FVector WorldSpaceGravity;
 
-	FSphere Bounds;
-
 	float TotalMass;
 
+	// Bounds used to gather world objects copied into the simulation
 	FSphere CachedBounds;
 
 	FCollisionQueryParams QueryParams;
@@ -320,9 +342,14 @@ private:
 	// Evaluation counter, to detect when we haven't be evaluated in a while.
 	FGraphTraversalCounter EvalCounter;
 
+	// Used by CollectWorldObjects and UpdateWorldGeometry in Task Thread
 	// Typically, World should never be accessed off the Game Thread.
 	// However, since we're just doing overlaps this should be OK.
 	const UWorld* UnsafeWorld;
+
+	// Used by CollectWorldObjects and UpdateWorldGeometry in Task Thread
+	// Only used for a pointer comparison.
+	const AActor* UnsafeOwner;
 
 	FBoneContainer CapturedBoneVelocityBoneContainer;
 	FCSPose<FCompactHeapPose> CapturedBoneVelocityPose;

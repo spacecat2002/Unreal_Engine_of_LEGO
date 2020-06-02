@@ -774,7 +774,7 @@ void FRealtimeGPUProfiler::Cleanup()
 
 namespace GpuProfilerTrace
 {
-UE_TRACE_CHANNEL_MODULE_EXTERN(RHI_API, GpuChannel)
+RHI_API UE_TRACE_CHANNEL_EXTERN(GpuChannel)
 }
 
 void FRealtimeGPUProfiler::BeginFrame(FRHICommandListImmediate& RHICmdList)
