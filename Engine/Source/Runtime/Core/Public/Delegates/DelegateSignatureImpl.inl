@@ -900,8 +900,6 @@ public:
 		return bResult;
 	}
 
-protected:
-
 	/** 
 	 * Hidden default constructor.
 	 */
@@ -1020,23 +1018,6 @@ protected:
 
 		return false;
 	}
-};
-
-
-/**
- * Implements a multicast delegate.
- *
- * This class should not be instantiated directly. Use the DECLARE_MULTICAST_DELEGATE macros instead.
- */
-template <typename RetValType, typename... ParamTypes>
-class TMulticastDelegate;
-
-template <typename... ParamTypes>
-class TMulticastDelegate<void, ParamTypes...> : public TBaseMulticastDelegate<void, ParamTypes... >
-{
-private:
-	// Prevents erroneous use by other classes.
-	typedef TBaseMulticastDelegate< void, ParamTypes... > Super;
 };
 
 

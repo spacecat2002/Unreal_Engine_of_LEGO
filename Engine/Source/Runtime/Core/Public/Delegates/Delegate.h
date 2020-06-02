@@ -173,7 +173,7 @@
 /** Declare the user's multicast delegate object */
 // NOTE: The last parameter is variadic and is used as the 'template args' for this delegate's classes (__VA_ARGS__)
 #define FUNC_DECLARE_MULTICAST_DELEGATE( MulticastDelegateName, ... ) \
-	typedef TMulticastDelegate<__VA_ARGS__> MulticastDelegateName;
+	typedef TBaseMulticastDelegate<__VA_ARGS__> MulticastDelegateName;
 
 #define FUNC_DECLARE_EVENT( OwningType, EventName, ... ) \
 	class EventName : public TBaseMulticastDelegate<__VA_ARGS__> \
