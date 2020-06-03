@@ -105,6 +105,16 @@ TArray<FRigVMPrototypeArg::FType> FRigVMPrototypeArg::GetSupportedTypes() const
 	return SupportedTypes;
 }
 
+TArray<FString> FRigVMPrototypeArg::GetSupportedTypeStrings() const
+{
+	TArray<FString> SupportedTypes;
+	for (const FType& Type : Types)
+	{
+		SupportedTypes.AddUnique((FString)Type);
+	}
+	return SupportedTypes;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 FRigVMPrototype::FRigVMPrototype()

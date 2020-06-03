@@ -80,6 +80,9 @@ struct RIGVM_API FRigVMPrototypeArg
 	// returns an array of all of the supported types
 	TArray<FType> GetSupportedTypes() const;
 
+	// returns an array of all supported types as strings
+	TArray<FString> GetSupportedTypeStrings() const;
+
 	// returns true if an argument is singleton (same type for all variants)
 	bool IsSingleton() const;
 
