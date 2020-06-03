@@ -693,6 +693,17 @@ void ViewProvider::OnActivated(_In_ Windows::ApplicationModel::Core::CoreApplica
 
 	InitCommandLine(arg);
 	
+	// Check commandline for start in VR.
+	if (FParse::Param(FCommandLine::Get(), TEXT("vr")))
+	{
+		auto HoloSpace = HolographicSpace::CreateForCoreWindow(CoreWindow::GetForCurrentThread());
+		FHoloLensApplication::SetHolographicSpace(HoloSpace);
+	}
+	else
+	{
+		UE_LOG(LogHoloLens, Warning, TEXT("Application will launch as a 2D slate.  If this is unexpected, add a -vr command line flag or enable the start in VR flag."));
+	}
+
 	// Take advantage of this opportunity to measure the desktop (based on view bounds before window activation).
 	FHoloLensApplication::CacheDesktopSize();
 
@@ -937,16 +948,6 @@ bool ViewProvider::ProcessMouseEvent(const QueuedPointerEvent& Event)
 void ViewProvider::SetWindow(Windows::UI::Core::CoreWindow^ window)
 {
 	FModuleManager::Get().LoadModule(TEXT("WindowsMixedRealityRHI"));
-
-	if (FParse::Param(FCommandLine::Get(), TEXT("vr")))
-	{
-		auto HoloSpace = HolographicSpace::CreateForCoreWindow(CoreWindow::GetForCurrentThread());
-		FHoloLensApplication::SetHolographicSpace(HoloSpace);
-	}
-	else
-	{
-		UE_LOG(LogHoloLens, Warning, TEXT("Application will launch as a 2D slate.  If this is unexpected, add a -vr command line flag or enable the start in VR flag."));
-	}
 
 	window->KeyDown += ref new Windows::Foundation::TypedEventHandler<CoreWindow^, KeyEventArgs^>(this, &ViewProvider::OnKeyDown);
 	window->KeyUp += ref new Windows::Foundation::TypedEventHandler<CoreWindow^, KeyEventArgs^>(this, &ViewProvider::OnKeyUp);
