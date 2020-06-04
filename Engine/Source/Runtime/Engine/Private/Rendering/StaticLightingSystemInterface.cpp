@@ -271,3 +271,5 @@ FAutoConsoleCommandWithWorld GToggleLightmapPreviewCmd(
 	TEXT("ToggleLightmapPreview"),
 	TEXT("Toggles lightmap preview in editor"),
 	FConsoleCommandWithWorldDelegate::CreateStatic(ToggleLightmapPreview_GameThread));
+
+#undef LOCTEXT_NAMESPACE
