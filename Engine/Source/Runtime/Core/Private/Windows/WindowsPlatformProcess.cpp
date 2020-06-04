@@ -379,6 +379,26 @@ FProcHandle FWindowsPlatformProcess::CreateProc( const TCHAR* URL, const TCHAR* 
 	return FProcHandle(ProcInfo.hProcess);
 }
 
+bool FWindowsPlatformProcess::SetProcPriority(FProcHandle& InProcHandle, int32 PriorityModifier)
+{
+	DWORD PriorityClass = NORMAL_PRIORITY_CLASS;
+	if (PriorityModifier < 0)
+	{
+		PriorityClass = (PriorityModifier == -1) ? BELOW_NORMAL_PRIORITY_CLASS : IDLE_PRIORITY_CLASS;
+	}
+	else if (PriorityModifier > 0)
+	{
+		PriorityClass = (PriorityModifier == 1) ? ABOVE_NORMAL_PRIORITY_CLASS : HIGH_PRIORITY_CLASS;
+	}
+
+	if (InProcHandle.IsValid())
+	{
+		return SetPriorityClass(InProcHandle.Get(), PriorityClass);
+	}
+	return false;
+
+}
+
 FProcHandle FWindowsPlatformProcess::OpenProcess(uint32 ProcessID)
 {
 	return FProcHandle(::OpenProcess(PROCESS_ALL_ACCESS, 0, ProcessID));
