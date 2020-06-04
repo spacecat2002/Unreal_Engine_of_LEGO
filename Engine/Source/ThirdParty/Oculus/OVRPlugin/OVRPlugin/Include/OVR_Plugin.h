@@ -171,6 +171,16 @@ OVRP_EXPORT ovrpResult ovrp_GetLayerTextureFoveation(
     ovrpTextureHandle* foveationTextureHandle,
     ovrpSizei* foveationResultSize);
 
+/// Gets the space warp texture handles for a specific layer stage and eye.
+OVRP_EXPORT ovrpResult ovrp_GetLayerTextureSpaceWarp(
+  int layerId,
+  int stage,
+  ovrpEye eyeId,
+  ovrpTextureHandle* motionVectorTextureHandle,
+  ovrpSizei* motionVectorResultSize,
+  ovrpTextureHandle* depthTextureHandle,
+  ovrpSizei* depthResultSize);
+
 /// Gets the texture handle for a specific layer stage and eye.
 OVRP_EXPORT ovrpResult ovrp_GetLayerAndroidSurfaceObject(int layerId, void** surfaceObject);
 
@@ -207,6 +217,20 @@ OVRP_EXPORT ovrpResult ovrp_CalculateEyeLayerDesc2(
     ovrpTextureFormat depthFormat,
     int layerFlags,
     ovrpLayerDesc_EyeFov* layerDesc);
+
+/// Calculates eye layer description
+OVRP_EXPORT ovrpResult ovrp_CalculateEyeLayerDesc3(
+  ovrpLayout layout,
+  float textureScale,
+  int mipLevels,
+  int sampleCount,
+  ovrpTextureFormat format,
+  ovrpTextureFormat depthFormat,
+  ovrpTextureFormat motionVectorFormat,
+  ovrpTextureFormat motionVectorDepthFormat,
+  float motionVectorTextureScale,
+  int layerFlags,
+  ovrpLayerDesc_EyeFov* layerDesc);
 
 /// Calculates the recommended viewport rect for the specified eye
 OVRP_EXPORT ovrpResult ovrp_CalculateEyeViewportRect(
@@ -623,10 +647,6 @@ OVRP_EXPORT ovrpResult ovrp_GetTrackingTransformRelativePose(ovrpPosef* tracking
 
 OVRP_EXPORT ovrpResult ovrp_GetTimeInSeconds(double* timeInSeconds);
 
-/// Return a parameter for PTW to compress depth value
-/// Intuitively, it means the closest depth we can save in alpha.
-OVRP_EXPORT ovrpResult ovrp_GetPTWNear(float* ptwNear);
-
 OVRP_EXPORT ovrpResult ovrp_GetASWVelocityScale(float* aswVelocityScale);
 OVRP_EXPORT ovrpResult ovrp_GetASWDepthScale(float* aswDepthScale);
 OVRP_EXPORT ovrpResult ovrp_GetASWAdaptiveMode(ovrpBool* aswAdaptiveMode);
@@ -645,6 +665,9 @@ OVRP_EXPORT ovrpResult ovrp_GetLocalTrackingSpaceRecenterCount(int* recenterCoun
 
 // Returns true if the system Hmd is in 3dof mode
 OVRP_EXPORT ovrpResult ovrp_GetSystemHmd3DofModeEnabled(ovrpBool* enabled);
+
+OVRP_EXPORT ovrpResult ovrp_SetClientColorDesc(ovrpColorSpace colorSpace);
+OVRP_EXPORT ovrpResult ovrp_GetHmdColorDesc(ovrpColorSpace* colorSpace);
 
 
 
