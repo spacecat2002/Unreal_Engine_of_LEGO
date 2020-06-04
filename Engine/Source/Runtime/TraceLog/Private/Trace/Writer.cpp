@@ -665,8 +665,6 @@ static volatile bool	GWorkerThreadQuit;	// = false;
 ////////////////////////////////////////////////////////////////////////////////
 static void Writer_WorkerUpdate()
 {
-	Trace::ThreadRegister(TEXT("Trace"), 0, INT_MAX);
-
 	Writer_UpdateControl();
 	Writer_UpdateData();
 	Writer_DescribeAnnounce();
@@ -676,6 +674,8 @@ static void Writer_WorkerUpdate()
 ////////////////////////////////////////////////////////////////////////////////
 static void Writer_WorkerThread()
 {
+	Trace::ThreadRegister(TEXT("Trace"), 0, INT_MAX);
+
 	// At this point we haven't never collected any trace events. So we'll stall
 	// for just a little bit to give the user a chance to set up sending the trace
 	// somewhere and we they'll get all events since boot. Otherwise they'll be
