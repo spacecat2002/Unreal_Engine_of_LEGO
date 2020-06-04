@@ -10,6 +10,8 @@ THIRD_PARTY_INCLUDES_START
 #include "mtlpp.hpp"
 THIRD_PARTY_INCLUDES_END
 
+#include "HAL/FileManager.h"
+#include "HAL/PlatformFileManager.h"
 #include "MetalShaderDebugZipFile.h"
 
 #if !UE_BUILD_SHIPPING
