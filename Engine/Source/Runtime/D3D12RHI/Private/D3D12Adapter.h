@@ -102,7 +102,8 @@ public:
 	FORCEINLINE ID3D12Device2* GetD3DDevice2() const { return RootDevice2.GetReference(); }
 #endif
 #if D3D12_RHI_RAYTRACING
-	FORCEINLINE ID3D12Device5* GetD3DRayTracingDevice() { return RootRayTracingDevice.GetReference(); }
+	FORCEINLINE ID3D12Device5* GetD3DDevice5() { return RootDevice5.GetReference(); }
+	FORCEINLINE ID3D12Device7* GetD3DDevice7() { return RootDevice7.GetReference(); }
 #endif // D3D12_RHI_RAYTRACING
 	FORCEINLINE void SetDeviceRemoved(bool value) { bDeviceRemoved = value; }
 	FORCEINLINE const bool IsDeviceRemoved() const { return bDeviceRemoved; }
@@ -166,11 +167,10 @@ public:
 		return Devices[GPUIndex];
 	}
 
-	FORCEINLINE void CreateDXGIFactory(bool bWithDebug)
+	FORCEINLINE void CreateDXGIFactory()
 	{
 #if PLATFORM_WINDOWS || PLATFORM_HOLOLENS
-		uint32 Flags = bWithDebug ? DXGI_CREATE_FACTORY_DEBUG : 0;
-		VERIFYD3D12RESULT(::CreateDXGIFactory2(Flags, IID_PPV_ARGS(DxgiFactory.GetInitReference())));
+		VERIFYD3D12RESULT(::CreateDXGIFactory(IID_PPV_ARGS(DxgiFactory.GetInitReference())));
 		VERIFYD3D12RESULT(DxgiFactory->QueryInterface(IID_PPV_ARGS(DxgiFactory2.GetInitReference())));
 #endif
 	}
@@ -305,7 +305,8 @@ protected:
 	HANDLE ExceptionHandlerHandle = INVALID_HANDLE_VALUE;
 #endif
 #if D3D12_RHI_RAYTRACING
-	TRefCountPtr<ID3D12Device5> RootRayTracingDevice;
+	TRefCountPtr<ID3D12Device5> RootDevice5;
+	TRefCountPtr<ID3D12Device7> RootDevice7;
 #endif // D3D12_RHI_RAYTRACING
 	D3D12_RESOURCE_HEAP_TIER ResourceHeapTier;
 	D3D12_RESOURCE_BINDING_TIER ResourceBindingTier;
