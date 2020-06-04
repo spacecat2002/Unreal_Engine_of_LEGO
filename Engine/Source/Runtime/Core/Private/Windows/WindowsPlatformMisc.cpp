@@ -1762,7 +1762,7 @@ int32 FWindowsPlatformMisc::NumberOfCores()
 		// Optionally limit number of threads (we don't necessarily scale super well with very high core counts)
 
 		int32 LimitCount = 32768;
-		if (FParse::Value(FCommandLine::Get(), TEXT("-corelimit="), LimitCount))
+		if (FCommandLine::IsInitialized() && FParse::Value(FCommandLine::Get(), TEXT("-corelimit="), LimitCount))
 		{
 			CoreCount = FMath::Min(CoreCount, LimitCount);
 		}
@@ -1787,7 +1787,7 @@ int32 FWindowsPlatformMisc::NumberOfCoresIncludingHyperthreads()
 		// Optionally limit number of threads (we don't necessarily scale super well with very high core counts)
 
 		int32 LimitCount = 32768;
-		if (FParse::Value(FCommandLine::Get(), TEXT("-corelimit="), LimitCount))
+		if (FCommandLine::IsInitialized() && FParse::Value(FCommandLine::Get(), TEXT("-corelimit="), LimitCount))
 		{
 			CoreCount = FMath::Min(CoreCount, LimitCount);
 		}
