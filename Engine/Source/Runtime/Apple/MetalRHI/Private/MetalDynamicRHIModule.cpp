@@ -6,7 +6,9 @@
 
 
 #include "MetalLLM.h"
+#include "DynamicRHI.h"
 #include "MetalDynamicRHIModule.h"
+#include "Modules/ModuleManager.h"
 
 
 //------------------------------------------------------------------------------
