@@ -231,7 +231,7 @@ void FD3D12Adapter::CreateRootDevice(bool bWithDebug)
 {
 	const bool bAllowVendorDevice = !FParse::Param(FCommandLine::Get(), TEXT("novendordevice"));
 
-	CreateDXGIFactory(bWithDebug);
+	CreateDXGIFactory();
 
 	// QI for the Adapter
 	TRefCountPtr<IDXGIAdapter> TempAdapter;
@@ -443,11 +443,21 @@ void FD3D12Adapter::CreateRootDevice(bool bWithDebug)
 	bool bRayTracingSupported = false;
 
 	{
-		D3D12_FEATURE_DATA_D3D12_OPTIONS5 Features = {};
-		if (SUCCEEDED(RootDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &Features, sizeof(Features)))
-			&& Features.RaytracingTier >= D3D12_RAYTRACING_TIER_1_0)
+		D3D12_FEATURE_DATA_D3D12_OPTIONS5 Features5 = {};
+		if (SUCCEEDED(RootDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &Features5, sizeof(Features5))))
 		{
-			bRayTracingSupported = true;
+			bRayTracingSupported = Features5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_0;
+			GRHISupportsRayTracingPSOAdditions = Features5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_1;
+
+			if (Features5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_1)
+			{
+				UE_LOG(LogD3D12RHI, Log, TEXT("D3D12 ray tracing 1.1 is supported."));
+			}
+			else if (Features5.RaytracingTier == D3D12_RAYTRACING_TIER_1_0)
+			{
+				UE_LOG(LogD3D12RHI, Log, TEXT("D3D12 ray tracing 1.0 is supported."));
+			}
+
 		}
 	}
 
@@ -459,8 +469,10 @@ void FD3D12Adapter::CreateRootDevice(bool bWithDebug)
 
  	if (bRayTracingSupported && GetRayTracingCVarValue() && !FParse::Param(FCommandLine::Get(), TEXT("noraytracing")))
 	{
-		RootDevice->QueryInterface(IID_PPV_ARGS(RootRayTracingDevice.GetInitReference()));
-		if (RootRayTracingDevice)
+		RootDevice->QueryInterface(IID_PPV_ARGS(RootDevice5.GetInitReference())); // DXR 1.0 (required)
+		RootDevice->QueryInterface(IID_PPV_ARGS(RootDevice7.GetInitReference())); // DXR 1.1 (optional)
+
+		if (RootDevice5)
 		{
 			UE_LOG(LogD3D12RHI, Log, TEXT("D3D12 ray tracing enabled."));
 
@@ -608,10 +620,12 @@ void FD3D12Adapter::CreateRootDevice(bool bWithDebug)
 				// This typically happens when a non-depth-only pixel shader is used for depth-only rendering.
 				D3D12_MESSAGE_ID_CREATEGRAPHICSPIPELINESTATE_RENDERTARGETVIEW_NOT_SET,
 
+#if PLATFORM_DESKTOP || PLATFORM_HOLOLENS
 				// OMSETRENDERTARGETS_INVALIDVIEW - d3d will complain if depth and color targets don't have the exact same dimensions, but actually
 				//	if the color target is smaller then things are ok.  So turn off this error.  There is a manual check in FD3D12DynamicRHI::SetRenderTarget
 				//	that tests for depth smaller than color and MSAA settings to match.
 				D3D12_MESSAGE_ID_OMSETRENDERTARGETS_INVALIDVIEW,
+#endif
 
 				// QUERY_BEGIN_ABANDONING_PREVIOUS_RESULTS - The RHI exposes the interface to make and issue queries and a separate interface to use that data.
 				//		Currently there is a situation where queries are issued and the results may be ignored on purpose.  Filtering out this message so it doesn't
@@ -889,7 +903,6 @@ void FD3D12Adapter::InitializeDevices()
 		ID3D12RootSignature* StaticGraphicsRS = (GetStaticGraphicsRootSignature()) ? GetStaticGraphicsRootSignature()->GetRootSignature() : nullptr;
 		ID3D12RootSignature* StaticComputeRS = (GetStaticComputeRootSignature()) ? GetStaticComputeRootSignature()->GetRootSignature() : nullptr;
 
-		// #dxr_todo UE-68235: verify that disk cache works correctly with DXR
 		PipelineStateCache.RebuildFromDiskCache(StaticGraphicsRS, StaticComputeRS);
 	}
 }
@@ -899,7 +912,7 @@ void FD3D12Adapter::InitializeRayTracing()
 #if D3D12_RHI_RAYTRACING
 	for (uint32 GPUIndex : FRHIGPUMask::All())
 	{
-		if (Devices[GPUIndex]->GetRayTracingDevice())
+		if (Devices[GPUIndex]->GetDevice5())
 		{
 			Devices[GPUIndex]->InitRayTracing();
 		}

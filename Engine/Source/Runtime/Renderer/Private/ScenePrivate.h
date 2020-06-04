@@ -1744,6 +1744,7 @@ public:
 	FRWBufferStructured PrimitiveBuffer;
 	FTextureRWBuffer2D PrimitiveTexture;
 	FScatterUploadBuffer PrimitiveUploadBuffer;
+	FScatterUploadBuffer PrimitiveUploadViewBuffer;
 
 	FGrowOnlySpanAllocator	LightmapDataAllocator;
 	FRWBufferStructured		LightmapDataBuffer;
