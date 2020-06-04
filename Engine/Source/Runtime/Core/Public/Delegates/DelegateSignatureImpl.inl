@@ -32,8 +32,14 @@ template<typename ObjectPtrType> class FMulticastDelegateBase;
  * the function signature the delegate is compatible with. Then, you can create an instance
  * of that class when you want to bind a function to the delegate.
  */
+template <typename DelegateSignature>
+class TDelegate
+{
+	static_assert(sizeof(DelegateSignature) == 0, "Expected a function signature for the delegate template parameter");
+};
+
 template <typename WrappedRetValType, typename... ParamTypes>
-class TBaseDelegate : public FDelegateBase
+class TDelegate<WrappedRetValType(ParamTypes...)> : public FDelegateBase
 {
 public:
 	/** Type definition for return value type. */
@@ -111,9 +117,9 @@ public:
 	 * Static: Creates a raw C++ pointer global function delegate
 	 */
 	template <typename... VarTypes>
-	UE_NODISCARD inline static TBaseDelegate<RetValType, ParamTypes...> CreateStatic(typename TIdentity<RetValType (*)(ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
+	UE_NODISCARD inline static TDelegate<RetValType(ParamTypes...)> CreateStatic(typename TIdentity<RetValType (*)(ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
 	{
-		TBaseDelegate<RetValType, ParamTypes...> Result;
+		TDelegate<RetValType(ParamTypes...)> Result;
 		TBaseStaticDelegateInstance<TFuncType, VarTypes...>::Create(Result, InFunc, Vars...);
 		return Result;
 	}
@@ -123,9 +129,9 @@ public:
 	 * technically this works for any functor types, but lambdas are the primary use case
 	 */
 	template<typename FunctorType, typename... VarTypes>
-	UE_NODISCARD inline static TBaseDelegate<RetValType, ParamTypes...> CreateLambda(FunctorType&& InFunctor, VarTypes... Vars)
+	UE_NODISCARD inline static TDelegate<RetValType(ParamTypes...)> CreateLambda(FunctorType&& InFunctor, VarTypes... Vars)
 	{
-		TBaseDelegate<RetValType, ParamTypes...> Result;
+		TDelegate<RetValType(ParamTypes...)> Result;
 		TBaseFunctorDelegateInstance<TFuncType, typename TRemoveReference<FunctorType>::Type, VarTypes...>::Create(Result, Forward<FunctorType>(InFunctor), Vars...);
 		return Result;
 	}
@@ -135,9 +141,9 @@ public:
 	 * technically this works for any functor types, but lambdas are the primary use case
 	 */
 	template<typename UserClass, typename FunctorType, typename... VarTypes>
-	UE_NODISCARD inline static TBaseDelegate<RetValType, ParamTypes...> CreateWeakLambda(UserClass* InUserObject, FunctorType&& InFunctor, VarTypes... Vars)
+	UE_NODISCARD inline static TDelegate<RetValType(ParamTypes...)> CreateWeakLambda(UserClass* InUserObject, FunctorType&& InFunctor, VarTypes... Vars)
 	{
-		TBaseDelegate<RetValType, ParamTypes...> Result;
+		TDelegate<RetValType(ParamTypes...)> Result;
 		TWeakBaseFunctorDelegateInstance<UserClass, TFuncType, typename TRemoveReference<FunctorType>::Type, VarTypes...>::Create(Result, InUserObject, Forward<FunctorType>(InFunctor), Vars...);
 		return Result;
 	}
@@ -149,18 +155,18 @@ public:
 	 * deleted out from underneath your delegate. Be careful when calling Execute()!
 	 */
 	template <typename UserClass, typename... VarTypes>
-	UE_NODISCARD inline static TBaseDelegate<RetValType, ParamTypes...> CreateRaw(UserClass* InUserObject, typename TMemFunPtrType<false, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
+	UE_NODISCARD inline static TDelegate<RetValType(ParamTypes...)> CreateRaw(UserClass* InUserObject, typename TMemFunPtrType<false, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
 	{
 		static_assert(!TIsConst<UserClass>::Value, "Attempting to bind a delegate with a const object pointer and non-const member function.");
 
-		TBaseDelegate<RetValType, ParamTypes...> Result;
+		TDelegate<RetValType(ParamTypes...)> Result;
 		TBaseRawMethodDelegateInstance<false, UserClass, TFuncType, VarTypes...>::Create(Result, InUserObject, InFunc, Vars...);
 		return Result;
 	}
 	template <typename UserClass, typename... VarTypes>
-	UE_NODISCARD inline static TBaseDelegate<RetValType, ParamTypes...> CreateRaw(const UserClass* InUserObject, typename TMemFunPtrType<true, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
+	UE_NODISCARD inline static TDelegate<RetValType(ParamTypes...)> CreateRaw(const UserClass* InUserObject, typename TMemFunPtrType<true, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
 	{
-		TBaseDelegate<RetValType, ParamTypes...> Result;
+		TDelegate<RetValType(ParamTypes...)> Result;
 		TBaseRawMethodDelegateInstance<true, const UserClass, TFuncType, VarTypes...>::Create(Result, InUserObject, InFunc, Vars...);
 		return Result;
 	}
@@ -172,18 +178,18 @@ public:
 	 * You can use ExecuteIfBound() to call them.
 	 */
 	template <typename UserClass, typename... VarTypes>
-	UE_NODISCARD inline static TBaseDelegate<RetValType, ParamTypes...> CreateSP(const TSharedRef<UserClass, ESPMode::Fast>& InUserObjectRef, typename TMemFunPtrType<false, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
+	UE_NODISCARD inline static TDelegate<RetValType(ParamTypes...)> CreateSP(const TSharedRef<UserClass, ESPMode::Fast>& InUserObjectRef, typename TMemFunPtrType<false, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
 	{
 		static_assert(!TIsConst<UserClass>::Value, "Attempting to bind a delegate with a const object pointer and non-const member function.");
 
-		TBaseDelegate<RetValType, ParamTypes...> Result;
+		TDelegate<RetValType(ParamTypes...)> Result;
 		TBaseSPMethodDelegateInstance<false, UserClass, ESPMode::Fast, TFuncType, VarTypes...>::Create(Result, InUserObjectRef, InFunc, Vars...);
 		return Result;
 	}
 	template <typename UserClass, typename... VarTypes>
-	UE_NODISCARD inline static TBaseDelegate<RetValType, ParamTypes...> CreateSP(const TSharedRef<UserClass, ESPMode::Fast>& InUserObjectRef, typename TMemFunPtrType<true, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
+	UE_NODISCARD inline static TDelegate<RetValType(ParamTypes...)> CreateSP(const TSharedRef<UserClass, ESPMode::Fast>& InUserObjectRef, typename TMemFunPtrType<true, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
 	{
-		TBaseDelegate<RetValType, ParamTypes...> Result;
+		TDelegate<RetValType(ParamTypes...)> Result;
 		TBaseSPMethodDelegateInstance<true, const UserClass, ESPMode::Fast, TFuncType, VarTypes...>::Create(Result, InUserObjectRef, InFunc, Vars...);
 		return Result;
 	}
@@ -195,14 +201,14 @@ public:
 	 * You can use ExecuteIfBound() to call them.
 	 */
 	template <typename UserClass, typename... VarTypes>
-	UE_NODISCARD inline static TBaseDelegate<RetValType, ParamTypes...> CreateSP(UserClass* InUserObject, typename TMemFunPtrType<false, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
+	UE_NODISCARD inline static TDelegate<RetValType(ParamTypes...)> CreateSP(UserClass* InUserObject, typename TMemFunPtrType<false, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
 	{
 		static_assert(!TIsConst<UserClass>::Value, "Attempting to bind a delegate with a const object pointer and non-const member function.");
 
 		return CreateSP(StaticCastSharedRef<UserClass>(InUserObject->AsShared()), InFunc, Vars...);
 	}
 	template <typename UserClass, typename... VarTypes>
-	UE_NODISCARD inline static TBaseDelegate<RetValType, ParamTypes...> CreateSP(const UserClass* InUserObject, typename TMemFunPtrType<true, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
+	UE_NODISCARD inline static TDelegate<RetValType(ParamTypes...)> CreateSP(const UserClass* InUserObject, typename TMemFunPtrType<true, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
 	{
 		return CreateSP(StaticCastSharedRef<const UserClass>(InUserObject->AsShared()), InFunc, Vars...);
 	}
@@ -214,18 +220,18 @@ public:
 	 * You can use ExecuteIfBound() to call them.
 	 */
 	template <typename UserClass, typename... VarTypes>
-	UE_NODISCARD inline static TBaseDelegate<RetValType, ParamTypes...> CreateThreadSafeSP(const TSharedRef<UserClass, ESPMode::ThreadSafe>& InUserObjectRef, typename TMemFunPtrType<false, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
+	UE_NODISCARD inline static TDelegate<RetValType(ParamTypes...)> CreateThreadSafeSP(const TSharedRef<UserClass, ESPMode::ThreadSafe>& InUserObjectRef, typename TMemFunPtrType<false, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
 	{
 		static_assert(!TIsConst<UserClass>::Value, "Attempting to bind a delegate with a const object pointer and non-const member function.");
 
-		TBaseDelegate<RetValType, ParamTypes...> Result;
+		TDelegate<RetValType(ParamTypes...)> Result;
 		TBaseSPMethodDelegateInstance<false, UserClass, ESPMode::ThreadSafe, TFuncType, VarTypes...>::Create(Result, InUserObjectRef, InFunc, Vars...);
 		return Result;
 	}
 	template <typename UserClass, typename... VarTypes>
-	UE_NODISCARD inline static TBaseDelegate<RetValType, ParamTypes...> CreateThreadSafeSP(const TSharedRef<UserClass, ESPMode::ThreadSafe>& InUserObjectRef, typename TMemFunPtrType<true, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
+	UE_NODISCARD inline static TDelegate<RetValType(ParamTypes...)> CreateThreadSafeSP(const TSharedRef<UserClass, ESPMode::ThreadSafe>& InUserObjectRef, typename TMemFunPtrType<true, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
 	{
-		TBaseDelegate<RetValType, ParamTypes...> Result;
+		TDelegate<RetValType(ParamTypes...)> Result;
 		TBaseSPMethodDelegateInstance<true, const UserClass, ESPMode::ThreadSafe, TFuncType, VarTypes...>::Create(Result, InUserObjectRef, InFunc, Vars...);
 		return Result;
 	}
@@ -237,14 +243,14 @@ public:
 	 * You can use ExecuteIfBound() to call them.
 	 */
 	template <typename UserClass, typename... VarTypes>
-	UE_NODISCARD inline static TBaseDelegate<RetValType, ParamTypes...> CreateThreadSafeSP(UserClass* InUserObject, typename TMemFunPtrType<false, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
+	UE_NODISCARD inline static TDelegate<RetValType(ParamTypes...)> CreateThreadSafeSP(UserClass* InUserObject, typename TMemFunPtrType<false, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
 	{
 		static_assert(!TIsConst<UserClass>::Value, "Attempting to bind a delegate with a const object pointer and non-const member function.");
 
 		return CreateThreadSafeSP(StaticCastSharedRef<UserClass>(InUserObject->AsShared()), InFunc, Vars...);
 	}
 	template <typename UserClass, typename... VarTypes>
-	UE_NODISCARD inline static TBaseDelegate<RetValType, ParamTypes...> CreateThreadSafeSP(const UserClass* InUserObject, typename TMemFunPtrType<true, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
+	UE_NODISCARD inline static TDelegate<RetValType(ParamTypes...)> CreateThreadSafeSP(const UserClass* InUserObject, typename TMemFunPtrType<true, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
 	{
 		return CreateThreadSafeSP(StaticCastSharedRef<const UserClass>(InUserObject->AsShared()), InFunc, Vars...);
 	}
@@ -256,9 +262,9 @@ public:
 	 * You can use ExecuteIfBound() to call them.
 	 */
 	template <typename UObjectTemplate, typename... VarTypes>
-	UE_NODISCARD inline static TBaseDelegate<RetValType, ParamTypes...> CreateUFunction(UObjectTemplate* InUserObject, const FName& InFunctionName, VarTypes... Vars)
+	UE_NODISCARD inline static TDelegate<RetValType(ParamTypes...)> CreateUFunction(UObjectTemplate* InUserObject, const FName& InFunctionName, VarTypes... Vars)
 	{
-		TBaseDelegate<RetValType, ParamTypes...> Result;
+		TDelegate<RetValType(ParamTypes...)> Result;
 		TBaseUFunctionDelegateInstance<UObjectTemplate, TFuncType, VarTypes...>::Create(Result, InUserObject, InFunctionName, Vars...);
 		return Result;
 	}
@@ -270,18 +276,18 @@ public:
 	 * You can use ExecuteIfBound() to call them.
 	 */
 	template <typename UserClass, typename... VarTypes>
-	UE_NODISCARD inline static TBaseDelegate<RetValType, ParamTypes...> CreateUObject(UserClass* InUserObject, typename TMemFunPtrType<false, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
+	UE_NODISCARD inline static TDelegate<RetValType(ParamTypes...)> CreateUObject(UserClass* InUserObject, typename TMemFunPtrType<false, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
 	{
 		static_assert(!TIsConst<UserClass>::Value, "Attempting to bind a delegate with a const object pointer and non-const member function.");
 
-		TBaseDelegate<RetValType, ParamTypes...> Result;
+		TDelegate<RetValType(ParamTypes...)> Result;
 		TBaseUObjectMethodDelegateInstance<false, UserClass, TFuncType, VarTypes...>::Create(Result, InUserObject, InFunc, Vars...);
 		return Result;
 	}
 	template <typename UserClass, typename... VarTypes>
-	UE_NODISCARD inline static TBaseDelegate<RetValType, ParamTypes...> CreateUObject(const UserClass* InUserObject, typename TMemFunPtrType<true, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
+	UE_NODISCARD inline static TDelegate<RetValType(ParamTypes...)> CreateUObject(const UserClass* InUserObject, typename TMemFunPtrType<true, UserClass, RetValType (ParamTypes..., VarTypes...)>::Type InFunc, VarTypes... Vars)
 	{
-		TBaseDelegate<RetValType, ParamTypes...> Result;
+		TDelegate<RetValType(ParamTypes...)> Result;
 		TBaseUObjectMethodDelegateInstance<true, const UserClass, TFuncType, VarTypes...>::Create(Result, InUserObject, InFunc, Vars...);
 		return Result;
 	}
@@ -291,21 +297,21 @@ public:
 	/**
 	 * Default constructor
 	 */
-	inline TBaseDelegate()
+	inline TDelegate()
 	{
 	}
 
 	/**
 	 * 'Null' constructor
 	 */
-	inline TBaseDelegate(TYPE_OF_NULLPTR)
+	inline TDelegate(TYPE_OF_NULLPTR)
 	{
 	}
 
 	/**
 	 * Destructor.
 	 */
-	inline ~TBaseDelegate()
+	inline ~TDelegate()
 	{
 		Unbind();
 	}
@@ -315,7 +321,7 @@ public:
 	 *
 	 * @param Other The delegate object to move from.
 	 */
-	inline TBaseDelegate(TBaseDelegate&& Other)
+	inline TDelegate(TDelegate&& Other)
 	{
 		*this = MoveTemp(Other);
 	}
@@ -325,7 +331,7 @@ public:
 	 *
 	 * @param Other The delegate object to copy from.
 	 */
-	inline TBaseDelegate(const TBaseDelegate& Other)
+	inline TDelegate(const TDelegate& Other)
 	{
 		*this = Other;
 	}
@@ -335,7 +341,7 @@ public:
 	 *
 	 * @param	OtherDelegate	Delegate object to copy from
 	 */
-	inline TBaseDelegate& operator=(TBaseDelegate&& Other)
+	inline TDelegate& operator=(TDelegate&& Other)
 	{
 		if (&Other != this)
 		{
@@ -360,7 +366,7 @@ public:
 	 *
 	 * @param	OtherDelegate	Delegate object to copy from
 	 */
-	inline TBaseDelegate& operator=(const TBaseDelegate& Other)
+	inline TDelegate& operator=(const TDelegate& Other)
 	{
 		if (&Other != this)
 		{
@@ -564,9 +570,9 @@ public:
 };
 
 template <typename... ParamTypes>
-class TBaseDelegate<void, ParamTypes...> : public TBaseDelegate<TTypeWrapper<void>, ParamTypes...>
+class TDelegate<void(ParamTypes...)> : public TDelegate<TTypeWrapper<void>(ParamTypes...)>
 {
-	typedef TBaseDelegate<TTypeWrapper<void>, ParamTypes...> Super;
+	typedef TDelegate<TTypeWrapper<void>(ParamTypes...)> Super;
 
 public:
 	typedef typename Super::TDelegateInstanceInterface TDelegateInstanceInterface;
@@ -574,14 +580,14 @@ public:
 	/**
 	 * Default constructor
 	 */
-	TBaseDelegate()
+	TDelegate()
 	{
 	}
 
 	/**
 	 * 'Null' constructor
 	 */
-	FORCEINLINE TBaseDelegate(TYPE_OF_NULLPTR)
+	FORCEINLINE TDelegate(TYPE_OF_NULLPTR)
 		: Super(nullptr)
 	{
 	}
@@ -591,7 +597,7 @@ public:
 	 *
 	 * @param Other The delegate object to move from.
 	 */
-	FORCEINLINE TBaseDelegate(TBaseDelegate&& Other)
+	FORCEINLINE TDelegate(TDelegate&& Other)
 		: Super(MoveTemp(Other))
 	{
 	}
@@ -601,7 +607,7 @@ public:
 	 *
 	 * @param Other The delegate object to copy from.
 	 */
-	FORCEINLINE TBaseDelegate(const TBaseDelegate& Other)
+	FORCEINLINE TDelegate(const TDelegate& Other)
 		: Super(Other)
 	{
 	}
@@ -611,7 +617,7 @@ public:
 	 *
 	 * @param	OtherDelegate	Delegate object to copy from
 	 */
-	inline TBaseDelegate& operator=(TBaseDelegate&& Other)
+	inline TDelegate& operator=(TDelegate&& Other)
 	{
 		(Super&)*this = MoveTemp((Super&)Other);
 		return *this;
@@ -622,7 +628,7 @@ public:
 	 *
 	 * @param	OtherDelegate	Delegate object to copy from
 	 */
-	inline TBaseDelegate& operator=(const TBaseDelegate& Other)
+	inline TDelegate& operator=(const TDelegate& Other)
 	{
 		(Super&)*this = (Super&)Other;
 		return *this;
@@ -656,17 +662,26 @@ public:
  * Multicast delegates offer no guarantees for the calling order of bound functions. As bindings get added
  * and removed over time, the calling order may change. Only bindings without return values are supported.
  */
+template <typename DelegateSignature>
+class TMulticastDelegate
+{
+	static_assert(sizeof(DelegateSignature) == 0, "Expected a function signature for the delegate template parameter");
+};
+
 template <typename RetValType, typename... ParamTypes>
-class TBaseMulticastDelegate;
+class TMulticastDelegate<RetValType(ParamTypes...)>
+{
+	static_assert(sizeof(RetValType) == 0, "The return type of a multicast delegate must be void");
+};
 
 template <typename... ParamTypes>
-class TBaseMulticastDelegate<void, ParamTypes...> : public FMulticastDelegateBase<FWeakObjectPtr>
+class TMulticastDelegate<void(ParamTypes...)> : public FMulticastDelegateBase<FWeakObjectPtr>
 {
 	typedef FMulticastDelegateBase<FWeakObjectPtr> Super;
 
 public:
 	/** Type definition for unicast delegate classes whose delegate instances are compatible with this delegate. */
-	typedef TBaseDelegate< void, ParamTypes... > FDelegate;
+	typedef TDelegate<void(ParamTypes...)> FDelegate;
 
 	/** Type definition for the shared interface of delegate instance types compatible with this delegate class. */
 	typedef IBaseDelegateInstance<void (ParamTypes...)> TDelegateInstanceInterface;
@@ -903,14 +918,14 @@ public:
 	/** 
 	 * Hidden default constructor.
 	 */
-	inline TBaseMulticastDelegate( ) { }
+	inline TMulticastDelegate( ) { }
 
 	/**
 	 * Hidden copy constructor (for proper deep copies).
 	 *
 	 * @param Other The multicast delegate to copy from.
 	 */
-	TBaseMulticastDelegate( const TBaseMulticastDelegate& Other )
+	TMulticastDelegate( const TMulticastDelegate& Other )
 	{
 		*this = Other;
 	}
@@ -921,7 +936,7 @@ public:
 	 * @param Other The delegate to assign from.
 	 * @return This instance.
 	 */
-	TBaseMulticastDelegate& operator=( const TBaseMulticastDelegate& Other )
+	TMulticastDelegate& operator=( const TMulticastDelegate& Other )
 	{
 		if (&Other != this)
 		{
@@ -986,7 +1001,7 @@ public:
 
 		if (NeedsCompaction)
 		{
-			const_cast<TBaseMulticastDelegate*>(this)->CompactInvocationList();
+			const_cast<TMulticastDelegate*>(this)->CompactInvocationList();
 		}
 	}
 
