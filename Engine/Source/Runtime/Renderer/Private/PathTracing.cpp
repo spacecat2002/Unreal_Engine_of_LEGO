@@ -223,6 +223,7 @@ public:
 						LightData.Type[LightData.Count] = 2;
 						LightData.Normal[LightData.Count] = LightParameters.Direction;
 						LightData.Color[LightData.Count] = LightParameters.Color;
+						LightData.Dimensions[LightData.Count] = FVector(0.0f, 0.0f, LightParameters.SourceRadius);
 						LightData.Attenuation[LightData.Count] = 1.0 / LightParameters.InvRadius;
 						break;
 					}
