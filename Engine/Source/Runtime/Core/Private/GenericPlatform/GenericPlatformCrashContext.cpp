@@ -24,7 +24,7 @@
 #include "Internationalization/TextLocalizationManager.h"
 #include "Logging/LogScopedCategoryAndVerbosityOverride.h"
 #include "HAL/PlatformOutputDevices.h"
-#include "HAL/PlatformFileManager.h"
+#include "HAL/PlatformFilemanager.h"
 #include "Misc/OutputDeviceArchiveWrapper.h"
 
 #ifndef NOINITCRASHREPORTER
