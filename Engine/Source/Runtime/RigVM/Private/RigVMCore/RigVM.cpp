@@ -47,7 +47,8 @@ URigVM::URigVM()
     , ByteCodePtr(&ByteCodeStorage)
     , FunctionNamesPtr(&FunctionNamesStorage)
     , FunctionsPtr(&FunctionsStorage)
-	, ThreadId(INDEX_NONE)
+	, ExecutingThreadId(INDEX_NONE)
+	, DeferredVMToCopy(nullptr)
 {
 	GetWorkMemory().SetMemoryType(ERigVMMemoryType::Work);
 	GetLiteralMemory().SetMemoryType(ERigVMMemoryType::Literal);
@@ -66,6 +67,8 @@ void URigVM::Serialize(FArchive& Ar)
 	{
 		return;
 	}
+
+	ensure(ExecutingThreadId == INDEX_NONE);
 
 	if (Ar.IsLoading())
 	{
@@ -111,6 +114,7 @@ void URigVM::Reset()
 	Instructions.Reset();
 	Parameters.Reset();
 	ParametersNameMap.Reset();
+	DeferredVMToCopy = nullptr;
 
 	WorkMemoryPtr = &WorkMemoryStorage;
 	LiteralMemoryPtr = &LiteralMemoryStorage;
@@ -131,6 +135,7 @@ void URigVM::Empty()
 	Instructions.Empty();
 	Parameters.Empty();
 	ParametersNameMap.Empty();
+	DeferredVMToCopy = nullptr;
 
 	InvalidateCachedMemory();
 
@@ -139,9 +144,17 @@ void URigVM::Empty()
 	CachedMemoryHandles.Empty();
 }
 
-void URigVM::CopyFrom(URigVM* InVM, bool bReferenceLiteralMemory, bool bReferenceByteCode)
+void URigVM::CopyFrom(URigVM* InVM, bool bDeferCopy, bool bReferenceLiteralMemory, bool bReferenceByteCode)
 {
 	check(InVM);
+
+	// if this vm is currently executing on a worker thread
+	// we defer the copy until the next execute
+	if (ExecutingThreadId != INDEX_NONE || bDeferCopy)
+	{
+		DeferredVMToCopy = InVM;
+		return;
+	}
 	
 	Reset();
 
@@ -290,13 +303,26 @@ void URigVM::InvalidateCachedMemory()
 	CachedMemoryHandles.Reset();
 }
 
+void URigVM::CopyDeferredVMIfRequired()
+{
+	ensure(ExecutingThreadId == INDEX_NONE);
+
+	URigVM* VMToCopy = nullptr;
+	Swap(VMToCopy, DeferredVMToCopy);
+
+	if (VMToCopy)
+	{
+		CopyFrom(VMToCopy);
+	}
+}
+
 void URigVM::CacheMemoryHandlesIfRequired(FRigVMMemoryContainerPtrArray InMemory)
 {
-	if (ThreadId != INDEX_NONE)
+	if (ExecutingThreadId != INDEX_NONE)
 	{
-		ensureMsgf(ThreadId == FPlatformTLS::GetCurrentThreadId(), TEXT("RigVM from multiple threads (%d and %d)"), ThreadId, (int32)FPlatformTLS::GetCurrentThreadId());
+		ensureMsgf(ExecutingThreadId == FPlatformTLS::GetCurrentThreadId(), TEXT("RigVM from multiple threads (%d and %d)"), ExecutingThreadId, (int32)FPlatformTLS::GetCurrentThreadId());
 	}
-	TGuardValue<int32> GuardThreadId(ThreadId, FPlatformTLS::GetCurrentThreadId());
+	TGuardValue<int32> GuardThreadId(ExecutingThreadId, FPlatformTLS::GetCurrentThreadId());
 
 	RefreshInstructionsIfRequired();
 
@@ -341,6 +367,11 @@ void URigVM::CacheMemoryHandlesIfRequired(FRigVMMemoryContainerPtrArray InMemory
 	uint16 InstructionIndex = 0;
 	while (Instructions.IsValidIndex(InstructionIndex))
 	{
+		if (Instructions[InstructionIndex].OpCode == ERigVMOpCode::Exit)
+		{
+			break;
+		}
+
 		FirstHandleForInstruction.Add(CachedMemoryHandles.Num());
 
 		switch (Instructions[InstructionIndex].OpCode)
@@ -771,19 +802,20 @@ bool URigVM::Initialize(FRigVMMemoryContainerPtrArray Memory, FRigVMFixedArray<v
 				break;
 			}
 			case ERigVMOpCode::Invalid:
-	{
+			{
 				ensure(false);
 				return false;
 			}
-	}
+		}
 		Context.InstructionIndex++;
-}
+	}
 
 	return true;
 }
 
 bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, FRigVMFixedArray<void*> AdditionalArguments, const FName& InEntryName)
 {
+	CopyDeferredVMIfRequired();
 	ResolveFunctionsIfRequired();
 	RefreshInstructionsIfRequired();
 

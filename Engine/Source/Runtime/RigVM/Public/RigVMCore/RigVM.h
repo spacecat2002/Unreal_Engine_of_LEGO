@@ -129,7 +129,7 @@ public:
 	void Empty();
 
 	// resets the container and clones the input VM
-	void CopyFrom(URigVM* InVM, bool bReferenceLiteralMemory = false, bool bReferenceByteCode = false);
+	void CopyFrom(URigVM* InVM, bool bDeferCopy = false, bool bReferenceLiteralMemory = false, bool bReferenceByteCode = false);
 
 	// Initializes all execute ops and their memory.
 	bool Initialize(FRigVMMemoryContainerPtrArray Memory, FRigVMFixedArray<void*> AdditionalArguments);
@@ -494,7 +494,12 @@ private:
 
 	void CacheSingleMemoryHandle(const FRigVMOperand& InArg, bool bForExecute = false);
 
-	int32 ThreadId;
+	int32 ExecutingThreadId;
+
+	UPROPERTY(transient)
+	URigVM* DeferredVMToCopy;
+
+	void CopyDeferredVMIfRequired();
 
 	friend class URigVMCompiler;
 };
