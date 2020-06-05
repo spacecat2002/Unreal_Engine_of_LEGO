@@ -160,6 +160,7 @@ public:
 		for (uint32 GPUIndex : GPUMask)
 		{
 			ReturnType* NewObject = pfnCreationCore(pfnGetCreationParameter(GPUIndex));
+			CA_ASSUME(NewObject != nullptr);
 			if (ObjectOut == nullptr)
 			{
 				// Don't AddRef the first object or we'll create a reference loop.
