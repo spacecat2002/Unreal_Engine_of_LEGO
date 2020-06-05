@@ -9,7 +9,6 @@
 #pragma once
 #include "CoreTypes.h"
 #include "Misc/AssertionMacros.h"
-#include "Templates/TypeWrapper.h"
 #include "Templates/AreTypesEqual.h"
 #include "Templates/UnrealTypeTraits.h"
 #include "Templates/RemoveReference.h"
@@ -30,11 +29,11 @@ namespace UE4Delegates_Private
 template <typename FuncType, typename... VarTypes>
 class TCommonDelegateInstanceState;
 
-template <typename WrappedRetValType, typename... ParamTypes, typename... VarTypes>
-class TCommonDelegateInstanceState<WrappedRetValType(ParamTypes...), VarTypes...> : IBaseDelegateInstance<typename TUnwrapType<WrappedRetValType>::Type(ParamTypes...)>
+template <typename InRetValType, typename... ParamTypes, typename... VarTypes>
+class TCommonDelegateInstanceState<InRetValType(ParamTypes...), VarTypes...> : IBaseDelegateInstance<InRetValType(ParamTypes...)>
 {
 public:
-	using RetValType = typename TUnwrapType<WrappedRetValType>::Type;
+	using RetValType = InRetValType;
 
 public:
 	explicit TCommonDelegateInstanceState(VarTypes... Vars)
@@ -151,6 +150,21 @@ public:
 		return PayloadAndParams->GetResult();
 	}
 
+	bool ExecuteIfSafe(ParamTypes... Params) const final
+	{
+		if (UserClass* ActualUserObject = this->UserObjectPtr.Get())
+		{
+			using FParmsWithPayload = TPayload<RetValType(typename TDecay<ParamTypes>::Type..., typename TDecay<VarTypes> ::Type...)>;
+
+			TPlacementNewer<FParmsWithPayload> PayloadAndParams;
+			this->Payload.ApplyAfter(PayloadAndParams, Params...);
+			ActualUserObject->ProcessEvent(CachedFunction, &PayloadAndParams);
+			return true;
+		}
+
+		return false;
+	}
+
 public:
 
 	/**
@@ -175,36 +189,6 @@ public:
 
 	// The user object to call the function on.
 	TWeakObjectPtr<UserClass> UserObjectPtr;
-};
-
-template <class UserClass, typename... ParamTypes, typename... VarTypes>
-class TBaseUFunctionDelegateInstance<UserClass, void(ParamTypes...), VarTypes...> : public TBaseUFunctionDelegateInstance<UserClass, TTypeWrapper<void>(ParamTypes...), VarTypes...>
-{
-	using Super = TBaseUFunctionDelegateInstance<UserClass, TTypeWrapper<void>(ParamTypes...), VarTypes...>;
-
-public:
-	/**
-	 * Creates and initializes a new instance.
-	 *
-	 * @param InUserObject The UObject to call the function on.
-	 * @param InFunctionName The name of the function call.
-	 */
-	TBaseUFunctionDelegateInstance(UserClass* InUserObject, const FName& InFunctionName, VarTypes... Vars)
-		: Super(InUserObject, InFunctionName, Vars...)
-	{
-	}
-
-	bool ExecuteIfSafe(ParamTypes... Params) const final
-	{
-		if (Super::IsSafeToExecute())
-		{
-			Super::Execute(Params...);
-
-			return true;
-		}
-
-		return false;
-	}
 };
 
 
@@ -308,6 +292,30 @@ public:
 		return this->Payload.ApplyAfter(TMemberFunctionCaller<MutableUserClass, FMethodPtr>(MutableUserObject, MethodPtr), Params...);
 	}
 
+	bool ExecuteIfSafe(ParamTypes... Params) const final
+	{
+		// Verify that the user object is still valid.  We only have a weak reference to it.
+		if (TSharedPtr<UserClass, SPMode> SharedUserObject = this->UserObject.Pin())
+		{
+			using MutableUserClass = typename TRemoveConst<UserClass>::Type;
+
+			// Safely remove const to work around a compiler issue with instantiating template permutations for 
+			// overloaded functions that take a function pointer typedef as a member of a templated class.  In
+			// all cases where this code is actually invoked, the UserClass will already be a const pointer.
+			MutableUserClass* MutableUserObject = const_cast<MutableUserClass*>(SharedUserObject.Get());
+
+			// Call the member function on the user's object.  And yes, this is the correct C++ syntax for calling a
+			// pointer-to-member function.
+			checkSlow(MethodPtr != nullptr);
+
+			(void)this->Payload.ApplyAfter(TMemberFunctionCaller<MutableUserClass, FMethodPtr>(MutableUserObject, MethodPtr), Params...);
+
+			return true;
+		}
+
+		return false;
+	}
+
 public:
 
 	/**
@@ -345,38 +353,6 @@ protected:
 
 	// C++ member function pointer.
 	FMethodPtr MethodPtr;
-};
-
-template <bool bConst, class UserClass, ESPMode SPMode, typename... ParamTypes, typename... VarTypes>
-class TBaseSPMethodDelegateInstance<bConst, UserClass, SPMode, void(ParamTypes...), VarTypes...> : public TBaseSPMethodDelegateInstance<bConst, UserClass, SPMode, TTypeWrapper<void>(ParamTypes...), VarTypes...>
-{
-	using Super = TBaseSPMethodDelegateInstance<bConst, UserClass, SPMode, TTypeWrapper<void>(ParamTypes...), VarTypes...>;
-
-public:
-	/**
-	 * Creates and initializes a new instance.
-	 *
-	 * @param InUserObject A shared reference to an arbitrary object (templated) that hosts the member function.
-	 * @param InMethodPtr C++ member function pointer for the method to bind.
-	 */
-	TBaseSPMethodDelegateInstance(const TSharedPtr<UserClass, SPMode>& InUserObject, typename Super::FMethodPtr InMethodPtr, VarTypes... Vars)
-		: Super(InUserObject, InMethodPtr, Vars...)
-	{
-	}
-
-	bool ExecuteIfSafe(ParamTypes... Params) const final
-	{
-		// Verify that the user object is still valid.  We only have a weak reference to it.
-		TSharedPtr<UserClass, SPMode> SharedUserObject = Super::UserObject.Pin();
-		if (SharedUserObject.IsValid())
-		{
-			Super::Execute(Params...);
-
-			return true;
-		}
-
-		return false;
-	}
 };
 
 
@@ -482,6 +458,25 @@ public:
 		return this->Payload.ApplyAfter(TMemberFunctionCaller<MutableUserClass, FMethodPtr>(MutableUserObject, MethodPtr), Params...);
 	}
 
+
+	bool ExecuteIfSafe(ParamTypes... Params) const final
+	{
+		using MutableUserClass = typename TRemoveConst<UserClass>::Type;
+
+		// Safely remove const to work around a compiler issue with instantiating template permutations for 
+		// overloaded functions that take a function pointer typedef as a member of a templated class.  In
+		// all cases where this code is actually invoked, the UserClass will already be a const pointer.
+		MutableUserClass* MutableUserObject = const_cast<MutableUserClass*>(UserObject);
+
+		// Call the member function on the user's object.  And yes, this is the correct C++ syntax for calling a
+		// pointer-to-member function.
+		checkSlow(MethodPtr != nullptr);
+
+		(void)this->Payload.ApplyAfter(TMemberFunctionCaller<MutableUserClass, FMethodPtr>(MutableUserObject, MethodPtr), Params...);
+
+		return true;
+	}
+
 public:
 
 	/**
@@ -504,34 +499,6 @@ protected:
 	// C++ member function pointer.
 	FMethodPtr MethodPtr;
 };
-
-template <bool bConst, class UserClass, typename... ParamTypes, typename... VarTypes>
-class TBaseRawMethodDelegateInstance<bConst, UserClass, void(ParamTypes...), VarTypes...> : public TBaseRawMethodDelegateInstance<bConst, UserClass, TTypeWrapper<void>(ParamTypes...), VarTypes...>
-{
-	using Super = TBaseRawMethodDelegateInstance<bConst, UserClass, TTypeWrapper<void>(ParamTypes...), VarTypes...>;
-
-public:
-	/**
-	 * Creates and initializes a new instance.
-	 *
-	 * @param InUserObject An arbitrary object (templated) that hosts the member function.
-	 * @param InMethodPtr C++ member function pointer for the method to bind.
-	 */
-	TBaseRawMethodDelegateInstance(UserClass* InUserObject, typename Super::FMethodPtr InMethodPtr, VarTypes... Vars)
-		: Super(InUserObject, InMethodPtr, Vars...)
-	{
-	}
-
-	bool ExecuteIfSafe(ParamTypes... Params) const final
-	{
-		// We never know whether or not it is safe to deference a C++ pointer, but we have to
-		// trust the user in this case.  Prefer using a shared-pointer based delegate type instead!
-		Super::Execute(Params...);
-
-		return true;
-	}
-};
-
 
 /**
  * Implements a delegate binding for UObject methods.
@@ -636,6 +603,28 @@ public:
 		return this->Payload.ApplyAfter(TMemberFunctionCaller<MutableUserClass, FMethodPtr>(MutableUserObject, MethodPtr), Params...);
 	}
 
+	bool ExecuteIfSafe(ParamTypes... Params) const final
+	{
+		if (UserClass* ActualUserObject = this->UserObject.Get())
+		{
+			using MutableUserClass = typename TRemoveConst<UserClass>::Type;
+
+			// Safely remove const to work around a compiler issue with instantiating template permutations for 
+			// overloaded functions that take a function pointer typedef as a member of a templated class.  In
+			// all cases where this code is actually invoked, the UserClass will already be a const pointer.
+			MutableUserClass* MutableUserObject = const_cast<MutableUserClass*>(ActualUserObject);
+
+			// Call the member function on the user's object.  And yes, this is the correct C++ syntax for calling a
+			// pointer-to-member function.
+			checkSlow(MethodPtr != nullptr);
+
+			(void)this->Payload.ApplyAfter(TMemberFunctionCaller<MutableUserClass, FMethodPtr>(MutableUserObject, MethodPtr), Params...);
+
+			return true;
+		}
+		return false;
+	}
+
 public:
 
 	/**
@@ -657,37 +646,6 @@ protected:
 
 	// C++ member function pointer.
 	FMethodPtr MethodPtr;
-};
-
-template <bool bConst, class UserClass, typename... ParamTypes, typename... VarTypes>
-class TBaseUObjectMethodDelegateInstance<bConst, UserClass, void(ParamTypes...), VarTypes...> : public TBaseUObjectMethodDelegateInstance<bConst, UserClass, TTypeWrapper<void>(ParamTypes...), VarTypes...>
-{
-	using Super = TBaseUObjectMethodDelegateInstance<bConst, UserClass, TTypeWrapper<void> (ParamTypes...), VarTypes...>;
-
-public:
-	/**
-	 * Creates and initializes a new instance.
-	 *
-	 * @param InUserObject An arbitrary object (templated) that hosts the member function.
-	 * @param InMethodPtr C++ member function pointer for the method to bind.
-	 */
-	TBaseUObjectMethodDelegateInstance(UserClass* InUserObject, typename Super::FMethodPtr InMethodPtr, VarTypes... Vars)
-		: Super(InUserObject, InMethodPtr, Vars...)
-	{
-	}
-
-	bool ExecuteIfSafe(ParamTypes... Params) const final
-	{
-		// Verify that the user object is still valid.  We only have a weak reference to it.
-		UserClass* ActualUserObject = Super::UserObject.Get();
-		if (ActualUserObject != nullptr)
-		{
-			Super::Execute(Params...);
-
-			return true;
-		}
-		return false;
-	}
 };
 
 
@@ -775,6 +733,16 @@ public:
 		return this->Payload.ApplyAfter(StaticFuncPtr, Params...);
 	}
 
+	bool ExecuteIfSafe(ParamTypes... Params) const final
+	{
+		// Call the static function
+		checkSlow(StaticFuncPtr != nullptr);
+
+		(void)this->Payload.ApplyAfter(StaticFuncPtr, Params...);
+
+		return true;
+	}
+
 public:
 
 	/**
@@ -792,30 +760,6 @@ private:
 
 	// C++ function pointer.
 	FFuncPtr StaticFuncPtr;
-};
-
-template <typename... ParamTypes, typename... VarTypes>
-class TBaseStaticDelegateInstance<void(ParamTypes...), VarTypes...> : public TBaseStaticDelegateInstance<TTypeWrapper<void>(ParamTypes...), VarTypes...>
-{
-	using Super = TBaseStaticDelegateInstance<TTypeWrapper<void> (ParamTypes...), VarTypes...>;
-
-public:
-	/**
-	 * Creates and initializes a new instance.
-	 *
-	 * @param InStaticFuncPtr C++ function pointer.
-	 */
-	TBaseStaticDelegateInstance(typename Super::FFuncPtr InStaticFuncPtr, VarTypes... Vars)
-		: Super(InStaticFuncPtr, Vars...)
-	{
-	}
-
-	bool ExecuteIfSafe(ParamTypes... Params) const final
-	{
-		Super::Execute(Params...);
-
-		return true;
-	}
 };
 
 /**
@@ -898,6 +842,14 @@ public:
 		return this->Payload.ApplyAfter(Functor, Params...);
 	}
 
+	bool ExecuteIfSafe(ParamTypes... Params) const final
+	{
+		// Functors are always considered safe to execute!
+		(void)this->Payload.ApplyAfter(Functor, Params...);
+
+		return true;
+	}
+
 public:
 	/**
 	 * Creates a new static function delegate binding for the given function pointer.
@@ -920,35 +872,6 @@ private:
 	// model the Functor as being a direct subobject of the delegate (which would maintain transivity of
 	// const - because the binding doesn't affect the substitutability of a copied delegate.
 	mutable typename TRemoveConst<FunctorType>::Type Functor;
-};
-
-template <typename FunctorType, typename... ParamTypes, typename... VarTypes>
-class TBaseFunctorDelegateInstance<void(ParamTypes...), FunctorType, VarTypes...> : public TBaseFunctorDelegateInstance<TTypeWrapper<void>(ParamTypes...), FunctorType, VarTypes...>
-{
-	using Super = TBaseFunctorDelegateInstance<TTypeWrapper<void>(ParamTypes...), FunctorType, VarTypes...>;
-
-public:
-	/**
-	 * Creates and initializes a new instance.
-	 *
-	 * @param InFunctor C++ functor
-	 */
-	TBaseFunctorDelegateInstance(const FunctorType& InFunctor, VarTypes... Vars)
-		: Super(InFunctor, Vars...)
-	{
-	}
-	TBaseFunctorDelegateInstance(FunctorType&& InFunctor, VarTypes... Vars)
-		: Super(MoveTemp(InFunctor), Vars...)
-	{
-	}
-
-	bool ExecuteIfSafe(ParamTypes... Params) const final
-	{
-		// Functors are always considered safe to execute!
-		Super::Execute(Params...);
-
-		return true;
-	}
 };
 
 /**
@@ -1036,6 +959,17 @@ public:
 		return this->Payload.ApplyAfter(Functor, Params...);
 	}
 
+	bool ExecuteIfSafe(ParamTypes... Params) const final
+	{
+		if (ContextObject.IsValid())
+		{
+			(void)this->Payload.ApplyAfter(Functor, Params...);
+			return true;
+		}
+
+		return false;
+	}
+
 public:
 	/**
 	 * Creates a new static function delegate binding for the given function pointer.
@@ -1061,37 +995,4 @@ private:
 	// model the Functor as being a direct subobject of the delegate (which would maintain transivity of
 	// const - because the binding doesn't affect the substitutability of a copied delegate.
 	mutable typename TRemoveConst<FunctorType>::Type Functor;
-};
-
-template <typename UserClass, typename FunctorType, typename... ParamTypes, typename... VarTypes>
-class TWeakBaseFunctorDelegateInstance<UserClass, void(ParamTypes...), FunctorType, VarTypes...> : public TWeakBaseFunctorDelegateInstance<UserClass, TTypeWrapper<void>(ParamTypes...), FunctorType, VarTypes...>
-{
-	using Super = TWeakBaseFunctorDelegateInstance<UserClass, TTypeWrapper<void>(ParamTypes...), FunctorType, VarTypes...>;
-
-public:
-	/**
-	 * Creates and initializes a new instance.
-	 *
-	 * @param InFunctor C++ functor
-	 */
-	TWeakBaseFunctorDelegateInstance(UserClass* InContextObject, const FunctorType& InFunctor, VarTypes... Vars)
-		: Super(InContextObject, InFunctor, Vars...)
-	{
-	}
-
-	TWeakBaseFunctorDelegateInstance(UserClass* InContextObject, FunctorType&& InFunctor, VarTypes... Vars)
-		: Super(InContextObject, MoveTemp(InFunctor), Vars...)
-	{
-	}
-
-	bool ExecuteIfSafe(ParamTypes... Params) const final
-	{
-		if (Super::IsSafeToExecute())
-		{
-			Super::Execute(Params...);
-			return true;
-		}
-
-		return false;
-	}
 };

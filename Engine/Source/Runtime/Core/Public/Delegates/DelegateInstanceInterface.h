@@ -14,10 +14,10 @@ template <typename FuncType>
 struct IBaseDelegateInstance;
 
 template <typename FuncType>
-struct IBaseDelegateInstanceCommon;
+struct IBaseDelegateInstance;
 
 template <typename RetType, typename... ArgTypes>
-struct IBaseDelegateInstanceCommon<RetType(ArgTypes...)> : public IDelegateInstance
+struct IBaseDelegateInstance<RetType(ArgTypes...)> : public IDelegateInstance
 {
 	/**
 	 * Emplaces a copy of the delegate instance into the FDelegateBase.
@@ -28,16 +28,7 @@ struct IBaseDelegateInstanceCommon<RetType(ArgTypes...)> : public IDelegateInsta
 	 * Execute the delegate.  If the function pointer is not valid, an error will occur.
 	 */
 	virtual RetType Execute(ArgTypes...) const = 0;
-};
 
-template <typename FuncType>
-struct IBaseDelegateInstance : public IBaseDelegateInstanceCommon<FuncType>
-{
-};
-
-template <typename... ArgTypes>
-struct IBaseDelegateInstance<void(ArgTypes...)> : public IBaseDelegateInstanceCommon<void(ArgTypes...)>
-{
 	/**
 	 * Execute the delegate, but only if the function pointer is still valid
 	 *

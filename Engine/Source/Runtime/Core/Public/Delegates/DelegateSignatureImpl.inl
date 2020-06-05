@@ -15,8 +15,8 @@
 #include "Templates/IsConst.h"
 #include "Templates/RemoveReference.h"
 #include "Templates/SharedPointer.h"
-#include "Templates/TypeWrapper.h"
 #include "Templates/UnrealTemplate.h"
+#include <type_traits>
 
 class FDelegateBase;
 class FDelegateHandle;
@@ -38,12 +38,12 @@ class TDelegate
 	static_assert(sizeof(DelegateSignature) == 0, "Expected a function signature for the delegate template parameter");
 };
 
-template <typename WrappedRetValType, typename... ParamTypes>
-class TDelegate<WrappedRetValType(ParamTypes...)> : public FDelegateBase
+template <typename InRetValType, typename... ParamTypes>
+class TDelegate<InRetValType(ParamTypes...)> : public FDelegateBase
 {
 public:
 	/** Type definition for return value type. */
-	typedef typename TUnwrapType<WrappedRetValType>::Type RetValType;
+	typedef InRetValType RetValType;
 	typedef RetValType TFuncType(ParamTypes...);
 
 	/** Type definition for the shared interface of delegate instance types compatible with this delegate class. */
@@ -561,6 +561,28 @@ public:
 	}
 
 	/**
+	 * Execute the delegate, but only if the function pointer is still valid
+	 *
+	 * @return  Returns true if the function was executed
+	 */
+	 // NOTE: Currently only delegates with no return value support ExecuteIfBound()
+	template <
+		// This construct is intended to disable this function when RetValType != void.
+		// DummyRetValType exists to create a substitution which can fail, to achieve SFINAE.
+		typename DummyRetValType = RetValType,
+		std::enable_if_t<std::is_void<DummyRetValType>::value>* = nullptr
+	>
+	inline bool ExecuteIfBound(ParamTypes... Params) const
+	{
+		if (IsBound())
+		{
+			return GetDelegateInstanceProtected()->ExecuteIfSafe(Params...);
+		}
+
+		return false;
+	}
+
+	/**
 	 * Returns a pointer to the correctly-typed delegate instance.
 	 */
 	FORCEINLINE TDelegateInstanceInterface* GetDelegateInstanceProtected() const
@@ -568,89 +590,6 @@ public:
 		return (TDelegateInstanceInterface*)FDelegateBase::GetDelegateInstanceProtected();
 	}
 };
-
-template <typename... ParamTypes>
-class TDelegate<void(ParamTypes...)> : public TDelegate<TTypeWrapper<void>(ParamTypes...)>
-{
-	typedef TDelegate<TTypeWrapper<void>(ParamTypes...)> Super;
-
-public:
-	typedef typename Super::TDelegateInstanceInterface TDelegateInstanceInterface;
-
-	/**
-	 * Default constructor
-	 */
-	TDelegate()
-	{
-	}
-
-	/**
-	 * 'Null' constructor
-	 */
-	FORCEINLINE TDelegate(TYPE_OF_NULLPTR)
-		: Super(nullptr)
-	{
-	}
-
-	/**
-	 * Move constructor.
-	 *
-	 * @param Other The delegate object to move from.
-	 */
-	FORCEINLINE TDelegate(TDelegate&& Other)
-		: Super(MoveTemp(Other))
-	{
-	}
-
-	/**
-	 * Creates and initializes a new instance from an existing delegate object.
-	 *
-	 * @param Other The delegate object to copy from.
-	 */
-	FORCEINLINE TDelegate(const TDelegate& Other)
-		: Super(Other)
-	{
-	}
-
-	/**
-	 * Move assignment operator.
-	 *
-	 * @param	OtherDelegate	Delegate object to copy from
-	 */
-	inline TDelegate& operator=(TDelegate&& Other)
-	{
-		(Super&)*this = MoveTemp((Super&)Other);
-		return *this;
-	}
-
-	/**
-	 * Assignment operator.
-	 *
-	 * @param	OtherDelegate	Delegate object to copy from
-	 */
-	inline TDelegate& operator=(const TDelegate& Other)
-	{
-		(Super&)*this = (Super&)Other;
-		return *this;
-	}
-
-	/**
-	 * Execute the delegate, but only if the function pointer is still valid
-	 *
-	 * @return  Returns true if the function was executed
-	 */
-	// NOTE: Currently only delegates with no return value support ExecuteIfBound() 
-	inline bool ExecuteIfBound(ParamTypes... Params) const
-	{
-		if (Super::IsBound())
-		{
-			return Super::GetDelegateInstanceProtected()->ExecuteIfSafe(Params...);
-		}
-
-		return false;
-	}
-};
-
 
 /**
  * Multicast delegate base class.
