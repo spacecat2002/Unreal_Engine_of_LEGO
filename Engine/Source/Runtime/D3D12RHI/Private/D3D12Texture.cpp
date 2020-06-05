@@ -330,11 +330,7 @@ void FD3D12TextureStats::D3D12TextureAllocated(TD3D12Texture2D<BaseResourceType>
 	// Ignore placed textures as their memory is already allocated and accounted for
 	if (D3D12Texture2D && D3D12Texture2D->IsPlacedResource() == false)
 	{
-		if ((Texture.Flags & TexCreate_Virtual) == TexCreate_Virtual)
-		{
-			Texture.SetMemorySize(0);
-		}
-		else
+		if ((Texture.Flags & TexCreate_Virtual) != TexCreate_Virtual)
 		{
 			if (!Desc)
 			{
