@@ -207,18 +207,12 @@ struct FShaderParameterStructBindingContext
 
 					if (BoundSize != 1)
 					{
-						// Switch shader compiler does not yet support this validation on RHIResouces, see UE-86533
-						const EShaderPlatform& ShaderPlatform = Shader->GetShaderPlatform();
-						const bool bIsSwitchShader = ShaderPlatform == SP_SWITCH || ShaderPlatform == SP_SWITCH_FORWARD;
-						if (bIsSwitchShader && !bIsRHIResource)
-						{
-							UE_LOG(LogShaders, Fatal,
-								TEXT("Error with shader %s's (Permutation Id %d) parameter %s is %i bytes, cpp name = %s.")
-								TEXT("The shader compiler should give precisely which elements of an array did not get compiled out, ")
-								TEXT("for optimal automatic render graph pass dependency with ClearUnusedGraphResources()."),
-								Shader->GetTypeUnfrozen()->GetName(), PermutationId,
-								*ElementShaderBindingName, BoundSize, *CppName);
-						}
+						UE_LOG(LogShaders, Fatal,
+							TEXT("Error with shader %s's (Permutation Id %d) parameter %s is %i bytes, cpp name = %s.")
+							TEXT("The shader compiler should give precisely which elements of an array did not get compiled out, ")
+							TEXT("for optimal automatic render graph pass dependency with ClearUnusedGraphResources()."),
+							Shader->GetTypeUnfrozen()->GetName(), PermutationId,
+							*ElementShaderBindingName, BoundSize, *CppName);
 					}
 
 					Bindings->ResourceParameters.Add(Parameter);

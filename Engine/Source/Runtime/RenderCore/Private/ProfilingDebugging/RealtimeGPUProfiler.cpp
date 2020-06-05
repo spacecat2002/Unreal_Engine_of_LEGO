@@ -772,10 +772,12 @@ void FRealtimeGPUProfiler::Cleanup()
 	RenderQueryPool.SafeRelease();
 }
 
+#if UE_TRACE_ENABLED
 namespace GpuProfilerTrace
 {
 RHI_API UE_TRACE_CHANNEL_EXTERN(GpuChannel)
 }
+#endif
 
 void FRealtimeGPUProfiler::BeginFrame(FRHICommandListImmediate& RHICmdList)
 {

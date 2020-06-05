@@ -10,6 +10,11 @@ THIRD_PARTY_INCLUDES_START
 #include "mtlpp.hpp"
 THIRD_PARTY_INCLUDES_END
 
+#include "HAL/FileManager.h"
+#include "HAL/PlatformFileManager.h"
+#include "Misc/Paths.h"
+#include "Misc/ScopeLock.h"
+
 #include "MetalShaderDebugCache.h"
 #include "MetalShaderDebugZipFile.h"
 
