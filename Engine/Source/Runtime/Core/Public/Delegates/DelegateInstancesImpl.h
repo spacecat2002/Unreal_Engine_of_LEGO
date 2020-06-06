@@ -285,8 +285,6 @@ public:
 		// all cases where this code is actually invoked, the UserClass will already be a const pointer.
 		MutableUserClass* MutableUserObject = const_cast<MutableUserClass*>(SharedUserObject.Get());
 
-		// Call the member function on the user's object.  And yes, this is the correct C++ syntax for calling a
-		// pointer-to-member function.
 		checkSlow(MethodPtr != nullptr);
 
 		return this->Payload.ApplyAfter(TMemberFunctionCaller<MutableUserClass, FMethodPtr>(MutableUserObject, MethodPtr), Params...);
@@ -304,8 +302,6 @@ public:
 			// all cases where this code is actually invoked, the UserClass will already be a const pointer.
 			MutableUserClass* MutableUserObject = const_cast<MutableUserClass*>(SharedUserObject.Get());
 
-			// Call the member function on the user's object.  And yes, this is the correct C++ syntax for calling a
-			// pointer-to-member function.
 			checkSlow(MethodPtr != nullptr);
 
 			(void)this->Payload.ApplyAfter(TMemberFunctionCaller<MutableUserClass, FMethodPtr>(MutableUserObject, MethodPtr), Params...);
@@ -451,8 +447,6 @@ public:
 		// all cases where this code is actually invoked, the UserClass will already be a const pointer.
 		MutableUserClass* MutableUserObject = const_cast<MutableUserClass*>(UserObject);
 
-		// Call the member function on the user's object.  And yes, this is the correct C++ syntax for calling a
-		// pointer-to-member function.
 		checkSlow(MethodPtr != nullptr);
 
 		return this->Payload.ApplyAfter(TMemberFunctionCaller<MutableUserClass, FMethodPtr>(MutableUserObject, MethodPtr), Params...);
@@ -468,8 +462,6 @@ public:
 		// all cases where this code is actually invoked, the UserClass will already be a const pointer.
 		MutableUserClass* MutableUserObject = const_cast<MutableUserClass*>(UserObject);
 
-		// Call the member function on the user's object.  And yes, this is the correct C++ syntax for calling a
-		// pointer-to-member function.
 		checkSlow(MethodPtr != nullptr);
 
 		(void)this->Payload.ApplyAfter(TMemberFunctionCaller<MutableUserClass, FMethodPtr>(MutableUserObject, MethodPtr), Params...);
@@ -596,8 +588,6 @@ public:
 		// all cases where this code is actually invoked, the UserClass will already be a const pointer.
 		MutableUserClass* MutableUserObject = const_cast<MutableUserClass*>(UserObject.Get());
 
-		// Call the member function on the user's object.  And yes, this is the correct C++ syntax for calling a
-		// pointer-to-member function.
 		checkSlow(MethodPtr != nullptr);
 
 		return this->Payload.ApplyAfter(TMemberFunctionCaller<MutableUserClass, FMethodPtr>(MutableUserObject, MethodPtr), Params...);
@@ -614,8 +604,6 @@ public:
 			// all cases where this code is actually invoked, the UserClass will already be a const pointer.
 			MutableUserClass* MutableUserObject = const_cast<MutableUserClass*>(ActualUserObject);
 
-			// Call the member function on the user's object.  And yes, this is the correct C++ syntax for calling a
-			// pointer-to-member function.
 			checkSlow(MethodPtr != nullptr);
 
 			(void)this->Payload.ApplyAfter(TMemberFunctionCaller<MutableUserClass, FMethodPtr>(MutableUserObject, MethodPtr), Params...);
