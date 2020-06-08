@@ -502,7 +502,7 @@ public:
 	}
 
 
-	inline void AsFastAllocation(FD3D12Resource* Resource, uint32 BufferSize, D3D12_GPU_VIRTUAL_ADDRESS GPUBase, void* CPUBase, uint64 Offset, bool bMultiFrame = false)
+	inline void AsFastAllocation(FD3D12Resource* Resource, uint32 BufferSize, D3D12_GPU_VIRTUAL_ADDRESS GPUBase, void* CPUBase, uint64 ResourceOffsetBase, uint64 Offset, bool bMultiFrame = false)
 	{
 		if (bMultiFrame)
 		{
@@ -515,7 +515,7 @@ public:
 		}
 		SetResource(Resource);
 		SetSize(BufferSize);
-		SetOffsetFromBaseOfResource(Offset);
+		SetOffsetFromBaseOfResource(ResourceOffsetBase + Offset);
 
 		if (CPUBase != nullptr)
 		{

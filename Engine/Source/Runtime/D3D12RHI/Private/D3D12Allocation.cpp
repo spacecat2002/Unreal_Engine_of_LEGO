@@ -1381,6 +1381,7 @@ void* FD3D12FastAllocator::Allocate(uint32 Size, uint32 Alignment, class FD3D12R
 			Size,
 			CurrentAllocatorPage->FastAllocBuffer->GetGPUVirtualAddress(),
 			CurrentAllocatorPage->FastAllocData,
+			0,
 			CurrentOffset);
 
 		CurrentAllocatorPage->NextFastAllocOffset = CurrentOffset + Size;
@@ -1545,6 +1546,7 @@ void* FD3D12FastConstantAllocator::Allocate(uint32 Bytes, FD3D12ResourceLocation
 		AlignedSize,
 		UnderlyingResource.GetGPUVirtualAddress(),
 		UnderlyingResource.GetMappedBaseAddress(),
+		UnderlyingResource.GetOffsetFromBaseOfResource(), // AllocUploadResource returns a suballocated resource where we're suballocating (again) from
 		Offset);
 
 #if USE_STATIC_ROOT_SIGNATURE
