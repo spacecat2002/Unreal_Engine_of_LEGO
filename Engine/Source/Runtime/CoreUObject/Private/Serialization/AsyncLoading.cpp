@@ -110,6 +110,23 @@ bool IsGarbageCollectionLocked();
 /** Global request ID counter */
 static FThreadSafeCounter GPackageRequestID;
 
+TAtomic<int>	GAsyncLoadingFlushIsActive(0);
+
+class FScopeAsyncLoadingFlushIsActive
+{
+public:
+	FScopeAsyncLoadingFlushIsActive()
+	{
+		GAsyncLoadingFlushIsActive++;
+	}
+
+	~FScopeAsyncLoadingFlushIsActive()
+	{
+		GAsyncLoadingFlushIsActive--;
+	}
+};
+
+
 /**
  * Updates FUObjectThreadContext with the current package when processing it.
  * FUObjectThreadContext::AsyncPackage is used by NotifyConstructedDuringAsyncLoading.
@@ -1245,6 +1262,7 @@ struct FPrecacheCallbackHandler
 
 	void UpdatePlatformFilePrecacheThrottling(bool bEnablePrecacheRequests)
 	{
+		CSV_EVENT(FileIO, TEXT("Precache %s"), bEnablePrecacheRequests ? TEXT("Enabled") : TEXT("Disabled"));
 		// If we're not processing precache requests, set the min priority to GAsyncLoadingPrecachePriority + 1
 		EAsyncIOPriorityAndFlags NewMinPriority = bEnablePrecacheRequests ? AIOP_MIN : (EAsyncIOPriorityAndFlags)FMath::Clamp(GAsyncLoadingPrecachePriority + 1, (int32)AIOP_MIN, (int32)AIOP_MAX);
 		FPlatformFileManager::Get().GetPlatformFile().SetAsyncMinimumPriority(NewMinPriority);
@@ -3115,7 +3133,6 @@ void FAsyncPackage::EventDrivenSerializeExport(int32 LocalExportIndex)
 
 	FObjectExport& Export = Linker->ExportMap[LocalExportIndex];
 
-	LLM_SCOPE(ELLMTag::UObject);
 	LLM_SCOPED_TAG_WITH_OBJECT_IN_SET(GetLinkerRoot(), ELLMTagSet::Assets);
 	LLM_SCOPED_TAG_WITH_OBJECT_IN_SET((Export.DynamicType == FObjectExport::EDynamicType::DynamicType) ? UDynamicClass::StaticClass() :
 		CastEventDrivenIndexToObject<UClass>(Export.ClassIndex, false), ELLMTagSet::AssetClasses);
@@ -3194,6 +3211,7 @@ void FAsyncPackage::EventDrivenSerializeExport(int32 LocalExportIndex)
 		Linker->TemplateForGetArchetypeFromLoader = Template;
 
 		{
+			LLM_SCOPE(ELLMTag::UObject);
 			ACCUM_LOADTIMECOUNT_STAT(StaticGetNativeClassName(Object->GetClass()).ToString());
 			SCOPED_ACCUM_LOADTIME_STAT(StaticGetNativeClassName(Object->GetClass()).ToString());
 			SCOPED_ACCUM_LOADTIME(Serialize, StaticGetNativeClassName(Object->GetClass()));
@@ -6351,8 +6369,6 @@ EAsyncPackageState::Type FAsyncPackage::FinishExternalReadDependencies()
  */
 EAsyncPackageState::Type FAsyncPackage::PostLoadObjects()
 {
-	LLM_SCOPE(ELLMTag::UObject);
-
 	SCOPE_CYCLE_COUNTER(STAT_FAsyncPackage_PostLoadObjects);
 
 	SCOPED_LOADTIMER(PostLoadObjectsTime);
@@ -6983,6 +6999,7 @@ void FAsyncLoadingThread::FlushLoading(int32 PackageID)
 		{
 			return;
 		}
+		FScopeAsyncLoadingFlushIsActive FlushIsActive;
 
 		FCoreDelegates::OnAsyncLoadingFlush.Broadcast();
 
