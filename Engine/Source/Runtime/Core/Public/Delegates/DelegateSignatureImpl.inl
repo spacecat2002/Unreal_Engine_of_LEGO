@@ -574,9 +574,9 @@ public:
 	>
 	inline bool ExecuteIfBound(ParamTypes... Params) const
 	{
-		if (IsBound())
+		if (TDelegateInstanceInterface* Ptr = GetDelegateInstanceProtected())
 		{
-			return GetDelegateInstanceProtected()->ExecuteIfSafe(Params...);
+			return Ptr->ExecuteIfSafe(Params...);
 		}
 
 		return false;
