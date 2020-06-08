@@ -245,13 +245,13 @@ namespace UE4Tuple_Private
 		template <typename FuncType, typename... ArgTypes>
 		decltype(auto) ApplyAfter(FuncType&& Func, ArgTypes&&... Args) const
 		{
-			return Invoke(Func, Forward<ArgTypes>(Args)..., this->template Get<Indices>()...);
+			return ::Invoke(Func, Forward<ArgTypes>(Args)..., this->template Get<Indices>()...);
 		}
 
 		template <typename FuncType, typename... ArgTypes>
 		decltype(auto) ApplyBefore(FuncType&& Func, ArgTypes&&... Args) const
 		{
-			return Invoke(Func, this->template Get<Indices>()..., Forward<ArgTypes>(Args)...);
+			return ::Invoke(Func, this->template Get<Indices>()..., Forward<ArgTypes>(Args)...);
 		}
 
 		FORCEINLINE friend FArchive& operator<<(FArchive& Ar, TTupleImpl& Tuple)
@@ -345,7 +345,7 @@ namespace UE4Tuple_Private
 		template <uint32 Index, typename FuncType, typename... TupleTypes>
 		FORCEINLINE static void InvokeFunc(FuncType&& Func, TupleTypes&&... Tuples)
 		{
-			Invoke(Forward<FuncType>(Func), Forward<TupleTypes>(Tuples).template Get<Index>()...);
+			::Invoke(Forward<FuncType>(Func), Forward<TupleTypes>(Tuples).template Get<Index>()...);
 		}
 
 		template <typename FuncType, typename... TupleTypes>
