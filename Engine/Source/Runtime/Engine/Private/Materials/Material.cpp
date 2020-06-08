@@ -27,6 +27,7 @@
 #include "Materials/MaterialExpressionShadingPathSwitch.h"
 #include "Materials/MaterialExpressionShaderStageSwitch.h"
 #include "Materials/MaterialExpressionMakeMaterialAttributes.h"
+#include "Materials/MaterialExpressionSetMaterialAttributes.h"
 #include "Materials/MaterialExpressionParameter.h"
 #include "Materials/MaterialExpressionRuntimeVirtualTextureSampleParameter.h"
 #include "Materials/MaterialExpressionScalarParameter.h"
@@ -4064,6 +4065,32 @@ void UMaterial::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEve
 			|| (Refraction.UseConstant && FMath::Abs(Refraction.Constant - 1.0f) >= KINDA_SMALL_NUMBER))
 		{
 			bUsesDistortion = true;
+		}
+
+		// check the material attributes for refraction expressions as well
+		if (MaterialAttributes.Expression)
+		{
+			// handle make attribute expressions
+			UMaterialExpressionMakeMaterialAttributes * MakeAttributeExpression = Cast<UMaterialExpressionMakeMaterialAttributes>(MaterialAttributes.Expression);
+			if (MakeAttributeExpression && MakeAttributeExpression->Refraction.Expression)
+			{
+				bUsesDistortion = true;
+			}
+
+			// handle set attribute expressions
+			UMaterialExpressionSetMaterialAttributes * SetAttributeExpression = Cast<UMaterialExpressionSetMaterialAttributes>(MaterialAttributes.Expression);
+			if (SetAttributeExpression)
+			{
+				for (int32 Index = 0; Index < SetAttributeExpression->Inputs.Num(); Index++)
+				{
+					FExpressionInput & Input = SetAttributeExpression->Inputs[Index];
+					FName InputName = SetAttributeExpression->GetInputName(Index);
+					if (InputName == TEXT("Refraction"))
+					{
+						bUsesDistortion = true;
+					}
+				}
+			}
 		}
 	}
 
