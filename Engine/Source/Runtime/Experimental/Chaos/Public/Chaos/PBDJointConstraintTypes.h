@@ -108,6 +108,7 @@ namespace Chaos
 		FReal AngularProjection;
 		FReal ParentInvMassScale;
 
+		bool bCollisionEnabled;
 		bool bProjectionEnabled;
 		bool bSoftProjectionEnabled;
 
@@ -128,6 +129,10 @@ namespace Chaos
 		FReal SoftTwistDamping;
 		FReal SoftSwingStiffness;
 		FReal SoftSwingDamping;
+
+		FReal LinearRestitution;
+		FReal TwistRestitution;
+		FReal SwingRestitution;
 
 		FVec3 LinearDrivePositionTarget;
 		FVec3 LinearDriveVelocityTarget;
