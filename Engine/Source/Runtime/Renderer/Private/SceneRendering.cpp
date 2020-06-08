@@ -4275,38 +4275,40 @@ RENDERER_API void SetupSkyIrradianceEnvironmentMapConstantsFromSkyIrradiance(FVe
 
 void FSceneRenderer::UpdateSkyIrradianceGpuBuffer(FRHICommandListImmediate& RHICmdList)
 {
-	FVector4 OutSkyIrradianceEnvironmentMap[7];
-	// Make sure there's no padding since we're going to cast to FVector4*
-	checkSlow(sizeof(OutSkyIrradianceEnvironmentMap) == sizeof(FVector4) * 7);
-
-	const bool bUploadIrradiance = Scene
-		&& Scene->SkyLight
-		// Skylights with static lighting already had their diffuse contribution baked into lightmaps
-		&& !Scene->SkyLight->bHasStaticLighting
-		&& ViewFamily.EngineShowFlags.SkyLighting
-		&& !Scene->SkyLight->bRealTimeCaptureEnabled; // When bRealTimeCaptureEnabled is tru, the buffer will be setup on GPU directly in this case
-
-	if (bUploadIrradiance)
+	if (Scene)
 	{
-		const FSHVectorRGB3& SkyIrradiance = Scene->SkyLight->IrradianceEnvironmentMap;
-		SetupSkyIrradianceEnvironmentMapConstantsFromSkyIrradiance(OutSkyIrradianceEnvironmentMap, SkyIrradiance);
+		FVector4 OutSkyIrradianceEnvironmentMap[7];
+		// Make sure there's no padding since we're going to cast to FVector4*
+		checkSlow(sizeof(OutSkyIrradianceEnvironmentMap) == sizeof(FVector4) * 7);
 
-		// Create a buffer for this frame 
-		Scene->SkyIrradianceEnvironmentMap.Release();
-		Scene->SkyIrradianceEnvironmentMap.Initialize(sizeof(FVector4), 7, 0, TEXT("SkyIrradianceEnvironmentMap"));
+		const bool bUploadIrradiance = Scene->SkyLight
+			// Skylights with static lighting already had their diffuse contribution baked into lightmaps
+			&& !Scene->SkyLight->bHasStaticLighting
+			&& ViewFamily.EngineShowFlags.SkyLighting
+			&& !Scene->SkyLight->bRealTimeCaptureEnabled; // When bRealTimeCaptureEnabled is tru, the buffer will be setup on GPU directly in this case
 
-		// Set the captured environment map data
-		void* DataPtr = FRHICommandListExecutor::GetImmediateCommandList().LockStructuredBuffer(Scene->SkyIrradianceEnvironmentMap.Buffer, 0, Scene->SkyIrradianceEnvironmentMap.NumBytes, RLM_WriteOnly);
-		FPlatformMemory::Memcpy(DataPtr, &OutSkyIrradianceEnvironmentMap, sizeof(OutSkyIrradianceEnvironmentMap));
-		FRHICommandListExecutor::GetImmediateCommandList().UnlockStructuredBuffer(Scene->SkyIrradianceEnvironmentMap.Buffer);
+		if (bUploadIrradiance)
+		{
+			const FSHVectorRGB3& SkyIrradiance = Scene->SkyLight->IrradianceEnvironmentMap;
+			SetupSkyIrradianceEnvironmentMapConstantsFromSkyIrradiance(OutSkyIrradianceEnvironmentMap, SkyIrradiance);
+
+			// Create a buffer for this frame 
+			Scene->SkyIrradianceEnvironmentMap.Release();
+			Scene->SkyIrradianceEnvironmentMap.Initialize(sizeof(FVector4), 7, 0, TEXT("SkyIrradianceEnvironmentMap"));
+
+			// Set the captured environment map data
+			void* DataPtr = FRHICommandListExecutor::GetImmediateCommandList().LockStructuredBuffer(Scene->SkyIrradianceEnvironmentMap.Buffer, 0, Scene->SkyIrradianceEnvironmentMap.NumBytes, RLM_WriteOnly);
+			FPlatformMemory::Memcpy(DataPtr, &OutSkyIrradianceEnvironmentMap, sizeof(OutSkyIrradianceEnvironmentMap));
+			FRHICommandListExecutor::GetImmediateCommandList().UnlockStructuredBuffer(Scene->SkyIrradianceEnvironmentMap.Buffer);
+		}
+		else if (Scene->SkyIrradianceEnvironmentMap.NumBytes == 0)
+		{
+			Scene->SkyIrradianceEnvironmentMap.Initialize(sizeof(FVector4), 7, 0, TEXT("SkyIrradianceEnvironmentMap"));
+		}
+
+		// This buffer is now going to be read for rendering.
+		RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EGfxToGfx, Scene->SkyIrradianceEnvironmentMap.UAV);
 	}
-	else if(Scene->SkyIrradianceEnvironmentMap.NumBytes == 0)
-	{
-		Scene->SkyIrradianceEnvironmentMap.Initialize(sizeof(FVector4), 7, 0, TEXT("SkyIrradianceEnvironmentMap"));
-	}
-
-	// This buffer is now going to be read for rendering.
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EGfxToGfx, Scene->SkyIrradianceEnvironmentMap.UAV);
 }
 
 void RunGPUSkinCacheTransition(FRHICommandList& RHICmdList, FScene* Scene, EGPUSkinCacheTransition Type)
