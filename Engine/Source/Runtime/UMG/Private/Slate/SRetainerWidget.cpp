@@ -601,5 +601,13 @@ bool SRetainerWidget::CustomPrepass(float LayoutScaleMultiplier)
 
 int32 SRetainerWidget::PaintSlowPath(const FSlateInvalidationContext& Context)
 {
-	return SCompoundWidget::OnPaint(*Context.PaintArgs, GetPaintSpaceGeometry(), Context.CullingRect, *Context.WindowElementList, Context.IncomingLayerId, Context.WidgetStyle, Context.bParentEnabled);
+	FGeometry AllottedGeometry = GetPaintSpaceGeometry();
+	const FPaintGeometry PaintGeometry = AllottedGeometry.ToPaintGeometry();
+	const FVector2D RenderSize = PaintGeometry.GetLocalSize() * PaintGeometry.GetAccumulatedRenderTransform().GetMatrix().GetScale().GetVector();
+	const uint32 RenderTargetWidth = FMath::RoundToInt(RenderSize.X);
+	const uint32 RenderTargetHeight = FMath::RoundToInt(RenderSize.Y);
+	const float Scale = AllottedGeometry.Scale;
+	const FVector2D DrawSize = FVector2D(RenderTargetWidth, RenderTargetHeight);
+	const FGeometry RetainedWindowGeometry = FGeometry::MakeRoot(DrawSize * (1 / Scale), FSlateLayoutTransform(Scale, PaintGeometry.DrawPosition));
+	return SCompoundWidget::OnPaint(*Context.PaintArgs, RetainedWindowGeometry, Context.CullingRect, *Context.WindowElementList, Context.IncomingLayerId, Context.WidgetStyle, Context.bParentEnabled);
 }
