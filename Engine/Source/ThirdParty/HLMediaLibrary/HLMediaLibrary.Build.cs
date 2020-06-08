@@ -23,7 +23,6 @@ public class HLMediaLibrary : ModuleRules
 		string Arch = Target.WindowsPlatform.GetArchitectureSubpath();
 		string SubPath = Path.Combine(Platform, Config, Arch);
 
-		string IncludePath = Path.Combine(BaseDir, "inc");
 		string LibPath = Path.Combine(BaseDir, "lib", SubPath);
 		string BinariesPath = Path.Combine(BinariesDir, SubPath);
 		string dll = String.Format("{0}.dll", LibraryName);
