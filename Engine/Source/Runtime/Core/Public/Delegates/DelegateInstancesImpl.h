@@ -287,7 +287,7 @@ public:
 
 		checkSlow(MethodPtr != nullptr);
 
-		return this->Payload.ApplyAfter(TMemberFunctionCaller<MutableUserClass, FMethodPtr>(MutableUserObject, MethodPtr), Params...);
+		return this->Payload.ApplyAfter(MethodPtr, MutableUserObject, Params...);
 	}
 
 	bool ExecuteIfSafe(ParamTypes... Params) const final
@@ -304,7 +304,7 @@ public:
 
 			checkSlow(MethodPtr != nullptr);
 
-			(void)this->Payload.ApplyAfter(TMemberFunctionCaller<MutableUserClass, FMethodPtr>(MutableUserObject, MethodPtr), Params...);
+			(void)this->Payload.ApplyAfter(MethodPtr, MutableUserObject, Params...);
 
 			return true;
 		}
@@ -449,7 +449,7 @@ public:
 
 		checkSlow(MethodPtr != nullptr);
 
-		return this->Payload.ApplyAfter(TMemberFunctionCaller<MutableUserClass, FMethodPtr>(MutableUserObject, MethodPtr), Params...);
+		return this->Payload.ApplyAfter(MethodPtr, MutableUserObject, Params...);
 	}
 
 
@@ -464,7 +464,7 @@ public:
 
 		checkSlow(MethodPtr != nullptr);
 
-		(void)this->Payload.ApplyAfter(TMemberFunctionCaller<MutableUserClass, FMethodPtr>(MutableUserObject, MethodPtr), Params...);
+		(void)this->Payload.ApplyAfter(MethodPtr, MutableUserObject, Params...);
 
 		return true;
 	}
@@ -590,7 +590,7 @@ public:
 
 		checkSlow(MethodPtr != nullptr);
 
-		return this->Payload.ApplyAfter(TMemberFunctionCaller<MutableUserClass, FMethodPtr>(MutableUserObject, MethodPtr), Params...);
+		return this->Payload.ApplyAfter(MethodPtr, MutableUserObject, Params...);
 	}
 
 	bool ExecuteIfSafe(ParamTypes... Params) const final
@@ -606,7 +606,7 @@ public:
 
 			checkSlow(MethodPtr != nullptr);
 
-			(void)this->Payload.ApplyAfter(TMemberFunctionCaller<MutableUserClass, FMethodPtr>(MutableUserObject, MethodPtr), Params...);
+			(void)this->Payload.ApplyAfter(MethodPtr, MutableUserObject, Params...);
 
 			return true;
 		}

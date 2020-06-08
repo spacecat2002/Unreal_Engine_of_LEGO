@@ -127,23 +127,3 @@ private:
 	TTypeCompatibleBytes<T> Bytes;
 	bool                    bConstructed;
 };
-
-template <typename T, typename MemFunPtrType>
-class TMemberFunctionCaller
-{
-	T*            Obj;
-	MemFunPtrType MemFunPtr;
-
-public:
-	TMemberFunctionCaller(T* InObj, MemFunPtrType InMemFunPtr)
-		: Obj      (InObj)
-		, MemFunPtr(InMemFunPtr)
-	{
-	}
-
-	template <typename... ArgTypes>
-	auto operator()(ArgTypes&&... Args) -> decltype((Obj->*MemFunPtr)(Forward<ArgTypes>(Args)...))
-	{
-		return (Obj->*MemFunPtr)(Forward<ArgTypes>(Args)...);
-	}
-};
