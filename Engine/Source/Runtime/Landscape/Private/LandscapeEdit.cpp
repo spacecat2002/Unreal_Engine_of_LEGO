@@ -6892,24 +6892,29 @@ void ULandscapeComponent::GeneratePlatformVertexData(const ITargetPlatform* Targ
 		// Store XY position info
 		const int32 X = VertexOrder[Idx].X;
 		const int32 Y = VertexOrder[Idx].Y;
+		
+		check(X < 256 && Y < 256);
+		DstVert->Position[0] = X;
+		DstVert->Position[1] = Y;
+
 		const int32 SubX = VertexOrder[Idx].SubX;
 		const int32 SubY = VertexOrder[Idx].SubY;
 
-		DstVert->Position[0] = X;
-		DstVert->Position[1] = Y;
-		DstVert->Position[2] = (SubX << 4) | SubY;
+		check(SubX < 2 && SubY < 2);
+		DstVert->Position[2] = (SubX << 1) | SubY;
 
 		// Store hole info
 		const int32 VertexIndex = (SubY * SubsectionSizeVerts + Y) * SizeVerts + SubX * SubsectionSizeVerts + X;
 		const int32 HoleVertexLod = (NumHoleLods > 0) ? HoleVertexLods[VertexIndex] : 0;
 		const int32 HoleMaxLod = (NumHoleLods > 0) ? NumHoleLods : 0;
 
-		DstVert->Position[3] = (HoleMaxLod << 4) | HoleVertexLod;
+		check(HoleMaxLod < 8 && HoleVertexLod < 8);
+		DstVert->Position[2] |= (HoleMaxLod << 5) | (HoleVertexLod << 2);
 
 		// Calculate min/max height for packing
 		TArray<int32> MipHeights;
 		MipHeights.AddZeroed(HeightmapMipData.Num());
-		int32 LastIndex = 0;
+
 		uint16 MaxHeight = 0, MinHeight = 65535;
 
 		float HeightmapScaleBiasZ = HeightmapScaleBias.Z + HeightmapSubsectionOffsetU * (float)SubX;
@@ -6935,18 +6940,19 @@ void ULandscapeComponent::GeneratePlatformVertexData(const ITargetPlatform* Targ
 			MinHeight = FMath::Min(MinHeight, Height);
 		}
 
-		// Quantize min/max height so we can store each in 8 bits
-		MaxHeight = (MaxHeight + 255) & (~255);
-		MinHeight = (MinHeight) & (~255);
-
 		DstVert->LODHeights[0] = MinHeight >> 8;
-		DstVert->LODHeights[1] = MaxHeight >> 8;
+		DstVert->LODHeights[1] = MinHeight & 0xff;
 
-		// Now quantize the mip heights to steps between MinHeight and MaxHeight
+		// Quantize height delta so we can store in 8 bits in the spare Position channel
+		uint16 HeightDelta = FMath::Max(MaxHeight - MinHeight, 1);
+		HeightDelta = (HeightDelta + 255) & (~255);
+		DstVert->Position[3] = HeightDelta >> 8;
+
+		// Now quantize the mip heights to 255 steps between MinHeight and MinHeight+HeightDelta
 		for (int32 Mip = 0; Mip < HeightmapMipData.Num(); ++Mip)
 		{
 			check(Mip < 6);
-			DstVert->LODHeights[2 + Mip] = FMath::RoundToInt(float(MipHeights[Mip] - MinHeight) / (MaxHeight - MinHeight) * 255);
+			DstVert->LODHeights[2 + Mip] = FMath::RoundToInt(((float)(MipHeights[Mip] - MinHeight) / (float)HeightDelta) * 255.f);
 		}
 
 		DstVert++;
