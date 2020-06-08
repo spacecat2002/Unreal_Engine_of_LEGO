@@ -633,7 +633,7 @@ public:
 	}
 
 	/** Marks all objects that can't be directly in a cluster but are referenced by it as reachable */
-	static FORCEINLINE bool MarkClusterMutableObjectsAsReachable(FUObjectCluster& Cluster, TArray<UObject*>& ObjectsToSerialize)
+	static FORCENOINLINE bool MarkClusterMutableObjectsAsReachable(FUObjectCluster& Cluster, TArray<UObject*>& ObjectsToSerialize)
 	{
 		check(IsWithClusters());
 
@@ -727,7 +727,7 @@ public:
 	}
 
 	/** Marks all clusters referenced by another cluster as reachable */
-	static FORCEINLINE void MarkReferencedClustersAsReachable(int32 ClusterIndex, TArray<UObject*>& ObjectsToSerialize)
+	static FORCENOINLINE void MarkReferencedClustersAsReachable(int32 ClusterIndex, TArray<UObject*>& ObjectsToSerialize)
 	{
 		check(IsWithClusters());
 
