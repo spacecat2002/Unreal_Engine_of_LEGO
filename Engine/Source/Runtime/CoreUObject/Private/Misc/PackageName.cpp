@@ -1390,7 +1390,7 @@ bool FPackageName::FindPackagesInDirectory( TArray<FString>& OutPackages, const 
 	const int32 PreviousPackagesCount = OutPackages.Num();
 	for (int32 FileIndex = 0; FileIndex < AllFiles.Num(); FileIndex++)
 	{
-		FString& Filename = AllFiles[FileIndex];
+		const FString& Filename = AllFiles[FileIndex];
 		if (IsPackageFilename(Filename))
 		{
 			OutPackages.Add(Filename);
