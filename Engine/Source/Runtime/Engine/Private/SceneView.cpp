@@ -2224,6 +2224,9 @@ void FSceneView::SetupViewRectUniformBufferParameters(FViewUniformShaderParamete
 	ViewUniformShaderParameters.ViewRectMin = FVector4(EffectiveViewRect.Min.X, EffectiveViewRect.Min.Y, 0.0f, 0.0f);
 	ViewUniformShaderParameters.ViewSizeAndInvSize = FVector4(EffectiveViewRect.Width(), EffectiveViewRect.Height(), 1.0f / float(EffectiveViewRect.Width()), 1.0f / float(EffectiveViewRect.Height()));
 
+	// The light probe ratio is only different during separate forward translucency when r.SeparateTranslucencyScreenPercentage != 100
+	ViewUniformShaderParameters.LightProbeSizeRatioAndInvSizeRatio = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+
 	// Calculate the vector used by shaders to convert clip space coordinates to texture space.
 	const float InvBufferSizeX = 1.0f / BufferSize.X;
 	const float InvBufferSizeY = 1.0f / BufferSize.Y;

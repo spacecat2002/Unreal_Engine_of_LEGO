@@ -516,13 +516,22 @@ void FDeferredShadingSceneRenderer::SetupDownsampledTranslucencyViewParameters(
 	DownsampledTranslucencyViewParameters  = *View.CachedViewUniformShaderParameters;
 
 	// Update the parts of DownsampledTranslucencyParameters which are dependent on the buffer size and view rect
+	FIntRect DownsampledRect = FIntRect(View.ViewRect.Min.X * DownsamplingScale, View.ViewRect.Min.Y * DownsamplingScale, View.ViewRect.Max.X * DownsamplingScale, View.ViewRect.Max.Y * DownsamplingScale);
+	ensure(DownsampledRect.Width() != 0);
+	ensure(DownsampledRect.Height() != 0);
+
 	View.SetupViewRectUniformBufferParameters(
 		DownsampledTranslucencyViewParameters,
 		ScaledSize,
-		FIntRect(View.ViewRect.Min.X * DownsamplingScale, View.ViewRect.Min.Y * DownsamplingScale, View.ViewRect.Max.X * DownsamplingScale, View.ViewRect.Max.Y * DownsamplingScale),
+		DownsampledRect,
 		View.ViewMatrices,
 		View.PrevViewInfo.ViewMatrices
 	);
+
+	// instead of using the expected ratio, use the actual dimentions to avoid rounding errors
+	float ActualDownsampleX = float(DownsampledRect.Width()) / float(View.ViewRect.Width());
+	float ActualDownsampleY = float(DownsampledRect.Height()) / float(View.ViewRect.Height());
+	DownsampledTranslucencyViewParameters.LightProbeSizeRatioAndInvSizeRatio = FVector4(ActualDownsampleX, ActualDownsampleY, 1.0f / ActualDownsampleX, 1.0f / ActualDownsampleY);
 }
 
 void FDeferredShadingSceneRenderer::ConditionalResolveSceneColorForTranslucentMaterials(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget>& SceneColorCopy)
