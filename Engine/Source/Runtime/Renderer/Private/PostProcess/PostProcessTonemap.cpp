@@ -647,7 +647,8 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FViewInfo& Vi
 	const FSceneViewFamily& ViewFamily = *(View.Family);
 	const FPostProcessSettings& PostProcessSettings = View.FinalPostProcessSettings;
 
-	const bool bEyeAdaptation = (View.GetFeatureLevel() >= ERHIFeatureLevel::SM5) ? Inputs.EyeAdaptationTexture != nullptr : Inputs.EyeAdaptationBuffer != nullptr;
+	const bool bIsEyeAdaptationResource = (View.GetFeatureLevel() >= ERHIFeatureLevel::SM5) ? Inputs.EyeAdaptationTexture != nullptr : Inputs.EyeAdaptationBuffer != nullptr;
+	const bool bEyeAdaptation = ViewFamily.EngineShowFlags.EyeAdaptation && bIsEyeAdaptationResource;
 
 	const FScreenPassTextureViewport SceneColorViewport(Inputs.SceneColor);
 
