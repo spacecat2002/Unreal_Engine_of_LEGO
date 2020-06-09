@@ -367,11 +367,6 @@ void URigVM::CacheMemoryHandlesIfRequired(FRigVMMemoryContainerPtrArray InMemory
 	uint16 InstructionIndex = 0;
 	while (Instructions.IsValidIndex(InstructionIndex))
 	{
-		if (Instructions[InstructionIndex].OpCode == ERigVMOpCode::Exit)
-		{
-			break;
-		}
-
 		FirstHandleForInstruction.Add(CachedMemoryHandles.Num());
 
 		switch (Instructions[InstructionIndex].OpCode)
