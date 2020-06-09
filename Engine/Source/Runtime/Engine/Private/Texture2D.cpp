@@ -381,20 +381,6 @@ int32 UTexture2D::GetNumResidentMips() const
 	return 0;
 }
 
-int32 UTexture2D::GetNumRequestedMips() const
-{
-	check(!IsCurrentlyVirtualTextured());
-
-	if (PendingUpdate && !PendingUpdate->IsCancelled())
-	{
-		return PendingUpdate->GetNumRequestedMips();
-	}
-	else
-	{
-		return GetCachedNumResidentLODs();
-	}
-}
-
 #if WITH_EDITOR
 void UTexture2D::PostEditUndo()
 {
@@ -530,7 +516,7 @@ void UTexture2D::CancelPendingTextureStreaming()
 	for( TObjectIterator<UTexture2D> It; It; ++It )
 	{
 		UTexture2D* CurrentTexture = *It;
-		CurrentTexture->CancelPendingMipChangeRequest();
+		CurrentTexture->CancelPendingStreamingRequest();
 	}
 
 	// No need to call FlushResourceStreaming(), since calling CancelPendingMipChangeRequest has an immediate effect.
@@ -638,7 +624,7 @@ void UTexture2D::BeginDestroy()
 	Super::BeginDestroy();
 
 	// Cancel any in flight IO requests
-	CancelPendingMipChangeRequest();
+	CancelPendingStreamingRequest();
 
 	// Safely unlink texture from list of streamable ones.
 	UnlinkStreaming();
@@ -745,21 +731,6 @@ bool UTexture2D::UpdateStreamingStatus( bool bWaitForMipFading /*= false*/ )
 		return Texture2DResource->MipBiasFade.IsFading();
 	}
 
-	return false;
-}
-
-bool UTexture2D::CancelPendingMipChangeRequest()
-{
-	if (PendingUpdate)
-	{
-		check(!IsCurrentlyVirtualTextured());
-
-		if (!PendingUpdate->IsCancelled())
-		{
-			PendingUpdate->Abort();
-		}
-		return true;
-	}
 	return false;
 }
 
@@ -2088,11 +2059,6 @@ bool UTexture2D::StreamIn(int32 NewMipCount, bool bHighPrio)
 		return !PendingUpdate->IsCancelled();
 	}
 	return false;
-}
-
-bool UTexture2D::IsPendingUpdateLocked() const 
-{ 
-	return PendingUpdate && PendingUpdate->IsLocked(); 
 }
 
 bool UTexture2D::StreamOut(int32 NewMipCount)

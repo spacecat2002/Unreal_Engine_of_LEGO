@@ -231,7 +231,7 @@ void FreeSkeletalMeshBuffersSinkCallback()
 		FlushRenderingCommands();
 		for (TObjectIterator<USkeletalMesh> It;It;++It)
 		{
-			if (!It->HasPendingUpdate() && !It->GetResourceForRendering()->RequiresCPUSkinning(GMaxRHIFeatureLevel))
+			if (!It->HasPendingStreamingRequest() && !It->GetResourceForRendering()->RequiresCPUSkinning(GMaxRHIFeatureLevel))
 			{
 				It->ReleaseCPUResources();
 			}
@@ -1036,41 +1036,6 @@ int32 USkeletalMesh::GetNumResidentMips() const
 	return GetLODNum() - SkeletalMeshRenderData->CurrentFirstLODIdx;
 }
 
-int32 USkeletalMesh::GetNumRequestedMips() const
-{
-	if (PendingUpdate && !PendingUpdate->IsCancelled())
-	{
-		return PendingUpdate->GetNumRequestedMips();
-	}
-	else
-	{
-		return GetCachedNumResidentLODs();
-	}
-}
-
-bool USkeletalMesh::CancelPendingMipChangeRequest()
-{
-	if (PendingUpdate)
-	{
-		if (!PendingUpdate->IsCancelled())
-		{
-			PendingUpdate->Abort();
-		}
-		return true;
-	}
-	return false;
-}
-
-bool USkeletalMesh::HasPendingUpdate() const
-{
-	return !!PendingUpdate;
-}
-
-bool USkeletalMesh::IsPendingUpdateLocked() const
-{
-	return PendingUpdate && PendingUpdate->IsLocked();
-}
-
 bool USkeletalMesh::StreamOut(int32 NewMipCount)
 {
 	check(IsInGameThread());
@@ -1216,7 +1181,7 @@ void USkeletalMesh::CancelAllPendingStreamingActions()
 	for (TObjectIterator<USkeletalMesh> It; It; ++It)
 	{
 		USkeletalMesh* StaticMesh = *It;
-		StaticMesh->CancelPendingMipChangeRequest();
+		StaticMesh->CancelPendingStreamingRequest();
 	}
 
 	FlushRenderingCommands();
@@ -1462,7 +1427,7 @@ void USkeletalMesh::BeginDestroy()
 	Super::BeginDestroy();
 
 	// Cancel any in flight IO requests
-	CancelPendingMipChangeRequest();
+	CancelPendingStreamingRequest();
 
 	// Safely unlink mesh from list of streamable ones.
 	UnlinkStreaming();

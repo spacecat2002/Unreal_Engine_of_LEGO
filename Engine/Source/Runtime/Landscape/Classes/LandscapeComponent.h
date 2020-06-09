@@ -11,7 +11,6 @@
 #include "LandscapePhysicalMaterial.h"
 #include "LandscapeWeightmapUsage.h"
 #include "Engine/StreamableRenderAsset.h"
-#include "RenderAssetUpdate.h"
 
 #include "LandscapeComponent.generated.h"
 
@@ -403,10 +402,6 @@ class ULandscapeLODStreamingProxy : public UStreamableRenderAsset
 	virtual LANDSCAPE_API FIoFilenameHash GetMipIoFilenameHash(const int32 MipIndex) const  final override;
 	virtual bool IsReadyForStreaming() const final override;
 	virtual int32 GetNumResidentMips() const final override;
-	virtual int32 GetNumRequestedMips() const final override;
-	virtual bool CancelPendingMipChangeRequest() final override;
-	virtual bool HasPendingUpdate() const final override;
-	virtual bool IsPendingUpdateLocked() const final override;
 	virtual bool StreamOut(int32 NewMipCount) final override;
 	virtual bool StreamIn(int32 NewMipCount, bool bHighPrio) final override;
 	virtual bool UpdateStreamingStatus(bool bWaitForMipFading = false) final override;
@@ -427,8 +422,6 @@ class ULandscapeLODStreamingProxy : public UStreamableRenderAsset
 
 private:
 	ULandscapeComponent* LandscapeComponent;
-
-	TRefCountPtr<FRenderAssetUpdate> PendingUpdate;
 };
 
 UCLASS(hidecategories=(Display, Attachment, Physics, Debug, Collision, Movement, Rendering, PrimitiveComponent, Object, Transform, Mobility, VirtualTexture), showcategories=("Rendering|Material"), MinimalAPI, Within=LandscapeProxy)

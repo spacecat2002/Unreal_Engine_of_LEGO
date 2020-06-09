@@ -109,7 +109,7 @@ void UTexture::ReleaseResource()
 	if (Resource)
 	{
 		UTexture2D* Texture2D = Cast<UTexture2D>(this);
-		check( !Texture2D  || !Texture2D->HasPendingUpdate() );
+		check( !Texture2D  || !Texture2D->HasPendingStreamingRequest() );
 
 		// Free the resource.
 		BeginReleaseResource(Resource);

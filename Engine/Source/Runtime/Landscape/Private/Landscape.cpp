@@ -3956,41 +3956,6 @@ bool ULandscapeLODStreamingProxy::IsReadyForStreaming() const
 	return LandscapeComponent->PlatformData.CachedRenderData.IsValid();
 }
 
-int32 ULandscapeLODStreamingProxy::GetNumRequestedMips() const
-{
-	if (PendingUpdate && !PendingUpdate->IsCancelled())
-	{
-		return PendingUpdate->GetNumRequestedMips();
-	}
-	else
-	{
-		return GetCachedNumResidentLODs();
-	}
-}
-
-bool ULandscapeLODStreamingProxy::CancelPendingMipChangeRequest()
-{
-	if (PendingUpdate)
-	{
-		if (!PendingUpdate->IsCancelled())
-		{
-			PendingUpdate->Abort();
-		}
-		return true;
-	}
-	return false;
-}
-
-bool ULandscapeLODStreamingProxy::HasPendingUpdate() const
-{
-	return !!PendingUpdate;
-}
-
-bool ULandscapeLODStreamingProxy::IsPendingUpdateLocked() const
-{
-	return PendingUpdate && PendingUpdate->IsLocked();
-}
-
 bool ULandscapeLODStreamingProxy::StreamOut(int32 NewMipCount)
 {
 	check(IsInGameThread());
@@ -4111,7 +4076,7 @@ void ULandscapeLODStreamingProxy::CancelAllPendingStreamingActions()
 	for (TObjectIterator<ULandscapeLODStreamingProxy> It; It; ++It)
 	{
 		ULandscapeLODStreamingProxy* StaticMesh = *It;
-		StaticMesh->CancelPendingMipChangeRequest();
+		StaticMesh->CancelPendingStreamingRequest();
 	}
 
 	FlushRenderingCommands();

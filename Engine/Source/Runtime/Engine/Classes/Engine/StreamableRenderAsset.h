@@ -8,6 +8,8 @@
 #include "Misc/App.h"
 #include "Engine/TextureStreamingTypes.h"
 #include "Serialization/BulkData2.h"
+#include "Templates/RefCounting.h"
+#include "RenderAssetUpdate.h"
 #include "StreamableRenderAsset.generated.h"
 
 #define STREAMABLERENDERASSET_NODEFAULT(FuncName) LowLevelFatalError(TEXT("UStreamableRenderAsset::%s has no default implementation"), TEXT(#FuncName))
@@ -76,36 +78,20 @@ public:
 		return -1;
 	}
 
-	/** When the asset is being updated from StreamIn() or StreamOut(), returns the number of LODs requested */
-	virtual int32 GetNumRequestedMips() const
+	/** When the asset is being updated from StreamIn() or StreamOut(), returns the number of LODs requested. Otherwise returns the current usable LOD count. */
+	ENGINE_API int32 GetNumRequestedLODs() const;
+
+	/** Tries to cancel a pending LOD change request. Requests cannot be canceled if they are in the finalization phase. */
+	ENGINE_API void CancelPendingStreamingRequest();
+
+	/** Whether a stream in / out request is pending. Only one request can exists at anytime for a streamable asset */
+	FORCEINLINE bool HasPendingStreamingRequest() const 
 	{
-		STREAMABLERENDERASSET_NODEFAULT(GetNumRequestedMips);
-		return -1;
+		return !!PendingUpdate;
 	}
 
-	/**
-	* Tries to cancel a pending LOD change request. Requests cannot be canceled if they are in the
-	* finalization phase.
-	*
-	* @param	true if cancelation was successful, false otherwise
-	*/
-	virtual bool CancelPendingMipChangeRequest()
-	{
-		STREAMABLERENDERASSET_NODEFAULT(CancelPendingMipChangeRequest);
-		return false;
-	}
-
-	virtual bool HasPendingUpdate() const
-	{
-		STREAMABLERENDERASSET_NODEFAULT(HasPendingUpdate);
-		return false;
-	}
-
-	virtual bool IsPendingUpdateLocked() const 
-	{ 
-		STREAMABLERENDERASSET_NODEFAULT(IsPendingUpdateLocked);
-		return false;
-	}
+	/** Whether there is a pending update and it is locked within an update step. Used to prevent dealocks in SuspendRenderAssetStreaming(). */
+	bool IsPendingStreamingRequestLocked() const;
 
 	/**
 	* Unload some mips from memory. Only usable if the asset is streamable.
@@ -242,6 +228,9 @@ protected:
 	};
 
 	TArray<FLODStreamingCallbackPayload> MipChangeCallbacks;
+
+	/** An update structure used to handle streaming strategy. */
+	TRefCountPtr<class FRenderAssetUpdate> PendingUpdate;
 
 	/** WorldSettings timestamp that tells the streamer to force all miplevels to be resident up until that time. */
 	UPROPERTY(transient)

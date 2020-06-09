@@ -1215,7 +1215,7 @@ void FRenderAssetStreamingManager::StreamRenderAssets( bool bProcessEverything )
 		{
 			if (StreamingRenderAssets.IsValidIndex(AssetIndex) && !VisibleFastResponseRenderAssetIndices.Contains(AssetIndex))
 			{
-				StreamingRenderAssets[AssetIndex].CancelPendingMipChangeRequest();
+				StreamingRenderAssets[AssetIndex].CancelStreamingRequest();
 			}
 		}
 

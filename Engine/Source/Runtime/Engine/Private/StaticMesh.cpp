@@ -3423,7 +3423,7 @@ void UStaticMesh::BeginDestroy()
 	Super::BeginDestroy();
 
 	// Cancel any in flight IO requests
-	CancelPendingMipChangeRequest();
+	CancelPendingStreamingRequest();
 
 	// Safely unlink mesh from list of streamable ones.
 	UnlinkStreaming();
@@ -5547,41 +5547,6 @@ int32 UStaticMesh::GetNumResidentMips() const
 	return GetNumLODs() - RenderData->CurrentFirstLODIdx;
 }
 
-int32 UStaticMesh::GetNumRequestedMips() const
-{
-	if (PendingUpdate && !PendingUpdate->IsCancelled())
-	{
-		return PendingUpdate->GetNumRequestedMips();
-	}
-	else
-	{
-		return GetCachedNumResidentLODs();
-	}
-}
-
-bool UStaticMesh::CancelPendingMipChangeRequest()
-{
-	if (PendingUpdate)
-	{
-		if (!PendingUpdate->IsCancelled())
-		{
-			PendingUpdate->Abort();
-		}
-		return true;
-	}
-	return false;
-}
-
-bool UStaticMesh::HasPendingUpdate() const
-{
-	return !!PendingUpdate;
-}
-
-bool UStaticMesh::IsPendingUpdateLocked() const 
-{ 
-	return PendingUpdate && PendingUpdate->IsLocked(); 
-}
-
 bool UStaticMesh::StreamOut(int32 NewMipCount)
 {
 	check(IsInGameThread());
@@ -5718,7 +5683,7 @@ void UStaticMesh::CancelAllPendingStreamingActions()
 	for (TObjectIterator<UStaticMesh> It; It; ++It)
 	{
 		UStaticMesh* StaticMesh = *It;
-		StaticMesh->CancelPendingMipChangeRequest();
+		StaticMesh->CancelPendingStreamingRequest();
 	}
 
 	FlushRenderingCommands();

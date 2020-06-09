@@ -262,7 +262,7 @@ void FStreamingRenderAsset::UpdateStreamingStatus(bool bWaitForMipFading)
 		{
 			bReadyForStreaming = RenderAsset->GetCachedReadyForStreaming();
 		}
-		RequestedMips = RenderAsset->GetNumRequestedMips();
+		RequestedMips = RenderAsset->GetNumRequestedLODs();
 	}
 	else
 	{
@@ -515,11 +515,11 @@ bool FStreamingRenderAsset::UpdateLoadOrderPriority_Async(int32 MinMipForSplitRe
 	}
 }
 
-void FStreamingRenderAsset::CancelPendingMipChangeRequest()
+void FStreamingRenderAsset::CancelStreamingRequest()
 {
 	if (RenderAsset)
 	{
-		RenderAsset->CancelPendingMipChangeRequest();
+		RenderAsset->CancelPendingStreamingRequest();
 		UpdateStreamingStatus(false);
 	}
 }
@@ -543,7 +543,7 @@ void FStreamingRenderAsset::StreamWantedMipsUsingCachedData(FRenderAssetStreamin
 
 void FStreamingRenderAsset::StreamWantedMips_Internal(FRenderAssetStreamingManager& Manager, bool bUseCachedData)
 {
-	if (RenderAsset && !RenderAsset->HasPendingUpdate())
+	if (RenderAsset && !RenderAsset->HasPendingStreamingRequest())
 	{
 		const uint32 bLocalForceFullyLoadHeuristic = bUseCachedData ? bCachedForceFullyLoadHeuristic : bForceFullyLoadHeuristic;
 		const int32 LocalVisibleWantedMips = bUseCachedData ? CachedVisibleWantedMips : VisibleWantedMips;

@@ -19,7 +19,6 @@
 #include "Templates/UniquePtr.h"
 #include "StaticMeshResources.h"
 #include "PerPlatformProperties.h"
-#include "RenderAssetUpdate.h"
 #include "MeshTypes.h"
 
 #include "StaticMesh.generated.h"
@@ -777,8 +776,6 @@ protected:
 	UPROPERTY(EditAnywhere, AdvancedDisplay, Instanced, Category = StaticMesh)
 	TArray<UAssetUserData*> AssetUserData;
 
-	TRefCountPtr<FRenderAssetUpdate> PendingUpdate;
-
 	friend struct FStaticMeshUpdateContext;
 	friend class FStaticMeshUpdate;
 
@@ -986,10 +983,6 @@ public:
 	virtual bool DoesMipDataExist(const int32 MipIndex) const final override;
 	virtual bool IsReadyForStreaming() const final override;
 	virtual int32 GetNumResidentMips() const final override;
-	virtual int32 GetNumRequestedMips() const final override;
-	virtual bool CancelPendingMipChangeRequest() final override;
-	virtual bool HasPendingUpdate() const final override;
-	virtual bool IsPendingUpdateLocked() const final override;
 	virtual bool StreamOut(int32 NewMipCount) final override;
 	virtual bool StreamIn(int32 NewMipCount, bool bHighPrio) final override;
 	virtual bool UpdateStreamingStatus(bool bWaitForMipFading = false) final override;

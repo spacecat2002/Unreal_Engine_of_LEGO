@@ -887,11 +887,6 @@ public:
 	{
 	}
 
-	virtual bool HasPendingUpdate() const override 
-	{ 
-		return false; // Overriden in UTexture2D
-	}
-
 	/**
 	 * Returns if the texture is actually being rendered using virtual texturing right now.
 	 * Unlike the 'VirtualTextureStreaming' property which reflects the user's desired state

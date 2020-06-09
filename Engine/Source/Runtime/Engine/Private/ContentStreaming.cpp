@@ -275,7 +275,7 @@ bool TrackRenderAssetEvent(FStreamingRenderAsset* StreamingRenderAsset, UStreama
 						LastEvent = &GTrackedRenderAssets[NewIndex];
 					}
 
-					int32 WantedMips		= RenderAsset->GetNumRequestedMips();
+					int32 WantedMips = RenderAsset->GetNumRequestedLODs();
 					float BoostFactor		= 1.0f;
 					FStreamingRenderAsset::EAssetType AssetType = FStreamingRenderAsset::AT_Num;
 					if ( StreamingRenderAsset )
@@ -286,7 +286,7 @@ bool TrackRenderAssetEvent(FStreamingRenderAsset* StreamingRenderAsset, UStreama
 					}
 
 					if ( LastEvent->NumResidentMips != RenderAsset->GetNumResidentMips() ||
-						 LastEvent->NumRequestedMips != RenderAsset->GetNumRequestedMips() ||
+						 LastEvent->NumRequestedMips != RenderAsset->GetNumRequestedLODs() ||
 						 LastEvent->WantedMips != WantedMips ||
 						 LastEvent->BoostFactor != BoostFactor ||
 						 bIsDestroying )
@@ -295,7 +295,7 @@ bool TrackRenderAssetEvent(FStreamingRenderAsset* StreamingRenderAsset, UStreama
 						FTrackedRenderAssetEvent& NewEvent	= GTrackedRenderAssetEvents[GTrackedRenderAssetEventIndex];
 						NewEvent.RenderAssetName		= LastEvent->RenderAssetName;
 						NewEvent.NumResidentMips		= LastEvent->NumResidentMips	= RenderAsset->GetNumResidentMips();
-						NewEvent.NumRequestedMips		= LastEvent->NumRequestedMips	= RenderAsset->GetNumRequestedMips();
+						NewEvent.NumRequestedMips		= LastEvent->NumRequestedMips	= RenderAsset->GetNumRequestedLODs();
 						NewEvent.WantedMips				= LastEvent->WantedMips			= WantedMips;
 						NewEvent.Timestamp				= LastEvent->Timestamp			= float(FPlatformTime::Seconds() - GStartTime);
 						NewEvent.BoostFactor			= LastEvent->BoostFactor		= BoostFactor;

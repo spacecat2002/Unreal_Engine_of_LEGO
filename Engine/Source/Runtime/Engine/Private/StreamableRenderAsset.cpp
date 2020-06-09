@@ -3,7 +3,6 @@
 #include "Engine/StreamableRenderAsset.h"
 #include "Misc/App.h"
 
-
 UStreamableRenderAsset::UStreamableRenderAsset(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 	, StreamingIndex(INDEX_NONE)
@@ -101,3 +100,30 @@ void UStreamableRenderAsset::SetForceMipLevelsToBeResident(float Seconds, int32 
 
 	ForceMipLevelsToBeResidentTimestamp = FApp::GetCurrentTime() + Seconds;
 }
+
+void UStreamableRenderAsset::CancelPendingStreamingRequest()
+{
+	if (PendingUpdate && !PendingUpdate->IsCancelled())
+	{
+		PendingUpdate->Abort();
+	}
+}
+
+/** Whether there is a pending update and it is locked within an update step. Used to prevent dealocks in SuspendRenderAssetStreaming(). */
+bool UStreamableRenderAsset::IsPendingStreamingRequestLocked() const
+{
+	return PendingUpdate && PendingUpdate->IsLocked();
+}
+
+int32 UStreamableRenderAsset::GetNumRequestedLODs() const
+{
+	if (PendingUpdate && !PendingUpdate->IsCancelled())
+	{
+		return PendingUpdate->GetNumRequestedMips();
+	}
+	else // If there is no pending update, then the Requested LOD count is the current LOD count.
+	{
+		return GetCachedNumResidentLODs();
+	}
+}
+

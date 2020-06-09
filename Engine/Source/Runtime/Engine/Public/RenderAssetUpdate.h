@@ -92,7 +92,7 @@ public:
 	}
 
 	/** Get the number of requested mips for this update, ignoring cancellation attempts. */
-	int32 GetNumRequestedMips() const
+	FORCEINLINE int32 GetNumRequestedMips() const
 	{
 		return RequestedMips;
 	}
