@@ -1979,6 +1979,9 @@ public:
 	/** Returns the short name matching the enum Value, returns empty string if invalid */
 	FString GetNameStringByValue(int64 InValue) const;
 
+	/** Looks for a name with a given value and returns true and writes the name to Out if one was found */
+	bool FindNameStringByValue(FString& Out, int64 InValue) const;
+
 	/** Gets enum value by name, returns INDEX_NONE and optionally errors when name is not found. Handles full or short names */
 	int64 GetValueByNameString(const FString& SearchString, EGetByNameFlags Flags = EGetByNameFlags::None) const;
 
@@ -1995,6 +1998,9 @@ public:
 	/** Version of GetDisplayNameTextByIndex that takes a value instead */
 	FText GetDisplayNameTextByValue(int64 InValue) const;
 
+	/** Looks for a display name with a given value and returns true and writes the name to Out if one was found */
+	bool FindDisplayNameTextByValue(FText& Out, int64 InValue) const;
+
 	/**
 	 * Returns the unlocalized logical name originally assigned to the enum at creation.
 	 * By default this is the same as the short name but it is overridden in child classes with different internal name storage.
@@ -2008,6 +2014,9 @@ public:
 
 	/** Version of GetAuthoredNameByIndex that takes a value instead */
 	FString GetAuthoredNameStringByValue(int64 InValue) const;
+
+	/** Looks for a display name with a given value and returns true and writes the unlocalized logical name to Out if one was found */
+	bool FindAuthoredNameStringByValue(FString& Out, int64 InValue) const;
 
 	/** Gets max value of Enum. Defaults to zero if there are no entries. */
 	int64 GetMaxEnumValue() const;
