@@ -447,7 +447,7 @@ void ULevel::Serialize( FArchive& Ar )
 
 #if WITH_EDITOR
 			// Otherwise, don't filter out external actors if duplicating the world to get the actors properly duplicated.
-			if (bUseExternalActors && ((Ar.GetPortFlags() & PPF_DuplicateForPIE) || !(Ar.GetPortFlags() & PPF_Duplicate)))
+			if (bUseExternalActors && !(Ar.GetPortFlags() & PPF_Duplicate))
 			{
 				if (Actor->IsPackageExternal())
 				{
@@ -684,7 +684,7 @@ void ULevel::PostLoad()
 
 #if WITH_EDITOR
 	// if we use external actors, load dynamic actors here
-	if (bUseExternalActors)
+	if (bUseExternalActors && !bWasDuplicated)
 	{
 		UPackage* LevelPackage = GetPackage();
 		bool bPackageForPIE = LevelPackage->HasAnyPackageFlags(PKG_PlayInEditor);
@@ -871,6 +871,7 @@ void ULevel::PostDuplicate(bool bDuplicateForPIE)
 {
 	Super::PostDuplicate(bDuplicateForPIE);
 
+	bWasDuplicated = true;
 	bWasDuplicatedForPIE = bDuplicateForPIE;
 }
 

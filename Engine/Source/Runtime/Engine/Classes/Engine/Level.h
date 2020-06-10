@@ -604,6 +604,8 @@ public:
 	uint8										bRequireFullVisibilityToRender:1;
 	/** Whether this level is specific to client, visibility state will not be replicated to server	*/
 	uint8										bClientOnlyVisible:1;
+	/** Whether this level was duplicated */
+	uint8										bWasDuplicated:1;
 	/** Whether this level was duplicated for PIE	*/
 	uint8										bWasDuplicatedForPIE:1;
 	/** Whether the level is currently being removed from the world */
