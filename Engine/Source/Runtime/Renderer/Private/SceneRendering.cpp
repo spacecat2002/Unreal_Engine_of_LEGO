@@ -846,7 +846,8 @@ void FViewInfo::Init()
 	SkyAtmosphereCameraAerialPerspectiveVolume = nullptr;
 	SkyAtmosphereUniformShaderParameters = nullptr;
 
-	VolumetricCloudShadowMap = nullptr;
+	VolumetricCloudShadowMap[0] = nullptr;
+	VolumetricCloudShadowMap[1] = nullptr;
 	VolumetricCloudSkyAO = nullptr;
 
 	bUseDirectionalInscattering = false;
@@ -1235,7 +1236,7 @@ void FViewInfo::SetupUniformBufferParameters(
 		ViewUniformShaderParameters.SkyAtmosphereTopRadiusKm = AtmosphereSetup.TopRadiusKm;
 
 		FSkyAtmosphereViewSharedUniformShaderParameters OutParameters;
-		SetupSkyAtmosphereViewSharedUniformShaderParameters(*this, OutParameters);
+		SetupSkyAtmosphereViewSharedUniformShaderParameters(*this, SkyAtmosphereSceneProxy, OutParameters);
 		ViewUniformShaderParameters.SkyAtmosphereAerialPerspectiveStartDepthKm = OutParameters.AerialPerspectiveStartDepthKm;
 		ViewUniformShaderParameters.SkyAtmosphereCameraAerialPerspectiveVolumeSizeAndInvSize = OutParameters.CameraAerialPerspectiveVolumeSizeAndInvSize;
 		ViewUniformShaderParameters.SkyAtmosphereCameraAerialPerspectiveVolumeDepthResolution = OutParameters.CameraAerialPerspectiveVolumeDepthResolution;

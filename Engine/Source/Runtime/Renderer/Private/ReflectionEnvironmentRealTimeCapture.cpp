@@ -127,6 +127,35 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FComputeSkyEnvMapDiffuseIrradianceCS, "/Engine/Private/ReflectionEnvironmentShaders.usf", "ComputeSkyEnvMapDiffuseIrradianceCS", SF_Compute);
 
 
+
+class FApplyLowerHemisphereColor : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FApplyLowerHemisphereColor);
+	SHADER_USE_PARAMETER_STRUCT(FApplyLowerHemisphereColor, FGlobalShader);
+
+	static const uint32 ThreadGroupSize = 8;
+
+	using FPermutationDomain = TShaderPermutationDomain<>;
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FLinearColor, LowerHemisphereSolidColor)
+		SHADER_PARAMETER(FIntPoint, ValidDispatchCoord)
+		SHADER_PARAMETER(int32, FaceThreadGroupSize)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D, OutTextureMipColor)
+	END_SHADER_PARAMETER_STRUCT()
+
+public:
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters) { return GetMaxSupportedFeatureLevel(Parameters.Platform) >= ERHIFeatureLevel::SM5; }
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), ThreadGroupSize);
+		OutEnvironment.SetDefine(TEXT("USE_COMPUTE"), 1);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FApplyLowerHemisphereColor, "/Engine/Private/ReflectionEnvironmentShaders.usf", "ApplyLowerHemisphereColorCS", SF_Compute);
+
+
 void FScene::AllocateAndCaptureFrameSkyEnvMap(
 	FRHICommandListImmediate& RHICmdList, FSceneRenderer& SceneRenderer, FViewInfo& MainView, 
 	bool bShouldRenderSkyAtmosphere, bool bShouldRenderVolumetricCloud)
@@ -165,19 +194,19 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 
 	const bool bTimeSlicedRealTimeCapture = CVarRealTimeReflectionCaptureTimeSlicing.GetValueOnRenderThread() > 0;
 
-
-	if (!ConvolvedSkyRenderTarget.IsValid())
+	const bool CubeResolutionInvalidated = ConvolvedSkyRenderTarget.IsValid() && ConvolvedSkyRenderTarget->GetDesc().GetSize().X != CubeWidth;
+	if (!ConvolvedSkyRenderTarget.IsValid() || CubeResolutionInvalidated)
 	{
 		GRenderTargetPool.FindFreeElement(RHICmdList, SkyCubeTexDesc, ConvolvedSkyRenderTarget, TEXT("ConvolvedSkyRenderTarget"), true, ERenderTargetTransience::NonTransient);
 		GRenderTargetPool.FindFreeElement(RHICmdList, SkyCubeTexDesc, CapturedSkyRenderTarget, TEXT("CapturedSkyRenderTarget"), true, ERenderTargetTransience::NonTransient);
 	}
-	if (bTimeSlicedRealTimeCapture && !ProcessedSkyRenderTarget.IsValid())
+	if (bTimeSlicedRealTimeCapture && (!ProcessedSkyRenderTarget.IsValid() || CubeResolutionInvalidated))
 	{
 		GRenderTargetPool.FindFreeElement(RHICmdList, SkyCubeTexDesc, ProcessedSkyRenderTarget, TEXT("CapturedSkyRenderTarget"), true, ERenderTargetTransience::NonTransient);
 	}
 
 
-	auto RenderCubeFaces_SkyCloud = [&](bool bExecuteSky, bool bExectureCloud, TRefCountPtr<IPooledRenderTarget> SkyRenderTarget)
+	auto RenderCubeFaces_SkyCloud = [&](bool bExecuteSky, bool bExecuteCloud, TRefCountPtr<IPooledRenderTarget> SkyRenderTarget)
 	{
 		if (bShouldRenderSkyAtmosphere)
 		{
@@ -190,7 +219,7 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 			FRDGTextureRef BlackDummy2dTex = GraphBuilder.RegisterExternalTexture(GSystemTextures.BlackDummy);
 			FRDGTextureRef BlackDummy3dTex = GraphBuilder.RegisterExternalTexture(GSystemTextures.VolumetricBlackDummy);
 
-			SkyAtmosphereRenderContext SkyRC;
+			FSkyAtmosphereRenderContext SkyRC;
 
 			// Global data constant between faces
 			const FAtmosphereSetup& AtmosphereSetup = SkyAtmosphereSceneProxy.GetAtmosphereSetup();
@@ -208,7 +237,7 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 			SkyRC.TransmittanceLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetTransmittanceLutTexture());
 			SkyRC.MultiScatteredLuminanceLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetMultiScatteredLuminanceLutTexture());
 
-			CloudRenderContext CloudRC;
+			FCloudRenderContext CloudRC;
 			if (bShouldRenderVolumetricCloud)
 			{
 				FVolumetricCloudRenderSceneInfo& CloudInfo = *GetVolumetricCloudSceneInfo();
@@ -226,6 +255,7 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 					CloudRC.bShouldViewRenderVolumetricRenderTarget = false;
 					CloudRC.bIsReflectionRendering = true;
 					CloudRC.bSkipAtmosphericLightShadowmap = true;
+					CloudRC.bSecondAtmosphereLightEnabled = IsSecondAtmosphereLightEnabled();
 				}
 				else
 				{
@@ -260,8 +290,8 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 				// We have rendered a sky dome with identity rotation at the SkyLight position for the capture.
 				if (MainView.bSceneHasSkyMaterial)
 				{
-#if 1
 					// Setup a constant referential for each of the faces of the dynamic reflection capture.
+					// This is to have the FastSkyViewLUT match the one generated specifically for the capture point of view.
 					const FVector SkyViewLutReferentialForward = FVector(1.0f, 0.0f, 0.0f);
 					const FVector SkyViewLutReferentialRight = FVector(0.0f, 0.0f, -1.0f);
 					AtmosphereSetup.ComputeViewData(SkyLight->CapturePosition, SkyViewLutReferentialForward, SkyViewLutReferentialRight,
@@ -269,16 +299,17 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 						CubeView.CachedViewUniformShaderParameters->SkyViewLutReferential);
 
 					CubeView.CachedViewUniformShaderParameters->SkyViewLutTexture = RealTimeReflectionCaptureSkyAtmosphereViewLutTexture->GetRenderTargetItem().ShaderResourceTexture;
-#else
-					// Re-use the main view SkyView LUT. Thus we need to propagate the main view Forward/Right vector to have the LUT correctly oriented.
-					// This can also go wrong because AtmosphereSetup.ComputeViewData uses the SkyLight position instead of the main view.
-					// Also split screen will have second player have first player view ofr the sky atmosphere.
-					CubeView.CachedViewUniformShaderParameters->SkyWorldCameraOrigin = MainView.CachedViewUniformShaderParameters->SkyWorldCameraOrigin;
-					CubeView.CachedViewUniformShaderParameters->SkyPlanetCenterAndViewHeight = MainView.CachedViewUniformShaderParameters->SkyPlanetCenterAndViewHeight;
-					CubeView.CachedViewUniformShaderParameters->SkyViewLutReferential = MainView.CachedViewUniformShaderParameters->SkyViewLutReferential;
-#endif
 				}
-				// Else if there is no sky material, we assume that not material is sampling the sky texture in the reflection.
+				else
+				{
+					// Else if there is no sky material, we assume that no material is sampling the FastSkyViewLUT texture in the sky light reflection (bFastSky=bFastAerialPerspective=false).
+					// But, we still need to udpate the sky parameters on the view according to the sky light capture position
+					const FVector SkyViewLutReferentialForward = FVector(1.0f, 0.0f, 0.0f);
+					const FVector SkyViewLutReferentialRight = FVector(0.0f, 0.0f, -1.0f);
+					AtmosphereSetup.ComputeViewData(SkyLight->CapturePosition, SkyViewLutReferentialForward, SkyViewLutReferentialRight,
+						CubeView.CachedViewUniformShaderParameters->SkyWorldCameraOrigin, CubeView.CachedViewUniformShaderParameters->SkyPlanetCenterAndViewHeight,
+						CubeView.CachedViewUniformShaderParameters->SkyViewLutReferential);
+				}
 
 				if (MainView.bSceneHasSkyMaterial || HasVolumetricCloud())
 				{
@@ -302,8 +333,9 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 				//SkyRC.LightShadowShaderParams0UniformBuffer = nullptr;
 				//SkyRC.LightShadowShaderParams1UniformBuffer = nullptr;
 
-				SkyRC.bShouldSampleCloudShadow = HasVolumetricCloud() && MainView.VolumetricCloudShadowMap.IsValid();
-				SkyRC.VolumetricCloudShadowMap = GraphBuilder.RegisterExternalTexture(SkyRC.bShouldSampleCloudShadow ? MainView.VolumetricCloudShadowMap : GSystemTextures.BlackDummy);
+				SkyRC.bShouldSampleCloudShadow = HasVolumetricCloud() && (MainView.VolumetricCloudShadowMap[0].IsValid() || MainView.VolumetricCloudShadowMap[1].IsValid());
+				SkyRC.VolumetricCloudShadowMap[0] = GraphBuilder.RegisterExternalTexture(SkyRC.bShouldSampleCloudShadow && MainView.VolumetricCloudShadowMap[0].IsValid() ? MainView.VolumetricCloudShadowMap[0] : GSystemTextures.BlackDummy);
+				SkyRC.VolumetricCloudShadowMap[1] = GraphBuilder.RegisterExternalTexture(SkyRC.bShouldSampleCloudShadow && MainView.VolumetricCloudShadowMap[1].IsValid() ? MainView.VolumetricCloudShadowMap[1] : GSystemTextures.BlackDummy);
 
 				SkyRC.bShouldSampleCloudSkyAO = HasVolumetricCloud() && MainView.VolumetricCloudSkyAO.IsValid();
 				SkyRC.VolumetricCloudSkyAO = GraphBuilder.RegisterExternalTexture(SkyRC.bShouldSampleCloudSkyAO ? MainView.VolumetricCloudSkyAO : GSystemTextures.BlackDummy);
@@ -354,20 +386,47 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 					}
 				}
 
-				if (bShouldRenderVolumetricCloud && bExectureCloud)
+				if (bShouldRenderVolumetricCloud && bExecuteCloud)
 				{
 					CloudRC.ViewUniformBuffer = SkyRC.ViewUniformBuffer;
 
 					CloudRC.RenderTargets[0] = SkyRC.RenderTargets[0];
 					//	CloudRC.RenderTargets[1] = Null target will skip export
 
+					// No shadow from opaque onto cloud in reflection because this frame shadow maps are not reasy yet.
 					SetVolumeShadowingDefaultShaderParameters(CloudRC.LightShadowShaderParams0);
 
-					CloudRC.VolumetricCloudShadowTexture = CubeView.VolumetricCloudShadowMap.IsValid() ? GraphBuilder.RegisterExternalTexture(CubeView.VolumetricCloudShadowMap) : BlackDummy2dTex;
+					FCloudShadowAOData CloudShadowAOData;
+					GetCloudShadowAOData(GetVolumetricCloudSceneInfo(), CubeView, GraphBuilder, CloudShadowAOData);
+					CloudRC.VolumetricCloudShadowTexture[0] = CloudShadowAOData.VolumetricCloudShadowMap[0];
+					CloudRC.VolumetricCloudShadowTexture[1] = CloudShadowAOData.VolumetricCloudShadowMap[1];
 
 					SceneRenderer.RenderVolumetricCloudsInternal(GraphBuilder, CloudRC);
 				}
+			}
 
+			// Render lower hemisphere color
+			if (SkyLight->bLowerHemisphereIsSolidColor)
+			{
+				FApplyLowerHemisphereColor::FPermutationDomain PermutationVector;
+				TShaderMapRef<FApplyLowerHemisphereColor> ComputeShader(GetGlobalShaderMap(FeatureLevel), PermutationVector);
+
+				const uint32 MipIndex = 0;
+				const uint32 Mip0Resolution = SkyCubeTexture->Desc.GetSize().X;
+				FApplyLowerHemisphereColor::FParameters* PassParameters = GraphBuilder.AllocParameters<FApplyLowerHemisphereColor::FParameters>();
+				PassParameters->ValidDispatchCoord = FIntPoint(Mip0Resolution, Mip0Resolution);
+				PassParameters->LowerHemisphereSolidColor = SkyLight->LowerHemisphereColor;
+				PassParameters->OutTextureMipColor = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(SkyCubeTexture, MipIndex));
+
+				FIntVector NumGroups = FIntVector::DivideAndRoundUp(FIntVector(Mip0Resolution, Mip0Resolution, 1), FIntVector(FApplyLowerHemisphereColor::ThreadGroupSize, FApplyLowerHemisphereColor::ThreadGroupSize, 1));
+
+				// The groupd size per face with padding
+				PassParameters->FaceThreadGroupSize = NumGroups.X * FConvolveSpecularFaceCS::ThreadGroupSize;
+
+				// We are going to dispatch once for all faces 
+				NumGroups.X *= 6;
+
+				FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("ApplyLowerHemisphereColor"), ComputeShader, PassParameters, NumGroups);
 			}
 
 			GraphBuilder.Execute();
@@ -535,10 +594,10 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 
 	const uint32 LastMipLevel = CubeMipCount - 1;
 
-	// Generate a full cube map in a single frame for the first frame.
 	if (!bTimeSlicedRealTimeCapture || bRealTimeSlicedReflectionCaptureFirstFrame)
 	{
-		// PS4 perf number for 128x128x6 a cubemap with sky and cloud and default settings
+		// Generate a full cube map in a single frame for the first frame.
+		// Perf number are for a 128x128x6 a cubemap on PS4 with sky and cloud and default settings
 
 		// 0.60ms (0.12ms for faces with the most clouds)
 		RenderCubeFaces_SkyCloud(true, true, CapturedSkyRenderTarget);

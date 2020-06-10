@@ -1034,7 +1034,7 @@ public:
 
 	FTemporalLODState TemporalLODState;
 
-	FVolumetricRenderTargetViewStateData VolumetricRenderTarget;
+	FVolumetricRenderTargetViewStateData VolumetricCloudRenderTarget;
 
 	// call after OnFrameRenderingSetup()
 	virtual uint32 GetCurrentTemporalAASampleIndex() const
