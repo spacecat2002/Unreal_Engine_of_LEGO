@@ -314,6 +314,23 @@ struct FShaderCompilerInput
 
 		return Ar;
 	}
+
+	bool IsUsingTessellation() const
+	{
+		switch (Target.GetFrequency())
+		{
+		case SF_Vertex:
+		{
+			const FString* UsingTessellationDefine = Environment.GetDefinitions().Find(TEXT("USING_TESSELLATION"));
+			return (UsingTessellationDefine != nullptr && *UsingTessellationDefine == TEXT("1"));
+		}
+		case SF_Hull:
+		case SF_Domain:
+			return true;
+		default:
+			return false;
+		}
+	}
 };
 
 /** A shader compiler error or warning. */

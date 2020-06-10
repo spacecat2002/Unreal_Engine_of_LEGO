@@ -1528,11 +1528,14 @@ void FMaterial::SetupMaterialEnvironment(
 
 	if ((RHISupportsTessellation(Platform) == false) || (GetTessellationMode() == MTM_NoTessellation))
 	{
+		// Make sure this define is in sync with FShaderCompilerInput::IsUsingTessellation
 		OutEnvironment.SetDefine(TEXT("USING_TESSELLATION"),TEXT("0"));
 	}
 	else
 	{
+		// Make sure this define is in sync with FShaderCompilerInput::IsUsingTessellation
 		OutEnvironment.SetDefine(TEXT("USING_TESSELLATION"),TEXT("1"));
+
 		if (GetTessellationMode() == MTM_FlatTessellation)
 		{
 			OutEnvironment.SetDefine(TEXT("TESSELLATION_TYPE_FLAT"),TEXT("1"));
