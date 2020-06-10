@@ -431,7 +431,7 @@ SRetainerWidget::EPaintRetainedContentResult SRetainerWidget::PaintRetainedConte
 		}
 		bInvalidSizeLogged = false;
 
-		if ( RenderTargetWidth == 0 || RenderTargetHeight == 0 )
+		if ( RenderTargetWidth >= 0 && RenderTargetHeight >= 0 )
 		{
 			const FVector2D ViewOffset = PaintGeometry.DrawPosition.RoundToVector();
 
