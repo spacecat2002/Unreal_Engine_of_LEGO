@@ -604,6 +604,21 @@ bool UWorld::Rename(const TCHAR* InName, UObject* NewOuter, ERenameFlags Flags)
 		}
 	}
 
+	if (!bTestRename)
+	{
+		// We also need to rename any external actor packages we have since the search for them is based on the world name
+		for (AActor* Actor : PersistentLevel->Actors)
+		{
+			if (Actor && Actor->IsPackageExternal())
+			{
+				// Instead of just renaming the package, re-embed and re-externalize the actor
+				// this will leave dirty empty actor packages being which will be cleaned up though SaveAll, although SaveCurrentLevel won't pick them up
+				Actor->SetPackageExternal(false);
+				Actor->SetPackageExternal(true);
+			}
+		}
+	}
+
 	// Rename the level script blueprint now, unless we are in PostLoad. ULevel::PostLoad should handle renaming this at load time.
 	if (!FUObjectThreadContext::Get().IsRoutingPostLoad)
 	{

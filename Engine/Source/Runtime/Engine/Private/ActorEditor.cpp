@@ -784,15 +784,9 @@ void AActor::SetPackageExternal(bool bExternal, bool bShouldDirty)
 	else 
 	{
 		UPackage* ActorPackage = GetExternalPackage();
-		// should be removed but needed for now so the package deletion is visible to Multi-User
-		FAssetRegistryModule::AssetDeleted(this);
+		// Detach the linker from the actor package so that the actor won't keep references to it if we wanted to delete the package
+		ResetLoaders(ActorPackage);
 		SetExternalPackage(nullptr);
-		// Clear the standalone flag on the package metadata so it can be garbage collected properly
-		ForEachObjectWithPackage(ActorPackage, [](UObject* Object)
-		{
-			Object->ClearFlags(RF_Standalone);
-			return true;
-		}, false);
 	}
 
 	for (UActorComponent* ActorComponent : GetComponents())
