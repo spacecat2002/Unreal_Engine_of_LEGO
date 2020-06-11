@@ -2297,6 +2297,8 @@ void FDeferredShadingSceneRenderer::RenderLightForHair(
 		return;
 	}
 
+	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+	FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(SceneContext, FeatureLevel, ESceneTextureSetupMode::All, UniformBuffer_SingleFrame);
 
 	const FSphere LightBounds = LightSceneInfo->Proxy->GetBoundingSphere();
 	const bool bTransmission = LightSceneInfo->Proxy->Transmission();
@@ -2318,6 +2320,9 @@ void FDeferredShadingSceneRenderer::RenderLightForHair(
 		{
 			continue;
 		}
+
+		FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
+		SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
 
 		FRenderLightParams RenderLightParams;
 		RenderLightParams.DeepShadow_TransmittanceMaskBuffer = InTransmittanceMaskData ? InTransmittanceMaskData->TransmittanceMaskSRV : nullptr;
