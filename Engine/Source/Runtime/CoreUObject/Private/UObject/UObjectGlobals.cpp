@@ -1299,9 +1299,14 @@ UPackage* LoadPackageInternal(UPackage* InOuter, const TCHAR* InLongPackageNameO
 			Result->SetPackageFlags(PKG_ForDiffing);
 		}
 
-		// Save the filename we load from
-		Result->FileName = FName(*FileToLoad);
-
+		// Save the filename we load from in Long package name form
+		{
+			// convert will succeed here, otherwise the linker will have been null
+			FString LongPackageFilename;
+			FPackageName::TryConvertFilenameToLongPackageName(FileToLoad, LongPackageFilename);
+			Result->FileName = FName(*LongPackageFilename);
+		}
+		
 		// is there a script SHA hash for this package?
 		uint8 SavedScriptSHA[20];
 		bool bHasScriptSHAHash = FSHA1::GetFileSHAHash(*Linker->LinkerRoot->GetName(), SavedScriptSHA, false);

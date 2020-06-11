@@ -41,6 +41,7 @@ void UPackage::PostInitProperties()
 
 #if WITH_EDITORONLY_DATA
 	MetaData = nullptr;
+	PersistentGuid = FGuid::NewGuid();
 #endif
 	LinkerPackageVersion = GPackageFileUE4Version;
 	LinkerLicenseeVersion = GPackageFileLicenseeUE4Version;

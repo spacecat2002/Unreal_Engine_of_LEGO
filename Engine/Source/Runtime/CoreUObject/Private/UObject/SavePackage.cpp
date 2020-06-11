@@ -3284,6 +3284,15 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 	{
 		TopLevelFlags |= RF_HasExternalPackage;
 	}
+
+	// if the in memory package filename is different the filename we are saving it to,
+	// regenerate a new persistent id for it.
+	FString PackageFilename(Filename);
+	bool bIsValidLongPackageName = FPackageName::TryConvertFilenameToLongPackageName(PackageFilename, PackageFilename);
+	if (!InOuter->FileName.IsNone() && InOuter->FileName.ToString() != PackageFilename)
+	{
+		InOuter->SetPersistentGuid(FGuid::NewGuid());
+	}
 #endif //WITH_EDITOR
 
 	const bool bSavingConcurrent = !!(SaveFlags & ESaveFlags::SAVE_Concurrent);
@@ -5950,11 +5959,12 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 		if (Success)
 		{
 			// if the save was successful, update the internal package filename path if we aren't currently cooking
-			FString PackageFilename(Filename);
-			if (TargetPlatform == nullptr && FPackageName::TryConvertFilenameToLongPackageName(PackageFilename, PackageFilename))
+#if WITH_EDITOR
+			if (TargetPlatform == nullptr && bIsValidLongPackageName)
 			{
 				InOuter->FileName = *PackageFilename;
 			}
+#endif
 
 			auto HashCompletionFunc = [](FMD5& State)
 			{

@@ -148,11 +148,11 @@ ULevel implementation.
 #if WITH_EDITOR
 namespace LevelUtil
 {
-	TArray<FString> GetLevelExternalActorPackageNamesFromFiles(const ULevel* Level)
+	TArray<FString> GetLevelExternalActorPackageNamesFromFiles(const UWorld* World)
 	{
-		check(Level);
+		check(World);
 		TArray<FString> ActorPackageNames;
-		IFileManager::Get().IterateDirectoryRecursively(*FPackageName::LongPackageNameToFilename(ULevel::GetExternalActorsPath(Level->GetPackage())), [&ActorPackageNames](const TCHAR* FilenameOrDirectory, bool bIsDirectory)
+		IFileManager::Get().IterateDirectoryRecursively(*FPackageName::LongPackageNameToFilename(ULevel::GetExternalActorsPath(World->GetPackage(), World->GetName())), [&ActorPackageNames](const TCHAR* FilenameOrDirectory, bool bIsDirectory)
 			{
 				if (!bIsDirectory)
 				{
@@ -697,7 +697,7 @@ void ULevel::PostLoad()
 			InstancingContext.AddMapping(LevelPackage->FileName, LevelPackage->GetFName());
 		}
 
-		TArray<FString> ActorPackageNames = LevelUtil::GetLevelExternalActorPackageNamesFromFiles(this);
+		TArray<FString> ActorPackageNames = LevelUtil::GetLevelExternalActorPackageNamesFromFiles(GetTypedOuter<UWorld>());
 		TArray<FString> InstancePackageNames;
 		for (const FString& ActorPackageName : ActorPackageNames)
 		{
@@ -2148,7 +2148,7 @@ TArray<UPackage*> ULevel::GetExternalActorPackages() const
 {
 	// Only GetExternalPackages is not enough to get to empty packages or deleted actors
 	TSet<UPackage*> ActorPackages;
-	TArray<FString> ActorPackageNames = LevelUtil::GetLevelExternalActorPackageNamesFromFiles(this);
+	TArray<FString> ActorPackageNames = LevelUtil::GetLevelExternalActorPackageNamesFromFiles(GetTypedOuter<UWorld>());
 
 	for (const FString& PackageName : ActorPackageNames)
 	{
@@ -2162,20 +2162,15 @@ TArray<UPackage*> ULevel::GetExternalActorPackages() const
 	return ActorPackages.Array();
 }
 
-FString ULevel::GetExternalActorsPath(UPackage* InLevelPackage)
+FString ULevel::GetExternalActorsPath(UPackage* InLevelPackage, const FString& InPackageShortName)
 {
+	// We can't use the Package->FileName here because it might be a duplicated a package
+	// We can't use the package short name directly in some cases either  (PIE, instance d load) as it may contain pie prefix or not reflect the real actor location
 	check(InLevelPackage);
-	FString LevelPackageName = InLevelPackage->GetName();
-	FString ShortLevelPackageName = FPackageName::GetShortName(LevelPackageName);
-
-	if (InLevelPackage->PIEInstanceID != INDEX_NONE)
-	{
-		check(ShortLevelPackageName.StartsWith(PLAYWORLD_PACKAGE_PREFIX));
-		const int32 PrefixLen = UWorld::BuildPIEPackagePrefix(InLevelPackage->PIEInstanceID).Len();
-		ShortLevelPackageName.MidInline(PrefixLen, MAX_int32, false);
-	}
-
-	return FString::Printf(TEXT("/%s/__ExternalActors__/%s"), *FPackageName::GetPackageMountPoint(LevelPackageName).ToString(), *ShortLevelPackageName);
+	FString MountPoint, PackagePath, ShortName;
+	bool bSuccess = FPackageName::SplitLongPackageName(InLevelPackage->GetName(), MountPoint, PackagePath, ShortName);
+	check(bSuccess);
+	return FString::Printf(TEXT("%s__ExternalActors__/%s%s"), *MountPoint, *PackagePath, InPackageShortName.IsEmpty() ? *ShortName : *InPackageShortName);
 }
 
 UPackage* ULevel::CreateActorPackage(UPackage* InLevelPackage, const FGuid& InGuid)
