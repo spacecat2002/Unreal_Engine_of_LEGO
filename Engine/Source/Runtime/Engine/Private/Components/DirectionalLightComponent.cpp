@@ -350,10 +350,12 @@ public:
 		OutInitializer.FaceDirection = FVector(1,0,0);
 		OutInitializer.SubjectBounds = FBoxSphereBounds(FVector::ZeroVector,SubjectBounds.BoxExtent,SubjectBounds.SphereRadius);
 		OutInitializer.WAxis = FVector4(0,0,0,1);
-		OutInitializer.MinLightW = -HALF_WORLD_MAX;
-		// Reduce casting distance on a directional light
-		// This is necessary to improve floating point precision in several places, especially when deriving frustum verts from InvReceiverMatrix
-		OutInitializer.MaxDistanceToCastInLightW = HALF_WORLD_MAX / 32.0f;
+		// Use the minimum of half the world, things further away do not cast shadows,
+		// However, if the cascade bounds are larger, then extend the casting distance far enough to encompass the cascade.
+		OutInitializer.MinLightW = FMath::Min<float>(-HALF_WORLD_MAX, -SubjectBounds.SphereRadius);
+		// Range must extend to end of cascade bounds
+		const float MaxLightW = SubjectBounds.SphereRadius;
+		OutInitializer.MaxDistanceToCastInLightW = MaxLightW - OutInitializer.MinLightW;
 		OutInitializer.bRayTracedDistanceField = bRayTracedCascade;
 		OutInitializer.CascadeSettings.bFarShadowCascade = !bRayTracedCascade && OutInitializer.CascadeSettings.ShadowSplitIndex >= (int32)NumNearCascades;
 		return true;
@@ -373,10 +375,12 @@ public:
 		OutInitializer.FaceDirection = FVector(1,0,0);
 		OutInitializer.SubjectBounds = FBoxSphereBounds( FVector::ZeroVector, LightPropagationVolumeBounds.GetExtent(), FMath::Sqrt( LpvExtent * LpvExtent * 3.0f ) );
 		OutInitializer.WAxis = FVector4(0,0,0,1);
-		OutInitializer.MinLightW = -HALF_WORLD_MAX;
-		// Reduce casting distance on a directional light
-		// This is necessary to improve floating point precision in several places, especially when deriving frustum verts from InvReceiverMatrix
-		OutInitializer.MaxDistanceToCastInLightW = HALF_WORLD_MAX / 32.0f;
+		// Use the minimum of half the world, things further away do not cast shadows,
+		// However, if the cascade bounds are larger, then extend the casting distance far enough to encompass the cascade.
+		OutInitializer.MinLightW = FMath::Min<float>(-HALF_WORLD_MAX, -OutInitializer.SubjectBounds.SphereRadius);
+		// Range must extend to end of cascade bounds
+		const float MaxLightW = OutInitializer.SubjectBounds.SphereRadius;
+		OutInitializer.MaxDistanceToCastInLightW = MaxLightW - OutInitializer.MinLightW;
 
 		// Compute the RSM bounds
 		{
@@ -855,7 +859,7 @@ private:
 				FadeExtension *= FMath::Clamp(CVarRtdfFarTransitionScale.GetValueOnAnyThread(), 0.0f, 1.0f);
 			}
 			// For the last cascade, we want to fade out to avoid a hard line, since there is no further cascade to overlap with, 
-			// extending the far makes little sensse as extending the shadow range would be counter intuitive and affect performance. 
+			// extending the far makes little sense as extending the shadow range would be counter intuitive and affect performance. 
 			// Thus, move the fade plane closer:
 			FadePlane -= FadeExtension;
 		}
