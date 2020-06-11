@@ -786,11 +786,11 @@ void FProjectedShadowInfo::SetupWholeSceneProjection(
 
 	checkf(MaxSubjectZ > MinSubjectZ, TEXT("MaxSubjectZ %f MinSubjectZ %f SubjectBounds.SphereRadius %f"), MaxSubjectZ, MinSubjectZ, Initializer.SubjectBounds.SphereRadius);
 
-	const float ClampedMaxLightW = FMath::Min(MinSubjectZ + Initializer.MaxDistanceToCastInLightW, (float)HALF_WORLD_MAX);
 	MinPreSubjectZ = Initializer.MinLightW;
 
 	SubjectAndReceiverMatrix = WorldToFace * FShadowProjectionMatrix(MinSubjectZ, MaxSubjectZ, Initializer.WAxis);
-	ReceiverMatrix = WorldToFace * FShadowProjectionMatrix(MinSubjectZ, ClampedMaxLightW, Initializer.WAxis);
+	// For CSM the subject is the same as the receiver (i.e., the cascade bounds)
+	ReceiverMatrix = SubjectAndReceiverMatrix;
 
 	float MaxSubjectDepth = SubjectAndReceiverMatrix.TransformPosition(
 		Initializer.SubjectBounds.Origin
