@@ -889,7 +889,19 @@ private:
 			OutCascadeSettings->ShadowSplitIndex = (int32)ShadowSplitIndex;
 		}
 
-		const FSphere CascadeSphere = FDirectionalLightSceneProxy::GetShadowSplitBoundsDepthRange(View, View.ViewMatrices.GetViewOrigin(), SplitNear, SplitFar, OutCascadeSettings);
+
+		// TODO: Move this into a flag in some shadow-system cofiguration struct and set based on this cvar outside setup.
+		static const auto CVarSkyAtmosphereSampleLightShadowmap = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.SkyAtmosphere.SampleLightShadowmap"));
+
+		// If enabled & this is the last cascade, then override the near plane used to construct the bounds using the
+		// near plane of the first cacade (AKA the near plane of the view), to ensure the last cascade is inclusive.
+		// We don't set any of the near/far planes etc as that would conflict with the fading.
+		bool bUseNearOverride = (bCastShadowsOnClouds || bCastShadowsOnAtmosphere) 
+			&& (ShadowSplitIndex + 1U) == NumNearAndFarCascades 
+			&& CVarSkyAtmosphereSampleLightShadowmap && CVarSkyAtmosphereSampleLightShadowmap->GetValueOnAnyThread() != 0;
+		
+		const float BoundsCalcNear = bUseNearOverride ? GetSplitDistance(View, 0, bPrecomputedLightingIsValid, bIsRayTracedCascade) : SplitNear;
+		const FSphere CascadeSphere = FDirectionalLightSceneProxy::GetShadowSplitBoundsDepthRange(View, View.ViewMatrices.GetViewOrigin(), BoundsCalcNear, SplitFar, OutCascadeSettings);
 
 		return CascadeSphere;
 	}
