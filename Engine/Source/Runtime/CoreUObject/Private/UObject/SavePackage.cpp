@@ -3289,7 +3289,7 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 	// regenerate a new persistent id for it.
 	FString PackageFilename(Filename);
 	bool bIsValidLongPackageName = FPackageName::TryConvertFilenameToLongPackageName(PackageFilename, PackageFilename);
-	if (!InOuter->FileName.IsNone() && InOuter->FileName.ToString() != PackageFilename)
+	if (!bIsCooking && !InOuter->FileName.IsNone() && InOuter->FileName.ToString() != PackageFilename && !(SaveFlags & SAVE_FromAutosave))
 	{
 		InOuter->SetPersistentGuid(FGuid::NewGuid());
 	}
