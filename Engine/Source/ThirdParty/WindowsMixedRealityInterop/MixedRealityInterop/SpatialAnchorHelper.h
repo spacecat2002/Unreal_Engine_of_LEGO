@@ -11,6 +11,7 @@
 //#include <sstream>
 #include <map>
 #include <functional>
+#include <mutex>
 #include "winrt/base.h"
 #include "winrt/Windows.Perception.Spatial.h"
 
@@ -52,6 +53,7 @@ namespace WindowsMixedReality
 		void(*m_logCallback)(const wchar_t*) = nullptr;
 
 		class MixedRealityInterop&														m_interop;
+		mutable std::mutex																m_spatialAnchorMapLock;
 		std::map<std::wstring, winrt::Windows::Perception::Spatial::SpatialAnchor>		m_spatialAnchorMap;
 		mutable std::mutex																m_spatialAnchorStoreLock;
 		winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Perception::Spatial::SpatialAnchorStore>		m_spatialAnchorStoreAsyncOperation;

@@ -4,6 +4,7 @@
 #include "Chaos/ArrayND.h"
 #include "Chaos/Box.h"
 #include "Chaos/ImplicitObject.h"
+#include "Chaos/ImplicitObjectScaled.h"
 #include "Chaos/Particles.h"
 #include "Chaos/UniformGrid.h"
 
@@ -18,6 +19,11 @@ class TTriangleMesh;
 template<class T, int D>
 class TPlane;
 
+template<typename T>
+class TCapsule;
+
+class FConvex;
+
 template<class T, int d>
 class CHAOS_API TLevelSet final : public FImplicitObject
 {
@@ -30,6 +36,8 @@ class CHAOS_API TLevelSet final : public FImplicitObject
 	TLevelSet(const TLevelSet<T, d>& Other) = delete;
 	TLevelSet(TLevelSet<T, d>&& Other);
 	virtual ~TLevelSet();
+
+	virtual TUniquePtr<FImplicitObject> DeepCopy() const;
 
 	void Write(std::ostream& Stream) const;
 	virtual T PhiWithNormal(const TVector<T, d>& x, TVector<T, d>& Normal) const override;
@@ -80,6 +88,38 @@ class CHAOS_API TLevelSet final : public FImplicitObject
 		SerializeImp(Ar);
 	}
 
+	/** 
+	 * Estimate the volume bounded by the zero'th isocontour of the level set.
+	 * #BGTODO - We can generate a more accurate pre-calculated volume during generation as this method still under
+	 * estimates the actual volume of the surface.
+	 */
+	T ApproximateNegativeMaterial() const
+	{
+		const TVector<T,d>& CellDim = MGrid.Dx();
+		const float AvgRadius = (CellDim[0] + CellDim[1] + CellDim[2]) / (T)3;
+		const T CellVolume = CellDim.Product();
+		T Volume = 0.0;
+		for (int32 Idx = 0; Idx < MPhi.Num(); ++Idx)
+		{
+			const T Phi = MPhi[Idx];
+			if (Phi <= 0.0)
+			{
+				T CellRadius = AvgRadius - FMath::Abs(Phi);
+
+				if(CellRadius > KINDA_SMALL_NUMBER)
+				{
+					const T Scale = FMath::Min((T)1, CellRadius / AvgRadius);
+					Volume += CellVolume * Scale;
+				}
+				else
+				{
+					Volume += CellVolume;
+				}
+			}
+		}
+		return Volume;
+	}
+
 	bool ComputeMassProperties(T& OutVolume, TVector<T, d>& OutCOM, PMatrix<T,d,d>& OutInertia, TRotation<T, d>& OutRotationOfMass) const;
 
 	T ComputeLevelSetError(const TParticles<T, d>& InParticles, const TArray<TVector<T, 3>>& Normals, const TTriangleMesh<T>& Mesh, T& AngleError, T& MaxDistError);
@@ -102,6 +142,33 @@ class CHAOS_API TLevelSet final : public FImplicitObject
 
 		return Result;
 	}
+
+
+	bool SweepGeom(const TSphere<FReal, 3>& QueryGeom, const FRigidTransform3& StartTM, const FVec3& Dir, const FReal Length, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex, const FReal Thickness = 0, const bool bComputeMTD = false) const;
+	bool SweepGeom(const TBox<FReal, 3>& QueryGeom, const FRigidTransform3& StartTM, const FVec3& Dir, const FReal Length, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex, const FReal Thickness = 0, const bool bComputeMTD = false) const;
+	bool SweepGeom(const TCapsule<FReal>& QueryGeom, const FRigidTransform3& StartTM, const FVec3& Dir, const FReal Length, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex, const FReal Thickness = 0, const bool bComputeMTD = false) const;
+	bool SweepGeom(const FConvex& QueryGeom, const FRigidTransform3& StartTM, const FVec3& Dir, const FReal Length, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex, const FReal Thickness = 0, const bool bComputeMTD = false) const;
+
+	bool SweepGeom(const TImplicitObjectScaled<TSphere<FReal, 3>>& QueryGeom, const FRigidTransform3& StartTM, const FVec3& Dir, const FReal Length, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex, const FReal Thickness = 0, const bool bComputeMTD = false) const;
+	bool SweepGeom(const TImplicitObjectScaled<TBox<FReal, 3>>& QueryGeom, const FRigidTransform3& StartTM, const FVec3& Dir, const FReal Length, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex, const FReal Thickness = 0, const bool bComputeMTD = false) const;
+	bool SweepGeom(const TImplicitObjectScaled<TCapsule<FReal>>& QueryGeom, const FRigidTransform3& StartTM, const FVec3& Dir, const FReal Length, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex, const FReal Thickness = 0, const bool bComputeMTD = false) const;
+	bool SweepGeom(const TImplicitObjectScaled<FConvex>& QueryGeom, const FRigidTransform3& StartTM, const FVec3& Dir, const FReal Length, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex, const FReal Thickness = 0, const bool bComputeMTD = false) const;
+
+	template<typename QueryGeomType>
+	bool SweepGeomImp(const QueryGeomType& QueryGeom, const FRigidTransform3& StartTM, const FVec3& Dir, const FReal Length, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex, const FReal Thickness, const bool bComputeMTD) const;
+
+	bool OverlapGeom(const TSphere<FReal, 3>& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FMTDInfo* OutMTD = nullptr) const;
+	bool OverlapGeom(const TBox<FReal, 3>& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FMTDInfo* OutMTD = nullptr) const;
+	bool OverlapGeom(const TCapsule<FReal>& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FMTDInfo* OutMTD = nullptr) const;
+	bool OverlapGeom(const FConvex& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FMTDInfo* OutMTD = nullptr) const;
+
+	bool OverlapGeom(const TImplicitObjectScaled<TSphere<FReal, 3>>& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FMTDInfo* OutMTD = nullptr) const;
+	bool OverlapGeom(const TImplicitObjectScaled<TBox<FReal, 3>>& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FMTDInfo* OutMTD = nullptr) const;
+	bool OverlapGeom(const TImplicitObjectScaled<TCapsule<FReal>>& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FMTDInfo* OutMTD = nullptr) const;
+	bool OverlapGeom(const TImplicitObjectScaled<FConvex>& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FMTDInfo* OutMTD = nullptr) const;
+
+	template<typename QueryGeomType>
+	bool OverlapGeomImp(const QueryGeomType& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FMTDInfo* OutMTD = nullptr) const;
 
   private:
 	bool ComputeDistancesNearZeroIsocontour(FErrorReporter& ErrorReporter, const TParticles<T, d>& InParticles, const TArray<TVector<T, 3>> &Normals, const TTriangleMesh<T>& Mesh, TArrayND<bool, d>& BlockedFaceX, TArrayND<bool, d>& BlockedFaceY, TArrayND<bool, d>& BlockedFaceZ, TArray<TVector<int32, d>>& InterfaceIndices);

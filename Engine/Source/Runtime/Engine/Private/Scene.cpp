@@ -394,6 +394,7 @@ FPostProcessSettings::FPostProcessSettings()
 
 	BlueCorrection = 0.6f;
 	ExpandGamut = 1.0f;
+	ToneCurveAmount = 1.0;
 
 	// default values:
 	FilmWhitePoint = FLinearColor(1.0f, 1.0f, 1.0f);
@@ -623,6 +624,7 @@ FPostProcessSettings::FPostProcessSettings(const FPostProcessSettings& Settings)
 	, bOverride_ColorCorrectionHighlightsMin(Settings.bOverride_ColorCorrectionHighlightsMin)
 	, bOverride_BlueCorrection(Settings.bOverride_BlueCorrection)
 	, bOverride_ExpandGamut(Settings.bOverride_ExpandGamut)
+	, bOverride_ToneCurveAmount(Settings.bOverride_ToneCurveAmount)
 	, bOverride_FilmWhitePoint(Settings.bOverride_FilmWhitePoint)
 	, bOverride_FilmSaturation(Settings.bOverride_FilmSaturation)
 	, bOverride_FilmChannelMixerRed(Settings.bOverride_FilmChannelMixerRed)
@@ -803,6 +805,7 @@ FPostProcessSettings::FPostProcessSettings(const FPostProcessSettings& Settings)
 	, ColorCorrectionShadowsMax(Settings.ColorCorrectionShadowsMax)
 	, BlueCorrection(Settings.BlueCorrection)
 	, ExpandGamut(Settings.ExpandGamut)
+	, ToneCurveAmount(Settings.ToneCurveAmount)
 	, FilmSlope(Settings.FilmSlope)
 	, FilmToe(Settings.FilmToe)
 	, FilmShoulder(Settings.FilmShoulder)
@@ -1119,7 +1122,7 @@ void FPostProcessSettings::PostSerialize(const FArchive& Ar)
 			// Calculate an exposure bias to try and keep the look similar from 4.24 to 4.25
 			if (bIsAnyNonDefault)
 			{
-				const auto VarDefaultAutoExposureExtendDefaultLuminanceRange = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.DefaultFeature.AutoExposure.ExtendDefaultLuminanceRange"));
+				static const auto VarDefaultAutoExposureExtendDefaultLuminanceRange = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.DefaultFeature.AutoExposure.ExtendDefaultLuminanceRange"));
 				bool bExtendedLuminanceRange = (VarDefaultAutoExposureExtendDefaultLuminanceRange->GetValueOnAnyThread() == 1);
 
 				const float ExtraAutoExposureBias = CalculateEyeAdaptationExposureVersionUpdate(*this, bExtendedLuminanceRange);
@@ -1175,7 +1178,7 @@ void FPostProcessSettings::PostSerialize(const FArchive& Ar)
 
 			if (bIsAnyNonDefault)
 			{
-				const auto VarDefaultAutoExposureExtendDefaultLuminanceRange = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.DefaultFeature.AutoExposure.ExtendDefaultLuminanceRange"));
+				static const auto VarDefaultAutoExposureExtendDefaultLuminanceRange = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.DefaultFeature.AutoExposure.ExtendDefaultLuminanceRange"));
 				bool bExtendedLuminanceRange = (VarDefaultAutoExposureExtendDefaultLuminanceRange->GetValueOnAnyThread() == 1);
 
 				const float ExtraAutoExposureBias = CalculateEyeAdaptationExposureVersionUpdate(*this, bExtendedLuminanceRange);

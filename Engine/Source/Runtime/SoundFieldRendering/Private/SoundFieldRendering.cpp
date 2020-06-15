@@ -83,6 +83,11 @@ FSoundFieldDecoder::FSoundFieldDecoder()
 
 void FSoundFieldDecoder::DecodeAudioDirectlyToDeviceOutputPositions(const FAmbisonicsSoundfieldBuffer& InputData, const FSoundfieldSpeakerPositionalData& OutputPositions, Audio::AlignedFloatBuffer& OutputData)
 {
+	if (InputData.NumChannels == 0 || InputData.AudioBuffer.Num() == 0)
+	{
+		FMemory::Memzero(OutputData.GetData(), OutputData.Num() * sizeof(float));
+		return;
+	}
 
 	constexpr const float DEG_2_RAD = PI / 180.0f;
 
@@ -141,8 +146,8 @@ void FSoundFieldDecoder::DecodeAudioDirectlyToDeviceOutputPositions(const FAmbis
 
 	// Don't interpolate if the number of speakers has changed, or if listener rotation has not changed
 	bool bShouldInterpolate = TargetSpeakerGains.Num() == CurrentSpeakerGains.Num();
-	bShouldInterpolate &= !FMath::IsNearlyEqual(ListenerRotationSphericalCoord.X, LastListenerRotationSphericalCoord.X);
-	bShouldInterpolate &= !FMath::IsNearlyEqual(ListenerRotationSphericalCoord.Y, LastListenerRotationSphericalCoord.Y);
+	bShouldInterpolate |= !FMath::IsNearlyEqual(ListenerRotationSphericalCoord.X, LastListenerRotationSphericalCoord.X);
+	bShouldInterpolate |= !FMath::IsNearlyEqual(ListenerRotationSphericalCoord.Y, LastListenerRotationSphericalCoord.Y);
 
 	// fill out the ambisonic speaker gain maps
 	for (int32 OutChan = 0; OutChan < NumOutputChannels; ++OutChan)
@@ -278,6 +283,7 @@ void FSoundFieldDecoder::DecodeAudioToSevenOneAndDownmixToDevice(const FAmbisoni
 {
 	if (InputData.NumChannels == 0 || InputData.AudioBuffer.Num() == 0)
 	{
+		FMemory::Memzero(OutputData.GetData(), OutputData.Num() * sizeof(float));
 		return;
 	}
 
@@ -333,7 +339,7 @@ void FSoundFieldDecoder::DecodeAudioToSevenOneAndDownmixToDevice(const FAmbisoni
 
 	// Don't interpolate if the listener rotation has not changed
 	bool bShouldInterpolate = !FMath::IsNearlyEqual(ListenerRotationSphericalCoord.X, LastListenerRotationSphericalCoord.X);
-	bShouldInterpolate &= !FMath::IsNearlyEqual(ListenerRotationSphericalCoord.Y, LastListenerRotationSphericalCoord.Y);
+	bShouldInterpolate |= !FMath::IsNearlyEqual(ListenerRotationSphericalCoord.Y, LastListenerRotationSphericalCoord.Y);
 
 	if (bShouldInterpolate)
 	{

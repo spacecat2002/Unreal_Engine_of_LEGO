@@ -46,16 +46,12 @@ static FOpenGLDynamicRHI* PrivateOpenGLDevicePtr = NULL;
 /** true if we're not using UBOs. (ES2) */
 bool GUseEmulatedUniformBuffers;
 
-#ifndef EXPERIMENTAL_OPENGL_RHITHREAD
-#define EXPERIMENTAL_OPENGL_RHITHREAD 0
-#endif
-
 static TAutoConsoleVariable<int32> CVarAllowRGLHIThread(
 	TEXT("r.OpenGL.AllowRHIThread"),
-	0,
-	TEXT("Toggle experimental OpenGL RHI thread support.\n")
-	TEXT("0: GL scene rendering operations are performed on the render thread. (default)\n")
-	TEXT("1: GL scene rendering operations are queued onto the RHI thread gaining some parallelism with the render thread. (mobile feature levels only)"),
+	1,
+	TEXT("Toggle OpenGL RHI thread support.\n")
+	TEXT("0: GL scene rendering operations are performed on the render thread.\n")
+	TEXT("1: GL scene rendering operations are queued onto the RHI thread gaining some parallelism with the render thread. (default, mobile feature levels only)"),
 	ECVF_RenderThreadSafe | ECVF_ReadOnly);
 
 void OnQueryCreation( FOpenGLRenderQuery* Query )
@@ -740,9 +736,6 @@ static void InitRHICapabilitiesForGL()
 	GMaxOpenGLColorSamples = Value_GL_MAX_COLOR_TEXTURE_SAMPLES;
 	GMaxOpenGLDepthSamples = Value_GL_MAX_DEPTH_TEXTURE_SAMPLES;
 	GMaxOpenGLIntegerSamples = Value_GL_MAX_INTEGER_SAMPLES;
-#if defined(GL_MAX_TEXTURE_BUFFER_SIZE)
-	GMaxTextureBufferSize = Value_GL_MAX_TEXTURE_BUFFER_SIZE;
-#endif
 
 	// Verify some assumptions.
 	// Android seems like reports one color attachment even when it supports MRT
@@ -793,14 +786,8 @@ static void InitRHICapabilitiesForGL()
 	GMaxRHIFeatureLevel = FOpenGL::GetFeatureLevel();
 	GMaxRHIShaderPlatform = FOpenGL::GetShaderPlatform();
 	 
-	// Only enable the experimental OGL rhi thread if explicitly requested.
-#if EXPERIMENTAL_OPENGL_RHITHREAD
-	GRHISupportsRHIThread = GMaxRHIFeatureLevel <= ERHIFeatureLevel::ES3_1;
-#elif ((!PLATFORM_RHITHREAD_DEFAULT_BYPASS) || CAN_TOGGLE_COMMAND_LIST_BYPASS)
-	GRHISupportsRHIThread = GMaxRHIFeatureLevel <= ERHIFeatureLevel::ES3_1 && CVarAllowRGLHIThread.GetValueOnAnyThread();
-#else
-	GRHISupportsRHIThread = false;
-#endif
+	// Enable the OGL rhi thread if explicitly requested.
+	GRHISupportsRHIThread = (GMaxRHIFeatureLevel <= ERHIFeatureLevel::ES3_1 && CVarAllowRGLHIThread.GetValueOnAnyThread());
 	
 	// By default use emulated UBs on mobile
 	static auto* CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("OpenGL.UseEmulatedUBs"));
@@ -824,6 +811,11 @@ static void InitRHICapabilitiesForGL()
 	GMaxTextureMipCount = FMath::CeilLogTwo(Value_GL_MAX_TEXTURE_SIZE) + 1;
 	GMaxTextureMipCount = FMath::Min<int32>(MAX_TEXTURE_MIP_COUNT, GMaxTextureMipCount);
 	GMaxTextureDimensions = Value_GL_MAX_TEXTURE_SIZE;
+	
+#if defined(GL_MAX_TEXTURE_BUFFER_SIZE)
+	GMaxBufferDimensions = Value_GL_MAX_TEXTURE_BUFFER_SIZE;
+#endif
+
 	GMaxCubeTextureDimensions = Value_GL_MAX_CUBE_MAP_TEXTURE_SIZE;
 #if defined(GL_MAX_ARRAY_TEXTURE_LAYERS) && GL_MAX_ARRAY_TEXTURE_LAYERS
 	GMaxTextureArrayLayers = Value_GL_MAX_ARRAY_TEXTURE_LAYERS;
@@ -915,7 +907,8 @@ static void InitRHICapabilitiesForGL()
 	SetupTextureFormat( PF_R16G16B16A16_SNORM,	FOpenGLTextureFormat( GL_RGBA16,				GL_RGBA16,				GL_RGBA,			GL_SHORT,						false,			false));
 	
 	SetupTextureFormat( PF_R16G16_UINT,			FOpenGLTextureFormat( GL_RG16UI,				GL_RG16UI,				GL_RG_INTEGER,		GL_UNSIGNED_SHORT,				false,			false));
-	
+	SetupTextureFormat( PF_R8,					FOpenGLTextureFormat( GL_R8,					GL_R8,					GL_RED,				GL_UNSIGNED_BYTE,				false,			false));
+		
 
 	SetupTextureFormat( PF_R5G6B5_UNORM,		FOpenGLTextureFormat( ));
 #if PLATFORM_DESKTOP || PLATFORM_LUMINGL4
@@ -1006,7 +999,7 @@ static void InitRHICapabilitiesForGL()
 		SetupTextureFormat(PF_R8G8B8A8, FOpenGLTextureFormat(GL_RGBA8, GL_SRGB8_ALPHA8, GL_RGBA, GL_UNSIGNED_BYTE, false, false));
 		SetupTextureFormat(PF_R8G8B8A8_UINT, FOpenGLTextureFormat(GL_RGBA8UI, GL_RGBA8UI, GL_RGBA_INTEGER, GL_UNSIGNED_BYTE, false, false));
 		SetupTextureFormat(PF_G8, FOpenGLTextureFormat(GL_R8, GL_R8, GL_RED, GL_UNSIGNED_BYTE, false, false));
-		SetupTextureFormat(PF_A8, FOpenGLTextureFormat(GL_ALPHA, GL_ALPHA, GL_ALPHA, GL_ALPHA, GL_ALPHA, GL_UNSIGNED_BYTE, false, false));
+		SetupTextureFormat(PF_A8, FOpenGLTextureFormat(GL_R8, GL_ALPHA, GL_ALPHA, GL_ALPHA, GL_ALPHA, GL_UNSIGNED_BYTE, false, false));
 
 		FOpenGL::PE_SetupTextureFormat(&SetupTextureFormat); // platform extension
 
@@ -1103,21 +1096,6 @@ static void InitRHICapabilitiesForGL()
 			SetupTextureFormat( PF_DXT5,	FOpenGLTextureFormat(GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,	GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,		GL_RGBA,	GL_UNSIGNED_BYTE,	true,	false));
 		}
 	}
-	if ( FOpenGL::SupportsPVRTC() )
-	{
-		SetupTextureFormat( PF_PVRTC2,		FOpenGLTextureFormat(GL_COMPRESSED_RGBA_PVRTC_2BPPV1_IMG, GL_COMPRESSED_RGBA_PVRTC_2BPPV1_IMG,	GL_RGBA,	GL_UNSIGNED_BYTE,	true,	false));
-		SetupTextureFormat( PF_PVRTC4,		FOpenGLTextureFormat(GL_COMPRESSED_RGBA_PVRTC_4BPPV1_IMG, GL_COMPRESSED_RGBA_PVRTC_4BPPV1_IMG,	GL_RGBA,	GL_UNSIGNED_BYTE,	true,	false));
-	}
-	if ( FOpenGL::SupportsATITC() )
-	{
-		SetupTextureFormat( PF_ATC_RGB,		FOpenGLTextureFormat(GL_ATC_RGB_AMD,					 GL_ATC_RGB_AMD,						GL_RGBA,	GL_UNSIGNED_BYTE,	true,	false));
-		SetupTextureFormat( PF_ATC_RGBA_E,	FOpenGLTextureFormat(GL_ATC_RGBA_EXPLICIT_ALPHA_AMD,	 GL_ATC_RGBA_EXPLICIT_ALPHA_AMD,		GL_RGBA,	GL_UNSIGNED_BYTE,	true,	false));
-		SetupTextureFormat( PF_ATC_RGBA_I,	FOpenGLTextureFormat(GL_ATC_RGBA_INTERPOLATED_ALPHA_AMD, GL_ATC_RGBA_INTERPOLATED_ALPHA_AMD,	GL_RGBA,	GL_UNSIGNED_BYTE,	true,	false));
-	}
-	if ( FOpenGL::SupportsETC1() )
-	{
-		SetupTextureFormat( PF_ETC1,		FOpenGLTextureFormat(GL_ETC1_RGB8_OES,					GL_ETC1_RGB8_OES,						GL_RGBA,	GL_UNSIGNED_BYTE,	true,	false));
-	}
 #if PLATFORM_ANDROID && !PLATFORM_LUMINGL4
 	if ( FOpenGL::SupportsETC2() )
 	{
@@ -1125,12 +1103,6 @@ static void InitRHICapabilitiesForGL()
 		SetupTextureFormat( PF_ETC2_RGBA,		FOpenGLTextureFormat(GL_COMPRESSED_RGBA8_ETC2_EAC,	GL_COMPRESSED_SRGB8_ALPHA8_ETC2_EAC,		GL_RGBA,		GL_UNSIGNED_BYTE,	true,		false));
 		SetupTextureFormat( PF_ETC2_R11_EAC,	FOpenGLTextureFormat(GL_COMPRESSED_R11_EAC,			GL_COMPRESSED_R11_EAC,						GL_RED,			GL_UNSIGNED_BYTE,	true,		false));
 		SetupTextureFormat( PF_ETC2_RG11_EAC,	FOpenGLTextureFormat(GL_COMPRESSED_RG11_EAC,		GL_COMPRESSED_RG11_EAC,						GL_RG,			GL_UNSIGNED_BYTE,	true,		false));
-
-		// ETC2 is a superset of ETC1 with sRGB support
-		if (FOpenGL::SupportsSRGB())
-		{
-			SetupTextureFormat( PF_ETC1,	FOpenGLTextureFormat(GL_COMPRESSED_RGB8_ETC2, GL_COMPRESSED_SRGB8_ETC2,	GL_RGBA, GL_UNSIGNED_BYTE, true, false));
-		}
 	}
 #endif
 	if (FOpenGL::SupportsASTC())
@@ -1197,6 +1169,15 @@ FOpenGLDynamicRHI::FOpenGLDynamicRHI()
 			{
 				CVar->Set(false);
 			}
+		}
+	}
+
+	{
+		// Temp disable gpusorting for Opengl because of issues on Adreno and Mali devices
+		auto* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("FX.AllowGPUSorting"));
+		if (CVar)
+		{
+			CVar->Set(false);
 		}
 	}
 

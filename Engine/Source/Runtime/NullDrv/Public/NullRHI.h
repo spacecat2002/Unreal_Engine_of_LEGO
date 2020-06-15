@@ -623,14 +623,12 @@ public:
 
 	}
 
-	virtual void RHISetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, const FRHIDepthRenderTargetView* NewDepthStencilTarget) final override
+	virtual void RHIBeginRenderPass(const FRHIRenderPassInfo& InInfo, const TCHAR* InName)
 	{
-
 	}
 
-	virtual void RHISetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo) final override
+	virtual void RHIEndRenderPass()
 	{
-
 	}
 
 	virtual void RHIDrawPrimitive(uint32 BaseVertexIndex, uint32 NumPrimitives, uint32 NumInstances) final override
@@ -692,6 +690,12 @@ public:
 	{
 	}
 	virtual void RHISetDepthBounds(float MinDepth, float MaxDepth) final override
+	{
+	}
+	virtual void RHISetShadingRate(EVRSShadingRate ShadingRate, EVRSRateCombiner Combiner) final override
+	{
+	}
+	virtual void RHISetShadingRateImage(FRHITexture* RateImageTexture, EVRSRateCombiner Combiner)  final override
 	{
 	}
 	virtual void* RHIGetNativeDevice() final override

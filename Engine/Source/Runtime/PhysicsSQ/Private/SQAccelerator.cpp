@@ -2,6 +2,7 @@
 
 #include "SQAccelerator.h"
 #include "CollisionQueryFilterCallbackCore.h"
+#include "PhysicsCore/Public/PhysicsInterfaceUtilsCore.h"
 
 #if PHYSICS_INTERFACE_PHYSX
 #include "SceneQueryPhysXImp.h"	//todo: use nice platform wrapper
@@ -94,12 +95,17 @@ struct TSQVisitor : public Chaos::ISpatialVisitor<TPayload, float>
 		, DebugParams(InDebugParams)
 		, HitBuffer(InHitBuffer)
 		, QueryFilterData(InQueryFilterData)
+#if PHYSICS_INTERFACE_PHYSX
 		, QueryFilterDataConcrete(P2UFilterData(QueryFilterData.data))
+#else
+		, QueryFilterDataConcrete(C2UFilterData(QueryFilterData.data))
+#endif
 		, QueryCallback(InQueryCallback)
 	{
-#if WITH_PHYSX
-		//#TODO - reimplement query flags alternative for Chaos
+#if PHYSICS_INTERFACE_PHYSX
 		bAnyHit = QueryFilterData.flags & PxQueryFlag::eANY_HIT;
+#else
+		bAnyHit = QueryFilterData.flags & FChaosQueryFlag::eANY_HIT;
 #endif
 	}
 
@@ -112,15 +118,21 @@ struct TSQVisitor : public Chaos::ISpatialVisitor<TPayload, float>
 		, DebugParams(InDebugParams)
 		, HitBuffer(InHitBuffer)
 		, QueryFilterData(InQueryFilterData)
+#if PHYSICS_INTERFACE_PHYSX
 		, QueryFilterDataConcrete(P2UFilterData(QueryFilterData.data))
+#else
+		, QueryFilterDataConcrete(C2UFilterData(QueryFilterData.data))
+#endif
 		, QueryGeom(&InQueryGeom)
 		, QueryCallback(InQueryCallback)
 		, StartTM(InStartTM)
 	{
-#if WITH_PHYSX
-		//#TODO - reimplement query flags alternative for Chaos
+#if PHYSICS_INTERFACE_PHYSX
 		bAnyHit = QueryFilterData.flags & PxQueryFlag::eANY_HIT;
+#else
+		bAnyHit = QueryFilterData.flags & FChaosQueryFlag::eANY_HIT;
 #endif
+
 		//todo: check THitType is sweep
 	}
 
@@ -131,15 +143,21 @@ struct TSQVisitor : public Chaos::ISpatialVisitor<TPayload, float>
 		, DebugParams(InDebugParams)
 		, HitBuffer(InHitBuffer)
 		, QueryFilterData(InQueryFilterData)
+#if PHYSICS_INTERFACE_PHYSX
 		, QueryFilterDataConcrete(P2UFilterData(QueryFilterData.data))
+#else
+		, QueryFilterDataConcrete(C2UFilterData(QueryFilterData.data))
+#endif
 		, QueryGeom(&InQueryGeom)
 		, QueryCallback(InQueryCallback)
 		, StartTM(InWorldTM)
 	{
-#if WITH_PHYSX
-		//#TODO - reimplement query flags alternative for Chaos
+#if PHYSICS_INTERFACE_PHYSX
 		bAnyHit = QueryFilterData.flags & PxQueryFlag::eANY_HIT;
+#else
+		bAnyHit = QueryFilterData.flags & FChaosQueryFlag::eANY_HIT;
 #endif
+
 		//todo: check THitType is overlap
 	}
 
@@ -176,41 +194,48 @@ private:
 	bool Visit(const Chaos::TSpatialVisitorData<TPayload>& Instance, Chaos::FQueryFastData* CurData)
 	{
 		//QUICK_SCOPE_CYCLE_COUNTER(SQVisit);
-#if CHAOS_DEBUG_DRAW && WITH_CHAOS
-		if (DebugParams.IsDebugQuery() && ChaosSQDrawDebugVisitorQueries)
-		{
-			DebugDraw<SQ>(Instance, CurData->CurrentLength);
-		}
-#endif
-
 		TPayload Payload = Instance.Payload;
 
 		//todo: add a check to ensure hitbuffer matches SQ type
 		using namespace Chaos;
 		TGeometryParticle<float, 3>* GeometryParticle = Payload.GetExternalGeometryParticle_ExternalThread();
-		const TShapesArray<float,3>& Shapes = GeometryParticle->ShapesArray();
+
+		if(!GeometryParticle)
+		{
+			// This case handles particles created by the physics simulation without the main thread
+			// being made aware of their creation. We have a PT particle but no external particle
+			return true;
+		}
+
+		const FShapesArray& Shapes = GeometryParticle->ShapesArray();
 
 		const bool bTestShapeBounds =  Shapes.Num() > 1;
+		bool bContinue = true;
 
 		const TRigidTransform<float, 3> ActorTM(GeometryParticle->X(), GeometryParticle->R());
 
+#if CHAOS_DEBUG_DRAW
+		bool bAllShapesIgnoredInPrefilter = true;
+		bool bHitBufferIncreased = false;
+#endif
+
 		for (const auto& Shape : Shapes)
 		{
-			const FImplicitObject* Geom = Shape->Geometry.Get();
+			const FImplicitObject* Geom = Shape->GetGeometry().Get();
 
 			if (bTestShapeBounds)
 			{
 				TAABB<FReal, 3> InflatedWorldBounds;
 				if (SQ == ESQType::Raycast)
 				{
-					InflatedWorldBounds = Shape->WorldSpaceInflatedShapeBounds;
+					InflatedWorldBounds = Shape->GetWorldSpaceInflatedShapeBounds();
 				}
 				else
 				{
 					// Transform to world bounds and get the proper half extent.
 					const FVec3 WorldHalfExtent = QueryGeom ? QueryGeom->BoundingBox().TransformedAABB(StartTM).Extents() * 0.5f : HalfExtents;
 
-					InflatedWorldBounds = TAABB<FReal, 3>(Shape->WorldSpaceInflatedShapeBounds.Min() - WorldHalfExtent, Shape->WorldSpaceInflatedShapeBounds.Max() + WorldHalfExtent);
+					InflatedWorldBounds = TAABB<FReal, 3>(Shape->GetWorldSpaceInflatedShapeBounds().Min() - WorldHalfExtent, Shape->GetWorldSpaceInflatedShapeBounds().Max() + WorldHalfExtent);
 				}
 				if (SQ != ESQType::Overlap)
 				{
@@ -232,16 +257,19 @@ private:
 			}
 
 			//TODO: use gt particles directly
-			//#TODO alternative to px flags
-#if WITH_PHYSX
+#if PHYSICS_INTERFACE_PHYSX
 			ECollisionQueryHitType HitType = QueryFilterData.flags & PxQueryFlag::ePREFILTER ? QueryCallback.PreFilter(QueryFilterDataConcrete, *Shape, *GeometryParticle) : ECollisionQueryHitType::Block;
 #else
-			//#TODO Chaos flag alternative
-			ensure(false);
-			ECollisionQueryHitType HitType = ECollisionQueryHitType::Block;
+			ECollisionQueryHitType HitType = QueryFilterData.flags & FChaosQueryFlag::ePREFILTER ? QueryCallback.PreFilter(QueryFilterDataConcrete, *Shape, *GeometryParticle) : ECollisionQueryHitType::Block;
 #endif
+
+
 			if (HitType != ECollisionQueryHitType::None)
 			{
+#if CHAOS_DEBUG_DRAW
+				bAllShapesIgnoredInPrefilter = false;
+#endif
+
 				//QUICK_SCOPE_CYCLE_COUNTER(SQNarrow);
 				THitType Hit;
 				Hit.Actor = GeometryParticle;
@@ -293,56 +321,183 @@ private:
 				{
 					//QUICK_SCOPE_CYCLE_COUNTER(SQNarrowHit);
 					FillHitHelper(Hit, Distance, WorldPosition, WorldNormal, FaceIdx, bComputeMTD);
-#if WITH_PHYSX
+
+
+#if PHYSICS_INTERFACE_PHYSX
 					HitType = QueryFilterData.flags & PxQueryFlag::ePOSTFILTER ? QueryCallback.PostFilter(QueryFilterDataConcrete, Hit) : HitType;
 #else
-					//#TODO Chaos flag alternative
-					ensure(false);
+					HitType = QueryFilterData.flags & FChaosQueryFlag::ePOSTFILTER ? QueryCallback.PostFilter(QueryFilterDataConcrete, Hit) : HitType;
 #endif
+
 					if (HitType != ECollisionQueryHitType::None)
 					{
 
 						//overlap never blocks
 						const bool bBlocker = (HitType == ECollisionQueryHitType::Block || bAnyHit || HitBuffer.WantsSingleResult());
 						HitBuffer.InsertHit(Hit, bBlocker);
+#if CHAOS_DEBUG_DRAW
+						bHitBufferIncreased = true;
+#endif
 
 						if (bBlocker && SQ != ESQType::Overlap)
 						{
 							CurData->SetLength(FMath::Max(0.f, Distance));	//Max is needed for MTD which returns negative distance
 							if (CurData->CurrentLength == 0 && (SQ == ESQType::Raycast || HitBuffer.WantsSingleResult()))	//raycasts always fail with distance 0, sweeps only matter if we want multi overlaps
 							{
-								return false;	//initial overlap so nothing will be better than this
+								bContinue = false; //initial overlap so nothing will be better than this
+								break;
 							}
 						}
 
 						if (bAnyHit)
 						{
-							return false;
+							bContinue = false;
+							break;
 						}
 					}
 				}
 			}
 		}
 
-		return true;
+#if CHAOS_DEBUG_DRAW && WITH_CHAOS
+		if (DebugParams.IsDebugQuery() && ChaosSQDrawDebugVisitorQueries)
+		{
+			DebugDraw<SQ>(Instance, CurData, bAllShapesIgnoredInPrefilter, bHitBufferIncreased);
+		}
+#endif
+
+		return bContinue;
 	}
 
-#if CHAOS_DEBUG_DRAW && !(UE_BUILD_TEST || UE_BUILD_SHIPPING)
+#if CHAOS_DEBUG_DRAW
+
+	void DebugDrawPayloadImpl(const TPayload& Payload, const bool bExternal, const bool bHit, decltype(&TPayload::DebugDraw)) { Payload.DebugDraw(bExternal, bHit); }
+	void DebugDrawPayloadImpl(const TPayload& Payload, const bool bExternal, const bool bHit, ...) { }
+	void DebugDrawPayload(const TPayload& Payload, const bool bExternal, const bool bHit) { DebugDrawPayloadImpl(Payload, bExternal, bHit, 0); }
+
 	template <ESQType SQ>
-	void DebugDraw(const Chaos::TSpatialVisitorData<TPayload>& Instance, const float CurLength)
+	void DebugDraw(const Chaos::TSpatialVisitorData<TPayload>& Instance, const Chaos::FQueryFastData* CurData, const bool bPrefiltered, const bool bHit)
 	{
 		if (SQ == ESQType::Raycast)
 		{
-			const FVector EndPoint = StartPoint + (Dir * CurLength);
-			Chaos::FDebugDrawQueue::GetInstance().DrawDebugDirectionalArrow(StartPoint, EndPoint, 5.f, FColor::Green, false, -1.f, 0, 1.f);
+			const FVector EndPoint = StartPoint + (Dir * CurData->CurrentLength);
+			Chaos::FDebugDrawQueue::GetInstance().DrawDebugDirectionalArrow(StartPoint, EndPoint, 5.f, bHit ? FColor::Red : FColor::Green);
+		}
+		else if (SQ == ESQType::Overlap)
+		{
+			Chaos::DebugDraw::DrawShape(StartTM, QueryGeom, bHit ? FColor::Red : FColor::Green);
 		}
 
 		if (Instance.bHasBounds)
 		{
-			Chaos::FDebugDrawQueue::GetInstance().DrawDebugBox(Instance.Bounds.Center(), Instance.Bounds.Extents(), FQuat::Identity, FColor::Red, false, -1.f, 0, 2.f);
+			Chaos::FDebugDrawQueue::GetInstance().DrawDebugBox(Instance.Bounds.Center(), Instance.Bounds.Extents(), FQuat::Identity, bHit ? FColor(100, 50, 50) : FColor(50, 100, 50), false, -1.f, 0, 0.f);
 		}
+
+#if WITH_CHAOS
+		if (!bPrefiltered)
+		{
+			DebugDrawPayload(Instance.Payload, DebugParams.bExternalQuery, bHit);
+		}
+#endif
 	}
 #endif
+
+	const FVector StartPoint;
+	const FVector Dir;
+	const FVector HalfExtents;
+	FHitFlags OutputFlags;
+	bool bAnyHit;
+	const FQueryDebugParams DebugParams;
+	ChaosInterface::FSQHitBuffer<THitType>& HitBuffer;
+	const FQueryFilterData& QueryFilterData;
+	const FCollisionFilterData QueryFilterDataConcrete;
+	const QueryGeometryType* QueryGeom;
+	ICollisionQueryFilterCallbackBase& QueryCallback;
+	const FTransform StartTM;
+};
+
+template <typename QueryGeometryType, typename TPayload, typename THitType>
+struct TBPVisitor : public Chaos::ISpatialVisitor<TPayload, float>
+{
+	TBPVisitor(const FTransform& InWorldTM, ChaosInterface::FSQHitBuffer<ChaosInterface::FOverlapHit>& InHitBuffer,
+		const FQueryFilterData& InQueryFilterData, ICollisionQueryFilterCallbackBase& InQueryCallback, const QueryGeometryType& InQueryGeom, const FQueryDebugParams& InDebugParams)
+		: HalfExtents(InQueryGeom.BoundingBox().Extents() * 0.5)
+		, bAnyHit(false)
+		, DebugParams(InDebugParams)
+		, HitBuffer(InHitBuffer)
+		, QueryFilterData(InQueryFilterData)
+		, QueryFilterDataConcrete(ToUnrealFilterData(InQueryFilterData.data))
+		, QueryGeom(&InQueryGeom)
+		, QueryCallback(InQueryCallback)
+		, StartTM(InWorldTM)
+	{
+		bAnyHit = QueryFilterData.flags & FPhysicsQueryFlag::eANY_HIT;
+	}
+	virtual bool Overlap(const Chaos::TSpatialVisitorData<TPayload>& Instance) override
+	{
+		return Visit<ESQType::Overlap>(Instance, nullptr);
+	}
+
+	virtual bool Raycast(const Chaos::TSpatialVisitorData<TPayload>& Instance, Chaos::FQueryFastData& CurData) override
+	{
+		ensure(false);
+		return false;
+	}
+
+	virtual bool Sweep(const Chaos::TSpatialVisitorData<TPayload>& Instance, Chaos::FQueryFastData& CurData) override
+	{
+		ensure(false);
+		return false;
+	}
+
+	virtual const void* GetQueryData() const override
+	{
+		return &QueryFilterData;
+	}
+
+private:
+
+	enum class ESQType
+	{
+		Raycast,
+		Sweep,
+		Overlap
+	};
+
+	template <ESQType SQ>
+	bool Visit(const Chaos::TSpatialVisitorData<TPayload>& Instance, Chaos::FQueryFastData* CurData)
+	{
+		bool bContinue = true;
+		TPayload Payload = Instance.Payload;
+		//todo: add a check to ensure hitbuffer matches SQ type
+		using namespace Chaos;
+		TGeometryParticle<float, 3>* GeometryParticle = Payload.GetExternalGeometryParticle_ExternalThread();
+		if (!GeometryParticle)
+		{
+			// This case handles particles created by the physics simulation without the main thread
+			// being made aware of their creation. We have a PT particle but no external particle
+			return true;
+		}
+		const FShapesArray& Shapes = GeometryParticle->ShapesArray();
+		THitType Hit;
+		Hit.Actor = GeometryParticle;
+		for (const auto& Shape : Shapes)
+		{
+			ECollisionQueryHitType HitType = QueryFilterData.flags & FPhysicsQueryFlag::ePREFILTER ? QueryCallback.PreFilter(QueryFilterDataConcrete, *Shape, *GeometryParticle) : ECollisionQueryHitType::Block;
+			if (HitType != ECollisionQueryHitType::None)
+			{
+				const bool bBlocker = (HitType == ECollisionQueryHitType::Block || bAnyHit || HitBuffer.WantsSingleResult());
+				Hit.Shape = Shape.Get();
+				HitBuffer.InsertHit(Hit, bBlocker);
+				if (bAnyHit)
+				{
+					bContinue = false;
+				}
+				break;
+			}
+		}
+		return bContinue;
+	}
 
 	const FVector StartPoint;
 	const FVector Dir;
@@ -406,9 +561,23 @@ void OverlapHelper(const QueryGeomType& QueryGeom, const Chaos::ISpatialAccelera
 	using namespace ChaosInterface;
 
 	const TAABB<float, 3> Bounds = QueryGeom.BoundingBox().TransformedAABB(GeomPose);
-	TSQVisitor<QueryGeomType, TAccelerationStructureHandle<float, 3>, FOverlapHit> OverlapVisitor(GeomPose, HitBuffer, QueryFilterData, QueryCallback, QueryGeom, DebugParams);
+
 	HitBuffer.IncFlushCount();
-	SpatialAcceleration.Overlap(Bounds, OverlapVisitor);
+#if PHYSICS_INTERFACE_PHYSX
+	bool bSkipNarrowPhase = false; // Flag doesn't exist on PhysX type.
+#else
+	bool bSkipNarrowPhase = QueryFilterData.flags & FPhysicsQueryFlag::eSKIPNARROWPHASE;
+#endif
+	if (bSkipNarrowPhase)
+	{
+		TBPVisitor<QueryGeomType, TAccelerationStructureHandle<float, 3>, FOverlapHit> OverlapVisitor(GeomPose, HitBuffer, QueryFilterData, QueryCallback, QueryGeom, DebugParams);
+		SpatialAcceleration.Overlap(Bounds, OverlapVisitor);
+	}
+	else
+	{
+		TSQVisitor<QueryGeomType, TAccelerationStructureHandle<float, 3>, FOverlapHit> OverlapVisitor(GeomPose, HitBuffer, QueryFilterData, QueryCallback, QueryGeom, DebugParams);
+		SpatialAcceleration.Overlap(Bounds, OverlapVisitor);
+	}
 	HitBuffer.DecFlushCount();
 }
 

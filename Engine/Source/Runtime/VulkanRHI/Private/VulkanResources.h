@@ -101,12 +101,10 @@ public:
 		return CreateHandle(Layout, LayoutHash);
 	}
 
-#if VULKAN_ENABLE_SHADER_DEBUG_NAMES
 	inline const FString& GetDebugName() const
 	{
 		return CodeHeader.DebugName;
 	}
-#endif
 
 	// Name should be pointing to "main_"
 	void GetEntryPoint(ANSICHAR* Name, int32 NameLength)
@@ -125,7 +123,7 @@ public:
 	}
 
 protected:
-#if VULKAN_ENABLE_SHADER_DEBUG_NAMES
+#if UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT
 	FString							DebugEntryPoint;
 #endif
 	uint64							ShaderKey;
@@ -491,9 +489,7 @@ struct FVulkanTextureBase : public FVulkanBaseShaderResource
 	inline static FVulkanTextureBase* Cast(FRHITexture* Texture)
 	{
 		check(Texture);
-		FVulkanTextureBase* OutTexture = (FVulkanTextureBase*)Texture->GetTextureBaseRHI();
-		check(OutTexture);
-		return OutTexture;
+		return (FVulkanTextureBase*)Texture->GetTextureBaseRHI();
 	}
 
 	FVulkanTextureBase(FVulkanDevice& Device, VkImageViewType ResourceType, EPixelFormat Format, uint32 SizeX, uint32 SizeY, uint32 SizeZ, uint32 ArraySize, uint32 NumMips, uint32 NumSamples, uint32 UEFlags, const FRHIResourceCreateInfo& CreateInfo);
@@ -517,13 +513,24 @@ struct FVulkanTextureBase : public FVulkanBaseShaderResource
 	FTextureRHIRef AliasedTexture;
 
 	virtual void OnTransitionResource(FVulkanCommandListContext& Context, EResourceTransitionAccess TransitionType) {};
+	
+	template<typename T>
+	void DumpMemory(T Callback)
+	{
+		Callback(TEXT("FVulkanTextureBase"), GetResourceFName(), this, GetRHIResource(), Surface.Width, Surface.Height, Surface.Depth, Surface.StorageFormat);
+	}
 
 private:
 	void DestroyViews();
+	virtual FName GetResourceFName() = 0;
+	virtual FRHIResource* GetRHIResource(){ return 0; }
+
 };
 
 class FVulkanTexture2D : public FRHITexture2D, public FVulkanTextureBase
 {
+	FName GetResourceFName(){ return GetName(); }
+	virtual FRHIResource* GetRHIResource() { return (FRHITexture2D*)this; }
 public:
 	FVulkanTexture2D(FVulkanDevice& Device, EPixelFormat Format, uint32 SizeX, uint32 SizeY, uint32 NumMips, uint32 NumSamples, uint32 UEFlags, const FRHIResourceCreateInfo& CreateInfo);
 	FVulkanTexture2D(FVulkanDevice& Device, EPixelFormat Format, uint32 SizeX, uint32 SizeY, uint32 NumMips, uint32 NumSamples, VkImage Image, uint32 UEFlags, const FRHIResourceCreateInfo& CreateInfo);
@@ -562,6 +569,7 @@ public:
 
 class FVulkanTexture2DArray : public FRHITexture2DArray, public FVulkanTextureBase
 {
+	FName GetResourceFName() { return GetName(); }
 public:
 	// Constructor, just calls base and Surface constructor
 	FVulkanTexture2DArray(FVulkanDevice& Device, EPixelFormat Format, uint32 SizeX, uint32 SizeY, uint32 ArraySize, uint32 NumMips, uint32 NumSamples, uint32 Flags, FResourceBulkDataInterface* BulkData, const FClearValueBinding& InClearValue);
@@ -598,6 +606,7 @@ public:
 
 class FVulkanTexture3D : public FRHITexture3D, public FVulkanTextureBase
 {
+	FName GetResourceFName() { return GetName(); }
 public:
 	// Constructor, just calls base and Surface constructor
 	FVulkanTexture3D(FVulkanDevice& Device, EPixelFormat Format, uint32 SizeX, uint32 SizeY, uint32 SizeZ, uint32 NumMips, uint32 Flags, FResourceBulkDataInterface* BulkData, const FClearValueBinding& InClearValue);
@@ -631,6 +640,7 @@ public:
 
 class FVulkanTextureCube : public FRHITextureCube, public FVulkanTextureBase
 {
+	FName GetResourceFName() { return GetName(); }
 public:
 	FVulkanTextureCube(FVulkanDevice& Device, EPixelFormat Format, uint32 Size, bool bArray, uint32 ArraySize, uint32 NumMips, uint32 Flags, FResourceBulkDataInterface* BulkData, const FClearValueBinding& InClearValue);
 	FVulkanTextureCube(FVulkanDevice& Device, EPixelFormat Format, uint32 Size, bool bArray, uint32 ArraySize, uint32 NumMips, VkImage Image, uint32 Flags, FResourceBulkDataInterface* BulkData, const FClearValueBinding& InClearValue);
@@ -667,6 +677,7 @@ public:
 
 class FVulkanTextureReference : public FRHITextureReference, public FVulkanTextureBase
 {
+	FName GetResourceFName() { return GetName(); }
 public:
 	explicit FVulkanTextureReference(FVulkanDevice& Device, FLastRenderTimeContainer* InLastRenderTime)
 	:	FRHITextureReference(InLastRenderTime)
@@ -691,7 +702,7 @@ public:
 
 	virtual void* GetTextureBaseRHI() override final
 	{
-		return GetReferencedTexture()->GetTextureBaseRHI();
+		return GetReferencedTexture() ? GetReferencedTexture()->GetTextureBaseRHI() : nullptr;
 	}
 
 	virtual void* GetNativeResource() const
@@ -709,13 +720,19 @@ inline FVulkanTextureBase* GetVulkanTextureFromRHITexture(FRHITexture* Texture)
 	{
 		return NULL;
 	}
-	else if (FRHITexture2D* Tex2D = Texture->GetTexture2D())
+	if(FRHITextureReference* TexRef = Texture->GetTextureReference())
+	{
+		Texture = TexRef->GetReferencedTexture();
+		if (!Texture)
+		{
+			return NULL;
+		}
+	}
+
+
+	if (FRHITexture2D* Tex2D = Texture->GetTexture2D())
 	{
 		return static_cast<FVulkanTexture2D*>(Tex2D);
-	}
-	else if (FRHITextureReference* TexRef = Texture->GetTextureReference())
-	{
-		return static_cast<FVulkanTextureReference*>(TexRef);
 	}
 	else if (FRHITexture2DArray* Tex2DArray = Texture->GetTexture2DArray())
 	{
@@ -1148,6 +1165,14 @@ public:
 	void Unlock(bool bFromRenderingThread);
 
 	void Swap(FVulkanResourceMultiBuffer& Other);
+
+
+	template<typename T>
+	void DumpMemory(T Callback)
+	{
+		Callback(TEXT("FVulkanResourceMultiBuffer"), FName(), this, 0, GetCurrentSize() * GetNumBuffers(), 1, 1, VK_FORMAT_UNDEFINED);
+	}
+
 
 protected:
 	uint32 UEUsage;

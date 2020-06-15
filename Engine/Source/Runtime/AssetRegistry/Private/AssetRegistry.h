@@ -41,6 +41,7 @@ public:
 	virtual bool GetAssetsByTagValues(const TMultiMap<FName, FString>& AssetTagsAndValues, TArray<FAssetData>& OutAssetData) const override;
 	virtual bool GetAssets(const FARFilter& Filter, TArray<FAssetData>& OutAssetData) const override;
 	virtual bool EnumerateAssets(const FARFilter& Filter, TFunctionRef<bool(const FAssetData&)> Callback) const override;
+	virtual bool EnumerateAssets(const FARCompiledFilter& Filter, TFunctionRef<bool(const FAssetData&)> Callback) const override;
 	virtual FAssetData GetAssetByObjectPath( const FName ObjectPath, bool bIncludeOnlyOnDiskAssets = false ) const override;
 	virtual bool GetAllAssets(TArray<FAssetData>& OutAssetData, bool bIncludeOnlyOnDiskAssets = false) const override;
 	virtual bool EnumerateAllAssets(TFunctionRef<bool(const FAssetData&)> Callback, bool bIncludeOnlyOnDiskAssets = false) const override;
@@ -73,6 +74,8 @@ public:
 	virtual void PrioritizeAssetInstall(const FAssetData& AssetData) const override;
 	virtual bool AddPath(const FString& PathToAdd) override;
 	virtual bool RemovePath(const FString& PathToRemove) override;
+	virtual bool PathExists(const FString& PathToTest) const override;
+	virtual bool PathExists(const FName PathToTest) const override;
 	virtual void SearchAllAssets(bool bSynchronousSearch) override;
 	virtual void ScanPathsSynchronous(const TArray<FString>& InPaths, bool bForceRescan = false) override;
 	virtual void ScanFilesSynchronous(const TArray<FString>& InFilePaths, bool bForceRescan = false) override;
@@ -289,14 +292,27 @@ private:
 	/** The map of classes to their parents, only full for offline blueprints */
 	TMap<FName, FName> CachedBPInheritanceMap;
 
+	/** If true, search caching is enabled */
+	bool bIsTempCachingEnabled;
+
+	/** If true, search caching is enabled permanently */
+	bool bIsTempCachingAlwaysEnabled;
+
 	/** A temporary fully cached list including native classes */
-	TMap<FName, FName> TempCachedInheritanceMap;
+	mutable TMap<FName, FName> TempCachedInheritanceMap;
 
 	/** A reverse map of TempCachedInheritanceMap, only kept during temp caching */
-	TMap<FName, TSet<FName>> TempReverseInheritanceMap;
+	mutable TMap<FName, TSet<FName>> TempReverseInheritanceMap;
 
-	/** If true, search caching is enabled */
-	bool bTempCachingEnabled;
+	/** If true, temp caching has been computed and is valid.
+	    Set this to false when changing something that might invalidate the cache so it gets recomputed on-demand.
+	*/
+	mutable bool bIsTempCachingUpToDate;
+
+	/** Contains a snapshot of GetRegisteredClassesVersionNumber() at the time of caching so the cache can
+	    be invalidated whenever registered classes have changed.
+	*/
+	mutable uint64 TempCachingRegisteredClassesVersionNumber;
 
 	/** If true, will cache AssetData loaded from in memory assets back into the disk cache */
 	bool bUpdateDiskCacheAfterLoad;

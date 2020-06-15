@@ -185,6 +185,7 @@ public:
 	 * @param Callback function to call for each asset data enumerated
 	 */
 	virtual bool EnumerateAssets(const FARFilter& Filter, TFunctionRef<bool(const FAssetData&)> Callback) const = 0;
+	virtual bool EnumerateAssets(const FARCompiledFilter& Filter, TFunctionRef<bool(const FAssetData&)> Callback) const = 0;
 
 	/**
 	 * Gets the asset data for the specified object path
@@ -376,6 +377,10 @@ public:
 
 	/** Attempts to remove the specified path to the set of cached paths. This will only succeed if there are no assets left in the specified path. */
 	virtual bool RemovePath(const FString& PathToRemove) = 0;
+
+	/** Queries whether the given path exists in the set of cached paths */
+	virtual bool PathExists(const FString& PathToTest) const = 0;
+	virtual bool PathExists(const FName PathToTest) const = 0;
 
 	/** Scan the supplied paths recursively right now and populate the asset registry. If bForceRescan is true, the paths will be scanned again, even if they were previously scanned */
 	UFUNCTION(BlueprintCallable, Category = "AssetRegistry")

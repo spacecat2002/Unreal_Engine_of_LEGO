@@ -11,10 +11,13 @@
 #include "Misc/AssertionMacros.h"
 #include "HAL/UnrealMemory.h"
 #include "Templates/IsArithmetic.h"
+#include "Templates/IsArray.h"
 #include "Templates/UnrealTypeTraits.h"
 #include "Templates/UnrealTemplate.h"
 #include "Math/NumericLimits.h"
 #include "Containers/Array.h"
+#include "Containers/StringFwd.h"
+#include "Containers/StringView.h"
 #include "Misc/CString.h"
 #include "Misc/Crc.h"
 #include "Math/UnrealMathUtility.h"
@@ -25,23 +28,11 @@
 #include "Templates/TypeHash.h"
 #include "Templates/IsFloatingPoint.h"
 
-class FString;
-class FStringView;
 struct FStringFormatArg;
 template<typename KeyType,typename ValueType,typename SetAllocator ,typename KeyFuncs > class TMap;
 
 typedef TMap<FString, FStringFormatArg> FStringFormatNamedArguments;
 typedef TArray<FStringFormatArg> FStringFormatOrderedArguments;
-
-template <>
-struct TIsContiguousContainer<FString>
-{
-	enum { Value = true };
-};
-
-TCHAR* GetData(FString& String);
-const TCHAR* GetData(const FString& String);
-int32 GetNum(const FString& String);
 
 /**
  * A dynamically sizeable string.
@@ -55,6 +46,20 @@ private:
 	/** Array holding the character data */
 	typedef TArray<TCHAR> DataType;
 	DataType Data;
+
+	/** Trait testing whether a type is a contiguous range of characters, and not CharType[]. */
+	template <typename CharRangeType>
+	using TIsCharRangeNotCArray = TAnd<
+		TIsContiguousContainer<CharRangeType>,
+		TNot<TIsArray<typename TRemoveReference<CharRangeType>::Type>>,
+		TIsCharType<typename TRemoveCV<typename TRemovePointer<decltype(GetData(DeclVal<CharRangeType>()))>::Type>::Type>>;
+
+	/** Trait testing whether a type is a contiguous range of TCHAR, and not TCHAR[]. */
+	template <typename CharRangeType>
+	using TIsTCharRangeNotCArray = TAnd<
+		TIsContiguousContainer<CharRangeType>,
+		TNot<TIsArray<typename TRemoveReference<CharRangeType>::Type>>,
+		TIsSame<TCHAR, typename TRemoveCV<typename TRemovePointer<decltype(GetData(DeclVal<CharRangeType>()))>::Type>::Type>>;
 
 public:
 	using ElementType = TCHAR;
@@ -135,7 +140,69 @@ public:
 		}
 	}
 
-	explicit FString(const FStringView& Other);
+	/**
+	 * Constructor to create FString with specified number of characters from another string with additional character zero
+	 *
+	 * @param Other the other string to create a new copy from
+	 * @param ExtraSlack number of extra characters to add to the end of the other string in this string
+	 */
+	template <
+		typename CharType,
+		typename = typename TEnableIf<TIsCharType<CharType>::Value>::Type // This TEnableIf is to ensure we don't instantiate this constructor for non-char types, like id* in Obj-C
+	>
+		FORCEINLINE FString(const CharType* Src, int32 ExtraSlack)
+	{
+		if (Src && *Src)
+		{
+			int32 SrcLen = TCString<CharType>::Strlen(Src) + 1;
+			int32 DestLen = FPlatformString::ConvertedLength<TCHAR>(Src, SrcLen);
+			Data.Reserve(DestLen + ExtraSlack);
+			Data.AddUninitialized(DestLen);
+
+			FPlatformString::Convert(Data.GetData(), DestLen, Src, SrcLen);
+		}
+		else
+		{
+			Reserve(ExtraSlack); 
+		}
+	}
+
+	/**
+	 * Create an FString from a contiguous range of characters
+	 *
+	 * @param Other The contiguous character range to copy from
+	 */
+	template <typename CharRangeType, typename TEnableIf<TIsCharRangeNotCArray<CharRangeType>::Value>::Type* = nullptr>
+	explicit FString(CharRangeType&& Other)
+	{
+		if (const auto OtherNum = GetNum(Other))
+		{
+			const int32 OtherLen = int32(OtherNum);
+			checkf(decltype(OtherNum)(OtherLen) == OtherNum, TEXT("Invalid number of characters to add to this string type: %" UINT64_FMT), uint64(OtherNum));
+			Reserve(OtherLen);
+			AppendChars(GetData(Forward<CharRangeType>(Other)), OtherLen);
+		}
+	}
+
+	/**
+	 * Create an FString from a contiguous range of characters, with extra slack at the end of the string
+	 *
+	 * @param Other The contiguous character range to copy from
+	 * @param ExtraSlack The number of extra characters to reserve space for in the new string
+	 */
+	template <typename CharRangeType, typename TEnableIf<TIsCharRangeNotCArray<CharRangeType>::Value>::Type* = nullptr>
+	explicit FString(CharRangeType&& Other, int32 ExtraSlack)
+	{
+		const auto OtherNum = GetNum(Other);
+		const int32 OtherLen = int32(OtherNum);
+		checkf(decltype(OtherNum)(OtherLen) == OtherNum, TEXT("Invalid number of characters to add to this string type: %" UINT64_FMT), uint64(OtherNum));
+
+		Reserve(OtherLen + ExtraSlack);
+		if (OtherLen)
+		{
+			AppendChars(GetData(Forward<CharRangeType>(Other)), OtherLen);
+		}
+	}
 
 #ifdef __OBJC__
 	/** Convert Objective-C NSString* to FString */
@@ -187,14 +254,43 @@ public:
 	}
 
 	/**
-	 * Copy assignment from a string view
+	 * Copy assignment from a contiguous range of characters
 	 */
-	FString& operator=(const FStringView& Other);
+	template <typename CharRangeType, typename TEnableIf<TIsTCharRangeNotCArray<CharRangeType>::Value>::Type* = nullptr>
+	FString& operator=(CharRangeType&& Other)
+	{
+		const auto OtherNum = GetNum(Other);
+		const int32 OtherLen = int32(OtherNum);
+		checkf(decltype(OtherNum)(OtherLen) == OtherNum, TEXT("Invalid number of characters to assign to this string type: %" UINT64_FMT), uint64(OtherNum));
 
-	/**
-	 * Implicit conversion to a string view
-	 */
-	operator FStringView() const;
+		if (OtherLen == 0)
+		{
+			Empty();
+		}
+		else
+		{
+			const TCHAR* const OtherData = GetData(Other);
+			const int32 ThisLen = Len();
+			if (OtherLen <= ThisLen)
+			{
+				// Unless the input is longer, this might be assigned from a view of itself.
+				TCHAR* DataPtr = Data.GetData();
+				FMemory::Memmove(DataPtr, OtherData, OtherLen * sizeof(TCHAR));
+				DataPtr[OtherLen] = TEXT('\0');
+				Data.RemoveAt(OtherLen + 1, ThisLen - OtherLen);
+			}
+			else
+			{
+				Data.Empty(OtherLen + 1);
+				Data.AddUninitialized(OtherLen + 1);
+				TCHAR* DataPtr = Data.GetData();
+				FMemory::Memcpy(DataPtr, OtherData, OtherLen * sizeof(TCHAR));
+				DataPtr[OtherLen] = TEXT('\0');
+			}
+		}
+
+		return *this;
+	}
 
 	/**
 	 * Return specific character from this string
@@ -359,67 +455,48 @@ public:
 	}
 #endif
 
-	/**
-	 * Appends an array of characters to the string.  
+	/** 
+	 * Appends a character range without null-terminators in it
 	 *
-	 * @param Array A pointer to the start of an array of characters to append.  This array need not be null-terminated, and null characters are not treated specially.
-	 * @param Count The number of characters to copy from Array.
+	 * @param Str can be null if Count is 0. Can be unterminated, Str[Count] isn't read.
 	 */
-	FORCEINLINE void AppendChars(const TCHAR* Array, int32 Count)
+	void AppendChars(const ANSICHAR* Str, int32 Count);
+	void AppendChars(const WIDECHAR* Str, int32 Count);
+	void AppendChars(const UCS2CHAR* Str, int32 Count);
+
+	/** Append a string and return a reference to this */
+	template<class CharType>
+	FORCEINLINE FString& Append(const CharType* Str, int32 Count)
 	{
-		check(Count >= 0);
-
-		if (!Count)
-			return;
-
-		checkSlow(Array);
-
-		int32 Index = Data.Num();
-
-		// Reserve enough space - including an extra gap for a null terminator if we don't already have a string allocated
-		Data.AddUninitialized(Count + (Index ? 0 : 1));
-
-		TCHAR* EndPtr = Data.GetData() + Index - (Index ? 1 : 0);
-
-		// Copy characters to end of string, overwriting null terminator if we already have one
-		CopyAssignItems(EndPtr, Array, Count);
-
-		// (Re-)establish the null terminator
-		*(EndPtr + Count) = 0;
+		AppendChars(Str, Count);
+		return *this;
 	}
-
+	
 	/**
-	 * Concatenate this with the given string
+	 * Append a valid null-terminated string and return a reference to this
 	 *
-	 * @param Str string view to be concatenated onto the end of this
-	 * @return reference to this
+	 * CharType is not const to use this overload for mutable char arrays and call
+	 * Strlen() instead of getting the static length N from GetNum((&T)[N]).
+	 * Oddly MSVC ranks a const T* overload over T&& for T[N] while clang picks T&&.
 	 */
-	FString& operator+=(const FStringView& Str);
-
-	/**
-	 * Concatenate this with given string
-	 * 
-	 * @param Str array of TCHAR to be concatenated onto the end of this
-	 * @return reference to this
-	 */
-	FORCEINLINE FString& operator+=( const TCHAR* Str )
+	template<class CharType>
+	FORCEINLINE FString& Append(/* no const! */ CharType* Str)
 	{
 		checkSlow(Str);
-		CheckInvariants();
-
-		AppendChars(Str, FCString::Strlen(Str));
-
+		AppendChars(Str, TCString<typename TRemoveConst<CharType>::Type>::Strlen(Str));
 		return *this;
 	}
 
-	/**
-	 * Concatenate this with given char
-	 * 
-	 * @param inChar other Char to be concatenated onto the end of this string
-	 * @return reference to this
-	 */
-	template <typename CharType>
-	FORCEINLINE typename TEnableIf<TIsCharType<CharType>::Value, FString&>::Type operator+=(CharType InChar)
+	/** Append a string and return a reference to this */
+	template <typename CharRangeType, typename TEnableIf<TIsCharRangeNotCArray<CharRangeType>::Value>::Type* = nullptr>
+	FORCEINLINE FString& Append(CharRangeType&& Str)
+	{
+		AppendChars(GetData(Str), GetNum(Str));
+		return *this;
+	}
+
+	/** Append a single character and return a reference to this */
+	FORCEINLINE FString& AppendChar(TCHAR InChar)
 	{
 		CheckInvariants();
 
@@ -440,49 +517,14 @@ public:
 		return *this;
 	}
 
-	/**
-	 * Concatenate this with given char
-	 * 
-	 * @param InChar other Char to be concatenated onto the end of this string
-	 * @return reference to this
-	 */
-	FORCEINLINE FString& AppendChar(const TCHAR InChar)
-	{
-		*this += InChar;
-		return *this;
-	}
+	/** Append a string and return a reference to this */
+	template <typename StrType>
+	FORCEINLINE FString& operator+=(StrType&& Str)	{ return Append(Forward<StrType>(Str)); }
 
-	FORCEINLINE FString& Append(const FString& Text)
-	{
-		*this += Text;
-		return *this;
-	}
-
-	FString& Append(const TCHAR* Text, int32 Count)
-	{
-		CheckInvariants();
-
-		if (Count != 0)
-		{
-			// position to insert the character.  
-			// At the end of the string if we have existing characters, otherwise at the 0 position
-			int32 InsertIndex = (Data.Num() > 0) ? Data.Num() - 1 : 0;
-
-			// number of characters to add.  If we don't have any existing characters, 
-			// we'll need to append the terminating zero as well.
-			int32 FinalCount = (Data.Num() > 0) ? Count : Count + 1;
-
-			Data.AddUninitialized(FinalCount);
-
-			for (int32 Index = 0; Index < Count; Index++)
-			{
-				Data[InsertIndex + Index] = Text[Index];
-			}
-
-			Data[Data.Num() - 1] = 0;
-		}
-		return *this;
-	}
+	/** Append a single character and return a reference to this */
+	FORCEINLINE FString& operator+=(ANSICHAR Char)	{ return AppendChar(Char); }
+	FORCEINLINE FString& operator+=(WIDECHAR Char)	{ return AppendChar(Char); }
+	FORCEINLINE FString& operator+=(UCS2CHAR Char)	{ return AppendChar(Char); }
 
 	/**
 	 * Removes characters within the string.
@@ -564,22 +606,6 @@ public:
 	 * @param StrLength Exact number of characters from Str to append.
 	 */
 	void PathAppend(const TCHAR* Str, int32 StrLength);
-
-	/**
-	 * Concatenate this with given string
-	 * 
-	 * @param Str other string to be concatenated onto the end of this
-	 * @return reference to this
-	 */
-	FORCEINLINE FString& operator+=( const FString& Str )
-	{
-		CheckInvariants();
-		Str.CheckInvariants();
-
-		AppendChars(Str.Data.GetData(), Str.Len());
-
-		return *this;
-	}
 
 	/**
 	 * Concatenates an FString with a TCHAR.
@@ -1827,7 +1853,10 @@ public:
 	FORCEINLINE void Reserve(int32 CharacterCount)
 	{
 		checkSlow(CharacterCount >= 0 && CharacterCount < MAX_int32);
-		Data.Reserve(CharacterCount + 1);
+		if (CharacterCount > 0)
+		{
+			Data.Reserve(CharacterCount + 1);
+		}	
 	}
 
 	/**
@@ -2005,7 +2034,8 @@ inline int32 GetNum(const FString& String)
 /** Case insensitive string hash function. */
 FORCEINLINE uint32 GetTypeHash(const FString& S)
 {
-	return FCrc::Strihash_DEPRECATED(*S);
+	// This must match the GetTypeHash behavior of FStringView
+	return FCrc::Strihash_DEPRECATED(S.Len(), *S);
 }
 
 /** 
@@ -2172,7 +2202,8 @@ template<typename T>
 typename TEnableIf<TIsArithmetic<T>::Value, FString>::Type
 LexToString(const T& Value)
 {
-	return FString::Printf( TFormatSpecifier<T>::GetFormatSpecifier(), Value );
+	// TRemoveCV to remove potential volatile decorations. Removing const is pointless, but harmless because it's specified in the param declaration.
+	return FString::Printf( TFormatSpecifier<typename TRemoveCV<T>::Type>::GetFormatSpecifier(), Value );
 }
 
 template<typename CharType>
@@ -2337,6 +2368,12 @@ public:
 	}
 };
 
+template <>
+struct TIsContiguousContainer<FStringOutputDevice>
+{
+	enum { Value = true };
+};
+
 //
 // String output device.
 //
@@ -2385,7 +2422,7 @@ public:
 	}
 
 	/**
-	 * Appends other FString (as well as it's specializations like FStringOutputDevice)
+	 * Appends other FString (as well as its specializations like FStringOutputDevice)
 	 * object to this.
 	 */
 	virtual FString& operator+=(const FString& Other) override
@@ -2421,6 +2458,12 @@ public:
 		}
 		return *this;
 	}
+};
+
+template <>
+struct TIsContiguousContainer<FStringOutputDeviceCountLines>
+{
+	enum { Value = true };
 };
 
 /**

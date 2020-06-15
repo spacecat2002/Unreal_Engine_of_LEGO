@@ -204,7 +204,9 @@ void UObjectBase::AddObject(FName InName, EInternalObjectFlags InSetInternalFlag
  */
 void UObjectBase::LowLevelRename(FName NewName,UObject *NewOuter)
 {
-	STAT(((UObject*)this)->ResetStatID()); // reset the stat id since this thing now has a different name
+#if STATS || ENABLE_STATNAMEDEVENTS_UOBJECT
+	((UObject*)this)->ResetStatID(); // reset the stat id since this thing now has a different name
+#endif
 	UnhashObject(this);
 	check(InternalIndex >= 0);
 	NamePrivate = NewName;
@@ -215,9 +217,51 @@ void UObjectBase::LowLevelRename(FName NewName,UObject *NewOuter)
 	HashObject(this);
 }
 
+UPackage* UObjectBase::GetExternalPackage() const
+{
+	// if we have no outer, consider this a package, packages returns themselves as their external package
+	if (OuterPrivate == nullptr)
+	{
+		return CastChecked<UPackage>((UObject*)(this));
+	}
+	UPackage* ExternalPackage = nullptr;
+	if ((GetFlags() & RF_HasExternalPackage) != 0)
+	{
+		ExternalPackage = GetObjectExternalPackageThreadSafe(this);
+		// if the flag is set there should be an override set.
+		ensure(ExternalPackage);
+	}
+	return ExternalPackage;
+}
+
+UPackage* UObjectBase::GetExternalPackageInternal() const
+{
+	// if we have no outer, consider this a package, packages returns themselves as their external package
+	if (OuterPrivate == nullptr)
+	{
+		return CastChecked<UPackage>((UObject*)(this));
+	}
+	return (GetFlags() & RF_HasExternalPackage) != 0 ? GetObjectExternalPackageInternal(this) : nullptr;
+}
+
+void UObjectBase::SetExternalPackage(UPackage* InPackage)
+{
+	HashObjectExternalPackage(this, InPackage);
+	if (InPackage)
+	{
+		SetFlagsTo(GetFlags() | RF_HasExternalPackage);
+	}
+	else
+	{
+		SetFlagsTo(GetFlags() & ~RF_HasExternalPackage);
+	}
+}
+
 void UObjectBase::SetClass(UClass* NewClass)
 {
-	STAT(((UObject*)this)->ResetStatID()); // reset the stat id since this thing now has a different name
+#if STATS || ENABLE_STATNAMEDEVENTS_UOBJECT
+	((UObject*)this)->ResetStatID(); // reset the stat id since this thing now has a different name
+#endif
 
 	UnhashObject(this);
 #if USE_UBER_GRAPH_PERSISTENT_FRAME
@@ -305,9 +349,12 @@ void UObjectBase::EmitBaseReferences(UClass *RootClass)
 {
 	static const FName ClassPropertyName(TEXT("Class"));
 	static const FName OuterPropertyName(TEXT("Outer"));
-
-	RootClass->EmitObjectReference(STRUCT_OFFSET(UObjectBase, ClassPrivate), ClassPropertyName, GCRT_Class);
+	// Mark UObject class reference as persistent object reference so that it (ClassPrivate) doesn't get nulled when a class
+	// is marked as pending kill. Nulling ClassPrivate may leave the object in a broken state if it doesn't get GC'd in the same
+	// GC call as its class. And even if it gets GC'd in the same call as its class it may break inside of GC (for example when traversing TMap references)
+	RootClass->EmitObjectReference(STRUCT_OFFSET(UObjectBase, ClassPrivate), ClassPropertyName, GCRT_PersistentObject);
 	RootClass->EmitObjectReference(STRUCT_OFFSET(UObjectBase, OuterPrivate), OuterPropertyName, GCRT_PersistentObject);
+	RootClass->EmitExternalPackageReference();
 }
 
 #if USE_PER_MODULE_UOBJECT_BOOTSTRAP

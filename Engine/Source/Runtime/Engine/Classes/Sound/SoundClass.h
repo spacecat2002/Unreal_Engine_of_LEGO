@@ -6,6 +6,7 @@
 #include "AudioDefines.h"
 #include "AudioDynamicParameter.h"
 #include "IAudioExtensionPlugin.h"
+#include "IAudioModulation.h"
 #include "Sound/AudioOutputTarget.h"
 #include "UObject/ObjectMacros.h"
 #include "UObject/Object.h"
@@ -136,25 +137,20 @@ struct FSoundClassProperties
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Submix, meta = (EditCondition = "!bApplyEffects"))
 	USoundSubmix* DefaultSubmix;
 
-	// Sets the attenuation scale of the sound class in the given amount of time
-	void SetAttenuationDistanceScale(float InAttenuationDistanceScale, float InTime);
-
-	// Sets the parent's attenuation scale
-	void SetParentAttenuationDistanceScale(float InAttenuationDistanceScale);
-
-	// Returns the current attenuation scale
-	float GetAttenuationDistanceScale() const;
-
-	// Updates any dynamic sound class properties
-	void UpdateSoundClassProperties(float DeltaTime);
-
 	FSoundClassProperties();
-
-private:
-	FDynamicParameter AttenuationScaleParam;
-	float ParentAttenuationScale;	
 };
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
+
+/** Class for sound class properties which are intended to be dynamically changing without a sound mix. */
+struct FSoundClassDynamicProperties
+{
+	FDynamicParameter AttenuationScaleParam;
+
+	FSoundClassDynamicProperties()
+		: AttenuationScaleParam(1.0f)
+	{
+	}
+};
 
 /**
  * Structure containing information on a SoundMix to activate passively.
@@ -224,7 +220,7 @@ class ENGINE_API USoundClass : public UObject
 	FSoundModulation Modulation;
 
 public:
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly, Category = General)
 	USoundClass* ParentClass;
 
 #if WITH_EDITORONLY_DATA

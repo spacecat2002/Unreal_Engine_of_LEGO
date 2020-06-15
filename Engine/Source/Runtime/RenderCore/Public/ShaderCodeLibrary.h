@@ -8,23 +8,18 @@
 
 #include "CoreMinimal.h"
 #include "Containers/ArrayView.h"
+#include "Containers/StringFwd.h"
 #include "RHI.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogShaderLibrary, Log, All);
 
-class FAnsiStringBuilderBase;
 class FShaderPipeline;
-class FStringView;
 class FShaderMapResource;
 class FShaderMapResourceCode;
 
 struct RENDERCORE_API FShaderCodeLibraryPipeline
 {
-	FSHAHash VertexShader;
-	FSHAHash PixelShader;
-	FSHAHash GeometryShader;
-	FSHAHash HullShader;
-	FSHAHash DomainShader;
+	FSHAHash Shaders[SF_NumGraphicsFrequencies];
 	mutable uint32 Hash;
 	
 	/** Fills the hashes from the pipeline stage shaders */
@@ -34,18 +29,24 @@ struct RENDERCORE_API FShaderCodeLibraryPipeline
 	
 	friend bool operator ==(const FShaderCodeLibraryPipeline& A,const FShaderCodeLibraryPipeline& B)
 	{
-		return A.VertexShader == B.VertexShader && A.PixelShader == B.PixelShader && A.GeometryShader == B.GeometryShader && A.HullShader == B.HullShader && A.DomainShader == B.DomainShader;
+		for (uint32 Frequency = 0u; Frequency < SF_NumGraphicsFrequencies; ++Frequency)
+		{
+			if (A.Shaders[Frequency] != B.Shaders[Frequency])
+			{
+				return false;
+			}
+		}
+		return true;
 	}
 	
 	friend uint32 GetTypeHash(const FShaderCodeLibraryPipeline &Key)
 	{
 		if(!Key.Hash)
 		{
-			Key.Hash = FCrc::MemCrc32(Key.VertexShader.Hash, sizeof(Key.VertexShader.Hash));
-			Key.Hash = FCrc::MemCrc32(Key.PixelShader.Hash, sizeof(Key.PixelShader.Hash), Key.Hash);
-			Key.Hash = FCrc::MemCrc32(Key.GeometryShader.Hash, sizeof(Key.GeometryShader.Hash), Key.Hash);
-			Key.Hash = FCrc::MemCrc32(Key.HullShader.Hash, sizeof(Key.HullShader.Hash), Key.Hash);
-			Key.Hash = FCrc::MemCrc32(Key.DomainShader.Hash, sizeof(Key.DomainShader.Hash), Key.Hash);
+			for (uint32 Frequency = 0u; Frequency < SF_NumGraphicsFrequencies; ++Frequency)
+			{
+				Key.Hash = FCrc::MemCrc32(Key.Shaders[Frequency].Hash, sizeof(FSHAHash), Key.Hash);
+			}
 		}
 		return Key.Hash;
 	}
@@ -55,7 +56,11 @@ struct RENDERCORE_API FShaderCodeLibraryPipeline
 	
 	friend FArchive& operator<<( FArchive& Ar, FShaderCodeLibraryPipeline& Info )
 	{
-		return Ar << Info.VertexShader << Info.PixelShader << Info.GeometryShader << Info.HullShader << Info.DomainShader << Info.Hash;
+		for (uint32 Frequency = 0u; Frequency < SF_NumGraphicsFrequencies; ++Frequency)
+		{
+			Ar << Info.Shaders[Frequency];
+		}
+		return Ar << Info.Hash;
 	}
 };
 
@@ -167,6 +172,7 @@ struct RENDERCORE_API FShaderCodeLibrary
 	static FDomainShaderRHIRef CreateDomainShader(EShaderPlatform Platform, const FSHAHash& Hash);
 	static FGeometryShaderRHIRef CreateGeometryShader(EShaderPlatform Platform, const FSHAHash& Hash);
 	static FComputeShaderRHIRef CreateComputeShader(EShaderPlatform Platform, const FSHAHash& Hash);
+	static FRayTracingShaderRHIRef CreateRayTracingShader(EShaderPlatform Platform, const FSHAHash& Hash, EShaderFrequency Frequency);
 
 	// Total number of shader entries in the library
 	static uint32 GetShaderCount(void);
@@ -190,7 +196,11 @@ struct RENDERCORE_API FShaderCodeLibrary
 
 	// Specify the shader formats to cook and which ones needs stable keys. Provide an array of FShaderFormatDescriptors
     static void CookShaderFormats(TArray<FShaderFormatDescriptor> const& ShaderFormats);
-	
+
+	// At cook time, mark a shadermap boundary.
+	static void BeginShaderMap(EShaderPlatform InShaderPlatform, const TArray<FString>& AssociatedAssets, const FName& ShaderMapTypeName);
+	static void EndShaderMap(EShaderPlatform InShaderPlatform);
+
 	// At cook time, add shader code to collection
 	static bool AddShaderCode(EShaderPlatform ShaderPlatform, const FShaderMapResourceCode* Code);
 
@@ -202,11 +212,8 @@ struct RENDERCORE_API FShaderCodeLibrary
 	// At cook time, add the human readable key value information
 	static void AddShaderStableKeyValue(EShaderPlatform ShaderPlatform, FStableShaderKeyAndValue& StableKeyValue);
 
-	// Save collected shader code to a file for each specified shader platform, collating all child cooker results.
-	static bool SaveShaderCodeMaster(const FString& OutputDir, const FString& MetaOutputDir, const TArray<FName>& ShaderFormats, TArray<FString>& OutSCLCSVPath);
-	
-	// Save collected shader code to a file for each specified shader platform, handles only this instances intermediate results.
-	static bool SaveShaderCodeChild(const FString& OutputDir, const FString& MetaOutputDir, const TArray<FName>& ShaderFormats);
+	// Save collected shader code to a file for each specified shader platform
+	static bool SaveShaderCode(const FString& OutputDir, const FString& MetaOutputDir, const TArray<FName>& ShaderFormats, TArray<FString>& OutSCLCSVPath);
 	
 	// Package the separate shader bytecode files into a single native shader library. Must be called by the master process.
 	static bool PackageNativeShaderLibrary(const FString& ShaderCodeDir, const TArray<FName>& ShaderFormats);

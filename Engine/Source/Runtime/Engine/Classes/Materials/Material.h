@@ -6,6 +6,7 @@
 #include "UObject/ObjectMacros.h"
 #include "Misc/Guid.h"
 #include "Engine/EngineTypes.h"
+#include "HAL/ThreadSafeBool.h"
 #include "RenderCommandFence.h"
 #include "Materials/MaterialInterface.h"
 #include "MaterialShared.h"
@@ -718,6 +719,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Usage)
 	uint32 bUsedWithLidarPointCloud : 1;
 
+	/**
+	 * Indicates that the material and its instances can be used with Virtual Heightfield Mesh.
+	 * This will result in the shaders required to support Virtual Heightfield Mesh geometries being compiled which will increase shader compile time and memory usage.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Usage)
+	uint32 bUsedWithVirtualHeightfieldMesh : 1;
+
 	/** 
 	 * Indicates that the material and its instances can be used with Slate UI and UMG
 	 * This will result in the shaders required to support UI materials being compiled which will increase shader compile time and memory usage.
@@ -786,6 +794,10 @@ public:
 	/** Enables a wireframe view of the mesh the material is applied to.  */
 	UPROPERTY(EditAnywhere, Category=Material, AdvancedDisplay)
 	uint8 Wireframe : 1;
+
+	/** Select what shading rate to apply for platforms that have variable rate shading */
+	UPROPERTY(EditAnywhere, Category = Material, AdvancedDisplay)
+	TEnumAsByte<EMaterialShadingRate> ShadingRate;
 
 #if WITH_EDITORONLY_DATA
 	UPROPERTY()
@@ -947,8 +959,8 @@ private:
 	/** Material resources being cached for cooking. */
 	TMap<const class ITargetPlatform*, TArray<FMaterialResource*>> CachedMaterialResourcesForCooking;
 #endif
-	/** Fence used to guarantee that the RT is finished using various resources in this UMaterial before cleanup. */
-	FRenderCommandFence ReleaseFence;
+	/** Flag used to guarantee that the RT is finished using various resources in this UMaterial before cleanup. */
+	FThreadSafeBool ReleasedByRT;
 
 	UPROPERTY()
 	FMaterialCachedExpressionData CachedExpressionData;
@@ -1004,6 +1016,7 @@ public:
 #endif // WITH_EDITORONLY_DATA
 	ENGINE_API virtual bool GetTerrainLayerWeightParameterValue(const FHashedMaterialParameterInfo& ParameterInfo, int32& OutWeightmapIndex, FGuid& OutExpressionGuid) const override;
 	ENGINE_API virtual bool UpdateLightmassTextureTracking() override;
+	ENGINE_API virtual int32 GetLayerParameterIndex(EMaterialParameterAssociation Association, UMaterialFunctionInterface* LayerFunction) const override;
 #if WITH_EDITOR
 	ENGINE_API virtual bool GetGroupName(const FHashedMaterialParameterInfo& ParameterInfo, FName& OutGroup) const override;
 	ENGINE_API virtual bool GetParameterDesc(const FHashedMaterialParameterInfo& ParameterInfo, FString& OutDesc, const TArray<struct FStaticMaterialLayersParameter>* MaterialLayersParameters = nullptr) const override;
@@ -1025,6 +1038,7 @@ public:
 	ENGINE_API virtual bool IsTranslucencyWritingCustomDepth() const override;
 	ENGINE_API virtual bool IsTranslucencyWritingVelocity() const override;
 	ENGINE_API virtual bool IsMasked() const override;
+	ENGINE_API virtual bool IsDeferredDecal() const override { return MaterialDomain == MD_DeferredDecal; }
 	ENGINE_API virtual bool IsUIMaterial() const { return MaterialDomain == MD_UI; }
 	ENGINE_API virtual bool IsPostProcessMaterial() const { return MaterialDomain == MD_PostProcess; }
 	ENGINE_API virtual USubsurfaceProfile* GetSubsurfaceProfile_Internal() const override;
@@ -1838,7 +1852,7 @@ private:
 		{
 			if (Parameter && Parameter->SetParameterValue(InParameterName, Args...))
 			{
-				if (FProperty* ParamProperty = FindField<FProperty>(ParameterType::StaticClass(), "DefaultValue"))
+				if (FProperty* ParamProperty = FindFProperty<FProperty>(ParameterType::StaticClass(), "DefaultValue"))
 				{
 					FPropertyChangedEvent PropertyChangedEvent(ParamProperty);
 					Parameter->PostEditChangeProperty(PropertyChangedEvent);

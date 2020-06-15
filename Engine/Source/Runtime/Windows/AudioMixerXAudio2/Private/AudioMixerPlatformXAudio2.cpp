@@ -89,7 +89,12 @@ static FString GetErrorString(HRESULT Result)
 #if PLATFORM_WINDOWS || PLATFORM_HOLOLENS
 FName GetNextDllToTry(FName Current = NAME_None) 
 {
-	static const TArray<FName> kDllsToTry = { TEXT("xaudio2_9redist.dll"), TEXT("XAudio2_7.dll") };
+#if PLATFORM_64BITS
+	static const FString XAudio2_9Redist = FPaths::EngineDir() / TEXT("Binaries/ThirdParty/Windows/XAudio2_9/x64/xaudio2_9redist.dll");
+#else
+	static const FString XAudio2_9Redist = FPaths::EngineDir() / TEXT("Binaries/ThirdParty/Windows/XAudio2_9/x86/xaudio2_9redist.dll");
+#endif
+	static const TArray<FName> kDllsToTry = { *XAudio2_9Redist, TEXT("XAudio2_7.dll") };
 	int32 Index = kDllsToTry.IndexOfByKey(Current);
 	
 	// This behaves like a link list of names. 
@@ -410,7 +415,13 @@ namespace Audio
 
 		// Get the format of the property
 		WaveFormatEx = (WAVEFORMATEX *)DeviceFormat.blob.pBlobData;
-
+		if (!ensure(WaveFormatEx))
+		{
+			// Force an error if we failed to get a WaveFormat back from the data blob.
+			Result = E_FAIL;
+			XAUDIO2_GOTO_CLEANUP_ON_FAIL(Result);
+		}
+		
 		OutInfo.DeviceId = FString(DeviceId);
 		OutInfo.NumChannels = FMath::Clamp((int32)WaveFormatEx->nChannels, 2, 8);
 		OutInfo.SampleRate = WaveFormatEx->nSamplesPerSec;
@@ -576,11 +587,13 @@ namespace Audio
 			XAUDIO2_GOTO_CLEANUP_ON_FAIL(Result);
 		}
 
-		check(Device);
-		bSucceeded = GetMMDeviceInfo(Device, OutInfo);
+		if (ensure(Device))
+		{
+			bSucceeded = GetMMDeviceInfo(Device, OutInfo);
 
-		// Fix up if this was a default device
-		OutInfo.bIsSystemDefault = bIsDefault;
+			// Fix up if this was a default device
+			OutInfo.bIsSystemDefault = bIsDefault;
+		}
 
 	Cleanup:
 		SAFE_RELEASE(Device);
@@ -1186,13 +1199,11 @@ namespace Audio
 			// Create the output source voice
 			XAUDIO2_RETURN_ON_FAIL(XAudio2System->CreateSourceVoice(&OutputAudioStreamSourceVoice, &Format, XAUDIO2_VOICE_NOPITCH, 2.0f, &OutputVoiceCallback));
 
-			const int32 NewNumSamples = OpenStreamParams.NumFrames * AudioStreamInfo.DeviceInfo.NumChannels;
+			// Reinitialize the output circular buffer to match the buffer math of the new audio device.
+			const int32 NumOutputSamples = AudioStreamInfo.NumOutputFrames * AudioStreamInfo.DeviceInfo.NumChannels;
+			OutputBuffer.Init(AudioStreamInfo.AudioMixer, NumOutputSamples, NumOutputBuffers, AudioStreamInfo.DeviceInfo.Format);
 
-			// Clear the output buffers with zero's and submit one
-			for (int32 Index = 0; Index < OutputBuffers.Num(); ++Index)
-			{
-				OutputBuffers[Index].Reset(NewNumSamples);
-			}
+			const int32 NewNumSamples = OpenStreamParams.NumFrames * AudioStreamInfo.DeviceInfo.NumChannels;
 		}
 		else
 		{	
@@ -1209,11 +1220,11 @@ namespace Audio
 	{
 		if (OutputAudioStreamSourceVoice)
 		{
-			CurrentBufferReadIndex = 0;
-			CurrentBufferWriteIndex = 1;
+			int32 NumSamplesPopped = 0;
+			TArrayView<const uint8> PoppedAudio = OutputBuffer.PopBufferData(NumSamplesPopped);
+			SubmitBuffer(PoppedAudio.GetData());
 
-			SubmitBuffer(OutputBuffers[CurrentBufferReadIndex].GetBufferData());
-			check(OpenStreamParams.NumFrames * AudioStreamInfo.DeviceInfo.NumChannels == OutputBuffers[CurrentBufferReadIndex].GetBuffer().Num());
+			check(OpenStreamParams.NumFrames * AudioStreamInfo.DeviceInfo.NumChannels == OutputBuffer.GetNumSamples());
 
 			AudioRenderEvent->Trigger();
 

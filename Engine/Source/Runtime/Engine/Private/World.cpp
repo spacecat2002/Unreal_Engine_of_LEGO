@@ -63,6 +63,7 @@
 #include "TickTaskManagerInterface.h"
 #include "FXSystem.h"
 #include "AudioDevice.h"
+#include "AudioDeviceManager.h"
 #include "VisualLogger/VisualLogger.h"
 #include "LevelUtils.h"
 #include "Physics/PhysicsInterfaceCore.h"
@@ -81,7 +82,7 @@
 #include "Engine/LevelScriptBlueprint.h"
 #include "Engine/DemoNetDriver.h"
 #include "Modules/ModuleManager.h"
-#include "VT/VirtualTexture.h" 
+#include "VT/LightmapVirtualTexture.h" 
 #include "Interfaces/Interface_PostProcessVolume.h"
 
 #include "Materials/MaterialParameterCollectionInstance.h"
@@ -172,6 +173,7 @@ FActorSpawnParameters::FActorSpawnParameters()
 , bTemporaryEditorActor(false)
 , bHideFromSceneOutliner(false)
 #endif
+, NameMode(ESpawnActorNameMode::Required_Fatal)
 , ObjectFlags(RF_Transactional)
 {
 }
@@ -301,7 +303,9 @@ FScopedLevelCollectionContextSwitch::~FScopedLevelCollectionContextSwitch()
 	}
 }
 
+FAudioDeviceWorldDelegates::FOnWorldRegisteredToAudioDevice FAudioDeviceWorldDelegates::OnWorldRegisteredToAudioDevice;
 
+FAudioDeviceWorldDelegates::FOnWorldUnregisteredWithAudioDevice FAudioDeviceWorldDelegates::OnWorldUnregisteredWithAudioDevice;
 
 /*-----------------------------------------------------------------------------
 	UWorld implementation.
@@ -365,6 +369,15 @@ UWorld::UWorld( const FObjectInitializer& ObjectInitializer )
 	FWorldDelegates::OnPostWorldCreation.Broadcast(this);
 
 	PerfTrackers = new FWorldInGamePerformanceTrackers();
+
+	AudioDeviceDestroyedHandle = FAudioDeviceManagerDelegates::OnAudioDeviceDestroyed.AddLambda([this](const Audio::FDeviceId InDeviceId)
+	{
+		if (InDeviceId == AudioDeviceHandle.GetDeviceID())
+		{
+			FAudioDeviceHandle EmptyHandle;
+			SetAudioDevice(EmptyHandle);
+		}
+	});
 }
 
 UWorld::~UWorld()
@@ -847,7 +860,14 @@ void UWorld::BeginDestroy()
 		Scene->UpdateParameterCollections(TArray<FMaterialParameterCollectionInstanceResource*>());
 	}
 
-	AudioDeviceHandle.Reset();
+	if (AudioDeviceDestroyedHandle.IsValid())
+	{
+		FAudioDeviceManagerDelegates::OnAudioDeviceDestroyed.Remove(AudioDeviceDestroyedHandle);
+		AudioDeviceDestroyedHandle.Reset();
+	}
+
+	FAudioDeviceHandle EmptyHandle;
+	SetAudioDevice(EmptyHandle);
 }
 
 void UWorld::ReleasePhysicsScene()
@@ -961,6 +981,7 @@ void UWorld::PostLoad()
 #endif
 #if WITH_EDITOR
 	RepairWorldSettings();
+	RepairStreamingLevels();
 #endif
 #if INCLUDE_CHAOS
 	//RepairChaosActors();
@@ -1275,6 +1296,22 @@ void UWorld::RepairChaosActors()
 }
 #endif
 
+void UWorld::RepairStreamingLevels()
+{
+	for (int32 Index = 0; Index < StreamingLevels.Num(); )
+	{
+		ULevelStreaming* StreamingLevel = StreamingLevels[Index];
+		if (StreamingLevel && !StreamingLevel->IsValidStreamingLevel())
+		{
+			StreamingLevels.RemoveAtSwap(Index);
+		}
+		else
+		{
+			++Index;
+		}
+	}
+}
+
 void UWorld::RepairWorldSettings()
 {
 	AWorldSettings* ExistingWorldSettings = PersistentLevel->GetWorldSettings(false);
@@ -1401,15 +1438,21 @@ void UWorld::InitWorld(const InitializationValues IVS)
 
 	Levels.Empty(1);
 	Levels.Add( PersistentLevel );
+	if (FLevelCollection* Collection = PersistentLevel->GetCachedLevelCollection())
+	{
+		Collection->RemoveLevel(PersistentLevel);
+	}
 	PersistentLevel->OwningWorld = this;
 	PersistentLevel->bIsVisible = true;
 
 #if WITH_EDITOR
 	RepairWorldSettings();
+	RepairStreamingLevels();
 #endif
 #if INCLUDE_CHAOS
 	//RepairChaosActors();
 #endif
+
 
 	// initialize DefaultPhysicsVolume for the world
 	// Spawned on demand by this function.
@@ -1419,7 +1462,7 @@ void UWorld::InitWorld(const InitializationValues IVS)
 	if (GetPhysicsScene())
 	{
 		FVector Gravity = FVector( 0.f, 0.f, GetGravityZ() );
-		GetPhysicsScene()->SetUpForFrame( &Gravity );
+		GetPhysicsScene()->SetUpForFrame( &Gravity, 0, 0, 0, 0, false );
 	}
 
 	// Create physics collision handler, if we have a physics scene
@@ -1524,7 +1567,7 @@ void UWorld::InitWorld(const InitializationValues IVS)
 			{
 				if (Level->MapBuildData->IsVTLightingValid() == false)
 				{
-					Level->MapBuildData->InvalidateStaticLighting(this);
+					Level->MapBuildData->InvalidateSurfaceLightmaps(this);
 				}
 			}
 		}
@@ -3108,7 +3151,7 @@ void FStreamingLevelsToConsider::Add_Internal(ULevelStreaming* StreamingLevel, b
 			if (bGuaranteedNotInContainer || !StreamingLevels.Contains(StreamingLevel))
 			{
 				auto PrioritySort = [](ULevelStreaming* LambdaStreamingLevel, ULevelStreaming* OtherStreamingLevel)
-				{
+			{
 					if (LambdaStreamingLevel && OtherStreamingLevel)
 					{
 						const int32 Priority = LambdaStreamingLevel->GetPriority();
@@ -3200,7 +3243,15 @@ bool FStreamingLevelsToConsider::Contains(ULevelStreaming* StreamingLevel) const
 
 void FStreamingLevelsToConsider::Reset()
 {
+	if (bStreamingLevelsBeingConsidered)
+	{
+		// not safe to resize while levels are being considered, just null everything
+		FMemory::Memzero(StreamingLevels.GetData(), StreamingLevels.Num() * sizeof(ULevelStreaming*));
+	}
+	else
+	{
 	StreamingLevels.Reset();
+	}
 	LevelsToProcess.Reset();
 }
 
@@ -3217,7 +3268,7 @@ void FStreamingLevelsToConsider::EndConsideration()
 	{
 		// For any streaming level that was added or had its priority changed while we were considering the
 		// streaming levels go through and ensure they are correctly in the map and sorted to the correct location
-		TMap<ULevelStreaming*, EProcessReason> LevelsToProcessCopy = MoveTemp(LevelsToProcess);
+		TSortedMap<ULevelStreaming*, EProcessReason> LevelsToProcessCopy = MoveTemp(LevelsToProcess);
 		for (const TPair<ULevelStreaming*,EProcessReason>& LevelToProcessPair : LevelsToProcessCopy)
 		{
 			if (ULevelStreaming* StreamingLevel = LevelToProcessPair.Key)
@@ -3475,14 +3526,24 @@ void UWorld::UpdateStreamingLevelPriority(ULevelStreaming* StreamingLevel)
 
 void UWorld::FlushLevelStreaming(EFlushLevelStreamingType FlushType)
 {
-	// We're already full flushing, no reason to flush again
-	if (FlushType == EFlushLevelStreamingType::Full && FlushLevelStreamingType == EFlushLevelStreamingType::Full)
+	if (FlushType == FlushLevelStreamingType
+		|| FlushLevelStreamingType == EFlushLevelStreamingType::Full
+		|| FlushType == EFlushLevelStreamingType::None)
 	{
+		// We're already flushing at the correct level, or none was passed in
+		// No need to flush
+		return;
+	}
+	else if (FlushType == EFlushLevelStreamingType::Full && FlushLevelStreamingType == EFlushLevelStreamingType::Visibility)
+	{
+		// If FlushLevelStreaming is called for a full update while we are already doing a visibility update, 
+		// upgrade the stored type and let it go back to the loop that was already running
+		FlushLevelStreamingType = EFlushLevelStreamingType::Full;
 		return;
 	}
 
 	AWorldSettings* WorldSettings = GetWorldSettings();
-	
+
 	TGuardValue<EFlushLevelStreamingType> FlushingLevelStreamingGuard(FlushLevelStreamingType, FlushType);
 
 	// Update internals with current loaded/ visibility flags.
@@ -3495,14 +3556,13 @@ void UWorld::FlushLevelStreaming(EFlushLevelStreamingType FlushType)
 	UpdateLevelStreaming();
 
 	// Making levels visible is spread across several frames so we simply loop till it is done.
-	bool bLevelsPendingVisibility = true;
+	bool bLevelsPendingVisibility = IsVisibilityRequestPending();
 	while( bLevelsPendingVisibility )
 	{
-		bLevelsPendingVisibility = IsVisibilityRequestPending();
-
 		// Tick level streaming to make levels visible.
-		if( bLevelsPendingVisibility )
-		{
+
+		const EFlushLevelStreamingType LastStreamingType = FlushLevelStreamingType;
+
 			// Only flush async loading if we're performing a full flush.
 			if (FlushLevelStreamingType == EFlushLevelStreamingType::Full)
 			{
@@ -3512,7 +3572,10 @@ void UWorld::FlushLevelStreaming(EFlushLevelStreamingType FlushType)
 	
 			// Update level streaming.
 			UpdateLevelStreaming();
-		}
+
+		// If FlushLevelStreaming reentered as a result of FlushAsyncLoading or UpdateLevelStreaming and upgraded
+		// the flush type, we'll need to do at least one additional loop to be certain all processing is complete
+		bLevelsPendingVisibility = ((LastStreamingType != FlushLevelStreamingType) || IsVisibilityRequestPending());
 	}
 	
 	check(!IsVisibilityRequestPending());
@@ -3965,6 +4028,7 @@ bool UWorld::SetGameMode(const FURL& InURL)
 
 void UWorld::InitializeActorsForPlay(const FURL& InURL, bool bResetTime, FRegisterComponentContext* Context)
 {
+	TRACE_WORLD(this);
 	TRACE_OBJECT_EVENT(this, InitializeActorsForPlay);
 
 	check(bIsWorldInitialized);
@@ -4179,7 +4243,7 @@ void UWorld::CleanupWorldInternal(bool bSessionEnded, bool bCleanupResources, UW
 	{
 		return;
 	}
-
+	bool bWorldChanged = NewWorld != this && NewWorld != nullptr;
 	CleanupWorldTag = CleanupWorldGlobalTag;
 
 	UE_LOG(LogWorld, Log, TEXT("UWorld::CleanupWorld for %s, bSessionEnded=%s, bCleanupResources=%s"), *GetName(), bSessionEnded ? TEXT("true") : TEXT("false"), bCleanupResources ? TEXT("true") : TEXT("false"));
@@ -4197,7 +4261,7 @@ void UWorld::CleanupWorldInternal(bool bSessionEnded, bool bCleanupResources, UW
 
 	FWorldDelegates::OnWorldCleanup.Broadcast(this, bSessionEnded, bCleanupResources);
 
-	GetRendererModule().OnWorldCleanup(this, bSessionEnded, bCleanupResources);
+	GetRendererModule().OnWorldCleanup(this, bSessionEnded, bCleanupResources, bWorldChanged);
 
 	if (AISystem != nullptr)
 	{
@@ -4261,7 +4325,7 @@ void UWorld::CleanupWorldInternal(bool bSessionEnded, bool bCleanupResources, UW
 
 		if (WorldType != EWorldType::PIE)
 		{
-			if (PersistentLevel && PersistentLevel->MapBuildData)
+			if (PersistentLevel && PersistentLevel->MapBuildData && !PersistentLevel->MapBuildData->IsAsset())
 			{
 				PersistentLevel->MapBuildData->ClearFlags(RF_Standalone);
 
@@ -4312,7 +4376,16 @@ void UWorld::CleanupWorldInternal(bool bSessionEnded, bool bCleanupResources, UW
 
 	FWorldDelegates::OnPostWorldCleanup.Broadcast(this, bSessionEnded, bCleanupResources);
 
-	SubsystemCollection.Deinitialize();
+	if (bCleanupResources)
+	{
+		SubsystemCollection.Deinitialize();
+	}
+
+	if(FXSystem && bWorldChanged)
+	{
+		FFXSystemInterface::QueueDestroyGPUSimulation(FXSystem);
+	}
+
 }
 
 UGameViewportClient* UWorld::GetGameViewport() const
@@ -4324,6 +4397,11 @@ UGameViewportClient* UWorld::GetGameViewport() const
 FConstControllerIterator UWorld::GetControllerIterator() const
 {
 	return ControllerList.CreateConstIterator();
+}
+
+int32 UWorld::GetNumControllers() const
+{
+	return ControllerList.Num();
 }
 
 FConstPlayerControllerIterator UWorld::GetPlayerControllerIterator() const
@@ -4714,7 +4792,7 @@ ENGINE_API const FString GetMapNameStatic()
 		}
 	}
 
-	if( ContextToUse != NULL )
+	if( ContextToUse != NULL && ContextToUse->World() != NULL )
 	{
 		Retval = ContextToUse->World()->GetMapName();
 	}
@@ -5029,28 +5107,37 @@ void UWorld::NotifyControlMessage(UNetConnection* Connection, uint8 MessageType,
 				// Admit or deny the player here.
 				FUniqueNetIdRepl UniqueIdRepl;
 				FString OnlinePlatformName;
+				FString& RequestURL = Connection->RequestURL;
 
 				// Expand the maximum string serialization size, to accommodate extremely large Fortnite join URL's.
 				Bunch.ArMaxSerializeSize += (16 * 1024 * 1024);
 
-				bool bReceived = FNetControlMessage<NMT_Login>::Receive(Bunch, Connection->ClientResponse, Connection->RequestURL,
-																		UniqueIdRepl, OnlinePlatformName);
+				bool bReceived = FNetControlMessage<NMT_Login>::Receive(Bunch, Connection->ClientResponse, RequestURL, UniqueIdRepl,
+																		OnlinePlatformName);
 
 				Bunch.ArMaxSerializeSize -= (16 * 1024 * 1024);
 
 				if (bReceived)
 				{
-					UE_LOG(LogNet, Log, TEXT("Login request: %s userId: %s platform: %s"), *Connection->RequestURL, UniqueIdRepl.IsValid() ? *UniqueIdRepl.ToDebugString() : TEXT("UNKNOWN"), *OnlinePlatformName);
+					// Only the options/portal for the URL should be used during join
+					const TCHAR* NewRequestURL = *RequestURL;
+
+					for (; *NewRequestURL != '\0' && *NewRequestURL != '?' && *NewRequestURL != '#'; NewRequestURL++){}
+
+
+					UE_LOG(LogNet, Log, TEXT("Login request: %s userId: %s platform: %s"), NewRequestURL, UniqueIdRepl.IsValid() ? *UniqueIdRepl.ToDebugString() : TEXT("UNKNOWN"), *OnlinePlatformName);
 
 					// Compromise for passing splitscreen playercount through to gameplay login code,
 					// without adding a lot of extra unnecessary complexity throughout the login code.
 					// NOTE: This code differs from NMT_JoinSplit, by counting + 1 for SplitscreenCount
 					//			(since this is the primary connection, not counted in Children)
-					FURL InURL( NULL, *Connection->RequestURL, TRAVEL_Absolute );
+					FURL InURL( NULL, NewRequestURL, TRAVEL_Absolute );
 
 					if ( !InURL.Valid )
 					{
-						UE_LOG( LogNet, Error, TEXT( "NMT_Login: Invalid URL %s" ), *Connection->RequestURL );
+						RequestURL = NewRequestURL;
+
+						UE_LOG( LogNet, Error, TEXT( "NMT_Login: Invalid URL %s" ), *RequestURL );
 						Bunch.SetError();
 						break;
 					}
@@ -5061,10 +5148,10 @@ void UWorld::NotifyControlMessage(UNetConnection* Connection, uint8 MessageType,
 					InURL.RemoveOption(TEXT("SplitscreenCount"));
 					InURL.AddOption(*FString::Printf(TEXT("SplitscreenCount=%i"), SplitscreenCount));
 
-					Connection->RequestURL = InURL.ToString();
+					RequestURL = InURL.ToString();
 
 					// skip to the first option in the URL
-					const TCHAR* Tmp = *Connection->RequestURL;
+					const TCHAR* Tmp = *RequestURL;
 					for (; *Tmp && *Tmp != '?'; Tmp++);
 
 					// keep track of net id for player associated with remote connection
@@ -5099,7 +5186,7 @@ void UWorld::NotifyControlMessage(UNetConnection* Connection, uint8 MessageType,
 				else
 				{
 					Connection->ClientResponse.Empty();
-					Connection->RequestURL.Empty();
+					RequestURL.Empty();
 				}
 
 				break;
@@ -5176,8 +5263,13 @@ void UWorld::NotifyControlMessage(UNetConnection* Connection, uint8 MessageType,
 
 				if (FNetControlMessage<NMT_JoinSplit>::Receive(Bunch, SplitRequestURL, SplitRequestUniqueIdRepl))
 				{
+					// Only the options/portal for the URL should be used during join
+					const TCHAR* NewRequestURL = *SplitRequestURL;
+
+					for (; *NewRequestURL != '\0' && *NewRequestURL != '?' && *NewRequestURL != '#'; NewRequestURL++){}
+
 					UE_LOG(LogNet, Log, TEXT("Join splitscreen request: %s userId: %s parentUserId: %s"),
-						*SplitRequestURL,
+						NewRequestURL,
 						SplitRequestUniqueIdRepl.IsValid() ? *SplitRequestUniqueIdRepl->ToString() : TEXT("Invalid"),
 						Connection->PlayerId.IsValid() ? *Connection->PlayerId->ToString() : TEXT("Invalid"));
 
@@ -5185,10 +5277,12 @@ void UWorld::NotifyControlMessage(UNetConnection* Connection, uint8 MessageType,
 					// without adding a lot of extra unnecessary complexity throughout the login code.
 					// NOTE: This code differs from NMT_Login, by counting + 2 for SplitscreenCount
 					//			(once for pending child connection, once for primary non-child connection)
-					FURL InURL(NULL, *SplitRequestURL, TRAVEL_Absolute);
+					FURL InURL(NULL, NewRequestURL, TRAVEL_Absolute);
 
 					if (!InURL.Valid)
 					{
+						SplitRequestURL = NewRequestURL;
+
 						UE_LOG(LogNet, Error, TEXT("NMT_JoinSplit: Invalid URL %s"), *SplitRequestURL);
 						Bunch.SetError();
 						break;
@@ -7509,9 +7603,36 @@ void UWorld::AddPostProcessingSettings(FVector ViewLocation, FSceneView* SceneVi
 	}
 }
 
-void UWorld::SetAudioDevice(FAudioDeviceHandle& InHandle)
+void UWorld::SetAudioDevice(const FAudioDeviceHandle& InHandle)
 {
-	AudioDeviceHandle = InHandle;
+	if (InHandle.GetDeviceID() == AudioDeviceHandle.GetDeviceID())
+	{
+		return;
+	}
+
+	if (FAudioDeviceManager* DeviceManager = FAudioDeviceManager::Get())
+	{
+		// Register new world with incoming device first to avoid premature reporting due to no handles being valid...
+		if (InHandle.IsValid())
+		{
+			check(InHandle.GetWorld() == this);
+			DeviceManager->RegisterWorld(this, InHandle.GetDeviceID());
+		}
+
+		const Audio::FDeviceId OldDeviceId = AudioDeviceHandle.GetDeviceID();
+		const bool bUnregister = AudioDeviceHandle.IsValid();
+
+		AudioDeviceHandle = InHandle;
+
+		if (bUnregister)
+		{
+			DeviceManager->UnregisterWorld(this, OldDeviceId);
+		}
+	}
+	else
+	{
+		AudioDeviceHandle.Reset();
+	}
 }
 
 FAudioDeviceHandle UWorld::GetAudioDevice()

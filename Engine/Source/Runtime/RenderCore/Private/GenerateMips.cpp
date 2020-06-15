@@ -134,7 +134,7 @@ void FGenerateMips::SetupRendering(FGenerateMipsStruct *GenMipsStruct, FRHITextu
 	};
 
 	FRHIResourceCreateInfo CreateInfo;
-	GenMipsStruct->VertexBuffer = RHICreateVertexBuffer(sizeof(FMipsElementVertex) * 4, BUF_Volatile, CreateInfo);
+	GenMipsStruct->VertexBuffer = RHICreateVertexBuffer(sizeof(FMipsElementVertex) * 4, BUF_Static, CreateInfo);
 	void* VoidPtr = RHILockVertexBuffer(GenMipsStruct->VertexBuffer, 0, sizeof(FMipsElementVertex) * 4, RLM_WriteOnly);
 
 	FMipsElementVertex* Vertices = (FMipsElementVertex*)VoidPtr;
@@ -156,10 +156,7 @@ void FGenerateMips::SetupRendering(FGenerateMipsStruct *GenMipsStruct, FRHITextu
 	GenMipsStruct->VertexDeclaration = PipelineStateCache::GetOrCreateVertexDeclaration(Elements);
 
 	//Specify the Sampler details based on the input.
-	GenMipsStruct->Sampler.Filter = InParams.Filter;
-	GenMipsStruct->Sampler.AddressU = InParams.AddressU;
-	GenMipsStruct->Sampler.AddressV = InParams.AddressV;
-	GenMipsStruct->Sampler.AddressW = InParams.AddressW;
+	GenMipsStruct->Sampler = FSamplerStateInitializerRHI(InParams.Filter, InParams.AddressU, InParams.AddressV, InParams.AddressW);
 }
 
 
@@ -204,10 +201,11 @@ void FGenerateMips::RenderMips(FRHICommandListImmediate& CommandList, FRHITextur
 	uint32 NumMips = InTexture->GetNumMips();
 	for (uint32 MipLevel=1; MipLevel<NumMips; ++MipLevel)
 	{
-		int32 Width = InTexture->GetSizeXYZ().X >> MipLevel;
-		int32 Height = InTexture->GetSizeXYZ().Y >> MipLevel;
+		int32 Width = FMath::Max(InTexture->GetSizeXYZ().X >> MipLevel, 1);
+		int32 Height = FMath::Max(InTexture->GetSizeXYZ().Y >> MipLevel, 1);
 
 		FRHIRenderPassInfo RPInfo(InTexture, ERenderTargetActions::DontLoad_Store, nullptr, MipLevel);
+		RPInfo.bGeneratingMips = true;
 		CommandList.BeginRenderPass(RPInfo, TEXT("GenMipsLevel"));
 		{
 			CommandList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -221,6 +219,8 @@ void FGenerateMips::RenderMips(FRHICommandListImmediate& CommandList, FRHITextur
 		}
 		CommandList.EndRenderPass();
 	}
+
+	CommandList.TransitionResource(EResourceTransitionAccess::EReadable, InTexture);
 }
 
 
@@ -267,10 +267,7 @@ TSharedPtr<FGenerateMipsStruct> FGenerateMips::SetupTexture(FRHITexture* InTextu
 	GRenderTargetPool.CreateUntrackedElement(Desc, GenMipsStruct->RenderTarget, RenderTexture);
 
 		//Specify the Sampler details based on the input.
-	GenMipsStruct->Sampler.Filter = InParams.Filter;
-	GenMipsStruct->Sampler.AddressU = InParams.AddressU;
-	GenMipsStruct->Sampler.AddressV = InParams.AddressV;
-	GenMipsStruct->Sampler.AddressW = InParams.AddressW;
+	GenMipsStruct->Sampler = FSamplerStateInitializerRHI(InParams.Filter, InParams.AddressU, InParams.AddressV, InParams.AddressW);
 
 	return GenMipsStruct;
 }
@@ -305,8 +302,8 @@ void FGenerateMips::Compute(FRHICommandListImmediate& RHIImmCmdList, FRHITexture
 	//Loop through each level of the mips that require creation and add a dispatch pass per level,.
 	for (uint8 MipLevel = 1; MipLevel < InTexture->GetNumMips(); MipLevel++)
 	{
-		int DestTextureSizeX = InTexture->GetSizeXYZ().X >> MipLevel;
-		int DestTextureSizeY = InTexture->GetSizeXYZ().Y >> MipLevel;
+		int DestTextureSizeX = FMath::Max(InTexture->GetSizeXYZ().X >> MipLevel, 1);
+		int DestTextureSizeY = FMath::Max(InTexture->GetSizeXYZ().Y >> MipLevel, 1);
 
 		//Create the RDG viewable SRV, of a complete Mip, to read from
 		FRDGTextureSRVDesc SRVDesc = FRDGTextureSRVDesc::CreateForMipLevel(GraphTexture, MipLevel - 1);
@@ -404,8 +401,8 @@ void FGenerateMips::Execute(FRDGBuilder* GraphBuilder, FRDGTextureRef InGraphTex
 	//Loop through each level of the mips that require creation and add a dispatch pass per level,.
 	for (uint8 MipLevel = 1; MipLevel < InGraphTexture->Desc.NumMips; MipLevel++)
 	{
-		int DestTextureSizeX = InGraphTexture->Desc.Extent.X >> MipLevel;
-		int DestTextureSizeY = InGraphTexture->Desc.Extent.Y >> MipLevel;
+		int DestTextureSizeX = FMath::Max(InGraphTexture->Desc.Extent.X >> MipLevel, 1);
+		int DestTextureSizeY = FMath::Max(InGraphTexture->Desc.Extent.Y >> MipLevel, 1);
 
 		//Create the RDG viewable SRV, of a complete Mip, to read from
 		FRDGTextureSRVDesc SRVDesc = FRDGTextureSRVDesc::CreateForMipLevel(InGraphTexture, MipLevel - 1);

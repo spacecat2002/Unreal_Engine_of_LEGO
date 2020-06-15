@@ -4,6 +4,8 @@
 
 #include "Chaos/Box.h"
 #include "Chaos/Capsule.h"
+#include "Chaos/CastingUtilities.h"
+#include "Chaos/Convex.h"
 #include "Chaos/GeometryParticles.h"
 #include "Chaos/ImplicitObject.h"
 #include "Chaos/ImplicitObjectScaled.h"
@@ -12,18 +14,17 @@
 #include "Chaos/TriangleMesh.h"
 #include "Chaos/TriangleMeshImplicitObject.h"
 #include "Chaos/UniformGrid.h"
-#include "Chaos/Convex.h"
 
+#include "Physics/PhysicsInterfaceTypes.h"
+
+#include "PhysicsEngine/AggregateGeom.h"
 #include "PhysicsEngine/BoxElem.h"
 #include "PhysicsEngine/ConvexElem.h"
+#include "PhysicsEngine/PhysicsSettings.h"
 #include "PhysicsEngine/SphylElem.h"
 #include "PhysicsEngine/SphereElem.h"
 
-#include "Physics/PhysicsInterfaceTypes.h"
-#include "PhysicsEngine/AggregateGeom.h"
-#include "PhysicsEngine/PhysicsSettings.h"
-
-#if WITH_PHYSX
+#if PHYSICS_INTERFACE_PHYSX
 #include "PhysXIncludes.h"
 #endif
 
@@ -37,7 +38,7 @@ namespace ChaosInterface
 		check(false);
 	}
 
-#if WITH_PHYSX
+#if PHYSICS_INTERFACE_PHYSX
 
 	template<>
 	TArray<Chaos::TVector<int32, 3>> GetMeshElements(const physx::PxConvexMesh* PhysXMesh)
@@ -150,12 +151,12 @@ namespace ChaosInterface
 		return Chaos::EChaosCollisionTraceFlag::Chaos_CTF_UseDefault;
 	}
 
-	void CreateGeometry(const FGeometryAddParams& InParams, TArray<TUniquePtr<Chaos::FImplicitObject>>& OutGeoms, Chaos::TShapesArray<float, 3>& OutShapes)
+	void CreateGeometry(const FGeometryAddParams& InParams, TArray<TUniquePtr<Chaos::FImplicitObject>>& OutGeoms, Chaos::FShapesArray& OutShapes)
 	{
 		LLM_SCOPE(ELLMTag::ChaosGeometry);
 		const FVector& Scale = InParams.Scale;
 		TArray<TUniquePtr<Chaos::FImplicitObject>>& Geoms = OutGeoms;
-		Chaos::TShapesArray<float, 3>& Shapes = OutShapes;
+		Chaos::FShapesArray& Shapes = OutShapes;
 
 		ECollisionTraceFlag CollisionTraceType = InParams.CollisionTraceType;
 		if (CollisionTraceType == CTF_UseDefault)
@@ -177,16 +178,25 @@ namespace ChaosInterface
 
 		ensure(bMakeComplexGeometry || bMakeSimpleGeometry);
 
-		auto NewShapeHelper = [&InParams, &CollisionTraceType](Chaos::TSerializablePtr<Chaos::FImplicitObject> InGeom, void* UserData, bool bComplexShape = false)
+		auto NewShapeHelper = [&InParams, &CollisionTraceType](Chaos::TSerializablePtr<Chaos::FImplicitObject> InGeom, int32 ShapeIdx, void* UserData, ECollisionEnabled::Type ShapeCollisionEnabled, bool bComplexShape = false)
 		{
-			auto NewShape = Chaos::TPerShapeData<float, 3>::CreatePerShapeData();
-			NewShape->Geometry = InGeom;
-			NewShape->QueryData = bComplexShape ? InParams.CollisionData.CollisionFilterData.QueryComplexFilter : InParams.CollisionData.CollisionFilterData.QuerySimpleFilter;
-			NewShape->SimData = InParams.CollisionData.CollisionFilterData.SimFilter;
-			NewShape->CollisionTraceType = ConvertCollisionTraceFlag(CollisionTraceType);
+			TUniquePtr<Chaos::FPerShapeData> NewShape = Chaos::FPerShapeData::CreatePerShapeData(ShapeIdx);
+			NewShape->SetGeometry(InGeom);
+			NewShape->SetQueryData(bComplexShape ? InParams.CollisionData.CollisionFilterData.QueryComplexFilter : InParams.CollisionData.CollisionFilterData.QuerySimpleFilter);
+			NewShape->SetSimData(InParams.CollisionData.CollisionFilterData.SimFilter);
+			NewShape->SetCollisionTraceType(ConvertCollisionTraceFlag(CollisionTraceType));
 			NewShape->UpdateShapeBounds(InParams.WorldTransform);
-			NewShape->UserData = UserData;
-			NewShape->bSimulate = bComplexShape ? InParams.CollisionData.CollisionFlags.bEnableSimCollisionComplex : InParams.CollisionData.CollisionFlags.bEnableSimCollisionSimple;
+			NewShape->SetUserData(UserData);
+
+			// The following does nearly the same thing that happens in UpdatePhysicsFilterData.
+			// TODO: Refactor so that this code is not duplicated
+			const bool bBodyEnableSim = InParams.CollisionData.CollisionFlags.bEnableSimCollisionSimple || InParams.CollisionData.CollisionFlags.bEnableSimCollisionComplex;
+			const bool bBodyEnableQuery = InParams.CollisionData.CollisionFlags.bEnableQueryCollision;
+			const bool bShapeEnableSim = ShapeCollisionEnabled == ECollisionEnabled::QueryAndPhysics || ShapeCollisionEnabled == ECollisionEnabled::PhysicsOnly;
+			const bool bShapeEnableQuery = ShapeCollisionEnabled == ECollisionEnabled::QueryAndPhysics || ShapeCollisionEnabled == ECollisionEnabled::QueryOnly;
+			NewShape->SetSimEnabled(bBodyEnableSim && bShapeEnableSim);
+			NewShape->SetQueryEnabled(bBodyEnableQuery && bShapeEnableQuery);
+
 			return NewShape;
 		};
 
@@ -198,7 +208,7 @@ namespace ChaosInterface
 				const FKSphereElem ScaledSphereElem = SphereElem.GetFinalScaled(Scale, InParams.LocalTransform);
 				const float UseRadius = FMath::Max(ScaledSphereElem.Radius, KINDA_SMALL_NUMBER);
 				auto ImplicitSphere = MakeUnique<Chaos::TSphere<float, 3>>(ScaledSphereElem.Center, UseRadius);
-				auto NewShape = NewShapeHelper(MakeSerializable(ImplicitSphere), (void*)SphereElem.GetUserData());
+				TUniquePtr<Chaos::FPerShapeData> NewShape = NewShapeHelper(MakeSerializable(ImplicitSphere), Shapes.Num(), (void*)SphereElem.GetUserData(), SphereElem.GetCollisionEnabled());
 				Shapes.Emplace(MoveTemp(NewShape));
 				Geoms.Add(MoveTemp(ImplicitSphere));
 			}
@@ -226,7 +236,7 @@ namespace ChaosInterface
 					Implicit = MakeUnique<Chaos::TBox<float, 3>>(BoxTransform.GetTranslation() - HalfExtents, BoxTransform.GetTranslation() + HalfExtents);
 				}
 
-				auto NewShape = NewShapeHelper(MakeSerializable(Implicit), (void*)BoxElem.GetUserData());
+				TUniquePtr<Chaos::FPerShapeData> NewShape = NewShapeHelper(MakeSerializable(Implicit),Shapes.Num(), (void*)BoxElem.GetUserData(), BoxElem.GetCollisionEnabled());
 				Shapes.Emplace(MoveTemp(NewShape));
 				Geoms.Add(MoveTemp(Implicit));
 			}
@@ -241,7 +251,7 @@ namespace ChaosInterface
 				{
 					//not a capsule just use a sphere
 					auto ImplicitSphere = MakeUnique<Chaos::TSphere<float, 3>>(ScaledSphylElem.Center, Radius);
-					auto NewShape = NewShapeHelper(MakeSerializable(ImplicitSphere), (void*)UnscaledSphyl.GetUserData());
+					TUniquePtr<Chaos::FPerShapeData> NewShape = NewShapeHelper(MakeSerializable(ImplicitSphere),Shapes.Num(), (void*)UnscaledSphyl.GetUserData(), UnscaledSphyl.GetCollisionEnabled());
 					Shapes.Emplace(MoveTemp(NewShape));
 					Geoms.Add(MoveTemp(ImplicitSphere));
 
@@ -251,7 +261,7 @@ namespace ChaosInterface
 					Chaos::TVector<float, 3> HalfExtents = ScaledSphylElem.Rotation.RotateVector(Chaos::TVector<float, 3>(0, 0, HalfHeight));
 
 					auto ImplicitCapsule = MakeUnique<Chaos::TCapsule<float>>(ScaledSphylElem.Center - HalfExtents, ScaledSphylElem.Center + HalfExtents, Radius);
-					auto NewShape = NewShapeHelper(MakeSerializable(ImplicitCapsule), (void*)UnscaledSphyl.GetUserData());
+					TUniquePtr<Chaos::FPerShapeData> NewShape = NewShapeHelper(MakeSerializable(ImplicitCapsule),Shapes.Num(), (void*)UnscaledSphyl.GetUserData(), UnscaledSphyl.GetCollisionEnabled());
 					Shapes.Emplace(MoveTemp(NewShape));
 					Geoms.Add(MoveTemp(ImplicitCapsule));
 				}
@@ -311,7 +321,7 @@ namespace ChaosInterface
 							Implicit = TUniquePtr<Chaos::FImplicitObject>(new Chaos::TImplicitObjectScaled<Chaos::FConvex>(ConvexImplicit, Scale));
 						}
 
-						auto NewShape = NewShapeHelper(MakeSerializable(Implicit), (void*)CollisionBody.GetUserData());
+						TUniquePtr<Chaos::FPerShapeData> NewShape = NewShapeHelper(MakeSerializable(Implicit),Shapes.Num(), (void*)CollisionBody.GetUserData(), CollisionBody.GetCollisionEnabled());
 						Shapes.Emplace(MoveTemp(NewShape));
 						Geoms.Add(MoveTemp(Implicit));
 					}
@@ -335,7 +345,7 @@ namespace ChaosInterface
 
 				ChaosTriMesh->SetCullsBackFaceRaycast(!InParams.bDoubleSided);
 
-				auto NewShape = NewShapeHelper(MakeSerializable(Implicit), nullptr, true);
+				TUniquePtr<Chaos::FPerShapeData> NewShape = NewShapeHelper(MakeSerializable(Implicit),Shapes.Num(), nullptr, ECollisionEnabled::QueryAndPhysics, true);
 				Shapes.Emplace(MoveTemp(NewShape));
 				Geoms.Add(MoveTemp(Implicit));
 			}
@@ -345,12 +355,151 @@ namespace ChaosInterface
 		for (const auto& PhysXMesh : InParams.TriMeshes)
 		{
 			auto Implicit = ConvertPhysXMeshToLevelset(PhysXMesh, Scale);
-			auto NewShape = NewShapeHelper(MakeSerializable(Implicit), nullptr, true);
+			auto NewShape = NewShapeHelper(MakeSerializable(Implicit), Shapes.Num(), nullptr, ECollisionEnabled::QueryAndPhysics, true);
 			Shapes.Emplace(MoveTemp(NewShape));
 			Geoms.Add(MoveTemp(Implicit));
 
 		}
 #endif
 	}
+
+#if WITH_CHAOS
+	bool CalculateMassPropertiesOfImplicitType(
+		Chaos::TMassProperties<float, 3>& OutMassProperties,
+		const Chaos::TRigidTransform<float, 3>& WorldTransform,
+		const Chaos::FImplicitObject* ImplicitObject,
+		float InDensityKGPerCM)
+	{
+		// WIP
+		// @todo : Support center of mass offsets.
+		// @todo : Support Mass space alignment. 
+
+		using namespace Chaos;
+
+		if (ImplicitObject)
+		{
+			// Hack to handle Transformed and Scaled<ImplicitObjectTriangleMesh> until CastHelper can properly support transformed
+			// Commenting this out temporarily as it breaks vehicles
+			/*	if (Chaos::IsScaled(ImplicitObject->GetType(true)) && Chaos::GetInnerType(ImplicitObject->GetType(true)) & Chaos::ImplicitObjectType::TriangleMesh)
+				{
+					OutMassProperties.Volume = 0.f;
+					OutMassProperties.Mass = FLT_MAX;
+					OutMassProperties.InertiaTensor = FMatrix33(0, 0, 0);
+					OutMassProperties.CenterOfMass = FVector(0);
+					OutMassProperties.RotationOfMass = Chaos::TRotation<float, 3>::FromIdentity();
+					return false;
+				}
+				else if (ImplicitObject->GetType(true) & Chaos::ImplicitObjectType::TriangleMesh)
+				{
+					OutMassProperties.Volume = 0.f;
+					OutMassProperties.Mass = FLT_MAX;
+					OutMassProperties.InertiaTensor = FMatrix33(0, 0, 0);
+					OutMassProperties.CenterOfMass = FVector(0);
+					OutMassProperties.RotationOfMass = Chaos::TRotation<float, 3>::FromIdentity();
+					return false;
+				}
+			else*/
+
+			//todo: Still need to handle scaled
+			Chaos::Utilities::CastHelper(*ImplicitObject, FTransform::Identity, [&OutMassProperties, InDensityKGPerCM](const auto& Object, const auto& LocalTM)
+				{
+					OutMassProperties.Volume = Object.GetVolume();
+					OutMassProperties.Mass = OutMassProperties.Volume * InDensityKGPerCM;
+					OutMassProperties.InertiaTensor = Object.GetInertiaTensor(OutMassProperties.Mass);
+					OutMassProperties.CenterOfMass = LocalTM.TransformPosition(Object.GetCenterOfMass());
+					OutMassProperties.RotationOfMass = LocalTM.GetRotation();
+				});
+			return true;
+		}
+		return false;
+	}
+
+	void CalculateMassPropertiesFromShapeCollection(Chaos::TMassProperties<float, 3>& OutProperties, const TArray<FPhysicsShapeHandle>& InShapes, float InDensityKGPerCM)
+	{
+		float TotalMass = 0.f;
+		Chaos::FVec3 TotalCenterOfMass(0.f);
+		TArray< Chaos::TMassProperties<float, 3> > MassPropertiesList;
+		for (const FPhysicsShapeHandle& ShapeHandle : InShapes)
+		{
+			if (const Chaos::FPerShapeData* Shape = ShapeHandle.Shape)
+			{
+				if (const Chaos::FImplicitObject* ImplicitObject = Shape->GetGeometry().Get())
+				{
+					FTransform WorldTransform(ShapeHandle.ActorRef->R(), ShapeHandle.ActorRef->X());
+					Chaos::TMassProperties<float, 3> MassProperties;
+					if (CalculateMassPropertiesOfImplicitType(MassProperties, WorldTransform, ImplicitObject, InDensityKGPerCM))
+					{
+						MassPropertiesList.Add(MassProperties);
+						TotalMass += MassProperties.Mass;
+						TotalCenterOfMass += MassProperties.CenterOfMass * MassProperties.Mass;
+					}
+				}
+			}
+		}
+
+		if (TotalMass > 0.f)
+		{
+			TotalCenterOfMass /= TotalMass;
+		}
+
+		Chaos::PMatrix<float, 3, 3> Tensor;
+		if (MassPropertiesList.Num())
+		{
+			Tensor = Chaos::CombineWorldSpace<float, 3>(MassPropertiesList, InDensityKGPerCM).InertiaTensor;
+		}
+		else
+		{
+			// @todo : Add support for all types, but for now just hard code a unit sphere tensor {r:50cm} if the type was not processed
+			Tensor = Chaos::PMatrix<float, 3, 3>(5.24e5, 5.24e5, 5.24e5);
+			TotalMass = 523.f;
+		}
+
+		OutProperties.InertiaTensor = Tensor;
+		OutProperties.Mass = TotalMass;
+		OutProperties.CenterOfMass = TotalCenterOfMass;
+	}
+
+	void CalculateMassPropertiesFromShapeCollection(Chaos::TMassProperties<float, 3>& OutProperties, const Chaos::FShapesArray& InShapes, float InDensityKGPerCM)
+	{
+		float TotalMass = 0.f;
+		Chaos::FVec3 TotalCenterOfMass(0.f);
+		TArray< Chaos::TMassProperties<float, 3> > MassPropertiesList;
+		for (const TUniquePtr<Chaos::FPerShapeData>& Shape : InShapes)
+		{
+			if (const Chaos::FImplicitObject* ImplicitObject = Shape->GetGeometry().Get())
+			{
+				Chaos::TMassProperties<float, 3> MassProperties;
+				if (CalculateMassPropertiesOfImplicitType(MassProperties, FTransform::Identity, ImplicitObject, InDensityKGPerCM))
+				{
+					MassPropertiesList.Add(MassProperties);
+					TotalMass += MassProperties.Mass;
+					TotalCenterOfMass += MassProperties.CenterOfMass * MassProperties.Mass;
+				}
+			}
+		}
+
+		if (TotalMass > 0.f)
+		{
+			TotalCenterOfMass /= TotalMass;
+		}
+
+		Chaos::PMatrix<float, 3, 3> Tensor;
+		if (MassPropertiesList.Num())
+		{
+			Tensor = Chaos::CombineWorldSpace<float, 3>(MassPropertiesList, InDensityKGPerCM).InertiaTensor;
+		}
+		else
+		{
+			// @todo : Add support for all types, but for now just hard code a unit sphere tensor {r:50cm} if the type was not processed
+			Tensor = Chaos::PMatrix<float, 3, 3>(5.24e5f, 5.24e5f, 5.24e5f);
+			TotalMass = 523.0f;
+		}
+
+		OutProperties.InertiaTensor = Tensor;
+		OutProperties.Mass = TotalMass;
+		OutProperties.CenterOfMass = TotalCenterOfMass;
+	}
+
+#endif // WITH_CHAOS
 
 }

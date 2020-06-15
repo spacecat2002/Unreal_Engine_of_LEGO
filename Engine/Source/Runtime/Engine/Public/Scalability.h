@@ -16,6 +16,8 @@ namespace Scalability
 		ERelativeToMax,
 	};
 
+	const int32 DefaultQualityLevel = 3;
+
 	/**
 	 * Structure for holding the state of the engine scalability groups
 	 * Actual engine state you can get though GetQualityLevels().
@@ -179,4 +181,6 @@ namespace Scalability
 #endif
 
 	ENGINE_API FText GetQualityLevelText(int32 Value, int32 NumLevels);
+
+	ENGINE_API FString GetScalabilitySectionString(const TCHAR* InGroupName, int32 InQualityLevel, int32 InNumLevels);
 }

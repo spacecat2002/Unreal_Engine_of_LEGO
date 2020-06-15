@@ -15,6 +15,8 @@ class UFont;
 class UMaterialExpression;
 class URuntimeVirtualTexture;
 class ULandscapeGrassType;
+class UMaterialFunctionInterface;
+class UMaterialInterface;
 
 /** Stores information about a function that this material references, used to know when the material needs to be recompiled. */
 USTRUCT()
@@ -28,7 +30,7 @@ struct FMaterialFunctionInfo
 
 	/** The function which this material has a dependency on. */
 	UPROPERTY()
-	class UMaterialFunctionInterface* Function = nullptr;
+	UMaterialFunctionInterface* Function = nullptr;
 };
 
 /** Stores information about a parameter collection that this material references, used to know when the material needs to be recompiled. */
@@ -77,9 +79,22 @@ enum class EMaterialParameterType : int32
 	Font,
 	RuntimeVirtualTexture,
 
+	RuntimeCount, // Runtime parameter types must go above here, and editor-only ones below
+
+#if WITH_EDITORONLY_DATA
+	StaticSwitch = RuntimeCount,
+	StaticComponentMask,
+	// Excluding StaticMaterialLayer due to type specific complications
+
 	Count,
+#else
+	Count = RuntimeCount,
+#endif
 };
-static const int32 NumMaterialParameterTypes = (int32)EMaterialParameterType::Count;
+static const int32 NumMaterialRuntimeParameterTypes = (int32)EMaterialParameterType::RuntimeCount;
+#if WITH_EDITORONLY_DATA
+static const int32 NumMaterialEditorOnlyParameterTypes = (int32)EMaterialParameterType::Count - (int32)EMaterialParameterType::RuntimeCount;
+#endif
 
 USTRUCT()
 struct FMaterialCachedParameterEntry
@@ -102,20 +117,46 @@ struct FMaterialCachedParameterEntry
 };
 
 USTRUCT()
+struct FStaticComponentMaskValue
+{
+	GENERATED_USTRUCT_BODY();
+
+	UPROPERTY()
+	bool R;
+	
+	UPROPERTY()
+	bool G;
+
+	UPROPERTY()
+	bool B;
+
+	UPROPERTY()
+	bool A; 
+};
+
+USTRUCT()
 struct FMaterialCachedParameters
 {
 	GENERATED_USTRUCT_BODY()
 
-	inline int32 GetNumParameters(EMaterialParameterType Type) const { return Entries[(int32)Type].ParameterInfos.Num(); }
+#if WITH_EDITORONLY_DATA
+	inline const FMaterialCachedParameterEntry& GetParameterTypeEntry(EMaterialParameterType Type) const { return Type >= EMaterialParameterType::RuntimeCount ? EditorOnlyEntries[static_cast<int32>(Type) - static_cast<int32>(EMaterialParameterType::RuntimeCount)] : RuntimeEntries[static_cast<int32>(Type)]; }
+#else
+	inline const FMaterialCachedParameterEntry& GetParameterTypeEntry(EMaterialParameterType Type) const { return RuntimeEntries[static_cast<int32>(Type)]; }
+#endif
+	inline int32 GetNumParameters(EMaterialParameterType Type) const { return GetParameterTypeEntry(Type).ParameterInfos.Num(); }
+	inline const FName& GetParameterName(EMaterialParameterType Type, int32 Index) const { return GetParameterTypeEntry(Type).ParameterInfos[Index].Name; }
+
 	int32 FindParameterIndex(EMaterialParameterType Type, const FHashedMaterialParameterInfo& HashedParameterInfo, bool bOveriddenOnly) const;
 	int32 FindParameterIndex(EMaterialParameterType Type, const FHashedMaterialParameterInfo& HashedParameterInfo) const;
 	bool IsParameterValid(EMaterialParameterType Type, int32 Index, bool bOveriddenOnly) const;
+	bool IsDefaultParameterValid(EMaterialParameterType Type, int32 Index, bool bOveriddenOnly, bool bCheckOwnedGlobalOverrides) const;
 	void GetAllParameterInfoOfType(EMaterialParameterType Type, bool bEmptyOutput, TArray<FMaterialParameterInfo>& OutParameterInfo, TArray<FGuid>& OutParameterIds) const;
 	void GetAllGlobalParameterInfoOfType(EMaterialParameterType Type, bool bEmptyOutput, TArray<FMaterialParameterInfo>& OutParameterInfo, TArray<FGuid>& OutParameterIds) const;
 	void Reset();
 
 	UPROPERTY()
-	FMaterialCachedParameterEntry Entries[NumMaterialParameterTypes];
+	FMaterialCachedParameterEntry RuntimeEntries[NumMaterialRuntimeParameterTypes];
 
 	UPROPERTY()
 	TArray<float> ScalarValues;
@@ -137,6 +178,15 @@ struct FMaterialCachedParameters
 
 #if WITH_EDITORONLY_DATA
 	UPROPERTY()
+	FMaterialCachedParameterEntry EditorOnlyEntries[NumMaterialEditorOnlyParameterTypes];
+
+	UPROPERTY()
+	TArray<bool> StaticSwitchValues;
+
+	UPROPERTY()
+	TArray<FStaticComponentMaskValue> StaticComponentMaskValues;
+
+	UPROPERTY()
 	TArray<FVector2D> ScalarMinMaxValues;
 
 	UPROPERTY()
@@ -156,6 +206,14 @@ struct FMaterialCachedParameters
 #endif // WITH_EDITORONLY_DATA
 };
 
+struct FMaterialCachedExpressionContext
+{
+	explicit FMaterialCachedExpressionContext(UMaterialInterface* InParent = nullptr) : Parent(InParent), bUpdateFunctionExpressions(true) {}
+
+	UMaterialInterface* Parent;
+	bool bUpdateFunctionExpressions;
+};
+
 USTRUCT()
 struct FMaterialCachedExpressionData
 {
@@ -163,9 +221,9 @@ struct FMaterialCachedExpressionData
 
 #if WITH_EDITOR
 	/** Returns 'false' if update is incomplete, due to missing expression data (stripped from non-editor build) */
-	bool UpdateForExpressions(const TArray<UMaterialExpression*>& Expressions, EMaterialParameterAssociation Association, int32 ParameterIndex);
-	bool UpdateForFunction(UMaterialFunctionInterface* Function, EMaterialParameterAssociation Association, int32 ParameterIndex);
-	bool UpdateForLayerFunctions(const FMaterialLayersFunctions& LayerFunctions);
+	bool UpdateForExpressions(const FMaterialCachedExpressionContext& Context, const TArray<UMaterialExpression*>& Expressions, EMaterialParameterAssociation Association, int32 ParameterIndex);
+	bool UpdateForFunction(const FMaterialCachedExpressionContext& Context, UMaterialFunctionInterface* Function, EMaterialParameterAssociation Association, int32 ParameterIndex);
+	bool UpdateForLayerFunctions(const FMaterialCachedExpressionContext& Context, const FMaterialLayersFunctions& LayerFunctions);
 #endif // WITH_EDITOR
 
 	void Reset();
@@ -184,6 +242,12 @@ struct FMaterialCachedExpressionData
 	/** Array of all parameter collections this material depends on. */
 	UPROPERTY()
 	TArray<FMaterialParameterCollectionInfo> ParameterCollectionInfos;
+
+	UPROPERTY()
+	TArray<UMaterialFunctionInterface*> DefaultLayers;
+
+	UPROPERTY()
+	TArray<UMaterialFunctionInterface*> DefaultLayerBlends;
 
 	UPROPERTY()
 	TArray<ULandscapeGrassType*> GrassTypes;

@@ -72,6 +72,10 @@
 	#include "IMediaModule.h"
 #endif
 
+#if WITH_CHAOS
+#include "ChaosSolversModule.h"
+#endif
+
 CSV_DECLARE_CATEGORY_MODULE_EXTERN(CORE_API, Basic);
 
 ENGINE_API bool GDisallowNetworkTravel = false;
@@ -92,6 +96,8 @@ static FAutoConsoleVariableRef CVarDoAsyncEndOfFrameTasks(
 	GDoAsyncEndOfFrameTasks,
 	TEXT("Experimental option to run various things concurrently with the HUD render.")
 	);
+
+bool ParseResolution(const TCHAR* InResolution, uint32& OutX, uint32& OutY, int32& WindowMode);
 
 /** Benchmark results to the log */
 static void RunSynthBenchmark(const TArray<FString>& Args)
@@ -310,11 +316,28 @@ void UGameEngine::ConditionallyOverrideSettings(int32& ResolutionX, int32& Resol
 
 void UGameEngine::DetermineGameWindowResolution( int32& ResolutionX, int32& ResolutionY, EWindowMode::Type& WindowMode, bool bUseWorkAreaForWindowed )
 {
+	FString ResolutionStr;;
+	if (FParse::Value(FCommandLine::Get(), TEXT("Res="), ResolutionStr))
+	{
+		uint32 ResX = 0;
+		uint32 ResY = 0;
+		int32 WinMode = EWindowMode::Windowed;
+
+		if (ParseResolution(*ResolutionStr, ResX, ResY, WinMode))
+		{
+			ResolutionX = ResX;
+			ResolutionY = ResY;
+			WindowMode = EWindowMode::ConvertIntToWindowMode(WinMode);
+		}
+	}
+	else
+	{
+		FParse::Value(FCommandLine::Get(), TEXT("ResX="), ResolutionX);
+		FParse::Value(FCommandLine::Get(), TEXT("ResY="), ResolutionY);
+	}
+
 	//fullscreen is always supported, but don't allow windowed mode on platforms that dont' support it.
 	WindowMode = (!FPlatformProperties::SupportsWindowedMode() && (WindowMode == EWindowMode::Windowed || WindowMode == EWindowMode::WindowedFullscreen)) ? EWindowMode::Fullscreen : WindowMode;
-
-	FParse::Value(FCommandLine::Get(), TEXT("ResX="), ResolutionX);
-	FParse::Value(FCommandLine::Get(), TEXT("ResY="), ResolutionY);
 
 	// consume available desktop area
 	FDisplayMetrics DisplayMetrics;
@@ -705,8 +728,6 @@ UEngine::UEngine(const FObjectInitializer& ObjectInitializer)
 	BSPSelectionHighlightIntensity = 0.0f;
 
 	SelectionHighlightIntensityBillboards = 0.25f;
-
-	bUseSound = true;
 
 	bHardwareSurveyEnabled_DEPRECATED = false;
 	bIsInitialized = false;
@@ -1113,17 +1134,6 @@ void UGameEngine::Init(IEngineLoop* InEngineLoop)
 		UGameViewportClient::OnViewportCreated().Broadcast();
 	}
 
-	// Make sure new back buffers are initialized with scene render results before drawing UI.
-	// This fixes a glitch where only UI is drawn when windows are resized
-	if (FSlateApplication::IsInitialized())
-	{
-		FSlateRenderer* SlateRenderer = FSlateApplication::Get().GetRenderer();
-		if (SlateRenderer)
-		{
-			SlateRenderer->OnPostResizeWindowBackBuffer().AddWeakLambda(this, [this](void*) { RedrawViewports(false); });
-		}
-	}
-
 	UE_LOG(LogInit, Display, TEXT("Game Engine Initialized.") );
 
 	// for IsInitialized()
@@ -1174,15 +1184,6 @@ void UGameEngine::PreExit()
 
 			World->FlushLevelStreaming(EFlushLevelStreamingType::Visibility);
 			World->CleanupWorld();
-		}
-	}
-
-	if (FSlateApplication::IsInitialized())
-	{
-		FSlateRenderer* SlateRenderer = FSlateApplication::Get().GetRenderer();
-		if (SlateRenderer)
-		{
-			SlateRenderer->OnPostResizeWindowBackBuffer().RemoveAll(this);
 		}
 	}
 
@@ -1588,6 +1589,7 @@ void UGameEngine::Tick( float DeltaSeconds, bool bIdleMode )
 		double CurrentTime = FPlatformTime::Seconds();
 		if (CurrentTime - LastTimeLogsFlushed > static_cast<double>(ServerFlushLogInterval))
 		{
+			CSV_SCOPED_TIMING_STAT_EXCLUSIVE(LogFlush);
 			GLog->Flush();
 
 			LastTimeLogsFlushed = FPlatformTime::Seconds();
@@ -1630,6 +1632,15 @@ void UGameEngine::Tick( float DeltaSeconds, bool bIdleMode )
 		SCOPE_TIME_GUARD(TEXT("UGameEngine::Tick - Studio Analytics"));
 		FStudioAnalytics::Tick(DeltaSeconds);
 	}
+
+#if WITH_CHAOS
+	// Before we begin ticking any of our worlds, dispatch the global command lists and queues for physics
+	FChaosSolversModule* ChaosModule = FChaosSolversModule::GetModule();
+	if(ensure(ChaosModule))
+	{
+		ChaosModule->DispatchGlobalCommands();
+	}
+#endif
 
 	// -----------------------------------------------------
 	// Begin ticking worlds

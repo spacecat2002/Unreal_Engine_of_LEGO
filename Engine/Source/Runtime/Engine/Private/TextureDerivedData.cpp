@@ -27,6 +27,7 @@
 #include "Engine/VolumeTexture.h"
 #include "VT/VirtualTextureBuildSettings.h"
 #include "VT/VirtualTextureBuiltData.h"
+#include "HAL/FileManager.h"
 
 #if WITH_EDITOR
 
@@ -148,6 +149,13 @@ static void SerializeForKey(FArchive& Ar, const FTextureBuildSettings& Settings)
 		TempByte = Settings.bVirtualTextureEnableCompressCrunch; Ar << TempByte;
 		TempByte = Settings.LossyCompressionAmount; Ar << TempByte; // Lossy compression currently only used by VT
 		TempByte = Settings.bApplyYCoCgBlockScale; Ar << TempByte; // YCoCg currently only used by VT
+	}
+
+	// Avoid changing key if texture is not being downscaled
+	if (Settings.Downscale > 1.0)
+	{
+		TempFloat = Settings.Downscale; Ar << TempFloat;
+		TempByte = Settings.DownscaleOptions; Ar << TempByte;
 	}
 }
 
@@ -331,11 +339,13 @@ static void FinalizeBuildSettingsForLayer(const UTexture& Texture, int32 LayerIn
 static void GetTextureBuildSettings(
 	const UTexture& Texture,
 	const UTextureLODSettings& TextureLODSettings,
-	bool bPlatformSupportsTextureStreaming,
-	bool bPlatformSupportsVirtualTextureStreaming,
+	const ITargetPlatform& CurrentPlatform,
 	FTextureBuildSettings& OutBuildSettings
 	)
 {
+	const bool bPlatformSupportsTextureStreaming = CurrentPlatform.SupportsFeature(ETargetPlatformFeatures::TextureStreaming);
+	const bool bPlatformSupportsVirtualTextureStreaming = CurrentPlatform.SupportsFeature(ETargetPlatformFeatures::VirtualTextureStreaming);
+		
 	OutBuildSettings.ColorAdjustment.AdjustBrightness = Texture.AdjustBrightness;
 	OutBuildSettings.ColorAdjustment.AdjustBrightnessCurve = Texture.AdjustBrightnessCurve;
 	OutBuildSettings.ColorAdjustment.AdjustVibrance = Texture.AdjustVibrance;
@@ -428,13 +438,30 @@ static void GetTextureBuildSettings(
 	// TODO - get default value from config/CVAR/LODGroup?
 	OutBuildSettings.LossyCompressionAmount = (Texture.LossyCompressionAmount == TLCA_Default) ? TLCA_Lowest : Texture.LossyCompressionAmount.GetValue();
 
+	OutBuildSettings.Downscale = 1.0f;
+	if (MipGenSettings == TMGS_NoMipmaps && 
+		Texture.IsA(UTexture2D::StaticClass()))	// TODO: support more texture types
+	{
+		TextureLODSettings.GetDownscaleOptions(Texture, CurrentPlatform, OutBuildSettings.Downscale, (ETextureDownscaleOptions&)OutBuildSettings.DownscaleOptions);
+	}
+	
 	// For virtual texturing we take the address mode into consideration
 	if (OutBuildSettings.bVirtualStreamable)
 	{
 		const UTexture2D *Texture2D = Cast<UTexture2D>(&Texture);
 		checkf(Texture2D, TEXT("Virtual texturing is only supported on 2D textures"));
-		OutBuildSettings.VirtualAddressingModeX = Texture2D->AddressX;
-		OutBuildSettings.VirtualAddressingModeY = Texture2D->AddressY;
+		if (Texture.Source.GetNumBlocks() > 1)
+		{
+			// Multi-block textures (UDIM) interpret UVs outside [0,1) range as different blocks, so wrapping within a given block doesn't make sense
+			// We want to make sure address mode is set to clamp here, otherwise border pixels along block edges will have artifacts
+			OutBuildSettings.VirtualAddressingModeX = TA_Clamp;
+			OutBuildSettings.VirtualAddressingModeY = TA_Clamp;
+		}
+		else
+		{
+			OutBuildSettings.VirtualAddressingModeX = Texture2D->AddressX;
+			OutBuildSettings.VirtualAddressingModeY = Texture2D->AddressY;
+		}
 
 		FVirtualTextureBuildSettings VirtualTextureBuildSettings;
 		Texture.GetVirtualTextureBuildSettings(VirtualTextureBuildSettings);
@@ -442,7 +469,12 @@ static void GetTextureBuildSettings(
 		OutBuildSettings.bVirtualTextureEnableCompressCrunch = VirtualTextureBuildSettings.bEnableCompressCrunch;
 		OutBuildSettings.VirtualTextureTileSize = FMath::RoundUpToPowerOfTwo(VirtualTextureBuildSettings.TileSize);
 
-		// don't all max resolution to be less than VT tile size
+		// Apply any LOD group tile size bias here
+		const int32 TileSizeBias = TextureLODSettings.GetTextureLODGroup(Texture.LODGroup).VirtualTextureTileSizeBias;
+		OutBuildSettings.VirtualTextureTileSize >>= (TileSizeBias < 0) ? -TileSizeBias : 0;
+		OutBuildSettings.VirtualTextureTileSize <<= (TileSizeBias > 0) ? TileSizeBias : 0;
+
+		// Don't allow max resolution to be less than VT tile size
 		OutBuildSettings.MaxTextureResolution = FMath::Max<uint32>(OutBuildSettings.MaxTextureResolution, OutBuildSettings.VirtualTextureTileSize);
 
 		// 0 is a valid value for border size
@@ -498,11 +530,8 @@ static void GetBuildSettingsForRunningPlatform(
 		check(CurrentPlatform != NULL);
 
 		const UTextureLODSettings* LODSettings = (UTextureLODSettings*)UDeviceProfileManager::Get().FindProfile(CurrentPlatform->PlatformName());
-		const bool bPlatformSupportsTextureStreaming = CurrentPlatform->SupportsFeature(ETargetPlatformFeatures::TextureStreaming);
-		const bool bPlatformSupportsVirtualTextureStreaming = CurrentPlatform->SupportsFeature(ETargetPlatformFeatures::VirtualTextureStreaming);
-
 		FTextureBuildSettings SourceBuildSettings;
-		GetTextureBuildSettings(Texture, *LODSettings, bPlatformSupportsTextureStreaming, bPlatformSupportsVirtualTextureStreaming, SourceBuildSettings);
+		GetTextureBuildSettings(Texture, *LODSettings, *CurrentPlatform, SourceBuildSettings);
 
 		TArray< TArray<FName> > PlatformFormats;
 		CurrentPlatform->GetTextureFormats(&Texture, PlatformFormats);
@@ -548,9 +577,10 @@ static void GetBuildSettingsPerFormat(const UTexture& Texture, const FTextureBui
  * After this returns, all bulk data from streaming (non-inline) mips will be sent separately to the DDC and the BulkData for those mips removed.
  * @param DerivedData - The data to store in the DDC.
  * @param DerivedDataKeySuffix - The key suffix at which to store derived data.
+ * @param bForceAllMipsToBeInlined - Whether to store all mips in the main DDC. Relates to how the texture resources get initialized (not supporting streaming).
  * @return number of bytes put to the DDC (total, including all mips)
  */
-uint32 PutDerivedDataInCache(FTexturePlatformData* DerivedData, const FString& DerivedDataKeySuffix, const FStringView& TextureName)
+uint32 PutDerivedDataInCache(FTexturePlatformData* DerivedData, const FString& DerivedDataKeySuffix, const FStringView& TextureName, bool bForceAllMipsToBeInlined)
 {
 	TArray<uint8> RawDerivedData;
 	FString DerivedDataKey;
@@ -571,8 +601,7 @@ uint32 PutDerivedDataInCache(FTexturePlatformData* DerivedData, const FString& D
 
 	// Write out individual mips to the derived data cache.
 	const int32 MipCount = DerivedData->Mips.Num();
-	const bool bIsCubemap = DerivedData->IsCubemap();
-	const int32 FirstInlineMip = bIsCubemap ? 0 : FMath::Max(0, MipCount - FMath::Max((int32)NUM_INLINE_DERIVED_MIPS, (int32)DerivedData->GetNumMipsInTail()));
+	const int32 FirstInlineMip = bForceAllMipsToBeInlined ? 0 : FMath::Max(0, MipCount - FMath::Max((int32)NUM_INLINE_DERIVED_MIPS, (int32)DerivedData->GetNumMipsInTail()));
 	const int32 WritableMipCount = MipCount - ((DerivedData->GetNumMipsInTail() > 0) ? (DerivedData->GetNumMipsInTail() - 1) : 0);
 	for (int32 MipIndex = 0; MipIndex < WritableMipCount; ++MipIndex)
 	{
@@ -593,6 +622,8 @@ uint32 PutDerivedDataInCache(FTexturePlatformData* DerivedData, const FString& D
 				);
 		}
 
+		// Note that calling StoreInDerivedDataCache() also calls RemoveBulkData().
+		// This means that the resource needs to load differently inlined mips and non inlined mips.
 		if (!bInline)
 		{
 			// store in the DDC, also drop the bulk data storage.
@@ -1079,13 +1110,13 @@ bool FTexturePlatformData::TryLoadMips(int32 FirstMipToLoad, void** OutMipData, 
 		{
 			if (OutMipData != nullptr)
 			{
-#if PLATFORM_SUPPORTS_TEXTURE_STREAMING && !TEXTURE2DMIPMAP_USE_COMPACT_BULKDATA
+#if PLATFORM_SUPPORTS_TEXTURE_STREAMING
 				// We want to make sure that any non-streamed mips are coming from the texture asset file, and not from an external bulk file.
 				// But because "r.TextureStreaming" is driven by the project setting as well as the command line option "-NoTextureStreaming", 
 				// is it possible for streaming mips to be loaded in non streaming ways.
 				if (CVarSetTextureStreaming.GetValueOnAnyThread() != 0)
 				{
-					UE_CLOG(Mip.BulkData.IsInSeperateFile(), LogTexture, Error, TEXT("Loading non-streamed mips from an external bulk file.  This is not desireable.  File %s"), *(Mip.BulkData.GetFilename() ) );
+					UE_CLOG(Mip.BulkData.IsInSeparateFile(), LogTexture, Error, TEXT("Loading non-streamed mips from an external bulk file.  This is not desireable.  File %s"), *(Mip.BulkData.GetFilename() ) );
 				}
 #endif
 				Mip.BulkData.GetCopy(&OutMipData[MipIndex - FirstMipToLoad], true);
@@ -1117,6 +1148,12 @@ bool FTexturePlatformData::TryLoadMips(int32 FirstMipToLoad, void** OutMipData, 
 					Ar.Serialize(OutMipData[MipIndex - FirstMipToLoad], MipSize);
 				}
 			}
+			else
+			{
+				UE_LOG(LogTexture, Verbose, TEXT("DDC.GetAsynchronousResults() failed for %s, MipIndex: %d"),
+					Texture ? *Texture->GetPathName() : TEXT("nullptr"),
+					MipIndex);
+			}
 			TempData.Reset();
 		}
 	}
@@ -1124,9 +1161,20 @@ bool FTexturePlatformData::TryLoadMips(int32 FirstMipToLoad, void** OutMipData, 
 
 	if (NumMipsCached != (LoadableMips - FirstMipToLoad))
 	{
+		UE_LOG(LogTexture, Verbose, TEXT("TryLoadMips failed for %s, NumMipsCached: %d, LoadableMips: %d, FirstMipToLoad: %d"),
+			Texture ? *Texture->GetPathName() : TEXT("nullptr"),
+			NumMipsCached,
+			LoadableMips,
+			FirstMipToLoad);
+
 		// Unable to cache all mips. Release memory for those that were cached.
 		for (int32 MipIndex = FirstMipToLoad; MipIndex < LoadableMips; ++MipIndex)
 		{
+			FTexture2DMipMap& Mip = Mips[MipIndex];
+			UE_LOG(LogTexture, Verbose, TEXT("  Mip %d, BulkDataSize: %d"),
+				MipIndex,
+				(int32)Mip.BulkData.GetBulkDataSize());
+
 			if (OutMipData && OutMipData[MipIndex - FirstMipToLoad])
 			{
 				FMemory::Free(OutMipData[MipIndex - FirstMipToLoad]);
@@ -1148,7 +1196,7 @@ int32 FTexturePlatformData::GetNumNonStreamingMips() const
 
 		for (const FTexture2DMipMap& Mip : Mips)
 		{
-			if ( Mip.BulkData.IsInSeperateFile() || !Mip.BulkData.IsInlined() )
+			if ( Mip.BulkData.IsInSeparateFile() || !Mip.BulkData.IsInlined() )
 			{
 				--NumNonStreamingMips;
 			}
@@ -1535,6 +1583,10 @@ void UTexture::CachePlatformData(bool bAsyncCache, bool bAllowAsyncBuild, bool b
 				if (PlatformDataLink)
 				{
 					ReleaseResource();
+
+					// Need to wait for any previous InitRHI() to complete before modifying PlatformData
+					// We could remove this flush if InitRHI() was modified to not access PlatformData directly
+					FlushRenderingCommands();
 				}
 				else
 				{
@@ -1594,10 +1646,7 @@ void UTexture::BeginCacheForCookedPlatformData( const ITargetPlatform *TargetPla
 		//TArray<FName> PlatformFormats;
 
 		FTextureBuildSettings BuildSettings;
-		const bool bPlatformSupportsTextureStreaming = TargetPlatform->SupportsFeature(ETargetPlatformFeatures::TextureStreaming);
-		const bool bPlatformSupportsVirtualTextureStreaming = TargetPlatform->SupportsFeature(ETargetPlatformFeatures::VirtualTextureStreaming);
-
-		GetTextureBuildSettings(*this, TargetPlatform->GetTextureLODSettings(), bPlatformSupportsTextureStreaming, bPlatformSupportsVirtualTextureStreaming, BuildSettings);
+		GetTextureBuildSettings(*this, TargetPlatform->GetTextureLODSettings(), *TargetPlatform, BuildSettings);
 		
 		TArray< TArray<FTextureBuildSettings> > BuildSettingsToCache;
 		GetBuildSettingsPerFormat(*this, BuildSettings, TargetPlatform, BuildSettingsToCache);
@@ -1678,10 +1727,7 @@ void UTexture::ClearCachedCookedPlatformData( const ITargetPlatform* TargetPlatf
 
 		// Retrieve formats to cache for targetplatform.
 		FTextureBuildSettings BuildSettings;
-		const bool bPlatformSupportsTextureStreaming = TargetPlatform->SupportsFeature(ETargetPlatformFeatures::TextureStreaming);
-		const bool bPlatformSupportsVirtualTextureStreaming = TargetPlatform->SupportsFeature(ETargetPlatformFeatures::VirtualTextureStreaming);
-
-		GetTextureBuildSettings(*this, TargetPlatform->GetTextureLODSettings(), bPlatformSupportsTextureStreaming, bPlatformSupportsVirtualTextureStreaming, BuildSettings);
+		GetTextureBuildSettings(*this, TargetPlatform->GetTextureLODSettings(), *TargetPlatform, BuildSettings);
 
 		TArray< TArray<FTextureBuildSettings> > BuildSettingsToCache;
 		GetBuildSettingsPerFormat(*this, BuildSettings, TargetPlatform, BuildSettingsToCache);
@@ -1739,11 +1785,7 @@ bool UTexture::IsCachedCookedPlatformDataLoaded( const ITargetPlatform* TargetPl
 
 	FTextureBuildSettings BuildSettings;
 	TArray<FTexturePlatformData*> PlatformDataToSerialize;
-
-	const bool bPlatformSupportsTextureStreaming = TargetPlatform->SupportsFeature(ETargetPlatformFeatures::TextureStreaming);
-	const bool bPlatformSupportsVirtualTextureStreaming = TargetPlatform->SupportsFeature(ETargetPlatformFeatures::VirtualTextureStreaming);
-
-	GetTextureBuildSettings(*this, TargetPlatform->GetTextureLODSettings(), bPlatformSupportsTextureStreaming, bPlatformSupportsVirtualTextureStreaming, BuildSettings);
+	GetTextureBuildSettings(*this, TargetPlatform->GetTextureLODSettings(), *TargetPlatform, BuildSettings);
 
 	TArray< TArray<FTextureBuildSettings> > BuildSettingsToCache;
 	GetBuildSettingsPerFormat(*this, BuildSettings, TargetPlatform, BuildSettingsToCache);
@@ -1945,10 +1987,7 @@ void UTexture::SerializeCookedPlatformData(FArchive& Ar)
 		if (!Ar.CookingTarget()->IsServerOnly())
 		{
 			FTextureBuildSettings BuildSettings;
-			const bool bPlatformSupportsTextureStreaming = Ar.CookingTarget()->SupportsFeature(ETargetPlatformFeatures::TextureStreaming);
-			const bool bPlatformSupportsVirtualTextureStreaming = Ar.CookingTarget()->SupportsFeature(ETargetPlatformFeatures::VirtualTextureStreaming);
-
-			GetTextureBuildSettings(*this, Ar.CookingTarget()->GetTextureLODSettings(), bPlatformSupportsTextureStreaming, bPlatformSupportsVirtualTextureStreaming, BuildSettings);
+			GetTextureBuildSettings(*this, Ar.CookingTarget()->GetTextureLODSettings(), *Ar.CookingTarget(), BuildSettings);
 
 			TArray<FTexturePlatformData*> PlatformDataToSerialize;
 

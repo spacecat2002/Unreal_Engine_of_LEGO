@@ -95,11 +95,8 @@ void FVulkanShader::Setup(TArrayView<const uint8> InShaderHeaderAndCode, uint64 
 	Ar << CodeHeader;
 
 	Ar << Spirv;
-#if VULKAN_ENABLE_SHADER_DEBUG_NAMES
-	checkf(Spirv.Num() != 0, TEXT("Empty SPIR-V!%s"), *CodeHeader.DebugName);
-#else
-	checkf(Spirv.Num() != 0, TEXT("Empty SPIR-V!"));
-#endif
+
+	checkf(Spirv.Num() != 0, TEXT("Empty SPIR-V! %s"), *CodeHeader.DebugName);
 
 	if (CodeHeader.bHasRealUBs)
 	{
@@ -125,7 +122,7 @@ void FVulkanShader::Setup(TArrayView<const uint8> InShaderHeaderAndCode, uint64 
 		}
 	}
 
-#if VULKAN_ENABLE_SHADER_DEBUG_NAMES
+#if UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT
 	// main_00000000_00000000
 	ANSICHAR EntryPoint[24];
 	GetEntryPoint(EntryPoint, 24);
@@ -575,14 +572,25 @@ void FVulkanDescriptorSetsLayoutInfo::FinalizeBindings(const FUniformBufferGathe
 	CompileTypesUsageID();
 	GenerateHash(ImmutableSamplers);
 
-	// Validate no empty sets were made
-	for (int32 Index = 0; Index < RemappingInfo.SetInfos.Num(); ++Index)
+	// If we are consolidating and no uniforms are present in the shader, then strip the empty set data
+	if (bConsolidateAllIntoOneSet)
 	{
-		check(RemappingInfo.SetInfos[Index].Types.Num() > 0);
+		for (int32 Index = 0; Index < RemappingInfo.SetInfos.Num(); ++Index)
+		{
+			if (RemappingInfo.SetInfos[Index].Types.Num() == 0)
+			{
+				RemappingInfo.SetInfos.RemoveAt(Index);
+			}
+		}
+		check(RemappingInfo.SetInfos.Num() <= 1);
 	}
-
-	// Consolidated only has to have one Set
-	check(!bConsolidateAllIntoOneSet || RemappingInfo.SetInfos.Num() == 1);
+	else
+	{
+		for (int32 Index = 0; Index < RemappingInfo.SetInfos.Num(); ++Index)
+		{
+			check(RemappingInfo.SetInfos[Index].Types.Num() > 0);
+		}
+	}	
 }
 
 void FVulkanComputePipelineDescriptorInfo::Initialize(const FDescriptorSetRemappingInfo& InRemappingInfo)

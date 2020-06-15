@@ -20,6 +20,7 @@ void SetupSceneTextureParameters(
 
 	// Should always have a depth buffer around allocated, since early z-pass is first.
 	OutTextures->SceneDepthBuffer = GraphBuilder.RegisterExternalTexture(SceneContext.SceneDepthZ, TEXT("SceneDepthZ"));
+	OutTextures->SceneStencilBuffer = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::CreateWithPixelFormat(OutTextures->SceneDepthBuffer, PF_X24_G8));
 
 	// Registers all the scene texture from the scene context. No fallback is provided to catch mistake at shader parameter validation time
 	// when a pass is trying to access a resource before any other pass actually created it.
@@ -61,10 +62,10 @@ FRDGTextureRef GetEyeAdaptationTexture(FRDGBuilder& GraphBuilder, const FViewInf
 {
 	if (View.HasValidEyeAdaptation())
 	{
-		return GraphBuilder.RegisterExternalTexture(View.GetEyeAdaptation(GraphBuilder.RHICmdList), TEXT("ViewEyeAdaptation"));
+		if (IPooledRenderTarget* EyeAdaptationTarget = View.GetEyeAdaptation(GraphBuilder.RHICmdList))
+		{
+			return GraphBuilder.RegisterExternalTexture(EyeAdaptationTarget, TEXT("ViewEyeAdaptation"));
+		}
 	}
-	else
-	{
-		return GraphBuilder.RegisterExternalTexture(GSystemTextures.WhiteDummy, TEXT("DefaultViewEyeAdaptation"));
-	}
+	return GraphBuilder.RegisterExternalTexture(GSystemTextures.WhiteDummy, TEXT("DefaultViewEyeAdaptation"));
 }

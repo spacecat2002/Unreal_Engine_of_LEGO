@@ -14,7 +14,7 @@
 #include "Engine/Engine.h"
 #include "Engine/LightMapTexture2D.h"
 #include "Engine/ShadowMapTexture2D.h"
-#include "VT/VirtualTexture.h"
+#include "VT/LightmapVirtualTexture.h"
 #include "UnrealEngine.h"
 
 static TAutoConsoleVariable<float> CVarLODTemporalLag(
@@ -242,13 +242,6 @@ void FMeshElementCollector::AddMesh(int32 ViewIndex, FMeshBatch& MeshBatch)
 {
 	DEFINE_LOG_CATEGORY_STATIC(FMeshElementCollector_AddMesh, Warning, All);
 
-	checkSlow(MeshBatch.VertexFactory);
-	checkSlow(MeshBatch.VertexFactory->IsInitialized());
-	checkSlow(MeshBatch.MaterialRenderProxy);
-	checkSlow(PrimitiveSceneProxy);
-
-	PrimitiveSceneProxy->VerifyUsedMaterial(MeshBatch.MaterialRenderProxy);
-
 	if (MeshBatch.bCanApplyViewModeOverrides)
 	{
 		FSceneView* View = Views[ViewIndex];
@@ -263,14 +256,12 @@ void FMeshElementCollector::AddMesh(int32 ViewIndex, FMeshBatch& MeshBatch)
 			*this);
 	}
 
-	MeshBatch.PreparePrimitiveUniformBuffer(PrimitiveSceneProxy, FeatureLevel);
-
-	for (int32 Index = 0; Index < MeshBatch.Elements.Num(); ++Index)
+	if (!MeshBatch.Validate(PrimitiveSceneProxy, FeatureLevel))
 	{
-		UE_CLOG(MeshBatch.Elements[Index].IndexBuffer && !MeshBatch.Elements[Index].IndexBuffer->IndexBufferRHI, FMeshElementCollector_AddMesh, Fatal,
-			TEXT("FMeshElementCollector::AddMesh - On MeshBatchElement %d, Material '%s', index buffer object has null RHI resource"),
-			Index, MeshBatch.MaterialRenderProxy ? *MeshBatch.MaterialRenderProxy->GetFriendlyName() : TEXT("null"));
+		return;
 	}
+
+	MeshBatch.PreparePrimitiveUniformBuffer(PrimitiveSceneProxy, FeatureLevel);
 
 	// If we are maintaining primitive scene data on the GPU, copy the primitive uniform buffer data to a unified array so it can be uploaded later
 	if (UseGPUScene(GMaxRHIShaderPlatform, FeatureLevel) && MeshBatch.VertexFactory->GetPrimitiveIdStreamIndex(EVertexInputStreamType::Default) >= 0)
@@ -516,7 +507,7 @@ int8 ComputeTemporalStaticMeshLOD( const FStaticMeshRenderData* RenderData, cons
 	// Walk backwards and return the first matching LOD
 	for(int32 LODIndex = NumLODs - 1 ; LODIndex >= 0 ; --LODIndex)
 	{
-		if(FMath::Square(RenderData->ScreenSize[LODIndex].GetValueForFeatureLevel(View.GetFeatureLevel()) * 0.5f) > ScreenRadiusSquared)
+		if(FMath::Square(RenderData->ScreenSize[LODIndex].GetValue() * 0.5f) > ScreenRadiusSquared)
 		{
 			return FMath::Max(LODIndex, MinLOD);
 		}
@@ -528,14 +519,16 @@ int8 ComputeTemporalStaticMeshLOD( const FStaticMeshRenderData* RenderData, cons
 // Ensure we always use the left eye when selecting lods to avoid divergent selections in stereo
 const FSceneView& GetLODView(const FSceneView& InView)
 {
-	if (IStereoRendering::IsASecondaryView(InView) && InView.Family)
+	if (IStereoRendering::IsStereoEyeView(InView))
 	{
-		return *InView.Family->Views[0];
+		uint32 LODViewIndex = IStereoRendering::GetLODViewIndex();
+		if (InView.Family && InView.Family->Views.IsValidIndex(LODViewIndex))
+		{
+			return *InView.Family->Views[LODViewIndex];
+		}
 	}
-	else
-	{
-		return InView;
-	}
+	
+	return InView;
 }
 
 int8 ComputeStaticMeshLOD( const FStaticMeshRenderData* RenderData, const FVector4& Origin, const float SphereRadius, const FSceneView& View, int32 MinLOD, float FactorScale )
@@ -544,12 +537,15 @@ int8 ComputeStaticMeshLOD( const FStaticMeshRenderData* RenderData, const FVecto
 	{
 		const int32 NumLODs = MAX_STATIC_MESH_LODS;
 		const FSceneView& LODView = GetLODView(View);
-		const float ScreenRadiusSquared = ComputeBoundsScreenRadiusSquared(Origin, SphereRadius, LODView) * FactorScale * FactorScale * LODView.LODDistanceFactor * LODView.LODDistanceFactor;
+		const float ScreenRadiusSquared = ComputeBoundsScreenRadiusSquared(Origin, SphereRadius, LODView);
 
 		// Walk backwards and return the first matching LOD
 		for (int32 LODIndex = NumLODs - 1; LODIndex >= 0; --LODIndex)
 		{
-			if (FMath::Square(RenderData->ScreenSize[LODIndex].GetValueForFeatureLevel(View.GetFeatureLevel()) * 0.5f) > ScreenRadiusSquared)
+			float ScreenSizeScale = FactorScale * LODView.LODDistanceFactor;
+			float MeshScreenSize = RenderData->ScreenSize[LODIndex].GetValue() * ScreenSizeScale;
+
+			if (FMath::Square(MeshScreenSize * 0.5f) > ScreenRadiusSquared)
 			{
 				return FMath::Max(LODIndex, MinLOD);
 			}
@@ -752,6 +748,8 @@ FViewUniformShaderParameters::FViewUniformShaderParameters()
 	PrimitiveSceneData = GIdentityPrimitiveBuffer.PrimitiveSceneDataBufferSRV;
 	LightmapSceneData = GIdentityPrimitiveBuffer.LightmapSceneDataBufferSRV;
 
+	SkyIrradianceEnvironmentMap = GIdentityPrimitiveBuffer.SkyIrradianceEnvironmentMapSRV;
+
 	//this can be deleted once sm4 support is removed.
 	if (!PrimitiveSceneData)
 	{
@@ -823,7 +821,8 @@ bool FLightCacheInterface::GetVirtualTextureLightmapProducer(ERHIFeatureLevel::T
 	if (LightMapInteraction.GetType() == LMIT_Texture)
 	{
 		const ULightMapVirtualTexture2D* VirtualTexture = LightMapInteraction.GetVirtualTexture();
-		if (VirtualTexture)
+		// Preview lightmaps don't stream from disk, thus no FVirtualTexture2DResource
+		if (VirtualTexture && !VirtualTexture->bPreviewLightmap)
 		{
 			FVirtualTexture2DResource* Resource = (FVirtualTexture2DResource*)VirtualTexture->Resource;
 			OutProducerHandle = Resource->GetProducerHandle();
@@ -1093,40 +1092,133 @@ void FReadOnlyCVARCache::Init()
 
 void FMeshBatch::PreparePrimitiveUniformBuffer(const FPrimitiveSceneProxy* PrimitiveSceneProxy, ERHIFeatureLevel::Type FeatureLevel)
 {
-	const bool bVFSupportsPrimitiveIdStream = VertexFactory->GetType()->SupportsPrimitiveIdStream();
-	checkf((PrimitiveSceneProxy->DoesVFRequirePrimitiveUniformBuffer() || bVFSupportsPrimitiveIdStream), TEXT("PrimitiveSceneProxy has bVFRequiresPrimitiveUniformBuffer disabled yet tried to draw with a vertex factory (%s) that did not support PrimitiveIdStream."), VertexFactory->GetType()->GetName());
-
-	const bool bPrimitiveShaderDataComesFromSceneBuffer = VertexFactory->GetPrimitiveIdStreamIndex(EVertexInputStreamType::Default) >= 0;
-
-	for (int32 ElementIndex = 0; ElementIndex < Elements.Num(); ElementIndex++)
+	// Fallback to using the primitive uniform buffer if GPU scene is disabled.
+	if (!UseGPUScene(GMaxRHIShaderPlatform, FeatureLevel))
 	{
-		FMeshBatchElement& MeshElement = Elements[ElementIndex];
+	    for (int32 ElementIndex = 0; ElementIndex < Elements.Num(); ElementIndex++)
+	    {
+			FMeshBatchElement& MeshElement = Elements[ElementIndex];
 
-		if (bPrimitiveShaderDataComesFromSceneBuffer)
-		{
-			checkf(!Elements[ElementIndex].PrimitiveUniformBuffer, 
-				TEXT("FMeshBatch was assigned a PrimitiveUniformBuffer even though Vertex Factory %s fetches primitive shader data through a Scene buffer.  The assigned PrimitiveUniformBuffer cannot be respected.  Use PrimitiveUniformBufferResource instead for dynamic primitive data, or leave both null to get FPrimitiveSceneProxy->UniformBuffer."), VertexFactory->GetType()->GetName());
+			if (!MeshElement.PrimitiveUniformBuffer && !MeshElement.PrimitiveUniformBufferResource)
+			{
+				MeshElement.PrimitiveUniformBuffer = PrimitiveSceneProxy->GetUniformBuffer();
+			}
 		}
+	}
+}
 
-		// If we are not using GPU Scene, draws using vertex factories that do not support an explicit PrimitiveUniformBuffer on the FMeshBatch need to be setup with the FPrimitiveSceneProxy's uniform buffer
-		if (!MeshElement.PrimitiveUniformBufferResource && !UseGPUScene(GMaxRHIShaderPlatform, FeatureLevel) && bVFSupportsPrimitiveIdStream)
-		{
-			MeshElement.PrimitiveUniformBuffer = PrimitiveSceneProxy->GetUniformBuffer();
-		}
+#if USE_MESH_BATCH_VALIDATION
+bool FMeshBatch::Validate(const FPrimitiveSceneProxy* PrimitiveSceneProxy, ERHIFeatureLevel::Type FeatureLevel) const
+{
+	check(PrimitiveSceneProxy);
 
-		const bool bValidPrimitiveData = bPrimitiveShaderDataComesFromSceneBuffer || Elements[ElementIndex].PrimitiveUniformBuffer || Elements[ElementIndex].PrimitiveUniformBufferResource;
+	const auto LogMeshError = [&](const FString& Error) -> bool
+	{
+		const FString VertexFactoryName = VertexFactory ? VertexFactory->GetType()->GetFName().ToString() : TEXT("nullptr");
+		const uint32 bVertexFactoryInitialized = (VertexFactory && VertexFactory->IsInitialized()) ? 1 : 0;
 
-		UE_CLOG(!bValidPrimitiveData, LogEngine, Fatal,
-			TEXT("FMeshBatch was not properly setup. No primitive uniform buffer was specified and the vertex factory does not have a valid primitive id stream.\n")
-			TEXT("\tVertexFactory[Name: %s, Initialized: %u]\n")
-			TEXT("\tPrimitiveSceneProxy[Level: %s, Owner: %s, Resource: %s]"),
-			*VertexFactory->GetType()->GetFName().ToString(),
-			VertexFactory->IsInitialized() ? 1 : 0,
+		ensureMsgf(false,
+			TEXT("FMeshBatch was not properly setup. %s.\n\tVertexFactory[Name: %s, Initialized: %u]\n\tPrimitiveSceneProxy[Level: %s, Owner: %s, Resource: %s]"),
+			*Error,
+			*VertexFactoryName,
+			bVertexFactoryInitialized,
 			*PrimitiveSceneProxy->GetLevelName().ToString(),
 			*PrimitiveSceneProxy->GetOwnerName().ToString(),
 			*PrimitiveSceneProxy->GetResourceName().ToString());
+
+		return false;
+	};
+
+	if (!MaterialRenderProxy)
+	{
+		return LogMeshError(TEXT("Mesh has a null material render proxy!"));
 	}
+
+	if (!PrimitiveSceneProxy->VerifyUsedMaterial(MaterialRenderProxy))
+	{
+		return LogMeshError(TEXT("Mesh material is not marked as used by the primitive scene proxy."));
+	}
+
+	if (!VertexFactory)
+	{
+		return LogMeshError(TEXT("Mesh has a null vertex factory!"));
+	}
+
+	if (!VertexFactory->IsInitialized())
+	{
+		return LogMeshError(TEXT("Mesh has an uninitialized vertex factory!"));
 }
+
+	for (int32 Index = 0; Index < Elements.Num(); ++Index)
+	{
+		const FMeshBatchElement& MeshBatchElement = Elements[Index];
+
+		if (MeshBatchElement.IndexBuffer)
+		{
+			if (const FRHIIndexBuffer* IndexBufferRHI = MeshBatchElement.IndexBuffer->IndexBufferRHI)
+			{
+				const uint32 IndexCount = GetVertexCountForPrimitiveCount(MeshBatchElement.NumPrimitives, Type);
+				const uint32 IndexBufferSize = IndexBufferRHI->GetSize();
+
+				// A zero-sized index buffer is valid for streaming.
+				if (IndexBufferSize != 0 && (MeshBatchElement.FirstIndex + IndexCount) * IndexBufferRHI->GetStride() > IndexBufferSize)
+				{
+					return LogMeshError(FString::Printf(
+						TEXT("MeshBatchElement %d, Material '%s', index range extends past index buffer bounds: Start %u, Count %u, Buffer Size %u, Buffer stride %u"),
+						Index, MaterialRenderProxy ? *MaterialRenderProxy->GetFriendlyName() : TEXT("nullptr"),
+						MeshBatchElement.FirstIndex, IndexCount, IndexBufferRHI->GetSize(), IndexBufferRHI->GetStride()));
+				}
+			}
+			else
+			{
+				return LogMeshError(FString::Printf(
+					TEXT("FMeshElementCollector::AddMesh - On MeshBatchElement %d, Material '%s', index buffer object has null RHI resource"),
+					Index, MaterialRenderProxy ? *MaterialRenderProxy->GetFriendlyName() : TEXT("nullptr")));
+			}
+		}
+	}
+
+	const bool bVFSupportsPrimitiveIdStream = VertexFactory->GetType()->SupportsPrimitiveIdStream();
+
+	if (!PrimitiveSceneProxy->DoesVFRequirePrimitiveUniformBuffer() && !bVFSupportsPrimitiveIdStream)
+	{
+		return LogMeshError(TEXT("PrimitiveSceneProxy has bVFRequiresPrimitiveUniformBuffer disabled yet tried to draw with a vertex factory that did not support PrimitiveIdStream"));
+	}
+
+	const bool bUseGPUScene = UseGPUScene(GMaxRHIShaderPlatform, FeatureLevel);
+	
+	const bool bPrimitiveShaderDataComesFromSceneBuffer = bUseGPUScene && VertexFactory->GetPrimitiveIdStreamIndex(EVertexInputStreamType::Default) >= 0;
+
+	const bool bPrimitiveHasUniformBuffer = PrimitiveSceneProxy->GetUniformBuffer() != nullptr;
+
+	for (int32 ElementIndex = 0; ElementIndex < Elements.Num(); ElementIndex++)
+	{
+		const FMeshBatchElement& MeshElement = Elements[ElementIndex];
+
+		if (bPrimitiveShaderDataComesFromSceneBuffer && Elements[ElementIndex].PrimitiveUniformBuffer)
+		{
+			// This is a non-fatal error.
+			LogMeshError(
+				TEXT("FMeshBatch was assigned a PrimitiveUniformBuffer even though the vertex factory fetches primitive shader data through the GPUScene buffer. ")
+				TEXT("The assigned PrimitiveUniformBuffer cannot be respected. Use PrimitiveUniformBufferResource instead for dynamic primitive data, or leave ")
+				TEXT("both null to get FPrimitiveSceneProxy->UniformBuffer"));
+		}
+
+		const bool bValidPrimitiveData =
+			   bPrimitiveShaderDataComesFromSceneBuffer
+			|| bPrimitiveHasUniformBuffer
+			|| Elements[ElementIndex].PrimitiveUniformBuffer
+			|| Elements[ElementIndex].PrimitiveUniformBufferResource;
+
+		if (!bValidPrimitiveData)
+		{
+			return LogMeshError(TEXT("No primitive uniform buffer was specified and the vertex factory does not have a valid primitive id stream"));
+		}
+	}
+
+	return true;
+}
+#endif
 
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileReflectionCaptureShaderParameters, "MobileReflectionCapture");
 

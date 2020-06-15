@@ -10,6 +10,7 @@
 #include "Templates/RefCounting.h"
 #include "HAL/PlatformProcess.h"
 #include "ShaderCore.h"
+#include "ShaderCompilerCore.h"
 #include "Shader.h"
 #include "HAL/RunnableThread.h"
 #include "HAL/Runnable.h"
@@ -471,6 +472,8 @@ private:
 	uint32 NumShaderCompilingThreadsDuringGame;
 	/** Largest number of jobs that can be put in the same batch. */
 	int32 MaxShaderJobBatchSize;
+	/** Number of runs through single-threaded compiling before we can retry to compile through workers. -1 if not used. */
+	int32 NumSingleThreadedRunsBeforeRetry;
 	/** Process Id of UE4. */
 	uint32 ProcessId;
 	/** Whether to allow compiling shaders through the worker application, which allows multiple cores to be used. */
@@ -576,7 +579,17 @@ public:
 		NumExternalJobs = NumJobs;
 	}
 
-	ENGINE_API bool GetDumpShaderDebugInfo() const;
+	enum class EDumpShaderDebugInfo : int32
+	{
+		Never				= 0,
+		Always				= 1,
+		OnError				= 2,
+		OnErrorOrWarning	= 3
+	};
+
+	ENGINE_API EDumpShaderDebugInfo GetDumpShaderDebugInfo() const;
+	ENGINE_API FString CreateShaderDebugInfoPath(const FShaderCompilerInput& ShaderCompilerInput) const;
+	ENGINE_API bool ShouldRecompileToDumpShaderDebugInfo(const FShaderCompileJob& Job) const;
 
 	const FString& GetAbsoluteShaderDebugInfoDirectory() const
 	{
@@ -715,7 +728,6 @@ extern ENGINE_API FString SaveGlobalShaderFile(EShaderPlatform Platform, FString
 * @param PlatformName					Name of the Platform the shaders are compiled for
 * @param OutputDirectory				The directory the compiled data will be stored to
 * @param MaterialsToLoad				List of Materials that need to be loaded and compiled
-* @param SerializedShaderResources		Serialized shader resources
 * @param MeshMaterialMaps				Mesh material maps
 * @param ModifiedFiles					Returns the list of modified files if not NULL
 * @param bCompileChangedShaders		Whether to compile all changed shaders or the specific material that is passed
@@ -725,7 +737,6 @@ extern ENGINE_API void RecompileShadersForRemote(
 	EShaderPlatform ShaderPlatform,
 	const FString& OutputDirectory,
 	const TArray<FString>& MaterialsToLoad,
-	const TArray<uint8>& SerializedShaderResources,
 	TArray<uint8>* MeshMaterialMaps,
 	TArray<FString>* ModifiedFiles,
 	bool bCompileChangedShaders = true);

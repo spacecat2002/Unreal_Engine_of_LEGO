@@ -13,6 +13,7 @@
 #define VULKAN_SUPPORTS_PHYSICAL_DEVICE_PROPERTIES2	0
 #define VULKAN_SUPPORTS_DEDICATED_ALLOCATION		0
 #define VULKAN_SUPPORTS_GPU_CRASH_DUMPS				1
+#define VULKAN_SUPPORTS_ASTC_DECODE_MODE			1
 
 
 #define ENUM_VK_ENTRYPOINTS_PLATFORM_BASE(EnumMacro)
@@ -31,6 +32,8 @@
 class FVulkanLuminPlatform : public FVulkanGenericPlatform
 {
 public:
+	static void SetupMaxRHIFeatureLevelAndShaderPlatform(ERHIFeatureLevel::Type InRequestedFeatureLevel);
+
 	static bool LoadVulkanLibrary();
 	static bool LoadVulkanInstanceFunctions(VkInstance inInstance);
 	static void FreeVulkanLibrary();

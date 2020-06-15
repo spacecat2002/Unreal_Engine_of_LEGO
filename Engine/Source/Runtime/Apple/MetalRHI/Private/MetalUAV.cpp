@@ -2,6 +2,7 @@
 
 
 #include "MetalRHIPrivate.h"
+#include "MetalRHIStagingBuffer.h"
 #include "MetalCommandBuffer.h"
 #include "RenderUtils.h"
 #include "ClearReplacementShaders.h"
@@ -9,19 +10,28 @@
 static void ClearUAV(TRHICommandList_RecursiveHazardous<FMetalRHICommandContext>& RHICmdList, FMetalUnorderedAccessView* UnorderedAccessView, const void* ClearValue, bool bFloat);
 
 FMetalShaderResourceView::FMetalShaderResourceView()
-: TextureView(nullptr)
-, Offset(0)
-, MipLevel(0)
-, NumMips(0)
-, Format(0)
-, Stride(0)
+	: TextureView(nullptr)
+	, Offset(0)
+	, MipLevel(0)
+	, bSRGBForceDisable(0)
+	, Reserved(0)
+	, NumMips(0)
+	, Format(0)
+	, Stride(0)
+	, LinearTextureDesc(nullptr)
 {
-	
+	// void
 }
 
 FMetalShaderResourceView::~FMetalShaderResourceView()
 {
-	if(TextureView)
+	if (LinearTextureDesc)
+	{
+		delete LinearTextureDesc;
+		LinearTextureDesc = nullptr;
+	}
+	
+	if (TextureView)
 	{
 		FMetalSurface* Surface = GetMetalSurfaceFromRHITexture(SourceTexture);
 		if (Surface)
@@ -29,10 +39,9 @@ FMetalShaderResourceView::~FMetalShaderResourceView()
 			Surface->SRVs.Remove(this);
 		}
 		
-		if(TextureView->Texture)
+		if (TextureView->Texture)
 		{
 			TextureView->Texture = nil;
-			
 			TextureView->MSAATexture = nil;
 		}
 		delete TextureView;
@@ -43,18 +52,25 @@ FMetalShaderResourceView::~FMetalShaderResourceView()
 	SourceTexture = NULL;
 }
 
+void FMetalShaderResourceView::InitLinearTextureDescriptor(const FMetalLinearTextureDescriptor& InLinearTextureDescriptor)
+{
+	check(!LinearTextureDesc);
+	LinearTextureDesc = new FMetalLinearTextureDescriptor(InLinearTextureDescriptor);
+	check(LinearTextureDesc);
+}
+
 ns::AutoReleased<FMetalTexture> FMetalShaderResourceView::GetLinearTexture(bool const bUAV)
 {
 	ns::AutoReleased<FMetalTexture> NewLinearTexture;
 	{
 		if (IsValidRef(SourceVertexBuffer))
 		{
-			NewLinearTexture = SourceVertexBuffer->GetLinearTexture((EPixelFormat)Format, Offset);
+			NewLinearTexture = SourceVertexBuffer->GetLinearTexture((EPixelFormat)Format, LinearTextureDesc);
 			check(NewLinearTexture);
 		}
 		else if (IsValidRef(SourceIndexBuffer))
 		{
-			NewLinearTexture = SourceIndexBuffer->GetLinearTexture((EPixelFormat)Format, Offset);
+			NewLinearTexture = SourceIndexBuffer->GetLinearTexture((EPixelFormat)Format, LinearTextureDesc);
 			check(NewLinearTexture);
 		}
 	}
@@ -156,7 +172,7 @@ FUnorderedAccessViewRHIRef FMetalDynamicRHI::RHICreateUnorderedAccessView(FRHIVe
 	SRV->Format = Format;
 	{
 		check(VertexBuffer->GetUsage() & BUF_UnorderedAccess);
-		VertexBuffer->CreateLinearTexture((EPixelFormat)Format, VertexBuffer, 0);
+		VertexBuffer->CreateLinearTexture((EPixelFormat)Format, VertexBuffer);
 	}
 		
 	// create the UAV buffer to point to the structured buffer's memory
@@ -180,7 +196,7 @@ FUnorderedAccessViewRHIRef FMetalDynamicRHI::RHICreateUnorderedAccessView(FRHIIn
 		SRV->Format = Format;
 		{
 			check(IndexBuffer->GetUsage() & BUF_UnorderedAccess);
-			IndexBuffer->CreateLinearTexture((EPixelFormat)Format, IndexBuffer, 0);
+			IndexBuffer->CreateLinearTexture((EPixelFormat)Format, IndexBuffer);
 		}
 		
 		// create the UAV buffer to point to the structured buffer's memory
@@ -269,13 +285,16 @@ FShaderResourceViewRHIRef FMetalDynamicRHI::RHICreateShaderResourceView(FRHIText
 			Format = Surface->PixelFormat;
 		}
 		
-		SRV->TextureView = Surface ? new FMetalSurface(*Surface, NSMakeRange(CreateInfo.MipLevel, CreateInfo.NumMipLevels), (EPixelFormat)(CreateInfo.Format == PF_Unknown ? Surface->PixelFormat : CreateInfo.Format)) : nullptr;
+		const bool bSRGBForceDisable = (CreateInfo.SRGBOverride == SRGBO_ForceDisable);
+		
+		SRV->TextureView = Surface ? new FMetalSurface(*Surface, NSMakeRange(CreateInfo.MipLevel, CreateInfo.NumMipLevels), Format, bSRGBForceDisable) : nullptr;
 		
 		SRV->SourceVertexBuffer = nullptr;
 		SRV->SourceIndexBuffer = nullptr;
 		SRV->SourceStructuredBuffer = nullptr;
 		
 		SRV->MipLevel = CreateInfo.MipLevel;
+		SRV->bSRGBForceDisable = bSRGBForceDisable;
 		SRV->NumMips = CreateInfo.NumMipLevels;
 		SRV->Format = CreateInfo.Format;
 		
@@ -299,7 +318,7 @@ FShaderResourceViewRHIRef FMetalDynamicRHI::RHICreateShaderResourceView(FRHIVert
 
 	@autoreleasepool
 	{
-		return RHICreateShaderResourceView(FShaderResourceViewInitializer(VertexBufferRHI, Format));
+		return RHICreateShaderResourceView(FShaderResourceViewInitializer(VertexBufferRHI, EPixelFormat(Format)));
 	}
 }
 
@@ -342,9 +361,12 @@ FShaderResourceViewRHIRef FMetalDynamicRHI::RHICreateShaderResourceView(const FS
 					uint32 Stride = GPixelFormats[Desc.Format].BlockBytes;
 					
 					SRV->Stride = Stride;
-					SRV->Offset = Desc.StartElement * Stride;
+					SRV->Offset = Desc.StartOffsetBytes;
 					
-					VertexBuffer->CreateLinearTexture((EPixelFormat)Desc.Format, VertexBuffer, SRV->Offset);
+					FMetalLinearTextureDescriptor LinearTextureDesc(Desc.StartOffsetBytes, Desc.NumElements, Stride);
+					SRV->InitLinearTextureDescriptor(LinearTextureDesc);
+					
+					VertexBuffer->CreateLinearTexture((EPixelFormat)Desc.Format, VertexBuffer, &LinearTextureDesc);
 				}
 				
 				return SRV;
@@ -362,7 +384,7 @@ FShaderResourceViewRHIRef FMetalDynamicRHI::RHICreateShaderResourceView(const FS
 				SRV->TextureView = nullptr;
 				SRV->SourceStructuredBuffer = StructuredBuffer;
 				
-				SRV->Offset = Desc.StartElement * StructuredBuffer->GetStride();
+				SRV->Offset = Desc.StartOffsetBytes;
 				SRV->Format = 0;
 				SRV->Stride = StructuredBuffer->GetStride();
 				
@@ -393,10 +415,13 @@ FShaderResourceViewRHIRef FMetalDynamicRHI::RHICreateShaderResourceView(const FS
 					const uint32 Stride = Desc.IndexBuffer->GetStride();
 					check(Stride == ((SRV->Format == PF_R16_UINT) ? 2 : 4));
 					
-					SRV->Offset = Desc.StartElement * Stride;
+					SRV->Offset = Desc.StartOffsetBytes;
 					SRV->Stride = Stride;
-						  
-					IndexBuffer->CreateLinearTexture((EPixelFormat)SRV->Format, IndexBuffer, SRV->Offset);
+					
+					FMetalLinearTextureDescriptor LinearTextureDesc(Desc.StartOffsetBytes, Desc.NumElements, Stride);
+					SRV->InitLinearTextureDescriptor(LinearTextureDesc);
+					
+					IndexBuffer->CreateLinearTexture((EPixelFormat)SRV->Format, IndexBuffer, &LinearTextureDesc);
 				}
 					  
 				return SRV;
@@ -654,7 +679,7 @@ void FMetalRHICommandContext::RHICopyToStagingBuffer(FRHIVertexBuffer* SourceBuf
 	@autoreleasepool {
 		check(DestinationStagingBufferRHI);
 
-		FMetalStagingBuffer* MetalStagingBuffer = ResourceCast(DestinationStagingBufferRHI);
+		FMetalRHIStagingBuffer* MetalStagingBuffer = ResourceCast(DestinationStagingBufferRHI);
 		ensureMsgf(!MetalStagingBuffer->bIsLocked, TEXT("Attempting to Copy to a locked staging buffer. This may have undefined behavior"));
 		FMetalVertexBuffer* SourceBuffer = ResourceCast(SourceBufferRHI);
 		FMetalBuffer& ReadbackBuffer = MetalStagingBuffer->ShadowBuffer;

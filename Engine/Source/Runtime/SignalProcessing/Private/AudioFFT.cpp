@@ -25,7 +25,7 @@ namespace Audio
 
 		for (int32 FrameIndex = 0; FrameIndex < NumFrames; FrameIndex++)
 		{
-			const float Value = 0.54 -  0.46f * (1 - FMath::Cos(Phase));
+			const float Value = 0.54 -  (0.46f * FMath::Cos(Phase));
 			Phase += PhaseDelta;
 
 			for (int32 ChannelIndex = 0; ChannelIndex < NumChannels; ChannelIndex++)
@@ -537,10 +537,10 @@ namespace Audio
 			virtual int32 Size() const override { return FFTSize; }
 
 			// Scaling applied when performing forward FFT.
-			virtual EFFTScaling ForwardScaling() const { return EFFTScaling::None; }
+			virtual EFFTScaling ForwardScaling() const { return EFFTScaling::MultipliedBySqrtFFTSize; }
 
 			/* Scaling applied when performing inverse FFT. */
-			virtual EFFTScaling InverseScaling() const { return EFFTScaling::None; }
+			virtual EFFTScaling InverseScaling() const { return EFFTScaling::DividedBySqrtFFTSize; }
 
 			
 			// ForwardRealToComplex

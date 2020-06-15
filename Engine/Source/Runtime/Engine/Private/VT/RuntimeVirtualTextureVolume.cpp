@@ -3,6 +3,7 @@
 #include "VT/RuntimeVirtualTextureVolume.h"
 
 #include "Components/BoxComponent.h"
+#include "Components/BoundsCopyComponent.h"
 #include "Components/RuntimeVirtualTextureComponent.h"
 
 ARuntimeVirtualTextureVolume::ARuntimeVirtualTextureVolume(const FObjectInitializer& ObjectInitializer)
@@ -11,9 +12,14 @@ ARuntimeVirtualTextureVolume::ARuntimeVirtualTextureVolume(const FObjectInitiali
 	RootComponent = VirtualTextureComponent = CreateDefaultSubobject<URuntimeVirtualTextureComponent>(TEXT("VirtualTextureComponent"));
 
 #if WITH_EDITORONLY_DATA
+	// Add bounds copier
+	BoundsCopyComponent = CreateDefaultSubobject<UBoundsCopyComponent>(TEXT("BoundsCopyComponent"));
+	BoundsCopyComponent->PostTransform = FTransform(FRotator(0, 0, 0), FVector(-1.f, -1.f, -1.f), FVector(2.f, 2.f, 2.f));
+
 	// Add box for visualization of bounds
 	Box = CreateDefaultSubobject<UBoxComponent>(TEXT("Bounds"));
-	Box->SetBoxExtent(FVector(0.5f, 0.5f, 1.f), false);
+	Box->SetBoxExtent(FVector(.5f, .5f, .5f), false);
+	Box->SetRelativeTransform(FTransform(FVector(.5f, .5f, .5f)));
 	Box->bDrawOnlyIfSelected = true;
 	Box->SetIsVisualizationComponent(true);
 	Box->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -22,4 +28,17 @@ ARuntimeVirtualTextureVolume::ARuntimeVirtualTextureVolume(const FObjectInitiali
 	Box->SetGenerateOverlapEvents(false);
 	Box->SetupAttachment(VirtualTextureComponent);
 #endif
+}
+
+void ARuntimeVirtualTextureVolume::Serialize(FArchive& Ar)
+{
+	Super::Serialize(Ar);
+
+	Ar.UsingCustomVersion(FFortniteMainBranchObjectVersion::GUID);
+	if (Ar.IsLoading() && Ar.CustomVer(FFortniteMainBranchObjectVersion::GUID) < FFortniteMainBranchObjectVersion::FixupRuntimeVirtualTextureVolume)
+	{
+		// Fix old transforms (which required additional maths wherever they were referenced).
+		const FTransform TransformFix(FRotator(0, 0, 0), FVector(-.5f, -.5f, -1.f), FVector(1.f, 1.f, 2.f));
+		VirtualTextureComponent->SetRelativeTransform(TransformFix * VirtualTextureComponent->GetRelativeTransform());
+	}
 }

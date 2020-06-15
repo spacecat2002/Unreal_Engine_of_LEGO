@@ -75,8 +75,8 @@ static FAutoConsoleVariableRef CAndroidLowPowerBatteryThreshold(
 	ECVF_Default
 );
 
-static TAutoConsoleVariable<int32> CVarMaliT8Bug(
-	TEXT("r.Android.MaliT8Bug"),
+static TAutoConsoleVariable<int32> CVarMaliMidgardIndexingBug(
+	TEXT("r.Android.MaliMidgardIndexingBug"),
 	0,
 	TEXT("For an indexed instance draw, the OpenGL ES driver does not handle attributes correctly. This issue only happens on Mali T8xx GPU when the difference between two adjacent index values are larger than 16.\n")
 	TEXT("  0 = off\n")
@@ -140,6 +140,18 @@ void FAndroidMisc::RequestExit( bool Force )
 	{
 		RequestEngineExit(TEXT("Android RequestExit"));
 	}
+}
+
+extern void AndroidThunkCpp_RestartApplication(const FString& IntentString);
+
+bool FAndroidMisc::RestartApplication()
+{
+#if USE_ANDROID_JNI
+	AndroidThunkCpp_RestartApplication(TEXT(""));
+	return true;
+#else
+	return FGenericPlatformMisc::RestartApplication();
+#endif
 }
 
 void FAndroidMisc::LocalPrint(const TCHAR *Message)
@@ -2090,6 +2102,27 @@ static void EstablishVulkanDeviceSupport()
 	}
 }
 
+bool IsDesktopVulkanAvailable()
+{
+	static int CachedDesktopVulkanAvailable = -1;
+
+	if (CachedDesktopVulkanAvailable == -1)
+	{
+		CachedDesktopVulkanAvailable = 0;
+
+		bool bSupportsVulkanSM5 = false;
+
+		GConfig->GetBool(TEXT("/Script/AndroidRuntimeSettings.AndroidRuntimeSettings"), TEXT("bSupportsVulkanSM5"), bSupportsVulkanSM5, GEngineIni);
+
+		if (bSupportsVulkanSM5)
+		{
+			CachedDesktopVulkanAvailable = 1;
+		}
+	}
+
+	return CachedDesktopVulkanAvailable == 1;
+}
+
 bool FAndroidMisc::IsVulkanAvailable()
 {
 	check(VulkanSupport != EDeviceVulkanSupportStatus::Uninitialized);
@@ -2109,7 +2142,7 @@ bool FAndroidMisc::IsVulkanAvailable()
 			const bool bDetectVulkanCmdLine = FParse::Param(FCommandLine::Get(), TEXT("detectvulkan"));
 
 			// @todo Lumin: Double check all this stuff after merging general android Vulkan SM5 from main
-			const bool bSupportsVulkanSM5 = ShouldUseDesktopVulkan();
+			const bool bSupportsVulkanSM5 = IsDesktopVulkanAvailable();
 
 			const bool bVulkanDisabledCmdLine = FParse::Param(FCommandLine::Get(), TEXT("GL")) || FParse::Param(FCommandLine::Get(), TEXT("OpenGL"));
 
@@ -2179,11 +2212,33 @@ bool FAndroidMisc::ShouldUseVulkan()
 
 bool FAndroidMisc::ShouldUseDesktopVulkan()
 {
-	// @todo Lumin: Double check all this stuff after merging general android Vulkan SM5 from main
-	bool bSupportsVulkanSM5 = false;
-	GConfig->GetBool(TEXT("/Script/AndroidRuntimeSettings.AndroidRuntimeSettings"), TEXT("bSupportsVulkanSM5"), bSupportsVulkanSM5, GEngineIni);
+	static int CachedShouldUseDesktopVulkan = -1;
 
-	return bSupportsVulkanSM5;
+	if (CachedShouldUseDesktopVulkan == -1)
+	{
+		CachedShouldUseDesktopVulkan = 0;
+
+		const bool bVulkanSM5Enabled = IsDesktopVulkanAvailable();
+
+		static const auto CVarDisableVulkanSM5 = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Android.DisableVulkanSM5Support"));
+		const bool bVulkanSM5Disabled = CVarDisableVulkanSM5->GetValueOnAnyThread() == 1;
+
+		if (bVulkanSM5Enabled && !bVulkanSM5Disabled)
+		{
+			CachedShouldUseDesktopVulkan = 1;
+			UE_LOG(LogAndroid, Log, TEXT("Vulkan SM5 RHI will be used!"));
+		}
+		else if(bVulkanSM5Disabled)
+		{
+			UE_LOG(LogAndroid, Log, TEXT("Vulkan SM5 is available but disabled for this device."));
+		}
+		else if (!bVulkanSM5Enabled)
+		{
+			UE_LOG(LogAndroid, Log, TEXT("** Vulkan SM5 support is not available (Driver, RHI or shaders are missing, or disabled by cmdline, see above logging for details)"));
+		}
+	}
+
+	return CachedShouldUseDesktopVulkan;
 }
 
 FString FAndroidMisc::GetVulkanVersion()
@@ -2702,5 +2757,5 @@ uint32 FAndroidMisc::GetCoreFrequency(int32 CoreIndex, ECoreFrequencyProperty Co
 
 bool FAndroidMisc::Expand16BitIndicesTo32BitOnLoad()
 {
-	return  (CVarMaliT8Bug.GetValueOnAnyThread() > 0);
+	return  (CVarMaliMidgardIndexingBug.GetValueOnAnyThread() > 0);
 }

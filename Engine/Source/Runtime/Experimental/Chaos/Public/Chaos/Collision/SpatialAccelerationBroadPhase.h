@@ -2,45 +2,51 @@
 #pragma once
 
 #include "Chaos/Collision/BroadPhase.h"
+#include "Chaos/Collision/CollisionReceiver.h"
 #include "Chaos/Collision/StatsData.h"
 #include "Chaos/Collision/NarrowPhase.h"
 #include "Chaos/ISpatialAccelerationCollection.h"
 #include "Chaos/ParticleHandle.h"
 #include "Chaos/PBDRigidsSOAs.h"
 #include "Chaos/Capsule.h"
+#include "ChaosStats.h"
+#include "Chaos/EvolutionResimCache.h"
+
 
 namespace Chaos
 {
-	class FAsyncCollisionReceiver;
-
+	DECLARE_CYCLE_STAT_EXTERN(TEXT("Collisions::BroadPhase"), STAT_Collisions_SpatialBroadPhase, STATGROUP_ChaosCollision, CHAOS_API);
+	DECLARE_CYCLE_STAT_EXTERN(TEXT("Collisions::Filtering"), STAT_Collisions_Filtering, STATGROUP_ChaosCollision, CHAOS_API);
+	
 	template <typename TPayloadType, typename T, int d>
 	class ISpatialAcceleration;
+
+	class IResimCacheBase;
 
 	/**
 	 *
 	 */
-	template <typename T, int d>
-	struct TSimOverlapVisitor
+	struct FSimOverlapVisitor
 	{
-		TArray<TAccelerationStructureHandle<T, d>>& Intersections;
-		TSimOverlapVisitor(TArray<TAccelerationStructureHandle<T, d>>& InIntersections)
+		TArray<TAccelerationStructureHandle<FReal, 3>>& Intersections;
+		FSimOverlapVisitor(TArray<TAccelerationStructureHandle<FReal, 3>>& InIntersections)
 			: Intersections(InIntersections)
 		{
 		}
 
-		bool VisitOverlap(const TSpatialVisitorData<TAccelerationStructureHandle<T, d>>& Instance)
+		bool VisitOverlap(const TSpatialVisitorData<TAccelerationStructureHandle<FReal, 3>>& Instance)
 		{
 			Intersections.Add(Instance.Payload);
 			return true;
 		}
 
-		bool VisitSweep(TSpatialVisitorData<TAccelerationStructureHandle<T, d>>, FQueryFastData& CurData)
+		bool VisitSweep(TSpatialVisitorData<TAccelerationStructureHandle<FReal, 3>>, FQueryFastData& CurData)
 		{
 			check(false);
 			return false;
 		}
 
-		bool VisitRaycast(TSpatialVisitorData<TAccelerationStructureHandle<T, d>>, FQueryFastData& CurData)
+		bool VisitRaycast(TSpatialVisitorData<TAccelerationStructureHandle<FReal, 3>>, FQueryFastData& CurData)
 		{
 			check(false);
 			return false;
@@ -77,7 +83,9 @@ namespace Chaos
 			FReal Dt, 
 			FNarrowPhase& NarrowPhase, 
 			FAsyncCollisionReceiver& Receiver,
-			CollisionStats::FStatData& StatData)
+			CollisionStats::FStatData& StatData,
+			IResimCacheBase* ResimCache
+			)
 		{
 			if (!ensure(SpatialAcceleration))
 			{
@@ -87,19 +95,19 @@ namespace Chaos
 
 			if (const auto AABBTree = SpatialAcceleration->template As<TAABBTree<TAccelerationStructureHandle<FReal, 3>, TAABBTreeLeafArray<TAccelerationStructureHandle<FReal, 3>, FReal>, FReal>>())
 			{
-				ProduceOverlaps(Dt, *AABBTree, NarrowPhase, Receiver, StatData);
+				ProduceOverlaps(Dt, *AABBTree, NarrowPhase, Receiver, StatData, ResimCache);
 			}
 			else if (const auto BV = SpatialAcceleration->template As<TBoundingVolume<TAccelerationStructureHandle<FReal, 3>, FReal, 3>>())
 			{
-				ProduceOverlaps(Dt, *BV, NarrowPhase, Receiver, StatData);
+				ProduceOverlaps(Dt, *BV, NarrowPhase, Receiver, StatData, ResimCache);
 			}
 			else if (const auto AABBTreeBV = SpatialAcceleration->template As<TAABBTree<TAccelerationStructureHandle<FReal, 3>, TBoundingVolume<TAccelerationStructureHandle<FReal, 3>, FReal, 3>, FReal>>())
 			{
-				ProduceOverlaps(Dt, *AABBTreeBV, NarrowPhase, Receiver, StatData);
+				ProduceOverlaps(Dt, *AABBTreeBV, NarrowPhase, Receiver, StatData, ResimCache);
 			}
 			else if (const auto Collection = SpatialAcceleration->template As<ISpatialAccelerationCollection<TAccelerationStructureHandle<FReal, 3>, FReal, 3>>())
 			{
-				Collection->PBDComputeConstraintsLowLevel(Dt, *this, NarrowPhase, Receiver, StatData);
+				Collection->PBDComputeConstraintsLowLevel(Dt, *this, NarrowPhase, Receiver, StatData, ResimCache);
 			}
 			else
 			{
@@ -113,22 +121,38 @@ namespace Chaos
 			const T_SPATIALACCELERATION& InSpatialAcceleration, 
 			FNarrowPhase& NarrowPhase, 
 			FAsyncCollisionReceiver& Receiver,
-			CollisionStats::FStatData& StatData)
+			CollisionStats::FStatData& StatData,
+			IResimCacheBase* ResimCache
+			)
 		{
 			const bool bDisableParallelFor = StatData.IsEnabled() || bDisableCollisionParallelFor;
-
-			Particles.GetNonDisabledDynamicView().ParallelFor(
-				[&](auto& Particle1, int32 ActiveIdxIdx)
+			auto* EvolutionResimCache = static_cast<FEvolutionResimCache*>(ResimCache);
+			const bool bResimSkipCollision = ResimCache && ResimCache->IsResimming();
+			if(!bResimSkipCollision)
+			{
+				Particles.GetNonDisabledDynamicView().ParallelFor(
+					[&](auto& Particle1,int32 ActiveIdxIdx)
 				{
-					ProduceParticleOverlaps(Dt, Particle1, InSpatialAcceleration, NarrowPhase, Receiver, StatData);
-				}, bDisableParallelFor);
+					ProduceParticleOverlaps</*bResimming=*/false>(Dt,Particle1,InSpatialAcceleration,NarrowPhase,Receiver,StatData);
+				},bDisableParallelFor);
+			}
+			else
+			{
+				ResimCache->GetDesyncedView().ParallelFor(
+					[&](auto& Particle1,int32 ActiveIdxIdx)
+				{
+					//TODO: use transient handle
+					TGenericParticleHandleHandleImp<FReal,3> GenericHandle(Particle1.Handle());
+					ProduceParticleOverlaps</*bResimming=*/true>(Dt,GenericHandle,InSpatialAcceleration,NarrowPhase,Receiver,StatData);
+				},bDisableParallelFor);
+			}
 		}
 
 	private:
-		template<typename T_SPATIALACCELERATION>
+		template<bool bIsResimming, typename THandle, typename T_SPATIALACCELERATION>
 		void ProduceParticleOverlaps(
 		    FReal Dt,
-		    TTransientPBDRigidParticleHandle<FReal, 3>& Particle1,
+		    THandle& Particle1,
 		    const T_SPATIALACCELERATION& InSpatialAcceleration,
 		    FNarrowPhase& NarrowPhase,
 		    FAsyncCollisionReceiver& Receiver,
@@ -136,40 +160,47 @@ namespace Chaos
 		{
 			CHAOS_COLLISION_STAT(StatData.IncrementSimulatedParticles());
 
+			//Durning non-resim we must pass rigid particles
+			static_assert(bIsResimming || THandle::StaticType() == EParticleType::Rigid, "During non-resim we expect rigid particles");
+
 			TArray<TAccelerationStructureHandle<FReal, 3>> PotentialIntersections;
 
-			if (Particle1.CastToRigidParticle() && (Particle1.ObjectState() == EObjectStateType::Dynamic || Particle1.ObjectState() == EObjectStateType::Sleeping))
+			if (bIsResimming || (Particle1.ObjectState() == EObjectStateType::Dynamic || Particle1.ObjectState() == EObjectStateType::Sleeping))
 			{
-				// @todo(ccaulfield): the spatial acceleration scheme needs to know the expanded bboxes for all particles, not just the one doing the test
 				const bool bBody1Bounded = HasBoundingBox(Particle1);
 				const FReal Box1Thickness = ComputeBoundsThickness(Particle1, Dt, BoundsThickness, BoundsThicknessVelocityInflation).Size();
-				if (bBody1Bounded)
 				{
-					// @todo(ccaulfield): COLLISION - see the NOTE below - fix it
+					SCOPE_CYCLE_COUNTER(STAT_Collisions_SpatialBroadPhase);
+					// @todo(ccaulfield): the spatial acceleration scheme needs to know the expanded bboxes for all particles, not just the one doing the test
+					if (bBody1Bounded)
+					{
+						// @todo(ccaulfield): COLLISION - see the NOTE below - fix it
 #if CHAOS_PARTICLEHANDLE_TODO
-					const TAABB<FReal, 3> Box1 = InSpatialAcceleration.GetWorldSpaceBoundingBox(Particle1);
+						const TAABB<FReal, 3> Box1 = InSpatialAcceleration.GetWorldSpaceBoundingBox(Particle1);
 #else
-					const TAABB<FReal, 3> Box1 = ComputeWorldSpaceBoundingBox(Particle1); // NOTE: this ignores the velocity expansion which is wrong
+						const TAABB<FReal, 3> Box1 = ComputeWorldSpaceBoundingBox<FReal>(Particle1); // NOTE: this ignores the velocity expansion which is wrong
 #endif
 
-					CHAOS_COLLISION_STAT(StatData.RecordBoundsData(Box1));
+						CHAOS_COLLISION_STAT(StatData.RecordBoundsData(Box1));
 
-					TSimOverlapVisitor<FReal, 3> OverlapVisitor(PotentialIntersections);
-					InSpatialAcceleration.Overlap(Box1, OverlapVisitor);
-				}
-				else
-				{
-					const auto& GlobalElems = InSpatialAcceleration.GlobalObjects();
-					PotentialIntersections.Reserve(GlobalElems.Num());
-
-					for (auto& Elem : GlobalElems)
-					{
-						PotentialIntersections.Add(Elem.Payload);
+						FSimOverlapVisitor OverlapVisitor(PotentialIntersections);
+						InSpatialAcceleration.Overlap(Box1, OverlapVisitor);
 					}
+					else
+					{
+						const auto& GlobalElems = InSpatialAcceleration.GlobalObjects();
+						PotentialIntersections.Reserve(GlobalElems.Num());
+
+						for (auto& Elem : GlobalElems)
+						{
+							PotentialIntersections.Add(Elem.Payload);
+						}
+					}
+
+					CHAOS_COLLISION_STAT(StatData.RecordBroadphasePotentials(PotentialIntersections.Num()))
 				}
 
-				CHAOS_COLLISION_STAT(StatData.RecordBroadphasePotentials(PotentialIntersections.Num()))
-
+				SCOPE_CYCLE_COUNTER(STAT_Collisions_Filtering);
 				const int32 NumPotentials = PotentialIntersections.Num();
 				for (int32 i = 0; i < NumPotentials; ++i)
 				{
@@ -180,6 +211,15 @@ namespace Chaos
 					// CollisionGroup == 0 : Collide_With_Everything
 					// CollisionGroup == INDEX_NONE : Disabled collisions
 					// CollisionGroup_A != CollisionGroup_B : Skip Check
+
+					if(bIsResimming)
+					{
+						//during resim we allow particle 1 to be kinematic, in that case make sure we don't create any kinematic-kinematic constraints
+						if(Particle1.CastToRigidParticle() == nullptr && Particle2.CastToRigidParticle() == nullptr)
+						{
+							continue;
+						}
+					}
 
 					if (Particle1.CollisionGroup() == INDEX_NONE || Particle2Generic->CollisionGroup() == INDEX_NONE)
 					{
@@ -195,29 +235,38 @@ namespace Chaos
 						continue;
 					}
 
-					const bool bBody2Bounded = HasBoundingBox(Particle2);
-
 					if (Particle1.Handle() == Particle2.Handle())
 					{
 						continue;
 					}
 
-					// Sleeping won't collide against another sleeping and sleeping vs dynamic gets picked up by the other direction.
-					const bool bIsParticle2Kinematic = Particle2.CastToKinematicParticle() &&
-						(Particle2.ObjectState() == EObjectStateType::Kinematic &&
-							(Particle2.CastToKinematicParticle()->V().SizeSquared() > 1e-4 ||
-								Particle2.Geometry()->GetType(true) == TCapsule<float>::StaticType()));
-					if (Particle1.ObjectState() == EObjectStateType::Sleeping && !bIsParticle2Kinematic)
+					// HACK : This should not be happening if the disabled particles are properly removed from the active particles list. 
+					if (Particle1.Disabled() || Particle2Generic->Disabled())
 					{
 						continue;
 					}
 
+
+					const bool bSecondParticleWillHaveAnswer = !bIsResimming || Particle2.SyncState() == ESyncState::HardDesync;
+					// Sleeping won't collide against another sleeping and sleeping vs dynamic gets picked up by the other direction.
+					const bool bIsParticle2Kinematic = Particle2.CastToKinematicParticle() &&
+						(Particle2.ObjectState() == EObjectStateType::Kinematic &&
+							(Particle2.CastToKinematicParticle()->V().SizeSquared() > 1e-4 ||
+								Particle2.Geometry()->GetType() == TCapsule<float>::StaticType()));
+					if (Particle1.ObjectState() == EObjectStateType::Sleeping && !bIsParticle2Kinematic && bSecondParticleWillHaveAnswer)
+					{
+						//question: if !bSecondParticleWillHaveAnswer do we need to reorder constraint?
+						continue;
+					}
+
+					const bool bBody2Bounded = HasBoundingBox(Particle2);
 					const bool bIsParticle2Dynamic = Particle2.CastToRigidParticle() && Particle2.ObjectState() == EObjectStateType::Dynamic;
 					if (bBody1Bounded == bBody2Bounded && bIsParticle2Dynamic)
 					{
 						//no bidirectional constraints.
-						if (Particle2.ParticleID() > Particle1.ParticleID())
+						if (Particle1.ParticleID() < Particle2.ParticleID() && bSecondParticleWillHaveAnswer)
 						{
+							//question: if !bSecondParticleWillHaveAnswer do we need to reorder constraint?
 							continue;
 						}
 					}
@@ -247,8 +296,8 @@ namespace Chaos
 	void MoveToTOIHackImpl(FReal Dt, TTransientPBDRigidParticleHandle<FReal, 3>& Particle1, const T_SPATIALACCELERATION* SpatialAcceleration)
 	{
 		TArray<TAccelerationStructureHandle<FReal, 3>> PotentialIntersections;
-		const TAABB<FReal, 3> Box1 = ComputeWorldSpaceBoundingBox(Particle1);
-		TSimOverlapVisitor<FReal, 3> OverlapVisitor(PotentialIntersections);
+		const FAABB3 Box1 = ComputeWorldSpaceBoundingBox(Particle1);
+		FSimOverlapVisitor OverlapVisitor(PotentialIntersections);
 		SpatialAcceleration->Overlap(Box1, OverlapVisitor);
 
 		const int32 NumPotentials = PotentialIntersections.Num();

@@ -10,18 +10,6 @@
 #include "RendererInterface.h"
 #include "RenderGraphResources.h"
 
-struct FHairStrandsVoxelResources
-{
-	TRefCountPtr<IPooledRenderTarget> DensityTexture;
-	TRefCountPtr<IPooledRenderTarget> TangentXTexture;
-	TRefCountPtr<IPooledRenderTarget> TangentYTexture;
-	TRefCountPtr<IPooledRenderTarget> TangentZTexture;
-	TRefCountPtr<IPooledRenderTarget> MaterialTexture;
-	FMatrix WorldToClip;
-	FVector MinAABB;
-	FVector MaxAABB;
-};
-
 struct FVirtualVoxelNodeDesc
 {
 	FVector WorldMinAABB = FVector::ZeroVector;
@@ -43,6 +31,9 @@ struct FPackedVirtualVoxelNodeDesc
 	uint32	PageIndexOffset;
 };
 
+// PixelRadiusAtDepth1 shouldn't be stored into this structure should be view independent, 
+// but is put here for convenience at the moment since multiple views are not supported 
+// at the moment
 BEGIN_SHADER_PARAMETER_STRUCT(FVirtualVoxelCommonParameters, )
 	SHADER_PARAMETER(FIntVector, PageCountResolution)
 	SHADER_PARAMETER(float, VoxelWorldSize)
@@ -51,12 +42,16 @@ BEGIN_SHADER_PARAMETER_STRUCT(FVirtualVoxelCommonParameters, )
 	SHADER_PARAMETER(uint32, PageResolution)
 	SHADER_PARAMETER(uint32, PageIndexCount)
 	SHADER_PARAMETER(uint32, IndirectDispatchGroupSize)
+	SHADER_PARAMETER(uint32, NodeDescCount)
 	SHADER_PARAMETER(float, DensityScale)
 	SHADER_PARAMETER(float, DepthBiasScale)
 	SHADER_PARAMETER(float, SteppingScale)
+	SHADER_PARAMETER(float, HairCoveragePixelRadiusAtDepth1) 
 	SHADER_PARAMETER_SRV(Buffer<uint>, PageIndexBuffer)
 	SHADER_PARAMETER_SRV(Buffer<uint>, PageIndexCoordBuffer)
 	SHADER_PARAMETER_SRV(StructuredBuffer<FPackedVirtualVoxelNodeDesc>, NodeDescBuffer) // Packed into 2 x uint4
+	SHADER_PARAMETER_TEXTURE(Texture2D<float>, HairCoverageLUT)
+	SHADER_PARAMETER_SAMPLER(SamplerState, HairCoverageSampler)
 END_SHADER_PARAMETER_STRUCT()
 
 BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FVirtualVoxelParameters, RENDERER_API)
@@ -92,11 +87,18 @@ struct FVirtualVoxelResources
 /// Global enable/disable for hair voxelization
 bool IsHairStrandsVoxelizationEnable();
 bool IsHairStrandsForVoxelTransmittanceAndShadowEnable();
-float GetHairStrandsVoxelizationDensityScale();
-float GetHairStrandsVoxelizationDepthBiasScale();
 
 void VoxelizeHairStrands(
 	FRHICommandListImmediate& RHICmdList,
 	const class FScene* Scene,
 	const TArray<FViewInfo>& Views,
 	struct FHairStrandsMacroGroupViews& MacroGroupViews);
+
+
+struct FHairStrandsOcclusionResources
+{
+	FRDGTextureRef CategorizationTexture = nullptr;
+	FRDGTextureRef LightChannelMaskTexture = nullptr;
+	const FVirtualVoxelResources* VoxelResources = nullptr;
+	bool bUseHairVoxel = false;
+};

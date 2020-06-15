@@ -85,6 +85,7 @@ PFNGLCLEARBUFFERIVPROC					glClearBufferiv = NULL;
 PFNGLCLEARBUFFERUIVPROC					glClearBufferuiv = NULL;
 PFNGLREADBUFFERPROC						glReadBuffer = NULL;
 PFNGLDRAWBUFFERSPROC					glDrawBuffers = NULL;
+PFNGLCOLORMASKIEXTPROC					glColorMaskiEXT = NULL;
 PFNGLTEXBUFFEREXTPROC					glTexBufferEXT = NULL;
 PFNGLTEXBUFFERRANGEEXTPROC				glTexBufferRangeEXT = NULL;
 PFNGLCOPYIMAGESUBDATAPROC				glCopyImageSubData = nullptr;
@@ -185,15 +186,6 @@ bool FOpenGLES::bSupportsMultisampledRenderToTexture = false;
 /** GL_NV_texture_compression_s3tc, GL_EXT_texture_compression_s3tc */
 bool FOpenGLES::bSupportsDXT = false;
 
-/** GL_IMG_texture_compression_pvrtc */
-bool FOpenGLES::bSupportsPVRTC = false;
-
-/** GL_ATI_texture_compression_atitc, GL_AMD_compressed_ATC_texture */
-bool FOpenGLES::bSupportsATITC = false;
-
-/** GL_OES_compressed_ETC1_RGB8_texture */
-bool FOpenGLES::bSupportsETC1 = false;
-
 /** OpenGL ES 3.0 profile */
 bool FOpenGLES::bSupportsETC2 = false;
 
@@ -253,6 +245,9 @@ bool FOpenGLES::bRequiresTexture2DPrecisionHack = false;
 
 /* This is a hack to add a round() function when not available to a shader compiler */
 bool FOpenGLES::bRequiresRoundFunctionHack = true;
+
+/* Some Mali devices do not work correctly with early_fragment_test enabled */
+bool FOpenGLES::bRequiresDisabledEarlyFragmentTests = false;
 
 /* This is to avoid a bug in Adreno drivers that define GL_ARM_shader_framebuffer_fetch_depth_stencil even when device does not support this extension  */
 bool FOpenGLES::bRequiresARMShaderFramebufferFetchDepthStencilUndef = false;
@@ -334,7 +329,7 @@ void FOpenGLES::ProcessExtensions(const FString& ExtensionsString)
 	ProcessQueryGLInt();
 	FOpenGLBase::ProcessExtensions(ExtensionsString);
 
-	bSupportsMapBuffer = ExtensionsString.Contains(TEXT("GL_OES_mapbuffer"));
+	bSupportsMapBuffer = true;
 	bSupportsDepthTexture = ExtensionsString.Contains(TEXT("GL_OES_depth_texture"));
 	bSupportsOcclusionQueries = ExtensionsString.Contains(TEXT("GL_ARB_occlusion_query2")) || ExtensionsString.Contains(TEXT("GL_EXT_occlusion_query_boolean"));
 	bSupportsDisjointTimeQueries = ExtensionsString.Contains(TEXT("GL_EXT_disjoint_timer_query")) || ExtensionsString.Contains(TEXT("GL_NV_timer_query"));
@@ -353,9 +348,6 @@ void FOpenGLES::ProcessExtensions(const FString& ExtensionsString)
 	bSupportsShaderDepthStencilFetch = ExtensionsString.Contains(TEXT("GL_ARM_shader_framebuffer_fetch_depth_stencil"));
 	bSupportsMultisampledRenderToTexture = ExtensionsString.Contains(TEXT("GL_EXT_multisampled_render_to_texture"));
 	bSupportsDXT = ExtensionsString.Contains(TEXT("GL_NV_texture_compression_s3tc")) || ExtensionsString.Contains(TEXT("GL_EXT_texture_compression_s3tc"));
-	bSupportsPVRTC = ExtensionsString.Contains(TEXT("GL_IMG_texture_compression_pvrtc"));
-	bSupportsATITC = ExtensionsString.Contains(TEXT("GL_ATI_texture_compression_atitc")) || ExtensionsString.Contains(TEXT("GL_AMD_compressed_ATC_texture"));
-	bSupportsETC1 = ExtensionsString.Contains(TEXT("GL_OES_compressed_ETC1_RGB8_texture"));
 	bSupportsVertexArrayObjects = ExtensionsString.Contains(TEXT("GL_OES_vertex_array_object"));
 	bSupportsDiscardFrameBuffer = ExtensionsString.Contains(TEXT("GL_EXT_discard_framebuffer"));
 	bSupportsNVFrameBufferBlit = ExtensionsString.Contains(TEXT("GL_NV_framebuffer_blit"));
@@ -546,6 +538,13 @@ void FOpenGLES::ProcessExtensions(const FString& ExtensionsString)
 		glDispatchCompute = (PFNGLDISPATCHCOMPUTEPROC)((void*)eglGetProcAddress("glDispatchCompute"));
 		glDispatchComputeIndirect = (PFNGLDISPATCHCOMPUTEINDIRECTPROC)((void*)eglGetProcAddress("glDispatchComputeIndirect"));
 		glBindImageTexture = (PFNGLBINDIMAGETEXTUREPROC)((void*)eglGetProcAddress("glBindImageTexture"));
+
+		// ES 3.2
+		glColorMaskiEXT = (PFNGLCOLORMASKIEXTPROC)((void*)eglGetProcAddress("glColorMaski"));
+		if (glColorMaskiEXT == nullptr)
+		{
+			glColorMaskiEXT = (PFNGLCOLORMASKIEXTPROC)((void*)eglGetProcAddress("glColorMaskiEXT"));
+		}
 	}
 
 	// test for glCopyImageSubData functionality
@@ -576,13 +575,6 @@ void FOpenGLES::ProcessExtensions(const FString& ExtensionsString)
 		// need to disable GL_EXT_color_buffer_half_float support because we have no way to allocate the storage and the driver doesn't work without it.
 		UE_LOG(LogRHI, Warning, TEXT("Disabling support for GL_EXT_color_buffer_half_float as we cannot bind glTexStorage2D"));
 		bSupportsColorBufferHalfFloat = false;
-	}
-
-	if (IsES31Usable())
-	{
-		// ES3.1 requires sRGB texture sampling, these formats do not support it
-		bSupportsATITC = false;
-		bSupportsPVRTC = false;
 	}
 
 	// Set lowest possible limits for texture units, to avoid extra work in GL RHI

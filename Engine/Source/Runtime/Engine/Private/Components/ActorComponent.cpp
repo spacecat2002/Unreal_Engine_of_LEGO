@@ -32,6 +32,7 @@
 #include "HAL/LowLevelMemTracker.h"
 #include "Net/Core/PushModel/PushModel.h"
 #include "UObject/FrameworkObjectVersion.h"
+#include "Async/ParallelFor.h"
 
 #if WITH_EDITOR
 #include "Kismet2/ComponentEditorUtils.h"
@@ -77,6 +78,22 @@ FUObjectAnnotationSparseBool GSelectedComponentAnnotation;
 
 /** Static var indicating activity of reregister context */
 int32 FGlobalComponentReregisterContext::ActiveGlobalReregisterContextCount = 0;
+
+void FRegisterComponentContext::Process()
+{
+	FSceneInterface* Scene = World->Scene;
+	ParallelFor(AddPrimitiveBatches.Num(),
+		[&](int32 Index)
+		{
+			if (!AddPrimitiveBatches[Index]->IsPendingKill())
+			{
+				Scene->AddPrimitive(AddPrimitiveBatches[Index]);
+			}
+		},
+		!FApp::ShouldUseThreadingForPerformance()
+	);
+	AddPrimitiveBatches.Empty();
+}
 
 void UpdateAllPrimitiveSceneInfosForSingleComponent(UActorComponent* InComponent, TSet<FSceneInterface*>* InScenesToUpdateAllPrimitiveSceneInfosForBatching /* = nullptr*/)
 {
@@ -1029,6 +1046,11 @@ void UActorComponent::SetComponentTickInterval(float TickInterval)
 	PrimaryComponentTick.TickInterval = TickInterval;
 }
 
+void UActorComponent::SetComponentTickIntervalAndCooldown(float TickInterval)
+{
+	PrimaryComponentTick.UpdateTickIntervalAndCoolDown(TickInterval);
+}
+
 float UActorComponent::GetComponentTickInterval() const
 {
 	return PrimaryComponentTick.TickInterval;
@@ -1466,13 +1488,16 @@ void UActorComponent::ExecuteUnregisterEvents()
 
 void UActorComponent::ReregisterComponent()
 {
-	if(!IsRegistered())
+	if (AllowReregistration())
 	{
-		UE_LOG(LogActorComponent, Log, TEXT("ReregisterComponent: (%s) Not currently registered. Aborting."), *GetPathName());
-		return;
-	}
+		if (!IsRegistered())
+		{
+			UE_LOG(LogActorComponent, Log, TEXT("ReregisterComponent: (%s) Not currently registered. Aborting."), *GetPathName());
+			return;
+		}
 
-	FComponentReregisterContext(this);
+		FComponentReregisterContext(this);
+	}
 }
 
 void UActorComponent::RecreateRenderState_Concurrent()
@@ -1548,6 +1573,7 @@ void UActorComponent::DoDeferredRenderUpdates_Concurrent()
 	checkf(!IsPendingKill(), TEXT("%s"), *GetFullName());
 
 	FScopeCycleCounterUObject ContextScope(this);
+	FScopeCycleCounterUObject AdditionalScope(STATS ? AdditionalStatObject() : nullptr);
 
 	if(!IsRegistered())
 	{
@@ -1812,10 +1838,8 @@ void UActorComponent::SetIsReplicated(bool bShouldReplicate)
 
 		if (GetComponentClassCanReplicate())
 		{
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 			bReplicates = bShouldReplicate;
 			MARK_PROPERTY_DIRTY_FROM_NAME(UActorComponent, bReplicates, this);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 			if (AActor* MyOwner = GetOwner())
 			{
@@ -2033,10 +2057,8 @@ void UActorComponent::SetIsReplicatedByDefault(const bool bNewReplicates)
 	// Don't bother checking parent here.
 	if (LIKELY(NeedsInitialization()))
 	{
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		bReplicates = bNewReplicates;
 		MARK_PROPERTY_DIRTY_FROM_NAME(UActorComponent, bReplicates, this);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	}
 	else
 	{
@@ -2047,10 +2069,8 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 void UActorComponent::SetActiveFlag(const bool bNewIsActive)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	bIsActive = bNewIsActive;
 	MARK_PROPERTY_DIRTY_FROM_NAME(UActorComponent, bIsActive, this);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 bool UActorComponent::OwnerNeedsInitialization() const

@@ -371,6 +371,10 @@ struct FWorldContext
 	/** Custom description to be display in blueprint debugger UI */
 	FString CustomDescription;
 
+	// If > 0, tick this world at a fixed rate in PIE
+	float PIEFixedTickSeconds  = 0.f;
+	float PIEAccumulatedTickSeconds = 0.f;
+
 	/**************************************************************/
 
 	/** Outside pointers to CurrentWorld that should be kept in sync if current world changes  */
@@ -861,22 +865,6 @@ public:
 	/** @todo document */
 	UPROPERTY(globalconfig)
 	FString WireframeMaterialName;
-
-	/** The material used to default hair meshes. */
-	UPROPERTY()
-	class UMaterial* HairDefaultMaterial;
-
-	/** @todo document */
-	UPROPERTY(globalconfig)
-	FString HairDefaultMaterialName;
-
-	/** The material used to debug hair meshes. */
-	UPROPERTY()
-	class UMaterial* HairDebugMaterial;
-
-	/** @todo document */
-	UPROPERTY(globalconfig)
-	FString HairDebugMaterialName;
 
 #if WITH_EDITORONLY_DATA
 	/** A translucent material used to render things in geometry mode. */
@@ -1571,11 +1559,6 @@ public:
 	UPROPERTY(globalconfig)
 	uint32 bEnableVisualLogRecordingOnStart;
 
-protected:
-
-	/** Whether the engine should be playing sounds.  If false at initialization time the AudioDevice will not be created */
-	uint32 bUseSound:1;
-
 private:
 	
 	/** Semaphore to control screen saver inhibitor thread access. */
@@ -1849,9 +1832,11 @@ public:
 	virtual bool IsInitialized() const { return bIsInitialized; }
 
 	/** The feature used to create new worlds, by default. Overridden for feature level preview in the editor */
-	virtual ERHIFeatureLevel::Type GetDefaultWorldFeatureLevel() const { return GMaxRHIFeatureLevel;  }
+	virtual ERHIFeatureLevel::Type GetDefaultWorldFeatureLevel() const;
 
 #if WITH_EDITOR
+	/** Return the platform group name and vanilla platform name the current preview platform, or false if there is no preview platform. */
+	virtual bool GetPreviewPlatformName(FName& PlatformGroupName, FName& VanillaPlatformName) const;
 
 	/** Editor-only event triggered when the actor list of the world has changed */
 	DECLARE_EVENT( UEngine, FLevelActorListChangedEvent );
@@ -1995,7 +1980,6 @@ public:
 	virtual void FinishDestroy() override;
 	virtual void Serialize(FArchive& Ar) override;
 	static void AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector);
-	virtual bool IsDestructionThreadSafe() const override { return false; }
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
@@ -2009,7 +1993,7 @@ public:
 
 	/** Called at shutdown, just before the exit purge.	 */
 	virtual void PreExit();
-	virtual void ShutdownAudioDeviceManager();
+	virtual void ReleaseAudioDeviceManager();
 	
 	void ShutdownHMD();
 
@@ -3451,6 +3435,7 @@ private:
 	int32 RenderStatLevels(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation = nullptr, const FRotator* ViewRotation = nullptr);
 	int32 RenderStatLevelMap(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation = nullptr, const FRotator* ViewRotation = nullptr);
 	int32 RenderStatUnit(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation = nullptr, const FRotator* ViewRotation = nullptr);
+	int32 RenderStatDrawCount(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation = nullptr, const FRotator* ViewRotation = nullptr);
 #if !UE_BUILD_SHIPPING
 	int32 RenderStatSoundReverb(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation = nullptr, const FRotator* ViewRotation = nullptr);
  	int32 RenderStatSoundMixes(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation = nullptr, const FRotator* ViewRotation = nullptr);
@@ -3462,6 +3447,7 @@ private:
 #endif // !UE_BUILD_SHIPPING
 	int32 RenderStatAI(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation = nullptr, const FRotator* ViewRotation = nullptr);
 	int32 RenderStatTimecode(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation = nullptr, const FRotator* ViewRotation = nullptr);
+	int32 RenderStatFrameCounter(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation = nullptr, const FRotator* ViewRotation = nullptr);
 #if STATS
 	int32 RenderStatSlateBatches(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation = nullptr, const FRotator* ViewRotation = nullptr);
 #endif

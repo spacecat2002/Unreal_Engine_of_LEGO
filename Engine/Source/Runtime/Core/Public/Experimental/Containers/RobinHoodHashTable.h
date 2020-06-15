@@ -237,10 +237,10 @@ namespace RobinHoodHashTable_Private
 			{
 				CHECK_CONCURRENT_ACCESS(ConcurrentWriters == 0);
 				CHECK_CONCURRENT_ACCESS(FPlatformAtomics::InterlockedIncrement(&ConcurrentReaders) >= 1);
-#if DO_CHECK
+#if DO_GUARD_SLOW
 				for (IndexType Idx : FreeList)
 				{
-					check(Idx != Index);
+					checkSlow(Idx != Index);
 				}
 #endif
 				CHECK_CONCURRENT_ACCESS(FPlatformAtomics::InterlockedDecrement(&ConcurrentReaders) >= 0);
@@ -252,10 +252,10 @@ namespace RobinHoodHashTable_Private
 			{
 				CHECK_CONCURRENT_ACCESS(ConcurrentWriters == 0);
 				CHECK_CONCURRENT_ACCESS(FPlatformAtomics::InterlockedIncrement(&ConcurrentReaders) >= 1);
-#if DO_CHECK
+#if DO_GUARD_SLOW
 				for (IndexType Idx : FreeList)
 				{
-					check(Idx != Index);
+					checkSlow(Idx != Index);
 				}
 #endif
 				CHECK_CONCURRENT_ACCESS(FPlatformAtomics::InterlockedDecrement(&ConcurrentReaders) >= 0);
@@ -481,7 +481,7 @@ namespace RobinHoodHashTable_Private
 			HashData.Reserve(SizePow2Minus1 + 1);  
 			HashData.AddUninitialized(SizePow2Minus1 + 1);
 
-			for (int Idx = 0; Idx <= SizePow2Minus1; Idx++)
+			for (uint32 Idx = 0; Idx <= SizePow2Minus1; Idx++)
 			{
 				IndexData[Idx] = Other.IndexData[Idx];
 				HashData[Idx] = Other.HashData[Idx];
@@ -501,7 +501,7 @@ namespace RobinHoodHashTable_Private
 				HashData.Reserve(SizePow2Minus1 + 1);  
 				HashData.AddUninitialized(SizePow2Minus1 + 1);
 
-				for (int Idx = 0; Idx <= SizePow2Minus1; Idx++)
+				for (uint32 Idx = 0; Idx <= SizePow2Minus1; Idx++)
 				{
 					IndexData[Idx] = Other.IndexData[Idx];
 					HashData[Idx] = Other.HashData[Idx];
@@ -713,7 +713,7 @@ namespace RobinHoodHashTable_Private
 			FHashElementId Id = FindId(Key);
 			if (Id.IsValid())
 			{
-				return KeyValueData.GetByElementId(Id).FindImpl();
+				return KeyValueData.Get(Id.GetIndex()).FindImpl();
 			}
 
 			return nullptr;
@@ -724,7 +724,7 @@ namespace RobinHoodHashTable_Private
 			FHashElementId Id = FindId(Key);
 			if (Id.IsValid())
 			{
-				return KeyValueData.GetByElementId(Id).FindImpl();
+				return KeyValueData.Get(Id.GetIndex()).FindImpl();
 			}
 
 			return nullptr;

@@ -25,6 +25,9 @@ struct FShaderParameterStructBindingContext
 	// C++ name of the render target binding slot.
 	FString RenderTargetBindingSlotCppName;
 
+	// Shader PermutationId
+	int32 PermutationId;
+
 	// Whether this is for legacy shader parameter settings, or root shader parameter structures/
 	bool bUseRootShaderParameters;
 
@@ -178,7 +181,7 @@ struct FShaderParameterStructBindingContext
 					if (uint32(BoundSize) > ByteSize)
 					{
 						UE_LOG(LogShaders, Fatal, TEXT("The size required to bind shader %s's (Permutation Id %d) struct %s parameter %s is %i bytes, smaller than %s's %i bytes."),
-							Shader->GetTypeUnfrozen()->GetName(), Shader->GetPermutationId(), StructMetaData.GetStructTypeName(),
+							Shader->GetTypeUnfrozen()->GetName(), PermutationId, StructMetaData.GetStructTypeName(),
 							*ElementShaderBindingName, BoundSize, *CppName, ByteSize);
 					}
 
@@ -195,40 +198,24 @@ struct FShaderParameterStructBindingContext
 				}
 				else if (bIsRHIResource || bIsRDGResource)
 				{
+					checkf(BaseIndex < 256, TEXT("BaseIndex does not fit into uint8. Change FResourceParameter::BaseIndex type to uint16"));
+										
 					FShaderParameterBindings::FResourceParameter Parameter;
-					Parameter.BaseIndex = BaseIndex;
+					Parameter.BaseIndex = (uint8)BaseIndex;
 					Parameter.ByteOffset = ByteOffset + ArrayElementId * SHADER_PARAMETER_POINTER_ALIGNMENT;
+					Parameter.BaseType = BaseType;
 
 					if (BoundSize != 1)
 					{
-						// Switch shader compiler does not yet support this validation on RHIResouces, see UE-86533
-						const EShaderPlatform& ShaderPlatform = Shader->GetShaderPlatform();
-						const bool bIsSwitchShader = ShaderPlatform == SP_SWITCH || ShaderPlatform == SP_SWITCH_FORWARD;
-						if (bIsSwitchShader && !bIsRHIResource)
-						{
-							UE_LOG(LogShaders, Fatal,
-								TEXT("Error with shader %s's (Permutation Id %d) parameter %s is %i bytes, cpp name = %s.")
-								TEXT("The shader compiler should give precisely which elements of an array did not get compiled out, ")
-								TEXT("for optimal automatic render graph pass dependency with ClearUnusedGraphResources()."),
-								Shader->GetTypeUnfrozen()->GetName(), Shader->GetPermutationId(),
-								*ElementShaderBindingName, BoundSize, *CppName);
-						}
+						UE_LOG(LogShaders, Fatal,
+							TEXT("Error with shader %s's (Permutation Id %d) parameter %s is %i bytes, cpp name = %s.")
+							TEXT("The shader compiler should give precisely which elements of an array did not get compiled out, ")
+							TEXT("for optimal automatic render graph pass dependency with ClearUnusedGraphResources()."),
+							Shader->GetTypeUnfrozen()->GetName(), PermutationId,
+							*ElementShaderBindingName, BoundSize, *CppName);
 					}
 
-					if (BaseType == UBMT_TEXTURE)
-						Bindings->Textures.Add(Parameter);
-					else if (BaseType == UBMT_SRV)
-						Bindings->SRVs.Add(Parameter);
-					else if (BaseType == UBMT_UAV)
-						Bindings->UAVs.Add(Parameter);
-					else if (BaseType == UBMT_SAMPLER)
-						Bindings->Samplers.Add(Parameter);
-					else if (BaseType == UBMT_RDG_TEXTURE)
-						Bindings->GraphTextures.Add(Parameter);
-					else if (BaseType == UBMT_RDG_TEXTURE_SRV || BaseType == UBMT_RDG_BUFFER_SRV)
-						Bindings->GraphSRVs.Add(Parameter);
-					else // if (BaseType == UBMT_RDG_TEXTURE_UAV || BaseType == UBMT_RDG_BUFFER_UAV)
-						Bindings->GraphUAVs.Add(Parameter);
+					Bindings->ResourceParameters.Add(Parameter);
 				}
 				else
 				{
@@ -239,7 +226,7 @@ struct FShaderParameterStructBindingContext
 	} // void Bind()
 }; // struct FShaderParameterStructBindingContext
 
-void FShaderParameterBindings::BindForLegacyShaderParameters(const FShader* Shader, const FShaderParameterMap& ParametersMap, const FShaderParametersMetadata& StructMetaData, bool bShouldBindEverything)
+void FShaderParameterBindings::BindForLegacyShaderParameters(const FShader* Shader, int32 PermutationId, const FShaderParameterMap& ParametersMap, const FShaderParametersMetadata& StructMetaData, bool bShouldBindEverything)
 {
 	const FShaderType* Type = Shader->GetTypeUnfrozen();
 	checkf(StructMetaData.GetSize() < (1 << (sizeof(uint16) * 8)), TEXT("Shader parameter structure can only have a size < 65536 bytes."));
@@ -261,6 +248,7 @@ void FShaderParameterBindings::BindForLegacyShaderParameters(const FShader* Shad
 
 	FShaderParameterStructBindingContext BindingContext;
 	BindingContext.Shader = Shader;
+	BindingContext.PermutationId = PermutationId;
 	BindingContext.Bindings = this;
 	BindingContext.ParametersMap = &ParametersMap;
 	BindingContext.bUseRootShaderParameters = false;
@@ -277,7 +265,7 @@ void FShaderParameterBindings::BindForLegacyShaderParameters(const FShader* Shad
 	if (bShouldBindEverything && BindingContext.ShaderGlobalScopeBindings.Num() != AllParameterNames.Num())
 	{
 		FString ErrorString = FString::Printf(
-			TEXT("Shader %s has unbound parameters not represented in the parameter struct:"), Type->GetName());
+			TEXT("Shader %s, permutation %d has unbound parameters not represented in the parameter struct:"), Type->GetName(), PermutationId);
 
 		for (const FString& GlobalParameterName : AllParameterNames)
 		{
@@ -291,7 +279,7 @@ void FShaderParameterBindings::BindForLegacyShaderParameters(const FShader* Shad
 	}
 }
 
-void FShaderParameterBindings::BindForRootShaderParameters(const FShader* Shader, const FShaderParameterMap& ParametersMap)
+void FShaderParameterBindings::BindForRootShaderParameters(const FShader* Shader, int32 PermutationId, const FShaderParameterMap& ParametersMap)
 {
 	const FShaderType* Type = Shader->GetTypeUnfrozen();
 	check(this == &Shader->Bindings);
@@ -314,6 +302,7 @@ void FShaderParameterBindings::BindForRootShaderParameters(const FShader* Shader
 
 	FShaderParameterStructBindingContext BindingContext;
 	BindingContext.Shader = Shader;
+	BindingContext.PermutationId = PermutationId;
 	BindingContext.Bindings = this;
 	BindingContext.ParametersMap = &ParametersMap;
 	BindingContext.bUseRootShaderParameters = true;
@@ -344,7 +333,8 @@ void FShaderParameterBindings::BindForRootShaderParameters(const FShader* Shader
 	if (BindingContext.ShaderGlobalScopeBindings.Num() != AllParameterNames.Num())
 	{
 		FString ErrorString = FString::Printf(
-			TEXT("Shader %s has unbound parameters not represented in the parameter struct:"), Type->GetName());
+			TEXT("Shader %s, permutation %d has unbound parameters not represented in the parameter struct:"),
+			Type->GetName(), PermutationId);
 
 		for (const FString& GlobalParameterName : AllParameterNames)
 		{
@@ -448,76 +438,59 @@ void ValidateShaderParameters(const TShaderRef<FShader>& Shader, const FShaderPa
 	const uint8* Base = reinterpret_cast<const uint8*>(Parameters);
 
 	const TCHAR* ShaderClassName = Shader.GetType()->GetName();
-	const TCHAR* ShaderParemeterStructName = ParametersMetadata->GetStructTypeName();
+	const TCHAR* ShaderParameterStructName = ParametersMetadata->GetStructTypeName();
 
-	// Textures
-	for (const FShaderParameterBindings::FResourceParameter& ParameterBinding : Bindings.Textures)
+	for (const FShaderParameterBindings::FResourceParameter& ParameterBinding : Bindings.ResourceParameters)
 	{
-		FRHITexture* ShaderParameterRef = *(FRHITexture**)(Base + ParameterBinding.ByteOffset);
-		if (!ShaderParameterRef)
+		EUniformBufferBaseType BaseType = (EUniformBufferBaseType)ParameterBinding.BaseType;
+		switch (BaseType)
 		{
-			EmitNullShaderParameterFatalError(Shader, ParametersMetadata, ParameterBinding.ByteOffset);
+			case UBMT_TEXTURE:
+			case UBMT_SRV:
+			case UBMT_UAV:
+			case UBMT_SAMPLER:
+			{
+				FRHIResource* ShaderParameterRef = *(FRHIResource**)(Base + ParameterBinding.ByteOffset);
+				if (!ShaderParameterRef)
+				{
+					EmitNullShaderParameterFatalError(Shader, ParametersMetadata, ParameterBinding.ByteOffset);
+				}
+			}
+			break;
+			case UBMT_RDG_TEXTURE:
+			{
+				const FRDGTexture* GraphTexture = *reinterpret_cast<const FRDGTexture* const*>(Base + ParameterBinding.ByteOffset);
+				if (!GraphTexture)
+				{
+					EmitNullShaderParameterFatalError(Shader, ParametersMetadata, ParameterBinding.ByteOffset);
+				}
+				else if ((GraphTexture->Desc.TargetableFlags & TexCreate_ShaderResource) == 0)
+				{
+					FString MemberName = ParametersMetadata->GetFullMemberCodeName(ParameterBinding.ByteOffset);
+
+					UE_LOG(LogShaders, Error,
+						TEXT("Attempting to set shader %s parameter %s::%s with the RDG texture %s which was not created with TexCreate_ShaderResource"),
+						ShaderClassName, ShaderParameterStructName, *MemberName, GraphTexture->Name);
+				}
+			}
+			break;
+			case UBMT_RDG_TEXTURE_SRV:
+			case UBMT_RDG_TEXTURE_UAV:
+			case UBMT_RDG_BUFFER_SRV:
+			case UBMT_RDG_BUFFER_UAV:
+			{
+				const FRDGResource* GraphResource = *reinterpret_cast<const FRDGResource* const*>(Base + ParameterBinding.ByteOffset);
+				if (!GraphResource)
+				{
+					EmitNullShaderParameterFatalError(Shader, ParametersMetadata, ParameterBinding.ByteOffset);
+				}
+			}
+			break;
+			default:
+				break;
 		}
 	}
-
-	// SRVs
-	for (const FShaderParameterBindings::FResourceParameter& ParameterBinding : Bindings.SRVs)
-	{
-		FRHIShaderResourceView* ShaderParameterRef = *(FRHIShaderResourceView**)(Base + ParameterBinding.ByteOffset);
-		if (!ShaderParameterRef)
-		{
-			EmitNullShaderParameterFatalError(Shader, ParametersMetadata, ParameterBinding.ByteOffset);
-		}
-	}
-
-	// Samplers
-	for (const FShaderParameterBindings::FResourceParameter& ParameterBinding : Bindings.Samplers)
-	{
-		FRHISamplerState* ShaderParameterRef = *(FRHISamplerState**)(Base + ParameterBinding.ByteOffset);
-		if (!ShaderParameterRef)
-		{
-			EmitNullShaderParameterFatalError(Shader, ParametersMetadata, ParameterBinding.ByteOffset);
-		}
-	}
-
-	// Graph Textures
-	for (const FShaderParameterBindings::FResourceParameter& ParameterBinding : Bindings.GraphTextures)
-	{
-		auto GraphTexture = *reinterpret_cast<const FRDGTexture* const*>(Base + ParameterBinding.ByteOffset);
-		if (!GraphTexture)
-		{
-			EmitNullShaderParameterFatalError(Shader, ParametersMetadata, ParameterBinding.ByteOffset);
-		}
-		else if ((GraphTexture->Desc.TargetableFlags & TexCreate_ShaderResource) == 0)
-		{
-			FString MemberName = ParametersMetadata->GetFullMemberCodeName(ParameterBinding.ByteOffset);
-
-			UE_LOG(LogShaders, Error,
-				TEXT("Attempting to set shader %s parameter %s::%s with the RDG texture %s which was not created with TexCreate_ShaderResource"),
-				ShaderClassName, ShaderParemeterStructName, *MemberName, GraphTexture->Name);
-		}
-	}
-
-	// Graph SRVs
-	for (const FShaderParameterBindings::FResourceParameter& ParameterBinding : Bindings.GraphSRVs)
-	{
-		auto GraphSRV = *reinterpret_cast<const FRDGTextureSRV* const*>(Base + ParameterBinding.ByteOffset);
-		if (!GraphSRV)
-		{
-			EmitNullShaderParameterFatalError(Shader, ParametersMetadata, ParameterBinding.ByteOffset);
-		}
-	}
-
-	// Graph UAVs for compute shaders	
-	for (const FShaderParameterBindings::FResourceParameter& ParameterBinding : Bindings.GraphUAVs)
-	{
-		auto GraphUAV = *reinterpret_cast<const FRDGTextureUAV* const*>(Base + ParameterBinding.ByteOffset);
-		if (!GraphUAV)
-		{
-			EmitNullShaderParameterFatalError(Shader, ParametersMetadata, ParameterBinding.ByteOffset);
-		}
-	}
-
+	
 	// Reference structures
 	for (const FShaderParameterBindings::FParameterStructReference& ParameterBinding : Bindings.ParameterReferences)
 	{

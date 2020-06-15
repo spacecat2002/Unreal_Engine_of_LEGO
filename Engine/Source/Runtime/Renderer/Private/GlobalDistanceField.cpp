@@ -612,7 +612,8 @@ public:
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && DoesPlatformSupportDistanceFieldAO(Parameters.Platform) && !IsMetalPlatform(Parameters.Platform) && IsUsingDistanceFields(Parameters.Platform);
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && DoesPlatformSupportDistanceFieldAO(Parameters.Platform) &&
+				!IsMetalPlatform(Parameters.Platform) && !IsVulkanMobileSM5Platform(Parameters.Platform) && IsUsingDistanceFields(Parameters.Platform);
 	}
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
@@ -721,7 +722,8 @@ void FHeightfieldLightingViewInfo::CompositeHeightfieldsIntoGlobalDistanceField(
 		&& GDynamicRHI->RHIIsTypedUAVLoadSupported(ClipmapPixelFormat)
 		&& NumPrimitives > 0
 		&& SupportsDistanceFieldAO(Scene->GetFeatureLevel(), Scene->GetShaderPlatform())
-		&& !IsMetalPlatform(Scene->GetShaderPlatform()))
+		&& !IsMetalPlatform(Scene->GetShaderPlatform())
+		&& !IsVulkanMobileSM5Platform(Scene->GetShaderPlatform()))
 	{
 		FHeightfieldDescription UpdateRegionHeightfield;
 
@@ -1452,6 +1454,9 @@ void UpdateGlobalDistanceFieldVolume(
 
 								// Further cull the objects into a low resolution grid
 								{
+									RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, GObjectGridBuffers.CullGridObjectNum.UAV);
+									RHICmdList.ClearUAVUint(GObjectGridBuffers.CullGridObjectNum.UAV, FUintVector4(0, 0, 0, 0));
+
 									TShaderMapRef<FCullObjectsToGridCS> ComputeShader(View.ShaderMap);
 									RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
 									ComputeShader->SetParameters(RHICmdList, Scene, View, MaxOcclusionDistance, GlobalDistanceFieldInfo, ClipmapIndex, UpdateRegion);

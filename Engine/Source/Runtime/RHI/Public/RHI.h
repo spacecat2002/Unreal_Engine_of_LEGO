@@ -7,19 +7,18 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Containers/ContainersFwd.h"
 #include "Stats/Stats.h"
 #include "RHIDefinitions.h"
 #include "Containers/StaticArray.h"
+#include "Containers/StringFwd.h"
 
 #ifndef RHI_COMMAND_LIST_DEBUG_TRACES
 #define RHI_COMMAND_LIST_DEBUG_TRACES 0
 #endif
 
-template <typename T> class TArrayView;
-
 class FResourceArrayInterface;
 class FResourceBulkDataInterface;
-class FStringView;
 
 /** Alignment of the shader parameters struct is required to be 16-byte boundaries. */
 #define SHADER_PARAMETER_STRUCT_ALIGNMENT 16
@@ -81,6 +80,9 @@ extern RHI_API EShaderPlatform GMaxRHIShaderPlatform;
 
 /** true if the RHI supports SRVs */
 extern RHI_API bool GSupportsResourceView;
+
+/** true if the RHI supports Draw Indirect */
+extern RHI_API bool GRHISupportsDrawIndirect;
 
 /** Whether the RHI can send commands to the device context from multiple threads. Used in the GPU readback to avoid stalling the RHI threads. */
 extern RHI_API bool GRHISupportsMultithreading;
@@ -420,9 +422,19 @@ extern RHI_API TRHIGlobal<int32> GMaxShadowDepthBufferSizeY;
 /** The maximum size allowed for 2D textures in both dimensions. */
 extern RHI_API TRHIGlobal<int32> GMaxTextureDimensions;
 
+/** The maximum size allowed for 2D textures in both dimensions. */
+extern RHI_API TRHIGlobal<int64> GMaxBufferDimensions;
+
 /** The maximum size allowed for 3D textures in all three dimensions. */
 extern RHI_API TRHIGlobal<int32> GMaxVolumeTextureDimensions;
 
+/** Whether RW texture buffers are supported */
+extern RHI_API bool GRHISupportsRWTextureBuffers;
+
+FORCEINLINE uint64 GetMaxBufferDimension()
+{
+	return GMaxBufferDimensions;
+}
 
 FORCEINLINE uint32 GetMax2DTextureDimension()
 {
@@ -485,8 +497,7 @@ extern RHI_API volatile int32 GCurrentTextureMemorySize;
 extern RHI_API volatile int32 GCurrentRendertargetMemorySize;
 /** Current texture streaming pool size, in bytes. 0 means unlimited. */
 extern RHI_API int64 GTexturePoolSize;
-/** Maximum texture buffer size. Relevant for OpenGL. 0 means we do not take it into account*/
-extern RHI_API int64 GMaxTextureBufferSize;
+
 /** In percent. If non-zero, the texture pool size is a percentage of GTotalGraphicsMemory. */
 extern RHI_API int32 GPoolSizeVRAMPercentage;
 
@@ -497,6 +508,7 @@ extern RHI_API int32 GNumPrimitivesDrawnRHI;
 
 /** Num draw calls and primitives this frame (only accurate on RenderThread) */
 extern RHI_API int32 GCurrentNumDrawCallsRHI;
+extern RHI_API int32* GCurrentNumDrawCallsRHIPtr;
 extern RHI_API int32 GCurrentNumPrimitivesDrawnRHI;
 
 
@@ -514,6 +526,9 @@ extern RHI_API bool GRHISupportsDynamicResolution;
 
 /** Whether or not the RHI supports ray tracing on current hardware (acceleration structure building and new ray tracing-specific shader types). */
 extern RHI_API bool GRHISupportsRayTracing;
+
+/** Whether or not the RHI supports adding new shaders to an existing RT PSO. */
+extern RHI_API bool GRHISupportsRayTracingPSOAdditions;
 
 /** Whether or not the RHI supports binding multiple miss shaders with local resources via RHISetRayTracingMissShader(). */
 extern RHI_API bool GRHISupportsRayTracingMissShaderBindings;
@@ -558,6 +573,15 @@ extern RHI_API bool GRHIIsHDREnabled;
 
 /** Whether the present adapter/display offers HDR output capabilities. */
 extern RHI_API bool GRHISupportsHDROutput;
+
+/** Whether or not the RHI can support Variable Rate Shading. */
+extern RHI_API bool GRHISupportsVariableRateShading;
+
+/** Size of the tiles in a screen space texture that can be used to drive Variable Rate Shading. */
+extern RHI_API int32 GVariableRateShadingImageTileSize;
+
+/** What tier of Variable Rate Shading the HW supports */
+extern RHI_API int32 GVariableRateShadingTier;
 
 /** Format used for the backbuffer when outputting to a HDR display. */
 extern RHI_API EPixelFormat GRHIHDRDisplayOutputFormat;
@@ -848,6 +872,10 @@ struct FSamplerStateInitializerRHI
 	int32 MaxAnisotropy;
 	uint32 BorderColor;
 	TEnumAsByte<ESamplerCompareFunction> SamplerComparisonFunction;
+
+
+	RHI_API friend uint32 GetTypeHash(const FSamplerStateInitializerRHI& Initializer);
+	RHI_API friend bool operator== (const FSamplerStateInitializerRHI& A, const FSamplerStateInitializerRHI& B);
 };
 
 struct FRasterizerStateInitializerRHI
@@ -869,6 +897,9 @@ struct FRasterizerStateInitializerRHI
 		Ar << RasterizerStateInitializer.bEnableLineAA;
 		return Ar;
 	}
+
+	RHI_API friend uint32 GetTypeHash(const FRasterizerStateInitializerRHI& Initializer);
+	RHI_API friend bool operator== (const FRasterizerStateInitializerRHI& A, const FRasterizerStateInitializerRHI& B);
 };
 
 struct FDepthStencilStateInitializerRHI
@@ -939,6 +970,10 @@ struct FDepthStencilStateInitializerRHI
 		Ar << DepthStencilStateInitializer.StencilWriteMask;
 		return Ar;
 	}
+
+	RHI_API friend uint32 GetTypeHash(const FDepthStencilStateInitializerRHI& Initializer);
+	RHI_API friend bool operator== (const FDepthStencilStateInitializerRHI& A, const FDepthStencilStateInitializerRHI& B);
+	
 	RHI_API FString ToString() const;
 	RHI_API void FromString(const FString& Src);
 	RHI_API void FromString(const FStringView& Src);
@@ -991,6 +1026,7 @@ public:
 			Ar << RenderTarget.ColorWriteMask;
 			return Ar;
 		}
+		
 		RHI_API FString ToString() const;
 		RHI_API void FromString(const TArray<FString>& Parts, int32 Index);
 		RHI_API void FromString(TArrayView<const FStringView> Parts);
@@ -1025,6 +1061,13 @@ public:
 		Ar << BlendStateInitializer.bUseIndependentRenderTargetBlendStates;
 		return Ar;
 	}
+
+	RHI_API friend uint32 GetTypeHash(const FBlendStateInitializerRHI::FRenderTarget& RenderTarget);
+	RHI_API friend bool operator== (const FBlendStateInitializerRHI::FRenderTarget& A, const FBlendStateInitializerRHI::FRenderTarget& B);
+	
+	RHI_API friend uint32 GetTypeHash(const FBlendStateInitializerRHI& Initializer);
+	RHI_API friend bool operator== (const FBlendStateInitializerRHI& A, const FBlendStateInitializerRHI& B);
+	
 	RHI_API FString ToString() const;
 	RHI_API void FromString(const FString& Src);
 	RHI_API void FromString(const FStringView& Src);
@@ -1615,6 +1658,33 @@ struct FTextureMemoryStats
 	}
 };
 
+struct RHI_API FDrawCallCategoryName
+{
+	FDrawCallCategoryName() 
+	{ 
+	}
+
+	FDrawCallCategoryName(FName InName)
+		: Name(InName)
+		, Counter(0)
+	{
+		check(NumCategory < MAX_DRAWCALL_CATEGORY);
+		if (NumCategory < MAX_DRAWCALL_CATEGORY)
+		{
+			Array[NumCategory] = this;
+			NumCategory++;
+		}
+	}
+
+	FName Name;
+	int32 Counter = -1;
+
+	static constexpr int32 MAX_DRAWCALL_CATEGORY = 256;
+	static FDrawCallCategoryName* Array[MAX_DRAWCALL_CATEGORY];
+	static int32 DisplayCounts[MAX_DRAWCALL_CATEGORY]; // A backup of the counts that can be used to display on screen to avoid flickering.
+	static int32 NumCategory;
+};
+
 // RHI counter stats.
 DECLARE_DWORD_COUNTER_STAT_EXTERN(TEXT("DrawPrimitive calls"),STAT_RHIDrawPrimitiveCalls,STATGROUP_RHI,RHI_API);
 DECLARE_DWORD_COUNTER_STAT_EXTERN(TEXT("Triangles drawn"),STAT_RHITriangles,STATGROUP_RHI,RHI_API);
@@ -1623,7 +1693,7 @@ DECLARE_DWORD_COUNTER_STAT_EXTERN(TEXT("Lines drawn"),STAT_RHILines,STATGROUP_RH
 #if STATS
 	#define RHI_DRAW_CALL_INC() \
 		INC_DWORD_STAT(STAT_RHIDrawPrimitiveCalls); \
-		FPlatformAtomics::InterlockedIncrement(&GCurrentNumDrawCallsRHI);
+		FPlatformAtomics::InterlockedIncrement(GCurrentNumDrawCallsRHIPtr);
 
 	#define RHI_DRAW_CALL_STATS(PrimitiveType,NumPrimitives) \
 		RHI_DRAW_CALL_INC(); \
@@ -1632,11 +1702,11 @@ DECLARE_DWORD_COUNTER_STAT_EXTERN(TEXT("Lines drawn"),STAT_RHILines,STATGROUP_RH
 		FPlatformAtomics::InterlockedAdd(&GCurrentNumPrimitivesDrawnRHI, NumPrimitives);
 #else
 	#define RHI_DRAW_CALL_INC() \
-		FPlatformAtomics::InterlockedIncrement(&GCurrentNumDrawCallsRHI);
+		FPlatformAtomics::InterlockedIncrement(GCurrentNumDrawCallsRHIPtr);
 
 	#define RHI_DRAW_CALL_STATS(PrimitiveType,NumPrimitives) \
 		FPlatformAtomics::InterlockedAdd(&GCurrentNumPrimitivesDrawnRHI, NumPrimitives); \
-		FPlatformAtomics::InterlockedIncrement(&GCurrentNumDrawCallsRHI);
+		FPlatformAtomics::InterlockedIncrement(GCurrentNumDrawCallsRHIPtr);
 #endif
 
 // RHI memory stats.

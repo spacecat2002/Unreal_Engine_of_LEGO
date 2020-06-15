@@ -71,16 +71,22 @@ void FRendererModule::ReallocateSceneRenderTargets()
 	FSceneRenderTargets::GetGlobalUnsafe().UpdateRHI();
 }
 
-void FRendererModule::OnWorldCleanup(UWorld* World, bool bSessionEnded, bool bCleanupResources)
+void FRendererModule::OnWorldCleanup(UWorld* World, bool bSessionEnded, bool bCleanupResources, bool bWorldChanged)
 {
-	if (bFlushRenderTargetsOnWorldCleanup > 0)
+	FSceneInterface* Scene = World->Scene;
+	ENQUEUE_RENDER_COMMAND(OnWorldCleanup)(
+	[Scene, bWorldChanged](FRHICommandListImmediate& RHICmdList)
 	{
-		ENQUEUE_RENDER_COMMAND(OnWorldCleanup)(
-			[](FRHICommandListImmediate& RHICmdList)
+		if(bFlushRenderTargetsOnWorldCleanup > 0)
 		{
 			GRenderTargetPool.FreeUnusedResources();
-		});
-	}
+		}
+		if(bWorldChanged && Scene)
+		{
+			Scene->OnWorldCleanup();
+		}
+	});
+
 }
 
 void FRendererModule::SceneRenderTargetsSetBufferSize(uint32 SizeX, uint32 SizeY)
@@ -165,10 +171,12 @@ void FRendererModule::DrawTileMesh(FRHICommandListImmediate& RHICmdList, FMeshPa
 		View.InitRHIResources();
 		DrawRenderState.SetViewUniformBuffer(View.ViewUniformBuffer);
 
+		FUniformBufferRHIRef EmptyReflectionCaptureUniformBuffer;
 		if (!DrawRenderState.GetReflectionCaptureUniformBuffer())
 		{
 			FReflectionCaptureShaderData EmptyData;
-			DrawRenderState.SetReflectionCaptureUniformBuffer(TUniformBufferRef<FReflectionCaptureShaderData>::CreateUniformBufferImmediate(EmptyData, UniformBuffer_SingleFrame));
+			EmptyReflectionCaptureUniformBuffer = TUniformBufferRef<FReflectionCaptureShaderData>::CreateUniformBufferImmediate(EmptyData, UniformBuffer_SingleFrame);
+			DrawRenderState.SetReflectionCaptureUniformBuffer(EmptyReflectionCaptureUniformBuffer);
 		}
 
 		if (ShadingPath == EShadingPath::Mobile)
@@ -196,7 +204,7 @@ void FRendererModule::DrawTileMesh(FRHICommandListImmediate& RHICmdList, FMeshPa
 			{
 				FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 				FDebugViewModePassPassUniformParameters PassParameters;
-				SetupDebugViewModePassUniformBuffer(SceneContext, View.GetFeatureLevel(), PassParameters);
+				SetupDebugViewModePassUniformBuffer(SceneContext, View, PassParameters);
 				TUniformBufferRef<FDebugViewModePassPassUniformParameters> DebugViewModePassUniformBuffer = TUniformBufferRef<FDebugViewModePassPassUniformParameters>::CreateUniformBufferImmediate(
 					PassParameters,
 					UniformBuffer_SingleFrame
@@ -249,7 +257,7 @@ void FRendererModule::DrawTileMesh(FRHICommandListImmediate& RHICmdList, FMeshPa
 			else // Mobile
 			{
 				TUniformBufferRef<FMobileBasePassUniformParameters> MobileBasePassUniformBuffer;
-				CreateMobileBasePassUniformBuffer(RHICmdList, View, true, MobileBasePassUniformBuffer);
+				CreateMobileBasePassUniformBuffer(RHICmdList, View, true, false, MobileBasePassUniformBuffer);
 				BasePassUniformBuffer = MobileBasePassUniformBuffer;
 				
 				DrawRenderState.SetPassUniformBuffer(BasePassUniformBuffer);
@@ -328,7 +336,7 @@ void FRendererModule::DrawTileMesh(FRHICommandListImmediate& RHICmdList, FMeshPa
 				else // Mobile
 				{
 					TUniformBufferRef<FMobileBasePassUniformParameters> MobileBasePassUniformBuffer;
-					CreateMobileBasePassUniformBuffer(RHICmdList, View, false, MobileBasePassUniformBuffer);
+					CreateMobileBasePassUniformBuffer(RHICmdList, View, false, true, MobileBasePassUniformBuffer);
 					BasePassUniformBuffer = MobileBasePassUniformBuffer;
 					
 					DrawRenderState.SetPassUniformBuffer(BasePassUniformBuffer);

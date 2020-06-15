@@ -4,6 +4,7 @@
 #include "Misc/VarArgs.h"
 #include "HAL/UnrealMemory.h"
 #include "Templates/UnrealTemplate.h"
+#include "Templates/Atomic.h"
 #include "Misc/CString.h"
 #include "Misc/Crc.h"
 #include "Containers/UnrealString.h"
@@ -27,6 +28,7 @@ namespace
 {
 	// used to track state of assets/ensures
 	bool bHasAsserted = false;
+	TAtomic<SIZE_T> NumEnsureFailures {0};
 	int32 ActiveEnsureCount = 0;
 
 	/** Lock used to synchronize the fail debug calls. */
@@ -157,6 +159,10 @@ bool FDebug::IsEnsuring()
 {
 	return ActiveEnsureCount > 0;
 }
+SIZE_T FDebug::GetNumEnsureFailures()
+{
+	return NumEnsureFailures.Load();
+}
 
 void FDebug::LogFormattedMessageWithCallstack(const FName& InLogName, const ANSICHAR* File, int32 Line, const TCHAR* Heading, const TCHAR* Message, ELogVerbosity::Type Verbosity)
 {
@@ -227,7 +233,7 @@ void FDebug::LogFormattedMessageWithCallstack(const FName& InLogName, const ANSI
 	}
 }
 
-#if DO_CHECK || DO_GUARD_SLOW
+#if DO_CHECK || DO_GUARD_SLOW || DO_ENSURE
 //
 // Failed assertion handler.
 //warning: May be called at library startup time.
@@ -274,6 +280,8 @@ FORCENOINLINE void FDebug::EnsureFailed(const ANSICHAR* Expr, const ANSICHAR* Fi
 		return;
 	}
 	
+	++NumEnsureFailures;
+
 #if STATS
 	FString EnsureFailedPerfMessage = FString::Printf(TEXT("FDebug::EnsureFailed"));
 	SCOPE_LOG_TIME_IN_SECONDS(*EnsureFailedPerfMessage, nullptr)
@@ -449,7 +457,7 @@ void FORCENOINLINE FDebug::CheckVerifyFailedImpl(
 	}
 }
 
-#endif // DO_CHECK || DO_GUARD_SLOW
+#endif // DO_CHECK || DO_GUARD_SLOW || DO_ENSURE
 
 void VARARGS FDebug::AssertFailed(const ANSICHAR* Expr, const ANSICHAR* File, int32 Line, const TCHAR* Format/* = TEXT("")*/, ...)
 {
@@ -461,13 +469,8 @@ void VARARGS FDebug::AssertFailed(const ANSICHAR* Expr, const ANSICHAR* File, in
 
 void FDebug::ProcessFatalError()
 {
-	if (GIsCriticalError)
-	{
-		return;
-	}
-
 	// This is not perfect because another thread might crash and be handled before this assert
-	// but this static varible will report the crash as an assert. Given complexity of a thread
+	// but this static variable will report the crash as an assert. Given complexity of a thread
 	// aware solution, this should be good enough. If crash reports are obviously wrong we can
 	// look into fixing this.
 	bHasAsserted = true;
@@ -475,7 +478,7 @@ void FDebug::ProcessFatalError()
 	GError->Logf(TEXT("%s"), GErrorHist);
 }
 
-#if DO_CHECK || DO_GUARD_SLOW
+#if DO_CHECK || DO_GUARD_SLOW || DO_ENSURE
 FORCENOINLINE bool VARARGS FDebug::OptionallyLogFormattedEnsureMessageReturningFalseImpl( bool bLog, const ANSICHAR* Expr, const ANSICHAR* File, int32 Line, const TCHAR* FormattedMsg, ... )
 {
 	if (bLog)

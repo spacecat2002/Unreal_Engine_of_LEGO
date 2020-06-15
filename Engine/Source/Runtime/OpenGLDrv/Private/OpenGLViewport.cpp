@@ -11,19 +11,6 @@
 #include "OpenGLDrv.h"
 #include "OpenGLDrvPrivate.h"
 
-/**
- * RHI console variables used by viewports.
- */
-namespace RHIOpenGLConsoleVariables
-{
-	int32 SyncInterval = 1;
-	static FAutoConsoleVariableRef CVarSyncInterval(
-		TEXT("RHI.SyncIntervalOgl"),
-		SyncInterval,
-		TEXT("When synchronizing with OpenGL, specifies the interval at which to refresh.")
-		);
-};
-
 void FOpenGLDynamicRHI::RHIGetSupportedResolution(uint32 &Width, uint32 &Height)
 {
 	PlatformGetSupportedResolution(Width, Height);
@@ -117,12 +104,12 @@ void FOpenGLDynamicRHI::RHIBeginDrawingViewport(FRHIViewport* ViewportRHI, FRHIT
 	if( RenderTarget )
 	{
 		FRHIRenderTargetView RTV(RenderTarget, ERenderTargetLoadAction::ELoad);
-		RHISetRenderTargets(1, &RTV, nullptr);
+		SetRenderTargets(1, &RTV, nullptr);
 	}
 	else
 	{
 		FRHIRenderTargetView RTV(DrawingViewport->GetBackBuffer(), ERenderTargetLoadAction::ELoad);
-		RHISetRenderTargets(1, &RTV, nullptr);
+		SetRenderTargets(1, &RTV, nullptr);
 	}
 }
 
@@ -145,8 +132,7 @@ void FOpenGLDynamicRHI::RHIEndDrawingViewport(FRHIViewport* ViewportRHI,bool bPr
 		BackBuffer->GetSizeX(),
 		BackBuffer->GetSizeY(),
 		bPresent,
-		bLockToVsync,
-		RHIGetSyncInterval()
+		bLockToVsync
 	);
 
 	// Always consider the Framebuffer in the rendering context dirty after the blit

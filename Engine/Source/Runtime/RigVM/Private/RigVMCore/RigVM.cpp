@@ -3,6 +3,7 @@
 #include "RigVMCore/RigVM.h"
 #include "UObject/Package.h"
 #include "UObject/AnimObjectVersion.h"
+#include "HAL/PlatformTLS.h"
 
 bool FRigVMParameter::Serialize(FArchive& Ar)
 {
@@ -41,6 +42,8 @@ UScriptStruct* FRigVMParameter::GetScriptStruct() const
 }
 
 URigVM::URigVM()
+	: ExecutingThreadId(INDEX_NONE)
+	, DeferredVMToCopy(nullptr)
 {
 	WorkMemory.SetMemoryType(ERigVMMemoryType::Work);
 	LiteralMemory.SetMemoryType(ERigVMMemoryType::Literal);
@@ -59,6 +62,8 @@ void URigVM::Serialize(FArchive& Ar)
 	{
 		return;
 	}
+
+	ensure(ExecutingThreadId == INDEX_NONE);
 
 	if (Ar.IsLoading())
 	{
@@ -104,6 +109,7 @@ void URigVM::Reset()
 	Instructions.Reset();
 	Parameters.Reset();
 	ParametersNameMap.Reset();
+	DeferredVMToCopy = nullptr;
 
 	InvalidateCachedMemory();
 }
@@ -118,6 +124,7 @@ void URigVM::Empty()
 	Instructions.Empty();
 	Parameters.Empty();
 	ParametersNameMap.Empty();
+	DeferredVMToCopy = nullptr;
 
 	InvalidateCachedMemory();
 
@@ -126,9 +133,17 @@ void URigVM::Empty()
 	CachedMemoryPointers.Empty();
 }
 
-void URigVM::CopyFrom(URigVM* InVM)
+void URigVM::CopyFrom(URigVM* InVM, bool bDeferCopy)
 {
 	check(InVM);
+
+	// if this vm is currently executing on a worker thread
+	// we defer the copy until the next execute
+	if (ExecutingThreadId != INDEX_NONE || bDeferCopy)
+	{
+		DeferredVMToCopy = InVM;
+		return;
+	}
 	
 	Reset();
 
@@ -232,8 +247,27 @@ void URigVM::InvalidateCachedMemory()
 	CachedMemoryPointers.Reset();
 }
 
+void URigVM::CopyDeferredVMIfRequired()
+{
+	ensure(ExecutingThreadId == INDEX_NONE);
+
+	URigVM* VMToCopy = nullptr;
+	Swap(VMToCopy, DeferredVMToCopy);
+
+	if (VMToCopy)
+	{
+		CopyFrom(VMToCopy);
+	}
+}
+
 void URigVM::CacheMemoryPointersIfRequired(FRigVMMemoryContainerPtrArray InMemory)
 {
+	if (ExecutingThreadId != INDEX_NONE)
+	{
+		ensureMsgf(ExecutingThreadId == FPlatformTLS::GetCurrentThreadId(), TEXT("RigVM from multiple threads (%d and %d)"), ExecutingThreadId, (int32)FPlatformTLS::GetCurrentThreadId());
+	}
+	TGuardValue<int32> GuardThreadId(ExecutingThreadId, FPlatformTLS::GetCurrentThreadId());
+
 	RefreshInstructionsIfRequired();
 
 	if (Instructions.Num() == 0 || InMemory.Num() == 0)
@@ -273,8 +307,13 @@ void URigVM::CacheMemoryPointersIfRequired(FRigVMMemoryContainerPtrArray InMemor
 	}
 
 	uint16 InstructionIndex = 0;
-	while (Instructions[InstructionIndex].OpCode != ERigVMOpCode::Exit)
+	while (Instructions.IsValidIndex(InstructionIndex))
 	{
+		if (Instructions[InstructionIndex].OpCode == ERigVMOpCode::Exit)
+		{
+			break;
+		}
+
 		FirstPointerForInstruction.Add(CachedMemoryPointers.Num());
 
 		switch (Instructions[InstructionIndex].OpCode)
@@ -353,7 +392,7 @@ void URigVM::CacheMemoryPointersIfRequired(FRigVMMemoryContainerPtrArray InMemor
 					void* Ptr = CachedMemory[Arg.GetContainerIndex()]->GetData(Arg.GetRegisterIndex(), Arg.GetRegisterOffset());
 					CachedMemoryPointers.Add(Ptr);
 
-					FRigVMRegister Register = (*CachedMemory[Arg.GetContainerIndex()])[Arg];
+					const FRigVMRegister& Register = CachedMemory[Arg.GetContainerIndex()]->GetRegister(Arg);
 					if (Register.IsArray())
 					{
 						void* NumBytesAsPtr = reinterpret_cast<void*>(Register.ElementCount);
@@ -465,6 +504,7 @@ void URigVM::CacheMemoryPointersIfRequired(FRigVMMemoryContainerPtrArray InMemor
 
 bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> AdditionalArguments)
 {
+	CopyDeferredVMIfRequired();
 	ResolveFunctionsIfRequired();
 	RefreshInstructionsIfRequired();
 
@@ -482,8 +522,13 @@ bool URigVM::Execute(FRigVMMemoryContainerPtrArray Memory, TArrayView<void*> Add
 	CacheMemoryPointersIfRequired(Memory);
 
 	uint16 InstructionIndex = 0;
-	while (Instructions[InstructionIndex].OpCode != ERigVMOpCode::Exit)
+	while (Instructions.IsValidIndex(InstructionIndex))
 	{
+		if (Instructions[InstructionIndex].OpCode == ERigVMOpCode::Exit)
+		{
+			break;
+		}
+
 		switch (Instructions[InstructionIndex].OpCode)
 		{
 			case ERigVMOpCode::Execute_0_Operands:

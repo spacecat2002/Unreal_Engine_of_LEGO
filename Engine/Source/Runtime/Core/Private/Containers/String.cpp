@@ -119,49 +119,48 @@ namespace UE4String_Private
 	}
 }
 
-FString::FString(const FStringView& Other)
+template<typename CharType>
+void AppendCharacters(TArray<TCHAR>& Out, const CharType* Str, int32 Count)
 {
-	if (const FStringView::SizeType OtherLen = Other.Len())
+	check(Count >= 0);
+
+	if (!Count)
 	{
-		Reserve(OtherLen);
-		Append(Other.GetData(), OtherLen);
-		AppendChar(TEXT('\0'));
+		return;
 	}
+
+	checkSlow(Str);
+
+	const int32 OldNum = Out.Num();
+
+	// Reserve enough space - including an extra gap for a null terminator if we don't already have a string allocated
+	Out.AddUninitialized(Count + (OldNum ? 0 : 1));
+
+	TCHAR* Dest = Out.GetData() + OldNum - (OldNum ? 1 : 0);
+
+	// Copy characters to end of string, overwriting null terminator if we already have one
+	FPlatformString::Convert(Dest, Count, Str, Count);
+
+	// (Re-)establish the null terminator
+	Dest[Count] = '\0';
 }
 
-FString& FString::operator=(const FStringView& Other)
-{
-	const TCHAR* const OtherData = Other.GetData();
-	const FStringView::SizeType OtherLen = Other.Len();
-	if (OtherLen == 0)
-	{
-		Data.Empty();
-	}
-	else if (OtherData < Data.GetData() + Data.Num() && Data.GetData() < OtherData + OtherLen)
-	{
-		*this = FString(Other);
-	}
-	else
-	{
-		Data.Empty(OtherLen + 1);
-		Data.AddUninitialized(OtherLen + 1);
-		TCHAR* DataPtr = Data.GetData();
-		CopyAssignItems(DataPtr, OtherData, OtherLen);
-		DataPtr[OtherLen] = TEXT('\0');
-	}
-	return *this;
-}
-
-FString& FString::operator+=(const FStringView& Str)
+void FString::AppendChars(const ANSICHAR* Str, int32 Count)
 {
 	CheckInvariants();
-	AppendChars(Str.GetData(), Str.Len());
-	return *this;
+	AppendCharacters(Data, Str, Count);
 }
 
-FString::operator FStringView() const
+void FString::AppendChars(const WIDECHAR* Str, int32 Count)
 {
-	return FStringView(Data.GetData(), Len());
+	CheckInvariants();
+	AppendCharacters(Data, Str, Count);
+}
+
+void FString::AppendChars(const UCS2CHAR* Str, int32 Count)
+{
+	CheckInvariants();
+	AppendCharacters(Data, Str, Count);
 }
 
 void FString::TrimToNullTerminator()
@@ -1385,8 +1384,7 @@ FArchive& operator<<( FArchive& Ar, FString& A )
 			// If SaveNum cannot be negated due to integer overflow, Ar is corrupted.
 			if (SaveNum == MIN_int32)
 			{
-				Ar.ArIsError = 1;
-				Ar.ArIsCriticalError = 1;
+				Ar.SetCriticalError();
 				UE_LOG(LogCore, Error, TEXT("Archive is corrupted"));
 				return Ar;
 			}
@@ -1398,8 +1396,7 @@ FArchive& operator<<( FArchive& Ar, FString& A )
 		// Protect against network packets allocating too much memory
 		if ((MaxSerializeSize > 0) && (SaveNum > MaxSerializeSize))
 		{
-			Ar.ArIsError         = 1;
-			Ar.ArIsCriticalError = 1;
+			Ar.SetCriticalError();
 			UE_LOG(LogCore, Error, TEXT("String is too large (Size: %i, Max: %i)"), SaveNum, MaxSerializeSize);
 			return Ar;
 		}

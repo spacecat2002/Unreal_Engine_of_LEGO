@@ -102,7 +102,7 @@ static void CompressAnimSequenceImpl(FAnimBoneCompressionContext& Context)
 {
 	Context.bSuccess = Context.Codec->Compress(Context.AnimSeq, Context.Result);
 
-	if (Context.bSuccess)
+	if (Context.bSuccess && !Context.AnimSeq.IsCancelled())
 	{
 		FAnimationUtils::ComputeCompressionError(Context.AnimSeq, Context.Result, Context.Result.AnimData->BoneCompressionErrorStats);
 	}
@@ -132,7 +132,7 @@ public:
 
 bool UAnimBoneCompressionSettings::Compress(const FCompressibleAnimData& AnimSeq, FCompressibleAnimDataResult& OutCompressedData) const
 {
-	if (AnimSeq.Skeleton == nullptr || !AreSettingsValid())
+	if (!AreSettingsValid())
 	{
 		return false;
 	}

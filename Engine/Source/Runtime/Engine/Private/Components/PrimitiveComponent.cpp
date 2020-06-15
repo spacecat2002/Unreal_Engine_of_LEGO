@@ -37,6 +37,7 @@
 
 #if WITH_EDITOR
 #include "Engine/LODActor.h"
+#include "Rendering/StaticLightingSystemInterface.h"
 #endif // WITH_EDITOR
 
 #if DO_CHECK
@@ -555,7 +556,7 @@ void UPrimitiveComponent::CreateRenderState_Concurrent(FRegisterComponentContext
 	{
 		if (Context != nullptr)
 		{
-			Context->AddPrimitiveBatches.Add(this);
+			Context->AddPrimitive(this);
 		}
 		else
 		{
@@ -613,6 +614,13 @@ void UPrimitiveComponent::OnRegister()
 		bNavigationRelevant = false;
 	}
 
+#if WITH_EDITOR
+	if (HasValidSettingsForStaticLighting(false))
+	{
+		FStaticLightingSystemInterface::OnPrimitiveComponentRegistered.Broadcast(this);
+	}
+#endif
+
 	// Update our Owner's LastRenderTime
 	SetLastRenderTime(LastRenderTime);
 }
@@ -642,6 +650,10 @@ void UPrimitiveComponent::OnUnregister()
 	{
 		FNavigationSystem::OnComponentUnregistered(*this);
 	}
+
+#if WITH_EDITOR
+	FStaticLightingSystemInterface::OnPrimitiveComponentUnregistered.Broadcast(this);
+#endif
 }
 
 FPrimitiveComponentInstanceData::FPrimitiveComponentInstanceData(const UPrimitiveComponent* SourceComponent)
@@ -2148,7 +2160,7 @@ bool UPrimitiveComponent::MoveComponentImpl( const FVector& Delta, const FQuat& 
 					{
 						if (!ShouldIgnoreHitResult(MyWorld, TestHit, Delta, Actor, MoveFlags))
 						{
-							if (TestHit.Time == 0.f)
+							if (TestHit.bStartPenetrating)
 							{
 								// We may have multiple initial hits, and want to choose the one with the normal most opposed to our movement.
 								const float NormalDotDelta = (TestHit.ImpactNormal | Delta);
@@ -2440,7 +2452,8 @@ bool UPrimitiveComponent::IsNavigationRelevant() const
 
 FBox UPrimitiveComponent::GetNavigationBounds() const
 {
-	return Bounds.GetBox();
+	// Return invalid box when retrieving NavigationBounds before they are being computed at component registration
+	return bRegistered ? Bounds.GetBox() : FBox(ForceInit);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -2655,7 +2668,8 @@ void UPrimitiveComponent::BeginComponentOverlap(const FOverlapInfo& OtherOverlap
 			AddUniqueOverlapFast(OtherComp->OverlappingComponents, FOverlapInfo(this, INDEX_NONE));	// uniqueness unverified, so addunique
 			
 			const UWorld* World = GetWorld();
-			if (bDoNotifies && World && World->HasBegunPlay())
+			const bool bLevelStreamingOverlap = (bDoNotifies && MyActor->bGenerateOverlapEventsDuringLevelStreaming && MyActor->IsActorBeginningPlayFromLevelStreaming());
+			if (bDoNotifies && ((World && World->HasBegunPlay()) || bLevelStreamingOverlap))
 			{
 				// first execute component delegates
 				if (!IsPendingKill())

@@ -8,6 +8,8 @@ D3D12Stats.cpp:RHI Stats and timing implementation.
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 
+TStaticArray<uint32, MAX_NUM_GPUS> D3D12RHI::FD3DGPUProfiler::GGPUFrameCycles(0);
+
 void D3D12RHI::FD3DGPUProfiler::BeginFrame(FD3D12DynamicRHI* InRHI)
 {
 	CurrentEventNode = NULL;
@@ -18,7 +20,7 @@ void D3D12RHI::FD3DGPUProfiler::BeginFrame(FD3D12DynamicRHI* InRHI)
 	static auto* CrashCollectionEnableCvar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.gpucrash.collectionenable"));
 	static auto* CrashCollectionDataDepth = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.gpucrash.datadepth"));
 
-	bTrackingGPUCrashData = CrashCollectionEnableCvar ? CrashCollectionEnableCvar->GetValueOnRenderThread() != 0 : false;
+	bTrackingGPUCrashData = CrashCollectionEnableCvar ? (InRHI->GetAdapter().GetGPUCrashDebuggingMode() != ED3D12GPUCrashDebugginMode::Disabled && CrashCollectionEnableCvar->GetValueOnRenderThread() != 0) : false;
 	GPUCrashDataDepth = CrashCollectionDataDepth ? CrashCollectionDataDepth->GetValueOnRenderThread() : -1;
 
 	// latch the bools from the game thread into our private copy
@@ -48,7 +50,7 @@ void D3D12RHI::FD3DGPUProfiler::BeginFrame(FD3D12DynamicRHI* InRHI)
 			SetEmitDrawEvents(true);  // thwart an attempt to turn this off on the game side
 			bTrackingEvents = true;
 			DoPreProfileGPUWork();
-			CurrentEventNodeFrame = new FD3D12EventNodeFrame(GetParentAdapter());
+			CurrentEventNodeFrame = new FD3D12EventNodeFrame(GetParentDevice());
 			CurrentEventNodeFrame->StartFrame();
 		}
 	}
@@ -64,12 +66,7 @@ void D3D12RHI::FD3DGPUProfiler::BeginFrame(FD3D12DynamicRHI* InRHI)
 
 	if (GetEmitDrawEvents())
 	{
-#if NV_AFTERMATH
-		// Assuming that grabbing the device 0 command list here is OK
-		PushEvent(TEXT("FRAME"), FColor(0, 255, 0, 255), InRHI->GetAdapter().GetDevice(0)->GetCommandContext().CommandListHandle.AftermathCommandContext());
-#else
 		PushEvent(TEXT("FRAME"), FColor(0, 255, 0, 255));
-#endif
 	}
 }
 
@@ -83,15 +80,16 @@ void D3D12RHI::FD3DGPUProfiler::EndFrame(FD3D12DynamicRHI* InRHI)
 
 	FrameTiming.EndTiming();
 
+	const uint32 GPUIndex = GetParentDevice()->GetGPUIndex();
 	if (FrameTiming.IsSupported())
 	{
 		uint64 GPUTiming = FrameTiming.GetTiming();
-		uint64 GPUFreq = FrameTiming.GetTimingFrequency();
-		GGPUFrameTime = FMath::TruncToInt(double(GPUTiming) / double(GPUFreq) / FPlatformTime::GetSecondsPerCycle());
+		uint64 GPUFreq = FrameTiming.GetTimingFrequency(GPUIndex);
+		GGPUFrameCycles[GPUIndex] = FMath::TruncToInt(double(GPUTiming) / double(GPUFreq) / FPlatformTime::GetSecondsPerCycle());
 	}
 	else
 	{
-		GGPUFrameTime = 0;
+		GGPUFrameCycles[GPUIndex] = 0;
 	}
 
 	double HwGpuFrameTime = 0.0;
@@ -189,63 +187,45 @@ void D3D12RHI::FD3DGPUProfiler::EndFrame(FD3D12DynamicRHI* InRHI)
 	CurrentEventNodeFrame = NULL;
 }
 
-void D3D12RHI::FD3DGPUProfiler::PushEvent(const TCHAR* Name, FColor Color)
-{
-	FGPUProfiler::PushEvent(Name, Color);
-}
+FString D3D12RHI::FD3DGPUProfiler::EventDeepString(TEXT("EventTooDeep"));
+const uint32 D3D12RHI::FD3DGPUProfiler::EventDeepCRC = FCrc::StrCrc32<TCHAR>(*EventDeepString);
 
-static FString EventDeepString(TEXT("EventTooDeep"));
-static const uint32 EventDeepCRC = FCrc::StrCrc32<TCHAR>(*EventDeepString);
-#if NV_AFTERMATH
-void D3D12RHI::FD3DGPUProfiler::PushEvent(const TCHAR* Name, FColor Color, GFSDK_Aftermath_ContextHandle Context)
+/** Get the CRC of the given event Name and cache the lookup internally so it can be retrieved again later */
+uint32 D3D12RHI::FD3DGPUProfiler::GetOrAddEventStringHash(const TCHAR* Name)
 {
-
-	if (GDX12NVAfterMathEnabled && bTrackingGPUCrashData)
+	if (bTrackingGPUCrashData)
 	{
-		uint32 CRC = 0;
-		if (GPUCrashDataDepth < 0 || PushPopStack.Num() < GPUCrashDataDepth)
-		{
-			CRC = FCrc::StrCrc32<TCHAR>(Name);
+		uint32 CRC = FCrc::StrCrc32<TCHAR>(Name);
 
-			if (CachedStrings.Num() > 10000)
+		// make sure the Name is cached
+		FRWScopeLock RWScopeLock(CacheEventStringsRWLock, SLT_ReadOnly);
+		if (!CachedEventStrings.Contains(CRC))
+		{
+			RWScopeLock.ReleaseReadOnlyLockAndAcquireWriteLock_USE_WITH_CAUTION();
+
+			if (CachedEventStrings.Num() > 10000)
 			{
-				CachedStrings.Empty(10000);
-				CachedStrings.Emplace(EventDeepCRC, EventDeepString);
+				CachedEventStrings.Empty(10000);
+				CachedEventStrings.Emplace(EventDeepCRC, EventDeepString);
 			}
 
-			if (CachedStrings.Find(CRC) == nullptr)
+			if (CachedEventStrings.Find(CRC) == nullptr)
 			{
-				CachedStrings.Emplace(CRC, FString(Name));
+				CachedEventStrings.Emplace(CRC, FString(Name));
 			}
-
 		}
-		else
-		{
-			CRC = EventDeepCRC;
-		}
-		PushPopStack.Push(CRC);
 
-		GFSDK_Aftermath_SetEventMarker(Context, &PushPopStack[0], PushPopStack.Num() * sizeof(uint32));
+		return CRC;
 	}
-
-	PushEvent(Name, Color);
+	else
+		return 0;
 }
-#endif
 
-void D3D12RHI::FD3DGPUProfiler::PopEvent()
+/** Try and find the cached event string for given CRC */
+const FString* D3D12RHI::FD3DGPUProfiler::FindEventString(uint32 CRC)
 {
-#if NV_AFTERMATH
-	if (GDX12NVAfterMathEnabled && bTrackingGPUCrashData)
-	{
-		// need to look for unbalanced push/pop
-		if (PushPopStack.Num() > 0)
-		{
-			PushPopStack.Pop(false);
-		}
-	}
-#endif
-
-	FGPUProfiler::PopEvent();
+	FReadScopeLock ReadScopeLock(CacheEventStringsRWLock);
+	return CachedEventStrings.Find(CRC);
 }
 
 /** Start this frame of per tracking */
@@ -267,7 +247,7 @@ float FD3D12EventNodeFrame::GetRootTimingResults()
 	if (RootEventTiming.IsSupported())
 	{
 		const uint64 GPUTiming = RootEventTiming.GetTiming(true);
-		const uint64 GPUFreq = RootEventTiming.GetTimingFrequency();
+		const uint64 GPUFreq = RootEventTiming.GetTimingFrequency(GetParentDevice()->GetGPUIndex());
 
 		RootResult = double(GPUTiming) / double(GPUFreq);
 	}
@@ -287,7 +267,7 @@ float FD3D12EventNode::GetTiming()
 	{
 		// Get the timing result and block the CPU until it is ready
 		const uint64 GPUTiming = Timing.GetTiming(true);
-		const uint64 GPUFreq = Timing.GetTimingFrequency();
+		const uint64 GPUFreq = Timing.GetTimingFrequency(GetParentDevice()->GetGPUIndex());
 
 		Result = double(GPUTiming) / double(GPUFreq);
 	}
@@ -393,9 +373,16 @@ bool D3D12RHI::FD3DGPUProfiler::CheckGpuHeartbeat() const
 			if (Status != GFSDK_Aftermath_Device_Status_Active)
 			{
 				GIsGPUCrashed = true;
-				const TCHAR* AftermathReason[] = { TEXT("Active"), TEXT("Timeout"), TEXT("OutOfMemory"), TEXT("PageFault"), TEXT("Unknown") };
-				check(Status < ARRAYSIZE(AftermathReason));
-				UE_LOG(LogRHI, Error, TEXT("[Aftermath] Status: %s"), AftermathReason[Status]);
+				const TCHAR* AftermathReason[] = { TEXT("Active"), TEXT("Timeout"), TEXT("OutOfMemory"), TEXT("PageFault"), TEXT("Stopped"), TEXT("Reset"), TEXT("Unknown"), TEXT("DmaFault") };
+				if (Status < UE_ARRAY_COUNT(AftermathReason))
+				{
+					UE_LOG(LogRHI, Error, TEXT("[Aftermath] Status: %s"), AftermathReason[Status]);
+				}
+				else
+				{
+					UE_LOG(LogRHI, Error, TEXT("[Aftermath] Invalid Status result value: %u"), Status);
+				}
+
 
 				TArray<GFSDK_Aftermath_ContextData> ContextDataOut;
 				ContextDataOut.AddUninitialized(AftermathContexts.Num());
@@ -405,20 +392,23 @@ bool D3D12RHI::FD3DGPUProfiler::CheckGpuHeartbeat() const
 					UE_LOG(LogRHI, Error, TEXT("[Aftermath] Scanning %d command lists for dumps"), ContextDataOut.Num());
 					for (GFSDK_Aftermath_ContextData& ContextData : ContextDataOut)
 					{
-						if (ContextData.status == GFSDK_Aftermath_Context_Status_Executing)
+						if (ContextData.status == GFSDK_Aftermath_Context_Status_Executing || Status == GFSDK_Aftermath_Device_Status_PageFault)
 						{
 							UE_LOG(LogRHI, Error, TEXT("[Aftermath] GPU Stack Dump"));
 							uint32 NumCRCs = ContextData.markerSize / sizeof(uint32);
 							uint32* Data = (uint32*)ContextData.markerData;
 							for (uint32 i = 0; i < NumCRCs; i++)
 							{
-								const FString* Frame = CachedStrings.Find(Data[i]);
+								const FString* Frame = CachedEventStrings.Find(Data[i]);
 								if (Frame != nullptr)
 								{
 									UE_LOG(LogRHI, Error, TEXT("[Aftermath] %i: %s"), i, *(*Frame));
 								}
 							}
-							UE_LOG(LogRHI, Error, TEXT("[Aftermath] GPU Stack Dump"));
+							if (NumCRCs > 0)
+							{
+								UE_LOG(LogRHI, Error, TEXT("[Aftermath] GPU Stack Dump"));
+							}
 						}
 					}
 				}
@@ -461,17 +451,21 @@ static int32 FindCmdListTimingPairIndex(const TArray<uint64>& CmdListStartTimest
 
 uint64 D3D12RHI::FD3DGPUProfiler::CalculateIdleTime(uint64 StartTime, uint64 EndTime)
 {
-	const int32 NumTimingPairs = CmdListStartTimestamps.Num();
-	check(NumTimingPairs == CmdListEndTimestamps.Num() && NumTimingPairs == IdleTimeCDF.Num());
+	FD3D12Device* Device = GetParentDevice();
+
+	FD3D12CommandListManager &CLManager = Device->GetCommandListManager();
+
+	const int32 NumTimingPairs = CLManager.GetStartTimestamps().Num();
+	check(NumTimingPairs == CLManager.GetEndTimestamps().Num() && NumTimingPairs == CLManager.GetIdleTime().Num());
 	
 	if (!NumTimingPairs)
 	{
 		return 0;
 	}
 
-	const int32 StartIdx = FindCmdListTimingPairIndex(CmdListStartTimestamps, StartTime);
-	const int32 EndIdx = FindCmdListTimingPairIndex(CmdListStartTimestamps, EndTime);
-	return IdleTimeCDF[EndIdx] - IdleTimeCDF[StartIdx];
+	const int32 StartIdx = FindCmdListTimingPairIndex(CLManager.GetStartTimestamps(), StartTime);
+	const int32 EndIdx = FindCmdListTimingPairIndex(CLManager.GetStartTimestamps(), EndTime);
+	return CLManager.GetIdleTime()[EndIdx] - CLManager.GetIdleTime()[StartIdx];
 }
 
 void D3D12RHI::FD3DGPUProfiler::DoPreProfileGPUWork()
@@ -480,12 +474,8 @@ void D3D12RHI::FD3DGPUProfiler::DoPreProfileGPUWork()
 	constexpr bool bWaitForCommands = false;
 	constexpr EFlushCmdsAction FlushAction = EFlushCmdsAction::FCEA_StartProfilingGPU;
 
-	FD3D12Adapter* Adapter = GetParentAdapter();
-	for (uint32 GPUIdx : FRHIGPUMask::All())
-	{
-		FD3D12Device* Device = Adapter->GetDevice(GPUIdx);
-		Device->GetDefaultCommandContext().FlushCommands(bWaitForCommands, FlushAction);
-	}
+	FD3D12Device* Device = GetParentDevice();
+	Device->GetDefaultCommandContext().FlushCommands(bWaitForCommands, FlushAction);
 }
 
 void D3D12RHI::FD3DGPUProfiler::DoPostProfileGPUWork()
@@ -495,7 +485,7 @@ void D3D12RHI::FD3DGPUProfiler::DoPostProfileGPUWork()
 	constexpr EFlushCmdsAction FlushAction = EFlushCmdsAction::FCEA_EndProfilingGPU;
 
 	TArray<FResolvedCmdListExecTime> CmdListExecTimes;
-	FD3D12Adapter* Adapter = GetParentAdapter();
+	FD3D12Adapter* Adapter = GetParentDevice()->GetParentAdapter();
 	for (uint32 GPUIdx : FRHIGPUMask::All())
 	{
 		FD3D12Device* Device = Adapter->GetDevice(GPUIdx);

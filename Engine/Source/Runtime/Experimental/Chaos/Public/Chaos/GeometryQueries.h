@@ -12,6 +12,7 @@
 #include "ImplicitObjectScaled.h"
 #include "Chaos/Box.h"
 #include "Chaos/Sphere.h"
+#include "Chaos/Levelset.h"
 
 #include "ChaosArchive.h"
 #include <algorithm>
@@ -30,7 +31,7 @@ namespace Chaos
 	template <typename QueryGeometry>
 	bool OverlapQuery(const FImplicitObject& A, const FRigidTransform3& ATM, const QueryGeometry& B, const FRigidTransform3& BTM, const FReal Thickness = 0, FMTDInfo* OutMTD=nullptr)
 	{
-		const EImplicitObjectType AType = A.GetType(true);
+		const EImplicitObjectType AType = A.GetType();
 		constexpr EImplicitObjectType BType = QueryGeometry::StaticType();
 		
 		if (AType == ImplicitObjectType::Transformed)
@@ -79,30 +80,37 @@ namespace Chaos
 		{
 			switch (AType)
 			{
-			case ImplicitObjectType::HeightField:
-			{
-				const THeightField<FReal>& AHeightField = static_cast<const THeightField<FReal>&>(A);
-				return AHeightField.OverlapGeom(B, BToATM, Thickness, OutMTD);
-			}
-			case ImplicitObjectType::TriangleMesh:
-			{
-				const FTriangleMeshImplicitObject& ATriangleMesh = static_cast<const FTriangleMeshImplicitObject&>(A);
-				return ATriangleMesh.OverlapGeom(B, BToATM, Thickness, OutMTD);
-			}
-			default:
-				if (IsScaled(AType))
+				case ImplicitObjectType::HeightField:
 				{
-					const auto& AScaled = TImplicitObjectScaled<FTriangleMeshImplicitObject>::AsScaledChecked(A);
-					return AScaled.LowLevelOverlapGeom(B, BToATM, Thickness, OutMTD);
+					const FHeightField& AHeightField = static_cast<const FHeightField&>(A);
+					return AHeightField.OverlapGeom(B, BToATM, Thickness, OutMTD);
 				}
-				else if(IsInstanced(AType))
+				case ImplicitObjectType::TriangleMesh:
 				{
-					const auto& AInstanced = TImplicitObjectInstanced<FTriangleMeshImplicitObject>::AsInstancedChecked(A);
-					return AInstanced.LowLevelOverlapGeom(B,BToATM,Thickness, OutMTD);
+					const FTriangleMeshImplicitObject& ATriangleMesh = static_cast<const FTriangleMeshImplicitObject&>(A);
+					return ATriangleMesh.OverlapGeom(B, BToATM, Thickness, OutMTD);
 				}
-				else
+				case ImplicitObjectType::LevelSet:
 				{
-					check(false);	//unsupported query type
+					const TLevelSet<FReal, 3>& ALevelSet = static_cast<const TLevelSet<FReal, 3>&>(A);
+					return ALevelSet.OverlapGeom(B, BToATM, Thickness, OutMTD);
+				}
+				default:
+				{
+					if(IsScaled(AType))
+					{
+						const auto& AScaled = TImplicitObjectScaled<FTriangleMeshImplicitObject>::AsScaledChecked(A);
+						return AScaled.LowLevelOverlapGeom(B, BToATM, Thickness, OutMTD);
+					}
+					else if(IsInstanced(AType))
+					{
+						const auto& AInstanced = TImplicitObjectInstanced<FTriangleMeshImplicitObject>::AsInstancedChecked(A);
+						return AInstanced.LowLevelOverlapGeom(B, BToATM, Thickness, OutMTD);
+					}
+					else
+					{
+						check(false);	//unsupported query type
+					}
 				}
 			}
 		}
@@ -113,7 +121,7 @@ namespace Chaos
 	template <typename SweptGeometry>
 	bool SweepQuery(const FImplicitObject& A, const FRigidTransform3& ATM, const SweptGeometry& B, const FRigidTransform3& BTM, const FVec3& Dir, const FReal Length, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex, const FReal Thickness, const bool bComputeMTD)
 	{
-		const EImplicitObjectType AType = A.GetType(true);
+		const EImplicitObjectType AType = A.GetType();
 		constexpr EImplicitObjectType BType = SweptGeometry::StaticType();
 
 		bool bResult = false;
@@ -186,19 +194,25 @@ namespace Chaos
 			//todo: pass bComputeMTD into these functions
 			switch (AType)
 			{
-			case ImplicitObjectType::HeightField:
-			{
-				const auto& AHeightField = static_cast<const THeightField<FReal>&>(A);
-				bResult = AHeightField.SweepGeom(B, BToATM, LocalDir, Length, OutTime, LocalPosition, LocalNormal, OutFaceIndex, Thickness, bComputeMTD);
-				break;
-			}
-			case ImplicitObjectType::TriangleMesh:
-			{
-				const auto& ATriangleMesh = static_cast<const FTriangleMeshImplicitObject&>(A);
-				bResult = ATriangleMesh.SweepGeom(B, BToATM, LocalDir, Length, OutTime, LocalPosition, LocalNormal, OutFaceIndex, Thickness, bComputeMTD);
-				break;
-			}
-			default:
+				case ImplicitObjectType::HeightField:
+				{
+					const FHeightField& AHeightField = static_cast<const FHeightField&>(A);
+					bResult = AHeightField.SweepGeom(B, BToATM, LocalDir, Length, OutTime, LocalPosition, LocalNormal, OutFaceIndex, Thickness, bComputeMTD);
+					break;
+				}
+				case ImplicitObjectType::TriangleMesh:
+				{
+					const FTriangleMeshImplicitObject& ATriangleMesh = static_cast<const FTriangleMeshImplicitObject&>(A);
+					bResult = ATriangleMesh.SweepGeom(B, BToATM, LocalDir, Length, OutTime, LocalPosition, LocalNormal, OutFaceIndex, Thickness, bComputeMTD);
+					break;
+				}
+				case ImplicitObjectType::LevelSet:
+				{
+					const TLevelSet<FReal, 3>& ALevelSet = static_cast<const TLevelSet<FReal, 3>&>(A);
+					bResult = ALevelSet.SweepGeom(B, BToATM, LocalDir, Length, OutTime, LocalPosition, LocalNormal, OutFaceIndex, Thickness, bComputeMTD);
+					break;
+				}
+				default:
 				if (IsScaled(AType))
 				{
 					const auto& AScaled = TImplicitObjectScaled<FTriangleMeshImplicitObject>::AsScaledChecked(A);
@@ -213,9 +227,8 @@ namespace Chaos
 				}
 				else
 				{
-					check(false);	//unsupported query type
+					ensureMsgf(false, TEXT("Unsupported query type: %u"), (uint8)AType);
 				}
-
 			}
 		}
 

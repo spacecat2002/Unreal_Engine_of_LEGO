@@ -4,6 +4,7 @@
 #include "UObject/ObjectMacros.h"
 #include "UObject/PropertyPortFlags.h"
 #include "UObject/UnrealType.h"
+#include "Misc/StringBuilder.h"
 
 /*-----------------------------------------------------------------------------
 	FNameProperty.
@@ -36,19 +37,19 @@ const TCHAR* FNameProperty::ImportText_Internal( const TCHAR* Buffer, void* Data
 {
 	if (!(PortFlags & PPF_Delimited))
 	{
-		*(FName*)Data = FName(Buffer, FNAME_Add);
+		*(FName*)Data = FName(Buffer);
 
 		// in order to indicate that the value was successfully imported, advance the buffer past the last character that was imported
 		Buffer += FCString::Strlen(Buffer);
 	}
 	else
 	{
-		FString Temp;
-		Buffer = FPropertyHelpers::ReadToken(Buffer, Temp, true);
+		TStringBuilder<256> Token;
+		Buffer = FPropertyHelpers::ReadToken(Buffer, /* out */ Token, true);
 		if (!Buffer)
 			return NULL;
 
-		*(FName*)Data = FName(*Temp, FNAME_Add);
+		*(FName*)Data = FName(Token);
 	}
 	return Buffer;
 }

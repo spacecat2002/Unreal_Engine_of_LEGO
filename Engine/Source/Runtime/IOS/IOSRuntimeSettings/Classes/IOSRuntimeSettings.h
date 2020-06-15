@@ -51,6 +51,9 @@ UENUM()
 	/** iOS 12 */
 	IOS_12 = 12 UMETA(DisplayName = "12.0"),
 
+	/** iOS 13 */
+	IOS_13 = 13 UMETA(DisplayName = "13.0"),
+
 };
 
 UENUM()
@@ -424,6 +427,15 @@ public:
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = ExtraData)
 	FString AdditionalPlistData;
 
+	/**
+	 * Choose whether to use a custom LaunchScreen.Storyboard as a Launchscreen. To use this option, create a storyboard in Xcode and 
+	 * copy it named LaunchScreen.storyboard in Build/IOS/Resources/Interface under your Project folder. This will be compiled and 
+	 * copied to the bundle app and the Launch screen image above will not be included in the app.
+	 * When using assets in your custom LaunchScreen.storyboard, add them in Build/IOS/Resources/Interface/Assets and they will be included.
+	 */
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = LaunchScreen, meta = (DisplayName = "Custom Launchscreen Storyboard (experimental)"))
+	bool bCustomLaunchscreenStoryboard;
+
 	// Whether the app supports Facebook
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = Online)
 	bool bEnableFacebookSupport;
@@ -536,6 +548,10 @@ public:
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Audio|CookOverrides|Stream Caching", meta = (DisplayName = "Max Cache Size (KB)"))
 	int32 CacheSizeKB;
 
+	/** This overrides the default max chunk size used when chunking audio for stream caching (ignored if < 0) */
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Audio|CookOverrides|Stream Caching", meta = (DisplayName = "Max Chunk Size Override (KB)"))
+	int32 MaxChunkSizeOverrideKB;
+
 	UPROPERTY(config, EditAnywhere, Category = "Audio|CookOverrides")
 	bool bResampleForDevice;
 
@@ -567,6 +583,10 @@ public:
 	// When set to anything beyond 0, this will ensure any SoundWaves longer than this value, in seconds, to stream directly off of the disk.
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Audio|CookOverrides", meta = (DisplayName = "Stream All Soundwaves Longer Than: "))
 	float AutoStreamingThreshold;
+
+	/** Whether to enable LOD streaming for landscape visual meshes. Requires Metal support. */
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Misc", Meta = (DisplayName = "Stream landscape visual mesh LODs"))
+	bool bStreamLandscapeMeshLODs;
 
 	virtual void PostReloadConfig(class FProperty* PropertyThatWasLoaded) override;
 

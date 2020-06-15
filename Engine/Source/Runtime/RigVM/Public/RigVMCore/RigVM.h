@@ -128,7 +128,7 @@ public:
 	void Empty();
 
 	// resets the container and clones the input VM
-	void CopyFrom(URigVM* InVM);
+	void CopyFrom(URigVM* InVM, bool bDeferCopy = false);
 
 	// Executes the VM.
 	// You can optionally provide external memory to the execution
@@ -457,6 +457,13 @@ private:
 	TArray<uint32> FirstPointerForInstruction;
 	TArray<void*> CachedMemoryPointers;
 	TArray<FRigVMMemoryContainer*> CachedMemory;
+
+	int32 ExecutingThreadId;
+
+	UPROPERTY(transient)
+	URigVM* DeferredVMToCopy;
+
+	void CopyDeferredVMIfRequired();
 
 	friend class URigVMCompiler;
 };

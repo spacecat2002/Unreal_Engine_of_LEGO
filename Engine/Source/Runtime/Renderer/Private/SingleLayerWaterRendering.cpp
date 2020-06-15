@@ -12,6 +12,8 @@
 #include "PostProcess/PostProcessSubsurface.h"
 #include "PostProcess/SceneRenderTargets.h"
 #include "PostProcessTemporalAA.h"
+#include "RayTracing/RaytracingOptions.h"
+#include "RayTracing/RayTracingReflections.h"
 #include "RenderGraph.h"
 #include "ScenePrivate.h"
 #include "SceneRendering.h"
@@ -21,7 +23,7 @@
 
 
 DECLARE_GPU_STAT(SingleLayerWater);
-
+DECLARE_GPU_STAT_NAMED(RayTracingWaterReflections, TEXT("Ray Tracing Water Reflections"));
 
 
 static TAutoConsoleVariable<int32> CVarWaterSingleLayer(
@@ -62,6 +64,10 @@ static TAutoConsoleVariable<int32> CVarWaterSingleLayerSSR(
 	TEXT("Enable SSR for the single water renderring system."),
 	ECVF_RenderThreadSafe | ECVF_Scalability);
 
+static TAutoConsoleVariable<int32> CVarWaterSingleLayerRTR(
+	TEXT("r.Water.SingleLayer.RTR"), 1,
+	TEXT("Enable RTR for the single water renderring system."),
+	ECVF_RenderThreadSafe | ECVF_Scalability);
 
 static TAutoConsoleVariable<int32> CVarWaterSingleLayerSSRTAA(
 	TEXT("r.Water.SingleLayer.SSRTAA"), 1,
@@ -95,7 +101,7 @@ static bool ShouldRenderSingleLayerWater(const FViewInfo& View)
 // This is to have switch use the simple single layer water shading similar to mobile: no dynamic lights, only sun and sky, no distortion, no colored transmittance on background, no custom depth read.
 bool SingleLayerWaterUsesSimpleShading(EShaderPlatform ShaderPlatform)
 {
-	return  IsSwitchPlatform(ShaderPlatform) && IsForwardShadingEnabled(ShaderPlatform);
+	return  (IsSwitchPlatform(ShaderPlatform) || IsVulkanMobileSM5Platform(ShaderPlatform)) && IsForwardShadingEnabled(ShaderPlatform);
 }
 
 bool ShouldRenderSingleLayerWater(const TArray<FViewInfo>& Views, const FEngineShowFlags& EngineShowFlags)
@@ -131,7 +137,7 @@ bool ShouldRenderSingleLayerWaterSkippedRenderEditorNotification(const TArray<FV
 bool UseSingleLayerWaterIndirectDraw(EShaderPlatform ShaderPlatform)
 {
 	return IsFeatureLevelSupported(ShaderPlatform, ERHIFeatureLevel::SM5)
-		&& !IsSwitchPlatform(ShaderPlatform) && !IsVulkanPlatform(ShaderPlatform) && !IsMetalPlatform(ShaderPlatform); // Switch does not use tiling, Vulkan gives error with WaterTileCatergorisationCS usage of atomic, and Metal does not play nice, either.
+		&& !IsSwitchPlatform(ShaderPlatform) && !IsVulkanMobilePlatform(ShaderPlatform); // Switch does not use tiling, Vulkan gives error with WaterTileCatergorisationCS usage of atomic.
 }
 
 
@@ -257,6 +263,7 @@ BEGIN_SHADER_PARAMETER_STRUCT(FSingleLayerWaterCommonShaderParameters, )
 	SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
 	SHADER_PARAMETER_STRUCT_REF(FReflectionCaptureShaderData, ReflectionCaptureData)
 	SHADER_PARAMETER_STRUCT_REF(FReflectionUniformParameters, ReflectionsParameters)
+	SHADER_PARAMETER_STRUCT_REF(FForwardLightData, ForwardLightData)
 END_SHADER_PARAMETER_STRUCT()
 
 class FSingleLayerWaterCompositePS : public FGlobalShader
@@ -475,11 +482,11 @@ void FDeferredShadingSceneRenderer::CopySingleLayerWaterTextures(FRHICommandList
 	    PassParameters->SceneDepthCopyDownsampleSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	    PassParameters->SVPositionToSourceTextureUV = FVector2D(RefractionDownsampleFactor / float(SceneContext.GetBufferSizeXY().X), RefractionDownsampleFactor / float(SceneContext.GetBufferSizeXY().Y));
     
-	    PassParameters->RenderTargets[0] = FRenderTargetBinding(SceneDepthWithoutSingleLayerWaterTexture, ERenderTargetLoadAction::ENoAction);
+	    PassParameters->RenderTargets[0] = FRenderTargetBinding(SceneDepthWithoutSingleLayerWaterTexture, (ViewIndex == 0) ? ERenderTargetLoadAction::ENoAction : ERenderTargetLoadAction::ELoad);
 
 	    if (bCopyColor)
 	    {
-		    PassParameters->RenderTargets[1] = FRenderTargetBinding(SceneColorWithoutSingleLayerWaterTexture, ERenderTargetLoadAction::ENoAction);
+		    PassParameters->RenderTargets[1] = FRenderTargetBinding(SceneColorWithoutSingleLayerWaterTexture, (ViewIndex == 0) ? ERenderTargetLoadAction::ENoAction : ERenderTargetLoadAction::ELoad);
 	    }
 
 	    FWaterRefractionCopyPS::FPermutationDomain PermutationVector;
@@ -531,7 +538,7 @@ void FDeferredShadingSceneRenderer::BeginRenderingWaterGBuffer(FRHICommandList& 
 	FRHIRenderPassInfo RPInfo;
 	SceneContext.FillGBufferRenderPassInfo(ERenderTargetLoadAction::ELoad, RPInfo, VelocityRTIndex, TangentRTIndex);
 	// Set a dummy Scene color RT to avoid gbuffer to stomp HDR scene color we want to blend over
-	RPInfo.ColorRenderTargets[0].Action = MakeRenderTargetActions(ERenderTargetLoadAction::ENoAction, ERenderTargetStoreAction::ENoAction);
+	RPInfo.ColorRenderTargets[0].Action = MakeRenderTargetActions(ERenderTargetLoadAction::ENoAction, ERenderTargetStoreAction::EStore);
 	RPInfo.ColorRenderTargets[0].RenderTarget = SceneContext.GetSceneColorSurface();
 
 	// Stencil always has to be store or certain VK drivers will leave the attachment in an undefined state.
@@ -542,10 +549,6 @@ void FDeferredShadingSceneRenderer::BeginRenderingWaterGBuffer(FRHICommandList& 
 	// Set other UAVs
 	const bool bClearQuadOverdrawBuffers = false;
 	SceneContext.SetQuadOverdrawUAV(RHICmdList, bBindQuadOverdrawBuffers, bClearQuadOverdrawBuffers, RPInfo);
-	if (UseVirtualTexturing(CurrentFeatureLevel) && !bBindQuadOverdrawBuffers)
-	{
-		SceneContext.BindVirtualTextureFeedbackUAV(RPInfo);
-	}
 
 	// Make the render targets writable
 	FRHITexture* TransitionRTs[MaxSimultaneousRenderTargets];
@@ -634,6 +637,7 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWaterReflections(FRHIComman
 				SetupReflectionUniformParameters(View, ReflectionUniformParameters);
 				Parameters.ReflectionsParameters = CreateUniformBufferImmediate(ReflectionUniformParameters, UniformBuffer_SingleDraw);
 			}
+			Parameters.ForwardLightData = View.ForwardLightingResources->ForwardLightDataUniformBuffer;
 		};
 
 		const bool bRunTiled = UseSingleLayerWaterIndirectDraw(View.GetShaderPlatform()) && CVarWaterSingleLayerTiledComposite.GetValueOnRenderThread();
@@ -667,7 +671,89 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWaterReflections(FRHIComman
 		}
 
  		const bool bEnableSSR = CVarWaterSingleLayerSSR.GetValueOnRenderThread() != 0 && ShouldRenderScreenSpaceReflections(View);
-		if (bEnableSSR)
+		const bool bEnableRTR = CVarWaterSingleLayerRTR.GetValueOnRenderThread() != 0 && ShouldRenderRayTracingReflections(View);
+		if (bEnableRTR)
+		{
+			RDG_EVENT_SCOPE(GraphBuilder, "RayTracingWaterReflections");
+			RDG_GPU_STAT_SCOPE(GraphBuilder, RayTracingWaterReflections);
+
+			IScreenSpaceDenoiser::FReflectionsInputs DenoiserInputs;
+			IScreenSpaceDenoiser::FReflectionsRayTracingConfig RayTracingConfig;
+
+			//RayTracingConfig.ResolutionFraction = FMath::Clamp(GetRayTracingReflectionsScreenPercentage() / 100.0f, 0.25f, 1.0f);
+			RayTracingConfig.ResolutionFraction = 1.0f;
+			//RayTracingConfig.RayCountPerPixel = GetRayTracingReflectionsSamplesPerPixel(View) > -1 ? GetRayTracingReflectionsSamplesPerPixel(View) : View.FinalPostProcessSettings.RayTracingReflectionsSamplesPerPixel;
+			RayTracingConfig.RayCountPerPixel = 1;
+
+			// Water is assumed to have zero roughness and is not currently denoised.
+			//int32 DenoiserMode = GetReflectionsDenoiserMode();
+			//bool bDenoise = DenoiserMode != 0;
+			int32 DenoiserMode = 0;
+			bool bDenoise = false;
+
+			if (!bDenoise)
+			{
+				RayTracingConfig.ResolutionFraction = 1.0f;
+			}
+
+			FRayTracingReflectionOptions Options;
+			Options.Algorithm = FRayTracingReflectionOptions::BruteForce;
+			Options.SamplesPerPixel = 1;
+			Options.ResolutionFraction = 1.0;
+			Options.bReflectOnlyWater = true;
+
+			{
+				float UpscaleFactor = 1.0;
+				FRDGTextureDesc Desc = FRDGTextureDesc::Create2DDesc(
+					SceneTextures.SceneDepthBuffer->Desc.Extent / UpscaleFactor,
+					PF_FloatRGBA,
+					FClearValueBinding::None,
+					/* InFlags = */ TexCreate_None,
+					/* InTargetableFlags = */ TexCreate_ShaderResource | TexCreate_RenderTargetable | TexCreate_UAV,
+					/* bInForceSeparateTargetAndShaderResource = */ false);
+
+				DenoiserInputs.Color = GraphBuilder.CreateTexture(Desc, TEXT("RayTracingReflections"));
+
+				Desc.Format = PF_R16F;
+				DenoiserInputs.RayHitDistance = GraphBuilder.CreateTexture(Desc, TEXT("RayTracingReflectionsHitDistance"));
+				DenoiserInputs.RayImaginaryDepth = GraphBuilder.CreateTexture(Desc, TEXT("RayTracingReflectionsImaginaryDepth"));
+			}
+
+			bool bReflectOnlyWater = true;
+			RenderRayTracingReflections(
+				GraphBuilder,
+				SceneTextures,
+				View,
+				Options,
+				&DenoiserInputs);
+
+			if (bDenoise)
+			{
+				const IScreenSpaceDenoiser* DefaultDenoiser = IScreenSpaceDenoiser::GetDefaultDenoiser();
+				const IScreenSpaceDenoiser* DenoiserToUse = DenoiserMode == 1 ? DefaultDenoiser : GScreenSpaceDenoiser;
+
+				// Standard event scope for denoiser to have all profiling information not matter what, and with explicit detection of third party.
+				RDG_EVENT_SCOPE(GraphBuilder, "%s%s(WaterReflections) %dx%d",
+					DenoiserToUse != DefaultDenoiser ? TEXT("ThirdParty ") : TEXT(""),
+					DenoiserToUse->GetDebugName(),
+					View.ViewRect.Width(), View.ViewRect.Height());
+
+				IScreenSpaceDenoiser::FReflectionsOutputs DenoiserOutputs = DenoiserToUse->DenoiseWaterReflections(
+					GraphBuilder,
+					View,
+					&View.PrevViewInfo,
+					SceneTextures,
+					DenoiserInputs,
+					RayTracingConfig);
+
+				ReflectionsColor = DenoiserOutputs.Color;
+			}
+			else
+			{
+				ReflectionsColor = DenoiserInputs.Color;
+			}
+		}
+		else if (bEnableSSR)
 		{
 			// RUN SSR
 			// Uses the water GBuffer (depth, ABCDEF) to know how to start tracing.
@@ -701,8 +787,8 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWaterReflections(FRHIComman
 					SceneTextures, 
 					View,
 					TAASettings,
-					View.PrevViewInfo.SSRHistory,
-					&View.ViewState->PrevFrameViewInfo.SSRHistory);
+					View.PrevViewInfo.WaterSSRHistory,
+					&View.ViewState->PrevFrameViewInfo.WaterSSRHistory);
 
 				ReflectionsColor = TAAOutputs.SceneColor;
 			}

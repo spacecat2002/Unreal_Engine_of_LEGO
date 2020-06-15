@@ -348,8 +348,9 @@ public:
 
 public:
 
-	// MSVC 16.4 has a bug that does not properly handle the local static bool in CanEverRender. This will be fixed in 16.5. Working around by using FORCENOINLINE.
-#if !UE_SERVER && defined(_MSC_VER) && _MSC_VER >= 1924
+// MSVC 16.4 (1924) has a bug that does not properly handle the local static bool in CanEverRender. This will be fixed in 16.5. Working around by using FORCENOINLINE.
+// MSVC 16.6 (1926) fixes the problem so inlning can be enabled again from that point onwards.
+#if !UE_SERVER && defined(_MSC_VER) && _MSC_VER >= 1924 && _MSC_VER <= 1925
 #define INLINE_CANEVERRENDER FORCENOINLINE
 #else
 #define INLINE_CANEVERRENDER FORCEINLINE
@@ -369,6 +370,24 @@ public:
 #else
 		static bool bHasNullRHIOnCommandline = FParse::Param(FCommandLine::Get(), TEXT("nullrhi"));
 		return (!IsRunningCommandlet() || IsAllowCommandletRendering()) && !IsRunningDedicatedServer() && !(USE_NULL_RHI || bHasNullRHIOnCommandline);
+#endif // UE_SERVER
+	}
+
+	/**
+	 * Checks whether this application can render audio.
+	 * Certain application types produce sound, while for others this can be controlled via the -nosound cmdline.
+	 * This can be used for decisions like omitting code paths that make no sense on servers or games running in headless mode (e.g. automated tests).
+	 *
+	 * @return true if the application can render audio, false otherwise.
+	 */
+	INLINE_CANEVERRENDER static bool CanEverRenderAudio()
+	{
+#if UE_SERVER
+		return false;
+#else
+		static bool bHasNoAudioOnCommandline = FParse::Param(FCommandLine::Get(), TEXT("nosound")) && !FParse::Param(FCommandLine::Get(), TEXT("enablesound"));
+		static bool bApplicationTypeDoesNotRenderAudio = FApp::IsBenchmarking() || IsRunningDedicatedServer() || (IsRunningCommandlet() && !IsAllowCommandletAudio());
+		return !bApplicationTypeDoesNotRenderAudio && !bHasNoAudioOnCommandline;
 #endif // UE_SERVER
 	}
 

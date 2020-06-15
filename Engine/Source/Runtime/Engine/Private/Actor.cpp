@@ -42,6 +42,7 @@
 #include "DeviceProfiles/DeviceProfile.h"
 #include "ObjectTrace.h"
 #include "Net/Core/PushModel/PushModel.h"
+#include "Engine/AutoDestroySubsystem.h"
 
 DEFINE_LOG_CATEGORY(LogActor);
 
@@ -1009,8 +1010,6 @@ void AActor::TickActor( float DeltaSeconds, ELevelTick TickType, FActorTickFunct
 
 void AActor::Tick( float DeltaSeconds )
 {
-	bool bShouldAutoDestroy = bAutoDestroyWhenFinished;
-
 	if (GetClass()->HasAnyClassFlags(CLASS_CompiledFromBlueprint) || !GetClass()->HasAnyClassFlags(CLASS_Native))
 	{
 		// Blueprint code outside of the construction script should not run in the editor
@@ -1032,28 +1031,6 @@ void AActor::Tick( float DeltaSeconds )
 		{
 			FLatentActionManager& LatentActionManager = MyWorld->GetLatentActionManager();
 			LatentActionManager.ProcessLatentActions(this, MyWorld->GetDeltaSeconds());
-			if (bShouldAutoDestroy)
-			{
-				bShouldAutoDestroy = (LatentActionManager.GetNumActionsForObject(this) == 0);
-			}
-		}
-	}
-
-	if (bShouldAutoDestroy)
-	{
-		for (UActorComponent* const Comp : GetComponents())
-		{
-			if (Comp && !Comp->IsReadyForOwnerToAutoDestroy())
-			{
-				bShouldAutoDestroy = false;
-				break;
-			}
-		}
-
-		// die!
-		if (bShouldAutoDestroy)
-		{
-			Destroy();
 		}
 	}
 }
@@ -1078,9 +1055,7 @@ void AActor::PreReplication(IRepChangedPropertyTracker & ChangedPropertyTracker)
 
 	GatherCurrentMovement();
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	DOREPLIFETIME_ACTIVE_OVERRIDE(AActor, ReplicatedMovement, IsReplicatingMovement());
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	// Don't need to replicate AttachmentReplication if the root component replicates, because it already handles it.
 	DOREPLIFETIME_ACTIVE_OVERRIDE(AActor, AttachmentReplication, RootComponent && !RootComponent->GetIsReplicated());
@@ -1660,6 +1635,25 @@ bool AActor::HasNetOwner() const
 	}
 
 	return TopOwner->HasNetOwner();
+}
+
+void AActor::SetAutoDestroyWhenFinished(bool bVal)
+{
+	bAutoDestroyWhenFinished = bVal;
+	if (UWorld* MyWorld = GetWorld())
+	{
+		if(UAutoDestroySubsystem* AutoDestroySub = MyWorld->GetSubsystem<UAutoDestroySubsystem>())
+		{
+			if (bAutoDestroyWhenFinished && (HasActorBegunPlay() || IsActorBeginningPlay()))
+			{
+				AutoDestroySub->RegisterActor(this);
+			}
+			else
+			{
+				AutoDestroySub->UnregisterActor(this);
+			}
+		}
+	}
 }
 
 void AActor::K2_AttachRootComponentTo(USceneComponent* InParent, FName InSocketName, EAttachLocation::Type AttachLocationType /*= EAttachLocation::KeepRelativeOffset */, bool bWeldSimulatedBodies /*=true*/)
@@ -2569,7 +2563,6 @@ void AActor::EndViewTarget( APlayerController* PC )
 	K2_OnEndViewTarget(PC);
 }
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 APawn* AActor::GetInstigator() const
 {
 	return Instigator;
@@ -2579,7 +2572,6 @@ AController* AActor::GetInstigatorController() const
 {
 	return Instigator ? Instigator->Controller : nullptr;
 }
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 void AActor::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
 {
@@ -3039,7 +3031,7 @@ void AActor::PostSpawnInitialize(FTransform const& UserSpawnTransform, AActor* I
 			// nativized case. We used to ignore any non-default transform value set on the root component at cook (nativization) time, but that 
 			// doesn't work because existing placements of the Blueprint component in a scene may rely on the value that's stored in the CDO,
 			// and as a result the instance-specific override value doesn't get serialized out to the instance as a result of delta serialization.
-			SceneRootComponent->SetWorldTransform(UserSpawnTransform);
+			SceneRootComponent->SetWorldTransform(UserSpawnTransform, false, nullptr, ETeleportType::ResetPhysics);
 		}
 		else
 		{
@@ -3047,7 +3039,7 @@ void AActor::PostSpawnInitialize(FTransform const& UserSpawnTransform, AActor* I
 			// that's owned by the native CDO, so the final transform might not always necessarily equate to the passed-in UserSpawnTransform.
 			const FTransform RootTransform(SceneRootComponent->GetRelativeRotation(), SceneRootComponent->GetRelativeLocation(), SceneRootComponent->GetRelativeScale3D());
 			const FTransform FinalRootComponentTransform = RootTransform * UserSpawnTransform;
-			SceneRootComponent->SetWorldTransform(FinalRootComponentTransform);
+			SceneRootComponent->SetWorldTransform(FinalRootComponentTransform, false, nullptr, ETeleportType::ResetPhysics);
 		}
 	}
 
@@ -3272,14 +3264,18 @@ void AActor::SetReplicates(bool bInReplicates)
 		RemoteRole = bInReplicates ? ROLE_SimulatedProxy : ROLE_None;
 		bReplicates = bInReplicates;
 
-		// Only call into net driver if we just started replicating changed
-		// This actor should already be in the Network Actors List if it was already replicating.
-		if (bNewlyReplicates)
+		if (bReplicates)
 		{
 			// GetWorld will return nullptr on CDO, FYI
-			if (UWorld* MyWorld = GetWorld())		
+			if (UWorld* MyWorld = GetWorld())
 			{
-				MyWorld->AddNetworkActor(this);
+				// Only call into net driver if we just started replicating changed
+				// This actor should already be in the Network Actors List if it was already replicating.
+				if (bNewlyReplicates)
+				{
+					MyWorld->AddNetworkActor(this);
+				}
+
 				ForcePropertyCompare();
 			}
 		}
@@ -3363,9 +3359,7 @@ void AActor::ExchangeNetRoles(bool bRemoteOwned)
 	{
 		if (bRemoteOwned)
 		{
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 			Exchange( Role, RemoteRole );
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		}
 		bExchangedRoles = true;
 	}
@@ -3373,9 +3367,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 void AActor::SwapRoles()
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	Swap(Role, RemoteRole);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	MARK_PROPERTY_DIRTY_FROM_NAME(AActor, RemoteRole, this);
 	MARK_PROPERTY_DIRTY_FROM_NAME(AActor, Role, this);
@@ -3419,44 +3411,7 @@ void AActor::DispatchBeginPlay(bool bFromLevelStreaming)
 		if (!IsPendingKill())
 		{
 			// Initialize overlap state
-			if (!bFromLevelStreaming)
-			{
-				UpdateOverlaps();
-			}
-			else
-			{
-				// Note: Conditionally doing notifies here since loading or streaming in isn't actually conceptually beginning a touch.
-				//	     Rather, it was always touching and the mechanics of loading is just an implementation detail.
-				if (bGenerateOverlapEventsDuringLevelStreaming)
-				{
-					UpdateOverlaps(bGenerateOverlapEventsDuringLevelStreaming);
-				}
-				else
-				{
-					bool bUpdateOverlaps = true;
-					const EActorUpdateOverlapsMethod UpdateMethod = GetUpdateOverlapsMethodDuringLevelStreaming();
-					switch (UpdateMethod)
-					{
-					case EActorUpdateOverlapsMethod::OnlyUpdateMovable:
-						bUpdateOverlaps = IsRootComponentMovable();
-						break;
-
-					case EActorUpdateOverlapsMethod::NeverUpdate:
-						bUpdateOverlaps = false;
-						break;
-
-					case EActorUpdateOverlapsMethod::AlwaysUpdate:
-					default:
-						bUpdateOverlaps = true;
-						break;
-					}
-
-					if (bUpdateOverlaps)
-					{
-						UpdateOverlaps(bGenerateOverlapEventsDuringLevelStreaming);
-					}
-				}
-			}
+			UpdateInitialOverlaps(bFromLevelStreaming);
 		}
 
 		bActorBeginningPlayFromLevelStreaming = false;
@@ -3490,9 +3445,62 @@ void AActor::BeginPlay()
 		}
 	}
 
+	if (GetAutoDestroyWhenFinished())
+	{
+		if (UWorld* MyWorld = GetWorld())
+		{
+			if (UAutoDestroySubsystem* AutoDestroySys = MyWorld->GetSubsystem<UAutoDestroySubsystem>())
+			{
+				AutoDestroySys->RegisterActor(this);
+			}			
+		}
+	}
+
 	ReceiveBeginPlay();
 
 	ActorHasBegunPlay = EActorBeginPlayState::HasBegunPlay;
+}
+
+void AActor::UpdateInitialOverlaps(bool bFromLevelStreaming)
+{
+	if (!bFromLevelStreaming)
+	{
+		UpdateOverlaps();
+	}
+	else
+	{
+		// Note: Conditionally doing notifies here since loading or streaming in isn't actually conceptually beginning a touch.
+		//	     Rather, it was always touching and the mechanics of loading is just an implementation detail.
+		if (bGenerateOverlapEventsDuringLevelStreaming)
+		{
+			UpdateOverlaps(bGenerateOverlapEventsDuringLevelStreaming);
+		}
+		else
+		{
+			bool bUpdateOverlaps = true;
+			const EActorUpdateOverlapsMethod UpdateMethod = GetUpdateOverlapsMethodDuringLevelStreaming();
+			switch (UpdateMethod)
+			{
+				case EActorUpdateOverlapsMethod::OnlyUpdateMovable:
+					bUpdateOverlaps = IsRootComponentMovable();
+					break;
+
+				case EActorUpdateOverlapsMethod::NeverUpdate:
+					bUpdateOverlaps = false;
+					break;
+
+				case EActorUpdateOverlapsMethod::AlwaysUpdate:
+				default:
+					bUpdateOverlaps = true;
+					break;
+			}
+
+			if (bUpdateOverlaps)
+			{
+				UpdateOverlaps(bGenerateOverlapEventsDuringLevelStreaming);
+			}
+		}
+	}
 }
 
 void AActor::EnableInput(APlayerController* PlayerController)
@@ -3948,9 +3956,24 @@ bool AActor::SetRootComponent(class USceneComponent* NewRootComponent)
 	/** Only components owned by this actor can be used as a its root component. */
 	if (ensure(NewRootComponent == nullptr || NewRootComponent->GetOwner() == this))
 	{
-		Modify();
+		if (RootComponent != NewRootComponent)
+		{
+			Modify();
 
-		RootComponent = NewRootComponent;
+			USceneComponent* OldRootComponent = RootComponent;
+			RootComponent = NewRootComponent;
+
+			// Notify new root first, as it probably has no delegate on it.
+			if (NewRootComponent)
+			{
+				NewRootComponent->NotifyIsRootComponentChanged(true);
+			}
+
+			if (OldRootComponent)
+			{
+				OldRootComponent->NotifyIsRootComponentChanged(false);
+			}
+		}
 		return true;
 	}
 
@@ -4367,10 +4390,13 @@ void AActor::PostUnregisterAllComponents()
 
 void AActor::RegisterAllComponents()
 {
+	QUICK_SCOPE_CYCLE_COUNTER(STAT_AActor_RegisterAllComponents);
+
 	PreRegisterAllComponents();
 
 	// 0 - means register all components
-	verify(IncrementalRegisterComponents(0));
+	bool bAllRegistered = IncrementalRegisterComponents(0);
+	check(bAllRegistered);
 
 	// Clear this flag as it's no longer deferred
 	bHasDeferredComponentRegistration = false;
@@ -5007,42 +5033,32 @@ void AActor::SetLODParent(UPrimitiveComponent* InLODParent, float InParentDrawDi
 
 void AActor::SetHidden(bool bInHidden)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	bHidden = bInHidden;
 	MARK_PROPERTY_DIRTY_FROM_NAME(AActor, bHidden, this);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 void AActor::SetReplicatingMovement(bool bInReplicateMovement)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	bReplicateMovement = bInReplicateMovement;
 	MARK_PROPERTY_DIRTY_FROM_NAME(AActor, bReplicateMovement, this);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 void AActor::SetCanBeDamaged(bool bInCanBeDamaged)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	bCanBeDamaged = bInCanBeDamaged;
 	MARK_PROPERTY_DIRTY_FROM_NAME(AActor, bCanBeDamaged, this);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 void AActor::SetRole(ENetRole InRole)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	Role = InRole;
 	MARK_PROPERTY_DIRTY_FROM_NAME(AActor, Role, this);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 FRepMovement& AActor::GetReplicatedMovement_Mutable()
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	MARK_PROPERTY_DIRTY_FROM_NAME(AActor, ReplicatedMovement, this);
 	return ReplicatedMovement;
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 void AActor::SetReplicatedMovement(const FRepMovement& InReplicatedMovement)
@@ -5052,10 +5068,8 @@ void AActor::SetReplicatedMovement(const FRepMovement& InReplicatedMovement)
 
 void AActor::SetInstigator(APawn* InInstigator)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	Instigator = InInstigator;
 	MARK_PROPERTY_DIRTY_FROM_NAME(AActor, Instigator, this);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 #undef LOCTEXT_NAMESPACE

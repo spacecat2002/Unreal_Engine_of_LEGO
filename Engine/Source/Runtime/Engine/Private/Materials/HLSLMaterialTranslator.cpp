@@ -93,7 +93,8 @@ FHLSLMaterialTranslator::FHLSLMaterialTranslator(FMaterial* InMaterial,
 ,	bUsesSkyAtmosphere(false)
 ,	bUsesVertexColor(false)
 ,	bUsesParticleColor(false)
-,	bUsesParticleTransform(false)
+,	bUsesParticleLocalToWorld(false)
+,	bUsesParticleWorldToLocal(false)
 ,	bUsesVertexPosition(false)
 ,	bUsesTransformVector(false)
 ,	bCompilingPreviousFrame(false)
@@ -662,7 +663,7 @@ bool FHLSLMaterialTranslator::Translate()
 			MaterialShadingModels = ShadingModelsFromCompilation;
 		}
 
-		if (Domain == MD_Surface && IsSubsurfaceShadingModel(MaterialShadingModels))
+		if (Domain == MD_Volume || (Domain == MD_Surface && IsSubsurfaceShadingModel(MaterialShadingModels)))
 		{
 			// Note we don't test for the blend mode as you can have a translucent material using the subsurface shading model
 
@@ -790,9 +791,9 @@ bool FHLSLMaterialTranslator::Translate()
 		}
 
 		// Output the implementation for any custom expressions we will call below.
-		for (int32 ExpressionIndex = 0; ExpressionIndex < CustomExpressionImplementations.Num(); ExpressionIndex++)
+		for (int32 ExpressionIndex = 0; ExpressionIndex < CustomExpressions.Num(); ExpressionIndex++)
 		{
-			ResourcesString += CustomExpressionImplementations[ExpressionIndex] + "\r\n\r\n";
+			ResourcesString += CustomExpressions[ExpressionIndex].Implementation + "\r\n\r\n";
 		}
 
 		// Translation is designed to have a code chunk generation phase followed by several passes that only has readonly access to the code chunks.
@@ -890,9 +891,9 @@ bool FHLSLMaterialTranslator::Translate()
 
 		if (MaterialShadingModels.HasShadingModel(MSM_SingleLayerWater))
 		{
-			if (BlendMode != BLEND_Opaque)
+			if (BlendMode != BLEND_Opaque && BlendMode != BLEND_Masked)
 			{
-				Errorf(TEXT("SingleLayerWater materials must be opaque."));
+				Errorf(TEXT("SingleLayerWater materials must be opaque or masked."));
 			}
 			if (!MaterialShadingModels.HasOnlyShadingModel(MSM_SingleLayerWater))
 			{
@@ -1215,7 +1216,8 @@ void FHLSLMaterialTranslator::GetMaterialEnvironment(EShaderPlatform InPlatform,
 	OutEnvironment.SetDefine(TEXT("MATERIAL_SKY_ATMOSPHERE"), bUsesSkyAtmosphere);
 	OutEnvironment.SetDefine(TEXT("INTERPOLATE_VERTEX_COLOR"), bUsesVertexColor);
 	OutEnvironment.SetDefine(TEXT("NEEDS_PARTICLE_COLOR"), bUsesParticleColor); 
-	OutEnvironment.SetDefine(TEXT("NEEDS_PARTICLE_TRANSFORM"), bUsesParticleTransform);
+	OutEnvironment.SetDefine(TEXT("NEEDS_PARTICLE_LOCAL_TO_WORLD"), bUsesParticleLocalToWorld);
+	OutEnvironment.SetDefine(TEXT("NEEDS_PARTICLE_WORLD_TO_LOCAL"), bUsesParticleWorldToLocal);
 	OutEnvironment.SetDefine(TEXT("USES_TRANSFORM_VECTOR"), bUsesTransformVector);
 	OutEnvironment.SetDefine(TEXT("WANT_PIXEL_DEPTH_OFFSET"), bUsesPixelDepthOffset);
 	if (IsMetalPlatform(InPlatform))
@@ -1335,13 +1337,14 @@ void FHLSLMaterialTranslator::GetMaterialEnvironment(EShaderPlatform InPlatform,
 			}
 		}
 
-		if(ShadingModels.HasShadingModel(MSM_SingleLayerWater) && (IsSwitchPlatform(Platform) || IsPS4Platform(Platform) || Platform == SP_XBOXONE_D3D12))
+		if(ShadingModels.HasShadingModel(MSM_SingleLayerWater) && 
+			(IsSwitchPlatform(Platform) || IsVulkanMobileSM5Platform(Platform) || IsPS4Platform(Platform) || Platform == SP_XBOXONE_D3D12))
 		{
 			OutEnvironment.SetDefine(TEXT("DISABLE_FORWARD_LOCAL_LIGHTS"), TEXT("1"));
 		}
 
 		// This is to have switch use the simple single layer water shading similar to mobile: no dynamic lights, only sun and sky, no distortion, no colored transmittance on background, no custom depth read.
-		const bool bSingleLayerWaterUsesSimpleShading = IsSwitchPlatform(InPlatform) && IsForwardShadingEnabled(InPlatform);
+		const bool bSingleLayerWaterUsesSimpleShading = (IsSwitchPlatform(InPlatform) || IsVulkanMobileSM5Platform(InPlatform)) && IsForwardShadingEnabled(InPlatform);
 		if (ShadingModels.HasShadingModel(MSM_SingleLayerWater) && bSingleLayerWaterUsesSimpleShading)
 		{
 			OutEnvironment.SetDefine(TEXT("SINGLE_LAYER_WATER_SIMPLE_FORWARD"), TEXT("1"));
@@ -1365,6 +1368,39 @@ void FHLSLMaterialTranslator::GetMaterialEnvironment(EShaderPlatform InPlatform,
 		// Unlit shading model can only exist by itself
 		OutEnvironment.SetDefine(TEXT("MATERIAL_SINGLE_SHADINGMODEL"), TEXT("1"));
 		OutEnvironment.SetDefine(TEXT("MATERIAL_SHADINGMODEL_UNLIT"), TEXT("1"));
+	}
+
+	if (Material->GetMaterialDomain() == MD_Volume ) // && Material->HasN)
+	{
+		TArray<const UMaterialExpressionVolumetricAdvancedMaterialOutput*> VolumetricAdvancedExpressions;
+		Material->GetMaterialInterface()->GetMaterial()->GetAllExpressionsOfType(VolumetricAdvancedExpressions);
+		if (VolumetricAdvancedExpressions.Num() > 0)
+		{
+			if (VolumetricAdvancedExpressions.Num() > 1)
+			{
+				UE_LOG(LogMaterial, Fatal, TEXT("Only a single UMaterialExpressionVolumetricAdvancedMaterialOutput node is supported."));
+			}
+
+			OutEnvironment.SetDefine(TEXT("MATERIAL_VOLUMETRIC_ADVANCED"), TEXT("1"));
+
+			const UMaterialExpressionVolumetricAdvancedMaterialOutput* VolumetricAdvancedNode = VolumetricAdvancedExpressions[0];
+			if (VolumetricAdvancedNode->GetEvaluatePhaseOncePerPixel())
+			{
+				OutEnvironment.SetDefine(TEXT("MATERIAL_VOLUMETRIC_ADVANCED_PHASE_PERPIXEL"), TEXT("1"));
+			}
+			else
+			{
+				OutEnvironment.SetDefine(TEXT("MATERIAL_VOLUMETRIC_ADVANCED_PHASE_PERSAMPLE"), TEXT("1"));
+			}
+
+			OutEnvironment.SetDefine(TEXT("MATERIAL_VOLUMETRIC_ADVANCED_MULTISCATTERING_OCTAVE_COUNT"), VolumetricAdvancedNode->GetMultiScatteringApproximationOctaveCount());
+
+			OutEnvironment.SetDefine(TEXT("MATERIAL_VOLUMETRIC_ADVANCED_CONSERVATIVE_DENSITY"),
+				VolumetricAdvancedNode->ConservativeDensity.IsConnected() ? TEXT("1") : TEXT("0"));
+
+			OutEnvironment.SetDefine(TEXT("MATERIAL_VOLUMETRIC_ADVANCED_GROUND_CONTRIBUTION"),
+				VolumetricAdvancedNode->bGroundContribution ? TEXT("1") : TEXT("0"));
+		}
 	}
 }
 
@@ -1513,6 +1549,25 @@ FString FHLSLMaterialTranslator::GetMaterialShaderCode()
 	LazyPrintf.PushParam(*FString::Printf(TEXT("%u"),NumTexCoordVectors));
 
 	LazyPrintf.PushParam(*VertexInterpolatorsOffsetsDefinition);
+
+	FString MaterialAttributesDeclaration;
+
+	const TArray<FGuid>& OrderedVisibleAttributes = FMaterialAttributeDefinitionMap::GetOrderedVisibleAttributeList();
+	for(const FGuid& AttributeID : OrderedVisibleAttributes)
+	{
+		const FString PropertyName = FMaterialAttributeDefinitionMap::GetAttributeName(AttributeID);
+		const EMaterialValueType PropertyType = FMaterialAttributeDefinitionMap::GetValueType(AttributeID);
+		switch (PropertyType)
+		{
+		case MCT_Float1: case MCT_Float: MaterialAttributesDeclaration += FString::Printf(TEXT("\tfloat %s;") LINE_TERMINATOR, *PropertyName); break;
+		case MCT_Float2: MaterialAttributesDeclaration += FString::Printf(TEXT("\tfloat2 %s;") LINE_TERMINATOR, *PropertyName); break;
+		case MCT_Float3: MaterialAttributesDeclaration += FString::Printf(TEXT("\tfloat3 %s;") LINE_TERMINATOR, *PropertyName); break;
+		case MCT_Float4: MaterialAttributesDeclaration += FString::Printf(TEXT("\tfloat4 %s;") LINE_TERMINATOR, *PropertyName); break;
+		case MCT_ShadingModel: MaterialAttributesDeclaration += FString::Printf(TEXT("\tuint %s;") LINE_TERMINATOR, *PropertyName); break;
+		}
+	}
+
+	LazyPrintf.PushParam(*MaterialAttributesDeclaration);
 
 	// Stores the shared shader results member declarations
 	FString PixelMembersDeclaration;
@@ -1827,7 +1882,7 @@ const TCHAR* FHLSLMaterialTranslator::HLSLTypeString(EMaterialValueType Type) co
 	case MCT_Texture2DArray:		return TEXT("texture2DArray");
 	case MCT_VolumeTexture:			return TEXT("volumeTexture");
 	case MCT_StaticBool:			return TEXT("static bool");
-	case MCT_MaterialAttributes:	return TEXT("MaterialAttributes");
+	case MCT_MaterialAttributes:	return TEXT("FMaterialAttributes");
 	case MCT_TextureExternal:		return TEXT("TextureExternal");
 	case MCT_TextureVirtual:		return TEXT("TextureVirtual");
 	case MCT_VTPageTableResult:		return TEXT("VTPageTableResult");
@@ -1907,7 +1962,7 @@ int32 FHLSLMaterialTranslator::AddCodeChunkInner(uint64 Hash, const TCHAR* Forma
 		return CodeIndex;
 	}
 	// Can only create temporaries for certain types
-	else if ((Type & (MCT_Float | MCT_VTPageTableResult)) || Type == MCT_ShadingModel)
+	else if ((Type & (MCT_Float | MCT_VTPageTableResult)) || Type == MCT_ShadingModel || Type == MCT_MaterialAttributes)
 	{
 		// Check for existing
 		for (int32 i = 0; i < CurrentScopeChunks->Num(); ++i)
@@ -1929,11 +1984,6 @@ int32 FHLSLMaterialTranslator::AddCodeChunkInner(uint64 Hash, const TCHAR* Forma
 	}
 	else
 	{
-		if (Type == MCT_MaterialAttributes)
-		{
-			return Errorf(TEXT("Operation not supported on Material Attributes"));
-		}
-
 		if (Type & MCT_Texture)
 		{
 			return Errorf(TEXT("Operation not supported on a Texture"));
@@ -2615,7 +2665,8 @@ int32 FHLSLMaterialTranslator::CallExpression(FMaterialExpressionKey ExpressionK
 		if (FunctionCall)
 		{
 			FMaterialExpressionKey ReuseCompileStateExpressionKey = ExpressionKey;
- 			ReuseCompileStateExpressionKey.OutputIndex = INDEX_NONE; // Discard the output so we can share the stack internals
+			ReuseCompileStateExpressionKey.OutputIndex = INDEX_NONE; // Discard the output so we can share the stack internals
+			ReuseCompileStateExpressionKey.MaterialAttributeID = FGuid(0, 0, 0, 0); //Discard the Material Attribute ID so we can share the stack internals
 
 			FMaterialFunctionCompileState* SharedFunctionState = CurrentFunctionState->FindOrAddSharedFunctionState(ReuseCompileStateExpressionKey, FunctionCall);
 			FunctionCall->SetSharedCompileState(SharedFunctionState);
@@ -2989,8 +3040,8 @@ int32 FHLSLMaterialTranslator::ViewProperty(EMaterialExposedViewProperty Propert
 		{MEVP_TemporalSampleCount, MCT_Float1, TEXT("View.TemporalAAParams.y"), nullptr},
 		{MEVP_TemporalSampleIndex, MCT_Float1, TEXT("View.TemporalAAParams.x"), nullptr},
 		{MEVP_TemporalSampleOffset, MCT_Float2, TEXT("View.TemporalAAParams.zw"), nullptr},
-		{MEVP_RuntimeVirtualTextureOutputLevel, MCT_Float1, TEXT("View.VirtualTextureParams.x"), nullptr},
-		{MEVP_RuntimeVirtualTextureOutputDerivative, MCT_Float2, TEXT("View.VirtualTextureParams.zw"), nullptr},
+		{MEVP_RuntimeVirtualTextureOutputLevel, MCT_Float1, TEXT("View.RuntimeVirtualTextureMipLevel.x"), nullptr},
+		{MEVP_RuntimeVirtualTextureOutputDerivative, MCT_Float2, TEXT("View.RuntimeVirtualTextureMipLevel.zw"), nullptr},
 		{MEVP_PreExposure, MCT_Float1, TEXT("View.PreExposure.x"), TEXT("View.OneOverPreExposure.x")},
 	};
 	static_assert((sizeof(ViewPropertyMetaArray) / sizeof(ViewPropertyMetaArray[0])) == MEVP_MAX, "incoherency between EMaterialExposedViewProperty and ViewPropertyMetaArray");
@@ -4556,14 +4607,14 @@ int32 FHLSLMaterialTranslator::TextureProperty(int32 TextureIndex, EMaterialExpo
 {
 	EMaterialValueType TextureType = GetParameterType(TextureIndex);
 
-	if(TextureType != MCT_Texture2D && TextureType != MCT_TextureVirtual)
+	if(TextureType != MCT_Texture2D && TextureType != MCT_TextureVirtual && TextureType != MCT_VolumeTexture)
 	{
-		return Errorf(TEXT("Texture size only available for Texture2D, not %s"),DescribeType(TextureType));
+		return Errorf(TEXT("Texture size only available for Texture2D, TextureVirtual, and VolumeTexture, not %s"),DescribeType(TextureType));
 	}
 		
 	auto TextureExpression = (FMaterialUniformExpressionTexture*) (*CurrentScopeChunks)[TextureIndex].UniformExpression.GetReference();
 
-	return AddUniformExpression(new FMaterialUniformExpressionTextureProperty(TextureExpression, Property), MCT_Float2, TEXT(""));
+	return AddUniformExpression(new FMaterialUniformExpressionTextureProperty(TextureExpression, Property), (TextureType == MCT_VolumeTexture ? MCT_Float3 : MCT_Float2), TEXT(""));
 }
 
 int32 FHLSLMaterialTranslator::TextureDecalMipmapLevel(int32 TextureSizeInput)
@@ -4740,17 +4791,6 @@ int32 FHLSLMaterialTranslator::SceneTextureLookup(int32 ViewportUV, uint32 InSce
 	else // mobile
 	{
 		int32 UV = BufferUV;
-		if (Material->GetMaterialDomain() == MD_PostProcess)
-		{
-			int32 BlendableLocation = Material->GetBlendableLocation();
-			if (SceneTextureId == PPI_SceneDepth && !(BlendableLocation == BL_BeforeTranslucency || BlendableLocation == BL_BeforeTonemapping))
-			{
-				// SceneDepth lookups are not available when using MSAA, but we can access depth stored in SceneColor.A channel
-				// SceneColor.A channel holds depth till BeforeTonemapping location, then it's gets overwritten
-				return Errorf(TEXT("SceneDepth lookups are only available when BlendableLocation is BeforeTranslucency or BeforeTonemapping"));
-			}
-		}
-			
 		return AddCodeChunk(MCT_Float4,	TEXT("MobileSceneTextureLookup(Parameters, %d, %s)"), (int32)SceneTextureId, *CoerceParameter(UV, MCT_Float2));
 	}
 }
@@ -5013,7 +5053,7 @@ int32 FHLSLMaterialTranslator::VirtualTextureWorldToUV(int32 WorldPositionIndex,
 	return AddInlinedCodeChunk(MCT_Float2, *SampleCode, *GetParameterCode(WorldPositionIndex), *GetParameterCode(P0), *GetParameterCode(P1), *GetParameterCode(P2));
 }
 
-int32 FHLSLMaterialTranslator::VirtualTextureUnpack(int32 CodeIndex0, int32 CodeIndex1, int32 CodeIndex2, EVirtualTextureUnpackType UnpackType)
+int32 FHLSLMaterialTranslator::VirtualTextureUnpack(int32 CodeIndex0, int32 CodeIndex1, int32 CodeIndex2, int32 P0, EVirtualTextureUnpackType UnpackType)
 {
 	if (UnpackType == EVirtualTextureUnpackType::BaseColorYCoCg)
 	{
@@ -5042,8 +5082,8 @@ int32 FHLSLMaterialTranslator::VirtualTextureUnpack(int32 CodeIndex0, int32 Code
 	}
 	else if (UnpackType == EVirtualTextureUnpackType::HeightR16)
 	{
-		FString	SampleCode(TEXT("VirtualTextureUnpackHeightR16(%s)"));
-		return CodeIndex0 == INDEX_NONE ? INDEX_NONE : AddCodeChunk(MCT_Float, *SampleCode, *GetParameterCode(CodeIndex0));
+		FString	SampleCode(TEXT("VirtualTextureUnpackHeight(%s, %s)"));
+		return CodeIndex0 == INDEX_NONE ? INDEX_NONE : AddCodeChunk(MCT_Float, *SampleCode, *GetParameterCode(CodeIndex0), *GetParameterCode(P0));
 	}
 
 	return CodeIndex0;
@@ -5578,6 +5618,326 @@ int32 FHLSLMaterialTranslator::Length(int32 X)
 	}
 }
 
+int32 FHLSLMaterialTranslator::Step(int32 Y, int32 X)
+{
+	if (X == INDEX_NONE || Y == INDEX_NONE)
+	{
+		return INDEX_NONE;
+	}
+
+	FMaterialUniformExpression* ExpressionX = GetParameterUniformExpression(X);
+	FMaterialUniformExpression* ExpressionY = GetParameterUniformExpression(Y);
+
+	EMaterialValueType ResultType = GetArithmeticResultType(X, Y);
+
+	//Constant folding.
+	if (ExpressionX && ExpressionY)
+	{
+		// when x == y return 1.0f
+		if (ExpressionX == ExpressionY)
+		{
+			const int32 EqualResult = 1.0f;
+			if (ResultType == MCT_Float || ResultType == MCT_Float1)
+			{
+				return Constant(EqualResult);
+			}
+			if (ResultType == MCT_Float2)
+			{
+				return Constant2(EqualResult, EqualResult);
+			}
+			if (ResultType == MCT_Float3)
+			{
+				return Constant3(EqualResult, EqualResult, EqualResult);
+			}
+			if (ResultType == MCT_Float4)
+			{
+				return Constant4(EqualResult, EqualResult, EqualResult, EqualResult);
+			}
+		}
+
+		if (ExpressionX->IsConstant() && ExpressionY->IsConstant())
+		{
+			FLinearColor ValueX, ValueY;
+			FMaterialRenderContext DummyContext(nullptr, *Material, nullptr);
+			ExpressionX->GetNumberValue(DummyContext, ValueX);
+			ExpressionY->GetNumberValue(DummyContext, ValueY);
+
+			float Red = ValueX.R >= ValueY.R ? 1 : 0;
+			if (ResultType == MCT_Float || ResultType == MCT_Float1)
+			{
+				return Constant(Red);
+			}
+
+			float Green = ValueX.G >= ValueY.G ? 1 : 0;
+			if (ResultType == MCT_Float2)
+			{
+				return Constant2(Red, Green);
+			}
+
+			float Blue = ValueX.B >= ValueY.B ? 1 : 0;
+			if (ResultType == MCT_Float3)
+			{
+				return Constant3(Red, Green, Blue);
+			}
+
+			float Alpha = ValueX.A >= ValueY.A ? 1 : 0;
+			if (ResultType == MCT_Float4)
+			{
+				return Constant4(Red, Green, Blue, Alpha);
+			}
+		}
+	}
+
+	return AddCodeChunk(ResultType, TEXT("step(%s,%s)"), *CoerceParameter(Y, ResultType), *CoerceParameter(X, ResultType));
+	// return;
+}
+
+int32 FHLSLMaterialTranslator::SmoothStep(int32 X, int32 Y, int32 A)
+{
+	if (X == INDEX_NONE || Y == INDEX_NONE || A == INDEX_NONE)
+	{
+		return INDEX_NONE;
+	}
+
+	FMaterialUniformExpression* ExpressionX = GetParameterUniformExpression(X);
+	FMaterialUniformExpression* ExpressionY = GetParameterUniformExpression(Y);
+	FMaterialUniformExpression* ExpressionA = GetParameterUniformExpression(A);
+	bool bExpressionsAreEqual = false;
+
+	// According to https://docs.microsoft.com/en-us/windows/win32/direct3dhlsl/dx-graphics-hlsl-smoothstep
+	// Smoothstep's min and max and return result in the same size as the alpha.
+	// Therefore the result type (and each input) should be GetParameterType(A);
+
+	// However, for usability reasons, we will use the ArithmiticType of the three.
+	// This is important to do, because it allows a user to input a vector into the min or max
+	// and get a vector result, without putting inputs into the other two constants.
+	// This is not exactly the behavior of raw HLSL, but it is a more intuitive experience
+	// and mimics more closely the LinearInterpolate node.
+	// Incompatible inputs will be caught by the CoerceParameters below.
+
+	EMaterialValueType ResultType = GetArithmeticResultType(X, Y);
+	ResultType = GetArithmeticResultType(ResultType, GetParameterType(A));
+
+
+	// Skip over interpolations where inputs are equal
+
+	float EqualResult = 0.0f;
+	// smoothstep( x, y, y ) == 1.0
+	if (Y == A)
+	{
+		bExpressionsAreEqual = true;
+		EqualResult = 1.0f;
+	}
+
+	// smoothstep( x, y, x ) == 0.0
+	if (X == A)
+	{
+		bExpressionsAreEqual = true;
+		EqualResult = 0.0f;
+	}
+
+	if (bExpressionsAreEqual)
+	{
+		if (ResultType == MCT_Float || ResultType == MCT_Float1)
+		{
+			return Constant(EqualResult);
+		}
+		if (ResultType == MCT_Float2)
+		{
+			return Constant2(EqualResult, EqualResult);
+		}
+		if (ResultType == MCT_Float3)
+		{
+			return Constant3(EqualResult, EqualResult, EqualResult);
+		}
+		if (ResultType == MCT_Float4)
+		{
+			return Constant4(EqualResult, EqualResult, EqualResult, EqualResult);
+		}
+	}
+
+	// smoothstep( x, x, a ) could create a div by zero depending on implementation.
+	// The common implementation is to treat smoothstep as a step in these situations.
+	if (X == Y)
+	{
+		bExpressionsAreEqual = true;
+	}
+	else if (ExpressionX && ExpressionY)
+	{
+		if (ExpressionX->IsConstant() && ExpressionY->IsConstant() && (*CurrentScopeChunks)[X].Type == (*CurrentScopeChunks)[Y].Type)
+		{
+			FLinearColor ValueX, ValueY;
+			FMaterialRenderContext DummyContext(nullptr, *Material, nullptr);
+			ExpressionX->GetNumberValue(DummyContext, ValueX);
+			ExpressionY->GetNumberValue(DummyContext, ValueY);
+
+			if (ValueX == ValueY)
+			{
+				bExpressionsAreEqual = true;
+			}
+		}
+	}
+
+	if (bExpressionsAreEqual)
+	{
+		return Step(X, A);
+	}
+
+	//When all inputs are constant, we can precompile the operation.
+	if (ExpressionX && ExpressionY && ExpressionA && ExpressionX->IsConstant() && ExpressionY->IsConstant() && ExpressionA->IsConstant())
+	{
+		FLinearColor ValueX, ValueY, ValueA;
+		FMaterialRenderContext DummyContext(nullptr, *Material, nullptr);
+		ExpressionX->GetNumberValue(DummyContext, ValueX);
+		ExpressionY->GetNumberValue(DummyContext, ValueY);
+		ExpressionA->GetNumberValue(DummyContext, ValueA);
+
+		float Red = FMath::SmoothStep(ValueX.R, ValueY.R, ValueA.R);
+		if (ResultType == MCT_Float || ResultType == MCT_Float1)
+		{
+			return Constant(Red);
+		}
+
+		float Green = FMath::SmoothStep(ValueX.G, ValueY.G, ValueA.G);
+		if (ResultType == MCT_Float2)
+		{
+			return Constant2(Red, Green);
+		}
+
+		float Blue = FMath::SmoothStep(ValueX.B, ValueY.B, ValueA.B);
+		if (ResultType == MCT_Float3)
+		{
+			return Constant3(Red, Green, Blue);
+		}
+
+		float Alpha = FMath::SmoothStep(ValueX.A, ValueY.A, ValueA.A);
+		if (ResultType == MCT_Float4)
+		{
+			return Constant4(Red, Green, Blue, Alpha);
+		}
+	}
+
+	return AddCodeChunk(ResultType, TEXT("smoothstep(%s,%s,%s)"), *CoerceParameter(X, ResultType), *CoerceParameter(Y, ResultType), *CoerceParameter(A, ResultType));
+}
+
+int32 FHLSLMaterialTranslator::InvLerp(int32 X, int32 Y, int32 A)
+{
+	if (X == INDEX_NONE || Y == INDEX_NONE || A == INDEX_NONE)
+	{
+		return INDEX_NONE;
+	}
+
+	FMaterialUniformExpression* ExpressionX = GetParameterUniformExpression(X);
+	FMaterialUniformExpression* ExpressionY = GetParameterUniformExpression(Y);
+	FMaterialUniformExpression* ExpressionA = GetParameterUniformExpression(A);
+	bool bExpressionsAreEqual = false;
+
+	EMaterialValueType ResultType = GetParameterType(A);
+
+
+	// Skip over interpolations where inputs are equal.
+
+	float EqualResult = 0.0f;
+	// (y-x)/(y-x) == 1.0
+	if (Y == A)
+	{
+		bExpressionsAreEqual = true;
+		EqualResult = 1.0;
+	}
+
+	// (x-x)/(y-x) == 0.0
+	if (X == A)
+	{
+		bExpressionsAreEqual = true;
+		EqualResult = 0.0f;
+	}
+
+	if (bExpressionsAreEqual)
+	{
+		if (ResultType == MCT_Float || ResultType == MCT_Float1)
+		{
+			return Constant(EqualResult);
+		}
+		if (ResultType == MCT_Float2)
+		{
+			return Constant2(EqualResult, EqualResult);
+		}
+		if (ResultType == MCT_Float3)
+		{
+			return Constant3(EqualResult, EqualResult, EqualResult);
+		}
+		if (ResultType == MCT_Float4)
+		{
+			return Constant4(EqualResult, EqualResult, EqualResult, EqualResult);
+		}
+	}
+
+	// (a-x)/(x-x) will create a div by zero.
+	if (X == Y)
+	{
+		bExpressionsAreEqual = true;
+	}
+	else if (ExpressionX && ExpressionY)
+	{
+		if (ExpressionX->IsConstant() && ExpressionY->IsConstant() && (*CurrentScopeChunks)[X].Type == (*CurrentScopeChunks)[Y].Type)
+		{
+			FLinearColor ValueX, ValueY;
+			FMaterialRenderContext DummyContext(nullptr, *Material, nullptr);
+			ExpressionX->GetNumberValue(DummyContext, ValueX);
+			ExpressionY->GetNumberValue(DummyContext, ValueY);
+
+			if (ValueX == ValueY)
+			{
+				bExpressionsAreEqual = true;
+			}
+		}
+	}
+
+	if (bExpressionsAreEqual)
+	{
+		Error(TEXT("Div by Zero: InvLerp A == B."));
+	}
+
+	//When all inputs are constant, we can precompile the operation.
+	if (ExpressionX && ExpressionY && ExpressionA && ExpressionX->IsConstant() && ExpressionY->IsConstant() && ExpressionA->IsConstant())
+	{
+		FLinearColor ValueX, ValueY, ValueA;
+		FMaterialRenderContext DummyContext(nullptr, *Material, nullptr);
+		ExpressionX->GetNumberValue(DummyContext, ValueX);
+		ExpressionY->GetNumberValue(DummyContext, ValueY);
+		ExpressionA->GetNumberValue(DummyContext, ValueA);
+
+		float Red = FMath::GetRangePct(ValueX.R, ValueY.R, ValueA.R);
+		if (ResultType == MCT_Float || ResultType == MCT_Float1)
+		{
+			return Constant(Red);
+		}
+
+		float Green = FMath::GetRangePct(ValueX.G, ValueY.G, ValueA.G);
+		if (ResultType == MCT_Float2)
+		{
+			return Constant2(Red, Green);
+		}
+
+		float Blue = FMath::GetRangePct(ValueX.B, ValueY.B, ValueA.B);
+		if (ResultType == MCT_Float3)
+		{
+			return Constant3(Red, Green, Blue);
+		}
+
+		float Alpha = FMath::GetRangePct(ValueX.A, ValueY.A, ValueA.A);
+		if (ResultType == MCT_Float4)
+		{
+			return Constant4(Red, Green, Blue, Alpha);
+		}
+	}
+
+	int32 Numerator = Sub(A, X);
+	int32 Denominator = Sub(Y, X);
+
+	return Div(Numerator, Denominator);
+}
+
 int32 FHLSLMaterialTranslator::Lerp(int32 X,int32 Y,int32 A)
 {
 	if(X == INDEX_NONE || Y == INDEX_NONE || A == INDEX_NONE)
@@ -5930,8 +6290,11 @@ int32 FHLSLMaterialTranslator::TransformBase(EMaterialCommonBasis SourceCoordBas
 			}
 			else if (DestCoordBasis == MCB_MeshParticle)
 			{
-				CodeStr = TEXT("mul(<A>, <MATRIX>(Parameters.Particle.LocalToWorld))");
-				bUsesParticleTransform = true;
+				CodeStr = TEXT("mul(<A>, <MATRIX>(Parameters.Particle.WorldToParticle))");
+				if (ShaderFrequency == SF_Pixel)
+				{
+					bUsesParticleWorldToLocal = true;
+				}
 			}
 
 			// else use MCB_TranslatedWorld as intermediary basis
@@ -5962,13 +6325,13 @@ int32 FHLSLMaterialTranslator::TransformBase(EMaterialCommonBasis SourceCoordBas
 		{
 			if (DestCoordBasis == MCB_World)
 			{
-				CodeStr = TEXT("mul(<MATRIX>(Parameters.Particle.LocalToWorld), <A>)");
-				bUsesParticleTransform = true;
+				CodeStr = TEXT("mul(<A>, <MATRIX>(Parameters.Particle.ParticleToWorld))");
+				if (ShaderFrequency == SF_Pixel)
+				{
+					bUsesParticleLocalToWorld = true;
+				}
 			}
-			else
-			{
-				return Errorf(TEXT("Can transform only to world space from particle space"));
-			}
+			// use World as an intermediary base
 			break;
 		}
 		default:
@@ -6576,6 +6939,69 @@ int32 FHLSLMaterialTranslator::SkyAtmosphereDistantLightScatteredLuminance()
 	return AddCodeChunk(MCT_Float3, TEXT("MaterialExpressionSkyAtmosphereDistantLightScatteredLuminance(Parameters)"));
 }
 
+int32 FHLSLMaterialTranslator::SceneDepthWithoutWater(int32 Offset, int32 ViewportUV, bool bUseOffset, float FallbackDepth)
+{
+	if (ShaderFrequency == SF_Vertex && FeatureLevel <= ERHIFeatureLevel::ES3_1)
+	{
+		// mobile currently does not support this, we need to read a separate copy of the depth, we must disable framebuffer fetch and force scene texture reads.
+		return Errorf(TEXT("Cannot read scene depth from the vertex shader with feature level ES3.1 or below."));
+	}
+
+	if (!Material->GetShadingModels().HasShadingModel(MSM_SingleLayerWater))
+	{
+		return Errorf(TEXT("Can only read scene depth below water when material Shading Model is Single Layer Water."));
+	}
+	
+	if (Material->GetMaterialDomain() != MD_Surface)
+	{
+		return Errorf(TEXT("Can only read scene depth below water when material Domain is set to Surface."));
+	}
+
+	if (IsTranslucentBlendMode(Material->GetBlendMode()))
+	{
+		return Errorf(TEXT("Can only read scene depth below water when material Blend Mode isn't translucent."));
+	}
+
+	if (Offset == INDEX_NONE && bUseOffset)
+	{
+		return INDEX_NONE;
+	}
+
+	AddEstimatedTextureSample();
+
+	const FString UserDepthCode(TEXT("MaterialExpressionSceneDepthWithoutWater(%s, %s)"));
+	const FString FallbackString(FString::SanitizeFloat(FallbackDepth));
+	const int32 TexCoordCode = GetScreenAlignedUV(Offset, ViewportUV, bUseOffset);
+
+	// add the code string
+	return AddCodeChunk(
+		MCT_Float,
+		*UserDepthCode,
+		*GetParameterCode(TexCoordCode),
+		*FallbackString
+	);
+}
+
+int32 FHLSLMaterialTranslator::GetCloudSampleAltitude()
+{
+	return AddCodeChunk(MCT_Float, TEXT("MaterialExpressionCloudSampleAltitude(Parameters)"));
+}
+
+int32 FHLSLMaterialTranslator::GetCloudSampleAltitudeInLayer()
+{
+	return AddCodeChunk(MCT_Float, TEXT("MaterialExpressionCloudSampleAltitudeInLayer(Parameters)"));
+}
+
+int32 FHLSLMaterialTranslator::GetCloudSampleNormAltitudeInLayer()
+{
+	return AddCodeChunk(MCT_Float, TEXT("MaterialExpressionCloudSampleNormAltitudeInLayer(Parameters)"));
+}
+
+int32 FHLSLMaterialTranslator::GetVolumeSampleConservativeDensity()
+{
+	return AddCodeChunk(MCT_Float, TEXT("MaterialExpressionVolumeSampleConservativeDensity(Parameters)"));
+}
+
 int32 FHLSLMaterialTranslator::CustomPrimitiveData(int32 OutputIndex, EMaterialValueType Type)
 {
 	check(OutputIndex < FCustomPrimitiveData::NumCustomPrimitiveDataFloats);
@@ -6642,167 +7068,301 @@ int32 FHLSLMaterialTranslator::MapARPassthroughCameraUV(int32 UV)
 	return Lerp(ComponentMask(ULerp, 1, 1, 0, 0), ComponentMask(ULerp, 0, 0, 1, 1), ComponentMask(UV, 0, 1, 0, 0));
 }
 
-int32 FHLSLMaterialTranslator::CustomExpression( class UMaterialExpressionCustom* Custom, TArray<int32>& CompiledInputs )
+int32 FHLSLMaterialTranslator::AccessMaterialAttribute(int32 CodeIndex, const FGuid& AttributeID)
 {
-	int32 ResultIdx = INDEX_NONE;
+	check(GetParameterType(CodeIndex) == MCT_MaterialAttributes);
 
-	FString OutputTypeString;
-	EMaterialValueType OutputType;
-	switch( Custom->OutputType )
+	const FString AttributeName = FMaterialAttributeDefinitionMap::GetAttributeName(AttributeID);
+	const EMaterialValueType AttributeType = FMaterialAttributeDefinitionMap::GetValueType(AttributeID);
+	return AddInlinedCodeChunk(
+		AttributeType,
+		TEXT("%s.%s"),
+		*GetParameterCode(CodeIndex),
+		*AttributeName);
+}
+
+int32 FHLSLMaterialTranslator::CustomExpression( class UMaterialExpressionCustom* Custom, int32 OutputIndex, TArray<int32>& CompiledInputs )
+{
+	const FMaterialCustomExpressionEntry* CustomEntry = nullptr;
+	for (const FMaterialCustomExpressionEntry& Entry : CustomExpressions)
 	{
-	case CMOT_Float2:
-		OutputType = MCT_Float2;
-		OutputTypeString = TEXT("MaterialFloat2");
-		break;
-	case CMOT_Float3:
-		OutputType = MCT_Float3;
-		OutputTypeString = TEXT("MaterialFloat3");
-		break;
-	case CMOT_Float4:
-		OutputType = MCT_Float4;
-		OutputTypeString = TEXT("MaterialFloat4");
-		break;
-	default:
-		OutputType = MCT_Float;
-		OutputTypeString = TEXT("MaterialFloat");
-		break;
+		if (Entry.Expression == Custom &&
+			Entry.ScopeID == CurrentScopeID)
+		{
+			bool bInputsMatch = true;
+			for(int32 InputIndex = 0; InputIndex < CompiledInputs.Num(); ++InputIndex)
+			{
+				const uint64 InputHash = GetParameterHash(CompiledInputs[InputIndex]);
+				if (Entry.InputHash[InputIndex] != InputHash)
+				{
+					bInputsMatch = false;
+					break;
+				}
+			}
+
+			if (bInputsMatch)
+			{
+				CustomEntry = &Entry;
+				break;
+			}
+		}
 	}
 
-	// Declare implementation function
-	FString InputParamDecl;
-	check( Custom->Inputs.Num() == CompiledInputs.Num() );
-	for( int32 i = 0; i < Custom->Inputs.Num(); i++ )
+	if (!CustomEntry)
 	{
-		// skip over unnamed inputs
-		if( Custom->Inputs[i].InputName.IsNone() )
+		FString OutputTypeString;
+		EMaterialValueType OutputType;
+		switch (Custom->OutputType)
 		{
-			continue;
-		}
-		InputParamDecl += TEXT(",");
-		const FString InputNameStr = Custom->Inputs[i].InputName.ToString();
-		switch(GetParameterType(CompiledInputs[i]))
-		{
-		case MCT_Float:
-		case MCT_Float1:
-			InputParamDecl += TEXT("MaterialFloat ");
-			InputParamDecl += InputNameStr;
+		case CMOT_Float2:
+			OutputType = MCT_Float2;
+			OutputTypeString = TEXT("MaterialFloat2");
 			break;
-		case MCT_Float2:
-			InputParamDecl += TEXT("MaterialFloat2 ");
-			InputParamDecl += InputNameStr;
+		case CMOT_Float3:
+			OutputType = MCT_Float3;
+			OutputTypeString = TEXT("MaterialFloat3");
 			break;
-		case MCT_Float3:
-			InputParamDecl += TEXT("MaterialFloat3 ");
-			InputParamDecl += InputNameStr;
+		case CMOT_Float4:
+			OutputType = MCT_Float4;
+			OutputTypeString = TEXT("MaterialFloat4");
 			break;
-		case MCT_Float4:
-			InputParamDecl += TEXT("MaterialFloat4 ");
-			InputParamDecl += InputNameStr;
-			break;
-		case MCT_Texture2D:
-			InputParamDecl += TEXT("Texture2D ");
-			InputParamDecl += InputNameStr;
-			InputParamDecl += TEXT(", SamplerState ");
-			InputParamDecl += InputNameStr;
-			InputParamDecl += TEXT("Sampler ");
-			break;
-		case MCT_TextureCube:
-			InputParamDecl += TEXT("TextureCube ");
-			InputParamDecl += InputNameStr;
-			InputParamDecl += TEXT(", SamplerState ");
-			InputParamDecl += InputNameStr;
-			InputParamDecl += TEXT("Sampler ");
-			break;
-		case MCT_Texture2DArray:
-			InputParamDecl += TEXT("Texture2DArray ");
-			InputParamDecl += InputNameStr;
-			InputParamDecl += TEXT(", SamplerState ");
-			InputParamDecl += InputNameStr;
-			InputParamDecl += TEXT("Sampler ");
-			break;
-		case MCT_TextureExternal:
-			InputParamDecl += TEXT("TextureExternal ");
-			InputParamDecl += InputNameStr;
-			InputParamDecl += TEXT(", SamplerState ");
-			InputParamDecl += InputNameStr;
-			InputParamDecl += TEXT("Sampler ");
-			break;
-		case MCT_VolumeTexture:
-			InputParamDecl += TEXT("Texture3D ");
-			InputParamDecl += InputNameStr;
-			InputParamDecl += TEXT(", SamplerState ");
-			InputParamDecl += InputNameStr;
-			InputParamDecl += TEXT("Sampler ");
+		case CMOT_MaterialAttributes:
+			OutputType = MCT_MaterialAttributes;
+			OutputTypeString = TEXT("FMaterialAttributes");
 			break;
 		default:
-			return Errorf(TEXT("Bad type %s for %s input %s"),DescribeType(GetParameterType(CompiledInputs[i])), *Custom->Description, *InputNameStr);
+			OutputType = MCT_Float;
+			OutputTypeString = TEXT("MaterialFloat");
 			break;
 		}
-	}
-	int32 CustomExpressionIndex = CustomExpressionImplementations.Num();
-	FString Code = Custom->Code;
-	if( !Code.Contains(TEXT("return")) )
-	{
-		Code = FString(TEXT("return "))+Code+TEXT(";");
-	}
-	Code.ReplaceInline(TEXT("\n"),TEXT("\r\n"), ESearchCase::CaseSensitive);
 
-	FString ParametersType = ShaderFrequency == SF_Vertex ? TEXT("Vertex") : (ShaderFrequency == SF_Domain ? TEXT("Tessellation") : TEXT("Pixel"));
-
-	FString ImplementationCode;
-
-	for (FCustomDefine DefineEntry : Custom->AdditionalDefines)
-	{
-		FString DefineStatement = TEXT("#ifndef ") + DefineEntry.DefineName + LINE_TERMINATOR;
-		DefineStatement += TEXT("#define ") + DefineEntry.DefineName + TEXT(" ") + DefineEntry.DefineValue + LINE_TERMINATOR;
-		DefineStatement += TEXT("#endif//") + DefineEntry.DefineName + LINE_TERMINATOR;
-
-		ImplementationCode += DefineStatement;
-	}
-
-	for (FString IncludeFile : Custom->IncludeFilePaths)
-	{
-		FString IncludeStatement = TEXT("#include ");
-		IncludeStatement += TEXT("\"");
-		IncludeStatement += IncludeFile;
-		IncludeStatement += TEXT("\"");
-		IncludeStatement += LINE_TERMINATOR;
-
-		ImplementationCode += IncludeStatement;
-	}		
-		
-	ImplementationCode += FString::Printf(TEXT("%s CustomExpression%d(FMaterial%sParameters Parameters%s)\r\n{\r\n%s\r\n}\r\n"), *OutputTypeString, CustomExpressionIndex, *ParametersType, *InputParamDecl, *Code);
-	CustomExpressionImplementations.Add( ImplementationCode );
-
-	// Add call to implementation function
-	FString CodeChunk = FString::Printf(TEXT("CustomExpression%d(Parameters"), CustomExpressionIndex);
-	for( int32 i = 0; i < CompiledInputs.Num(); i++ )
-	{
-		// skip over unnamed inputs
-		if( Custom->Inputs[i].InputName.IsNone() )
+		// Declare implementation function
+		FString InputParamDecl;
+		check(Custom->Inputs.Num() == CompiledInputs.Num());
+		for (int32 i = 0; i < Custom->Inputs.Num(); i++)
 		{
-			continue;
+			// skip over unnamed inputs
+			if (Custom->Inputs[i].InputName.IsNone())
+			{
+				continue;
+			}
+			InputParamDecl += TEXT(",");
+			const FString InputNameStr = Custom->Inputs[i].InputName.ToString();
+			switch (GetParameterType(CompiledInputs[i]))
+			{
+			case MCT_Float:
+			case MCT_Float1:
+				InputParamDecl += TEXT("MaterialFloat ");
+				InputParamDecl += InputNameStr;
+				break;
+			case MCT_Float2:
+				InputParamDecl += TEXT("MaterialFloat2 ");
+				InputParamDecl += InputNameStr;
+				break;
+			case MCT_Float3:
+				InputParamDecl += TEXT("MaterialFloat3 ");
+				InputParamDecl += InputNameStr;
+				break;
+			case MCT_Float4:
+				InputParamDecl += TEXT("MaterialFloat4 ");
+				InputParamDecl += InputNameStr;
+				break;
+			case MCT_Texture2D:
+				InputParamDecl += TEXT("Texture2D ");
+				InputParamDecl += InputNameStr;
+				InputParamDecl += TEXT(", SamplerState ");
+				InputParamDecl += InputNameStr;
+				InputParamDecl += TEXT("Sampler ");
+				break;
+			case MCT_TextureCube:
+				InputParamDecl += TEXT("TextureCube ");
+				InputParamDecl += InputNameStr;
+				InputParamDecl += TEXT(", SamplerState ");
+				InputParamDecl += InputNameStr;
+				InputParamDecl += TEXT("Sampler ");
+				break;
+			case MCT_Texture2DArray:
+				InputParamDecl += TEXT("Texture2DArray ");
+				InputParamDecl += InputNameStr;
+				InputParamDecl += TEXT(", SamplerState ");
+				InputParamDecl += InputNameStr;
+				InputParamDecl += TEXT("Sampler ");
+				break;
+			case MCT_TextureExternal:
+				InputParamDecl += TEXT("TextureExternal ");
+				InputParamDecl += InputNameStr;
+				InputParamDecl += TEXT(", SamplerState ");
+				InputParamDecl += InputNameStr;
+				InputParamDecl += TEXT("Sampler ");
+				break;
+			case MCT_VolumeTexture:
+				InputParamDecl += TEXT("Texture3D ");
+				InputParamDecl += InputNameStr;
+				InputParamDecl += TEXT(", SamplerState ");
+				InputParamDecl += InputNameStr;
+				InputParamDecl += TEXT("Sampler ");
+				break;
+			default:
+				return Errorf(TEXT("Bad type %s for %s input %s"), DescribeType(GetParameterType(CompiledInputs[i])), *Custom->Description, *InputNameStr);
+				break;
+			}
 		}
 
-		FString ParamCode = GetParameterCode(CompiledInputs[i]);
-		EMaterialValueType ParamType = GetParameterType(CompiledInputs[i]);
-
-		CodeChunk += TEXT(",");
-		CodeChunk += *ParamCode;
-		if (ParamType == MCT_Texture2D || ParamType == MCT_TextureCube || ParamType == MCT_Texture2DArray || ParamType == MCT_TextureExternal || ParamType == MCT_VolumeTexture)
+		for (const FCustomOutput& CustomOutput : Custom->AdditionalOutputs)
 		{
+			if (CustomOutput.OutputName.IsNone())
+			{
+				continue;
+			}
+
+			InputParamDecl += TEXT(", inout "); // use 'inout', so custom code may optionally avoid setting certain outputs (will default to 0)
+			const FString OutputNameStr = CustomOutput.OutputName.ToString();
+			switch (CustomOutput.OutputType)
+			{
+			case CMOT_Float1:
+				InputParamDecl += TEXT("MaterialFloat ");
+				InputParamDecl += OutputNameStr;
+				break;
+			case CMOT_Float2:
+				InputParamDecl += TEXT("MaterialFloat2 ");
+				InputParamDecl += OutputNameStr;
+				break;
+			case CMOT_Float3:
+				InputParamDecl += TEXT("MaterialFloat3 ");
+				InputParamDecl += OutputNameStr;
+				break;
+			case CMOT_Float4:
+				InputParamDecl += TEXT("MaterialFloat4 ");
+				InputParamDecl += OutputNameStr;
+				break;
+			case CMOT_MaterialAttributes:
+				InputParamDecl += TEXT("FMaterialAttributes ");
+				InputParamDecl += OutputNameStr;
+				break;
+			default:
+				return Errorf(TEXT("Bad type %d for %s output %s"), static_cast<int32>(CustomOutput.OutputType.GetValue()), *Custom->Description, *OutputNameStr);
+				break;
+			}
+		}
+
+		int32 CustomExpressionIndex = CustomExpressions.Num();
+		FString Code = Custom->Code;
+		if (!Code.Contains(TEXT("return")))
+		{
+			Code = FString(TEXT("return ")) + Code + TEXT(";");
+		}
+		Code.ReplaceInline(TEXT("\n"), TEXT("\r\n"), ESearchCase::CaseSensitive);
+
+		FString ParametersType = ShaderFrequency == SF_Vertex ? TEXT("Vertex") : (ShaderFrequency == SF_Domain ? TEXT("Tessellation") : TEXT("Pixel"));
+
+		FMaterialCustomExpressionEntry& Entry = CustomExpressions.AddDefaulted_GetRef();
+		CustomEntry = &Entry;
+		Entry.Expression = Custom;
+		Entry.ScopeID = CurrentScopeID;
+		Entry.InputHash.Empty(CompiledInputs.Num());
+		for (int32 InputIndex = 0; InputIndex < CompiledInputs.Num(); ++InputIndex)
+		{
+			const uint64 InputHash = GetParameterHash(CompiledInputs[InputIndex]);
+			Entry.InputHash.Add(InputHash);
+		}
+
+		for (FCustomDefine DefineEntry : Custom->AdditionalDefines)
+		{
+			FString DefineStatement = TEXT("#ifndef ") + DefineEntry.DefineName + LINE_TERMINATOR;
+			DefineStatement += TEXT("#define ") + DefineEntry.DefineName + TEXT(" ") + DefineEntry.DefineValue + LINE_TERMINATOR;
+			DefineStatement += TEXT("#endif//") + DefineEntry.DefineName + LINE_TERMINATOR;
+
+			Entry.Implementation += DefineStatement;
+		}
+
+		for (FString IncludeFile : Custom->IncludeFilePaths)
+		{
+			FString IncludeStatement = TEXT("#include ");
+			IncludeStatement += TEXT("\"");
+			IncludeStatement += IncludeFile;
+			IncludeStatement += TEXT("\"");
+			IncludeStatement += LINE_TERMINATOR;
+
+			Entry.Implementation += IncludeStatement;
+		}
+
+		Entry.Implementation += FString::Printf(TEXT("%s CustomExpression%d(FMaterial%sParameters Parameters%s)\r\n{\r\n%s\r\n}\r\n"), *OutputTypeString, CustomExpressionIndex, *ParametersType, *InputParamDecl, *Code);
+		const uint64 ImplementationHash = CityHash64((char*)*Entry.Implementation, Entry.Implementation.Len() * sizeof(TCHAR));
+
+		Entry.OutputCodeIndex.Empty(Custom->AdditionalOutputs.Num() + 1);
+		Entry.OutputCodeIndex.Add(INDEX_NONE); // Output0 will hold the return value for the custom expression function, patch it in later
+
+		// Create local temp variables to hold results of additional outputs
+		for (const FCustomOutput& CustomOutput : Custom->AdditionalOutputs)
+		{
+			if (CustomOutput.OutputName.IsNone())
+			{
+				continue;
+			}
+
+			// We're creating 0-initialized values to be filled in by the custom expression, so generate hashes based on code/name of the output
+			const FString OutputName = CustomOutput.OutputName.ToString();
+			const uint64 BaseHash = CityHash64WithSeed((char*)*OutputName, OutputName.Len() * sizeof(TCHAR), ImplementationHash);
+
+			int32 OutputCode = INDEX_NONE;
+			switch (CustomOutput.OutputType)
+			{
+			case CMOT_Float1: OutputCode = AddCodeChunkWithHash(BaseHash, MCT_Float, TEXT("0.0f")); break;
+			case CMOT_Float2: OutputCode = AddCodeChunkWithHash(BaseHash, MCT_Float2, TEXT("MaterialFloat2(0.0f, 0.0f)")); break;
+			case CMOT_Float3: OutputCode = AddCodeChunkWithHash(BaseHash, MCT_Float3, TEXT("MaterialFloat3(0.0f, 0.0f, 0.0f)")); break;
+			case CMOT_Float4: OutputCode = AddCodeChunkWithHash(BaseHash, MCT_Float4, TEXT("MaterialFloat4(0.0f, 0.0f, 0.0f, 0.0f)")); break;
+			case CMOT_MaterialAttributes: OutputCode = AddCodeChunkWithHash(BaseHash, MCT_MaterialAttributes, TEXT("(FMaterialAttributes)0.0f")); break;
+			default: checkNoEntry(); break;
+			}
+			Entry.OutputCodeIndex.Add(OutputCode);
+		}
+
+		// Add call to implementation function
+		FString CodeChunk = FString::Printf(TEXT("CustomExpression%d(Parameters"), CustomExpressionIndex);
+		for (int32 i = 0; i < CompiledInputs.Num(); i++)
+		{
+			// skip over unnamed inputs
+			if (Custom->Inputs[i].InputName.IsNone())
+			{
+				continue;
+			}
+
+			FString ParamCode = GetParameterCode(CompiledInputs[i]);
+			EMaterialValueType ParamType = GetParameterType(CompiledInputs[i]);
+
 			CodeChunk += TEXT(",");
 			CodeChunk += *ParamCode;
-			CodeChunk += TEXT("Sampler");
+			if (ParamType == MCT_Texture2D || ParamType == MCT_TextureCube || ParamType == MCT_Texture2DArray || ParamType == MCT_TextureExternal || ParamType == MCT_VolumeTexture)
+			{
+				CodeChunk += TEXT(",");
+				CodeChunk += *ParamCode;
+				CodeChunk += TEXT("Sampler");
+			}
 		}
-	}
-	CodeChunk += TEXT(")");
+		// Pass 'out' parameters
+		for (int32 i = 1; i < Entry.OutputCodeIndex.Num(); ++i)
+		{
+			FString ParamCode = GetParameterCode(Entry.OutputCodeIndex[i]);
+			CodeChunk += TEXT(",");
+			CodeChunk += *ParamCode;
+		}
 
-	ResultIdx = AddCodeChunk(
-		OutputType,
-		*CodeChunk
+		CodeChunk += TEXT(")");
+
+		// Save result of function as first output
+		Entry.OutputCodeIndex[0] = AddCodeChunk(
+			OutputType,
+			*CodeChunk
 		);
-	return ResultIdx;
+	}
+
+	check(CustomEntry);
+	int32 Result = CustomEntry->OutputCodeIndex[OutputIndex];
+	if (Custom->IsResultMaterialAttributes(OutputIndex))
+	{
+		Result = AccessMaterialAttribute(Result, GetMaterialAttribute());
+	}
+	return Result;
 }
 
 int32 FHLSLMaterialTranslator::CustomOutput(class UMaterialExpressionCustomOutput* Custom, int32 OutputIndex, int32 OutputCode)

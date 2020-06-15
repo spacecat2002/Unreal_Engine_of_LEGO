@@ -63,6 +63,10 @@
 #endif
 #include "RHIGPUReadback.h"
 
+#if WITH_EDITOR
+#include "Rendering/StaticLightingSystemInterface.h"
+#endif
+
 // Enable this define to do slow checks for components being added to the wrong
 // world's scene, when using PIE. This can happen if a PIE component is reattached
 // while GWorld is the editor world, for example.
@@ -390,8 +394,6 @@ FDistanceFieldSceneData::FDistanceFieldSceneData(EShaderPlatform ShaderPlatform)
 	: NumObjectsInBuffer(0)
 	, NumHeightFieldObjectsInBuffer(0)
 	, ObjectBufferIndex(0)
-	, SurfelBuffers(NULL)
-	, InstancedSurfelBuffers(NULL)
 	, AtlasGeneration(0)
 	, HeightFieldAtlasGeneration(0)
 	, HFVisibilityAtlasGenerattion(0)
@@ -607,6 +609,11 @@ SIZE_T FScene::GetSizeBytes() const
 		+ SpeedTreeWindComputationMap.GetAllocatedSize()
 		+ LocalShadowCastingLightOctree.GetSizeBytes()
 		+ PrimitiveOctree.GetSizeBytes();
+}
+
+void FScene::OnWorldCleanup()
+{
+	UniformBuffers.Clear();
 }
 
 void FScene::CheckPrimitiveArrays(int MaxTypeOffsetIndex)
@@ -885,6 +892,45 @@ FORCEINLINE static void VerifyProperPIEScene(UPrimitiveComponent* Component, UWo
 #endif
 }
 
+void FPersistentUniformBuffers::Clear()
+{
+	ViewUniformBuffer.SafeRelease();
+	InstancedViewUniformBuffer.SafeRelease();
+	DepthPassUniformBuffer.SafeRelease();
+	OpaqueBasePassUniformBuffer.SafeRelease();
+	TranslucentBasePassUniformBuffer.SafeRelease();
+	ReflectionCaptureUniformBuffer.SafeRelease();
+	CSMShadowDepthViewUniformBuffer.SafeRelease();
+	CSMShadowDepthPassUniformBuffer.SafeRelease();
+	DistortionPassUniformBuffer.SafeRelease();
+	VelocityPassUniformBuffer.SafeRelease();
+	HitProxyPassUniformBuffer.SafeRelease();
+	MeshDecalPassUniformBuffer.SafeRelease();
+	LightmapDensityPassUniformBuffer.SafeRelease();
+	DebugViewModePassUniformBuffer.SafeRelease();
+	VoxelizeVolumePassUniformBuffer.SafeRelease();
+	VoxelizeVolumeViewUniformBuffer.SafeRelease();
+	ConvertToUniformMeshPassUniformBuffer.SafeRelease();
+	CustomDepthPassUniformBuffer.SafeRelease();
+	MobileCustomDepthPassUniformBuffer.SafeRelease();
+	CustomDepthViewUniformBuffer.SafeRelease();
+	InstancedCustomDepthViewUniformBuffer.SafeRelease();
+	VirtualTextureViewUniformBuffer.SafeRelease();
+	MobileOpaqueBasePassUniformBuffer.SafeRelease();
+	MobileTranslucentBasePassUniformBuffer.SafeRelease();
+	MobileCSMShadowDepthPassUniformBuffer.SafeRelease();
+	MobileDistortionPassUniformBuffer.SafeRelease();
+
+
+	for (auto& UniformBuffer : MobileDirectionalLightUniformBuffers)
+	{
+		UniformBuffer.SafeRelease();
+	}
+	MobileSkyReflectionUniformBuffer.SafeRelease();
+#if WITH_EDITOR
+	EditorSelectionPassUniformBuffer.SafeRelease();
+#endif
+}
 void FPersistentUniformBuffers::Initialize()
 {
 	FViewUniformShaderParameters ViewUniformBufferParameters;
@@ -952,6 +998,7 @@ void FPersistentUniformBuffers::Initialize()
 
 	FMobileBasePassUniformParameters MobileBasePassUniformParameters;
 	MobileOpaqueBasePassUniformBuffer = TUniformBufferRef<FMobileBasePassUniformParameters>::CreateUniformBufferImmediate(MobileBasePassUniformParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
+	MobileCSMOpaqueBasePassUniformBuffer = TUniformBufferRef<FMobileBasePassUniformParameters>::CreateUniformBufferImmediate(MobileBasePassUniformParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
 	MobileTranslucentBasePassUniformBuffer = TUniformBufferRef<FMobileBasePassUniformParameters>::CreateUniformBufferImmediate(MobileBasePassUniformParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
 	
 	FMobileDistortionPassUniformParameters MobileDistortionPassUniformParameters;
@@ -1055,13 +1102,11 @@ public:
 			const FPrimitiveSceneInfoCompact PrimitiveSceneInfoCompact(PrimInfo);
 
 			// Find local lights that affect the primitive in the light octree.
-			for (FSceneLightOctree::TConstElementBoxIterator<SceneRenderingAllocator> LightIt(Scene->LocalShadowCastingLightOctree, Bounds.GetBox());
-				LightIt.HasPendingElements();
-				LightIt.Advance())
+			Scene->LocalShadowCastingLightOctree.FindElementsWithBoundsTest(Bounds.GetBox(), [&PrimitiveSceneInfoCompact](const FLightSceneInfoCompact& LightSceneInfoCompact)
 			{
-				const FLightSceneInfoCompact& LightSceneInfoCompact = LightIt.GetCurrentElement();
 				LightSceneInfoCompact.LightSceneInfo->CreateLightPrimitiveInteraction(LightSceneInfoCompact, PrimitiveSceneInfoCompact);
-			}
+			});
+
 			// Also loop through non-local (directional) shadow-casting lights
 			for (int32 LightID : Scene->DirectionalShadowCastingLightIDs)
 			{
@@ -1087,13 +1132,17 @@ FScene::FScene(UWorld* InWorld, bool bInRequiresHitProxies, bool bInIsEditorScen
 ,	bScenesPrimitivesNeedStaticMeshElementUpdate(false)
 ,	bPathTracingNeedsInvalidation(true)
 ,	SkyLight(NULL)
+,	bRealTimeSlicedReflectionCaptureFirstFrame(true)
+,	RealTimeSlicedReflectionCaptureState(0)
 ,	SimpleDirectionalLight(NULL)
 ,	ReflectionSceneData(InFeatureLevel)
 ,	IndirectLightingCache(InFeatureLevel)
+,	VolumetricLightmapSceneData(this)
 ,	DistanceFieldSceneData(GShaderPlatformForFeatureLevel[InFeatureLevel])
 ,	PreshadowCacheLayout(0, 0, 0, 0, false)
 ,	AtmosphericFog(NULL)
 ,	SkyAtmosphere(NULL)
+,	VolumetricCloud(NULL)
 ,	PrecomputedVisibilityHandler(NULL)
 ,	LocalShadowCastingLightOctree(FVector::ZeroVector,HALF_WORLD_MAX)
 ,	PrimitiveOctree(FVector::ZeroVector,HALF_WORLD_MAX)
@@ -1111,7 +1160,7 @@ FScene::FScene(UWorld* InWorld, bool bInRequiresHitProxies, bool bInIsEditorScen
 ,	DynamicIndirectShadowsSelfShadowingIntensity(FMath::Clamp(InWorld->GetWorldSettings()->DynamicIndirectShadowsSelfShadowingIntensity, 0.0f, 1.0f))
 ,	ReadOnlyCVARCache(FReadOnlyCVARCache::Get())
 #if RHI_RAYTRACING
-, RayTracingDynamicGeometryCollection(nullptr)
+,	RayTracingDynamicGeometryCollection(nullptr)
 #endif
 ,	AsyncCreateLightPrimitiveInteractionsTask(nullptr)
 ,	NumVisibleLights_GameThread(0)
@@ -1240,6 +1289,8 @@ void FScene::AddPrimitive(UPrimitiveComponent* Primitive)
 		// First call for the new frame?
 		Primitive->LastSubmitTime = WorldTime;
 	}
+
+	checkf(!Primitive->SceneProxy, TEXT("Primitive has already been added to the scene!"));
 
 	// Create the primitive's scene proxy.
 	FPrimitiveSceneProxy* PrimitiveSceneProxy = Primitive->CreateSceneProxy();
@@ -2334,8 +2385,48 @@ void FVolumetricLightmapSceneData::RemoveLevelVolume(const FPrecomputedVolumetri
 	}
 }
 
+const FPrecomputedVolumetricLightmap* FVolumetricLightmapSceneData::GetLevelVolumetricLightmap() const
+{
+#if WITH_EDITOR
+	if (FStaticLightingSystemInterface::GetPrecomputedVolumetricLightmap(Scene->GetWorld()))
+	{
+		return FStaticLightingSystemInterface::GetPrecomputedVolumetricLightmap(Scene->GetWorld());
+	}
+#endif
+	return &GlobalVolumetricLightmap;
+}
+
+bool FVolumetricLightmapSceneData::HasData() const
+{
+#if WITH_EDITOR
+	if (FStaticLightingSystemInterface::GetPrecomputedVolumetricLightmap(Scene->GetWorld()))
+	{
+		return true;
+	}
+#endif
+	if (LevelVolumetricLightmaps.Num() > 0)
+	{
+		if (Scene->GetFeatureLevel() >= ERHIFeatureLevel::SM5)
+		{
+			return GlobalVolumetricLightmapData.IndirectionTexture.Texture.IsValid();
+		}
+		else
+		{
+			return GlobalVolumetricLightmapData.IndirectionTexture.Data.Num() > 0;
+		}
+	}
+
+	return false;
+}
+
 bool FScene::HasPrecomputedVolumetricLightmap_RenderThread() const
 {
+#if WITH_EDITOR
+	if (FStaticLightingSystemInterface::GetPrecomputedVolumetricLightmap(GetWorld()))
+	{
+		return true;
+	}
+#endif
 	return VolumetricLightmapSceneData.HasData();
 }
 
@@ -2900,7 +2991,7 @@ void FScene::GetWindParameters_GameThread(const FVector& Position, FVector& OutD
 	{
 		float Weight = 0.0f;
 		FWindData CurrentComponentData;
-		if(Component->GetWindParameters(Position, CurrentComponentData, Weight))
+		if(Component && Component->GetWindParameters(Position, CurrentComponentData, Weight))
 		{
 			AccumWindData.AddWeighted(CurrentComponentData, Weight);
 			TotalWeight += Weight;
@@ -3497,6 +3588,13 @@ void FScene::ApplyWorldOffset_RenderThread(const FVector& InOffset)
 			FogData.Height += InOffset.Z;
 		}
 	}
+
+	// SkyAtmospheres
+	for (FSkyAtmosphereSceneProxy* SkyAtmosphereProxy : SkyAtmosphereStack)
+	{
+		SkyAtmosphereProxy->ApplyWorldOffset(InOffset);
+	}
+	
 	
 	VelocityData.ApplyOffset(InOffset);
 }
@@ -3520,6 +3618,8 @@ void FScene::OnLevelAddedToWorld(FName LevelAddedName, UWorld* InWorld, bool bIs
 void FScene::OnLevelAddedToWorld_RenderThread(FName InLevelName)
 {
 	// Mark level primitives
+	TArray<FPrimitiveSceneInfo*> PrimitivesToAdd;
+
 	for (auto It = Primitives.CreateIterator(); It; ++It)
 	{
 		FPrimitiveSceneProxy* Proxy = (*It)->Proxy;
@@ -3531,10 +3631,12 @@ void FScene::OnLevelAddedToWorld_RenderThread(FName InLevelName)
 				// The only type of SceneProxy using this is landscape
 				(*It)->RemoveStaticMeshes();
 				Proxy->OnLevelAddedToWorld();
-				(*It)->AddStaticMeshes(FRHICommandListExecutor::GetImmediateCommandList(), this, Primitives);
+				PrimitivesToAdd.Add(*It);
 			}
 		}
 	}
+
+	FPrimitiveSceneInfo::AddStaticMeshes(FRHICommandListExecutor::GetImmediateCommandList(), this, PrimitivesToAdd);
 }
 
 void FScene::ProcessAtmosphereLightAddition_RenderThread(FLightSceneInfo* LightSceneInfo)
@@ -4070,12 +4172,18 @@ void FScene::UpdateAllPrimitiveSceneInfos(FRHICommandListImmediate& RHICmdList, 
 		}
 
 		// Re-add the primitive to the scene with the new transform.
-		FPrimitiveSceneInfo::AddToScene(RHICmdList, this, UpdatedSceneInfosWithStaticDrawListUpdate, true, true, bAsyncCreateLPIs);
-		FPrimitiveSceneInfo::AddToScene(RHICmdList, this, UpdatedSceneInfosWithoutStaticDrawListUpdate, false, bAsyncCreateLPIs);
-
-		for (FPrimitiveSceneInfo* PrimitiveSceneInfo : UpdatedSceneInfosWithoutStaticDrawListUpdate)
+		if (UpdatedSceneInfosWithStaticDrawListUpdate.Num() > 0)
 		{
-			PrimitiveSceneInfo->FlushRuntimeVirtualTexture();
+			FPrimitiveSceneInfo::AddToScene(RHICmdList, this, UpdatedSceneInfosWithStaticDrawListUpdate, true, true, bAsyncCreateLPIs);
+		}
+
+		if (UpdatedSceneInfosWithoutStaticDrawListUpdate.Num() > 0)
+		{
+			FPrimitiveSceneInfo::AddToScene(RHICmdList, this, UpdatedSceneInfosWithoutStaticDrawListUpdate, false, true, bAsyncCreateLPIs);
+			for (FPrimitiveSceneInfo* PrimitiveSceneInfo : UpdatedSceneInfosWithoutStaticDrawListUpdate)
+			{
+				PrimitiveSceneInfo->FlushRuntimeVirtualTexture();
+			}
 		}
 
 		if (AsyncCreateLightPrimitiveInteractionsTask && AsyncCreateLightPrimitiveInteractionsTask->GetTask().HasPendingPrimitives())
@@ -4171,13 +4279,11 @@ void FScene::CreateLightPrimitiveInteractionsForPrimitive(FPrimitiveSceneInfo* P
 		const FPrimitiveSceneInfoCompact PrimitiveSceneInfoCompact(PrimitiveInfo);
 
 		// Find local lights that affect the primitive in the light octree.
-		for (FSceneLightOctree::TConstElementBoxIterator<SceneRenderingAllocator> LightIt(LocalShadowCastingLightOctree, Bounds.GetBox());
-			LightIt.HasPendingElements();
-			LightIt.Advance())
+		LocalShadowCastingLightOctree.FindElementsWithBoundsTest(Bounds.GetBox(), [&PrimitiveSceneInfoCompact](const FLightSceneInfoCompact& LightSceneInfoCompact)
 		{
-			const FLightSceneInfoCompact& LightSceneInfoCompact = LightIt.GetCurrentElement();
 			LightSceneInfoCompact.LightSceneInfo->CreateLightPrimitiveInteraction(LightSceneInfoCompact, PrimitiveSceneInfoCompact);
-		}
+		});
+	
 		// Also loop through non-local (directional) shadow-casting lights
 		for (int32 LightID : DirectionalShadowCastingLightIDs)
 		{
@@ -4270,6 +4376,11 @@ public:
 	virtual void RemoveSkyAtmosphere(FSkyAtmosphereSceneProxy* SkyAtmosphereSceneProxy) override {}
 	virtual FSkyAtmosphereRenderSceneInfo* GetSkyAtmosphereSceneInfo() override { return NULL; }
 	virtual const FSkyAtmosphereRenderSceneInfo* GetSkyAtmosphereSceneInfo() const override { return NULL; }
+
+	virtual void AddVolumetricCloud(FVolumetricCloudSceneProxy* VolumetricCloudSceneProxy) override {}
+	virtual void RemoveVolumetricCloud(FVolumetricCloudSceneProxy* VolumetricCloudSceneProxy) override {}
+	virtual FVolumetricCloudRenderSceneInfo* GetVolumetricCloudSceneInfo() override { return NULL; }
+	virtual const FVolumetricCloudRenderSceneInfo* GetVolumetricCloudSceneInfo() const override { return NULL; }
 
 	virtual void AddWindSource(class UWindDirectionalSourceComponent* WindComponent) override {}
 	virtual void RemoveWindSource(class UWindDirectionalSourceComponent* WindComponent) override {}

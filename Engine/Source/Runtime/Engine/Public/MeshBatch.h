@@ -10,6 +10,8 @@
 #include "PrimitiveUniformShaderParameters.h"
 #include "VT/RuntimeVirtualTextureEnum.h"
 
+#define USE_MESH_BATCH_VALIDATION !UE_BUILD_SHIPPING
+
 class FLightCacheInterface;
 
 enum EPrimitiveIdMode
@@ -225,9 +227,6 @@ struct FMeshBatch
 
 	/** Whether the mesh batch can be selected through editor selection, aka hit proxies. */
 	uint32 bSelectable : 1;
-
-	/** Whether the mesh batch needs VertexFactory->GetStaticBatchElementVisibility to be called each frame to determine which elements of the batch are visible. */
-	uint32 bRequiresPerElementVisibility : 1;
 	
 	/** Whether the mesh batch should apply dithered LOD. */
 	uint32 bDitheredLODTransition : 1;
@@ -319,6 +318,12 @@ struct FMeshBatch
 
 	ENGINE_API void PreparePrimitiveUniformBuffer(const FPrimitiveSceneProxy* PrimitiveSceneProxy, ERHIFeatureLevel::Type FeatureLevel);
 
+#if USE_MESH_BATCH_VALIDATION
+	ENGINE_API bool Validate(const FPrimitiveSceneProxy* SceneProxy, ERHIFeatureLevel::Type FeatureLevel) const;
+#else
+	FORCEINLINE bool Validate(const FPrimitiveSceneProxy* SceneProxy, ERHIFeatureLevel::Type FeatureLevel) const { return true; }
+#endif
+
 	/** Default constructor. */
 	FMeshBatch()
 	:	VertexFactory(nullptr)
@@ -341,7 +346,6 @@ struct FMeshBatch
 	,	bUseWireframeSelectionColoring(false)
 	,	bUseSelectionOutline(true)
 	,	bSelectable(true)
-	,	bRequiresPerElementVisibility(false)
 	,	bDitheredLODTransition(false)
 	,	bRenderToVirtualTexture(false)
 	,	RuntimeVirtualTextureMaterialType(0)

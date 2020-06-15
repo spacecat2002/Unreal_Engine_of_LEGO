@@ -136,7 +136,7 @@ public:
 				{
 					// Requests are added to this list from the completed callback, but the final completion flag is not set until after callback is finished
 					// This means that there's a narrow window where the request is not technically considered to be complete yet
-					CompletedRequest->WaitCompletion();
+					verify(CompletedRequest->WaitCompletion());
 					delete CompletedRequest;
 				}
 			}, TStatId());
@@ -214,17 +214,17 @@ public:
 	// 
 
  // templated uses of this may end up converting int64 to int32, but it's up to the user of the template to know
-PRAGMA_DISABLE_UNSAFE_TYPECAST_WARNINGS
-	/*
-	 * Get the block id that contains the specified offset
-	 */
-	template<typename BlockIDType> inline BlockIDType GetBlock(int64 Offset)
+	PRAGMA_DISABLE_UNSAFE_TYPECAST_WARNINGS
+		/*
+		 * Get the block id that contains the specified offset
+		 */
+		template<typename BlockIDType> inline BlockIDType GetBlock(int64 Offset)
 	{
 		return BlockIDType(FMath::DivideAndRoundDown(Offset, (int64)BlockIDType::BlockSize));
 	}
-PRAGMA_ENABLE_UNSAFE_TYPECAST_WARNINGS
+	PRAGMA_ENABLE_UNSAFE_TYPECAST_WARNINGS
 
-	template<typename BlockIDType> inline int32 GetNumBlocks(int64 Offset, int64 Size)
+		template<typename BlockIDType> inline int32 GetNumBlocks(int64 Offset, int64 Size)
 	{
 		BlockIDType FirstBlock = GetBlock<BlockIDType>(Offset);
 		BlockIDType LastBlock = GetBlock<BlockIDType>(Offset + Size - 1);// Block containing the last byte
@@ -375,7 +375,7 @@ bool FFileCache::EvictAll(FFileCacheHandle* InFile)
 				Info.Handle->Evict(Info.LineID);
 				Info.Handle = nullptr;
 				Info.LineID = CacheLineID();
-	
+
 				// move evicted slots to the front of list so they'll be re-used more quickly
 				UnlinkSlot(SlotIndex);
 				LinkSlotHead(SlotIndex);
@@ -446,14 +446,28 @@ class FMemoryReadStreamAsyncRequest : public IMemoryReadStream
 {
 public:
 	FMemoryReadStreamAsyncRequest(IAsyncReadRequest* InRequest, int64 InSize)
-		: Request(InRequest), Size(InSize)
+		: Memory(nullptr), Request(InRequest), Size(InSize)
 	{
+	}
+
+	uint8* GetReadResults()
+	{
+		if (Request)
+		{
+			// Event is triggered from read callback, so small window where event is triggered, but request isn't flagged as complete
+			// Normally this wait won't be needed
+			check(!Memory);
+			Request->WaitCompletion();
+			Memory = Request->GetReadResults(); // We now own the pointer returned from GetReadResults()
+			delete Request; // no longer need to keep request alive
+			Request = nullptr;
+		}
+		return Memory;
 	}
 
 	virtual const void* Read(int64& OutSize, int64 InOffset, int64 InSize) override
 	{
-		const uint8* ResultData = Request->GetReadResults();
-
+		const uint8* ResultData = GetReadResults();
 		check(InOffset < Size);
 		OutSize = FMath::Min(InSize, Size - InOffset);
 		return ResultData + InOffset;
@@ -466,10 +480,15 @@ public:
 
 	virtual ~FMemoryReadStreamAsyncRequest()
 	{
-		Request->WaitCompletion();
-		delete Request;
+		uint8* ResultData = GetReadResults();
+		if (ResultData)
+		{
+			FMemory::Free(ResultData);
+		}
+		check(!Request);
 	}
 
+	uint8* Memory;
 	IAsyncReadRequest* Request;
 	int64 Size;
 };
@@ -521,6 +540,11 @@ public:
 			check(SlotID.IsValid());
 			Cache.UnlockSlot(SlotID);
 		}
+	}
+
+	void operator delete(void* InMem)
+	{
+		FMemory::Free(InMem);
 	}
 
 	int64 InitialSlotOffset;
@@ -595,7 +619,7 @@ CacheSlotID FFileCacheHandle::AcquireSlotAndReadLine(FFileCache& Cache, CacheLin
 		{
 			this->ReadLine(GetCache(), SlotID, LineID, Priority, CompletionEvent);
 		},
-		TStatId(), SizeRequestEvent);
+			TStatId(), SizeRequestEvent);
 	}
 
 	return SlotID;
@@ -609,23 +633,21 @@ IMemoryReadStreamRef FFileCacheHandle::ReadData(FGraphEventArray& OutCompletionE
 	const CacheLineID StartLine = GetBlock<CacheLineID>(Offset);
 	const CacheLineID EndLine = GetBlock<CacheLineID>(Offset + BytesToRead - 1);
 
-	CheckForSizeRequestComplete();
-
-	int32 NumSlotsNeeded = EndLine.Get() + 1 - StartLine.Get();
+	const int32 NumSlotsNeeded = EndLine.Get() + 1 - StartLine.Get();
 
 	FFileCache& Cache = GetCache();
 
 	FScopeLock CacheLock(&Cache.CriticalSection);
+
+	CheckForSizeRequestComplete();
+
 	if (NumSlotsNeeded > Cache.NumFreeSlots)
 	{
 		// not enough free slots in the cache to service this request
 		CacheLock.Unlock();
-		if((Priority & AIOP_PRIORITY_MASK) >= AIOP_CriticalPath)
-		{
-			// Critical request can't fail, just read the requested data directly
-			return ReadDataUncached(OutCompletionEvents, Offset, BytesToRead, Priority);
-		}
-		return nullptr;
+
+		UE_LOG(LogStreamingFileCache, Verbose, TEXT("ReadData(%d, %d) is skipping cache, cache is full"), Offset, BytesToRead);
+		return ReadDataUncached(OutCompletionEvents, Offset, BytesToRead, Priority);
 	}
 
 	if (EndLine.Get() >= NumSlots)
@@ -711,11 +733,11 @@ FGraphEventRef FFileCacheHandle::PreloadData(const FFileCachePreloadEntry* Prelo
 
 	check(NumEntries > 0);
 
-	CheckForSizeRequestComplete();
-
 	FFileCache& Cache = GetCache();
 
 	FScopeLock CacheLock(&Cache.CriticalSection);
+
+	CheckForSizeRequestComplete();
 
 	{
 		const FFileCachePreloadEntry& LastEntry = PreloadEntries[NumEntries - 1];
@@ -745,7 +767,8 @@ FGraphEventRef FFileCacheHandle::PreloadData(const FFileCachePreloadEntry* Prelo
 		const CacheLineID StartLine = GetBlock<CacheLineID>(Entry.Offset);
 		const CacheLineID EndLine = GetBlock<CacheLineID>(Entry.Offset + Entry.Size - 1);
 
-		check(Entry.Offset > PrevOffset);
+		checkf(Entry.Offset > PrevOffset, TEXT("Preload entries must be sorted by Offset [%lld, %lld), %lld"),
+			Entry.Offset, Entry.Offset + Entry.Size, PrevOffset);
 		PrevOffset = Entry.Offset;
 
 		CurrentLine = CacheLineID(FMath::Max(CurrentLine.Get(), StartLine.Get()));
@@ -841,7 +864,7 @@ IFileCacheHandle* IFileCacheHandle::CreateFileCacheHandle(IAsyncReadFileHandle* 
 
 	if (FileHandle != nullptr)
 	{
-		return new FFileCacheHandle(FileHandle);	
+		return new FFileCacheHandle(FileHandle);
 	}
 	else
 	{

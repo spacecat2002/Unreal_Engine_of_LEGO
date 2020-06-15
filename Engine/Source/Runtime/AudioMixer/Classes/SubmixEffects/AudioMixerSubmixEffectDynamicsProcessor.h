@@ -2,6 +2,7 @@
 #pragma once
 
 #include "AudioDevice.h"
+#include "Delegates/IDelegateInstance.h"
 #include "DSP/DynamicsProcessor.h"
 #include "Sound/SoundEffectSubmix.h"
 #include "Sound/SoundSubmix.h"
@@ -88,7 +89,7 @@ struct AUDIOMIXER_API FSubmixEffectDynamicsProcessorSettings
 	ESubmixEffectDynamicsChannelLinkMode LinkMode;
 
 	// The input gain of the dynamics processor
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = General, meta = (DisplayName = "Input Gain (dB)", ClampMin = "-12.0", ClampMax = "20.0", UIMin = "-12.0", UIMax = "20.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = General, meta = (DisplayName = "Input Gain (dB)", UIMin = "-12.0", UIMax = "20.0"))
 	float InputGainDb;
 
 	// The threshold at which to perform a dynamics processing operation
@@ -132,12 +133,12 @@ struct AUDIOMIXER_API FSubmixEffectDynamicsProcessorSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Sidechain, meta = (DisplayName = "Key Audition"))
 	uint8 bKeyAudition : 1;
 
-	// Gain to apply to key signal (external signal if supplied or input signal if disabled)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Sidechain, meta = (DisplayName = "Key Gain (dB)", ClampMin = "-60.0", ClampMax = "20.0", UIMin = "-60.0", UIMax = "20.0"))
+	// Gain to apply to key signal if external input is supplied
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Sidechain, meta = (DisplayName = "External Input Gain (dB)", EditCondition = "ExternalSubmix != nullptr", UIMin = "-60.0", UIMax = "30.0"))
 	float KeyGainDb;
 
 	// The output gain of the dynamics processor
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Output, meta = (DisplayName = "Output Gain (dB)", ClampMin = "-60.0", ClampMax = "0.0", UIMin = "-60.0", UIMax = "20.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Output, meta = (DisplayName = "Output Gain (dB)", UIMin = "-60.0", UIMax = "30.0"))
 	float OutputGainDb;
 
 	// High Shelf filter settings for key signal (external signal if supplied or input signal if not)
@@ -180,14 +181,19 @@ public:
 
 	virtual ~FSubmixEffectDynamicsProcessor();
 
-	// Called on an audio effect at initialization on main thread before audio processing begins.
-	virtual void Init(const FSoundEffectSubmixInitData& InSampleRate) override;
+	// Gets the effect's deviceId that owns it
+	Audio::FDeviceId GetDeviceId() const;
 
-	// Process the input block of audio. Called on audio thread.
+	// Called on an audio effect at initialization on audio thread before audio processing begins.
+	virtual void Init(const FSoundEffectSubmixInitData& InInitData) override;
+
+	// Process the input block of audio. Called on audio render thread.
 	virtual void OnProcessAudio(const FSoundEffectSubmixInputData& InData, FSoundEffectSubmixOutputData& OutData) override;
 
 	// Called when an audio effect preset is changed
 	virtual void OnPresetChanged() override;
+
+	void SetExternalSubmix(USoundSubmix* InSoundSubmix);
 
 protected:
 	// ISubmixBufferListener interface
@@ -199,16 +205,21 @@ protected:
 		const int32			InSampleRate,
 		double				InAudioClock) override;
 
+	void OnNewDeviceCreated(Audio::FDeviceId InDeviceId);
+	
 	TWeakObjectPtr<USoundSubmix> ExternalSubmix;
 	Audio::AlignedFloatBuffer AudioExternal;
+
+	FThreadSafeBool bUseExternalSubmix;
 
 	TArray<float> AudioKeyFrame;
 	TArray<float> AudioInputFrame;
 	TArray<float> AudioOutputFrame;
 
 	Audio::FDeviceId DeviceId;
-
 	Audio::FDynamicsProcessor DynamicsProcessor;
+
+	FDelegateHandle DeviceCreatedHandle;
 };
 
 UCLASS(ClassGroup = AudioSourceEffect, meta = (BlueprintSpawnableComponent))
@@ -217,13 +228,17 @@ class AUDIOMIXER_API USubmixEffectDynamicsProcessorPreset : public USoundEffectS
 	GENERATED_BODY()
 
 public:
-
 	EFFECT_PRESET_METHODS(SubmixEffectDynamicsProcessor)
 
-	void Serialize(FStructuredArchive::FRecord Record) override;
+	virtual void OnInit() override;
+
+	virtual void Serialize(FStructuredArchive::FRecord Record) override;
 
 	UFUNCTION(BlueprintCallable, Category = "Audio|Effects")
-	void SetSettings(const FSubmixEffectDynamicsProcessorSettings& InSettings);
+	void SetExternalSubmix(USoundSubmix* Submix);
+
+	UFUNCTION(BlueprintCallable, Category = "Audio|Effects")
+	void SetSettings(const FSubmixEffectDynamicsProcessorSettings& Settings);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = SubmixEffectPreset, meta = (ShowOnlyInnerProperties))
 	FSubmixEffectDynamicsProcessorSettings Settings;

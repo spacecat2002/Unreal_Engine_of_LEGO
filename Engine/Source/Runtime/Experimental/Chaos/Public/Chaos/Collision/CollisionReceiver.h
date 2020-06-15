@@ -4,6 +4,7 @@
 #include "Chaos/ParticleHandle.h"
 #include "Chaos/PBDCollisionConstraints.h"
 #include "Chaos/PBDRigidsSOAs.h"
+#include "Chaos/EvolutionResimCache.h"
 
 namespace Chaos
 {
@@ -14,10 +15,9 @@ namespace Chaos
 	class FAsyncCollisionReceiver
 	{
 	public:
-		using FCollisionConstraints = TPBDCollisionConstraints<FReal, 3>;
-
-		FAsyncCollisionReceiver(FCollisionConstraints& InCollisionConstraints)
+		FAsyncCollisionReceiver(FPBDCollisionConstraints& InCollisionConstraints, FEvolutionResimCache* InResimCache)
 			: CollisionConstraints(InCollisionConstraints)
+			, ResimCache(InResimCache)
 		{
 		}
 
@@ -26,16 +26,16 @@ namespace Chaos
 		 */
 		void ReceiveCollisions(const FCollisionConstraintsArray& Constraints)
 		{
-			for (const TRigidBodyPointContactConstraint<FReal, 3>& Constraint : Constraints.SinglePointConstraints)
+			for (const FRigidBodyPointContactConstraint& Constraint : Constraints.SinglePointConstraints)
 			{
 				SinglePointQueue.Enqueue(Constraint);
 			}
-			for (const TRigidBodySweptPointContactConstraint<FReal, 3>& Constraint : Constraints.SinglePointSweptConstraints)
+			for (const FRigidBodySweptPointContactConstraint& Constraint : Constraints.SinglePointSweptConstraints)
 			{
 				SingleSweptPointQueue.Enqueue(Constraint);
 			}
 
-			for (const TRigidBodyMultiPointContactConstraint<FReal, 3>& Constraint : Constraints.MultiPointConstraints)
+			for (const FRigidBodyMultiPointContactConstraint& Constraint : Constraints.MultiPointConstraints)
 			{
 				MultiPointQueue.Enqueue(Constraint);
 			}
@@ -51,7 +51,7 @@ namespace Chaos
 			//    NarrowPhase is creating temporary constraints for all interacting bodies 
 			//    even though we might already have those bodies within the constraint.
 			//    So there is a bunch of wasted computation when the CreateConstraints is called. 
-			TRigidBodyPointContactConstraint<FReal, 3> SinglePointConstraint;
+			FRigidBodyPointContactConstraint SinglePointConstraint;
 			while (SinglePointQueue.Dequeue(SinglePointConstraint))
 			{
 				if (!CollisionConstraints.Contains(&SinglePointConstraint))
@@ -59,7 +59,7 @@ namespace Chaos
 					CollisionConstraints.AddConstraint(SinglePointConstraint);
 				}
 			}
-			TRigidBodySweptPointContactConstraint<FReal, 3> SinglePointSweptConstraint;
+			FRigidBodySweptPointContactConstraint SinglePointSweptConstraint;
 			while (SingleSweptPointQueue.Dequeue(SinglePointSweptConstraint))
 			{
 				if (!CollisionConstraints.Contains(&SinglePointSweptConstraint))
@@ -68,7 +68,7 @@ namespace Chaos
 				}
 			}
 
-			TRigidBodyMultiPointContactConstraint<FReal, 3> MultiPointConstraint;
+			FRigidBodyMultiPointContactConstraint MultiPointConstraint;
 			while (MultiPointQueue.Dequeue(MultiPointConstraint))
 			{
 				if (!CollisionConstraints.Contains(&MultiPointConstraint))
@@ -76,14 +76,23 @@ namespace Chaos
 					CollisionConstraints.AddConstraint(MultiPointConstraint);
 				}
 			}
+
+			//TODO: worth adding an option to avoid when determinism unimportant?
+			CollisionConstraints.SortConstraints();
+
+			if(ResimCache)
+			{
+				ResimCache->SaveConstraints(CollisionConstraints.GetConstraintsArray());
+			}
 		}
 
 	private:
 		//todo(ocohen): use per thread buffer instead, need better support than ParallelFor for this
-		TQueue<TRigidBodyPointContactConstraint<FReal, 3>, EQueueMode::Mpsc> SinglePointQueue;
-		TQueue<TRigidBodySweptPointContactConstraint<FReal, 3>, EQueueMode::Mpsc> SingleSweptPointQueue;
-		TQueue<TRigidBodyMultiPointContactConstraint<FReal, 3>, EQueueMode::Mpsc> MultiPointQueue;
-		FCollisionConstraints& CollisionConstraints;
+		TQueue<FRigidBodyPointContactConstraint, EQueueMode::Mpsc> SinglePointQueue;
+		TQueue<FRigidBodySweptPointContactConstraint, EQueueMode::Mpsc> SingleSweptPointQueue;
+		TQueue<FRigidBodyMultiPointContactConstraint, EQueueMode::Mpsc> MultiPointQueue;
+		FPBDCollisionConstraints& CollisionConstraints;
+		FEvolutionResimCache* ResimCache;
 	};
 
 
@@ -94,36 +103,31 @@ namespace Chaos
 	class FSyncCollisionReceiver
 	{
 	public:
-		using FCollisionConstraints = TPBDCollisionConstraints<FReal, 3>;
-
-		FSyncCollisionReceiver(FCollisionConstraints& InCollisionConstraints)
+		FSyncCollisionReceiver(FPBDCollisionConstraints& InCollisionConstraints)
 			: CollisionConstraints(InCollisionConstraints)
 		{
 		}
 
-		/**
-		 * Called by a CollisionDetector (possibly in a task) when it finds collisions.
-		 */
-		void ReceiveCollisions(const FCollisionConstraintsArray& Constraints)
+		FCollisionConstraintsArray& GetConstraintsArray()
 		{
-			for (const TRigidBodyPointContactConstraint<FReal, 3>& Constraint : Constraints.SinglePointConstraints)
-			{
-				CollisionConstraints.AddConstraint(Constraint);
-			}
-			for (const TRigidBodyMultiPointContactConstraint<FReal, 3>& Constraint : Constraints.MultiPointConstraints)
-			{
-				CollisionConstraints.AddConstraint(Constraint);
-			}
+			return CollisionConstraints.GetConstraintsArray();
 		}
 
 		/**
-		 * No-op
+		 * Does nothing - we write directly into the Constraints Container
+		 */
+		void ReceiveCollisions(const FCollisionConstraintsArray& Constraints)
+		{
+		}
+
+		/**
+		 * Does nothing - we write directly into the Constraints Container
 		 */
 		void ProcessCollisions()
 		{
 		}
 
 	private:
-		FCollisionConstraints& CollisionConstraints;
+		FPBDCollisionConstraints& CollisionConstraints;
 	};
 }

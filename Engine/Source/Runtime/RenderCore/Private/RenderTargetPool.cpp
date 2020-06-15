@@ -253,10 +253,12 @@ bool FRenderTargetPool::FindFreeElement(FRHICommandList& RHICmdList, const FPool
 		{
 			// we can reuse the same, but the debug name might have changed
 			Current->Desc.DebugName = InDebugName;
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 			if (Current->GetRenderTargetItem().TargetableTexture)
 			{
 				RHIBindDebugLabelName(Current->GetRenderTargetItem().TargetableTexture, InDebugName);
 			}
+#endif
 			check(!Out->IsFree());
 			return true;
 		}
@@ -310,20 +312,20 @@ bool FRenderTargetPool::FindFreeElement(FRHICommandList& RHICmdList, const FPool
 				if (Element && Element->GetDesc().Compare(Desc, bExactMatch))
 				{
 					int a = 0;
-				}
-    
-				if (Element && Element->IsFree() && Element->GetDesc().Compare(Desc, bExactMatch))
-				{
-					if ( ( Desc.Flags & TexCreate_Transient ) && bAllowMultipleDiscards == false && Element->HasBeenDiscardedThisFrame() )
+				
+					if (Element->IsFree())
 					{
-						// We can't re-use transient resources if they've already been discarded this frame
-						continue;
+						if ((Desc.Flags & TexCreate_Transient) && bAllowMultipleDiscards == false && Element->HasBeenDiscardedThisFrame())
+						{
+							// We can't re-use transient resources if they've already been discarded this frame
+							continue;
+						}
+						check(!Element->IsSnapshot());
+						Found = Element;
+						FoundIndex = i;
+						bReusingExistingTarget = true;
+						goto Done;
 					}
-					check(!Element->IsSnapshot());
-					Found = Element;
-					FoundIndex = i;
-					bReusingExistingTarget = true;
-					goto Done;
 				}
 			}
 		}
@@ -445,7 +447,9 @@ Done:
 				}
 			}
 
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 			RHIBindDebugLabelName(Found->RenderTargetItem.TargetableTexture, InDebugName);
+#endif
 		}
 		else if (!bDeferTextureAllocation)
 		{
@@ -488,7 +492,9 @@ Done:
 				}
 			}
 
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 			RHIBindDebugLabelName(Found->RenderTargetItem.ShaderResourceTexture, InDebugName);
+#endif
 		}
 
 		if ((Desc.TargetableFlags & TexCreate_UAV) && !bDeferTextureAllocation)
@@ -549,10 +555,12 @@ Done:
 	// Transient RTs have to be targettable
 	check( ( Desc.Flags & TexCreate_Transient ) == 0 || Found->GetRenderTargetItem().TargetableTexture != nullptr );
 
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	if (Found->GetRenderTargetItem().TargetableTexture)
 	{
 		RHIBindDebugLabelName(Found->GetRenderTargetItem().TargetableTexture, InDebugName);
 	}
+#endif
 
 	return false;
 }

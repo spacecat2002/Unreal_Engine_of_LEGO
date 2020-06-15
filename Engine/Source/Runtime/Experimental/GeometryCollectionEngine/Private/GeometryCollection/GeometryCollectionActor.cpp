@@ -19,6 +19,7 @@ GeometryCollectionActor.cpp: AGeometryCollectionActor methods.
 #include "Math/Box.h"
 #include "Physics/PhysicsInterfaceCore.h"
 #include "PhysicsSolver.h"
+#include "GeometryCollection/GeometryCollectionDebugDrawComponent.h"
 
 
 DEFINE_LOG_CATEGORY_STATIC(AGeometryCollectionActorLogging, Log, All);
@@ -69,7 +70,7 @@ bool LowLevelRaycastImp(const Chaos::TVector<float, 3>& Start, const Chaos::TVec
 	//todo(ocohen): need to add thread safety / lock semantics
 	//const TManagedArray<int32>& RigidBodyIdArray = GeomCollectionActor.GetGeometryCollectionComponent()->GetRigidBodyIdArray();
 	const TManagedArray<FGuid>& RigidBodyIdArray = GeomCollectionActor.GetGeometryCollectionComponent()->GetRigidBodyGuidArray();
-	FPhysScene_Chaos* Scene = GeomCollectionActor.GetGeometryCollectionComponent()->GetPhysicsScene();
+	FPhysScene_Chaos* Scene = GeomCollectionActor.GetGeometryCollectionComponent()->GetInnerChaosScene();
 	ensure(Scene);
 
 	const Chaos::FPhysicsSolver* Solver = GetSolver(GeomCollectionActor);

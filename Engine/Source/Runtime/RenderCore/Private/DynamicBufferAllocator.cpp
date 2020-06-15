@@ -63,6 +63,7 @@ FGlobalDynamicReadBuffer::FGlobalDynamicReadBuffer()
 {
 	FloatBufferPool = new FDynamicReadBufferPool();
 	Int32BufferPool = new FDynamicReadBufferPool();
+	HalfBufferPool = new FDynamicReadBufferPool();
 }
 
 FGlobalDynamicReadBuffer::~FGlobalDynamicReadBuffer()
@@ -83,6 +84,12 @@ void FGlobalDynamicReadBuffer::Cleanup()
 		delete Int32BufferPool;
 		Int32BufferPool = nullptr;
 	}
+
+	if (HalfBufferPool)
+	{
+		delete HalfBufferPool;
+		HalfBufferPool = nullptr;
+	}
 }
 void FGlobalDynamicReadBuffer::InitRHI()
 {
@@ -98,9 +105,6 @@ FGlobalDynamicReadBuffer::FAllocation FGlobalDynamicReadBuffer::AllocateFloat(ui
 	FScopeLock ScopeLock(&FloatBufferPool->CriticalSection);
 	FAllocation Allocation;
 
-	// The codepath using FShaderResourceViewInitializer, requires the SRV to be aligned on some platforms.
-	Num = Align(Num, RHIGetMinimumAlignmentForBufferBackedSRV(PF_R32_FLOAT) / sizeof(float));
-
 	TotalAllocatedSinceLastCommit += Num;
 	if (IsRenderAlarmLoggingEnabled())
 	{
@@ -108,14 +112,19 @@ FGlobalDynamicReadBuffer::FAllocation FGlobalDynamicReadBuffer::AllocateFloat(ui
 	}
 	uint32 SizeInBytes = sizeof(float) * Num;
 	FDynamicAllocReadBuffer* Buffer = FloatBufferPool->CurrentBuffer;
-	if (Buffer == NULL || Buffer->AllocatedByteCount + SizeInBytes > Buffer->NumBytes)
+
+	uint32 BufferAlignment = RHIGetMinimumAlignmentForBufferBackedSRV(PF_R32_FLOAT);
+	uint32 ByteOffset = Buffer == NULL ? 0 : Align(Buffer->AllocatedByteCount, BufferAlignment);
+
+	if (Buffer == NULL || ByteOffset + SizeInBytes > Buffer->NumBytes)
 	{
 		// Find a buffer in the pool big enough to service the request.
 		Buffer = NULL;
 		for (int32 BufferIndex = 0, NumBuffers = FloatBufferPool->Buffers.Num(); BufferIndex < NumBuffers; ++BufferIndex)
 		{
 			FDynamicAllocReadBuffer& BufferToCheck = FloatBufferPool->Buffers[BufferIndex];
-			if (BufferToCheck.AllocatedByteCount + SizeInBytes <= BufferToCheck.NumBytes)
+			uint32 ByteOffsetToCheck = Align(BufferToCheck.AllocatedByteCount, BufferAlignment);
+			if (ByteOffsetToCheck + SizeInBytes <= BufferToCheck.NumBytes)
 			{
 				Buffer = &BufferToCheck;
 				break;
@@ -129,7 +138,7 @@ FGlobalDynamicReadBuffer::FAllocation FGlobalDynamicReadBuffer::AllocateFloat(ui
 			const uint32 NewBufferSize = FMath::Max(AlignedNum, (uint32)GMinReadBufferRenderingBufferSize);
 			Buffer = new FDynamicAllocReadBuffer();
 			FloatBufferPool->Buffers.Add(Buffer);
-			Buffer->Initialize(sizeof(float), NewBufferSize, PF_R32_FLOAT, BUF_Dynamic);
+			Buffer->Initialize(sizeof(float), NewBufferSize, PF_R32_FLOAT, BUF_Volatile);
 		}
 
 		// Lock the buffer if needed.
@@ -141,40 +150,41 @@ FGlobalDynamicReadBuffer::FAllocation FGlobalDynamicReadBuffer::AllocateFloat(ui
 		// Remember this buffer, we'll try to allocate out of it in the future.
 		FloatBufferPool->CurrentBuffer = Buffer;
 	}
+	Buffer->AllocatedByteCount = Align(Buffer->AllocatedByteCount, BufferAlignment);
 
 	check(Buffer != NULL);
 	checkf(Buffer->AllocatedByteCount + SizeInBytes <= Buffer->NumBytes, TEXT("Global dynamic read buffer float buffer allocation failed: BufferSize=%d AllocatedByteCount=%d SizeInBytes=%d"), Buffer->NumBytes, Buffer->AllocatedByteCount, SizeInBytes);
 	Allocation.Buffer = Buffer->MappedBuffer + Buffer->AllocatedByteCount;
 	Allocation.ReadBuffer = Buffer;
-	Buffer->SubAllocations.Emplace(RHICreateShaderResourceView(FShaderResourceViewInitializer(Buffer->Buffer, PF_R32_FLOAT, Buffer->AllocatedByteCount / sizeof(float), Num)));
+	Buffer->SubAllocations.Emplace(RHICreateShaderResourceView(FShaderResourceViewInitializer(Buffer->Buffer, PF_R32_FLOAT, Buffer->AllocatedByteCount, Num)));
 	Allocation.SRV = Buffer->SubAllocations.Last();
 	Buffer->AllocatedByteCount += SizeInBytes;
 
 	return Allocation;
 }
 
-FGlobalDynamicReadBuffer::FAllocation FGlobalDynamicReadBuffer::AllocateInt32(uint32 Num)
+FGlobalDynamicReadBuffer::FAllocation FGlobalDynamicReadBuffer::AllocateHalf(uint32 Num)
 {
-	FScopeLock ScopeLock(&Int32BufferPool->CriticalSection);
+	FScopeLock ScopeLock(&HalfBufferPool->CriticalSection);
 	FAllocation Allocation;
 
 	// The codepath using FShaderResourceViewInitializer, requires the SRV to be aligned on 16 bytes on some platforms.
-	Num = Align(Num, RHIGetMinimumAlignmentForBufferBackedSRV(PF_R32_SINT) / sizeof(int32));
+	Num = Align(Num, RHIGetMinimumAlignmentForBufferBackedSRV(PF_R16F) / sizeof(FFloat16));
 
 	TotalAllocatedSinceLastCommit += Num;
 	if (IsRenderAlarmLoggingEnabled())
 	{
-		UE_LOG(LogRendererCore, Warning, TEXT("FGlobalReadBuffer::AllocateInt32(%u), will have allocated %u total this frame"), Num, TotalAllocatedSinceLastCommit);
+		UE_LOG(LogRendererCore, Warning, TEXT("FGlobalReadBuffer::AllocateHalf(%u), will have allocated %u total this frame"), Num, TotalAllocatedSinceLastCommit);
 	}
-	uint32 SizeInBytes = sizeof(int32) * Num;
-	FDynamicAllocReadBuffer* Buffer = Int32BufferPool->CurrentBuffer;
+	uint32 SizeInBytes = sizeof(FFloat16) * Num;
+	FDynamicAllocReadBuffer* Buffer = HalfBufferPool->CurrentBuffer;
 	if (Buffer == NULL || Buffer->AllocatedByteCount + SizeInBytes > Buffer->NumBytes)
 	{
 		// Find a buffer in the pool big enough to service the request.
 		Buffer = NULL;
-		for (int32 BufferIndex = 0, NumBuffers = Int32BufferPool->Buffers.Num(); BufferIndex < NumBuffers; ++BufferIndex)
+		for (int32 BufferIndex = 0, NumBuffers = HalfBufferPool->Buffers.Num(); BufferIndex < NumBuffers; ++BufferIndex)
 		{
-			FDynamicAllocReadBuffer& BufferToCheck = Int32BufferPool->Buffers[BufferIndex];
+			FDynamicAllocReadBuffer& BufferToCheck = HalfBufferPool->Buffers[BufferIndex];
 			if (BufferToCheck.AllocatedByteCount + SizeInBytes <= BufferToCheck.NumBytes)
 			{
 				Buffer = &BufferToCheck;
@@ -188,8 +198,71 @@ FGlobalDynamicReadBuffer::FAllocation FGlobalDynamicReadBuffer::AllocateInt32(ui
 			const uint32 AlignedNum = FMath::DivideAndRoundUp(Num, (uint32)GAlignReadBufferRenderingBufferSize) * GAlignReadBufferRenderingBufferSize;
 			const uint32 NewBufferSize = FMath::Max(AlignedNum, (uint32)GMinReadBufferRenderingBufferSize);
 			Buffer = new FDynamicAllocReadBuffer();
+			HalfBufferPool->Buffers.Add(Buffer);
+			Buffer->Initialize(sizeof(FFloat16), NewBufferSize, PF_R16F, BUF_Volatile);
+		}
+
+		// Lock the buffer if needed.
+		if (Buffer->MappedBuffer == NULL)
+		{
+			Buffer->Lock();
+		}
+
+		// Remember this buffer, we'll try to allocate out of it in the future.
+		HalfBufferPool->CurrentBuffer = Buffer;
+	}
+
+	check(Buffer != NULL);
+	checkf(Buffer->AllocatedByteCount + SizeInBytes <= Buffer->NumBytes, TEXT("Global dynamic read buffer half buffer allocation failed: BufferSize=%d AllocatedByteCount=%d SizeInBytes=%d"), Buffer->NumBytes, Buffer->AllocatedByteCount, SizeInBytes);
+	Allocation.Buffer = Buffer->MappedBuffer + Buffer->AllocatedByteCount;
+	Allocation.ReadBuffer = Buffer;
+	Buffer->SubAllocations.Emplace(RHICreateShaderResourceView(FShaderResourceViewInitializer(Buffer->Buffer, PF_R16F, Buffer->AllocatedByteCount / sizeof(FFloat16), Num)));
+	Allocation.SRV = Buffer->SubAllocations.Last();
+	Buffer->AllocatedByteCount += SizeInBytes;
+
+	return Allocation;
+}
+
+
+FGlobalDynamicReadBuffer::FAllocation FGlobalDynamicReadBuffer::AllocateInt32(uint32 Num)
+{
+	FScopeLock ScopeLock(&Int32BufferPool->CriticalSection);
+	FAllocation Allocation;
+
+	TotalAllocatedSinceLastCommit += Num;
+	if (IsRenderAlarmLoggingEnabled())
+	{
+		UE_LOG(LogRendererCore, Warning, TEXT("FGlobalReadBuffer::AllocateInt32(%u), will have allocated %u total this frame"), Num, TotalAllocatedSinceLastCommit);
+	}
+	uint32 SizeInBytes = sizeof(int32) * Num;
+	FDynamicAllocReadBuffer* Buffer = Int32BufferPool->CurrentBuffer;
+
+	uint32 BufferAlignment = RHIGetMinimumAlignmentForBufferBackedSRV(PF_R32_SINT);
+	uint32 ByteOffset = Buffer == NULL ? 0 : Align(Buffer->AllocatedByteCount, BufferAlignment);
+
+	if (Buffer == NULL || ByteOffset + SizeInBytes > Buffer->NumBytes)
+	{
+		// Find a buffer in the pool big enough to service the request.
+		Buffer = NULL;
+		for (int32 BufferIndex = 0, NumBuffers = Int32BufferPool->Buffers.Num(); BufferIndex < NumBuffers; ++BufferIndex)
+		{
+			FDynamicAllocReadBuffer& BufferToCheck = Int32BufferPool->Buffers[BufferIndex];
+			uint32 ByteOffsetToCheck = Align(BufferToCheck.AllocatedByteCount, BufferAlignment);
+			if (ByteOffsetToCheck + SizeInBytes <= BufferToCheck.NumBytes)
+			{
+				Buffer = &BufferToCheck;
+				break;
+			}
+		}
+
+		// Create a new vertex buffer if needed.
+		if (Buffer == NULL)
+		{
+			const uint32 AlignedNum = FMath::DivideAndRoundUp(Num, (uint32)GAlignReadBufferRenderingBufferSize) * GAlignReadBufferRenderingBufferSize;
+			const uint32 NewBufferSize = FMath::Max(AlignedNum, (uint32)GMinReadBufferRenderingBufferSize);
+			Buffer = new FDynamicAllocReadBuffer();
 			Int32BufferPool->Buffers.Add(Buffer);
-			Buffer->Initialize(sizeof(int32), NewBufferSize, PF_R32_SINT, BUF_Dynamic);
+			Buffer->Initialize(sizeof(int32), NewBufferSize, PF_R32_SINT, BUF_Volatile);
 		}
 
 		// Lock the buffer if needed.
@@ -201,12 +274,13 @@ FGlobalDynamicReadBuffer::FAllocation FGlobalDynamicReadBuffer::AllocateInt32(ui
 		// Remember this buffer, we'll try to allocate out of it in the future.
 		Int32BufferPool->CurrentBuffer = Buffer;
 	}
+	Buffer->AllocatedByteCount = Align(Buffer->AllocatedByteCount, BufferAlignment);
 
 	check(Buffer != NULL);
 	checkf(Buffer->AllocatedByteCount + SizeInBytes <= Buffer->NumBytes, TEXT("Global dynamic read buffer int32 buffer allocation failed: BufferSize=%d AllocatedByteCount=%d SizeInBytes=%d"), Buffer->NumBytes, Buffer->AllocatedByteCount, SizeInBytes);
 	Allocation.Buffer = Buffer->MappedBuffer + Buffer->AllocatedByteCount;
 	Allocation.ReadBuffer = Buffer;
-	Buffer->SubAllocations.Emplace(RHICreateShaderResourceView(FShaderResourceViewInitializer(Buffer->Buffer, PF_R32_SINT, Buffer->AllocatedByteCount / sizeof(int), Num)));
+	Buffer->SubAllocations.Emplace(RHICreateShaderResourceView(FShaderResourceViewInitializer(Buffer->Buffer, PF_R32_SINT, Buffer->AllocatedByteCount, Num)));
 	Allocation.SRV = Buffer->SubAllocations.Last();
 	Buffer->AllocatedByteCount += SizeInBytes;
 
@@ -220,48 +294,72 @@ bool FGlobalDynamicReadBuffer::IsRenderAlarmLoggingEnabled() const
 
 void FGlobalDynamicReadBuffer::Commit()
 {
-		for (int32 BufferIndex = 0, NumBuffers = FloatBufferPool->Buffers.Num(); BufferIndex < NumBuffers; ++BufferIndex)
+	for (int32 BufferIndex = 0, NumBuffers = FloatBufferPool->Buffers.Num(); BufferIndex < NumBuffers; ++BufferIndex)
+	{
+		FDynamicAllocReadBuffer& Buffer = FloatBufferPool->Buffers[BufferIndex];
+		if (Buffer.MappedBuffer != nullptr)
 		{
-			FDynamicAllocReadBuffer& Buffer = FloatBufferPool->Buffers[BufferIndex];
-			if (Buffer.MappedBuffer != NULL)
+			Buffer.Unlock();
+		}
+		else if (GGlobalBufferNumFramesUnusedThresold && !Buffer.AllocatedByteCount)
+		{
+			++Buffer.NumFramesUnused;
+			if (Buffer.NumFramesUnused >= GGlobalBufferNumFramesUnusedThresold)
 			{
-				Buffer.Unlock();
-			}
-			else if (GGlobalBufferNumFramesUnusedThresold && !Buffer.AllocatedByteCount)
-			{
-				++Buffer.NumFramesUnused;
-				if (Buffer.NumFramesUnused >= GGlobalBufferNumFramesUnusedThresold)
-				{
-					// Remove the buffer, assumes they are unordered.
-					Buffer.Release();
-					FloatBufferPool->Buffers.RemoveAtSwap(BufferIndex);
-					--BufferIndex;
-					--NumBuffers;
-				}
+				// Remove the buffer, assumes they are unordered.
+				Buffer.Release();
+				FloatBufferPool->Buffers.RemoveAtSwap(BufferIndex);
+				--BufferIndex;
+				--NumBuffers;
 			}
 		}
-		FloatBufferPool->CurrentBuffer = NULL;
+	}
+	FloatBufferPool->CurrentBuffer = nullptr;
 
-		for (int32 BufferIndex = 0, NumBuffers = Int32BufferPool->Buffers.Num(); BufferIndex < NumBuffers; ++BufferIndex)
+	for (int32 BufferIndex = 0, NumBuffers = Int32BufferPool->Buffers.Num(); BufferIndex < NumBuffers; ++BufferIndex)
+	{
+		FDynamicAllocReadBuffer& Buffer = Int32BufferPool->Buffers[BufferIndex];
+		if (Buffer.MappedBuffer != nullptr)
 		{
-			FDynamicAllocReadBuffer& Buffer = Int32BufferPool->Buffers[BufferIndex];
-			if (Buffer.MappedBuffer != NULL)
+			Buffer.Unlock();
+		}
+		else if (GGlobalBufferNumFramesUnusedThresold && !Buffer.AllocatedByteCount)
+		{
+			++Buffer.NumFramesUnused;
+			if (Buffer.NumFramesUnused >= GGlobalBufferNumFramesUnusedThresold)
 			{
-				Buffer.Unlock();
-			}
-			else if (GGlobalBufferNumFramesUnusedThresold && !Buffer.AllocatedByteCount)
-			{
-				++Buffer.NumFramesUnused;
-				if (Buffer.NumFramesUnused >= GGlobalBufferNumFramesUnusedThresold)
-				{
-					// Remove the buffer, assumes they are unordered.
-					Buffer.Release();
-					Int32BufferPool->Buffers.RemoveAtSwap(BufferIndex);
-					--BufferIndex;
-					--NumBuffers;
-				}
+				// Remove the buffer, assumes they are unordered.
+				Buffer.Release();
+				Int32BufferPool->Buffers.RemoveAtSwap(BufferIndex);
+				--BufferIndex;
+				--NumBuffers;
 			}
 		}
-		Int32BufferPool->CurrentBuffer = NULL;
+	}
+	Int32BufferPool->CurrentBuffer = nullptr;
+
+	for (int32 BufferIndex = 0, NumBuffers = HalfBufferPool->Buffers.Num(); BufferIndex < NumBuffers; ++BufferIndex)
+	{
+		FDynamicAllocReadBuffer& Buffer = HalfBufferPool->Buffers[BufferIndex];
+		if (Buffer.MappedBuffer != nullptr)
+		{
+			Buffer.Unlock();
+		}
+		else if (GGlobalBufferNumFramesUnusedThresold && !Buffer.AllocatedByteCount)
+		{
+			++Buffer.NumFramesUnused;
+			if (Buffer.NumFramesUnused >= GGlobalBufferNumFramesUnusedThresold)
+			{
+				// Remove the buffer, assumes they are unordered.
+				Buffer.Release();
+				HalfBufferPool->Buffers.RemoveAtSwap(BufferIndex);
+				--BufferIndex;
+				--NumBuffers;
+			}
+		}
+	}
+	HalfBufferPool->CurrentBuffer = nullptr;
+
+
 	TotalAllocatedSinceLastCommit = 0;
 }

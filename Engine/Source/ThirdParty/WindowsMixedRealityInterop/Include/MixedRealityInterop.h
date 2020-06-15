@@ -22,7 +22,7 @@
 
 //wrap for non-windows platforms
 #if !__UNREAL__ || (PLATFORM_HOLOLENS || PLATFORM_WINDOWS)
-
+#include <Windows.h>
 #include <string>
 
 #include <d3d11.h>
@@ -36,6 +36,8 @@
 
 #include <atomic>
 #include <memory>
+#include <vector>
+
 
 #pragma warning(default:4005)
 #pragma warning(default:4668)
@@ -112,13 +114,13 @@ struct MIXEDREALITYINTEROP_API QRCodeData
 	float Rotation[4] = { 0.f, 0.f, 0.f, 1.f };
 
 	/** Version number of the QR code */
-	int32				Version;
+	int32_t				Version;
 	/** Physical width and height of the QR code in meters (all QR codes are square) */
 	float				SizeInMeters;
 	/** Timestamp in seconds of the last time this QR code was seen */
 	float				LastSeenTimestamp;
 	/** Size in wchar_t's of the QR code's data string */
-	uint32				DataSize;
+	uint32_t				DataSize;
 	/** Data string embedded in the QR code */
 	wchar_t*			Data;
 };
@@ -351,7 +353,7 @@ namespace WindowsMixedReality
 
 		UINT64 GraphicsAdapterLUID();
 
-		void Initialize(ID3D11Device* device, float nearPlane = 0.001f, float farPlane = 650.0f);
+		void Initialize(ID3D11Device* device, float nearPlane = 0.001f);
 		void Dispose(bool force = false);
 		bool IsStereoEnabled();
 		bool IsTrackingAvailable();
@@ -387,10 +389,10 @@ namespace WindowsMixedReality
 
 		void SetScreenScaleFactor(float scale);
 		
-		int32 GetMaxQuadLayerCount() const;
+		int32_t GetMaxQuadLayerCount() const;
 
-		uint32 AddQuadLayer(
-			uint32 Id,
+		uint32_t AddQuadLayer(
+			uint32_t Id,
 			ID3D11Texture2D* quadLayerTexture, 
 			float widthM, float heightM,
 			DirectX::XMFLOAT3 position,
@@ -400,7 +402,7 @@ namespace WindowsMixedReality
 			bool preserveAspectRatio,
 			int priority);
 
-		void RemoveQuadLayer(uint32 Id);
+		void RemoveQuadLayer(uint32_t Id);
 
 		bool CreateRenderingParameters();
 		ID3D11Texture2D* GetBackBufferTexture();
@@ -488,9 +490,10 @@ namespace WindowsMixedReality
 		void ConnectToLocalHoloLens();
 		void DisconnectFromDevice();
 		bool IsRemoting();
+		bool IsHololens1Remoting();
 		bool IsRemotingConnected();
-		uint32 SubscribeConnectionEvent(ConnectionCallback callback);
-		void UnsubscribeConnectionEvent(uint32 id);
+		uint32_t SubscribeConnectionEvent(ConnectionCallback callback);
+		void UnsubscribeConnectionEvent(uint32_t id);
 
 		// Spatial Mapping
 		void StartSpatialMapping(float InTriangleDensity, float InVolumeSize, void(*StartFunctionPointer)(),
@@ -513,6 +516,7 @@ namespace WindowsMixedReality
 			void(*FinishFunctionPointer)()
 		);
 		void StopSceneUnderstanding();
+		void SetSUCoordinateSystem();
 		//~Scene understanding
 
 		// Used by the AR system to receive notifications of tracking change
@@ -561,6 +565,9 @@ namespace WindowsMixedReality
 		// Returns whether or not the spatial audio client is active
 		bool IsActive();
 
+		// Returns the number of dynamic objects supported by the audio client renderer
+		UINT32 GetMaxDynamicObjects() const;
+
 		// Activates and returns a dynamic object handle
 		ISpatialAudioObject* ActivatDynamicSpatialAudioObject();
 
@@ -577,7 +584,7 @@ namespace WindowsMixedReality
 		SpatialAudioClient();
 		~SpatialAudioClient();
 
-		int32 sacId;
+		int32_t sacId;
 	};
 }
 
@@ -619,13 +626,46 @@ private:
 class MIXEDREALITYINTEROP_API AzureSpatialAnchorsInterop
 {
 public:
-	static void Create(WindowsMixedReality::MixedRealityInterop& interop, void(*LogFunctionPointer)(const wchar_t* LogMsg));
+	typedef int CloudAnchorID;
+	static const CloudAnchorID CloudAnchorID_Invalid = -1;
+	typedef int32_t WatcherID;
+	typedef std::wstring LocalAnchorID;
+	typedef std::wstring CloudAnchorIdentifier;
+
+	typedef void(*LogFunctionPtr)(const wchar_t* LogMsg);
+	typedef std::function<void(int32 WatcherIdentifier, int32 LocateAnchorStatus, AzureSpatialAnchorsInterop::CloudAnchorID CloudAnchorID)> AnchorLocatedCallbackPtr;
+	typedef std::function<void(int32 InWatcherIdentifier, bool InWasCanceled)> LocateAnchorsCompletedCallbackPtr;
+	typedef std::function<void(float InReadyForCreateProgress, float InRecommendedForCreateProgress, int InSessionCreateHash, int InSessionLocateHash, int32 InSessionUserFeedback)> SessionUpdatedCallbackPtr;
+
+	static void Create(
+		WindowsMixedReality::MixedRealityInterop& interop, 
+		LogFunctionPtr LogFunctionPointer,
+		AnchorLocatedCallbackPtr AnchorLocatedCallback,
+		LocateAnchorsCompletedCallbackPtr LocateAnchorsCompletedCallback,
+		SessionUpdatedCallbackPtr SessionUpdatedCallback
+	);
 	static AzureSpatialAnchorsInterop& Get();
 	static void Release();
 
 	// The session lifecycle
+	struct ConfigData
+	{
+		const wchar_t* accountId = nullptr;
+		const wchar_t* accountKey = nullptr;
+		bool bCoarseLocalizationEnabled = false;
+		bool bEnableGPS = false;
+		bool bEnableWifi = false;
+		std::vector<const wchar_t*> BLEBeaconUUIDs;
+		int logVerbosity = 0;
+
+		//uncopyable, due to char*'s.
+		ConfigData() {}
+	private:
+		ConfigData(const ConfigData&) = delete;
+		ConfigData& operator=(const ConfigData&) = delete;
+	};
 	virtual bool CreateSession() = 0;
-	virtual bool ConfigSession(const wchar_t* accountId, const wchar_t* accountKey, int logVerbosity) = 0;
+	virtual bool ConfigSession(const ConfigData& InConfigData) = 0;
 	virtual bool StartSession() = 0;
 	virtual void StopSession() = 0;
 	virtual void DestroySession() = 0;
@@ -634,12 +674,13 @@ public:
 	{
 		NotStarted,
 		Started,
-		FailBadAnchorId,
+		FailBadAnchorIdentifier,
 		FailAnchorIdAlreadyUsed,
 		FailAnchorDoesNotExist,
 		FailAnchorAlreadyTracked,
 		FailNoAnchor,
 		FailNoLocalAnchor,
+		FailNoCloudAnchor,
 		FailNoSession,
 		FailNotEnoughData,
 		FailSeeErrorString,
@@ -659,34 +700,82 @@ public:
 
 	struct SaveAsyncData : public AsyncData
 	{
-		std::wstring LocalAnchorId;
-		std::wstring CloudAnchorIdentifier;
+		CloudAnchorID CloudAnchorID = CloudAnchorID_Invalid;
 	};
 	typedef std::shared_ptr<SaveAsyncData> SaveAsyncDataPtr;
 
 	struct DeleteAsyncData : public AsyncData
 	{
-		std::wstring LocalAnchorId;
+		CloudAnchorID CloudAnchorID = CloudAnchorID_Invalid;
 	};
 	typedef std::shared_ptr<DeleteAsyncData> DeleteAsyncDataPtr;
 
 	struct LoadByIDAsyncData : public AsyncData
 	{
-		std::wstring CloudAnchorIdentifier;
-		std::wstring LocalAnchorId;
+		CloudAnchorIdentifier CloudAnchorIdentifier;
+		LocalAnchorID LocalAnchorId;
+		CloudAnchorID CloudAnchorID = CloudAnchorID_Invalid;
 	};
 	typedef std::shared_ptr<LoadByIDAsyncData> LoadByIDAsyncDataPtr;
+
+	struct UpdateCloudAnchorPropertiesAsyncData : public AsyncData
+	{
+		CloudAnchorID CloudAnchorID = CloudAnchorID_Invalid;
+	};
+	typedef std::shared_ptr<UpdateCloudAnchorPropertiesAsyncData> UpdateCloudAnchorPropertiesAsyncDataPtr;
+
+	struct RefreshCloudAnchorPropertiesAsyncData : public AsyncData
+	{
+		CloudAnchorID CloudAnchorID = CloudAnchorID_Invalid;
+	};
+	typedef std::shared_ptr<RefreshCloudAnchorPropertiesAsyncData> RefreshCloudAnchorPropertiesAsyncDataPtr;
+
+	struct GetCloudAnchorPropertiesAsyncData : public AsyncData
+	{
+		CloudAnchorIdentifier CloudAnchorIdentifier;
+		CloudAnchorID CloudAnchorID = CloudAnchorID_Invalid;
+	};
+	typedef std::shared_ptr<GetCloudAnchorPropertiesAsyncData> GetCloudAnchorPropertiesAsyncDataPtr;
+
+	struct CreateWatcherData
+	{
+		bool bBypassCache = false;
+		std::vector<std::wstring> Identifiers;
+		CloudAnchorID NearCloudAnchorID = CloudAnchorID_Invalid;
+		float NearCloudAnchorDistance = 5.0f;
+		int NearCloudAnchorMaxResultCount = 20;
+		bool SearchNearDevice = false;
+		float NearDeviceDistance = 5.0f;
+		int NearDeviceMaxResultCount = 20;
+		int AzureSpatialAnchorDataCategory = 0;
+		int AzureSptialAnchorsLocateStrategy = 0;
+
+		int32 OutWatcherIdentifier = -1;
+		std::vector<CloudAnchorID> OutCloudAnchorIDs;
+		AsyncResult Result = AsyncResult::NotStarted;
+		std::wstring OutError;
+	};
+
 
 	// Things you can do while your session is running.
 	// AsyncDataPtr objects are created by UE4, and passed in here.
 	virtual bool HasEnoughDataForSaving() = 0;
-	virtual bool CreateCloudAnchor(const wchar_t* localAnchorId) = 0;
-	virtual bool SetCloudAnchorExpiration(const wchar_t* localAnchorId, int minutesFromNow) = 0;
+	virtual const wchar_t* GetCloudSpatialAnchorIdentifier(CloudAnchorID cloudAnchorID) = 0;
+	virtual bool CreateCloudAnchor(const LocalAnchorID& localAnchorId, CloudAnchorID& outCloudAnchorID) = 0;
+	virtual bool SetCloudAnchorExpiration(CloudAnchorID cloudAnchorID, float lifetime) = 0; // lifetime is seconds into the future
+	virtual bool GetCloudAnchorExpiration(CloudAnchorID cloudAnchorID, float& outLifetime) = 0;
+	virtual bool SetCloudAnchorAppProperties(CloudAnchorID cloudAnchorID, const std::vector<std::pair<std::wstring, std::wstring>>& AppProperties) = 0;
+	virtual bool GetCloudAnchorAppProperties(CloudAnchorID cloudAnchorID, std::vector<std::pair<std::wstring, std::wstring>>& AppProperties) = 0;
 	virtual bool SaveCloudAnchor(SaveAsyncDataPtr Data) = 0;
 	virtual bool DeleteCloudAnchor(DeleteAsyncDataPtr Data) = 0;
 	virtual bool LoadCloudAnchorByID(LoadByIDAsyncDataPtr Data) = 0;
-	//virtual void FindCloudAnchorNearCloudAnchorWithID(const wchar_t* anchorId) = 0;
-	//virtual void FindAnchorByLocation()=0;
+	virtual bool UpdateCloudAnchorProperties(UpdateCloudAnchorPropertiesAsyncDataPtr Data) = 0;
+	virtual bool RefreshCloudAnchorProperties(RefreshCloudAnchorPropertiesAsyncDataPtr Data) = 0;
+	virtual bool GetCloudAnchorProperties(GetCloudAnchorPropertiesAsyncDataPtr Data) = 0;
+	virtual bool CreateWatcher(CreateWatcherData& Data) = 0;
+	virtual bool StopWatcher(WatcherID WatcherIdentifier) = 0;
+	virtual bool CreateARPinAroundAzureCloudSpatialAnchor(const LocalAnchorID& localAnchorId, CloudAnchorID cloudAnchorID) = 0;
+
 
 protected:
 	AzureSpatialAnchorsInterop() {};

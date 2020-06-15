@@ -114,7 +114,7 @@ enum EPackageFlags
 //	PKG_Unused						= 0x00000400,
 //	PKG_Unused						= 0x00000800,
 //	PKG_Unused						= 0x00001000,
-//	PKG_Unused						= 0x00002000,
+	PKG_UnversionedProperties		= 0x00002000,   ///< Uses unversioned property serialization instead of versioned tagged property serialization
 	PKG_ContainsMapData				= 0x00004000,   ///< Contains map data (UObjects only referenced by a single ULevel) but is stored in a different package
 //	PKG_Unused						= 0x00008000,
 	PKG_Compiling					= 0x00010000,	///< package is currently being compiled
@@ -130,7 +130,7 @@ enum EPackageFlags
 //	PKG_Unused						= 0x04000000,
 //	PKG_Unused						= 0x08000000,	
 //	PKG_Unused						= 0x10000000,	
-//	PKG_Unused						= 0x20000000,
+	PKG_RuntimeGenerated			= 0x20000000,	///< This package contains elements that are runtime generated, and may not follow standard loading order rules
 	PKG_ReloadingForCooker			= 0x40000000,   ///< This package is reloading in the cooker, try to avoid getting data we will never need. We won't save this package.
 	PKG_FilterEditorOnly			= 0x80000000,	///< Package has editor-only data filtered out
 };
@@ -502,7 +502,7 @@ enum EObjectFlags
 	RF_FinishDestroyed			=0x00010000,	///< FinishDestroy has been called on the object.
 
 	// Misc. Flags
-	RF_BeingRegenerated			=0x00020000,	///< Flagged on UObjects that are used to create UClasses (e.g. Blueprints) while they are regenerating their UClass on load (See FLinkerLoad::CreateExport())
+	RF_BeingRegenerated			=0x00020000,	///< Flagged on UObjects that are used to create UClasses (e.g. Blueprints) while they are regenerating their UClass on load (See FLinkerLoad::CreateExport()), as well as UClass objects in the midst of being created
 	RF_DefaultSubObject			=0x00040000,	///< Flagged on subobjects that are defaults
 	RF_WasLoaded				=0x00080000,	///< Flagged on UObjects that were loaded
 	RF_TextExportTransient		=0x00100000,	///< Do not export object to text form (e.g. copy/paste). Generally used for sub-objects that can be regenerated from data in their parent object.
@@ -513,10 +513,11 @@ enum EObjectFlags
 	RF_NonPIEDuplicateTransient	=0x02000000,	///< Object should not be included for duplication unless it's being duplicated for a PIE session
 	RF_Dynamic					=0x04000000,	///< Field Only. Dynamic field - doesn't get constructed during static initialization, can be constructed multiple times
 	RF_WillBeLoaded				=0x08000000,	///< This object was constructed during load and will be loaded shortly
+	RF_HasExternalPackage		=0x10000000,	///< This object has an external package assigned and should look it up when getting the outermost package
 };
 
 /** Mask for all object flags */
-#define RF_AllFlags				(EObjectFlags)0x0fffffff	///< All flags, used mainly for error checking
+#define RF_AllFlags				(EObjectFlags)0x1fffffff	///< All flags, used mainly for error checking
 
 /** Flags to load from unreal asset files */
 #define RF_Load						((EObjectFlags)(RF_Public | RF_Standalone | RF_Transactional | RF_ClassDefaultObject | RF_ArchetypeObject | RF_DefaultSubObject | RF_TextExportTransient | RF_InheritableComponentTemplate | RF_DuplicateTransient | RF_NonPIEDuplicateTransient)) 
@@ -853,7 +854,17 @@ namespace UF
 		ServiceRequest,
 
 		/// This function is RPC service response
-		ServiceResponse
+		ServiceResponse,
+		
+		/// [FunctionMetadata]	Marks a UFUNCTION as accepting variadic arguments. Variadic functions may have extra terms they need to emit after the main set of function arguments
+		///						These are all considered wildcards so no type checking will be performed on them
+		Variadic,
+
+		/// [FunctionMetadata] Indicates the display name of the return value pin
+		ReturnDisplayName, 
+
+		/// [FunctionMetadata] Indicates that a particular function parameter is for internal use only, which means it will be both hidden and not connectible.
+		InternalUseParam, 
 	};
 }
 
@@ -978,6 +989,9 @@ namespace UP
 
 		/// Property shouldn't be serialized, can still be exported to text
 		SkipSerialization,
+
+		/// If true, the self pin should not be shown or connectable regardless of purity, const, etc. similar to InternalUseParam
+		HideSelfPin, 
 	};
 }
 
@@ -1263,6 +1277,15 @@ namespace UM
 		/// [PropertyMetadata] Used for SoftObjectPtr/SoftObjectPath properties to specify a reference should not be tracked. This reference will not be automatically cooked or saved into the asset registry for redirector/delete fixup.
 		Untracked,
 
+		/// [PropertyMetadata] For functions that should be compiled in development mode only.
+		DevelopmentOnly, 
+
+		/// [PropertyMetadata] (Internal use only) Used for the latent action manager to fix up a latent action with the VM
+		NeedsLatentFixup,
+
+		/// [PropertyMetadata] (Internal use only) Used for the latent action manager to track where it's re-entry should be
+		LatentCallbackTarget,
+
 		/// [PropertyMetadata] Causes FString and FName properties to have a limited set of options generated dynamically, e.g. meta=(GetOptions="FuncName")
 		///
 		/// UFUNCTION()
@@ -1427,6 +1450,45 @@ namespace UM
 
 		// [FunctionMetadata] Only valid in Blueprint Function Libraries. Mark this function as an exception to the class's general BlueprintThreadSafe metadata.
 		NotBlueprintThreadSafe,
+
+		/// [FunctionMetadata] [InterfaceMetadata] Metadata that flags function params that govern what type of object the function returns
+		DeterminesOutputType,
+
+		/// [FunctionMetadata] [InterfaceMetadata] Metadata that flags the function output param that will be controlled by the "MD_DynamicOutputType" pin
+		DynamicOutputParam,
+
+		/// [FunctionMetadata][InterfaceMetadata] Metadata to identify an DataTable Pin. Depending on which DataTable is selected, we display different RowName options
+		DataTablePin,
+
+		/// [FunctionMetadata][InterfaceMetadata] Metadata that flags TSet parameters that will have their type determined at blueprint compile time
+		SetParam,
+
+		/// [FunctionMetadata] [InterfaceMetadata] Metadata that flags TMap function parameters that will have their type determined at blueprint compile time
+		MapParam,
+
+		/// [FunctionMetadata] [InterfaceMetadata]  Metadata that flags TMap function parameters that will have their key type determined at blueprint compile time
+		MapKeyParam,
+
+		/// [FunctionMetadata][InterfaceMetadata] Metadata that flags TMap function parameter that will have their value type determined at blueprint compile time
+		MapValueParam,
+
+		/// [FunctionMetadata] [InterfaceMetadata] Metadata that identifies an integral property as a bitmask.
+		Bitmask,
+
+		/// [FunctionMetadata] [InterfaceMetadata] Metadata that associates a bitmask property with a bitflag enum.
+		BitmaskEnum,
+
+		/// [InterfaceMetadata] Metadata that identifies an enum as a set of explicitly-named bitflags.
+		Bitflags,
+
+		/// [InterfaceMetadata] Metadata that signals to the editor that enum values correspond to mask values instead of bitshift (index) values.
+		UseEnumValuesAsMaskValuesInEditor,
+
+		/// [InterfaceMetadata] Stub function used internally by animation blueprints
+		AnimBlueprintFunction,
+
+		/// [FunctionMetadata] [InterfaceMetadata] Metadata that flags TArray function parameters that will have their type determined at blueprint compile time
+		ArrayParam,
 	};
 
 	// Metadata usable in UINTERFACE
@@ -1737,6 +1799,18 @@ typedef uint32 ERenameFlags;
 -----------------------------------------------------------------------------*/
 
 typedef void (*FAsyncCompletionCallback)( UObject* LinkerRoot, void* CallbackUserData );
+
+namespace GameplayTagsManager
+{
+	enum
+	{
+		/// Used for filtering by tag widget
+		Categories,
+		
+		/// Used for filtering by tag widget for any parameters of the function that end up as BP pins
+		GameplayTagFilter,
+	};
+}
 
 /*-----------------------------------------------------------------------------
 	UObject.

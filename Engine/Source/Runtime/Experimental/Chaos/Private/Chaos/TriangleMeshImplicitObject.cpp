@@ -264,7 +264,7 @@ FReal FTriangleMeshImplicitObject::PhiWithNormal(const FVec3& x, FVec3& Normal) 
 	TSphere<FReal, 3> TestSphere(x, 0.0f);
 	FRigidTransform3 TestXf(TVector<float, 3>(0.0), TRotation<float, 3>::FromIdentity());
 	FVec3 TestLocation = x;
-	FReal Depth;
+	FReal Depth = TNumericLimits<FReal>::Max();
 	GJKContactPointImp(TestSphere, TestXf, 0.0f, TestLocation, Normal, Depth);
 	return Depth;
 }
@@ -677,7 +677,8 @@ struct FTriangleMeshSweepVisitor
 
 		if(GJKRaycast2<FReal>(Tri, WorldScaleQueryGeom, ScaledStartTM, ScaledDirNormalized, LengthScale * CurData.CurrentLength, Time, HitPosition, HitNormal, Thickness, bComputeMTD))
 		{
-			if(Time < OutTime)
+			// Time is world scale, OutTime is local scale.
+			if(Time < LengthScale * OutTime)
 			{
 				TransformSweepOutputsHelper(TriMeshScale, HitNormal, HitPosition, LengthScale, Time, OutNormal, OutPosition, OutTime);
 
@@ -691,7 +692,7 @@ struct FTriangleMeshSweepVisitor
 					return false;
 				}
 
-				CurData.SetLength(Time);
+				CurData.SetLength(OutTime);
 			}
 		}
 

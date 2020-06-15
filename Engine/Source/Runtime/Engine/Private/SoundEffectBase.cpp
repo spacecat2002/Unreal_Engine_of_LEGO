@@ -1,18 +1,17 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-
 #include "Sound/SoundEffectBase.h"
+
+#include "Audio.h"
+#include "Sound/SoundEffectPreset.h"
+#include "Templates/SharedPointer.h"
 
 
 FSoundEffectBase::FSoundEffectBase()
-	: bChanged(false)
+	: bChanged(true)
 	, bIsRunning(false)
 	, bIsActive(false)
 {}
-
-FSoundEffectBase::~FSoundEffectBase()
-{
-}
 
 bool FSoundEffectBase::IsActive() const
 {
@@ -24,36 +23,21 @@ void FSoundEffectBase::SetEnabled(const bool bInIsEnabled)
 	bIsActive = bInIsEnabled;
 }
 
-void FSoundEffectBase::SetPreset(USoundEffectPreset* Inpreset)
-{
-	if (Preset != Inpreset)
-	{
-		ClearPreset();
-
-		Preset = Inpreset;
-		if (Preset.IsValid())
-		{
-			Preset->AddEffectInstance(this);
-		}
-	}
-
-	// Anytime notification occurs that the preset has been modified,
-	// flag for update.
-	bChanged = true;
-}
-
 USoundEffectPreset* FSoundEffectBase::GetPreset()
 {
-	return Preset.Get();
+	if (Preset.IsValid())
+	{
+		return Preset.Get();
+	}
+	else
+	{
+		UE_LOG(LogAudio, Display, TEXT("A USoundEffectPreset was GC'd prior to unregistering its corresponding source effect instance."));
+		return nullptr;
+	}
 }
 
-void FSoundEffectBase::ClearPreset(bool bRemoveFromPreset)
+void FSoundEffectBase::ClearPreset()
 {
-	if (bRemoveFromPreset && Preset.IsValid())
-	{
-		Preset->RemoveEffectInstance(this);
-	}
-
 	Preset.Reset();
 }
 
@@ -77,7 +61,7 @@ bool FSoundEffectBase::IsPreset(USoundEffectPreset* InPreset) const
 	return Preset == InPreset;
 }
 
-void FSoundEffectBase::EffectCommand(TFunction<void()> Command)
+void FSoundEffectBase::EffectCommand(TUniqueFunction<void()> Command)
 {
 	CommandQueue.Enqueue(MoveTemp(Command));
 }
@@ -85,7 +69,7 @@ void FSoundEffectBase::EffectCommand(TFunction<void()> Command)
 void FSoundEffectBase::PumpPendingMessages()
 {
 	// Pumps the command queue
-	TFunction<void()> Command;
+	TUniqueFunction<void()> Command;
 	while (CommandQueue.Dequeue(Command))
 	{
 		Command();

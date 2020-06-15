@@ -2165,7 +2165,24 @@ FString FName::SafeString(FNameEntryId InDisplayIndex, int32 InstanceNumber)
 	return FName(InDisplayIndex, InDisplayIndex, InstanceNumber).ToString();
 }
 
+bool FName::IsValidXName(const FName InName, const FString& InInvalidChars, FText* OutReason, const FText* InErrorCtx)
+{
+	TStringBuilder<FName::StringBufferSize> NameStr;
+	InName.ToString(NameStr);
+	return IsValidXName(FStringView(NameStr), InInvalidChars, OutReason, InErrorCtx);
+}
+
+bool FName::IsValidXName(const TCHAR* InName, const FString& InInvalidChars, FText* OutReason, const FText* InErrorCtx)
+{
+	return IsValidXName(FStringView(InName), InInvalidChars, OutReason, InErrorCtx);
+}
+
 bool FName::IsValidXName(const FString& InName, const FString& InInvalidChars, FText* OutReason, const FText* InErrorCtx)
+{
+	return IsValidXName(FStringView(InName), InInvalidChars, OutReason, InErrorCtx);
+}
+
+bool FName::IsValidXName(const FStringView& InName, const FString& InInvalidChars, FText* OutReason, const FText* InErrorCtx)
 {
 	if (InName.IsEmpty() || InInvalidChars.IsEmpty())
 	{
@@ -2177,7 +2194,8 @@ bool FName::IsValidXName(const FString& InName, const FString& InInvalidChars, F
 	TSet<TCHAR> AlreadyMatchedInvalidChars;
 	for (const TCHAR InvalidChar : InInvalidChars)
 	{
-		if (!AlreadyMatchedInvalidChars.Contains(InvalidChar) && InName.GetCharArray().Contains(InvalidChar))
+		int32 InvalidCharIndex = INDEX_NONE;
+		if (!AlreadyMatchedInvalidChars.Contains(InvalidChar) && InName.FindChar(InvalidChar, InvalidCharIndex))
 		{
 			MatchedInvalidChars.AppendChar(InvalidChar);
 			AlreadyMatchedInvalidChars.Add(InvalidChar);
@@ -2197,6 +2215,12 @@ bool FName::IsValidXName(const FString& InName, const FString& InInvalidChars, F
 	}
 
 	return true;
+}
+
+FStringBuilderBase& operator<<(FStringBuilderBase& Builder, FNameEntryId Id)
+{
+	FName::GetEntry(Id)->AppendNameToString(Builder);
+	return Builder;
 }
 
 template <typename CharType, int N>
@@ -2478,8 +2502,7 @@ FArchive& operator<<(FArchive& Ar, FNameEntrySerialized& E)
 			// If StringLen cannot be negated due to integer overflow, Ar is corrupted.
 			if (StringLen == MIN_int32)
 			{
-				Ar.ArIsError = 1;
-				Ar.ArIsCriticalError = 1;
+				Ar.SetCriticalError();
 				UE_LOG(LogUnrealNames, Error, TEXT("Archive is corrupted"));
 				return Ar;
 			}
@@ -2490,8 +2513,7 @@ FArchive& operator<<(FArchive& Ar, FNameEntrySerialized& E)
 			// Protect against network packets allocating too much memory
 			if ((MaxSerializeSize > 0) && (StringLen > MaxSerializeSize))
 			{
-				Ar.ArIsError = 1;
-				Ar.ArIsCriticalError = 1;
+				Ar.SetCriticalError();
 				UE_LOG(LogUnrealNames, Error, TEXT("String is too large"));
 				return Ar;
 			}
@@ -2518,8 +2540,7 @@ FArchive& operator<<(FArchive& Ar, FNameEntrySerialized& E)
 			// Protect against network packets allocating too much memory
 			if ((MaxSerializeSize > 0) && (StringLen > MaxSerializeSize))
 			{
-				Ar.ArIsError = 1;
-				Ar.ArIsCriticalError = 1;
+				Ar.SetCriticalError();
 				UE_LOG(LogUnrealNames, Error, TEXT("String is too large"));
 				return Ar;
 			}

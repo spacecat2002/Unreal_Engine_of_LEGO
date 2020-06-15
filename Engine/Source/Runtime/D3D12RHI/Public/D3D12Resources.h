@@ -120,6 +120,10 @@ private:
 	void* ResourceBaseAddress;
 	FName DebugName;
 
+#if NV_AFTERMATH
+	GFSDK_Aftermath_ResourceHandle AftermathHandle;
+#endif
+
 #if UE_BUILD_DEBUG
 	static int64 TotalResourceCount;
 	static int64 NoStateTrackingResourceCount;
@@ -537,6 +541,12 @@ public:
 
 	void Swap(FD3D12ResourceLocation& Other);
 
+	/**  Get an address used by LLM to track the GPU allocation that this location represents. */
+	void* GetAddressForLLMTracking() const
+	{
+		return (uint8*)this + 1;
+	}
+
 private:
 
 	template<bool bReleaseResource>
@@ -579,6 +589,11 @@ private:
 
 class FD3D12DeferredDeletionQueue : public FD3D12AdapterChild
 {
+public:
+	using FFencePair = TPair<FD3D12Fence*, uint64>;
+	using FFenceList = TArray<FFencePair, TInlineAllocator<1>>;
+
+private:
 	enum class EObjectType
 	{
 		RHI,
@@ -592,8 +607,7 @@ class FD3D12DeferredDeletionQueue : public FD3D12AdapterChild
 			FD3D12Resource* RHIObject;
 			ID3D12Object*   D3DObject;
 		};
-		FD3D12Fence* Fence;
-		uint64 FenceValue;
+		FFenceList FenceList;
 		EObjectType Type;
 	};
 	FThreadsafeQueue<FencedObjectType> DeferredReleaseQueue;
@@ -602,7 +616,7 @@ public:
 
 	inline const uint32 QueueSize() const { return DeferredReleaseQueue.GetSize(); }
 
-	void EnqueueResource(FD3D12Resource* pResource, FD3D12Fence* Fence);
+	void EnqueueResource(FD3D12Resource* pResource, FFenceList&& FenceList);
 	void EnqueueResource(ID3D12Object* pResource, FD3D12Fence* Fence);
 
 	bool ReleaseResources(bool bDeleteImmediately, bool bIsShutDown);
@@ -685,11 +699,6 @@ public:
 		check(InSRV->DynamicResource == nullptr);
 		InSRV->DynamicResource = this;
 		DynamicSRVs.Add(InSRV);
-		if (DynamicSRVs.Num() == 4)
-		{
-			static int dbg = 0;
-			dbg++;
-		}
 	}
 
 	void RemoveDynamicSRV(FD3D12BaseShaderResourceView* InSRV)
@@ -699,6 +708,19 @@ public:
 		InSRV->DynamicResource = nullptr;
 		uint32 Removed = DynamicSRVs.Remove(InSRV);
 		check(Removed == 1);
+	}
+
+	void RemoveAllDynamicSRVs()
+	{
+		FScopeLock Lock(&DynamicSRVsCS);
+		for (FD3D12BaseShaderResourceView* DynamicSRV : DynamicSRVs)
+		{
+			if (DynamicSRV != nullptr)
+			{
+				DynamicSRV->DynamicResource = nullptr;
+			}
+		}
+		DynamicSRVs.Reset();
 	}
 
 	void Swap(FD3D12BaseShaderResource& Other)
@@ -794,25 +816,42 @@ public:
 };
 #endif
 
-/** Index buffer resource class that stores stride information. */
-class FD3D12IndexBuffer : public FRHIIndexBuffer, public FD3D12BaseShaderResource, public FD3D12TransientResource, public FD3D12LinkedAdapterObject<FD3D12IndexBuffer>
+class FD3D12Buffer : public FD3D12BaseShaderResource, public FD3D12TransientResource, public FD3D12LinkedAdapterObject<FD3D12Buffer>
 {
 public:
-	FD3D12IndexBuffer()
-		: FD3D12BaseShaderResource(nullptr)
-		, LockedData(nullptr)
-	{}
-
-	FD3D12IndexBuffer(FD3D12Device* InParent, uint32 InStride, uint32 InSize, uint32 InUsage)
-		: FRHIIndexBuffer(InStride, InSize, InUsage)
-		, FD3D12BaseShaderResource(InParent)
+	FD3D12Buffer(FD3D12Device* InParent)
+		: FD3D12BaseShaderResource(InParent)
 		, LockedData(InParent)
-	{}
-
-	virtual ~FD3D12IndexBuffer();
+	{
+	}
+	virtual ~FD3D12Buffer()
+	{
+	}
 
 	void Rename(FD3D12ResourceLocation& NewLocation);
 	void RenameLDAChain(FD3D12ResourceLocation& NewLocation);
+
+	void ReleaseUnderlyingResource();
+
+	FD3D12LockedResource LockedData;
+};
+
+/** Index buffer resource class that stores stride information. */
+class FD3D12IndexBuffer : public FRHIIndexBuffer, public FD3D12Buffer
+{
+public:
+	FD3D12IndexBuffer()
+		: FD3D12Buffer(nullptr)
+	{
+	}
+
+	FD3D12IndexBuffer(FD3D12Device* InParent, uint32 InStride, uint32 InSize, uint32 InUsage)
+		: FRHIIndexBuffer(InStride, InSize, InUsage)
+		, FD3D12Buffer(InParent)
+	{
+	}
+
+	virtual ~FD3D12IndexBuffer();
 
 	void Swap(FD3D12IndexBuffer& Other);
 
@@ -831,27 +870,19 @@ public:
 	{
 		return FRHIResource::GetRefCount();
 	}
-
-	FD3D12LockedResource LockedData;
 };
 
 class FD3D12ShaderResourceView;
 
 /** Structured buffer resource class. */
-class FD3D12StructuredBuffer : public FRHIStructuredBuffer, public FD3D12BaseShaderResource, public FD3D12TransientResource, public FD3D12LinkedAdapterObject<FD3D12StructuredBuffer>
+class FD3D12StructuredBuffer : public FRHIStructuredBuffer, public FD3D12Buffer
 {
 public:
-	// Current SRV
-
 	FD3D12StructuredBuffer(FD3D12Device* InParent, uint32 InStride, uint32 InSize, uint32 InUsage)
 		: FRHIStructuredBuffer(InStride, InSize, InUsage)
-		, FD3D12BaseShaderResource(InParent)
-		, LockedData(InParent)
+		, FD3D12Buffer(InParent)
 	{
 	}
-
-	void Rename(FD3D12ResourceLocation& NewLocation);
-	void RenameLDAChain(FD3D12ResourceLocation& NewLocation);
 
 	virtual ~FD3D12StructuredBuffer();
 
@@ -868,31 +899,24 @@ public:
 	{
 		return FRHIResource::GetRefCount();
 	}
-
-	FD3D12LockedResource LockedData;
 };
 
 /** Vertex buffer resource class. */
-class FD3D12VertexBuffer : public FRHIVertexBuffer, public FD3D12BaseShaderResource, public FD3D12TransientResource, public FD3D12LinkedAdapterObject<FD3D12VertexBuffer>
+class FD3D12VertexBuffer : public FRHIVertexBuffer, public FD3D12Buffer
 {
 public:
 	FD3D12VertexBuffer()
-		: FD3D12BaseShaderResource(nullptr)
-		, LockedData(nullptr)
+		: FD3D12Buffer(nullptr)
 	{}
 
 	FD3D12VertexBuffer(FD3D12Device* InParent, uint32 InStride, uint32 InSize, uint32 InUsage)
 		: FRHIVertexBuffer(InSize, InUsage)
-		, FD3D12BaseShaderResource(InParent)
-		, LockedData(InParent)
+		, FD3D12Buffer(InParent)
 	{
 		UNREFERENCED_PARAMETER(InStride);
 	}
 
 	virtual ~FD3D12VertexBuffer();
-
-	void Rename(FD3D12ResourceLocation& NewLocation);
-	void RenameLDAChain(FD3D12ResourceLocation& NewLocation);
 
 	void Swap(FD3D12VertexBuffer& Other);
 
@@ -911,8 +935,6 @@ public:
 	{
 		return FRHIResource::GetRefCount();
 	}
-
-	FD3D12LockedResource LockedData;
 };
 
 template<class BufferType>
@@ -1008,7 +1030,25 @@ public:
 		if (Barriers.Num())
 		{
 			check(pCommandList);
-			pCommandList->ResourceBarrier(Barriers.Num(), Barriers.GetData());
+#if USE_PIX && PLATFORM_XBOXONE 
+			//there was a bug in the instrumented driver that corrupts the cmdBuffer if more than 2000 Barrieres are submitted at once
+			if (Barriers.Num() > 1900)
+			{
+				int Num = Barriers.Num();
+				D3D12_RESOURCE_BARRIER* Ptr = Barriers.GetData();
+				while (Num > 0)
+				{
+					int DispatchNum = FMath::Min(Num, 1900);
+					pCommandList->ResourceBarrier(DispatchNum, Ptr);
+					Ptr += 1900;
+					Num -= 1900;
+				}
+			}
+			else
+#endif
+			{
+				pCommandList->ResourceBarrier(Barriers.Num(), Barriers.GetData());
+			}
 			Reset();
 		}
 	}
@@ -1065,7 +1105,7 @@ public:
 	FD3D12GPUFence(FName InName, FD3D12Fence* InFence)
 		: FRHIGPUFence(InName)
 		, Fence(InFence)
-		, Value(0)
+		, Value(MAX_uint64)
 	{}
 
 	void WriteInternal(ED3D12CommandQueueType QueueType);

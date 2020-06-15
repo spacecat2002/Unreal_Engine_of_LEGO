@@ -31,40 +31,32 @@ namespace
 		}
 	}
 #endif // WITH_EDITORONLY_DATA
-	/** Used to trigger the trigger the data table changed delegate. This allows us to trigger the delegate once from more complex changes */
-	struct FScopedDataTableChange
-	{
-		FScopedDataTableChange(UDataTable* InTable)
-			: Table(InTable)
-		{
-			FScopeLock Lock(&CriticalSection);
-			int32& Count = ScopeCount.FindOrAdd(Table);
-			++Count;
-		}
-		~FScopedDataTableChange()
-		{
-			FScopeLock Lock(&CriticalSection);
-			int32& Count = ScopeCount.FindChecked(Table);
-			--Count;
-			if (Count == 0)
-			{
-				Table->OnDataTableChanged().Broadcast();
-				ScopeCount.Remove(Table);
-			}
-		}
-
-	private:
-		UDataTable* Table;
-
-		static TMap<UDataTable*, int32> ScopeCount;
-		static FCriticalSection CriticalSection;
-	};
-
-	TMap< UDataTable*, int32> FScopedDataTableChange::ScopeCount;
-	FCriticalSection FScopedDataTableChange::CriticalSection;
-
-#define DATATABLE_CHANGE_SCOPE()	FScopedDataTableChange ActiveScope(this);
 }
+
+UDataTable::FScopedDataTableChange::FScopedDataTableChange(UDataTable* InTable)
+	: Table(InTable)
+{
+	FScopeLock Lock(&CriticalSection);
+	int32& Count = ScopeCount.FindOrAdd(Table);
+	++Count;
+}
+
+UDataTable::FScopedDataTableChange::~FScopedDataTableChange()
+{
+	FScopeLock Lock(&CriticalSection);
+	int32& Count = ScopeCount.FindChecked(Table);
+	--Count;
+	if (Count == 0)
+	{
+		Table->OnDataTableChanged().Broadcast();
+		ScopeCount.Remove(Table);
+	}
+}
+
+TMap<UDataTable*, int32> UDataTable::FScopedDataTableChange::ScopeCount;
+FCriticalSection UDataTable::FScopedDataTableChange::CriticalSection;
+
+#define DATATABLE_CHANGE_SCOPE()	UDataTable::FScopedDataTableChange ActiveScope(this);
 
 UDataTable::UDataTable(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -638,7 +630,7 @@ TArray<FProperty*> UDataTable::GetTablePropertyArray(const TArray<const TCHAR*>&
 			}
 			else
 			{
-				FProperty* ColumnProp = FindField<FProperty>(InRowStruct, PropName);
+				FProperty* ColumnProp = FindFProperty<FProperty>(InRowStruct, PropName);
 
 				for (TFieldIterator<FProperty> It(InRowStruct); It && !ColumnProp; ++It)
 				{
@@ -684,7 +676,7 @@ TArray<FProperty*> UDataTable::GetTablePropertyArray(const TArray<const TCHAR*>&
 	// Generate warning for any properties in struct we are not filling in
 		for (int32 PropIdx = 0; PropIdx < ExpectedPropNames.Num(); PropIdx++)
 	{
-		const FProperty* const ColumnProp = FindField<FProperty>(InRowStruct, ExpectedPropNames[PropIdx]);
+		const FProperty* const ColumnProp = FindFProperty<FProperty>(InRowStruct, ExpectedPropNames[PropIdx]);
 
 #if WITH_EDITOR
 		// If the structure has specified the property as optional for import (gameplay code likely doing a custom fix-up or parse of that property),

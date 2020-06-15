@@ -123,11 +123,14 @@ void FConstraintProfileProperties::SyncChangedConstraintProperties(FPropertyChan
 FConstraintProfileProperties::FConstraintProfileProperties()
 	: ProjectionLinearTolerance(5.f)
 	, ProjectionAngularTolerance(180.f)
+	, ProjectionLinearAlpha(1.0f)
+	, ProjectionAngularAlpha(0.0f)
 	, LinearBreakThreshold(300.f)
 	, AngularBreakThreshold(500.f)
 	, bDisableCollision(false)
 	, bParentDominates(false)
 	, bEnableProjection(true)
+	, bEnableSoftProjection(false)
 	, bAngularBreakable(false)
 	, bLinearBreakable(false)
 {
@@ -181,9 +184,7 @@ FConstraintInstance::FConstraintInstance()
 	, AngularRotationOffset(ForceInitToZero)
 	, bScaleLinearLimits(true)
 	, AverageMass(0.f)
-#if WITH_PHYSX
-	, PhysxUserData(this)
-#endif
+	, UserData(this)
 	, LastKnownScale(1.f)
 #if WITH_EDITORONLY_DATA
 	, bDisableCollision_DEPRECATED(false)
@@ -378,7 +379,7 @@ bool FConstraintInstance::CreateJoint_AssumesLocked(const FPhysicsActorHandle& I
 		return false;
 	}
 
-	FPhysicsInterface::SetConstraintUserData(ConstraintHandle, &PhysxUserData);
+	FPhysicsInterface::SetConstraintUserData(ConstraintHandle, &UserData);
 
 	return true;
 }
@@ -448,7 +449,7 @@ void FConstraintInstance::InitConstraint_AssumesLocked(const FPhysicsActorHandle
 	OnConstraintBrokenDelegate = InConstraintBrokenDelegate;
 	LastKnownScale = InScale;
 
-	PhysxUserData = FPhysxUserData(this);
+	UserData = FChaosUserData(this);
 
 	// if there's already a constraint, get rid of it first
 	if (ConstraintHandle.IsValid())

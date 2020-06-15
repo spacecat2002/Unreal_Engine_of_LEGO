@@ -205,210 +205,6 @@ private:
 /*-----------------------------------------------------------------------------
 	FTexture2DMipMap
 -----------------------------------------------------------------------------*/
-#if TEXTURE2DMIPMAP_USE_COMPACT_BULKDATA
-FTexture2DMipMap::FCompactByteBulkData::FCompactByteBulkData()
-{
-	Reset();
-}
-
-void FTexture2DMipMap::FCompactByteBulkData::Reset()
-{
-	OffsetInFile = 0xffffffff;
-	BulkDataSize = 0;
-	BulkDataFlags = 0;
-	TexelData = nullptr;
-}
-
-FTexture2DMipMap::FCompactByteBulkData::~FCompactByteBulkData()
-{
-	FMemory::Free(TexelData);
-	Reset();
-}
-
-FTexture2DMipMap::FCompactByteBulkData::FCompactByteBulkData(const FCompactByteBulkData& Other)
-{
-	*this = Other;
-}
-
-FTexture2DMipMap::FCompactByteBulkData::FCompactByteBulkData(FCompactByteBulkData&& Other)
-{
-	*this = MoveTemp(Other);
-}
-
-typename FTexture2DMipMap::FCompactByteBulkData& FTexture2DMipMap::FCompactByteBulkData::operator=(const FCompactByteBulkData& Other)
-{
-	if (TexelData != Other.TexelData)
-	{
-		OffsetInFile = Other.OffsetInFile;
-		BulkDataFlags = Other.BulkDataFlags;
-		Realloc(Other.BulkDataSize);
-		FMemory::Memcpy(TexelData, Other.TexelData, BulkDataSize);
-	}
-	return *this;
-}
-
-typename FTexture2DMipMap::FCompactByteBulkData& FTexture2DMipMap::FCompactByteBulkData::operator=(FCompactByteBulkData&& Other)
-{
-	if (TexelData != Other.TexelData)
-	{
-		FMemory::Free(TexelData);
-		OffsetInFile = Other.OffsetInFile;
-		BulkDataSize = Other.BulkDataSize;
-		BulkDataFlags = Other.BulkDataFlags;
-		TexelData = Other.TexelData;
-		Other.Reset();
-	}
-	return *this;
-}
-
-void FTexture2DMipMap::FCompactByteBulkData::Serialize(FArchive& Ar, UObject* Owner, int32 MipIdx, bool /*bAttemptFileMapping*/)
-{
-	check(Ar.IsLoading());
-	FMemory::Free(TexelData);
-	TexelData = nullptr;
-
-	FByteBulkData TmpBulkData;
-	TmpBulkData.Serialize(Ar, Owner, MipIdx, false);
-
-	const int64 Tmp = TmpBulkData.GetBulkDataOffsetInFile();
-	check(Tmp >= 0 && Tmp <= 0xffffffffll);
-	OffsetInFile = static_cast<uint32>(Tmp);
-	BulkDataSize = static_cast<uint32>(TmpBulkData.GetBulkDataSize());
-	BulkDataFlags = TmpBulkData.GetBulkDataFlags();
-
-	if (IsInlined())
-	{
-		TmpBulkData.GetCopy((void**)&TexelData, true);
-	}
-
-	if (!MipIdx && !IsInlined())
-	{
-		UTexture2D* OwningTexture2D = Cast<UTexture2D>(Owner);
-		if (OwningTexture2D)
-		{
-			FTexturePlatformData** PlatformDataPtr = OwningTexture2D->GetRunningPlatformData();
-			check(PlatformDataPtr && *PlatformDataPtr);
-			FTexturePlatformData* PlatformData = *PlatformDataPtr;
-#if TEXTURE2DMIPMAP_USE_COMPACT_BULKDATA
-			PlatformData->CachedPackageFileName = TmpBulkData.GetFilename();
-#endif
-		}
-	}
-}
-
-const void* FTexture2DMipMap::FCompactByteBulkData::LockReadOnly() const
-{
-	return const_cast<FCompactByteBulkData*>(this)->Lock(LOCK_READ_ONLY);
-}
-
-void* FTexture2DMipMap::FCompactByteBulkData::Lock(uint32 LockFlags)
-{
-	ensureMsgf(LockFlags != LOCK_READ_ONLY || TexelData,
-		TEXT("Locking bulk data for read only but no data is available. ")
-		TEXT("A possible cause is that GetCopy has been called with bDiscardInternal copy set. ")
-		TEXT("Note that UTexture's loaded via normal asset loading (e.g. FLinkerLoad) is GPU only ")
-		TEXT("and their CPU copies of texel data are discarded after resource creation. If you ")
-		TEXT("want to manipulate their data, you need to use render commands. For example, to ")
-		TEXT("copy a texture into another, use FRHICommandList::CopyTexture"));
-	return TexelData;
-}
-
-void FTexture2DMipMap::FCompactByteBulkData::Unlock() const
-{
-	if (!!(BulkDataFlags & BULKDATA_SingleUse))
-	{
-		FMemory::Free(TexelData);
-		const_cast<FCompactByteBulkData*>(this)->TexelData = nullptr;
-	}
-}
-
-void* FTexture2DMipMap::FCompactByteBulkData::Realloc(int32 NumBytes)
-{
-	FMemory::Free(TexelData);
-	if (NumBytes > 0)
-	{
-		TexelData = (uint8*)FMemory::Malloc(NumBytes);
-		BulkDataSize = NumBytes;
-	}
-	else
-	{
-		TexelData = nullptr;
-		BulkDataSize = 0;
-	}
-	return TexelData;
-}
-
-void FTexture2DMipMap::FCompactByteBulkData::GetCopy(void** Dest, bool bDiscardInternalCopy)
-{
-	if (!IsInlined())
-	{
-		UE_LOG(LogTexture, Fatal, TEXT("FCompactByteBulkData doesn't support GetCopy if data isn't inlined"));
-	}
-
-	if (!BulkDataSize)
-	{
-		check(!TexelData);
-		return;
-	}
-
-	if (!*Dest)
-	{
-		if (bDiscardInternalCopy)
-		{
-			*Dest = TexelData;
-			TexelData = nullptr;
-			return;
-		}
-		*Dest = FMemory::Malloc(BulkDataSize);
-	}
-
-	FMemory::Memcpy(*Dest, TexelData, BulkDataSize);
-	if (bDiscardInternalCopy)
-	{
-		FMemory::Free(TexelData);
-		TexelData = nullptr;
-	}
-}
-
-IBulkDataIORequest* FTexture2DMipMap::FCompactByteBulkData::CreateStreamingRequest(FString Filename, int64 OffsetInBulkData, int64 BytesToRead, EAsyncIOPriorityAndFlags Priority, FAsyncFileCallBack* CompleteCallback, uint8* UserSuppliedMemory) const
-{
-	check(Filename.IsEmpty() == false);
-
-	// Fix up the Filename/Offset to work with streaming if we are loading from a .uexp file
-	if (Filename.EndsWith(TEXT(".uasset")) || Filename.EndsWith(TEXT(".umap")))
-	{
-		OffsetInBulkData -= IFileManager::Get().FileSize(*Filename);
-
-		Filename = FPaths::GetBaseFilename(Filename, false) + TEXT(".uexp");
-		UE_LOG(LogTexture, Error, TEXT("Streaming from the .uexp file '%s' this MUST be in a ubulk instead for best performance."), *Filename);
-	}
-
-	UE_CLOG(IsStoredCompressedOnDisk(), LogSerialization, Fatal, TEXT("Package level compression is no longer supported (%s)."), *Filename);
-	UE_CLOG(GetBulkDataSize() <= 0, LogSerialization, Error, TEXT("(%s) has invalid bulk data size."), *Filename);
-
-	IAsyncReadFileHandle* IORequestHandle = FPlatformFileManager::Get().GetPlatformFile().OpenAsyncRead(*Filename);
-	check(IORequestHandle); // this generally cannot fail because it is async
-
-	if (IORequestHandle == nullptr)
-	{
-		return nullptr;
-	}
-
-	const int64 FinalOffsetInFile = GetBulkDataOffsetInFile() + OffsetInBulkData;
-
-	IAsyncReadRequest* ReadRequest = IORequestHandle->ReadRequest(FinalOffsetInFile, BytesToRead, Priority, CompleteCallback, UserSuppliedMemory);
-	if (ReadRequest != nullptr)
-	{
-		return new FBulkDataIORequest(IORequestHandle, ReadRequest, BytesToRead);
-	}
-	else
-	{
-		delete IORequestHandle;
-		return nullptr;
-	}
-}
-
-#endif // #if TEXTURE2DMIPMAP_USE_COMPACT_BULKDATA
 
 void FTexture2DMipMap::Serialize(FArchive& Ar, UObject* Owner, int32 MipIdx)
 {
@@ -530,32 +326,20 @@ int32 UTexture2D::CalcNumOptionalMips() const
 	return 0;
 }
 
-bool UTexture2D::GetMipDataFilename(const int32 MipIndex, FString& OutBulkDataFilename) const
+FIoFilenameHash UTexture2D::GetMipIoFilenameHash(const int32 MipIndex) const
 {
-	if (PlatformData)
+	if (PlatformData && PlatformData->Mips.IsValidIndex(MipIndex))
 	{
-		if (MipIndex < PlatformData->Mips.Num() && MipIndex >= 0)
-		{
-#if !TEXTURE2DMIPMAP_USE_COMPACT_BULKDATA
-			OutBulkDataFilename = PlatformData->Mips[MipIndex].BulkData.GetFilename();
-#else
-			OutBulkDataFilename = PlatformData->CachedPackageFileName;
-
-			if (PlatformData->Mips[MipIndex].BulkData.IsInSeperateFile())
-			{	
-				const bool UseOptionalBulkDataFileName = PlatformData->Mips[MipIndex].BulkData.IsOptional();
-				OutBulkDataFilename = FPaths::ChangeExtension(OutBulkDataFilename, UseOptionalBulkDataFileName ? TEXT(".uptnl") : TEXT(".ubulk"));
-			}
-#endif
-			return true;
-		}
+		return PlatformData->Mips[MipIndex].BulkData.GetIoFilenameHash();
 	}
-	return false;
+	else
+	{
+		return INVALID_IO_FILENAME_HASH;
+	}
 }
 
 bool UTexture2D::DoesMipDataExist(const int32 MipIndex) const
 {
-#if TEXTURE2DMIPMAP_USE_COMPACT_BULKDATA == 0
 	if (PlatformData)
 	{
 		if (MipIndex < PlatformData->Mips.Num() && MipIndex >= 0)
@@ -563,10 +347,6 @@ bool UTexture2D::DoesMipDataExist(const int32 MipIndex) const
 			return PlatformData->Mips[MipIndex].BulkData.DoesExist();
 		}
 	}
-#else
-	checkf(false, TEXT("Should not be possible to reach this path, if USE_NEW_BULKDATA is enabled then TEXTURE2DMIPMAP_USE_COMPACT_BULKDATA should be disabled!"));
-#endif
-
 	return false;
 }
 
@@ -1127,7 +907,7 @@ bool UTexture2D::HasSameSourceArt(UTexture2D* InTexture)
 
 bool UTexture2D::HasAlphaChannel() const
 {
-	if (PlatformData && (PlatformData->PixelFormat != PF_DXT1) && (PlatformData->PixelFormat != PF_ATC_RGB))
+	if (PlatformData && (PlatformData->PixelFormat != PF_DXT1))
 	{
 		return true;
 	}
@@ -1557,7 +1337,7 @@ FTexture2DResource::FTexture2DResource( UTexture2D* InOwner, int32 InitialMipCou
 	MipFadeSetting = (Owner->LODGroup == TEXTUREGROUP_Lightmap || Owner->LODGroup == TEXTUREGROUP_Shadowmap) ? MipFade_Slow : MipFade_Normal;
 
 	// HDR images are stored in linear but still require gamma correction to display correctly.
-	bIgnoreGammaConversions = !Owner->SRGB && Owner->CompressionSettings != TC_HDR && Owner->CompressionSettings != TC_HDR_Compressed;
+	bIgnoreGammaConversions = !Owner->SRGB && Owner->CompressionSettings != TC_HDR && Owner->CompressionSettings != TC_HDR_Compressed && Owner->CompressionSettings != TC_HalfFloat;
 	bSRGB = InOwner->SRGB;
 
 	check(InitialMipCount>0);
@@ -1779,16 +1559,6 @@ void FTexture2DResource::InitRHI()
  */
 void FTexture2DResource::ReleaseRHI()
 {
-	const TIndirectArray<FTexture2DMipMap>& OwnerMips = Owner->GetPlatformMips();
-
-	// It should be safe to release the texture.
-	check(!Owner->HasPendingUpdate());
-
-	if ( (Texture2DRHI->GetFlags() & TexCreate_Virtual) != TexCreate_Virtual )
-	{
-		check(OwnerMips[CurrentFirstMip].SizeX == Texture2DRHI->GetSizeX() && OwnerMips[CurrentFirstMip].SizeY == Texture2DRHI->GetSizeY());
-	}
-
 	DEC_DWORD_STAT_BY( STAT_TextureMemory, TextureSize );
 	DEC_DWORD_STAT_FNAME_BY( LODGroupStatName, TextureSize );
 
@@ -1819,7 +1589,7 @@ void FTexture2DResource::CreateSamplerStates(float MipMapBias)
 	  AM_Wrap,
 	  MipMapBias
 	);
-	SamplerStateRHI = RHICreateSamplerState(SamplerStateInitializer);
+	SamplerStateRHI = GetOrCreateSamplerState(SamplerStateInitializer);
 
 	// Create a custom sampler state for using this texture in a deferred pass, where ddx / ddy are discontinuous
 	FSamplerStateInitializerRHI DeferredPassSamplerStateInitializer
@@ -1837,7 +1607,7 @@ void FTexture2DResource::CreateSamplerStates(float MipMapBias)
 	  2
 	);
 
-	DeferredPassSamplerStateRHI = RHICreateSamplerState(DeferredPassSamplerStateInitializer);
+	DeferredPassSamplerStateRHI = GetOrCreateSamplerState(DeferredPassSamplerStateInitializer);
 }
 
 // Recreate the sampler states (used when updating mip map lod bias offset)
@@ -1971,7 +1741,7 @@ void FVirtualTexture2DResource::InitRHI()
 		// This doesn't really matter when sampling the cache texture (as it only has a level 0, so whatever the bias that is sampled) but it does when we sample miptail texture
 		0 // VT currently ignores global mip bias ensure the miptail works the same -> UTexture2D::GetGlobalMipMapLODBias()
 	);
-	SamplerStateRHI = RHICreateSamplerState(SamplerStateInitializer);
+	SamplerStateRHI = GetOrCreateSamplerState(SamplerStateInitializer);
 
 	const int32 MaxLevel = VTData->GetNumMips() - FirstMipToUse - 1;
 	check(MaxLevel >= 0);
@@ -2112,7 +1882,7 @@ void FVirtualTexture2DResource::InitializeEditorResources(IVirtualTexture* InVir
 		RHIBindDebugLabelName(TextureRHI, *TextureOwner->GetName());
 		RHIUpdateTextureReference(TextureOwner->TextureReference.TextureReferenceRHI, TextureRHI);
 
-		bIgnoreGammaConversions = !TextureOwner->SRGB && TextureOwner->CompressionSettings != TC_HDR;
+		bIgnoreGammaConversions = !TextureOwner->SRGB && TextureOwner->CompressionSettings != TC_HDR && TextureOwner->CompressionSettings != TC_HalfFloat;
 
 		// re factored to ensure this is set earlier...make sure it's correct
 		ensure(bSRGB == TextureOwner->SRGB);
@@ -2139,6 +1909,8 @@ class IAllocatedVirtualTexture* FVirtualTexture2DResource::AcquireAllocatedVT()
 		VTDesc.TileSize = VTData->TileSize;
 		VTDesc.TileBorderSize = VTData->TileBorderSize;
 		VTDesc.NumTextureLayers = VTData->GetNumLayers();
+		VTDesc.bShareDuplicateLayers = TextureOwner->IsVirtualTexturedWithSinglePhysicalSpace();
+
 		for (uint32 LayerIndex = 0u; LayerIndex < VTDesc.NumTextureLayers; ++LayerIndex)
 		{
 			VTDesc.ProducerHandle[LayerIndex] = ProducerHandle; // use the same producer for each layer
@@ -2454,7 +2226,7 @@ void FTexture2DArrayResource::InitRHI()
 		SamplerZAddress
 	);
 
-	SamplerStateRHI = RHICreateSamplerState(SamplerStateInitializer);
+	SamplerStateRHI = GetOrCreateSamplerState(SamplerStateInitializer);
 }
 
 FIncomingTextureArrayDataEntry::FIncomingTextureArrayDataEntry(UTexture2D* InTexture)
@@ -2505,10 +2277,9 @@ FTexture2DArrayResource::FTexture2DArrayResource(UTexture2DArray* InOwner)
 	STAT(LODGroupStatName = TextureGroupStatFNames[InOwner->LODGroup]);
 
 	TIndirectArray<FTexture2DMipMap>& Mips = InOwner->PlatformData->Mips;
-	uint32 Slices = InOwner->GetNumSlices();
 
 	// Create empty data storage.
-	for (uint32 Slice = 0; Slice < Slices; ++Slice)
+	for (uint32 Slice = 0; Slice < NumSlices; ++Slice)
 	{
 		CachedInitialData.Add(FTextureArrayDataEntry());
 
@@ -2528,11 +2299,11 @@ FTexture2DArrayResource::FTexture2DArrayResource(UTexture2DArray* InOwner)
 		FTexture2DMipMap& Mip = Mips[MipIndex];
 		if (Mip.BulkData.GetBulkDataSize() > 0)
 		{
-			uint32 MipSize = Mip.BulkData.GetBulkDataSize() / Slices;
+			uint32 MipSize = Mip.BulkData.GetBulkDataSize() / NumSlices;
 
 			uint8* In = (uint8*)Mip.BulkData.Lock(LOCK_READ_ONLY);
 
-			for (uint32 Slice = 0; Slice < Slices; ++Slice)
+			for (uint32 Slice = 0; Slice < NumSlices; ++Slice)
 			{
 				FMipMapDataEntry& NewEntry = CachedInitialData[Slice].MipData[MipIndex];
 				NewEntry.SizeX = Mip.SizeX;

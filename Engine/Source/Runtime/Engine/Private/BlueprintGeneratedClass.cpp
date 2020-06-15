@@ -443,23 +443,10 @@ bool UBlueprintGeneratedClass::BuildCustomPropertyListForPostConstruction(FCusto
 						CppStructOps = StructProperty->Struct->GetCppStructOps();
 					}
 
+					// Check if we should initialize using the full value (e.g. a USTRUCT with one or more non-reflected fields).
 					bool bIsIdentical = false;
-					const bool bHasIdentical = CppStructOps && CppStructOps->HasIdentical();
-					const bool bIsPlainOldData = CppStructOps && CppStructOps->IsPlainOldData();
-					
-					if (bHasIdentical)
-					{
-						// Use the explicit comparison function that's associated with this struct.
-						const uint32 PortFlags = 0;
-						bIsIdentical = StructProperty->Identical(PropertyValue, DefaultPropertyValue, PortFlags);
-					}
-					else if (bIsPlainOldData)
-					{
-						// Use a byte-for-byte comparison for simple POD types. We'll initialize the whole value in this case.
-						const int32 NumBytes = StructProperty->Struct->GetStructureSize();
-						bIsIdentical = !FMemory::Memcmp(PropertyValue, DefaultPropertyValue, NumBytes);
-					}
-					else
+					const uint32 PortFlags = 0;
+					if(!CppStructOps || !CppStructOps->HasIdentical() || !CppStructOps->Identical(PropertyValue, DefaultPropertyValue, PortFlags, bIsIdentical))
 					{
 						// Recursively gather up all struct fields that differ and assign to the current node's sub property list.
 						bIsIdentical = !BuildCustomPropertyListForPostConstruction((*CurrentNodePtr)->SubPropertyList, StructProperty->Struct, PropertyValue, DefaultPropertyValue);
@@ -670,28 +657,14 @@ void UBlueprintGeneratedClass::InitPropertiesFromCustomList(const FCustomPropert
 
 		if (const FStructProperty* StructProperty = CastField<FStructProperty>(CustomPropertyListNode->Property))
 		{
-			UScriptStruct::ICppStructOps* CppStructOps = nullptr;
-			if (StructProperty->Struct)
+			if (CustomPropertyListNode->SubPropertyList != nullptr)
 			{
-				CppStructOps = StructProperty->Struct->GetCppStructOps();
-			}
-
-			const bool bHasCopy = CppStructOps && CppStructOps->HasCopy();
-			const bool bHasIdentical = CppStructOps && CppStructOps->HasIdentical();
-			const bool bIsPlainOldData = CppStructOps && CppStructOps->IsPlainOldData();
-
-			// Copy the full value if this struct has an explicit copy functor, or if we did not determine the delta for this struct ourselves.
-			if (bHasCopy || bHasIdentical || bIsPlainOldData)
-			{
-				StructProperty->CopySingleValue(PropertyValue, DefaultPropertyValue);
+				InitPropertiesFromCustomList(CustomPropertyListNode->SubPropertyList, StructProperty->Struct, PropertyValue, DefaultPropertyValue);
 			}
 			else
 			{
-				// This should never be NULL; we should not be recording the StructProperty without at least one sub property, but we'll verify just to be sure.
-				if (ensure(CustomPropertyListNode->SubPropertyList != nullptr))
-				{
-					InitPropertiesFromCustomList(CustomPropertyListNode->SubPropertyList, StructProperty->Struct, PropertyValue, DefaultPropertyValue);
-				}
+				// A NULL sub-property list indicates that we should copy the entire default value (e.g. a struct with one or more non-reflected fields).
+				StructProperty->CopySingleValue(PropertyValue, DefaultPropertyValue);
 			}
 		}
 		else if (const FArrayProperty* ArrayProperty = CastField<FArrayProperty>(CustomPropertyListNode->Property))
@@ -1090,7 +1063,7 @@ void UBlueprintGeneratedClass::CreateTimelineComponent(AActor* Actor, const UTim
 
 	// Find property with the same name as the template and assign the new Timeline to it
 	UClass* ActorClass = Actor->GetClass();
-	FObjectPropertyBase* Prop = FindField<FObjectPropertyBase>(ActorClass, TimelineTemplate->GetVariableName());
+	FObjectPropertyBase* Prop = FindFProperty<FObjectPropertyBase>(ActorClass, TimelineTemplate->GetVariableName());
 	if (Prop)
 	{
 		Prop->SetObjectPropertyValue_InContainer(Actor, NewTimeline);
@@ -1767,7 +1740,7 @@ void FBlueprintCookedComponentInstancingData::BuildCachedPropertyList(FCustomPro
 		const UStruct* PropertyScope = CurrentScope;
 		while (!Property && PropertyScope)
 		{
-			Property = FindField<FProperty>(PropertyScope, ChangedPropertyInfo.PropertyName);
+			Property = FindFProperty<FProperty>(PropertyScope, ChangedPropertyInfo.PropertyName);
 			PropertyScope = PropertyScope->GetSuperStruct();
 		}
 

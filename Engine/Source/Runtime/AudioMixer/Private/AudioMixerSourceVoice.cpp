@@ -249,13 +249,13 @@ namespace Audio
 		return SourceManager->GetEnvelopeValue(SourceId);
 	}
 
-	void FMixerSourceVoice::MixOutputBuffers(int32 InNumOutputChannels, const float SendLevel, AlignedFloatBuffer& OutWetBuffer) const
+	void FMixerSourceVoice::MixOutputBuffers(int32 InNumOutputChannels, const float SendLevel, EMixerSourceSubmixSendStage InSubmixSendStage, AlignedFloatBuffer& OutWetBuffer) const
 	{
 		AUDIO_MIXER_CHECK_AUDIO_PLAT_THREAD(MixerDevice);
 
 		check(!bOutputToBusOnly);
 
-		return SourceManager->MixOutputBuffers(SourceId, InNumOutputChannels, SendLevel, OutWetBuffer);
+		return SourceManager->MixOutputBuffers(SourceId, InNumOutputChannels, SendLevel, InSubmixSendStage, OutWetBuffer);
 	}
 
 	const ISoundfieldAudioPacket* FMixerSourceVoice::GetEncodedOutput(const FSoundfieldEncodingKey& InKey) const
@@ -265,6 +265,11 @@ namespace Audio
 		check(!bOutputToBusOnly);
 
 		return SourceManager->GetEncodedOutput(SourceId, InKey);
+	}
+
+	const FQuat FMixerSourceVoice::GetListenerRotationForVoice() const
+	{
+		return SourceManager->GetListenerRotation(SourceId);
 	}
 
 	void FMixerSourceVoice::SetSubmixSendInfo(FMixerSubmixWeakPtr Submix, const float SendLevel)

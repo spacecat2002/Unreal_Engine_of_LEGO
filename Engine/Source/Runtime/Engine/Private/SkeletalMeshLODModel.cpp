@@ -20,6 +20,7 @@
 #include "UObject/FortniteMainBranchObjectVersion.h"
 #include "GPUSkinVertexFactory.h"
 #include "UObject/AnimObjectVersion.h"
+#include "Misc/ScopeLock.h"
 
 /*-----------------------------------------------------------------------------
 FSoftSkinVertex
@@ -1158,22 +1159,35 @@ void FSkeletalMeshLODModel::UpdateChunkedSectionInfo(const FString& SkeletalMesh
 	}
 }
 
-bool FSkeletalMeshLODModel::CopyStructure(FSkeletalMeshLODModel* Destination, FSkeletalMeshLODModel* Source)
+void FSkeletalMeshLODModel::CopyStructure(FSkeletalMeshLODModel* Destination, const FSkeletalMeshLODModel* Source)
 {
-	if (Source->RawPointIndices.IsLocked() || Source->LegacyRawPointIndices.IsLocked() || Source->RawSkeletalMeshBulkData_DEPRECATED.GetBulkData().IsLocked())
-	{
-		return false;
-	}
+	//The private Lock should always be valid
+	check(Source);
+	check(Destination);
+	check(Source->BulkDataReadMutex);
+	check(Destination->BulkDataReadMutex);
+	//Lock both mutex before touching the bulk data
+	FScopeLock LockSource(Source->BulkDataReadMutex);
+	FScopeLock LockDestination(Destination->BulkDataReadMutex);
+
+	FCriticalSection* DestinationBulkDataReadMutex = Destination->BulkDataReadMutex;
+
+	//Empty the Destination BulkData to avoid leaks
+	Destination->RawPointIndices.RemoveBulkData();
+	Destination->LegacyRawPointIndices.RemoveBulkData();
+	Destination->RawSkeletalMeshBulkData_DEPRECATED.EmptyBulkData();
+
 	// Bulk data arrays need to be locked before a copy can be made.
-	Source->RawPointIndices.Lock(LOCK_READ_ONLY);
-	Source->LegacyRawPointIndices.Lock(LOCK_READ_ONLY);
-	Source->RawSkeletalMeshBulkData_DEPRECATED.GetBulkData().Lock(LOCK_READ_ONLY);
+	Source->RawPointIndices.LockReadOnly();
+	Source->LegacyRawPointIndices.LockReadOnly();
+	Source->RawSkeletalMeshBulkData_DEPRECATED.GetBulkData().LockReadOnly();
 	*Destination = *Source;
 	Source->RawSkeletalMeshBulkData_DEPRECATED.GetBulkData().Unlock();
 	Source->RawPointIndices.Unlock();
 	Source->LegacyRawPointIndices.Unlock();
 
-	return true;
+	//Make sure the mutex of the copy is set back to the original destination mutex, we can recycle the pointer.
+	Destination->BulkDataReadMutex = DestinationBulkDataReadMutex;
 }
 
 #endif // WITH_EDITOR

@@ -9,6 +9,7 @@
 #include "CoreMinimal.h"
 #include "RendererInterface.h"
 #include "HairStrandsVoxelization.h"
+#include "HairStrandsDeepShadow.h"
 #include "SceneManagement.h"
 
 // -----------------------------
@@ -25,6 +26,7 @@
 
 struct FHairMacroGroupAABBData
 {
+	uint32 MacroGroupCount = 0;
 	TRefCountPtr<FPooledRDGBuffer>	MacroGroupAABBsBuffer;
 };
 
@@ -37,7 +39,8 @@ struct FHairStrandsMacroGroupData
 		FMeshBatchAndRelevance MeshBatchAndRelevance;
 		uint32 MaterialId;
 		uint32 ResourceId;
-		uint32 GroupIndex;
+		uint32 GroupIndex;		
+		bool IsCullingEnable() const;
 	};
 	typedef TArray<PrimitiveInfo, SceneRenderingAllocator> TPrimitiveInfos;
 
@@ -50,23 +53,22 @@ struct FHairStrandsMacroGroupData
 	typedef TArray<PrimitiveGroup, SceneRenderingAllocator> TPrimitiveGroups;
 
 
-	FVector GetMinBound() const { return VoxelResources.MinAABB; }
-	FVector GetMaxBound() const { return VoxelResources.MaxAABB; }
-	uint32  GetResolution() const { return VoxelResources.DensityTexture ? VoxelResources.DensityTexture->GetDesc().Extent.X : 0; }
-
 	FVirtualVoxelNodeDesc VirtualVoxelNodeDesc;
-	FHairStrandsVoxelResources VoxelResources;
+	FHairStrandsDeepShadowDatas DeepShadowDatas;
 	TPrimitiveInfos PrimitivesInfos;
 	TPrimitiveGroups PrimitivesGroups;
 	FBoxSphereBounds Bounds;
 	FIntRect ScreenRect;
 	uint32 MacroGroupId;
+
+	bool bNeedScatterSceneLighting = false;
 };
 
 /// Store all hair strands macro group infos for a given view
 struct FHairStrandsMacroGroupDatas
 {
 	TArray<FHairStrandsMacroGroupData, SceneRenderingAllocator> Datas;
+	FDeepShadowResources DeepShadowResources;
 	FVirtualVoxelResources VirtualVoxelResources;
 	FHairMacroGroupAABBData MacroGroupResources;
 };

@@ -11,6 +11,7 @@ DebugViewModeRendering.cpp: Contains definitions for rendering debug viewmodes.
 #include "MeshTexCoordSizeAccuracyRendering.h"
 #include "MaterialTexCoordScalesRendering.h"
 #include "RequiredTextureResolutionRendering.h"
+#include "ViewMode/LODColorationRendering.h"
 #include "PrimitiveSceneInfo.h"
 #include "ScenePrivate.h"
 #include "PostProcessing.h"
@@ -30,19 +31,45 @@ IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FDebugViewModePassPassUniformParameters
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 
-void SetupDebugViewModePassUniformBuffer(FSceneRenderTargets& SceneContext, ERHIFeatureLevel::Type FeatureLevel, FDebugViewModePassPassUniformParameters& PassParameters)
+void SetupDebugViewModePassUniformBuffer(FSceneRenderTargets& SceneContext, const FViewInfo& ViewInfo, FDebugViewModePassPassUniformParameters& PassParameters)
 {
-	SetupSceneTextureUniformParameters(SceneContext, FeatureLevel, ESceneTextureSetupMode::None, PassParameters.SceneTextures);
+	SetupSceneTextureUniformParameters(SceneContext, ViewInfo.FeatureLevel, ESceneTextureSetupMode::None, PassParameters.SceneTextures);
 
-	const int32 NumEngineColors = FMath::Min<int32>(GEngine->StreamingAccuracyColors.Num(), NumStreamingAccuracyColors);
-	int32 ColorIndex = 0;
-	for (; ColorIndex < NumEngineColors; ++ColorIndex)
+	// Accuracy colors
 	{
-		PassParameters.AccuracyColors[ColorIndex] = GEngine->StreamingAccuracyColors[ColorIndex];
+		const int32 NumEngineColors = FMath::Min<int32>(GEngine->StreamingAccuracyColors.Num(), NumStreamingAccuracyColors);
+		int32 ColorIndex = 0;
+		for (; ColorIndex < NumEngineColors; ++ColorIndex)
+		{
+			PassParameters.AccuracyColors[ColorIndex] = GEngine->StreamingAccuracyColors[ColorIndex];
+		}
+		for (; ColorIndex < NumStreamingAccuracyColors; ++ColorIndex)
+		{
+			PassParameters.AccuracyColors[ColorIndex] = FLinearColor::Black;
+		}
 	}
-	for (; ColorIndex < NumStreamingAccuracyColors; ++ColorIndex)
+	// LOD / HLOD colors
 	{
-		PassParameters.AccuracyColors[ColorIndex] = FLinearColor::Black;
+		const TArray<FLinearColor>* Colors = nullptr;
+		if (ViewInfo.Family->EngineShowFlags.LODColoration)
+		{
+			Colors = &(GEngine->LODColorationColors);
+		}
+		else if (ViewInfo.Family->EngineShowFlags.HLODColoration)
+		{
+			Colors = &GEngine->HLODColorationColors;
+		}
+		
+		const int32 NumColors = Colors ? FMath::Min<int32>(NumLODColorationColors, Colors->Num()) : 0;
+		int32 ColorIndex = 0;
+		for (; ColorIndex < NumColors; ++ColorIndex)
+		{
+			PassParameters.LODColors[ColorIndex] = (*Colors)[ColorIndex];
+		}
+		for (; ColorIndex < NumLODColorationColors; ++ColorIndex)
+		{
+			PassParameters.LODColors[ColorIndex] = NumColors > 0 ? Colors->Last() : FLinearColor::Black;
+		}
 	}
 }
 
@@ -92,7 +119,7 @@ bool FDeferredShadingSceneRenderer::RenderDebugViewMode(FRHICommandListImmediate
 
 		// Some of the viewmodes use SCENE_TEXTURES_DISABLED to prevent issues when running in commandlet mode.
 		FDebugViewModePassPassUniformParameters PassParameters;
-		SetupDebugViewModePassUniformBuffer(SceneContext, View.GetFeatureLevel(), PassParameters);
+		SetupDebugViewModePassUniformBuffer(SceneContext, View, PassParameters);
 		Scene->UniformBuffers.DebugViewModePassUniformBuffer.UpdateUniformBufferImmediate(PassParameters);
 
 		RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1);
@@ -256,8 +283,8 @@ void FDebugViewModeMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshBa
 		*MaterialRenderProxy,
 		*Material,
 		DebugViewMode, 
-		ViewIfDynamicMeshCommand->ViewMatrices.GetViewOrigin(), 
-		MeshBatch.VisualizeLODIndex, 
+		ViewIfDynamicMeshCommand ? ViewIfDynamicMeshCommand->ViewMatrices.GetViewOrigin() : FVector::ZeroVector, 
+		(ViewIfDynamicMeshCommand && ViewIfDynamicMeshCommand->Family->EngineShowFlags.HLODColoration) ? MeshBatch.VisualizeHLODIndex : MeshBatch.VisualizeLODIndex,
 		ViewModeParam, 
 		ViewModeParamName);
 
@@ -353,6 +380,8 @@ void InitDebugViewModeInterfaces()
 	FDebugViewModeInterface::SetInterface(DVSM_MaterialTextureScaleAccuracy, new FMaterialTexCoordScaleAccuracyInterface());
 	FDebugViewModeInterface::SetInterface(DVSM_OutputMaterialTextureScales, new FOutputMaterialTexCoordScaleInterface());
 	FDebugViewModeInterface::SetInterface(DVSM_RequiredTextureResolution, new FRequiredTextureResolutionInterface());
+
+	FDebugViewModeInterface::SetInterface(DVSM_LODColoration, new FLODColorationInterface());
 }
 
 #else // !(UE_BUILD_SHIPPING || UE_BUILD_TEST)

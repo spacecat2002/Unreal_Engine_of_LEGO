@@ -307,9 +307,11 @@ public:
 	}
 
 	/** Returns if the streaming level has requested to be unloaded and removed. */
+	UFUNCTION(BlueprintPure, Category = LevelStreaming)
 	bool GetIsRequestingUnloadAndRemoval() const { return bIsRequestingUnloadAndRemoval; }
 
 	/** Sets if the streaming level should be unloaded and removed. */
+	UFUNCTION(BlueprintCallable, Category = LevelStreaming)
 	void SetIsRequestingUnloadAndRemoval(bool bInIsRequestingUnloadAndRemoval);
 
 #if WITH_EDITORONLY_DATA
@@ -414,6 +416,9 @@ public:
 	/** Returns the Level Script Actor of the level if the level is loaded and valid */
 	UFUNCTION(BlueprintPure, meta = (BlueprintInternalUseOnly = "true"))
 	ALevelScriptActor* GetLevelScriptActor();
+
+	/** Returns false if the level package associated to that streaming level is invalid. */
+	bool IsValidStreamingLevel() const;
 
 #if WITH_EDITOR
 	/** Get the folder path for this level for use in the world browser. Only available in editor builds */

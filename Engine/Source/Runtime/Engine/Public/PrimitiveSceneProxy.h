@@ -171,7 +171,7 @@ public:
 	ENGINE_API void RenderBounds(FPrimitiveDrawInterface* PDI, const FEngineShowFlags& EngineShowFlags, const FBoxSphereBounds& Bounds, bool bRenderInEditor) const;
 
 	/** Verifies that a material used for rendering was present in the component's GetUsedMaterials list. */
-	ENGINE_API void VerifyUsedMaterial(const class FMaterialRenderProxy* MaterialRenderProxy) const;
+	ENGINE_API bool VerifyUsedMaterial(const class FMaterialRenderProxy* MaterialRenderProxy) const;
 
 	/** Returns the LOD that the primitive will render at for this view. */
 	virtual int32 GetLOD(const FSceneView* View) const { return INDEX_NONE; }
@@ -709,52 +709,9 @@ public:
 	* Get the lightmap resolution for this primitive. Used in VMI_LightmapDensity.
 	*/
 	virtual int32 GetLightMapResolution() const { return 0; }
-	
-	/** 
-	 * Called during the visibility and shadow setup for each primitives with either static or dynamic relevancy, so we can store custom data for the frame that can be reused later. 
-	 * Keep in mind this can be called in multihread as it's called during the InitViews()
-	 * This will only be called if bUseCustomViewData is true in the GetViewRelevance()
-	 * @param InView - Current View
- 	 * @param InViewLODScale - View LOD scale
-  	 * @param InCustomDataMemStack - MemStack to allocate the custom data
-	 * @param InIsStaticRelevant - Tell us if it was called in a static of dynamic relevancy context
-	 * @param InIsShadowOnly - Tell us if we are creating in the shadow context
-   	 * @param InVisiblePrimitiveLODMask - Calculated LODMask for visibile primitive in static relevancy
-   	 * @param InMeshScreenSizeSquared - Computed mesh batch screen size, passed to prevent recalculation
-	 */
-	ENGINE_API virtual void* InitViewCustomData(const FSceneView& InView, float InViewLODScale, FMemStackBase& InCustomDataMemStack, bool InIsStaticRelevant, bool InIsShadowOnly, const struct FLODMask* InVisiblePrimitiveLODMask = nullptr, float InMeshScreenSizeSquared = -1.0f) { return nullptr; }
 
 	/** Tell us if this proxy is drawn in game.*/
 	ENGINE_API virtual bool IsDrawnInGame() const { return DrawInGame; }
-
-	/** Tell us if we should rely on the default LOD computing rules or not.*/
-	ENGINE_API virtual bool IsUsingCustomLODRules() const { return false; }
-	
-	/** 
-	 * Called during the scene visibility phase or shadow phase, if primitive wasn't visible but project visible shadow, on static primitives to override default LOD logic
-	 * but only if IsUsingCustomLODRules() return true.
-  	 * @param InView - Current View
- 	 * @param InViewLODScale - View LOD scale	 
-  	 * @param InForcedLODLevel - Engine Forced LOD value
-   	 * @param OutScreenSizeSquared - Computed screen size from the function
-	 */
-	ENGINE_API virtual struct FLODMask GetCustomLOD(const FSceneView& InView, float InViewLODScale, int32 InForcedLODLevel, float& OutScreenSizeSquared) const;
-
-	/** Tell us if we should rely on the default shadow LOD computing rules or not for generating whole scene shadow.*/
-	ENGINE_API virtual bool IsUsingCustomWholeSceneShadowLODRules() const { return false; }
-	
-	/** 
-	 * Called during the whole scene shadow phase on static primitives to override default LOD logic but only if IsUsingCustomWholeSceneShadowLODRules() return true.
-  	 * @param InView - Current View
- 	 * @param InViewLODScale - View LOD scale	 
-  	 * @param InForcedLODLevel - Engine Forced LOD value	 
-   	 * @param InVisibilePrimitiveLODMask - Computed LOD for visible primitive
-   	 * @param InShadowMapTextureResolution - Texture resolution of the shadow map for this cascade
-   	 * @param InShadowMapCascadeSize - Shadow cascade size in world unit for this shadow map
-   	 * @param InShadowCascadeId - Shadow cascade Id
-   	 * @param InHasSelfShadow - Indicate if we have self shadow, as it can impact which LODMask we choose
-	 */
-	ENGINE_API virtual struct FLODMask GetCustomWholeSceneShadowLOD(const FSceneView& InView, float InViewLODScale, int32 InForcedLODLevel, const struct FLODMask& InVisibilePrimitiveLODMask, float InShadowMapTextureResolution, float InShadowMapCascadeSize, int8 InShadowCascadeId, bool InHasSelfShadow) const;
 
 	virtual uint8 GetCurrentFirstLODIdx_RenderThread() const { return 0; }
 

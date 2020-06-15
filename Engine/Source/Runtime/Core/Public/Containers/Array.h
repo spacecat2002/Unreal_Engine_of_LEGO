@@ -324,8 +324,8 @@ public:
 		CopyToEmpty(Ptr, Count, 0, 0);
 	}
 
-	template <typename OtherElementType>
-	explicit TArray(const TArrayView<OtherElementType>& Other);
+	template <typename OtherElementType, typename OtherSizeType>
+	explicit TArray(const TArrayView<OtherElementType, OtherSizeType>& Other);
 
 	/**
 	 * Initializer list constructor
@@ -419,8 +419,8 @@ public:
 		return *this;
 	}
 
-	template <typename OtherElementType>
-	TArray& operator=(const TArrayView<OtherElementType>& Other);
+	template <typename OtherElementType, typename OtherSizeType>
+	TArray& operator=(const TArrayView<OtherElementType, OtherSizeType>& Other);
 
 private:
 #if !PLATFORM_COMPILER_HAS_IF_CONSTEXPR
@@ -1141,6 +1141,11 @@ public:
 
 		if (SerializeNum == 0)
 		{
+			// if we are loading, then we have to reset the size to 0, in case it isn't currently 0
+			if (Ar.IsLoading())
+			{
+				A.Empty();
+			}
 			return Ar;
 		}
 
@@ -2265,22 +2270,33 @@ public:
 	 * Remove all instances that match the predicate
 	 *
 	 * @param Predicate Predicate class instance
+	 * @param bAllowShrinking Tell if this function can shrink the memory in-use if suitable.
 	 * @see Remove, RemoveSingle, RemoveSingleSwap, RemoveSwap
 	 */
 	template <class PREDICATE_CLASS>
-	void RemoveAllSwap(const PREDICATE_CLASS& Predicate, bool bAllowShrinking = true)
+	SizeType RemoveAllSwap(const PREDICATE_CLASS& Predicate, bool bAllowShrinking = true)
 	{
+		bool bRemoved = false;
+		const SizeType OriginalNum = ArrayNum;
 		for (SizeType ItemIndex = 0; ItemIndex < Num();)
 		{
 			if (Predicate((*this)[ItemIndex]))
 			{
-				RemoveAtSwap(ItemIndex, 1, bAllowShrinking);
+				bRemoved = true;
+				RemoveAtSwap(ItemIndex, 1, false);
 			}
 			else
 			{
 				++ItemIndex;
 			}
 		}
+
+		if (bRemoved && bAllowShrinking)
+		{
+			ResizeShrink();
+		}
+
+		return OriginalNum - ArrayNum;
 	}
 
 	/**
@@ -2288,6 +2304,7 @@ public:
 	 * O(Count) instead of O(ArrayNum), but does not preserve the order
 	 *
 	 * @param Item The item to remove
+	 * @param bAllowShrinking Tell if this function can shrink the memory in-use if suitable.
 	 *
 	 * @returns The number of items removed. For RemoveSingleItem, this is always either 0 or 1.
 	 * @see Add, Insert, Remove, RemoveAll, RemoveAllSwap, RemoveSwap
@@ -2316,18 +2333,26 @@ public:
 	 * @returns Number of elements removed.
 	 * @see Add, Insert, Remove, RemoveAll, RemoveAllSwap
 	 */
-	SizeType RemoveSwap(const ElementType& Item)
+	SizeType RemoveSwap(const ElementType& Item, bool bAllowShrinking = true)
 	{
 		CheckAddress(&Item);
 
 		const SizeType OriginalNum = ArrayNum;
+		bool bRemoved = false;
 		for (SizeType Index = 0; Index < ArrayNum; Index++)
 		{
 			if ((*this)[Index] == Item)
 			{
-				RemoveAtSwap(Index--);
+				bRemoved = true;
+				RemoveAtSwap(Index--, 1, false);
 			}
 		}
+
+		if (bRemoved && bAllowShrinking)
+		{
+			ResizeShrink();
+		}
+
 		return OriginalNum - ArrayNum;
 	}
 
@@ -2625,6 +2650,7 @@ private:
 
 		static void CopyUnfrozen(const FMemoryUnfreezeContent& Context, const TArray&, void* Dst) { new(Dst) TArray(); }
 		static void AppendHash(const FPlatformTypeLayoutParameters& LayoutParams, FSHA1& Hasher) {}
+		static void ToString(const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext, const TArray& Object) {}
 	};
 
 	template<typename Dummy>
@@ -2646,6 +2672,10 @@ private:
 		{
 			Freeze::AppendHash(StaticGetTypeLayoutDesc<ElementType>(), LayoutParams, Hasher);
 		}
+		static void ToString(const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext, const TArray& Object)
+		{
+			Object.AllocatorInstance.ToString(StaticGetTypeLayoutDesc<ElementType>(), Object.ArrayNum, LayoutParams, OutContext);
+		}
 	};
 
 public:
@@ -2665,6 +2695,12 @@ public:
 	{
 		static const bool bSupportsFreezeMemoryImage = TAllocatorTraits<Allocator>::SupportsFreezeMemoryImage && THasTypeLayout<ElementType>::Value;
 		TSupportsFreezeMemoryImageHelper<bSupportsFreezeMemoryImage>::AppendHash(LayoutParams, Hasher);
+	}
+
+	void ToString(const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext) const
+	{
+		static const bool bSupportsFreezeMemoryImage = TAllocatorTraits<Allocator>::SupportsFreezeMemoryImage && THasTypeLayout<ElementType>::Value;
+		TSupportsFreezeMemoryImageHelper<bSupportsFreezeMemoryImage>::ToString(LayoutParams, OutContext, *this);
 	}
 
 	/**
@@ -2979,6 +3015,12 @@ namespace Freeze
 	{
 		// Assume alignment of array is drive by pointer
 		return FMath::Min(LayoutParams.GetMemoryImagePointerSize(), LayoutParams.MaxFieldAlignment);
+	}
+
+	template<typename T, typename AllocatorType>
+	void IntrinsicToString(const TArray<T, AllocatorType>& Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext)
+	{
+		Object.ToString(LayoutParams, OutContext);
 	}
 }
 

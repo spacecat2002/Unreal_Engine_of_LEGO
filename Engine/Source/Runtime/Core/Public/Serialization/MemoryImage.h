@@ -317,6 +317,27 @@ namespace Freeze
 	{
 		return FMath::Min(LayoutParams.GetMemoryImagePointerSize(), LayoutParams.MaxFieldAlignment);
 	}
+
+	template<typename T>
+	void IntrinsicToString(const TMemoryImagePtr<T>& Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext)
+	{
+		T* RawPtr = Object.Get();
+		if (RawPtr)
+		{
+			// Compile-time type of the thing we're pointing to
+			const FTypeLayoutDesc& StaticTypeDesc = StaticGetTypeLayoutDesc<T>();
+			// Actual run-time type of the thing we're pointing to
+			const FTypeLayoutDesc& DerivedTypeDesc = GetTypeLayoutDesc(OutContext.TryGetPrevPointerTable(), *RawPtr);
+			// 'this' offset to adjust from the compile-time type to the run-time type
+			const uint32 OffsetToBase = DerivedTypeDesc.GetOffsetToBase(StaticTypeDesc);
+
+			DerivedTypeDesc.ToStringFunc((uint8*)RawPtr - OffsetToBase, DerivedTypeDesc, LayoutParams, OutContext);
+		}
+		else
+		{
+			OutContext.AppendNullptr();
+		}
+	}
 }
 
 DECLARE_TEMPLATE_INTRINSIC_TYPE_LAYOUT(template<typename T>, TMemoryImagePtr<T>);
@@ -396,6 +417,7 @@ public:
 
 	void ResizeAllocation(int32 PreviousNumElements, int32 NumElements, SIZE_T NumBytesPerElement, uint32 Alignment);
 	void WriteMemoryImage(FMemoryImageWriter& Writer, const FTypeLayoutDesc& TypeDesc, int32 NumAllocatedElements, uint32 Alignment) const;
+	void ToString(const FTypeLayoutDesc& TypeDesc, int32 NumAllocatedElements, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext) const;
 	void CopyUnfrozen(const FMemoryUnfreezeContent& Context, const FTypeLayoutDesc& TypeDesc, int32 NumAllocatedElements, void* Dst) const;
 
 private:
@@ -488,7 +510,10 @@ class FMemoryImageString
 private:
 	/** Array holding the character data */
 	using DataType = TMemoryImageArray<TCHAR>;
-	LAYOUT_FIELD(DataType, Data)
+	LAYOUT_FIELD(DataType, Data);
+
+	CORE_API void ToString(FMemoryToStringContext& OutContext) const;
+	LAYOUT_TOSTRING(ToString);
 public:
 	using ElementType = TCHAR;
 
@@ -530,6 +555,16 @@ public:
 		return Data.Num() ? Data.Num() - 1 : 0;
 	}
 
+	friend inline const TCHAR* GetData(const FMemoryImageString& String)
+	{
+		return *String;
+	}
+
+	friend inline int32 GetNum(const FMemoryImageString& String)
+	{
+		return String.Len();
+	}
+
 	friend inline FArchive& operator<<(FArchive& Ar, FMemoryImageString& Ref)
 	{
 		Ar << Ref.Data;
@@ -559,24 +594,50 @@ public:
 	inline DataType::ElementAllocatorType& GetAllocatorInstance() { return Data.GetAllocatorInstance(); }
 };
 
+template <>
+struct TIsContiguousContainer<FMemoryImageString>
+{
+	static constexpr bool Value = true;
+};
+
 /** Case insensitive string hash function. */
 FORCEINLINE uint32 GetTypeHash(const FMemoryImageString& S)
 {
 	return FCrc::Strihash_DEPRECATED(*S);
 }
 
+#if WITH_EDITORONLY_DATA
+struct FHashedNameDebugString
+{
+	TMemoryImagePtr<const char> String;
+};
+
+namespace Freeze
+{
+	void IntrinsicWriteMemoryImage(FMemoryImageWriter& Writer, const FHashedNameDebugString& Object, const FTypeLayoutDesc&);
+	void IntrinsicUnfrozenCopy(const FMemoryUnfreezeContent& Context, const FHashedNameDebugString& Object, void* OutDst);
+}
+
+DECLARE_INTRINSIC_TYPE_LAYOUT(FHashedNameDebugString);
+
+#endif // WITH_EDITORONLY_DATA
 
 class FHashedName
 {
+	DECLARE_EXPORTED_TYPE_LAYOUT(FHashedName, CORE_API, NonVirtual);
 public:
 	inline FHashedName() : Hash(0u) {}
-	inline explicit FHashedName(uint64 InHash) : Hash(InHash) {}
+	CORE_API explicit FHashedName(uint64 InHash);
 	CORE_API FHashedName(const TCHAR* InString);
 	CORE_API FHashedName(const FString& InString);
 	CORE_API FHashedName(const FName& InName);
 
 	inline uint64 GetHash() const { return Hash; }
 	inline bool IsNone() const { return Hash == 0u; }
+
+#if WITH_EDITORONLY_DATA
+	const FHashedNameDebugString& GetDebugString() const { return DebugString; }
+#endif
 
 	friend inline bool operator==(const FHashedName& Lhs, const FHashedName& Rhs) { return Lhs.Hash == Rhs.Hash; }
 	friend inline bool operator!=(const FHashedName& Lhs, const FHashedName& Rhs) { return Lhs.Hash != Rhs.Hash; }
@@ -601,9 +662,15 @@ public:
 	}*/
 
 private:
-	uint64 Hash;
+	LAYOUT_FIELD(uint64, Hash);
+	LAYOUT_FIELD_EDITORONLY(FHashedNameDebugString, DebugString);
 };
-DECLARE_INTRINSIC_TYPE_LAYOUT(FHashedName);
+
+namespace Freeze
+{
+	CORE_API void IntrinsicToString(const FHashedName& Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext);
+}
+
 
 class CORE_API FPtrTableBase
 {

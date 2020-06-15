@@ -42,6 +42,7 @@ DECLARE_DWORD_COUNTER_STAT(TEXT("Num page visible resident"), STAT_NumPageVisibl
 DECLARE_DWORD_COUNTER_STAT(TEXT("Num page visible not resident"), STAT_NumPageVisibleNotResident, STATGROUP_VirtualTexturing);
 DECLARE_DWORD_COUNTER_STAT(TEXT("Num page prefetch"), STAT_NumPagePrefetch, STATGROUP_VirtualTexturing);
 DECLARE_DWORD_COUNTER_STAT(TEXT("Num page update"), STAT_NumPageUpdate, STATGROUP_VirtualTexturing);
+DECLARE_DWORD_COUNTER_STAT(TEXT("Num mapped page update"), STAT_NumMappedPageUpdate, STATGROUP_VirtualTexturing);
 DECLARE_DWORD_COUNTER_STAT(TEXT("Num continuous page update"), STAT_NumContinuousPageUpdate, STATGROUP_VirtualTexturing);
 
 DECLARE_DWORD_COUNTER_STAT(TEXT("Num stacks requested"), STAT_NumStacksRequested, STATGROUP_VirtualTexturing);
@@ -52,7 +53,8 @@ DECLARE_DWORD_COUNTER_STAT(TEXT("Num flush caches"), STAT_NumFlushCache, STATGRO
 DECLARE_MEMORY_STAT_POOL(TEXT("Total Physical Memory"), STAT_TotalPhysicalMemory, STATGROUP_VirtualTextureMemory, FPlatformMemory::MCR_GPU);
 DECLARE_MEMORY_STAT_POOL(TEXT("Total Pagetable Memory"), STAT_TotalPagetableMemory, STATGROUP_VirtualTextureMemory, FPlatformMemory::MCR_GPU);
 
-DECLARE_GPU_STAT( VirtualTexture );
+DECLARE_GPU_STAT(VirtualTexture);
+DECLARE_GPU_DRAWCALL_STAT(VirtualTextureAllocate);
 
 static TAutoConsoleVariable<int32> CVarVTVerbose(
 	TEXT("r.VT.Verbose"),
@@ -118,9 +120,7 @@ struct FFeedbackAnalysisParameters
 	FVirtualTextureSystem* System = nullptr;
 	const uint32* FeedbackBuffer = nullptr;
 	FUniquePageList* UniquePageList = nullptr;
-	uint32 FeedbackWidth = 0u;
-	uint32 FeedbackHeight = 0u;
-	uint32 FeedbackPitch = 0u;
+	uint32 FeedbackSize = 0u;
 };
 
 struct FGatherRequestsParameters
@@ -856,34 +856,28 @@ void FVirtualTextureSystem::FeedbackAnalysisTask(const FFeedbackAnalysisParamete
 {
 	FUniquePageList* RESTRICT RequestedPageList = Parameters.UniquePageList;
 	const uint32* RESTRICT Buffer = Parameters.FeedbackBuffer;
-	const uint32 Width = Parameters.FeedbackWidth;
-	const uint32 Height = Parameters.FeedbackHeight;
-	const uint32 Pitch = Parameters.FeedbackPitch;
+	const uint32 BufferSize = Parameters.FeedbackSize;
 
 	// Combine simple runs of identical requests
 	uint32 LastPixel = 0xffffffff;
 	uint32 LastCount = 0;
 
-	for (uint32 y = 0; y < Height; y++)
+	for (uint32 Index = 0; Index < BufferSize; Index++)
 	{
-		const uint32* RESTRICT BufferRow = Buffer + y * Pitch;
-		for (uint32 x = 0; x < Width; x++)
+		const uint32 Pixel = Buffer[Index];
+		if (Pixel == LastPixel)
 		{
-			const uint32 Pixel = BufferRow[x];
-			if (Pixel == LastPixel)
-			{
-				LastCount++;
-				continue;
-			}
-
-			if (LastPixel != 0xffffffff)
-			{
-				RequestedPageList->Add(LastPixel, LastCount);
-			}
-
-			LastPixel = Pixel;
-			LastCount = 1;
+			LastCount++;
+			continue;
 		}
+
+		if (LastPixel != 0xffffffff)
+		{
+			RequestedPageList->Add(LastPixel, LastCount);
+		}
+
+		LastPixel = Pixel;
+		LastCount = 1;
 	}
 
 	if (LastPixel != 0xffffffff)
@@ -934,8 +928,7 @@ void FVirtualTextureSystem::Update(FRHICommandListImmediate& RHICmdList, ERHIFea
 	{
 		// Only flush if we know that there is GPU feedback available to refill the visible data this frame
 		// This prevents bugs when low frame rate causes feedback buffer to stall so that the physical cache isn't filled immediately which causes visible glitching
-		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-		if (SceneContext.VirtualTextureFeedback.CanMap(RHICmdList))
+		if (GVirtualTextureFeedback.CanMap(RHICmdList))
 		{
 			// Each RVT will call FVirtualTextureSystem::FlushCache()
 			Scene->FlushDirtyRuntimeVirtualTextures();
@@ -946,85 +939,46 @@ void FVirtualTextureSystem::Update(FRHICommandListImmediate& RHICmdList, ERHIFea
 	FMemMark Mark(MemStack);
 	FUniquePageList* MergedUniquePageList = new(MemStack) FUniquePageList;
 	MergedUniquePageList->Initialize();
+	
+	if (CVarVTEnableFeedBack.GetValueOnRenderThread())
 	{
 		FMemMark FeedbackMark(MemStack);
 
-		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+		// Fetch feedback for analysis
+		FVirtualTextureFeedback::FMapResult FeedbackResult;
 
-		// Gather all outstanding feedback buffers
-		uint32 FeedbackBufferCount = 0;
-		uint32 FeedbackRectCount = 0;
-		FVirtualTextureFeedback::MapResult MappedFeedbackBuffers[FVirtualTextureFeedback::TargetCapacity];
-
-		if (CVarVTEnableFeedBack.GetValueOnRenderThread())
 		{
 			SCOPE_CYCLE_COUNTER(STAT_FeedbackMap);
-
-#if WITH_EDITOR
-			uint32 MaxFeedbackTargetCount = FVirtualTextureFeedback::TargetCapacity;
-#else
-			uint32 MaxFeedbackTargetCount = 1;
-#endif
-
-			while (FeedbackBufferCount < MaxFeedbackTargetCount)
-			{
-				if (!SceneContext.VirtualTextureFeedback.Map(RHICmdList, MappedFeedbackBuffers[FeedbackBufferCount]))
-				{
-					break;
-				}
-				
-				FeedbackRectCount += MappedFeedbackBuffers[FeedbackBufferCount].NumRects;
-				FeedbackBufferCount++;
-			}
+			FeedbackResult = GVirtualTextureFeedback.Map(RHICmdList);
 		}
 
-		// Create tasks to read all the buffers
-		uint32 NumFeedbackTasks = 0u;
-
+		// Create tasks to read the feedback data
+		// Give each task a section of the feedback buffer to analyze
 		FFeedbackAnalysisParameters FeedbackAnalysisParameters[MaxNumTasks];
-		static_assert(MaxNumTasks >= FVirtualTextureFeedback::TargetCapacity * FVirtualTextureFeedback::MaxRectPerTarget, "MaxNumTasks is too small");
 
 		const uint32 MaxNumFeedbackTasks = FMath::Clamp((uint32)CVarVTNumFeedbackTasks.GetValueOnRenderThread(), 1u, MaxNumTasks);
-		const uint32 FeedbackTasksPerRect = FMath::Max(MaxNumFeedbackTasks / FMath::Max(FeedbackRectCount, 1u), 1u);
+		const uint32 FeedbackSizePerTask = FMath::DivideAndRoundUp(FeedbackResult.Size, MaxNumFeedbackTasks);
 
-		for (uint32 FeedbackBufferIndex = 0; FeedbackBufferIndex < FeedbackBufferCount; ++FeedbackBufferIndex)
+		uint32 NumFeedbackTasks = 0;
+		uint32 CurrentOffset = 0;
+		while (CurrentOffset < FeedbackResult.Size)
 		{
-			FVirtualTextureFeedback::MapResult const& FeedbackBuffer = MappedFeedbackBuffers[FeedbackBufferIndex];
-
-			for (int32 RectIndex = 0; RectIndex < FeedbackBuffer.NumRects; ++RectIndex)
+			const uint32 TaskIndex = NumFeedbackTasks++;
+			FFeedbackAnalysisParameters& Params = FeedbackAnalysisParameters[TaskIndex];
+			Params.System = this;
+			if (TaskIndex == 0u)
 			{
-				FIntRect const& Rect = FeedbackBuffer.Rects[RectIndex];
-
-				// Give each task a section of a feedback rect to analyze
-				//todo[vt]: For buffers/rects of different sizes we will have different task payload sizes which is not efficient
-				const uint32 FeedbackRowsPerTask = FMath::DivideAndRoundUp((uint32)Rect.Size().Y, FeedbackTasksPerRect);
-				const uint32 NumRows = (uint32)Rect.Size().Y;
-
-				uint32 CurrentRow = 0;
-				while (CurrentRow < NumRows)
-				{
-					const uint32 CurrentHeight = FMath::Min(FeedbackRowsPerTask, NumRows - CurrentRow);
-					if (CurrentHeight > 0u)
-					{
-						const uint32 TaskIndex = NumFeedbackTasks++;
-						FFeedbackAnalysisParameters& Params = FeedbackAnalysisParameters[TaskIndex];
-						Params.System = this;
-						if (TaskIndex == 0u)
-						{
-							Params.UniquePageList = MergedUniquePageList;
-						}
-						else
-						{
-							Params.UniquePageList = new(MemStack) FUniquePageList;
-						}
-						Params.FeedbackBuffer = FeedbackBuffer.Buffer.GetData() + (Rect.Min.Y + CurrentRow) * FeedbackBuffer.Pitch + Rect.Min.X;
-						Params.FeedbackWidth = Rect.Size().X;
-						Params.FeedbackHeight = CurrentHeight;
-						Params.FeedbackPitch = FeedbackBuffer.Pitch;
-						CurrentRow += CurrentHeight;
-					}
-				}
+				Params.UniquePageList = MergedUniquePageList;
 			}
+			else
+			{
+				Params.UniquePageList = new(MemStack) FUniquePageList;
+			}
+			Params.FeedbackBuffer = FeedbackResult.Data + CurrentOffset;
+
+			const uint32 Size = FMath::Min(FeedbackSizePerTask, FeedbackResult.Size - CurrentOffset);
+			Params.FeedbackSize = Size;
+			CurrentOffset += Size;
 		}
 
 		// Kick the tasks
@@ -1033,7 +987,7 @@ void FVirtualTextureSystem::Update(FRHICommandListImmediate& RHICmdList, ERHIFea
 		const int32 WorkerFeedbackTaskCount = NumFeedbackTasks - LocalFeedbackTaskCount;
 
 		FGraphEventArray Tasks;
-		if(WorkerFeedbackTaskCount > 0)
+		if (WorkerFeedbackTaskCount > 0)
 		{
 			SCOPE_CYCLE_COUNTER(STAT_ProcessRequests_SubmitTasks);
 			Tasks.Reserve(WorkerFeedbackTaskCount);
@@ -1059,7 +1013,7 @@ void FVirtualTextureSystem::Update(FRHICommandListImmediate& RHICmdList, ERHIFea
 			}
 		}
 
-		if(NumFeedbackTasks > 1u)
+		if (NumFeedbackTasks > 1u)
 		{
 			SCOPE_CYCLE_COUNTER(STAT_ProcessRequests_MergePages);
 			for (uint32 TaskIndex = 1u; TaskIndex < NumFeedbackTasks; ++TaskIndex)
@@ -1067,6 +1021,8 @@ void FVirtualTextureSystem::Update(FRHICommandListImmediate& RHICmdList, ERHIFea
 				MergedUniquePageList->MergePages(FeedbackAnalysisParameters[TaskIndex].UniquePageList);
 			}
 		}
+
+		GVirtualTextureFeedback.Unmap(RHICmdList, FeedbackResult.MapHandle);
 	}
 
 	FUniqueRequestList* MergedRequestList = new(MemStack) FUniqueRequestList(MemStack);
@@ -1145,6 +1101,14 @@ void FVirtualTextureSystem::Update(FRHICommandListImmediate& RHICmdList, ERHIFea
 		const int32 MaxRequestUploads = FMath::Max(MaxNumUploads - MappedTilesToProduce.Num(), 1);
 
 		MergedRequestList->SortRequests(Producers, MemStack, MaxRequestUploads);
+	}
+
+	{
+		// After sorting and clamping the load requests, if we still have unused upload bandwidth then use it to add some continous updates
+		const int32 MaxNumUploads = VirtualTextureScalability::GetMaxUploadsPerFrame();
+		const int32 MaxTilesToProduce = FMath::Max(MaxNumUploads - MappedTilesToProduce.Num() - (int32)MergedRequestList->GetNumLoadRequests(), 0);
+
+		GetContinuousUpdatesToProduce(MergedRequestList, MaxTilesToProduce);
 	}
 
 	// Submit the requests to produce pages that are already mapped
@@ -1301,10 +1265,6 @@ void FVirtualTextureSystem::GatherRequestsTask(const FGatherRequestsParameters& 
 	uint32 NumNonResidentPages = 0u;
 	uint32 NumPrefetchPages = 0u;
 
-#if WITH_EDITOR
-	TSet<FVirtualTextureLocalTile> ContinuousUpdateTilesToProduceThreadLocal;
-#endif
-
 	for (uint32 i = Parameters.PageStartIndex; i < PageEndIndex; ++i)
 	{
 		const uint32 PageEncoded = UniquePageList->GetPage(i);
@@ -1349,16 +1309,14 @@ void FVirtualTextureSystem::GatherRequestsTask(const FGatherRequestsParameters& 
 					// Page is already resident, just need to update LRU free list
 					AddPageUpdate(PageUpdateBuffers, PageUpdateFlushCount, PhysicalSpaceIDAndAddress.PhysicalSpaceID, PhysicalSpaceIDAndAddress.pAddress);
 
-				#if WITH_EDITOR
+					// If continuous update flag is set then add this to pages which can be potentially updated if we have spare upload bandwidth
+					//todo[vt]: Would be better to test continuous update flag *per producer*, but this would require extra indirection so need to profile first
+					if (GetPhysicalSpace(PhysicalSpaceIDAndAddress.PhysicalSpaceID)->GetDescription().bContinuousUpdate)
 					{
-						if (GetPhysicalSpace(PhysicalSpaceIDAndAddress.PhysicalSpaceID)->GetDescription().bContinuousUpdate)
-						{
-							FTexturePagePool& RESTRICT PagePool = GetPhysicalSpace(PhysicalSpaceIDAndAddress.PhysicalSpaceID)->GetPagePool();
-
-							ContinuousUpdateTilesToProduceThreadLocal.Add(PagePool.GetLocalTileFromPhysicalAddress(PhysicalSpaceIDAndAddress.pAddress));
-						}
+						FTexturePagePool& RESTRICT PagePool = GetPhysicalSpace(PhysicalSpaceIDAndAddress.PhysicalSpaceID)->GetPagePool();
+						const FVirtualTextureLocalTile LocalTile = PagePool.GetLocalTileFromPhysicalAddress(PhysicalSpaceIDAndAddress.pAddress);
+						RequestList->AddContinuousUpdateRequest(LocalTile);
 					}
-				#endif
 
 					++PageUpdateBuffers[PhysicalSpaceIDAndAddress.PhysicalSpaceID].WorkingSetSize;
 					++NumResidentPages;
@@ -1676,14 +1634,6 @@ void FVirtualTextureSystem::GatherRequestsTask(const FGatherRequestsParameters& 
 			{
 				PagePool.UpdateUsage(Frame, Buffer.PhysicalAddresses[i]);
 			}
-
-		#if WITH_EDITOR
-			if (PhysicalSpace->GetDescription().bContinuousUpdate)
-			{
-				FScopeLock ScopeLock(&ContinuousUpdateTilesToProduceCS);
-				ContinuousUpdateTilesToProduce.Append(ContinuousUpdateTilesToProduceThreadLocal);
-			}
-		#endif
 		}
 		
 		INC_DWORD_STAT_BY(STAT_NumPageUpdate, Buffer.NumPageUpdates);
@@ -1695,6 +1645,21 @@ void FVirtualTextureSystem::GatherRequestsTask(const FGatherRequestsParameters& 
 	INC_DWORD_STAT_BY(STAT_NumPagePrefetch, NumPrefetchPages);
 }
 
+void FVirtualTextureSystem::GetContinuousUpdatesToProduce(FUniqueRequestList const* RequestList, int32 MaxTilesToProduce)
+{
+	const int32 NumContinuousUpdateRequests = (int32)RequestList->GetNumContinuousUpdateRequests();
+	const int32 MaxContinousUpdates = FMath::Min(VirtualTextureScalability::GetMaxContinuousUpdatesPerFrame(), NumContinuousUpdateRequests);
+
+	int32 NumContinuousUpdates = 0;
+	while (NumContinuousUpdates < MaxContinousUpdates && ContinuousUpdateTilesToProduce.Num() < MaxTilesToProduce)
+	{
+		// Note it's possible that we add a duplicate value to the TSet here, and so MappedTilesToProduce doesn't grow.
+		// But ending up with fewer continuous updates then the maximum is OK.
+		int32 RandomIndex = FMath::Rand() % NumContinuousUpdateRequests;
+		ContinuousUpdateTilesToProduce.Add(RequestList->GetContinuousUpdateRequest(RandomIndex));
+		NumContinuousUpdates++;
+	}
+}
 
 void FVirtualTextureSystem::UpdateCSVStats() const
 {
@@ -1748,6 +1713,7 @@ void FVirtualTextureSystem::SubmitRequestsFromLocalTileList(const TSet<FVirtualT
 					{
 						ProduceTarget[ProducerLayerIndex].TextureRHI = PhysicalSpace->GetPhysicalTexture(PhysicalLocalTextureIndex);
 						ProduceTarget[ProducerLayerIndex].UnorderedAccessViewRHI = PhysicalSpace->GetPhysicalTextureUAV(PhysicalLocalTextureIndex);
+						ProduceTarget[ProducerLayerIndex].PooledRenderTarget = PhysicalSpace->GetPhysicalTexturePooledRenderTarget(PhysicalLocalTextureIndex);
 						ProduceTarget[ProducerLayerIndex].pPageLocation = PhysicalSpace->GetPhysicalLocation(pAddress);
 						LayerMask |= 1 << ProducerLayerIndex;
 						PhysicalLocalTextureIndex++;
@@ -1789,13 +1755,14 @@ void FVirtualTextureSystem::SubmitRequestsFromLocalTileList(const TSet<FVirtualT
 void FVirtualTextureSystem::SubmitPreMappedRequests(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel)
 {
 	{
+		INC_DWORD_STAT_BY(STAT_NumMappedPageUpdate, MappedTilesToProduce.Num());
 		SubmitRequestsFromLocalTileList(MappedTilesToProduce, EVTProducePageFlags::None, RHICmdList, FeatureLevel);
 		MappedTilesToProduce.Reset();
 	}
 
 	{
 		INC_DWORD_STAT_BY(STAT_NumContinuousPageUpdate, ContinuousUpdateTilesToProduce.Num());
-		SubmitRequestsFromLocalTileList(ContinuousUpdateTilesToProduce, EVTProducePageFlags::None, RHICmdList, FeatureLevel);
+		SubmitRequestsFromLocalTileList(ContinuousUpdateTilesToProduce, EVTProducePageFlags::ContinuousUpdate, RHICmdList, FeatureLevel);
 		ContinuousUpdateTilesToProduce.Reset();
 	}
 }
@@ -1874,6 +1841,7 @@ void FVirtualTextureSystem::SubmitRequests(FRHICommandListImmediate& RHICmdList,
 								{
 									ProduceTarget[ProducerLayerIndex].TextureRHI = PhysicalSpace->GetPhysicalTexture(PhysicalLocalTextureIndex);
 									ProduceTarget[ProducerLayerIndex].UnorderedAccessViewRHI = PhysicalSpace->GetPhysicalTextureUAV(PhysicalLocalTextureIndex);
+									ProduceTarget[ProducerLayerIndex].PooledRenderTarget = PhysicalSpace->GetPhysicalTexturePooledRenderTarget(PhysicalLocalTextureIndex);
 									ProduceTarget[ProducerLayerIndex].pPageLocation = PhysicalSpace->GetPhysicalLocation(pAddress);
 									
 									PhysicalLocalTextureIndex++;
@@ -1925,6 +1893,7 @@ void FVirtualTextureSystem::SubmitRequests(FRHICommandListImmediate& RHICmdList,
 								{
 									ProduceTarget[ProducerLayerIndex].TextureRHI = PhysicalSpace->GetPhysicalTexture(PhysicalLocalTextureIndex);
 									ProduceTarget[ProducerLayerIndex].UnorderedAccessViewRHI = PhysicalSpace->GetPhysicalTextureUAV(PhysicalLocalTextureIndex);
+									ProduceTarget[ProducerLayerIndex].PooledRenderTarget = PhysicalSpace->GetPhysicalTexturePooledRenderTarget(PhysicalLocalTextureIndex);
 									ProduceTarget[ProducerLayerIndex].pPageLocation = PhysicalSpace->GetPhysicalLocation(pAddress);
 									PhysicalLocalTextureIndex++;
 								}
@@ -2123,6 +2092,7 @@ void FVirtualTextureSystem::SubmitRequests(FRHICommandListImmediate& RHICmdList,
 void FVirtualTextureSystem::AllocateResources(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel)
 {
 	LLM_SCOPE(ELLMTag::VirtualTextureSystem);
+	SCOPED_GPU_STAT(RHICmdList, VirtualTextureAllocate);
 
 	for (uint32 ID = 0; ID < MaxSpaces; ID++)
 	{

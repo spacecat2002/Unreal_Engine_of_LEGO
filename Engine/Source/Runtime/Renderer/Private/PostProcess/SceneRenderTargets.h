@@ -15,7 +15,6 @@
 #include "SceneInterface.h"
 #include "SceneView.h"
 #include "RendererInterface.h"
-#include "../VT/VirtualTextureFeedback.h"
 
 class FViewInfo;
 class FRDGBuilder;
@@ -168,6 +167,7 @@ protected:
 		bSeparateTranslucencyPass(false),
 		BufferSize(0, 0),
 		SeparateTranslucencyBufferSize(0, 0),
+		LastStereoSize(0, 0),
 		SeparateTranslucencyScale(1),
 		SmallColorDepthDownsampleFactor(2),
 		bUseDownsizedOcclusionQueries(true),
@@ -227,10 +227,11 @@ public:
 #endif
 
 	void SetQuadOverdrawUAV(FRHICommandList& RHICmdList, bool bBindQuadOverdrawBuffers, bool bClearQuadOverdrawBuffers, FRHIRenderPassInfo& Info);
-
 	FUnorderedAccessViewRHIRef GetQuadOverdrawBufferUAV();
+	
 	FUnorderedAccessViewRHIRef GetVirtualTextureFeedbackUAV();
-	void BindVirtualTextureFeedbackUAV(FRHIRenderPassInfo& RPInfo);
+	int32 GetVirtualTextureFeedbackScale();
+	FIntPoint GetVirtualTextureFeedbackBufferSize();
 
 	void BeginRenderingGBuffer(FRHICommandList& RHICmdList, ERenderTargetLoadAction ColorLoadAction, ERenderTargetLoadAction DepthLoadAction, FExclusiveDepthStencil DepthStencilAccess, bool bBindQuadOverdrawBuffers, bool bClearQuadOverdrawBuffers = false, const FLinearColor& ClearColor = FLinearColor(0, 0, 0, 1), bool bIsWireframe=false);
 	void FinishGBufferPassAndResolve(FRHICommandListImmediate& RHICmdList, FExclusiveDepthStencil DepthStencilAccess);
@@ -238,7 +239,7 @@ public:
 	/**
 	 * Sets the scene color target and restores its contents if necessary
 	 */
-	void BeginRenderingSceneColor(FRHICommandList& FRHICommandListImmediate, ESimpleRenderTargetMode RenderTargetMode = ESimpleRenderTargetMode::EUninitializedColorExistingDepth, FExclusiveDepthStencil DepthStencilAccess = FExclusiveDepthStencil::DepthWrite_StencilWrite, bool bTransitionWritable = true, bool bBindSubPixelRT = false);
+	void BeginRenderingSceneColor(FRHICommandList& FRHICommandListImmediate, ESimpleRenderTargetMode RenderTargetMode = ESimpleRenderTargetMode::EUninitializedColorExistingDepth, FExclusiveDepthStencil DepthStencilAccess = FExclusiveDepthStencil::DepthWrite_StencilWrite, bool bTransitionWritable = true);
 	void FinishRenderingSceneColor(FRHICommandList& RHICmdList);
 
 	// @return true: call FinishRenderingCustomDepth after rendering, false: don't render it, feature is disabled
@@ -254,6 +255,7 @@ public:
 	void FinishRenderingTranslucency(FRHICommandList& RHICmdList);
 
 	/** Begin rendering translucency in a separate (offscreen) buffer. This can be any translucency pass. */
+	FIntRect GetSeparateTranslucencyViewRect(const FViewInfo& View) const;
 	void BeginRenderingSeparateTranslucency(FRHICommandList& RHICmdList, const FViewInfo& View, const FSceneRenderer& Renderer, bool bFirstTimeThisFrame);
 	void ResolveSeparateTranslucency(FRHICommandList& RHICmdList, const FViewInfo& View);
 
@@ -280,14 +282,23 @@ public:
 			DownsampledTranslucencyDepthRT.SafeRelease();
 		}
 	}
+
+	void FreeReflectionScratchRenderTargets()
+	{
+		for (int32 Idx = 0; Idx < UE_ARRAY_COUNT(ReflectionColorScratchCubemap); ++Idx)
+		{
+			ReflectionColorScratchCubemap[Idx].SafeRelease();
+		}
+		for (int32 Idx = 0; Idx < UE_ARRAY_COUNT(DiffuseIrradianceScratchCubemap); ++Idx)
+		{
+			DiffuseIrradianceScratchCubemap[Idx].SafeRelease();
+		}
+	}
 	
 	void ResolveSceneDepthTexture(FRHICommandList& RHICmdList, const FResolveRect& ResolveRect);
 
 	void BeginRenderingPrePass(FRHICommandList& RHICmdList, bool bPerformClear, bool bStencilClear = true);
 	void FinishRenderingPrePass(FRHICommandListImmediate& RHICmdList);
-
-	void BeginRenderingSceneAlphaCopy(FRHICommandListImmediate& RHICmdList);
-	void FinishRenderingSceneAlphaCopy(FRHICommandListImmediate& RHICmdList);
 
 	void BeginRenderingLightAttenuation(FRHICommandList& RHICmdList, bool bClearToWhite = false);
 	void FinishRenderingLightAttenuation(FRHICommandList& RHICmdList);
@@ -382,9 +393,6 @@ public:
 	const FTextureRHIRef& GetSceneColorTexture() const;
 	const FUnorderedAccessViewRHIRef& GetSceneColorTextureUAV() const;
 
-	const FTexture2DRHIRef& GetSceneAlphaCopyTexture() const { return (const FTexture2DRHIRef&)SceneAlphaCopy->GetRenderTargetItem().ShaderResourceTexture; }
-	bool HasSceneAlphaCopyTexture() const { return SceneAlphaCopy.GetReference() != 0; }
-
 	const FTexture2DRHIRef& GetSceneDepthTexture() const
 	{
 		static const FTexture2DRHIRef EmptyTexture;
@@ -406,7 +414,6 @@ public:
 	}
 
 	const FTextureRHIRef& GetSceneColorSurface() const;
-	const FTexture2DRHIRef& GetSceneAlphaCopySurface() const						{ return (const FTexture2DRHIRef&)SceneAlphaCopy->GetRenderTargetItem().TargetableTexture; }
 	const FTexture2DRHIRef& GetSceneDepthSurface() const							{ return (const FTexture2DRHIRef&)SceneDepthZ->GetRenderTargetItem().TargetableTexture; }
 	const FTexture2DRHIRef& GetSmallDepthSurface() const							{ return (const FTexture2DRHIRef&)SmallDepthZ->GetRenderTargetItem().TargetableTexture; }
 	const FTexture2DRHIRef& GetOptionalShadowDepthColorSurface(FRHICommandList& RHICmdList, int32 Width, int32 Height) const;
@@ -422,7 +429,7 @@ public:
 	// @return can be 0 if the feature is disabled
 	IPooledRenderTarget* RequestCustomDepth(FRHICommandListImmediate& RHICmdList, bool bPrimitives);
 
-	static bool IsCustomDepthPassWritingStencil();
+	static bool IsCustomDepthPassWritingStencil(ERHIFeatureLevel::Type InFeatureLevel);
 
 	// ---
 
@@ -472,7 +479,6 @@ public:
 	const TRefCountPtr<IPooledRenderTarget>& GetSceneColor() const;
 
 	TRefCountPtr<IPooledRenderTarget>& GetSceneColor();
-	TRefCountPtr<IPooledRenderTarget>& GetSceneColorSubPixel();
 
 	EPixelFormat GetSceneColorFormat(ERHIFeatureLevel::Type InFeatureLevel) const;
 	EPixelFormat GetSceneColorFormat() const;
@@ -515,6 +521,8 @@ public:
 
 	void AllocateLightingChannelTexture(FRHICommandList& RHICmdList);
 
+	void AllocateVirtualTextureFeedbackBuffer(FRHICommandList& RHICmdList);
+
 	void AllocateDebugViewModeTargets(FRHICommandList& RHICmdList);
 
 	void AllocateScreenShadowMask(FRHICommandList& RHICmdList, TRefCountPtr<IPooledRenderTarget>& ScreenShadowMaskTexture, bool bCreateShaderResourceView = false);
@@ -542,9 +550,6 @@ public:
 	// Light Accumulation is a high precision scratch pad matching the size of the scene color buffer used by many passes.
 	TRefCountPtr<IPooledRenderTarget> LightAccumulation;
 
-	// Secondary scene color target for storing subpixel color details (e.g. hair pixels)
-	TRefCountPtr<IPooledRenderTarget> SceneColorSubPixel;
-
 	// Reflection Environment: Bringing back light accumulation buffer to apply indirect reflections
 	TRefCountPtr<IPooledRenderTarget> DirectionalOcclusion;
 	
@@ -555,8 +560,6 @@ public:
 	TRefCountPtr<IPooledRenderTarget> SceneVelocity;
 
 	TRefCountPtr<IPooledRenderTarget> LightingChannels;
-	// Mobile without frame buffer fetch (to get depth from alpha).
-	TRefCountPtr<IPooledRenderTarget> SceneAlphaCopy;
 	// Quarter-sized version of the scene depths
 	TRefCountPtr<IPooledRenderTarget> SmallDepthZ;
 
@@ -623,14 +626,15 @@ public:
 	/** Texture to control variable resolution rendering */
 	TRefCountPtr<IPooledRenderTarget> FoveationTexture;
 
+	/** Virtual Texture feedback buffer bound as UAV during the base pass */
+	FVertexBufferRHIRef VirtualTextureFeedback;
+	FUnorderedAccessViewRHIRef VirtualTextureFeedbackUAV;
+
 	// todo: free ScreenSpaceAO so pool can reuse
 	bool bScreenSpaceAOIsValid;
 
 	// todo: free ScreenSpaceAO so pool can reuse
 	bool bCustomDepthIsValid;
-
-	/**	Virtual texture feedback buffer bound as UAV during basepass*/
-	FVirtualTextureFeedback VirtualTextureFeedback;
 
 private:
 	/** used by AdjustGBufferRefCount */
@@ -754,6 +758,8 @@ private:
 	/* Size of the first view, used for multiview rendertargets */
 	FIntPoint View0Size;
 	FIntPoint SeparateTranslucencyBufferSize;
+	/* Size of the stereo view, if we're an XR device. */
+	FIntPoint LastStereoSize;
 	float SeparateTranslucencyScale;
 	/** e.g. 2 */
 	uint32 SmallColorDepthDownsampleFactor;

@@ -10,6 +10,7 @@
 #include "AudioMixer.h"
 #include "SoundFieldRendering.h"
 #include "ProfilingDebugging/CsvProfiler.h"
+#include "Async/Async.h"
 
 // Link to "Audio" profiling category
 CSV_DECLARE_CATEGORY_MODULE_EXTERN(AUDIOMIXERCORE_API, Audio);
@@ -85,7 +86,6 @@ FAutoConsoleVariableRef CVarCommandBufferFlushWaitTimeMs(
 	ECVF_Default);
 
 
-#define ONEOVERSHORTMAX (3.0517578125e-5f) // 1/32768
 #define ENVELOPE_TAIL_THRESHOLD (1.58489e-5f) // -96 dB
 
 #define VALIDATE_SOURCE_MIXER_STATE 1
@@ -170,13 +170,12 @@ namespace Audio
 
 		MixerSources.Init(nullptr, NumTotalSources);
 
-		// Populate downmix array:
-		DownmixDataArray.Reset();
+		// Populate output sources array with default data
+		SourceSubmixOutputBuffers.Reset();
 		for (int32 Index = 0; Index < NumTotalSources; Index++)
 		{
-			DownmixDataArray.Emplace(2, MixerDevice->GetNumDeviceChannels(), NumOutputFrames);
+			SourceSubmixOutputBuffers.Emplace(MixerDevice, 2, MixerDevice->GetNumDeviceChannels(), NumOutputFrames);
 		}
-		
 
 		SourceInfos.AddDefaulted(NumTotalSources);
 
@@ -195,6 +194,9 @@ namespace Audio
 
 			SourceInfo.DistanceAttenuationSourceStart = -1.0f;
 			SourceInfo.DistanceAttenuationSourceDestination = -1.0f;
+
+			SourceInfo.LowPassFreq = MAX_FILTER_FREQUENCY;
+			SourceInfo.HighPassFreq = MIN_FILTER_FREQUENCY;
 
 			SourceInfo.SourceListener = nullptr;
 			SourceInfo.CurrentPCMBuffer = nullptr;	
@@ -216,6 +218,10 @@ namespace Audio
 			SourceInfo.SourceEnvelopeValue = 0.0f;
 			SourceInfo.bEffectTailsDone = false;
 		
+			// Modulation volume is set to negative so it is initialized to what the system sets it to initially on first buffer lerp
+			SourceInfo.ModulationVolLast = -1.0f;
+			SourceInfo.bModUpdated = true;
+
 			SourceInfo.bIs3D = false;
 			SourceInfo.bIsCenterChannelOnly = false;
 			SourceInfo.bIsActive = false;
@@ -233,7 +239,7 @@ namespace Audio
 			SourceInfo.bIsVorbis = false;
 			SourceInfo.bIsBypassingLPF = false;
 			SourceInfo.bIsBypassingHPF = false;
-			SourceInfo.bIsModulationUpdated = false;
+			SourceInfo.bHasPreDistanceAttenuationSend = false;
 
 #if AUDIO_MIXER_ENABLE_DEBUG_MODE
 			SourceInfo.bIsDebugMode = false;
@@ -288,6 +294,23 @@ namespace Audio
 			bUsingSpatializationPlugin = true;
 			MaxChannelsSupportedBySpatializationPlugin = MixerDevice->MaxChannelsSupportedBySpatializationPlugin;
 		}
+
+		// Spam command queue with nops.
+		static FAutoConsoleCommand SpamNopsCmd(
+			TEXT("au.SpamCommandQueue"),
+			TEXT(""),
+			FConsoleCommandDelegate::CreateLambda([this]() 
+			{				
+				struct FSpamPayload
+				{
+					uint8 JunkBytes[1024];
+				} Payload;
+				for (int32 i = 0; i < 65536; ++i)
+				{
+					AudioMixerThreadCommand([Payload] {});
+				}
+			})
+		);
 
 		bInitialized = true;
 		bPumpQueue = false;
@@ -375,7 +398,12 @@ namespace Audio
 
 		AUDIO_MIXER_CHECK(SourceId < NumTotalSources);
 		AUDIO_MIXER_CHECK(bInitialized);
-		AUDIO_MIXER_CHECK(MixerSources[SourceId] != nullptr);
+
+		if (MixerSources[SourceId] == nullptr)
+		{
+			UE_LOG(LogAudioMixer, Warning, TEXT("Ignoring double release of SourceId: %i"), SourceId);
+			return;
+		}
 
 		AUDIO_MIXER_DEBUG_LOG(SourceId, TEXT("Is releasing"));
 		
@@ -451,6 +479,7 @@ namespace Audio
 		if (SourceInfo.bUseHRTFSpatializer)
 		{
 			AUDIO_MIXER_CHECK(bUsingSpatializationPlugin);
+			LLM_SCOPE(ELLMTag::AudioMixerPlugins);
 			SpatializationPlugin->OnReleaseSource(SourceId);
 		}
 
@@ -462,6 +491,11 @@ namespace Audio
 		if (SourceInfo.bUseReverbPlugin)
 		{
 			MixerDevice->ReverbPluginInterface->OnReleaseSource(SourceId);
+		}
+
+		if (MixerDevice->ModulationInterface)
+		{
+			MixerDevice->ModulationInterface->OnReleaseSource(SourceId);
 		}
 
 		// Delete the source effects
@@ -486,6 +520,9 @@ namespace Audio
 
 		SourceInfo.DistanceAttenuationSourceStart = -1.0f;
 		SourceInfo.DistanceAttenuationSourceDestination = -1.0f;
+
+		SourceInfo.LowPassFreq = MAX_FILTER_FREQUENCY;
+		SourceInfo.HighPassFreq = MIN_FILTER_FREQUENCY;
 
 		SourceInfo.LowPassFilter.Reset();
 		SourceInfo.HighPassFilter.Reset();
@@ -518,6 +555,7 @@ namespace Audio
 		SourceInfo.bOutputToBusOnly = false;
 		SourceInfo.bIsBypassingLPF = false;
 		SourceInfo.bIsBypassingHPF = false;
+		SourceInfo.bHasPreDistanceAttenuationSend = false;
 
 #if AUDIO_MIXER_ENABLE_DEBUG_MODE
 		SourceInfo.bIsDebugMode = false;
@@ -533,6 +571,7 @@ namespace Audio
 	void FMixerSourceManager::BuildSourceEffectChain(const int32 SourceId, FSoundEffectSourceInitData& InitData, const TArray<FSourceEffectChainEntry>& InSourceEffectChain)
 	{
 		// Create new source effects. The memory will be owned by the source manager.
+		FScopeLock ScopeLock(&EffectChainMutationCriticalSection);
 		for (const FSourceEffectChainEntry& ChainEntry : InSourceEffectChain)
 		{
 			// Presets can have null entries
@@ -541,14 +580,11 @@ namespace Audio
 				continue;
 			}
 
-			FSoundEffectSource* NewEffect = static_cast<FSoundEffectSource*>(ChainEntry.Preset->CreateNewEffect());
-
 			// Get this source effect presets unique id so instances can identify their originating preset object
 			const uint32 PresetUniqueId = ChainEntry.Preset->GetUniqueID();
 			InitData.ParentPresetUniqueId = PresetUniqueId;
 
-			NewEffect->Init(InitData);
-			NewEffect->SetPreset(ChainEntry.Preset);
+			TSoundEffectSourcePtr NewEffect = USoundEffectPreset::CreateInstance<FSoundEffectSourceInitData, FSoundEffectSource>(InitData, *ChainEntry.Preset);
 			NewEffect->SetEnabled(!ChainEntry.bBypass);
 
 			// Add the effect instance
@@ -562,21 +598,27 @@ namespace Audio
 
 	void FMixerSourceManager::ResetSourceEffectChain(const int32 SourceId)
 	{
-		FSourceInfo& SourceInfo = SourceInfos[SourceId];
-
-		for (int32 i = 0; i < SourceInfo.SourceEffects.Num(); ++i)
+		FScopeLock ScopeLock(&EffectChainMutationCriticalSection);
 		{
-			SourceInfo.SourceEffects[i]->ClearPreset();
-			delete SourceInfo.SourceEffects[i];
-			SourceInfo.SourceEffects[i] = nullptr;
-		}
-		SourceInfo.SourceEffects.Reset();
+			FSourceInfo& SourceInfo = SourceInfos[SourceId];
 
-		for (int32 i = 0; i < SourceInfo.SourceEffectPresets.Num(); ++i)
-		{
-			SourceInfo.SourceEffectPresets[i] = nullptr;
+			// Unregister these source effect instances from their owning USoundEffectInstance on the next audio thread tick.
+			AsyncTask(ENamedThreads::AudioThread, [SourceEffects = MoveTemp(SourceInfo.SourceEffects)] () mutable
+			{
+				for (int32 i = 0; i < SourceEffects.Num(); ++i)
+				{
+					USoundEffectPreset::UnregisterInstance(SourceEffects[i]);
+				}
+			});
+			
+			SourceInfo.SourceEffects.Reset();
+
+			for (int32 i = 0; i < SourceInfo.SourceEffectPresets.Num(); ++i)
+			{
+				SourceInfo.SourceEffectPresets[i] = nullptr;
+			}
+			SourceInfo.SourceEffectPresets.Reset();
 		}
-		SourceInfo.SourceEffectPresets.Reset();
 	}
 
 	bool FMixerSourceManager::GetFreeSourceId(int32& OutSourceId)
@@ -628,11 +670,13 @@ namespace Audio
 
 		GameThreadInfo.bIsUsingHRTFSpatializer[SourceId] = InitParams.bUseHRTFSpatialization;
 
-		// Create the modulation plugin source effect
-		if (InitParams.ModulationPluginSettings != nullptr)
-		{
-			MixerDevice->ModulationInterface->OnInitSource(SourceId, InitParams.AudioComponentUserID, InitParams.NumInputChannels, *InitParams.ModulationPluginSettings);
-		}
+		FSoundEffectSourceInitData InitData;
+		InitData.SampleRate = MixerDevice->SampleRate;
+		InitData.NumSourceChannels = InitParams.NumInputChannels;
+		InitData.AudioClock = MixerDevice->GetAudioTime();
+		InitData.AudioDeviceId = MixerDevice->DeviceID;
+
+		BuildSourceEffectChain(SourceId, InitData, InitParams.SourceEffectChain);
 
 		AudioMixerThreadCommand([this, SourceId, InitParams]()
 		{
@@ -643,9 +687,11 @@ namespace Audio
 
 			// Initialize the mixer source buffer decoder with the given mixer buffer
 			SourceInfo.MixerSourceBuffer = InitParams.MixerSourceBuffer;
+			AUDIO_MIXER_CHECK(SourceInfo.MixerSourceBuffer.IsValid());
 			SourceInfo.MixerSourceBuffer->Init();
 			SourceInfo.MixerSourceBuffer->OnBeginGenerate();
 
+			SourceInfo.bIs3D = InitParams.bIs3D;
 			SourceInfo.bIsPlaying = false;
 			SourceInfo.bIsPaused = false;
 			SourceInfo.bIsStopping = false;
@@ -657,7 +703,7 @@ namespace Audio
 			SourceInfo.bIsExternalSend = InitParams.bIsExternalSend;
 			SourceInfo.bIsVorbis = InitParams.bIsVorbis;
 			SourceInfo.AudioComponentID = InitParams.AudioComponentID;
-			SourceInfo.bIsAmbisonics = InitParams.bIsAmbisonics;
+			SourceInfo.bIsSoundfield = InitParams.bIsSoundfield;
 
 			// Call initialization from the render thread so anything wanting to do any initialization here can do so (e.g. procedural sound waves)
 			SourceInfo.SourceListener = InitParams.SourceListener;
@@ -672,10 +718,21 @@ namespace Audio
 
 			SourceInfo.SourceEnvelopeFollower = Audio::FEnvelopeFollower(MixerDevice->SampleRate / NumOutputFrames, (float)InitParams.EnvelopeFollowerAttackTime, (float)InitParams.EnvelopeFollowerReleaseTime, Audio::EPeakMode::Peak);
 
+			// Modulation volume is set to negative so it is initialized to what the system sets it to initially on first buffer lerp
+			SourceInfo.ModulationVolLast = -1.0f;
+			SourceInfo.bModUpdated = true;
+
+			// Create the modulation plugin source effect (must be done prior to other plugins potentially using modulation)
+			if (InitParams.ModulationPluginSettings != nullptr)
+			{			
+				MixerDevice->ModulationInterface->OnInitSource(SourceId, InitParams.NumInputChannels, *InitParams.ModulationPluginSettings);
+			}
+
 			// Create the spatialization plugin source effect
 			if (InitParams.bUseHRTFSpatialization)
 			{
 				AUDIO_MIXER_CHECK(bUsingSpatializationPlugin);
+				LLM_SCOPE(ELLMTag::AudioMixerPlugins);
 				SpatializationPlugin->OnInitSource(SourceId, InitParams.AudioComponentUserID, InitParams.SpatializationPluginSettings);
 			}
 
@@ -702,15 +759,7 @@ namespace Audio
 				// If we're told to care about effect chain tails, then we're not allowed
 				// to stop playing until the effect chain tails are finished
 				SourceInfo.bEffectTailsDone = !InitParams.bPlayEffectChainTails;
-
-				FSoundEffectSourceInitData InitData;
-				InitData.SampleRate = MixerDevice->SampleRate;
-				InitData.NumSourceChannels = InitParams.NumInputChannels;
-				InitData.AudioClock = MixerDevice->GetAudioTime();
-				InitData.AudioDeviceId = MixerDevice->DeviceID;
-
 				SourceInfo.SourceEffectChainId = InitParams.SourceEffectChainId;
-				BuildSourceEffectChain(SourceId, InitData, InitParams.SourceEffectChain);
 
 				// Whether or not to output to bus only
 				SourceInfo.bOutputToBusOnly = InitParams.bOutputToBusOnly;
@@ -794,12 +843,9 @@ namespace Audio
 			// Initialize a new downmix data:
 			check(SourceId < SourceInfos.Num());
 			const int32 SourceInputChannels = (SourceInfo.bUseHRTFSpatializer && !SourceInfo.bIsExternalSend) ? 2 : SourceInfo.NumInputChannels;
-			FSourceDownmixData& DownmixData = InitializeDownmixForSource(SourceId, SourceInputChannels, MixerDevice->GetDeviceOutputChannels(), NumOutputFrames);
 
-			if (SourceInfo.bIsAmbisonics)
-			{
-				DownmixData.AmbisonicsDecoder = CreateDefaultSourceAmbisonicsDecoder(MixerDevice);
-			}
+			// Collect the soundfield encoding keys we need to initialize with our output buffers
+			TArray<FMixerSubmixPtr> SoundfieldSubmixSends;
 
 			for (int32 i = 0; i < InitParams.SubmixSends.Num(); ++i)
 			{
@@ -809,50 +855,32 @@ namespace Audio
 				if (SubmixPtr.IsValid())
 				{
 					SourceInfo.SubmixSends.Add(MixerSubmixSend);
-					SubmixPtr->AddOrSetSourceVoice(InitParams.SourceVoice, MixerSubmixSend.SendLevel);
 
+					if (MixerSubmixSend.SubmixSendStage == EMixerSourceSubmixSendStage::PreDistanceAttenuation)
+					{
+						SourceInfo.bHasPreDistanceAttenuationSend = true;
+					}
+
+					SubmixPtr->AddOrSetSourceVoice(InitParams.SourceVoice, MixerSubmixSend.SendLevel, MixerSubmixSend.SubmixSendStage);
 					
 					if (SubmixPtr->IsSoundfieldSubmix())
 					{
-						FSoundfieldEncodingKey Key = SubmixPtr->GetKeyForSubmixEncoding();
-						FSubmixSoundfieldData& SubmixSoundfieldInfo = GetChannelInfoForFormat(Key, DownmixData);
-
-						// Set up encoder (or transcoder if this is an ambisonics source).
-						ISoundfieldFactory* Factory = SubmixPtr->GetSoundfieldFactory();
-						check(Factory);
-
-						FAudioPluginInitializationParams PluginInitParams = SubmixPtr->GetInitializationParamsForSoundfieldStream();
-						PluginInitParams.NumOutputChannels = SourceInputChannels;
-
-						SubmixSoundfieldInfo.EncoderSettings = SubmixPtr->GetSoundfieldSettings().Duplicate();
-
-						if (SourceInfo.bIsAmbisonics)
-						{
-							// If this soundfield submix can transcode our ambisonics format, set up a transcoder stream.
-							if (Factory->GetSoundfieldFormatName() == GetUnrealAmbisonicsFormatName())
-							{
-								SubmixSoundfieldInfo.bIsUnrealAmbisonicsSubmix = true;
-							}
-							else if (Factory->CanTranscodeFromSoundfieldFormat(GetUnrealAmbisonicsFormatName(), GetAmbisonicsSourceDefaultSettings()))
-							{
-								SubmixSoundfieldInfo.AmbiTranscoder = Factory->CreateTranscoderStream(GetUnrealAmbisonicsFormatName(), GetAmbisonicsSourceDefaultSettings(), Factory->GetSoundfieldFormatName(), *SubmixSoundfieldInfo.EncoderSettings, PluginInitParams);
-							}
-						}
-						else
-						{
-							check(SubmixSoundfieldInfo.EncoderSettings.IsValid());
-
-							SubmixSoundfieldInfo.Encoder = Factory->CreateEncoderStream(PluginInitParams, *SubmixSoundfieldInfo.EncoderSettings);
-						}
-
-						SubmixSoundfieldInfo.EncodedPacket = Factory->CreateEmptyPacket();
-					}
-					else
-					{
-						FSubmixChannelData& SubmixChannelInfo = GetChannelInfoForDevice(DownmixData);
+						SoundfieldSubmixSends.Add(SubmixPtr);
 					}
 				}
 			}
+
+			// Initialize the submix output source for this source id
+			FMixerSourceSubmixOutputBuffer& SourceSubmixOutputBuffer = SourceSubmixOutputBuffers[SourceId];
+
+			FMixerSourceSubmixOutputBufferSettings SourceSubmixOutputResetSettings;
+			SourceSubmixOutputResetSettings.NumOutputChannels = MixerDevice->GetDeviceOutputChannels();
+			SourceSubmixOutputResetSettings.NumSourceChannels = SourceInputChannels;
+			SourceSubmixOutputResetSettings.SoundfieldSubmixSends = SoundfieldSubmixSends;
+			SourceSubmixOutputResetSettings.bIs3D = SourceInfo.bIs3D;
+			SourceSubmixOutputResetSettings.bIsSoundfield = SourceInfo.bIsSoundfield;
+
+			SourceSubmixOutputBuffer.Reset(SourceSubmixOutputResetSettings);
 
 #if AUDIO_MIXER_ENABLE_DEBUG_MODE
 			AUDIO_MIXER_CHECK(!SourceInfo.bIsDebugMode);
@@ -883,11 +911,6 @@ namespace Audio
 		GameThreadInfo.FreeSourceIndices.Push(SourceId);
 
 		AUDIO_MIXER_CHECK(GameThreadInfo.FreeSourceIndices.Contains(SourceId));
-
-		if (MixerDevice->ModulationInterface)
-		{
-			MixerDevice->ModulationInterface->OnReleaseSource(SourceId);
-		}
 
 		AudioMixerThreadCommand([this, SourceId]()
 		{
@@ -1154,22 +1177,6 @@ namespace Audio
 		});
 	}
 
-	void FMixerSourceManager::UpdateModulationControls(const int32 SourceId, const FSoundModulationControls& InControls)
-	{
-		AUDIO_MIXER_CHECK(SourceId < NumTotalSources);
-		AUDIO_MIXER_CHECK(GameThreadInfo.bIsBusy[SourceId]);
-		AUDIO_MIXER_CHECK_GAME_THREAD(MixerDevice);
-
-		const FSoundModulationControls UpdatedControls = InControls;
-		AudioMixerThreadCommand([this, SourceId, UpdatedControls]()
-		{
-			AUDIO_MIXER_CHECK_AUDIO_PLAT_THREAD(MixerDevice);
-
-			SourceInfos[SourceId].ModulationControls = UpdatedControls;
-			SourceInfos[SourceId].bIsModulationUpdated = true;
-		});
-	}
-
 	void FMixerSourceManager::SetSpatializationParams(const int32 SourceId, const FSpatializationParams& InParams)
 	{
 		AUDIO_MIXER_CHECK(SourceId < NumTotalSources);
@@ -1197,9 +1204,9 @@ namespace Audio
 			check(NumOutputFrames > 0);
 
 			FSourceInfo& SourceInfo = SourceInfos[SourceId];
-			FSourceDownmixData& DownmixData = DownmixDataArray[SourceId];
+			FMixerSourceSubmixOutputBuffer& SourceSubmixOutput = SourceSubmixOutputBuffers[SourceId];
 
-			if (DownmixData.NumInputChannels != NumInputChannels && !SourceInfo.bUseHRTFSpatializer)
+			if (SourceSubmixOutput.GetNumSourceChannels() != NumInputChannels && !SourceInfo.bUseHRTFSpatializer)
 			{
 				// This means that this source has been reinitialized as a different source while this command was in flight,
 				// In which case it is of no use to us. Exit.
@@ -1210,38 +1217,8 @@ namespace Audio
 			SourceInfo.bIs3D = bInIs3D;
 			SourceInfo.bIsCenterChannelOnly = bInIsCenterChannelOnly;
 
-			FSubmixChannelData& ChannelTypeInfo = GetChannelInfoForDevice(DownmixData);
-
-			// Fix up the channel map in case device output count changed
-			const uint32 ChannelMapSize = ChannelTypeInfo.ChannelMap.CopySize / sizeof(float);
-
-			// If this is true, then the device changed while the command was in-flight
-			if (ChannelMap.Num() != ChannelMapSize)
-			{
-				// todo: investigate turning this into a stack array
-				Audio::AlignedFloatBuffer NewChannelMap;
-
-				// If 3d then just zero it out, we'll get another channel map shortly
-				if (bInIs3D)
-				{
-					NewChannelMap.AddZeroed(ChannelMapSize);
-					GameThreadInfo.bNeedsSpeakerMap[SourceId] = true;
-				}
-				// Otherwise, get an appropriate channel map for the new device configuration
-				else
-				{
-					const uint32 NumOutputChannels = ChannelMapSize / NumInputChannels;
-					FMixerDevice::Get2DChannelMap(SourceInfo.bIsVorbis, NumInputChannels, NumOutputChannels, bInIsCenterChannelOnly, NewChannelMap);
-				}
-
-				// Make sure we've been flagged to be using this submix channel type entry
-				ChannelTypeInfo.ChannelMap.SetChannelMap(NewChannelMap.GetData());
-			}
-			else
-			{
-				GameThreadInfo.bNeedsSpeakerMap[SourceId] = false;
-				ChannelTypeInfo.ChannelMap.SetChannelMap(ChannelMap.GetData());
-			}
+			bool bNeedsSpeakerMap = SourceSubmixOutput.SetChannelMap(ChannelMap, bInIsCenterChannelOnly);
+			GameThreadInfo.bNeedsSpeakerMap[SourceId] = bNeedsSpeakerMap;
 		});
 	}
 
@@ -1255,7 +1232,13 @@ namespace Audio
 		{
 			AUDIO_MIXER_CHECK_AUDIO_PLAT_THREAD(MixerDevice);
 
-			SourceInfos[SourceId].LowPassFilter.StartFrequencyInterpolation(InLPFFrequency, NumOutputFrames);
+			FSourceInfo& SourceInfo = SourceInfos[SourceId];
+
+			// LowPassFreq is cached off as the version set by this setter as well as that internal to the LPF.
+			// There is a second cutoff frequency cached in SourceInfo.ModulationControls updated per buffer callback.
+			// On callback, the client version may be overridden with the modulation LPF value depending on which is more aggressive.  
+			SourceInfo.LowPassFreq = InLPFFrequency;
+			SourceInfo.LowPassFilter.StartFrequencyInterpolation(InLPFFrequency, NumOutputFrames);
 		});
 	}
 
@@ -1268,7 +1251,13 @@ namespace Audio
 		AudioMixerThreadCommand([this, SourceId, InHPFFrequency]()
 		{
 			AUDIO_MIXER_CHECK_AUDIO_PLAT_THREAD(MixerDevice);
-			SourceInfos[SourceId].HighPassFilter.StartFrequencyInterpolation(InHPFFrequency, NumOutputFrames);
+			FSourceInfo& SourceInfo = SourceInfos[SourceId];
+
+			// HighPassFreq is cached off as the version set by this setter as well as that internal to the HPF.
+			// There is a second cutoff frequency cached in SourceInfo.ModulationControls updated per buffer callback.
+			// On callback, the client version may be overridden with the modulation HPF value depending on which is more aggressive.  
+			SourceInfo.HighPassFreq = InHPFFrequency;
+			SourceInfo.HighPassFilter.StartFrequencyInterpolation(InHPFFrequency, NumOutputFrames);
 		});
 	}
 
@@ -1286,16 +1275,27 @@ namespace Audio
 			if (InSubmixPtr.IsValid())
 			{
 				bool bIsNew = true;
+				
+				SourceInfo.bHasPreDistanceAttenuationSend = false;
 				for (FMixerSourceSubmixSend& SubmixSend : SourceInfo.SubmixSends)
 				{
 					FMixerSubmixPtr SubmixPtr = SubmixSend.Submix.Pin();
 					if (SubmixPtr.IsValid())
 					{
+						if (SubmixSend.SubmixSendStage)
+						{
+							SourceInfo.bHasPreDistanceAttenuationSend = true;
+						}
+					
 						if (SubmixPtr->GetId() == InSubmixPtr->GetId())
 						{
 							SubmixSend.SendLevel = InSubmixSend.SendLevel;
+							SubmixSend.SubmixSendStage = InSubmixSend.SubmixSendStage;
 							bIsNew = false;
-							break;
+							if (SourceInfo.bHasPreDistanceAttenuationSend)
+							{
+								break;
+							}
 						}
 					}
 				}
@@ -1304,8 +1304,14 @@ namespace Audio
 				{
 					SourceInfo.SubmixSends.Add(InSubmixSend);
 				}
+				
+				// If we don't have a pre-distance attenuation send, lets zero out the buffer so the output buffer stops doing math with it.
+				if (!SourceInfo.bHasPreDistanceAttenuationSend)
+				{
+					SourceSubmixOutputBuffers[SourceId].SetPreAttenuationSourceBuffer(nullptr);
+				}
 
-				InSubmixPtr->AddOrSetSourceVoice(MixerSources[SourceId], InSubmixSend.SendLevel);
+				InSubmixPtr->AddOrSetSourceVoice(MixerSources[SourceId], InSubmixSend.SendLevel, InSubmixSend.SubmixSendStage);
 			}
 		});
 	}
@@ -1446,11 +1452,14 @@ namespace Audio
 					break;
 				}
 
-				SourceInfo.MixerSourceBuffer->OnBufferEnd();
+				if (ensure(SourceInfo.MixerSourceBuffer.IsValid()))
+				{
+					SourceInfo.MixerSourceBuffer->OnBufferEnd();
+				}
 			}
 
 			// If we have audio in our queue, we're still playing
-			if (SourceInfo.MixerSourceBuffer->GetNumBuffersQueued() > 0 && NumChannels > 0)
+			if (ensure(SourceInfo.MixerSourceBuffer.IsValid()) && SourceInfo.MixerSourceBuffer->GetNumBuffersQueued() > 0 && NumChannels > 0)
 			{
 				SourceInfo.CurrentPCMBuffer = SourceInfo.MixerSourceBuffer->GetNextBuffer();
 				SourceInfo.CurrentAudioChunkNumFrames = SourceInfo.CurrentPCMBuffer->AudioData.Num() / NumChannels;
@@ -1555,16 +1564,32 @@ namespace Audio
 
 			float* PreDistanceAttenBufferPtr = SourceInfo.PreDistanceAttenuationBuffer.GetData();
 
+			const bool bModEnabled = MixerDevice->IsModulationPluginEnabled() && MixerDevice->ModulationInterface.IsValid();
+			if (bModEnabled)
+			{
+				if (SourceInfo.ModulationVolLast >= 0.0f)
+				{
+					SourceInfo.ModulationVolLast = SourceInfo.ModulationControls.Volume;
+				}
+
+				MixerDevice->ModulationInterface->ProcessControls(SourceId, SourceInfo.ModulationControls);
+			}
+
+			// Prime to initial value provided by interface, or set to control default if process controls
+			// does not get called due to the interface not being valid/enabled.
+			if (SourceInfo.ModulationVolLast < 0.0f)
+			{
+				SourceInfo.ModulationVolLast = SourceInfo.ModulationControls.Volume;
+			}
+
 			// if this is a bus, we just want to copy the bus audio to this source's output audio
 			// Note we need to copy this since bus instances may have different audio via dynamic source effects, etc.
 			if (bIsSourceBus)
 			{
 				// Get the source's rendered and mixed audio bus data
-				const TSharedPtr<FMixerAudioBus>* AudioBusPtr = AudioBuses.Find(SourceInfo.AudioBusId);
-				if (ensure(AudioBusPtr != nullptr))
+				const TSharedPtr<FMixerAudioBus> AudioBusPtr = AudioBuses.FindRef(SourceInfo.AudioBusId);
+				if (ensure(AudioBusPtr.IsValid()))
 				{
-					const float* RESTRICT BusBufferPtr = (*AudioBusPtr)->GetCurrentBusBuffer();
-
 					int32 NumFramesPlayed = NumOutputFrames;
 					if (SourceInfo.SourceBusDurationFrames != INDEX_NONE)
 					{
@@ -1577,9 +1602,7 @@ namespace Audio
 					}
 
 					SourceInfo.NumFramesPlayed += NumFramesPlayed;
-
-					// Simply copy into the pre distance attenuation buffer ptr
-					FMemory::Memcpy(PreDistanceAttenBufferPtr, BusBufferPtr, sizeof(float) * NumFramesPlayed * SourceInfo.NumInputChannels);
+					AudioBusPtr->CopyCurrentBuffer(SourceInfo.PreDistanceAttenuationBuffer, NumFramesPlayed, SourceInfo.NumInputChannels);
 				}
 			}
 			else
@@ -1612,6 +1635,19 @@ namespace Audio
 				int32 SampleIndex = 0;
 				int32 StartFrame = 0;
 #endif
+
+				// Modulate parameter target should modulation be active
+				// Due to managing two separate pitch values that are updated at different rates
+				// (game thread rate and copy set by SetPitch and buffer callback rate set by Modulation System),
+				// the PitchSourceParam's target is marshaled before processing by mult'ing in the modulation pitch,
+				// processing the buffer, and then resetting it back if modulation is active. 
+
+				const bool bPitchModulated = bModEnabled && !FMath::IsNearlyEqual(SourceInfo.ModulationControls.Pitch, 1.0f);
+				const float TargetPitch = SourceInfo.PitchSourceParam.GetTarget();
+				if (bPitchModulated)
+				{
+					SourceInfo.PitchSourceParam.SetValue(TargetPitch * SourceInfo.ModulationControls.Pitch, NumOutputFrames);
+				}
 
 				for (int32 Frame = StartFrame; Frame < NumOutputFrames; ++Frame)
 				{
@@ -1660,13 +1696,19 @@ namespace Audio
 
 						PreDistanceAttenBufferPtr[SampleIndex++] = FMath::Lerp(CurrFrameValue, NextFrameValue, CurrentAlpha);
 					}
-					const float CurrentPitchScale = SourceInfo.PitchSourceParam.Update();
 
+					const float CurrentPitchScale = SourceInfo.PitchSourceParam.Update();
 					SourceInfo.CurrentFrameAlpha += CurrentPitchScale;
 				}
 
 				// After processing the frames, reset the pitch param
 				SourceInfo.PitchSourceParam.Reset();
+
+				// Reset target value should modulation have modified prior to processing
+				if (bPitchModulated)
+				{
+					SourceInfo.PitchSourceParam.SetValue(TargetPitch, NumOutputFrames);
+				}
 			}
 		}
 	}
@@ -1703,7 +1745,7 @@ namespace Audio
 		SourceInfo.DistanceAttenuationSourceStart = SourceInfo.DistanceAttenuationSourceDestination;
 	}
 
-	void FMixerSourceManager::ComputePluginAudio(FSourceInfo& SourceInfo, FSourceDownmixData& DownmixData, int32 SourceId, int32 NumSamples)
+	void FMixerSourceManager::ComputePluginAudio(FSourceInfo& SourceInfo, FMixerSourceSubmixOutputBuffer& InSourceSubmixOutputBuffer, int32 SourceId, int32 NumSamples)
 	{
 		if (BypassAudioPluginsCvar)
 		{
@@ -1711,8 +1753,12 @@ namespace Audio
 			SourceInfo.NumPostEffectChannels = SourceInfo.NumInputChannels;
 
 			// Set the ptr to use for post-effect buffers:
-			DownmixData.PostEffectBuffers = &SourceInfo.SourceBuffer;
+			InSourceSubmixOutputBuffer.SetPostAttenuationSourceBuffer(&SourceInfo.SourceBuffer);
 
+			if (SourceInfo.bHasPreDistanceAttenuationSend)
+			{
+				InSourceSubmixOutputBuffer.SetPreAttenuationSourceBuffer(&SourceInfo.PreDistanceAttenuationBuffer);
+			}
 			return;
 		}
 
@@ -1742,8 +1788,7 @@ namespace Audio
 			if (!MixerDevice->bReverbIsExternalSend)
 			{
 				// Copy the reverb-processed data back to the source buffer
-				DownmixData.ReverbPluginOutputBuffer.Reset();
-				DownmixData.ReverbPluginOutputBuffer.Append(SourceInfo.AudioPluginOutputData.AudioBuffer);
+				InSourceSubmixOutputBuffer.CopyReverbPluginOutputData(SourceInfo.AudioPluginOutputData.AudioBuffer);
 				bShouldMixInReverb = true;
 			}
 		}
@@ -1771,7 +1816,7 @@ namespace Audio
 			// Copy the occlusion-processed data back to the source buffer and mix with the reverb plugin output buffer
 			if (bShouldMixInReverb)
 			{
-				const float* ReverbPluginOutputBufferPtr = DownmixData.ReverbPluginOutputBuffer.GetData();
+				const float* ReverbPluginOutputBufferPtr = InSourceSubmixOutputBuffer.GetReverbPluginOutputData();
 				const float* AudioPluginOutputDataPtr = SourceInfo.AudioPluginOutputData.AudioBuffer.GetData();
 
 				Audio::SumBuffers(ReverbPluginOutputBufferPtr, AudioPluginOutputDataPtr, PostDistanceAttenBufferPtr, NumSamples);
@@ -1783,7 +1828,7 @@ namespace Audio
 		}
 		else if (bShouldMixInReverb)
 		{
-			const float* ReverbPluginOutputBufferPtr = DownmixData.ReverbPluginOutputBuffer.GetData();
+			const float* ReverbPluginOutputBufferPtr = InSourceSubmixOutputBuffer.GetReverbPluginOutputData();
 			Audio::MixInBufferFast(ReverbPluginOutputBufferPtr, PostDistanceAttenBufferPtr, NumSamples);
 		}
 
@@ -1807,7 +1852,10 @@ namespace Audio
 				SourceInfo.AudioPluginOutputData.AudioBuffer.AddZeroed(2 * NumOutputFrames);
 			}
 
-			SpatializationPlugin->ProcessAudio(AudioPluginInputData, SourceInfo.AudioPluginOutputData);
+			{
+				LLM_SCOPE(ELLMTag::AudioMixerPlugins);
+				SpatializationPlugin->ProcessAudio(AudioPluginInputData, SourceInfo.AudioPluginOutputData);
+			}
 
 			// If this is an external send, we treat this source audio as if it was still a mono source
 			// This will allow it to traditionally pan in the ComputeOutputBuffers function and be
@@ -1820,13 +1868,25 @@ namespace Audio
 				SourceInfo.NumPostEffectChannels = SourceInfo.NumInputChannels;
 
 				// Set the ptr to use for post-effect buffers rather than the plugin output data (since the plugin won't have output audio data)
-				DownmixData.PostEffectBuffers = &SourceInfo.SourceBuffer;
+				InSourceSubmixOutputBuffer.SetPostAttenuationSourceBuffer(&SourceInfo.SourceBuffer);
+
+				if (SourceInfo.bHasPreDistanceAttenuationSend)
+				{
+					InSourceSubmixOutputBuffer.SetPreAttenuationSourceBuffer(&SourceInfo.PreDistanceAttenuationBuffer);
+				}
 			}
 			else
 			{
 				// Otherwise, we are now a 2-channel file and should not be spatialized using normal 3d spatialization
 				SourceInfo.NumPostEffectChannels = 2;
-				DownmixData.PostEffectBuffers = &SourceInfo.AudioPluginOutputData.AudioBuffer;
+
+				// Set the ptr to use for post-effect buffers rather than the plugin output data (since the plugin won't have output audio data)
+				InSourceSubmixOutputBuffer.SetPostAttenuationSourceBuffer(&SourceInfo.AudioPluginOutputData.AudioBuffer);
+
+				if (SourceInfo.bHasPreDistanceAttenuationSend)
+				{
+					InSourceSubmixOutputBuffer.SetPreAttenuationSourceBuffer(&SourceInfo.PreDistanceAttenuationBuffer);
+				}
 			}
 		}
 		else
@@ -1834,297 +1894,13 @@ namespace Audio
 			// Otherwise our pre- and post-effect channels are the same as the input channels
 			SourceInfo.NumPostEffectChannels = SourceInfo.NumInputChannels;
 
-			// Set the ptr to use for post-effect buffers
-			DownmixData.PostEffectBuffers = &SourceInfo.SourceBuffer;
-		}
-	}
+			InSourceSubmixOutputBuffer.SetPostAttenuationSourceBuffer(&SourceInfo.SourceBuffer);
 
-	void FMixerSourceManager::ComputeDownmix3D(FSourceDownmixData& DownmixData, FMixerDevice* MixerDevice)
-	{
-		// This enormous switch statement handles using the correct function for a given number of input and output channels.
-		// For 3D sources, we interpolate from ChannelStartGains to ChannelDestinationGains.
-		if (DownmixData.AmbisonicsDecoder.IsValid())
-		{
-			FAmbisonicsSoundfieldBuffer AmbiBuffer;
-			AmbiBuffer.AudioBuffer = MoveTemp(*DownmixData.PostEffectBuffers);
-			AmbiBuffer.NumChannels = DownmixData.NumInputChannels;
-			AmbiBuffer.PreviousRotation = AmbiBuffer.Rotation;
-			AmbiBuffer.Rotation = DownmixData.SourceRotation;
-
-			DownmixData.PositionalData.NumChannels = DownmixData.NumDeviceChannels;
-			DownmixData.PositionalData.ChannelPositions = MixerDevice->GetDefaultPositionMap(DownmixData.NumDeviceChannels);
-
-			FSoundfieldDecoderInputData InputData =
+			if (SourceInfo.bHasPreDistanceAttenuationSend)
 			{
-				AmbiBuffer,
-				DownmixData.PositionalData,
-				static_cast<int32>(DownmixData.PostEffectBuffers->Num() / DownmixData.NumInputChannels),
-				MixerDevice->GetSampleRate()
-			};
-			
-			FSoundfieldDecoderOutputData OutputData = { DownmixData.DeviceSubmixInfo.OutputBuffer };
-
-			DownmixData.AmbisonicsDecoder->Decode(InputData, OutputData);
-
-			// Move the encoded ambisonics source buffer back to PostEffectBuffers to prevent reallocation
-			*DownmixData.PostEffectBuffers = MoveTemp(AmbiBuffer.AudioBuffer);
-		}
-		else if (DownmixData.NumInputChannels == 1)
-		{
-			switch (DownmixData.NumDeviceChannels)
-			{
-			case 8:
-				Audio::MixMonoTo8ChannelsFast(*DownmixData.PostEffectBuffers, DownmixData.DeviceSubmixInfo.OutputBuffer, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelStartGains, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelDestinationGains);
-				break;
-			case 6:
-				Audio::MixMonoTo6ChannelsFast(*DownmixData.PostEffectBuffers, DownmixData.DeviceSubmixInfo.OutputBuffer, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelStartGains, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelDestinationGains);
-				break;
-			case 4:
-				Audio::MixMonoTo4ChannelsFast(*DownmixData.PostEffectBuffers, DownmixData.DeviceSubmixInfo.OutputBuffer, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelStartGains, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelDestinationGains);
-				break;
-			case 2:
-				Audio::MixMonoTo2ChannelsFast(*DownmixData.PostEffectBuffers, DownmixData.DeviceSubmixInfo.OutputBuffer, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelStartGains, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelDestinationGains);
-				break;
+				InSourceSubmixOutputBuffer.SetPreAttenuationSourceBuffer(&SourceInfo.PreDistanceAttenuationBuffer);
 			}
 		}
-		else if (DownmixData.NumInputChannels == 2)
-		{
-			switch (DownmixData.NumDeviceChannels)
-			{
-			case 8:
-				Audio::Mix2ChannelsTo8ChannelsFast(*DownmixData.PostEffectBuffers, DownmixData.DeviceSubmixInfo.OutputBuffer, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelStartGains, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelDestinationGains);
-				break;
-			case 6:
-				Audio::Mix2ChannelsTo6ChannelsFast(*DownmixData.PostEffectBuffers, DownmixData.DeviceSubmixInfo.OutputBuffer, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelStartGains, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelDestinationGains);
-				break;
-			case 4:
-				Audio::Mix2ChannelsTo4ChannelsFast(*DownmixData.PostEffectBuffers, DownmixData.DeviceSubmixInfo.OutputBuffer, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelStartGains, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelDestinationGains);
-				break;
-			case 2:
-				Audio::Mix2ChannelsTo2ChannelsFast(*DownmixData.PostEffectBuffers, DownmixData.DeviceSubmixInfo.OutputBuffer, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelStartGains, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelDestinationGains);
-				break;
-			}
-		}
-		else
-		{
-			// Use generic calls:
-			Audio::DownmixBuffer(DownmixData.NumInputChannels, DownmixData.NumDeviceChannels, *DownmixData.PostEffectBuffers, DownmixData.DeviceSubmixInfo.OutputBuffer, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelStartGains, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelDestinationGains);
-		}
-
-		DownmixData.DeviceSubmixInfo.ChannelMap.CopyDestinationToStart();
-	}
-
-	void FMixerSourceManager::ComputeDownmix2D(FSourceDownmixData& DownmixData, FMixerDevice* MixerDevice)
-	{
-		// This enormous switch statement handles using the correct function for a given number of input and output channels.
-		// For 2D sources, we just apply the gain matrix in ChannelDestionationGains with no interpolation.
-		if (DownmixData.AmbisonicsDecoder.IsValid())
-		{
-			FAmbisonicsSoundfieldBuffer AmbiBuffer;
-			AmbiBuffer.AudioBuffer = MoveTemp(*DownmixData.PostEffectBuffers);
-			AmbiBuffer.NumChannels = DownmixData.NumInputChannels;
-			AmbiBuffer.PreviousRotation = AmbiBuffer.Rotation;
-			AmbiBuffer.Rotation = DownmixData.SourceRotation;
-
-			DownmixData.PositionalData.NumChannels = DownmixData.NumDeviceChannels;
-			DownmixData.PositionalData.ChannelPositions = MixerDevice->GetDefaultPositionMap(DownmixData.NumDeviceChannels);
-
-			FSoundfieldDecoderInputData InputData =
-			{
-				AmbiBuffer,
-				DownmixData.PositionalData,
-				static_cast<int32>(DownmixData.PostEffectBuffers->Num() / DownmixData.NumInputChannels),
-				MixerDevice->GetSampleRate()
-			};
-
-			FSoundfieldDecoderOutputData OutputData = { DownmixData.DeviceSubmixInfo.OutputBuffer };
-
-			DownmixData.AmbisonicsDecoder->Decode(InputData, OutputData);
-
-			// Move the encoded ambisonics source buffer back to PostEffectBuffers to prevent reallocation
-			*DownmixData.PostEffectBuffers = MoveTemp(AmbiBuffer.AudioBuffer);
-		}
-		else if (DownmixData.NumInputChannels == 1)
-		{
-			switch (DownmixData.NumDeviceChannels)
-			{
-			case 8:
-				Audio::MixMonoTo8ChannelsFast(*DownmixData.PostEffectBuffers, DownmixData.DeviceSubmixInfo.OutputBuffer, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelDestinationGains);
-				break;
-			case 6:
-				Audio::MixMonoTo6ChannelsFast(*DownmixData.PostEffectBuffers, DownmixData.DeviceSubmixInfo.OutputBuffer, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelDestinationGains);
-				break;
-			case 4:
-				Audio::MixMonoTo4ChannelsFast(*DownmixData.PostEffectBuffers, DownmixData.DeviceSubmixInfo.OutputBuffer, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelDestinationGains);
-				break;
-			case 2:
-				Audio::MixMonoTo2ChannelsFast(*DownmixData.PostEffectBuffers, DownmixData.DeviceSubmixInfo.OutputBuffer, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelDestinationGains);
-				break;
-			}
-		}
-		else if (DownmixData.NumInputChannels == 2)
-		{
-			switch (DownmixData.NumDeviceChannels)
-			{
-			case 8:
-				Audio::Mix2ChannelsTo8ChannelsFast(*DownmixData.PostEffectBuffers, DownmixData.DeviceSubmixInfo.OutputBuffer, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelDestinationGains);
-				break;
-			case 6:
-				Audio::Mix2ChannelsTo6ChannelsFast(*DownmixData.PostEffectBuffers, DownmixData.DeviceSubmixInfo.OutputBuffer, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelDestinationGains);
-				break;
-			case 4:
-				Audio::Mix2ChannelsTo4ChannelsFast(*DownmixData.PostEffectBuffers, DownmixData.DeviceSubmixInfo.OutputBuffer, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelDestinationGains);
-				break;
-			case 2:
-				Audio::Mix2ChannelsTo2ChannelsFast(*DownmixData.PostEffectBuffers, DownmixData.DeviceSubmixInfo.OutputBuffer, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelDestinationGains);
-				break;
-			}
-
-		}
-		else
-		{
-			// Use generic calls:
-			Audio::DownmixBuffer(DownmixData.NumInputChannels, DownmixData.NumDeviceChannels, *DownmixData.PostEffectBuffers, DownmixData.DeviceSubmixInfo.OutputBuffer, DownmixData.DeviceSubmixInfo.ChannelMap.ChannelDestinationGains);
-		}
-	}
-
-	void FMixerSourceManager::EncodeToSoundfieldFormats(FSourceDownmixData& DownmixData, const FSourceInfo& InSource, FMixerDevice* InDevice)
-	{
-		const FSpatializationParams& SpatializationParams = InSource.SpatParams;
-
-		// First, build our SoundfieldSpeakerPositionalData out of our SpatializationParams.
-		DownmixData.PositionalData.NumChannels = DownmixData.NumInputChannels;
-		DownmixData.PositionalData.Rotation = InSource.SpatParams.EmitterWorldRotation;
-		
-		// Build our input channel positions from the Spatialization params if this is a 3D source, otherwise use the default channel positions.
-		DownmixData.InputChannelPositions.Reset();
-		if (InSource.bIs3D)
-		{
-			if (DownmixData.NumInputChannels == 1)
-			{
-				Audio::FChannelPositionInfo ChannelPosition;
-				ChannelPosition.Channel = EAudioMixerChannel::FrontCenter;
-				ConvertCartesianToSpherical(SpatializationParams.EmitterPosition, ChannelPosition.Azimuth, ChannelPosition.Elevation, ChannelPosition.Radius);
-
-				DownmixData.InputChannelPositions.Add(ChannelPosition);
-
-				DownmixData.PositionalData.ChannelPositions = &DownmixData.InputChannelPositions;
-			}
-			else if (DownmixData.NumInputChannels == 2)
-			{
-				Audio::FChannelPositionInfo LeftChannelPosition;
-				LeftChannelPosition.Channel = EAudioMixerChannel::FrontLeft;
-				ConvertCartesianToSpherical(SpatializationParams.LeftChannelPosition, LeftChannelPosition.Azimuth, LeftChannelPosition.Elevation, LeftChannelPosition.Radius);
-
-				DownmixData.InputChannelPositions.Add(LeftChannelPosition);
-
-				Audio::FChannelPositionInfo RightChannelPosition;
-				LeftChannelPosition.Channel = EAudioMixerChannel::FrontRight;
-				ConvertCartesianToSpherical(SpatializationParams.RightChannelPosition, RightChannelPosition.Azimuth, RightChannelPosition.Elevation, RightChannelPosition.Radius);
-
-				DownmixData.InputChannelPositions.Add(RightChannelPosition);
-
-				DownmixData.PositionalData.ChannelPositions = &DownmixData.InputChannelPositions;
-			}
-			else
-			{
-				// Spatialization of multichannel audio beyond stereo is not currently supported in the engine.
-				DownmixData.PositionalData.ChannelPositions = InDevice->GetDefaultPositionMap(DownmixData.NumInputChannels);
-			}
-		}
-		else
-		{
-			DownmixData.PositionalData.ChannelPositions = InDevice->GetDefaultPositionMap(DownmixData.NumInputChannels);
-		}
-
-		// Finally, run our encoders.
-		for (auto& Soundfield : DownmixData.EncodedSoundfieldDownmixes)
-		{
-			FSubmixSoundfieldData& SoundfieldData = Soundfield.Value;
-
-			check(SoundfieldData.EncoderSettings.IsValid());
-			check(SoundfieldData.EncodedPacket.IsValid());
-
-			SoundfieldData.EncodedPacket->Reset();
-
-			// If this is an ambisonics source, transcode it. Otherwise, encode the source.
-			if (SoundfieldData.AmbiTranscoder)
-			{
-				FAmbisonicsSoundfieldBuffer AmbiBuffer;
-				AmbiBuffer.AudioBuffer = MoveTemp(*DownmixData.PostEffectBuffers);
-				AmbiBuffer.NumChannels = DownmixData.NumInputChannels;
-				AmbiBuffer.PreviousRotation = AmbiBuffer.Rotation;
-				AmbiBuffer.Rotation = DownmixData.SourceRotation;
-
-				SoundfieldData.AmbiTranscoder->Transcode(AmbiBuffer, GetAmbisonicsSourceDefaultSettings(), *SoundfieldData.EncodedPacket, *SoundfieldData.EncoderSettings);
-				*DownmixData.PostEffectBuffers = MoveTemp(AmbiBuffer.AudioBuffer);
-			}
-			else if (SoundfieldData.Encoder)
-			{
-				FSoundfieldEncoderInputData InputData =
-				{
-					*DownmixData.PostEffectBuffers,
-					static_cast<int32>(DownmixData.NumInputChannels),
-					*SoundfieldData.EncoderSettings,
-					DownmixData.PositionalData
-				};
-
-				SoundfieldData.Encoder->Encode(InputData, *SoundfieldData.EncodedPacket);
-			}
-			else if (SoundfieldData.bIsUnrealAmbisonicsSubmix)
-			{
-				ensure(InSource.bIsAmbisonics);
-
-				FAmbisonicsSoundfieldBuffer& OutputPacket = DowncastSoundfieldRef<FAmbisonicsSoundfieldBuffer>(*SoundfieldData.EncodedPacket);
-				// Fixme: This is an array copy. Can we serve DownmixData.PostEffectBuffers directly to this soundfield?
-				OutputPacket.AudioBuffer = *DownmixData.PostEffectBuffers;
-				OutputPacket.NumChannels = DownmixData.NumInputChannels;
-				OutputPacket.PreviousRotation = OutputPacket.Rotation;
-				OutputPacket.Rotation = DownmixData.SourceRotation;
-			}
-		}
-	}
-
-	void FMixerSourceManager::ConvertCartesianToSpherical(const FVector& InVector, float& OutAzimuth, float& OutElevation, float& OutRadius)
-	{
-		// Convert coordinates from unreal cartesian system to left handed spherical coordinates (zenith is positive elevation, right is positive azimuth)
-		const float InX = -InVector.Z; //InVector.Y;
-		const float InY = InVector.X;// -InVector.Z;
-		const float InZ = -InVector.Y;
-
-
-		OutElevation = FMath::Atan2(InY, InX);
-
-		// Note, rather than using arccos(z / radius) here, we use Atan2 to avoid wrapping issues with negative elevation values.
-		OutAzimuth = FMath::Atan2(FMath::Sqrt(InX * InX + InY * InY), InZ);
-		OutRadius = InVector.Size();
-	}
-
-	FMixerSourceManager::FSourceDownmixData& FMixerSourceManager::InitializeDownmixForSource(const int32 SourceId, const int32 NumInputChannels, const int32 NumOutputChannels, const int32 InNumOutputFrames)
-	{
-		DownmixDataArray[SourceId].ResetData(NumInputChannels, NumOutputChannels);
-		return DownmixDataArray[SourceId];
-	}
-
-	const Audio::FMixerSourceManager::FSubmixChannelData& FMixerSourceManager::GetChannelInfoForDevice(const FSourceDownmixData& InDownmixData) const
-	{
-		return InDownmixData.DeviceSubmixInfo;
-	}
-
-	Audio::FMixerSourceManager::FSubmixChannelData& FMixerSourceManager::GetChannelInfoForDevice(FSourceDownmixData& InDownmixData)
-	{
-		return InDownmixData.DeviceSubmixInfo;
-	}
-
-	const FMixerSourceManager::FSubmixSoundfieldData& FMixerSourceManager::GetChannelInfoForFormat(const FSoundfieldEncodingKey& InFormat, const FSourceDownmixData& InDownmixData) const
-	{
-		check(InDownmixData.EncodedSoundfieldDownmixes.Contains(InFormat));
-		return InDownmixData.EncodedSoundfieldDownmixes[InFormat];
-	}
-
-	FMixerSourceManager::FSubmixSoundfieldData& FMixerSourceManager::GetChannelInfoForFormat(const FSoundfieldEncodingKey& InFormat, FSourceDownmixData& InDownmixData)
-	{
-		return InDownmixData.EncodedSoundfieldDownmixes.FindOrAdd(InFormat);
 	}
 
 	void FMixerSourceManager::ComputePostSourceEffectBufferForIdRange(bool bGenerateBuses, const int32 SourceIdStart, const int32 SourceIdEnd)
@@ -2147,8 +1923,6 @@ namespace Audio
 			{
 				continue;
 			}
-
-			FSourceDownmixData& DownmixData = DownmixDataArray[SourceId];
 
 			// Copy and store the current state of the pre-distance attenuation buffer before we feed it through our source effects
 			// This is used by pre-effect sends
@@ -2178,29 +1952,31 @@ namespace Audio
 
 				const int32 NumFadeSamples = NumFadeFrames * SourceInfo.NumInputChannels;
 
-				Audio::FadeBufferFast(PreDistanceAttenBufferPtr, NumFadeSamples, SourceInfo.VolumeSourceStart, SourceInfo.VolumeSourceDestination);
+				const float VolumeStart = SourceInfo.VolumeSourceStart * SourceInfo.ModulationVolLast;
+				const float VolumeDestination = SourceInfo.VolumeSourceDestination * SourceInfo.ModulationControls.Volume;
+				Audio::FadeBufferFast(PreDistanceAttenBufferPtr, NumFadeSamples, VolumeStart, VolumeDestination);
 
 				// Zero the rest of the buffer
 				if (NumFadeFrames < NumOutputFrames)
 				{
 					int32 SamplesLeft = NumSamples - NumFadeSamples;
-					FMemory::Memzero(&PreDistanceAttenBufferPtr[NumFadeSamples], sizeof(float)*SamplesLeft);
+					FMemory::Memzero(&PreDistanceAttenBufferPtr[NumFadeSamples], sizeof(float) * SamplesLeft);
 				}
-
-				SourceInfo.VolumeSourceStart = SourceInfo.VolumeSourceDestination;
 			}
 			else
 			{
-				Audio::FadeBufferFast(PreDistanceAttenBufferPtr, NumSamples, SourceInfo.VolumeSourceStart, SourceInfo.VolumeSourceDestination);
-				SourceInfo.VolumeSourceStart = SourceInfo.VolumeSourceDestination;
+				const float VolumeStart = SourceInfo.VolumeSourceStart * SourceInfo.ModulationVolLast;
+				const float VolumeDestination = SourceInfo.VolumeSourceDestination * SourceInfo.ModulationControls.Volume;
+				Audio::FadeBufferFast(PreDistanceAttenBufferPtr, NumSamples, VolumeStart, VolumeDestination);
 			}
+			SourceInfo.VolumeSourceStart = SourceInfo.VolumeSourceDestination;
 
 			// Now process the effect chain if it exists
 			if (!DisableSourceEffectsCvar && SourceInfo.SourceEffects.Num() > 0)
 			{
 				// Prepare this source's effect chain input data
 				SourceInfo.SourceEffectInputData.CurrentVolume = SourceInfo.VolumeSourceDestination;
-				SourceInfo.SourceEffectInputData.CurrentPitch = SourceInfo.PitchSourceParam.GetValue();
+				SourceInfo.SourceEffectInputData.CurrentPitch = SourceInfo.PitchSourceParam.GetValue() * SourceInfo.ModulationControls.Pitch;
 				SourceInfo.SourceEffectInputData.AudioClock = MixerDevice->GetAudioClock();
 				if (SourceInfo.NumInputFrames > 0)
 				{
@@ -2215,31 +1991,25 @@ namespace Audio
 				SourceInfo.SourceEffectInputData.NumSamples = NumSamples;
 
 				// Loop through the effect chain passing in buffers
-				for (FSoundEffectSource* SoundEffectSource : SourceInfo.SourceEffects)
+				FScopeLock ScopeLock(&EffectChainMutationCriticalSection);
 				{
-					bool bPresetUpdated = false;
-					if (SoundEffectSource->IsActive())
+					for (TSoundEffectSourcePtr& SoundEffectSource : SourceInfo.SourceEffects)
 					{
-						bPresetUpdated = SoundEffectSource->Update();
-					}
+						bool bPresetUpdated = false;
+						if (SoundEffectSource->IsActive())
+						{
+							bPresetUpdated = SoundEffectSource->Update();
+						}
 
-					// Modulation must be updated regardless of whether or not the source is
-					// active to allow for initial conditions to be set if source is reactivated.
-					if (bPresetUpdated || SourceInfo.bIsModulationUpdated)
-					{
-						SoundEffectSource->ProcessControls(SourceInfo.ModulationControls);
-					}
+						if (SoundEffectSource->IsActive())
+						{
+							SoundEffectSource->ProcessAudio(SourceInfo.SourceEffectInputData, OutputSourceEffectBufferPtr);
 
-					if (SoundEffectSource->IsActive())
-					{
-						SoundEffectSource->ProcessAudio(SourceInfo.SourceEffectInputData, OutputSourceEffectBufferPtr);
-
-						// Copy output to input
-						FMemory::Memcpy(SourceInfo.SourceEffectInputData.InputSourceEffectBufferPtr, OutputSourceEffectBufferPtr, sizeof(float)*NumSamples);
+							// Copy output to input
+							FMemory::Memcpy(SourceInfo.SourceEffectInputData.InputSourceEffectBufferPtr, OutputSourceEffectBufferPtr, sizeof(float) * NumSamples);
+						}
 					}
 				}
-
-				SourceInfo.bIsModulationUpdated = false;
 			}
 
 			const bool bWasEffectTailsDone = SourceInfo.bEffectTailsDone;
@@ -2265,30 +2035,44 @@ namespace Audio
 				SourceInfo.SourceListener->OnEffectTailsDone();
 			}
 
-			if (!SourceInfo.bOutputToBusOnly)
+			if (!SourceInfo.bOutputToBusOnly || SourceInfo.bModUpdated)
 			{
 				// Only scale with distance attenuation and send to source audio to plugins if we're not in output-to-bus only mode
 				const int32 NumOutputSamplesThisSource = NumOutputFrames * SourceInfo.NumInputChannels;
 
+				if (SourceInfo.bOutputToBusOnly)
+				{
+					SourceInfo.LowPassFilter.StartFrequencyInterpolation(SourceInfo.ModulationControls.Lowpass, NumOutputFrames);
+					SourceInfo.HighPassFilter.StartFrequencyInterpolation(SourceInfo.ModulationControls.Highpass, NumOutputFrames);
+				}
+				else if (SourceInfo.bModUpdated)
+				{
+					const float Lowpass = FMath::Min(SourceInfo.LowPassFreq, SourceInfo.ModulationControls.Lowpass);
+					SourceInfo.LowPassFilter.StartFrequencyInterpolation(Lowpass, NumOutputFrames);
+
+					const float Highpass = FMath::Max(SourceInfo.HighPassFreq, SourceInfo.ModulationControls.Highpass);
+					SourceInfo.HighPassFilter.StartFrequencyInterpolation(Highpass, NumOutputFrames);
+				}
+
 				const bool BypassLPF = DisableFilteringCvar || (SourceInfo.LowPassFilter.GetCutoffFrequency() >= (MAX_FILTER_FREQUENCY - KINDA_SMALL_NUMBER));
 				const bool BypassHPF = DisableFilteringCvar || DisableHPFilteringCvar || (SourceInfo.HighPassFilter.GetCutoffFrequency() <= (MIN_FILTER_FREQUENCY + KINDA_SMALL_NUMBER));
 
-				float* PostDistanceAttenBufferPtr = SourceInfo.SourceBuffer.GetData();
+				float* SourceBuffer = SourceInfo.SourceBuffer.GetData();
 				float* HpfInputBuffer = PreDistanceAttenBufferPtr; // assume bypassing LPF (HPF uses input buffer as input)
 
 				if (!BypassLPF)
 				{
 					// Not bypassing LPF, so tell HPF to use LPF output buffer as input
-					HpfInputBuffer = PostDistanceAttenBufferPtr;
+					HpfInputBuffer = SourceBuffer;
 
 					// process LPF audio block
-					SourceInfo.LowPassFilter.ProcessAudioBuffer(PreDistanceAttenBufferPtr, PostDistanceAttenBufferPtr, NumOutputSamplesThisSource);
+					SourceInfo.LowPassFilter.ProcessAudioBuffer(PreDistanceAttenBufferPtr, SourceBuffer, NumOutputSamplesThisSource);
 				}
 
-				if(!BypassHPF)
+				if (!BypassHPF)
 				{
 					// process HPF audio block
-					SourceInfo.HighPassFilter.ProcessAudioBuffer(HpfInputBuffer, PostDistanceAttenBufferPtr, NumOutputSamplesThisSource);
+					SourceInfo.HighPassFilter.ProcessAudioBuffer(HpfInputBuffer, SourceBuffer, NumOutputSamplesThisSource);
 				}
 
 				// We manually reset interpolation to avoid branches in filter code
@@ -2297,14 +2081,19 @@ namespace Audio
 
 				if (BypassLPF && BypassHPF)
 				{
-					FMemory::Memcpy(PostDistanceAttenBufferPtr, PreDistanceAttenBufferPtr, NumSamples * sizeof(float));
+					FMemory::Memcpy(SourceBuffer, PreDistanceAttenBufferPtr, NumSamples * sizeof(float));
 				}
+			}
 
+			if (!SourceInfo.bOutputToBusOnly)
+			{
 				// Apply distance attenuation
 				ApplyDistanceAttenuation(SourceInfo, NumSamples);
 
+				FMixerSourceSubmixOutputBuffer& SourceSubmixOutputBuffer = SourceSubmixOutputBuffers[SourceId];
+
 				// Send source audio to plugins
-				ComputePluginAudio(SourceInfo, DownmixData, SourceId, NumSamples);
+				ComputePluginAudio(SourceInfo, SourceSubmixOutputBuffer, SourceId, NumSamples);
 			}
 
 			// Check the source effect tails condition
@@ -2315,8 +2104,6 @@ namespace Audio
 				SourceInfo.NextFrameValues.Reset();
 				SourceInfo.CurrentPCMBuffer = nullptr;
 			}
-
-			SourceInfo.bIsModulationUpdated = false;
 		}
 	}
 
@@ -2344,31 +2131,8 @@ namespace Audio
 				continue;
 			}
 
-			FSourceDownmixData& DownmixData = DownmixDataArray[SourceId];
-
-			if (DownmixData.PostEffectBuffers == nullptr)
-			{
-				continue;
-			}
-
-			DownmixData.PositionalData.Rotation = SourceInfo.SpatParams.ListenerOrientation;
-			DownmixData.SourceRotation = SourceInfo.SpatParams.EmitterWorldRotation;
-
-			if (SourceInfo.bIs3D && !DownmixData.bIsInitialDownmix)
-			{
-				ComputeDownmix3D(DownmixData, MixerDevice);
-			}
-			else
-			{
-				ComputeDownmix2D(DownmixData, MixerDevice);
-				DownmixData.bIsInitialDownmix = false;
-			}
-
-			if (DownmixData.EncodedSoundfieldDownmixes.Num())
-			{
-				// Perform All Encoding for all sends.
-				EncodeToSoundfieldFormats(DownmixData, SourceInfo, MixerDevice);
-			}
+			FMixerSourceSubmixOutputBuffer& SourceSubmixOutputBuffer = SourceSubmixOutputBuffers[SourceId];
+			SourceSubmixOutputBuffer.ComputeOutput(SourceInfo.SpatParams);
 		}
 	}
 
@@ -2415,26 +2179,17 @@ namespace Audio
 		}
 	}
 
-	void FMixerSourceManager::MixOutputBuffers(const int32 SourceId, int32 InNumOutputChannels, const float SendLevel, AlignedFloatBuffer& OutWetBuffer) const
+	void FMixerSourceManager::MixOutputBuffers(const int32 SourceId, int32 InNumOutputChannels, const float InSendLevel, EMixerSourceSubmixSendStage InSubmixSendStage, AlignedFloatBuffer& OutWetBuffer) const
 	{
-		if (SendLevel > 0.0f)
+		if (InSendLevel > 0.0f)
 		{
 			const FSourceInfo& SourceInfo = SourceInfos[SourceId];
 
 			// Don't need to mix into submixes if the source is paused
 			if (!SourceInfo.bIsPaused && !SourceInfo.bIsDone && SourceInfo.bIsPlaying)
 			{
-				const FSourceDownmixData& DownmixData = DownmixDataArray[SourceId];
-				const FSubmixChannelData& ChannelInfo = GetChannelInfoForDevice(DownmixData);
-
-				const float* RESTRICT SourceOutputBufferPtr = ChannelInfo.OutputBuffer.GetData();
-
-				// TODO: Figure out a fix for this race condition on device swap:
-				// const int32 OutWetBufferSize = OutWetBuffer.Num();
-				const int32 OutWetBufferSize = FMath::Min<float>(OutWetBuffer.Num(), ChannelInfo.OutputBuffer.Num());
-				float* RESTRICT OutWetBufferPtr = OutWetBuffer.GetData();
-
-				Audio::MixInBufferFast(SourceOutputBufferPtr, OutWetBufferPtr, OutWetBufferSize, SendLevel);
+				const FMixerSourceSubmixOutputBuffer& SourceSubmixOutputBuffer = SourceSubmixOutputBuffers[SourceId];
+				SourceSubmixOutputBuffer.MixOutput(InSendLevel, InSubmixSendStage, OutWetBuffer);
 			}
 		}
 	}
@@ -2448,13 +2203,17 @@ namespace Audio
 		// Don't need to mix into submixes if the source is paused
 		if (!SourceInfo.bIsPaused && !SourceInfo.bIsDone && SourceInfo.bIsPlaying)
 		{
-			const FSourceDownmixData& DownmixData = DownmixDataArray[SourceId];
-			const FSubmixSoundfieldData& ChannelInfo = GetChannelInfoForFormat(InKey, DownmixData);
-
-			return ChannelInfo.EncodedPacket.Get();
+			const FMixerSourceSubmixOutputBuffer& SourceSubmixOutputBuffer = SourceSubmixOutputBuffers[SourceId];
+			return SourceSubmixOutputBuffer.GetSoundfieldPacket(InKey);
 		}
 
 		return nullptr;
+	}
+
+	const FQuat FMixerSourceManager::GetListenerRotation(const int32 SourceId) const
+	{
+		const FMixerSourceSubmixOutputBuffer& SubmixOutputBuffer = SourceSubmixOutputBuffers[SourceId];
+		return SubmixOutputBuffer.GetListenerRotation();
 	}
 
 	void FMixerSourceManager::UpdateDeviceChannelCount(const int32 InNumOutputChannels)
@@ -2474,10 +2233,8 @@ namespace Audio
 					continue;
 				}
 
-				FSourceDownmixData& DownmixData = DownmixDataArray[SourceId];
-				DownmixData.ResetNumberOfDeviceChannels(InNumOutputChannels);
-
-				FSubmixChannelData& ChannelTypeInfo = GetChannelInfoForDevice(DownmixData);
+				FMixerSourceSubmixOutputBuffer& SourceSubmixOutputBuffer = SourceSubmixOutputBuffers[SourceId];
+				SourceSubmixOutputBuffer.SetNumOutputChannels(InNumOutputChannels);
 
 				SourceInfo.ScratchChannelMap.Reset();
 				const int32 NumSourceChannels = SourceInfo.bUseHRTFSpatializer ? 2 : SourceInfo.NumInputChannels;
@@ -2496,7 +2253,7 @@ namespace Audio
 					MixerDevice->Get2DChannelMap(SourceInfo.bIsVorbis, NumSourceChannels, InNumOutputChannels, SourceInfo.bIsCenterChannelOnly, SourceInfo.ScratchChannelMap);
 				}
 
-				ChannelTypeInfo.ChannelMap.SetChannelMap(SourceInfo.ScratchChannelMap.GetData());
+				SourceSubmixOutputBuffer.SetChannelMap(SourceInfo.ScratchChannelMap, SourceInfo.bIsCenterChannelOnly);
 			}
 		});
 	}
@@ -2519,40 +2276,43 @@ namespace Audio
 					SourceInfo.bEffectTailsDone = !bPlayEffectChainTails;
 
 					// Check to see if the chain didn't actually change
-					TArray<FSoundEffectSource *>& ThisSourceEffectChain = SourceInfo.SourceEffects;
-					bool bReset = false;
-					if (InSourceEffectChain.Num() == ThisSourceEffectChain.Num())
+					FScopeLock ScopeLock(&EffectChainMutationCriticalSection);
 					{
-						for (int32 SourceEffectId = 0; SourceEffectId < ThisSourceEffectChain.Num(); ++SourceEffectId)
+						TArray<TSoundEffectSourcePtr>& ThisSourceEffectChain = SourceInfo.SourceEffects;
+						bool bReset = false;
+						if (InSourceEffectChain.Num() == ThisSourceEffectChain.Num())
 						{
-							const FSourceEffectChainEntry& ChainEntry = InSourceEffectChain[SourceEffectId];
-
-							FSoundEffectSource* SourceEffectInstance = ThisSourceEffectChain[SourceEffectId];
-							if (!SourceEffectInstance->IsPreset(ChainEntry.Preset))
+							for (int32 SourceEffectId = 0; SourceEffectId < ThisSourceEffectChain.Num(); ++SourceEffectId)
 							{
-								// As soon as one of the effects change or is not the same, then we need to rebuild the effect graph
-								bReset = true;
-								break;
+								const FSourceEffectChainEntry& ChainEntry = InSourceEffectChain[SourceEffectId];
+
+								TSoundEffectSourcePtr SourceEffectInstance = ThisSourceEffectChain[SourceEffectId];
+								if (!SourceEffectInstance->IsPreset(ChainEntry.Preset))
+								{
+									// As soon as one of the effects change or is not the same, then we need to rebuild the effect graph
+									bReset = true;
+									break;
+								}
+
+								// Otherwise just update if it's just to bypass
+								SourceEffectInstance->SetEnabled(!ChainEntry.bBypass);
 							}
-
-							// Otherwise just update if it's just to bypass
-							SourceEffectInstance->SetEnabled(!ChainEntry.bBypass);
 						}
-					}
-					else
-					{
-						bReset = true;
-					}
+						else
+						{
+							bReset = true;
+						}
 
-					if (bReset)
-					{
-						InitData.NumSourceChannels = SourceInfo.NumInputChannels;
+						if (bReset)
+						{
+							InitData.NumSourceChannels = SourceInfo.NumInputChannels;
 
-						// First reset the source effect chain
-						ResetSourceEffectChain(SourceId);
+							// First reset the source effect chain
+							ResetSourceEffectChain(SourceId);
 
-						// Rebuild it
-						BuildSourceEffectChain(SourceId, InitData, InSourceEffectChain);
+							// Rebuild it
+							BuildSourceEffectChain(SourceId, InitData, InSourceEffectChain);
+						}
 					}
 				}
 			}
@@ -2615,6 +2375,12 @@ namespace Audio
 			PumpCommandQueue();
 		}
 
+		// Notify modulation interface that we are beginning to update
+		if (MixerDevice->IsModulationPluginEnabled() && MixerDevice->ModulationInterface.IsValid())
+		{
+			MixerDevice->ModulationInterface->ProcessModulators(MixerDevice->GetAudioClockDelta());
+		}
+
 		// Update pending tasks and release them if they're finished
 		UpdatePendingReleaseData();
 
@@ -2634,6 +2400,7 @@ namespace Audio
 		if (bUsingSpatializationPlugin)
 		{
 			AUDIO_MIXER_CHECK(SpatializationPlugin.IsValid());
+			LLM_SCOPE(ELLMTag::AudioMixerPlugins);
 			SpatializationPlugin->OnAllSourcesProcessed();
 		}
 
@@ -2681,6 +2448,20 @@ namespace Audio
 
 		// Add the function to the command queue:
 		int32 AudioThreadCommandIndex = !RenderThreadCommandBufferIndex.GetValue();
+		
+#if !NO_LOGGING
+		static uint32 WarnSize = 1024 * 1024;
+		SIZE_T Size = CommandBuffers[AudioThreadCommandIndex].SourceCommandQueue.GetAllocatedSize();
+		if (Size > WarnSize )
+		{		
+			SIZE_T Num = CommandBuffers[AudioThreadCommandIndex].SourceCommandQueue.Num();
+			// NOTE: Although not really and error we want this to show up in shipping builds.
+			UE_LOG(LogAudioMixer, Error, TEXT("Command Queue has grown to %uk bytes, containing %d cmds, last pump was %fms ago."), 
+				Size >> 10, Num, FPlatformTime::ToMilliseconds64(FPlatformTime::Cycles64() - LastPumpTimeInCycles));
+			WarnSize *= 2;
+		}
+#endif //!NO_LOGGING
+
 		CommandBuffers[AudioThreadCommandIndex].SourceCommandQueue.Add(MoveTemp(InFunction));
 		NumCommands.Increment();
 	}
@@ -2708,6 +2489,7 @@ namespace Audio
 			NumCommands.Decrement();
 		}
 
+		LastPumpTimeInCycles = FPlatformTime::Cycles64();
 		Commands.SourceCommandQueue.Reset();
 
 		if (FPlatformProcess::SupportsMultithreading())
@@ -2729,7 +2511,7 @@ namespace Audio
 		// If we have no commands enqueued, exit
 		if (NumCommands.GetValue() == 0)
 		{
-			UE_LOG(LogAudioMixer, Display, TEXT("No commands were queued while flushing the source manager."));
+			UE_LOG(LogAudioMixer, Verbose, TEXT("No commands were queued while flushing the source manager."));
 			return;
 		}
 
@@ -2743,7 +2525,7 @@ namespace Audio
 		}
 		else
 		{
-			UE_LOG(LogAudioMixer, Display, TEXT("Flush succeeded in the source manager command queue (1)."));
+			UE_LOG(LogAudioMixer, Verbose, TEXT("Flush succeeded in the source manager command queue (1)."));
 		}
 
 		// Call update to trigger a final pump of commands
@@ -2762,7 +2544,7 @@ namespace Audio
 		}
 		else
 		{
-			UE_LOG(LogAudioMixer, Display, TEXT("Flush succeeded the source manager command queue (2)."));
+			UE_LOG(LogAudioMixer, Verbose, TEXT("Flush succeeded the source manager command queue (2)."));
 		}
 	}
 

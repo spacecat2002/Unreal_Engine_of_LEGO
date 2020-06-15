@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include "Chaos/ParticleHandle.h"
+#include "Chaos/ParticleHandleFwd.h"
 #include "Chaos/Defines.h"
 
 namespace Chaos
@@ -12,7 +14,14 @@ namespace Chaos
 	template <typename T>
 	struct CHAOS_API FClusterCreationParameters
 	{
-		enum EConnectionMethod { None = 0, PointImplicit, DelaunayTriangulation, MinimalSpanningSubsetDelaunayTriangulation, PointImplicitAugmentedWithMinimalDelaunay };
+		enum EConnectionMethod
+		{
+			PointImplicit = 0,
+			DelaunayTriangulation,
+			MinimalSpanningSubsetDelaunayTriangulation,
+			PointImplicitAugmentedWithMinimalDelaunay,
+			None
+		};
 
 
 		FClusterCreationParameters(
@@ -20,10 +29,9 @@ namespace Chaos
 			, int32 MaxNumConnectionsIn = 100
 			, bool bCleanCollisionParticlesIn = true
 			, bool bCopyCollisionParticlesIn = true
-			, bool bGenerateConnectionGraphIn = true
-			, EConnectionMethod ConnectionMethodIn = EConnectionMethod::PointImplicitAugmentedWithMinimalDelaunay
-			, TBVHParticles<T, 3>* CollisionParticlesIn = nullptr
-			, int32 RigidBodyIndexIn = INDEX_NONE
+			, bool bGenerateConnectionGraphIn = true, EConnectionMethod ConnectionMethodIn = EConnectionMethod::MinimalSpanningSubsetDelaunayTriangulation
+			, TBVHParticles<float, 3>* CollisionParticlesIn = nullptr
+			, Chaos::TPBDRigidClusteredParticleHandle<float,3>* ClusterParticleHandleIn = nullptr
 		)
 			: CoillisionThicknessPercent(CoillisionThicknessPercentIn)
 			, MaxNumConnections(MaxNumConnectionsIn)
@@ -32,7 +40,7 @@ namespace Chaos
 			, bGenerateConnectionGraph(bGenerateConnectionGraphIn)
 			, ConnectionMethod(ConnectionMethodIn)
 			, CollisionParticles(CollisionParticlesIn)
-			, RigidBodyIndex(RigidBodyIndexIn)
+			, ClusterParticleHandle(ClusterParticleHandleIn)
 		{}
 
 		T CoillisionThicknessPercent;
@@ -42,6 +50,6 @@ namespace Chaos
 		bool bGenerateConnectionGraph;
 		EConnectionMethod ConnectionMethod;
 		TBVHParticles<T, 3>* CollisionParticles;
-		int32 RigidBodyIndex;
+		Chaos::TPBDRigidClusteredParticleHandle<float, 3>* ClusterParticleHandle;
 	};
 }

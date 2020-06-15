@@ -14,14 +14,6 @@
 #include "RHIDefinitions.h"
 #include "RHICommandList.h"
 
-class FExclusiveDepthStencil;
-class FRHIDepthRenderTargetView;
-class FRHIRenderTargetView;
-class FRHISetRenderTargetsInfo;
-struct FRHIResourceCreateInfo;
-enum class EResourceTransitionAccess;
-enum class ESimpleRenderTargetMode;
-
 
 static inline bool IsDepthOrStencilFormat(EPixelFormat Format)
 {
@@ -165,6 +157,7 @@ struct FTextureRWBuffer3D
 	{
 		RHIAcquireTransientResource(Buffer);
 	}
+
 	void DiscardTransientResource()
 	{
 		RHIDiscardTransientResource(Buffer);
@@ -282,6 +275,70 @@ struct FRWBuffer
 		NumBytes = 0;
 		Buffer.SafeRelease();
 		UAV.SafeRelease();
+		SRV.SafeRelease();
+	}
+};
+
+/** Encapsulates a GPU read only texture 2D with its SRV. */
+struct FTextureReadBuffer2D
+{
+	FTexture2DRHIRef Buffer;	
+	FShaderResourceViewRHIRef SRV;
+	uint32 NumBytes;
+
+	FTextureReadBuffer2D()
+		: NumBytes(0)
+	{}
+
+	~FTextureReadBuffer2D()
+	{
+		Release();
+	}
+
+	// @param AdditionalUsage passed down to RHICreateVertexBuffer(), get combined with "BUF_UnorderedAccess | BUF_ShaderResource" e.g. BUF_Static
+	const static uint32 DefaultTextureInitFlag = TexCreate_ShaderResource;
+	void Initialize(const uint32 BytesPerElement, const uint32 SizeX, const uint32 SizeY, const EPixelFormat Format, uint32 Flags = DefaultTextureInitFlag)
+	{
+		check(GMaxRHIFeatureLevel == ERHIFeatureLevel::SM5
+			|| IsVulkanPlatform(GMaxRHIShaderPlatform)
+			|| IsMetalPlatform(GMaxRHIShaderPlatform)
+			|| (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES3_1 && GSupportsResourceView)
+		);
+
+		NumBytes = SizeX * SizeY * BytesPerElement;
+
+		FRHIResourceCreateInfo CreateInfo;
+		Buffer = RHICreateTexture2D(
+			SizeX, SizeY, Format, //PF_R32_FLOAT,
+			/*NumMips=*/ 1,
+			1,
+			Flags,
+			/*BulkData=*/ CreateInfo);
+
+		
+		SRV = RHICreateShaderResourceView(Buffer, 0);
+	}
+
+	void AcquireTransientResource()
+	{
+		RHIAcquireTransientResource(Buffer);
+	}
+	void DiscardTransientResource()
+	{
+		RHIDiscardTransientResource(Buffer);
+	}
+
+	void Release()
+	{
+		int32 BufferRefCount = Buffer ? Buffer->GetRefCount() : -1;
+
+		if (BufferRefCount == 1)
+		{
+			DiscardTransientResource();
+		}
+
+		NumBytes = 0;
+		Buffer.SafeRelease();		
 		SRV.SafeRelease();
 	}
 };
@@ -561,17 +618,6 @@ inline void TransitionRenderPassTargets(FRHICommandList& RHICmdList, const FRHIR
 	}
 
 	RHICmdList.TransitionResources(EResourceTransitionAccess::EWritable, Transitions, TransitionIndex);
-}
-
-// Will soon be deprecated as well...
-inline void UnbindRenderTargets(FRHICommandList& RHICmdList)
-{
-	check(RHICmdList.IsOutsideRenderPass());
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	FRHIRenderTargetView RTV(nullptr, ERenderTargetLoadAction::ENoAction);
-	FRHIDepthRenderTargetView DepthRTV(nullptr, ERenderTargetLoadAction::ENoAction, ERenderTargetStoreAction::ENoAction);
-	RHICmdList.SetRenderTargets(1, &RTV, &DepthRTV);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 /**

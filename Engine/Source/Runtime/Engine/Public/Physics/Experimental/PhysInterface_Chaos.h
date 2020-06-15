@@ -13,8 +13,6 @@
 #include "Physics/PhysicsInterfaceTypes.h"
 #include "Physics/GenericPhysicsInterface.h"
 #include "Physics/Experimental/PhysicsUserData_Chaos.h"
-#include "Chaos/PhysicalMaterials.h"
-#include "PhysicalMaterials/PhysicalMaterialMask.h"
 
 //NOTE: Do not include Chaos headers directly as it means recompiling all of engine. This should be reworked to avoid allocations
 
@@ -36,10 +34,10 @@ namespace Chaos
 {
 	class IDispatcher;
 
+	class FJointConstraint;
+
 	template <typename T, int>
 	class TBVHParticles;
-
-	class FImplicitObject;
 
 	template <typename T, int>
 	class TPBDRigidParticles;
@@ -63,19 +61,7 @@ namespace Chaos
 
 	template <typename T, int>
 	class TSphere;
-
-	template <typename T, int>
-	class TPerShapeData;
-
-	template <typename T, int d>
-	using TShapesArray = TArray<TUniquePtr<TPerShapeData<T, d>>, TInlineAllocator<1>>;
 }
-
-class FPhysicsConstraintReference_Chaos
-{
-public:
-	bool IsValid() const {return false;}
-};
 
 class FPhysicsAggregateReference_Chaos
 {
@@ -83,31 +69,34 @@ public:
 	bool IsValid() const { return false; }
 };
 
+class FPhysicsConstraintReference_Chaos
+{
+public:
+	FPhysicsConstraintReference_Chaos() : Constraint(nullptr) {};
+
+	bool IsValid() const;
+
+	Chaos::FJointConstraint* Constraint;
+};
+
 class FPhysicsShapeReference_Chaos
 {
 public:
 	
 	FPhysicsShapeReference_Chaos()
-		: Shape(nullptr), bSimulation(false), bQuery(false), ActorRef() {}
-	FPhysicsShapeReference_Chaos(Chaos::TPerShapeData<float, 3>* ShapeIn, bool bSimulationIn, bool bQueryIn, FPhysicsActorHandle ActorRefIn)
-		: Shape(ShapeIn),bSimulation(bSimulationIn),bQuery(bQueryIn),ActorRef(ActorRefIn){}
+		: Shape(nullptr), ActorRef() { }
+	FPhysicsShapeReference_Chaos(Chaos::FPerShapeData* ShapeIn, FPhysicsActorHandle ActorRefIn)
+		: Shape(ShapeIn), ActorRef(ActorRefIn) { }
 	FPhysicsShapeReference_Chaos(const FPhysicsShapeReference_Chaos& Other)
 		: Shape(Other.Shape)
-		, bSimulation(Other.bSimulation)
-		, bQuery(Other.bQuery)
 		, ActorRef(Other.ActorRef){}
-
 
 	bool IsValid() const { return (Shape != nullptr); }
 	bool Equals(const FPhysicsShapeReference_Chaos& Other) const { return Shape == Other.Shape; }
     bool operator==(const FPhysicsShapeReference_Chaos& Other) const { return Equals(Other); }
-	
 	const Chaos::FImplicitObject& GetGeometry() const;
 
-
-	Chaos::TPerShapeData<float, 3>* Shape;
-	bool bSimulation;
-	bool bQuery;
+	Chaos::FPerShapeData* Shape;
     FPhysicsActorHandle ActorRef;
 };
 
@@ -190,7 +179,7 @@ public:
 	static bool IsValid(const FPhysicsActorHandle& Handle) { return Handle != nullptr; }
 	static void AddActorToSolver(FPhysicsActorHandle& Handle, Chaos::FPhysicsSolver* Solver, Chaos::IDispatcher* Dispatcher);
 	static void RemoveActorFromSolver(FPhysicsActorHandle& Handle, Chaos::FPhysicsSolver* Solver, Chaos::IDispatcher* Dispatcher);
-	static const FBodyInstance* ShapeToOriginalBodyInstance(const FBodyInstance* InCurrentInstance, const Chaos::TPerShapeData<float, 3>* InShape);
+	static const FBodyInstance* ShapeToOriginalBodyInstance(const FBodyInstance* InCurrentInstance, const Chaos::FPerShapeData* InShape);
 
 	static FPhysicsAggregateReference_Chaos CreateAggregate(int32 MaxBodies);
 	static void ReleaseAggregate(FPhysicsAggregateReference_Chaos& InAggregate);
@@ -242,6 +231,7 @@ public:
 
 	static void SetIsKinematic_AssumesLocked(const FPhysicsActorHandle& InActorReference, bool bIsKinematic);
 	static void SetCcdEnabled_AssumesLocked(const FPhysicsActorHandle& InActorReference, bool bIsCcdEnabled);
+	static void SetIgnoreAnalyticCollisions_AssumesLocked(const FPhysicsActorHandle& InActorReference, bool bIsCcdEnabled);
 
 	static FTransform GetGlobalPose_AssumesLocked(const FPhysicsActorHandle& InActorReference);
 	static void SetGlobalPose_AssumesLocked(const FPhysicsActorHandle& InActorReference, const FTransform& InNewPose, bool bAutoWake = true);
@@ -304,50 +294,50 @@ public:
 
 	static SIZE_T GetResourceSizeEx(const FPhysicsActorHandle& InActorRef);
 	
-    static FPhysicsConstraintReference_Chaos CreateConstraint(const FPhysicsActorHandle& InActorRef1, const FPhysicsActorHandle& InActorRef2, const FTransform& InLocalFrame1, const FTransform& InLocalFrame2);
-	static void SetConstraintUserData(const FPhysicsConstraintReference_Chaos& InConstraintRef, void* InUserData);
-	static void ReleaseConstraint(FPhysicsConstraintReference_Chaos& InConstraintRef);
+    static FPhysicsConstraintHandle CreateConstraint(const FPhysicsActorHandle& InActorRef1, const FPhysicsActorHandle& InActorRef2, const FTransform& InLocalFrame1, const FTransform& InLocalFrame2);
+	static void SetConstraintUserData(const FPhysicsConstraintHandle& InConstraintRef, void* InUserData);
+	static void ReleaseConstraint(FPhysicsConstraintHandle& InConstraintRef);
 
-	static FTransform GetLocalPose(const FPhysicsConstraintReference_Chaos& InConstraintRef, EConstraintFrame::Type InFrame);
-	static FTransform GetGlobalPose(const FPhysicsConstraintReference_Chaos& InConstraintRef, EConstraintFrame::Type InFrame);
-	static FVector GetLocation(const FPhysicsConstraintReference_Chaos& InConstraintRef);
-	static void GetForce(const FPhysicsConstraintReference_Chaos& InConstraintRef, FVector& OutLinForce, FVector& OutAngForce);
-	static void GetDriveLinearVelocity(const FPhysicsConstraintReference_Chaos& InConstraintRef, FVector& OutLinVelocity);
-	static void GetDriveAngularVelocity(const FPhysicsConstraintReference_Chaos& InConstraintRef, FVector& OutAngVelocity);
+	static FTransform GetLocalPose(const FPhysicsConstraintHandle& InConstraintRef, EConstraintFrame::Type InFrame);
+	static FTransform GetGlobalPose(const FPhysicsConstraintHandle& InConstraintRef, EConstraintFrame::Type InFrame);
+	static FVector GetLocation(const FPhysicsConstraintHandle& InConstraintRef);
+	static void GetForce(const FPhysicsConstraintHandle& InConstraintRef, FVector& OutLinForce, FVector& OutAngForce);
+	static void GetDriveLinearVelocity(const FPhysicsConstraintHandle& InConstraintRef, FVector& OutLinVelocity);
+	static void GetDriveAngularVelocity(const FPhysicsConstraintHandle& InConstraintRef, FVector& OutAngVelocity);
 
-	static float GetCurrentSwing1(const FPhysicsConstraintReference_Chaos& InConstraintRef);
-	static float GetCurrentSwing2(const FPhysicsConstraintReference_Chaos& InConstraintRef);
-	static float GetCurrentTwist(const FPhysicsConstraintReference_Chaos& InConstraintRef);
+	static float GetCurrentSwing1(const FPhysicsConstraintHandle& InConstraintRef);
+	static float GetCurrentSwing2(const FPhysicsConstraintHandle& InConstraintRef);
+	static float GetCurrentTwist(const FPhysicsConstraintHandle& InConstraintRef);
 
-	static void SetCanVisualize(const FPhysicsConstraintReference_Chaos& InConstraintRef, bool bInCanVisualize);
-	static void SetCollisionEnabled(const FPhysicsConstraintReference_Chaos& InConstraintRef, bool bInCollisionEnabled);
-	static void SetProjectionEnabled_AssumesLocked(const FPhysicsConstraintReference_Chaos& InConstraintRef, bool bInProjectionEnabled, float InLinearTolerance = 0.0f, float InAngularToleranceDegrees = 0.0f);
-	static void SetParentDominates_AssumesLocked(const FPhysicsConstraintReference_Chaos& InConstraintRef, bool bInParentDominates);
-	static void SetBreakForces_AssumesLocked(const FPhysicsConstraintReference_Chaos& InConstraintRef, float InLinearBreakForce, float InAngularBreakForce);
-	static void SetLocalPose(const FPhysicsConstraintReference_Chaos& InConstraintRef, const FTransform& InPose, EConstraintFrame::Type InFrame);
+	static void SetCanVisualize(const FPhysicsConstraintHandle& InConstraintRef, bool bInCanVisualize);
+	static void SetCollisionEnabled(const FPhysicsConstraintHandle& InConstraintRef, bool bInCollisionEnabled);
+	static void SetProjectionEnabled_AssumesLocked(const FPhysicsConstraintHandle& InConstraintRef, bool bInProjectionEnabled, float InLinearTolerance = 0.0f, float InAngularToleranceDegrees = 0.0f);
+	static void SetParentDominates_AssumesLocked(const FPhysicsConstraintHandle& InConstraintRef, bool bInParentDominates);
+	static void SetBreakForces_AssumesLocked(const FPhysicsConstraintHandle& InConstraintRef, float InLinearBreakForce, float InAngularBreakForce);
+	static void SetLocalPose(const FPhysicsConstraintHandle& InConstraintRef, const FTransform& InPose, EConstraintFrame::Type InFrame);
 
-	static void SetLinearMotionLimitType_AssumesLocked(const FPhysicsConstraintReference_Chaos& InConstraintRef, PhysicsInterfaceTypes::ELimitAxis InAxis, ELinearConstraintMotion InMotion);
-	static void SetAngularMotionLimitType_AssumesLocked(const FPhysicsConstraintReference_Chaos& InConstraintRef, PhysicsInterfaceTypes::ELimitAxis InAxis, EAngularConstraintMotion InMotion);
+	static void SetLinearMotionLimitType_AssumesLocked(const FPhysicsConstraintHandle& InConstraintRef, PhysicsInterfaceTypes::ELimitAxis InAxis, ELinearConstraintMotion InMotion);
+	static void SetAngularMotionLimitType_AssumesLocked(const FPhysicsConstraintHandle& InConstraintRef, PhysicsInterfaceTypes::ELimitAxis InAxis, EAngularConstraintMotion InMotion);
 
-	static void UpdateLinearLimitParams_AssumesLocked(const FPhysicsConstraintReference_Chaos& InConstraintRef, float InLimit, float InAverageMass, const FLinearConstraint& InParams);
-	static void UpdateConeLimitParams_AssumesLocked(const FPhysicsConstraintReference_Chaos& InConstraintRef, float InAverageMass, const FConeConstraint& InParams);
-	static void UpdateTwistLimitParams_AssumesLocked(const FPhysicsConstraintReference_Chaos& InConstraintRef, float InAverageMass, const FTwistConstraint& InParams);
-	static void UpdateLinearDrive_AssumesLocked(const FPhysicsConstraintReference_Chaos& InConstraintRef, const FLinearDriveConstraint& InDriveParams);
-	static void UpdateAngularDrive_AssumesLocked(const FPhysicsConstraintReference_Chaos& InConstraintRef, const FAngularDriveConstraint& InDriveParams);
-	static void UpdateDriveTarget_AssumesLocked(const FPhysicsConstraintReference_Chaos& InConstraintRef, const FLinearDriveConstraint& InLinDrive, const FAngularDriveConstraint& InAngDrive);
-	static void SetDrivePosition(const FPhysicsConstraintReference_Chaos& InConstraintRef, const FVector& InPosition);
-	static void SetDriveOrientation(const FPhysicsConstraintReference_Chaos& InConstraintRef, const FQuat& InOrientation);
-	static void SetDriveLinearVelocity(const FPhysicsConstraintReference_Chaos& InConstraintRef, const FVector& InLinVelocity);
-	static void SetDriveAngularVelocity(const FPhysicsConstraintReference_Chaos& InConstraintRef, const FVector& InAngVelocity);
+	static void UpdateLinearLimitParams_AssumesLocked(const FPhysicsConstraintHandle& InConstraintRef, float InLimit, float InAverageMass, const FLinearConstraint& InParams);
+	static void UpdateConeLimitParams_AssumesLocked(const FPhysicsConstraintHandle& InConstraintRef, float InAverageMass, const FConeConstraint& InParams);
+	static void UpdateTwistLimitParams_AssumesLocked(const FPhysicsConstraintHandle& InConstraintRef, float InAverageMass, const FTwistConstraint& InParams);
+	static void UpdateLinearDrive_AssumesLocked(const FPhysicsConstraintHandle& InConstraintRef, const FLinearDriveConstraint& InDriveParams);
+	static void UpdateAngularDrive_AssumesLocked(const FPhysicsConstraintHandle& InConstraintRef, const FAngularDriveConstraint& InDriveParams);
+	static void UpdateDriveTarget_AssumesLocked(const FPhysicsConstraintHandle& InConstraintRef, const FLinearDriveConstraint& InLinDrive, const FAngularDriveConstraint& InAngDrive);
+	static void SetDrivePosition(const FPhysicsConstraintHandle& InConstraintRef, const FVector& InPosition);
+	static void SetDriveOrientation(const FPhysicsConstraintHandle& InConstraintRef, const FQuat& InOrientation);
+	static void SetDriveLinearVelocity(const FPhysicsConstraintHandle& InConstraintRef, const FVector& InLinVelocity);
+	static void SetDriveAngularVelocity(const FPhysicsConstraintHandle& InConstraintRef, const FVector& InAngVelocity);
 
-	static void SetTwistLimit(const FPhysicsConstraintReference_Chaos& InConstraintRef, float InLowerLimit, float InUpperLimit, float InContactDistance);
-	static void SetSwingLimit(const FPhysicsConstraintReference_Chaos& InConstraintRef, float InYLimit, float InZLimit, float InContactDistance);
-	static void SetLinearLimit(const FPhysicsConstraintReference_Chaos& InConstraintRef, float InLimit);
+	static void SetTwistLimit(const FPhysicsConstraintHandle& InConstraintRef, float InLowerLimit, float InUpperLimit, float InContactDistance);
+	static void SetSwingLimit(const FPhysicsConstraintHandle& InConstraintRef, float InYLimit, float InZLimit, float InContactDistance);
+	static void SetLinearLimit(const FPhysicsConstraintHandle& InConstraintRef, float InLimit);
 
-	static bool IsBroken(const FPhysicsConstraintReference_Chaos& InConstraintRef);
+	static bool IsBroken(const FPhysicsConstraintHandle& InConstraintRef);
 
-	static bool ExecuteOnUnbrokenConstraintReadOnly(const FPhysicsConstraintReference_Chaos& InConstraintRef, TFunctionRef<void(const FPhysicsConstraintReference_Chaos&)> Func);
-	static bool ExecuteOnUnbrokenConstraintReadWrite(const FPhysicsConstraintReference_Chaos& InConstraintRef, TFunctionRef<void(const FPhysicsConstraintReference_Chaos&)> Func);
+	static bool ExecuteOnUnbrokenConstraintReadOnly(const FPhysicsConstraintHandle& InConstraintRef, TFunctionRef<void(const FPhysicsConstraintHandle&)> Func);
+	static bool ExecuteOnUnbrokenConstraintReadWrite(const FPhysicsConstraintHandle& InConstraintRef, TFunctionRef<void(const FPhysicsConstraintHandle&)> Func);
 
     /////////////////////////////////////////////
 
@@ -355,14 +345,14 @@ public:
     static bool ExecuteRead(const FPhysicsActorHandle& InActorReference, TFunctionRef<void(const FPhysicsActorHandle& Actor)> InCallable);
     static bool ExecuteRead(USkeletalMeshComponent* InMeshComponent, TFunctionRef<void()> InCallable);
     static bool ExecuteRead(const FPhysicsActorHandle& InActorReferenceA, const FPhysicsActorHandle& InActorReferenceB, TFunctionRef<void(const FPhysicsActorHandle& ActorA, const FPhysicsActorHandle& ActorB)> InCallable);
-    static bool ExecuteRead(const FPhysicsConstraintReference_Chaos& InConstraintRef, TFunctionRef<void(const FPhysicsConstraintReference_Chaos& Constraint)> InCallable);
+    static bool ExecuteRead(const FPhysicsConstraintHandle& InConstraintRef, TFunctionRef<void(const FPhysicsConstraintHandle& Constraint)> InCallable);
     static bool ExecuteRead(FPhysScene* InScene, TFunctionRef<void()> InCallable);
 
     static bool ExecuteWrite(const FPhysicsActorHandle& InActorReference, TFunctionRef<void(const FPhysicsActorHandle& Actor)> InCallable);
 	static bool ExecuteWrite(FPhysicsActorHandle& InActorReference, TFunctionRef<void(FPhysicsActorHandle& Actor)> InCallable);
     static bool ExecuteWrite(USkeletalMeshComponent* InMeshComponent, TFunctionRef<void()> InCallable);
     static bool ExecuteWrite(const FPhysicsActorHandle& InActorReferenceA, const FPhysicsActorHandle& InActorReferenceB, TFunctionRef<void(const FPhysicsActorHandle& ActorA, const FPhysicsActorHandle& ActorB)> InCallable);
-    static bool ExecuteWrite(const FPhysicsConstraintReference_Chaos& InConstraintRef, TFunctionRef<void(const FPhysicsConstraintReference_Chaos& Constraint)> InCallable);
+    static bool ExecuteWrite(const FPhysicsConstraintHandle& InConstraintRef, TFunctionRef<void(const FPhysicsConstraintHandle& Constraint)> InCallable);
     static bool ExecuteWrite(FPhysScene* InScene, TFunctionRef<void()> InCallable);
 
     static void ExecuteShapeWrite(FBodyInstance* InInstance, FPhysicsShapeHandle& InShape, TFunctionRef<void(FPhysicsShapeHandle& InShape)> InCallable);
@@ -371,14 +361,12 @@ public:
 
 	static bool ExecPhysCommands(const TCHAR* Cmd, FOutputDevice* Ar, UWorld* InWorld);
 
-#if WITH_PHYSX
-    static void CalculateMassPropertiesFromShapeCollection(physx::PxMassProperties& OutProperties, const TArray<FPhysicsShapeHandle>& InShapes, float InDensityKGPerCM);
-#endif
+	static void CalculateMassPropertiesFromShapeCollection(Chaos::TMassProperties<float, 3>& OutProperties, const TArray<FPhysicsShapeHandle>& InShapes, float InDensityKGPerCM);
 
 	// Shape interface functions
 	static FPhysicsShapeHandle CreateShape(physx::PxGeometry* InGeom, bool bSimulation = true, bool bQuery = true, UPhysicalMaterial* InSimpleMaterial = nullptr, TArray<UPhysicalMaterial*>* InComplexMaterials = nullptr);
 	
-	static void CreateGeometry(const FGeometryAddParams& InParams, TArray<TUniquePtr<Chaos::FImplicitObject>>& OutGeoms, Chaos::TShapesArray<float, 3>& OutShapes, TArray<FPhysicsShapeHandle>* OutOptShapes);
+	static void CreateGeometry(const FGeometryAddParams& InParams, TArray<TUniquePtr<Chaos::FImplicitObject>>& OutGeoms, Chaos::FShapesArray& OutShapes, TArray<FPhysicsShapeHandle>* OutOptShapes);
 	static void AddGeometry(FPhysicsActorHandle& InActor, const FGeometryAddParams& InParams, TArray<FPhysicsShapeHandle>* OutOptShapes = nullptr);
 	static FPhysicsShapeHandle CloneShape(const FPhysicsShapeHandle& InShape);
 	static FPhysicsGeometryCollection_Chaos GetGeometryCollection(const FPhysicsShapeHandle& InShape);
@@ -403,8 +391,8 @@ public:
     static void SetMaskFilter(const FPhysicsShapeHandle& InShape, FMaskFilter InFilter) {}
 	static void SetSimulationFilter(const FPhysicsShapeHandle& InShape, const FCollisionFilterData& InFilter);
 	static void SetQueryFilter(const FPhysicsShapeHandle& InShape, const FCollisionFilterData& InFilter);
-    static void SetIsSimulationShape(const FPhysicsShapeHandle& InShape, bool bIsSimShape) { const_cast<FPhysicsShapeHandle&>(InShape).bSimulation = bIsSimShape; }
-    static void SetIsQueryShape(const FPhysicsShapeHandle& InShape, bool bIsQueryShape) { const_cast<FPhysicsShapeHandle&>(InShape).bSimulation = bIsQueryShape; }
+	static void SetIsSimulationShape(const FPhysicsShapeHandle& InShape, bool bIsSimShape);
+    static void SetIsQueryShape(const FPhysicsShapeHandle& InShape, bool bIsQueryShape);
     static void SetUserData(const FPhysicsShapeHandle& InShape, void* InUserData);
     static void SetGeometry(const FPhysicsShapeHandle& InShape, physx::PxGeometry& InGeom) {}
 	static void SetLocalTransform(const FPhysicsShapeHandle& InShape, const FTransform& NewLocalTransform);
@@ -430,7 +418,7 @@ FORCEINLINE ECollisionShapeType GetType(const Chaos::FImplicitObject& Geom)
 	return ECollisionShapeType::None;
 }
 */
-ECollisionShapeType GetGeometryType(const Chaos::TPerShapeData<float, 3>& Shape);
+ECollisionShapeType GetGeometryType(const Chaos::FPerShapeData& Shape);
 
 /*
 FORCEINLINE float GetRadius(const Chaos::TCapsule<float>& Capsule)

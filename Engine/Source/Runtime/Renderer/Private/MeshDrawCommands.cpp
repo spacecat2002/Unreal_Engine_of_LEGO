@@ -544,7 +544,6 @@ void GenerateDynamicMeshDrawCommands(
 			if (!DynamicMeshElementsPassRelevance || (*DynamicMeshElementsPassRelevance)[MeshIndex].Get(PassType))
 			{
 				const FMeshBatchAndRelevance& MeshAndRelevance = DynamicMeshElements[MeshIndex];
-				check(!MeshAndRelevance.Mesh->bRequiresPerElementVisibility);
 				const uint64 BatchElementMask = ~0ull;
 
 				PassMeshProcessor->AddMeshBatch(*MeshAndRelevance.Mesh, BatchElementMask, MeshAndRelevance.PrimitiveSceneProxy);
@@ -563,9 +562,8 @@ void GenerateDynamicMeshDrawCommands(
 		for (int32 MeshIndex = 0; MeshIndex < NumStaticMeshBatches; MeshIndex++)
 		{
 			const FStaticMeshBatch* StaticMeshBatch = DynamicMeshCommandBuildRequests[MeshIndex];
-			const uint64 BatchElementMask = StaticMeshBatch->bRequiresPerElementVisibility ? View.StaticMeshBatchVisibility[StaticMeshBatch->BatchVisibilityId] : ~0ull;
-
-			PassMeshProcessor->AddMeshBatch(*StaticMeshBatch, BatchElementMask, StaticMeshBatch->PrimitiveSceneInfo->Proxy, StaticMeshBatch->Id);
+			const uint64 DefaultBatchElementMask = ~0ul;
+			PassMeshProcessor->AddMeshBatch(*StaticMeshBatch, DefaultBatchElementMask, StaticMeshBatch->PrimitiveSceneInfo->Proxy, StaticMeshBatch->Id);
 		}
 
 		const int32 NumCommandsGenerated = VisibleCommands.Num() - NumCommandsBefore;
@@ -619,7 +617,6 @@ void GenerateMobileBasePassDynamicMeshDrawCommands(
 			if (!DynamicMeshElementsPassRelevance || (*DynamicMeshElementsPassRelevance)[MeshIndex].Get(PassType))
 			{
 				const FMeshBatchAndRelevance& MeshAndRelevance = DynamicMeshElements[MeshIndex];
-				check(!MeshAndRelevance.Mesh->bRequiresPerElementVisibility);
 				const uint64 BatchElementMask = ~0ull;
 
 				const int32 PrimitiveIndex = MeshAndRelevance.PrimitiveSceneProxy->GetPrimitiveSceneInfo()->GetIndex();
@@ -647,17 +644,18 @@ void GenerateMobileBasePassDynamicMeshDrawCommands(
 		for (int32 MeshIndex = 0; MeshIndex < NumStaticMeshBatches; MeshIndex++)
 		{
 			const FStaticMeshBatch* StaticMeshBatch = DynamicMeshCommandBuildRequests[MeshIndex];
-			const uint64 BatchElementMask = StaticMeshBatch->bRequiresPerElementVisibility ? View.StaticMeshBatchVisibility[StaticMeshBatch->BatchVisibilityId] : ~0ull;
 
 			const int32 PrimitiveIndex = StaticMeshBatch->PrimitiveSceneInfo->Proxy->GetPrimitiveSceneInfo()->GetIndex();
 			if (MobileCSMVisibilityInfo.bMobileDynamicCSMInUse
 				&& (MobileCSMVisibilityInfo.bAlwaysUseCSM || MobileCSMVisibilityInfo.MobilePrimitiveCSMReceiverVisibilityMap[PrimitiveIndex]))
 			{
-				MobilePassCSMPassMeshProcessor->AddMeshBatch(*StaticMeshBatch, BatchElementMask, StaticMeshBatch->PrimitiveSceneInfo->Proxy, StaticMeshBatch->Id);
+				const uint64 DefaultBatchElementMask = ~0ul;
+				MobilePassCSMPassMeshProcessor->AddMeshBatch(*StaticMeshBatch, DefaultBatchElementMask, StaticMeshBatch->PrimitiveSceneInfo->Proxy, StaticMeshBatch->Id);
 			}
 			else
 			{
-				PassMeshProcessor->AddMeshBatch(*StaticMeshBatch, BatchElementMask, StaticMeshBatch->PrimitiveSceneInfo->Proxy, StaticMeshBatch->Id);
+				const uint64 DefaultBatchElementMask = ~0ul;
+				PassMeshProcessor->AddMeshBatch(*StaticMeshBatch, DefaultBatchElementMask, StaticMeshBatch->PrimitiveSceneInfo->Proxy, StaticMeshBatch->Id);
 			}
 		}
 
@@ -774,9 +772,11 @@ public:
 	{
 		TRACE_CPUPROFILER_EVENT_SCOPE(MeshDrawCommandPassSetupTask);
 		// Mobile base pass is a special case, as final lists is created from two mesh passes based on CSM visibility.
-		const bool bMobileBasePass = Context.ShadingPath == EShadingPath::Mobile && Context.PassType == EMeshPass::BasePass;
+		const bool bMobileShadingBasePass = Context.ShadingPath == EShadingPath::Mobile && Context.PassType == EMeshPass::BasePass;
+		// On SM5 Mobile platform, still want the same sorting
+		const bool bMobileVulkanSM5BasePass = IsVulkanMobileSM5Platform(Context.ShaderPlatform) && Context.PassType == EMeshPass::BasePass;
 
-		if (bMobileBasePass)
+		if (bMobileShadingBasePass)
 		{
 			MergeMobileBasePassMeshDrawCommands(
 				Context.View->MobileCSMVisibilityInfo,
@@ -841,7 +841,7 @@ public:
 			}
 
 			// Update sort keys.
-			if (bMobileBasePass)
+			if (bMobileShadingBasePass || bMobileVulkanSM5BasePass)
 			{
 				UpdateMobileBasePassMeshSortKeys(
 					Context.ViewOrigin,

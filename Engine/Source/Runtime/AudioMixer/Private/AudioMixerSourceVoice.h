@@ -2,7 +2,6 @@
 
 #pragma once
 
-#include "AudioMixerDevice.h"
 #include "AudioMixerBuffer.h"
 #include "AudioMixerSourceManager.h"
 
@@ -96,10 +95,13 @@ namespace Audio
 		float GetEnvelopeValue() const;
 
 		// Mixes the dry and wet buffer audio into the given buffers.
-		void MixOutputBuffers(int32 InNumChannels, const float SendLevel, AlignedFloatBuffer& OutWetBuffer) const;
+		void MixOutputBuffers(int32 InNumChannels, const float SendLevel, EMixerSourceSubmixSendStage InSubmixSendStage, AlignedFloatBuffer& OutWetBuffer) const;
 
 		// For soundfield conversions, get the encoded audio.
 		const ISoundfieldAudioPacket* GetEncodedOutput(const FSoundfieldEncodingKey& InKey) const;
+
+		// This will return the listener rotation used for this source voice.
+		const FQuat GetListenerRotationForVoice() const;
 
 		// Sets the submix send levels
 		void SetSubmixSendInfo(FMixerSubmixWeakPtr Submix, const float SendLevel);

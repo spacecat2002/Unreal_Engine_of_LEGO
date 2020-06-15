@@ -18,6 +18,7 @@
 #include "AI/NavigationSystemConfig.h"
 #include "NavigationOctreeController.h"
 #include "NavigationDirtyAreasController.h"
+#include "Math/MovingWindowAverageFast.h"
 #if WITH_EDITOR
 #include "UnrealEdMisc.h"
 #endif // WITH_EDITOR
@@ -94,6 +95,101 @@ namespace ENavigationBuildLock
 	};
 }
 
+
+class NAVIGATIONSYSTEM_API FNavRegenTimeSlicer
+{
+public:
+	/** Setup the initial values for a time slice. This can be called on an instance after TestTimeSliceFinished() has returned true and EndTimeSliceAndAdjustDuration() has been called */
+	void SetupTimeSlice(double SliceDuration);
+
+	/** 
+	 *  Starts the time slice, this can be called multiple times as long as EndTimeSliceAndAdjustDuration() is called between each call.
+	 *  StartTimeSlice should not be called after TestTimeSliceFinished() has returned true
+	 */
+	void StartTimeSlice();
+
+	/** 
+	 *  Useful when multiple sections of code need to be timesliced per frame using the same time slice duration that do not necessarily occur concurrently.
+	 *  This ends the time sliced code section and adjusts the RemainingDuration based on the time used between calls to StartTimeSlice and the last call to TestTimeSliceFinished.
+	 *  Note the actual time slice is not tested in this function. Thats done in TestTimeSliceFinished!
+	 *  This can be called multiple times as long as StartTimeSlice() is called before EndTimeSliceAndAdjustDuration().
+	 *  EndTimeSliceAndAdjustDuration can be called after TestTimeSliceFinished() has returned true in this case the RemainingDuration will just be zero
+	 */
+	void EndTimeSliceAndAdjustDuration();
+	double GetStartTime() const { return StartTime; }
+	bool TestTimeSliceFinished() const;
+
+	//* Returns the cached result of calling TestTimeSliceFinished, false by default */
+	bool IsTimeSliceFinishedCached() const { return bTimeSliceFinishedCached; }
+	double GetRemainingDurationFraction() const { return OriginalDuration > 0. ? RemainingDuration / OriginalDuration : 0.; }
+
+protected:
+	double OriginalDuration = 0.;
+	double RemainingDuration = 0.;
+	double StartTime = 0.;
+	mutable double TimeLastTested = 0.;
+	mutable bool bTimeSliceFinishedCached = false;
+};
+
+class NAVIGATIONSYSTEM_API FNavRegenTimeSliceManager
+{
+public:
+	FNavRegenTimeSliceManager();
+
+	void PushTileRegenTime(double NewTime) { MovingWindowTileRegenTime.PushValue(NewTime);  }
+
+	double GetAverageTileRegenTime() const { return MovingWindowTileRegenTime.GetAverage();  }
+
+	double GetAverageDeltaTime() const { return MovingWindowDeltaTime.GetAverage(); }
+
+	bool DoTimeSlicedUpdate() const { return bDoTimeSlicedUpdate; }
+
+	void CalcAverageDeltaTime(uint64 FrameNum);
+
+	void CalcTimeSliceDuration(int32 NumTilesToRegen, const TArray<double>& CurrentTileRegenDurations);
+
+	void SetMinTimeSliceDuration(double NewMinTimeSliceDuration);
+
+	void SetMaxTimeSliceDuration(double NewMaxTimeSliceDuration);
+
+	void SetMaxDesiredTileRegenDuration(float NewMaxDesiredTileRegenDuration);
+
+	int32 GetNavDataIdx() const { return NavDataIdx;  }
+	void SetNavDataIdx(int32 InNavDataIdx) { NavDataIdx = InNavDataIdx; }
+
+	FNavRegenTimeSlicer& GetTimeSlicer() { return TimeSlicer; }
+	const FNavRegenTimeSlicer& GetTimeSlicer() const { return TimeSlicer; }
+
+protected:
+	FNavRegenTimeSlicer TimeSlicer;
+
+	/** Used to calculate the moving window average of the actual time spent inside functions used to regenerate a tile, this is processing time not actual time over multiple frames */
+	FMovingWindowAverageFast<double, 256> MovingWindowTileRegenTime;
+
+	/** Used to calculate the actual moving window delta time */
+	FMovingWindowAverageFast<double, 256> MovingWindowDeltaTime;
+
+	/** If there are enough tiles to process this in the Min Time Slice Duration */
+	double MinTimeSliceDuration;
+
+	/** The max Desired Time Slice Duration */
+	double MaxTimeSliceDuration;
+
+	uint64 FrameNumOld;
+
+	/** The max real world desired time to Regen all the tiles in PendingDirtyTiles,
+	 *  Note it could take longer than this, as the time slice is clamped per frame between
+	 *	MinTimeSliceDuration and MaxTimeSliceDuration.
+	 */
+	float MaxDesiredTileRegenDuration;
+
+	double TimeLastCall;
+
+	int32 NavDataIdx;
+
+	bool bDoTimeSlicedUpdate;
+};
+
 UCLASS(Within=World, config=Engine, defaultconfig)
 class NAVIGATIONSYSTEM_API UNavigationSystemV1 : public UNavigationSystemBase
 {
@@ -105,7 +201,7 @@ public:
 	UNavigationSystemV1(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 	virtual ~UNavigationSystemV1();
 
-	UPROPERTY()
+	UPROPERTY(Transient)
 	ANavigationData* MainNavData;
 
 	/** special navigation data for managing direct paths, not part of NavDataSet! */
@@ -168,9 +264,6 @@ public:
 	uint32 bSkipAgentHeightCheckWhenPickingNavData:1;
 
 protected:
-	
-	UPROPERTY(EditDefaultsOnly, Category = "NavigationSystem", config)
-	ENavDataGatheringModeConfig DataGatheringMode;
 
 	/** If set to true navigation will be generated only around registered "navigation enforcers"
 	*	This has a range of consequences (including how navigation octree operates) so it needs to
@@ -179,11 +272,18 @@ protected:
 	*	@see RegisterNavigationInvoker
 	*/
 	UPROPERTY(EditDefaultsOnly, Category = "Navigation Enforcing", config)
-	uint32 bGenerateNavigationOnlyAroundNavigationInvokers : 1;
-	
+	uint32 bGenerateNavigationOnlyAroundNavigationInvokers:1;
+
 	/** Minimal time, in seconds, between active tiles set update */
 	UPROPERTY(EditAnywhere, Category = "Navigation Enforcing", meta = (ClampMin = "0.1", UIMin = "0.1", EditCondition = "bGenerateNavigationOnlyAroundNavigationInvokers"), config)
 	float ActiveTilesUpdateInterval;
+
+	UPROPERTY(EditDefaultsOnly, Category = "NavigationSystem", config)
+	ENavDataGatheringModeConfig DataGatheringMode;
+
+	/** -1 by default, if set to a positive value dirty areas with any dimensions in 2d over the threshold created at runtime will be logged */
+	UPROPERTY(config, EditAnywhere, AdvancedDisplay, Category = NavigationSystem, meta = (ClampMin = "-1.0", UIMin = "-1.0"))
+	float DirtyAreaWarningSizeThreshold;
 
 	UPROPERTY(config, EditAnywhere, Category = Agents)
 	TArray<FNavDataConfig> SupportedAgents;
@@ -196,10 +296,10 @@ protected:
 
 public:
 
-	UPROPERTY()
+	UPROPERTY(Transient)
 	TArray<ANavigationData*> NavDataSet;
 
-	UPROPERTY(transient)
+	UPROPERTY(Transient)
 	TArray<ANavigationData*> NavDataRegistrationQueue;
 
 	// List of pending navigation bounds update requests (add, remove, update size)
@@ -356,6 +456,8 @@ public:
 	UCrowdManagerBase* GetCrowdManager() const { return CrowdManager.Get(); }
 
 protected:
+	void CalcTimeSlicedUpdateData(TArray<double>& OutCurrentTimeSlicedBuildTaskDurations, TArray<bool>& OutIsTimeSlicingArray, bool& bOutAnyNonTimeSlicedGenerators, int32& OutNumTimeSlicedRemainingBuildTasks);
+
 	/** spawn new crowd manager */
 	virtual void CreateCrowdManager();
 
@@ -639,11 +741,11 @@ public:
 	{
 		return FNavigationOctree::HashObject(Object);
 	}
-	FORCEINLINE const FOctreeElementId* GetObjectsNavOctreeId(const UObject& Object) const { return DefaultOctreeController.GetObjectsNavOctreeId(Object); }
+	FORCEINLINE const FOctreeElementId2* GetObjectsNavOctreeId(const UObject& Object) const { return DefaultOctreeController.GetObjectsNavOctreeId(Object); }
 	FORCEINLINE bool HasPendingObjectNavOctreeId(UObject* Object) const { return Object && DefaultOctreeController.HasPendingObjectNavOctreeId(*Object); }
 	FORCEINLINE void RemoveObjectsNavOctreeId(const UObject& Object) { DefaultOctreeController.RemoveObjectsNavOctreeId(Object); }
 
-	void RemoveNavOctreeElementId(const FOctreeElementId& ElementId, int32 UpdateFlags);
+	void RemoveNavOctreeElementId(const FOctreeElementId2& ElementId, int32 UpdateFlags);
 
 	const FNavigationRelevantData* GetDataForObject(const UObject& Object) const;
 	FNavigationRelevantData* GetMutableDataForObject(const UObject& Object);
@@ -736,9 +838,13 @@ public:
 	virtual void OnNavigationBoundsAdded(ANavMeshBoundsVolume* NavVolume);
 	virtual void OnNavigationBoundsRemoved(ANavMeshBoundsVolume* NavVolume);
 
-	/** Used to display "navigation building in progress" notify */
-	bool IsNavigationBuildInProgress(bool bCheckDirtyToo = true);
+	/** determines whether any generator is performing navigation building actions at the moment */
+	UE_DEPRECATED(4.26, "This function is deprecated.  Please use IsNavigationBuildInProgress")
+	bool IsNavigationBuildInProgress(bool bCheckDirtyToo);
 
+	/** determines whether any generator is performing navigation building actions at the moment, dirty areas are also checked */
+	bool IsNavigationBuildInProgress();
+	
 	virtual void OnNavigationGenerationFinished(ANavigationData& NavData);
 
 	/** Used to display "navigation building in progress" counter */
@@ -751,7 +857,7 @@ protected:
 	/** Sets up SuportedAgents and NavigationDataCreators. Override it to add additional setup, but make sure to call Super implementation */
 	virtual void DoInitialSetup();
 
-	/** spawn new crowd manager */
+	/** Find or create abstract nav data */
 	virtual void UpdateAbstractNavData();
 	
 	/** Called during ConditionalPopulateNavOctree and gives subclassess a chance
@@ -779,8 +885,14 @@ public:
 	/** adds BSP collisions of currently streamed in levels to octree */
 	void InitializeLevelCollisions();
 
+	enum class ELockRemovalRebuildAction
+	{
+		Rebuild,
+		RebuildIfNotInEditor,
+		NoRebuild
+	};
 	void AddNavigationBuildLock(uint8 Flags);
-	void RemoveNavigationBuildLock(uint8 Flags, bool bSkipRebuildInEditor = false);
+	void RemoveNavigationBuildLock(uint8 Flags, const ELockRemovalRebuildAction RebuildAction = ELockRemovalRebuildAction::Rebuild);
 
 	void SetNavigationOctreeLock(bool bLock);
 
@@ -853,12 +965,24 @@ public:
 	//----------------------------------------------------------------------//
 	void CycleNavigationDataDrawn();
 
+	FNavRegenTimeSliceManager& GetMutableNavRegenTimeSliceManager() { return NavRegenTimeSliceManager; }
+
 protected:
 
 	UPROPERTY()
 	FNavigationSystemRunMode OperationMode;
-	
+
+	/** Queued async pathfinding queries to process in the next update. */
 	TArray<FAsyncPathFindingQuery> AsyncPathFindingQueries;
+
+	/** Queued async pathfinding results computed by the dedicated task in the last frame and ready to dispatch in the next update. */
+	TArray<FAsyncPathFindingQuery> AsyncPathFindingCompletedQueries;
+
+	/** Graph event that the main thread will wait for to synchronize with the async pathfinding task, if any. */
+	FGraphEventRef AsyncPathFindingTask;
+
+	/** Flag used by main thread to ask the async pathfinding task to stop and postpone remaining queries, if any. */
+	TAtomic<bool> bAbortAsyncQueriesRequested;
 
 	FCriticalSection NavDataRegistration;
 
@@ -910,6 +1034,8 @@ protected:
 
 	static TMap<INavLinkCustomInterface*, FWeakObjectPtr> PendingCustomLinkRegistration;
 	TSet<const UClass*> NavAreaClasses;
+
+	FNavRegenTimeSliceManager NavRegenTimeSliceManager;
 
 	/** delegate handler for PostLoadMap event */
 	void OnPostLoadMap(UWorld* LoadedWorld);
@@ -963,6 +1089,24 @@ protected:
 
 	virtual void SpawnMissingNavigationData();
 
+	/** 
+	 * Fills a mask indicating which navigation data associated to the supported agent mask are already instantiated.
+	 * @param OutInstantiatedMask The mask that will represent already instantiated navigation data.
+	 * @param InLevel If specified will be used to search for navigation data; will use the owning world otherwise.
+	 * @return Number of instantiated navigation data.
+	 */
+	uint8 FillInstantiatedDataMask(TBitArray<>& OutInstantiatedMask, ULevel* InLevel = nullptr);
+
+	/**
+	 * Spawns missing navigation data.
+	 * @param InInstantiatedMask The mask representing already instantiated navigation data.
+	 * @param InLevel Level in which the new data must be added. See CreateNavigationDataInstanceInLevel doc.
+	 */
+	void SpawnMissingNavigationDataInLevel(const TBitArray<>& InInstantiatedMask, ULevel* InLevel = nullptr);
+
+public:
+	void DemandLazyDataGathering(FNavigationRelevantData& ElementData);
+
 protected:
 	virtual void RebuildDirtyAreas(float DeltaSeconds);
 
@@ -978,6 +1122,9 @@ protected:
 	/** Handler for FWorldDelegates::LevelRemovedFromWorld event */
 	void OnLevelRemovedFromWorld(ULevel* InLevel, UWorld* InWorld);
 
+	/** Handler for FWorldDelegates::OnWorldPostActorTick event */
+	void OnWorldPostActorTick(UWorld* World, ELevelTick TickType, float DeltaTime) { PostponeAsyncQueries(); }
+
 	/** Adds given request to requests queue. Note it's to be called only on game thread only */
 	void AddAsyncQuery(const FAsyncPathFindingQuery& Query);
 		 
@@ -987,6 +1134,15 @@ protected:
 
 	/** Processes pathfinding requests given in PathFindingQueries.*/
 	void PerformAsyncQueries(TArray<FAsyncPathFindingQuery> PathFindingQueries);
+
+	/** Broadcasts completion delegate for all completed async pathfinding requests. */
+	void DispatchAsyncQueriesResults(const TArray<FAsyncPathFindingQuery>& PathFindingQueries) const;
+
+	/**
+	 * Requests the async pathfinding task to abort and waits for it to complete
+	 * before resuming the main thread. Pathfind task will postpone remaining queries to next frame.
+	 */
+	void PostponeAsyncQueries();
 
 	/** */
 	virtual void DestroyNavOctree();
@@ -1048,10 +1204,10 @@ public:
 	virtual ANavigationData* CreateNavigationDataInstance(const FNavDataConfig& NavConfig);
 	
 	UE_DEPRECATED(4.24, "This function is deprecated and no longer used. NavigationSystem is no longer involved in storing navoctree element IDs. See FNavigationOctree for more details.")
-	void SetObjectsNavOctreeId(const UObject& Object, FOctreeElementId Id) {}
+	void SetObjectsNavOctreeId(const UObject& Object, FOctreeElementId2 Id) {}
 
 	UE_DEPRECATED(4.24, "This member is deprecated and no longer used.  Please access OctreeController instead")
-	TMap<uint32, FOctreeElementId> ObjectToOctreeId;
+	TMap<uint32, FOctreeElementId2> ObjectToOctreeId;
 	UE_DEPRECATED(4.24, "This member is deprecated and no longer used.  Please access OctreeController instead")
 	TSet<FNavigationDirtyElement> PendingOctreeUpdates;
 	UE_DEPRECATED(4.24, "This member is deprecated and no longer used.  Please access OctreeController instead")
@@ -1074,6 +1230,9 @@ public:
 	UE_DEPRECATED(4.24, "This member is deprecated and no longer used.  Please access DirtyAreasController instead")
 	uint8 bDirtyAreasReportedWhileAccumulationLocked : 1;
 #endif // !UE_BUILD_SHIPPING
+
+	UE_DEPRECATED(4.26, "This version of RemoveNavigationBuildLock is deprecated. Please use the new version")
+	void RemoveNavigationBuildLock(uint8 Flags, bool bSkipRebuildInEditor) { RemoveNavigationBuildLock(Flags, bSkipRebuildInEditor ? ELockRemovalRebuildAction::RebuildIfNotInEditor : ELockRemovalRebuildAction::Rebuild);}
 };
 
 //----------------------------------------------------------------------//

@@ -1174,7 +1174,7 @@ FTexture2DRHIRef FD3D11DynamicRHI::RHIAsyncCreateTexture2D(uint32 SizeX,uint32 S
 
 		if (MipSize > TempBufferSize)
 		{
-			UE_LOG(LogD3D11RHI,Warning,TEXT("Temp texture streaming buffer not large enough, needed %d bytes"),MipSize);
+			UE_LOG(LogD3D11RHI, Display,TEXT("Temp texture streaming buffer not large enough, needed %d bytes"),MipSize);
 			check(TempBufferSize == ZeroBufferSize);
 			TempBufferSize = MipSize;
 			TempBuffer = FMemory::Malloc(TempBufferSize);
@@ -2550,4 +2550,32 @@ void FD3D11DynamicRHI::RHICopyTexture(FRHITexture* SourceTextureRHI, FRHITexture
 		ensure(CopyInfo.SourceSliceIndex == 0 && CopyInfo.DestSliceIndex == 0 && CopyInfo.SourcePosition == FIntVector::ZeroValue && CopyInfo.DestPosition == FIntVector::ZeroValue && CopyInfo.SourceMipIndex == 0 && CopyInfo.DestMipIndex == 0);
 		Direct3DDeviceIMContext->CopyResource(DestTexture->GetResource(), SourceTexture->GetResource());
 	}
+}
+
+void FD3D11DynamicRHI::RHICopyBufferRegion(FRHIVertexBuffer* DstBuffer, uint64 DstOffset, FRHIVertexBuffer* SrcBuffer, uint64 SrcOffset, uint64 NumBytes)
+{
+	if (!DstBuffer || !SrcBuffer || DstBuffer == SrcBuffer || !NumBytes)
+	{
+		return;
+	}
+
+	FD3D11VertexBuffer* DstBufferD3D11 = ResourceCast(DstBuffer);
+	FD3D11VertexBuffer* SrcBufferD3D11 = ResourceCast(SrcBuffer);
+
+	check(DstBufferD3D11 && SrcBufferD3D11);
+	check(DstOffset + NumBytes <= DstBuffer->GetSize() && SrcOffset + NumBytes <= SrcBuffer->GetSize());
+
+	GPUProfilingData.RegisterGPUWork();
+
+	D3D11_BOX SrcBox;
+	SrcBox.left = SrcOffset;
+	SrcBox.right = SrcOffset + NumBytes;
+	SrcBox.top = 0;
+	SrcBox.bottom = 1;
+	SrcBox.front = 0;
+	SrcBox.back = 1;
+
+	ID3D11Resource* DstResource = DstBufferD3D11->Resource.GetReference();
+	ID3D11Resource* SrcResource = SrcBufferD3D11->Resource.GetReference();
+	Direct3DDeviceIMContext->CopySubresourceRegion(DstResource, 0, DstOffset, 0, 0, SrcResource, 0, &SrcBox);
 }

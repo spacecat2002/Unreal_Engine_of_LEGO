@@ -6,8 +6,7 @@
 
 #pragma once
 
-#include "CoreMinimal.h"
-#include "RendererInterface.h"
+#include "ScreenPass.h"
 #include "PostProcess/RenderingCompositionGraph.h"
 
 class FViewInfo;
@@ -22,14 +21,14 @@ bool ShouldMobilePassFlipVerticalAxis(const FRenderingCompositePassContext& Cont
 class FRCPassPostProcessBloomSetupES2 : public TRenderingCompositePassBase<2, 3>
 {
 public:
-	FRCPassPostProcessBloomSetupES2(FIntRect InPrePostSourceViewportRect, bool bInUseViewRectSource, uint32 InUseBloom, uint32 InUseSun, uint32 InUseDof, uint32 InUseEyeAdaptation, uint32 InUseMSAA)
+	FRCPassPostProcessBloomSetupES2(FIntRect InPrePostSourceViewportRect, bool bInUseViewRectSource, bool bInUseBloom, bool bInUseSun, bool bInUseDof, bool bInUseEyeAdaptation, bool bInUseMetalMSAAHDRDecode)
 	: PrePostSourceViewportRect(InPrePostSourceViewportRect)
 	, bUseViewRectSource(bInUseViewRectSource)
-	, UseBloom(InUseBloom)
-	, UseSun(InUseSun)
-	, UseDof(InUseDof)
-	, UseEyeAdaptation(InUseEyeAdaptation)
-	, UseMSAA(InUseMSAA)
+	, bUseBloom(bInUseBloom)
+	, bUseSun(bInUseSun)
+	, bUseDof(bInUseDof)
+	, bUseEyeAdaptation(bInUseEyeAdaptation)
+	, bUseMetalMSAAHDRDecode(bInUseMetalMSAAHDRDecode)
 	{ }
 	virtual void Process(FRenderingCompositePassContext& Context) override;
 	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
@@ -37,14 +36,11 @@ public:
 private:
 	FIntRect PrePostSourceViewportRect;
 	bool bUseViewRectSource;
-	uint32 UseBloom;
-	uint32 UseSun;
-	uint32 UseDof;
-	uint32 UseEyeAdaptation;
-	uint32 UseMSAA;
-	
-	template <uint32 Variation>
-	void SetShaderAndExecute(FRenderingCompositePassContext& Context);
+	bool bUseBloom;
+	bool bUseSun;
+	bool bUseDof;
+	bool bUseEyeAdaptation;
+	bool bUseMetalMSAAHDRDecode;
 };
 
 class FRCPassPostProcessDofNearES2 : public TRenderingCompositePassBase<1, 1>
@@ -83,6 +79,17 @@ private:
 	FIntPoint PrePostSourceViewportSize;
 };
 
+class FRCPassIntegrateDofES2 : public TRenderingCompositePassBase<3, 1>
+{
+public:
+	FRCPassIntegrateDofES2(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
+	virtual void Process(FRenderingCompositePassContext& Context) override;
+	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
+	virtual void Release() override { delete this; }
+private:
+	FIntPoint PrePostSourceViewportSize;
+};
+
 class FRCPassPostProcessBloomDownES2 : public TRenderingCompositePassBase<1, 1>
 {
 public:
@@ -109,19 +116,26 @@ private:
 	FVector4 TintB;
 };
 
-class FRCPassPostProcessSunMaskES2 : public TRenderingCompositePassBase<1, 2>
+struct FMobileSunMaskInputs
 {
-public:
-	FRCPassPostProcessSunMaskES2(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
-	virtual void Process(FRenderingCompositePassContext& Context) override;
-	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
-	virtual void Release() override { delete this; }
-private:
-	FIntPoint PrePostSourceViewportSize;
+	FScreenPassTexture SceneColor;
 
-	template <uint32 bUseDepthTexture>
-	void SetShaderAndExecute(const FRenderingCompositePassContext& Context);
+	bool bUseSun = false;
+	bool bUseDepthOfField = false;
+	bool bUseDepthTexture = false;
+	bool bUseMetalMSAAHDRDecode = false;
 };
+
+struct FMobileSunMaskOutputs
+{
+	FScreenPassTexture SunMask;
+	FScreenPassTexture SceneColor;
+};
+
+FMobileSunMaskOutputs AddMobileSunMaskPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FMobileSunMaskInputs& Inputs);
+
+// TEMP: Remove when converted to RDG.
+FRenderingCompositeOutputRef AddMobileSunMaskPass(FPostprocessContext& PostProcessContext, bool bInUseSun, bool bInUseDof, bool bInUseDepthTexture, bool bInUseMetalMSAAHDRDecode);
 
 class FRCPassPostProcessSunAlphaES2 : public TRenderingCompositePassBase<1, 1>
 {
@@ -217,4 +231,22 @@ public:
 	virtual void Process(FRenderingCompositePassContext& Context) override;
 	virtual void Release() override { delete this; }
 	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
+};
+
+/** Pixel shader to decode the input color and  copy pixels from src to dst only for mobile metal platform. */
+class FMSAADecodeAndCopyRectPS_ES2 : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FMSAADecodeAndCopyRectPS_ES2);
+	SHADER_USE_PARAMETER_STRUCT(FMSAADecodeAndCopyRectPS_ES2, FGlobalShader);
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsMetalMobilePlatform(Parameters.Platform);
+	}
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, InputTexture)
+		SHADER_PARAMETER_SAMPLER(SamplerState, InputSampler)
+		RENDER_TARGET_BINDING_SLOTS()
+	END_SHADER_PARAMETER_STRUCT()
 };

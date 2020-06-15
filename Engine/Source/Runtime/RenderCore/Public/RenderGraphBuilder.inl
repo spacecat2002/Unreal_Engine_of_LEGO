@@ -21,10 +21,17 @@ inline FRDGTextureRef FRDGBuilder::RegisterExternalTexture(
 		return *Texture;
 	}
 
-	FRDGTexture* OutTexture = AllocateForRHILifeTime<FRDGTexture>(Name, ExternalPooledTexture->GetDesc(), Flags);
+	// Since we're going to use the resolved texture of the pooled RT, we must ensure that we're not inheriting
+	// the multisample settings from the targetable texture.
+	FPooledRenderTargetDesc Desc = ExternalPooledTexture->GetDesc();
+	Desc.NumSamples = 1;
+
+	FRDGTexture* OutTexture = AllocateForRHILifeTime<FRDGTexture>(Name, Desc, Flags);
 	OutTexture->PooledRenderTarget = ExternalPooledTexture;
 	OutTexture->ResourceRHI = ExternalPooledTexture->GetRenderTargetItem().ShaderResourceTexture;
 	AllocatedTextures.Add(OutTexture, ExternalPooledTexture);
+
+	TextureCount++;
 
 	IF_RDG_ENABLE_DEBUG(Validation.ValidateCreateExternalTexture(OutTexture));
 
@@ -66,6 +73,8 @@ inline FRDGBufferRef FRDGBuilder::RegisterExternalBuffer(
 	}
 	AllocatedBuffers.Add(OutBuffer, ExternalPooledBuffer);
 
+	BufferCount++;
+
 	IF_RDG_ENABLE_DEBUG(Validation.ValidateCreateExternalBuffer(OutBuffer));
 
 	ExternalBuffers.Add(ExternalPooledBuffer.GetReference(), OutBuffer);
@@ -104,6 +113,8 @@ inline FRDGTextureRef FRDGBuilder::CreateTexture(
 
 	FRDGTexture* Texture = AllocateForRHILifeTime<FRDGTexture>(Name, TextureDesc, Flags);
 
+	TextureCount++;
+
 	IF_RDG_ENABLE_DEBUG(Validation.ValidateCreateTexture(Texture));
 
 	return Texture;
@@ -129,6 +140,8 @@ inline FRDGBufferRef FRDGBuilder::CreateBuffer(
 #endif
 
 	FRDGBufferRef Buffer = AllocateForRHILifeTime<FRDGBuffer>(Name, Desc, Flags);
+
+	BufferCount++;
 
 	IF_RDG_ENABLE_DEBUG(Validation.ValidateCreateBuffer(Buffer));
 

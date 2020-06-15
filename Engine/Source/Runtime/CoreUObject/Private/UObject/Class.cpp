@@ -52,6 +52,7 @@
 #include "UObject/FastReferenceCollector.h"
 #include "UObject/PropertyProxyArchive.h"
 #include "UObject/FieldPath.h"
+#include "HAL/ThreadSafeCounter.h"
 
 
 // WARNING: This should always be the last include in any file that needs it (except .generated.h)
@@ -394,7 +395,7 @@ void UField::FormatNativeToolTip(FString& ToolTipString, bool bRemoveExtraSectio
  * @param Key The key to lookup in the metadata
  * @return true if there is a (possibly blank) value associated with this key
  */
-bool UField::HasMetaData(const TCHAR* Key) const
+const FString* UField::FindMetaData(const TCHAR* Key) const
 {
 	UPackage* Package = GetOutermost();
 	check(Package);
@@ -402,12 +403,10 @@ bool UField::HasMetaData(const TCHAR* Key) const
 	UMetaData* MetaData = Package->GetMetaData();
 	check(MetaData);
 
-	bool bHasMetaData = MetaData->HasValue(this, Key);
-		
-	return bHasMetaData;
+	return MetaData->FindValue(this, Key);
 }
 
-bool UField::HasMetaData(const FName& Key) const
+const FString* UField::FindMetaData(const FName& Key) const
 {
 	UPackage* Package = GetOutermost();
 	check(Package);
@@ -415,9 +414,7 @@ bool UField::HasMetaData(const FName& Key) const
 	UMetaData* MetaData = Package->GetMetaData();
 	check(MetaData);
 
-	bool bHasMetaData = MetaData->HasValue(this, Key);
-
-	return bHasMetaData;
+	return MetaData->FindValue(this, Key);
 }
 
 /**
@@ -456,9 +453,9 @@ FText UField::GetMetaDataText(const TCHAR* MetaDataKey, const FString Localizati
 {
 	FString DefaultMetaData;
 
-	if( HasMetaData( MetaDataKey ))
+	if(const FString* FoundMetaData = FindMetaData( MetaDataKey ))
 	{
-		DefaultMetaData = GetMetaData(MetaDataKey);
+		DefaultMetaData = *FoundMetaData;
 	}
 
 	// If attempting to grab the DisplayName metadata, we must correct the source string and output it as a DisplayString for lookup
@@ -483,9 +480,9 @@ FText UField::GetMetaDataText(const FName& MetaDataKey, const FString Localizati
 {
 	FString DefaultMetaData;
 
-	if( HasMetaData( MetaDataKey ))
+	if (const FString* FoundMetaData = FindMetaData( MetaDataKey ))
 	{
-		DefaultMetaData = GetMetaData(MetaDataKey);
+		DefaultMetaData = *FoundMetaData;
 	}
 
 	// If attempting to grab the DisplayName metadata, we must correct the source string and output it as a DisplayString for lookup
@@ -622,6 +619,14 @@ public:
 	}
 };
 
+#if WITH_EDITORONLY_DATA
+static int32 GetNextFieldPathSerialNumber()
+{
+	static FThreadSafeCounter GlobalSerialNumberCounter;
+	return GlobalSerialNumberCounter.Increment();
+}
+#endif // WITH_EDITORONLY_DATA
+
 //
 // Constructors.
 //
@@ -632,11 +637,15 @@ UStruct::UStruct(EStaticConstructor, int32 InSize, int32 InMinAlignment, EObject
 	, ChildProperties(nullptr)
 	, PropertiesSize(InSize)
 	, MinAlignment(InMinAlignment)
-	, PropertyLink(NULL)
-	, RefLink(NULL)
-	, DestructorLink(NULL)
-	, PostConstructLink(NULL)
+	, PropertyLink(nullptr)
+	, RefLink(nullptr)
+	, DestructorLink(nullptr)
+	, PostConstructLink(nullptr)
+	, UnresolvedScriptProperties(nullptr)
 {
+#if WITH_EDITORONLY_DATA
+	FieldPathSerialNumber = GetNextFieldPathSerialNumber();
+#endif // WITH_EDITORONLY_DATA
 }
 
 UStruct::UStruct(UStruct* InSuperStruct, SIZE_T ParamsSize, SIZE_T Alignment)
@@ -650,10 +659,14 @@ UStruct::UStruct(UStruct* InSuperStruct, SIZE_T ParamsSize, SIZE_T Alignment)
 	, RefLink(nullptr)
 	, DestructorLink(nullptr)
 	, PostConstructLink(nullptr)
+	, UnresolvedScriptProperties(nullptr)
 {
 #if USTRUCT_FAST_ISCHILDOF_IMPL == USTRUCT_ISCHILDOF_STRUCTARRAY
 	this->ReinitializeBaseChainArray();
 #endif
+#if WITH_EDITORONLY_DATA
+	FieldPathSerialNumber = GetNextFieldPathSerialNumber();
+#endif // WITH_EDITORONLY_DATA
 }
 
 UStruct::UStruct(const FObjectInitializer& ObjectInitializer, UStruct* InSuperStruct, SIZE_T ParamsSize, SIZE_T Alignment)
@@ -667,10 +680,14 @@ UStruct::UStruct(const FObjectInitializer& ObjectInitializer, UStruct* InSuperSt
 	, RefLink(nullptr)
 	, DestructorLink(nullptr)
 	, PostConstructLink(nullptr)
+	, UnresolvedScriptProperties(nullptr)
 {
 #if USTRUCT_FAST_ISCHILDOF_IMPL == USTRUCT_ISCHILDOF_STRUCTARRAY
 	this->ReinitializeBaseChainArray();
 #endif
+#if WITH_EDITORONLY_DATA
+	FieldPathSerialNumber = GetNextFieldPathSerialNumber();
+#endif // WITH_EDITORONLY_DATA
 }
 
 /**
@@ -704,7 +721,7 @@ void UStruct::GetPreloadDependencies(TArray<UObject*>& OutDeps)
 
 	for (UField* Field = Children; Field; Field = Field->Next)
 	{
-		//if (!Cast<UFunction>(Field))
+		if (!Cast<UFunction>(Field))
 		{
 			OutDeps.Add(Field);
 		}
@@ -944,7 +961,33 @@ void UStruct::Link(FArchive& Ar, bool bRelinkExistingProperties)
 		{
 			CurrentField->AddReferencedObjects(PropertyReferenceCollector);
 		}
-		PropertyObjectReferences = PropertyReferenceCollector.UniqueReferences.Array();
+		ScriptAndPropertyObjectReferences.Append(PropertyReferenceCollector.UniqueReferences.Array());
+
+#if USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
+		// The old (non-EDL) FLinkerLoad code paths create placeholder objects
+		// for classes and functions. We have to babysit these, just as we do
+		// for bytecode references (reusing the AddReferencingScriptExpr fn).
+		// Long term we should not use placeholder objects like this:
+		for(int32 ReferenceIndex = ScriptAndPropertyObjectReferences.Num() - 1; ReferenceIndex >= 0; --ReferenceIndex)
+		{
+			if (ScriptAndPropertyObjectReferences[ReferenceIndex])
+			{
+				if (ULinkerPlaceholderClass* PlaceholderObj = Cast<ULinkerPlaceholderClass>(ScriptAndPropertyObjectReferences[ReferenceIndex]))
+				{
+					// let the placeholder track the reference to it:
+					PlaceholderObj->AddReferencingScriptExpr(reinterpret_cast<UClass**>(&ScriptAndPropertyObjectReferences[ReferenceIndex]));
+				}
+				// I don't currently see how placeholder functions could be present in this list, but that's
+				// a dangerous assumption.
+				ensure(!(ScriptAndPropertyObjectReferences[ReferenceIndex]->IsA<ULinkerPlaceholderFunction>()));
+			}
+			else
+			{
+				// It's possible that in the process of recompilation one of the refernces got GC'd leaving a null ptr in the array
+				ScriptAndPropertyObjectReferences.RemoveAt(ReferenceIndex);
+			}
+		}
+#endif // USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
 	}
 
 #if WITH_EDITORONLY_DATA
@@ -1237,19 +1280,19 @@ void UStruct::SerializeVersionedTaggedProperties(FStructuredArchive::FSlot Slot,
 		else
 #endif // WITH_TEXT_ARCHIVE_SUPPORT
 		{
-			// Load tagged properties.
-			FStructuredArchive::FStream PropertiesStream = Slot.EnterStream();
+		// Load tagged properties.
+		FStructuredArchive::FStream PropertiesStream = Slot.EnterStream();
 
-			// This code assumes that properties are loaded in the same order they are saved in. This removes a n^2 search 
-			// and makes it an O(n) when properties are saved in the same order as they are loaded (default case). In the 
-			// case that a property was reordered the code falls back to a slower search.
+		// This code assumes that properties are loaded in the same order they are saved in. This removes a n^2 search 
+		// and makes it an O(n) when properties are saved in the same order as they are loaded (default case). In the 
+		// case that a property was reordered the code falls back to a slower search.
 			FProperty*	Property = PropertyLink;
-			bool		bAdvanceProperty	= false;
-			int32		RemainingArrayDim	= Property ? Property->ArrayDim : 0;
+		bool		bAdvanceProperty	= false;
+		int32		RemainingArrayDim	= Property ? Property->ArrayDim : 0;
 
-			// Load all stored properties, potentially skipping unknown ones.
-			while (true)
-			{
+		// Load all stored properties, potentially skipping unknown ones.
+		while (true)
+		{
 				FStructuredArchive::FRecord PropertyRecord = PropertiesStream.EnterElement().EnterRecord();
 
 				FPropertyTag Tag;
@@ -1261,7 +1304,7 @@ void UStruct::SerializeVersionedTaggedProperties(FStructuredArchive::FSlot Slot,
 				}
 
 				// Move to the next property to be serialized
-				if( bAdvanceProperty && --RemainingArrayDim <= 0 )
+				if (bAdvanceProperty && --RemainingArrayDim <= 0)
 				{
 					Property = Property->PropertyLinkNext;
 					// Skip over properties that don't need to be serialized.
@@ -1364,12 +1407,12 @@ void UStruct::SerializeVersionedTaggedProperties(FStructuredArchive::FSlot Slot,
 						}
 					}
 
-#if WITH_EDITOR
+	#if WITH_EDITOR
 					if (BreakRecursionIfFullyLoad && BreakRecursionIfFullyLoad->HasAllFlags(RF_LoadCompleted))
 					{
 					}
 					else
-#endif // WITH_EDITOR
+	#endif // WITH_EDITOR
 					// editoronly properties should be skipped if we are NOT the editor, or we are 
 					// the editor but are cooking for console (editoronly implies notforconsole)
 					if ((Property->PropertyFlags & CPF_EditorOnly) && !FPlatformProperties::HasEditorOnlyData() && !GForceLoadEditorOnly)
@@ -1555,12 +1598,6 @@ void UStruct::FinishDestroy()
 {
 	DestroyUnversionedSchema(this);
 	Script.Empty();
-
-	if (ChildProperties)
-	{
-		FFieldPath::OnFieldDeleted();
-	}
-
 	Super::FinishDestroy();
 }
 
@@ -1583,6 +1620,9 @@ void UStruct::DestroyChildPropertiesAndResetPropertyLinks()
 	RefLink = nullptr;
 	DestructorLink = nullptr;
 	PostConstructLink = nullptr;
+#if WITH_EDITORONLY_DATA
+	FieldPathSerialNumber = GetNextFieldPathSerialNumber();
+#endif // WITH_EDITORONLY_DATA
 }
 
 UStruct::~UStruct()
@@ -1592,6 +1632,7 @@ UStruct::~UStruct()
 	// Also, Blueprint generated classes can have DestroyNonNativeProperties called on them after their FinishDestroy has been called
 	// so properties can only be deleted in the destructor
 	DestroyPropertyLinkedList(ChildProperties);
+	DeleteUnresolvedScriptProperties();
 }
 
 IMPLEMENT_FSTRUCTUREDARCHIVE_SERIALIZER(UStruct);
@@ -1858,9 +1899,9 @@ void UStruct::Serialize(FArchive& Ar)
 
 				{
 					FPropertyProxyArchive PropertyAr(Ar, iCode, this);
-				// now, use the linker to save the byte code, but writing to memory
-				while (iCode < ScriptBytecodeSize)
-				{
+					// now, use the linker to save the byte code, but writing to memory
+					while (iCode < ScriptBytecodeSize)
+					{
 						SerializeExpr(iCode, PropertyAr);
 					}
 				}
@@ -1911,21 +1952,24 @@ void UStruct::PostLoad()
 	Super::PostLoad();
 
 	// Finally try to resolve all script properties that couldn't be resolved at load time
-	for (TPair<TFieldPath<FField>, int32>& MissingProperty : UnresolvedScriptProperties)
+	if (UnresolvedScriptProperties)
 	{
-		FField* ResolvedProperty = MissingProperty.Key.Get(this);
-		if (ResolvedProperty)
-		{			
-			check((int32)Script.Num() >= (int32)(MissingProperty.Value + sizeof(FField*)));
-			FField** TargetScriptPropertyPtr = (FField**)(Script.GetData() + MissingProperty.Value);
-			*TargetScriptPropertyPtr = ResolvedProperty;
-		}
-		else if (!MissingProperty.Key.IsEmpty())
+		for (TPair<TFieldPath<FField>, int32>& MissingProperty : *UnresolvedScriptProperties)
 		{
-			UE_LOG(LogClass, Warning, TEXT("Failed to resolve bytecode referenced field from path: %s when loading %s"), *MissingProperty.Key.ToString(), *GetFullName());
+			FField* ResolvedProperty = MissingProperty.Key.Get(this);
+			if (ResolvedProperty)
+			{
+				check((int32)Script.Num() >= (int32)(MissingProperty.Value + sizeof(FField*)));
+				FField** TargetScriptPropertyPtr = (FField**)(Script.GetData() + MissingProperty.Value);
+				*TargetScriptPropertyPtr = ResolvedProperty;
+			}
+			else if (!MissingProperty.Key.IsPathToFieldEmpty())
+			{
+				UE_LOG(LogClass, Warning, TEXT("Failed to resolve bytecode referenced field from path: %s when loading %s"), *MissingProperty.Key.ToString(), *GetFullName());
+			}
 		}
+		DeleteUnresolvedScriptProperties();
 	}
-	UnresolvedScriptProperties.Empty();
 }
 
 void UStruct::AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector)
@@ -1937,11 +1981,7 @@ void UStruct::AddReferencedObjects(UObject* InThis, FReferenceCollector& Collect
 		// Required by the unified GC when running in the editor
 		Collector.AddReferencedObject( This->SuperStruct, This );
 		Collector.AddReferencedObject( This->Children, This );
-
-		for( int32 Index = 0; Index < This->ScriptObjectReferences.Num(); Index++ )
-		{
-			Collector.AddReferencedObject( This->ScriptObjectReferences[ Index ], This );
-		}
+		Collector.AddReferencedObjects(This->ScriptAndPropertyObjectReferences, This);
 	}
 #endif
 #if WITH_EDITORONLY_DATA
@@ -1960,8 +2000,15 @@ void UStruct::SetSuperStruct(UStruct* NewSuperStruct)
 
 FString UStruct::PropertyNameToDisplayName(FName InName) const
 {
-	const UField* FoundField = FindField<const UField>(this, InName);
-	return GetAuthoredNameForField(FoundField);
+	FFieldVariant FoundField = FindUFieldOrFProperty(this, InName);
+	if (FoundField.IsUObject())
+	{
+		return GetAuthoredNameForField(FoundField.Get<UField>());
+	}
+	else
+	{
+		return GetAuthoredNameForField(FoundField.Get<FField>());
+	}
 }
 
 FString UStruct::GetAuthoredNameForField(const UField* Field) const
@@ -2004,11 +2051,11 @@ bool UStruct::GetStringMetaDataHierarchical(const FName& Key, FString* OutValue)
 {
 	for (const UStruct* TestStruct = this; TestStruct != nullptr; TestStruct = TestStruct->GetSuperStruct())
 	{
-		if (TestStruct->HasMetaData(Key))
+		if (const FString* FoundMetaData = TestStruct->FindMetaData(Key))
 		{
 			if (OutValue != nullptr)
 			{
-				*OutValue = TestStruct->GetMetaData(Key);
+				*OutValue = *FoundMetaData;
 			}
 
 			return true;
@@ -2100,8 +2147,7 @@ IMPLEMENT_CORE_INTRINSIC_CLASS(UStruct, UField,
 		// Note: None of the *Link members need to be emitted, as they only contain properties
 		// that are in the Children chain or SuperStruct->Children chains.
 
-		Class->EmitObjectArrayReference(STRUCT_OFFSET(UStruct, ScriptObjectReferences), TEXT("ScriptObjectReferences"));
-		Class->EmitObjectArrayReference(STRUCT_OFFSET(UStruct, PropertyObjectReferences), TEXT("PropertyObjectReferences"));		
+		Class->EmitObjectArrayReference(STRUCT_OFFSET(UStruct, ScriptAndPropertyObjectReferences), TEXT("ScriptAndPropertyObjectReferences"));
 	}
 );
 
@@ -2164,15 +2210,16 @@ struct ENGINE_API FTestStruct
 {
 	GENERATED_USTRUCT_BODY()
 
+	UObject* RawObjectPtr = nullptr;
 	TMap<int32, double> Doubles;
 	FTestStruct()
 	{
 		Doubles.Add(1, 1.5);
 		Doubles.Add(2, 2.5);
 	}
-	void AddStructReferencedObjects(class FReferenceCollector& Collector) const
+	void AddStructReferencedObjects(class FReferenceCollector& Collector)
 	{
-		Collector.AddReferencedObject(AActor::StaticClass());
+		Collector.AddReferencedObject(RawObjectPtr);
 	}
 	bool Serialize(FArchive& Ar)
 	{
@@ -3591,7 +3638,7 @@ UObject* UClass::CreateDefaultObject()
 				FString PackageName;
 				FString CDOName;
 				bool bDoNotify = false;
-				if (GIsInitialLoad && GetOutermost()->HasAnyPackageFlags(PKG_CompiledIn))
+				if (GIsInitialLoad && GetOutermost()->HasAnyPackageFlags(PKG_CompiledIn) && !GetOutermost()->HasAnyPackageFlags(PKG_RuntimeGenerated))
 				{
 					PackageName = GetOutermost()->GetFName().ToString();
 					CDOName = GetDefaultObjectName().ToString();
@@ -4008,7 +4055,7 @@ void UClass::SetUpRuntimeReplicationData()
 					NetProperties.Add(Prop);
 				}
 			}
-		}
+			}
 
 		for(TFieldIterator<UField> It(this,EFieldIteratorFlags::ExcludeSuper); It; ++It)
 		{
@@ -4029,20 +4076,20 @@ void UClass::SetUpRuntimeReplicationData()
 		const bool bIsNativeClass = HasAnyClassFlags(CLASS_Native);
 		if (!bIsNativeClass)
 		{
-			// Sort NetProperties so that their ClassReps are sorted by memory offset
+		// Sort NetProperties so that their ClassReps are sorted by memory offset
 			struct FComparePropertyOffsets
-			{
+		{
 				FORCEINLINE bool operator()(FProperty& A, FProperty& B) const
-				{
-					// Ensure stable sort
+			{
+				// Ensure stable sort
 					if (A.GetOffset_ForGC() == B.GetOffset_ForGC())
-					{
-						return A.GetName() < B.GetName();
-					}
-
-					return A.GetOffset_ForGC() < B.GetOffset_ForGC();
+				{
+					return A.GetName() < B.GetName();
 				}
-			};
+
+				return A.GetOffset_ForGC() < B.GetOffset_ForGC();
+			}
+		};
 
 			Sort(NetProperties.GetData(), NetProperties.Num(), FComparePropertyOffsets());
 		}
@@ -4608,26 +4655,25 @@ void UClass::PurgeClass(bool bRecompilingOnLoad)
 	}
 #endif
 
-	ClassDefaultObject = NULL;
+	ClassDefaultObject = nullptr;
 
 	Interfaces.Empty();
 	NativeFunctionLookupTable.Empty();
-	SetSuperStruct(NULL);
-	Children = NULL;
+	SetSuperStruct(nullptr);
+	Children = nullptr;
 	Script.Empty();
 	MinAlignment = 0;
-	RefLink = NULL;
-	PropertyLink = NULL;
-	DestructorLink = NULL;
-	ClassAddReferencedObjects = NULL;
+	RefLink = nullptr;
+	PropertyLink = nullptr;
+	DestructorLink = nullptr;
+	ClassAddReferencedObjects = nullptr;
 
-	ScriptObjectReferences.Empty();
-	PropertyObjectReferences.Empty();
-	UnresolvedScriptProperties.Empty();
+	ScriptAndPropertyObjectReferences.Empty();
+	DeleteUnresolvedScriptProperties();
 
 	FuncMap.Empty();
 	ClearFunctionMapsCaches();
-	PropertyLink = NULL;
+	PropertyLink = nullptr;
 
 #if WITH_EDITORONLY_DATA
 	{
@@ -4653,14 +4699,14 @@ void UClass::PurgeClass(bool bRecompilingOnLoad)
 		PropertiesPendingDestruction = ChildProperties;
 		ChildProperties = nullptr;
 	}
+	// Update the serial number so that FFieldPaths that point to properties of this struct know they need to resolve themselves again
+	FieldPathSerialNumber = GetNextFieldPathSerialNumber();
 #else
 	{
 		// Destroy all properties owned by this struct
 		DestroyPropertyLinkedList(ChildProperties);
 	}
 #endif // WITH_EDITORONLY_DATA
-
-	FFieldPath::OnFieldDeleted();
 
 	DestroyUnversionedSchema(this);
 }
@@ -5149,7 +5195,10 @@ void UClass::AssembleReferenceTokenStreams()
 		{
 			// Force the default object to be created (except when we're in the middle of exit purge -
 			// this may happen if we exited PreInit early because of error).
-			if (!GExitPurge)
+			// 
+			// Keep from handling script generated classes here, as those systems handle CDO 
+			// instantiation themselves.
+			if (!GExitPurge && !Class->HasAnyFlags(RF_BeingRegenerated))
 			{
 				Class->GetDefaultObject(); // Force the default object to be constructed if it isn't already
 			}
@@ -5214,20 +5263,18 @@ const FString UClass::GetConfigName() const
 void UClass::GetHideFunctions(TArray<FString>& OutHideFunctions) const
 {
 	static const FName NAME_HideFunctions(TEXT("HideFunctions"));
-	if (HasMetaData(NAME_HideFunctions))
+	if (const FString* HideFunctions = FindMetaData(NAME_HideFunctions))
 	{
-		const FString& HideFunctions = GetMetaData(NAME_HideFunctions);
-		HideFunctions.ParseIntoArray(OutHideFunctions, TEXT(" "), true);
+		HideFunctions->ParseIntoArray(OutHideFunctions, TEXT(" "), true);
 	}
 }
 
 bool UClass::IsFunctionHidden(const TCHAR* InFunction) const
 {
 	static const FName NAME_HideFunctions(TEXT("HideFunctions"));
-	if (HasMetaData(NAME_HideFunctions))
+	if (const FString* HideFunctions = FindMetaData(NAME_HideFunctions))
 	{
-		const FString& HideFunctions = GetMetaData(NAME_HideFunctions);
-		return !!FCString::StrfindDelim(*HideFunctions, InFunction, TEXT(" "));
+		return !!FCString::StrfindDelim(**HideFunctions, InFunction, TEXT(" "));
 	}
 	return false;
 }
@@ -5235,20 +5282,18 @@ bool UClass::IsFunctionHidden(const TCHAR* InFunction) const
 void UClass::GetAutoExpandCategories(TArray<FString>& OutAutoExpandCategories) const
 {
 	static const FName NAME_AutoExpandCategories(TEXT("AutoExpandCategories"));
-	if (HasMetaData(NAME_AutoExpandCategories))
+	if (const FString* AutoExpandCategories = FindMetaData(NAME_AutoExpandCategories))
 	{
-		const FString& AutoExpandCategories = GetMetaData(NAME_AutoExpandCategories);
-		AutoExpandCategories.ParseIntoArray(OutAutoExpandCategories, TEXT(" "), true);
+		AutoExpandCategories->ParseIntoArray(OutAutoExpandCategories, TEXT(" "), true);
 	}
 }
 
 bool UClass::IsAutoExpandCategory(const TCHAR* InCategory) const
 {
 	static const FName NAME_AutoExpandCategories(TEXT("AutoExpandCategories"));
-	if (HasMetaData(NAME_AutoExpandCategories))
+	if (const FString* AutoExpandCategories = FindMetaData(NAME_AutoExpandCategories))
 	{
-		const FString& AutoExpandCategories = GetMetaData(NAME_AutoExpandCategories);
-		return !!FCString::StrfindDelim(*AutoExpandCategories, InCategory, TEXT(" "));
+		return !!FCString::StrfindDelim(**AutoExpandCategories, InCategory, TEXT(" "));
 	}
 	return false;
 }
@@ -5256,20 +5301,18 @@ bool UClass::IsAutoExpandCategory(const TCHAR* InCategory) const
 void UClass::GetAutoCollapseCategories(TArray<FString>& OutAutoCollapseCategories) const
 {
 	static const FName NAME_AutoCollapseCategories(TEXT("AutoCollapseCategories"));
-	if (HasMetaData(NAME_AutoCollapseCategories))
+	if (const FString* AutoCollapseCategories = FindMetaData(NAME_AutoCollapseCategories))
 	{
-		const FString& AutoCollapseCategories = GetMetaData(NAME_AutoCollapseCategories);
-		AutoCollapseCategories.ParseIntoArray(OutAutoCollapseCategories, TEXT(" "), true);
+		AutoCollapseCategories->ParseIntoArray(OutAutoCollapseCategories, TEXT(" "), true);
 	}
 }
 
 bool UClass::IsAutoCollapseCategory(const TCHAR* InCategory) const
 {
 	static const FName NAME_AutoCollapseCategories(TEXT("AutoCollapseCategories"));
-	if (HasMetaData(NAME_AutoCollapseCategories))
+	if (const FString* AutoCollapseCategories = FindMetaData(NAME_AutoCollapseCategories))
 	{
-		const FString& AutoCollapseCategories = GetMetaData(NAME_AutoCollapseCategories);
-		return !!FCString::StrfindDelim(*AutoCollapseCategories, InCategory, TEXT(" "));
+		return !!FCString::StrfindDelim(**AutoCollapseCategories, InCategory, TEXT(" "));
 	}
 	return false;
 }
@@ -5277,20 +5320,18 @@ bool UClass::IsAutoCollapseCategory(const TCHAR* InCategory) const
 void UClass::GetClassGroupNames(TArray<FString>& OutClassGroupNames) const
 {
 	static const FName NAME_ClassGroupNames(TEXT("ClassGroupNames"));
-	if (HasMetaData(NAME_ClassGroupNames))
+	if (const FString* ClassGroupNames = FindMetaData(NAME_ClassGroupNames))
 	{
-		const FString& ClassGroupNames = GetMetaData(NAME_ClassGroupNames);
-		ClassGroupNames.ParseIntoArray(OutClassGroupNames, TEXT(" "), true);
+		ClassGroupNames->ParseIntoArray(OutClassGroupNames, TEXT(" "), true);
 	}
 }
 
 bool UClass::IsClassGroupName(const TCHAR* InGroupName) const
 {
 	static const FName NAME_ClassGroupNames(TEXT("ClassGroupNames"));
-	if (HasMetaData(NAME_ClassGroupNames))
+	if (const FString* ClassGroupNames = FindMetaData(NAME_ClassGroupNames))
 	{
-		const FString& ClassGroupNames = GetMetaData(NAME_ClassGroupNames);
-		return !!FCString::StrfindDelim(*ClassGroupNames, InGroupName, TEXT(" "));
+		return !!FCString::StrfindDelim(**ClassGroupNames, InGroupName, TEXT(" "));
 	}
 	return false;
 }

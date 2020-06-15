@@ -4,8 +4,6 @@
 
 #include "CoreTypes.h"
 
-#if WINDOWS_USE_FEATURE_WINDOW
-
 #include "GenericPlatform/GenericWindow.h"
 #include "Templates/SharedPointer.h"
 #include "Windows/WindowsHWrapper.h"
@@ -127,6 +125,7 @@ public:
 	virtual int32 GetWindowTitleBarSize() const override;
 	virtual void* GetOSWindowHandle() const  override { return HWnd; }
 	virtual bool IsForegroundWindow() const override;
+	virtual bool IsFullscreenSupported() const override;
 	virtual void SetText(const TCHAR* const Text) override;
 	virtual void DrawAttention(const FWindowDrawAttentionParameters& Parameters) override;
 
@@ -211,5 +210,3 @@ private:
 	/** when true the window is responsible for its own size adjustments in response to a DPI change */
 	bool bHandleManualDPIChanges = false;
 };
-
-#endif

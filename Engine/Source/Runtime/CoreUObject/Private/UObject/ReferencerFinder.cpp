@@ -11,25 +11,43 @@ class FAllReferencesProcessor : public FSimpleReferenceProcessorBase
 {
 	const TSet<UObject*>& PotentiallyReferencedObjects;
 	TSet<UObject*>& ReferencingObjects;
+	UObject* CurrentObject;
 
 public:
 	FAllReferencesProcessor(const TSet<UObject*>& InPotentiallyReferencedObjects, TSet<UObject*>& OutReferencingObjects)
 		: PotentiallyReferencedObjects(InPotentiallyReferencedObjects)
 		, ReferencingObjects(OutReferencingObjects)
+		, CurrentObject(nullptr)
 	{
 	}
 	FORCEINLINE_DEBUGGABLE void HandleTokenStreamObjectReference(TArray<UObject*>& ObjectsToSerialize, UObject* ReferencingObject, UObject*& Object, const int32 TokenIndex, bool bAllowReferenceElimination)
 	{
-		if (Object != nullptr && Object != ReferencingObject)
-		{			
-			if (ReferencingObject && PotentiallyReferencedObjects.Contains(Object))
+		if (!ReferencingObject)
+		{
+			ReferencingObject = CurrentObject;
+		}
+		if (Object && ReferencingObject && Object != ReferencingObject)
+		{
+			if (PotentiallyReferencedObjects.Contains(Object))
 			{
 				ReferencingObjects.Add(ReferencingObject);
 			}
 		}
 	}
+	void SetCurrentObject(UObject* Obj)
+	{
+		CurrentObject = Obj;
+	}
 };
 typedef TDefaultReferenceCollector<FAllReferencesProcessor> FAllReferencesCollector;
+
+// Until all native UObject classes have been registered it's unsafe to run FReferencerFinder on multiple threads
+static bool GUObjectRegistrationComplete = false;
+
+void FReferencerFinder::NotifyRegistrationComplete()
+{
+	GUObjectRegistrationComplete = true;
+}
 
 TArray<UObject*> FReferencerFinder::GetAllReferencers(const TArray<UObject*>& Referencees, const TSet<UObject*>* ObjectsToIgnore )
 {
@@ -94,7 +112,7 @@ TArray<UObject*> FReferencerFinder::GetAllReferencers(const TSet<UObject*>& Refe
 				FScopeLock ResultLock(&ResultCritical);
 				Ret.Append(ThreadResult.Array());
 			}
-		}, GIsInitialLoad ? EParallelForFlags::ForceSingleThread : EParallelForFlags::None);
+		}, GUObjectRegistrationComplete ? EParallelForFlags::None :  EParallelForFlags::ForceSingleThread );
 
 		UnlockUObjectHashTables();
 	}

@@ -8,6 +8,7 @@
 #include "Engine/Texture2D.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/SkeletalMesh.h"
+#include "LandscapeComponent.h"
 #include "Misc/CommandLine.h"
 #include "Misc/ConfigCacheIni.h"
 #include "UObject/UObjectHash.h"
@@ -21,10 +22,19 @@
 #include "Animation/AnimationStreaming.h"
 #include "AudioStreamingCache.h"
 #include "AudioCompressionSettingsUtils.h"
+#include "VT/VirtualTextureChunkManager.h"
 
 /*-----------------------------------------------------------------------------
 	Globals.
 -----------------------------------------------------------------------------*/
+
+static TAutoConsoleVariable<int32> CVarMeshStreaming(
+	TEXT("r.MeshStreaming"),
+	0,
+	TEXT("Experimental - ")
+	TEXT("When non zero, enables mesh stremaing.\n"),
+	ECVF_ReadOnly | ECVF_RenderThreadSafe);
+
 
 /** Collection of views that need to be taken into account for streaming. */
 TArray<FStreamingViewInfo> IStreamingManager::CurrentViewInfos;
@@ -770,10 +780,17 @@ FStreamingManagerCollection::FStreamingManagerCollection()
 
 	AnimationStreamingManager = new FAnimationStreamingManager();
 	AddStreamingManager(AnimationStreamingManager);
+
+	VirtualTextureStreamingManager = new FVirtualTextureChunkStreamingManager();
+	AddStreamingManager(VirtualTextureStreamingManager);
 }
 
 FStreamingManagerCollection::~FStreamingManagerCollection()
 {
+	RemoveStreamingManager(VirtualTextureStreamingManager);
+	delete VirtualTextureStreamingManager;
+	VirtualTextureStreamingManager = nullptr;
+
 	RemoveStreamingManager(AnimationStreamingManager);
 	delete AnimationStreamingManager;
 	AnimationStreamingManager = nullptr;
@@ -973,6 +990,11 @@ bool FStreamingManagerCollection::IsTextureStreamingEnabled() const
 	return IsRenderAssetStreamingEnabled();
 }
 
+bool FStreamingManagerCollection::IsMeshStreamingEnabled() const
+{
+	return CVarMeshStreaming.GetValueOnAnyThread() != 0 && IsRenderAssetStreamingEnabled();
+}
+
 bool FStreamingManagerCollection::IsRenderAssetStreamingEnabled() const
 {
 	return TextureStreamingManager != 0;
@@ -1003,6 +1025,12 @@ IAnimationStreamingManager& FStreamingManagerCollection::GetAnimationStreamingMa
 {
 	check(AnimationStreamingManager);
 	return *AnimationStreamingManager;
+}
+
+FVirtualTextureChunkStreamingManager& FStreamingManagerCollection::GetVirtualTextureStreamingManager() const
+{
+	check(VirtualTextureStreamingManager);
+	return *VirtualTextureStreamingManager;
 }
 
 /** Don't stream world resources for the next NumFrames. */
@@ -1233,19 +1261,6 @@ void FStreamingManagerCollection::AddOrRemoveTextureStreamingManagerIfNeeded(boo
 			CVarSetTextureStreaming.AsVariable()->Set(0, ECVF_SetByCode);
 		}
 	}
-#if TEXTURE2DMIPMAP_USE_COMPACT_BULKDATA
-	else if (!bUseTextureStreaming)
-	{
-		static bool bWarned;
-		if (!bWarned)
-		{
-			UE_LOG(LogContentStreaming, Warning, TEXT("Texture streaming cannot be disabled when FTexture2DMipMap::FCompactBulkData is used"));
-			bWarned = true;
-		}
-		CVarSetTextureStreaming.AsVariable()->Set(1, ECVF_SetByCode);
-		bUseTextureStreaming = true;
-	}
-#endif
 #endif
 
 	if ( bUseTextureStreaming )
@@ -1253,6 +1268,8 @@ void FStreamingManagerCollection::AddOrRemoveTextureStreamingManagerIfNeeded(boo
 		//Add the texture streaming manager if it's needed.
 		if( !TextureStreamingManager )
 		{
+			FlushRenderingCommands();
+
 			GConfig->GetFloat( TEXT("TextureStreaming"), TEXT("LoadMapTimeLimit"), LoadMapTimeLimit, GEngineIni );
 			// Create the streaming manager and add the default streamers.
 			TextureStreamingManager = new FRenderAssetStreamingManager();
@@ -1280,6 +1297,13 @@ void FStreamingManagerCollection::AddOrRemoveTextureStreamingManagerIfNeeded(boo
 						It->LinkStreaming();
 					}
 				}
+				for (TObjectIterator<ULandscapeLODStreamingProxy> It; It; ++It)
+				{
+					if (It->bIsStreamable)
+					{
+						It->LinkStreaming();
+					}
+				}
 			}
 		}
 	}
@@ -1288,6 +1312,7 @@ void FStreamingManagerCollection::AddOrRemoveTextureStreamingManagerIfNeeded(boo
 		//Remove the texture streaming manager if needed.
 		if( TextureStreamingManager )
 		{
+			FlushRenderingCommands();
 			TextureStreamingManager->BlockTillAllRequestsFinished();
 
 			RemoveStreamingManager(TextureStreamingManager);
@@ -1310,6 +1335,13 @@ void FStreamingManagerCollection::AddOrRemoveTextureStreamingManagerIfNeeded(boo
 				}
 			}
 			for (TObjectIterator<USkeletalMesh> It; It; ++It)
+			{
+				if (It->bIsStreamable)
+				{
+					It->LinkStreaming();
+				}
+			}
+			for (TObjectIterator<ULandscapeLODStreamingProxy> It; It; ++It)
 			{
 				if (It->bIsStreamable)
 				{
@@ -1388,18 +1420,20 @@ FAudioChunkHandle::FAudioChunkHandle()
 	, CorrespondingWave(nullptr)
 	, CorrespondingWaveName()
 	, ChunkIndex(INDEX_NONE)
+	, CacheLookupID(InvalidAudioStreamCacheLookupID)
 #if WITH_EDITOR
 	, ChunkGeneration(INDEX_NONE)
 #endif
 {
 }
 
-FAudioChunkHandle::FAudioChunkHandle(const uint8* InData, uint32 NumBytes, const USoundWave* InSoundWave, const FName& SoundWaveName, uint32 InChunkIndex)
+FAudioChunkHandle::FAudioChunkHandle(const uint8* InData, uint32 NumBytes, const USoundWave* InSoundWave, const FName& SoundWaveName, uint32 InChunkIndex, uint64 InCacheLookupID)
 	: CachedData(InData)
 	, CachedDataNumBytes(NumBytes)
 	, CorrespondingWave(InSoundWave)
 	, CorrespondingWaveName(SoundWaveName)
 	, ChunkIndex(InChunkIndex)
+	, CacheLookupID(InCacheLookupID)
 #if WITH_EDITOR
 	, ChunkGeneration(InSoundWave->CurrentChunkRevision.GetValue())
 #endif
@@ -1410,6 +1444,45 @@ FAudioChunkHandle::FAudioChunkHandle(const FAudioChunkHandle& Other)
 	: FAudioChunkHandle()
 {
 	*this = Other;
+}
+
+FAudioChunkHandle::FAudioChunkHandle(FAudioChunkHandle&& Other)
+	: FAudioChunkHandle()
+{
+	*this = MoveTemp(Other);
+}
+
+FAudioChunkHandle& FAudioChunkHandle::operator=(FAudioChunkHandle&& Other)
+{
+	// If this chunk was previously referencing another chunk, remove that chunk here.
+	if (IsValid())
+	{
+		IStreamingManager::Get().GetAudioStreamingManager().RemoveReferenceToChunk(*this);
+	}
+
+	CachedData = Other.CachedData;
+	CachedDataNumBytes = Other.CachedDataNumBytes;
+	CorrespondingWave = Other.CorrespondingWave;
+	CorrespondingWaveName = Other.CorrespondingWaveName;
+	ChunkIndex = Other.ChunkIndex;
+	CacheLookupID = Other.CacheLookupID;
+#if WITH_EDITOR
+	ChunkGeneration = Other.ChunkGeneration;
+#endif
+
+	// we don't need to call RemoveReferenceToChunk on Other, nor add a new reference to this chunk, since this is a move.
+	// Instead, we can simply null out the other chunk handle without invoking it's destructor.
+	Other.CachedData = nullptr;
+	Other.CachedDataNumBytes = 0;
+	Other.CorrespondingWave = nullptr;
+	Other.CorrespondingWaveName = FName();
+	Other.ChunkIndex = INDEX_NONE;
+	Other.CacheLookupID = InvalidAudioStreamCacheLookupID;
+#if WITH_EDITOR
+	Other.ChunkGeneration = INDEX_NONE;
+#endif
+
+	return *this;
 }
 
 FAudioChunkHandle& FAudioChunkHandle::operator=(const FAudioChunkHandle& Other)
@@ -1425,6 +1498,7 @@ FAudioChunkHandle& FAudioChunkHandle::operator=(const FAudioChunkHandle& Other)
 	CorrespondingWave = Other.CorrespondingWave;
 	CorrespondingWaveName = Other.CorrespondingWaveName;
 	ChunkIndex = Other.ChunkIndex;
+	CacheLookupID = Other.CacheLookupID;
 #if WITH_EDITOR
 	ChunkGeneration = Other.ChunkGeneration;
 #endif
@@ -1476,7 +1550,7 @@ bool FAudioChunkHandle::IsStale() const
 }
 #endif
 
-FAudioChunkHandle IAudioStreamingManager::BuildChunkHandle(const uint8* InData, uint32 NumBytes, const USoundWave* InSoundWave, const FName& SoundWaveName, uint32 InChunkIndex)
+FAudioChunkHandle IAudioStreamingManager::BuildChunkHandle(const uint8* InData, uint32 NumBytes, const USoundWave* InSoundWave, const FName& SoundWaveName, uint32 InChunkIndex, uint64 InCacheLookupID)
 {
-	return FAudioChunkHandle(InData, NumBytes, InSoundWave, SoundWaveName, InChunkIndex);
+	return FAudioChunkHandle(InData, NumBytes, InSoundWave, SoundWaveName, InChunkIndex, InCacheLookupID);
 }

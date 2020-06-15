@@ -53,12 +53,19 @@ DECLARE_DELEGATE_RetVal_OneParam(EInstallBundleManagerInitErrorHandlerResult, FI
 DECLARE_MULTICAST_DELEGATE_OneParam(FInstallBundleCompleteMultiDelegate, FInstallBundleRequestResultInfo);
 DECLARE_MULTICAST_DELEGATE_OneParam(FInstallBundlePausedMultiDelegate, FInstallBundlePauseInfo);
 
+DECLARE_MULTICAST_DELEGATE_OneParam(FInstallBundleManagerOnPatchCheckComplete, EInstallBundleManagerPatchCheckResult);
+
+DECLARE_DELEGATE_RetVal(bool, FInstallBundleManagerEnvironmentWantsPatchCheck);
+
+DECLARE_DELEGATE_OneParam(FInstallBundleGetInstallStateDelegate, FInstallBundleCombinedInstallState);
+
 class INSTALLBUNDLEMANAGER_API IInstallBundleManager
 {
 public:
-	static FInstallBundleCompleteMultiDelegate InstallBundleCompleteDelegate;
-	static FInstallBundleCompleteMultiDelegate RemoveBundleCompleteDelegate;
+	static FInstallBundleCompleteMultiDelegate InstallBundleUpdatedDelegate;  // Called when content is up to do date
+	static FInstallBundleCompleteMultiDelegate InstallBundleCompleteDelegate; // Called when content is ready to use
 	static FInstallBundlePausedMultiDelegate PausedBundleDelegate;
+	static FInstallBundleManagerOnPatchCheckComplete PatchCheckCompleteDelegate;
 
 	static IInstallBundleManager* GetPlatformInstallBundleManager();
 
@@ -76,11 +83,20 @@ public:
 	FInstallBundleRequestInfo RequestUpdateContent(FName BundleName, EInstallBundleRequestFlags Flags);
 	virtual FInstallBundleRequestInfo RequestUpdateContent(TArrayView<const FName> BundleNames, EInstallBundleRequestFlags Flags) = 0;
 
-	void GetContentState(FName BundleName, EInstallBundleGetContentStateFlags Flags, bool bAddDependencies, FInstallBundleGetContentStateDelegate Callback, FName RequestTag = TEXT("None"));
-	virtual void GetContentState(TArrayView<const FName> BundleNames, EInstallBundleGetContentStateFlags Flags, bool bAddDependencies, FInstallBundleGetContentStateDelegate Callback, FName RequestTag = TEXT("None")) = 0;
+	void GetContentState(FName BundleName, EInstallBundleGetContentStateFlags Flags, bool bAddDependencies, FInstallBundleGetContentStateDelegate Callback, FName RequestTag = NAME_None);
+	virtual void GetContentState(TArrayView<const FName> BundleNames, EInstallBundleGetContentStateFlags Flags, bool bAddDependencies, FInstallBundleGetContentStateDelegate Callback, FName RequestTag = NAME_None) = 0;
+	virtual void CancelAllGetContentStateRequestsForTag(FName RequestTag) = 0;
 
-    virtual void CancelAllGetContentStateRequestsForTag(FName RequestTag) = 0;
-    
+	// Less expensive version of GetContentState() that only returns install state
+	// Synchronous versions return null if bundle manager is not yet initialized
+	void GetInstallState(FName BundleName, bool bAddDependencies, FInstallBundleGetInstallStateDelegate Callback, FName RequestTag = NAME_None);
+	virtual void GetInstallState(TArrayView<const FName> BundleNames, bool bAddDependencies, FInstallBundleGetInstallStateDelegate Callback, FName RequestTag = NAME_None) = 0;
+	TOptional<FInstallBundleCombinedInstallState> GetInstallStateSynchronous(FName BundleName, bool bAddDependencies) const;
+	virtual TOptional<FInstallBundleCombinedInstallState> GetInstallStateSynchronous(TArrayView<const FName> BundleNames, bool bAddDependencies) const = 0;
+	virtual void CancelAllGetInstallStateRequestsForTag(FName RequestTag) = 0;    
+
+	// void RequestReleaseContent(FName RemoveName, TArrayView<const FName> KeepNames = TArrayView<const FName>())
+
 	void RequestRemoveContentOnNextInit(FName RemoveName, TArrayView<const FName> KeepNames = TArrayView<const FName>());
 	virtual void RequestRemoveContentOnNextInit(TArrayView<const FName> RemoveNames, TArrayView<const FName> KeepNames = TArrayView<const FName>()) = 0;
 
@@ -103,6 +119,10 @@ public:
 	virtual EInstallBundleRequestFlags GetModifyableContentRequestFlags() const = 0;
 	void UpdateContentRequestFlags(FName BundleName, EInstallBundleRequestFlags AddFlags, EInstallBundleRequestFlags RemoveFlags);
 	virtual void UpdateContentRequestFlags(TArrayView<const FName> BundleNames, EInstallBundleRequestFlags AddFlags, EInstallBundleRequestFlags RemoveFlags) = 0;
+	
+	virtual void StartPatchCheck();
+	virtual void AddEnvironmentWantsPatchCheckBackCompatDelegate(FName Tag, FInstallBundleManagerEnvironmentWantsPatchCheck Delegate) {}
+	virtual void RemoveEnvironmentWantsPatchCheckBackCompatDelegate(FName Tag) {}
 
 	virtual bool IsNullInterface() const = 0;
 

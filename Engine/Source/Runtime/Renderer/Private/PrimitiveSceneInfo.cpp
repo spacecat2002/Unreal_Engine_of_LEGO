@@ -63,22 +63,23 @@ public:
 	{
 		if (Mesh.HasAnyDrawCalls())
 		{
-			check(Mesh.VertexFactory);
-			check(Mesh.VertexFactory->IsInitialized());
 			checkSlow(IsInParallelRenderingThread());
 
 			FPrimitiveSceneProxy* PrimitiveSceneProxy = PrimitiveSceneInfo->Proxy;
-			PrimitiveSceneProxy->VerifyUsedMaterial(Mesh.MaterialRenderProxy);
+			const ERHIFeatureLevel::Type FeatureLevel = PrimitiveSceneInfo->Scene->GetFeatureLevel();
+
+			if (!Mesh.Validate(PrimitiveSceneProxy, FeatureLevel))
+			{
+				return;
+			}
 
 			FStaticMeshBatch* StaticMesh = new(PrimitiveSceneInfo->StaticMeshes) FStaticMeshBatch(
 				PrimitiveSceneInfo,
 				Mesh,
 				CurrentHitProxy ? CurrentHitProxy->Id : FHitProxyId()
-				);
+			);
 
-			const ERHIFeatureLevel::Type FeatureLevel = PrimitiveSceneInfo->Scene->GetFeatureLevel();
 			StaticMesh->PreparePrimitiveUniformBuffer(PrimitiveSceneProxy, FeatureLevel);
-
 			// Volumetric self shadow mesh commands need to be generated every frame, as they depend on single frame uniform buffers with self shadow data.
 			const bool bSupportsCachingMeshDrawCommands = SupportsCachingMeshDrawCommands(*StaticMesh, FeatureLevel) && !PrimitiveSceneProxy->CastsVolumetricTranslucentShadow();
 
@@ -131,8 +132,6 @@ FPrimitiveSceneInfo::FPrimitiveSceneInfo(UPrimitiveComponent* InComponent,FScene
 	LastRenderTime(-FLT_MAX),
 	Scene(InScene),
 	NumMobileMovablePointLights(0),
-	bIsUsingCustomLODRules(Proxy->IsUsingCustomLODRules()),
-	bIsUsingCustomWholeSceneShadowLODRules(Proxy->IsUsingCustomWholeSceneShadowLODRules()),
 #if RHI_RAYTRACING
 	bDrawInGame(Proxy->IsDrawnInGame()),
 	bShouldRenderInMainPass(InComponent->SceneProxy->ShouldRenderInMainPass()),
@@ -287,7 +286,6 @@ void FPrimitiveSceneInfo::CacheMeshDrawCommands(FRHICommandListImmediate& RHICmd
 
 						check(!MeshRelevance.CommandInfosMask.Get(PassType));
 
-						check(!Mesh.bRequiresPerElementVisibility);
 						uint64 BatchElementMask = ~0ull;
 						PassMeshProcessor->AddMeshBatch(Mesh, BatchElementMask, SceneInfo->Proxy);
 
@@ -393,14 +391,15 @@ void FPrimitiveSceneInfo::CacheMeshDrawCommands(FRHICommandListImmediate& RHICmd
 	FGraphicsMinimalPipelineStateId::InitializePersistentIds();
 					
 #if RHI_RAYTRACING
-	if (IsRayTracingEnabled())
+	if (IsRayTracingEnabled() && !(Scene->World->WorldType == EWorldType::EditorPreview || Scene->World->WorldType == EWorldType::GamePreview))
 	{
 		FCachedRayTracingMeshCommandContext CommandContext(Scene->CachedRayTracingMeshCommands);
-		FRayTracingMeshProcessor RayTracingMeshProcessor(&CommandContext, Scene, nullptr);
+		FMeshPassProcessorRenderState PassDrawRenderState(Scene->UniformBuffers.ViewUniformBuffer, Scene->UniformBuffers.OpaqueBasePassUniformBuffer);
+		FRayTracingMeshProcessor RayTracingMeshProcessor(&CommandContext, Scene, nullptr, PassDrawRenderState);
 
 		for (FPrimitiveSceneInfo* SceneInfo : SceneInfos)
 		{
-			if (SceneInfo->Proxy->IsRayTracingStaticRelevant() && SceneInfo->StaticMeshes.Num() > 0)
+			if (SceneInfo->RayTracingGeometries.Num() > 0 && SceneInfo->StaticMeshes.Num() > 0)
 			{
 				int32 MaxLOD = -1;
 				for (int32 MeshIndex = 0; MeshIndex < SceneInfo->StaticMeshes.Num(); MeshIndex++)
@@ -416,7 +415,6 @@ void FPrimitiveSceneInfo::CacheMeshDrawCommands(FRHICommandListImmediate& RHICmd
 				{
 					FStaticMeshBatch& Mesh = SceneInfo->StaticMeshes[MeshIndex];
 
-					check(!Mesh.bRequiresPerElementVisibility);
 					RayTracingMeshProcessor.AddMeshBatch(Mesh, ~0ull, SceneInfo->Proxy);
 
 					if (CommandContext.CommandIndex >= 0)
@@ -451,7 +449,7 @@ void FPrimitiveSceneInfo::RemoveCachedMeshDrawCommands()
 			StateBucketCount.Num--;
 			if (StateBucketCount.Num == 0)
 			{
-				check(Scene->CachedMeshDrawCommandStateBuckets[PassIndex].RemoveByElementId(CachedCommand.StateBucketId));
+				Scene->CachedMeshDrawCommandStateBuckets[PassIndex].RemoveByElementId(CachedCommand.StateBucketId);
 			}
 
 			FGraphicsMinimalPipelineStateId::RemovePersistentId(CachedPipelineId);
@@ -532,13 +530,6 @@ void FPrimitiveSceneInfo::AddStaticMeshes(FRHICommandListImmediate& RHICmdList, 
 				Scene->StaticMeshes[SceneArrayAllocation.Index] = &Mesh;
 				Mesh.Id = SceneArrayAllocation.Index;
 				MeshRelevance.Id = SceneArrayAllocation.Index;
-
-				if (Mesh.bRequiresPerElementVisibility)
-				{
-					// Use a separate index into StaticMeshBatchVisibility, since most meshes don't use it
-					Mesh.BatchVisibilityId = Scene->StaticMeshBatchVisibility.AddUninitialized().Index;
-					Scene->StaticMeshBatchVisibility[Mesh.BatchVisibilityId] = true;
-				}
 			}
 		}
 	}
@@ -852,7 +843,7 @@ void FPrimitiveSceneInfo::RemoveFromScene(bool bUpdateStaticDrawLists)
 	check(OctreeId.IsValidId());
 	check(Scene->PrimitiveOctree.GetElementById(OctreeId).PrimitiveSceneInfo == this);
 	Scene->PrimitiveOctree.RemoveElement(OctreeId);
-	OctreeId = FOctreeElementId();
+	OctreeId = FOctreeElementId2();
 
 	if (LightmapDataOffset != INDEX_NONE && UseGPUScene(GMaxRHIShaderPlatform, Scene->GetFeatureLevel()))
 	{

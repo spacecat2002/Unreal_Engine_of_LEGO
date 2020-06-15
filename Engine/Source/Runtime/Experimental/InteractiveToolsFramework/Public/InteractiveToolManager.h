@@ -26,6 +26,23 @@ enum class EToolSide
 
 
 /**
+ * UInteractiveToolManager can emit change events for the active tool in various ways.
+ * This allows different modes to control how tools activate/deactivate on undo/redo, which is necessary
+ * because some modes (eg Modeling Mode) do not support redo "into" a Tool, while others require it (like Paint Mode)
+ */
+UENUM()
+enum class EToolChangeTrackingMode
+{
+	/** Do not emit any Active Tool change events */
+	NoChangeTracking = 1,
+	/** When Activating a new Tool, emit a change that will cancel/deactivate that Tool on Undo, but not reactivate it on Redo */
+	UndoToExit = 2,
+	/** Full change tracking of active Tool. Note that on Activation when an existing Tool is auto-shutdown, two separate FChanges are emitted, wrapped in a single Transaction */
+	FullUndoRedo = 3
+};
+
+
+/**
  * UInteractiveToolManager allows users of the tools framework to create and operate Tool instances.
  * For each Tool, a (string,ToolBuilder) pair is registered with the ToolManager.
  * Tools can then be activated via the string identifier.
@@ -57,6 +74,13 @@ protected:
 	virtual void Shutdown();
 
 public:
+
+
+	/**
+	 * @return true if ToolManager is currently active, ie between Initialize() and Shutdown() 
+	 */
+	bool IsActive() const { return bIsActive; }
+
 
 	//
 	// Tool registration and Current Tool state
@@ -119,6 +143,12 @@ public:
 	 */
 	virtual UInteractiveToolBuilder* GetActiveToolBuilder(EToolSide Side);
 
+	/**
+	 * Get name of registered ToolBuilder that created active tool for given side, or empty string if no tool is active
+	 * @param Side which Side is being requested
+	 * @return name of tool, or empty string if no tool is active
+	 */
+	virtual FString GetActiveToolName(EToolSide Side);
 
 	/**
 	 * Check if an active Tool on the given Side can be Accepted in its current state
@@ -141,6 +171,11 @@ public:
 	 */
 	virtual void DeactivateTool(EToolSide Side, EToolShutdownType ShutdownType);
 
+
+	/**
+	 * Configure how tool changes emit change events. See EToolChangeTrackingMode for details.
+	 */
+	virtual void ConfigureChangeTrackingMode(EToolChangeTrackingMode ChangeMode);
 
 
 	//
@@ -228,15 +263,31 @@ protected:
 	/** Pointer to current InputRouter (Context owns this) */
 	UInputRouter* InputRouter;
 
+	/** This flag is set to true on Initialize() and false on Shutdown(). */
+	bool bIsActive = false;
+
 	/** Current set of named ToolBuilders */
 	UPROPERTY()
 	TMap<FString, UInteractiveToolBuilder*> ToolBuilders;
 
 	/** Currently-active Left ToolBuilder */
+	FString ActiveLeftBuilderName;
 	UInteractiveToolBuilder* ActiveLeftBuilder;
 	/** Currently-active Right ToolBuilder */
+	FString ActiveRightBuilderName;
 	UInteractiveToolBuilder* ActiveRightBuilder;
 
+	EToolChangeTrackingMode ActiveToolChangeTrackingMode;
+
+	FString ActiveLeftToolName;
+	FString ActiveRightToolName;
+
+
+	virtual bool ActivateToolInternal(EToolSide Side);
+	virtual void DeactivateToolInternal(EToolSide Side, EToolShutdownType ShutdownType);
+
+	friend class FBeginToolChange;
+	friend class FActivateToolChange;
 };
 
 
@@ -257,6 +308,31 @@ public:
 
 	virtual FString ToString() const override;
 };
+
+/**
+ * FActivateToolChange is used by UInteractiveToolManager to change the active tool.
+ * This Change has two modes, either activating or deactivating.
+ */
+class INTERACTIVETOOLSFRAMEWORK_API FActivateToolChange : public FToolCommandChange
+{
+public:
+	EToolSide Side;
+	FString ToolType;
+	bool bIsDeactivate = false;
+	EToolShutdownType ShutdownType;
+
+	FActivateToolChange(EToolSide SideIn, FString ToolTypeIn)
+		: Side(SideIn), ToolType(ToolTypeIn), bIsDeactivate(false) {}
+	FActivateToolChange(EToolSide SideIn, FString ToolTypeIn, EToolShutdownType ShutdownTypeIn)
+		: Side(SideIn), ToolType(ToolTypeIn), bIsDeactivate(true), ShutdownType(ShutdownTypeIn) {}
+
+	virtual void Apply(UObject* Object) override;
+	virtual void Revert(UObject* Object) override;
+	virtual bool HasExpired(UObject* Object) const override;
+	virtual FString ToString() const override;
+};
+
+
 
 
 

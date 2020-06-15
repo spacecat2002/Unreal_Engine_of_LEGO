@@ -9,6 +9,7 @@
 #include "MetalViewport.h"
 
 class FMetalContext;
+struct FMetalCommandBufferFence;
 
 /** The interface RHI command context. */
 class FMetalRHICommandContext : public IRHICommandContext
@@ -50,6 +51,8 @@ public:
 	
 	virtual void RHICopyTexture(FRHITexture* SourceTextureRHI, FRHITexture* DestTextureRHI, const FRHICopyTextureInfo& CopyInfo) final override;
 	
+	virtual void RHICopyBufferRegion(FRHIVertexBuffer* DstBufferRHI, uint64 DstOffset, FRHIVertexBuffer* SrcBufferRHI, uint64 SrcOffset, uint64 NumBytes) final override;
+
 	/**
 	 * Resolves from one texture to another.
 	 * @param SourceTexture - texture to resolve from, 0 is silenty ignored
@@ -163,9 +166,9 @@ public:
 
 	virtual void RHISetBlendFactor(const FLinearColor& BlendFactor) final override;
 
-	virtual void RHISetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, const FRHIDepthRenderTargetView* NewDepthStencilTarget) final override;
+	void SetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, const FRHIDepthRenderTargetView* NewDepthStencilTarget);
 	
-	virtual void RHISetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo) final override;
+	void SetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo);
 	
 	virtual void RHIDrawPrimitive(uint32 BaseVertexIndex, uint32 NumPrimitives, uint32 NumInstances) final override;
 	
@@ -223,7 +226,10 @@ public:
 	{
 		IRHICommandContext::RHITransitionResources(DepthStencilMode, DepthTexture);
 	}
-
+	virtual void RHITransitionResources(EResourceTransitionAccess TransitionType, EResourceTransitionPipeline TransitionPipeline, FRHITexture** InTextures, int32 NumTextures) final override
+	{
+		RHITransitionResources(TransitionType, InTextures, NumTextures);
+	}
 	/**
 	 * Compute queue will wait for the fence to be written before continuing.
 	 */
@@ -233,9 +239,7 @@ public:
 
 	virtual void RHIEndRenderPass() final override;
 	
-	virtual void RHIBeginComputePass(const TCHAR* InName) final override;
-	
-	virtual void RHIEndComputePass() final override;
+	virtual void RHINextSubpass() final override;
 
 protected:
 	static TGlobalResource<TBoundShaderStateHistory<10000>> BoundShaderStateHistory;

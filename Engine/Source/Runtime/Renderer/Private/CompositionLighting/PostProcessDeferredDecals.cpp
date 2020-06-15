@@ -53,190 +53,6 @@ struct FDecalDepthState
 	}
 };
 
-// @param RenderState 0:before BasePass, 1:before lighting, (later we could add "after lighting" and multiply)
-FRHIBlendState* GetDecalBlendState(const ERHIFeatureLevel::Type SMFeatureLevel, EDecalRenderStage InDecalRenderStage, EDecalBlendMode DecalBlendMode, bool bHasNormal)
-{
-	if (InDecalRenderStage == DRS_BeforeBasePass)
-	{
-		// before base pass (for DBuffer decals)
-		{
-			// As we set the opacity in the shader we don't need to set different frame buffer blend modes but we like to hint to the driver that we
-			// don't need to output there. We also could replace this with many SetRenderTarget calls but it might be slower (needs to be tested).
-
-			switch (DecalBlendMode)
-			{
-			case DBM_DBuffer_AlphaComposite:
-				return TStaticBlendState<
-					CW_RGBA, BO_Add, BF_One,  BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha,
-					CW_RGB, BO_Add, BF_Zero, BF_One, BO_Add, BF_Zero, BF_One,
-					CW_RGBA, BO_Add, BF_One,  BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha,
-					CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_One, BF_One // DBuffer mask
-				>::GetRHI();
-
-			case DBM_DBuffer_ColorNormalRoughness:
-				return TStaticBlendState<
-					CW_RGBA, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha,
-					CW_RGBA, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha,
-					CW_RGBA, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha,
-					CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_One, BF_One // DBuffer mask
-				>::GetRHI();
-
-			case DBM_DBuffer_Color:
-				// we can optimize using less MRT later
-				return TStaticBlendState<
-					CW_RGBA, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha,
-					CW_RGBA, BO_Add, BF_Zero, BF_One, BO_Add, BF_Zero, BF_One,
-					CW_RGBA, BO_Add, BF_Zero, BF_One, BO_Add, BF_Zero, BF_One,
-					CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_One, BF_One // DBuffer mask
-				>::GetRHI();
-
-			case DBM_DBuffer_ColorNormal:
-				// we can optimize using less MRT later
-				return TStaticBlendState<
-					CW_RGBA, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha,
-					CW_RGBA, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha,
-					CW_RGBA, BO_Add, BF_Zero, BF_One, BO_Add, BF_Zero, BF_One,
-					CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_One, BF_One // DBuffer mask
-				>::GetRHI();
-
-			case DBM_DBuffer_ColorRoughness:
-				// we can optimize using less MRT later
-				return TStaticBlendState<
-					CW_RGBA, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha,
-					CW_RGBA, BO_Add, BF_Zero, BF_One, BO_Add, BF_Zero, BF_One,
-					CW_RGBA, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha,
-					CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_One, BF_One // DBuffer mask
-				>::GetRHI();
-
-			case DBM_DBuffer_Normal:
-				// we can optimize using less MRT later
-				return TStaticBlendState<
-					CW_RGBA, BO_Add, BF_Zero, BF_One, BO_Add, BF_Zero, BF_One,
-					CW_RGBA, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha,
-					CW_RGBA, BO_Add, BF_Zero, BF_One, BO_Add, BF_Zero, BF_One,
-					CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_One, BF_One // DBuffer mask
-				>::GetRHI();
-
-			case DBM_DBuffer_NormalRoughness:
-				// we can optimize using less MRT later
-				return TStaticBlendState<
-					CW_RGBA, BO_Add, BF_Zero, BF_One, BO_Add, BF_Zero, BF_One,
-					CW_RGBA, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha,
-					CW_RGBA, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha,
-					CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_One, BF_One // DBuffer mask
-				>::GetRHI();
-
-			case DBM_DBuffer_Roughness:
-				// we can optimize using less MRT later
-				return TStaticBlendState<
-					CW_RGBA, BO_Add, BF_Zero, BF_One, BO_Add, BF_Zero, BF_One,
-					CW_RGBA, BO_Add, BF_Zero, BF_One, BO_Add, BF_Zero, BF_One,
-					CW_RGBA, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha,
-					CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_One, BF_One // DBuffer mask
-				>::GetRHI();
-
-			default:
-				// the decal type should not be rendered in this pass - internal error
-				check(0);
-				return nullptr;
-			}
-		}
-	}
-	else if (InDecalRenderStage == DRS_AfterBasePass)
-	{
-		ensure(DecalBlendMode == DBM_Volumetric_DistanceFunction);
-
-		return TStaticBlendState<>::GetRHI();
-	}
-	else if (InDecalRenderStage == DRS_AmbientOcclusion)
-	{
-		ensure(DecalBlendMode == DBM_AmbientOcclusion);
-
-		return TStaticBlendState<CW_RED, BO_Add, BF_DestColor, BF_Zero>::GetRHI();
-	}
-	else
-	{
-		// before lighting (for non DBuffer decals)
-
-		switch (DecalBlendMode)
-		{
-		case DBM_Translucent:
-			// @todo: Feature Level 10 does not support separate blends modes for each render target. This could result in the
-			// translucent and stain blend modes looking incorrect when running in this mode.
-			if (GSupportsSeparateRenderTargetBlendState)
-			{
-				if (bHasNormal)
-				{
-					return TStaticBlendState<
-						CW_RGB, BO_Add, BF_SourceAlpha, BF_One, BO_Add, BF_Zero, BF_One,	// Emissive
-						CW_RGB, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_One,	// Normal
-						CW_RGB, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_One,	// Metallic, Specular, Roughness
-						CW_RGB, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_One		// BaseColor
-					>::GetRHI();
-				}
-				else
-				{
-					return TStaticBlendState<
-						CW_RGB, BO_Add, BF_SourceAlpha, BF_One, BO_Add, BF_Zero, BF_One,	// Emissive
-						CW_RGB, BO_Add, BF_Zero, BF_One, BO_Add, BF_Zero, BF_One,	// Normal
-						CW_RGB, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_One,	// Metallic, Specular, Roughness
-						CW_RGB, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_One		// BaseColor
-					>::GetRHI();
-				}
-			}
-
-		case DBM_Stain:
-			if (GSupportsSeparateRenderTargetBlendState)
-			{
-				if (bHasNormal)
-				{
-					return TStaticBlendState<
-						CW_RGB, BO_Add, BF_SourceAlpha, BF_One, BO_Add, BF_Zero, BF_One,	// Emissive
-						CW_RGB, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_One,	// Normal
-						CW_RGB, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_One,	// Metallic, Specular, Roughness
-						CW_RGB, BO_Add, BF_DestColor, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_One		// BaseColor
-					>::GetRHI();
-				}
-				else
-				{
-					return TStaticBlendState<
-						CW_RGB, BO_Add, BF_SourceAlpha, BF_One, BO_Add, BF_Zero, BF_One,	// Emissive
-						CW_RGB, BO_Add, BF_Zero, BF_One, BO_Add, BF_Zero, BF_One,	// Normal
-						CW_RGB, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_One,	// Metallic, Specular, Roughness
-						CW_RGB, BO_Add, BF_DestColor, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_One		// BaseColor
-					>::GetRHI();
-				}
-			}
-
-		case DBM_Normal:
-			return TStaticBlendState< CW_RGB, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha >::GetRHI();
-
-
-		case DBM_Emissive:
-		case DBM_DBuffer_Emissive:
-			return TStaticBlendState< CW_RGB, BO_Add, BF_SourceAlpha, BF_One >::GetRHI();
-
-		case DBM_DBuffer_EmissiveAlphaComposite:
-			return TStaticBlendState< CW_RGB, BO_Add, BF_One, BF_One >::GetRHI();
-
-		case DBM_AlphaComposite:
-			if (GSupportsSeparateRenderTargetBlendState)
-			{
-				return TStaticBlendState<
-					CW_RGB, BO_Add, BF_One, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_One,	// Emissive
-					CW_RGB, BO_Add, BF_Zero, BF_One, BO_Add, BF_Zero, BF_One,				// Normal
-					CW_RGB, BO_Add, BF_One, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_One,	// Metallic, Specular, Roughness
-					CW_RGB, BO_Add, BF_One, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_One	// BaseColor
-				>::GetRHI();
-			}
-		default:
-			// the decal type should not be rendered in this pass - internal error
-			check(0);
-			return nullptr;
-		}
-	}
-}
-
 bool RenderPreStencil(FRenderingCompositePassContext& Context, const FMatrix& ComponentToWorldMatrix, const FMatrix& FrustumComponentToClip)
 {
 	const FViewInfo& View = Context.View;
@@ -326,7 +142,10 @@ static FDecalDepthState ComputeDecalDepthState(EDecalRenderStage LocalDecalStage
 		return Ret;
 	}
 
-	const bool bUseDecalMask = LocalDecalStage == DRS_BeforeLighting || LocalDecalStage == DRS_Emissive;
+	const bool bUseDecalMask = 
+		LocalDecalStage == DRS_BeforeLighting || 
+		LocalDecalStage == DRS_Emissive || 
+		LocalDecalStage == DRS_AmbientOcclusion;
 
 	if (bInsideDecal)
 	{
@@ -496,7 +315,7 @@ void FRCPassPostProcessDeferredDecals::Process(FRenderingCompositePassContext& C
 
 		// If we're rendering dbuffer decals but there are no decals in the scene, we avoid the 
 		// clears/decompresses and set the targets to NULL		
-		// The DBufferA-C will be replaced with dummy textures in FSceneTextureShaderParameters
+		// The DBufferA-C will be replaced with dummy textures in FSceneTexturesUniformParameters
 		if (bRenderDecals)
 		{
 			FScene& Scene = *(FScene*)ViewFamily.Scene;
@@ -509,7 +328,7 @@ void FRCPassPostProcessDeferredDecals::Process(FRenderingCompositePassContext& C
 		// If we need dbuffer targets, initialize them
 		if (bNeedsDBufferTargets)
 		{
-			uint32 BaseFlags = RHISupportsRenderTargetWriteMask(GMaxRHIShaderPlatform) ? TexCreate_NoFastClearFinalize : TexCreate_None;
+			uint32 BaseFlags = RHISupportsRenderTargetWriteMask(GMaxRHIShaderPlatform) ? TexCreate_NoFastClearFinalize | TexCreate_DisableDCC : TexCreate_None;
 
 			// DBuffer: Decal buffer
 			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(
@@ -717,7 +536,7 @@ void FRCPassPostProcessDeferredDecals::Process(FRenderingCompositePassContext& C
 						LastDecalBlendMode = DecalBlendMode;
 						LastDecalHasNormal = (int32)DecalData.bHasNormal;
 
-						GraphicsPSOInit.BlendState = GetDecalBlendState(SMFeatureLevel, CurrentStage, (EDecalBlendMode)LastDecalBlendMode, DecalData.bHasNormal);
+						GraphicsPSOInit.BlendState = FDecalRendering::GetDecalBlendState(SMFeatureLevel, CurrentStage, (EDecalBlendMode)LastDecalBlendMode, DecalData.bHasNormal);
 					}
 
 					// todo
@@ -780,7 +599,7 @@ void FRCPassPostProcessDeferredDecals::Process(FRenderingCompositePassContext& C
 			// This stops the targets from being resolved and decoded until the last view is rendered.
 			// This is done so as to not run eliminate fast clear on the views before the end.
 			bool bLastView = Context.View.Family->Views.Last() == &Context.View;
-			if ((Scene.Decals.Num() > 0) && bLastView && CurrentStage == DRS_Emissive)
+			if ((Scene.Decals.Num() > 0) && bLastView && CurrentStage == DRS_AmbientOcclusion)
 			{
 				// we don't modify stencil but if out input was having stencil for us (after base pass - we need to clear)
 				// Clear stencil to 0, which is the assumed default by other passes
@@ -848,7 +667,7 @@ void FRCPassPostProcessDeferredDecals::Process(FRenderingCompositePassContext& C
 	if (CurrentStage == DRS_BeforeBasePass && !bHasValidDBufferMask)
 	{
 		// Return the DBufferMask to the render target pool.
-		// FSceneTextureShaderParameters will fall back to setting a white dummy mask texture.
+		// FSceneTexturesUniformParameters will fall back to setting a white dummy mask texture.
 		// This allows us to ignore the DBufferMask on frames without decals, without having to explicitly clear the texture.
 		SceneContext.DBufferMask = nullptr;
 	}
@@ -1067,11 +886,6 @@ void FDecalRenderTargetManager::SetRenderTargetMode(FDecalRenderingCommon::ERend
 	RPInfo.DepthStencilRenderTarget.DepthStencilTarget = DepthTarget;
 	RPInfo.DepthStencilRenderTarget.Action = MakeDepthStencilTargetActions(DepthTargetActions, ERenderTargetActions::Load_Store);
 	RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil = DepthStencilAccess;
-
-	if (UseVirtualTexturing(FeatureLevel))
-	{
-		SceneContext.BindVirtualTextureFeedbackUAV(RPInfo);
-	}
 
 	if (TargetsToTransitionWritable[CurrentRenderTargetMode])
 	{

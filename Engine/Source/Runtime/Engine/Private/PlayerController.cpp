@@ -1504,9 +1504,8 @@ void APlayerController::BeginPlay()
 	//If we are faking touch events show the cursor
 	if (FSlateApplication::IsInitialized() && FSlateApplication::Get().IsFakingTouchEvents())
 	{
-		bShowMouseCursor = true;
+		SetShowMouseCursor(true);
 	}
-
 }
 
 void APlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -1654,13 +1653,15 @@ void APlayerController::ResetCameraMode()
 
 /// @cond DOXYGEN_WARNINGS
 
-void APlayerController::ClientSetCameraFade_Implementation(bool bEnableFading, FColor FadeColor, FVector2D FadeAlpha, float FadeTime, bool bFadeAudio)
+void APlayerController::ClientSetCameraFade_Implementation(bool bEnableFading, FColor FadeColor, FVector2D FadeAlpha, float FadeTime, bool bFadeAudio, bool bHoldWhenFinished)
 {
 	if (PlayerCameraManager != nullptr)
 	{
 		if (bEnableFading)
 		{
-			PlayerCameraManager->StartCameraFade(FadeAlpha.X, FadeAlpha.Y, FadeTime, FadeColor.ReinterpretAsLinear(), bFadeAudio);
+			// Allow fading from the current FadeAmount to allow for smooth transitions into new fades
+			const float FadeStart = FadeAlpha.X >= 0.f ? FadeAlpha.X : PlayerCameraManager->FadeAmount;
+			PlayerCameraManager->StartCameraFade(FadeStart, FadeAlpha.Y, FadeTime, FadeColor.ReinterpretAsLinear(), bFadeAudio, bHoldWhenFinished);
 		}
 		else
 		{
@@ -2460,6 +2461,19 @@ bool APlayerController::InputMotion(const FVector& Tilt, const FVector& Rotation
 bool APlayerController::ShouldShowMouseCursor() const
 {
 	return bShowMouseCursor;
+}
+
+void APlayerController::SetShowMouseCursor(bool bShow)
+{
+	if (bShowMouseCursor != bShow)
+	{
+		UE_LOG(LogViewport, Display, TEXT("Player bShowMouseCursor Changed, %s -> %s"),
+			bShowMouseCursor ? TEXT("True") : TEXT("False"),
+			bShow ? TEXT("True") : TEXT("False")
+		);
+
+		bShowMouseCursor = bShow;
+	}
 }
 
 EMouseCursor::Type APlayerController::GetMouseCursor() const
@@ -4351,7 +4365,7 @@ void APlayerController::ClientStopCameraShakesFromSource(class UCameraShakeSourc
 {
 	if (PlayerCameraManager != NULL)
 	{
-		PlayerCameraManager->StopAllInstancesOfCameraShakeFromSource(SourceComponent, bImmediately);
+		PlayerCameraManager->StopAllCameraShakesFromSource(SourceComponent, bImmediately);
 	}
 }
 
@@ -4715,13 +4729,12 @@ void APlayerController::TickActor( float DeltaSeconds, ELevelTick TickType, FAct
 		// Process PlayerTick with input.
 		if (!PlayerInput && (Player == nullptr || Cast<ULocalPlayer>( Player ) != nullptr))
 		{
-			QUICK_SCOPE_CYCLE_COUNTER(HVS_InitInputSystem); // HVS_BCF - Temp.  Just trying to track down where time is being spent.
 			InitInputSystem();
 		}
 
 		if (PlayerInput)
 		{
-			QUICK_SCOPE_CYCLE_COUNTER(HVS_PlayerTick); // HVS_BCF - Temp.  Just trying to track down where time is being spent.
+			QUICK_SCOPE_CYCLE_COUNTER(PlayerTick);
 			PlayerTick(DeltaSeconds);
 		}
 
@@ -4733,7 +4746,6 @@ void APlayerController::TickActor( float DeltaSeconds, ELevelTick TickType, FAct
 		// update viewtarget replicated info
 		if (PlayerCameraManager != nullptr)
 		{
-			QUICK_SCOPE_CYCLE_COUNTER(HVS_UpdateViewtargetReplicatedInfo); // HVS_BCF - Temp.  Just trying to track down where time is being spent.
 			APawn* TargetPawn = PlayerCameraManager->GetViewTargetPawn();
 			if ((TargetPawn != GetPawn()) && (TargetPawn != nullptr))
 			{
@@ -4759,7 +4771,7 @@ void APlayerController::TickActor( float DeltaSeconds, ELevelTick TickType, FAct
 
 	if (!IsPendingKill())
 	{
-		QUICK_SCOPE_CYCLE_COUNTER(HVS_Tick); // HVS_BCF - Temp.  Just trying to track down where time is being spent.
+		QUICK_SCOPE_CYCLE_COUNTER(Tick);
 		Tick(DeltaSeconds);	// perform any tick functions unique to an actor subclass
 	}
 
@@ -5366,7 +5378,7 @@ void FInputModeUIOnly::ApplyInputMode(FReply& SlateOperations, class UGameViewpo
 
 		GameViewportClient.SetMouseLockMode(MouseLockMode);
 		GameViewportClient.SetIgnoreInput(true);
-		GameViewportClient.SetCaptureMouseOnClick(EMouseCaptureMode::NoCapture);
+		GameViewportClient.SetMouseCaptureMode(EMouseCaptureMode::NoCapture);
 	}
 }
 
@@ -5384,7 +5396,7 @@ void FInputModeGameAndUI::ApplyInputMode(FReply& SlateOperations, class UGameVie
 		GameViewportClient.SetMouseLockMode(MouseLockMode);
 		GameViewportClient.SetIgnoreInput(false);
 		GameViewportClient.SetHideCursorDuringCapture(bHideCursorDuringCapture);
-		GameViewportClient.SetCaptureMouseOnClick(EMouseCaptureMode::CaptureDuringMouseDown);
+		GameViewportClient.SetMouseCaptureMode(EMouseCaptureMode::CaptureDuringMouseDown);
 	}
 }
 
@@ -5399,7 +5411,7 @@ void FInputModeGameOnly::ApplyInputMode(FReply& SlateOperations, class UGameView
 		SlateOperations.LockMouseToWidget(ViewportWidgetRef);
 		GameViewportClient.SetMouseLockMode(EMouseLockMode::LockOnCapture);
 		GameViewportClient.SetIgnoreInput(false);
-		GameViewportClient.SetCaptureMouseOnClick(bConsumeCaptureMouseDown ? EMouseCaptureMode::CapturePermanently : EMouseCaptureMode::CapturePermanently_IncludingInitialMouseDown);
+		GameViewportClient.SetMouseCaptureMode(bConsumeCaptureMouseDown ? EMouseCaptureMode::CapturePermanently : EMouseCaptureMode::CapturePermanently_IncludingInitialMouseDown);
 	}
 }
 

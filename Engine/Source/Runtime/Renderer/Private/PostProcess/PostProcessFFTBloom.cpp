@@ -23,7 +23,7 @@ public:
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
 		// @todo MetalMRT: Metal MRT can't cope with the threadgroup storage requirements for these shaders right now
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform);
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform) && IsPCPlatform(Parameters.Platform);
 	}
 
 	FFFTShader() = default;
@@ -185,7 +185,7 @@ bool IsFFTBloomPhysicalKernelReady(const FViewInfo& View)
 
 bool IsFFTBloomEnabled(const FViewInfo& View)
 {
-	const bool bOldMetalNoFFT = IsMetalPlatform(View.GetShaderPlatform()) && (RHIGetShaderLanguageVersion(View.GetShaderPlatform()) < 4);
+	const bool bOldMetalNoFFT = IsMetalPlatform(View.GetShaderPlatform()) && (RHIGetShaderLanguageVersion(View.GetShaderPlatform()) < 4) && IsPCPlatform(View.GetShaderPlatform());
 	const bool bUseFFTBloom = View.FinalPostProcessSettings.BloomMethod == EBloomMethod::BM_FFT && View.ViewState != nullptr;
 
 	static bool bWarnAboutOldMetalFFTOnce = false;
@@ -242,7 +242,6 @@ void ResizeAndCenterTexture(
 	ClampedImageCenterUV.Y = FMath::Clamp(SrcImageCenterUV.Y, 0.f, 1.f);
 
 	check(DstUAV);
-	UnbindRenderTargets(RHICmdList);
 	RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, DstUAV);
 
 	{
@@ -294,7 +293,6 @@ void CaptureKernelWeight(
 	FSceneRenderTargetItem& DstTargetItem = CenterWeightRT->GetRenderTargetItem();
 
 	check(DstTargetItem.UAV);
-	UnbindRenderTargets(RHICmdList);
 	RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, DstTargetItem.UAV);
 
 	{
@@ -348,7 +346,6 @@ void BlendLowRes(
 
 	// set destination
 	check(DstUAV);
-	UnbindRenderTargets(RHICmdList);
 	RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, DstUAV);
 
 	{
@@ -396,7 +393,6 @@ void CopyImageRect(
 
 	// set destination
 	check(DstUAV);
-	UnbindRenderTargets(RHICmdList);
 	RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, DstUAV);
 
 	{

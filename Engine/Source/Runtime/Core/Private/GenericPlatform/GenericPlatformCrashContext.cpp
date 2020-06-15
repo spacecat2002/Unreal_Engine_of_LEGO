@@ -69,7 +69,7 @@ const TCHAR* const FGenericCrashContext::EngineModeExDirty = TEXT("Dirty");
 const TCHAR* const FGenericCrashContext::EngineModeExVanilla = TEXT("Vanilla");
 
 bool FGenericCrashContext::bIsInitialized = false;
-bool FGenericCrashContext::bIsOutOfProcess = false;
+uint32 FGenericCrashContext::OutOfProcessCrashReporterPid = 0;
 int32 FGenericCrashContext::StaticCrashContextIndex = 0;
 
 const FGuid FGenericCrashContext::ExecutionGuid = FGuid::NewGuid();
@@ -81,6 +81,12 @@ namespace NCached
 	static TArray<FString> EnabledPluginsList;
 	static TMap<FString, FString> EngineData;
 	static TMap<FString, FString> GameData;
+
+	template <size_t CharCount>
+	void Set(TCHAR(&Dest)[CharCount], const TCHAR* pSrc)
+	{
+		FCString::Strncpy(Dest, pSrc, CharCount);
+	}
 }
 
 void FGenericCrashContext::Initialize()
@@ -91,38 +97,38 @@ void FGenericCrashContext::Initialize()
 	NCached::Session.bIsSourceDistribution = FEngineBuildSettings::IsSourceDistribution();
 	NCached::Session.ProcessId = FPlatformProcess::GetCurrentProcessId();
 
-	FCString::Strcpy(NCached::Session.GameName, *FString::Printf( TEXT("UE4-%s"), FApp::GetProjectName() ));
-	FCString::Strcpy(NCached::Session.GameSessionID, TEXT("")); // Updated by callback
-	FCString::Strcpy(NCached::Session.GameStateName, TEXT("")); // Updated by callback
-	FCString::Strcpy(NCached::Session.UserActivityHint, TEXT("")); // Updated by callback
-	FCString::Strcpy(NCached::Session.BuildConfigurationName, LexToString(FApp::GetBuildConfiguration()));
-	FCString::Strcpy(NCached::Session.ExecutableName, FPlatformProcess::ExecutableName());
-	FCString::Strcpy(NCached::Session.BaseDir, FPlatformProcess::BaseDir());
-	FCString::Strcpy(NCached::Session.RootDir, FPlatformMisc::RootDir());
-	FCString::Strcpy(NCached::Session.EpicAccountId, *FPlatformMisc::GetEpicAccountId());
-	FCString::Strcpy(NCached::Session.LoginIdStr, *FPlatformMisc::GetLoginId());
+	NCached::Set(NCached::Session.GameName, *FString::Printf(TEXT("UE4-%s"), FApp::GetProjectName()));
+	NCached::Set(NCached::Session.GameSessionID, TEXT("")); // Updated by callback
+	NCached::Set(NCached::Session.GameStateName, TEXT("")); // Updated by callback
+	NCached::Set(NCached::Session.UserActivityHint, TEXT("")); // Updated by callback
+	NCached::Set(NCached::Session.BuildConfigurationName, LexToString(FApp::GetBuildConfiguration()));
+	NCached::Set(NCached::Session.ExecutableName, FPlatformProcess::ExecutableName());
+	NCached::Set(NCached::Session.BaseDir, FPlatformProcess::BaseDir());
+	NCached::Set(NCached::Session.RootDir, FPlatformMisc::RootDir());
+	NCached::Set(NCached::Session.EpicAccountId, *FPlatformMisc::GetEpicAccountId());
+	NCached::Set(NCached::Session.LoginIdStr, *FPlatformMisc::GetLoginId());
 
 	FString OsVersion, OsSubVersion;
 	FPlatformMisc::GetOSVersions(OsVersion, OsSubVersion);
-	FCString::Strcpy(NCached::Session.OsVersion, *OsVersion);
-	FCString::Strcpy(NCached::Session.OsSubVersion, *OsSubVersion);
+	NCached::Set(NCached::Session.OsVersion, *OsVersion);
+	NCached::Set(NCached::Session.OsSubVersion, *OsSubVersion);
 
 	NCached::Session.NumberOfCores = FPlatformMisc::NumberOfCores();
 	NCached::Session.NumberOfCoresIncludingHyperthreads = FPlatformMisc::NumberOfCoresIncludingHyperthreads();
 
-	FCString::Strcpy(NCached::Session.CPUVendor, *FPlatformMisc::GetCPUVendor());
-	FCString::Strcpy(NCached::Session.CPUBrand, *FPlatformMisc::GetCPUBrand());
-	FCString::Strcpy(NCached::Session.PrimaryGPUBrand, *FPlatformMisc::GetPrimaryGPUBrand());
-	FCString::Strcpy(NCached::Session.UserName, FPlatformProcess::UserName());
-	FCString::Strcpy(NCached::Session.DefaultLocale, *FPlatformMisc::GetDefaultLocale());
+	NCached::Set(NCached::Session.CPUVendor, *FPlatformMisc::GetCPUVendor());
+	NCached::Set(NCached::Session.CPUBrand, *FPlatformMisc::GetCPUBrand());
+	NCached::Set(NCached::Session.PrimaryGPUBrand, *FPlatformMisc::GetPrimaryGPUBrand());
+	NCached::Set(NCached::Session.UserName, FPlatformProcess::UserName());
+	NCached::Set(NCached::Session.DefaultLocale, *FPlatformMisc::GetDefaultLocale());
 
 	// Information that cannot be gathered if command line is not initialized (e.g. crash during static init)
 	if (FCommandLine::IsInitialized())
 	{
 		NCached::Session.bIsUE4Release = FApp::IsEngineInstalled();
-		FCString::Strcpy(NCached::Session.CommandLine, (FCommandLine::IsInitialized() ? FCommandLine::GetOriginalForLogging() : TEXT("")));
-		FCString::Strcpy(NCached::Session.EngineMode, FGenericPlatformMisc::GetEngineMode());
-		FCString::Strcpy(NCached::Session.EngineModeEx, FGenericCrashContext::EngineModeExUnknown); // Updated from callback
+		NCached::Set(NCached::Session.CommandLine, (FCommandLine::IsInitialized() ? FCommandLine::GetOriginalForLogging() : TEXT("")));
+		NCached::Set(NCached::Session.EngineMode, FGenericPlatformMisc::GetEngineMode());
+		NCached::Set(NCached::Session.EngineModeEx, FGenericCrashContext::EngineModeExUnknown); // Updated from callback
 
 		// Use -epicapp value from the commandline to start. This will also be set by the game
 		FParse::Value(FCommandLine::Get(), TEXT("EPICAPP="), NCached::Session.DeploymentName, CR_MAX_GENERIC_FIELD_CHARS, true);
@@ -146,7 +152,7 @@ void FGenericCrashContext::Initialize()
 	// Create a unique base guid for bug report ids
 	const FGuid Guid = FGuid::NewGuid();
 	const FString IniPlatformName(FPlatformProperties::IniPlatformName());
-	FCString::Strcpy(NCached::Session.CrashGUIDRoot, *FString::Printf(TEXT("%s%s-%s"), CrashGUIDRootPrefix, *IniPlatformName, *Guid.ToString(EGuidFormats::Digits)));
+	NCached::Set(NCached::Session.CrashGUIDRoot, *FString::Printf(TEXT("%s%s-%s"), CrashGUIDRootPrefix, *IniPlatformName, *Guid.ToString(EGuidFormats::Digits)));
 
 	if (GIsRunning)
 	{
@@ -181,17 +187,17 @@ void FGenericCrashContext::Initialize()
 
 	FCoreDelegates::UserActivityStringChanged.AddLambda([](const FString& InUserActivity)
 	{
-		FCString::Strcpy(NCached::Session.UserActivityHint, *InUserActivity);
+		NCached::Set(NCached::Session.UserActivityHint, *InUserActivity);
 	});
 
 	FCoreDelegates::GameSessionIDChanged.AddLambda([](const FString& InGameSessionID)
 	{
-		FCString::Strcpy(NCached::Session.GameSessionID, *InGameSessionID);
+		NCached::Set(NCached::Session.GameSessionID, *InGameSessionID);
 	});
 
 	FCoreDelegates::GameStateClassChanged.AddLambda([](const FString& InGameStateName)
 	{
-		FCString::Strcpy(NCached::Session.GameStateName, *InGameStateName);
+		NCached::Set(NCached::Session.GameStateName, *InGameStateName);
 	});
 
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
@@ -199,11 +205,11 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	{
 		if (InParams.bSetCrashReportClientMessageText)
 		{
-			FCString::Strcpy(NCached::Session.CrashReportClientRichText, *InParams.CrashReportClientMessageText);
+			NCached::Set(NCached::Session.CrashReportClientRichText, *InParams.CrashReportClientMessageText);
 		}
 		if (InParams.bSetGameNameSuffix)
 		{
-			FCString::Strcpy(NCached::Session.GameName, *(FString(TEXT("UE4-")) + FApp::GetProjectName() + InParams.GameNameSuffix));
+			NCached::Set(NCached::Session.GameName, *(FString(TEXT("UE4-")) + FApp::GetProjectName() + InParams.GameNameSuffix));
 		}
 		if (InParams.SendUnattendedBugReports.IsSet())
 		{
@@ -220,21 +226,23 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	FCoreDelegates::OnPostEngineInit.AddLambda([] 
 	{
 		// IsEditor global have been properly initialized here.
-		FCString::Strcpy(NCached::Session.EngineMode, FGenericPlatformMisc::GetEngineMode());
+		NCached::Set(NCached::Session.EngineMode, FGenericPlatformMisc::GetEngineMode());
 	});
 
 	FCoreDelegates::IsVanillaProductChanged.AddLambda([](bool bIsVanilla)
 	{
-		FCString::Strcpy(NCached::Session.EngineModeEx, bIsVanilla ? FGenericCrashContext::EngineModeExVanilla : FGenericCrashContext::EngineModeExDirty);
+		NCached::Set(NCached::Session.EngineModeEx, bIsVanilla ? FGenericCrashContext::EngineModeExVanilla : FGenericCrashContext::EngineModeExDirty);
 	});
 
 	FCoreDelegates::ConfigReadyForUse.AddStatic(FGenericCrashContext::InitializeFromConfig);
 
-	FCString::Strcpy(NCached::UserSettings.LogFilePath, *FPlatformOutputDevices::GetAbsoluteLogFilename());
+	NCached::Set(NCached::UserSettings.LogFilePath, *FPlatformOutputDevices::GetAbsoluteLogFilename());
 
 	NCached::UserSettings.bNoDialog = FApp::IsUnattended() || IsRunningDedicatedServer();
 
 	SerializeTempCrashContextToFile();
+
+	CleanupPlatformSpecificFiles();
 
 	bIsInitialized = true;
 #endif	// !NOINITCRASHREPORTER
@@ -299,16 +307,19 @@ void FGenericCrashContext::CopySharedCrashContext(FSharedCrashContext& Dst)
 	//Copy the session
 	FMemory::Memcpy(Dst.SessionContext, NCached::Session);
 	FMemory::Memcpy(Dst.UserSettings, NCached::UserSettings);
+	FMemory::Memset(Dst.DynamicData, 0);
 
 	TCHAR* DynamicDataStart = &Dst.DynamicData[0];
 	TCHAR* DynamicDataPtr = DynamicDataStart;
+
+	#define CR_DYNAMIC_BUFFER_REMAIN uint32((CR_MAX_DYNAMIC_BUFFER_CHARS) - (DynamicDataPtr-DynamicDataStart))
 
 	Dst.EnabledPluginsOffset = (uint32)(DynamicDataPtr - DynamicDataStart);
 	Dst.EnabledPluginsNum = NCached::EnabledPluginsList.Num();
 	for (const FString& Plugin : NCached::EnabledPluginsList)
 	{
-		FCString::Strcat(DynamicDataPtr, Plugin.Len(), *Plugin);
-		FCString::Strcat(DynamicDataPtr, 1, CR_PAIR_DELIM);
+		FCString::Strncat(DynamicDataPtr, *Plugin, CR_DYNAMIC_BUFFER_REMAIN);
+		FCString::Strncat(DynamicDataPtr, CR_PAIR_DELIM, CR_DYNAMIC_BUFFER_REMAIN);
 	}
 	DynamicDataPtr += FCString::Strlen(DynamicDataPtr) + 1;
 
@@ -316,10 +327,10 @@ void FGenericCrashContext::CopySharedCrashContext(FSharedCrashContext& Dst)
 	Dst.EngineDataNum = NCached::EngineData.Num();
 	for (const TPair<FString, FString>& Pair : NCached::EngineData)
 	{
-		FCString::Strcat(DynamicDataPtr, Pair.Key.Len(), *Pair.Key);
-		FCString::Strcat(DynamicDataPtr, 1, CR_PAIR_EQ);
-		FCString::Strcat(DynamicDataPtr, Pair.Value.Len(), *Pair.Value);
-		FCString::Strcat(DynamicDataPtr, 1, CR_PAIR_DELIM);
+		FCString::Strncat(DynamicDataPtr, *Pair.Key, CR_DYNAMIC_BUFFER_REMAIN);
+		FCString::Strncat(DynamicDataPtr, CR_PAIR_EQ, CR_DYNAMIC_BUFFER_REMAIN);
+		FCString::Strncat(DynamicDataPtr, *Pair.Value, CR_DYNAMIC_BUFFER_REMAIN);
+		FCString::Strncat(DynamicDataPtr, CR_PAIR_DELIM, CR_DYNAMIC_BUFFER_REMAIN);
 	}
 	DynamicDataPtr += FCString::Strlen(DynamicDataPtr) + 1;
 
@@ -327,12 +338,14 @@ void FGenericCrashContext::CopySharedCrashContext(FSharedCrashContext& Dst)
 	Dst.GameDataNum = NCached::GameData.Num();
 	for (const TPair<FString, FString>& Pair : NCached::GameData)
 	{
-		FCString::Strcat(DynamicDataPtr, Pair.Key.Len(), *Pair.Key);
-		FCString::Strcat(DynamicDataPtr, 1, CR_PAIR_EQ);
-		FCString::Strcat(DynamicDataPtr, Pair.Value.Len(), *Pair.Value);
-		FCString::Strcat(DynamicDataPtr, 1, CR_PAIR_DELIM);
+		FCString::Strncat(DynamicDataPtr, *Pair.Key, CR_DYNAMIC_BUFFER_REMAIN);
+		FCString::Strncat(DynamicDataPtr, CR_PAIR_EQ, CR_DYNAMIC_BUFFER_REMAIN);
+		FCString::Strncat(DynamicDataPtr, *Pair.Value, CR_DYNAMIC_BUFFER_REMAIN);
+		FCString::Strncat(DynamicDataPtr, CR_PAIR_DELIM, CR_DYNAMIC_BUFFER_REMAIN);
 	}
 	DynamicDataPtr += FCString::Strlen(DynamicDataPtr) + 1;
+
+	#undef CR_DYNAMIC_BUFFER_REMAIN
 }
 
 void FGenericCrashContext::SetMemoryStats(const FPlatformMemoryStats& InMemoryStats)
@@ -391,7 +404,7 @@ void FGenericCrashContext::UpdateLocalizedStrings()
 	FText CrashReportClientRichText;
 	if (GConfig->GetText(TEXT("CrashContextProperties"), TEXT("CrashReportClientRichText"), CrashReportClientRichText, GEngineIni))
 	{
-		FCString::Strcpy(NCached::Session.CrashReportClientRichText, *CrashReportClientRichText.ToString());
+		NCached::Set(NCached::Session.CrashReportClientRichText, *CrashReportClientRichText.ToString());
 	}
 #endif
 }
@@ -490,6 +503,9 @@ void FGenericCrashContext::SerializeSessionContext(FString& Buffer)
 	AddCrashPropertyInternal(Buffer, TEXT("AppDefaultLocale"), NCached::Session.DefaultLocale);
 	AddCrashPropertyInternal(Buffer, TEXT("BuildVersion"), FApp::GetBuildVersion());
 	AddCrashPropertyInternal(Buffer, TEXT("IsUE4Release"), NCached::Session.bIsUE4Release);
+
+	// Need to set this at the time of the crash to check if requesting exit had been called
+	NCached::Session.bIsExitRequested = IsEngineExitRequested();
 	AddCrashPropertyInternal(Buffer, TEXT("IsRequestingExit"), NCached::Session.bIsExitRequested);
 
 	// Remove periods from user names to match AutoReporter user names
@@ -654,7 +670,7 @@ void FGenericCrashContext::SetNumMinidumpFramesToIgnore(int InNumMinidumpFramesT
 
 void FGenericCrashContext::SetDeploymentName(const FString& EpicApp)
 {
-	FCString::Strcpy(NCached::Session.DeploymentName, *EpicApp);
+	NCached::Set(NCached::Session.DeploymentName, *EpicApp);
 }
 
 void FGenericCrashContext::SetCrashTrigger(ECrashTrigger Type)
@@ -877,7 +893,8 @@ const TCHAR* FGenericCrashContext::GetCrashConfigFilePath()
 	if (FCString::Strlen(NCached::Session.CrashConfigFilePath) == 0)
 	{
 		FString CrashConfigFilePath = FPaths::Combine(GetCrashConfigFolder(), NCached::Session.CrashGUIDRoot, FGenericCrashContext::CrashConfigFileNameW);
-		FCString::Strcpy(NCached::Session.CrashConfigFilePath, *CrashConfigFilePath);
+		CrashConfigFilePath = IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*CrashConfigFilePath);
+		NCached::Set(NCached::Session.CrashConfigFilePath, *CrashConfigFilePath);
 	}
 	return NCached::Session.CrashConfigFilePath;
 }

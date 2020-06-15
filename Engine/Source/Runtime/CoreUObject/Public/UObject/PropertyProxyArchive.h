@@ -21,7 +21,7 @@ class FPropertyProxyArchive : public FArchiveProxy
 public:
 
 	/** List of fields that could not be resolved at serialize time possibly due to their classes not being fully loaded yet */
-	TArray< TPair< TFieldPath<FField>, int32> > UnresolvedProperties;
+	UStruct::FUnresolvedScriptPropertiesArray UnresolvedProperties;
 	/** Current bytecode offset */
 	int32& BytecodeIndex;
 	/** Script container object */
@@ -32,10 +32,11 @@ public:
 		, BytecodeIndex(InBytecodeIndex)
 		, Container(InContainer)
 	{
+		ArIsFilterEditorOnly = InnerArchive.ArIsFilterEditorOnly;
 	}
 	virtual FArchive& operator<<(FField*& Value) override
 	{
-		if (!IsPersistent())
+		if (!IsPersistent() || IsObjectReferenceCollector())
 		{
 			// For reference collectors (like FArchiveReplaceFieldReferences): fully serialize the entire field to find all of its UObject references
 			InnerArchive << Value;
@@ -47,7 +48,7 @@ public:
 		if (IsLoading())
 		{
 			Value = PropertyPath.Get(Container);
-			if (!Value && !PropertyPath.IsEmpty())
+			if (!Value && !PropertyPath.IsPathToFieldEmpty())
 			{
 				// Store the field path for deferred resolving
 				UnresolvedProperties.Add(TPair<TFieldPath<FField>, int32>(PropertyPath, BytecodeIndex));

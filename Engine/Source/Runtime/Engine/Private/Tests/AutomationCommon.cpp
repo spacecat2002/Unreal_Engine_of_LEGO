@@ -22,11 +22,18 @@
 #include "StereoRendering.h"
 #include "Misc/PackageName.h"
 
-#if (WITH_DEV_AUTOMATION_TESTS || WITH_PERF_AUTOMATION_TESTS)
+#if WITH_AUTOMATION_TESTS
 
 DEFINE_LOG_CATEGORY_STATIC(LogEngineAutomationLatentCommand, Log, All);
 DEFINE_LOG_CATEGORY(LogEditorAutomationTests);
 DEFINE_LOG_CATEGORY(LogEngineAutomationTests);
+
+static TAutoConsoleVariable<int32> CVarAutomationAllowFrameTraceCapture(
+	TEXT("AutomationAllowFrameTraceCapture"),
+	1,
+	TEXT("Allow automation to capture frame traces."),
+	ECVF_Default
+	);
 
 //declare static variable
 FOnEditorAutomationMapLoad AutomationCommon::OnEditorAutomationMapLoad;
@@ -79,25 +86,29 @@ namespace AutomationCommon
 		return HardwareDetailsString;
 	}
 
-#if (WITH_DEV_AUTOMATION_TESTS || WITH_PERF_AUTOMATION_TESTS)
+#if WITH_AUTOMATION_TESTS
 
 	/** Gets a path used for automation testing (PNG sent to the AutomationTest folder) */
-	void GetScreenshotPath(const FString& TestName, FString& OutScreenshotName)
+	FString GetScreenshotName(const FString& TestName)
 	{
-		FString PathName = FPaths::AutomationDir() + TestName / FPlatformProperties::IniPlatformName();
+		FString PathName = TestName / FPlatformProperties::IniPlatformName();
 		PathName = PathName + TEXT("/") + GetRenderDetailsString();
 
-		FPaths::MakePathRelativeTo(PathName, *FPaths::ProjectDir());
-
-		OutScreenshotName = FString::Printf(TEXT("%s/%s.png"), *PathName, *FPlatformMisc::GetDeviceId());
+		return FString::Printf(TEXT("%s/%s.png"), *PathName, *FPlatformMisc::GetDeviceId());
 	}
 
-	FAutomationScreenshotData BuildScreenshotData(const FString& MapOrContext, const FString& TestName, int32 Width, int32 Height)
+	FString GetLocalPathForScreenshot(const FString& InScreenshotName)
+	{
+		return FPaths::AutomationDir() + InScreenshotName;
+	}
+	
+	FAutomationScreenshotData BuildScreenshotData(const FString& MapOrContext, const FString& TestName, const FString& ScreenShotName, int32 Width, int32 Height)
 	{
 		FAutomationScreenshotData Data;
 
-		Data.Name = FPaths::MakeValidFileName(TestName, TEXT('_'));
+		Data.ScreenShotName = FPaths::MakeValidFileName(ScreenShotName, TEXT('_'));
 		Data.Context = MapOrContext;
+		Data.TestName = TestName;
 		Data.Id = FGuid::NewGuid();
 		Data.Commit = FEngineVersion::Current().HasChangelist() ? FString::FromInt(FEngineVersion::Current().GetChangelist()) : FString(TEXT(""));
 
@@ -130,15 +141,52 @@ namespace AutomationCommon
 		// TBD - 
 		// Device's native resolution (we want to use a hardware dump of the frontbuffer at the native resolution so we compare what we actually output rather than what we think we rendered)
 
-		const FString MapAndTest = MapOrContext + TEXT("/") + Data.Name;
-		AutomationCommon::GetScreenshotPath(MapAndTest, Data.Path);
+		const FString MapAndTest = MapOrContext + TEXT("/") + Data.ScreenShotName;
+		Data.ScreenshotName = GetScreenshotName(MapAndTest);
 
 		return Data;
+	}
+
+	TArray<uint8> CaptureFrameTrace(const FString& MapOrContext, const FString& TestName)
+	{
+		TArray<uint8> FrameTrace;
+
+		if (CVarAutomationAllowFrameTraceCapture.GetValueOnGameThread() != 0 && FAutomationTestFramework::Get().OnCaptureFrameTrace.IsBound())
+		{
+			const FString MapAndTest = MapOrContext / FPaths::MakeValidFileName(TestName, TEXT('_'));
+			FString ScreenshotName = GetScreenshotName(MapAndTest);
+			FString TempCaptureFilePath = FPaths::ChangeExtension(FPaths::ConvertRelativePathToFull(FPaths::AutomationDir() / TEXT("Incoming/") / ScreenshotName), TEXT(".rdc"));
+
+			UE_LOG(LogEngineAutomationTests, Log, TEXT("Taking Frame Trace: %s"), *TempCaptureFilePath);
+
+			FAutomationTestFramework::Get().OnCaptureFrameTrace.Execute(TempCaptureFilePath, GEngine->GameViewport->Viewport);
+			FlushRenderingCommands();
+
+			IPlatformFile& PlatformFileSystem = IPlatformFile::GetPlatformPhysical();
+			if (PlatformFileSystem.FileExists(*TempCaptureFilePath))
+			{
+				{
+					TUniquePtr<IFileHandle> FileHandle(PlatformFileSystem.OpenRead(*TempCaptureFilePath));
+
+					int64 FileSize = FileHandle->Size();
+					FrameTrace.SetNumUninitialized(FileSize);
+					FileHandle->Read(FrameTrace.GetData(), FileSize);
+				}
+
+				PlatformFileSystem.DeleteFile(*TempCaptureFilePath);
+			}
+			else
+			{
+				UE_LOG(LogEngineAutomationTests, Warning, TEXT("Failed taking frame trace: %s"), *TempCaptureFilePath);
+			}
+		}
+
+		return FrameTrace;
 	}
 #endif
 
 	/** These save a PNG and get sent over the network */
-	static void SaveWindowAsScreenshot(TSharedRef<SWindow> Window, const FString& FileName)
+	static void SaveWindowAsScreenshot(TSharedRef<SWindow> Window, const FString& ScreenshotName)
 	{
 		TSharedRef<SWidget> WindowRef = Window;
 
@@ -149,7 +197,7 @@ namespace AutomationCommon
 			FAutomationScreenshotData Data;
 			Data.Width = OutImageSize.X;
 			Data.Height = OutImageSize.Y;
-			Data.Path = FileName;
+			Data.ScreenshotName = ScreenshotName;
 			FAutomationTestFramework::Get().OnScreenshotCaptured().ExecuteIfBound(OutImageData, Data);
 		}
 	}

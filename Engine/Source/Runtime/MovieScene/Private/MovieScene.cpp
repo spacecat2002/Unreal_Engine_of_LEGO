@@ -52,6 +52,8 @@ UMovieScene::UMovieScene(const FObjectInitializer& ObjectInitializer)
 	bForceFixedFrameIntervalPlayback_DEPRECATED = false;
 	FixedFrameInterval_DEPRECATED = 0.0f;
 
+	NodeGroupCollection = CreateEditorOnlyDefaultSubobject<UMovieSceneNodeGroupCollection>("NodeGroupCollection");
+
 	InTime_DEPRECATED    =  FLT_MAX;
 	OutTime_DEPRECATED   = -FLT_MAX;
 	StartTime_DEPRECATED =  FLT_MAX;
@@ -75,20 +77,6 @@ void UMovieScene::Serialize( FArchive& Ar )
 {
 	Ar.UsingCustomVersion(FMovieSceneEvaluationCustomVersion::GUID);
 	Ar.UsingCustomVersion(FSequencerObjectVersion::GUID);
-
-#if WITH_EDITOR
-
-	// Perform optimizations for cooking
-	if (Ar.IsCooking())
-	{
-		// @todo: Optimize master tracks?
-
-		// Optimize object bindings
-		OptimizeObjectArray(Spawnables);
-		OptimizeObjectArray(Possessables);
-	}
-
-#endif // WITH_EDITOR
 
 	Super::Serialize(Ar);
 
@@ -142,41 +130,6 @@ void UMovieScene::Serialize( FArchive& Ar )
 }
 
 #if WITH_EDITOR
-
-template<typename T>
-void UMovieScene::OptimizeObjectArray(TArray<T>& ObjectArray)
-{
-	for (int32 ObjectIndex = ObjectArray.Num() - 1; ObjectIndex >= 0; --ObjectIndex)
-	{
-		FGuid ObjectGuid = ObjectArray[ObjectIndex].GetGuid();
-
-		// Find the binding relating to this object, and optimize its tracks
-		// @todo: ObjectBindings mapped by ID to avoid linear search
-		for (int32 BindingIndex = 0; BindingIndex < ObjectBindings.Num(); ++BindingIndex)
-		{
-			FMovieSceneBinding& Binding = ObjectBindings[BindingIndex];
-			if (Binding.GetObjectGuid() != ObjectGuid)
-			{
-				continue;
-			}
-			
-			bool bShouldRemoveObject = false;
-
-			// Optimize any tracks
-			Binding.PerformCookOptimization(bShouldRemoveObject);
-
-			// Remove the object if it's completely redundant
-			if (bShouldRemoveObject)
-			{
-				ObjectBindings.RemoveAtSwap(BindingIndex, 1, false);
-				ObjectArray.RemoveAtSwap(ObjectIndex, 1, false);
-			}
-
-			// Process next object
-			break;
-		}
-	}
-}
 
 // @todo sequencer: Some of these methods should only be used by tools, and should probably move out of MovieScene!
 FGuid UMovieScene::AddSpawnable( const FString& Name, UObject& ObjectTemplate )
@@ -581,6 +534,133 @@ void FMovieSceneSectionGroup::Clean()
 	Sections.RemoveAll([](TWeakObjectPtr<UMovieSceneSection>& Section) { return !(Section.IsValid()); });
 }
 
+void UMovieSceneNodeGroup::AddNode(const FString& Path)
+{
+	Nodes.AddUnique(Path);
+	OnNodeGroupChangedEvent.Broadcast();
+}
+
+void UMovieSceneNodeGroup::RemoveNode(const FString& Path)
+{
+	Nodes.Remove(Path);
+	OnNodeGroupChangedEvent.Broadcast();
+}
+
+bool UMovieSceneNodeGroup::ContainsNode(const FString& Path) const
+{
+	return Nodes.Contains(Path);
+}
+
+void UMovieSceneNodeGroup::UpdateNodePath(const FString& OldPath, const FString& NewPath)
+{
+	if (!OldPath.Equals(NewPath))
+	{
+		// If the node is in this group, replace it with it's new path
+		if (Nodes.Remove(OldPath))
+		{
+			Nodes.Add(NewPath);
+		}
+
+		// Find any nodes with a path that is a child of the changed node, and rename their paths as well
+		FString PathPrefix = OldPath + '.';
+
+		TArray<FString> PathsToRename;
+		for (const FString& NodePath : Nodes)
+		{
+			if (NodePath.StartsWith(PathPrefix))
+			{
+				PathsToRename.Add(NodePath);
+			}
+		}
+
+		for (const FString& NodePath : PathsToRename)
+		{
+			FString NewNodePath = NodePath;
+			if (NewNodePath.RemoveFromStart(PathPrefix))
+			{
+				NewNodePath = NewPath + '.' + NewNodePath;
+				Nodes.Remove(NodePath);
+				Nodes.Add(NewNodePath);
+			}
+		}
+
+	}
+}
+
+void UMovieSceneNodeGroup::SetName(const FName& InName)
+{
+	Name = InName;
+	OnNodeGroupChangedEvent.Broadcast();
+}
+
+void UMovieSceneNodeGroup::SetEnableFilter(bool bInEnableFilter)
+{
+	if (bEnableFilter != bInEnableFilter)
+	{
+		bEnableFilter = bInEnableFilter;
+		OnNodeGroupChangedEvent.Broadcast();
+	}
+}
+
+void UMovieSceneNodeGroupCollection::PostLoad()
+{
+	bAnyActiveFilter = false;
+	for (UMovieSceneNodeGroup* NodeGroup : NodeGroups)
+	{
+		NodeGroup->OnNodeGroupChanged().AddUObject(this, &UMovieSceneNodeGroupCollection::OnNodeGroupChanged);
+		
+		if (NodeGroup->GetEnableFilter())
+		{
+			bAnyActiveFilter = true;
+		}
+	}
+	
+	Super::PostLoad();
+}
+
+void UMovieSceneNodeGroupCollection::AddNodeGroup(UMovieSceneNodeGroup* NodeGroup)
+{
+	if (!NodeGroups.Contains(NodeGroup))
+	{
+		NodeGroups.Add(NodeGroup);
+		NodeGroup->OnNodeGroupChanged().AddUObject(this, &UMovieSceneNodeGroupCollection::OnNodeGroupChanged);
+		
+		OnNodeGroupCollectionChangedEvent.Broadcast();
+	}
+}
+
+void UMovieSceneNodeGroupCollection::RemoveNodeGroup(UMovieSceneNodeGroup* NodeGroup)
+{
+	NodeGroup->OnNodeGroupChanged().RemoveAll(this);
+
+	if (NodeGroups.RemoveSingle(NodeGroup))
+	{
+		OnNodeGroupCollectionChangedEvent.Broadcast();
+	}
+}
+
+void UMovieSceneNodeGroupCollection::UpdateNodePath(const FString& OldPath, const FString& NewPath)
+{
+	for (UMovieSceneNodeGroup* NodeGroup : NodeGroups)
+	{
+		NodeGroup->UpdateNodePath(OldPath, NewPath);
+	}
+}
+
+void UMovieSceneNodeGroupCollection::OnNodeGroupChanged()
+{
+	bAnyActiveFilter = false;
+	for (const UMovieSceneNodeGroup* NodeGroup : NodeGroups)
+	{
+		if (NodeGroup->GetEnableFilter())
+		{
+			bAnyActiveFilter = true;
+			break;
+		}
+	}
+
+	OnNodeGroupCollectionChangedEvent.Broadcast();
+}
 
 bool UMovieScene::IsSectionInGroup(const UMovieSceneSection& InSection) const
 {
@@ -904,7 +984,7 @@ UMovieSceneTrack* UMovieScene::AddCameraCutTrack( TSubclassOf<UMovieSceneTrack> 
 }
 
 
-UMovieSceneTrack* UMovieScene::GetCameraCutTrack()
+UMovieSceneTrack* UMovieScene::GetCameraCutTrack() const
 {
 	return CameraCutTrack;
 }

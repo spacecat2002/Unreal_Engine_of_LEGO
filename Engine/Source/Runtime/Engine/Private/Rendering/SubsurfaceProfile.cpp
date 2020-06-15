@@ -224,7 +224,7 @@ void FSubsurfaceProfileTexture::CreateTexture(FRHICommandListImmediate& RHICmdLi
 	{
 		Desc.Format = PF_A16B16G16R16;
 	}
-
+	
 	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, GSSProfiles, TEXT("SSProfiles"));
 
 	// Write the contents of the texture.
@@ -234,8 +234,10 @@ void FSubsurfaceProfileTexture::CreateTexture(FRHICommandListImmediate& RHICmdLi
 	FLinearColor TextureRow[Width];
 	FMemory::Memzero(TextureRow);
 
-	const float FloatScale = GetNextSmallerPositiveFloat(0x10000);
-	check((int32)GetNextSmallerPositiveFloat(0x10000) == 0xffff);
+	// Android devices have different precision to desktop GPU's, scaling to one less works on Adreno and Mali
+	const float FloatScaleInitial = GMaxRHIShaderPlatform == SP_VULKAN_SM5_ANDROID ? 0xffff : 0x10000;
+	const float FloatScale = GetNextSmallerPositiveFloat(FloatScaleInitial);
+	check((int32)GetNextSmallerPositiveFloat(FloatScaleInitial) == (FloatScaleInitial - 1));
 
 	for (uint32 y = 0; y < Height; ++y)
 	{
@@ -522,22 +524,23 @@ void USubsurfaceProfile::PostLoad()
 
 	const auto CVar = IConsoleManager::Get().
 		FindTConsoleVariableDataInt(TEXT("r.SSS.Burley.AlwaysUpdateParametersFromSeparable"));
-	check(CVar);
-	
-	const bool bUpdateBurleyParametersFromSeparable = CVar->GetValueOnAnyThread() == 1;
-
-	if (bUpdateBurleyParametersFromSeparable)
+	if (CVar)
 	{
-		MapFallOffColor2SurfaceAlbedoAndDiffuseMeanFreePath(Settings.FalloffColor.R, Settings.SurfaceAlbedo.R, Settings.MeanFreePathColor.R);
-		MapFallOffColor2SurfaceAlbedoAndDiffuseMeanFreePath(Settings.FalloffColor.G, Settings.SurfaceAlbedo.G, Settings.MeanFreePathColor.G);
-		MapFallOffColor2SurfaceAlbedoAndDiffuseMeanFreePath(Settings.FalloffColor.B, Settings.SurfaceAlbedo.B, Settings.MeanFreePathColor.B);
+		const bool bUpdateBurleyParametersFromSeparable = CVar->GetValueOnAnyThread() == 1;
 
-		//Normalize mean free path color and set the corresponding dfmp
-		float MaxMeanFreePathColor = FMath::Max3(Settings.MeanFreePathColor.R, Settings.MeanFreePathColor.G, Settings.MeanFreePathColor.B);
-		if (MaxMeanFreePathColor > 1)
+		if (bUpdateBurleyParametersFromSeparable)
 		{
-			Settings.MeanFreePathColor /= MaxMeanFreePathColor;
-			Settings.MeanFreePathDistance = FMath::Clamp(Settings.ScatterRadius*MaxMeanFreePathColor,0.1f,50.0f);	// 50.0f is the ClampMax of MeanFreePathDistance.
+			MapFallOffColor2SurfaceAlbedoAndDiffuseMeanFreePath(Settings.FalloffColor.R, Settings.SurfaceAlbedo.R, Settings.MeanFreePathColor.R);
+			MapFallOffColor2SurfaceAlbedoAndDiffuseMeanFreePath(Settings.FalloffColor.G, Settings.SurfaceAlbedo.G, Settings.MeanFreePathColor.G);
+			MapFallOffColor2SurfaceAlbedoAndDiffuseMeanFreePath(Settings.FalloffColor.B, Settings.SurfaceAlbedo.B, Settings.MeanFreePathColor.B);
+
+			//Normalize mean free path color and set the corresponding dfmp
+			float MaxMeanFreePathColor = FMath::Max3(Settings.MeanFreePathColor.R, Settings.MeanFreePathColor.G, Settings.MeanFreePathColor.B);
+			if (MaxMeanFreePathColor > 1)
+			{
+				Settings.MeanFreePathColor /= MaxMeanFreePathColor;
+				Settings.MeanFreePathDistance = FMath::Clamp(Settings.ScatterRadius*MaxMeanFreePathColor, 0.1f, 50.0f);	// 50.0f is the ClampMax of MeanFreePathDistance.
+			}
 		}
 	}
 }

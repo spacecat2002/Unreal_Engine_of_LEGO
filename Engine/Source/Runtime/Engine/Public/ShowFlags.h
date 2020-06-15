@@ -193,7 +193,6 @@ struct FEngineShowFlags
 		SetHMDDistortion(false);
 		SetStereoRendering(false);
 		SetDistanceFieldAO(false);
-		SetDistanceFieldGI(false);
 		SetVolumetricFog(false);
 		SetVolumetricLightmap(false);
 	}
@@ -220,9 +219,12 @@ struct FEngineShowFlags
 		SetLightShafts(true);
 		SetPostProcessMaterial(true);
 		SetDistanceFieldAO(true);
-		SetDistanceFieldGI(true);
 	}
 
+	bool IsVisualizeCalibrationEnabled() const
+	{
+		return (VisualizeCalibrationColor || VisualizeCalibrationGrayscale || VisualizeCalibrationCustom);
+	}
 
 	// ---------------------------------------------------------
 	// The following methods are there for serialization, localization and in general to iterate and manipulate flags.
@@ -383,7 +385,6 @@ private:
 		SetVisualizeMeshDistanceFields(false);
 		SetVisualizeGlobalDistanceField(false);
 		SetVisualizeDistanceFieldAO(false);
-		SetVisualizeDistanceFieldGI(false);
 		SetVisualizeSSR(false);
 		SetVisualizeSSS(false);
 		SetPrimitiveDistanceAccuracy(false);
@@ -393,12 +394,16 @@ private:
 		SetRequiredTextureResolution(false);
 		SetMotionBlur(InitMode != ESFIM_Editor && InitMode != ESFIM_VREditing);
 		SetBones(false);
+		SetServerDrawDebug(false);
 		SetScreenPercentage(InitMode != ESFIM_Editor && InitMode != ESFIM_VREditing);
 		SetVREditing(InitMode == ESFIM_VREditing);
 		SetOcclusionMeshes(false);
 		SetPathTracing(false);
 		SetRayTracingDebug(false);
 		SetVisualizeSkyAtmosphere(false);
+		SetVisualizeCalibrationColor(false);
+		SetVisualizeCalibrationGrayscale(false);
+		SetVisualizeCalibrationCustom(false);
 	}
 
 

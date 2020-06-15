@@ -1,12 +1,16 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "AudioMixerSubmix.h"
+
+#include "Async/Async.h"
 #include "AudioMixerDevice.h"
 #include "AudioMixerSourceVoice.h"
+#include "Sound/SoundEffectPreset.h"
 #include "Sound/SoundEffectSubmix.h"
 #include "Sound/SoundSubmix.h"
 #include "Sound/SoundSubmixSend.h"
 #include "ProfilingDebugging/CsvProfiler.h"
+
 
 // Link to "Audio" profiling category
 CSV_DECLARE_CATEGORY_MODULE_EXTERN(AUDIOMIXERCORE_API, Audio);
@@ -19,8 +23,130 @@ FAutoConsoleVariableRef CVarRecoverRecordingOnShutdown(
 	TEXT("0: Disabled, 1: Enabled"),
 	ECVF_Default);
 
+static int32 BypassAllSubmixEffectsCVar = 0;
+FAutoConsoleVariableRef CVarBypassAllSubmixEffects(
+	TEXT("au.BypassAllSubmixEffects"),
+	BypassAllSubmixEffectsCVar,
+	TEXT("When set to 1, all submix effects will be bypassed.\n")
+	TEXT("1: Submix Effects are disabled."),
+	ECVF_Default);
+
 namespace Audio
 {
+	namespace MixerSubmixIntrinsics
+	{
+
+		FSpectrumAnalyzerSettings::EFFTSize GetSpectrumAnalyzerFFTSize(EFFTSize InFFTSize)
+		{
+			switch (InFFTSize)
+			{
+				case EFFTSize::DefaultSize:
+					return FSpectrumAnalyzerSettings::EFFTSize::Default;
+					break;
+
+				case EFFTSize::Min:
+					return FSpectrumAnalyzerSettings::EFFTSize::Min_64;
+					break;
+
+				case EFFTSize::Small:
+					return FSpectrumAnalyzerSettings::EFFTSize::Small_256;
+					break;
+
+				case EFFTSize::Medium:
+					return FSpectrumAnalyzerSettings::EFFTSize::Medium_512;
+					break;
+
+				case EFFTSize::Large:
+					return FSpectrumAnalyzerSettings::EFFTSize::Large_1024;
+					break;
+
+				case EFFTSize::VeryLarge:
+					return FSpectrumAnalyzerSettings::EFFTSize::VeryLarge_2048;
+					break;
+
+				case EFFTSize::Max:
+					return FSpectrumAnalyzerSettings::EFFTSize::TestLarge_4096;
+					break;
+
+				default:
+					return FSpectrumAnalyzerSettings::EFFTSize::Default;
+					break;
+			}
+		}
+
+		EWindowType GetWindowType(EFFTWindowType InWindowType)
+		{
+			switch (InWindowType)
+			{
+				case EFFTWindowType::None:
+					return EWindowType::None;
+					break;
+
+				case EFFTWindowType::Hamming:
+					return EWindowType::Hamming;
+					break;
+
+				case EFFTWindowType::Hann:
+					return EWindowType::Hann;
+					break;
+
+				case EFFTWindowType::Blackman:
+					return EWindowType::Blackman;
+					break;
+
+				default:
+					return EWindowType::None;
+					break;
+			}
+		}
+
+		FSpectrumBandExtractorSettings::EMetric GetExtractorMetric(EAudioSpectrumType InSpectrumType)
+		{
+			using EMetric = FSpectrumBandExtractorSettings::EMetric;
+
+			switch (InSpectrumType)
+			{
+				case EAudioSpectrumType::MagnitudeSpectrum:
+					return EMetric::Magnitude;
+					break;
+
+				case EAudioSpectrumType::PowerSpectrum:
+					return EMetric::Power;
+					break;
+
+				case EAudioSpectrumType::Decibel:
+				default:
+					return EMetric::Decibel;
+					break;
+			}
+		}
+
+		ISpectrumBandExtractor::EBandType GetExtractorBandType(EFFTPeakInterpolationMethod InMethod)
+		{
+			using EBandType = ISpectrumBandExtractor::EBandType;
+
+			switch (InMethod)
+			{
+				case EFFTPeakInterpolationMethod::NearestNeighbor:
+					return EBandType::NearestNeighbor;
+					break;
+
+				case EFFTPeakInterpolationMethod::Linear:
+					return EBandType::Lerp;
+					break;
+
+				case EFFTPeakInterpolationMethod::Quadratic:
+					return EBandType::Quadratic;
+					break;
+
+				case EFFTPeakInterpolationMethod::ConstantQ:
+				default:
+					return EBandType::ConstantQ;
+					break;
+			}
+		}
+	}
+
 	// Unique IDs for mixer submixes
 	static uint32 GSubmixMixerIDs = 0;
 
@@ -37,10 +163,14 @@ namespace Audio
 		, CurrentDryLevel(0.0f)
 		, TargetDryLevel(0.0f)
 		, EnvelopeNumChannels(0)
+		, NumSubmixEffects(0)
 		, bIsRecording(false)
 		, bIsBackgroundMuted(false)
+		, bIsSpectrumAnalyzing(false)
 		, OwningSubmixObject(nullptr)
 	{
+		EnvelopeFollowers.Reset();
+		EnvelopeFollowers.AddDefaulted(AUDIO_MIXER_MAX_OUTPUT_CHANNELS);
 	}
 
 	FMixerSubmix::~FMixerSubmix()
@@ -100,29 +230,32 @@ namespace Audio
 			CurrentDryLevel = FMath::Clamp(SoundSubmix->DryLevel, 0.0f, 1.0f);
 			TargetDryLevel = CurrentDryLevel;
 
-			for (USoundEffectSubmixPreset* EffectPreset : SoundSubmix->SubmixEffectChain)
+			FScopeLock ScopeLock(&EffectChainMutationCriticalSection);
 			{
-				if (EffectPreset)
+    			NumSubmixEffects = 0;
+				for (USoundEffectSubmixPreset* EffectPreset : SoundSubmix->SubmixEffectChain)
 				{
-					// Create a new effect instance using the preset
-					FSoundEffectSubmix* SubmixEffect = static_cast<FSoundEffectSubmix*>(EffectPreset->CreateNewEffect());
-				
-					FSoundEffectSubmixInitData InitData;
-					InitData.DeviceID = MixerDevice->DeviceID;
-					InitData.SampleRate = MixerDevice->GetSampleRate();
-					InitData.PresetSettings = nullptr;
+					if (EffectPreset)
+					{
+						++NumSubmixEffects;
 
-					// Now set the preset
-					SubmixEffect->Init(InitData);
-					SubmixEffect->SetPreset(EffectPreset);
-					SubmixEffect->SetEnabled(true);
 
-					FSubmixEffectInfo EffectInfo;
-					EffectInfo.PresetId = EffectPreset->GetUniqueID();
-					EffectInfo.EffectInstance = MakeShareable(SubmixEffect);
+						FSoundEffectSubmixInitData InitData;
+						InitData.DeviceID = MixerDevice->DeviceID;
+						InitData.SampleRate = MixerDevice->GetSampleRate();
+						InitData.PresetSettings = nullptr;
 
-					// Add the effect to this submix's chain
-					EffectSubmixChain.Add(MoveTemp(EffectInfo));
+						// Create a new effect instance using the preset & enable
+						TSoundEffectSubmixPtr SubmixEffect = USoundEffectPreset::CreateInstance<FSoundEffectSubmixInitData, FSoundEffectSubmix>(InitData, *EffectPreset);
+						SubmixEffect->SetEnabled(true);
+
+						FSubmixEffectInfo EffectInfo;
+						EffectInfo.PresetId = EffectPreset->GetUniqueID();
+						EffectInfo.EffectInstance = SubmixEffect;
+
+						// Add the effect to this submix's chain
+						EffectSubmixChain.Add(MoveTemp(EffectInfo));
+					}
 				}
 			}
 
@@ -262,7 +395,7 @@ namespace Audio
 
 	void FMixerSubmix::RemoveChildSubmix(TWeakPtr<FMixerSubmix, ESPMode::ThreadSafe> SubmixWeakPtr)
 	{
-		TSharedPtr<FMixerSubmix, ESPMode::ThreadSafe> SubmixStrongPtr  = SubmixWeakPtr.Pin();
+		TSharedPtr<FMixerSubmix, ESPMode::ThreadSafe> SubmixStrongPtr = SubmixWeakPtr.Pin();
 		if (!SubmixStrongPtr.IsValid())
 		{
 			return;
@@ -294,15 +427,22 @@ namespace Audio
 
 	int32 FMixerSubmix::GetNumEffects() const
 	{
+		return NumSubmixEffects;
+	}
+
+	int32 FMixerSubmix::GetSizeOfSubmixChain() const
+	{
 		return EffectSubmixChain.Num();
 	}
 
-	void FMixerSubmix::AddOrSetSourceVoice(FMixerSourceVoice* InSourceVoice, const float InSendLevel)
+
+	void FMixerSubmix::AddOrSetSourceVoice(FMixerSourceVoice* InSourceVoice, const float InSendLevel, EMixerSourceSubmixSendStage InSubmixSendStage)
 	{
 		AUDIO_MIXER_CHECK_AUDIO_PLAT_THREAD(MixerDevice);
 
 		FSubmixVoiceData NewVoiceData;
 		NewVoiceData.SendLevel = InSendLevel;
+		NewVoiceData.SubmixSendStage = InSubmixSendStage;
 
 		MixerSourceVoices.Add(InSourceVoice, NewVoiceData);
 	}
@@ -325,6 +465,7 @@ namespace Audio
 
 	void FMixerSubmix::AddSoundEffectSubmix(uint32 SubmixPresetId, FSoundEffectSubmixPtr InSoundEffectSubmix)
 	{
+		FScopeLock ScopeLock(&EffectChainMutationCriticalSection);
 		AUDIO_MIXER_CHECK_AUDIO_PLAT_THREAD(MixerDevice);
 
 		// Look to see if the submix preset ID is already present
@@ -342,11 +483,14 @@ namespace Audio
 		Info.PresetId = SubmixPresetId;
 		Info.EffectInstance = InSoundEffectSubmix;
 
+		++NumSubmixEffects;
+
 		EffectSubmixChain.Add(Info);
 	}
 
 	void FMixerSubmix::RemoveSoundEffectSubmix(uint32 SubmixPresetId)
 	{
+		FScopeLock ScopeLock(&EffectChainMutationCriticalSection);
 		AUDIO_MIXER_CHECK_AUDIO_PLAT_THREAD(MixerDevice);
 
 		for (FSubmixEffectInfo& Effect : EffectSubmixChain)
@@ -357,28 +501,58 @@ namespace Audio
 				// Reset reference to the effect
 				Effect.EffectInstance.Reset();
 				Effect.PresetId = INDEX_NONE;
-				return;
+
+				--NumSubmixEffects;
 			}
 		}
+	}
 
+	void FMixerSubmix::RemoveSoundEffectSubmixAtIndex(int32 InIndex)
+	{
+		AUDIO_MIXER_CHECK_AUDIO_PLAT_THREAD(MixerDevice);
+
+		if (InIndex >= 0 && InIndex < EffectSubmixChain.Num())
+		{
+			FSubmixEffectInfo& Effect = EffectSubmixChain[InIndex];
+			if (Effect.EffectInstance.IsValid())
+			{
+				Effect.EffectInstance.Reset();
+				Effect.PresetId = INDEX_NONE;
+				--NumSubmixEffects;
+			}
+		}
 	}
 
 	void FMixerSubmix::ClearSoundEffectSubmixes()
 	{
+		FScopeLock ScopeLock(&EffectChainMutationCriticalSection);
+
+		TArray<TSoundEffectSubmixPtr> SubmixEffectsToReset;
 		for (FSubmixEffectInfo& Info : EffectSubmixChain)
 		{
 			if (Info.EffectInstance.IsValid())
 			{
-				Info.EffectInstance->ClearPreset();
-				Info.EffectInstance.Reset();
+				SubmixEffectsToReset.Add(Info.EffectInstance);
 			}
 		}
 
+		// Unregister these source effect instances from their owning USoundEffectInstance on the next audio thread tick.
+		AsyncTask(ENamedThreads::AudioThread, [SubmixEffects = MoveTemp(SubmixEffectsToReset)]() mutable
+		{
+			for (TSoundEffectSubmixPtr& SubmixPtr : SubmixEffects)
+			{
+				USoundEffectPreset::UnregisterInstance(SubmixPtr);
+			}
+		});
+
+		NumSubmixEffects = 0;
 		EffectSubmixChain.Reset();
 	}
 
 	void FMixerSubmix::ReplaceSoundEffectSubmix(int32 InIndex, int32 InPresetId, FSoundEffectSubmixPtr InEffectInstance)
 	{
+		FScopeLock ScopeLock(&EffectChainMutationCriticalSection);
+
 		if (InEffectInstance->GetPreset() != nullptr && InIndex < EffectSubmixChain.Num())
 		{
 			EffectSubmixChain[InIndex].PresetId = InPresetId;
@@ -502,6 +676,11 @@ namespace Audio
 		SoundfieldStreams.Mixer->MixTogether(InputData, PacketToSumTo);
 	}
 
+	void FMixerSubmix::UpdateListenerRotation(const FQuat& InRotation)
+	{
+		SoundfieldStreams.CachedPositionalData.Rotation = InRotation;
+	}
+
 	void FMixerSubmix::MixInChildSubmix(FChildSubmixInfo& Child, ISoundfieldAudioPacket& PacketToSumTo)
 	{
 		check(IsSoundfieldSubmix());
@@ -521,9 +700,7 @@ namespace Audio
 				// If this is true, the Soundfield Factory explicitly requested that a seperate encoder stream was set up for every
 				// non-soundfield child submix.
 				if (Child.Encoder.IsValid())
-				{
-					
-
+				{					
 					ChildSubmixSharedPtr->ProcessAudio(ScratchBuffer);
 
 					// Encode the resulting audio and mix it in.
@@ -565,6 +742,10 @@ namespace Audio
 				// No conversion necessary.
 				ChildSubmixSharedPtr->ProcessAudio(PacketToSumTo);
 			}
+
+			//Propogate listener rotation down to this submix.
+			// This is required if this submix doesn't have any sources sending to it, but does have at least one child submix.
+			UpdateListenerRotation(ChildSubmixSharedPtr->SoundfieldStreams.CachedPositionalData.Rotation);
 		}
 	}
 
@@ -737,11 +918,18 @@ namespace Audio
 
 		// Device format may change channels if device is hot swapped
 		NumChannels = MixerDevice->GetNumDeviceChannels();
+
+		// If we hit this, it means that platform info gave us an invalid NumChannel count.
+		if (!ensure(NumChannels != 0 && NumChannels <= AUDIO_MIXER_MAX_OUTPUT_CHANNELS))
+		{
+			return;
+		}
+
 		const int32 NumOutputFrames = OutAudioBuffer.Num() / NumChannels;
 		NumSamples = NumChannels * NumOutputFrames;
 
-		InputBuffer.Reset(NumSamples);
-		InputBuffer.AddZeroed(NumSamples);
+ 		InputBuffer.Reset(NumSamples);
+ 		InputBuffer.AddZeroed(NumSamples);
 
 		float* BufferPtr = InputBuffer.GetData();
 
@@ -778,9 +966,9 @@ namespace Audio
 			{
 				const FMixerSourceVoice* MixerSourceVoice = MixerSourceVoiceIter.Key;
 				const float SendLevel = MixerSourceVoiceIter.Value.SendLevel;
+				const EMixerSourceSubmixSendStage SubmixSendStage = MixerSourceVoiceIter.Value.SubmixSendStage;
 
-
-				MixerSourceVoice->MixOutputBuffers(NumChannels, SendLevel, InputBuffer);
+				MixerSourceVoice->MixOutputBuffers(NumChannels, SendLevel, SubmixSendStage, InputBuffer);
 			}
 		}
 
@@ -805,69 +993,72 @@ namespace Audio
 			}
 		}
 
-		if (EffectSubmixChain.Num() > 0)
 		{
-			CSV_SCOPED_TIMING_STAT(Audio, SubmixEffectProcessing);
-
-			// Setup the input data buffer
-			FSoundEffectSubmixInputData InputData;
-			InputData.AudioClock = MixerDevice->GetAudioTime();
-
-			// Compute the number of frames of audio. This will be independent of if we downmix our wet buffer.
-			InputData.NumFrames = NumSamples / NumChannels;
-			InputData.NumChannels = NumChannels;
-			InputData.NumDeviceChannels = MixerDevice->GetNumDeviceChannels();
-			InputData.ListenerTransforms = MixerDevice->GetListenerTransforms();
-			InputData.AudioClock = MixerDevice->GetAudioClock();
-
-			FSoundEffectSubmixOutputData OutputData;
-			OutputData.AudioBuffer = &ScratchBuffer;
-			OutputData.NumChannels = NumChannels;
-
-			for (FSubmixEffectInfo& SubmixEffectInfo : EffectSubmixChain)
+			FScopeLock ScopeLock(&EffectChainMutationCriticalSection);
+			if (!BypassAllSubmixEffectsCVar && EffectSubmixChain.Num() > 0)
 			{
-				FSoundEffectSubmixPtr SubmixEffect = SubmixEffectInfo.EffectInstance;
+				CSV_SCOPED_TIMING_STAT(Audio, SubmixEffectProcessing);
 
-				// SubmixEffectInfo.EffectInstance will be null if FMixerSubmix::RemoveSoundEffectSubmix was called earlier.
-				if (!SubmixEffect.IsValid())
+				// Setup the input data buffer
+				FSoundEffectSubmixInputData InputData;
+				InputData.AudioClock = MixerDevice->GetAudioTime();
+
+				// Compute the number of frames of audio. This will be independent of if we downmix our wet buffer.
+				InputData.NumFrames = NumSamples / NumChannels;
+				InputData.NumChannels = NumChannels;
+				InputData.NumDeviceChannels = MixerDevice->GetNumDeviceChannels();
+				InputData.ListenerTransforms = MixerDevice->GetListenerTransforms();
+				InputData.AudioClock = MixerDevice->GetAudioClock();
+
+				FSoundEffectSubmixOutputData OutputData;
+				OutputData.AudioBuffer = &ScratchBuffer;
+				OutputData.NumChannels = NumChannels;
+
+				for (FSubmixEffectInfo& SubmixEffectInfo : EffectSubmixChain)
 				{
-					continue;
+					FSoundEffectSubmixPtr SubmixEffect = SubmixEffectInfo.EffectInstance;
+
+					// SubmixEffectInfo.EffectInstance will be null if FMixerSubmix::RemoveSoundEffectSubmix was called earlier.
+					if (!SubmixEffect.IsValid())
+					{
+						continue;
+					}
+
+					// Reset the output scratch buffer
+					ScratchBuffer.Reset(NumSamples);
+					ScratchBuffer.AddZeroed(NumSamples);
+
+					// Check to see if we need to down-mix our audio before sending to the submix effect
+					const uint32 ChannelCountOverride = SubmixEffect->GetDesiredInputChannelCountOverride();
+
+					if (ChannelCountOverride != INDEX_NONE && ChannelCountOverride != NumChannels)
+					{
+						// Perform the down-mix operation with the down-mixed scratch buffer
+						DownmixedBuffer.Reset();
+						DownmixedBuffer.AddUninitialized(NumOutputFrames * ChannelCountOverride);
+						DownmixBuffer(NumChannels, InputBuffer, ChannelCountOverride, DownmixedBuffer);
+
+						InputData.NumChannels = ChannelCountOverride;
+						InputData.AudioBuffer = &DownmixedBuffer;
+						SubmixEffect->ProcessAudio(InputData, OutputData);
+					}
+					else
+					{
+						// If we're not down-mixing, then just pass in the current wet buffer and our channel count is the same as the output channel count
+						InputData.NumChannels = NumChannels;
+						InputData.AudioBuffer = &InputBuffer;
+						SubmixEffect->ProcessAudio(InputData, OutputData);
+					}
+					
+					// Mix in the dry signal directly
+					const float DryLevel = SubmixEffect->GetDryLevel();
+					if (DryLevel > 0.0f)
+					{
+						Audio::MixInBufferFast(InputBuffer, ScratchBuffer, DryLevel);
+					}
+
+					FMemory::Memcpy((void*)BufferPtr, (void*)ScratchBuffer.GetData(), sizeof(float)* NumSamples);
 				}
-
-				// Reset the output scratch buffer
-				ScratchBuffer.Reset(NumSamples);
-				ScratchBuffer.AddZeroed(NumSamples);
-
-				// Check to see if we need to down-mix our audio before sending to the submix effect
-				const uint32 ChannelCountOverride = SubmixEffect->GetDesiredInputChannelCountOverride();
-
-				if (ChannelCountOverride != INDEX_NONE && ChannelCountOverride != NumChannels)
-				{
-					// Perform the down-mix operation with the down-mixed scratch buffer
-					DownmixedBuffer.Reset();
-					DownmixedBuffer.AddUninitialized(NumOutputFrames * ChannelCountOverride);
-					DownmixBuffer(NumChannels, InputBuffer, ChannelCountOverride, DownmixedBuffer);
-
-					InputData.NumChannels = ChannelCountOverride;
-					InputData.AudioBuffer = &DownmixedBuffer;
-					SubmixEffect->ProcessAudio(InputData, OutputData);
-				}
-				else
-				{
-					// If we're not down-mixing, then just pass in the current wet buffer and our channel count is the same as the output channel count
-					InputData.NumChannels = NumChannels;
-					InputData.AudioBuffer = &InputBuffer;
-					SubmixEffect->ProcessAudio(InputData, OutputData);
-				}
-
-				// Mix in the dry signal directly
-				const float DryLevel = SubmixEffect->GetDryLevel();
-				if (DryLevel > 0.0f)
-				{
-					Audio::MixInBufferFast(InputBuffer, ScratchBuffer, DryLevel);
-				}
-
-				FMemory::Memcpy((void*)BufferPtr, (void*)ScratchBuffer.GetData(), sizeof(float) * NumSamples);
 			}
 		}
 
@@ -876,30 +1067,8 @@ namespace Audio
 		{
 			FMemory::Memzero((void*)BufferPtr, sizeof(float) * NumSamples);
 		}
-
-
-		// Don't necessarily need to do this if the user isn't using this feature
-		if (!FMath::IsNearlyEqual(TargetWetLevel, CurrentWetLevel) || !FMath::IsNearlyEqual(CurrentWetLevel, 1.0f))
-		{
-			// If we've already set the volume, only need to multiply by constant
-			if (FMath::IsNearlyEqual(TargetWetLevel, CurrentWetLevel))
-			{
-				Audio::MultiplyBufferByConstantInPlace(InputBuffer, TargetWetLevel);
-			}
-			else
-			{
-				// To avoid popping, we do a fade on the buffer to the target volume
-				Audio::FadeBufferFast(InputBuffer, CurrentWetLevel, TargetWetLevel);
-				CurrentWetLevel = TargetWetLevel;
-			}
-		}
-
-		// Check to see if need to mix together the dry and wet buffers
-		if (DryChannelBuffer.Num())
-		{
-			Audio::MixInBufferFast(DryChannelBuffer, InputBuffer);
-		}
-		
+	
+	
 		// If we are recording, Add out buffer to the RecordingData buffer:
 		{
 			FScopeLock ScopedLock(&RecordingCriticalSection);
@@ -922,9 +1091,8 @@ namespace Audio
 		// Perform any envelope following if we're told to do so
 		if (bIsEnvelopeFollowing)
 		{
-			const int32 OutBufferSamples = OutAudioBuffer.Num();
-			const float* OutAudioBufferPtr = OutAudioBuffer.GetData();
-
+			const int32 BufferSamples = InputBuffer.Num();
+			const float* AudioBufferPtr = InputBuffer.GetData();
 
 			// Perform envelope following per channel
 			FScopeLock EnvelopeScopeLock(&EnvelopeCriticalSection);
@@ -936,9 +1104,9 @@ namespace Audio
 				FEnvelopeFollower& EnvFollower = EnvelopeFollowers[ChannelIndex];
 
 				// Track the last sample
-				for (int32 SampleIndex = ChannelIndex; SampleIndex < OutBufferSamples; SampleIndex += NumChannels)
+				for (int32 SampleIndex = ChannelIndex; SampleIndex < BufferSamples; SampleIndex += NumChannels)
 				{
-					const float SampleValue = OutAudioBufferPtr[SampleIndex];
+					const float SampleValue = AudioBufferPtr[SampleIndex];
 					EnvFollower.ProcessAudio(SampleValue);
 				}
 
@@ -970,6 +1138,7 @@ namespace Audio
 		// Now loop through any buffer listeners and feed the listeners the result of this audio callback
 		if(const USoundSubmix* SoundSubmix = Cast<const USoundSubmix>(OwningSubmixObject))
 		{
+			CSV_SCOPED_TIMING_STAT(Audio, SubmixBufferListeners);
 			double AudioClock = MixerDevice->GetAudioTime();
 			float SampleRate = MixerDevice->GetSampleRate();
 			FScopeLock Lock(&BufferListenerCriticalSection);
@@ -1035,6 +1204,8 @@ namespace Audio
 
 				// if this voice has a valid encoded packet, mix it in.
 				const ISoundfieldAudioPacket* Packet = MixerSourceVoice->GetEncodedOutput(GetKeyForSubmixEncoding());
+				UpdateListenerRotation(MixerSourceVoice->GetListenerRotationForVoice());
+
 				if (Packet)
 				{
 					FSoundfieldMixerInputData InputData =
@@ -1408,6 +1579,7 @@ namespace Audio
 		check(BufferListener);
 		BufferListeners.Remove(BufferListener);
 	}
+
 	void FMixerSubmix::StartEnvelopeFollowing(int32 AttackTime, int32 ReleaseTime)
 	{
 		if (!bIsEnvelopeFollowing)
@@ -1433,13 +1605,90 @@ namespace Audio
 		OnSubmixEnvelope.AddUnique(OnSubmixEnvelopeBP);
 	}
 
-	void FMixerSubmix::StartSpectrumAnalysis(const FSpectrumAnalyzerSettings& InSettings)
+	void FMixerSubmix::AddSpectralAnalysisDelegate(const FSoundSpectrumAnalyzerDelegateSettings& InDelegateSettings, const FOnSubmixSpectralAnalysisBP& OnSubmixSpectralAnalysisBP)
 	{
-		SpectrumAnalyzer.Reset(new FSpectrumAnalyzer(InSettings, MixerDevice->GetSampleRate()));
+		FSpectrumAnalysisDelegateInfo& NewDelegateInfo = SpectralAnalysisDelegates.AddDefaulted_GetRef();
+	
+		NewDelegateInfo.LastUpdateTime = -1.0f;
+		NewDelegateInfo.DelegateSettings = InDelegateSettings;
+		NewDelegateInfo.DelegateSettings.UpdateRate = FMath::Clamp(NewDelegateInfo.DelegateSettings.UpdateRate, 1.0f, 30.0f);
+		NewDelegateInfo.UpdateDelta = 1.0f / NewDelegateInfo.DelegateSettings.UpdateRate;
+
+		NewDelegateInfo.OnSubmixSpectralAnalysis.AddUnique(OnSubmixSpectralAnalysisBP);
+	}
+
+	void FMixerSubmix::RemoveSpectralAnalysisDelegate(const FOnSubmixSpectralAnalysisBP& OnSubmixSpectralAnalysisBP)
+	{
+		for (FSpectrumAnalysisDelegateInfo& Info : SpectralAnalysisDelegates)
+		{
+			if (Info.OnSubmixSpectralAnalysis.Contains(OnSubmixSpectralAnalysisBP))
+			{
+				Info.OnSubmixSpectralAnalysis.Remove(OnSubmixSpectralAnalysisBP);
+			}
+		}
+
+		SpectralAnalysisDelegates.RemoveAllSwap([](FSpectrumAnalysisDelegateInfo& Info) {
+			return !Info.OnSubmixSpectralAnalysis.IsBound();
+		});
+	}
+
+	void FMixerSubmix::StartSpectrumAnalysis(const FSoundSpectrumAnalyzerSettings& InSettings)
+	{
+		using namespace MixerSubmixIntrinsics;
+		using EMetric = FSpectrumBandExtractorSettings::EMetric;
+		using EBandType = ISpectrumBandExtractor::EBandType;
+
+		bIsSpectrumAnalyzing = true;
+
+		SpectrumAnalyzerSettings = InSettings;
+
+		FSpectrumAnalyzerSettings AudioSpectrumAnalyzerSettings;
+
+		AudioSpectrumAnalyzerSettings.FFTSize = GetSpectrumAnalyzerFFTSize(SpectrumAnalyzerSettings.FFTSize);
+		AudioSpectrumAnalyzerSettings.WindowType = GetWindowType(SpectrumAnalyzerSettings.WindowType);
+		AudioSpectrumAnalyzerSettings.HopSize = SpectrumAnalyzerSettings.HopSize;
+
+		SpectrumAnalyzer.Reset(new FSpectrumAnalyzer(AudioSpectrumAnalyzerSettings, MixerDevice->GetSampleRate()));
+
+		EMetric Metric = GetExtractorMetric(SpectrumAnalyzerSettings.SpectrumType);
+		EBandType BandType = GetExtractorBandType(SpectrumAnalyzerSettings.InterpolationMethod);
+
+		for (FSpectrumAnalysisDelegateInfo& DelegateInfo : SpectralAnalysisDelegates)
+		{
+			FSpectrumBandExtractorSettings ExtractorSettings;
+
+			ExtractorSettings.Metric = Metric;
+			ExtractorSettings.DecibelNoiseFloor = DelegateInfo.DelegateSettings.DecibelNoiseFloor;
+			ExtractorSettings.bDoNormalize = DelegateInfo.DelegateSettings.bDoNormalize;
+			ExtractorSettings.bDoAutoRange = DelegateInfo.DelegateSettings.bDoAutoRange;
+			ExtractorSettings.AutoRangeReleaseTimeInSeconds = DelegateInfo.DelegateSettings.AutoRangeReleaseTime;
+			ExtractorSettings.AutoRangeAttackTimeInSeconds = DelegateInfo.DelegateSettings.AutoRangeAttackTime;
+
+			DelegateInfo.SpectrumBandExtractor = ISpectrumBandExtractor::CreateSpectrumBandExtractor(ExtractorSettings);
+
+			if (DelegateInfo.SpectrumBandExtractor.IsValid())
+			{
+				for (const FSoundSubmixSpectralAnalysisBandSettings& BandSettings : DelegateInfo.DelegateSettings.BandSettings)
+				{
+					ISpectrumBandExtractor::FBandSettings NewExtractorBandSettings;
+					NewExtractorBandSettings.Type = BandType;
+					NewExtractorBandSettings.CenterFrequency = BandSettings.BandFrequency;
+					NewExtractorBandSettings.QFactor = BandSettings.QFactor;
+
+					DelegateInfo.SpectrumBandExtractor->AddBand(NewExtractorBandSettings);
+
+					FSpectralAnalysisBandInfo NewBand;
+					NewBand.EnvelopeFollower.Init(DelegateInfo.DelegateSettings.UpdateRate, BandSettings.AttackTimeMsec, BandSettings.ReleaseTimeMsec);
+				
+					DelegateInfo.SpectralBands.Add(NewBand);
+				}
+			} 
+		}
 	}
 
 	void FMixerSubmix::StopSpectrumAnalysis()
 	{
+		bIsSpectrumAnalyzing = false;
 		SpectrumAnalyzer.Reset();
 	}
 
@@ -1447,13 +1696,36 @@ namespace Audio
 	{
 		if (SpectrumAnalyzer.IsValid())
 		{
+			using EMethod = FSpectrumAnalyzer::EPeakInterpolationMethod;
+
+			EMethod Method;	
+
+			switch (SpectrumAnalyzerSettings.InterpolationMethod)
+			{
+				case EFFTPeakInterpolationMethod::NearestNeighbor:
+					Method = EMethod::NearestNeighbor;
+					break;
+
+				case EFFTPeakInterpolationMethod::Linear:
+					Method = EMethod::Linear;
+					break;
+
+				case EFFTPeakInterpolationMethod::Quadratic:
+					Method = EMethod::Quadratic;
+					break;
+
+				default:
+					Method = EMethod::Linear;
+					break;
+			}
+
 			OutMagnitudes.Reset();
 			OutMagnitudes.AddUninitialized(InFrequencies.Num());
 
 			SpectrumAnalyzer->LockOutputBuffer();
 			for (int32 Index = 0; Index < InFrequencies.Num(); Index++)
 			{
-				OutMagnitudes[Index] = SpectrumAnalyzer->GetMagnitudeForFrequency(InFrequencies[Index]);
+				OutMagnitudes[Index] = SpectrumAnalyzer->GetMagnitudeForFrequency(InFrequencies[Index], Method);
 			}
 			SpectrumAnalyzer->UnlockOutputBuffer();
 		}
@@ -1467,13 +1739,36 @@ namespace Audio
 	{
 		if (SpectrumAnalyzer.IsValid())
 		{
+			using EMethod = FSpectrumAnalyzer::EPeakInterpolationMethod;
+
+			EMethod Method;	
+
+			switch (SpectrumAnalyzerSettings.InterpolationMethod)
+			{
+				case EFFTPeakInterpolationMethod::NearestNeighbor:
+					Method = EMethod::NearestNeighbor;
+					break;
+
+				case EFFTPeakInterpolationMethod::Linear:
+					Method = EMethod::Linear;
+					break;
+
+				case EFFTPeakInterpolationMethod::Quadratic:
+					Method = EMethod::Quadratic;
+					break;
+
+				default:
+					Method = EMethod::Linear;
+					break;
+			}
+
 			OutPhases.Reset();
 			OutPhases.AddUninitialized(InFrequencies.Num());
 
 			SpectrumAnalyzer->LockOutputBuffer();
 			for (int32 Index = 0; Index < InFrequencies.Num(); Index++)
 			{
-				OutPhases[Index] = SpectrumAnalyzer->GetPhaseForFrequency(InFrequencies[Index]);
+				OutPhases[Index] = SpectrumAnalyzer->GetPhaseForFrequency(InFrequencies[Index], Method);
 			}
 			SpectrumAnalyzer->UnlockOutputBuffer();
 		}
@@ -1498,7 +1793,7 @@ namespace Audio
 		TargetWetLevel = FMath::Clamp(InWetLevel, 0.0f, 1.0f);
 	}
 
-	void FMixerSubmix::BroadcastEnvelope()
+	void FMixerSubmix::BroadcastDelegates()
 	{
 		if (bIsEnvelopeFollowing)
 		{
@@ -1509,8 +1804,11 @@ namespace Audio
 				// Make the copy of the envelope values using a critical section
 				FScopeLock EnvelopeScopeLock(&EnvelopeCriticalSection);
 
-				EnvelopeData.AddUninitialized(EnvelopeNumChannels);
-				FMemory::Memcpy(EnvelopeData.GetData(), EnvelopeValues, sizeof(float)*EnvelopeNumChannels);
+				if (EnvelopeNumChannels > 0)
+				{
+					EnvelopeData.AddUninitialized(EnvelopeNumChannels);
+					FMemory::Memcpy(EnvelopeData.GetData(), EnvelopeValues, sizeof(float)*EnvelopeNumChannels);
+				}
 			}
 
 			// Broadcast to any bound delegates
@@ -1519,6 +1817,58 @@ namespace Audio
 				OnSubmixEnvelope.Broadcast(EnvelopeData);
 			}
 
+		}
+		
+		// If we're analyzing spectra and if we've got delegates setup
+		if (bIsSpectrumAnalyzing && SpectralAnalysisDelegates.Num() > 0)
+		{
+			if (ensureMsgf(SpectrumAnalyzer.IsValid(), TEXT("Analyzing spectrum with invalid spectrum analyzer")))
+			{
+				// New results array
+				TArray<float> SpectralResults;
+
+				//const TArray<float>& InFrequencies, TArray<float>& OutMagnitudes
+				for (FSpectrumAnalysisDelegateInfo& DelegateInfo : SpectralAnalysisDelegates)
+				{
+					const float CurrentTime = FPlatformTime::ToSeconds64(FPlatformTime::Cycles64());
+
+					// Don't update the spectral band until it's time since the last tick.
+					if (DelegateInfo.LastUpdateTime > 0.0f && ((CurrentTime - DelegateInfo.LastUpdateTime) < DelegateInfo.UpdateDelta))
+					{
+						continue;
+					}
+
+					DelegateInfo.LastUpdateTime = CurrentTime;
+
+					SpectralResults.Reset();
+
+					{
+						Audio::FSpectrumAnalyzerScopeLock AnalyzerLock(SpectrumAnalyzer.Get());
+
+						if (ensure(DelegateInfo.SpectrumBandExtractor.IsValid()))
+						{
+							ISpectrumBandExtractor* Extractor = DelegateInfo.SpectrumBandExtractor.Get();
+
+							SpectrumAnalyzer->GetBands(*Extractor, SpectralResults);
+						}
+					}
+
+					// Feed the results through the band envelope followers
+					for (int32 ResultIndex = 0; ResultIndex < SpectralResults.Num(); ++ResultIndex)
+					{
+						if (ensure(ResultIndex < DelegateInfo.SpectralBands.Num()))
+						{
+							FSpectralAnalysisBandInfo& BandInfo = DelegateInfo.SpectralBands[ResultIndex];
+							SpectralResults[ResultIndex] = BandInfo.EnvelopeFollower.ProcessAudioNonClamped(SpectralResults[ResultIndex]);
+						}
+					}
+
+					if (DelegateInfo.OnSubmixSpectralAnalysis.IsBound())
+					{
+						DelegateInfo.OnSubmixSpectralAnalysis.Broadcast(SpectralResults);
+					}
+				}
+			}
 		}
 	}
 

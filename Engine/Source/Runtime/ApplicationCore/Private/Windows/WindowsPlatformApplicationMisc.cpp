@@ -72,7 +72,6 @@ class FFeedbackContext* FWindowsPlatformApplicationMisc::GetFeedbackContext()
 
 GenericApplication* FWindowsPlatformApplicationMisc::CreateApplication()
 {
-#if WINDOWS_USE_FEATURE_APPLICATION
 	HICON AppIconHandle = LoadIcon( hInstance, MAKEINTRESOURCE( GetAppIcon() ) );
 	if( AppIconHandle == NULL )
 	{
@@ -80,9 +79,6 @@ GenericApplication* FWindowsPlatformApplicationMisc::CreateApplication()
 	}
 
 	return FWindowsApplication::CreateWindowsApplication( hInstance, AppIconHandle );
-#else
-	return nullptr;
-#endif
 }
 
 void FWindowsPlatformApplicationMisc::RequestMinimize()
@@ -148,8 +144,8 @@ void FWindowsPlatformApplicationMisc::PumpMessages(bool bFromMainLoop)
 		}
 		else if( HasFocus && !HadFocus )
 		{
-			// Boost our priority back to normal.
-			SetThreadPriority( GetCurrentThread(), THREAD_PRIORITY_NORMAL );
+			// Boost our priority back to above normal as initially set in WindowsRunnableThread::CreateInternal.
+			SetThreadPriority( GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL );
 		}
 		if( !HasFocus )
 		{

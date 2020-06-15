@@ -37,6 +37,8 @@ enum class EPostProcessMaterialInput : uint32
 };
 
 BEGIN_SHADER_PARAMETER_STRUCT(FPostProcessMaterialParameters, )
+	SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
+	SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureShaderParameters, SceneTextures)
 	SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, PostProcessOutput)
 	SHADER_PARAMETER_STRUCT_ARRAY(FScreenPassTextureInput, PostProcessInput, [kPostProcessMaterialInputCountMax])
 	SHADER_PARAMETER_SAMPLER(SamplerState, PostProcessInput_BilinearSampler)
@@ -44,6 +46,7 @@ BEGIN_SHADER_PARAMETER_STRUCT(FPostProcessMaterialParameters, )
 	SHADER_PARAMETER_SAMPLER(SamplerState, MobileCustomStencilTextureSampler)
 	SHADER_PARAMETER(int32, MobileStencilValueRef)
 	SHADER_PARAMETER(uint32, bFlipYAxis)
+	SHADER_PARAMETER(uint32, bMetalMSAAHDRDecode)
 	RENDER_TARGET_BINDING_SLOTS()
 END_SHADER_PARAMETER_STRUCT()
 
@@ -105,6 +108,8 @@ struct FPostProcessMaterialInputs
 	 *  Set this to false when you need to guarantee creation of a dedicated output texture.
 	 */
 	bool bAllowSceneColorInputAsOutput = true;
+
+	bool bMetalMSAAHDRDecode = false;
 };
 
 FScreenPassTexture AddPostProcessMaterialPass(
@@ -144,11 +149,13 @@ FScreenPassTexture AddHighResolutionScreenshotMaskPass(
 FRenderingCompositePass* AddPostProcessMaterialPass(
 	const FPostprocessContext& Context,
 	const UMaterialInterface* MaterialInterface,
+	const bool bMetalMSAAHDRDecode,
 	EPixelFormat OutputFormat = PF_Unknown);
 
 FRenderingCompositeOutputRef AddPostProcessMaterialChain(
 	FPostprocessContext& Context,
 	EBlendableLocation InLocation,
+	bool& bMetalMSAAHDRDecode,
 	FRenderingCompositeOutputRef SeparateTranslucency = FRenderingCompositeOutputRef(),
 	FRenderingCompositeOutputRef PreTonemapHDRColor = FRenderingCompositeOutputRef(),
 	FRenderingCompositeOutputRef PostTonemapHDRColor = FRenderingCompositeOutputRef(),

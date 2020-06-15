@@ -80,6 +80,11 @@ public:
 	virtual const FString& GetName() const = 0;
 
 	/**
+	 * Return plugin friendly name if available or the same name as GetName() otherwise.
+	 */
+	virtual const FString& GetFriendlyName() const = 0;
+
+	/**
 	 * Get a path to the plugin's descriptor
 	 *
 	 * @return Path to the plugin's descriptor.
@@ -212,6 +217,17 @@ public:
 	 */
 	virtual void SetRegisterMountPointDelegate( const FRegisterMountPointDelegate& Delegate ) = 0;
 
+	/** Delegate type for updating the package localization cache.  Used internally by FPackageLocalizationManager code. */
+	DECLARE_DELEGATE( FUpdatePackageLocalizationCacheDelegate );
+
+	/**
+	 * Sets the delegate to call to update the package localization cache.  This is used internally by the plug-in manager system
+	 * and should not be called by you.  This is registered at application startup by FPackageLocalizationManager code in CoreUObject.
+	 *
+	 * @param	Delegate	The delegate to that will be called when plug-in manager needs to update the package localization cache
+	 */
+	virtual void SetUpdatePackageLocalizationCacheDelegate( const FUpdatePackageLocalizationCacheDelegate& Delegate ) = 0;
+
 	/**
 	 * Checks if all the required plug-ins are available. If not, will present an error dialog the first time a plug-in is loaded or this function is called.
 	 *
@@ -223,10 +239,11 @@ public:
 	/** 
 	 * Checks whether modules for the enabled plug-ins are up to date.
 	 *
-	 * @param OutIncompatibleNames	Array to receive a list of incompatible module names.
+	 * @param OutIncompatibleModules Array to receive a list of incompatible module names.
+	 * @param OutIncompatibleEngineModules Array to receive a list of incompatible engine module names.
 	 * @returns true if the enabled plug-in modules are up to date.
 	 */
-	virtual bool CheckModuleCompatibility( TArray<FString>& OutIncompatibleModules ) = 0;
+	virtual bool CheckModuleCompatibility( TArray<FString>& OutIncompatibleModules, TArray<FString>& OutIncompatibleEngineModules ) = 0;
 #endif
 
 	/**
@@ -272,8 +289,14 @@ public:
 	 * 
 	 * @param  ExtraDiscoveryPath	The path you want searched for additional plugins.
 	 * @param  bRefresh				Signals the function to refresh the plugin database after the new path has been added
+	 * @return Whether the plugin search path was modified
 	 */
-	virtual void AddPluginSearchPath(const FString& ExtraDiscoveryPath, bool bRefresh = true) = 0;
+	virtual bool AddPluginSearchPath(const FString& ExtraDiscoveryPath, bool bRefresh = true) = 0;
+
+	/**
+	 * Returns the list of extra directories that are recursively searched for plugins (aside from the engine and project plugin directories).
+	 */
+	virtual const TSet<FString>& GetAdditionalPluginSearchPaths() const = 0;
 
 	/**
 	 * Gets an array of plugins that loaded their own content pak file

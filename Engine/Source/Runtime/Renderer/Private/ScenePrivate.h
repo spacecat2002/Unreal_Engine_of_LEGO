@@ -52,6 +52,7 @@
 #include "RayTracing/RayTracingIESLightProfiles.h"
 #include "Halton.h"
 #endif
+#include "VolumetricRenderTargetViewStateData.h"
 
 /** Factor by which to grow occlusion tests **/
 #define OCCLUSION_SLOP (1.0f)
@@ -1033,6 +1034,8 @@ public:
 
 	FTemporalLODState TemporalLODState;
 
+	FVolumetricRenderTargetViewStateData VolumetricRenderTarget;
+
 	// call after OnFrameRenderingSetup()
 	virtual uint32 GetCurrentTemporalAASampleIndex() const
 	{
@@ -1224,6 +1227,11 @@ public:
 		bValidEyeAdaptation = true;
 	}
 
+#if WITH_MGPU
+	void BroadcastEyeAdaptationTemporalEffect(FRHICommandList& RHICmdList);
+	void WaitForEyeAdaptationTemporalEffect(FRHICommandList& RHICmdList);
+#endif
+
 	float GetLastEyeAdaptationExposure() const
 	{
 		return EyeAdaptationRTManager.GetLastExposure();
@@ -1278,7 +1286,8 @@ public:
 		if (CombinedLUTRenderTarget.IsValid() == false || 
 			CombinedLUTRenderTarget->GetDesc().Extent.Y != LUTSize ||
 			((CombinedLUTRenderTarget->GetDesc().Depth != 0) != bUseVolumeLUT) ||
-			!!(CombinedLUTRenderTarget->GetDesc().TargetableFlags & TexCreate_UAV) != bNeedUAV)
+			!!(CombinedLUTRenderTarget->GetDesc().TargetableFlags & TexCreate_UAV) != bNeedUAV ||
+			(CombinedLUTRenderTarget->GetDesc().Format == PF_FloatRGBA) != bNeedFloatOutput)
 		{
 			// Create the texture needed for the tonemapping LUT
 			FPooledRenderTargetDesc Desc = CreateLUTRenderTarget(LUTSize, bUseVolumeLUT, bNeedUAV, bNeedFloatOutput);
@@ -1630,19 +1639,22 @@ class FVolumetricLightmapSceneData
 {
 public:
 
-	FVolumetricLightmapSceneData() { GlobalVolumetricLightmap.Data = &GlobalVolumetricLightmapData; }
-	bool HasData() const { return LevelVolumetricLightmaps.Num() > 0; }
+	FVolumetricLightmapSceneData(FScene* InScene)
+		: Scene(InScene)
+	{
+		GlobalVolumetricLightmap.Data = &GlobalVolumetricLightmapData;
+	}
+
+	bool HasData() const;
 	void AddLevelVolume(const class FPrecomputedVolumetricLightmap* InVolume, EShadingPath ShadingPath, bool bIsPersistentLevel);
 	void RemoveLevelVolume(const class FPrecomputedVolumetricLightmap* InVolume);
-	const FPrecomputedVolumetricLightmap* GetLevelVolumetricLightmap() const 
-	{ 
-		return &GlobalVolumetricLightmap;
-	}
+	const FPrecomputedVolumetricLightmap* GetLevelVolumetricLightmap() const;
 
 	TMap<FVector, FVolumetricLightmapInterpolation> CPUInterpolationCache;
 
 	FPrecomputedVolumetricLightmapData GlobalVolumetricLightmapData;
 private:
+	FScene* Scene;
 	FPrecomputedVolumetricLightmap GlobalVolumetricLightmap;
 	const FPrecomputedVolumetricLightmap* PersistentLevelVolumetricLightmap = nullptr;
 	TArray<const FPrecomputedVolumetricLightmap*> LevelVolumetricLightmaps;
@@ -1732,55 +1744,11 @@ public:
 	FRWBufferStructured PrimitiveBuffer;
 	FTextureRWBuffer2D PrimitiveTexture;
 	FScatterUploadBuffer PrimitiveUploadBuffer;
+	FScatterUploadBuffer PrimitiveUploadViewBuffer;
 
 	FGrowOnlySpanAllocator	LightmapDataAllocator;
 	FRWBufferStructured		LightmapDataBuffer;
 	FScatterUploadBuffer	LightmapUploadBuffer;
-};
-
-class FPrimitiveSurfelFreeEntry
-{
-public:
-	FPrimitiveSurfelFreeEntry(int32 InOffset, int32 InNumSurfels) :
-		Offset(InOffset),
-		NumSurfels(InNumSurfels)
-	{}
-
-	FPrimitiveSurfelFreeEntry() :
-		Offset(0),
-		NumSurfels(0)
-	{}
-
-	int32 Offset;
-	int32 NumSurfels;
-};
-
-class FPrimitiveSurfelAllocation
-{
-public:
-	FPrimitiveSurfelAllocation(int32 InOffset, int32 InNumLOD0, int32 InNumSurfels, int32 InNumInstances) :
-		Offset(InOffset),
-		NumLOD0(InNumLOD0),
-		NumSurfels(InNumSurfels),
-		NumInstances(InNumInstances)
-	{}
-
-	FPrimitiveSurfelAllocation() :
-		Offset(0),
-		NumLOD0(0),
-		NumSurfels(0),
-		NumInstances(1)
-	{}
-
-	int32 GetTotalNumSurfels() const
-	{
-		return NumSurfels * NumInstances;
-	}
-
-	int32 Offset;
-	int32 NumLOD0;
-	int32 NumSurfels;
-	int32 NumInstances;
 };
 
 class FPrimitiveRemoveInfo
@@ -1814,28 +1782,6 @@ public:
 	}
 
 	FVector4 SphereBound;
-};
-
-class FSurfelBufferAllocator
-{
-public:
-
-	FSurfelBufferAllocator() : NumSurfelsInBuffer(0) {}
-
-	int32 GetNumSurfelsInBuffer() const { return NumSurfelsInBuffer; }
-	void AddPrimitive(const FPrimitiveSceneInfo* PrimitiveSceneInfo, int32 PrimitiveLOD0Surfels, int32 PrimitiveNumSurfels, int32 NumInstances);
-	void RemovePrimitive(const FPrimitiveSceneInfo* Primitive);
-
-	const FPrimitiveSurfelAllocation* FindAllocation(const FPrimitiveSceneInfo* Primitive)
-	{
-		return Allocations.Find(Primitive);
-	}
-
-private:
-
-	int32 NumSurfelsInBuffer;
-	TMap<const FPrimitiveSceneInfo*, FPrimitiveSurfelAllocation> Allocations;
-	TArray<FPrimitiveSurfelFreeEntry> FreeList;
 };
 
 /** Scene data used to manage distance field object buffers on the GPU. */
@@ -1917,12 +1863,6 @@ public:
 	/** Stores the primitive and instance index of every entry in the object buffer. */
 	TArray<FPrimitiveAndInstance> PrimitiveInstanceMapping;
 	TArray<FPrimitiveSceneInfo*> HeightfieldPrimitives;
-
-	class FSurfelBuffers* SurfelBuffers;
-	FSurfelBufferAllocator SurfelAllocations;
-
-	class FInstancedSurfelBuffers* InstancedSurfelBuffers;
-	FSurfelBufferAllocator InstancedSurfelAllocations;
 
 	/** Pending operations on the object buffers to be processed next frame. */
 	TArray<FPrimitiveSceneInfo*> PendingAddOperations;
@@ -2416,6 +2356,7 @@ public:
 	}
 
 	void Initialize();
+	void Clear();
 
 	/** Compares the provided view against the cached view and updates the view uniform buffer
 	 *  if the views differ. Returns whether uniform buffer was updated.
@@ -2459,6 +2400,7 @@ public:
 	TUniformBufferRef<FViewUniformShaderParameters> VirtualTextureViewUniformBuffer;
 
 	TUniformBufferRef<FMobileBasePassUniformParameters> MobileOpaqueBasePassUniformBuffer;
+	TUniformBufferRef<FMobileBasePassUniformParameters> MobileCSMOpaqueBasePassUniformBuffer;
 	TUniformBufferRef<FMobileBasePassUniformParameters> MobileTranslucentBasePassUniformBuffer;
 	TUniformBufferRef<FMobileShadowDepthPassUniformParameters> MobileCSMShadowDepthPassUniformBuffer;
 	TUniformBufferRef<FMobileDistortionPassUniformParameters> MobileDistortionPassUniformBuffer;
@@ -2487,6 +2429,8 @@ struct FMeshComputeDispatchCommand
 	uint32 MinVertexIndex;
 	uint32 PrimitiveId;
 	FRWBuffer* TargetBuffer;
+
+	bool bApplyWorldPositionOffset;
 };
 #endif
 
@@ -2590,6 +2534,26 @@ public:
 	/** The scene's sky light, if any. */
 	FSkyLightSceneProxy* SkyLight;
 
+	/** Contains the sky env map irradiance as spherical harmonics. */
+	FRWBufferStructured SkyIrradianceEnvironmentMap;
+
+	/** The SkyView LUT used when rendering sky material sampling this lut into the realtime capture sky env map. It must be generated at the skylight position*/
+	TRefCountPtr<IPooledRenderTarget> RealTimeReflectionCaptureSkyAtmosphereViewLutTexture;
+	/** The Camera 360 AP is used when rendering sky material sampling this lut or volumetric clouds into the realtime capture sky env map. It must be generated at the skylight position*/
+	TRefCountPtr<IPooledRenderTarget> RealTimeReflectionCaptureCamera360APLutTexture;
+
+	/** If sky light bRealTimeCaptureEnabled is true, used to render the sky env map (sky, sky dome mesh or clouds). */
+	TRefCountPtr<IPooledRenderTarget> CapturedSkyRenderTarget;	// Needs to be a IPooledRenderTarget because it must be created before the View uniform buffer is created.
+	/** If sky light bRealTimeCaptureEnabled is true, use to store the result of the sky env map GGX specular convolution. */
+	TRefCountPtr<IPooledRenderTarget> ConvolvedSkyRenderTarget;
+	/** If the real time sky capture is time sliced, this stores the currently processed/generated sky env map.*/
+	TRefCountPtr<IPooledRenderTarget> ProcessedSkyRenderTarget;
+
+	/** True if no real time reflection capture has been entirely processed. We always enforce a complete one the first frame even with time slicing for correct start up lighting.*/
+	bool bRealTimeSlicedReflectionCaptureFirstFrame;
+	/** The current progress of the real time reflection capture when time sliced. */
+	uint32 RealTimeSlicedReflectionCaptureState;
+
 	/** Used to track the order that skylights were enabled in. */
 	TArray<FSkyLightSceneProxy*> SkyLightStack;
 
@@ -2644,9 +2608,6 @@ public:
 	/** The static meshes in the scene. */
 	TSparseArray<FStaticMeshBatch*> StaticMeshes;
 
-	/** This sparse array is used just to track free indices for FStaticMeshBatch::BatchVisibilityId. */
-	TSparseArray<bool> StaticMeshBatchVisibility;
-
 	/** The exponential fog components in the scene. */
 	TArray<FExponentialHeightFogSceneInfo> ExponentialFogs;
 
@@ -2658,6 +2619,12 @@ public:
 
 	/** Used to track the order that skylights were enabled in. */
 	TArray<FSkyAtmosphereSceneProxy*> SkyAtmosphereStack;
+
+	/** The sky/atmosphere components of the scene. */
+	FVolumetricCloudRenderSceneInfo* VolumetricCloud;
+
+	/** Used to track the order that skylights were enabled in. */
+	TArray<FVolumetricCloudSceneProxy*> VolumetricCloudStack;
 
 	/** The wind sources in the scene. */
 	TArray<class FWindSourceSceneProxy*> WindSources;
@@ -2775,6 +2742,7 @@ public:
 	virtual void UpdatePlanarReflectionContents(UPlanarReflectionComponent* CaptureComponent, FSceneRenderer& MainSceneRenderer) override;
 	virtual void AllocateReflectionCaptures(const TArray<UReflectionCaptureComponent*>& NewCaptures, const TCHAR* CaptureReason, bool bVerifyOnlyCapturing) override;
 	virtual void UpdateSkyCaptureContents(const USkyLightComponent* CaptureComponent, bool bCaptureEmissiveOnly, UTextureCube* SourceCubemap, FTexture* OutProcessedTexture, float& OutAverageBrightness, FSHVectorRGB3& OutIrradianceEnvironmentMap, TArray<FFloat16Color>* OutRadianceMap) override; 
+	virtual void AllocateAndCaptureFrameSkyEnvMap(FRHICommandListImmediate& RHICmdList, FSceneRenderer& SceneRenderer, FViewInfo& MainView, bool bShouldRenderSkyAtmosphere, bool bShouldRenderVolumetricCloud) override;
 	virtual void AddPrecomputedLightVolume(const class FPrecomputedLightVolume* Volume) override;
 	virtual void RemovePrecomputedLightVolume(const class FPrecomputedLightVolume* Volume) override;
 	virtual bool HasPrecomputedVolumetricLightmap_RenderThread() const override;
@@ -2797,6 +2765,11 @@ public:
 	virtual FSkyAtmosphereRenderSceneInfo* GetSkyAtmosphereSceneInfo() override { return SkyAtmosphere; }
 	virtual const FSkyAtmosphereRenderSceneInfo* GetSkyAtmosphereSceneInfo() const override { return SkyAtmosphere; }
 
+	virtual void AddVolumetricCloud(FVolumetricCloudSceneProxy* VolumetricCloudSceneProxy) override;
+	virtual void RemoveVolumetricCloud(FVolumetricCloudSceneProxy* VolumetricCloudSceneProxy) override;
+	virtual FVolumetricCloudRenderSceneInfo* GetVolumetricCloudSceneInfo() override { return VolumetricCloud; }
+	virtual const FVolumetricCloudRenderSceneInfo* GetVolumetricCloudSceneInfo() const override { return VolumetricCloud; }
+
 	virtual void AddWindSource(UWindDirectionalSourceComponent* WindComponent) override;
 	virtual void RemoveWindSource(UWindDirectionalSourceComponent* WindComponent) override;
 	virtual const TArray<FWindSourceSceneProxy*>& GetWindSources_RenderThread() const override;
@@ -2818,6 +2791,17 @@ public:
 	bool HasSkyAtmosphere() const
 	{
 		return (SkyAtmosphere != NULL);
+	}
+	bool HasVolumetricCloud() const
+	{
+		return (VolumetricCloud != NULL);
+	}
+
+	bool IsSecondAtmosphereLightEnabled()
+	{
+		// If the second light is not null then we enable the second light.
+		// We do not do any light1 to light0 remapping if light0 is null.
+		return AtmosphereLights[1] != nullptr;
 	}
 
 	// Reset all the light to default state "not being affected by atmosphere". Should only be called from render side.
@@ -2875,6 +2859,8 @@ public:
 	{
 		return this;
 	}
+	virtual void OnWorldCleanup() override;
+
 
 	virtual void UpdateSceneSettings(AWorldSettings* WorldSettings) override;
 

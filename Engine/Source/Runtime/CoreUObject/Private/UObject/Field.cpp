@@ -8,6 +8,7 @@ Field.cpp: Defines FField property system fundamentals
 #include "UObject/Class.h"
 #include "HAL/ThreadSafeBool.h"
 #include "Misc/ScopeLock.h"
+#include "Misc/StringBuilder.h"
 #include "Serialization/MemoryWriter.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/OutputDeviceHelper.h"
@@ -335,7 +336,7 @@ FField::~FField()
 FField::FField(UField* InField)
 	: Next(nullptr)
 	, NamePrivate(InField->GetFName())
-	, FlagsPrivate(InField->GetFlags())
+	, FlagsPrivate(RF_NoFlags)
 	, MetaDataMap(nullptr)
 {
 	check(InField);
@@ -344,6 +345,7 @@ FField::FField(UField* InField)
 		// The source UField needs to be loaded, otherwise we'll be copying default property values
 		InField->GetLinker()->Preload(InField);
 	}
+	FlagsPrivate = InField->GetFlags();
 	// Associate this FField with the UField we're constructing from so that next time something tries to convert it,
 	// it can already grab the cached new FField
 	InField->SetAssociatedFField(this);
@@ -561,24 +563,36 @@ void FField::AddCppProperty(FProperty* Property)
 
 FString FField::GetPathName(const UObject* StopOuter /*= nullptr*/) const
 {
-	FString PathName;
+	TStringBuilder<256> ResultString;
+	GetPathName(StopOuter, ResultString);
+	return FString(FStringView(ResultString));
+}
+
+void FField::GetPathName(const UObject* StopOuter, FStringBuilderBase& ResultString) const
+{
+	TArray<FName, TInlineAllocator<16>> ParentFields;
 	for (FFieldVariant TempOwner = Owner; TempOwner.IsValid(); TempOwner = TempOwner.GetOwnerVariant())
 	{		
 		if (!TempOwner.IsUObject())
 		{
 			FField* FieldOwner = TempOwner.ToField();
-			PathName = FieldOwner->GetName() + TEXT(".") + PathName;
+			ParentFields.Add(FieldOwner->GetFName());
 		}
 		else
 		{
 			UObject* ObjectOwner = TempOwner.ToUObject();
-			PathName += ObjectOwner->GetPathName(StopOuter);
-			PathName += SUBOBJECT_DELIMITER_CHAR;
+			ObjectOwner->GetPathName(StopOuter, ResultString);
+			ResultString << SUBOBJECT_DELIMITER_CHAR;
 			break;
 		}
 	}
-	PathName += GetName();
-	return PathName;
+
+	for (int FieldIndex = ParentFields.Num() - 1; FieldIndex >= 0; --FieldIndex)
+	{
+		ParentFields[FieldIndex].AppendString(ResultString);
+		ResultString << TEXT(".");
+	}
+	GetFName().AppendString(ResultString);
 }
 
 FString FField::GetFullName() const
@@ -644,17 +658,17 @@ FString FField::GetFullGroupName(bool bStartWithOuter) const
 			}
 			else
 			{
-				return Owner.ToField()->GetPathName();
+				return Owner.ToField()->GetPathName(GetOutermost());
 			}
 		}
 		else
 		{
-			return TEXT("");
+			return FString();
 		}
 	}
 	else
 	{
-		return GetPathName();
+		return GetPathName(GetOutermost());
 	}
 }
 
@@ -689,9 +703,9 @@ FText FField::GetDisplayNameText() const
 	const FString Key = GetFullGroupName(false);
 
 	FString NativeDisplayName;
-	if (HasMetaData(NAME_DisplayName))
+	if (const FString* FoundMetaData = FindMetaData(NAME_DisplayName))
 	{
-		NativeDisplayName = GetMetaData(NAME_DisplayName);
+		NativeDisplayName = *FoundMetaData;
 	}
 	else
 	{
@@ -759,20 +773,14 @@ FText FField::GetToolTipText(bool bShortTooltip) const
 	return LocalizedToolTip;
 }
 
-/**
-* Determines if the property has any metadata associated with the key
-*
-* @param Key The key to lookup in the metadata
-* @return true if there is a (possibly blank) value associated with this key
-*/
-bool FField::HasMetaData(const TCHAR* Key) const
+const FString* FField::FindMetaData(const TCHAR* Key) const
 {
-	return HasMetaData(FName(Key, FNAME_Find));
+	return FindMetaData(FName(Key, FNAME_Find));
 }
 
-bool FField::HasMetaData(const FName& Key) const
+const FString* FField::FindMetaData(const FName& Key) const
 {
-	return MetaDataMap && MetaDataMap->Contains(Key);
+	return (MetaDataMap ? MetaDataMap->Find(Key) : nullptr);
 }
 
 /**
@@ -814,9 +822,9 @@ const FText FField::GetMetaDataText(const TCHAR* MetaDataKey, const FString Loca
 {
 	FString DefaultMetaData;
 
-	if (HasMetaData(MetaDataKey))
+	if (const FString* FoundMetaData = FindMetaData(MetaDataKey))
 	{
-		DefaultMetaData = GetMetaData(MetaDataKey);
+		DefaultMetaData = *FoundMetaData;
 	}
 
 	// If attempting to grab the DisplayName metadata, we must correct the source string and output it as a DisplayString for lookup
@@ -842,9 +850,9 @@ const FText FField::GetMetaDataText(const FName& MetaDataKey, const FString Loca
 {
 	FString DefaultMetaData;
 
-	if (HasMetaData(MetaDataKey))
+	if (const FString* FoundMetaData = FindMetaData(MetaDataKey))
 	{
-		DefaultMetaData = GetMetaData(MetaDataKey);
+		DefaultMetaData = *FoundMetaData;
 	}
 
 	// If attempting to grab the DisplayName metadata, we must correct the source string and output it as a DisplayString for lookup
@@ -874,17 +882,27 @@ const FText FField::GetMetaDataText(const FName& MetaDataKey, const FString Loca
 */
 void FField::SetMetaData(const TCHAR* Key, const TCHAR* InValue)
 {
-	SetMetaData(FName(Key), InValue);
+	SetMetaData(FName(Key), FString(InValue));
+}
+
+void FField::SetMetaData(const TCHAR* Key, FString&& InValue)
+{
+	SetMetaData(FName(Key), MoveTemp(InValue));
 }
 
 void FField::SetMetaData(const FName& Key, const TCHAR* InValue)
+{
+	SetMetaData(Key, FString(InValue));
+}
+
+void FField::SetMetaData(const FName& Key, FString&& InValue)
 {
 	check(Key != NAME_None);
 	if (!MetaDataMap)
 	{
 		MetaDataMap = new TMap<FName, FString>();
 	}
-	MetaDataMap->Add(Key, InValue);
+	MetaDataMap->Add(Key, MoveTemp(InValue));
 }
 
 UClass* FField::GetClassMetaData(const TCHAR* Key) const
@@ -1123,7 +1141,7 @@ FString GetPathNameSafe(const FField* InField)
 	}
 }
 
-FField* FindFieldByPath(const TCHAR* InFieldPath)
+FField* FindFPropertyByPath(const TCHAR* InFieldPath)
 { 
 	// Expected format: FullPackageName.OwnerName:Field
 	FField* FoundField = nullptr;
@@ -1154,7 +1172,7 @@ FField* FindFieldByPath(const TCHAR* InFieldPath)
 				checkf(*TestChar != ':' && *TestChar != '.', TEXT("FindFieldByPath can't resolve nested properties: %s"), InFieldPath);
 			}
 #endif
-			FoundField = FindField<FField>(Owner, InFieldPath);
+			FoundField = FindFProperty<FField>(Owner, InFieldPath);
 		}
 	}
 	return FoundField;

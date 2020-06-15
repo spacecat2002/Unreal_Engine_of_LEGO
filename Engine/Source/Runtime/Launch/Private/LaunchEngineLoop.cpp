@@ -16,6 +16,7 @@
 #include "Async/TaskGraphInterfaces.h"
 #include "Misc/TimeGuard.h"
 #include "Misc/Paths.h"
+#include "Misc/PathViews.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/OutputDeviceHelper.h"
 #include "Misc/OutputDeviceRedirector.h"
@@ -27,10 +28,8 @@
 #include "HAL/FileManagerGeneric.h"
 #include "HAL/ExceptionHandling.h"
 #include "Stats/StatsMallocProfilerProxy.h"
-#include "Trace/Trace.h"
-#include "ProfilingDebugging/MiscTrace.h"
-#include "ProfilingDebugging/PlatformFileTrace.h"
-#include "ProfilingDebugging/CountersTrace.h"
+#include "Trace/Trace.inl"
+#include "ProfilingDebugging/TraceAuxiliary.h"
 #if WITH_ENGINE
 #include "HAL/PlatformSplash.h"
 #endif
@@ -39,6 +38,7 @@
 #endif
 #include "HAL/ThreadManager.h"
 #include "ProfilingDebugging/ExternalProfiler.h"
+#include "Containers/StringView.h"
 #include "Containers/Ticker.h"
 
 #include "Interfaces/IPluginManager.h"
@@ -69,6 +69,7 @@
 	#include "UObject/Package.h"
 	#include "UObject/Linker.h"
 	#include "UObject/LinkerLoad.h"
+	#include "UObject/ReferencerFinder.h"
 #endif
 
 #if WITH_EDITOR
@@ -617,7 +618,7 @@ bool LaunchSetGameName(const TCHAR *InCmdLine, FString& OutGameProjectFilePathUn
 				// Non-agnostic exes that require cooked data cannot load projects, so make sure that the LocalGameName is the GameName
 				if (LocalGameName != FApp::GetProjectName())
 				{
-					UE_LOG(LogInit, Fatal, TEXT("Non-agnostic games cannot load projects on cooked platforms - try running UE4Game."));
+					UE_LOG(LogInit, Fatal, TEXT("Non-agnostic games cannot load projects on cooked platforms - expected [%s], found [%s]"), FApp::GetProjectName(), *LocalGameName);
 				}
 			}
 			// Only set the game name if this is NOT a program...
@@ -639,6 +640,48 @@ bool LaunchSetGameName(const TCHAR *InCmdLine, FString& OutGameProjectFilePathUn
 	return true;
 }
 
+void LaunchFixProjectPathCase()
+{
+	if (FPaths::IsProjectFilePathSet())
+	{
+#if PLATFORM_WINDOWS
+		// GetFilenameOnDisk on Windows will resolve directory junctions and resolving those here has negative consequences
+		// for workflows that use a junction at their root (eg: p4 gets confused about paths and operations fail).
+		// There is a way to get a case-accurate path on Windows without resolving directory junctions, but it is slow.
+		// We can use it here for this one-off situation without causing all uses of GetFilenameOnDisk to be slower.
+		WIN32_FIND_DATAW Data;
+		FString ProjectFilePath = FPaths::GetProjectFilePath();
+		for (FStringView PendingFix = ProjectFilePath; PendingFix.Len() > 0;)
+		{
+			const FStringView CurrentPathComponent = FPathViews::GetCleanFilename(PendingFix);
+
+			// Skip over all segments that are either empty or contain relative transforms or start with the volume separator, they should remain as-is
+			const bool bIsIgnoredSegment = CurrentPathComponent.IsEmpty() || CurrentPathComponent.Equals(TEXT("."_SV)) || CurrentPathComponent.Equals(TEXT(".."_SV)) || CurrentPathComponent.EndsWith(TEXT(':'));
+			if (!bIsIgnoredSegment)
+			{
+				// Temporarily null-terminate the current path component for the system call
+				TCHAR Terminator = TEXT('\0');
+				Swap(ProjectFilePath.GetCharArray()[PendingFix.Len()], Terminator);
+
+				HANDLE Handle = FindFirstFileW(*ProjectFilePath, &Data);
+				if (Handle != INVALID_HANDLE_VALUE)
+				{
+					check(CurrentPathComponent.Equals(Data.cFileName, ESearchCase::IgnoreCase));
+					FCString::Strncpy(GetData(ProjectFilePath) + PendingFix.Len() - CurrentPathComponent.Len(), Data.cFileName, CurrentPathComponent.Len() + 1);
+					FindClose(Handle);
+				}
+
+				Swap(ProjectFilePath.GetCharArray()[PendingFix.Len()], Terminator);
+			}
+
+			PendingFix.LeftChopInline(CurrentPathComponent.Len() + 1);
+		}
+		FPaths::SetProjectFilePath(ProjectFilePath);
+#else
+		FPaths::SetProjectFilePath(IFileManager::Get().GetFilenameOnDisk(*FPaths::GetProjectFilePath()));
+#endif
+	}
+}
 
 void LaunchFixGameNameCase()
 {
@@ -1245,6 +1288,48 @@ static void UpdateCoreCsvStats_BeginFrame()
 		CSV_CUSTOM_STAT_GLOBAL(CPUUsage_Idle, IdleUsageFraction, ECsvCustomStatOp::Set);
 	}
 #endif
+
+#if !UE_BUILD_SHIPPING
+	static TMap<uint32, TArray<FString>>* CsvFrameExecCmds = NULL;
+	if (CsvFrameExecCmds == NULL)
+	{
+		CsvFrameExecCmds = new TMap<uint32, TArray<FString>>();
+
+		FString CsvExecCommandsStr;
+		FParse::Value(FCommandLine::Get(), TEXT("-csvExecCmds="), CsvExecCommandsStr, false);
+
+		TArray<FString> CsvExecCommandsList;
+		if (CsvExecCommandsStr.ParseIntoArray(CsvExecCommandsList, TEXT(","), true) > 0)
+		{
+			for (FString FrameAndCommand : CsvExecCommandsList)
+			{
+				TArray<FString> FrameAndCommandList;
+				if (FrameAndCommand.ParseIntoArray(FrameAndCommandList, TEXT(":"), true) == 2)
+				{
+					uint32 Frame = FCString::Atoi(*FrameAndCommandList[0]);
+					if (!CsvFrameExecCmds->Find(Frame))
+					{
+						CsvFrameExecCmds->Add(Frame, TArray<FString>());
+					}
+					(*CsvFrameExecCmds)[Frame].Add(FrameAndCommandList[1]);
+				}
+			}
+		}
+	}
+	if (FCsvProfiler::Get()->IsCapturing())
+	{
+		TArray<FString>* FrameCommands = CsvFrameExecCmds->Find(FCsvProfiler::Get()->GetCaptureFrameNumber());
+		if (FrameCommands != NULL)
+		{
+			for (FString Cmd : *FrameCommands)
+			{
+				CSV_EVENT_GLOBAL(TEXT("Executing CSV exec command : %s"), *Cmd);
+				GEngine->Exec(GWorld, *Cmd);
+			}
+		}
+	}
+
+#endif
 }
 
 static void UpdateCoreCsvStats_EndFrame()
@@ -1307,6 +1392,10 @@ namespace AppLifetimeEventCapture
 }
 #endif //WITH_ENGINE
 
+static void UpdateGInputTime()
+{
+	GInputTime = FPlatformTime::Cycles64();
+}
 
 DECLARE_CYCLE_STAT(TEXT("FEngineLoop::PreInitPreStartupScreen.AfterStats"), STAT_FEngineLoop_PreInitPreStartupScreen_AfterStats, STATGROUP_LoadTime);
 DECLARE_CYCLE_STAT(TEXT("FEngineLoop::PreInitPostStartupScreen.AfterStats"), STAT_FEngineLoop_PreInitPostStartupScreen_AfterStats, STATGROUP_LoadTime);
@@ -1314,27 +1403,6 @@ DECLARE_CYCLE_STAT(TEXT("FEngineLoop::PreInitPostStartupScreen.AfterStats"), STA
 int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 {
 	FDelayedAutoRegisterHelper::RunAndClearDelayedAutoRegisterDelegates(EDelayedRegisterRunPhase::StartOfEnginePreInit);
-
-#if UE_TRACE_ENABLED
-	{
-		Trace::Initialize();
-
-		FString EnabledChannels;
-		FParse::Value(CmdLine, TEXT("-trace="), EnabledChannels, false);
-		UE::String::ParseTokens(EnabledChannels, TEXT(","), [](FStringView Token) {
-			TCHAR ChannelName[64];
-			const size_t ChannelNameSize = Token.CopyString(ChannelName, 64);
-			ChannelName[ChannelNameSize] = '\0';
-			Trace::ToggleChannel(ChannelName, true);
-		});
-
-		TRACE_REGISTER_GAME_THREAD(FPlatformTLS::GetCurrentThreadId());
-		TRACE_CPUPROFILER_INIT(CmdLine);
-		TRACE_PLATFORMFILE_INIT(CmdLine);
-		TRACE_COUNTERS_INIT(CmdLine);
-	}
-#endif
-
 	SCOPED_BOOT_TIMING("FEngineLoop::PreInitPreStartupScreen");
 
 	// The GLog singleton is lazy initialised and by default will assume that
@@ -1352,42 +1420,6 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 	FApp::SetDebugGame(true);
 #endif
 
-	// Trace out information about this session
-	{
-		uint8 Payload[1024];
-		int32 PayloadSize = 0;
-
-		auto AddToPayload = [&] (const TCHAR* String) -> uint8
-		{
-			int32 Length = FCString::Strlen(String);
-			Length = FMath::Min<int32>(Length, sizeof(Payload) - PayloadSize - 1);
-			for (int32 i = 0, n = Length; i < n; ++i)
-			{
-				Payload[PayloadSize] = uint8(String[i] & 0x7f);
-				++PayloadSize;
-			}
-			return uint8(PayloadSize - Length);
-		};
-
-		AddToPayload(FGenericPlatformMisc::GetUBTPlatform());
-		uint8 AppNameOffset = AddToPayload(TEXT(UE_APP_NAME));
-		uint8 CommandLineOffset = AddToPayload(CmdLine);
-
-		UE_TRACE_EVENT_BEGIN(Diagnostics, Session, Important)
-			UE_TRACE_EVENT_FIELD(uint8, AppNameOffset)
-			UE_TRACE_EVENT_FIELD(uint8, CommandLineOffset)
-			UE_TRACE_EVENT_FIELD(uint8, ConfigurationType)
-			UE_TRACE_EVENT_FIELD(uint8, TargetType)
-		UE_TRACE_EVENT_END()
-
-		UE_TRACE_LOG(Diagnostics, Session, TraceLogChannel, PayloadSize)
-			<< Session.AppNameOffset(AppNameOffset)
-			<< Session.CommandLineOffset(CommandLineOffset)
-			<< Session.ConfigurationType(uint8(FApp::GetBuildConfiguration()))
-			<< Session.TargetType(uint8(FApp::GetBuildTargetType()))
-			<< Session.Attachment(Payload, PayloadSize);
-	}
-
 #if PLATFORM_WINDOWS
 	// Register a handler for Ctrl-C so we've effective signal handling from the outset.
 	FWindowsPlatformMisc::SetGracefulTerminationHandler();
@@ -1403,18 +1435,6 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 #endif
 
 	FMemory::SetupTLSCachesOnCurrentThread();
-
-	// disable/enable LLM based on commandline
-	{
-		SCOPED_BOOT_TIMING("LLM Init");
-		LLM(FLowLevelMemTracker::Get().ProcessCommandLine(CmdLine));
-	}
-	LLM_SCOPE(ELLMTag::EnginePreInitMemory);
-
-	{
-		SCOPED_BOOT_TIMING("InitTaggedStorage");
-		FPlatformMisc::InitTaggedStorage(1024);
-	}
 
 	if (FParse::Param(CmdLine, TEXT("UTF8Output")))
 	{
@@ -1432,24 +1452,39 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 		return -1;
 	}
 
+	// Avoiding potential exploits by not exposing command line overrides in the shipping games.
+#if !UE_BUILD_SHIPPING && WITH_EDITORONLY_DATA
+	// Retrieve additional command line arguments from environment variable.
+	FString Env = FPlatformMisc::GetEnvironmentVariable(TEXT("UE-CmdLineArgs")).TrimStart();
+	if (Env.Len())
 	{
-		SCOPED_BOOT_TIMING("InitTrace")
+		// Append the command line environment after inserting a space as we can't set it in the
+		// environment.
+		FCommandLine::Append(TEXT(" -EnvAfterHere "));
+		FCommandLine::Append(*Env);
+		CmdLine = FCommandLine::Get();
+	}
+#endif
 
-		FString Parameter;
-		if (FParse::Value(CmdLine, TEXT("-tracehost="), Parameter))
-		{
-			Trace::SendTo(*Parameter);
-		}
+	// Initialize trace
+	FTraceAuxiliary::Initialize(CmdLine);
 
-		else if (FParse::Value(CmdLine, TEXT("-tracefile="), Parameter))
-		{
-			Trace::WriteTo(*Parameter);
-		}
+	// disable/enable LLM based on commandline
+	{
+		SCOPED_BOOT_TIMING("LLM Init");
+		LLM(FLowLevelMemTracker::Get().ProcessCommandLine(CmdLine));
+	}
+	LLM_SCOPE(ELLMTag::EnginePreInitMemory);
+
+	{
+		SCOPED_BOOT_TIMING("InitTaggedStorage");
+		FPlatformMisc::InitTaggedStorage(1024);
 	}
 
 #if WITH_ENGINE
 	FCoreUObjectDelegates::PostGarbageCollectConditionalBeginDestroy.AddStatic(DeferredPhysResourceCleanup);
 #endif
+	FCoreDelegates::OnSamplingInput.AddStatic(UpdateGInputTime);
 
 #if defined(WITH_LAUNCHERCHECK) && WITH_LAUNCHERCHECK
 	if (ILauncherCheckModule::Get().WasRanFromLauncher() == false)
@@ -1604,35 +1639,6 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 		SCOPED_BOOT_TIMING("BeginPreInitTextLocalization");
 		BeginPreInitTextLocalization();
 	}
-
-#if !(IS_PROGRAM || WITH_EDITOR)
-	// Initialize I/O dispatcher if available
-	{
-		TRACE_CPUPROFILER_EVENT_SCOPE(InitIoDispatcher);
-		FIoStoreEnvironment IoStoreEnvironment;
-		IoStoreEnvironment.InitializeFileEnvironment(FPaths::ProjectDir() / TEXT("global"));
-		bool bEnableIoDispatcher = false;
-		if (FIoDispatcher::IsValidEnvironment(IoStoreEnvironment))
-		{
-			bEnableIoDispatcher = true;
-		}
-#if !UE_BUILD_SHIPPING
-		if (FParse::Param(CmdLine, TEXT("forceiodispatcher")))
-		{
-			bEnableIoDispatcher = true;
-		}
-		else if (FParse::Param(CmdLine, TEXT("noiodispatcher")))
-		{
-			bEnableIoDispatcher = false;
-		}
-#endif
-		if (bEnableIoDispatcher)
-		{
-			FIoStatus IoDispatcherInitStatus = FIoDispatcher::Initialize();
-			UE_CLOG(!IoDispatcherInitStatus.IsOk(), LogInit, Fatal, TEXT("Failed to initialize I/O dispatcher: '%s'"), *IoDispatcherInitStatus.ToString());
-		}
-	}
-#endif
 
 	// allow the command line to override the platform file singleton
 	bool bFileOverrideFound = false;
@@ -1896,18 +1902,12 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 #endif
 #endif	//UE_EDITOR
 
-#if PLATFORM_WINDOWS && !UE_BUILD_SHIPPING && !IS_PROGRAM
+#if !UE_BUILD_SHIPPING && !IS_PROGRAM
 	if (!bHasEditorToken)
 	{
-		// If we can detect a named event then we can try and auto-connect to UnrealInsights.
-		HANDLE KnownEvent = ::OpenEvent(EVENT_ALL_ACCESS, false, TEXT("Local\\UnrealInsightsRecorder"));
-		if (KnownEvent != nullptr)
-		{
-			Trace::SendTo(TEXT("127.0.0.1"));
-			::CloseHandle(KnownEvent);
-		}
+		FTraceAuxiliary::TryAutoConnect();
 	}
-#endif // PLATFORM_WINDOWS
+#endif
 
 #if !UE_BUILD_SHIPPING
 	// Benchmarking.
@@ -1975,10 +1975,7 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 
 #if !IS_PROGRAM
 	// Fix the project file path case before we attempt to fix the game name
-	if (FPaths::IsProjectFilePathSet())
-	{
-		FPaths::SetProjectFilePath(IFileManager::Get().GetFilenameOnDisk(*FPaths::GetProjectFilePath()));
-	}
+	LaunchFixProjectPathCase();
 
 	if (FApp::HasProjectName())
 	{
@@ -2096,7 +2093,6 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 
 
 		{
-			TRACE_THREAD_GROUP_SCOPE("ThreadPool");
 			GThreadPool = FQueuedThreadPool::Allocate();
 			int32 NumThreadsInThreadPool = FPlatformMisc::NumberOfWorkerThreadsToSpawn();
 
@@ -2105,10 +2101,9 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 			{
 				NumThreadsInThreadPool = 1;
 			}
-			verify(GThreadPool->Create(NumThreadsInThreadPool, StackSize * 1024, TPri_SlightlyBelowNormal));
+			verify(GThreadPool->Create(NumThreadsInThreadPool, StackSize * 1024, TPri_SlightlyBelowNormal, TEXT("ThreadPool")));
 		}
 		{
-			TRACE_THREAD_GROUP_SCOPE("BackgroundThreadPool");
 			GBackgroundPriorityThreadPool = FQueuedThreadPool::Allocate();
 			int32 NumThreadsInThreadPool = 2;
 			if (FPlatformProperties::IsServerOnly())
@@ -2116,18 +2111,19 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 				NumThreadsInThreadPool = 1;
 			}
 
-			verify(GBackgroundPriorityThreadPool->Create(NumThreadsInThreadPool, StackSize * 1024, TPri_Lowest));
+			verify(GBackgroundPriorityThreadPool->Create(NumThreadsInThreadPool, StackSize * 1024, TPri_Lowest, TEXT("BackgroundThreadPool")));
 		}
 
 #if WITH_EDITOR
 		{
-			TRACE_THREAD_GROUP_SCOPE("LargeThreadPool");
 			// when we are in the editor we like to do things like build lighting and such
 			// this thread pool can be used for those purposes
 			GLargeThreadPool = FQueuedThreadPool::Allocate();
 			int32 NumThreadsInLargeThreadPool = FMath::Max(FPlatformMisc::NumberOfCoresIncludingHyperthreads() - 2, 2);
 
-			verify(GLargeThreadPool->Create(NumThreadsInLargeThreadPool, StackSize * 1024));
+			// The default priority is above normal on Windows, which WILL make the system unresponsive when the thread-pool is heavily used.
+			// Also need to be lower than the game-thread to avoid impacting the frame rate with too much preemption. 
+			verify(GLargeThreadPool->Create(NumThreadsInLargeThreadPool, StackSize * 1024, TPri_SlightlyBelowNormal, TEXT("LargeThreadPool")));
 		}
 #endif
 	}
@@ -2171,7 +2167,6 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 	if (FPlatformProcess::SupportsMultithreading())
 	{
 		{
-			TRACE_THREAD_GROUP_SCOPE("IOThreadPool");
 			SCOPED_BOOT_TIMING("GIOThreadPool->Create");
 			GIOThreadPool = FQueuedThreadPool::Allocate();
 			int32 NumThreadsInThreadPool = FPlatformMisc::NumberOfIOWorkerThreadsToSpawn();
@@ -2179,7 +2174,7 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 			{
 				NumThreadsInThreadPool = 2;
 			}
-			verify(GIOThreadPool->Create(NumThreadsInThreadPool, 96 * 1024, TPri_AboveNormal));
+			verify(GIOThreadPool->Create(NumThreadsInThreadPool, 96 * 1024, TPri_AboveNormal, TEXT("IOThreadPool")));
 		}
 	}
 
@@ -2751,7 +2746,12 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 
 int32 FEngineLoop::PreInitPostStartupScreen(const TCHAR* CmdLine)
 {
-	SCOPED_BOOT_TIMING("FEngineLoop::PreInitPostStartupScreen");
+	//Long duration timing scopes have negative performance consequences on UnrealInsights, so taking special steps to avoid
+	//having the PreInitPostStartupScreen scope from encompassing commandlet execution, which may be long duration.
+#if CPUPROFILERTRACE_ENABLED
+	TOptional<FCpuProfilerTrace::FDynamicEventScope> PreInitPostStartupScreenTraceScope(InPlace, "FEngineLoop::PreInitPostStartupScreen", CpuChannel);
+#endif
+	FScopedBootTiming ANONYMOUS_VARIABLE(BootTiming_)("FEngineLoop::PreInitPostStartupScreen");
 
 	if (IsEngineExitRequested())
 	{
@@ -2937,6 +2937,10 @@ int32 FEngineLoop::PreInitPostStartupScreen(const TCHAR* CmdLine)
 				TArray<FString> PakFolders;
 				PakFolders.Add(InstalledGameContentDir);
 				FCoreDelegates::OnMountAllPakFiles.Execute(PakFolders);
+
+				// Look for any plugins installed during EarlyStartupScreen
+				IPluginManager::Get().RefreshPluginsList();
+				IPluginManager::Get().LoadModulesForEnabledPlugins(ELoadingPhase::PreEarlyLoadingScreen);
 			}
 
 			DumpEarlyReads(bDumpEarlyConfigReads, bDumpEarlyPakFileReads, bForceQuitAfterEarlyReads);
@@ -3185,6 +3189,7 @@ int32 FEngineLoop::PreInitPostStartupScreen(const TCHAR* CmdLine)
 		GUObjectArray.CloseDisregardForGC();
 	}
 	NotifyRegistrationComplete();
+	FReferencerFinder::NotifyRegistrationComplete();
 #endif // WITH_COREUOBJECT
 
 #if WITH_ENGINE
@@ -3340,7 +3345,13 @@ int32 FEngineLoop::PreInitPostStartupScreen(const TCHAR* CmdLine)
 			CycleCount_AfterStats.StopAndResetStatId();
 #endif // STATS
 			FStats::TickCommandletStats();
+#if CPUPROFILERTRACE_ENABLED
+			PreInitPostStartupScreenTraceScope.Reset(); // Exclude the commandlet main function from this scope's duration
 			int32 ErrorLevel = Commandlet->Main( CommandletCommandLine );
+			PreInitPostStartupScreenTraceScope.Emplace("FEngineLoop::PreInitPostStartupScreen", CpuChannel);
+#else
+			int32 ErrorLevel = Commandlet->Main( CommandletCommandLine );
+#endif
 			FStats::TickCommandletStats();
 
 			RequestEngineExit(FString::Printf(TEXT("Commandlet %s finished execution (result %d)"), *Commandlet->GetName(), ErrorLevel));
@@ -3516,13 +3527,11 @@ int32 FEngineLoop::PreInitPostStartupScreen(const TCHAR* CmdLine)
 	}
 #endif
 
-#if !(PLATFORM_IOS || PLATFORM_TVOS || PLATFORM_ANDROID)
 	// Init HighRes screenshot system, unless running on server
 	if (!IsRunningDedicatedServer())
 	{
 		GetHighResScreenshotConfig().Init();
 	}
-#endif
 
 #else // WITH_ENGINE
 	InitEngineTextLocalization();
@@ -3999,6 +4008,8 @@ int32 FEngineLoop::Init()
 		GetMoviePlayer()->WaitForMovieToFinish();
     }
 
+	FTraceAuxiliary::ParseCommandLine(FCommandLine::Get());
+
 #if !UE_SERVER
 	// initialize media framework
 	IMediaModule* MediaModule = FModuleManager::LoadModulePtr<IMediaModule>("Media");
@@ -4141,13 +4152,15 @@ void FEngineLoop::Exit()
 
 	if ( GEngine != nullptr )
 	{
-		GEngine->ShutdownAudioDeviceManager();
+		GEngine->ReleaseAudioDeviceManager();
 	}
 
 	if ( GEngine != nullptr )
 	{
 		GEngine->PreExit();
 	}
+
+	FAudioDeviceManager::Shutdown();
 
 	// close all windows
 	FSlateApplication::Shutdown();
@@ -4674,7 +4687,7 @@ void FEngineLoop::Tick()
 			// When not in editor, we emit dynamic resolution's begin frame right after RHI's.
 			GEngine->EmitDynamicResolutionEvent(EDynamicResolutionStateEvent::BeginFrame);
 		}
-		#endif
+#endif
 
 		// tick performance monitoring
 		{
@@ -4685,11 +4698,13 @@ void FEngineLoop::Tick()
 			ResetAsyncLoadingStats();
 		}
 
+#if UPDATE_MALLOC_STATS
 		// update memory allocator stats
 		{
 			QUICK_SCOPE_CYCLE_COUNTER(STAT_FEngineLoop_Malloc_UpdateStats);
 			GMalloc->UpdateStats();
 		}
+#endif
 	}
 
 	FStats::AdvanceFrame( false, FStats::FOnAdvanceRenderingThreadStats::CreateStatic( &AdvanceRenderingThreadStatsGT ) );
@@ -4761,7 +4776,7 @@ void FEngineLoop::Tick()
 		FPlatformFileManager::Get().TickActivePlatformFile();
 
 		// Roughly track the time when the input was sampled
-		GInputTime = FPlatformTime::Cycles64();
+		FCoreDelegates::OnSamplingInput.Broadcast();
 
 		// process accumulated Slate input
 		if (FSlateApplication::IsInitialized() && !bIdleMode)
@@ -4850,6 +4865,21 @@ void FEngineLoop::Tick()
 		}
 #endif
 
+		// Tick the platform and input portion of Slate application, we need to do this before we run things
+		// concurrent with networking.
+		if (FSlateApplication::IsInitialized() && !bIdleMode)
+		{
+			{
+				QUICK_SCOPE_CYCLE_COUNTER(STAT_FEngineLoop_ProcessPlayerControllersSlateOperations);
+				check(!IsRunningDedicatedServer());
+
+				// Process slate operations accumulated in the world ticks.
+				ProcessLocalPlayerSlateOperations();
+			}
+
+			FSlateApplication::Get().Tick(ESlateTickType::PlatformAndInput);
+		}
+
 #if WITH_ENGINE
 		// process concurrent Slate tasks
 		FGraphEventRef ConcurrentTask;
@@ -4890,18 +4920,11 @@ void FEngineLoop::Tick()
 		}
 #endif
 
-		// tick Slate application
+		// Tick(Advance) Time for the application and then tick and paint slate application widgets.
+		// We split separate this action from the one above to permit running network replication concurrent with slate widget ticking and painting.
 		if (FSlateApplication::IsInitialized() && !bIdleMode)
 		{
-			{
-				QUICK_SCOPE_CYCLE_COUNTER(STAT_FEngineLoop_ProcessPlayerControllersSlateOperations);
-				check(!IsRunningDedicatedServer());
-
-				// Process slate operations accumulated in the world ticks.
-				ProcessLocalPlayerSlateOperations();
-			}
-
-			FSlateApplication::Get().Tick();
+			FSlateApplication::Get().Tick(ESlateTickType::TimeAndWidgets);
 		}
 
 #if WITH_ENGINE
@@ -4916,7 +4939,7 @@ void FEngineLoop::Tick()
 
 		if (ConcurrentTask.GetReference())
 		{
-			CSV_SCOPED_TIMING_STAT(Basic, ConcurrentWithSlateTickTasks_Wait);
+			CSV_SCOPED_SET_WAIT_STAT(Slate);
 
 			QUICK_SCOPE_CYCLE_COUNTER(STAT_ConcurrentWithSlateTickTasks_Wait);
 			FTaskGraphInterface::Get().WaitUntilTaskCompletes(ConcurrentTask);
@@ -5233,19 +5256,7 @@ bool FEngineLoop::AppInit( )
 		BeginInitTextLocalization();
 	}
 
-	// Avoiding potential exploits by not exposing command line overrides in the shipping games.
-#if !UE_BUILD_SHIPPING && WITH_EDITORONLY_DATA
-	// Retrieve additional command line arguments from environment variable.
-	FString Env = FPlatformMisc::GetEnvironmentVariable(TEXT("UE-CmdLineArgs")).TrimStart();
-	if (Env.Len())
-	{
-		// Append the command line environment after inserting a space as we can't set it in the
-		// environment. Note that any code accessing GCmdLine before appInit obviously won't
-		// respect the command line environment additions.
-		FCommandLine::Append(TEXT(" -EnvAfterHere "));
-		FCommandLine::Append(*Env);
-	}
-#endif
+
 
 	// Error history.
 	FCString::Strcpy(GErrorHist, TEXT("Fatal error!" LINE_TERMINATOR LINE_TERMINATOR));
@@ -5365,15 +5376,18 @@ bool FEngineLoop::AppInit( )
 
 		// Find the editor target
 		FString EditorTargetFileName;
+		FString DefaultEditorTarget;
+		GConfig->GetString(TEXT("/Script/BuildSettings.BuildSettings"), TEXT("DefaultEditorTarget"), DefaultEditorTarget, GEngineIni);
+
 		for (const FTargetInfo& Target : FDesktopPlatformModule::Get()->GetTargetsForProject(FPaths::GetProjectFilePath()))
 		{
-			if (Target.Type == EBuildTargetType::Editor)
+			if (Target.Type == EBuildTargetType::Editor && (DefaultEditorTarget.Len() == 0 || Target.Name == DefaultEditorTarget))
 			{
-				if(FPaths::IsUnderDirectory(Target.Path, FPlatformMisc::ProjectDir()))
+				if (FPaths::IsUnderDirectory(Target.Path, FPlatformMisc::ProjectDir()))
 				{
 					EditorTargetFileName = FTargetReceipt::GetDefaultPath(FPlatformMisc::ProjectDir(), *Target.Name, FPlatformProcess::GetBinariesSubdirectory(), FApp::GetBuildConfiguration(), nullptr);
 				}
-				else if(FPaths::IsUnderDirectory(Target.Path, FPaths::EngineDir()))
+				else if (FPaths::IsUnderDirectory(Target.Path, FPaths::EngineDir()))
 				{
 					EditorTargetFileName = FTargetReceipt::GetDefaultPath(*FPaths::EngineDir(), *Target.Name, FPlatformProcess::GetBinariesSubdirectory(), FApp::GetBuildConfiguration(), nullptr);
 				}
@@ -5399,7 +5413,9 @@ bool FEngineLoop::AppInit( )
 			// Check if any of the project or plugin modules are out of date, and the user wants to compile them.
 			TArray<FString> IncompatibleFiles;
 			ProjectManager.CheckModuleCompatibility(IncompatibleFiles);
-			PluginManager.CheckModuleCompatibility(IncompatibleFiles);
+
+			TArray<FString> IncompatibleEngineFiles;
+			PluginManager.CheckModuleCompatibility(IncompatibleFiles, IncompatibleEngineFiles);
 
 			if (IncompatibleFiles.Num() > 0)
 			{
@@ -5422,16 +5438,23 @@ bool FEngineLoop::AppInit( )
 					ModulesList += FString::Printf(TEXT("  (+%d others, see log for details)\n"), IncompatibleFiles.Num() - NumModulesToDisplay);
 				}
 
-				ModulesList += TEXT("\nWould you like to rebuild them now?");
-
 				// If we're running with -stdout, assume that we're a non interactive process and about to fail
 				if (FApp::IsUnattended() || FParse::Param(FCommandLine::Get(), TEXT("stdout")))
 				{
 					return false;
 				}
 
+				// If there are any engine modules that need building, force the user to build through the IDE
+				if(IncompatibleEngineFiles.Num() > 0)
+				{
+					FString CompileForbidden = ModulesList + TEXT("\nEngine modules cannot be compiled at runtime. Please build through your IDE.");
+					FPlatformMisc::MessageBoxExt(EAppMsgType::Ok, *CompileForbidden, TEXT("Missing Modules"));
+					return false;
+				}
+
 				// Ask whether to compile before continuing
-				if (FPlatformMisc::MessageBoxExt(EAppMsgType::YesNo, *ModulesList, *FString::Printf(TEXT("Missing %s Modules"), FApp::GetProjectName())) == EAppReturnType::No)
+				FString CompilePrompt = ModulesList + TEXT("\nWould you like to rebuild them now?");
+				if (FPlatformMisc::MessageBoxExt(EAppMsgType::YesNo, *CompilePrompt, *FString::Printf(TEXT("Missing %s Modules"), FApp::GetProjectName())) == EAppReturnType::No)
 				{
 					return false;
 				}
@@ -5455,7 +5478,8 @@ bool FEngineLoop::AppInit( )
 			// Try to compile it
 			FFeedbackContext *Context = (FFeedbackContext*)FDesktopPlatformModule::Get()->GetNativeFeedbackContext();
 			Context->BeginSlowTask(FText::FromString(TEXT("Starting build...")), true, true);
-			bool bCompileResult = FDesktopPlatformModule::Get()->CompileGameProject(FPaths::RootDir(), FPaths::GetProjectFilePath(), Context);
+			ECompilationResult::Type CompilationResult = ECompilationResult::Unknown;
+			bool bCompileResult = FDesktopPlatformModule::Get()->CompileGameProject(FPaths::RootDir(), FPaths::GetProjectFilePath(), Context, &CompilationResult);
 			Context->EndSlowTask();
 
 			// Check if we're running the wrong executable now
@@ -5464,10 +5488,19 @@ bool FEngineLoop::AppInit( )
 				return false;
 			}
 
+			// Check if we needed to modify engine files
+			if (!bCompileResult && CompilationResult == ECompilationResult::FailedDueToEngineChange)
+			{
+				FPlatformMisc::MessageBoxExt(EAppMsgType::Ok, TEXT("Engine modules are out of date, and cannot be compiled while the engine is running. Please build through your IDE."), TEXT("Missing Modules"));
+				return false;
+			}
+
 			// Get a list of modules which are still incompatible
 			TArray<FString> StillIncompatibleFiles;
 			ProjectManager.CheckModuleCompatibility(StillIncompatibleFiles);
-			PluginManager.CheckModuleCompatibility(StillIncompatibleFiles);
+
+			TArray<FString> StillIncompatibleEngineFiles;
+			PluginManager.CheckModuleCompatibility(StillIncompatibleFiles, StillIncompatibleEngineFiles);
 
 			if(!bCompileResult || StillIncompatibleFiles.Num() > 0)
 			{

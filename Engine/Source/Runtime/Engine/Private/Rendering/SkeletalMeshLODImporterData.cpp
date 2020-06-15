@@ -549,13 +549,10 @@ void FReductionBaseSkeletalMeshBulkData::CacheGeometryInfo(const FSkeletalMeshLO
 	for (int32 SectionIndex = 0; SectionIndex < SourceLODModel.Sections.Num(); ++SectionIndex)
 	{
 		const FSkelMeshSection& Section = SourceLODModel.Sections[SectionIndex];
-
-		if (!Section.bDisabled)
-		{
-			//Make sure the count fit in a uint32
-			CacheLODVertexNumber += Section.NumVertices < 0 ? 0 : Section.NumVertices;
-			CacheLODTriNumber += Section.NumTriangles;
-		}
+		//We count disabled section, since the render buffer contain the disabled section data. This is crucial for memory budget
+		//Make sure the count fit in a uint32
+		CacheLODVertexNumber += Section.NumVertices < 0 ? 0 : Section.NumVertices;
+		CacheLODTriNumber += Section.NumTriangles;
 	}
 }
 
@@ -640,7 +637,7 @@ FArchive& operator<<(FArchive& Ar, FSkeletalMeshImportData& RawMesh)
 	//We now save it after the processing is done so for old version we do it here when loading
 	if (Ar.IsLoading() && Version < RAW_SKELETAL_MESH_BULKDATA_VER_AlternateInfluence)
 	{
-		ProcessImportMeshInfluences(RawMesh);
+		SkeletalMeshHelper::ProcessImportMeshInfluences(RawMesh);
 	}
 
 	
@@ -688,7 +685,7 @@ FArchive& operator<<(FArchive& Ar, FSkeletalMeshImportData& RawMesh)
 	return Ar;
 }
 
-void FRawSkeletalMeshBulkData::Serialize(FArchive& Ar, TArray<FRawSkeletalMeshBulkData>& RawSkeltalMeshBulkDatas, UObject* Owner)
+void FRawSkeletalMeshBulkData::Serialize(FArchive& Ar, TArray<TSharedRef<FRawSkeletalMeshBulkData>>& RawSkeltalMeshBulkDatas, UObject* Owner)
 {
 	Ar.CountBytes(RawSkeltalMeshBulkDatas.Num() * sizeof(FRawSkeletalMeshBulkData), RawSkeltalMeshBulkDatas.Num() * sizeof(FRawSkeletalMeshBulkData));
 	if (Ar.IsLoading())
@@ -699,9 +696,9 @@ void FRawSkeletalMeshBulkData::Serialize(FArchive& Ar, TArray<FRawSkeletalMeshBu
 		RawSkeltalMeshBulkDatas.Empty(NewNum);
 		for (int32 Index = 0; Index < NewNum; Index++)
 		{
-			int32 NewEntryIndex = RawSkeltalMeshBulkDatas.AddDefaulted();
+			int32 NewEntryIndex = RawSkeltalMeshBulkDatas.Add(MakeShared<FRawSkeletalMeshBulkData>());
 			check(NewEntryIndex == Index);
-			RawSkeltalMeshBulkDatas[Index].Serialize(Ar, Owner);
+			RawSkeltalMeshBulkDatas[Index].Get().Serialize(Ar, Owner);
 		}
 	}
 	else
@@ -711,7 +708,7 @@ void FRawSkeletalMeshBulkData::Serialize(FArchive& Ar, TArray<FRawSkeletalMeshBu
 		Ar << Num;
 		for (int32 Index = 0; Index < Num; Index++)
 		{
-			RawSkeltalMeshBulkDatas[Index].Serialize(Ar, Owner);
+			RawSkeltalMeshBulkDatas[Index].Get().Serialize(Ar, Owner);
 		}
 	}
 }
@@ -848,6 +845,10 @@ FByteBulkData& FRawSkeletalMeshBulkData::GetBulkData()
 	return BulkData;
 }
 
+const FByteBulkData& FRawSkeletalMeshBulkData::GetBulkData() const
+{
+	return BulkData;
+}
 
 /************************************************************************
 * FWedgePosition
@@ -940,33 +941,15 @@ void FOctreeQueryHelper::FindNearestWedgeIndexes(const FVector& SearchPosition, 
 	FVector Extend(2.0f);
 	for (int i = 0; i < 2; ++i)
 	{
-		TWedgeInfoPosOctree::TConstIterator<> OctreeIter((*WedgePosOctree));
 		// Iterate through the octree attempting to find the vertices closest to the current new point
-		while (OctreeIter.HasPendingNodes())
+		// The first shot is an intersection with a 1 CM cube box around the search position, this ensure we dont fall in the wrong neighbourg
+		WedgePosOctree->FindElementsWithBoundsTest(FBoxCenterAndExtent(SearchPosition, Extend), [&OutNearestWedges, &MinSquaredDistance, &SearchPosition](const FWedgeInfo& WedgeInfo)
 		{
-			const TWedgeInfoPosOctree::FNode& CurNode = OctreeIter.GetCurrentNode();
-			const FOctreeNodeContext& CurContext = OctreeIter.GetCurrentContext();
-
-			// Find the child of the current node, if any, that contains the current new point
-
-			//The first shot is an intersection with a 1 CM cube box around the search position, this ensure we dont fall in the wrong neighbourg
-			FOctreeChildNodeSubset ChilNodesSubset = CurContext.GetIntersectingChildren(FBoxCenterAndExtent(SearchPosition, Extend));
-			FOREACH_OCTREE_CHILD_NODE(OctreeChildRef)
-			{
-				if (ChilNodesSubset.Contains(OctreeChildRef) && CurNode.HasChild(OctreeChildRef))
-				{
-					OctreeIter.PushChild(OctreeChildRef);
-				}
-			}
 			// Add all of the elements in the current node to the list of points to consider for closest point calculations
-			for (const FWedgeInfo& WedgeInfo : CurNode.GetElements())
-			{
-				float VectorDelta = FVector::DistSquared(SearchPosition, WedgeInfo.Position);
-				MinSquaredDistance = FMath::Min(VectorDelta, MinSquaredDistance);
-				OutNearestWedges.Add(WedgeInfo);
-			}
-			OctreeIter.Advance();
-		}
+			float VectorDelta = FVector::DistSquared(SearchPosition, WedgeInfo.Position);
+			MinSquaredDistance = FMath::Min(VectorDelta, MinSquaredDistance);
+			OutNearestWedges.Add(WedgeInfo);
+		});
 
 		if (i == 0)
 		{

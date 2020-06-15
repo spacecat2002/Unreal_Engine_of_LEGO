@@ -32,23 +32,13 @@ namespace UnrealBuildTool.Rules
 				RuntimeDependencies.Add(Path.Combine("$(TargetOutputDir)", "ortp.dll"), Path.Combine(VivoxLibPath, "ortp.dll"));
 				RuntimeDependencies.Add(Path.Combine("$(TargetOutputDir)", "vivoxsdk.dll"), Path.Combine(VivoxLibPath, "vivoxsdk.dll"));
 			}
-			else if (Target.Platform == UnrealTargetPlatform.XboxOne)
-			{
-				PublicAdditionalLibraries.Add(VivoxLibPath + "vivoxsdk.lib");
-			}
-			else if (Target.Platform == UnrealTargetPlatform.PS4)
-			{
-				PublicAdditionalLibraries.Add(VivoxLibPath + "libvivoxsdk.a");
-				PublicSystemLibraries.Add("SceSha1");
-				PublicSystemLibraries.Add("SceAudioIn_stub_weak");
-				PublicSystemLibraries.Add("SceHmac");
-			}
 			else if (Target.Platform == UnrealTargetPlatform.Mac)
 			{
-				PublicDelayLoadDLLs.Add(Path.Combine(VivoxLibPath, "libortp.dylib"));
-				PublicDelayLoadDLLs.Add(Path.Combine(VivoxLibPath, "libvivoxsdk.dylib"));
-				RuntimeDependencies.Add(Path.Combine("$(TargetOutputDir)", "libortp.dylib"), Path.Combine(VivoxLibPath, "libortp.dylib"));
-				RuntimeDependencies.Add(Path.Combine("$(TargetOutputDir)", "libvivoxsdk.dylib"), Path.Combine(VivoxLibPath, "libvivoxsdk.dylib"));
+				string TargetDir = Path.Combine(Target.UEThirdPartyBinariesDirectory, "Vivox", "Mac");
+				PublicDelayLoadDLLs.Add(Path.Combine(TargetDir, "libortp.dylib"));
+				PublicDelayLoadDLLs.Add(Path.Combine(TargetDir, "libvivoxsdk.dylib"));
+				RuntimeDependencies.Add(Path.Combine(TargetDir, "libortp.dylib"));
+				RuntimeDependencies.Add(Path.Combine(TargetDir, "libvivoxsdk.dylib"));
 			}
 			else if (Target.Platform == UnrealTargetPlatform.IOS)
 			{

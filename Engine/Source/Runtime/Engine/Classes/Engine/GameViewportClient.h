@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Delegates/IDelegateInstance.h"
 #include "UObject/ObjectMacros.h"
 #include "InputCoreTypes.h"
 #include "Engine/EngineBaseTypes.h"
@@ -77,7 +78,10 @@ public:
 	UPROPERTY(Config)
 	int32 MaxSplitscreenPlayers = 4;
 
-	/** if true then the title safe border is drawn */
+	/** if true then the title safe border is drawn
+	  * @deprecated - Use the cvar "r.DebugSafeZone.Mode=1".
+	  */
+	UE_DEPRECATED(4.26, "Use the cvar \"r.DebugSafeZone.Mode=1\".")
 	uint32 bShowTitleSafeZone:1;
 
 	/** If true, this viewport is a play in editor viewport */
@@ -106,6 +110,9 @@ protected:
 	/** Strong handle to the audio device used by this viewport. */
 	FAudioDeviceHandle AudioDevice;
 
+	/** Handle to delegate in case audio device is destroyed. */
+	FDelegateHandle AudioDeviceDestroyedHandle;
+
 public:
 
 	/** see enum EViewModeIndex */
@@ -115,8 +122,10 @@ public:
 	UFUNCTION(exec)
 	virtual void SSSwapControllers();
 
-	/** Exec for toggling the display of the title safe area */
-	UFUNCTION(exec)
+	/** Exec for toggling the display of the title safe area
+	  * @deprecated Use the cvar "r.DebugSafeZone.Mode=1".
+	  */
+	UFUNCTION(exec, meta = (DeprecatedFunction, DeprecationMessage = "Use the cvar \"r.DebugSafeZone.Mode=1.\""))
 	virtual void ShowTitleSafeArea();
 
 	/** Sets the player which console commands will be executed in the context of. */
@@ -145,7 +154,6 @@ public:
 	//~ Begin UObject Interface
 	virtual void PostInitProperties() override;
 	virtual void BeginDestroy() override;
-	virtual bool IsDestructionThreadSafe() const override { return false; }
 	//~ End UObject Interface
 
 	//~ Begin FViewportClient Interface.
@@ -438,7 +446,7 @@ public:
 	bool CalculateDeadZoneForAllSides( ULocalPlayer* LPlayer, UCanvas* Canvas, float& fTopSafeZone, float& fBottomSafeZone, float& fLeftSafeZone, float& fRightSafeZone, bool bUseMaxPercent = false );
 
 	/**  
-	 * Draw the safe area using the current TitleSafeZone settings. 
+	 * Draws the safe area using the current r.DebugSafeZone.Mode=1 when there is not a valid PlayerController HUD.
 	 * 
 	 * @param Canvas	Canvas on which to draw
 	 */
@@ -613,6 +621,9 @@ protected:
 	FName GetCurrentBufferVisualizationMode() const { return CurrentBufferVisualizationMode; }
 	bool HasAudioFocus() const { return bHasAudioFocus; }
 
+	/** Updates CSVProfiler camera stats */
+	void UpdateCsvCameraStats(const TMap<ULocalPlayer*, FSceneView*>& PlayerViewMap);
+
 protected:
 	/** FCommonViewportClient interface */
 	virtual float UpdateViewportClientWindowDPIScale() const override;
@@ -695,20 +706,17 @@ public:
 	}
 
 	/**
-	 * Set the mouse capture behavior when the viewport is clicked
+	 * Set the mouse capture behavior for the viewport.
 	 */
-	void SetCaptureMouseOnClick(EMouseCaptureMode Mode)
-	{
-		MouseCaptureMode = Mode;
-	}
+	void SetMouseCaptureMode(EMouseCaptureMode Mode);
+
+	UE_DEPRECATED(4.26, "Please call UGameViewportClient::SetMouseCaptureMode(EMouseCaptureMode) instead.")
+	void SetCaptureMouseOnClick(EMouseCaptureMode Mode) { SetMouseCaptureMode(Mode); }
 
 	/**
 	 * Gets the mouse capture behavior when the viewport is clicked
 	 */
-	virtual EMouseCaptureMode CaptureMouseOnClick() override
-	{
-		return MouseCaptureMode;
-	}
+	virtual EMouseCaptureMode GetMouseCaptureMode() const override;
 
 	/**
 	 * Gets whether or not the viewport captures the Mouse on launch of the application
@@ -747,23 +755,17 @@ public:
 	/**
 	* Sets the current mouse cursor lock mode when the viewport is clicked
 	*/
-	void SetMouseLockMode(EMouseLockMode InMouseLockMode)
-	{
-		MouseLockMode = InMouseLockMode;
-	}
+	void SetMouseLockMode(EMouseLockMode InMouseLockMode);
 
 	/**
 	 * Sets whether or not the cursor is hidden when the viewport captures the mouse
 	 */
-	void SetHideCursorDuringCapture(bool InHideCursorDuringCapture)
-	{
-		bHideCursorDuringCapture = InHideCursorDuringCapture;
-	}
+	void SetHideCursorDuringCapture(bool InHideCursorDuringCapture);
 
 	/**
 	 * Gets whether or not the cursor is hidden when the viewport captures the mouse
 	 */
-	virtual bool HideCursorDuringCapture() override
+	virtual bool HideCursorDuringCapture() const override
 	{
 		return bHideCursorDuringCapture;
 	}
@@ -787,6 +789,11 @@ public:
 		bUseSoftwareCursorWidgets = bInUseSoftwareCursorWidgets;
 	}
 
+	/**
+	* Get whether or not the viewport is currently using software cursor
+	*/
+	bool GetIsUsingSoftwareCursorWidgets() { return bUseSoftwareCursorWidgets; }
+
 #if WITH_EDITOR
 	/** Accessor for delegate called when a game viewport received input key */
 	FOnGameViewportInputKey& OnGameViewportInputKey()
@@ -803,11 +810,19 @@ public:
 
 	void SetVirtualCursorWidget(EMouseCursor::Type Cursor, class UUserWidget* Widget);
 
+	/** Add a cursor to the set based on the enum and a slate widget */
+	void AddSoftwareCursorFromSlateWidget(EMouseCursor::Type InCursorType, TSharedPtr<SWidget> CursorWidgetPtr);
+
 	/** Adds a cursor to the set based on the enum and the class reference to it. */
 	void AddSoftwareCursor(EMouseCursor::Type Cursor, const FSoftClassPath& CursorClass);
 
+	/** Get the slate widget of the current software cursor */
+	TSharedPtr<SWidget> GetSoftwareCursorWidget(EMouseCursor::Type Cursor) const;
+
 	/** Does the viewport client have a software cursor set up for the given enum? */
 	bool HasSoftwareCursor(EMouseCursor::Type Cursor) const;
+
+	void EnableCsvPlayerStats(int32 LocalPlayerCount);
 
 private:
 	/** Resets the platform type shape to nullptr, to restore it to the OS default. */
@@ -887,6 +902,13 @@ private:
 	*/
 	void AddDebugDisplayProperty(class UObject* Obj, TSubclassOf<class UObject> WithinClass, const FName& PropertyName, bool bSpecialProperty = false);
 
+protected:
+	/** Handle to the audio device created for this viewport. Each viewport (for multiple PIE) will have its own audio device. */
+	uint32 AudioDeviceHandle = INDEX_NONE;
+
+	/** Whether or not this audio device is in audio-focus */
+	bool bHasAudioFocus = false;
+
 private:
 	/** Slate window associated with this viewport client.  The same window may host more than one viewport client. */
 	TWeakPtr<SWindow> Window;
@@ -924,9 +946,6 @@ private:
 	 * @param WindowMode What window mode do we want to st the display to.
 	 */
 	bool SetDisplayConfiguration( const FIntPoint* Dimensions, EWindowMode::Type WindowMode);
-
-	/** Updates CSVProfiler camera stats */
-	void UpdateCsvCameraStats(const FSceneView* View);
 
 #if WITH_EDITOR
 	/** Delegate called when game viewport client received input key */
@@ -1001,9 +1020,6 @@ private:
 
 	/** Mouse cursor locking behavior when the viewport is clicked */
 	EMouseLockMode MouseLockMode;
-
-	/** Whether or not this audio device is in audio-focus */
-	bool bHasAudioFocus;
 
 	/** Is the mouse currently over the viewport client */
 	bool bIsMouseOverClient;

@@ -38,6 +38,8 @@ class ENGINE_API USkeletalMeshEditorData : public UObject
  */
 public:
 
+	virtual void PostLoad() override;
+
 	/**
 	 * Return the imported source LOD data, create one if there is nothing.
 	 * Previous reference get by this function can be invalid if we have to add items
@@ -54,7 +56,7 @@ public:
 
 private:
 	/** Imported raw mesh data. Optional, only the imported mesh LOD has this, generated LOD or old asset will be empty. */
-	TArray<FRawSkeletalMeshBulkData> RawSkeletalMeshBulkDatas;
+	TArray<TSharedRef<FRawSkeletalMeshBulkData>> RawSkeletalMeshBulkDatas;
 
 
 #endif //WITH_EDITORONLY_DATA

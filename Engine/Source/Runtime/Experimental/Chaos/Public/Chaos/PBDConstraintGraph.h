@@ -3,10 +3,6 @@
 
 #include "ParticleHandle.h"
 
-
-// @todo(ccaulfield): can we get rid of this now?
-#define USE_CONTACT_LEVELS 1
-
 namespace Chaos
 {
 	template<typename T, int d>
@@ -91,7 +87,7 @@ namespace Chaos
 		/**
 		 * Put particles in inactive islands to sleep.
 		 */
-		bool SleepInactive(const int32 Island, const TArrayCollectionArray<TSerializablePtr<FChaosPhysicsMaterial>>& PerParticleMaterialAttributes);
+		bool SleepInactive(const int32 Island, const TArrayCollectionArray<TSerializablePtr<FChaosPhysicsMaterial>>& PerParticleMaterialAttributes, const THandleArray<FChaosPhysicsMaterial>& SolverPhysicsMaterials);
 
 		/**
 		 * Wake all particles in an Island.
@@ -102,7 +98,7 @@ namespace Chaos
 		 * Ensure that the particles in each island have consistent sleep states - if any are awake, wake all.
 		 */
 		 // @todo(ccaulfield): Do we really need this? It implies some behind-the-scenes state manipulation.
-		void ReconcileIslands();
+		//void ReconcileIslands();
 
 		/**
 		 * Get the list of ConstraintsData indices associated with the specified island. NOTE: ConstraintDataIndex is an internal index and not related to 
@@ -139,20 +135,37 @@ namespace Chaos
 		}
 
 		/**
+		 * When resim is used, tells us whether we need to resolve island
+		 */
+		bool IslandNeedsResim(const int32 Island) const
+		{
+			return IslandToData[Island].bNeedsResim;
+		}
+
+		/**
 		 * Information mapping the edge back to a rule's constraint
 		 */
 		const FConstraintData& GetConstraintData(int32 ConstraintDataIndex) const;
 
 		/**
-		 * Enable a particle after initialization. Adds the particle to the island of the parent particle if supplied.
+		 * Adds \p ChildParticle to the constraint graph.  Copies the sleeping 
+		 * state and island of \p ParentParticle to \p ChildParticle.  Does nothing
+		 * if \p ParentParticle is not supplied.
 		 */
-		void EnableParticle(TGeometryParticleHandle<FReal, 3>* Particle, const TGeometryParticleHandle<FReal, 3>* ParentParticle);
+		void EnableParticle(TGeometryParticleHandle<FReal, 3>* ChildParticle, const TGeometryParticleHandle<FReal, 3>* ParentParticle);
 
 		/**
 		 * Disable a particle and remove it from its island.
 		 * @note: this does not remove any attached constraints - constraints need to be re-added and islands will need to be rebuilt.
 		 */
 		void DisableParticle(TGeometryParticleHandle<FReal, 3>* Particle);
+
+		/**
+		 * Preallocate buffers for \p Num particles.
+		 *
+		 * Returns the number of new slots created.
+		 */
+		int32 ReserveParticles(const int32 Num);
 
 		void AddParticle(TGeometryParticleHandle<FReal, 3>* AddedParticle)
 		{
@@ -203,15 +216,16 @@ namespace Chaos
 		{
 			FIslandData()
 			    : bIsIslandPersistant(false)
+				, bNeedsResim(true)
 			{
 			}
 
 			bool bIsIslandPersistant;
+			bool bNeedsResim;
 		};
 
 		void ComputeIslands(const TParticleView<TPBDRigidParticles<FReal, 3>>& PBDRigids, TPBDRigidsSOAs<FReal, 3>& Particles);
-		void ComputeIsland(const int32 Node, const int32 Island,
-			TSet<TGeometryParticleHandle<FReal, 3>*>& DynamicParticlesInIsland, TSet<TGeometryParticleHandle<FReal, 3>*>& StaticParticlesInIsland);
+		bool ComputeIsland(const int32 Node, const int32 Island, TSet<TGeometryParticleHandle<FReal, 3>*>& ParticlesInIsland);
 		bool CheckIslands(const TArray<TGeometryParticleHandle<FReal, 3>*>& Particles);
 		
 		void ParticleAdd(TGeometryParticleHandle<FReal, 3>* AddedParticle);

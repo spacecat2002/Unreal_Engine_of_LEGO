@@ -52,6 +52,15 @@ struct FMovieSceneTimecodeSource
 		, DeltaFrame(FFrameNumber())
 	{}
 
+	FORCEINLINE bool operator==(const FMovieSceneTimecodeSource& Other) const
+	{
+		return Timecode == Other.Timecode && DeltaFrame == Other.DeltaFrame;
+	}
+	FORCEINLINE bool operator!=(const FMovieSceneTimecodeSource& Other) const
+	{
+		return Timecode != Other.Timecode || DeltaFrame != Other.DeltaFrame;
+	}
+
 public:
 
 	/** The global timecode at which this target is based (ie. the timecode at the beginning of the movie scene section when it was recorded) */
@@ -226,7 +235,7 @@ public:
 	}
 	FORCEINLINE bool operator!=(const FMovieSceneSectionGroup& Other) const
 	{
-		return &Sections != &Other.Sections;;
+		return &Sections != &Other.Sections;
 	}
 
 	/**
@@ -237,6 +246,117 @@ public:
 	FORCEINLINE TArray<TWeakObjectPtr<UMovieSceneSection> >::RangedForConstIteratorType begin() const { return Sections.begin(); }
 	FORCEINLINE TArray<TWeakObjectPtr<UMovieSceneSection> >::RangedForIteratorType      end() { return Sections.end(); }
 	FORCEINLINE TArray<TWeakObjectPtr<UMovieSceneSection> >::RangedForConstIteratorType end() const { return Sections.end(); }
+};
+
+/**
+ * Structure that represents a group of nodes
+ */
+UCLASS()
+class MOVIESCENE_API UMovieSceneNodeGroup : public UObject
+{
+	GENERATED_BODY()
+
+	virtual bool IsEditorOnly() const override { return true; }
+
+#if WITH_EDITORONLY_DATA
+public:
+	const FName GetName() const { return Name; }
+	void SetName(const FName& Name);
+
+	void AddNode(const FString& Path);
+	void RemoveNode(const FString& Path);
+	TArrayView<FString> GetNodes() { return Nodes; }
+	bool ContainsNode(const FString& Path) const;
+
+	void UpdateNodePath(const FString& OldPath, const FString& NewPath);
+
+	bool GetEnableFilter() const { return bEnableFilter; }
+	void SetEnableFilter(bool bInEnableFilter);
+
+	/** Event that is triggered whenever this node group has changed */
+	DECLARE_EVENT(UMovieSceneNodeGroup, FOnNodeGroupChanged)
+	FOnNodeGroupChanged& OnNodeGroupChanged() { return OnNodeGroupChangedEvent; }
+
+private:
+	UPROPERTY()
+	FName Name;
+
+	/** Nodes that are part of this node group, stored as node tree paths */
+	UPROPERTY()
+	TArray<FString> Nodes;
+
+	/** Whether sequencer should filter to only show this nodes in this group */
+	bool bEnableFilter;
+
+	/** Event that is triggered whenever this node group has changed */
+	FOnNodeGroupChanged OnNodeGroupChangedEvent;
+
+	/**
+	 * Comparison operators
+	 * We only need these for being stored in a container, to check if it's the same object.
+	 * Not intended for direct use.
+	 */
+	FORCEINLINE bool operator==(const UMovieSceneNodeGroup& Other) const
+	{
+		return &Nodes == &Other.Nodes;
+	}
+	FORCEINLINE bool operator!=(const UMovieSceneNodeGroup& Other) const
+	{
+		return &Nodes != &Other.Nodes;
+	}
+#endif
+};
+
+/**
+ * Structure that represents a collection of NodeGroups
+ */
+UCLASS()
+class MOVIESCENE_API UMovieSceneNodeGroupCollection : public UObject
+{
+	GENERATED_BODY()
+
+	virtual bool IsEditorOnly() const override { return true; }
+
+#if WITH_EDITORONLY_DATA
+public:
+	/** Called after this object has been deserialized */
+	virtual void PostLoad() override;
+
+	void AddNodeGroup(UMovieSceneNodeGroup* NodeGroup);
+	void RemoveNodeGroup(UMovieSceneNodeGroup* NodeGroup);
+
+	bool Contains(UMovieSceneNodeGroup* NodeGroup) const { return NodeGroups.Contains(NodeGroup); }
+	const int32 Num() const { return NodeGroups.Num(); }
+	bool HasAnyActiveFilter() const { return bAnyActiveFilter; }
+
+	void UpdateNodePath(const FString& OldPath, const FString& NewPath);
+
+	/** Event that is triggered whenever this collection of node groups, or an included node group, has changed */
+	DECLARE_EVENT(UMovieSceneNodeGroupCollection, FOnNodeGroupCollectionChanged)
+	FOnNodeGroupCollectionChanged& OnNodeGroupCollectionChanged() { return OnNodeGroupCollectionChangedEvent; }
+
+private:
+	UPROPERTY()
+	TArray<UMovieSceneNodeGroup*> NodeGroups;
+
+	bool bAnyActiveFilter;
+
+	void OnNodeGroupChanged();
+
+	/** Event that is triggered whenever this collection of node groups, or an included node group, has changed */
+	FOnNodeGroupCollectionChanged OnNodeGroupCollectionChangedEvent;
+
+public:
+
+	/**
+	 * DO NOT USE DIRECTLY
+	 * STL-like iterators to enable range-based for loop support.
+	 */
+	FORCEINLINE TArray<UMovieSceneNodeGroup*>::RangedForIteratorType      begin()	{ return NodeGroups.begin(); }
+	FORCEINLINE TArray<UMovieSceneNodeGroup*>::RangedForConstIteratorType begin()	const { return NodeGroups.begin(); }
+	FORCEINLINE TArray<UMovieSceneNodeGroup*>::RangedForIteratorType      end()	{ return NodeGroups.end(); }
+	FORCEINLINE TArray<UMovieSceneNodeGroup*>::RangedForConstIteratorType end()	const { return NodeGroups.end(); }
+#endif
 };
 
 /**
@@ -584,7 +704,7 @@ public:
 	UMovieSceneTrack* AddCameraCutTrack( TSubclassOf<UMovieSceneTrack> TrackClass );
 	
 	/** @return The camera cut track if it exists. */
-	UMovieSceneTrack* GetCameraCutTrack();
+	UMovieSceneTrack* GetCameraCutTrack() const;
 
 	/** Removes the camera cut track if it exists. */
 	void RemoveCameraCutTrack();
@@ -864,6 +984,8 @@ public:
 	 */
 	void CleanSectionGroups();
 
+	UMovieSceneNodeGroupCollection& GetNodeGroups() { return *NodeGroupCollection; }
+
 	/** The timecode at which this movie scene section is based (ie. when it was recorded) */
 	UPROPERTY()
 	FMovieSceneTimecodeSource TimecodeSource;
@@ -928,6 +1050,23 @@ public:
 	 */
 	int32 FindNextMarkedFrame(FFrameNumber InFrameNumber, bool bForward);
 
+#if WITH_EDITORONLY_DATA
+	/*
+	 * Set whether this scene's marked frames should be shown globally
+	 */
+	void SetGloballyShowMarkedFrames(bool bShowMarkedFrames) { bGloballyShowMarkedFrames = bShowMarkedFrames; }
+
+	/*
+	 * Toggle whether this scene's marked frames should be shown globally
+	 */
+	void ToggleGloballyShowMarkedFrames() { bGloballyShowMarkedFrames = !bGloballyShowMarkedFrames; }
+
+	/*
+	 * Returns whether this scene's marked frames should be shown globally
+	 */
+	bool GetGloballyShowMarkedFrames() const { return bGloballyShowMarkedFrames; }
+#endif
+
 	/*
 	 * Retrieve all the tagged binding groups for this movie scene
 	 */
@@ -965,12 +1104,6 @@ protected:
 	 */
 	void RemoveBinding(const FGuid& Guid);
 
-#if WITH_EDITOR
-	/** Templated helper for optimizing lists of possessables and spawnables for cook */
-	template<typename T>
-	void OptimizeObjectArray(TArray<T>& ObjectArray);
-#endif
-	
 protected:
 
 	/** Called after this object has been deserialized */
@@ -1079,6 +1212,13 @@ private:
 	/** Groups of sections which should maintain the same relative offset */
 	UPROPERTY()
 	TArray<FMovieSceneSectionGroup> SectionGroups;
+
+	/** Collection of user-defined groups */
+	UPROPERTY()
+	UMovieSceneNodeGroupCollection* NodeGroupCollection;
+
+	/** Whether this scene's marked frames should be shown globally */
+	bool bGloballyShowMarkedFrames;
 
 private:
 

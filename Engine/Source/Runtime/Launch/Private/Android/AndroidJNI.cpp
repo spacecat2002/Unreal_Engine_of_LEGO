@@ -43,6 +43,10 @@ extern FString GFontPathBase;
 extern bool GOBBinAPK;
 extern bool GOverrideAndroidLogDir;
 extern FString GOBBFilePathBase;
+extern FString GOBBMainFilePath;
+extern FString GOBBPatchFilePath;
+extern FString GOBBOverflow1FilePath;
+extern FString GOBBOverflow2FilePath;
 extern FString GAPKFilename;
 
 FOnActivityResult FJavaWrapper::OnActivityResultDelegate;
@@ -115,6 +119,11 @@ void FJavaWrapper::FindClassesAndMethods(JNIEnv* Env)
 	AndroidThunkJava_GetIntentExtrasInt = FindMethod(Env, GameActivityClassID, "AndroidThunkJava_GetIntentExtrasInt", "(Ljava/lang/String;)I", bIsOptional);
 	AndroidThunkJava_GetIntentExtrasString = FindMethod(Env, GameActivityClassID, "AndroidThunkJava_GetIntentExtrasString", "(Ljava/lang/String;)Ljava/lang/String;", bIsOptional);
 	AndroidThunkJava_PushSensorEvents = FindMethod(Env, GameActivityClassID, "AndroidThunkJava_PushSensorEvents", "()V", bIsOptional);
+
+	// Screen capture/recording permission
+	AndroidThunkJava_IsScreenCaptureDisabled = FindMethod(Env, GameActivityClassID, "AndroidThunkJava_IsScreenCaptureDisabled", "()Z", bIsOptional);
+	AndroidThunkJava_DisableScreenCapture = FindMethod(Env, GameActivityClassID, "AndroidThunkJava_DisableScreenCapture", "(Z)V", bIsOptional);
+
 
 	// this is optional - only inserted if Oculus Mobile plugin enabled
 	AndroidThunkJava_IsOculusMobileApplication = FindMethod(Env, GameActivityClassID, "AndroidThunkJava_IsOculusMobileApplication", "()Z", true);
@@ -396,6 +405,8 @@ jmethodID FJavaWrapper::AndroidThunkJava_GetIntentExtrasInt;
 jmethodID FJavaWrapper::AndroidThunkJava_GetIntentExtrasString;
 jmethodID FJavaWrapper::AndroidThunkJava_SetSustainedPerformanceMode;
 jmethodID FJavaWrapper::AndroidThunkJava_PushSensorEvents;
+jmethodID FJavaWrapper::AndroidThunkJava_IsScreenCaptureDisabled;
+jmethodID FJavaWrapper::AndroidThunkJava_DisableScreenCapture;
 
 jclass FJavaWrapper::InputDeviceInfoClass;
 jfieldID FJavaWrapper::InputDeviceInfo_VendorId;
@@ -748,6 +759,25 @@ void AndroidThunkCpp_PushSensorEvents()
 	if (JNIEnv* Env = FAndroidApplication::GetJavaEnv())
 	{
 		FJavaWrapper::CallVoidMethod(Env, FJavaWrapper::GameActivityThis, FJavaWrapper::AndroidThunkJava_PushSensorEvents);
+	}
+}
+
+bool AndroidThunkCpp_IsScreenCaptureDisabled()
+{
+	if (JNIEnv* Env = FAndroidApplication::GetJavaEnv())
+	{
+		// call the java side
+		return FJavaWrapper::CallBooleanMethod(Env, FJavaWrapper::GameActivityThis, FJavaWrapper::AndroidThunkJava_IsScreenCaptureDisabled);
+	}
+	return true;
+}
+
+void AndroidThunkCpp_DisableScreenCapture(bool bDisable)
+{
+	if (JNIEnv* Env = FAndroidApplication::GetJavaEnv())
+	{
+		// call the java side
+		FJavaWrapper::CallVoidMethod(Env, FJavaWrapper::GameActivityThis, FJavaWrapper::AndroidThunkJava_DisableScreenCapture, bDisable);
 	}
 }
 
@@ -1568,6 +1598,10 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* InJavaVM, void* InReserved)
 	// Copy that somewhere safe
 	GFilePathBase = FJavaHelper::FStringFromLocalRef(Env, (jstring)Env->CallObjectMethod(*externalStoragePath, getFilePath, nullptr));
 	GOBBFilePathBase = GFilePathBase;
+	GOBBMainFilePath = TEXT("");
+	GOBBPatchFilePath = TEXT("");
+	GOBBOverflow1FilePath = TEXT("");
+	GOBBOverflow2FilePath = TEXT("");
 
 	// then release...
 	FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Path found as '%s'\n"), *GFilePathBase);
@@ -1590,6 +1624,15 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* InJavaVM, void* InReserved)
 }
 
 //Native-defined functions
+
+//This function is declared in the Java-defined class, GameActivity.java: "public native void naativeSetObbFilePaths();"
+JNI_METHOD void Java_com_epicgames_ue4_GameActivity_nativeSetObbFilePaths(JNIEnv* jenv, jobject thiz, jstring OBBMainFilePath, jstring OBBPatchFilePath, jstring OBBOverflow1FilePath, jstring OBBOverflow2FilePath)
+{
+	GOBBMainFilePath = FJavaHelper::FStringFromParam(jenv, OBBMainFilePath);
+	GOBBPatchFilePath = FJavaHelper::FStringFromParam(jenv, OBBPatchFilePath);
+	GOBBOverflow1FilePath = FJavaHelper::FStringFromParam(jenv, OBBOverflow1FilePath);
+	GOBBOverflow2FilePath = FJavaHelper::FStringFromParam(jenv, OBBOverflow2FilePath);
+}
 
 //This function is declared in the Java-defined class, GameActivity.java: "public native void nativeSetGlobalActivity();"
 JNI_METHOD void Java_com_epicgames_ue4_GameActivity_nativeSetGlobalActivity(JNIEnv* jenv, jobject thiz, jboolean bUseExternalFilesDir, jboolean bPublicLogFiles, jstring internalFilePath, jstring externalFilePath, jboolean bOBBinAPK, jstring APKFilename /*, jobject googleServices*/)

@@ -45,7 +45,8 @@ public:
 #if D3D12_RHI_RAYTRACING
 	void									InitRayTracing();
 	void									CleanupRayTracing();
-	ID3D12Device5*							GetRayTracingDevice();
+	ID3D12Device5*							GetDevice5();
+	ID3D12Device7*							GetDevice7();
 	const FD3D12BasicRayTracingPipeline*	GetBasicRayTracingPipeline() const { return BasicRayTracingPipeline; }
 	FD3D12RayTracingDescriptorHeapCache*	GetRayTracingDescriptorHeapCache() { return RayTracingDescriptorHeapCache; }
 	FD3D12RayTracingPipelineCache*			GetRayTracingPipelineCache() { return RayTracingPipelineCache; }
@@ -99,7 +100,8 @@ public:
 		FreeCommandContexts.Add(CmdContext);
 	}
 
-	ID3D12CommandQueue* GetD3DCommandQueue(ED3D12CommandQueueType InQueueType = ED3D12CommandQueueType::Default) const;
+	FD3D12CommandListManager* GetCommandListManager(ED3D12CommandQueueType inQueueType) const;
+	ID3D12CommandQueue* GetD3DCommandQueue(ED3D12CommandQueueType InQueueType = ED3D12CommandQueueType::Default) { return GetCommandListManager(InQueueType)->GetD3DCommandQueue(); }
 
 	inline FD3D12CommandContext& GetDefaultCommandContext() const { return GetCommandContext(0); }
 	inline FD3D12CommandContext& GetDefaultAsyncComputeContext() const { return GetAsyncComputeContext(0); }
@@ -111,17 +113,13 @@ public:
 
 	void RegisterGPUWork(uint32 NumPrimitives = 0, uint32 NumVertices = 0);
 	void RegisterGPUDispatch(FIntVector GroupCount);
-	void PushGPUEvent(const TCHAR* Name, FColor Color);
-	void PopGPUEvent();
-
-#if NV_AFTERMATH
-	void PushGPUEvent(const TCHAR* Name, FColor Color, GFSDK_Aftermath_ContextHandle Context);
-#endif
-
+	
 	FD3D12SamplerState* CreateSampler(const FSamplerStateInitializerRHI& Initializer);
 	void CreateSamplerInternal(const D3D12_SAMPLER_DESC& Desc, D3D12_CPU_DESCRIPTOR_HANDLE Descriptor);
 
 	void BlockUntilIdle();
+
+	FORCEINLINE FD3DGPUProfiler& GetGPUProfiler() { return GPUProfilingData; }
 
 protected:
 
@@ -148,7 +146,7 @@ protected:
 
 	FD3D12QueryHeap OcclusionQueryHeap;
 	FD3D12QueryHeap TimestampQueryHeap;
-#if WITH_PROFILEGPU
+#if WITH_PROFILEGPU || D3D12_SUBMISSION_GAP_RECORDER
 	FD3D12LinearQueryHeap CmdListExecTimeQueryHeap;
 #endif
 
@@ -195,8 +193,9 @@ protected:
 	FD3D12RayTracingDescriptorHeapCache* RayTracingDescriptorHeapCache = nullptr;
 	void DestroyRayTracingDescriptorCache();
 #endif
-};
 
+	FD3DGPUProfiler GPUProfilingData;
+};
 template <typename TDesc> 
 void TD3D12ViewDescriptorHandle<TDesc>::AllocateDescriptorSlot()
 {

@@ -10,6 +10,8 @@
 #include "UObject/Package.h"
 #include "UObject/ObjectRedirector.h"
 #include "Misc/PackageName.h"
+#include "Misc/StringBuilder.h"
+#include "Containers/StringView.h"
 #include "UObject/LinkerLoad.h"
 #include "AssetDataTagMap.h"
 #include "UObject/PrimaryAssetId.h"
@@ -83,29 +85,52 @@ public:
 	/** The IDs of the pakchunks this asset is located in for streaming install.  Empty if not assigned to a chunk */
 	TArray<int32> ChunkIDs;
 	/** Asset package flags */
-	uint32 PackageFlags;
+	uint32 PackageFlags = 0;
 
 public:
 	/** Default constructor */
-	FAssetData()
-	{}
+	FAssetData() = default;
 
-	/** Constructor */
+	/** Constructor building the ObjectPath in the form of InPackageName.InAssetName. does not work for object outer-ed to a different package. */
 	FAssetData(FName InPackageName, FName InPackagePath, FName InAssetName, FName InAssetClass, FAssetDataTagMap InTags = FAssetDataTagMap(), TArray<int32> InChunkIDs = TArray<int32>(), uint32 InPackageFlags = 0)
-		: ObjectPath(*FString::Format(TEXT("{0}.{1}"), { InPackageName.ToString(), InAssetName.ToString() }))
-		, PackageName(InPackageName)
+		: PackageName(InPackageName)
 		, PackagePath(InPackagePath)
 		, AssetName(InAssetName)
 		, AssetClass(InAssetClass)
 		, TagsAndValues(MoveTemp(InTags))
 		, ChunkIDs(MoveTemp(InChunkIDs))
 		, PackageFlags(InPackageFlags)
-	{}
+	{
+		TStringBuilder<FName::StringBufferSize> ObjectPathStr;
+		PackageName.AppendString(ObjectPathStr);
+		ObjectPathStr << TEXT('.');
+		AssetName.AppendString(ObjectPathStr);
+		ObjectPath = FName(FStringView(ObjectPathStr));
+	}
+
+	/** Constructor with a long package name and a full object path which might not be part of the package this asset is in. */
+	FAssetData(const FString& InLongPackageName, const FString& InObjectPath, FName InAssetClass, FAssetDataTagMap InTags = FAssetDataTagMap(), TArray<int32> InChunkIDs = TArray<int32>(), uint32 InPackageFlags = 0)
+		: ObjectPath(*InObjectPath)
+		, PackageName(*InLongPackageName)
+		, AssetClass(InAssetClass)
+		, TagsAndValues(MoveTemp(InTags))
+		, ChunkIDs(MoveTemp(InChunkIDs))
+		, PackageFlags(InPackageFlags)
+	{
+		PackagePath = FName(*FPackageName::GetLongPackagePath(InLongPackageName));
+
+		// Find the object name from the path, FPackageName::ObjectPathToObjectName(InObjectPath)) doesn't provide what we want here
+		int32 CharPos = InObjectPath.FindLastCharByPredicate([](TCHAR Char)
+		{
+			return Char == ':' || Char == '.';
+		});
+		AssetName = FName(*InObjectPath.Mid(CharPos + 1));
+	}
 
 	/** Constructor taking a UObject. By default trying to create one for a blueprint class will create one for the UBlueprint instead, but this can be overridden */
 	FAssetData(const UObject* InAsset, bool bAllowBlueprintClass = false)
 	{
-		if ( InAsset != nullptr )
+		if (InAsset != nullptr)
 		{
 			const UClass* InClass = Cast<UClass>(InAsset);
 			if (InClass && InClass->ClassGeneratedBy && !bAllowBlueprintClass)
@@ -171,7 +196,28 @@ public:
 	/** Returns true if this is the primary asset in a package, true for maps and assets but false for secondary objects like class redirectors */
 	bool IsUAsset() const
 	{
-		return FPackageName::GetLongPackageAssetName(PackageName.ToString()) == AssetName.ToString();
+		if (!IsValid())
+		{
+			return false;
+		}
+
+		TStringBuilder<FName::StringBufferSize> AssetNameStrBuilder;
+		AssetName.ToString(AssetNameStrBuilder);
+
+		TStringBuilder<FName::StringBufferSize> PackageNameStrBuilder;
+		PackageName.ToString(PackageNameStrBuilder);
+
+		FStringView PackageAssetNameStr;
+		{
+			// Get everything after the last slash
+			FStringView PackageNameStr(PackageNameStrBuilder);
+			int32 IndexOfLastSlash = INDEX_NONE;
+			PackageNameStr.FindLastChar(TEXT('/'), IndexOfLastSlash);
+			PackageAssetNameStr = PackageNameStr.Mid(IndexOfLastSlash + 1);
+		}
+
+		FStringView AssetNameStr(AssetNameStrBuilder);
+		return PackageAssetNameStr == AssetNameStr;
 	}
 
 	void Shrink()
@@ -218,12 +264,8 @@ public:
 	/** Returns true if the this asset is a redirector. */
 	bool IsRedirector() const
 	{
-		if ( AssetClass == UObjectRedirector::StaticClass()->GetFName() )
-		{
-			return true;
-		}
-
-		return false;
+		static const FName ObjectRedirectorClassName = UObjectRedirector::StaticClass()->GetFName();
+		return AssetClass == ObjectRedirectorClassName;
 	}
 
 	/** Returns the class UClass if it is loaded. It is not possible to load the class if it is unloaded since we only have the short name. */
@@ -314,13 +356,13 @@ public:
 		if ( !IsValid() )
 		{
 			// Dont even try to find the object if the objectpath isn't set
-			return NULL;
+			return nullptr;
 		}
 
-		UObject* Asset = FindObject<UObject>(NULL, *ObjectPath.ToString());
-		if ( Asset == NULL )
+		UObject* Asset = FindObject<UObject>(nullptr, *ObjectPath.ToString());
+		if ( Asset == nullptr)
 		{
-			Asset = LoadObject<UObject>(NULL, *ObjectPath.ToString());
+			Asset = LoadObject<UObject>(nullptr, *ObjectPath.ToString());
 		}
 
 		return Asset;

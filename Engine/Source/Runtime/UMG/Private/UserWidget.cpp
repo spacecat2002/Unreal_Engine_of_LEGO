@@ -138,7 +138,7 @@ void UUserWidget::TemplateInitInner()
 			FString VariableName = Widget->GetName();
 
 			// Find property with the same name as the template and assign the new widget to it.
-			FObjectPropertyBase* Prop = FindField<FObjectPropertyBase>(WidgetClass, *VariableName);
+			FObjectPropertyBase* Prop = FindFProperty<FObjectPropertyBase>(WidgetClass, *VariableName);
 			if ( Prop )
 			{
 				Prop->SetObjectPropertyValue_InContainer(this, Widget);
@@ -263,7 +263,7 @@ bool UUserWidget::VerifyTemplateIntegrity(UUserWidget* TemplateRoot, TArray<FTex
 			FName VariableFName = Widget->GetFName();
 
 			// Find property with the same name as the template and assign the new widget to it.
-			FObjectPropertyBase* Prop = FindField<FObjectPropertyBase>(TemplateClass, VariableFName);
+			FObjectPropertyBase* Prop = FindFProperty<FObjectPropertyBase>(TemplateClass, VariableFName);
 			if ( Prop )
 			{
 				UObject* Value = Prop->GetObjectPropertyValue_InContainer(this);
@@ -378,7 +378,7 @@ void UUserWidget::InitializeNamedSlots(bool bReparentToWidgetTree)
 	{
 		if ( UWidget* BindingContent = Binding.Content )
 		{
-			FObjectPropertyBase* NamedSlotProperty = FindField<FObjectPropertyBase>(GetClass(), Binding.Name);
+			FObjectPropertyBase* NamedSlotProperty = FindFProperty<FObjectPropertyBase>(GetClass(), Binding.Name);
 #if !WITH_EDITOR
 			// In editor, renaming a NamedSlot widget will cause this ensure in UpdatePreviewWidget of widget that use that namedslot
 			ensure(NamedSlotProperty);
@@ -1231,11 +1231,21 @@ void UUserWidget::SetOwningPlayer(APlayerController* LocalPlayerController)
 	}
 }
 
-class APawn* UUserWidget::GetOwningPlayerPawn() const
+APawn* UUserWidget::GetOwningPlayerPawn() const
 {
-	if ( APlayerController* PC = GetOwningPlayer() )
+	if (APlayerController* PC = GetOwningPlayer())
 	{
 		return PC->GetPawn();
+	}
+
+	return nullptr;
+}
+
+APlayerCameraManager* UUserWidget::GetOwningPlayerCameraManager() const
+{
+	if (APlayerController* PC = GetOwningPlayer())
+	{
+		return PC->PlayerCameraManager;
 	}
 
 	return nullptr;

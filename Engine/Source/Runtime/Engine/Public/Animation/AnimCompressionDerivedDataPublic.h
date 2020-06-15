@@ -64,21 +64,28 @@ public:
 	int32 GetNumRemainingJobs() const { return ActiveAsyncCompressionTasks.Num() + QueuedAsyncCompressionWork.Num(); }
 	
 	// Blocks on compression for the supplied animation. Returns false if there was no compression job to wait on. 
-	bool WaitOnExistingCompression(UAnimSequence* Anim, const bool bCancelIfNotStarted);
+	bool WaitOnExistingCompression(UAnimSequence* Anim, const bool bWantResults);
 private:
 
 	void StartAsyncWork(FDerivedDataAnimationCompression& Compressor, UAnimSequence* Anim, const uint64 NewTaskSize, const bool bPerformFrameStripping);
 
-	bool WaitOnActiveCompression(UAnimSequence* Anim);
+	void StartQueuedTasks(int32 MaxActiveTasks);
+
+	bool WaitOnActiveCompression(UAnimSequence* Anim, bool bWantResults);
 
 	void OnActiveCompressionFinished(int32 ActiveAnimIndex);
 
-	FAsyncCompressedAnimationsManagement() : ActiveMemoryUsage(0) {}
+	FAsyncCompressedAnimationsManagement();
+
+	void Shutdown();
 
 	//Array of active and queued compression jobs
 	TArray<FActiveAsyncCompressionTask> ActiveAsyncCompressionTasks;
 	TArray<FQueuedAsyncCompressionWork> QueuedAsyncCompressionWork;
 	uint64 ActiveMemoryUsage;
+
+	//Cache the last tick time to keep queue pumping during large loading segments
+	double LastTickTime;
 
 	/* Begin FTickableEditorObject */
 	virtual void Tick(float DeltaTime) override;

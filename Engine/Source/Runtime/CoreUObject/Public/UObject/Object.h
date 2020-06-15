@@ -699,10 +699,16 @@ public:
 			: Name(InName), Value(InValue), Type(InType), DisplayFlags(InDisplayFlags) {}
 
 		/** Gathers a list of asset registry searchable tags from given objects properties */
-		COREUOBJECT_API static void GetAssetRegistryTagsFromSearchableProperties(const UObject* Object, TArray<FAssetRegistryTag>& OutTags);
+		COREUOBJECT_API static void GetAssetRegistryTagsFromSearchableProperties(const UObject* Object, TArray<FAssetRegistryTag>& InOutTags);
 
 		/** Returns true if this FName is a special UStruct that should be exported even if not tagged, with the struct name as the tag name */
 		COREUOBJECT_API static bool IsUniqueAssetRegistryTagStruct(FName StructName, ETagType& TagType);
+
+#if WITH_EDITOR
+		/** Callback  */
+		DECLARE_MULTICAST_DELEGATE_TwoParams(FOnGetObjectAssetRegistryTags, const UObject* /*Object*/, TArray<FAssetRegistryTag>& /*InOutTags*/);
+		COREUOBJECT_API static FOnGetObjectAssetRegistryTags OnGetExtraObjectTags;
+#endif // WITH_EDITOR
 	};
 
 	/**
@@ -1348,6 +1354,7 @@ public:
 	DECLARE_FUNCTION(execStringConst);
 	DECLARE_FUNCTION(execUnicodeStringConst);
 	DECLARE_FUNCTION(execTextConst);
+	DECLARE_FUNCTION(execPropertyConst);
 	DECLARE_FUNCTION(execObjectConst);
 	DECLARE_FUNCTION(execSoftObjectConst);
 	DECLARE_FUNCTION(execFieldPathConst);
@@ -1474,7 +1481,10 @@ private:
 		// always have this implemented (by UHT).
 		check(false);
 	}
-	
+
+public:
+
+	/** Should only ever be used by internal systems. */
 	virtual int32 GetNetPushIdDynamic() const
 	{
 		return INDEX_NONE;
@@ -1485,17 +1495,10 @@ struct FObjectNetPushIdHelper
 {
 private:
 	friend struct FNetPrivatePushIdHelper;
-	friend class UNetPushModelHelpers;
-	friend class UKismetArrayLibrary;
 
 	static void SetNetPushIdDynamic(UObject* Object, const int32 NewNetPushId)
 	{
 		Object->SetNetPushIdDynamic(NewNetPushId);
-	}
-	
-	static int32 GetNetPushIdDynamic(const UObject* const Object)
-	{
-		return Object->GetNetPushIdDynamic();
 	}
 };
 

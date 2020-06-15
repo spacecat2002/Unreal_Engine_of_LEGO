@@ -91,19 +91,8 @@ bool FVulkanDynamicRHIModule::IsSupported()
 
 FDynamicRHI* FVulkanDynamicRHIModule::CreateRHI(ERHIFeatureLevel::Type InRequestedFeatureLevel)
 {
-	if (!GIsEditor &&
-		(FVulkanPlatform::RequiresMobileRenderer() ||
-			InRequestedFeatureLevel == ERHIFeatureLevel::ES3_1 ||
-			FParse::Param(FCommandLine::Get(), TEXT("featureleveles31"))))
-	{
-		GMaxRHIFeatureLevel = ERHIFeatureLevel::ES3_1;
-		GMaxRHIShaderPlatform = PLATFORM_LUMIN ? SP_VULKAN_ES3_1_LUMIN : (PLATFORM_ANDROID ? SP_VULKAN_ES3_1_ANDROID : SP_VULKAN_PCES3_1);
-	}
-	else
-	{
-		GMaxRHIFeatureLevel = ERHIFeatureLevel::SM5;
-		GMaxRHIShaderPlatform = (PLATFORM_LUMIN) ? SP_VULKAN_SM5_LUMIN : SP_VULKAN_SM5;
-	}
+	FVulkanPlatform::SetupMaxRHIFeatureLevelAndShaderPlatform(InRequestedFeatureLevel);
+	check(GMaxRHIFeatureLevel != ERHIFeatureLevel::Num);
 
 	GVulkanRHI = new FVulkanDynamicRHI();
 #if ENABLE_RHI_VALIDATION
@@ -715,7 +704,7 @@ void FVulkanDynamicRHI::InitInstance()
 		//#todo-rco: Add newer Nvidia also
 		GSupportsEfficientAsyncCompute = (Device->GetVendorId() == EGpuVendorId::Amd) && (GRHIAllowAsyncComputeCvar.GetValueOnAnyThread() > 0) && (Device->ComputeContext != Device->ImmediateContext);
 
-		GSupportsVolumeTextureRendering = true;
+		GSupportsVolumeTextureRendering = FVulkanPlatform::SupportsVolumeTextureRendering();
 
 		// Indicate that the RHI needs to use the engine's deferred deletion queue.
 		GRHINeedsExtraDeletionLatency = true;
@@ -725,6 +714,7 @@ void FVulkanDynamicRHI::InitInstance()
 		GMaxShadowDepthBufferSizeX =  FPlatformMath::Min<int32>(Props.limits.maxImageDimension2D, GMaxShadowDepthBufferSizeX);
 		GMaxShadowDepthBufferSizeY =  FPlatformMath::Min<int32>(Props.limits.maxImageDimension2D, GMaxShadowDepthBufferSizeY);
 		GMaxTextureDimensions = Props.limits.maxImageDimension2D;
+		GMaxBufferDimensions = Props.limits.maxTexelBufferElements;
 		GMaxTextureMipCount = FPlatformMath::CeilLogTwo( GMaxTextureDimensions ) + 1;
 		GMaxTextureMipCount = FPlatformMath::Min<int32>( MAX_TEXTURE_MIP_COUNT, GMaxTextureMipCount );
 		GMaxCubeTextureDimensions = Props.limits.maxImageDimensionCube;
@@ -1473,8 +1463,9 @@ void FVulkanBufferView::Create(VkFormat Format, FVulkanResourceMultiBuffer* Buff
 
 	//#todo-rco: Revisit this if buffer views become VK_BUFFER_USAGE_STORAGE_BUFFER_BIT instead of VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT
 	const VkPhysicalDeviceLimits& Limits = Device->GetLimits();
-	//#todo-rco: 4 for rgba, do we need 1 for r, 2 for rg and 3 for rgb?
-	ViewInfo.range = ((Size / (GetNumBitsPerPixel(Format) / 4)) < Limits.maxTexelBufferElements) ? Size : VK_WHOLE_SIZE;
+	const uint64 MaxSize = (uint64)Limits.maxTexelBufferElements * GetNumBitsPerPixel(Format) / 8;
+	ViewInfo.range = FMath::Min<uint64>(Size, MaxSize);
+	// TODO: add a check() for exceeding MaxSize, to catch code which blindly makes views without checking the platform limits.
 
 	Flags = Buffer->GetBufferUsageFlags() & (VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT);
 	check(Flags);

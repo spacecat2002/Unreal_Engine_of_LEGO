@@ -7,6 +7,7 @@
 #include "Sound/SoundAttenuation.h"
 #include "Sound/SoundBase.h"
 #include "Sound/SoundNode.h"
+#include "Sound/SoundWave.h"
 
 #if WITH_EDITOR
 #include "EdGraph/EdGraph.h"
@@ -92,11 +93,11 @@ class ENGINE_API USoundCue : public USoundBase
 	USoundNode* FirstNode;
 
 	/* Volume multiplier for the Sound Cue */
-	UPROPERTY(EditAnywhere, Category=Sound, AssetRegistrySearchable)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Sound, AssetRegistrySearchable)
 	float VolumeMultiplier;
 
 	/* Pitch multiplier for the Sound Cue */
-	UPROPERTY(EditAnywhere, Category=Sound, AssetRegistrySearchable)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Sound, AssetRegistrySearchable)
 	float PitchMultiplier;
 
 	/* Attenuation settings to use if Override Attenuation is set to true */
@@ -264,6 +265,9 @@ public:
 	void RetainSoundCue();
 	void ReleaseRetainedAudio();
 
+	/** Call this when stream caching is enabled to update sound waves of loading behavior they are inheriting via SoundCue */
+	void CacheLoadingBehavior(ESoundWaveLoadingBehavior InBehavior);
+
 protected:
 	bool RecursiveFindPathToNode(USoundNode* CurrentNode, const UPTRINT CurrentHash, const UPTRINT NodeHashToFind, TArray<USoundNode*>& OutPath) const;
 
@@ -271,14 +275,16 @@ private:
 	void AudioQualityChanged();
 	void OnPostEngineInit();
 	void EvaluateNodes(bool bAddToRoot);
+
 	float FindMaxDistanceInternal() const;
 
 	FDelegateHandle OnPostEngineInitHandle;
 	static int32 CachedQualityLevel;
 
-	void ApplySoundClassLoadingBehaviorToSoundWaves();
-
 public:
+
+	// This is used to cache the quality level if it has not been cached yet.
+	static void CacheQualityLevel();
 
 	/**
 	 * Instantiate certain functions to work around a linker issue

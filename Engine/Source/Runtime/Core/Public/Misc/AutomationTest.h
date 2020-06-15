@@ -28,6 +28,11 @@
 #include "Misc/AutomationEvent.h"
 #include "Internationalization/Regex.h"
 
+
+#ifndef WITH_AUTOMATION_TESTS
+	#define WITH_AUTOMATION_TESTS (WITH_DEV_AUTOMATION_TESTS || WITH_PERF_AUTOMATION_TESTS)
+#endif
+
 /** Flags for specifying automation test requirements/behavior */
 namespace EAutomationTestFlags
 {
@@ -547,8 +552,9 @@ struct FAutomationExpectedError
 
 struct FAutomationScreenshotData
 {
-	FString Name;
+	FString ScreenShotName;
 	FString Context;
+	FString TestName;
 	FString Notes;
 
 	FGuid Id;
@@ -594,7 +600,8 @@ struct FAutomationScreenshotData
 	bool bIgnoreAntiAliasing;
 	bool bIgnoreColors;
 
-	FString Path;
+	// Name of the screenshot generated from AutomationCommon::GetScreenShotName()
+	FString ScreenshotName;
 
 	FAutomationScreenshotData()
 		: Id()
@@ -657,6 +664,10 @@ struct CORE_API FAutomationScreenshotCompareResults
  */
 DECLARE_DELEGATE_TwoParams(FOnTestScreenshotCaptured, const TArray<FColor>&, const FAutomationScreenshotData&);
 
+DECLARE_DELEGATE_ThreeParams(FOnTestScreenshotAndTraceCaptured, const TArray<FColor>&, const TArray<uint8>&, const FAutomationScreenshotData&);
+
+DECLARE_DELEGATE_TwoParams(FOnCaptureFrameTrace, const FString& /*DestPath*/, class FViewport* /*Optional Capture Viewport*/);
+
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnTestScreenshotComparisonComplete, const FAutomationScreenshotCompareResults& /*CompareResults*/);
 
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnTestDataRetrieved, bool /*bWasNew*/, const FString& /*JsonData*/);
@@ -684,6 +695,9 @@ public:
 
 	/** The final call related to screenshots, after they've been taken, and after they've been compared (or not if automation isn't running). */
 	FSimpleMulticastDelegate OnScreenshotTakenAndCompared;
+
+	/** Called when a frame trace should be captured */
+	FOnCaptureFrameTrace OnCaptureFrameTrace;
 
 	/**
 	 * Return the singleton instance of the framework.
@@ -831,6 +845,11 @@ public:
 	FOnTestScreenshotCaptured& OnScreenshotCaptured();
 
 	/**
+	 * Accessor for delegate called when a png screenshot is captured and a frame trace
+	 */
+	FOnTestScreenshotAndTraceCaptured& OnScreenshotAndTraceCaptured();
+
+	/**
 	 * Sets forcing smoke tests.
 	 */
 	void SetForceSmokeTests(const bool bInForceSmokeTests)
@@ -871,17 +890,14 @@ public:
 
 private:
 
-	/** Special feedback context used exclusively while automation testing */
-	 class FAutomationTestFeedbackContext : public FFeedbackContext
+	/** Special output device used during automation testing to gather messages that happen during tests */
+	 class FAutomationTestOutputDevice : public FOutputDevice
 	{
 	public:
-
-		/** Constructor */
-		FAutomationTestFeedbackContext() 
+		FAutomationTestOutputDevice() 
 			: CurTest( NULL ) {}
 
-		/** Destructor */
-		~FAutomationTestFeedbackContext()
+		~FAutomationTestOutputDevice()
 		{
 			CurTest = NULL;
 		}
@@ -889,16 +905,16 @@ private:
 		/**
 		 * FOutputDevice interface
 		 *
-		 * @param	V		String to serialize within the context
+		 * @param	V		String to serialize within the output device
 		 * @param	Event	Event associated with the string
 		 */
 		virtual void Serialize( const TCHAR* V, ELogVerbosity::Type Verbosity, const class FName& Category ) override;
 
 		/**
-		 * Set the automation test associated with the feedback context. The automation test is where all warnings, errors, etc.
+		 * Set the automation test associated with the output device. The automation test is where all warnings, errors, etc.
 		 * will be routed to.
 		 *
-		 * @param	InAutomationTest	Automation test to associate with the feedback context.
+		 * @param	InAutomationTest	Automation test to associate with the output device.
 		 */
 		void SetCurrentAutomationTest( class FAutomationTestBase* InAutomationTest )
 		{
@@ -906,10 +922,57 @@ private:
 		}
 
 	private:
-
 		/** Associated automation test; all warnings, errors, etc. are routed to the automation test to track */
 		class FAutomationTestBase* CurTest;
 	};
+
+	 /** Special feedback context used during automated testing to filter messages that happen during tests */
+	 class FAutomationTestMessageFilter: public FFeedbackContext
+	 {
+	 public:
+		 FAutomationTestMessageFilter()
+			 : CurTest(nullptr) {}
+
+		 ~FAutomationTestMessageFilter()
+		 {
+			 CurTest = nullptr;
+		 }
+
+		 /**
+		  * FOutputDevice interface
+		  *
+		  * @param	V		String to serialize within the context
+		  * @param	Event	Event associated with the string
+		  */
+		 virtual void Serialize(const TCHAR* V, ELogVerbosity::Type Verbosity, const class FName& Category) override;
+
+		 /**
+		  * Set the automation test associated with the feedback context. The automation test is what will be used
+		  * to determine if a given warning or error is expected and thus should not be treated as a warning or error
+		  * by the destination context.
+		  *
+		  * @param	InAutomationTest	Automation test to associate with the feedback context.
+		  */
+		 void SetCurrentAutomationTest(class FAutomationTestBase* InAutomationTest)
+		 {
+			 CurTest = InAutomationTest;
+		 }
+
+		 /**
+		  * Set the destination associated with the feedback context. The automation test is where all warnings, errors, etc.
+		  * will be routed to.
+		  *
+		  * @param	InAutomationTest	Automation test to associate with the feedback context.
+		  */
+		 void SetDestinationContext(FFeedbackContext* InDestinationContext)
+		 {
+			 DestinationContext = InDestinationContext;
+		 }
+
+	 private:
+		 class FAutomationTestBase* CurTest;
+		 FFeedbackContext* DestinationContext = nullptr;
+	 };
 
 	//** Store information about blacklisted test */
 	struct FBlacklistEntry
@@ -924,7 +987,7 @@ private:
 		bool bWarn;
 	};
 
-	friend class FAutomationTestFeedbackContext;
+	friend class FAutomationTestOutputDevice;
 	/** Helper method called to prepare settings for automation testing to follow */
 	void PrepForAutomationTests();
 
@@ -976,8 +1039,13 @@ private:
 	FAutomationTestFramework( const FAutomationTestFramework& );
 	FAutomationTestFramework& operator=( const FAutomationTestFramework& );
 
-	/** Specialized feedback context used for automation testing */
-	FAutomationTestFeedbackContext AutomationTestFeedbackContext;
+	/** Specialized output device used for automation testing */
+	FAutomationTestOutputDevice AutomationTestOutputDevice;
+
+	/** Specialized feedback context used for message filtering during automated testing */
+	FAutomationTestMessageFilter AutomationTestMessageFilter;
+
+	FFeedbackContext* OriginalGWarn = nullptr;
 
 	/** Mapping of automation test names to their respective object instances */
 	TMap<FString, class FAutomationTestBase*> AutomationTestClassNameToInstanceMap;
@@ -1011,6 +1079,9 @@ private:
 
 	/** Delegate called at the end of the frame when a screenshot is captured and a .png is requested */
 	FOnTestScreenshotCaptured TestScreenshotCapturedDelegate;
+
+	/** Delegate called at the end of the frame when a screenshot and frame trace is captured and a .png is requested */
+	FOnTestScreenshotAndTraceCaptured TestScreenshotAndTraceCapturedDelegate;
 
 	/** Forces running smoke tests */
 	bool bForceSmokeTests;
@@ -1204,7 +1275,7 @@ public:
 	}
 
 	/**
-	 * If true logs will not be included in test events
+	 * If true no logging will be included in test events
 	 *
 	 * @return true to suppress logs
 	 */
@@ -1214,18 +1285,25 @@ public:
 	}
 
 	/**
-	 * If true (and SuppressLogs=false) then LogErrors will be treated as test errors
+	 * If returns true then logging with a level of Error will not be recorded in test results
 	 *
-	 * @return true to make errors errors
+	 * @return false to make errors errors
 	 */
-	virtual bool TreatLogErrorsAsErrors() { return true; }
+	virtual bool SuppressLogErrors() { return false; }
 
 	/**
-	 * If true (and SuppressLogs=false) then LogWarnings will be treated as test errors
+	 * If returns true then logging with a level of Warning will not be recorded in test results
 	 *
 	 * @return true to make warnings errors
 	 */
-	virtual bool TreatLogWarningsAsErrors() { return false; }
+	virtual bool SuppressLogWarnings() { return false; }
+
+	/**
+	 * If returns true then logging with a level of Warning will be treated as an error
+	 *
+	 * @return true to make warnings errors
+	 */
+	virtual bool ElevateLogWarningsToErrors() { return false; }
 
 	/**
 	 * Enqueues a new latent command.
@@ -1277,6 +1355,9 @@ public:
 
 	bool TestEqual(const TCHAR* What, int32 Actual, int32 Expected);
 	bool TestEqual(const TCHAR* What, int64 Actual, int64 Expected);
+#if PLATFORM_64BITS
+	bool TestEqual(const TCHAR* What, SIZE_T Actual, SIZE_T Expected);
+#endif
 	bool TestEqual(const TCHAR* What, float Actual, float Expected, float Tolerance = KINDA_SMALL_NUMBER);
 	bool TestEqual(const TCHAR* What, double Actual, double Expected, double Tolerance = KINDA_SMALL_NUMBER);
 	bool TestEqual(const TCHAR* What, FVector Actual, FVector Expected, float Tolerance = KINDA_SMALL_NUMBER);

@@ -133,6 +133,8 @@ void FSlate3DRenderer::DrawWindowToTarget_RenderThread(FRHICommandListImmediate&
 
 	const TArray<TSharedRef<FSlateWindowElementList>>& WindowsToDraw = Context.WindowDrawBuffer->GetWindowElementLists();
 
+	FMemMark MemMark(FMemStack::Get());
+
 	// Enqueue a command to unlock the draw buffer after all windows have been drawn
 	RenderTargetPolicy->BeginDrawingWindows();
 
@@ -189,6 +191,7 @@ void FSlate3DRenderer::DrawWindowToTarget_RenderThread(FRHICommandListImmediate&
 				RenderTargetPolicy->DrawElements(
 					InRHICmdList,
 					BackBufferTarget,
+					ColorTarget,
 					ColorTarget,
 					DepthStencil,
 					BatchData.GetFirstRenderBatchIndex(),

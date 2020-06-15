@@ -17,8 +17,6 @@ enum class EHairStrandsRasterPassType : uint8
 {
 	FrontDepth,
 	DeepOpacityMap,
-	Voxelization,
-	VoxelizationMaterial,
 	VoxelizationVirtual
 };
 
@@ -26,11 +24,14 @@ enum class EHairStrandsRasterPassType : uint8
 // Deep shadow raster pass
 
 BEGIN_SHADER_PARAMETER_STRUCT(FHairDeepShadowRasterPassParameters, )
-	SHADER_PARAMETER(FMatrix, WorldToClipMatrix)
+	SHADER_PARAMETER(FMatrix, CPU_WorldToClipMatrix)
 	SHADER_PARAMETER(FVector4, SliceValue)
 	SHADER_PARAMETER(FIntRect, AtlasRect)
 	SHADER_PARAMETER(FIntPoint, ViewportResolution)
+	SHADER_PARAMETER(uint32, AtlasSlotIndex)
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FrontDepthTexture)
+	SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<FDeepShadowViewInfo>, DeepShadowViewInfoBuffer)
+
 	RENDER_TARGET_BINDING_SLOTS()
 END_SHADER_PARAMETER_STRUCT()
 
@@ -42,6 +43,7 @@ void AddHairDeepShadowRasterPass(
 	const EHairStrandsRasterPassType ShadowPassType,
 	const FIntRect& ViewportRect,
 	const FVector4& HairRenderInfo,
+	const uint32 HairRenderInfoBits,
 	const FVector& LightDirection,
 	FHairDeepShadowRasterPassParameters* PassParameters);
 
@@ -56,12 +58,7 @@ BEGIN_SHADER_PARAMETER_STRUCT(FHairVoxelizationRasterPassParameters, )
 	SHADER_PARAMETER(uint32, MacroGroupId)
 	SHADER_PARAMETER(FIntPoint, ViewportResolution)
 	SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<FVoxelizationViewInfo>, VoxelizationViewInfoBuffer)
-
 	SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture3D<uint>, DensityTexture)
-	SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture3D<uint>, TangentXTexture)
-	SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture3D<uint>, TangentYTexture)
-	SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture3D<uint>, TangentZTexture)
-	SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture3D<uint>, MaterialTexture)
 
 	RENDER_TARGET_BINDING_SLOTS()
 END_SHADER_PARAMETER_STRUCT()
@@ -71,8 +68,8 @@ void AddHairVoxelizationRasterPass(
 	const FScene* Scene,
 	const FViewInfo* ViewInfo,
 	const FHairStrandsMacroGroupData::TPrimitiveInfos& PrimitiveSceneInfos,
-	const EHairStrandsRasterPassType ShadowPassType,
 	const FIntRect& ViewportRect,
 	const FVector4& HairRenderInfo,
+	const uint32 HairRenderInfoBits,
 	const FVector& RasterDirection,
 	FHairVoxelizationRasterPassParameters* PassParameters);

@@ -7,9 +7,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Containers/StringView.h"
 
-class FStringBuilderBase;
-class FStringView;
 struct FFileStatData;
 
 class COREUOBJECT_API FPackageName
@@ -145,6 +144,7 @@ public:
 	 */
 	static bool IsShortPackageName(const FString& PossiblyLongName);
 	static bool IsShortPackageName(const FName PossiblyLongName);
+	static bool IsShortPackageName(FStringView PossiblyLongName);
 
 	/**
 	 * Converts package name to short name.
@@ -189,6 +189,11 @@ public:
 	 * @param ContentPath Content Path on disk.
 	 */
 	static void UnRegisterMountPoint(const FString& RootPath, const FString& ContentPath);
+
+	/**
+	 * Returns whether the specific logical root path is a valid mount point.
+	 */
+	static bool MountPointExists(const FString& RootPath);
 
 	/**
 	 * Get the mount point for a given package path
@@ -432,7 +437,10 @@ public:
 	 * @param OutObjectPath The path to the object.
 	 * @return True if the supplied export text path could be parsed
 	 */
-	static bool ParseExportTextPath(const FString& InExportTextPath, FString* OutClassName, FString* OutObjectPath);
+	static bool ParseExportTextPath(FStringView InExportTextPath, FStringView* OutClassName, FStringView* OutObjectPath);
+	static bool ParseExportTextPath(const FString& InExportTextPath, FString* OutClassName, FString* OutObjectPath);	
+	static bool ParseExportTextPath(const TCHAR* InExportTextPath, FStringView* OutClassName, FStringView* OutObjectPath);
+
 
 	/** 
 	 * Returns the path to the object referred to by the supplied export text path, excluding the class name.
@@ -440,7 +448,9 @@ public:
 	 * @param InExportTextPath The export text path for an object. Takes on the form: ClassName'ObjectPath'
 	 * @return The path to the object referred to by the supplied export path.
 	 */
-	static FString ExportTextPathToObjectPath(const FString& InExportTextPath);
+	static FStringView	ExportTextPathToObjectPath(FStringView InExportTextPath);
+	static FString		ExportTextPathToObjectPath(const FString& InExportTextPath);
+	static FString		ExportTextPathToObjectPath(const TCHAR* InExportTextPath);
 
 	/** 
 	 * Returns the name of the package referred to by the specified object path
@@ -450,38 +460,44 @@ public:
 	/** 
 	 * Returns the name of the object referred to by the specified object path
 	 */
+	static FStringView ObjectPathToObjectName(FStringView InObjectPath);
 	static FString ObjectPathToObjectName(const FString& InObjectPath);
+
+	/**
+	 * Checks the root of the package's path to see if it's an extra package
+	 */
+	static bool IsExtraPackage(FStringView InPackageName);
 
 	/**
 	 * Checks the root of the package's path to see if it is a script package
 	 * @return true if the root of the path matches the script path
 	 */
-	static bool IsScriptPackage(const FString& InPackageName);
+	static bool IsScriptPackage(FStringView InPackageName);
 
 	/**
 	 * Checks the root of the package's path to see if it's a memory package
 	 * This should be set for packages that reside in memory and not on disk, we treat them similar to a script package
 	 * @return true if the root of the patch matches the memory path
 	 */
-	static bool IsMemoryPackage(const FString& InPackageName);
+	static bool IsMemoryPackage(FStringView InPackageName);
 
 	/**
 	 * Checks the root of the package's path to see if it is a temp package
 	 * Temp packages are sometimes saved to disk, and sometimes only exist in memory. They are never in source control
 	 * @return true if the root of the patch matches the temp path
 	 */
-	static bool IsTempPackage(const FString& InPackageName);
+	static bool IsTempPackage(FStringView InPackageName);
 
 	/**
 	 * Checks the root of the package's path to see if it is a localized package
 	 * @return true if the root of the path matches any localized root path
 	 */
-	static bool IsLocalizedPackage(const FString& InPackageName);
+	static bool IsLocalizedPackage(FStringView InPackageName);
 
 	/**
 	 * Checks if a package name contains characters that are invalid for package names.
 	 */
-	static bool DoesPackageNameContainInvalidCharacters(const FString& InLongPackageName, FText* OutReason = NULL);
+	static bool DoesPackageNameContainInvalidCharacters(FStringView InLongPackageName, FText* OutReason = NULL);
 	
 	/**
 	* Checks if a package can be found using known package extensions.
@@ -500,7 +516,7 @@ public:
 	 * @param Extension The extension for this package
 	 * @return True if the long package name was fixed up, false otherwise
 	 */
-	static bool FixPackageNameCase(FString& LongPackageName, const FStringView& Extension);
+	static bool FixPackageNameCase(FString& LongPackageName, FStringView Extension);
 
 	UE_DEPRECATED(4.17, "Deprecated. Call TryConvertLongPackageNameToFilename instead, which also works on nested paths")
 	static bool ConvertRootPathToContentPath(const FString& RootPath, FString& OutContentPath);
@@ -528,7 +544,7 @@ private:
 	 * @param InFilename
 	 * @param OutPackageName Long package name.
 	 */
-	static void InternalFilenameToLongPackageName(const FStringView& InFilename, FStringBuilderBase& OutPackageName);
+	static void InternalFilenameToLongPackageName(FStringView InFilename, FStringBuilderBase& OutPackageName);
 
 	/** Event that is triggered when a new content path is mounted */
 	static FOnContentPathMountedEvent OnContentPathMountedEvent;

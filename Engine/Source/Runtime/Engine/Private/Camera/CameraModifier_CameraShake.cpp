@@ -100,18 +100,14 @@ UCameraShake* UCameraModifier_CameraShake::AddCameraShake(TSubclassOf<UCameraSha
 				UCameraShake* ShakeInst = ShakeInfo.ShakeInstance;
 				if (ShakeInst && (ShakeClass == ShakeInst->GetClass()))
 				{
-					// Just restart the existing shake
+					// Just restart the existing shake, possibly at the new location.
+					// Warning: if the shake source changes, this would "teleport" the shake, which might create a visual
+					// artifact, if the user didn't intend to do this.
+					ShakeInfo.ShakeSource = SourceComponent;
 					ShakeInst->PlayShake(CameraOwner, Scale, Params.PlaySpace, Params.UserPlaySpaceRot);
 					return ShakeInst;
 				}
 			}
-
-			// No existing instance... we'll build a new one, but let's null the
-			// source in case one was specified (we don't support a source because
-			// it would in some cases restart the shake by teleporting it to another
-			// location, which would look bad).
-			ensureMsgf(SourceComponent == nullptr, TEXT("CameraShake assets with SingleInstance enabled shouldn't be located to a source."));
-			SourceComponent = nullptr;
 		}
 
 		// Try to find a shake in the expired pool
@@ -228,6 +224,25 @@ void UCameraModifier_CameraShake::RemoveAllCameraShakesFromSource(const UCameraS
 	{
 		FActiveCameraShakeInfo ShakeInfo = ActiveShakes[i];  // Copy struct because we might delete it.
 		if (ShakeInfo.ShakeSource.Get() == SourceComponent && ShakeInfo.ShakeInstance != nullptr)
+		{
+			ShakeInfo.ShakeInstance->StopShake(bImmediately);
+			if (bImmediately)
+			{
+				ActiveShakes.RemoveAt(i, 1);
+				SaveShakeInExpiredPool(ShakeInfo.ShakeInstance);
+			}
+		}
+	}
+}
+
+void UCameraModifier_CameraShake::RemoveAllCameraShakesOfClassFromSource(TSubclassOf<UCameraShake> ShakeClass, const UCameraShakeSourceComponent* SourceComponent, bool bImmediately)
+{
+	for (int32 i = ActiveShakes.Num() - 1; i >= 0; --i)
+	{
+		FActiveCameraShakeInfo ShakeInfo = ActiveShakes[i];  // Copy struct because we might delete it.
+		if (ShakeInfo.ShakeSource.Get() == SourceComponent && 
+				ShakeInfo.ShakeInstance != nullptr && 
+				ShakeInfo.ShakeInstance->GetClass()->IsChildOf(ShakeClass))
 		{
 			ShakeInfo.ShakeInstance->StopShake(bImmediately);
 			if (bImmediately)

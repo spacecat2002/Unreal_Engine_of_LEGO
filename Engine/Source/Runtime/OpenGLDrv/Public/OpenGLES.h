@@ -498,6 +498,7 @@ typedef void (GL_APIENTRYP PFNGLPOPGROUPMARKEREXTPROC) (void);
 typedef void (GL_APIENTRYP PFNGLFRAMEBUFFERTEXTURE2DMULTISAMPLEEXTPROC) (GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level, GLsizei samples);
 typedef void (GL_APIENTRYP PFNGLRENDERBUFFERSTORAGEMULTISAMPLEEXTPROC) (GLenum target, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height);
 typedef void (GL_APIENTRYP PFNGLFRAMEBUFFERTEXTURELAYERPROC) (GLenum target, GLenum attachment, GLuint texture, GLint level, GLint layer);
+typedef void (GL_APIENTRYP PFNGLCOLORMASKIEXTPROC) (GLuint index, GLboolean r, GLboolean g, GLboolean b, GLboolean a);
 
 /** from ES 3.0 but can be called on certain Adreno devices */
 typedef void (GL_APIENTRYP PFNGLTEXSTORAGE2DPROC) (GLenum target, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height);
@@ -560,6 +561,7 @@ extern PFNGLCLEARBUFFERIVPROC			glClearBufferiv;
 extern PFNGLCLEARBUFFERUIVPROC			glClearBufferuiv;
 extern PFNGLREADBUFFERPROC				glReadBuffer;
 extern PFNGLDRAWBUFFERSPROC				glDrawBuffers;
+extern PFNGLCOLORMASKIEXTPROC			glColorMaskiEXT;
 extern PFNGLTEXIMAGE3DPROC				glTexImage3D;
 extern PFNGLTEXSUBIMAGE3DPROC			glTexSubImage3D;
 extern PFNGLCOMPRESSEDTEXIMAGE3DPROC    glCompressedTexImage3D;
@@ -652,7 +654,6 @@ struct FOpenGLES : public FOpenGLBase
 	static FORCEINLINE bool SupportsVertexAttribDouble() { return false; }
 	static FORCEINLINE bool SupportsDrawIndexOffset() { return false; }
 	static FORCEINLINE bool SupportsResourceView() { return bSupportsTextureBuffer; }
-	static FORCEINLINE bool SupportsCopyBuffer() { return false; }
 	static FORCEINLINE bool SupportsDiscardFrameBuffer() { return bSupportsDiscardFrameBuffer; }
 	static FORCEINLINE bool SupportsIndexedExtensions() { return false; }
 	static FORCEINLINE bool SupportsVertexHalfFloat() { return bSupportsVertexHalfFloat; }
@@ -672,9 +673,6 @@ struct FOpenGLES : public FOpenGLBase
 	static FORCEINLINE bool SupportsSRGB() { return IsES31Usable(); }
 	static FORCEINLINE bool SupportsRGBA8() { return bSupportsRGBA8; }
 	static FORCEINLINE bool SupportsDXT() { return bSupportsDXT; }
-	static FORCEINLINE bool SupportsPVRTC() { return bSupportsPVRTC; }
-	static FORCEINLINE bool SupportsATITC() { return bSupportsATITC; }
-	static FORCEINLINE bool SupportsETC1() { return bSupportsETC1; }
 	static FORCEINLINE bool SupportsETC2() { return bSupportsETC2; }
 	static FORCEINLINE bool SupportsCombinedDepthStencilAttachment() { return false; }
 	static FORCEINLINE bool SupportsPackedDepthStencil() { return bSupportsPackedDepthStencil; }
@@ -698,6 +696,7 @@ struct FOpenGLES : public FOpenGLBase
 	static FORCEINLINE bool HasBinaryProgramRetrievalFailed() { return bBinaryProgramRetrievalFailed; }
 	static FORCEINLINE bool RequiresTexture2DPrecisionHack() { return bRequiresTexture2DPrecisionHack; }
 	static FORCEINLINE bool RequiresRoundFunctionHack() { return bRequiresRoundFunctionHack; }
+	static FORCEINLINE bool RequiresDisabledEarlyFragmentTests() { return bRequiresDisabledEarlyFragmentTests; }
 	static FORCEINLINE bool RequiresARMShaderFramebufferFetchDepthStencilUndef() { return bRequiresARMShaderFramebufferFetchDepthStencilUndef; }
 	static FORCEINLINE bool IsCheckingShaderCompilerHacks() { return bIsCheckingShaderCompilerHacks; }
 	static FORCEINLINE bool IsLimitingShaderCompileCount() { return bIsLimitingShaderCompileCount; }
@@ -884,8 +883,15 @@ struct FOpenGLES : public FOpenGLBase
 
 	static FORCEINLINE void ColorMaskIndexed(GLuint Index, GLboolean Red, GLboolean Green, GLboolean Blue, GLboolean Alpha)
 	{
-		check(Index == 0 || SupportsMultipleRenderTargets());
-		glColorMask(Red, Green, Blue, Alpha);
+		if (Index > 0 && glColorMaskiEXT)
+		{
+			// ext or OpenGL ES 3.2
+			glColorMaskiEXT(Index, Red, Green, Blue, Alpha);
+		}
+		else
+		{
+			glColorMask(Red, Green, Blue, Alpha);
+		}
 	}
 
 	static FORCEINLINE void TexBuffer(GLenum Target, GLenum InternalFormat, GLuint Buffer)
@@ -1272,15 +1278,6 @@ protected:
 	/** GL_NV_texture_compression_s3tc, GL_EXT_texture_compression_s3tc */
 	static bool bSupportsDXT;
 
-	/** GL_IMG_texture_compression_pvrtc */
-	static bool bSupportsPVRTC;
-
-	/** GL_ATI_texture_compression_atitc, GL_AMD_compressed_ATC_texture */
-	static bool bSupportsATITC;
-
-	/** GL_OES_compressed_ETC1_RGB8_texture */
-	static bool bSupportsETC1;
-
 	/** OpenGL ES 3.0 profile */
 	static bool bSupportsETC2;
 
@@ -1368,6 +1365,9 @@ public:
 	/* This is a hack to add a round() function when not available to a shader compiler */
 	static bool bRequiresRoundFunctionHack;
 
+	/* Some Mali devices do not work correctly with early_fragment_test enabled */
+	static bool bRequiresDisabledEarlyFragmentTests;
+		
 	/* This is to avoid a bug in Adreno drivers that define GL_ARM_shader_framebuffer_fetch_depth_stencil even when device does not support this extension  */
 	static bool bRequiresARMShaderFramebufferFetchDepthStencilUndef;
 

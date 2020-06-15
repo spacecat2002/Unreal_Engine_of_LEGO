@@ -15,6 +15,8 @@ class AEmitterCameraLensEffectBase;
 class APlayerController;
 class FDebugDisplayInfo;
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAudioFadeChangeSignature, bool, bFadeOut, float, FadeTime);
+
 /** 
  * Options that define how to blend when changing view targets. 
  * @see FViewTargetTransitionParams, SetViewTarget 
@@ -293,6 +295,10 @@ public:
 	/** Offset to view target (used in certain CameraStyles) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debug)
 	FVector ViewTargetOffset;
+
+	/** If bound, broadcast on fade start (with fade time) instead of manually altering audio device's master volume directly */
+	UPROPERTY(BlueprintAssignable, Transient)
+	FOnAudioFadeChangeSignature OnAudioFadeChangeEvent;
 
 	/** Current camera fade alpha range, where X = starting alpha and Y = final alpha (when bEnableFading == true) */
 	FVector2D FadeAlpha;
@@ -780,9 +786,12 @@ public:
 	 * Plays a camera shake on this camera.
 	 * @param Shake - The class of camera shake to play.
 	 * @param SourceComponent - The source from which the camera shake originates.
+	 * @param Scale - Applies an additional constant scale on top of the dynamic scale computed with the distance to the source
+	 * @param PlaySpace - Which coordinate system to play the shake in (affects oscillations and camera anims)
+	 * @param UserPlaySpaceRot - Coordinate system to play shake when PlaySpace == CAPS_UserDefined.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Camera Shakes")
-	virtual class UCameraShake* PlayCameraShakeFromSource(TSubclassOf<class UCameraShake> ShakeClass, class UCameraShakeSourceComponent* SourceComponent);
+	virtual class UCameraShake* PlayCameraShakeFromSource(TSubclassOf<class UCameraShake> ShakeClass, class UCameraShakeSourceComponent* SourceComponent, float Scale=1.f, enum ECameraAnimPlaySpace::Type PlaySpace = ECameraAnimPlaySpace::CameraLocal, FRotator UserPlaySpaceRot = FRotator::ZeroRotator);
 	
 	/** Immediately stops the given shake instance and invalidates it. */
 	UFUNCTION(BlueprintCallable, Category = "Camera Shakes")
@@ -792,13 +801,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Camera Shakes")
 	virtual void StopAllInstancesOfCameraShake(TSubclassOf<class UCameraShake> Shake, bool bImmediately = true);
 
-	/** Stops playing all shakes originating from the given source. */
-	UFUNCTION(BlueprintCallable, Category = "Camera Shakes")
-	virtual void StopAllInstancesOfCameraShakeFromSource(class UCameraShakeSourceComponent* SourceComponent, bool bImmediately = true);
-
 	/** Stops all active camera shakes on this camera. */
 	UFUNCTION(BlueprintCallable, Category = "Camera Shakes")
 	virtual void StopAllCameraShakes(bool bImmediately = true);
+
+	/** Stops playing all shakes of the given class originating from the given source. */
+	UFUNCTION(BlueprintCallable, Category = "Camera Shakes")
+	virtual void StopAllInstancesOfCameraShakeFromSource(TSubclassOf<class UCameraShake> Shake, class UCameraShakeSourceComponent* SourceComponent, bool bImmediately = true);
+
+	/** Stops playing all shakes originating from the given source. */
+	UFUNCTION(BlueprintCallable, Category = "Camera Shakes")
+	virtual void StopAllCameraShakesFromSource(class UCameraShakeSourceComponent* SourceComponent, bool bImmediately = true);
 
 	//
 	//  CameraAnim fades.
@@ -929,6 +942,12 @@ protected:
 	 * @param	DeltaTime	Delta Time since last camera update (in seconds).
 	 */
 	virtual void UpdateViewTargetInternal(FTViewTarget& OutVT, float DeltaTime);
+
+	// ClientSide camera updates prevents DoUpdateCamera from swapping PendingViewTarget in when the blend is complete, just use a timer to swap
+	UFUNCTION()
+	void SwapPendingViewTargetWhenUsingClientSideCameraUpdates();
+
+	FTimerHandle SwapPendingViewTargetWhenUsingClientSideCameraUpdatesTimerHandle;
 
 private:
 	// Buried to prevent use; use GetCameraRotation instead

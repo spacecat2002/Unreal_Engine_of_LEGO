@@ -4,7 +4,6 @@
 
 #include "VirtualTextureDataBuilder.h"
 #include "Modules/ModuleManager.h"
-#include "VT/VirtualTexture.h"
 #include "Modules/ModuleManager.h"
 #include "CrunchCompression.h"
 #include "Async/TaskGraphInterfaces.h"
@@ -704,7 +703,7 @@ void FVirtualTextureDataBuilder::BuildTiles(const TArray<FVTSourceTileEntry>& Ti
 		GeneratedData.TilePayload.Empty();
 		GeneratedData.CodecPayload.Empty();
 		GeneratedData.Codec = EVirtualTextureCodec::Max;
-		UE_LOG(LogVirtualTexturingModule, Fatal, TEXT("Failed build tile"));
+		UE_LOG(LogVirtualTexturing, Fatal, TEXT("Failed build tile"));
 	}
 }
 
@@ -790,9 +789,11 @@ static const FName RemovePlatformPrefixFromName(FName const& InName)
 
 	for (const auto& PlatformInfo : FDataDrivenPlatformInfoRegistry::GetAllPlatformInfos())
 	{
-		if (NameString.StartsWith(PlatformInfo.Key, ESearchCase::IgnoreCase))
+		FString PlatformTextureFormatPrefix = PlatformInfo.Key;
+		PlatformTextureFormatPrefix += TEXT('_');
+		if (NameString.StartsWith(PlatformTextureFormatPrefix, ESearchCase::IgnoreCase))
 		{
-			return *NameString.RightChop(PlatformInfo.Key.Len() + 1); // Platform name followed by `_`
+			return *NameString.RightChop(PlatformTextureFormatPrefix.Len());
 		}
 	}
 
@@ -853,7 +854,9 @@ void FVirtualTextureDataBuilder::BuildSourcePixels(const FTextureSourceData& Sou
 
 		FTextureSourceBlockData& BlockData = SourceBlocks[BlockIndex];
 		BlockData.BlockX = SourceBlockData.BlockX;
-		BlockData.BlockY = SourceBlockData.BlockY;
+		// UE4 applies a (1-y) transform to imported UVs, so apply a similar transform to UDIM block locations here
+		// This ensures that UDIM tiles will appear in the correct location when sampled with transformed UVs
+		BlockData.BlockY = (SizeInBlocksY - SourceBlockData.BlockY) % SizeInBlocksY;
 		BlockData.NumMips = SourceBlockData.NumMips;
 		BlockData.NumSlices = SourceBlockData.NumSlices;
 		BlockData.MipBias = SourceBlockData.MipBias;

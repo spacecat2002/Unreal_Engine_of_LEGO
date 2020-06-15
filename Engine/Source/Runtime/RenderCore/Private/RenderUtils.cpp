@@ -151,6 +151,7 @@ FPixelFormatInfo	GPixelFormats[PF_MAX] =
 
 	{ TEXT("PF_ETC2_R11_EAC"),  4,   		4,			1,			8,			1,				0,				0,				PF_ETC2_R11_EAC     },
 	{ TEXT("PF_ETC2_RG11_EAC"), 4,   		4,			1,			16,			2,				0,				0,				PF_ETC2_RG11_EAC    },
+	{ TEXT("R8"),				1,			1,			1,			1,			1,				0,				1,				PF_R8				},
 };
 
 static struct FValidatePixelFormats
@@ -221,7 +222,7 @@ public:
 
 		// Create the sampler state RHI resource.
 		FSamplerStateInitializerRHI SamplerStateInitializer(SF_Point,AM_Wrap,AM_Wrap,AM_Wrap);
-		SamplerStateRHI = RHICreateSamplerState(SamplerStateInitializer);
+		SamplerStateRHI = GetOrCreateSamplerState(SamplerStateInitializer);
 
 		// Create a view of the texture
 		ShaderResourceViewRHI = RHICreateShaderResourceView(TextureRHI, 0u);
@@ -365,7 +366,7 @@ public:
 
 		// Create the sampler state.
 		FSamplerStateInitializerRHI SamplerStateInitializer(SF_Point, AM_Wrap, AM_Wrap, AM_Wrap);
-		SamplerStateRHI = RHICreateSamplerState(SamplerStateInitializer);
+		SamplerStateRHI = GetOrCreateSamplerState(SamplerStateInitializer);
 	}
 
 	/**
@@ -409,7 +410,7 @@ public:
 
 			// Create the sampler state RHI resource.
 			FSamplerStateInitializerRHI SamplerStateInitializer(SF_Point,AM_Wrap,AM_Wrap,AM_Wrap);
-			SamplerStateRHI = RHICreateSamplerState(SamplerStateInitializer);
+			SamplerStateRHI = GetOrCreateSamplerState(SamplerStateInitializer);
 		}
 	}
 
@@ -473,7 +474,7 @@ public:
 
 		// Create the sampler state RHI resource.
 		FSamplerStateInitializerRHI SamplerStateInitializer(SF_Point,AM_Wrap,AM_Wrap,AM_Wrap);
-		SamplerStateRHI = RHICreateSamplerState(SamplerStateInitializer);
+		SamplerStateRHI = GetOrCreateSamplerState(SamplerStateInitializer);
 	}
 
 	/** Returns the width of the texture in pixels. */
@@ -557,7 +558,7 @@ public:
 
 		// Create the sampler state RHI resource.
 		FSamplerStateInitializerRHI SamplerStateInitializer(SF_Point, AM_Wrap, AM_Wrap, AM_Wrap);
-		SamplerStateRHI = RHICreateSamplerState(SamplerStateInitializer);
+		SamplerStateRHI = GetOrCreateSamplerState(SamplerStateInitializer);
 	}
 
 	/** Returns the width of the texture in pixels. */
@@ -626,7 +627,7 @@ public:
 
 			// Create the sampler state RHI resource.
 			FSamplerStateInitializerRHI SamplerStateInitializer(SF_Point,AM_Wrap,AM_Wrap,AM_Wrap);
-			SamplerStateRHI = RHICreateSamplerState(SamplerStateInitializer);
+			SamplerStateRHI = GetOrCreateSamplerState(SamplerStateInitializer);
 		}
 	}
 
@@ -667,7 +668,7 @@ public:
 
 		// Create the sampler state RHI resource.
 		FSamplerStateInitializerRHI SamplerStateInitializer(SF_Point, AM_Wrap, AM_Wrap, AM_Wrap);
-		SamplerStateRHI = RHICreateSamplerState(SamplerStateInitializer);
+		SamplerStateRHI = GetOrCreateSamplerState(SamplerStateInitializer);
 
 		// Create a view of the texture
 		ShaderResourceViewRHI = RHICreateShaderResourceView(TextureRHI, 0u);

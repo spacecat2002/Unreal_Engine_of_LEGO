@@ -1,22 +1,48 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Tracks/MovieSceneCameraShakeSourceShakeTrack.h"
-#include "Sections/MovieSceneCameraShakeSourceShakeSection.h"
+#include "Camera/CameraShakeSourceComponent.h"
 #include "Compilation/MovieSceneCompilerRules.h"
+#include "Sections/MovieSceneCameraShakeSourceShakeSection.h"
 
 #define LOCTEXT_NAMESPACE "MovieSceneCameraShakeSourceShakeTrack"
 
-UMovieSceneSection* UMovieSceneCameraShakeSourceShakeTrack::AddNewCameraShake(const FFrameNumber KeyTime, const TSubclassOf<UCameraShake> ShakeClass)
+UMovieSceneSection* UMovieSceneCameraShakeSourceShakeTrack::AddNewCameraShake(const FFrameNumber KeyTime, const UCameraShakeSourceComponent& ShakeSourceComponent)
 {
+	return AddNewCameraShake(KeyTime, ShakeSourceComponent.CameraShake, true);
+}
+
+UMovieSceneSection* UMovieSceneCameraShakeSourceShakeTrack::AddNewCameraShake(const FFrameNumber KeyTime, const TSubclassOf<UCameraShake> ShakeClass, bool bIsAutomaticShake)
+{
+	// It's OK to place an auto-shake on a shake source actor with no default shake set on it... 
+	// Designers do that sometimes, using a shake source for a bunch of various shakes, but no
+	// particular use for itself.
+	check(ShakeClass || bIsAutomaticShake);
+
 	Modify();
 
 	UMovieSceneCameraShakeSourceShakeSection* const NewSection = Cast<UMovieSceneCameraShakeSourceShakeSection>(CreateNewSection());
 	if (NewSection)
 	{
-		// #fixme get length
-		FFrameTime Duration = 5.0 * GetTypedOuter<UMovieScene>()->GetTickResolution();
-		NewSection->InitialPlacement(CameraShakeSections, KeyTime, Duration.FrameNumber.Value, SupportsMultipleRows());
-		NewSection->ShakeData.ShakeClass = ShakeClass;
+		float ShakeDuration = -1.f;
+		if (ShakeClass)
+		{
+			UCameraShake::GetCameraShakeDuration(ShakeClass, ShakeDuration);
+		}
+		if (ShakeDuration <= SMALL_NUMBER)
+		{
+			// Default endless shakes to 5 seconds totally arbitrarily.
+			ShakeDuration = 5.f;
+		}
+
+		const FFrameTime ShakeDurationTime = ShakeDuration * GetTypedOuter<UMovieScene>()->GetTickResolution();
+		NewSection->InitialPlacement(CameraShakeSections, KeyTime, ShakeDurationTime.FrameNumber.Value, SupportsMultipleRows());
+		if (!bIsAutomaticShake)
+		{
+			// Only set the shake class if we want to specifically run the provided shake. Otherwise, we leave
+			// it null and will automatically fallback to whatever is set on the shake source component.
+			NewSection->ShakeData.ShakeClass = ShakeClass;
+		}
 		
 		AddSection(*NewSection);
 	}

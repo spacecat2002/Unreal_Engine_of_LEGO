@@ -17,6 +17,7 @@
 #include "Interfaces/Interface_PostProcessVolume.h"
 #include "Engine/TextureCube.h"
 #include "StereoRendering.h"
+#include "StereoRenderTargetManager.h"
 #include "IHeadMountedDisplay.h"
 #include "IXRTrackingSystem.h"
 #include "Engine/RendererSettings.h"
@@ -27,6 +28,7 @@
 #include "RenderUtils.h"
 
 DEFINE_LOG_CATEGORY(LogBufferVisualization);
+DEFINE_LOG_CATEGORY(LogMultiView);
 
 DECLARE_CYCLE_STAT(TEXT("StartFinalPostprocessSettings"), STAT_StartFinalPostprocessSettings, STATGROUP_Engine);
 DECLARE_CYCLE_STAT(TEXT("OverridePostProcessSettings"), STAT_OverridePostProcessSettings, STATGROUP_Engine);
@@ -470,13 +472,14 @@ FVector4 CreateInvDeviceZToWorldZTransform(const FMatrix& ProjMatrix)
 	}
 }
 
-FViewMatrices::FViewMatrices(const FSceneViewInitOptions& InitOptions) : FViewMatrices()
-{
-	//check(InitOptions.ViewRotationMatrix.GetOrigin().IsNearlyZero());
-	check(FVector::Distance(InitOptions.ViewRotationMatrix.GetScaleVector(), FVector::OneVector) < KINDA_SMALL_NUMBER);
 
-	FVector LocalViewOrigin = InitOptions.ViewOrigin;
-	FMatrix ViewRotationMatrix = InitOptions.ViewRotationMatrix;
+void FViewMatrices::Init(const FMinimalInitializer& Initializer)
+{
+	//check(Initializer.ViewRotationMatrix.GetOrigin().IsNearlyZero());
+	check(FVector::Distance(Initializer.ViewRotationMatrix.GetScaleVector(), FVector::OneVector) < KINDA_SMALL_NUMBER);
+
+	FVector LocalViewOrigin = Initializer.ViewOrigin;
+	FMatrix ViewRotationMatrix = Initializer.ViewRotationMatrix;
 	if (!ViewRotationMatrix.GetOrigin().IsNearlyZero(0.0f))
 	{
 		LocalViewOrigin += ViewRotationMatrix.InverseTransformPosition(FVector::ZeroVector);
@@ -484,10 +487,10 @@ FViewMatrices::FViewMatrices(const FSceneViewInitOptions& InitOptions) : FViewMa
 	}
 
 	ViewMatrix = FTranslationMatrix(-LocalViewOrigin) * ViewRotationMatrix;
-	HMDViewMatrixNoRoll = InitOptions.ViewRotationMatrix;
+	HMDViewMatrixNoRoll = Initializer.ViewRotationMatrix;
 
 	// Adjust the projection matrix for the current RHI.
-	ProjectionMatrix = AdjustProjectionMatrixForRHI(InitOptions.ProjectionMatrix);
+	ProjectionMatrix = AdjustProjectionMatrixForRHI(Initializer.ProjectionMatrix);
 	InvProjectionMatrix = InvertProjectionMatrix(ProjectionMatrix);
 
 	// Compute the view projection matrix and its inverse.
@@ -506,10 +509,10 @@ FViewMatrices::FViewMatrices(const FSceneViewInitOptions& InitOptions) : FViewMa
 		this->ViewOrigin = LocalViewOrigin;
 	}
 #if WITH_EDITOR
-	else if (InitOptions.bUseFauxOrthoViewPos)
+	else if (Initializer.bUseFauxOrthoViewPos)
 	{
 		float DistanceToViewOrigin = WORLD_MAX;
-		ViewOrigin = FVector4(InvViewMatrix.TransformVector(FVector(0, 0, -1)).GetSafeNormal()*DistanceToViewOrigin, 1) + LocalViewOrigin;
+		ViewOrigin = FVector4(InvViewMatrix.TransformVector(FVector(0, 0, -1)).GetSafeNormal() * DistanceToViewOrigin, 1) + LocalViewOrigin;
 		bViewOriginIsFudged = true;
 	}
 #endif
@@ -577,15 +580,37 @@ FViewMatrices::FViewMatrices(const FSceneViewInitOptions& InitOptions) : FViewMa
 
 	// Compute screen scale factors.
 	// Stereo renders at half horizontal resolution, but compute shadow resolution based on full resolution.
-	const bool bStereo = IStereoRendering::IsStereoEyePass(InitOptions.StereoPass);
+	const bool bStereo = IStereoRendering::IsStereoEyePass(Initializer.StereoPass);
 	const float ScreenXScale = bStereo ? 2.0f : 1.0f;
 	ProjectionScale.X = ScreenXScale * FMath::Abs(ProjectionMatrix.M[0][0]);
 	ProjectionScale.Y = FMath::Abs(ProjectionMatrix.M[1][1]);
 	ScreenScale = FMath::Max(
-		InitOptions.GetConstrainedViewRect().Size().X * 0.5f * ProjectionScale.X,
-		InitOptions.GetConstrainedViewRect().Size().Y * 0.5f * ProjectionScale.Y
+		Initializer.ConstrainedViewRect.Size().X * 0.5f * ProjectionScale.X,
+		Initializer.ConstrainedViewRect.Size().Y * 0.5f * ProjectionScale.Y
 	);
-};
+}
+
+FViewMatrices::FViewMatrices(const FSceneViewInitOptions& InitOptions) : FViewMatrices()
+{
+	FMinimalInitializer Initializer;
+
+	Initializer.ViewRotationMatrix   = InitOptions.ViewRotationMatrix;
+	Initializer.ProjectionMatrix     = InitOptions.ProjectionMatrix;
+	Initializer.ViewOrigin           = InitOptions.ViewOrigin;
+	Initializer.ConstrainedViewRect  = InitOptions.GetConstrainedViewRect();
+	Initializer.StereoPass           = InitOptions.StereoPass;
+#if WITH_EDITOR
+	Initializer.bUseFauxOrthoViewPos = InitOptions.bUseFauxOrthoViewPos;
+#endif
+
+	Init(Initializer);
+}
+
+FViewMatrices::FViewMatrices(const FMinimalInitializer& Initializer) : FViewMatrices()
+{
+	Init(Initializer);
+}
+
 
 static void SetupViewFrustum(FSceneView& View)
 {
@@ -725,7 +750,8 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 	bool bPlatformRequiresReverseCulling = ((IsOpenGLPlatform(ShaderPlatform) || IsSwitchPlatform(ShaderPlatform)) && bUsingMobileRenderer && !IsPCPlatform(ShaderPlatform) && !IsVulkanMobilePlatform(ShaderPlatform));
 	static auto* MobileHDRCvar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileHDR"));
 	check(MobileHDRCvar);
-	bReverseCulling = (bPlatformRequiresReverseCulling && MobileHDRCvar->GetValueOnAnyThread() == 0) ? !bReverseCulling : bReverseCulling;
+	const bool bSkipPostprocessing = MobileHDRCvar->GetValueOnAnyThread() == 0;
+	bReverseCulling = (bPlatformRequiresReverseCulling && bSkipPostprocessing) ? !bReverseCulling : bReverseCulling;
 
 	// Setup transformation constants to be used by the graphics hardware to transform device normalized depth samples
 	// into world oriented z.
@@ -760,22 +786,28 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 
 	// Query instanced stereo and multi-view state
 	static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.InstancedStereo"));
-	bIsInstancedStereoEnabled = RHISupportsInstancedStereo(ShaderPlatform) ? (CVar ? (CVar->GetValueOnAnyThread() != false) : false) : false;
+	bIsInstancedStereoEnabled = !bUsingMobileRenderer && RHISupportsInstancedStereo(ShaderPlatform) && (CVar && CVar->GetValueOnAnyThread() != 0);
 
-	static const auto MultiViewCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.MultiView"));
-	bIsMultiViewEnabled = RHISupportsMultiView(ShaderPlatform) && (MultiViewCVar && MultiViewCVar->GetValueOnAnyThread() != 0);
+	// TODO: Should be renamed to multi-viewport
+	bIsMultiViewEnabled = RHISupportsMultiView(ShaderPlatform) && bIsInstancedStereoEnabled;
 
 	static const auto MobileMultiViewCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.MobileMultiView"));
-	bIsMobileMultiViewEnabled = RHISupportsMobileMultiView(ShaderPlatform) && (MobileMultiViewCVar && MobileMultiViewCVar->GetValueOnAnyThread() != 0);
+	bIsMobileMultiViewEnabled = bUsingMobileRenderer && bSkipPostprocessing && (MobileMultiViewCVar && MobileMultiViewCVar->GetValueOnAnyThread() != 0);
+	if (bIsMobileMultiViewEnabled && !RHISupportsMobileMultiView(ShaderPlatform))
+	{
+		// Native mobile multi-view is not supported, attempt to fall back to instancing on compatible RHIs
+		if (RHISupportsInstancedStereo(ShaderPlatform) && !GRHISupportsArrayIndexFromAnyShader)
+		{
+			UE_LOG(LogMultiView, Fatal, TEXT("Mobile Multi-View not supported by the RHI and no fallback is available."));
+		}
+		bIsInstancedStereoEnabled = RHISupportsInstancedStereo(ShaderPlatform);
+	}
 
-	// TODO: Test platform support for direct
-	static const auto MobileMultiViewDirectCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.MobileMultiView.Direct"));
-	bIsMobileMultiViewDirectEnabled = (MobileMultiViewDirectCVar && MobileMultiViewDirectCVar->GetValueOnAnyThread() != 0);
+	// If the plugin uses separate render targets it is required to support mobile multi-view direct
+	IStereoRenderTargetManager* const StereoRenderTargetManager = GEngine->StereoRenderingDevice.IsValid() ? GEngine->StereoRenderingDevice->GetRenderTargetManager() : nullptr;
+	bIsMobileMultiViewDirectEnabled = bIsMobileMultiViewEnabled && StereoRenderTargetManager && StereoRenderTargetManager->ShouldUseSeparateRenderTarget();
 
 	bShouldBindInstancedViewUB = bIsInstancedStereoEnabled || bIsMobileMultiViewEnabled;
-
-	// If the device doesn't support mobile multi-view, disable it.
-	bIsMobileMultiViewEnabled = bIsMobileMultiViewEnabled && (GSupportsMobileMultiView || GRHISupportsArrayIndexFromAnyShader) && IStereoRendering::IsStereoEyePass(StereoPass);
 
 	SetupAntiAliasingMethod();
 
@@ -1306,6 +1338,7 @@ void FSceneView::OverridePostProcessSettings(const FPostProcessSettings& Src, fl
 
 		LERP_PP(BlueCorrection);
 		LERP_PP(ExpandGamut);
+		LERP_PP(ToneCurveAmount);
 
 		LERP_PP(FilmWhitePoint);
 		LERP_PP(FilmSaturation);
@@ -1538,7 +1571,7 @@ void FSceneView::OverridePostProcessSettings(const FPostProcessSettings& Src, fl
 			Dest.BloomDirtMask = Src.BloomDirtMask;
 		}
 
-		IF_PP(BloomMethod)
+		if (Src.bOverride_BloomMethod)
 		{
 			Dest.BloomMethod = Src.BloomMethod;
 		}
@@ -1872,6 +1905,12 @@ void FSceneView::EndFinalPostprocessSettings(const FSceneViewInitOptions& ViewIn
 		FinalPostProcessSettings.LensFlareIntensity = 0;
 	}
 
+	if (!Family->EngineShowFlags.ToneCurve)
+	{
+		FinalPostProcessSettings.ToneCurveAmount = 0;
+		FinalPostProcessSettings.ExpandGamut = 0;
+	}
+
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	{
 		float Value = CVarExposureOffset.GetValueOnGameThread();
@@ -2011,6 +2050,13 @@ void FSceneView::EndFinalPostprocessSettings(const FSceneViewInitOptions& ViewIn
 		ConfigureBufferVisualizationSettings();
 	}
 
+#if !(UE_BUILD_SHIPPING)
+	if (Family->EngineShowFlags.IsVisualizeCalibrationEnabled())
+	{
+		ConfigureVisualizeCalibrationSettings();
+	}
+#endif
+
 #if WITH_EDITOR
 	FHighResScreenshotConfig& Config = GetHighResScreenshotConfig();
 
@@ -2121,6 +2167,47 @@ void FSceneView::ConfigureBufferVisualizationSettings()
 		}
 	}
 }
+
+#if !(UE_BUILD_SHIPPING)
+
+void FSceneView::ConfigureVisualizeCalibrationSettings()
+{
+	const URendererSettings* Settings = GetDefault<URendererSettings>();
+	check(Settings);
+	
+	auto ConfigureCalibrationSettings = [](const FSoftObjectPath& InPath, UMaterialInterface*& OutMaterialInterface, FName& OutMaterialName)
+	{
+		if (InPath.IsValid())
+		{
+			if (UMaterial* Material = Cast<UMaterial>(InPath.TryLoad()))
+			{
+				OutMaterialInterface = Material;
+				OutMaterialName = *Material->GetPathName();
+			}
+			else
+			{
+				UE_LOG(LogBufferVisualization, Warning, TEXT("Error loading material '%s'"), *InPath.ToString());
+				OutMaterialInterface = nullptr;
+				OutMaterialName = NAME_None;
+			}
+		}
+	};
+
+	if (Family->EngineShowFlags.VisualizeCalibrationColor)
+	{
+		ConfigureCalibrationSettings(Settings->VisualizeCalibrationColorMaterialPath, FinalPostProcessSettings.VisualizeCalibrationColorMaterial, CurrentVisualizeCalibrationColorMaterialName);
+	}
+	else if (Family->EngineShowFlags.VisualizeCalibrationGrayscale)
+	{
+		ConfigureCalibrationSettings(Settings->VisualizeCalibrationGrayscaleMaterialPath, FinalPostProcessSettings.VisualizeCalibrationGrayscaleMaterial, CurrentVisualizeCalibrationGrayscaleMaterialName);
+	}
+	else if (Family->EngineShowFlags.VisualizeCalibrationCustom)
+	{
+		ConfigureCalibrationSettings(Settings->VisualizeCalibrationCustomMaterialPath, FinalPostProcessSettings.VisualizeCalibrationCustomMaterial, CurrentVisualizeCalibrationCustomMaterialName);
+	}
+}
+
+#endif // #if !(UE_BUILD_SHIPPING)
 
 EShaderPlatform FSceneView::GetShaderPlatform() const
 {
@@ -2606,7 +2693,10 @@ EDebugViewShaderMode FSceneViewFamily::ChooseDebugViewShaderMode() const
 	{
 		return DVSM_RayTracingDebug;
 	}
-
+	else if (EngineShowFlags.LODColoration || EngineShowFlags.HLODColoration)
+	{
+		return DVSM_LODColoration;
+	}
 	return DVSM_None;
 }
 

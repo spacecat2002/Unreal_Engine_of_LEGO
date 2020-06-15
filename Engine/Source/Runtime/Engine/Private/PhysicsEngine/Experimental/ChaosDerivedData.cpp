@@ -4,12 +4,14 @@
 
 #if WITH_CHAOS
 
+#include "Chaos/Core.h"
 #include "Chaos/CollisionConvexMesh.h"
 #include "Chaos/ChaosArchive.h"
 #include "ChaosDerivedDataUtil.h"
 #include "Chaos/Particles.h"
 #include "Chaos/TriangleMeshImplicitObject.h"
 #include "Chaos/Convex.h"
+
 #include "Serialization/Archive.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "Serialization/MemoryWriter.h"
@@ -24,7 +26,11 @@ const TCHAR* FChaosDerivedDataCooker::GetPluginName() const
 
 const TCHAR* FChaosDerivedDataCooker::GetVersionString() const
 {
-	return TEXT("99F5C9095ED541A5A8A8434EB38D8303");
+	// As changing our DDC version will most likely affect any external callers that rely on Chaos types
+	// for their own DDC or serialized data - change Chaos::ChaosVersionString in Chaos/Core.h to bump our
+	// Chaos data version. Callers can also rely on that version in their builders and avoid bad serialization
+	// when basic Chaos data changes
+	return *Chaos::ChaosVersionString;
 }
 
 FString FChaosDerivedDataCooker::GetPluginSpecificCacheKeySuffix() const

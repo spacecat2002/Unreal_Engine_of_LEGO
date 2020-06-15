@@ -4,8 +4,6 @@
 
 #include "CoreTypes.h"
 
-#if WINDOWS_USE_FEATURE_APPLICATION
-
 #include "Math/Color.h"
 #include "HAL/IConsoleManager.h"
 #include "GenericPlatform/GenericApplication.h"
@@ -380,6 +378,7 @@ public:
 
 	virtual void AddExternalInputDevice(TSharedPtr<class IInputDevice> InputDevice);
 
+	virtual void FinishedInputThisFrame() override;
 public:
 
 	// IInputInterface overrides
@@ -404,10 +403,10 @@ protected:
 	/** Processes deferred drag and drop operations. */
 	void ProcessDeferredDragDropOperation(const FDeferredWindowsDragDropOperation& Op);
 
-private:
-
 	/** Hidden constructor. */
 	FWindowsApplication( const HINSTANCE HInstance, const HICON IconHandle );
+
+private:
 
 	/** Registers the Windows class for windows and assigns the application instance and icon */
 	static bool RegisterClass( const HINSTANCE HInstance, const HICON HIcon );
@@ -527,9 +526,16 @@ private:
 	/** Maps touch indexes to windows touch IDs. */
 	TArray<TOptional<int32>> TouchIDs;
 #endif
+
+	bool bSimulatingHighPrecisionMouseInputForRDP;
+
+	FIntPoint CachedPreHighPrecisionMousePosForRDP;
+	FIntPoint LastCursorPoint;
+	FIntPoint LastCursorPointPreWrap;
+	int32 NumPreWrapMsgsToRespect;
+	RECT ClipCursorRect;
 };
 
 
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
-#endif

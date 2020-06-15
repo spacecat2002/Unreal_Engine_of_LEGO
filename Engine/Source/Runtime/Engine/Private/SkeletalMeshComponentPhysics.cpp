@@ -583,7 +583,6 @@ void USkeletalMeshComponent::InitArticulated(FPhysScene* PhysScene)
 	}
 
 	// Set up the map from skelmeshcomp ID to collision disable table
-#if WITH_PHYSX
 	uint32 SkelMeshCompID = GetUniqueID();
 	PhysScene->DeferredAddCollisionDisableTable(SkelMeshCompID, &PhysicsAsset->CollisionDisableTable);
 
@@ -607,7 +606,6 @@ void USkeletalMeshComponent::InitArticulated(FPhysScene* PhysScene)
 	}
 
 	InstantiatePhysicsAsset(*PhysicsAsset, Scale3D, Bodies, Constraints, PhysScene, this, RootBodyIndex, Aggregate);
-#endif // WITH_PHYSX
 
 	// now update root body index because body has BodySetup now
 	SetRootBodyIndex(RootBodyIndex);
@@ -739,7 +737,6 @@ void USkeletalMeshComponent::InstantiatePhysicsAsset_Internal(const UPhysicsAsse
 				}
 			}
 
-#if WITH_PHYSX
 			// Create physics body instance.
 			FTransform BoneTransform = BoneTransformGetter(BoneIndex);
 
@@ -756,18 +753,14 @@ void USkeletalMeshComponent::InstantiatePhysicsAsset_Internal(const UPhysicsAsse
 			BodyInst->InitBody(PhysicsAssetBodySetup, BoneTransform, OwningComponent, PhysScene, SpawnParams);
 
 			NameToBodyMap.Add(PhysicsAssetBodySetup->BoneName, BodyInst);
-#endif //WITH_PHYSX
 		}
 	}
 
-#if WITH_PHYSX
 	if(PhysScene && Aggregate.IsValid())
 	{
 		PhysScene->AddAggregateToScene(Aggregate);
 	}
-
-#endif //WITH_PHYSX
-
+	
 	// Create all the OutConstraints.
 	check(OutConstraints.Num() == 0);
 	int32 NumOutConstraints = PhysAsset.ConstraintSetup.Num();
@@ -780,6 +773,7 @@ void USkeletalMeshComponent::InstantiatePhysicsAsset_Internal(const UPhysicsAsse
 		check(ConInst);
 		ConInst->CopyConstraintParamsFrom(&OutConstraintsetup->DefaultInstance);
 		ConInst->ConstraintIndex = ConstraintIdx; // Set the ConstraintIndex property in the ConstraintInstance.
+		ConInst->PhysScene = PhysScene;
 #if WITH_EDITOR
 		UWorld* World = GetWorld();
 		if(World && World->IsGameWorld())
@@ -838,7 +832,6 @@ void USkeletalMeshComponent::TermArticulated()
 {
 	ResetRootBodyIndex();
 
-#if WITH_PHYSX
 	uint32 SkelMeshCompID = GetUniqueID();
 	UWorld* MyWorld = GetWorld();
 	FPhysScene* PhysScene = (MyWorld ? MyWorld->GetPhysicsScene() : nullptr);
@@ -846,7 +839,6 @@ void USkeletalMeshComponent::TermArticulated()
 	{
 		PhysScene->DeferredRemoveCollisionDisableTable(SkelMeshCompID);
 	}
-#endif	//#if WITH_PHYSX
 
 	FPhysicsCommand::ExecuteWrite(this, [&]()
 	{
@@ -873,14 +865,13 @@ void USkeletalMeshComponent::TermArticulated()
 	
 	Bodies.Empty();
 
-#if WITH_PHYSX
 	// releasing Aggregate, it shouldn't contain any Bodies now, because they are released above
 		if(Aggregate.IsValid())
 	{
 			check(FPhysicsInterface::GetNumActorsInAggregate(Aggregate) == 0);
 			FPhysicsInterface::ReleaseAggregate(Aggregate);
 	}
-#endif //WITH_PHYSX
+
 	});
 }
 
@@ -1318,7 +1309,14 @@ void USkeletalMeshComponent::OnUpdateTransform(EUpdateTransformFlags UpdateTrans
 	if(bPhysicsStateCreated && !(UpdateTransformFlags&EUpdateTransformFlags::SkipPhysicsUpdate))
 	{
 #if !OLD_FORCE_UPDATE_BEHAVIOR
-		UpdateKinematicBonesToAnim(GetComponentSpaceTransforms(), Teleport, false);
+		// Animation from the skeletal mesh happens during TG_PrePhysics.
+		// Deferred kinematic updates are applied during TG_StartPhysics.
+		// Propagation from the parent movement happens during TG_EndPhysics (for physics objects... could in theory be from any tick group).
+		// Therefore, deferred kinematic updates are safe from animation, but not from parent movement.
+		const EAllowKinematicDeferral AllowDeferral
+			= !!(UpdateTransformFlags & EUpdateTransformFlags::PropagateFromParent)
+			? EAllowKinematicDeferral::DisallowDeferral : EAllowKinematicDeferral::AllowDeferral;
+		UpdateKinematicBonesToAnim(GetComponentSpaceTransforms(), Teleport, false, AllowDeferral);
 #else
 		UpdateKinematicBonesToAnim(GetComponentSpaceTransforms(), ETeleportType::TeleportPhysics, false);
 #endif
@@ -1896,7 +1894,7 @@ void USkeletalMeshComponent::UpdatePhysicsToRBChannels()
 }
 
 template<bool bCachedMatrices>
-FVector GetTypedSkinnedVertexPositionWithCloth(USkeletalMeshComponent* Component, int32 VertexIndex, const FSkeletalMeshLODRenderData& LODData, FSkinWeightVertexBuffer& SkinWeightBuffer, TArray<FMatrix>& CachedRefToLocals)
+FVector GetTypedSkinnedVertexPositionWithCloth(USkeletalMeshComponent* Component, int32 VertexIndex, const FSkeletalMeshLODRenderData& LODData, const FSkinWeightVertexBuffer& SkinWeightBuffer, TArray<FMatrix>& CachedRefToLocals)
 {
 	// Find the chunk and vertex within that chunk, and skinning type, for this vertex.
 	int32 SectionIndex;
@@ -1947,18 +1945,18 @@ FVector GetTypedSkinnedVertexPositionWithCloth(USkeletalMeshComponent* Component
 	return GetTypedSkinnedVertexPosition<bCachedMatrices>(Component, Section, LODData.StaticVertexBuffers.PositionVertexBuffer, SkinWeightBuffer, VertIndexInChunk, CachedRefToLocals);
 }
 
-FVector USkeletalMeshComponent::GetSkinnedVertexPosition(USkeletalMeshComponent* Component, int32 VertexIndex, const FSkeletalMeshLODRenderData& LODData, FSkinWeightVertexBuffer& SkinWeightBuffer)
+FVector USkeletalMeshComponent::GetSkinnedVertexPosition(USkeletalMeshComponent* Component, int32 VertexIndex, const FSkeletalMeshLODRenderData& LODData, const FSkinWeightVertexBuffer& SkinWeightBuffer)
 {
 	TArray<FMatrix> Dummy;
 	return GetTypedSkinnedVertexPositionWithCloth<false>(Component, VertexIndex, LODData, SkinWeightBuffer, Dummy);
 }
 
-FVector USkeletalMeshComponent::GetSkinnedVertexPosition(USkeletalMeshComponent* Component, int32 VertexIndex, const FSkeletalMeshLODRenderData& LODData, FSkinWeightVertexBuffer& SkinWeightBuffer, TArray<FMatrix>& CachedRefToLocals)
+FVector USkeletalMeshComponent::GetSkinnedVertexPosition(USkeletalMeshComponent* Component, int32 VertexIndex, const FSkeletalMeshLODRenderData& LODData, const FSkinWeightVertexBuffer& SkinWeightBuffer, TArray<FMatrix>& CachedRefToLocals)
 {
 	return GetTypedSkinnedVertexPositionWithCloth<true>(Component, VertexIndex, LODData, SkinWeightBuffer, CachedRefToLocals);
 }
 
-void USkeletalMeshComponent::ComputeSkinnedPositions(USkeletalMeshComponent* Component, TArray<FVector> & OutPositions, TArray<FMatrix>& CachedRefToLocals, const FSkeletalMeshLODRenderData& LODData, FSkinWeightVertexBuffer& SkinWeightBuffer)
+void USkeletalMeshComponent::ComputeSkinnedPositions(USkeletalMeshComponent* Component, TArray<FVector> & OutPositions, TArray<FMatrix>& CachedRefToLocals, const FSkeletalMeshLODRenderData& LODData, const FSkinWeightVertexBuffer& SkinWeightBuffer)
 {
 	// Fail if no mesh
 	if (!Component->SkeletalMesh)
@@ -2052,6 +2050,43 @@ void USkeletalMeshComponent::ComputeSkinnedPositions(USkeletalMeshComponent* Com
 				FVector SkinnedPosition = GetTypedSkinnedVertexPosition<true>(Component, Section, LODData.StaticVertexBuffers.PositionVertexBuffer, SkinWeightBuffer, SoftIdx, CachedRefToLocals);
 				OutPositions[SoftOffset + SoftIdx] = SkinnedPosition;
 			}
+		}
+	}
+}
+
+void USkeletalMeshComponent::GetSkinnedTangentBasis(USkeletalMeshComponent* Component, int32 VertexIndex, const FSkeletalMeshLODRenderData& LODData, const FSkinWeightVertexBuffer& SkinWeightBuffer, TArray<FMatrix>& CachedRefToLocals, FVector& OutTangentX, FVector& OutTangentZ)
+{
+	int32 SectionIndex;
+	int32 VertIndexInChunk;
+	LODData.GetSectionFromVertexIndex(VertexIndex, SectionIndex, VertIndexInChunk);
+
+	check(SectionIndex < LODData.RenderSections.Num());
+	const FSkelMeshRenderSection& Section = LODData.RenderSections[SectionIndex];
+
+	return GetTypedSkinnedTangentBasis(Component, Section, LODData.StaticVertexBuffers, SkinWeightBuffer, VertIndexInChunk, CachedRefToLocals, OutTangentX, OutTangentZ);
+}
+
+void USkeletalMeshComponent::ComputeSkinnedTangentBasis(USkeletalMeshComponent* Component, TArray<FVector>& OutTangenXZ, TArray<FMatrix>& CachedRefToLocals, const FSkeletalMeshLODRenderData& LODData, const FSkinWeightVertexBuffer& SkinWeightBuffer)
+{
+	// Fail if no mesh
+	if (!Component->SkeletalMesh)
+	{
+		return;
+	}
+
+	OutTangenXZ.Empty();
+	OutTangenXZ.AddUninitialized(LODData.GetNumVertices() * 2);
+
+	for (int32 SectionIdx = 0; SectionIdx < LODData.RenderSections.Num(); ++SectionIdx)
+	{
+		const FSkelMeshRenderSection& Section = LODData.RenderSections[SectionIdx];
+
+		const uint32 SoftOffset = Section.GetVertexBufferIndex();
+		const uint32 NumSoftVerts = Section.GetNumVertices();
+		for (uint32 SoftIdx = 0; SoftIdx < NumSoftVerts; ++SoftIdx)
+		{
+			const uint32 TangentOffset = SoftOffset + SoftIdx * 2;
+			GetTypedSkinnedTangentBasis(Component, Section, LODData.StaticVertexBuffers, SkinWeightBuffer, SoftIdx, CachedRefToLocals, OutTangenXZ[TangentOffset + 0], OutTangenXZ[TangentOffset + 1]);
 		}
 	}
 }
@@ -2368,22 +2403,28 @@ void USkeletalMeshComponent::RecreateClothingActors()
 			}
 		}
 
-		if(ClothingSimulation)
+		if (ClothingSimulation)
 		{
-			TArray<UClothingAssetBase*> AssetsInUse;
-			SkeletalMesh->GetClothingAssetsInUse(AssetsInUse);
-
-			const int32 NumMeshAssets = SkeletalMesh->MeshClothingAssets.Num();
-			for(int32 BaseAssetIndex = 0; BaseAssetIndex < NumMeshAssets; ++BaseAssetIndex)
+			// Only create cloth sim actors when the world is ready for it
+			const UWorld* const World = GetWorld();
+			if (World && World->bShouldSimulatePhysics && World->GetPhysicsScene())
 			{
-				UClothingAssetBase* Asset = SkeletalMesh->MeshClothingAssets[BaseAssetIndex];
-				if(!Asset || !AssetsInUse.Contains(Asset))
+				TArray<UClothingAssetBase*> AssetsInUse;
+				SkeletalMesh->GetClothingAssetsInUse(AssetsInUse);
+
+				const int32 NumMeshAssets = SkeletalMesh->MeshClothingAssets.Num();
+				for (int32 BaseAssetIndex = 0; BaseAssetIndex < NumMeshAssets; ++BaseAssetIndex)
 				{
-					continue;
+					UClothingAssetBase* const Asset = SkeletalMesh->MeshClothingAssets[BaseAssetIndex];
+					if (Asset && AssetsInUse.Contains(Asset))
+					{
+						ClothingSimulation->CreateActor(this, Asset, BaseAssetIndex);
+					}
 				}
-				ClothingSimulation->CreateActor(this, Asset, BaseAssetIndex);
+				ClothingSimulation->PostActorCreationInitialize();
 			}
-			ClothingSimulation->PostActorCreationInitialize();
+
+			// Retrieve the cloth sim data, or clear the data if the world isn't ready to sim
 			WritebackClothingSimulationData();
 		}
 	}
@@ -3066,7 +3107,7 @@ public:
 
 	void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
 	{
-		FScopeCycleCounterUObject ContextScope(&SkeletalMeshComponent);
+		FScopeCycleCounterUObject ContextScope(SkeletalMeshComponent.SkeletalMesh);
 		SCOPE_CYCLE_COUNTER(STAT_ClothTotalTime);
 
 		if(SkeletalMeshComponent.ClothingSimulation)
@@ -3244,6 +3285,25 @@ void USkeletalMeshComponent::DebugDrawClothing(FPrimitiveDrawInterface* PDI)
 		if(ISimulationEditorExtender* Extender = ClothingEditorModule.GetSimulationEditorExtender(ClothingSimulationFactory->GetFName()))
 		{
 			Extender->DebugDrawSimulation(ClothingSimulation, this, PDI);
+		}
+
+		return;
+	}
+
+#endif
+}
+
+void USkeletalMeshComponent::DebugDrawClothingTexts(FCanvas* Canvas, const FSceneView* SceneView)
+{
+#if WITH_EDITOR && ENABLE_DRAW_DEBUG
+
+	if(ClothingSimulation)
+	{
+		FClothingSystemEditorInterfaceModule& ClothingEditorModule = FModuleManager::LoadModuleChecked<FClothingSystemEditorInterfaceModule>(TEXT("ClothingSystemEditorInterface"));
+
+		if(ISimulationEditorExtender* Extender = ClothingEditorModule.GetSimulationEditorExtender(ClothingSimulationFactory->GetFName()))
+		{
+			Extender->DebugDrawSimulationTexts(ClothingSimulation, this, Canvas, SceneView);
 		}
 
 		return;

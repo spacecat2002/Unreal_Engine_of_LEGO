@@ -6,10 +6,13 @@
 
 
 #include "MetalRHIPrivate.h"
-
+#include "MetalShaderTypes.h"
+#include "MetalGraphicsPipelineState.h"
+#include "MetalVertexDeclaration.h"
 #include "MetalRenderPass.h"
 #include "MetalCommandBuffer.h"
 #include "MetalProfiler.h"
+#include "MetalFrameAllocator.h"
 
 #pragma mark - Private Console Variables -
 
@@ -161,6 +164,21 @@ TRefCountPtr<FMetalFence> const& FMetalRenderPass::Submit(EMetalSubmitFlags Flag
 		{
 			PrologueEncoder.CommitCommandBuffer((Flags & EMetalSubmitFlagsAsyncCommandBuffer) ? Flags : EMetalSubmitFlagsNone);
         }
+    }
+
+    // Must be on the render thread if there's no RHI thread
+    // Must be on the RHI thread otherwise
+    CheckMetalThread();
+    
+    if (Flags & EMetalSubmitFlagsLastCommandBuffer)
+    {
+        check(CurrentEncoder.GetCommandBuffer());
+        id <MTLCommandBuffer> CommandBuffer = CurrentEncoder.GetCommandBuffer().GetPtr();
+        
+        FMetalDeviceContext& DeviceContext = (FMetalDeviceContext&)GetMetalDeviceContext();
+        FMetalFrameAllocator* UniformAllocator = DeviceContext.GetUniformAllocator();
+        
+        UniformAllocator->MarkEndOfFrame(DeviceContext.GetFrameNumberRHIThread(), CommandBuffer);
     }
     
     if (CurrentEncoder.GetCommandBuffer() && !(Flags & EMetalSubmitFlagsAsyncCommandBuffer))
@@ -1264,6 +1282,17 @@ TRefCountPtr<FMetalFence> const& FMetalRenderPass::EndRenderPass(void)
 		End();
 	}
 	return CurrentEncoderFence;
+}
+
+void FMetalRenderPass::InsertTextureBarrier()
+{
+#if PLATFORM_MAC
+	check(CurrentEncoder.IsRenderCommandEncoderActive());
+	
+	id <MTLRenderCommandEncoder> RenderEncoder = CurrentEncoder.GetRenderCommandEncoder().GetPtr();
+	check(RenderEncoder);
+	[RenderEncoder textureBarrier];
+#endif
 }
 
 void FMetalRenderPass::CopyFromTextureToBuffer(FMetalTexture const& Texture, uint32 sourceSlice, uint32 sourceLevel, mtlpp::Origin sourceOrigin, mtlpp::Size sourceSize, FMetalBuffer const& toBuffer, uint32 destinationOffset, uint32 destinationBytesPerRow, uint32 destinationBytesPerImage, mtlpp::BlitOption options)

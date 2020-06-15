@@ -12,6 +12,10 @@
 #include "Serialization/ArchiveUObject.h"
 #include "HAL/ThreadSafeBool.h"
 
+#if !defined(UE_WITH_GC)
+#	define UE_WITH_GC	1
+#endif
+
 /** Context sensitive keep flags for garbage collection */
 #define GARBAGE_COLLECTION_KEEPFLAGS	(GIsEditor ? RF_Standalone : RF_NoFlags)
 
@@ -42,6 +46,7 @@ enum EGCReferenceType
 	GCRT_Object,
 	GCRT_Class,
 	GCRT_PersistentObject,
+	GCRT_ExternalPackage,				// Specific reference type token for UObject external package
 	GCRT_ArrayObject,
 	GCRT_ArrayStruct,
 	GCRT_FixedArray,

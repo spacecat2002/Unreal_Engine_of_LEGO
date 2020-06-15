@@ -37,6 +37,16 @@ ALandscapeBlueprintBrushBase::ALandscapeBlueprintBrushBase(const FObjectInitiali
 #endif // WITH_EDITOR
 }
 
+UTextureRenderTarget2D* ALandscapeBlueprintBrushBase::Render_Implementation(bool InIsHeightmap, UTextureRenderTarget2D* InCombinedResult, const FName& InWeightmapLayerName)
+{
+	return Render_Native(InIsHeightmap, InCombinedResult, InWeightmapLayerName);
+}
+
+void ALandscapeBlueprintBrushBase::Initialize_Implementation(const FTransform& InLandscapeTransform, const FIntPoint& InLandscapeSize, const FIntPoint& InLandscapeRenderTargetSize)
+{
+	Initialize_Native(InLandscapeTransform, InLandscapeSize, InLandscapeRenderTargetSize);
+}
+
 void ALandscapeBlueprintBrushBase::RequestLandscapeUpdate()
 {
 #if WITH_EDITORONLY_DATA
@@ -69,7 +79,7 @@ void ALandscapeBlueprintBrushBase::Tick(float DeltaSeconds)
 	// Wait until we didn't trigger any more landscape update requests (padding of a couple of frames)
 	if (OwningLandscape != nullptr && 
 		LastRequestLayersContentUpdateFrameNumber != InvalidLastRequestLayersContentUpdateFrameNumber &&
-		LastRequestLayersContentUpdateFrameNumber + CVarLandscapeBrushPadding.GetValueOnAnyThread() == GFrameNumber)
+		LastRequestLayersContentUpdateFrameNumber + CVarLandscapeBrushPadding.GetValueOnAnyThread() <= GFrameNumber)
 	{
 		uint32 ModeMask = 0;
 		if (AffectHeightmap)
@@ -84,6 +94,7 @@ void ALandscapeBlueprintBrushBase::Tick(float DeltaSeconds)
 		{
 			OwningLandscape->RequestLayersContentUpdateForceAll((ELandscapeLayerUpdateMode)ModeMask);
 		}
+		LastRequestLayersContentUpdateFrameNumber = InvalidLastRequestLayersContentUpdateFrameNumber;
 	}
 #endif
 

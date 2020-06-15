@@ -2527,7 +2527,7 @@ static TAutoConsoleVariable<float> CVarViewDistanceScaleSecondaryScale(
 	1.0f,
 	TEXT("Controls the secondary view distance scale, Default = 1.0.\n")
 	TEXT("This is an optional scale intended to allow some features or gamemodes to opt-in.\n"),
-	ECVF_Scalability | ECVF_RenderThreadSafe);
+	ECVF_RenderThreadSafe);
 
 static TAutoConsoleVariable<float> CVarViewDistanceScale_FieldOfViewMinAngle(
 	TEXT("r.ViewDistanceScale.FieldOfViewMinAngle"),
@@ -2711,6 +2711,14 @@ static TAutoConsoleVariable<int32> CVarDisableVulkanSupport(
 	TEXT("  1 = vulkan will be disabled, opengl fall back will be used."),
 	ECVF_ReadOnly);
 
+static TAutoConsoleVariable<int32> CVarDisableVulkanSM5Support(
+	TEXT("r.Android.DisableVulkanSM5Support"),
+	0,
+	TEXT("Disable support for vulkan API. (Android Only)\n")
+	TEXT("  0 = Vulkan SM5 API will be used (providing device and project supports it) [default]\n")
+	TEXT("  1 = Vulkan SM5 will be disabled, Vulkan or OpenGL fall back will be used."),
+	ECVF_ReadOnly);
+
 static TAutoConsoleVariable<int32> CVarDisableOpenGLES31Support(
 	TEXT("r.Android.DisableOpenGLES31Support"),
 	0,
@@ -2734,6 +2742,14 @@ static TAutoConsoleVariable<int32> CVarDisableOpenGLTextureStreamingSupport(
 	TEXT("  0 = Texture streaming will be used if device supports it [default]\n")
 	TEXT("  1 = Texture streaming will be disabled."),
 	ECVF_ReadOnly);
+
+// Moved here from OpenGLRHI module to make sure its always accessible on all platforms
+static FAutoConsoleVariable CVarOpenGLUseEmulatedUBs(
+	TEXT("OpenGL.UseEmulatedUBs"),
+	1,
+	TEXT("If true, enable using emulated uniform buffers on OpenGL ES3.1 mode."),
+	ECVF_ReadOnly
+	);
 
 static TAutoConsoleVariable<int32> CVarAndroidOverrideExternalTextureSupport(
 	TEXT("r.Android.OverrideExternalTextureSupport"),

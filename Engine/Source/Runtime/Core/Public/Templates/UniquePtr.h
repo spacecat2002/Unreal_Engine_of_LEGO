@@ -16,6 +16,10 @@
 // TUniquePtr<MyClass> Ptr1(new MyClass);    // The MyClass object is owned by Ptr1.
 // TUniquePtr<MyClass> Ptr2(Ptr1);           // Error - TUniquePtr is not copyable
 // TUniquePtr<MyClass> Ptr3(MoveTemp(Ptr1)); // Ptr3 now owns the MyClass object - Ptr1 is now nullptr.
+//
+// If you provide a custom deleter, it is up to your deleter to handle null pointers.  This is a departure
+// from std::unique_ptr which will not invoke the deleter if the owned pointer is null:
+// https://en.cppreference.com/w/cpp/memory/unique_ptr/~unique_ptr
 
 template <typename T>
 struct TDefaultDelete
@@ -46,6 +50,17 @@ struct TDefaultDelete
 
 	void operator()(T* Ptr) const
 	{
+		// If you get an error here when trying to use a TUniquePtr<FForwardDeclaredType> inside a UObject then:
+		//
+		// * Declare all your UObject's constructors and destructor in the .h file.
+		// * Define all of them in the .cpp file.  You can use UMyObject::UMyObject() = default; to auto-generate
+		//   the default constructor and destructor so that they don't have to be manually maintained.
+		// * Define a UMyObject(FVTableHelper& Helper) constructor too, otherwise it will be defined in the
+		//   .gen.cpp file where your pimpl type doesn't exist.  It cannot be defaulted, but it need not
+		//   contain any particular implementation; the object just needs to be garbage collectable.
+		//
+		// If this is efficiency is less important than simplicity, you may want to consider
+		// using a TPimplPtr instead, though this is also pretty efficient too.
 		delete Ptr;
 	}
 };
@@ -100,7 +115,8 @@ public:
 	 * Default constructor - initializes the TUniquePtr to null.
 	 */
 	FORCEINLINE TUniquePtr()
-		: Ptr(nullptr)
+		: Deleter()
+		, Ptr    (nullptr)
 	{
 	}
 
@@ -109,8 +125,43 @@ public:
 	 *
 	 * @param InPtr The pointed-to object to take ownership of.
 	 */
-	explicit FORCEINLINE TUniquePtr(T* InPtr)
-		: Ptr(InPtr)
+	template <
+		typename U,
+		typename = decltype(ImplicitConv<T*>((U*)nullptr))
+	>
+	explicit FORCEINLINE TUniquePtr(U* InPtr)
+		: Deleter()
+		, Ptr    (InPtr)
+	{
+	}
+
+	/**
+	 * Pointer constructor - takes ownership of the pointed-to object
+	 *
+	 * @param InPtr The pointed-to object to take ownership of.
+	 */
+	template <
+		typename U,
+		typename = decltype(ImplicitConv<T*>((U*)nullptr))
+	>
+	explicit FORCEINLINE TUniquePtr(U* InPtr, Deleter&& InDeleter)
+		: Deleter(MoveTemp(InDeleter))
+		, Ptr    (InPtr)
+	{
+	}
+
+	/**
+	 * Pointer constructor - takes ownership of the pointed-to object
+	 *
+	 * @param InPtr The pointed-to object to take ownership of.
+	 */
+	template <
+		typename U,
+		typename = decltype(ImplicitConv<T*>((U*)nullptr))
+	>
+	explicit FORCEINLINE TUniquePtr(U* InPtr, const Deleter& InDeleter)
+		: Deleter(InDeleter)
+		, Ptr    (InPtr)
 	{
 	}
 
@@ -118,7 +169,8 @@ public:
 	 * nullptr constructor - initializes the TUniquePtr to null.
 	 */
 	FORCEINLINE TUniquePtr(TYPE_OF_NULLPTR)
-		: Ptr(nullptr)
+		: Deleter()
+		, Ptr    (nullptr)
 	{
 	}
 
@@ -340,7 +392,8 @@ public:
 	 * Default constructor - initializes the TUniquePtr to null.
 	 */
 	FORCEINLINE TUniquePtr()
-		: Ptr(nullptr)
+		: Deleter()
+		, Ptr    (nullptr)
 	{
 	}
 
@@ -354,7 +407,38 @@ public:
 		typename = decltype(ImplicitConv<T(*)[]>((U(*)[])nullptr))
 	>
 	explicit FORCEINLINE TUniquePtr(U* InPtr)
-		: Ptr(InPtr)
+		: Deleter()
+		, Ptr    (InPtr)
+	{
+	}
+
+	/**
+	 * Pointer constructor - takes ownership of the pointed-to array
+	 *
+	 * @param InPtr The pointed-to array to take ownership of.
+	 */
+	template <
+		typename U,
+		typename = decltype(ImplicitConv<T(*)[]>((U(*)[])nullptr))
+	>
+	explicit FORCEINLINE TUniquePtr(U* InPtr, Deleter&& InDeleter)
+		: Deleter(MoveTemp(InDeleter))
+		, Ptr    (InPtr)
+	{
+	}
+
+	/**
+	 * Pointer constructor - takes ownership of the pointed-to array
+	 *
+	 * @param InPtr The pointed-to array to take ownership of.
+	 */
+	template <
+		typename U,
+		typename = decltype(ImplicitConv<T(*)[]>((U(*)[])nullptr))
+	>
+	explicit FORCEINLINE TUniquePtr(U* InPtr, const Deleter& InDeleter)
+		: Deleter(InDeleter)
+		, Ptr    (InPtr)
 	{
 	}
 
@@ -362,7 +446,8 @@ public:
 	 * nullptr constructor - initializes the TUniquePtr to null.
 	 */
 	FORCEINLINE TUniquePtr(TYPE_OF_NULLPTR)
-		: Ptr(nullptr)
+		: Deleter()
+		, Ptr    (nullptr)
 	{
 	}
 
@@ -418,7 +503,7 @@ public:
 		typename OtherDeleter,
 		typename = decltype(ImplicitConv<T(*)[]>((OtherT(*)[])nullptr))
 	>
-	FORCEINLINE TUniquePtr& operator=(TUniquePtr<OtherT>&& Other)
+	FORCEINLINE TUniquePtr& operator=(TUniquePtr<OtherT, OtherDeleter>&& Other)
 	{
 		// We delete last, because we don't want odd side effects if the destructor of T relies on the state of this or Other
 		T* OldPtr = Ptr;

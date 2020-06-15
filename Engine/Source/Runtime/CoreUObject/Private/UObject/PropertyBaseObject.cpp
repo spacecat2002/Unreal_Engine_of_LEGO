@@ -9,6 +9,7 @@
 #include "UObject/PropertyHelper.h"
 #include "UObject/LinkerPlaceholderClass.h"
 #include "UObject/LinkerPlaceholderExportObject.h"
+#include "Misc/StringBuilder.h"
 
 // WARNING: This should always be the last include in any file that needs it (except .generated.h)
 #include "UObject/UndefineUPropertyMacros.h"
@@ -264,14 +265,14 @@ bool FObjectPropertyBase::ParseObjectPropertyValue(const FProperty* Property, UO
 
  	const TCHAR* InBuffer = Buffer;
 
-	FString Temp;
-	Buffer = FPropertyHelpers::ReadToken(Buffer, Temp, true);
+	TStringBuilder<256> Temp;
+	Buffer = FPropertyHelpers::ReadToken(Buffer, /* out */ Temp, true);
 	if ( Buffer == nullptr )
 	{
 		return false;
 	}
 
-	if ( Temp == TEXT("None") )
+	if ( Temp == TEXT("None"_SV) )
 	{
 		out_ResolvedValue = nullptr;
 	}
@@ -285,8 +286,8 @@ bool FObjectPropertyBase::ParseObjectPropertyValue(const FProperty* Property, UO
 
 		if( *Buffer == TCHAR('\'') )
 		{
-			FString ObjectText;
-			Buffer = FPropertyHelpers::ReadToken( ++Buffer, ObjectText, true );
+			Temp.Reset();
+			Buffer = FPropertyHelpers::ReadToken( ++Buffer, /* out */ Temp, true);
 			if( Buffer == nullptr )
 			{
 				return false;
@@ -299,12 +300,12 @@ bool FObjectPropertyBase::ParseObjectPropertyValue(const FProperty* Property, UO
 
 			// ignore the object class, it isn't fully qualified, and searching ANY_PACKAGE might get the wrong one!
 			// Try the find the object.
-			out_ResolvedValue = FObjectPropertyBase::FindImportedObject(Property, OwnerObject, ObjectClass, RequiredMetaClass, *ObjectText, PortFlags, InSerializeContext, bAllowAnyPackage);
+			out_ResolvedValue = FObjectPropertyBase::FindImportedObject(Property, OwnerObject, ObjectClass, RequiredMetaClass, Temp.ToString(), PortFlags, InSerializeContext, bAllowAnyPackage);
 		}
 		else
 		{
 			// Try the find the object.
-			out_ResolvedValue = FObjectPropertyBase::FindImportedObject(Property, OwnerObject, ObjectClass, RequiredMetaClass, *Temp, PortFlags, InSerializeContext, bAllowAnyPackage);
+			out_ResolvedValue = FObjectPropertyBase::FindImportedObject(Property, OwnerObject, ObjectClass, RequiredMetaClass, Temp.ToString(), PortFlags, InSerializeContext, bAllowAnyPackage);
 		}
 
 		if ( out_ResolvedValue != nullptr && !out_ResolvedValue->GetClass()->IsChildOf(RequiredMetaClass) )
@@ -403,7 +404,7 @@ UObject* FObjectPropertyBase::FindImportedObject( const FProperty* Property, UOb
 		if (Result == nullptr && (PortFlags & PPF_SerializedAsImportText))
 		{
 			// Check string asset redirectors
-			FSoftObjectPath Path = FString(Text);
+			FSoftObjectPath Path(Text);
 			if (Path.PreSavePath())
 			{
 				Result = StaticFindObjectSafe(ObjectClass, nullptr, *Path.ToString());
@@ -429,7 +430,7 @@ UObject* FObjectPropertyBase::FindImportedObject( const FProperty* Property, UOb
 		if (Dot && AttemptNonQualifiedSearch)
 		{
 			// search with just the object name
-			Result = FindImportedObject(Property, OwnerObject, ObjectClass, RequiredMetaClass, Dot + 1, 0, InSerializeContext);
+			Result = FindImportedObject(Property, OwnerObject, ObjectClass, RequiredMetaClass, Dot + 1, 0);
 		}
 		FString NewText(Text);
 		// if it didn't have a dot, then maybe they just gave a uasset package name
@@ -466,7 +467,7 @@ UObject* FObjectPropertyBase::FindImportedObject( const FProperty* Property, UOb
 				const uint32 LoadFlags = LOAD_NoWarn | LOAD_FindIfFail;		
 
 				UE_LOG(LogProperty, Verbose, TEXT("FindImportedObject is attempting to import [%s] (class = %s) with StaticLoadObject"), Text, *GetFullNameSafe(ObjectClass));
-				Result = StaticLoadObject(ObjectClass, nullptr, Text, nullptr, LoadFlags, nullptr, true, InSerializeContext);
+				Result = StaticLoadObject(ObjectClass, nullptr, Text, nullptr, LoadFlags, nullptr, true);
 
 #if USE_DEFERRED_DEPENDENCY_CHECK_VERIFICATION_TESTS
 				check(!bDeferAssetImports || !Result || !FBlueprintSupport::IsInBlueprintPackage(Result));
@@ -521,6 +522,8 @@ void FObjectPropertyBase::CheckValidObject(void* Value) const
 		// object type expected by the property...
 
 		UClass* ObjectClass = Object->GetClass();
+		UE_CLOG(!ObjectClass, LogProperty, Fatal, TEXT("Object without class referenced by %s, object: 0x%016llx %s"), *GetPathName(), (int64)(PTRINT)Object, *Object->GetPathName());
+
 		// we could be in the middle of replacing references to the 
 		// PropertyClass itself (in the middle of an FArchiveReplaceObjectRef 
 		// pass)... if this is the case, then we might have already replaced 

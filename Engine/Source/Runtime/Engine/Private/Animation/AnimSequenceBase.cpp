@@ -367,7 +367,7 @@ void UAnimSequenceBase::TickAssetPlayer(FAnimTickRecord& Instance, struct FAnimN
 
 void UAnimSequenceBase::TickByMarkerAsFollower(FMarkerTickRecord &Instance, FMarkerTickContext &MarkerContext, float& CurrentTime, float& OutPreviousTime, const float MoveDelta, const bool bLooping) const
 {
-	if (!Instance.IsValid())
+	if (!Instance.IsValid(bLooping))
 	{
 		GetMarkerIndicesForPosition(MarkerContext.GetMarkerSyncStartPosition(), bLooping, Instance.PreviousMarker, Instance.NextMarker, CurrentTime);
 	}
@@ -380,7 +380,7 @@ void UAnimSequenceBase::TickByMarkerAsFollower(FMarkerTickRecord &Instance, FMar
 
 void UAnimSequenceBase::TickByMarkerAsLeader(FMarkerTickRecord& Instance, FMarkerTickContext& MarkerContext, float& CurrentTime, float& OutPreviousTime, const float MoveDelta, const bool bLooping) const
 {
-	if (!Instance.IsValid())
+	if (!Instance.IsValid(bLooping))
 	{
 		if (MarkerContext.IsMarkerSyncStartValid())
 		{
@@ -641,7 +641,7 @@ uint8* UAnimSequenceBase::FindNotifyPropertyData(int32 NotifyIndex, FArrayProper
 uint8* UAnimSequenceBase::FindArrayProperty(const TCHAR* PropName, FArrayProperty*& ArrayProperty, int32 ArrayIndex)
 {
 	// find Notifies property start point
-	FProperty* Property = FindField<FProperty>(GetClass(), PropName);
+	FProperty* Property = FindFProperty<FProperty>(GetClass(), PropName);
 
 	// found it and if it is array
 	if (Property && Property->IsA(FArrayProperty::StaticClass()))

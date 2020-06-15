@@ -15,6 +15,9 @@ D3D12CommandContext.cpp: RHI  Command Context implementation.
 // Aggressive batching saves ~0.1ms on the RHI thread, reduces executecommandlist calls by around 25%
 int32 GCommandListBatchingMode = CLB_AggressiveBatching;
 
+extern int32 GEnableGapRecorder;
+extern bool GGapRecorderActiveOnBeginFrame;
+
 static FAutoConsoleVariableRef CVarCommandListBatchingMode(
 	TEXT("D3D12.CommandListBatchingMode"),
 	GCommandListBatchingMode,
@@ -59,6 +62,10 @@ FD3D12CommandContext::FD3D12CommandContext(FD3D12Device* InParent, FD3D12SubAllo
 	bOuterOcclusionQuerySubmitted(false),
 	bDiscardSharedConstants(false),
 	bUsingTessellation(false),
+#if PLATFORM_SUPPORTS_VARIABLE_RATE_SHADING
+	VRSCombiners{ D3D12_SHADING_RATE_COMBINER_PASSTHROUGH, D3D12_SHADING_RATE_COMBINER_PASSTHROUGH } ,
+	VRSShadingRate(D3D12_SHADING_RATE_1X1),
+#endif
 	SkipFastClearEliminateState(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
 #if PLATFORM_SUPPORTS_VIRTUAL_TEXTURES
 	bNeedFlushTextureCache(false),
@@ -89,17 +96,89 @@ FD3D12CommandContext::~FD3D12CommandContext()
 	ClearState();
 }
 
+
+/** Write out the event stack to the bread crumb resource if available */
+void FD3D12CommandContext::WriteGPUEventStackToBreadCrumbData(bool bBeginEvent)
+{
+	// Only in Windows for now, could be made available on Xbox as well
+#if PLATFORM_WINDOWS
+	// Write directly to command list if breadcrumb resource is available
+	FD3D12Resource* BreadCrumbResource = CommandListHandle.GetCommandListManager()->GetBreadCrumbResource();
+	ID3D12GraphicsCommandList2* CommandList2 = CommandListHandle.GraphicsCommandList2();
+	if (BreadCrumbResource && CommandList2)
+	{
+		// Find the max parameter count from the resource
+		int MaxParameterCount = BreadCrumbResource->GetDesc().Width / sizeof(uint32);
+
+		// allocate the parameters on the stack if smaller than 4K
+		int ParameterCount = GPUEventStack.Num() < (MaxParameterCount - 2) ? GPUEventStack.Num() + 2 : MaxParameterCount;
+		size_t MemSize = ParameterCount * (sizeof(D3D12_WRITEBUFFERIMMEDIATE_PARAMETER) + sizeof(D3D12_WRITEBUFFERIMMEDIATE_PARAMETER));
+		const bool bAllocateOnStack = (MemSize < 4096);
+		void* Mem = bAllocateOnStack ? FMemory_Alloca(MemSize) : FMemory::Malloc(MemSize);
+
+		if (Mem)
+		{
+			D3D12_WRITEBUFFERIMMEDIATE_PARAMETER* Parameters = (D3D12_WRITEBUFFERIMMEDIATE_PARAMETER*)Mem;
+			D3D12_WRITEBUFFERIMMEDIATE_MODE* Modes = (D3D12_WRITEBUFFERIMMEDIATE_MODE*)(Parameters + ParameterCount);
+			for (int i = 0; i < ParameterCount; ++i)
+			{
+				Parameters[i].Dest = BreadCrumbResource->GetGPUVirtualAddress() + 4 * i;
+				Modes[i] = D3D12_WRITEBUFFERIMMEDIATE_MODE_MARKER_IN;
+
+				// Write event stack count first
+				if (i == 0)
+				{
+					Parameters[i].Value = GPUEventStack.Num();
+				}
+				// Then if it's the begin or end event
+				else if (i == 1)
+				{
+					Parameters[i].Value = bBeginEvent ? 1 : 0;
+				}
+				// Otherwise the actual stack value
+				else
+				{
+					Parameters[i].Value = GPUEventStack[i - 2];
+				}
+			}
+			CommandList2->WriteBufferImmediate(ParameterCount, Parameters, Modes);
+		}
+
+		if (!bAllocateOnStack)
+		{
+			FMemory::Free(Mem);
+		}
+	}
+#endif // PLATFORM_WINDOWS
+}
+
+
 void FD3D12CommandContext::RHIPushEvent(const TCHAR* Name, FColor Color)
 {
+	D3D12RHI::FD3DGPUProfiler& GPUProfiler = GetParentDevice()->GetGPUProfiler();
+
+	// forward event to profiler if it's the default context
 	if (IsDefaultContext())
 	{
-#if NV_AFTERMATH
-		GetParentDevice()->PushGPUEvent(Name, Color, CommandListHandle.AftermathCommandContext());
-#else
-		GetParentDevice()->PushGPUEvent(Name, Color);
-#endif
+		GPUProfiler.PushEvent(Name, Color);
 	}
 
+	// If we are tracking GPU crashes then retrieve the hash of the name and track in the command list somewhere
+	if (GPUProfiler.bTrackingGPUCrashData)
+	{
+		// Get the CRC of the event (handle case when depth is too big)
+		const TCHAR* EventName = (GPUProfiler.GPUCrashDataDepth < 0 || GPUEventStack.Num() < GPUProfiler.GPUCrashDataDepth) ? Name : *D3D12RHI::FD3DGPUProfiler::EventDeepString;
+		uint32 CRC = GPUProfiler.GetOrAddEventStringHash(Name);
+
+		GPUEventStack.Push(CRC);
+		WriteGPUEventStackToBreadCrumbData(true);
+
+#if NV_AFTERMATH
+		// Only track aftermath for default context?
+		if (IsDefaultContext() && GDX12NVAfterMathEnabled && GDX12NVAfterMathMarkers)
+			GFSDK_Aftermath_SetEventMarker(CommandListHandle.AftermathCommandContext(), &GPUEventStack[0], GPUEventStack.Num() * sizeof(uint32));
+#endif // NV_AFTERMATH		
+	}
 
 #if PLATFORM_WINDOWS
 	AGSContext* const AmdAgsContext = OwningRHI.GetAmdAgsContext();
@@ -110,15 +189,31 @@ void FD3D12CommandContext::RHIPushEvent(const TCHAR* Name, FColor Color)
 #endif
 
 #if USE_PIX
-	PIXBeginEvent(CommandListHandle.GraphicsCommandList(), PIX_COLOR(Color.R, Color.G, Color.B), Name);
-#endif
+	if (FD3D12DynamicRHI::GetD3DRHI()->IsPixEventEnabled())
+	{
+		PIXBeginEvent(CommandListHandle.GraphicsCommandList(), PIX_COLOR(Color.R, Color.G, Color.B), Name);
+	}
+#endif // USE_PIX
 }
 
 void FD3D12CommandContext::RHIPopEvent()
 {
+	D3D12RHI::FD3DGPUProfiler& GPUProfiler = GetParentDevice()->GetGPUProfiler();
+	
 	if (IsDefaultContext())
 	{
-		GetParentDevice()->PopGPUEvent();
+		GPUProfiler.PopEvent();
+	}
+		
+	if (GPUProfiler.bTrackingGPUCrashData)
+	{
+		WriteGPUEventStackToBreadCrumbData(false);
+
+		// need to look for unbalanced push/pop
+		if (GPUEventStack.Num() > 0)
+		{
+			GPUEventStack.Pop(false);
+		}
 	}
 
 #if PLATFORM_WINDOWS
@@ -130,7 +225,10 @@ void FD3D12CommandContext::RHIPopEvent()
 #endif
 
 #if USE_PIX
-	PIXEndEvent(CommandListHandle.GraphicsCommandList());
+	if (FD3D12DynamicRHI::GetD3DRHI()->IsPixEventEnabled())
+	{
+		PIXEndEvent(CommandListHandle.GraphicsCommandList());
+	}
 #endif
 }
 
@@ -218,7 +316,7 @@ FD3D12CommandListHandle FD3D12CommandContext::FlushCommands(bool WaitForCompleti
 	check(IsDefaultContext());
 
 	bool bHasProfileGPUAction = false;
-#if WITH_PROFILEGPU
+#if WITH_PROFILEGPU || D3D12_SUBMISSION_GAP_RECORDER
 	// Only graphics command list supports ID3D12GraphicsCommandList::EndQuery currently
 	if (!bIsAsyncComputeContext)
 	{
@@ -286,12 +384,32 @@ void FD3D12CommandContext::Finish(TArray<FD3D12CommandListHandle>& CommandLists)
 
 void FD3D12CommandContextBase::RHIBeginFrame()
 {
-	bTrackingEvents = bIsDefaultContext && ParentAdapter->GetGPUProfiler().bTrackingEvents;
+	bTrackingEvents = false;
 
 	RHIPrivateBeginFrame();
+
+#if D3D12_SUBMISSION_GAP_RECORDER
+	typedef typename FD3D12CommandContext::EFlushCommandsExtraAction EFlushCmdsAction;
+	constexpr bool bWaitForCommands = false;
+	constexpr EFlushCmdsAction FlushAction = EFlushCmdsAction::FCEA_StartProfilingGPU;
+
+	int32 CurrentSlotIdx = ParentAdapter->GetDevice(0)->GetCmdListExecTimeQueryHeap()->GetNextFreeIdx();
+	ParentAdapter->SubmissionGapRecorder.SetStartFrameSlotIdx(CurrentSlotIdx);
+#endif
+
 	for (uint32 GPUIndex : GPUMask)
 	{
 		FD3D12Device* Device = ParentAdapter->GetDevice(GPUIndex);
+
+		bTrackingEvents |= bIsDefaultContext && Device->GetGPUProfiler().bTrackingEvents;
+
+#if D3D12_SUBMISSION_GAP_RECORDER
+		if (GEnableGapRecorder)
+		{
+			Device->GetDefaultCommandContext().FlushCommands(bWaitForCommands, FlushAction);
+			GGapRecorderActiveOnBeginFrame = true;
+		}
+#endif
 
 		// Resolve the last frame's timestamp queries
 		FD3D12CommandContext* ContextAtIndex = GetContext(GPUIndex);
@@ -321,9 +439,9 @@ void FD3D12CommandContextBase::RHIBeginFrame()
 		}
 
 		Device->GetGlobalSamplerHeap().ToggleDescriptorTablesDirtyFlag(false);
-	}
 
-	ParentAdapter->GetGPUProfiler().BeginFrame(ParentAdapter->GetOwningRHI());
+		Device->GetGPUProfiler().BeginFrame(ParentAdapter->GetOwningRHI());
+	}
 }
 
 void FD3D12CommandContext::ClearState()
@@ -375,11 +493,26 @@ void FD3D12CommandContext::ClearAllShaderResources()
 
 void FD3D12CommandContextBase::RHIEndFrame()
 {
+#if D3D12_SUBMISSION_GAP_RECORDER
+	typedef typename FD3D12CommandContext::EFlushCommandsExtraAction EFlushCmdsAction;
+	constexpr bool bWaitForCommands = false;
+	constexpr EFlushCmdsAction FlushAction = EFlushCmdsAction::FCEA_EndProfilingGPU;
+#endif
+
+	FD3D12Device* Device = ParentAdapter->GetDevice(0);
+
+#if D3D12_SUBMISSION_GAP_RECORDER
+	if (GEnableGapRecorder && GGapRecorderActiveOnBeginFrame)
+	{
+		Device->GetDefaultCommandContext().FlushCommands(bWaitForCommands, FlushAction);
+	}
+#endif
+
 	ParentAdapter->EndFrame();
 
 	for (uint32 GPUIndex : GPUMask)
 	{
-		FD3D12Device* Device = ParentAdapter->GetDevice(GPUIndex);
+		Device = ParentAdapter->GetDevice(GPUIndex);
 
 		FD3D12CommandContext& DefaultContext = Device->GetDefaultCommandContext();
 		DefaultContext.CommandListHandle.FlushResourceBarriers();
@@ -415,15 +548,22 @@ void FD3D12CommandContextBase::RHIEndFrame()
 
 	for (uint32 GPUIndex : GPUMask)
 	{
-		FD3D12Device* Device = ParentAdapter->GetDevice(GPUIndex);
+		Device = ParentAdapter->GetDevice(GPUIndex);
 		Device->GetCommandListManager().ReleaseResourceBarrierCommandListAllocator();
+
+		// Stop Timing at the very last moment
+		D3D12RHI::FD3DGPUProfiler& GPUProfiler = Device->GetGPUProfiler();
+		GPUProfiler.EndFrame(ParentAdapter->GetOwningRHI());
+		if (GPUIndex == 0)
+		{
+			// Multi-GPU support : For now, set GGPUFrameTime to GPU 0's frame time to be
+			// consistent with code that calls RHIGetGPUFrameCycles and is not MGPU-aware.
+			// Perhaps we should change it to get the max frame time of all GPUs?
+			GGPUFrameTime = GPUProfiler.GetGPUFrameCycles(GPUIndex);
+		}
 	}
 
 	UpdateMemoryStats();
-
-	// Stop Timing at the very last moment
-    
-	ParentAdapter->GetGPUProfiler().EndFrame(ParentAdapter->GetOwningRHI());
 }
 
 void FD3D12CommandContextBase::UpdateMemoryStats()

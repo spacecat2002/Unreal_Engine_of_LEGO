@@ -20,55 +20,6 @@ THIRD_PARTY_INCLUDES_END
 class FMetalContext;
 @class FMetalShaderPipeline;
 
-/** The MTLVertexDescriptor and a pre-calculated hash value used to simplify comparisons (as vendor MTLVertexDescriptor implementations aren't all comparable) */
-struct FMetalHashedVertexDescriptor
-{
-	NSUInteger VertexDescHash;
-	mtlpp::VertexDescriptor VertexDesc;
-	
-	FMetalHashedVertexDescriptor();
-	FMetalHashedVertexDescriptor(mtlpp::VertexDescriptor Desc, uint32 Hash);
-	FMetalHashedVertexDescriptor(FMetalHashedVertexDescriptor const& Other);
-	~FMetalHashedVertexDescriptor();
-	
-	FMetalHashedVertexDescriptor& operator=(FMetalHashedVertexDescriptor const& Other);
-	bool operator==(FMetalHashedVertexDescriptor const& Other) const;
-	
-	friend uint32 GetTypeHash(FMetalHashedVertexDescriptor const& Hash)
-	{
-		return Hash.VertexDescHash;
-	}
-};
-
-/** This represents a vertex declaration that hasn't been combined with a specific shader to create a bound shader. */
-class FMetalVertexDeclaration : public FRHIVertexDeclaration
-{
-public:
-
-	/** Initialization constructor. */
-	FMetalVertexDeclaration(const FVertexDeclarationElementList& InElements);
-	~FMetalVertexDeclaration();
-	
-	/** Cached element info array (offset, stream index, etc) */
-	FVertexDeclarationElementList Elements;
-
-	/** This is the layout for the vertex elements */
-	FMetalHashedVertexDescriptor Layout;
-	
-	/** Hash without considering strides which may be overriden */
-	uint32 BaseHash;
-	
-	virtual bool GetInitializer(FVertexDeclarationElementList& Init)
-	{
-		Init = Elements;
-		return true;
-	}
-
-protected:
-	void GenerateLayout(const FVertexDeclarationElementList& Elements);
-
-};
-
 extern NSString* DecodeMetalSourceCode(uint32 CodeSize, TArray<uint8> const& CompressedSource);
 
 enum EMetalIndexType
@@ -79,207 +30,6 @@ enum EMetalIndexType
 	EMetalIndexType_Num	   = 3
 };
 
-/** This represents a vertex shader that hasn't been combined with a specific declaration to create a bound shader. */
-template<typename BaseResourceType, int32 ShaderType>
-class TMetalBaseShader : public BaseResourceType, public IRefCountedObject
-{
-public:
-	enum { StaticFrequency = ShaderType };
-
-	/** Initialization constructor. */
-	TMetalBaseShader()
-	: SideTableBinding(-1)
-	, SourceLen(0)
-	, SourceCRC(0)
-	, GlslCodeNSString(nil)
-	, CodeSize(0)
-	{
-		Function = nil;
-	}
-	
-	void Init(TArrayView<const uint8> InCode, FMetalCodeHeader& Header, mtlpp::Library InLibrary = nil);
-
-	/** Destructor */
-	virtual ~TMetalBaseShader();
-
-	/** @returns The Metal source code as an NSString if available or nil if not. Will dynamically decompress from compressed data on first invocation. */
-	inline NSString* GetSourceCode()
-	{
-		if (!GlslCodeNSString && CodeSize && CompressedSource.Num())
-		{
-			GlslCodeNSString = DecodeMetalSourceCode(CodeSize, CompressedSource);
-		}
-		if (!GlslCodeNSString)
-		{
-			GlslCodeNSString = [FString::Printf(TEXT("Hash: %s, Name: Main_%0.8x_%0.8x"), *BaseResourceType::GetHash().ToString(), SourceLen, SourceCRC).GetNSString() retain];
-		}
-		return GlslCodeNSString;
-	}
-
-	// IRefCountedObject interface.
-	virtual uint32 AddRef() const
-	{
-		return FRHIResource::AddRef();
-	}
-	virtual uint32 Release() const
-	{
-		return FRHIResource::Release();
-	}
-	virtual uint32 GetRefCount() const
-	{
-		return FRHIResource::GetRefCount();
-	}
-
-	/** External bindings for this shader. */
-	FMetalShaderBindings Bindings;
-
-	// List of memory copies from RHIUniformBuffer to packed uniforms
-	TArray<CrossCompiler::FUniformBufferCopyInfo> UniformBuffersCopyInfo;
-	
-	/* Argument encoders for shader IABs */
-	TMap<uint32, mtlpp::ArgumentEncoder> ArgumentEncoders;
-	
-	/* Tier1 Argument buffer bitmasks */
-	TMap<uint32, TBitArray<>> ArgumentBitmasks;
-	
-	/* Uniform buffer static slots */
-	TArray<FUniformBufferStaticSlot> StaticSlots;
-
-	/** The binding for the buffer side-table if present */
-	int32 SideTableBinding;
-
-	/** CRC & Len for name disambiguation */
-	uint32 SourceLen;
-	uint32 SourceCRC;
-	
-	/** Hash for the shader/material permutation constants */
-	uint32 ConstantValueHash;
-    
-protected:
-	mtlpp::Function GetCompiledFunction(bool const bAsync = false);
-
-    // this is the compiler shader
-	mtlpp::Function Function;
-    
-private:
-	// This is the MTLLibrary for the shader so we can dynamically refine the MTLFunction
-	mtlpp::Library Library;
-	
-	/** The debuggable text source */
-	NSString* GlslCodeNSString;
-	
-	/** The compressed text source */
-	TArray<uint8> CompressedSource;
-	
-	/** The uncompressed text source size */
-	uint32 CodeSize;
-    
-    // Function constant states
-    bool bHasFunctionConstants;
-    bool bDeviceFunctionConstants;
-};
-
-class FMetalVertexShader : public TMetalBaseShader<FRHIVertexShader, SF_Vertex>
-{
-public:
-	FMetalVertexShader(TArrayView<const uint8> InCode);
-	FMetalVertexShader(TArrayView<const uint8> InCode, mtlpp::Library InLibrary);
-	
-	mtlpp::Function GetFunction();
-	
-#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
-	// for VSHS
-	FMetalTessellationOutputs TessellationOutputAttribs;
-	float  TessellationMaxTessFactor;
-	uint32 TessellationOutputControlPoints;
-	uint32 TessellationDomain;
-	uint32 TessellationInputControlPoints;
-	uint32 TessellationPatchesPerThreadGroup;
-	uint32 TessellationPatchCountBuffer;
-	uint32 TessellationIndexBuffer;
-	uint32 TessellationHSOutBuffer;
-	uint32 TessellationHSTFOutBuffer;
-	uint32 TessellationControlPointOutBuffer;
-	uint32 TessellationControlPointIndexBuffer;
-#endif
-};
-
-class FMetalPixelShader : public TMetalBaseShader<FRHIPixelShader, SF_Pixel>
-{
-public:
-	FMetalPixelShader(TArrayView<const uint8> InCode);
-	FMetalPixelShader(TArrayView<const uint8> InCode, mtlpp::Library InLibrary);
-	
-	mtlpp::Function GetFunction();
-};
-
-#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
-class FMetalHullShader : public TMetalBaseShader<FRHIHullShader, SF_Hull>
-{
-public:
-	FMetalHullShader(TArrayView<const uint8> InCode);
-	FMetalHullShader(TArrayView<const uint8> InCode, mtlpp::Library InLibrary);
-	
-	mtlpp::Function GetFunction();
-	
-	// for VSHS
-	FMetalTessellationOutputs TessellationOutputAttribs;
-	float  TessellationMaxTessFactor;
-	uint32 TessellationOutputControlPoints;
-	uint32 TessellationDomain;
-	uint32 TessellationInputControlPoints;
-	uint32 TessellationPatchesPerThreadGroup;
-	uint32 TessellationPatchCountBuffer;
-	uint32 TessellationIndexBuffer;
-	uint32 TessellationHSOutBuffer;
-	uint32 TessellationHSTFOutBuffer;
-	uint32 TessellationControlPointOutBuffer;
-	uint32 TessellationControlPointIndexBuffer;
-	mtlpp::Winding TessellationOutputWinding;
-	mtlpp::TessellationPartitionMode TessellationPartitioning;
-};
-
-class FMetalDomainShader : public TMetalBaseShader<FRHIDomainShader, SF_Domain>
-{
-public:
-	FMetalDomainShader(TArrayView<const uint8> InCode);
-	FMetalDomainShader(TArrayView<const uint8> InCode, mtlpp::Library InLibrary);
-	
-	mtlpp::Function GetFunction();
-	
-	mtlpp::Winding TessellationOutputWinding;
-	mtlpp::TessellationPartitionMode TessellationPartitioning;
-	uint32 TessellationHSOutBuffer;
-	uint32 TessellationControlPointOutBuffer;
-	
-	uint32 TessellationDomain;
-	FMetalTessellationOutputs TessellationOutputAttribs;
-};
-#else
-typedef TMetalBaseShader<FRHIHullShader, SF_Hull> FMetalHullShader;
-typedef TMetalBaseShader<FRHIDomainShader, SF_Domain> FMetalDomainShader;
-#endif
-
-typedef TMetalBaseShader<FRHIGeometryShader, SF_Geometry> FMetalGeometryShader;
-
-class FMetalComputeShader : public TMetalBaseShader<FRHIComputeShader, SF_Compute>
-{
-public:
-	FMetalComputeShader(TArrayView<const uint8> InCode, mtlpp::Library InLibrary = nil);
-	virtual ~FMetalComputeShader();
-	
-	FMetalShaderPipeline* GetPipeline();
-	mtlpp::Function GetFunction();
-	
-	// thread group counts
-	int32 NumThreadsX;
-	int32 NumThreadsY;
-	int32 NumThreadsZ;
-    
-private:
-    // the state object for a compute shader
-    FMetalShaderPipeline* Pipeline;
-};
 
 struct FMetalRenderPipelineHash
 {
@@ -295,70 +45,6 @@ struct FMetalRenderPipelineHash
 	
 	uint64 RasterBits;
 	uint64 TargetBits;
-};
-
-class UE_DEPRECATED(4.15, "Use GraphicsPipelineState Interface") FMetalBoundShaderState : public FRHIBoundShaderState
-{
-};
-
-class FMetalGraphicsPipelineState : public FRHIGraphicsPipelineState
-{
-public:
-	virtual ~FMetalGraphicsPipelineState();
-
-	FMetalShaderPipeline* GetPipeline(EMetalIndexType IndexType);
-	
-	/** Cached vertex structure */
-	TRefCountPtr<FMetalVertexDeclaration> VertexDeclaration;
-	
-	/** Cached shaders */
-	TRefCountPtr<FMetalVertexShader> VertexShader;
-	TRefCountPtr<FMetalPixelShader> PixelShader;
-#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
-	TRefCountPtr<FMetalHullShader> HullShader;
-	TRefCountPtr<FMetalDomainShader> DomainShader;
-#endif
-#if PLATFORM_SUPPORTS_GEOMETRY_SHADERS
-	TRefCountPtr<FMetalGeometryShader> GeometryShader;
-#endif
-	
-	/** Cached state objects */
-	TRefCountPtr<FMetalDepthStencilState> DepthStencilState;
-	TRefCountPtr<FMetalRasterizerState> RasterizerState;
-	
-	inline EPrimitiveType GetPrimitiveType() { return Initializer.PrimitiveType; }
-	inline bool GetDepthBounds() const { return Initializer.bDepthBounds; }
-	
-	friend class FMetalDynamicRHI;
-	
-private:
-	// This can only be created through the RHI to make sure Compile() is called.
-	FMetalGraphicsPipelineState(const FGraphicsPipelineStateInitializer& Init) : Initializer(Init) {}
-	// Compiles the underlying gpu pipeline objects. This must be called before usage.
-	bool Compile();
-	// Needed to runtime refine shaders currently.
-	FGraphicsPipelineStateInitializer Initializer;
-	// Tessellation pipelines have three different variations for the indexing-style.
-	FMetalShaderPipeline* PipelineStates[EMetalIndexType_Num];
-};
-
-class FMetalComputePipelineState : public FRHIComputePipelineState
-{
-public:
-	FMetalComputePipelineState(FMetalComputeShader* InComputeShader)
-	: ComputeShader(InComputeShader)
-	{
-		check(InComputeShader);
-	}
-	virtual ~FMetalComputePipelineState() {}
-
-	FMetalComputeShader* GetComputeShader()
-	{
-		return ComputeShader;
-	}
-
-private:
-	TRefCountPtr<FMetalComputeShader> ComputeShader;
 };
 
 class FMetalSubBufferHeap;
@@ -391,7 +77,7 @@ public:
 	inline bool IsPooled() const { return bPooled; }
 	inline bool IsSingleUse() const { return bSingleUse; }
 	inline void MarkSingleUse() { bSingleUse = true; }
-    void SetOwner(class FMetalRHIBuffer* Owner);
+    void SetOwner(class FMetalRHIBuffer* Owner, bool bIsSwap);
 	void Release();
 	
 	friend uint32 GetTypeHash(FMetalBuffer const& Hash)
@@ -470,7 +156,7 @@ public:
 
 	FMetalSurface(FMetalSurface& Source, NSRange MipRange);
 	
-	FMetalSurface(FMetalSurface& Source, NSRange MipRange, EPixelFormat Format);
+	FMetalSurface(FMetalSurface& Source, NSRange MipRange, EPixelFormat Format, bool bSRGBForceDisable);
 	
 	/**
 	 * Destructor
@@ -551,7 +237,16 @@ public:
 	FMetalTexture MSAAResolveTexture;
 	uint32 SizeX, SizeY, SizeZ;
 	bool bIsCubemap;
-	int32 volatile Written;
+	int16 volatile Written;
+	int16 GPUReadback = 0;
+	enum EMetalGPUReadbackFlags : int16
+	{
+		ReadbackRequestedShift 			= 0,
+		ReadbackFenceCompleteShift  	= 1,
+		ReadbackRequested 				= 1 << ReadbackRequestedShift,
+		ReadbackFenceComplete 			= 1 << ReadbackFenceCompleteShift,
+		ReadbackRequestedAndComplete 	= ReadbackRequested | ReadbackFenceComplete
+	};
 	
 	uint32 Flags;
 	// one per mip
@@ -570,7 +265,7 @@ public:
 private:
 	void Init(FMetalSurface& Source, NSRange MipRange);
 	
-	void Init(FMetalSurface& Source, NSRange MipRange, EPixelFormat Format);
+	void Init(FMetalSurface& Source, NSRange MipRange, EPixelFormat Format, bool bSRGBForceDisable);
 	
 private:
 	// The movie playback IOSurface/CVTexture wrapper to avoid page-off
@@ -685,72 +380,6 @@ public:
 	}
 };
 
-struct FMetalCommandBufferFence
-{
-	bool Wait(uint64 Millis);
-	
-	mtlpp::CommandBufferFence CommandBufferFence;
-};
-
-struct FMetalQueryBuffer : public FRHIResource
-{
-	FMetalQueryBuffer(FMetalContext* InContext, FMetalBuffer InBuffer);
-	
-	virtual ~FMetalQueryBuffer();
-	
-	uint64 GetResult(uint32 Offset);
-	
-	TWeakPtr<struct FMetalQueryBufferPool, ESPMode::ThreadSafe> Pool;
-	FMetalBuffer Buffer;
-	uint32 WriteOffset;
-};
-typedef TRefCountPtr<FMetalQueryBuffer> FMetalQueryBufferRef;
-
-struct FMetalQueryResult
-{
-	bool Wait(uint64 Millis);
-	uint64 GetResult();
-	
-	FMetalQueryBufferRef SourceBuffer;
-	TSharedPtr<FMetalCommandBufferFence, ESPMode::ThreadSafe> CommandBufferFence;
-	uint32 Offset;
-	bool bCompleted;
-	bool bBatchFence;
-};
-
-/** Metal occlusion query */
-class FMetalRenderQuery : public FRHIRenderQuery
-{
-public:
-
-	/** Initialization constructor. */
-	FMetalRenderQuery(ERenderQueryType InQueryType);
-
-	virtual ~FMetalRenderQuery();
-
-	/**
-	 * Kick off an occlusion test 
-	 */
-	void Begin(FMetalContext* Context, TSharedPtr<FMetalCommandBufferFence, ESPMode::ThreadSafe> const& BatchFence);
-
-	/**
-	 * Finish up an occlusion test 
-	 */
-	void End(FMetalContext* Context);
-	
-	// The type of query
-	ERenderQueryType Type;
-
-	// Query buffer allocation details as the buffer is already set on the command-encoder
-	FMetalQueryResult Buffer;
-	
-	// Query result.
-	volatile uint64 Result;
-	
-	// Result availability - if not set the first call to acquire it will read the buffer & cache
-	volatile bool bAvailable;
-};
-
 @interface FMetalBufferData : FApplePlatformObject<NSObject>
 {
 @public
@@ -767,9 +396,64 @@ enum EMetalBufferUsage
 	EMetalBufferUsage_LinearTex = 0x40000000,
 };
 
+class FMetalLinearTextureDescriptor
+{
+public:
+	FMetalLinearTextureDescriptor()
+		: StartOffsetBytes(0)
+		, NumElements(UINT_MAX)
+		, BytesPerElement(0)
+	{
+		// void
+	}
+
+	FMetalLinearTextureDescriptor(uint32 InStartOffsetBytes, uint32 InNumElements, uint32 InBytesPerElement)
+		: StartOffsetBytes(InStartOffsetBytes)
+		, NumElements(InNumElements)
+		, BytesPerElement(InBytesPerElement)
+	{
+		// void
+	}
+	
+	FMetalLinearTextureDescriptor(const FMetalLinearTextureDescriptor& Other)
+		: StartOffsetBytes(Other.StartOffsetBytes)
+		, NumElements(Other.NumElements)
+		, BytesPerElement(Other.BytesPerElement)
+	{
+		// void
+	}
+	
+	~FMetalLinearTextureDescriptor()
+	{
+		// void
+	}
+
+	friend uint32 GetTypeHash(FMetalLinearTextureDescriptor const& Key)
+	{
+		uint32 Hash = GetTypeHash((uint64)Key.StartOffsetBytes);
+		Hash = HashCombine(Hash, GetTypeHash((uint64)Key.NumElements));
+		Hash = HashCombine(Hash, GetTypeHash((uint64)Key.BytesPerElement));
+		return Hash;
+	}
+
+	bool operator==(FMetalLinearTextureDescriptor const& Other) const
+	{
+		return    StartOffsetBytes == Other.StartOffsetBytes
+		       && NumElements      == Other.NumElements
+		       && BytesPerElement  == Other.BytesPerElement;
+	}
+
+	uint32 StartOffsetBytes;
+	uint32 NumElements;
+	uint32 BytesPerElement;
+};
+
 class FMetalRHIBuffer
 {
 public:
+	using LinearTextureMapKey = TTuple<EPixelFormat, FMetalLinearTextureDescriptor>;
+	using LinearTextureMap = TMap<LinearTextureMapKey, FMetalTexture>;
+	
 	FMetalRHIBuffer(uint32 InSize, uint32 InUsage, ERHIResourceType InType);
 	virtual ~FMetalRHIBuffer();
 	
@@ -791,7 +475,7 @@ public:
 	/**
 	 * Allocate the buffer backing store.
 	 */
-	void Alloc(uint32 InSize, EResourceLockMode LockMode, bool bIsUniformBuffer=false);
+	void Alloc(uint32 InSize, EResourceLockMode LockMode);
 	
 	/**
 	 * Allocate the CPU accessible buffer for data transfer.
@@ -801,22 +485,22 @@ public:
 	/**
 	 * Allocate a linear texture for given format.
 	 */
-	FMetalTexture AllocLinearTexture(EPixelFormat Format, NSUInteger Offset);
+	FMetalTexture AllocLinearTexture(EPixelFormat InFormat, const FMetalLinearTextureDescriptor& InLinearTextureDescriptor);
 	
 	/**
 	 * Get a linear texture for given format.
 	 */
-	ns::AutoReleased<FMetalTexture> CreateLinearTexture(EPixelFormat Format, FRHIResource* InParent, uint32 Offset);
+	ns::AutoReleased<FMetalTexture> CreateLinearTexture(EPixelFormat InFormat, FRHIResource* InParent, const FMetalLinearTextureDescriptor* InLinearTextureDescriptor = nullptr);
 	
 	/**
 	 * Get a linear texture for given format.
 	 */
-	ns::AutoReleased<FMetalTexture> GetLinearTexture(EPixelFormat Format, NSUInteger Offset);
+	ns::AutoReleased<FMetalTexture> GetLinearTexture(EPixelFormat InFormat, const FMetalLinearTextureDescriptor* InLinearTextureDescriptor = nullptr);
 	
 	/**
 	 * Prepare a CPU accessible buffer for uploading to GPU memory
 	 */
-	void* Lock(bool bIsOnRHIThread, EResourceLockMode LockMode, uint32 Offset, uint32 Size=0, bool bIsUniformBuffer=false);
+	void* Lock(bool bIsOnRHIThread, EResourceLockMode LockMode, uint32 Offset, uint32 Size=0);
 	
 	/**
 	 * Prepare a CPU accessible buffer for uploading to GPU memory
@@ -837,7 +521,7 @@ public:
 	FMetalBuffer CPUBuffer;
 	
 	// The map of linear textures for this vertex buffer - may be more than one due to type conversion.
-	TMap<TTuple<EPixelFormat, uint32>, FMetalTexture> LinearTextures;
+	LinearTextureMap LinearTextures;
 	
 	/** Buffer for small buffers < 4Kb to avoid heap fragmentation. */
 	FMetalBufferData* Data;
@@ -862,33 +546,6 @@ public:
 	
 	// Resource type
 	ERHIResourceType Type;
-
-	/**
-	 * For resources backing uniform buffers, set the device frame index.
-	 *
-	 * Calling this function on resources that do not back uniform buffers has no effect.
-	 */
-	void ConditionalSetUniformBufferFrameIndex();
-
-private:
-	bool CanUseBufferAsBackingForAsyncCopy() const;
-
-	/**
-	 * For resources backing uniform buffers, updates the last used sub-allocation offset; this is used for
-	 * internal tracking and deciding when to recycle backing stores during uniform buffer updates.
-	 */
-	void ConditionalSetUniformBufferPreviousOffset()
-	{
-		if (bIsUniformBufferBacking)
-		{
-			check(Buffer);
-			UniformBufferPreviousOffset = Buffer.GetOffset();
-		}
-	}
-
-	bool bIsUniformBufferBacking = false;
-	uint64 UniformBufferFrameIndex = 0;
-	uint64 UniformBufferPreviousOffset = UINT64_MAX;
 };
 
 /** Index buffer resource class that stores stride information. */
@@ -917,146 +574,6 @@ public:
 
 	void Swap(FMetalVertexBuffer& Other);
 };
-
-struct FMetalArgumentDesc
-{
-	FMetalArgumentDesc()
-	: DataType((mtlpp::DataType)0)
-	, Index(0)
-	, ArrayLength(0)
-	, Access(mtlpp::ArgumentAccess::ReadOnly)
-	, TextureType((mtlpp::TextureType)0)
-	, ConstantBlockAlignment(0)
-	{
-		
-	}
-	
-	mtlpp::DataType DataType;
-	NSUInteger Index;
-	NSUInteger ArrayLength;
-	mtlpp::ArgumentAccess Access;
-	mtlpp::TextureType TextureType;
-	NSUInteger ConstantBlockAlignment;
-	
-	void FillDescriptor(mtlpp::ArgumentDescriptor& Desc) const
-	{
-		Desc.SetDataType(DataType);
-		Desc.SetIndex(Index);
-		Desc.SetArrayLength(ArrayLength);
-		Desc.SetAccess(Access);
-		Desc.SetTextureType(TextureType);
-		Desc.SetConstantBlockAlignment(ConstantBlockAlignment);
-	}
-	
-	void SetDataType(mtlpp::DataType Type)
-	{
-		DataType = Type;
-	}
-	
-	void SetIndex(NSUInteger i)
-	{
-		Index = i;
-	}
-	
-	void SetArrayLength(NSUInteger Len)
-	{
-		ArrayLength = Len;
-	}
-	
-	void SetAccess(mtlpp::ArgumentAccess InAccess)
-	{
-		Access = InAccess;
-	}
-	
-	void SetTextureType(mtlpp::TextureType Type)
-	{
-		TextureType = Type;
-	}
-	
-	void SetConstantBlockAlignment(NSUInteger Align)
-	{
-		ConstantBlockAlignment = Align;
-	}
-	
-	bool operator==(FMetalArgumentDesc const& Other) const
-	{
-		if (this != &Other)
-		{
-			return (DataType == Other.DataType && Index == Other.Index && ArrayLength == Other.ArrayLength && Access == Other.Access && TextureType == Other.TextureType && ConstantBlockAlignment == Other.ConstantBlockAlignment);
-		}
-		return true;
-	}
-	
-	friend uint32 GetTypeHash(FMetalArgumentDesc const& Desc)
-	{
-		uint32 Hash = 0;
-		Hash ^= ((uint32)Desc.DataType * (uint32)Desc.TextureType * (uint32)Desc.Access * Desc.ArrayLength) << Desc.Index;
-		return Hash;
-	}
-};
-
-@class FMetalIAB;
-
-class FMetalUniformBuffer : public FRHIUniformBuffer, public FMetalRHIBuffer
-{
-public:
-
-	struct Argument
-	{
-		Argument() {}
-		Argument(FMetalBuffer const& InBuffer, mtlpp::ResourceUsage const InUsage) : Buffer(InBuffer), Usage(InUsage) {}
-		Argument(FMetalTexture const& InTexture, mtlpp::ResourceUsage const InUsage) : Texture(InTexture), Usage(InUsage) {}
-		Argument(FMetalSampler const& InSampler) : Sampler(InSampler), Usage(mtlpp::ResourceUsage::Read) {}
-		
-		FMetalBuffer Buffer;
-		FMetalTexture Texture;
-		FMetalSampler Sampler;
-		mtlpp::ResourceUsage Usage;
-	};
-	
-	struct FMetalIndirectArgumentBuffer
-	{
-		FMetalIndirectArgumentBuffer();
-		~FMetalIndirectArgumentBuffer();
-		
-		int64 UpdateNum; // The resource & declarations have been updated
-		int64 UpdateEnc; // The IAB encoder needs to be updated.
-		int64 UpdateIAB; // The IAB needs to be updated.
-		TArray<FMetalArgumentDesc> IndirectArgumentsDecl;
-		TArray<Argument> IndirectArgumentResources;
-		TArray<uint32> IndirectBufferSizes;
-		FMetalIAB* IndirectArgumentBuffer;
-		TMap<TBitArray<>, FMetalIAB*> Tier1IABs;
-		FRWLock Mutex;
-	};
-	
-	// Constructor
-	FMetalUniformBuffer(const void* Contents, const FRHIUniformBufferLayout& Layout, EUniformBufferUsage Usage, EUniformBufferValidation Validation);
-
-	// Destructor 
-	virtual ~FMetalUniformBuffer();
-	
-	void const* GetData();
-
-	void InitIAB();
-	void UpdateIAB();
-	void UpdateTextureReference(FRHITextureReference* ModifiedRef);
-	void UpdateResourceTable(TArray<TRefCountPtr<FRHIResource>>& Resources, EUniformBufferValidation Validation);
-	void Update(const void* Contents, TArray<TRefCountPtr<FRHIResource>>& Resources, EUniformBufferValidation Validation);
-	FMetalIAB* UploadIAB(class FMetalContext* Ctx, TBitArray<> const& Bitmask, mtlpp::ArgumentEncoder const& Encoder);
-	FMetalIndirectArgumentBuffer& GetIAB();
-	
-	/** Resource table containing RHI references. */
-	TArray<TRefCountPtr<FRHIResource> > ResourceTable;
-	TMap<FRHITextureReference*, TBitArray<>> TextureReferences;
-	EUniformBufferUsage UniformUsage;
-	FMetalIndirectArgumentBuffer* IAB;
-	TArray<EUniformBufferBaseType> ResourceTypes;
-	int64 UpdateNum;
-	uint32 NumResources;
-	uint32 ConstantSize;
-};
-
 
 class FMetalStructuredBuffer : public FRHIStructuredBuffer, public FMetalRHIBuffer
 {
@@ -1087,15 +604,22 @@ public:
 	
 	FMetalSurface* TextureView;
 	uint32 Offset;
-	uint8 MipLevel;
+	uint8 MipLevel          : 4;
+	uint8 bSRGBForceDisable : 1;
+	uint8 Reserved          : 3;
 	uint8 NumMips;
 	uint8 Format;
 	uint8 Stride;
+
+	void InitLinearTextureDescriptor(const FMetalLinearTextureDescriptor& InLinearTextureDescriptor);
 
 	FMetalShaderResourceView();
 	~FMetalShaderResourceView();
 	
 	ns::AutoReleased<FMetalTexture> GetLinearTexture(bool const bUAV);
+
+private:
+	FMetalLinearTextureDescriptor* LinearTextureDesc;
 };
 
 
@@ -1106,60 +630,6 @@ public:
 	
 	// the potential resources to refer to with the UAV object
 	TRefCountPtr<FMetalShaderResourceView> SourceView;
-};
-
-class FMetalShaderParameterCache
-{
-public:
-	/** Constructor. */
-	FMetalShaderParameterCache();
-
-	/** Destructor. */
-	~FMetalShaderParameterCache();
-
-	inline void PrepareGlobalUniforms(uint32 TypeIndex, uint32 UniformArraySize)
-	{
-		if (PackedGlobalUniformsSizes[TypeIndex] < UniformArraySize)
-		{
-			ResizeGlobalUniforms(TypeIndex, UniformArraySize);
-		}
-	}
-	
-	/**
-	 * Invalidates all existing data.
-	 */
-	void Reset();
-
-	/**
-	 * Marks all uniform arrays as dirty.
-	 */
-	void MarkAllDirty();
-
-	/**
-	 * Sets values directly into the packed uniform array
-	 */
-	void Set(uint32 BufferIndex, uint32 ByteOffset, uint32 NumBytes, const void* NewValues);
-
-	/**
-	 * Commit shader parameters to the currently bound program.
-	 */
-	void CommitPackedGlobals(class FMetalStateCache* Cache, class FMetalCommandEncoder* Encoder, uint32 Frequency, const FMetalShaderBindings& Bindings);
-
-private:
-	/** CPU memory block for storing uniform values. */
-	FMetalBufferData* PackedGlobalUniforms[CrossCompiler::PACKED_TYPEINDEX_MAX];
-
-	struct FRange
-	{
-		uint32	LowVector;
-		uint32	HighVector;
-	};
-	/** Dirty ranges for each uniform array. */
-	FRange	PackedGlobalUniformDirty[CrossCompiler::PACKED_TYPEINDEX_MAX];
-
-	uint32 PackedGlobalUniformsSizes[CrossCompiler::PACKED_TYPEINDEX_MAX];
-
-	void ResizeGlobalUniforms(uint32 TypeIndex, uint32 UniformArraySize);
 };
 
 class FMetalFence;
@@ -1204,74 +674,19 @@ private:
 	mtlpp::CommandBufferFence Fence;
 };
 
-class FMetalStagingBuffer final : public FRHIStagingBuffer
-{
-	friend class FMetalRHICommandContext;
-public:
-	FMetalStagingBuffer()
-		: FRHIStagingBuffer()
-	{
-	}
-
-	virtual ~FMetalStagingBuffer() final override;
-
-	virtual void* Lock(uint32 Offset, uint32 NumBytes) final override;
-
-	virtual void Unlock() final override;
-private:
-	FMetalBuffer ShadowBuffer;
-};
-
-class FMetalShaderLibrary final : public FRHIShaderLibrary
-{	
-public:
-	FMetalShaderLibrary(EShaderPlatform Platform,
-		FString const& Name,
-		const FString& InShaderLibraryFilename,
-		const FMetalShaderLibraryHeader& InHeader,
-		const FSerializedShaderArchive& InSerializedShaders,
-		const TArray<uint8>& InShaderCode,
-		const TArray<mtlpp::Library>& InLibrary);
-	virtual ~FMetalShaderLibrary();
-	
-	virtual bool IsNativeLibrary() const override final {return true;}
-
-	virtual int32 GetNumShaders() const override { return SerializedShaders.ShaderEntries.Num(); }
-	virtual int32 GetNumShaderMaps() const override { return SerializedShaders.ShaderMapEntries.Num(); }
-	virtual int32 GetNumShadersForShaderMap(int32 ShaderMapIndex) const override { return SerializedShaders.ShaderMapEntries[ShaderMapIndex].NumShaders; }
-
-	virtual int32 GetShaderIndex(int32 ShaderMapIndex, int32 i) const override
-	{
-		const FShaderMapEntry& ShaderMapEntry = SerializedShaders.ShaderMapEntries[ShaderMapIndex];
-		return SerializedShaders.ShaderIndices[ShaderMapEntry.ShaderIndicesOffset + i];
-	}
-
-	virtual int32 FindShaderMapIndex(const FSHAHash& Hash) override
-	{
-		return SerializedShaders.FindShaderMap(Hash);
-	}
-
-	virtual int32 FindShaderIndex(const FSHAHash& Hash) override
-	{
-		return SerializedShaders.FindShader(Hash);
-	}
-
-	/** No preload support */
-	virtual FGraphEventRef PreloadShader(int32 ShaderIndex) override { return FGraphEventRef(); }
-	virtual FGraphEventRef PreloadShaderMap(int32 ShaderMapIndex) override { return FGraphEventRef(); }
-
-	virtual TRefCountPtr<FRHIShader> CreateShader(int32 Index) override;
-	
-private:
-	FString ShaderLibraryFilename;
-	TArray<mtlpp::Library> Library;
-	FMetalShaderLibraryHeader Header;
-	FSerializedShaderArchive SerializedShaders;
-	TArray<uint8> ShaderCode;
-#if !UE_BUILD_SHIPPING
-	class FMetalShaderDebugZipFile* DebugFile;
-#endif
-};
+class FMetalShaderLibrary;
+class FMetalGraphicsPipelineState;
+class FMetalComputePipelineState;
+class FMetalVertexDeclaration;
+class FMetalVertexShader;
+class FMetalHullShader;
+class FMetalDomainShader;
+class FMetalGeometryShader;
+class FMetalPixelShader;
+class FMetalComputeShader;
+class FMetalRHIStagingBuffer;
+class FMetalRHIRenderQuery;
+class FMetalSuballocatedUniformBuffer;
 
 template<class T>
 struct TMetalResourceTraits
@@ -1340,12 +755,12 @@ struct TMetalResourceTraits<FRHITextureCube>
 template<>
 struct TMetalResourceTraits<FRHIRenderQuery>
 {
-	typedef FMetalRenderQuery TConcreteType;
+	typedef FMetalRHIRenderQuery TConcreteType;
 };
 template<>
 struct TMetalResourceTraits<FRHIUniformBuffer>
 {
-	typedef FMetalUniformBuffer TConcreteType;
+	typedef FMetalSuballocatedUniformBuffer TConcreteType;
 };
 template<>
 struct TMetalResourceTraits<FRHIIndexBuffer>
@@ -1416,5 +831,5 @@ struct TMetalResourceTraits<FRHIGPUFence>
 template<>
 struct TMetalResourceTraits<FRHIStagingBuffer>
 {
-	typedef FMetalStagingBuffer TConcreteType;
+	typedef FMetalRHIStagingBuffer TConcreteType;
 };

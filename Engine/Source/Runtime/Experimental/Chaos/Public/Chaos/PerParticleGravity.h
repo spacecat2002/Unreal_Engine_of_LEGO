@@ -34,37 +34,19 @@ namespace Chaos
 
 		void Apply(TTransientPBDRigidParticleHandle<T, d>& Particle, const T Dt) const override //-V762
 		{
-			if (!UsesGravity.Contains(Particle.Handle()))
+			if(Particle.GravityEnabled())
 			{
 				Particle.F() += MAcceleration * Particle.M();
 			}
 		}
 
-		void SetEnabled(const TGeometryParticleHandleImp<T, d, true>& Handle, bool bEnabled)
-		{
-			if (bEnabled)
-			{
-				if (UsesGravity.Contains(&Handle))
-				{
-					UsesGravity.Remove(&Handle);
-				}
-			}
-			else
-			{
-				if (!UsesGravity.Contains(&Handle))
-				{
-					UsesGravity.Add(&Handle);
-				}
-			}
-		}
-
 		void SetAcceleration(const TVector<T, d>& Acceleration)
-		{
-			MAcceleration = Acceleration;
-		}
+		{ MAcceleration = Acceleration; }
+
+		const TVector<T, d>& GetAcceleration() const
+		{ return MAcceleration; }
 
 	private:
 		TVector<T, d> MAcceleration;
-		TSet< const TGeometryParticleHandleImp<T, d, true>* > UsesGravity;
 	};
 }

@@ -9,6 +9,7 @@
 #include "UObject/Object.h"
 #include "Misc/Guid.h"
 #include "UObject/Class.h"
+#include "Delegates/IDelegateInstance.h"
 #include "Engine/EngineTypes.h"
 #include "Engine/EngineBaseTypes.h"
 #include "CollisionQueryParams.h"
@@ -62,7 +63,7 @@ class FSceneView;
 struct FUniqueNetIdRepl;
 struct FEncryptionKeyResponse;
 
-template<typename,typename> class TOctree;
+template<typename,typename> class TOctree2;
 
 /**
  * Misc. Iterator types
@@ -209,6 +210,23 @@ public:
 private:
 
 	UWorld* World;
+};
+
+// List of delegates for the world being registered to an audio device.
+class ENGINE_API FAudioDeviceWorldDelegates
+{
+public:
+	// Called whenever a world is registered to an audio device. UWorlds are not guaranteed to be registered to the same
+	// audio device throughout their lifecycle, and there is no guarantee on the lifespan of both the UWorld and the Audio
+	// Device registered in this callback.
+	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnWorldRegisteredToAudioDevice, const UWorld* /*InWorld */, Audio::FDeviceId /* AudioDeviceId*/);
+	static FOnWorldRegisteredToAudioDevice OnWorldRegisteredToAudioDevice;
+
+	// Called whenever a world is unregistered from an audio device. UWorlds are not guaranteed to be registered to the same
+	// audio device throughout their lifecycle, and there is no guarantee on the lifespan of both the UWorld and the Audio
+	// Device registered in this callback.
+	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnWorldUnregisteredWithAudioDevice, const UWorld* /*InWorld */, Audio::FDeviceId /* AudioDeviceId*/);
+	static FOnWorldUnregisteredWithAudioDevice OnWorldUnregisteredWithAudioDevice;
 };
 
 /** class that encapsulates seamless world traveling */
@@ -531,13 +549,32 @@ public:
 	uint8	bAllowDuringConstructionScript:1;
 
 #if WITH_EDITOR
-	/** Determines whether the begin play cycle will run on the spawned actor when in the editor. */
+	/* Determines whether the begin play cycle will run on the spawned actor when in the editor. */
 	uint8	bTemporaryEditorActor:1;
 
-	/* Determines wether or not the actor should be hidden from the Scene Outliner */
+	/* Determines whether or not the actor should be hidden from the Scene Outliner */
 	uint8	bHideFromSceneOutliner:1;
 #endif
-	
+
+	/* Modes that SpawnActor can use the supplied name when it is not None. */
+	enum class ESpawnActorNameMode : uint8
+	{
+		/* Fatal if unavailable, application will assert */
+		Required_Fatal,
+
+		/* Report an error return null if unavailable */
+		Required_ErrorAndReturnNull,
+
+		/* Return null if unavailable */
+		Required_ReturnNull,
+
+		/* If the supplied Name is already in use the generate an unused one using the supplied version as a base */
+		Requested
+	};
+
+	/* In which way should SpawnActor should treat the supplied Name if not none. */
+	ESpawnActorNameMode NameMode;
+
 	/* Flags used to describe the spawned actor/object instance. */
 	EObjectFlags ObjectFlags;		
 };
@@ -778,7 +815,7 @@ private:
 	};
 
 	/** Streaming levels that had their priority changed or were added to the container while consideration was underway. */
-	TMap<ULevelStreaming*, EProcessReason> LevelsToProcess;
+	TSortedMap<ULevelStreaming*, EProcessReason> LevelsToProcess;
 
 	/** Whether the streaming levels are under active consideration or not */
 	bool bStreamingLevelsBeingConsidered;
@@ -1181,6 +1218,9 @@ public:
 
 private:
 
+	/** Handle to delegate in case audio device is destroyed. */
+	FDelegateHandle AudioDeviceDestroyedHandle;
+
 #if WITH_EDITORONLY_DATA
 	/** Pointer to the current level being edited. Level has to be in the Levels array and == PersistentLevel in the game.		*/
 	UPROPERTY(Transient)
@@ -1322,6 +1362,9 @@ private:
 
 	/** Utility function that is used to ensure that a World has the correct WorldSettings */
 	void RepairWorldSettings();
+
+	/** Utility function to cleanup streaming levels that point to invalid level packages */
+	void RepairStreamingLevels();
 	
 #if INCLUDE_CHAOS
 	/** Utility function that is used to ensure that a World has the correct ChaosActor */
@@ -2109,6 +2152,9 @@ public:
 	/** Returns an iterator for the controller list. */
 	FConstControllerIterator GetControllerIterator() const;
 
+	/** @return Returns the number of Controllers. */
+	int32 GetNumControllers() const;
+	
 	/** @return Returns an iterator for the pawn list. */
 	UE_DEPRECATED(4.24, "The PawnIterator is an inefficient mechanism for iterating pawns. Please use TActorIterator<PawnType> instead.")
 	FConstPawnIterator GetPawnIterator() const;
@@ -3289,7 +3335,7 @@ public:
 	 */
 	class AAudioVolume* GetAudioSettings( const FVector& ViewLocation, struct FReverbSettings* OutReverbSettings, struct FInteriorSettings* OutInteriorSettings );
 
-	void SetAudioDevice(FAudioDeviceHandle& InHandle);
+	void SetAudioDevice(const FAudioDeviceHandle& InHandle);
 
 	/**
 	 * Get the audio device used by this world.

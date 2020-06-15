@@ -42,6 +42,7 @@ struct FILCUpdatePrimTaskData;
 class FRaytracingLightDataPacked;
 class FRayTracingLocalShaderBindingWriter;
 struct FExposureBufferData;
+struct CloudRenderContext;
 
 DECLARE_STATS_GROUP(TEXT("Command List Markers"), STATGROUP_CommandListMarkers, STATCAT_Advanced);
 
@@ -59,11 +60,9 @@ public:
 	/** Visibility lists for static meshes that will use expensive CSM shaders. */
 	FSceneBitArray MobilePrimitiveCSMReceiverVisibilityMap;
 	FSceneBitArray MobileCSMStaticMeshVisibilityMap;
-	TArray<uint64, SceneRenderingAllocator> MobileCSMStaticBatchVisibility;
 
 	/** Visibility lists for static meshes that will use the non CSM shaders. */
 	FSceneBitArray MobileNonCSMStaticMeshVisibilityMap;
-	TArray<uint64, SceneRenderingAllocator> MobileNonCSMStaticBatchVisibility;
 
 	/** Initialization constructor. */
 	FMobileCSMVisibilityInfo() : bMobileDynamicCSMInUse(false), bAlwaysUseCSM(false)
@@ -782,6 +781,9 @@ struct FGTAOTAAHistory
 // Structure that hold all information related to previous frame.
 struct FPreviousViewInfo
 {
+	// View rect
+	FIntRect ViewRect;
+
 	// View matrices.
 	FViewMatrices ViewMatrices;
 
@@ -815,6 +817,7 @@ struct FPreviousViewInfo
 	
 	// Temporal AA history for SSR
 	FTemporalAAHistory SSRHistory;
+	FTemporalAAHistory WaterSSRHistory;
 
 	// Scene color input for SSR, that can be different from TemporalAAHistory.RT[0] if there is a SSR
 	// input post process material.
@@ -822,6 +825,7 @@ struct FPreviousViewInfo
 
 	// History for the reflections
 	FScreenSpaceDenoiserHistory ReflectionsHistory;
+	FScreenSpaceDenoiserHistory WaterReflectionsHistory;
 	
 	// History for the ambient occlusion
 	FScreenSpaceDenoiserHistory AmbientOcclusionHistory;
@@ -862,6 +866,22 @@ public:
 };
 
 typedef TArray<FViewCommands, TInlineAllocator<4>> FViewVisibleCommandsPerView;
+
+#if RHI_RAYTRACING
+struct FRayTracingMeshBatchWorkItem
+{
+	FRayTracingMeshBatchWorkItem(TArray<FMeshBatch>& InBatches, FPrimitiveSceneProxy* InSceneProxy, uint32 InInstanceIndex) :
+		SceneProxy(InSceneProxy),
+		InstanceIndex(InInstanceIndex)
+	{
+		Swap(MeshBatches, InBatches);
+	}
+
+	TArray<FMeshBatch> MeshBatches;
+	FPrimitiveSceneProxy* SceneProxy;
+	uint32 InstanceIndex;
+};
+#endif
 
 /** A FSceneView with additional state used by the scene renderer. */
 class FViewInfo : public FSceneView
@@ -916,10 +936,6 @@ public:
 	/** Will only contain relevant primitives for view and/or shadow */
 	TArray<FLODMask, SceneRenderingAllocator> PrimitivesLODMask;
 
-	/** An array of batch element visibility masks, valid only for meshes
-	 set visible in StaticMeshVisibilityMap. */
-	TArray<uint64,SceneRenderingAllocator> StaticMeshBatchVisibility;
-
 	/** The dynamic primitives with simple lights visible in this view. */
 	TArray<FPrimitiveSceneInfo*, SceneRenderingAllocator> VisibleDynamicPrimitivesWithSimpleLights;
 
@@ -952,6 +968,9 @@ public:
 
 	/** Mesh batches with a volumetric material. */
 	TArray<FVolumetricMeshBatch, SceneRenderingAllocator> VolumetricMeshBatches;
+
+	/** Mesh batches with a sky material. */
+	TArray<FVolumetricMeshBatch, SceneRenderingAllocator> SkyMesheBatches;
 
 	/** A map from light ID to a boolean visibility value. */
 	TArray<FVisibleLightViewInfo,SceneRenderingAllocator> VisibleLightInfos;
@@ -1003,10 +1022,14 @@ public:
 	
 #if RHI_RAYTRACING
 	TUniquePtr<FRayTracingMeshResourceCollector> RayTracingMeshResourceCollector;
-
 	FRayTracingMeshCommandOneFrameArray VisibleRayTracingMeshCommands;
-
 	FDynamicRayTracingMeshCommandStorage DynamicRayTracingMeshCommandStorage;
+
+	FGraphEventArray AddRayTracingMeshBatchTaskList;
+	TArray<FRayTracingMeshBatchWorkItem> AddRayTracingMeshBatchData;
+
+	TArray<FRayTracingMeshCommandOneFrameArray> VisibleRayTracingMeshCommandsParallel;
+	TArray<FDynamicRayTracingMeshCommandStorage> DynamicRayTracingMeshCommandStorageParallel;
 #endif
 
 	// Used by mobile renderer to determine whether static meshes will be rendered with CSM shaders or not.
@@ -1014,9 +1037,6 @@ public:
 
 	//Spotlight shadow info for mobile.
 	FMobileMovableSpotLightsShadowInfo MobileMovableSpotLightsShadowInfo;
-
-	// Primitive CustomData
-	TArray<FMemStackBase, SceneRenderingAllocator> PrimitiveCustomDataMemStack; // Size == 1 global stack + 1 per visibility thread (if multithread)
 
 	/** Parameters for exponential height fog. */
 	FVector4 ExponentialFogParameters;
@@ -1130,6 +1150,10 @@ public:
 	TRefCountPtr<IPooledRenderTarget> SkyAtmosphereViewLutTexture;
 	const FAtmosphereUniformShaderParameters* SkyAtmosphereUniformShaderParameters;
 
+	TRefCountPtr<IPooledRenderTarget> VolumetricCloudShadowMap;
+	TRefCountPtr<IPooledRenderTarget> VolumetricCloudSkyAO;
+	TUniformBufferRef<FViewUniformShaderParameters> VolumetricRenderTargetViewUniformBuffer;
+
 	/** Used when there is no view state, buffers reallocate every frame. */
 	TUniquePtr<FForwardLightingViewResources> ForwardLightingResourcesStorage;
 
@@ -1202,7 +1226,7 @@ public:
 	/** 
 	 * Initialization constructor. Passes all parameters to FSceneView constructor
 	 */
-	FViewInfo(const FSceneViewInitOptions& InitOptions);
+	RENDERER_API FViewInfo(const FSceneViewInitOptions& InitOptions);
 
 	/** 
 	* Initialization constructor. 
@@ -1213,7 +1237,7 @@ public:
 	/** 
 	* Destructor. 
 	*/
-	~FViewInfo();
+	RENDERER_API ~FViewInfo();
 
 #if DO_CHECK
 	/** Verifies all the assertions made on members. */
@@ -1230,7 +1254,7 @@ public:
 	}
 
 	/** Creates ViewUniformShaderParameters given a set of view transforms. */
-	void SetupUniformBufferParameters(
+	RENDERER_API void SetupUniformBufferParameters(
 		FSceneRenderTargets& SceneContext,
 		const FViewMatrices& InViewMatrices,
 		const FViewMatrices& InPrevViewMatrices,
@@ -1261,7 +1285,12 @@ public:
 	void InitRHIResources();
 
 	/** Determines distance culling and fades if the state changes */
-	bool IsDistanceCulled(float DistanceSquared, float MaxDrawDistance, float MinDrawDistance, const FPrimitiveSceneInfo* PrimitiveSceneInfo);
+	bool IsDistanceCulled(float DistanceSquared, float MinDrawDistance, float InMaxDrawDistance, const FPrimitiveSceneInfo* PrimitiveSceneInfo);
+
+	bool IsDistanceCulled_AnyThread(float DistanceSquared, float MinDrawDistance, float InMaxDrawDistance, const FPrimitiveSceneInfo* PrimitiveSceneInfo, bool& bOutMayBeFading, bool& bOutFadingIn) const;
+
+	/** @return - whether this primitive has completely faded out */
+	bool UpdatePrimitiveFadingState(const FPrimitiveSceneInfo* PrimitiveSceneInfo, bool bFadingIn);
 
 	/** Gets the eye adaptation render target for this view. Same as GetEyeAdaptationRT */
 	IPooledRenderTarget* GetEyeAdaptation(FRHICommandList& RHICmdList) const;
@@ -1292,6 +1321,11 @@ public:
 
 	/** Informs sceneinfo that eyedaptation has queued commands to compute it at least once and that it can be used */
 	void SetValidEyeAdaptation() const;
+
+#if WITH_MGPU
+	void BroadcastEyeAdaptationTemporalEffect(FRHICommandList& RHICmdList);
+	void WaitForEyeAdaptationTemporalEffect(FRHICommandList& RHICmdList);
+#endif
 
 	/** Get the last valid exposure value for eye adapation. */
 	float GetLastEyeAdaptationExposure() const;
@@ -1360,18 +1394,6 @@ public:
 	// @return range (start is inclusive, end is exclusive)
 	FInt32Range GetDynamicMeshElementRange(uint32 PrimitiveIndex) const;
 
-	/** Set the custom data associated with a primitive scene info.	*/
-	void SetCustomData(const FPrimitiveSceneInfo* InPrimitiveSceneInfo, void* InCustomData);
-
-	/** Custom Data Memstack functions.	*/
-	FORCEINLINE FMemStackBase& GetCustomDataGlobalMemStack() { return PrimitiveCustomDataMemStack[0]; }
-	FORCEINLINE FMemStackBase& AllocateCustomDataMemStack() 
-	{ 
-		// Don't reallocate since we keep references in FRelevancePacket.
-		check(PrimitiveCustomDataMemStack.GetSlack() > 0); 
-		return *new(PrimitiveCustomDataMemStack) FMemStackBase(0);
-	}
-
 private:
 	// Cache of TEXTUREGROUP_World to create view's samplers on render thread.
 	// may not have a valid value if FViewInfo is created on the render thread.
@@ -1385,9 +1407,6 @@ private:
 
 	/** Calculates bounding boxes for the translucency lighting volume cascades. */
 	void CalcTranslucencyLightingVolumeBounds(FBox* InOutCascadeBoundsArray, int32 NumCascades) const;
-
-	/** Sets the sky SH irradiance map coefficients. */
-	void SetupSkyIrradianceEnvironmentMapConstants(FVector4* OutSkyIrradianceEnvironmentMap) const;
 };
 
 
@@ -1640,6 +1659,15 @@ public:
 	}
 
 	static int32 GetRefractionQuality(const FSceneViewFamily& ViewFamily);
+
+	/** Create/Update the scene view irradiance buffer from CPU data or empty if generated fully on GPU. */
+	void UpdateSkyIrradianceGpuBuffer(FRHICommandListImmediate& RHICmdList);
+
+	/** Common function to render a sky using shared LUT resources from any view point (if not using the SkyView and AerialPerspective textures). */
+	void RenderSkyAtmosphereInternal(FRDGBuilder& GraphBuilder, SkyAtmosphereRenderContext& SkyRenderContext);
+
+	/** Common function to render a cloud layer using shared LUT resources. */
+	void  RenderVolumetricCloudsInternal(FRDGBuilder& GraphBuilder, CloudRenderContext& CloudRC);
 	
 protected:
 
@@ -1767,9 +1795,8 @@ protected:
 		FGlobalDynamicIndexBuffer& DynamicIndexBuffer,
 		FGlobalDynamicVertexBuffer& DynamicVertexBuffer,
 		FGlobalDynamicReadBuffer& DynamicReadBuffer,
-		const FPrimitiveViewMasks& HasDynamicMeshElementsMasks, 
-		const FPrimitiveViewMasks& HasDynamicEditorMeshElementsMasks, 
-		const FPrimitiveViewMasks& HasViewCustomDataMasks,
+		const FPrimitiveViewMasks& HasDynamicMeshElementsMasks,
+		const FPrimitiveViewMasks& HasDynamicEditorMeshElementsMasks,
 		FMeshElementCollector& Collector);
 
 	/** Initialized the fog constants for each view. */
@@ -1806,10 +1833,22 @@ protected:
 	/** Render the sky atmosphere over the scene.*/
 	void RenderSkyAtmosphere(FRHICommandListImmediate& RHICmdList);
 
+	/** Initialise volumetric cloud resources.*/
+	void InitVolumetricCloudsForViews(FRHICommandListImmediate& RHICmdList);
+	/** Render volumetric cloud. */
+	void RenderVolumetricCloud(FRHICommandListImmediate& RHICmdList);
+
 	/** Render notification to artist when a sky material is used but it might comtains the camera (and then the sky/background would look black).*/
 	void RenderSkyAtmosphereEditorNotifications(FRHICommandListImmediate& RHICmdList);
 	/** We should render on screen notification only if any of the scene contains a mesh using a sky material.*/
 	bool ShouldRenderSkyAtmosphereEditorNotifications();
+
+	/** Initialise volumetric render target.*/
+	void InitVolumetricRenderTargetForViews(FRHICommandListImmediate& RHICmdList);
+	/** Process the volumetric render target, generating the high resolution version.*/
+	void ReconstructVolumetricRenderTarget(FRHICommandListImmediate& RHICmdList);
+	/** Compose the volumetric render target over the scene.*/
+	void ComposeVolumetricRenderTargetOverScene(FRHICommandListImmediate& RHICmdList);
 
 	void ResolveSceneColor(FRHICommandList& RHICmdList);
 
@@ -1858,9 +1897,6 @@ protected:
 	/** Render modulated shadow projections in to the scene, loops over any unrendered shadows until all are processed.*/
 	void RenderModulatedShadowProjections(FRHICommandListImmediate& RHICmdList);
 
-	/** Makes a copy of scene alpha so PC can emulate ES2 framebuffer fetch. */
-	void CopySceneAlpha(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
-
 	/** Resolves scene depth in case hardware does not support reading depth in the shader */
 	void ConditionalResolveSceneDepth(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 
@@ -1898,7 +1934,8 @@ protected:
 	void UpdateTranslucentBasePassUniformBuffer(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 	void UpdateDirectionalLightUniformBuffers(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 	void UpdateSkyReflectionUniformBuffer();
-
+	void UpdateDepthPrepassUniformBuffer(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
+	
 	/** Before SetupMobileBasePassAfterShadowInit, we need to update the uniform buffer and shadow info for all movable point lights.*/
 	void UpdateMovablePointLightUniformBufferAndShadowInfo();
 private:
@@ -2056,6 +2093,7 @@ private:
 extern FFastVramConfig GFastVRamConfig;
 
 extern bool UseCachedMeshDrawCommands();
+extern bool UseCachedMeshDrawCommands_AnyThread();
 extern bool IsDynamicInstancingEnabled(ERHIFeatureLevel::Type FeatureLevel);
 
 enum class EGPUSkinCacheTransition

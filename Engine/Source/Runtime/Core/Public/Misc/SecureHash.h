@@ -7,6 +7,7 @@
 #include "Containers/UnrealString.h"
 #include "Containers/Map.h"
 #include "Containers/StringConv.h"
+#include "Containers/StringFwd.h"
 #include "Containers/StringView.h"
 #include "Stats/Stats.h"
 #include "Async/AsyncWork.h"
@@ -15,9 +16,6 @@
 #include "String/HexToBytes.h"
 #include "Serialization/MemoryLayout.h"
 
-class FAnsiStringBuilderBase;
-class FStringBuilderBase;
-class FStringView;
 struct FMD5Hash;
 
 /*-----------------------------------------------------------------------------
@@ -243,6 +241,12 @@ public:
 	friend CORE_API FString LexToString(const FSHAHash&);
 	friend CORE_API void LexFromString(FSHAHash& Hash, const TCHAR*);
 };
+
+namespace Freeze
+{
+	CORE_API void IntrinsicToString(const FSHAHash& Object, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FMemoryToStringContext& OutContext);
+}
+
 DECLARE_INTRINSIC_TYPE_LAYOUT(FSHAHash);
 
 inline FStringBuilderBase& operator<<(FStringBuilderBase& Builder, const FSHAHash& Hash) { UE::String::BytesToHex(Hash.Hash, Builder); return Builder; }
@@ -477,7 +481,7 @@ public:
 		}
 		
 		// note that we don't allow the base class CLose to happen, as the FAsyncSHAVerify will free the buffer if needed
-		return !ArIsError;
+		return !IsError();
 	}
 	/**
   	 * Returns the name of the Archive.  Useful for getting the name of the package a struct or object

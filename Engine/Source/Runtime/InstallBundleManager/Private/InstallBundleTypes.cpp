@@ -13,6 +13,8 @@ const TCHAR* LexToString(EInstallBundleSourceType Type)
 		TEXT("Bulk"),
 		TEXT("BuildPatchServices"),
 		TEXT("PlayGo"),
+		TEXT("IntelligentDelivery"),
+		TEXT("GameCustom"),
 	};
 
 	static_assert(InstallBundleUtil::CastToUnderlying(EInstallBundleSourceType::Count) == UE_ARRAY_COUNT(Strings), "");
@@ -56,7 +58,7 @@ const TCHAR* LexToString(EInstallBundleManagerInitResult Result)
 	return Strings[InstallBundleUtil::CastToUnderlying(Result)];
 }
 
-const TCHAR* LexToString(EInstallBundleContentState State)
+const TCHAR* LexToString(EInstallBundleInstallState State)
 {
 	static const TCHAR* Strings[] =
 	{
@@ -65,7 +67,7 @@ const TCHAR* LexToString(EInstallBundleContentState State)
 		TEXT("UpToDate"),
 	};
 
-	static_assert(InstallBundleUtil::CastToUnderlying(EInstallBundleContentState::Count) == UE_ARRAY_COUNT(Strings), "");
+	static_assert(InstallBundleUtil::CastToUnderlying(EInstallBundleInstallState::Count) == UE_ARRAY_COUNT(Strings), "");
 	return Strings[InstallBundleUtil::CastToUnderlying(State)];
 }
 
@@ -75,6 +77,8 @@ const TCHAR* LexToString(EInstallBundleResult Result)
 	{
 		TEXT("OK"),
 		TEXT("FailedPrereqRequiresLatestClient"),
+		TEXT("FailedPrereqRequiresLatestContent"),
+		TEXT("FailedCacheReserve"),
 		TEXT("InstallError"),
 		TEXT("InstallerOutOfDiskSpaceError"),
 		TEXT("ManifestArchiveError"),
@@ -100,7 +104,84 @@ const TCHAR* LexToString(EInstallBundleStatus Status)
 	return Strings[InstallBundleUtil::CastToUnderlying(Status)];
 }
 
-bool FInstallBundleCombinedContentState::GetAllBundlesHaveState(EInstallBundleContentState State, TArrayView<const FName> ExcludedBundles /*= TArrayView<const FName>()*/) const
+const TCHAR* LexToString(EInstallBundleManagerPatchCheckResult EnumVal)
+{
+	// These are namespaced because PartyHub expects them that way :/
+	static const TCHAR* Strings[] =
+	{
+		TEXT("EInstallBundleManagerPatchCheckResult::NoPatchRequired"),
+		TEXT("EInstallBundleManagerPatchCheckResult::ClientPatchRequired"),
+		TEXT("EInstallBundleManagerPatchCheckResult::ContentPatchRequired"),
+		TEXT("EInstallBundleManagerPatchCheckResult::NoLoggedInUser"),
+		TEXT("EInstallBundleManagerPatchCheckResult::PatchCheckFailure"),
+	};
+
+	static_assert(InstallBundleUtil::CastToUnderlying(EInstallBundleManagerPatchCheckResult::Count) == UE_ARRAY_COUNT(Strings), "");
+	return Strings[InstallBundleUtil::CastToUnderlying(EnumVal)];
+}
+
+const TCHAR* LexToString(EInstallBundlePriority Priority)
+{
+	static const TCHAR* Strings[] =
+	{
+		TEXT("High"),
+		TEXT("Normal"),
+		TEXT("Low"),
+	};
+
+	static_assert(InstallBundleUtil::CastToUnderlying(EInstallBundlePriority::Count) == UE_ARRAY_COUNT(Strings), "");
+	return Strings[InstallBundleUtil::CastToUnderlying(Priority)];
+}
+
+bool LexTryParseString(EInstallBundlePriority& OutMode, const TCHAR* InBuffer)
+{
+	if (FCString::Stricmp(InBuffer, TEXT("High")) == 0)
+	{
+		OutMode = EInstallBundlePriority::High;
+		return true;
+	}
+	if (FCString::Stricmp(InBuffer, TEXT("Normal")) == 0)
+	{
+		OutMode = EInstallBundlePriority::Normal;
+		return true;
+	}
+	if (FCString::Stricmp(InBuffer, TEXT("Low")) == 0)
+	{
+		OutMode = EInstallBundlePriority::Low;
+		return true;
+	}
+	return false;
+}
+
+bool FInstallBundleCombinedInstallState::GetAllBundlesHaveState(EInstallBundleInstallState State, TArrayView<const FName> ExcludedBundles) const
+{
+	for (const TPair<FName, EInstallBundleInstallState>& Pair : IndividualBundleStates)
+	{
+		if (ExcludedBundles.Contains(Pair.Key))
+			continue;
+
+		if (Pair.Value != State)
+			return false;
+	}
+
+	return true;
+}
+
+bool FInstallBundleCombinedInstallState::GetAnyBundleHasState(EInstallBundleInstallState State, TArrayView<const FName> ExcludedBundles) const
+{
+	for (const TPair<FName, EInstallBundleInstallState>& Pair : IndividualBundleStates)
+	{
+		if (ExcludedBundles.Contains(Pair.Key))
+			continue;
+
+		if (Pair.Value == State)
+			return true;
+	}
+
+	return false;
+}
+
+bool FInstallBundleCombinedContentState::GetAllBundlesHaveState(EInstallBundleInstallState State, TArrayView<const FName> ExcludedBundles /*= TArrayView<const FName>()*/) const
 {
 	for (const TPair<FName, FInstallBundleContentState>& Pair : IndividualBundleStates)
 	{
@@ -114,7 +195,7 @@ bool FInstallBundleCombinedContentState::GetAllBundlesHaveState(EInstallBundleCo
 	return true;
 }
 
-bool FInstallBundleCombinedContentState::GetAnyBundleHasState(EInstallBundleContentState State, TArrayView<const FName> ExcludedBundles /*= TArrayView<const FName>()*/) const
+bool FInstallBundleCombinedContentState::GetAnyBundleHasState(EInstallBundleInstallState State, TArrayView<const FName> ExcludedBundles /*= TArrayView<const FName>()*/) const
 {
 	for (const TPair<FName, FInstallBundleContentState>& Pair : IndividualBundleStates)
 	{
@@ -127,4 +208,3 @@ bool FInstallBundleCombinedContentState::GetAnyBundleHasState(EInstallBundleCont
 
 	return false;
 }
-

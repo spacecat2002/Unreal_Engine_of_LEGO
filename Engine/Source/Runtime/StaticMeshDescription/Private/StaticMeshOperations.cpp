@@ -655,7 +655,7 @@ bool IsTriangleDegenerated(const FRawMesh& SourceRawMesh, const TArray<FVertexID
 	return (VertexIDs[0] == VertexIDs[1] || VertexIDs[0] == VertexIDs[2] || VertexIDs[1] == VertexIDs[2]);
 }
 
-void FStaticMeshOperations::ConvertFromRawMesh(const FRawMesh& SourceRawMesh, FMeshDescription& DestinationMeshDescription, const TMap<int32, FName>& MaterialMap)
+void FStaticMeshOperations::ConvertFromRawMesh(const FRawMesh& SourceRawMesh, FMeshDescription& DestinationMeshDescription, const TMap<int32, FName>& MaterialMap, bool bSkipNormalsAndTangents)
 {
 	DestinationMeshDescription.Empty();
 
@@ -800,7 +800,7 @@ void FStaticMeshOperations::ConvertFromRawMesh(const FRawMesh& SourceRawMesh, FM
 	ConvertSmoothGroupToHardEdges(SourceRawMesh.FaceSmoothingMasks, DestinationMeshDescription);
 
 	//Create the missing normals and tangents, should we use Mikkt space for tangent???
-	if (!bHasNormals || !bHasTangents)
+	if (!bSkipNormalsAndTangents && (!bHasNormals || !bHasTangents))
 	{
 		//DestinationMeshDescription.ComputePolygonTangentsAndNormals(0.0f);
 		ComputePolygonTangentsAndNormals(DestinationMeshDescription, 0.0f);
@@ -853,9 +853,18 @@ void FStaticMeshOperations::AppendMeshDescription(const FMeshDescription& Source
 	TargetMesh.ReserveNewEdges(SourceMesh.Edges().Num());
 	TargetMesh.ReserveNewPolygons(SourceMesh.Polygons().Num());
 
-	if (SourceVertexInstanceUVs.GetNumIndices() > TargetVertexInstanceUVs.GetNumIndices())
+	int32 NumSourceUVChannels = 0;
+	for (int32 ChannelIdx = 0; ChannelIdx < SourceVertexInstanceUVs.GetNumIndices(); ++ChannelIdx)
 	{
-		TargetVertexInstanceUVs.SetNumIndices(SourceVertexInstanceUVs.GetNumIndices());
+		if (AppendSettings.bMergeUVChannels[ChannelIdx])
+		{
+			NumSourceUVChannels = ChannelIdx + 1;
+		}
+	}
+
+	if (NumSourceUVChannels > TargetVertexInstanceUVs.GetNumIndices())
+	{
+		TargetVertexInstanceUVs.SetNumIndices(NumSourceUVChannels);
 	}
 
 	//PolygonGroups
@@ -938,7 +947,7 @@ void FStaticMeshOperations::AppendMeshDescription(const FMeshDescription& Source
 			TargetVertexInstanceColors[TargetVertexInstanceID] = SourceVertexInstanceColors[SourceVertexInstanceID];
 		}
 
-		for (int32 UVChannelIndex = 0; UVChannelIndex < SourceVertexInstanceUVs.GetNumIndices(); ++UVChannelIndex)
+		for (int32 UVChannelIndex = 0; UVChannelIndex < NumSourceUVChannels; ++UVChannelIndex)
 		{
 			TargetVertexInstanceUVs.Set(TargetVertexInstanceID, UVChannelIndex, SourceVertexInstanceUVs.Get(SourceVertexInstanceID, UVChannelIndex));
 		}
@@ -1723,66 +1732,39 @@ bool FStaticMeshOperations::GenerateUniqueUVsForStaticMesh(const FMeshDescriptio
 	//Remove the identical material
 	if (bMergeIdenticalMaterials)
 	{
-		TVertexInstanceAttributesConstRef<FVector2D> VertexInstanceUVs = DuplicateMeshDescription.VertexInstanceAttributes().GetAttributesRef<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate);
 		TArray<FPolygonID> ToDeletePolygons;
 		RemapVertexInstance.Reserve(DuplicateMeshDescription.VertexInstances().Num());
-		TArray<FPolygonID> UniquePolygons;
 
-		TArray<FVector2D> RefUVs;
+		int32 NumPolygons = DuplicateMeshDescription.Polygons().Num();
+
+		TMap<uint32, FPolygonID> UniquePolygons;
+		UniquePolygons.Reserve(NumPolygons);
+		ToDeletePolygons.Reserve(NumPolygons);
+
 		for (FPolygonID RefPolygonID : DuplicateMeshDescription.Polygons().GetElementIDs())
 		{
-			FPolygonGroupID RefPolygonGroupID = DuplicateMeshDescription.GetPolygonPolygonGroup(RefPolygonID);
+			const FPolygonGroupID RefPolygonGroupID = DuplicateMeshDescription.GetPolygonPolygonGroup(RefPolygonID);
 			const TArray<FVertexInstanceID>& RefVertexInstances = DuplicateMeshDescription.GetPolygonVertexInstances(RefPolygonID);
 
-			RefUVs.Empty(RefVertexInstances.Num() * VertexInstanceUVs.GetNumIndices());
+			int32 PolyHash = GetTypeHash(RefPolygonGroupID);
 			for (FVertexInstanceID RefVertexInstanceID : RefVertexInstances)
 			{
-				for (int32 UVChannel = 0; UVChannel < VertexInstanceUVs.GetNumIndices(); ++UVChannel)
-				{
-					RefUVs.Add(VertexInstanceUVs.Get(RefVertexInstanceID, UVChannel));
-				}
+				// Compute hash based on all vertices attributes
+				DuplicateMeshDescription.VertexInstanceAttributes().ForEach(
+					[&PolyHash, &RefVertexInstanceID](const FName AttributeName, auto AttributeArrayRef)
+					{
+						for (int32 Index = 0; Index < AttributeArrayRef.GetNumIndices(); ++Index)
+						{
+							PolyHash = HashCombine(PolyHash, GetTypeHash(AttributeArrayRef.Get(RefVertexInstanceID)));
+						}
+					}
+				);
 			}
 
-			FPolygonID MatchPolygonID = FPolygonID::Invalid;
-			for (FPolygonID TestPolygonID : UniquePolygons)
+			FPolygonID& UniquePoly = UniquePolygons.FindOrAdd(PolyHash);
+			if (UniquePoly == FPolygonID::Invalid)
 			{
-				FPolygonGroupID TestPolygonGroupID = DuplicateMeshDescription.GetPolygonPolygonGroup(TestPolygonID);
-				if (TestPolygonGroupID != RefPolygonGroupID)
-				{
-					continue;
-				}
-
-				const TArray<FVertexInstanceID>& TestVertexInstances = DuplicateMeshDescription.GetPolygonVertexInstances(TestPolygonID);
-				if (TestVertexInstances.Num() != RefVertexInstances.Num())
-				{
-					continue;
-				}
-
-				bool bIdentical = true;
-				int32 UVIndex = 0;
-				for (FVertexInstanceID TestVertexInstanceID : TestVertexInstances)
-				{
-					// All UV channels must match for polygons to be identical
-					for (int32 UVChannel = 0; bIdentical && UVChannel < VertexInstanceUVs.GetNumIndices(); ++UVIndex, ++UVChannel)
-					{
-						bIdentical = VertexInstanceUVs.Get(TestVertexInstanceID, UVChannel) == RefUVs[UVIndex];
-					}
-
-					if (!bIdentical)
-					{
-						break;
-					}
-				}
-				if (bIdentical)
-				{
-					MatchPolygonID = TestPolygonID;
-					break;
-				}
-			}
-
-			if (MatchPolygonID == FPolygonID::Invalid)
-			{
-				UniquePolygons.Add(RefPolygonID);
+				UniquePoly = RefPolygonID;
 				for (FVertexInstanceID RefVertexInstanceID : RefVertexInstances)
 				{
 					RemapVertexInstance.Add(RefVertexInstanceID, RefVertexInstanceID);
@@ -1790,7 +1772,7 @@ bool FStaticMeshOperations::GenerateUniqueUVsForStaticMesh(const FMeshDescriptio
 			}
 			else
 			{
-				const TArray<FVertexInstanceID>& TestVertexInstances = DuplicateMeshDescription.GetPolygonVertexInstances(MatchPolygonID);
+				const TArray<FVertexInstanceID>& TestVertexInstances = DuplicateMeshDescription.GetPolygonVertexInstances(UniquePoly);
 				int32 VertexInstanceIndex = 0;
 				for (FVertexInstanceID RefVertexInstanceID : RefVertexInstances)
 				{
@@ -1804,31 +1786,9 @@ bool FStaticMeshOperations::GenerateUniqueUVsForStaticMesh(const FMeshDescriptio
 		//Delete polygons
 		if (ToDeletePolygons.Num() > 0)
 		{
-			TArray<FEdgeID> OrphanedEdges;
-			TArray<FVertexInstanceID> OrphanedVertexInstances;
-			TArray<FPolygonGroupID> OrphanedPolygonGroups;
-			TArray<FVertexID> OrphanedVertices;
-			for (FPolygonID PolygonID : ToDeletePolygons)
-			{
-				DuplicateMeshDescription.DeletePolygon(PolygonID, &OrphanedEdges, &OrphanedVertexInstances, &OrphanedPolygonGroups);
-			}
-			for (FPolygonGroupID PolygonGroupID : OrphanedPolygonGroups)
-			{
-				DuplicateMeshDescription.DeletePolygonGroup(PolygonGroupID);
-			}
-			for (FVertexInstanceID VertexInstanceID : OrphanedVertexInstances)
-			{
-				DuplicateMeshDescription.DeleteVertexInstance(VertexInstanceID, &OrphanedVertices);
-			}
-			for (FEdgeID EdgeID : OrphanedEdges)
-			{
-				DuplicateMeshDescription.DeleteEdge(EdgeID, &OrphanedVertices);
-			}
-			for (FVertexID VertexID : OrphanedVertices)
-			{
-				DuplicateMeshDescription.DeleteVertex(VertexID);
-			}
-			//Avoid compacting the DuplicateMeshDescription, since the remap of the VertexInstaceID will not be good anymore
+			DuplicateMeshDescription.DeletePolygons(ToDeletePolygons);
+
+			//Avoid compacting the DuplicateMeshDescription, since the remap of the VertexInstanceID will not be good anymore
 		}
 	}
 	// Find overlapping corners for UV generator. Allow some threshold - this should not produce any error in a case if resulting

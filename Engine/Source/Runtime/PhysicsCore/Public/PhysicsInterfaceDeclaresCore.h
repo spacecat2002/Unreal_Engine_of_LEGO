@@ -28,8 +28,10 @@ namespace Chaos
 	template <typename T, int d>
 	class TGeometryParticle;
 
-	template <typename T, int d>
-	class TPerShapeData;
+	template<class T, int d>
+	struct TMassProperties;
+
+	class FPerShapeData;
 
 	class FPhysicalMaterial;
 	class FPhysicalMaterialMask;
@@ -42,6 +44,8 @@ namespace Chaos
 
 	class FChaosPhysicsMaterial;
 	class FChaosPhysicsMaterialMask;
+
+	using FShapesArray = TArray<TUniquePtr<FPerShapeData>, TInlineAllocator<1>>;
 }
 
 // Temporary dummy types until SQ implemented
@@ -67,7 +71,7 @@ using FPhysicsQueryHit = ChaosInterface::FQueryHit;
 
 using FPhysicsTransform = FTransform;
 
-using FPhysicsShape = Chaos::TPerShapeData<float, 3>;
+using FPhysicsShape = Chaos::FPerShapeData;
 using FPhysicsGeometry = Chaos::FImplicitObject;
 using FPhysicsCapsuleGeometry = Chaos::TCapsule<float>;
 using FPhysicsMaterial = Chaos::FChaosPhysicsMaterial;
@@ -91,6 +95,7 @@ namespace physx
 	struct PxSweepHit;
 	struct PxRaycastHit;
 	struct PxOverlapHit;
+	struct PxQueryFlag;
 	struct PxQueryHit;
 
 	class PxTransform;

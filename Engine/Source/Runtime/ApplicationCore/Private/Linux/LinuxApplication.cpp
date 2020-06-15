@@ -184,6 +184,11 @@ bool FLinuxApplication::IsCursorDirectlyOverSlateWindow() const
 	return bInsideOwnWindow;
 }
 
+TSharedPtr<FGenericWindow> FLinuxApplication::GetWindowUnderCursor()
+{
+	return CurrentUnderCursorWindow;
+}
+
 void FLinuxApplication::AddPendingEvent( SDL_Event SDLEvent )
 {
 	if( GPumpingMessagesOutsideOfMainLoop && bAllowedToDeferMessageProcessing )
@@ -766,8 +771,13 @@ void FLinuxApplication::ProcessDeferredMessage( SDL_Event Event )
 						{
 							MessageHandler->OnCursorSet();
 
+							// Currently Tooltip windows will also get enter/leave events. depending on if this causes issues
+							// should avoid setting the window under cursor for tooltips and use the window under
+							CurrentUnderCursorWindow = CurrentEventWindow;
+
 							bInsideOwnWindow = true;
-							UE_LOG(LogLinuxWindow, Verbose, TEXT("Entered one of application windows"));
+
+							UE_LOG(LogLinuxWindow, Verbose, TEXT("Entered one of application windows. Cursor under Window: '%d'"), CurrentEventWindow->GetID());
 						}
 					}
 					break;
@@ -781,6 +791,7 @@ void FLinuxApplication::ProcessDeferredMessage( SDL_Event Event )
 								UpdateMouseCaptureWindow((SDL_HWindow)GetCapture());
 							}
 
+ 							CurrentUnderCursorWindow = nullptr;
 							bInsideOwnWindow = false;
 							UE_LOG(LogLinuxWindow, Verbose, TEXT("Left an application window we were hovering above."));
 						}
@@ -1093,7 +1104,7 @@ void FLinuxApplication::PollGameDeviceState( const float TimeDelta )
 	}
 
 	// initialize any externally-implemented input devices (we delay load initialize the array so any plugins have had time to load)
-	if (!bHasLoadedInputPlugins)
+	if (!bHasLoadedInputPlugins && GIsRunning)
 	{
 		TArray<IInputDeviceModule*> PluginImplementations = IModularFeatures::Get().GetModularFeatureImplementations<IInputDeviceModule>(IInputDeviceModule::GetModularFeatureName());
 		for (auto InputPluginIt = PluginImplementations.CreateIterator(); InputPluginIt; ++InputPluginIt)

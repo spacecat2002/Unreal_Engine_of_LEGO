@@ -199,7 +199,8 @@ FD3D11DynamicRHI::FD3D11DynamicRHI(IDXGIFactory1* InDXGIFactory1,D3D_FEATURE_LEV
 
 	GPixelFormats[ PF_BC6H			].PlatformFormat	= DXGI_FORMAT_BC6H_UF16;
 	GPixelFormats[ PF_BC7			].PlatformFormat	= DXGI_FORMAT_BC7_TYPELESS;
-	GPixelFormats[ PF_R8_UINT		].PlatformFormat	= DXGI_FORMAT_R8_UINT;
+	GPixelFormats[ PF_R8_UINT		].PlatformFormat = DXGI_FORMAT_R8_UINT;
+	GPixelFormats[ PF_R8			].PlatformFormat = DXGI_FORMAT_A8_UNORM;
 
 	GPixelFormats[PF_R16G16B16A16_UNORM].PlatformFormat = DXGI_FORMAT_R16G16B16A16_UNORM;
 	GPixelFormats[PF_R16G16B16A16_SNORM].PlatformFormat = DXGI_FORMAT_R16G16B16A16_SNORM;
@@ -264,6 +265,20 @@ void FD3D11DynamicRHI::RHIPushEvent(const TCHAR* Name, FColor Color)
 { 
 	GPUProfilingData.PushEvent(Name, Color);
 }
+
+#if PLATFORM_HOLOLENS
+void FD3D11DynamicRHI::RHISuspendRendering()
+{
+	TRefCountPtr<IDXGIDevice3> dxgiDevice;
+	if (Direct3DDevice->QueryInterface(IID_PPV_ARGS(dxgiDevice.GetInitReference())))
+	{
+		dxgiDevice->Trim();
+	}
+}
+void FD3D11DynamicRHI::RHIResumeRendering()
+{
+}
+#endif
 
 void FD3D11DynamicRHI::RHIPopEvent()
 { 

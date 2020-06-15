@@ -139,6 +139,13 @@ public:
 	static FString ProjectPlatformExtensionsDir();
 
 	/**
+	 * Returns platform and restricted extensions that are present and valid (for platforms, it uses FDataDrivePlatformInfo to determine valid platforms, it doesn't just use what's present)
+	 *
+	 * @return BaseDir and usable extension directories under BaseDir (either Engine or Project)
+	 */
+	static const TArray<FString>& GetExtensionDirs(const FString& BaseDir, const FString& SubDir=FString());
+
+	/**
 	 * Returns the root directory of the engine directory tree
 	 *
 	 * @return Root directory.
@@ -280,6 +287,9 @@ public:
 
 	/** Returns the directory for automation save files that are meant to be deleted every run */
 	static FString AutomationTransientDir();
+
+	/** Returns the directory for results of automation tests. May be deleted every run. */
+	static FString AutomationReportsDir();
 
 	/** Returns the directory for automation log files */
 	static FString AutomationLogDir();

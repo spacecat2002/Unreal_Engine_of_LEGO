@@ -28,16 +28,19 @@ enum EShaderFrequency : uint8
 	SF_Pixel			= 3,
 	SF_Geometry			= 4,
 	SF_Compute			= 5,
-
-	// Number of standard SM5-style graphics pipeline shader frequencies
-	SF_NumStandardFrequencies = 6,
-
 	SF_RayGen			= 6,
 	SF_RayMiss			= 7,
 	SF_RayHitGroup		= 8,
 	SF_RayCallable		= 9,
 
 	SF_NumFrequencies	= 10,
+
+	// Number of standard SM5-style shader frequencies for graphics pipeline (excluding compute)
+	SF_NumGraphicsFrequencies = 5,
+
+	// Number of standard SM5-style shader frequencies (including compute)
+	SF_NumStandardFrequencies = 6,
+
 	SF_NumBits			= 4,
 };
 static_assert(SF_NumFrequencies <= (1 << SF_NumBits), "SF_NumFrequencies will not fit on SF_NumBits");
@@ -98,9 +101,10 @@ enum EShaderPlatform
 
 	//  Add new platforms below this line, starting from (SP_StaticPlatform_Last + 1)
 	//---------------------------------------------------------------------------------
+	SP_VULKAN_SM5_ANDROID			= SP_StaticPlatform_Last+1,
 
 	SP_NumPlatforms,
-	SP_NumBits				= 7,
+	SP_NumBits						= 7,
 };
 static_assert(SP_NumPlatforms <= (1 << SP_NumBits), "SP_NumPlatforms will not fit on SP_NumBits");
 
@@ -386,7 +390,7 @@ public:
 		return Infos[Platform].MaxFeatureLevel;
 	}
 
-	static FORCEINLINE_DEBUGGABLE const bool GetIsMobile(const FStaticShaderPlatform Platform)
+	static FORCEINLINE_DEBUGGABLE const bool GetIsMobile(const EShaderPlatform Platform)
 	{
 		return Infos[Platform].bIsMobile;
 	}
@@ -1059,76 +1063,102 @@ enum EPrimitiveType
 static_assert(PT_Num <= (1 << 8), "EPrimitiveType doesn't fit in a byte");
 static_assert(PT_Num <= (1 << PT_NumBits), "PT_NumBits is too small");
 
+enum EVRSAxisShadingRate : uint8
+{
+	VRSASR_1X = 0x0,
+	VRSASR_2X = 0x1,
+	VRSASR_4X = 0x2,
+};
+
+enum EVRSShadingRate : uint8
+{
+	VRSSR_1x1  = (VRSASR_1X << 2) + VRSASR_1X,
+	VRSSR_1x2  = (VRSASR_1X << 2) + VRSASR_2X,
+	VRSSR_2x1  = (VRSASR_2X << 2) + VRSASR_1X,
+	VRSSR_2x2  = (VRSASR_2X << 2) + VRSASR_2X,
+	VRSSR_2x4  = (VRSASR_2X << 2) + VRSASR_4X,
+	VRSSR_4x2  = (VRSASR_4X << 2) + VRSASR_2X,
+	VRSSR_4x4  = (VRSASR_4X << 2) + VRSASR_4X,
+};
+
+enum EVRSRateCombiner : uint8
+{
+	VRSRB_Passthrough,
+	VRSRB_Override,
+	VRSRB_Min,
+	VRSRB_Max,
+	VRSRB_Sum,
+};
+
 /**
  *	Resource usage flags - for vertex and index buffers.
  */
 enum EBufferUsageFlags
 {
-	BUF_None			  = 0x0000,
+	BUF_None					= 0x0000,
 	
 
 	// Mutually exclusive write-frequency flags
 
 	/** The buffer will be written to once. */
-	BUF_Static            = 0x0001, 
+	BUF_Static					= 0x0001, 
 
 	/** 
 	 * The buffer will be written to occasionally, GPU read only, CPU write only.  The data lifetime is until the next update, or the buffer is destroyed.
 	 */
-	BUF_Dynamic           = 0x0002, 
+	BUF_Dynamic					= 0x0002, 
 
 	/** The buffer's data will have a lifetime of one frame.  It MUST be written to each frame, or a new one created each frame. */
-	BUF_Volatile          = 0x0004, 
+	BUF_Volatile				= 0x0004, 
 
 	// Mutually exclusive bind flags.
-	BUF_UnorderedAccess   = 0x0008, // Allows an unordered access view to be created for the buffer.
+	BUF_UnorderedAccess			= 0x0008, // Allows an unordered access view to be created for the buffer.
 
 	/** Create a byte address buffer, which is basically a structured buffer with a uint32 type. */
-	BUF_ByteAddressBuffer = 0x0020,
-
-	/** Create a structured buffer with an atomic UAV counter. */
-	BUF_UAVCounter UE_DEPRECATED(4.25, "BUF_UAVCounter is deprecated and getting removed; please don't use.") = 0x0040,
+	BUF_ByteAddressBuffer		= 0x0020,
 
 	/** Buffer that the GPU will use as a source for a copy. */
-	BUF_SourceCopy			= 0x0040,
+	BUF_SourceCopy				= 0x0040,
 
 	/** Create a buffer that can be bound as a stream output target. */
-	BUF_StreamOutput      = 0x0080,
+	BUF_StreamOutput			= 0x0080,
+
 	/** Create a buffer which contains the arguments used by DispatchIndirect or DrawIndirect. */
-	BUF_DrawIndirect      = 0x0100,
+	BUF_DrawIndirect			= 0x0100,
+
 	/** 
 	 * Create a buffer that can be bound as a shader resource. 
 	 * This is only needed for buffer types which wouldn't ordinarily be used as a shader resource, like a vertex buffer.
 	 */
-	BUF_ShaderResource    = 0x0200,
+	BUF_ShaderResource			= 0x0200,
 
 	/**
 	 * Request that this buffer is directly CPU accessible
 	 * (@todo josh: this is probably temporary and will go away in a few months)
 	 */
-	BUF_KeepCPUAccessible = 0x0400,
+	BUF_KeepCPUAccessible		= 0x0400,
 
 	/**
 	 * Provide information that this buffer will contain only one vertex, which should be delivered to every primitive drawn.
 	 * This is necessary for OpenGL implementations, which need to handle this case very differently (and can't handle GL_HALF_FLOAT in such vertices at all).
 	 */
-	BUF_ZeroStride        = 0x0800,
+	BUF_ZeroStride				= 0x0800,
 
 	/** Buffer should go in fast vram (hint only). Requires BUF_Transient */
-	BUF_FastVRAM          = 0x1000,
+	BUF_FastVRAM				= 0x1000,
 
 	/** Buffer should be allocated from transient memory. */
-	BUF_Transient		  = 0x2000,
+	BUF_Transient				= 0x2000,
 
-	/** Buffer that should be accessed one byte at a time. */
-	BUF_UINT8 UE_DEPRECATED(4.25, "BUF_UINT8 is deprecated and getting removed; please don't use.") = 0x4000,
+	/** Create a buffer that can be shared with an external RHI or process. */
+	BUF_Shared					= 0x4000,
 
 	/**
 	 * Buffer contains opaque ray tracing acceleration structure data.
 	 * Resources with this flag can't be bound directly to any shader stage and only can be used with ray tracing APIs.
 	 * This flag is mutually exclusive with all other buffer flags except BUF_Static.
 	*/
-	BUF_AccelerationStructure = 0x8000,
+	BUF_AccelerationStructure	= 0x8000,
 
 	// Helper bit-masks
 	BUF_AnyDynamic = (BUF_Dynamic | BUF_Volatile),
@@ -1217,6 +1247,8 @@ enum ETextureCreateFlags
 	TexCreate_FastVRAMPartialAlloc  = 1<<13,
 	// Do not create associated shader resource view, only applicable to D3D11 and D3D12
 	TexCreate_DisableSRVCreation = 1 << 14,
+	// Do not allow Delta Color Compression (DCC) to be used with this texture
+	TexCreate_DisableDCC		    = 1 << 15,
 	// UnorderedAccessView (DX11 only)
 	// Warning: Causes additional synchronization between draw calls when using a render target allocated with this flag, use sparingly
 	// See: GCNPerformanceTweets.pdf Tip 37
@@ -1348,7 +1380,7 @@ inline bool IsPCPlatform(const FStaticShaderPlatform Platform)
 }
 
 /** Whether the shader platform corresponds to the ES2/ES3.1 feature level. */
-inline bool IsMobilePlatform(const FStaticShaderPlatform Platform)
+inline bool IsMobilePlatform(const EShaderPlatform Platform)
 {
 	return 
 		Platform == SP_METAL || Platform == SP_METAL_MACES3_1 || Platform == SP_METAL_TVOS
@@ -1369,7 +1401,9 @@ inline bool IsOpenGLPlatform(const FStaticShaderPlatform Platform)
 
 inline bool IsMetalPlatform(const FStaticShaderPlatform Platform)
 {
-	return Platform == SP_METAL || Platform == SP_METAL_MRT || Platform == SP_METAL_TVOS || Platform == SP_METAL_MRT_TVOS || Platform == SP_METAL_SM5_NOTESS || Platform == SP_METAL_SM5 || Platform == SP_METAL_MACES3_1 || Platform == SP_METAL_MRT_MAC
+	return Platform == SP_METAL || Platform == SP_METAL_MRT || Platform == SP_METAL_TVOS || Platform == SP_METAL_MRT_TVOS 
+		|| Platform == SP_METAL_SM5_NOTESS || Platform == SP_METAL_SM5
+		|| Platform == SP_METAL_MACES3_1 || Platform == SP_METAL_MRT_MAC
 		|| FDataDrivenShaderPlatformInfo::GetIsLanguageMetal(Platform);
 }
 
@@ -1411,14 +1445,20 @@ inline bool IsPS4Platform(const FStaticShaderPlatform Platform)
 
 inline bool IsVulkanPlatform(const FStaticShaderPlatform Platform)
 {
-	return Platform == SP_VULKAN_SM5 || Platform == SP_VULKAN_SM5_LUMIN || Platform == SP_VULKAN_PCES3_1 || Platform == SP_VULKAN_ES3_1_ANDROID || Platform == SP_VULKAN_ES3_1_LUMIN
+	return Platform == SP_VULKAN_SM5 || Platform == SP_VULKAN_SM5_LUMIN || Platform == SP_VULKAN_PCES3_1 
+		|| Platform == SP_VULKAN_ES3_1_ANDROID || Platform == SP_VULKAN_ES3_1_LUMIN || Platform == SP_VULKAN_SM5_ANDROID
 		|| FDataDrivenShaderPlatformInfo::GetIsLanguageVulkan(Platform);
 }
 
 inline bool IsVulkanSM5Platform(const FStaticShaderPlatform Platform)
 {
-	return Platform == SP_VULKAN_SM5 || Platform == SP_VULKAN_SM5_LUMIN
+	return Platform == SP_VULKAN_SM5 || Platform == SP_VULKAN_SM5_LUMIN || Platform == SP_VULKAN_SM5_ANDROID
 		|| (FDataDrivenShaderPlatformInfo::GetIsLanguageVulkan(Platform) && FDataDrivenShaderPlatformInfo::GetMaxFeatureLevel(Platform) == ERHIFeatureLevel::SM5);
+}
+
+inline bool IsVulkanMobileSM5Platform(const EShaderPlatform Platform)
+{
+	return Platform == SP_VULKAN_SM5_ANDROID;
 }
 
 inline bool IsAndroidOpenGLESPlatform(const FStaticShaderPlatform Platform)
@@ -1458,7 +1498,7 @@ inline bool IsDeprecatedShaderPlatform(const FStaticShaderPlatform ShaderPlatfor
 	return ShaderPlatform == SP_OPENGL_SM5 || ShaderPlatform == SP_PCD3D_SM4_REMOVED || ShaderPlatform == SP_OPENGL_ES2_IOS_REMOVED ||
 		ShaderPlatform == SP_PCD3D_ES2_REMOVED || ShaderPlatform == SP_METAL_MACES2_REMOVED || ShaderPlatform == SP_OPENGL_PCES2_REMOVED ||
 		ShaderPlatform == SP_OPENGL_ES2_ANDROID_REMOVED || ShaderPlatform == SP_OPENGL_ES2_WEBGL_REMOVED ||
-		ShaderPlatform == SP_VULKAN_SM4_REMOVED;
+		ShaderPlatform == SP_VULKAN_SM4_REMOVED || ShaderPlatform == SP_OPENGL_SM4_REMOVED;
 }
 
 inline FStaticFeatureLevel GetMaxSupportedFeatureLevel(const FStaticShaderPlatform InShaderPlatform)
@@ -1478,6 +1518,7 @@ inline FStaticFeatureLevel GetMaxSupportedFeatureLevel(const FStaticShaderPlatfo
 	case SP_VULKAN_SM5:
 	case SP_VULKAN_SM5_LUMIN:
 	case SP_SWITCH:
+	case SP_VULKAN_SM5_ANDROID:
 		return ERHIFeatureLevel::SM5;
 	case SP_METAL:
 	case SP_METAL_TVOS:
@@ -1568,7 +1609,8 @@ inline bool RHISupportsComputeShaders(const FStaticShaderPlatform Platform)
 
 inline bool RHISupportsGeometryShaders(const FStaticShaderPlatform Platform)
 {
-	return IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5) && !IsMetalPlatform(Platform) && !IsVulkanMobilePlatform(Platform);
+	return IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5) && !IsMetalPlatform(Platform) &&
+			 !IsVulkanMobilePlatform(Platform) && !IsVulkanMobileSM5Platform(Platform);
 }
 
 inline bool RHIHasTiledGPU(const FStaticShaderPlatform Platform)
@@ -1583,7 +1625,7 @@ inline bool RHIHasTiledGPU(const FStaticShaderPlatform Platform)
 inline bool RHISupportsMobileMultiView(const FStaticShaderPlatform Platform)
 {
 	return Platform == EShaderPlatform::SP_OPENGL_ES3_1_ANDROID || IsVulkanMobilePlatform(Platform)
-		|| Platform == EShaderPlatform::SP_PCD3D_ES3_1 || FDataDrivenShaderPlatformInfo::GetSupportsMobileMultiView(Platform);
+		|| FDataDrivenShaderPlatformInfo::GetSupportsMobileMultiView(Platform);
 }
 
 inline bool RHISupportsNativeShaderLibraries(const FStaticShaderPlatform Platform)

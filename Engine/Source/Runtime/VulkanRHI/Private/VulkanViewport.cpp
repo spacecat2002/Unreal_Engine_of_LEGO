@@ -382,7 +382,9 @@ FVulkanFramebuffer::FVulkanFramebuffer(FVulkanDevice& Device, const FRHISetRende
 
 		++NumColorAttachments;
 
-		if (InRTInfo.bHasResolveAttachments)
+		// Check the RTLayout as well to make sure the resolve attachment is needed (Vulkan and Feature level specific)
+		// See: FVulkanRenderTargetLayout constructor with FRHIRenderPassInfo
+		if (InRTInfo.bHasResolveAttachments && RTLayout.GetHasResolveAttachments() && RTLayout.GetResolveAttachmentReferences()[Index].layout != VK_IMAGE_LAYOUT_UNDEFINED)
 		{
 			FRHITexture* ResolveRHITexture = InRTInfo.ColorResolveRenderTarget[Index].Texture;
 			FVulkanTextureBase* ResolveTexture = FVulkanTextureBase::Cast(ResolveRHITexture);
@@ -845,6 +847,8 @@ bool FVulkanViewport::Present(FVulkanCommandListContext* Context, FVulkanCmdBuff
 
 	CmdBuffer->End();
 	GVulkanCommandBufferManager->FlushResetQueryPools();
+	FVulkanCommandBufferManager* ImmediateCmdBufMgr = Device->GetImmediateContext().GetCommandBufferManager();
+	checkf(ImmediateCmdBufMgr->GetActiveCmdBufferDirect() == CmdBuffer, TEXT("Present() is submitting something else than the active command buffer"));
 	if (FVulkanPlatform::SupportsStandardSwapchain())
 	{
 		if (LIKELY(!bFailedToDelayAcquireBackbuffer))
@@ -853,7 +857,9 @@ bool FVulkanViewport::Present(FVulkanCommandListContext* Context, FVulkanCmdBuff
 			{
 				CmdBuffer->AddWaitSemaphore(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, AcquiredSemaphore);
 			}
-			Queue->Submit(CmdBuffer, RenderingDoneSemaphores[AcquiredImageIndex]->GetHandle());
+			
+			// submit through the CommandBufferManager as it will add the proper semaphore
+			ImmediateCmdBufMgr->SubmitActiveCmdBufferFromPresent(RenderingDoneSemaphores[AcquiredImageIndex]);
 		}
 		else
 		{
@@ -876,7 +882,8 @@ bool FVulkanViewport::Present(FVulkanCommandListContext* Context, FVulkanCmdBuff
 	}
 	else
 	{
-		Queue->Submit(CmdBuffer);
+		// Submit active command buffer if not supporting standard swapchain (e.g. XR devices).
+		ImmediateCmdBufMgr->SubmitActiveCmdBufferFromPresent(nullptr);
 	}
 
 	//Flush all commands
@@ -940,7 +947,6 @@ bool FVulkanViewport::Present(FVulkanCommandListContext* Context, FVulkanCmdBuff
 	//	GInputLatencyTimer.RenderThreadTrigger = false;
 	//}
 
-	FVulkanCommandBufferManager* ImmediateCmdBufMgr = Device->GetImmediateContext().GetCommandBufferManager();
 	// PrepareForNewActiveCommandBuffer might be called by swapchain re-creation routine. Skip prepare if we already have an open active buffer.
 	if (ImmediateCmdBufMgr->GetActiveCmdBuffer() && !ImmediateCmdBufMgr->GetActiveCmdBuffer()->HasBegun())
 	{

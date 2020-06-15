@@ -427,6 +427,7 @@ struct FEventRouter::Translate<FPointerEvent>
 };
 
 DECLARE_CYCLE_STAT( TEXT("Message Tick Time"), STAT_SlateMessageTick, STATGROUP_Slate );
+DECLARE_CYCLE_STAT( TEXT("Slate App Input"), STAT_SlateApplicationInput, STATGROUP_Slate );
 DECLARE_CYCLE_STAT( TEXT("Total Slate Tick Time"), STAT_SlateTickTime, STATGROUP_Slate );
 DECLARE_CYCLE_STAT( TEXT("Draw Window And Children Time"), STAT_SlateDrawWindowTime, STATGROUP_Slate );
 DECLARE_CYCLE_STAT( TEXT("TickRegisteredWidgets"), STAT_SlateTickRegisteredWidgets, STATGROUP_Slate );
@@ -715,7 +716,7 @@ FSlateApplication::FSlateApplication()
 	, bIsFakingTouched( false )
 	, bTouchFallbackToMouse( true )
 	, bSoftwareCursorAvailable( false )	
-	, bMenuAnimationsEnabled( true )
+	, bMenuAnimationsEnabled( false )
 	, AppIcon( FCoreStyle::Get().GetBrush("DefaultAppIcon") )
 	, VirtualDesktopRect( 0,0,0,0 )
 	, NavigationConfig(MakeShared<FNavigationConfig>())
@@ -1271,6 +1272,8 @@ void FSlateApplication::FinishedInputThisFrame()
 {
 	const float DeltaTime = GetDeltaTime();
 
+	PlatformApplication->FinishedInputThisFrame();
+	
 	// Any preprocessors are given a chance to process accumulated values (or do whatever other tick things they want)
 	// after we've finished processing all of the input for the frame
 	if (PlatformApplication->Cursor.IsValid())
@@ -1325,6 +1328,24 @@ void FSlateApplication::FinishedInputThisFrame()
 	ForEachUser([] (FSlateUser& User) { User.FinishFrame(); });
 }
 
+static const TCHAR* LexToString(ESlateTickType TickType)
+{
+	switch (TickType)
+	{
+	case ESlateTickType::Time:
+		return TEXT("Time");
+	case ESlateTickType::PlatformAndInput:
+		return TEXT("Platform and Input");
+	case ESlateTickType::Widgets:
+		return TEXT("Widgets");
+	case ESlateTickType::TimeAndWidgets:
+		return TEXT("Time and Widgets");
+	case ESlateTickType::All:
+	default:
+		return TEXT("All");
+	}
+}
+
 void FSlateApplication::Tick(ESlateTickType TickType)
 {
 	LLM_SCOPE(ELLMTag::UI);
@@ -1333,11 +1354,11 @@ void FSlateApplication::Tick(ESlateTickType TickType)
 	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(UI);
 
 	// It is not valid to tick Slate on any other thread but the game thread unless we are only updating time
-	check(IsInGameThread() || TickType == ESlateTickType::TimeOnly);
+	check(IsInGameThread() || TickType == ESlateTickType::Time);
 
 	FScopeLock SlateTickAccess(&SlateTickCriticalSection);
 
-	SCOPED_NAMED_EVENT_TEXT("Slate::Tick", FColor::Magenta);
+	SCOPED_NAMED_EVENT_F(TEXT("Slate::Tick (%s)"), FColor::Magenta, LexToString(TickType));
 	CSV_SCOPED_TIMING_STAT(Slate, Tick);
 
 	{
@@ -1345,28 +1366,52 @@ void FSlateApplication::Tick(ESlateTickType TickType)
 
 		const float DeltaTime = GetDeltaTime();
 
-		if (TickType == ESlateTickType::All)
+		// IMPORTANT
+		// Do not add code to these different if-statements, if you need to add additional logic to
+		// ticking the platform, do it inside of TickPlatform, for example.  These functions are sometimes
+		// called directly inside of Slate Application, so unless they're embedded in those calls, they wont
+		// get run.
+
+		if (EnumHasAnyFlags(TickType, ESlateTickType::PlatformAndInput))
 		{
-#if WITH_ACCESSIBILITY
-			// We ensure to only call this in TickType::All to avoid the movie thread also calling this unnecessarily 
-			GetAccessibleMessageHandler()->ProcessAccessibleTasks();
-#endif
 			TickPlatform(DeltaTime);
 		}
-		TickApplication(TickType, DeltaTime);
-#if WITH_ACCESSIBILITY
-		if (TickType == ESlateTickType::All)
+
+		if (EnumHasAnyFlags(TickType, ESlateTickType::Time))
 		{
-			// we call this again to improve the responsiveness of accessibility navigation and announcements 
-			GetAccessibleMessageHandler()->ProcessAccessibleTasks();
+			TickTime();
 		}
-#endif
+
+		if (EnumHasAnyFlags(TickType, ESlateTickType::Widgets))
+		{
+			TickAndDrawWidgets(DeltaTime);
+		}
+	}
+}
+
+void FSlateApplication::TickTime()
+{
+	LastTickTime = CurrentTime;
+	CurrentTime = FPlatformTime::Seconds();
+
+	// Handle large quantums
+	const double MaxQuantumBeforeClamp = 1.0 / 8.0;		// 8 FPS
+	if (GetDeltaTime() > MaxQuantumBeforeClamp)
+	{
+		LastTickTime = CurrentTime - MaxQuantumBeforeClamp;
 	}
 }
 
 void FSlateApplication::TickPlatform(float DeltaTime)
 {
 	SCOPED_NAMED_EVENT_TEXT("Slate::TickPlatform", FColor::Magenta);
+
+#if WITH_ACCESSIBILITY
+	{
+		// We ensure to only call this in TickType::All to avoid the movie thread also calling this unnecessarily 
+		GetAccessibleMessageHandler()->ProcessAccessibleTasks();
+	}
+#endif
 
 	{
 		SCOPE_CYCLE_COUNTER(STAT_SlateMessageTick);
@@ -1386,9 +1431,29 @@ void FSlateApplication::TickPlatform(float DeltaTime)
 		PlatformApplication->Tick(DeltaTime);
 		PlatformApplication->ProcessDeferredEvents(DeltaTime);
 	}
+
+	{
+		SCOPE_CYCLE_COUNTER(STAT_SlateApplicationInput);
+
+		ForEachUser([this](FSlateUser& User) {
+			User.UpdateCursor();
+			User.UpdateTooltip(MenuStack, false);
+		});
+
+		bool bSynthesizedCursorMoveThisFrame = false;
+		ForEachUser([&bSynthesizedCursorMoveThisFrame](FSlateUser& User) {
+			bSynthesizedCursorMoveThisFrame |= User.SynthesizeCursorMoveIfNeeded();
+		});
+		bSynthesizedCursorMove = bSynthesizedCursorMoveThisFrame;
+
+		// Generate any simulated gestures that we've detected.
+		ForEachUser([this](FSlateUser& User) {
+			User.GetGestureDetector().GenerateGestures(*this, SimulateGestures);
+		});
+	}
 }
 
-void FSlateApplication::TickApplication(ESlateTickType TickType, float DeltaTime)
+void FSlateApplication::TickAndDrawWidgets(float DeltaTime)
 {
 	if (Renderer.IsValid())
 	{
@@ -1398,29 +1463,17 @@ void FSlateApplication::TickApplication(ESlateTickType TickType, float DeltaTime
 		Renderer->ReleaseAccessedResources(/* Flush State */ false);
 	}
 
-	if (TickType == ESlateTickType::All)
+	// We clear all pending Updates from last frame
+	FSlateInvalidationRoot::ClearAllWidgetUpdatesPending();
+
 	{
-		FPlatformMisc::BeginNamedEvent(FColor::Purple, TEXT("Slate Pre-Paint Processing"));
-
-		{
-			SCOPE_CYCLE_COUNTER(STAT_SlatePreTickEvent);
-			PreTickEvent.Broadcast(DeltaTime);
-		}
-
-		ForEachUser([this](FSlateUser& User) {
-			User.UpdateCursor();
-			User.UpdateTooltip(MenuStack, false);
-		});
+		SCOPE_CYCLE_COUNTER(STAT_SlatePreTickEvent);
+		PreTickEvent.Broadcast(DeltaTime);
 	}
-
-	// Advance time
-	LastTickTime = CurrentTime;
-	CurrentTime = FPlatformTime::Seconds();
 
 	// Update average time between ticks.  This is used to monitor how responsive the application "feels".
 	// Note that we calculate this before we apply the max quantum clamping below, because we want to store
 	// the actual frame rate, even if it is very low.
-	if (TickType == ESlateTickType::All)
 	{
 		// Scalar percent of new delta time that contributes to running average.  Use a lower value to add more smoothing
 		// to the average frame rate.  A value of 1.0 will disable smoothing.
@@ -1440,20 +1493,7 @@ void FSlateApplication::TickApplication(ESlateTickType TickType, float DeltaTime
 		}
 	}
 
-	// Handle large quantums
-	const double MaxQuantumBeforeClamp = 1.0 / 8.0;		// 8 FPS
-	if( GetDeltaTime() > MaxQuantumBeforeClamp )
-	{
-		LastTickTime = CurrentTime - MaxQuantumBeforeClamp;
-	}
-
-	if (TickType == ESlateTickType::All)
-	{
-		bool bSynthesizedCursorMove = false;
-		ForEachUser([&bSynthesizedCursorMove](FSlateUser& User) {
-			bSynthesizedCursorMove |= User.SynthesizeCursorMoveIfNeeded();
-		});
-		
+	{	
 		// Update auto-throttling based on elapsed time since user interaction
 		ThrottleApplicationBasedOnMouseMovement();
 
@@ -1465,18 +1505,7 @@ void FSlateApplication::TickApplication(ESlateTickType TickType, float DeltaTime
 	
 		const bool bIsUserIdle = (TimeSinceInput > SleepThreshold) && (TimeSinceMouseMove > SleepThreshold);
 		const bool bAnyActiveTimersPending = AnyActiveTimersArePending();
-		if (bAnyActiveTimersPending)
-		{
-			// Some UI might slide under the cursor. To a widget, this is as if the cursor moved over it.
-			ForEachUser([](FSlateUser& User) { User.QueueSyntheticCursorMove(); });
-		}
 
-		// Generate any simulated gestures that we've detected.
-		ForEachUser([this] (FSlateUser& User) {
-			User.GetGestureDetector().GenerateGestures(*this, SimulateGestures);
-		});
-
-		FPlatformMisc::EndNamedEvent();
 		// skip tick/draw if we are idle and there are no active timers registered that we need to drive slate for.
 		// This effectively means the slate application is totally idle and we don't need to update the UI.
 		// This relies on Widgets properly registering for Active timer when they need something to happen even
@@ -1484,6 +1513,11 @@ void FSlateApplication::TickApplication(ESlateTickType TickType, float DeltaTime
 		bIsSlateAsleep = true;
 		if	(!AllowSlateToSleep.GetValueOnGameThread() || bAnyActiveTimersPending || !bIsUserIdle || bSynthesizedCursorMove || FApp::UseVRFocus())
 		{
+			if (!bSynthesizedCursorMove)
+			{
+				ForEachUser([](FSlateUser& User) { User.QueueSyntheticCursorMove(); });
+			}
+
 			bIsSlateAsleep = false; // if we get here, then Slate is not sleeping
 
 			// Update any notifications - this needs to be done after windows have updated themselves 
@@ -1499,11 +1533,20 @@ void FSlateApplication::TickApplication(ESlateTickType TickType, float DeltaTime
 			AccessibleMessageHandler->Tick();
 #endif
 		}
+	}
 
+	{
+		// SCOPE_CYCLE_COUNTER(STAT_SlatePostTickEvent);
 		PostTickEvent.Broadcast(DeltaTime);
 	}
-}
 
+#if WITH_ACCESSIBILITY
+	{
+		// we call this again to improve the responsiveness of accessibility navigation and announcements 
+		GetAccessibleMessageHandler()->ProcessAccessibleTasks();
+	}
+#endif
+}
 
 void FSlateApplication::PumpMessages()
 {
@@ -1747,38 +1790,26 @@ static bool IsFocusInViewport(const TSet<TWeakPtr<SViewport>> Viewports, const F
 
 EUINavigation FSlateApplication::GetNavigationDirectionFromKey(const FKeyEvent& InKeyEvent) const
 {
-#if WITH_EDITOR
-	// Check if the focused widget is an editor widget or a PIE widget so we know which config to use.
-	TSharedPtr<const FSlateUser> User = GetUser(GetUserIndexForKeyboard());
-	if (User && !IsFocusInViewport(AllGameViewports, User->GetWeakFocusPath()))
-	{
-		return EditorNavigationConfig->GetNavigationDirectionFromKey(InKeyEvent);
-	}
-#endif
-	return NavigationConfig->GetNavigationDirectionFromKey(InKeyEvent);
+	TSharedRef<FNavigationConfig> RelevantNavConfig = GetRelevantNavConfig(InKeyEvent.GetUserIndex());
+	return RelevantNavConfig->GetNavigationDirectionFromKey(InKeyEvent);
 }
 
 EUINavigation FSlateApplication::GetNavigationDirectionFromAnalog(const FAnalogInputEvent& InAnalogEvent)
 {
-#if WITH_EDITOR
-	// Check if the focused widget is an editor widget or a PIE widget so we know which config to use.
-	TSharedPtr<const FSlateUser> User = GetUser(GetUserIndexForKeyboard());
-	if (User && !IsFocusInViewport(AllGameViewports, User->GetWeakFocusPath()))
-	{
-		return EditorNavigationConfig->GetNavigationDirectionFromKey(InAnalogEvent);
-	}
-#endif
-	return NavigationConfig->GetNavigationDirectionFromAnalog(InAnalogEvent);
+	TSharedRef<FNavigationConfig> RelevantNavConfig = GetRelevantNavConfig(InAnalogEvent.GetUserIndex());
+	return RelevantNavConfig->GetNavigationDirectionFromAnalog(InAnalogEvent);
 }
 
 EUINavigationAction FSlateApplication::GetNavigationActionFromKey(const FKeyEvent& InKeyEvent) const
 {
-	return NavigationConfig->GetNavigationActionFromKey(InKeyEvent);
+	TSharedRef<FNavigationConfig> RelevantNavConfig = GetRelevantNavConfig(InKeyEvent.GetUserIndex());
+	return RelevantNavConfig->GetNavigationActionFromKey(InKeyEvent);
 }
 
 EUINavigationAction FSlateApplication::GetNavigationActionForKey(const FKey& InKey) const
 {
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	// Not enough info to pick the best config, so this can only use the default
 	return NavigationConfig->GetNavigationActionForKey(InKey);
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
@@ -1914,8 +1945,11 @@ void FSlateApplication::AddModalWindow( TSharedRef<SWindow> InSlateWindow, const
 				// Slate's Tick does not issue Begin/EndFrame so we'll do it ourselves.
 				Renderer->BeginFrame();
 
+				// Advance time for the application
+				TickTime();
+
 				// Tick and render Slate
-				TickApplication(ESlateTickType::All, DeltaTime);
+				TickAndDrawWidgets(DeltaTime);
 				
 				Renderer->EndFrame();
 			}
@@ -2705,7 +2739,7 @@ bool FSlateApplication::SetUserFocus(FSlateUser& User, const FWidgetPath& InFocu
 			ProcessReply(InFocusPath, Reply, nullptr, nullptr, User.GetUserIndex());
 		}
 
-		NavigationConfig->OnNavigationChangedFocus(OldFocusedWidget, NewFocusedWidget, FocusEvent);
+		GetRelevantNavConfig(User.GetUserIndex())->OnNavigationChangedFocus(OldFocusedWidget, NewFocusedWidget, FocusEvent);
 
 #if WITH_ACCESSIBILITY
 		GetAccessibleMessageHandler()->OnWidgetEventRaised(NewFocusedWidget.ToSharedRef(), EAccessibleEvent::FocusChange, false, true);
@@ -3369,11 +3403,6 @@ bool FSlateApplication::IsWindowInDestroyQueue(TSharedRef<SWindow> Window) const
 	return WindowDestroyQueue.Contains(Window);
 }
 
-void FSlateApplication::QueueSynthesizedMouseMove(const FInputEvent& SourceEvent)
-{
-	GetOrCreateUser(SourceEvent)->QueueSyntheticCursorMove();
-}
-
 void FSlateApplication::SetUnhandledKeyDownEventHandler( const FOnKeyEvent& NewHandler )
 {
 	UnhandledKeyDownEventHandler = NewHandler;
@@ -3981,6 +4010,29 @@ bool FSlateApplication::ShowUserFocus(const TSharedPtr<const SWidget> Widget) co
 	return false;
 }
 
+TSharedRef<FNavigationConfig> FSlateApplication::GetRelevantNavConfig(int32 UserIndex) const
+{
+	TSharedPtr<FNavigationConfig> RelevantNavConfig = NavigationConfig;
+	if (TSharedPtr<const FSlateUser> User = GetUser(UserIndex))
+	{
+#if WITH_EDITOR
+		// Check if the focused widget is an editor widget or a PIE widget so we know which config to use.
+		if (UserIndex == GetUserIndexForKeyboard() && !IsFocusInViewport(AllGameViewports, User->GetWeakFocusPath()))
+		{
+			RelevantNavConfig = EditorNavigationConfig;
+		}
+		else
+#endif
+		if (TSharedPtr<FNavigationConfig> UserNavConfig = User->GetUserNavigationConfig())
+		{
+			// Use the user's personal config if it has one assigned
+			RelevantNavConfig = UserNavConfig;
+		}
+	}
+
+	return RelevantNavConfig.ToSharedRef();
+}
+
 bool FSlateApplication::HasUserFocusedDescendants(const TSharedRef< const SWidget >& Widget, int32 UserIndex) const
 {
 	TSharedPtr<const FSlateUser> User = GetUser(UserIndex);
@@ -4014,9 +4066,9 @@ TSharedRef<SImage> FSlateApplication::MakeImage( const TAttribute<const FSlateBr
 }
 
 
-TSharedRef<SWidget> FSlateApplication::MakeWindowTitleBar( const TSharedRef<SWindow>& Window, const TSharedPtr<SWidget>& CenterContent, EHorizontalAlignment CenterContentAlignment, TSharedPtr<IWindowTitleBar>& OutTitleBar ) const
+TSharedRef<SWidget> FSlateApplication::MakeWindowTitleBar(const FWindowTitleBarArgs& InArgs, TSharedPtr<IWindowTitleBar>& OutTitleBar) const
 {
-	TSharedRef<SWindowTitleBar> TitleBar = SNew(SWindowTitleBar, Window, CenterContent, CenterContentAlignment)
+	TSharedRef<SWindowTitleBar> TitleBar = SNew(SWindowTitleBar, InArgs.Window, InArgs.CenterContent, InArgs.CenterContentAlignment)
 		.Visibility(EVisibility::SelfHitTestInvisible);
 
 	OutTitleBar = TitleBar;
@@ -4126,8 +4178,6 @@ bool FSlateApplication::ProcessKeyDownEvent( const FKeyEvent& InKeyEvent )
 		OnApplicationPreInputKeyDownListenerEvent.Broadcast(InKeyEvent);
 	}
 #endif //WITH_EDITOR
-
-	QueueSynthesizedMouseMove(InKeyEvent);
 
 	// Analog cursor gets first chance at the input
 	if (InputPreProcessors.HandleKeyDownEvent(*this, InKeyEvent))
@@ -4240,8 +4290,6 @@ bool FSlateApplication::ProcessKeyUpEvent( const FKeyEvent& InKeyEvent )
 
 	TScopeCounter<int32> BeginInput(ProcessingInput);
 
-	QueueSynthesizedMouseMove(InKeyEvent);
-
 	// Analog cursor gets first chance at the input
 	if (InputPreProcessors.HandleKeyUpEvent(*this, InKeyEvent))
 	{
@@ -4295,8 +4343,6 @@ bool FSlateApplication::ProcessAnalogInputEvent(const FAnalogInputEvent& InAnalo
 
 	TScopeCounter<int32> BeginInput(ProcessingInput);
 
-	QueueSynthesizedMouseMove(InAnalogInputEvent);
-
 	FReply Reply = FReply::Unhandled();
 
 	// Analog cursor gets first chance at the input
@@ -4329,8 +4375,6 @@ bool FSlateApplication::ProcessAnalogInputEvent(const FAnalogInputEvent& InAnalo
 
 				return FReply::Unhandled();
 			});
-
-		QueueSynthesizedMouseMove(ModifiedEvent);
 	}
 
 	// If no one handled this, it was probably motion in the deadzone.  Don't treat it as activity.
@@ -4436,7 +4480,6 @@ bool FSlateApplication::ProcessMouseButtonDownEvent( const TSharedPtr< FGenericW
 	}
 #endif //WITH_EDITOR
 
-	QueueSynthesizedMouseMove(MouseEvent);
 	SetLastUserInteractionTime(this->GetCurrentTime());
 	LastUserInteractionTimeForThrottling = LastUserInteractionTime;
 	
@@ -5083,7 +5126,6 @@ bool FSlateApplication::ProcessMouseButtonDoubleClickEvent( const TSharedPtr< FG
 {
 	SCOPE_CYCLE_COUNTER(STAT_ProcessMouseButtonDoubleClick);
 
-	QueueSynthesizedMouseMove(InMouseEvent);
 	SetLastUserInteractionTime(this->GetCurrentTime());
 	LastUserInteractionTimeForThrottling = LastUserInteractionTime;
 
@@ -5177,7 +5219,6 @@ bool FSlateApplication::ProcessMouseButtonUpEvent( const FPointerEvent& MouseEve
 		FSlateThrottleManager::Get().LeaveResponsiveMode(MouseButtonDownResponsivnessThrottle);
 	}
 
-	QueueSynthesizedMouseMove(MouseEvent);
 	SetLastUserInteractionTime(this->GetCurrentTime());
 	LastUserInteractionTimeForThrottling = LastUserInteractionTime;
 
@@ -5229,8 +5270,6 @@ bool FSlateApplication::OnMouseWheel( const float Delta, const FVector2D CursorP
 bool FSlateApplication::ProcessMouseWheelOrGestureEvent( const FPointerEvent& InWheelEvent, const FPointerEvent* InGestureEvent )
 {
 	SCOPE_CYCLE_COUNTER(STAT_ProcessMouseWheelGesture);
-
-	QueueSynthesizedMouseMove(InWheelEvent);
 
 	bool bShouldProcessEvent = false;
 
@@ -5404,8 +5443,7 @@ bool FSlateApplication::ProcessMouseMoveEvent( const FPointerEvent& MouseEvent, 
 	if ( !bIsSynthetic )
 	{
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_ProcessMouseMove_Tooltip);
-
-		QueueSynthesizedMouseMove(MouseEvent);
+		
 		GetOrCreateUser(MouseEvent)->UpdateTooltip(MenuStack, /*bCanSpawnNewTooltip =*/true);
 		
 		// Guard against synthesized mouse moves and only track user interaction if the cursor pos changed
@@ -5415,7 +5453,7 @@ bool FSlateApplication::ProcessMouseMoveEvent( const FPointerEvent& MouseEvent, 
 	// When the event came from the OS, we are guaranteed to be over a slate window.
 	// Otherwise, we are synthesizing a MouseMove ourselves, and must verify that the
 	// cursor is indeed over a Slate window.
-	const bool bOverSlateWindow = !bIsSynthetic || PlatformApplication->IsCursorDirectlyOverSlateWindow();
+	const bool bOverSlateWindow = !bIsSynthetic || IsActive() || PlatformApplication->IsCursorDirectlyOverSlateWindow();
 	
 	FWidgetPath WidgetsUnderCursor = bOverSlateWindow
 		? LocateWindowUnderMouse(MouseEvent.GetScreenSpacePosition(), GetInteractiveTopLevelWindows(), false, MouseEvent.GetUserIndex())
@@ -5819,7 +5857,6 @@ bool FSlateApplication::OnMotionDetected(const FVector& Tilt, const FVector& Rot
 
 void FSlateApplication::ProcessMotionDetectedEvent( const FMotionEvent& MotionEvent )
 {
-	QueueSynthesizedMouseMove(MotionEvent);
 	SetLastUserInteractionTime(this->GetCurrentTime());
 	
 	if (!InputPreProcessors.HandleMotionDetectedEvent(*this, MotionEvent))
@@ -6028,10 +6065,6 @@ bool FSlateApplication::ProcessWindowActivatedEvent( const FWindowActivateEvent&
 			SetLastUserInteractionTime(this->GetCurrentTime());
 		}
 		
-		// Widgets that happen to be under the mouse need to update if activation changes
-		// This also serves as a force redraw which is needed when restoring a window that was previously inactive.
-		ForEachUser([](FSlateUser& User) { User.QueueSyntheticCursorMove(); });
-
 		// NOTE: The window is brought to front even when a modal window is active and this is not the modal window one of its children 
 		// The reason for this is so that the Slate window order is in sync with the OS window order when a modal window is open.  This is important so that when the modal window closes the proper window receives input from Slate.
 		// If you change this be sure to test windows are activated properly and receive input when they are opened when a modal dialog is open.
@@ -6173,14 +6206,7 @@ void FSlateApplication::ProcessApplicationActivationEvent(bool InAppActivated)
 		// Clear the pressed buttons when we deactivate the application, the button state can no longer be trusted.
 		PressedMouseButtons.Reset();
 	}
-	else
-	{
-		//Ensure that slate ticks/renders next frame
-		ForEachUser([](FSlateUser& User) { User.QueueSyntheticCursorMove(); });
-
-		//TODO Requery pushed button state?
-	}
-
+	
 	OnApplicationActivationStateChanged().Broadcast(InAppActivated);
 }
 

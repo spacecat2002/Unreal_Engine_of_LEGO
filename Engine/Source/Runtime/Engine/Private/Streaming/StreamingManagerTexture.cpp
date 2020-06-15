@@ -10,6 +10,7 @@
 #include "Engine/TextureStreamingTypes.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/SkeletalMesh.h"
+#include "LandscapeComponent.h"
 #include "Materials/MaterialInterface.h"
 #include "Misc/CommandLine.h"
 #include "Misc/ConfigCacheIni.h"
@@ -117,11 +118,13 @@ FRenderAssetStreamingManager::FRenderAssetStreamingManager()
 		NumStreamedMips_Texture[LODGroup] = TexGroup.NumStreamedMips;
 	}
 
-	// TODO: NumStreamedMips_StaticMesh, NumStreamedMips_SkeletalMesh
+	// TODO: NumStreamedMips_StaticMesh, NumStreamedMips_SkeletalMesh, NumStreamedMips_LandscapeMeshMobile
 	NumStreamedMips_StaticMesh.Empty(1);
 	NumStreamedMips_StaticMesh.Add(INT32_MAX);
 	NumStreamedMips_SkeletalMesh.Empty(1);
 	NumStreamedMips_SkeletalMesh.Add(INT32_MAX);
+	NumStreamedMips_LandscapeMeshMobile.Empty(1);
+	NumStreamedMips_LandscapeMeshMobile.Add(INT32_MAX);
 
 	// setup the streaming resource flush function pointer
 	GFlushStreamingFunc = &FlushResourceStreaming;
@@ -134,7 +137,17 @@ FRenderAssetStreamingManager::FRenderAssetStreamingManager()
 
 	FCoreUObjectDelegates::GetPreGarbageCollectDelegate().AddRaw(this, &FRenderAssetStreamingManager::OnPreGarbageCollect);
 
-	FCoreDelegates::OnPakFileMounted2.AddRaw(this, &FRenderAssetStreamingManager::OnPakFileMounted);
+	FCoreDelegates::OnPakFileMounted2.AddLambda([this](const IPakFile& PakFile)
+	{
+		FScopeLock ScopeLock(&MountedStateDirtyFilesCS);
+		bRecacheAllFiles = true;
+		MountedStateDirtyFiles.Empty();
+	});
+
+	FCoreDelegates::NewFileAddedDelegate.AddLambda([this](const FString& FileName)
+	{
+		MarkMountedStateDirty(MakeIoFilenameHash(FileName));
+	});
 }
 
 FRenderAssetStreamingManager::~FRenderAssetStreamingManager()
@@ -187,12 +200,13 @@ void FRenderAssetStreamingManager::OnPreGarbageCollect()
 	SetRenderAssetsRemovedTimestamp(RemovedRenderAssets);
 }
 
-
-
-void FRenderAssetStreamingManager::OnPakFileMounted(const IPakFile& PakFile)
+void FRenderAssetStreamingManager::MarkMountedStateDirty(FIoFilenameHash FilenameHash)
 {
-	// clear the cached file exists checks which failed as they may now be loaded
-	bNewFilesLoaded = true;
+	if (!bRecacheAllFiles && FilenameHash != INVALID_IO_FILENAME_HASH)
+	{
+		FScopeLock ScopeLock(&MountedStateDirtyFilesCS);
+		MountedStateDirtyFiles.Emplace(FilenameHash);
+	}
 }
 
 /**
@@ -559,13 +573,10 @@ void FRenderAssetStreamingManager::ProcessLevelsToReferenceToStreamedTextures()
 
 			TBitArray<>& LevelIndexUsage = StreamingRenderAsset.LevelIndexUsage;
 
-			if (LevelIndex >= LevelIndexUsage.Num())
+			if (LevelIndex >= (int)(LevelIndexUsage.Num()))
 			{
 				uint32 NumBits = LevelIndex + 1 - LevelIndexUsage.Num();
-				for (uint32 Index = 0; Index < NumBits; ++Index)
-				{
-					LevelIndexUsage.Add(false);
-				}
+				LevelIndexUsage.Add(false, NumBits);
 			}
 
 			LevelIndexUsage[LevelIndex] = true;
@@ -776,6 +787,11 @@ void FRenderAssetStreamingManager::AddStreamingRenderAsset(UStaticMesh* StaticMe
 void FRenderAssetStreamingManager::AddStreamingRenderAsset(USkeletalMesh* SkeletalMesh)
 {
 	AddStreamingRenderAsset_Internal(SkeletalMesh, FStreamingRenderAsset::AT_SkeletalMesh);
+}
+
+void FRenderAssetStreamingManager::AddStreamingRenderAsset(ULandscapeLODStreamingProxy* Landscape)
+{
+	AddStreamingRenderAsset_Internal(Landscape, FStreamingRenderAsset::AT_LandscapeMeshMobile);
 }
 
 /**
@@ -1946,6 +1962,7 @@ bool FRenderAssetStreamingManager::HandleCancelRenderAssetStreamingCommand( cons
 	UTexture2D::CancelPendingTextureStreaming();
 	UStaticMesh::CancelAllPendingStreamingActions();
 	USkeletalMesh::CancelAllPendingStreamingActions();
+	ULandscapeLODStreamingProxy::CancelAllPendingStreamingActions();
 	return true;
 }
 
@@ -2320,9 +2337,9 @@ bool FRenderAssetStreamingManager::HandleInvestigateRenderAssetCommand(const TCH
 						}
 
 						// LOD group MaxResolution clamp : see UTextureLODSettings::CalculateLODBias(), included in CachedCombinedLODBias
-						const int32 MipCountBeforeMaxRes = StreamingRenderAsset.MipCount - Texture2D->NumCinematicMipLevels -
+						const int32 MipCountBeforeMaxRes = StreamingRenderAsset.MipCount - RenderAsset->NumCinematicMipLevels -
 							(StreamingRenderAsset.LODGroup == TEXTUREGROUP_UI ? GUITextureLODBias : 0) - 
-							(FPlatformProperties::RequiresCookedData() ? 0 : (LODGroupInfo.LODBias + Texture2D->LODBias));
+							(FPlatformProperties::RequiresCookedData() ? 0 : (LODGroupInfo.LODBias + (Texture2D ? Texture2D->LODBias : 0)));
 						const int32 MaxResBias = MipCountBeforeMaxRes - (LODGroupInfo.MaxLODMipCount + 1);
 						if (MaxResBias > 0)
 						{
@@ -2331,7 +2348,7 @@ bool FRenderAssetStreamingManager::HandleInvestigateRenderAssetCommand(const TCH
 						}
 
 						// Asset LODBias : see UTextureLODSettings::CalculateLODBias(), included in CachedCombinedLODBias
-						if (Texture2D->LODBias)
+						if (Texture2D && Texture2D->LODBias)
 						{
 							if (FPlatformProperties::RequiresCookedData())
 							{
@@ -2345,10 +2362,10 @@ bool FRenderAssetStreamingManager::HandleInvestigateRenderAssetCommand(const TCH
 						}
 
 						// Asset cinematic mips : see UTextureLODSettings::CalculateLODBias() and FStreamingRenderAsset::UpdateDynamicData(), included in CachedCombinedLODBias
-						if (Texture2D->NumCinematicMipLevels && !(StreamingRenderAsset.bForceFullyLoad && Texture2D->bUseCinematicMipLevels))
+						if (RenderAsset->NumCinematicMipLevels && !(StreamingRenderAsset.bForceFullyLoad && RenderAsset->bUseCinematicMipLevels))
 						{
-							BiasDesc += FString::Printf(TEXT(" [Asset.Cine:%d]"), Texture2D->NumCinematicMipLevels);
-							CumuBias += Texture2D->NumCinematicMipLevels;
+							BiasDesc += FString::Printf(TEXT(" [Asset.Cine:%d]"), RenderAsset->NumCinematicMipLevels);
+							CumuBias += RenderAsset->NumCinematicMipLevels;
 						}
 					}
 

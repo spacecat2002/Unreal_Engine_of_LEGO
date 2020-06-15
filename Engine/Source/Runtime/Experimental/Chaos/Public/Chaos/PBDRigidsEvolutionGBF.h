@@ -2,23 +2,24 @@
 #pragma once
 
 #include "Chaos/ChaosPerfTest.h"
-#include "Chaos/Collision/CollisionDetector.h"
-#include "Chaos/Collision/CollisionReceiver.h"
 #include "Chaos/Collision/NarrowPhase.h"
 #include "Chaos/Collision/SpatialAccelerationBroadPhase.h"
+#include "Chaos/Collision/SpatialAccelerationCollisionDetector.h"
 #include "Chaos/PBDCollisionConstraints.h"
 #include "Chaos/PBDRigidsEvolution.h"
+#include "Chaos/PerParticleAddImpulses.h"
 #include "Chaos/PerParticleEtherDrag.h"
 #include "Chaos/PerParticleEulerStepVelocity.h"
 #include "Chaos/PerParticleExternalForces.h"
 #include "Chaos/PerParticleGravity.h"
 #include "Chaos/PerParticleInitForce.h"
 #include "Chaos/PerParticlePBDEulerStep.h"
-#include "Chaos/PerParticleAddImpulses.h"
 
 namespace Chaos
 {
 	class FChaosArchive;
+	class IResimCacheBase;
+	class FEvolutionResimCache;
 
 	CHAOS_API extern float HackMaxAngularVelocity;
 	CHAOS_API extern float HackMaxVelocity;
@@ -26,30 +27,77 @@ namespace Chaos
 	CHAOS_API extern float HackLinearDrag;
 	CHAOS_API extern float HackAngularDrag;
 
-	class FPBDRigidsEvolutionGBF;
-
 	using FPBDRigidsEvolutionCallback = TFunction<void()>;
 
 	using FPBDRigidsEvolutionIslandCallback = TFunction<void(int32 Island)>;
 
-	class FPBDRigidsEvolutionGBF : public FPBDRigidsEvolutionBase
+	using FPBDRigidsEvolutionInternalHandleCallback = TFunction<void(
+		const TGeometryParticleHandle<float, 3> * OldParticle,
+		const TGeometryParticleHandle<float, 3> * NewParticle)>;
+
+	template <typename Traits>
+	class TPBDRigidsEvolutionGBF : public TPBDRigidsEvolutionBase<Traits>
 	{
 	public:
-		using Base = FPBDRigidsEvolutionBase;
+		using Base = TPBDRigidsEvolutionBase<Traits>;
+		using Base::Particles;
+		using typename Base::FForceRule;
+		using Base::ForceRules;
+		using Base::PrepareTick;
+		using Base::UnprepareTick;
+		using Base::ApplyKinematicTargets;
+		using Base::UpdateConstraintPositionBasedState;
+		using Base::InternalAcceleration;
+		using Base::CreateConstraintGraph;
+		using Base::CreateIslands;
+		using Base::GetParticles;
+		using Base::DirtyParticle;
+		using Base::SetPhysicsMaterial;
+		using Base::SetPerParticlePhysicsMaterial;
+		using Base::GetPerParticlePhysicsMaterial;
+		using Base::CreateParticle;
+		using Base::GenerateUniqueIdx;
+		using Base::DestroyParticle;
+		using Base::CreateClusteredParticles;
+		using Base::EnableParticle;
+		using Base::DisableParticles;
+		using Base::GetActiveClusteredArray;
+		using Base::NumIslands;
+		using Base::GetNonDisabledClusteredArray;
+		using Base::DisableParticle;
+		using Base::PrepareIteration;
+		using Base::GetConstraintGraph;
+		using Base::ApplyConstraints;
+		using Base::UpdateVelocities;
+		using Base::PhysicsMaterials;
+		using Base::PerParticlePhysicsMaterials;
+		using Base::ParticleDisableCount;
+		using Base::SolverPhysicsMaterials;
+		using Base::UnprepareIteration;
+		using Base::CaptureRewindData;
+		using Base::Collided;
+		using Base::SetParticleUpdateVelocityFunction;
+		using Base::SetParticleUpdatePositionFunction;
+		using Base::AddForceFunction;
+		using Base::AddConstraintRule;
+		using Base::ParticleUpdatePosition;
 
 		using FGravityForces = TPerParticleGravity<FReal, 3>;
-		using FCollisionConstraints = TPBDCollisionConstraints<FReal, 3>;
+		using FCollisionConstraints = FPBDCollisionConstraints;
 		using FCollisionConstraintRule = TPBDConstraintColorRule<FCollisionConstraints>;
-		using FCollisionDetector = TCollisionDetector<FSpatialAccelerationBroadPhase, FNarrowPhase, FAsyncCollisionReceiver, FCollisionConstraints>;
+		using FCollisionDetector = FSpatialAccelerationCollisionDetector;
 		using FExternalForces = TPerParticleExternalForces<FReal, 3>;
 
 		static constexpr int32 DefaultNumIterations = 1;
 		static constexpr int32 DefaultNumPairIterations = 1;
-		static constexpr int32 DefaultNumPushOutIterations = 5;
+		static constexpr int32 DefaultNumPushOutIterations = 3;
 		static constexpr int32 DefaultNumPushOutPairIterations = 2;
 
-		CHAOS_API FPBDRigidsEvolutionGBF(TPBDRigidsSOAs<FReal, 3>& InParticles, int32 InNumIterations = DefaultNumIterations, int32 InNumPushoutIterations = DefaultNumPushOutIterations, bool InIsSingleThreaded = false);
-		CHAOS_API ~FPBDRigidsEvolutionGBF() {}
+		// @todo(chaos): Required by clustering - clean up
+		using Base::ApplyPushOut;
+
+		CHAOS_API TPBDRigidsEvolutionGBF(TPBDRigidsSOAs<FReal, 3>& InParticles, THandleArray<FChaosPhysicsMaterial>& SolverPhysicsMaterials, int32 InNumIterations = DefaultNumIterations, int32 InNumPushoutIterations = DefaultNumPushOutIterations, bool InIsSingleThreaded = false);
+		CHAOS_API ~TPBDRigidsEvolutionGBF() {}
 
 		void SetPostIntegrateCallback(const FPBDRigidsEvolutionCallback& Cb)
 		{
@@ -61,7 +109,7 @@ namespace Chaos
 			PostDetectCollisionsCallback = Cb;
 		}
 
-		void SetCollisionModifierCallback(const TCollisionModifierCallback<FReal, 3>& Cb)
+		void SetCollisionModifierCallback(const FCollisionModifierCallback& Cb)
 		{
 			CollisionModifierCallback = Cb;
 		}
@@ -81,13 +129,22 @@ namespace Chaos
 			PostApplyPushOutCallback = Cb;
 		}
 
+		void SetInternalParticleInitilizationFunction(const FPBDRigidsEvolutionInternalHandleCallback& Cb)
+		{ 
+			InternalParticleInitilization = Cb;
+		}
+
+		void DoInternalParticleInitilization(const TGeometryParticleHandle<float, 3>* OldParticle, const TGeometryParticleHandle<float, 3>* NewParticle) 
+		{ 
+			if(InternalParticleInitilization)
+			{
+				InternalParticleInitilization(OldParticle, NewParticle);
+			}
+		}
+
+
 		CHAOS_API void Advance(const FReal Dt, const FReal MaxStepDt, const int32 MaxSteps);
 		CHAOS_API void AdvanceOneTimeStep(const FReal dt, const FReal StepFraction = (FReal)1.0);
-
-		using Base::PrepareConstraints;
-		using Base::UnprepareConstraints;
-		using Base::ApplyConstraints;
-		using Base::ApplyPushOut;
 
 		FCollisionConstraints& GetCollisionConstraints() { return CollisionConstraints; }
 		const FCollisionConstraints& GetCollisionConstraints() const { return CollisionConstraints; }
@@ -101,8 +158,8 @@ namespace Chaos
 		FGravityForces& GetGravityForces() { return GravityForces; }
 		const FGravityForces& GetGravityForces() const { return GravityForces; }
 
-		const auto& GetRigidClustering() const { return Clustering; }
-		auto& GetRigidClustering() { return Clustering; }
+		const TPBDRigidClustering<TPBDRigidsEvolutionGBF<Traits>, FPBDCollisionConstraints, FReal, 3>& GetRigidClustering() const { return Clustering; }
+		TPBDRigidClustering<TPBDRigidsEvolutionGBF<Traits>, FPBDCollisionConstraints, FReal, 3>& GetRigidClustering() { return Clustering; }
 
 		CHAOS_API inline void EndFrame(FReal Dt)
 		{
@@ -167,7 +224,7 @@ namespace Chaos
 					{
 						const FAABB3& LocalBounds = Particle.LocalBounds();
 						FAABB3 WorldSpaceBounds = LocalBounds.TransformedAABB(FRigidTransform3(Particle.P(), Particle.Q()));
-						WorldSpaceBounds.ThickenSymmetrically(Particle.V());
+						WorldSpaceBounds.ThickenSymmetrically(Particle.V() * Dt);
 						Particle.SetWorldSpaceInflatedBounds(WorldSpaceBounds);
 					}
 				}
@@ -181,20 +238,38 @@ namespace Chaos
 
 		CHAOS_API void Serialize(FChaosArchive& Ar);
 
+		CHAOS_API TUniquePtr<IResimCacheBase> CreateExternalResimCache() const;
+		CHAOS_API void SetCurrentStepResimCache(IResimCacheBase* InCurrentStepResimCache);
+
 	protected:
-		TPBDRigidClustering<FPBDRigidsEvolutionGBF, TPBDCollisionConstraints<FReal, 3>, FReal, 3> Clustering;
+
+		CHAOS_API void AdvanceOneTimeStepImpl(const FReal dt, const FReal StepFraction);
+		
+		FEvolutionResimCache* GetCurrentStepResimCache()
+		{
+			return Traits::IsRewindable() ? CurrentStepResimCacheImp : nullptr; //(ternary is here to be able to compile out code that relies on cache data)
+		}
+
+		TPBDRigidClustering<TPBDRigidsEvolutionGBF<Traits>, FPBDCollisionConstraints, FReal, 3> Clustering;
 
 		FGravityForces GravityForces;
 		FCollisionConstraints CollisionConstraints;
 		FCollisionConstraintRule CollisionRule;
 		FSpatialAccelerationBroadPhase BroadPhase;
-		FCollisionDetector CollisionDetector;
+		FNarrowPhase NarrowPhase;
+		FSpatialAccelerationCollisionDetector CollisionDetector;
 
 		FPBDRigidsEvolutionCallback PostIntegrateCallback;
 		FPBDRigidsEvolutionCallback PostDetectCollisionsCallback;
-		TCollisionModifierCallback<FReal, 3> CollisionModifierCallback;
+		FCollisionModifierCallback CollisionModifierCallback;
 		FPBDRigidsEvolutionCallback PreApplyCallback;
 		FPBDRigidsEvolutionIslandCallback PostApplyCallback;
 		FPBDRigidsEvolutionIslandCallback PostApplyPushOutCallback;
+		FPBDRigidsEvolutionInternalHandleCallback InternalParticleInitilization;
+		FEvolutionResimCache* CurrentStepResimCacheImp;
 	};
+
+#define EVOLUTION_TRAIT(Trait) extern template class CHAOS_TEMPLATE_API TPBDRigidsEvolutionGBF<Trait>;
+#include "Chaos/EvolutionTraits.inl"
+#undef EVOLUTION_TRAIT
 }

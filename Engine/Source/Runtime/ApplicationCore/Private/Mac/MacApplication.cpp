@@ -233,7 +233,7 @@ void FMacApplication::SetAccessibleMessageHandler(const TSharedRef<FGenericAcces
 void FMacApplication::PollGameDeviceState(const float TimeDelta)
 {
 	// initialize any externally-implemented input devices (we delay load initialize the array so any plugins have had time to load)
-	if (!bHasLoadedInputPlugins)
+	if (!bHasLoadedInputPlugins && GIsRunning)
 	{
 		TArray<IInputDeviceModule*> PluginImplementations = IModularFeatures::Get().GetModularFeatureImplementations<IInputDeviceModule>( IInputDeviceModule::GetModularFeatureName() );
 		for( auto InputPluginIt = PluginImplementations.CreateIterator(); InputPluginIt; ++InputPluginIt )
@@ -779,7 +779,7 @@ void FMacApplication::ProcessEvent(const FDeferredMacEvent& Event)
 				for (int32 Index = 0; Index < [Files count]; Index++)
 				{
 					NSString* FilePath = [Files objectAtIndex: Index];
-					const FString ListElement = FString([FilePath fileSystemRepresentation]);
+					const FString ListElement = UTF8_TO_TCHAR([FilePath fileSystemRepresentation]);
 					FileList.Add(ListElement);
 				}
 
@@ -795,7 +795,7 @@ void FMacApplication::ProcessEvent(const FDeferredMacEvent& Event)
 				for (int32 Index = 0; Index < [Files count]; Index++)
 				{
 					NSString* FilePath = [Files objectAtIndex: Index];
-					const FString ListElement = FString([FilePath fileSystemRepresentation]);
+					const FString ListElement = UTF8_TO_TCHAR([FilePath fileSystemRepresentation]);
 					FileList.Add(ListElement);
 				}
 

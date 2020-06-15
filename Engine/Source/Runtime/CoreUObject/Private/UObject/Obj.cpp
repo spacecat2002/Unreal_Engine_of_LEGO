@@ -86,6 +86,10 @@ static UPackage*			GObjTransientPkg								= NULL;
 	static TArray<FString>			DebugSpikeMarkNames;
 #endif
 
+#if WITH_EDITOR
+	UObject::FAssetRegistryTag::FOnGetObjectAssetRegistryTags UObject::FAssetRegistryTag::OnGetExtraObjectTags;
+#endif // WITH_EDITOR
+
 UObject::UObject( EStaticConstructor, EObjectFlags InFlags )
 : UObjectBaseUtility(InFlags | (!(InFlags & RF_Dynamic) ? (RF_MarkAsNative | RF_MarkAsRootSet) : RF_NoFlags))
 {
@@ -780,6 +784,8 @@ void UObject::BeginDestroy()
 #endif // WITH_EDITORONLY_DATA
 
 	LowLevelRename(NAME_None);
+	// Remove any associated external package, at this point
+	SetExternalPackage(nullptr);
 
 	// ensure BeginDestroy has been routed back to UObject::BeginDestroy.
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
@@ -1028,6 +1034,8 @@ bool UObject::ConditionalFinishDestroy()
 
 void UObject::ConditionalPostLoad()
 {
+	LLM_SCOPE(ELLMTag::UObject);
+
 	check(!GEventDrivenLoaderEnabled || !HasAnyFlags(RF_NeedLoad)); //@todoio Added this as "nicks rule"
 									  // PostLoad only if the object needs it and has already been serialized
 	//@todoio note this logic should be unchanged compared to main
@@ -1061,6 +1069,9 @@ void UObject::ConditionalPostLoad()
 			}
 			else
 			{
+#if WITH_EDITOR
+				SCOPED_LOADTIMER_TEXT(*((GetClass()->IsChildOf(UDynamicClass::StaticClass()) ? UDynamicClass::StaticClass() : GetClass())->GetName() + TEXT("_PostLoad")));
+#endif
 				LLM_SCOPED_TAG_WITH_OBJECT_IN_SET(GetOutermost(), ELLMTagSet::Assets);
 				LLM_SCOPED_TAG_WITH_OBJECT_IN_SET(GetClass()->IsChildOf(UDynamicClass::StaticClass()) ? UDynamicClass::StaticClass() : GetClass(), ELLMTagSet::AssetClasses);
 
@@ -1815,6 +1826,9 @@ void UObject::GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const
 	FAssetRegistryTag::GetAssetRegistryTagsFromSearchableProperties(this, OutTags);
 
 #if WITH_EDITOR
+	// Notify external sources that we need tags.
+	FAssetRegistryTag::OnGetExtraObjectTags.Broadcast(this, OutTags);
+
 	// Check if there's a UMetaData for this object that has tags that are requested in the settings to be transferred to the Asset Registry
 	const TSet<FName>& MetaDataTagsForAR = GetMetaDataTagsForAssetRegistry();
 	if (MetaDataTagsForAR.Num() > 0)
@@ -3082,7 +3096,7 @@ static void PerformSetCommand( const TCHAR* Str, FOutputDevice& Ar, bool bNotify
 		UClass* Class = FindObject<UClass>(ANY_PACKAGE, ObjectName);
 		if (Class != NULL)
 		{
-			FProperty* Property = FindField<FProperty>(Class, PropertyName);
+			FProperty* Property = FindFProperty<FProperty>(Class, PropertyName);
 			if (Property != NULL)
 			{
 				while (*Str == ' ')
@@ -3101,7 +3115,7 @@ static void PerformSetCommand( const TCHAR* Str, FOutputDevice& Ar, bool bNotify
 			UObject* Object = FindObject<UObject>(ANY_PACKAGE, ObjectName);
 			if (Object != NULL)
 			{
-				FProperty* Property = FindField<FProperty>(Object->GetClass(), PropertyName);
+				FProperty* Property = FindFProperty<FProperty>(Object->GetClass(), PropertyName);
 				if (Property != NULL)
 				{
 					while (*Str == ' ')
@@ -3291,7 +3305,7 @@ bool StaticExec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar )
 		{
 			if
 			(	FParse::Token( Str, PropertyName, UE_ARRAY_COUNT(PropertyName), 1 )
-			&&	(Property=FindField<FProperty>( Class, PropertyName))!=NULL )
+			&&	(Property=FindFProperty<FProperty>( Class, PropertyName))!=NULL )
 			{
 				FString	Temp;
 				if( Class->GetDefaultsCount() )
@@ -3452,7 +3466,7 @@ bool StaticExec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar )
 		{
 			FParse::Token(Str,PropertyName,UE_ARRAY_COUNT(PropertyName),1);
 			{
-				Property=FindField<FProperty>(Class,PropertyName);
+				Property=FindFProperty<FProperty>(Class,PropertyName);
 				{
 					int32 cnt = 0;
 					UObject* LimitOuter = NULL;
@@ -3593,7 +3607,7 @@ bool StaticExec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar )
 
 		if (FParse::Token(Str, ClassName, UE_ARRAY_COUNT(ClassName), true))
 		{
-			//if ( (Property=FindField<FProperty>(Class,PropertyName)) != NULL )
+			//if ( (Property=FindFProperty<FProperty>(Class,PropertyName)) != NULL )
 			UClass* Class = FindObject<UClass>(ANY_PACKAGE, ClassName);
 
 			if (Class != NULL)
@@ -3624,7 +3638,7 @@ bool StaticExec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar )
 
 			if (Class != NULL)
 			{
-				UFunction* Function = FindField<UFunction>(Class, FunctionName);
+				UFunction* Function = FindUField<UFunction>(Class, FunctionName);
 
 				if (Function != NULL)
 				{
@@ -4330,6 +4344,7 @@ void InitUObject()
 	FGCCSyncObject::Create();
 
 	// Initialize redirects map
+	FCoreRedirects::Initialize();
 	for (const TPair<FString,FConfigFile>& It : *GConfig)
 	{
 		FCoreRedirects::ReadRedirectsFromIni(It.Key);
@@ -4427,11 +4442,16 @@ void StaticExit()
 		GUObjectArray.CloseDisregardForGC();
 	}
 
+	// Complete any pending incremental GC
+	if (IsIncrementalPurgePending())
+	{
+		IncrementalPurgeGarbage(false);
+	}
+
 	// Make sure no other threads manipulate UObjects
 	AcquireGCLock();
 
-	GatherUnreachableObjects(false);
-	IncrementalPurgeGarbage(false);
+	// Dissolve all clusters before the final GC pass
 	GUObjectClusters.DissolveClusters(true);
 
 	// Keep track of how many objects there are for GC stats as we simulate a mark pass.
@@ -4453,10 +4473,18 @@ void StaticExit()
 		FUObjectItem* ObjItem = *It;
 		checkSlow(ObjItem);
 		UObject* Obj = static_cast<UObject*>(ObjItem->Object);
-		if (Obj && !Obj->IsA<UField>()) // Skip Structures, properties, etc.. They could be still necessary while GC.
+		if (Obj) 
 		{
-			// Mark as unreachable so purge phase will kill it.
-			ObjItem->SetUnreachable();
+			// Skip Structures, properties, etc.. They could be still necessary while GC.
+			if (!Obj->IsA<UField>())
+			{
+				// Mark as unreachable so purge phase will kill it.
+				ObjItem->SetUnreachable();
+			}
+			else
+			{
+				ObjItem->ClearUnreachable();
+			}
 		}
 	}
 

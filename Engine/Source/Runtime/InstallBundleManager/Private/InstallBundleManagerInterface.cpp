@@ -3,11 +3,13 @@
 #include "InstallBundleManagerInterface.h"
 #include "InstallBundleManagerModule.h"
 
+FInstallBundleCompleteMultiDelegate IInstallBundleManager::InstallBundleUpdatedDelegate;
+
 FInstallBundleCompleteMultiDelegate IInstallBundleManager::InstallBundleCompleteDelegate;
 
-FInstallBundleCompleteMultiDelegate IInstallBundleManager::RemoveBundleCompleteDelegate;
-
 FInstallBundlePausedMultiDelegate IInstallBundleManager::PausedBundleDelegate;
+
+FInstallBundleManagerOnPatchCheckComplete IInstallBundleManager::PatchCheckCompleteDelegate;
 
 IInstallBundleManager* IInstallBundleManager::GetPlatformInstallBundleManager()
 {
@@ -21,11 +23,14 @@ IInstallBundleManager* IInstallBundleManager::GetPlatformInstallBundleManager()
 	{
 		FString ModuleName;
 		IInstallBundleManagerModule* Module = nullptr;
+#if WITH_EDITOR
+		GConfig->GetString(TEXT("InstallBundleManager"), TEXT("EditorModuleName"), ModuleName, GEngineIni);
+#else
 		GConfig->GetString(TEXT("InstallBundleManager"), TEXT("ModuleName"), ModuleName, GEngineIni);
+#endif // WITH_EDITOR
 
 		if (FModuleManager::Get().ModuleExists(*ModuleName))
 		{
-			FModuleStatus Status;
 			Module = FModuleManager::LoadModulePtr<IInstallBundleManagerModule>(*ModuleName);
 			if (Module)
 			{
@@ -44,9 +49,19 @@ FInstallBundleRequestInfo IInstallBundleManager::RequestUpdateContent(FName Bund
 	return RequestUpdateContent(MakeArrayView(&BundleName, 1), Flags);
 }
 
-void IInstallBundleManager::GetContentState(FName BundleName, EInstallBundleGetContentStateFlags Flags, bool bAddDependencies, FInstallBundleGetContentStateDelegate Callback, FName RequestTag /*= TEXT("None")*/)
+void IInstallBundleManager::GetContentState(FName BundleName, EInstallBundleGetContentStateFlags Flags, bool bAddDependencies, FInstallBundleGetContentStateDelegate Callback, FName RequestTag /*= NAME_None*/)
 {
 	return GetContentState(MakeArrayView(&BundleName, 1), Flags, bAddDependencies, MoveTemp(Callback), RequestTag);
+}
+
+void IInstallBundleManager::GetInstallState(FName BundleName, bool bAddDependencies, FInstallBundleGetInstallStateDelegate Callback, FName RequestTag /*= NAME_None*/)
+{
+	return GetInstallState(MakeArrayView(&BundleName, 1), bAddDependencies, MoveTemp(Callback), RequestTag);
+}
+
+TOptional<FInstallBundleCombinedInstallState> IInstallBundleManager::GetInstallStateSynchronous(FName BundleName, bool bAddDependencies) const
+{
+	return GetInstallStateSynchronous(MakeArrayView(&BundleName, 1), bAddDependencies);
 }
 
 void IInstallBundleManager::RequestRemoveContentOnNextInit(FName RemoveName, TArrayView<const FName> KeepNames /*= TArrayView<const FName>()*/)
@@ -77,5 +92,10 @@ void IInstallBundleManager::ResumeUpdateContent(FName BundleName)
 void IInstallBundleManager::UpdateContentRequestFlags(FName BundleName, EInstallBundleRequestFlags AddFlags, EInstallBundleRequestFlags RemoveFlags)
 {
 	UpdateContentRequestFlags(MakeArrayView(&BundleName, 1), AddFlags, RemoveFlags);
+}
+
+void IInstallBundleManager::StartPatchCheck()
+{
+	PatchCheckCompleteDelegate.Broadcast(EInstallBundleManagerPatchCheckResult::NoPatchRequired);
 }
 

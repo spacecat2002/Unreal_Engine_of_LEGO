@@ -44,12 +44,24 @@
 #include "DeviceProfiles/DeviceProfile.h"
 #include "Animation/AnimStreamable.h"
 #include "Modules/ModuleManager.h"
+#include "ProfilingDebugging/CookStats.h"
 
 #define USE_SLERP 0
 #define LOCTEXT_NAMESPACE "AnimSequence"
 
 DECLARE_CYCLE_STAT(TEXT("AnimSeq GetBonePose"), STAT_AnimSeq_GetBonePose, STATGROUP_Anim);
 DECLARE_CYCLE_STAT(TEXT("AnimSeq EvalCurveData"), STAT_AnimSeq_EvalCurveData, STATGROUP_Anim);
+
+#if ENABLE_COOK_STATS
+namespace AnimSequenceCookStats
+{
+	static FCookStats::FDDCResourceUsageStats UsageStats;
+	static FCookStatsManager::FAutoRegisterCallback RegisterCookStats([](FCookStatsManager::AddStatFuncRef AddStat)
+	{
+		UsageStats.LogStats(AddStat, TEXT("AnimSequence.Usage"), TEXT(""));
+	});
+}
+#endif
 
 CSV_DECLARE_CATEGORY_MODULE_EXTERN(ENGINE_API, Animation);
 
@@ -539,6 +551,35 @@ float GetIntervalPerKey(int32 NumFrames, float SequenceLength)
 	return (NumFrames > 1) ? (SequenceLength / (NumFrames-1)) : MINIMUM_ANIMATION_LENGTH;
 }
 
+#if WITH_EDITOR
+// Handles keeping source raw data in sync when modifying raw data
+struct FModifyRawDataSourceGuard
+{
+private:
+	UAnimSequence* ModifyingSequence;
+
+public:
+	FModifyRawDataSourceGuard(UAnimSequence* AnimToModify)
+		: ModifyingSequence(nullptr)
+	{
+		check(AnimToModify)
+		if (AnimToModify->HasBakedTransformCurves())
+		{
+			ModifyingSequence = AnimToModify;
+			ModifyingSequence->RestoreSourceData();
+		}
+	}
+
+	~FModifyRawDataSourceGuard()
+	{
+		if (ModifyingSequence)
+		{
+			ModifyingSequence->BakeTrackCurvesToRawAnimation();
+		}
+	}
+};
+#endif
+
 /////////////////////////////////////////////////////
 // UAnimSequence
 
@@ -562,8 +603,6 @@ UAnimSequence::UAnimSequence(const FObjectInitializer& ObjectInitializer)
 	bAllowFrameStripping = true;
 	CompressionErrorThresholdScale = 1.f;
 #endif
-
-	InitCurveCompressionScheme();
 }
 
 void UAnimSequence::PostInitProperties()
@@ -665,25 +704,6 @@ static void LoadOldCompressedTrack(FArchive& Ar, FCompressedTrack& Dst, int32 By
 	// Serialize mins and ranges.
 	Ar << Dst.Mins[0] << Dst.Mins[1] << Dst.Mins[2];
 	Ar << Dst.Ranges[0] << Dst.Ranges[1] << Dst.Ranges[2];
-}
-
-void UAnimSequence::InitCurveCompressionScheme()
-{
-	// Do this is serialize as if the default animation curve compression asset isn't loaded it will
-// fire a warning if we try and load it in post load
-
-	bool bCurveCompressionSettingsValid = CurveCompressionSettings != nullptr;
-#if WITH_EDITOR
-	bCurveCompressionSettingsValid = bCurveCompressionSettingsValid && CurveCompressionSettings->AreSettingsValid();
-#endif
-	if (!bCurveCompressionSettingsValid
-#if WITH_HOT_RELOAD
-		&& (GetClass()->HasAnyClassFlags(CLASS_CompiledFromBlueprint) || !HasAnyFlags(RF_ClassDefaultObject) || !GIsHotReload) // Don't do this to native CDOs during Hot-Reload
-#endif
-		)
-	{
-		CurveCompressionSettings = FAnimationUtils::GetDefaultAnimationCurveCompressionSettings();
-	}
 }
 
 void UAnimSequence::Serialize(FArchive& Ar)
@@ -796,8 +816,6 @@ void UAnimSequence::Serialize(FArchive& Ar)
 		SourceFilePath_DEPRECATED = TEXT("");
 		SourceFileTimestamp_DEPRECATED = TEXT("");
 	}
-
-	InitCurveCompressionScheme();
 
 #endif // WITH_EDITORONLY_DATA
 }
@@ -1195,7 +1213,7 @@ void UAnimSequence::PostEditChangeProperty(FPropertyChangedEvent& PropertyChange
 	// @Todo fix me: This is temporary fix to make sure they always have compressed data
 	if (RawAnimationData.Num() > 0 && bNeedPostProcess)
 	{
-		PostProcessSequence();
+		PostProcessSequence(false);
 	}
 
 	if (PropertyChangedEvent.Property != nullptr)
@@ -1583,7 +1601,8 @@ void UAnimSequence::GetBonePose(FCompactPose& OutPose, FBlendedCurve& OutCurve, 
 		return;
 	}
 
-	FRootMotionReset RootMotionReset(bEnableRootMotion, RootMotionRootLock, bForceRootLock, ExtractRootTrackTransform(0.f, &RequiredBones), IsValidAdditive());
+	const bool bTreatAnimAsAdditive = (IsValidAdditive() && !bUseRawDataForPoseExtraction); // Raw data is never additive
+	FRootMotionReset RootMotionReset(bEnableRootMotion, RootMotionRootLock, bForceRootLock, ExtractRootTrackTransform(0.f, &RequiredBones), bTreatAnimAsAdditive);
 
 #if WITH_EDITOR
 	// this happens only with editor data
@@ -1948,6 +1967,10 @@ bool UAnimSequence::InsertFramesToRawAnimData( int32 StartFrame, int32 EndFrame,
 	int32 NumFramesToInsert = EndFrame-StartFrame;
 	if ((CopyFrame>=0 && CopyFrame<NumFrames) && (StartFrame >= 0 && StartFrame <=NumFrames) && NumFramesToInsert > 0)
 	{
+#if WITH_EDITOR
+		FModifyRawDataSourceGuard Modify(this);
+#endif
+
 		for (auto& RawData : RawAnimationData)
 		{
 			if (RawData.PosKeys.Num() > 1 && RawData.PosKeys.IsValidIndex(CopyFrame))
@@ -2148,15 +2171,16 @@ FString UAnimSequence::GetDDCCacheKeySuffix(const bool bPerformStripping) const
 }
 #endif
 
-void UAnimSequence::WaitOnExistingCompression(const bool bCancelIfNotStarted)
+void UAnimSequence::WaitOnExistingCompression(const bool bWantResults)
 {
 #if WITH_EDITOR
 	check(IsInGameThread());
 	if (bCompressionInProgress)
 	{
-		double WaitTime = FPlatformTime::Seconds();
-		FAsyncCompressedAnimationsManagement::Get().WaitOnExistingCompression(this, bCancelIfNotStarted);
+		COOK_STAT(auto Timer = AnimSequenceCookStats::UsageStats.TimeAsyncWait());
+		FAsyncCompressedAnimationsManagement::Get().WaitOnExistingCompression(this, bWantResults);
 		bCompressionInProgress = false;
+		COOK_STAT(Timer.TrackCyclesOnly()); // Need to get hit/miss and size from WaitOnExistingCompression!
 	}
 #endif
 }
@@ -2217,6 +2241,8 @@ void UAnimSequence::RequestAnimCompression(FRequestAnimCompressionParams Params)
 
 	TArray<uint8> OutData;
 	{
+		COOK_STAT(auto Timer = AnimSequenceCookStats::UsageStats.TimeSyncWork());
+
 		FDerivedDataAnimationCompression* AnimCompressor = new FDerivedDataAnimationCompression(TEXT("AnimSeq"), AssetDDCKey, Params.CompressContext);
 
 		const FString FinalDDCKey = FDerivedDataCacheInterface::BuildCacheKey(AnimCompressor->GetPluginName(), AnimCompressor->GetVersionString(), *AnimCompressor->GetPluginSpecificCacheKeySuffix());
@@ -2224,7 +2250,12 @@ void UAnimSequence::RequestAnimCompression(FRequestAnimCompressionParams Params)
 		// For debugging DDC/Compression issues		
 		const bool bSkipDDC = false;
 
-		if (bSkipDDC || !GetDerivedDataCacheRef().GetSynchronous(*FinalDDCKey, OutData, AnimCompressor->GetDebugContextString()))
+		if (!bSkipDDC && GetDerivedDataCacheRef().GetSynchronous(*FinalDDCKey, OutData, AnimCompressor->GetDebugContextString()))
+		{
+			COOK_STAT(Timer.AddHit(OutData.Num()));
+			bCompressedDataFromDDC = true;
+		}
+		else
 		{
 			// Data does not exist, need to build it.
 			// Filter RAW data to get rid of mismatched tracks (translation/rotation data with a different number of keys than there are frames)
@@ -2237,23 +2268,27 @@ void UAnimSequence::RequestAnimCompression(FRequestAnimCompressionParams Params)
 			if (bSkipDDC || (CompressCommandletVersion == INDEX_NONE))
 			{
 				AnimCompressor->Build(OutData);
+				COOK_STAT(Timer.AddMiss(OutData.Num()));
 			}
 			else if (AnimCompressor->CanBuild())
 			{
 				if (Params.bAsyncCompression)
 				{
 					FAsyncCompressedAnimationsManagement::Get().RequestAsyncCompression(*AnimCompressor, this, bPerformStripping, OutData);
+					COOK_STAT(Timer.TrackCyclesOnly());
 				}
 				else
 				{
-					GetDerivedDataCacheRef().GetSynchronous(AnimCompressor, OutData);
+					bool bBuilt = false;
+					const bool bSuccess = GetDerivedDataCacheRef().GetSynchronous(AnimCompressor, OutData, &bBuilt);
+					COOK_STAT(Timer.AddHitOrMiss(!bSuccess || bBuilt ? FCookStats::CallStats::EHitOrMiss::Miss : FCookStats::CallStats::EHitOrMiss::Hit, OutData.Num()));
 				}
 				AnimCompressor = nullptr;
 			}
-		}
-		else
-		{
-			bCompressedDataFromDDC = true;
+			else
+			{
+				COOK_STAT(Timer.TrackCyclesOnly());
+			}
 		}
 
 		if (AnimCompressor)
@@ -3655,6 +3690,10 @@ int32 FindFirstChildTrack(const USkeleton* MySkeleton, const FReferenceSkeleton&
 
 int32 UAnimSequence::InsertTrack(const FName& BoneName)
 {
+#if WITH_EDITOR
+	FModifyRawDataSourceGuard Modify(this);
+#endif
+
 	// first verify if it doesn't exists, if it does, return
 	int32 CurrentTrackIndex = AnimationTrackNames.Find(BoneName);
 	if (CurrentTrackIndex != INDEX_NONE)
@@ -4395,6 +4434,22 @@ bool UAnimSequence::DoesContainTransformCurves() const
 	return (RawCurveData.TransformCurves.Num() > 0);
 }
 
+#if WITH_EDITOR
+bool  UAnimSequence::HasBakedTransformCurves() const
+{
+	return DoesContainTransformCurves() && SourceRawAnimationData.Num() > 0;
+}
+
+void  UAnimSequence::RestoreSourceData() 
+{
+	if (HasBakedTransformCurves())
+	{
+		RawAnimationData = MoveTemp(SourceRawAnimationData);
+		bNeedsRebake = true;
+	}
+}
+#endif
+
 void UAnimSequence::AddKeyToSequence(float Time, const FName& BoneName, const FTransform& AdditiveTransform)
 {
 	// if source animation exists, but doesn't match with raw animation number, it's possible this has been retargetted
@@ -4755,8 +4810,8 @@ void UAnimSequence::AdvanceMarkerPhaseAsLeader(bool bLooping, float MoveDelta, c
 					MarkerTimeOffset = SequenceLength;
 				}
 			}
-			const float NextMarkerTime = NextSyncMarker.Time + MarkerTimeOffset;
-			const float TimeToMarker = NextMarkerTime - CurrentTime;
+
+			const float TimeToMarker = NextMarker.TimeToMarker;
 
 			if (CurrentMoveDelta > TimeToMarker)
 			{
@@ -4784,6 +4839,10 @@ void UAnimSequence::AdvanceMarkerPhaseAsLeader(bool bLooping, float MoveDelta, c
 						MarkerTimeOffset += SequenceLength;
 					}
 				} while (!ValidMarkerNames.Contains(AuthoredSyncMarkers[NextMarker.MarkerIndex].MarkerName));
+				if (NextMarker.MarkerIndex != -1)
+				{
+					NextMarker.TimeToMarker = MarkerTimeOffset + AuthoredSyncMarkers[NextMarker.MarkerIndex].Time - CurrentTime;
+				}
 			}
 			else
 			{
@@ -4820,8 +4879,8 @@ void UAnimSequence::AdvanceMarkerPhaseAsLeader(bool bLooping, float MoveDelta, c
 					MarkerTimeOffset = -SequenceLength;
 				}
 			}
-			const float PrevMarkerTime = PrevSyncMarker.Time + MarkerTimeOffset;
-			const float TimeToMarker = PrevMarkerTime - CurrentTime;
+
+			const float TimeToMarker = NextMarker.TimeToMarker;
 
 			if (CurrentMoveDelta < TimeToMarker)
 			{
@@ -4849,6 +4908,10 @@ void UAnimSequence::AdvanceMarkerPhaseAsLeader(bool bLooping, float MoveDelta, c
 						MarkerTimeOffset -= SequenceLength;
 					}
 				} while (!ValidMarkerNames.Contains(AuthoredSyncMarkers[PrevMarker.MarkerIndex].MarkerName));
+				if (PrevMarker.MarkerIndex != -1)
+				{
+					PrevMarker.TimeToMarker = MarkerTimeOffset + AuthoredSyncMarkers[PrevMarker.MarkerIndex].Time - CurrentTime;
+				}
 			}
 			else
 			{
@@ -5147,8 +5210,15 @@ FMarkerSyncAnimPosition UAnimSequence::GetMarkerSyncPositionfromMarkerIndicies(i
 	}
 
 	// Account for looping
-	PrevTime = (PrevTime > CurrentTime) ? PrevTime - SequenceLength : PrevTime;
-	NextTime = (NextTime < CurrentTime) ? NextTime + SequenceLength : NextTime;
+	if(PrevTime > NextTime)
+	{
+		PrevTime = (PrevTime > CurrentTime) ? PrevTime - SequenceLength : PrevTime;
+		NextTime = (NextTime < CurrentTime) ? NextTime + SequenceLength : NextTime;
+	}
+	else if (PrevTime > CurrentTime)
+	{
+		CurrentTime += SequenceLength;
+	}
 
 	if (PrevTime == NextTime)
 	{

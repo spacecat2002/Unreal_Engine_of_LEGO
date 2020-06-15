@@ -226,7 +226,7 @@ protected:
 	static void SetParameters(FRHICommandList& RHICmdList, const TShaderRef<FPostProcessMaterialShader> & Shader, TRHIShader* ShaderRHI, const FViewInfo& View, const FMaterialRenderProxy* Proxy, const FParameters& Parameters)
 	{
 		FMaterialShader* MaterialShader = Shader.GetShader();
-		MaterialShader->SetParameters(RHICmdList, ShaderRHI, Proxy, *Proxy->GetMaterial(View.GetFeatureLevel()), View, View.ViewUniformBuffer, ESceneTextureSetupMode::All);
+		MaterialShader->SetParameters(RHICmdList, ShaderRHI, Proxy, *Proxy->GetMaterial(View.GetFeatureLevel()), View);
 		SetShaderParameters(RHICmdList, Shader, ShaderRHI, Parameters);
 	}
 };
@@ -333,6 +333,25 @@ static void AddCopyAndFlipTexturePass(FRDGBuilder& GraphBuilder, const FViewInfo
 	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("DrawTexture"), View, OutputViewport, InputViewport, PixelShader, Parameters, EScreenPassDrawFlags::FlipYAxis);
 }
 
+void AddMobileMSAADecodeAndDrawTexturePass(
+	FRDGBuilder& GraphBuilder,
+	const FViewInfo& View,
+	FScreenPassTexture Input,
+	FScreenPassRenderTarget Output)
+{
+	const FScreenPassTextureViewport InputViewport(Input);
+	const FScreenPassTextureViewport OutputViewport(Output);
+
+	TShaderMapRef<FMSAADecodeAndCopyRectPS_ES2> PixelShader(View.ShaderMap);
+
+	FMSAADecodeAndCopyRectPS_ES2::FParameters* Parameters = GraphBuilder.AllocParameters<FMSAADecodeAndCopyRectPS_ES2::FParameters>();
+	Parameters->InputTexture = Input.Texture;
+	Parameters->InputSampler = TStaticSamplerState<>::GetRHI();
+	Parameters->RenderTargets[0] = Output.GetRenderTargetBinding();
+
+	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("MobileMSAADecodeAndDrawTexture"), View, OutputViewport, InputViewport, PixelShader, Parameters);
+}
+
 FScreenPassTexture AddPostProcessMaterialPass(
 	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
@@ -374,37 +393,41 @@ FScreenPassTexture AddPostProcessMaterialPass(
 	}
 
 	// Blend / Depth Stencil usage requires that the render target have primed color data.
-	const bool bIsCompositeWithInput = DepthStencilState != DefaultDepthStencilState || BlendState != DefaultBlendState;
+	const bool bCompositeWithInput = DepthStencilState != DefaultDepthStencilState || BlendState != DefaultBlendState;
 
 	// We only prime color on the output texture if we are using fixed function Blend / Depth-Stencil,
 	// or we need to retain previously rendered views.
-	const bool bPrimeOutputColor = bIsCompositeWithInput || !View.IsFirstInFamily();
+	const bool bPrimeOutputColor = bCompositeWithInput || !View.IsFirstInFamily();
 
 	// Inputs.OverrideOutput is used to force drawing directly to the backbuffer. OpenGL doesn't support using the backbuffer color target with a custom depth/stencil
 	// buffer, so in that case we must draw to an intermediate target and copy to the backbuffer at the end. Ideally, we would test if Inputs.OverrideOutput.Texture
 	// is actually the backbuffer (as returned by AndroidEGL::GetOnScreenColorRenderBuffer() and such), but it's not worth doing all the plumbing and increasing the
 	// RHI surface area just for this hack.
-	//
+	const bool bBackbufferWithDepthStencil = (DepthStencilTexture != nullptr && !GRHISupportsBackBufferWithCustomDepthStencil && Inputs.OverrideOutput.IsValid());
+
 	// The other case when we must render to an intermediate target is when we have to flip the image vertically because we're the last postprocess pass on mobile OpenGL.
 	// We can't simply output a flipped image, because the parts of the input image which show through the stencil mask or are blended in must also be flipped. In that case,
 	// we render normally to the intermediate target and flip the image when we copy to the output target.
-	const bool bForceIntermediateRT =
-		(DepthStencilTexture != nullptr && !GRHISupportsBackBufferWithCustomDepthStencil && Inputs.OverrideOutput.IsValid()) ||
-		(bIsCompositeWithInput && Inputs.bFlipYAxis);
+	const bool bCompositeWithInputAndFlipY = bCompositeWithInput && Inputs.bFlipYAxis;
+
+	// We need to decode the target color for blending material, force it rendering to an intermediate render target and decode the color.
+	const bool bCompositeWithInputAndDecode = Inputs.bMetalMSAAHDRDecode && bCompositeWithInput;
+
+	const bool bForceIntermediateTarget = bBackbufferWithDepthStencil || bCompositeWithInputAndFlipY || bCompositeWithInputAndDecode;
 
 	FScreenPassRenderTarget Output = Inputs.OverrideOutput;
 
 	// We can re-use the scene color texture as the render target if we're not simultaneously reading from it.
 	// This is only necessary to do if we're going to be priming content from the render target since it avoids
 	// the copy. Otherwise, we just allocate a new render target.
-	if (!Output.IsValid() && !MaterialShaderMap->UsesSceneTexture(PPI_PostProcessInput0) && bPrimeOutputColor && !bForceIntermediateRT && Inputs.bAllowSceneColorInputAsOutput)
+	if (!Output.IsValid() && !MaterialShaderMap->UsesSceneTexture(PPI_PostProcessInput0) && bPrimeOutputColor && !bForceIntermediateTarget && Inputs.bAllowSceneColorInputAsOutput)
 	{
 		Output = FScreenPassRenderTarget(SceneColor, ERenderTargetLoadAction::ELoad);
 	}
 	else
 	{
 		// Allocate new transient output texture if none exists.
-		if (!Output.IsValid() || bForceIntermediateRT)
+		if (!Output.IsValid() || bForceIntermediateTarget)
 		{
 			FRDGTextureDesc OutputDesc = SceneColor.Texture->Desc;
 			OutputDesc.Reset();
@@ -418,10 +441,17 @@ FScreenPassTexture AddPostProcessMaterialPass(
 			Output = FScreenPassRenderTarget(GraphBuilder.CreateTexture(OutputDesc, TEXT("PostProcessMaterial")), SceneColor.ViewRect, View.GetOverwriteLoadAction());
 		}
 
-		if (bPrimeOutputColor || bForceIntermediateRT)
+		if (bPrimeOutputColor || bForceIntermediateTarget)
 		{
 			// Copy existing contents to new output and use load-action to preserve untouched pixels.
-			AddDrawTexturePass(GraphBuilder, View, SceneColor, Output);
+			if (Inputs.bMetalMSAAHDRDecode)
+			{
+				AddMobileMSAADecodeAndDrawTexturePass(GraphBuilder, View, SceneColor, Output);
+			}
+			else
+			{
+				AddDrawTexturePass(GraphBuilder, View, SceneColor, Output);
+			}
 			Output.LoadAction = ERenderTargetLoadAction::ELoad;
 		}
 	}
@@ -435,13 +465,19 @@ FScreenPassTexture AddPostProcessMaterialPass(
 
 	FPostProcessMaterialParameters* PostProcessMaterialParameters = GraphBuilder.AllocParameters<FPostProcessMaterialParameters>();
 
+	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
+	PostProcessMaterialParameters->SceneTextures = CreateSceneTextureShaderParameters(SceneContext, View.GetFeatureLevel(), ESceneTextureSetupMode::All, UniformBuffer_SingleDraw);
+	PostProcessMaterialParameters->View = View.ViewUniformBuffer;
 	PostProcessMaterialParameters->PostProcessOutput = GetScreenPassTextureViewportParameters(OutputViewport);
 	PostProcessMaterialParameters->MobileCustomStencilTexture = DepthStencilTexture;
 	PostProcessMaterialParameters->MobileCustomStencilTextureSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	PostProcessMaterialParameters->MobileStencilValueRef = MaterialStencilRef;
 	PostProcessMaterialParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
 
-	bool bMobilePlatform = IsMobilePlatform(View.GetShaderPlatform());
+	// The target color will be decoded if bForceIntermediateTarget is true in any case, but we might still need to decode the input color
+	PostProcessMaterialParameters->bMetalMSAAHDRDecode = Inputs.bMetalMSAAHDRDecode ? 1 : 0;
+
+	const bool bMobilePlatform = IsMobilePlatform(View.GetShaderPlatform());
 
 	if (DepthStencilTexture && !bMobilePlatform)
 	{
@@ -501,7 +537,7 @@ FScreenPassTexture AddPostProcessMaterialPass(
 
 	const bool bIsMobile = FeatureLevel <= ERHIFeatureLevel::ES3_1;
 
-	PostProcessMaterialParameters->bFlipYAxis = Inputs.bFlipYAxis && !bForceIntermediateRT;
+	PostProcessMaterialParameters->bFlipYAxis = Inputs.bFlipYAxis && !bForceIntermediateTarget;
 
 	FPostProcessMaterialShader::FPermutationDomain PermutationVector;
 	PermutationVector.Set<FPostProcessMaterialShader::FMobileDimension>(bIsMobile);
@@ -550,7 +586,7 @@ FScreenPassTexture AddPostProcessMaterialPass(
 		}
 	});
 
-	if (bForceIntermediateRT)
+	if (bForceIntermediateTarget && !bCompositeWithInputAndDecode)
 	{
 		if (!Inputs.bFlipYAxis)
 		{
@@ -680,6 +716,7 @@ FScreenPassTexture AddPostProcessMaterialChain(
 FRenderingCompositePass* AddPostProcessMaterialPass(
 	const FPostprocessContext& PostProcessContext,
 	const UMaterialInterface* MaterialInterface,
+	const bool bMetalMSAAHDRDecode,
 	EPixelFormat OverrideOutputFormat)
 {
 	const FMaterial* Material = nullptr;
@@ -697,7 +734,7 @@ FRenderingCompositePass* AddPostProcessMaterialPass(
 	}
 
 	return PostProcessContext.Graph.RegisterPass(new(FMemStack::Get()) TRCPassForRDG<kPostProcessMaterialInputCountMax, 1>(
-		[MaterialInterface, Material, OverrideOutputFormat](FRenderingCompositePass* Pass, FRenderingCompositePassContext& InContext)
+		[MaterialInterface, Material, OverrideOutputFormat, bMetalMSAAHDRDecode](FRenderingCompositePass* Pass, FRenderingCompositePassContext& InContext)
 	{
 		FRDGBuilder GraphBuilder(InContext.RHICmdList);
 
@@ -736,6 +773,8 @@ FRenderingCompositePass* AddPostProcessMaterialPass(
 			Inputs.CustomDepthTexture = GraphBuilder.RegisterExternalTexture(CustomDepthTarget, TEXT("CustomDepth"));
 		}
 
+		Inputs.bMetalMSAAHDRDecode = bMetalMSAAHDRDecode;
+
 		FScreenPassTexture Outputs = AddPostProcessMaterialPass(GraphBuilder, InContext.View, Inputs, MaterialInterface);
 
 		Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, Outputs.Texture);
@@ -752,6 +791,7 @@ FRenderingCompositePass* AddPostProcessMaterialPass(
 FRenderingCompositeOutputRef AddPostProcessMaterialChain(
 	FPostprocessContext& Context,
 	EBlendableLocation Location,
+	bool& bMetalMSAAHDRDecode,
 	FRenderingCompositeOutputRef SeparateTranslucency,
 	FRenderingCompositeOutputRef PreTonemapHDRColor,
 	FRenderingCompositeOutputRef PostTonemapHDRColor,
@@ -765,7 +805,11 @@ FRenderingCompositeOutputRef AddPostProcessMaterialChain(
 
 	for (const UMaterialInterface* MaterialInterface : MaterialChain)
 	{
-		FRenderingCompositePass* Pass = AddPostProcessMaterialPass(Context, MaterialInterface);
+		FRenderingCompositePass* Pass = AddPostProcessMaterialPass(Context, MaterialInterface, bMetalMSAAHDRDecode);
+
+		// For solid material, we decode the input color and output the linear color
+		// For blend material, we force it rendering to an intermediate render target and decode there
+		bMetalMSAAHDRDecode = false;
 
 		Pass->SetInput(EPassInputId(EPostProcessMaterialInput::SceneColor), LastOutput);
 		Pass->SetInput(EPassInputId(EPostProcessMaterialInput::SeparateTranslucency), SeparateTranslucency);

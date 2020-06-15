@@ -165,18 +165,40 @@ struct ENGINE_API FMaterialLayersFunctions
 		//TODO: Investigate whether this is really required given it is only used by FMaterialShaderMapId AND that one also uses UpdateHash
 		void AppendKeyString(FString& KeyString) const;
 	};
+
+	static const FGuid UninitializedParentGuid;
+	static const FGuid NoParentGuid;
+	static const FGuid BackgroundGuid;
 		
 	FMaterialLayersFunctions()
 	{
 		// Default to a non-blended "background" layer
 		Layers.AddDefaulted();
+		LayerStates.Add(true);
 #if WITH_EDITOR
 		FText LayerName = FText(LOCTEXT("Background", "Background"));
 		LayerNames.Add(LayerName);
-		RestrictToLayerRelatives.Push(false);
+		RestrictToLayerRelatives.Add(false);
+		// Use a consistent Guid for the background layer
+		// This layer never needs to resolve, so doesn't need to be unique
+		// Default constructor assigning different guids will break FStructUtils::AttemptToFindUninitializedScriptStructMembers
+		LayerGuids.Add(BackgroundGuid);
+		ParentLayerGuids.Add(NoParentGuid);
 #endif
-		LayerStates.Push(true);
+	}
 
+	void Empty()
+	{
+		Layers.Empty();
+		Blends.Empty();
+		LayerStates.Empty();
+#if WITH_EDITOR
+		LayerNames.Empty();
+		RestrictToLayerRelatives.Empty();
+		RestrictToBlendRelatives.Empty();
+		LayerGuids.Empty();
+		ParentLayerGuids.Empty();
+#endif
 	}
 
 	UPROPERTY(EditAnywhere, Category=MaterialLayers)
@@ -184,6 +206,9 @@ struct ENGINE_API FMaterialLayersFunctions
 
 	UPROPERTY(EditAnywhere, Category=MaterialLayers)
 	TArray<class UMaterialFunctionInterface*> Blends;
+
+	UPROPERTY(EditAnywhere, Category = MaterialLayers)
+	TArray<bool> LayerStates;
 
 #if WITH_EDITORONLY_DATA
 	UPROPERTY(EditAnywhere, Category = MaterialLayers)
@@ -194,43 +219,46 @@ struct ENGINE_API FMaterialLayersFunctions
 
 	UPROPERTY(EditAnywhere, Category = MaterialLayers)
 	TArray<bool> RestrictToBlendRelatives;
-#endif
 
+	/** Guid that identifies each layer in this stack */
 	UPROPERTY(EditAnywhere, Category = MaterialLayers)
-	TArray<bool> LayerStates;
+	TArray<FGuid> LayerGuids;
+
+	/**
+	 * Refers to the layer in the parent's LayerGuids list used to initialize this layer
+	 * - Special value of 'NoParentGuid' means this layer was created in this material, not based on any layer in the parent
+	 * - Special value of 'UninitializedParentGuid' means this data was serialized before these guids existed...layers with this value will attempt to match a parent layer with the same resources assigned
+	 */
+	UPROPERTY(EditAnywhere, Category = MaterialLayers)
+	TArray<FGuid> ParentLayerGuids;
+
+	/**
+	 * List of Guids that exist in the parent material that have been explicitly deleted
+	 * This is needed to distinguish these layers from newly added layers in the parent material
+	 */
+	UPROPERTY(EditAnywhere, Category = MaterialLayers)
+	TArray<FGuid> DeletedParentLayerGuids;
+#endif // WITH_EDITORONLY_DATA
 
 	UPROPERTY()
 	FString KeyString_DEPRECATED;
 
-	void AppendBlendedLayer()
-	{
-		Layers.AddDefaulted();
-		Blends.AddDefaulted();
-#if WITH_EDITOR
-		FText LayerName = FText::Format(LOCTEXT("LayerPrefix", "Layer {0}"), Layers.Num()-1);
-		LayerNames.Add(LayerName);
-		RestrictToLayerRelatives.Push(false);
-		RestrictToBlendRelatives.Push(false);
-#endif
-		LayerStates.Push(true);
-	}
+	void AppendBlendedLayer();
 
-	void RemoveBlendedLayerAt(int32 Index)
-	{
-		if (Layers.IsValidIndex(Index))
-		{
-			check(Layers.IsValidIndex(Index) && Blends.IsValidIndex(Index-1) && LayerStates.IsValidIndex(Index));
-			Layers.RemoveAt(Index);
-			Blends.RemoveAt(Index-1);
-			LayerStates.RemoveAt(Index);
+	void AddLayerCopy(const FMaterialLayersFunctions& Source, int32 SourceLayerIndex, const FGuid& ParentGuid);
+
+	void InsertLayerCopy(const FMaterialLayersFunctions& Source, int32 SourceLayerIndex, const FGuid& ParentGuid, int32 LayerIndex);
+
+	void RemoveBlendedLayerAt(int32 Index);
+
+	void MoveBlendedLayer(int32 SrcLayerIndex, int32 DstLayerIndex);
+
 #if WITH_EDITOR
-			check(LayerNames.IsValidIndex(Index) && RestrictToLayerRelatives.IsValidIndex(Index) && RestrictToBlendRelatives.IsValidIndex(Index-1));
-			LayerNames.RemoveAt(Index);
-			RestrictToLayerRelatives.RemoveAt(Index);
-			RestrictToBlendRelatives.RemoveAt(Index-1);
-#endif //WITH_EDITOR
-		}
-	}
+	void UnlinkLayerFromParent(int32 Index);
+	bool IsLayerLinkedToParent(int32 Index) const;
+	void RelinkLayersToParent();
+	bool HasAnyUnlinkedLayers() const;
+#endif // WITH_EDITOR
 
 	void ToggleBlendedLayerVisibility(int32 Index)
 	{
@@ -244,14 +272,14 @@ struct ENGINE_API FMaterialLayersFunctions
 		LayerStates[Index] = InNewVisibility;
 	}
 
-	bool GetLayerVisibility(int32 Index)
+	bool GetLayerVisibility(int32 Index) const
 	{
 		check(LayerStates.IsValidIndex(Index));
 		return LayerStates[Index];
 	}
 
 #if WITH_EDITORONLY_DATA
-	FText GetLayerName(int32 Counter)
+	FText GetLayerName(int32 Counter) const
 	{
 		FText LayerName = FText::Format(LOCTEXT("LayerPrefix", "Layer {0}"), Counter);
 		if (LayerNames.IsValidIndex(Counter))
@@ -261,7 +289,11 @@ struct ENGINE_API FMaterialLayersFunctions
 		return LayerName;
 	}
 
-#endif
+	void CopyGuidsToParent();
+
+	bool ResolveParent(const FMaterialLayersFunctions& Parent, TArray<int32>& OutRemapLayerIndices);
+
+#endif // WITH_EDITORONLY_DATA
 
 	const ID GetID() const;
 
@@ -270,15 +302,33 @@ struct ENGINE_API FMaterialLayersFunctions
 
 	void SerializeForDDC(FArchive& Ar);
 
+	void PostSerialize(const FArchive& Ar);
+
 	FORCEINLINE bool operator==(const FMaterialLayersFunctions& Other) const
 	{
-		return Layers == Other.Layers && Blends == Other.Blends && LayerStates == Other.LayerStates;
+		if (Layers != Other.Layers || Blends != Other.Blends || LayerStates != Other.LayerStates)
+		{
+			return false;
+		}
+#if WITH_EDITORONLY_DATA
+		if (ParentLayerGuids != Other.ParentLayerGuids || DeletedParentLayerGuids != Other.DeletedParentLayerGuids)
+		{
+			return false;
+		}
+#endif // WITH_EDITORONLY_DATA
+		return true;
 	}
 
 	FORCEINLINE bool operator!=(const FMaterialLayersFunctions& Other) const
 	{
-		return Layers != Other.Layers || Blends != Other.Blends || LayerStates != Other.LayerStates;
+		return !operator==(Other);
 	}
+};
+
+template<>
+struct TStructOpsTypeTraits<FMaterialLayersFunctions> : TStructOpsTypeTraitsBase2<FMaterialLayersFunctions>
+{
+	enum { WithPostSerialize = true };
 };
 
 #undef LOCTEXT_NAMESPACE

@@ -49,13 +49,6 @@ namespace OpenGLConsoleVariables
 		TEXT("If true, use glMapBuffer otherwise use glBufferSubdata.")
 		);
 
-	static FAutoConsoleVariable CVarUseEmulatedUBs(
-		TEXT("OpenGL.UseEmulatedUBs"),
-		0,
-		TEXT("If true, enable using emulated uniform buffers on ES3.1 mode."),
-		ECVF_ReadOnly
-		);
-
 	int32 bSkipCompute = 0;
 	static FAutoConsoleVariableRef CVarSkipCompute(
 		TEXT("OpenGL.SkipCompute"),
@@ -826,8 +819,6 @@ void FOpenGLDynamicRHI::SetupTexturesForDraw( FOpenGLContextState& ContextState,
 					FOpenGL::BindSampler(TextureStageIndex, PendingSampler ? PendingSampler->Resource : 0);
 					ContextState.SamplerStates[TextureStageIndex] = PendingSampler;
 				}
-				//Clean the Pending Sampler State so the textures sampled by TexelFetch without setting point sampler could use sampler 0.
-				PendingState.SamplerStates[TextureStageIndex] = nullptr;
 			}
 			else if (TextureStage.Target != GL_TEXTURE_BUFFER)
 			{
@@ -1516,7 +1507,7 @@ void FOpenGLDynamicRHI::RHISetBlendState(FRHIBlendState* NewStateRHI,const FLine
 	FMemory::Memcpy(&PendingState.BlendState,&(NewState->Data),sizeof(FOpenGLBlendStateData));
 }
 
-void FOpenGLDynamicRHI::RHISetRenderTargets(
+void FOpenGLDynamicRHI::SetRenderTargets(
 	uint32 NumSimultaneousRenderTargets,
 	const FRHIRenderTargetView* NewRenderTargetsRHI,
 	const FRHIDepthRenderTargetView* NewDepthStencilTargetRHI)
@@ -1676,38 +1667,74 @@ void FOpenGLDynamicRHI::RHIDiscardRenderTargets(bool Depth, bool Stencil, uint32
 	}
 }
 
-void FOpenGLDynamicRHI::RHISetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo)
+void FOpenGLDynamicRHI::SetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo)
 {
 	VERIFY_GL_SCOPE();
-	this->RHISetRenderTargets(RenderTargetsInfo.NumColorRenderTargets,
+	this->SetRenderTargets(RenderTargetsInfo.NumColorRenderTargets,
 		RenderTargetsInfo.ColorRenderTarget,
 		&RenderTargetsInfo.DepthStencilRenderTarget);
-	if (RenderTargetsInfo.bClearColor || RenderTargetsInfo.bClearStencil || RenderTargetsInfo.bClearDepth)
-	{
-		FLinearColor ClearColors[MaxSimultaneousRenderTargets];
-		float DepthClear = 0.0;
-		uint32 StencilClear = 0;
 
-		if (RenderTargetsInfo.bClearColor)
+	/**
+	 * Convert all load action from NoAction to Clear for tiled GPU on OpenGL platform to avoid an unnecessary load action.
+	 */
+
+	bool bIsTiledGPU = RHIHasTiledGPU(GetFeatureLevelShaderPlatform(FOpenGL::GetFeatureLevel()));
+
+	bool bClearColor = RenderTargetsInfo.bClearColor;
+	bool bClearStencil = RenderTargetsInfo.bClearStencil;
+	bool bClearDepth = RenderTargetsInfo.bClearDepth;
+
+	FLinearColor ClearColors[MaxSimultaneousRenderTargets];
+	float DepthClear = 0.0;
+	uint32 StencilClear = 0;
+
+	for (int32 i = 0; i < RenderTargetsInfo.NumColorRenderTargets; ++i)
+	{
+		if (RenderTargetsInfo.ColorRenderTarget[i].Texture != nullptr)
 		{
-			for (int32 i = 0; i < RenderTargetsInfo.NumColorRenderTargets; ++i)
+			const FClearValueBinding& ClearValue = RenderTargetsInfo.ColorRenderTarget[i].Texture->GetClearBinding();
+
+			if (bIsTiledGPU)
 			{
-				if (RenderTargetsInfo.ColorRenderTarget[i].Texture != nullptr)
-				{
-					const FClearValueBinding& ClearValue = RenderTargetsInfo.ColorRenderTarget[i].Texture->GetClearBinding();
-					checkf(ClearValue.ColorBinding == EClearBinding::EColorBound, TEXT("Texture: %s does not have a color bound for fast clears"), *RenderTargetsInfo.ColorRenderTarget[i].Texture->GetName().GetPlainNameString());
-					ClearColors[i] = ClearValue.GetClearColor();
-				}
+				bClearColor |= RenderTargetsInfo.ColorRenderTarget[i].LoadAction == ERenderTargetLoadAction::ENoAction;
+
+				ClearColors[i] = ClearValue.ColorBinding == EClearBinding::EColorBound ? ClearValue.GetClearColor() : FLinearColor::Black;
+			}
+			else if(bClearColor)
+			{
+				checkf(ClearValue.ColorBinding == EClearBinding::EColorBound, TEXT("Texture: %s does not have a color bound for fast clears"), *RenderTargetsInfo.ColorRenderTarget[i].Texture->GetName().GetPlainNameString());
+
+				ClearColors[i] = ClearValue.GetClearColor();
 			}
 		}
-		if (RenderTargetsInfo.bClearDepth || RenderTargetsInfo.bClearStencil)
+	}
+
+	if (RenderTargetsInfo.DepthStencilRenderTarget.Texture != nullptr)
+	{
+		const FClearValueBinding& ClearValue = RenderTargetsInfo.DepthStencilRenderTarget.Texture->GetClearBinding();
+
+		if (bIsTiledGPU)
 		{
-			const FClearValueBinding& ClearValue = RenderTargetsInfo.DepthStencilRenderTarget.Texture->GetClearBinding();
+			bClearStencil |= RenderTargetsInfo.DepthStencilRenderTarget.StencilLoadAction == ERenderTargetLoadAction::ENoAction;
+
+			bClearDepth |= RenderTargetsInfo.DepthStencilRenderTarget.DepthLoadAction == ERenderTargetLoadAction::ENoAction;
+
+			if (ClearValue.ColorBinding == EClearBinding::EDepthStencilBound)
+			{
+				ClearValue.GetDepthStencil(DepthClear, StencilClear);
+			}
+		}
+		else if (bClearDepth || bClearStencil)
+		{
 			checkf(ClearValue.ColorBinding == EClearBinding::EDepthStencilBound, TEXT("Texture: %s does not have a DS value bound for fast clears"), *RenderTargetsInfo.DepthStencilRenderTarget.Texture->GetName().GetPlainNameString());
+
 			ClearValue.GetDepthStencil(DepthClear, StencilClear);
 		}
+	}
 
-		this->RHIClearMRT(RenderTargetsInfo.bClearColor, RenderTargetsInfo.NumColorRenderTargets, ClearColors, RenderTargetsInfo.bClearDepth, DepthClear, RenderTargetsInfo.bClearStencil, StencilClear);
+	if (bClearColor || bClearStencil || bClearDepth)
+	{
+		this->RHIClearMRT(bClearColor, RenderTargetsInfo.NumColorRenderTargets, ClearColors, bClearDepth, DepthClear, bClearStencil, StencilClear);
 	}
 }
 
@@ -2600,6 +2627,7 @@ void FOpenGLDynamicRHI::RHIDrawPrimitiveIndirect(FRHIVertexBuffer* ArgumentBuffe
 		UpdateRasterizerStateInOpenGLContext(ContextState);
 		UpdateDepthStencilStateInOpenGLContext(ContextState);
 		BindPendingShaderState(ContextState);
+		CommitGraphicsResourceTables();
 		SetupTexturesForDraw(ContextState);
 		SetupUAVsForDraw(ContextState);
 		CommitNonComputeShaderConstants();
@@ -2657,6 +2685,7 @@ void FOpenGLDynamicRHI::RHIDrawIndexedIndirect(FRHIIndexBuffer* IndexBufferRHI, 
 		UpdateRasterizerStateInOpenGLContext(ContextState);
 		UpdateDepthStencilStateInOpenGLContext(ContextState);
 		BindPendingShaderState(ContextState);
+		CommitGraphicsResourceTables();
 		SetupTexturesForDraw(ContextState);
 		SetupUAVsForDraw(ContextState);
 		CommitNonComputeShaderConstants();
@@ -2819,6 +2848,7 @@ void FOpenGLDynamicRHI::RHIDrawIndexedPrimitiveIndirect(FRHIIndexBuffer* IndexBu
 		UpdateRasterizerStateInOpenGLContext(ContextState);
 		UpdateDepthStencilStateInOpenGLContext(ContextState);
 		BindPendingShaderState(ContextState);
+		CommitGraphicsResourceTables();
 		SetupTexturesForDraw(ContextState);
 		SetupUAVsForDraw(ContextState);
 		CommitNonComputeShaderConstants();
@@ -3082,6 +3112,7 @@ void FOpenGLDynamicRHI::RHISubmitCommandsAndFlushGPU()
  */
 uint32 FOpenGLDynamicRHI::RHIGetGPUFrameCycles(uint32 GPUIndex)
 {
+	check(GPUIndex == 0);
 	return GGPUFrameTime;
 }
 

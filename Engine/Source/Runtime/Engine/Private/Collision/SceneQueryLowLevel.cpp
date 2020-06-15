@@ -1,22 +1,23 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#if WITH_PHYSX
+#if PHYSICS_INTERFACE_PHYSX
 #include "PhysXPublic.h"
+#include "PhysXInterfaceWrapper.h"
 #endif
+
 #include "Physics/PhysicsInterfaceDeclares.h"
 #include "Physics/PhysicsInterfaceCore.h"
 #include "PhysicsInterfaceDeclaresCore.h"
 
 #include "PhysicsEngine/CollisionQueryFilterCallback.h"
 #include "PhysicsCore.h"
-#if PHYSICS_INTERFACE_PHYSX
-#include "PhysXInterfaceWrapper.h"
-#endif
 
-#include "PhysTestSerializer.h"
 
 #include "SQAccelerator.h"
+
 #include "SQVerifier.h"
+#include "PhysTestSerializer.h"
+
 #include "PBDRigidsSolver.h"
 #include "Chaos/PBDRigidsEvolutionGBF.h"
 
@@ -47,7 +48,7 @@ void FinalizeCapture(FPhysTestSerializer& Serializer)
 	{
 		Serializer.Serialize(TEXT("SQCapture"));
 	}
-#if WITH_PHYSX
+#if 0
 	if (ReplaySQs)
 	{
 		const bool bReplaySuccess = SQComparisonHelper(Serializer);
@@ -267,7 +268,7 @@ void LowLevelOverlap(FPhysScene& Scene, const FPhysicsGeometry& QueryGeom, const
 		double Time = 0.0;
 		{
 			FScopedDurationTimer Timer(Time);
-			SQAccelerator.Overlap(QueryGeom, GeomPose, HitBuffer, QueryFilterData, *QueryCallback);
+			SQAccelerator.Overlap(QueryGeom, GeomPose, HitBuffer, QueryFilterData, *QueryCallback, DebugParams);
 		}
 
 		if (!!SerializeSQs && !!EnableOverlapSQCapture)

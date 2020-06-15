@@ -11,12 +11,14 @@
 #include "PhysicsPublic.h"
 #include "PhysInterface_Chaos.h"
 #include "Physics/PhysicsInterfaceUtils.h"
-#include "Chaos/Transform.h"
-#include "Chaos/ArrayCollectionArray.h"
+
+//Chaos includes. Todo: move to chaos core so we can include for all of engine
 #include "Chaos/Declares.h"
 #include "PhysicsProxy/SingleParticlePhysicsProxyFwd.h"
 #include "Framework/Threading.h"
-#include "Chaos/PBDCollisionConstraints.h"
+#include "Chaos/Core.h"
+#include "Chaos/CollisionResolutionTypes.h"
+#include "Chaos/PBDRigidsEvolutionFwd.h"
 
 #ifndef CHAOS_WITH_PAUSABLE_SOLVER
 #define CHAOS_WITH_PAUSABLE_SOLVER 1
@@ -36,7 +38,6 @@ struct FSolverStateStorage;
 
 class FSkeletalMeshPhysicsProxy;
 class FStaticMeshPhysicsProxy;
-class FGeometryCollectionPhysicsProxy;
 class FFieldSystemPhysicsProxy;
 
 class IPhysicsProxyBase;
@@ -62,6 +63,10 @@ namespace Chaos
 	class ISpatialAccelerationCollection;
 
 	class IDispatcher;
+
+	template <typename T>
+	class TArrayCollectionArray;
+
 }
 
 /**
@@ -333,6 +338,8 @@ public:
 #endif
 	);
 
+	ENGINE_API ~FPhysScene_ChaosInterface();
+
 	// Scene
 	void OnWorldBeginPlay();
 	void OnWorldEndPlay();
@@ -355,6 +362,8 @@ public:
 
 	FPhysScene_Chaos& GetScene() { return Scene; }
 	const FPhysScene_Chaos& GetScene() const { return Scene; }
+
+	void ResimNFrames(int32 NumFrames);
 
 	/**
 	 * Flushes all pending global, task and solver command queues and refreshes the spatial acceleration
@@ -389,7 +398,7 @@ public:
 
 	ENGINE_API static bool SupportsOriginShifting();
 	void ApplyWorldOffset(FVector InOffset);
-	ENGINE_API void SetUpForFrame(const FVector* NewGrav, float InDeltaSeconds = 0.0f, float InMaxPhysicsDeltaTime = 0.0f, float InMaxSubstepDeltaTime = 0.f, int32 InMaxSubsteps = 1);
+	ENGINE_API void SetUpForFrame(const FVector* NewGrav, float InDeltaSeconds, float InMaxPhysicsDeltaTime, float InMaxSubstepDeltaTime, int32 InMaxSubsteps, bool bSubstepping);
 	ENGINE_API void StartFrame();
 	ENGINE_API void EndFrame(ULineBatchComponent* InLineBatcher);
 	ENGINE_API void WaitPhysScenes();
@@ -417,7 +426,7 @@ public:
 	ENGINE_API bool ExecPxVis(uint32 SceneType, const TCHAR* Cmd, FOutputDevice* Ar);
 	ENGINE_API bool ExecApexVis(uint32 SceneType, const TCHAR* Cmd, FOutputDevice* Ar);
 
-	ENGINE_API static Chaos::TCollisionModifierCallback<float, 3> CollisionModifierCallback;
+	ENGINE_API static Chaos::FCollisionModifierCallback CollisionModifierCallback;
 
 #if XGE_FIXED
 	template<typename PayloadType>
@@ -448,7 +457,8 @@ private:
 	bool IsOwningWorldEditor() const;
 #endif
 
-	void SyncBodies(Chaos::FPhysicsSolver* Solver);
+	template <typename TSolver>
+	void SyncBodies(TSolver* Solver);
 
 	void SetKinematicTransform(FPhysicsActorHandle& InActorReference, const Chaos::TRigidTransform<float, 3>& NewTransform)
 	{
@@ -472,8 +482,8 @@ private:
 		// #todo : Implement
 	}
 
-	FPhysicsConstraintReference_Chaos AddSpringConstraint(const TArray< TPair<FPhysicsActorHandle, FPhysicsActorHandle> >& Constraint);
-	void RemoveSpringConstraint(const FPhysicsConstraintReference_Chaos& Constraint);
+	FPhysicsConstraintHandle AddSpringConstraint(const TArray< TPair<FPhysicsActorHandle, FPhysicsActorHandle> >& Constraint);
+	void RemoveSpringConstraint(const FPhysicsConstraintHandle& Constraint);
 
 	void AddForce(const Chaos::TVector<float, 3>& Force, FPhysicsActorHandle& Handle)
 	{
@@ -507,7 +517,7 @@ private:
 
 	float MDeltaTime;
 	//Body Instances
-	Chaos::TArrayCollectionArray<FBodyInstance*> BodyInstances;
+	TUniquePtr<Chaos::TArrayCollectionArray<FBodyInstance*>> BodyInstances;
 	// Temp Interface
 	UWorld* MOwningWorld;
 	TArray<FCollisionNotifyInfo> MNotifies;

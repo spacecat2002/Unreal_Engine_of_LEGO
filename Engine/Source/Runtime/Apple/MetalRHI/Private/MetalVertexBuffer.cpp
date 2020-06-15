@@ -95,6 +95,8 @@ void FMetalVertexBuffer::Swap(FMetalVertexBuffer& Other)
 void FMetalRHIBuffer::Swap(FMetalRHIBuffer& Other)
 {
 	::Swap(*this, Other);
+	Other.Buffer.SetOwner(&Other, true);
+	Buffer.SetOwner(this, true);
 }
 
 static bool CanUsePrivateMemory()
@@ -186,7 +188,7 @@ FMetalRHIBuffer::FMetalRHIBuffer(uint32 InSize, uint32 InUsage, ERHIResourceType
 
 FMetalRHIBuffer::~FMetalRHIBuffer()
 {
-	for (TPair<TTuple<EPixelFormat, uint32>, FMetalTexture>& Pair : LinearTextures)
+	for (auto& Pair : LinearTextures)
 	{
 		SafeReleaseMetalTexture(Pair.Value);
 		Pair.Value = nil;
@@ -234,7 +236,7 @@ void FMetalRHIBuffer::Unalias()
 	}
 }
 
-void FMetalRHIBuffer::Alloc(uint32 InSize, EResourceLockMode LockMode, bool bIsUniformBuffer)
+void FMetalRHIBuffer::Alloc(uint32 InSize, EResourceLockMode LockMode)
 {
 	if (!Buffer)
 	{
@@ -243,13 +245,13 @@ void FMetalRHIBuffer::Alloc(uint32 InSize, EResourceLockMode LockMode, bool bIsU
 		Buffer = GetMetalDeviceContext().CreatePooledBuffer(Args);
 		METAL_FATAL_ASSERT(Buffer, TEXT("Failed to create buffer of size %u and storage mode %u"), InSize, (uint32)Mode);
 
-        Buffer.SetOwner(this);
+        Buffer.SetOwner(this, false);
 
         METAL_INC_DWORD_STAT_BY(Type, MemAlloc, InSize);
         
 		if ((Usage & (BUF_UnorderedAccess|BUF_ShaderResource)))
 		{
-			for (TPair<TTuple<EPixelFormat, uint32>, FMetalTexture>& Pair : LinearTextures)
+			for (auto& Pair : LinearTextures)
 			{
 				SafeReleaseMetalTexture(Pair.Value);
 				Pair.Value = nil;
@@ -258,8 +260,6 @@ void FMetalRHIBuffer::Alloc(uint32 InSize, EResourceLockMode LockMode, bool bIsU
 				check(Pair.Value);
 			}
 		}
-
-		bIsUniformBufferBacking = bIsUniformBuffer;
 	}
 }
 
@@ -269,18 +269,18 @@ void FMetalRHIBuffer::AllocTransferBuffer(bool bOnRHIThread, uint32 InSize, ERes
 	{
 		FMetalPooledBufferArgs ArgsCPU(GetMetalDeviceContext().GetDevice(), InSize, BUF_Dynamic, mtlpp::StorageMode::Shared);
         CPUBuffer = GetMetalDeviceContext().CreatePooledBuffer(ArgsCPU);
-		CPUBuffer.SetOwner(this);
+		CPUBuffer.SetOwner(this, false);
         check(CPUBuffer && CPUBuffer.GetPtr());
         METAL_INC_DWORD_STAT_BY(Type, MemAlloc, InSize);
         METAL_FATAL_ASSERT(CPUBuffer, TEXT("Failed to create buffer of size %u and storage mode %u"), InSize, (uint32)mtlpp::StorageMode::Shared);
     }
 }
 
-FMetalTexture FMetalRHIBuffer::AllocLinearTexture(EPixelFormat Format, NSUInteger Offset)
+FMetalTexture FMetalRHIBuffer::AllocLinearTexture(EPixelFormat InFormat, const FMetalLinearTextureDescriptor& LinearTextureDesc)
 {
 	if ((Usage & (BUF_UnorderedAccess|BUF_ShaderResource)))
 	{
-		mtlpp::PixelFormat MTLFormat = (mtlpp::PixelFormat)GMetalBufferFormats[Format].LinearTextureFormat;
+		mtlpp::PixelFormat MTLFormat = (mtlpp::PixelFormat)GMetalBufferFormats[InFormat].LinearTextureFormat;
 		
 		mtlpp::TextureDescriptor Desc;
 		NSUInteger Options = ((NSUInteger)Mode << mtlpp::ResourceStorageModeShift) | ((NSUInteger)Buffer.GetCpuCacheMode() << mtlpp::ResourceCpuCacheModeShift);
@@ -295,52 +295,82 @@ FMetalTexture FMetalRHIBuffer::AllocLinearTexture(EPixelFormat Format, NSUIntege
 			TexUsage |= mtlpp::TextureUsage::ShaderWrite;
 		}
 		
-		uint32 Stride = GPixelFormats[Format].BlockBytes;
-		if (MTLFormat == mtlpp::PixelFormat::RG11B10Float && MTLFormat != (mtlpp::PixelFormat)GPixelFormats[Format].PlatformFormat)
+		uint32 BytesPerElement = (0 == LinearTextureDesc.BytesPerElement) ? GPixelFormats[InFormat].BlockBytes : LinearTextureDesc.BytesPerElement;
+		if (MTLFormat == mtlpp::PixelFormat::RG11B10Float && MTLFormat != (mtlpp::PixelFormat)GPixelFormats[InFormat].PlatformFormat)
 		{
-			Stride = 4;
+			BytesPerElement = 4;
 		}
-		NSUInteger NewSize = Size - Offset;
+
+		const uint32 MinimumByteAlignment = GetMetalDeviceContext().GetDevice().GetMinimumLinearTextureAlignmentForPixelFormat((mtlpp::PixelFormat)GMetalBufferFormats[InFormat].LinearTextureFormat);
+		const uint32 MinimumElementAlignment = MinimumByteAlignment / BytesPerElement;
+
+		uint32 Offset = LinearTextureDesc.StartOffsetBytes;
+		check(Offset % MinimumByteAlignment == 0);
+
+		uint32 NumElements = (UINT_MAX == LinearTextureDesc.NumElements) ? ((Size - Offset) / BytesPerElement) : LinearTextureDesc.NumElements;
+		NumElements = Align(NumElements, MinimumElementAlignment);
+
+		uint32 RowBytes = NumElements * BytesPerElement;
 
 		if (FMetalCommandQueue::SupportsFeature(EMetalFeaturesTextureBuffers))
 		{
-			Desc = mtlpp::TextureDescriptor::TextureBufferDescriptor(MTLFormat, NewSize / Stride, mtlpp::ResourceOptions(Options), mtlpp::TextureUsage(TexUsage));
+			Desc = mtlpp::TextureDescriptor::TextureBufferDescriptor(MTLFormat, NumElements, mtlpp::ResourceOptions(Options), mtlpp::TextureUsage(TexUsage));
 			Desc.SetAllowGPUOptimisedContents(false);
 		}
 		else
 		{
-			const uint32 RequestedNumElements = (Buffer.GetLength() - Offset) / Stride;
+			uint32 Width = NumElements;
+			uint32 Height = 1;
 
-			uint32 SizeX = RequestedNumElements;
-			uint32 SizeY = 1;
-
-			if (RequestedNumElements > GMaxTextureDimensions)
+			if (NumElements > GMaxTextureDimensions)
 			{
 				uint32 Dimension = GMaxTextureDimensions;
-				while ((RequestedNumElements % Dimension) != 0)
+				while ((NumElements % Dimension) != 0)
 				{
 					check(Dimension >= 1);
 					Dimension = (Dimension >> 1);
 				}
-				SizeX = Dimension;
-				SizeY = RequestedNumElements / Dimension;
-				checkf(SizeX <= GMaxTextureDimensions, TEXT("Calculated width %u is greater than maximum permitted %d when converting buffer of size %llu with element stride %u to a 2D texture with %u elements."), SizeX, (int32)GMaxTextureDimensions, Buffer.GetLength(), Stride, RequestedNumElements);
-				checkf(SizeY <= GMaxTextureDimensions, TEXT("Calculated height %u is greater than maximum permitted %d when converting buffer of size %llu with element stride %u to a 2D texture with %u elements."), SizeY, (int32)GMaxTextureDimensions, Buffer.GetLength(), Stride, RequestedNumElements);
+
+				Width = Dimension;
+				Height = NumElements / Dimension;
+
+				// If we're just trying to fit as many elements as we can into
+				// the available buffer space, we can trim some padding at the
+				// end of the buffer in order to create widest possible linear
+				// texture that will fit.
+				if ((UINT_MAX == LinearTextureDesc.NumElements) && (Height > GMaxTextureDimensions))
+				{
+					Width = GMaxTextureDimensions;
+					Height = 1;
+
+					while ((Width * Height) < NumElements)
+					{
+						Height <<= 1;
+					}
+
+					while ((Width * Height) > NumElements)
+					{
+						Height -= 1;
+					}
+				}
+
+				checkf(Width <= GMaxTextureDimensions, TEXT("Calculated width %u is greater than maximum permitted %d when converting buffer of size %llu with element stride %u to a 2D texture with %u elements."), Width, (int32)GMaxTextureDimensions, Buffer.GetLength(), BytesPerElement, NumElements);
+				checkf(Height <= GMaxTextureDimensions, TEXT("Calculated height %u is greater than maximum permitted %d when converting buffer of size %llu with element stride %u to a 2D texture with %u elements."), Height, (int32)GMaxTextureDimensions, Buffer.GetLength(), BytesPerElement, NumElements);
 			}
 
-			NewSize = SizeX*Stride;
+			RowBytes = Width * BytesPerElement;
 
-			check((NewSize % GetMetalDeviceContext().GetDevice().GetMinimumLinearTextureAlignmentForPixelFormat((mtlpp::PixelFormat)GMetalBufferFormats[Format].LinearTextureFormat)) == 0);
-			check((NewSize + Offset) <= Buffer.GetLength());
+			check(RowBytes % MinimumByteAlignment == 0);
+			check((RowBytes * Height) + Offset <= Buffer.GetLength());
 
-			Desc = mtlpp::TextureDescriptor::Texture2DDescriptor(MTLFormat, SizeX, SizeY, NO);
+			Desc = mtlpp::TextureDescriptor::Texture2DDescriptor(MTLFormat, Width, Height, NO);
 			Desc.SetStorageMode(Mode);
 			Desc.SetCpuCacheMode(Buffer.GetCpuCacheMode());
 			Desc.SetUsage((mtlpp::TextureUsage)TexUsage);
 			Desc.SetResourceOptions((mtlpp::ResourceOptions)Options);
 		}
 
-		FMetalTexture Texture = MTLPP_VALIDATE(mtlpp::Buffer, Buffer, SafeGetRuntimeDebuggingLevel() >= EMetalDebugLevelValidation, NewTexture(Desc, Offset, NewSize));
+		FMetalTexture Texture = MTLPP_VALIDATE(mtlpp::Buffer, Buffer, SafeGetRuntimeDebuggingLevel() >= EMetalDebugLevelValidation, NewTexture(Desc, Offset, RowBytes));
 		METAL_FATAL_ASSERT(Texture, TEXT("Failed to create linear texture, desc %s from buffer %s"), *FString([Desc description]), *FString([Buffer description]));
 
 		return Texture;
@@ -356,14 +386,18 @@ struct FMetalRHICommandCreateLinearTexture : public FRHICommand<FMetalRHICommand
 	FMetalRHIBuffer* Buffer;
 	TRefCountPtr<FRHIResource> Parent;
 	EPixelFormat Format;
-	uint32 Offset;
+	FMetalLinearTextureDescriptor LinearTextureDesc;
 	
-	FORCEINLINE_DEBUGGABLE FMetalRHICommandCreateLinearTexture(FMetalRHIBuffer* InBuffer, FRHIResource* InParent, EPixelFormat InFormat, uint32 InOffset)
-	: Buffer(InBuffer)
-	, Parent(InParent)
-	, Format(InFormat)
-	, Offset(InOffset)
+	FORCEINLINE_DEBUGGABLE FMetalRHICommandCreateLinearTexture(FMetalRHIBuffer* InBuffer, FRHIResource* InParent, EPixelFormat InFormat, const FMetalLinearTextureDescriptor* InLinearTextureDescriptor)
+		: Buffer(InBuffer)
+		, Parent(InParent)
+		, Format(InFormat)
+		, LinearTextureDesc()
 	{
+		if (InLinearTextureDescriptor)
+		{
+			LinearTextureDesc = *InLinearTextureDescriptor;
+		}
 	}
 	
 	virtual ~FMetalRHICommandCreateLinearTexture()
@@ -372,32 +406,34 @@ struct FMetalRHICommandCreateLinearTexture : public FRHICommand<FMetalRHICommand
 	
 	void Execute(FRHICommandListBase& CmdList)
 	{
-		Buffer->CreateLinearTexture(Format, Parent.GetReference(), Offset);
+		Buffer->CreateLinearTexture(Format, Parent.GetReference(), &LinearTextureDesc);
 	}
 };
 
-ns::AutoReleased<FMetalTexture> FMetalRHIBuffer::CreateLinearTexture(EPixelFormat Format, FRHIResource* InParent, uint32 Offset)
+ns::AutoReleased<FMetalTexture> FMetalRHIBuffer::CreateLinearTexture(EPixelFormat InFormat, FRHIResource* InParent, const FMetalLinearTextureDescriptor* InLinearTextureDescriptor)
 {
 	ns::AutoReleased<FMetalTexture> Texture;
-	if ((Usage & (BUF_UnorderedAccess|BUF_ShaderResource)) && GMetalBufferFormats[Format].LinearTextureFormat != mtlpp::PixelFormat::Invalid)
+	if ((Usage & (BUF_UnorderedAccess|BUF_ShaderResource)) && GMetalBufferFormats[InFormat].LinearTextureFormat != mtlpp::PixelFormat::Invalid)
 	{
 		if (IsRunningRHIInSeparateThread() && !IsInRHIThread() && !FRHICommandListExecutor::GetImmediateCommandList().Bypass())
 		{
-			new (FRHICommandListExecutor::GetImmediateCommandList().AllocCommand<FMetalRHICommandCreateLinearTexture>()) FMetalRHICommandCreateLinearTexture(this, InParent, Format, Offset);
+			new (FRHICommandListExecutor::GetImmediateCommandList().AllocCommand<FMetalRHICommandCreateLinearTexture>()) FMetalRHICommandCreateLinearTexture(this, InParent, InFormat, InLinearTextureDescriptor);
 		}
 		else
 		{
-			FMetalTexture* ExistingTexture = LinearTextures.Find(TTuple<EPixelFormat, uint32>(Format, Offset));
+			LinearTextureMapKey MapKey = (InLinearTextureDescriptor != nullptr) ? LinearTextureMapKey(InFormat, *InLinearTextureDescriptor) : LinearTextureMapKey(InFormat, FMetalLinearTextureDescriptor());
+
+			FMetalTexture* ExistingTexture = LinearTextures.Find(MapKey);
 			if (ExistingTexture)
 			{
 				Texture = *ExistingTexture;
 			}
 			else
 			{
-				FMetalTexture NewTexture = AllocLinearTexture(Format, Offset);
+				FMetalTexture NewTexture = AllocLinearTexture(InFormat, MapKey.Value);
 				check(NewTexture);
-				check(GMetalBufferFormats[Format].LinearTextureFormat == mtlpp::PixelFormat::RG11B10Float || GMetalBufferFormats[Format].LinearTextureFormat == (mtlpp::PixelFormat)NewTexture.GetPixelFormat());
-				LinearTextures.Add(TTuple<EPixelFormat, uint32>(Format, Offset), NewTexture);
+				check(GMetalBufferFormats[InFormat].LinearTextureFormat == mtlpp::PixelFormat::RG11B10Float || GMetalBufferFormats[InFormat].LinearTextureFormat == (mtlpp::PixelFormat)NewTexture.GetPixelFormat());
+				LinearTextures.Add(MapKey, NewTexture);
 				Texture = NewTexture;
 			}
 		}
@@ -405,12 +441,14 @@ ns::AutoReleased<FMetalTexture> FMetalRHIBuffer::CreateLinearTexture(EPixelForma
 	return Texture;
 }
 
-ns::AutoReleased<FMetalTexture> FMetalRHIBuffer::GetLinearTexture(EPixelFormat Format, NSUInteger Offset)
+ns::AutoReleased<FMetalTexture> FMetalRHIBuffer::GetLinearTexture(EPixelFormat InFormat, const FMetalLinearTextureDescriptor* InLinearTextureDescriptor)
 {
 	ns::AutoReleased<FMetalTexture> Texture;
-	if ((Usage & (BUF_UnorderedAccess|BUF_ShaderResource)) && GMetalBufferFormats[Format].LinearTextureFormat != mtlpp::PixelFormat::Invalid)
+	if ((Usage & (BUF_UnorderedAccess|BUF_ShaderResource)) && GMetalBufferFormats[InFormat].LinearTextureFormat != mtlpp::PixelFormat::Invalid)
 	{
-		FMetalTexture* ExistingTexture = LinearTextures.Find(TTuple<EPixelFormat, uint32>(Format, Offset));
+		LinearTextureMapKey MapKey = (InLinearTextureDescriptor != nullptr) ? LinearTextureMapKey(InFormat, *InLinearTextureDescriptor) : LinearTextureMapKey(InFormat, FMetalLinearTextureDescriptor());
+
+		FMetalTexture* ExistingTexture = LinearTextures.Find(MapKey);
 		if (ExistingTexture)
 		{
 			Texture = *ExistingTexture;
@@ -419,22 +457,7 @@ ns::AutoReleased<FMetalTexture> FMetalRHIBuffer::GetLinearTexture(EPixelFormat F
 	return Texture;
 }
 
-bool FMetalRHIBuffer::CanUseBufferAsBackingForAsyncCopy() const
-{
-	return (!bIsUniformBufferBacking ||
-			UniformBufferFrameIndex != GetMetalDeviceContext().GetDeviceFrameIndex() ||
-			UniformBufferPreviousOffset != Buffer.GetOffset());
-}
-
-void FMetalRHIBuffer::ConditionalSetUniformBufferFrameIndex()
-{
-	if (bIsUniformBufferBacking)
-	{
-		UniformBufferFrameIndex = GetMetalDeviceContext().GetDeviceFrameIndex();
-	}
-}
-
-void* FMetalRHIBuffer::Lock(bool bIsOnRHIThread, EResourceLockMode LockMode, uint32 Offset, uint32 InSize, bool bIsUniformBuffer /*= false*/)
+void* FMetalRHIBuffer::Lock(bool bIsOnRHIThread, EResourceLockMode LockMode, uint32 Offset, uint32 InSize)
 {
 	check(LockSize == 0 && LockOffset == 0);
 	
@@ -479,16 +502,14 @@ void* FMetalRHIBuffer::Lock(bool bIsOnRHIThread, EResourceLockMode LockMode, uin
 	// When we can't we have to reallocate the backing store
 	if (LockMode != RLM_ReadOnly &&
 		Mode == mtlpp::StorageMode::Private &&
-		Buffer &&
-		(!GetMetalDeviceContext().CanAsyncCopyToBuffer(Buffer) ||
-		 !CanUseBufferAsBackingForAsyncCopy()))
+		Buffer)
 	{
 		METAL_INC_DWORD_STAT_BY(Type, MemFreed, Len);
 		SafeReleaseMetalBuffer(Buffer);
 		Buffer = nil;
 	}
 	
-    Alloc(Len, LockMode, bIsUniformBuffer);
+    Alloc(Len, LockMode);
 	AllocTransferBuffer(bIsOnRHIThread, Len, LockMode);
 	
 	FMetalBuffer& theBufferToUse = CPUBuffer ? CPUBuffer : Buffer;
@@ -538,8 +559,6 @@ void FMetalRHIBuffer::Unlock()
 		{
 			// Synchronise the buffer with the GPU
 			GetMetalDeviceContext().AsyncCopyFromBufferToBuffer(CPUBuffer, 0, Buffer, 0, FMath::Min(CPUBuffer.GetLength(), Buffer.GetLength()));
-			
-			ConditionalSetUniformBufferPreviousOffset();
 			
 			if (CPUBuffer)
             {
@@ -790,47 +809,4 @@ void FMetalDynamicRHI::RHITransferVertexBufferUnderlyingResource(FRHIVertexBuffe
 		FMetalVertexBuffer* Src = ResourceCast(SrcVertexBuffer);
 		Dest->Swap(*Src);
 	}
-}
-
-void* FMetalDynamicRHI::RHILockStagingBuffer(FRHIStagingBuffer* StagingBuffer, FRHIGPUFence* Fence, uint32 Offset, uint32 SizeRHI)
-{
-	FMetalStagingBuffer* Buffer = ResourceCast(StagingBuffer);
-	return Buffer->Lock(Offset, SizeRHI);
-}
-void FMetalDynamicRHI::RHIUnlockStagingBuffer(FRHIStagingBuffer* StagingBuffer)
-{
-	FMetalStagingBuffer* Buffer = ResourceCast(StagingBuffer);
-	Buffer->Unlock();
-}
-
-FStagingBufferRHIRef FMetalDynamicRHI::RHICreateStagingBuffer()
-{
-	return new FMetalStagingBuffer();
-}
-
-FMetalStagingBuffer::~FMetalStagingBuffer()
-{
-	if (ShadowBuffer)
-	{
-		SafeReleaseMetalBuffer(ShadowBuffer);
-		ShadowBuffer = nil;
-	}
-}
-
-// Returns the pointer to read the buffer. There is no locking; the buffer is always shared.
-// If this was not fenced correctly it will not have the expected data.
-void *FMetalStagingBuffer::Lock(uint32 Offset, uint32 NumBytes)
-{
-	check(ShadowBuffer);
-	check(!bIsLocked);
-	bIsLocked = true;
-	uint8* BackingPtr = (uint8*)ShadowBuffer.GetContents();
-	return BackingPtr + Offset;
-}
-
-void FMetalStagingBuffer::Unlock()
-{
-	// does nothing in metal.
-	check(bIsLocked);
-	bIsLocked = false;
 }

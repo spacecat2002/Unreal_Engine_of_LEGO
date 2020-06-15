@@ -49,6 +49,8 @@ enum class ESoundWavePrecacheState
 	Done
 };
 
+constexpr uint64 InvalidAudioStreamCacheLookupID = TNumericLimits<uint64>::Max();
+
 /**
  * A chunk of streamed audio.
  */
@@ -63,8 +65,14 @@ struct FStreamedAudioChunk
 	/** Bulk data if stored in the package. */
 	FByteBulkData BulkData;
 
+	/** This is set by the audio stream cache to speed up lookup. Maps directly to the location into the cache chunk table that we loaded this chunk into. */
+	uint64 CacheLookupID;
+
 	/** Default constructor. */
 	FStreamedAudioChunk()
+		: DataSize(0)
+		, AudioDataSize(0)
+		, CacheLookupID(InvalidAudioStreamCacheLookupID)
 	{
 	}
 
@@ -333,6 +341,9 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Loading", meta = (DisplayName = "Loading Behavior Override"))
 	ESoundWaveLoadingBehavior LoadingBehavior;
 
+	/** Set to true if LoadingBehavior was inherited from a SoundCue. This is useful for debugging/logging */
+	uint8 bLoadingBehaviorOverridden:1;
+
 	/** Set to true for programmatically generated audio. */
 	uint8 bProcedural:1;
 	
@@ -473,7 +484,7 @@ public:
 	/** If stream caching is enabled, allows the user to retain a strong handle to the first chunk of audio in the cache. 
 	 *  Please note that this USoundWave is NOT guaranteed to be still alive when OnLoadCompleted is called.
 	 */
-	void GetHandleForChunkOfAudio(TFunction<void(FAudioChunkHandle)> OnLoadCompleted, bool bForceSync = false, int32 ChunkIndex = 1, ENamedThreads::Type CallbackThread = ENamedThreads::GameThread);
+	void GetHandleForChunkOfAudio(TFunction<void(FAudioChunkHandle&&)> OnLoadCompleted, bool bForceSync = false, int32 ChunkIndex = 1, ENamedThreads::Type CallbackThread = ENamedThreads::GameThread);
 
 	/** If stream caching is enabled, set this sound wave to retain a strong handle to its first chunk. 
 	 *  If not called on the game thread, bForceSync must be true.
@@ -484,6 +495,26 @@ public:
 	void ReleaseCompressedAudio();
 
 	bool IsRetainingAudio();
+
+	/**
+	 * If Stream Caching is enabled, this can be used to override the default loading behavior of this USoundWave.
+	 * This can even be called on USoundWaves that still have the RF_NeedLoad flag, and won't be stomped by serialization.
+	 * NOTE: The new behavior will be ignored if it is less memory-aggressive than existing (even inherited) behavior
+	 */
+	void OverrideLoadingBehavior(ESoundWaveLoadingBehavior InLoadingBehavior);
+
+	/**
+	 * This is called by the audio stream cache once we put a chunk of compressed data in the chunk table. 
+	 * It allows us to look up the chunk directly, rather than searching the cache linearly.
+	 */
+	void SetCacheLookupIDForChunk(uint32 InChunkIndex, uint64 InCacheLookupID);
+
+	/**
+	 * This is called by the audio stream cache when we try to get a chunk of compressed data.
+	 * It allows us to look up the chunk directly, rather than searching the cache linearly.
+	 * Returns InvalidAudioStreamCacheLookupID if the chunk hasn't been added to the cache.
+	 */
+	uint64 GetCacheLookupIDForChunk(uint32 InChunkIndex);
 
 	/** Returns the loading behavior we should use for this sound wave.
 	 *  If this is called within Serialize(), this should be called with bCheckSoundClasses = false,

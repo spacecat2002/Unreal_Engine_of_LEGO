@@ -4,7 +4,7 @@
 
 #include "Components/Widget.h"
 #include "Blueprint/UserWidgetPool.h"
-
+#include "RadialBoxSettings.h"
 #include "DynamicEntryBoxBase.generated.h"
 
 class UUserWidget;
@@ -15,6 +15,8 @@ enum class EDynamicBoxType : uint8
 	Horizontal,
 	Vertical,
 	Wrap,
+	VerticalWrap,
+	Radial,
 	Overlay
 };
 
@@ -59,12 +61,16 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = DynamicEntryBox)
 	void SetEntrySpacing(const FVector2D& InEntrySpacing);
+
+	UFUNCTION(BlueprintCallable, Category = DynamicEntryBox)
+	void SetRadialSettings(const FRadialBoxSettings& InSettings);
 	
 protected:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual void SynchronizeProperties() override;
 	virtual void AddEntryChild(UUserWidget& ChildWidget);
 
+	bool IsEntryClassValid(TSubclassOf<UUserWidget> InEntryClass) const;
 	UUserWidget* CreateEntryInternal(TSubclassOf<UUserWidget> InEntryClass);
 	void RemoveEntryInternal(UUserWidget* EntryWidget);
 	FMargin BuildEntryPadding(const FVector2D& DesiredSpacing);
@@ -125,6 +131,10 @@ protected:
 	/** The maximum size of each entry in the dominant axis of the box. Vertical/Horizontal boxes only. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = EntryLayout)
 	int32 MaxElementSize = 0;
+
+	/** Settings only relevant to RadialBox */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = EntryLayout)
+	FRadialBoxSettings RadialBoxSettings;
 
 	// Can be a horizontal, vertical, wrap box, or overlay
 	TSharedPtr<SPanel> MyPanelWidget;

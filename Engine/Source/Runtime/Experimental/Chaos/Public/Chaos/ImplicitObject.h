@@ -160,11 +160,14 @@ public:
 		return static_cast<const T_DERIVED&>(*this);
 	}
 
-	EImplicitObjectType GetType(bool bGetTrueType = false) const;
+	EImplicitObjectType GetType() const;
+	EImplicitObjectType GetCollisionType() const;
+	void SetCollsionType(EImplicitObjectType InCollsiionType) { CollisionType = InCollsiionType; }
 
 	virtual bool IsValidGeometry() const;
 
 	virtual TUniquePtr<FImplicitObject> Copy() const;
+	virtual TUniquePtr<FImplicitObject> DeepCopy() const { return Copy(); }
 
 	//This is strictly used for optimization purposes
 	bool IsUnderlyingUnion() const;
@@ -302,6 +305,7 @@ public:
 
 protected:
 	EImplicitObjectType Type;
+	EImplicitObjectType CollisionType;
 	bool bIsConvex;
 	bool bDoCollide;
 	bool bHasBoundingBox;
@@ -327,4 +331,6 @@ FORCEINLINE FArchive& operator<<(FArchive& Ar, FImplicitObject& Value)
 }
 
 typedef FImplicitObject FImplicitObject3;
+typedef TSharedPtr<Chaos::FImplicitObject, ESPMode::ThreadSafe> ThreadSafeSharedPtr_FImplicitObject;
+typedef TSharedPtr<Chaos::FImplicitObject, ESPMode::NotThreadSafe> NotThreadSafeSharedPtr_FImplicitObject;
 }

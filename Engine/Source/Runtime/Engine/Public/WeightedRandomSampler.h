@@ -33,9 +33,6 @@ public:
 	FWeightedRandomSampler();
 	virtual ~FWeightedRandomSampler() { }
 
-	/** Gets the weight of all elements and returns their sum. */
-	virtual float GetWeights(TArray<float>& OutWeights) = 0;
-
 	/**
 	Takes two random values (0...1) and returns the corresponding element index.
 	*/
@@ -53,10 +50,14 @@ public:
 
 	int32 GetNumEntries() const { return Prob.Num(); }
 
-	const TArray<float, FMemoryImageAllocator>& GetProb() const { return Prob; }
-	const TArray<int32, FMemoryImageAllocator>& GetAlias() const { return Alias; }
+	TArrayView<const float> GetProb() const { return Prob; }
+	TArrayView<const int32> GetAlias() const { return Alias; }
 
 protected:
+
+	/** Gets the weight of all elements and returns their sum. */
+	virtual float GetWeights(TArray<float>& OutWeights) = 0;
+
 	LAYOUT_FIELD(TMemoryImageArray<float>, Prob);
 	LAYOUT_FIELD(TMemoryImageArray<int32>, Alias);
 	LAYOUT_FIELD(float, TotalWeight);

@@ -556,9 +556,6 @@ public:
 	 */
 	int32 GetApproxCompressedSize() const;
 
-	// Initialize curve compression settings, does nothing if scheme already valid
-	void InitCurveCompressionScheme();
-
 	/**
 	 * Removes trivial frames -- frames of tracks when position or orientation is constant
 	 * over the entire animation -- from the raw animation data.  If both position and rotation
@@ -581,7 +578,7 @@ public:
 	FString GetDDCCacheKeySuffix(const bool bPerformStripping) const;
 	void ApplyCompressedData(const FString& DataCacheKeySuffix, const bool bPerformFrameStripping, const TArray<uint8>& Data);
 #endif
-	void WaitOnExistingCompression(const bool bCancelIfNotStarted=false);
+	void WaitOnExistingCompression(const bool bWantResults=true);
 	void RequestAnimCompression(FRequestAnimCompressionParams Params);
 	void RequestSyncAnimRecompression(bool bOutput = false) { RequestAnimCompression(FRequestAnimCompressionParams(false, false, bOutput)); }
 	void RequestAsyncAnimRecompression(bool bOutput = false) { RequestAnimCompression(FRequestAnimCompressionParams(true, false, bOutput)); }
@@ -684,6 +681,17 @@ public:
 	 * Return true if it contains transform curves
 	 */
 	bool DoesContainTransformCurves() const;
+
+	/**
+	 * Returns whether this animation has baked transform curves (i.e. has the raw data been modified)
+	 */
+	bool HasBakedTransformCurves() const;
+
+	/**
+	 * Restore the pre baked transform curve raw data
+	 */
+	void RestoreSourceData();
+
 	/**
 	* Return true if compressed data is out of date / missing and so animation needs to use raw data
 	*/

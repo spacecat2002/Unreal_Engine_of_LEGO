@@ -85,6 +85,8 @@ enum class EConvertFromTypeResult
 	Converted
 };
 
+namespace UE4Property_Private { class FProperty_DoNotUse; }
+
 //
 // An UnrealScript variable.
 //
@@ -185,6 +187,7 @@ private:
 
 protected:
 	friend class FMapProperty;
+	friend class UE4Property_Private::FProperty_DoNotUse;
 
 	/** Set the alignment offset for this property - added for FMapProperty */
 	void SetOffset_Internal(int32 NewOffset);
@@ -231,6 +234,7 @@ public:
 		LinkInternal(Ar);
 		return SetupOffset();
 	}
+
 protected:
 	virtual void LinkInternal(FArchive& Ar);
 public:
@@ -863,11 +867,32 @@ public:
 class COREUOBJECT_API FPropertyHelpers
 {
 public:
+	static const TCHAR* ReadToken( const TCHAR* Buffer, FString& Out, bool DottedNames = false);
 
-	static const TCHAR* ReadToken( const TCHAR* Buffer, FString& String, bool DottedNames = 0 );
-
+	// @param Out Appended to
+	static const TCHAR* ReadToken( const TCHAR* Buffer, FStringBuilderBase& Out, bool DottedNames = false);
 };
 
+namespace UE4Property_Private
+{
+	/** FProperty methods FOR INTERNAL USE ONLY -- only authorized users should be making use of this. -- DO NOT USE! */
+	class FProperty_DoNotUse
+	{
+	public:
+		/** 
+		 * To facilitate runtime binding with native C++ data-members, we need 
+		 * a way of updating a property's generated offset.
+		 * This is needed for pre-generated properties, which are then loaded 
+		 * later, and fixed up to point at explicitly mapped C++ data-members.
+		 * 
+		 * Explicitly exposed for this singular case -- DO NOT USE otherwise.
+		 */
+		static COREUOBJECT_API void Unsafe_AlterOffset(FProperty& Property, const int32 OffsetOverride)
+		{
+			Property.SetOffset_Internal(OffsetOverride);
+		}
+	};
+}
 
 /** reference to a property and optional array index used in property text import to detect duplicate references */
 struct COREUOBJECT_API FDefinedProperty
@@ -2279,6 +2304,9 @@ class COREUOBJECT_API FWeakObjectProperty : public TFObjectPropertyBase<FWeakObj
 
 	// FProperty interface
 	virtual void SerializeItem(FStructuredArchive::FSlot Slot, void* Value, void const* Defaults) const override;
+private:
+	virtual uint32 GetValueTypeHashInternal(const void* Src) const override;
+public:
 	// End of FProperty interface
 
 	// FObjectProperty interface
@@ -3694,7 +3722,7 @@ public:
 	 */
 	int32 FindMapIndexWithKey(const void* PairWithKeyToFind, int32 IndexHint = 0) const
 	{
-		return WithScriptMap([this, PairWithKeyToFind, IndexHint](auto* Map) -> int32
+		return WithScriptMap([this, PairWithKeyToFind, &IndexHint](auto* Map) -> int32
 		{
 			int32 MapMax = Map->GetMaxIndex();
 			if (MapMax == 0)
@@ -3702,7 +3730,12 @@ public:
 				return INDEX_NONE;
 			}
 
-			check(IndexHint >= 0 && IndexHint < MapMax);
+			if (IndexHint >= MapMax)
+			{
+				IndexHint = 0;
+			}
+
+			check(IndexHint >= 0);
 
 			FProperty* LocalKeyProp = this->KeyProp; // prevent aliasing in loop below
 
@@ -4384,7 +4417,12 @@ public:
 			return INDEX_NONE;
 		}
 
-		check(IndexHint >= 0 && IndexHint < SetMax);
+		if (IndexHint >= SetMax)
+		{
+			IndexHint = 0;
+		}
+
+		check(IndexHint >= 0);
 
 		FProperty* LocalKeyProp = this->ElementProp; // prevent aliasing in loop below
 
@@ -4804,6 +4842,7 @@ public:
 
 	// UObject interface
 	virtual void Serialize( FArchive& Ar ) override;
+	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
 	virtual void BeginDestroy() override;
 	// End of UObject interface
 
@@ -4860,6 +4899,7 @@ public:
 	// UObject interface
 	virtual void Serialize( FArchive& Ar ) override;
 	virtual void BeginDestroy() override;
+	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
 	// End of UObject interface
 
 	// Field interface
@@ -5073,7 +5113,7 @@ class COREUOBJECT_API FEditPropertyChain : public TDoubleLinkedList<FProperty*>
 
 public:
 	/** Constructors */
-	FEditPropertyChain() : ActivePropertyNode(NULL), ActiveMemberPropertyNode(NULL) {}
+	FEditPropertyChain() : ActivePropertyNode(NULL), ActiveMemberPropertyNode(NULL), bFilterAffectedInstances(false) {}
 
 	/**
 	 * Sets the ActivePropertyNode to the node associated with the property specified.
@@ -5102,6 +5142,7 @@ public:
 	template<typename T>
 	void SetAffectedArchetypeInstances( T&& InAffectedInstances )
 	{
+		bFilterAffectedInstances = true;
 		AffectedInstances = Forward<T>(InAffectedInstances);
 	}
 	
@@ -5141,6 +5182,11 @@ protected:
 	 * Archetype instances that will be affected by the property change.
 	 */
 	TSet<UObject*> AffectedInstances;
+
+	/**
+	 * Assume all archetype instances are affected unless a set of affected instances is provided.
+	 */
+	bool bFilterAffectedInstances;
 
 	/** TDoubleLinkedList interface */
 	/**
@@ -5190,6 +5236,7 @@ struct FPropertyChangedEvent
 		, MemberProperty(InProperty)
 		, ChangeType(InChangeType)
 		, ObjectIteratorIndex(INDEX_NONE)
+		, bFilterChangedInstances(false)
 		, TopLevelObjects(InTopLevelObjects)
 	{
 	}
@@ -5200,6 +5247,7 @@ struct FPropertyChangedEvent
 		, MemberProperty(InProperty)
 		, ChangeType(InChangeType)
 		, ObjectIteratorIndex(INDEX_NONE)
+		, bFilterChangedInstances(false)
 	{
 		if (InTopLevelObjects)
 		{
@@ -5226,6 +5274,7 @@ struct FPropertyChangedEvent
 	template<typename T>
 	void SetInstancesChanged(T&& InInstancesChanged)
 	{
+		bFilterChangedInstances = true;
 		InstancesChanged = Forward<T>(InInstancesChanged);
 	}
 
@@ -5254,7 +5303,7 @@ struct FPropertyChangedEvent
 	 */
 	bool HasArchetypeInstanceChanged(UObject* InInstance) const
 	{
-		return InstancesChanged.Contains(InInstance);
+		return !bFilterChangedInstances || InstancesChanged.Contains(InInstance);
 	}
 
 	/**
@@ -5300,6 +5349,9 @@ private:
 	
 	//In the property window, multiple objects can be selected at once. In this case we want to know if an instance was updated for this operation (used in array/set/map context)
 	TSet<UObject*> InstancesChanged;
+
+	//Assume all archetype instances were changed unless a set of changed instances is provided.
+	bool bFilterChangedInstances;
 
 	/** List of top level objects being changed */
 	TArrayView<const UObject* const> TopLevelObjects;
@@ -5522,7 +5574,9 @@ struct TFieldRange
 //
 // Find a typed field in a struct.
 //
-template <class T> T* FindField( const UStruct* Owner, FName FieldName )
+template <class T>
+UE_DEPRECATED(4.25, "FindField will no longer return properties. Use FindProperty instead or FindUField if you want to find functions or enums.")
+ T* FindField( const UStruct* Owner, FName FieldName )
 {
 	// We know that a "none" field won't exist in this Struct
 	if( FieldName.IsNone() )
@@ -5543,11 +5597,101 @@ template <class T> T* FindField( const UStruct* Owner, FName FieldName )
 	return nullptr;
 }
 
-template <class T> T* FindField( const UStruct* Owner, const TCHAR* FieldName )
+template <class T>
+UE_DEPRECATED(4.25, "FindField will no longer return properties. Use FindFProperty instead or FindUField if you want to find UFunctions or UEnums.")
+T* FindField( const UStruct* Owner, const TCHAR* FieldName )
 {
 	// lookup the string name in the Name hash
 	FName Name(FieldName, FNAME_Find);
 	return FindField<T>(Owner, Name);
+}
+
+template <class T> 
+typename TEnableIf<TIsDerivedFrom<T, UField>::IsDerived, T*>::Type FindUField(const UStruct* Owner, FName FieldName)
+{
+	static_assert(sizeof(T) > 0, "T must not be an incomplete type");
+
+	// We know that a "none" field won't exist in this Struct
+	if (FieldName.IsNone())
+	{
+		return nullptr;
+	}
+
+	// Search by comparing FNames (INTs), not strings
+	for (TFieldIterator<T>It(Owner); It; ++It)
+	{
+		if (It->GetFName() == FieldName)
+		{
+			return *It;
+		}
+	}
+
+	// If we didn't find it, return no field
+	return nullptr;
+}
+
+template <class T> 
+typename TEnableIf<TIsDerivedFrom<T, UField>::IsDerived, T*>::Type FindUField(const UStruct* Owner, const TCHAR* FieldName)
+{
+	static_assert(sizeof(T) > 0, "T must not be an incomplete type");
+
+	// lookup the string name in the Name hash
+	FName Name(FieldName, FNAME_Find);
+	return FindUField<T>(Owner, Name);
+}
+
+template <class T>
+typename TEnableIf<TIsDerivedFrom<T, FField>::IsDerived, T*>::Type FindFProperty(const UStruct* Owner, FName FieldName)
+{
+	static_assert(sizeof(T) > 0, "T must not be an incomplete type");
+
+	// We know that a "none" field won't exist in this Struct
+	if (FieldName.IsNone())
+	{
+		return nullptr;
+	}
+
+	// Search by comparing FNames (INTs), not strings
+	for (TFieldIterator<T>It(Owner); It; ++It)
+	{
+		if (It->GetFName() == FieldName)
+		{
+			return *It;
+		}
+	}
+
+	// If we didn't find it, return no field
+	return nullptr;
+}
+
+template <class T>
+typename TEnableIf<TIsDerivedFrom<T, FField>::IsDerived, T*>::Type FindFProperty(const UStruct* Owner, const TCHAR* FieldName)
+{
+	static_assert(sizeof(T) > 0, "T must not be an incomplete type");
+
+	// lookup the string name in the Name hash
+	FName Name(FieldName, FNAME_Find);
+	return FindFProperty<T>(Owner, Name);
+}
+
+/** Finds FProperties or UFunctions and UEnums */
+inline FFieldVariant FindUFieldOrFProperty(const UStruct* Owner, FName FieldName)
+{
+	// Look for properties first as they're most often the runtime thing higher level code wants to find
+	FFieldVariant Result = FindFProperty<FProperty>(Owner, FieldName);
+	if (!Result)
+	{
+		Result = FindUField<UField>(Owner, FieldName);
+	}
+	return Result;
+}
+
+/** Finds FProperties or UFunctions and UEnums */
+inline FFieldVariant FindUFieldOrFProperty(const UStruct* Owner, const TCHAR* FieldName)
+{
+	// lookup the string name in the Name hash
+	FName Name(FieldName, FNAME_Find);
+	return FindUFieldOrFProperty(Owner, Name);
 }
 
 /**

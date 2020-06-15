@@ -178,6 +178,8 @@ public:
 
 	LAYOUT_FIELD_INITIALIZED(bool, bFastBuild, false);
 	LAYOUT_FIELD_INITIALIZED(bool, bAllowUpdate, false);
+
+	LAYOUT_FIELD(FName, DebugName);
 };
 
 enum ERayTracingSceneLifetime
@@ -212,6 +214,8 @@ struct FRayTracingSceneInitializer
 	// Defines whether data in this scene should persist between frames.
 	// Currently only single-frame lifetime is supported.
 	ERayTracingSceneLifetime Lifetime = RTSL_SingleFrame;
+
+	FName DebugName;
 };
 
 struct FShaderResourceViewInitializer
@@ -219,18 +223,18 @@ struct FShaderResourceViewInitializer
 	struct FVertexBufferShaderResourceViewInitializer
 	{
 		FRHIVertexBuffer* VertexBuffer;
-		uint32 StartElement;
+		uint32 StartOffsetBytes;
 		uint32 NumElements;
-		uint8 Format;
+		EPixelFormat Format;
 
 		inline bool IsWholeResource() const 
 		{ 
-			return StartElement == 0 && NumElements == UINT32_MAX; 
+			return StartOffsetBytes == 0 && NumElements == UINT32_MAX;
 		}
 	};
 
-	RHI_API FShaderResourceViewInitializer(FRHIVertexBuffer* InVertexBuffer, uint8 InFormat, uint32 InStartElement, uint32 InNumElements);
-	RHI_API FShaderResourceViewInitializer(FRHIVertexBuffer* InVertexBuffer, uint8 InFormat);
+	RHI_API FShaderResourceViewInitializer(FRHIVertexBuffer* InVertexBuffer, EPixelFormat InFormat, uint32 InStartOffsetBytes, uint32 InNumElements);
+	RHI_API FShaderResourceViewInitializer(FRHIVertexBuffer* InVertexBuffer, EPixelFormat InFormat);
 
 	const FVertexBufferShaderResourceViewInitializer& AsVertexBufferSRV() const
 	{
@@ -241,16 +245,16 @@ struct FShaderResourceViewInitializer
 	struct FStructuredBufferShaderResourceViewInitializer
 	{
 		FRHIStructuredBuffer* StructuredBuffer;
-		uint32 StartElement;
+		uint32 StartOffsetBytes;
 		uint32 NumElements;
 
 		inline bool IsWholeResource() const 
 		{
-			return StartElement == 0 && NumElements == UINT32_MAX; 
+			return StartOffsetBytes == 0 && NumElements == UINT32_MAX;
 		}
 	};
 
-	RHI_API FShaderResourceViewInitializer(FRHIStructuredBuffer* InStructuredBuffer, uint32 InStartElement, uint32 InNumElements);
+	RHI_API FShaderResourceViewInitializer(FRHIStructuredBuffer* InStructuredBuffer, uint32 InStartOffsetBytes, uint32 InNumElements);
 	RHI_API FShaderResourceViewInitializer(FRHIStructuredBuffer* InStructuredBuffer);
 
 	const FStructuredBufferShaderResourceViewInitializer& AsStructuredBufferSRV() const
@@ -262,16 +266,16 @@ struct FShaderResourceViewInitializer
 	struct FIndexBufferShaderResourceViewInitializer
 	{
 		FRHIIndexBuffer* IndexBuffer;
-		uint32 StartElement;
+		uint32 StartOffsetBytes;
 		uint32 NumElements;
 
 		inline bool IsWholeResource() const 
 		{ 
-			return StartElement == 0 && NumElements == UINT32_MAX; 
+			return StartOffsetBytes == 0 && NumElements == UINT32_MAX;
 		}
 	};
 
-	RHI_API FShaderResourceViewInitializer(FRHIIndexBuffer* InIndexBuffer, uint32 InStartElement, uint32 InNumElements);
+	RHI_API FShaderResourceViewInitializer(FRHIIndexBuffer* InIndexBuffer, uint32 InStartOffsetBytes, uint32 InNumElements);
 	RHI_API FShaderResourceViewInitializer(FRHIIndexBuffer* InIndexBuffer);
 
 	const FIndexBufferShaderResourceViewInitializer& AsIndexBufferSRV() const
@@ -767,6 +771,7 @@ public:
 	*/
 	// FlushType: Flush RHI Thread
 	virtual void RHITransferTexture(FRHITexture2D* Texture, FIntRect Rect, uint32 SrcGPUIndex, uint32 DestGPUIndex, bool PullData) { unimplemented(); };
+	virtual void RHITransferTextures(const TArrayView<const FTransferTextureParams> Params) { unimplemented(); };
 
 	/**
 	* Creates a Array RHI texture resource
@@ -1271,7 +1276,6 @@ public:
 
 	// FlushType: Thread safe
 	virtual class IRHICommandContextContainer* RHIGetCommandContextContainer(int32 Index, int32 Num) = 0;
-
 
 #if WITH_MGPU
 	/** Returns a context for sending commands to the given GPU mask. Default implementation is only valid when not using multi-gpu. */

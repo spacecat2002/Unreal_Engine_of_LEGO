@@ -20,6 +20,7 @@
 #include "Framework/DispatcherImpl.h"
 #include "Misc/App.h"
 #include "Chaos/PhysicalMaterials.h"
+#include "Framework/PhysicsTickTask.h"
 
 TAutoConsoleVariable<int32> CVarChaosThreadEnabled(
 	TEXT("p.Chaos.DedicatedThreadEnabled"),
@@ -176,7 +177,7 @@ FChaosSolversModule::FChaosSolversModule()
 	, bModuleInitialized(false)
 {
 #if WITH_EDITOR
-	if(!IsRunningGame())
+	if(!(IsRunningDedicatedServer() || IsRunningGame()))
 	{
 		// In the editor we begin with everything paused so we don't needlessly tick
 		// the physics solvers until PIE begins. Delegates are bound in FPhysScene_ChaosPauseHandler
@@ -300,12 +301,12 @@ void FChaosSolversModule::ShutdownThreadingMode()
 			// need to handle this for task graph dispatchers
 			Dispatcher->Execute();
 
-			for(FPBDRigidsSolver* Solver : Solvers)
+			for(FPhysicsSolverBase* Solver : AllSolvers)
 			{
 				IDispatcher::FSolverCommand Command;
 				while(Solver->CommandQueue.Dequeue(Command))
 				{
-					Command(Solver);
+					Command();
 				}
 			}
 
@@ -462,7 +463,8 @@ void FChaosSolversModule::SyncTask(bool bForceBlockingSync /*= false*/)
 	UpdateStats();
 }
 
-Chaos::FPhysicsSolver* FChaosSolversModule::CreateSolver(bool bStandalone /*= false*/
+template <typename Traits>
+Chaos::TPBDRigidsSolver<Traits>* FChaosSolversModule::CreateSolver(UObject* InOwner, ESolverFlags InFlags
 #if CHAOS_CHECKED
 	, const FName& DebugName
 #endif
@@ -478,12 +480,16 @@ Chaos::FPhysicsSolver* FChaosSolversModule::CreateSolver(bool bStandalone /*= fa
 		SolverBufferMode = GetDesiredBufferingMode();
 	}
 
-	Solvers.Add(new Chaos::FPhysicsSolver(SolverBufferMode));
-	Chaos::FPhysicsSolver* NewSolver = Solvers.Last();
+	auto* NewSolver = new Chaos::TPBDRigidsSolver<Traits>(SolverBufferMode,InOwner);
+	AllSolvers.Add(NewSolver);
+
+	// Add The solver to the owner list
+	TArray<Chaos::FPhysicsSolverBase*>& OwnerSolverList = SolverMap.FindOrAdd(InOwner);
+	OwnerSolverList.Add(NewSolver);
 
 #if CHAOS_CHECKED
-    // Add solver nubmer to solver name
-	const FName NewDebugName = *FString::Printf(TEXT("%s (%d)"), DebugName == NAME_None ? TEXT("Solver") : *DebugName.ToString(), Solvers.Num() - 1);
+    // Add solver number to solver name
+	const FName NewDebugName = *FString::Printf(TEXT("%s (%d)"), DebugName == NAME_None ? TEXT("Solver") : *DebugName.ToString(), AllSolvers.Num() - 1);
 	NewSolver->SetDebugName(NewDebugName);
 #endif
 
@@ -498,7 +504,7 @@ Chaos::FPhysicsSolver* FChaosSolversModule::CreateSolver(bool bStandalone /*= fa
 		NewSolver->QueryMaterialLock.WriteUnlock();
 	}
 
-	if(!bStandalone && IsPersistentTaskRunning() && Dispatcher)
+	if(!(InFlags & ESolverFlags::Standalone) && IsPersistentTaskRunning() && Dispatcher)
 	{
 		// Need to let the thread know there's a new solver to care about
 		Dispatcher->EnqueueCommandImmediate([NewSolver](Chaos::FPersistentPhysicsTask* PhysThread)
@@ -509,6 +515,31 @@ Chaos::FPhysicsSolver* FChaosSolversModule::CreateSolver(bool bStandalone /*= fa
 	}
 
 	return NewSolver;
+}
+
+void FChaosSolversModule::MigrateSolver(Chaos::FPhysicsSolverBase* InSolver, const UObject* InNewOwner)
+{
+	checkSlow(IsInGameThread());
+
+	if(InSolver->GetOwner() == InNewOwner)
+	{
+		// No migration
+		return;
+	}
+
+	if(const UObject* CurrentOwner = InSolver->GetOwner())
+	{
+		TArray<Chaos::FPhysicsSolverBase*>* OwnerList = SolverMap.Find(CurrentOwner);
+		ensure(OwnerList->Remove(InSolver));
+	}
+
+	InSolver->SetOwner(InNewOwner);
+
+	if(InNewOwner)
+	{
+		TArray<Chaos::FPhysicsSolverBase*>& OwnerList = SolverMap.FindOrAdd(InNewOwner);
+		OwnerList.Add(InSolver);
+	}
 }
 
 UClass* FChaosSolversModule::GetSolverActorClass() const
@@ -535,14 +566,18 @@ void FChaosSolversModule::SetDedicatedThreadTickMode(EChaosSolverTickMode InTick
 	});
 }
 
-void FChaosSolversModule::DestroySolver(Chaos::FPhysicsSolver* InSolver)
+void FChaosSolversModule::DestroySolver(Chaos::FPhysicsSolverBase* InSolver)
 {
 	LLM_SCOPE(ELLMTag::Chaos);
 
 	FChaosScopeSolverLock SolverScopeLock;
 
-	if(Solvers.Remove(InSolver) > 0)
+	if(AllSolvers.Remove(InSolver) > 0)
 	{
+		// Also remove from the owner list
+		TArray<Chaos::FPhysicsSolverBase*> OwnerList = GetSolversMutable(InSolver->GetOwner());
+		ensureMsgf(OwnerList.Remove(InSolver), TEXT("Removed a solver from the global list but not an owner list."));
+
 		if(Dispatcher)
 		{
 			Dispatcher->EnqueueCommandImmediate([InSolver](Chaos::FPersistentPhysicsTask* PhysThread)
@@ -563,6 +598,45 @@ void FChaosSolversModule::DestroySolver(Chaos::FPhysicsSolver* InSolver)
 	else if(InSolver)
 	{
 		UE_LOG(LogChaosGeneral, Warning, TEXT("Passed valid solver state to DestroySolverState but it wasn't in the solver storage list! Make sure it was created using the Chaos module."));
+	}
+}
+
+const TArray<Chaos::FPhysicsSolverBase*>& FChaosSolversModule::GetAllSolvers() const
+{
+	return AllSolvers;
+}
+
+TArray<const Chaos::FPhysicsSolverBase*> FChaosSolversModule::GetSolvers(const UObject* InOwner) const
+{
+	// Can't just return the ptr from TMap::Find here as it's likely these solver lists will be sent to
+	// the physics thread. In which case the solver pointers are stable but the container pointers are not
+	TArray<const Chaos::FPhysicsSolverBase*> Solvers;
+	GetSolvers(InOwner, Solvers);
+	return Solvers;
+}
+
+TArray<Chaos::FPhysicsSolverBase*> FChaosSolversModule::GetSolversMutable(const UObject* InOwner)
+{
+	// Can't just return the ptr from TMap::Find here as it's likely these solver lists will be sent to
+	// the physics thread. In which case the solver pointers are stable but the container pointers are not
+	TArray<Chaos::FPhysicsSolverBase*> Solvers;
+	GetSolversMutable(InOwner, Solvers);
+	return Solvers;
+}
+
+void FChaosSolversModule::GetSolvers(const UObject* InOwner, TArray<const Chaos::FPhysicsSolverBase*>& OutSolvers) const
+{
+	if(const TArray<Chaos::FPhysicsSolverBase*>* Solvers = SolverMap.Find(InOwner))
+	{
+		OutSolvers.Append(*Solvers);
+	}
+}
+
+void FChaosSolversModule::GetSolversMutable(const UObject* InOwner, TArray<Chaos::FPhysicsSolverBase*>& OutSolvers)
+{
+	if(TArray<Chaos::FPhysicsSolverBase*>* Solvers = SolverMap.Find(InOwner))
+	{
+		OutSolvers.Append(*Solvers);
 	}
 }
 
@@ -591,10 +665,10 @@ void FChaosSolversModule::DumpHierarchyStats(int32* OutOptMaxCellElements)
 	TArray<int32> BucketCounts;
 	BucketCounts.AddZeroed(NumBuckets);
 
-	const int32 NumSolvers = Solvers.Num();
+	const int32 NumSolvers = AllSolvers.Num();
 	for(int32 SolverIndex = 0; SolverIndex < NumSolvers; ++SolverIndex)
 	{
-		Chaos::FPhysicsSolver* Solver = Solvers[SolverIndex];
+		Chaos::FPhysicsSolverBase* Solver = AllSolvers[SolverIndex];
 #if TODO_REIMPLEMENT_SPATIAL_ACCELERATION_ACCESS
 		if(const Chaos::ISpatialAcceleration<float,3>* SpatialAcceleration = Solver->GetSpatialAcceleration())
 		{
@@ -801,11 +875,11 @@ void FChaosSolversModule::UpdateStats()
 	FRAMEPRO_CUSTOM_STAT("Chaos_Thread_NumAllocatedParticles", PerSolverStats.NumAllocatedParticles, "ChaosThread", "Particles", FRAMEPRO_COLOUR(255,255,255));
 	FRAMEPRO_CUSTOM_STAT("Chaos_Thread_NumPaticleIslands", PerSolverStats.NumParticleIslands, "ChaosThread", "Islands", FRAMEPRO_COLOUR(255,255,255));
 
-	const int32 NumSolvers = Solvers.Num();
+	const int32 NumSolvers = AllSolvers.Num();
 #if 0
 	for(int32 SolverIndex = 0; SolverIndex < NumSolvers; ++SolverIndex)
 	{
-		Chaos::PBDRigidsSolver* Solver = Solvers[SolverIndex];
+		Chaos::PBDRigidsSolver* Solver = AllSolvers[SolverIndex];
 
 		const Chaos::TBoundingVolume<Chaos::TPBDRigidParticles<float, 3>, float, 3>* Hierarchy = Solver->GetSpatialAcceleration();
 
@@ -863,14 +937,14 @@ bool FChaosSolversModule::ShouldStepSolver(int32& InOutSingleStepCounter) const
 
 void FChaosSolversModule::ChangeBufferMode(Chaos::EMultiBufferMode BufferMode)
 {
-	for (Chaos::FPhysicsSolver* Solver : Solvers)
+	for (Chaos::FPhysicsSolverBase* Solver : AllSolvers)
 	{
 		if (Dispatcher)
 		{
-			Dispatcher->EnqueueCommandImmediate(Solver, [InBufferMode = BufferMode]
-			(Chaos::FPhysicsSolver* InSolver)
+			Dispatcher->EnqueueCommandImmediate(Solver, [InBufferMode = BufferMode, Solver]
+			()
 			{
-				InSolver->ChangeBufferMode(InBufferMode);
+				Solver->ChangeBufferMode(InBufferMode);
 			});
 		}
 		else
@@ -883,7 +957,7 @@ void FChaosSolversModule::ChangeBufferMode(Chaos::EMultiBufferMode BufferMode)
 
 Chaos::EThreadingMode FChaosSolversModule::GetDesiredThreadingMode() const
 {
-	const bool bForceSingleThread = !FApp::ShouldUseThreadingForPerformance();
+	const bool bForceSingleThread = !(FApp::ShouldUseThreadingForPerformance() || FForkProcessHelper::SupportsMultithreadingPostFork());
 
 	// If the platform isn't using threads for perf - force Chaos to
 	// run single threaded no matter the selected mode.
@@ -909,12 +983,15 @@ void FChaosSolversModule::OnUpdateMaterial(Chaos::FMaterialHandle InHandle)
 
 	if(ensure(Material))
 	{
-		for(Chaos::FPhysicsSolver* Solver : Solvers)
+		for(Chaos::FPhysicsSolverBase* Solver : AllSolvers)
 		{
 			// Send a copy of the material to each solver
-			Dispatcher->EnqueueCommandImmediate(Solver, [InHandle, MaterialCopy = *Material](Chaos::FPhysicsSolver* InSolver)
+			Dispatcher->EnqueueCommandImmediate(Solver, [InHandle, MaterialCopy = *Material, Solver]()
 			{
-				InSolver->UpdateMaterial(InHandle, MaterialCopy);
+				Solver->CastHelper([InHandle, &MaterialCopy](auto& Concrete)
+				{
+					Concrete.UpdateMaterial(InHandle,MaterialCopy);
+				});
 			});
 		}
 	}
@@ -929,12 +1006,15 @@ void FChaosSolversModule::OnCreateMaterial(Chaos::FMaterialHandle InHandle)
 
 	if(ensure(Material))
 	{
-		for(Chaos::FPhysicsSolver* Solver : Solvers)
+		for(Chaos::FPhysicsSolverBase* Solver : AllSolvers)
 		{
 			// Send a copy of the material to each solver
-			Dispatcher->EnqueueCommandImmediate(Solver, [InHandle, MaterialCopy = *Material](Chaos::FPhysicsSolver* InSolver)
+			Dispatcher->EnqueueCommandImmediate(Solver, [InHandle, MaterialCopy = *Material, Solver]()
 			{
-				InSolver->CreateMaterial(InHandle, MaterialCopy);
+				Solver->CastHelper([InHandle, &MaterialCopy](auto& Concrete)
+				{
+					Concrete.CreateMaterial(InHandle,MaterialCopy);
+				});
 			});
 		}
 	}
@@ -942,8 +1022,6 @@ void FChaosSolversModule::OnCreateMaterial(Chaos::FMaterialHandle InHandle)
 
 void FChaosSolversModule::OnDestroyMaterial(Chaos::FMaterialHandle InHandle)
 {
-	// @todo(bgallagher)
-	//check(Dispatcher);
 	if (!ensure(Dispatcher))
 	{
 		return;
@@ -954,12 +1032,15 @@ void FChaosSolversModule::OnDestroyMaterial(Chaos::FMaterialHandle InHandle)
 
 	if(ensure(Material))
 	{
-		for(Chaos::FPhysicsSolver* Solver : Solvers)
+		for(Chaos::FPhysicsSolverBase* Solver : AllSolvers)
 		{
 			// Notify each solver
-			Dispatcher->EnqueueCommandImmediate(Solver, [InHandle](Chaos::FPhysicsSolver* InSolver)
+			Dispatcher->EnqueueCommandImmediate(Solver, [InHandle, Solver]()
 			{
-				InSolver->DestroyMaterial(InHandle);
+				Solver->CastHelper([InHandle](auto& Concrete)
+				{
+					Concrete.DestroyMaterial(InHandle);
+				});
 			});
 		}
 	}
@@ -974,12 +1055,15 @@ void FChaosSolversModule::OnUpdateMaterialMask(Chaos::FMaterialMaskHandle InHand
 
 	if (ensure(MaterialMask))
 	{
-		for (Chaos::FPhysicsSolver* Solver : Solvers)
+		for (Chaos::FPhysicsSolverBase* Solver : AllSolvers)
 		{
 			// Send a copy of the material to each solver
-			Dispatcher->EnqueueCommandImmediate(Solver, [InHandle, MaterialMaskCopy = *MaterialMask](Chaos::FPhysicsSolver* InSolver)
+			Dispatcher->EnqueueCommandImmediate(Solver, [InHandle, MaterialMaskCopy = *MaterialMask, Solver]()
 			{
-				InSolver->UpdateMaterialMask(InHandle, MaterialMaskCopy);
+				Solver->CastHelper([InHandle,&MaterialMaskCopy](auto& Concrete)
+				{
+					Concrete.UpdateMaterialMask(InHandle,MaterialMaskCopy);
+				});
 			});
 		}
 	}
@@ -994,12 +1078,15 @@ void FChaosSolversModule::OnCreateMaterialMask(Chaos::FMaterialMaskHandle InHand
 
 	if (ensure(MaterialMask))
 	{
-		for (Chaos::FPhysicsSolver* Solver : Solvers)
+		for (Chaos::FPhysicsSolverBase* Solver : AllSolvers)
 		{
 			// Send a copy of the material to each solver
-			Dispatcher->EnqueueCommandImmediate(Solver, [InHandle, MaterialMaskCopy = *MaterialMask](Chaos::FPhysicsSolver* InSolver)
+			Dispatcher->EnqueueCommandImmediate(Solver, [InHandle, MaterialMaskCopy = *MaterialMask, Solver]()
 			{
-				InSolver->CreateMaterialMask(InHandle, MaterialMaskCopy);
+				Solver->CastHelper([InHandle,&MaterialMaskCopy](auto& Concrete)
+				{
+					Concrete.CreateMaterialMask(InHandle,MaterialMaskCopy);
+				});
 			});
 		}
 	}
@@ -1007,8 +1094,6 @@ void FChaosSolversModule::OnCreateMaterialMask(Chaos::FMaterialMaskHandle InHand
 
 void FChaosSolversModule::OnDestroyMaterialMask(Chaos::FMaterialMaskHandle InHandle)
 {
-	// @todo(bgallagher)
-	//check(Dispatcher);
 	if (!ensure(Dispatcher))
 	{
 		return;
@@ -1019,14 +1104,53 @@ void FChaosSolversModule::OnDestroyMaterialMask(Chaos::FMaterialMaskHandle InHan
 
 	if (ensure(MaterialMask))
 	{
-		for (Chaos::FPhysicsSolver* Solver : Solvers)
+		for (Chaos::FPhysicsSolverBase* Solver : AllSolvers)
 		{
 			// Notify each solver
-			Dispatcher->EnqueueCommandImmediate(Solver, [InHandle](Chaos::FPhysicsSolver* InSolver)
+			Dispatcher->EnqueueCommandImmediate(Solver, [InHandle, Solver]()
 			{
-				InSolver->DestroyMaterialMask(InHandle);
+				Solver->CastHelper([InHandle](auto& Concrete)
+				{
+					Concrete.DestroyMaterialMask(InHandle);
+				});
 			});
 		}
+	}
+}
+
+void FChaosSolversModule::DispatchGlobalCommands()
+{
+	if(Dispatcher && Dispatcher->GetMode() == Chaos::EThreadingMode::SingleThread)
+	{
+		// Single threaded dispatchers fire commands immediately so we don't need to process any commands here
+		return;
+	}
+
+	if(IsValidRef(GlobalCommandTaskEventRef))
+	{
+		if(!GlobalCommandTaskEventRef->IsComplete())
+		{
+			SCOPE_CYCLE_COUNTER(STAT_WaitGlobalCommands);
+			FTaskGraphInterface::Get().WaitUntilTaskCompletes(GlobalCommandTaskEventRef);
+
+			UE_LOG(LogChaos, Warning, TEXT("Forced to wait on global physics commands from the previous frame."));
+		}
+
+		// Clear out our reference once the task has completed
+		GlobalCommandTaskEventRef.SafeRelease();
+	}
+
+	check(!IsValidRef(GlobalCommandTaskEventRef));
+
+	// Fire off commands for this grame
+	GlobalCommandTaskEventRef = TGraphTask<FPhysicsCommandsTask>::CreateTask().ConstructAndDispatchWhenReady();
+}
+
+void FChaosSolversModule::GetSolverUpdatePrerequisites(FGraphEventArray& InPrerequisiteContainer)
+{
+	if(IsValidRef(GlobalCommandTaskEventRef))
+	{
+		InPrerequisiteContainer.Add(GlobalCommandTaskEventRef);
 	}
 }
 
@@ -1103,5 +1227,16 @@ bool FChaosScopedPhysicsThreadLock::DidGetLock() const
 {
 	return bGotLock;
 }
+
+#if CHAOS_CHECKED
+#define EVOLUTION_TRAIT(Traits)\
+template Chaos::TPBDRigidsSolver<Chaos::Traits>* FChaosSolversModule::CreateSolver(UObject* InOwner, ESolverFlags InFlags, const FName& DebugName);
+#else
+#define EVOLUTION_TRAIT(Traits)\
+template Chaos::TPBDRigidsSolver<Chaos::Traits>* FChaosSolversModule::CreateSolver(UObject* InOwner,ESolverFlags InFlags);
+#endif
+
+#include "Chaos/EvolutionTraits.inl"
+#undef EVOLUTION_TRAIT
 
 IMPLEMENT_MODULE(FChaosSolversModule, ChaosSolvers);

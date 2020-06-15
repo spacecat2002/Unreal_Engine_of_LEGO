@@ -3,22 +3,17 @@
 #pragma once
 
 #include "CoreTypes.h"
+#include "IO/IoContainerId.h"
 #include "Containers/StringView.h"
 #include "Containers/UnrealString.h"
 #include "Logging/LogMacros.h"
-#include "Misc/StringBuilder.h"
 #include "Templates/RefCounting.h"
 #include "Templates/UnrealTemplate.h"
 #include "Templates/TypeCompatibleBytes.h"
 #include "HAL/PlatformAtomics.h"
-
-#if __cplusplus >= 201703L
-#	define UE_NODISCARD		[[nodiscard]]
-#	define UE_NORETURN		[[noreturn]]
-#else
-#	define UE_NODISCARD		
-#	define UE_NORETURN		
-#endif
+#include "Misc/SecureHash.h"
+#include "Misc/AES.h"
+#include "Misc/IEngineCrypto.h"
 
 class FIoRequest;
 class FIoDispatcher;
@@ -28,7 +23,11 @@ class FIoStoreEnvironment;
 class FIoRequestImpl;
 class FIoBatchImpl;
 class FIoDispatcherImpl;
+class FIoStoreWriterContextImpl;
 class FIoStoreWriterImpl;
+class FIoStoreReaderImpl;
+class IMappedFileHandle;
+class IMappedFileRegion;
 
 CORE_API DECLARE_LOG_CATEGORY_EXTERN(LogIoDispatcher, Log, All);
 
@@ -47,7 +46,8 @@ enum class EIoErrorCode
 	NotFound,
 	CorruptToc,
 	UnknownChunkID,
-	InvalidParameter
+	InvalidParameter,
+	SignatureError
 };
 
 /**
@@ -375,6 +375,26 @@ TIoStatusOr<T>& TIoStatusOr<T>::operator=(const TIoStatusOr<U>& Other)
 	return *this;
 }
 
+//////////////////////////////////////////////////////////////////////////
+
+/** Helper used to manage creation of I/O store file handles etc
+  */
+class FIoStoreEnvironment
+{
+public:
+	CORE_API FIoStoreEnvironment();
+	CORE_API ~FIoStoreEnvironment();
+
+	CORE_API void InitializeFileEnvironment(FStringView InPath, int32 InOrder = 0);
+
+	CORE_API const FString& GetPath() const { return Path; }
+	CORE_API int32 GetOrder() const { return Order; }
+
+private:
+	FString			Path;
+	int32			Order = 0;
+};
+
 /** Reference to buffer data used by I/O dispatcher APIs
   */
 class FIoBuffer
@@ -401,12 +421,24 @@ public:
 
 	inline void			SetSize(uint64 InSize)	{ return CorePtr->SetSize(InSize); }
 
-	inline bool			IsAvailable() const;
 	inline bool			IsMemoryOwned() const	{ return CorePtr->IsMemoryOwned(); }
 
 	inline void			EnsureOwned() const		{ if (!CorePtr->IsMemoryOwned()) { MakeOwned(); } }
 
 	CORE_API void		MakeOwned() const;
+	
+	/**
+	 * Relinquishes control of the internal buffer to the caller and removes it from the FIoBuffer.
+	 * This allows the caller to assume ownership of the internal data and prevent it from being deleted along with 
+	 * the FIoBuffer.
+	 *
+	 * NOTE: It is only valid to call this if the FIoBuffer currently owns the internal memory allocation, as the 
+	 * point of the call is to take ownership of it. If the FIoBuffer is only wrapping the allocation then it will
+	 * return a failed FIoStatus instead.
+	 *
+	 * @return A status wrapper around the memory pointer. Even if the status is valid the pointer might still be null.
+	 */
+	UE_NODISCARD CORE_API TIoStatusOr<uint8*> Release();
 
 private:
 	/** Core buffer object. For internal use only, used by FIoBuffer
@@ -436,6 +468,8 @@ private:
 		void	SetSize(uint64 InSize);
 
 		void	MakeOwned();
+
+		TIoStatusOr<uint8*> ReleaseMemory();
 
 		inline void SetIsOwned(bool InOwnsMemory)
 		{
@@ -474,7 +508,7 @@ private:
 			return uint32(NumRefs);
 		}
 
-		bool			IsMemoryOwned() const	{ return Flags & OwnsMemory; }
+		bool IsMemoryOwned() const	{ return Flags & OwnsMemory; }
 
 	private:
 		CORE_API void				CheckRefCount() const;
@@ -502,6 +536,11 @@ private:
 		};
 
 		void EnsureDataIsResident() {}
+
+		void ClearFlags()
+		{
+			Flags = 0;
+		}
 	};
 
 	// Reference-counted "core"
@@ -510,6 +549,47 @@ private:
 	TRefCountPtr<BufCore>	CorePtr;
 	
 	friend class FIoBufferManager;
+};
+
+class FIoChunkHash
+{
+public:
+	friend uint32 GetTypeHash(const FIoChunkHash& InChunkHash)
+	{
+		uint32 Result = 5381;
+		for (int i = 0; i < sizeof Hash; ++i)
+		{
+			Result = Result * 33 + InChunkHash.Hash[i];
+		}
+		return Result;
+	}
+
+	friend FArchive& operator<<(FArchive& Ar, FIoChunkHash& ChunkHash)
+	{
+		Ar.Serialize(&ChunkHash.Hash, sizeof Hash);
+		return Ar;
+	}
+
+	inline bool operator ==(const FIoChunkHash& Rhs) const
+	{
+		return 0 == FMemory::Memcmp(Hash, Rhs.Hash, sizeof Hash);
+	}
+
+	inline bool operator !=(const FIoChunkHash& Rhs) const
+	{
+		return !(*this == Rhs);
+	}
+
+	static FIoChunkHash HashBuffer(const void* Data, uint64 DataSize)
+	{
+		FIoChunkHash Result;
+		FSHA1::HashBuffer(Data, DataSize, Result.Hash);
+		FMemory::Memset(Result.Hash + 20, 0, 12);
+		return Result;
+	}
+
+private:
+	uint8	Hash[32];
 };
 
 /**
@@ -580,62 +660,29 @@ enum class EIoChunkType : uint8
 	ExportBundleData,
 	BulkData,
 	OptionalBulkData,
+	MemoryMappedBulkData,
 	LoaderGlobalMeta,
 	LoaderInitialLoadMeta,
 	LoaderGlobalNames,
-	LoaderGlobalNameHashes
+	LoaderGlobalNameHashes,
+	ContainerHeader
 };
 
 /**
  * Creates a chunk identifier,
  */
-static FIoChunkId CreateIoChunkId(uint32 GlobalPackageId, uint16 ChunkIndex, EIoChunkType IoChunkType)
+static FIoChunkId CreateIoChunkId(uint64 ChunkId, uint16 ChunkIndex, EIoChunkType IoChunkType)
 {
 	uint8 Data[12] = {0};
 
-	*reinterpret_cast<uint32*>(&Data[0]) = GlobalPackageId;
-	*reinterpret_cast<uint16*>(&Data[4]) = ChunkIndex;
+	*reinterpret_cast<uint64*>(&Data[0]) = ChunkId;
+	*reinterpret_cast<uint16*>(&Data[8]) = ChunkIndex;
 	*reinterpret_cast<uint8*>(&Data[11]) = static_cast<uint8>(IoChunkType);
 
-	FIoChunkId ChunkId;
-	ChunkId.Set(Data, 12);
+	FIoChunkId IoChunkId;
+	IoChunkId.Set(Data, 12);
 
-	return ChunkId;
-}
-
-/**
- * Creates a FIoChunkId in the format that Bulkdata expects.
- *
- * @param GlobalPackageId	The identifier for the package that the bulkdata object is owned by
- * @param BulkDataChunkId	A unique id for the bulkdata (commonly the bulkdata offset value is used) 
- * @param ChunkType			The chunk type commonly 'BulkData' or 'OptionalBulkData'
- *
- * @return A valid FIoChunkId
- */
-static FIoChunkId CreateBulkdataChunkId(int32 GlobalPackageId, int64 BulkDataChunkId, EIoChunkType ChunkType)
-{
-	// We need to be able to call this in the data pipeline and at runtime but currently are unable change the 
-	// file format we cannot generate this during cook and pass it to runtime.
-	// The offset in file is the only unique value we can easily obtain at runtime but it can be negative,
-	// which is a problem because we will only store the first 7 bytes and a negative value will have the 
-	// top bit set. 
-	// We adjust the id and cast to unsigned so that the top byte is very unlikely to have data in it (and log 
-	// it as an error if it does)
-
-	const uint64 Offset = ((uint64_t)1 << 56) / 2;
-	const uint64 AdjustedChunkId = BulkDataChunkId + Offset;
-	uint8 Data[12] = { 0 };
-	
-	UE_CLOG((AdjustedChunkId & 0xF000000000000000) != 0, LogIoDispatcher, Error, TEXT("The BulkDataChunkId (%lld) being used to create a BulkdataChunkId is too large and will lose data, this might create unintended duplicate ids!"), BulkDataChunkId);
-
-	*reinterpret_cast<int32*>(&Data[0]) = GlobalPackageId;
-	*reinterpret_cast<uint64*>(&Data[4]) = AdjustedChunkId; // Top byte will get overwritten!
-	*reinterpret_cast<uint8*>(&Data[11]) = static_cast<uint8>(ChunkType);
-
-	FIoChunkId ChunkId;
-	ChunkId.Set(Data, 12);
-
-	return ChunkId;
+	return IoChunkId;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -687,6 +734,27 @@ private:
 
 //////////////////////////////////////////////////////////////////////////
 
+class FIoBatchReadOptions
+{
+public:
+	FIoBatchReadOptions() = default;
+
+	void SetTargetVa(void* InTargetVa)
+	{
+		TargetVa = InTargetVa;
+	}
+
+	void* GetTargetVa() const
+	{
+		return TargetVa;
+	}
+
+private:
+	void* TargetVa = nullptr;
+};
+
+//////////////////////////////////////////////////////////////////////////
+
 /**
   */
 class FIoRequest
@@ -715,6 +783,8 @@ private:
 	friend class FIoBatch;
 };
 
+using FIoReadCallback = TFunction<void(TIoStatusOr<FIoBuffer>)>;
+
 /** I/O batch
 
 	This is a primitive used to group I/O requests for synchronization
@@ -727,18 +797,71 @@ class FIoBatch
 	FIoBatch(FIoDispatcherImpl* InDispatcher, FIoBatchImpl* InImpl);
 
 public:
+	FIoBatch() = default;
+
+	CORE_API bool IsValid() const;
+
 	CORE_API FIoRequest Read(const FIoChunkId& Chunk, FIoReadOptions Options);
 
 	CORE_API void ForEachRequest(TFunction<bool(FIoRequest&)>&& Callback);
 
+	/**
+	 * Initiates the loading of the batch as individual requests.
+	 */
 	CORE_API void Issue();
+
+	/**
+	 * Initiates the loading of the batch to a single contiguous output buffer. The requests will be in the
+	 * same order that they were added to the FIoBatch.
+	 * NOTE: It is not valid to call this on a batch containing requests that have been given a TargetVa to 
+	 * read into as the requests are supposed to read into the batch's output buffer, doing so will cause the
+	 * method to return an error 'InvalidParameter'.
+	 *
+	 * @param Options A set of options allowing customization on how the load will work.
+	 * @param Callback An optional callback that will be triggered once the batch has finished loading. 
+	 * The batch's output buffer will be provided as the parameter of the callback.
+	 *
+	 * @return This methods had the capacity to fail so the return value should be checked.
+	 */
+	UE_NODISCARD CORE_API FIoStatus IssueWithCallback(FIoBatchReadOptions Options, FIoReadCallback&& Callback);
+	
 	CORE_API void Wait();
 	CORE_API void Cancel();
 
 private:
 	FIoDispatcherImpl*	Dispatcher		= nullptr;
 	FIoBatchImpl*		Impl			= nullptr;
-	FEvent*				CompletionEvent = nullptr;
+};
+
+/**
+ * Mapped region.
+ */
+struct FIoMappedRegion
+{
+	IMappedFileHandle* MappedFileHandle = nullptr;
+	IMappedFileRegion* MappedFileRegion = nullptr;
+};
+
+struct FIoDispatcherMountedContainer
+{
+	FIoStoreEnvironment Environment;
+	FIoContainerId ContainerId;
+};
+
+struct FIoSignatureError
+{
+	FString ContainerName;
+	int32 BlockIndex = INDEX_NONE;
+	FSHAHash ExpectedHash;
+	FSHAHash ActualHash;
+};
+
+DECLARE_MULTICAST_DELEGATE_OneParam(FIoSignatureErrorDelegate, const FIoSignatureError&);
+
+struct FIoSignatureErrorEvent
+{
+	FCriticalSection CriticalSection;
+	FIoSignatureErrorDelegate SignatureErrorDelegate;
 };
 
 /** I/O dispatcher
@@ -746,19 +869,28 @@ private:
 class FIoDispatcher
 {
 public:
+	DECLARE_EVENT_OneParam(FIoDispatcher, FIoContainerMountedEvent, const FIoDispatcherMountedContainer&);
+
 	CORE_API						FIoDispatcher();
 	CORE_API virtual				~FIoDispatcher();
 
 	CORE_API FIoStatus				Mount(const FIoStoreEnvironment& Environment);
 
 	CORE_API FIoBatch				NewBatch();
-	CORE_API void					FreeBatch(FIoBatch Batch);
+	CORE_API void					FreeBatch(FIoBatch& Batch);
 
-	CORE_API void					ReadWithCallback(const FIoChunkId& Chunk, const FIoReadOptions& Options, TFunction<void(TIoStatusOr<FIoBuffer>)>&& Callback);
+
+	CORE_API void					ReadWithCallback(const FIoChunkId& ChunkId, const FIoReadOptions& Options, FIoReadCallback&& Callback);
+	CORE_API TIoStatusOr<FIoMappedRegion> OpenMapped(const FIoChunkId& ChunkId, const FIoReadOptions& Options);
 
 	// Polling methods
 	CORE_API bool					DoesChunkExist(const FIoChunkId& ChunkId) const;
 	CORE_API TIoStatusOr<uint64>	GetSizeForChunk(const FIoChunkId& ChunkId) const;
+	CORE_API TArray<FIoDispatcherMountedContainer> GetMountedContainers() const;
+
+	// Events
+	CORE_API FIoContainerMountedEvent& OnContainerMounted();
+	CORE_API FIoSignatureErrorEvent& GetSignatureErrorEvent();
 
 	FIoDispatcher(const FIoDispatcher&) = default;
 	FIoDispatcher& operator=(const FIoDispatcher&) = delete;
@@ -779,23 +911,82 @@ private:
 
 //////////////////////////////////////////////////////////////////////////
 
-/** Helper used to manage creation of I/O store file handles etc 
-  */
-class FIoStoreEnvironment
+struct FIoStoreWriterSettings
 {
-public:
-	CORE_API FIoStoreEnvironment();
-	CORE_API ~FIoStoreEnvironment();
-
-	CORE_API void InitializeFileEnvironment(FStringView InPath);
-
-	CORE_API const FString& GetPath() const { return Path; }
-
-private:
-	FString			Path;
+	FName CompressionMethod = NAME_None;
+	uint64 CompressionBlockSize = 0;
+	uint64 CompressionBlockAlignment = 0;
+	uint64 MemoryMappingAlignment = 0;
+	uint64 WriterMemoryLimit = 0;
+	bool bEnableCsvOutput = false;
 };
 
-//////////////////////////////////////////////////////////////////////////
+enum class EIoContainerFlags : uint8
+{
+	None,
+	Compressed	= (1 << 0),
+	Encrypted	= (1 << 1),
+	Signed		= (1 << 2),
+};
+ENUM_CLASS_FLAGS(EIoContainerFlags);
+
+struct FIoContainerSettings
+{
+	FIoContainerId ContainerId;
+	EIoContainerFlags ContainerFlags = EIoContainerFlags::None;
+	FGuid EncryptionKeyGuid;
+	FAES::FAESKey EncryptionKey;
+	FRSAKeyHandle SigningKey;
+
+	bool IsCompressed() const
+	{
+		return !!(ContainerFlags & EIoContainerFlags::Compressed);
+	}
+
+	bool IsEncrypted() const
+	{
+		return !!(ContainerFlags & EIoContainerFlags::Encrypted);
+	}
+
+	bool IsSigned() const
+	{
+		return !!(ContainerFlags & EIoContainerFlags::Signed);
+	}
+};
+
+struct FIoStoreWriterResult
+{
+	FIoContainerId ContainerId;
+	FString ContainerName;
+	int64 TocSize = 0;
+	int64 TocEntryCount = 0;
+	int64 PaddingSize = 0;
+	int64 UncompressedContainerSize = 0;
+	int64 CompressedContainerSize = 0;
+	FName CompressionMethod = NAME_None;
+	EIoContainerFlags ContainerFlags;
+};
+
+struct FIoWriteOptions
+{
+	const TCHAR* DebugName = nullptr;
+	bool bForceUncompressed = false;
+	bool bIsMemoryMapped = false;
+};
+
+class FIoStoreWriterContext
+{
+public:
+	CORE_API FIoStoreWriterContext();
+	CORE_API ~FIoStoreWriterContext();
+
+	UE_NODISCARD CORE_API FIoStatus Initialize(const FIoStoreWriterSettings& InWriterSettings);
+
+private:
+	friend class FIoStoreWriter;
+	
+	FIoStoreWriterContextImpl* Impl;
+};
 
 class FIoStoreWriter
 {
@@ -806,23 +997,40 @@ public:
 	FIoStoreWriter(const FIoStoreWriter&) = delete;
 	FIoStoreWriter& operator=(const FIoStoreWriter&) = delete;
 
-	CORE_API FIoStatus	Initialize();
-	CORE_API FIoStatus	EnableCsvOutput();
-	CORE_API FIoStatus	Append(FIoChunkId ChunkId, FIoBuffer Chunk, const TCHAR* Name);
-
-	/**
-	 * Creates an addressable range in an already mapped Chunk.
-	 *
-	 * @param OriginalChunkId The FIoChunkId of the original chunk from which you want to create the range
-	 * @param Offset The number of bytes into the original chunk that the range should start
-	 * @param Length The length of the range in bytes
-	 * @param ChunkIdPartialRange The FIoChunkId that will map to the range
-	 */
-	CORE_API FIoStatus	MapPartialRange(FIoChunkId OriginalChunkId, uint64 Offset, uint64 Length, FIoChunkId ChunkIdPartialRange);
-	CORE_API FIoStatus	FlushMetadata();
+	UE_NODISCARD CORE_API FIoStatus	Initialize(const FIoStoreWriterContext& Context, const FIoContainerSettings& ContainerSettings);
+	UE_NODISCARD CORE_API FIoStatus	Append(const FIoChunkId& ChunkId, const FIoChunkHash& ChunkHash, FIoBuffer Chunk, const FIoWriteOptions& WriteOptions);
+	UE_NODISCARD CORE_API FIoStatus	Append(const FIoChunkId& ChunkId, FIoBuffer Chunk, const FIoWriteOptions& WriteOptions);
+	UE_NODISCARD CORE_API TIoStatusOr<FIoStoreWriterResult> Flush();
 
 private:
 	FIoStoreWriterImpl*		Impl;
+};
+
+struct FIoStoreTocChunkInfo
+{
+	FIoChunkId Id;
+	FIoChunkHash Hash;
+	uint64 Offset;
+	uint64 Size;
+	bool bForceUncompressed;
+	bool bIsMemoryMapped;
+};
+
+class FIoStoreReader
+{
+public:
+	CORE_API FIoStoreReader();
+	CORE_API ~FIoStoreReader();
+
+	UE_NODISCARD CORE_API FIoStatus Initialize(const FIoStoreEnvironment& InEnvironment, const TMap<FGuid, FAES::FAESKey>& InDecryptionKeys);
+	CORE_API FIoContainerId GetContainerId() const;
+	CORE_API EIoContainerFlags GetContainerFlags() const;
+	CORE_API FGuid GetEncryptionKeyGuid() const;
+	CORE_API void EnumerateChunks(TFunction<bool(const FIoStoreTocChunkInfo&)>&& Callback) const;
+	CORE_API TIoStatusOr<FIoBuffer> Read(const FIoChunkId& Chunk, const FIoReadOptions& Options) const;
+
+private:
+	FIoStoreReaderImpl* Impl;
 };
 
 //////////////////////////////////////////////////////////////////////////

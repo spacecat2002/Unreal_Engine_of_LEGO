@@ -264,13 +264,17 @@ FGlobalShaderMap* GetGlobalShaderMap(EShaderPlatform Platform)
 FGlobalShaderMapSection* FGlobalShaderMapSection::CreateFromArchive(FArchive& Ar)
 {
 	FGlobalShaderMapSection* Section = new FGlobalShaderMapSection();
-	Section->Serialize(Ar);
-	return Section;
+	if (Section->Serialize(Ar))
+	{
+		return Section;
+	}
+	delete Section;
+	return nullptr;
 }
 
-void FGlobalShaderMapSection::Serialize(FArchive& Ar)
+bool FGlobalShaderMapSection::Serialize(FArchive& Ar)
 {
-	Super::Serialize(Ar, true, false);
+	return Super::Serialize(Ar, true, false);
 }
 
 TShaderRef<FShader> FGlobalShaderMapSection::GetShader(FShaderType* ShaderType, int32 PermutationId) const
@@ -290,22 +294,21 @@ FGlobalShaderMap::FGlobalShaderMap(EShaderPlatform InPlatform)
 
 FGlobalShaderMap::~FGlobalShaderMap()
 {
-	for (const auto& It : SectionMap)
+	for (auto& It : SectionMap)
 	{
-		delete It.Value;
+		It.Value.SafeRelease();
 	}
 }
 
 TShaderRef<FShader> FGlobalShaderMap::GetShader(FShaderType* ShaderType, int32 PermutationId) const
 {
-	const FHashedName HashedFilename(ShaderType->GetShaderFilename());
-	FGlobalShaderMapSection* const* Section = SectionMap.Find(HashedFilename);
+	TRefCountPtr<FGlobalShaderMapSection> const* Section = SectionMap.Find(ShaderType->GetHashedShaderFilename());
 	return Section ? (*Section)->GetShader(ShaderType, PermutationId) : TShaderRef<FShader>();
 }
 
 FShaderPipelineRef FGlobalShaderMap::GetShaderPipeline(const FShaderPipelineType* ShaderPipelineType) const
 {
-	FGlobalShaderMapSection* const* Section = SectionMap.Find(ShaderPipelineType->GetHashedPrimaryShaderFilename());
+	TRefCountPtr<FGlobalShaderMapSection> const* Section = SectionMap.Find(ShaderPipelineType->GetHashedPrimaryShaderFilename());
 	return Section ? (*Section)->GetShaderPipeline(ShaderPipelineType) : FShaderPipelineRef();
 }
 
@@ -357,20 +360,28 @@ void FGlobalShaderMap::Empty()
 	}
 }
 
-FShader* FGlobalShaderMap::FindOrAddShader(const FShaderType* ShaderType, FShader* Shader)
+void FGlobalShaderMap::ReleaseAllSections()
 {
-	const FHashedName HashedFilename(ShaderType->GetShaderFilename());
-	FGlobalShaderMapSection*& Section = SectionMap.FindOrAdd(HashedFilename);
+	for (auto& It : SectionMap)
+	{
+		It.Value.SafeRelease();
+	}
+}
+
+FShader* FGlobalShaderMap::FindOrAddShader(const FShaderType* ShaderType, int32 PermutationId, FShader* Shader)
+{
+	const FHashedName HashedFilename(ShaderType->GetHashedShaderFilename());
+	TRefCountPtr<FGlobalShaderMapSection>& Section = SectionMap.FindOrAdd(HashedFilename);
 	if (!Section)
 	{
 		Section = new FGlobalShaderMapSection(Platform, HashedFilename);
 	}
-	return Section->GetMutableContent()->FindOrAddShader(Shader);
+	return Section->GetMutableContent()->FindOrAddShader(ShaderType->GetHashedName(), PermutationId, Shader);
 }
 
 FShaderPipeline* FGlobalShaderMap::FindOrAddShaderPipeline(const FShaderPipelineType* ShaderPipelineType, FShaderPipeline* ShaderPipeline)
 {
-	FGlobalShaderMapSection*& Section = SectionMap.FindOrAdd(ShaderPipelineType->GetHashedPrimaryShaderFilename());
+	TRefCountPtr<FGlobalShaderMapSection>& Section = SectionMap.FindOrAdd(ShaderPipelineType->GetHashedPrimaryShaderFilename());
 	if (!Section)
 	{
 		Section = new FGlobalShaderMapSection(Platform, ShaderPipelineType->GetHashedPrimaryShaderFilename());
@@ -380,17 +391,16 @@ FShaderPipeline* FGlobalShaderMap::FindOrAddShaderPipeline(const FShaderPipeline
 
 void FGlobalShaderMap::RemoveShaderTypePermutaion(const FShaderType* Type, int32 PermutationId)
 {
-	const FHashedName HashedFilename(Type->GetShaderFilename());
-	FGlobalShaderMapSection** Section = SectionMap.Find(HashedFilename);
+	TRefCountPtr<FGlobalShaderMapSection>* Section = SectionMap.Find(Type->GetHashedShaderFilename());
 	if (Section)
 	{
-		(*Section)->GetMutableContent()->RemoveShaderTypePermutaion(Type, PermutationId);
+		(*Section)->GetMutableContent()->RemoveShaderTypePermutaion(Type->GetHashedName(), PermutationId);
 	}
 }
 
 void FGlobalShaderMap::RemoveShaderPipelineType(const FShaderPipelineType* ShaderPipelineType)
 {
-	FGlobalShaderMapSection** Section = SectionMap.Find(ShaderPipelineType->GetHashedPrimaryShaderFilename());
+	TRefCountPtr<FGlobalShaderMapSection>* Section = SectionMap.Find(ShaderPipelineType->GetHashedPrimaryShaderFilename());
 	if (Section)
 	{
 		(*Section)->GetMutableContent()->RemoveShaderPipelineType(ShaderPipelineType);
@@ -399,6 +409,7 @@ void FGlobalShaderMap::RemoveShaderPipelineType(const FShaderPipelineType* Shade
 
 void FGlobalShaderMap::AddSection(FGlobalShaderMapSection* InSection)
 {
+	check(InSection);
 	const FGlobalShaderMapContent* Content = InSection->GetContent();
 	const FHashedName& HashedFilename = Content->HashedSourceFilename;
 
@@ -407,13 +418,13 @@ void FGlobalShaderMap::AddSection(FGlobalShaderMapSection* InSection)
 
 FGlobalShaderMapSection* FGlobalShaderMap::FindSection(const FHashedName& HashedShaderFilename)
 {
-	FGlobalShaderMapSection* const* Section = SectionMap.Find(HashedShaderFilename);
+	TRefCountPtr<FGlobalShaderMapSection> const* Section = SectionMap.Find(HashedShaderFilename);
 	return Section ? *Section : nullptr;
 }
 
 FGlobalShaderMapSection* FGlobalShaderMap::FindOrAddSection(const FShaderType* ShaderType)
 {
-	const FHashedName HashedFilename(ShaderType->GetShaderFilename());
+	const FHashedName HashedFilename(ShaderType->GetHashedShaderFilename());
 	FGlobalShaderMapSection* Section = FindSection(HashedFilename);
 	if(!Section)
 	{
@@ -442,6 +453,9 @@ void FGlobalShaderMap::LoadFromGlobalArchive(FArchive& Ar)
 	for (int32 i = 0; i < NumSections; ++i)
 	{
 		FGlobalShaderMapSection* Section = FGlobalShaderMapSection::CreateFromArchive(Ar);
-		AddSection(Section);
+		if (Section)
+		{
+			AddSection(Section);
+		}
 	}
 }

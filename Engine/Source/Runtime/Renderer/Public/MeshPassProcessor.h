@@ -39,6 +39,7 @@ namespace EMeshPass
 		MobileBasePassCSM,  /** Mobile base pass with CSM shading enabled */
 		MobileInverseOpacity,  /** Mobile specific scene capture, Non-cached */
 		VirtualTexture,
+		DitheredLODFadingOutMaskPass, /** A mini depth pass used to mark pixels with dithered LOD fading out. Currently only used by ray tracing shadows. */
 
 #if WITH_EDITOR
 		HitProxy,
@@ -241,6 +242,7 @@ public:
 		, DepthStencilState(InMinimalState.DepthStencilState)
 		, ImmutableSamplerState(InMinimalState.ImmutableSamplerState)
 		, bDepthBounds(InMinimalState.bDepthBounds)
+		, DrawShadingRate(InMinimalState.DrawShadingRate)
 		, PrimitiveType(InMinimalState.PrimitiveType)
 	{
 	}
@@ -270,6 +272,8 @@ public:
 			, 0
 			, bDepthBounds
 			, bMultiView
+			, bHasFragmentDensityAttachment
+			, DrawShadingRate
 		);
 	}
 
@@ -296,6 +300,8 @@ public:
 			ImmutableSamplerState != rhs.ImmutableSamplerState ||
 			bDepthBounds != rhs.bDepthBounds ||
 			bMultiView != rhs.bMultiView ||
+			bHasFragmentDensityAttachment != rhs.bHasFragmentDensityAttachment ||
+			DrawShadingRate != rhs.DrawShadingRate ||
 			PrimitiveType != rhs.PrimitiveType)
 		{
 			return false;
@@ -362,6 +368,8 @@ public:
 			COMPARE_FIELD(DepthStencilState)
 			COMPARE_FIELD(bDepthBounds)
 			COMPARE_FIELD(bMultiView)
+			COMPARE_FIELD(bHasFragmentDensityAttachment)
+			COMPARE_FIELD(DrawShadingRate)
 			COMPARE_FIELD(PrimitiveType)
 		COMPARE_FIELD_END;
 
@@ -392,6 +400,8 @@ public:
 			COMPARE_FIELD(DepthStencilState)
 			COMPARE_FIELD(bDepthBounds)
 			COMPARE_FIELD(bMultiView)
+			COMPARE_FIELD(bHasFragmentDensityAttachment)
+			COMPARE_FIELD(DrawShadingRate)
 			COMPARE_FIELD(PrimitiveType)
 			COMPARE_FIELD_END;
 
@@ -415,7 +425,8 @@ public:
 	// all data members and at the end of the structure.
 	bool							bDepthBounds = false;
 	bool							bMultiView = false;
-	uint8							Padding[2] = {};
+	bool							bHasFragmentDensityAttachment = false;
+	EVRSShadingRate					DrawShadingRate  = EVRSShadingRate::VRSSR_1x1;
 
 	EPrimitiveType			PrimitiveType;
 };
@@ -702,13 +713,13 @@ public:
 	void SetOnCommandList(FRHIComputeCommandList& RHICmdList, FRHIComputeShader* Shader) const;
 
 #if RHI_RAYTRACING
-	void SetRayTracingShaderBindingsForHitGroup(FRayTracingLocalShaderBindingWriter* BindingWriter, uint32 InstanceIndex, uint32 SegmentIndex, uint32 HitGroupIndex, uint32 ShaderSlot) const;
+	RENDERER_API void SetRayTracingShaderBindingsForHitGroup(FRayTracingLocalShaderBindingWriter* BindingWriter, uint32 InstanceIndex, uint32 SegmentIndex, uint32 HitGroupIndex, uint32 ShaderSlot) const;
 #endif // RHI_RAYTRACING
 
 	/** Returns whether this set of shader bindings can be merged into an instanced draw call with another. */
-	bool MatchesForDynamicInstancing(const FMeshDrawShaderBindings& Rhs) const;
+	bool RENDERER_API MatchesForDynamicInstancing(const FMeshDrawShaderBindings& Rhs) const;
 
-	uint32 GetDynamicInstancingHash() const;
+	uint32 RENDERER_API GetDynamicInstancingHash() const;
 
 	SIZE_T GetAllocatedSize() const
 	{
@@ -1694,7 +1705,6 @@ inline FMeshDrawCommandSortKey CalculateMeshStaticSortKey(const TShaderRef<FMesh
 	return CalculateMeshStaticSortKey(VertexShader.GetShader(), PixelShader.GetShader());
 }
 
-#if RHI_RAYTRACING
 class FRayTracingMeshCommand
 {
 public:
@@ -1808,5 +1818,3 @@ private:
 	uint8 GeometrySegmentIndex;
 	uint32 RayTracingInstanceIndex;
 };
-
-#endif

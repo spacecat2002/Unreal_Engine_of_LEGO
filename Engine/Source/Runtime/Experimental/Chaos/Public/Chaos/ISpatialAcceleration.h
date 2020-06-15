@@ -396,7 +396,22 @@ public:
 		return nullptr;
 	}
 
+	const TValue* Find(const TKey& Key) const
+	{
+		const int32 Idx = GetUniqueIdx(Key).Idx;
+		if(Idx < Entries.Num() && Entries[Idx].bSet)
+		{
+			return &Entries[Idx].Value;
+		}
+		return nullptr;
+	}
+
 	TValue& FindChecked(const TKey& Key)
+	{
+		return Entries[GetUniqueIdx(Key).Idx].Value;
+	}
+
+	const TValue& FindChecked(const TKey& Key) const
 	{
 		return Entries[GetUniqueIdx(Key).Idx].Value;
 	}

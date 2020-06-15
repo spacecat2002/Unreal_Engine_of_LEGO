@@ -110,7 +110,7 @@ void FNavigationLinkBase::DescribeCustomFlags(const TArray<FString>& EditableFla
 						FString PropName(TEXT("bCustomFlag"));
 						PropName += TTypeToString<int32>::ToString(Idx);
 
-						FProperty* FlagProp = FindField<FProperty>(StructIt, *PropName);
+						FProperty* FlagProp = FindFProperty<FProperty>(StructIt, *PropName);
 						if (FlagProp)
 						{
 							if (Idx < MaxFlags)
@@ -731,7 +731,8 @@ void FCompositeNavModifier::Reset()
 	bHasPotentialLinks = false;
 	bAdjustHeight = false;
 	bIsPerInstanceModifier = false;
-	bModifierFillCollisionUnderneathForNavmesh = false;
+	bFillCollisionUnderneathForNavmesh = false;
+	bMaskFillCollisionUnderneathForNavmesh = false;
 }
 
 void FCompositeNavModifier::Empty()
@@ -741,7 +742,8 @@ void FCompositeNavModifier::Empty()
 	CustomLinks.Empty();
 	bHasPotentialLinks = false;
 	bAdjustHeight = false;
-	bModifierFillCollisionUnderneathForNavmesh = false;
+	bFillCollisionUnderneathForNavmesh = false;
+	bMaskFillCollisionUnderneathForNavmesh = false;
 }
 
 FCompositeNavModifier FCompositeNavModifier::GetInstantiatedMetaModifier(const FNavAgentProperties* NavAgent, TWeakObjectPtr<UObject> WeakOwnerPtr) const

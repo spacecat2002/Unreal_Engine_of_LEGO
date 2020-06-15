@@ -592,6 +592,9 @@ void FVulkanDevice::SetupFormats()
 	MapFormatSupport(PF_R32_FLOAT, VK_FORMAT_R32_SFLOAT);
 	SetComponentMapping(PF_R32_FLOAT, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_ZERO, VK_COMPONENT_SWIZZLE_ZERO, VK_COMPONENT_SWIZZLE_ONE);
 
+	MapFormatSupport(PF_R8, VK_FORMAT_R8_UNORM);
+	SetComponentMapping(PF_R8, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_ZERO, VK_COMPONENT_SWIZZLE_ZERO, VK_COMPONENT_SWIZZLE_ONE);
+
 	if (FVulkanPlatform::SupportsBCTextureFormats())
 	{
 		MapFormatSupport(PF_DXT1, VK_FORMAT_BC1_RGB_UNORM_BLOCK);	// Also what OpenGL expects (RGBA instead RGB, but not SRGB)
@@ -646,13 +649,6 @@ void FVulkanDevice::SetupFormats()
 		if (GPixelFormats[PF_ASTC_12x12].Supported)
 		{
 			SetComponentMapping(PF_ASTC_12x12, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A);
-		}
-
-		// ETC1 is a subset of ETC2 R8G8B8.
-		MapFormatSupport(PF_ETC1, VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK);
-		if (GPixelFormats[PF_ETC1].Supported)
-		{
-			SetComponentMapping(PF_ETC1, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_ONE);
 		}
 
 		MapFormatSupport(PF_ETC2_RGB, VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK);
@@ -782,6 +778,11 @@ bool FVulkanDevice::QueryGPU(int32 DeviceIndex)
 	ZeroVulkanStruct(PhysicalDeviceProperties, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR);
 #endif
 
+#if VULKAN_SUPPORTS_ASTC_DECODE_MODE
+	VkImageViewASTCDecodeModeEXT GpuImageViewASTCDecodeModeProps;
+	ZeroVulkanStruct(GpuImageViewASTCDecodeModeProps, VK_STRUCTURE_TYPE_IMAGE_VIEW_ASTC_DECODE_MODE_EXT);
+#endif
+
 #if VULKAN_SUPPORTS_PHYSICAL_DEVICE_PROPERTIES2
 	if (RHI->GetOptionalExtensions().HasKHRGetPhysicalDeviceProperties2)
 	{
@@ -790,10 +791,21 @@ bool FVulkanDevice::QueryGPU(int32 DeviceIndex)
 		GpuProps2.pNext = &GpuIdProps;
 		ZeroVulkanStruct(GpuIdProps, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES_KHR);
 
+		void** NextPropsAddr = nullptr;
+		NextPropsAddr = &GpuIdProps.pNext;
+
 #if VULKAN_SUPPORTS_DRIVER_PROPERTIES
 		if (GetOptionalExtensions().HasDriverProperties)
 		{
-			GpuIdProps.pNext = &PhysicalDeviceProperties;
+			*NextPropsAddr = &PhysicalDeviceProperties;
+			NextPropsAddr = &PhysicalDeviceProperties.pNext;
+		}
+#endif
+
+#if VULKAN_SUPPORTS_ASTC_DECODE_MODE
+		if (GetOptionalExtensions().HasEXTASTCDecodeMode)
+		{
+			*NextPropsAddr = &GpuImageViewASTCDecodeModeProps;
 		}
 #endif
 
@@ -1048,6 +1060,8 @@ void FVulkanDevice::Destroy()
 	}
 	FreeOcclusionQueryPools.SetNum(0, false);
 
+	FRHIResource::FlushPendingDeletes();
+
 	delete PipelineStateCache;
 	PipelineStateCache = nullptr;
 	StagingManager.Deinit();
@@ -1073,7 +1087,7 @@ void FVulkanDevice::Destroy()
 #endif
 	}
 
-	FRHIResource::FlushPendingDeletes();
+	
 	DeferredDeletionQueue.Clear();
 
 	ResourceHeapManager.Deinit();

@@ -67,9 +67,6 @@ namespace Audio
 		/** Frees any resources for this sound source. */
 		void FreeResources();
 
-		/** Updates modulation parameters set from the modulation plugin. */
-		void UpdateModulation();
-
 		/** Updates the pitch parameter set from the game thread. */
 		void UpdatePitch();
 		
@@ -119,7 +116,7 @@ namespace Audio
 
 		FMixerDevice* MixerDevice;
 		FMixerBuffer* MixerBuffer;
-		TSharedPtr<FMixerSourceBuffer> MixerSourceBuffer;
+		TSharedPtr<FMixerSourceBuffer, ESPMode::ThreadSafe> MixerSourceBuffer;
 		FMixerSourceVoice* MixerSourceVoice;
 
 		// This holds data copied from FSoundSourceBusSendInfo when a new sound starts playing
@@ -181,5 +178,6 @@ namespace Audio
 		uint32 bIsVorbis : 1;
 		uint32 bIsStoppingVoicesEnabled : 1;
 		uint32 bSendingAudioToBuses : 1;
+		uint32 bPrevAllowedSpatializationSetting : 1;
 	};
 }

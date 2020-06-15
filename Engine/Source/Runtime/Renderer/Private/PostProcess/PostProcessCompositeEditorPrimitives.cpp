@@ -106,7 +106,6 @@ void RenderEditorPrimitives(FRHICommandListImmediate& RHICmdList, const FViewInf
 		for (int32 MeshIndex = 0; MeshIndex < NumDynamicEditorMeshBatches; MeshIndex++)
 		{
 			const FMeshBatchAndRelevance& MeshAndRelevance = View.DynamicEditorMeshElements[MeshIndex];
-			check(!MeshAndRelevance.Mesh->bRequiresPerElementVisibility);
 
 			if (MeshAndRelevance.GetHasOpaqueOrMaskedMaterial() || View.Family->EngineShowFlags.Wireframe)
 			{
@@ -232,6 +231,8 @@ const FViewInfo* UpdateEditorPrimitiveView(
 
 	EditorView->CachedViewUniformShaderParameters = MoveTemp(ViewParameters);
 
+	SceneUniformBuffers.UpdateViewUniformBufferImmediate(*EditorView->CachedViewUniformShaderParameters);
+
 	EditorView->ViewUniformBuffer = SceneUniformBuffers.ViewUniformBuffer;
 
 	return EditorView;
@@ -341,7 +342,7 @@ FScreenPassTexture AddEditorPrimitivePass(
 			}
 			else
 			{
-				CreateMobileBasePassUniformBuffer(RHICmdList, *EditorView, true, MobileBasePassUniformBuffer);
+				CreateMobileBasePassUniformBuffer(RHICmdList, *EditorView, true, false, MobileBasePassUniformBuffer);
 				BasePassUniformBuffer = MobileBasePassUniformBuffer;
 			}
 

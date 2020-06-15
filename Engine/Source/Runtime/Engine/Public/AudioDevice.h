@@ -16,6 +16,7 @@
 #include "Sound/SoundClass.h"
 #include "Sound/SoundConcurrency.h"
 #include "Sound/SoundMix.h"
+#include "Sound/SoundSubmix.h"
 #include "Sound/SoundSubmixSend.h"
 #include "Sound/SoundSourceBus.h"
 #include "AudioVirtualLoop.h"
@@ -26,7 +27,6 @@
  */
 
 class FArchive;
-class FAudioDebugger;
 class FAudioDevice;
 class FAudioEffectsManager;
 class FCanvas;
@@ -56,6 +56,10 @@ struct FAudioQualitySettings;
 struct FRotator;
 struct FWaveInstance;
 
+namespace Audio
+{
+	class FAudioDebugger;
+}
 
 /**
  * Debug state of the audio system
@@ -465,7 +469,7 @@ private:
 	bool HandleSetDynamicSoundCommand(const TCHAR* Cmd, FOutputDevice& Ar);
 
 	/** Handles all argument parsing for the solo commands in one place */
-	using FToggleSoloPtr = void (FAudioDebugger::*)(FName InName, bool bExclusive);
+	using FToggleSoloPtr = void (Audio::FAudioDebugger::*)(FName InName, bool bExclusive);
 	void HandleAudioSoloCommon(const TCHAR* Cmd, FOutputDevice& Ar, FToggleSoloPtr Funct);
 
 	/**
@@ -559,6 +563,8 @@ public:
 	 * @param bPumpSynchronously must be called in situations where the audio render thread is not being called.
 	 */
 	virtual void FlushAudioRenderingCommands(bool bPumpSynchronously = false) {}
+
+	void OnPreGarbageCollect();
 
 	/**
 	 * Stop any playing sounds that are using a particular SoundWave
@@ -858,6 +864,11 @@ public:
 	*/
 	FSoundClassProperties* GetSoundClassCurrentProperties(USoundClass* InSoundClass);
 
+	/** 
+	* Returns the parameters which are dynamic from the given sound class. 
+	*/
+	FSoundClassDynamicProperties* GetSoundClassDynamicProperties(USoundClass* InSoundClass);
+
 	/**
 	* Checks to see if a coordinate is within a distance of any listener
 	*/
@@ -883,11 +894,18 @@ public:
 	float GetSquaredDistanceToListener(const FVector& Location, const FTransform& ListenerTransform) const;
 
 	/**
-	* Returns the distance from location to the appropriate listener representation, depending on calling thread
+	* Sets OutSqDistance to the distance from location to the appropriate listener representation, depending on calling thread.
+	* Returns true if listener position is valid, false if not (in which case, OutSqDistance is undefined).
 	*/
 	bool GetDistanceSquaredToListener(const FVector& Location, int32 ListenerIndex, float& OutSqDistance) const;
 
 	/**
+	* Sets OutSqDistance to the distance from location the closest listener, depending on calling thread.
+	* Returns true if listener position is valid, false if not (in which case, OutSqDistance is undefined).
+	*/
+	bool GetDistanceSquaredToNearestListener(const FVector& Location, float& OutSqDistance) const;
+		
+		/**
 	* Returns a position from the appropriate listener representation, depending on calling thread.
 	*
 	* @param	ListenerIndex	index of the listener or proxy
@@ -1297,10 +1315,14 @@ public:
 
 	/** Adds an envelope follower delegate to the submix for this audio device. */
 	virtual void AddEnvelopeFollowerDelegate(USoundSubmix* InSubmix, const FOnSubmixEnvelopeBP& OnSubmixEnvelopeBP);
-	virtual void StartSpectrumAnalysis(USoundSubmix* InSubmix, const Audio::FSpectrumAnalyzerSettings& InSettings);
+
+	virtual void StartSpectrumAnalysis(USoundSubmix* InSubmix, const FSoundSpectrumAnalyzerSettings& InSettings);
 	virtual void StopSpectrumAnalysis(USoundSubmix* InSubmix);
 	virtual void GetMagnitudesForFrequencies(USoundSubmix* InSubmix, const TArray<float>& InFrequencies, TArray<float>& OutMagnitudes);
 	virtual void GetPhasesForFrequencies(USoundSubmix* InSubmix, const TArray<float>& InFrequencies, TArray<float>& OutPhases);
+	virtual void AddSpectralAnalysisDelegate(USoundSubmix* InSubmix, const FSoundSpectrumAnalyzerDelegateSettings& InDelegateSettings, const FOnSubmixSpectralAnalysisBP& OnSubmixSpectralAnalysisBP);
+	virtual void RemoveSpectralAnalysisDelegate(USoundSubmix* InSubmix, const FOnSubmixSpectralAnalysisBP& OnSubmixSpectralAnalysisBP);
+
 
 protected:
 	friend class FSoundSource;
@@ -1362,7 +1384,7 @@ private:
 
 	/** Stops quiet/low priority sounds due to being evaluated as not fulfilling concurrency requirements
 	 */
-	void CullSoundsDueToMaxConcurrency(TArray<FWaveInstance*>& WaveInstances, TArray<FActiveSound*>& ActiveSoundsCopy);
+	void UpdateConcurrency(TArray<FWaveInstance*>& WaveInstances, TArray<FActiveSound*>& ActiveSoundsCopy);
 
 	/**
 	 * Checks if the given sound would be audible.
@@ -1624,12 +1646,6 @@ public:
 		LastUpdateTime = CurrTime;
 	}
 
-	/** Update the audio clock to be based off the update delta time */
-	virtual void UpdateAudioClock()
-	{
-		AudioClock += GetDeviceDeltaTime();
-	}
-
 private:
 	/** Processes the set of pending sounds that need to be stopped */
 	void ProcessingPendingActiveSoundStops(bool bForceDelete = false);
@@ -1795,6 +1811,7 @@ private:
 
 	/** Current properties of all sound classes */
 	TMap<USoundClass*, FSoundClassProperties> SoundClasses;
+	TMap<USoundClass*, FSoundClassDynamicProperties> DynamicSoundClassProperties;
 
 	/** The Base SoundMix that's currently active */
 	USoundMix* BaseSoundMix;

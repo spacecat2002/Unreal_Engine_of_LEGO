@@ -8,8 +8,11 @@
 
 #include "CoreMinimal.h"
 #include "Misc/EnumClassFlags.h"
+#include "HAL/CriticalSection.h"
 
 class IPakFile;
+
+#define WITH_COREREDIRECTS_MULTITHREAD_WARNING !UE_BUILD_SHIPPING && !IS_PROGRAM && !WITH_EDITOR
 
 /** 
  * Flags describing the type and properties of this redirect
@@ -216,6 +219,9 @@ struct COREUOBJECT_API FCoreRedirect
  */
 struct COREUOBJECT_API FCoreRedirects
 {
+	/** Run initialization steps that are needed before any data can be stored in FCoreRedirects. Reads can occur before this, but no redirects will exist and redirect queries will all return empty. */
+	static void Initialize();
+
 	/** Returns a redirected version of the object name. If there are no valid redirects, it will return the original name */
 	static FCoreRedirectObjectName GetRedirectedName(ECoreRedirectFlags Type, const FCoreRedirectObjectName& OldObjectName);
 
@@ -258,9 +264,9 @@ struct COREUOBJECT_API FCoreRedirects
 	static bool ReadRedirectsFromIni(const FString& IniName);
 
 	/** Adds an array of redirects to global list */
-	static bool AddRedirectList(const TArray<FCoreRedirect>& Redirects, const FString& SourceString);
+	static bool AddRedirectList(TArrayView<const FCoreRedirect> Redirects, const FString& SourceString);
 
-	/** Returns true if this has ever been initialized from ini */
+	/** Returns true if this has ever been initialized */
 	static bool IsInitialized() { return bInitialized; }
 
 	/** Gets map from config key -> Flags */
@@ -283,13 +289,20 @@ private:
 	static bool AddSingleRedirect(const FCoreRedirect& NewRedirect, const FString& SourceString);
 
 	/** Removes an array of redirects from global list */
-	static bool RemoveRedirectList(const TArray<FCoreRedirect>& Redirects, const FString& SourceString);
+	static bool RemoveRedirectList(TArrayView<const FCoreRedirect> Redirects, const FString& SourceString);
 
 	/** Remove a single redirect from a type map */
 	static bool RemoveSingleRedirect(const FCoreRedirect& OldRedirect, const FString& SourceString);
 
 	/** Add native redirects, called before ini is parsed for the first time */
 	static void RegisterNativeRedirects();
+
+#if WITH_COREREDIRECTS_MULTITHREAD_WARNING
+	/** Mark that CoreRedirects is about to start being used from multiple threads, and writes to new types of redirects are no longer allowed.
+	  * ReadRedirectsFromIni and all other AddRedirectList calls must be called before this
+	  */
+	static void EnterMultithreadedPhase();
+#endif
 
 	/** There is one of these for each registered set of redirect flags */
 	struct FRedirectNameMap
@@ -298,12 +311,23 @@ private:
 		TMap<FName, TArray<FCoreRedirect> > RedirectMap;
 	};
 
-	/** Rather this has been initialized at least once */
+	/** Whether this has been initialized at least once */
 	static bool bInitialized;
+
+#if WITH_COREREDIRECTS_MULTITHREAD_WARNING
+	/** Whether CoreRedirects is now being used multithreaded and therefore does not support writes to RedirectTypeMap keyvalue pairs */
+	static bool bIsInMultithreadedPhase;
+#endif
 
 	/** Map from config name to flag */
 	static TMap<FName, ECoreRedirectFlags> ConfigKeyMap;
 
 	/** Map from name of thing being mapped to full list. List must be filtered further */
 	static TMap<ECoreRedirectFlags, FRedirectNameMap> RedirectTypeMap;
+
+	/**
+	 * Lock to protect multithreaded access to *KnownMissing functions, which can be called from the async loading threads. 
+	 * TODO: The KnownMissing functions use RedirectTypeMap, which is unguarded; there is race condition vulnerability if asyncloading thread is active before all categories are added to RedirectTypeMap.
+	 */
+	static FRWLock KnownMissingLock;
 };

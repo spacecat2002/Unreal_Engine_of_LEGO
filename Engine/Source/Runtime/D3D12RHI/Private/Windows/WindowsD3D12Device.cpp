@@ -47,6 +47,14 @@ static FAutoConsoleVariableRef CVarDX12NVAfterMathBufferSize(
 	TEXT("Use NV Aftermath for GPU crash analysis in D3D12"),
 	ECVF_ReadOnly
 );
+int32 GDX12NVAfterMathTrackResources = 0;
+static FAutoConsoleVariableRef CVarDX12NVAfterMathTrackResources(
+	TEXT("r.DX12NVAfterMathTrackResources"),
+	GDX12NVAfterMathTrackResources,
+	TEXT("Enable NV Aftermath resource tracing in D3D12"),
+	ECVF_ReadOnly
+);
+int32 GDX12NVAfterMathMarkers = 0;
 #endif
 
 static inline int D3D12RHI_PreferAdapterVendor()
@@ -362,8 +370,8 @@ void FD3D12DynamicRHIModule::FindAdapter()
 
 				FD3D12AdapterDesc CurrentAdapter(AdapterDesc, AdapterIndex, MaxSupportedFeatureLevel, NumNodes);
 				
-				// Requested WARP, reject all other adapters.
-				const bool bSkipRequestedWARP = bRequestedWARP && !bIsWARP;
+				// If requested WARP, then reject all other adapters. If WARP not requested, then reject the WARP device.
+				const bool bSkipRequestedWARP = (bRequestedWARP && !bIsWARP) || (!bRequestedWARP && bIsWARP);
 
 				// we don't allow the PerfHUD adapter
 				const bool bSkipPerfHUDAdapter = bIsPerfHUD && !bAllowPerfHUD;
@@ -461,7 +469,13 @@ FDynamicRHI* FD3D12DynamicRHIModule::CreateRHI(ERHIFeatureLevel::Type RequestedF
 		GMaxRHIShaderPlatform = SP_PCD3D_SM5;
 	}
 
-	GD3D12RHI = new FD3D12DynamicRHI(ChosenAdapters);
+#if USE_PIX
+	bool bPixEventEnabled = (WindowsPixDllHandle != nullptr);
+#else
+	bool bPixEventEnabled = false;
+#endif // USE_PIX
+
+	GD3D12RHI = new FD3D12DynamicRHI(ChosenAdapters, bPixEventEnabled);
 #if ENABLE_RHI_VALIDATION
 	if (FParse::Param(FCommandLine::Get(), TEXT("RHIValidation")))
 	{
@@ -736,7 +750,7 @@ void FD3D12DynamicRHI::Init()
 	GRHIForceNoDeletionLatencyForStreamingTextures = !!PLATFORM_WINDOWS;
 
 #if D3D12_RHI_RAYTRACING
-	GRHISupportsRayTracing = GetAdapter().GetD3DRayTracingDevice() != nullptr;
+	GRHISupportsRayTracing = GetAdapter().GetD3DDevice5() != nullptr;
 	GRHISupportsRayTracingMissShaderBindings = true;
 #endif
 
@@ -781,6 +795,11 @@ bool FD3D12DynamicRHI::IsQuadBufferStereoEnabled() const
 void FD3D12DynamicRHI::DisableQuadBufferStereo()
 {
 	bIsQuadBufferStereoEnabled = false;
+}
+
+int32 FD3D12DynamicRHI::GetResourceBarrierBatchSizeLimit()
+{
+	return INT32_MAX;
 }
 
 void FD3D12Device::Initialize()

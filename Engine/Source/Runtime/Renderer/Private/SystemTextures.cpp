@@ -130,9 +130,9 @@ void FSystemTextures::InitializeCommonTextures(FRHICommandListImmediate& RHICmdL
 			RHICmdList.UnlockTexture2D((FTexture2DRHIRef&)PerlinNoiseGradient->GetRenderTargetItem().ShaderResourceTexture, 0, false);
 		}
 
-	if (!GSupportsShaderFramebufferFetch && GPixelFormats[PF_FloatRGBA].Supported)
+	if (GPixelFormats[PF_FloatRGBA].Supported)
 	{
-		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(FIntPoint(1, 1), PF_FloatRGBA, FClearValueBinding(FLinearColor(65000.0f, 65000.0f, 65000.0f, 65000.0f)), TexCreate_HideInVisualizeTexture, TexCreate_RenderTargetable | TexCreate_NoFastClear | TexCreate_ShaderResource, false));
+		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(FIntPoint(1, 1), PF_FloatRGBA, FClearValueBinding(FLinearColor(65500.0f, 65500.0f, 65500.0f, 65500.0f)), TexCreate_HideInVisualizeTexture, TexCreate_RenderTargetable | TexCreate_NoFastClear | TexCreate_ShaderResource, false));
 		Desc.AutoWritable = false;
 		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, MaxFP16Depth, TEXT("MaxFP16Depth"), true, ERenderTargetTransience::NonTransient);
 
@@ -193,33 +193,33 @@ void FSystemTextures::InitializeFeatureLevelDependentTextures(FRHICommandListImm
 
 		// Create the SobolSampling texture
 	if (CurrentFeatureLevel < ERHIFeatureLevel::ES3_1 && InFeatureLevel >= ERHIFeatureLevel::ES3_1 && GPixelFormats[PF_R16_UINT].Supported)
+	{
+		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(FIntPoint(32, 16), PF_R16_UINT, FClearValueBinding::None, TexCreate_HideInVisualizeTexture, TexCreate_NoFastClear | TexCreate_ShaderResource, false));
+		Desc.AutoWritable = false;
+		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, SobolSampling, TEXT("SobolSampling"));
+		// Write the contents of the texture.
+		uint32 DestStride;
+		uint8* DestBuffer = (uint8*)RHICmdList.LockTexture2D((FTexture2DRHIRef&)SobolSampling->GetRenderTargetItem().ShaderResourceTexture, 0, RLM_WriteOnly, DestStride, false);
+
+		uint16 *Dest;
+		for (int y = 0; y < 16; ++y)
 		{
-			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(FIntPoint(32, 16), PF_R16_UINT, FClearValueBinding::None, TexCreate_HideInVisualizeTexture, TexCreate_NoFastClear | TexCreate_ShaderResource, false));
-			Desc.AutoWritable = false;
-			GRenderTargetPool.FindFreeElement(RHICmdList, Desc, SobolSampling, TEXT("SobolSampling"));
-			// Write the contents of the texture.
-			uint32 DestStride;
-			uint8* DestBuffer = (uint8*)RHICmdList.LockTexture2D((FTexture2DRHIRef&)SobolSampling->GetRenderTargetItem().ShaderResourceTexture, 0, RLM_WriteOnly, DestStride, false);
+			Dest = (uint16*)(DestBuffer + y * DestStride);
 
-			uint16 *Dest;
-			for (int y = 0; y < 16; ++y)
+			// 16x16 block starting at 0,0 = Sobol X,Y from bottom 4 bits of cell X,Y
+			for (int x = 0; x < 16; ++x, ++Dest)
 			{
-				Dest = (uint16*)(DestBuffer + y * DestStride);
-
-				// 16x16 block starting at 0,0 = Sobol X,Y from bottom 4 bits of cell X,Y
-				for (int x = 0; x < 16; ++x, ++Dest)
-				{
-					*Dest = FSobol::ComputeGPUSpatialSeed(x, y, /* Index = */ 0);
-				}
-
-				// 16x16 block starting at 16,0 = Sobol X,Y from 2nd 4 bits of cell X,Y
-				for (int x = 0; x < 16; ++x, ++Dest)
-				{
-					*Dest = FSobol::ComputeGPUSpatialSeed(x, y, /* Index = */ 1);
-				}
+				*Dest = FSobol::ComputeGPUSpatialSeed(x, y, /* Index = */ 0);
 			}
-			RHICmdList.UnlockTexture2D((FTexture2DRHIRef&)SobolSampling->GetRenderTargetItem().ShaderResourceTexture, 0, false);
+
+			// 16x16 block starting at 16,0 = Sobol X,Y from 2nd 4 bits of cell X,Y
+			for (int x = 0; x < 16; ++x, ++Dest)
+			{
+				*Dest = FSobol::ComputeGPUSpatialSeed(x, y, /* Index = */ 1);
+			}
 		}
+		RHICmdList.UnlockTexture2D((FTexture2DRHIRef&)SobolSampling->GetRenderTargetItem().ShaderResourceTexture, 0, false);
+	}
 
 	// Create a VolumetricBlackDummy texture
 	if (CurrentFeatureLevel < ERHIFeatureLevel::SM5 && InFeatureLevel >= ERHIFeatureLevel::SM5)

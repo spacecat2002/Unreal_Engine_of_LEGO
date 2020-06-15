@@ -3055,7 +3055,7 @@ void UParticleModuleLight::SpawnEx(FParticleEmitterInstance* Owner, int32 Offset
 		LightData.bHighQuality = bHighQualityLights;
 		LightData.LightId = 0;
 
-		if (bHighQualityLights && ParticleLightQuality > 1)
+		if (bHighQualityLights && ParticleLightQuality > 1 && LightData.bValid)
 		{		
 			LightData.LightId = SpawnHQLight(LightData, Particle, Owner);
 		}
@@ -3472,7 +3472,7 @@ void UParticleModuleTypeDataMesh::OnMeshChanged()
 		OuterObj = Emitter->GetOuter();
 	}
 
-	FProperty* MeshProperty = FindField<FProperty>(UParticleModuleTypeDataMesh::StaticClass(), FName(TEXT("Mesh")));
+	FProperty* MeshProperty = FindFProperty<FProperty>(UParticleModuleTypeDataMesh::StaticClass(), FName(TEXT("Mesh")));
 	FPropertyChangedEvent PropertyChangedEvent(MeshProperty);
 
 	UParticleSystem* PartSys = CastChecked<UParticleSystem>(OuterObj);

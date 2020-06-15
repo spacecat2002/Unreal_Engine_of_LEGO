@@ -60,6 +60,7 @@ enum EMaterialUsage
 	MATUSAGE_Water,
 	MATUSAGE_HairStrands,
 	MATUSAGE_LidarPointCloud,
+	MATUSAGE_VirtualHeightfieldMesh,
 
 	MATUSAGE_MAX,
 };
@@ -574,12 +575,18 @@ public:
 		PURE_VIRTUAL(UMaterialInterface::GetStaticComponentMaskParameterDefaultValue,return false;);
 #endif // WITH_EDITOR
 
+	virtual int32 GetLayerParameterIndex(EMaterialParameterAssociation Association, UMaterialFunctionInterface * LayerFunction) const
+		PURE_VIRTUAL(UMaterialInterface::GetLayerParameterIndex, return INDEX_NONE;);
+
 	/** Get textures referenced by expressions, including nested functions. */
 	virtual TArrayView<UObject* const> GetReferencedTextures() const
 		PURE_VIRTUAL(UMaterialInterface::GetReferencedTextures,return TArrayView<UObject* const>(););
 
 	virtual void SaveShaderStableKeysInner(const class ITargetPlatform* TP, const struct FStableShaderKeyAndValue& SaveKeyVal)
 		PURE_VIRTUAL(UMaterialInterface::SaveShaderStableKeysInner, );
+
+	UFUNCTION(BlueprintCallable, Category = "Rendering|Material")
+	ENGINE_API FMaterialParameterInfo GetParameterInfo(EMaterialParameterAssociation Association, FName ParameterName, UMaterialFunctionInterface* LayerFunction) const;
 
 	/** @return The material's relevance. */
 	ENGINE_API FMaterialRelevance GetRelevance(ERHIFeatureLevel::Type InFeatureLevel) const;

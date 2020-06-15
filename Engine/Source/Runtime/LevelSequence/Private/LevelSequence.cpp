@@ -83,6 +83,16 @@ UObject* ULevelSequence::MakeSpawnableTemplateFromInstance(UObject& InSourceObje
 		Actor->DetachFromActor(FDetachmentTransformRules(FAttachmentTransformRules(EAttachmentRule::KeepRelative, false), false));
 	}
 
+	// The spawnable source object was created with RF_Transient. The object generated from that needs its 
+	// component flags cleared of RF_Transient so that the template object can be saved to the level sequence.
+	for (UActorComponent* Component : Actor->GetComponents())
+	{
+		if (Component)
+		{
+			Component->ClearFlags(RF_Transient);
+		}
+	}
+
 	return NewInstance;
 }
 
@@ -286,6 +296,20 @@ void ULevelSequence::PostLoad()
 	}
 
 #endif
+}
+
+bool ULevelSequence::Rename(const TCHAR* NewName, UObject* NewOuter, ERenameFlags Flags)
+{
+	bool bRetVal = Super::Rename(NewName, NewOuter, Flags);
+
+#if WITH_EDITOR
+	if (DirectorBlueprint)
+	{
+		DirectorBlueprint->Rename(*DirectorBlueprint->GetName(), this, Flags);
+	}
+#endif
+
+	return bRetVal;
 }
 
 void ULevelSequence::ConvertPersistentBindingsToDefault(UObject* FixupContext)

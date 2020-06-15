@@ -421,6 +421,9 @@ protected:
 public:
 	LANDSCAPE_API TOptional<float> GetHeightAtLocation(FVector Location) const;
 
+	/** Fills an array with height values **/
+	LANDSCAPE_API void GetHeightValues(int32& SizeX, int32& SizeY, TArray<float>& ArrayValue) const;
+
 	/** Offset in quads from global components grid origin (in quads) **/
 	UPROPERTY()
 	FIntPoint LandscapeSectionOffset;
@@ -550,13 +553,15 @@ public:
 
 	/** 
 	 * Number of mesh levels to use when rendering landscape into runtime virtual texture.
-	 * Set this only if the material used to render the virtual texture requires interpolated vertex data such as height.
-	 * Higher values use more tessellated meshes and are expensive when rendering the runtime virtual texture.
+	 * Lower values reduce vertex count when rendering to the runtime virtual texture but decrease accuracy when using values that require vertex interpolation.
 	 */
 	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category = VirtualTexture, meta = (DisplayName = "Virtual Texture Num LODs", UIMin = "0", UIMax = "7"))
-	int32 VirtualTextureNumLods = 0;
+	int32 VirtualTextureNumLods = 6;
 
-	/** Bias to the LOD selected for rendering to runtime virtual textures. */
+	/** 
+	 * Bias to the LOD selected for rendering to runtime virtual textures.
+	 * Higher values reduce vertex count when rendering to the runtime virtual texture.
+	 */
 	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category = VirtualTexture, meta = (DisplayName = "Virtual Texture LOD Bias", UIMin = "0", UIMax = "7"))
 	int32 VirtualTextureLodBias = 0;
 
@@ -695,6 +700,10 @@ public:
 
 	UPROPERTY()
 	FString ReimportHeightmapFilePath;
+
+	/** Height and weightmap import destination layer guid */
+	UPROPERTY()
+	FGuid ReimportDestinationLayerGuid;
 
 	UPROPERTY()
 	TArray<FLandscapeEditorLayerSettings> EditorLayerSettings;
@@ -844,7 +853,9 @@ public:
 	/* Per-frame call to update dynamic grass placement and render grassmaps */
 	FORCEINLINE bool ShouldTickGrass() const
 	{
-		if (!bHasLandscapeGrass)
+		// At runtime if we don't have grass we will never have any so avoid ticking it
+		// In editor we might have a material that didn't have grass and now does so we can't rely on bHasLandscapeGrass.
+		if (!GIsEditor && !bHasLandscapeGrass)
 		{
 			return false;
 		}
@@ -892,13 +903,16 @@ public:
 
 #if WITH_EDITOR
 	/** Update Grass maps */
-	void UpdateGrassData();
+	void UpdateGrassData(bool bInShouldMarkDirty = false, struct FScopedSlowTask* InSlowTask = nullptr);
 
 	/** Render grass maps for the specified components */
 	void RenderGrassMaps(const TArray<ULandscapeComponent*>& LandscapeComponents, const TArray<ULandscapeGrassType*>& GrassTypes);
 
 	/** Update any textures baked from the landscape as necessary */
 	void UpdateBakedTextures();
+
+	/** Update the landscape physical material render tasks */
+	void UpdatePhysicalMaterialTasks();
 
 	/** Frame counter to count down to the next time we check to update baked textures, so we don't check every frame */
 	int32 UpdateBakedTexturesCountdown;
@@ -922,11 +936,24 @@ public:
 	/** Get the LandcapeActor-to-world transform with respect to landscape section offset*/
 	LANDSCAPE_API FTransform LandscapeActorToWorld() const;
 
+	/**
+	* Output a landscape heightmap to a render target
+	* @param InRenderTarget - Valid render target with a format of RTF_RGBA16f, RTF_RGBA32f or RTF_RGBA8
+	* @param InExportHeightIntoRGChannel - Tell us if we should export the height that is internally stored as R & G (for 16 bits) to a single R channel of the render target (the format need to be RTF_RGBA16f or RTF_RGBA32f)
+	*									   Note that using RTF_RGBA16f with InExportHeightIntoRGChannel == false, could have precision loss.
+	* @param InExportLandscapeProxies - Option to also export components of all proxies of Landscape actor (if LandscapeProxy is the Landscape Actor)
+	*/
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Landscape Export Heightmap to RenderTarget", Keywords = "Push Landscape Heightmap to RenderTarget", UnsafeDuringActorConstruction = "true"), Category = Rendering)
+	bool LandscapeExportHeightmapToRenderTarget(UTextureRenderTarget2D* InRenderTarget, bool InExportHeightIntoRGChannel = false, bool InExportLandscapeProxies = true);
+
 	/** Get landscape position in section space */
 	LANDSCAPE_API FIntPoint GetSectionBaseOffset() const;
 #if WITH_EDITOR
+	LANDSCAPE_API int32 GetOutdatedGrassMapCount() const;
+	LANDSCAPE_API void BuildGrassMaps(struct FScopedSlowTask* InSlowTask = nullptr);
 	LANDSCAPE_API void CreateSplineComponent(const FVector& Scale3D);
 
+	virtual bool CanEditChange(const FProperty* InProperty) const override;
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 	virtual void PostEditImport() override;
 	//~ End UObject Interface
@@ -964,6 +991,9 @@ public:
 
 	/** Recreate all components rendering and collision states */
 	LANDSCAPE_API void RecreateComponentsState();
+
+	/** Recreate all component rendering states after applying a given function to each*/
+	LANDSCAPE_API void RecreateComponentsRenderState(TFunctionRef<void(ULandscapeComponent*)> Fn);
 
 	/** Recreate all collision components based on render component */
 	LANDSCAPE_API void RecreateCollisionComponents();
@@ -1050,15 +1080,6 @@ public:
 	bool LandscapeImportHeightmapFromRenderTarget(UTextureRenderTarget2D* InRenderTarget, bool InImportHeightFromRGChannel = false);
 
 	/**
-	* Output a landscape heightmap to a render target
-	* @param InRenderTarget - Valid render target with a format of RTF_RGBA16f, RTF_RGBA32f or RTF_RGBA8
-	* @param InExportHeightIntoRGChannel - Tell us if we should export the height that is internally stored as R & G (for 16 bits) to a single R channel of the render target (the format need to be RTF_RGBA16f or RTF_RGBA32f)
-	*									   Note that using RTF_RGBA16f with InExportHeightIntoRGChannel == false, could have precision loss.
-	*/
-	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Landscape Export Heightmap to RenderTarget", Keywords = "Push Landscape Heightmap to RenderTarget", UnsafeDuringActorConstruction = "true"), Category = Rendering)
-	bool LandscapeExportHeightmapToRenderTarget(UTextureRenderTarget2D* InRenderTarget, bool InExportHeightIntoRGChannel = false);
-	
-	/**
 	* Overwrites a landscape weightmap with render target data
 	* Only works in the editor
 	*/
@@ -1124,7 +1145,7 @@ private:
 	static int32 GrassUpdateInterval;
 
 #if WITH_EDITOR
-	void UpdateGrassDataStatus(TSet<UTexture2D*>& OutCurrentForcedStreamedTextures, TSet<UTexture2D*>* OutDesiredForcedStreamedTextures, TSet<ULandscapeComponent*>& OutComponentsNeedingGrassMapRender, TSet<ULandscapeComponent*>* OutOutdatedComponents, bool bInEnableForceResidentFlag);
+	void UpdateGrassDataStatus(TSet<UTexture2D*>* OutCurrentForcedStreamedTextures, TSet<UTexture2D*>* OutDesiredForcedStreamedTextures, TSet<ULandscapeComponent*>* OutComponentsNeedingGrassMapRender, TSet<ULandscapeComponent*>* OutOutdatedComponents, bool bInEnableForceResidentFlag, int32* OutOutdatedGrassMaps = nullptr) const;
 #endif
 
 #if WITH_EDITORONLY_DATA
@@ -1136,3 +1157,21 @@ private:
 	static TArray<ALandscapeProxy*> LandscapeProxies;
 #endif
 };
+
+
+#if WITH_EDITOR
+/**
+ * Helper class used to Build or monitor outdated Grass maps of a world
+ */
+class LANDSCAPE_API FLandscapeGrassMapsBuilder
+{
+public:
+	FLandscapeGrassMapsBuilder(UWorld* InWorld);
+	void Build();
+	int32 GetOutdatedGrassMapCount(bool bInForceUpdate = true) const;
+private:
+	UWorld* World;
+	mutable int32 OutdatedGrassMapCount;
+	mutable double GrassMapsLastCheckTime;
+};
+#endif

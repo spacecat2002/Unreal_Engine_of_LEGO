@@ -143,10 +143,6 @@ void FSubmixEffectReverbFast::OnProcessAudio(const FSoundEffectSubmixInputData& 
 	{
 		LastWet = CurrentWetDry.WetLevel;
 	}
-	if (LastDry < 0.0f)
-	{
-		LastDry = CurrentWetDry.DryLevel;
-	}
 
 
 	WetInputBuffer.Reset();
@@ -159,7 +155,6 @@ void FSubmixEffectReverbFast::OnProcessAudio(const FSoundEffectSubmixInputData& 
 
 	PlateReverb->ProcessAudio(WetInputBuffer, InData.NumChannels, *OutData.AudioBuffer, OutData.NumChannels);
 
-	Audio::MixInBufferFast(*InData.AudioBuffer, *OutData.AudioBuffer, LastDry, CurrentWetDry.DryLevel);
 }
 
 bool FSubmixEffectReverbFast::SetParameters(const FAudioEffectParameters& InParams)
@@ -180,13 +175,13 @@ bool FSubmixEffectReverbFast::SetParameters(const FAudioEffectParameters& InPara
 	Audio::FPlateReverbFastSettings NewSettings;
 
 	// Early Reflections
-	NewSettings.EarlyReflections.Gain = FMath::GetMappedRangeValueClamped({ 0.0f, 3.16f }, { 0.0f, 1.0f }, ReverbEffectParams.ReflectionsGain * ReverbEffectParams.Volume);
+	NewSettings.EarlyReflections.Gain = FMath::GetMappedRangeValueClamped({ 0.0f, 3.16f }, { 0.0f, 1.0f }, ReverbEffectParams.ReflectionsGain);
 	NewSettings.EarlyReflections.PreDelayMsec = FMath::GetMappedRangeValueClamped({ 0.0f, 0.3f }, { 0.0f, 300.0f }, ReverbEffectParams.ReflectionsDelay);
 	NewSettings.EarlyReflections.Bandwidth = FMath::GetMappedRangeValueClamped({ 0.0f, 1.0f }, { 0.0f, 1.0f }, ReverbEffectParams.GainHF);
 
 	// LateReflections
 	NewSettings.LateReflections.LateDelayMsec = FMath::GetMappedRangeValueClamped({ 0.0f, 0.1f }, { 0.0f, 100.0f }, ReverbEffectParams.LateDelay);
-	NewSettings.LateReflections.LateGainDB = FMath::GetMappedRangeValueClamped({ 0.0f, 1.0f }, { 0.0f, 1.0f }, ReverbEffectParams.Gain * ReverbEffectParams.Volume);
+	NewSettings.LateReflections.LateGainDB = FMath::GetMappedRangeValueClamped({ 0.0f, 1.0f }, { 0.0f, 1.0f }, ReverbEffectParams.Gain);
 	NewSettings.LateReflections.Bandwidth = FMath::GetMappedRangeValueClamped({ 0.0f, 1.0f }, { 0.1f, 0.6f }, ReverbEffectParams.AirAbsorptionGainHF);
 	NewSettings.LateReflections.Diffusion = FMath::GetMappedRangeValueClamped({ 0.05f, 1.0f }, { 0.0f, 0.95f }, ReverbEffectParams.Diffusion);
 	NewSettings.LateReflections.Dampening = FMath::GetMappedRangeValueClamped({ 0.05f, 1.95f }, { 0.0f, 0.999f }, ReverbEffectParams.DecayHFRatio);

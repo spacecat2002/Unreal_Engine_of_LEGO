@@ -7,6 +7,10 @@
 #include "Containers/Map.h"
 #include "UObject/NameTypes.h"
 
+#if !defined(UE_WITH_SAVEPACKAGE)
+#	define UE_WITH_SAVEPACKAGE 1
+#endif
+
 class FArchive;
 class FIoBuffer;
 class FLinkerLoad;
@@ -76,9 +80,10 @@ private:
 class FSavePackageContext
 {
 public:
-	FSavePackageContext(FPackageStoreWriter* InPackageStoreWriter, FPackageStoreBulkDataManifest* InBulkDataManifest)
+	FSavePackageContext(FPackageStoreWriter* InPackageStoreWriter, FPackageStoreBulkDataManifest* InBulkDataManifest, bool InbForceLegacyOffsets)
 	: PackageStoreWriter(InPackageStoreWriter) 
 	, BulkDataManifest(InBulkDataManifest)
+	, bForceLegacyOffsets(InbForceLegacyOffsets)
 	{
 	}
 
@@ -86,4 +91,5 @@ public:
 
 	FPackageStoreWriter* PackageStoreWriter;
 	FPackageStoreBulkDataManifest* BulkDataManifest;
+	bool bForceLegacyOffsets;
 };

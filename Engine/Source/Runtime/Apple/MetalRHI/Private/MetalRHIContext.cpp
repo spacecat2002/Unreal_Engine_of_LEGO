@@ -1,6 +1,8 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "MetalRHIPrivate.h"
+#include "MetalRHIRenderQuery.h"
+#include "MetalCommandBufferFence.h"
 
 TGlobalResource<TBoundShaderStateHistory<10000>> FMetalRHICommandContext::BoundShaderStateHistory;
 
@@ -42,7 +44,7 @@ void SafeReleaseMetalBuffer(FMetalBuffer& Buffer)
 {
 	if(GIsMetalInitialized && GDynamicRHI && Buffer)
 	{
-		Buffer.SetOwner(nullptr);
+		Buffer.SetOwner(nullptr, false);
 		FMetalRHICommandContext* Context = static_cast<FMetalRHICommandContext*>(RHIGetDefaultContext());
 		if(Context)
 		{
@@ -223,11 +225,42 @@ void FMetalRHICommandContext::RHIEndRenderPass()
 	}
 }
 
-void FMetalRHICommandContext::RHIBeginComputePass(const TCHAR* InName)
+void FMetalRHICommandContext::RHINextSubpass()
 {
-	RHISetRenderTargets(0, nullptr, nullptr);
+#if PLATFORM_MAC
+	if (RenderPassInfo.SubpassHint == ESubpassHint::DepthReadSubpass)
+	{
+		FMetalRenderPass& RP = Context->GetCurrentRenderPass();
+		RP.InsertTextureBarrier();
+	}
+#endif
 }
 
-void FMetalRHICommandContext::RHIEndComputePass()
+void FMetalRHICommandContext::RHIBeginRenderQuery(FRHIRenderQuery* QueryRHI)
 {
+	@autoreleasepool {
+		FMetalRHIRenderQuery* Query = ResourceCast(QueryRHI);
+		Query->Begin(Context, CommandBufferFence);
+	}
+}
+
+void FMetalRHICommandContext::RHIEndRenderQuery(FRHIRenderQuery* QueryRHI)
+{
+	@autoreleasepool {
+		FMetalRHIRenderQuery* Query = ResourceCast(QueryRHI);
+		Query->End(Context);
+	}
+}
+
+void FMetalRHICommandContext::RHIBeginOcclusionQueryBatch(uint32 NumQueriesInBatch)
+{
+	check(!CommandBufferFence.IsValid());
+	CommandBufferFence = MakeShareable(new FMetalCommandBufferFence);
+}
+
+void FMetalRHICommandContext::RHIEndOcclusionQueryBatch()
+{
+	check(CommandBufferFence.IsValid());
+	Context->InsertCommandBufferFence(*CommandBufferFence);
+	CommandBufferFence.Reset();
 }

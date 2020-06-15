@@ -40,7 +40,9 @@ LandscapeEditLayers.cpp: Landscape editing layers mode
 #include "Misc/MapErrors.h"
 #include "Misc/UObjectToken.h"
 #include "Misc/ScopedSlowTask.h"
+#include "Editor.h"
 #endif
+#include "Logging/MessageLog.h"
 
 #define LOCTEXT_NAMESPACE "Landscape"
 
@@ -1249,6 +1251,7 @@ public:
 		InRHICmdList.DrawPrimitive(0, PrimitiveCount, 1);
 
 		InRHICmdList.EndRenderPass();
+		InRHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, ViewFamily.RenderTarget->GetRenderTargetTexture());
 
 		VertexDeclaration.ReleaseResource();
 		VertexBufferResource.ReleaseResource();
@@ -3167,10 +3170,6 @@ bool ALandscape::ResolveLayersTexture(FLandscapeLayersTexture2DCPUReadBackResour
 	ENQUEUE_RENDER_COMMAND(FLandscapeLayersReadSurfaceCommand)(
 		[InCPUReadBackTexture, &OutMipsData](FRHICommandListImmediate& RHICmdList) mutable
 	{
- 		// D3D12RHI requires heavyweight BlockUntilGPUIdle() call to ensure commands have finished.
- 		// Note that this needs improving but for now is enshrined in the RHIUnitTest::VerifyBufferContents unit test
-		RHICmdList.BlockUntilGPUIdle();
-
 		OutMipsData.AddDefaulted(InCPUReadBackTexture->TextureRHI->GetNumMips());
 
 		int32 MipSizeU = InCPUReadBackTexture->GetSizeX();
@@ -3707,12 +3706,12 @@ int32 ALandscape::RegenerateLayersWeightmaps(const TArray<ULandscapeComponent*>&
 	
 	ULandscapeInfo* Info = GetLandscapeInfo();
 
-	if ((WeightmapUpdateModes == 0 && !bForceRender) || Info == nullptr || Info->Layers.Num() == 0)
+	if (WeightmapUpdateModes == 0 && !bForceRender)
 	{
 		return 0;
 	}
 
-	if (InLandscapeComponentsToResolve.Num() == 0)
+	if (InLandscapeComponentsToResolve.Num() == 0 || Info == nullptr || Info->Layers.Num() == 0)
 	{
 		return WeightmapUpdateModes;
 	}
@@ -5070,7 +5069,7 @@ void ALandscape::TickLayers(float DeltaTime)
 	check(GIsEditor);
 
 	UWorld* World = GetWorld();
-	if (World && !World->IsPlayInEditor() && GetLandscapeInfo())
+	if (World && !World->IsPlayInEditor() && GetLandscapeInfo() && GEditor->PlayWorld == nullptr)
 	{
 		if (CVarLandscapeSimulatePhysics.GetValueOnAnyThread() == 1)
 		{

@@ -31,8 +31,7 @@ namespace ShaderDrawDebug
 
 	bool IsShaderDrawDebugEnabled()
 	{
-		// This debug mode causes a GPU restart on Mac. Forcing off until UE-87288 is fixed.
-#if WITH_EDITOR && !PLATFORM_MAC
+#if WITH_EDITOR
 		return CVarShaderDrawEnable.GetValueOnAnyThread() > 0;
 #else
 		return false;
@@ -50,7 +49,7 @@ namespace ShaderDrawDebug
 
 	static bool IsShaderDrawDebugEnabled(const EShaderPlatform Platform)
 	{
-		return IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5) && IsPCPlatform(Platform);
+		return IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5) && IsPCPlatform(Platform) && !IsOpenGLPlatform(Platform);
 	}
 
 	bool IsShaderDrawDebugEnabled(const FViewInfo& View)
@@ -65,7 +64,8 @@ namespace ShaderDrawDebug
 
 	struct ShaderDrawDebugElement
 	{
-		uint32 Pos[3];
+		float Pos0[3]; // This is not packed as fp16 to be able to debug large scale data while preserving accuracy at short range.
+		float Pos1[3];
 		uint32 Color[2];
 	};
 
@@ -274,7 +274,7 @@ namespace ShaderDrawDebug
 
 			ShaderDrawVSPSParameters* PassParameters = GraphBuilder.AllocParameters<ShaderDrawVSPSParameters>();
 			PassParameters->ShaderDrawPSParameters.RenderTargets[0] = FRenderTargetBinding(OutputTexture, ERenderTargetLoadAction::ELoad);
-			PassParameters->ShaderDrawPSParameters.RenderTargets.DepthStencil = FDepthStencilBinding(DepthTexture, ERenderTargetLoadAction::ELoad, FExclusiveDepthStencil::DepthRead_StencilNop);
+			PassParameters->ShaderDrawPSParameters.RenderTargets.DepthStencil = FDepthStencilBinding(DepthTexture, ERenderTargetLoadAction::ELoad, FExclusiveDepthStencil::DepthRead_StencilNop, ERenderTargetMsaaPlane::Resolved);
 			PassParameters->ShaderDrawPSParameters.ColorScale = bIsBehindDepth ? 0.4f : 1.0f;	// When debug primitive are behind the depth buffer, make them look darker.
 			PassParameters->ShaderDrawVSParameters.View = View.ViewUniformBuffer;
 			if (bUseRdgInput)

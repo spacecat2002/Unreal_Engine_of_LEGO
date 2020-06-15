@@ -56,6 +56,35 @@ volatile bool GIsRenderingThreadHealthy = true;
  */
 float GRenderingThreadMaxIdleTickFrequency = 40.f;
 
+/**
+ * RT Task Graph polling.
+ */
+
+extern CORE_API TAtomic<bool> GDoRenderThreadWakeupTrigger;
+extern CORE_API int32 GRenderThreadPollPeriodMs;
+
+static void OnRenderThreadPollPeriodMsChanged(IConsoleVariable* Var)
+{
+	const int32 DesiredRTPollPeriod = Var->GetInt();
+
+	GDoRenderThreadWakeupTrigger = true;
+	ENQUEUE_RENDER_COMMAND(WakeupCommand)([DesiredRTPollPeriod](FRHICommandListImmediate&)
+	{
+		GRenderThreadPollPeriodMs = DesiredRTPollPeriod;
+		if (DesiredRTPollPeriod != -1)
+		{
+			GDoRenderThreadWakeupTrigger = false;
+		}
+	});
+}
+
+static FAutoConsoleVariable CVarRenderThreadPollPeriodMs(
+	TEXT("TaskGraph.RenderThreadPollPeriodMs"),
+	-1,
+	TEXT("Render thread polling period in milliseconds. If value is -1, task graph tasks explicitly wake up RT, otherwise RT polls for tasks."),
+	FConsoleVariableDelegate::CreateStatic(&OnRenderThreadPollPeriodMsChanged)
+);
+
 /** Function to stall the rendering thread **/
 static void SuspendRendering()
 {
@@ -462,7 +491,8 @@ public:
 		FPlatformProcess::SetupRenderThread();
 
 #if PLATFORM_WINDOWS
-		if ( !FPlatformMisc::IsDebuggerPresent() || GAlwaysReportCrash )
+		bool bNoExceptionHandler = FParse::Param(FCommandLine::Get(), TEXT("noexceptionhandler"));
+		if ( !bNoExceptionHandler && (!FPlatformMisc::IsDebuggerPresent() || GAlwaysReportCrash))
 		{
 #if !PLATFORM_SEH_EXCEPTIONS_DISABLED
 			__try
@@ -719,8 +749,9 @@ void StartRenderingThread()
 	// Create the rendering thread.
 	GRenderingThreadRunnable = new FRenderingThread();
 
+	Trace::ThreadGroupBegin(TEXT("Render"));
 	GRenderingThread = FRunnableThread::Create(GRenderingThreadRunnable, *BuildRenderingThreadName(ThreadCount), 0, FPlatformAffinity::GetRenderingThreadPriority(), FPlatformAffinity::GetRenderingThreadMask(), FPlatformAffinity::GetRenderingThreadFlags());
-	TRACE_SET_THREAD_GROUP(GRenderingThread->GetThreadID(), "Render");
+	Trace::ThreadGroupEnd();
 
 	// Wait for render thread to have taskgraph bound before we dispatch any tasks for it.
 	((FRenderingThread*)GRenderingThreadRunnable)->TaskGraphBoundSyncEvent->Wait();
@@ -1289,6 +1320,13 @@ FRHICommandListImmediate& GetImmediateCommandList_ForRenderCommand()
 	return FRHICommandListExecutor::GetImmediateCommandList();
 }
 
+static bool bEnablePendingCleanupObjectsCommandBatching = true;
+static FAutoConsoleVariableRef CVarEnablePendingCleanupObjectsCommandBatching(
+	TEXT("g.bEnablePendingCleanupObjectsCommandBatching"),
+	bEnablePendingCleanupObjectsCommandBatching,
+	TEXT("Enable batching PendingCleanupObjects destruction.")
+);
+
 #if WITH_EDITOR || IS_PROGRAM
 
 // mainly concerned about the cooker here, but anyway, the editor can run without a frame for a very long time (hours) and we do not have enough lock free links. 
@@ -1310,9 +1348,18 @@ FPendingCleanupObjects::~FPendingCleanupObjects()
 {
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_FPendingCleanupObjects_Destruct);
 
+	const bool bBatchingEnabled = bEnablePendingCleanupObjectsCommandBatching;
+	if (bBatchingEnabled)
+	{
+		StartRenderCommandFenceBundler();
+	}
 	for (int32 ObjectIndex = 0; ObjectIndex < CleanupArray.Num(); ObjectIndex++)
 	{
 		delete CleanupArray[ObjectIndex];
+	}
+	if (bBatchingEnabled)
+	{
+		StopRenderCommandFenceBundler();
 	}
 }
 
@@ -1339,9 +1386,18 @@ FPendingCleanupObjects::~FPendingCleanupObjects()
 {
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_FPendingCleanupObjects_Destruct);
 
+	const bool bBatchingEnabled = bEnablePendingCleanupObjectsCommandBatching;
+	if (bBatchingEnabled)
+	{
+		StartRenderCommandFenceBundler();
+	}
 	for (int32 ObjectIndex = 0; ObjectIndex < CleanupArray.Num(); ObjectIndex++)
 	{
 		delete CleanupArray[ObjectIndex];
+	}
+	if (bBatchingEnabled)
+	{
+		StopRenderCommandFenceBundler();
 	}
 }
 

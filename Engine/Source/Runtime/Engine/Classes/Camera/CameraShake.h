@@ -204,6 +204,63 @@ public:
 	UPROPERTY(EditAnywhere, Category = AnimShake)
 	uint32 bRandomAnimSegment : 1;
 
+public:
+	/**
+	 * Gets the duration of this camera shake in seconds.
+	 *
+	 * The value could be 0 or negative if the shake uses the oscillator, meaning, respectively,
+	 * no oscillation, or indefinite oscillation.
+	 */
+	float GetCameraShakeDuration() const;
+
+	/**
+	 * Gets the duration of this camera shake's blend in and out.
+	 *
+	 * The values could be 0 or negative if there's no blend in and/or out.
+	 */
+	void GetCameraShakeBlendTimes(float& OutBlendIn, float& OutBlendOut) const;
+
+	/**
+	 * Gets the default duration for camera shakes of the given class.
+	 *
+	 * @param CameraShakeClass    The class of camera shake
+	 * @param OutDuration         Will store the default duration of the given camera shake class, if possible
+	 * @return                    Whether a valid default duration was found
+	 */
+	static bool GetCameraShakeDuration(TSubclassOf<UCameraShake> CameraShakeClass, float& OutDuration)
+	{
+		if (CameraShakeClass)
+		{
+			if (const UCameraShake* CDO = CameraShakeClass->GetDefaultObject<UCameraShake>())
+			{
+				OutDuration = CDO->GetCameraShakeDuration();
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Gets the default blend in/out durations for camera shakes of the given class.
+	 *
+	 * @param CameraShakeClass    The class of camera shake
+	 * @param OutBlendIn          Will store the default blend-in time of the given camera shake class, if possible
+	 * @param OutBlendOut         Will store the default blend-out time of the given camera shake class, if possible
+	 * @return                    Whether valid default blend in/out times were found
+	 */
+	static bool GetCameraShakeBlendTimes(TSubclassOf<UCameraShake> CameraShakeClass, float& OutBlendIn, float& OutBlendOut)
+	{
+		if (CameraShakeClass)
+		{
+			if (const UCameraShake* CDO = CameraShakeClass->GetDefaultObject<UCameraShake>())
+			{
+				CDO->GetCameraShakeBlendTimes(OutBlendIn, OutBlendOut);
+				return true;
+			}
+		}
+		return false;
+	}
+
 protected:
 
 	// INSTANCE DATA

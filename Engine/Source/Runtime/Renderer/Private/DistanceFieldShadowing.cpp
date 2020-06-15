@@ -463,9 +463,6 @@ public:
 		OutEnvironment.SetDefine(TEXT("DISTANCEFIELD_PRIMITIVE_TYPE"), (int32)PrimitiveType);
 		OutEnvironment.SetDefine(TEXT("HAS_PREVIOUS_OUTPUT"), (int32)bHasPrevOutput);
 		OutEnvironment.SetDefine(TEXT("PLATFORM_SUPPORTS_TYPED_UAV_LOAD"), (int32)RHISupports4ComponentUAVReadWrite(Parameters.Platform));
-
-		// temporary workaround for DXC
-		OutEnvironment.CompilerFlags.AddUnique(CFLAG_SkipOptimizationsDXC);
 	}
 
 	/** Default constructor. */
@@ -484,7 +481,6 @@ public:
 		TanLightAngleAndNormalThreshold.Bind(Initializer.ParameterMap, TEXT("TanLightAngleAndNormalThreshold"));
 		ScissorRectMinAndSize.Bind(Initializer.ParameterMap, TEXT("ScissorRectMinAndSize"));
 		ObjectParameters.Bind(Initializer.ParameterMap);
-		SceneTextureParameters.Bind(Initializer);
 		LightTileIntersectionParameters.Bind(Initializer.ParameterMap);
 		WorldToShadow.Bind(Initializer.ParameterMap, TEXT("WorldToShadow"));
 		TwoSidedMeshDistanceBias.Bind(Initializer.ParameterMap, TEXT("TwoSidedMeshDistanceBias"));
@@ -541,8 +537,6 @@ public:
 		}
 
 		ObjectParameters.Set(RHICmdList, ShaderRHI, CulledObjectBuffers.Buffers, TextureAtlas, FIntVector(AtlasSizeX, AtlasSizeY, AtlasSizeZ), VisibilityAtlas);
-
-		SceneTextureParameters.Set(RHICmdList, ShaderRHI, View.FeatureLevel, ESceneTextureSetupMode::All);
 
 		SetShaderValue(RHICmdList, ShaderRHI, NumGroups, NumGroupsValue);
 
@@ -632,7 +626,6 @@ private:
 	LAYOUT_FIELD(FShaderParameter, ScissorRectMinAndSize);
 	using FDistanceFieldObjectBufferParametersType = TDistanceFieldCulledObjectBufferParameters<PrimitiveType>;
 	LAYOUT_FIELD(FDistanceFieldObjectBufferParametersType, ObjectParameters)
-	LAYOUT_FIELD(FSceneTextureShaderParameters, SceneTextureParameters);
 	LAYOUT_FIELD(FLightTileIntersectionParameters, LightTileIntersectionParameters);
 	LAYOUT_FIELD(FShaderParameter, WorldToShadow);
 	LAYOUT_FIELD(FShaderParameter, TwoSidedMeshDistanceBias);
@@ -687,7 +680,6 @@ public:
 	TDistanceFieldShadowingUpsamplePS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
 	{
-		SceneTextureParameters.Bind(Initializer);
 		ShadowFactorsTexture.Bind(Initializer.ParameterMap,TEXT("ShadowFactorsTexture"));
 		ShadowFactorsSampler.Bind(Initializer.ParameterMap,TEXT("ShadowFactorsSampler"));
 		ScissorRectMinAndSize.Bind(Initializer.ParameterMap,TEXT("ScissorRectMinAndSize"));
@@ -702,7 +694,6 @@ public:
 		FRHIPixelShader* ShaderRHI = RHICmdList.GetBoundPixelShader();
 
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, View.ViewUniformBuffer);
-		SceneTextureParameters.Set(RHICmdList, ShaderRHI, View.FeatureLevel, ESceneTextureSetupMode::All);
 
 		SetTextureParameter(RHICmdList, ShaderRHI, ShadowFactorsTexture, ShadowFactorsSampler, TStaticSamplerState<SF_Bilinear>::GetRHI(), ShadowFactorsTextureValue->GetRenderTargetItem().ShaderResourceTexture);
 	
@@ -732,7 +723,6 @@ public:
 	}
 
 private:
-	LAYOUT_FIELD(FSceneTextureShaderParameters, SceneTextureParameters);
 	LAYOUT_FIELD(FShaderResourceParameter, ShadowFactorsTexture);
 	LAYOUT_FIELD(FShaderResourceParameter, ShadowFactorsSampler);
 	LAYOUT_FIELD(FShaderParameter, ScissorRectMinAndSize);
@@ -862,8 +852,6 @@ void ScatterObjectsToShadowTiles(
 	}
 	RHICmdList.EndRenderPass();
 
-	// #todo-renderpasses Needed for now. Once SetRenderTarget is removed completely this will be redundant.
-	UnbindRenderTargets(RHICmdList);
 	RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EGfxToCompute, UAVs.GetData(), UAVs.Num());
 }
 
@@ -1207,8 +1195,6 @@ void FProjectedShadowInfo::BeginRenderRayTracedDistanceFieldProjection(FRHIComma
 		{
 			check(!Scene->DistanceFieldSceneData.HasPendingOperations());
 
-			UnbindRenderTargets(RHICmdList);
-
 			int32 NumPlanes = 0;
 			const FPlane* PlaneData = NULL;
 			FVector4 ShadowBoundingSphereValue(0, 0, 0, 0);
@@ -1256,8 +1242,6 @@ void FProjectedShadowInfo::BeginRenderRayTracedDistanceFieldProjection(FRHIComma
 			}
 
 			SCOPED_DRAW_EVENT(RHICmdList, RayTraceShadows);
-			UnbindRenderTargets(RHICmdList);
-
 			RayTraceShadows(RHICmdList, View, this, TileIntersectionResources);
 
 			if (bBufferAliasingEnabled)
@@ -1277,8 +1261,6 @@ void FProjectedShadowInfo::BeginRenderRayTracedDistanceFieldProjection(FRHIComma
 		SCOPED_DRAW_EVENT(RHICmdList, BeginRenderRayTracedHeightFieldShadows);
 
 		check(!Scene->DistanceFieldSceneData.HasPendingHeightFieldOperations());
-
-		UnbindRenderTargets(RHICmdList);
 
 		const int32 NumPlanes = CascadeSettings.ShadowBoundsAccurate.Planes.Num();
 		const FPlane* PlaneData = CascadeSettings.ShadowBoundsAccurate.Planes.GetData();
@@ -1315,8 +1297,6 @@ void FProjectedShadowInfo::BeginRenderRayTracedDistanceFieldProjection(FRHIComma
 		}
 
 		SCOPED_DRAW_EVENT(RHICmdList, RayTraceHeightFieldShadows);
-		UnbindRenderTargets(RHICmdList);
-
 		RayTraceHeightFieldShadows(RHICmdList, View, this, TileIntersectionResources, bHasPrevOutput, PrevOutputRT ? PrevOutputRT->GetRenderTargetItem().ShaderResourceTexture : nullptr);
 
 		if (bBufferAliasingEnabled)
@@ -1330,6 +1310,11 @@ void FProjectedShadowInfo::RenderRayTracedDistanceFieldProjection(FRHICommandLis
 {
 	check(ScissorRect.Area() > 0);
 
+	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+	FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(SceneContext, View.GetFeatureLevel(), ESceneTextureSetupMode::All, UniformBuffer_SingleFrame);
+	FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
+	SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
+
 	BeginRenderRayTracedDistanceFieldProjection(RHICmdList, View);
 
 	if (RayTracedShadowsRT)
@@ -1340,7 +1325,7 @@ void FProjectedShadowInfo::RenderRayTracedDistanceFieldProjection(FRHICommandLis
 		{
 			FRHIRenderPassInfo RPInfo(ScreenShadowMaskTexture->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Load_Store);
 			RPInfo.DepthStencilRenderTarget.Action = MakeDepthStencilTargetActions(ERenderTargetActions::Load_DontStore, ERenderTargetActions::Load_Store);
-			RPInfo.DepthStencilRenderTarget.DepthStencilTarget = FSceneRenderTargets::Get(RHICmdList).GetSceneDepthSurface();
+			RPInfo.DepthStencilRenderTarget.DepthStencilTarget = SceneContext.GetSceneDepthSurface();
 			RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil = FExclusiveDepthStencil::DepthRead_StencilWrite;
 
 			TransitionRenderPassTargets(RHICmdList, RPInfo);

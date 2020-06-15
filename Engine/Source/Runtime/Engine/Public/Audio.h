@@ -16,6 +16,7 @@
 #include "Sound/SoundSubmixSend.h"
 #include "Sound/SoundSourceBusSend.h"
 #include "IAudioExtensionPlugin.h"
+#include "IAudioModulation.h"
 
 ENGINE_API DECLARE_LOG_CATEGORY_EXTERN(LogAudio, Display, All);
 
@@ -147,6 +148,9 @@ private:
 ENGINE_API bool IsAudioPluginEnabled(EAudioPlugin PluginType);
 ENGINE_API UClass* GetAudioPluginCustomSettingsClass(EAudioPlugin PluginType);
 
+/** accessor for our Spatialization enabled CVar. */
+ENGINE_API bool IsSpatializationCVarEnabled();
+
 /** Bus send types */
 enum class EBusSendType : uint8
 {
@@ -169,9 +173,6 @@ struct ENGINE_API FWaveInstance
 
 	/** Sound class */
 	USoundClass* SoundClass;
-
-	/** Modulation controls */
-	FSoundModulationControls SoundModulationControls;
 
 	/** Sound submix object to send audio to for mixing in audio mixer.  */
 	USoundSubmixBase* SoundSubmix;
@@ -364,6 +365,9 @@ public:
 
 	/** The manual send level to use if the sound is set to use manual send level. */
 	float ManualReverbSendLevel;
+
+	/** The submix send settings to use. */
+	TArray<FAttenuationSubmixSendSettings> SubmixSendSettings;
 
 	/** Cached type hash */
 	uint32 TypeHash;

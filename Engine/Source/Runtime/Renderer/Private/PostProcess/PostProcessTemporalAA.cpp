@@ -94,6 +94,8 @@ class FTemporalAACS : public FGlobalShader
 		SHADER_PARAMETER_ARRAY(float, PlusWeights, [5])
 
 		SHADER_PARAMETER(FVector4, InputSceneColorSize)
+		SHADER_PARAMETER(FIntPoint, InputMinPixelCoord)
+		SHADER_PARAMETER(FIntPoint, InputMaxPixelCoord)
 		SHADER_PARAMETER(FVector4, OutputViewportSize)
 		SHADER_PARAMETER(FVector4, OutputViewportRect)
 
@@ -120,6 +122,8 @@ class FTemporalAACS : public FGlobalShader
 
 		SHADER_PARAMETER_SAMPLER(SamplerState, SceneDepthBufferSampler)
 		SHADER_PARAMETER_SAMPLER(SamplerState, SceneVelocityBufferSampler)
+
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D, StencilTexture)
 
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
 		
@@ -513,6 +517,8 @@ FTAAOutputs AddTemporalAAPass(
 		PassParameters->SceneDepthBufferSampler = TStaticSamplerState<SF_Point>::GetRHI();
 		PassParameters->SceneVelocityBufferSampler = TStaticSamplerState<SF_Point>::GetRHI();
 
+		PassParameters->StencilTexture = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::CreateWithPixelFormat(SceneTextures.SceneDepthBuffer, PF_X24_G8));
+
 		// We need a valid velocity buffer texture. Use black (no velocity) if none exists.
 		if (!PassParameters->SceneTextures.SceneVelocityBuffer)
 		{
@@ -526,6 +532,8 @@ FTAAOutputs AddTemporalAAPass(
 				InputExtent.Y,
 				1.0f / float(InputExtent.X),
 				1.0f / float(InputExtent.Y));
+			PassParameters->InputMinPixelCoord = PracticableSrcRect.Min;
+			PassParameters->InputMaxPixelCoord = PracticableSrcRect.Max - FIntPoint(1, 1);
 			PassParameters->InputSceneColor = Inputs.SceneColorInput;
 			PassParameters->InputSceneColorSampler = TStaticSamplerState<SF_Point>::GetRHI();
 			PassParameters->InputSceneMetadata = Inputs.SceneMetadataInput;

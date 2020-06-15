@@ -412,23 +412,13 @@ void FStreamableHandle::GetRequestedAssets(TArray<FSoftObjectPath>& AssetList) c
 
 UObject* FStreamableHandle::GetLoadedAsset() const
 {
-	if (HasLoadCompleted())
-	{
-		if (RequestedAssets.Num() > 0)
-		{
-			const FSoftObjectPath& Ref = RequestedAssets[0];
-			// Try manager, should be faster and will handle redirects better
-			return IsActive() ? OwningManager->GetStreamed(Ref) : Ref.ResolveObject();
-		}
+	TArray<UObject *> LoadedAssets;
 
-		// Check child handles
-		for (const TSharedPtr<FStreamableHandle>& ChildHandle : ChildHandles)
-		{
-			if (UObject* LoadedChildAsset = ChildHandle->GetLoadedAsset())
-			{
-				return LoadedChildAsset;
-			}
-		}	
+	GetLoadedAssets(LoadedAssets);
+
+	if (LoadedAssets.Num() > 0)
+	{
+		return LoadedAssets[0];
 	}
 
 	return nullptr;
@@ -1149,7 +1139,9 @@ TSharedPtr<FStreamableHandle> FStreamableManager::RequestAsyncLoad(TArray<FSoftO
 	NewRequest->CompleteDelegate = DelegateToCall;
 	NewRequest->OwningManager = this;
 	NewRequest->RequestedAssets = MoveTemp(TargetsToStream);
+#if (!PLATFORM_IOS && !PLATFORM_ANDROID)
 	NewRequest->DebugName = MoveTemp(DebugName);
+#endif
 	NewRequest->Priority = Priority;
 
 	int32 NumValidRequests = NewRequest->RequestedAssets.Num();
@@ -1164,7 +1156,7 @@ TSharedPtr<FStreamableHandle> FStreamableManager::RequestAsyncLoad(TArray<FSoftO
 			--NumValidRequests;
 			continue;
 		}
-		else if (FPackageName::IsShortPackageName(TargetName.ToString()))
+		else if (FPackageName::IsShortPackageName(TargetName.GetAssetPathName()))
 		{
 			UE_LOG(LogStreamableManager, Error, TEXT("RequestAsyncLoad called with invalid package name %s"), *TargetName.ToString());
 			NewRequest->CancelHandle();

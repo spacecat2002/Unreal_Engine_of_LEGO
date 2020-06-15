@@ -4,31 +4,40 @@
 
 #include "Chaos/Framework/MultiBufferResource.h"
 #include "Chaos/ParticleHandle.h"
+#include "Chaos/PBDRigidsEvolutionFwd.h"
 
 namespace Chaos
 {
-	class FPBDRigidsSolver;
-
 	/**
 	 * Solver specific data buffered for use on Game thread
 	 */
-	struct CHAOSSOLVERS_API FPBDRigidActiveParticlesBufferOut
+	struct CHAOSSOLVERS_API FPBDRigidDirtyParticlesBufferOut
 	{
-		TArray<TGeometryParticle<float, 3>*> ActiveGameThreadParticles;
+		TArray<TGeometryParticle<float, 3>*> DirtyGameThreadParticles;
+		// Some particle types (clustered) only exist on the game thread, but we
+		// still need to pull data over via their proxies.
+		TSet<IPhysicsProxyBase*> PhysicsParticleProxies;
 	};
 
 
-	class CHAOSSOLVERS_API FPBDRigidActiveParticlesBuffer
+	class CHAOSSOLVERS_API FPBDRigidDirtyParticlesBuffer
 	{
-		friend class FPBDRigidActiveParticlesBufferAccessor;
+		friend class FPBDRigidDirtyParticlesBufferAccessor;
 
 	public:
-		FPBDRigidActiveParticlesBuffer(const Chaos::EMultiBufferMode& InBufferMode);
+		FPBDRigidDirtyParticlesBuffer(const Chaos::EMultiBufferMode& InBufferMode, bool bInSingleThreaded);
 
 		void CaptureSolverData(FPBDRigidsSolver* Solver);
+
+		void RemoveDirtyParticleFromConsumerBuffer(TGeometryParticle<FReal, 3>* Particle);
+
+		void ReadLock();
+		void ReadUnlock();
+		void WriteLock();
+		void WriteUnlock();
 	
 	private:
-		const FPBDRigidActiveParticlesBufferOut* GetSolverOutData() const
+		const FPBDRigidDirtyParticlesBufferOut* GetSolverOutData() const
 		{
 			return SolverDataOut->GetConsumerBuffer();
 		}
@@ -48,33 +57,33 @@ namespace Chaos
 
 		Chaos::EMultiBufferMode BufferMode;
 		FRWLock ResourceOutLock;
+		bool bUseLock;
 
 		// Physics thread to game thread
-		TUniquePtr<IBufferResource<FPBDRigidActiveParticlesBufferOut>> SolverDataOut;
-
+		TUniquePtr<IBufferResource<FPBDRigidDirtyParticlesBufferOut>> SolverDataOut;
 	};
 
-	class FPBDRigidActiveParticlesBufferAccessor
+	class FPBDRigidDirtyParticlesBufferAccessor
 	{
 	public:
-		FPBDRigidActiveParticlesBufferAccessor(FPBDRigidActiveParticlesBuffer* InManager) : Manager(InManager)
+		FPBDRigidDirtyParticlesBufferAccessor(FPBDRigidDirtyParticlesBuffer* InManager) : Manager(InManager)
 		{
 			check(InManager);
-			Manager->ResourceOutLock.ReadLock();
+			Manager->ReadLock();
 		}
 
-		const FPBDRigidActiveParticlesBufferOut* GetSolverOutData() const
+		const FPBDRigidDirtyParticlesBufferOut* GetSolverOutData() const
 		{
 			return Manager->GetSolverOutData();
 		}
 
-		~FPBDRigidActiveParticlesBufferAccessor()
+		~FPBDRigidDirtyParticlesBufferAccessor()
 		{
-			Manager->ResourceOutLock.ReadUnlock();
+			Manager->ReadUnlock();
 		}
 
 	private:
-		FPBDRigidActiveParticlesBuffer* Manager;
+		FPBDRigidDirtyParticlesBuffer* Manager;
 	};
 
 }

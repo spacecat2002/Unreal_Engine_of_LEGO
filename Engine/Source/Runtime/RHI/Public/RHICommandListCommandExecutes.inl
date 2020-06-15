@@ -54,6 +54,7 @@ struct FRHICommandSetStereoViewport;
 struct FRHICommandSetStreamSource;
 struct FRHICommandSetViewport;
 struct FRHICommandTransitionTextures;
+struct FRHICommandTransitionTexturesPipeline;
 struct FRHICommandTransitionTexturesDepth;
 struct FRHICommandTransitionTexturesArray;
 struct FRHICommandUpdateTextureReference;
@@ -123,7 +124,7 @@ template<> void FRHICommandSetShaderParameter<FRHIComputeShader>::Execute(FRHICo
 template <> void FRHICommandSetShaderParameter<FRHIGraphicsShader>::Execute(FRHICommandListBase& CmdList)
 {
 	RHISTAT(SetShaderParameter);
-	INTERNAL_DECORATOR(RHISetShaderParameter)(Shader, BufferIndex, BaseIndex, NumBytes, NewValue);
+	INTERNAL_DECORATOR(RHISetShaderParameter)(Shader, BufferIndex, BaseIndex, NumBytes, NewValue); 
 }
 
 template<> void FRHICommandSetShaderUniformBuffer<FRHIComputeShader>::Execute(FRHICommandListBase& CmdList)
@@ -252,27 +253,6 @@ void FRHICommandNextSubpass::Execute(FRHICommandListBase& CmdList)
 	INTERNAL_DECORATOR(RHINextSubpass)();
 }
 
-void FRHICommandBeginComputePass::Execute(FRHICommandListBase& CmdList)
-{
-	RHISTAT(BeginComputePass);
-	INTERNAL_DECORATOR(RHIBeginComputePass)(Name);
-}
-
-void FRHICommandEndComputePass::Execute(FRHICommandListBase& CmdList)
-{
-	RHISTAT(EndComputePass);
-	INTERNAL_DECORATOR(RHIEndComputePass)();
-}
-
-void FRHICommandSetRenderTargets::Execute(FRHICommandListBase& CmdList)
-{
-	RHISTAT(SetRenderTargets);
-	INTERNAL_DECORATOR(RHISetRenderTargets)(
-		NewNumSimultaneousRenderTargets,
-		NewRenderTargetsRHI,
-		&NewDepthStencilTarget);
-}
-
 void FRHICommandBindClearMRTValues::Execute(FRHICommandListBase& CmdList)
 {
 	RHISTAT(BindClearMRTValues);
@@ -359,6 +339,18 @@ void FRHICommandDrawIndexedPrimitiveIndirect::Execute(FRHICommandListBase& CmdLi
 	INTERNAL_DECORATOR(RHIDrawIndexedPrimitiveIndirect)(IndexBuffer, ArgumentsBuffer, ArgumentOffset);
 }
 
+void FRHICommandSetShadingRate::Execute(FRHICommandListBase& CmdList)
+{
+	RHISTAT(SetShadingRate);
+	INTERNAL_DECORATOR(RHISetShadingRate)(ShadingRate, Combiner);
+}
+
+void FRHICommandSetShadingRateImage::Execute(FRHICommandListBase& CmdList)
+{
+	RHISTAT(SetShadingRateImage);
+	INTERNAL_DECORATOR(RHISetShadingRateImage)(RateImageTexture, Combiner);
+}
+
 void FRHICommandSetDepthBounds::Execute(FRHICommandListBase& CmdList)
 {
 	RHISTAT(EnableDepthBoundsTest);
@@ -399,6 +391,12 @@ void FRHICommandTransitionTextures::Execute(FRHICommandListBase& CmdList)
 {
 	RHISTAT(TransitionTextures);
 	INTERNAL_DECORATOR(RHITransitionResources)(TransitionType, &Textures[0], NumTextures);
+}
+
+void FRHICommandTransitionTexturesPipeline::Execute(FRHICommandListBase& CmdList)
+{
+	RHISTAT(TransitionTextures);
+	INTERNAL_DECORATOR(RHITransitionResources)(TransitionType, TransitionPipeline, &Textures[0], NumTextures);
 }
 
 void FRHICommandTransitionTexturesDepth::Execute(FRHICommandListBase& CmdList)
@@ -498,6 +496,12 @@ void FRHICommandEndRenderQuery::Execute(FRHICommandListBase& CmdList)
 	INTERNAL_DECORATOR(RHIEndRenderQuery)(RenderQuery);
 }
 
+void FRHICommandCalibrateTimers::Execute(FRHICommandListBase& CmdList)
+{
+	RHISTAT(CalibrateTimers);
+	INTERNAL_DECORATOR(RHICalibrateTimers)(CalibrationQuery);
+}
+
 void FRHICommandSubmitCommandsHint::Execute(FRHICommandListBase& CmdList)
 {
 	RHISTAT(SubmitCommandsHint);
@@ -510,12 +514,12 @@ void FRHICommandPollOcclusionQueries::Execute(FRHICommandListBase& CmdList)
 	INTERNAL_DECORATOR(RHIPollOcclusionQueries)();
 }
 
-#if RHI_RAYTRACING
-
 void FRHICommandCopyBufferRegion::Execute(FRHICommandListBase& CmdList)
 {
 	INTERNAL_DECORATOR(RHICopyBufferRegion)(DestBuffer, DstOffset, SourceBuffer, SrcOffset, NumBytes);
 }
+
+#if RHI_RAYTRACING
 
 void FRHICommandCopyBufferRegions::Execute(FRHICommandListBase& CmdList)
 {
@@ -578,7 +582,7 @@ void FRHICommandSetRayTracingBindings::Execute(FRHICommandListBase& CmdList)
 	{
 		INTERNAL_DECORATOR(RHISetRayTracingCallableShader)(Scene, ShaderSlot, GetRHIRayTracingPipelineState(Pipeline), ShaderIndex, NumUniformBuffers, UniformBuffers, UserData);
 	}
-	else 
+	else
 	{
 		INTERNAL_DECORATOR(RHISetRayTracingMissShader)(Scene, ShaderSlot, GetRHIRayTracingPipelineState(Pipeline), ShaderIndex, NumUniformBuffers, UniformBuffers, UserData);
 	}

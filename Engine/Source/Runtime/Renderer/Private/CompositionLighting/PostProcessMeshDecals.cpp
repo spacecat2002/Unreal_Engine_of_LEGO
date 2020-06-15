@@ -33,7 +33,7 @@ class FMeshDecalAccumulatePolicy
 public:
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
 	{
-		return Parameters.MaterialParameters.MaterialDomain == MD_DeferredDecal && IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+		return Parameters.MaterialParameters.MaterialDomain == MD_DeferredDecal;
 	}
 };
 
@@ -211,7 +211,14 @@ FMeshDecalMeshProcessor::FMeshDecalMeshProcessor(const FScene* Scene,
 	PassDrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI());
 	PassDrawRenderState.SetViewUniformBuffer(Scene->UniformBuffers.ViewUniformBuffer);
 	PassDrawRenderState.SetInstancedViewUniformBuffer(Scene->UniformBuffers.InstancedViewUniformBuffer);
-	PassDrawRenderState.SetPassUniformBuffer(Scene->UniformBuffers.MeshDecalPassUniformBuffer);
+	if (FeatureLevel == ERHIFeatureLevel::ES3_1)
+	{
+		PassDrawRenderState.SetPassUniformBuffer(Scene->UniformBuffers.MobileTranslucentBasePassUniformBuffer);
+	}
+	else
+	{
+		PassDrawRenderState.SetPassUniformBuffer(Scene->UniformBuffers.MeshDecalPassUniformBuffer);
+	}
 }
 
 void FMeshDecalMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshBatch, uint64 BatchElementMask, const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy, int32 StaticMeshId)
@@ -235,6 +242,7 @@ void FMeshDecalMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshBatch,
 				ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, *Material, OverrideSettings);
 
 				bool bShouldRender = FDecalRenderingCommon::IsCompatibleWithRenderStage(
+					ShaderPlatform,
 					PassDecalStage,
 					LocalDecalRenderStage,
 					FinalDecalBlendMode,
@@ -262,26 +270,31 @@ void FMeshDecalMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshBatch,
 						FDecalRenderingCommon::ComputeFinalDecalBlendMode(ShaderPlatform, (EDecalBlendMode)Material->GetDecalBlendMode(), bHasNormal),
 						PassDecalStage);
 
-					if (ViewIfDynamicMeshCommand->Family->UseDebugViewPS())
-					{
-						// Deferred decals can only use translucent blend mode
-						if (ViewIfDynamicMeshCommand->Family->EngineShowFlags.ShaderComplexity)
-						{
-							// If we are in the translucent pass then override the blend mode, otherwise maintain additive blending.
-							PassDrawRenderState.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_Zero, BF_One>::GetRHI());
-						}
-						else if (ViewIfDynamicMeshCommand->Family->GetDebugViewShaderMode() != DVSM_OutputMaterialTextureScales)
-						{
-							// Otherwise, force translucent blend mode (shaders will use an hardcoded alpha).
-							PassDrawRenderState.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha>::GetRHI());
-						}
-					}
-					else
-					{
-						PassDrawRenderState.SetBlendState(GetDecalBlendState(FeatureLevel, PassDecalStage, DecalBlendMode, bHasNormal));
-					}
+					FDecalRenderingCommon::ERenderTargetMode DecalRenderTargetMode = FDecalRenderingCommon::ComputeRenderTargetMode(ShaderPlatform, DecalBlendMode, bHasNormal);
 
-					Process(MeshBatch, BatchElementMask, StaticMeshId, PrimitiveSceneProxy, *MaterialRenderProxy, *Material, MeshFillMode, MeshCullMode);
+					if (DecalRenderTargetMode == RenderTargetMode)
+					{
+						if (ViewIfDynamicMeshCommand->Family->UseDebugViewPS())
+						{
+							// Deferred decals can only use translucent blend mode
+							if (ViewIfDynamicMeshCommand->Family->EngineShowFlags.ShaderComplexity)
+							{
+								// If we are in the translucent pass then override the blend mode, otherwise maintain additive blending.
+								PassDrawRenderState.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_Zero, BF_One>::GetRHI());
+							}
+							else if (ViewIfDynamicMeshCommand->Family->GetDebugViewShaderMode() != DVSM_OutputMaterialTextureScales)
+							{
+								// Otherwise, force translucent blend mode (shaders will use an hardcoded alpha).
+								PassDrawRenderState.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha>::GetRHI());
+							}
+						}
+						else
+						{
+							PassDrawRenderState.SetBlendState(FDecalRendering::GetDecalBlendState(FeatureLevel, PassDecalStage, DecalBlendMode, bHasNormal));
+						}
+
+						Process(MeshBatch, BatchElementMask, StaticMeshId, PrimitiveSceneProxy, *MaterialRenderProxy, *Material, MeshFillMode, MeshCullMode);
+					}
 				}
 			}
 		}
@@ -358,9 +371,13 @@ void DrawDecalMeshCommands(FRenderingCompositePassContext& Context, EDecalRender
 
 	const bool bPerPixelDBufferMask = IsUsingPerPixelDBufferMask(View.GetShaderPlatform());
 
+	bool bHasNormalRenderTarget = FDecalRenderingCommon::RTM_GBufferNormal == RenderTargetMode ||
+		FDecalRenderingCommon::RTM_SceneColorAndGBufferDepthWriteWithNormal == RenderTargetMode ||
+		FDecalRenderingCommon::RTM_SceneColorAndGBufferWithNormal == RenderTargetMode;
+
 	FGraphicsPipelineStateInitializer GraphicsPSOInit;
 	FDecalRenderTargetManager RenderTargetManager(Context.RHICmdList, Context.GetShaderPlatform(), Context.GetFeatureLevel(), CurrentDecalStage);
-	RenderTargetManager.SetRenderTargetMode(RenderTargetMode, true, bPerPixelDBufferMask);
+	RenderTargetManager.SetRenderTargetMode(RenderTargetMode, bHasNormalRenderTarget, bPerPixelDBufferMask);
 	Context.SetViewportAndCallRHI(Context.View.ViewRect);
 	RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
 
@@ -414,6 +431,7 @@ void RenderMeshDecals(FRenderingCompositePassContext& Context, EDecalRenderStage
 		case DRS_BeforeLighting:
 			DrawDecalMeshCommands(Context, CurrentDecalStage, FDecalRenderingCommon::RTM_GBufferNormal);
 			DrawDecalMeshCommands(Context, CurrentDecalStage, FDecalRenderingCommon::RTM_SceneColorAndGBufferWithNormal);
+			DrawDecalMeshCommands(Context, CurrentDecalStage, FDecalRenderingCommon::RTM_SceneColorAndGBufferNoNormal);
 			break;
 
 		case DRS_Mobile:
@@ -429,4 +447,28 @@ void RenderMeshDecals(FRenderingCompositePassContext& Context, EDecalRenderStage
 			break;
 		}
 	}
+}
+
+void RenderMeshDecalsMobile(FRHICommandList& RHICmdList, const FViewInfo& View)
+{
+	SCOPED_DRAW_EVENT(RHICmdList, MeshDecals);
+
+	DrawDynamicMeshPass(View, RHICmdList, [&View](FDynamicPassMeshDrawListContext* DynamicMeshPassContext)
+	{
+		FMeshDecalMeshProcessor PassMeshProcessor(
+			View.Family->Scene->GetRenderScene(),
+			&View,
+			DRS_Mobile,
+			FDecalRenderingCommon::RTM_SceneColor,
+			DynamicMeshPassContext);
+
+		for (int32 MeshBatchIndex = 0; MeshBatchIndex < View.MeshDecalBatches.Num(); ++MeshBatchIndex)
+		{
+			const FMeshBatch* Mesh = View.MeshDecalBatches[MeshBatchIndex].Mesh;
+			const FPrimitiveSceneProxy* PrimitiveSceneProxy = View.MeshDecalBatches[MeshBatchIndex].Proxy;
+			const uint64 DefaultBatchElementMask = ~0ull;
+
+			PassMeshProcessor.AddMeshBatch(*Mesh, DefaultBatchElementMask, PrimitiveSceneProxy);
+		}
+	}, true);
 }

@@ -31,6 +31,7 @@ struct FPaths::FStaticData
 
 	FString         UserDirArg;
 	FString         GameSavedDir;
+	FString         EngineSavedDir;
 	FString         ShaderDir;
 	FString         UserFolder;
 	TArray<FString> EngineLocalizationPaths;
@@ -44,6 +45,7 @@ struct FPaths::FStaticData
 
 	bool bUserDirArgInitialized                    = false;
 	bool bGameSavedDirInitialized                  = false;
+	bool bEngineSavedDirInitialized                = false;
 	bool bShaderDirInitialized                     = false;
 	bool bUserFolderInitialized                    = false;
 	bool bEngineLocalizationPathsInitialized       = false;
@@ -65,12 +67,12 @@ namespace UE4Paths_Private
 	auto IsSlashOrBackslash    = [](TCHAR C) { return C == TEXT('/') || C == TEXT('\\'); };
 	auto IsNotSlashOrBackslash = [](TCHAR C) { return C != TEXT('/') && C != TEXT('\\'); };
 
-	FString GameSavedDir()
+	FString GetSavedDirSuffix(const FString& BaseDir, const TCHAR* CommandLineArgument)
 	{
-		FString Result = FPaths::ProjectUserDir();
+		FString Result = BaseDir + TEXT("Saved");
 
 		FString NonDefaultSavedDirSuffix;
-		if (FParse::Value(FCommandLine::Get(), TEXT("-saveddirsuffix="), NonDefaultSavedDirSuffix))
+		if (FParse::Value(FCommandLine::Get(), CommandLineArgument, NonDefaultSavedDirSuffix))
 		{
 			for (int32 CharIdx = 0; CharIdx < NonDefaultSavedDirSuffix.Len(); ++CharIdx)
 			{
@@ -80,18 +82,26 @@ namespace UE4Paths_Private
 					--CharIdx;
 				}
 			}
+		}
 
-			if (!NonDefaultSavedDirSuffix.IsEmpty())
-			{
-				Result += TEXT("Saved_") + NonDefaultSavedDirSuffix + TEXT("/");
-			}
-		}
-		else
+		if (!NonDefaultSavedDirSuffix.IsEmpty())
 		{
-			Result += TEXT("Saved/");
+			Result += TEXT("_") + NonDefaultSavedDirSuffix;
 		}
+
+		Result += TEXT("/");
 
 		return Result;
+	}
+
+	FString GameSavedDir()
+	{
+		return GetSavedDirSuffix(FPaths::ProjectUserDir(), TEXT("-saveddirsuffix="));
+	}
+
+	FString EngineSavedDir()
+	{
+		return GetSavedDirSuffix(FPaths::EngineUserDir(), TEXT("-enginesaveddirsuffix="));
 	}
 
 	FString ConvertRelativePathToFullInternal(FString&& BasePath, FString&& InPath)
@@ -189,7 +199,13 @@ FString FPaths::EngineIntermediateDir()
 
 FString FPaths::EngineSavedDir()
 {
-	return EngineUserDir() + TEXT("Saved/");
+	FStaticData& StaticData = TLazySingleton<FStaticData>::Get();
+	if (!StaticData.bEngineSavedDirInitialized)
+	{
+		StaticData.EngineSavedDir = UE4Paths_Private::EngineSavedDir();
+		StaticData.bEngineSavedDirInitialized = true;
+	}
+	return StaticData.EngineSavedDir;
 }
 
 FString FPaths::EnginePluginsDir()
@@ -230,6 +246,54 @@ FString FPaths::EnginePlatformExtensionsDir()
 FString FPaths::ProjectPlatformExtensionsDir()
 {
 	return FPaths::ProjectDir() + TEXT("Platforms/");
+}
+
+
+static void AddIfDirectoryExists(TArray<FString>& ExtensionDirs, FString&& Dir)
+{
+	if (FPaths::DirectoryExists(Dir))
+	{
+		ExtensionDirs.Add(Dir);
+	}
+}
+
+static void GetExtensionDirsInternal(TArray<FString>& ExtensionDirs, const FString& BaseDir, const FString& SubDir)
+{
+	AddIfDirectoryExists(ExtensionDirs, FPaths::Combine(BaseDir, SubDir));
+
+	FString PlatformExtensionBaseDir = FPaths::Combine(BaseDir, TEXT("Platforms"));
+	for (const FString& PlatformName : FDataDrivenPlatformInfoRegistry::GetValidPlatformDirectoryNames())
+	{
+		AddIfDirectoryExists(ExtensionDirs, FPaths::Combine(PlatformExtensionBaseDir, PlatformName, SubDir));
+	}
+
+	FString RestrictedBaseDir = FPaths::Combine(BaseDir, TEXT("Restricted"));
+	IFileManager::Get().IterateDirectory(*RestrictedBaseDir, [&ExtensionDirs, SubDir](const TCHAR* FilenameOrDirectory, bool bIsDirectory)  -> bool
+	{
+		if (bIsDirectory)
+		{
+			GetExtensionDirsInternal(ExtensionDirs, FilenameOrDirectory, SubDir);
+		}
+		return true;
+	});
+}
+
+const TArray<FString>& FPaths::GetExtensionDirs(const FString& BaseDir, const FString& SubDir)
+{
+	static TMap<TTuple<FString, FString>, TArray<FString>> CachedExtensionDirs;
+
+	// look up a cached set of this BaseDir/SubDir combo
+	TTuple<FString, FString> DirKey(BaseDir, SubDir);
+	TArray<FString>* CachedDirs = CachedExtensionDirs.Find(DirKey);
+	if (CachedDirs == nullptr)
+	{
+		CachedDirs = &CachedExtensionDirs.Emplace(DirKey);
+
+		// get the directories
+		GetExtensionDirsInternal(*CachedDirs, BaseDir, SubDir);
+	}
+
+	return *CachedDirs;
 }
 
 FString FPaths::RootDir()
@@ -395,7 +459,12 @@ FString FPaths::AutomationDir()
 
 FString FPaths::AutomationTransientDir()
 {
-	return FPaths::AutomationDir() + TEXT("Transient/");
+	return FPaths::AutomationDir() + TEXT("Tmp/");
+}
+
+FString FPaths::AutomationReportsDir()
+{
+	return FPaths::AutomationDir() + TEXT("Reports/");
 }
 
 FString FPaths::AutomationLogDir()
@@ -1508,11 +1577,11 @@ void FPaths::CombineInternal(FString& OutPath, const TCHAR** Pathes, int32 NumPa
 
 bool FPaths::IsSamePath(const FString& PathA, const FString& PathB)
 {
-	FString TmpA = PathA;
-	FString TmpB = PathB;
+	FString TmpA = FPaths::ConvertRelativePathToFull(PathA);
+	FString TmpB = FPaths::ConvertRelativePathToFull(PathB);
 
-	MakeStandardFilename(TmpA);
-	MakeStandardFilename(TmpB);
+	FPaths::RemoveDuplicateSlashes(TmpA);
+	FPaths::RemoveDuplicateSlashes(TmpB);
 
 #if PLATFORM_MICROSOFT
 	return FCString::Stricmp(*TmpA, *TmpB) == 0;

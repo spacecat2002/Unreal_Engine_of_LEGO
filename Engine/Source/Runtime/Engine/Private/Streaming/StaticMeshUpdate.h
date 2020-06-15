@@ -122,16 +122,23 @@ private:
 	void CreateBuffers_Internal(const FContext& Context);
 };
 
+/** A streamout that doesn't actually touches the CPU data. Required because DDC stream in doesn't reset. */
 class FStaticMeshStreamOut : public FStaticMeshUpdate
 {
 public:
-	FStaticMeshStreamOut(UStaticMesh* InMesh, int32 InRequestedMips);
-
-	virtual ~FStaticMeshStreamOut() {}
+	FStaticMeshStreamOut(UStaticMesh* InMesh, int32 InRequestedMips, bool InDiscardCPUData);
 
 private:
-	/** Release RHI buffers and update SRVs */
-	void DoReleaseBuffers(const FContext& Context);
+
+	void CheckReferencesAndDiscardCPUData(const FContext& Context);
+	void ReleaseRHIBuffers(const FContext& Context);
+	/** Restore */
+	void Cancel(const FContext& Context);
+
+	uint8 InitialFirstLOD = 0;
+	bool bDiscardCPUData = false;
+	int32 NumReferenceChecks = 0;
+	uint32 PreviousNumberOfExternalReferences = 0;
 };
 
 class FStaticMeshStreamIn_IO : public FStaticMeshStreamIn
@@ -165,20 +172,23 @@ protected:
 	typedef FAutoDeleteAsyncTask<FCancelIORequestsTask> FAsyncCancelIORequestsTask;
 	friend class FCancelIORequestsTask;
 
-	/** Figure out the full name of the .bulk file */
-	FString GetIOFilename(const FContext& Context);
-
-	/** Set a callback called when IORequest is completed or cancelled */
+		/** Set a callback called when IORequest is completed or cancelled */
 	void SetAsyncFileCallback(const FContext& Context);
 
 	/** Create a new async IO request to read in LOD data */
-	void SetIORequest(const FContext& Context, const FString& IOFilename);
+	void SetIORequest(const FContext& Context);
 
 	/** Release IORequest and IOFileHandle. IORequest will be cancelled if still inflight */
 	void ClearIORequest(const FContext& Context);
 
+	/** Report IO errors if any. */
+	void ReportIOError(const FContext& Context);
+
 	/** Serialize data of new LODs to corresponding FStaticMeshLODResources */
 	void SerializeLODData(const FContext& Context);
+
+	/** Cancel and report IO error */
+	void Cancel(const FContext& Context);
 
 	/** Called by FAsyncCancelIORequestsTask to cancel inflight IO request if any */
 	void CancelIORequest();
@@ -186,6 +196,9 @@ protected:
 	class IBulkDataIORequest* IORequest;
 	FBulkDataIORequestCallBack AsyncFileCallback;
 	bool bHighPrioIORequest;
+
+	// Whether an IO error was detected (when files do not exists).
+	bool bFailedOnIOError = false;
 };
 
 template <bool bRenderThread>

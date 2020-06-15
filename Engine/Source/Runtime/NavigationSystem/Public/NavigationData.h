@@ -621,10 +621,13 @@ public:
 	/** Cancels current build  */
 	virtual void CancelBuild();
 
-	/** Ticks navigation build  */
+	/** Ticks navigation build
+	 *  If the generator is set to time sliced rebuild then this function will only get called when 
+	 *  there is sufficient time (effectively roughly once in n frames where n is the number of time sliced nav data generators currently building)
+	 */
 	virtual void TickAsyncBuild(float DeltaSeconds);
 	
-	/** Retrieves navmesh's generator */
+	/** Retrieves navigation data generator */
 	FNavDataGenerator* GetGenerator() { return NavDataGenerator.Get(); }
 	const FNavDataGenerator* GetGenerator() const { return NavDataGenerator.Get(); }
 
@@ -662,15 +665,7 @@ public:
 		SharedPath->SetQueryData(QueryData);
 		SharedPath->SetTimeStamp( GetWorldTimeStamp() );
 
-		DECLARE_CYCLE_STAT(TEXT("FSimpleDelegateGraphTask.Adding a path to ActivePaths"),
-			STAT_FSimpleDelegateGraphTask_AddingPathToActivePaths,
-			STATGROUP_TaskGraphTasks);
-
-		FSimpleDelegateGraphTask::CreateAndDispatchWhenReady(
-			FSimpleDelegateGraphTask::FDelegate::CreateUObject(const_cast<ANavigationData*>(this), &ANavigationData::RegisterActivePath, SharedPath),
-			GET_STATID(STAT_FSimpleDelegateGraphTask_AddingPathToActivePaths), NULL, ENamedThreads::GameThread
-		);
-
+		const_cast<ANavigationData*>(this)->RegisterActivePath(SharedPath);
 		return SharedPath;
 	}
 	
@@ -684,7 +679,11 @@ public:
 		ObservedPaths.Add(SharedPath);
 	}
 
-	void RequestRePath(FNavPathSharedPtr Path, ENavPathUpdateType::Type Reason) { RepathRequests.AddUnique(FNavPathRecalculationRequest(Path, Reason)); }
+    void RequestRePath(FNavPathSharedPtr Path, ENavPathUpdateType::Type Reason)
+    {
+	    check(IsInGameThread());
+	    RepathRequests.AddUnique(FNavPathRecalculationRequest(Path, Reason)); 
+    }
 
 protected:
 	/** removes from ActivePaths all paths that no longer have shared references (and are invalid in fact) */
@@ -692,7 +691,8 @@ protected:
 
 	void RegisterActivePath(FNavPathSharedPtr SharedPath)
 	{
-		check(IsInGameThread());
+		// Paths can be registered from main thread and async pathfinding thread
+		FScopeLock PathLock(&ActivePathsLock);
 		ActivePaths.Add(SharedPath);
 	}
 
@@ -807,6 +807,12 @@ public:
 
 	/** Raycasts batched for efficiency */
 	virtual void BatchRaycast(TArray<FNavigationRaycastWork>& Workload, FSharedConstNavQueryFilter QueryFilter, const UObject* Querier = NULL) const PURE_VIRTUAL(ANavigationData::BatchRaycast, );
+
+	/**	Tries to move current nav location towards target constrained to navigable area. Faster than ProjectPointToNavmesh.
+	 *	@param OutLocation if successful this variable will be filed with result
+	 *	@return true if successful, false otherwise
+	 */
+	virtual bool FindMoveAlongSurface(const FNavLocation& StartLocation, const FVector& TargetPosition, FNavLocation& OutLocation, FSharedConstNavQueryFilter Filter = NULL, const UObject* Querier = NULL) const PURE_VIRTUAL(ANavigationData::FindMoveAlongSurface, return false;);
 
 	virtual FNavLocation GetRandomPoint(FSharedConstNavQueryFilter Filter = NULL, const UObject* Querier = NULL) const PURE_VIRTUAL(ANavigationData::GetRandomPoint, return FNavLocation(););
 
@@ -948,6 +954,9 @@ protected:
 	 *	add items to it manually, @see CreatePathInstance
 	 */
 	TArray<FNavPathWeakPtr> ActivePaths;
+
+	/** Synchronization object for paths registration from main thread and async pathfinding thread */
+	FCriticalSection ActivePathsLock;
 
 	/**
 	 *	Contains paths that requested observing its goal's location. These paths will be 

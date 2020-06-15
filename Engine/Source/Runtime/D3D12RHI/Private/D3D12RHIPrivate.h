@@ -34,6 +34,7 @@
 #include "ShaderCore.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogD3D12RHI, Log, All);
+DECLARE_LOG_CATEGORY_EXTERN(LogD3D12GapRecorder, Log, All);
 
 #include "D3D12RHI.h"
 #include "D3D12RHICommon.h"
@@ -49,8 +50,11 @@ DECLARE_LOG_CATEGORY_EXTERN(LogD3D12RHI, Log, All);
 #if NV_AFTERMATH
 #define GFSDK_Aftermath_WITH_DX12 1
 #include "GFSDK_Aftermath.h"
+#include "GFSDK_Aftermath_GpuCrashdump.h"
 #undef GFSDK_Aftermath_WITH_DX12
 extern int32 GDX12NVAfterMathEnabled;
+extern int32 GDX12NVAfterMathTrackResources;
+extern int32 GDX12NVAfterMathMarkers;
 #endif
 
 #include "D3D12Residency.h"
@@ -103,6 +107,8 @@ typedef FD3D12StateCacheBase FD3D12StateCache;
 #define DEFAULT_CONTEXT_UPLOAD_POOL_MAX_ALLOC_SIZE (4 * 1024 * 1024)
 #define DEFAULT_CONTEXT_UPLOAD_POOL_ALIGNMENT (D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT)
 #define TEXTURE_POOL_SIZE (8 * 1024 * 1024)
+
+#define MAX_GPU_BREADCRUMB_DEPTH 1024
 
 #if DEBUG_RESOURCE_STATES
 #define LOG_EXECUTE_COMMAND_LISTS 1
@@ -204,7 +210,7 @@ private:
 public:
 
 	/** Initialization constructor. */
-	FD3D12DynamicRHI(const TArray<TSharedPtr<FD3D12Adapter>>& ChosenAdaptersIn);
+	FD3D12DynamicRHI(const TArray<TSharedPtr<FD3D12Adapter>>& ChosenAdaptersIn, bool bInPixEventEnabled);
 
 	/** Destructor */
 	virtual ~FD3D12DynamicRHI();
@@ -224,30 +230,13 @@ public:
 	template<typename TRHIType>
 	static FORCEINLINE_DEBUGGABLE typename TD3D12ResourceTraits<TRHIType>::TConcreteType* ResourceCast(TRHIType* Resource, uint32 GPUIndex)
 	{
-#if !WITH_MGPU
-		return ResourceCast(Resource);
-#else
-		typename TD3D12ResourceTraits<TRHIType>::TConcreteType* Object = ResourceCast(Resource);
-		if (GNumExplicitGPUsForRendering > 1)
-		{
-			if (!Object)
-			{
-				return nullptr;
-			}
-
-			while (Object && Object->GetParentDevice()->GetGPUIndex() != GPUIndex)
-			{
-				Object = Object->GetNextObject();
-			}
-
-			check(Object);
-		}
-		return Object;
-#endif
+		using ReturnType = typename TD3D12ResourceTraits<TRHIType>::TConcreteType;
+		ReturnType* Object = ResourceCast(Resource);
+		return Object ? static_cast<ReturnType*>(Object->GetLinkedObject(GPUIndex)) : nullptr;
 	}
-	
+
 	virtual FD3D12CommandContext* CreateCommandContext(FD3D12Device* InParent, FD3D12SubAllocatedOnlineHeap::SubAllocationDesc& SubHeapDesc, bool InIsDefaultContext, bool InIsAsyncComputeContext = false);
-	virtual ID3D12CommandQueue* CreateCommandQueue(FD3D12Device* Device, const D3D12_COMMAND_QUEUE_DESC& Desc);
+	virtual void CreateCommandQueue(FD3D12Device* Device, const D3D12_COMMAND_QUEUE_DESC& Desc, TRefCountPtr<ID3D12CommandQueue>& OutCommandQueue);
 
 	virtual bool GetHardwareGPUFrameTime(double& OutGPUFrameTime) const
 	{ 
@@ -301,6 +290,7 @@ public:
 	virtual uint64 RHICalcTexture2DPlatformSize(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 NumSamples, uint32 Flags, const FRHIResourceCreateInfo& CreateInfo, uint32& OutAlign) override;
 	virtual uint64 RHICalcTexture3DPlatformSize(uint32 SizeX, uint32 SizeY, uint32 SizeZ, uint8 Format, uint32 NumMips, uint32 Flags, const FRHIResourceCreateInfo& CreateInfo, uint32& OutAlign) final override;
 	virtual uint64 RHICalcTextureCubePlatformSize(uint32 Size, uint8 Format, uint32 NumMips, uint32 Flags, const FRHIResourceCreateInfo& CreateInfo, uint32& OutAlign) final override;
+	virtual uint64 RHIGetMinimumAlignmentForBufferBackedSRV(EPixelFormat Format) final override;
 	virtual void RHIGetTextureMemoryStats(FTextureMemoryStats& OutStats) final override;
 	virtual bool RHIGetTextureMemoryVisualizeData(FColor* TextureData, int32 SizeX, int32 SizeY, int32 Pitch, int32 PixelSize) final override;
 	virtual FTextureReferenceRHIRef RHICreateTextureReference(FLastRenderTimeContainer* LastRenderTime) final override;
@@ -309,6 +299,7 @@ public:
 	virtual void RHICopySharedMips(FRHITexture2D* DestTexture2D, FRHITexture2D* SrcTexture2D) final override;
 	void RHIMultiGPULockstep(FRHIGPUMask GPUMask);
 	virtual void RHITransferTexture(FRHITexture2D* Texture, FIntRect Rect, uint32 SrcGPUIndex, uint32 DestGPUIndex, bool PullData) final override;
+	virtual void RHITransferTextures(const TArrayView<const FTransferTextureParams> Params) final override;
 	virtual FTexture2DArrayRHIRef RHICreateTexture2DArray(uint32 SizeX, uint32 SizeY, uint32 SizeZ, uint8 Format, uint32 NumMips, uint32 NumSamples, uint32 Flags, FRHIResourceCreateInfo& CreateInfo) override;
 	virtual FTexture3DRHIRef RHICreateTexture3D(uint32 SizeX, uint32 SizeY, uint32 SizeZ, uint8 Format, uint32 NumMips, uint32 Flags, FRHIResourceCreateInfo& CreateInfo) override;
 	virtual void RHIGetResourceInfo(FRHITexture* Ref, FRHIResourceInfo& OutInfo) override;
@@ -469,11 +460,10 @@ public:
 	bool IsQuadBufferStereoEnabled() const;
 	void DisableQuadBufferStereo();
 
-	template<class BufferType>
-	void* LockBuffer(FRHICommandListImmediate* RHICmdList, BufferType* Buffer, uint32 Offset, uint32 Size, EResourceLockMode LockMode);
+	static int32 GetResourceBarrierBatchSizeLimit();
 
-	template<class BufferType>
-	void UnlockBuffer(FRHICommandListImmediate* RHICmdList, BufferType* Buffer);
+	void* LockBuffer(FRHICommandListImmediate* RHICmdList, FD3D12Buffer* Buffer, uint32 BufferSize, uint32 BufferUsage, uint32 Offset, uint32 Size, EResourceLockMode LockMode);
+	void UnlockBuffer(FRHICommandListImmediate* RHICmdList, FD3D12Buffer* Buffer, uint32 BufferUsage);
 
 	static inline bool ShouldDeferBufferLockOperation(FRHICommandListImmediate* RHICmdList)
 	{
@@ -541,23 +531,38 @@ public:
 		return !pLeftView->DoesNotOverlap(*pRightView);
 	}
 
-	static inline bool IsTransitionNeeded(uint32 before, uint32 after)
+	static inline bool IsTransitionNeeded(D3D12_RESOURCE_STATES Before, D3D12_RESOURCE_STATES& After)
 	{
-		check(before != D3D12_RESOURCE_STATE_CORRUPT && after != D3D12_RESOURCE_STATE_CORRUPT);
-		check(before != D3D12_RESOURCE_STATE_TBD && after != D3D12_RESOURCE_STATE_TBD);
+		check(Before != D3D12_RESOURCE_STATE_CORRUPT && After != D3D12_RESOURCE_STATE_CORRUPT);
+		check(Before != D3D12_RESOURCE_STATE_TBD && After != D3D12_RESOURCE_STATE_TBD);
 
 		// Depth write is actually a suitable for read operations as a "normal" depth buffer.
-		if ((before == D3D12_RESOURCE_STATE_DEPTH_WRITE) && (after == D3D12_RESOURCE_STATE_DEPTH_READ))
+		if ((Before == D3D12_RESOURCE_STATE_DEPTH_WRITE) && (After == D3D12_RESOURCE_STATE_DEPTH_READ))
 		{
 			return false;
 		}
 
-		// If 'after' is a subset of 'before', then there's no need for a transition
-		// Note: COMMON is an oddball state that doesn't follow the RESOURE_STATE pattern of 
+		// COMMON is an oddball state that doesn't follow the RESOURE_STATE pattern of 
 		// having exactly one bit set so we need to special case these
-		return before != after &&
-			((before | after) != before ||
-				after == D3D12_RESOURCE_STATE_COMMON);
+		if (After == D3D12_RESOURCE_STATE_COMMON)
+		{
+			// The resource state tracking code in FD3D12CommandContext::RHITransitionResources forces all EReadable transitions
+			// to go through the COMMON state right now, so we can end up with some COMMON -> COMMON transitions which can be
+			// skipped. Once that is fixed or removed, we shouldn't get here anymore if we're already in the COMMON state,
+			// so we can simply return true and let the ensure in FD3D12CommandListHandle::AddTransitionBarrier catch bad usage.
+			return (Before != D3D12_RESOURCE_STATE_COMMON);
+		}
+
+		// We should avoid doing read-to-read state transitions. But when we do, we should avoid turning off already transitioned bits,
+		// e.g. VERTEX_BUFFER -> SHADER_RESOURCE is turned into VERTEX_BUFFER -> VERTEX_BUFFER | SHADER_RESOURCE.
+		// This reduces the number of resource transitions and ensures automatic states from resource bindings get properly combined.
+		D3D12_RESOURCE_STATES Combined = Before | After;
+		if ((Combined & (D3D12_RESOURCE_STATE_GENERIC_READ | D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT)) == Combined)
+		{
+			After = Combined;
+		}
+
+		return Before != After;
 	}
 
 	/** Transition a resource's state based on a Render target view */
@@ -906,12 +911,34 @@ public:
 	FD3D12Adapter& GetAdapter(uint32_t Index = 0) { return *ChosenAdapters[Index]; }
 	int32 GetNumAdapters() const { return ChosenAdapters.Num(); }
 
+	bool IsPixEventEnabled() const { return bPixEventEnabled; }
+
+	template<typename PerDeviceFunction>
+	void ForEachDevice(ID3D12Device* inDevice, const PerDeviceFunction& pfPerDeviceFunction)
+	{
+		for (int AdapterIndex = 0; AdapterIndex < GetNumAdapters(); ++AdapterIndex)
+		{
+			FD3D12Adapter& D3D12Adapter = GetAdapter(AdapterIndex);
+			for (uint32 GPUIndex : FRHIGPUMask::All())
+			{
+				FD3D12Device* D3D12Device = D3D12Adapter.GetDevice(GPUIndex);
+				if (inDevice == nullptr || D3D12Device->GetDevice() == inDevice)
+				{
+					pfPerDeviceFunction(D3D12Device);
+				}
+			}
+		}
+	}
+
 	AGSContext* GetAmdAgsContext() { return AmdAgsContext; }
 	void SetAmdSupportedExtensionFlags(uint32 Flags) { AmdSupportedExtensionFlags = Flags; }
 
 protected:
 
 	TArray<TSharedPtr<FD3D12Adapter>> ChosenAdapters;
+
+	/** Can pix events be used */
+	bool bPixEventEnabled = false;
 
 	/** The feature level of the device. */
 	D3D_FEATURE_LEVEL FeatureLevel;
@@ -983,7 +1010,6 @@ class FD3D12DynamicRHIModule : public IDynamicRHIModule
 public:
 
 	FD3D12DynamicRHIModule()
-		: WindowsPixDllHandle(nullptr)
 	{
 	}
 
@@ -1001,7 +1027,11 @@ public:
 	virtual FDynamicRHI* CreateRHI(ERHIFeatureLevel::Type RequestedFeatureLevel = ERHIFeatureLevel::Num) override;
 
 private:
-	void* WindowsPixDllHandle;
+
+#if USE_PIX && (PLATFORM_WINDOWS || PLATFORM_HOLOLENS)
+	void* WindowsPixDllHandle = nullptr;
+#endif // USE_PIX && (PLATFORM_WINDOWS || PLATFORM_HOLOLENS)
+
 	TArray<TSharedPtr<FD3D12Adapter>> ChosenAdapters;
 
 	// set MaxSupportedFeatureLevel and ChosenAdapter
@@ -1114,7 +1144,7 @@ public:
 		, pWriteRange(InWriteRange)
 		, pData(nullptr)
 	{
-		VERIFYD3D12RESULT(pResource->Map(Subresource, pReadRange, reinterpret_cast<void**>(&pData)));
+		VERIFYD3D12RESULT_EX(pResource->Map(Subresource, pReadRange, reinterpret_cast<void**>(&pData)), pInResource->GetParentDevice()->GetDevice());
 	}
 
 	explicit FD3D12ScopeMap(ID3D12Resource* pInResource, const uint32 InSubresource, const D3D12_RANGE* InReadRange, const D3D12_RANGE* InWriteRange)
@@ -1124,7 +1154,7 @@ public:
 		, pWriteRange(InWriteRange)
 		, pData(nullptr)
 	{
-		VERIFYD3D12RESULT(pResource->Map(Subresource, pReadRange, reinterpret_cast<void**>(&pData)));
+		VERIFYD3D12RESULT_EX(pResource->Map(Subresource, pReadRange, reinterpret_cast<void**>(&pData)), pInResource->GetDevice());
 	}
 
 	~FD3D12ScopeMap()

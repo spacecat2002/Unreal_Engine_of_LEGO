@@ -982,7 +982,11 @@ UActorComponent* AActor::CreateComponentFromTemplate(UActorComponent* Template, 
 		}
 
 		// Note we aren't copying the the RF_ArchetypeObject flag. Also note the result is non-transactional by default.
-		NewActorComp = (UActorComponent*)StaticDuplicateObject(Template, this, InName, RF_AllFlags & ~(RF_ArchetypeObject | RF_Transactional | RF_WasLoaded | RF_Public | RF_InheritableComponentTemplate));
+		FObjectDuplicationParameters DupeActorParameters(Template, this);
+		DupeActorParameters.DestName = InName;
+		DupeActorParameters.FlagMask = RF_AllFlags & ~(RF_ArchetypeObject | RF_Transactional | RF_WasLoaded | RF_Public | RF_InheritableComponentTemplate);
+		DupeActorParameters.PortFlags = PPF_DuplicateVerbatim; // Skip resetting text IDs
+		NewActorComp = (UActorComponent*)StaticDuplicateObjectEx(DupeActorParameters);
 
 		// Handle post-creation tasks.
 		PostCreateBlueprintComponent(NewActorComp);
@@ -1015,6 +1019,9 @@ UActorComponent* AActor::CreateComponentFromTemplateData(const FBlueprintCookedC
 
 			// Set this flag to emulate things that would happen in the SDO case when this flag is set (e.g. - not setting 'bHasBeenCreated').
 			ArPortFlags |= PPF_Duplicate;
+
+			// Skip resetting text IDs
+			ArPortFlags |= PPF_DuplicateVerbatim;
 		}
 	};
 
@@ -1072,7 +1079,7 @@ UActorComponent* AActor::CreateComponentFromTemplateData(const FBlueprintCookedC
 	return NewActorComp;
 }
 
-UActorComponent* AActor::AddComponent(FName TemplateName, bool bManualAttachment, const FTransform& RelativeTransform, const UObject* ComponentTemplateContext)
+UActorComponent* AActor::AddComponent(FName TemplateName, bool bManualAttachment, const FTransform& RelativeTransform, const UObject* ComponentTemplateContext, bool bDeferredFinish)
 {
 	UWorld* World = GetWorld();
 	if (World->bIsTearingDown)
@@ -1111,10 +1118,47 @@ UActorComponent* AActor::AddComponent(FName TemplateName, bool bManualAttachment
 		}
 	}
 
-	bool bIsSceneComponent = false;
 	UActorComponent* NewActorComp = TemplateData ? CreateComponentFromTemplateData(TemplateData) : CreateComponentFromTemplate(Template);
+
+	if (!bDeferredFinish)
+	{
+		FinishAddComponent(NewActorComp, bManualAttachment, RelativeTransform);
+	}
+
+	return NewActorComp;
+}
+
+UActorComponent* AActor::AddComponentByClass(TSubclassOf<UActorComponent> Class, bool bManualAttachment, const FTransform& RelativeTransform, bool bDeferredFinish)
+{
+	if (Class == nullptr)
+	{
+		return nullptr;
+	}
+
+	UWorld* World = GetWorld();
+	if (World->bIsTearingDown)
+	{
+		UE_LOG(LogActor, Warning, TEXT("AddComponent failed because we are in the process of tearing down the world"));
+		return nullptr;
+	}
+
+	UActorComponent* NewActorComp = NewObject<UActorComponent>(this, *Class);
+	PostCreateBlueprintComponent(NewActorComp);
+
+	if (!bDeferredFinish)
+	{
+		FinishAddComponent(NewActorComp, bManualAttachment, RelativeTransform);
+	}
+
+	return NewActorComp;
+}
+
+void AActor::FinishAddComponent(UActorComponent* NewActorComp, bool bManualAttachment, const FTransform& RelativeTransform)
+{
 	if(NewActorComp != nullptr)
 	{
+		bool bIsSceneComponent = false;
+
 		// Call function to notify component it has been created
 		NewActorComp->OnComponentCreated();
 		
@@ -1146,6 +1190,7 @@ UActorComponent* AActor::AddComponent(FName TemplateName, bool bManualAttachment
 			NewActorComp->RegisterComponent();
 		}
 
+		UWorld* World = GetWorld();
 		if (!bRunningUserConstructionScript && World && bIsSceneComponent)
 		{
 			UPrimitiveComponent* NewPrimitiveComponent = Cast<UPrimitiveComponent>(NewActorComp);
@@ -1155,8 +1200,6 @@ UActorComponent* AActor::AddComponent(FName TemplateName, bool bManualAttachment
 			}
 		}
 	}
-
-	return NewActorComp;
 }
 
 void AActor::CheckComponentInstanceName(const FName InName)

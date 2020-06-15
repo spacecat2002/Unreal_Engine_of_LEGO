@@ -525,12 +525,16 @@ public:
 	TEnumAsByte<enum EBlueprintStatus> Status;
 
 	/** Overrides the BP's display name in the editor UI */
-	UPROPERTY(EditAnywhere, Category=BlueprintOptions)
+	UPROPERTY(EditAnywhere, Category=BlueprintOptions, DuplicateTransient)
 	FString BlueprintDisplayName;
 
-	/** Shows up in the content browser when the blueprint is hovered, exported as Hidden in GetAssetRegistryTags */
-	UPROPERTY(EditAnywhere, Category=BlueprintOptions, meta=(MultiLine=true))
+	/** Shows up in the content browser tooltip when the blueprint is hovered */
+	UPROPERTY(EditAnywhere, Category=BlueprintOptions, meta=(MultiLine=true), DuplicateTransient)
 	FString BlueprintDescription;
+
+	/** The namespace of this blueprint (if set, the Blueprint will be treated differently for the context menu) */
+	UPROPERTY(EditAnywhere, Category = BlueprintOptions, AssetRegistrySearchable)
+	FString BlueprintNamespace;
 
 	/** The category of the Blueprint, used to organize this Blueprint class when displayed in palette windows */
 	UPROPERTY(EditAnywhere, Category=BlueprintOptions)
@@ -539,10 +543,6 @@ public:
 	/** Additional HideCategories. These are added to HideCategories from parent. */
 	UPROPERTY(EditAnywhere, Category=BlueprintOptions)
 	TArray<FString> HideCategories;
-	 
-	/** Guid key for finding searchable data for Blueprint in the DDC */
-	UPROPERTY()
-	FGuid SearchGuid;
 
 #endif //WITH_EDITORONLY_DATA
 
@@ -836,10 +836,7 @@ public:
 	virtual bool Rename(const TCHAR* NewName = nullptr, UObject* NewOuter = nullptr, ERenameFlags Flags = REN_None) override;
 	virtual UClass* RegenerateClass(UClass* ClassToRegenerate, UObject* PreviousCDO) override;
 	virtual void PostLoad() override;
-	virtual void PostLoadSubobjects( FObjectInstancingGraph* OuterInstanceGraph ) override;
-#if WITH_EDITOR
 	virtual bool Modify(bool bAlwaysMarkDirty = true) override;
-#endif
 	virtual void GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const override;
 	virtual FPrimaryAssetId GetPrimaryAssetId() const override;
 	virtual void BeginCacheForCookedPlatformData(const ITargetPlatform *TargetPlatform) override;
@@ -889,6 +886,7 @@ public:
 	 */
 	virtual bool FindDiffs(const UBlueprint* OtherBlueprint, FDiffResults& Results) const;
 
+	void ConformNativeComponents();
 #endif	//#if WITH_EDITOR
 
 	//~ Begin UObject Interface

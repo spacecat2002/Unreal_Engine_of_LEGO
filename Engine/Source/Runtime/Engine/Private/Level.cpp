@@ -941,6 +941,7 @@ void ULevel::IncrementalUpdateComponents(int32 NumComponentsToUpdate, bool bReru
 
 	int32 PreviousIndex = CurrentActorIndexForUpdateComponents;
 	// Find next valid actor to process components registration
+
 	while (CurrentActorIndexForUpdateComponents < Actors.Num())
 	{
 		AActor* Actor = Actors[CurrentActorIndexForUpdateComponents];
@@ -985,6 +986,13 @@ void ULevel::IncrementalUpdateComponents(int32 NumComponentsToUpdate, bool bReru
 #endif
 		if (bRerunConstructionScripts && !IsTemplate() && !GIsUCCMakeStandaloneHeaderGenerator)
 		{
+			// We need to process pending adds prior to rerunning the construction scripts, which may internally
+			// perform removals / adds themselves.
+			if (Context)
+			{
+				Context->Process();
+			}
+
 			// Don't rerun construction scripts until after all actors' components have been registered.  This
 			// is necessary because child attachment lists are populated during registration, and running construction
 			// scripts requires that the attachments are correctly initialized.
@@ -1015,6 +1023,7 @@ void ULevel::IncrementalUpdateComponents(int32 NumComponentsToUpdate, bool bReru
 		check(OwningWorld->IsGameWorld());
 	}
 
+	if (FBodyInstance::UseDeferredPhysicsBodyCreation())
 	{
 		SCOPE_CYCLE_COUNTER(STAT_DeferredUpdateBodies);
 		// Init Bodies
@@ -1912,8 +1921,11 @@ UMapBuildDataRegistry* ULevel::GetOrCreateMapBuildData()
 			// Release rendering data depending on MapBuildData, before we destroy MapBuildData
 			MapBuildData->InvalidateStaticLighting(GetWorld(), true, nullptr);
 
-			// Allow the legacy registry to be GC'ed
-			MapBuildData->ClearFlags(RF_Standalone);
+			// Allow the legacy registry to be GC'ed, but not if the registry is itself an asset, because assets are always standalone
+			if (!MapBuildData->IsAsset())
+			{
+				MapBuildData->ClearFlags(RF_Standalone);
+			}
 		}
 
 		UPackage* BuiltDataPackage = CreateMapBuildDataPackage();

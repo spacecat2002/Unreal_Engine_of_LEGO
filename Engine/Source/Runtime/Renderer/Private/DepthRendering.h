@@ -70,13 +70,17 @@ public:
 		{
 			return Parameters.VertexFactoryType->SupportsPositionOnly() && Parameters.MaterialParameters.bIsSpecialEngineMaterial;
 		}
+		
+		if (IsTranslucentBlendMode(Parameters.MaterialParameters.BlendMode))
+		{
+			return Parameters.MaterialParameters.bIsTranslucencyWritingCustomDepth;
+		}
 
 		// Only compile for the default material and masked materials
 		return (
 			Parameters.MaterialParameters.bIsSpecialEngineMaterial ||
 			!Parameters.MaterialParameters.bWritesEveryPixel ||
-			Parameters.MaterialParameters.bMaterialMayModifyMeshPosition ||
-			Parameters.MaterialParameters.bIsTranslucencyWritingCustomDepth);
+			Parameters.MaterialParameters.bMaterialMayModifyMeshPosition);
 	}
 
 	void GetShaderBindings(
@@ -146,9 +150,14 @@ public:
 
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
 	{
+		if (IsTranslucentBlendMode(Parameters.MaterialParameters.BlendMode))
+		{
+			return Parameters.MaterialParameters.bIsTranslucencyWritingCustomDepth;
+		}
+		
 		return
 			// Compile for materials that are masked, avoid generating permutation for other platforms if bUsesMobileColorValue is true
-			((!Parameters.MaterialParameters.bWritesEveryPixel || Parameters.MaterialParameters.bHasPixelDepthOffsetConnected || Parameters.MaterialParameters.bIsTranslucencyWritingCustomDepth) && (!bUsesMobileColorValue || IsMobilePlatform(Parameters.Platform)))
+			((!Parameters.MaterialParameters.bWritesEveryPixel || Parameters.MaterialParameters.bHasPixelDepthOffsetConnected) && (!bUsesMobileColorValue || IsMobilePlatform(Parameters.Platform)))
 			// Mobile uses material pixel shader to write custom stencil to color target
 			|| (IsMobilePlatform(Parameters.Platform) && (Parameters.MaterialParameters.bIsDefaultMaterial || Parameters.MaterialParameters.bMaterialMayModifyMeshPosition));
 	}
@@ -209,11 +218,6 @@ void GetDepthPassShaders(
 	TShaderRef<FDepthOnlyPS<bUsesMobileColorValue>>& PixelShader,
 	FShaderPipelineRef& ShaderPipeline);
 
-extern void CreateDepthPassUniformBuffer(
-	FRHICommandListImmediate& RHICmdList, 
-	const FViewInfo& View,
-	TUniformBufferRef<FSceneTextureShaderParameters>& DepthPassUniformBuffer);
-
 class FDepthPassMeshProcessor : public FMeshPassProcessor
 {
 public:
@@ -224,6 +228,8 @@ public:
 		const bool InbRespectUseAsOccluderFlag,
 		const EDepthDrawingMode InEarlyZPassMode,
 		const bool InbEarlyZPassMovable,
+		/** Whether this mesh processor is being reused for rendering a pass that marks all fading out pixels on the screen */
+		const bool bDitheredLODFadingOutMaskPass,
 		FMeshPassDrawListContext* InDrawListContext);
 
 	virtual void AddMeshBatch(const FMeshBatch& RESTRICT MeshBatch, uint64 BatchElementMask, const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy, int32 StaticMeshId = -1) override final;
@@ -247,6 +253,42 @@ private:
 	const bool bRespectUseAsOccluderFlag;
 	const EDepthDrawingMode EarlyZPassMode;
 	const bool bEarlyZPassMovable;
+	const bool bDitheredLODFadingOutMaskPass;
 };
 
 extern void SetupDepthPassState(FMeshPassProcessorRenderState& DrawRenderState);
+
+class FRayTracingDitheredLODMeshProcessor : public FMeshPassProcessor
+{
+public:
+
+	FRayTracingDitheredLODMeshProcessor(const FScene* Scene,
+		const FSceneView* InViewIfDynamicMeshCommand,
+		const FMeshPassProcessorRenderState& InPassDrawRenderState,
+		const bool InbRespectUseAsOccluderFlag,
+		const EDepthDrawingMode InEarlyZPassMode,
+		const bool InbEarlyZPassMovable,
+		FMeshPassDrawListContext* InDrawListContext);
+
+	virtual void AddMeshBatch(const FMeshBatch& RESTRICT MeshBatch, uint64 BatchElementMask, const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy, int32 StaticMeshId = -1) override final;
+
+private:
+
+	template<bool bPositionOnly>
+	void Process(
+		const FMeshBatch& MeshBatch,
+		uint64 BatchElementMask,
+		int32 StaticMeshId,
+		EBlendMode BlendMode,
+		const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy,
+		const FMaterialRenderProxy& RESTRICT MaterialRenderProxy,
+		const FMaterial& RESTRICT MaterialResource,
+		ERasterizerFillMode MeshFillMode,
+		ERasterizerCullMode MeshCullMode);
+
+	FMeshPassProcessorRenderState PassDrawRenderState;
+
+	const bool bRespectUseAsOccluderFlag;
+	const EDepthDrawingMode EarlyZPassMode;
+	const bool bEarlyZPassMovable;
+};

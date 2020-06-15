@@ -2,8 +2,6 @@
 
 #include "Windows/WindowsWindow.h"
 
-#if WINDOWS_USE_FEATURE_WINDOW
-
 #include "Math/UnrealMathUtility.h"
 #include "HAL/UnrealMemory.h"
 #include "Containers/UnrealString.h"
@@ -961,6 +959,12 @@ bool FWindowsWindow::IsForegroundWindow() const
 	return ::GetForegroundWindow() == HWnd;
 }
 
+bool FWindowsWindow::IsFullscreenSupported() const
+{
+	// fullscreen not supported when using remote desktop
+	return !::GetSystemMetrics(SM_REMOTESESSION);
+}
+
 void FWindowsWindow::SetText( const TCHAR* const Text )
 {
 	SetWindowText(HWnd, Text);
@@ -1182,5 +1186,3 @@ HRESULT STDCALL FWindowsWindow::Drop( __RPC__in_opt IDataObject *DataObjectPoint
 		return 0;
 	}
 }
-
-#endif

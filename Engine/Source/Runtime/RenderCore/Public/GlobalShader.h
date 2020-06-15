@@ -130,28 +130,7 @@ class RENDERCORE_API FGlobalShaderMapSection : public TShaderMap<FGlobalShaderMa
 public:
 	static FGlobalShaderMapSection* CreateFromArchive(FArchive& Ar);
 
-	~FGlobalShaderMapSection() { ReleaseResourceBuilder(); }
-
-	void Serialize(FArchive& Ar);
-
-	FShaderMapResourceBuilder& GetResourceBuilder()
-	{
-		if (ResourceBuilder == nullptr)
-		{
-			ResourceBuilder = new FShaderMapResourceBuilder(GetResourceCode());
-		}
-		return *ResourceBuilder;
-	}
-
-	void ReleaseResourceBuilder()
-	{
-		if (ResourceBuilder)
-		{
-			delete ResourceBuilder;
-			ResourceBuilder = nullptr;
-		}
-	}
-
+	bool Serialize(FArchive& Ar);
 private:
 	inline FGlobalShaderMapSection() {}
 
@@ -162,8 +141,6 @@ private:
 
 	TShaderRef<FShader> GetShader(FShaderType* ShaderType, int32 PermutationId = 0) const;
 	FShaderPipelineRef GetShaderPipeline(const FShaderPipelineType* PipelineType) const;
-
-	FShaderMapResourceBuilder* ResourceBuilder = nullptr;
 };
 
 class RENDERCORE_API FGlobalShaderMap
@@ -203,8 +180,9 @@ public:
 	bool IsEmpty() const;
 
 	void Empty();
+	void ReleaseAllSections();
 
-	FShader* FindOrAddShader(const FShaderType* ShaderType, FShader* Shader);
+	FShader* FindOrAddShader(const FShaderType* ShaderType, int32 PermutationId, FShader* Shader);
 	FShaderPipeline* FindOrAddShaderPipeline(const FShaderPipelineType* ShaderPipelineType, FShaderPipeline* ShaderPipeline);
 
 	void RemoveShaderTypePermutaion(const FShaderType* Type, int32 PermutationId);
@@ -225,7 +203,7 @@ public:
 #endif // WITH_EDITOR
 
 private:
-	TMap<FHashedName, FGlobalShaderMapSection*> SectionMap;
+	TMap<FHashedName, TRefCountPtr<FGlobalShaderMapSection>> SectionMap;
 	EShaderPlatform Platform;
 };
 

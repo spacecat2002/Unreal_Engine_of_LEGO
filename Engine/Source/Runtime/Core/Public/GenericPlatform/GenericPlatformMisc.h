@@ -668,6 +668,17 @@ public:
 	 *
 	 *  @param	InStoreId			The name used to identify the store you want to use (eg, MyGame)
 	 *	@param	InSectionName		The section that this key->value pair is placed within (can contain / separators, eg UserDetails/AccountInfo)
+	 *	@param	InKeyValues			The mapping of key->value pairs to set
+	 *	@return	bool				true if the value was set correctly, false if not
+	 */
+	static bool SetStoredValues(const FString& InStoreId, const FString& InSectionName, const TMap<FString, FString>& InKeyValues);
+
+	/**
+	 *	Set the value for the given section and key in the platform specific key->value store
+	 *  Note: The key->value store is user-specific, but may be used to share data between different applications for the same user
+	 *
+	 *  @param	InStoreId			The name used to identify the store you want to use (eg, MyGame)
+	 *	@param	InSectionName		The section that this key->value pair is placed within (can contain / separators, eg UserDetails/AccountInfo)
 	 *	@param	InKeyName			The name of the key to set the value for
 	 *	@param	InValue				The value to set
 	 *	@return	bool				true if the value was set correctly, false if not
@@ -1040,20 +1051,20 @@ public:
 	 *
 	 * @return ensure is allowed
 	 */
-#if DO_CHECK
+#if DO_ENSURE
 	static bool IsEnsureAllowed();
 #else
 	static bool IsEnsureAllowed() { return true; }
-#endif // DO_CHECK
+#endif // DO_ENSURE
 
 	/**
 	 * Updates hotfixable ensure settings from config and commandline (config takes priority).
 	 */
-#if DO_CHECK
+#if DO_ENSURE
 	static void UpdateHotfixableEnsureSettings();
 #else
 	static void UpdateHotfixableEnsureSettings() {}
-#endif // DO_CHECK
+#endif // DO_ENSURE
 
 	/**
 	 * Ticks values that can be hotfixable in the config.
@@ -1371,6 +1382,7 @@ public:
 
 	static bool RequestDeviceCheckToken(TFunction<void(const TArray<uint8>&)> QuerySucceededFunc, TFunction<void(const FString&, const FString&)> QueryFailedFunc);
 
+	static TArray<FCustomChunk> GetOnDemandChunksForPakchunkIndices(const TArray<int32>& PakchunkIndices);
 	static TArray<FCustomChunk> GetAllOnDemandChunks();
 	static TArray<FCustomChunk> GetAllLanguageChunks();
 	static TArray<FCustomChunk> GetCustomChunksByType(ECustomChunkType DesiredChunkType);
@@ -1422,6 +1434,13 @@ public:
 	FORCEINLINE static bool Expand16BitIndicesTo32BitOnLoad()
 	{
 		return false;
+	}
+
+	/**
+	 * Returns any platform-specific key-value data that needs to be sent to the network file server
+	 */
+	FORCEINLINE static void GetNetworkFileCustomData(TMap<FString,FString>& OutCustomPlatformData)
+	{
 	}
 
 #if !UE_BUILD_SHIPPING

@@ -302,6 +302,11 @@ public:
 		RHIContext->RHIEndRenderQuery(RenderQuery);
 	}
 
+	virtual void RHICalibrateTimers(FRHITimestampCalibrationQuery* CalibrationQuery) override final
+	{
+		RHIContext->RHICalibrateTimers(CalibrationQuery);
+	}
+
 	virtual void RHISubmitCommandsHint() override final
 	{
 		ensureMsgf(!State.bInsideBeginRenderPass, TEXT("Submitting inside a RenderPass is not efficient!"));
@@ -554,16 +559,6 @@ public:
 		RHIContext->RHISetBlendFactor(BlendFactor);
 	}
 
-	virtual void RHISetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, const FRHIDepthRenderTargetView* NewDepthStencilTarget) override final
-	{
-		RHIContext->RHISetRenderTargets(NumSimultaneousRenderTargets, NewRenderTargets, NewDepthStencilTarget);
-	}
-
-	virtual void RHISetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo) override final
-	{
-		RHIContext->RHISetRenderTargetsAndClear(RenderTargetsInfo);
-	}
-
 	// Bind the clear state of the currently set rendertargets.  This is used by platforms which
 	// need the state of the target when finalizing a hardware clear or a resource transition to SRV
 	// The explicit bind is needed to support parallel rendering (propagate state between contexts).
@@ -615,6 +610,16 @@ public:
 		RHIContext->RHISetDepthBounds(MinDepth, MaxDepth);
 	}
 
+	virtual void RHISetShadingRate(EVRSShadingRate ShadingRate, EVRSRateCombiner Combiner) override final
+	{
+		RHIContext->RHISetShadingRate(ShadingRate, Combiner);
+	}
+
+	virtual void RHISetShadingRateImage(FRHITexture* RateImageTexture, EVRSRateCombiner Combiner) override final
+	{
+		RHIContext->RHISetShadingRateImage(RateImageTexture, Combiner);
+	}
+
 	virtual void RHIPushEvent(const TCHAR* Name, FColor Color) override final
 	{
 		RHIContext->RHIPushEvent(Name, Color);
@@ -648,23 +653,6 @@ public:
 		State.bInsideBeginRenderPass = false;
 		State.PreviousRenderPassName = State.RenderPassName;
 		State.bGfxPSOSet = false;
-	}
-
-	virtual void RHIBeginComputePass(const TCHAR* InName) override final
-	{
-		checkf(InName && *InName, TEXT("ComputePass should have a name!"));
-		checkf(!State.bInsideBeginRenderPass, TEXT("Can't begin a compute pass from inside RenderPass '%s'"), *State.RenderPassName);
-		checkf(!State.bInsideComputePass, TEXT("Can't begin a compute pass inside from inside ComputePass '%s'"), *State.ComputePassName);
-		State.bInsideComputePass = true;
-		State.ComputePassName = InName;
-		RHIContext->RHIBeginComputePass(InName);
-	}
-
-	virtual void RHIEndComputePass() override final
-	{
-		checkf(State.bInsideComputePass, TEXT("Can't end a compute pass without a Begin!"), *State.ComputePassName);
-		RHIContext->RHIEndComputePass();
-		State.bInsideComputePass = false;
 	}
 
 	virtual void RHIWriteGPUFence(FRHIGPUFence* FenceRHI) override final
@@ -738,7 +726,6 @@ protected:
 		FRHIRenderPassInfo RenderPassInfo;
 		FString RenderPassName;
 		FString PreviousRenderPassName;
-		bool bInsideComputePass;
 		FString ComputePassName;
 		bool bGfxPSOSet;
 		bool bComputeShaderSet;

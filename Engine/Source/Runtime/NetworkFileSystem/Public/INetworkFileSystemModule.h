@@ -13,7 +13,7 @@ class INetworkFileServer;
  * The first parameter is the name of the requested file.
  * The second parameter will hold the list of unsolicited files to send back.
  */
-DECLARE_DELEGATE_ThreeParams(FFileRequestDelegate, const FString&, const FString&, TArray<FString>&);
+DECLARE_DELEGATE_ThreeParams(FFileRequestDelegate, FString&, const FString&, TArray<FString>&);
 
 struct FShaderRecompileData
 {
@@ -23,7 +23,6 @@ struct FShaderRecompileData
 	TArray<FString>* ModifiedFiles;
 	TArray<uint8>* MeshMaterialMaps;
 	TArray<FString> MaterialsToLoad;
-	TArray<uint8> SerializedShaderResources;
 	bool bCompileChangedShaders;
 
 	FShaderRecompileData() :
@@ -38,7 +37,6 @@ struct FShaderRecompileData
 		ModifiedFiles = Other.ModifiedFiles;
 		MeshMaterialMaps = Other.MeshMaterialMaps;
 		MaterialsToLoad = Other.MaterialsToLoad;
-		SerializedShaderResources = Other.SerializedShaderResources;
 		bCompileChangedShaders = Other.bCompileChangedShaders;
 
 		return *this;

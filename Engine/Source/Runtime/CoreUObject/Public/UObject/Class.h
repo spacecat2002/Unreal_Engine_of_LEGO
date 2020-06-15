@@ -79,6 +79,7 @@ class COREUOBJECT_API UField : public UObject
 	virtual void PostLoad() override;
 	virtual bool NeedsLoadForClient() const override;
 	virtual bool NeedsLoadForServer() const override;
+	virtual bool IsDestructionThreadSafe() const override { return true; }
 
 	// UField interface.
 	virtual void AddCppProperty(FProperty* Property);
@@ -128,8 +129,17 @@ class COREUOBJECT_API UField : public UObject
 	 * @param Key The key to lookup in the metadata
 	 * @return true if there is a (possibly blank) value associated with this key
 	 */
-	bool HasMetaData(const TCHAR* Key) const;
-	bool HasMetaData(const FName& Key) const;
+	bool HasMetaData(const TCHAR* Key) const { return FindMetaData(Key) != nullptr; }
+	bool HasMetaData(const FName& Key) const { return FindMetaData(Key) != nullptr; }
+
+	/**
+	 * Find the metadata value associated with the key
+	 *
+	 * @param Key The key to lookup in the metadata
+	 * @return The value associated with the key if exists, null otherwise
+	 */
+	const FString* FindMetaData(const TCHAR* Key) const;
+	const FString* FindMetaData(const FName& Key) const;
 
 	/**
 	 * Find the metadata value associated with the key
@@ -317,18 +327,18 @@ public:
 	/** In memory only: Linked list of properties requiring post constructor initialization */
 	FProperty* PostConstructLink;
 
-	/** Array of object references embedded in script code. Mirrored for easy access by realtime garbage collection code */
-	TArray<UObject*> ScriptObjectReferences;
+	/** Array of object references embedded in script code and referenced by FProperties. Mirrored for easy access by realtime garbage collection code */
+	TArray<UObject*> ScriptAndPropertyObjectReferences;
 
-	/** Array of object references from struct properties. Mirrored here for fast access by the garbage collector */
-	TArray<UObject*> PropertyObjectReferences;
-
+	typedef TArray<TPair<TFieldPath<FField>, int32>> FUnresolvedScriptPropertiesArray;
 	/** Contains a list of script properties that couldn't be resolved at load time */
-	TArray<TPair<TFieldPath<FField>, int32>> UnresolvedScriptProperties;
+	FUnresolvedScriptPropertiesArray* UnresolvedScriptProperties;
 
 #if WITH_EDITORONLY_DATA
 	/** List of wrapper UObjects for FProperties */
 	TArray<UPropertyWrapper*> PropertyWrappers;
+	/** Unique id incremented each time this class properties get destroyed */
+	int32 FieldPathSerialNumber;
 #endif
 
 	/** Cached schema for optimized unversioned property serialization, owned by this. */
@@ -527,6 +537,26 @@ public:
 	// Required by UHT makefiles for internal data serialization.
 	friend struct FStructArchiveProxy;
 #endif // HACK_HEADER_GENERATOR
+
+	/** Sets the UnresolvedScriptProperties array */
+	void SetUnresolvedScriptProperties(FUnresolvedScriptPropertiesArray& InUnresolvedProperties)
+	{
+		if (!UnresolvedScriptProperties)
+		{
+			UnresolvedScriptProperties = new FUnresolvedScriptPropertiesArray();
+		}
+		*UnresolvedScriptProperties = MoveTemp(InUnresolvedProperties);
+	}
+
+	/** Deletes the UnresolvedScriptProperties array */
+	FORCEINLINE void DeleteUnresolvedScriptProperties()
+	{
+		if (UnresolvedScriptProperties)
+		{
+			delete UnresolvedScriptProperties;
+			UnresolvedScriptProperties = nullptr;
+		}
+	}
 
 protected:
 
@@ -917,11 +947,11 @@ struct TStructOpsTypeTraits : public TStructOpsTypeTraitsBase2<CPPSTRUCT>
 	 * Selection of AddStructReferencedObjects check.
 	 */
 	template<class CPPSTRUCT>
-	FORCEINLINE void AddStructReferencedObjectsOrNot(const void* A, FReferenceCollector& Collector)
+	FORCEINLINE void AddStructReferencedObjectsOrNot(void* A, FReferenceCollector& Collector)
 	{
 		if constexpr (TStructOpsTypeTraits<CPPSTRUCT>::WithAddStructReferencedObjects)
 		{
-			((CPPSTRUCT const*)A)->AddStructReferencedObjects(Collector);
+			((CPPSTRUCT*)A)->AddStructReferencedObjects(Collector);
 		}
 	}
 
@@ -931,14 +961,14 @@ struct TStructOpsTypeTraits : public TStructOpsTypeTraitsBase2<CPPSTRUCT>
 	 * Selection of AddStructReferencedObjects check.
 	 */
 	template<class CPPSTRUCT>
-	FORCEINLINE typename TEnableIf<!TStructOpsTypeTraits<CPPSTRUCT>::WithAddStructReferencedObjects>::Type AddStructReferencedObjectsOrNot(const void* A, FReferenceCollector& Collector)
+	FORCEINLINE typename TEnableIf<!TStructOpsTypeTraits<CPPSTRUCT>::WithAddStructReferencedObjects>::Type AddStructReferencedObjectsOrNot(void* A, FReferenceCollector& Collector)
 	{
 	}
 
 	template<class CPPSTRUCT>
-	FORCEINLINE typename TEnableIf<TStructOpsTypeTraits<CPPSTRUCT>::WithAddStructReferencedObjects>::Type AddStructReferencedObjectsOrNot(const void* A, FReferenceCollector& Collector)
+	FORCEINLINE typename TEnableIf<TStructOpsTypeTraits<CPPSTRUCT>::WithAddStructReferencedObjects>::Type AddStructReferencedObjectsOrNot(void* A, FReferenceCollector& Collector)
 	{
-		((CPPSTRUCT const*)A)->AddStructReferencedObjects(Collector);
+		((CPPSTRUCT*)A)->AddStructReferencedObjects(Collector);
 	}
 
 #endif
@@ -1064,7 +1094,7 @@ public:
 		 * return a pointer to a function that can add referenced objects
 		 * @return true if the copy was imported, otherwise it will fall back to FStructProperty::ImportText
 		 */
-		typedef void (*TPointerToAddStructReferencedObjects)(const void* A, class FReferenceCollector& Collector);
+		typedef void (*TPointerToAddStructReferencedObjects)(void* A, class FReferenceCollector& Collector);
 		virtual TPointerToAddStructReferencedObjects AddStructReferencedObjects() = 0;
 
 		/** return true if this class wants to serialize from some other tag (usually for conversion purposes) **/
@@ -3008,6 +3038,12 @@ public:
 	 * Realtime garbage collection helper function used to indicated the end of a fixed array.
 	 */
 	void EmitFixedArrayEnd();
+
+	/**
+	 * Realtime garbage collection helper function used to emit token containing information about an
+	 * external package reference.
+	 */
+	void EmitExternalPackageReference();
 
 	/**
 	 * Assembles the token stream for realtime garbage collection by combining the per class only

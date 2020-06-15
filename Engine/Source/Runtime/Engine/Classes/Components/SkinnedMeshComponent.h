@@ -132,18 +132,6 @@ struct FActiveMorphTarget
 	}
 };
 
-struct FSkeletalMeshObjectCallbackData
-{
-	enum class EEventType { Register, Unregister, Update };
-	typedef void (*TCallbackMeshObjectCallback)(
-		EEventType Event, 
-		class FSkeletalMeshObject* MeshObject,
-		uint64 UserData);
-
-	uint64 UserData = 0;
-	TCallbackMeshObjectCallback Run = nullptr;
-};
-
 /** Vertex skin weight info supplied for a component override. */
 USTRUCT(BlueprintType, meta = (HasNativeMake = "Engine.KismetRenderingLibrary.MakeSkinWeightInfo", HasNativeBreak = "Engine.KismetRenderingLibrary.BreakSkinWeightInfo"))
 struct FSkelMeshSkinWeightInfo
@@ -469,7 +457,7 @@ public:
 	 *  You can change this default value in the INI file 
 	 * Mostly related with performance
 	 */
-	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadWrite, Config, Category=Optimization)
+	UPROPERTY(Interp, EditAnywhere, AdvancedDisplay, BlueprintReadWrite, Config, Category=Optimization)
 	EVisibilityBasedAnimTickOption VisibilityBasedAnimTickOption;
 
 #if WITH_EDITOR
@@ -487,6 +475,9 @@ protected:
 
 	/** Whether or not a Skin Weight profile is currently set for this component */
 	uint8 bSkinWeightProfileSet:1;
+
+	/** Whether or not a Skin Weight profile is currently pending load and creation for this component */
+	uint8 bSkinWeightProfilePending:1;
 public:
 
 	/** Whether we should use the min lod specified in MinLodModel for this component instead of the min lod in the mesh */
@@ -667,8 +658,6 @@ public:
 
 	/** Object responsible for sending bone transforms, morph target state etc. to render thread. */
 	class FSkeletalMeshObject*	MeshObject;
-	FSkeletalMeshObjectCallbackData MeshObjectCallbackData;
-	void SetMeshObjectCallbackData(FSkeletalMeshObjectCallbackData& MeshObjectCallbackData);
 
 	/** Gets the skeletal mesh resource used for rendering the component. */
 	FSkeletalMeshRenderData* GetSkeletalMeshRenderData() const;
@@ -828,10 +817,7 @@ protected:
 	virtual void CreateRenderState_Concurrent(FRegisterComponentContext* Context) override;
 	virtual void SendRenderDynamicData_Concurrent() override;
 	virtual void DestroyRenderState_Concurrent() override;
-	virtual bool RequiresGameThreadEndOfFrameRecreate() const override
-	{
-		return false;
-	}
+	virtual bool RequiresGameThreadEndOfFrameRecreate() const override;
 	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction) override;
 	virtual UObject const* AdditionalStatObject() const override;
 	//~ End UActorComponent Interface
@@ -857,6 +843,10 @@ public:
 	virtual void GetStreamingRenderAssetInfo(FStreamingTextureLevelContext& LevelContext, TArray<FStreamingRenderAssetPrimitiveInfo>& OutStreamingRenderAssets) const override;
 	virtual int32 GetNumMaterials() const override;
 	//~ End UPrimitiveComponent Interface
+
+	//~ Begin UMeshComponent Interface
+	virtual void RegisterLODStreamingCallback(FLODStreamingCallback&& Callback, int32 LODIdx, float TimeoutSecs, bool bOnStreamIn) override;
+	//~ End UMeshComponent Interface
 
 	/** Get the pre-skinning local space bounds for this component. */
 	void GetPreSkinnedLocalBounds(FBoxSphereBounds& OutBounds) const;
@@ -1012,9 +1002,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Components|SkinnedMesh")
 	bool IsUsingSkinWeightProfile() const { return bSkinWeightProfileSet == 1;  }
 
-protected:
+	/** Check whether or not a Skin Weight Profile is currently pending load / create */
+	bool IsSkinWeightProfilePending() const { return bSkinWeightProfilePending == 1; }
+
 	/** Queues an update of the Skin Weight Buffer used by the current MeshObject */
 	void UpdateSkinWeightOverrideBuffer();
+protected:	
 
 	/** Name of currently set up Skin Weight profile, otherwise is 'none' */
 	FName CurrentSkinWeightProfileName;
@@ -1573,6 +1566,17 @@ public:
 	}
 };
 
+/** Simple, CPU evaluation of a vertex's skinned tangent basis */
+void GetTypedSkinnedTangentBasis(
+	const USkinnedMeshComponent* SkinnedComp,
+	const FSkelMeshRenderSection& Section,
+	const FStaticMeshVertexBuffers& StaticVertexBuffers,
+	const FSkinWeightVertexBuffer& SkinWeightVertexBuffer,
+	const int32 VertIndex,
+	const TArray<FMatrix> & RefToLocals,
+	FVector& OutTangentX,
+	FVector& OutTangentZ
+);
 
 /** Simple, CPU evaluation of a vertex's skinned position helper function */
 template <bool bCachedMatrices>

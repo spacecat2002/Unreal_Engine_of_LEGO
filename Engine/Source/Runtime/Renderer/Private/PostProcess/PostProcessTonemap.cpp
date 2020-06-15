@@ -89,7 +89,7 @@ TAutoConsoleVariable<float> CVarGamma(
 
 TAutoConsoleVariable<int32> CVarMobileTonemapperFilm(
 	TEXT("r.Mobile.TonemapperFilm"),
-	0,
+	1,
 	TEXT("Whether mobile platforms should use new film tone mapper"),
 	ECVF_RenderThreadSafe);
 
@@ -106,7 +106,7 @@ class FTonemapperVignetteDim       : SHADER_PERMUTATION_BOOL("USE_VIGNETTE");
 class FTonemapperSharpenDim        : SHADER_PERMUTATION_BOOL("USE_SHARPEN");
 class FTonemapperGrainJitterDim    : SHADER_PERMUTATION_BOOL("USE_GRAIN_JITTER");
 class FTonemapperSwitchAxis        : SHADER_PERMUTATION_BOOL("NEEDTOSWITCHVERTICLEAXIS");
-class FTonemapperMsaaDim           : SHADER_PERMUTATION_BOOL("USE_MSAA");
+class FTonemapperMsaaDim           : SHADER_PERMUTATION_BOOL("METAL_MSAA_HDR_DECODE");
 class FTonemapperEyeAdaptationDim  : SHADER_PERMUTATION_BOOL("EYEADAPTATION_EXPOSURE_FIX");
 
 using FCommonDomain = TShaderPermutationDomain<
@@ -147,7 +147,7 @@ bool ShouldCompileCommonPermutation(const FGlobalShaderPermutationParameters& Pa
 }
 
 // Common conversion of engine settings into.
-FCommonDomain BuildCommonPermutationDomain(const FViewInfo& View, bool bGammaOnly, bool bSwitchVerticalAxis)
+FCommonDomain BuildCommonPermutationDomain(const FViewInfo& View, bool bGammaOnly, bool bSwitchVerticalAxis, bool bMetalMSAAHDRDecode)
 {
 	const FSceneViewFamily* Family = View.Family;
 
@@ -169,14 +169,7 @@ FCommonDomain BuildCommonPermutationDomain(const FViewInfo& View, bool bGammaOnl
 	PermutationVector.Set<FTonemapperGrainJitterDim>(Settings.GrainJitter > 0.0f);
 	PermutationVector.Set<FTonemapperSharpenDim>(CVarTonemapperSharpen.GetValueOnRenderThread() > 0.0f);	
 	PermutationVector.Set<FTonemapperSwitchAxis>(bSwitchVerticalAxis);
-
-	if (IsMetalMobilePlatform(View.GetShaderPlatform()))
-	{
-		static const auto CVarMobileMSAA = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileMSAA"));
-		bool bMSAA = (CVarMobileMSAA ? CVarMobileMSAA->GetValueOnAnyThread() > 1 : false);
-
-		PermutationVector.Set<FTonemapperMsaaDim>(bMSAA);
-	}
+	PermutationVector.Set<FTonemapperMsaaDim>(bMetalMSAAHDRDecode);
 
 	return PermutationVector;
 }
@@ -528,11 +521,9 @@ BEGIN_SHADER_PARAMETER_STRUCT(FTonemapParameters, )
 	// SM5 and above use Texture2D for EyeAdaptation
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, EyeAdaptation)
 	SHADER_PARAMETER_RDG_TEXTURE(, ColorGradingLUT)
-	SHADER_PARAMETER_TEXTURE(Texture2D, NoiseTexture)
 	SHADER_PARAMETER_TEXTURE(Texture2D, BloomDirtMaskTexture)
 	SHADER_PARAMETER_SAMPLER(SamplerState, ColorSampler)
 	SHADER_PARAMETER_SAMPLER(SamplerState, BloomSampler)
-	SHADER_PARAMETER_SAMPLER(SamplerState, NoiseSampler)
 	SHADER_PARAMETER_SAMPLER(SamplerState, ColorGradingLUTSampler)
 	SHADER_PARAMETER_SAMPLER(SamplerState, BloomDirtMaskSampler)
 	SHADER_PARAMETER(FVector4, ColorScale0)
@@ -692,18 +683,6 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FViewInfo& Vi
 
 	const FScreenPassTextureViewport OutputViewport(Output);
 
-	FRHITexture* NoiseTexture = nullptr;
-
-	{
-		check(GEngine);
-		const auto* HighFrequencyNoiseTexture = GEngine->HighFrequencyNoiseTexture;
-		check(HighFrequencyNoiseTexture);
-		const auto* Resource = HighFrequencyNoiseTexture->Resource;
-		check(Resource);
-		NoiseTexture = Resource->TextureRHI;
-		check(NoiseTexture);
-	}
-
 	FRHITexture* BloomDirtMaskTexture = GSystemTextures.BlackDummy->GetRenderTargetItem().TargetableTexture;
 
 	if (PostProcessSettings.BloomDirtMask && PostProcessSettings.BloomDirtMask->Resource)
@@ -773,11 +752,9 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FViewInfo& Vi
 	CommonParameters.BloomTexture = Inputs.Bloom.Texture;
 	CommonParameters.EyeAdaptation = Inputs.EyeAdaptationTexture;
 	CommonParameters.ColorGradingLUT = Inputs.ColorGradingTexture;
-	CommonParameters.NoiseTexture = NoiseTexture;
 	CommonParameters.BloomDirtMaskTexture = BloomDirtMaskTexture;
 	CommonParameters.ColorSampler = BilinearClampSampler;
 	CommonParameters.BloomSampler = BilinearClampSampler;
-	CommonParameters.NoiseSampler = PointClampSampler;
 	CommonParameters.ColorGradingLUTSampler = BilinearClampSampler;
 	CommonParameters.BloomDirtMaskSampler = BilinearClampSampler;
 	CommonParameters.ColorScale0 = PostProcessSettings.SceneColorTint;
@@ -807,7 +784,7 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FViewInfo& Vi
 	TonemapperPermutation::FDesktopDomain DesktopPermutationVector;
 
 	{
-		TonemapperPermutation::FCommonDomain CommonDomain = TonemapperPermutation::BuildCommonPermutationDomain(View, Inputs.bGammaOnly, Inputs.bFlipYAxis);
+		TonemapperPermutation::FCommonDomain CommonDomain = TonemapperPermutation::BuildCommonPermutationDomain(View, Inputs.bGammaOnly, Inputs.bFlipYAxis, Inputs.bMetalMSAAHDRDecode);
 		DesktopPermutationVector.Set<TonemapperPermutation::FCommonDomain>(CommonDomain);
 
 		if (!CommonDomain.Get<TonemapperPermutation::FTonemapperGammaOnlyDim>())
@@ -892,11 +869,13 @@ FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FViewInfo& Vi
 //////////////////////////////////////////////////////////////////////////
 //! DEPRECATED: This is only used by mobile until fully ported to RDG.
 
-FRCPassPostProcessTonemap::FRCPassPostProcessTonemap(bool bInDoGammaOnly, bool bInDoEyeAdaptation, bool bInHDROutput)
+FRCPassPostProcessTonemap::FRCPassPostProcessTonemap(bool bInDoGammaOnly, bool bInDoEyeAdaptation, bool bInHDROutput, bool bInMetalMSAAHDRDecode, bool bInIsMobileDof)
 	: bDoGammaOnly(bInDoGammaOnly)
 	, bDoScreenPercentageInTonemapper(false)
 	, bDoEyeAdaptation(bInDoEyeAdaptation)
 	, bHDROutput(bInHDROutput)
+	, bMetalMSAAHDRDecode(bInMetalMSAAHDRDecode)
+	, bIsMobileDof(bInIsMobileDof)
 {}
 
 void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
@@ -962,9 +941,18 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 		}
 
 		OutputTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("Tonemap"));
-		OutputLoadAction = View.GetOverwriteLoadAction();
+		// Alpha is used for mobile TAA and needs to always be initialized
+		if ((View.GetFeatureLevel() <= ERHIFeatureLevel::ES3_1))
+		{
+			OutputLoadAction = ERenderTargetLoadAction::EClear;
+		}
+		else
+		{
+			OutputLoadAction = View.GetOverwriteLoadAction();
+		}
 		OutputViewRect = SceneColorViewRect;
 	}
+
 
 	FTonemapInputs Inputs;
 	Inputs.SceneColor.Texture = SceneColorTexture;
@@ -976,9 +964,10 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 	Inputs.OverrideOutput.Texture = OutputTexture;
 	Inputs.OverrideOutput.ViewRect = OutputViewRect;
 	Inputs.OverrideOutput.LoadAction = OutputLoadAction;
-	Inputs.bWriteAlphaChannel = View.AntiAliasingMethod == AAM_FXAA || IsPostProcessingWithAlphaChannelSupported();
+	Inputs.bWriteAlphaChannel = View.AntiAliasingMethod == AAM_FXAA || IsPostProcessingWithAlphaChannelSupported() || bIsMobileDof;
 	Inputs.bFlipYAxis = ShouldMobilePassFlipVerticalAxis(Context, this);
 	Inputs.bGammaOnly = bDoGammaOnly;
+	Inputs.bMetalMSAAHDRDecode = bMetalMSAAHDRDecode;
 	Inputs.EyeAdaptationBuffer = bDoEyeAdaptation && View.GetEyeAdaptationBuffer() ? View.GetEyeAdaptationBuffer()->SRV : nullptr;
 
 	AddTonemapPass(GraphBuilder, View, Inputs);
@@ -988,7 +977,8 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 	GraphBuilder.Execute();
 
 	// We only release the SceneColor after the last view was processed (SplitScreen)
-	if(View.IsLastInFamily() && !GIsEditor)
+	if (View.IsLastInFamily() && !GIsEditor 
+		&& View.GetFeatureLevel() > ERHIFeatureLevel::ES3_1) // Mobile renderer may still use SceneColor.A to sample scene depth
 	{
 		// The RT should be released as early as possible to allow sharing of that memory for other purposes.
 		// This becomes even more important with some limited VRam (XBoxOne).
@@ -1097,9 +1087,9 @@ class FPostProcessTonemapPS_ES2 : public FGlobalShader
 		return RemappedPermutationVector;
 	}
 
-	static FPermutationDomain BuildPermutationVector(const FViewInfo& View, bool bNeedsToSwitchVerticalAxis)
+	static FPermutationDomain BuildPermutationVector(const FViewInfo& View, bool bNeedsToSwitchVerticalAxis, bool bMetalMSAAHDRDecode)
 	{
-		TonemapperPermutation::FCommonDomain CommonPermutationVector = TonemapperPermutation::BuildCommonPermutationDomain(View, /* bGammaOnly = */ false, bNeedsToSwitchVerticalAxis);
+		TonemapperPermutation::FCommonDomain CommonPermutationVector = TonemapperPermutation::BuildCommonPermutationDomain(View, /* bGammaOnly = */ false, bNeedsToSwitchVerticalAxis, bMetalMSAAHDRDecode);
 
 		FPostProcessTonemapPS_ES2::FPermutationDomain MobilePermutationVector;
 		MobilePermutationVector.Set<TonemapperPermutation::FCommonDomain>(CommonPermutationVector);
@@ -1126,14 +1116,6 @@ class FPostProcessTonemapPS_ES2 : public FGlobalShader
 		}
 		MobilePermutationVector.Set<FTonemapperShadowTintDim>(Settings.FilmShadowTintAmount > 0.0f);
 		MobilePermutationVector.Set<FTonemapperContrastDim>(Settings.FilmContrast > 0.0f);
-
-		static const auto CVarMobileMSAA = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileMSAA"));
-		const EShaderPlatform ShaderPlatform = View.GetShaderPlatform();
-		if (IsMetalMobilePlatform(ShaderPlatform))
-		{
-			bool bMSAA = (CVarMobileMSAA ? CVarMobileMSAA->GetValueOnAnyThread() > 1 : false);
-			CommonPermutationVector.Set<TonemapperPermutation::FTonemapperMsaaDim>(bMSAA);
-		}
 
 		if (GSupportsRenderTargetFormat_PF_FloatRGBA)
 		{
@@ -1330,7 +1312,7 @@ class FPostProcessTonemapVS_ES2 : public FGlobalShader
 			return false;
 		}
 
-		return !IsConsolePlatform(Parameters.Platform);
+		return GetMaxSupportedFeatureLevel(Parameters.Platform) <= ERHIFeatureLevel::ES3_1;
 	}
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
@@ -1418,12 +1400,13 @@ IMPLEMENT_GLOBAL_SHADER(FPostProcessTonemapVS_ES2, "/Engine/Private/PostProcessT
 IMPLEMENT_GLOBAL_SHADER(FPostProcessTonemapPS_ES2, "/Engine/Private/PostProcessTonemap.usf", "MainPS_ES2", SF_Pixel);
 
 
-FRCPassPostProcessTonemapES2::FRCPassPostProcessTonemapES2(const FViewInfo& InView, bool bInUsedFramebufferFetch, bool bInSRGBAwareTarget, bool bInDoEyeAdaptation)
+FRCPassPostProcessTonemapES2::FRCPassPostProcessTonemapES2(const FViewInfo& InView, bool bInUsedFramebufferFetch, bool bInSRGBAwareTarget, bool bInDoEyeAdaptation, bool bInMetalMSAAHDRDecode)
 	: bDoScreenPercentageInTonemapper(false)
 	, View(InView)
 	, bUsedFramebufferFetch(bInUsedFramebufferFetch)
 	, bSRGBAwareTarget(bInSRGBAwareTarget)
 	, bDoEyeAdaptation(bInDoEyeAdaptation)
+	, bMetalMSAAHDRDecode(bInMetalMSAAHDRDecode)
 { }
 
 void FRCPassPostProcessTonemapES2::Process(FRenderingCompositePassContext& Context)
@@ -1464,7 +1447,7 @@ void FRCPassPostProcessTonemapES2::Process(FRenderingCompositePassContext& Conte
 		bool bNeedsToSwitchVerticalAxis = ShouldMobilePassFlipVerticalAxis(Context, this);
 
 		auto VertexShaderPermutationVector = FPostProcessTonemapVS_ES2::BuildPermutationVector(bNeedsToSwitchVerticalAxis, bDoEyeAdaptation);
-		auto PixelShaderPermutationVector = FPostProcessTonemapPS_ES2::BuildPermutationVector(View, bNeedsToSwitchVerticalAxis);
+		auto PixelShaderPermutationVector = FPostProcessTonemapPS_ES2::BuildPermutationVector(View, bNeedsToSwitchVerticalAxis, bMetalMSAAHDRDecode);
 
 		TShaderMapRef<FPostProcessTonemapVS_ES2> VertexShader(Context.GetShaderMap(), VertexShaderPermutationVector);
 		TShaderMapRef<FPostProcessTonemapPS_ES2> PixelShader(Context.GetShaderMap(), PixelShaderPermutationVector);

@@ -295,6 +295,16 @@ struct FCopyBufferRegionParams
 	uint64 NumBytes;
 };
 
+struct FTransferTextureParams
+{
+	FRHITexture2D* Texture;
+	FIntVector Min;
+	FIntVector Max;
+	uint32 SrcGPUIndex;
+	uint32 DestGPUIndex;
+	bool PullData;
+};
+
 /** The interface RHI command context. Sometimes the RHI handles these. On platforms that can processes command lists in parallel, it is a separate object. */
 class IRHICommandContext : public IRHIComputeContext
 {
@@ -349,6 +359,7 @@ public:
 	* Explicitly transition a texture resource from readable -> writable by the GPU or vice versa.
 	* We know render targets are only used as rendered targets on the Gfx pipeline, so these transitions are assumed to be implemented such
 	* Gfx->Gfx and Gfx->Compute pipeline transitions are both handled by this call by the RHI implementation.  Hence, no pipeline parameter on this call.
+	* TransitionPipeline version is also available to transition from Compute->Gfx for example
 	*
 	* @param TransitionType - direction of the transition
 	* @param InTextures - array of texture objects to transition
@@ -364,6 +375,21 @@ public:
 				RHICopyToResolveTarget(InTextures[i], InTextures[i], ResolveParams);
 			}
 		}
+	}
+
+	/**
+	* Explicitly transition a texture resource from readable -> writable by the GPU or vice versa.
+	* Also explicitly states which pipeline the texture can be used on next.  For example, if a Compute job just wrote this UAV for a Pixel shader to read
+	* you would do EResourceTransitionAccess::Readable and EResourceTransitionPipeline::EComputeToGfx
+	*
+	* @param TransitionType - direction of the transition
+	* @param TransitionPipeline - How this Texture is transitioning between Gfx and Compute, if at all.
+	* @param InTextures - array of texture objects to transition
+	* @param NumTextures - number of textures to transition
+	*/
+	virtual void RHITransitionResources(EResourceTransitionAccess TransitionType, EResourceTransitionPipeline TransitionPipeline, FRHITexture** InTextures, int32 NumTextures)
+	{
+		RHITransitionResources(TransitionType, InTextures, NumTextures);
 	}
 
 	/**
@@ -410,6 +436,16 @@ public:
 	virtual void RHIBeginRenderQuery(FRHIRenderQuery* RenderQuery) = 0;
 
 	virtual void RHIEndRenderQuery(FRHIRenderQuery* RenderQuery) = 0;
+
+	virtual void RHICalibrateTimers()
+	{
+		/* empty default implementation */
+	}
+
+	virtual void RHICalibrateTimers(FRHITimestampCalibrationQuery* CalibrationQuery)
+	{
+		/* empty default implementation */
+	}
 
 	// Used for OpenGL to check and see if any occlusion queries can be read back on the RHI thread. If they aren't ready when we need them, then we end up stalling.
 	virtual void RHIPollOcclusionQueries()
@@ -554,10 +590,6 @@ public:
 
 	virtual void RHISetBlendFactor(const FLinearColor& BlendFactor) {}
 
-	virtual void RHISetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, const FRHIDepthRenderTargetView* NewDepthStencilTarget) = 0;
-
-	virtual void RHISetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo) = 0;
-
 	// Bind the clear state of the currently set render targets. This is used by platforms which
 	// need the state of the target when finalizing a hardware clear or a resource transition to SRV
 	// The explicit bind is needed to support parallel rendering (propagate state between contexts).
@@ -582,70 +614,23 @@ public:
 	*/
 	virtual void RHISetDepthBounds(float MinDepth, float MaxDepth) = 0;
 
+	virtual void RHISetShadingRate(EVRSShadingRate ShadingRate, EVRSRateCombiner Combiner)
+	{
+		/* empty default implementation */
+	} 
+	
+	virtual void RHISetShadingRateImage(FRHITexture* RateImageTexture, EVRSRateCombiner Combiner)
+	{
+		/* empty default implementation */
+	}
+
 	virtual void RHIUpdateTextureReference(FRHITextureReference* TextureRef, FRHITexture* NewTexture) = 0;
 
-	virtual void RHIBeginRenderPass(const FRHIRenderPassInfo& InInfo, const TCHAR* InName)
-	{
-		if (InInfo.bGeneratingMips)
-		{
-			FRHITexture* Textures[MaxSimultaneousRenderTargets];
-			FRHITexture** LastTexture = Textures;
-			for (int32 Index = 0; Index < MaxSimultaneousRenderTargets; ++Index)
-			{
-				if (!InInfo.ColorRenderTargets[Index].RenderTarget)
-				{
-					break;
-				}
+	virtual void RHIBeginRenderPass(const FRHIRenderPassInfo& InInfo, const TCHAR* InName) = 0;
 
-				*LastTexture = InInfo.ColorRenderTargets[Index].RenderTarget;
-				++LastTexture;
-			}
+	virtual void RHIEndRenderPass() = 0;
 
-			//Use RWBarrier since we don't transition individual subresources.  Basically treat the whole texture as R/W as we walk down the mip chain.
-			int32 NumTextures = (int32)(LastTexture - Textures);
-			if (NumTextures)
-			{
-				RHITransitionResources(EResourceTransitionAccess::ERWSubResBarrier, Textures, NumTextures);
-			}
-		}
-
-		FRHISetRenderTargetsInfo RTInfo;
-		InInfo.ConvertToRenderTargetsInfo(RTInfo);
-		RHISetRenderTargetsAndClear(RTInfo);
-
-		RenderPassInfo = InInfo;
-	}
-
-	virtual void RHIEndRenderPass()
-	{
-		for (int32 Index = 0; Index < MaxSimultaneousRenderTargets; ++Index)
-		{
-			if (!RenderPassInfo.ColorRenderTargets[Index].RenderTarget)
-			{
-				break;
-			}
-			if (RenderPassInfo.ColorRenderTargets[Index].ResolveTarget)
-			{
-				RHICopyToResolveTarget(RenderPassInfo.ColorRenderTargets[Index].RenderTarget, RenderPassInfo.ColorRenderTargets[Index].ResolveTarget, RenderPassInfo.ResolveParameters);
-			}
-		}
-
-		if (RenderPassInfo.DepthStencilRenderTarget.DepthStencilTarget && RenderPassInfo.DepthStencilRenderTarget.ResolveTarget)
-		{
-			RHICopyToResolveTarget(RenderPassInfo.DepthStencilRenderTarget.DepthStencilTarget, RenderPassInfo.DepthStencilRenderTarget.ResolveTarget, RenderPassInfo.ResolveParameters);
-		}
-	}
-	
 	virtual void RHINextSubpass()
-	{
-	}
-
-	virtual void RHIBeginComputePass(const TCHAR* InName)
-	{
-		RHISetRenderTargets(0, nullptr, nullptr);
-	}
-
-	virtual void RHIEndComputePass()
 	{
 	}
 
@@ -677,12 +662,13 @@ public:
 			}
 		}
 	}
-#if RHI_RAYTRACING
+
 	virtual void RHICopyBufferRegion(FRHIVertexBuffer* DestBuffer, uint64 DstOffset, FRHIVertexBuffer* SourceBuffer, uint64 SrcOffset, uint64 NumBytes)
 	{
 		checkNoEntry();
 	}
 
+#if RHI_RAYTRACING
 	virtual void RHICopyBufferRegions(const TArrayView<const FCopyBufferRegionParams> Params)
 	{
 		checkNoEntry();

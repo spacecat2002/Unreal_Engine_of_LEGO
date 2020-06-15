@@ -71,7 +71,7 @@ const TCHAR* GetDepthDrawingModeString(EDepthDrawingMode Mode)
 	return TEXT("");
 }
 
-DECLARE_GPU_STAT(Prepass);
+DECLARE_GPU_DRAWCALL_STAT(Prepass);
 
 IMPLEMENT_MATERIAL_SHADER_TYPE(template<>,TDepthOnlyVS<true>,TEXT("/Engine/Private/PositionOnlyDepthVertexShader.usf"),TEXT("Main"),SF_Vertex);
 IMPLEMENT_MATERIAL_SHADER_TYPE(template<>,TDepthOnlyVS<false>,TEXT("/Engine/Private/DepthOnlyVertexShader.usf"),TEXT("Main"),SF_Vertex);
@@ -577,6 +577,7 @@ void FDeferredShadingSceneRenderer::RenderPrePassEditorPrimitives(FRHICommandLis
 					bRespectUseAsOccluderFlag,
 					DepthDrawingMode,
 					false,
+					false,
 					DynamicMeshPassContext);
 
 				const uint64 DefaultBatchElementMask = ~0ull;
@@ -600,6 +601,7 @@ void FDeferredShadingSceneRenderer::RenderPrePassEditorPrimitives(FRHICommandLis
 					DrawRenderState,
 					bRespectUseAsOccluderFlag,
 					DepthDrawingMode,
+					false,
 					false,
 					DynamicMeshPassContext);
 
@@ -788,24 +790,22 @@ void FMobileSceneRenderer::RenderPrePass(FRHICommandListImmediate& RHICmdList)
 
 			SCOPED_GPU_MASK(RHICmdList, !View.IsInstancedStereoPass() ? View.GPUMask : (Views[0].GPUMask | Views[1].GPUMask));
 			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("View%d"), ViewIndex);
+			if (!View.ShouldRenderView())
+			{
+				continue;
+			}
 
-			TUniformBufferRef<FSceneTexturesUniformParameters> PassUniformBuffer;
-			CreateDepthPassUniformBuffer(RHICmdList, View, PassUniformBuffer);
+			if (Scene->UniformBuffers.UpdateViewUniformBuffer(View))
+			{
+				UpdateDepthPrepassUniformBuffer(RHICmdList, View);
+			}
 
-			FMeshPassProcessorRenderState DrawRenderState(View, PassUniformBuffer);
-
+			FMeshPassProcessorRenderState DrawRenderState(View, Scene->UniformBuffers.DepthPassUniformBuffer);
 			SetupDepthPassState(DrawRenderState);
 
-			if (View.ShouldRenderView())
-			{
-				Scene->UniformBuffers.UpdateViewUniformBuffer(View);
+			SetupPrePassView(RHICmdList, View, this);
 
-				{
-					SetupPrePassView(RHICmdList, View, this);
-
-					View.ParallelMeshDrawCommandPasses[EMeshPass::DepthPass].DispatchDraw(nullptr, RHICmdList);
-				}
-			}
+			View.ParallelMeshDrawCommandPasses[EMeshPass::DepthPass].DispatchDraw(nullptr, RHICmdList);
 		}
 	}
 }
@@ -903,7 +903,10 @@ void FDepthPassMeshProcessor::Process(
 
 	FMeshPassProcessorRenderState DrawRenderState(PassDrawRenderState);
 
-	SetDepthPassDitheredLODTransitionState(ViewIfDynamicMeshCommand, MeshBatch, StaticMeshId, DrawRenderState);
+	if (!bDitheredLODFadingOutMaskPass)
+	{
+		SetDepthPassDitheredLODTransitionState(ViewIfDynamicMeshCommand, MeshBatch, StaticMeshId, DrawRenderState);
+	}
 
 	FDepthOnlyShaderElementData ShaderElementData(0.0f);
 	ShaderElementData.InitializeMeshMaterialData(ViewIfDynamicMeshCommand, PrimitiveSceneProxy, MeshBatch, StaticMeshId, true);
@@ -1010,11 +1013,13 @@ FDepthPassMeshProcessor::FDepthPassMeshProcessor(const FScene* Scene,
 	const bool InbRespectUseAsOccluderFlag,
 	const EDepthDrawingMode InEarlyZPassMode,
 	const bool InbEarlyZPassMovable,
+	const bool bDitheredLODFadingOutMaskPass,
 	FMeshPassDrawListContext* InDrawListContext)
 	: FMeshPassProcessor(Scene, Scene->GetFeatureLevel(), InViewIfDynamicMeshCommand, InDrawListContext)
 	, bRespectUseAsOccluderFlag(InbRespectUseAsOccluderFlag)
 	, EarlyZPassMode(InEarlyZPassMode)
 	, bEarlyZPassMovable(InbEarlyZPassMovable)
+	, bDitheredLODFadingOutMaskPass(bDitheredLODFadingOutMaskPass)
 {
 	PassDrawRenderState = InPassDrawRenderState;
 	PassDrawRenderState.SetViewUniformBuffer(Scene->UniformBuffers.ViewUniformBuffer);
@@ -1026,8 +1031,26 @@ FMeshPassProcessor* CreateDepthPassProcessor(const FScene* Scene, const FSceneVi
 {
 	FMeshPassProcessorRenderState DepthPassState;
 	SetupDepthPassState(DepthPassState);
-	return new(FMemStack::Get()) FDepthPassMeshProcessor(Scene, InViewIfDynamicMeshCommand, DepthPassState, true, Scene->EarlyZPassMode, Scene->bEarlyZPassMovable, InDrawListContext);
+	return new(FMemStack::Get()) FDepthPassMeshProcessor(Scene, InViewIfDynamicMeshCommand, DepthPassState, true, Scene->EarlyZPassMode, Scene->bEarlyZPassMovable, false, InDrawListContext);
 }
 
 FRegisterPassProcessorCreateFunction RegisterDepthPass(&CreateDepthPassProcessor, EShadingPath::Deferred, EMeshPass::DepthPass, EMeshPassFlags::CachedMeshCommands | EMeshPassFlags::MainView);
 FRegisterPassProcessorCreateFunction RegisterMobileDepthPass(&CreateDepthPassProcessor, EShadingPath::Mobile, EMeshPass::DepthPass, EMeshPassFlags::CachedMeshCommands | EMeshPassFlags::MainView);
+
+FMeshPassProcessor* CreateDitheredLODFadingOutMaskPassProcessor(const FScene* Scene, const FSceneView* InViewIfDynamicMeshCommand, FMeshPassDrawListContext* InDrawListContext)
+{
+	FMeshPassProcessorRenderState DrawRenderState;
+
+	DrawRenderState.SetBlendState(TStaticBlendState<CW_NONE>::GetRHI());
+	DrawRenderState.SetDepthStencilState(
+		TStaticDepthStencilState<true, CF_Equal,
+		true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
+		false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
+		STENCIL_SANDBOX_MASK, STENCIL_SANDBOX_MASK
+		>::GetRHI());
+	DrawRenderState.SetStencilRef(STENCIL_SANDBOX_MASK);
+
+	return new(FMemStack::Get()) FDepthPassMeshProcessor(Scene, InViewIfDynamicMeshCommand, DrawRenderState, true, Scene->EarlyZPassMode, Scene->bEarlyZPassMovable, true, InDrawListContext);
+}
+
+FRegisterPassProcessorCreateFunction RegisterDitheredLODFadingOutMaskPass(&CreateDitheredLODFadingOutMaskPassProcessor, EShadingPath::Deferred, EMeshPass::DitheredLODFadingOutMaskPass, EMeshPassFlags::MainView);

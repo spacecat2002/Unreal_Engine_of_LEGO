@@ -85,13 +85,25 @@ FAllocatedVirtualTexture::FAllocatedVirtualTexture(FVirtualTextureSystem* InSyst
 		}
 	}
 
+	// Use 16bit page table entries if all physical spaces are small enough
+	bool bSupport16BitPageTable = true;
+	for (int32 Index = 0; Index < UniquePageTableLayers.Num(); ++Index)
+	{
+		if (!UniquePageTableLayers[Index].PhysicalSpace->DoesSupport16BitPageTable())
+		{
+			bSupport16BitPageTable = false;
+			break;
+		}
+	}
+
 	FVTSpaceDescription SpaceDesc;
 	SpaceDesc.Dimensions = InDesc.Dimensions;
 	SpaceDesc.NumPageTableLayers = UniquePageTableLayers.Num();
 	SpaceDesc.TileSize = InDesc.TileSize;
 	SpaceDesc.TileBorderSize = InDesc.TileBorderSize;
 	SpaceDesc.bPrivateSpace = InDesc.bPrivateSpace;
-	SpaceDesc.PageTableFormat = EVTPageTableFormat::UInt32;
+	SpaceDesc.PageTableFormat = bSupport16BitPageTable ? EVTPageTableFormat::UInt16 : EVTPageTableFormat::UInt32;
+
 	Space = InSystem->AcquireSpace(SpaceDesc, this);
 	SpaceID = Space->GetID();
 	PageTableFormat = Space->GetPageTableFormat();
@@ -293,7 +305,7 @@ static inline uint32 BitcastFloatToUInt32(float v)
 	return u.UIntValue;
 }
 
-void FAllocatedVirtualTexture::GetPackedPageTableUniform(FUintVector4* OutUniform, bool bApplyBlockScale) const
+void FAllocatedVirtualTexture::GetPackedPageTableUniform(FUintVector4* OutUniform) const
 {
 	const uint32 vPageX = FMath::ReverseMortonCode2(VirtualAddress);
 	const uint32 vPageY = FMath::ReverseMortonCode2(VirtualAddress >> 1);
@@ -313,16 +325,8 @@ void FAllocatedVirtualTexture::GetPackedPageTableUniform(FUintVector4* OutUnifor
 	checkSlow(MaxLevel < 16u);
 	checkSlow(SpaceID < 16u);
 
-	if (bApplyBlockScale)
-	{
-		OutUniform[0].X = BitcastFloatToUInt32(1.0f / (float)WidthInBlocks);
-		OutUniform[0].Y = BitcastFloatToUInt32(1.0f / (float)HeightInBlocks);
-	}
-	else
-	{
-		OutUniform[0].X = BitcastFloatToUInt32(1.0f);
-		OutUniform[0].Y = BitcastFloatToUInt32(1.0f);
-	}
+	OutUniform[0].X = BitcastFloatToUInt32(1.0f / (float)WidthInBlocks);
+	OutUniform[0].Y = BitcastFloatToUInt32(1.0f / (float)HeightInBlocks);
 
 	OutUniform[0].Z = BitcastFloatToUInt32((float)WidthInPages);
 	OutUniform[0].W = BitcastFloatToUInt32((float)HeightInPages);

@@ -5,6 +5,9 @@
 #include "UObject/Package.h"
 #include "UObject/UnrealTypePrivate.h"
 #include "UObject/LinkerLoad.h"
+#include "UObject/ConstructorHelpers.h"
+#include "Misc/Parse.h"
+#include "UObject/PropertyHelper.h"
 
 // WARNING: This should always be the last include in any file that needs it (except .generated.h)
 #include "UObject/UndefineUPropertyMacros.h"
@@ -31,21 +34,28 @@ EConvertFromTypeResult FFieldPathProperty::ConvertFromType(const FPropertyTag& T
 		FLinker* Linker = UnderlyingArchive.GetLinker();
 		check(Linker);
 
+		FFieldPath ConvertedValue;
+
 		FPackageIndex Index;
 		UnderlyingArchive << Index;
 
-		FString PropertyPathName;
-		if (Index.IsImport())
+		bool bExport = Index.IsExport();
+		while (!Index.IsNull())
 		{
-			PropertyPathName = Linker->GetImportPathName(Index);
+			const FObjectResource& Res = Linker->ImpExp(Index);
+			ConvertedValue.Path.Add(Res.ObjectName);
+			Index = Res.OuterIndex;
 		}
-		else if (Index.IsExport())
+		if (bExport)
 		{
-			PropertyPathName = Linker->GetExportPathName(Index);
+			check(Linker->LinkerRoot);
+			ConvertedValue.Path.Add(Linker->LinkerRoot->GetFName());
+		}
+		if (ConvertedValue.Path.Num())
+		{
+			ConvertedValue.ConvertFromFullPath(Cast<FLinkerLoad>(Linker));
 		}
 
-		FFieldPath ConvertedValue;
-		ConvertedValue.Generate(*PropertyPathName);
 		SetPropertyValue_InContainer(Data, ConvertedValue, Tag.ArrayIndex);
 		return EConvertFromTypeResult::Converted;
 	}
@@ -59,10 +69,10 @@ bool FFieldPathProperty::Identical( const void* A, const void* B, uint32 PortFla
 	if (B)
 	{
 		const FFieldPath ValueB = GetPropertyValue(B);
-		return ValueA.IsPathIdentical(ValueB);
+		return ValueA == ValueB;
 	}
 
-	return ValueA.IsEmpty();
+	return !ValueA.GetTyped(FField::StaticClass());
 }
 
 void FFieldPathProperty::SerializeItem(FStructuredArchive::FSlot Slot, void* Value, void const* Defaults) const
@@ -102,25 +112,46 @@ void FFieldPathProperty::ExportTextItem( FString& ValueStr, const void* Property
 
 const TCHAR* FFieldPathProperty::ImportText_Internal( const TCHAR* Buffer, void* Data, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText ) const
 {
+	check(Buffer);
 	FFieldPath* PathPtr = GetPropertyValuePtr(Data);
 	check(PathPtr);
+	FString PathName;
 
 	if (!(PortFlags & PPF_Delimited))
 	{
-		PathPtr->Generate(Buffer);
+		PathName = Buffer;
 		// in order to indicate that the value was successfully imported, advance the buffer past the last character that was imported
-		Buffer += FCString::Strlen(Buffer);
+		Buffer += PathName.Len();
 	}
 	else
-	{
-		FString Temp;
-		Buffer = FPropertyHelpers::ReadToken(Buffer, Temp, true);
-		if (!Buffer)
+	{		
+		// Advance to the next delimiter (comma) or the end of the buffer
+		int32 SeparatorIndex = 0;
+		while (Buffer[SeparatorIndex] != '\0' && Buffer[SeparatorIndex] != ',')
 		{
-			return nullptr;
+			++SeparatorIndex;
 		}
+		// Copy the value string
+		PathName = FString(SeparatorIndex, Buffer);
+		// Advance the buffer to let the calling function know we succeeded
+		Buffer += SeparatorIndex + 1;
+	}
 
-		PathPtr->Generate(*Temp);
+	if (PathName.Len())
+	{
+		// Strip the class name if present, we don't need it
+		ConstructorHelpers::StripObjectClass(PathName);
+		if (PathName[0] == '\"')
+		{
+			FString UnquotedPathName;
+			if (!FParse::QuotedString(*PathName, UnquotedPathName))
+			{
+				UE_LOG(LogProperty, Warning, TEXT("FieldPathProperty: Bad quoted string: %s"), *PathName);
+				return nullptr;
+			}
+			PathName = MoveTemp(UnquotedPathName);
+		}
+		PathPtr->Generate(*PathName);
 	}
 
 	return Buffer;
@@ -134,7 +165,6 @@ void FFieldPathProperty::Serialize(FArchive& Ar)
 
 FString FFieldPathProperty::GetCPPMacroType(FString& ExtendedTypeText) const
 {
-	//return FProperty::GetCPPMacroType(ExtendedTypeText);
 	check(PropertyClass);
 	ExtendedTypeText = FString::Printf(TEXT("TFieldPath<F%s>"), *PropertyClass->GetName());
 	return TEXT("STRUCT");
@@ -157,6 +187,11 @@ FString FFieldPathProperty::GetCPPType(FString* ExtendedTypeText, uint32 CPPExpo
 		InnerTypeText += TEXT(">");
 	}
 	return TEXT("TFieldPath");
+}
+
+bool FFieldPathProperty::SupportsNetSharedSerialization() const
+{
+	return false;
 }
 
 #include "UObject/DefineUPropertyMacros.h"

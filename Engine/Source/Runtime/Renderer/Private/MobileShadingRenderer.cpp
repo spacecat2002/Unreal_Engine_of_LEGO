@@ -48,6 +48,7 @@
 #include "DebugViewModeRendering.h"
 #include "SkyAtmosphereRendering.h"
 #include "VisualizeTexture.h"
+#include "VT/VirtualTextureFeedback.h"
 #include "VT/VirtualTextureSystem.h"
 #include "GPUSortManager.h"
 
@@ -199,11 +200,9 @@ void FMobileSceneRenderer::PrepareViewVisibilityLists()
 
 		// Init static mesh visibility info for CSM drawlist
 		MobileCSMVisibilityInfo.MobileCSMStaticMeshVisibilityMap.Init(false, View.StaticMeshVisibilityMap.Num());
-		MobileCSMVisibilityInfo.MobileCSMStaticBatchVisibility.AddZeroed(View.StaticMeshBatchVisibility.Num());
 
 		// Init static mesh visibility info for default drawlist that excludes meshes in CSM only drawlist.
 		MobileCSMVisibilityInfo.MobileNonCSMStaticMeshVisibilityMap = View.StaticMeshVisibilityMap;
-		MobileCSMVisibilityInfo.MobileNonCSMStaticBatchVisibility = View.StaticMeshBatchVisibility;
 	}
 }
 
@@ -355,6 +354,7 @@ void FMobileSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdList)
 		const FViewInfo& View = Views[0];
 		// We want to wait for the extension jobs only when the view is being actually rendered for the first time
 		Scene->UniformBuffers.UpdateViewUniformBuffer(View, false);
+		UpdateDepthPrepassUniformBuffer(RHICmdList, View);
 		UpdateOpaqueBasePassUniformBuffer(RHICmdList, View);
 		UpdateTranslucentBasePassUniformBuffer(RHICmdList, View);
 		UpdateDirectionalLightUniformBuffers(RHICmdList, View);
@@ -438,7 +438,7 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	// Whether we need to store depth for post-processing
 	// On PowerVR we see flickering of shadows and depths not updating correctly if targets are discarded.
 	// See CVarMobileForceDepthResolve use in ConditionalResolveSceneDepth.
-	const bool bForceDepthResolve = CVarMobileForceDepthResolve.GetValueOnRenderThread() == 1;
+	const bool bForceDepthResolve = bRequiresTranslucencyPass || CVarMobileForceDepthResolve.GetValueOnRenderThread() == 1;
 	const bool bSeparateTranslucencyActive = IsMobileSeparateTranslucencyActive(View);
 	bool bKeepDepthContent = bForceDepthResolve || (bRenderToSceneColor &&
 		(bSeparateTranslucencyActive ||
@@ -453,28 +453,14 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 
 	// Allocate the maximum scene render target space for the current view family.
-	SceneContext.ReleaseSceneColor();
 	SceneContext.SetKeepDepthContent(bKeepDepthContent);
 	SceneContext.Allocate(RHICmdList, this);
-
-	const bool bUseVirtualTexturing = UseVirtualTexturing(ViewFeatureLevel);
-	if (bUseVirtualTexturing)
-	{
-		// AllocateResources needs to be called before RHIBeginScene
-		FVirtualTextureSystem::Get().AllocateResources(RHICmdList, ViewFeatureLevel);
-		FVirtualTextureSystem::Get().CallPendingCallbacks();
-	}
 
 	//make sure all the targets we're going to use will be safely writable.
 	GRenderTargetPool.TransitionTargetsWritable(RHICmdList);
 
 	// Find the visible primitives.
 	InitViews(RHICmdList);
-
-	if (bUseVirtualTexturing)
-	{
-		FVirtualTextureSystem::Get().Update(RHICmdList, ViewFeatureLevel, Scene);
-	}
 	
 	if (GRHINeedsExtraDeletionLatency || !GRHICommandList.Bypass())
 	{
@@ -496,11 +482,16 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	RHICmdList.SetCurrentStat(GET_STATID(STAT_CLMM_SceneSim));
 
 	// Generate the Sky/Atmosphere look up tables
-	// Do compute work first, before any graphics work
 	const bool bShouldRenderSkyAtmosphere = ShouldRenderSkyAtmosphere(Scene, ViewFamily.EngineShowFlags);
 	if (bShouldRenderSkyAtmosphere)
 	{
 		RenderSkyAtmosphereLookUpTables(RHICmdList);
+	}
+
+	const bool bUseVirtualTexturing = UseVirtualTexturing(FeatureLevel);
+	if (bUseVirtualTexturing)
+	{
+		FVirtualTextureSystem::Get().Update(RHICmdList, ViewFeatureLevel, Scene);
 	}
 
 	// Notify the FX system that the scene is about to be rendered.
@@ -604,12 +595,6 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	SceneColorRenderPassInfo.bOcclusionQueries = SceneColorRenderPassInfo.NumOcclusionQueries != 0;
 	SceneColorRenderPassInfo.bMultiviewPass = View.bIsMobileMultiViewEnabled;
 
-	// TODO: required only for DX11 ?
-	if (UseVirtualTexturing(ViewFeatureLevel) && !IsHlslccShaderPlatform(View.GetShaderPlatform()))
-	{
-		SceneContext.BindVirtualTextureFeedbackUAV(SceneColorRenderPassInfo);
-	}
-	
 	RHICmdList.BeginRenderPass(SceneColorRenderPassInfo, TEXT("SceneColorRendering"));
 
 	RHICmdList.SetCurrentStat(GET_STATID(STAT_CLM_MobilePrePass));
@@ -777,8 +762,10 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	
 	if (!bGammaSpace || bRenderToSceneColor)
 	{
-		// transition scene color to Readable for post-processing
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, SceneColor);
+		// Transition scene color to readable for post-processing. If MSAA is enabled, post-processing will use the resolved
+		// texture, so make sure we transition that, not the render target.
+		FRHITexture* PPColorInput = SceneColorResolve != nullptr ? SceneColorResolve : SceneColor;
+		RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, PPColorInput);
 	}
 
 	RHICmdList.SetCurrentStat(GET_STATID(STAT_CLMM_Post));
@@ -790,15 +777,18 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	if (bUseVirtualTexturing)
 	{	
-		// No pass after this can make VT page requests
-		TArray<FIntRect, TInlineAllocator<FVirtualTextureFeedback::MaxRectPerTarget>> ViewRects;
+		// No pass after this should make VT page requests
+		TArray<FIntRect, TInlineAllocator<4>> ViewRects;
 		ViewRects.AddUninitialized(Views.Num());
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
 		{
 			ViewRects[ViewIndex] = Views[ViewIndex].ViewRect;
 		}
 		
-		SceneContext.VirtualTextureFeedback.TransferGPUToCPU(RHICmdList, ViewRects);
+		FVirtualTextureFeedbackBufferDesc Desc;
+		Desc.Init2D(SceneContext.GetBufferSizeXY(), ViewRects, SceneContext.GetVirtualTextureFeedbackScale());
+
+		SubmitVirtualTextureFeedbackBuffer(RHICmdList, SceneContext.VirtualTextureFeedback, Desc);
 	}
 	
 	if (ViewFamily.bResolveScene)
@@ -902,7 +892,7 @@ void FMobileSceneRenderer::RenderMobileDebugView(FRHICommandListImmediate& RHICm
 
 		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 		FDebugViewModePassPassUniformParameters PassParameters;
-		SetupDebugViewModePassUniformBuffer(SceneContext, View.GetFeatureLevel(), PassParameters);
+		SetupDebugViewModePassUniformBuffer(SceneContext, View, PassParameters);
 		Scene->UniformBuffers.DebugViewModePassUniformBuffer.UpdateUniformBufferImmediate(PassParameters);
 		
 		RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1);
@@ -1063,14 +1053,16 @@ void FMobileSceneRenderer::ConditionalResolveSceneDepth(FRHICommandListImmediate
 void FMobileSceneRenderer::UpdateOpaqueBasePassUniformBuffer(FRHICommandListImmediate& RHICmdList, const FViewInfo& View)
 {
 	FMobileBasePassUniformParameters Parameters;
-	SetupMobileBasePassUniformParameters(RHICmdList, View, false, Parameters);
+	SetupMobileBasePassUniformParameters(RHICmdList, View, false, false, Parameters);
 	Scene->UniformBuffers.MobileOpaqueBasePassUniformBuffer.UpdateUniformBufferImmediate(Parameters);
+	SetupMobileBasePassUniformParameters(RHICmdList, View, false, true, Parameters);
+	Scene->UniformBuffers.MobileCSMOpaqueBasePassUniformBuffer.UpdateUniformBufferImmediate(Parameters);	
 }
 
 void FMobileSceneRenderer::UpdateTranslucentBasePassUniformBuffer(FRHICommandListImmediate& RHICmdList, const FViewInfo& View)
 {
 	FMobileBasePassUniformParameters Parameters;
-	SetupMobileBasePassUniformParameters(RHICmdList, View, true, Parameters);
+	SetupMobileBasePassUniformParameters(RHICmdList, View, true, false, Parameters);
 	Scene->UniformBuffers.MobileTranslucentBasePassUniformBuffer.UpdateUniformBufferImmediate(Parameters);
 }
 
@@ -1101,6 +1093,14 @@ void FMobileSceneRenderer::UpdateSkyReflectionUniformBuffer()
 	FMobileReflectionCaptureShaderParameters Parameters;
 	SetupMobileSkyReflectionUniformParameters(SkyLight, Parameters);
 	Scene->UniformBuffers.MobileSkyReflectionUniformBuffer.UpdateUniformBufferImmediate(Parameters);
+}
+
+void FMobileSceneRenderer::UpdateDepthPrepassUniformBuffer(FRHICommandListImmediate& RHICmdList, const FViewInfo& View)
+{
+	FSceneTexturesUniformParameters SceneTextureParameters;
+	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+	SetupSceneTextureUniformParameters(SceneContext, View.FeatureLevel, ESceneTextureSetupMode::None, SceneTextureParameters);
+	Scene->UniformBuffers.DepthPassUniformBuffer.UpdateUniformBufferImmediate(SceneTextureParameters);
 }
 
 void FMobileSceneRenderer::CreateDirectionalLightUniformBuffers(FViewInfo& View)

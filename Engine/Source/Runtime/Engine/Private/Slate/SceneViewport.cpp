@@ -22,6 +22,8 @@
 #include "IXRTrackingSystem.h"
 #include "StereoRenderTargetManager.h"
 
+DEFINE_LOG_CATEGORY(LogViewport);
+
 extern EWindowMode::Type GetWindowModeType(EWindowMode::Type WindowMode);
 
 const FName NAME_SceneViewport = FName(TEXT("SceneViewport"));
@@ -297,7 +299,7 @@ void FSceneViewport::ProcessAccumulatedPointerInput()
 
 	if ( bCursorHiddenDueToCapture )
 	{
-		switch ( ViewportClient->CaptureMouseOnClick() )
+		switch ( ViewportClient->GetMouseCaptureMode() )
 		{
 		case EMouseCaptureMode::NoCapture:
 		case EMouseCaptureMode::CaptureDuringMouseDown:
@@ -466,11 +468,11 @@ FReply FSceneViewport::OnMouseButtonDown( const FGeometry& InGeometry, const FPo
 		}
 
 		const bool bTemporaryCapture = 
-			ViewportClient->CaptureMouseOnClick() == EMouseCaptureMode::CaptureDuringMouseDown ||
-			(ViewportClient->CaptureMouseOnClick() == EMouseCaptureMode::CaptureDuringRightMouseDown && InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton);
+			ViewportClient->GetMouseCaptureMode() == EMouseCaptureMode::CaptureDuringMouseDown ||
+			(ViewportClient->GetMouseCaptureMode() == EMouseCaptureMode::CaptureDuringRightMouseDown && InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton);
 
 		// Process primary input if we aren't currently a game viewport, we already have capture, or we are permanent capture that doesn't consume the mouse down.
-		const bool bProcessInputPrimary = !IsCurrentlyGameViewport() || HasMouseCapture() || (ViewportClient->CaptureMouseOnClick() == EMouseCaptureMode::CapturePermanently_IncludingInitialMouseDown);
+		const bool bProcessInputPrimary = !IsCurrentlyGameViewport() || HasMouseCapture() || (ViewportClient->GetMouseCaptureMode() == EMouseCaptureMode::CapturePermanently_IncludingInitialMouseDown);
 
 		const bool bAnyMenuWasVisible = FSlateApplication::Get().AnyMenusVisible();
 
@@ -487,8 +489,8 @@ FReply FSceneViewport::OnMouseButtonDown( const FGeometry& InGeometry, const FPo
 		const bool bNewMenuWasOpened = !bAnyMenuWasVisible && FSlateApplication::Get().AnyMenusVisible();
 
 		const bool bPermanentCapture =
-			(ViewportClient->CaptureMouseOnClick() == EMouseCaptureMode::CapturePermanently) ||
-			(ViewportClient->CaptureMouseOnClick() == EMouseCaptureMode::CapturePermanently_IncludingInitialMouseDown);
+			(ViewportClient->GetMouseCaptureMode() == EMouseCaptureMode::CapturePermanently) ||
+			(ViewportClient->GetMouseCaptureMode() == EMouseCaptureMode::CapturePermanently_IncludingInitialMouseDown);
 
 		if (FSlateApplication::Get().IsActive() && !ViewportClient->IgnoreInput() &&
 			!bNewMenuWasOpened && // We should not focus the viewport if a menu was opened as it would close the menu
@@ -513,7 +515,7 @@ FReply FSceneViewport::AcquireFocusAndCapture(FIntPoint MousePosition, EFocusCau
 	TSharedRef<SViewport> ViewportWidgetRef = ViewportWidget.Pin().ToSharedRef();
 
 	// Mouse down should focus viewport for user input
-	ReplyState.SetUserFocus(ViewportWidgetRef, FocusCause, true);
+	ReplyState.SetUserFocus(ViewportWidgetRef, FocusCause);
 
 	UWorld* World = ViewportClient->GetWorld();
 	if (World && World->IsGameWorld() && World->GetGameInstance() && (World->GetGameInstance()->GetFirstLocalPlayerController() || World->IsPlayInEditor()))
@@ -579,10 +581,25 @@ FReply FSceneViewport::OnMouseButtonUp( const FGeometry& InGeometry, const FPoin
 
 		bCursorVisible = ViewportClient->GetCursor(this, GetMouseX(), GetMouseY()) != EMouseCursor::None;
 
-		bReleaseMouseCapture =
-			bCursorVisible ||
-			ViewportClient->CaptureMouseOnClick() == EMouseCaptureMode::CaptureDuringMouseDown ||
-			( ViewportClient->CaptureMouseOnClick() == EMouseCaptureMode::CaptureDuringRightMouseDown && InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton );
+		if (bCursorVisible)
+		{
+			bReleaseMouseCapture = true;
+			UE_LOG(LogViewport, Log, TEXT("Releasing Mouse Capture; Cursor is visible"));
+		}
+		else if (ViewportClient->GetMouseCaptureMode() == EMouseCaptureMode::CaptureDuringMouseDown)
+		{
+			bReleaseMouseCapture = true;
+			UE_LOG(LogViewport, Log, TEXT("Releasing Mouse Capture; EMouseCaptureMode::CaptureDuringMouseDown - Mouse Button Released"));
+		}
+		else if (ViewportClient->GetMouseCaptureMode() == EMouseCaptureMode::CaptureDuringRightMouseDown && InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
+		{
+			bReleaseMouseCapture = true;
+			UE_LOG(LogViewport, Log, TEXT("Releasing Mouse Capture; EMouseCaptureMode::CaptureDuringRightMouseDown - Right Mouse Button Released"));
+		}
+		else
+		{
+			bReleaseMouseCapture = false;
+		}
 	}
 
 	if ( !IsCurrentlyGameViewport() || bReleaseMouseCapture )
@@ -745,7 +762,7 @@ FReply FSceneViewport::OnTouchStarted( const FGeometry& MyGeometry, const FPoint
 
 		if(ViewportClient->InputTouch( this, TouchEvent.GetUserIndex(), TouchEvent.GetPointerIndex(), ETouchType::Began, TouchPosition, TouchEvent.GetTouchForce(), FDateTime::Now(), TouchEvent.GetTouchpadIndex()) )
 		{
-			const bool bTemporaryCapture = ViewportClient->CaptureMouseOnClick() == EMouseCaptureMode::CaptureDuringMouseDown;
+			const bool bTemporaryCapture = ViewportClient->GetMouseCaptureMode() == EMouseCaptureMode::CaptureDuringMouseDown;
 			if (bTemporaryCapture)
 			{
 				CurrentReplyState = AcquireFocusAndCapture(FIntPoint(TouchEvent.GetScreenSpacePosition().X, TouchEvent.GetScreenSpacePosition().Y), EFocusCause::Mouse);
@@ -814,7 +831,7 @@ FReply FSceneViewport::OnTouchEnded( const FGeometry& MyGeometry, const FPointer
 			CurrentReplyState = FReply::Unhandled(); 
 		}
 
-		if (ViewportClient->CaptureMouseOnClick() == EMouseCaptureMode::CaptureDuringMouseDown)
+		if (ViewportClient->GetMouseCaptureMode() == EMouseCaptureMode::CaptureDuringMouseDown)
 		{
 			CurrentReplyState.ReleaseMouseCapture();
 		}
@@ -1088,8 +1105,8 @@ FReply FSceneViewport::OnFocusReceived(const FFocusEvent& InFocusEvent)
 
 			const bool bPermanentCapture = (!GIsEditor || InFocusEvent.GetCause() == EFocusCause::Mouse)	&&
 										   (ViewportClient != nullptr)										&&
-					(( ViewportClient->CaptureMouseOnClick() == EMouseCaptureMode::CapturePermanently ) ||
-					 ( ViewportClient->CaptureMouseOnClick() == EMouseCaptureMode::CapturePermanently_IncludingInitialMouseDown )
+					(( ViewportClient->GetMouseCaptureMode() == EMouseCaptureMode::CapturePermanently ) ||
+					 ( ViewportClient->GetMouseCaptureMode() == EMouseCaptureMode::CapturePermanently_IncludingInitialMouseDown )
 					);
 
 			// if bPermanentCapture is true, then ViewportClient != nullptr, so it's ok to dereference it.  But the permanent capture must be tested first.
@@ -1379,16 +1396,18 @@ void FSceneViewport::ResizeFrame(uint32 NewWindowSizeX, uint32 NewWindowSizeY, E
 			FVector2D ViewportSize = WindowToResize->GetWindowSizeFromClientSize(FVector2D(SizeX, SizeY));
 			FVector2D NewViewportSize = WindowToResize->GetViewportSize();
 
-			if (NewViewportSize != ViewportSize || NewWindowMode != OldWindowMode)
-			{
-				ResizeViewport(NewViewportSize.X, NewViewportSize.Y, NewWindowMode);
-			}
-
 			// Resize backbuffer
 			FVector2D BackBufferSize = WindowToResize->IsMirrorWindow() ? OldWindowSize : ViewportSize;
 			FVector2D NewBackbufferSize = WindowToResize->IsMirrorWindow() ? NewWindowSize : NewViewportSize;
-			
-			if (NewBackbufferSize != BackBufferSize)
+
+			if (NewViewportSize != ViewportSize || NewWindowMode != OldWindowMode)
+			{
+				FSlateApplicationBase::Get().GetRenderer()->UpdateFullscreenState(WindowToResize.ToSharedRef(), NewBackbufferSize.X, NewBackbufferSize.Y);
+				ResizeViewport(NewViewportSize.X, NewViewportSize.Y, NewWindowMode);
+			}
+
+
+			if(NewBackbufferSize != BackBufferSize)
 			{
 				FSlateApplicationBase::Get().GetRenderer()->UpdateFullscreenState(WindowToResize.ToSharedRef(), NewBackbufferSize.X, NewBackbufferSize.Y);
 			}
@@ -1465,19 +1484,6 @@ void FSceneViewport::ResizeViewport(uint32 NewSizeX, uint32 NewSizeY, EWindowMod
 		bIsResizing = true;
 
 		UpdateViewportRHI(false, NewSizeX, NewSizeY, NewWindowMode, PF_Unknown);
-
-#if WITH_EDITOR
-		FMargin SafeMargin;
-		if (FDisplayMetrics::GetDebugTitleSafeZoneRatio() < 1.f || !FSlateApplication::Get().GetCustomSafeZone().GetDesiredSize().IsZero())
-		{
-			FSlateApplication::Get().GetSafeZoneSize(SafeMargin, FVector2D(NewSizeX, NewSizeY));
-			SafeMargin.Left /= (NewSizeX / 2.0f);
-			SafeMargin.Right /= (NewSizeX / 2.0f);
-			SafeMargin.Bottom /= (NewSizeY / 2.0f);
-			SafeMargin.Top /= (NewSizeY / 2.0f);
-		}
-		FSlateApplication::Get().OnDebugSafeZoneChanged.Broadcast(SafeMargin, false);
-#endif
 		FCoreDelegates::OnSafeFrameChangedEvent.Broadcast();
 
 		if (ViewportClient)
@@ -1598,11 +1604,14 @@ void FSceneViewport::UpdateViewportRHI(bool bDestroyed, uint32 NewSizeX, uint32 
 			{
 				// Get the viewport for this window from the renderer so we can render directly to the backbuffer
 				FSlateRenderer* Renderer = FSlateApplication::Get().GetRenderer();
-				void* ViewportResource = Renderer->GetViewportResource(*FSlateApplication::Get().FindWidgetWindow( ViewportWidget.Pin().ToSharedRef()));
+
+				TSharedPtr<SWindow> Window = FSlateApplication::Get().FindWidgetWindow(ViewportWidget.Pin().ToSharedRef());
+				void* ViewportResource = Renderer->GetViewportResource(*Window);
 				if( ViewportResource )
 				{
 					ViewportRHI = *((FViewportRHIRef*)ViewportResource);
 				}
+				Renderer->UpdateFullscreenState(Window.ToSharedRef(), NewSizeX, NewSizeY);
 			}
 
 			ViewportResizedEvent.Broadcast(this, 0);
@@ -1731,7 +1740,7 @@ void FSceneViewport::EndRenderFrame(FRHICommandListImmediate& RHICmdList, bool b
 		if (bShouldUnsetTargets)
 		{
 			// Set the active render target(s) to nothing to release references in the case that the viewport is resized by slate before we draw again
-			UnbindRenderTargets(RHICmdList);
+			//UnbindRenderTargets(RHICmdList);
 		}
 		// Note: this releases our reference but does not release the resource as it is owned by slate (this is intended)
 		RenderTargetTextureRenderThreadRHI.SafeRelease();

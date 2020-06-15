@@ -46,6 +46,7 @@ namespace Audio
 		, bIsVorbis(false)
 		, bIsStoppingVoicesEnabled(InAudioDevice->IsStoppingVoicesEnabled())
 		, bSendingAudioToBuses(false)
+		, bPrevAllowedSpatializationSetting(false)
 	{
 	}
 
@@ -118,12 +119,13 @@ namespace Audio
 			InitParams.SourceVoice = MixerSourceVoice;
 			InitParams.bUseHRTFSpatialization = UseObjectBasedSpatialization();
 			InitParams.bIsExternalSend = MixerDevice->bSpatializationIsExternalSend;
-			InitParams.bIsAmbisonics = WaveInstance->bIsAmbisonics;
+			InitParams.bIsSoundfield = WaveInstance->bIsAmbisonics && (WaveInstance->WaveData->NumChannels == 4);
 
-			if (InitParams.bIsAmbisonics)
+			if (WaveInstance->bIsAmbisonics && (WaveInstance->WaveData->NumChannels != 4))
 			{
-				checkf(InitParams.NumInputChannels == 4, TEXT("Only allow 4 channel source if file is ambisonics format."));
+				UE_LOG(LogAudioMixer, Warning, TEXT("Sound wave %s was flagged as being ambisonics but had a channel count of %d. Currently the audio engine only supports FOA sources that have four channels."), *InWaveInstance->GetName(), WaveInstance->WaveData->NumChannels);
 			}
+
 			InitParams.AudioComponentUserID = WaveInstance->ActiveSound->GetAudioComponentUserID();
 
 			InitParams.AudioComponentID = WaveInstance->ActiveSound->GetAudioComponentID();
@@ -198,6 +200,7 @@ namespace Audio
 
 					FMixerSourceSubmixSend SubmixSend;
 					SubmixSend.Submix = SubmixPtr;
+					SubmixSend.SubmixSendStage = EMixerSourceSubmixSendStage::PostDistanceAttenuation;
 					SubmixSend.SendLevel = 1.0f;
 					SubmixSend.bIsMainSend = true;
 					SubmixSend.SoundfieldFactory = MixerDevice->GetFactoryForSubmixInstance(SubmixSend.Submix);
@@ -211,6 +214,12 @@ namespace Audio
 					{
 						FMixerSourceSubmixSend SubmixSend;
 						SubmixSend.Submix = MixerDevice->GetSubmixInstance(SendInfo.SoundSubmix);
+
+						SubmixSend.SubmixSendStage = EMixerSourceSubmixSendStage::PostDistanceAttenuation;
+						if (SendInfo.SendStage == ESubmixSendStage::PreDistanceAttenuation)
+						{
+							SubmixSend.SubmixSendStage = EMixerSourceSubmixSendStage::PreDistanceAttenuation;
+						}
 						SubmixSend.SendLevel = SendInfo.SendLevel;
 						SubmixSend.bIsMainSend = false;
 						SubmixSend.SoundfieldFactory = MixerDevice->GetFactoryForSubmixInstance(SubmixSend.Submix);
@@ -245,6 +254,9 @@ namespace Audio
 
 			// Whether or not we're 3D
 			bIs3D = !UseObjectBasedSpatialization() && WaveInstance->GetUseSpatialization() && SoundBuffer->NumChannels < 3;
+
+			// Pass on the fact that we're 3D to the init params
+			InitParams.bIs3D = bIs3D;
 
 			// Grab the source's reverb plugin settings
 			InitParams.SpatializationPluginSettings = UseSpatializationPlugin() ? WaveInstance->SpatializationPluginSettings : nullptr;
@@ -407,8 +419,6 @@ namespace Audio
 
 		++TickCount;
 
-		UpdateModulation();
-
 		UpdatePitch();
 
 		UpdateVolume();
@@ -422,7 +432,7 @@ namespace Audio
 		UpdateChannelMaps();
 
 #if ENABLE_AUDIO_DEBUG
-		FAudioDebugger::DrawDebugInfo(*this);
+		Audio::FAudioDebugger::DrawDebugInfo(*this);
 #endif // ENABLE_AUDIO_DEBUG
 	}
 
@@ -487,8 +497,8 @@ namespace Audio
 			}
 		}
 
-		check(!MixerSourceBuffer.IsValid());
-		MixerSourceBuffer = FMixerSourceBuffer::Create(*MixerBuffer, SoundWave, InWaveInstance->LoopingMode, bIsSeeking);
+		check(!MixerSourceBuffer.IsValid());		
+		MixerSourceBuffer = FMixerSourceBuffer::Create(AudioDevice->GetSampleRate(), *MixerBuffer, SoundWave, InWaveInstance->LoopingMode, bIsSeeking);
 		
 		if (!MixerSourceBuffer.IsValid())
 		{
@@ -799,7 +809,6 @@ namespace Audio
 		bIsDone = true;
 	}
 
-
 	void FMixerSource::OnEffectTailsDone()
 	{
 		bIsEffectTailsDone = true;
@@ -848,24 +857,6 @@ namespace Audio
 		ChannelMap.Reset();
 
 		InitializationState = EMixerSourceInitializationState::NotInitialized;
-	}
-
-	void FMixerSource::UpdateModulation()
-	{
-		check(AudioDevice);
-		check(MixerSourceVoice);
-		check(WaveInstance);
-
-		if (AudioDevice->IsModulationPluginEnabled())
-		{
-			const int32 SourceId = MixerSourceVoice->GetSourceId();
-			const bool bUpdatePending = AudioDevice->ModulationInterface->ProcessControls(SourceId, WaveInstance->SoundModulationControls);
-
-			if (bUpdatePending)
-			{
-				AudioDevice->UpdateModulationControls(SourceId, WaveInstance->SoundModulationControls);
-			}
-		}
 	}
 
 	void FMixerSource::UpdatePitch()
@@ -983,6 +974,41 @@ namespace Audio
 			MixerSourceVoice->SetSubmixSendInfo(MixerDevice->GetMasterReverbSubmix(), ReverbSendLevel);
 		}
 
+		if (WaveInstance->SubmixSendSettings.Num() > 0)
+		{
+			for (const FAttenuationSubmixSendSettings& SendSettings : WaveInstance->SubmixSendSettings)
+			{
+				if (SendSettings.Submix)
+				{
+					float SubmixSendLevel = 0.0f;
+
+					if (SendSettings.SubmixSendMethod == ESubmixSendMethod::Manual)
+					{
+						SubmixSendLevel = FMath::Clamp(SendSettings.ManualSubmixSendLevel, 0.0f, 1.0f);
+					}
+					else
+					{
+						// The alpha value is determined identically between manual and custom curve methods
+						const float Denom = FMath::Max(SendSettings.SubmixSendDistanceMax - SendSettings.SubmixSendDistanceMin, 1.0f);
+						const float Alpha = FMath::Clamp((WaveInstance->ListenerToSoundDistance - SendSettings.SubmixSendDistanceMin) / Denom, 0.0f, 1.0f);
+
+						if (WaveInstance->ReverbSendMethod == EReverbSendMethod::Linear)
+						{
+							SubmixSendLevel = FMath::Clamp(FMath::Lerp(SendSettings.SubmixSendLevelMin, SendSettings.SubmixSendLevelMax, Alpha), 0.0f, 1.0f);
+						}
+						else
+						{
+							SubmixSendLevel = FMath::Clamp(SendSettings.CustomSubmixSendCurve.GetRichCurveConst()->Eval(Alpha), 0.0f, 1.0f);
+						}
+					}
+
+
+					FMixerSubmixPtr SubmixPtr = MixerDevice->GetSubmixInstance(SendSettings.Submix).Pin();
+					MixerSourceVoice->SetSubmixSendInfo(SubmixPtr, SubmixSendLevel);
+				}
+			}
+		}
+
 		// Update submix send levels
 		for (FSoundSubmixSendInfo& SendInfo : WaveInstance->SoundSubmixSends)
 		{
@@ -1081,6 +1107,8 @@ namespace Audio
 		{
 			MixerSourceVoice->SetChannelMap(NumChannels, ChannelMap, bIs3D, WaveInstance->bCenterChannelOnly);
 		}
+
+		bPrevAllowedSpatializationSetting = IsSpatializationCVarEnabled();
 	}
 
 	bool FMixerSource::ComputeMonoChannelMap(Audio::AlignedFloatBuffer& OutChannelMap)
@@ -1104,7 +1132,7 @@ namespace Audio
 			MixerDevice->Get3DChannelMap(MixerDevice->GetNumDeviceChannels(), WaveInstance, WaveInstance->AbsoluteAzimuth, SpatializationParams.NormalizedOmniRadius, OutChannelMap);
 			return true;
 		}
-		else if (!OutChannelMap.Num())
+		else if (!OutChannelMap.Num() || (IsSpatializationCVarEnabled() != bPrevAllowedSpatializationSetting))
 		{
 			// Only need to compute the 2D channel map once
 			MixerDevice->Get2DChannelMap(bIsVorbis, 1, WaveInstance->bCenterChannelOnly, OutChannelMap);
@@ -1166,7 +1194,7 @@ namespace Audio
 			}
 		}
 
-		if (!OutChannelMap.Num())
+		if (!OutChannelMap.Num() || (IsSpatializationCVarEnabled() != bPrevAllowedSpatializationSetting))
 		{
 			MixerDevice->Get2DChannelMap(bIsVorbis, 2, WaveInstance->bCenterChannelOnly, OutChannelMap);
 			return true;

@@ -31,6 +31,8 @@
 
 class Error;
 class FPrimitiveDrawInterface;
+class FCanvas;
+class FSceneView;
 class UAnimInstance;
 class UPhysicalMaterial;
 class USkeletalMeshComponent;
@@ -50,10 +52,12 @@ typedef FOnSkelMeshTeleportedMultiCast::FDelegate FOnSkelMeshTeleported;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnBoneTransformsFinalized);
 
+#if PHYSICS_INTERFACE_PHYSX
 namespace physx
 {
 	class PxAggregate;
 }
+#endif
 
 UENUM()
 enum class EAnimCurveType : uint8 
@@ -449,8 +453,6 @@ public:
 	UPROPERTY(transient)
 	uint8 bHasValidBodies:1;
 
-	/** Indicates that this SkeletalMeshComponent has deferred kinematic bone updates until next physics sim.  */
-	uint8 bDeferredKinematicUpdate:1;
 
 	/** Enables blending in of physics bodies whether Simulate or not*/
 	UPROPERTY(transient)
@@ -474,6 +476,13 @@ public:
 	/** Disable cloth simulation and play original animation without simulation */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Clothing)
 	uint8 bDisableClothSimulation:1;
+
+	/** Indicates that this SkeletalMeshComponent has deferred kinematic bone updates until next physics sim if not INDEX_NONE. */
+	int32 DeferredKinematicUpdateIndex;
+#if PHYSICS_INTERFACE_PHYSX
+	/** Indicates that this SkeletalMeshComponent has deferred kinematic bone updates until next physics sim.  */
+	uint8 bDeferredKinematicUpdate:1;
+#endif
 
 private:
 	/** Disable rigid body animation nodes and play original animation without simulation */
@@ -1410,6 +1419,13 @@ public:
 	 */
 	void DebugDrawClothing(FPrimitiveDrawInterface* PDI);
 
+	/**
+	 * Draw the currently clothing state, using the editor extender interface
+	 * @param Canvas The canvas to draw the text on
+	 * @param SceneView The view to project the text with
+	 */
+	void DebugDrawClothingTexts(FCanvas* Canvas, const FSceneView* SceneView);
+
 	/** Changes the value of bNotifyRigidBodyCollision
 	* @param bNewNotifyRigidBodyCollision - The value to assign to bNotifyRigidBodyCollision
 	*/
@@ -1682,9 +1698,12 @@ public:
 	virtual void SetPhysicsAsset(class UPhysicsAsset* NewPhysicsAsset,bool bForceReInit = false) override;
 	virtual void SetSkeletalMesh(class USkeletalMesh* NewMesh, bool bReinitPose = true) override;
 
-	static FVector GetSkinnedVertexPosition(USkeletalMeshComponent* Component, int32 VertexIndex, const FSkeletalMeshLODRenderData& Model, FSkinWeightVertexBuffer& SkinWeightBuffer);
-	static FVector GetSkinnedVertexPosition(USkeletalMeshComponent* Component, int32 VertexIndex, const FSkeletalMeshLODRenderData& Model, FSkinWeightVertexBuffer& SkinWeightBuffer, TArray<FMatrix>& CachedRefToLocals);
-	static void ComputeSkinnedPositions(USkeletalMeshComponent* Component, TArray<FVector> & OutPositions, TArray<FMatrix>& CachedRefToLocals, const FSkeletalMeshLODRenderData& Model, FSkinWeightVertexBuffer& SkinWeightBuffer);
+	static FVector GetSkinnedVertexPosition(USkeletalMeshComponent* Component, int32 VertexIndex, const FSkeletalMeshLODRenderData& Model, const FSkinWeightVertexBuffer& SkinWeightBuffer);
+	static FVector GetSkinnedVertexPosition(USkeletalMeshComponent* Component, int32 VertexIndex, const FSkeletalMeshLODRenderData& Model, const FSkinWeightVertexBuffer& SkinWeightBuffer, TArray<FMatrix>& CachedRefToLocals);
+	static void ComputeSkinnedPositions(USkeletalMeshComponent* Component, TArray<FVector> & OutPositions, TArray<FMatrix>& CachedRefToLocals, const FSkeletalMeshLODRenderData& Model, const FSkinWeightVertexBuffer& SkinWeightBuffer);
+
+	static void GetSkinnedTangentBasis(USkeletalMeshComponent* Component, int32 VertexIndex, const FSkeletalMeshLODRenderData& Model, const FSkinWeightVertexBuffer& SkinWeightBuffer, TArray<FMatrix>& CachedRefToLocals, FVector& OutTangentX, FVector& OutTangentZ);
+	static void ComputeSkinnedTangentBasis(USkeletalMeshComponent* Component, TArray<FVector>& OutTangenXZ, TArray<FMatrix>& CachedRefToLocals, const FSkeletalMeshLODRenderData& Model, const FSkinWeightVertexBuffer& SkinWeightBuffer);
 
 	void SetSkeletalMeshWithoutResettingAnimation(class USkeletalMesh* NewMesh);
 

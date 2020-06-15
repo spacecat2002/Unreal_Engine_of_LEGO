@@ -55,9 +55,17 @@ FCoreDelegates::FOnActorLabelChanged FCoreDelegates::OnActorLabelChanged;
 FCoreDelegates::FRegisterMovieStreamerDelegate FCoreDelegates::RegisterMovieStreamerDelegate;
 FCoreDelegates::FUnRegisterMovieStreamerDelegate FCoreDelegates::UnRegisterMovieStreamerDelegate;
 
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 FCoreDelegates::FRegisterEncryptionKeyDelegate& FCoreDelegates::GetRegisterEncryptionKeyDelegate()
 {
 	static FRegisterEncryptionKeyDelegate RegisterEncryptionKeyDelegate;
+	return RegisterEncryptionKeyDelegate;
+}
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
+
+FCoreDelegates::FRegisterEncryptionKeyMulticastDelegate& FCoreDelegates::GetRegisterEncryptionKeyMulticastDelegate()
+{
+	static FRegisterEncryptionKeyMulticastDelegate RegisterEncryptionKeyDelegate;
 	return RegisterEncryptionKeyDelegate;
 }
 
@@ -85,9 +93,11 @@ FSimpleMulticastDelegate FCoreDelegates::OnPostEngineInit;
 FSimpleMulticastDelegate FCoreDelegates::OnFEngineLoopInitComplete;
 FSimpleMulticastDelegate FCoreDelegates::OnExit;
 FSimpleMulticastDelegate FCoreDelegates::OnPreExit;
+FSimpleMulticastDelegate FCoreDelegates::OnEnginePreExit;
 FCoreDelegates::FGatherAdditionalLocResPathsDelegate FCoreDelegates::GatherAdditionalLocResPathsCallback;
 FSimpleMulticastDelegate FCoreDelegates::ColorPickerChanged;
 FSimpleMulticastDelegate FCoreDelegates::OnBeginFrame;
+FSimpleMulticastDelegate FCoreDelegates::OnSamplingInput;
 FSimpleMulticastDelegate FCoreDelegates::OnEndFrame;
 FSimpleMulticastDelegate FCoreDelegates::OnBeginFrameRT;
 FSimpleMulticastDelegate FCoreDelegates::OnEndFrameRT;

@@ -44,9 +44,7 @@
 
 #if !PLATFORM_HOLOLENS && defined(_WIN64)
 // Remoting
-#include <winrt/base.h>
 #include <winrt/Microsoft.Holographic.AppRemoting.h>
-#include <HolographicAppRemoting/Streamer.h>
 #define HOLO_STREAMING_RENDERING 1
 #include <winrt/Windows.Data.Xml.Dom.h>
 #include <winrt/Windows.Storage.h>
@@ -125,6 +123,7 @@ namespace WindowsMixedReality
 		void(*FinishFunctionPointer)()
 	);
 	void StopSceneUnderstandingObserver();
+	void _SetSUCoordinateSystem();
 
 	void StartQRCodeObserver(void(*AddedFunctionPointer)(QRCodeData*), void(*UpdatedFunctionPointer)(QRCodeData*), void(*RemovedFunctionPointer)(QRCodeData*));
 	void UpdateQRCodeObserverCoordinateSystem(winrt::Windows::Perception::Spatial::SpatialCoordinateSystem InCoordinateSystem);
@@ -173,7 +172,6 @@ namespace WindowsMixedReality
 	// Variables used from event handlers must be declared inside of the cpp.
 	// Camera resources.
 	float nearPlaneDistance = 0.001f;
-	float farPlaneDistance = 650.0f;
 	float ScreenScaleFactor = 1.0f;
 	std::shared_ptr<HolographicCameraResources> CameraResources = nullptr;
 	std::shared_ptr<HolographicCameraResources> PVCameraResources = nullptr;
@@ -308,9 +306,9 @@ namespace WindowsMixedReality
 	Microsoft::Holographic::ConnectedEvent^ RemotingConnectedEvent = nullptr;
 	Microsoft::Holographic::DisconnectedEvent^ RemotingDisconnectedEvent = nullptr;
 
-	std::map<uint32, MixedRealityInterop::ConnectionCallback > ConnectionHandlerMap;
+	std::map<uint32_t, MixedRealityInterop::ConnectionCallback > ConnectionHandlerMap;
 	std::recursive_mutex ConnectionHandlerLock;
-	uint32 ConnectionHandlerMaxId = 1;
+	uint32_t ConnectionHandlerMaxId = 1;
 
 	std::mutex remoteContextLock;
 	HMDRemotingConnectionState remotingState = HMDRemotingConnectionState::Disconnected;
@@ -332,7 +330,7 @@ namespace WindowsMixedReality
 			: quadLayer(quadLayer)
 		{ }
 
-		uint32 index = 0;
+		uint32_t index = 0;
 
 		ID3D11Texture2D* texture = nullptr;
 		HolographicQuadLayer quadLayer = nullptr;
@@ -587,11 +585,11 @@ namespace WindowsMixedReality
 				DirectX::XMMATRIX lastKnownCoordSystemTransform = DirectX::XMMatrixIdentity();
 				if (displayCamera)
 				{
-					DirectX::XMMATRIX lastKnownCoordSystemTransform = DirectX::XMLoadFloat4x4((const DirectX::XMFLOAT4X4*)&LastKnownCoordinateSystemTransform);
+					lastKnownCoordSystemTransform = DirectX::XMLoadFloat4x4((const DirectX::XMFLOAT4X4*)&LastKnownCoordinateSystemTransform);
 				}
 				else
 				{
-					DirectX::XMMATRIX lastKnownCoordSystemTransform = DirectX::XMLoadFloat4x4((const DirectX::XMFLOAT4X4*)&LastKnownThirdCameraCoordinateSystemTransform);
+					lastKnownCoordSystemTransform = DirectX::XMLoadFloat4x4((const DirectX::XMFLOAT4X4*)&LastKnownThirdCameraCoordinateSystemTransform);
 				}
 
 				// Transform the left and right poses by the last known coordinate system transform.
@@ -737,7 +735,7 @@ namespace WindowsMixedReality
 
 		bool CommitDepthTexture(Microsoft::WRL::ComPtr<ID3D11Texture2D> depthTexture, HolographicCameraRenderingParameters RenderingParameters)
 		{
-			if (isRemoteHolographicSpace)
+			if (isRemoteHolographicSpace && m_isHL1Remoting)
 			{
 				return false;
 			}
@@ -1216,10 +1214,9 @@ namespace WindowsMixedReality
 		Log(stream.str().c_str());
 	}
 
-	void MixedRealityInterop::Initialize(ID3D11Device* device, float nearPlane, float farPlane)
+	void MixedRealityInterop::Initialize(ID3D11Device* device, float nearPlane)
 	{
 		nearPlaneDistance = nearPlane;
-		farPlaneDistance = farPlane;
 
 		LastKnownProjection.Left = winrt::Windows::Foundation::Numerics::float4x4::identity();
 		LastKnownProjection.Right = winrt::Windows::Foundation::Numerics::float4x4::identity();
@@ -1779,13 +1776,21 @@ namespace WindowsMixedReality
 				return;
 			}
 
+			try
+			{
 #if	LOG_HOLOLENS_FRAME_COUNTER
-			{ std::wstringstream string; string << L"BlockUntilNextFrame() started"; Log(string); }
-			holographicSpace.WaitForNextFrameReady();
-			{ std::wstringstream string; string << L"BlockUntilNextFrame() ended"; Log(string); }
+				{ std::wstringstream string; string << L"BlockUntilNextFrame() started"; Log(string); }
+				holographicSpace.WaitForNextFrameReady();
+				{ std::wstringstream string; string << L"BlockUntilNextFrame() ended"; Log(string); }
 #else
-			holographicSpace.WaitForNextFrameReady();
+				holographicSpace.WaitForNextFrameReady();
 #endif
+			}
+			catch (winrt::hresult_error&)
+			{
+				Log(L"BlockUntilNextFrame() failed with exception");
+			}
+
 		}
 #endif
 	}
@@ -1931,25 +1936,6 @@ namespace WindowsMixedReality
 
 			HolographicStereoTransform CameraProjectionTransform = pose.ProjectionTransform();
 
-			// Override the projection transform so we have correct matrices to unproject depth to.
-			// IHolographicCameraPose2 is not supported when remoting.
-			if (!isRemoteHolographicSpace)
-			{
-				CameraProjectionTransform.Left.m33 = 0;
-				CameraProjectionTransform.Left.m43 = nearPlaneDistance;
-
-				CameraProjectionTransform.Right.m33 = 0;
-				CameraProjectionTransform.Right.m43 = nearPlaneDistance;
-
-				IHolographicCameraPose2 pose2 = CameraResources->Pose;
-				if (eye == HMDEye::ThirdCamera)
-				{
-					pose2 = PVCameraResources->Pose;
-				}
-
-				pose2.OverrideProjectionTransform(CameraProjectionTransform);
-			}
-
 			projection = (eye == HMDEye::Left || eye == HMDEye::ThirdCamera)
 				? CameraProjectionTransform.Left
 				: CameraProjectionTransform.Right;
@@ -1990,7 +1976,7 @@ namespace WindowsMixedReality
 		camera.ViewportScaleFactor(ScreenScaleFactor);
 	}
 
-	int32 MixedRealityInterop::GetMaxQuadLayerCount() const
+	int32_t MixedRealityInterop::GetMaxQuadLayerCount() const
 	{
 		if (CameraResources)
 		{
@@ -2000,8 +1986,8 @@ namespace WindowsMixedReality
 		return -1;
 	}
 
-	uint32 MixedRealityInterop::AddQuadLayer(
-		uint32 Id,
+	uint32_t MixedRealityInterop::AddQuadLayer(
+		uint32_t Id,
 		ID3D11Texture2D* quadLayerTexture, 
 		float widthM, float heightM,
 		DirectX::XMFLOAT3 position,
@@ -2072,7 +2058,7 @@ namespace WindowsMixedReality
 		return layer.index;
 	}
 
-	void MixedRealityInterop::RemoveQuadLayer(uint32 Id)
+	void MixedRealityInterop::RemoveQuadLayer(uint32_t Id)
 	{
 		std::lock_guard<std::mutex> lock(quadLayerLock);
 
@@ -3726,7 +3712,7 @@ namespace WindowsMixedReality
 				{
 					DisconnectFromDevice();
 					{
-						std::map<uint32, ConnectionCallback > copyOfMap;
+						std::map<uint32_t, ConnectionCallback > copyOfMap;
 						{
 							std::lock_guard<std::recursive_mutex> lock(ConnectionHandlerLock);
 							copyOfMap = ConnectionHandlerMap;
@@ -3758,7 +3744,7 @@ namespace WindowsMixedReality
 			
 			// Do not use WMR api's before this call when remoting or you may get access to local machine WMR instead.
 			std::lock_guard<std::mutex> remoteLock(remoteContextLock);
-			CreateRemoteContext(m_remoteContext, bitrate);
+			m_remoteContext = winrt::Microsoft::Holographic::AppRemoting::RemoteContext::Create(bitrate, true, winrt::Microsoft::Holographic::AppRemoting::PreferredVideoCodec::Any);
 			{
 				holographicSpace = HolographicSpace::CreateForCoreWindow(nullptr);
 				isRemoteHolographicSpace = true;
@@ -3779,14 +3765,39 @@ namespace WindowsMixedReality
 				RequestUserPermissionForEyeTracking();
 			});
 
+
 			m_onDisconnectedEventRevoker =
 				m_remoteContext.OnDisconnected(winrt::auto_revoke, [this](winrt::Microsoft::Holographic::AppRemoting::ConnectionFailureReason failureReason) 
 			{
-				{ std::wstringstream string; string << L"RemotingDisconnectedEvent: Reason: " << static_cast<int>(failureReason); Log(string); }
+				const wchar_t ConnectFailureReasonString[static_cast<int32>(winrt::Microsoft::Holographic::AppRemoting::ConnectionFailureReason::DisconnectRequest) + 1][32] =
+				{
+					L"None",
+					L"Unknown",
+					L"NoServerCertificate",
+					L"HandshakePortBusy",
+					L"HandshakeUnreachable",
+					L"HandshakeConnectionFailed",
+					L"AuthenticationFailed",
+					L"RemotingVersionMismatch",
+					L"IncompatibleTransportProtocols",
+					L"HandshakeFailed",
+					L"TransportPortBusy",
+					L"TransportUnreachable",
+					L"TransportConnectionFailed",
+					L"ProtocolVersionMismatch",
+					L"ProtocolError",
+					L"VideoCodecNotAvailable",
+					L"Canceled",
+					L"ConnectionLost",
+					L"DeviceLost",
+					L"DisconnectRequest"
+				}; 
+
+				{ std::wstringstream string; string << L"RemotingDisconnectedEvent: Reason: " << static_cast<int>(failureReason) << " " << ConnectFailureReasonString[static_cast<int32>(failureReason)]; Log(string); }
 
 				DisconnectFromDevice();
 				{
-					std::map<uint32, ConnectionCallback > copyOfMap;
+					std::map<uint32_t, ConnectionCallback > copyOfMap;
 					{
 						std::lock_guard<std::recursive_mutex> lock(ConnectionHandlerLock);
 						copyOfMap = ConnectionHandlerMap;
@@ -3987,7 +3998,7 @@ namespace WindowsMixedReality
 		return false;
 	}
 
-	uint32 MixedRealityInterop::SubscribeConnectionEvent(ConnectionCallback callback)
+	uint32_t MixedRealityInterop::SubscribeConnectionEvent(ConnectionCallback callback)
 	{
 #if HOLO_STREAMING_RENDERING
 		std::lock_guard<std::recursive_mutex> lock(ConnectionHandlerLock);
@@ -3999,7 +4010,7 @@ namespace WindowsMixedReality
 #endif
 	}
 
-	void MixedRealityInterop::UnsubscribeConnectionEvent(uint32 id)
+	void MixedRealityInterop::UnsubscribeConnectionEvent(uint32_t id)
 	{
 #if HOLO_STREAMING_RENDERING
 		if (id == 0)
@@ -4071,6 +4082,10 @@ namespace WindowsMixedReality
 		StopSceneUnderstandingObserver();
 	}
 
+	void MixedRealityInterop::SetSUCoordinateSystem()
+	{
+		_SetSUCoordinateSystem();
+	}
 	void MixedRealityInterop::StartQRCodeTracking(void(*AddedFunctionPointer)(QRCodeData*), void(*UpdatedFunctionPointer)(QRCodeData*), void(*RemovedFunctionPointer)(QRCodeData*))
 	{
 		StartQRCodeObserver(AddedFunctionPointer, UpdatedFunctionPointer, RemovedFunctionPointer);
@@ -4194,13 +4209,8 @@ namespace WindowsMixedReality
 	void UpdateMeshObserverBoundingVolume(winrt::Windows::Perception::Spatial::SpatialCoordinateSystem InCoordinateSystem, winrt::Windows::Foundation::Numerics::float3 InPosition)
 	{
 #if PLATFORM_HOLOLENS || HOLO_STREAMING_RENDERING
-		// This is intentional because god hates me
-		Windows::Foundation::Numerics::float3 Position;
-		Position.x = InPosition.x;
-		Position.y = InPosition.y;
-		Position.z = InPosition.z;
 		MeshUpdateObserver& Instance = MeshUpdateObserver::Get();
-		Instance.UpdateBoundingVolume(to_cx<Windows::Perception::Spatial::SpatialCoordinateSystem>(InCoordinateSystem), Position);
+		Instance.UpdateBoundingVolume(InCoordinateSystem, InPosition);
 #endif
 	}
 
@@ -4260,6 +4270,16 @@ namespace WindowsMixedReality
 		Instance.StopSceneUnderstandingObserver();
 #endif
 	}
+	void _SetSUCoordinateSystem()
+	{
+#if PLATFORM_HOLOLENS
+		SceneUnderstandingObserver& Instance = SceneUnderstandingObserver::Get();
+
+		WindowsMixedReality::HMDTrackingOrigin origin;
+		winrt::Windows::Perception::Spatial::SpatialCoordinateSystem cs = GetReferenceCoordinateSystem(origin);
+		Instance.SetTrackingCoordinateSystem(cs);
+#endif
+	}
 }
 
 #include "QRCodeObserver.h"
@@ -4268,7 +4288,7 @@ namespace WindowsMixedReality
 {
 	void StartQRCodeObserver(void(*AddedFunctionPointer)(QRCodeData*), void(*UpdatedFunctionPointer)(QRCodeData*), void(*RemovedFunctionPointer)(QRCodeData*))
 	{
-#if PLATFORM_HOLOLENS
+#if PLATFORM_HOLOLENS || HOLO_STREAMING_RENDERING
 		QRCodeUpdateObserver& Instance = QRCodeUpdateObserver::Get();
 		// Pass any logging callback on
 		Instance.SetOnLog(m_logCallback);
@@ -4278,15 +4298,15 @@ namespace WindowsMixedReality
 
 	void UpdateQRCodeObserverCoordinateSystem(winrt::Windows::Perception::Spatial::SpatialCoordinateSystem InCoordinateSystem)
 	{
-#if PLATFORM_HOLOLENS
+#if PLATFORM_HOLOLENS || HOLO_STREAMING_RENDERING
 		QRCodeUpdateObserver& Instance = QRCodeUpdateObserver::Get();
-		Instance.UpdateCoordinateSystem(to_cx<Windows::Perception::Spatial::SpatialCoordinateSystem>(InCoordinateSystem));
+		Instance.UpdateCoordinateSystem(InCoordinateSystem);
 #endif
 	}
 
 void StopQRCodeObserver()
 	{
-#if PLATFORM_HOLOLENS
+#if PLATFORM_HOLOLENS || HOLO_STREAMING_RENDERING
 		QRCodeUpdateObserver& Instance = QRCodeUpdateObserver::Get();
 		Instance.Release();
 #endif

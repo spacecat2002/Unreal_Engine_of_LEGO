@@ -15,6 +15,12 @@
 #include "GenericPlatform/GenericPlatformCrashContext.h"
 #include "PipelineStateCache.h"
 
+#if NV_GEFORCENOW
+THIRD_PARTY_INCLUDES_START
+#include "GfnRuntimeSdk_CAPI.h"
+THIRD_PARTY_INCLUDES_END
+#endif
+
 IMPLEMENT_TYPE_LAYOUT(FRayTracingGeometryInitializer);
 IMPLEMENT_TYPE_LAYOUT(FRayTracingGeometrySegment);
 
@@ -39,6 +45,11 @@ static TAutoConsoleVariable<int32> CVarWarnOfBadDrivers(
 	ECVF_RenderThreadSafe
 	);
 
+static TAutoConsoleVariable<int32> CVarDisableDriverWarningPopupIfGFN(
+	TEXT("r.DisableDriverWarningPopupIfGFN"),
+	1,
+	TEXT("If non-zero, disable driver version warning popup if running on a GFN cloud machine."),
+	ECVF_RenderThreadSafe);
 
 void InitNullRHI()
 {
@@ -181,7 +192,7 @@ static void RHIDetectAndWarnOfBadDrivers(bool bHasEditorToken)
 		return;
 	}
 
-	if (FPlatformMisc::MacOSXVersionCompare(10,14,6) < 0)
+	if (FPlatformMisc::MacOSXVersionCompare(10,15,5) < 0)
 	{
 		// this message can be suppressed with r.WarnOfBadDrivers=0
 		FPlatformMisc::MessageBoxExt(EAppMsgType::Ok,
@@ -193,7 +204,7 @@ static void RHIDetectAndWarnOfBadDrivers(bool bHasEditorToken)
 
 void RHIInit(bool bHasEditorToken)
 {
-	if(!GDynamicRHI)
+	if (!GDynamicRHI)
 	{
 		// read in any data driven shader platform info structures we can find
 		FGenericDataDrivenShaderPlatformInfo::Initialize();
@@ -222,6 +233,12 @@ void RHIInit(bool bHasEditorToken)
 				GRHICommandList.GetImmediateAsyncComputeCommandList().GetComputeContext();
 				check(GIsRHIInitialized);
 
+				// Set default GPU mask to all GPUs. This is necessary to ensure that any commands
+				// that create and initialize resources are executed on all GPUs. Scene rendering
+				// will restrict itself to a subset of GPUs as needed.
+				GRHICommandList.GetImmediateCommandList().SetGPUMask(FRHIGPUMask::All());
+				GRHICommandList.GetImmediateAsyncComputeCommandList().SetGPUMask(FRHIGPUMask::All());
+
 				FString FeatureLevelString;
 				GetFeatureLevelName(GMaxRHIFeatureLevel, FeatureLevelString);
 
@@ -232,7 +249,7 @@ void RHIInit(bool bHasEditorToken)
 					FMessageDialog::Open(EAppMsgType::Ok, FText::FromString(Error));
 					FPlatformMisc::RequestExit(1);
 				}
-				
+
 				// Update the crash context analytics
 				FGenericCrashContext::SetEngineData(TEXT("RHI.RHIName"), GDynamicRHI ? GDynamicRHI->GetName() : TEXT("Unknown"));
 				FGenericCrashContext::SetEngineData(TEXT("RHI.AdapterName"), GRHIAdapterName);
@@ -254,7 +271,32 @@ void RHIInit(bool bHasEditorToken)
 	}
 
 #if PLATFORM_WINDOWS || PLATFORM_MAC
+#if NV_GEFORCENOW
+	bool bDetectAndWarnBadDrivers = true;
+	if (IsRHIDeviceNVIDIA() && !!CVarDisableDriverWarningPopupIfGFN.GetValueOnAnyThread())
+	{
+		const GfnRuntimeSdk::GfnRuntimeError GfnResult = GfnRuntimeSdk::gfnInitializeRuntimeSdk(GfnRuntimeSdk::gfnDefaultLanguage);
+		const bool bGfnRuntimeSDKInitialized = GfnResult == GfnRuntimeSdk::gfnSuccess || GfnResult == GfnRuntimeSdk::gfnInitSuccessClientOnly;
+		if (bGfnRuntimeSDKInitialized)
+		{
+			UE_LOG(LogRHI, Log, TEXT("GeForceNow SDK initialized: %d"), (int32)GfnResult);
+		}
+		else
+		{
+			UE_LOG(LogRHI, Log, TEXT("GeForceNow SDK initialization failed: %d"), (int32)GfnResult);
+		}
+
+		// Don't pop up a driver version warning window when running on a cloud machine
+		bDetectAndWarnBadDrivers = !bGfnRuntimeSDKInitialized || !GfnRuntimeSdk::gfnIsRunningInCloud();
+	}
+
+	if (bDetectAndWarnBadDrivers)
+	{
+		RHIDetectAndWarnOfBadDrivers(bHasEditorToken);
+	}
+#else
 	RHIDetectAndWarnOfBadDrivers(bHasEditorToken);
+#endif
 #endif
 }
 
@@ -267,7 +309,7 @@ void RHIPostInit(const TArray<uint32>& InPixelFormatByteWidth)
 
 void RHIExit()
 {
-	if ( !GUsingNullRHI && GDynamicRHI != NULL )
+	if (!GUsingNullRHI && GDynamicRHI != NULL)
 	{
 		// Clean up all cached pipelines
 		PipelineStateCache::Shutdown();
@@ -277,6 +319,13 @@ void RHIExit()
 		delete GDynamicRHI;
 		GDynamicRHI = NULL;
 	}
+
+#if NV_GEFORCENOW
+	if (GRHIVendorId != 0 && IsRHIDeviceNVIDIA() && !!CVarDisableDriverWarningPopupIfGFN.GetValueOnAnyThread())
+	{
+		GfnRuntimeSdk::gfnShutdownRuntimeSdk();
+	}
+#endif
 }
 
 
@@ -371,7 +420,7 @@ void FDynamicRHI::RHIUpdateShaderResourceView(FRHIShaderResourceView* SRV, FRHII
 
 uint64 FDynamicRHI::RHIGetMinimumAlignmentForBufferBackedSRV(EPixelFormat Format)
 {
-	return 16; // not-Metal requires a minimum alignment of of 16-bytes.
+	return 1;
 }
 
 uint64 FDynamicRHI::RHICalcVMTexture2DPlatformSize(uint32 Mip0Width, uint32 Mip0Height, uint8 Format, uint32 NumMips, uint32 FirstMipIdx, uint32 NumSamples, uint32 Flags, uint32& OutAlign)
@@ -455,28 +504,30 @@ void FDynamicRHI::RHICheckViewportHDRStatus(FRHIViewport* Viewport)
 }
 
 
-FShaderResourceViewInitializer::FShaderResourceViewInitializer(FRHIVertexBuffer* InVertexBuffer, uint8 InFormat, uint32 InStartElement, uint32 InNumElements)
-	: VertexBufferInitializer({ InVertexBuffer, InStartElement, InNumElements, InFormat }), Type(EType::VertexBufferSRV)
+FShaderResourceViewInitializer::FShaderResourceViewInitializer(FRHIVertexBuffer* InVertexBuffer, EPixelFormat InFormat, uint32 InStartOffsetBytes, uint32 InNumElements)
+	: VertexBufferInitializer({ InVertexBuffer, InStartOffsetBytes, InNumElements, InFormat }), Type(EType::VertexBufferSRV)
 {
+	check(InStartOffsetBytes % RHIGetMinimumAlignmentForBufferBackedSRV(InFormat) == 0);
 	/*if (!VertexBufferInitializer.IsWholeResource())
 	{
 		const uint32 Stride = GPixelFormats[InFormat].BlockBytes;
-		check((VertexBufferInitializer.NumElements + VertexBufferInitializer.StartElement) * Stride <= VertexBufferInitializer.VertexBuffer->GetSize());
+		check((VertexBufferInitializer.NumElements * Stride + VertexBufferInitializer.StartOffsetBytes)  <= VertexBufferInitializer.VertexBuffer->GetSize());
 	}*/
 }
 
-FShaderResourceViewInitializer::FShaderResourceViewInitializer(FRHIVertexBuffer* InVertexBuffer, uint8 InFormat)
+FShaderResourceViewInitializer::FShaderResourceViewInitializer(FRHIVertexBuffer* InVertexBuffer, EPixelFormat InFormat)
 	: VertexBufferInitializer({ InVertexBuffer, 0, UINT32_MAX, InFormat }), Type(EType::VertexBufferSRV) 
 {
 }
 
-FShaderResourceViewInitializer::FShaderResourceViewInitializer(FRHIStructuredBuffer* InStructuredBuffer, uint32 InStartElement, uint32 InNumElements)
-	: StructuredBufferInitializer(FStructuredBufferShaderResourceViewInitializer{ InStructuredBuffer, InStartElement, InNumElements }), Type(EType::StructuredBufferSRV) 
+FShaderResourceViewInitializer::FShaderResourceViewInitializer(FRHIStructuredBuffer* InStructuredBuffer, uint32 InStartOffsetBytes, uint32 InNumElements)
+	: StructuredBufferInitializer(FStructuredBufferShaderResourceViewInitializer{ InStructuredBuffer, InStartOffsetBytes, InNumElements }), Type(EType::StructuredBufferSRV)
 {
+	check(InStartOffsetBytes % InStructuredBuffer->GetStride() == 0);
 	if (!StructuredBufferInitializer.IsWholeResource())
 	{
 		const uint32 Stride = StructuredBufferInitializer.StructuredBuffer->GetStride();
-		check((StructuredBufferInitializer.NumElements + StructuredBufferInitializer.StartElement) * Stride <= StructuredBufferInitializer.StructuredBuffer->GetSize());
+		check((StructuredBufferInitializer.NumElements * Stride + StructuredBufferInitializer.StartOffsetBytes)  <= StructuredBufferInitializer.StructuredBuffer->GetSize());
 	}
 }
 
@@ -485,13 +536,14 @@ FShaderResourceViewInitializer::FShaderResourceViewInitializer(FRHIStructuredBuf
 {
 }
 
-FShaderResourceViewInitializer::FShaderResourceViewInitializer(FRHIIndexBuffer* InIndexBuffer, uint32 InStartElement, uint32 InNumElements)
-	: IndexBufferInitializer(FIndexBufferShaderResourceViewInitializer{ InIndexBuffer, InStartElement, InNumElements }), Type(EType::IndexBufferSRV) 
+FShaderResourceViewInitializer::FShaderResourceViewInitializer(FRHIIndexBuffer* InIndexBuffer, uint32 InStartOffsetBytes, uint32 InNumElements)
+	: IndexBufferInitializer(FIndexBufferShaderResourceViewInitializer{ InIndexBuffer, InStartOffsetBytes, InNumElements }), Type(EType::IndexBufferSRV)
 {
+	check(InStartOffsetBytes % RHIGetMinimumAlignmentForBufferBackedSRV(InIndexBuffer->GetStride() == 2 ? PF_R16_UINT : PF_R32_UINT) == 0);
 	if (!IndexBufferInitializer.IsWholeResource())
 	{
 		const uint32 Stride = IndexBufferInitializer.IndexBuffer->GetStride();
-		check((IndexBufferInitializer.NumElements + IndexBufferInitializer.StartElement) * Stride <= IndexBufferInitializer.IndexBuffer->GetSize());
+		check((IndexBufferInitializer.NumElements * Stride + IndexBufferInitializer.StartOffsetBytes) <= IndexBufferInitializer.IndexBuffer->GetSize());
 	}
 }
 

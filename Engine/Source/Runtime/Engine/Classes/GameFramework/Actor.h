@@ -159,14 +159,6 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category=Tick)
 	struct FActorTickFunction PrimaryActorTick;
 
-	/**
-	 * Allows us to only see this Actor in the Editor, and not in the actual game.
-	 * @see SetActorHiddenInGame()
-	 */
-	UE_DEPRECATED(4.24, "This member will be made private. Please use IsHidden or SetHidden.")
-	UPROPERTY(Interp, EditAnywhere, Category=Rendering, BlueprintReadOnly, Replicated, meta=(DisplayName="Actor Hidden In Game", SequencerTrackClass="MovieSceneVisibilityTrack"))
-	uint8 bHidden:1;
-
 	/** If true, when the actor is spawned it will be sent to the client but receive no further replication updates from the server afterwards. */
 	UPROPERTY()
 	uint8 bNetTemporary:1;
@@ -183,21 +175,26 @@ public:
 	UPROPERTY(Category=Replication, EditDefaultsOnly, BlueprintReadWrite)
 	uint8 bAlwaysRelevant:1;    
 
+	/** Called on client when updated bReplicateMovement value is received for this actor. */
+	UFUNCTION()
+	virtual void OnRep_ReplicateMovement();
+
+private:
 	/**
 	 * If true, replicate movement/location related properties.
 	 * Actor must also be set to replicate.
 	 * @see SetReplicates()
 	 * @see https://docs.unrealengine.com/latest/INT/Gameplay/Networking/Replication/
 	 */
-	UE_DEPRECATED(4.24, "This member will be made private. Please use IsReplicatingMovement or SetReplicatingMovement.")
 	UPROPERTY(ReplicatedUsing=OnRep_ReplicateMovement, Category=Replication, EditDefaultsOnly)
 	uint8 bReplicateMovement:1;    
 
-	/** Called on client when updated bReplicateMovement value is received for this actor. */
-	UFUNCTION()
-	virtual void OnRep_ReplicateMovement();
-
-private:
+	/**
+	 * Allows us to only see this Actor in the Editor, and not in the actual game.
+	 * @see SetActorHiddenInGame()
+	 */
+	UPROPERTY(Interp, EditAnywhere, Category=Rendering, BlueprintReadOnly, Replicated, meta=(AllowPrivateAccess="true", DisplayName="Actor Hidden In Game", SequencerTrackClass="MovieSceneVisibilityTrack"))
+	uint8 bHidden:1;
 
 	UPROPERTY(Replicated)
 	uint8 bTearOff:1; 
@@ -256,22 +253,23 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category=Tick)
 	uint8 bAllowTickBeforeBeginPlay:1;
 
+private:
 	/** If true then destroy self when "finished", meaning all relevant components report that they are done and no timelines or timers are in flight. */
-	UPROPERTY(BlueprintReadWrite, Category=Actor)
+	UPROPERTY(BlueprintSetter=SetAutoDestroyWhenFinished, Category=Actor)
 	uint8 bAutoDestroyWhenFinished:1;
-
-	/** If true, all input on the stack below this actor will not be considered */
-	UPROPERTY(EditDefaultsOnly, Category=Input)
-	uint8 bBlockInput:1;
 
 	/**
 	 * Whether this actor can take damage. Must be true for damage events (e.g. ReceiveDamage()) to be called.
 	 * @see https://www.unrealengine.com/blog/damage-in-ue4
 	 * @see TakeDamage(), ReceiveDamage()
 	 */
-	UE_DEPRECATED(4.24, "This member will be made private. Please use CanBeDamaged or SetCanBeDamaged.")
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Replicated, Category=Actor)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Replicated, Category=Actor, meta=(AllowPrivateAccess="true"))
 	uint8 bCanBeDamaged:1;
+
+public:
+	/** If true, all input on the stack below this actor will not be considered */
+	UPROPERTY(EditDefaultsOnly, Category=Input)
+	uint8 bBlockInput:1;
 
 	/** This actor collides with the world when placing in the editor, even if RootComponent collision is disabled. Does not affect spawning, @see SpawnCollisionHandlingMethod */
 	UPROPERTY()
@@ -282,8 +280,8 @@ public:
 	uint8 bFindCameraComponentWhenViewTarget:1;
 	
     /**
-	 * If true, this actor will generate overlap Begin/End events when spawned as part of level streaming.
-	 * You might enable this is in the case where a streaming level loads around an actor and you want Begin/End overlaps to trigger.
+	 * If true, this actor will generate overlap Begin/End events when spawned as part of level streaming, which includes initial level load.
+	 * You might enable this is in the case where a streaming level loads around an actor and you want Begin/End overlap events to trigger.
 	 * @see UpdateOverlapsMethodDuringLevelStreaming
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Collision)
@@ -318,6 +316,11 @@ public:
 	 * @return true if this actor can call RPCs or false if no such owner chain exists
 	 */
 	virtual bool HasLocalNetOwner() const;
+
+	bool GetAutoDestroyWhenFinished() const { return bAutoDestroyWhenFinished; }
+
+	UFUNCTION(BlueprintSetter)
+	void SetAutoDestroyWhenFinished(bool bVal);
 
 protected:
 	/**
@@ -408,7 +411,7 @@ protected:
 	 * If overlaps are not initialized, this actor and attached components will not have an initial state of what objects are touching it,
 	 * and overlap events may only come in once one of those objects update overlaps themselves (for example when moving).
 	 * However if an object touching it *does* initialize state, both objects will know about their touching state with each other.
-	 * This can be a potentially large performance savings during level streaming, and is safe if the object and others initially
+	 * This can be a potentially large performance savings during level loading and streaming, and is safe if the object and others initially
 	 * overlapping it do not need the overlap state because they will not trigger overlap notifications.
 	 * 
 	 * Note that if 'bGenerateOverlapEventsDuringLevelStreaming' is true, overlaps are always updated in this case, but that flag
@@ -444,6 +447,9 @@ private:
 	UPROPERTY(Config, Category = Collision, VisibleAnywhere)
 	EActorUpdateOverlapsMethod DefaultUpdateOverlapsMethodDuringLevelStreaming;
 
+	/** Internal helper to update Overlaps during Actor initialization/BeginPlay correctly based on the UpdateOverlapsMethodDuringLevelStreaming and bGenerateOverlapEventsDuringLevelStreaming settings. */
+	void UpdateInitialOverlaps(bool bFromLevelStreaming);
+
 	/** Describes how much control the remote machine has over the actor. */
 	UPROPERTY(Replicated, Transient)
 	TEnumAsByte<enum ENetRole> RemoteRole;	
@@ -475,17 +481,18 @@ public:
 
 	/** Returns how much control the local machine has over this actor. */
 	UFUNCTION(BlueprintCallable, Category=Replication)
-	ENetRole GetLocalRole() const;
+	ENetRole GetLocalRole() const { return Role; }
 
 	/** Returns how much control the remote machine has over this actor. */
 	UFUNCTION(BlueprintCallable, Category=Replication)
 	ENetRole GetRemoteRole() const;
 
+private:
 	/** Used for replication of our RootComponent's position and velocity */
-	UE_DEPRECATED(4.24, "This member will be made private. Please use GetReplicatedMovement or SetReplicatedMovement.")
 	UPROPERTY(EditDefaultsOnly, ReplicatedUsing=OnRep_ReplicatedMovement, Category=Replication, AdvancedDisplay)
 	struct FRepMovement ReplicatedMovement;
 
+public:
 	/** How long this Actor lives before dying, 0=forever. Note this is the INITIAL value and should not be modified once play has begun. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Actor)
 	float InitialLifeSpan;
@@ -528,11 +535,12 @@ public:
 	UFUNCTION()
 	virtual void OnRep_AttachmentReplication();
 
+private:
 	/** Describes how much control the local machine has over the actor. */
-	UE_DEPRECATED(4.24, "This member will be made private. Please use GetLocalRole or SetRole.")
 	UPROPERTY(Replicated)
 	TEnumAsByte<enum ENetRole> Role;
 
+public:
 	/** Dormancy setting for actor to take itself off of the replication list without being destroyed on clients. */
 	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, Category=Replication)
 	TEnumAsByte<enum ENetDormancy> NetDormancy;
@@ -628,12 +636,13 @@ public:
 
 	/** Called by the networking system to call PreReplication on this actor and its components using the given NetDriver to find or create RepChangedPropertyTrackers. */
 	void CallPreReplication(UNetDriver* NetDriver);	
-	
+
+private:
 	/** Pawn responsible for damage and other gameplay events caused by this actor. */
-	UE_DEPRECATED(4.24, "This member will be made private. Please use GetInstigator or SetInstigator.")
-	UPROPERTY(BlueprintReadWrite, ReplicatedUsing=OnRep_Instigator, meta=(ExposeOnSpawn=true), Category=Actor)
+	UPROPERTY(BlueprintReadWrite, ReplicatedUsing=OnRep_Instigator, meta=(ExposeOnSpawn=true, AllowPrivateAccess=true), Category=Actor)
 	class APawn* Instigator;
 
+public:
 	/** Called on clients when Instigator is replicated. */
 	UFUNCTION()
 	virtual void OnRep_Instigator();
@@ -702,7 +711,7 @@ private:
 	 * and call AActor::SetActorLabel() or FActorLabelUtilities::SetActorLabelUnique() to change the label.  Never set the label directly.
 	 */
 	UPROPERTY()
-	FString ActorLabel;
+	mutable FString ActorLabel;
 
 	/** The folder path of this actor in the world (empty=root, / separated)*/
 	UPROPERTY()
@@ -1251,9 +1260,41 @@ public:
 	 * @param bManualAttachment				Whether manual or automatic attachment is to be used
 	 * @param RelativeTransform				The relative transform between the new component and its attach parent (automatic only)
 	 * @param ComponentTemplateContext		Optional UBlueprintGeneratedClass reference to use to find the template in. If null (or not a BPGC), component is sought in this Actor's class
+	 * @param bDeferredFinish				Whether or not to immediately complete the creation and registration process for this component. Will be false if there are expose on spawn properties being set
 	 */
-	UFUNCTION(BlueprintCallable, meta=(ScriptNoExport, BlueprintInternalUseOnly = "true", DefaultToSelf="ComponentTemplateContext", InternalUseParam="ComponentTemplateContext"))
-	class UActorComponent* AddComponent(FName TemplateName, bool bManualAttachment, const FTransform& RelativeTransform, const UObject* ComponentTemplateContext);
+	UFUNCTION(BlueprintCallable, meta=(ScriptNoExport, BlueprintInternalUseOnly = "true", DefaultToSelf="ComponentTemplateContext", InternalUseParam="ComponentTemplateContext,bDeferredFinish"))
+	UActorComponent* AddComponent(FName TemplateName, bool bManualAttachment, const FTransform& RelativeTransform, const UObject* ComponentTemplateContext, bool bDeferredFinish = false);
+
+	/**
+	 * Creates a new component and assigns ownership to the Actor this is
+	 * called for. Automatic attachment causes the first component created to
+	 * become the root, and all subsequent components to be attached under that
+	 * root. When bManualAttachment is set, automatic attachment is
+	 * skipped and it is up to the user to attach the resulting component (or
+	 * set it up as the root) themselves.
+	 *
+	 * @see UK2Node_AddComponentByClass		DO NOT CALL MANUALLY - BLUEPRINT INTERNAL USE ONLY (for Add Component nodes)
+	 *
+	 * @param Class						The class of component to create
+	 * @param bManualAttachment				Whether manual or automatic attachment is to be used
+	 * @param RelativeTransform				The relative transform between the new component and its attach parent (automatic only)
+	 * @param bDeferredFinish				Whether or not to immediately complete the creation and registration process for this component. Will be false if there are expose on spawn properties being set
+	 */
+	UFUNCTION(BlueprintCallable, meta=(ScriptNoExport, BlueprintInternalUseOnly = "true", InternalUseParam="bDeferredFinish"))
+	UActorComponent* AddComponentByClass(TSubclassOf<UActorComponent> Class, bool bManualAttachment, const FTransform& RelativeTransform, bool bDeferredFinish);
+
+	/** 
+	 * Completes the creation of a new actor component. Called either from blueprint after
+	 * expose on spawn properties are set, or directly from AddComponent
+	 *
+	 * @see UK2Node_AddComponent	DO NOT CALL MANUALLY - BLUEPRINT INTERNAL USE ONLY (for Add Component nodes)
+	 *
+	 * @param Component						The component created in AddComponent to finish creation of
+	 * @param bManualAttachment				Whether manual or automatic attachment is to be used
+	 * @param RelativeTransform				The relative transform between the new component and its attach parent (automatic only)
+	 */
+	UFUNCTION(BlueprintCallable, meta=(BlueprintInternalUseOnly="true"))
+	void FinishAddComponent(UActorComponent* Component, bool bManualAttachment, const FTransform& RelativeTransform);
 
 	UE_DEPRECATED(4.17, "Use UActorComponent::DestroyComponent() instead")
 	UFUNCTION(BlueprintCallable, meta=(DeprecatedFunction, DeprecationMessage = "Use Component.DestroyComponent instead", BlueprintProtected = "true", DisplayName = "DestroyComponent", ScriptName = "DestroyComponent"))
@@ -1420,7 +1461,7 @@ public:
 	/** Returns whether an actor has had BeginPlay called on it (and not subsequently had EndPlay called) */
 	bool HasActorBegunPlay() const { return ActorHasBegunPlay == EActorBeginPlayState::HasBegunPlay; }
 
-	/** Returns whether an actor has called BeginPlay(). */
+	/** Returns whether an actor is beginning play in DispatchBeginPlay() during level streaming (which includes initial level load). */
 	bool IsActorBeginningPlayFromLevelStreaming() const { return bActorBeginningPlayFromLevelStreaming; }
 
 	/** Returns true if this actor is currently being destroyed, some gameplay events may be unsafe */
@@ -2824,7 +2865,7 @@ public:
 	 * Currently returns an array of UActorComponent which must be cast to the correct type.
 	 * This intended to only be used by blueprints. Use GetComponents() in C++.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Actor", meta = (ComponentClass = "ActorComponent", DisplayName = "GetComponentsByClass", DeterminesOutputType = "ComponentClass"))
+	UFUNCTION(BlueprintCallable, Category = "Actor", meta = (ComponentClass = "ActorComponent", DisplayName = "GetComponentsByClass", ScriptName = "GetComponentsByClass", DeterminesOutputType = "ComponentClass"))
 	TArray<UActorComponent*> K2_GetComponentsByClass(TSubclassOf<UActorComponent> ComponentClass) const;
 
 	/** Gets all the components that inherit from the given class with a given tag. */
@@ -3251,8 +3292,6 @@ private:
 		return (RootComponent != nullptr) ? RootComponent->GetRightVector() : FVector::RightVector;
 	}
 	
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-
 	//~ Begin Methods for Replicated Members.
 public:
 
@@ -3383,7 +3422,6 @@ public:
 	void SetInstigator(APawn* InInstigator);
 
 	//~ End Methods for Replicated Members.
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 };
 
 /** Internal struct used by level code to mark actors as destroyed */
@@ -3554,14 +3592,6 @@ FORCEINLINE_DEBUGGABLE const AActor* AActor::GetNetOwner() const
 	// Used in ServerReplicateActors
 	return Owner;
 }
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-FORCEINLINE_DEBUGGABLE ENetRole AActor::GetLocalRole() const
-{
-	return Role;
-}
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
-
 
 FORCEINLINE_DEBUGGABLE ENetRole AActor::GetRemoteRole() const
 {

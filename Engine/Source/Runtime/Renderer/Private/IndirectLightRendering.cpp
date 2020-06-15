@@ -15,26 +15,12 @@
 #include "RayTracing/RaytracingOptions.h"
 #include "RayTracing/RayTracingReflections.h"
 #include "DistanceFieldAmbientOcclusion.h"
+#include "VolumetricCloudRendering.h"
 
 
 static TAutoConsoleVariable<int32> CVarDiffuseIndirectDenoiser(
 	TEXT("r.DiffuseIndirect.Denoiser"), 1,
 	TEXT("Denoising options (default = 1)"),
-	ECVF_RenderThreadSafe);
-
-static TAutoConsoleVariable<float> CVarReflectionScreenPercentage(
-	TEXT("r.RayTracing.Reflections.ScreenPercentage"),
-	100.0f,
-	TEXT("Screen percentage the reflections should be ray traced at (default = 100)."),
-	ECVF_RenderThreadSafe);
-
-static TAutoConsoleVariable<int32> CVarUseReflectionDenoiser(
-	TEXT("r.Reflections.Denoiser"),
-	2,
-	TEXT("Choose the denoising algorithm.\n")
-	TEXT(" 0: Disabled;\n")
-	TEXT(" 1: Forces the default denoiser of the renderer;\n")
-	TEXT(" 2: GScreenSpaceDenoiser which may be overriden by a third party plugin (default)."),
 	ECVF_RenderThreadSafe);
 
 static TAutoConsoleVariable<int32> CVarDenoiseSSR(
@@ -233,6 +219,12 @@ class FReflectionEnvironmentSkyLightingPS : public FGlobalShader
 		SHADER_PARAMETER_TEXTURE(Texture2D, PreIntegratedGF)
 		SHADER_PARAMETER_SAMPLER(SamplerState, PreIntegratedGFSampler)
 
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, CloudSkyAOTexture)
+		SHADER_PARAMETER_SAMPLER(SamplerState, CloudSkyAOSampler)
+		SHADER_PARAMETER(FMatrix, CloudSkyAOWorldToLightClipMatrix)
+		SHADER_PARAMETER(float, CloudSkyAOFarDepthKm)
+		SHADER_PARAMETER(int32, CloudSkyAOEnabled)
+
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureSamplerParameters, SceneTextureSamplers)
 
@@ -254,7 +246,8 @@ IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FReflectionUniformParameters, "Reflecti
 
 void SetupReflectionUniformParameters(const FViewInfo& View, FReflectionUniformParameters& OutParameters)
 {
-	FTexture* SkyLightTextureResource = GBlackTextureCube;
+	FTextureRHIRef SkyLightTextureResource = GSystemTextures.BlackDummy->GetRenderTargetItem().ShaderResourceTexture;
+	FSamplerStateRHIRef SkyLightCubemapSampler = TStaticSamplerState<SF_Trilinear>::GetRHI();
 	FTexture* SkyLightBlendDestinationTextureResource = GBlackTextureCube;
 	float ApplySkyLightMask = 0;
 	float BlendFraction = 0;
@@ -266,23 +259,34 @@ void SetupReflectionUniformParameters(const FViewInfo& View, FReflectionUniformP
 
 	if (Scene
 		&& Scene->SkyLight
-		&& Scene->SkyLight->ProcessedTexture
+		&& (Scene->SkyLight->ProcessedTexture || (Scene->SkyLight->bRealTimeCaptureEnabled && Scene->ConvolvedSkyRenderTarget))
 		&& bApplySkyLight)
 	{
 		const FSkyLightSceneProxy& SkyLight = *Scene->SkyLight;
-		SkyLightTextureResource = SkyLight.ProcessedTexture;
-		BlendFraction = SkyLight.BlendFraction;
 
-		if (SkyLight.BlendFraction > 0.0f && SkyLight.BlendDestinationProcessedTexture)
+		if (Scene->SkyLight->bRealTimeCaptureEnabled && Scene->ConvolvedSkyRenderTarget)
 		{
-			if (SkyLight.BlendFraction < 1.0f)
+			// Cannot blend with this capture mode as of today.
+			SkyLightTextureResource = Scene->ConvolvedSkyRenderTarget->GetRenderTargetItem().ShaderResourceTexture;
+		}
+		else if (SkyLight.ProcessedTexture)
+		{
+			SkyLightTextureResource = SkyLight.ProcessedTexture->TextureRHI;
+			SkyLightCubemapSampler = SkyLight.ProcessedTexture->SamplerStateRHI;
+			BlendFraction = SkyLight.BlendFraction;
+
+			if (SkyLight.BlendFraction > 0.0f && SkyLight.BlendDestinationProcessedTexture)
 			{
-				SkyLightBlendDestinationTextureResource = SkyLight.BlendDestinationProcessedTexture;
-			}
-			else
-			{
-				SkyLightTextureResource = SkyLight.BlendDestinationProcessedTexture;
-				BlendFraction = 0;
+				if (SkyLight.BlendFraction < 1.0f)
+				{
+					SkyLightBlendDestinationTextureResource = SkyLight.BlendDestinationProcessedTexture;
+				}
+				else
+				{
+					SkyLightTextureResource = SkyLight.BlendDestinationProcessedTexture->TextureRHI;
+					SkyLightCubemapSampler = SkyLight.ProcessedTexture->SamplerStateRHI;
+					BlendFraction = 0;
+				}
 			}
 		}
 
@@ -291,11 +295,11 @@ void SetupReflectionUniformParameters(const FViewInfo& View, FReflectionUniformP
 		SkyAverageBrightness = SkyLight.AverageBrightness;
 	}
 
-	const int32 CubemapWidth = SkyLightTextureResource->GetSizeX();
+	const int32 CubemapWidth = SkyLightTextureResource->GetSizeXYZ().X;
 	const float SkyMipCount = FMath::Log2(CubemapWidth) + 1.0f;
 
-	OutParameters.SkyLightCubemap = SkyLightTextureResource->TextureRHI;
-	OutParameters.SkyLightCubemapSampler = SkyLightTextureResource->SamplerStateRHI;
+	OutParameters.SkyLightCubemap = SkyLightTextureResource;
+	OutParameters.SkyLightCubemapSampler = SkyLightCubemapSampler;
 	OutParameters.SkyLightBlendDestinationCubemap = SkyLightBlendDestinationTextureResource->TextureRHI;
 	OutParameters.SkyLightBlendDestinationCubemapSampler = SkyLightBlendDestinationTextureResource->SamplerStateRHI;
 	OutParameters.SkyLightParameters = FVector4(SkyMipCount - 1.0f, ApplySkyLightMask, bSkyLightIsDynamic ? 1.0f : 0.0f, BlendFraction);
@@ -595,11 +599,14 @@ void FDeferredShadingSceneRenderer::RenderDiffuseIndirectAndAmbientOcclusion(FRH
 	GraphBuilder.Execute();
 }
 
-void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget>& DynamicBentNormalAO, TRefCountPtr<IPooledRenderTarget>& VelocityRT, const FHairStrandsDatas* HairDatas)
+void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget>& DynamicBentNormalAO, TRefCountPtr<IPooledRenderTarget>& VelocityRT, FHairStrandsDatas* HairDatas)
 {
 	check(RHICmdList.IsOutsideRenderPass());
 
-	if (ViewFamily.EngineShowFlags.VisualizeLightCulling || !ViewFamily.EngineShowFlags.Lighting)
+	if (ViewFamily.EngineShowFlags.VisualizeLightCulling 
+		|| ViewFamily.EngineShowFlags.RayTracingDebug
+		|| ViewFamily.EngineShowFlags.PathTracing
+		|| !ViewFamily.EngineShowFlags.Lighting)
 	{
 		return;
 	}
@@ -621,7 +628,7 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHI
 
 	// The specular sky light contribution is also needed by RT Reflections as a fallback.
 	const bool bSkyLight = Scene->SkyLight
-		&& Scene->SkyLight->ProcessedTexture
+		&& (Scene->SkyLight->ProcessedTexture || Scene->SkyLight->bRealTimeCaptureEnabled)
 		&& !Scene->SkyLight->bHasStaticLighting;
 
 	bool bDynamicSkyLight = ShouldRenderDeferredDynamicSkyLight(Scene, ViewFamily);
@@ -653,11 +660,6 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHI
 	FRDGBuilder GraphBuilder(RHICmdList);
 
 	FRDGTextureRef SceneColorTexture = GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor());
-	FRDGTextureRef SceneColorSubPixelTexture = nullptr;
-	if (HairDatas)
-	{
-		SceneColorSubPixelTexture = GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColorSubPixel());
-	}
 	FRDGTextureRef AmbientOcclusionTexture = GraphBuilder.RegisterExternalTexture(SceneContext.bScreenSpaceAOIsValid ? SceneContext.ScreenSpaceAO : GSystemTextures.WhiteDummy);
 	FRDGTextureRef DynamicBentNormalAOTexture = GraphBuilder.RegisterExternalTexture(DynamicBentNormalAO ? DynamicBentNormalAO : GSystemTextures.WhiteDummy);
 
@@ -668,46 +670,45 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHI
 	for (FViewInfo& View : Views)
 	{
 		const uint32 CurrentViewIndex = ViewIndex++;
-		const bool bRayTracedReflections = ShouldRenderRayTracingReflections(View);
-		const bool bScreenSpaceReflections = !bRayTracedReflections && ShouldRenderScreenSpaceReflections(View);
 
-		const bool bComposePlanarReflections = !bRayTracedReflections && HasDeferredPlanarReflections(View);
+		const FRayTracingReflectionOptions RayTracingReflectionOptions = GetRayTracingReflectionOptions(View, *Scene);
+
+		const bool bScreenSpaceReflections = !RayTracingReflectionOptions.bEnabled && ShouldRenderScreenSpaceReflections(View);
+		const bool bComposePlanarReflections = !RayTracingReflectionOptions.bEnabled && HasDeferredPlanarReflections(View);
 
 		FRDGTextureRef ReflectionsColor = nullptr;
-		if (bRayTracedReflections || bScreenSpaceReflections)
+		if (RayTracingReflectionOptions.bEnabled || bScreenSpaceReflections)
 		{
-			int32 DenoiserMode = CVarUseReflectionDenoiser.GetValueOnRenderThread();
+			int32 DenoiserMode = GetReflectionsDenoiserMode();
 
 			bool bDenoise = false;
 			bool bTemporalFilter = false;
 
 			// Traces the reflections, either using screen space reflection, or ray tracing.
 			IScreenSpaceDenoiser::FReflectionsInputs DenoiserInputs;
-			IScreenSpaceDenoiser::FReflectionsRayTracingConfig RayTracingConfig;
-			if (bRayTracedReflections)
+			IScreenSpaceDenoiser::FReflectionsRayTracingConfig DenoiserConfig;
+			if (RayTracingReflectionOptions.bEnabled)
 			{
 				RDG_EVENT_SCOPE(GraphBuilder, "RayTracingReflections");
 				RDG_GPU_STAT_SCOPE(GraphBuilder, RayTracingReflections);
 
 				bDenoise = DenoiserMode != 0;
 
-				RayTracingConfig.ResolutionFraction = FMath::Clamp(CVarReflectionScreenPercentage.GetValueOnRenderThread() / 100.0f, 0.25f, 1.0f);
-#if RHI_RAYTRACING
-				RayTracingConfig.RayCountPerPixel = GetRayTracingReflectionsSamplesPerPixel(View);
-#else
-				RayTracingConfig.RayCountPerPixel = 0;
-#endif
+				DenoiserConfig.ResolutionFraction = RayTracingReflectionOptions.ResolutionFraction;
+				DenoiserConfig.RayCountPerPixel = RayTracingReflectionOptions.SamplesPerPixel;
 
 				if (!bDenoise)
 				{
-					RayTracingConfig.ResolutionFraction = 1.0f;
+					DenoiserConfig.ResolutionFraction = 1.0f;
 				}
+
+				check(RayTracingReflectionOptions.bReflectOnlyWater == false);
 
 				RenderRayTracingReflections(
 					GraphBuilder,
 					SceneTextures,
 					View,
-					RayTracingConfig.RayCountPerPixel, RayTracingConfig.ResolutionFraction,
+					RayTracingReflectionOptions,
 					&DenoiserInputs);
 			}
 			else if (bScreenSpaceReflections)
@@ -718,7 +719,7 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHI
 				FRDGTextureRef CurrentSceneColor = GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor());
 
 				ESSRQuality SSRQuality;
-				GetSSRQualityForView(View, &SSRQuality, &RayTracingConfig);
+				GetSSRQualityForView(View, &SSRQuality, &DenoiserConfig);
 
 				RDG_EVENT_SCOPE(GraphBuilder, "ScreenSpaceReflections(Quality=%d)", int32(SSRQuality));
 
@@ -747,7 +748,7 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHI
 					&View.PrevViewInfo,
 					SceneTextures,
 					DenoiserInputs,
-					RayTracingConfig);
+					DenoiserConfig);
 
 				ReflectionsColor = DenoiserOutputs.Color;
 			}
@@ -771,7 +772,7 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHI
 			}
 			else
 			{
-				if (bRayTracedReflections && DenoiserInputs.RayHitDistance)
+				if (RayTracingReflectionOptions.bEnabled && DenoiserInputs.RayHitDistance)
 				{
 					// The performance of ray tracing does not allow to run without a denoiser in real time.
 					// Multiple rays per pixel is unsupported by the denoiser that will most likely more bound by to
@@ -782,11 +783,11 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHI
 
 				ReflectionsColor = DenoiserInputs.Color;
 			}
-		} // if (bRayTracedReflections || bScreenSpaceReflections)
+		} // if (RayTracingReflectionOptions.bEnabled || bScreenSpaceReflections)
 
 		if (bComposePlanarReflections)
 		{
-			check(!bRayTracedReflections);
+			check(!RayTracingReflectionOptions.bEnabled);
 			RenderDeferredPlanarReflections(GraphBuilder, SceneTextures, View, /* inout */ ReflectionsColor);
 		}
 
@@ -857,6 +858,22 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHI
 				PassParameters->ScreenSpaceReflectionsTexture = ReflectionsColor ? ReflectionsColor : GraphBuilder.RegisterExternalTexture(GSystemTextures.BlackDummy);
 				PassParameters->ScreenSpaceReflectionsSampler = TStaticSamplerState<SF_Point>::GetRHI();
 
+				if (Scene->HasVolumetricCloud())
+				{
+					FVolumetricCloudRenderSceneInfo* CloudInfo = Scene->GetVolumetricCloudSceneInfo();
+
+					PassParameters->CloudSkyAOTexture = GraphBuilder.RegisterExternalTexture(View.VolumetricCloudSkyAO.IsValid() ? View.VolumetricCloudSkyAO : GSystemTextures.BlackDummy);
+					PassParameters->CloudSkyAOWorldToLightClipMatrix = CloudInfo->GetVolumetricCloudCommonShaderParameters().CloudSkyAOWorldToLightClipMatrix;
+					PassParameters->CloudSkyAOFarDepthKm = CloudInfo->GetVolumetricCloudCommonShaderParameters().CloudSkyAOFarDepthKm;
+					PassParameters->CloudSkyAOEnabled = 1;
+				}
+				else
+				{
+					PassParameters->CloudSkyAOTexture = GraphBuilder.RegisterExternalTexture(GSystemTextures.BlackDummy);
+					PassParameters->CloudSkyAOEnabled = 0;
+				}
+				PassParameters->CloudSkyAOSampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
+
 				PassParameters->PreIntegratedGF = GSystemTextures.PreintegratedGF->GetRenderTargetItem().ShaderResourceTexture;
 				PassParameters->PreIntegratedGFSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 
@@ -877,8 +894,16 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHI
 
 			// Bind hair data
 			const bool bCheckerboardSubsurfaceRendering = IsSubsurfaceCheckerboardFormat(SceneContext.GetSceneColorFormat());
+
+			// ScreenSpace and SortedDeferred ray traced reflections use the same reflection environment shader,
+			// but main RT reflection shader requires a custom path as it evaluates the clear coat BRDF differently.
+			const bool bRequiresSpecializedReflectionEnvironmentShader = RayTracingReflectionOptions.bEnabled
+				&& RayTracingReflectionOptions.Algorithm != FRayTracingReflectionOptions::EAlgorithm::SortedDeferred;
+
 			auto PermutationVector = FReflectionEnvironmentSkyLightingPS::BuildPermutationVector(
-				View, bHasBoxCaptures, bHasSphereCaptures, DynamicBentNormalAO != NULL, bSkyLight, bDynamicSkyLight, bApplySkyShadowing, bRayTracedReflections);
+				View, bHasBoxCaptures, bHasSphereCaptures, DynamicBentNormalAO != nullptr,
+				bSkyLight, bDynamicSkyLight, bApplySkyShadowing,
+				bRequiresSpecializedReflectionEnvironmentShader);
 
 			TShaderMapRef<FReflectionEnvironmentSkyLightingPS> PixelShader(View.ShaderMap, PermutationVector);
 			ClearUnusedGraphResources(PixelShader, PassParameters);
@@ -921,20 +946,63 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHI
 		const bool bIsHairSkyLightingEnabled = HairDatas && (bSkyLight || bDynamicSkyLight || bReflectionEnv);
 		if (bIsHairSkyLightingEnabled)
 		{
-			RenderHairStrandsEnvironmentLighting(GraphBuilder, CurrentViewIndex, Views, HairDatas, SceneColorTexture, SceneColorSubPixelTexture);
+			RenderHairStrandsEnvironmentLighting(GraphBuilder, CurrentViewIndex, Views, HairDatas);
 		}
 	} // for (FViewInfo& View : Views)
 
 	TRefCountPtr<IPooledRenderTarget> OutSceneColor;
 	GraphBuilder.QueueTextureExtraction(SceneColorTexture, &OutSceneColor);
 
-	TRefCountPtr<IPooledRenderTarget> OutSceneSubpixelColor;
-	if (SceneColorSubPixelTexture)
-	{
-		GraphBuilder.QueueTextureExtraction(SceneColorSubPixelTexture, &OutSceneSubpixelColor);
-	}
-
 	GraphBuilder.Execute();
 
 	ResolveSceneColor(RHICmdList);
+}
+
+void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLightingHair(
+	FRHICommandListImmediate& RHICmdList,
+	FHairStrandsDatas* HairDatas)
+{
+	check(RHICmdList.IsOutsideRenderPass());
+
+	if (ViewFamily.EngineShowFlags.VisualizeLightCulling || !ViewFamily.EngineShowFlags.Lighting)
+	{
+		return;
+	}
+
+	// If we're currently capturing a reflection capture, output SpecularColor * IndirectIrradiance for metals so they are not black in reflections,
+	// Since we don't have multiple bounce specular reflections
+	bool bReflectionCapture = false;
+	for (int32 ViewIndex = 0, Num = Views.Num(); ViewIndex < Num; ViewIndex++)
+	{
+		const FViewInfo& View = Views[ViewIndex];
+		bReflectionCapture = bReflectionCapture || View.bIsReflectionCapture;
+	}
+
+	if (bReflectionCapture)
+	{
+		// if we are rendering a reflection capture then we can skip this pass entirely (no reflection and no sky contribution evaluated in this pass)
+		return;
+	}
+
+	// The specular sky light contribution is also needed by RT Reflections as a fallback.
+	const bool bSkyLight = Scene->SkyLight
+		&& Scene->SkyLight->ProcessedTexture
+		&& !Scene->SkyLight->bHasStaticLighting;
+
+	bool bDynamicSkyLight = ShouldRenderDeferredDynamicSkyLight(Scene, ViewFamily);
+	bool bApplySkyShadowing = false;
+	const bool bReflectionEnv = ShouldDoReflectionEnvironment();
+
+	uint32 ViewIndex = 0;
+	for (FViewInfo& View : Views)
+	{
+		const uint32 CurrentViewIndex = ViewIndex++;
+		const bool bIsHairSkyLightingEnabled = HairDatas && (bSkyLight || bDynamicSkyLight || bReflectionEnv);
+		if (bIsHairSkyLightingEnabled)
+		{
+			FRDGBuilder GraphBuilder(RHICmdList);
+			RenderHairStrandsEnvironmentLighting(GraphBuilder, CurrentViewIndex, Views, HairDatas);
+			GraphBuilder.Execute();
+		}
+	}
 }

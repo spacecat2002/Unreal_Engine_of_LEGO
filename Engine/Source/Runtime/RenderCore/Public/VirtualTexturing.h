@@ -178,6 +178,7 @@ enum class EVTProducePageFlags : uint8
 {
 	None = 0u,
 	SkipPageBorders = (1u << 0),
+	ContinuousUpdate = (1u << 1),
 };
 ENUM_CLASS_FLAGS(EVTProducePageFlags);
 
@@ -199,7 +200,12 @@ struct FVTProduceTargetLayer
 	FRHITexture* TextureRHI = nullptr;
 	/** The UAV to write to. This may be nullptr if no suitable UAV can be created for the texture format.  */
 	FRHIUnorderedAccessView* UnorderedAccessViewRHI = nullptr;
-
+	/**
+	 * Pooled render target. For FRDGBuilder::RegisterExternalTexture() which only accepts pooled render targets.
+	 * To avoid cost of manipulating ref counting pointers a raw pointer is used instead - it is valid until returning from your Finalize().
+	 * So do not try to store the pointer
+	 */
+	struct IPooledRenderTarget* PooledRenderTarget = nullptr;
 	/** Location within the texture to write */
 	FIntVector pPageLocation;
 };
@@ -308,7 +314,7 @@ public:
 	virtual uint32 GetNumPageTableTextures() const = 0;
 
 	/** Writes 2x FUintVector4 */
-	virtual void GetPackedPageTableUniform(FUintVector4* OutUniform, bool bApplyBlockScale) const = 0;
+	virtual void GetPackedPageTableUniform(FUintVector4* OutUniform) const = 0;
 
 	/** Writes 1x FUintVector4 */
 	virtual void GetPackedUniform(FUintVector4* OutUniform, uint32 LayerIndex) const = 0;
@@ -382,6 +388,8 @@ static_assert(sizeof(FVirtualTextureLocalTile) == sizeof(uint64), "Bad packing")
 inline uint64 GetTypeHash(const FVirtualTextureLocalTile& T) { return T.PackedValue; }
 inline bool operator==(const FVirtualTextureLocalTile& Lhs, const FVirtualTextureLocalTile& Rhs) { return Lhs.PackedValue == Rhs.PackedValue; }
 inline bool operator!=(const FVirtualTextureLocalTile& Lhs, const FVirtualTextureLocalTile& Rhs) { return Lhs.PackedValue != Rhs.PackedValue; }
+
+RENDERCORE_API DECLARE_LOG_CATEGORY_EXTERN(LogVirtualTexturing, Log, All);
 
 DECLARE_STATS_GROUP(TEXT("Virtual Texturing"), STATGROUP_VirtualTexturing, STATCAT_Advanced);
 DECLARE_STATS_GROUP(TEXT("Virtual Texture Memory"), STATGROUP_VirtualTextureMemory, STATCAT_Advanced);

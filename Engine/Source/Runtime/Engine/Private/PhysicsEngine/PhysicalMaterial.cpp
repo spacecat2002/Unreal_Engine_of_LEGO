@@ -12,9 +12,14 @@
 #include "PhysicalMaterials/PhysicalMaterialPropertyBase.h"
 #include "PhysicsEngine/PhysicsSettings.h"
 
-#if WITH_PHYSX
+#if PHYSICS_INTERFACE_PHYSX
 	#include "PhysicsEngine/PhysXSupport.h"
+	#include "Physics/PhysicsInterfacePhysX.h"
 #endif // WITH_PHYSX
+
+#if WITH_CHAOS
+	#include "Chaos/PhysicalMaterials.h"
+#endif
 
 UDEPRECATED_PhysicalMaterialPropertyBase::UDEPRECATED_PhysicalMaterialPropertyBase(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -28,19 +33,31 @@ UPhysicalMaterial::UPhysicalMaterial(const FObjectInitializer& ObjectInitializer
 	Restitution = 0.3f;
 	RaiseMassToPower = 0.75f;
 	Density = 1.0f;
+	SleepLinearVelocityThreshold = 1.f;
+	SleepAngularVelocityThreshold = 0.05f;
+	SleepCounterThreshold = 4;
 	DestructibleDamageThresholdScale = 1.0f;
 	TireFrictionScale = 1.0f;
 	bOverrideFrictionCombineMode = false;
-#if WITH_PHYSX
-	PhysxUserData = FPhysxUserData(this);
-#endif
+	UserData = FChaosUserData(this);
 }
+
+UPhysicalMaterial::UPhysicalMaterial(FVTableHelper& Helper)
+	: Super(Helper)
+{
+}
+
+UPhysicalMaterial::~UPhysicalMaterial() = default;
 
 #if WITH_EDITOR
 void UPhysicalMaterial::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
+	if(!MaterialHandle)
+	{
+		MaterialHandle = MakeUnique<FPhysicsMaterialHandle>();
+	}
 	// Update PhysX material last so we have a valid Parent
-	FPhysicsInterface::UpdateMaterial(MaterialHandle, this);
+	FPhysicsInterface::UpdateMaterial(*MaterialHandle, this);
 
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 }
@@ -52,7 +69,11 @@ void UPhysicalMaterial::RebuildPhysicalMaterials()
 	{
 		if (UPhysicalMaterial * PhysicalMaterial = Cast<UPhysicalMaterial>(*Iter))
 		{
-			FPhysicsInterface::UpdateMaterial(PhysicalMaterial->MaterialHandle, PhysicalMaterial);
+			if(!PhysicalMaterial->MaterialHandle)
+			{
+				PhysicalMaterial->MaterialHandle = MakeUnique<FPhysicsMaterialHandle>();
+			}
+			FPhysicsInterface::UpdateMaterial(*PhysicalMaterial->MaterialHandle, PhysicalMaterial);
 		}
 	}
 }
@@ -75,22 +96,29 @@ void UPhysicalMaterial::PostLoad()
 
 void UPhysicalMaterial::FinishDestroy()
 {
-	FPhysicsInterface::ReleaseMaterial(MaterialHandle);
+	if(MaterialHandle)
+	{
+		FPhysicsInterface::ReleaseMaterial(*MaterialHandle);
+	}
 	Super::FinishDestroy();
 }
 
 FPhysicsMaterialHandle& UPhysicalMaterial::GetPhysicsMaterial()
 {
-	if(!MaterialHandle.IsValid())
+	if(!MaterialHandle)
 	{
-		MaterialHandle = FPhysicsInterface::CreateMaterial(this);
-		check(MaterialHandle.IsValid());
+		MaterialHandle = MakeUnique<FPhysicsMaterialHandle>();
+	}
+	if(!MaterialHandle->IsValid())
+	{
+		*MaterialHandle = FPhysicsInterface::CreateMaterial(this);
+		check(MaterialHandle->IsValid());
 
-		FPhysicsInterface::SetUserData(MaterialHandle, &PhysxUserData);
-		FPhysicsInterface::UpdateMaterial(MaterialHandle, this);
+		FPhysicsInterface::SetUserData(*MaterialHandle, &UserData);
+		FPhysicsInterface::UpdateMaterial(*MaterialHandle, this);
 	}
 
-	return MaterialHandle;
+	return *MaterialHandle;
 }
 
 EPhysicalSurface UPhysicalMaterial::DetermineSurfaceType(UPhysicalMaterial const* PhysicalMaterial)

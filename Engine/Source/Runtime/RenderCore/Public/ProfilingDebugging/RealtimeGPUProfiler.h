@@ -14,6 +14,7 @@
 #include "Stats/Stats.h"
 #include "RHI.h"
 #include "ProfilingDebugging/CsvProfiler.h"
+#include "GpuProfilerTrace.h"
 
 // Note:  WITH_PROFILEGPU should be 0 for final builds
 #define WANTS_DRAW_MESH_EVENTS (RHI_COMMAND_LIST_DEBUG_TRACES || (WITH_PROFILEGPU && PLATFORM_SUPPORTS_DRAW_MESH_EVENTS))
@@ -185,7 +186,7 @@ class FScopedGPUStatEvent;
 
 // GPU stats
 #ifndef HAS_GPU_STATS
-	#if ( STATS || CSV_PROFILER ) && (!UE_BUILD_SHIPPING)
+	#if ( STATS || CSV_PROFILER || GPUPROFILERTRACE_ENABLED ) && (!UE_BUILD_SHIPPING)
 	#define HAS_GPU_STATS 1
 	#else
 	#define HAS_GPU_STATS 0
@@ -195,24 +196,30 @@ class FScopedGPUStatEvent;
 #if HAS_GPU_STATS
  CSV_DECLARE_CATEGORY_MODULE_EXTERN(RENDERCORE_API,GPU);
  // The DECLARE_GPU_STAT macros both declare and define a stat (for use in a single CPP)
- #define DECLARE_GPU_STAT(StatName) DECLARE_FLOAT_COUNTER_STAT(TEXT(#StatName), Stat_GPU_##StatName, STATGROUP_GPU); CSV_DEFINE_STAT(GPU,StatName);
- #define DECLARE_GPU_STAT_NAMED(StatName, NameString) DECLARE_FLOAT_COUNTER_STAT(NameString, Stat_GPU_##StatName, STATGROUP_GPU); CSV_DEFINE_STAT(GPU,StatName);
+ #define DECLARE_GPU_STAT(StatName) DECLARE_FLOAT_COUNTER_STAT(TEXT(#StatName), Stat_GPU_##StatName, STATGROUP_GPU); CSV_DEFINE_STAT(GPU,StatName); FDrawCallCategoryName DrawcallCountCategory_##StatName;
+ #define DECLARE_GPU_DRAWCALL_STAT(StatName) DECLARE_FLOAT_COUNTER_STAT(TEXT(#StatName), Stat_GPU_##StatName, STATGROUP_GPU); CSV_DEFINE_STAT(GPU,StatName); FDrawCallCategoryName DrawcallCountCategory_##StatName((TCHAR*)TEXT(#StatName));
+ #define DECLARE_GPU_STAT_NAMED(StatName, NameString) DECLARE_FLOAT_COUNTER_STAT(NameString, Stat_GPU_##StatName, STATGROUP_GPU); CSV_DEFINE_STAT(GPU,StatName); FDrawCallCategoryName DrawcallCountCategory_##StatName;
+ #define DECLARE_GPU_DRAWCALL_STAT_NAMED(StatName, NameString) DECLARE_FLOAT_COUNTER_STAT(NameString, Stat_GPU_##StatName, STATGROUP_GPU); CSV_DEFINE_STAT(GPU,StatName); FDrawCallCategoryName DrawcallCountCategory_##StatName((TCHAR*)TEXT(#StatName));
 
  // Extern GPU stats are needed where a stat is used in multiple CPPs. Use the DECLARE_GPU_STAT_NAMED_EXTERN in the header and DEFINE_GPU_STAT in the CPPs
- #define DECLARE_GPU_STAT_NAMED_EXTERN(StatName, NameString) DECLARE_FLOAT_COUNTER_STAT_EXTERN(NameString, Stat_GPU_##StatName, STATGROUP_GPU, ); CSV_DECLARE_STAT_EXTERN(GPU,StatName);
- #define DEFINE_GPU_STAT(StatName) DEFINE_STAT(Stat_GPU_##StatName); CSV_DEFINE_STAT(GPU,StatName);
+ #define DECLARE_GPU_STAT_NAMED_EXTERN(StatName, NameString) DECLARE_FLOAT_COUNTER_STAT_EXTERN(NameString, Stat_GPU_##StatName, STATGROUP_GPU, ); CSV_DECLARE_STAT_EXTERN(GPU,StatName); extern FDrawCallCategoryName DrawcallCountCategory_##StatName;
+ #define DEFINE_GPU_STAT(StatName) DEFINE_STAT(Stat_GPU_##StatName); CSV_DEFINE_STAT(GPU,StatName); FDrawCallCategoryName DrawcallCountCategory_##StatName;
+ #define DEFINE_GPU_DRAWCALL_STAT(StatName) DEFINE_STAT(Stat_GPU_##StatName); CSV_DEFINE_STAT(GPU,StatName); FDrawCallCategoryName DrawcallCountCategory_##StatName((TCHAR*)TEXT(#StatName));
 #if STATS
-  #define SCOPED_GPU_STAT(RHICmdList, StatName) FScopedGPUStatEvent PREPROCESSOR_JOIN(GPUStatEvent_##StatName,__LINE__); PREPROCESSOR_JOIN(GPUStatEvent_##StatName,__LINE__).Begin(RHICmdList, CSV_STAT_FNAME(StatName), GET_STATID( Stat_GPU_##StatName ).GetName() );
+  #define SCOPED_GPU_STAT(RHICmdList, StatName) FScopedGPUStatEvent PREPROCESSOR_JOIN(GPUStatEvent_##StatName,__LINE__); PREPROCESSOR_JOIN(GPUStatEvent_##StatName,__LINE__).Begin(RHICmdList, CSV_STAT_FNAME(StatName), GET_STATID( Stat_GPU_##StatName ).GetName(), &DrawcallCountCategory_##StatName.Counter);
  #else
-  #define SCOPED_GPU_STAT(RHICmdList, StatName) FScopedGPUStatEvent PREPROCESSOR_JOIN(GPUStatEvent_##StatName,__LINE__); PREPROCESSOR_JOIN(GPUStatEvent_##StatName,__LINE__).Begin(RHICmdList, CSV_STAT_FNAME(StatName), FName() );
- #endif
+  #define SCOPED_GPU_STAT(RHICmdList, StatName) FScopedGPUStatEvent PREPROCESSOR_JOIN(GPUStatEvent_##StatName,__LINE__); PREPROCESSOR_JOIN(GPUStatEvent_##StatName,__LINE__).Begin(RHICmdList, CSV_STAT_FNAME(StatName), FName(), &DrawcallCountCategory_##StatName.Counter );
+#endif
  #define GPU_STATS_BEGINFRAME(RHICmdList) FRealtimeGPUProfiler::Get()->BeginFrame(RHICmdList);
  #define GPU_STATS_ENDFRAME(RHICmdList) FRealtimeGPUProfiler::Get()->EndFrame(RHICmdList);
 #else
  #define DECLARE_GPU_STAT(StatName)
+ #define DECLARE_GPU_DRAWCALL_STAT(StatName)
  #define DECLARE_GPU_STAT_NAMED(StatName, NameString)
+ #define DECLARE_GPU_DRAWCALL_STAT_NAMED(StatName, NameString)
  #define DECLARE_GPU_STAT_NAMED_EXTERN(StatName, NameString)
  #define DEFINE_GPU_STAT(StatName)
+ #define DEFINE_GPU_DRAWCALL_STAT(StatName)
  #define SCOPED_GPU_STAT(RHICmdList, StatName) 
  #define GPU_STATS_BEGINFRAME(RHICmdList) 
  #define GPU_STATS_ENDFRAME(RHICmdList) 
@@ -278,14 +285,13 @@ class FScopedGPUStatEvent
 	/** Cmdlist to push onto. */
 	FRHICommandListImmediate* RHICmdList;
 
-	/** The stat event used to record timings */
-	FRealtimeGPUProfilerEvent* RealtimeGPUProfilerEvent;
+	int32* NumDrawCallsPtr;
 
 public:
 	/** Default constructor, initializing all member variables. */
 	FORCEINLINE FScopedGPUStatEvent()
 		: RHICmdList(nullptr)
-		, RealtimeGPUProfilerEvent(nullptr)
+		, NumDrawCallsPtr(nullptr)
 	{}
 
 	/**
@@ -302,7 +308,7 @@ public:
 	/**
 	* Start/Stop functions for timer stats
 	*/
-	RENDERCORE_API void Begin(FRHICommandList& InRHICmdList, const FName& Name, const FName& StatName );
+	RENDERCORE_API void Begin(FRHICommandList& InRHICmdList, const FName& Name, const FName& StatName, int32* InNumDrawCallsPtr);
 	RENDERCORE_API void End();
 };
 #endif // HAS_GPU_STATS

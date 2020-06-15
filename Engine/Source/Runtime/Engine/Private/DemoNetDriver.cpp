@@ -2891,6 +2891,12 @@ void UDemoNetDriver::TickDemoRecordFrame(float DeltaSeconds)
 						continue;
 					}
 
+					if (!Actor->bRelevantForNetworkReplays)
+					{
+						ActorsToRemove.Add(Actor);
+						continue;
+					}
+
 					// We check ActorInfo->LastNetUpdateTime < KINDA_SMALL_NUMBER to force at least one update for each actor
 					const bool bWasRecentlyRelevant = (ActorInfo->LastNetUpdateTimestamp < KINDA_SMALL_NUMBER) || ((GetElapsedTime() - ActorInfo->LastNetUpdateTimestamp) < RelevantTimeout);
 
@@ -3067,7 +3073,7 @@ void UDemoNetDriver::TickDemoRecordFrame(float DeltaSeconds)
 	LastReplayFrameFidelity = ReplicatedPercent;
 }
 
-bool UDemoNetDriver::ReplicatePrioritizedActor(const FActorPriority& ActorPriority, const class FRepActorsParams& Params)
+bool UDemoNetDriver::ReplicatePrioritizedActor(const FActorPriority& ActorPriority, const FRepActorsParams& Params)
 {
 	FNetworkObjectInfo* ActorInfo = ActorPriority.ActorInfo;
 	FActorDestructionInfo* DestructionInfo = ActorPriority.DestructionInfo;
@@ -3088,10 +3094,12 @@ bool UDemoNetDriver::ReplicatePrioritizedActor(const FActorPriority& ActorPriori
 			UE_LOG(LogDemo, Verbose, TEXT("TickDemoRecord creating destroy channel for NetGUID <%s,%s> Priority: %d"), *DestructionInfo->NetGUID.ToString(), *DestructionInfo->PathName, ActorPriority.Priority);
 
 			// Send a close bunch on the new channel
+			PRAGMA_DISABLE_DEPRECATION_WARNINGS
 			Channel->SetChannelActorForDestroy(DestructionInfo);
+			PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 			// Remove from connection's to-be-destroyed list (close bunch is reliable, so it will make it there)
-			Connection->GetDestroyedStartupOrDormantActorGUIDs().Remove(DestructionInfo->NetGUID);
+			Connection->RemoveDestructionInfo(DestructionInfo);
 		}
 	}
 	else if (ActorInfo != nullptr && DestructionInfo == nullptr)
@@ -6753,7 +6761,7 @@ bool UDemoNetDriver::ShouldReplicateFunction(AActor* Actor, UFunction* Function)
 bool UDemoNetDriver::ShouldReplicateActor(AActor* Actor) const
 {
 	// replicate actors that share the demo net driver name, or actors belonging to the game net driver
-	return Super::ShouldReplicateActor(Actor) || (Actor && Actor->GetNetDriverName() == NAME_GameNetDriver);
+	return (Actor && Actor->GetIsReplicated()) && (Super::ShouldReplicateActor(Actor) || (Actor->GetNetDriverName() == NAME_GameNetDriver));
 }
 
 /*

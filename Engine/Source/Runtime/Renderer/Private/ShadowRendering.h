@@ -350,9 +350,6 @@ public:
 	/** View matrices for each cubemap face, used by one pass point light shadows. */
 	TArray<FMatrix> OnePassShadowViewMatrices;
 	
-	/** Frustums for each cubemap face, used for object culling one pass point light shadows. */
-	TArray<FConvexVolume> OnePassShadowFrustums;
-
 	/** Data passed from async compute begin to end. */
 	FComputeFenceRHIRef RayTracedShadowsEndFence;
 	TRefCountPtr<IPooledRenderTarget> RayTracedShadowsRT;
@@ -445,6 +442,21 @@ public:
 	 * Adds a primitive to the shadow's subject list.
 	 */
 	void AddSubjectPrimitive(FPrimitiveSceneInfo* PrimitiveSceneInfo, TArray<FViewInfo>* ViewArray, ERHIFeatureLevel::Type FeatureLevel, bool bRecordShadowSubjectForMobileShading);
+
+	uint64 AddSubjectPrimitive_AnyThread(
+		const FPrimitiveSceneInfoCompact& PrimitiveSceneInfoCompact,
+		TArray<FViewInfo>* ViewArray,
+		ERHIFeatureLevel::Type FeatureLevel,
+		struct FAddSubjectPrimitiveStats& OutStats,
+		struct FAddSubjectPrimitiveOverflowedIndices& OverflowBuffer) const;
+
+	void PresizeSubjectPrimitiveArrays(struct FAddSubjectPrimitiveStats const& Stats);
+
+	void FinalizeAddSubjectPrimitive(
+		struct FAddSubjectPrimitiveOp const& Op,
+		TArray<FViewInfo>* ViewArray,
+		ERHIFeatureLevel::Type FeatureLevel,
+		struct FFinalizeAddSubjectPrimitiveContext& Context);
 
 	/**
 	* @return TRUE if this shadow info has any casting subject prims to render
@@ -620,8 +632,26 @@ private:
 		TArray<const FStaticMeshBatch*, SceneRenderingAllocator>& MeshCommandBuildRequests,
 		int32& NumMeshCommandBuildRequestElements);
 
+	void AddCachedMeshDrawCommands_AnyThread(
+		const FScene* Scene,
+		const FStaticMeshBatchRelevance& RESTRICT StaticMeshRelevance,
+		int32 StaticMeshIdx,
+		int32& NumAcceptedStaticMeshes,
+		struct FAddSubjectPrimitiveResult& OutResult,
+		struct FAddSubjectPrimitiveStats& OutStats,
+		struct FAddSubjectPrimitiveOverflowedIndices& OverflowBuffer) const;
+
 	/** Will return if we should draw the static mesh for the shadow, and will perform lazy init of primitive if it wasn't visible */
-	bool ShouldDrawStaticMeshes(FViewInfo& InCurrentView, bool bInCustomDataRelevance, FPrimitiveSceneInfo* InPrimitiveSceneInfo);
+	bool ShouldDrawStaticMeshes(FViewInfo& InCurrentView, FPrimitiveSceneInfo* InPrimitiveSceneInfo);
+
+	bool ShouldDrawStaticMeshes_AnyThread(
+		FViewInfo& InCurrentView,
+		const FPrimitiveSceneInfoCompact& PrimitiveSceneInfoCompact,
+		bool bMayBeFading,
+		bool bNeedUpdateStaticMeshes,
+		struct FAddSubjectPrimitiveResult& OutResult,
+		struct FAddSubjectPrimitiveStats& OutStats,
+		struct FAddSubjectPrimitiveOverflowedIndices& OverflowBuffer) const;
 
 	void GetShadowTypeNameForDrawEvent(FString& TypeName) const;
 
@@ -788,7 +818,6 @@ public:
 	void Bind(const FShader::CompiledShaderInitializerType& Initializer)
 	{
 		const FShaderParameterMap& ParameterMap = Initializer.ParameterMap;
-		SceneTextureParameters.Bind(Initializer);
 		ScreenToShadowMatrix.Bind(ParameterMap,TEXT("ScreenToShadowMatrix"));
 		SoftTransitionScale.Bind(ParameterMap,TEXT("SoftTransitionScale"));
 		ShadowBufferSize.Bind(ParameterMap,TEXT("ShadowBufferSize"));
@@ -802,13 +831,13 @@ public:
 		HairCategorizationTexture.Bind(ParameterMap, TEXT("HairCategorizationTexture"));
 		PerObjectShadowFadeStart.Bind(ParameterMap, TEXT("PerObjectShadowFadeStart"));
 		InvPerObjectShadowFadeLength.Bind(ParameterMap, TEXT("InvPerObjectShadowFadeLength"));
+		ShadowNearAndFarDepth.Bind(ParameterMap, TEXT("ShadowNearAndFarDepth"));
+		bCascadeUseFadePlane.Bind(ParameterMap, TEXT("bCascadeUseFadePlane"));
 	}
 
-	void Set(FRHICommandList& RHICmdList, FShader* Shader, const FSceneView& View, const FProjectedShadowInfo* ShadowInfo, const FHairStrandsVisibilityData* HairVisibilityData, bool bModulatedShadows)
+	void Set(FRHICommandList& RHICmdList, FShader* Shader, const FSceneView& View, const FProjectedShadowInfo* ShadowInfo, const FHairStrandsVisibilityData* HairVisibilityData, bool bModulatedShadows, bool bUseFadePlane)
 	{
 		FRHIPixelShader* ShaderRHI = RHICmdList.GetBoundPixelShader();
-
-		SceneTextureParameters.Set(RHICmdList, ShaderRHI, View.FeatureLevel, ESceneTextureSetupMode::All);
 
 		const FIntPoint ShadowBufferResolution = ShadowInfo->GetShadowBufferResolution();
 
@@ -879,7 +908,7 @@ public:
 		SetShaderValue(RHICmdList, ShaderRHI, ProjectionDepthBias, FVector4(ShadowInfo->GetShaderDepthBias(), ShadowInfo->GetShaderSlopeDepthBias(), ShadowInfo->GetShaderReceiverDepthBias(), ShadowInfo->MaxSubjectZ - ShadowInfo->MinSubjectZ));
 		SetShaderValue(RHICmdList, ShaderRHI, FadePlaneOffset, ShadowInfo->CascadeSettings.FadePlaneOffset);
 
-		if(InvFadePlaneLength.IsBound())
+		if(InvFadePlaneLength.IsBound() && bUseFadePlane)
 		{
 			check(ShadowInfo->CascadeSettings.FadePlaneLength > 0);
 			SetShaderValue(RHICmdList, ShaderRHI, InvFadePlaneLength, 1.0f / ShadowInfo->CascadeSettings.FadePlaneLength);
@@ -896,34 +925,29 @@ public:
 		if (HairVisibilityData && HairVisibilityData->CategorizationTexture)
 		{
 			SetTextureParameter(RHICmdList, ShaderRHI, HairCategorizationTexture, HairVisibilityData->CategorizationTexture->GetRenderTargetItem().ShaderResourceTexture);
+
+			float DeviceZNear = 1;
+			float DeviceZFar = 0;
+			if (ShadowInfo->bDirectionalLight)
+			{
+				FVector4 Near = View.ViewMatrices.GetProjectionMatrix().TransformFVector4(FVector4(0, 0, ShadowInfo->CascadeSettings.SplitNear));
+				FVector4 Far = View.ViewMatrices.GetProjectionMatrix().TransformFVector4(FVector4(0, 0, ShadowInfo->CascadeSettings.SplitFar));
+				DeviceZNear = Near.Z / Near.W;
+				DeviceZFar = Far.Z / Far.W;
+			}
+
+			FVector2D SliceNearAndFarDepth;
+			SliceNearAndFarDepth.X = DeviceZNear;
+			SliceNearAndFarDepth.Y = DeviceZFar;
+			SetShaderValue(RHICmdList, ShaderRHI, ShadowNearAndFarDepth, SliceNearAndFarDepth);
+			SetShaderValue(RHICmdList, ShaderRHI, bCascadeUseFadePlane, bUseFadePlane ? 1 : 0);
 		}
 
 		SetShaderValue(RHICmdList, ShaderRHI, PerObjectShadowFadeStart, ShadowInfo->PerObjectShadowFadeStart);
 		SetShaderValue(RHICmdList, ShaderRHI, InvPerObjectShadowFadeLength, ShadowInfo->InvPerObjectShadowFadeLength);
 	}
 
-	/** Serializer. */
-	/*friend FArchive& operator<<(FArchive& Ar, TShadowProjectionShaderParameters& P)
-	{
-		Ar << P.SceneTextureParameters;
-		Ar << P.ScreenToShadowMatrix;
-		Ar << P.SoftTransitionScale;
-		Ar << P.ShadowBufferSize;
-		Ar << P.ShadowDepthTexture;
-		Ar << P.ShadowDepthTextureSampler;
-		Ar << P.ProjectionDepthBias;
-		Ar << P.FadePlaneOffset;
-		Ar << P.InvFadePlaneLength;
-		Ar << P.ShadowTileOffsetAndSizeParam;
-		Ar << P.LightPositionOrDirection;
-		Ar << P.HairCategorizationTexture;
-		Ar << P.PerObjectShadowFadeStart;
-		Ar << P.InvPerObjectShadowFadeLength;
-		return Ar;
-	}*/
-
 private:
-	LAYOUT_FIELD(FSceneTextureShaderParameters, SceneTextureParameters);
 	LAYOUT_FIELD(FShaderParameter, ScreenToShadowMatrix);
 	LAYOUT_FIELD(FShaderParameter, SoftTransitionScale);
 	LAYOUT_FIELD(FShaderParameter, ShadowBufferSize);
@@ -937,6 +961,8 @@ private:
 	LAYOUT_FIELD(FShaderResourceParameter, HairCategorizationTexture);
 	LAYOUT_FIELD(FShaderParameter, PerObjectShadowFadeStart);
 	LAYOUT_FIELD(FShaderParameter, InvPerObjectShadowFadeLength);
+	LAYOUT_FIELD(FShaderParameter, ShadowNearAndFarDepth);
+	LAYOUT_FIELD(FShaderParameter, bCascadeUseFadePlane);
 };
 
 /**
@@ -1003,7 +1029,9 @@ public:
 
 		FShadowProjectionPixelShaderInterface::SetParameters(RHICmdList, ViewIndex, View, HairVisibilityData, ShadowInfo);
 
-		ProjectionParameters.Set(RHICmdList, this, View, ShadowInfo, HairVisibilityData, bModulatedShadows);
+		const bool bUseFadePlaneEnable = ShadowInfo->CascadeSettings.FadePlaneLength > 0;
+
+		ProjectionParameters.Set(RHICmdList, this, View, ShadowInfo, HairVisibilityData, bModulatedShadows, bUseFadePlaneEnable);
 		const FLightSceneProxy& LightProxy = *(ShadowInfo->GetLightSceneInfo().Proxy);
 
 		SetShaderValue(RHICmdList, ShaderRHI, ShadowFadeFraction, ShadowInfo->FadeAlphas[ViewIndex] );
@@ -1159,6 +1187,17 @@ public:
 };
 
 
+BEGIN_SHADER_PARAMETER_STRUCT(FOnePassPointShadowProjection, )
+	SHADER_PARAMETER_TEXTURE(TextureCube, ShadowDepthCubeTexture)
+	SHADER_PARAMETER_TEXTURE(TextureCube, ShadowDepthCubeTexture2)
+	SHADER_PARAMETER_SAMPLER(SamplerComparisonState, ShadowDepthCubeTextureSampler)
+	SHADER_PARAMETER_ARRAY(FMatrix, ShadowViewProjectionMatrices, [6])
+	SHADER_PARAMETER(float, InvShadowmapResolution)
+END_SHADER_PARAMETER_STRUCT()
+
+extern void GetOnePassPointShadowProjectionParameters(const FProjectedShadowInfo* ShadowInfo, FOnePassPointShadowProjection& OutParameters);
+
+
 /** One pass point light shadow projection parameters used by multiple shaders. */
 class FOnePassPointShadowProjectionShaderParameters
 {
@@ -1281,7 +1320,6 @@ public:
 	TOnePassPointShadowProjectionPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer):
 		FGlobalShader(Initializer)
 	{
-		SceneTextureParameters.Bind(Initializer);
 		OnePassShadowParameters.Bind(Initializer.ParameterMap);
 		ShadowDepthTextureSampler.Bind(Initializer.ParameterMap,TEXT("ShadowDepthTextureSampler"));
 		LightPosition.Bind(Initializer.ParameterMap,TEXT("LightPositionAndInvRadius"));
@@ -1317,7 +1355,6 @@ public:
 
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, View.ViewUniformBuffer);
 
-		SceneTextureParameters.Set(RHICmdList, ShaderRHI, View.FeatureLevel, ESceneTextureSetupMode::All);
 		OnePassShadowParameters.Set(RHICmdList, ShaderRHI, ShadowInfo);
 
 		const FLightSceneProxy& LightProxy = *(ShadowInfo->GetLightSceneInfo().Proxy);
@@ -1372,7 +1409,6 @@ public:
 	}
 
 private:
-	LAYOUT_FIELD(FSceneTextureShaderParameters, SceneTextureParameters);
 	LAYOUT_FIELD(FOnePassPointShadowProjectionShaderParameters, OnePassShadowParameters);
 	LAYOUT_FIELD(FShaderResourceParameter, ShadowDepthTextureSampler);
 	LAYOUT_FIELD(FShaderParameter, LightPosition);

@@ -25,9 +25,9 @@
 /// Hold all the hair strands data
 struct FHairStrandsDatas
 {
-	FHairStrandsDeepShadowViews DeepShadowViews;
 	FHairStrandsVisibilityViews HairVisibilityViews;
 	FHairStrandsMacroGroupViews MacroGroupsPerViews;
+	FHairStrandsDebugData DebugData;
 };
 
 enum class EHairStrandsInterpolationType
@@ -39,11 +39,23 @@ enum class EHairStrandsInterpolationType
 void RunHairStrandsInterpolation(
 	FRHICommandListImmediate& RHICmdList, 
 	EWorldType::Type WorldType, 
+	const class FGPUSkinCache* GPUSkinCache,
 	const struct FShaderDrawDebugData* DebugShaderData,
 	FGlobalShaderMap* ShaderMap, 
 	EHairStrandsInterpolationType Type,
 	FHairStrandClusterData* ClusterData);
 
-void RunHairStrandsBindingQueries(
+void RenderHairPrePass(
 	FRHICommandListImmediate& RHICmdList,
-	TShaderMap<FGlobalShaderType>* ShaderMap);
+	FScene* Scene,
+	TArray<FViewInfo>& Views,
+	FHairStrandClusterData HairClusterData,
+	FHairStrandsDatas& OutHairDatas);
+
+void RenderHairBasePass(
+	FRHICommandListImmediate& RHICmdList,
+	FScene* Scene,
+	FSceneRenderTargets& SceneContext,
+	TArray<FViewInfo>& Views,
+	FHairStrandClusterData HairClusterData,
+	FHairStrandsDatas& OutHairDatas);

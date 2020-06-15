@@ -7,9 +7,11 @@
 #include "PhysicsPublic.h"
 #include "Physics/PhysicsInterfaceCore.h"
 
-#if WITH_PHYSX
+#if PHYSICS_INTERFACE_PHYSX
 	#include "PhysXPublic.h"
 #endif // WITH_PHYSX
+
+#include "ChaosCheck.h"
 
 UPhysicsHandleComponent::UPhysicsHandleComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -34,7 +36,7 @@ void UPhysicsHandleComponent::OnUnregister()
 		ReleaseComponent();
 	}
 
-#if WITH_PHYSX
+#if PHYSICS_INTERFACE_PHYSX
 	if(HandleData)
 	{
 		check(KinActorData);
@@ -195,7 +197,9 @@ void UPhysicsHandleComponent::GrabComponentImp(UPrimitiveComponent* InComponent,
 		}
 	});
 	
-#endif // WITH_PHYSX
+#elif WITH_CHAOS
+	CHAOS_ENSURE(false);
+#endif
 
 	GrabbedComponent = InComponent;
 	GrabbedBoneName = InBoneName;
@@ -203,7 +207,7 @@ void UPhysicsHandleComponent::GrabComponentImp(UPrimitiveComponent* InComponent,
 
 void UPhysicsHandleComponent::UpdateDriveSettings()
 {
-#if WITH_PHYSX
+#if PHYSICS_INTERFACE_PHYSX
 	if(HandleData != nullptr)
 	{
 		if (bSoftLinearConstraint)
@@ -228,7 +232,7 @@ void UPhysicsHandleComponent::ReleaseComponent()
 {
 	if(GrabbedComponent)
 	{
-#if WITH_PHYSX
+#if PHYSICS_INTERFACE_PHYSX
 		if(HandleData)
 		{
 			check(KinActorData);
@@ -287,7 +291,7 @@ void UPhysicsHandleComponent::UpdateHandleTransform(const FTransform& NewTransfo
 		return;
 	}
 
-#if WITH_PHYSX
+#if PHYSICS_INTERFACE_PHYSX
 	bool bChangedPosition = true;
 	bool bChangedRotation = true;
 

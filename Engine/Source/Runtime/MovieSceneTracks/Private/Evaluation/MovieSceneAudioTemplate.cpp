@@ -16,17 +16,32 @@
 #include "MovieScene.h"
 #include "Evaluation/MovieSceneEvaluation.h"
 #include "IMovieScenePlayer.h"
+#include "GameFramework/WorldSettings.h"
 
 
 DECLARE_CYCLE_STAT(TEXT("Audio Track Evaluate"), MovieSceneEval_AudioTrack_Evaluate, STATGROUP_MovieSceneEval);
 DECLARE_CYCLE_STAT(TEXT("Audio Track Tear Down"), MovieSceneEval_AudioTrack_TearDown, STATGROUP_MovieSceneEval);
 DECLARE_CYCLE_STAT(TEXT("Audio Track Token Execute"), MovieSceneEval_AudioTrack_TokenExecute, STATGROUP_MovieSceneEval);
 
-static float MaxSequenceAudioDesyncToleranceCVar = 0.2f;
+static float MaxSequenceAudioDesyncToleranceCVar = 0.5f;
 FAutoConsoleVariableRef CVarMaxSequenceAudioDesyncTolerance(
 	TEXT("Sequencer.Audio.MaxDesyncTolerance"),
 	MaxSequenceAudioDesyncToleranceCVar,
 	TEXT("Controls how many seconds an audio track can be out of sync in a Sequence before we attempt a time correction.\n"),
+	ECVF_Default);
+
+static bool bIgnoreAudioSyncDuringWorldTimeDilationCVar = true;
+FAutoConsoleVariableRef CVarIgnoreAudioSyncDuringWorldTimeDilation(
+	TEXT("Sequencer.Audio.IgnoreAudioSyncDuringWorldTimeDilation"),
+	bIgnoreAudioSyncDuringWorldTimeDilationCVar,
+	TEXT("Ignore correcting audio if there is world time dilation.\n"),
+	ECVF_Default);
+
+static int32 UseAudioClockForSequencerDesyncCVar = 0;
+FAutoConsoleVariableRef CVaUseAudioClockForSequencerDesync(
+	TEXT("Sequencer.Audio.UseAudioClockForAudioDesync"),
+	UseAudioClockForSequencerDesyncCVar,
+	TEXT("When set to 1, we will use the audio render thread directly to query whether audio has went out of sync with the sequence.\n"),
 	ECVF_Default);
 
 
@@ -88,14 +103,13 @@ struct FCachedAudioTrackData : IPersistentEvaluationData
 	TMap<FObjectKey, TMap<FObjectKey, TWeakObjectPtr<UAudioComponent>>> AudioComponentsByActorKey;
 	
 	FCachedAudioTrackData()
-		: SoundLastPlayedAtTime(0.f)
 	{
 		// Create the container for master tracks, which do not have an actor to attach to
 		AudioComponentsByActorKey.Add(FObjectKey(), TMap<FObjectKey, TWeakObjectPtr<UAudioComponent>>());
 	}
 
 	/** Set whenever we ask the Audio component to start playing a sound. Used to detect desyncs caused when Sequencer evaluates at more-than-real-time. */
-	float SoundLastPlayedAtTime;
+	TMap<TWeakObjectPtr<UAudioComponent>, float> SoundLastPlayedAtTime;
 
 	UAudioComponent* GetAudioComponent(FObjectKey ActorKey, FObjectKey SectionKey)
 	{
@@ -398,6 +412,13 @@ struct FAudioSectionExecutionToken : IMovieSceneExecutionToken
 		if (AudioTime >= 0.f && Sound)
 		{
 			const float Duration = MovieSceneHelpers::GetSoundDuration(Sound);
+
+			if (!AudioSection->GetLooping() && AudioTime > Duration && Duration != 0.f)
+			{
+				AudioComponent.Stop();
+				return;
+			}
+
 			AudioTime = Duration > 0.f ? FMath::Fmod(AudioTime, Duration) : AudioTime;
 		}
 
@@ -407,18 +428,40 @@ struct FAudioSectionExecutionToken : IMovieSceneExecutionToken
 		bool bSoundNeedsStateChange = !AudioComponent.IsPlaying() || AudioComponent.Sound != Sound;
 		bool bSoundNeedsTimeSync = false;
 
-		if (Player.GetPlaybackContext()->GetWorld())
+		// Sync only if there is no time dilation because otherwise the system will constantly resync because audio 
+		// playback is not dilated and will never match the expected playback time.
+		const bool bDoTimeSync = 
+			Player.GetPlaybackContext()->GetWorld() && 
+			(FMath::IsNearlyEqual(Player.GetPlaybackContext()->GetWorld()->GetWorldSettings()->GetEffectiveTimeDilation(), 1.f) ||
+			 !bIgnoreAudioSyncDuringWorldTimeDilationCVar);
+
+		if (bDoTimeSync)
 		{
-			float CurrentGameTime = Player.GetPlaybackContext()->GetWorld()->GetAudioTimeSeconds();
+			float CurrentGameTime = 0.0f;
+
+			FAudioDevice* AudioDevice = Player.GetPlaybackContext()->GetWorld()->GetAudioDeviceRaw();
+			if (UseAudioClockForSequencerDesyncCVar && AudioDevice)
+			{
+				CurrentGameTime = AudioDevice->GetAudioClock();
+			}
+			else
+			{
+				CurrentGameTime = Player.GetPlaybackContext()->GetWorld()->GetAudioTimeSeconds();
+			}
 
 			// This tells us how much time has passed in the game world (and thus, reasonably, the audio playback)
 			// so if we calculate that we should be playing say, 15s into the section during evaluation, but
 			// we're only 5s since the last Play call, then we know we're out of sync. 
-			float GameTimeDelta = CurrentGameTime - TrackData.SoundLastPlayedAtTime;
-			if (FMath::Abs(GameTimeDelta - AudioTime) > MaxSequenceAudioDesyncToleranceCVar)
+			if (TrackData.SoundLastPlayedAtTime.Contains(&AudioComponent))
 			{
-				UE_LOG(LogMovieScene, Verbose, TEXT("Audio Component detected a significant mismatch in (assumed) playback time versus the desired time. Time since last play call: %6.2f(s) Desired Time: %6.2f(s). Component: %s sound: %s"), GameTimeDelta, AudioTime, *AudioComponent.GetName(), *GetNameSafe(AudioComponent.Sound));
-				bSoundNeedsTimeSync = true;
+				float SoundLastPlayedAtTime = TrackData.SoundLastPlayedAtTime[&AudioComponent];
+
+				float GameTimeDelta = CurrentGameTime - SoundLastPlayedAtTime;
+				if (!FMath::IsNearlyZero(MaxSequenceAudioDesyncToleranceCVar) && FMath::Abs(GameTimeDelta - AudioTime) > MaxSequenceAudioDesyncToleranceCVar)
+				{
+					UE_LOG(LogMovieScene, Verbose, TEXT("Audio Component detected a significant mismatch in (assumed) playback time versus the desired time. Time since last play call: %6.2f(s) Desired Time: %6.2f(s). Component: %s sound: %s"), GameTimeDelta, AudioTime, *AudioComponent.GetName(), *GetNameSafe(AudioComponent.Sound));
+					bSoundNeedsTimeSync = true;
+				}
 			}
 		}
 
@@ -467,7 +510,21 @@ struct FAudioSectionExecutionToken : IMovieSceneExecutionToken
 				// Keep track of when we asked this audio clip to play (in game time) so that we can figure out if there's a significant desync in the future.
 				if (Player.GetPlaybackContext()->GetWorld())
 				{
-					TrackData.SoundLastPlayedAtTime = Player.GetPlaybackContext()->GetWorld()->GetAudioTimeSeconds() - AudioTime;
+					if (!TrackData.SoundLastPlayedAtTime.Contains(&AudioComponent))
+					{
+						TrackData.SoundLastPlayedAtTime.Add(&AudioComponent);
+					}
+
+					FAudioDevice* AudioDevice = Player.GetPlaybackContext()->GetWorld()->GetAudioDeviceRaw();
+					if (UseAudioClockForSequencerDesyncCVar && AudioDevice)
+					{
+						TrackData.SoundLastPlayedAtTime[&AudioComponent] = AudioDevice->GetAudioClock() - AudioTime;
+					}
+					else
+					{
+						TrackData.SoundLastPlayedAtTime[&AudioComponent] = Player.GetPlaybackContext()->GetWorld()->GetAudioTimeSeconds() - AudioTime;
+					}
+					
 				}
 			}
 

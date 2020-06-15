@@ -65,6 +65,10 @@ namespace LocalFileReplay
 	TAutoConsoleVariable<int32> CVarMaxBufferedStreamChunks(TEXT("localReplay.MaxBufferedStreamChunks"), 10, TEXT(""));
 	TAutoConsoleVariable<int32> CVarAllowLiveStreamDelete(TEXT("localReplay.AllowLiveStreamDelete"), 1, TEXT(""));
 	TAutoConsoleVariable<float> CVarChunkUploadDelayInSeconds(TEXT("localReplay.ChunkUploadDelayInSeconds"), 20.0f, TEXT(""));
+
+#if !UE_BUILD_SHIPPING
+	TAutoConsoleVariable<int32> CVarAllowEncryptedRecording(TEXT("localReplay.AllowEncryptedRecording"), 1, TEXT(""));
+#endif
 };
 
 const uint32 FLocalFileNetworkReplayStreamer::FileMagic = 0x1CA2E27F;
@@ -527,6 +531,19 @@ bool FLocalFileNetworkReplayStreamer::WriteReplayInfo(FArchive& Archive, const F
 	return WriteReplayInfo(Archive, InReplayInfo, DefaultSerializationInfo);
 }
 
+bool FLocalFileNetworkReplayStreamer::AllowEncryptedWrite() const
+{
+	bool bAllowWrite = SupportsEncryption();
+
+#if !UE_BUILD_SHIPPING
+	bAllowWrite = bAllowWrite && (LocalFileReplay::CVarAllowEncryptedRecording.GetValueOnAnyThread() != 0);
+
+	UE_LOG(LogLocalFileReplay, VeryVerbose, TEXT("FLocalFileNetworkReplayStreamer::AllowEncryptedWrite: %s"), *LexToString(bAllowWrite));
+#endif
+
+	return bAllowWrite;
+}
+
 bool FLocalFileNetworkReplayStreamer::WriteReplayInfo(FArchive& Archive, const FLocalFileReplayInfo& InReplayInfo, FLocalFileSerializationInfo& SerializationInfo)
 {
 	if (SerializationInfo.FileVersion < LocalFileReplay::HISTORY_FIXEDSIZE_FRIENDLY_NAME)
@@ -599,7 +616,7 @@ bool FLocalFileNetworkReplayStreamer::WriteReplayInfo(FArchive& Archive, const F
 
 	if (SerializationInfo.FileVersion >= LocalFileReplay::HISTORY_ENCRYPTION)
 	{
-		uint32 Encrypted = SupportsEncryption() ? 1 : 0;
+		uint32 Encrypted = AllowEncryptedWrite() ? 1 : 0;
 		Archive << Encrypted;
 
 		TArray<uint8> KeyToWrite;
@@ -762,10 +779,17 @@ void FLocalFileNetworkReplayStreamer::StartStreaming(const FStartStreamingParame
 		// We are recording
 		StreamerState = EStreamerState::Recording;
 
+		uint64 TotalDiskSpace = 0;
+		uint64 TotalDiskFreeSpace = 0;
+		if (FPlatformMisc::GetDiskTotalAndFreeSpace(GetDemoPath(), TotalDiskSpace, TotalDiskFreeSpace))
+		{
+			UE_LOG(LogLocalFileReplay, Log, TEXT("Writing replay to '%s' with %.2fMB free"), *GetDemoPath(), (double)TotalDiskFreeSpace / 1024 / 1024);
+		}
+
 		CurrentReplayInfo.EncryptionKey.Reset();
 
 		// generate key now in case any other events are queued during the initial write
-		if (SupportsEncryption())
+		if (AllowEncryptedWrite())
 		{
 			GenerateEncryptionKey(CurrentReplayInfo.EncryptionKey);
 		}
@@ -1133,7 +1157,7 @@ void FLocalFileNetworkReplayStreamer::AddOrUpdateEvent(const FString& Name, cons
 
 					TArray<uint8> EncryptedData;
 
-					if (SupportsEncryption())
+					if (AllowEncryptedWrite())
 					{
 						SCOPE_CYCLE_COUNTER(STAT_LocalReplay_EncryptTime);
 
@@ -1671,7 +1695,7 @@ void FLocalFileNetworkReplayStreamer::FlushStream(const uint32 TimeInMS)
 
 				TArray<uint8> EncryptedData;
 
-				if (SupportsEncryption())
+				if (AllowEncryptedWrite())
 				{
 					SCOPE_CYCLE_COUNTER(STAT_LocalReplay_EncryptTime);
 
@@ -1810,7 +1834,7 @@ void FLocalFileNetworkReplayStreamer::FlushCheckpointInternal(const uint32 TimeI
 
 					TArray<uint8> EncryptedData;
 
-					if (SupportsEncryption())
+					if (AllowEncryptedWrite())
 					{
 						SCOPE_CYCLE_COUNTER(STAT_LocalReplay_EncryptTime);
 
@@ -2958,6 +2982,7 @@ void FLocalFileNetworkReplayStreamer::ConditionallyLoadNextChunk()
 							{
 								UE_LOG(LogLocalFileReplay, Error, TEXT("ConditionallyLoadNextChunk failed to decrypt data."));
 								RequestData.DataBuffer.Empty();
+								RequestData.bAsyncError = true;
 								return;
 							}
 						}
@@ -2965,6 +2990,7 @@ void FLocalFileNetworkReplayStreamer::ConditionallyLoadNextChunk()
 						{
 							UE_LOG(LogLocalFileReplay, Error, TEXT("ConditionallyLoadNextChunk: Replay is marked encrypted but streamer does not support it."));
 							RequestData.DataBuffer.Empty();
+							RequestData.bAsyncError = true;
 							return;
 						}
 					}
@@ -2984,6 +3010,7 @@ void FLocalFileNetworkReplayStreamer::ConditionallyLoadNextChunk()
 							{
 								UE_LOG(LogLocalFileReplay, Error, TEXT("ConditionallyLoadNextChunk failed to uncompresss data."));
 								RequestData.DataBuffer.Empty();
+								RequestData.bAsyncError = true;
 								return;
 							}
 						}
@@ -2991,6 +3018,7 @@ void FLocalFileNetworkReplayStreamer::ConditionallyLoadNextChunk()
 						{
 							UE_LOG(LogLocalFileReplay, Error, TEXT("ConditionallyLoadNextChunk: Replay is marked compressed but streamer does not support it."));
 							RequestData.DataBuffer.Empty();
+							RequestData.bAsyncError = true;
 							return;
 						}
 					}
@@ -3002,6 +3030,13 @@ void FLocalFileNetworkReplayStreamer::ConditionallyLoadNextChunk()
 		[this, RequestedStreamChunkIndex](TLocalFileRequestCommonData<FStreamingResultBase>& RequestData)
 		{
 			LLM_SCOPE(ELLMTag::Replays);
+
+			// Hijacking this error code to indicate a failure in encryption/compression
+			if (RequestData.bAsyncError)
+			{
+				SetLastError(ENetworkReplayError::ServiceUnavailable);
+				return;
+			}
 
 			// Make sure our stream chunk index didn't change under our feet
 			if (RequestedStreamChunkIndex != StreamChunkIndex)

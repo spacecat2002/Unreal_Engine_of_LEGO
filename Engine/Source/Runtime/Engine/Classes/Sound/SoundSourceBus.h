@@ -22,7 +22,7 @@ enum class ESourceBusChannels : uint8
 };
 
 // A source bus is a type of USoundBase and can be "played" like any sound.
-UCLASS(hidecategories= (Compression, SoundWave, Streaming, Subtitles, Sound, Analysis, Format, Loading, Info, ImportSettings), ClassGroup = Sound, meta = (BlueprintSpawnableComponent))
+UCLASS(hidecategories= (Compression, SoundWave, Streaming, Subtitles, Analysis, Format, Loading, Info, ImportSettings), ClassGroup = Sound, meta = (BlueprintSpawnableComponent))
 class ENGINE_API USoundSourceBus : public USoundWave
 {
 	GENERATED_UCLASS_BODY()
@@ -42,7 +42,7 @@ public:
 	UAudioBus* AudioBus;
 
 	/** Stop the source bus when the volume goes to zero. */
-	UPROPERTY(EditAnywhere, Category = BusProperties)
+	UPROPERTY(meta = (DeprecatedProperty))
 	uint32 bAutoDeactivateWhenSilent:1;
 
 	//~ Begin UObject Interface.
@@ -59,7 +59,4 @@ public:
 
 protected:
 	void Init();
-
-	uint32 DurationSamples;
-	bool bInitialized;
 };

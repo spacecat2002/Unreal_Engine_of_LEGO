@@ -21,6 +21,7 @@
 #include "Net/NetworkGranularMemoryLogging.h"
 #include "Serialization/ArchiveCountMem.h"
 #include "Templates/AndOrNot.h"
+#include "Math/NumericLimits.h"
 #include "PushModelPerNetDriverState.h"
 #include "Net/Core/Trace/NetTrace.h"
 
@@ -73,71 +74,10 @@ constexpr bool GbPushModelValidateProperties = false;
 
 #endif
 
-int32 MaxRepArraySize = UNetworkSettings::DefaultMaxRepArraySize;
-int32 MaxRepArrayMemory = UNetworkSettings::DefaultMaxRepArrayMemory;
-
 extern int32 GNumSharedSerializationHit;
 extern int32 GNumSharedSerializationMiss;
 
 extern TAutoConsoleVariable<int32> CVarNetEnableDetailedScopeCounters;
-
-FConsoleVariableSinkHandle CreateMaxArraySizeCVarAndRegisterSink()
-{
-	static FAutoConsoleVariable CVarMaxArraySize(TEXT("net.MaxRepArraySize"), MaxRepArraySize, TEXT("Maximum allowable size for replicated dynamic arrays (in number of elements). Value must be between 1 and 65535."));
-	static FConsoleCommandDelegate Delegate = FConsoleCommandDelegate::CreateLambda(
-		[]()
-		{
-			const int32 NewMaxRepArraySizeValue = CVarMaxArraySize->GetInt();
-
-			if ((int32)UINT16_MAX < NewMaxRepArraySizeValue || 1 > NewMaxRepArraySizeValue)
-			{
-				UE_LOG(LogRepTraffic, Error,
-					TEXT("SerializeProperties_DynamicArray_r: MaxRepArraySize (%l) must be between 1 and 65535. Cannot accept new value."),
-					NewMaxRepArraySizeValue);
-
-				// Use SetByConsole to guarantee the value gets updated.
-				CVarMaxArraySize->Set(MaxRepArraySize, ECVF_SetByConsole);
-			}
-			else
-			{
-				MaxRepArraySize = NewMaxRepArraySizeValue;
-			}
-		}
-	);
-
-	return IConsoleManager::Get().RegisterConsoleVariableSink_Handle(Delegate);
-}
-
-FConsoleVariableSinkHandle CreateMaxArrayMemoryCVarAndRegisterSink()
-{
-	static FAutoConsoleVariableRef CVarMaxArrayMemory(TEXT("net.MaxRepArrayMemory"), MaxRepArrayMemory, TEXT("Maximum allowable size for replicated dynamic arrays (in bytes). Value must be between 1 and 65535"));
-	static FConsoleCommandDelegate Delegate = FConsoleCommandDelegate::CreateLambda(
-		[]()
-		{
-			const int32 NewMaxRepArrayMemoryValue = CVarMaxArrayMemory->GetInt();
-
-			if ((int32)UINT16_MAX < NewMaxRepArrayMemoryValue || 1 > NewMaxRepArrayMemoryValue)
-			{
-				UE_LOG(LogRepTraffic, Error,
-					TEXT("SerializeProperties_DynamicArray_r: MaxRepArrayMemory (%l) must be between 1 and 65535. Cannot accept new value."),
-					NewMaxRepArrayMemoryValue);
-
-				// Use SetByConsole to guarantee the value gets updated.
-				CVarMaxArrayMemory->Set(MaxRepArrayMemory, ECVF_SetByConsole);
-			}
-			else
-			{
-				MaxRepArrayMemory = NewMaxRepArrayMemoryValue;
-			}
-		}
-	);
-
-	return IConsoleManager::Get().RegisterConsoleVariableSink_Handle(Delegate);
-}
-
-// This just forces the above to get called.
-FConsoleVariableSinkHandle MaxRepArraySizeHandle = CreateMaxArraySizeCVarAndRegisterSink();
-FConsoleVariableSinkHandle MaxRepArrayMemorySink = CreateMaxArrayMemoryCVarAndRegisterSink();
 
 /** 
 * Helper method to allow us to instrument FBitArchive using FNetTraceCollector
@@ -238,14 +178,15 @@ namespace UE4_RepLayout_Private
 	}
 
 #if WITH_PUSH_MODEL
-	const UE4PushModelPrivate::FPushModelPerNetDriverHandle ConditionallyAddPushModelObject(const UE4PushModelPrivate::FNetPushObjectId ObjectId, const TSharedRef<const FRepLayout>& InRepLayout)
+	const UE4PushModelPrivate::FPushModelPerNetDriverHandle ConditionallyAddPushModelObject(const UObject* const Object, const TSharedRef<const FRepLayout>& InRepLayout)
 	{
 		const int32 NumReplicatedProperties = InRepLayout->GetNumParents();
 		if (UE4PushModelPrivate::IsPushModelEnabled() &&
 			NumReplicatedProperties > 0 &&
 			EnumHasAnyFlags(InRepLayout->GetFlags(), ERepLayoutFlags::FullPushSupport | ERepLayoutFlags::PartialPushSupport))
 		{
-			return UE4PushModelPrivate::AddPushModelObject(ObjectId, NumReplicatedProperties);
+			const FObjectKey ObjectKey(Object);
+			return UE4PushModelPrivate::AddPushModelObject(ObjectKey, NumReplicatedProperties);
 		}
 
 		return UE4PushModelPrivate::FPushModelPerNetDriverHandle::MakeInvalidHandle();
@@ -285,6 +226,24 @@ namespace UE4_RepLayout_Private
 		return false;
 #endif
 	}
+
+	bool ValidateArraySize(const int32 ArraySize, const FProperty* const Property)
+	{
+		if (UNLIKELY(TNumericLimits<uint16>::Max() <= ArraySize))
+		{
+			FString ErrorString = FString::Printf(TEXT("ValidateArraySize: Replicated arrays must be smaller than %d elements in size. ArraySize = (%d) Property = (%s)."),
+				TNumericLimits<uint16>::Max(), ArraySize, *Property->GetPathName());
+
+			// Keep these separate so that we always log the error even if we only fire the ensure once
+			// or if ensures are disabled.
+			UE_LOG(LogRepTraffic, Error, TEXT("%s"), *ErrorString);
+
+			ensureMsgf(false, TEXT("%s"), *ErrorString);
+			return false;
+		}
+
+		return true;
+	}	
 }
 
 //~ TODO: Consider moving the FastArray members into their own sub-struct to save memory for non fast array
@@ -822,7 +781,7 @@ struct FNetPrivatePushIdHelper
 {
 	static void SetNetPushID(UObject* InObject, const UE4PushModelPrivate::FNetPushObjectId ObjectId)
 	{
-		const UE4PushModelPrivate::FNetPushObjectId CurrentId = FObjectNetPushIdHelper::GetNetPushIdDynamic(InObject);
+		const UE4PushModelPrivate::FNetPushObjectId CurrentId = InObject->GetNetPushIdDynamic();
 		if (CurrentId != ObjectId)
 		{
 			check(CurrentId == INDEX_NONE);
@@ -830,7 +789,7 @@ struct FNetPrivatePushIdHelper
 		}
 	}
 
-	static void MarkPropertyDirty(UObject* InObject, const int32 RepIndex)
+	static void MarkPropertyDirty(const UObject* const InObject, const int32 RepIndex)
 	{
 		MARK_PROPERTY_DIRTY_UNSAFE(InObject, RepIndex);
 	}
@@ -987,7 +946,13 @@ void FRepStateStaticBuffer::CountBytes(FArchive& Ar) const
 	const uint64 StaticTotalMemory = LocalAr.GetMax();
 
 	FCountBytesHelper CountBytesHelper(LocalAr, Buffer.GetData(), StaticTotalMemory, RepLayout->Parents, RepLayout->Cmds);
-	CountBytesHelper.CountBytes();
+
+	// Buffers can be empty for ReceivingRepStates that are being tracked on servers.
+	// TODO: Do we actually need to allocate receiving rep states on servers at all?
+	if (Buffer.Num() > 0)
+	{
+		CountBytesHelper.CountBytes();
+	}
 
 	const uint64 StaticOnRepMemory = StaticTotalMemory - CountBytesHelper.NonRepStaticMemory;
 
@@ -1010,7 +975,7 @@ FRepChangelistState::FRepChangelistState(
 	, StaticBuffer(InRepLayout->CreateShadowBuffer(InSource))
 
 #if WITH_PUSH_MODEL
-	, PushModelObjectHandle(UE4_RepLayout_Private::ConditionallyAddPushModelObject(InRepresenting->GetUniqueID(), InRepLayout))
+	, PushModelObjectHandle(UE4_RepLayout_Private::ConditionallyAddPushModelObject(InRepresenting, InRepLayout))
 #endif // WITH_PUSH_MODEL
 
 {
@@ -1079,7 +1044,7 @@ FRepLayout::~FRepLayout()
 {
 }
 
-void FRepLayout::UpdateChangelistMgr(
+ERepLayoutResult FRepLayout::UpdateChangelistMgr(
 	FSendingRepState* RESTRICT RepState,
 	FReplicationChangelistMgr& InChangelistMgr,
 	const UObject* InObject,
@@ -1087,6 +1052,8 @@ void FRepLayout::UpdateChangelistMgr(
 	const FReplicationFlags& RepFlags,
 	const bool bForceCompare) const
 {
+	ERepLayoutResult Result = ERepLayoutResult::Success;
+
 	if (GShareInitialCompareState)
 	{
 		// See if we can re-use the work already done on a previous connection
@@ -1100,11 +1067,11 @@ void FRepLayout::UpdateChangelistMgr(
 			{
 				FReplicationFlags TempFlags = RepFlags;
 				TempFlags.bRolesOnly = true;
-				CompareProperties(RepState, &InChangelistMgr.RepChangelistState, (const uint8*)InObject, TempFlags);
+				Result = CompareProperties(RepState, &InChangelistMgr.RepChangelistState, (const uint8*)InObject, TempFlags);
 			}
 
 			INC_DWORD_STAT_BY(STAT_NetSkippedDynamicProps, 1);
-			return;
+			return Result;
 		}
 	}
 	else
@@ -1118,18 +1085,25 @@ void FRepLayout::UpdateChangelistMgr(
 		if (!bForceCompare && GShareShadowState && !RepFlags.bNetInitial && RepState->LastCompareIndex > 1 && InChangelistMgr.LastReplicationFrame == ReplicationFrame)
 		{
 			INC_DWORD_STAT_BY(STAT_NetSkippedDynamicProps, 1);
-			return;
+			return Result;
 		}
 	}
 
-	CompareProperties(RepState, &InChangelistMgr.RepChangelistState, (const uint8*)InObject, RepFlags);
+	Result = CompareProperties(RepState, &InChangelistMgr.RepChangelistState, (const uint8*)InObject, RepFlags);
 
-	InChangelistMgr.LastReplicationFrame = ReplicationFrame;
-
-	if (GShareInitialCompareState && RepFlags.bNetInitial)
+	// Currently, comparing properties should only result in Success, Empty, or FatalError.
+	// So, don't bother checking for normal errors.
+	if (LIKELY(ERepLayoutResult::FatalError != Result))
 	{
-		InChangelistMgr.LastInitialReplicationFrame = ReplicationFrame;
+		InChangelistMgr.LastReplicationFrame = ReplicationFrame;
+
+		if (GShareInitialCompareState && RepFlags.bNetInitial)
+		{
+			InChangelistMgr.LastInitialReplicationFrame = ReplicationFrame;
+		}
 	}
+
+	return Result;
 }
 
 struct FComparePropertiesSharedParams
@@ -1146,6 +1120,7 @@ struct FComparePropertiesSharedParams
 	const TBitArray<>* const PushModelProperties = nullptr;
 	const bool bValidateProperties = false;
 	const bool bIsNetworkProfilerActive = false;
+	const bool bChangedNetOwner = false;
 #if (WITH_PUSH_VALIDATION_SUPPORT || USE_NETWORK_PROFILER)
 	TBitArray<> PropertiesCompared;
 	TBitArray<> PropertiesChanged;
@@ -1157,6 +1132,7 @@ struct FComparePropertiesStackParams
 	const FConstRepObjectDataBuffer Data;
 	FRepShadowDataBuffer ShadowData;
 	TArray<uint16>& Changed;
+	ERepLayoutResult& Result;
 };
 
 static uint16 CompareProperties_r(
@@ -1210,18 +1186,18 @@ static bool CompareParentProperty(
 	const FComparePropertiesSharedParams& SharedParams,
 	FComparePropertiesStackParams& StackParams)
 {
-		const FRepParentCmd& Parent = SharedParams.Parents[ParentIndex];
-		const bool bIsLifetime = EnumHasAnyFlags(Parent.Flags, ERepParentFlags::IsLifetime);
+	const FRepParentCmd& Parent = SharedParams.Parents[ParentIndex];
+	const bool bIsLifetime = EnumHasAnyFlags(Parent.Flags, ERepParentFlags::IsLifetime);
 
-		// Active state of a property applies to *all* connections.
-		// If the property is inactive, we can skip comparing it because we know it won't be sent.
-		// Further, this will keep the last active state of the property in the shadow buffer,
-		// meaning the next time the property becomes active it will be sent to all connections.
+	// Active state of a property applies to *all* connections.
+	// If the property is inactive, we can skip comparing it because we know it won't be sent.
+	// Further, this will keep the last active state of the property in the shadow buffer,
+	// meaning the next time the property becomes active it will be sent to all connections.
 	const bool bIsActive = !SharedParams.RepChangedPropertyTracker || SharedParams.RepChangedPropertyTracker->Parents[ParentIndex].Active;
-		const bool bShouldSkip = !bIsLifetime || !bIsActive || (Parent.Condition == COND_InitialOnly && !SharedParams.bIsInitial);
+	const bool bShouldSkip = !bIsLifetime || !bIsActive || (Parent.Condition == COND_InitialOnly && !SharedParams.bIsInitial);
 
-		if (bShouldSkip)
-		{
+	if (bShouldSkip)
+	{
 		return false;
 	}
 
@@ -1229,26 +1205,26 @@ static bool CompareParentProperty(
 	if (SharedParams.bIsNetworkProfilerActive)
 	{
 		const_cast<TBitArray<>&>(SharedParams.PropertiesCompared)[ParentIndex] = true;
-		}
+	}
 #endif
 
 	const FRepLayoutCmd& Cmd = SharedParams.Cmds[Parent.CmdStart];
 
 	if (EnumHasAnyFlags(SharedParams.Flags, ERepLayoutFlags::IsActor))
+	{
+		if (UNLIKELY(ParentIndex == (int32)AActor::ENetFields_Private::Role))
 		{
-			if (UNLIKELY(ParentIndex == (int32)AActor::ENetFields_Private::Role))
-			{
 			return CompareRoleProperty(SharedParams, StackParams, (int32)AActor::ENetFields_Private::Role, SharedParams.RepState->SavedRole);
-			}
-		if (UNLIKELY(ParentIndex == (int32)AActor::ENetFields_Private::RemoteRole))
-			{
-			return CompareRoleProperty(SharedParams, StackParams, (int32)AActor::ENetFields_Private::RemoteRole, SharedParams.RepState->SavedRemoteRole);
-			}
 		}
+		if (UNLIKELY(ParentIndex == (int32)AActor::ENetFields_Private::RemoteRole))
+		{
+			return CompareRoleProperty(SharedParams, StackParams, (int32)AActor::ENetFields_Private::RemoteRole, SharedParams.RepState->SavedRemoteRole);
+		}
+	}
 		
 	const int32 NumChanges = StackParams.Changed.Num();
 
-		// Note, Handle - 1 to account for CompareProperties_r incrementing handles.
+	// Note, Handle - 1 to account for CompareProperties_r incrementing handles.
 	CompareProperties_r(SharedParams, StackParams, Parent.CmdStart, Parent.CmdEnd, Cmd.RelativeHandle - 1);
 
 	return !!(StackParams.Changed.Num() - NumChanges);
@@ -1276,10 +1252,14 @@ namespace UE4_RepLayout_Private
 #if WITH_PUSH_MODEL
 	static bool IsPropertyDirty(
 		const int32 ParentIndex,
+		const bool bRecentlyCollectedGarbage,
 		const FComparePropertiesSharedParams& SharedParams,
 		FComparePropertiesStackParams& StackParams)
 	{
-		return !(*SharedParams.PushModelProperties)[ParentIndex] || SharedParams.PushModelState->IsPropertyDirty(ParentIndex);
+		return !(*SharedParams.PushModelProperties)[ParentIndex] ||
+			SharedParams.PushModelState->IsPropertyDirty(ParentIndex) ||
+			(SharedParams.PushModelState->DidRecentlyCollectGarbage() &&
+			EnumHasAnyFlags(SharedParams.Parents[ParentIndex].Flags, ERepParentFlags::HasObjectProperties | ERepParentFlags::IsNetSerialize));
 	}
 #endif // WITH_PUSH_MODEL	
 }	
@@ -1293,20 +1273,25 @@ static void CompareParentProperties(
 #if WITH_PUSH_MODEL
 	if (SharedParams.PushModelState != nullptr)
 	{
+		const bool bRecentlyCollectedGarbage = SharedParams.PushModelState->DidRecentlyCollectGarbage();
+
 		// Typically, on an initial compare all properties will be dirty anyway.
 		// However, if an Actor is awakened from Dormancy, it's SendingRepState will have been recreated, invalidating
 		// its saved Role and RemoteRole (regardless of whether or not they were changed).
 		// This really shouldn't cause any problems, but it will cause Validation to consistently fail (if GbPushModelValidateProperties
 		// is enabled).
 		// To get around this, and just to be sure our code paths are consistent, we forcibly mark Role and RemoteRole dirty here.
-		if (EnumHasAnyFlags(SharedParams.Flags, ERepLayoutFlags::IsActor) && SharedParams.bIsInitial)
+		// Also, if we changed Net Owner state, then our RemoteRole will have changed (due to FScopeRoleDowngrade) even though
+		// the value hasn't changed on the Actor through normal gameplay code.
+		// Instead of marking RemoteRole dirty in Scoped Role Downgrade (which would cause tons dirties), we detect that here.
+		if (UNLIKELY(EnumHasAnyFlags(SharedParams.Flags, ERepLayoutFlags::IsActor) && (SharedParams.bIsInitial || SharedParams.bChangedNetOwner)))
 		{
 			SharedParams.PushModelState->MarkPropertyDirty((int32)AActor::ENetFields_Private::RemoteRole);
 			SharedParams.PushModelState->MarkPropertyDirty((int32)AActor::ENetFields_Private::Role);
 		}
 
 		// If we're forcibly comparing all properties, then don't bother checking dirty state.
-		if (SharedParams.bForceFail)
+		if (UNLIKELY(SharedParams.bForceFail))
 		{
 			for (int32 ParentIndex = 0; ParentIndex < SharedParams.Parents.Num(); ++ParentIndex)
 			{
@@ -1320,7 +1305,7 @@ static void CompareParentProperties(
 		{
 			for (int32 ParentIndex = 0; ParentIndex < SharedParams.Parents.Num(); ++ParentIndex)
 			{
-				const bool bIsPropertyDirty = UE4_RepLayout_Private::IsPropertyDirty(ParentIndex, SharedParams, StackParams);
+				const bool bIsPropertyDirty = UE4_RepLayout_Private::IsPropertyDirty(ParentIndex, bRecentlyCollectedGarbage, SharedParams, StackParams);
 				const bool bDidPropertyChange = UE4_RepLayout_Private::CompareParentPropertyHelper(ParentIndex, SharedParams, StackParams);
 
 				ensureAlwaysMsgf(!bDidPropertyChange || bIsPropertyDirty, TEXT("Push Model Property changed value, but was not marked dirty! Property=%s"), *SharedParams.Parents[ParentIndex].Property->GetPathName());
@@ -1329,7 +1314,7 @@ static void CompareParentProperties(
 #endif // WITH_PUSH_VALIDATION_SUPPORT
 
 		// If we have full push model support, then we only need to check properties that are actually dirty.
-		else if (EnumHasAnyFlags(SharedParams.Flags, ERepLayoutFlags::FullPushSupport))
+		else if (EnumHasAnyFlags(SharedParams.Flags, ERepLayoutFlags::FullPushSupport) && !bRecentlyCollectedGarbage)
 		{
 			for (TConstSetBitIterator<> It = SharedParams.PushModelState->GetDirtyProperties(); It; ++It)
 			{
@@ -1340,7 +1325,7 @@ static void CompareParentProperties(
 		{
 			for (int32 ParentIndex = 0; ParentIndex < SharedParams.Parents.Num(); ++ParentIndex)
 			{
-				if (UE4_RepLayout_Private::IsPropertyDirty(ParentIndex, SharedParams, StackParams))
+				if (UE4_RepLayout_Private::IsPropertyDirty(ParentIndex, bRecentlyCollectedGarbage, SharedParams, StackParams))
 				{
 					UE4_RepLayout_Private::CompareParentPropertyHelper(ParentIndex, SharedParams, StackParams);
 				}
@@ -1382,7 +1367,8 @@ static uint16 CompareProperties_r(
 			FComparePropertiesStackParams NewStackParams{
 				Data,
 				ShadowData,
-				StackParams.Changed
+				StackParams.Changed,
+				StackParams.Result
 			};
 
 			// Once we hit an array, start using a stack based approach
@@ -1411,8 +1397,14 @@ static void CompareProperties_Array_r(
 	FScriptArray* ShadowArray = (FScriptArray*)StackParams.ShadowData.Data;
 	FScriptArray* Array = (FScriptArray*)StackParams.Data.Data;
 
-	const uint16 ArrayNum = Array->Num();
-	const uint16 ShadowArrayNum = ShadowArray->Num();
+	const int32 ArrayNum = Array->Num();
+	const int32 ShadowArrayNum = ShadowArray->Num();
+
+	if (!UE4_RepLayout_Private::ValidateArraySize(ArrayNum, Cmd.Property))
+	{
+		StackParams.Result = ERepLayoutResult::FatalError;
+		return;
+	}
 
 	// Make the shadow state match the actual state at the time of compare
 	FScriptArrayHelper StoredArrayHelper((FArrayProperty*)Cmd.Property, ShadowArray);
@@ -1438,7 +1430,8 @@ static void CompareProperties_Array_r(
 			FComparePropertiesStackParams NewStackParams{
 				ArrayData + ArrayElementOffset,
 				ShadowArrayData + ArrayElementOffset,
-				ChangedLocal
+				ChangedLocal,
+				StackParams.Result
 			};
 
 			LocalHandle = CompareProperties_r(SharedParams, NewStackParams, CmdIndex + 1, Cmd.EndCmd - 1, LocalHandle);
@@ -1447,13 +1440,16 @@ static void CompareProperties_Array_r(
 
 	if (ChangedLocal.Num())
 	{
-		const int32 ChangedLocalNum = ChangedLocal.Num();
-
-		// We do not support nested properties with more than 65k entries
-		check(ChangedLocalNum <= UINT16_MAX);
+		const int32 NumChangedEntries = ChangedLocal.Num();
+		
+		if (!UE4_RepLayout_Private::ValidateArraySize(NumChangedEntries, Cmd.Property))
+		{
+			StackParams.Result = ERepLayoutResult::FatalError;
+			return;
+		}
 
 		StackParams.Changed.Add(Handle);
-		StackParams.Changed.Add(ChangedLocalNum);		// This is so we can jump over the array if we need to
+		StackParams.Changed.Add((uint16)NumChangedEntries);		// This is so we can jump over the array if we need to
 		StackParams.Changed.Append(ChangedLocal);
 		StackParams.Changed.Add(0);
 	}
@@ -1469,7 +1465,7 @@ static void CompareProperties_Array_r(
 	}
 }
 
-bool FRepLayout::CompareProperties(
+ERepLayoutResult FRepLayout::CompareProperties(
 	FSendingRepState* RESTRICT RepState,
 	FRepChangelistState* RESTRICT RepChangelistState,
 	const FConstRepObjectDataBuffer Data,
@@ -1479,7 +1475,7 @@ bool FRepLayout::CompareProperties(
 
 	if (IsEmpty())
 	{
-		return false;
+		return ERepLayoutResult::Empty;
 	}
 
 	RepChangelistState->CompareIndex++;
@@ -1493,10 +1489,12 @@ bool FRepLayout::CompareProperties(
 	Changed.Empty(1);
 
 #if WITH_PUSH_MODEL
-		const TBitArray<>* const LocalPushModelProperties = &PushModelProperties;
+	const TBitArray<>* const LocalPushModelProperties = &PushModelProperties;
 #else
-		const TBitArray<>* const LocalPushModelProperties = nullptr;
-#endif		
+	const TBitArray<>* const LocalPushModelProperties = nullptr;
+#endif
+
+	ERepLayoutResult Result = ERepLayoutResult::Success;
 
 	FComparePropertiesSharedParams SharedParams{
 		/*bIsInitial=*/ !!RepFlags.bNetInitial,
@@ -1510,13 +1508,15 @@ bool FRepLayout::CompareProperties(
 		/*PushModelState=*/UE4_RepLayout_Private::GetPerNetDriverState(RepChangelistState),
 		/*PushModelProperties=*/ LocalPushModelProperties,	
 		/*bValidateProperties=*/GbPushModelValidateProperties,
-		/*bIsNetworkProfilerActive=*/UE4_RepLayout_Private::IsNetworkProfilerComparisonTrackingEnabled()
+		/*bIsNetworkProfilerActive=*/UE4_RepLayout_Private::IsNetworkProfilerComparisonTrackingEnabled(),
+		/*bChangedNetOwner=*/ RepState && RepState->RepFlags.bNetOwner != RepFlags.bNetOwner
 	};
 
 	FComparePropertiesStackParams StackParams{
 		Data,
 		RepChangelistState->StaticBuffer.GetData(),
-		Changed
+		Changed,
+		Result
 	};
 
 	if (RepFlags.bRolesOnly)
@@ -1534,6 +1534,7 @@ bool FRepLayout::CompareProperties(
 		const uint32 ReplicateParentPropertiesStartTime = SharedParams.bIsNetworkProfilerActive ? FPlatformTime::Cycles() : 0;
 		if (SharedParams.bIsNetworkProfilerActive)
 		{
+			CSV_SCOPED_TIMING_STAT_EXCLUSIVE(NetworkProfiler);
 			SharedParams.PropertiesChanged.Init(false, Parents.Num());
 			SharedParams.PropertiesCompared.Init(false, Parents.Num());
 		}
@@ -1555,9 +1556,19 @@ bool FRepLayout::CompareProperties(
 		}
 	}
 
+	// If something went wrong, don't touch the changelist history.
+	// NOTE: Currently, SA always throws "Warning: Expression 'ERepLayoutResult::Success != Result' is always false" here.
+	//			It gets tripped up by the indirection / reference semantics of Stack Params and assumes that
+	//			result just remains the same value as it was assigned above.
+	//			Because of this, the error is disabled.
+	if (UNLIKELY(ERepLayoutResult::Success != Result)) // -V547
+	{
+		return Result;
+	}
+
 	if (Changed.Num() == 0)
 	{
-		return false;
+		return ERepLayoutResult::Empty;
 	}
 
 	//
@@ -1588,7 +1599,7 @@ bool FRepLayout::CompareProperties(
 		MergeChangeList(Data, FirstChangelistRef, SecondChangelistCopy, RepChangelistState->ChangeHistory[SecondHistoryIndex].Changed);
 	}
 
-	return true;
+	return Result;
 }
 
 static FORCEINLINE void WritePropertyHandle(
@@ -3751,7 +3762,7 @@ void FRepLayout::GatherGuidReferences(
 	}
 }
 
-bool FRepLayout::MoveMappedObjectToUnmapped_r(FGuidReferencesMap* GuidReferencesMap, const FNetworkGUID& GUID) const
+bool FRepLayout::MoveMappedObjectToUnmapped_r(FGuidReferencesMap* GuidReferencesMap, const FNetworkGUID& GUID, const UObject* const OwningObject) const
 {
 	bool bFoundGUID = false;
 
@@ -3763,7 +3774,7 @@ bool FRepLayout::MoveMappedObjectToUnmapped_r(FGuidReferencesMap* GuidReferences
 		{
 			check(Cmds[GuidReferences.CmdIndex].Type == ERepLayoutCmdType::DynamicArray);
 
-			if (MoveMappedObjectToUnmapped_r(GuidReferences.Array, GUID))
+			if (MoveMappedObjectToUnmapped_r(GuidReferences.Array, GUID, OwningObject))
 			{
 				bFoundGUID = true;
 			}
@@ -3775,6 +3786,13 @@ bool FRepLayout::MoveMappedObjectToUnmapped_r(FGuidReferencesMap* GuidReferences
 			GuidReferences.MappedDynamicGUIDs.Remove(GUID);
 			GuidReferences.UnmappedGUIDs.Add(GUID);
 			bFoundGUID = true;
+
+#if WITH_PUSH_MODEL
+			if (OwningObject)
+			{
+				FNetPrivatePushIdHelper::MarkPropertyDirty(OwningObject, GuidReferences.ParentIndex);
+			}
+#endif
 		}
 	}
 
@@ -3790,7 +3808,7 @@ bool FRepLayout::MoveMappedObjectToUnmapped(
 
 	if (!IsEmpty())
 	{
-		bFound = MoveMappedObjectToUnmapped_r(&RepState->GuidReferencesMap, GUID);
+		bFound = MoveMappedObjectToUnmapped_r(&RepState->GuidReferencesMap, GUID, Params.Object);
 
 		// Custom Delta Properties
 		if (LifetimeCustomPropertyState && Params.Object)
@@ -3917,6 +3935,10 @@ void FRepLayout::UpdateUnmappedObjects_r(
 				// Remove from unmapped guids list
 				UnmappedIt.RemoveCurrent();
 				bMappedSomeGUIDs = true;
+
+#if WITH_PUSH_MODEL
+				FNetPrivatePushIdHelper::MarkPropertyDirty(OriginalObject, GuidReferences.ParentIndex);
+#endif
 			}
 		}
 
@@ -4563,7 +4585,7 @@ static bool DiffProperties_r(FDiffPropertiesSharedParams& Params, TDiffPropertie
 					UE_LOG(LogRep, Warning, TEXT("FDiffPropertiesImpl: Array sizes different: %s %i / %i"), *Cmd.Property->GetFullName(), SourceArray->Num(), DestinationArray->Num());
 					continue;
 				}
-				else if (EnumHasAnyFlags(Parent.Flags, Params.PropertyFlags))
+				else if (!EnumHasAnyFlags(Parent.Flags, Params.PropertyFlags))
 				{
 					continue;
 				}
@@ -4835,30 +4857,49 @@ static FName NAME_Vector_NetQuantize(TEXT("Vector_NetQuantize"));
 static FName NAME_UniqueNetIdRepl(TEXT("UniqueNetIdRepl"));
 static FName NAME_RepMovement(TEXT("RepMovement"));
 
+struct FInitFromPropertySharedParams
+{
+	TArray<FRepLayoutCmd>& Cmds;
+	const UNetConnection* ServerConnection;
+	const int32 ParentIndex;
+	bool bHasObjectProperties = false;
+	bool bHasNetSerializeProperties = false;
+};
+
+struct FInitFromPropertyStackParams
+{
+	FProperty* Property;
+	int32 Offset;
+	int32 RelativeHandle;
+	uint32 ParentChecksum;
+	int32 StaticArrayIndex;
+};
+
+static uint32 GetRepLayoutCmdCompatibleChecksum(
+	FInitFromPropertySharedParams& SharedParams,
+	const FInitFromPropertyStackParams& StackParams)
+{
+	return GetRepLayoutCmdCompatibleChecksum(StackParams.Property, SharedParams.ServerConnection, StackParams.StaticArrayIndex, StackParams.ParentChecksum);
+}
+
 static uint32 AddPropertyCmd(
-	TArray<FRepLayoutCmd>& Cmds,
-	FProperty* Property,
-	int32 Offset,
-	int32 RelativeHandle,
-	int32 ParentIndex,
-	uint32 ParentChecksum,
-	int32 StaticArrayIndex,
-	const UNetConnection* ServerConnection)
+	FInitFromPropertySharedParams& SharedParams,
+	const FInitFromPropertyStackParams& StackParams)
 {
 	SCOPE_CYCLE_COUNTER(STAT_RepLayout_AddPropertyCmd);
 
-	FRepLayoutCmd & Cmd = Cmds.AddZeroed_GetRef();
+	FRepLayoutCmd & Cmd = SharedParams.Cmds.AddZeroed_GetRef();
 
-	Cmd.Property = Property;
+	Cmd.Property = StackParams.Property;
 	Cmd.Type = ERepLayoutCmdType::Property;		// Initially set to generic type
-	Cmd.Offset = Offset;
-	Cmd.ElementSize = Property->ElementSize;
-	Cmd.RelativeHandle = RelativeHandle;
-	Cmd.ParentIndex = ParentIndex;
-	Cmd.CompatibleChecksum = GetRepLayoutCmdCompatibleChecksum(Property, ServerConnection, StaticArrayIndex, ParentChecksum);
+	Cmd.Offset = StackParams.Offset;
+	Cmd.ElementSize = Cmd.Property->ElementSize;
+	Cmd.RelativeHandle = StackParams.RelativeHandle;
+	Cmd.ParentIndex = SharedParams.ParentIndex;
+	Cmd.CompatibleChecksum = GetRepLayoutCmdCompatibleChecksum(SharedParams, StackParams);
 
-	FProperty* UnderlyingProperty = Property;
-	if (FEnumProperty* EnumProperty = CastField<FEnumProperty>(Property))
+	FProperty* UnderlyingProperty = Cmd.Property;
+	if (FEnumProperty* EnumProperty = CastField<FEnumProperty>(UnderlyingProperty))
 	{
 		UnderlyingProperty = EnumProperty->GetUnderlyingProperty();
 	}
@@ -4930,6 +4971,7 @@ static uint32 AddPropertyCmd(
 	}
 	else if (UnderlyingProperty->IsA(FObjectPropertyBase::StaticClass()))
 	{
+		SharedParams.bHasObjectProperties = true;
 		if (UnderlyingProperty->IsA(FSoftObjectProperty::StaticClass()))
 		{
 			Cmd.Type = ERepLayoutCmdType::PropertySoftObject;
@@ -4976,24 +5018,18 @@ static uint32 AddPropertyCmd(
 }
 
 static FORCEINLINE uint32 AddArrayCmd(
-	TArray<FRepLayoutCmd>& Cmds,
-	FArrayProperty* Property,
-	int32 Offset,
-	int32 RelativeHandle,
-	int32 ParentIndex,
-	uint32 ParentChecksum,
-	int32 StaticArrayIndex,
-	const UNetConnection* ServerConnection)
+	FInitFromPropertySharedParams& SharedParams,
+	const FInitFromPropertyStackParams StackParams)
 {
-	FRepLayoutCmd& Cmd = Cmds.AddZeroed_GetRef();
+	FRepLayoutCmd& Cmd = SharedParams.Cmds.AddZeroed_GetRef();
 
 	Cmd.Type = ERepLayoutCmdType::DynamicArray;
-	Cmd.Property = Property;
-	Cmd.Offset = Offset;
-	Cmd.ElementSize = Property->Inner->ElementSize;
-	Cmd.RelativeHandle = RelativeHandle;
-	Cmd.ParentIndex = ParentIndex;
-	Cmd.CompatibleChecksum = GetRepLayoutCmdCompatibleChecksum(Property, ServerConnection, StaticArrayIndex, ParentChecksum);
+	Cmd.Property = StackParams.Property;
+	Cmd.Offset = StackParams.Offset;
+	Cmd.ElementSize = static_cast<FArrayProperty*>(StackParams.Property)->Inner->ElementSize;
+	Cmd.RelativeHandle = StackParams.RelativeHandle;
+	Cmd.ParentIndex = SharedParams.ParentIndex;
+	Cmd.CompatibleChecksum = GetRepLayoutCmdCompatibleChecksum(SharedParams, StackParams);
 
 	return Cmd.CompatibleChecksum;
 }
@@ -5024,37 +5060,33 @@ const FORCEINLINE int32 GetOffsetForProperty<ERepBuildType::Function>(FProperty&
 
 template<ERepBuildType BuildType>
 static int32 InitFromProperty_r(
-	TArray<FRepLayoutCmd>& Cmds,
-	FProperty* Property,
-	int32 Offset,
-	int32 RelativeHandle,
-	int32 ParentIndex,
-	uint32 ParentChecksum,
-	int32 StaticArrayIndex,
-	const UNetConnection* ServerConnection)
+	FInitFromPropertySharedParams& SharedParams,
+	FInitFromPropertyStackParams StackParams)
 {
-	FArrayProperty * ArrayProp = CastField<FArrayProperty>(Property);
-
-	if (ArrayProp != NULL)
+	if (FArrayProperty* ArrayProp = CastField<FArrayProperty>(StackParams.Property))
 	{
-		const int32 CmdStart = Cmds.Num();
+		const int32 CmdStart = SharedParams.Cmds.Num();
 
-		RelativeHandle++;
+		++StackParams.RelativeHandle;
+		StackParams.Offset += GetOffsetForProperty<BuildType>(*ArrayProp);
 
-		const uint32 ArrayChecksum = AddArrayCmd(Cmds, ArrayProp, Offset + GetOffsetForProperty<BuildType>(*ArrayProp), RelativeHandle, ParentIndex, ParentChecksum, StaticArrayIndex, ServerConnection);
+		const uint32 ArrayChecksum = AddArrayCmd(SharedParams, StackParams);
 
-		InitFromProperty_r<BuildType>(Cmds, ArrayProp->Inner, 0, 0, ParentIndex, ArrayChecksum, 0, ServerConnection);
+		FInitFromPropertyStackParams NewStackParams{
+			/*Property=*/ArrayProp->Inner,
+			/*Offset=*/0,
+			/*RelativeHandle=*/0,
+			/*ParentChecksum=*/ArrayChecksum,
+			/*StaticArrayIndex=*/0
+		};
 
-		AddReturnCmd(Cmds);
+		InitFromProperty_r<BuildType>(SharedParams, NewStackParams);
 
-		Cmds[CmdStart].EndCmd = Cmds.Num();		// Patch in the offset to jump over our array inner elements
+		AddReturnCmd(SharedParams.Cmds);
 
-		return RelativeHandle;
+		SharedParams.Cmds[CmdStart].EndCmd = SharedParams.Cmds.Num();		// Patch in the offset to jump over our array inner elements
 	}
-
-	FStructProperty* StructProp = CastField<FStructProperty>(Property);
-
-	if (StructProp != NULL)
+	else if (FStructProperty* StructProp = CastField<FStructProperty>(StackParams.Property))
 	{
 		UScriptStruct* Struct = StructProp->Struct;
 
@@ -5062,9 +5094,13 @@ static int32 InitFromProperty_r(
 		{
 			UE_CLOG(EnumHasAnyFlags(Struct->StructFlags, STRUCT_NetDeltaSerializeNative), LogRep, Warning, TEXT("RepLayout InitFromProperty_r: Struct marked both NetSerialize and NetDeltaSerialize: %s"), *StructProp->GetName());
 
-			RelativeHandle++;
-			AddPropertyCmd(Cmds, Property, Offset + GetOffsetForProperty<BuildType>(*Property), RelativeHandle, ParentIndex, ParentChecksum, StaticArrayIndex, ServerConnection);
-			return RelativeHandle;
+			SharedParams.bHasNetSerializeProperties = true;
+
+			++StackParams.RelativeHandle;
+			StackParams.Offset += GetOffsetForProperty<BuildType>(*StructProp);
+
+			AddPropertyCmd(SharedParams, StackParams);
+			return StackParams.RelativeHandle;
 		}
 
 		// Track properties so we can ensure they are sorted by offsets at the end
@@ -5101,25 +5137,36 @@ static int32 InitFromProperty_r(
 
 		Sort(NetProperties.GetData(), NetProperties.Num(), FCompareUFieldOffsets());
 
-		const uint32 StructChecksum = GetRepLayoutCmdCompatibleChecksum(Property, ServerConnection, StaticArrayIndex, ParentChecksum);
+		const uint32 StructChecksum = GetRepLayoutCmdCompatibleChecksum(SharedParams, StackParams);
 
 		for (int32 i = 0; i < NetProperties.Num(); i++)
 		{
 			for (int32 j = 0; j < NetProperties[i]->ArrayDim; j++)
 			{
 				const int32 ArrayElementOffset = j * NetProperties[i]->ElementSize;
-				RelativeHandle = InitFromProperty_r<BuildType>(Cmds, NetProperties[i], Offset + GetOffsetForProperty<BuildType>(*StructProp) + ArrayElementOffset, RelativeHandle, ParentIndex, StructChecksum, j, ServerConnection);
+
+				FInitFromPropertyStackParams NewStackParams{
+					/*Property=*/NetProperties[i],
+					/*Offset=*/StackParams.Offset + GetOffsetForProperty<BuildType>(*StructProp) + ArrayElementOffset,
+					/*RelativeHandle=*/StackParams.RelativeHandle,
+					/*ParentChecksum=*/StructChecksum,
+					/*StaticArrayIndex=*/j
+				};
+
+				StackParams.RelativeHandle = InitFromProperty_r<BuildType>(SharedParams, NewStackParams);
 			}
 		}
-		return RelativeHandle;
+	}
+	else
+	{
+		// Add actual property
+		++StackParams.RelativeHandle;
+		StackParams.Offset += GetOffsetForProperty<BuildType>(*StackParams.Property);
+
+		AddPropertyCmd(SharedParams, StackParams);
 	}
 
-	// Add actual property
-	RelativeHandle++;
-
-	AddPropertyCmd(Cmds, Property, Offset + GetOffsetForProperty<BuildType>(*Property), RelativeHandle, ParentIndex, ParentChecksum, StaticArrayIndex, ServerConnection);
-
-	return RelativeHandle;
+	return StackParams.RelativeHandle;
 }
 
 static FORCEINLINE uint16 AddParentProperty(
@@ -5429,8 +5476,24 @@ void FRepLayout::InitFromClass(
 
 		const int32 ParentOffset = Property->ElementSize * ArrayIdx;
 
+		FInitFromPropertySharedParams SharedParams
+		{
+			/*Cmds=*/Cmds,
+			/*ServerConnection=*/ServerConnection,
+			/*ParentHandle=*/ParentHandle
+		};
+
+		FInitFromPropertyStackParams StackParams
+		{
+			/*Property=*/Property,
+			/*Offset=*/ParentOffset,
+			/*RelativeHandle=*/RelativeHandle,
+			/*ParentChecksum=*/0,
+			/*StaticArrayIndex=*/ArrayIdx
+		};
+
 		Parents[ParentHandle].CmdStart = Cmds.Num();
-		RelativeHandle = InitFromProperty_r<ERepBuildType::Class>(Cmds, Property, ParentOffset, RelativeHandle, ParentHandle, 0, ArrayIdx, ServerConnection);
+		RelativeHandle = InitFromProperty_r<ERepBuildType::Class>(SharedParams, StackParams);
 		Parents[ParentHandle].CmdEnd = Cmds.Num();
 		Parents[ParentHandle].Flags |= ERepParentFlags::IsConditional;
 		Parents[ParentHandle].Offset = GetOffsetForProperty<ERepBuildType::Class>(*Property) + ParentOffset;
@@ -5452,6 +5515,15 @@ void FRepLayout::InitFromClass(
 		if (EnumHasAnyFlags(Parents[ParentHandle].Flags, ERepParentFlags::IsCustomDelta))
 		{
 			HighestCustomDeltaRepIndex = ParentHandle;
+		}
+
+		if (SharedParams.bHasNetSerializeProperties)
+		{
+			Parents[ParentHandle].Flags |= ERepParentFlags::HasNetSerializeProperties;
+		}
+		if (SharedParams.bHasObjectProperties)
+		{
+			Parents[ParentHandle].Flags |= ERepParentFlags::HasObjectProperties;
 		}
 	}
 
@@ -5516,6 +5588,11 @@ void FRepLayout::InitFromClass(
 			if (LifetimeProps[i].Condition == COND_None)
 			{
 				Parents[ParentIndex].Flags &= ~ERepParentFlags::IsConditional;
+			}
+
+			if (EnumHasAnyFlags(Parents[ParentIndex].Flags, ERepParentFlags::HasNetSerializeProperties | ERepParentFlags::HasObjectProperties))
+			{
+				Flags |= ERepLayoutFlags::HasObjectOrNetSerializeProperties;
 			}
 
 			++NumberOfLifetimeProperties;
@@ -5668,8 +5745,25 @@ void FRepLayout::InitFromFunction(
 		for (int32 ArrayIdx = 0; ArrayIdx < It->ArrayDim; ++ArrayIdx)
 		{
 			const int32 ParentHandle = AddParentProperty(Parents, *It, ArrayIdx);
+
+			FInitFromPropertySharedParams SharedParams
+			{
+				/*Cmds=*/Cmds,
+				/*ServerConnection=*/ServerConnection,
+				/*ParentHandle=*/ParentHandle
+			};
+
+			FInitFromPropertyStackParams StackParams
+			{
+				/*Property=*/*It,
+				/*Offset=*/It->ElementSize* ArrayIdx,
+				/*RelativeHandle=*/RelativeHandle,
+				/*ParentChecksum=*/0,
+				/*StaticArrayIndex=*/ArrayIdx
+			};
+
 			Parents[ParentHandle].CmdStart = Cmds.Num();
-			RelativeHandle = InitFromProperty_r<ERepBuildType::Function>(Cmds, *It, It->ElementSize * ArrayIdx, RelativeHandle, ParentHandle, 0, ArrayIdx, ServerConnection);
+			RelativeHandle = InitFromProperty_r<ERepBuildType::Function>(SharedParams, StackParams);
 			Parents[ParentHandle].CmdEnd = Cmds.Num();
 			Parents[ParentHandle].Offset = GetOffsetForProperty<ERepBuildType::Function>(**It);
 
@@ -5716,8 +5810,25 @@ void FRepLayout::InitFromStruct(
 		for (int32 ArrayIdx = 0; ArrayIdx < It->ArrayDim; ++ArrayIdx)
 		{
 			const int32 ParentHandle = AddParentProperty(Parents, *It, ArrayIdx);
+
+			FInitFromPropertySharedParams SharedParams
+			{
+				/*Cmds=*/Cmds,
+				/*ServerConnection=*/ServerConnection,
+				/*ParentHandle=*/ParentHandle
+			};
+
+			FInitFromPropertyStackParams StackParams
+			{
+				/*Property=*/*It,
+				/*Offset=*/It->ElementSize * ArrayIdx,
+				/*RelativeHandle=*/RelativeHandle,
+				/*ParentChecksum=*/0,
+				/*StaticArrayIndex=*/ArrayIdx
+			};
+
 			Parents[ParentHandle].CmdStart = Cmds.Num();
-			RelativeHandle = InitFromProperty_r<ERepBuildType::Struct>(Cmds, *It, It->ElementSize * ArrayIdx, RelativeHandle, ParentHandle, 0, ArrayIdx, ServerConnection);
+			RelativeHandle = InitFromProperty_r<ERepBuildType::Struct>(SharedParams, StackParams);
 			Parents[ParentHandle].CmdEnd = Cmds.Num();
 			Parents[ParentHandle].Offset = GetOffsetForProperty<ERepBuildType::Struct>(**It);
 
@@ -5759,20 +5870,8 @@ void FRepLayout::SerializeProperties_DynamicArray_r(
 	const int32 ArrayNum = Ar.IsLoading() ? (int32)OutArrayNum : Array->Num();
 
 	// Validate the maximum number of elements.
-	if (ArrayNum> MaxRepArraySize)
+	if (!UE4_RepLayout_Private::ValidateArraySize(ArrayNum, Cmd.Property))
 	{
-		UE_LOG(LogRepTraffic, Error, TEXT("SerializeProperties_DynamicArray_r: ArraySize (%d) > net.MaxRepArraySize(%d) (%s). net.MaxRepArraySize can be updated in Project Settings under Network Settings."),
-			ArrayNum, MaxRepArraySize, *Cmd.Property->GetName());
-
-		Ar.SetError();
-	}
-	// Validate the maximum memory.
-	else if (ArrayNum * (int32)Cmd.ElementSize > MaxRepArrayMemory)
-	{
-		UE_LOG(LogRepTraffic, Error,
-			TEXT("SerializeProperties_DynamicArray_r: ArraySize (%d) * Cmd.ElementSize (%d) > net.MaxRepArrayMemory(%d) (%s). net.MaxRepArrayMemory can be updated in Project Settings under Network Settings."),
-			ArrayNum, (int32)Cmd.ElementSize, MaxRepArrayMemory, *Cmd.Property->GetName());
-
 		Ar.SetError();
 	}
 
@@ -6033,13 +6132,7 @@ void FRepLayout::BuildSharedSerializationForRPC_DynamicArray_r(
 	FScriptArray* Array = (FScriptArray *)Data.Data;	
 	const int32 ArrayNum = Array->Num();
 
-	// Validate the maximum number of elements.
-	if (ArrayNum > MaxRepArraySize)
-	{
-		return;
-	}
-	// Validate the maximum memory.
-	else if (ArrayNum * (int32)Cmd.ElementSize > MaxRepArrayMemory)
+	if (!UE4_RepLayout_Private::ValidateArraySize(ArrayNum, Cmd.Property))
 	{
 		return;
 	}
@@ -6687,7 +6780,7 @@ void FRepLayout::PostSendCustomDeltaProperties(
 {
 }
 
-bool FRepLayout::DeltaSerializeFastArrayProperty(FFastArrayDeltaSerializeParams& Params, FReplicationChangelistMgr* ChangelistMgr) const
+ERepLayoutResult FRepLayout::DeltaSerializeFastArrayProperty(FFastArrayDeltaSerializeParams& Params, FReplicationChangelistMgr* ChangelistMgr) const
 {
 	using namespace UE4_RepLayout_Private;
 
@@ -6711,7 +6804,7 @@ bool FRepLayout::DeltaSerializeFastArrayProperty(FFastArrayDeltaSerializeParams&
 		// This should have already been caught by InitFromClass.
 		// So, log with a lower verbosity.
 		UE_LOG(LogRep, Log, TEXT("FRepLayout::DeltaSerializeFastArrayProperty: Invalid fast array items command index! %s"), *Parent.CachedPropertyName.ToString())
-		return false;
+		return ERepLayoutResult::Error;
 	}
 
 	const FRepLayoutCmd& FastArrayItemCmd = Cmds[CmdIndex];
@@ -6751,7 +6844,7 @@ bool FRepLayout::DeltaSerializeFastArrayProperty(FFastArrayDeltaSerializeParams&
 			if (!bIsWriting)
 			{
 				UE_LOG(LogRep, Error, TEXT("DeltaSerializeFastArrayProperty: Unable to find NetFieldExportGroup during replay playback. Class=%s, Property=%s"), *Owner->GetName(), *Parent.CachedPropertyName.ToString());
-				return false;
+				return ERepLayoutResult::Error;
 			}
 
 			UE_LOG(LogRepProperties, VeryVerbose, TEXT("DeltaSerializeFastArrayProperty: Create Netfield Export Group."))
@@ -7001,13 +7094,25 @@ bool FRepLayout::DeltaSerializeFastArrayProperty(FFastArrayDeltaSerializeParams&
 								nullptr
 							};
 
+							ERepLayoutResult UpdateResult = ERepLayoutResult::Success;
+
 							FComparePropertiesStackParams StackParams{
 								FConstRepObjectDataBuffer(ObjectArrayData + ArrayElementOffset),
 								FRepShadowDataBuffer(ShadowArrayData + ArrayElementOffset),
-								NewChangelist
+								NewChangelist,
+								UpdateResult
 							};
 
 							CompareProperties_r(SharedParams, StackParams, ItemLayoutStart, ItemLayoutEnd, 0);
+
+							// NOTE: Currently, SA always throws "Warning: Expression 'ERepLayoutResult::FatalError == UpdateResult' is always false" here.
+							//			It gets tripped up by the indirection / reference semantics of Stack Params and assumes that
+							//			result just remains the same value as it was assigned above.
+							//			Because of this, the error is disabled.
+							if (UNLIKELY(ERepLayoutResult::FatalError == UpdateResult)) // -V547
+							{
+								return UpdateResult;
+							}
 
 							if (NewChangelist.Num())
 							{
@@ -7171,7 +7276,7 @@ bool FRepLayout::DeltaSerializeFastArrayProperty(FFastArrayDeltaSerializeParams&
 			
 		}
 
-		return !Writer.IsError();
+		return !Writer.IsError() ? ERepLayoutResult::Success : ERepLayoutResult::Error;
 	}
 	else
 	{
@@ -7236,7 +7341,7 @@ bool FRepLayout::DeltaSerializeFastArrayProperty(FFastArrayDeltaSerializeParams&
 				if (!bSuccess)
 				{
 					UE_LOG(LogNetFastTArray, Warning, TEXT("FRepLayout::DeltaSerializeFastArrayProperty: Failed to receive backwards compat properties!"));
-					return false;
+					return ERepLayoutResult::Error;
 				}
 			}
 			else
@@ -7274,27 +7379,27 @@ bool FRepLayout::DeltaSerializeFastArrayProperty(FFastArrayDeltaSerializeParams&
 					if (0 != SharedParams.ReadHandle)
 					{
 						UE_LOG(LogRep, Error, TEXT("ReceiveFastArrayItem: Invalid property terminator handle - Handle=%d"), SharedParams.ReadHandle);
-						return false;
+						return ERepLayoutResult::Error;
 					}
 				}
 				else
 				{
 					UE_LOG(LogNetFastTArray, Warning, TEXT("FRepLayout::DeltaSerializeFastArrayProperty: Failed to received properties"));
-					return false;
+					return ERepLayoutResult::Error;
 				}
 			}
 
 			if (Reader.IsError())
 			{
 				UE_LOG(LogNetFastTArray, Warning, TEXT("FRepLayout::DeltaSerializeFastArrayProperty: Reader.IsError() == true"));
-				return false;
+				return ERepLayoutResult::Error;
 			}
 
 			DeltaSerializeInfo.bGuidListsChanged |= bOutGuidsChanged;
 			DeltaSerializeInfo.bOutHasMoreUnmapped |= bOutHasUnmapped;
 		}
 
-		return true;
+		return ERepLayoutResult::Success;
 	}
 }
 
@@ -7335,7 +7440,7 @@ bool FRepLayout::MoveMappedObjectToUnmappedForFastArray(FFastArrayDeltaSerialize
 	bool bFound = false;
 	for (auto& GuidReferencesPair : ArraySerializer.GuidReferencesMap_StructDelta)
 	{
-		bFound |= MoveMappedObjectToUnmapped_r(&GuidReferencesPair.Value, MoveToUnmapped);
+		bFound |= MoveMappedObjectToUnmapped_r(&GuidReferencesPair.Value, MoveToUnmapped, Params.DeltaSerializeInfo.Object);
 	}
 	return bFound;
 }

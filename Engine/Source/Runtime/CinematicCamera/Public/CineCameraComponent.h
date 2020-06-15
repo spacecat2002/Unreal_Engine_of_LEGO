@@ -46,16 +46,16 @@ struct FCameraFilmbackSettings
 };
 
 /** A named bundle of filmback settings used to implement filmback presets */
-USTRUCT()
+USTRUCT(BlueprintType)
 struct FNamedFilmbackPreset
 {
 	GENERATED_USTRUCT_BODY()
 
 	/** Name for the preset. */
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite, Category = "Filmback")
 	FString Name;
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite, Category = "Filmback")
 	FCameraFilmbackSettings FilmbackSettings;
 };
 
@@ -120,14 +120,19 @@ struct FNamedLensPreset
 UENUM()
 enum class ECameraFocusMethod : uint8
 {
-	/** Disables DoF entirely. */
-	None,
+	/** Don't override, ie. allow post process volume settings to persist. */
+	DoNotOverride,
 
 	/** Allows for specifying or animating exact focus distances. */
 	Manual,
 
 	/** Locks focus to specific object. */
 	Tracking,
+
+	/** Disable depth of field entirely. */
+	Disable,
+
+	MAX UMETA(Hidden)
 };
 
 /** Settings to control tracking-focus mode. */
@@ -291,6 +296,10 @@ public:
 	/** Set the current lens settings by preset name. */
 	UFUNCTION(BlueprintCallable, Category = "Cine Camera")
 	void SetLensPresetByName(const FString& InPresetName);
+
+	/** Returns a copy of the list of available filmback presets. */
+	UFUNCTION(BlueprintCallable, Category = "Cine Camera")
+	static TArray<FNamedFilmbackPreset> GetFilmbackPresetsCopy();
 
 	/** Returns a copy of the list of available lens presets. */
 	UFUNCTION(BlueprintCallable, Category = "Cine Camera")

@@ -54,7 +54,7 @@ namespace EDOFMode
 
 struct FBodyInstnace;
 
-#define USE_BODYINSTANCE_DEBUG_NAMES ((WITH_EDITORONLY_DATA || UE_BUILD_DEBUG || LOOKING_FOR_PERF_ISSUES) && !(UE_BUILD_SHIPPING || UE_BUILD_TEST) && !NO_LOGGING)
+#define USE_BODYINSTANCE_DEBUG_NAMES ((WITH_EDITORONLY_DATA || UE_BUILD_DEBUG || LOOKING_FOR_PERF_ISSUES || CHAOS_CHECKED) && !(UE_BUILD_SHIPPING || UE_BUILD_TEST) && !NO_LOGGING)
 
 /** Helper struct to specify spawn behavior */
 struct FInitBodySpawnParams
@@ -278,6 +278,16 @@ private:
 	UPROPERTY(EditAnywhere, Category=Custom)
 	TEnumAsByte<ECollisionEnabled::Type> CollisionEnabled;
 
+	/** When per-shape collision is changed at runtime, state is stored in an optional array of per-shape collision state.
+	*	Before this array's IsSet state is true, collision values from the BodySetup's AggGeom are used in GetShapeCollisionEnabled.
+	*/
+	TOptional<TArray<TEnumAsByte<ECollisionEnabled::Type>>> ShapeCollisionEnabled;
+
+	/** When per-shape collision responses are changed at runtime, state is stored in an optional array of per-shape
+	*	collision response settings. If this is not set, the base body instance's CollisionResponses member is used for all shapes.
+	*/
+	TOptional<TArray<TPair<int32, FCollisionResponse>>> ShapeCollisionResponses;
+
 public:
 	// Current state of the physics body for tracking deferred addition and removal.
 	BodyInstanceSceneState CurrentSceneState;
@@ -295,6 +305,10 @@ public:
 	/** If true Continuous Collision Detection (CCD) will be used for this component */
 	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category = Collision)
 	uint8 bUseCCD : 1;
+
+	/** If true ignore analytic collisions and treat objects as a general implicit surface */
+	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category = Collision)
+	uint8 bIgnoreAnalyticCollisions : 1;
 
 	/**	Should 'Hit' events fire when this object collides during physics simulation. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Collision, meta = (DisplayName = "Simulation Generates Hit Events"))
@@ -546,6 +560,9 @@ public:
 	UPROPERTY()
 	float PhysicsBlendWeight;
 
+	/** True if we want to use deferred body instance creation */
+	static bool UseDeferredPhysicsBodyCreation();
+
 private:
 	TArray<FInitBodiesHelperWithData<true>> InitBodiesDeferredListStatic;
 	TArray<FInitBodiesHelperWithData<false>> InitBodiesDeferredListDynamic;
@@ -626,7 +643,7 @@ public:
 	void InitDynamicProperties_AssumesLocked();
 
 	/** Build the sim and query filter data (for simple and complex shapes) based on the settings of this BodyInstance (and its associated BodySetup)  */
-	void BuildBodyFilterData(FBodyCollisionFilterData& OutFilterData) const;
+	void BuildBodyFilterData(FBodyCollisionFilterData& OutFilterData, const int32 ShapeIndex = INDEX_NONE) const;
 
 	/** Build the flags to control which types of collision (sim and query) shapes owned by this BodyInstance should have. */
 	static void BuildBodyCollisionFlags(FBodyCollisionFlags& OutFlags, ECollisionEnabled::Type UseCollisionEnabled, bool bUseComplexAsSimple);
@@ -908,10 +925,17 @@ public:
 	bool ReplaceResponseToChannels(ECollisionResponse OldResponse, ECollisionResponse NewResponse);
 
 	/** Set the response of this body to the supplied settings */
-	bool SetResponseToChannels(const FCollisionResponseContainer& NewReponses);
+	bool SetResponseToChannels(const FCollisionResponseContainer& NewResponses);
+
+	/** Set the response of a specific shape on this body to the supplied settings */
+	bool SetShapeResponseToChannels(const int32 ShapeIndex, const FCollisionResponseContainer& NewResponses);
 
 	/** Get Collision ResponseToChannels container for this component **/
 	FORCEINLINE_DEBUGGABLE const FCollisionResponseContainer& GetResponseToChannels() const { return CollisionResponses.GetResponseContainer(); }
+
+	/** Get Collision ResponseToChannels container for a specific shape in this component **/
+	const FCollisionResponseContainer& GetShapeResponseToChannels(const int32 ShapeIndex) const;
+	const FCollisionResponseContainer& GetShapeResponseToChannels(const int32 ShapeIndex, const FCollisionResponseContainer& DefaultResponseContainer) const;
 
 	/** Set the movement channel of this body to the one supplied */
 	void SetObjectType(ECollisionChannel Channel);
@@ -921,6 +945,9 @@ public:
 
 	/** Controls what kind of collision is enabled for this body and allows optional disable physics rebuild */
 	void SetCollisionEnabled(ECollisionEnabled::Type NewType, bool bUpdatePhysicsFilterData = true);
+
+	/** Controls what kind of collision is enabled for a particular shape */
+	void SetShapeCollisionEnabled(const int32 ShapeIndex, ECollisionEnabled::Type NewType, bool bUpdatePhysicsFilterData = true);
 
 private:
 
@@ -932,6 +959,9 @@ public:
 	{
 		return (bCheckOwner ? GetCollisionEnabled_CheckOwner() : CollisionEnabled.GetValue());
 	}
+
+	/** Get the current type of collision enabled for a particular shape */
+	ECollisionEnabled::Type GetShapeCollisionEnabled(const int32 ShapeIndex) const;
 
 	/**  
 	 * Set Collision Profile Name (deferred)

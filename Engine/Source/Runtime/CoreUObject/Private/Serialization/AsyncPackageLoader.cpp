@@ -1,15 +1,32 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Serialization/AsyncPackageLoader.h"
+#include "HAL/IConsoleManager.h"
 #include "Serialization/AsyncLoadingThread.h"
 #include "Serialization/AsyncLoading2.h"
 #include "UObject/GCObject.h"
 #include "UObject/LinkerLoad.h"
 #include "Misc/CoreDelegates.h"
 #include "IO/IoDispatcher.h"
+#include "HAL/IConsoleManager.h"
 
 volatile int32 GIsLoaderCreated;
 TUniquePtr<IAsyncPackageLoader> GPackageLoader;
+
+#if !UE_BUILD_SHIPPING
+static void LoadPackageCommand(const TArray<FString>& Args)
+{
+	for (const FString& PackageName : Args)
+	{
+		LoadPackageAsync(PackageName);
+	}
+}
+
+static FAutoConsoleCommand CVar_LoadPackageCommand(
+	TEXT("LoadPackage"),
+	TEXT("Loads packages by names. Usage: LoadPackage <package name> [<package name> ...]"),
+	FConsoleCommandWithArgsDelegate::CreateStatic(LoadPackageCommand));
+#endif
 
 const FName PrestreamPackageClassNameLoad = FName("PrestreamPackage");
 
@@ -36,9 +53,17 @@ struct FEDLBootNotificationManager
 	TArray<UClass*> CDORecursiveStack;
 	TArray<UClass*> CDORecursives;
 	FCriticalSection EDLBootNotificationManagerLock;
+	bool bEnabled = true;
+
+	void Disable()
+	{
+		PathToState.Empty();
+		PathsToFire.Empty();
+		bEnabled = false;
+	}
 
 	// return true if you are waiting for this compiled in object
-	bool AddWaitingPackage(void* Pkg, FName PackageName, FName ObjectName, FPackageIndex Import) override
+	bool AddWaitingPackage(void* Pkg, FName PackageName, FName ObjectName, FPackageIndex Import, bool bIgnoreMissingPackage) override
 	{
 		if (PackageName == GLongCoreUObjectPackageName)
 		{
@@ -62,7 +87,7 @@ struct FEDLBootNotificationManager
 			}
 			if (!ExistingState)
 			{
-				UE_LOG(LogStreaming, Fatal, TEXT("Compiled in export %s not found; it was never registered."), *LongFName.ToString());
+				UE_CLOG(!bIgnoreMissingPackage, LogStreaming, Fatal, TEXT("Compiled in export %s not found; it was never registered."), *LongFName.ToString());
 				return false;
 			}
 		}
@@ -81,7 +106,7 @@ struct FEDLBootNotificationManager
 
 	void NotifyRegistrationEvent(const TCHAR* PackageName, const TCHAR* Name, ENotifyRegistrationType NotifyRegistrationType, ENotifyRegistrationPhase NotifyRegistrationPhase, UObject *(*InRegister)(), bool InbDynamic)
 	{
-		if (!GIsInitialLoad)
+		if (!bEnabled || !GIsInitialLoad)
 		{
 			return;
 		}
@@ -152,10 +177,13 @@ struct FEDLBootNotificationManager
 
 	void NotifyRegistrationComplete()
 	{
+		if (!bEnabled)
+		{
+			return;
+		}
 #if USE_EVENT_DRIVEN_ASYNC_LOAD_AT_BOOT_TIME
 		FireCompletedCompiledInImports(true);
 		FlushAsyncLoading();
-		GPackageLoader->StartThread();
 #endif
 #if !HACK_HEADER_GENERATOR
 		check(!GIsInitialLoad && IsInGameThread());
@@ -184,8 +212,7 @@ struct FEDLBootNotificationManager
 			UE_LOG(LogStreaming, Fatal, TEXT("Initial load is complete, but we still have %d imports to fire (listed above)."), PathsToFire.Num());
 		}
 #endif
-		PathToState.Empty();
-		PathsToFire.Empty();
+		Disable();
 	}
 
 	bool ConstructWaitingBootObjects() override
@@ -503,11 +530,14 @@ IAsyncPackageLoader& GetAsyncPackageLoader()
 
 void InitAsyncThread()
 {
+#if WITH_ASYNCLOADING2
 	if (FIoDispatcher::IsInitialized())
 	{
-		GPackageLoader.Reset(MakeAsyncPackageLoader2(FIoDispatcher::Get(), GetGEDLBootNotificationManager()));
+		GetGEDLBootNotificationManager().Disable();
+		GPackageLoader.Reset(MakeAsyncPackageLoader2(FIoDispatcher::Get()));
 	}
 	else
+#endif
 	{
 		GPackageLoader = MakeUnique<FAsyncLoadingThread>(/** ThreadIndex = */ 0, GetGEDLBootNotificationManager());
 	}
@@ -644,11 +674,18 @@ void NotifyRegistrationEvent(const TCHAR* PackageName, const TCHAR* Name, ENotif
 void NotifyRegistrationComplete()
 {
 	GetGEDLBootNotificationManager().NotifyRegistrationComplete();
+	GPackageLoader->FlushLoading(INDEX_NONE);
+	GPackageLoader->StartThread();
 }
 
 void NotifyConstructedDuringAsyncLoading(UObject* Object, bool bSubObject)
 {
 	GetAsyncPackageLoader().NotifyConstructedDuringAsyncLoading(Object, bSubObject);
+}
+
+void NotifyUnreachableObjects(const TArrayView<FUObjectItem*>& UnreachableObjects)
+{
+	GetAsyncPackageLoader().NotifyUnreachableObjects(UnreachableObjects);
 }
 
 double GFlushAsyncLoadingTime = 0.0;
@@ -661,4 +698,56 @@ void ResetAsyncLoadingStats()
 	GFlushAsyncLoadingTime = 0.0;
 	GFlushAsyncLoadingCount = 0;
 	GSyncLoadCount = 0;
+}
+
+int32 GWarnIfTimeLimitExceeded = 0;
+static FAutoConsoleVariableRef CVarWarnIfTimeLimitExceeded(
+	TEXT("s.WarnIfTimeLimitExceeded"),
+	GWarnIfTimeLimitExceeded,
+	TEXT("Enables log warning if time limit for time-sliced package streaming has been exceeded."),
+	ECVF_Default
+);
+
+float GTimeLimitExceededMultiplier = 1.5f;
+static FAutoConsoleVariableRef CVarTimeLimitExceededMultiplier(
+	TEXT("s.TimeLimitExceededMultiplier"),
+	GTimeLimitExceededMultiplier,
+	TEXT("Multiplier for time limit exceeded warning time threshold."),
+	ECVF_Default
+);
+
+float GTimeLimitExceededMinTime = 0.005f;
+static FAutoConsoleVariableRef CVarTimeLimitExceededMinTime(
+	TEXT("s.TimeLimitExceededMinTime"),
+	GTimeLimitExceededMinTime,
+	TEXT("Minimum time the time limit exceeded warning will be triggered by."),
+	ECVF_Default
+);
+
+void IsTimeLimitExceededPrint(
+	double InTickStartTime,
+	double CurrentTime,
+	double LastTestTime,
+	float InTimeLimit, 
+	const TCHAR* InLastTypeOfWorkPerformed,
+	UObject* InLastObjectWorkWasPerformedOn)
+{
+	static double LastPrintStartTime = -1.0;
+	// Log single operations that take longer than time limit (but only in cooked builds)
+	if (LastPrintStartTime != InTickStartTime &&
+		(CurrentTime - InTickStartTime) > GTimeLimitExceededMinTime &&
+		(CurrentTime - InTickStartTime) > (GTimeLimitExceededMultiplier * InTimeLimit))
+	{
+		float EstimatedTimeForThisStep = (CurrentTime - InTickStartTime) * 1000;
+		if (LastTestTime > InTickStartTime)
+		{
+			EstimatedTimeForThisStep = (CurrentTime - LastTestTime) * 1000;
+		}
+		LastPrintStartTime = InTickStartTime;
+		UE_LOG(LogStreaming, Warning, TEXT("IsTimeLimitExceeded: %s %s Load Time %5.2fms   Last Step Time %5.2fms"),
+			InLastTypeOfWorkPerformed ? InLastTypeOfWorkPerformed : TEXT("unknown"),
+			InLastObjectWorkWasPerformedOn ? *InLastObjectWorkWasPerformedOn->GetFullName() : TEXT("nullptr"),
+			(CurrentTime - InTickStartTime) * 1000,
+			EstimatedTimeForThisStep);
+	}
 }

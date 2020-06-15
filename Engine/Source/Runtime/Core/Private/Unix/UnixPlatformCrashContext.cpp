@@ -23,6 +23,7 @@
 #include "Misc/FeedbackContext.h"
 #include "Misc/App.h"
 #include "Misc/EngineVersion.h"
+#include "Misc/StringBuilder.h"
 #include "HAL/PlatformMallocCrash.h"
 #include "Unix/UnixPlatformRealTimeSignals.h"
 #include "Unix/UnixPlatformRunnableThread.h"
@@ -81,6 +82,11 @@ FString DescribeSignal(int32 Signal, siginfo_t* Info, ucontext_t *Context)
 
 	return ErrorString;
 #undef HANDLE_CASE
+}
+
+/** Implement platform specific static cleanup function */
+void FGenericCrashContext::CleanupPlatformSpecificFiles()
+{
 }
 
 __thread siginfo_t FUnixCrashContext::FakeSiginfoForEnsures;
@@ -266,31 +272,13 @@ void FUnixCrashContext::GenerateReport(const FString & DiagnosticsPath) const
 	}
 }
 
-/** 
- * Creates (fake so far) minidump
- */
-void GenerateMinidump(const FString & Path)
-{
-	FArchive* ReportFile = IFileManager::Get().CreateFileWriter(*Path);
-	if (ReportFile != NULL)
-	{
-		// write BOM
-		static uint32 Garbage = 0xDEADBEEF;
-		ReportFile->Serialize(&Garbage, sizeof(Garbage));
-
-		ReportFile->Close();
-		delete ReportFile;
-	}
-}
-
-
 void FUnixCrashContext::CaptureStackTrace()
 {
 	// Only do work the first time this function is called - this is mainly a carry over from Windows where it can be called multiple times, left intact for extra safety.
 	if (!bCapturedBacktrace)
 	{
-		const SIZE_T StackTraceSize = 65535;
-		ANSICHAR* StackTrace = (ANSICHAR*) FMemory::Malloc( StackTraceSize );
+		static const SIZE_T StackTraceSize = 65535;
+		static ANSICHAR StackTrace[StackTraceSize];
 		StackTrace[0] = 0;
 
 		int32 IgnoreCount = NumMinidumpFramesToIgnore;
@@ -306,8 +294,41 @@ void FUnixCrashContext::CaptureStackTrace()
 		FCString::Strncat( GErrorHist, UTF8_TO_TCHAR(StackTrace), UE_ARRAY_COUNT(GErrorHist) - 1 );
 		CreateExceptionInfoString(Signal, Info, Context);
 
-		FMemory::Free( StackTrace );
 		bCapturedBacktrace = true;
+	}
+}
+
+void FUnixCrashContext::GetPortableCallStack(const uint64* StackFrames, int32 NumStackFrames, TArray<FCrashStackFrame>& OutCallStack) const
+{
+	// Update the callstack with offsets from each module
+	OutCallStack.Reset(NumStackFrames);
+	for (int32 Idx = 0; Idx < NumStackFrames; Idx++)
+	{
+		const uint64 StackFrame = StackFrames[Idx];
+
+		// Try to find the module containing this stack frame
+		const FStackWalkModuleInfo* FoundModule = nullptr;
+
+		Dl_info DylibInfo;
+		int32 Result = dladdr((const void*)StackFrame, &DylibInfo);
+		if (Result != 0)
+		{
+			ANSICHAR* DylibPath = (ANSICHAR*)DylibInfo.dli_fname;
+			ANSICHAR* DylibName = FCStringAnsi::Strrchr(DylibPath, '/');
+			if (DylibName)
+			{
+				DylibName += 1;
+			}
+			else
+			{
+				DylibName = DylibPath;
+			}
+			OutCallStack.Add(FCrashStackFrame(FPaths::GetBaseFilename(DylibName), (uint64)DylibInfo.dli_fbase, StackFrame - (uint64)DylibInfo.dli_fbase));
+		}
+		else
+		{
+			OutCallStack.Add(FCrashStackFrame(TEXT("Unknown"), 0, StackFrame));
+		}
 	}
 }
 
@@ -377,6 +398,23 @@ namespace UnixCrashReporterTracker
 	}
 }
 
+void FUnixCrashContext::AddPlatformSpecificProperties() const
+{
+	AddCrashProperty(TEXT("CrashSignal"), Signal);
+
+	ANSICHAR* AnsiSignalName = strsignal(Signal);
+	if (AnsiSignalName != nullptr)
+	{
+		TStringBuilder<32> SignalName;
+		SignalName.AppendAnsi(AnsiSignalName);
+
+		AddCrashProperty(TEXT("CrashSignalName"), *SignalName);
+	}
+	else
+	{
+		AddCrashProperty(TEXT("CrashSignalName"), TEXT("Unknown"));
+	}
+}
 
 void FUnixCrashContext::GenerateCrashInfoAndLaunchReporter(bool bReportingNonCrash) const
 {
@@ -468,9 +506,6 @@ void FUnixCrashContext::GenerateCrashInfoAndLaunchReporter(bool bReportingNonCra
 		{
 			// generate "minidump"
 			GenerateReport(FPaths::Combine(*CrashInfoAbsolute, TEXT("Diagnostics.txt")));
-
-			// generate "minidump" (just >1 byte)
-			GenerateMinidump(FPaths::Combine(*CrashInfoAbsolute, TEXT("minidump.dmp")));
 
 			// Introduces a new runtime crash context. Will replace all Windows related crash reporting.
 			FString FilePath(CrashInfoFolder);
@@ -715,6 +750,39 @@ extern int32 CORE_API GMaxNumberFileMappingCache;
 extern thread_local const TCHAR* GCrashErrorMessage;
 extern thread_local ECrashContextType GCrashErrorType;
 
+namespace
+{
+	ANSICHAR AnsiInternalBuffer[64] = { 0 };
+
+	// Taken from AndroidPlatformCrashContext.cpp, we need to avoid allocations while in the signal handler
+	const ANSICHAR* ItoANSI(uint64 Val, uint64 Base)
+	{
+		uint64 Index = 62;
+		int32 Pad = 0;
+		Base = FMath::Clamp<uint64>(Base, 2, 16);
+		if (Val)
+		{
+			for (; Val && Index; --Index, Val /= Base, --Pad)
+			{
+				AnsiInternalBuffer[Index] = "0123456789abcdef"[Val % Base];
+			}
+		}
+		else
+		{
+			AnsiInternalBuffer[Index--] = '0';
+			--Pad;
+		}
+
+		while (Pad > 0)
+		{
+			AnsiInternalBuffer[Index--] = '0';
+			--Pad;
+		}
+
+		return &AnsiInternalBuffer[Index + 1];
+	}
+}
+
 /** True system-specific crash handler that gets called first */
 void PlatformCrashHandler(int32 Signal, siginfo_t* Info, void* Context)
 {
@@ -730,12 +798,34 @@ void PlatformCrashHandler(int32 Signal, siginfo_t* Info, void* Context)
 	GMaxNumberFileMappingCache = 0;
 
 	ECrashContextType Type;
+	TStringBuilder<128> DefaultErrorMessage;
 	const TCHAR* ErrorMessage;
 
 	if (GCrashErrorMessage == nullptr)
 	{
-		Type = ECrashContextType::Crash;
-		ErrorMessage = TEXT("Caught signal");
+#if UE_SERVER
+		// External watchers should send SIGQUIT to kill an hanged server
+		if( Signal == SIGQUIT )
+		{
+			Type = ECrashContextType::Hang;
+		}
+		else
+#endif
+		{
+			Type = ECrashContextType::Crash;
+		}
+
+		DefaultErrorMessage.Append(TEXT("Caught signal "));
+		DefaultErrorMessage.AppendAnsi(ItoANSI(Signal, 10));
+
+		ANSICHAR* SignalName = strsignal(Signal);
+		if (SignalName != nullptr)
+		{
+			DefaultErrorMessage.Append(TEXT(" "));
+			DefaultErrorMessage.AppendAnsi(SignalName);
+		}
+
+		ErrorMessage = *DefaultErrorMessage;
 	}
 	else
 	{

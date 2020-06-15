@@ -25,6 +25,57 @@ enum class ESimulationSpace : uint8
 	BaseBoneSpace,
 };
 
+
+USTRUCT(BlueprintType)
+struct ANIMGRAPHRUNTIME_API FSimSpaceSettings
+{
+	GENERATED_USTRUCT_BODY()
+
+	FSimSpaceSettings();
+
+	// Global multipler on the effects of simulation space movement
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings, meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float MasterAlpha;
+
+	// Multiplier on the Z-component of velocity and acceleration that is passed to the solver
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings, meta = (ClampMin = "0.0"))
+	float VelocityScaleZ;
+
+	// A clamp on the effective simulation-space velocity that is passed to the solver
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings, meta = (ClampMin = "0.0"))
+	float MaxLinearVelocity;
+
+	// A clamp on the effective simulation-space angular velocity that is passed to the solver
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings, meta = (ClampMin = "0.0"))
+	float MaxAngularVelocity;
+	
+	// A clamp on the effective simulation-space acceleration that is passed to the solver
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings, meta = (ClampMin = "0.0"))
+	float MaxLinearAcceleration;
+	
+	// A clamp on the effective simulation-space angular accleration that is passed to the solver
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings, meta = (ClampMin = "0.0"))
+	float MaxAngularAcceleration;
+
+	// Can be used to simulate freefall
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings, meta = (ClampMin = "0.0"))
+	float Freefall;
+
+	// Additional linear drag applied to every body (in addition to linear drag in the physics asset).
+	// Useful when combined with ExternalLinearVelocity to add a temporart wind-blown effect without
+	// having to set up the physics asset with linear drag.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings, meta = (ClampMin = "0.0"))
+	float ExternalLinearDrag;
+
+	// Additional velocity to pass into the solver - for wind etc
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings)
+	FVector ExternalLinearVelocity;
+
+	// Additional angular velocity to pass into the solver
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings)
+	FVector ExternalAngularVelocity;
+};
+
 /**
  *	Controller that simulates physics based on the physics asset of the skeletal mesh component
  */
@@ -92,6 +143,18 @@ public:
 	UPROPERTY(EditAnywhere, Category = Settings)
 	FVector	ComponentAppliedLinearAccClamp;
 
+	/** 
+	 * Settings for the system which passes motion of the simulations space
+	 * into the simulation. This allows the simulation to pass some fraction
+	 * of the world space motion onto the bodies.
+	 * This system is a superset of the functionality provided by ComponentLinearAccScale,
+	 * ComponentLinearVelScale, and ComponentAppliedLinearAccClamp. In general
+	 * you would not have both systems enabled.
+	 */
+	UPROPERTY(EditAnywhere, Category = Settings, meta = (PinHiddenByDefault))
+	FSimSpaceSettings SimSpaceSettings;
+
+
 	/**
 	 * Scale of cached bounds (vs. actual bounds).
 	 * Increasing this may improve performance, but overlaps may not work as well.
@@ -150,13 +213,10 @@ public:
 	uint8 bClampLinearTranslationLimitToRefPose : 1;
 
 	/**
-	 * Solver iteration settings overrides (defaults are set in the Physics Asset).
-	 * These can be varied in the runtime and set through blueprint (e.g., to increase
-	 * iterations during difficult movements).
-	 * Set to -1 to leave an individual iteration value at its Physics Asset value.
-	 */
-	UPROPERTY(EditAnywhere, Category = Settings, meta = (PinHiddenByDefault))
-	FSolverIterations OverrideSolverIterations;
+		For world-space simulations, if the magnitude of the component's 3D scale is less than WorldSpaceMinimumScale, do not update the node.
+	*/
+	UPROPERTY(EditAnywhere, Category = Settings)
+	float WorldSpaceMinimumScale;
 
 private:
 	uint8 bEnabled : 1;
@@ -182,6 +242,35 @@ private:
 	void UpdateWorldForces(const FTransform& ComponentToWorld, const FTransform& RootBoneTM);
 
 	void InitializeNewBodyTransformsDuringSimulation(FComponentSpacePoseContext& Output, const FTransform& ComponentTransform, const FTransform& BaseBoneTM);
+
+	void InitSimulationSpace(
+		const FTransform& ComponentToWorld,
+		const FTransform& BoneToComponent);
+
+	// Calculate simulation space transform, velocity etc to pass into the solver
+	void CalculateSimulationSpace(
+		ESimulationSpace Space,
+		const FTransform& ComponentToWorld,
+		const FTransform& BoneToComponent,
+		const float Dt,
+		const FSimSpaceSettings& Settings,
+		FTransform& SpaceTransform,
+		FVector& SpaceLinearVel,
+		FVector& SpaceAngularVel,
+		FVector& SpaceLinearAcc,
+		FVector& SpaceAngularAcc);
+
+	// Gather nearby world objects and add them to the sim
+	void CollectWorldObjects();
+
+	// Flag invalid world objects to be removed from the sim
+	void ExpireWorldObjects();
+
+	// Remove simulation objects that are flagged as expired
+	void PurgeExpiredWorldObjects();
+
+	// Update sim-space transforms of world objects
+	void UpdateWorldObjects(const FTransform& SpaceTransform);
 
 private:
 
@@ -237,6 +326,16 @@ private:
 		bool bBodyTransformInitialized : 1;
 	};
 
+	struct FWorldObject
+	{
+		FWorldObject() : ActorHandle(nullptr), LastSeenTick(0), bExpired(false) {}
+		FWorldObject(ImmediatePhysics::FActorHandle* InActorHandle, int32 InLastSeenTick) : ActorHandle(InActorHandle), LastSeenTick(InLastSeenTick), bExpired(false) {}
+
+		ImmediatePhysics::FActorHandle* ActorHandle;
+		int32 LastSeenTick;
+		bool bExpired;
+	};
+
 	TArray<FOutputBoneData> OutputBoneData;
 	TArray<ImmediatePhysics::FActorHandle*> Bodies;
 	TArray<int32> SkeletonBoneIndexToBodyIndex;
@@ -245,14 +344,14 @@ private:
 	TArray<FPhysicsConstraintHandle*> Constraints;
 	TArray<USkeletalMeshComponent::FPendingRadialForces> PendingRadialForces;
 
-	TSet<UPrimitiveComponent*> ComponentsInSim;
+	TMap<const UPrimitiveComponent*, FWorldObject> ComponentsInSim;
+	int32 ComponentsInSimTick;
 
 	FVector WorldSpaceGravity;
 
-	FSphere Bounds;
-
 	float TotalMass;
 
+	// Bounds used to gather world objects copied into the simulation
 	FSphere CachedBounds;
 
 	FCollisionQueryParams QueryParams;
@@ -262,16 +361,27 @@ private:
 	// Evaluation counter, to detect when we haven't be evaluated in a while.
 	FGraphTraversalCounter EvalCounter;
 
+	// Used by CollectWorldObjects and UpdateWorldGeometry in Task Thread
 	// Typically, World should never be accessed off the Game Thread.
 	// However, since we're just doing overlaps this should be OK.
 	const UWorld* UnsafeWorld;
+
+	// Used by CollectWorldObjects and UpdateWorldGeometry in Task Thread
+	// Only used for a pointer comparison.
+	const AActor* UnsafeOwner;
 
 	FBoneContainer CapturedBoneVelocityBoneContainer;
 	FCSPose<FCompactHeapPose> CapturedBoneVelocityPose;
 	FCSPose<FCompactHeapPose> CapturedFrozenPose;
 	FBlendedHeapCurve CapturedFrozenCurves;
 
+	// Used by the world-space to simulation-space motion transfer system in Component- or Bone-Space sims
+	FTransform PreviousComponentToWorld;
+	FTransform PreviousBoneToComponent;
 	FVector PreviousComponentLinearVelocity;
+	FVector PreviousComponentAngularVelocity;
+	FVector PreviousBoneLinearVelocity;
+	FVector PreviousBoneAngularVelocity;
 };
 
 #if WITH_EDITORONLY_DATA

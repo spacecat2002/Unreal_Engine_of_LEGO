@@ -12,6 +12,8 @@
 #include "Android/AndroidWindow.h"
 #include "AndroidOpenGLPrivate.h"
 #include "Android/AndroidPlatformMisc.h"
+#include "Android/AndroidPlatformFramePacer.h"
+
 
 PFNeglPresentationTimeANDROID eglPresentationTimeANDROID_p = NULL;
 PFNeglGetNextFrameIdANDROID eglGetNextFrameIdANDROID_p = NULL;
@@ -37,6 +39,18 @@ static TAutoConsoleVariable<int32> CVarEnableAdrenoTilingHint(
 	TEXT("  1 = hinting enabled for Adreno devices running Andorid 8 or earlier [default]\n")
 	TEXT("  2 = hinting always enabled for Adreno devices\n"));
 
+static TAutoConsoleVariable<int32> CVarDisableEarlyFragmentTests(
+	TEXT("r.Android.DisableEarlyFragmentTests"),
+	0,
+	TEXT("Whether to disable early_fragment_tests if any \n"),
+	ECVF_ReadOnly);
+
+static TAutoConsoleVariable<int32> CVarDisableFBFNonCoherent(
+	TEXT("r.Android.DisableFBFNonCoherent"),
+	0,
+	TEXT("Whether to disable usage of QCOM_shader_framebuffer_fetch_noncoherent extension\n"),
+	ECVF_ReadOnly);
+
 struct FPlatformOpenGLDevice
 {
 
@@ -56,6 +70,8 @@ struct FPlatformOpenGLDevice
 
 FPlatformOpenGLDevice::~FPlatformOpenGLDevice()
 {
+	FPlatformRHIFramePacer::Destroy();
+
 	FAndroidAppEntry::ReleaseEGL();
 }
 
@@ -73,6 +89,9 @@ static bool bRunningUnderRenderDoc = false;
 
 void FPlatformOpenGLDevice::Init()
 {
+	// Initialize frame pacer
+	FPlatformRHIFramePacer::Init(new FAndroidOpenGLFramePacer());
+
 	extern void InitDebugContext();
 
 	bRunningUnderRenderDoc = glIsEnabled(GL_DEBUG_TOOL_EXT) != GL_FALSE;
@@ -117,16 +136,17 @@ void* PlatformGetWindow(FPlatformOpenGLContext* Context, void** AddParam)
 	return (void*)&Context->eglContext;
 }
 
-bool PlatformBlitToViewport( FPlatformOpenGLDevice* Device, const FOpenGLViewport& Viewport, uint32 BackbufferSizeX, uint32 BackbufferSizeY, bool bPresent,bool bLockToVsync, int32 SyncInterval )
+bool PlatformBlitToViewport(FPlatformOpenGLDevice* Device, const FOpenGLViewport& Viewport, uint32 BackbufferSizeX, uint32 BackbufferSizeY, bool bPresent,bool bLockToVsync )
 {
 	if (bPresent && Viewport.GetCustomPresent())
 	{
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_FAndroidOpenGL_PlatformBlitToViewport_CustomPresent);
+		int32 SyncInterval = FAndroidPlatformRHIFramePacer::GetLegacySyncInterval();
 		bPresent = Viewport.GetCustomPresent()->Present(SyncInterval);
 	}
 	if (bPresent)
 	{
-		AndroidEGL::GetInstance()->SwapBuffers(bLockToVsync ? SyncInterval : 0);
+		FAndroidPlatformRHIFramePacer::SwapBuffers(bLockToVsync);
 	}
 	static IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("a.UseFrameTimeStampsForPacing"));
 	const bool bForceGPUFence = CVar ? CVar->GetInt() != 0 : false;
@@ -740,7 +760,8 @@ extern FString AndroidThunkCpp_GetMetaDataString(const FString& Key);
 void FAndroidOpenGL::SetupDefaultGLContextState(const FString& ExtensionsString)
 {
 	// Enable QCOM non-coherent framebuffer fetch if supported
-	if (ExtensionsString.Contains(TEXT("GL_QCOM_shader_framebuffer_fetch_noncoherent")) && 
+	if (CVarDisableFBFNonCoherent.GetValueOnAnyThread() == 0 &&
+		ExtensionsString.Contains(TEXT("GL_QCOM_shader_framebuffer_fetch_noncoherent")) && 
 		ExtensionsString.Contains(TEXT("GL_EXT_shader_framebuffer_fetch")))
 	{
 		glEnable(GL_FRAMEBUFFER_FETCH_NONCOHERENT_QCOM);
@@ -926,12 +947,6 @@ void FAndroidOpenGL::ProcessExtensions(const FString& ExtensionsString)
 			bool bFoundSupported = false;
 			for (FString Flavor : CookedFlavors)
 			{
-				if (Flavor.Equals(TEXT("ETC1")))
-				{
-					// every device supports ETC1
-					bFoundSupported = true;
-					break;
-				}
 				if (Flavor.Equals(TEXT("ETC2")))
 				{
 					if (FOpenGL::SupportsETC2())
@@ -940,25 +955,9 @@ void FAndroidOpenGL::ProcessExtensions(const FString& ExtensionsString)
 						break;
 					}
 				}
-				if (Flavor.Equals(TEXT("ATC")))
-				{
-					if (FOpenGL::SupportsATITC())
-					{
-						bFoundSupported = true;
-						break;
-					}
-				}
 				if (Flavor.Equals(TEXT("DXT")))
 				{
 					if (FOpenGL::SupportsDXT())
-					{
-						bFoundSupported = true;
-						break;
-					}
-				}
-				if (Flavor.Equals(TEXT("PVRTC")))
-				{
-					if (FOpenGL::SupportsPVRTC())
 					{
 						bFoundSupported = true;
 						break;
@@ -976,11 +975,8 @@ void FAndroidOpenGL::ProcessExtensions(const FString& ExtensionsString)
 
 			if (!bFoundSupported)
 			{
-				FString Message = TEXT("Cooked Flavors: ") + CookedFlavorsString + TEXT("\n\nSupported: ETC1") +
-					(FOpenGL::SupportsETC2() ? TEXT(",ETC2") : TEXT("")) +
-					(FOpenGL::SupportsATITC() ? TEXT(",ATC") : TEXT("")) +
+				FString Message = TEXT("Cooked Flavors: ") + CookedFlavorsString + TEXT("\n\nSupported: ETC2") +
 					(FOpenGL::SupportsDXT() ? TEXT(",DXT") : TEXT("")) +
-					(FOpenGL::SupportsPVRTC() ? TEXT(",PVRTC") : TEXT("")) +
 					(FOpenGL::SupportsASTC() ? TEXT(",ASTC") : TEXT(""));
 
 				FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Error: Unsupported Texture Format\n%s"), *Message);
@@ -1008,7 +1004,8 @@ void FAndroidOpenGL::ProcessExtensions(const FString& ExtensionsString)
 	}
 
 	// Qualcomm non-coherent framebuffer_fetch
-	if (ExtensionsString.Contains(TEXT("GL_QCOM_shader_framebuffer_fetch_noncoherent")) && 
+	if (CVarDisableFBFNonCoherent.GetValueOnAnyThread() == 0 &&
+		ExtensionsString.Contains(TEXT("GL_QCOM_shader_framebuffer_fetch_noncoherent")) && 
 		ExtensionsString.Contains(TEXT("GL_EXT_shader_framebuffer_fetch")))
 	{
 		glFramebufferFetchBarrierQCOM = (PFNGLFRAMEBUFFERFETCHBARRIERQCOMPROC)((void*)eglGetProcAddress("glFramebufferFetchBarrierQCOM"));
@@ -1016,6 +1013,12 @@ void FAndroidOpenGL::ProcessExtensions(const FString& ExtensionsString)
 		{
 			UE_LOG(LogRHI, Log, TEXT("Using QCOM_shader_framebuffer_fetch_noncoherent"));
 		}
+	}
+
+	if (CVarDisableEarlyFragmentTests.GetValueOnAnyThread() != 0)
+	{
+		bRequiresDisabledEarlyFragmentTests = true;
+		UE_LOG(LogRHI, Log, TEXT("Disabling early_fragment_tests"));
 	}
 }
 

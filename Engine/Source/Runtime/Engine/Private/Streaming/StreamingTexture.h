@@ -12,10 +12,6 @@ StreamingTexture.h: Definitions of classes used for texture streaming.
 struct FRenderAssetStreamingManager;
 struct FRenderAssetStreamingSettings;
 
-// When enabled we store the filename of optional data as a FString in FStreamingRenderAsset and 
-// use that to check for the existence of the optional data. When disabled we poll the BulkData instead.
-#define STORE_OPTIONAL_DATA_FILENAME !USE_NEW_BULKDATA
-
 /*-----------------------------------------------------------------------------
 	FStreamingRenderAsset, the streaming system's version of UTexture2D.
 -----------------------------------------------------------------------------*/
@@ -39,6 +35,7 @@ struct FStreamingRenderAsset
 		AT_Texture,
 		AT_StaticMesh,
 		AT_SkeletalMesh,
+		AT_LandscapeMeshMobile,
 		AT_Num
 	};
 
@@ -94,7 +91,7 @@ struct FStreamingRenderAsset
 
 	static float GetExtraBoost(TextureGroup	LODGroup, const FRenderAssetStreamingSettings& Settings);
 
-	int32 GetWantedMipsFromSize(float Size, float MaxScreenSizeOverAllViews) const;
+	int32 GetWantedMipsFromSize(float Size, float InvMaxScreenSizeOverAllViews) const;
 
 	/** Set the wanted mips from the async task data */
 	void SetPerfectWantedMips_Async(
@@ -169,6 +166,11 @@ struct FStreamingRenderAsset
 		return RenderAssetType != AT_Texture;
 	}
 
+	bool IsLandscapeMesh() const
+	{
+		return RenderAssetType == AT_LandscapeMeshMobile;
+	}
+
 	FORCEINLINE int32 GetPerfectWantedMips() const { return FMath::Max<int32>(VisibleWantedMips,  HiddenWantedMips); }
 
 	// Whether this texture/mesh can be affected by Global Bias and Budget Bias per texture/mesh.
@@ -177,6 +179,7 @@ struct FStreamingRenderAsset
 	{
 		// In editor, forced stream in should never have reduced mips as they can be edited.
 		return (IsMesh() || LODGroup != TEXTUREGROUP_HierarchicalLOD)
+			&& !IsLandscapeMesh()
 			&& !bIsTerrainTexture
 			&& !(bForceFullyLoadHeuristic && bIgnoreStreamingMipBias)
 			&& !(GIsEditor && bForceFullyLoadHeuristic); 
@@ -191,15 +194,6 @@ struct FStreamingRenderAsset
 		return !bIsStreamingPaused && (BudgetedMips > ResidentMips || !bBudgetedMipsIsValid);
 	}
 
-	FORCEINLINE void ClearCachedOptionalMipsState_Async()
-	{
-		// If we already have our optional mips there is no need to recache, pak files can't go away!
-		if (OptionalMipsState == EOptionalMipsState::OMS_NoOptionalMips && NumNonOptionalMips != MipCount)
-		{
-			OptionalMipsState = EOptionalMipsState::OMS_NotCached;
-		}
-	}
-
 	/***************************************************************
 	 * Member data categories:
 	 * (1) Members initialized when this is constructed => NEVER CHANGES
@@ -211,13 +205,10 @@ struct FStreamingRenderAsset
 
 	/** (1) Texture/mesh to manage. Note that this becomes null when the texture/mesh is removed. */
 	UStreamableRenderAsset*		RenderAsset;
-	/** (2) */
-#if STORE_OPTIONAL_DATA_FILENAME
-	FString			OptionalBulkDataFilename;
-#else
-	int32			OptionalMipIndex;
-#endif
-	
+	/** (1) The first optional mip index, or INDEX_NONE if none exists. */
+	int32 FirstOptionalMipIndex = INDEX_NONE;
+	/** (1) The optional mip filename hash, see FRenderAssetStreamingManager::OnPakFileChanged() */
+	FIoFilenameHash OptionalFileHash = INVALID_IO_FILENAME_HASH;
 	/** (1) Cached texture/mesh LOD group. */
 	int32			LODGroup;
 	/** (1) Cached number of mipmaps that are not allowed to stream. */
@@ -264,6 +255,8 @@ struct FStreamingRenderAsset
 	int32			HiddenWantedMips;
 	/** (4) Retention priority used to sacrifice mips when out of budget. */
 	int32			RetentionPriority;
+	/** (4) Normalized screen size. Only used by meshes. */
+	float			NormalizedScreenSize;
 	/** (4) The max allowed mips (based on Visible and Hidden wanted mips) in order to fit in budget. */
 	int32			BudgetedMips;
 	/** (4) The load request priority. */

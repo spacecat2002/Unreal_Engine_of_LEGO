@@ -123,7 +123,7 @@ public:
 	{
 		return sizeof(*this) +
 			SerializedShaders.GetAllocatedSize() +
-			SerializedShaders.GetAllocatedSize();
+			ShaderPreloads.GetAllocatedSize();
 	}
 
 	virtual int32 GetNumShaders() const override { return SerializedShaders.ShaderEntries.Num(); }
@@ -146,20 +146,33 @@ public:
 		return SerializedShaders.FindShader(Hash);
 	}
 
-	virtual FGraphEventRef PreloadShader(int32 ShaderIndex) override;
+	virtual bool PreloadShader(int32 ShaderIndex, FGraphEventArray& OutCompletionEvents) override;
 
-	virtual FGraphEventRef PreloadShaderMap(int32 ShaderMapIndex) override;
+	virtual bool PreloadShaderMap(int32 ShaderMapIndex, FGraphEventArray& OutCompletionEvents) override;
+
+	virtual void ReleasePreloadedShader(int32 ShaderIndex) override;
 
 	virtual TRefCountPtr<FRHIShader> CreateShader(int32 Index) override;
+	virtual void Teardown() override;
+
+	void OnShaderPreloadFinished(int32 ShaderIndex, const IMemoryReadStreamRef& PreloadData);
 
 protected:
 	FShaderCodeArchive(EShaderPlatform InPlatform, const FString& InLibraryDir, const FString& InLibraryName);
 
-	IMemoryReadStreamRef ReadShaderCode(int32 Index);
-
 	FORCENOINLINE void CheckShaderCreation(void* ShaderPtr, int32 Index)
 	{
 	}
+
+	struct FShaderPreloadEntry
+	{
+		FGraphEventRef PreloadEvent;
+		void* Code = nullptr;
+		uint32 FramePreloadStarted = ~0u;
+		uint32 NumRefs = 0u;
+	};
+
+	bool WaitForPreload(FShaderPreloadEntry& ShaderPreloadEntry);
 
 	// Library directory
 	FString LibraryDir;
@@ -172,4 +185,9 @@ protected:
 
 	// The shader code present in the library
 	FSerializedShaderArchive SerializedShaders;
+
+	TArray<FGraphEventRef> ShaderMapPreloadEvents;
+
+	TArray<FShaderPreloadEntry> ShaderPreloads;
+	FRWLock ShaderPreloadLock;
 };

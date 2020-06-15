@@ -6,7 +6,7 @@
 #include "HAL/PlatformTime.h"
 #include "Misc/CString.h"
 #include "ProfilingDebugging/MiscTrace.h"
-#include "Trace/Trace.h"
+#include "Trace/Trace.inl"
 #include "UObject/NameTypes.h"
 
 #if GPUPROFILERTRACE_ENABLED
@@ -30,7 +30,8 @@ struct
 
 static TSet<uint32> GEventNames;
 
-UE_TRACE_CHANNEL(GpuChannel)
+RHI_API UE_TRACE_CHANNEL_EXTERN(GpuChannel)
+UE_TRACE_CHANNEL_DEFINE(GpuChannel)
 
 UE_TRACE_EVENT_BEGIN(GpuProfiler, EventSpec, Important)
 	UE_TRACE_EVENT_FIELD(uint32, EventType)
@@ -38,7 +39,7 @@ UE_TRACE_EVENT_BEGIN(GpuProfiler, EventSpec, Important)
 UE_TRACE_EVENT_END()
 
 UE_TRACE_EVENT_BEGIN(GpuProfiler, Frame)
-	UE_TRACE_EVENT_FIELD(int64, CalibrationBias)
+	UE_TRACE_EVENT_FIELD(uint64, CalibrationBias)
 	UE_TRACE_EVENT_FIELD(uint64, TimestampBase)
 	UE_TRACE_EVENT_FIELD(uint32, RenderingFrameNumber)
 	UE_TRACE_EVENT_FIELD(uint8[], Data)
@@ -46,7 +47,7 @@ UE_TRACE_EVENT_END()
 
 } // namespace GpuProfilerTrace
 
-void FGpuProfilerTrace::BeginFrame()
+void FGpuProfilerTrace::BeginFrame(FGPUTimingCalibrationTimestamp& Calibration)
 {
 	using namespace GpuProfilerTrace;
 
@@ -55,14 +56,8 @@ void FGpuProfilerTrace::BeginFrame()
 		return;
 	}
 
-	GCurrentFrame.Calibration = FGPUTiming::GetCalibrationTimestamp();
-	if (GCurrentFrame.Calibration.CPUMicroseconds == 0)
-	{
-		uint64 Cycles = FPlatformTime::Cycles64();
-		Cycles = uint64(FPlatformTime::ToSeconds64(Cycles) * 1000 * 1000);
-		GCurrentFrame.Calibration.CPUMicroseconds = Cycles;
-	}
-
+	GCurrentFrame.Calibration = Calibration;
+	ensure(GCurrentFrame.Calibration.CPUMicroseconds > 0 && GCurrentFrame.Calibration.GPUMicroseconds > 0);
 	GCurrentFrame.TimestampBase = 0;
 	GCurrentFrame.EventBufferSize = 0;
 	GCurrentFrame.bActive = true;
@@ -104,7 +99,7 @@ void FGpuProfilerTrace::BeginEventByName(const FName& Name, uint32 FrameNumber, 
 		return;
 	}
 
-	if (GCurrentFrame.EventBufferSize >= MaxEventBufferSize - 17) // 9 + 8
+	if (GCurrentFrame.EventBufferSize >= MaxEventBufferSize - 18) // 10 + 8
 	{
 		return;
 	}
@@ -148,6 +143,7 @@ void FGpuProfilerTrace::EndFrame()
 
 	if (GCurrentFrame.EventBufferSize)
 	{
+		// This subtraction is intended to be performed on uint64 to leverage the wrap around behavior defined by the standard
 		uint64 Bias = GCurrentFrame.Calibration.CPUMicroseconds - GCurrentFrame.Calibration.GPUMicroseconds;
 		UE_TRACE_LOG(GpuProfiler, Frame, GpuChannel)
 			<< Frame.CalibrationBias(Bias)

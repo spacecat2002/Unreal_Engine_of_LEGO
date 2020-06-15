@@ -529,6 +529,19 @@ void FGenericPlatformMisc::EndNamedEvent()
 #endif
 }
 
+bool FGenericPlatformMisc::SetStoredValues(const FString& InStoreId, const FString& InSectionName, const TMap<FString, FString>& InKeyValues)
+{
+	for (const TPair<FString, FString>& InKeyValue : InKeyValues)
+	{
+		if (!FPlatformMisc::SetStoredValue(InStoreId, InSectionName, InKeyValue.Key, InKeyValue.Value))
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
 bool FGenericPlatformMisc::SetStoredValue(const FString& InStoreId, const FString& InSectionName, const FString& InKeyName, const FString& InValue)
 {
 	check(!InStoreId.IsEmpty());
@@ -941,18 +954,28 @@ const TCHAR* FGenericPlatformMisc::ProjectDir()
 	bool bIsIniReady = GConfig && GConfig->IsReadyForUse();
 	if (bWasIniReady != bIsIniReady)
 	{
-		ProjectDir = TEXT("");
+		ProjectDir.Reset();
 		bWasIniReady = bIsIniReady;
+	}
+
+	// track if last time we called this function the project file path was set
+	static bool bWasProjectFilePathReady = false;
+	if (!bWasProjectFilePathReady && FPaths::IsProjectFilePathSet())
+	{
+		ProjectDir.Reset();
+		bWasProjectFilePathReady = true;
 	}
 
 	// try using the override game dir if it exists, which will override all below logic
 	if (ProjectDir.Len() == 0)
 	{
+		ProjectDir.Reserve(FPlatformMisc::GetMaxPathLength());
 		ProjectDir = OverrideProjectDir;
 	}
 
 	if (ProjectDir.Len() == 0)
 	{
+		ProjectDir.Reserve(FPlatformMisc::GetMaxPathLength());
 		if (FPlatformProperties::IsProgram())
 		{
 			// monolithic, game-agnostic executables, the ini is in Engine/Config/Platform
@@ -1052,12 +1075,7 @@ const TCHAR* FGenericPlatformMisc::GamePersistentDownloadDir()
 
 	if (GamePersistentDownloadDir.Len() == 0)
 	{
-		FString BaseProjectDir = ProjectDir();
-
-		if (BaseProjectDir.Len() > 0)
-		{
-			GamePersistentDownloadDir = BaseProjectDir / TEXT("PersistentDownloadDir");
-		}
+		GamePersistentDownloadDir = FPaths::ProjectSavedDir() / TEXT("PersistentDownloadDir");
 	}
 	return *GamePersistentDownloadDir;
 }
@@ -1212,7 +1230,7 @@ FString FGenericPlatformMisc::GetTimeZoneId()
 	return FString();
 }
 
-#if DO_CHECK
+#if DO_ENSURE
 namespace GenericPlatformMisc
 {
 	/** Chances for handling an ensure (0.0 - never, 1.0 - always). */
@@ -1259,7 +1277,7 @@ void FGenericPlatformMisc::UpdateHotfixableEnsureSettings()
 
 	GenericPlatformMisc::GEnsureSettingsEverUpdated = true;
 }
-#endif // !DO_CHECK
+#endif // #if DO_ENSURE
 
 void FGenericPlatformMisc::TickHotfixables()
 {
@@ -1402,6 +1420,11 @@ bool FGenericPlatformMisc::RequestDeviceCheckToken(TFunction<void(const TArray<u
 	return false;
 }
 
+TArray<FCustomChunk> FGenericPlatformMisc::GetOnDemandChunksForPakchunkIndices(const TArray<int32>& PakchunkIndices)
+{
+	return TArray<FCustomChunk>();
+}
+
 TArray<FCustomChunk> FGenericPlatformMisc::GetAllOnDemandChunks()
 {
 	return TArray<FCustomChunk>();
@@ -1428,14 +1451,19 @@ FString FGenericPlatformMisc::LoadTextFileFromPlatformPackage(const FString& Rel
 {
 	FString Path = RootDir() / RelativePath;
 	FString Result;
-	FFileHelper::LoadFileToString(Result, *Path);
+	if (FFileHelper::LoadFileToString(Result, &IPlatformFile::GetPlatformPhysical(), *Path))
+	{
+		return Result;
+	}
+
+	Result.Empty();
 	return Result;
 }
 
 bool FGenericPlatformMisc::FileExistsInPlatformPackage(const FString& RelativePath)
 {
 	FString Path = RootDir() / RelativePath;
-	return IFileManager::Get().FileExists(*Path);
+	return IPlatformFile::GetPlatformPhysical().FileExists(*Path);
 }
 
 void FGenericPlatformMisc::TearDown()

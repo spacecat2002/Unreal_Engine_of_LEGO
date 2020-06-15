@@ -2,6 +2,9 @@
 
 
 #include "MetalRHIPrivate.h"
+#include "MetalRHIRenderQuery.h"
+#include "MetalShaderTypes.h"
+#include "MetalGraphicsPipelineState.h"
 #include "MetalStateCache.h"
 #include "MetalProfiler.h"
 #include "MetalCommandBuffer.h"
@@ -606,6 +609,7 @@ bool FMetalStateCache::SetRenderPassInfo(FRHIRenderPassInfo const& InRenderTarge
 				ColorAttachment.SetLevel(RenderTargetView.MipIndex);
 				if(Surface.Type == RRT_Texture3D)
 				{
+					ColorAttachment.SetSlice(0);
 					ColorAttachment.SetDepthPlane(ArraySliceIndex);
 				}
 				else
@@ -1186,6 +1190,17 @@ void FMetalStateCache::SetGraphicsPipelineState(FMetalGraphicsPipelineState* Sta
 	}
 }
 
+FMetalShaderPipeline* FMetalStateCache::GetPipelineState() const
+{
+	return GraphicsPSO->GetPipeline(GetIndexType());
+}
+
+EPrimitiveType FMetalStateCache::GetPrimitiveType()
+{
+	check(IsValidRef(GraphicsPSO));
+	return GraphicsPSO->GetPrimitiveType();
+}
+
 void FMetalStateCache::SetIndexType(EMetalIndexType InIndexType)
 {
 	if (IndexType != InIndexType)
@@ -1400,19 +1415,18 @@ void FMetalStateCache::SetShaderTexture(EMetalShaderStages const Frequency, FMet
 {
 	check(Frequency < EMetalShaderStages::Num);
 	check(Index < ML_MaxTextures);
+
+#if (PLATFORM_IOS || PLATFORM_TVOS)
+    UE_CLOG([Texture.GetPtr() storageMode] == MTLStorageModeMemoryless, LogMetal, Fatal, TEXT("FATAL: Attempting to bind a memoryless texture. Stage %u Index %u Texture %@"), Frequency, Index, Texture.GetPtr());
+#endif
 	
 	if (ShaderTextures[Frequency].Textures[Index] != Texture
 		|| ShaderTextures[Frequency].Usage[Index] != Usage)
 	{
-		bool bMemoryLess = false;
-#if PLATFORM_IOS
-		bMemoryLess = (Texture.GetStorageMode() == mtlpp::StorageMode::Memoryless);
-#endif
-		
-		ShaderTextures[Frequency].Textures[Index] = !bMemoryLess ? Texture : FMetalTexture();
+		ShaderTextures[Frequency].Textures[Index] = Texture;
 		ShaderTextures[Frequency].Usage[Index] = Usage;
 		
-		if (Texture && !bMemoryLess)
+		if (Texture)
 		{
 			ShaderTextures[Frequency].Bound |= (FMetalTextureMask(1) << FMetalTextureMask(Index));
 		}
@@ -2728,71 +2742,6 @@ void FMetalStateCache::CommitResourceTable(EMetalShaderStages const Frequency, m
 		if (Index < ML_MaxSamplers && SamplerBindings.Samplers[Index])
 		{
 			CommandEncoder.SetShaderSamplerState(Type, SamplerBindings.Samplers[Index], Index);
-		}
-	}
-	
-	uint32 ArgumentBuffers = 0;
-	TMap<uint8, TArray<uint8>> ArgumentBufferMasks;
-	switch(Frequency)
-	{
-		case EMetalShaderStages::Vertex:
-			ArgumentBuffers = GraphicsPSO->VertexShader->Bindings.ArgumentBuffers;
-			ArgumentBufferMasks = GraphicsPSO->VertexShader->Bindings.ArgumentBufferMasks;
-            break;
-#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
-		case EMetalShaderStages::Hull:
-			ArgumentBuffers = GraphicsPSO->HullShader->Bindings.ArgumentBuffers;
-			ArgumentBufferMasks = GraphicsPSO->HullShader->Bindings.ArgumentBufferMasks;
-			break;
-		case EMetalShaderStages::Domain:
-			ArgumentBuffers = GraphicsPSO->DomainShader->Bindings.ArgumentBuffers;
-			ArgumentBufferMasks = GraphicsPSO->DomainShader->Bindings.ArgumentBufferMasks;
-			break;
-#endif
-		case EMetalShaderStages::Pixel:
-			ArgumentBuffers = GraphicsPSO->PixelShader->Bindings.ArgumentBuffers;
-			ArgumentBufferMasks = GraphicsPSO->PixelShader->Bindings.ArgumentBufferMasks;
-			break;
-		case EMetalShaderStages::Compute:
-			ArgumentBuffers = ComputeShader->Bindings.ArgumentBuffers;
-			ArgumentBufferMasks = ComputeShader->Bindings.ArgumentBufferMasks;
-			break;
-		default:
-			break;
-	}
-	
-	while(ArgumentBuffers)
-	{
-		uint32 Index = __builtin_ctz(ArgumentBuffers);
-		ArgumentBuffers &= ~(1 << Index);
-		
-		FMetalUniformBuffer* Buffer = (FMetalUniformBuffer*)BoundUniformBuffers[Frequency][Index];
-		check(Buffer);
-		
-		FMetalUniformBuffer::FMetalIndirectArgumentBuffer& IAB = Buffer->GetIAB();
-		
-		TArray<uint8>& Mask = ArgumentBufferMasks.FindChecked((uint8)Index);
-		for (uint8 Entry : Mask)
-		{
-			FMetalUniformBuffer::Argument const& Resource = IAB.IndirectArgumentResources[Entry];
-			if (Resource.Buffer)
-			{
-				CommandEncoder.UseIndirectArgumentResource(Resource.Buffer, Resource.Usage);
-			}
-			else if (Resource.Texture)
-			{
-				CommandEncoder.UseIndirectArgumentResource(Resource.Texture, Resource.Usage);
-			}
-		}
-		
-		if (IAB.IndirectArgumentBuffer->IndirectArgumentBufferSideTable)
-		{
-			CommandEncoder.UseIndirectArgumentResource(IAB.IndirectArgumentBuffer->IndirectArgumentBufferSideTable, mtlpp::ResourceUsage::Read);
-		}
-		
-		if (Buffer->Buffer)
-		{
-			CommandEncoder.UseIndirectArgumentResource(Buffer->Buffer, mtlpp::ResourceUsage::Read);
 		}
 	}
 }

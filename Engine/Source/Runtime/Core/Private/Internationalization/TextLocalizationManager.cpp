@@ -327,6 +327,10 @@ void InitEngineTextLocalization()
 	FStringTableRegistry::Get();
 	FStringTableRedirects::InitStringTableRedirects();
 
+	// Run this now that the config system is definitely initialized
+	// to refresh anything that was cached before it was ready
+	FInternationalization::Get().RefreshCultureDisplayNames(FInternationalization::Get().GetCurrentLanguage()->GetPrioritizedParentCultureNames());
+
 	ELocalizationLoadFlags LocLoadFlags = ELocalizationLoadFlags::None;
 	LocLoadFlags |= (WITH_EDITOR ? ELocalizationLoadFlags::Editor : ELocalizationLoadFlags::None);
 	LocLoadFlags |= ELocalizationLoadFlags::Engine;
@@ -369,6 +373,9 @@ void InitGameTextLocalization()
 	LLM_SCOPE(ELLMTag::Localization);
 
 	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("InitGameTextLocalization"), STAT_InitGameTextLocalization, STATGROUP_LoadTime);
+
+	// Refresh the cached config data before applying the default culture, as the game may have patched in new config data since the cache was built
+	FInternationalization::Get().RefreshCachedConfigData();
 
 	ELocalizationLoadFlags LocLoadFlags = ELocalizationLoadFlags::None;
 	LocLoadFlags |= (FApp::IsGame() ? ELocalizationLoadFlags::Game : ELocalizationLoadFlags::None);
@@ -851,6 +858,8 @@ void FTextLocalizationManager::RefreshResources()
 
 void FTextLocalizationManager::OnPakFileMounted(const IPakFile& PakFile)
 {
+	LLM_SCOPE(ELLMTag::Localization);
+
 	int32 ChunkId = PakFile.PakGetPakchunkIndex();
 	if (ChunkId == INDEX_NONE || ChunkId == 0)
 	{

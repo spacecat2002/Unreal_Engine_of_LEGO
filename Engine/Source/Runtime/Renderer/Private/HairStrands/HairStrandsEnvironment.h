@@ -20,6 +20,9 @@ void RenderHairStrandsEnvironmentLighting(
 	FRDGBuilder& GraphBuilder,
 	const uint32 ViewIndex,
 	const TArray<FViewInfo>& Views,
-	const struct FHairStrandsDatas* HairDatas,
-	FRDGTextureRef SceneColorTexture,
-	FRDGTextureRef SceneColorSubPixelTexture);
+	struct FHairStrandsDatas* HairDatas);
+
+void RenderHairStrandsSceneColorScattering(
+	FRHICommandListImmediate& RHICmdList,
+	const TArray<FViewInfo>& Views,
+	struct FHairStrandsDatas* HairDatas);

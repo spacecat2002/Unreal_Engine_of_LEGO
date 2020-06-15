@@ -212,6 +212,13 @@ bool FSkeletalMeshMerge::FinalizeMesh()
 			Result = false;
 		}
 
+		// If in game, streaming must be disabled as there are no files to stream from.
+		// In editor, the engine can stream from the DDC and create the required files on cook.
+		if (!GIsEditor)
+		{
+			MergeMesh->NeverStream = true;
+		}
+
 		// Reinitialize the mesh's render resources.
 		MergeMesh->InitResources();
 	}
@@ -296,7 +303,9 @@ void FSkeletalMeshMerge::GenerateNewSectionArray( TArray<FNewSectionInfo>& NewSe
 				{
 					MaterialIndex = FMath::Clamp<int32>( SrcLODInfo.LODMaterialMap[SectionIdx], 0, SrcMesh->Materials.Num() );
 				}
-				UMaterialInterface* Material = SrcMesh->Materials[MaterialIndex].MaterialInterface;
+
+				const FSkeletalMaterial& SkeletalMaterial = SrcMesh->Materials[MaterialIndex];
+				UMaterialInterface* Material = SkeletalMaterial.MaterialInterface;
 
 				// see if there is an existing entry in the array of new sections that matches its material
 				// if there is a match then the source section can be added to its list of sections to merge 
@@ -349,8 +358,9 @@ void FSkeletalMeshMerge::GenerateNewSectionArray( TArray<FNewSectionInfo>& NewSe
 				if( FoundIdx == INDEX_NONE )
 				{
 					// create a new section entry
-					const FMeshUVChannelInfo& UVChannelData = SrcMesh->Materials[MaterialIndex].UVChannelData;
-					FNewSectionInfo& NewSectionInfo = *new(NewSectionArray) FNewSectionInfo(Material,MaterialId,UVChannelData);
+					const FName& MaterialSlotName = SkeletalMaterial.MaterialSlotName;
+					const FMeshUVChannelInfo& UVChannelData = SkeletalMaterial.UVChannelData;
+					FNewSectionInfo& NewSectionInfo = *new(NewSectionArray) FNewSectionInfo(Material, MaterialId, MaterialSlotName, UVChannelData);
 					// initialize the merged bonemap to simply use the original chunk bonemap
 					NewSectionInfo.MergedBoneMap = DestChunkBoneMap;
 
@@ -482,7 +492,7 @@ void FSkeletalMeshMerge::GenerateLODModel( int32 LODIdx )
 		// if it doesn't exist, make new entry
 		if(MatIndex == INDEX_NONE)
 		{
-			FSkeletalMaterial SkeletalMaterial(NewSectionInfo.Material, true);
+			FSkeletalMaterial SkeletalMaterial(NewSectionInfo.Material, true, false, NewSectionInfo.SlotName);
 			SkeletalMaterial.UVChannelData = NewSectionInfo.UVChannelData;
 			MergeMesh->Materials.Add(SkeletalMaterial);
 			MaterialIds.Add(NewSectionInfo.MaterialId);

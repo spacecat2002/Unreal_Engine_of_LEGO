@@ -75,17 +75,20 @@ void FVulkanShaderResourceView::UpdateView()
 	// update the buffer view for dynamic backed buffers (or if it was never set)
 	if (SourceBuffer != nullptr)
 	{
+		uint32 CurrentViewSize = Size;
 		if (SourceBuffer->IsVolatile() && VolatileLockCounter != SourceBuffer->GetVolatileLockCounter())
 		{
 			VkBuffer SourceVolatileBufferHandle = SourceBuffer->GetHandle();
 
-			//Inherit Size from volatile buffer, as it might change
-			Size = SourceBuffer->GetVolatileLockSize();
+			// If the volatile buffer shrinks, make sure our size doesn't exceed the new limit.
+			uint32 AvailableSize = SourceBuffer->GetVolatileLockSize();
+			AvailableSize = Offset < AvailableSize ? AvailableSize - Offset : 0;
+			CurrentViewSize = FMath::Min(CurrentViewSize, AvailableSize);
 
 			// We might end up with the same BufferView, so do not recreate in that case
 			if (!BufferViews[0] 
 				|| BufferViews[0]->Offset != (SourceBuffer->GetOffset() + Offset)
-				|| BufferViews[0]->Size != Size
+				|| BufferViews[0]->Size != CurrentViewSize
 				|| VolatileBufferHandle != SourceVolatileBufferHandle)
 			{
 				BufferViews[0] = nullptr;
@@ -102,7 +105,7 @@ void FVulkanShaderResourceView::UpdateView()
 		if (!BufferViews[BufferIndex])
 		{
 			BufferViews[BufferIndex] = new FVulkanBufferView(Device);
-			BufferViews[BufferIndex]->Create(SourceBuffer, BufferViewFormat, SourceBuffer->GetOffset() + Offset, Size);
+			BufferViews[BufferIndex]->Create(SourceBuffer, BufferViewFormat, SourceBuffer->GetOffset() + Offset, CurrentViewSize);
 		}
 	}
 	else if (SourceStructuredBuffer)
@@ -314,13 +317,13 @@ FShaderResourceViewRHIRef FVulkanDynamicRHI::RHICreateShaderResourceView(const F
 			const FShaderResourceViewInitializer::FVertexBufferShaderResourceViewInitializer Desc = Initializer.AsVertexBufferSRV();
 			const uint32 Stride = GPixelFormats[Desc.Format].BlockBytes;
 			FVulkanVertexBuffer* VertexBuffer = ResourceCast(Desc.VertexBuffer);
-			return new FVulkanShaderResourceView(Device, Desc.VertexBuffer, VertexBuffer, Desc.NumElements * Stride, (EPixelFormat)Desc.Format, Desc.StartElement * Stride);
+			return new FVulkanShaderResourceView(Device, Desc.VertexBuffer, VertexBuffer, Desc.NumElements * Stride, (EPixelFormat)Desc.Format, Desc.StartOffsetBytes);
 		}
 		case FShaderResourceViewInitializer::EType::StructuredBufferSRV:
 		{
 			const FShaderResourceViewInitializer::FStructuredBufferShaderResourceViewInitializer Desc = Initializer.AsStructuredBufferSRV();
 			FVulkanStructuredBuffer* StructuredBuffer = ResourceCast(Desc.StructuredBuffer);
-			return new FVulkanShaderResourceView(Device, StructuredBuffer, StructuredBuffer->GetStride() * Desc.StartElement);
+			return new FVulkanShaderResourceView(Device, StructuredBuffer, Desc.StartOffsetBytes);
 		}			
 		case FShaderResourceViewInitializer::EType::IndexBufferSRV:
 		{
@@ -329,7 +332,7 @@ FShaderResourceViewRHIRef FVulkanDynamicRHI::RHICreateShaderResourceView(const F
 			const uint32 Stride = Desc.IndexBuffer->GetStride();
 			check(Stride == 2 || Stride == 4);
 			EPixelFormat Format = (Stride == 4) ? PF_R32_UINT : PF_R16_UINT;
-			return new FVulkanShaderResourceView(Device, Desc.IndexBuffer, IndexBuffer, Desc.NumElements * Stride, Format, Desc.StartElement * Stride);
+			return new FVulkanShaderResourceView(Device, Desc.IndexBuffer, IndexBuffer, Desc.NumElements * Stride, Format, Desc.StartOffsetBytes);
 		}
 	}
 	checkNoEntry();
