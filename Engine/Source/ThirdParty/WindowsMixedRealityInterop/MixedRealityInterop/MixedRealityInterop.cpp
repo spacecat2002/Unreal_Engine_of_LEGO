@@ -3241,12 +3241,13 @@ namespace WindowsMixedReality
 			return;
 		}
 
+#if !HOLO_STREAMING_RENDERING
 		speechRecognizerMap[id]->StartSpeechRecognizer();
-
-#if HOLO_STREAMING_RENDERING
+#else
 		if (m_remoteContext == nullptr 
 			|| remoteSpeech == nullptr)
 		{
+			speechRecognizerMap[id]->StartSpeechRecognizer();
 			return;
 		}
 
