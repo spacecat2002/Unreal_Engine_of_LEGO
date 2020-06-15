@@ -180,6 +180,8 @@ namespace WindowsMixedReality
 	std::recursive_mutex CameraResourcesLock;
 	std::mutex StageLock;
 
+	bool isThirdCameraActive = false;
+
 	// Hidden Area Mesh
 	std::vector<DirectX::XMFLOAT2> hiddenMesh[2];
 	std::vector<DirectX::XMFLOAT2> visibleMesh[2];
@@ -1011,6 +1013,7 @@ namespace WindowsMixedReality
 		else if (kind == HolographicViewConfigurationKind::PhotoVideoCamera)
 		{
 			PVCameraResources = std::make_shared<HolographicCameraResources>(Camera);
+			isThirdCameraActive = true;
 		}
 
 		// Switch near and far planes for the camera to match Unreal's reverse-z projection.
@@ -1043,6 +1046,7 @@ namespace WindowsMixedReality
 		}
 		else if (kind == HolographicViewConfigurationKind::PhotoVideoCamera)
 		{
+			isThirdCameraActive = false;
 			if (PVCameraResources == nullptr)
 			{
 				return;
@@ -2227,7 +2231,7 @@ namespace WindowsMixedReality
 			CameraResources->GetBackBufferTexture());
 
 		// Copy third camera texture to PVCameraResources backbuffer.
-		if (IsThirdCameraActive() && PVCameraResources != nullptr)
+		if (IsThirdCameraActive() && PVCameraResources != nullptr && PVCameraResources->GetBackBufferTexture())
 		{
 			int w, h;
 			GetThirdCameraDimensions(w, h);
@@ -4135,7 +4139,6 @@ namespace WindowsMixedReality
 		return false;
 	}
 
-	bool isThirdCameraActive = false;
 	bool MixedRealityInterop::IsThirdCameraActive()
 	{
 		return isThirdCameraActive;
@@ -4156,17 +4159,15 @@ namespace WindowsMixedReality
 		return true;
 	}
 
-	int thirdCameraWidth = 0;
-	int thirdCameraHeight = 0;
 	bool MixedRealityInterop::SetEnabledMixedRealityCamera(bool enabled)
 	{
-		// Reset dimensions
-		if (!enabled)
+		if (!IsInitialized() || IsRemoting())
 		{
-			thirdCameraWidth = 0;
-			thirdCameraHeight = 0;
+			//remoting may has no default display in some time
+			isThirdCameraActive = false;
+			return false;
 		}
-
+		
 		auto view = HolographicDisplay::GetDefault().TryGetViewConfiguration(HolographicViewConfigurationKind::PhotoVideoCamera);
 		if (!view)
 		{
@@ -4175,17 +4176,19 @@ namespace WindowsMixedReality
 		}
 
 		view.IsEnabled(enabled);
-		isThirdCameraActive = enabled;
 		return true;
 	}
 
 	bool MixedRealityInterop::ResizeMixedRealityCamera(SIZE& sz)
 	{
+		if (!IsInitialized() || IsRemoting())
+		{
+			return false;
+		}
+		
 		auto view = HolographicDisplay::GetDefault().TryGetViewConfiguration(HolographicViewConfigurationKind::PhotoVideoCamera);
 		if (!view)
 		{
-			thirdCameraWidth = 0;
-			thirdCameraHeight = 0;
 			return false;
 		}
 
@@ -4196,16 +4199,22 @@ namespace WindowsMixedReality
 		sz.cx = (LONG)newSize.Width;
 		sz.cy = (LONG)newSize.Height;
 
-		thirdCameraWidth = (int)sz.cx;
-		thirdCameraHeight = (int)sz.cy;
-
 		return true;
 	}
 
 	void MixedRealityInterop::GetThirdCameraDimensions(int& width, int& height)
 	{
-		width = thirdCameraWidth;
-		height = thirdCameraHeight;
+		width = 0;
+		height = 0;
+		if (PVCameraResources == nullptr)
+		{
+			return;
+		}
+
+		auto sz = PVCameraResources->GetRenderTargetSize();
+
+		width = (int)sz.Width;
+		height = (int)sz.Height;
 	}
 }
 

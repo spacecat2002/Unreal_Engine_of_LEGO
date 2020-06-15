@@ -175,12 +175,13 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <ProgramDataBaseFileName>$(SolutionDir)Lib\$(Platform)\$(TargetName).pdb</ProgramDataBaseFileName>
       <AdditionalIncludeDirectories>../Include;./Generated Files;</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_ENABLE_EXTENDED_ALIGNED_STORAGE;_DEBUG;_LIB;%(PreprocessorDefinitions);MIXEDREALITYINTEROP_EXPORTS;PLATFORM_HOLOLENS;WITH_SCENE_UNDERSTANDING=1</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_ENABLE_EXTENDED_ALIGNED_STORAGE;_LIB;%(PreprocessorDefinitions);MIXEDREALITYINTEROP_EXPORTS;PLATFORM_HOLOLENS;WITH_SCENE_UNDERSTANDING=1</PreprocessorDefinitions>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalOptions>/await %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Disabled</Optimization>
-      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <CompileAsWinRT>true</CompileAsWinRT>
+	  <UndefinePreprocessorDefinitions>_DEBUG</UndefinePreprocessorDefinitions>
     </ClCompile>
     <Lib>
       <AdditionalOptions>/IGNORE:4264 %(AdditionalOptions)</AdditionalOptions>
