@@ -2291,17 +2291,9 @@ void USkeletalMeshComponent::PostAnimEvaluation(FAnimationEvaluationContext& Eva
 
 	SCOPE_CYCLE_COUNTER(STAT_PostAnimEvaluation);
 
-	if (EvaluationContext.AnimInstance && EvaluationContext.AnimInstance->NeedsUpdate())
+	if (EvaluationContext.AnimInstance)
 	{
 		EvaluationContext.AnimInstance->PostUpdateAnimation();
-	}
-
-	for (UAnimInstance* LinkedInstance : LinkedInstances)
-	{
-		if(LinkedInstance->NeedsUpdate())
-		{
-			LinkedInstance->PostUpdateAnimation();
-		}
 	}
 
 	if (ShouldPostUpdatePostProcessInstance())
