@@ -29,7 +29,8 @@ static TAutoConsoleVariable<int32> CVarRayTracingGlobalIllumination(
 	-1,
 	TEXT("-1: Value driven by postprocess volume (default) \n")
 	TEXT(" 0: ray tracing global illumination off \n")
-	TEXT(" 1: ray tracing global illumination enabled"),
+	TEXT(" 1: ray tracing global illumination enabled (brute force) \n")
+	TEXT(" 2: ray tracing global illumination enabled (final gather)"),
 	ECVF_RenderThreadSafe
 );
 
