@@ -4260,8 +4260,7 @@ namespace WindowsMixedReality
 			return;
 		}
 
-		MeshUpdateObserver& Instance = MeshUpdateObserver::Get();
-		Instance.Release();
+		MeshUpdateObserver::Release();
 #endif
 	}
 }
