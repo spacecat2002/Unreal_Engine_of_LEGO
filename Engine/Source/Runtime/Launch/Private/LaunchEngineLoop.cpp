@@ -2893,11 +2893,11 @@ int32 FEngineLoop::PreInitPostStartupScreen(const TCHAR* CmdLine)
 					if (FPreLoadScreenManager::Get()->HasRegisteredPreLoadScreenType(EPreLoadScreenTypes::EarlyStartupScreen))
 					{
 						// disable the splash before playing the early startup screen
-						FPreLoadScreenManager::IsResponsibleForRenderingDelegate.AddLambda(
+						FPreLoadScreenManager::Get()->IsResponsibleForRenderingDelegate.AddLambda(
 							[](bool bIsPreloadScreenManResponsibleForRendering)
-						{
-							FPlatformMisc::PlatformHandleSplashScreen(!bIsPreloadScreenManResponsibleForRendering);
-						}
+							{
+								FPlatformMisc::PlatformHandleSplashScreen(!bIsPreloadScreenManResponsibleForRendering);
+							}
 						);
 						FPreLoadScreenManager::Get()->PlayFirstPreLoadScreen(EPreLoadScreenTypes::EarlyStartupScreen);
 					}
@@ -5285,7 +5285,7 @@ bool FEngineLoop::AppInit( )
 		IFileManager::Get().ProcessCommandLineOptions();
 	}
 
-	FPageAllocator::LatchProtectedMode();
+	FPageAllocator::Get().LatchProtectedMode();
 
 	if (FParse::Param(FCommandLine::Get(), TEXT("purgatorymallocproxy")))
 	{
