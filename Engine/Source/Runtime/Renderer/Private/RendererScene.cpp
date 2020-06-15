@@ -2892,6 +2892,11 @@ void FScene::RemoveExponentialHeightFog(UExponentialHeightFogComponent* FogCompo
 		});
 }
 
+bool FScene::HasAnyExponentialHeightFog() const
+{
+	return this->ExponentialFogs.Num() > 0;
+}
+
 void FScene::AddWindSource(UWindDirectionalSourceComponent* WindComponent)
 {
 	// if this wind component is not activated (or Auto Active is set to false), then don't add to WindSources
@@ -4364,6 +4369,7 @@ public:
 
 	virtual void AddExponentialHeightFog(class UExponentialHeightFogComponent* FogComponent) override {}
 	virtual void RemoveExponentialHeightFog(class UExponentialHeightFogComponent* FogComponent) override {}
+	virtual bool HasAnyExponentialHeightFog() const override { return false; }
 	virtual void AddAtmosphericFog(class UAtmosphericFogComponent* FogComponent) override {}
 	virtual void RemoveAtmosphericFog(class UAtmosphericFogComponent* FogComponent) override {}
 	virtual void RemoveAtmosphericFogResource_RenderThread(FRenderResource* FogResource) override {}

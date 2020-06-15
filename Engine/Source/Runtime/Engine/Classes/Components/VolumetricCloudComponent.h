@@ -52,7 +52,7 @@ class UVolumetricCloudComponent : public USceneComponent
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, interp, Category = "Planet", meta = (HideAlphaChannel))
 	FColor GroundAlbedo;
 
-	/** The material describing the cloud volume. It must be a CloudVolume domain material. */
+	/** The material describing the cloud volume. It must be a Volume domain material. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cloud Material")
 	UMaterialInterface* Material;
 

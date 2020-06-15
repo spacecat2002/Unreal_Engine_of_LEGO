@@ -2752,6 +2752,7 @@ public:
 	virtual void UpdateLightColorAndBrightness(ULightComponent* Light) override;
 	virtual void AddExponentialHeightFog(UExponentialHeightFogComponent* FogComponent) override;
 	virtual void RemoveExponentialHeightFog(UExponentialHeightFogComponent* FogComponent) override;
+	virtual bool HasAnyExponentialHeightFog() const override;
 	virtual void AddAtmosphericFog(UAtmosphericFogComponent* FogComponent) override;
 	virtual void RemoveAtmosphericFog(UAtmosphericFogComponent* FogComponent) override;
 	virtual void RemoveAtmosphericFogResource_RenderThread(FRenderResource* FogResource) override;

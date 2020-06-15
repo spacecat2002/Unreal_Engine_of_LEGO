@@ -1304,8 +1304,9 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& R
 	const bool bShouldSampleOpaqueShadow = ShouldSkySampleAtmosphereLightsOpaqueShadow(*Scene, VisibleLightInfos, LightShadowData);
 
 	// SkyViewLUT texture is required if there are any sky dome material that could potentially sample it.
+	// This texture is sampled on skydome mesh with a sky material when rendered into a cubemap real time capture.
 	const bool bRealTimeReflectionCaptureSkyAtmosphereViewLutTexture = Views.Num() > 0 && Scene->SkyLight && Scene->SkyLight->bRealTimeCaptureEnabled;
-	// CameraAP volume is required if there is a skydome or a volumetric cloud component.
+	// CameraAP volume is required if there is a skydome or a volumetric cloud component rendered in a cubemap real time capture.
 	const bool bRealTimeReflectionCapture360APLutTexture = Views.Num() > 0 && Scene->SkyLight && Scene->SkyLight->bRealTimeCaptureEnabled && (Views[0].bSceneHasSkyMaterial || Scene->HasVolumetricCloud());
 	if (bRealTimeReflectionCaptureSkyAtmosphereViewLutTexture || bRealTimeReflectionCapture360APLutTexture)
 	{
