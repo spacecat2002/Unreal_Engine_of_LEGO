@@ -2124,7 +2124,17 @@ bool ULevel::CanConvertActorToExternalPackaging(AActor* Actor)
 		return false;
 	}
 
+	if (Actor->IsPendingKill())
+	{
+		return false;
+	}
+
 	if (Actor == Actor->GetLevel()->GetDefaultBrush())
+	{
+		return false;
+	}
+
+	if (Actor->IsChildActor())
 	{
 		return false;
 	}
@@ -2134,7 +2144,9 @@ bool ULevel::CanConvertActorToExternalPackaging(AActor* Actor)
 
 void ULevel::ConvertAllActorsToPackaging(bool bExternal)
 {
-	for (AActor* Actor : Actors)
+	// Make a copy of the current actor lists since packaging conversion may modify the actor list as a side effect
+	TArray<AActor*> CurrentActors = Actors;
+	for (AActor* Actor : CurrentActors)
 	{
 		if (Actor && CanConvertActorToExternalPackaging(Actor))
 		{
@@ -2192,7 +2204,9 @@ UPackage* ULevel::CreateActorPackage(UPackage* InLevelPackage, const FGuid& InGu
 			*GuidBase36 + FMath::Min(GuidBase36Len - 1, 4)
 		);
 
-	return CreatePackage(nullptr, *ActorPackageName);
+	UPackage* ActorPackage = CreatePackage(nullptr, *ActorPackageName);
+	ActorPackage->SetPackageFlags(PKG_EditorOnly);
+	return ActorPackage;
 }
 
 void ULevel::DetachAttachAllActorsPackages(bool bReattach)
