@@ -478,14 +478,16 @@ namespace WindowsMixedReality
 		// Remoting
 		enum class ConnectionEvent
 		{
-			DisconnectedFromPeer
+			Connected,
+			DisconnectedFromPeer,
+			Listening
 		};
 
 		typedef std::function<void(ConnectionEvent)> ConnectionCallback;
 
 		HMDRemotingConnectionState GetConnectionState();
 		void SetLogCallback(void (*functionPointer)(const wchar_t* text));
-		void ConnectToRemoteHoloLens(ID3D11Device* device, const wchar_t* ip, int bitrate, bool IsHoloLens1 = false);
+		void ConnectToRemoteHoloLens(ID3D11Device* device, const wchar_t* ip, int bitrate, bool IsHoloLens1 = false, int listenPort = 8265, bool listen = false);
 		void ConnectToLocalWMRHeadset();
 		void ConnectToLocalHoloLens();
 		void DisconnectFromDevice();
