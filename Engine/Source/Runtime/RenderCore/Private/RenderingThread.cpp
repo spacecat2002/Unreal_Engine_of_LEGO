@@ -328,10 +328,12 @@ public:
 
 	void Start()
 	{
+		Trace::ThreadGroupBegin(TEXT("Render"));
 		Thread = FRunnableThread::Create(this, TEXT("RHIThread"), 512 * 1024, FPlatformAffinity::GetRHIThreadPriority(),
 			FPlatformAffinity::GetRHIThreadMask(), FPlatformAffinity::GetRHIThreadFlags()
 			);
 		check(Thread);
+		Trace::ThreadGroupEnd();
 	}
 };
 
@@ -768,7 +770,9 @@ void StartRenderingThread()
 	// Create the rendering thread heartbeat
 	GRenderingThreadRunnableHeartbeat = new FRenderingThreadTickHeartbeat();
 
+	Trace::ThreadGroupBegin(TEXT("Render"));
 	GRenderingThreadHeartbeat = FRunnableThread::Create(GRenderingThreadRunnableHeartbeat, *FString::Printf(TEXT("RTHeartBeat %d"), ThreadCount), 16 * 1024, TPri_AboveNormal, FPlatformAffinity::GetRTHeartBeatMask());
+	Trace::ThreadGroupEnd();
 
 	ThreadCount++;
 
