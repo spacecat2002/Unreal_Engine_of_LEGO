@@ -411,6 +411,7 @@ extern CORE_API uint32 GRenderThreadId;
 extern CORE_API uint32 GSlateLoadingThreadId;
 
 /** Thread ID of the audio thread, if any */
+UE_DEPRECATED(4.26, "Please use `IsAudioThreadRunning()` or `IsInAudioThread()`")
 extern CORE_API uint32 GAudioThreadId;
 
 /** Has GGameThreadId been set yet? */
@@ -481,10 +482,13 @@ FORCEINLINE bool IsInGameThread()
 	return true;
 }
 
+extern CORE_API bool IsAudioThreadRunning();
+
 /** @return True if called from the audio thread, and not merely a thread calling audio functions. */
 extern CORE_API bool IsInAudioThread();
 
 /** Thread used for audio */
+UE_DEPRECATED(4.26, "Please use `IsAudioThreadRunning()` or `IsInAudioThread()`")
 extern CORE_API FRunnableThread* GAudioThread;
 
 /** @return True if called from the slate thread, and not merely a thread calling slate functions. */

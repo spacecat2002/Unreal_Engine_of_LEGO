@@ -87,6 +87,7 @@ public:
 	static ENGINE_API void SetUseThreadedAudio(bool bInUseThreadedAudio);
 	static ENGINE_API bool IsUsingThreadedAudio() { return bUseThreadedAudio; }
 
+	UE_DEPRECATED(4.26, "Please use global `IsAudioThreadRunning()`")
 	static ENGINE_API bool IsAudioThreadRunning() { return bIsAudioThreadRunning; }
 
 	static ENGINE_API void SuspendAudioThread();
