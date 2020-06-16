@@ -402,6 +402,7 @@ void TMobileBasePassPSPolicyParamType<FUniformLightMapPolicy>::GetShaderBindings
 			FTexture* ReflectionCubemapTextures[MaxNumReflections] = { GBlackTextureCube, GBlackTextureCube, GBlackTextureCube };
 			FVector4 CapturePositions[MaxNumReflections] = { FVector4(0, 0, 0, 0), FVector4(0, 0, 0, 0), FVector4(0, 0, 0, 0) };
 			FVector4 ReflectionParams(0.0f, 0.0f, 0.0f, 0.0f);
+			FVector4 ReflectanceMaxValueRGBMParams(0.0f, 0.0f, 0.0f, 0.0f);
 			FPrimitiveSceneInfo* PrimitiveSceneInfo = PrimitiveSceneProxy ? PrimitiveSceneProxy->GetPrimitiveSceneInfo() : nullptr;
 			if (PrimitiveSceneInfo)
 			{
@@ -418,6 +419,8 @@ void TMobileBasePassPSPolicyParamType<FUniformLightMapPolicy>::GetShaderBindings
 						}
 						//To keep ImageBasedReflectionLighting coherence with PC, use AverageBrightness instead of InvAverageBrightness to calculate the IBL contribution
 						ReflectionParams[i] = ReflectionProxy->EncodedHDRAverageBrightness;
+
+						ReflectanceMaxValueRGBMParams[i] = ReflectionProxy->MaxValueRGBM;
 					}
 					else if (Scene->SkyLight != nullptr)
 					{
@@ -434,6 +437,7 @@ void TMobileBasePassPSPolicyParamType<FUniformLightMapPolicy>::GetShaderBindings
 				ShaderBindings.AddTexture(HQReflectionCubemaps[i], HQReflectionSamplers[i], ReflectionCubemapTextures[i]->SamplerStateRHI, ReflectionCubemapTextures[i]->TextureRHI);
 			}
 			ShaderBindings.Add(HQReflectionInvAverageBrigtnessParams, ReflectionParams);
+			ShaderBindings.Add(HQReflectanceMaxValueRGBMParams, ReflectanceMaxValueRGBMParams);
 			ShaderBindings.Add(HQReflectionPositionsAndRadii, CapturePositions);
 		}
 		else if (ReflectionParameter.IsBound())

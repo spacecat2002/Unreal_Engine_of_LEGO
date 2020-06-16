@@ -319,6 +319,11 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 	int32 ReflectionCaptureResolution;
 
 	UPROPERTY(config, EditAnywhere, Category = Reflections, meta = (
+		ConsoleVariable = "r.Mobile.ReflectionCaptureCompression", DisplayName = "Mobile Reflection Capture Compression",
+		ToolTip = "Whether to use the Reflection Capture Compression or not for mobile. It will use ETC2 format to do the compression."))
+	uint32 bReflectionCaptureCompression : 1;
+
+	UPROPERTY(config, EditAnywhere, Category = Reflections, meta = (
 		ConsoleVariable = "r.ReflectionEnvironmentLightmapMixBasedOnRoughness", DisplayName = "Reduce lightmap mixing on smooth surfaces",
 		ToolTip = "Whether to reduce lightmap mixing with reflection captures for very smooth surfaces.  This is useful to make sure reflection captures match SSR / planar reflections in brightness."))
 	uint32 ReflectionEnvironmentLightmapMixBasedOnRoughness : 1;

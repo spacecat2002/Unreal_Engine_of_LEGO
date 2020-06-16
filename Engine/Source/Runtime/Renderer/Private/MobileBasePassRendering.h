@@ -249,6 +249,7 @@ public:
 		HQReflectionCubemaps[2].Bind(Initializer.ParameterMap, TEXT("ReflectionCubemap2"));
 		HQReflectionSamplers[2].Bind(Initializer.ParameterMap, TEXT("ReflectionCubemapSampler2"));
 		HQReflectionInvAverageBrigtnessParams.Bind(Initializer.ParameterMap, TEXT("ReflectionAverageBrigtness"));
+		HQReflectanceMaxValueRGBMParams.Bind(Initializer.ParameterMap, TEXT("ReflectanceMaxValueRGBM"));
 		HQReflectionPositionsAndRadii.Bind(Initializer.ParameterMap, TEXT("ReflectionPositionsAndRadii"));
 
 		NumDynamicPointLightsParameter.Bind(Initializer.ParameterMap, TEXT("NumDynamicPointLights"));
@@ -266,6 +267,7 @@ private:
 	LAYOUT_ARRAY(FShaderResourceParameter, HQReflectionCubemaps, 3);
 	LAYOUT_ARRAY(FShaderResourceParameter, HQReflectionSamplers, 3);
 	LAYOUT_FIELD(FShaderParameter, HQReflectionInvAverageBrigtnessParams);
+	LAYOUT_FIELD(FShaderParameter, HQReflectanceMaxValueRGBMParams);
 	LAYOUT_FIELD(FShaderParameter, HQReflectionPositionsAndRadii);
 
 	LAYOUT_FIELD(FShaderParameter, NumDynamicPointLightsParameter);
