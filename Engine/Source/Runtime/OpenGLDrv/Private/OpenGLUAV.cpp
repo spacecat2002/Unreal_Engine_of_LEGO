@@ -335,24 +335,42 @@ void FOpenGLDynamicRHI::RHIClearUAVFloat(FRHIUnorderedAccessView* UnorderedAcces
 	}
 #endif
 	// Use compute on ES3.1
-	check(Texture->BufferResource);
+	TRHICommandList_RecursiveHazardous<FOpenGLDynamicRHI> RHICmdList(this);
+
+	if (Texture->GetBufferSize() == 0)
 	{
-		TRHICommandList_RecursiveHazardous<FOpenGLDynamicRHI> RHICmdList(this);
-		
-		int32 NumComponents = GPixelFormats[Texture->UnrealFormat].NumComponents;
-		uint32 NumElements = Texture->GetBufferSize() / GPixelFormats[Texture->UnrealFormat].BlockBytes;
-					
-		switch (NumComponents)
+		FOpenGLTextureUnorderedAccessView* Texture2D = static_cast<FOpenGLTextureUnorderedAccessView*>(Texture);
+
+		FIntVector Size = Texture2D->TextureRHI->GetSizeXYZ();
+
+		if (Texture->IsLayered())
 		{
-		case 1:
-			ClearUAVShader_T<EClearReplacementResourceType::Buffer, EClearReplacementValueType::Float, 1, false>(RHICmdList, UnorderedAccessViewRHI, NumElements, 1, 1, *reinterpret_cast<const float(*)[1]>(&Values));
-			break;
-		case 4:
-			ClearUAVShader_T<EClearReplacementResourceType::Buffer, EClearReplacementValueType::Float, 4, false>(RHICmdList, UnorderedAccessViewRHI, NumElements, 1, 1, *reinterpret_cast<const float(*)[4]>(&Values));
-			break;
-		default:
-			check(false);
-		};
+			ClearUAVShader_T<EClearReplacementResourceType::Texture3D, EClearReplacementValueType::Float, 4, false>(RHICmdList, UnorderedAccessViewRHI, Size.X, Size.Y, Size.Z, *reinterpret_cast<const float(*)[4]>(&Values));
+		}
+		else
+		{
+			ClearUAVShader_T<EClearReplacementResourceType::Texture2D, EClearReplacementValueType::Float, 4, false>(RHICmdList, UnorderedAccessViewRHI, Size.X, Size.Y, Size.Z, *reinterpret_cast<const float(*)[4]>(&Values));
+		}
+	}
+	else
+	{
+		check(Texture->BufferResource);
+		{
+			int32 NumComponents = GPixelFormats[Texture->UnrealFormat].NumComponents;
+			uint32 NumElements = Texture->GetBufferSize() / GPixelFormats[Texture->UnrealFormat].BlockBytes;
+					
+			switch (NumComponents)
+			{
+			case 1:
+				ClearUAVShader_T<EClearReplacementResourceType::Buffer, EClearReplacementValueType::Float, 1, false>(RHICmdList, UnorderedAccessViewRHI, NumElements, 1, 1, *reinterpret_cast<const float(*)[1]>(&Values));
+				break;
+			case 4:
+				ClearUAVShader_T<EClearReplacementResourceType::Buffer, EClearReplacementValueType::Float, 4, false>(RHICmdList, UnorderedAccessViewRHI, NumElements, 1, 1, *reinterpret_cast<const float(*)[4]>(&Values));
+				break;
+			default:
+				check(false);
+			};
+		}
 	}
 }
 
@@ -369,24 +387,42 @@ void FOpenGLDynamicRHI::RHIClearUAVUint(FRHIUnorderedAccessView* UnorderedAccess
 	}
 #endif
 	// Use compute on ES3.1
-	check(Texture->BufferResource);
-	{
-		TRHICommandList_RecursiveHazardous<FOpenGLDynamicRHI> RHICmdList(this);
+	TRHICommandList_RecursiveHazardous<FOpenGLDynamicRHI> RHICmdList(this);
 
-		int32 NumComponents = GPixelFormats[Texture->UnrealFormat].NumComponents;
-		uint32 NumElements = Texture->GetBufferSize() / GPixelFormats[Texture->UnrealFormat].BlockBytes;
-				
-		switch (NumComponents)
+	if (Texture->GetBufferSize() == 0)
+	{
+		FOpenGLTextureUnorderedAccessView* Texture2D = static_cast<FOpenGLTextureUnorderedAccessView*>(Texture);
+
+		FIntVector Size = Texture2D->TextureRHI->GetSizeXYZ();
+		
+		if (Texture->IsLayered())
 		{
-		case 1:
-			ClearUAVShader_T<EClearReplacementResourceType::Buffer, EClearReplacementValueType::Uint32, 1, false>(RHICmdList, UnorderedAccessViewRHI, NumElements, 1, 1, *reinterpret_cast<const uint32(*)[1]>(&Values));
-			break;
-		case 4:
-			ClearUAVShader_T<EClearReplacementResourceType::Buffer, EClearReplacementValueType::Uint32, 4, false>(RHICmdList, UnorderedAccessViewRHI, NumElements, 1, 1, *reinterpret_cast<const uint32(*)[4]>(&Values));
-			break;
-		default:
-			check(false);
-		};
+			ClearUAVShader_T<EClearReplacementResourceType::Texture3D, EClearReplacementValueType::Uint32, 4, false>(RHICmdList, UnorderedAccessViewRHI, Size.X, Size.Y, Size.Z, *reinterpret_cast<const uint32(*)[4]>(&Values));
+		}
+		else
+		{
+			ClearUAVShader_T<EClearReplacementResourceType::Texture2D, EClearReplacementValueType::Uint32, 4, false>(RHICmdList, UnorderedAccessViewRHI, Size.X, Size.Y, Size.Z, *reinterpret_cast<const uint32(*)[4]>(&Values));
+		}
+	}
+	else
+	{
+		check(Texture->BufferResource);
+		{
+			int32 NumComponents = GPixelFormats[Texture->UnrealFormat].NumComponents;
+			uint32 NumElements = Texture->GetBufferSize() / GPixelFormats[Texture->UnrealFormat].BlockBytes;
+
+			switch (NumComponents)
+			{
+			case 1:
+				ClearUAVShader_T<EClearReplacementResourceType::Buffer, EClearReplacementValueType::Uint32, 1, false>(RHICmdList, UnorderedAccessViewRHI, NumElements, 1, 1, *reinterpret_cast<const uint32(*)[1]>(&Values));
+				break;
+			case 4:
+				ClearUAVShader_T<EClearReplacementResourceType::Buffer, EClearReplacementValueType::Uint32, 4, false>(RHICmdList, UnorderedAccessViewRHI, NumElements, 1, 1, *reinterpret_cast<const uint32(*)[4]>(&Values));
+				break;
+			default:
+				check(false);
+			};
+		}
 	}
 }
 
