@@ -188,12 +188,6 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ToolTip = "Multi-sample anti-aliasing setting to use on mobile. MSAA is currently supported using Metal on iOS, and on Android devices with the required support using ES 2 or ES 3.1.\nIf MSAA is not available, the current default AA method will be used."))
 	TEnumAsByte<EMobileMSAASampleCount::Type> MobileMSAASampleCount;
 
-	UPROPERTY(config, EditAnywhere, Category = Mobile, meta = (
-		ConsoleVariable = "r.Mobile.UseLegacyShadingModel", DisplayName = "Use legacy shading model",
-		ToolTip = "If true then mobile shaders will use the cheaper but lower quality specular calculation found in versions prior to 4.20.",
-		ConfigRestartRequired = true))
-		uint32 bMobileUseLegacyShadingModel : 1;
-
 	UPROPERTY(config, EditAnywhere, Category = Mobile, meta=(
 		ConsoleVariable="r.Mobile.AllowDitheredLODTransition", DisplayName="Allow Dithered LOD Transition",
 		ToolTip="Whether to support 'Dithered LOD Transition' material option on mobile platforms. Enabling this may degrade performance as rendering will not benefit from Early-Z optimization.",

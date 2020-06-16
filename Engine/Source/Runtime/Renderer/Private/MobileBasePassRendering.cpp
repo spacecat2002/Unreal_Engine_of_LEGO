@@ -23,13 +23,6 @@ static TAutoConsoleVariable<int32> CVarMobileDisableVertexFog(
 	TEXT("Set to 1 to disable vertex fogging in all mobile shaders."),
 	ECVF_ReadOnly | ECVF_RenderThreadSafe);
 
-
-static TAutoConsoleVariable<int32> CVarMobileUseLegacyShadingModel(
-	TEXT("r.Mobile.UseLegacyShadingModel"),
-	0,
-	TEXT("If 1 then use legacy (pre 4.20) shading model (such as spherical guassian specular calculation.) (will cause a shader rebuild)"),
-	ECVF_ReadOnly | ECVF_RenderThreadSafe);
-
 static TAutoConsoleVariable<int32> CVarMobileEnableMovableSpotLights(
 	TEXT("r.Mobile.EnableMovableSpotlights"),
 	0,
