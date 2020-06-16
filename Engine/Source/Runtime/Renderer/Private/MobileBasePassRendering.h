@@ -329,7 +329,8 @@ namespace MobileBasePass
 		const FLightSceneInfo* MobileDirectionalLight, 
 		FMaterialShadingModelField ShadingModels, 
 		bool bPrimReceivesCSM, 
-		ERHIFeatureLevel::Type FeatureLevel);
+		ERHIFeatureLevel::Type FeatureLevel,
+		EBlendMode BlendMode);
 
 	void GetShaders(
 		ELightMapPolicyType LightMapPolicyType,
@@ -416,6 +417,10 @@ public:
 			OutEnvironment.SetDefine(TEXT("VARIABLE_NUM_DYNAMIC_POINT_LIGHTS"), (uint32)0);
 			OutEnvironment.SetDefine(TEXT("NUM_DYNAMIC_POINT_LIGHTS"), (uint32)NumMovablePointLights);
 		}
+
+		bool bDeferredShading = IsMobileDeferredShading() && !(IsTranslucentBlendMode(Parameters.MaterialParameters.BlendMode) || 
+																Parameters.MaterialParameters.ShadingModels.HasShadingModel(MSM_SingleLayerWater));
+		OutEnvironment.SetDefine(TEXT("MOBILE_DEFERRED_SHADING"), bDeferredShading ?  1u : 0u);
 	}
 	
 	/** Initialization constructor. */

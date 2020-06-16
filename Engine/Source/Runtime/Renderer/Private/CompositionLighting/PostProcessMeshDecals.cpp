@@ -453,13 +453,21 @@ void RenderMeshDecalsMobile(FRHICommandList& RHICmdList, const FViewInfo& View)
 {
 	SCOPED_DRAW_EVENT(RHICmdList, MeshDecals);
 
-	DrawDynamicMeshPass(View, RHICmdList, [&View](FDynamicPassMeshDrawListContext* DynamicMeshPassContext)
+	FDecalRenderingCommon::ERenderTargetMode RenderTargetMode = IsMobileDeferredShading() ? 
+		FDecalRenderingCommon::RTM_SceneColorAndGBufferWithNormal : 
+		FDecalRenderingCommon::RTM_SceneColor;
+
+	FGraphicsPipelineStateInitializer GraphicsPSOInit;
+	RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1);
+	RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+
+	DrawDynamicMeshPass(View, RHICmdList, [&View, RenderTargetMode](FDynamicPassMeshDrawListContext* DynamicMeshPassContext)
 	{
 		FMeshDecalMeshProcessor PassMeshProcessor(
 			View.Family->Scene->GetRenderScene(),
 			&View,
 			DRS_Mobile,
-			FDecalRenderingCommon::RTM_SceneColor,
+			RenderTargetMode,
 			DynamicMeshPassContext);
 
 		for (int32 MeshBatchIndex = 0; MeshBatchIndex < View.MeshDecalBatches.Num(); ++MeshBatchIndex)

@@ -2066,6 +2066,13 @@ static TAutoConsoleVariable<int32> CVarMobileHDR(
 	TEXT("1: Mobile renders in HDR linear space. (default)"),
 	ECVF_RenderThreadSafe | ECVF_ReadOnly);
 
+static TAutoConsoleVariable<int32> CVarMobileShadingPath(
+	TEXT("r.Mobile.ShadingPath"),
+	0,
+	TEXT("0: Forward shading (default)")
+	TEXT("1: Deferred shading"),
+	ECVF_RenderThreadSafe | ECVF_ReadOnly);
+
 static TAutoConsoleVariable<int32> CVarMobileNumDynamicPointLights(
 	TEXT("r.MobileNumDynamicPointLights"),
 	4,

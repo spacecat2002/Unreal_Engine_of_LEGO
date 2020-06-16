@@ -1945,6 +1945,9 @@ enum class ESubpassHint : uint8
 
 	// Render pass has depth reading subpass
 	DepthReadSubpass,
+
+	// Mobile defferred shading subpass
+	DeferredShadingSubpass,
 };
 
 class FGraphicsPipelineStateInitializer

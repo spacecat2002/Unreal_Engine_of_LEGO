@@ -1918,14 +1918,14 @@ protected:
 	/** Computes how many queries will be issued this frame */
 	int32 ComputeNumOcclusionQueriesToBatch() const;
 
-	/** Whether platform requires separate translucent render pass */
-	bool RequiresTranslucencyPass(FRHICommandListImmediate& RHICmdList, const FViewInfo& View) const;
+	/** Whether platform requires multiple render-passes for SceneColor rendering */
+	bool RequiresMultiPass(FRHICommandListImmediate& RHICmdList, const FViewInfo& View) const;
 
 	/** Renders decals. */
 	void RenderDecals(FRHICommandListImmediate& RHICmdList);
 
 	/** Renders the base pass for translucency. */
-	void RenderTranslucency(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> PassViews, bool bRenderToSceneColor);
+	void RenderTranslucency(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> PassViews);
 
 	/** Perform upscaling when post process is not used. */
 	void BasicPostProcess(FRHICommandListImmediate& RHICmdList, FViewInfo &View, bool bDoUpscale, bool bDoEditorPrimitives);
@@ -1947,10 +1947,17 @@ protected:
 	void UpdateDirectionalLightUniformBuffers(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 	void UpdateSkyReflectionUniformBuffer();
 	void UpdateDepthPrepassUniformBuffer(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
+
+	FRHITexture* RenderForward(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> ViewList);
+	FRHITexture* RenderDeferred(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> ViewList);
 	
 	/** Before SetupMobileBasePassAfterShadowInit, we need to update the uniform buffer and shadow info for all movable point lights.*/
 	void UpdateMovablePointLightUniformBufferAndShadowInfo();
 private:
+	bool bRenderToSceneColor;
+	bool bRequiresMultiPass;
+	bool bKeepDepthContent;
+	bool bSubmitOffscreenRendering;
 	bool bModulatedShadowsInUse;
 	bool bShouldRenderCustomDepth;
 	static FGlobalDynamicIndexBuffer DynamicIndexBuffer;
