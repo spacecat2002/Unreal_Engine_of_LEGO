@@ -2491,8 +2491,22 @@ void FMapProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArra
 {
 	if (ContainsObjectReference(EncounteredStructProps, EPropertyObjectReferenceType::Strong | EPropertyObjectReferenceType::Weak))
 	{
+		// TMap reference tokens are processed by GC in a similar way to an array of structs
 		OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_AddTMapReferencedObjects);
 		OwnerClass.ReferenceTokenStream.EmitPointer((const void*)this);
+		const uint32 SkipIndexIndex = OwnerClass.ReferenceTokenStream.EmitSkipIndexPlaceholder();
+
+		if (KeyProp->ContainsObjectReference(EncounteredStructProps, EPropertyObjectReferenceType::Strong | EPropertyObjectReferenceType::Weak))
+		{
+			KeyProp->EmitReferenceInfo(OwnerClass, 0, EncounteredStructProps);
+		}
+		if (ValueProp->ContainsObjectReference(EncounteredStructProps, EPropertyObjectReferenceType::Strong | EPropertyObjectReferenceType::Weak))
+		{
+			ValueProp->EmitReferenceInfo(OwnerClass, 0, EncounteredStructProps);
+		}
+
+		const uint32 SkipIndex = OwnerClass.ReferenceTokenStream.EmitReturn();
+		OwnerClass.ReferenceTokenStream.UpdateSkipIndexPlaceholder(SkipIndexIndex, SkipIndex);
 	}
 }
 
@@ -2504,8 +2518,14 @@ void FSetProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArra
 {
 	if (ContainsObjectReference(EncounteredStructProps, EPropertyObjectReferenceType::Strong | EPropertyObjectReferenceType::Weak))
 	{
+		// TSet reference tokens are processed by GC in a similar way to an array of structs
 		OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_AddTSetReferencedObjects);
 		OwnerClass.ReferenceTokenStream.EmitPointer((const void*)this);
+
+		const uint32 SkipIndexIndex = OwnerClass.ReferenceTokenStream.EmitSkipIndexPlaceholder();
+		ElementProp->EmitReferenceInfo(OwnerClass, 0, EncounteredStructProps);
+		const uint32 SkipIndex = OwnerClass.ReferenceTokenStream.EmitReturn();
+		OwnerClass.ReferenceTokenStream.UpdateSkipIndexPlaceholder(SkipIndexIndex, SkipIndex);
 	}
 }
 
@@ -2771,7 +2791,7 @@ void FGCReferenceTokenStream::Fixup(void (*AddReferencedObjectsPtr)(UObject*, cl
 		{
 		case GCRT_ArrayStruct:
 		case GCRT_ArrayStructFreezable:
-		{
+			{
 				// Skip stride and move to Skip Info
 				TokenIndex += 2;
 				const FGCSkipInfo SkipInfo = ReadSkipInfo(TokenIndex);
@@ -2810,6 +2830,13 @@ void FGCReferenceTokenStream::Fixup(void (*AddReferencedObjectsPtr)(UObject*, cl
 			{
 				// Skip pointer
 				TokenIndex += GNumTokensPerPointer;
+				TokenIndex += 1; // GCRT_EndOfPointer;
+				// Move to Skip Info
+				TokenIndex += 1;
+				const FGCSkipInfo SkipInfo = ReadSkipInfo(TokenIndex);
+				// Set the TokenIndex to the skip index - 1 because we're going to
+				// increment in the for loop anyway.
+				TokenIndex = SkipInfo.SkipIndex - 1;
 			}
 			break;
 		case GCRT_Class:

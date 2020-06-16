@@ -121,7 +121,7 @@ struct FGCReferenceInfo
 			/** Return depth, e.g. 1 for last entry in an array, 2 for last entry in an array of structs of arrays, ... */
 			uint32 ReturnCount	: 8;
 			/** Type of reference */
-			uint32 Type			: 5;
+			uint32 Type			: 5; // The number of bits needs to match TFastReferenceCollector::FStackEntry::ContainerHelperType
 			/** Offset into struct/ object */
 			uint32 Offset		: 19;
 		};

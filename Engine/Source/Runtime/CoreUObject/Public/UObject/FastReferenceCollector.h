@@ -485,12 +485,18 @@ private:
 	{
 		/** Current data pointer, incremented by stride */
 		uint8*	Data;
+		/** Current container helper for data pointer. DO NOT rely on its value being initialized. Instead check ContainerHelperType first. */
+		void*	ContainerHelper;
+		/** Current index within the container. DO NOT rely on its value being initialized. Instead check ContainerHelperType first. */
+		int32	ContainerIndex;
+		/** Current container helper type */
+		uint32	ContainerHelperType : 5; // The number of bits needs to match FGCReferenceInfo::Type
 		/** Current stride */
-		int32		Stride;
+		uint32	Stride : 27; // This will always be bigger (8 bits more) than FGCReferenceInfo::Ofset which is the max offset GC can handle
 		/** Current loop count, decremented each iteration */
-		int32		Count;
+		int32	Count;
 		/** First token index in loop */
-		int32		LoopStartIndex;
+		int32	LoopStartIndex;
 	};
 
 
@@ -557,6 +563,53 @@ public:
 	}
 
 private:
+
+	FORCEINLINE void ClearContainerHelperStackEntry(FStackEntry* StackEntry) const
+	{
+		switch (StackEntry->ContainerHelperType)
+		{
+		case GCRT_AddTMapReferencedObjects:
+		{
+			FScriptMapHelper* MapHelper = (FScriptMapHelper*)StackEntry->ContainerHelper;
+			delete MapHelper;
+		}
+		break;
+		case GCRT_AddTSetReferencedObjects:
+		{
+			FScriptSetHelper* SetHelper = (FScriptSetHelper*)StackEntry->ContainerHelper;
+			delete SetHelper;
+		}
+		break;
+		case GCRT_None:
+		break;
+		default:
+			UE_LOG(LogGarbage, Fatal, TEXT("Unknown container type. Type: %d"), StackEntry->ContainerHelperType);
+			break;
+		}
+		StackEntry->ContainerHelper = nullptr;
+		StackEntry->ContainerHelperType = GCRT_None;
+	}
+
+	FORCEINLINE bool MoveToNextContainerElementAndCheckIfValid(FStackEntry* StackEntry) const
+	{
+		switch (StackEntry->ContainerHelperType)
+		{
+		case GCRT_AddTMapReferencedObjects:
+		{
+			FScriptMapHelper* MapHelper = (FScriptMapHelper*)StackEntry->ContainerHelper;
+			return MapHelper->IsValidIndex(++StackEntry->ContainerIndex);
+		}
+		case GCRT_AddTSetReferencedObjects:
+		{
+			FScriptSetHelper* SetHelper = (FScriptSetHelper*)StackEntry->ContainerHelper;
+			return SetHelper->IsValidIndex(++StackEntry->ContainerIndex);
+		}
+		default:
+		{
+			return true;
+		}
+		}
+	}
 
 	/**
 	 * Handles weak object pointer references
@@ -654,6 +707,7 @@ private:
 				FStackEntry* RESTRICT StackEntry = Stack.GetData();
 				uint8* StackEntryData = (uint8*)CurrentObject;
 				StackEntry->Data = StackEntryData;
+				StackEntry->ContainerHelperType = GCRT_None;
 				StackEntry->Stride = 0;
 				StackEntry->Count = -1;
 				StackEntry->LoopStartIndex = -1;
@@ -676,9 +730,23 @@ private:
 						// We pre-decrement as we're already through the loop once at this point.
 						if (--StackEntry->Count > 0)
 						{
-							// Point data to next entry.
-							StackEntryData = StackEntry->Data + StackEntry->Stride;
-							StackEntry->Data = StackEntryData;
+							if (StackEntry->ContainerHelperType == GCRT_None)
+							{
+								// Fast path for TArrays of structs
+								// Point data to next entry.
+								StackEntryData = StackEntry->Data + StackEntry->Stride;
+								StackEntry->Data = StackEntryData;
+							}
+							else
+							{
+								// Slower path for other containers
+								// Point data to next valid entry.
+								do
+								{
+									StackEntryData = StackEntry->Data + StackEntry->Stride;
+									StackEntry->Data = StackEntryData;
+								} while (!MoveToNextContainerElementAndCheckIfValid(StackEntry));
+							}
 
 							// Jump back to the beginning of the loop.
 							TokenStreamIndex = StackEntry->LoopStartIndex;
@@ -688,6 +756,7 @@ private:
 						}
 						else
 						{
+							ClearContainerHelperStackEntry(StackEntry);
 							StackEntry--;
 							StackEntryData = StackEntry->Data;
 						}
@@ -739,6 +808,7 @@ private:
 						StackEntry->Data = StackEntryData;
 						StackEntry->Stride = TokenStream->ReadStride(TokenStreamIndex);
 						StackEntry->Count = Array.Num();
+						StackEntry->ContainerHelperType = GCRT_None;
 
 						const FGCSkipInfo SkipInfo = TokenStream->ReadSkipInfo(TokenStreamIndex);
 						StackEntry->LoopStartIndex = TokenStreamIndex;
@@ -766,6 +836,7 @@ private:
 						StackEntry->Data = StackEntryData;
 						StackEntry->Stride = TokenStream->ReadStride(TokenStreamIndex);
 						StackEntry->Count = Array.Num();
+						StackEntry->ContainerHelperType = GCRT_None;
 
 						const FGCSkipInfo SkipInfo = TokenStream->ReadSkipInfo(TokenStreamIndex);
 						StackEntry->LoopStartIndex = TokenStreamIndex;
@@ -813,6 +884,7 @@ private:
 						StackEntry->Stride = TokenStream->ReadStride(TokenStreamIndex);
 						StackEntry->Count = TokenStream->ReadCount(TokenStreamIndex);
 						StackEntry->LoopStartIndex = TokenStreamIndex;
+						StackEntry->ContainerHelperType = GCRT_None;
 						TokenReturnCount = 0;
 					}
 					break;
@@ -835,28 +907,92 @@ private:
 					break;
 					case GCRT_AddTMapReferencedObjects:
 					{
-						void*         Map = StackEntryData + ReferenceInfo.Offset;
+						void* MapPtr = StackEntryData + ReferenceInfo.Offset;
 						FMapProperty* MapProperty = (FMapProperty*)TokenStream->ReadPointer(TokenStreamIndex);
-						TokenReturnCount = ReferenceInfo.ReturnCount;
+						TokenStreamIndex++; // GCRT_EndOfPointer
+						FScriptMapHelper* MapHelper = new FScriptMapHelper(MapProperty, MapPtr);
 
-						FReferenceCollectorArchive& Ar = ReferenceCollector.GetVerySlowReferenceCollectorArchive();
-						checkSlow(Ar.GetSerializingObject() == nullptr);
-						Ar.SetSerializingObject(CurrentObject);
-						MapProperty->SerializeItem(FStructuredArchiveFromArchive(Ar).GetSlot(), Map, nullptr);
-						Ar.SetSerializingObject(nullptr);
+						StackEntry++;
+						StackEntry->ContainerHelper = MapHelper;
+						StackEntry->ContainerHelperType = GCRT_AddTMapReferencedObjects;
+						StackEntry->ContainerIndex = 0;
+						StackEntry->Stride = MapHelper->MapLayout.SetLayout.Size;
+						StackEntry->Count = MapHelper->Num();
+
+						const FGCSkipInfo SkipInfo = TokenStream->ReadSkipInfo(TokenStreamIndex);
+						StackEntry->LoopStartIndex = TokenStreamIndex;
+
+						if (StackEntry->Count == 0)
+						{
+							// The map is empty
+							StackEntryData = nullptr;
+							StackEntry->Data = StackEntryData;
+
+							// Skip empty map by jumping to skip index and set return count to the one about to be read in.
+							TokenStreamIndex = SkipInfo.SkipIndex;
+							TokenReturnCount = TokenStream->GetSkipReturnCount(SkipInfo);
+						}
+						else
+						{
+							// Skip any initial invalid entries in the map. We need a valid index for MapHelper->GetPairPtr()
+							int32 FirstValidIndex = 0;
+							while (!MapHelper->IsValidIndex(FirstValidIndex))
+							{
+								FirstValidIndex++;
+							}
+
+							StackEntry->ContainerIndex = FirstValidIndex;
+							StackEntryData = MapHelper->GetPairPtr(FirstValidIndex);
+							StackEntry->Data = StackEntryData;
+
+							// Loop again.
+							TokenReturnCount = 0;
+						}
 					}
 					break;
 					case GCRT_AddTSetReferencedObjects:
 					{
-						void*         Set = StackEntryData + ReferenceInfo.Offset;
+						void* SetPtr = StackEntryData + ReferenceInfo.Offset;
 						FSetProperty* SetProperty = (FSetProperty*)TokenStream->ReadPointer(TokenStreamIndex);
-						TokenReturnCount = ReferenceInfo.ReturnCount;
+						TokenStreamIndex++; // GCRT_EndOfPointer
+						FScriptSetHelper* SetHelper = new FScriptSetHelper(SetProperty, SetPtr);
 
-						FReferenceCollectorArchive& Ar = ReferenceCollector.GetVerySlowReferenceCollectorArchive();
-						checkSlow(Ar.GetSerializingObject() == nullptr);
-						Ar.SetSerializingObject(CurrentObject);
-						SetProperty->SerializeItem(FStructuredArchiveFromArchive(Ar).GetSlot(), Set, nullptr);
-						Ar.SetSerializingObject(nullptr);
+						StackEntry++;
+						StackEntry->ContainerHelper = SetHelper;
+						StackEntry->ContainerHelperType = GCRT_AddTSetReferencedObjects;
+						StackEntry->ContainerIndex = 0;
+						StackEntry->Stride = SetHelper->SetLayout.Size;
+						StackEntry->Count = SetHelper->Num();
+
+						const FGCSkipInfo SkipInfo = TokenStream->ReadSkipInfo(TokenStreamIndex);
+						StackEntry->LoopStartIndex = TokenStreamIndex;
+
+						if (StackEntry->Count == 0)
+						{
+							// The set is empty or it doesn't contain any valid elements
+							StackEntryData = nullptr;
+							StackEntry->Data = StackEntryData;
+
+							// Skip empty set by jumping to skip index and set return count to the one about to be read in.
+							TokenStreamIndex = SkipInfo.SkipIndex;
+							TokenReturnCount = TokenStream->GetSkipReturnCount(SkipInfo);
+						}
+						else
+						{
+							// Skip any initial invalid entries in the set. We need a valid index for SetHelper->GetElementPtr()
+							int32 FirstValidIndex = 0;
+							while (!SetHelper->IsValidIndex(FirstValidIndex))
+							{
+								FirstValidIndex++;
+							}
+
+							StackEntry->ContainerIndex = FirstValidIndex;
+							StackEntryData = SetHelper->GetElementPtr(FirstValidIndex);
+							StackEntry->Data = StackEntryData;
+
+							// Loop again.
+							TokenReturnCount = 0;
+						}
 					}
 					break;
 					case GCRT_AddFieldPathReferencedObject:
