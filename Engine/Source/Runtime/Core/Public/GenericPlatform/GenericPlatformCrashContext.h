@@ -30,6 +30,9 @@ enum ECrashExitCodes : int32
 
 	/** Application crashed during static initialization. It may or may not have been able to have sent a crash report. */
 	CrashDuringStaticInit = 777006,
+
+	/** Used as MonitorExceptCode in analytics to track how often the out-of-process CRC exits because of a failed check. */
+	OutOfProcessReporterCheckFailed = 777007,
 };
 
 /** 
