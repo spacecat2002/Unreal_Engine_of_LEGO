@@ -3117,6 +3117,7 @@ public:
 	{
 		FScopeCycleCounterUObject ContextScope(SkeletalMeshComponent.SkeletalMesh);
 		SCOPE_CYCLE_COUNTER(STAT_ClothTotalTime);
+		CSV_SCOPED_TIMING_STAT(Animation, Cloth);
 
 		if(SkeletalMeshComponent.ClothingSimulation)
 		{
@@ -3268,6 +3269,7 @@ void USkeletalMeshComponent::GetUpdateClothSimulationData(TMap<int32, FClothSimu
 	}
 
 	SCOPE_CYCLE_COUNTER(STAT_ClothTotalTime);
+	CSV_SCOPED_TIMING_STAT(Animation, Cloth);
 
 	if(bDisableClothSimulation)
 	{
