@@ -829,6 +829,37 @@ private:
 
 		void SwapBuffers(bool bUpdateLastExposure);
 
+		/** Get the last frame bloom setup output for eye adaptation mobile platform. */
+		const FSceneRenderTargetItem& GetLastBloomSetupEyeAdaptationSurface() const
+		{
+			checkSlow(BloomSetup_EyeAdaptation[1].IsValid());
+			return BloomSetup_EyeAdaptation[1]->GetRenderTargetItem();
+		}
+
+		/** Cache the current frame bloom setup output for eye adaptation mobile platform. */
+		void CacheBloomSetupEyeAdaptationRT(TRefCountPtr<IPooledRenderTarget>& BloomSetupEyeAdaptationRT)
+		{
+			BloomSetup_EyeAdaptation[0] = BloomSetupEyeAdaptationRT;
+			if (!BloomSetup_EyeAdaptation[1].IsValid())
+			{
+				BloomSetup_EyeAdaptation[1] = BloomSetupEyeAdaptationRT;
+			}
+		}
+
+		/** Swap the bloom setup output for eye adaptation mobile platform. */
+		void SwapBloomSetupEyeAdaptationRT()
+		{
+			BloomSetup_EyeAdaptation[1] = BloomSetup_EyeAdaptation[0];
+			BloomSetup_EyeAdaptation[0].SafeRelease();
+		}
+
+		/** Release the cached bloom setup output for eye adaptation mobile platform. */
+		void SafeReleaseBloomSetupEyeAdaptationRT()
+		{
+			checkSlow(!BloomSetup_EyeAdaptation[0].IsValid());
+			BloomSetup_EyeAdaptation[1].SafeRelease();
+		}
+
 	private:
 
 		/** Return one of two two render targets */
@@ -847,6 +878,8 @@ private:
 
 		FExposureBufferData ExposureBufferData[2];
 		TUniquePtr<FRHIGPUBufferReadback> ExposureBufferReadback;
+
+		TRefCountPtr<IPooledRenderTarget> BloomSetup_EyeAdaptation[2];
 
 	} EyeAdaptationRTManager;
 
@@ -1215,6 +1248,30 @@ public:
 	void SwapEyeAdaptationBuffers()
 	{
 		EyeAdaptationRTManager.SwapBuffers(bUpdateLastExposure && bValidEyeAdaptation);
+	}
+
+	/** Get the last frame bloom setup output for eye adaptation mobile platform. */
+	const FSceneRenderTargetItem& GetLastBloomSetupEyeAdaptationSurface() const
+	{
+		return EyeAdaptationRTManager.GetLastBloomSetupEyeAdaptationSurface();
+	}
+
+	/** Cache the current frame bloom setup output for eye adaptation mobile platform. */
+	void CacheBloomSetupEyeAdaptationRT(TRefCountPtr<IPooledRenderTarget>& BloomSetupEyeAdaptationRT)
+	{
+		EyeAdaptationRTManager.CacheBloomSetupEyeAdaptationRT(BloomSetupEyeAdaptationRT);
+	}
+
+	/** Swap the bloom setup output for eye adaptation mobile platform. */
+	void SwapBloomSetupEyeAdaptationRT()
+	{
+		EyeAdaptationRTManager.SwapBloomSetupEyeAdaptationRT();
+	}
+
+	/** Release the cached bloom setup output for eye adaptation mobile platform. */
+	void SafeReleaseBloomSetupEyeAdaptationRT()
+	{
+		EyeAdaptationRTManager.SafeReleaseBloomSetupEyeAdaptationRT();
 	}
 
 	bool HasValidEyeAdaptation() const

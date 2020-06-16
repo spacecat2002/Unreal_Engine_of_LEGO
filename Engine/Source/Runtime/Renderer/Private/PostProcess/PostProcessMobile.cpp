@@ -2699,7 +2699,7 @@ class FPostProcessAverageLuminanceCS_ES2 : public FGlobalShader
 {
 public:
 	// Changing these numbers requires PostProcessMobile.usf to be recompiled.
-	static const uint32 ThreadGroupSizeX = 8;
+	static const uint32 ThreadGroupSizeX = 16;
 	static const uint32 ThreadGroupSizeY = 8;
 	static const uint32 LoopCountX = 2;
 	static const uint32 LoopCountY = 2;
@@ -2773,7 +2773,9 @@ void FRCPassPostProcessAverageLuminanceES2::Process(FRenderingCompositePassConte
 
 	FIntVector DestSize = PassOutputs[0].RenderTargetDesc.GetSize();
 
-	const FSceneRenderTargetItem& InputRenderTarget = GetInput(ePId_Input0)->GetOutput()->PooledRenderTarget->GetRenderTargetItem();
+	Context.View.CacheBloomSetupEyeAdaptationRT(GetInput(ePId_Input0)->GetOutput()->PooledRenderTarget);
+
+	const FSceneRenderTargetItem& InputRenderTarget = Context.View.GetLastBloomSetupEyeAdaptationSurface();
 
 	if (!IsMetalPlatform(Context.View.GetShaderPlatform()) && !IsVulkanPlatform(Context.View.GetShaderPlatform()))
 	{
@@ -2785,7 +2787,7 @@ void FRCPassPostProcessAverageLuminanceES2::Process(FRenderingCompositePassConte
 	}
 	else
 	{
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, InputRenderTarget.TargetableTexture);
+		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EGfxToCompute, InputRenderTarget.TargetableTexture);
 	}
 
 	{
@@ -2823,6 +2825,8 @@ void FRCPassPostProcessAverageLuminanceES2::Process(FRenderingCompositePassConte
 		}
 
 		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, GAverageLuminanceBuffer->UnorderedAccessViewRHI);
+
+		Context.View.SwapBloomSetupEyeAdaptationRT();
 	}
 }
 
@@ -2912,7 +2916,7 @@ void FRCPassPostProcessBasicEyeAdaptationES2::Process(FRenderingCompositePassCon
 	const FExposureBufferData* EyeAdaptationThisFrameBuffer = Context.View.GetEyeAdaptationBuffer();
 	const FExposureBufferData* EyeAdaptationLastFrameBuffer = Context.View.GetLastEyeAdaptationBuffer();
 
-	Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EGfxToCompute, EyeAdaptationLastFrameBuffer->UAV);
+	Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, EyeAdaptationLastFrameBuffer->UAV);
 
 	check(EyeAdaptationThisFrameBuffer && EyeAdaptationLastFrameBuffer);
 
@@ -2931,7 +2935,7 @@ void FRCPassPostProcessBasicEyeAdaptationES2::Process(FRenderingCompositePassCon
 
 		UnsetShaderUAVs(Context.RHICmdList, ComputeShader, Context.RHICmdList.GetBoundComputeShader());
 
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, EyeAdaptationThisFrameBuffer->UAV);
+		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, EyeAdaptationLastFrameBuffer->UAV);
 	}
 
 	Context.View.SetValidEyeAdaptation();
@@ -2978,7 +2982,7 @@ public:
 	// The number of texels on each axis processed by a single thread group.
 	static const FIntPoint MetalTexelsPerThreadGroup;
 
-	static const uint32 ThreadGroupSizeX = 8;
+	static const uint32 ThreadGroupSizeX = 16;
 	static const uint32 ThreadGroupSizeY = 8;
 
 	static const uint32 LoopCountX = 2;
@@ -3063,7 +3067,9 @@ void FRCPassPostProcessHistogramES2::Process(FRenderingCompositePassContext& Con
 
 	//Histogram Pass
 
-	const FSceneRenderTargetItem& InputRenderTarget = GetInput(ePId_Input0)->GetOutput()->PooledRenderTarget->GetRenderTargetItem();
+	Context.View.CacheBloomSetupEyeAdaptationRT(GetInput(ePId_Input0)->GetOutput()->PooledRenderTarget);
+
+	const FSceneRenderTargetItem& InputRenderTarget = Context.View.GetLastBloomSetupEyeAdaptationSurface();
 
 	FIntVector DestSize = PassOutputs[0].RenderTargetDesc.GetSize();
 
@@ -3077,7 +3083,7 @@ void FRCPassPostProcessHistogramES2::Process(FRenderingCompositePassContext& Con
 	}
 	else
 	{
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, InputRenderTarget.TargetableTexture);
+		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EGfxToCompute, InputRenderTarget.TargetableTexture);
 	}
 
 	{
@@ -3114,6 +3120,8 @@ void FRCPassPostProcessHistogramES2::Process(FRenderingCompositePassContext& Con
 		}
 
 		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, GHistogramBuffer->UnorderedAccessViewRHI);
+
+		Context.View.SwapBloomSetupEyeAdaptationRT();
 	}
 }
 
@@ -3202,7 +3210,7 @@ void FRCPassPostProcessHistogramEyeAdaptationES2::Process(FRenderingCompositePas
 	const FExposureBufferData* EyeAdaptationThisFrameBuffer = Context.View.GetEyeAdaptationBuffer();
 	const FExposureBufferData* EyeAdaptationLastFrameBuffer = Context.View.GetLastEyeAdaptationBuffer();
 
-	Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EGfxToCompute, EyeAdaptationLastFrameBuffer->UAV);
+	Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, EyeAdaptationLastFrameBuffer->UAV);
 	
 	check(EyeAdaptationThisFrameBuffer && EyeAdaptationLastFrameBuffer);
 
@@ -3219,7 +3227,7 @@ void FRCPassPostProcessHistogramEyeAdaptationES2::Process(FRenderingCompositePas
 
 		UnsetShaderUAVs(Context.RHICmdList, ComputeShader, Context.RHICmdList.GetBoundComputeShader());
 
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, EyeAdaptationThisFrameBuffer->UAV);
+		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, EyeAdaptationLastFrameBuffer->UAV);
 	}
 
 	Context.View.SetValidEyeAdaptation();

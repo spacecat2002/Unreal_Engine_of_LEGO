@@ -1918,6 +1918,47 @@ void FViewInfo::SwapEyeAdaptationBuffers() const
 	}
 }
 
+const FSceneRenderTargetItem& FViewInfo::GetLastBloomSetupEyeAdaptationSurface() const
+{
+	FSceneViewState* EffectiveViewState = GetEffectiveViewState();
+	if (EffectiveViewState)
+	{
+		return EffectiveViewState->GetLastBloomSetupEyeAdaptationSurface();
+	}
+	else
+	{
+		static FSceneRenderTargetItem SceneRenderTargetItem;
+		return SceneRenderTargetItem;
+	}
+}
+
+void FViewInfo::CacheBloomSetupEyeAdaptationRT(TRefCountPtr<IPooledRenderTarget>& BloomSetupEyeAdaptationRT) const
+{
+	FSceneViewState* EffectiveViewState = GetEffectiveViewState();
+	if (EffectiveViewState)
+	{
+		EffectiveViewState->CacheBloomSetupEyeAdaptationRT(BloomSetupEyeAdaptationRT);
+	}
+}
+
+void FViewInfo::SwapBloomSetupEyeAdaptationRT() const
+{
+	FSceneViewState* EffectiveViewState = GetEffectiveViewState();
+	if (EffectiveViewState)
+	{
+		EffectiveViewState->SwapBloomSetupEyeAdaptationRT();
+	}
+}
+
+void FViewInfo::SafeReleaseBloomSetupEyeAdaptationRT() const
+{
+	FSceneViewState* EffectiveViewState = GetEffectiveViewState();
+	if (EffectiveViewState)
+	{
+		EffectiveViewState->SafeReleaseBloomSetupEyeAdaptationRT();
+	}
+}
+
 bool FViewInfo::HasValidEyeAdaptation() const
 {
 	FSceneViewState* EffectiveViewState = GetEffectiveViewState();	

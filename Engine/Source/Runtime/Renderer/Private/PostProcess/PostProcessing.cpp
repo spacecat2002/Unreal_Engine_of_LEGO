@@ -1430,6 +1430,12 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 				View.FinalPostProcessSettings.AutoExposureMinBrightness < View.FinalPostProcessSettings.AutoExposureMaxBrightness;
 
 			bool bUsePost = bHDRModeAllowsPost && IsMobileHDR();
+
+			// Release the cached bloom setup output if we don't use basic/histogram eye adaptation.
+			if (!(bUseBasicEyeAdaptation || bUseHistogramEyeAdaptation))
+			{
+				Context.View.SafeReleaseBloomSetupEyeAdaptationRT();
+			}
 			
 			if (bUsePost && IsMobileDistortionActive(View))
 			{
@@ -1664,8 +1670,6 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FScene* S
 						HistogramEyeAdaptationPass->SetInput(ePId_Input0, PostProcessHistogram);
 						PostProcessEyeAdaptation = FRenderingCompositeOutputRef(HistogramEyeAdaptationPass);
 					}
-
-//					PostProcessEyeAdaptation.GetOutput()->PooledRenderTarget = Context.View.GetLastEyeAdaptationRT(Context.RHICmdList);
 				}
 
 				FRenderingCompositeOutputRef PostProcessSunBlur;

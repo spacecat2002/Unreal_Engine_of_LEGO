@@ -1316,6 +1316,18 @@ public:
 
 	void SwapEyeAdaptationBuffers() const;
 
+	/** Get the last frame bloom setup output for eye adaptation mobile platform. */
+	const FSceneRenderTargetItem& GetLastBloomSetupEyeAdaptationSurface() const;
+
+	/** Cache the current frame bloom setup output for eye adaptation mobile platform. */
+	void CacheBloomSetupEyeAdaptationRT(TRefCountPtr<IPooledRenderTarget>& BloomSetupEyeAdaptationRT) const;
+
+	/** Swap the bloom setup output for eye adaptation mobile platform. */
+	void SwapBloomSetupEyeAdaptationRT() const;
+
+	/** Release the cached bloom setup output for eye adaptation mobile platform. */
+	void SafeReleaseBloomSetupEyeAdaptationRT() const;
+
 	/** Tells if the eyeadaptation texture exists without attempting to allocate it. */
 	bool HasValidEyeAdaptation() const;
 

@@ -968,7 +968,7 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 	Inputs.bFlipYAxis = ShouldMobilePassFlipVerticalAxis(Context, this);
 	Inputs.bGammaOnly = bDoGammaOnly;
 	Inputs.bMetalMSAAHDRDecode = bMetalMSAAHDRDecode;
-	Inputs.EyeAdaptationBuffer = bDoEyeAdaptation && View.GetEyeAdaptationBuffer() ? View.GetEyeAdaptationBuffer()->SRV : nullptr;
+	Inputs.EyeAdaptationBuffer = bDoEyeAdaptation && View.GetLastEyeAdaptationBuffer() ? View.GetLastEyeAdaptationBuffer()->SRV : nullptr;
 
 	AddTonemapPass(GraphBuilder, View, Inputs);
 
@@ -1392,7 +1392,7 @@ public:
 		float FixedExposure = bEyeAdaptation ? 0.0f : GetEyeAdaptationFixedExposure(Context.View);
 		SetShaderValue(Context.RHICmdList, ShaderRHI, DefaultEyeExposure, FixedExposure);
 
-		SetSRVParameter(Context.RHICmdList, ShaderRHI, EyeAdaptationBuffer, bEyeAdaptation && Context.View.GetEyeAdaptationBuffer() ? Context.View.GetEyeAdaptationBuffer()->SRV : nullptr);
+		SetSRVParameter(Context.RHICmdList, ShaderRHI, EyeAdaptationBuffer, bEyeAdaptation && Context.View.GetLastEyeAdaptationBuffer() ? Context.View.GetLastEyeAdaptationBuffer()->SRV : nullptr);
 	}
 };
 
