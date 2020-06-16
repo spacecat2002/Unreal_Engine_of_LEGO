@@ -1365,7 +1365,7 @@ winrt::fire_and_forget AzureSpatialAnchorsInteropImpl::SubmitDiagnosticsManifest
 	const wchar_t* Error = nullptr;
 	try
 	{
-		co_await m_cloudSession.Diagnostics().CreateManifestAsync(ManifestPath);
+		co_await m_cloudSession.Diagnostics().SubmitManifestAsync(ManifestPath);
 
 		Result = ASAResult::Success;
 	}
