@@ -403,6 +403,8 @@ void TMobileBasePassPSPolicyParamType<FUniformLightMapPolicy>::GetShaderBindings
 			FVector4 CapturePositions[MaxNumReflections] = { FVector4(0, 0, 0, 0), FVector4(0, 0, 0, 0), FVector4(0, 0, 0, 0) };
 			FVector4 ReflectionParams(0.0f, 0.0f, 0.0f, 0.0f);
 			FVector4 ReflectanceMaxValueRGBMParams(0.0f, 0.0f, 0.0f, 0.0f);
+			FMatrix CaptureBoxTransformArray[MaxNumReflections] = { FMatrix(EForceInit::ForceInitToZero), FMatrix(EForceInit::ForceInitToZero), FMatrix(EForceInit::ForceInitToZero) };
+			FVector4 CaptureBoxScalesArray[MaxNumReflections] = { FVector4(EForceInit::ForceInitToZero), FVector4(EForceInit::ForceInitToZero), FVector4(EForceInit::ForceInitToZero) };
 			FPrimitiveSceneInfo* PrimitiveSceneInfo = PrimitiveSceneProxy ? PrimitiveSceneProxy->GetPrimitiveSceneInfo() : nullptr;
 			if (PrimitiveSceneInfo)
 			{
@@ -421,12 +423,18 @@ void TMobileBasePassPSPolicyParamType<FUniformLightMapPolicy>::GetShaderBindings
 						ReflectionParams[i] = ReflectionProxy->EncodedHDRAverageBrightness;
 
 						ReflectanceMaxValueRGBMParams[i] = ReflectionProxy->MaxValueRGBM;
+						if (ReflectionProxy->Shape == EReflectionCaptureShape::Box)
+						{
+							CaptureBoxTransformArray[i] = ReflectionProxy->BoxTransform;
+							CaptureBoxScalesArray[i] = FVector4(ReflectionProxy->BoxScales, ReflectionProxy->BoxTransitionDistance);
+						}
 					}
-					else if (Scene->SkyLight != nullptr)
+					else if (Scene->SkyLight != nullptr && Scene->SkyLight->ProcessedTexture != nullptr)
 					{
 						// NegativeInfluence to signal the shader we are defaulting to SkyLight if there are no ReflectionComponents in the Level
 						CapturePositions[i].W = -1.0f;
 						ReflectionCubemapTextures[i] = Scene->SkyLight->ProcessedTexture;
+						ReflectionParams[3] = FMath::FloorLog2(Scene->SkyLight->ProcessedTexture->GetSizeX());
 						break;
 					}
 				}
@@ -439,6 +447,8 @@ void TMobileBasePassPSPolicyParamType<FUniformLightMapPolicy>::GetShaderBindings
 			ShaderBindings.Add(HQReflectionInvAverageBrigtnessParams, ReflectionParams);
 			ShaderBindings.Add(HQReflectanceMaxValueRGBMParams, ReflectanceMaxValueRGBMParams);
 			ShaderBindings.Add(HQReflectionPositionsAndRadii, CapturePositions);
+			ShaderBindings.Add(HQReflectionCaptureBoxTransformArray, CaptureBoxTransformArray);
+			ShaderBindings.Add(HQReflectionCaptureBoxScalesArray, CaptureBoxScalesArray);
 		}
 		else if (ReflectionParameter.IsBound())
 		{
