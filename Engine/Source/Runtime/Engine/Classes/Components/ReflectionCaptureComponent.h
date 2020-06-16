@@ -13,6 +13,7 @@
 
 class FReflectionCaptureProxy;
 class UBillboardComponent;
+class FTexture;
 
 UENUM()
 enum class EReflectionSourceType : uint8
