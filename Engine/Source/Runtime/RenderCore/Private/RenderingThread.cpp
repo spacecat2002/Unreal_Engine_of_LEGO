@@ -24,6 +24,7 @@
 #include "Misc/ScopeLock.h"
 #include "HAL/LowLevelMemTracker.h"
 #include "ProfilingDebugging/MiscTrace.h"
+#include "ProfilingDebugging/CsvProfiler.h"
 
 
 //
@@ -313,6 +314,10 @@ public:
 	{
 		LLM_SCOPE(ELLMTag::RHIMisc);
 
+#if CSV_PROFILER
+		FCsvProfiler::Get()->SetRHIThreadId(FPlatformTLS::GetCurrentThreadId());
+#endif
+
 		FMemory::SetupTLSCachesOnCurrentThread();
 		FTaskGraphInterface::Get().AttachToThread(ENamedThreads::RHIThread);
 		FTaskGraphInterface::Get().ProcessThreadUntilRequestReturn(ENamedThreads::RHIThread);
@@ -556,6 +561,11 @@ public:
 	{
 		GSuspendRenderingTickables = 0;
 		OutstandingHeartbeats.Reset();
+
+#if CSV_PROFILER
+		FCsvProfiler::Get()->SetRenderThreadId(FPlatformTLS::GetCurrentThreadId());
+#endif
+
 		return true; 
 	}
 
