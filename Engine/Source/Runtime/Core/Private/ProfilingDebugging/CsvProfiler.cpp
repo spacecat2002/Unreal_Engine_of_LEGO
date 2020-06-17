@@ -1640,20 +1640,20 @@ private:
 	static CSV_PROFILER_INLINE uint64 GetStatID(const char* StatName) { return uint64(StatName); }
 	static CSV_PROFILER_INLINE uint64 GetStatID(const FName& StatId) { return StatId.GetComparisonIndex().ToUnstableInt(); }
 
-	static inline FString GenerateThreadName(uint32 ThreadId)
+	static inline FString GenerateThreadName()
 	{
 		// Determine the thread name
-		if (ThreadId == GGameThreadId)
+		if (IsInGameThread())
 		{
 			return TEXT("GameThread");
 		}
-		else if (ThreadId == GRenderThreadId)
+		else if (IsInActualRenderingThread())
 		{
 			return TEXT("RenderThread");
 		}
 		else
 		{
-			return FThreadManager::Get().GetThreadName(ThreadId);
+			return FThreadManager::Get().GetThreadName(FPlatformTLS::GetCurrentThreadId());
 		}
 	}
 
@@ -1716,7 +1716,7 @@ public:
 
 	FCsvProfilerThreadData()
 		: ThreadId(FPlatformTLS::GetCurrentThreadId())
-		, ThreadName(GenerateThreadName(ThreadId))
+		, ThreadName(GenerateThreadName())
 		, DataProcessor(nullptr)
 	{
 	}
