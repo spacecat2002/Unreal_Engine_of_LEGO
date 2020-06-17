@@ -95,11 +95,16 @@ struct FAnalyticsEventAttribute
 	UE_DEPRECATED(4.25, "This property is used to support the deprecated APIs, construct Json values using FJsonFragment instead")
 	void SwitchToJsonFragment();
 
+	static bool IsValidAttributeName(const FString& InName)
+	{
+		return !InName.IsEmpty() && InName != TEXT("EventName") && InName != TEXT("DateOffset");
+	}
+
 private:
 	FString& CheckName(FString& InName)
 	{
 		// These are reserved names in our environment. Enforce things don't use it.
-		check(InName != TEXT("") && InName != TEXT("EventName") && InName != TEXT("DateOffset"));
+		check(IsValidAttributeName(InName));
 		return InName;
 	}
 };
@@ -140,7 +145,7 @@ inline FAnalyticsEventAttribute::FAnalyticsEventAttribute(FString InName, ValueT
 , AttrValueString(AnalyticsConversionToString(Forward<ValueType>(InValue)))
 , AttrValueNumber(0)
 , AttrValueBool(false)
-, AttrType(TIsArithmetic<ValueType>::Value || TIsSame<typename TDecay<ValueType>::Type, FJsonNull>::Value || TIsSame<typename TDecay<ValueType>::Type, FJsonFragment>::Value ? AttrTypeEnum::JsonFragment : AttrTypeEnum::String)
+, AttrType(TIsArithmetic<typename TDecay<ValueType>::Type>::Value || TIsSame<typename TDecay<ValueType>::Type, FJsonNull>::Value || TIsSame<typename TDecay<ValueType>::Type, FJsonFragment>::Value ? AttrTypeEnum::JsonFragment : AttrTypeEnum::String)
 {
 
 }
@@ -201,7 +206,7 @@ template<typename ValueType>
 inline void FAnalyticsEventAttribute::SetValue(ValueType&& InValue)
 {
 	const_cast<FString&>(AttrValueString) = AnalyticsConversionToString(Forward<ValueType>(InValue));
-	const_cast<AttrTypeEnum&>(AttrType) = TIsArithmetic<ValueType>::Value || TIsSame<typename TDecay<ValueType>::Type, FJsonNull>::Value || TIsSame<typename TDecay<ValueType>::Type, FJsonFragment>::Value ? AttrTypeEnum::JsonFragment : AttrTypeEnum::String;
+	const_cast<AttrTypeEnum&>(AttrType) = TIsArithmetic<typename TDecay<ValueType>::Type>::Value || TIsSame<typename TDecay<ValueType>::Type, FJsonNull>::Value || TIsSame<typename TDecay<ValueType>::Type, FJsonFragment>::Value ? AttrTypeEnum::JsonFragment : AttrTypeEnum::String;
 }
 
 inline void FAnalyticsEventAttribute::SwitchToJsonFragment()

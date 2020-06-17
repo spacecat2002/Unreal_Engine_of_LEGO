@@ -38,7 +38,7 @@ struct FSolverStateStorage;
 
 class FSkeletalMeshPhysicsProxy;
 class FStaticMeshPhysicsProxy;
-class FFieldSystemPhysicsProxy;
+class FPerSolverFieldSystem;
 
 class IPhysicsProxyBase;
 
@@ -62,8 +62,6 @@ namespace Chaos
 	template <typename TPayload, typename T, int d>
 	class ISpatialAccelerationCollection;
 
-	class IDispatcher;
-
 	template <typename T>
 	class TArrayCollectionArray;
 
@@ -72,7 +70,7 @@ namespace Chaos
 /**
 * Low level Chaos scene used when building custom simulations that don't exist in the main world physics scene.
 */
-class ENGINE_API FPhysScene_Chaos : public FTickableGameObject, public FGCObject
+class ENGINE_API FPhysScene_Chaos : public FGCObject
 {
 public:
 
@@ -92,15 +90,6 @@ public:
 
 	virtual ~FPhysScene_Chaos();
 
-	// Begin FTickableGameObject implementation
-	virtual ETickableTickType GetTickableTickType() const override { return ETickableTickType::Conditional; }
-	virtual bool IsTickableWhenPaused() const override { return false; }
-	virtual bool IsTickableInEditor() const override { return true; }
-	virtual bool IsTickable() const override;
-	virtual void Tick(float DeltaTime) override;
-	virtual TStatId GetStatId() const override { RETURN_QUICK_DECLARE_CYCLE_STAT(ChaosSolver, STATGROUP_Tickables); }
-	// End FTickableGameObject
-
 	/**
 	 * Get the internal Chaos solver object
 	 */
@@ -114,19 +103,13 @@ public:
 	void UnRegisterForCollisionEvents(UPrimitiveComponent* Component);
 
 	/**
-	 * Get the internal Dispatcher object
-	 */
-	Chaos::IDispatcher* GetDispatcher() const;
-
-	/**
 	 * Called during creation of the physics state for gamethread objects to pass off an object to the physics thread
 	 */
 	void AddObject(UPrimitiveComponent* Component, FSkeletalMeshPhysicsProxy* InObject);
 	void AddObject(UPrimitiveComponent* Component, FStaticMeshPhysicsProxy* InObject);
 	void AddObject(UPrimitiveComponent* Component, FGeometryParticlePhysicsProxy* InObject);
 	void AddObject(UPrimitiveComponent* Component, FGeometryCollectionPhysicsProxy* InObject);
-	void AddObject(UPrimitiveComponent* Component, FFieldSystemPhysicsProxy* InObject);
-
+	
 	void AddToComponentMaps(UPrimitiveComponent* Component, IPhysicsProxyBase* InObject);
 	void RemoveFromComponentMaps(IPhysicsProxyBase* InObject);
 
@@ -138,7 +121,6 @@ public:
 	void RemoveObject(FStaticMeshPhysicsProxy* InObject);
 	void RemoveObject(FGeometryParticlePhysicsProxy* InObject);
 	void RemoveObject(FGeometryCollectionPhysicsProxy* InObject);
-	void RemoveObject(FFieldSystemPhysicsProxy* InObject);	
 
 	void RemoveActorFromAccelerationStructure(FPhysicsActorHandle& Actor);
 	void UpdateActorInAccelerationStructure(const FPhysicsActorHandle& Actor);
@@ -282,42 +264,6 @@ private:
 	friend struct FScopedSceneReadLock;
 	friend struct FScopedSceneLock_Chaos;
 };
-
-#if XGE_FIXED
-template<typename PayloadType>
-void FPhysScene_Chaos::RegisterEvent(const Chaos::EEventType& EventID, TFunction<void(const Chaos::FPBDRigidsSolver* Solver, PayloadType& EventData)> InLambda)
-{
-	check(IsInGameThread());
-
-	Chaos::IDispatcher* Dispatcher = GetDispatcher();
-	Chaos::FPBDRigidsSolver* Solver = GetSolver();
-
-	if (Dispatcher)
-	{
-		Dispatcher->EnqueueCommandImmediate([EventID, InLambda, InSolver = Solver](Chaos::FPersistentPhysicsTask* PhysThread)
-		{
-			InSolver->GetEventManager()->RegisterEvent<PayloadType>(InSolver, InLambda);
-		});
-	}
-}
-
-template<typename PayloadType, typename HandlerType>
-void FPhysScene_Chaos::RegisterEventHandler(const Chaos::EEventType& EventID, HandlerType* Handler, typename Chaos::TRawEventHandler<PayloadType, HandlerType>::FHandlerFunction Func)
-{
-	check(IsInGameThread());
-
-	Chaos::IDispatcher* Dispatcher = GetDispatcher();
-	Chaos::FPBDRigidsSolver* Solver = GetSolver();
-
-	if (Dispatcher)
-	{
-		Dispatcher->EnqueueCommandImmediate([EventID, Handler, Func, InSolver = Solver](Chaos::FPersistentPhysicsTask* PhysThread)
-		{
-			InSolver->GetEventManager()->RegisterHandler<PayloadType>(EventID, Handler, Func);
-		});
-	}
-}
-#endif // XGE_FIXED
 
 class UWorld;
 class AWorldSettings;
@@ -529,6 +475,5 @@ private:
 
 	// Taskgraph control
 	FGraphEventRef CompletionEvent;
-	FGraphEventRef PhysicsTickTask;
 };
 #endif

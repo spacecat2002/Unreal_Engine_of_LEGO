@@ -14,6 +14,7 @@
 #include "Internationalization/TextLocalizationManagerGlobals.h"
 #include "Logging/LogSuppressionInterface.h"
 #include "Async/TaskGraphInterfaces.h"
+#include "MemPro/MemProProfiler.h"
 #include "Misc/TimeGuard.h"
 #include "Misc/Paths.h"
 #include "Misc/PathViews.h"
@@ -1473,6 +1474,9 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 	{
 		SCOPED_BOOT_TIMING("LLM Init");
 		LLM(FLowLevelMemTracker::Get().ProcessCommandLine(CmdLine));
+#if MEMPRO_ENABLED
+		FMemProProfiler::Init(CmdLine);
+#endif
 	}
 	LLM_SCOPE(ELLMTag::EnginePreInitMemory);
 
@@ -2893,11 +2897,11 @@ int32 FEngineLoop::PreInitPostStartupScreen(const TCHAR* CmdLine)
 					if (FPreLoadScreenManager::Get()->HasRegisteredPreLoadScreenType(EPreLoadScreenTypes::EarlyStartupScreen))
 					{
 						// disable the splash before playing the early startup screen
-						FPreLoadScreenManager::Get()->IsResponsibleForRenderingDelegate.AddLambda(
+						FPreLoadScreenManager::IsResponsibleForRenderingDelegate.AddLambda(
 							[](bool bIsPreloadScreenManResponsibleForRendering)
-							{
-								FPlatformMisc::PlatformHandleSplashScreen(!bIsPreloadScreenManResponsibleForRendering);
-							}
+						{
+							FPlatformMisc::PlatformHandleSplashScreen(!bIsPreloadScreenManResponsibleForRendering);
+						}
 						);
 						FPreLoadScreenManager::Get()->PlayFirstPreLoadScreen(EPreLoadScreenTypes::EarlyStartupScreen);
 					}
@@ -2980,8 +2984,11 @@ int32 FEngineLoop::PreInitPostStartupScreen(const TCHAR* CmdLine)
 		SlowTask.EnterProgressFrame(5);
 
 #if USE_EVENT_DRIVEN_ASYNC_LOAD_AT_BOOT_TIME && !USE_PER_MODULE_UOBJECT_BOOTSTRAP
-		// If we don't do this now and the async loading thread is active, then we will attempt to load this module from a thread
-		FModuleManager::Get().LoadModule("AssetRegistry");
+		{
+		    SCOPED_BOOT_TIMING("LoadAssetRegistryModule");
+		    // If we don't do this now and the async loading thread is active, then we will attempt to load this module from a thread
+		    FModuleManager::Get().LoadModule("AssetRegistry");
+		}
 #endif
 
 		FEmbeddedCommunication::ForceTick(5);
@@ -3753,23 +3760,6 @@ bool FEngineLoop::LoadStartupCoreModules()
 		// VREditor needs to be loaded in non-server editor builds early, so engine content Blueprints can be loaded during DDC generation
 		FModuleManager::Get().LoadModule(TEXT("VREditor"));
 	}
-	// -----------------------------------------------------
-
-	// HACK: load EQS editor as early as possible for statically initialized assets (non cooked EQS assets needs it)
-	// cooking needs this module too
-	bool bEnvironmentQueryEditor = false;
-	GConfig->GetBool(TEXT("EnvironmentQueryEd"), TEXT("EnableEnvironmentQueryEd"), bEnvironmentQueryEditor, GEngineIni);
-	if (bEnvironmentQueryEditor
-#if WITH_EDITOR
-		|| GetDefault<UEditorExperimentalSettings>()->bEQSEditor
-#endif // WITH_EDITOR
-		)
-	{
-		FModuleManager::Get().LoadModule(TEXT("EnvironmentQueryEditor"));
-	}
-
-	// We need this for blueprint projects that have online functionality.
-	//FModuleManager::Get().LoadModule(TEXT("OnlineBlueprintSupport"));
 
 	if (IsRunningCommandlet())
 	{
@@ -3955,9 +3945,6 @@ int32 FEngineLoop::Init()
 	}
 
 	// Call init callbacks
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	UEngine::OnPostEngineInit.Broadcast();
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	FCoreDelegates::OnPostEngineInit.Broadcast();
 
 	SlowTask.EnterProgressFrame(30);
@@ -4761,12 +4748,12 @@ void FEngineLoop::Tick()
 #endif //WITH_EDITOR
 
 			if( WorldToScale != nullptr )
-		{
-				if( GNewWorldToMetersScale != WorldToScale->GetWorldSettings()->WorldToMeters )
 			{
+				if( GNewWorldToMetersScale != WorldToScale->GetWorldSettings()->WorldToMeters )
+				{
 					WorldToScale->GetWorldSettings()->WorldToMeters = GNewWorldToMetersScale;
+				}
 			}
-		}
 
 			GNewWorldToMetersScale = 0.0f;
 		}
