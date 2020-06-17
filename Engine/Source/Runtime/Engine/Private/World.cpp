@@ -3021,8 +3021,6 @@ UWorld* UWorld::GetDuplicatedWorldForPIE(UWorld* InWorld, UPackage* InPIEackage,
 	FObjectDuplicationParameters Parameters(InWorld, InPIEackage);
 	Parameters.DestName = InWorld->GetFName();
 	Parameters.DestClass = InWorld->GetClass();
-	Parameters.FlagMask = RF_AllFlags;
-	Parameters.InternalFlagMask = EInternalObjectFlags::AllFlags;
 	Parameters.DuplicateMode = EDuplicateMode::PIE;
 	Parameters.PortFlags = PPF_DuplicateForPIE;
 
@@ -7418,8 +7416,6 @@ static ULevel* DuplicateLevelWithPrefix(ULevel* InLevel, int32 InstanceID )
 		
 	Parameters.DestName			= InLevel->GetFName();
 	Parameters.DestClass		= InLevel->GetClass();
-	Parameters.FlagMask			= RF_AllFlags;
-	Parameters.InternalFlagMask = EInternalObjectFlags::AllFlags;
 	Parameters.PortFlags		= PPF_DuplicateForPIE;
 	Parameters.DuplicateMode	= EDuplicateMode::PIE;
 

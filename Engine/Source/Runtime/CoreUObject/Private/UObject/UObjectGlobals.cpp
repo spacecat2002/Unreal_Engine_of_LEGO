@@ -1985,7 +1985,7 @@ UObject* StaticDuplicateObject(UObject const* SourceObject, UObject* DestOuter, 
 	{
 		Parameters.DestClass = DestClass;
 	}
-	// do not allow duplication of the Mark flags nor the OverriddenPackage flag
+	// do not allow duplication of the Mark flags nor the HasExternalPackage flag
 	Parameters.FlagMask = FlagMask & ~(RF_MarkAsRootSet | RF_MarkAsNative | RF_HasExternalPackage);
 	Parameters.InternalFlagMask = InternalFlagsMask;
 	Parameters.DuplicateMode = DuplicateMode;
@@ -2011,11 +2011,15 @@ UObject* StaticDuplicateObjectEx( FObjectDuplicationParameters& Parameters )
 
 	if( !GIsDuplicatingClassForReinstancing )
 	{
-	// make sure we are not duplicating RF_RootSet as this flag is special
-	// also make sure we are not duplicating the RF_ClassDefaultObject flag as this can only be set on the real CDO
+		// make sure we are not duplicating RF_RootSet as this flag is special
+		// also make sure we are not duplicating the RF_ClassDefaultObject flag as this can only be set on the real CDO
 		Parameters.FlagMask &= ~RF_ClassDefaultObject;
 		Parameters.InternalFlagMask &= ~EInternalObjectFlags::RootSet;
 	}
+
+	// do not allow duplication of the Mark flags nor the HasExternalPackage flag in case the default flag mask was changed
+	Parameters.FlagMask &= ~(RF_MarkAsRootSet | RF_MarkAsNative | RF_HasExternalPackage);
+
 
 	// disable object and component instancing while we're duplicating objects, as we're going to instance components manually a little further below
 	InstanceGraph.EnableSubobjectInstancing(false);
