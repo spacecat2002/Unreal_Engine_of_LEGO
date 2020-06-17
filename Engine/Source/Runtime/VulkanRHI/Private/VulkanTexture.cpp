@@ -290,6 +290,8 @@ void FVulkanSurface::GenerateImageCreateInfo(
 		}
 		else
 		{
+			// Remove MUTABLE_BIT to enable compression on Mobile Vulkan (QCOM 835)
+			// @todo: Need a long term fix for this.
 			ImageCreateInfo.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
 		}
 
@@ -342,6 +344,8 @@ void FVulkanSurface::GenerateImageCreateInfo(
 
 	if (UEFlags & TexCreate_UAV)
 	{
+		//cannot have the storage bit on a memoryless texture
+		ensure((UEFlags & TexCreate_Memoryless) == 0);
 		ImageCreateInfo.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
 	}
 
@@ -585,6 +589,10 @@ FVulkanSurface::FVulkanSurface(FVulkanDevice& InDevice, VkImageViewType Resource
 		&StorageFormat, &ViewFormat);
 
 	VERIFYVULKANRESULT(VulkanRHI::vkCreateImage(InDevice.GetInstanceHandle(), &ImageCreateInfo.ImageCreateInfo, VULKAN_CPU_ALLOCATOR, &Image));
+
+	// forcing new textures's layouts to be undefined in the map, temp fix
+	VkImageLayout& Layout = Device->GetImmediateContext().GetTransitionAndLayoutManager().FindOrAddLayoutRW(Image, VK_IMAGE_LAYOUT_UNDEFINED);
+	Layout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 	// Fetch image size
 	VulkanRHI::vkGetImageMemoryRequirements(InDevice.GetInstanceHandle(), Image, &MemoryRequirements);

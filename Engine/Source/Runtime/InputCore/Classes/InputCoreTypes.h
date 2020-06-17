@@ -635,7 +635,6 @@ struct INPUTCORE_API EKeys
 	static const FKey ValveIndex_Left_B_Touch;
 	static const FKey ValveIndex_Left_System_Click;
 	static const FKey ValveIndex_Left_System_Touch;
-	static const FKey ValveIndex_Left_Grip_Click;
 	static const FKey ValveIndex_Left_Grip_Axis;
 	static const FKey ValveIndex_Left_Grip_Force;
 	static const FKey ValveIndex_Left_Trigger_Click;
@@ -651,7 +650,6 @@ struct INPUTCORE_API EKeys
 	static const FKey ValveIndex_Left_Thumbstick_Right;
 	static const FKey ValveIndex_Left_Trackpad_X;
 	static const FKey ValveIndex_Left_Trackpad_Y;
-	static const FKey ValveIndex_Left_Trackpad_Click;
 	static const FKey ValveIndex_Left_Trackpad_Force;
 	static const FKey ValveIndex_Left_Trackpad_Touch;
 	static const FKey ValveIndex_Left_Trackpad_Up;
@@ -664,7 +662,6 @@ struct INPUTCORE_API EKeys
 	static const FKey ValveIndex_Right_B_Touch;
 	static const FKey ValveIndex_Right_System_Click;
 	static const FKey ValveIndex_Right_System_Touch;
-	static const FKey ValveIndex_Right_Grip_Click;
 	static const FKey ValveIndex_Right_Grip_Axis;
 	static const FKey ValveIndex_Right_Grip_Force;
 	static const FKey ValveIndex_Right_Trigger_Click;
@@ -680,7 +677,6 @@ struct INPUTCORE_API EKeys
 	static const FKey ValveIndex_Right_Thumbstick_Right;
 	static const FKey ValveIndex_Right_Trackpad_X;
 	static const FKey ValveIndex_Right_Trackpad_Y;
-	static const FKey ValveIndex_Right_Trackpad_Click;
 	static const FKey ValveIndex_Right_Trackpad_Force;
 	static const FKey ValveIndex_Right_Trackpad_Touch;
 	static const FKey ValveIndex_Right_Trackpad_Up;

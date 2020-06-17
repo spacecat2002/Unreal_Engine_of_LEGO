@@ -46,6 +46,8 @@ public:
 
 	/** \see UARBlueprintLibrary::GetTrackingQuality() */
 	EARTrackingQuality GetTrackingQuality() const;
+	/** \see UARBlueprintLibrary::GetTrackingQualityReason() */
+	EARTrackingQualityReason GetTrackingQualityReason() const;
 	/** \see UARBlueprintLibrary::StartARSession() */
 	void StartARSession(UARSessionConfig* InSessionConfig);
 	/** \see UARBlueprintLibrary::PauseARSession() */
@@ -120,6 +122,9 @@ public:
 	
 	/** \see UARBlueprintLibrary::GetPersonSegmentationDepthImage() */
 	UARTextureCameraImage* GetPersonSegmentationDepthImage() const;
+	
+	/** \see UARBlueprintLibrary::IsSceneReconstructionSupported() */
+	bool IsSceneReconstructionSupported(EARSessionType SessionType, EARSceneReconstruction SceneReconstructionMethod) const;
 
 	//~ FGCObject
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;

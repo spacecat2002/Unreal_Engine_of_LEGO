@@ -62,6 +62,8 @@
 #include <sstream>
 #include "HandMeshObserver.h"
 
+#include <winrt/Windows.UI.ViewManagement.h>
+
 //https://docs.microsoft.com/en-us/cpp/preprocessor/predefined-macros?view=vs-2019
 //_M_ARM64 Defined as 1 for compilations that target 64-bit ARM processors. Otherwise, undefined.
 #if !PLATFORM_HOLOLENS || (PLATFORM_HOLOLENS && defined(_M_ARM64))
@@ -177,6 +179,8 @@ namespace WindowsMixedReality
 	std::shared_ptr<HolographicCameraResources> PVCameraResources = nullptr;
 	std::recursive_mutex CameraResourcesLock;
 	std::mutex StageLock;
+
+	bool isThirdCameraActive = false;
 
 	// Hidden Area Mesh
 	std::vector<DirectX::XMFLOAT2> hiddenMesh[2];
@@ -297,6 +301,7 @@ namespace WindowsMixedReality
     winrt::Microsoft::Holographic::AppRemoting::IRemoteContext::OnConnected_revoker m_onConnectedEventRevoker;
     winrt::Microsoft::Holographic::AppRemoting::IRemoteContext::OnDisconnected_revoker m_onDisconnectedEventRevoker;
     winrt::Microsoft::Holographic::AppRemoting::IRemoteSpeech::OnRecognizedSpeech_revoker m_onRecognizedSpeechRevoker;
+	winrt::Microsoft::Holographic::AppRemoting::IRemoteContext::OnListening_revoker m_onListeningEventRevoker;
 	
 	// HoloLens 1 Remoting
 	Microsoft::Holographic::HolographicStreamerHelpers^ m_streamerHelpers;
@@ -1009,6 +1014,7 @@ namespace WindowsMixedReality
 		else if (kind == HolographicViewConfigurationKind::PhotoVideoCamera)
 		{
 			PVCameraResources = std::make_shared<HolographicCameraResources>(Camera);
+			isThirdCameraActive = true;
 		}
 
 		// Switch near and far planes for the camera to match Unreal's reverse-z projection.
@@ -1041,6 +1047,7 @@ namespace WindowsMixedReality
 		}
 		else if (kind == HolographicViewConfigurationKind::PhotoVideoCamera)
 		{
+			isThirdCameraActive = false;
 			if (PVCameraResources == nullptr)
 			{
 				return;
@@ -1303,6 +1310,12 @@ namespace WindowsMixedReality
 		{
 			OnLocatabilityChanged(sender, args);
 		});
+		
+		// Broadcast initial tracking state after setting LocatabilityChanged.
+		if (OnTrackingChanged != nullptr)
+		{
+			OnTrackingChanged(HMDSpatialLocatability(Locator.Locatability()));
+		}
 
 		CameraAddedToken = holographicSpace.CameraAdded(
 			[=](const HolographicSpace & sender, const HolographicSpaceCameraAddedEventArgs & args)
@@ -2219,7 +2232,7 @@ namespace WindowsMixedReality
 			CameraResources->GetBackBufferTexture());
 
 		// Copy third camera texture to PVCameraResources backbuffer.
-		if (IsThirdCameraActive() && PVCameraResources != nullptr)
+		if (IsThirdCameraActive() && PVCameraResources != nullptr && PVCameraResources->GetBackBufferTexture())
 		{
 			int w, h;
 			GetThirdCameraDimensions(w, h);
@@ -3233,12 +3246,13 @@ namespace WindowsMixedReality
 			return;
 		}
 
+#if !HOLO_STREAMING_RENDERING
 		speechRecognizerMap[id]->StartSpeechRecognizer();
-
-#if HOLO_STREAMING_RENDERING
+#else
 		if (m_remoteContext == nullptr 
 			|| remoteSpeech == nullptr)
 		{
+			speechRecognizerMap[id]->StartSpeechRecognizer();
 			return;
 		}
 
@@ -3500,18 +3514,6 @@ namespace WindowsMixedReality
 		gestureRecognizerIndex++;
 	}
 
-	void CreateSpatialRecognizers()
-	{
-		interactionManager = SpatialInteractionManager::GetForCurrentView();
-		{
-			std::lock_guard<std::mutex> lock(gestureRecognizerLock);
-			for (auto&& p : gestureRecognizerMap)
-			{
-				p.second->Init(m_isHL1Remoting);
-			}
-		}
-	}
-
 	void ReleaseSpatialRecognizers()
 	{
 		{
@@ -3651,7 +3653,23 @@ namespace WindowsMixedReality
 		return HMDRemotingConnectionState::Unknown;
 	}
 
-	void MixedRealityInterop::ConnectToRemoteHoloLens(ID3D11Device* device, const wchar_t * ip, int bitrate, bool IsHoloLens1)
+#if HOLO_STREAMING_RENDERING
+	void ReportConnectionStatus(MixedRealityInterop::ConnectionEvent status)
+	{
+		std::map<uint32_t, MixedRealityInterop::ConnectionCallback > copyOfMap;
+		{
+			std::lock_guard<std::recursive_mutex> lock(WindowsMixedReality::ConnectionHandlerLock);
+			copyOfMap = WindowsMixedReality::ConnectionHandlerMap;
+		}
+
+		for (auto p : copyOfMap)
+		{
+			p.second(status);
+		}
+	}
+#endif
+
+	void MixedRealityInterop::ConnectToRemoteHoloLens(ID3D11Device* device, const wchar_t * ip, int bitrate, bool IsHoloLens1, int port, bool listen)
 	{
 #if HOLO_STREAMING_RENDERING
 		if (IsHoloLens1)
@@ -3663,7 +3681,7 @@ namespace WindowsMixedReality
 			{ std::wstringstream string; string << L"ConnectToRemoteHoloLens trying to connect to HoloLens2 " << ip; Log(string); }
 		}
 		
-		if (m_remoteContext != nullptr || m_streamerHelpers != nullptr)
+		if (m_streamerHelpers != nullptr)
 		{
 			// We are already connected to the remote device.
 			Log(L"ConnectToRemoteHoloLens: Already connected. Doing nothing.");
@@ -3701,7 +3719,7 @@ namespace WindowsMixedReality
 						->QueryInterface(winrt::guid_of<HolographicSpace>(),
 							reinterpret_cast<void**>(winrt::put_abi(holographicSpace))));
 
-					CreateSpatialRecognizers();
+					SetInteractionManagerForCurrentView();
 
 					CreateSpatialAnchorHelper(*this);
 				});
@@ -3710,19 +3728,7 @@ namespace WindowsMixedReality
 				RemotingDisconnectedEvent = ref new Microsoft::Holographic::DisconnectedEvent(
 					[this](_In_ Microsoft::Holographic::HolographicStreamerConnectionFailureReason failureReason)
 				{
-					DisconnectFromDevice();
-					{
-						std::map<uint32_t, ConnectionCallback > copyOfMap;
-						{
-							std::lock_guard<std::recursive_mutex> lock(ConnectionHandlerLock);
-							copyOfMap = ConnectionHandlerMap;
-						}
-
-						for (auto p : copyOfMap)
-						{
-							p.second(MixedRealityInterop::ConnectionEvent::DisconnectedFromPeer);
-						}
-					}
+					ReportConnectionStatus(MixedRealityInterop::ConnectionEvent::DisconnectedFromPeer);
 					
 					remotingState = HMDRemotingConnectionState::Disconnected;
 				});
@@ -3744,84 +3750,98 @@ namespace WindowsMixedReality
 			
 			// Do not use WMR api's before this call when remoting or you may get access to local machine WMR instead.
 			std::lock_guard<std::mutex> remoteLock(remoteContextLock);
-			m_remoteContext = winrt::Microsoft::Holographic::AppRemoting::RemoteContext::Create(bitrate, true, winrt::Microsoft::Holographic::AppRemoting::PreferredVideoCodec::Any);
+			if (m_remoteContext == nullptr)
 			{
-				holographicSpace = HolographicSpace::CreateForCoreWindow(nullptr);
-				isRemoteHolographicSpace = true;
-
-				// Initialize now so remote holographic space has a valid graphics device before we try to connect.
-				Initialize(device);
-			}
-
-			m_onConnectedEventRevoker = m_remoteContext.OnConnected(winrt::auto_revoke, [this]() 
-			{
-				Log(L"ConnectToRemoteHoloLens: Connect Succeeded.");
-
-				CreateSpatialRecognizers();
-
-				assert(Locator != nullptr); // bug in Hololens platform cannot initialize the spatial anchor store before the Locator is created.
-				CreateSpatialAnchorHelper(*this);
-				
-				RequestUserPermissionForEyeTracking();
-			});
-
-
-			m_onDisconnectedEventRevoker =
-				m_remoteContext.OnDisconnected(winrt::auto_revoke, [this](winrt::Microsoft::Holographic::AppRemoting::ConnectionFailureReason failureReason) 
-			{
-				const wchar_t ConnectFailureReasonString[static_cast<int32>(winrt::Microsoft::Holographic::AppRemoting::ConnectionFailureReason::DisconnectRequest) + 1][32] =
+				//we can reuse the context in case of reconnecting
+				m_remoteContext = winrt::Microsoft::Holographic::AppRemoting::RemoteContext::Create(bitrate, true, winrt::Microsoft::Holographic::AppRemoting::PreferredVideoCodec::Any);
 				{
-					L"None",
-					L"Unknown",
-					L"NoServerCertificate",
-					L"HandshakePortBusy",
-					L"HandshakeUnreachable",
-					L"HandshakeConnectionFailed",
-					L"AuthenticationFailed",
-					L"RemotingVersionMismatch",
-					L"IncompatibleTransportProtocols",
-					L"HandshakeFailed",
-					L"TransportPortBusy",
-					L"TransportUnreachable",
-					L"TransportConnectionFailed",
-					L"ProtocolVersionMismatch",
-					L"ProtocolError",
-					L"VideoCodecNotAvailable",
-					L"Canceled",
-					L"ConnectionLost",
-					L"DeviceLost",
-					L"DisconnectRequest"
-				}; 
+					holographicSpace = HolographicSpace::CreateForCoreWindow(nullptr);
+					isRemoteHolographicSpace = true;
 
-				{ std::wstringstream string; string << L"RemotingDisconnectedEvent: Reason: " << static_cast<int>(failureReason) << " " << ConnectFailureReasonString[static_cast<int32>(failureReason)]; Log(string); }
-
-				DisconnectFromDevice();
-				{
-					std::map<uint32_t, ConnectionCallback > copyOfMap;
-					{
-						std::lock_guard<std::recursive_mutex> lock(ConnectionHandlerLock);
-						copyOfMap = ConnectionHandlerMap;
-					}
-
-					for (auto p : copyOfMap)
-					{
-						p.second(MixedRealityInterop::ConnectionEvent::DisconnectedFromPeer);
-					}
+					// Initialize now so remote holographic space has a valid graphics device before we try to connect.
+					Initialize(device);
 				}
-			});
 
-			remoteSpeech = m_remoteContext.GetRemoteSpeech();
+				m_onConnectedEventRevoker = m_remoteContext.OnConnected(winrt::auto_revoke, [this]() 
+				{
+					Log(L"ConnectToRemoteHoloLens: Connect Succeeded.");
 
-			try
-			{
-				m_remoteContext.Connect(m_ip, 8265);
+					SetInteractionManagerForCurrentView();
+
+					assert(Locator != nullptr); // bug in Hololens platform cannot initialize the spatial anchor store before the Locator is created.
+					CreateSpatialAnchorHelper(*this);
+					
+					RequestUserPermissionForEyeTracking();
+					ReportConnectionStatus(MixedRealityInterop::ConnectionEvent::Connected);
+				});
+
+				m_onListeningEventRevoker = m_remoteContext.OnListening(winrt::auto_revoke, [this](uint16_t port)
+				{
+					ReportConnectionStatus(MixedRealityInterop::ConnectionEvent::Listening);
+				});
+
+				m_onDisconnectedEventRevoker =
+					m_remoteContext.OnDisconnected(winrt::auto_revoke, [this](winrt::Microsoft::Holographic::AppRemoting::ConnectionFailureReason failureReason) 
+				{
+					const wchar_t ConnectFailureReasonString[static_cast<int32>(winrt::Microsoft::Holographic::AppRemoting::ConnectionFailureReason::DisconnectRequest) + 1][32] =
+					{
+						L"None",
+						L"Unknown",
+						L"NoServerCertificate",
+						L"HandshakePortBusy",
+						L"HandshakeUnreachable",
+						L"HandshakeConnectionFailed",
+						L"AuthenticationFailed",
+						L"RemotingVersionMismatch",
+						L"IncompatibleTransportProtocols",
+						L"HandshakeFailed",
+						L"TransportPortBusy",
+						L"TransportUnreachable",
+						L"TransportConnectionFailed",
+						L"ProtocolVersionMismatch",
+						L"ProtocolError",
+						L"VideoCodecNotAvailable",
+						L"Canceled",
+						L"ConnectionLost",
+						L"DeviceLost",
+						L"DisconnectRequest"
+					}; 
+
+					{ std::wstringstream string; string << L"RemotingDisconnectedEvent: Reason: " << static_cast<int>(failureReason) << " " << ConnectFailureReasonString[static_cast<int32>(failureReason)]; Log(string); }
+
+					ReportConnectionStatus(MixedRealityInterop::ConnectionEvent::DisconnectedFromPeer);
+				});
+
+				remoteSpeech = m_remoteContext.GetRemoteSpeech();
 			}
-			catch (winrt::hresult_error const& error)
+			
+			if (listen)
 			{
-				{ std::wstringstream string; string << L"ConnectToRemoteHoloLens: Connect Failed " << error.message().c_str(); Log(string); }
-				OutputDebugString(L"Connect failed. ");
-				OutputDebugString(error.message().c_str());
-				OutputDebugString(L"\n");
+				try
+				{
+					m_remoteContext.Listen(m_ip, port, port + 1);
+				}
+				catch (winrt::hresult_error const& error)
+				{
+					{ std::wstringstream string; string << L"ConnectToRemoteHoloLens: Listen Failed " << error.message().c_str(); Log(string); }
+					OutputDebugString(L"Listen failed. ");
+					OutputDebugString(error.message().c_str());
+					OutputDebugString(L"\n");
+				}
+			}
+			else
+			{
+				try
+				{
+					m_remoteContext.Connect(m_ip, port);
+				}
+				catch (winrt::hresult_error const& error)
+				{
+					{ std::wstringstream string; string << L"ConnectToRemoteHoloLens: Connect Failed " << error.message().c_str(); Log(string); }
+					OutputDebugString(L"Connect failed. ");
+					OutputDebugString(error.message().c_str());
+					OutputDebugString(L"\n");
+				}
 			}
 		}
 #endif
@@ -3947,6 +3967,7 @@ namespace WindowsMixedReality
 			m_onConnectedEventRevoker.revoke();
 			m_onDisconnectedEventRevoker.revoke();
 			m_onRecognizedSpeechRevoker.revoke();
+			m_onListeningEventRevoker.revoke();
 
 			{
 				std::lock_guard<std::mutex> remoteLock(remoteContextLock);
@@ -4095,8 +4116,37 @@ namespace WindowsMixedReality
 	{
 		StopQRCodeObserver();
 	}
+	
+	bool MixedRealityInterop::ShowSystemKeyboard()
+	{
+		try
+		{
+			auto inputPane{ winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView() };
+			return inputPane.TryShow();
+		}
+		catch (winrt::hresult_error const&)
+		{
+			return false;
+		}
 
-	bool isThirdCameraActive = false;
+		return false;
+	}
+
+	bool MixedRealityInterop::HideSystemKeyboard()
+	{
+		try
+		{
+			auto inputPane{ winrt::Windows::UI::ViewManagement::InputPane::GetForCurrentView() };
+			return inputPane.TryHide();
+		}
+		catch (winrt::hresult_error const&) 
+		{
+			return false;
+		}
+
+		return false;
+	}
+
 	bool MixedRealityInterop::IsThirdCameraActive()
 	{
 		return isThirdCameraActive;
@@ -4117,17 +4167,15 @@ namespace WindowsMixedReality
 		return true;
 	}
 
-	int thirdCameraWidth = 0;
-	int thirdCameraHeight = 0;
 	bool MixedRealityInterop::SetEnabledMixedRealityCamera(bool enabled)
 	{
-		// Reset dimensions
-		if (!enabled)
+		if (!IsInitialized() || IsRemoting())
 		{
-			thirdCameraWidth = 0;
-			thirdCameraHeight = 0;
+			//remoting may has no default display in some time
+			isThirdCameraActive = false;
+			return false;
 		}
-
+		
 		auto view = HolographicDisplay::GetDefault().TryGetViewConfiguration(HolographicViewConfigurationKind::PhotoVideoCamera);
 		if (!view)
 		{
@@ -4136,17 +4184,19 @@ namespace WindowsMixedReality
 		}
 
 		view.IsEnabled(enabled);
-		isThirdCameraActive = enabled;
 		return true;
 	}
 
 	bool MixedRealityInterop::ResizeMixedRealityCamera(SIZE& sz)
 	{
+		if (!IsInitialized() || IsRemoting())
+		{
+			return false;
+		}
+		
 		auto view = HolographicDisplay::GetDefault().TryGetViewConfiguration(HolographicViewConfigurationKind::PhotoVideoCamera);
 		if (!view)
 		{
-			thirdCameraWidth = 0;
-			thirdCameraHeight = 0;
 			return false;
 		}
 
@@ -4157,16 +4207,22 @@ namespace WindowsMixedReality
 		sz.cx = (LONG)newSize.Width;
 		sz.cy = (LONG)newSize.Height;
 
-		thirdCameraWidth = (int)sz.cx;
-		thirdCameraHeight = (int)sz.cy;
-
 		return true;
 	}
 
 	void MixedRealityInterop::GetThirdCameraDimensions(int& width, int& height)
 	{
-		width = thirdCameraWidth;
-		height = thirdCameraHeight;
+		width = 0;
+		height = 0;
+		if (PVCameraResources == nullptr)
+		{
+			return;
+		}
+
+		auto sz = PVCameraResources->GetRenderTargetSize();
+
+		width = (int)sz.Width;
+		height = (int)sz.Height;
 	}
 }
 
@@ -4222,8 +4278,7 @@ namespace WindowsMixedReality
 			return;
 		}
 
-		MeshUpdateObserver& Instance = MeshUpdateObserver::Get();
-		Instance.Release();
+		MeshUpdateObserver::Release();
 #endif
 	}
 }

@@ -76,6 +76,15 @@ EARTrackingQuality FARSupportInterface ::GetTrackingQuality() const
 	return EARTrackingQuality::NotTracking;
 }
 
+EARTrackingQualityReason FARSupportInterface::GetTrackingQualityReason() const
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->OnGetTrackingQualityReason();
+	}
+	return EARTrackingQualityReason::None;
+}
+
 void FARSupportInterface ::StartARSession(UARSessionConfig* InSessionConfig)
 {
 	if (ARImplemention)
@@ -357,6 +366,15 @@ UARTextureCameraImage* FARSupportInterface::GetPersonSegmentationDepthImage() co
 		return ARImplemention->OnGetPersonSegmentationDepthImage();
 	}
 	return nullptr;
+}
+
+bool FARSupportInterface::IsSceneReconstructionSupported(EARSessionType SessionType, EARSceneReconstruction SceneReconstructionMethod) const
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->OnIsSceneReconstructionSupported(SessionType, SceneReconstructionMethod);
+	}
+	return false;
 }
 
 #define DEFINE_AR_SI_DELEGATE_FUNCS(DelegateName) \
