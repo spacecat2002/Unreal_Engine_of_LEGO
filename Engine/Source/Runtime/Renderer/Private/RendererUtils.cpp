@@ -69,14 +69,6 @@ void FRenderTargetWriteMask::Decode(FRHICommandListImmediate& RHICmdList, FGloba
 	static_assert(NumRenderTargets == 1 || NumRenderTargets == 3, TEXT("FRenderTargetWriteMask::Decode only supports 1 or 3 render targets"));
 	check(RHISupportsRenderTargetWriteMask(GMaxRHIShaderPlatform));
 
-	// Do a metadata transition on all the input textures
-	FRHITexture* Textures[NumRenderTargets];
-	for (int32 Index = 0; Index < NumRenderTargets; ++Index)
-	{
-		Textures[Index] = InRenderTargets[Index]->GetRenderTargetItem().ShaderResourceTexture;
-	}
-	RHICmdList.TransitionResources(EResourceTransitionAccess::EMetaData, Textures, UE_ARRAY_COUNT(Textures));
-
 	const uint32 MaskTileSizeX = 8;
 	const uint32 MaskTileSizeY = 8;
 
@@ -91,7 +83,7 @@ void FRenderTargetWriteMask::Decode(FRHICommandListImmediate& RHICmdList, FGloba
 		NumRenderTargets <= 2 ? PF_R8_UINT : PF_R16_UINT,
 		FClearValueBinding::None,
 		TexCreate_None | RTWriteMaskFastVRamConfig,
-		TexCreate_UAV | TexCreate_RenderTargetable,
+		TexCreate_UAV | TexCreate_RenderTargetable | TexCreate_ShaderResource,
 		false,
 		1,
 		false));
@@ -101,7 +93,25 @@ void FRenderTargetWriteMask::Decode(FRHICommandListImmediate& RHICmdList, FGloba
 #endif
 
 	GRenderTargetPool.FindFreeElement(RHICmdList, MaskDesc, OutRTWriteMask, RTWriteMaskDebugName);
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToCompute, OutRTWriteMask->GetRenderTargetItem().UAV);
+	
+	// Do a metadata transition on all the input textures
+	FRHITransitionInfo TransitionInfos[NumRenderTargets + 1];
+	for (int32 Index = 0; Index < NumRenderTargets; ++Index)
+	{
+		TransitionInfos[Index] = FRHITransitionInfo(
+			InRenderTargets[Index]->GetRenderTargetItem().ShaderResourceTexture,
+			ERHIAccess::Unknown,
+			ERHIAccess::SRVCompute,
+			EResourceTransitionFlags::MaintainCompression
+		);
+	}
+
+	TransitionInfos[NumRenderTargets] = FRHITransitionInfo(
+		OutRTWriteMask->GetRenderTargetItem().TargetableTexture,
+		ERHIAccess::Unknown,
+		ERHIAccess::UAVCompute);
+
+	RHICmdList.Transition(TransitionInfos);
 
 	// Retrieve the platform specific data that the decode shader needs
 	void* PlatformDataPtr = nullptr;
@@ -126,7 +136,7 @@ void FRenderTargetWriteMask::Decode(FRHICommandListImmediate& RHICmdList, FGloba
 		FMath::DivideAndRoundUp((uint32)RTWriteMaskDims.Y, FRTWriteMaskDecodeCS::ThreadGroupSizeY),
 		1);
 
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, OutRTWriteMask->GetRenderTargetItem().UAV);
+	RHICmdList.Transition(FRHITransitionInfo(OutRTWriteMask->GetRenderTargetItem().TargetableTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVMask));
 }
 
 template RENDERER_API void FRenderTargetWriteMask::Decode<1>(FRHICommandListImmediate&, FGlobalShaderMap*, IPooledRenderTarget*[1], TRefCountPtr<IPooledRenderTarget>&, uint32, const TCHAR*);

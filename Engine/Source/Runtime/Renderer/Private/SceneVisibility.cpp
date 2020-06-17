@@ -2033,23 +2033,23 @@ struct FRelevancePacket
 				{
 					if (ViewRelevance.bNormalTranslucency)
 					{
-						TranslucentPrimCount.Add(ETranslucencyPass::TPT_StandardTranslucency, ViewRelevance.bUsesSceneColorCopy, ViewRelevance.bDisableOffscreenRendering);
+						TranslucentPrimCount.Add(ETranslucencyPass::TPT_StandardTranslucency, ViewRelevance.bUsesSceneColorCopy);
 					}
 
 					if (ViewRelevance.bSeparateTranslucency)
 					{
-						TranslucentPrimCount.Add(ETranslucencyPass::TPT_TranslucencyAfterDOF, ViewRelevance.bUsesSceneColorCopy, ViewRelevance.bDisableOffscreenRendering);
+						TranslucentPrimCount.Add(ETranslucencyPass::TPT_TranslucencyAfterDOF, ViewRelevance.bUsesSceneColorCopy);
 					}
 
 					if (ViewRelevance.bSeparateTranslucencyModulate)
 					{
-						TranslucentPrimCount.Add(ETranslucencyPass::TPT_TranslucencyAfterDOFModulate, ViewRelevance.bUsesSceneColorCopy, ViewRelevance.bDisableOffscreenRendering);
+						TranslucentPrimCount.Add(ETranslucencyPass::TPT_TranslucencyAfterDOFModulate, ViewRelevance.bUsesSceneColorCopy);
 					}
 				}
 				else // Otherwise, everything is rendered in a single bucket. This is not related to whether DOF is currently enabled or not.
 				{
 					// When using all translucency, Standard and AfterDOF are sorted together instead of being rendered like 2 buckets.
-					TranslucentPrimCount.Add(ETranslucencyPass::TPT_AllTranslucency, ViewRelevance.bUsesSceneColorCopy, ViewRelevance.bDisableOffscreenRendering);
+					TranslucentPrimCount.Add(ETranslucencyPass::TPT_AllTranslucency, ViewRelevance.bUsesSceneColorCopy);
 				}
 
 				if (ViewRelevance.bDistortion)
@@ -3985,23 +3985,7 @@ void FSceneRenderer::PostVisibilityFrameSetup(FILCUpdatePrimTaskData& OutILCTask
 		}
 	}
 
-	bool bCheckLightShafts = false;
-	if (Scene->GetFeatureLevel() <= ERHIFeatureLevel::ES3_1)
-	{
-		// Clear the mobile light shaft data.
-		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
-		{		
-			FViewInfo& View = Views[ViewIndex];
-			View.bLightShaftUse = false;
-			View.LightShaftCenter.X = 0.0f;
-			View.LightShaftCenter.Y = 0.0f;
-			View.LightShaftColorMask = FLinearColor(0.0f,0.0f,0.0f);
-			View.LightShaftColorApply = FLinearColor(0.0f,0.0f,0.0f);
-		}
-		
-		extern int32 GLightShafts;
-		bCheckLightShafts = ViewFamily.EngineShowFlags.LightShafts && GLightShafts;
-	}
+	const bool bSetupMobileLightShafts = FeatureLevel <= ERHIFeatureLevel::ES3_1 && ShouldRenderLightShafts(ViewFamily);
 
 	if (ViewFamily.EngineShowFlags.HitProxies == 0 && Scene->PrecomputedLightVolumes.Num() > 0
 		&& GILCUpdatePrimTaskEnabled && FPlatformProcess::SupportsMultithreading())
@@ -4052,36 +4036,9 @@ void FSceneRenderer::PostVisibilityFrameSetup(FILCUpdatePrimTaskData& OutILCTask
 				VisibleLightViewInfo.bInViewFrustum = true;
 
 				// Setup single sun-shaft from direction lights for mobile.
-				if(bCheckLightShafts && LightSceneInfo->bEnableLightShaftBloom)
+				if (bSetupMobileLightShafts && LightSceneInfo->bEnableLightShaftBloom && ShouldRenderLightShaftsForLight(View, *LightSceneInfo->Proxy))
 				{
-					// Find directional light for sun shafts.
-					// Tweaked values from UE3 implementation.
-					extern const float PointLightFadeDistanceIncrease;
-					extern const float PointLightRadiusFadeFactor;
-
-					const FVector WorldSpaceBlurOrigin = LightSceneInfo->Proxy->GetPosition();
-					// Transform into post projection space
-					FVector4 ProjectedBlurOrigin = View.WorldToScreen(WorldSpaceBlurOrigin);
-
-					const float DistanceToBlurOrigin = (View.ViewMatrices.GetViewOrigin() - WorldSpaceBlurOrigin).Size() + PointLightFadeDistanceIncrease;
-
-					// Don't render if the light's origin is behind the view
-					if(ProjectedBlurOrigin.W >= 0.0f
-						// Don't render point lights that have completely faded out
-						&& (LightSceneInfo->Proxy->GetLightType() == LightType_Directional 
-							|| DistanceToBlurOrigin < LightSceneInfo->Proxy->GetRadius() * PointLightRadiusFadeFactor))
-					{
-						View.bLightShaftUse = true;
-						View.LightShaftCenter.X = ProjectedBlurOrigin.X / ProjectedBlurOrigin.W;
-						View.LightShaftCenter.Y = ProjectedBlurOrigin.Y / ProjectedBlurOrigin.W;
-						// TODO: Might want to hookup different colors for these.
-						View.LightShaftColorMask = LightSceneInfo->BloomTint;
-						View.LightShaftColorApply = LightSceneInfo->BloomTint;
-
-						// Apply bloom scale
-						View.LightShaftColorMask  *= FLinearColor(LightSceneInfo->BloomScale, LightSceneInfo->BloomScale, LightSceneInfo->BloomScale, 1.0f);
-						View.LightShaftColorApply *= FLinearColor(LightSceneInfo->BloomScale, LightSceneInfo->BloomScale, LightSceneInfo->BloomScale, 1.0f);
-					}
+					View.MobileLightShaft = GetMobileLightShaftInfo(View, *LightSceneInfo);
 				}
 			}
 
@@ -4405,7 +4362,7 @@ void FDeferredShadingSceneRenderer::InitViewsPossiblyAfterPrepass(FRHICommandLis
 		UpdatePrimitiveIndirectLightingCacheBuffers();
 	}
 
-	UpdateTranslucencyTimersAndSeparateTranslucencyBufferSize(RHICmdList);
+	SeparateTranslucencyDimensions = UpdateTranslucencyTimers(RHICmdList, Views);
 
 	SetupSceneReflectionCaptureBuffer(RHICmdList);
 }

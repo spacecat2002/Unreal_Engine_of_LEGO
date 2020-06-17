@@ -183,7 +183,7 @@ public:
 typedef TFunctionRef<void(FRHICommandList& RHICmdList, bool bFirst)> FBeginShadowRenderPassFunction;
 
 BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FShadowDepthPassUniformParameters,)
-	SHADER_PARAMETER_STRUCT(FSceneTexturesUniformParameters, SceneTextures)
+	SHADER_PARAMETER_STRUCT(FSceneTextureUniformParameters, SceneTextures)
 	SHADER_PARAMETER_STRUCT(FLpvWriteUniformBufferParameters, LPV)
 	SHADER_PARAMETER(FMatrix, ProjectionMatrix)
 	SHADER_PARAMETER(FMatrix, ViewMatrix)

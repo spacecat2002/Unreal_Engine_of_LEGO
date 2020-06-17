@@ -318,10 +318,6 @@ void FEmptyDynamicRHI::RHIClearMRT(bool bClearColor,int32 NumClearColors,const F
 
 }
 
-void FEmptyDynamicRHI::RHIBindClearMRTValues(bool bClearColor, bool bClearDepth, bool bClearStencil)
-{
-}
-
 void FEmptyDynamicRHI::RHIBlockUntilGPUIdle()
 {
 

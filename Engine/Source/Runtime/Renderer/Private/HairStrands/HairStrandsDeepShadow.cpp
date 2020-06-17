@@ -156,8 +156,8 @@ void RenderHairStrandsDeepShadows(
 
 		// Create Atlas resources for DOM. It is shared for all lights, across all views
 		bool bClear = true;
-		FRDGTextureRef FrontDepthAtlasTexture = GraphBuilder.CreateTexture(FPooledRenderTargetDesc::Create2DDesc(AtlasResolution, PF_DepthStencil, FClearValueBinding::DepthFar, TexCreate_None, TexCreate_DepthStencilTargetable | TexCreate_ShaderResource, false), TEXT("ShadowDepth"));
-		FRDGTextureRef DeepShadowLayersAtlasTexture = GraphBuilder.CreateTexture(FPooledRenderTargetDesc::Create2DDesc(AtlasResolution, PF_FloatRGBA, FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource, false), TEXT("DeepShadowLayers"));
+		FRDGTextureRef FrontDepthAtlasTexture = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(AtlasResolution, PF_DepthStencil, FClearValueBinding::DepthFar, TexCreate_DepthStencilTargetable | TexCreate_ShaderResource), TEXT("ShadowDepth"));
+		FRDGTextureRef DeepShadowLayersAtlasTexture = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(AtlasResolution, PF_FloatRGBA, FClearValueBinding::Transparent, TexCreate_RenderTargetable | TexCreate_ShaderResource), TEXT("DeepShadowLayers"));
 
 		// TODO add support for multiple view: need to deduplicate light which are visible accross several views
 		// Allocate atlas CPU slot
@@ -331,12 +331,12 @@ void RenderHairStrandsDeepShadows(
 
 		GraphBuilder.QueueTextureExtraction(FrontDepthAtlasTexture, &Resources.DepthAtlasTexture);
 		GraphBuilder.QueueTextureExtraction(DeepShadowLayersAtlasTexture, &Resources.LayersAtlasTexture);
-		GraphBuilder.QueueBufferExtraction(DeepShadowWorldToLightBuffer, &Resources.DeepShadowWorldToLightTransforms, FRDGResourceState::EAccess::Read, FRDGResourceState::EPipeline::Graphics);
+		GraphBuilder.QueueBufferExtraction(DeepShadowWorldToLightBuffer, &Resources.DeepShadowWorldToLightTransforms);
 		GraphBuilder.Execute();
 
 		if (Resources.DeepShadowWorldToLightTransforms)
 		{
-			Resources.DeepShadowWorldToLightTransformsSRV = RHICreateShaderResourceView(Resources.DeepShadowWorldToLightTransforms->StructuredBuffer);
+			Resources.DeepShadowWorldToLightTransformsSRV = RHICreateShaderResourceView(Resources.DeepShadowWorldToLightTransforms->GetStructuredBufferRHI());
 		}
 	}
 }

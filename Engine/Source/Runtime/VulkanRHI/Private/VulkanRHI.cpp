@@ -11,6 +11,7 @@
 #include "VulkanResources.h"
 #include "VulkanPendingState.h"
 #include "VulkanContext.h"
+#include "VulkanBarriers.h"
 #include "Misc/CommandLine.h"
 #include "GenericPlatform/GenericPlatformDriver.h"
 #include "Modules/ModuleManager.h"
@@ -95,20 +96,16 @@ FDynamicRHI* FVulkanDynamicRHIModule::CreateRHI(ERHIFeatureLevel::Type InRequest
 	check(GMaxRHIFeatureLevel != ERHIFeatureLevel::Num);
 
 	GVulkanRHI = new FVulkanDynamicRHI();
+	FDynamicRHI* FinalRHI = GVulkanRHI;
+
 #if ENABLE_RHI_VALIDATION
 	if (FParse::Param(FCommandLine::Get(), TEXT("RHIValidation")))
 	{
-		GValidationRHI = new FValidationRHI(GVulkanRHI);
+		FinalRHI = new FValidationRHI(FinalRHI);
 	}
-	else
-	{
-		check(!GValidationRHI);
-	}
-
-	return GValidationRHI ? (FDynamicRHI*)GValidationRHI : (FDynamicRHI*)GVulkanRHI;
-#else
-	return GVulkanRHI;
 #endif
+
+	return FinalRHI;
 }
 
 IMPLEMENT_MODULE(FVulkanDynamicRHIModule, VulkanRHI);
@@ -120,7 +117,6 @@ FVulkanCommandListContext::FVulkanCommandListContext(FVulkanDynamicRHI* InRHI, F
 	, Device(InDevice)
 	, Queue(InQueue)
 	, bSubmitAtNextSafePoint(false)
-	, bAutomaticFlushAfterComputeShader(true)
 	, UniformBufferUploader(nullptr)
 	, TempFrameAllocationBuffer(InDevice)
 	, CommandBufferManager(nullptr)
@@ -169,7 +165,7 @@ FVulkanCommandListContext::~FVulkanCommandListContext()
 	CommandBufferManager = nullptr;
 	GVulkanCommandBufferManager = nullptr;
 
-	TransitionAndLayoutManager.Destroy(*Device, Immediate ? &TransitionAndLayoutManager : nullptr);
+	LayoutManager.Destroy(*Device, Immediate ? &LayoutManager : nullptr);
 
 	delete UniformBufferUploader;
 	delete PendingGfxState;
@@ -197,6 +193,8 @@ FVulkanDynamicRHI::FVulkanDynamicRHI()
 	GPoolSizeVRAMPercentage = 0;
 	GTexturePoolSize = 0;
 	GRHISupportsMultithreading = true;
+	GRHITransitionPrivateData_SizeInBytes = sizeof(FVulkanPipelineBarrier);
+	GRHITransitionPrivateData_AlignInBytes = alignof(FVulkanPipelineBarrier);
 	GConfig->GetInt(TEXT("TextureStreaming"), TEXT("PoolSizeVRAMPercentage"), GPoolSizeVRAMPercentage, GEngineIni);
 }
 
@@ -782,8 +780,10 @@ void FVulkanDynamicRHI::InitInstance()
 
 #endif
 
-		GRHICommandList.GetImmediateCommandList().SetContext(RHIGetDefaultContext());
-		GRHICommandList.GetImmediateAsyncComputeCommandList().SetComputeContext(RHIGetDefaultAsyncComputeContext());
+		// Command lists need the validation RHI context if enabled, so call the global scope version of RHIGetDefaultContext() and RHIGetDefaultAsyncComputeContext().
+		GRHICommandList.GetImmediateCommandList().SetContext(::RHIGetDefaultContext());
+		GRHICommandList.GetImmediateAsyncComputeCommandList().SetComputeContext(::RHIGetDefaultAsyncComputeContext());
+
 		FRenderResource::InitPreRHIResources();
 		GIsRHIInitialized = true;
 	}
@@ -833,17 +833,7 @@ void FVulkanCommandListContext::RHIEndDrawingViewport(FRHIViewport* ViewportRHI,
 	RHI->Present();
 */
 	FVulkanCmdBuffer* CmdBuffer = CommandBufferManager->GetActiveCmdBuffer();
-	check(!CmdBuffer->HasEnded());
-	if (CmdBuffer->IsInsideRenderPass())
-	{
-		TransitionAndLayoutManager.EndEmulatedRenderPass(CmdBuffer);
-		if (GVulkanSubmitAfterEveryEndRenderPass)
-		{
-			CommandBufferManager->SubmitActiveCmdBuffer();
-			CommandBufferManager->PrepareForNewActiveCommandBuffer();
-			CmdBuffer = CommandBufferManager->GetActiveCmdBuffer();
-		}
-	}
+	check(!CmdBuffer->HasEnded() && !CmdBuffer->IsInsideRenderPass());
 
 	WriteEndTimestamp(CmdBuffer);
 
@@ -1618,66 +1608,6 @@ FVulkanRenderPass::~FVulkanRenderPass()
 
 	Device.GetDeferredDeletionQueue().EnqueueResource(FDeferredDeletionQueue::EType::RenderPass, RenderPass);
 	RenderPass = VK_NULL_HANDLE;
-}
-
-
-void VulkanSetImageLayout(
-	VkCommandBuffer CmdBuffer,
-	VkImage Image,
-	VkImageLayout OldLayout,
-	VkImageLayout NewLayout,
-	const VkImageSubresourceRange& SubresourceRange)
-{
-	VkImageMemoryBarrier ImageBarrier;
-	ZeroVulkanStruct(ImageBarrier, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER);
-	ImageBarrier.oldLayout = OldLayout;
-	ImageBarrier.newLayout = NewLayout;
-	ImageBarrier.image = Image;
-	ImageBarrier.subresourceRange = SubresourceRange;
-	ImageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	ImageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-
-	ImageBarrier.srcAccessMask = VulkanRHI::GetAccessMask(OldLayout);
-	ImageBarrier.dstAccessMask = VulkanRHI::GetAccessMask(NewLayout);
-
-	VkPipelineStageFlags SourceStages = VulkanRHI::GetStageFlags(OldLayout);
-	VkPipelineStageFlags DestStages = VulkanRHI::GetStageFlags(NewLayout);
-
-	VulkanRHI::vkCmdPipelineBarrier(CmdBuffer, SourceStages, DestStages, 0, 0, nullptr, 0, nullptr, 1, &ImageBarrier);
-}
-
-void VulkanResolveImage(VkCommandBuffer Cmd, FRHITexture* SourceTextureRHI, FRHITexture* DestTextureRHI)
-{
-	FVulkanTextureBase* Src = FVulkanTextureBase::Cast(SourceTextureRHI);
-	FVulkanTextureBase* Dst = FVulkanTextureBase::Cast(DestTextureRHI);
-
-	const VkImageAspectFlags AspectMask = Src->Surface.GetPartialAspectMask();
-	check(AspectMask == Dst->Surface.GetPartialAspectMask());
-
-	VkImageResolve ResolveDesc;
-	FMemory::Memzero(ResolveDesc);
-	ResolveDesc.srcSubresource.aspectMask = AspectMask;
-	ResolveDesc.srcSubresource.baseArrayLayer = 0;
-	ResolveDesc.srcSubresource.mipLevel = 0;
-	ResolveDesc.srcSubresource.layerCount = 1;
-	ResolveDesc.srcOffset.x = 0;
-	ResolveDesc.srcOffset.y = 0;
-	ResolveDesc.srcOffset.z = 0;
-	ResolveDesc.dstSubresource.aspectMask = AspectMask;
-	ResolveDesc.dstSubresource.baseArrayLayer = 0;
-	ResolveDesc.dstSubresource.mipLevel = 0;
-	ResolveDesc.dstSubresource.layerCount = 1;
-	ResolveDesc.dstOffset.x = 0;
-	ResolveDesc.dstOffset.y = 0;
-	ResolveDesc.dstOffset.z = 0;
-	ResolveDesc.extent.width = Src->Surface.Width;
-	ResolveDesc.extent.height = Src->Surface.Height;
-	ResolveDesc.extent.depth = 1;
-
-	VulkanRHI::vkCmdResolveImage(Cmd,
-		Src->Surface.Image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		Dst->Surface.Image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		1, &ResolveDesc);
 }
 
 FVulkanRingBuffer::FVulkanRingBuffer(FVulkanDevice* InDevice, uint64 TotalSize, VkFlags Usage, VkMemoryPropertyFlags MemPropertyFlags)

@@ -64,8 +64,11 @@ void InitNullRHI()
 
 	GDynamicRHI = DynamicRHIModule->CreateRHI();
 	GDynamicRHI->Init();
-	GRHICommandList.GetImmediateCommandList().SetContext(GDynamicRHI->RHIGetDefaultContext());
-	GRHICommandList.GetImmediateAsyncComputeCommandList().SetComputeContext(GDynamicRHI->RHIGetDefaultAsyncComputeContext());
+
+	// Command lists need the validation RHI context if enabled, so call the global scope version of RHIGetDefaultContext() and RHIGetDefaultAsyncComputeContext().
+	GRHICommandList.GetImmediateCommandList().SetContext(::RHIGetDefaultContext());
+	GRHICommandList.GetImmediateAsyncComputeCommandList().SetComputeContext(::RHIGetDefaultAsyncComputeContext());
+
 	GUsingNullRHI = true;
 	GRHISupportsTextureStreaming = false;
 

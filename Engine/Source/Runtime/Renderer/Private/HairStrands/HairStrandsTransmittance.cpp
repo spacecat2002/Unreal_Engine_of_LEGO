@@ -377,7 +377,7 @@ static void AddDeepShadowOpaqueMaskPass(
 	if (HairOpaqueMaskType == FHairOpaqueMaskType_VirtualVoxel)
 	{
 		FRDGTextureDesc Desc = OutShadowMask->Desc;
-		Desc.TargetableFlags |= TexCreate_ShaderResource;
+		Desc.Flags |= TexCreate_ShaderResource;
 		RayMarchMask = GraphBuilder.CreateTexture(Desc, TEXT("RayMarchMask"));
 		FRHICopyTextureInfo CopyInfo;
 		CopyInfo.Size = OutShadowMask->Desc.GetSize();
@@ -471,8 +471,7 @@ static FHairStrandsTransmittanceMaskData RenderHairStrandsTransmittanceMask(
 	FRDGBuilder GraphBuilder(RHICmdList);
 
 	// Note: GbufferB.a store the shading model on the 4 lower bits (MATERIAL_SHADINGMODEL_HAIR)
-	FSceneTextureParameters SceneTextures;
-	SetupSceneTextureParameters(GraphBuilder, &SceneTextures);
+	FSceneTextureParameters SceneTextures = GetSceneTextureParameters(GraphBuilder);
 
 	FRDGTextureRef HairLUTTexture = GraphBuilder.RegisterExternalTexture(InHairLUT.Textures[HairLUTType_DualScattering], TEXT("HairLUTTexture"));
 	FRDGBufferRef NodeIndirectArgBuffer = GraphBuilder.RegisterExternalBuffer(VisibilityData.NodeIndirectArg, TEXT("HairNodeIndirectArgBuffer"));
@@ -566,17 +565,17 @@ static FHairStrandsTransmittanceMaskData RenderHairStrandsTransmittanceMask(
 	}
 
 	FHairStrandsTransmittanceMaskData OutTransmittanceMaskData;
-	GraphBuilder.QueueBufferExtraction(OutShadowMask, &OutTransmittanceMaskData.TransmittanceMask, FRDGResourceState::EAccess::Read, FRDGResourceState::EPipeline::Graphics);
+	GraphBuilder.QueueBufferExtraction(OutShadowMask, &OutTransmittanceMaskData.TransmittanceMask);
 
 	// #RDG_todo/#Hair_todo
 	// Keep an extra ref to keep the buffer alive until the .Execute() function. The issue arive by the fact the indirect buffer is never 
 	// explicitly referenced in the graph. So its reference count is never incremented, and this makes it culled during the graph dependency 
 	// walk.
-	TRefCountPtr<FPooledRDGBuffer> DummyNodeIndirectArg;
-	GraphBuilder.QueueBufferExtraction(NodeIndirectArgBuffer, &DummyNodeIndirectArg, FRDGResourceState::EAccess::Read, FRDGResourceState::EPipeline::Compute);
+	TRefCountPtr<FRDGPooledBuffer> DummyNodeIndirectArg;
+	GraphBuilder.QueueBufferExtraction(NodeIndirectArgBuffer, &DummyNodeIndirectArg);
 
 	GraphBuilder.Execute();
-	OutTransmittanceMaskData.TransmittanceMaskSRV = RHICreateShaderResourceView(OutTransmittanceMaskData.TransmittanceMask->StructuredBuffer);
+	OutTransmittanceMaskData.TransmittanceMaskSRV = RHICreateShaderResourceView(OutTransmittanceMaskData.TransmittanceMask->GetStructuredBufferRHI());
 
 	return OutTransmittanceMaskData;
 }

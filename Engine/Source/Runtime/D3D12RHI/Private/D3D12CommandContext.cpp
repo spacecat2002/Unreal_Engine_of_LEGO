@@ -566,6 +566,44 @@ void FD3D12CommandContextBase::RHIEndFrame()
 	UpdateMemoryStats();
 }
 
+void FD3D12CommandContextBase::SignalTransitionFences(TArrayView<const FRHITransition*> Transitions)
+{
+	bool bSubmitted = false;
+	for (const FRHITransition* Transition : Transitions)
+	{
+		const auto* Data = Transition->GetPrivateData<FD3D12TransitionData>();
+		const auto& Fence = Data->Fence;
+		if (Fence)
+		{
+			if (!bSubmitted)
+			{
+				RHISubmitCommandsHint();
+				bSubmitted = true;
+			}
+			Fence->Signal(bIsAsyncComputeContext ? ED3D12CommandQueueType::Async : ED3D12CommandQueueType::Default);
+		}
+	}
+}
+
+void FD3D12CommandContextBase::WaitForTransitionFences(TArrayView<const FRHITransition*> Transitions)
+{
+	bool bSubmitted = false;
+	for (const FRHITransition* Transition : Transitions)
+	{
+		const auto* Data = Transition->GetPrivateData<FD3D12TransitionData>();
+		const auto& Fence = Data->Fence;
+		if (Fence)
+		{
+			if (!bSubmitted)
+			{
+				RHISubmitCommandsHint();
+				bSubmitted = true;
+			}
+			Fence->GpuWait(bIsAsyncComputeContext ? ED3D12CommandQueueType::Async : ED3D12CommandQueueType::Default, Fence->GetLastSignaledFence());
+		}
+	}
+}
+
 void FD3D12CommandContextBase::UpdateMemoryStats()
 {
 #if PLATFORM_WINDOWS && STATS
@@ -788,6 +826,36 @@ IRHICommandContextContainer* FD3D12DynamicRHI::RHIGetCommandContextContainer(int
 
 #endif // D3D12_SUPPORTS_PARALLEL_RHI_EXECUTE
 
+void FD3D12DynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipeline SrcPipelines, ERHIPipeline DstPipelines, ERHICreateTransitionFlags CreateFlags, TArrayView<const FRHITransitionInfo> Infos)
+{
+	checkf(FMath::IsPowerOfTwo(uint32(SrcPipelines)) && FMath::IsPowerOfTwo(uint32(DstPipelines)), TEXT("Support for multi-pipe resources is not yet implemented."));
+
+	// Construct the data in-place on the transition instance
+	FD3D12TransitionData* Data = new (Transition->GetPrivateData<FD3D12TransitionData>()) FD3D12TransitionData;
+
+	Data->SrcPipelines = SrcPipelines;
+	Data->DstPipelines = DstPipelines;
+	Data->CreateFlags = CreateFlags;
+
+	const bool bCrossPipeline = SrcPipelines != DstPipelines;
+
+	if (bCrossPipeline && !EnumHasAnyFlags(Data->CreateFlags, ERHICreateTransitionFlags::NoFence))
+	{
+		const FName Name = SrcPipelines == ERHIPipeline::Graphics ? L"<Graphics To AsyncCompute>" : L"<AsyncCompute To Graphics>";
+
+		Data->Fence = new FD3D12Fence(&GetAdapter(), FRHIGPUMask::All(), Name);
+		Data->Fence->CreateFence();
+	}
+
+	Data->bCrossPipeline = bCrossPipeline;
+	Data->Infos.Append(Infos.GetData(), Infos.Num());
+}
+
+void FD3D12DynamicRHI::RHIReleaseTransition(FRHITransition* Transition)
+{
+	// Destruct the transition data
+	Transition->GetPrivateData<FD3D12TransitionData>()->~FD3D12TransitionData();
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -801,20 +869,15 @@ FD3D12CommandContextRedirector::FD3D12CommandContextRedirector(class FD3D12Adapt
 	FMemory::Memzero(PhysicalContexts, sizeof(PhysicalContexts[0]) * MAX_NUM_GPUS);
 }
 
-void FD3D12CommandContextRedirector::RHITransitionResources(EResourceTransitionAccess TransitionType, EResourceTransitionPipeline TransitionPipeline, FRHIUnorderedAccessView** InUAVs, int32 NumUAVs, FRHIComputeFence* WriteComputeFenceRHI)
+void FD3D12CommandContextRedirector::RHIBeginTransitions(TArrayView<const FRHITransition*> Transitions)
 {
-	ContextRedirect(RHITransitionResources(TransitionType, TransitionPipeline, InUAVs, NumUAVs, nullptr));
+	ContextRedirect(RHIBeginTransitionsWithoutFencing(Transitions));
+	SignalTransitionFences(Transitions);
+}
 
-	// The fence must only be written after evey GPU has transitionned the resource as it handles all GPU.
-	if (WriteComputeFenceRHI)
-	{
-		RHISubmitCommandsHint();
-
-		FD3D12Fence* Fence = FD3D12DynamicRHI::ResourceCast(WriteComputeFenceRHI);
-		Fence->WriteFence();
-
-		Fence->Signal(ED3D12CommandQueueType::Default);
-	}	
+void FD3D12CommandContextRedirector::RHIEndTransitions(TArrayView<const FRHITransition*> Transitions)
+{
+	ContextRedirect(RHIEndTransitions(Transitions));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////

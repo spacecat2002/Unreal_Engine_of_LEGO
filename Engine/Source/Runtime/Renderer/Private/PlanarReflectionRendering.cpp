@@ -223,7 +223,7 @@ void PrefilterPlanarReflection(FRHICommandListImmediate& RHICmdList, FViewInfo& 
 		// Workaround for a possible driver bug on S7 Adreno, missing planar reflections
 		ERenderTargetLoadAction RTLoadAction = IsVulkanMobilePlatform(View.GetShaderPlatform()) ?  ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ENoAction;
 
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, Target->GetRenderTargetTexture());
+		RHICmdList.Transition(FRHITransitionInfo(Target->GetRenderTargetTexture(), ERHIAccess::Unknown, ERHIAccess::RTV));
 
 		FRHIRenderPassInfo RPInfo(Target->GetRenderTargetTexture(), MakeRenderTargetActions(RTLoadAction, ERenderTargetStoreAction::EStore));
 		RHICmdList.BeginRenderPass(RPInfo, TEXT("PrefilterPlanarReflections"));
@@ -398,12 +398,13 @@ static void UpdatePlanarReflectionContents_RenderThread(
 				}
 
 				FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-				FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(SceneContext, SceneContext.GetCurrentFeatureLevel(), ESceneTextureSetupMode::All, UniformBuffer_SingleFrame);
 
 				for (int32 ViewIndex = 0; ViewIndex < SceneRenderer->Views.Num(); ++ViewIndex)
 				{
 					FViewInfo& View = SceneRenderer->Views[ViewIndex];
 					SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+
+					FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(RHICmdList, View);
 
 					if (MainSceneRenderer->Scene->GetShadingPath() == EShadingPath::Deferred)
 					{
@@ -656,7 +657,6 @@ class FPlanarReflectionPS : public FGlobalShader
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
-		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureSamplerParameters, SceneTextureSamplers)
 
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
 		SHADER_PARAMETER_STRUCT_REF(FPlanarReflectionUniformParameters, PlanarReflectionParameters)
@@ -713,28 +713,24 @@ void FDeferredShadingSceneRenderer::RenderDeferredPlanarReflections(FRDGBuilder&
 	bool bClearReflectionsOutputTexture = false;
 	if (!ReflectionsOutputTexture)
 	{
-		FRDGTextureDesc Desc = FPooledRenderTargetDesc::Create2DDesc(
-			SceneTextures.SceneDepthBuffer->Desc.Extent,
+		FRDGTextureDesc Desc = FRDGTextureDesc::Create2D(
+			SceneTextures.SceneDepthTexture->Desc.Extent,
 			PF_FloatRGBA, FClearValueBinding(FLinearColor(0, 0, 0, 0)),
-			TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable,
-			false);
-
-		Desc.AutoWritable = false;
+			TexCreate_ShaderResource | TexCreate_RenderTargetable);
 
 		ReflectionsOutputTexture = GraphBuilder.CreateTexture(Desc, TEXT("PlanarReflections"));
 		bClearReflectionsOutputTexture = true;
 	}
 
 	FPlanarReflectionPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FPlanarReflectionPS::FParameters>();
-	PassParameters->SceneTextures.SceneDepthBuffer = SceneTextures.SceneDepthBuffer;
-	PassParameters->SceneTextures.SceneGBufferA = SceneTextures.SceneGBufferA;
-	PassParameters->SceneTextures.SceneGBufferB = SceneTextures.SceneGBufferB;
+	PassParameters->SceneTextures.SceneDepthTexture = SceneTextures.SceneDepthTexture;
+	PassParameters->SceneTextures.GBufferATexture = SceneTextures.GBufferATexture;
+	PassParameters->SceneTextures.GBufferBTexture = SceneTextures.GBufferBTexture;
 	if (IsHlslccShaderPlatform(GMaxRHIShaderPlatform))
 	{
 		// hlslcc doesn't remove all unused parameters
-		PassParameters->SceneTextures.SceneGBufferC = GraphBuilder.RegisterExternalTexture(GSystemTextures.BlackDummy);
+		PassParameters->SceneTextures.GBufferCTexture = GraphBuilder.RegisterExternalTexture(GSystemTextures.BlackDummy);
 	}
-	SetupSceneTextureSamplers(&PassParameters->SceneTextureSamplers);
 	PassParameters->ViewUniformBuffer = View.ViewUniformBuffer;
 	PassParameters->RenderTargets[0] = FRenderTargetBinding(
 		ReflectionsOutputTexture, bClearReflectionsOutputTexture ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad);

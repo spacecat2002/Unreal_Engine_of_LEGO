@@ -1128,73 +1128,62 @@ void FMetalContext::FinishFrame(bool const bImmediateContext)
 #endif
 }
 
-void FMetalContext::TransitionResources(FRHIUnorderedAccessView** InUAVs, int32 NumUAVs)
+void FMetalContext::TransitionResource(FRHIUnorderedAccessView* InResource)
 {
-	for (uint32 i = 0; i < NumUAVs; i++)
+	FMetalUnorderedAccessView* UAV = ResourceCast(InResource);
+
+	// figure out which one of the resources we need to set
+	FMetalStructuredBuffer* StructuredBuffer = UAV->SourceView->SourceStructuredBuffer.GetReference();
+	FMetalVertexBuffer*     VertexBuffer     = UAV->SourceView->SourceVertexBuffer.GetReference();
+	FMetalIndexBuffer*      IndexBuffer      = UAV->SourceView->SourceIndexBuffer.GetReference();
+	FRHITexture*            Texture          = UAV->SourceView->SourceTexture.GetReference();
+	FMetalSurface*          Surface          = UAV->SourceView->TextureView;
+
+	if (StructuredBuffer)
 	{
-		FMetalUnorderedAccessView* UAV = (FMetalUnorderedAccessView*)InUAVs[i];
-		if (UAV)
+		check(StructuredBuffer->Buffer);
+		RenderPass.TransitionResources(StructuredBuffer->Buffer);
+	}
+	else if (VertexBuffer && VertexBuffer->Buffer)
+	{
+		RenderPass.TransitionResources(VertexBuffer->Buffer);
+	}
+	else if (IndexBuffer)
+	{
+		check(IndexBuffer->Buffer);
+		RenderPass.TransitionResources(IndexBuffer->Buffer);
+	}
+	else if (Surface)
+	{
+		RenderPass.TransitionResources(Surface->Texture.GetParentTexture());
+	}
+	else if (Texture)
+	{
+		if (!Surface)
 		{
-			ns::AutoReleased<mtlpp::Resource> Resource;
-			
-			// figure out which one of the resources we need to set
-			FMetalStructuredBuffer* StructuredBuffer = UAV->SourceView->SourceStructuredBuffer.GetReference();
-			FMetalVertexBuffer* VertexBuffer = UAV->SourceView->SourceVertexBuffer.GetReference();
-			FMetalIndexBuffer* IndexBuffer = UAV->SourceView->SourceIndexBuffer.GetReference();
-			FRHITexture* Texture = UAV->SourceView->SourceTexture.GetReference();
-			FMetalSurface* Surface = UAV->SourceView->TextureView;
-			if (StructuredBuffer)
+			Surface = GetMetalSurfaceFromRHITexture(Texture);
+		}
+		if ((Surface != nullptr) && Surface->Texture)
+		{
+			RenderPass.TransitionResources(Surface->Texture);
+			if (Surface->MSAATexture)
 			{
-				check(StructuredBuffer->Buffer);
-				RenderPass.TransitionResources(StructuredBuffer->Buffer);
-			}
-			else if (VertexBuffer && VertexBuffer->Buffer)
-			{
-				RenderPass.TransitionResources(VertexBuffer->Buffer);
-			}
-			else if (IndexBuffer)
-			{
-				check(IndexBuffer->Buffer);
-				RenderPass.TransitionResources(IndexBuffer->Buffer);
-			}
-			else if (Surface)
-			{
-				RenderPass.TransitionResources(Surface->Texture.GetParentTexture());
-			}
-			else if (Texture)
-			{
-				if (!Surface)
-				{
-					Surface = GetMetalSurfaceFromRHITexture(Texture);
-				}
-				if (Surface != nullptr && Surface->Texture)
-				{
-					RenderPass.TransitionResources(Surface->Texture);
-					if (Surface->MSAATexture)
-					{
-						RenderPass.TransitionResources(Surface->MSAATexture);
-					}
-				}
+				RenderPass.TransitionResources(Surface->MSAATexture);
 			}
 		}
 	}
 }
 
-void FMetalContext::TransitionResources(FRHITexture** InTextures, int32 NumTextures)
+void FMetalContext::TransitionResource(FRHITexture* InResource)
 {
-	for (uint32 i = 0; i < NumTextures; i++)
+	FMetalSurface* Surface = GetMetalSurfaceFromRHITexture(InResource);
+
+	if ((Surface != nullptr) && Surface->Texture)
 	{
-		if (InTextures[i])
+		RenderPass.TransitionResources(Surface->Texture);
+		if (Surface->MSAATexture)
 		{
-			FMetalSurface* Surface = GetMetalSurfaceFromRHITexture(InTextures[i]);
-			if (Surface != nullptr && Surface->Texture)
-			{
-				RenderPass.TransitionResources(Surface->Texture);
-				if (Surface->MSAATexture)
-				{
-					RenderPass.TransitionResources(Surface->MSAATexture);
-				}
-			}
+			RenderPass.TransitionResources(Surface->MSAATexture);
 		}
 	}
 }

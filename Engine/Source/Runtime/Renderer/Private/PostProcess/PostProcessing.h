@@ -3,6 +3,7 @@
 #pragma once
 
 #include "ScreenPass.h"
+#include "TranslucentRendering.h"
 #include "PostProcess/RenderingCompositionGraph.h"
 
 class FSceneTextureParameters;
@@ -36,20 +37,15 @@ bool IsPostProcessingWithAlphaChannelSupported();
 
 struct FPostProcessingInputs
 {
-	const FSceneTextureParameters* SceneTextures = nullptr;
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures = nullptr;
 	FRDGTextureRef ViewFamilyTexture = nullptr;
-	FRDGTextureRef SceneColor = nullptr;
-	FRDGTextureRef SeparateTranslucency = nullptr;
-	FRDGTextureRef SeparateModulation = nullptr;
-	FRDGTextureRef CustomDepth = nullptr;
+	const FSeparateTranslucencyTextures* SeparateTranslucencyTextures = nullptr;
 
 	void Validate() const
 	{
-		check(ViewFamilyTexture);
 		check(SceneTextures);
-		check(SceneColor);
-		check(SeparateTranslucency);
-		check(SeparateModulation);
+		check(ViewFamilyTexture);
+		check(SeparateTranslucencyTextures);
 	}
 };
 

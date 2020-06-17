@@ -62,7 +62,7 @@ public:
 
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, View.ViewUniformBuffer);
 
-		RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, VisualizeMeshDistanceFieldsValue.UAV);
+		RHICmdList.Transition(FRHITransitionInfo(VisualizeMeshDistanceFieldsValue.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 		VisualizeMeshDistanceFields.SetTexture(RHICmdList, ShaderRHI, VisualizeMeshDistanceFieldsValue.ShaderResourceTexture, VisualizeMeshDistanceFieldsValue.UAV);
 
 		FRHITexture* TextureAtlas;
@@ -89,7 +89,7 @@ public:
 
 	void UnsetParameters(FRHICommandList& RHICmdList, FSceneRenderTargetItem& VisualizeMeshDistanceFieldsValue)
 	{
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, VisualizeMeshDistanceFieldsValue.UAV);
+		RHICmdList.Transition(FRHITransitionInfo(VisualizeMeshDistanceFieldsValue.UAV, ERHIAccess::ERWBarrier, ERHIAccess::SRVMask));
 		VisualizeMeshDistanceFields.UnsetUAV(RHICmdList, RHICmdList.GetBoundComputeShader());
 	}
 
@@ -147,134 +147,134 @@ private:
 
 IMPLEMENT_SHADER_TYPE(,FVisualizeDistanceFieldUpsamplePS,TEXT("/Engine/Private/DistanceFieldVisualization.usf"),TEXT("VisualizeDistanceFieldUpsamplePS"),SF_Pixel);
 
-
-void FDeferredShadingSceneRenderer::RenderMeshDistanceFieldVisualization(FRHICommandListImmediate& RHICmdList, const FDistanceFieldAOParameters& Parameters)
+void FDeferredShadingSceneRenderer::RenderMeshDistanceFieldVisualization(FRDGBuilder& GraphBuilder, const FDistanceFieldAOParameters& Parameters)
 {
 	//@todo - support multiple views
 	const FViewInfo& View = Views[0];
 
-	if (UseDistanceFieldAO()
-		&& FeatureLevel >= ERHIFeatureLevel::SM5
-		&& DoesPlatformSupportDistanceFieldAO(View.GetShaderPlatform())
-		&& Views.Num() == 1)
+	if (!UseDistanceFieldAO()
+		|| FeatureLevel < ERHIFeatureLevel::SM5
+		|| !DoesPlatformSupportDistanceFieldAO(View.GetShaderPlatform())
+		|| Views.Num() != 1
+		|| !GDistanceFieldVolumeTextureAtlas.VolumeTextureRHI
+		|| Scene->DistanceFieldSceneData.NumObjectsInBuffer == 0)
 	{
-		QUICK_SCOPE_CYCLE_COUNTER(STAT_RenderMeshDistanceFieldVis);
-		SCOPED_DRAW_EVENT(RHICmdList, VisualizeMeshDistanceFields);
+		return;
+	}
 
-		if (GDistanceFieldVolumeTextureAtlas.VolumeTextureRHI && Scene->DistanceFieldSceneData.NumObjectsInBuffer > 0)
+	check(!Scene->DistanceFieldSceneData.HasPendingOperations());
+
+	QUICK_SCOPE_CYCLE_COUNTER(STAT_AOIssueGPUWork);
+
+	const bool bUseGlobalDistanceField = UseGlobalDistanceField(Parameters) && View.Family->EngineShowFlags.VisualizeGlobalDistanceField;
+
+	CullObjectsToView(GraphBuilder, Scene, View, Parameters, GAOCulledObjectBuffers);
+
+	AddUntrackedAccessPass(GraphBuilder, RDG_EVENT_NAME("VisualizeMeshDistanceFields"), [this, Parameters, &View, bUseGlobalDistanceField](FRHICommandListImmediate& RHICmdList)
+	{
+		TRefCountPtr<IPooledRenderTarget> VisualizeResultRT;
+
 		{
-			check(!Scene->DistanceFieldSceneData.HasPendingOperations());
+			const FIntPoint BufferSize = GetBufferSizeForAO();
+			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, PF_FloatRGBA, FClearValueBinding::None, TexCreate_None, TexCreate_RenderTargetable | TexCreate_UAV, false));
+			GRenderTargetPool.FindFreeElement(RHICmdList, Desc, VisualizeResultRT, TEXT("VisualizeDistanceField"));
+		}
 
-			QUICK_SCOPE_CYCLE_COUNTER(STAT_AOIssueGPUWork);
-
-			const bool bUseGlobalDistanceField = UseGlobalDistanceField(Parameters) && View.Family->EngineShowFlags.VisualizeGlobalDistanceField;
-
-			CullObjectsToView(RHICmdList, Scene, View, Parameters, GAOCulledObjectBuffers);
-
-			TRefCountPtr<IPooledRenderTarget> VisualizeResultRT;
-
+		{
+			for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 			{
-				const FIntPoint BufferSize = GetBufferSizeForAO();
-				FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, PF_FloatRGBA, FClearValueBinding::None, TexCreate_None, TexCreate_RenderTargetable | TexCreate_UAV, false));
-				GRenderTargetPool.FindFreeElement(RHICmdList, Desc, VisualizeResultRT, TEXT("VisualizeDistanceField"));
-			}
+				const FViewInfo& ViewInfo = Views[ViewIndex];
 
-			FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-			FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(SceneContext, View.GetFeatureLevel(), ESceneTextureSetupMode::All, UniformBuffer_SingleFrame);
+				uint32 GroupSizeX = FMath::DivideAndRoundUp(ViewInfo.ViewRect.Size().X / GAODownsampleFactor, GDistanceFieldAOTileSizeX);
+				uint32 GroupSizeY = FMath::DivideAndRoundUp(ViewInfo.ViewRect.Size().Y / GAODownsampleFactor, GDistanceFieldAOTileSizeY);
 
-			{
-				for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+				SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+				SCOPED_DRAW_EVENT(RHICmdList, VisualizeMeshDistanceFieldCS);
+
+				FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(RHICmdList, View);
+				FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
+				SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
+
+				FSceneRenderTargetItem& VisualizeResultRTI = VisualizeResultRT->GetRenderTargetItem();
+				if (bUseGlobalDistanceField)
 				{
-					const FViewInfo& ViewInfo = Views[ViewIndex];
+					check(View.GlobalDistanceFieldInfo.Clipmaps.Num() > 0);
 
-					uint32 GroupSizeX = FMath::DivideAndRoundUp(ViewInfo.ViewRect.Size().X / GAODownsampleFactor, GDistanceFieldAOTileSizeX);
-					uint32 GroupSizeY = FMath::DivideAndRoundUp(ViewInfo.ViewRect.Size().Y / GAODownsampleFactor, GDistanceFieldAOTileSizeY);
+					TShaderMapRef<TVisualizeMeshDistanceFieldCS<true> > ComputeShader(ViewInfo.ShaderMap);
 
-					SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
-					SCOPED_DRAW_EVENT(RHICmdList, VisualizeMeshDistanceFieldCS);
+					RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
+					ComputeShader->SetParameters(RHICmdList, ViewInfo, VisualizeResultRTI, FVector2D(GroupSizeX, GroupSizeY), Parameters, View.GlobalDistanceFieldInfo);
+					DispatchComputeShader(RHICmdList, ComputeShader.GetShader(), GroupSizeX, GroupSizeY, 1);
 
-					FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
-					SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
-
-					FSceneRenderTargetItem& VisualizeResultRTI = VisualizeResultRT->GetRenderTargetItem();
-					if (bUseGlobalDistanceField)
-					{
-						check(View.GlobalDistanceFieldInfo.Clipmaps.Num() > 0);
-
-						TShaderMapRef<TVisualizeMeshDistanceFieldCS<true> > ComputeShader(ViewInfo.ShaderMap);
-
-						RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
-						ComputeShader->SetParameters(RHICmdList, ViewInfo, VisualizeResultRTI, FVector2D(GroupSizeX, GroupSizeY), Parameters, View.GlobalDistanceFieldInfo);
-						DispatchComputeShader(RHICmdList, ComputeShader.GetShader(), GroupSizeX, GroupSizeY, 1);
-
-						ComputeShader->UnsetParameters(RHICmdList, VisualizeResultRTI);
-					}
-					else
-					{
-						TShaderMapRef<TVisualizeMeshDistanceFieldCS<false> > ComputeShader(ViewInfo.ShaderMap);
-
-						RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
-						ComputeShader->SetParameters(RHICmdList, ViewInfo, VisualizeResultRTI, FVector2D(GroupSizeX, GroupSizeY), Parameters, View.GlobalDistanceFieldInfo);
-						DispatchComputeShader(RHICmdList, ComputeShader.GetShader(), GroupSizeX, GroupSizeY, 1);
-
-						ComputeShader->UnsetParameters(RHICmdList, VisualizeResultRTI);
-					}
+					ComputeShader->UnsetParameters(RHICmdList, VisualizeResultRTI);
 				}
-			}
-
-			if ( IsTransientResourceBufferAliasingEnabled())
-			{
-				GAOCulledObjectBuffers.Buffers.DiscardTransientResource();
-			}
-
-			check(RHICmdList.IsOutsideRenderPass());
-
-			{
-				// We must specify StencilWrite or VK will lose the attachment
-				SceneContext.BeginRenderingSceneColor(RHICmdList, ESimpleRenderTargetMode::EExistingColorAndDepth, FExclusiveDepthStencil::DepthRead_StencilWrite);
-
-				for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+				else
 				{
-					const FViewInfo& ViewInfo = Views[ViewIndex];
+					TShaderMapRef<TVisualizeMeshDistanceFieldCS<false> > ComputeShader(ViewInfo.ShaderMap);
 
-					SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
-					SCOPED_DRAW_EVENT(RHICmdList, UpsampleAO);
+					RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
+					ComputeShader->SetParameters(RHICmdList, ViewInfo, VisualizeResultRTI, FVector2D(GroupSizeX, GroupSizeY), Parameters, View.GlobalDistanceFieldInfo);
+					DispatchComputeShader(RHICmdList, ComputeShader.GetShader(), GroupSizeX, GroupSizeY, 1);
 
-					FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
-					SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
-
-					RHICmdList.SetViewport(ViewInfo.ViewRect.Min.X, ViewInfo.ViewRect.Min.Y, 0.0f, ViewInfo.ViewRect.Max.X, ViewInfo.ViewRect.Max.Y, 1.0f);
-					
-					FGraphicsPipelineStateInitializer GraphicsPSOInit;
-					RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
-					GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
-					GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
-					GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
-
-					TShaderMapRef<FPostProcessVS> VertexShader( ViewInfo.ShaderMap );
-					TShaderMapRef<FVisualizeDistanceFieldUpsamplePS> PixelShader( ViewInfo.ShaderMap );
-
-					GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
-					GraphicsPSOInit.PrimitiveType = PT_TriangleList;
-					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
-
-					PixelShader->SetParameters(RHICmdList, ViewInfo, VisualizeResultRT);
-
-					DrawRectangle( 
-						RHICmdList,
-						0, 0, 
-						ViewInfo.ViewRect.Width(), ViewInfo.ViewRect.Height(),
-						ViewInfo.ViewRect.Min.X / GAODownsampleFactor, ViewInfo.ViewRect.Min.Y / GAODownsampleFactor, 
-						ViewInfo.ViewRect.Width() / GAODownsampleFactor, ViewInfo.ViewRect.Height() / GAODownsampleFactor,
-						FIntPoint(ViewInfo.ViewRect.Width(), ViewInfo.ViewRect.Height()),
-						GetBufferSizeForAO(),
-						VertexShader);
+					ComputeShader->UnsetParameters(RHICmdList, VisualizeResultRTI);
 				}
-
-				SceneContext.FinishRenderingSceneColor(RHICmdList);
 			}
 		}
-	}
+
+		if (IsTransientResourceBufferAliasingEnabled())
+		{
+			GAOCulledObjectBuffers.Buffers.DiscardTransientResource();
+		}
+
+		check(RHICmdList.IsOutsideRenderPass());
+
+		{
+			// We must specify StencilWrite or VK will lose the attachment
+			FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+			SceneContext.BeginRenderingSceneColor(RHICmdList, ESimpleRenderTargetMode::EExistingColorAndDepth, FExclusiveDepthStencil::DepthRead_StencilWrite);
+
+			for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+			{
+				const FViewInfo& ViewInfo = Views[ViewIndex];
+
+				SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+				SCOPED_DRAW_EVENT(RHICmdList, UpsampleAO);
+
+				FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(RHICmdList, View);
+				FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
+				SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
+
+				RHICmdList.SetViewport(ViewInfo.ViewRect.Min.X, ViewInfo.ViewRect.Min.Y, 0.0f, ViewInfo.ViewRect.Max.X, ViewInfo.ViewRect.Max.Y, 1.0f);
+
+				FGraphicsPipelineStateInitializer GraphicsPSOInit;
+				RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+				GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
+				GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+				GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
+
+				TShaderMapRef<FPostProcessVS> VertexShader(ViewInfo.ShaderMap);
+				TShaderMapRef<FVisualizeDistanceFieldUpsamplePS> PixelShader(ViewInfo.ShaderMap);
+
+				GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
+				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+				GraphicsPSOInit.PrimitiveType = PT_TriangleList;
+				SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+
+				PixelShader->SetParameters(RHICmdList, ViewInfo, VisualizeResultRT);
+
+				DrawRectangle(
+					RHICmdList,
+					0, 0,
+					ViewInfo.ViewRect.Width(), ViewInfo.ViewRect.Height(),
+					ViewInfo.ViewRect.Min.X / GAODownsampleFactor, ViewInfo.ViewRect.Min.Y / GAODownsampleFactor,
+					ViewInfo.ViewRect.Width() / GAODownsampleFactor, ViewInfo.ViewRect.Height() / GAODownsampleFactor,
+					FIntPoint(ViewInfo.ViewRect.Width(), ViewInfo.ViewRect.Height()),
+					GetBufferSizeForAO(),
+					VertexShader);
+			}
+
+			SceneContext.FinishRenderingSceneColor(RHICmdList);
+		}
+	});
 }

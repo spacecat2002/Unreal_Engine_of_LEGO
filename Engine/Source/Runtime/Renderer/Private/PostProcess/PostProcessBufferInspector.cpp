@@ -6,7 +6,7 @@
 #include "SceneTextureParameters.h"
 
 BEGIN_SHADER_PARAMETER_STRUCT(FPixelInspectorParameters, )
-	SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
+	SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FSceneTextureUniformParameters, SceneTextures)
 	SHADER_PARAMETER_RDG_TEXTURE(, SceneColor)
 	SHADER_PARAMETER_RDG_TEXTURE(, SceneColorBeforeTonemap)
 	SHADER_PARAMETER_RDG_TEXTURE(, OriginalSceneColor)
@@ -18,7 +18,7 @@ void ProcessPixelInspectorRequests(
 	const FPixelInspectorParameters& Parameters,
 	const FIntRect SceneColorViewRect)
 {
-	const FSceneTextureParameters& SceneTextures = Parameters.SceneTextures;
+	const TRDGParameterStruct<FSceneTextureUniformParameters> SceneTextures = Parameters.SceneTextures->GetParameters();
 	const FSceneViewFamily& ViewFamily = *(View.Family);
 	const int32 ViewUniqueId = View.State->GetViewKey();
 
@@ -52,7 +52,7 @@ void ProcessPixelInspectorRequests(
 				const FTexture2DRHIRef &DestinationBufferDepth = PixelInspectorData.RenderTargetBufferDepth[PixelInspectorRequest->BufferIndex]->GetRenderTargetTexture();
 				if (DestinationBufferDepth.IsValid())
 				{
-					FRHITexture* SourceBufferSceneDepth = SceneTextures.SceneDepthBuffer->GetRHI();
+					FRHITexture* SourceBufferSceneDepth = SceneTextures->SceneDepthTexture->GetRHI();
 					if (DestinationBufferDepth->GetFormat() == SourceBufferSceneDepth->GetFormat())
 					{
 						FRHICopyTextureInfo CopyInfo;
@@ -160,9 +160,9 @@ void ProcessPixelInspectorRequests(
 				);
 
 				const FTexture2DRHIRef &DestinationBufferA = PixelInspectorData.RenderTargetBufferA[PixelInspectorRequest->BufferIndex]->GetRenderTargetTexture();
-				if (DestinationBufferA.IsValid() && SceneTextures.SceneGBufferA)
+				if (DestinationBufferA.IsValid() && SceneTextures->GBufferATexture)
 				{
-					FRHITexture* SourceBufferA = SceneTextures.SceneGBufferA->GetRHI();
+					FRHITexture* SourceBufferA = SceneTextures->GBufferATexture->GetRHI();
 					if (DestinationBufferA->GetFormat() == SourceBufferA->GetFormat())
 					{
 						FRHICopyTextureInfo CopyInfo;
@@ -184,9 +184,9 @@ void ProcessPixelInspectorRequests(
 					0
 				);
 
-				if (SceneTextures.SceneGBufferB)
+				if (SceneTextures->GBufferBTexture)
 				{
-					FRHITexture* SourceBufferB = SceneTextures.SceneGBufferB->GetRHI();
+					FRHITexture* SourceBufferB = SceneTextures->GBufferBTexture->GetRHI();
 					if (DestinationBufferBCDEF->GetFormat() == SourceBufferB->GetFormat())
 					{
 						FRHICopyTextureInfo CopyInfo;
@@ -196,9 +196,9 @@ void ProcessPixelInspectorRequests(
 					}
 				}
 
-				if (SceneTextures.SceneGBufferC)
+				if (SceneTextures->GBufferCTexture)
 				{
-					FRHITexture* SourceBufferC = SceneTextures.SceneGBufferC->GetRHI();
+					FRHITexture* SourceBufferC = SceneTextures->GBufferCTexture->GetRHI();
 					if (DestinationBufferBCDEF->GetFormat() == SourceBufferC->GetFormat())
 					{
 						FRHICopyTextureInfo CopyInfo;
@@ -209,9 +209,9 @@ void ProcessPixelInspectorRequests(
 					}
 				}
 
-				if (SceneTextures.SceneGBufferD)
+				if (SceneTextures->GBufferDTexture)
 				{
-					FRHITexture* SourceBufferD = SceneTextures.SceneGBufferD->GetRHI();
+					FRHITexture* SourceBufferD = SceneTextures->GBufferDTexture->GetRHI();
 					if (DestinationBufferBCDEF->GetFormat() == SourceBufferD->GetFormat())
 					{
 						FRHICopyTextureInfo CopyInfo;
@@ -222,9 +222,9 @@ void ProcessPixelInspectorRequests(
 					}
 				}
 
-				if (SceneTextures.SceneGBufferE)
+				if (SceneTextures->GBufferETexture)
 				{
-					FRHITexture* SourceBufferE = SceneTextures.SceneGBufferE->GetRHI();
+					FRHITexture* SourceBufferE = SceneTextures->GBufferETexture->GetRHI();
 					if (DestinationBufferBCDEF->GetFormat() == SourceBufferE->GetFormat())
 					{
 						FRHICopyTextureInfo CopyInfo;
@@ -235,9 +235,9 @@ void ProcessPixelInspectorRequests(
 					}
 				}
 
-				if (SceneTextures.SceneGBufferF)
+				if (SceneTextures->GBufferFTexture)
 				{
-					FRHITexture* SourceBufferF = SceneTextures.SceneGBufferF->GetRHI();
+					FRHITexture* SourceBufferF = SceneTextures->GBufferFTexture->GetRHI();
 					if (DestinationBufferBCDEF->GetFormat() == SourceBufferF->GetFormat())
 					{
 						FRHICopyTextureInfo CopyInfo;
@@ -274,7 +274,7 @@ FScreenPassTexture AddPixelInspectorPass(FRDGBuilder& GraphBuilder, const FViewI
 	// Perform copies of scene textures data into staging resources for visualization.
 	{
 		FPixelInspectorParameters* PassParameters = GraphBuilder.AllocParameters<FPixelInspectorParameters>();
-		PassParameters->SceneTextures = *Inputs.SceneTextures;
+		PassParameters->SceneTextures = Inputs.SceneTextures;
 		PassParameters->SceneColor = Inputs.SceneColor.Texture;
 		PassParameters->SceneColorBeforeTonemap = Inputs.SceneColorBeforeTonemap.Texture;
 		PassParameters->OriginalSceneColor = Inputs.OriginalSceneColor.Texture;

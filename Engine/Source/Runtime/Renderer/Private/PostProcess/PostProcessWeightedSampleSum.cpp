@@ -374,8 +374,7 @@ FScreenPassTexture AddGaussianBlurPass(
 	FRDGTextureDesc OutputDesc = Filter.Texture->Desc;
 	OutputDesc.Reset();
 	OutputDesc.Extent = OutputViewport.Extent;
-	OutputDesc.TargetableFlags |= bIsComputePass ? TexCreate_UAV : TexCreate_None;
-	OutputDesc.Flags &= TexCreate_FastVRAM;
+	OutputDesc.Flags |= bIsComputePass ? TexCreate_UAV : TexCreate_None;
 	OutputDesc.ClearValue = FClearValueBinding(FLinearColor::Transparent);
 
 	const FScreenPassRenderTarget Output(GraphBuilder.CreateTexture(OutputDesc, Name), OutputViewport.Rect, ERenderTargetLoadAction::ENoAction);
@@ -425,7 +424,6 @@ FScreenPassTexture AddGaussianBlurPass(
 				OutputViewport,
 				FScreenPassTextureViewport(Filter),
 				FScreenPassPipelineState(VertexShader, PixelShader),
-				EScreenPassDrawFlags::None,
 				PassParameters,
 				[VertexShader, PixelShader, PassParameters] (FRHICommandListImmediate& RHICmdList)
 			{
@@ -470,7 +468,7 @@ FScreenPassTexture AddGaussianBlurPass(
 
 	// Downscale output width by half when using fast blur optimization.
 	const FScreenPassTextureViewport HorizontalOutputViewport = bFastBlurEnabled
-		? FScreenPassTextureViewport::CreateDownscaled(FilterViewport, FIntPoint(2, 1))
+		? GetDownscaledViewport(FilterViewport, FIntPoint(2, 1))
 		: FilterViewport;
 
 	FScreenPassTexture HorizontalOutput;

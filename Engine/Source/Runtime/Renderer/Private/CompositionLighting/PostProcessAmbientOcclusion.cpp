@@ -488,6 +488,8 @@ void FRCPassPostProcessAmbientOcclusionSetup::Process(FRenderingCompositePassCon
 
 	SCOPED_DRAW_EVENTF(Context.RHICmdList, AmbientOcclusionSetup, TEXT("AmbientOcclusionSetup %dx%d"), DestRect.Width(), DestRect.Height());
 
+	Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
+
 	// Set the view family's render target/viewport.
 	FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, ERenderTargetActions::Load_Store);
 	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("AmbientOcclusionSetup"));
@@ -701,13 +703,16 @@ void FRCPassPostProcessAmbientOcclusionSmooth::Process(FRenderingCompositePassCo
 
 	if (AOType == ESSAOType::EAsyncCS)
 	{
+		FRHITransitionInfo UAVTransition(DestRenderTarget.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier);
+		const FRHITransition* GFxToAsyncTransition = RHICreateTransition(ERHIPipeline::Graphics, ERHIPipeline::AsyncCompute, ERHICreateTransitionFlags::None, MakeArrayView(&UAVTransition, 1));
+
+		// Transition to let us know when the Gfx pipe is done with the RT we want to write to.
+		Context.RHICmdList.BeginTransition(GFxToAsyncTransition);
+
+		// Wait for the gfx transition to finish
 		FRHIAsyncComputeCommandListImmediate& AsyncComputeCmdList = FRHICommandListExecutor::GetImmediateAsyncComputeCommandList();
-		FComputeFenceRHIRef AsyncStartFence = Context.RHICmdList.CreateComputeFence(TEXT("AsyncStartFence"));
-
 		SCOPED_COMPUTE_EVENTF(AsyncComputeCmdList, SSAOSmooth, TEXT("SSAO smooth %dx%d"), OutputRect.Width(), OutputRect.Height());
-
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, DestRenderTarget.UAV, AsyncStartFence);
-		AsyncComputeCmdList.WaitComputeFence(AsyncStartFence);
+		AsyncComputeCmdList.EndTransition(GFxToAsyncTransition);
 		DispatchCS(AsyncComputeCmdList, Context, OutputRect, DestRenderTarget.UAV);
 	}
 	else
@@ -715,7 +720,7 @@ void FRCPassPostProcessAmbientOcclusionSmooth::Process(FRenderingCompositePassCo
 		check(AOType == ESSAOType::ECS);
 		SCOPED_DRAW_EVENTF(Context.RHICmdList, SSAOSmooth, TEXT("SSAO smooth %dx%d"), OutputRect.Width(), OutputRect.Height());
 
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, DestRenderTarget.UAV);
+		Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 		DispatchCS(Context.RHICmdList, Context, OutputRect, DestRenderTarget.UAV);
 	}
 }
@@ -981,18 +986,16 @@ void FRCPassPostProcessAmbientOcclusion::ProcessCS(FRenderingCompositePassContex
 	//for async compute we need to set up a fence to make sure the resource is ready before we start.
 	if (AOType == ESSAOType::EAsyncCS)
 	{
-		//Grab the async compute commandlist.
+		FRHITransitionInfo UAVTransition(DestRenderTarget->UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier);
+		const FRHITransition* GFxToAsyncTransition = RHICreateTransition(ERHIPipeline::Graphics, ERHIPipeline::AsyncCompute, ERHICreateTransitionFlags::None, MakeArrayView(&UAVTransition, 1));
+
+		// Transition to let us know when the Gfx pipe is done with the RT we want to write to.
+		Context.RHICmdList.BeginTransition(GFxToAsyncTransition);
+
+		// Wait for the gfx transition to finish
 		FRHIAsyncComputeCommandListImmediate& RHICmdListComputeImmediate = FRHICommandListExecutor::GetImmediateAsyncComputeCommandList();
-
-		static FName AsyncStartFenceName(TEXT("AsyncStartFence"));
-		FComputeFenceRHIRef AsyncStartFence = Context.RHICmdList.CreateComputeFence(AsyncStartFenceName);
-
-		//Fence to let us know when the Gfx pipe is done with the RT we want to write to.
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, DestRenderTarget->UAV, AsyncStartFence);
-
 		SCOPED_COMPUTE_EVENT(RHICmdListComputeImmediate, AsyncSSAO);
-		//Async compute must wait for Gfx to be done with our dest target before we can dispatch anything.
-		RHICmdListComputeImmediate.WaitComputeFence(AsyncStartFence);
+		RHICmdListComputeImmediate.EndTransition(GFxToAsyncTransition);
 
 		switch (ShaderQuality)
 		{
@@ -1008,7 +1011,7 @@ void FRCPassPostProcessAmbientOcclusion::ProcessCS(FRenderingCompositePassContex
 	else
 	{
 		//no fence necessary for inline compute.
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, DestRenderTarget->UAV, nullptr);
+		Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget->UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 		switch (ShaderQuality)
 		{
 			SET_SHADER_CASE(Context.RHICmdList, 0);
@@ -1020,16 +1023,18 @@ void FRCPassPostProcessAmbientOcclusion::ProcessCS(FRenderingCompositePassContex
 			break;
 		};
 	}
-	Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, DestRenderTarget->TargetableTexture);
+	Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget->TargetableTexture, ERHIAccess::Unknown, ERHIAccess::SRVCompute));
 #undef SET_SHADER_CASE	
 }
 
 void FRCPassPostProcessAmbientOcclusion::ProcessPS(FRenderingCompositePassContext& Context,
-	const FSceneRenderTargetItem* DestRenderTarget, const FSceneRenderTargetItem* SceneDepthBuffer,
+	const FSceneRenderTargetItem* DestRenderTarget, const FSceneRenderTargetItem* SceneDepthTexture,
 	const FIntRect& ViewRect, const FIntPoint& TexSize, int32 ShaderQuality, bool bDoUpsample)
 {
 	// We do not support the depth bounds optimization if we are in MSAA. To do so we would have to resolve the depth buffer here OR use a multisample texture for our AO target.
-	const bool bDepthBoundsTestEnabled = GSupportsDepthBoundsTest && SceneDepthBuffer && CVarAmbientOcclusionDepthBoundsTest.GetValueOnRenderThread() && SceneDepthBuffer->TargetableTexture->GetNumSamples() == 1;
+	const bool bDepthBoundsTestEnabled = GSupportsDepthBoundsTest && SceneDepthTexture && CVarAmbientOcclusionDepthBoundsTest.GetValueOnRenderThread() && SceneDepthTexture->TargetableTexture->GetNumSamples() == 1;
+
+	Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget->TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
 
 	// Set the view family's render target/viewport.
 	// Rendertarget will be completely overwritten.
@@ -1038,7 +1043,7 @@ void FRCPassPostProcessAmbientOcclusion::ProcessPS(FRenderingCompositePassContex
 	{
 		// We'll use the depth/stencil buffer for read but it will not be modified.
 		// Note: VK requires us to store stencil or it (may) leave the attachment in an undefined state.
-		RPInfo.DepthStencilRenderTarget.DepthStencilTarget = SceneDepthBuffer->TargetableTexture;
+		RPInfo.DepthStencilRenderTarget.DepthStencilTarget = SceneDepthTexture->TargetableTexture;
 		RPInfo.DepthStencilRenderTarget.Action = MakeDepthStencilTargetActions(ERenderTargetActions::Load_DontStore, ERenderTargetActions::Load_Store);
 		RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil = FExclusiveDepthStencil::DepthRead_StencilWrite;
 	}
@@ -1134,7 +1139,7 @@ void FRCPassPostProcessAmbientOcclusion::ProcessPS(FRenderingCompositePassContex
 	}
 	Context.RHICmdList.EndRenderPass();
 
-	Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, DestRenderTarget->TargetableTexture);
+	Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget->TargetableTexture, ERHIAccess::Unknown, ERHIAccess::SRVMask));
 
 	if (bDepthBoundsTestEnabled)
 	{
@@ -1181,11 +1186,11 @@ void FRCPassPostProcessAmbientOcclusion::Process(FRenderingCompositePassContext&
 
 	if (AOType == ESSAOType::EPS)
 	{
-		const FSceneRenderTargetItem* SceneDepthBuffer = (!bDoUpsample && ScaleToFullRes == 1 && SceneContext.SceneDepthZ)
+		const FSceneRenderTargetItem* SceneDepthTexture = (!bDoUpsample && ScaleToFullRes == 1 && SceneContext.SceneDepthZ)
 			? &SceneContext.SceneDepthZ->GetRenderTargetItem()
 			: nullptr;
 
-		ProcessPS(Context, DestRenderTarget, SceneDepthBuffer, ViewRect, TexSize, ShaderQuality, bDoUpsample);
+		ProcessPS(Context, DestRenderTarget, SceneDepthTexture, ViewRect, TexSize, ShaderQuality, bDoUpsample);
 	}
 	else
 	{
@@ -1824,15 +1829,16 @@ void FRCPassPostProcessAmbientOcclusion_GTAOHorizonSearchIntegrate::Process(FRen
 		// If on the Async Pipe
 		if (AOType == EGTAOType::EAsyncCombinedSpatial)
 		{
-			static FName AsyncStartFenceName(TEXT("AsyncStartFence"));
-			FComputeFenceRHIRef AsyncStartFence = Context.RHICmdList.CreateComputeFence(AsyncStartFenceName);
+			FRHITransitionInfo UAVTransition(DestRenderTarget.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier);
+			const FRHITransition* GFxToAsyncTransition = RHICreateTransition(ERHIPipeline::Graphics, ERHIPipeline::AsyncCompute, ERHICreateTransitionFlags::None, MakeArrayView(&UAVTransition, 1));
+
+			// Transition to let us know when the Gfx pipe is done with the RT we want to write to.
+			Context.RHICmdList.BeginTransition(GFxToAsyncTransition);
+
+			// Wait for the gfx transition to finish
 			FRHIAsyncComputeCommandListImmediate& RHICmdListComputeImmediate = FRHICommandListExecutor::GetImmediateAsyncComputeCommandList();
-
-			//Fence to let us know when the Gfx pipe is done with the RT we want to write to.
-			Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, DestRenderTarget.UAV, AsyncStartFence);
-
 			SCOPED_COMPUTE_EVENT(RHICmdListComputeImmediate, AsyncSSAO);
-			RHICmdListComputeImmediate.WaitComputeFence(AsyncStartFence);
+			RHICmdListComputeImmediate.EndTransition(GFxToAsyncTransition);
 
 			// 0..4, 0:low 4:high
 			switch (ShaderQuality)
@@ -1846,7 +1852,7 @@ void FRCPassPostProcessAmbientOcclusion_GTAOHorizonSearchIntegrate::Process(FRen
 		}
 		else
 		{
-			Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, DestRenderTarget.UAV, nullptr);
+			Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 
 			// 0..4, 0:low 4:high
 			switch (ShaderQuality)
@@ -1920,7 +1926,7 @@ void FRCPassPostProcessAmbientOcclusion_GTAOHorizonSearchIntegrate::Process(FRen
 		Context.RHICmdList.EndRenderPass();
 	}
 
-	Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, DestRenderTarget.TargetableTexture);
+	Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::SRVMask));
 }
 
 
@@ -1968,7 +1974,7 @@ void FRCPassPostProcessAmbientOcclusion_GTAOInnerIntegrate::Process(FRenderingCo
 	if (0)// CVar->GetValueOnRenderThread() >= 1)
 	{
 		// Compute  Version
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, DestRenderTarget.UAV, nullptr);
+		Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 
 		TShaderMapRef<FPostProcessGTAOInnerIntegratePSandCS<true>> ComputeShader(Context.GetShaderMap());
 		Context.RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
@@ -2016,7 +2022,7 @@ void FRCPassPostProcessAmbientOcclusion_GTAOInnerIntegrate::Process(FRenderingCo
 		Context.RHICmdList.EndRenderPass();
 	}
 
-	Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, DestRenderTarget.TargetableTexture);
+	Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::SRVMask));
 }
 
 
@@ -2112,15 +2118,16 @@ void FRCPassPostProcessAmbientOcclusion_HorizonSearch::Process(FRenderingComposi
 
 	if (AOType == EGTAOType::EAsyncHorizonSearch)
 	{
-		static FName AsyncStartFenceName(TEXT("AsyncStartFence"));
-		FComputeFenceRHIRef AsyncStartFence = Context.RHICmdList.CreateComputeFence(AsyncStartFenceName);
+		FRHITransitionInfo UAVTransition(DestRenderTarget.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier);
+		const FRHITransition* GFxToAsyncTransition = RHICreateTransition(ERHIPipeline::Graphics, ERHIPipeline::AsyncCompute, ERHICreateTransitionFlags::None, MakeArrayView(&UAVTransition, 1));
+
+		// Transition to let us know when the Gfx pipe is done with the RT we want to write to.
+		Context.RHICmdList.BeginTransition(GFxToAsyncTransition);
+
+		// Wait for the gfx transition to finish
 		FRHIAsyncComputeCommandListImmediate& RHICmdListComputeImmediate = FRHICommandListExecutor::GetImmediateAsyncComputeCommandList();
-
-		//Fence to let us know when the Gfx pipe is done with the RT we want to write to.
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, DestRenderTarget.UAV, AsyncStartFence);
-
 		SCOPED_COMPUTE_EVENT(RHICmdListComputeImmediate, AsyncSSAO);
-		RHICmdListComputeImmediate.WaitComputeFence(AsyncStartFence);
+		RHICmdListComputeImmediate.EndTransition(GFxToAsyncTransition);
 
 		// Compute  Version
 		// 0..4, 0:low 4:high
@@ -2193,7 +2200,7 @@ void FRCPassPostProcessAmbientOcclusion_HorizonSearch::Process(FRenderingComposi
 		Context.RHICmdList.EndRenderPass();
 	}
 
-	Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, DestRenderTarget.TargetableTexture);
+	Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::SRVMask));
 }
 
 
@@ -2493,9 +2500,9 @@ void FRCPassPostProcessAmbientOcclusion_GTAO_TemporalFilter::Process(FRenderingC
 		uint32 GroupSizeX = FMath::DivideAndRoundUp(OutputViewRect.Width(), 8);
 		uint32 GroupSizeY = FMath::DivideAndRoundUp(OutputViewRect.Height(), 8);
 	
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, DestRenderTarget0.UAV, nullptr);
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, DestRenderTarget1.UAV, nullptr);
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, DestRenderTarget2.UAV, nullptr);
+		Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget0.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
+		Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget1.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
+		Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget2.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 
 		Context.RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
 		ComputeShader->SetParametersCS(Context.RHICmdList, Context, OutputTexSize, InputTexSize, bCameraCut, InputHistory,
@@ -2513,9 +2520,9 @@ void FRCPassPostProcessAmbientOcclusion_GTAO_TemporalFilter::Process(FRenderingC
 			DestRenderTarget1.TargetableTexture
 		};
 
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, DestRenderTarget0.TargetableTexture);
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, DestRenderTarget1.TargetableTexture);
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, DestRenderTarget2.TargetableTexture);
+		Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget0.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
+		Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget1.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
+		Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget2.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
 
 		FRHIRenderPassInfo RPInfo(2, RenderTargets, ERenderTargetActions::Load_Store);
 
@@ -2559,9 +2566,9 @@ void FRCPassPostProcessAmbientOcclusion_GTAO_TemporalFilter::Process(FRenderingC
 		}
 		Context.RHICmdList.EndRenderPass();
 
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, DestRenderTarget0.TargetableTexture);
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, DestRenderTarget1.TargetableTexture);
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, DestRenderTarget2.TargetableTexture);
+		Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget0.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::SRVMask));
+		Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget1.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::SRVMask));
+		Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget2.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::SRVMask));
 	}
 }
 
@@ -2740,7 +2747,7 @@ void FRCPassPostProcessAmbientOcclusion_GTAO_SpatialFilter::Process(FRenderingCo
 
 			FRHIAsyncComputeCommandListImmediate& RHICmdListComputeImmediate = FRHICommandListExecutor::GetImmediateAsyncComputeCommandList();
 			RHICmdListComputeImmediate.SetComputeShader(ComputeShader.GetComputeShader());
-			RHICmdListComputeImmediate.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, DestRenderTarget.UAV, nullptr);
+			RHICmdListComputeImmediate.Transition(FRHITransitionInfo(DestRenderTarget.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 			ComputeShader->SetParametersCS(RHICmdListComputeImmediate, Context, InputTexSize, OutputViewRect, DestRenderTarget.UAV);
 			DispatchComputeShader(RHICmdListComputeImmediate, ComputeShader, GroupSizeX, GroupSizeY, 1);
 			ComputeShader->UnsetParameters(Context.RHICmdList);
@@ -2750,7 +2757,7 @@ void FRCPassPostProcessAmbientOcclusion_GTAO_SpatialFilter::Process(FRenderingCo
 			const FSceneRenderTargetItem& DestRenderTarget = PassOutputs[0].RequestSurface(Context);
 
 			Context.RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
-			Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, DestRenderTarget.UAV, nullptr);
+			Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 			ComputeShader->SetParametersCS(Context.RHICmdList, Context, InputTexSize, OutputViewRect, DestRenderTarget.UAV);
 			DispatchComputeShader(Context.RHICmdList, ComputeShader, GroupSizeX, GroupSizeY, 1);
 			ComputeShader->UnsetParameters(Context.RHICmdList);
@@ -2767,7 +2774,7 @@ void FRCPassPostProcessAmbientOcclusion_GTAO_SpatialFilter::Process(FRenderingCo
 
 			FRHIAsyncComputeCommandListImmediate& RHICmdListComputeImmediate = FRHICommandListExecutor::GetImmediateAsyncComputeCommandList();
 			RHICmdListComputeImmediate.SetComputeShader(ComputeShader.GetComputeShader());
-			RHICmdListComputeImmediate.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, DestRenderTarget.UAV, nullptr);
+			RHICmdListComputeImmediate.Transition(FRHITransitionInfo(DestRenderTarget.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 			ComputeShader->SetParametersCS(RHICmdListComputeImmediate, Context, InputTexSize, OutputViewRect, DestRenderTarget.UAV);
 			DispatchComputeShader(RHICmdListComputeImmediate, ComputeShader, GroupSizeX, GroupSizeY, 1);
 			ComputeShader->UnsetParameters(Context.RHICmdList);
@@ -2777,7 +2784,7 @@ void FRCPassPostProcessAmbientOcclusion_GTAO_SpatialFilter::Process(FRenderingCo
 			const FSceneRenderTargetItem& DestRenderTarget = PassOutputs[0].RequestSurface(Context);
 
 			Context.RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
-			Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, DestRenderTarget.UAV, nullptr);
+			Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 			ComputeShader->SetParametersCS(Context.RHICmdList, Context, InputTexSize, OutputViewRect, DestRenderTarget.UAV);
 			DispatchComputeShader(Context.RHICmdList, ComputeShader, GroupSizeX, GroupSizeY, 1);
 			ComputeShader->UnsetParameters(Context.RHICmdList);
@@ -2937,12 +2944,12 @@ void FRCPassPostProcessAmbientOcclusion_GTAO_Upsample::Process(FRenderingComposi
 		uint32 GroupSizeX = FMath::DivideAndRoundUp(View.ViewRect.Width(), 8);
 		uint32 GroupSizeY = FMath::DivideAndRoundUp(View.ViewRect.Height(), 8);
 
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, DestRenderTarget.UAV, nullptr);
+		Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 		Context.RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
 		ComputeShader->SetParametersCS(Context.RHICmdList, Context, InputTexSize, DestRenderTarget.UAV);
 		DispatchComputeShader(Context.RHICmdList, ComputeShader, GroupSizeX, GroupSizeY, 1);
 		ComputeShader->UnsetParameters(Context.RHICmdList);
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, DestRenderTarget.TargetableTexture);
+		Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::SRVMask));
 	}
 	else
 	{

@@ -345,12 +345,8 @@ void FVulkanCommandListContext::EndOcclusionQueryBatch(FVulkanCmdBuffer* CmdBuff
 	checkf(CurrentOcclusionQueryPool, TEXT("EndOcclusionQueryBatch called without corresponding BeginOcclusionQueryBatch!"));
 	CurrentOcclusionQueryPool->EndBatch(CmdBuffer);
 	CurrentOcclusionQueryPool = nullptr;
-	TransitionAndLayoutManager.EndRealRenderPass(CmdBuffer);
-/*
-	FScopeLock ScopeLock(&GOcclusionQueryCS);
-	CurrentOcclusionQueryPool = nullptr;
-	TransitionAndLayoutManager.EndEmulatedRenderPass(CmdBuffer);
-*/
+	LayoutManager.EndRenderPass(CmdBuffer);
+
 	// Sync point
 	if (GSubmitOcclusionBatchCmdBufferCVar.GetValueOnAnyThread())
 	{

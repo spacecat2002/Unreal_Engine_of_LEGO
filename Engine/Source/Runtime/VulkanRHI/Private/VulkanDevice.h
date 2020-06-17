@@ -165,6 +165,15 @@ public:
 		return PhysicalFeatures;
 	}
 
+	inline VkBool32 HasSeparateDepthStencilLayouts() const
+	{
+#if VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS
+		return SeparateDepthStencilLayoutsFeatures.separateDepthStencilLayouts;
+#else
+		return 0;
+#endif
+	}
+
 	inline bool HasUnifiedMemory() const
 	{
 		return MemoryManager.HasUnifiedMemory();
@@ -380,7 +389,12 @@ private:
 #if VULKAN_SUPPORTS_PHYSICAL_DEVICE_PROPERTIES2
 	VkPhysicalDeviceIDPropertiesKHR GpuIdProps;
 #endif
+
 	VkPhysicalDeviceFeatures PhysicalFeatures;
+
+#if VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS
+	VkPhysicalDeviceSeparateDepthStencilLayoutsFeaturesKHR SeparateDepthStencilLayoutsFeatures;
+#endif
 
 	TArray<VkQueueFamilyProperties> QueueFamilyProps;
 	VkFormatProperties FormatProperties[VK_FORMAT_RANGE_SIZE];

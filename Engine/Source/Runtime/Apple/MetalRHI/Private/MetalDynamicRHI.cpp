@@ -12,6 +12,7 @@
 #include "MetalVertexDeclaration.h"
 #include "MetalGraphicsPipelineState.h"
 #include "MetalComputePipelineState.h"
+#include "MetalTransitionData.h"
 
 
 //------------------------------------------------------------------------------
@@ -101,6 +102,26 @@ void FMetalDynamicRHI::RHIUnlockStagingBuffer(FRHIStagingBuffer* StagingBuffer)
 {
 	FMetalRHIStagingBuffer* Buffer = ResourceCast(StagingBuffer);
 	Buffer->Unlock();
+}
+
+
+//------------------------------------------------------------------------------
+
+#pragma mark - Metal Dynamic RHI Resource Transition Methods -
+
+
+void FMetalDynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipeline SrcPipelines, ERHIPipeline DstPipelines, ERHICreateTransitionFlags CreateFlags, TArrayView<const FRHITransitionInfo> Infos)
+{
+	checkf(FMath::IsPowerOfTwo(uint32(SrcPipelines)) && FMath::IsPowerOfTwo(uint32(DstPipelines)), TEXT("Support for multi-pipe resources is not yet implemented."));
+
+	// Construct the data in-place on the transition instance
+	new (Transition->GetPrivateData<FMetalTransitionData>()) FMetalTransitionData(SrcPipelines, DstPipelines, CreateFlags, Infos);
+}
+
+void FMetalDynamicRHI::RHIReleaseTransition(FRHITransition* Transition)
+{
+	// Destruct the private data object of the transition instance.
+	Transition->GetPrivateData<FMetalTransitionData>()->~FMetalTransitionData();
 }
 
 

@@ -1713,7 +1713,7 @@ void FSceneViewport::BeginRenderFrame(FRHICommandListImmediate& RHICmdList)
 	check( IsInRenderingThread() );
 	if (UseSeparateRenderTarget())
 	{		
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, RenderTargetTextureRenderThreadRHI);
+		RHICmdList.Transition(FRHITransitionInfo(RenderTargetTextureRenderThreadRHI, ERHIAccess::Unknown, ERHIAccess::RTV));
 	}
 	else if( IsValidRef( ViewportRHI ) ) 
 	{

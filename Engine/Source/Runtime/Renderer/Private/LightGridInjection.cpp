@@ -657,9 +657,15 @@ void FDeferredShadingSceneRenderer::ComputeLightGrid(FRHICommandListImmediate& R
 				View.ForwardLightingResources->NumCulledLightsGrid.UAV,
 				View.ForwardLightingResources->CulledLightDataGrid.UAV });
 
-			RHICmdList.TransitionResources(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToCompute, OutUAVs.GetData(), OutUAVs.Num());
+			TArray<FRHITransitionInfo, TInlineAllocator<2>> UAVTransitions;
+			for (FRHIUnorderedAccessView* UAV : OutUAVs)
 			{
-				FRDGBuilder GraphBuilder(RHICmdList);
+				UAVTransitions.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::UAVCompute));
+			}
+			RHICmdList.Transition(MakeArrayView(UAVTransitions.GetData(), UAVTransitions.Num()));
+
+			{
+				FRDGBuilder GraphBuilder(RHICmdList, RDG_EVENT_NAME("LightGridInjection(View=%d)", ViewIndex));
 				{
 					RDG_EVENT_SCOPE(GraphBuilder, "CullLights %ux%ux%u NumLights %u NumCaptures %u",
 						ForwardLightData.CulledGridSize.X,
@@ -737,7 +743,12 @@ void FDeferredShadingSceneRenderer::ComputeLightGrid(FRHICommandListImmediate& R
 				}
 				GraphBuilder.Execute();
 
-				RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, OutUAVs.GetData(), OutUAVs.Num());
+				TArray<FRHITransitionInfo, TInlineAllocator<2>> SRVTransitions;
+				for (FRHIUnorderedAccessView* UAV : OutUAVs)
+				{
+					SRVTransitions.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask));
+				}
+				RHICmdList.Transition(MakeArrayView(SRVTransitions.GetData(), SRVTransitions.Num()));
 			}
 		}
 	}
@@ -745,7 +756,12 @@ void FDeferredShadingSceneRenderer::ComputeLightGrid(FRHICommandListImmediate& R
 
 
 
-void FDeferredShadingSceneRenderer::RenderForwardShadingShadowProjections(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMask, TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMaskSubPixel, const FHairStrandsDatas* InHairDatas)
+void FDeferredShadingSceneRenderer::RenderForwardShadingShadowProjections(
+	FRHICommandListImmediate& RHICmdList,
+	const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
+	TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMask,
+	TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMaskSubPixel,
+	const FHairStrandsDatas* InHairDatas)
 {
 	check(RHICmdList.IsOutsideRenderPass());
 
@@ -807,7 +823,7 @@ void FDeferredShadingSceneRenderer::RenderForwardShadingShadowProjections(FRHICo
 
 				if (VisibleLightInfo.ShadowsToProject.Num() > 0)
 				{
-					FSceneRenderer::RenderShadowProjections(RHICmdList, LightSceneInfo, ForwardScreenSpaceShadowMask, ForwardScreenSpaceShadowMaskSubPixel, true, false, bIsHairEnable ? &InHairDatas->HairVisibilityViews : nullptr);
+					FSceneRenderer::RenderShadowProjections(RHICmdList, SceneTexturesUniformBuffer, LightSceneInfo, ForwardScreenSpaceShadowMask, ForwardScreenSpaceShadowMaskSubPixel, true, false, bIsHairEnable ? &InHairDatas->HairVisibilityViews : nullptr);
 
 					if (InHairDatas)
 					{
@@ -819,7 +835,7 @@ void FDeferredShadingSceneRenderer::RenderForwardShadingShadowProjections(FRHICo
 
 				if (LightSceneInfo->GetDynamicShadowMapChannel() >= 0 && LightSceneInfo->GetDynamicShadowMapChannel() < 4)
 				{
-					RenderLightFunction(RHICmdList, LightSceneInfo, ForwardScreenSpaceShadowMask, true, true);
+					RenderLightFunction(RHICmdList, SceneTexturesUniformBuffer, LightSceneInfo, ForwardScreenSpaceShadowMask, true, true);
 				}
 			}
 			RHICmdList.CopyToResolveTarget(ForwardScreenSpaceShadowMask->GetRenderTargetItem().TargetableTexture, ForwardScreenSpaceShadowMask->GetRenderTargetItem().ShaderResourceTexture, FResolveParams(FResolveRect()));

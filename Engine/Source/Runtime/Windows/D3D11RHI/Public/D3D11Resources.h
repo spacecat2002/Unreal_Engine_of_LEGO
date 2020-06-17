@@ -163,7 +163,7 @@ public:
 		, bDirty(false)
 	{}
 
-	void SetCurrentGPUAccess(EResourceTransitionAccess Access)
+	void SetCurrentGPUAccess(ERHIAccess Access)
 	{
 		if (Access == EResourceTransitionAccess::EReadable)
 		{
@@ -172,7 +172,7 @@ public:
 		CurrentGPUAccess = Access;
 	}
 
-	EResourceTransitionAccess GetCurrentGPUAccess() const
+	ERHIAccess GetCurrentGPUAccess() const
 	{
 		return CurrentGPUAccess;
 	}
@@ -192,7 +192,7 @@ public:
 private:
 	
 	/** Whether the current resource is logically GPU readable or writable.  Mostly for validation for newer RHI's*/
-	EResourceTransitionAccess CurrentGPUAccess;
+	ERHIAccess CurrentGPUAccess;
 
 	/** Most recent frame this resource was written to. */
 	uint32 LastFrameWritten;

@@ -223,8 +223,8 @@ FRDGTextureRef FVolumetricRenderTargetViewStateData::GetOrCreateVolumetricTracin
 	}
 
 	FRDGTextureRef RDGVolumetricTracingRT = GraphBuilder.CreateTexture(
-		FRDGTextureDesc::Create2DDesc(VolumetricTracingRTResolution, PF_FloatRGBA, FClearValueBinding(FLinearColor(0.0f, 0.0f, 0.0f, 1.0f)),
-			TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable, false, 1), TEXT("RDGVolumetricTracingRT"));
+		FRDGTextureDesc::Create2D(VolumetricTracingRTResolution, PF_FloatRGBA, FClearValueBinding(FLinearColor(0.0f, 0.0f, 0.0f, 1.0f)),
+			TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable), TEXT("RDGVolumetricTracingRT"));
 	return RDGVolumetricTracingRT;
 }
 
@@ -238,8 +238,8 @@ FRDGTextureRef FVolumetricRenderTargetViewStateData::GetOrCreateVolumetricTracin
 	}
 
 	FRDGTextureRef RDGVolumetricTracingRTDepth = GraphBuilder.CreateTexture(
-		FRDGTextureDesc::Create2DDesc(VolumetricTracingRTResolution, PF_R16F, FClearValueBinding(FLinearColor(63000.0f, 63000.0f, 63000.0f, 63000.0f)),
-			TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable, false, 1), TEXT("RDGVolumetricTracingRTDepth"));
+		FRDGTextureDesc::Create2D(VolumetricTracingRTResolution, PF_R16F, FClearValueBinding(FLinearColor(63000.0f, 63000.0f, 63000.0f, 63000.0f)),
+			TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable), TEXT("RDGVolumetricTracingRTDepth"));
 	return RDGVolumetricTracingRTDepth;
 }
 
@@ -270,8 +270,8 @@ FRDGTextureRef FVolumetricRenderTargetViewStateData::GetOrCreateDstVolumetricRec
 	}
 
 	FRDGTextureRef RDGVolumetricVolumetricReconstructRTRT = GraphBuilder.CreateTexture(
-		FRDGTextureDesc::Create2DDesc(VolumetricReconstructRTResolution, PF_FloatRGBA, FClearValueBinding(FLinearColor(0.0f, 0.0f, 0.0f, 1.0f)),
-		TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable, false, 1), TEXT("RDGVolumetricVolumetricReconstructRTRT"));
+		FRDGTextureDesc::Create2D(VolumetricReconstructRTResolution, PF_FloatRGBA, FClearValueBinding(FLinearColor(0.0f, 0.0f, 0.0f, 1.0f)),
+		TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable), TEXT("RDGVolumetricVolumetricReconstructRTRT"));
 	return RDGVolumetricVolumetricReconstructRTRT;
 }
 
@@ -286,8 +286,8 @@ FRDGTextureRef FVolumetricRenderTargetViewStateData::GetOrCreateDstVolumetricRec
 	}
 
 	FRDGTextureRef RDGVolumetricVolumetricReconstructRTRTDepth = GraphBuilder.CreateTexture(
-		FRDGTextureDesc::Create2DDesc(VolumetricReconstructRTResolution, PF_R16F, FClearValueBinding(FLinearColor(63000.0f, 63000.0f, 63000.0f, 63000.0f)),
-		TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable, false, 1), TEXT("RDGVolumetricVolumetricReconstructRTRTDepth"));
+		FRDGTextureDesc::Create2D(VolumetricReconstructRTResolution, PF_R16F, FClearValueBinding(FLinearColor(63000.0f, 63000.0f, 63000.0f, 63000.0f)),
+		TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable), TEXT("RDGVolumetricVolumetricReconstructRTRTDepth"));
 	return RDGVolumetricVolumetricReconstructRTRTDepth;
 }
 
@@ -439,7 +439,7 @@ IMPLEMENT_GLOBAL_SHADER(FReconstructVolumetricRenderTargetPS, "/Engine/Private/V
 
 //////////////////////////////////////////////////////////////////////////
 
-void FSceneRenderer::ReconstructVolumetricRenderTarget(FRHICommandListImmediate& RHICmdList)
+void FSceneRenderer::ReconstructVolumetricRenderTarget(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColorTexture, FRDGTextureRef SceneDepthResolveTexture)
 {
 	bool bAnyViewRequiresProcessing = false;
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
@@ -452,7 +452,6 @@ void FSceneRenderer::ReconstructVolumetricRenderTarget(FRHICommandListImmediate&
 		return;
 	}
 
-	FRDGBuilder GraphBuilder(RHICmdList);
 	FRDGTextureRef BlackDummy = GraphBuilder.RegisterExternalTexture(GSystemTextures.BlackDummy);
 
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
@@ -507,10 +506,8 @@ void FSceneRenderer::ReconstructVolumetricRenderTarget(FRHICommandListImmediate&
 		VolumetricCloudRT.ExtractDstVolumetricReconstructRTDepth(GraphBuilder, DstVolumetricDepth);
 	}
 
-	GraphBuilder.Execute();
-
 	// Compose over the scene color.
-	ComposeVolumetricRenderTargetOverScene(RHICmdList);
+	ComposeVolumetricRenderTargetOverScene(GraphBuilder, SceneColorTexture, SceneDepthResolveTexture);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -527,7 +524,7 @@ class FComposeVolumetricRTOverScenePS : public FGlobalShader
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, VolumetricTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, VolumetricDepthTexture)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneDepthBuffer)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneDepthTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearTextureSampler)
 		RENDER_TARGET_BINDING_SLOTS()
 		SHADER_PARAMETER(float, UvOffsetScale)
@@ -558,15 +555,8 @@ IMPLEMENT_GLOBAL_SHADER(FComposeVolumetricRTOverScenePS, "/Engine/Private/Volume
 
 //////////////////////////////////////////////////////////////////////////
 
-void FSceneRenderer::ComposeVolumetricRenderTargetOverScene(FRHICommandListImmediate& RHICmdList)
+void FSceneRenderer::ComposeVolumetricRenderTargetOverScene(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColorTexture, FRDGTextureRef SceneDepthResolveTexture)
 {
-	// This is called from ReconstructVolumetricRenderTarget so no need to check if any views need the process
-	FRDGBuilder GraphBuilder(RHICmdList);
-
-	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-	FRDGTextureRef SceneColor = GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor(), TEXT("SceneColor"));
-	TRefCountPtr<IPooledRenderTarget> SceneDepthZ = SceneContext.SceneDepthZ;
-
 	FRHIBlendState* PreMultipliedColorTransmittanceBlend = TStaticBlendState<CW_RGB, BO_Add, BF_One, BF_SourceAlpha, BO_Add, BF_Zero, BF_One>::GetRHI();
 
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
@@ -591,10 +581,10 @@ void FSceneRenderer::ComposeVolumetricRenderTargetOverScene(FRHICommandListImmed
 
 		FComposeVolumetricRTOverScenePS::FParameters* PassParameters = GraphBuilder.AllocParameters<FComposeVolumetricRTOverScenePS::FParameters>();
 		PassParameters->ViewUniformBuffer = ViewInfo.ViewUniformBuffer;
-		PassParameters->RenderTargets[0] = FRenderTargetBinding(SceneColor, ERenderTargetLoadAction::ELoad);
+		PassParameters->RenderTargets[0] = FRenderTargetBinding(SceneColorTexture, ERenderTargetLoadAction::ELoad);
 		PassParameters->VolumetricTexture = VolumetricTexture;
 		PassParameters->VolumetricDepthTexture = VolumetricDepthTexture;
-		PassParameters->SceneDepthBuffer = GraphBuilder.RegisterExternalTexture(SceneDepthZ);
+		PassParameters->SceneDepthTexture = SceneDepthResolveTexture;
 		PassParameters->LinearTextureSampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
 		PassParameters->UvOffsetScale = VolumetricCloudRT.GetUvNoiseScale();
 		PassParameters->FullResolutionToVolumetricBufferResolution = FVector2D(1.0f / float(GetMainDownsampleFactor(VRTMode)), float(GetMainDownsampleFactor(VRTMode)));
@@ -607,8 +597,6 @@ void FSceneRenderer::ComposeVolumetricRenderTargetOverScene(FRHICommandListImmed
 			GraphBuilder, ViewInfo.ShaderMap, RDG_EVENT_NAME("VolumetricComposeOverScene"), PixelShader, PassParameters, ViewInfo.ViewRect,
 			PreMultipliedColorTransmittanceBlend);
 	}
-
-	GraphBuilder.Execute();
 }
 
 

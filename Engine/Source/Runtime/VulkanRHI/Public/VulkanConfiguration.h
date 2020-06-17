@@ -232,11 +232,17 @@
 	#endif
 #endif
 
+#ifndef VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS
+	#ifdef VK_KHR_separate_depth_stencil_layouts
+		#define VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS	1
+	#else
+		#define VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS	0
+	#endif
+#endif
+
 #ifndef VULKAN_OBJECT_TRACKING 
 #define VULKAN_OBJECT_TRACKING 0 //Track objects created and memory used. use r.vulkan.dumpmemory to dump to console
 #endif
-
-
 
 DECLARE_LOG_CATEGORY_EXTERN(LogVulkanRHI, Log, All);
 

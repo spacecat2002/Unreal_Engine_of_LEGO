@@ -1639,7 +1639,7 @@ void FLandscapeTextureAtlas::UpdateAllocations(FRHICommandListImmediate& RHICmdL
 	{
 		FRDGBuilder GraphBuilder(RHICmdList);
 
-		RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, AtlasUAVRHI);
+		RHICmdList.Transition(FRHITransitionInfo(AtlasUAVRHI, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 
 		if (SubAllocType == SAT_Height)
 		{
@@ -1657,7 +1657,7 @@ void FLandscapeTextureAtlas::UpdateAllocations(FRHICommandListImmediate& RHICmdL
 				{
 					if (bNeedBarrier)
 					{
-						CmdList.TransitionResource(EResourceTransitionAccess::ERWNoBarrier, EResourceTransitionPipeline::EComputeToCompute, Parameters->RWHeightFieldAtlas);
+						CmdList.Transition(FRHITransitionInfo(Parameters->RWHeightFieldAtlas, ERHIAccess::Unknown, ERHIAccess::ERWNoBarrier));
 					}
 					FComputeShaderUtils::Dispatch(CmdList, ComputeShader, *Parameters, FIntVector(UpdateRegion.X, UpdateRegion.Y, 1));
 				});
@@ -1679,7 +1679,7 @@ void FLandscapeTextureAtlas::UpdateAllocations(FRHICommandListImmediate& RHICmdL
 				{
 					if (bNeedBarrier)
 					{
-						CmdList.TransitionResource(EResourceTransitionAccess::ERWNoBarrier, EResourceTransitionPipeline::EComputeToCompute, Parameters->RWVisibilityAtlas);
+						CmdList.Transition(FRHITransitionInfo(Parameters->RWVisibilityAtlas, ERHIAccess::Unknown, ERHIAccess::ERWNoBarrier));
 					}
 					FComputeShaderUtils::Dispatch(CmdList, ComputeShader, *Parameters, FIntVector(UpdateRegion.X, UpdateRegion.Y, 1));
 				});
@@ -1687,7 +1687,7 @@ void FLandscapeTextureAtlas::UpdateAllocations(FRHICommandListImmediate& RHICmdL
 		}
 
 		GraphBuilder.Execute();
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, AtlasUAVRHI);
+		RHICmdList.Transition(FRHITransitionInfo(AtlasUAVRHI, ERHIAccess::Unknown, ERHIAccess::SRVGraphics));
 	}
 }
 

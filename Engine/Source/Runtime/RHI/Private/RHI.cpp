@@ -72,17 +72,104 @@ static TAutoConsoleVariable<int32> CVarGraphicsAdapter(
 	TEXT("  1: Adapter #1, ..."),
 	ECVF_ReadOnly | ECVF_RenderThreadSafe);
 
-
-const FString FResourceTransitionUtility::ResourceTransitionAccessStrings[(int32)EResourceTransitionAccess::EMaxAccess + 1] =
+template<typename EnumType>
+inline FString BuildEnumNameBitList(EnumType Value, const TCHAR*(*GetEnumName)(EnumType))
 {
-	FString(TEXT("EReadable")),
-	FString(TEXT("EWritable")),	
-	FString(TEXT("ERWBarrier")),
-	FString(TEXT("ERWNoBarrier")),
-	FString(TEXT("ERWSubResBarrier")),
-	FString(TEXT("EMetaData")),
-	FString(TEXT("EMaxAccess")),
-};
+	if (Value == EnumType(0))
+	{
+		return GetEnumName(Value);
+	}
+
+	using T = __underlying_type(EnumType);
+	T StateValue = (T)Value;
+
+	FString Name;
+
+	int32 BitIndex = 0;
+	while (StateValue)
+	{
+		if (StateValue & 1)
+		{
+			if (Name.Len() > 0 && StateValue > 0)
+			{
+				Name += TEXT("|");
+			}
+
+			Name += GetEnumName(EnumType(T(1) << BitIndex));
+		}
+
+		BitIndex++;
+		StateValue >>= 1;
+	}
+
+	return MoveTemp(Name);
+}
+
+FString GetRHIAccessName(ERHIAccess Access)
+{
+	switch (Access)
+	{
+		// Cases for legacy resource state, to make the huge bit combinations easier to read...
+	case ERHIAccess::EReadable:  return TEXT("EReadable");
+	case ERHIAccess::EWritable:  return TEXT("EWritable");
+	case ERHIAccess::ERWBarrier: return TEXT("ERWBarrier");
+
+		// All other states are built as a logic OR of state bits.
+	default:
+		return BuildEnumNameBitList<ERHIAccess>(Access, [](ERHIAccess AccessBit)
+		{
+			switch (AccessBit)
+			{
+			default: checkNoEntry(); // fall through
+			case ERHIAccess::Unknown:             return TEXT("Unknown");
+			case ERHIAccess::CPURead:             return TEXT("CPURead");
+			case ERHIAccess::Present:             return TEXT("Present");
+			case ERHIAccess::IndirectArgs:        return TEXT("IndirectArgs");
+			case ERHIAccess::VertexOrIndexBuffer: return TEXT("VertexOrIndexBuffer");
+			case ERHIAccess::SRVCompute:          return TEXT("SRVCompute");
+			case ERHIAccess::SRVGraphics:         return TEXT("SRVGraphics");
+			case ERHIAccess::CopySrc:             return TEXT("CopySrc");
+			case ERHIAccess::ResolveSrc:          return TEXT("ResolveSrc");
+			case ERHIAccess::DSVRead:             return TEXT("DSVRead");
+			case ERHIAccess::UAVCompute:          return TEXT("UAVCompute");
+			case ERHIAccess::UAVGraphics:         return TEXT("UAVGraphics");
+			case ERHIAccess::RTV:                 return TEXT("RTV");
+			case ERHIAccess::CopyDest:            return TEXT("CopyDest");
+			case ERHIAccess::ResolveDst:          return TEXT("ResolveDst");
+			case ERHIAccess::DSVWrite:            return TEXT("DSVWrite");
+			}
+		});
+	}
+}
+
+FString GetResourceTransitionFlagsName(EResourceTransitionFlags Flags)
+{
+	return BuildEnumNameBitList<EResourceTransitionFlags>(Flags, [](EResourceTransitionFlags Value)
+	{
+		switch (Value)
+		{
+		default: checkNoEntry(); // fall through
+		case EResourceTransitionFlags::None:                return TEXT("None");
+		case EResourceTransitionFlags::MaintainCompression: return TEXT("MaintainCompression");
+		}
+	});
+}
+
+FString GetRHIPipelineName(ERHIPipeline Pipeline)
+{
+	return BuildEnumNameBitList<ERHIPipeline>(Pipeline, [](ERHIPipeline Value)
+	{
+		if (Value == ERHIPipeline(0)) { return TEXT("None"); }
+
+		switch (Value)
+		{
+		default: checkNoEntry(); // fall through
+		case ERHIPipeline::Graphics:     return TEXT("Graphics");
+		case ERHIPipeline::AsyncCompute: return TEXT("AsyncCompute");
+		}
+	});
+}
+
 
 #if STATS
 #include "Stats/StatsData.h"
@@ -463,7 +550,15 @@ void FRHIResource::FlushPendingDeletes(bool bFlushDeferredDeletes)
 	SCOPE_CYCLE_COUNTER(STAT_DeleteResources);
 
 	check(IsInRenderingThread());
-	FRHICommandListExecutor::GetImmediateCommandList().ImmediateFlush(EImmediateFlushType::FlushRHIThread);
+
+	FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
+	if (GDynamicRHI)
+	{
+		// Submit all remaining work to the GPU. This also ensures that validation RHI barrier tracking
+		// operations have been flushed before we delete any resources they could be referring to.
+		RHICmdList.SubmitCommandsHint();
+	}
+	RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThread);
 	FRHICommandListExecutor::CheckNoOutstandingCmdLists();
 	if (GDynamicRHI)
 	{
@@ -685,6 +780,7 @@ bool GRHISupportsPrimitiveShaders = false;
 bool GRHISupportsAtomicUInt64 = false;
 bool GRHISupportsResummarizeHTile = false;
 bool GRHISupportsExplicitHTile = false;
+bool GRHISupportsExplicitFMask = false;
 bool GRHISupportsDepthUAV = false;
 bool GSupportsParallelRenderingTasksWithSeparateRHIThread = true;
 bool GRHIThreadNeedsKicking = false;
@@ -783,6 +879,9 @@ RHI_API int32 GNumDrawCallsRHI = 0;
 RHI_API int32* GCurrentNumDrawCallsRHIPtr = &GCurrentNumDrawCallsRHI;
 RHI_API int32 GCurrentNumPrimitivesDrawnRHI = 0;
 RHI_API int32 GNumPrimitivesDrawnRHI = 0;
+
+RHI_API uint64 GRHITransitionPrivateData_SizeInBytes = 0;
+RHI_API uint64 GRHITransitionPrivateData_AlignInBytes = 0;
 
 /** Called once per frame only from within an RHI. */
 void RHIPrivateBeginFrame()
@@ -1263,19 +1362,6 @@ void FRHIRenderPassInfo::Validate() const
 		ensureMsgf(!ColorRenderTargets[ColorIndex].RenderTarget, TEXT("Missing color render target on slot %d"), ColorIndex - 1);
 	}
 
-	if (bGeneratingMips)
-	{
-		if (NumColorRenderTargets == 0)
-		{
-			ensureMsgf(0, TEXT("Missing color render target for which to generate mips!"));
-		}
-
-		for (int32 Index = 1; Index < NumColorRenderTargets; ++Index)
-		{
-			ensureMsgf(ColorRenderTargets[0].RenderTarget->GetSizeXYZ() == ColorRenderTargets[Index].RenderTarget->GetSizeXYZ(), TEXT("Color Render Targets must all have the same dimensions for generating mips!"));
-		}		
-	}
-
 	if (DepthStencilRenderTarget.DepthStencilTarget)
 	{
 		// Ensure NumSamples matches with color RT
@@ -1338,10 +1424,6 @@ FRHIPanicEvent& RHIGetPanicDelegate()
 {
 	return RHIPanicEvent;
 }
-
-
-
-
 
 #include "Misc/DataDrivenPlatformInfoRegistry.h"
 

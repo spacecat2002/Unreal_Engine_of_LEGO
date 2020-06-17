@@ -265,12 +265,12 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 	const bool CubeResolutionInvalidated = ConvolvedSkyRenderTarget.IsValid() && ConvolvedSkyRenderTarget->GetDesc().GetSize().X != CubeWidth;
 	if (!ConvolvedSkyRenderTarget.IsValid() || CubeResolutionInvalidated)
 	{
-		GRenderTargetPool.FindFreeElement(RHICmdList, SkyCubeTexDesc, ConvolvedSkyRenderTarget, TEXT("ConvolvedSkyRenderTarget"), true, ERenderTargetTransience::NonTransient);
-		GRenderTargetPool.FindFreeElement(RHICmdList, SkyCubeTexDesc, CapturedSkyRenderTarget, TEXT("CapturedSkyRenderTarget"), true, ERenderTargetTransience::NonTransient);
+		GRenderTargetPool.FindFreeElement(RHICmdList, SkyCubeTexDesc, ConvolvedSkyRenderTarget, TEXT("ConvolvedSkyRenderTarget"), ERenderTargetTransience::NonTransient);
+		GRenderTargetPool.FindFreeElement(RHICmdList, SkyCubeTexDesc, CapturedSkyRenderTarget, TEXT("CapturedSkyRenderTarget"), ERenderTargetTransience::NonTransient);
 	}
 	if (bTimeSlicedRealTimeCapture && (!ProcessedSkyRenderTarget.IsValid() || CubeResolutionInvalidated))
 	{
-		GRenderTargetPool.FindFreeElement(RHICmdList, SkyCubeTexDesc, ProcessedSkyRenderTarget, TEXT("CapturedSkyRenderTarget"), true, ERenderTargetTransience::NonTransient);
+		GRenderTargetPool.FindFreeElement(RHICmdList, SkyCubeTexDesc, ProcessedSkyRenderTarget, TEXT("CapturedSkyRenderTarget"), ERenderTargetTransience::NonTransient);
 	}
 
 
@@ -466,7 +466,7 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 									{
 										FScene* Scene = MainView.Family->Scene->GetRenderScene();
 
-										FMeshPassProcessorRenderState DrawRenderState(CubeViewUniformBuffer, Scene->UniformBuffers.OpaqueBasePassUniformBuffer);
+										FMeshPassProcessorRenderState DrawRenderState(CubeViewUniformBuffer);
 										DrawRenderState.SetInstancedViewUniformBuffer(Scene->UniformBuffers.InstancedViewUniformBuffer);
 
 										FExclusiveDepthStencil::Type BasePassDepthStencilAccess_NoDepthWrite = FExclusiveDepthStencil::Type(Scene->DefaultBasePassDepthStencilAccess & ~FExclusiveDepthStencil::DepthWrite);
@@ -648,7 +648,7 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 			GraphBuilder.AddPass(
 				Forward<FRDGEventName>(RDG_EVENT_NAME("MipGen")),
 				PassParameters,
-				ERDGPassFlags::Compute | ERDGPassFlags::GenerateMips,
+				ERDGPassFlags::Compute,
 			[PassParameters, ComputeShader, NumGroups](FRHICommandList& RHICmdList)
 			{
 				FComputeShaderUtils::Dispatch(RHICmdList, ComputeShader, *PassParameters, NumGroups);

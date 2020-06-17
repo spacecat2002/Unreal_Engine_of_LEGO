@@ -27,6 +27,7 @@ class ISceneViewExtension;
 class FSceneViewFamily;
 class FVolumetricFogViewResources;
 class FIESLightProfileResource;
+struct FExposureBufferData;
 
 enum class ERayTracingRenderMode
 {
@@ -1332,6 +1333,19 @@ public:
 	/** Current ray tracing debug visualization mode */
 	FName CurrentRayTracingDebugVisualizationMode;
 #endif
+	/** Tells if the eye adaptation texture / buffer exists without attempting to allocate it. */
+	bool HasValidEyeAdaptationTexture() const;
+	bool HasValidEyeAdaptationBuffer() const;
+
+	/** Returns the eye adaptation texture (SM5+ only) or null if it doesn't exist. */
+	IPooledRenderTarget* GetEyeAdaptationTexture() const;
+
+	/** Returns the eye adaptation buffer (mobile) or null if it doesn't exist. */
+	const FExposureBufferData* GetEyeAdaptationBuffer() const;
+
+
+protected:
+	FSceneViewStateInterface* EyeAdaptationViewState = nullptr;
 };
 
 //////////////////////////////////////////////////////////////////////////

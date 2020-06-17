@@ -105,8 +105,7 @@ class FTemporalAACS : public FGlobalShader
 		SHADER_PARAMETER(FVector4, ScreenPosToHistoryBufferUV)
 
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
-
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, EyeAdaptation)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, EyeAdaptationTexture)
 
 		// Inputs
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, InputSceneColor)
@@ -120,8 +119,8 @@ class FTemporalAACS : public FGlobalShader
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, HistoryBuffer1)
 		SHADER_PARAMETER_SAMPLER(SamplerState, HistoryBuffer1Sampler)
 
-		SHADER_PARAMETER_SAMPLER(SamplerState, SceneDepthBufferSampler)
-		SHADER_PARAMETER_SAMPLER(SamplerState, SceneVelocityBufferSampler)
+		SHADER_PARAMETER_SAMPLER(SamplerState, SceneDepthTextureSampler)
+		SHADER_PARAMETER_SAMPLER(SamplerState, GBufferVelocityTextureSampler)
 
 		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D, StencilTexture)
 
@@ -417,17 +416,15 @@ FTAAOutputs AddTemporalAAPass(
 	FTAAOutputs Outputs;
 
 	{
-		FRDGTextureDesc SceneColorDesc = FRDGTextureDesc::Create2DDesc(
+		FRDGTextureDesc SceneColorDesc = FRDGTextureDesc::Create2D(
 			OutputExtent,
 			PF_FloatRGBA,
 			FClearValueBinding::Black,
-			/* InFlags = */ TexCreate_None,
-			/* InTargetableFlags = */ TexCreate_ShaderResource | TexCreate_UAV,
-			/* bInForceSeparateTargetAndShaderResource = */ false);
+			TexCreate_ShaderResource | TexCreate_UAV);
 
 		if (Inputs.bOutputRenderTargetable)
 		{
-			SceneColorDesc.TargetableFlags |= TexCreate_RenderTargetable;
+			SceneColorDesc.Flags |= TexCreate_RenderTargetable;
 		}
 
 		const TCHAR* OutputName = kTAAOutputNames[PassIndex];
@@ -435,25 +432,23 @@ FTAAOutputs AddTemporalAAPass(
 		Outputs.SceneColor = GraphBuilder.CreateTexture(
 			SceneColorDesc,
 			OutputName,
-			ERDGResourceFlags::MultiFrame);
+			ERDGTextureFlags::MultiFrame);
 
 		if (RenderTargetCount == 2)
 		{
 			Outputs.SceneMetadata = GraphBuilder.CreateTexture(
 				SceneColorDesc,
 				OutputName,
-				ERDGResourceFlags::MultiFrame);
+				ERDGTextureFlags::MultiFrame);
 		}
 
 		if (Inputs.bDownsample)
 		{
-			const FRDGTextureDesc HalfResSceneColorDesc = FRDGTextureDesc::Create2DDesc(
+			const FRDGTextureDesc HalfResSceneColorDesc = FRDGTextureDesc::Create2D(
 				SceneColorDesc.Extent / 2,
 				Inputs.DownsampleOverrideFormat != PF_Unknown ? Inputs.DownsampleOverrideFormat : Inputs.SceneColorInput->Desc.Format,
 				FClearValueBinding::Black,
-				/* InFlags = */ TexCreate_None,
-				/* InTargetableFlags = */ TexCreate_ShaderResource | TexCreate_Transient | TexCreate_UAV,
-				/* bInForceSeparateTargetAndShaderResource = */ false);
+				TexCreate_ShaderResource | TexCreate_Transient | TexCreate_UAV);
 
 			Outputs.DownsampledSceneColor = GraphBuilder.CreateTexture(HalfResSceneColorDesc, TEXT("SceneColorHalfRes"));
 		}
@@ -514,15 +509,15 @@ FTAAOutputs AddTemporalAAPass(
 		PassParameters->bCameraCut = bCameraCut;
 
 		PassParameters->SceneTextures = SceneTextures;
-		PassParameters->SceneDepthBufferSampler = TStaticSamplerState<SF_Point>::GetRHI();
-		PassParameters->SceneVelocityBufferSampler = TStaticSamplerState<SF_Point>::GetRHI();
+		PassParameters->SceneDepthTextureSampler = TStaticSamplerState<SF_Point>::GetRHI();
+		PassParameters->GBufferVelocityTextureSampler = TStaticSamplerState<SF_Point>::GetRHI();
 
-		PassParameters->StencilTexture = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::CreateWithPixelFormat(SceneTextures.SceneDepthBuffer, PF_X24_G8));
+		PassParameters->StencilTexture = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::CreateWithPixelFormat(SceneTextures.SceneDepthTexture, PF_X24_G8));
 
 		// We need a valid velocity buffer texture. Use black (no velocity) if none exists.
-		if (!PassParameters->SceneTextures.SceneVelocityBuffer)
+		if (!PassParameters->SceneTextures.GBufferVelocityTexture)
 		{
-			PassParameters->SceneTextures.SceneVelocityBuffer = GraphBuilder.RegisterExternalTexture(GSystemTextures.BlackDummy);;
+			PassParameters->SceneTextures.GBufferVelocityTexture = GraphBuilder.RegisterExternalTexture(GSystemTextures.BlackDummy);;
 		}
 
 		// Input buffer shader parameters
@@ -558,7 +553,7 @@ FTAAOutputs AddTemporalAAPass(
 				PassParameters->HistoryBuffer1 = BlackDummy;
 
 				// Remove dependency of the velocity buffer on camera cut, given it's going to be ignored by the shader.
-				PassParameters->SceneTextures.SceneVelocityBuffer = BlackDummy;
+				PassParameters->SceneTextures.GBufferVelocityTexture = BlackDummy;
 			}
 			else
 			{
@@ -619,7 +614,7 @@ FTAAOutputs AddTemporalAAPass(
 				ResDivisorInv * InputViewRect.Min.Y * InvSizeY);
 		}
 
-		PassParameters->EyeAdaptation = GetEyeAdaptationTexture(GraphBuilder, View);
+		PassParameters->EyeAdaptationTexture = GetEyeAdaptationTexture(GraphBuilder, View);
 
 		// Temporal upsample specific shader parameters.
 		{
@@ -794,12 +789,11 @@ public:
 	{
 		WaitForInputPassComputeFences(Context.RHICmdList);
 
-		AsyncEndFence = FComputeFenceRHIRef();
+		AsyncEndFence = nullptr;
 
 		FRDGBuilder GraphBuilder(Context.RHICmdList);
 
-		FSceneTextureParameters SceneTextures;
-		SetupSceneTextureParameters(GraphBuilder, &SceneTextures);
+		FSceneTextureParameters SceneTextures = GetSceneTextureParameters(GraphBuilder);
 
 		FTAAPassParameters Parameters = SavedParameters;
 		Parameters.SceneColorInput = CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor"));
@@ -829,12 +823,12 @@ public:
 		return FPooledRenderTargetDesc();
 	}
 
-	FRHIComputeFence* GetComputePassEndFence() const override { return AsyncEndFence; }
+	const FRHITransition* GetComputePassEndFence() const override { return AsyncEndFence; }
 
 private:
 	const FTAAPassParameters SavedParameters;
 
-	FComputeFenceRHIRef AsyncEndFence;
+	const FRHITransition* AsyncEndFence = nullptr;
 
 	const FTemporalAAHistory& InputHistory;
 	FTemporalAAHistory* OutputHistory;

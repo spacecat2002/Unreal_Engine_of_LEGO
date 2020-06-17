@@ -545,11 +545,11 @@ static void AddClusterCullingPass(
 #if WITH_EDITOR
 	if (bClusterDebugAABBBuffer)
 	{
-		GraphBuilder.QueueBufferExtraction(ClusterDebugAABBBuffer, &ClusterData.ClusterDebugAABBBuffer,	FRDGResourceState::EAccess::Read, FRDGResourceState::EPipeline::Graphics);
+		GraphBuilder.QueueBufferExtraction(ClusterDebugAABBBuffer, &ClusterData.ClusterDebugAABBBuffer);
 	}
 	if (bClusterDebug)
 	{
-		GraphBuilder.QueueBufferExtraction(DispatchIndirectParametersClusterCount, &ClusterData.CulledDispatchIndirectParametersClusterCount, FRDGResourceState::EAccess::Read, FRDGResourceState::EPipeline::Graphics);
+		GraphBuilder.QueueBufferExtraction(DispatchIndirectParametersClusterCount, &ClusterData.CulledDispatchIndirectParametersClusterCount);
 	}
 #endif
 }

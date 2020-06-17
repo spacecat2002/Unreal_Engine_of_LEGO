@@ -15,10 +15,14 @@ static void DoUpdateUniformBuffer(FMetalUniformBuffer* UB, const void* Contents)
     FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
     // The only way we can be on the RHI thread here is if we're in the process of creating a FLocalUniformBuffer.
     bool bUpdateImmediately = RHICmdList.Bypass() || IsInRHIThread();
-    
+
+	TArray<TRefCountPtr<FRHIResource> > ResourceTable;
+
+	UB->CopyResourceTable_RenderThread(Contents, ResourceTable);
+
     if(bUpdateImmediately)
     {
-        UB->Update(Contents);
+        UB->Update(Contents, ResourceTable);
     }
     else
     {
@@ -26,9 +30,9 @@ static void DoUpdateUniformBuffer(FMetalUniformBuffer* UB, const void* Contents)
         void* Data = RHICmdList.Alloc(NumBytes, 16);
         FMemory::Memcpy(Data, Contents, NumBytes);
         
-        RHICmdList.EnqueueLambda([Data, UB](FRHICommandListImmediate& RHICmdList)
+        RHICmdList.EnqueueLambda([Data, UB, NewResourceTable = MoveTemp(ResourceTable)](FRHICommandListImmediate& RHICmdList)
         {
-            UB->Update(Data);
+            UB->Update(Data, NewResourceTable);
         });
         
         RHICmdList.RHIThreadFence(true);

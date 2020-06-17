@@ -6,10 +6,11 @@
 
 #pragma once
 
-#include "CoreMinimal.h"
-#include "RendererInterface.h"
+#include "RenderGraph.h"
 
 void RenderHairComposition(
-	FRHICommandListImmediate& RHICmdList, 
+	FRDGBuilder& GraphBuilder, 
 	const TArray<FViewInfo>& Views,
-	const struct FHairStrandsDatas* HairDatas);
+	const struct FHairStrandsDatas* HairDatas,
+	FRDGTextureRef SceneColorTexture,
+	FRDGTextureRef SceneDepthTexture);

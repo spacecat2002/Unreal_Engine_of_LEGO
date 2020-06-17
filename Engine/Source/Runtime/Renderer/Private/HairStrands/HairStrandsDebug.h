@@ -6,12 +6,7 @@
 
 #pragma once
 
-#include "CoreMinimal.h"
-#include "RendererInterface.h"
-#include "RenderGraphResources.h"
-#include "ShaderParameterStruct.h"
-
-class FRDGBuilder;
+#include "RenderGraph.h"
 
 struct FHairStrandsDebugData
 {
@@ -73,14 +68,15 @@ struct FHairStrandsDebugData
 	static void SetParameters(FRDGBuilder& GraphBuilder, Data& In, FWriteParameters& Out);
 	static void SetParameters(FRDGBuilder& GraphBuilder, Data& In, FReadParameters& Out);
 
-	TRefCountPtr<FPooledRDGBuffer> ShadingPointBuffer;
-	TRefCountPtr<FPooledRDGBuffer> ShadingPointCounter;
-	TRefCountPtr<FPooledRDGBuffer> SampleBuffer;
-	TRefCountPtr<FPooledRDGBuffer> SampleCounter;
+	TRefCountPtr<FRDGPooledBuffer> ShadingPointBuffer;
+	TRefCountPtr<FRDGPooledBuffer> ShadingPointCounter;
+	TRefCountPtr<FRDGPooledBuffer> SampleBuffer;
+	TRefCountPtr<FRDGPooledBuffer> SampleCounter;
 };
 
 void RenderHairStrandsDebugInfo(
-	FRHICommandListImmediate& RHICmdList,
-	TArray<FViewInfo>& Views,
+	FRDGBuilder& GraphBuilder,
+	TArrayView<FViewInfo> Views,
 	const struct FHairStrandsDatas* HairDatas,
-	const struct FHairStrandClusterData& HairClusterData);
+	const struct FHairStrandClusterData& HairClusterData,
+	FRDGTextureRef SceneColorTexture);

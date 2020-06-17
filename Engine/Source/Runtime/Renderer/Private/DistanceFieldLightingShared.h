@@ -105,10 +105,10 @@ public:
 	{
 		if (bBarrier)
 		{
-			FRHIUnorderedAccessView* OutUAVs[2];
-			OutUAVs[0] = ObjectBuffers.Bounds.UAV;
-			OutUAVs[1] = ObjectBuffers.Data.UAV;
-			RHICmdList.TransitionResources(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, OutUAVs, UE_ARRAY_COUNT(OutUAVs));
+			FRHITransitionInfo UAVTransitions[2];
+			UAVTransitions[0] = FRHITransitionInfo(ObjectBuffers.Bounds.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier);
+			UAVTransitions[1] = FRHITransitionInfo(ObjectBuffers.Data.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier);
+			RHICmdList.Transition(MakeArrayView(UAVTransitions, UE_ARRAY_COUNT(UAVTransitions)));
 		}
 
 		SceneObjectBounds.SetBuffer(RHICmdList, ShaderRHI, ObjectBuffers.Bounds);
@@ -138,10 +138,10 @@ public:
 
 		if (bBarrier)
 		{
-			FRHIUnorderedAccessView* OutUAVs[2];
-			OutUAVs[0] = ObjectBuffers.Bounds.UAV;
-			OutUAVs[1] = ObjectBuffers.Data.UAV;
-			RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, OutUAVs, UE_ARRAY_COUNT(OutUAVs));
+			FRHITransitionInfo SRVTransitions[2];
+			SRVTransitions[0] = FRHITransitionInfo(ObjectBuffers.Bounds.UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask);
+			SRVTransitions[1] = FRHITransitionInfo(ObjectBuffers.Data.UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask);
+			RHICmdList.Transition(MakeArrayView(SRVTransitions, UE_ARRAY_COUNT(SRVTransitions)));
 		}
 	}
 
@@ -327,6 +327,8 @@ public:
 			check(ObjectBuffers.bWantBoxBounds);
 			CulledObjectBoxBounds.SetBuffer(RHICmdList, ShaderRHI, ObjectBuffers.BoxBounds);
 		}
+
+		RHICmdList.Transition(FRHITransitionInfo(TextureAtlas, ERHIAccess::Unknown, ERHIAccess::SRVMask));
 
 		SetTextureParameter(
 			RHICmdList,

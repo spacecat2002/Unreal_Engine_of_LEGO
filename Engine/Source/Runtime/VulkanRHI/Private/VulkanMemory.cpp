@@ -2512,50 +2512,6 @@ namespace VulkanRHI
 		}
 	}
 
-	void ImagePipelineBarrier(VkCommandBuffer CmdBuffer, VkImage Image,
-		EImageLayoutBarrier Source, EImageLayoutBarrier Dest, const VkImageSubresourceRange& SubresourceRange)
-	{
-		VkImageMemoryBarrier ImageBarrier;
-		ZeroVulkanStruct(ImageBarrier, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER);
-		ImageBarrier.image = Image;
-		ImageBarrier.subresourceRange = SubresourceRange;
-		ImageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		ImageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-
-		VkPipelineStageFlags SourceStages = (VkPipelineStageFlags)0;
-		VkPipelineStageFlags DestStages = (VkPipelineStageFlags)0;
-		SetImageBarrierInfo(Source, Dest, ImageBarrier, SourceStages, DestStages);
-
-		if (GVulkanDelayAcquireImage != EDelayAcquireImageType::DelayAcquire)
-		{
-			// special handling for VK_IMAGE_LAYOUT_PRESENT_SRC_KHR (otherwise Mali devices flicker)
-			if (Source == EImageLayoutBarrier::Present)
-			{
-				SourceStages = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-			}
-			else if (Dest == EImageLayoutBarrier::Present)
-			{
-				DestStages = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-			}
-		}
-
-		VulkanRHI::vkCmdPipelineBarrier(CmdBuffer, SourceStages, DestStages, 0, 0, nullptr, 0, nullptr, 1, &ImageBarrier);
-	}
-
-	void FPendingBarrier::InnerExecute(FVulkanCmdBuffer* CmdBuffer, bool bEnsure)
-	{
-		if (bEnsure)
-		{
-			ensure(CmdBuffer->IsOutsideRenderPass());
-		}
-		VulkanRHI::vkCmdPipelineBarrier(CmdBuffer->GetHandle(),
-			SourceStage, DestStage, 0,
-			0, nullptr,
-			BufferBarriers.Num(), BufferBarriers.GetData(),
-			ImageBarriers.Num(), ImageBarriers.GetData());
-	}
-
-
 	FSemaphore::FSemaphore(FVulkanDevice& InDevice) :
 		Device(InDevice),
 		SemaphoreHandle(VK_NULL_HANDLE),

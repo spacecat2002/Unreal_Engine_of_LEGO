@@ -185,7 +185,7 @@ void FWebBrowserTextureResource::ClearTexture(const FLinearColor& ClearColor)
 		CommandList.BeginRenderPass(RPInfo, TEXT("ClearTexture"));
 		CommandList.EndRenderPass();
 
-		CommandList.TransitionResource(EResourceTransitionAccess::EReadable, RenderTargetTextureRHI);
+		CommandList.Transition(FRHITransitionInfo(RenderTargetTextureRHI, ERHIAccess::RTV, ERHIAccess::SRVMask));
 	}
 
 	Cleared = true;

@@ -134,12 +134,13 @@ void FDistanceFieldDownsampling::DispatchDownsampleTasks(FRHICommandListImmediat
 			[PassParameters, ComputeShader, GroupCount, &Task, &DFAtlasUAV](FRHICommandList& CmdList)
 			{
 				FComputeShaderUtils::Dispatch(CmdList, ComputeShader, *PassParameters, GroupCount);
-				CmdList.TransitionResources(EResourceTransitionAccess::ERWNoBarrier, EResourceTransitionPipeline::EComputeToCompute, &DFAtlasUAV, 1); // No barrier needed
+				CmdList.Transition(FRHITransitionInfo(DFAtlasUAV, ERHIAccess::Unknown, ERHIAccess::ERWNoBarrier));
 				Task.VolumeTextureRHI = nullptr;
 			}
 		);
 	}
 
 	GraphBuilder.Execute();
-	RHICmdList.TransitionResources(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, &DFAtlasUAV, 1);
+
+	RHICmdList.Transition(FRHITransitionInfo(DFAtlasUAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 }

@@ -242,7 +242,7 @@ public:
 			return WithTangents ? &IntermediateTangents : nullptr;
 		}
 
-		void RemoveAllFromTransitionArray(TArray<FRHIUnorderedAccessView*>& BuffersToTransition);
+		void RemoveAllFromTransitionArray(TSet<FRHIUnorderedAccessView*>& BuffersToTransition);
 
 	private:
 		// Output of the GPU skinning (ie Pos, Normals)
@@ -331,7 +331,7 @@ public:
 		const FVertexBufferAndSRV* BoneBuffers[NUM_BUFFERS];
 	};
 
-	ENGINE_API void TransitionAllToReadable(FRHICommandList& RHICmdList, EResourceTransitionPipeline Pipeline = EResourceTransitionPipeline::EComputeToGfx);
+	ENGINE_API void TransitionAllToReadable(FRHICommandList& RHICmdList);
 
 #if RHI_RAYTRACING
 	void AddRayTracingGeometryToUpdate(FRayTracingGeometry* RayTracingGeometry)
@@ -349,7 +349,10 @@ public:
 #endif // RHI_RAYTRACING
 
 protected:
-	TArray<FRHIUnorderedAccessView*> BuffersToTransition;
+
+	void AddBufferToTransition(FRHIUnorderedAccessView* InUAV);
+
+	TSet<FRHIUnorderedAccessView*> BuffersToTransition;
 #if RHI_RAYTRACING
 	TSet<FRayTracingGeometry*> RayTracingGeometriesToUpdate;
 #endif // RHI_RAYTRACING

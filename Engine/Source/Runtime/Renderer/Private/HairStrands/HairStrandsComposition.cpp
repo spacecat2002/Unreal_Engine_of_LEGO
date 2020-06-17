@@ -152,12 +152,8 @@ static void AddHairVisibilityFastResolvePass(
 	{
 		FRDGTextureDesc Desc;
 		Desc.Extent = Resolution;
-		Desc.Depth = 0;
 		Desc.Format = PF_R8G8B8A8;
-		Desc.NumMips = 1;
-		Desc.NumSamples = 1;
-		Desc.Flags = TexCreate_None;
-		Desc.TargetableFlags = TexCreate_RenderTargetable | TexCreate_ShaderResource;
+		Desc.Flags = TexCreate_RenderTargetable | TexCreate_ShaderResource;
 		Desc.ClearValue = FClearValueBinding(0);
 		DummyTexture = GraphBuilder.CreateTexture(Desc, TEXT("HairDummyTexture"));
 	}
@@ -308,9 +304,11 @@ static void AddPatchGbufferDataPass(
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 void RenderHairComposition(
-	FRHICommandListImmediate& RHICmdList,
+	FRDGBuilder& GraphBuilder,
 	const TArray<FViewInfo>& Views,
-	const FHairStrandsDatas* HairDatas)
+	const FHairStrandsDatas* HairDatas,
+	FRDGTextureRef SceneColorTexture,
+	FRDGTextureRef SceneDepthTexture)
 {
 	if (!HairDatas || HairDatas->HairVisibilityViews.HairDatas.Num() == 0)
 		return;
@@ -318,14 +316,9 @@ void RenderHairComposition(
 	const FHairStrandsVisibilityViews& HairVisibilityViews = HairDatas->HairVisibilityViews;
 
 	DECLARE_GPU_STAT(HairStrandsComposition);
-	SCOPED_DRAW_EVENT(RHICmdList, HairStrandsComposition);
-	SCOPED_GPU_STAT(RHICmdList, HairStrandsComposition);
+	RDG_EVENT_SCOPE(GraphBuilder, "HairStrandsComposition");
+	RDG_GPU_STAT_SCOPE(GraphBuilder, HairStrandsComposition);
 
-	FSceneRenderTargets& SceneTargets = FSceneRenderTargets::Get(RHICmdList);
-	FRDGBuilder GraphBuilder(RHICmdList);
-
-	FRDGTextureRef SceneColorTexture = GraphBuilder.RegisterExternalTexture(SceneTargets.GetSceneColor(), TEXT("SceneColorTexture"));
-	FRDGTextureRef SceneColorDepth = GraphBuilder.RegisterExternalTexture(SceneTargets.SceneDepthZ, TEXT("SceneDepthTexture"));
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
 		const FViewInfo& View = Views[ViewIndex];
@@ -359,7 +352,7 @@ void RenderHairComposition(
 					VisibilityData,
 					RDGCategorisationTexture,
 					SceneColorTexture,
-					SceneColorDepth);
+					SceneDepthTexture);
 
 				if (HairVisibilityViews.HairDatas[ViewIndex].VelocityTexture)
 				{
@@ -368,15 +361,15 @@ void RenderHairComposition(
 						GraphBuilder,
 						View,
 						RDGHairVisibilityVelocityTexture,
-						SceneColorDepth);
+						SceneDepthTexture);
 				}
 
 				const bool bPatchBufferData = GHairPatchBufferDataBeforePostProcessing > 0;
 				if (bPatchBufferData)
 				{
-					FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);				
-					const FRDGTextureRef GBufferATexture = GraphBuilder.TryRegisterExternalTexture(SceneContext.GBufferA , TEXT("GBufferA"));
-					const FRDGTextureRef GBufferBTexture = GraphBuilder.TryRegisterExternalTexture(SceneContext.GBufferB, TEXT("GBufferB"));
+					FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
+					const FRDGTextureRef GBufferATexture = TryRegisterExternalTexture(GraphBuilder, SceneContext.GBufferA);
+					const FRDGTextureRef GBufferBTexture = TryRegisterExternalTexture(GraphBuilder, SceneContext.GBufferB);
 					if (GBufferATexture && GBufferBTexture)
 					{
 						AddPatchGbufferDataPass(
@@ -386,13 +379,11 @@ void RenderHairComposition(
 							GBufferATexture,
 							GBufferBTexture);
 
-						GraphBuilder.QueueTextureExtraction(GBufferATexture, &SceneContext.GBufferA, true);
-						GraphBuilder.QueueTextureExtraction(GBufferBTexture, &SceneContext.GBufferB, true);
+						GraphBuilder.QueueTextureExtraction(GBufferATexture, &SceneContext.GBufferA);
+						GraphBuilder.QueueTextureExtraction(GBufferBTexture, &SceneContext.GBufferB);
 					}
 				}
 			}
 		}
 	}
-
-	GraphBuilder.Execute();
 }

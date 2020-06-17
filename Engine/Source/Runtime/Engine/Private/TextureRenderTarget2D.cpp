@@ -13,6 +13,7 @@
 #include "DeviceProfiles/DeviceProfileManager.h"
 #include "UObject/RenderingObjectVersion.h"
 #include "GenerateMips.h"
+#include "RenderGraphUtils.h"
 
 int32 GTextureRenderTarget2DMaxSizeX = 999999999;
 int32 GTextureRenderTarget2DMaxSizeY = 999999999;
@@ -549,7 +550,8 @@ void FTextureRenderTarget2DResource::ReleaseDynamicRHI()
 
 	RHIUpdateTextureReference(Owner->TextureReference.TextureReferenceRHI, nullptr);
 	Texture2DRHI.SafeRelease();
-	RenderTargetTextureRHI.SafeRelease();	
+	RenderTargetTextureRHI.SafeRelease();
+	MipGenerationCache.SafeRelease();
 
 	// remove grom global list of deferred clears
 	RemoveFromDeferredUpdateList();
@@ -563,33 +565,37 @@ void FTextureRenderTarget2DResource::ReleaseDynamicRHI()
  */
 void FTextureRenderTarget2DResource::UpdateDeferredResource( FRHICommandListImmediate& RHICmdList, bool bClearRenderTarget/*=true*/ )
 {
+	FMemMark Mark(FMemStack::Get());
+
 	SCOPED_DRAW_EVENT(RHICmdList, GPUResourceUpdate)
 	RemoveFromDeferredUpdateList();
+
+	FRDGBuilder GraphBuilder(RHICmdList);
+
+	CacheRenderTarget(RenderTargetTextureRHI, TEXT("MipGeneration"), MipGenerationCache);
+	FRDGTextureRef RenderTargetTextureRDG = GraphBuilder.RegisterExternalTexture(MipGenerationCache);
+	FRDGTextureRef TextureRDG = GraphBuilder.RegisterExternalTexture(CreateRenderTarget(TextureRHI, TEXT("TextureRenderTarget2DResource")));
 
  	// clear the target surface to green
 	if (bClearRenderTarget)
 	{
-		RHICmdList.SetViewport(0.0f, 0.0f, 0.0f, (float)TargetSizeX, (float)TargetSizeY, 1.0f);
 		ensure(RenderTargetTextureRHI.IsValid() && (RenderTargetTextureRHI->GetClearColor() == ClearColor));
-
-		FRHIRenderPassInfo RPInfo(RenderTargetTextureRHI, ERenderTargetActions::Clear_Store);
-		RHICmdList.BeginRenderPass(RPInfo, TEXT("ClearRenderTarget"));
-		RHICmdList.EndRenderPass();
+		AddClearRenderTargetPass(GraphBuilder, RenderTargetTextureRDG, ClearColor);
 	}
  
-	// #todo-renderpasses must generate mips outside of a renderpass (right now compute only is used; but this is not possible on all platforms) ?
 	if (Owner->bAutoGenerateMips)
 	{
 		/**Convert the input values from the editor to a compatible format for FSamplerStateInitializerRHI. 
 			Ensure default sampler is Bilinear clamp*/
-		FGenerateMips::Execute(RHICmdList, RenderTargetTextureRHI, CachedMipsGenParams, FGenerateMipsParams{
+		FGenerateMips::Execute(GraphBuilder, RenderTargetTextureRDG, FGenerateMipsParams{
 			Owner->MipsSamplerFilter == TF_Nearest ? SF_Point : (Owner->MipsSamplerFilter == TF_Trilinear ? SF_Trilinear : SF_Bilinear),
 			Owner->MipsAddressU == TA_Wrap ? AM_Wrap : (Owner->MipsAddressU == TA_Mirror ? AM_Mirror : AM_Clamp),
 			Owner->MipsAddressV == TA_Wrap ? AM_Wrap : (Owner->MipsAddressV == TA_Mirror ? AM_Mirror : AM_Clamp)});
 	}
 
- 	// copy surface to the texture for use
-	RHICmdList.CopyToResolveTarget(RenderTargetTextureRHI, TextureRHI, FResolveParams());
+	AddCopyToResolveTargetPass(GraphBuilder, RenderTargetTextureRDG, TextureRDG, FResolveParams());
+
+	GraphBuilder.Execute();
 }
 
 void FTextureRenderTarget2DResource::Resize(int32 NewSizeX, int32 NewSizeY)

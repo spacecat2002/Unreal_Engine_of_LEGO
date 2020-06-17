@@ -465,8 +465,7 @@ FScreenPassTexture AddPostProcessMaterialPass(
 
 	FPostProcessMaterialParameters* PostProcessMaterialParameters = GraphBuilder.AllocParameters<FPostProcessMaterialParameters>();
 
-	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
-	PostProcessMaterialParameters->SceneTextures = CreateSceneTextureShaderParameters(SceneContext, View.GetFeatureLevel(), ESceneTextureSetupMode::All, UniformBuffer_SingleDraw);
+	PostProcessMaterialParameters->SceneTextures = CreateSceneTextureShaderParameters(GraphBuilder, View, ESceneTextureSetupMode::All);
 	PostProcessMaterialParameters->View = View.ViewUniformBuffer;
 	PostProcessMaterialParameters->PostProcessOutput = GetScreenPassTextureViewportParameters(OutputViewport);
 	PostProcessMaterialParameters->MobileCustomStencilTexture = DepthStencilTexture;
@@ -553,37 +552,20 @@ FScreenPassTexture AddPostProcessMaterialPass(
 		ScreenPassFlags |= EScreenPassDrawFlags::FlipYAxis;
 	}
 
-	const bool bNeedsGBuffer = Material->NeedsGBuffer();
-
-	if (bNeedsGBuffer)
-	{
-		FSceneRenderTargets::Get(GraphBuilder.RHICmdList).AdjustGBufferRefCount(GraphBuilder.RHICmdList, 1);
-	}
-
-	GraphBuilder.AddPass(
+	AddDrawScreenPass(
+		GraphBuilder,
 		RDG_EVENT_NAME("PostProcessMaterial"),
+		View,
+		OutputViewport,
+		SceneColorViewport,
+		FScreenPassPipelineState(VertexShader, PixelShader, BlendState, DepthStencilState),
 		PostProcessMaterialParameters,
-		ERDGPassFlags::Raster,
-		[&View, OutputViewport, SceneColorViewport, VertexShader, PixelShader, BlendState, DepthStencilState, ScreenPassFlags, MaterialRenderProxy, PostProcessMaterialParameters, MaterialStencilRef, bNeedsGBuffer] (FRHICommandListImmediate& RHICmdList)
+		ScreenPassFlags,
+		[&View, VertexShader, PixelShader, MaterialRenderProxy, PostProcessMaterialParameters, MaterialStencilRef](FRHICommandListImmediate& RHICmdList)
 	{
-		DrawScreenPass(
-			RHICmdList,
-			View,
-			OutputViewport,
-			SceneColorViewport,
-			FScreenPassPipelineState(VertexShader, PixelShader, BlendState, DepthStencilState),
-			ScreenPassFlags,
-			[&](FRHICommandListImmediate&)
-		{
-			FPostProcessMaterialVS::SetParameters(RHICmdList, VertexShader, View, MaterialRenderProxy, *PostProcessMaterialParameters);
-			FPostProcessMaterialPS::SetParameters(RHICmdList, PixelShader, View, MaterialRenderProxy, *PostProcessMaterialParameters);
-			RHICmdList.SetStencilRef(MaterialStencilRef);
-		});
-
-		if (bNeedsGBuffer)
-		{
-			FSceneRenderTargets::Get(RHICmdList).AdjustGBufferRefCount(RHICmdList, -1);
-		}
+		FPostProcessMaterialVS::SetParameters(RHICmdList, VertexShader, View, MaterialRenderProxy, *PostProcessMaterialParameters);
+		FPostProcessMaterialPS::SetParameters(RHICmdList, PixelShader, View, MaterialRenderProxy, *PostProcessMaterialParameters);
+		RHICmdList.SetStencilRef(MaterialStencilRef);
 	});
 
 	if (bForceIntermediateTarget && !bCompositeWithInputAndDecode)

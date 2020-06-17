@@ -1250,8 +1250,8 @@ void FSceneRenderer::InitVolumetricCloudsForViews(FRHICommandListImmediate& RHIC
 					auto FilterTracedCloudTexture = [&](FRDGTextureRef* TracedCloudTextureOutput, FVector4 TracedTextureSizeInvSize, FVector4 CloudAOTextureTexelWorldSizeInvSize, bool bSkyAOPass)
 					{
 						FRDGTextureRef CloudShadowTexture2 = GraphBuilder.CreateTexture(
-							FRDGTextureDesc::Create2DDesc(FIntPoint(TracedTextureSizeInvSize.X, TracedTextureSizeInvSize.Y), PF_FloatR11G11B10,
-								FClearValueBinding::None, TexCreate_None, TexCreate_ShaderResource | TexCreate_UAV, false, 1), bSkyAOPass ? TEXT("CloudSkyAOTexture2") : TEXT("CloudShadowTexture2"));
+							FRDGTextureDesc::Create2D(FIntPoint(TracedTextureSizeInvSize.X, TracedTextureSizeInvSize.Y), PF_FloatR11G11B10,
+								FClearValueBinding::None, TexCreate_ShaderResource | TexCreate_UAV), bSkyAOPass ? TEXT("CloudSkyAOTexture2") : TEXT("CloudShadowTexture2"));
 
 						FCloudShadowFilterCS::FPermutationDomain Permutation;
 						Permutation.Set<FCloudShadowFilterCS::FFilterSkyAO>(bSkyAOPass);
@@ -1279,8 +1279,8 @@ void FSceneRenderer::InitVolumetricCloudsForViews(FRHICommandListImmediate& RHIC
 					{
 						const uint32 VolumetricCloudSkyAOResolution = GetVolumetricCloudSkyAOResolution(SkyLight);
 						FRDGTextureRef CloudSkyAOTexture = GraphBuilder.CreateTexture(
-							FRDGTextureDesc::Create2DDesc(FIntPoint(VolumetricCloudSkyAOResolution, VolumetricCloudSkyAOResolution), PF_FloatR11G11B10,
-								FClearValueBinding::None, TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable, false, 1), TEXT("CloudSkyAOTexture"));
+							FRDGTextureDesc::Create2D(FIntPoint(VolumetricCloudSkyAOResolution, VolumetricCloudSkyAOResolution), PF_FloatR11G11B10,
+								FClearValueBinding::None, TexCreate_ShaderResource | TexCreate_RenderTargetable), TEXT("CloudSkyAOTexture"));
 
 						VolumetricCloudParams.TraceShadowmap = 0;
 						TUniformBufferRef<FRenderVolumetricCloudGlobalParameters> TraceVolumetricCloudSkyAOParamsUB = TUniformBufferRef<FRenderVolumetricCloudGlobalParameters>::CreateUniformBufferImmediate(VolumetricCloudParams, UniformBuffer_SingleFrame);
@@ -1306,7 +1306,7 @@ void FSceneRenderer::InitVolumetricCloudsForViews(FRHICommandListImmediate& RHIC
 							const uint32 VolumetricCloudShadowMapResolution = GetVolumetricCloudShadowMapResolution(AtmosphericLight);
 							FRDGTextureRef CloudShadowTexture = GraphBuilder.CreateTexture(
 								FRDGTextureDesc::Create2DDesc(FIntPoint(VolumetricCloudShadowMapResolution, VolumetricCloudShadowMapResolution), PF_FloatR11G11B10,
-									FClearValueBinding::None, TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable, false, 1), TEXT("CloudShadowTexture"));
+									FClearValueBinding::None, TexCreate_ShaderResource | TexCreate_RenderTargetable, false, 1), TEXT("CloudShadowTexture"));
 
 							VolumetricCloudParams.TraceShadowmap = 1 + LightIndex;
 							TUniformBufferRef<FRenderVolumetricCloudGlobalParameters> TraceVolumetricCloudShadowParamsUB = TUniformBufferRef<FRenderVolumetricCloudGlobalParameters>::CreateUniformBufferImmediate(VolumetricCloudParams, UniformBuffer_SingleFrame);
@@ -1436,7 +1436,7 @@ void FSceneRenderer::RenderVolumetricCloudsInternal(FRDGBuilder& GraphBuilder, F
 		});
 }
 
-void FSceneRenderer::RenderVolumetricCloud(FRHICommandListImmediate& RHICmdList)
+void FSceneRenderer::RenderVolumetricCloud(FRDGBuilder& GraphBuilder, FRDGTextureMSAA SceneColorTexture, FRDGTextureMSAA SceneDepthTexture)
 {
 	check(ShouldRenderVolumetricCloud(Scene, ViewFamily.EngineShowFlags)); // This should not be called if we should not render SkyAtmosphere
 
@@ -1452,12 +1452,10 @@ void FSceneRenderer::RenderVolumetricCloud(FRHICommandListImmediate& RHICmdList)
 		FMaterialRenderProxy* CloudVolumeMaterialProxy = CloudSceneProxy.GetCloudVolumeMaterial()->GetRenderProxy();
 		if (CloudVolumeMaterialProxy->GetMaterial(ViewFamily.GetFeatureLevel())->GetMaterialDomain() == MD_Volume)
 		{
-			SCOPED_DRAW_EVENT(RHICmdList, VolumetricCloud);
-			SCOPED_GPU_STAT(RHICmdList, VolumetricCloud);
+			RDG_EVENT_SCOPE(GraphBuilder, "VolumetricCloud");
+			RDG_GPU_STAT_SCOPE(GraphBuilder, VolumetricCloud);
 
-			FRDGBuilder GraphBuilder(RHICmdList);
-
-			FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+			FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 
 			TRefCountPtr<IPooledRenderTarget> SceneDepthZ = SceneContext.SceneDepthZ;
 			TRefCountPtr<IPooledRenderTarget> BlackDummy = GSystemTextures.BlackDummy;
@@ -1515,8 +1513,8 @@ void FSceneRenderer::RenderVolumetricCloud(FRHICommandListImmediate& RHICmdList)
 				{
 					DestinationRT = GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor(), TEXT("SceneColor"));
 					FIntVector RtSize = SceneContext.GetSceneColor()->GetDesc().GetSize();
-					DestinationRTDepth = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2DDesc(FIntPoint(RtSize.X, RtSize.Y), PF_R16F, FClearValueBinding::Black,
-						TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable, false, 1), TEXT("DummyDepth"));
+					DestinationRTDepth = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(FIntPoint(RtSize.X, RtSize.Y), PF_R16F, FClearValueBinding::Black,
+						TexCreate_ShaderResource | TexCreate_RenderTargetable), TEXT("DummyDepth"));
 					CloudRC.RenderTargets[0] = FRenderTargetBinding(DestinationRT, ERenderTargetLoadAction::ELoad);
 					CloudRC.RenderTargets[1] = FRenderTargetBinding(DestinationRTDepth, ERenderTargetLoadAction::ENoAction);
 				}
@@ -1636,16 +1634,16 @@ void FSceneRenderer::RenderVolumetricCloud(FRHICommandListImmediate& RHICmdList)
 					if (DebugCloudShadowMap)
 					{
 						const int DebugLightIndex = 0;	// only debug atmospehric light 0 for now
+						const int32 CloudShadowmapSampleCount = VolumetricCloudParams.VolumetricCloud.CloudShadowmapSampleClount[DebugLightIndex];
+
+						AddDrawCanvasPass(GraphBuilder, {}, ViewInfo, FScreenPassRenderTarget(SceneColorTexture.Target, ViewInfo.ViewRect, ERenderTargetLoadAction::ELoad), [CloudShadowmapSampleCount, &ViewInfo](FCanvas& Canvas)
 						{
 							const float ViewPortWidth = float(ViewInfo.ViewRect.Width());
 							const float ViewPortHeight = float(ViewInfo.ViewRect.Height());
-							FRenderTargetTemp TempRenderTarget(ViewInfo, (const FTexture2DRHIRef&)SceneContext.GetSceneColor()->GetRenderTargetItem().TargetableTexture);
-							FCanvas Canvas(&TempRenderTarget, NULL, ViewInfo.Family->CurrentRealTime, ViewFamily.CurrentWorldTime, ViewFamily.DeltaWorldTime, ViewInfo.GetFeatureLevel());
 							FLinearColor TextColor(1.0f, 0.5f, 0.0f);
-							FString Text = FString::Printf(TEXT("Shadow Sample Count = %.1f"), VolumetricCloudParams.VolumetricCloud.CloudShadowmapSampleClount[DebugLightIndex]);
+							FString Text = FString::Printf(TEXT("Shadow Sample Count = %.1f"), CloudShadowmapSampleCount);
 							Canvas.DrawShadowedString(0.05f, ViewPortHeight * 0.4f, *Text, GetStatsFont(), TextColor);
-							Canvas.Flush_RenderThread(RHICmdList);
-						}
+						});
 
 						DrawFrustumWireframe(&ShadowFrustumPDI, VolumetricCloudParams.VolumetricCloud.CloudShadowmapWorldToLightClipMatrixInv[DebugLightIndex], FColor::Orange, 0);
 						FDrawDebugCloudShadowCS::FParameters* Parameters = GraphBuilder.AllocParameters<FDrawDebugCloudShadowCS::FParameters>();
@@ -1668,8 +1666,6 @@ void FSceneRenderer::RenderVolumetricCloud(FRHICommandListImmediate& RHICmdList)
 					}
 				}
 			}
-
-			GraphBuilder.Execute();
 		}
 	}
 

@@ -226,12 +226,12 @@ public:
 			AtlasSizeY,
 			AtlasSizeZ);
 
-		FRHIUnorderedAccessView* OutUAVs[4];
-		OutUAVs[0] = GGlobalDistanceFieldCulledObjectBuffers.Buffers.ObjectIndirectArguments.UAV;
-		OutUAVs[1] = GGlobalDistanceFieldCulledObjectBuffers.Buffers.Bounds.UAV;
-		OutUAVs[2] = GGlobalDistanceFieldCulledObjectBuffers.Buffers.Data.UAV;
-		OutUAVs[3] = GGlobalDistanceFieldCulledObjectBuffers.Buffers.BoxBounds.UAV;
-		RHICmdList.TransitionResources(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, OutUAVs, UE_ARRAY_COUNT(OutUAVs));
+		FRHITransitionInfo TransitionInfos[4];
+		TransitionInfos[0] = FRHITransitionInfo(GGlobalDistanceFieldCulledObjectBuffers.Buffers.ObjectIndirectArguments.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier);
+		TransitionInfos[1] = FRHITransitionInfo(GGlobalDistanceFieldCulledObjectBuffers.Buffers.Bounds.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier);
+		TransitionInfos[2] = FRHITransitionInfo(GGlobalDistanceFieldCulledObjectBuffers.Buffers.Data.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier);
+		TransitionInfos[3] = FRHITransitionInfo(GGlobalDistanceFieldCulledObjectBuffers.Buffers.BoxBounds.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier);
+		RHICmdList.Transition(MakeArrayView(TransitionInfos, UE_ARRAY_COUNT(TransitionInfos)));
 
 		CulledObjectParameters.Set(RHICmdList, ShaderRHI, GGlobalDistanceFieldCulledObjectBuffers.Buffers, TextureAtlas, FIntVector(AtlasSizeX, AtlasSizeY, AtlasSizeZ));
 
@@ -263,7 +263,13 @@ public:
 
 		TArray<FRHIUnorderedAccessView*> UAVs;
 		CulledObjectParameters.GetUAVs(GGlobalDistanceFieldCulledObjectBuffers.Buffers, UAVs);
-		RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, UAVs.GetData(), UAVs.Num());
+		
+		TArray<FRHITransitionInfo> TransitionInfos;
+		for (FRHIUnorderedAccessView* UAV : UAVs)
+		{
+			TransitionInfos.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask));
+		}
+		RHICmdList.Transition(MakeArrayView(TransitionInfos.GetData(), TransitionInfos.Num()));
 	}
 
 private:
@@ -403,8 +409,8 @@ public:
 		CulledObjectBufferParameters.Set(RHICmdList, ShaderRHI, GGlobalDistanceFieldCulledObjectBuffers.Buffers, TextureAtlas, FIntVector(AtlasSizeX, AtlasSizeY, AtlasSizeZ));
 		GlobalDistanceFieldParameters.Set(RHICmdList, ShaderRHI, GlobalDistanceFieldInfo.ParameterData);
 
-		RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, GObjectGridBuffers.CullGridObjectNum.UAV);
-		RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, GObjectGridBuffers.CullGridObjectArray.UAV);
+		RHICmdList.Transition(FRHITransitionInfo(GObjectGridBuffers.CullGridObjectNum.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
+		RHICmdList.Transition(FRHITransitionInfo(GObjectGridBuffers.CullGridObjectArray.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 		CullGridObjectNum.SetBuffer(RHICmdList, ShaderRHI, GObjectGridBuffers.CullGridObjectNum);
 		CullGridObjectArray.SetBuffer(RHICmdList, ShaderRHI, GObjectGridBuffers.CullGridObjectArray);
 
@@ -427,8 +433,8 @@ public:
 	{
 		CullGridObjectNum.UnsetUAV(RHICmdList, RHICmdList.GetBoundComputeShader());
 		CullGridObjectArray.UnsetUAV(RHICmdList, RHICmdList.GetBoundComputeShader());
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, GObjectGridBuffers.CullGridObjectNum.UAV);
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, GObjectGridBuffers.CullGridObjectArray.UAV);
+		RHICmdList.Transition(FRHITransitionInfo(GObjectGridBuffers.CullGridObjectNum.UAV, ERHIAccess::ERWBarrier, ERHIAccess::SRVCompute));
+		RHICmdList.Transition(FRHITransitionInfo(GObjectGridBuffers.CullGridObjectArray.UAV, ERHIAccess::ERWBarrier, ERHIAccess::SRVCompute));
 	}
 
 private:
@@ -534,7 +540,7 @@ public:
 		GlobalDistanceFieldParameters.Set(RHICmdList, ShaderRHI, ParameterData);
 
 		const FSceneRenderTargetItem& ClipMapRTI = Clipmap.RenderTarget->GetRenderTargetItem();
-		RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, ClipMapRTI.UAV);
+		RHICmdList.Transition(FRHITransitionInfo(ClipMapRTI.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 		GlobalDistanceFieldTexture.SetTexture(RHICmdList, ShaderRHI, ClipMapRTI.ShaderResourceTexture, ClipMapRTI.UAV);
 
 		if (bUseParentDistanceField)
@@ -571,7 +577,7 @@ public:
 		GlobalDistanceFieldTexture.UnsetUAV(RHICmdList, RHICmdList.GetBoundComputeShader());
 
 		const FSceneRenderTargetItem& ClipMapRTI = Clipmap.RenderTarget->GetRenderTargetItem();
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, ClipMapRTI.UAV);
+		RHICmdList.Transition(FRHITransitionInfo(ClipMapRTI.UAV, ERHIAccess::ERWBarrier, ERHIAccess::SRVCompute));
 	}
 
 private:
@@ -660,7 +666,7 @@ public:
 		GlobalDistanceFieldParameters.Set(RHICmdList, ShaderRHI, GlobalDistanceFieldInfo.ParameterData);
 
 		const FSceneRenderTargetItem& ClipMapRTI = Clipmap.RenderTarget->GetRenderTargetItem();
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToCompute, ClipMapRTI.UAV);
+		RHICmdList.Transition(FRHITransitionInfo(ClipMapRTI.UAV, ERHIAccess::Unknown, ERHIAccess::UAVCompute));
 		GlobalDistanceFieldTexture.SetTexture(RHICmdList, ShaderRHI, ClipMapRTI.ShaderResourceTexture, ClipMapRTI.UAV);
 
 		const float VolumeStep = (2.0f * GlobalDistanceFieldInfo.ParameterData.CenterAndExtent[ClipmapIndexValue].W) / GAOGlobalDFResolution;
@@ -682,7 +688,7 @@ public:
 		GlobalDistanceFieldTexture.UnsetUAV(RHICmdList, RHICmdList.GetBoundComputeShader());
 
 		const FSceneRenderTargetItem& ClipMapRTI = Clipmap.RenderTarget->GetRenderTargetItem();
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, ClipMapRTI.UAV);
+		RHICmdList.Transition(FRHITransitionInfo(ClipMapRTI.UAV, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute));
 	}
 
 private:
@@ -910,7 +916,6 @@ static void AllocateClipmapTexture(FRHICommandListImmediate& RHICmdList, int32 C
 		VolumeDesc,
 		Texture,
 		TextureName,
-		true,
 		ERenderTargetTransience::NonTransient
 	);
 }
@@ -1440,7 +1445,7 @@ void UpdateGlobalDistanceFieldVolume(
 
 								// Cull the global objects to the volume being updated
 								{
-									RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, GGlobalDistanceFieldCulledObjectBuffers.Buffers.ObjectIndirectArguments.UAV);
+									RHICmdList.Transition(FRHITransitionInfo(GGlobalDistanceFieldCulledObjectBuffers.Buffers.ObjectIndirectArguments.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 									RHICmdList.ClearUAVUint(GGlobalDistanceFieldCulledObjectBuffers.Buffers.ObjectIndirectArguments.UAV, FUintVector4(0, 0, 0, 0));
 
 									TShaderMapRef<FCullObjectsForVolumeCS> ComputeShader(View.ShaderMap);
@@ -1579,7 +1584,7 @@ void UpdateGlobalDistanceFieldVolume(
 					const FGlobalDistanceFieldClipmap& Clipmap = Clipmaps[ClipmapIndex];
 					const FSceneRenderTargetItem& ClipMapRTI = Clipmap.RenderTarget->GetRenderTargetItem();
 
-					RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, ClipMapRTI.UAV);
+					RHICmdList.Transition(FRHITransitionInfo(ClipMapRTI.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 				}
 
 
@@ -1612,7 +1617,7 @@ void UpdateGlobalDistanceFieldVolume(
 				{
 					FGlobalDistanceFieldClipmap& Clipmap = Clipmaps[ClipmapIndex];
 
-					RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, Clipmap.RenderTarget->GetRenderTargetItem().UAV);
+					RHICmdList.Transition(FRHITransitionInfo(Clipmap.RenderTarget->GetRenderTargetItem().UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask));
 				}
 			}
 

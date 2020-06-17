@@ -830,7 +830,7 @@ void FSlateRHIRenderer::DrawWindow_RenderThread(FRHICommandListImmediate& RHICmd
 
 			RHICmdList.BeginDrawingViewport(ViewportInfo.ViewportRHI, FTextureRHIRef());
 			RHICmdList.SetViewport(0, 0, 0, ViewportWidth, ViewportHeight, 0.0f);
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, BackBuffer);
+			RHICmdList.Transition(FRHITransitionInfo(BackBuffer, ERHIAccess::Unknown, ERHIAccess::RTV));
 
 			{
 				FRHIRenderPassInfo RPInfo(BackBuffer, ERenderTargetActions::Load_Store);
@@ -965,8 +965,8 @@ void FSlateRHIRenderer::DrawWindow_RenderThread(FRHICommandListImmediate& RHICmd
 						FRenderTargetWriteMask::Decode<1>(RHICmdList, ShaderMap, RenderTargets, ViewportInfo.UITargetRTMask, 0, TEXT("UIRTWriteMask"));
 					}
 
-					RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, FinalBuffer);
-					RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, ViewportInfo.HDRSourceRT->GetRenderTargetItem().TargetableTexture);
+					RHICmdList.Transition(FRHITransitionInfo(FinalBuffer, ERHIAccess::Unknown, ERHIAccess::RTV));
+					RHICmdList.Transition(FRHITransitionInfo(ViewportInfo.HDRSourceRT->GetRenderTargetItem().TargetableTexture, ERHIAccess::Unknown, ERHIAccess::SRVGraphics));
 					FRHIRenderPassInfo RPInfo(FinalBuffer, ERenderTargetActions::Load_Store);
 					RHICmdList.BeginRenderPass(RPInfo, TEXT("SlateComposite"));
 					{
@@ -1078,7 +1078,7 @@ void FSlateRHIRenderer::DrawWindow_RenderThread(FRHICommandListImmediate& RHICmd
 				const FVector2D WindowSize = WindowElementList.GetWindowSize();
 				GEngine->StereoRenderingDevice->RenderTexture_RenderThread(RHICmdList, RHICmdList.GetViewportBackBuffer(ViewportInfo.ViewportRHI), ViewportInfo.GetRenderTargetTexture(), WindowSize);
 			}
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, BackBuffer);
+			RHICmdList.Transition(FRHITransitionInfo(BackBuffer, ERHIAccess::Unknown, ERHIAccess::SRVGraphics));
 
 			// Fire delegate to inform bound functions the back buffer is ready to be captured.
 			OnBackBufferReadyToPresentDelegate.Broadcast(*DrawCommandParams.Window, BackBuffer);

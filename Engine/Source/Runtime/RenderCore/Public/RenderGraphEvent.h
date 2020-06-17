@@ -5,29 +5,27 @@
 #include "RenderGraphDefinitions.h"
 #include "ProfilingDebugging/RealtimeGPUProfiler.h"
 
-
 /** Returns whether the current frame is emitting render graph events. */
-extern RENDERCORE_API bool GetEmitRDGEvents();
-
+RENDERCORE_API bool GetEmitRDGEvents();
 
 /** A helper profiler class for tracking and evaluating hierarchical scopes in the context of render graph. */
 template <typename TScopeType>
-class FRDGScopeStack final
+class TRDGScopeStack final
 {
 	static constexpr uint32 kScopeStackDepthMax = 8;
 public:
-	using FPushFunction = void(*)(FRHICommandListImmediate&, const TScopeType*);
-	using FPopFunction = void(*)(FRHICommandListImmediate&);
+	using FPushFunction = void(*)(FRHIComputeCommandList&, const TScopeType*);
+	using FPopFunction = void(*)(FRHIComputeCommandList&);
 
-	FRDGScopeStack(FRHICommandListImmediate& InRHICmdList, FPushFunction InPushFunction, FPopFunction InPopFunction);
-	~FRDGScopeStack();
+	TRDGScopeStack(FRHIComputeCommandList& InRHICmdList, FPushFunction InPushFunction, FPopFunction InPopFunction);
+	~TRDGScopeStack();
 
 	//////////////////////////////////////////////////////////////////////////
 	//! Called during graph setup phase.
 
 	/** Call to begin recording a scope. */
-	template <typename... FScopeConstructArgs>
-	void BeginScope(FScopeConstructArgs... ScopeConstructArgs);
+	template <typename... TScopeConstructArgs>
+	void BeginScope(TScopeConstructArgs... ScopeConstructArgs);
 
 	/** Call to end recording a scope. */
 	void EndScope();
@@ -51,7 +49,7 @@ public:
 		return CurrentScope;
 	}
 
-	FRHICommandListImmediate& RHICmdList;
+	FRHIComputeCommandList& RHICmdList;
 	FMemStackBase& MemStack;
 
 private:
@@ -100,8 +98,8 @@ public:
 
 private:
 #if RDG_EVENTS == RDG_EVENTS_STRING_REF || RDG_EVENTS == RDG_EVENTS_STRING_COPY
-	// Event format kept arround to still have a clue what error might be causing the problem in error messages.
-	const TCHAR* EventFormat;
+	// Event format kept around to still have a clue what error might be causing the problem in error messages.
+	const TCHAR* EventFormat = TEXT("");
 
 #if RDG_EVENTS == RDG_EVENTS_STRING_COPY
 	// Formated event name if GetEmitRDGEvents() == true.
@@ -118,6 +116,9 @@ public:
 		, Name(Forward<FRDGEventName&&>(InName))
 	{}
 
+	/** Returns a formatted path for debugging. */
+	FString GetPath(const FRDGEventName& Event) const;
+
 	const FRDGEventScope* const ParentScope;
 	const FRDGEventName Name;
 };
@@ -128,7 +129,7 @@ public:
 class RENDERCORE_API FRDGEventScopeStack final
 {
 public:
-	FRDGEventScopeStack(FRHICommandListImmediate& RHICmdList);
+	FRDGEventScopeStack(FRHIComputeCommandList& RHICmdList);
 
 	//////////////////////////////////////////////////////////////////////////
 	//! Called during graph setup phase.
@@ -163,8 +164,11 @@ public:
 
 private:
 	static bool IsEnabled();
-	FRDGScopeStack<FRDGEventScope> ScopeStack;
+	TRDGScopeStack<FRDGEventScope> ScopeStack;
+	bool bEventPushed = false;
 };
+
+RENDERCORE_API FString GetRDGEventPath(const FRDGEventScope* Scope, const FRDGEventName& Event);
 
 /** RAII class for begin / end of an event scope through the graph builder. */
 class RENDERCORE_API FRDGEventScopeGuard final
@@ -220,7 +224,7 @@ public:
 class RENDERCORE_API FRDGStatScopeStack final
 {
 public:
-	FRDGStatScopeStack(FRHICommandListImmediate& RHICmdList);
+	FRDGStatScopeStack(FRHIComputeCommandList& RHICmdList);
 
 	//////////////////////////////////////////////////////////////////////////
 	//! Called during graph setup phase.
@@ -252,7 +256,7 @@ public:
 
 private:
 	static bool IsEnabled();
-	FRDGScopeStack<FRDGStatScope> ScopeStack;
+	TRDGScopeStack<FRDGStatScope> ScopeStack;
 };
 
 /** RAII class for begin / end of a stat scope through the graph builder. */
@@ -276,5 +280,60 @@ private:
 #else
 	#define RDG_GPU_STAT_SCOPE(GraphBuilder, StatName)
 #endif
+
+struct FRDGScopes
+{
+	const FRDGEventScope* Event = nullptr;
+	const FRDGStatScope* Stat = nullptr;
+};
+
+/** The complete set of scope stack implementations. */
+struct FRDGScopeStacks
+{
+	FRDGScopeStacks(FRHIComputeCommandList& RHICmdList);
+
+	void BeginExecute();
+
+	void BeginExecutePass(const FRDGPass* Pass);
+
+	void EndExecutePass();
+
+	void EndExecute();
+
+	FRDGScopes GetCurrentScopes() const;
+
+	FRDGEventScopeStack Event;
+	FRDGStatScopeStack Stat;
+};
+
+struct FRDGScopeStacksByPipeline
+{
+	FRDGScopeStacksByPipeline(FRHICommandListImmediate& RHICmdListGraphics, FRHIComputeCommandList& RHICmdListAsyncCompute);
+
+	void BeginEventScope(FRDGEventName&& ScopeName);
+
+	void EndEventScope();
+
+	void BeginStatScope(const FName& Name, const FName& StatName);
+
+	void EndStatScope();
+
+	void BeginExecute();
+
+	void BeginExecutePass(const FRDGPass* Pass);
+
+	void EndExecutePass(const FRDGPass* Pass);
+
+	void EndExecute();
+
+	const FRDGScopeStacks& GetScopeStacks(ERHIPipeline Pipeline) const;
+
+	FRDGScopeStacks& GetScopeStacks(ERHIPipeline Pipeline);
+
+	FRDGScopes GetCurrentScopes(ERHIPipeline Pipeline) const;
+
+	FRDGScopeStacks Graphics;
+	FRDGScopeStacks AsyncCompute;
+};
 
 #include "RenderGraphEvent.inl"

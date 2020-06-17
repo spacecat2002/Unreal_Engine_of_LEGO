@@ -131,15 +131,13 @@ public:
 
 	void UnsetParameters(
 		FRHICommandList& RHICmdList,
-		EResourceTransitionAccess TransitionAccess,
-		EResourceTransitionPipeline TransitionPipeline,
-		FRWBuffer& MipTree,
-		FRHIComputeFence* Fence)
+		ERHIAccess TransitionAccess,
+		FRWBuffer& MipTree)
 	{
 		FRHIComputeShader* ShaderRHI = RHICmdList.GetBoundComputeShader();
-
 		MipTreeParameter.UnsetUAV(RHICmdList, ShaderRHI);
-		RHICmdList.TransitionResource(TransitionAccess, TransitionPipeline, MipTree.UAV, Fence);
+
+		RHICmdList.Transition(FRHITransitionInfo(MipTree.UAV, ERHIAccess::Unknown, TransitionAccess));
 	}
 
 private:
@@ -183,15 +181,13 @@ FRectLightRayTracingData BuildRectLightMipTree(FRHICommandListImmediate& RHICmdL
 	// Execute hierarchical build
 	for (uint32 MipLevel = 0; MipLevel <= MipLevelCount; ++MipLevel)
 	{
-		FComputeFenceRHIRef MipLevelFence = RHICmdList.CreateComputeFence(TEXT("RectLightMipTree Build"));
 		BuildRectLightMipTreeComputeShader->SetParameters(RHICmdList, RhiTexture, Data.RectLightMipTreeDimensions, MipLevel, Data.RectLightMipTree);
 		FIntVector MipLevelDimensions = FIntVector(Data.RectLightMipTreeDimensions.X >> MipLevel, Data.RectLightMipTreeDimensions.Y >> MipLevel, 1);
 		FIntVector NumGroups = FIntVector::DivideAndRoundUp(MipLevelDimensions, FBuildRectLightMipTreeCS::GetGroupSize());
 		DispatchComputeShader(RHICmdList, BuildRectLightMipTreeComputeShader.GetShader(), NumGroups.X, NumGroups.Y, 1);
-		BuildRectLightMipTreeComputeShader->UnsetParameters(RHICmdList, EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, Data.RectLightMipTree, MipLevelFence);
+		BuildRectLightMipTreeComputeShader->UnsetParameters(RHICmdList, ERHIAccess::ERWBarrier, Data.RectLightMipTree);
 	}
-	FComputeFenceRHIRef TransitionFence = RHICmdList.CreateComputeFence(TEXT("RectLightMipTree Transition"));
-	BuildRectLightMipTreeComputeShader->UnsetParameters(RHICmdList, EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, Data.RectLightMipTree, TransitionFence);
+	BuildRectLightMipTreeComputeShader->UnsetParameters(RHICmdList, ERHIAccess::ERWBarrier, Data.RectLightMipTree);
 
 	return Data;
 }
@@ -373,7 +369,8 @@ void FDeferredShadingSceneRenderer::VisualizeRectLightMipTree(
 {
 	// Allocate render target
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-	FPooledRenderTargetDesc Desc = SceneContext.GetSceneColor()->GetDesc();
+	TRefCountPtr<IPooledRenderTarget> SceneColor = SceneContext.GetSceneColor();
+	FPooledRenderTargetDesc Desc = SceneColor->GetDesc();
 	Desc.Flags &= ~(TexCreate_FastVRAM | TexCreate_Transient);
 	TRefCountPtr<IPooledRenderTarget> RectLightMipTreeRT;
 	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, RectLightMipTreeRT, TEXT("RectLightMipTreeRT"));
@@ -384,7 +381,7 @@ void FDeferredShadingSceneRenderer::VisualizeRectLightMipTree(
 	TShaderMapRef<FVisualizeRectLightMipTreePS> PixelShader(ShaderMap);
 	FRHITexture* RenderTargets[2] =
 	{
-		SceneContext.GetSceneColor()->GetRenderTargetItem().TargetableTexture,
+		SceneColor->GetRenderTargetItem().TargetableTexture,
 		RectLightMipTreeRT->GetRenderTargetItem().TargetableTexture
 	};
 	FRHIRenderPassInfo RenderPassInfo(2, RenderTargets, ERenderTargetActions::Load_Store);
@@ -403,7 +400,7 @@ void FDeferredShadingSceneRenderer::VisualizeRectLightMipTree(
 	SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
 	// Transition to graphics
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, RectLightMipTree.UAV);
+	RHICmdList.Transition(FRHITransitionInfo(RectLightMipTree.UAV, ERHIAccess::Unknown, ERHIAccess::SRVGraphics));
 
 	// Draw
 	RHICmdList.SetViewport((float)View.ViewRect.Min.X, (float)View.ViewRect.Min.Y, 0.0f, (float)View.ViewRect.Max.X, (float)View.ViewRect.Max.Y, 1.0f);
@@ -417,12 +414,13 @@ void FDeferredShadingSceneRenderer::VisualizeRectLightMipTree(
 		FIntPoint(View.ViewRect.Width(), View.ViewRect.Height()),
 		SceneContext.GetBufferSizeXY(),
 		VertexShader);
-	ResolveSceneColor(RHICmdList);
 	RHICmdList.EndRenderPass();
+
+	RHICmdList.CopyToResolveTarget(SceneColor->GetRenderTargetItem().TargetableTexture, SceneColor->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
 	GVisualizeTexture.SetCheckPoint(RHICmdList, RectLightMipTreeRT);
 
 	// Transition to compute
-	RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, RectLightMipTree.UAV);
+	RHICmdList.Transition(FRHITransitionInfo(RectLightMipTree.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 }
 
 void FDeferredShadingSceneRenderer::PrepareRayTracingRectLight(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders)
@@ -511,10 +509,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingRectLightInternal(
 
 		TShaderMapRef<FRectLightRGS<TextureImportanceSampling>> RectLightRayGenerationShader(GetGlobalShaderMap(View.FeatureLevel));
 
-		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-		FSceneTexturesUniformParameters SceneTextures;
-		SetupSceneTextureUniformParameters(SceneContext, View.FeatureLevel, ESceneTextureSetupMode::All, SceneTextures);
-		FUniformBufferRHIRef SceneTexturesUniformBuffer = RHICreateUniformBuffer(&SceneTextures, FSceneTexturesUniformParameters::StaticStructMetadata.GetLayout(), EUniformBufferUsage::UniformBuffer_SingleDraw);
+		FUniformBufferRHIRef SceneTexturesUniformBuffer = CreateSceneTextureUniformBuffer(RHICmdList, View);
 
 		// Dispatch
 		RectLightRayGenerationShader->Dispatch(
@@ -531,11 +526,10 @@ void FDeferredShadingSceneRenderer::RenderRayTracingRectLightInternal(
 	}
 
 	// Transition out to graphics pipeline
-	FComputeFenceRHIRef Fence = RHICmdList.CreateComputeFence(TEXT("RayTracingRectLight"));
-	RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToGfx, ScreenShadowMaskTexture->GetRenderTargetItem().UAV, Fence);
+	RHICmdList.Transition(FRHITransitionInfo(ScreenShadowMaskTexture->GetRenderTargetItem().UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 	GVisualizeTexture.SetCheckPoint(RHICmdList, ScreenShadowMaskTexture);
 
-	RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToGfx, RayDistanceTexture->GetRenderTargetItem().UAV);
+	RHICmdList.Transition(FRHITransitionInfo(RayDistanceTexture->GetRenderTargetItem().UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 	GVisualizeTexture.SetCheckPoint(RHICmdList, RayDistanceTexture);
 }
 

@@ -693,7 +693,7 @@ void FHZBOcclusionTester::InitDynamicRHI()
 	{
 		FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
 		FPooledRenderTargetDesc Desc( FPooledRenderTargetDesc::Create2DDesc( FIntPoint( SizeX, SizeY ), PF_B8G8R8A8, FClearValueBinding::None, TexCreate_CPUReadback | TexCreate_HideInVisualizeTexture, TexCreate_None, false ) );
-		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, ResultsTextureCPU, TEXT("HZBResultsCPU"), true, ERenderTargetTransience::NonTransient );
+		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, ResultsTextureCPU, TEXT("HZBResultsCPU"), ERenderTargetTransience::NonTransient );
 		Fence = RHICreateGPUFence(TEXT("HZBGPUFence"));
 	}
 }
@@ -1241,6 +1241,7 @@ void FSceneRenderer::BeginOcclusionTests(FRHICommandListImmediate& RHICmdList, b
 					FExclusiveDepthStencil::DepthRead_StencilWrite
 				);
 
+				RHICmdList.TransitionResource(RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil, RPInfo.DepthStencilRenderTarget.DepthStencilTarget);
 				RHICmdList.BeginRenderPass(RPInfo, TEXT("OcclusionQueries"));
 			}
 

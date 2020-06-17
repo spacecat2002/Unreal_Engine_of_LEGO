@@ -85,7 +85,6 @@ class FDiffuseIndirectCompositePS : public FGlobalShader
 		SHADER_PARAMETER_SAMPLER(SamplerState,  AmbientOcclusionSampler)
 		
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
-		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureSamplerParameters, SceneTextureSamplers)
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
 		
 		RENDER_TARGET_BINDING_SLOTS()
@@ -111,7 +110,6 @@ class FAmbientCubemapCompositePS : public FGlobalShader
 		
 		SHADER_PARAMETER_STRUCT_INCLUDE(FAmbientCubemapParameters, AmbientCubemap)
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
-		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureSamplerParameters, SceneTextureSamplers)
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
 		
 		RENDER_TARGET_BINDING_SLOTS()
@@ -226,7 +224,6 @@ class FReflectionEnvironmentSkyLightingPS : public FGlobalShader
 		SHADER_PARAMETER(int32, CloudSkyAOEnabled)
 
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
-		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureSamplerParameters, SceneTextureSamplers)
 
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
 		SHADER_PARAMETER_STRUCT_REF(FReflectionUniformParameters, ReflectionsParameters)
@@ -353,9 +350,8 @@ void FDeferredShadingSceneRenderer::RenderDiffuseIndirectAndAmbientOcclusion(FRH
 	}
 
 	FRDGBuilder GraphBuilder(RHICmdListImmediate);
-	
-	FSceneTextureParameters SceneTextures;
-	SetupSceneTextureParameters(GraphBuilder, &SceneTextures);
+
+	FSceneTextureParameters SceneTextures = GetSceneTextureParameters(GraphBuilder);
 	
 	FRDGTextureRef SceneColor = GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor());
 
@@ -479,7 +475,6 @@ void FDeferredShadingSceneRenderer::RenderDiffuseIndirectAndAmbientOcclusion(FRH
 			PassParameters->AmbientOcclusionSampler = TStaticSamplerState<SF_Point>::GetRHI();
 			
 			PassParameters->SceneTextures = SceneTextures;
-			SetupSceneTextureSamplers(&PassParameters->SceneTextureSamplers);
 			PassParameters->ViewUniformBuffer = View.ViewUniformBuffer;
 
 			PassParameters->RenderTargets[0] = FRenderTargetBinding(
@@ -540,7 +535,6 @@ void FDeferredShadingSceneRenderer::RenderDiffuseIndirectAndAmbientOcclusion(FRH
 			}
 
 			PassParameters->SceneTextures = SceneTextures;
-			SetupSceneTextureSamplers(&PassParameters->SceneTextureSamplers);
 			PassParameters->ViewUniformBuffer = View.ViewUniformBuffer;
 
 			PassParameters->RenderTargets[0] = FRenderTargetBinding(
@@ -599,10 +593,13 @@ void FDeferredShadingSceneRenderer::RenderDiffuseIndirectAndAmbientOcclusion(FRH
 	GraphBuilder.Execute();
 }
 
-void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget>& DynamicBentNormalAO, TRefCountPtr<IPooledRenderTarget>& VelocityRT, FHairStrandsDatas* HairDatas)
+void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(
+	FRDGBuilder& GraphBuilder,
+	FRDGTextureMSAA SceneColorTexture,
+	FRDGTextureRef DynamicBentNormalAOTexture,
+	FRDGTextureRef VelocityTexture,
+	FHairStrandsDatas* HairDatas)
 {
-	check(RHICmdList.IsOutsideRenderPass());
-
 	if (ViewFamily.EngineShowFlags.VisualizeLightCulling 
 		|| ViewFamily.EngineShowFlags.RayTracingDebug
 		|| ViewFamily.EngineShowFlags.PathTracing
@@ -635,36 +632,36 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHI
 	bool bApplySkyShadowing = false;
 	if (bDynamicSkyLight)
 	{
-		SCOPED_DRAW_EVENT(RHICmdList, SkyLightDiffuse);
-		SCOPED_GPU_STAT(RHICmdList, SkyLightDiffuse);
-
-		FDistanceFieldAOParameters Parameters(Scene->SkyLight->OcclusionMaxDistance, Scene->SkyLight->Contrast);
+		RDG_EVENT_SCOPE(GraphBuilder, "SkyLightDiffuse");
+		RDG_GPU_STAT_SCOPE(GraphBuilder, SkyLightDiffuse);
 
 		extern int32 GDistanceFieldAOApplyToStaticIndirect;
 		if (Scene->SkyLight->bCastShadows
 			&& !GDistanceFieldAOApplyToStaticIndirect
 			&& ShouldRenderDistanceFieldAO()
+			&& ShouldRenderDistanceFieldLighting()
 			&& ViewFamily.EngineShowFlags.AmbientOcclusion)
 		{
-			// TODO: convert to RDG.
-			bApplySkyShadowing = RenderDistanceFieldLighting(RHICmdList, Parameters, VelocityRT, DynamicBentNormalAO, false, false);
+			bApplySkyShadowing = true;
+			FDistanceFieldAOParameters Parameters(Scene->SkyLight->OcclusionMaxDistance, Scene->SkyLight->Contrast);
+			RenderDistanceFieldLighting(GraphBuilder, Parameters, SceneColorTexture.Target, VelocityTexture, DynamicBentNormalAOTexture, false, false);
 		}
 	}
 
-	check(RHICmdList.IsOutsideRenderPass());
-
-	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 
 	const bool bReflectionEnv = ShouldDoReflectionEnvironment();
 
-	FRDGBuilder GraphBuilder(RHICmdList);
-
-	FRDGTextureRef SceneColorTexture = GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor());
 	FRDGTextureRef AmbientOcclusionTexture = GraphBuilder.RegisterExternalTexture(SceneContext.bScreenSpaceAOIsValid ? SceneContext.ScreenSpaceAO : GSystemTextures.WhiteDummy);
-	FRDGTextureRef DynamicBentNormalAOTexture = GraphBuilder.RegisterExternalTexture(DynamicBentNormalAO ? DynamicBentNormalAO : GSystemTextures.WhiteDummy);
+	float DynamicBentNormalAO = 1.0f;
 
-	FSceneTextureParameters SceneTextures;
-	SetupSceneTextureParameters(GraphBuilder, &SceneTextures);
+	if (!DynamicBentNormalAOTexture)
+	{
+		DynamicBentNormalAOTexture = GraphBuilder.RegisterExternalTexture(GSystemTextures.WhiteDummy);
+		DynamicBentNormalAO = 0.0f;
+	}
+
+	FSceneTextureParameters SceneTextures = GetSceneTextureParameters(GraphBuilder);
 
 	uint32 ViewIndex = 0;
 	for (FViewInfo& View : Views)
@@ -716,15 +713,13 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHI
 				bDenoise = DenoiserMode != 0 && CVarDenoiseSSR.GetValueOnRenderThread();
 				bTemporalFilter = !bDenoise && View.ViewState && IsSSRTemporalPassRequired(View);
 
-				FRDGTextureRef CurrentSceneColor = GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor());
-
 				ESSRQuality SSRQuality;
 				GetSSRQualityForView(View, &SSRQuality, &DenoiserConfig);
 
 				RDG_EVENT_SCOPE(GraphBuilder, "ScreenSpaceReflections(Quality=%d)", int32(SSRQuality));
 
 				RenderScreenSpaceReflections(
-					GraphBuilder, SceneTextures, CurrentSceneColor, View, SSRQuality, bDenoise, &DenoiserInputs);
+					GraphBuilder, SceneTextures, SceneColorTexture.Resolve, View, SSRQuality, bDenoise, &DenoiserInputs);
 			}
 			else
 			{
@@ -833,7 +828,7 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHI
 					PassParameters->ContrastAndNormalizeMulAdd = FVector(SkyLightContrast, Mul, Add);
 					PassParameters->OcclusionExponent = SkyLightOcclusionExponent;
 					PassParameters->OcclusionCombineMode = SkyLightOcclusionCombineMode == OCM_Minimum ? 0.0f : 1.0f;
-					PassParameters->ApplyBentNormalAO = DynamicBentNormalAO ? 1.0f : 0.0f;
+					PassParameters->ApplyBentNormalAO = DynamicBentNormalAO;
 					PassParameters->InvSkySpecularOcclusionStrength = 1.0f / FMath::Max(CVarSkySpecularOcclusionStrength.GetValueOnRenderThread(), 0.1f);
 				}
 
@@ -878,7 +873,6 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHI
 				PassParameters->PreIntegratedGFSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 
 				PassParameters->SceneTextures = SceneTextures;
-				SetupSceneTextureSamplers(&PassParameters->SceneTextureSamplers);
 
 				PassParameters->ViewUniformBuffer = View.ViewUniformBuffer;
 				PassParameters->ReflectionCaptureData = View.ReflectionCaptureUniformBuffer;
@@ -890,10 +884,10 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHI
 				PassParameters->ForwardLightData = View.ForwardLightingResources->ForwardLightDataUniformBuffer;
 			}
 
-			PassParameters->RenderTargets[0] = FRenderTargetBinding(SceneColorTexture, ERenderTargetLoadAction::ELoad);
+			PassParameters->RenderTargets[0] = FRenderTargetBinding(SceneColorTexture.Target, ERenderTargetLoadAction::ELoad);
 
 			// Bind hair data
-			const bool bCheckerboardSubsurfaceRendering = IsSubsurfaceCheckerboardFormat(SceneContext.GetSceneColorFormat());
+			const bool bCheckerboardSubsurfaceRendering = IsSubsurfaceCheckerboardFormat(SceneColorTexture.Target->Desc.Format);
 
 			// ScreenSpace and SortedDeferred ray traced reflections use the same reflection environment shader,
 			// but main RT reflection shader requires a custom path as it evaluates the clear coat BRDF differently.
@@ -901,7 +895,7 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHI
 				&& RayTracingReflectionOptions.Algorithm != FRayTracingReflectionOptions::EAlgorithm::SortedDeferred;
 
 			auto PermutationVector = FReflectionEnvironmentSkyLightingPS::BuildPermutationVector(
-				View, bHasBoxCaptures, bHasSphereCaptures, DynamicBentNormalAO != nullptr,
+				View, bHasBoxCaptures, bHasSphereCaptures, DynamicBentNormalAO != 0.0f,
 				bSkyLight, bDynamicSkyLight, bApplySkyShadowing,
 				bRequiresSpecializedReflectionEnvironmentShader);
 
@@ -941,29 +935,22 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHI
 				SetShaderParameters(InRHICmdList, PixelShader, PixelShader.GetPixelShader(), *PassParameters);
 				FPixelShaderUtils::DrawFullscreenTriangle(InRHICmdList);
 			});
-		} // if (bRequiresApply)
+		}
 
 		const bool bIsHairSkyLightingEnabled = HairDatas && (bSkyLight || bDynamicSkyLight || bReflectionEnv);
 		if (bIsHairSkyLightingEnabled)
 		{
 			RenderHairStrandsEnvironmentLighting(GraphBuilder, CurrentViewIndex, Views, HairDatas);
 		}
-	} // for (FViewInfo& View : Views)
+	}
 
-	TRefCountPtr<IPooledRenderTarget> OutSceneColor;
-	GraphBuilder.QueueTextureExtraction(SceneColorTexture, &OutSceneColor);
-
-	GraphBuilder.Execute();
-
-	ResolveSceneColor(RHICmdList);
+	AddResolveSceneColorPass(GraphBuilder, Views, SceneColorTexture);
 }
 
 void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLightingHair(
-	FRHICommandListImmediate& RHICmdList,
+	FRDGBuilder& GraphBuilder,
 	FHairStrandsDatas* HairDatas)
 {
-	check(RHICmdList.IsOutsideRenderPass());
-
 	if (ViewFamily.EngineShowFlags.VisualizeLightCulling || !ViewFamily.EngineShowFlags.Lighting)
 	{
 		return;
@@ -1000,9 +987,7 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLightingHair(
 		const bool bIsHairSkyLightingEnabled = HairDatas && (bSkyLight || bDynamicSkyLight || bReflectionEnv);
 		if (bIsHairSkyLightingEnabled)
 		{
-			FRDGBuilder GraphBuilder(RHICmdList);
 			RenderHairStrandsEnvironmentLighting(GraphBuilder, CurrentViewIndex, Views, HairDatas);
-			GraphBuilder.Execute();
 		}
 	}
 }

@@ -632,26 +632,6 @@ public:
 	TRefCountPtr<FMetalShaderResourceView> SourceView;
 };
 
-class FMetalFence;
-
-class FMetalComputeFence : public FRHIComputeFence
-{
-public:
-	
-	FMetalComputeFence(FName InName);
-	
-	virtual ~FMetalComputeFence();
-	
-	virtual void Reset() final override;
-	
-	void Write(FMetalFence* InFence);
-	
-	void Wait(FMetalContext& Context);
-	
-private:
-	FMetalFence* Fence;
-};
-
 class FMetalGPUFence final : public FRHIGPUFence
 {
 public:
@@ -807,11 +787,6 @@ template<>
 struct TMetalResourceTraits<FRHIBlendState>
 {
 	typedef FMetalBlendState TConcreteType;
-};
-template<>
-struct TMetalResourceTraits<FRHIComputeFence>
-{
-	typedef FMetalComputeFence TConcreteType;
 };
 template<>
 struct TMetalResourceTraits<FRHIGraphicsPipelineState>

@@ -1654,7 +1654,9 @@ const TArray<FColor>& FViewport::GetRawHitProxyData(FIntRect InRect)
 			{
 				// Set the hit proxy map's render target.
 				// Clear the hit proxy map to white, which is overloaded to mean no hit proxy.
-				FRHIRenderPassInfo RPInfo(Viewport->HitProxyMap.GetRenderTargetTexture(), ERenderTargetActions::Clear_Store);
+				FRHITexture* RenderTarget = Viewport->HitProxyMap.GetRenderTargetTexture();
+				RHICmdList.Transition(FRHITransitionInfo(RenderTarget, ERHIAccess::Unknown, ERHIAccess::RTV));
+				FRHIRenderPassInfo RPInfo(RenderTarget, ERenderTargetActions::Clear_Store);
 				RHICmdList.BeginRenderPass(RPInfo, TEXT("ClearHitProxyMap"));
 				RHICmdList.EndRenderPass();
 			});

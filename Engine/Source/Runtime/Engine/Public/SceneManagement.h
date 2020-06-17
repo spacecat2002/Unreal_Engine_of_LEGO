@@ -106,7 +106,9 @@ class FSceneViewStateInterface
 {
 public:
 	FSceneViewStateInterface()
-		:	ViewParent( NULL )
+		:	bValidEyeAdaptationTexture(0)
+		,	bValidEyeAdaptationBuffer(0)
+		,	ViewParent(NULL)
 		,	NumChildren( 0 )
 	{}
 	
@@ -210,6 +212,16 @@ public:
 
 	virtual uint32 GetCurrentUnclampedTemporalAASampleIndex() const = 0;
 
+	/** Tells if the eye adaptation texture / buffer exists without attempting to allocate it. */
+	bool HasValidEyeAdaptationTexture() const { return bValidEyeAdaptationTexture; }
+	bool HasValidEyeAdaptationBuffer() const { return bValidEyeAdaptationBuffer; }
+
+	/** Returns the eye adaptation texture (SM5+ only). */
+	virtual IPooledRenderTarget* GetCurrentEyeAdaptationTexture() const = 0;
+
+	/** Returns the eye adaptation buffer (mobile only). */
+	virtual const FExposureBufferData* GetCurrentEyeAdaptationBuffer() const = 0;
+
 	virtual void SetSequencerState(ESequencerState InSequencerState) = 0;
 
 	virtual ESequencerState GetSequencerState() = 0;
@@ -224,6 +236,9 @@ public:
 protected:
 	// Don't allow direct deletion of the view state, Destroy should be called instead.
 	virtual ~FSceneViewStateInterface() {}
+
+	uint8 bValidEyeAdaptationTexture : 1;
+	uint8 bValidEyeAdaptationBuffer : 1;
 
 private:
 	/** This scene state's view parent; NULL if no parent present. */
@@ -1239,11 +1254,6 @@ public:
 	virtual float GetLightSourceAngle() const { return 0.0f; }
 	virtual float GetTraceDistance() const { return 0.0f; }
 	virtual float GetEffectiveScreenRadius(const FViewMatrices& ShadowViewMatrices) const { return 0.0f; }
-
-	virtual FVector2D GetLightShaftConeParams() const
-	{
-		return FVector2D::ZeroVector;
-	}
 
 	/** Accesses parameters needed for rendering the light. */
 	virtual void GetLightShaderParameters(FLightShaderParameters& PathTracingLightParameters) const {}

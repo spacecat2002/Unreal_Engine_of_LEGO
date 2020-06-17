@@ -179,7 +179,7 @@ namespace MobileReflectionEnvironmentCapture
 			const int32 NumMips = FMath::CeilLogTwo(EffectiveTopMipSize) + 1;
 			FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, ProcessedTexture->TextureRHI);
+			RHICmdList.Transition(FRHITransitionInfo(ProcessedTexture->TextureRHI, ERHIAccess::Unknown, ERHIAccess::CopyDest));
 
 			FRHICopyTextureInfo CopyInfo;
 			CopyInfo.Size = FIntVector(ProcessedTexture->GetSizeX(), ProcessedTexture->GetSizeY(), 1);
@@ -191,7 +191,7 @@ namespace MobileReflectionEnvironmentCapture
 				// For simple mobile bilin filtering the source for this copy is the dest from the filtering pass.
 				// In the HQ case, the full image is contained in GetEffectiveRenderTarget(.., false,0).
 				FSceneRenderTargetItem& EffectiveSource = GetEffectiveRenderTarget(SceneContext, false, bUseHQFiltering ? 0 : MipIndex);
-				RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EffectiveSource.ShaderResourceTexture);
+				RHICmdList.Transition(FRHITransitionInfo(EffectiveSource.ShaderResourceTexture, ERHIAccess::Unknown, ERHIAccess::CopySrc));
 				RHICmdList.CopyTexture(EffectiveSource.ShaderResourceTexture, ProcessedTexture->TextureRHI, CopyInfo);
 
 				++CopyInfo.SourceMipIndex;

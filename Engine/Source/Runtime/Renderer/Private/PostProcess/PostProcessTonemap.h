@@ -66,8 +66,11 @@ struct FTonemapInputs
 	// [Required] Color grading texture used to remap colors.
 	FRDGTextureRef ColorGradingTexture = nullptr;
 
-	// [Optional] Eye adaptation texture used to compute exposure. If this is null, a default exposure value is used instead.
+	// [Optional, SM5+] Eye adaptation texture used to compute exposure. If this is null, a default exposure value is used instead.
 	FRDGTextureRef EyeAdaptationTexture = nullptr;
+
+	// [Optional, ES31] Eye adaptation buffer used to compute exposure. 
+	FRHIShaderResourceView* EyeAdaptationBuffer = nullptr;
 
 	// [Raster Only, Mobile] Flips the image vertically on output.
 	bool bFlipYAxis = false;
@@ -82,8 +85,6 @@ struct FTonemapInputs
 	bool bOutputInHDR = false;
 
 	bool bMetalMSAAHDRDecode = false;
-
-	FRHIShaderResourceView* EyeAdaptationBuffer = nullptr;
 };
 
 FScreenPassTexture AddTonemapPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FTonemapInputs& Inputs);

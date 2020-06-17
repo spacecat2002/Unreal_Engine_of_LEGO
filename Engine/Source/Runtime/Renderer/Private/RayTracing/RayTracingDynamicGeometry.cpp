@@ -24,7 +24,7 @@ public:
 	FRayTracingDynamicGeometryConverterCS(const FMeshMaterialShaderType::CompiledShaderInitializerType& Initializer)
 		: FMeshMaterialShader(Initializer)
 	{
-		PassUniformBuffer.Bind(Initializer.ParameterMap, FSceneTexturesUniformParameters::StaticStructMetadata.GetShaderVariableName());
+		PassUniformBuffer.Bind(Initializer.ParameterMap, FSceneTextureUniformParameters::StaticStructMetadata.GetShaderVariableName());
 
 		RWVertexPositions.Bind(Initializer.ParameterMap, TEXT("VertexPositions"));
 		VertexBufferSize.Bind(Initializer.ParameterMap, TEXT("VertexBufferSize"));
@@ -129,7 +129,7 @@ void FRayTracingDynamicGeometryCollection::AddDynamicMeshBatchForGeometryUpdate(
 
 		int32 DataOffset = 0;
 		FMeshDrawSingleShaderBindings SingleShaderBindings = ShaderBindings.GetSingleShaderBindings(SF_Compute, DataOffset);
-		FMeshPassProcessorRenderState DrawRenderState(Scene->UniformBuffers.ViewUniformBuffer, Scene->UniformBuffers.OpaqueBasePassUniformBuffer);
+		FMeshPassProcessorRenderState DrawRenderState(Scene->UniformBuffers.ViewUniformBuffer);
 		Shader->GetShaderBindings(Scene, Scene->GetFeatureLevel(), PrimitiveSceneProxy, MaterialRenderProxy, Material, DrawRenderState, ShaderElementData, SingleShaderBindings);
 
 		FVertexInputStreamArray DummyArray;
@@ -219,15 +219,18 @@ void FRayTracingDynamicGeometryCollection::DispatchUpdates(FRHIComputeCommandLis
 		{
 			SCOPED_DRAW_OR_COMPUTE_EVENT(RHICmdList, VSinCSComputeDispatch)
 
-			TArray<FRHIUnorderedAccessView*> BuffersToTransition;
-			BuffersToTransition.Reserve(DispatchCommands->Num());
+			TArray<FRHITransitionInfo> UAVTransitions;
+			TArray<FRHITransitionInfo> SRVTransitions;
+			UAVTransitions.Reserve(DispatchCommands->Num());
+			SRVTransitions.Reserve(DispatchCommands->Num());
 
 			for (FMeshComputeDispatchCommand& Cmd : *DispatchCommands)
 			{
-				BuffersToTransition.Add(Cmd.TargetBuffer->UAV.GetReference());
+				UAVTransitions.Add(FRHITransitionInfo(Cmd.TargetBuffer->UAV.GetReference(), ERHIAccess::Unknown, ERHIAccess::UAVCompute));
+				SRVTransitions.Add(FRHITransitionInfo(Cmd.TargetBuffer->UAV.GetReference(), ERHIAccess::Unknown, ERHIAccess::SRVMask));
 			}
 
-			RHICmdList.TransitionResources(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToCompute, BuffersToTransition.GetData(), BuffersToTransition.Num());
+			RHICmdList.Transition(MakeArrayView(UAVTransitions.GetData(), UAVTransitions.Num()));
 
 			for (FMeshComputeDispatchCommand& Cmd : *DispatchCommands)
 			{
@@ -249,7 +252,7 @@ void FRayTracingDynamicGeometryCollection::DispatchUpdates(FRHIComputeCommandLis
 				}
 			}
 
-			RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, BuffersToTransition.GetData(), BuffersToTransition.Num());
+			RHICmdList.Transition(MakeArrayView(SRVTransitions.GetData(), SRVTransitions.Num()));
 		}
 
 		SCOPED_DRAW_OR_COMPUTE_EVENT(RHICmdList, Build);

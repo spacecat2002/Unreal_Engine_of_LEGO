@@ -46,7 +46,7 @@ struct FDeepShadowResources
 	TRefCountPtr<IPooledRenderTarget> DepthAtlasTexture;
 	TRefCountPtr<IPooledRenderTarget> LayersAtlasTexture;
 
-	TRefCountPtr<FPooledRDGBuffer> DeepShadowWorldToLightTransforms;
+	TRefCountPtr<FRDGPooledBuffer> DeepShadowWorldToLightTransforms;
 	TRefCountPtr<FRHIShaderResourceView> DeepShadowWorldToLightTransformsSRV;
 };
 

@@ -120,24 +120,13 @@ FScreenPassTexture AddVisualizeBufferPass(FRDGBuilder& GraphBuilder, const FView
 		PassParameters->InputSampler = BilinearClampSampler;
 		PassParameters->SelectionColor = SelectionColor;
 
+		const FScreenPassTextureViewport InputViewport(Tile.Input);
+
 		TShaderMapRef<FScreenPassVS> VertexShader(View.ShaderMap);
 		TShaderMapRef<FVisualizeBufferPS> PixelShader(View.ShaderMap);
-
 		FRHIBlendState* BlendState = TStaticBlendState<CW_RGB, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha>::GetRHI();
 
-		AddDrawScreenPass(
-			GraphBuilder,
-			RDG_EVENT_NAME("Tile: %s", *Tile.Label),
-			View,
-			OutputViewport,
-			FScreenPassTextureViewport(Tile.Input),
-			FScreenPassPipelineState(VertexShader, PixelShader, BlendState),
-			EScreenPassDrawFlags::None,
-			PassParameters,
-			[PixelShader, PassParameters](FRHICommandList& RHICmdList)
-		{
-			SetShaderParameters(RHICmdList, PixelShader, PixelShader.GetPixelShader(), *PassParameters);
-		});
+		AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("Tile: %s", *Tile.Label), View, OutputViewport, InputViewport, VertexShader, PixelShader, BlendState, PassParameters);
 
 		FTileLabel TileLabel;
 		TileLabel.Label = Tile.Label;

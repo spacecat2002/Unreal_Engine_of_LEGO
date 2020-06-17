@@ -315,7 +315,7 @@ void FRCPassPostProcessDeferredDecals::Process(FRenderingCompositePassContext& C
 
 		// If we're rendering dbuffer decals but there are no decals in the scene, we avoid the 
 		// clears/decompresses and set the targets to NULL		
-		// The DBufferA-C will be replaced with dummy textures in FSceneTexturesUniformParameters
+		// The DBufferA-C will be replaced with dummy textures in FSceneTextureUniformParameters
 		if (bRenderDecals)
 		{
 			FScene& Scene = *(FScene*)ViewFamily.Scene;
@@ -384,6 +384,8 @@ void FRCPassPostProcessDeferredDecals::Process(FRenderingCompositePassContext& C
 			{
 				SCOPED_DRAW_EVENT(RHICmdList, DBufferClear);
 
+				RHICmdList.TransitionResource(FExclusiveDepthStencil::DepthRead_StencilWrite, SceneContext.GetSceneDepthTexture());
+
 				FRHITexture* RenderTargets[4];
 
 				RenderTargets[0] = SceneContext.DBufferA->GetRenderTargetItem().TargetableTexture;
@@ -396,6 +398,13 @@ void FRCPassPostProcessDeferredDecals::Process(FRenderingCompositePassContext& C
 					RenderTargets[3] = SceneContext.DBufferMask->GetRenderTargetItem().TargetableTexture;
 					RTCount = 4;
 				}
+
+				FRHITransitionInfo Transitions[4];
+				for (int32 RTIndex = 0; RTIndex < RTCount; ++RTIndex)
+				{
+					Transitions[RTIndex] = FRHITransitionInfo(RenderTargets[RTIndex], ERHIAccess::Unknown, ERHIAccess::RTV);
+				}
+				RHICmdList.Transition(MakeArrayView(Transitions, RTCount));
 
 				FRHIRenderPassInfo RPInfo(RTCount, RenderTargets, ERenderTargetActions::Clear_Store);
 				RPInfo.DepthStencilRenderTarget.DepthStencilTarget = SceneContext.GetSceneDepthTexture();
@@ -468,6 +477,10 @@ void FRCPassPostProcessDeferredDecals::Process(FRenderingCompositePassContext& C
 
 				FDecalRenderingCommon::ERenderTargetMode LastRenderTargetMode = FDecalRenderingCommon::RTM_Unknown;
 				const ERHIFeatureLevel::Type SMFeatureLevel = Context.GetFeatureLevel();
+
+				TUniformBufferRef<FSceneTextureUniformParameters> SceneTextures = CreateSceneTextureUniformBuffer(RHICmdList, View, ESceneTextureSetupMode::All);
+				FUniformBufferStaticBindings GlobalUniformBuffers(SceneTextures);
+				SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
 
 				SCOPED_DRAW_EVENT(RHICmdList, Decals);
 				INC_DWORD_STAT_BY(STAT_Decals, SortedDecals.Num());
@@ -667,7 +680,7 @@ void FRCPassPostProcessDeferredDecals::Process(FRenderingCompositePassContext& C
 	if (CurrentStage == DRS_BeforeBasePass && !bHasValidDBufferMask)
 	{
 		// Return the DBufferMask to the render target pool.
-		// FSceneTexturesUniformParameters will fall back to setting a white dummy mask texture.
+		// FSceneTextureUniformParameters will fall back to setting a white dummy mask texture.
 		// This allows us to ignore the DBufferMask on frames without decals, without having to explicitly clear the texture.
 		SceneContext.DBufferMask = nullptr;
 	}
@@ -775,7 +788,7 @@ void FDecalRenderTargetManager::SetRenderTargetMode(FDecalRenderingCommon::ERend
 		// This is required to be compliant with RHISetRenderTargets resource transition code : const bool bAccessValid = !bReadable || LastFrameWritten != CurrentFrame;
 		// If the normal buffer was resolved as a texture before, then bReadable && LastFrameWritten == CurrentFrame, and an error msg will be triggered. 
 		// Which is not needed here since no more read will be done at this point (at least not before any other CopyToResolvedTarget).
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, SceneContext.GBufferA->GetRenderTargetItem().TargetableTexture);
+		RHICmdList.Transition(FRHITransitionInfo(SceneContext.GBufferA->GetRenderTargetItem().TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
 	}
 
 	// Color
@@ -850,7 +863,7 @@ void FDecalRenderTargetManager::SetRenderTargetMode(FDecalRenderingCommon::ERend
 	case FDecalRenderingCommon::RTM_AmbientOcclusion:
 	{
 		TargetsToResolve[SceneColorIndex] = SceneContext.ScreenSpaceAO->GetRenderTargetItem().TargetableTexture;
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, TargetsToResolve[SceneColorIndex]);
+		RHICmdList.Transition(FRHITransitionInfo(TargetsToResolve[SceneColorIndex], ERHIAccess::Unknown, ERHIAccess::RTV));
 
 		TargetsToBind = &TargetsToResolve[SceneColorIndex];
 

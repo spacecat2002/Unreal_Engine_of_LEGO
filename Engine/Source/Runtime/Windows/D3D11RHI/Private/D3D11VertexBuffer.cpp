@@ -13,7 +13,7 @@ static TAutoConsoleVariable<int32> GCVarUseSharedKeyedMutex(
 	TEXT("flag instead of D3D11_RESOURCE_MISC_SHARED (default).\n"),
 	ECVF_Default);
 
-FVertexBufferRHIRef FD3D11DynamicRHI::RHICreateVertexBuffer(uint32 Size,uint32 InUsage, FRHIResourceCreateInfo& CreateInfo)
+FVertexBufferRHIRef FD3D11DynamicRHI::RHICreateVertexBuffer(uint32 Size,uint32 InUsage, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo)
 {
 	if (CreateInfo.bWithoutNativeResource)
 	{
@@ -129,9 +129,10 @@ FVertexBufferRHIRef FD3D11DynamicRHI::CreateVertexBuffer_RenderThread(
 	class FRHICommandListImmediate& RHICmdList,
 	uint32 Size,
 	uint32 InUsage,
+	ERHIAccess InResourceState,
 	FRHIResourceCreateInfo& CreateInfo)
 {
-	return RHICreateVertexBuffer(Size, InUsage, CreateInfo);
+	return RHICreateVertexBuffer(Size, InUsage, InResourceState, CreateInfo);
 }
 
 void* FD3D11DynamicRHI::LockVertexBuffer_BottomOfPipe(FRHICommandListImmediate& RHICmdList, FRHIVertexBuffer* VertexBufferRHI,uint32 Offset,uint32 Size,EResourceLockMode LockMode)

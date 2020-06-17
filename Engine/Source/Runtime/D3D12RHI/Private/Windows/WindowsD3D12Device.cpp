@@ -479,17 +479,10 @@ FDynamicRHI* FD3D12DynamicRHIModule::CreateRHI(ERHIFeatureLevel::Type RequestedF
 #if ENABLE_RHI_VALIDATION
 	if (FParse::Param(FCommandLine::Get(), TEXT("RHIValidation")))
 	{
-		GValidationRHI = new FValidationRHI(GD3D12RHI);
+		return new FValidationRHI(GD3D12RHI);
 	}
-	else
-	{
-		check(!GValidationRHI);
-	}
-
-	return GValidationRHI ? (FDynamicRHI*)GValidationRHI : (FDynamicRHI*)GD3D12RHI;
-#else
-	return GD3D12RHI;
 #endif
+	return GD3D12RHI;
 }
 
 void FD3D12DynamicRHIModule::StartupModule()
@@ -713,7 +706,7 @@ void FD3D12DynamicRHI::Init()
 	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::SM4_REMOVED] = SP_NumPlatforms;
 	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::SM5] = SP_PCD3D_SM5;
 
-	GSupportsEfficientAsyncCompute = GRHISupportsParallelRHIExecute && IsRHIDeviceAMD();
+	GSupportsEfficientAsyncCompute = false; // GRHISupportsParallelRHIExecute&& IsRHIDeviceAMD();
 
 	GSupportsDepthBoundsTest = SupportsDepthBoundsTest(this);
 
@@ -754,8 +747,10 @@ void FD3D12DynamicRHI::Init()
 	GRHISupportsRayTracingMissShaderBindings = true;
 #endif
 
-	GRHICommandList.GetImmediateCommandList().SetContext(RHIGetDefaultContext());
-	GRHICommandList.GetImmediateAsyncComputeCommandList().SetComputeContext(RHIGetDefaultAsyncComputeContext());
+	// Command lists need the validation RHI context if enabled, so call the global scope version of RHIGetDefaultContext() and RHIGetDefaultAsyncComputeContext().
+	GRHICommandList.GetImmediateCommandList().SetContext(::RHIGetDefaultContext());
+	GRHICommandList.GetImmediateAsyncComputeCommandList().SetComputeContext(::RHIGetDefaultAsyncComputeContext());
+
 	FRenderResource::InitPreRHIResources();
 	GIsRHIInitialized = true;
 }

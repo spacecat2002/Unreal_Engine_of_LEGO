@@ -394,7 +394,7 @@ void FRCPassPostProcessBloomSetupES2::Process(FRenderingCompositePassContext& Co
 	{
 		if (RenderTargets[i] != nullptr)
 		{
-			Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, RenderTargets[i]);
+			Context.RHICmdList.Transition(FRHITransitionInfo(RenderTargets[i], ERHIAccess::Unknown, ERHIAccess::SRVMask));
 		}
 	}
 }
@@ -783,7 +783,7 @@ public:
 		FUseMetalMSAAHDRDecodeDim>;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_STRUCT_REF(FMobileSceneTextureUniformParameters, SceneTextures)
+		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FMobileSceneTextureUniformParameters, SceneTextures)
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneColorTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, SceneColorSampler)
@@ -876,13 +876,13 @@ FMobileSunMaskOutputs AddMobileSunMaskPass(FRDGBuilder& GraphBuilder, const FVie
 	PassParameters->RenderTargets[1] = SceneColorOutput.GetRenderTargetBinding();
 
 	PassParameters->View = View.ViewUniformBuffer;
-	PassParameters->SceneTextures = CreateMobileSceneTextureUniformBufferSingleDraw(GraphBuilder.RHICmdList, View.FeatureLevel);
+	PassParameters->SceneTextures = CreateMobileSceneTextureUniformBuffer(GraphBuilder, View);
 	PassParameters->SceneColorTexture = Inputs.SceneColor.Texture;
 	PassParameters->SceneColorSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 
-	PassParameters->SunColorApertureDiv2.X = View.LightShaftColorMask.R;
-	PassParameters->SunColorApertureDiv2.Y = View.LightShaftColorMask.G;
-	PassParameters->SunColorApertureDiv2.Z = View.LightShaftColorMask.B;
+	PassParameters->SunColorApertureDiv2.X = View.MobileLightShaft->ColorMask.R;
+	PassParameters->SunColorApertureDiv2.Y = View.MobileLightShaft->ColorMask.G;
+	PassParameters->SunColorApertureDiv2.Z = View.MobileLightShaft->ColorMask.B;
 	PassParameters->SunColorApertureDiv2.W = GetMobileDepthOfFieldScale(View) * 0.5f;
 
 	FMobileSunMaskPS::FPermutationDomain PermutationVector = FMobileSunMaskPS::BuildPermutationVector(Inputs.bUseSun, Inputs.bUseDepthOfField, Inputs.bUseDepthTexture, Inputs.bUseMetalMSAAHDRDecode);
@@ -1008,7 +1008,7 @@ public:
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetVS(ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
 
-		SetShaderValue(Context.RHICmdList, ShaderRHI, LightShaftCenter, Context.View.LightShaftCenter);
+		SetShaderValue(Context.RHICmdList, ShaderRHI, LightShaftCenter, Context.View.MobileLightShaft->Center);
 	}
 };
 
@@ -1191,7 +1191,7 @@ public:
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetVS(ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
 
-		SetShaderValue(Context.RHICmdList, ShaderRHI, LightShaftCenter, Context.View.LightShaftCenter);
+		SetShaderValue(Context.RHICmdList, ShaderRHI, LightShaftCenter, Context.View.MobileLightShaft->Center);
 	}
 };
 
@@ -1336,10 +1336,13 @@ public:
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetPS(Context.RHICmdList, ShaderRHI, Context, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 
-		FVector4 SunColorVignetteIntensityParam;
-		SunColorVignetteIntensityParam.X = Context.View.LightShaftColorApply.R;
-		SunColorVignetteIntensityParam.Y = Context.View.LightShaftColorApply.G;
-		SunColorVignetteIntensityParam.Z = Context.View.LightShaftColorApply.B;
+		FVector4 SunColorVignetteIntensityParam(0.0f);
+		if (Context.View.MobileLightShaft)
+		{
+			SunColorVignetteIntensityParam.X = Context.View.MobileLightShaft->ColorApply.R;
+			SunColorVignetteIntensityParam.Y = Context.View.MobileLightShaft->ColorApply.G;
+			SunColorVignetteIntensityParam.Z = Context.View.MobileLightShaft->ColorApply.B;
+		}
 		SunColorVignetteIntensityParam.W = Settings.VignetteIntensity;
 		SetShaderValue(Context.RHICmdList, ShaderRHI, SunColorVignetteIntensity, SunColorVignetteIntensityParam);
 
@@ -1386,7 +1389,12 @@ public:
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(Context.RHICmdList, ShaderRHI, Context.View.ViewUniformBuffer);
 		PostprocessParameter.SetVS(ShaderRHI, Context, TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI());
 
-		SetShaderValue(Context.RHICmdList, ShaderRHI, LightShaftCenter, Context.View.LightShaftCenter);
+		FMobileLightShaftInfo MobileLightShaft;
+		if (Context.View.MobileLightShaft)
+		{
+			MobileLightShaft = *Context.View.MobileLightShaft;
+		}
+		SetShaderValue(Context.RHICmdList, ShaderRHI, LightShaftCenter, MobileLightShaft.Center);
 	}
 };
 
@@ -1423,7 +1431,7 @@ TShaderRef<FShader> FRCPassPostProcessSunMergeES2::SetShader(const FRenderingCom
 {
 	const FViewInfo& View = Context.View;
 	uint32 UseBloom = (View.FinalPostProcessSettings.BloomIntensity > 0.0f) ? 1 : 0;
-	uint32 UseSun = Context.View.bLightShaftUse ? 1 : 0;
+	uint32 UseSun = Context.View.MobileLightShaft.IsSet() ? 1 : 0;
 	uint32 UseSunBloom = UseBloom + (UseSun<<1);
 
 	switch(UseSunBloom)
@@ -1628,7 +1636,7 @@ static void DofDown_SetShader(const FRenderingCompositePassContext& Context)
 void FRCPassPostProcessDofDownES2::SetShader(const FRenderingCompositePassContext& Context)
 {
 	const FViewInfo& View = Context.View;
-	if(Context.View.bLightShaftUse)
+	if(Context.View.MobileLightShaft.IsSet())
 	{
 		DofDown_SetShader<1>(Context);
 	}
@@ -1839,7 +1847,7 @@ static void DofNear_SetShader(const FRenderingCompositePassContext& Context)
 void FRCPassPostProcessDofNearES2::SetShader(const FRenderingCompositePassContext& Context)
 {
 	const FViewInfo& View = Context.View;
-	if(Context.View.bLightShaftUse)
+	if(Context.View.MobileLightShaft.IsSet())
 	{
 		DofNear_SetShader<1>(Context);
 	}
@@ -2570,7 +2578,7 @@ void FRCPassPostProcessAaES2::Process(FRenderingCompositePassContext& Context)
 	// need to transition it to readable again. Ideally we'll get rid of this useless read->write->read transition when we
 	// port this over to RDG.
 	const FSceneRenderTargetItem& PrevFrameInput = GetInput(ePId_Input1)->GetOutput()->RequestInput()->GetRenderTargetItem();
-	Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, PrevFrameInput.ShaderResourceTexture);
+	Context.RHICmdList.Transition(FRHITransitionInfo(PrevFrameInput.ShaderResourceTexture, ERHIAccess::Unknown, ERHIAccess::SRVGraphics));
 	
 	FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, LoadStoreAction);
 	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("AaES2"));
@@ -2788,7 +2796,7 @@ void FRCPassPostProcessAverageLuminanceES2::Process(FRenderingCompositePassConte
 	}
 	else
 	{
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, InputRenderTarget.TargetableTexture);
+		Context.RHICmdList.Transition(FRHITransitionInfo(InputRenderTarget.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::SRVGraphics));
 	}
 
 	{
@@ -2805,7 +2813,7 @@ void FRCPassPostProcessAverageLuminanceES2::Process(FRenderingCompositePassConte
 			UnsetShaderUAVs(Context.RHICmdList, ClearShader, Context.RHICmdList.GetBoundComputeShader());
 		}
 
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, GAverageLuminanceBuffer->UnorderedAccessViewRHI);
+		Context.RHICmdList.Transition(FRHITransitionInfo(GAverageLuminanceBuffer->UnorderedAccessViewRHI, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 
 		{
 			const FPooledRenderTargetDesc* InputDesc = GetInputDesc(ePId_Input0);
@@ -2825,7 +2833,7 @@ void FRCPassPostProcessAverageLuminanceES2::Process(FRenderingCompositePassConte
 			UnsetShaderUAVs(Context.RHICmdList, ComputeShader, Context.RHICmdList.GetBoundComputeShader());
 		}
 
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, GAverageLuminanceBuffer->UnorderedAccessViewRHI);
+		Context.RHICmdList.Transition(FRHITransitionInfo(GAverageLuminanceBuffer->UnorderedAccessViewRHI, ERHIAccess::ERWBarrier, ERHIAccess::SRVCompute));
 	}
 }
 
@@ -2910,12 +2918,16 @@ void FRCPassPostProcessBasicEyeAdaptationES2::Process(FRenderingCompositePassCon
 	const FSceneViewFamily& ViewFamily = *(View.Family);
 
 	// Get the custom 1x1 target used to store exposure value and Toggle the two render targets used to store new and old.
-	Context.View.SwapEyeAdaptationBuffers();
+	{
+		FRDGBuilder GraphBuilder(Context.RHICmdList);
+		Context.View.SwapEyeAdaptationBuffers(GraphBuilder);
+		GraphBuilder.Execute();
+	}
 
-	const FExposureBufferData* EyeAdaptationThisFrameBuffer = Context.View.GetEyeAdaptationBuffer();
-	const FExposureBufferData* EyeAdaptationLastFrameBuffer = Context.View.GetLastEyeAdaptationBuffer();
+	const FExposureBufferData* EyeAdaptationThisFrameBuffer = Context.View.GetEyeAdaptationBuffer(Context.RHICmdList);
+	const FExposureBufferData* EyeAdaptationLastFrameBuffer = Context.View.GetLastEyeAdaptationBuffer(Context.RHICmdList);
 
-	Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EGfxToCompute, EyeAdaptationLastFrameBuffer->UAV);
+	Context.RHICmdList.Transition(FRHITransitionInfo(EyeAdaptationLastFrameBuffer->UAV, ERHIAccess::Unknown, ERHIAccess::SRVCompute));
 
 	check(EyeAdaptationThisFrameBuffer && EyeAdaptationLastFrameBuffer);
 
@@ -2934,10 +2946,8 @@ void FRCPassPostProcessBasicEyeAdaptationES2::Process(FRenderingCompositePassCon
 
 		UnsetShaderUAVs(Context.RHICmdList, ComputeShader, Context.RHICmdList.GetBoundComputeShader());
 
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, EyeAdaptationThisFrameBuffer->UAV);
+		Context.RHICmdList.Transition(FRHITransitionInfo(EyeAdaptationThisFrameBuffer->UAV, ERHIAccess::Unknown, ERHIAccess::SRVGraphics));
 	}
-
-	Context.View.SetValidEyeAdaptation();
 }
 
 FPooledRenderTargetDesc FRCPassPostProcessBasicEyeAdaptationES2::ComputeOutputDesc(EPassOutputId InPassOutputId) const
@@ -3080,7 +3090,7 @@ void FRCPassPostProcessHistogramES2::Process(FRenderingCompositePassContext& Con
 	}
 	else
 	{
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, InputRenderTarget.TargetableTexture);
+		Context.RHICmdList.Transition(FRHITransitionInfo(InputRenderTarget.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::SRVCompute));
 	}
 
 	{
@@ -3097,7 +3107,7 @@ void FRCPassPostProcessHistogramES2::Process(FRenderingCompositePassContext& Con
 			UnsetShaderUAVs(Context.RHICmdList, ClearShader, Context.RHICmdList.GetBoundComputeShader());
 		}
 
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, GHistogramBuffer->UnorderedAccessViewRHI);
+		Context.RHICmdList.Transition(FRHITransitionInfo(GHistogramBuffer->UnorderedAccessViewRHI, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 
 		{
 			const FPooledRenderTargetDesc* InputDesc = GetInputDesc(ePId_Input0);			
@@ -3116,7 +3126,7 @@ void FRCPassPostProcessHistogramES2::Process(FRenderingCompositePassContext& Con
 			UnsetShaderUAVs(Context.RHICmdList, ComputeShader, Context.RHICmdList.GetBoundComputeShader());
 		}
 
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, GHistogramBuffer->UnorderedAccessViewRHI);
+		Context.RHICmdList.Transition(FRHITransitionInfo(GHistogramBuffer->UnorderedAccessViewRHI, ERHIAccess::ERWBarrier, ERHIAccess::SRVCompute));
 	}
 }
 
@@ -3200,12 +3210,16 @@ void FRCPassPostProcessHistogramEyeAdaptationES2::Process(FRenderingCompositePas
 	const FSceneViewFamily& ViewFamily = *(View.Family);
 
 	// Get the custom 1x1 target used to store exposure value and Toggle the two render targets used to store new and old.
-	Context.View.SwapEyeAdaptationBuffers();
+	{
+		FRDGBuilder GraphBuilder(Context.RHICmdList);
+		Context.View.SwapEyeAdaptationBuffers(GraphBuilder);
+		GraphBuilder.Execute();
+	}
 
-	const FExposureBufferData* EyeAdaptationThisFrameBuffer = Context.View.GetEyeAdaptationBuffer();
-	const FExposureBufferData* EyeAdaptationLastFrameBuffer = Context.View.GetLastEyeAdaptationBuffer();
+	const FExposureBufferData* EyeAdaptationThisFrameBuffer = Context.View.GetEyeAdaptationBuffer(Context.RHICmdList);
+	const FExposureBufferData* EyeAdaptationLastFrameBuffer = Context.View.GetLastEyeAdaptationBuffer(Context.RHICmdList);
 
-	Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EGfxToCompute, EyeAdaptationLastFrameBuffer->UAV);
+	Context.RHICmdList.Transition(FRHITransitionInfo(EyeAdaptationLastFrameBuffer->UAV, ERHIAccess::Unknown, ERHIAccess::SRVCompute));
 	
 	check(EyeAdaptationThisFrameBuffer && EyeAdaptationLastFrameBuffer);
 
@@ -3222,10 +3236,8 @@ void FRCPassPostProcessHistogramEyeAdaptationES2::Process(FRenderingCompositePas
 
 		UnsetShaderUAVs(Context.RHICmdList, ComputeShader, Context.RHICmdList.GetBoundComputeShader());
 
-		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, EyeAdaptationThisFrameBuffer->UAV);
+		Context.RHICmdList.Transition(FRHITransitionInfo(EyeAdaptationThisFrameBuffer->UAV, ERHIAccess::Unknown, ERHIAccess::SRVGraphics));
 	}
-
-	Context.View.SetValidEyeAdaptation();
 }
 
 FPooledRenderTargetDesc FRCPassPostProcessHistogramEyeAdaptationES2::ComputeOutputDesc(EPassOutputId InPassOutputId) const

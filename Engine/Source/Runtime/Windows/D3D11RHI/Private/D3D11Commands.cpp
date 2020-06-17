@@ -457,9 +457,9 @@ void FD3D11DynamicRHI::RHISetUAVParameter(FRHIPixelShader* ComputeShaderRHI, uin
 		ConditionalClearShaderResource(UAV->Resource, true);
 
 		//check it's safe for r/w for this UAV
-		const EResourceTransitionAccess CurrentUAVAccess = UAV->Resource->GetCurrentGPUAccess();
+		const ERHIAccess CurrentUAVAccess = UAV->Resource->GetCurrentGPUAccess();
 		const bool UAVDirty = UAV->Resource->IsDirty();
-		ensureMsgf((GEnableDX11TransitionChecks == 0) || !UAVDirty || (CurrentUAVAccess == EResourceTransitionAccess::ERWNoBarrier), TEXT("UAV: %i is in unsafe state for GPU R/W: %s, Dirty: %i"), UAVIndex, *FResourceTransitionUtility::ResourceTransitionAccessStrings[(int32)CurrentUAVAccess], (int32)UAVDirty);
+		ensureMsgf((GEnableDX11TransitionChecks == 0) || !UAVDirty || (CurrentUAVAccess == EResourceTransitionAccess::ERWNoBarrier), TEXT("UAV: %i is in unsafe state for GPU R/W: %s, Dirty: %i"), UAVIndex, *GetRHIAccessName(CurrentUAVAccess), (int32)UAVDirty);
 
 		//UAVs always dirty themselves. If a shader wanted to just read, it should use an SRV.
 		UAV->Resource->SetDirty(true, PresentCounter);
@@ -482,9 +482,9 @@ void FD3D11DynamicRHI::RHISetUAVParameter(FRHIComputeShader* ComputeShaderRHI,ui
 		ConditionalClearShaderResource(UAV->Resource, true);		
 
 		//check it's safe for r/w for this UAV
-		const EResourceTransitionAccess CurrentUAVAccess = UAV->Resource->GetCurrentGPUAccess();
+		const ERHIAccess CurrentUAVAccess = UAV->Resource->GetCurrentGPUAccess();
 		const bool UAVDirty = UAV->Resource->IsDirty();
-		ensureMsgf((GEnableDX11TransitionChecks == 0) || !UAVDirty || (CurrentUAVAccess == EResourceTransitionAccess::ERWNoBarrier), TEXT("UAV: %i is in unsafe state for GPU R/W: %s, Dirty: %i"), UAVIndex, *FResourceTransitionUtility::ResourceTransitionAccessStrings[(int32)CurrentUAVAccess], (int32)UAVDirty);
+		ensureMsgf((GEnableDX11TransitionChecks == 0) || !UAVDirty || (CurrentUAVAccess == EResourceTransitionAccess::ERWNoBarrier), TEXT("UAV: %i is in unsafe state for GPU R/W: %s, Dirty: %i"), UAVIndex, *GetRHIAccessName(CurrentUAVAccess), (int32)UAVDirty);
 
 		//UAVs always dirty themselves. If a shader wanted to just read, it should use an SRV.
 		UAV->Resource->SetDirty(true, PresentCounter);
@@ -507,9 +507,9 @@ void FD3D11DynamicRHI::RHISetUAVParameter(FRHIComputeShader* ComputeShaderRHI,ui
 		ConditionalClearShaderResource(UAV->Resource, true);
 
 		//check it's safe for r/w for this UAV
-		const EResourceTransitionAccess CurrentUAVAccess = UAV->Resource->GetCurrentGPUAccess();
+		const ERHIAccess CurrentUAVAccess = UAV->Resource->GetCurrentGPUAccess();
 		const bool UAVDirty = UAV->Resource->IsDirty();
-		ensureMsgf((GEnableDX11TransitionChecks == 0) || !UAVDirty || (CurrentUAVAccess == EResourceTransitionAccess::ERWNoBarrier), TEXT("UAV: %i is in unsafe state for GPU R/W: %s, Dirty: %i"), UAVIndex, *FResourceTransitionUtility::ResourceTransitionAccessStrings[(int32)CurrentUAVAccess], (int32)UAVDirty);
+		ensureMsgf((GEnableDX11TransitionChecks == 0) || !UAVDirty || (CurrentUAVAccess == EResourceTransitionAccess::ERWNoBarrier), TEXT("UAV: %i is in unsafe state for GPU R/W: %s, Dirty: %i"), UAVIndex, *GetRHIAccessName(CurrentUAVAccess), (int32)UAVDirty);
 
 		//UAVs always dirty themselves. If a shader wanted to just read, it should use an SRV.
 		UAV->Resource->SetDirty(true, PresentCounter);
@@ -932,10 +932,10 @@ void FD3D11DynamicRHI::CommitUAVs()
 					if (UAV)
 					{
 						//check it's safe for r/w for this UAV
-						const EResourceTransitionAccess CurrentUAVAccess = RHIUAV->Resource->GetCurrentGPUAccess();
+						const ERHIAccess CurrentUAVAccess = RHIUAV->Resource->GetCurrentGPUAccess();
 						const bool UAVDirty = RHIUAV->Resource->IsDirty();
 						const bool bAccessPass = (CurrentUAVAccess == EResourceTransitionAccess::ERWBarrier && !UAVDirty) || (CurrentUAVAccess == EResourceTransitionAccess::ERWNoBarrier);
-						ensureMsgf((GEnableDX11TransitionChecks == 0) || bAccessPass, TEXT("UAV: %i is in unsafe state for GPU R/W: %s"), i, *FResourceTransitionUtility::ResourceTransitionAccessStrings[(int32)CurrentUAVAccess]);
+						ensureMsgf((GEnableDX11TransitionChecks == 0) || bAccessPass, TEXT("UAV: %i is in unsafe state for GPU R/W: %s"), i, *GetRHIAccessName(CurrentUAVAccess));
 
 						//UAVs get set to dirty.  If the shader just wanted to read it should have used an SRV.
 						RHIUAV->Resource->SetDirty(true, PresentCounter);
@@ -1068,7 +1068,7 @@ void FD3D11DynamicRHI::SetRenderTargets(
 	if (NewDepthStencilTarget)
 	{
 		uint32 CurrentFrame = PresentCounter;
-		const EResourceTransitionAccess CurrentAccess = NewDepthStencilTarget->GetCurrentGPUAccess();
+		const ERHIAccess CurrentAccess = NewDepthStencilTarget->GetCurrentGPUAccess();
 		const uint32 LastFrameWritten = NewDepthStencilTarget->GetLastFrameWritten();
 		const bool bReadable = CurrentAccess == EResourceTransitionAccess::EReadable;
 		const bool bDepthWrite = NewDepthStencilTargetRHI->GetDepthStencilAccess().IsDepthWrite();
@@ -1106,7 +1106,7 @@ void FD3D11DynamicRHI::SetRenderTargets(
 			{
 				RenderTargetView = NewRenderTarget->GetRenderTargetView(RTMipIndex, RTSliceIndex);
 				uint32 CurrentFrame = PresentCounter;
-				const EResourceTransitionAccess CurrentAccess = NewRenderTarget->GetCurrentGPUAccess();
+				const ERHIAccess CurrentAccess = NewRenderTarget->GetCurrentGPUAccess();
 				const uint32 LastFrameWritten = NewRenderTarget->GetLastFrameWritten();
 				const bool bReadable = CurrentAccess == EResourceTransitionAccess::EReadable;
 				const bool bAccessValid = !bReadable || LastFrameWritten != CurrentFrame;
@@ -1449,6 +1449,19 @@ inline int32 SetShaderResourcesFromBuffer_Surface(FD3D11DynamicRHI* RESTRICT D3D
 			ShaderResource = TextureD3D11->GetBaseShaderResource();
 			D3D11Resource = TextureD3D11->GetShaderResourceView();
 
+#if ENABLE_RHI_VALIDATION
+			if (D3D11RHI->Tracker)
+			{
+				constexpr ERHIAccess Access = ShaderFrequency == EShaderFrequency::SF_Compute
+					? ERHIAccess::SRVCompute
+					: ERHIAccess::SRVGraphics;
+
+				// Textures bound here only have their "common" plane accessible. Stencil etc is ignored.
+				// (i.e. only access the color plane of a color texture, or depth plane of a depth texture)
+				D3D11RHI->Tracker->Assert(TextureRHI->GetViewIdentity(0, 0, 0, 0, uint32(RHIValidation::EResourcePlane::Common), 1), Access);
+			}
+#endif
+
 			// todo: could coalesce adjacent bound resources.
 			SetResource<ShaderFrequency>(D3D11RHI, StateCache, BindIndex, ShaderResource, D3D11Resource, TextureRHI->GetName());
 			NumSetCalls++;
@@ -1481,6 +1494,14 @@ inline int32 SetShaderResourcesFromBufferUAVPS(FD3D11DynamicRHI* RESTRICT D3D11R
 			{
 				UE_LOG(LogD3D11RHI, Fatal, TEXT("Null UAV (resource %d bind %d) on UB Layout %s"), ResourceIndex, BindIndex, *LayoutName.ToString());
 			}
+
+#if ENABLE_RHI_VALIDATION
+			if (D3D11RHI->Tracker)
+			{
+				D3D11RHI->Tracker->AssertUAV(UnorderedAccessViewRHI, RHIValidation::EUAVMode::Graphics, BindIndex);
+			}
+#endif
+
 			D3D11RHI->InternalSetUAVPS(BindIndex, UnorderedAccessViewRHI);
 			NumSetCalls++;
 			ResourceInfo = *ResourceInfos++;
@@ -1515,6 +1536,18 @@ inline int32 SetShaderResourcesFromBuffer_SRV(FD3D11DynamicRHI* RESTRICT D3D11RH
 			{
 				UE_LOG(LogD3D11RHI, Fatal, TEXT("Null SRV (resource %d bind %d) on UB Layout %s"), ResourceIndex, BindIndex, *LayoutName.ToString());
 			}
+
+#if ENABLE_RHI_VALIDATION
+			if (D3D11RHI->Tracker)
+			{
+				constexpr ERHIAccess Access = ShaderFrequency == EShaderFrequency::SF_Compute
+					? ERHIAccess::SRVCompute
+					: ERHIAccess::SRVGraphics;
+
+				D3D11RHI->Tracker->Assert(ShaderResourceViewRHI->ViewIdentity, Access);
+			}
+#endif
+
 			ShaderResource = ShaderResourceViewRHI->Resource.GetReference();
 			D3D11Resource = ShaderResourceViewRHI->View.GetReference();
 
@@ -1615,7 +1648,11 @@ void FD3D11DynamicRHI::SetResourcesFromTables(const ShaderType* RESTRICT Shader)
 		}
 #endif
 
-		FName LayoutName = *Buffer->GetLayout().GetDebugName();
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+		const FName LayoutName = *Buffer->GetLayout().GetDebugName();
+#else 
+		const FName LayoutName = NAME_None;
+#endif
 
 		// todo: could make this two pass: gather then set
 		SetShaderResourcesFromBuffer_Surface<(EShaderFrequency)ShaderType::StaticFrequency>(this, &StateCache, Buffer, Shader->ShaderResourceTable.TextureMap.GetData(), BufferIndex, LayoutName);
@@ -1913,11 +1950,6 @@ void FD3D11DynamicRHI::RHIClearMRTImpl(bool bClearColor, int32 NumClearColors, c
 	GPUProfilingData.RegisterGPUWork(0);
 }
 
-void FD3D11DynamicRHI::RHIBindClearMRTValues(bool bClearColor, bool bClearDepth, bool bClearStencil)
-{
-	// Not necessary for d3d.
-}
-
 // Blocks the CPU until the GPU catches up and goes idle.
 void FD3D11DynamicRHI::RHIBlockUntilGPUIdle()
 {
@@ -2067,68 +2099,39 @@ IRHICommandContextContainer* FD3D11DynamicRHI::RHIGetCommandContextContainer(int
 	return nullptr;
 }
 
-void FD3D11DynamicRHI::RHITransitionResources(EResourceTransitionAccess TransitionType, FRHITexture** InTextures, int32 NumTextures)
+void FD3D11DynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipeline SrcPipelines, ERHIPipeline DstPipelines, ERHICreateTransitionFlags CreateFlags, TArrayView<const FRHITransitionInfo> Infos)
 {
-	static IConsoleVariable* CVarShowTransitions = IConsoleManager::Get().FindConsoleVariable(TEXT("r.ProfileGPU.ShowTransitions"));
-	bool bShowTransitionEvents = CVarShowTransitions->GetInt() != 0;
+	checkf(FMath::IsPowerOfTwo(uint32(SrcPipelines)) && FMath::IsPowerOfTwo(uint32(DstPipelines)), TEXT("Support for multi-pipe resources is not yet implemented."));
 
-	SCOPED_RHI_CONDITIONAL_DRAW_EVENTF(*this, RHITransitionResources, bShowTransitionEvents, TEXT("TransitionTo: %s: %i Textures"), *FResourceTransitionUtility::ResourceTransitionAccessStrings[(int32)TransitionType], NumTextures);
-	for (int32 i = 0; i < NumTextures; ++i)
-	{				
-		FRHITexture* RenderTarget = InTextures[i];
-		if (RenderTarget)
-		{
-			SCOPED_RHI_CONDITIONAL_DRAW_EVENTF(*this, RHITransitionResourcesLoop, bShowTransitionEvents, TEXT("To:%i - %s"), i, *RenderTarget->GetName().ToString());
+	FD3D11TransitionData* Data = new (Transition->GetPrivateData<FD3D11TransitionData>()) FD3D11TransitionData;
+	Data->SrcPipelines = SrcPipelines;
+	Data->DstPipelines = DstPipelines;
+}
 
-			FD3D11BaseShaderResource* Resource = nullptr;
-			FD3D11Texture2D* SourceTexture2D = static_cast<FD3D11Texture2D*>(RenderTarget->GetTexture2D());
-			if (SourceTexture2D)
-			{
-				Resource = SourceTexture2D;
-			}
-			FD3D11Texture2DArray* SourceTexture2DArray = static_cast<FD3D11Texture2DArray*>(RenderTarget->GetTexture2DArray());
-			if (SourceTexture2DArray)
-			{
-				Resource = SourceTexture2DArray;
-			}
-			FD3D11TextureCube* SourceTextureCube = static_cast<FD3D11TextureCube*>(RenderTarget->GetTextureCube());
-			if (SourceTextureCube)
-			{
-				Resource = SourceTextureCube;
-			}
-			FD3D11Texture3D* SourceTexture3D = static_cast<FD3D11Texture3D*>(RenderTarget->GetTexture3D());
-			if (SourceTexture3D)
-			{
-				Resource = SourceTexture3D;
-			}
-			DUMP_TRANSITION(RenderTarget->GetName(), TransitionType);
-			Resource->SetCurrentGPUAccess(TransitionType);
-		}
+void FD3D11DynamicRHI::RHIReleaseTransition(FRHITransition* Transition)
+{
+	Transition->GetPrivateData<FD3D11TransitionData>()->~FD3D11TransitionData();
+}
+
+void FD3D11DynamicRHI::RHIBeginTransitions(TArrayView<const FRHITransition*> Transitions)
+{
+	for (const FRHITransition* Transition : Transitions)
+	{
+		const FD3D11TransitionData* Data = Transition->GetPrivateData<FD3D11TransitionData>();
+
+		ensureMsgf(Data->SrcPipelines == ERHIPipeline::Graphics, TEXT("The current resource transition is not expected to be begun on the graphics pipeline. Check the choice of ERHIPipeline for this transition."));
 	}
 }
 
-void FD3D11DynamicRHI::RHITransitionResources(EResourceTransitionAccess TransitionType, EResourceTransitionPipeline TransitionPipeline, FRHIUnorderedAccessView** InUAVs, int32 InNumUAVs, FRHIComputeFence* WriteFence)
+void FD3D11DynamicRHI::RHIEndTransitions(TArrayView<const FRHITransition*> Transitions)
 {
-	for (int32 i = 0; i < InNumUAVs; ++i)
+	for (const FRHITransition* Transition : Transitions)
 	{
-		if (InUAVs[i])
-		{
-			FD3D11UnorderedAccessView* UAV = ResourceCast(InUAVs[i]);
-			if (UAV && UAV->Resource)
-			{
-				UAV->Resource->SetCurrentGPUAccess(TransitionType);
-				if (TransitionType != EResourceTransitionAccess::ERWNoBarrier)
-				{
-					UAV->Resource->SetDirty(false, PresentCounter);
-				}
-			}
-		}
+		const FD3D11TransitionData* Data = Transition->GetPrivateData<FD3D11TransitionData>();
+
+		ensureMsgf(Data->DstPipelines == ERHIPipeline::Graphics, TEXT("The current resource transition is not expected to be ended on the graphics pipeline. Check the choice of ERHIPipeline for this transition."));
 	}
 
-	if (WriteFence)
-	{
-		WriteFence->WriteFence();
-	}
 }
 
 static TAutoConsoleVariable<int32> CVarAllowUAVFlushExt(

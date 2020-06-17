@@ -390,9 +390,39 @@ void FVulkanDynamicRHI::RHIUpdateShaderResourceView(FRHIShaderResourceView* SRV,
 
 void FVulkanCommandListContext::ClearUAV(TRHICommandList_RecursiveHazardous<FVulkanCommandListContext>& RHICmdList, FVulkanUnorderedAccessView* UnorderedAccessView, const void* ClearValue, bool bFloat)
 {
-	EClearReplacementValueType ValueType = bFloat
-		? EClearReplacementValueType::Float
-		: EClearReplacementValueType::Uint32;
+	EClearReplacementValueType ValueType;
+	if (!bFloat)
+	{
+		EPixelFormat Format;
+		if (UnorderedAccessView->SourceVertexBuffer)
+		{
+			Format = UnorderedAccessView->BufferViewFormat;
+		}
+		else if (UnorderedAccessView->SourceTexture)
+		{
+			Format = UnorderedAccessView->SourceTexture->GetFormat();
+		}
+		else
+		{
+			Format = PF_Unknown;
+		}
+
+		switch (Format)
+		{
+		case PF_R32_SINT:
+		case PF_R16_SINT:
+		case PF_R16G16B16A16_SINT:
+			ValueType = EClearReplacementValueType::Int32;
+			break;
+		default:
+			ValueType = EClearReplacementValueType::Uint32;
+			break;
+		}
+	}
+	else
+	{
+		ValueType = EClearReplacementValueType::Float;
+	}
 
 	if (UnorderedAccessView->SourceVertexBuffer)
 	{
@@ -442,40 +472,6 @@ void FVulkanCommandListContext::RHIClearUAVUint(FRHIUnorderedAccessView* Unorder
 	ClearUAV(RHICmdList, ResourceCast(UnorderedAccessViewRHI), &Values, false);
 }
 
-FVulkanComputeFence::FVulkanComputeFence(FVulkanDevice* InDevice, FName InName)
-	: FRHIComputeFence(InName)
-	, VulkanRHI::FGPUEvent(InDevice)
-{
-}
-
-FVulkanComputeFence::~FVulkanComputeFence()
-{
-}
-
-void FVulkanComputeFence::WriteCmd(VkCommandBuffer CmdBuffer, bool bInWriteEvent)
-{
-	FRHIComputeFence::WriteFence();
-	bWriteEvent = bInWriteEvent;
-	if (bInWriteEvent)
-	{
-		VulkanRHI::vkCmdSetEvent(CmdBuffer, Handle, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-	}
-}
-
-
-void FVulkanComputeFence::WriteWaitEvent(VkCommandBuffer CmdBuffer)
-{
-	if (bWriteEvent)
-	{
-		VulkanRHI::vkCmdWaitEvents(CmdBuffer, 1, &Handle, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, nullptr, 0, nullptr, 0, nullptr);
-	}
-}
-
-FComputeFenceRHIRef FVulkanDynamicRHI::RHICreateComputeFence(const FName& Name)
-{
-	return new FVulkanComputeFence(Device, Name);
-}
-
 void FVulkanGPUFence::Clear()
 {
 	CmdBuffer = nullptr;
@@ -490,12 +486,4 @@ bool FVulkanGPUFence::Poll() const
 FGPUFenceRHIRef FVulkanDynamicRHI::RHICreateGPUFence(const FName& Name)
 {
 	return new FVulkanGPUFence(Name);
-}
-
-void FVulkanCommandListContext::RHIWaitComputeFence(FRHIComputeFence* InFence)
-{
-	FVulkanComputeFence* Fence = ResourceCast(InFence);
-	FVulkanCmdBuffer* CmdBuffer = CommandBufferManager->GetActiveCmdBuffer();
-	Fence->WriteWaitEvent(CmdBuffer->GetHandle());
-	IRHICommandContext::RHIWaitComputeFence(InFence);
 }

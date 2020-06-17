@@ -1041,20 +1041,16 @@ FDynamicRHI* FD3D11DynamicRHIModule::CreateRHI(ERHIFeatureLevel::Type RequestedF
 	check(DXGIFactory1);
 
 	GD3D11RHI = new FD3D11DynamicRHI(DXGIFactory1,ChosenAdapter.MaxSupportedFeatureLevel,ChosenAdapter.AdapterIndex,ChosenDescription);
+	FDynamicRHI* FinalRHI = GD3D11RHI;
+
 #if ENABLE_RHI_VALIDATION
 	if (FParse::Param(FCommandLine::Get(), TEXT("RHIValidation")))
 	{
-		GValidationRHI = new FValidationRHI(GD3D11RHI);
+		FinalRHI = new FValidationRHI(FinalRHI);
 	}
-	else
-	{
-		check(!GValidationRHI);
-	}
-
-	return GValidationRHI ? (FDynamicRHI*)GValidationRHI : (FDynamicRHI*)GD3D11RHI;
-#else
-	return GD3D11RHI;
 #endif
+
+	return FinalRHI;
 }
 
 void FD3D11DynamicRHI::Init()
@@ -2141,8 +2137,10 @@ void FD3D11DynamicRHI::InitD3DDevice()
 		GRHISupportsFirstInstance = true;
 		GRHINeedsExtraDeletionLatency = false;
 
-		GRHICommandList.GetImmediateCommandList().SetContext(RHIGetDefaultContext());
-		GRHICommandList.GetImmediateAsyncComputeCommandList().SetComputeContext(RHIGetDefaultAsyncComputeContext());
+		// Command lists need the validation RHI context if enabled, so call the global scope version of RHIGetDefaultContext() and RHIGetDefaultAsyncComputeContext().
+		GRHICommandList.GetImmediateCommandList().SetContext(::RHIGetDefaultContext());
+		GRHICommandList.GetImmediateAsyncComputeCommandList().SetComputeContext(::RHIGetDefaultAsyncComputeContext());
+
 		FRenderResource::InitPreRHIResources();
 		GIsRHIInitialized = true;
 	}

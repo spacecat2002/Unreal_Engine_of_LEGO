@@ -1172,29 +1172,6 @@ void FOpenGLDynamicRHI::BindPendingFramebuffer( FOpenGLContextState& ContextStat
 
 void FOpenGLDynamicRHI::RHIBeginRenderPass(const FRHIRenderPassInfo& InInfo, const TCHAR* InName)
 {
-	if (InInfo.bGeneratingMips)
-	{
-		FRHITexture* Textures[MaxSimultaneousRenderTargets];
-		FRHITexture** LastTexture = Textures;
-		for (int32 Index = 0; Index < MaxSimultaneousRenderTargets; ++Index)
-		{
-			if (!InInfo.ColorRenderTargets[Index].RenderTarget)
-			{
-				break;
-			}
-
-			*LastTexture = InInfo.ColorRenderTargets[Index].RenderTarget;
-			++LastTexture;
-		}
-
-		//Use RWBarrier since we don't transition individual subresources.  Basically treat the whole texture as R/W as we walk down the mip chain.
-		int32 NumTextures = (int32)(LastTexture - Textures);
-		if (NumTextures)
-		{
-			RHITransitionResources(EResourceTransitionAccess::ERWSubResBarrier, Textures, NumTextures);
-		}
-	}
-
 	FRHISetRenderTargetsInfo RTInfo;
 	InInfo.ConvertToRenderTargetsInfo(RTInfo);
 	SetRenderTargetsAndClear(RTInfo);
@@ -1268,3 +1245,11 @@ void FOpenGLDynamicRHI::RHINextSubpass()
 	}
 }
 
+void FOpenGLDynamicRHI::RHIBeginTransitions(TArrayView<const FRHITransition*> Transitions)
+{
+	checkNoEntry(); // @todo - implement
+}
+void FOpenGLDynamicRHI::RHIEndTransitions(TArrayView<const FRHITransition*> Transitions)
+{
+	checkNoEntry(); // @todo - implement
+}

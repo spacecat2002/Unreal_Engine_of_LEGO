@@ -299,7 +299,7 @@ public:
 	}
 
 private:
-	friend class FTransitionAndLayoutManager;
+	friend class FVulkanLayoutManager;
 	friend class FVulkanPipelineStateCacheManager;
 
 	FVulkanRenderPass(FVulkanDevice& Device, const FVulkanRenderTargetLayout& RTLayout);
@@ -331,49 +331,7 @@ union UNvidiaDriverVersion
 	uint32 Packed;
 };
 
-
-namespace VulkanRHI
-{
-	inline void SetupImageBarrierOLD(VkImageMemoryBarrier& Barrier, const FVulkanSurface& Surface, VkAccessFlags SrcMask, VkImageLayout SrcLayout, VkAccessFlags DstMask, VkImageLayout DstLayout, uint32 NumLayers = 1)
-	{
-		Barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-		Barrier.srcAccessMask = SrcMask;
-		Barrier.dstAccessMask = DstMask;
-		Barrier.oldLayout = SrcLayout;
-		Barrier.newLayout = DstLayout;
-		Barrier.image = Surface.Image;
-		Barrier.subresourceRange.aspectMask = Surface.GetFullAspectMask();
-		Barrier.subresourceRange.levelCount = Surface.GetNumMips();
-		//#todo-rco: Cubemaps?
-		//Barriers[Index].subresourceRange.baseArrayLayer = 0;
-		Barrier.subresourceRange.layerCount = NumLayers;
-		Barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		Barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	}
-
-	inline void SetupBufferBarrier(VkBufferMemoryBarrier& Barrier, VkAccessFlags SrcAccess, VkAccessFlags DstAccess, VkBuffer Buffer, uint32 Offset, VkDeviceSize Size)
-	{
-		Barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-		Barrier.srcAccessMask = SrcAccess;
-		Barrier.dstAccessMask = DstAccess;
-		Barrier.buffer = Buffer;
-		Barrier.offset = Offset;
-		Barrier.size = Size;
-	}
-
-	inline void SetupAndZeroImageBarrierOLD(VkImageMemoryBarrier& Barrier, const FVulkanSurface& Surface, VkAccessFlags SrcMask, VkImageLayout SrcLayout, VkAccessFlags DstMask, VkImageLayout DstLayout)
-	{
-		FMemory::Memzero(Barrier);
-		SetupImageBarrierOLD(Barrier, Surface, SrcMask, SrcLayout, DstMask, DstLayout);
-	}
-
-	inline void SetupAndZeroBufferBarrier(VkBufferMemoryBarrier& Barrier, VkAccessFlags SrcAccess, VkAccessFlags DstAccess, VkBuffer Buffer, uint32 Offset, VkDeviceSize Size)
-	{
-		FMemory::Memzero(Barrier);
-		SetupBufferBarrier(Barrier, SrcAccess, DstAccess, Buffer, Offset, Size);
-	}
-}
-
+// Transitions an image to the specified layout. This does not update the layout cached internally by the RHI; the calling code must do that explicitly via FVulkanCommandListContext::GetLayoutManager() if necessary.
 void VulkanSetImageLayout(VkCommandBuffer CmdBuffer, VkImage Image, VkImageLayout OldLayout, VkImageLayout NewLayout, const VkImageSubresourceRange& SubresourceRange);
 
 // Transitions Color Images's first mip/layer/face
@@ -390,8 +348,6 @@ inline void VulkanSetImageLayoutAllMips(VkCommandBuffer CmdBuffer, VkImage Image
 	VulkanSetImageLayout(CmdBuffer, Image, OldLayout, NewLayout, SubresourceRange);
 }
 
-
-void VulkanResolveImage(VkCommandBuffer Cmd, FRHITexture* SourceTextureRHI, FRHITexture* DestTextureRHI);
 
 DECLARE_STATS_GROUP(TEXT("Vulkan PSO"), STATGROUP_VulkanPSO, STATCAT_Advanced);
 DECLARE_DWORD_ACCUMULATOR_STAT_EXTERN(TEXT("PSO LRU Elements"), STAT_VulkanNumPSOLRU, STATGROUP_VulkanPSO, );
@@ -577,90 +533,6 @@ namespace VulkanRHI
 			return VK_IMAGE_ASPECT_COLOR_BIT;
 		}
 	}
-
-	inline VkAccessFlags GetAccessMask(VkImageLayout Layout)
-	{
-		VkAccessFlags Flags = 0;
-		switch (Layout)
-		{
-		case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-			Flags = VK_ACCESS_TRANSFER_READ_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-			Flags = VK_ACCESS_TRANSFER_WRITE_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-			Flags = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-			break;
-#if VULKAN_SUPPORTS_MAINTENANCE_LAYER2
-		case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR:
-			Flags = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-			break;
-#endif
-		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-			Flags = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-			Flags = VK_ACCESS_SHADER_READ_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
-			Flags = VK_ACCESS_SHADER_READ_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
-			Flags = VK_ACCESS_MEMORY_READ_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_GENERAL:
-		case VK_IMAGE_LAYOUT_UNDEFINED:
-			Flags = 0;
-			break;
-			break;
-		default:
-			check(0);
-			break;
-		}
-		return Flags;
-	};
-
-	inline VkPipelineStageFlags GetStageFlags(VkImageLayout Layout)
-	{
-		VkAccessFlags Flags = 0;
-		switch (Layout)
-		{
-		case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-			Flags = VK_PIPELINE_STAGE_TRANSFER_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-			Flags = VK_PIPELINE_STAGE_TRANSFER_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-			Flags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-			break;
-#if VULKAN_SUPPORTS_MAINTENANCE_LAYER2
-		case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR:
-#endif
-		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-			Flags = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-			Flags = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
-			Flags = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
-			Flags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_GENERAL:
-		case VK_IMAGE_LAYOUT_UNDEFINED:
-			Flags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-			break;
-			break;
-		default:
-			check(0);
-			break;
-		}
-		return Flags;
-	};
 }
 
 #if VULKAN_HAS_DEBUGGING_ENABLED
@@ -923,19 +795,6 @@ namespace VulkanRHI
 			HeavyWeightBarrier(CmdBuffer);
 		}
 #endif
-	}
-
-	FVulkanCommandListContext& GetVulkanContext(FValidationContext& CmdContext);
-
-	inline FVulkanCommandListContext& GetVulkanContext(IRHICommandContext& CmdContext)
-	{
-#if ENABLE_RHI_VALIDATION
-		if (GValidationRHI)
-		{
-			return GetVulkanContext((FValidationContext&)CmdContext);
-		}
-#endif
-		return (FVulkanCommandListContext&)CmdContext;
 	}
 }
 

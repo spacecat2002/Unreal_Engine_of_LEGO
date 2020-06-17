@@ -108,13 +108,13 @@ namespace RHIUnitTest
 		checkf(BufferSize % NumTestBytes == 0, TEXT("BufferSize must be a multiple of NumTestBytes."));
 
 		// Test clear buffer to zero
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToCompute, UAV);
+		RHICmdList.Transition(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::UAVCompute));
 
 		ValueType ZerosValue;
 		FMemory::Memset(&ZerosValue, 0, sizeof(ZerosValue));
 		(RHICmdList.*ClearPtr)(UAV, ZerosValue);
 
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, UAV);
+		RHICmdList.Transition(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::CopySrc));
 		bResult0 = VerifyBufferContents(*FString::Printf(TEXT("%s - clear to zero"), *TestName), RHICmdList, BufferRHI, [&](void* Ptr, uint32 Size)
 		{
 			check(Size == BufferSize);
@@ -132,9 +132,9 @@ namespace RHIUnitTest
 		}
 
 		// Clear the buffer to the provided value
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToCompute, UAV);
+		RHICmdList.Transition(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::UAVCompute));
 		(RHICmdList.*ClearPtr)(UAV, ClearValue);
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, UAV);
+		RHICmdList.Transition(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::CopySrc));
 		bResult1 = VerifyBufferContents(*FString::Printf(TEXT("%s - clear to (%s)"), *TestName, *ClearValueStr), RHICmdList, BufferRHI, [&](void* Ptr, uint32 Size)
 		{
 			check(Size == BufferSize);
@@ -376,7 +376,7 @@ namespace RHIUnitTest
 						CopyInfo.NumMips = 1;
 						RHICmdList.CopyTexture(Texture, StagingTexture, CopyInfo);
 
-						RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, StagingTexture);
+						RHICmdList.Transition(FRHITransitionInfo(StagingTexture, ERHIAccess::Unknown, ERHIAccess::CopySrc));
 
 						FGPUFenceRHIRef GPUFence = RHICreateGPUFence(TEXT("ReadbackFence"));
 						RHICmdList.WriteGPUFence(GPUFence);
@@ -418,14 +418,14 @@ namespace RHIUnitTest
 			// Test clear whole resource to zero
 			for (uint32 Mip = 0; Mip < TextureRHI->GetNumMips(); ++Mip)
 			{
-				RHICmdList.TransitionResource(EResourceTransitionAccess::ERWNoBarrier, TextureRHI);
+				RHICmdList.Transition(FRHITransitionInfo(TextureRHI, ERHIAccess::Unknown, ERHIAccess::ERWNoBarrier));
 				FUnorderedAccessViewRHIRef MipUAV = RHICreateUnorderedAccessView(TextureRHI, Mip);
 
 				ValueType ZerosValue;
 				FMemory::Memset(&ZerosValue, 0, sizeof(ZerosValue));
 				(RHICmdList.*ClearPtr)(MipUAV, ZerosValue);
 			}
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, TextureRHI);
+			RHICmdList.Transition(FRHITransitionInfo(TextureRHI, ERHIAccess::Unknown, ERHIAccess::CopySrc));
 
 			auto VerifyMip = [&](void* Ptr, uint32 MipWidth, uint32 MipHeight, uint32 Width, uint32 Height, uint32 CurrentMipIndex, uint32 CurrentSliceIndex, bool bShouldBeZero)
 			{
@@ -468,10 +468,10 @@ namespace RHIUnitTest
 			bResult0 = VerifyTextureContents(*FString::Printf(TEXT("%s - clear whole resource to zero"), *TestName), RHICmdList, TextureRHI, VerifyMipIsZero);
 
 			// Clear the selected mip index to the provided value
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, TextureRHI);
+			RHICmdList.Transition(FRHITransitionInfo(TextureRHI, ERHIAccess::Unknown, ERHIAccess::UAVCompute));
 			FUnorderedAccessViewRHIRef SpecificMipUAV = RHICreateUnorderedAccessView(TextureRHI, MipIndex);
 			(RHICmdList.*ClearPtr)(SpecificMipUAV, ClearValue);
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, TextureRHI);
+			RHICmdList.Transition(FRHITransitionInfo(TextureRHI, ERHIAccess::Unknown, ERHIAccess::CopySrc));
 			bResult1 = VerifyTextureContents(*FString::Printf(TEXT("%s - clear mip %d to (%s)"), *TestName, MipIndex, *ClearValueToString(ClearValue)), RHICmdList, TextureRHI, 
 				[&](void* Ptr, uint32 MipWidth, uint32 MipHeight, uint32 Width, uint32 Height, uint32 CurrentMipIndex, uint32 CurrentSliceIndex)
 			{

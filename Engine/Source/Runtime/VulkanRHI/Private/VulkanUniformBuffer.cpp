@@ -7,6 +7,7 @@
 #include "VulkanRHIPrivate.h"
 #include "VulkanContext.h"
 #include "VulkanLLM.h"
+#include "ShaderParameterStruct.h"
 
 static int32 GVulkanAllowUniformUpload = 0;
 static FAutoConsoleVariableRef CVarVulkanAllowUniformUpload(
@@ -26,23 +27,6 @@ enum
 	PackedUniformsRingBufferSize = 8 * 1024 * 1024,
 #endif
 };
-
-#if UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT
-constexpr EUniformBufferValidation UniformBufferValidation = EUniformBufferValidation::ValidateResources;
-#else
-constexpr EUniformBufferValidation UniformBufferValidation = EUniformBufferValidation::None;
-#endif
-
-static void ValidateUniformBufferResource(const FRHIUniformBufferLayout& InLayout, int32 Index, FRHIResource* Resource, EUniformBufferValidation Validation)
-{
-	// Allow null SRV's in uniform buffers for feature levels that don't support SRV's in shaders
-	if (!(GMaxRHIFeatureLevel <= ERHIFeatureLevel::ES3_1
-		&& (InLayout.Resources[Index].MemberType == UBMT_SRV || InLayout.Resources[Index].MemberType == UBMT_RDG_TEXTURE_SRV || InLayout.Resources[Index].MemberType == UBMT_RDG_BUFFER_SRV))
-		&& Validation == EUniformBufferValidation::ValidateResources)
-	{
-		checkf(Resource, TEXT("Invalid resource entry creating uniform buffer, %s.Resources[%u], ResourceType 0x%x."), *InLayout.GetDebugName(), Index, (uint8)InLayout.Resources[Index].MemberType);
-	}
-}
 
 /*-----------------------------------------------------------------------------
 	Uniform buffer RHI object
@@ -85,23 +69,21 @@ FVulkanUniformBuffer::FVulkanUniformBuffer(const FRHIUniformBufferLayout& InLayo
 		// Transfer the resource table to an internal resource-array
 		ResourceTable.Empty(NumResources);
 		ResourceTable.AddZeroed(NumResources);
-		for (uint32 Index = 0; Index < NumResources; Index++)
+		for (uint32 Index = 0; Index < NumResources; ++Index)
 		{
-			FRHIResource* Resource = *(FRHIResource**)((uint8*)Contents + InLayout.Resources[Index].MemberOffset);
-			ValidateUniformBufferResource(InLayout, (int32)Index, Resource, Validation);
-			ResourceTable[Index] = Resource;
+			ResourceTable[Index] = GetShaderParameterResourceRHI(Contents, InLayout.Resources[Index].MemberOffset, InLayout.Resources[Index].MemberType);
 		}
 	}
 }
 
-void FVulkanUniformBuffer::UpdateResourceTable(const FRHIUniformBufferLayout& InLayout, const void* Contents, int32 ResourceNum)
+void FVulkanUniformBuffer::UpdateResourceTable(const FRHIUniformBufferLayout& InLayout, const void* Contents, int32 NumResources)
 {
-	check(ResourceTable.Num() == ResourceNum);
-	for (int32 ResourceIndex = 0; ResourceIndex < ResourceNum; ++ResourceIndex)
+	check(ResourceTable.Num() == NumResources);
+
+	for (int32 Index = 0; Index < NumResources; ++Index)
 	{
-		FRHIResource* Resource = *(FRHIResource**)((uint8*)Contents + InLayout.Resources[ResourceIndex].MemberOffset);
-		ValidateUniformBufferResource(InLayout, ResourceIndex, Resource, UniformBufferValidation);
-		ResourceTable[ResourceIndex] = Resource;
+		const auto Parameter = InLayout.Resources[Index];
+		ResourceTable[Index] = GetShaderParameterResourceRHI(Contents, Parameter.MemberOffset, Parameter.MemberType);
 	}
 }
 
@@ -278,11 +260,9 @@ inline void FVulkanDynamicRHI::UpdateUniformBuffer(FVulkanUniformBuffer* Uniform
 		{
 			CmdListResources = (FRHIResource**)RHICmdList.Alloc(sizeof(FRHIResource*) * NumResources, alignof(FRHIResource*));
 
-			for (int32 ResourceIndex = 0; ResourceIndex < NumResources; ++ResourceIndex)
+			for (int32 Index = 0; Index < NumResources; ++Index)
 			{
-				FRHIResource* Resource = *(FRHIResource**)((uint8*)Contents + Layout.Resources[ResourceIndex].MemberOffset);
-				ValidateUniformBufferResource(Layout, ResourceIndex, Resource, UniformBufferValidation);
-				CmdListResources[ResourceIndex] = Resource;
+				CmdListResources[Index] = GetShaderParameterResourceRHI(Contents, Layout.Resources[Index].MemberOffset, Layout.Resources[Index].MemberType);
 			}
 		}
 

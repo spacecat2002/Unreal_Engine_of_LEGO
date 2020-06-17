@@ -256,7 +256,14 @@ public:
 		}
 
 		check(ResourceIndices.Num() == UAVs.Num());
-		RHICmdList.TransitionResources(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, UAVs.GetData(), UAVs.Num());
+
+		TArray<FRHITransitionInfo> TransitionInfo;
+		for (FRHIUnorderedAccessView* UAV : UAVs)
+		{
+			TransitionInfo.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
+		}
+		RHICmdList.Transition(MakeArrayView(TransitionInfo.GetData(), TransitionInfo.Num()));
+
 		for (int32 i = 0; i < ResourceIndices.Num(); ++i)
 		{
 			RHICmdList.SetUAVParameter(ShaderRHI, ResourceIndices[i], UAVs[i]);
@@ -342,7 +349,14 @@ public:
 		}
 
 		check(ResourceIndices.Num() == UAVs.Num());
-		RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, UAVs.GetData(), UAVs.Num());
+
+		TArray<FRHITransitionInfo> TransitionInfo;
+		for (FRHIUnorderedAccessView* UAV : UAVs)
+		{
+			TransitionInfo.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask));
+		}
+		RHICmdList.Transition(MakeArrayView(TransitionInfo.GetData(), TransitionInfo.Num()));
+
 		FRHIUnorderedAccessView* NullUAV = nullptr;
 		for (int32 i = 0; i < ResourceIndices.Num(); ++i)
 		{

@@ -123,11 +123,9 @@ FScreenPassTexture AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder, const F
 	PassParameters->DebugViewShaderMode = DVSM_ShaderComplexity;
 	FVisualizeComplexityApplyPS::EQuadOverdraw QuadOverdrawEnum = FVisualizeComplexityApplyPS::EQuadOverdraw::Disable;
 
-	FRDGTextureRef QuadOverdrawTexture = GraphBuilder.TryRegisterExternalTexture(SceneRenderTargets.QuadOverdrawBuffer);
-
-	if (QuadOverdrawTexture && AllowDebugViewShaderMode(DVSM_QuadComplexity, View.GetShaderPlatform(), View.FeatureLevel))
+	if (SceneRenderTargets.QuadOverdrawBuffer && AllowDebugViewShaderMode(DVSM_QuadComplexity, View.GetShaderPlatform(), View.FeatureLevel))
 	{
-		PassParameters->QuadOverdrawTexture = QuadOverdrawTexture;
+		PassParameters->QuadOverdrawTexture = GraphBuilder.RegisterExternalTexture(SceneRenderTargets.QuadOverdrawBuffer);
 		PassParameters->DebugViewShaderMode = DebugViewShaderMode;
 		QuadOverdrawEnum = FVisualizeComplexityApplyPS::EQuadOverdraw::Enable;
 	}

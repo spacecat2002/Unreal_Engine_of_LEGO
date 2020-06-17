@@ -25,10 +25,10 @@
 #include "PrimitiveViewRelevance.h"
 #include "DistortionRendering.h"
 #include "HeightfieldLighting.h"
-#include "GlobalDistanceFieldParameters.h"
+#include "LightShaftRendering.h"
 #include "SkyAtmosphereRendering.h"
 #include "Templates/UniquePtr.h"
-#include "RenderGraph.h"
+#include "RenderGraphUtils.h"
 #include "MeshDrawCommands.h"
 #include "GpuDebugRendering.h"
 
@@ -41,7 +41,6 @@ class FPostprocessContext;
 struct FILCUpdatePrimTaskData;
 class FRaytracingLightDataPacked;
 class FRayTracingLocalShaderBindingWriter;
-struct FExposureBufferData;
 struct FCloudRenderContext;
 
 DECLARE_STATS_GROUP(TEXT("Command List Markers"), STATGROUP_CommandListMarkers, STATCAT_Advanced);
@@ -159,7 +158,6 @@ struct FTranslucenyPrimCount
 private:
 	uint32 Count[ETranslucencyPass::TPT_MAX];
 	bool UseSceneColorCopyPerPass[ETranslucencyPass::TPT_MAX];
-	bool DisableOffscreenRenderingPerPass[ETranslucencyPass::TPT_MAX];
 
 public:
 	// constructor
@@ -169,7 +167,6 @@ public:
 		{
 			Count[i] = 0;
 			UseSceneColorCopyPerPass[i] = false;
-			DisableOffscreenRenderingPerPass[i] = false;
 		}
 	}
 
@@ -180,16 +177,14 @@ public:
 		{
 			Count[i] += InSrc.Count[i];
 			UseSceneColorCopyPerPass[i] |= InSrc.UseSceneColorCopyPerPass[i];
-			DisableOffscreenRenderingPerPass[i] |= InSrc.DisableOffscreenRenderingPerPass[i];
 		}
 	}
 
 	// interface similar to TArray but here we only store the count of Prims per pass
-	void Add(ETranslucencyPass::Type InPass, bool bUseSceneColorCopy, bool bDisableOffscreenRendering)
+	void Add(ETranslucencyPass::Type InPass, bool bUseSceneColorCopy)
 	{
 		++Count[InPass];
 		UseSceneColorCopyPerPass[InPass] |= bUseSceneColorCopy;
-		DisableOffscreenRenderingPerPass[InPass] |= bDisableOffscreenRendering;
 	}
 
 	int32 Num(ETranslucencyPass::Type InPass) const
@@ -210,11 +205,6 @@ public:
 	bool UseSceneColorCopy(ETranslucencyPass::Type InPass) const
 	{
 		return UseSceneColorCopyPerPass[InPass];
-	}
-
-	bool DisableOffscreenRendering(ETranslucencyPass::Type InPass) const
-	{
-		return DisableOffscreenRenderingPerPass[InPass];
 	}
 };
 
@@ -422,12 +412,30 @@ private:
 
 DECLARE_STATS_GROUP(TEXT("Parallel Command List Markers"), STATGROUP_ParallelCommandListMarkers, STATCAT_Advanced);
 
+/** Helper class to marshal data from your RDG pass into the parallel command list set. */
+class FParallelCommandListBindings
+{
+public:
+	template <typename ParameterStructType>
+	FParallelCommandListBindings(ParameterStructType* ParameterStruct)
+		: RenderPassInfo(GetRenderPassInfo(ParameterStruct))
+		, GlobalUniformBuffers(GetGlobalUniformBuffers(ParameterStruct))
+	{}
+
+	inline void SetOnCommandList(FRHICommandList& RHICmdList) const
+	{
+		RHICmdList.BeginRenderPass(RenderPassInfo, TEXT("Parallel"));
+		RHICmdList.SetGlobalUniformBuffers(GlobalUniformBuffers);
+	}
+
+	FRHIRenderPassInfo RenderPassInfo;
+	FUniformBufferStaticBindings GlobalUniformBuffers;
+};
+
 class FParallelCommandListSet
 {
 public:
 	const FViewInfo& View;
-	const FSceneRenderer* SceneRenderer;
-	FMeshPassProcessorRenderState DrawRenderState;
 	FRHICommandListImmediate& ParentCmdList;
 	FSceneRenderTargets* Snapshot;
 	TStatId	ExecuteStat;
@@ -448,33 +456,27 @@ protected:
 	//C++ will not do dynamic dispatch of virtual calls from destructors so we can't call it in the base class.
 	void Dispatch(bool bHighPriority = false);
 	FRHICommandList* AllocCommandList();
-	bool bParallelExecute;
 	bool bCreateSceneContext;
 public:
-	FParallelCommandListSet(
-		TStatId InExecuteStat, 
-		const FViewInfo& InView, 
-		const FSceneRenderer* InSceneRenderer, 
-		FRHICommandListImmediate& InParentCmdList, 
-		bool bInParallelExecute, 
-		bool bInCreateSceneContext, 
-		const FMeshPassProcessorRenderState& InDrawRenderState);
-
+	FParallelCommandListSet(TStatId InExecuteStat, const FViewInfo& InView, FRHICommandListImmediate& InParentCmdList, bool bInCreateSceneContext);
 	virtual ~FParallelCommandListSet();
+
 	int32 NumParallelCommandLists() const
 	{
 		return CommandLists.Num();
 	}
+
 	FRHICommandList* NewParallelCommandList();
+
 	FORCEINLINE FGraphEventArray* GetPrereqs()
 	{
 		return nullptr;
 	}
+
 	void AddParallelCommandList(FRHICommandList* CmdList, FGraphEventRef& CompletionEvent, int32 InNumDrawsIfKnown = -1);	
 
-	virtual void SetStateOnCommandList(FRHICommandList& CmdList)
-	{
-	}
+	virtual void SetStateOnCommandList(FRHICommandList& CmdList) {}
+
 	static void WaitForTasks();
 private:
 	void WaitForTasksInternal();
@@ -1156,11 +1158,7 @@ public:
 	/** Used by occlusion for percent unoccluded calculations. */
 	float OneOverNumPossiblePixels;
 
-	// Mobile gets one light-shaft, this light-shaft.
-	FVector4 LightShaftCenter; 
-	FLinearColor LightShaftColorMask;
-	FLinearColor LightShaftColorApply;
-	bool bLightShaftUse;
+	TOptional<FMobileLightShaftInfo> MobileLightShaft;
 
 	FHeightfieldLightingViewInfo HeightfieldLightingViewInfo;
 
@@ -1282,35 +1280,15 @@ public:
 	/** @return - whether this primitive has completely faded out */
 	bool UpdatePrimitiveFadingState(const FPrimitiveSceneInfo* PrimitiveSceneInfo, bool bFadingIn);
 
-	/** Gets the eye adaptation render target for this view. Same as GetEyeAdaptationRT */
-	IPooledRenderTarget* GetEyeAdaptation(FRHICommandList& RHICmdList) const;
+	/** Allocates and returns the current eye adaptation texture. */
+	using FSceneView::GetEyeAdaptationTexture;
+	IPooledRenderTarget* GetEyeAdaptationTexture(FRHICommandList& RHICmdList) const;
+	IPooledRenderTarget* GetLastEyeAdaptationTexture(FRHICommandList& RHICmdList) const;
 
-	IPooledRenderTarget* GetEyeAdaptation() const
-	{
-		return GetEyeAdaptationRT();
-	}
-
-	/** Gets one of two eye adaptation render target for this view.
-	* NB: will return null in the case that the internal view state pointer
-	* (for the left eye in the stereo case) is null.
-	*/
-	IPooledRenderTarget* GetEyeAdaptationRT(FRHICommandList& RHICmdList) const;
-	IPooledRenderTarget* GetEyeAdaptationRT() const;
-	IPooledRenderTarget* GetLastEyeAdaptationRT(FRHICommandList& RHICmdList) const;
-
-	/**Swap the order of the two eye adaptation targets in the double buffer system */
-	void SwapEyeAdaptationRTs(FRHICommandList& RHICmdList) const;
-
-	const FExposureBufferData* GetEyeAdaptationBuffer() const;
-	const FExposureBufferData* GetLastEyeAdaptationBuffer() const;
-
-	void SwapEyeAdaptationBuffers() const;
-
-	/** Tells if the eyeadaptation texture exists without attempting to allocate it. */
-	bool HasValidEyeAdaptation() const;
-
-	/** Informs sceneinfo that eyedaptation has queued commands to compute it at least once and that it can be used */
-	void SetValidEyeAdaptation() const;
+	/** Allocates and returns the current eye adaptation buffer. */
+	using FSceneView::GetEyeAdaptationBuffer;
+	const FExposureBufferData* GetEyeAdaptationBuffer(FRHICommandListImmediate& RHICmdList) const;
+	const FExposureBufferData* GetLastEyeAdaptationBuffer(FRHICommandListImmediate& RHICmdList) const;
 
 #if WITH_MGPU
 	void BroadcastEyeAdaptationTemporalEffect(FRHICommandList& RHICmdList);
@@ -1323,6 +1301,10 @@ public:
 	/** Get the last valid average scene luminange for eye adapation (exposure compensation curve). */
 	float GetLastAverageSceneLuminance() const;
 
+	/**Swap the order of the two eye adaptation targets in the double buffer system */
+	void SwapEyeAdaptationTextures(FRDGBuilder& GraphBuilder) const;
+	void SwapEyeAdaptationBuffers(FRDGBuilder& GraphBuilder) const;
+	
 	/** Returns the load action to use when overwriting all pixels of a target that you intend to read from. Takes into account the HMD hidden area mesh. */
 	ERenderTargetLoadAction GetOverwriteLoadAction() const;
 
@@ -1390,7 +1372,7 @@ private:
 	ESamplerFilter WorldTextureGroupSamplerFilter;
 	bool bIsValidWorldTextureGroupSamplerFilter;
 
-	FSceneViewState* GetEffectiveViewState() const;
+	FSceneViewState* GetEyeAdaptationViewState() const;
 
 	/** Initialization that is common to the constructors. */
 	void Init();
@@ -1598,7 +1580,7 @@ public:
 #endif
 
 	/** Update the rendertarget with each view results.*/
-	void DoCrossGPUTransfers(FRHICommandListImmediate& RHICmdList, FRHIGPUMask RenderTargetGPUMask);
+	void DoCrossGPUTransfers(FRDGBuilder& GraphBuilder, FRHIGPUMask RenderTargetGPUMask, FRDGTextureRef ViewFamilyTexture);
 
 	bool DoOcclusionQueries(ERHIFeatureLevel::Type InFeatureLevel) const;
 	/** Issues occlusion queries. */
@@ -1658,7 +1640,10 @@ public:
 
 	/** Common function to render a cloud layer using shared LUT resources. */
 	void  RenderVolumetricCloudsInternal(FRDGBuilder& GraphBuilder, FCloudRenderContext& CloudRC);
-	
+
+	/** Sets the stereo-compatible RHI viewport. If the view doesn't requires stereo rendering, the standard viewport is set. */
+	void SetStereoViewport(FRHICommandList& RHICmdList, const FViewInfo& View, float ViewportScale = 1.0f) const;
+
 protected:
 
 	/** Size of the family. */
@@ -1677,7 +1662,15 @@ protected:
 
 	void SetupMeshPass(FViewInfo& View, FExclusiveDepthStencil::Type BasePassDepthStencilAccess, FViewCommands& ViewCommands);
 
-	bool RenderShadowProjections(FRHICommandListImmediate& RHICmdList, const FLightSceneInfo* LightSceneInfo, IPooledRenderTarget* ScreenShadowMaskTexture, IPooledRenderTarget* ScreenShadowMaskSubPixelTexture, bool bProjectingForForwardShading, bool bMobileModulatedProjections, const struct FHairStrandsVisibilityViews* InHairVisibilityViews);
+	bool RenderShadowProjections(
+		FRHICommandListImmediate& RHICmdList,
+		FRHIUniformBuffer* SceneTexturesUniformBuffer,
+		const FLightSceneInfo* LightSceneInfo,
+		IPooledRenderTarget* ScreenShadowMaskTexture,
+		IPooledRenderTarget* ScreenShadowMaskSubPixelTexture,
+		bool bProjectingForForwardShading,
+		bool bMobileModulatedProjections,
+		const struct FHairStrandsVisibilityViews* InHairVisibilityViews);
 
 	/** Finds a matching cached preshadow, if one exists. */
 	TRefCountPtr<FProjectedShadowInfo> GetCachedPreshadow(
@@ -1792,21 +1785,19 @@ protected:
 	void InitFogConstants();
 
 	/** Returns whether there are translucent primitives to be rendered. */
+	bool ShouldRenderTranslucency() const;
 	bool ShouldRenderTranslucency(ETranslucencyPass::Type TranslucencyPass) const;
 
 	/** TODO: REMOVE if no longer needed: Copies scene color to the viewport's render target after applying gamma correction. */
 	void GammaCorrectToViewportRenderTarget(FRHICommandList& RHICmdList, const FViewInfo* View, float OverrideGamma);
 
 	/** Updates state for the end of the frame. */
-	void RenderFinish(FRHICommandListImmediate& RHICmdList);
+	void RenderFinish(FRDGBuilder& GraphBuilder, FRDGTextureRef ViewFamilyTexture);
 
 	void RenderCustomDepthPassAtLocation(FRHICommandListImmediate& RHICmdList, int32 Location);
 	void RenderCustomDepthPass(FRHICommandListImmediate& RHICmdList);
 
 	void OnStartRender(FRHICommandListImmediate& RHICmdList);
-
-	/** Renders the scene's distortion */
-	void RenderDistortion(FRHICommandListImmediate& RHICmdList);
 
 	/** Returns the scene color texture multi-view is targeting. */	
 	FRHITexture* GetMultiViewSceneColor(const FSceneRenderTargets& SceneContext) const;
@@ -1820,12 +1811,12 @@ protected:
 	/** Render the sky atmosphere look up table needed for this frame.*/
 	void RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& RHICmdList);
 	/** Render the sky atmosphere over the scene.*/
-	void RenderSkyAtmosphere(FRHICommandListImmediate& RHICmdList);
+	void RenderSkyAtmosphere(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColorTexture, FRDGTextureRef SceneDepthTexture);
 
 	/** Initialise volumetric cloud resources.*/
 	void InitVolumetricCloudsForViews(FRHICommandListImmediate& RHICmdList);
 	/** Render volumetric cloud. */
-	void RenderVolumetricCloud(FRHICommandListImmediate& RHICmdList);
+	void RenderVolumetricCloud(FRDGBuilder& GraphBuilder, FRDGTextureMSAA SceneColorTexture, FRDGTextureMSAA SceneDepthTexture);
 
 	/** Render notification to artist when a sky material is used but it might comtains the camera (and then the sky/background would look black).*/
 	void RenderSkyAtmosphereEditorNotifications(FRHICommandListImmediate& RHICmdList);
@@ -1835,11 +1826,12 @@ protected:
 	/** Initialise volumetric render target.*/
 	void InitVolumetricRenderTargetForViews(FRHICommandListImmediate& RHICmdList);
 	/** Process the volumetric render target, generating the high resolution version.*/
-	void ReconstructVolumetricRenderTarget(FRHICommandListImmediate& RHICmdList);
+	void ReconstructVolumetricRenderTarget(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColorTexture, FRDGTextureRef SceneDepthResolveTexture);
 	/** Compose the volumetric render target over the scene.*/
-	void ComposeVolumetricRenderTargetOverScene(FRHICommandListImmediate& RHICmdList);
+	void ComposeVolumetricRenderTargetOverScene(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColorTexture, FRDGTextureRef SceneDepthResolveTexture);
 
-	void ResolveSceneColor(FRHICommandList& RHICmdList);
+	void ResolveSceneColor(FRHICommandListImmediate& RHICmdList);
+	void ResolveSceneDepth(FRHICommandListImmediate& RHICmdList);
 
 private:
 	void ComputeFamilySize();
@@ -1923,7 +1915,6 @@ protected:
 	void UpdateTranslucentBasePassUniformBuffer(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 	void UpdateDirectionalLightUniformBuffers(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 	void UpdateSkyReflectionUniformBuffer();
-	void UpdateDepthPrepassUniformBuffer(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 	
 private:
 	bool bModulatedShadowsInUse;
@@ -2011,58 +2002,58 @@ struct FFastVramConfig
 	void OnCVarUpdated();
 	void OnSceneRenderTargetsAllocated();
 
-	uint32 GBufferA;
-	uint32 GBufferB;
-	uint32 GBufferC;
-	uint32 GBufferD;
-	uint32 GBufferE;
-	uint32 GBufferF;
-	uint32 GBufferVelocity;
-	uint32 HZB;
-	uint32 SceneDepth;
-	uint32 SceneColor;
-	uint32 LPV;
-	uint32 BokehDOF;
-	uint32 CircleDOF;
-	uint32 CombineLUTs;
-	uint32 Downsample;
-	uint32 EyeAdaptation;
-	uint32 Histogram;
-	uint32 HistogramReduce;
-	uint32 VelocityFlat;
-	uint32 VelocityMax;
-	uint32 MotionBlur;
-	uint32 Tonemap;
-	uint32 Upscale;
-	uint32 DistanceFieldNormal;
-	uint32 DistanceFieldAOHistory;
-	uint32 DistanceFieldAOBentNormal;
-	uint32 DistanceFieldAODownsampledBentNormal;
-	uint32 DistanceFieldShadows;
-	uint32 DistanceFieldIrradiance;
-	uint32 DistanceFieldAOConfidence;
-	uint32 Distortion;
-	uint32 ScreenSpaceShadowMask;
-	uint32 VolumetricFog;
-	uint32 SeparateTranslucency;
-	uint32 SeparateTranslucencyModulate;
-	uint32 LightAccumulation;
-	uint32 LightAttenuation;
-	uint32 ScreenSpaceAO;
-	uint32 SSR;
-	uint32 DBufferA;
-	uint32 DBufferB;
-	uint32 DBufferC;
-	uint32 DBufferMask;
-	uint32 DOFSetup;
-	uint32 DOFReduce;
-	uint32 DOFPostfilter;
-	uint32 PostProcessMaterial;
+	ETextureCreateFlags GBufferA;
+	ETextureCreateFlags GBufferB;
+	ETextureCreateFlags GBufferC;
+	ETextureCreateFlags GBufferD;
+	ETextureCreateFlags GBufferE;
+	ETextureCreateFlags GBufferF;
+	ETextureCreateFlags GBufferVelocity;
+	ETextureCreateFlags HZB;
+	ETextureCreateFlags SceneDepth;
+	ETextureCreateFlags SceneColor;
+	ETextureCreateFlags LPV;
+	ETextureCreateFlags BokehDOF;
+	ETextureCreateFlags CircleDOF;
+	ETextureCreateFlags CombineLUTs;
+	ETextureCreateFlags Downsample;
+	ETextureCreateFlags EyeAdaptation;
+	ETextureCreateFlags Histogram;
+	ETextureCreateFlags HistogramReduce;
+	ETextureCreateFlags VelocityFlat;
+	ETextureCreateFlags VelocityMax;
+	ETextureCreateFlags MotionBlur;
+	ETextureCreateFlags Tonemap;
+	ETextureCreateFlags Upscale;
+	ETextureCreateFlags DistanceFieldNormal;
+	ETextureCreateFlags DistanceFieldAOHistory;
+	ETextureCreateFlags DistanceFieldAOBentNormal;
+	ETextureCreateFlags DistanceFieldAODownsampledBentNormal;
+	ETextureCreateFlags DistanceFieldShadows;
+	ETextureCreateFlags DistanceFieldIrradiance;
+	ETextureCreateFlags DistanceFieldAOConfidence;
+	ETextureCreateFlags Distortion;
+	ETextureCreateFlags ScreenSpaceShadowMask;
+	ETextureCreateFlags VolumetricFog;
+	ETextureCreateFlags SeparateTranslucency;
+	ETextureCreateFlags SeparateTranslucencyModulate;
+	ETextureCreateFlags LightAccumulation;
+	ETextureCreateFlags LightAttenuation;
+	ETextureCreateFlags ScreenSpaceAO;
+	ETextureCreateFlags SSR;
+	ETextureCreateFlags DBufferA;
+	ETextureCreateFlags DBufferB;
+	ETextureCreateFlags DBufferC;
+	ETextureCreateFlags DBufferMask;
+	ETextureCreateFlags DOFSetup;
+	ETextureCreateFlags DOFReduce;
+	ETextureCreateFlags DOFPostfilter;
+	ETextureCreateFlags PostProcessMaterial;
 
-	uint32 CustomDepth;
-	uint32 ShadowPointLight;
-	uint32 ShadowPerObject;
-	uint32 ShadowCSM;
+	ETextureCreateFlags CustomDepth;
+	ETextureCreateFlags ShadowPointLight;
+	ETextureCreateFlags ShadowPerObject;
+	ETextureCreateFlags ShadowCSM;
 
 	// Buffers
 	uint32 DistanceFieldCulledObjectBuffers;
@@ -2073,7 +2064,7 @@ struct FFastVramConfig
 	bool bDirty;
 
 private:
-	bool UpdateTextureFlagFromCVar(TAutoConsoleVariable<int32>& CVar, uint32& InOutValue);
+	bool UpdateTextureFlagFromCVar(TAutoConsoleVariable<int32>& CVar, ETextureCreateFlags& InOutValue);
 	bool UpdateBufferFlagFromCVar(TAutoConsoleVariable<int32>& CVar, uint32& InOutValue);
 };
 
@@ -2091,3 +2082,11 @@ enum class EGPUSkinCacheTransition
 
 /* Run GPU skin cache resource transitions */
 void RunGPUSkinCacheTransition(class FRHICommandList& RHICmdList, class FScene* Scene, EGPUSkinCacheTransition Type);
+
+/** Resolves the view rect of scene color or depth using either a custom resolve or hardware resolve. */
+void AddResolveSceneColorPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, FRDGTextureMSAA SceneColor);
+void AddResolveSceneDepthPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, FRDGTextureMSAA SceneDepth);
+
+/** Resolves all views for scene color / depth. */
+void AddResolveSceneColorPass(FRDGBuilder& GraphBuilder, TArrayView<const FViewInfo> Views, FRDGTextureMSAA SceneColor);
+void AddResolveSceneDepthPass(FRDGBuilder& GraphBuilder, TArrayView<const FViewInfo> Views, FRDGTextureMSAA SceneDepth);

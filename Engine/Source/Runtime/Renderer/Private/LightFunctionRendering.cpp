@@ -227,31 +227,43 @@ bool FDeferredShadingSceneRenderer::CheckForLightFunction( const FLightSceneInfo
  *
  * @param LightSceneInfo Represents the current light
  */
-bool FDeferredShadingSceneRenderer::RenderLightFunction(FRHICommandListImmediate& RHICmdList, const FLightSceneInfo* LightSceneInfo, IPooledRenderTarget* ScreenShadowMaskTexture, bool bLightAttenuationCleared, bool bProjectingForForwardShading)
+bool FDeferredShadingSceneRenderer::RenderLightFunction(
+	FRHICommandListImmediate& RHICmdList,
+	const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
+	const FLightSceneInfo* LightSceneInfo,
+	IPooledRenderTarget* ScreenShadowMaskTexture,
+	bool bLightAttenuationCleared,
+	bool bProjectingForForwardShading)
 {
 	if (ViewFamily.EngineShowFlags.LightFunctions)
 	{
-		return RenderLightFunctionForMaterial(RHICmdList, LightSceneInfo, ScreenShadowMaskTexture, LightSceneInfo->Proxy->GetLightFunctionMaterial(), bLightAttenuationCleared, bProjectingForForwardShading, false);
+		return RenderLightFunctionForMaterial(RHICmdList, SceneTexturesUniformBuffer, LightSceneInfo, ScreenShadowMaskTexture, LightSceneInfo->Proxy->GetLightFunctionMaterial(), bLightAttenuationCleared, bProjectingForForwardShading, false);
 	}
 	
 	return false;
 }
 
-bool FDeferredShadingSceneRenderer::RenderPreviewShadowsIndicator(FRHICommandListImmediate& RHICmdList, const FLightSceneInfo* LightSceneInfo, IPooledRenderTarget* ScreenShadowMaskTexture, bool bLightAttenuationCleared)
+bool FDeferredShadingSceneRenderer::RenderPreviewShadowsIndicator(
+	FRHICommandListImmediate& RHICmdList,
+	const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
+	const FLightSceneInfo* LightSceneInfo,
+	IPooledRenderTarget* ScreenShadowMaskTexture,
+	bool bLightAttenuationCleared)
 {
 	if (GEngine->PreviewShadowsIndicatorMaterial)
 	{
-		return RenderLightFunctionForMaterial(RHICmdList, LightSceneInfo, ScreenShadowMaskTexture, GEngine->PreviewShadowsIndicatorMaterial->GetRenderProxy(), bLightAttenuationCleared, false, true);
+		return RenderLightFunctionForMaterial(RHICmdList, SceneTexturesUniformBuffer, LightSceneInfo, ScreenShadowMaskTexture, GEngine->PreviewShadowsIndicatorMaterial->GetRenderProxy(), bLightAttenuationCleared, false, true);
 	}
 
 	return false;
 }
 
 bool FDeferredShadingSceneRenderer::RenderLightFunctionForMaterial(
-	FRHICommandListImmediate& RHICmdList, 
-	const FLightSceneInfo* LightSceneInfo, 
+	FRHICommandListImmediate& RHICmdList,
+	const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
+	const FLightSceneInfo* LightSceneInfo,
 	IPooledRenderTarget* ScreenShadowMaskTexture,
-	const FMaterialRenderProxy* MaterialProxy, 
+	const FMaterialRenderProxy* MaterialProxy,
 	bool bLightAttenuationCleared, 
 	bool bProjectingForForwardShading, 
 	bool bRenderingPreviewShadowsIndicator)
@@ -263,7 +275,9 @@ bool FDeferredShadingSceneRenderer::RenderLightFunctionForMaterial(
 	if (MaterialProxy && MaterialProxy->GetMaterial(Scene->GetFeatureLevel())->IsLightFunction())
 	{
 		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-		FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(SceneContext, FeatureLevel, ESceneTextureSetupMode::All, UniformBuffer_SingleFrame);
+
+		FUniformBufferStaticBindings GlobalUniformBuffers(SceneTexturesUniformBuffer);
+		SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
 
 		{
 			// Scope out this FRHIRenderPassInfo so we don't pollute ourselves elsewhere.
@@ -300,9 +314,6 @@ bool FDeferredShadingSceneRenderer::RenderLightFunctionForMaterial(
 				SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("View%d"), ViewIndex);
 
 				const FViewInfo& View = Views[ViewIndex];
-
-				FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
-				SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
 
 				if (View.VisibleLightInfos[LightSceneInfo->Id].bInViewFrustum)
 				{

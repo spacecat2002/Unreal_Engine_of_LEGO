@@ -25,7 +25,6 @@ struct ENGINE_API FMaterialRelevance
 			uint8 bSeparateTranslucencyModulate : 1;
 			uint8 bNormalTranslucency : 1;
 			uint8 bUsesSceneColorCopy : 1;
-			uint8 bDisableOffscreenRendering : 1; // Blend Modulate
 			uint8 bOutputsTranslucentVelocity : 1;
 			uint8 bUsesGlobalDistanceField : 1;
 			uint8 bUsesWorldPositionOffset : 1;

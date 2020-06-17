@@ -333,6 +333,17 @@ void FOpenGLDynamicRHI::RHIClearUAVFloat(FRHIUnorderedAccessView* UnorderedAcces
 		GPUProfilingData.RegisterGPUWork(1);
 		return;
 	}
+#elif OPENGL_ESDEFERRED
+	glBindBuffer(GL_TEXTURE_BUFFER, Texture->BufferResource);
+	uint32 BufferSize = Texture->GetBufferSize();
+	if (BufferSize > 0)
+	{
+		void* BufferData = FOpenGL::MapBufferRange(GL_TEXTURE_BUFFER, 0, BufferSize, FOpenGLBase::RLM_WriteOnly);
+		uint8 ClearValue = uint8(Values[0] & 0xff);
+		FPlatformMemory::Memset(BufferData, ClearValue, BufferSize);
+		FOpenGL::UnmapBufferRange(GL_TEXTURE_BUFFER, 0, BufferSize);
+		GPUProfilingData.RegisterGPUWork(1);
+	}
 #endif
 	// Use compute on ES3.1
 	check(Texture->BufferResource);

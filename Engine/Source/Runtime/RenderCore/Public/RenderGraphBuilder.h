@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,7 +9,7 @@
 #include "RenderGraphValidation.h"
 #include "ShaderParameterMacros.h"
 
-class FRDGBarrierBatcher;
+class FRDGLogFile;
 
 /** Builds the per-frame render graph.
  *  Resources must be created from the builder before they can be bound to Pass ResourceTables.
@@ -18,58 +18,47 @@ class FRDGBarrierBatcher;
 class RENDERCORE_API FRDGBuilder
 {
 public:
-	/** A RHI cmd list is required, if using the immediate mode. */
-	FRDGBuilder(FRHICommandListImmediate& InRHICmdList);
+	FRDGBuilder(FRHICommandListImmediate& InRHICmdList, FRDGEventName InName = {});
 	FRDGBuilder(const FRDGBuilder&) = delete;
-	~FRDGBuilder();
+
+	/** Finds an RDG texture associated with the external texture, or returns null if none is found. */
+	FRDGTextureRef FindExternalTexture(FRHITexture* Texture) const;
+	FRDGTextureRef FindExternalTexture(IPooledRenderTarget* ExternalPooledTexture, ERenderTargetTexture Texture) const;
 
 	/** Register a external texture to be tracked by the render graph. */
 	FRDGTextureRef RegisterExternalTexture(
 		const TRefCountPtr<IPooledRenderTarget>& ExternalPooledTexture,
-		const TCHAR* Name = TEXT("External"),
-		ERDGResourceFlags Flags = ERDGResourceFlags::None);
+		ERenderTargetTexture Texture = ERenderTargetTexture::ShaderResource,
+		ERDGTextureFlags Flags = ERDGTextureFlags::None);
 
-	/** Variant of RegisterExternalTexture which will returns null (rather than assert) if the external texture is null. */
-	inline FRDGTextureRef TryRegisterExternalTexture(
+	/** Register an external texture with a custom name. The name is only used if this is the first registration of the texture. */
+	FRDGTextureRef RegisterExternalTexture(
 		const TRefCountPtr<IPooledRenderTarget>& ExternalPooledTexture,
-		const TCHAR* Name = TEXT("External"),
-		ERDGResourceFlags Flags = ERDGResourceFlags::None)
-	{
-		return ExternalPooledTexture ? RegisterExternalTexture(ExternalPooledTexture, Name, Flags) : nullptr;
-	}
+		const TCHAR* NameIfNotRegistered,
+		ERenderTargetTexture RenderTargetTexture = ERenderTargetTexture::ShaderResource,
+		ERDGTextureFlags Flags = ERDGTextureFlags::None);
 
 	/** Register a external buffer to be tracked by the render graph. */
+	FRDGBufferRef RegisterExternalBuffer(const TRefCountPtr<FRDGPooledBuffer>& ExternalPooledBuffer, ERDGBufferFlags Flags = ERDGBufferFlags::None);
+	FRDGBufferRef RegisterExternalBuffer(const TRefCountPtr<FRDGPooledBuffer>& ExternalPooledBuffer, ERDGBufferFlags Flags, ERHIAccess AccessFinal);
+
+	/** Register an external buffer with a custom name. The name is only used if this is the first registration of the buffer. */
 	FRDGBufferRef RegisterExternalBuffer(
-		const TRefCountPtr<FPooledRDGBuffer>& ExternalPooledBuffer,
-		const TCHAR* Name = TEXT("External"),
-		ERDGResourceFlags Flags = ERDGResourceFlags::None);
-
-	/** Variant of RegisterExternalBuffer which will return null (rather than assert) if the external buffer is null. */
-	inline FRDGBufferRef TryRegisterExternalBuffer(
-		const TRefCountPtr<FPooledRDGBuffer>& ExternalPooledBuffer,
-		const TCHAR* Name = TEXT("External"),
-		ERDGResourceFlags Flags = ERDGResourceFlags::None)
-	{
-		return ExternalPooledBuffer ? RegisterExternalBuffer(ExternalPooledBuffer, Name, Flags) : nullptr;
-	}
+		const TRefCountPtr<FRDGPooledBuffer>& ExternalPooledBuffer,
+		const TCHAR* NameIfNotRegistered,
+		ERDGBufferFlags Flags = ERDGBufferFlags::None);
 
 	/** Create graph tracked resource from a descriptor with a debug name.
 	 *
 	 *  The debug name is the name used for GPU debugging tools, but also for the VisualizeTexture/Vis command.
 	 */
-	FRDGTextureRef CreateTexture(
-		const FPooledRenderTargetDesc& Desc,
-		const TCHAR* Name,
-		ERDGResourceFlags Flags = ERDGResourceFlags::None);
+	FRDGTextureRef CreateTexture(const FRDGTextureDesc& Desc, const TCHAR* Name, ERDGTextureFlags Flags = ERDGTextureFlags::None);
 
 	/** Create graph tracked resource from a descriptor with a debug name.
 	 *
 	 *  The debug name is the name used for GPU debugging tools, but also for the VisualizeTexture/Vis command.
 	 */
-	FRDGBufferRef CreateBuffer(
-		const FRDGBufferDesc& Desc,
-		const TCHAR* Name,
-		ERDGResourceFlags Flags = ERDGResourceFlags::None);
+	FRDGBufferRef CreateBuffer(const FRDGBufferDesc& Desc, const TCHAR* Name, ERDGBufferFlags Flags = ERDGBufferFlags::None);
 
 	/** Create graph tracked SRV for a texture from a descriptor. */
 	FRDGTextureSRVRef CreateSRV(const FRDGTextureSRVDesc& Desc);
@@ -77,55 +66,65 @@ public:
 	/** Create graph tracked SRV for a buffer from a descriptor. */
 	FRDGBufferSRVRef CreateSRV(const FRDGBufferSRVDesc& Desc);
 
-	FRDGBufferSRVRef CreateSRV(FRDGBufferRef Buffer, EPixelFormat Format)
+	FORCEINLINE FRDGBufferSRVRef CreateSRV(FRDGBufferRef Buffer, EPixelFormat Format)
 	{
 		return CreateSRV(FRDGBufferSRVDesc(Buffer, Format));
 	}
 
 	/** Create graph tracked UAV for a texture from a descriptor. */
-	FRDGTextureUAVRef CreateUAV(const FRDGTextureUAVDesc& Desc);
+	FRDGTextureUAVRef CreateUAV(const FRDGTextureUAVDesc& Desc, ERDGUnorderedAccessViewFlags Flags = ERDGUnorderedAccessViewFlags::None);
 
-	FRDGTextureUAVRef CreateUAV(FRDGTextureRef Texture)
+	FORCEINLINE FRDGTextureUAVRef CreateUAV(FRDGTextureRef Texture, ERDGUnorderedAccessViewFlags Flags = ERDGUnorderedAccessViewFlags::None)
 	{
-		return CreateUAV(FRDGTextureUAVDesc(Texture));
+		return CreateUAV(FRDGTextureUAVDesc(Texture), Flags);
 	}
 
 	/** Create graph tracked UAV for a buffer from a descriptor. */
-	FRDGBufferUAVRef CreateUAV(const FRDGBufferUAVDesc& Desc);
+	FRDGBufferUAVRef CreateUAV(const FRDGBufferUAVDesc& Desc, ERDGUnorderedAccessViewFlags Flags = ERDGUnorderedAccessViewFlags::None);
 
-	FRDGBufferUAVRef CreateUAV(FRDGBufferRef Buffer, EPixelFormat Format)
+	FORCEINLINE FRDGBufferUAVRef CreateUAV(FRDGBufferRef Buffer, EPixelFormat Format, ERDGUnorderedAccessViewFlags Flags = ERDGUnorderedAccessViewFlags::None)
 	{
-		return CreateUAV(FRDGBufferUAVDesc(Buffer, Format));
+		return CreateUAV(FRDGBufferUAVDesc(Buffer, Format), Flags);
 	}
 
-	/** Allocates parameter struct specifically to survive through the life time of the render graph. */
-	template< typename ParameterStructType >
+	/** Allocates raw memory using an allocator tied to the lifetime of the graph. */
+	void* Alloc(uint32 SizeInBytes, uint32 AlignInBytes);
+
+	/** Allocates POD memory using an allocator tied to the lifetime of the graph. Does not construct / destruct. */
+	template <typename PODType>
+	PODType* AllocPOD();
+
+	/** Allocates a C++ object using an allocator tied to the lifetime of the graph. Will destruct the object. */
+	template <typename ObjectType, typename... TArgs>
+	ObjectType* AllocObject(TArgs&&... Args);
+
+	/** Allocates a parameter struct with a lifetime tied to graph execution. */
+	template <typename ParameterStructType>
 	ParameterStructType* AllocParameters();
 
-	/** Adds a hard coded lambda pass to the graph.
+	/** Creates a graph tracked uniform buffer which can be attached to passes. */
+	template <typename ParameterStructType>
+	TRDGUniformBufferRef<ParameterStructType> CreateUniformBuffer(ParameterStructType* ParameterStruct, const TCHAR* Name);
+
+	/** Adds a lambda pass to the graph.
 	 *
 	 * The Name of the pass should be generated with enough information to identify it's purpose and GPU cost, to be clear
 	 * for GPU profiling tools.
 	 *
 	 * Caution: The pass parameter will be validated, and should not longer be modified after this call, since the pass may be executed
 	 * right away with the immediate debugging mode.
-	 * TODO(RDG): Verify with hashing.
 	 */
-	template<typename ParameterStructType, typename ExecuteLambdaType>
-	void AddPass(
-		FRDGEventName&& Name,
-		ParameterStructType* ParameterStruct,
-		ERDGPassFlags Flags,
-		ExecuteLambdaType&& ExecuteLambda);
+	template <typename ParameterStructType, typename ExecuteLambdaType>
+	FRDGPassRef AddPass(FRDGEventName&& Name, ParameterStructType* ParameterStruct, ERDGPassFlags Flags, ExecuteLambdaType&& ExecuteLambda);
 
-	/** Adds an externally created pass to the render graph. This is useful if the pass parameter structure is generated at runtime.
-	 *
-	 *  Caution: You are on your own to have correct memory lifetime of the FRDGPass.
+	/** Adds a lambda pass to the graph without any parameters. This useful for deferring RHI work onto the graph timeline,
+	 *  or incrementally porting code to use the graph system. NeverCull and SkipRenderPass (if Raster) are implicitly added
+	 *  to Flags. AsyncCompute is not allowed. Accessing RHI resources which are tracked by the graph is only allowed if the
+	 *  UntrackedAccess flag is specified. It is never permitted to access a created (i.e. not externally registered) RDG resource
+	 *  in an independent pass, as the RHI lifetime is not guaranteed.
 	 */
-	void AddExternalPass(FRDGPass* NewPass)
-	{
-		AddPassInternal(NewPass);
-	}
+	template <typename ExecuteLambdaType>
+	FRDGPassRef AddPass(FRDGEventName&& Name, ERDGPassFlags Flags, ExecuteLambdaType&& ExecuteLambda);
 
 #if WITH_MGPU
 	void SetNameForTemporalEffect(FName InNameForTemporalEffect)
@@ -134,25 +133,176 @@ public:
 	}
 #endif
 
-	/** Queue a texture extraction. This will set *OutTexturePtr with the internal pooled render target at the Execute().
+	/** Queues a pooled texture extraction to happen at the end of graph exectuion. *OutTexturePtr is assigned the internal pooled render target.
 	 *
 	 *  Note: even when the render graph uses the immediate debugging mode (executing passes as they get added), the texture extractions
 	 *  will still happen in the Execute(), to ensure there is no bug caused in code outside the render graph on whether this mode is used or not.
 	 */
-	void QueueTextureExtraction(FRDGTextureRef Texture, TRefCountPtr<IPooledRenderTarget>* OutTexturePtr, bool bTransitionToRead = true);
+	void QueueTextureExtraction(FRDGTextureRef Texture, TRefCountPtr<IPooledRenderTarget>* OutPooledTexturePtr);
+	void QueueTextureExtraction(FRDGTextureRef Texture, TRefCountPtr<IPooledRenderTarget>* OutPooledTexturePtr, ERHIAccess AccessFinal);
+
+	UE_DEPRECATED(4.26, "QueueTextureExtraction with bTransitionToRead is deprecated; use the ERHIAccess variant instead.")
+	void QueueTextureExtraction(FRDGTextureRef Texture, TRefCountPtr<IPooledRenderTarget>* OutTexturePtr, bool bTransitionToRead);
 
 	/** Queue a buffer extraction. This will set *OutBufferPtr with the internal pooled buffer at the Execute().
 	 *
 	 *  Note: even when the render graph uses the immediate debugging mode (executing passes as they get added), the buffer extractions
 	 *  will still happen in the Execute(), to ensure there is no bug caused in code outside the render graph on whether this mode is used or not.
 	 */
-	void QueueBufferExtraction(FRDGBufferRef Buffer, TRefCountPtr<FPooledRDGBuffer>* OutBufferPtr, FRDGResourceState::EAccess DestinationAccess, FRDGResourceState::EPipeline DestinationPipeline);
+	void QueueBufferExtraction(FRDGBufferRef Buffer, TRefCountPtr<FRDGPooledBuffer>* OutPooledBufferPtr);
+	void QueueBufferExtraction(FRDGBufferRef Buffer, TRefCountPtr<FRDGPooledBuffer>* OutPooledBufferPtr, ERHIAccess AccessFinal);
+
+	/** Performs an immediate query for the underlying pooled texture. This is only allowed for registered or preallocated textures. */
+	const TRefCountPtr<IPooledRenderTarget>& GetPooledTexture(FRDGTextureRef Texture) const;
+
+	/** Performs an immediate query for the underlying pooled buffer. This is only allowed for registered or preallocated buffers. */
+	const TRefCountPtr<FRDGPooledBuffer>& GetPooledBuffer(FRDGBufferRef Buffer) const;
+
+	/** Sets the access to transition to after execution. Only valid on external or extracted textures. Overwrites any previously set final access. */
+	void SetTextureAccessFinal(FRDGTextureRef Texture, ERHIAccess Access);
+
+	/** Sets the access to transition to after execution. Only valid on external or extracted buffers. Overwrites any previously set final access. */
+	void SetBufferAccessFinal(FRDGBufferRef Buffer, ERHIAccess Access);
 
 	/** Flag a texture that is produced by a pass but never used or extracted to not emit an 'unused' warning. */
 	void RemoveUnusedTextureWarning(FRDGTextureRef Texture);
 
 	/** Flag a buffer that is produced by a pass but never used or extracted to not emit an 'unused' warning. */
 	void RemoveUnusedBufferWarning(FRDGBufferRef Buffer);
+
+	/** Executes the queued passes, managing setting of render targets (RHI RenderPasses), resource transitions and queued texture extraction. */
+	void Execute();
+
+	/** Per-frame update of the render graph resource pool. */
+	static void TickPoolElements();
+
+	const FRHIGPUMask GetGPUMask() const
+	{
+		return GpuMaskScope;
+	}
+
+	/** The RHI command list used for the render graph. */
+	FRHICommandListImmediate& RHICmdList;
+
+private:
+	static const ERHIAccess kDefaultAccessInitial = ERHIAccess::Unknown;
+	static const ERHIAccess kDefaultAccessFinal   = ERHIAccess::SRVMask;
+
+	FRHIAsyncComputeCommandListImmediate& RHICmdListAsyncCompute;
+	FRDGAllocator Allocator;
+
+	const FRDGEventName BuilderName;
+
+	ERDGPassFlags OverridePassFlags(const TCHAR* PassName, ERDGPassFlags Flags, bool bAsyncComputeSupported);
+
+	FORCEINLINE FRDGPassHandle GetProloguePassHandle() const
+	{
+		return Passes.Begin();
+	}
+
+	FORCEINLINE FRDGPassHandle GetEpiloguePassHandle() const
+	{
+		checkf(EpiloguePass, TEXT("The handle is not valid until the epilogue has been added to the graph during execution."));
+		return Passes.Last();
+	}
+
+	/** Registry of graph objects. */
+	FRDGPassRegistry Passes;
+	FRDGTextureRegistry Textures;
+	FRDGBufferRegistry Buffers;
+	FRDGViewRegistry Views;
+	FRDGUniformBufferRegistry UniformBuffers;
+
+	/** Passes that have been culled from the graph. */
+	FRDGPassBitArray PassesToCull;
+
+	/** Passes that don't have any parameters. */
+	FRDGPassBitArray PassesWithEmptyParameters;
+
+	/** Tracks external resources to their registered render graph counterparts for de-duplication. */
+	TSortedMap<FRHITexture*, FRDGTexture*, TInlineAllocator<4, SceneRenderingAllocator>> ExternalTextures;
+	TSortedMap<const FRDGPooledBuffer*, FRDGBuffer*, TInlineAllocator<4, SceneRenderingAllocator>> ExternalBuffers;
+
+	/** The epilogue and prologue passes are sentinels that are used to simplify graph logic around barriers
+	 *  and traversal. The prologue pass is used exclusively for barriers before the graph executes, while the
+	 *  epilogue pass is used for resource extraction barriers--a property that also makes it the main root of
+	 *  the graph for culling purposes. The epilogue pass is added to the very end of the pass array for traversal
+	 *  purposes. The prologue does not need to participate in any graph traversal behavior.
+	 */
+	FRDGPass* ProloguePass = nullptr;
+	FRDGPass* EpiloguePass = nullptr;
+
+	/** Array of all requested resource extractions from the graph. */
+	TArray<TPair<FRDGTextureRef, TRefCountPtr<IPooledRenderTarget>*>, TInlineAllocator<4, SceneRenderingAllocator>> ExtractedTextures;
+	TArray<TPair<FRDGBufferRef, TRefCountPtr<FRDGPooledBuffer>*>, TInlineAllocator<4, SceneRenderingAllocator>> ExtractedBuffers;
+
+	FRHIGPUMask GpuMaskScope;
+
+	IF_RDG_SCOPES(FRDGScopeStacksByPipeline ScopeStacks);
+
+#if RDG_ENABLE_DEBUG
+	FRDGUserValidation UserValidation;
+	FRDGBarrierValidation BarrierValidation;
+	FRDGLogFile LogFile;
+
+	/** Tracks whether we are in a scope of adding passes to the builder. Used to avoid recursion. */
+	bool bInDebugPassScope = false;
+#endif
+
+#if WITH_MGPU
+	/** Name for the temporal effect used to synchronize multi-frame resources. */
+	FName NameForTemporalEffect;
+
+	/** Whether we performed the wait for the temporal effect yet. */
+	bool bWaitedForTemporalEffect = false;
+#endif
+
+	void Compile();
+	void Clear();
+
+	void BeginResourceRHI(FRDGUniformBuffer* UniformBuffer);
+	void BeginResourceRHI(FRDGPassHandle, FRDGTexture* Texture);
+	void BeginResourceRHI(FRDGPassHandle, FRDGTextureSRV* SRV);
+	void BeginResourceRHI(FRDGPassHandle, FRDGTextureUAV* UAV);
+	void BeginResourceRHI(FRDGPassHandle, FRDGBuffer* Buffer);
+	void BeginResourceRHI(FRDGPassHandle, FRDGBufferSRV* SRV);
+	void BeginResourceRHI(FRDGPassHandle, FRDGBufferUAV* UAV);
+
+	void EndResourceRHI(FRDGPassHandle, FRDGTexture* Texture, const FRDGTextureSubresourceRange Range);
+	void EndResourceRHI(FRDGPassHandle, FRDGBuffer* Buffer);
+
+	void SetupPassInternal(FRDGPass* Pass, FRDGPassHandle PassHandle, ERHIPipeline PassPipeline);
+	void SetupPass(FRDGPass* Pass);
+	void SetupEmptyPass(FRDGPass* Pass);
+	void ExecutePass(FRDGPass* Pass);
+
+	void ExecutePassPrologue(FRHIComputeCommandList& RHICmdListPass, FRDGPass* Pass);
+	void ExecutePassEpilogue(FRHIComputeCommandList& RHICmdListPass, FRDGPass* Pass);
+
+	void CollectPassResources(FRDGPassHandle PassHandle);
+	void CollectPassBarriers(FRDGPassHandle PassHandle, FRDGPassHandle& LastUntrackedPassHandle);
+
+	void AddPassDependency(FRDGPassHandle ProducerHandle, FRDGPassHandle ConsumerHandle);
+
+	void AddEpilogueTransition(FRDGTextureRef Texture, FRDGPassHandle LastUntrackedPassHandle);
+	void AddEpilogueTransition(FRDGBufferRef Buffer, FRDGPassHandle LastUntrackedPassHandle);
+
+	void AddTransition(FRDGPassHandle PassHandle, FRDGTextureRef Texture, const FRDGTextureState& StateAfter, FRDGPassHandle LastUntrackedPassHandle);
+	void AddTransition(FRDGPassHandle PassHandle, FRDGBufferRef Buffer, FRDGSubresourceState StateAfter, FRDGPassHandle LastUntrackedPassHandle);
+
+	void AddTransitionInternal(
+		FRDGParentResource* Resource,
+		FRDGSubresourceState StateBefore,
+		FRDGSubresourceState StateAfter,
+		FRDGPassHandle LastUntrackedPassHandle,
+		const FRHITransitionInfo& TransitionInfo);
+
+	FRHIRenderPassInfo GetRenderPassInfo(const FRDGPass* Pass) const;
+
+#if RDG_ENABLE_DEBUG
+	void VisualizePassOutputs(const FRDGPass* Pass);
+	void ClobberPassOutputs(const FRDGPass* Pass);
+#endif
 
 	/** Begins / ends a named event scope. These scopes are visible in most external GPU profilers.
 	 *  Prefer to use RDG_EVENT_SCOPE instead of calling this manually.
@@ -166,100 +316,35 @@ public:
 	void BeginStatScope(const FName& Name, const FName& StatName);
 	void EndStatScope();
 
-	/** Executes the queued passes, managing setting of render targets (RHI RenderPasses), resource transitions and queued texture extraction. */
-	void Execute();
+	friend FRDGEventScopeGuard;
+	friend FRDGStatScopeGuard;
+	friend FRDGGPUMaskScopeGuard;
+};
 
-	/** Per-frame update of the render graph resource pool. */
-	static void TickPoolElements();
+class FRDGGPUMaskScopeGuard final
+{
+public:
+	FRDGGPUMaskScopeGuard(FRDGBuilder& InGraphBuilder, FRHIGPUMask InGpuMask)
+		: GraphBuilder(InGraphBuilder)
+		, GpuMaskRestore(GraphBuilder.GpuMaskScope)
+	{
+		GraphBuilder.GpuMaskScope = InGpuMask;
+	}
 
-	/** The RHI command list used for the render graph. */
-	FRHICommandListImmediate& RHICmdList;
-
-	/** Memory stack use for allocating RDG resource and passes. */
-	FMemStackBase& MemStack;
+	~FRDGGPUMaskScopeGuard()
+	{
+		GraphBuilder.GpuMaskScope = GpuMaskRestore;
+	}
 
 private:
-	TUniquePtr<FRDGBarrierBatcher> BarrierBatcher;
-
-	/** Array of all pass created */
-	TArray<FRDGPass*, TInlineAllocator<8, SceneRenderingAllocator>> Passes;
-
-	/** Keep the references over the pooled render target, since FRDGTexture is allocated on MemStack. */
-	TMap<FRDGTexture*, TRefCountPtr<IPooledRenderTarget>, SceneRenderingSetAllocator> AllocatedTextures;
-
-	/** Keep the references over the pooled render target, since FRDGTexture is allocated on MemStack. */
-	TMap<FRDGBuffer*, TRefCountPtr<FPooledRDGBuffer>, SceneRenderingSetAllocator> AllocatedBuffers;
-
-	/** Tracks external resources to their registered render graph counterparts for de-duplication. */
-	TMap<const IPooledRenderTarget*, FRDGTexture*, SceneRenderingSetAllocator> ExternalTextures;
-	TMap<const FPooledRDGBuffer*, FRDGBuffer*, SceneRenderingSetAllocator> ExternalBuffers;
-
-	TSet<FRDGTextureRef, DefaultKeyFuncs<FRDGTextureRef>, SceneRenderingSetAllocator> ReadTextures;
-	TSet<FRDGTextureRef, DefaultKeyFuncs<FRDGTextureRef>, SceneRenderingSetAllocator> ModifiedTextures;
-
-	uint32 BufferCount = 0;
-	uint32 TextureCount = 0;
-
-	/** Array of all deferred access to internal textures. */
-	struct FDeferredInternalTextureQuery
-	{
-		FRDGTexture* Texture;
-		TRefCountPtr<IPooledRenderTarget>* OutTexturePtr;
-		bool bTransitionToRead;
-	};
-	TArray<FDeferredInternalTextureQuery, TInlineAllocator<4, SceneRenderingAllocator>> DeferredInternalTextureQueries;
-
-	/** Array of all deferred access to internal buffers. */
-	struct FDeferredInternalBufferQuery
-	{
-		FRDGBuffer* Buffer;
-		TRefCountPtr<FPooledRDGBuffer>* OutBufferPtr;
-		FRDGResourceState::EAccess DestinationAccess;
-		FRDGResourceState::EPipeline DestinationPipeline;
-	};
-	TArray<FDeferredInternalBufferQuery, TInlineAllocator<4, SceneRenderingAllocator>> DeferredInternalBufferQueries;
-
-	FRDGEventScopeStack EventScopeStack;
-	FRDGStatScopeStack StatScopeStack;
-
-#if RDG_ENABLE_DEBUG
-	FRDGUserValidation Validation;
-
-	/** Tracks whether we are in a scope of adding passes to the builder. Used to avoid recursion. */
-	bool bInDebugPassScope = false;
-#endif
+	FRDGBuilder& GraphBuilder;
+	FRHIGPUMask GpuMaskRestore;
+};
 
 #if WITH_MGPU
-	/** Name for the temporal effect used to synchronize multi-frame resources. */
-	FName NameForTemporalEffect;
+	#define RDG_GPU_MASK_SCOPE(GraphBuilder, GPUMask) FRDGGPUMaskScopeGuard PREPROCESSOR_JOIN(RDGGPUMaskScope, __LINE__){ GraphBuilder, GPUMask }
+#else
+	#define RDG_GPU_MASK_SCOPE(GraphBuilder, GPUMask)
 #endif
-
-	void VisualizePassOutputs(const FRDGPass* Pass);
-	void ClobberPassOutputs(const FRDGPass* Pass);
-
-	void WalkGraphDependencies();
-	
-	template<class Type, class ...ConstructorParameterTypes>
-	Type* AllocateForRHILifeTime(ConstructorParameterTypes&&... ConstructorParameters);
-
-	void AddPassInternal(FRDGPass* Pass);
-
-	void AllocateRHITextureIfNeeded(FRDGTexture* Texture);
-	void AllocateRHITextureSRVIfNeeded(FRDGTextureSRV* SRV);
-	void AllocateRHITextureUAVIfNeeded(FRDGTextureUAV* UAV);
-	void AllocateRHIBufferIfNeeded(FRDGBuffer* Buffer);
-	void AllocateRHIBufferSRVIfNeeded(FRDGBufferSRV* SRV);
-	void AllocateRHIBufferUAVIfNeeded(FRDGBufferUAV* UAV);
-
-	void ExecutePass(const FRDGPass* Pass);
-	void PrepareResourcesForExecute(const FRDGPass* Pass, struct FRHIRenderPassInfo* OutRPInfo);
-
-	void ReleaseRHITextureIfUnreferenced(FRDGTexture* Texture);
-	void ReleaseRHIBufferIfUnreferenced(FRDGBuffer* Buffer);
-	void ReleaseUnreferencedResources(const FRDGPass* Pass);
-
-	void ProcessDeferredInternalResourceQueries();
-	void DestructPasses();
-};
 
 #include "RenderGraphBuilder.inl"

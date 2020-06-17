@@ -57,11 +57,6 @@ public:
 		return CurrentPipeline ? CurrentPipeline->GetShader() : nullptr;
 	}
 
-	inline void AddUAVForAutoFlush(FVulkanUnorderedAccessView* UAV)
-	{
-		UAVListForAutoFlush.Add(UAV);
-	}
-
 	void SetUAVForUBResource(uint32 DescriptorSet, uint32 BindingIndex, FVulkanUnorderedAccessView* UAV);
 
 	inline void SetUAVForStage(uint32 UAVIndex, FVulkanUnorderedAccessView* UAV)
@@ -144,8 +139,6 @@ public:
 	}
 
 protected:
-	TArray<FVulkanUnorderedAccessView*> UAVListForAutoFlush;
-
 	FVulkanComputePipeline* CurrentPipeline = nullptr;
 	FVulkanComputePipelineDescriptorState* CurrentState = nullptr;
 

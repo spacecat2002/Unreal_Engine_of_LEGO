@@ -208,12 +208,12 @@ public:
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, View.ViewUniformBuffer);
 		ObjectBufferParameters.Set(RHICmdList, ShaderRHI, SceneObjectBuffers, NumObjectsInBuffer, TextureAtlas, AtlasSizeX, AtlasSizeY, AtlasSizeZ);
 
-		FRHIUnorderedAccessView* OutUAVs[4];
-		OutUAVs[0] = CulledObjectBuffers.Buffers.ObjectIndirectArguments.UAV;
-		OutUAVs[1] = CulledObjectBuffers.Buffers.Bounds.UAV;
-		OutUAVs[2] = CulledObjectBuffers.Buffers.Data.UAV;
-		OutUAVs[3] = CulledObjectBuffers.Buffers.BoxBounds.UAV;
-		RHICmdList.TransitionResources(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, OutUAVs, UE_ARRAY_COUNT(OutUAVs));
+		FRHITransitionInfo TransitionInfos[4];
+		TransitionInfos[0] = FRHITransitionInfo(CulledObjectBuffers.Buffers.ObjectIndirectArguments.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier);
+		TransitionInfos[1] = FRHITransitionInfo(CulledObjectBuffers.Buffers.Bounds.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier);
+		TransitionInfos[2] = FRHITransitionInfo(CulledObjectBuffers.Buffers.Data.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier);
+		TransitionInfos[3] = FRHITransitionInfo(CulledObjectBuffers.Buffers.BoxBounds.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier);
+		RHICmdList.Transition(MakeArrayView(TransitionInfos, UE_ARRAY_COUNT(TransitionInfos)));
 
 		CulledObjectParameters.Set(RHICmdList, ShaderRHI, CulledObjectBuffers.Buffers, TextureAtlas, FIntVector(AtlasSizeX, AtlasSizeY, AtlasSizeZ), VisibilityAtlas);
 
@@ -242,12 +242,12 @@ public:
 		ObjectBufferParameters.UnsetParameters(RHICmdList, RHICmdList.GetBoundComputeShader(), SceneObjectBuffers);
 		CulledObjectParameters.UnsetParameters(RHICmdList, RHICmdList.GetBoundComputeShader());
 
-		FRHIUnorderedAccessView* OutUAVs[4];
-		OutUAVs[0] = CulledObjectBuffers.Buffers.ObjectIndirectArguments.UAV;
-		OutUAVs[1] = CulledObjectBuffers.Buffers.Bounds.UAV;
-		OutUAVs[2] = CulledObjectBuffers.Buffers.Data.UAV;
-		OutUAVs[3] = CulledObjectBuffers.Buffers.BoxBounds.UAV;
-		RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, OutUAVs, UE_ARRAY_COUNT(OutUAVs));
+		FRHITransitionInfo TransitionInfos[4];
+		TransitionInfos[0] = FRHITransitionInfo(CulledObjectBuffers.Buffers.ObjectIndirectArguments.UAV, ERHIAccess::Unknown, ERHIAccess::IndirectArgs);
+		TransitionInfos[1] = FRHITransitionInfo(CulledObjectBuffers.Buffers.Bounds.UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask);
+		TransitionInfos[2] = FRHITransitionInfo(CulledObjectBuffers.Buffers.Data.UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask);
+		TransitionInfos[3] = FRHITransitionInfo(CulledObjectBuffers.Buffers.BoxBounds.UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask);
+		RHICmdList.Transition(MakeArrayView(TransitionInfos, UE_ARRAY_COUNT(TransitionInfos)));
 	}
 
 private:
@@ -507,7 +507,7 @@ public:
 
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, View.ViewUniformBuffer);
 
-		RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, ShadowFactorsValue.UAV);
+		RHICmdList.Transition(FRHITransitionInfo(ShadowFactorsValue.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 		ShadowFactors.SetTexture(RHICmdList, ShaderRHI, ShadowFactorsValue.ShaderResourceTexture, ShadowFactorsValue.UAV);
 
 		constexpr bool bIsHeightField = PrimitiveType == DFPT_HeightField;
@@ -602,7 +602,7 @@ public:
 	void UnsetParameters(TRHICommandList& RHICmdList, FSceneRenderTargetItem& ShadowFactorsValue)
 	{
 		ShadowFactors.UnsetUAV(RHICmdList, RHICmdList.GetBoundComputeShader());
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, ShadowFactorsValue.UAV);
+		RHICmdList.Transition(FRHITransitionInfo(ShadowFactorsValue.UAV, ERHIAccess::ERWBarrier, ERHIAccess::SRVMask));
 	}
 
 	static const TCHAR* GetSourceFilename()
@@ -772,7 +772,12 @@ public:
 		TArray<FRHIUnorderedAccessView*> UAVs;
 		TileIntersectionParameters.GetUAVs(*TileIntersectionResources, UAVs);
 
-		RHICmdList.TransitionResources(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EComputeToCompute, UAVs.GetData(), UAVs.Num());
+		TArray<FRHITransitionInfo> TransitionInfos;
+		for (FRHIUnorderedAccessView* UAV : UAVs)
+		{
+			TransitionInfos.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::UAVCompute));
+		}
+		RHICmdList.Transition(MakeArrayView(TransitionInfos.GetData(), TransitionInfos.Num()));
 
 		TileIntersectionParameters.Set(RHICmdList, ShaderRHI, *TileIntersectionResources);
 	}
@@ -784,7 +789,12 @@ public:
 		TArray<FRHIUnorderedAccessView*> UAVs;
 		TileIntersectionParameters.GetUAVs(*TileIntersectionResources, UAVs);
 
-		RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, UAVs.GetData(), UAVs.Num());
+		TArray<FRHITransitionInfo> TransitionInfos;
+		for (FRHIUnorderedAccessView* UAV : UAVs)
+		{
+			TransitionInfos.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask));
+		}
+		RHICmdList.Transition(MakeArrayView(TransitionInfos.GetData(), TransitionInfos.Num()));
 	}
 
 private:
@@ -807,17 +817,26 @@ void ScatterObjectsToShadowTiles(
 
 	TArray<FRHIUnorderedAccessView*> UAVs;
 	PixelShader->GetUAVs(View, TileIntersectionResources, UAVs);
-	RHICmdList.TransitionResources(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToGfx, UAVs.GetData(), UAVs.Num());
+
+	TArray<FRHITransitionInfo> UAVTransitionInfos;
+	for (FRHIUnorderedAccessView* UAV : UAVs)
+	{
+		UAVTransitionInfos.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
+	}
+	RHICmdList.Transition(MakeArrayView(UAVTransitionInfos.GetData(), UAVTransitionInfos.Num()));
 
 	FRHIRenderPassInfo RPInfo(FRHIRenderPassInfo::NoRenderTargets);
 	if (GRHIRequiresRenderTargetForPixelShaderUAVs)
 	{
 		TRefCountPtr<IPooledRenderTarget> Dummy;
 		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(LightTileDimensions, PF_B8G8R8A8, FClearValueBinding::None, TexCreate_None, TexCreate_RenderTargetable, false));
-		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, Dummy, TEXT("Dummy"));
+		if (!GRenderTargetPool.FindFreeElement(RHICmdList, Desc, Dummy, TEXT("Dummy")))
+		{
+			RHICmdList.Transition(FRHITransitionInfo(Dummy->GetRenderTargetItem().TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
+		}
 
 		RPInfo.ColorRenderTargets[0].Action = ERenderTargetActions::DontLoad_DontStore;
-		RPInfo.ColorRenderTargets[0].ArraySlice = -1;
+		RPInfo.ColorRenderTargets[0].ArraySlice = 0;
 		RPInfo.ColorRenderTargets[0].MipIndex = 0;
 		RPInfo.ColorRenderTargets[0].RenderTarget = Dummy->GetRenderTargetItem().TargetableTexture;
 	}
@@ -852,7 +871,12 @@ void ScatterObjectsToShadowTiles(
 	}
 	RHICmdList.EndRenderPass();
 
-	RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EGfxToCompute, UAVs.GetData(), UAVs.Num());
+	TArray<FRHITransitionInfo> SRVTransitionInfos;
+	for (FRHIUnorderedAccessView* UAV : UAVs)
+	{
+		SRVTransitionInfos.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask));
+	}
+	RHICmdList.Transition(MakeArrayView(SRVTransitionInfos.GetData(), SRVTransitionInfos.Num()));
 }
 
 template <EDistanceFieldPrimitiveType PrimitiveType>
@@ -892,7 +916,7 @@ void CullDistanceFieldObjectsForLight_Internal(
 		{
 			SCOPED_DRAW_EVENTF(RHICmdList, CullObjectsToFrustum, TEXT("CullObjectsToFrustum %sObjects %d"), bIsHeightfield ? TEXT("HeightField") : TEXT("DistanceField"), NumObjectsInBuffer);
 
-			RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, CulledObjectBuffers.Buffers.ObjectIndirectArguments.UAV);
+			RHICmdList.Transition(FRHITransitionInfo(CulledObjectBuffers.Buffers.ObjectIndirectArguments.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 			RHICmdList.ClearUAVUint(CulledObjectBuffers.Buffers.ObjectIndirectArguments.UAV, FUintVector4(0, 0, 0, 0));
 
 			TShaderMapRef<TCullObjectsForShadowCS<PrimitiveType>> ComputeShader(GetGlobalShaderMap(Scene->GetFeatureLevel()));
@@ -942,13 +966,13 @@ void CullDistanceFieldObjectsForLight_Internal(
 			SCOPED_DRAW_EVENT(RHICmdList, ComputeTileStartOffsets);
 
 			// Start at 0 tiles per object
-			RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, TileIntersectionResources->TileNumCulledObjects.UAV);
+			RHICmdList.Transition(FRHITransitionInfo(TileIntersectionResources->TileNumCulledObjects.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 			RHICmdList.ClearUAVUint(TileIntersectionResources->TileNumCulledObjects.UAV, FUintVector4(0, 0, 0, 0));
 
 			// Rasterize object bounding shapes and intersect with shadow tiles to compute how many objects intersect each tile
 			ScatterObjectsToShadowTiles<true, PrimitiveType>(RHICmdList, View, WorldToShadowValue, ShadowBoundingRadius, LightTileDimensions, TileIntersectionResources.Get());
 
-			RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, TileIntersectionResources->NextStartOffset.UAV);
+			RHICmdList.Transition(FRHITransitionInfo(TileIntersectionResources->NextStartOffset.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 			RHICmdList.ClearUAVUint(TileIntersectionResources->NextStartOffset.UAV, FUintVector4(0, 0, 0, 0));
 
 			uint32 GroupSizeX = FMath::DivideAndRoundUp<int32>(LightTileDimensions.X, ComputeCulledObjectStartOffsetGroupSize);
@@ -966,7 +990,7 @@ void CullDistanceFieldObjectsForLight_Internal(
 			SCOPED_DRAW_EVENTF(RHICmdList, CullObjectsToTiles, TEXT("CullObjectsToTiles %ux%u"), LightTileDimensions.X, LightTileDimensions.Y);
 
 			// Start at 0 tiles per object
-			RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, TileIntersectionResources->TileNumCulledObjects.UAV);
+			RHICmdList.Transition(FRHITransitionInfo(TileIntersectionResources->TileNumCulledObjects.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 			RHICmdList.ClearUAVUint(TileIntersectionResources->TileNumCulledObjects.UAV, FUintVector4(0, 0, 0, 0));
 
 			// Rasterize object bounding shapes and intersect with shadow tiles, and write out intersecting tile indices for the cone tracing pass
@@ -1306,14 +1330,14 @@ void FProjectedShadowInfo::BeginRenderRayTracedDistanceFieldProjection(FRHIComma
 	}
 }
 
-void FProjectedShadowInfo::RenderRayTracedDistanceFieldProjection(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, const FIntRect& ScissorRect, IPooledRenderTarget* ScreenShadowMaskTexture, bool bProjectingForForwardShading)
+void FProjectedShadowInfo::RenderRayTracedDistanceFieldProjection(
+	FRHICommandListImmediate& RHICmdList,
+	const FViewInfo& View,
+	const FIntRect& ScissorRect,
+	IPooledRenderTarget* ScreenShadowMaskTexture,
+	bool bProjectingForForwardShading)
 {
 	check(ScissorRect.Area() > 0);
-
-	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-	FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(SceneContext, View.GetFeatureLevel(), ESceneTextureSetupMode::All, UniformBuffer_SingleFrame);
-	FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
-	SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
 
 	BeginRenderRayTracedDistanceFieldProjection(RHICmdList, View);
 
@@ -1321,6 +1345,8 @@ void FProjectedShadowInfo::RenderRayTracedDistanceFieldProjection(FRHICommandLis
 	{
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_RenderRayTracedDistanceFieldShadows);
 		SCOPED_DRAW_EVENT(RHICmdList, RayTracedDistanceFieldShadow);
+
+		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 
 		{
 			FRHIRenderPassInfo RPInfo(ScreenShadowMaskTexture->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Load_Store);

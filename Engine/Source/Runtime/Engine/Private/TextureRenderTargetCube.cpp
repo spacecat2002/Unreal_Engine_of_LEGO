@@ -313,6 +313,12 @@ void FTextureRenderTargetCubeResource::UpdateDeferredResource(FRHICommandListImm
 		// copy surface to the texture for use
 		FResolveParams ResolveParams;
 		ResolveParams.CubeFace = (ECubeFace)FaceIdx;
+
+		FRHITransitionInfo TransitionsBefore[] = {
+			FRHITransitionInfo(RenderTargetTextureRHI, ERHIAccess::RTV, ERHIAccess::ResolveSrc),
+			FRHITransitionInfo(TextureCubeRHI, ERHIAccess::Unknown, ERHIAccess::ResolveDst)
+		};
+		RHICmdList.Transition(MakeArrayView(TransitionsBefore, UE_ARRAY_COUNT(TransitionsBefore)));
 		RHICmdList.CopyToResolveTarget(RenderTargetTextureRHI, TextureCubeRHI, ResolveParams);
 	}
 }

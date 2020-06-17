@@ -810,6 +810,30 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 		PrimaryScreenPercentageMethod = EPrimaryScreenPercentageMethod::TemporalUpscale;
 	}
 
+	if (Family && Family->bResolveScene && Family->EngineShowFlags.PostProcessing)
+	{
+		EyeAdaptationViewState = State;
+
+		// When rendering in stereo we want to use the same exposure for both eyes.
+		if (IStereoRendering::IsASecondaryView(*this))
+		{
+			int32 ViewIndex = Family->Views.Find(this);
+			if (Family->Views.IsValidIndex(ViewIndex))
+			{
+				// The left eye is always added before other eye views.
+				ViewIndex = 0;
+				if (Family->Views.IsValidIndex(ViewIndex))
+				{
+					const FSceneView* PrimaryView = Family->Views[ViewIndex];
+					if (IStereoRendering::IsAPrimaryView(*PrimaryView))
+					{
+						EyeAdaptationViewState = PrimaryView->State;
+					}
+				}
+			}
+		}
+	}
+
 	check(VerifyMembersChecks());
 }
 
@@ -2460,6 +2484,44 @@ void FSceneView::SetupCommonViewUniformBufferParameters(
 
 	//to tail call keep the order and number of parameters of the caller function
 	SetupViewRectUniformBufferParameters(ViewUniformShaderParameters, BufferSize, EffectiveViewRect, InViewMatrices, InPrevViewMatrices);
+}
+
+bool FSceneView::HasValidEyeAdaptationTexture() const
+{
+	if (EyeAdaptationViewState)
+	{
+		return EyeAdaptationViewState->HasValidEyeAdaptationTexture();
+	}
+	return false;
+}
+
+bool FSceneView::HasValidEyeAdaptationBuffer() const
+{
+	if (EyeAdaptationViewState)
+	{
+		return EyeAdaptationViewState->HasValidEyeAdaptationBuffer();
+	}
+	return false;
+}
+
+IPooledRenderTarget* FSceneView::GetEyeAdaptationTexture() const
+{
+	checkf(FeatureLevel > ERHIFeatureLevel::ES3_1, TEXT("SM5 and above use RenderTarget for read back"));
+	if (EyeAdaptationViewState)
+	{
+		return EyeAdaptationViewState->GetCurrentEyeAdaptationTexture();
+	}
+	return nullptr;
+}
+
+const FExposureBufferData* FSceneView::GetEyeAdaptationBuffer() const
+{
+	checkf(FeatureLevel == ERHIFeatureLevel::ES3_1, TEXT("ES3_1 use RWBuffer for read back"));
+	if (EyeAdaptationViewState)
+	{
+		return EyeAdaptationViewState->GetCurrentEyeAdaptationBuffer();
+	}
+	return nullptr;
 }
 
 FSceneViewFamily::FSceneViewFamily(const ConstructionValues& CVS)

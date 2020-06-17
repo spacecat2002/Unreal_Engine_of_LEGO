@@ -11,10 +11,11 @@
 #include "RenderGraphResources.h"
 
 class FLightSceneInfo;
+class FViewInfo;
 
 struct FHairStrandsTransmittanceMaskData
 {
-	TRefCountPtr<FPooledRDGBuffer>	TransmittanceMask;
+	TRefCountPtr<FRDGPooledBuffer>	TransmittanceMask;
 	FShaderResourceViewRHIRef		TransmittanceMaskSRV;
 };
 

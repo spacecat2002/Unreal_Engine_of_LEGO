@@ -121,13 +121,11 @@ FRDGTextureRef AddHistogramPass(
 	{
 		const FIntPoint TextureExtent = FIntPoint(FHistogramCS::HistogramTexelCount, HistogramThreadGroupCountTotal);
 
-		const FRDGTextureDesc TextureDesc = FPooledRenderTargetDesc::Create2DDesc(
+		const FRDGTextureDesc TextureDesc = FRDGTextureDesc::Create2D(
 			TextureExtent,
 			PF_FloatRGBA,
 			FClearValueBinding::None,
-			GFastVRamConfig.Histogram,
-			TexCreate_RenderTargetable | TexCreate_UAV | TexCreate_ShaderResource,
-			false);
+			GFastVRamConfig.Histogram | TexCreate_RenderTargetable | TexCreate_UAV | TexCreate_ShaderResource);
 
 		HistogramTexture = GraphBuilder.CreateTexture(TextureDesc, TEXT("Histogram"));
 
@@ -155,13 +153,11 @@ FRDGTextureRef AddHistogramPass(
 	{
 		const FIntPoint TextureExtent = FIntPoint(FHistogramCS::HistogramTexelCount, 2);
 
-		const FRDGTextureDesc TextureDesc = FRDGTextureDesc::Create2DDesc(
+		const FRDGTextureDesc TextureDesc = FRDGTextureDesc::Create2D(
 			TextureExtent,
 			FHistogramReducePS::OutputFormat,
 			FClearValueBinding::None,
-			GFastVRamConfig.HistogramReduce,
-			TexCreate_RenderTargetable | TexCreate_ShaderResource,
-			false);
+			GFastVRamConfig.HistogramReduce | TexCreate_RenderTargetable | TexCreate_ShaderResource);
 
 		HistogramReduceTexture = GraphBuilder.CreateTexture(TextureDesc, TEXT("HistogramReduce"));
 

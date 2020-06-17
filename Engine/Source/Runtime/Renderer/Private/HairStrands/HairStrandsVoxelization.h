@@ -66,20 +66,20 @@ struct FVirtualVoxelResources
 
 	TRefCountPtr<IPooledRenderTarget>	PageTexture;
 
-	TRefCountPtr<FPooledRDGBuffer>		PageIndexBuffer;
+	TRefCountPtr<FRDGPooledBuffer>		PageIndexBuffer;
 	FShaderResourceViewRHIRef			PageIndexBufferSRV = nullptr;
 
-	TRefCountPtr<FPooledRDGBuffer>		NodeDescBuffer;
+	TRefCountPtr<FRDGPooledBuffer>		NodeDescBuffer;
 	FShaderResourceViewRHIRef			NodeDescBufferSRV = nullptr;
 
-	TRefCountPtr<FPooledRDGBuffer>		PageIndexCoordBuffer;
+	TRefCountPtr<FRDGPooledBuffer>		PageIndexCoordBuffer;
 	FShaderResourceViewRHIRef			PageIndexCoordBufferSRV = nullptr;
 
-	TRefCountPtr<FPooledRDGBuffer>		IndirectArgsBuffer;
+	TRefCountPtr<FRDGPooledBuffer>		IndirectArgsBuffer;
 
-	TRefCountPtr<FPooledRDGBuffer>		PageIndexGlobalCounter;
+	TRefCountPtr<FRDGPooledBuffer>		PageIndexGlobalCounter;
 
-	TRefCountPtr<FPooledRDGBuffer>		VoxelizationViewInfoBuffer;
+	TRefCountPtr<FRDGPooledBuffer>		VoxelizationViewInfoBuffer;
 
 	const bool IsValid() const { return UniformBuffer.IsValid(); }
 };

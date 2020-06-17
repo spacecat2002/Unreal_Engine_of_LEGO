@@ -885,6 +885,22 @@ void FVulkanDevice::InitGPU(int32 DeviceIndex)
 
 	UE_LOG(LogVulkanRHI, Display, TEXT("Using Device %d: Geometry %d Tessellation %d"), DeviceIndex, PhysicalFeatures.geometryShader, PhysicalFeatures.tessellationShader);
 
+#if VULKAN_SUPPORTS_PHYSICAL_DEVICE_PROPERTIES2
+	VkPhysicalDeviceFeatures2KHR PhysicalFeatures2;
+	ZeroVulkanStruct(PhysicalFeatures2, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR);
+#if VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS
+	ZeroVulkanStruct(SeparateDepthStencilLayoutsFeatures, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SEPARATE_DEPTH_STENCIL_LAYOUTS_FEATURES_KHR);
+	PhysicalFeatures2.pNext = &SeparateDepthStencilLayoutsFeatures;
+#endif
+	if (VulkanRHI::vkGetPhysicalDeviceFeatures2KHR)
+	{
+		VulkanRHI::vkGetPhysicalDeviceFeatures2KHR(Gpu, &PhysicalFeatures2);
+		// FIXME: if SeparateDepthStencilLayoutsFeatures.separateDepthStencilLayouts is true, we also need to enable the extension.
+		// FIXME: The layout tracking code doesn't work correctly with separate layouts, so we force-disable this for now.
+		SeparateDepthStencilLayoutsFeatures.separateDepthStencilLayouts = 0;
+	}
+#endif
+
 	CreateDevice();
 
 	SetupFormats();
@@ -988,7 +1004,7 @@ void FVulkanDevice::InitGPU(int32 DeviceIndex)
 		DefaultSampler = ResourceCast(RHICreateSamplerState(Default).GetReference());
 
 		FRHIResourceCreateInfo CreateInfo;
-		DefaultImage = new FVulkanSurface(*this, VK_IMAGE_VIEW_TYPE_2D, PF_B8G8R8A8, 1, 1, 1, 1, 1, 1, TexCreate_RenderTargetable | TexCreate_ShaderResource, CreateInfo);
+		DefaultImage = new FVulkanSurface(*this, VK_IMAGE_VIEW_TYPE_2D, PF_B8G8R8A8, 1, 1, 1, 1, 1, 1, TexCreate_RenderTargetable | TexCreate_ShaderResource, ERHIAccess::SRVMask, CreateInfo);
 		DefaultTextureView.Create(*this, DefaultImage->Image, VK_IMAGE_VIEW_TYPE_2D, DefaultImage->GetFullAspectMask(), PF_B8G8R8A8, VK_FORMAT_B8G8R8A8_UNORM, 0, 1, 0, 1);
 	}
 }
@@ -1204,12 +1220,6 @@ void FVulkanDevice::SubmitCommands(FVulkanCommandListContext* Context)
 	}
 	if (CmdMgr->HasPendingActiveCmdBuffer())
 	{
-		//#todo-rco: If we get real render passes then this is not needed
-		if (Context->TransitionAndLayoutManager.CurrentRenderPass)
-		{
-			Context->TransitionAndLayoutManager.EndEmulatedRenderPass(CmdMgr->GetActiveCmdBuffer());
-		}
-
 		CmdMgr->SubmitActiveCmdBuffer();
 	}
 	CmdMgr->PrepareForNewActiveCommandBuffer();

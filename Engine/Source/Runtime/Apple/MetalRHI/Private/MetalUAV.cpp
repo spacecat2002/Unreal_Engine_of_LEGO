@@ -6,6 +6,7 @@
 #include "MetalCommandBuffer.h"
 #include "RenderUtils.h"
 #include "ClearReplacementShaders.h"
+#include "MetalTransitionData.h"
 
 static void ClearUAV(TRHICommandList_RecursiveHazardous<FMetalRHICommandContext>& RHICmdList, FMetalUnorderedAccessView* UnorderedAccessView, const void* ClearValue, bool bFloat);
 
@@ -559,112 +560,19 @@ void ClearUAV(TRHICommandList_RecursiveHazardous<FMetalRHICommandContext>& RHICm
 	} // @autoreleasepool
 }
 
-FComputeFenceRHIRef FMetalDynamicRHI::RHICreateComputeFence(const FName& Name)
+void FMetalRHICommandContext::RHIBeginTransitions(TArrayView<const FRHITransition*> Transitions)
 {
-	@autoreleasepool {
-	return new FMetalComputeFence(Name);
-	}
-}
-
-FMetalComputeFence::FMetalComputeFence(FName InName)
-: FRHIComputeFence(InName)
-, Fence(nullptr)
-{}
-
-FMetalComputeFence::~FMetalComputeFence()
-{
-	if (Fence)
-		Fence->Release();
-}
-
-void FMetalComputeFence::Write(FMetalFence* InFence)
-{
-	check(!Fence);
-	Fence = InFence;
-	if (Fence)
-		Fence->AddRef();
-	
-	FRHIComputeFence::WriteFence();
-}
-
-void FMetalComputeFence::Wait(FMetalContext& Context)
-{
-	if (Context.GetCurrentCommandBuffer())
+	for (auto Transition : Transitions)
 	{
-		Context.SubmitCommandsHint(EMetalSubmitFlagsNone);
+		Transition->GetPrivateData<FMetalTransitionData>()->BeginResourceTransitions();
 	}
-	Context.GetCurrentRenderPass().Begin(Fence);
-	
-	if (Fence)
-		Fence->Release();
-	
-	Fence = nullptr;
 }
 
-void FMetalComputeFence::Reset()
+void FMetalRHICommandContext::RHIEndTransitions(TArrayView<const FRHITransition*> Transitions)
 {
-	FRHIComputeFence::Reset();
-	if (Fence)
-		Fence->Release();
-
-	Fence = nullptr;
-}
-
-void FMetalRHICommandContext::RHITransitionResources(EResourceTransitionAccess TransitionType, EResourceTransitionPipeline TransitionPipeline, FRHIUnorderedAccessView** InUAVs, int32 NumUAVs, FRHIComputeFence* WriteComputeFence)
-{
-	@autoreleasepool
+	for (auto Transition : Transitions)
 	{
-		if (TransitionType != EResourceTransitionAccess::EMetaData)
-		{
-			Context->TransitionResources(InUAVs, NumUAVs);
-		}
-		if (WriteComputeFence)
-		{
-			// Get the current render pass fence.
-			TRefCountPtr<FMetalFence> const& MetalFence = Context->GetCurrentRenderPass().End();
-			
-			// Write it again as we may wait on this fence in two different encoders
-			Context->GetCurrentRenderPass().Update(MetalFence);
-
-			// Write it into the RHI object
-			FMetalComputeFence* Fence = ResourceCast(WriteComputeFence);
-			Fence->Write(MetalFence);
-			if (GSupportsEfficientAsyncCompute)
-			{
-				this->RHISubmitCommandsHint();
-			}
-		}
-	}
-}
-
-void FMetalRHICommandContext::RHITransitionResources(EResourceTransitionAccess TransitionType, FRHITexture** InTextures, int32 NumTextures)
-{
-	@autoreleasepool
-	{
-		if (TransitionType != EResourceTransitionAccess::EMetaData)
-		{
-			Context->TransitionResources(InTextures, NumTextures);
-		}
-		if (TransitionType == EResourceTransitionAccess::EReadable)
-		{
-			const FResolveParams ResolveParams;
-			for (int32 i = 0; i < NumTextures; ++i)
-			{
-				RHICopyToResolveTarget(InTextures[i], InTextures[i], ResolveParams);
-			}
-		}
-	}
-}
-
-void FMetalRHICommandContext::RHIWaitComputeFence(FRHIComputeFence* InFence)
-{
-	@autoreleasepool {
-	if (InFence)
-	{
-		checkf(InFence->GetWriteEnqueued(), TEXT("ComputeFence: %s waited on before being written. This will hang the GPU."), *InFence->GetName().ToString());
-		FMetalComputeFence* Fence = ResourceCast(InFence);
-		Fence->Wait(*Context);
-	}
+		Transition->GetPrivateData<FMetalTransitionData>()->EndResourceTransitions();
 	}
 }
 

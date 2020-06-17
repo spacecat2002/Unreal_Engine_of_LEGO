@@ -1562,10 +1562,21 @@ bool FDeferredShadingSceneRenderer::InjectReflectiveShadowMaps(FRHICommandListIm
 	return true;
 }
 
-bool FSceneRenderer::RenderShadowProjections(FRHICommandListImmediate& RHICmdList, const FLightSceneInfo* LightSceneInfo, IPooledRenderTarget* ScreenShadowMaskTexture, IPooledRenderTarget* ScreenShadowMaskSubPixelTexture, bool bProjectingForForwardShading, bool bMobileModulatedProjections, const FHairStrandsVisibilityViews* InHairVisibilityViews)
+bool FSceneRenderer::RenderShadowProjections(
+	FRHICommandListImmediate& RHICmdList,
+	FRHIUniformBuffer* SceneTextures,
+	const FLightSceneInfo* LightSceneInfo,
+	IPooledRenderTarget* ScreenShadowMaskTexture,
+	IPooledRenderTarget* ScreenShadowMaskSubPixelTexture,
+	bool bProjectingForForwardShading,
+	bool bMobileModulatedProjections,
+	const FHairStrandsVisibilityViews* InHairVisibilityViews)
 {
 	FVisibleLightInfo& VisibleLightInfo = VisibleLightInfos[LightSceneInfo->Id];
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+
+	FUniformBufferStaticBindings GlobalUniformBuffers(SceneTextures);
+	SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
 
 	// Gather up our work real quick so we can do everything in one renderpass later.
 	// #todo-renderpasses How many ShadowsToProject do we have usually?
@@ -1584,15 +1595,13 @@ bool FSceneRenderer::RenderShadowProjections(FRHICommandListImmediate& RHICmdLis
 			NormalShadows.Add(ProjectedShadowInfo);
 			if (ProjectedShadowInfo->bAllocated && ProjectedShadowInfo->RenderTargets.DepthTarget)
 			{
-				RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, ProjectedShadowInfo->RenderTargets.DepthTarget->GetRenderTargetItem().ShaderResourceTexture.GetReference());
+				RHICmdList.Transition(FRHITransitionInfo(ProjectedShadowInfo->RenderTargets.DepthTarget->GetRenderTargetItem().ShaderResourceTexture.GetReference(), ERHIAccess::Unknown, ERHIAccess::SRVMask));
 			}
 		}
 	}
 
 	if (NormalShadows.Num() > 0)
 	{
-		FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(SceneContext, FeatureLevel, ESceneTextureSetupMode::All, UniformBuffer_SingleFrame);
-
 		auto RenderShadowMask = [&](const FHairStrandsVisibilityViews* HairVisibilityViews)
 		{
 			for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
@@ -1615,9 +1624,6 @@ bool FSceneRenderer::RenderShadowProjections(FRHICommandListImmediate& RHICmdLis
 				LightSceneInfo->Proxy->SetScissorRect(RHICmdList, View, View.ViewRect);
 
 				Scene->UniformBuffers.UpdateViewUniformBuffer(View);
-
-				FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
-				SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
 
 				// Project the shadow depth buffers onto the scene.
 				for (int32 ShadowIndex = 0; ShadowIndex < NormalShadows.Num(); ShadowIndex++)
@@ -1724,7 +1730,14 @@ bool FSceneRenderer::RenderShadowProjections(FRHICommandListImmediate& RHICmdLis
 	return true;
 }
 	
-bool FDeferredShadingSceneRenderer::RenderShadowProjections(FRHICommandListImmediate& RHICmdList, const FLightSceneInfo* LightSceneInfo, IPooledRenderTarget* ScreenShadowMaskTexture, IPooledRenderTarget* ScreenShadowMaskSubPixelTexture, const FHairStrandsDatas* HairDatas, bool& bInjectedTranslucentVolume)
+bool FDeferredShadingSceneRenderer::RenderShadowProjections(
+	FRHICommandListImmediate& RHICmdList,
+	const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
+	const FLightSceneInfo* LightSceneInfo,
+	IPooledRenderTarget* ScreenShadowMaskTexture,
+	IPooledRenderTarget* ScreenShadowMaskSubPixelTexture,
+	const FHairStrandsDatas* HairDatas,
+	bool& bInjectedTranslucentVolume)
 {
 	SCOPED_NAMED_EVENT(FDeferredShadingSceneRenderer_RenderShadowProjections, FColor::Emerald);
 	SCOPE_CYCLE_COUNTER(STAT_ProjectedShadowDrawTime);
@@ -1735,7 +1748,7 @@ bool FDeferredShadingSceneRenderer::RenderShadowProjections(FRHICommandListImmed
 
 	FVisibleLightInfo& VisibleLightInfo = VisibleLightInfos[LightSceneInfo->Id];
 
-	FSceneRenderer::RenderShadowProjections(RHICmdList, LightSceneInfo, ScreenShadowMaskTexture, ScreenShadowMaskSubPixelTexture, false, false, HairDatas ? &HairDatas->HairVisibilityViews : nullptr);
+	FSceneRenderer::RenderShadowProjections(RHICmdList, SceneTexturesUniformBuffer, LightSceneInfo, ScreenShadowMaskTexture, ScreenShadowMaskSubPixelTexture, false, false, HairDatas ? &HairDatas->HairVisibilityViews : nullptr);
 
 	checkSlow(RHICmdList.IsOutsideRenderPass());
 	for (int32 ShadowIndex = 0; ShadowIndex < VisibleLightInfo.ShadowsToProject.Num(); ShadowIndex++)
@@ -1817,6 +1830,7 @@ void FMobileSceneRenderer::RenderModulatedShadowProjections(FRHICommandListImmed
 		return;
 	}
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+	FRHIUniformBuffer* SceneTexturesUniformBuffer = CreateMobileSceneTextureUniformBuffer(RHICmdList, Views[0], EMobileSceneTextureSetupMode::SceneColor);
 
 	// render shadowmaps for relevant lights.
 	for (TSparseArray<FLightSceneInfoCompact>::TConstIterator LightIt(Scene->Lights); LightIt; ++LightIt)
@@ -1827,7 +1841,7 @@ void FMobileSceneRenderer::RenderModulatedShadowProjections(FRHICommandListImmed
 		{
 			TArray<FProjectedShadowInfo*, SceneRenderingAllocator> Shadows;
 			SCOPE_CYCLE_COUNTER(STAT_ProjectedShadowDrawTime);
-			FSceneRenderer::RenderShadowProjections(RHICmdList, LightSceneInfo, nullptr, nullptr, false, true, nullptr);
+			FSceneRenderer::RenderShadowProjections(RHICmdList, SceneTexturesUniformBuffer, LightSceneInfo, nullptr, nullptr, false, true, nullptr);
 		}
 	}
 }

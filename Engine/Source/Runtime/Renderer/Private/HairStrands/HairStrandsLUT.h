@@ -9,6 +9,8 @@
 #include "CoreMinimal.h"
 #include "RendererInterface.h"
 
+class FViewInfo;
+
 enum FHairLUTType
 {
 	HairLUTType_DualScattering,

@@ -52,9 +52,9 @@ RENDERER_API FMinHairRadiusAtDepth1 ComputeMinStrandRadiusAtDepth1(
 	const float OverrideStrandHairRasterizationScale);
 
 struct FHairStrandClusterCullingData;
-struct FPooledRDGBuffer;
 struct IPooledRenderTarget;
 struct FRWBuffer;
+class  FRDGPooledBuffer;
 class  FHairGroupPublicData;
 class  FRDGShaderResourceView;
 class  FResourceArrayInterface;
@@ -146,8 +146,8 @@ struct FHairStrandClusterData
 		bool GetCullingResultAvailable() const { return HairGroupPublicPtr ? HairGroupPublicPtr->GetCullingResultAvailable() : false; }
 		void SetCullingResultAvailable(bool b) { if (HairGroupPublicPtr) HairGroupPublicPtr->SetCullingResultAvailable(b); }
 
-		TRefCountPtr<FPooledRDGBuffer> ClusterDebugAABBBuffer;							// Null if this debug is not enabled.
-		TRefCountPtr<FPooledRDGBuffer> CulledDispatchIndirectParametersClusterCount;	// Null if this debug is not enabled.
+		TRefCountPtr<FRDGPooledBuffer> ClusterDebugAABBBuffer;							// Null if this debug is not enabled.
+		TRefCountPtr<FRDGPooledBuffer> CulledDispatchIndirectParametersClusterCount;	// Null if this debug is not enabled.
 
 		FHairGroupPublicData* HairGroupPublicPtr = nullptr;
 	};

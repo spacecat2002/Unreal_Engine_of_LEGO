@@ -57,13 +57,13 @@ static FRDGTextureRef AddHairLUTPass(
 	const FIntVector OutputResolution(GHairLUTIncidentAngleCount, GHairLUTRoughnessCount, GHairLUTAbsorptionCount);
 
 	FRDGTextureDesc OutputDesc;
+	OutputDesc.Dimension = ETextureDimension::Texture3D;
 	OutputDesc.Extent.X = OutputResolution.X;
 	OutputDesc.Extent.Y = OutputResolution.Y;
 	OutputDesc.Depth = OutputResolution.Z;
 	OutputDesc.Format = PF_FloatRGBA;
 	OutputDesc.NumMips = 1;
-	OutputDesc.Flags = TexCreate_ShaderResource;
-	OutputDesc.TargetableFlags = TexCreate_UAV | TexCreate_ShaderResource;
+	OutputDesc.Flags = TexCreate_ShaderResource | TexCreate_UAV | TexCreate_ShaderResource;
 	FRDGTextureRef HairLUTTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("HairLUT"));
 
 	FHairLUTCS::FParameters* Parameters = GraphBuilder.AllocParameters<FHairLUTCS::FParameters>();
@@ -199,7 +199,7 @@ class FHairCoverageLUTCS : public FGlobalShader
 	END_SHADER_PARAMETER_STRUCT()
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FUploadParameters, )
-		SHADER_PARAMETER_RDG_BUFFER_UPLOAD(StructuredBuffer<float>, UploadBuffer)
+		SHADER_PARAMETER_RDG_BUFFER_UPLOAD(UploadBuffer)
 	END_SHADER_PARAMETER_STRUCT()
 
 public:
@@ -244,8 +244,7 @@ static FRDGTextureRef AddHairCoverageLUTPass(FRDGBuilder& GraphBuilder, const FV
 	OutputDesc.Extent.Y = OutputResolution.Y;
 	OutputDesc.Format = PF_R32_FLOAT;
 	OutputDesc.NumMips = 1;
-	OutputDesc.Flags = 0;
-	OutputDesc.TargetableFlags = TexCreate_UAV | TexCreate_ShaderResource;
+	OutputDesc.Flags = TexCreate_UAV | TexCreate_ShaderResource;
 	FRDGTextureRef HairLUTTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("HairCoverageLUT"));
 
 	FHairCoverageLUTCS::FParameters* Parameters = GraphBuilder.AllocParameters<FHairCoverageLUTCS::FParameters>();

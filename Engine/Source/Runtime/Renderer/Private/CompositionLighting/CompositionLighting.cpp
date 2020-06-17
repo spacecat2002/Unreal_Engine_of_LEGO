@@ -664,10 +664,11 @@ bool FCompositionLighting::CanProcessAsyncSSAO(TArray<FViewInfo>& Views)
 void FCompositionLighting::PrepareAsyncSSAO(FRHICommandListImmediate& RHICmdList, TArray<FViewInfo>& Views)
 {
 	//clear out last frame's fence.
-	ensureMsgf(AsyncSSAOFence == nullptr, TEXT("Old AsyncCompute SSAO fence has not been cleared."));
+	ensureMsgf(AsyncSSAOTransition == nullptr, TEXT("Old AsyncCompute SSAO transition has not been cleared."));
 
-	static FName AsyncSSAOFenceName(TEXT("AsyncSSAOFence"));
-	AsyncSSAOFence = RHICmdList.CreateComputeFence(AsyncSSAOFenceName);
+	// Setup 'invalid' transition because the resource isn't know - this needs to be fixed!
+	FRHITransitionInfo SRVTransition((FRHIUnorderedAccessView*)nullptr, ERHIAccess::Unknown, ERHIAccess::SRVMask);
+	AsyncSSAOTransition = RHICreateTransition(ERHIPipeline::AsyncCompute, ERHIPipeline::Graphics, ERHICreateTransitionFlags::None, MakeArrayView(&SRVTransition, 1));
 
 	//Grab the async compute commandlist.
 	FRHIAsyncComputeCommandListImmediate& RHICmdListComputeImmediate = FRHICommandListExecutor::GetImmediateAsyncComputeCommandList();
@@ -743,22 +744,22 @@ void FCompositionLighting::ProcessAsyncSSAO(FRHICommandListImmediate& RHICmdList
 
 void FCompositionLighting::FinishAsyncSSAO(FRHICommandListImmediate& RHICmdList)
 {
-	if (AsyncSSAOFence)
+	if (AsyncSSAOTransition)
 	{
 		//Grab the async compute commandlist.
 		FRHIAsyncComputeCommandListImmediate& RHICmdListComputeImmediate = FRHICommandListExecutor::GetImmediateAsyncComputeCommandList();
 
 		RHICmdListComputeImmediate.SetAsyncComputeBudget(EAsyncComputeBudget::EAll_4);
-		RHICmdListComputeImmediate.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, nullptr, 0, AsyncSSAOFence);
+		RHICmdListComputeImmediate.BeginTransition(AsyncSSAOTransition);
 		FRHIAsyncComputeCommandListImmediate::ImmediateDispatch(RHICmdListComputeImmediate);		
 	}
 }
 
 void FCompositionLighting::GfxWaitForAsyncSSAO(FRHICommandListImmediate& RHICmdList)
 {
-	if (AsyncSSAOFence)
+	if (AsyncSSAOTransition)
 	{
-		RHICmdList.WaitComputeFence(AsyncSSAOFence);
-		AsyncSSAOFence = nullptr;
+		RHICmdList.EndTransition(AsyncSSAOTransition);
+		AsyncSSAOTransition = nullptr;
 	}
 }

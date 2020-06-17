@@ -70,7 +70,7 @@ class FClusteredShadingPS : public FGlobalShader
 		RENDER_TARGET_BINDING_SLOTS()
 		SHADER_PARAMETER_STRUCT_REF(FForwardLightData, Forward)
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
-		SHADER_PARAMETER_STRUCT_REF(FSceneTexturesUniformParameters, SceneTextures)
+		SHADER_PARAMETER_STRUCT_REF(FSceneTextureUniformParameters, SceneTextures)
 
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, LTCMatTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LTCMatSampler)
@@ -108,11 +108,11 @@ void FDeferredShadingSceneRenderer::AddClusteredDeferredShadingPass(FRHICommandL
 	{
 		FRDGBuilder GraphBuilder(RHICmdList);
 
+		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+
 		// TODO: are these going to measure what I think if placed here? Or should they be inside the lambda?
 		SCOPED_GPU_STAT(RHICmdList, ClusteredShading);
 		SCOPED_DRAW_EVENTF(RHICmdList, ClusteredShading, TEXT("ClusteredShading"));
-
-		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 
 		for (int32 ViewIndex = 0, Num = Views.Num(); ViewIndex < Num; ViewIndex++)
 		{
@@ -122,7 +122,7 @@ void FDeferredShadingSceneRenderer::AddClusteredDeferredShadingPass(FRHICommandL
 
 			PassParameters->View = View.ViewUniformBuffer;
 			// NOTE: wonder why the scene textures uniform buffer is not pre prepared somewhere? Used a lot...
-			PassParameters->SceneTextures = CreateSceneTextureUniformBufferSingleDraw(RHICmdList, ESceneTextureSetupMode::All, View.FeatureLevel);
+			PassParameters->SceneTextures = CreateSceneTextureUniformBuffer(RHICmdList, View, ESceneTextureSetupMode::All);
 			// NOTE: This doesn't contain any RDG mention, so does this enforce dependencies or is this a later feature?
 			PassParameters->Forward = View.ForwardLightingResources->ForwardLightDataUniformBuffer;
 

@@ -510,7 +510,7 @@ class FUniformExpressionSet
 {
 	DECLARE_TYPE_LAYOUT(FUniformExpressionSet, NonVirtual);
 public:
-	FUniformExpressionSet() : UniformBufferLayout(FRHIUniformBufferLayout::Zero) {}
+	FUniformExpressionSet() = default;
 
 	bool IsEmpty() const;
 	bool operator==(const FUniformExpressionSet& ReferenceSet) const;

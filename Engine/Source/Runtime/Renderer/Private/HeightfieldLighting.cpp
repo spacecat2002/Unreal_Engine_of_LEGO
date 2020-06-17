@@ -510,7 +510,12 @@ void FHeightfieldLightingViewInfo::SetupVisibleHeightfields(const FViewInfo& Vie
 					}
 					RHICmdList.EndRenderPass();
 
-					RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, RenderTargets, UE_ARRAY_COUNT(RenderTargets));
+					TArray<FRHITransitionInfo, TInlineAllocator<3>> SRVTransitions;
+					for (FRHITexture* RHITexture : RenderTargets)
+					{
+						SRVTransitions.Add(FRHITransitionInfo(RHITexture, ERHIAccess::Unknown, ERHIAccess::SRVMask));
+					}
+					RHICmdList.Transition(MakeArrayView(SRVTransitions.GetData(), SRVTransitions.Num()));
 				}
 			}
 		}
@@ -1137,8 +1142,7 @@ void FHeightfieldLightingViewInfo::ComputeLighting(const FViewInfo& View, FRHICo
 	{
 		SCOPED_DRAW_EVENT(RHICmdList, HeightfieldLightingForGI);
 
-		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-		FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(SceneContext, View.GetFeatureLevel(), ESceneTextureSetupMode::None, UniformBuffer_SingleFrame);
+		FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(RHICmdList, View);
 		FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
 		SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
 
@@ -1266,7 +1270,7 @@ public:
 		HeightfieldDescriptionParameters.Set(RHICmdList, ShaderRHI, GetHeightfieldDescriptionsSRV(), NumHeightfieldsValue);
 		HeightfieldTextureParameters.Set(RHICmdList, ShaderRHI, HeightfieldTextureValue, nullptr, nullptr);
 
-		RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, ScreenGridResources.ScreenGridConeVisibility.UAV);
+		RHICmdList.Transition(FRHITransitionInfo(ScreenGridResources.ScreenGridConeVisibility.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 		ScreenGridConeVisibility.SetBuffer(RHICmdList, ShaderRHI, ScreenGridResources.ScreenGridConeVisibility);
 
 		FAOSampleData2 AOSampleData;
@@ -1288,7 +1292,7 @@ public:
 	void UnsetParameters(FRHICommandList& RHICmdList, const FAOScreenGridResources& ScreenGridResources)
 	{
 		ScreenGridConeVisibility.UnsetUAV(RHICmdList, RHICmdList.GetBoundComputeShader());
-		RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, ScreenGridResources.ScreenGridConeVisibility.UAV);
+		RHICmdList.Transition(FRHITransitionInfo(ScreenGridResources.ScreenGridConeVisibility.UAV, ERHIAccess::ERWBarrier, ERHIAccess::SRVMask));
 	}
 
 private:

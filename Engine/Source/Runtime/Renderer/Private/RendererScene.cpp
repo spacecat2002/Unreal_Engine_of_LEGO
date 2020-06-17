@@ -217,8 +217,6 @@ FSceneViewState::FSceneViewState()
 	ShadowOcclusionQueryMaps.Empty(FOcclusionQueryHelpers::MaxBufferedOcclusionFrames);
 	ShadowOcclusionQueryMaps.AddZeroed(FOcclusionQueryHelpers::MaxBufferedOcclusionFrames);	
 
-	bValidEyeAdaptation = false;
-
 	LastAutoDownsampleChangeTime = 0;
 	SmoothedHalfResTranslucencyGPUDuration = 0;
 	SmoothedFullResTranslucencyGPUDuration = 0;
@@ -896,23 +894,11 @@ void FPersistentUniformBuffers::Clear()
 {
 	ViewUniformBuffer.SafeRelease();
 	InstancedViewUniformBuffer.SafeRelease();
-	DepthPassUniformBuffer.SafeRelease();
-	OpaqueBasePassUniformBuffer.SafeRelease();
-	TranslucentBasePassUniformBuffer.SafeRelease();
 	ReflectionCaptureUniformBuffer.SafeRelease();
 	CSMShadowDepthViewUniformBuffer.SafeRelease();
 	CSMShadowDepthPassUniformBuffer.SafeRelease();
-	DistortionPassUniformBuffer.SafeRelease();
-	VelocityPassUniformBuffer.SafeRelease();
-	HitProxyPassUniformBuffer.SafeRelease();
-	MeshDecalPassUniformBuffer.SafeRelease();
-	LightmapDensityPassUniformBuffer.SafeRelease();
 	DebugViewModePassUniformBuffer.SafeRelease();
-	VoxelizeVolumePassUniformBuffer.SafeRelease();
 	VoxelizeVolumeViewUniformBuffer.SafeRelease();
-	ConvertToUniformMeshPassUniformBuffer.SafeRelease();
-	CustomDepthPassUniformBuffer.SafeRelease();
-	MobileCustomDepthPassUniformBuffer.SafeRelease();
 	CustomDepthViewUniformBuffer.SafeRelease();
 	InstancedCustomDepthViewUniformBuffer.SafeRelease();
 	VirtualTextureViewUniformBuffer.SafeRelease();
@@ -927,9 +913,6 @@ void FPersistentUniformBuffers::Clear()
 		UniformBuffer.SafeRelease();
 	}
 	MobileSkyReflectionUniformBuffer.SafeRelease();
-#if WITH_EDITOR
-	EditorSelectionPassUniformBuffer.SafeRelease();
-#endif
 }
 void FPersistentUniformBuffers::Initialize()
 {
@@ -939,15 +922,6 @@ void FPersistentUniformBuffers::Initialize()
 	FInstancedViewUniformShaderParameters InstancedViewUniformBufferParameters;
 	InstancedViewUniformBuffer = TUniformBufferRef<FInstancedViewUniformShaderParameters>::CreateUniformBufferImmediate(InstancedViewUniformBufferParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
 
-	FSceneTexturesUniformParameters DepthPassParameters;
-	DepthPassUniformBuffer = TUniformBufferRef<FSceneTexturesUniformParameters>::CreateUniformBufferImmediate(DepthPassParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
-
-	FOpaqueBasePassUniformParameters BasePassParameters;
-	OpaqueBasePassUniformBuffer = TUniformBufferRef<FOpaqueBasePassUniformParameters>::CreateUniformBufferImmediate(BasePassParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
-
-	FTranslucentBasePassUniformParameters TranslucentBasePassParameters;
-	TranslucentBasePassUniformBuffer = TUniformBufferRef<FTranslucentBasePassUniformParameters>::CreateUniformBufferImmediate(TranslucentBasePassParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
-
 	FReflectionCaptureShaderData ReflectionCaptureParameters;
 	ReflectionCaptureUniformBuffer = TUniformBufferRef<FReflectionCaptureShaderData>::CreateUniformBufferImmediate(ReflectionCaptureParameters, UniformBuffer_MultiFrame);
 
@@ -956,37 +930,7 @@ void FPersistentUniformBuffers::Initialize()
 	FShadowDepthPassUniformParameters CSMShadowDepthPassParameters;
 	CSMShadowDepthPassUniformBuffer = TUniformBufferRef<FShadowDepthPassUniformParameters>::CreateUniformBufferImmediate(CSMShadowDepthPassParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
 
-	FDistortionPassUniformParameters DistortionPassParameters;
-	DistortionPassUniformBuffer = TUniformBufferRef<FDistortionPassUniformParameters>::CreateUniformBufferImmediate(DistortionPassParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
-
-	FSceneTexturesUniformParameters VelocityPassParameters;
-	VelocityPassUniformBuffer = TUniformBufferRef<FSceneTexturesUniformParameters>::CreateUniformBufferImmediate(VelocityPassParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
-
-	FSceneTexturesUniformParameters HitProxyPassParameters;
-	HitProxyPassUniformBuffer = TUniformBufferRef<FSceneTexturesUniformParameters>::CreateUniformBufferImmediate(HitProxyPassParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
-
-	FSceneTexturesUniformParameters MeshDecalPassParameters;
-	MeshDecalPassUniformBuffer = TUniformBufferRef<FSceneTexturesUniformParameters>::CreateUniformBufferImmediate(MeshDecalPassParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
-
-	FLightmapDensityPassUniformParameters LightmapDensityPassParameters;
-	LightmapDensityPassUniformBuffer = TUniformBufferRef<FLightmapDensityPassUniformParameters>::CreateUniformBufferImmediate(LightmapDensityPassParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
-
-	FDebugViewModePassPassUniformParameters DebugViewModePassParameters;
-	DebugViewModePassUniformBuffer = TUniformBufferRef<FDebugViewModePassPassUniformParameters>::CreateUniformBufferImmediate(DebugViewModePassParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
-
 	VoxelizeVolumeViewUniformBuffer = TUniformBufferRef<FViewUniformShaderParameters>::CreateUniformBufferImmediate(ViewUniformBufferParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
-
-	FVoxelizeVolumePassUniformParameters VoxelizeVolumePassParameters;
-	VoxelizeVolumePassUniformBuffer = TUniformBufferRef<FVoxelizeVolumePassUniformParameters>::CreateUniformBufferImmediate(VoxelizeVolumePassParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
-
-	FSceneTexturesUniformParameters ConvertToUniformMeshPassParameters;
-	ConvertToUniformMeshPassUniformBuffer = TUniformBufferRef<FSceneTexturesUniformParameters>::CreateUniformBufferImmediate(ConvertToUniformMeshPassParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
-
-	FSceneTexturesUniformParameters CustomDepthPassUniformBufferParameters;
-	CustomDepthPassUniformBuffer = TUniformBufferRef<FSceneTexturesUniformParameters>::CreateUniformBufferImmediate(CustomDepthPassUniformBufferParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
-
-	FMobileSceneTextureUniformParameters MobileCustomDepthPassUniformBufferParameters;
-	MobileCustomDepthPassUniformBuffer = TUniformBufferRef<FMobileSceneTextureUniformParameters>::CreateUniformBufferImmediate(MobileCustomDepthPassUniformBufferParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
 
 	CustomDepthViewUniformBuffer = TUniformBufferRef<FViewUniformShaderParameters>::CreateUniformBufferImmediate(ViewUniformBufferParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
 	InstancedCustomDepthViewUniformBuffer = TUniformBufferRef<FInstancedViewUniformShaderParameters>::CreateUniformBufferImmediate(InstancedViewUniformBufferParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
@@ -1012,11 +956,6 @@ void FPersistentUniformBuffers::Initialize()
 
 	FMobileReflectionCaptureShaderParameters MobileSkyReflectionShaderParameters;
 	MobileSkyReflectionUniformBuffer = TUniformBufferRef<FMobileReflectionCaptureShaderParameters>::CreateUniformBufferImmediate(MobileSkyReflectionShaderParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
-
-#if WITH_EDITOR
-	FSceneTexturesUniformParameters EditorSelectionPassParameters;
-	EditorSelectionPassUniformBuffer = TUniformBufferRef<FSceneTexturesUniformParameters>::CreateUniformBufferImmediate(EditorSelectionPassParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
-#endif
 }
 
 TSet<IPersistentViewUniformBufferExtension*> PersistentViewUniformBufferExtensions;

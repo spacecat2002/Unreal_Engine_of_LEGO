@@ -5,8 +5,7 @@
 #if WITH_EDITOR
 
 #include "ScreenPass.h"
-
-class FSceneTextureParameters;
+#include "SceneRenderTargetParameters.h"
 
 struct FPixelInspectorInputs
 {
@@ -23,7 +22,7 @@ struct FPixelInspectorInputs
 	FScreenPassTexture OriginalSceneColor;
 
 	// [Required] The scene textures with GBuffer data.
-	const FSceneTextureParameters* SceneTextures = nullptr;
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures = nullptr;
 };
 
 FScreenPassTexture AddPixelInspectorPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FPixelInspectorInputs& Inputs);

@@ -4,18 +4,6 @@
 
 #include "RenderGraphPass.h"
 
-/** Returns whether render graph runtime debugging is enabled. */
-extern bool IsRDGDebugEnabled();
-
-/** Returns whether render graph is running in immediate mode. */
-extern bool IsRDGImmediateModeEnabled();
-
-/** Emits a render graph warning. */
-extern void EmitRDGWarning(const FString& WarningMessage);
-
-#define EmitRDGWarningf(WarningMessageFormat, ...) \
-	EmitRDGWarning(FString::Printf(WarningMessageFormat, ##__VA_ARGS__));
-
 #if RDG_ENABLE_DEBUG
 
 /** Used by the render graph builder to validate correct usage of the graph API from setup to execution.
@@ -50,9 +38,6 @@ public:
 	void ValidateCreateExternalTexture(FRDGTextureRef Texture);
 	void ValidateCreateExternalBuffer(FRDGBufferRef Buffer);
 
-	/** Tracks and validates usage of a pass parameters allocation. */
-	void ValidateAllocPassParameters(const void* Parameters);
-
 	/** Validates a resource extraction operation. */
 	void ValidateExtractResource(FRDGParentResourceRef Resource);
 
@@ -74,12 +59,12 @@ public:
 	/** Removes the 'produced but not used' warning from the requested resource. */
 	void RemoveUnusedWarning(FRDGParentResourceRef Resource);
 
+	/** Attempts to mark a resource for clobbering. If already marked, returns false.  */
+	bool TryMarkForClobber(FRDGParentResourceRef Resource) const;
+
 private:
 	/** Traverses all resources in the pass and marks whether they are externally accessible by user pass implementations. */
 	static void SetAllowRHIAccess(const FRDGPass* Pass, bool bAllowAccess);
-
-	/** All recently allocated pass parameter structure, but not used by a AddPass() yet. */
-	TSet<const void*, DefaultKeyFuncs<const void*>, SceneRenderingSetAllocator> AllocatedUnusedPassParameters;
 
 	/** List of tracked resources for validation prior to shutdown. */
 	TArray<FRDGTextureRef, SceneRenderingAllocator> TrackedTextures;
@@ -87,6 +72,99 @@ private:
 
 	/** Whether the Execute() has already been called. */
 	bool bHasExecuted = false;
+};
+
+/** This class validates and logs barriers submitted by the graph. */
+class FRDGBarrierValidation
+{
+public:
+	FRDGBarrierValidation(const FRDGPassRegistry* InPasses, const FRDGEventName& InGraphName);
+	FRDGBarrierValidation(const FRDGBarrierValidation&) = delete;
+
+	/** Validates a texture state. */
+	void ValidateState(FRDGPassHandle RequestingPass, FRDGTextureRef Texture, const FRDGTextureState& State);
+
+	/** Validates a buffer state. */
+	void ValidateState(FRDGPassHandle RequestingPass, FRDGBufferRef Buffer, FRDGSubresourceState State);
+
+	/** Validates a begin barrier batch just prior to submission to the command list. */
+	void ValidateBarrierBatchBegin(const FRDGBarrierBatchBegin& Batch);
+
+	/** Validates an end barrier batch just prior to submission to the command list. */
+	void ValidateBarrierBatchEnd(const FRDGBarrierBatchEnd& Batch);
+
+	/** Validates that all barrier batches were flushed at execution end. */
+	void ValidateExecuteEnd();
+
+private:
+	struct FResourceMap
+	{
+		TMap<FRDGTextureRef, TArray<FRHITransitionInfo>> Textures;
+		TMap<FRDGBufferRef, FRHITransitionInfo> Buffers;
+	};
+
+	using FBarrierBatchMap = TMap<const FRDGBarrierBatchBegin*, FResourceMap>;
+
+	FBarrierBatchMap BatchMap;
+
+	const FRDGPassRegistry* Passes = nullptr;
+	const TCHAR* GraphName = nullptr;
+};
+
+class FRDGLogFile
+{
+public:
+	FRDGLogFile() = default;
+
+	void Begin(
+		const FRDGEventName& GraphName,
+		const FRDGPassRegistry* InPassRegistry,
+		FRDGPassBitArray InPassesCulled,
+		FRDGPassHandle InProloguePassHandle,
+		FRDGPassHandle InEpiloguePassHandle);
+
+	void AddFirstEdge(const FRDGTextureRef Texture, FRDGPassHandle FirstPass);
+
+	void AddFirstEdge(const FRDGBufferRef Buffer, FRDGPassHandle FirstPass);
+
+	void AddAliasEdge(const FRDGTextureRef TextureBefore, FRDGPassHandle BeforePass, const FRDGTextureRef TextureAfter, FRDGPassHandle PassAfter);
+
+	void AddAliasEdge(const FRDGBufferRef BufferBefore, FRDGPassHandle BeforePass, const FRDGBufferRef BufferAfter, FRDGPassHandle PassAfter);
+
+	void AddTransitionEdge(FRDGSubresourceState StateBefore, FRDGSubresourceState StateAfter, const FRDGTextureRef Texture);
+
+	void AddTransitionEdge(FRDGSubresourceState StateBefore, FRDGSubresourceState StateAfter, const FRDGTextureRef Texture, uint32 MipIndex, uint32 ArraySlice, uint32 PlaneSlice);
+
+	void AddTransitionEdge(FRDGSubresourceState StateBefore, FRDGSubresourceState StateAfter, const FRDGBufferRef Buffer);
+
+	void End();
+
+private:
+	void AddLine(const FString& Line);
+	void AddBraceBegin();
+	void AddBraceEnd();
+
+	FString GetProducerName(FRDGPassHandle PassHandle);
+	FString GetConsumerName(FRDGPassHandle PassHandle);
+
+	FString GetNodeName(FRDGPassHandle Pass);
+	FString GetNodeName(const FRDGTexture* Texture);
+	FString GetNodeName(const FRDGBuffer* Buffer);
+
+	bool bOpen = false;
+
+	TSet<FRDGPassHandle> PassesReferenced;
+	TArray<const FRDGTexture*> Textures;
+	TArray<const FRDGBuffer*> Buffers;
+
+	const FRDGPassRegistry* Passes = nullptr;
+	FRDGPassBitArray PassesCulled;
+	FRDGPassHandle ProloguePassHandle;
+	FRDGPassHandle EpiloguePassHandle;
+
+	FString Indentation;
+	FString File;
+	FString GraphName;
 };
 
 #endif

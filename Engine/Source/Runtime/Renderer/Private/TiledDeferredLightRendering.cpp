@@ -138,7 +138,7 @@ public:
 		SetTextureParameter(RHICmdList, ShaderRHI, InTexture, InTextureValue.GetRenderTargetItem().ShaderResourceTexture);
 
 		FRHIUnorderedAccessView* OutUAV = OutTextureValue.GetRenderTargetItem().UAV;
-		RHICmdList.TransitionResources(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, &OutUAV, 1);
+		RHICmdList.Transition(FRHITransitionInfo(OutUAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
 		OutTexture.SetTexture(RHICmdList, ShaderRHI, 0, OutUAV);
 
 		SetShaderValue(RHICmdList, ShaderRHI, ViewDimensions, View.ViewRect);
@@ -263,7 +263,7 @@ public:
 		OutTexture.UnsetUAV(RHICmdList, RHICmdList.GetBoundComputeShader());
 
 		FRHIUnorderedAccessView* OutUAV = OutTextureValue.GetRenderTargetItem().UAV;
-		RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, &OutUAV, 1);
+		RHICmdList.Transition(FRHITransitionInfo(OutUAV, ERHIAccess::Unknown, ERHIAccess::SRVMask));
 	}
 
 	static const TCHAR* GetSourceFilename()
@@ -336,7 +336,14 @@ static void SetShaderTemplTiledLighting(
 }
 
 
-void FDeferredShadingSceneRenderer::RenderTiledDeferredLighting(FRHICommandListImmediate& RHICmdList, const TArray<FSortedLightSceneInfo, SceneRenderingAllocator>& SortedLights, int32 TiledDeferredLightsStart, int32 TiledDeferredLightsEnd, const FSimpleLightArray& SimpleLights)
+void FDeferredShadingSceneRenderer::RenderTiledDeferredLighting(
+	FRHICommandListImmediate& RHICmdList,
+	const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
+	const TArray<FSortedLightSceneInfo,
+	SceneRenderingAllocator>& SortedLights,
+	int32 TiledDeferredLightsStart,
+	int32 TiledDeferredLightsEnd,
+	const FSimpleLightArray& SimpleLights)
 {
 	const int32 NumUnshadowedLights = TiledDeferredLightsEnd - TiledDeferredLightsStart;
 
@@ -352,8 +359,6 @@ void FDeferredShadingSceneRenderer::RenderTiledDeferredLighting(FRHICommandListI
 		INC_DWORD_STAT_BY(STAT_NumLightsUsingTiledDeferred, NumLightsToRender);
 		INC_DWORD_STAT_BY(STAT_NumLightsUsingSimpleTiledDeferred, SimpleLights.InstanceData.Num());
 		SCOPE_CYCLE_COUNTER(STAT_DirectLightRenderingTime);
-
-		FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(SceneContext, FeatureLevel, ESceneTextureSetupMode::All, UniformBuffer_SingleFrame);
 
 		// Determine how many compute shader passes will be needed to process all the lights
 		const int32 NumPassesNeeded = FMath::DivideAndRoundUp(NumLightsToRender, GMaxNumTiledDeferredLights);
@@ -371,20 +376,20 @@ void FDeferredShadingSceneRenderer::RenderTiledDeferredLighting(FRHICommandListI
 				FPooledRenderTargetDesc Desc = SceneContext.GetSceneColor()->GetDesc();
 				Desc.TargetableFlags |= TexCreate_UAV;
 
-				GRenderTargetPool.FindFreeElement(RHICmdList, Desc, OutTexture, TEXT("SceneColorTiled") );
+				GRenderTargetPool.FindFreeElement(RHICmdList, Desc, OutTexture, TEXT("SceneColorTiled"));
 			}
 
 			{
 				SCOPED_DRAW_EVENT(RHICmdList, TiledDeferredLighting);
+
+				FUniformBufferStaticBindings GlobalUniformBuffers(SceneTexturesUniformBuffer);
+				SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
 
 				IPooledRenderTarget& InTexture = *SceneContext.GetSceneColor();
 
 				for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 				{
 					const FViewInfo& View = Views[ViewIndex];
-
-					FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
-					SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
 
 					if(View.Family->EngineShowFlags.VisualizeLightCulling)
 					{

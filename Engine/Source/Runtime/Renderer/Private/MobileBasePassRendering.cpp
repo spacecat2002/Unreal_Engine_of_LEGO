@@ -159,17 +159,20 @@ void SetupMobileBasePassUniformParameters(
 	const FScene* Scene = View.Family->Scene ? View.Family->Scene->GetRenderScene() : nullptr;
 	const FPlanarReflectionSceneProxy* ReflectionSceneProxy = Scene ? Scene->GetForwardPassGlobalPlanarReflection() : nullptr;
 	SetupPlanarReflectionUniformParameters(View, ReflectionSceneProxy, BasePassParameters.PlanarReflection);
+	BasePassParameters.UseCSM = bCanUseCSM ? 1 : 0;
+
+	EMobileSceneTextureSetupMode SetupMode = EMobileSceneTextureSetupMode::None;
+	if (bTranslucentPass)
+	{
+		SetupMode |= EMobileSceneTextureSetupMode::SceneColor;
+	}
+	if (View.bCustomDepthStencilValid)
+	{
+		SetupMode |= EMobileSceneTextureSetupMode::CustomDepth;
+	}
 
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-	SetupMobileSceneTextureUniformParameters(SceneContext, View.FeatureLevel, bTranslucentPass, View.bCustomDepthStencilValid, BasePassParameters.SceneTextures);
-	BasePassParameters.UseCSM = bCanUseCSM ? 1 : 0;
-	if (View.HasValidEyeAdaptation())
-	{
-		if (const FExposureBufferData* ExposureBufferData = View.GetEyeAdaptationBuffer())
-		{
-			BasePassParameters.SceneTextures.EyeAdaptationBuffer = ExposureBufferData->SRV;
-		}
-	}
+	SetupMobileSceneTextureUniformParameters(SceneContext, View, SetupMode, BasePassParameters.SceneTextures);
 
 	BasePassParameters.PreIntegratedGFTexture = GSystemTextures.PreintegratedGF->GetRenderTargetItem().ShaderResourceTexture;
 	BasePassParameters.PreIntegratedGFSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();

@@ -20,6 +20,7 @@
 #include "MetalShaderResources.h"
 #include "MetalLLM.h"
 #include "Engine/RendererSettings.h"
+#include "MetalTransitionData.h"
 
 DEFINE_LOG_CATEGORY(LogMetal)
 
@@ -400,6 +401,9 @@ FMetalDynamicRHI::FMetalDynamicRHI(ERHIFeatureLevel::Type RequestedFeatureLevel)
 			   GTexturePoolSize / 1024 / 1024,
 			   MemoryStats.TotalGraphicsMemory / 1024 / 1024);
 	}
+
+	GRHITransitionPrivateData_SizeInBytes = sizeof(FMetalTransitionData);
+	GRHITransitionPrivateData_AlignInBytes = alignof(FMetalTransitionData);
 
 	GRHISupportsRHIThread = false;
 	if (GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5)
@@ -906,8 +910,10 @@ uint64 FMetalDynamicRHI::RHIGetMinimumAlignmentForBufferBackedSRV(EPixelFormat F
 
 void FMetalDynamicRHI::Init()
 {
-	GRHICommandList.GetImmediateCommandList().SetContext(RHIGetDefaultContext());
-	GRHICommandList.GetImmediateAsyncComputeCommandList().SetComputeContext(RHIGetDefaultAsyncComputeContext());
+	// Command lists need the validation RHI context if enabled, so call the global scope version of RHIGetDefaultContext() and RHIGetDefaultAsyncComputeContext().
+	GRHICommandList.GetImmediateCommandList().SetContext(::RHIGetDefaultContext());
+	GRHICommandList.GetImmediateAsyncComputeCommandList().SetComputeContext(::RHIGetDefaultAsyncComputeContext());
+
 	FRenderResource::InitPreRHIResources();
 	GIsRHIInitialized = true;
 }

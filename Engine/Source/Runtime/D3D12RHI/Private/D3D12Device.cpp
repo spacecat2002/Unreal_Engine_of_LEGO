@@ -4,8 +4,6 @@
 D3D12Device.cpp: D3D device RHI implementation.
 =============================================================================*/
 #include "D3D12RHIPrivate.h"
-#include "RHIValidation.h"
-
 
 namespace D3D12RHI
 {
@@ -242,7 +240,7 @@ void FD3D12Device::SetupAfterDeviceCreation()
 
 	if(bUnderGPUCapture)
 	{
-		GetDynamicRHI<FD3D12DynamicRHI>()->EnableIdealGPUCaptureOptions(true);
+		GDynamicRHI->EnableIdealGPUCaptureOptions(true);
 	}
 #endif
 

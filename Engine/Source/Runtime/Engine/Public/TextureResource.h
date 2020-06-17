@@ -623,8 +623,7 @@ private:
 	FLinearColor ClearColor;
 	EPixelFormat Format;
 	int32 TargetSizeX,TargetSizeY;
-	/** cached params etc. for use with mip generator */
-	TSharedPtr<FGenerateMipsStruct> CachedMipsGenParams;
+	TRefCountPtr<IPooledRenderTarget> MipGenerationCache;
 };
 
 /**
