@@ -146,8 +146,8 @@ void FAudioThread::SuspendAudioThread()
 		AudioFence.BeginFence();
 		AudioFence.Wait();
 
-		CachedAudioThreadId = GAudioThreadId;
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
+		CachedAudioThreadId = GAudioThreadId;
 		GAudioThreadId = 0; // While we are suspended we will pretend we have no audio thread
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		bIsAudioThreadSuspended = true;
@@ -164,8 +164,8 @@ void FAudioThread::ResumeAudioThread()
 	{
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		GAudioThreadId = CachedAudioThreadId;
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		CachedAudioThreadId = 0;
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		bIsAudioThreadSuspended = false;
 		FPlatformMisc::MemoryBarrier();
 		bIsAudioThreadRunning = true;
