@@ -1921,6 +1921,10 @@ private: // below here we assume CachedFilesScopeLock until we get to the next s
 			// CachedFilesScopeLock is locked
 			for (uint16 RealPakIndex = StartPakIndex; RealPakIndex < EndPakIndex; RealPakIndex++)
 			{
+				if (!CachedPakData[RealPakIndex].Handle)
+				{
+					continue;
+				}
 				int32 CacheIndex = CachedPakData[RealPakIndex].ActualPakFile->GetCacheIndex();
 				int32 NumToKeep = bDiscardAll ? 0 : GPakCache_NumUnreferencedBlocksToCache;
 				int32 NumToRemove = FMath::Max<int32>(0, OffsetAndPakIndexOfSavedBlocked[CacheIndex].Num() - NumToKeep);
@@ -5659,7 +5663,7 @@ struct FPakFile::FIndexSettings
 {
 	FIndexSettings()
 	{
-		bKeepFullDirectory = false;
+		bKeepFullDirectory = true;
 		bValidatePruning = false;
 		bDelayPruning = false;
 		bWritePathHashIndex = true;
@@ -5677,7 +5681,12 @@ struct FPakFile::FIndexSettings
 		GConfig->GetBool(TEXT("Pak"), TEXT("WriteFullDirectoryIndex"), bWriteFullDirectoryIndex, GEngineIni);
 #endif
 
-		bKeepFullDirectory = bKeepFullDirectory || IS_PROGRAM || !FPlatformProperties::RequiresCookedData();
+#if IS_PROGRAM || WITH_EDITOR
+		// Directory pruning is not enabled in the editor or in development programs because there is no need to save the memory in those environments and some development features require not pruning
+		bKeepFullDirectory = true;
+#else
+		bKeepFullDirectory = bKeepFullDirectory || !FPlatformProperties::RequiresCookedData();
+#endif
 #if !UE_BUILD_SHIPPING
 		const TCHAR* CommandLine = FCommandLine::Get();
 		FParse::Bool(CommandLine, TEXT("ForcePakKeepFullDirectory="), bKeepFullDirectory);
@@ -6899,6 +6908,20 @@ int32 GetRecursiveAllocatedSize(const FPakFile::FDirectoryIndex& Index)
 
 void FPakPlatformFile::OptimizeMemoryUsageForMountedPaks()
 {
+#if !UE_BUILD_SHIPPING
+	// UE_DEPRECATED(4.26, "UnloadPakEntryFilenamesIfPossible is deprecated.")
+	bool bUnloadPakEntryFilenamesIfPossible = false;
+	GConfig->GetBool(TEXT("Pak"), TEXT("UnloadPakEntryFilenamesIfPossible"), bUnloadPakEntryFilenamesIfPossible, GEngineIni);
+	if (bUnloadPakEntryFilenamesIfPossible)
+	{
+		UE_LOG(LogPakFile, Warning, TEXT("The UnloadPakEntryFilenamesIfPossible has been deprecated and is no longer sufficient to specify the unloading of pak files.\n")
+			TEXT("The choice to not load pak files is now made earlier than Ini settings are available.\n")
+			TEXT("To specify that filenames should be removed from the runtime PakFileIndex, use the new runtime delegate FPakPlatformFile::GetPakSetIndexSettingsDelegate().\n")
+			TEXT("In a global variable constructor that executes before the process main function, bind this delegate to a function that sets the output bool bKeepFullDirectory to false.\n")
+			TEXT("See FShooterPreMainCallbacks in Samples\\Games\\ShooterGame\\Source\\ShooterGame\\Private\\ShooterGameModule.cpp for an example binding."));
+	}
+#endif
+
 #if ENABLE_PAKFILE_RUNTIME_PRUNING || !UE_BUILD_SHIPPING
 	TArray<FPakListEntry> Paks;
 	bool bNeedsPaks = false;
