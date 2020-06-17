@@ -95,6 +95,35 @@ struct FStopPlayingMontageTokenProducer : IMovieScenePreAnimatedTokenProducer
 		return FToken(TempInstance, TempMontageInstanceId);
 	}
 };
+#if WITH_EDITOR
+struct FChildComponentEditorParams
+{
+	void SaveState(USkeletalMeshComponent* InSkelMeshComp)
+	{
+		if (InSkelMeshComp)
+		{
+			ChildSkelMesh = InSkelMeshComp;
+			bUpdateAnimationInEditor = InSkelMeshComp->GetUpdateAnimationInEditor();
+			bUpdateClothInEditor = InSkelMeshComp->GetUpdateClothInEditor();
+			//parent actually does this in bindskelmeshcomponent
+			InSkelMeshComp->SetUpdateAnimationInEditor(true);
+			InSkelMeshComp->SetUpdateClothInEditor(true);
+		}
+	}
+
+	void RestoreState()
+	{
+		if (ChildSkelMesh.IsValid())
+		{
+			ChildSkelMesh->SetUpdateAnimationInEditor(bUpdateAnimationInEditor);
+			ChildSkelMesh->SetUpdateClothInEditor(bUpdateClothInEditor);
+		}
+	}
+	bool bUpdateAnimationInEditor;
+	bool bUpdateClothInEditor;
+	TWeakObjectPtr<USkeletalMeshComponent> ChildSkelMesh;
+};
+#endif
 
 struct FPreAnimatedAnimationTokenProducer : IMovieScenePreAnimatedTokenProducer
 {
@@ -110,8 +139,21 @@ struct FPreAnimatedAnimationTokenProducer : IMovieScenePreAnimatedTokenProducer
 				CachedAnimInstance.Reset(InComponent->AnimScriptInstance);
 
 #if WITH_EDITOR
+				ChildCompEditorParams.SetNum(0);
 				bUpdateAnimationInEditor = InComponent->GetUpdateAnimationInEditor();
 				bUpdateClothInEditor = InComponent->GetUpdateClothInEditor();
+				TArray<USceneComponent*> ChildComponents;
+				InComponent->GetChildrenComponents(true, ChildComponents);
+				for (USceneComponent* ChildComponent : ChildComponents)
+				{
+					USkeletalMeshComponent* SkelMeshComp = Cast<USkeletalMeshComponent>(ChildComponent);
+					if (SkelMeshComp)
+					{
+						FChildComponentEditorParams Params;
+						Params.SaveState(SkelMeshComp);
+						ChildCompEditorParams.Add(Params);
+					}
+				}
 #endif
 			}
 
@@ -164,6 +206,11 @@ struct FPreAnimatedAnimationTokenProducer : IMovieScenePreAnimatedTokenProducer
 #if WITH_EDITOR
 				Component->SetUpdateAnimationInEditor(bUpdateAnimationInEditor);
 				Component->SetUpdateClothInEditor(bUpdateClothInEditor);
+
+				for (FChildComponentEditorParams& ChildParams : ChildCompEditorParams)
+				{
+					ChildParams.RestoreState();
+				}
 #endif
 				// if not game world, don't clean this up
 				if (Component->GetWorld() != nullptr && Component->GetWorld()->IsGameWorld() == false)
@@ -179,6 +226,7 @@ struct FPreAnimatedAnimationTokenProducer : IMovieScenePreAnimatedTokenProducer
 #if WITH_EDITOR
 			bool bUpdateAnimationInEditor;
 			bool bUpdateClothInEditor;
+			TArray<FChildComponentEditorParams> ChildCompEditorParams;
 #endif
 		};
 

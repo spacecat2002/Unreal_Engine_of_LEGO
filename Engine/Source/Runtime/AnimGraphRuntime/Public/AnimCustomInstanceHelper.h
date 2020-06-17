@@ -47,6 +47,7 @@ public:
 		InSkeletalMeshComponent->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 #if WITH_EDITOR
 		InSkeletalMeshComponent->SetUpdateAnimationInEditor(true);
+		InSkeletalMeshComponent->SetUpdateClothInEditor(true);
 #endif
 
 		// we use sequence instance if it's using anim blueprint that matches. Otherwise, we create sequence player
@@ -175,6 +176,7 @@ public:
 	{
 #if WITH_EDITOR
 		InSkeletalMeshComponent->SetUpdateAnimationInEditor(false);
+		InSkeletalMeshComponent->SetUpdateClothInEditor(false);
 #endif
 
 		if (InSkeletalMeshComponent->GetAnimationMode() == EAnimationMode::Type::AnimationCustomMode)
