@@ -285,14 +285,6 @@ static TAutoConsoleVariable<int32> CVarD3DForceShaderConductorDXCRewrite(
 	TEXT(" 1: Force ShaderConductor rewrite"),
 	ECVF_ReadOnly);
 
-static TAutoConsoleVariable<int32> CVarMetalForceDXC(
-	TEXT("r.Metal.ForceDXC"),
-	(PLATFORM_WINDOWS || PLATFORM_MAC || PLATFORM_IOS),
-	TEXT("Forces DirectX Shader Compiler (DXC) to be used for all Metal shaders instead of hlslcc.\n")
-	TEXT(" 0: Disable\n")
-	TEXT(" 1: Use new compiler for all shaders (default)"),
-	ECVF_ReadOnly);
-
 static TAutoConsoleVariable<int32> CVarOpenGLForceDXC(
 	TEXT("r.OpenGL.ForceDXC"),
 	0,
@@ -3760,11 +3752,6 @@ void GlobalBeginCompileShader(
 			{
 				Input.Environment.CompilerFlags.Add(CFLAG_NoFastMath);
 			}
-		}
-
-		if (CVarMetalForceDXC.GetValueOnAnyThread() != 0)
-		{
-			Input.Environment.CompilerFlags.Add(CFLAG_ForceDXC);
 		}
 	}
 
