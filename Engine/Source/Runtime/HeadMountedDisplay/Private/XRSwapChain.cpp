@@ -27,9 +27,9 @@ bool InRHIOrValidThread()
 {
 	if (GRenderingThread && !GIsRenderingThreadSuspended.Load(EMemoryOrder::Relaxed))
 	{
-		if (GRHIThreadId)
+		if (IsRHIThreadRunning())
 		{
-			if (FPlatformTLS::GetCurrentThreadId() == GRHIThreadId)
+			if (IsInRHIThread())
 			{
 				return true;
 			}

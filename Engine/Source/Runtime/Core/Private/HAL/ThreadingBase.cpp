@@ -90,9 +90,18 @@ CORE_API bool IsInParallelRenderingThread()
 CORE_API uint32 GRHIThreadId = 0;
 CORE_API FRunnableThread* GRHIThread_InternalUseOnly = nullptr;
 
+CORE_API bool IsRHIThreadRunning()
+{
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	return GRHIThreadId != 0;
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
+}
+
 CORE_API bool IsInRHIThread()
 {
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return GRHIThreadId && FPlatformTLS::GetCurrentThreadId() == GRHIThreadId;
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 // Fake threads

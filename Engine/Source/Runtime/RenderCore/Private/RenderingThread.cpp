@@ -720,7 +720,7 @@ void StartRenderingThread()
 	static uint32 ThreadCount = 0;
 	check(!GIsThreadedRendering && GUseThreadedRendering);
 
-	check(!GRHIThread_InternalUseOnly && !GIsRunningRHIInSeparateThread_InternalUseOnly && !GIsRunningRHIInDedicatedThread_InternalUseOnly && !GIsRunningRHIInTaskThread_InternalUseOnly);
+	check(!IsRHIThreadRunning() && !GIsRunningRHIInSeparateThread_InternalUseOnly && !GIsRunningRHIInDedicatedThread_InternalUseOnly && !GIsRunningRHIInTaskThread_InternalUseOnly);
 
 	// Pause asset streaming to prevent rendercommands from being enqueued.
 	SuspendTextureStreamingRenderTasks();
@@ -742,11 +742,12 @@ void StartRenderingThread()
 		FGraphEventRef CompletionEvent = TGraphTask<FOwnershipOfRHIThreadTask>::CreateTask(NULL, ENamedThreads::GameThread).ConstructAndDispatchWhenReady(true, GET_STATID(STAT_WaitForRHIThread));
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_StartRenderingThread);
 		FTaskGraphInterface::Get().WaitUntilTaskCompletes(CompletionEvent, ENamedThreads::GameThread_Local);
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		GRHIThread_InternalUseOnly = FRHIThread::Get().Thread;
-		check(GRHIThread_InternalUseOnly);
+		GRHIThreadId = GRHIThread_InternalUseOnly->GetThreadID();
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		GIsRunningRHIInDedicatedThread_InternalUseOnly = true;
 		GIsRunningRHIInSeparateThread_InternalUseOnly = true;
-		GRHIThreadId = GRHIThread_InternalUseOnly->GetThreadID();
 		GRHICommandList.LatchBypass();
 	}
 	else if (GUseRHITaskThreads_InternalUseOnly)
@@ -825,14 +826,16 @@ void StopRenderingThread()
 		// The rendering thread may have already been stopped during the call to GFlushStreamingFunc or FlushRenderingCommands.
 		if ( GIsThreadedRendering )
 		{
-			if (GRHIThread_InternalUseOnly)
+			if (IsRHIThreadRunning())
 			{
 				DECLARE_CYCLE_STAT(TEXT("Wait For RHIThread Finish"), STAT_WaitForRHIThreadFinish, STATGROUP_TaskGraphTasks);
 				FGraphEventRef ReleaseTask = TGraphTask<FOwnershipOfRHIThreadTask>::CreateTask(NULL, ENamedThreads::GameThread).ConstructAndDispatchWhenReady(false, GET_STATID(STAT_WaitForRHIThreadFinish));
 				QUICK_SCOPE_CYCLE_COUNTER(STAT_StopRenderingThread_RHIThread);
 				FTaskGraphInterface::Get().WaitUntilTaskCompletes(ReleaseTask, ENamedThreads::GameThread_Local);
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 				GRHIThread_InternalUseOnly = nullptr;
 				GRHIThreadId = 0;
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 			}
 
 			GIsRunningRHIInSeparateThread_InternalUseOnly = false;
@@ -885,7 +888,7 @@ void StopRenderingThread()
 		ResumeTextureStreamingRenderTasks();
 	}
 
-	check(!GRHIThread_InternalUseOnly);
+	check(!IsRHIThreadRunning());
 }
 
 void CheckRenderingThreadHealth()
@@ -1032,7 +1035,7 @@ void FRenderCommandFence::BeginFence(bool bSyncToRHIAndGPU)
 
 		if (bSyncToRHIAndGPU)
 		{
-			if (GRHIThread_InternalUseOnly)
+			if (IsRHIThreadRunning())
 			{
 				// Change trigger thread to RHI
 				TriggerThreadIndex = ENamedThreads::RHIThread;
@@ -1045,7 +1048,7 @@ void FRenderCommandFence::BeginFence(bool bSyncToRHIAndGPU)
 			ENQUEUE_RENDER_COMMAND(FSyncFrameCommand)(
 				[InCompletionEvent, GTSyncType](FRHICommandListImmediate& RHICmdList)
 				{
-					if (GRHIThread_InternalUseOnly)
+					if (IsRHIThreadRunning())
 					{
 						ALLOC_COMMAND_CL(RHICmdList, FRHISyncFrameCommand)(InCompletionEvent, GTSyncType);
 						RHICmdList.ImmediateFlush(EImmediateFlushType::DispatchToRHIThread);
