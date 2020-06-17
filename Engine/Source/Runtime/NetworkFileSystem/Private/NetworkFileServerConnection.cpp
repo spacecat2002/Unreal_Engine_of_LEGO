@@ -798,8 +798,23 @@ static void AddDirectoriesToIgnore(const FString& RootDir, TArray<FString>& OutD
 	OutDirectoriesToNotRecurse.Add(FString(RootDir / TEXT("DerivedDataCache")));
 }
 
-static void ScanExtensionRootDirectory(FSandboxPlatformFile* Sandbox, const FString& RootDir, TMap<FString, FDateTime>& OutFileTimes)
+static void ScanExtensionRootDirectory(FSandboxPlatformFile* Sandbox, const FString& RootDir, const TArray<FString>& RootDirectories, TMap<FString, FDateTime>& OutFileTimes)
 {
+	// Ensure that the path from the extension root to any containing root directory is in the FileTimes map
+	for (int32 DirIndex = 0; DirIndex < RootDirectories.Num(); DirIndex++)
+	{
+		if (FPaths::IsUnderDirectory(RootDir, RootDirectories[DirIndex]))
+		{
+			FString PathUpwardSegment = RootDir;
+			do 
+			{
+				OutFileTimes.Add(PathUpwardSegment, 0);
+				PathUpwardSegment = FPaths::GetPath(PathUpwardSegment);
+			} while (FPaths::IsUnderDirectory(PathUpwardSegment, RootDirectories[DirIndex]));
+			break;
+		}
+	}
+
 	TArray<FString> ExtensionDirectoriesToSkip;
 	TArray<FString> ExtensionDirectoriesToNotRecurse;
 	AddDirectoriesToIgnore(RootDir, ExtensionDirectoriesToSkip, ExtensionDirectoriesToNotRecurse);
@@ -1047,7 +1062,7 @@ bool FNetworkFileServerClientConnection::ProcessGetFileList( FArchive& In, FArch
 	TArray<TSharedRef<IPlugin>> AllPlugins = IPluginManager::Get().GetDiscoveredPlugins();
 	for (TSharedRef<IPlugin> Plugin : AllPlugins)
 	{
-		ScanExtensionRootDirectory(Sandbox.Get(), Plugin->GetBaseDir(), Visitor.FileTimes);
+		ScanExtensionRootDirectory(Sandbox.Get(), Plugin->GetBaseDir(), RootDirectories, Visitor.FileTimes);
 	}
 
 	// Traverse platform extension directories
@@ -1057,8 +1072,8 @@ bool FNetworkFileServerClientConnection::ProcessGetFileList( FArchive& In, FArch
 	ConvertClientFilenameToServerFilename(ServerProjectPlatformExtensionsRelativePath);
 	for (const FString& TargetPlatform : TargetPlatformNames)
 	{
-		ScanExtensionRootDirectory(Sandbox.Get(), ServerEnginePlatformExtensionsRelativePath / TargetPlatform, Visitor.FileTimes);
-		ScanExtensionRootDirectory(Sandbox.Get(), ServerProjectPlatformExtensionsRelativePath / TargetPlatform, Visitor.FileTimes);
+		ScanExtensionRootDirectory(Sandbox.Get(), ServerEnginePlatformExtensionsRelativePath / TargetPlatform, RootDirectories, Visitor.FileTimes);
+		ScanExtensionRootDirectory(Sandbox.Get(), ServerProjectPlatformExtensionsRelativePath / TargetPlatform, RootDirectories, Visitor.FileTimes);
 	}
 
 	UE_LOG(LogFileServer, Display, TEXT("Scanned server files, found %d files in %.2f seconds"), Visitor.FileTimes.Num(), FPlatformTime::Seconds() - FileScanStartTime);
