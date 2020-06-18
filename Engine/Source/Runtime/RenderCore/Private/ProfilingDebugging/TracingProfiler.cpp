@@ -152,6 +152,8 @@ void FTracingProfiler::BeginFrameRT()
 	}
 
 	bCapturingRT = bCapturing;
+
+	RenderThreadId = FPlatformTLS::GetCurrentThreadId();
 }
 
 void FTracingProfiler::EndFrameRT()
@@ -166,7 +168,7 @@ void FTracingProfiler::EndFrameRT()
 	AddCPUEvent(NAME_RenderThread,
 		RenderThreadFrameBeginCycle,
 		RenderThreadFrameEndCycle,
-		GRenderThreadId,
+		RenderThreadId,
 		GFrameNumberRenderThread);
 }
 
@@ -280,7 +282,7 @@ void FTracingProfiler::WriteCaptureToFile()
 		R"({"pid":%d, "tid":%d, "ph": "M", "name": "thread_name", "args":{"name":"Render thread"}},)"
 		R"({"pid":%d, "tid":%d, "ph": "M", "name": "thread_sort_index", "args":{"sort_index": %d}},)"
 		"\n",
-		Pid, GRenderThreadId, Pid, GRenderThreadId, SortIndex);
+		Pid, RenderThreadId, Pid, RenderThreadId, SortIndex);
 	WriteString(StringBuffer);
 	SortIndex++;
 
