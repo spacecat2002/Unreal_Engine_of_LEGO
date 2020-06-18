@@ -9,7 +9,7 @@
 #include "Net/UnrealNetwork.h"
 #include "MRMeshComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
-
+#include "UObject/UObjectIterator.h"
 #include "Engine/Engine.h"
 
 

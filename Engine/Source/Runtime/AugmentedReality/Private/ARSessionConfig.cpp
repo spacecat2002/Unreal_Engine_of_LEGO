@@ -6,6 +6,7 @@
 #include "Containers/StringConv.h"
 #include "Misc/CoreMisc.h"
 #include "ARSessionConfigCookSupport.h"
+#include "Materials/MaterialInterface.h"
 
 UARSessionConfig::UARSessionConfig()
 	: bTrackSceneObjects(true)
