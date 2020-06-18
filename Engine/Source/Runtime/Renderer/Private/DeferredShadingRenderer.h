@@ -292,13 +292,14 @@ private:
 	void AddClusteredDeferredShadingPass(
 		FRDGBuilder& GraphBuilder,
 		FRDGTextureRef SceneColorTexture,
-		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesDepth,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		const FSortedLightSetSceneInfo& SortedLightsSet);
 
 	/** Renders the lights in SortedLights in the range [TiledDeferredLightsStart, TiledDeferredLightsEnd) using tiled deferred shading. */
-	void RenderTiledDeferredLighting(
-		FRHICommandListImmediate& RHICmdList,
-		const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
+	FRDGTextureMSAA RenderTiledDeferredLighting(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureMSAA InSceneColorTexture,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		const TArray<FSortedLightSceneInfo, SceneRenderingAllocator>& SortedLights,
 		int32 TiledDeferredLightsStart,
 		int32 TiledDeferredLightsEnd,
@@ -492,8 +493,10 @@ private:
 
 	/** Renders an array of simple lights using standard deferred shading. */
 	void RenderSimpleLightsStandardDeferred(
-		FRHICommandListImmediate& RHICmdList,
-		const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SceneColorTexture,
+		FRDGTextureRef SceneDepthTexture,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		const FSimpleLightArray& SimpleLights);
 
 	/** Clears the translucency lighting volumes before light accumulation. */

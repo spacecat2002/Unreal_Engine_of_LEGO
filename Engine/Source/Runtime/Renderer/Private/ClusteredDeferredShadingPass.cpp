@@ -101,7 +101,7 @@ IMPLEMENT_GLOBAL_SHADER(FClusteredShadingPS, "/Engine/Private/ClusteredDeferredS
 void FDeferredShadingSceneRenderer::AddClusteredDeferredShadingPass(
 	FRDGBuilder& GraphBuilder,
 	FRDGTextureRef SceneColorTexture,
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesDepth,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	const FSortedLightSetSceneInfo &SortedLightsSet)
 {
 	check(GUseClusteredDeferredShading);
@@ -123,7 +123,7 @@ void FDeferredShadingSceneRenderer::AddClusteredDeferredShadingPass(
 
 			PassParameters->View = View.ViewUniformBuffer;
 			PassParameters->Forward = View.ForwardLightingResources->ForwardLightDataUniformBuffer;
-			PassParameters->SceneTextures = SceneTexturesDepth;
+			PassParameters->SceneTextures = SceneTexturesUniformBuffer;
 
 			PassParameters->LTCMatTexture = GraphBuilder.RegisterExternalTexture(GSystemTextures.LTCMat);
 			PassParameters->LTCMatSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();

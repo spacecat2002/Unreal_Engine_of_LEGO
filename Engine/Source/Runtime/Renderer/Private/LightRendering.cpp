@@ -1103,7 +1103,7 @@ static FHairStrandsOcclusionResources GetHairStrandsResources(int32 ViewIndex, F
 /** Renders the scene's lighting. */
 void FDeferredShadingSceneRenderer::RenderLights(
 	FRHICommandListImmediate& RHICmdList,
-	const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
+	const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBufferRHI,
 	FSortedLightSetSceneInfo &SortedLightSet,
 	const FHairStrandsDatas* HairDatas)
 {
@@ -1161,7 +1161,14 @@ void FDeferredShadingSceneRenderer::RenderLights(
 				StandardDeferredStart = SortedLightSet.ClusteredSupportedEnd;
 				// Tell the trad. deferred that the simple lights are spoken for.
 				bRenderSimpleLightsStandardDeferred = false;
-				AddClusteredDeferredShadingPass(RHICmdList, SortedLightSet);
+
+				FRDGBuilder GraphBuilder(RHICmdList);
+				FRDGTextureRef SceneColorTexture = GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor(), ERenderTargetTexture::Targetable);
+				TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer = CreateSceneTextureUniformBuffer(GraphBuilder, Views[0], ESceneTextureSetupMode::All);
+
+				AddClusteredDeferredShadingPass(GraphBuilder, SceneColorTexture, SceneTexturesUniformBuffer, SortedLightSet);
+
+				GraphBuilder.Execute();
 			}
 			else if (CanUseTiledDeferred())
 			{
@@ -1181,15 +1188,27 @@ void FDeferredShadingSceneRenderer::RenderLights(
 					// Update the range that needs to be processed by standard deferred to exclude the lights done with tiled
 					StandardDeferredStart = SortedLightSet.TiledSupportedEnd;
 					bRenderSimpleLightsStandardDeferred = false;
-					RenderTiledDeferredLighting(RHICmdList, SceneTexturesUniformBuffer, SortedLights, SortedLightSet.SimpleLightsEnd, SortedLightSet.TiledSupportedEnd, SimpleLights);
+
+					FRDGBuilder GraphBuilder(RHICmdList);
+					FRDGTextureMSAA SceneColorTexture = RegisterExternalTextureMSAA(GraphBuilder, SceneContext.GetSceneColor());
+					TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer = CreateSceneTextureUniformBuffer(GraphBuilder, Views[0], ESceneTextureSetupMode::All);
+
+					RenderTiledDeferredLighting(GraphBuilder, SceneColorTexture, SceneTexturesUniformBuffer, SortedLights, SortedLightSet.SimpleLightsEnd, SortedLightSet.TiledSupportedEnd, SimpleLights);
+
+					GraphBuilder.Execute();
 				}
 			}
 
 			if (bRenderSimpleLightsStandardDeferred)
 			{
-				SceneContext.BeginRenderingSceneColor(RHICmdList, ESimpleRenderTargetMode::EExistingColorAndDepth, FExclusiveDepthStencil::DepthRead_StencilWrite);
-				RenderSimpleLightsStandardDeferred(RHICmdList, SceneTexturesUniformBuffer, SortedLightSet.SimpleLights);
-				SceneContext.FinishRenderingSceneColor(RHICmdList);
+				FRDGBuilder GraphBuilder(RHICmdList);
+				FRDGTextureRef SceneColorTexture = GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor(), ERenderTargetTexture::Targetable);
+				FRDGTextureRef SceneDepthTexture = GraphBuilder.RegisterExternalTexture(SceneContext.SceneDepthZ, ERenderTargetTexture::Targetable);
+				TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer = CreateSceneTextureUniformBuffer(GraphBuilder, Views[0], ESceneTextureSetupMode::All);
+
+				RenderSimpleLightsStandardDeferred(GraphBuilder, SceneColorTexture, SceneDepthTexture, SceneTexturesUniformBuffer, SortedLightSet.SimpleLights);
+
+				GraphBuilder.Execute();
 			}
 
 			if (!bUseHairLighting)
@@ -1206,7 +1225,7 @@ void FDeferredShadingSceneRenderer::RenderLights(
 					const FLightSceneInfo* const LightSceneInfo = SortedLightInfo.LightSceneInfo;
 
 					// Render the light to the scene color buffer, using a 1x1 white texture as input
-					RenderLight(RHICmdList, SceneTexturesUniformBuffer, LightSceneInfo, nullptr, nullptr, false, false);
+					RenderLight(RHICmdList, SceneTexturesUniformBufferRHI, LightSceneInfo, nullptr, nullptr, false, false);
 				}
 
 				SceneContext.FinishRenderingSceneColor(RHICmdList);
@@ -1231,7 +1250,7 @@ void FDeferredShadingSceneRenderer::RenderLights(
 
 					// Render the light to the scene color buffer, using a 1x1 white texture as input
 					SceneContext.BeginRenderingSceneColor(RHICmdList, ESimpleRenderTargetMode::EExistingColorAndDepth, FExclusiveDepthStencil::DepthRead_StencilWrite, true);
-					RenderLight(RHICmdList, SceneTexturesUniformBuffer, LightSceneInfo, nullptr, InHairVisibilityViews, false, false);
+					RenderLight(RHICmdList, SceneTexturesUniformBufferRHI, LightSceneInfo, nullptr, InHairVisibilityViews, false, false);
 					SceneContext.FinishRenderingSceneColor(RHICmdList);
 				}
 
@@ -1862,7 +1881,7 @@ void FDeferredShadingSceneRenderer::RenderLights(
 							ClearShadowMask(ScreenShadowMaskSubPixelTexture);
 						}
 
-						RenderShadowProjections(RHICmdList, SceneTexturesUniformBuffer, &LightSceneInfo, ScreenShadowMaskTexture, ScreenShadowMaskSubPixelTexture, HairDatas, bInjectedTranslucentVolume);
+						RenderShadowProjections(RHICmdList, SceneTexturesUniformBufferRHI, &LightSceneInfo, ScreenShadowMaskTexture, ScreenShadowMaskSubPixelTexture, HairDatas, bInjectedTranslucentVolume);
 					}
 
 					bUsedShadowMaskTexture = true;
@@ -1879,13 +1898,13 @@ void FDeferredShadingSceneRenderer::RenderLights(
 				{
 					if (bDrawLightFunction)
 					{
-						const bool bLightFunctionRendered = RenderLightFunction(RHICmdList, SceneTexturesUniformBuffer, &LightSceneInfo, ScreenShadowMaskTexture, bDrawShadows, false);
+						const bool bLightFunctionRendered = RenderLightFunction(RHICmdList, SceneTexturesUniformBufferRHI, &LightSceneInfo, ScreenShadowMaskTexture, bDrawShadows, false);
 						bUsedShadowMaskTexture |= bLightFunctionRendered;
 					}
 
 					if (bDrawPreviewIndicator)
 					{
-						RenderPreviewShadowsIndicator(RHICmdList, SceneTexturesUniformBuffer, &LightSceneInfo, ScreenShadowMaskTexture, bUsedShadowMaskTexture);
+						RenderPreviewShadowsIndicator(RHICmdList, SceneTexturesUniformBufferRHI, &LightSceneInfo, ScreenShadowMaskTexture, bUsedShadowMaskTexture);
 					}
 
 					if (!bDrawShadows)
@@ -1969,14 +1988,14 @@ void FDeferredShadingSceneRenderer::RenderLights(
 					// Render the light to the scene color buffer, conditionally using the attenuation buffer or a 1x1 white texture as input 
 					if (bDirectLighting)
 					{
-						RenderLight(RHICmdList, SceneTexturesUniformBuffer, &LightSceneInfo, LightShadowMaskTexture, InHairVisibilityViews, false, true);
+						RenderLight(RHICmdList, SceneTexturesUniformBufferRHI, &LightSceneInfo, LightShadowMaskTexture, InHairVisibilityViews, false, true);
 					}
 
 					SceneContext.FinishRenderingSceneColor(RHICmdList);
 
 					if (bUseHairLighting)
 					{
-						RenderLightForHair(RHICmdList, SceneTexturesUniformBuffer, &LightSceneInfo, LightShadowMaskSubPixelTexture, &TransmittanceMaskData, InHairVisibilityViews);
+						RenderLightForHair(RHICmdList, SceneTexturesUniformBufferRHI, &LightSceneInfo, LightShadowMaskSubPixelTexture, &TransmittanceMaskData, InHairVisibilityViews);
 					}
 				}
 			}
@@ -2490,60 +2509,75 @@ void FDeferredShadingSceneRenderer::RenderLightsForHair(
 	}
 }
 
+BEGIN_SHADER_PARAMETER_STRUCT(FSimpleLightsStandardDeferredParameters, )
+	SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FSceneTextureUniformParameters, SceneTextures)
+	RENDER_TARGET_BINDING_SLOTS()
+END_SHADER_PARAMETER_STRUCT()
+
 void FDeferredShadingSceneRenderer::RenderSimpleLightsStandardDeferred(
-	FRHICommandListImmediate& RHICmdList,
-	const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
+	FRDGBuilder& GraphBuilder,
+	FRDGTextureRef SceneColorTexture,
+	FRDGTextureRef SceneDepthTexture,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	const FSimpleLightArray& SimpleLights)
 {
 	SCOPE_CYCLE_COUNTER(STAT_DirectLightRenderingTime);
 	INC_DWORD_STAT_BY(STAT_NumLightsUsingStandardDeferred, SimpleLights.InstanceData.Num());
-	SCOPED_DRAW_EVENT(RHICmdList, StandardDeferredSimpleLights);
 
-	FGraphicsPipelineStateInitializer GraphicsPSOInit;
-	RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+	FSimpleLightsStandardDeferredParameters* PassParameters = GraphBuilder.AllocParameters<FSimpleLightsStandardDeferredParameters>();
+	PassParameters->SceneTextures = SceneTexturesUniformBuffer;
+	PassParameters->RenderTargets[0] = FRenderTargetBinding(SceneColorTexture, ERenderTargetLoadAction::ELoad);
+	PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(SceneDepthTexture, ERenderTargetLoadAction::ELoad, ERenderTargetLoadAction::ELoad, FExclusiveDepthStencil::DepthRead_StencilWrite);
 
-	// Use additive blending for color
-	GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_One, BF_One>::GetRHI();
-	GraphicsPSOInit.PrimitiveType = PT_TriangleList;
-
-	const int32 NumViews = Views.Num();
-	for (int32 LightIndex = 0; LightIndex < SimpleLights.InstanceData.Num(); LightIndex++)
+	GraphBuilder.AddPass(
+		RDG_EVENT_NAME("StandardDeferredSimpleLights"),
+		PassParameters,
+		ERDGPassFlags::Raster,
+		[this, &SimpleLights](FRHICommandList& RHICmdList)
 	{
-		const FSimpleLightEntry& SimpleLight = SimpleLights.InstanceData[LightIndex];
+		FGraphicsPipelineStateInitializer GraphicsPSOInit;
+		RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
 
-		for (int32 ViewIndex = 0; ViewIndex < NumViews; ViewIndex++)
+		// Use additive blending for color
+		GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_One, BF_One>::GetRHI();
+		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
+
+		const int32 NumViews = Views.Num();
+		for (int32 LightIndex = 0; LightIndex < SimpleLights.InstanceData.Num(); LightIndex++)
 		{
-			const FSimpleLightPerViewEntry& SimpleLightPerViewData = SimpleLights.GetViewDependentData(LightIndex, ViewIndex, NumViews);
-			const FSphere LightBounds(SimpleLightPerViewData.Position, SimpleLight.Radius);
+			const FSimpleLightEntry& SimpleLight = SimpleLights.InstanceData[LightIndex];
 
-			FViewInfo& View = Views[ViewIndex];
-
-			FUniformBufferStaticBindings GlobalUniformBuffers(SceneTexturesUniformBuffer);
-			SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
-
-			// Set the device viewport for the view.
-			RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
-
-			TShaderMapRef<TDeferredLightVS<true> > VertexShader(View.ShaderMap);
-
-			SetBoundingGeometryRasterizerAndDepthState(GraphicsPSOInit, View, LightBounds);
-
-			if (SimpleLight.Exponent == 0)
+			for (int32 ViewIndex = 0; ViewIndex < NumViews; ViewIndex++)
 			{
-				// inverse squared
-				SetShaderTemplLightingSimple<false, true, true>(RHICmdList, GraphicsPSOInit, View, VertexShader, SimpleLight, SimpleLightPerViewData);
-			}
-			else
-			{
-				// light's exponent, not inverse squared
-				SetShaderTemplLightingSimple<false, true, false>(RHICmdList, GraphicsPSOInit, View, VertexShader, SimpleLight, SimpleLightPerViewData);
-			}
+				const FSimpleLightPerViewEntry& SimpleLightPerViewData = SimpleLights.GetViewDependentData(LightIndex, ViewIndex, NumViews);
+				const FSphere LightBounds(SimpleLightPerViewData.Position, SimpleLight.Radius);
 
-			VertexShader->SetSimpleLightParameters(RHICmdList, View, LightBounds);
+				const FViewInfo& View = Views[ViewIndex];
 
-			// Apply the point or spot light with some approximately bounding geometry,
-			// So we can get speedups from depth testing and not processing pixels outside of the light's influence.
-			StencilingGeometry::DrawSphere(RHICmdList);
+				// Set the device viewport for the view.
+				RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
+
+				TShaderMapRef<TDeferredLightVS<true> > VertexShader(View.ShaderMap);
+
+				SetBoundingGeometryRasterizerAndDepthState(GraphicsPSOInit, View, LightBounds);
+
+				if (SimpleLight.Exponent == 0)
+				{
+					// inverse squared
+					SetShaderTemplLightingSimple<false, true, true>(RHICmdList, GraphicsPSOInit, View, VertexShader, SimpleLight, SimpleLightPerViewData);
+				}
+				else
+				{
+					// light's exponent, not inverse squared
+					SetShaderTemplLightingSimple<false, true, false>(RHICmdList, GraphicsPSOInit, View, VertexShader, SimpleLight, SimpleLightPerViewData);
+				}
+
+				VertexShader->SetSimpleLightParameters(RHICmdList, View, LightBounds);
+
+				// Apply the point or spot light with some approximately bounding geometry,
+				// So we can get speedups from depth testing and not processing pixels outside of the light's influence.
+				StencilingGeometry::DrawSphere(RHICmdList);
+			}
 		}
-	}
+	});
 }
