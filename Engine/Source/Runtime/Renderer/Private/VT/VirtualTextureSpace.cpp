@@ -297,9 +297,24 @@ void FVirtualTextureSpace::AllocateTextures(FRHICommandList& RHICmdList)
 				CopyInfo.Size.Y = FMath::Min(Desc.Extent.Y, SrcDesc.Extent.Y);
 				CopyInfo.Size.Z = 1;
 				CopyInfo.NumMips = FMath::Min(Desc.NumMips, SrcDesc.NumMips);
-				RHICmdList.CopyTexture(TextureEntry.RenderTarget->GetRenderTargetItem().ShaderResourceTexture,
-					RenderTarget->GetRenderTargetItem().TargetableTexture,
-					CopyInfo);
+
+				FRHITexture* SrcTexture = TextureEntry.RenderTarget->GetRenderTargetItem().ShaderResourceTexture;
+				FRHITexture* DstTexture = RenderTarget->GetRenderTargetItem().TargetableTexture;
+
+				FRHITransitionInfo TransitionsBefore[] = {
+					FRHITransitionInfo(SrcTexture, ERHIAccess::SRVGraphics, ERHIAccess::CopySrc),
+					FRHITransitionInfo(DstTexture, ERHIAccess::Unknown, ERHIAccess::CopyDest)
+				};
+				RHICmdList.Transition(MakeArrayView(TransitionsBefore, UE_ARRAY_COUNT(TransitionsBefore)));
+
+				RHICmdList.CopyTexture(SrcTexture, DstTexture, CopyInfo);
+
+				FRHITransitionInfo TransitionsAfter[] = {
+					FRHITransitionInfo(SrcTexture, ERHIAccess::CopySrc, ERHIAccess::SRVGraphics | ERHIAccess::SRVCompute),
+					FRHITransitionInfo(DstTexture, ERHIAccess::CopyDest, ERHIAccess::SRVGraphics | ERHIAccess::SRVCompute)
+				};
+				RHICmdList.Transition(MakeArrayView(TransitionsAfter, UE_ARRAY_COUNT(TransitionsAfter)));
+
 				GRenderTargetPool.FreeUnusedResource(TextureEntry.RenderTarget);
 			}
 
