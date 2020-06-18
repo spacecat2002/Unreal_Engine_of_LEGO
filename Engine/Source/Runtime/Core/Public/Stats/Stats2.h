@@ -1123,11 +1123,11 @@ struct FStatPacket
 	void SetThreadProperties()
 	{
 		ThreadId = FPlatformTLS::GetCurrentThreadId();
-		if (ThreadId == GGameThreadId)
+		if (IsInGameThread())
 		{
 			ThreadType = EThreadType::Game;
 		}
-		else if (ThreadId == GRenderThreadId)
+		else if (IsInActualRenderingThread())
 		{
 			ThreadType = EThreadType::Renderer;
 		}

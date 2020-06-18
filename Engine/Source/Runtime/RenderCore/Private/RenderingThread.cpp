@@ -456,7 +456,9 @@ public:
 	// FRunnable interface.
 	virtual bool Init(void) override
 	{ 
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		GRenderThreadId = FPlatformTLS::GetCurrentThreadId();
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 		// Acquire rendering context ownership on the current thread, unless using an RHI thread, which will be the real owner
 		if (!IsRunningRHIInSeparateThread())
@@ -477,7 +479,9 @@ public:
 			RHIReleaseThreadOwnership();
 		}
 
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		GRenderThreadId = 0;
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	}
 
 #if PLATFORM_WINDOWS && !PLATFORM_SEH_EXCEPTIONS_DISABLED
@@ -763,14 +767,17 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	GRenderingThreadRunnable = new FRenderingThread();
 
 	Trace::ThreadGroupBegin(TEXT("Render"));
-	GRenderingThread = FRunnableThread::Create(GRenderingThreadRunnable, *BuildRenderingThreadName(ThreadCount), 0, FPlatformAffinity::GetRenderingThreadPriority(), FPlatformAffinity::GetRenderingThreadMask(), FPlatformAffinity::GetRenderingThreadFlags());
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	GRenderingThread = 
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
+		FRunnableThread::Create(GRenderingThreadRunnable, *BuildRenderingThreadName(ThreadCount), 0, FPlatformAffinity::GetRenderingThreadPriority(), FPlatformAffinity::GetRenderingThreadMask(), FPlatformAffinity::GetRenderingThreadFlags());
 	Trace::ThreadGroupEnd();
 
 	// Wait for render thread to have taskgraph bound before we dispatch any tasks for it.
 	((FRenderingThread*)GRenderingThreadRunnable)->TaskGraphBoundSyncEvent->Wait();
 
 	// register
-	IConsoleManager::Get().RegisterThreadPropagation(GRenderingThread->GetThreadID(), &FConsoleRenderThreadPropagation::GetSingleton());
+	IConsoleManager::Get().RegisterThreadPropagation(0, &FConsoleRenderThreadPropagation::GetSingleton());
 
 	// ensure the thread has actually started and is idling
 	FRenderCommandFence Fence;
@@ -843,7 +850,6 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 			GIsRunningRHIInTaskThread_InternalUseOnly = false;
 
 
-			check( GRenderingThread );
 			check(!GIsRenderingThreadSuspended.Load(EMemoryOrder::Relaxed));
 
 			// Turn off the threaded rendering flag.
@@ -869,11 +875,14 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 			}
 
 			// Wait for the rendering thread to return.
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 			GRenderingThread->WaitForCompletion();
 
 			// Destroy the rendering thread objects.
 			delete GRenderingThread;
+
 			GRenderingThread = NULL;
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 			
 			GRHICommandList.LatchBypass();
 

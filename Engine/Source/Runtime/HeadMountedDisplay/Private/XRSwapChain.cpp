@@ -25,7 +25,7 @@ FORCEINLINE void CheckInRenderThread()
 
 bool InRHIOrValidThread()
 {
-	if (GRenderingThread && !GIsRenderingThreadSuspended.Load(EMemoryOrder::Relaxed))
+	if (GIsThreadedRendering && !GIsRenderingThreadSuspended.Load(EMemoryOrder::Relaxed))
 	{
 		if (IsRHIThreadRunning())
 		{
@@ -34,7 +34,7 @@ bool InRHIOrValidThread()
 				return true;
 			}
 
-			if (FPlatformTLS::GetCurrentThreadId() == GRenderingThread->GetThreadID())
+			if (IsInActualRenderingThread())
 			{
 				return GetImmediateCommandList_ForRenderCommand().Bypass();
 			}
@@ -43,7 +43,7 @@ bool InRHIOrValidThread()
 		}
 		else
 		{
-			return FPlatformTLS::GetCurrentThreadId() == GRenderingThread->GetThreadID();
+			return IsInActualRenderingThread();
 		}
 	}
 	else

@@ -405,6 +405,7 @@ extern CORE_API int32 GSavingCompressionChunkSize;
 extern CORE_API uint32 GGameThreadId;
 
 /** Thread ID of the render thread, if any */
+UE_DEPRECATED(4.26, "Please use `IsInActualRenderingThread()`")
 extern CORE_API uint32 GRenderThreadId;
 
 /** Thread ID of the slate thread, if any */
@@ -508,6 +509,7 @@ extern CORE_API bool IsInActualRenderingThread();
 extern CORE_API bool (*IsInAsyncLoadingThread)();
 
 /** Thread used for rendering */
+UE_DEPRECATED(4.26, "Please use `GIsThreadedRendering` or `IsInActualRenderingThread()`")
 extern CORE_API FRunnableThread* GRenderingThread;
 
 /** Whether the rendering thread is suspended (not even processing the tickables) */

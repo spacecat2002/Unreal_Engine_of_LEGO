@@ -67,17 +67,23 @@ CORE_API FRunnableThread* GRenderingThread = nullptr;
 
 CORE_API bool IsInActualRenderingThread()
 {
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return GRenderingThread && FPlatformTLS::GetCurrentThreadId() == GRenderingThread->GetThreadID();
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 CORE_API bool IsInRenderingThread()
 {
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return !GRenderingThread || GIsRenderingThreadSuspended.Load(EMemoryOrder::Relaxed) || (FPlatformTLS::GetCurrentThreadId() == GRenderingThread->GetThreadID());
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 CORE_API bool IsInParallelRenderingThread()
 {
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	if (!GRenderingThread || GIsRenderingThreadSuspended.Load(EMemoryOrder::Relaxed))
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	{
 		return true;
 	}
