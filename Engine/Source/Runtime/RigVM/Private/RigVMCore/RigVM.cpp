@@ -559,6 +559,7 @@ void URigVM::CacheMemoryHandlesIfRequired(FRigVMMemoryContainerPtrArray InMemory
 
 bool URigVM::Initialize(FRigVMMemoryContainerPtrArray Memory, FRigVMFixedArray<void*> AdditionalArguments)
 {
+	CopyDeferredVMIfRequired();
 	ResolveFunctionsIfRequired();
 	RefreshInstructionsIfRequired();
 
