@@ -608,6 +608,107 @@ void FSystemTextures::InitializeFeatureLevelDependentTextures(FRHICommandListImm
 		} // end Create the SSAO randomization texture
 	} // end if (FeatureLevelInitializedTo < ERHIFeatureLevel::SM5 && InFeatureLevel >= ERHIFeatureLevel::SM5)
 
+	static const auto CVarMobileGTAOPreIntegratedTextureType = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.GTAOPreIntegratedTextureType"));
+
+	if (CurrentFeatureLevel < ERHIFeatureLevel::ES3_1 && InFeatureLevel >= ERHIFeatureLevel::ES3_1 && CVarMobileGTAOPreIntegratedTextureType && CVarMobileGTAOPreIntegratedTextureType->GetValueOnAnyThread() > 0)
+	{
+		uint32 Extent = 16; // should be consistent with LUTSize in PostprocessMobile.usf
+
+		const uint32 Square = Extent * Extent;
+
+		bool bGTAOPreIngegratedUsingVolumeLUT = CVarMobileGTAOPreIntegratedTextureType->GetValueOnAnyThread() == 2;
+
+		FPooledRenderTargetDesc Desc;
+		if (bGTAOPreIngegratedUsingVolumeLUT)
+		{
+			Desc = FPooledRenderTargetDesc(FPooledRenderTargetDesc::CreateVolumeDesc(Extent, Extent, Extent, PF_G8, FClearValueBinding::None, TexCreate_HideInVisualizeTexture | TexCreate_NoTiling | TexCreate_ShaderResource, TexCreate_ShaderResource, false));
+		}
+		else
+		{
+			Desc = FPooledRenderTargetDesc(FPooledRenderTargetDesc::Create2DDesc(FIntPoint(Square, Extent), PF_G8, FClearValueBinding::None, TexCreate_HideInVisualizeTexture | TexCreate_NoTiling | TexCreate_ShaderResource, TexCreate_ShaderResource, false));
+		}
+		
+		Desc.AutoWritable = false;
+		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, GTAOPreIntegrated, TEXT("GTAOPreIntegrated"), true, ERenderTargetTransience::NonTransient);
+
+		// Write the contents of the texture.
+		TArray<uint8> TempBuffer;
+		TempBuffer.AddZeroed(Extent * Extent * Extent);
+
+		uint8* DestBuffer = nullptr;
+
+		if (bGTAOPreIngegratedUsingVolumeLUT)
+		{
+			DestBuffer = TempBuffer.GetData();
+		}
+		else
+		{
+			uint32 DestStride;
+			DestBuffer = (uint8*)RHICmdList.LockTexture2D((FTexture2DRHIRef&)GTAOPreIntegrated->GetRenderTargetItem().ShaderResourceTexture, 0, RLM_WriteOnly, DestStride, false);
+		}
+
+		for (uint32 z = 0; z < Extent; ++z)
+		{
+			for (uint32 y = 0; y < Extent; ++y)
+			{
+				for (uint32 x = 0; x < Extent; ++x)
+				{
+					uint32 DestBufferIndex = 0;
+
+					if (bGTAOPreIngegratedUsingVolumeLUT)
+					{
+						DestBufferIndex = x + y * Extent + z * Square;
+					}
+					else
+					{
+						DestBufferIndex = (x + z * Extent) + y * Square;
+					}
+					uint8& Value = DestBuffer[DestBufferIndex];
+
+					float cosAngle1 = ((x + 0.5f) / (Extent) - 0.5f) * 2;
+					float cosAngle2 = ((y + 0.5f) / (Extent) - 0.5f) * 2;
+					float cosAng = ((z + 0.5f) / (Extent) - 0.5f) * 2;
+
+					float Gamma = FMath::Acos(cosAng) - HALF_PI;
+					float CosGamma = FMath::Cos(Gamma);
+					float SinGamma = cosAng * -2.0f;
+
+					float Angle1 = FMath::Acos(cosAngle1);
+					float Angle2 = FMath::Acos(cosAngle2);
+					// clamp to normal hemisphere 
+					Angle1 = Gamma + FMath::Max(-Angle1 - Gamma, -(HALF_PI));
+					Angle2 = Gamma + FMath::Min(Angle2 - Gamma, (HALF_PI));
+
+
+					float AO = (0.25f *
+						((Angle1 * SinGamma + CosGamma - cos((2.0 * Angle1) - Gamma)) +
+						(Angle2 * SinGamma + CosGamma - cos((2.0 * Angle2) - Gamma))));
+
+					AO = FMath::Clamp(AO / HALF_PI, 0.0f, 1.0f);
+
+					Value = uint8(AO * 255);
+				}
+			}
+		}
+
+		if (bGTAOPreIngegratedUsingVolumeLUT)
+		{
+			FUpdateTextureRegion3D Region(0, 0, 0, 0, 0, 0, Desc.Extent.X, Desc.Extent.Y, Desc.Depth);
+
+			RHICmdList.UpdateTexture3D(
+				(FTexture3DRHIRef&)GTAOPreIntegrated->GetRenderTargetItem().ShaderResourceTexture,
+				0,
+				Region,
+				Desc.Extent.X * sizeof(uint8),
+				Desc.Extent.X * Desc.Extent.Y * sizeof(uint8),
+				(const uint8*)DestBuffer);
+		}
+		else
+		{
+			RHICmdList.UnlockTexture2D((FTexture2DRHIRef&)GTAOPreIntegrated->GetRenderTargetItem().ShaderResourceTexture, 0, false);
+		}
+	}
+
 	// Initialize textures only once.
 	FeatureLevelInitializedTo = InFeatureLevel;
 }

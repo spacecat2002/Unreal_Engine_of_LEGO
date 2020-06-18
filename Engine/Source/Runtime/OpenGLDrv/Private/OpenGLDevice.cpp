@@ -717,6 +717,14 @@ static void InitRHICapabilitiesForGL()
 	LOG_AND_GET_GL_INT_TEMP(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, 0);
 	LOG_AND_GET_GL_INT_TEMP(GL_MAX_VERTEX_ATTRIBS, 0);
 
+	LOG_AND_GET_GL_INT_TEMP(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS, 0);
+#if PLATFORM_ANDROID
+	LOG_AND_GET_GL_INT_TEMP(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 0);
+	LOG_AND_GET_GL_INT_TEMP(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 0);
+	LOG_AND_GET_GL_INT_TEMP(GL_MAX_COMPUTE_SHARED_MEMORY_SIZE, 0);
+#endif
+	
+
 	if (FParse::Param(FCommandLine::Get(), TEXT("quad_buffer_stereo")))
 	{
 		GLboolean Result = GL_FALSE;
@@ -820,6 +828,8 @@ static void InitRHICapabilitiesForGL()
 #if defined(GL_MAX_ARRAY_TEXTURE_LAYERS) && GL_MAX_ARRAY_TEXTURE_LAYERS
 	GMaxTextureArrayLayers = Value_GL_MAX_ARRAY_TEXTURE_LAYERS;
 #endif
+
+	GMaxWorkGroupInvocations = Value_GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS;
 
 	GSupportsParallelRenderingTasksWithSeparateRHIThread = false; // hopefully this is just temporary
 	GRHIThreadNeedsKicking = true; // GL is SLOW

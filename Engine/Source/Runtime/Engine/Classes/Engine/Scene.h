@@ -150,6 +150,14 @@ FORCEINLINE bool IsUsingMobilePixelProjectedReflection(EShaderPlatform ShaderPla
 	return IsMobilePixelProjectedReflectionEnabled(ShaderPlatform) && GetMobilePixelProjectedReflectionQuality() > EMobilePixelProjectedReflectionQuality::Disabled;
 }
 
+FORCEINLINE bool IsUsingMobileAmbientOcclusion(EShaderPlatform ShaderPlatform)
+{
+	static const auto MobileAmbientOcclusionQualityQualityCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.AmbientOcclusionQuality"));
+	static const auto MobileAmbientOcclusionScaleCVar = IConsoleManager::Get().FindTConsoleVariableDataFloat(TEXT("r.Mobile.AmbientOcclusionScale"));
+
+	return IsMobilePlatform(ShaderPlatform) && IsMobileHDR() && MobileAmbientOcclusionQualityQualityCVar->GetValueOnAnyThread() > 0 && MobileAmbientOcclusionScaleCVar->GetValueOnAnyThread() > 0.0f;
+}
+
 USTRUCT(BlueprintType)
 struct FColorGradePerRangeSettings
 {

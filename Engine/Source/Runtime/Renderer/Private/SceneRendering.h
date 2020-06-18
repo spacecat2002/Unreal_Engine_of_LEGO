@@ -31,6 +31,7 @@
 #include "RenderGraph.h"
 #include "MeshDrawCommands.h"
 #include "GpuDebugRendering.h"
+#include "PostProcess/PostProcessAmbientOcclusionMobile.h"
 
 // Forward declarations.
 class FScene;
@@ -1951,6 +1952,11 @@ protected:
 	FRHITexture* RenderForward(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> ViewList);
 	FRHITexture* RenderDeferred(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> ViewList);
 	
+	void InitAmbientOcclusionOutputs(FRHICommandListImmediate& RHICmdList, const FIntPoint& BufferSize);
+	void RenderAmbientOcclusion(FRHICommandListImmediate& RHICmdList, const FSceneRenderTargets& SceneContext);
+	void RenderAmbientOcclusionUpSample(FRHICommandListImmediate& RHICmdList);
+	void ReleaseAmbientOcclusionOutputs();
+
 	void InitPixelProjectedReflectionOutputs(FRHICommandListImmediate& RHICmdList, const FIntPoint& BufferSize);
 	void RenderPixelProjectedReflection(FRHICommandListImmediate& RHICmdList, const FSceneRenderTargets& SceneContext, const FPlanarReflectionSceneProxy* PlanarReflectionSceneProxy);
 	void ReleasePixelProjectedReflectionOutputs();
@@ -1965,9 +1971,12 @@ private:
 	bool bModulatedShadowsInUse;
 	bool bShouldRenderCustomDepth;
 	bool bRequiresPixelProjectedPlanarRelfectionPass;
+	bool bRequriesAmbientOcclusionPass;
 	static FGlobalDynamicIndexBuffer DynamicIndexBuffer;
 	static FGlobalDynamicVertexBuffer DynamicVertexBuffer;
 	static TGlobalResource<FGlobalDynamicReadBuffer> DynamicReadBuffer;
+
+	FAmbientOcclusionMobileOutputs AmbientOcclusionMobileOutputs;
 };
 
 // The noise textures need to be set in Slate too.

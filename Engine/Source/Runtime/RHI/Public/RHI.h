@@ -461,6 +461,13 @@ FORCEINLINE uint32 GetMaxTextureSamplers()
 	return GMaxTextureSamplers;
 }
 
+/** The maximum work group invocations allowed for compute shader. */
+extern RHI_API TRHIGlobal<int32> GMaxWorkGroupInvocations;
+FORCEINLINE uint32 GetMaxWorkGroupInvocations()
+{
+	return GMaxWorkGroupInvocations;
+}
+
 /** true if we are running with the NULL RHI */
 extern RHI_API bool GUsingNullRHI;
 

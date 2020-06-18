@@ -715,6 +715,7 @@ TRHIGlobal<int32> GMaxTextureDimensions(2048);
 TRHIGlobal<int64> GMaxBufferDimensions(2<<27);
 TRHIGlobal<int32> GMaxVolumeTextureDimensions(2048);
 TRHIGlobal<int32> GMaxCubeTextureDimensions(2048);
+TRHIGlobal<int32> GMaxWorkGroupInvocations(1024);
 bool GRHISupportsRWTextureBuffers = true;
 int32 GMaxTextureArrayLayers = 256;
 int32 GMaxTextureSamplers = 16;

@@ -33,6 +33,7 @@
 #include "PostProcess/PostProcessCompositeEditorPrimitives.h"
 #include "PostProcess/PostProcessHMD.h"
 #include "Postprocess/PostProcessPixelProjectedReflectionMobile.h"
+#include "PostProcess/PostProcessAmbientOcclusionMobile.h"
 #include "IHeadMountedDisplay.h"
 #include "IXRTrackingSystem.h"
 #include "SceneViewExtension.h"
@@ -162,6 +163,7 @@ FMobileSceneRenderer::FMobileSceneRenderer(const FSceneViewFamily* InViewFamily,
 	bModulatedShadowsInUse = false;
 	bShouldRenderCustomDepth = false;
 	bRequiresPixelProjectedPlanarRelfectionPass = false;
+	bRequriesAmbientOcclusionPass = false;
 }
 
 class FMobileDirLightShaderParamsRenderResource : public FRenderResource
@@ -461,6 +463,18 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		InitPixelProjectedReflectionOutputs(RHICmdList, PlanarReflectionSceneProxy->RenderTarget->GetSizeXY());
 	}
 
+	bRequriesAmbientOcclusionPass = IsUsingMobileAmbientOcclusion(ShaderPlatform)
+		&& View.FinalPostProcessSettings.AmbientOcclusionIntensity > 0
+		&& View.FinalPostProcessSettings.AmbientOcclusionStaticFraction >= 1 / 100.0f
+		&& View.Family->EngineShowFlags.Lighting
+		&& !View.bIsReflectionCapture
+		&& !View.bIsPlanarReflection
+		&& !View.Family->EngineShowFlags.HitProxies
+		&& !ViewFamily.EngineShowFlags.VisualizeLightCulling
+		&& !View.Family->UseDebugViewPS()
+		// Only support forward shading, we don't want to break tiled deferred shading.
+		&& !bDeferredShading;
+
 	// Whether we need to store depth for post-processing
 	// On PowerVR we see flickering of shadows and depths not updating correctly if targets are discarded.
 	// See CVarMobileForceDepthResolve use in ConditionalResolveSceneDepth.
@@ -477,11 +491,16 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 
 	// Allocate the maximum scene render target space for the current view family.
-	SceneContext.SetKeepDepthContent(bKeepDepthContent || bRequiresPixelProjectedPlanarRelfectionPass);
+	SceneContext.SetKeepDepthContent(bKeepDepthContent || bRequiresPixelProjectedPlanarRelfectionPass || bRequriesAmbientOcclusionPass);
 	SceneContext.Allocate(RHICmdList, this);
 	if (bDeferredShading)
 	{
 		SceneContext.AllocGBufferTargets(RHICmdList);
+	}
+
+	if (bRequriesAmbientOcclusionPass)
+	{
+		InitAmbientOcclusionOutputs(RHICmdList, SceneContext.GetSceneColor()->GetDesc().Extent);
 	}
 	
 	//make sure all the targets we're going to use will be safely writable.
@@ -600,6 +619,11 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		ReleasePixelProjectedReflectionOutputs();
 	}
 
+	if (bRequriesAmbientOcclusionPass)
+	{
+		ReleaseAmbientOcclusionOutputs();
+	}
+
 	if (bDeferredShading)
 	{
 		// Release the original reference on the scene render targets
@@ -699,14 +723,14 @@ FRHITexture* FMobileSceneRenderer::RenderForward(FRHICommandListImmediate& RHICm
 		ColorTargetAction = bMobileMSAA ? ERenderTargetActions::Clear_Resolve : ERenderTargetActions::Clear_Store;
 		SceneDepth = SceneContext.GetSceneDepthSurface();
 				
-		if (bRequiresMultiPass || bRequiresPixelProjectedPlanarRelfectionPass)
+		if (bRequiresMultiPass || bRequiresPixelProjectedPlanarRelfectionPass || bRequriesAmbientOcclusionPass)
 		{	
 			// store targets after opaque so translucency render pass can be restarted
 			ColorTargetAction = ERenderTargetActions::Clear_Store;
 			DepthTargetAction = EDepthStencilTargetActions::ClearDepthStencil_StoreDepthStencil;
 		}
 						
-		if ((bKeepDepthContent || bRequiresPixelProjectedPlanarRelfectionPass) && !bMobileMSAA)
+		if ((bKeepDepthContent || bRequiresPixelProjectedPlanarRelfectionPass || bRequriesAmbientOcclusionPass) && !bMobileMSAA)
 		{
 			// store depth if post-processing/capture needs it
 			DepthTargetAction = EDepthStencilTargetActions::ClearDepthStencil_StoreDepthStencil;
@@ -785,7 +809,7 @@ FRHITexture* FMobileSceneRenderer::RenderForward(FRHICommandListImmediate& RHICm
 		
 	// Split if we need to render translucency in a separate render pass
 	// Split if we need to render pixel projected reflection
-	if (bRequiresMultiPass || bRequiresPixelProjectedPlanarRelfectionPass)
+	if (bRequiresMultiPass || bRequiresPixelProjectedPlanarRelfectionPass || bRequriesAmbientOcclusionPass)
 	{
 		RHICmdList.EndRenderPass();
 	}
@@ -794,7 +818,7 @@ FRHITexture* FMobileSceneRenderer::RenderForward(FRHICommandListImmediate& RHICm
 
 		
 	// Restart translucency render pass if needed
-	if (bRequiresMultiPass || bRequiresPixelProjectedPlanarRelfectionPass)
+	if (bRequiresMultiPass || bRequiresPixelProjectedPlanarRelfectionPass || bRequriesAmbientOcclusionPass)
 	{
 		check(RHICmdList.IsOutsideRenderPass());
 
@@ -805,6 +829,11 @@ FRHITexture* FMobileSceneRenderer::RenderForward(FRHICommandListImmediate& RHICm
 		{
 			const FPlanarReflectionSceneProxy* PlanarReflectionSceneProxy = Scene ? Scene->GetForwardPassGlobalPlanarReflection() : nullptr;
 			RenderPixelProjectedReflection(RHICmdList, SceneContext, PlanarReflectionSceneProxy);
+		}
+
+		if (bRequriesAmbientOcclusionPass)
+		{
+			RenderAmbientOcclusion(RHICmdList, SceneContext);
 		}
 
 		DepthTargetAction = EDepthStencilTargetActions::LoadDepthStencil_DontStoreDepthStencil;
@@ -841,6 +870,11 @@ FRHITexture* FMobileSceneRenderer::RenderForward(FRHICommandListImmediate& RHICm
 		TranslucentRenderPassInfo.bOcclusionQueries = false;
 		TranslucentRenderPassInfo.SubpassHint = ESubpassHint::DepthReadSubpass;
 		RHICmdList.BeginRenderPass(TranslucentRenderPassInfo, TEXT("SceneColorTranslucencyRendering"));
+
+		if (bRequriesAmbientOcclusionPass)
+		{
+			RenderAmbientOcclusionUpSample(RHICmdList);
+		}
 	}
 
 	// scene depth is read only and can be fetched
@@ -1220,7 +1254,7 @@ void FMobileSceneRenderer::ConditionalResolveSceneDepth(FRHICommandListImmediate
 		bool bDecals = ViewFamily.EngineShowFlags.Decals && Scene->Decals.Num();
 		bool bModulatedShadows = ViewFamily.EngineShowFlags.DynamicShadows && bModulatedShadowsInUse;
 
-		if (bDecals || bModulatedShadows || bAlwaysResolveDepth || View.bUsesSceneDepth || bRequiresPixelProjectedPlanarRelfectionPass)
+		if (bDecals || bModulatedShadows || bAlwaysResolveDepth || View.bUsesSceneDepth || bRequiresPixelProjectedPlanarRelfectionPass || bRequriesAmbientOcclusionPass)
 		{
 			SCOPED_DRAW_EVENT(RHICmdList, ConditionalResolveSceneDepth);
 
