@@ -1277,7 +1277,7 @@ void DispatchIndirectComputeShader(
 	RHICmdList.DispatchIndirectComputeShader(ArgumentBuffer, ArgumentOffset);
 }
 
-bool IsDXCEnabledForPlatform(EShaderPlatform Platform)
+bool IsDxcEnabledForPlatform(EShaderPlatform Platform)
 {
 	if (IsD3DPlatform(Platform, false))
 	{
@@ -1291,18 +1291,18 @@ bool IsDXCEnabledForPlatform(EShaderPlatform Platform)
 	}
 	if (IsMetalPlatform(Platform))
 	{
-		static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Metal.ForceDXC"));
-		return (CVar && CVar->GetInt() != 0);
+		// Hlslcc has been removed for Metal. There is only DXC now.
+		return true;
 	}
 	if (IsVulkanPlatform(Platform))
 	{
 		static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Vulkan.ForceDXC"));
-		int32 VulkanForceDXC = (CVar ? CVar->GetInt() : 0);
+		int32 VulkanForceDxc = (CVar ? CVar->GetInt() : 0);
 		const bool bIsVulkanMobile = IsVulkanMobilePlatform((EShaderPlatform)Platform);
-		const bool bIsDXCEnabledForDesktop = (VulkanForceDXC == 1 && !bIsVulkanMobile);
-		const bool bIsDXCEnabledForMobile = (VulkanForceDXC == 2 && bIsVulkanMobile);
-		const bool bIsDXCEnableForAll = (VulkanForceDXC == 3);
-		return (bIsDXCEnabledForDesktop || bIsDXCEnabledForMobile || bIsDXCEnableForAll);
+		const bool bIsDxcEnabledForDesktop = (VulkanForceDxc == 1 && !bIsVulkanMobile);
+		const bool bIsDxcEnabledForMobile = (VulkanForceDxc == 2 && bIsVulkanMobile);
+		const bool bIsDxcEnableForAll = (VulkanForceDxc == 3);
+		return (bIsDxcEnabledForDesktop || bIsDxcEnabledForMobile || bIsDxcEnableForAll);
 	}
 	return false;
 }
@@ -1588,7 +1588,7 @@ void ShaderMapAppendKeyString(EShaderPlatform Platform, FString& KeyString)
 	}
 
 	// Is DXC shader compiler enabled for this platform?
-	KeyString += (IsDXCEnabledForPlatform(Platform) ? TEXT("_DXC1") : TEXT("_DXC0"));
+	KeyString += (IsDxcEnabledForPlatform(Platform) ? TEXT("_DXC1") : TEXT("_DXC0"));
 
 	if (IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5))
 	{

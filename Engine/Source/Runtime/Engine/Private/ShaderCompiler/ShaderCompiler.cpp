@@ -3765,7 +3765,7 @@ void GlobalBeginCompileShader(
 
 	if (IsVulkanPlatform((EShaderPlatform)Target.Platform))
 	{
-		if (IsDXCEnabledForPlatform((EShaderPlatform)Target.Platform))
+		if (IsDxcEnabledForPlatform((EShaderPlatform)Target.Platform))
 		{
 			Input.Environment.CompilerFlags.Add(CFLAG_ForceDXC);
 		}
