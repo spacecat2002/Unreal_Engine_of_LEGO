@@ -2719,7 +2719,12 @@ void FSceneRenderer::RenderFinish(FRHICommandListImmediate& RHICmdList)
 		if (Scene->PlanarReflections.Num() > 0)
 		{
 			static const auto* CVarClipPlane = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.AllowGlobalClipPlane"));
-			if (CVarClipPlane && CVarClipPlane->GetValueOnRenderThread() == 0)
+			
+			const bool bShouldUseClipPlaneForPlanarReflection = (FeatureLevel > ERHIFeatureLevel::ES3_1 && GetMobilePlanarReflectionMode() != EMobilePlanarReflectionMode::MobilePPRExclusive)
+															|| GetMobilePlanarReflectionMode() == EMobilePlanarReflectionMode::Usual;
+			
+			if (CVarClipPlane && CVarClipPlane->GetValueOnRenderThread() == 0
+				&& bShouldUseClipPlaneForPlanarReflection)
 			{
 				bShowGlobalClipPlaneWarning = true;
 			}
@@ -3658,6 +3663,9 @@ FRendererModule::FRendererModule()
 
 	static auto CVarVertexDeformationOutputsVelocity = IConsoleManager::Get().FindConsoleVariable(TEXT("r.VertexDeformationOutputsVelocity"));
 	CVarVertexDeformationOutputsVelocity->SetOnChangedCallback(FConsoleVariableDelegate::CreateStatic(&OnChangeCVarRequiringRecreateRenderState));
+
+	static auto MobilePixelProjectedReflectionQualityCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Mobile.PixelProjectedReflectionQuality"));
+	MobilePixelProjectedReflectionQualityCVar->SetOnChangedCallback(FConsoleVariableDelegate::CreateStatic(&OnChangeCVarRequiringRecreateRenderState));
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	void InitDebugViewModeInterfaces();

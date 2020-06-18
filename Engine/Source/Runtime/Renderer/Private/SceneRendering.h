@@ -1951,6 +1951,10 @@ protected:
 	FRHITexture* RenderForward(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> ViewList);
 	FRHITexture* RenderDeferred(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> ViewList);
 	
+	void InitPixelProjectedReflectionOutputs(FRHICommandListImmediate& RHICmdList, const FIntPoint& BufferSize);
+	void RenderPixelProjectedReflection(FRHICommandListImmediate& RHICmdList, const FSceneRenderTargets& SceneContext, const FPlanarReflectionSceneProxy* PlanarReflectionSceneProxy);
+	void ReleasePixelProjectedReflectionOutputs();
+
 	/** Before SetupMobileBasePassAfterShadowInit, we need to update the uniform buffer and shadow info for all movable point lights.*/
 	void UpdateMovablePointLightUniformBufferAndShadowInfo();
 private:
@@ -1960,6 +1964,7 @@ private:
 	bool bSubmitOffscreenRendering;
 	bool bModulatedShadowsInUse;
 	bool bShouldRenderCustomDepth;
+	bool bRequiresPixelProjectedPlanarRelfectionPass;
 	static FGlobalDynamicIndexBuffer DynamicIndexBuffer;
 	static FGlobalDynamicVertexBuffer DynamicVertexBuffer;
 	static TGlobalResource<FGlobalDynamicReadBuffer> DynamicReadBuffer;

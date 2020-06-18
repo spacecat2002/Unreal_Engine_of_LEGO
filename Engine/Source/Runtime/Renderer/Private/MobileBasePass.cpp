@@ -333,6 +333,8 @@ void MobileBasePass::SetOpaqueRenderState(FMeshPassProcessorRenderState& DrawRen
 
 void MobileBasePass::SetTranslucentRenderState(FMeshPassProcessorRenderState& DrawRenderState, const FMaterial& Material)
 {
+	const bool bIsUsingMobilePixelProjectedReflection = Material.IsUsingPlanarForwardReflections() && IsUsingMobilePixelProjectedReflection(GetFeatureLevelShaderPlatform(Material.GetFeatureLevel()));
+
 	if (Material.GetShadingModels().HasShadingModel(MSM_ThinTranslucent))
 	{
 		// the mobile thin translucent fallback uses a similar mode as BLEND_Translucent, but multiplies color by 1 insead of SrcAlpha.
@@ -374,6 +376,19 @@ void MobileBasePass::SetTranslucentRenderState(FMeshPassProcessorRenderState& Dr
 				// Single layer water is an opaque marerial rendered as translucent on Mobile. We force pre-multiplied alpha to achieve water depth based transmittance.
 				DrawRenderState.SetBlendState(TStaticBlendState<CW_RGB, BO_Add, BF_One, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha>::GetRHI());
 			}
+			else if (bIsUsingMobilePixelProjectedReflection)
+			{
+				if (GetMobilePixelProjectedReflectionQuality() == EMobilePixelProjectedReflectionQuality::BestPerformance)
+				{
+					// We only render the meshes used for mobile pixel projected reflection once for the BestPerformance quality level, so we have to write the depth to alpha channel in translucent pass.
+					DrawRenderState.SetBlendState(TStaticBlendStateWriteMask<CW_RGBA>::GetRHI());
+				}
+				else
+				{
+					// We render the meshes used for mobile pixel projected reflection twice for the BetterPerformance or greater quality level, so we don't have to write the depth to alpha channel in translucent pass.
+					DrawRenderState.SetBlendState(TStaticBlendStateWriteMask<CW_RGB>::GetRHI());
+				}
+			}
 			else
 			{
 				check(0);
@@ -384,6 +399,14 @@ void MobileBasePass::SetTranslucentRenderState(FMeshPassProcessorRenderState& Dr
 	if (Material.ShouldDisableDepthTest())
 	{
 		DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_Always>::GetRHI());
+	}
+	else if (bIsUsingMobilePixelProjectedReflection && !IsTranslucentBlendMode(Material.GetBlendMode()))
+	{
+		if (GetMobilePixelProjectedReflectionQuality() == EMobilePixelProjectedReflectionQuality::BestPerformance)
+		{
+			// We only render the opaque meshes used for mobile pixel projected reflection once for the BestPerformance quality level, so we have to write the depth to depth RT in translucent pass.
+			DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<true, CF_DepthNearOrEqual>::GetRHI());
+		}
 	}
 }
 
@@ -562,12 +585,14 @@ void FMobileBasePassMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshB
 	const FMaterialShadingModelField ShadingModels = Material.GetShadingModels();
 	const bool bIsTranslucent = IsTranslucentBlendMode(BlendMode);
 	const bool bUsesWaterMaterial = ShadingModels.HasShadingModel(MSM_SingleLayerWater); // Water goes into the translucent pass
+	const bool bIsUsingMobilePixelProjectedReflection = Material.IsUsingPlanarForwardReflections() 
+														&& IsUsingMobilePixelProjectedReflection(GetFeatureLevelShaderPlatform(Material.GetFeatureLevel()));
 	const bool bCanReceiveCSM = ((Flags & EFlags::CanReceiveCSM) == EFlags::CanReceiveCSM);
 	
 	if (bTranslucentBasePass)
 	{
 		// Skipping TPT_TranslucencyAfterDOFModulate. That pass is only needed for Dual Blending, which is not supported on Mobile.
-		bool bShouldDraw = (bIsTranslucent || bUsesWaterMaterial) &&
+		bool bShouldDraw = (bIsTranslucent || bUsesWaterMaterial || bIsUsingMobilePixelProjectedReflection) &&
 		(TranslucencyPassType == ETranslucencyPass::TPT_AllTranslucency
 		|| (TranslucencyPassType == ETranslucencyPass::TPT_StandardTranslucency && !Material.IsMobileSeparateTranslucencyEnabled())
 		|| (TranslucencyPassType == ETranslucencyPass::TPT_TranslucencyAfterDOF && Material.IsMobileSeparateTranslucencyEnabled()));
@@ -576,14 +601,16 @@ void FMobileBasePassMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshB
 		{
 			check(bCanReceiveCSM == false);
 			const FLightSceneInfo* MobileDirectionalLight = MobileBasePass::GetDirectionalLightInfo(Scene, PrimitiveSceneProxy);
-			ELightMapPolicyType LightmapPolicyType = MobileBasePass::SelectMeshLightmapPolicy(Scene, MeshBatch, PrimitiveSceneProxy, MobileDirectionalLight, ShadingModels, bCanReceiveCSM, FeatureLevel, BlendMode);
+			// Opaque meshes used for mobile pixel projected reflection could receive CSM in translucent pass.
+			ELightMapPolicyType LightmapPolicyType = MobileBasePass::SelectMeshLightmapPolicy(Scene, MeshBatch, PrimitiveSceneProxy, MobileDirectionalLight, ShadingModels, bCanReceiveCSM || (!bIsTranslucent && bIsUsingMobilePixelProjectedReflection), FeatureLevel, BlendMode);
 			Process(MeshBatch, BatchElementMask, StaticMeshId, PrimitiveSceneProxy, MaterialRenderProxy, Material, BlendMode, ShadingModels, LightmapPolicyType, MeshBatch.LCI);
 		}
 	}
 	else
 	{
 		// opaque materials.
-		if (!bIsTranslucent && !bUsesWaterMaterial)
+		// We have to render the opaque meshes used for mobile pixel projected reflection both in opaque and translucent pass if the quality level is greater than BestPerformance
+		if (!bIsTranslucent && !bUsesWaterMaterial && (!bIsUsingMobilePixelProjectedReflection || GetMobilePixelProjectedReflectionQuality() > EMobilePixelProjectedReflectionQuality::BestPerformance))
 		{
 			const FLightSceneInfo* MobileDirectionalLight = MobileBasePass::GetDirectionalLightInfo(Scene, PrimitiveSceneProxy);
 			ELightMapPolicyType LightmapPolicyType = MobileBasePass::SelectMeshLightmapPolicy(Scene, MeshBatch, PrimitiveSceneProxy, MobileDirectionalLight, ShadingModels, bCanReceiveCSM, FeatureLevel, BlendMode);
@@ -659,9 +686,14 @@ void FMobileBasePassMeshProcessor::Process(
 	FMeshDrawCommandSortKey SortKey; 
 	if (bTranslucentBasePass)
 	{
+		const bool bIsUsingMobilePixelProjectedReflection = MaterialResource.IsUsingPlanarForwardReflections() 
+															&& IsUsingMobilePixelProjectedReflection(GetFeatureLevelShaderPlatform(MaterialResource.GetFeatureLevel()));
+
 		SortKey = CalculateTranslucentMeshStaticSortKey(PrimitiveSceneProxy, MeshBatch.MeshIdInPrimitive);
 		// We always want water to be rendered first on mobile in order to mimic other renderers where it is opaque. We shift the other priorities by 1.
-		SortKey.Translucent.Priority = ShadingModels.HasShadingModel(MSM_SingleLayerWater) ? uint16(0) : uint16(FMath::Clamp(uint32(SortKey.Translucent.Priority) + 1, 0u, uint32(USHRT_MAX)));
+		// And we also want to render the meshes used for mobile pixel projected reflection first if it is opaque.
+		const bool bIsTranslucent = IsTranslucentBlendMode(BlendMode);
+		SortKey.Translucent.Priority = ShadingModels.HasShadingModel(MSM_SingleLayerWater) || (!bIsTranslucent && bIsUsingMobilePixelProjectedReflection) ? uint16(0) : uint16(FMath::Clamp(uint32(SortKey.Translucent.Priority) + 1, 0u, uint32(USHRT_MAX)));
 	}
 	else
 	{

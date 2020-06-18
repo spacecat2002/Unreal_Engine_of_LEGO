@@ -1244,7 +1244,9 @@ bool FMaterialResource::IsUsingHQForwardReflections() const
 
 bool FMaterialResource::IsUsingPlanarForwardReflections() const
 {
-	return Material->bUsePlanarForwardReflections;
+	return Material->bUsePlanarForwardReflections
+		// Don't use planar reflection if it is used only for mobile pixel projected reflection.
+		&& (GetFeatureLevel() <= ERHIFeatureLevel::ES3_1 || GetMobilePlanarReflectionMode() != EMobilePlanarReflectionMode::MobilePPRExclusive);
 }
 
 bool FMaterialResource::IsNonmetal() const

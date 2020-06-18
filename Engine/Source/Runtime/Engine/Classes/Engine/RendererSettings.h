@@ -818,6 +818,12 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ConfigRestartRequired = true))
 		uint32 bLPV : 1;
 
+	UPROPERTY(config, EditAnywhere, Category = Mobile, meta = (
+		ConsoleVariable = "r.Mobile.PlanarReflectionMode", DisplayName = "Planar Reflection Mode",
+		ToolTip = "The PlanarReflection will work differently on different mode on mobile platform, choose the proper mode as expect. Changing this setting requires restarting the editor.",
+		ConfigRestartRequired = true))
+		TEnumAsByte<EMobilePlanarReflectionMode::Type> MobilePlanarReflectionMode;
+
 	UPROPERTY(config, EditAnywhere, Category="Experimental|LOD Streaming|Skeletal Mesh", meta=(
 		DisplayName="Stream LODs by default",
 		ToolTip="Whether to stream skeletal mesh LODs by default."))

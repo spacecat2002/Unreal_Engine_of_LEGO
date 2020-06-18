@@ -15,6 +15,7 @@
 #include "EditorPrimitivesRendering.h"
 
 #include "FramePro/FrameProProfiler.h"
+#include "PostProcess/PostProcessPixelProjectedReflectionMobile.h"
 
 // Changing this causes a full shader recompile
 static TAutoConsoleVariable<int32> CVarMobileDisableVertexFog(
@@ -160,6 +161,25 @@ void SetupMobileBasePassUniformParameters(
 
 	BasePassParameters.PreIntegratedGFTexture = GSystemTextures.PreintegratedGF->GetRenderTargetItem().ShaderResourceTexture;
 	BasePassParameters.PreIntegratedGFSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+
+	if (bTranslucentPass && GPixelProjectedReflectionMobileOutputs.IsValid())
+	{
+		BasePassParameters.PlanarReflection.PlanarReflectionTexture = GPixelProjectedReflectionMobileOutputs.PixelProjectedReflectionTexture->GetRenderTargetItem().ShaderResourceTexture;
+		if (GetMobilePixelProjectedReflectionQuality() <= EMobilePixelProjectedReflectionQuality::BestPerformance)
+		{
+			// We only render the meshes used for pixel projected reflection once and it could cause color bleeding artifact if we use bilinear filter.
+			BasePassParameters.PlanarReflection.PlanarReflectionSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+		}
+		else
+		{
+			// We render the meshes used for pixel projected reflection twice, so we could use bilinear filter.
+			BasePassParameters.PlanarReflection.PlanarReflectionSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+		}
+	}
+	else
+	{
+		BasePassParameters.PlanarReflection.ReflectionPlane.Set(0.0f, 0.0f, 0.0f, 0.0f);
+	}
 
 	BasePassParameters.DynamicSpotLightShadowSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	BasePassParameters.DynamicSpotLightShadowBufferSize = View.MobileMovableSpotLightsShadowInfo.ShadowBufferSize;

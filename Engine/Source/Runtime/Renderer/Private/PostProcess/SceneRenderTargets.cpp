@@ -599,6 +599,20 @@ uint16 FSceneRenderTargets::GetNumSceneColorMSAASamples(ERHIFeatureLevel::Type I
 			UE_LOG(LogRenderer, Warning, TEXT("Requested %d samples for MSAA, but this is not supported; falling back to 1 sample"), NumSamples);
 			NumSamples = 1;
 		}
+
+		// Disable MSAA if we are using mobile pixel projected reflection, since we have to resolve the SceneColor and SceneDepth after opaque base pass
+		if (NumSamples > 1 && IsUsingMobilePixelProjectedReflection(GetFeatureLevelShaderPlatform(InFeatureLevel)))
+		{
+			NumSamples = 1;
+
+			static bool bWarned = false;
+
+			if (!bWarned)
+			{
+				bWarned = true;
+				UE_LOG(LogRenderer, Log, TEXT("Requested %d samples for MSAA, but using pixel projected reflection should disable MSAA"), NumSamples);
+			}
+		}
 	}
 	if (NumSamples > 1 && !RHISupportsMSAA(GShaderPlatformForFeatureLevel[InFeatureLevel]))
 	{

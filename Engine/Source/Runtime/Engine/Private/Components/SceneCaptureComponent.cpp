@@ -901,6 +901,16 @@ void UPlanarReflectionComponent::DestroyRenderState_Concurrent()
 	}
 }
 
+bool UPlanarReflectionComponent::ShouldComponentAddToScene() const
+{
+	bool bSceneAdd = USceneComponent::ShouldComponentAddToScene();
+
+	ERHIFeatureLevel::Type FeatureLevel = GetScene() ? GetScene()->GetFeatureLevel() : ERHIFeatureLevel::SM5;
+
+	// The PlanarReflectionComponent should not be added to scene if it is used only for mobile pixel projected reflection
+	return bSceneAdd && (FeatureLevel <= ERHIFeatureLevel::ES3_1 || GetMobilePlanarReflectionMode() != EMobilePlanarReflectionMode::MobilePPRExclusive);
+}
+
 #if WITH_EDITOR
 
 void UPlanarReflectionComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
