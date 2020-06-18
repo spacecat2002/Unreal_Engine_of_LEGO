@@ -154,11 +154,8 @@ private:
 class FEventRouter
 {
 
-// @todo slate : making too many event copies when translating events( i.e. Translate<EventType>::PointerEvent ).
-// @todo slate : Widget Reflector should log: (1) Every process reply (2) Every time the event is handled and by who.
 // @todo slate : Remove remaining [&]-style mass captures.
 // @todo slate : Eliminate all ad-hoc uses of SetEventPath()
-// @todo slate : Remove CALL_WIDGET_FUNCTION
 
 public:
 
@@ -368,12 +365,27 @@ public:
 
 		EventCopy.SetEventPath( RoutingPath );
 
-		for ( ; !Reply.IsEventHandled() && RoutingPolicy.ShouldKeepGoing(); RoutingPolicy.Next() )
+		for (; !Reply.IsEventHandled() && RoutingPolicy.ShouldKeepGoing(); RoutingPolicy.Next())
 		{
 			const FWidgetAndPointer& ArrangedWidget = RoutingPolicy.GetWidget();
-			const EventType TranslatedEvent = Translate<EventType>::PointerEvent( ArrangedWidget.PointerPosition, EventCopy );
-			Reply = Lambda( ArrangedWidget, TranslatedEvent ).SetHandler( ArrangedWidget.Widget );
+
+#if PLATFORM_COMPILER_HAS_IF_CONSTEXPR
+			if constexpr (Translate<EventType>::TranslationNeeded())
+			{
+				const EventType TranslatedEvent = Translate<EventType>::PointerEvent(ArrangedWidget.PointerPosition, EventCopy);
+				Reply = Lambda(ArrangedWidget, TranslatedEvent).SetHandler(ArrangedWidget.Widget);
+				ProcessReply(ThisApplication, RoutingPath, Reply, WidgetsUnderCursor, &TranslatedEvent);
+			}
+			else
+			{
+				Reply = Lambda(ArrangedWidget, EventCopy).SetHandler(ArrangedWidget.Widget);
+				ProcessReply(ThisApplication, RoutingPath, Reply, WidgetsUnderCursor, &EventCopy);
+			}
+#else
+			const EventType TranslatedEvent = Translate<EventType>::PointerEvent(ArrangedWidget.PointerPosition, EventCopy);
+			Reply = Lambda(ArrangedWidget, TranslatedEvent).SetHandler(ArrangedWidget.Widget);
 			ProcessReply(ThisApplication, RoutingPath, Reply, WidgetsUnderCursor, &TranslatedEvent);
+#endif
 		}
 
 		return Reply;
@@ -400,6 +412,7 @@ public:
 	template<typename EventType>
 	struct Translate
 	{
+		static constexpr bool TranslationNeeded() { return false; }
 		static EventType PointerEvent( const TSharedPtr<FVirtualPointerPosition>& InPosition, const EventType& InEvent )
 		{
 			// Most events do not do any coordinate translation.
@@ -417,6 +430,7 @@ FName FEventRouter::FBubblePolicy::Name = "Bubble";
 template<>
 struct FEventRouter::Translate<FPointerEvent>
 {
+	static constexpr bool TranslationNeeded() { return true; }
 	static  FPointerEvent PointerEvent( const TSharedPtr<FVirtualPointerPosition>& InPosition, const FPointerEvent& InEvent )
 	{
 		// Pointer events are translated into the virtual window space. For 3D Widget Components this means
