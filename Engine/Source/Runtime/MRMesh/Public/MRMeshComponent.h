@@ -43,7 +43,7 @@ public:
 		const TArray<FPackedNormal>& TangentXZData;
 		const TArray<FColor>& ColorData;
 		const TArray<MRMESH_INDEX_TYPE>& Indices;
-		const FBox Bounds;
+		const FBox Bounds = FBox(EForceInit::ForceInit);
 	};
 
 	virtual void SetConnected(bool value) = 0;

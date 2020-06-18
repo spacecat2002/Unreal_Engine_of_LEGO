@@ -79,6 +79,21 @@ namespace EHMDWornState
 		NotWorn UMETA(DisplayName = "Not Worn"),
 	};
 }
+
+/**
+* Flags to better inform the user about specifics of the underlying XR system
+*/
+UENUM(BlueprintType)
+namespace EXRSystemFlags
+{
+	enum Type
+	{
+		NoFlags       = 0x00 UMETA(Hidden),
+		IsAR          = 0x01,
+		IsTablet      = 0x02,
+		IsHeadMounted = 0x04,
+	};
+}
 /**
 * The Spectator Screen Mode controls what the non-vr video device displays on platforms that support one.
 * Not all modes are universal.

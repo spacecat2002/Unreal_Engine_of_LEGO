@@ -34,9 +34,10 @@ public: \
 		DelegateName##Delegates.RemoveAll(Object); \
 	}
 
+//need to move refactor some class hierarchies to make this protected again
 #define DEFINE_AR_DELEGATE_ONE_PARAM(DelegateName, Param1Type) \
 	DEFINE_AR_DELEGATE_BASE(DelegateName) \
-protected: \
+public: \
 	virtual void Trigger##DelegateName##Delegates(Param1Type Param1) \
 	{ \
 		DelegateName##Delegates.Broadcast(Param1); \
@@ -194,6 +195,8 @@ public:
 	
 	/** @return the required scene construction method is supported */
 	virtual bool OnIsSceneReconstructionSupported(EARSessionType SessionType, EARSceneReconstruction SceneReconstructionMethod) const { return false; }
+	
+	virtual bool OnAddTrackedPointWithName(const FTransform& WorldTransform, const FString& PointName, bool bDeletePointsWithSameName) { return false; }
 
 	virtual ~IARSystemSupport(){}
 
@@ -217,6 +220,47 @@ public:
 	 * @param Removed the item that was removed
 	 */
 	DEFINE_AR_DELEGATE_ONE_PARAM(OnTrackableRemoved, UARTrackedGeometry* /* Removed */);
+
+
+	virtual UARPin* CreateNamedARPin(FName Name, const FTransform& WorldTransform)
+	{
+		//UE_LOG(LogHMD, Log, TEXT("Native AR Pins are not supported on this platform"));
+
+		return nullptr;
+	}
+
+	virtual bool PinComponent(USceneComponent* ComponentToPin, UARPin* Pin)
+	{
+		//UE_LOG(LogHMD, Log, TEXT("Native AR Pins are not supported on this platform"));
+
+		return false;
+	}
+
+	virtual bool ArePinsReadyToLoad()
+	{
+		//UE_LOG(LogHMD, Log, TEXT("Native AR Pins are not supported on this platform"));
+
+		return false;
+	}
+
+	virtual void LoadARPins(TMap<FName, UARPin*>& LoadedPins)
+	{
+		//UE_LOG(LogHMD, Log, TEXT("Native AR Pins are not supported on this platform"));
+	}
+	virtual bool SaveARPin(FName InName)
+	{
+		//UE_LOG(LogHMD, Log, TEXT("Native AR Pins are not supported on this platform"));
+
+		return false;
+	}
+	virtual void RemoveSavedARPin(FName InName)
+	{
+		//UE_LOG(LogHMD, Log, TEXT("Native AR Pins are not supported on this platform"));
+	}
+	virtual void RemoveAllSavedARPins()
+	{
+		//UE_LOG(LogHMD, Log, TEXT("Native AR Pins are not supported on this platform"));
+	}
 };
 
 

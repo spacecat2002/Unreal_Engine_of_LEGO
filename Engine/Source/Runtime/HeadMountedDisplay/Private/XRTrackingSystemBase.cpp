@@ -5,8 +5,10 @@
 #include "Engine/Engine.h" // for FWorldContext
 #include "Engine/LocalPlayer.h"
 #include "Camera/CameraComponent.h"
+#include "MotionControllerComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "DefaultXRLoadingScreen.h"
+#include "UObject/UObjectHash.h"
 
 
 // Tracking system delegates
@@ -118,6 +120,69 @@ void FXRTrackingSystemBase::UpdateExternalTrackingPosition(const FTransform& Ext
 
 	SetBaseOrientation((DeltaOffset.GetRotation().Inverse() * GetBaseOrientation()).GetNormalized());
 	SetBasePosition(GetBasePosition() - DeltaOffset.GetTranslation());
+}
+
+void FXRTrackingSystemBase::GetMotionControllerVisualizationData(UObject* WorldContext, const EControllerHand Hand, FXRMotionControllerVisualizationData& MotionControllerVisualizationData)
+{
+	MotionControllerVisualizationData.DeviceName = GetSystemName();
+	MotionControllerVisualizationData.ApplicationInstanceID = FApp::GetInstanceId();
+
+	//get all motion controllers and find the one for this hand for this local player
+	TArray<UObject*> MotionControllers;
+	GetObjectsOfClass(UMotionControllerComponent::StaticClass(), MotionControllers);
+
+	MotionControllerVisualizationData.bValid = false;
+
+	for (int32 MotionControllerIndex = 0; MotionControllerIndex < MotionControllers.Num(); ++MotionControllerIndex)
+	{
+		UMotionControllerComponent* MotionController = Cast<UMotionControllerComponent>(MotionControllers[MotionControllerIndex]);
+		check(MotionController);
+
+		AActor* Owner = MotionController->GetOwner();
+		if ((Owner!= nullptr) && (MotionController->GetTrackingSource() == Hand) && (Owner->GetLocalRole() == ROLE_Authority))
+		{
+			MotionControllerVisualizationData.bValid = true;
+			MotionControllerVisualizationData.DeviceVisualType = EXRVisualType::Controller;
+
+			FTransform WorldTransform = MotionController->GetComponentTransform();
+			MotionControllerVisualizationData.Position = WorldTransform.GetLocation();
+			MotionControllerVisualizationData.Rotation = WorldTransform.GetRotation();
+			break;
+		}
+	}
+	MotionControllerVisualizationData.bValid = false;
+}
+
+UARPin* FXRTrackingSystemBase::CreateNamedARPin(FName Name, const FTransform& WorldTransform)
+{
+	return ARCompositionComponent->CreateNamedARPin(Name, WorldTransform);
+}
+
+bool FXRTrackingSystemBase::PinComponent(USceneComponent* ComponentToPin, UARPin* Pin)
+{
+	return ARCompositionComponent->PinComponent(ComponentToPin, Pin);
+}
+
+bool FXRTrackingSystemBase::ArePinsReadyToLoad()
+{
+	return ARCompositionComponent->ArePinsReadyToLoad();
+}
+
+void FXRTrackingSystemBase::LoadARPins(TMap<FName, UARPin*>& LoadedPins)
+{
+	ARCompositionComponent->LoadARPins(LoadedPins);
+}
+bool FXRTrackingSystemBase::SaveARPin(FName InName)
+{
+	return ARCompositionComponent->SaveARPin(InName);
+}
+void FXRTrackingSystemBase::RemoveSavedARPin(FName InName)
+{
+	ARCompositionComponent->RemoveSavedARPin(InName);
+}
+void FXRTrackingSystemBase::RemoveAllSavedARPins()
+{
+	ARCompositionComponent->RemoveAllSavedARPins();
 }
 
 

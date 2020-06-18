@@ -160,6 +160,17 @@ public:
 	virtual void UpdateExternalTrackingPosition(const FTransform& ExternalTrackingTransform) override;
 	virtual class IXRLoadingScreen* GetLoadingScreen() override final;
 
+	virtual void GetMotionControllerVisualizationData(UObject* WorldContext, const EControllerHand Hand, FXRMotionControllerVisualizationData& MotionControllerVisualizationData) override;
+
+
+	/** Pin Interface */
+	virtual UARPin* CreateNamedARPin(FName Name, const FTransform& WorldTransform) override;
+	virtual bool PinComponent(USceneComponent* ComponentToPin, UARPin* Pin) override;
+	virtual bool ArePinsReadyToLoad() override;
+	virtual void LoadARPins(TMap<FName, UARPin*>& LoadedPins) override;
+	virtual bool SaveARPin(FName InName) override;
+	virtual void RemoveSavedARPin(FName InName) override;
+	virtual void RemoveAllSavedARPins() override;
 
 	TSharedPtr<FARSupportInterface , ESPMode::ThreadSafe> GetARCompositionComponent();
 	const TSharedPtr<const FARSupportInterface , ESPMode::ThreadSafe> GetARCompositionComponent() const;

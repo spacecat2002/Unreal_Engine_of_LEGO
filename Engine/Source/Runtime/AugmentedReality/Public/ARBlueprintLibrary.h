@@ -295,11 +295,60 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Classification")
 	static bool GetObjectClassificationAtLocation(const FVector& InWorldLocation, EARObjectClassification& OutClassification, FVector& OutClassificationLocation, float MaxLocationDiff = 10.f);
 	
+	/**
+	 * For a point P in the AR local space, whose location and rotation are "OriginLocation" and "OriginRotation" in the world space
+	 * modify the alignment transform so that the same point P will be transformed to the origin in the world space.
+	 * @bIsTransformInWorldSpace: whether "OriginLocation" and "OriginRotation" are specified in UE4's world space or AR system's local space.
+	 * @bMaintainUpDirection: if set, only the yaw roation of the alignment transform will be modified, pitch and roll will be zeroed out.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Alignment", meta = (DisplayName="Set AR World Origin Location and Rotation", Keywords = "ar augmentedreality augmented reality world origin"))
+	static void SetARWorldOriginLocationAndRotation(FVector OriginLocation, FRotator OriginRotation, bool bIsTransformInWorldSpace = true, bool bMaintainUpDirection = true);
+	
+	/**
+	 * Helper function that modifies the alignment transform scale so that virtual content in the world space appears to be "scaled".
+	 * Note that ultimately the scaling effect is achieved through modifying the translation of the camera:
+	 * moving the camera further away from the origin makes objects appear to be smaller, and vice versa.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Alignment", meta = (DisplayName="Set AR World Scale", Keywords = "ar augmentedreality augmented reality world scale"))
+	static void SetARWorldScale(float InWorldScale);
+	
+	/** @return the AR world scale, see "SetARWorldScale" */
+	UFUNCTION(BlueprintPure, Category = "AR AugmentedReality|Alignment", meta = (DisplayName="Get AR World Scale", Keywords = "ar augmentedreality augmented reality world scale"))
+	static float GetARWorldScale();
+	
+	/** @return the alignment transform, see "SetAlignmentTransform" */
+	UFUNCTION(BlueprintPure, Category = "AR AugmentedReality|Alignment", meta = (DisplayName="Get Alignment Transform", Keywords = "ar augmentedreality augmented reality alignment transform"))
+	static FTransform GetAlignmentTransform();
+	
+	/**
+	 * Manually add a tracked point with name and world transform.
+	 * @WorldTransform: transform in the world space where the point should be created.
+	 * @PointName: the name of the created point, must be non-empty.
+	 * @bDeletePointsWithSameName: if existing points with the same name should be deleted.
+	 * @return if the operation succeeds.
+	 * Note that this is an async operation - the added point won't be available until a few frames later.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality", meta = (Keywords = "ar augmentedreality augmented reality add point"))
+	static bool AddTrackedPointWithName(const FTransform& WorldTransform, const FString& PointName, bool bDeletePointsWithSameName = true);
+	
+	/** @return a list of the tracked points with the given name */
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality", meta = (Keywords = "ar augmentedreality augmented reality find point"))
+	static TArray<UARTrackedPoint*> FindTrackedPointsByName(const FString& PointName);
+	
 	// Static helpers to create the methods needed to add/remove delegates from the AR system
 	DEFINE_AR_BPLIB_DELEGATE_FUNCS(OnTrackableAdded)
 	DEFINE_AR_BPLIB_DELEGATE_FUNCS(OnTrackableUpdated)
 	DEFINE_AR_BPLIB_DELEGATE_FUNCS(OnTrackableRemoved)
 	// End helpers
+
+	//Alignment helpers
+	UFUNCTION(BlueprintCallable, Category = Alignment)
+	static void CalculateClosestIntersection(const TArray<FVector>& StartPoints, const TArray<FVector>& EndPoints, FVector& ClosestIntersection);
+
+	// Computes a transform that aligns two coordinate systems. Requires the transform of the same known point in each coordinate system.
+	UFUNCTION(BlueprintCallable, Category = Alignment)
+	static void CalculateAlignmentTransform(const FTransform& TransformInFirstCoordinateSystem, const FTransform& TransformInSecondCoordinateSystem, FTransform& AlignmentTransform);
+
 
 public:
 	static void RegisterAsARSystem(const TSharedRef<FARSupportInterface , ESPMode::ThreadSafe>& NewArSystem);
@@ -332,6 +381,10 @@ class AUGMENTEDREALITY_API UARTraceResultLibrary : public UBlueprintFunctionLibr
 	/** @return Get the transform of the trace result in Unreal World Space. */
 	UFUNCTION( BlueprintPure, Category = "AR AugmentedReality|Trace Result" )
 	static FTransform GetLocalToWorldTransform( const FARTraceResult& TraceResult );
+	
+	/** @return Get the transform of the trace result in the AR system's local space. */
+	UFUNCTION( BlueprintPure, Category = "AR AugmentedReality|Trace Result" )
+	static FTransform GetLocalTransform( const FARTraceResult& TraceResult );
 	
 	/** @return Get the real-world object (as observed by the Augmented Reality system) that was intersected by the line trace. */
 	UFUNCTION( BlueprintPure, Category = "AR AugmentedReality|Trace Result" )

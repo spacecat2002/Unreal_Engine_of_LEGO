@@ -6,6 +6,7 @@
 #include "UObject/ObjectMacros.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "HeadMountedDisplayTypes.h"
+#include "XRVisualizationData.h"
 #include "IIdentifiableXRDevice.h" // for FXRDeviceId
 #include "HeadMountedDisplayFunctionLibrary.generated.h"
 
@@ -46,6 +47,14 @@ class HEADMOUNTEDDISPLAY_API UHeadMountedDisplayFunctionLibrary : public UBluepr
 	 */
 	UFUNCTION(BlueprintPure, Category="Input|HeadMountedDisplay")
 	static FName GetHMDDeviceName();
+
+	/**
+	 * Returns the flags for the device, so scripts can modify their behaviour appropriately
+	 *
+	 * @return	IsAR, IsTablet, IsHeadMounted.  Returns false
+	 */
+	UFUNCTION(BlueprintPure, Category="Input|HeadMountedDisplay")
+	static int32 GetXRSystemFlags();
 
 	/**
 	* Returns the worn state of the device.
@@ -302,4 +311,74 @@ class HEADMOUNTEDDISPLAY_API UHeadMountedDisplayFunctionLibrary : public UBluepr
 	 */
 	UFUNCTION(BlueprintCallable, Category="Input|XRTracking")
 	static bool IsDeviceTracking(const FXRDeviceId& XRDeviceId);
+
+	/**
+	 * Cross XR-System query that returns critical information about the HMD display (position, orientation, device name)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Input|XRTracking")
+	static void GetHMDVisualizationData(UObject* WorldContext, FXRHMDVisualizationData& HMDVisualizationData);
+
+	/**
+	 * Cross XR-System query that returns critical information about the motion controller (position, orientation, hand/finger position)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Input|XRTracking")
+	static void GetMotionControllerVisualizationData(UObject* WorldContext, const EControllerHand Hand, FXRMotionControllerVisualizationData& MotionControllerVisualizationData);
+
+
+	/**
+	 * Create an UARPin with the specified name
+	 *
+	 * @param Name						The name of the anchor.  If the Name is already in use creation will fail.  A leading "_" is reserved for automatically named anchors. Do not start your names with an underscore.
+	 * @param WorldTransform		The Pin which the component will be updated by.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ARPin")
+	static UARPin* CreateNamedARPin(FName Name, const FTransform& WorldTransform);
+
+	/**
+	 * Associate a component with an ARPin, so that its transform will be updated by the pin.  Any previously associated component will be detached.
+	 *
+	 * @param ComponentToPin	The Component which will be updated by the Pin.
+	 * @param Pin				The Pin which the component will be updated by.
+	 *
+	 * @return					True if Pin successfully created.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ARPin")
+	static bool PinComponent(USceneComponent* ComponentToPin, UARPin* Pin);
+
+	/**
+	 * Are Pins ready to load
+	 *
+	 * @return					True if anchor store is ready.
+	 */
+	UFUNCTION(BlueprintPure, Category = "ARPin")
+	static bool ArePinsReadyToLoad();
+
+	/**
+	 * Load all ARPins from local save
+	 * Note: Pins of the same name as anchor store pins will be overwritten by the anchor store pin.
+	 *
+	 * @return					Array of Pins that were loaded.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ARPin")
+	static TMap<FName, UARPin*> LoadARPins();
+
+	/**
+	 * Save an ARPin to local store
+	 *
+	 * @return					True if saved successfully.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ARPin")
+	static bool SaveARPin(FName InName);
+
+	/**
+	 * Remove an ARPin from the local store
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ARPin")
+	static void RemoveSavedARPin(FName InName);
+
+	/**
+	 * Remove all ARPins from the local store
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ARPin")
+	static void RemoveAllSavedARPins();
 };

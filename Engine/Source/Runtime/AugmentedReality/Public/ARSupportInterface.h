@@ -125,6 +125,9 @@ public:
 	
 	/** \see UARBlueprintLibrary::IsSceneReconstructionSupported() */
 	bool IsSceneReconstructionSupported(EARSessionType SessionType, EARSceneReconstruction SceneReconstructionMethod) const;
+	
+	/** \see UARBlueprintLibrary::AddTrackedPointWithName() */
+	bool AddTrackedPointWithName(const FTransform& WorldTransform, const FString& PointName, bool bDeletePointsWithSameName);
 
 	//~ FGCObject
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
@@ -135,6 +138,16 @@ public:
 	DECLARE_AR_SI_DELEGATE_FUNCS(OnTrackableUpdated)
 	DECLARE_AR_SI_DELEGATE_FUNCS(OnTrackableRemoved)
 	// End helpers
+
+	/** Pin Interface */
+	UARPin* CreateNamedARPin(FName Name, const FTransform& WorldTransform);
+	bool PinComponent(USceneComponent* ComponentToPin, UARPin* Pin);
+	bool ArePinsReadyToLoad();
+	void LoadARPins(TMap<FName, UARPin*>& LoadedPins);
+	bool SaveARPin(FName InName);
+	void RemoveSavedARPin(FName InName);
+	void RemoveAllSavedARPins();
+
 
 	FARSystemOnSessionStarted OnARSessionStarted;
 	FARSystemOnAlignmentTransformUpdated OnAlignmentTransformUpdated;

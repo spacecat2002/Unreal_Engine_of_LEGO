@@ -61,6 +61,26 @@ FName UHeadMountedDisplayFunctionLibrary::GetHMDDeviceName()
 	return DeviceName;
 }
 
+int32 UHeadMountedDisplayFunctionLibrary::GetXRSystemFlags()
+{
+	int32 SystemFlags = 0;
+
+	if (GEngine->XRSystem.IsValid())
+	{
+		SystemFlags = GEngine->XRSystem->GetXRSystemFlags();
+		auto HMD = GEngine->XRSystem->GetHMDDevice();
+		if (HMD && !HMD->IsHMDConnected())
+		{
+			// Clear the flags if a HMD device is present but not connected
+			// Note that the HMD device is usually the XR system itself
+			// and the latter is registered as soon as the corresponding plugin is loaded
+			SystemFlags = 0;
+		}
+	}
+
+	return SystemFlags;
+}
+
 EHMDWornState::Type UHeadMountedDisplayFunctionLibrary::GetHMDWornState()
 {
 	if (GEngine->XRSystem.IsValid() && GEngine->XRSystem->GetHMDDevice())
@@ -422,3 +442,112 @@ bool UHeadMountedDisplayFunctionLibrary::IsDeviceTracking(const FXRDeviceId& XRD
 
 	return bIsTracked;
 }
+
+
+void UHeadMountedDisplayFunctionLibrary::GetHMDVisualizationData(UObject* WorldContext, FXRHMDVisualizationData& HMDVisualizationData)
+{
+	HMDVisualizationData.bValid = false;
+
+	IXRTrackingSystem* TrackingSys = GEngine->XRSystem.Get();
+	if (TrackingSys)
+	{
+		TrackingSys->GetHMDVisualizationData(WorldContext,  HMDVisualizationData);
+	}
+}
+
+void UHeadMountedDisplayFunctionLibrary::GetMotionControllerVisualizationData(UObject* WorldContext, const EControllerHand Hand, FXRMotionControllerVisualizationData& MotionControllerVisualizationData)
+{
+	MotionControllerVisualizationData.bValid = false;
+	
+	IXRTrackingSystem* TrackingSys = GEngine->XRSystem.Get();
+	if (TrackingSys)
+	{
+		TrackingSys->GetMotionControllerVisualizationData(WorldContext, Hand, MotionControllerVisualizationData);
+	}
+}
+
+
+UARPin* UHeadMountedDisplayFunctionLibrary::CreateNamedARPin(FName Name, const FTransform& WorldTransform)
+{
+	UARPin* NewPin = nullptr;
+
+	IXRTrackingSystem* TrackingSys = GEngine->XRSystem.Get();
+	if (TrackingSys)
+	{
+		NewPin = TrackingSys->CreateNamedARPin(Name, WorldTransform);
+	}
+
+	return NewPin;
+}
+
+bool UHeadMountedDisplayFunctionLibrary::PinComponent(USceneComponent* ComponentToPin, UARPin* Pin)
+{
+	bool bSuccess = false;
+
+	IXRTrackingSystem* TrackingSys = GEngine->XRSystem.Get();
+	if (TrackingSys)
+	{
+		bSuccess = TrackingSys->PinComponent(ComponentToPin, Pin);
+	}
+
+	return bSuccess;
+}
+
+bool UHeadMountedDisplayFunctionLibrary::ArePinsReadyToLoad()
+{
+	bool bSuccess = false;
+
+	IXRTrackingSystem* TrackingSys = GEngine->XRSystem.Get();
+	if (TrackingSys)
+	{
+		bSuccess = TrackingSys->ArePinsReadyToLoad();
+	}
+
+	return bSuccess;
+}
+
+TMap<FName, UARPin*> UHeadMountedDisplayFunctionLibrary::LoadARPins()
+{
+	TMap<FName, UARPin*> LoadedPins;
+
+	IXRTrackingSystem* TrackingSys = GEngine->XRSystem.Get();
+	if (TrackingSys)
+	{
+		TrackingSys->LoadARPins(LoadedPins);
+	}
+
+	return LoadedPins;
+}
+
+bool UHeadMountedDisplayFunctionLibrary::SaveARPin(FName InName)
+{
+	bool bSuccess = false;
+
+	IXRTrackingSystem* TrackingSys = GEngine->XRSystem.Get();
+	if (TrackingSys)
+	{
+		bSuccess = TrackingSys->SaveARPin(InName);
+	}
+
+	return bSuccess;
+}
+
+void UHeadMountedDisplayFunctionLibrary::RemoveSavedARPin(FName InName)
+{
+	IXRTrackingSystem* TrackingSys = GEngine->XRSystem.Get();
+	if (TrackingSys)
+	{
+		TrackingSys->RemoveSavedARPin(InName);
+	}
+}
+
+
+void UHeadMountedDisplayFunctionLibrary::RemoveAllSavedARPins()
+{
+	IXRTrackingSystem* TrackingSys = GEngine->XRSystem.Get();
+	if (TrackingSys)
+	{
+		TrackingSys->RemoveAllSavedARPins();
+	}
+}
+

@@ -9,8 +9,11 @@
 #include "Features/IModularFeature.h"
 #include "Engine/GameViewportClient.h"
 #include "IXRInput.h"
+#include "XRVisualizationData.h"
+#include "Kismet/GameplayStatics.h"
 
 class IXRCamera;
+class UARPin;
 
 /**
  * Struct representing the properties of an external tracking sensor.
@@ -51,6 +54,11 @@ public:
 	 * Returns version string.
 	 */
 	virtual FString GetVersionString() const = 0;
+
+	/**
+	 * Returns device specific flags.
+	 */
+	virtual int32 GetXRSystemFlags() const = 0;
 
 	/**
 	 * Device id 0 is reserved for an HMD. This should represent the HMD or the first HMD in case multiple HMDs are supported.
@@ -388,4 +396,78 @@ public:
 	 * Called just after the late update on the render thread passing back the current relative transform.
 	 */
 	virtual void OnLateUpdateApplied_RenderThread(const FTransform& NewRelativeTransform) {}
+
+	/**
+	 * Platform Agnostic Query about HMD details
+	 */
+	virtual void GetHMDVisualizationData(UObject* WorldContext, FXRHMDVisualizationData& HMDVisualizationData)
+	{
+		HMDVisualizationData.bValid = true;
+		HMDVisualizationData.DeviceName = GetSystemName();
+		HMDVisualizationData.ApplicationInstanceID = FApp::GetInstanceId();
+
+		APlayerCameraManager* CameraManager = UGameplayStatics::GetPlayerCameraManager(WorldContext, 0);
+		if (CameraManager)
+		{
+			HMDVisualizationData.Rotation = CameraManager->GetCameraRotation().Quaternion();
+			HMDVisualizationData.Position = CameraManager->GetCameraLocation();
+		}
+		//GetCurrentPose(0, HMDVisualizationData.Rotation, HMDVisualizationData.Position);
+	}
+
+	/**
+	 * Platform Agnostic Query about MotionControllers details
+	 */
+	virtual void GetMotionControllerVisualizationData(UObject* WorldContext, const EControllerHand Hand, FXRMotionControllerVisualizationData& MotionControllerVisualizationData) = 0;
+
+	/** Pin Interface */
+	/**
+	 * Create an UARPin with the specified name
+	 *
+	 * @param Name						The name of the anchor.  If the Name is already in use creation will fail.  A leading "_" is reserved for automatically named anchors. Do not start your names with an underscore.
+	 * @param WorldTransform		The Pin which the component will be updated by.
+	 */
+	virtual UARPin* CreateNamedARPin(FName Name, const FTransform& WorldTransform) = 0;
+
+	/**
+	 * Associate a component with an ARPin, so that its transform will be updated by the pin.  Any previously associated component will be detached.
+	 *
+	 * @param ComponentToPin	The Component which will be updated by the Pin.
+	 * @param Pin				The Pin which the component will be updated by.
+	 *
+	 * @return					True if Pin successfully created.
+	 */
+	virtual bool PinComponent(USceneComponent* ComponentToPin, UARPin* Pin) = 0;
+
+	/**
+	 * Are Pins ready to load
+	 *
+	 * @return					True if anchor store is ready.
+	 */
+	virtual bool ArePinsReadyToLoad() = 0;
+
+	/**
+	 * Load all ARPins from local save
+	 * Note: Pins of the same name as anchor store pins will be overwritten by the anchor store pin.
+	 *
+	 * @return					Array of Pins that were loaded.
+	 */
+	virtual void LoadARPins(TMap<FName, UARPin*>& LoadedPins) = 0;
+
+	/**
+	 * Save an ARPin to local store
+	 *
+	 * @return					True if saved successfully.
+	 */
+	virtual bool SaveARPin(FName InName) = 0;
+
+	/**
+	 * Remove an ARPin from the local store
+	 */
+	virtual void RemoveSavedARPin(FName InName) = 0;
+
+	/**
+	 * Remove all ARPins from the local store
+	 */
+	virtual void RemoveAllSavedARPins() = 0;
 };

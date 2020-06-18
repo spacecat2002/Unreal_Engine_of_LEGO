@@ -15,13 +15,24 @@ UARSessionConfig::UARSessionConfig()
 	, bVerticalPlaneDetection(true)
 	, bEnableAutoFocus(true)
 	, LightEstimationMode(EARLightEstimationMode::AmbientLightEstimate)
-	, FrameSyncMode(EARFrameSyncMode::SyncTickWithoutCameraImage)
+	, FrameSyncMode(EARFrameSyncMode::SyncTickWithCameraImage)
 	, bEnableAutomaticCameraOverlay(true)
 	, bEnableAutomaticCameraTracking(true)
 	, bResetCameraTracking(true)
 	, bResetTrackedObjects(true)
 	, MaxNumSimultaneousImagesTracked(1)
+	, PlaneComponentClass(UARPlaneComponent::StaticClass())
+	, PointComponentClass(UARPointComponent::StaticClass())
+	, FaceComponentClass(UARFaceComponent::StaticClass())
+	, ImageComponentClass(UARImageComponent::StaticClass())
+	, QRCodeComponentClass(UARTrackedQRCode::StaticClass())
+	, PoseComponentClass(UARPoseComponent::StaticClass())
+	, EnvironmentProbeComponentClass(UAREnvironmentProbeComponent::StaticClass())
+	, ObjectComponentClass(UARObjectComponent::StaticClass())
+	, MeshComponentClass(UARMeshComponent::StaticClass())
 {
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> MaterialRef(TEXT("/Engine/EngineDebugMaterials/M_SimpleUnlitTranslucent"));
+	DefaultMeshMaterial = MaterialRef.Object;
 }
 
 EARWorldAlignment UARSessionConfig::GetWorldAlignment() const
@@ -144,6 +155,46 @@ const TArray<uint8>& UARSessionConfig::GetSerializedARCandidateImageDatabase() c
 	return SerializedARCandidateImageDatabase;
 }
 
+UClass* UARSessionConfig::GetPlaneComponentClass(void) const
+{
+	return PlaneComponentClass.Get() ? PlaneComponentClass.Get() : UARPlaneComponent::StaticClass();
+}
+
+UClass* UARSessionConfig::GetPointComponentClass(void) const
+{
+	return PointComponentClass.Get() ? PointComponentClass.Get() : UARPointComponent::StaticClass();
+}
+UClass* UARSessionConfig::GetFaceComponentClass(void) const
+{
+	return FaceComponentClass.Get() ? FaceComponentClass.Get() : UARFaceComponent::StaticClass();
+}
+UClass* UARSessionConfig::GetImageComponentClass(void) const
+{
+	return ImageComponentClass.Get() ? ImageComponentClass.Get() : UARImageComponent::StaticClass();
+}
+UClass* UARSessionConfig::GetQRCodeComponentClass(void) const
+{
+	return QRCodeComponentClass.Get() ? QRCodeComponentClass.Get() : UARQRCodeComponent::StaticClass();
+}
+UClass* UARSessionConfig::GetPoseComponentClass(void) const
+{
+	return PoseComponentClass.Get() ? PoseComponentClass.Get() : UARPoseComponent::StaticClass();
+}
+UClass* UARSessionConfig::GetEnvironmentProbeComponentClass(void) const
+{
+	return EnvironmentProbeComponentClass.Get() ? EnvironmentProbeComponentClass.Get() : UAREnvironmentProbeComponent::StaticClass();
+}
+UClass* UARSessionConfig::GetObjectComponentClass(void) const
+{
+	return ObjectComponentClass.Get() ? ObjectComponentClass.Get() : UARObjectComponent::StaticClass();
+}
+
+UClass* UARSessionConfig::GetMeshComponentClass(void) const
+{
+	return MeshComponentClass.Get() ? MeshComponentClass.Get() : UARMeshComponent::StaticClass();
+}
+
+
 FARVideoFormat UARSessionConfig::GetDesiredVideoFormat() const
 {
 	return DesiredVideoFormat;
@@ -219,4 +270,9 @@ EARSceneReconstruction UARSessionConfig::GetSceneReconstructionMethod() const
 void UARSessionConfig::SetSceneReconstructionMethod(EARSceneReconstruction InSceneReconstructionMethod)
 {
 	SceneReconstructionMethod = InSceneReconstructionMethod;
+}
+
+bool UARSessionConfig::ShouldUseOptimalVideoFormat() const
+{
+	return bUseOptimalVideoFormat;
 }

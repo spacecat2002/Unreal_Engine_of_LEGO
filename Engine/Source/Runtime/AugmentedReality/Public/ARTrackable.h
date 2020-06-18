@@ -3,6 +3,7 @@
 #pragma once
 
 #include "ARTypes.h"
+#include "ARComponent.h"
 #include "ARTrackable.generated.h"
 
 class FARSupportInterface ;
@@ -20,7 +21,9 @@ public:
 	void InitializeNativeResource(IARRef* InNativeResource);
 
 	virtual void DebugDraw( UWorld* World, const FLinearColor& OutlineColor, float OutlineThickness, float PersistForSeconds = 0.0f) const;
-	
+
+	void GetNetworkPayload(FARMeshUpdatePayload& Payload);
+
 	void UpdateTrackedGeometry(const TSharedRef<FARSupportInterface , ESPMode::ThreadSafe>& InTrackingSystem, uint32 FrameNumber, double Timestamp, const FTransform& InLocalToTrackingTransform, const FTransform& InAlignmentTransform );
 	
 	void UpdateTrackingState( EARTrackingState NewTrackingState );
@@ -28,6 +31,8 @@ public:
 	void UpdateAlignmentTransform( const FTransform& NewAlignmentTransform );
 
 	void SetDebugName( FName InDebugName );
+	
+	void SetName(const FString& InName);
 
 	IARRef* GetNativeResource();
 	
@@ -50,6 +55,9 @@ public:
 	FName GetDebugName() const;
 	
 	UFUNCTION(BlueprintPure, Category="AR AugmentedReality|Tracked Geometry")
+	const FString& GetName() const;
+	
+	UFUNCTION(BlueprintPure, Category="AR AugmentedReality|Tracked Geometry")
 	int32 GetLastUpdateFrameNumber() const;
 	
 	UFUNCTION(BlueprintPure, Category="AR AugmentedReality|Tracked Geometry")
@@ -69,6 +77,7 @@ public:
 
 protected:
 	TSharedPtr<FARSupportInterface , ESPMode::ThreadSafe> GetARSystem() const;
+	void UpdateSessionPayload(FARSessionPayload& Payload) const;
 	
 	UPROPERTY()
 	FTransform LocalToTrackingTransform;
@@ -83,7 +92,7 @@ protected:
 	TUniquePtr<IARRef> NativeResource;
 	
 	/** For AR systems that support arbitrary mesh geometry associated with a tracked point */
-	UPROPERTY()
+	UPROPERTY(Transient)
 	UMRMeshComponent* UnderlyingMesh;
 
 	/** What the scene understanding system thinks this object is */
@@ -103,6 +112,9 @@ private:
 	/** A unique name that can be used to identify the anchor for debug purposes */
 	UPROPERTY()
 	FName DebugName;
+	
+	/** A descriptive name for the anchor */
+	FString AnchorName;
 };
 
 UCLASS(BlueprintType)
@@ -117,7 +129,9 @@ public:
 	void UpdateTrackedGeometry(const TSharedRef<FARSupportInterface , ESPMode::ThreadSafe>& InTrackingSystem, uint32 FrameNumber, double Timestamp, const FTransform& InLocalToTrackingTransform, const FTransform& InAlignmentTransform, const FVector InCenter, const FVector InExtent, const TArray<FVector>& InBoundingPoly, UARPlaneGeometry* InSubsumedBy);
 	
 	virtual void DebugDraw( UWorld* World, const FLinearColor& OutlineColor, float OutlineThickness, float PersistForSeconds = 0.0f) const override;
-	
+
+	void GetNetworkPayload(FARPlaneUpdatePayload& Payload);
+
 public:
 	UFUNCTION(BlueprintPure, Category="AR AugmentedReality|Plane Geometry")
 	FVector GetCenter() const { return Center; }
@@ -160,6 +174,8 @@ class AUGMENTEDREALITY_API UARTrackedPoint : public UARTrackedGeometry
 public:
 	virtual void DebugDraw(UWorld* World, const FLinearColor& OutlineColor, float OutlineThickness, float PersistForSeconds = 0.0f) const override;
 
+	void GetNetworkPayload(FARPointUpdatePayload& Payload);
+
 	void UpdateTrackedGeometry(const TSharedRef<FARSupportInterface , ESPMode::ThreadSafe>& InTrackingSystem, uint32 FrameNumber, double Timestamp, const FTransform& InLocalToTrackingTransform, const FTransform& InAlignmentTransform);
 };
 
@@ -170,6 +186,8 @@ class AUGMENTEDREALITY_API UARTrackedImage : public UARTrackedGeometry
 
 public:
 	virtual void DebugDraw(UWorld* World, const FLinearColor& OutlineColor, float OutlineThickness, float PersistForSeconds = 0.0f) const override;
+
+	void GetNetworkPayload(FARImageUpdatePayload& Payload);
 
 	void UpdateTrackedGeometry(const TSharedRef<FARSupportInterface, ESPMode::ThreadSafe>& InTrackingSystem, uint32 FrameNumber, double Timestamp, const FTransform& InLocalToTrackingTransform, const FTransform& InAlignmentTransform, FVector2D InEstimatedSize, UARCandidateImage* InDetectedImage);
 
@@ -206,6 +224,8 @@ class AUGMENTEDREALITY_API UARTrackedQRCode :
 	GENERATED_BODY()
 
 public:
+	void GetNetworkPayload(FARQRCodeUpdatePayload& Payload);
+
 	void UpdateTrackedGeometry(const TSharedRef<FARSupportInterface, ESPMode::ThreadSafe>& InTrackingSystem, uint32 FrameNumber, double Timestamp, const FTransform& InLocalToTrackingTransform, const FTransform& InAlignmentTransform, FVector2D InEstimatedSize, const FString& CodeData, int32 InVersion);
 
 	/** The encoded information in the qr code */
@@ -321,6 +341,8 @@ public:
 	
 	virtual void DebugDraw( UWorld* World, const FLinearColor& OutlineColor, float OutlineThickness, float PersistForSeconds = 0.0f) const override;
 	
+	void GetNetworkPayload(FARFaceUpdatePayload& Payload);
+
 public:
 	UFUNCTION(BlueprintPure, Category="AR AugmentedReality|Face Geometry")
 	float GetBlendShapeValue(EARFaceBlendShape BlendShape) const;
@@ -378,6 +400,8 @@ public:
 	/** Draw a box visulizing the bounds of the probe */
 	virtual void DebugDraw(UWorld* World, const FLinearColor& OutlineColor, float OutlineThickness, float PersistForSeconds = 0.0f) const override;
 	
+	void GetNetworkPayload(FAREnvironmentProbeUpdatePayload& Payload);
+
 	void UpdateEnvironmentCapture(const TSharedRef<FARSupportInterface , ESPMode::ThreadSafe>& InTrackingSystem, uint32 FrameNumber, double Timestamp, const FTransform& InLocalToTrackingTransform, const FTransform& InAlignmentTransform, FVector InExtent);
 
 	/** @see Extent */
@@ -404,6 +428,8 @@ class AUGMENTEDREALITY_API UARTrackedObject : public UARTrackedGeometry
 public:
 	virtual void DebugDraw(UWorld* World, const FLinearColor& OutlineColor, float OutlineThickness, float PersistForSeconds = 0.0f) const override;
 	
+	void GetNetworkPayload(FARObjectUpdatePayload& Payload);
+
 	void UpdateTrackedGeometry(const TSharedRef<FARSupportInterface , ESPMode::ThreadSafe>& InTrackingSystem, uint32 FrameNumber, double Timestamp, const FTransform& InLocalToTrackingTransform, const FTransform& InAlignmentTransform, UARCandidateObject* InDetectedObject);
 	
 	/** @see DetectedObject */
@@ -424,6 +450,8 @@ class AUGMENTEDREALITY_API UARTrackedPose : public UARTrackedGeometry
 public:
 	virtual void DebugDraw(UWorld* World, const FLinearColor& OutlineColor, float OutlineThickness, float PersistForSeconds = 0.0f) const override;
 	
+	void GetNetworkPayload(FARPoseUpdatePayload& Payload);
+
 	void UpdateTrackedPose(const TSharedRef<FARSupportInterface , ESPMode::ThreadSafe>& InTrackingSystem, uint32 FrameNumber, double Timestamp, const FTransform& InLocalToTrackingTransform, const FTransform& InAlignmentTransform, const FARPose3D& InTrackedPose);
 	
 	UFUNCTION(BlueprintPure, Category = "AR AugmentedReality|Pose Tracking")
@@ -440,6 +468,9 @@ class AUGMENTEDREALITY_API UARMeshGeometry : public UARTrackedGeometry
 	GENERATED_BODY()
 	
 public:
+
+	void GetNetworkPayload(FARMeshUpdatePayload& Payload);
+
 	/**
 	 * Try to determine the classification of the object at a world space location
 	 * @InWorldLocation: the world location where the classification is needed

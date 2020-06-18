@@ -109,7 +109,8 @@ void FARSupportInterface ::StopARSession()
 {
 	if (ARImplemention)
 	{
-		if (GetARSessionStatus().Status == EARSessionStatus::Running)
+		//Removing check allows for extra safeguards to close down during a run.
+		//if (GetARSessionStatus().Status == EARSessionStatus::Running)
 		{
 			ARImplemention->OnStopARSession();
 		}
@@ -332,6 +333,66 @@ void FARSupportInterface ::AddReferencedObjects(FReferenceCollector& Collector)
 	}
 }
 
+UARPin* FARSupportInterface::CreateNamedARPin(FName Name, const FTransform& WorldTransform)
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->CreateNamedARPin(Name, WorldTransform);
+	}
+	return nullptr;
+}
+
+bool FARSupportInterface::PinComponent(USceneComponent* ComponentToPin, UARPin* Pin)
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->PinComponent(ComponentToPin, Pin);
+	}
+	return false;
+}
+
+bool FARSupportInterface::ArePinsReadyToLoad()
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->ArePinsReadyToLoad();
+	}
+	return false;
+}
+
+void FARSupportInterface::LoadARPins(TMap<FName, UARPin*>& LoadedPins)
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->LoadARPins(LoadedPins);
+	}
+}
+
+bool FARSupportInterface::SaveARPin(FName InName)
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->SaveARPin(InName);
+	}
+	return false;
+}
+
+void FARSupportInterface::RemoveSavedARPin(FName InName)
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->RemoveSavedARPin(InName);
+	}
+}
+void FARSupportInterface::RemoveAllSavedARPins()
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->RemoveAllSavedARPins();
+	}
+}
+
+
 bool FARSupportInterface::IsSessionTrackingFeatureSupported(EARSessionType SessionType, EARSessionTrackingFeature SessionTrackingFeature) const
 {
 	if (ARImplemention)
@@ -373,6 +434,15 @@ bool FARSupportInterface::IsSceneReconstructionSupported(EARSessionType SessionT
 	if (ARImplemention)
 	{
 		return ARImplemention->OnIsSceneReconstructionSupported(SessionType, SceneReconstructionMethod);
+	}
+	return false;
+}
+
+bool FARSupportInterface::AddTrackedPointWithName(const FTransform& WorldTransform, const FString& PointName, bool bDeletePointsWithSameName)
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->OnAddTrackedPointWithName(WorldTransform, PointName, bDeletePointsWithSameName);
 	}
 	return false;
 }

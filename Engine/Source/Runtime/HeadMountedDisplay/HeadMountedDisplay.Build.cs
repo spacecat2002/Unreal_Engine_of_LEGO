@@ -36,9 +36,18 @@ public class HeadMountedDisplay : ModuleRules
 
         PublicDependencyModuleNames.AddRange(
             new string[] {
-                "AugmentedReality"
+                "AugmentedReality",
+                "XRVisualization"
             }
         );
+
+        PublicIncludePathModuleNames.AddRange(
+            new string[]
+            {
+                "XRVisualization",
+            }
+       );
+
 
         if (Target.bBuildEditor == true)
 		{
