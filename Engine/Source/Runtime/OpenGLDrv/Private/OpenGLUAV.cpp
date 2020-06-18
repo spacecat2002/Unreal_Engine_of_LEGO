@@ -333,7 +333,7 @@ void FOpenGLDynamicRHI::RHIClearUAVFloat(FRHIUnorderedAccessView* UnorderedAcces
 		GPUProfilingData.RegisterGPUWork(1);
 		return;
 	}
-#elif OPENGL_ESDEFERRED
+#elif defined(OPENGL_ESDEFERRED)
 	glBindBuffer(GL_TEXTURE_BUFFER, Texture->BufferResource);
 	uint32 BufferSize = Texture->GetBufferSize();
 	if (BufferSize > 0)

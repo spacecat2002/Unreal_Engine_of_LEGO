@@ -294,8 +294,8 @@ struct FRenderTargetBinding
 
 private:
 	/** Intentionally kept private to force setting the load action in the constructor. */
-	FRDGTexture*				Texture			= nullptr;
-	FRDGTexture*				ResolveTexture	= nullptr;
+	TAlignedShaderParameterPtr<FRDGTexture*> Texture		= nullptr;
+	TAlignedShaderParameterPtr<FRDGTexture*> ResolveTexture	= nullptr;
 	ERenderTargetLoadAction		LoadAction		= ERenderTargetLoadAction::ENoAction;
 	uint8						MipIndex		= 0;
 	int16						ArraySlice		= -1;
@@ -371,7 +371,7 @@ private:
 	 * All parameters required to bind a depth render target deferred. This are purposefully private to
 	 * force the user to call FDepthStencilBinding() constructors. No defaults allowed.
 	 */
-	FRDGTexture* Texture = nullptr;
+	TAlignedShaderParameterPtr<FRDGTexture*> Texture = nullptr;
 	ERenderTargetLoadAction		DepthLoadAction		= ERenderTargetLoadAction::ENoAction;
 	ERenderTargetLoadAction		StencilLoadAction	= ERenderTargetLoadAction::ENoAction;
 	FExclusiveDepthStencil		DepthStencilAccess	= FExclusiveDepthStencil::DepthNop_StencilNop;

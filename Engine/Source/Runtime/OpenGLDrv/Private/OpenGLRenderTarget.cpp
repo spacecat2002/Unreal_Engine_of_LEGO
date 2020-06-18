@@ -1247,9 +1247,8 @@ void FOpenGLDynamicRHI::RHINextSubpass()
 
 void FOpenGLDynamicRHI::RHIBeginTransitions(TArrayView<const FRHITransition*> Transitions)
 {
-	checkNoEntry(); // @todo - implement
 }
+
 void FOpenGLDynamicRHI::RHIEndTransitions(TArrayView<const FRHITransition*> Transitions)
 {
-	checkNoEntry(); // @todo - implement
 }

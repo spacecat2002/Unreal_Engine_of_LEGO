@@ -892,9 +892,9 @@ void FVulkanDevice::InitGPU(int32 DeviceIndex)
 	ZeroVulkanStruct(SeparateDepthStencilLayoutsFeatures, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SEPARATE_DEPTH_STENCIL_LAYOUTS_FEATURES_KHR);
 	PhysicalFeatures2.pNext = &SeparateDepthStencilLayoutsFeatures;
 #endif
-	if (VulkanRHI::vkGetPhysicalDeviceFeatures2KHR)
+	if (VulkanDynamicAPI::vkGetPhysicalDeviceFeatures2KHR)
 	{
-		VulkanRHI::vkGetPhysicalDeviceFeatures2KHR(Gpu, &PhysicalFeatures2);
+		VulkanDynamicAPI::vkGetPhysicalDeviceFeatures2KHR(Gpu, &PhysicalFeatures2);
 		// FIXME: if SeparateDepthStencilLayoutsFeatures.separateDepthStencilLayouts is true, we also need to enable the extension.
 		// FIXME: The layout tracking code doesn't work correctly with separate layouts, so we force-disable this for now.
 		SeparateDepthStencilLayoutsFeatures.separateDepthStencilLayouts = 0;
