@@ -3765,12 +3765,7 @@ void GlobalBeginCompileShader(
 
 	if (IsVulkanPlatform((EShaderPlatform)Target.Platform))
 	{
-		int32 VulkanForceDXC = CVarVulkanForceDXC.GetValueOnAnyThread();
-		const bool bIsVulkanMobile = IsVulkanMobilePlatform((EShaderPlatform)Target.Platform);
-		const bool bIsDXCEnabledForDesktop = (VulkanForceDXC == 1 && !bIsVulkanMobile);
-		const bool bIsDXCEnabledForMobile = (VulkanForceDXC == 2 && bIsVulkanMobile);
-		const bool bIsDXCEnableForAll = (VulkanForceDXC == 3);
-		if (bIsDXCEnabledForDesktop || bIsDXCEnabledForMobile || bIsDXCEnableForAll)
+		if (IsDXCEnabledForPlatform((EShaderPlatform)Target.Platform))
 		{
 			Input.Environment.CompilerFlags.Add(CFLAG_ForceDXC);
 		}

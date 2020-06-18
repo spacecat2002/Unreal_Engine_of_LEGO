@@ -2242,5 +2242,8 @@ inline void DispatchIndirectComputeShader(
 	DispatchIndirectComputeShader(RHICmdList, Shader.GetShader(), ArgumentBuffer, ArgumentOffset);
 }
 
+/** Returns whether DirectXShaderCompiler (DXC) is enabled for the specified shader platform. See console variables "r.Metal.ForceDXC", "r.OpenGL.ForceDXC", "r.Vulkan.ForceDXC". */
+extern RENDERCORE_API bool IsDXCEnabledForPlatform(EShaderPlatform Platform);
+
 /** Appends to KeyString for all shaders. */
 extern RENDERCORE_API void ShaderMapAppendKeyString(EShaderPlatform Platform, FString& KeyString);

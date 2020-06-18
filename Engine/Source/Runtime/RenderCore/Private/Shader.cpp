@@ -1277,6 +1277,35 @@ void DispatchIndirectComputeShader(
 	RHICmdList.DispatchIndirectComputeShader(ArgumentBuffer, ArgumentOffset);
 }
 
+bool IsDXCEnabledForPlatform(EShaderPlatform Platform)
+{
+	if (IsD3DPlatform(Platform, false))
+	{
+		static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.D3D.ForceDXC"));
+		return (CVar && CVar->GetInt() != 0);
+	}
+	if (IsOpenGLPlatform(Platform))
+	{
+		static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.OpenGL.ForceDXC"));
+		return (CVar && CVar->GetInt() != 0);
+	}
+	if (IsMetalPlatform(Platform))
+	{
+		static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Metal.ForceDXC"));
+		return (CVar && CVar->GetInt() != 0);
+	}
+	if (IsVulkanPlatform(Platform))
+	{
+		static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Vulkan.ForceDXC"));
+		int32 VulkanForceDXC = (CVar ? CVar->GetInt() : 0);
+		const bool bIsVulkanMobile = IsVulkanMobilePlatform((EShaderPlatform)Platform);
+		const bool bIsDXCEnabledForDesktop = (VulkanForceDXC == 1 && !bIsVulkanMobile);
+		const bool bIsDXCEnabledForMobile = (VulkanForceDXC == 2 && bIsVulkanMobile);
+		const bool bIsDXCEnableForAll = (VulkanForceDXC == 3);
+		return (bIsDXCEnabledForDesktop || bIsDXCEnabledForMobile || bIsDXCEnableForAll);
+	}
+	return false;
+}
 
 void ShaderMapAppendKeyString(EShaderPlatform Platform, FString& KeyString)
 {
@@ -1415,13 +1444,6 @@ void ShaderMapAppendKeyString(EShaderPlatform Platform, FString& KeyString)
 			if (CVar && CVar->GetInt() != 0)
 			{
 				KeyString += TEXT("_UnInt");
-			}
-		}
-		{
-			static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.D3D.ForceDXC"));
-			if (CVar && CVar->GetInt() != 0)
-			{
-				KeyString += TEXT("_DXC");
 			}
 		}
 	}
@@ -1563,23 +1585,10 @@ void ShaderMapAppendKeyString(EShaderPlatform Platform, FString& KeyString)
 		{
 			KeyString += TEXT("_ARCHIVE");
 		}
-		{
-			static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Metal.ForceDXC"));
-			if (CVar && CVar->GetInt() != 0)
-			{
-				KeyString += TEXT("_DXC");
-			}
-		}
 	}
 
-	if (IsOpenGLPlatform(Platform))
-	{
-		static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.OpenGL.ForceDXC"));
-		if (CVar && CVar->GetInt() != 0)
-		{
-			KeyString += TEXT("_DXC");
-		}
-	}
+	// Is DXC shader compiler enabled for this platform?
+	KeyString += (IsDXCEnabledForPlatform(Platform) ? TEXT("_DXC1") : TEXT("_DXC0"));
 
 	if (IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5))
 	{
