@@ -5,9 +5,12 @@
 #include "Engine/Engine.h"
 #include "Features/IModularFeatures.h"
 #include "XRVisualizationModule.h"
+#include "Components/StaticMeshComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/CollisionProfile.h"
+#include "Engine/StaticMesh.h"
 #include "TimerManager.h"
+#include "UObject/ConstructorHelpers.h"
 
 
 UXRVisualizationLoadHelper::UXRVisualizationLoadHelper(const FObjectInitializer& ObjectInitializer)

@@ -339,7 +339,7 @@ void UARPlaneComponent::UpdateVisualization_Implementation()
 {
 	const auto& SessionPayload = ReplicatedPayload.SessionPayload;
 	
-	const auto bDebugModeEnabled = GetDebugMode();
+	const bool bDebugModeEnabled = GetDebugMode() != 0;
 	
 	if (!MRMeshComponent)
 	{
@@ -415,7 +415,7 @@ void UARPlaneComponent::TickComponent(float DeltaTime, enum ELevelTick TickType,
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	
 #if AR_DEBUG_MODE
-	const auto bDebugModeEnabled = GetDebugMode();
+	const bool bDebugModeEnabled = GetDebugMode() != 0;
 	if (bDebugModeEnabled)
 	{
 		FString DebugString;
@@ -462,7 +462,7 @@ void UARQRCodeComponent::UpdateVisualization_Implementation()
 {
 	const auto& SessionPayload = ReplicatedPayload.SessionPayload;
 	
-	const auto bDebugModeEnabled = GetDebugMode();
+	const bool bDebugModeEnabled = GetDebugMode() != 0;
 	
 	if (!MRMeshComponent)
 	{
@@ -507,7 +507,7 @@ void UARImageComponent::UpdateVisualization_Implementation()
 {
 	const auto& SessionPayload = ReplicatedPayload.SessionPayload;
 	
-	const auto bDebugModeEnabled = GetDebugMode();
+	const bool bDebugModeEnabled = GetDebugMode() != 0;
 	
 	if (!MRMeshComponent)
 	{
@@ -554,7 +554,7 @@ void UARImageComponent::TickComponent(float DeltaTime, enum ELevelTick TickType,
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	
 #if AR_DEBUG_MODE
-	const auto bDebugModeEnabled = GetDebugMode();
+	const bool bDebugModeEnabled = GetDebugMode() != 0;
 	if (bDebugModeEnabled)
 	{
 		FString DebugString;

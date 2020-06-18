@@ -5,6 +5,7 @@
 #include "ARActor.h"
 #include "EngineUtils.h"
 #include "Engine/Engine.h"
+#include "GameFramework/PlayerController.h"
 
 
 UARLifeCycleComponent::FRequestSpawnARActorDelegate UARLifeCycleComponent::RequestSpawnARActorDelegate;

@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "ARSessionConfig.h"
+#include "UObject/ConstructorHelpers.h"
 #include "UObject/VRObjectVersion.h"
 #include "Containers/StringConv.h"
 #include "Misc/CoreMisc.h"
