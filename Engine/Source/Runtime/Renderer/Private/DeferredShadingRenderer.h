@@ -289,7 +289,11 @@ private:
 
 
 	/** Add a clustered deferred shading lighting render pass.	Note: in the future it should take the RenderGraph builder as argument */
-	void AddClusteredDeferredShadingPass(FRHICommandListImmediate& RHICmdList, const FSortedLightSetSceneInfo &SortedLightsSet);
+	void AddClusteredDeferredShadingPass(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SceneColorTexture,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesDepth,
+		const FSortedLightSetSceneInfo& SortedLightsSet);
 
 	/** Renders the lights in SortedLights in the range [TiledDeferredLightsStart, TiledDeferredLightsEnd) using tiled deferred shading. */
 	void RenderTiledDeferredLighting(
