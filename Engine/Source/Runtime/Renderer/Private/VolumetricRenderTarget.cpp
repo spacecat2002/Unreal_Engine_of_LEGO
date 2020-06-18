@@ -224,7 +224,7 @@ FRDGTextureRef FVolumetricRenderTargetViewStateData::GetOrCreateVolumetricTracin
 
 	FRDGTextureRef RDGVolumetricTracingRT = GraphBuilder.CreateTexture(
 		FRDGTextureDesc::Create2D(VolumetricTracingRTResolution, PF_FloatRGBA, FClearValueBinding(FLinearColor(0.0f, 0.0f, 0.0f, 1.0f)),
-			TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable), TEXT("RDGVolumetricTracingRT"));
+			TexCreate_ShaderResource | TexCreate_RenderTargetable), TEXT("RDGVolumetricTracingRT"));
 	return RDGVolumetricTracingRT;
 }
 
@@ -239,7 +239,7 @@ FRDGTextureRef FVolumetricRenderTargetViewStateData::GetOrCreateVolumetricTracin
 
 	FRDGTextureRef RDGVolumetricTracingRTDepth = GraphBuilder.CreateTexture(
 		FRDGTextureDesc::Create2D(VolumetricTracingRTResolution, PF_R16F, FClearValueBinding(FLinearColor(63000.0f, 63000.0f, 63000.0f, 63000.0f)),
-			TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable), TEXT("RDGVolumetricTracingRTDepth"));
+			TexCreate_ShaderResource | TexCreate_RenderTargetable), TEXT("RDGVolumetricTracingRTDepth"));
 	return RDGVolumetricTracingRTDepth;
 }
 
@@ -271,7 +271,7 @@ FRDGTextureRef FVolumetricRenderTargetViewStateData::GetOrCreateDstVolumetricRec
 
 	FRDGTextureRef RDGVolumetricVolumetricReconstructRTRT = GraphBuilder.CreateTexture(
 		FRDGTextureDesc::Create2D(VolumetricReconstructRTResolution, PF_FloatRGBA, FClearValueBinding(FLinearColor(0.0f, 0.0f, 0.0f, 1.0f)),
-		TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable), TEXT("RDGVolumetricVolumetricReconstructRTRT"));
+		TexCreate_ShaderResource | TexCreate_RenderTargetable), TEXT("RDGVolumetricVolumetricReconstructRTRT"));
 	return RDGVolumetricVolumetricReconstructRTRT;
 }
 
@@ -287,7 +287,7 @@ FRDGTextureRef FVolumetricRenderTargetViewStateData::GetOrCreateDstVolumetricRec
 
 	FRDGTextureRef RDGVolumetricVolumetricReconstructRTRTDepth = GraphBuilder.CreateTexture(
 		FRDGTextureDesc::Create2D(VolumetricReconstructRTResolution, PF_R16F, FClearValueBinding(FLinearColor(63000.0f, 63000.0f, 63000.0f, 63000.0f)),
-		TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable), TEXT("RDGVolumetricVolumetricReconstructRTRTDepth"));
+		TexCreate_ShaderResource | TexCreate_RenderTargetable), TEXT("RDGVolumetricVolumetricReconstructRTRTDepth"));
 	return RDGVolumetricVolumetricReconstructRTRTDepth;
 }
 
