@@ -82,29 +82,32 @@ void FEditorSessionSummaryWriter::Initialize()
 	{
 		// Create a session Session for this session
 		CurrentSession = CreateCurrentSession(SessionStartTimeUtc, OutOfProcessMonitorProcessId);
+
+		// Update the idle/inactivity timers. The session start time is taken when the FEditorSessionSummaryWriter is created, but it is possible to have a very long gap of time until the
+		// session itself is created if the session lock is contented. In such case, the session is created at the next Tick() and it may come much later if the computer hibernated in-between.
+		double CurrTimeSecs = FPlatformTime::Seconds();
+		UpdateUserIdleTime(CurrTimeSecs, /*bReset*/false);
+		UpdateEditorIdleTime(CurrTimeSecs, /*bReset*/false);
+		UpdateSessionDuration(CurrTimeSecs);
+
 		CurrentSession->Save();
 
 		UE_LOG(LogEditorSessionSummary, Log, TEXT("EditorSessionSummaryWriter initialized"));
 
-		// update session list string
+		// Update the session list.
 		TArray<FString> StoredSessions;
-
 		FEditorAnalyticsSession::GetStoredSessionIDs(StoredSessions);
 		StoredSessions.Add(CurrentSession->SessionId);
-
 		FEditorAnalyticsSession::SaveStoredSessionIDs(StoredSessions);
 
 		FEditorAnalyticsSession::Unlock();
+
+		// Attached debugger was checked during session creation, schedule the next one in n seconds.
+		NextDebuggerCheckSecs = CurrTimeSecs + EditorSessionWriterDefs::DebuggerCheckPeriodSeconds;
 	}
 
 	if (CurrentSession)
 	{
-		// Reset all 'inactivity' timers to 'now'.
-		double CurrTimSecs = FPlatformTime::Seconds();
-		LastUserActivityTimeSecs.Store(CurrTimSecs);
-		LastEditorActivityTimeSecs.Store(CurrTimSecs);
-		NextDebuggerCheckSecs = CurrTimSecs + EditorSessionWriterDefs::DebuggerCheckPeriodSeconds;
-
 		// Register for crash and app state callbacks
 		FCoreDelegates::OnHandleSystemError.AddRaw(this, &FEditorSessionSummaryWriter::OnCrashing); // WARNING: Don't assume this function is only called from game thread.
 		FCoreDelegates::ApplicationWillTerminateDelegate.AddRaw(this, &FEditorSessionSummaryWriter::OnTerminate); // WARNING: Don't assume this function is only called from game thread.
