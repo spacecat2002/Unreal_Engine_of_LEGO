@@ -103,46 +103,17 @@ FNetworkFileServerClientConnection::~FNetworkFileServerClientConnection( )
 	}
 }
 
-/* FStreamingNetworkFileServerConnection implementation
- *****************************************************************************/
-void FNetworkFileServerClientConnection::ConvertClientFilenameToServerFilename(FString& FilenameToConvert)
+static bool TrySubstituteDirectory(FString& FilenameToConvert, const FString& Directory, const FString& DirectoryToReplace)
 {
-	if (FilenameToConvert.StartsWith(ConnectedEngineDir))
+	FString NormalizedFilenameToConvert = FilenameToConvert;
+	FPaths::NormalizeFilename(NormalizedFilenameToConvert);
+	FString NormalizedDirectoryToReplace = DirectoryToReplace;
+	FPaths::NormalizeDirectoryName(NormalizedDirectoryToReplace);
+	if (NormalizedFilenameToConvert.StartsWith(NormalizedDirectoryToReplace) && (NormalizedFilenameToConvert.Len() == NormalizedDirectoryToReplace.Len() || NormalizedFilenameToConvert[NormalizedDirectoryToReplace.Len()] == '/'))
 	{
-		FilenameToConvert = FilenameToConvert.Replace(*ConnectedEngineDir, *(FPaths::EngineDir()));
-	}
-	else if (FilenameToConvert.StartsWith(ConnectedProjectDir))
-	{
-		if ( FPaths::IsProjectFilePathSet() )
+		if (NormalizedFilenameToConvert.Len() > NormalizedDirectoryToReplace.Len())
 		{
-			FilenameToConvert = FilenameToConvert.Replace(*ConnectedProjectDir, *LocalProjectDir);
-		}
-		else
-		{
-#if !IS_PROGRAM
-			// UnrealFileServer has a ProjectDir of ../../../Engine/Programs/UnrealFileServer.
-			// We do *not* want to replace the directory in that case.
-			FilenameToConvert = FilenameToConvert.Replace(*ConnectedProjectDir, *(FPaths::ProjectDir()));
-#endif
-		}
-	}
-	else if (FilenameToConvert.StartsWith(ConnectedEnginePlatformExtensionsDir))
-	{
-		FilenameToConvert = FilenameToConvert.Replace(*ConnectedEnginePlatformExtensionsDir, *(FPaths::EnginePlatformExtensionsDir()));
-	}
-	else if (FilenameToConvert.StartsWith(ConnectedProjectPlatformExtensionsDir))
-	{
-		FilenameToConvert = FilenameToConvert.Replace(*ConnectedProjectPlatformExtensionsDir, *(FPaths::ProjectPlatformExtensionsDir()));
-	}
-}
-
-static bool TrySubstituteDirectory(FString& FilenameToConvert, const FString& Directory, const FString& DirectoryAbs)
-{
-	if (FilenameToConvert.StartsWith(DirectoryAbs) && (FilenameToConvert.Len() == DirectoryAbs.Len() || FilenameToConvert[DirectoryAbs.Len()] == '/'))
-	{
-		if (FilenameToConvert.Len() > DirectoryAbs.Len())
-		{
-			FilenameToConvert = Directory / FilenameToConvert.RightChop(DirectoryAbs.Len() + 1);
+			FilenameToConvert = Directory / NormalizedFilenameToConvert.RightChop(NormalizedDirectoryToReplace.Len() + 1);
 		}
 		else
 		{
@@ -151,6 +122,31 @@ static bool TrySubstituteDirectory(FString& FilenameToConvert, const FString& Di
 		return true;
 	}
 	return false;
+}
+
+/* FStreamingNetworkFileServerConnection implementation
+ *****************************************************************************/
+void FNetworkFileServerClientConnection::ConvertClientFilenameToServerFilename(FString& FilenameToConvert)
+{
+	if (TrySubstituteDirectory(FilenameToConvert, FPaths::EngineDir(), ConnectedEngineDir))
+	{
+		return;
+	}
+	if (TrySubstituteDirectory(FilenameToConvert, FPaths::IsProjectFilePathSet() ? LocalProjectDir : (IS_PROGRAM ? ConnectedProjectDir : FPaths::ProjectDir()), ConnectedProjectDir))
+	{
+		// We have set the replacement value argument of TrySubstituteDirectory to be the same as the search value in the IS_PROGRAM case. We do this because:
+		// UnrealFileServer has a ProjectDir of ../../../Engine/Programs/UnrealFileServer.
+		// We do *not* want to replace the directory in that case.
+		return;
+	}
+	if (TrySubstituteDirectory(FilenameToConvert, FPaths::EnginePlatformExtensionsDir(), ConnectedEnginePlatformExtensionsDir))
+	{
+		return;
+	}
+	if (TrySubstituteDirectory(FilenameToConvert, FPaths::ProjectPlatformExtensionsDir(), ConnectedProjectPlatformExtensionsDir))
+	{
+		return;
+	}
 }
 
 void FNetworkFileServerClientConnection::ConvertLocalFilenameToServerFilename(FString& FilenameToConvert)
