@@ -441,9 +441,6 @@ void FAudioThread::StopAudioThread()
 		return;
 	}
 
-	// unregister
-	IConsoleManager::Get().RegisterThreadPropagation();
-
 	FAudioCommandFence Fence;
 	Fence.BeginFence();
 	Fence.Wait();
