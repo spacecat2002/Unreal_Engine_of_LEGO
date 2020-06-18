@@ -2327,8 +2327,7 @@ void FLLMTraceWriter::Update(FLLMCustomTag* CustomTags, const int32* ParentTags)
 			const int64 Tag = StatTagsSnapshot[i];
 			//FString TagName = GetTagName(Tag, CustomTags, ParentTags); // prefix with parent tag
 			FString TagName = GetTagName(Tag, CustomTags, nullptr);
-			const uint32 TagNameSize = TagName.Len() * sizeof(TCHAR);
-			UE_TRACE_LOG(LLM, TagsSpec, MemoryChannel, TagNameSize)
+			UE_TRACE_LOG(LLM, TagsSpec, MemoryChannel)
 				<< TagsSpec.TagId(Tag)
 				<< TagsSpec.ParentId(ParentTags[Tag])
 				<< TagsSpec.Name(*TagName);
@@ -2351,8 +2350,7 @@ void FLLMTraceWriter::TraceGenericTags(const int32* ParentTags)
 	for (int32 GenericTagIndex = 0; GenericTagIndex < (int32)ELLMTag::GenericTagCount; GenericTagIndex++)
 	{
 		FString TagName = GetTagName(GenericTagIndex, nullptr, ParentTags);
-		const uint32 TagNameSize = TagName.Len() * sizeof(TCHAR);
-		UE_TRACE_LOG(LLM, TagsSpec, MemoryChannel, TagNameSize)
+		UE_TRACE_LOG(LLM, TagsSpec, MemoryChannel)
 			<< TagsSpec.TagId(GenericTagIndex)
 			<< TagsSpec.ParentId(ParentTags[GenericTagIndex])
 			<< TagsSpec.Name(*TagName);
