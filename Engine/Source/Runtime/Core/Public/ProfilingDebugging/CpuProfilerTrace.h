@@ -21,7 +21,6 @@ UE_TRACE_CHANNEL_EXTERN(CpuChannel, CORE_API);
 
 struct FCpuProfilerTrace
 {
-	CORE_API static void Init(const TCHAR* CmdLine);
 	CORE_API static void Shutdown();
 	FORCENOINLINE CORE_API static uint32 OutputEventType(const ANSICHAR* Name);
 	FORCENOINLINE CORE_API static uint32 OutputEventType(const TCHAR* Name);
@@ -84,9 +83,6 @@ struct FCpuProfilerTrace
 	};
 };
 
-#define TRACE_CPUPROFILER_INIT(CmdLine) \
-	FCpuProfilerTrace::Init(CmdLine);
-
 #define TRACE_CPUPROFILER_SHUTDOWN() \
 	FCpuProfilerTrace::Shutdown();
 
@@ -111,7 +107,6 @@ struct FCpuProfilerTrace
 
 #else
 
-#define TRACE_CPUPROFILER_INIT(CmdLine)
 #define TRACE_CPUPROFILER_SHUTDOWN()
 #define TRACE_CPUPROFILER_EVENT_SCOPE_ON_CHANNEL_STR(NameStr, Channel)
 #define TRACE_CPUPROFILER_EVENT_SCOPE_ON_CHANNEL(Name, Channel)

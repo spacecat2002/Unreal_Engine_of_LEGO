@@ -414,11 +414,6 @@ void FTraceAuxiliary::Initialize(const TCHAR* CommandLine)
 	{
 		GTraceAuxiliary.Connect(ETraceConnectType::File, nullptr);
 	}
-
-	// Insights' instrumentation.
-	TRACE_CPUPROFILER_INIT(CommandLine);
-	TRACE_PLATFORMFILE_INIT(CommandLine);
-	TRACE_COUNTERS_INIT(CommandLine);
 #endif
 }
 

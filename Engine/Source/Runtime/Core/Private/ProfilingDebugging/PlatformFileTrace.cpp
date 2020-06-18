@@ -185,10 +185,6 @@ void FPlatformFileTrace::EndWrite(uint64 WriteHandle, uint64 SizeWritten)
 		<< EndWrite.SizeWritten(SizeWritten);
 }
 
-void FPlatformFileTrace::Init(const TCHAR* CmdLine)
-{
-}
-
 uint32 FPlatformFileTrace::GetOpenFileHandleCount()
 {
 #if PLATFORMFILETRACE_DEBUG_ENABLED
