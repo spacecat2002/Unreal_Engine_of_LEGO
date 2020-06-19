@@ -5,7 +5,7 @@
 =============================================================================*/
 
 #pragma once
-#include "../../../RenderCore/Public/RendererInterface.h"
+#include "RendererInterface.h"
 
 struct FAmbientOcclusionMobileOutputs
 {

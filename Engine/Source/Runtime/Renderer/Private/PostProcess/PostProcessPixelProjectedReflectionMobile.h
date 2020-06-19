@@ -5,6 +5,8 @@
 =============================================================================*/
 
 #pragma once
+#include "HAL/Platform.h"
+#include "RendererInterface.h"
 
 #define PROJECTION_OUTPUT_TYPE_BUFFER 0
 
