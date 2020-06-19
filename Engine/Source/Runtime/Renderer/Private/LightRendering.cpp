@@ -501,14 +501,18 @@ private:
 
 		if(LightAttenuationTexture.IsBound())
 		{
+			if (!ScreenShadowMaskTexture)
+			{
+				ScreenShadowMaskTexture = GWhiteTexture->TextureRHI;
+			}
+
 			SetTextureParameter(
 				RHICmdList,
 				ShaderRHI,
 				LightAttenuationTexture,
 				LightAttenuationTextureSampler,
 				TStaticSamplerState<SF_Point,AM_Wrap,AM_Wrap,AM_Wrap>::GetRHI(),
-				ScreenShadowMaskTexture != nullptr ? ScreenShadowMaskTexture : GWhiteTexture->TextureRHI
-				);
+				ScreenShadowMaskTexture);
 		}
 
 		SetTextureParameter(
