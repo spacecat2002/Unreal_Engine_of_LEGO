@@ -159,6 +159,7 @@ private:
 	UPROPERTY()
 	FVector Extent;
 	
+	UPROPERTY()
 	TArray<FVector> BoundaryPolygon;
 
 	// Used by ARCore Only
