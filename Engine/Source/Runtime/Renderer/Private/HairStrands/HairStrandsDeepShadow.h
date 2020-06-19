@@ -11,7 +11,7 @@
 #include "HairStrandsInterface.h"
 #include "RenderGraphResources.h"
 #include "SceneTypes.h"
-#include "SceneRendering.h"
+#include "Renderer/Private/SceneRendering.h"
 
 /// Hold deep shadow information for a given light.
 struct FHairStrandsDeepShadowData

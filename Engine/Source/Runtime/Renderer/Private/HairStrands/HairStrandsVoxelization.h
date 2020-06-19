@@ -9,7 +9,7 @@
 #include "CoreMinimal.h"
 #include "RendererInterface.h"
 #include "RenderGraphResources.h"
-#include "SceneRendering.h"
+#include "Renderer/Private/SceneRendering.h"
 
 struct FVirtualVoxelNodeDesc
 {
