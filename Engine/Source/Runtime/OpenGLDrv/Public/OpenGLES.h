@@ -623,7 +623,6 @@ struct FOpenGLES : public FOpenGLBase
 	static FORCEINLINE bool SupportsDepthTexture() { return bSupportsDepthTexture; }
 	static FORCEINLINE bool SupportsTextureSwizzle() { return true; }
 	static FORCEINLINE bool SupportsDrawBuffers() { return true; }
-	static FORCEINLINE bool SupportsPixelBuffers() { return false; }
 	static FORCEINLINE bool SupportsUniformBuffers() { return true; }
 	static FORCEINLINE bool SupportsStructuredBuffers() { return bES31Support; }
 	static FORCEINLINE bool SupportsOcclusionQueries() { return bSupportsOcclusionQueries; }

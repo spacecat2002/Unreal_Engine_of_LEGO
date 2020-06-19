@@ -878,7 +878,7 @@ public:
 
 	static FORCEINLINE bool GLSupportsType()
 	{
-		return FOpenGL::SupportsPixelBuffers();
+		return true;
 	}
 
 	static void CreateType(GLuint& Resource, const void* InData, uint32 InSize)

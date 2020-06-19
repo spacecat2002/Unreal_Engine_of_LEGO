@@ -88,7 +88,6 @@ public:
 	static FORCEINLINE bool SupportsMapBuffer()							{ return true; }
 	static FORCEINLINE bool SupportsDepthTexture()						{ return true; }
 	static FORCEINLINE bool SupportsDrawBuffers()						{ return true; }
-	static FORCEINLINE bool SupportsPixelBuffers()						{ return true; }
 	static FORCEINLINE bool SupportsUniformBuffers()					{ return true; }
 	static FORCEINLINE bool SupportsStructuredBuffers()					{ return true; }
 	static FORCEINLINE bool SupportsTimestampQueries()					{ return true; }

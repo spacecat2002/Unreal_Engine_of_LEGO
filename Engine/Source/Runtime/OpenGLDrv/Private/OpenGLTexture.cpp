@@ -681,8 +681,6 @@ void TOpenGLTexture<RHIResourceType>::Resolve(uint32 MipIndex,uint32 ArrayIndex)
 	check(PixelBuffer->GetSize() == MipBytes);
 	check(!PixelBuffer->IsLocked());
 	
-	check( FOpenGL::SupportsPixelBuffers() );
-	
 	// Transfer data from texture to pixel buffer.
 	// This may be further optimized by caching information if surface content was changed since last lock.
 	
@@ -789,7 +787,7 @@ void* TOpenGLTexture<RHIResourceType>::Lock(uint32 InMipIndex,uint32 ArrayIndex,
 		// If the buffer already exists & the flags are such that the texture cannot be rendered to & is CPU accessible then we can skip the internal resolve for read locks. This makes HZB occlusion faster.
 		const bool bCPUTexResolved = bBufferExists && (this->GetFlags() & TexCreate_CPUReadback) && !(this->GetFlags() & (TexCreate_RenderTargetable|TexCreate_DepthStencilTargetable));
 
-		if( LockMode != RLM_WriteOnly && !bCPUTexResolved && FOpenGL::SupportsPixelBuffers() )
+		if (LockMode != RLM_WriteOnly && !bCPUTexResolved)
 		{
 			Resolve(InMipIndex, ArrayIndex);
 		}
@@ -928,166 +926,92 @@ void TOpenGLTexture<RHIResourceType>::Unlock(uint32 MipIndex,uint32 ArrayIndex)
 	}
 #endif
 
-	if (FOpenGL::SupportsPixelBuffers())
-	{
-		// Code path for PBO per slice
-		check(IsValidRef(PixelBuffers[BufferIndex]));
+	// Code path for PBO per slice
+	check(IsValidRef(PixelBuffers[BufferIndex]));
 			
-		PixelBuffer->Unlock();
+	PixelBuffer->Unlock();
 
-		// Modify permission?
-		if (!PixelBuffer->IsLockReadOnly())
+	// Modify permission?
+	if (!PixelBuffer->IsLockReadOnly())
+	{
+		// Use a texture stage that's not likely to be used for draws, to avoid waiting
+		FOpenGLContextState& ContextState = OpenGLRHI->GetContextStateForCurrentContext();
+		OpenGLRHI->CachedSetupTextureStage(ContextState, FOpenGL::GetMaxCombinedTextureImageUnits() - 1, Target, Resource, -1, this->GetNumMips());
+
+		if (this->GetSizeZ())
 		{
-			// Use a texture stage that's not likely to be used for draws, to avoid waiting
-			FOpenGLContextState& ContextState = OpenGLRHI->GetContextStateForCurrentContext();
-			OpenGLRHI->CachedSetupTextureStage(ContextState, FOpenGL::GetMaxCombinedTextureImageUnits() - 1, Target, Resource, -1, this->GetNumMips());
-
-			if( this->GetSizeZ() )
+			// texture 2D array
+			if (GLFormat.bCompressed)
 			{
-				// texture 2D array
-				if (GLFormat.bCompressed)
-				{
-					FOpenGL::CompressedTexSubImage3D(
-						Target,
-						MipIndex,
-						0,
-						0,
-						ArrayIndex,
-						FMath::Max<uint32>(1,(this->GetSizeX() >> MipIndex)),
-						FMath::Max<uint32>(1,(this->GetSizeY() >> MipIndex)),
-						1,
-						GLFormat.InternalFormat[bSRGB],
-						PixelBuffer->GetSize(),
-						0);
-				}
-				else
-				{
-					glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-					check( FOpenGL::SupportsTexture3D() );
-					FOpenGL::TexSubImage3D(
-						Target,
-						MipIndex,
-						0,
-						0,
-						ArrayIndex,
-						FMath::Max<uint32>(1,(this->GetSizeX() >> MipIndex)),
-						FMath::Max<uint32>(1,(this->GetSizeY() >> MipIndex)),
-						1,
-						GLFormat.Format,
-						GLFormat.Type,
-						0);	// offset into PBO
-					glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-				}
+				FOpenGL::CompressedTexSubImage3D(
+					Target,
+					MipIndex,
+					0,
+					0,
+					ArrayIndex,
+					FMath::Max<uint32>(1,(this->GetSizeX() >> MipIndex)),
+					FMath::Max<uint32>(1,(this->GetSizeY() >> MipIndex)),
+					1,
+					GLFormat.InternalFormat[bSRGB],
+					PixelBuffer->GetSize(),
+					0);
 			}
 			else
 			{
-				if (GLFormat.bCompressed)
+				glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+				check( FOpenGL::SupportsTexture3D() );
+				FOpenGL::TexSubImage3D(
+					Target,
+					MipIndex,
+					0,
+					0,
+					ArrayIndex,
+					FMath::Max<uint32>(1,(this->GetSizeX() >> MipIndex)),
+					FMath::Max<uint32>(1,(this->GetSizeY() >> MipIndex)),
+					1,
+					GLFormat.Format,
+					GLFormat.Type,
+					0);	// offset into PBO
+				glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+			}
+		}
+		else
+		{
+			if (GLFormat.bCompressed)
+			{
+				if (GetAllocatedStorageForMip(MipIndex,ArrayIndex))
 				{
-					if (GetAllocatedStorageForMip(MipIndex,ArrayIndex))
-					{
-						glCompressedTexSubImage2D(
-							bCubemap ? GL_TEXTURE_CUBE_MAP_POSITIVE_X + ArrayIndex : Target,
-							MipIndex,
-							0,
-							0,
-							FMath::Max<uint32>(1,(this->GetSizeX() >> MipIndex)),
-							FMath::Max<uint32>(1,(this->GetSizeY() >> MipIndex)),
-							GLFormat.InternalFormat[bSRGB],
-							PixelBuffer->GetSize(),
-							0);	// offset into PBO
-					}
-					else
-					{
-						glCompressedTexImage2D(
-							bCubemap ? GL_TEXTURE_CUBE_MAP_POSITIVE_X + ArrayIndex : Target,
-							MipIndex,
-							GLFormat.InternalFormat[bSRGB],
-							FMath::Max<uint32>(1,(this->GetSizeX() >> MipIndex)),
-							FMath::Max<uint32>(1,(this->GetSizeY() >> MipIndex)),
-							0,
-							PixelBuffer->GetSize(),
-							0);	// offset into PBO
-						SetAllocatedStorageForMip(MipIndex,ArrayIndex);
-					}
-				}
-				else
-				{
-					// All construction paths should have called TexStorage2D or TexImage2D. So we will
-					// always call TexSubImage2D.
-					check(GetAllocatedStorageForMip(MipIndex,ArrayIndex) == true);
-					glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-					glTexSubImage2D(
+					glCompressedTexSubImage2D(
 						bCubemap ? GL_TEXTURE_CUBE_MAP_POSITIVE_X + ArrayIndex : Target,
 						MipIndex,
 						0,
 						0,
 						FMath::Max<uint32>(1,(this->GetSizeX() >> MipIndex)),
 						FMath::Max<uint32>(1,(this->GetSizeY() >> MipIndex)),
-						GLFormat.Format,
-						GLFormat.Type,
+						GLFormat.InternalFormat[bSRGB],
+						PixelBuffer->GetSize(),
 						0);	// offset into PBO
-					glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 				}
-			}
-		}
-
-		//need to free PBO if we aren't keeping shadow copies
-		PixelBuffers[BufferIndex] = NULL;
-	}
-	else
-	{
-		// Code path for non-PBO:
-		// Volume/array textures are currently only supported if PixelBufferObjects are also supported.
-		check(this->GetSizeZ() == 0);
-
-		// Use a texture stage that's not likely to be used for draws, to avoid waiting
-		FOpenGLContextState& ContextState = OpenGLRHI->GetContextStateForCurrentContext();
-		OpenGLRHI->CachedSetupTextureStage(ContextState, FOpenGL::GetMaxCombinedTextureImageUnits() - 1, Target, Resource, -1, this->GetNumMips());
-
-		CachedBindPixelUnpackBuffer( 0 );
-		
-		uint32 LockedSize = PixelBuffer->GetSize();
-		void* LockedBuffer = PixelBuffer->GetLockedBuffer();
-		
-		bool bIsCompressed = GLFormat.bCompressed;
-		GLint internalFormat = GLFormat.InternalFormat[bSRGB];
-
-		if (bIsCompressed)
-		{
-			glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-			if (GetAllocatedStorageForMip(MipIndex,ArrayIndex))
-			{
-				glCompressedTexSubImage2D(
-					bCubemap ? GL_TEXTURE_CUBE_MAP_POSITIVE_X + ArrayIndex : Target,
-					MipIndex,
-					0,
-					0,
-					FMath::Max<uint32>(1,(this->GetSizeX() >> MipIndex)),
-					FMath::Max<uint32>(1,(this->GetSizeY() >> MipIndex)),
-					GLFormat.InternalFormat[bSRGB],
-					LockedSize,
-					LockedBuffer);
+				else
+				{
+					glCompressedTexImage2D(
+						bCubemap ? GL_TEXTURE_CUBE_MAP_POSITIVE_X + ArrayIndex : Target,
+						MipIndex,
+						GLFormat.InternalFormat[bSRGB],
+						FMath::Max<uint32>(1,(this->GetSizeX() >> MipIndex)),
+						FMath::Max<uint32>(1,(this->GetSizeY() >> MipIndex)),
+						0,
+						PixelBuffer->GetSize(),
+						0);	// offset into PBO
+					SetAllocatedStorageForMip(MipIndex,ArrayIndex);
+				}
 			}
 			else
 			{
-				glCompressedTexImage2D(
-					bCubemap ? GL_TEXTURE_CUBE_MAP_POSITIVE_X + ArrayIndex : Target,
-					MipIndex,
-					GLFormat.InternalFormat[bSRGB],
-					FMath::Max<uint32>(1,(this->GetSizeX() >> MipIndex)),
-					FMath::Max<uint32>(1,(this->GetSizeY() >> MipIndex)),
-					0,
-					LockedSize,
-					LockedBuffer);
-					SetAllocatedStorageForMip(MipIndex,ArrayIndex);
-			}
-			glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-		}
-		else
-		{
-			glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-			if (GetAllocatedStorageForMip(MipIndex,ArrayIndex))
-			{
+				// All construction paths should have called TexStorage2D or TexImage2D. So we will
+				// always call TexSubImage2D.
+				check(GetAllocatedStorageForMip(MipIndex,ArrayIndex) == true);
+				glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 				glTexSubImage2D(
 					bCubemap ? GL_TEXTURE_CUBE_MAP_POSITIVE_X + ArrayIndex : Target,
 					MipIndex,
@@ -1097,28 +1021,14 @@ void TOpenGLTexture<RHIResourceType>::Unlock(uint32 MipIndex,uint32 ArrayIndex)
 					FMath::Max<uint32>(1,(this->GetSizeY() >> MipIndex)),
 					GLFormat.Format,
 					GLFormat.Type,
-					LockedBuffer);
+					0);	// offset into PBO
+				glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 			}
-			else
-			{
-				glTexImage2D(
-					bCubemap ? GL_TEXTURE_CUBE_MAP_POSITIVE_X + ArrayIndex : Target,
-					MipIndex,
-					internalFormat,
-					FMath::Max<uint32>(1,(this->GetSizeX() >> MipIndex)),
-					FMath::Max<uint32>(1,(this->GetSizeY() >> MipIndex)),
-					0,
-					GLFormat.Format,
-					GLFormat.Type,
-					LockedBuffer);
-				SetAllocatedStorageForMip(MipIndex,ArrayIndex);
-			}
-			glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 		}
-		
-		// Unlock "PixelBuffer" and free the temp memory after the texture upload.
-		PixelBuffer->Unlock();
 	}
+
+	//need to free PBO if we aren't keeping shadow copies
+	PixelBuffers[BufferIndex] = NULL;
 
 	// No need to restore texture stage; leave it like this,
 	// and the next draw will take care of cleaning it up; or
@@ -1163,10 +1073,7 @@ void TOpenGLTexture<RHIResourceType>::CloneViaPBO( TOpenGLTexture<RHIResourceTyp
 	// apparently it's not possible to retrieve compressed image from GL_TEXTURE_2D_ARRAY in OpenGL for compressed images
 	// and for uncompressed ones it's not possible to specify the image index
 	check(this->GetSizeZ() == 0);
-	
-	// only PBO path is supported here
-	check( FOpenGL::SupportsPixelBuffers() );
-	
+
 	EPixelFormat PixelFormat = this->GetFormat();
 	check(PixelFormat == Src->GetFormat());
 
@@ -1715,7 +1622,7 @@ FShaderResourceViewRHIRef FOpenGLDynamicRHI::RHICreateShaderResourceView(FRHITex
 
 				// For stencil sampling we have to use a separate single channel texture to blit stencil data into
 #if PLATFORM_DESKTOP
-				if (FOpenGL::GetFeatureLevel() >= ERHIFeatureLevel::SM5 && Format == PF_X24_G8 && FOpenGL::SupportsPixelBuffers())
+				if (FOpenGL::GetFeatureLevel() >= ERHIFeatureLevel::SM5 && Format == PF_X24_G8)
 				{
 					check(NumMipLevels == 1 && MipLevel == 0);
 
@@ -1955,33 +1862,11 @@ static void GLCopyAsyncTexture2D(FOpenGLDynamicRHI* OGLRHI, FRHITexture2D* NewTe
 	{
 		FOpenGL::CopyTextureLevels(NewTexture2D->Resource, SourceTexture2D->Resource, SourceMipOffset, NumSharedMips);
 	}
-	else if (FOpenGL::SupportsPixelBuffers())
+	else
 	{
 		FOpenGLTexture2D *NewOGLTexture2D = (FOpenGLTexture2D*)NewTexture2D;
 		FOpenGLTexture2D *OGLTexture2D = (FOpenGLTexture2D*)SourceTexture2D;
 		NewOGLTexture2D->CloneViaPBO(OGLTexture2D, NumSharedMips, SourceMipOffset, DestMipOffset);
-	}
-	else
-	{
-		for (uint32 MipIndex = 0; MipIndex < NumSharedMips; ++MipIndex)
-		{
-			const uint32 MipSizeX = FMath::Max<uint32>(1, NewSizeX >> (MipIndex + DestMipOffset));
-			const uint32 MipSizeY = FMath::Max<uint32>(1, NewSizeY >> (MipIndex + DestMipOffset));
-			const uint32 NumBlocksX = AlignArbitrary(MipSizeX, BlockSizeX) / BlockSizeX;
-			const uint32 NumBlocksY = AlignArbitrary(MipSizeY, BlockSizeY) / BlockSizeY;
-			const uint32 NumMipBlocks = NumBlocksX * NumBlocksY;
-
-			// Lock old and new texture.
-			uint32 SrcStride;
-			uint32 DestStride;
-
-			void* Src = RHILockTexture2D(SourceTexture2D, MipIndex + SourceMipOffset, RLM_ReadOnly, SrcStride, false);
-			void* Dst = RHILockTexture2D(NewTexture2D, MipIndex + DestMipOffset, RLM_WriteOnly, DestStride, false);
-			check(SrcStride == DestStride);
-			FMemory::Memcpy(Dst, Src, NumMipBlocks * NumBytesPerBlock);
-			RHIUnlockTexture2D(SourceTexture2D, MipIndex + SourceMipOffset, false);
-			RHIUnlockTexture2D(NewTexture2D, MipIndex + DestMipOffset, false);
-		}
 	}
 
 	// Decrement the thread-safe counter used to track the completion of the reallocation, since D3D handles sequencing the

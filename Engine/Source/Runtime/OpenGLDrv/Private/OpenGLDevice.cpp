@@ -121,10 +121,7 @@ void CachedBindElementArrayBuffer( GLuint Buffer )
 void CachedBindPixelUnpackBuffer( GLuint Buffer )
 {
 	check(PrivateOpenGLDevicePtr);
-	if ( FOpenGL::SupportsPixelBuffers() )
-	{
-		PrivateOpenGLDevicePtr->CachedBindPixelUnpackBuffer(PrivateOpenGLDevicePtr->GetContextStateForCurrentContext(),Buffer);
-	}
+	PrivateOpenGLDevicePtr->CachedBindPixelUnpackBuffer(PrivateOpenGLDevicePtr->GetContextStateForCurrentContext(),Buffer);
 }
 
 void CachedBindUniformBuffer( GLuint Buffer )
