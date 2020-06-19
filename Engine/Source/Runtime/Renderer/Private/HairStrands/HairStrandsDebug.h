@@ -7,6 +7,7 @@
 #pragma once
 
 #include "RenderGraph.h"
+#include "Renderer/Private/SceneRendering.h"
 
 struct FHairStrandsDebugData
 {

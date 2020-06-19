@@ -4,6 +4,7 @@
 
 #include "PostProcess/PostProcessBufferInspector.h"
 #include "SceneTextureParameters.h"
+#include "ScenePrivate.h"
 
 BEGIN_SHADER_PARAMETER_STRUCT(FPixelInspectorParameters, )
 	SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FSceneTextureUniformParameters, SceneTextures)

@@ -4,6 +4,7 @@
 #include "CanvasTypes.h"
 #include "RenderTargetTemp.h"
 #include "SceneTextureParameters.h"
+#include "UnrealEngine.h"
 
 class FVisualizeGBufferHintsPS : public FGlobalShader
 {
