@@ -1299,53 +1299,62 @@ void FDeferredShadingSceneRenderer::RenderLights(
 
 		if ( IsFeatureLevelSupported(ShaderPlatformForFeatureLevel, ERHIFeatureLevel::SM5) )
 		{
-			SCOPED_DRAW_EVENT(RHICmdList, IndirectLighting);
-			bool bRenderedRSM = false;
-			// Render Reflective shadow maps
-			// Draw shadowed and light function lights
-			for (int32 LightIndex = AttenuationLightStart; LightIndex < SortedLights.Num(); LightIndex++)
+			FRDGBuilder GraphBuilder(RHICmdList);
 			{
-				const FSortedLightSceneInfo& SortedLightInfo = SortedLights[LightIndex];
-				const FLightSceneInfo& LightSceneInfo = *SortedLightInfo.LightSceneInfo;
-				// Render any reflective shadow maps (if necessary)
-				if ( LightSceneInfo.Proxy && LightSceneInfo.Proxy->NeedsLPVInjection() )
-				{
-					if ( LightSceneInfo.Proxy->HasReflectiveShadowMap() )
-					{
-						INC_DWORD_STAT(STAT_NumReflectiveShadowMapLights);
-						InjectReflectiveShadowMaps(RHICmdList, &LightSceneInfo);
-						bRenderedRSM = true;
-					}
-				}
-			}
-
-			// LPV Direct Light Injection
-			if ( bRenderedRSM )
-			{
-				for (int32 LightIndex = SimpleLightsEnd; LightIndex < SortedLights.Num(); LightIndex++)
+				RDG_EVENT_SCOPE(GraphBuilder, "IndirectLighting");
+				bool bRenderedRSM = false;
+				// Render Reflective shadow maps
+				// Draw shadowed and light function lights
+				for (int32 LightIndex = AttenuationLightStart; LightIndex < SortedLights.Num(); LightIndex++)
 				{
 					const FSortedLightSceneInfo& SortedLightInfo = SortedLights[LightIndex];
-					const FLightSceneInfo* const LightSceneInfo = SortedLightInfo.LightSceneInfo;
-
+					const FLightSceneInfo& LightSceneInfo = *SortedLightInfo.LightSceneInfo;
 					// Render any reflective shadow maps (if necessary)
-					if ( LightSceneInfo && LightSceneInfo->Proxy && LightSceneInfo->Proxy->NeedsLPVInjection() )
+					if (LightSceneInfo.Proxy && LightSceneInfo.Proxy->NeedsLPVInjection())
 					{
-						if ( !LightSceneInfo->Proxy->HasReflectiveShadowMap() )
+						if (LightSceneInfo.Proxy->HasReflectiveShadowMap())
 						{
-							// Inject the light directly into all relevant LPVs
-							for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+							INC_DWORD_STAT(STAT_NumReflectiveShadowMapLights);
+							AddUntrackedAccessPass(GraphBuilder, [this, &LightSceneInfo](FRHICommandListImmediate& RHICmdList)
 							{
-								FViewInfo& View = Views[ViewIndex];
+								InjectReflectiveShadowMaps(RHICmdList, &LightSceneInfo);
+							});
+							bRenderedRSM = true;
+						}
+					}
+				}
 
-								if (LightSceneInfo->ShouldRenderLight(View))
+				// LPV Direct Light Injection
+				if (bRenderedRSM)
+				{
+					for (int32 LightIndex = SimpleLightsEnd; LightIndex < SortedLights.Num(); LightIndex++)
+					{
+						const FSortedLightSceneInfo& SortedLightInfo = SortedLights[LightIndex];
+						const FLightSceneInfo* const LightSceneInfo = SortedLightInfo.LightSceneInfo;
+
+						// Render any reflective shadow maps (if necessary)
+						if (LightSceneInfo && LightSceneInfo->Proxy && LightSceneInfo->Proxy->NeedsLPVInjection())
+						{
+							if (!LightSceneInfo->Proxy->HasReflectiveShadowMap())
+							{
+								// Inject the light directly into all relevant LPVs
+								for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 								{
-									FSceneViewState* ViewState = (FSceneViewState*)View.State;
-									if (ViewState)
+									FViewInfo& View = Views[ViewIndex];
+
+									if (LightSceneInfo->ShouldRenderLight(View))
 									{
-										FLightPropagationVolume* Lpv = ViewState->GetLightPropagationVolume(View.GetFeatureLevel());
-										if (Lpv && LightSceneInfo->Proxy)
+										FSceneViewState* ViewState = (FSceneViewState*)View.State;
+										if (ViewState)
 										{
-											Lpv->InjectLightDirect(RHICmdList, *LightSceneInfo->Proxy, View);
+											FLightPropagationVolume* Lpv = ViewState->GetLightPropagationVolume(View.GetFeatureLevel());
+											if (Lpv && LightSceneInfo->Proxy)
+											{
+												AddUntrackedAccessPass(GraphBuilder, [Lpv, &LightSceneInfo, &View](FRHICommandListImmediate& RHICmdList)
+												{
+													Lpv->InjectLightDirect(RHICmdList, *LightSceneInfo->Proxy, View);
+												});
+											}
 										}
 									}
 								}
@@ -1353,10 +1362,14 @@ void FDeferredShadingSceneRenderer::RenderLights(
 						}
 					}
 				}
-			}
 
-			// Kickoff the LPV update (asynchronously if possible)
-			UpdateLPVs(RHICmdList);
+				// Kickoff the LPV update (asynchronously if possible)
+				AddUntrackedAccessPass(GraphBuilder, [this](FRHICommandListImmediate& RHICmdList)
+				{
+					UpdateLPVs(RHICmdList);
+				});
+			}
+			GraphBuilder.Execute();
 		}
 
 		{
