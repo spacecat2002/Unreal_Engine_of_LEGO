@@ -9,6 +9,7 @@
 #include "CoreMinimal.h"
 #include "RendererInterface.h"
 #include "HairStrandsInterface.h"
+#include "SceneRendering.h"
 
 struct FHairCullingParams
 {

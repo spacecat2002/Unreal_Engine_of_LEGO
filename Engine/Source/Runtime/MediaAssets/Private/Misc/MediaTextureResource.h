@@ -19,6 +19,7 @@ class IMediaPlayer;
 class IMediaTextureSample;
 class UMediaTexture;
 struct FGenerateMipsStruct;
+struct IPooledRenderTarget;
 
 enum class EMediaTextureSinkFormat;
 enum class EMediaTextureSinkMode;

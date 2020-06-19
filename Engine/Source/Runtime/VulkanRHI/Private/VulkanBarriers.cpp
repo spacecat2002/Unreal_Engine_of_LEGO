@@ -4,6 +4,7 @@
 #include "VulkanBarriers.h"
 #include "VulkanContext.h"
 #include "VulkanPendingState.h"
+#include "ProfilingDebugging/RealtimeGPUProfiler.h"
 
 //
 // The following two functions are used when the RHI needs to do image layout transitions internally.
