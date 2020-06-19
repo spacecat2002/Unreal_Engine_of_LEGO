@@ -340,6 +340,13 @@ void FRCPassPostProcessBloomSetupES2::Process(FRenderingCompositePassContext& Co
 
 	int32 NumRenderTargets = OutputNum;
 
+	FRHITransitionInfo TransitionInfos[3];
+	for (int32 RenderTargetIndex = 0; RenderTargetIndex < NumRenderTargets; ++RenderTargetIndex)
+	{
+		TransitionInfos[RenderTargetIndex] = FRHITransitionInfo(RenderTargets[RenderTargetIndex], ERHIAccess::Unknown, ERHIAccess::RTV);
+	}
+	Context.RHICmdList.Transition(MakeArrayView(TransitionInfos, NumRenderTargets));
+
 	FRHIRenderPassInfo RPInfo(NumRenderTargets, RenderTargets, ERenderTargetActions::DontLoad_Store);
 
 	bool bIsValidVariation = IsValidBloomSetupVariation(bUseBloom, bUseSun, bUseDof, bUseEyeAdaptation);
@@ -390,13 +397,11 @@ void FRCPassPostProcessBloomSetupES2::Process(FRenderingCompositePassContext& Co
 	}
 	Context.RHICmdList.EndRenderPass();
 
-	for (int32 i = 0; i < NumRenderTargets; ++i)
+	for (int32 RenderTargetIndex = 0; RenderTargetIndex < NumRenderTargets; ++RenderTargetIndex)
 	{
-		if (RenderTargets[i] != nullptr)
-		{
-			Context.RHICmdList.Transition(FRHITransitionInfo(RenderTargets[i], ERHIAccess::Unknown, ERHIAccess::SRVMask));
-		}
+		TransitionInfos[RenderTargetIndex] = FRHITransitionInfo(RenderTargets[RenderTargetIndex], ERHIAccess::RTV, ERHIAccess::SRVMask);
 	}
+	Context.RHICmdList.Transition(MakeArrayView(TransitionInfos, NumRenderTargets));
 }
 
 FPooledRenderTargetDesc FRCPassPostProcessBloomSetupES2::ComputeOutputDesc(EPassOutputId InPassOutputId) const
@@ -525,8 +530,9 @@ void FRCPassPostProcessBloomDownES2::Process(FRenderingCompositePassContext& Con
 
 	const FSceneRenderTargetItem& DestRenderTarget = PassOutputs[0].RequestSurface(Context);
 
-	FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, ERenderTargetActions::DontLoad_Store);
+	Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
 
+	FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, ERenderTargetActions::DontLoad_Store);
 	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("PostProcessBloomDownES2"));
 	{
 
@@ -693,8 +699,9 @@ void FRCPassPostProcessBloomUpES2::Process(FRenderingCompositePassContext& Conte
 		LoadAction = ERenderTargetLoadAction::ENoAction;
 	}
 
+	Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
+
 	FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, MakeRenderTargetActions(LoadAction, ERenderTargetStoreAction::EStore));
-		
 	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("PostProcessBloomUpES2"));
 	{
 		if (bUseClearQuad)
@@ -1073,6 +1080,8 @@ void FRCPassPostProcessSunAlphaES2::Process(FRenderingCompositePassContext& Cont
 		LoadAction = ERenderTargetLoadAction::ENoAction;
 	}
 
+	Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
+
 	FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, MakeRenderTargetActions(LoadAction, ERenderTargetStoreAction::EStore));
 	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("PostProcessSunAlphaES2"));
 	{
@@ -1220,6 +1229,8 @@ void FRCPassPostProcessSunBlurES2::Process(FRenderingCompositePassContext& Conte
 	{
 		LoadAction = ERenderTargetLoadAction::ENoAction;
 	}
+
+	Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
 
 	FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, MakeRenderTargetActions(LoadAction, ERenderTargetStoreAction::EStore));
 	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("SunBlurES2"));
@@ -1468,6 +1479,9 @@ void FRCPassPostProcessSunMergeES2::Process(FRenderingCompositePassContext& Cont
 	{
 		LoadAction = ERenderTargetLoadAction::ENoAction;
 	}
+
+	Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
+
 	FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, MakeRenderTargetActions(LoadAction, ERenderTargetStoreAction::EStore));
 	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("SunMergeES2"));
 	{
@@ -1691,6 +1705,9 @@ void FRCPassPostProcessDofDownES2::Process(FRenderingCompositePassContext& Conte
 	{
 		LoadAction = ERenderTargetLoadAction::ENoAction;
 	}
+
+	Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
+
 	FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, MakeRenderTargetActions(LoadAction, ERenderTargetStoreAction::EStore));
 	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("DofDownES2"));
 	{
@@ -1882,6 +1899,9 @@ void FRCPassPostProcessDofNearES2::Process(FRenderingCompositePassContext& Conte
 	{
 		LoadAction = ERenderTargetLoadAction::ENoAction;
 	}
+
+	Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
+
 	FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, MakeRenderTargetActions(LoadAction, ERenderTargetStoreAction::EStore));
 	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("DofNearES2"));
 	{
@@ -2022,6 +2042,9 @@ void FRCPassPostProcessDofBlurES2::Process(FRenderingCompositePassContext& Conte
 	{
 		LoadAction = ERenderTargetLoadAction::ENoAction;
 	}
+
+	Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
+
 	FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, MakeRenderTargetActions(LoadAction, ERenderTargetStoreAction::EStore));
 	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("DofBlurES2"));
 	{
@@ -2162,6 +2185,8 @@ void FRCPassIntegrateDofES2::Process(FRenderingCompositePassContext& Context)
 	DstRect.Max.Y = PrePostSourceViewportSize.Y;
 
 	const FSceneRenderTargetItem& DestRenderTarget = PassOutputs[0].RequestSurface(Context);
+
+	Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
 
 	ERenderTargetLoadAction LoadAction = ERenderTargetLoadAction::EClear;
 	FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, MakeRenderTargetActions(LoadAction, ERenderTargetStoreAction::EStore));
@@ -2330,6 +2355,9 @@ void FRCPassPostProcessSunAvgES2::Process(FRenderingCompositePassContext& Contex
 	{
 		LoadAction = ERenderTargetLoadAction::ENoAction;
 	}
+
+	Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
+
 	FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, MakeRenderTargetActions(LoadAction, ERenderTargetStoreAction::EStore));
 	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("SunAvgES2"));
 	{
@@ -2578,7 +2606,12 @@ void FRCPassPostProcessAaES2::Process(FRenderingCompositePassContext& Context)
 	// need to transition it to readable again. Ideally we'll get rid of this useless read->write->read transition when we
 	// port this over to RDG.
 	const FSceneRenderTargetItem& PrevFrameInput = GetInput(ePId_Input1)->GetOutput()->RequestInput()->GetRenderTargetItem();
-	Context.RHICmdList.Transition(FRHITransitionInfo(PrevFrameInput.ShaderResourceTexture, ERHIAccess::Unknown, ERHIAccess::SRVGraphics));
+
+	FRHITransitionInfo TransitionInfos[] = {
+		FRHITransitionInfo(PrevFrameInput.ShaderResourceTexture, ERHIAccess::Unknown, ERHIAccess::SRVGraphics),
+		FRHITransitionInfo(DestRenderTarget.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV)
+	};
+	Context.RHICmdList.Transition(MakeArrayView(TransitionInfos, UE_ARRAY_COUNT(TransitionInfos)));
 	
 	FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, LoadStoreAction);
 	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("AaES2"));

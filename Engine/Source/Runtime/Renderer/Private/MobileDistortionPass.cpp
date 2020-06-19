@@ -36,6 +36,8 @@ void FRCDistortionAccumulatePassES2::Process(FRenderingCompositePassContext& Con
 	FSceneRenderTargets& SceneTargets = FSceneRenderTargets::Get(Context.RHICmdList);
 	const FSceneRenderTargetItem& DestRenderTarget = PassOutputs[0].RequestSurface(Context);
 
+	Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
+
 	FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, ERenderTargetActions::Clear_Store);
 	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("DistortionAccumulate"));
 	{
@@ -112,6 +114,8 @@ void FRCDistortionMergePassES2::Process(FRenderingCompositePassContext& Context)
 	const FPooledRenderTargetDesc* InputDesc = GetInputDesc(ePId_Input0);
 	const FPooledRenderTargetDesc& OutputDesc = PassOutputs[0].RenderTargetDesc;
 	const FSceneRenderTargetItem& DestRenderTarget = PassOutputs[0].RequestSurface(Context);
+
+	Context.RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
 
 	FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, ERenderTargetActions::Clear_Store);
 	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("DistortionMerge"));

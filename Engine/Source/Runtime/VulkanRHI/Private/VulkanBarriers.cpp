@@ -592,6 +592,8 @@ void FVulkanDynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipe
 			continue;
 		}
 
+		check(Texture->Surface.Image != VK_NULL_HANDLE);
+
 		VkImageAspectFlags AspectMask;
 
 		if (Info.PlaneSlice == FRHISubresourceRange::kAllSubresources || !Device->HasSeparateDepthStencilLayouts())
@@ -792,7 +794,7 @@ void FVulkanCommandListContext::RHIEndTransitions(TArrayView<const FRHITransitio
 			}
 			else
 			{
-				checkSlow(Layout.AreSubresourcesSameLayout(ImageBarrier.oldLayout, ImageBarrier.subresourceRange))
+				checkSlow(Layout.AreSubresourcesSameLayout(ImageBarrier.oldLayout, ImageBarrier.subresourceRange));
 				SrcLayout = ImageBarrier.oldLayout;
 				SrcAccessFlags = ImageBarrier.srcAccessMask;
 			}

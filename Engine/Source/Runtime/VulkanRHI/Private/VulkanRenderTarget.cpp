@@ -172,16 +172,17 @@ void FVulkanCommandListContext::RHICopyToResolveTarget(FRHITexture* SourceTextur
 		checkf(!bIsResolve || !DstSurface->IsDepthOrStencilAspect(), TEXT("Vulkan does not support multisample depth resolve."));
 
 		FVulkanPipelineBarrier BarrierBefore;
-
+		
+		// We'll transition the entire resources to the correct copy states, so we don't need to worry about sub-resource states.
 		if (SrcLayout != VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
 		{
-			BarrierBefore.AddImageLayoutTransition(SrcSurface->Image, SrcLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, SrcRange);
+			BarrierBefore.AddImageLayoutTransition(SrcSurface->Image, SrcLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, FVulkanPipelineBarrier::MakeSubresourceRange(SrcSurface->GetFullAspectMask()));
 			SrcLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 		}
 
 		if (DstLayout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
 		{
-			BarrierBefore.AddImageLayoutTransition(DstSurface->Image, DstLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, DstRange);
+			BarrierBefore.AddImageLayoutTransition(DstSurface->Image, DstLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, FVulkanPipelineBarrier::MakeSubresourceRange(DstSurface->GetFullAspectMask()));
 			DstLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 		}
 
