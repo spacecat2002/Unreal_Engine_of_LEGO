@@ -32,7 +32,7 @@
 #include "PostProcess/PostProcessUpscale.h"
 #include "PostProcess/PostProcessCompositeEditorPrimitives.h"
 #include "PostProcess/PostProcessHMD.h"
-#include "Postprocess/PostProcessPixelProjectedReflectionMobile.h"
+#include "PostProcess/PostProcessPixelProjectedReflectionMobile.h"
 #include "PostProcess/PostProcessAmbientOcclusionMobile.h"
 #include "IHeadMountedDisplay.h"
 #include "IXRTrackingSystem.h"

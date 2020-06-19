@@ -425,8 +425,8 @@ void FMobileSceneRenderer::InitAmbientOcclusionOutputs(FRHICommandListImmediate&
 {
 	checkSlow(!AmbientOcclusionMobileOutputs.IsValid());
 
-	static const auto CVarGTAODownsample = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.GTAO.Downsample"));
-	const uint32 DownsampleFactor = (CVarGTAODownsample && CVarGTAODownsample->GetValueOnRenderThread() > 0) ? 2 : 1;
+	static const auto GTAODownsampleCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.GTAO.Downsample"));
+	const uint32 DownsampleFactor = (GTAODownsampleCVar && GTAODownsampleCVar->GetValueOnRenderThread() > 0) ? 2 : 1;
 
 	FIntPoint Extent = FIntPoint::DivideAndRoundUp(BufferSize, DownsampleFactor);
 
@@ -445,11 +445,11 @@ void FMobileSceneRenderer::RenderAmbientOcclusion(FRHICommandListImmediate& RHIC
 
 	SCOPED_DRAW_EVENT(RHICmdList, AmbientOcclusion);
 
-	static const auto CVarGTAOThicknessBlend = IConsoleManager::Get().FindTConsoleVariableDataFloat(TEXT("r.GTAO.ThicknessBlend"));
-	static const auto CVarGTAOFalloffStartRatio = IConsoleManager::Get().FindTConsoleVariableDataFloat(TEXT("r.GTAO.FalloffStartRatio"));
-	static const auto CVarGTAOFalloffEnd = IConsoleManager::Get().FindTConsoleVariableDataFloat(TEXT("r.GTAO.FalloffEnd"));
-	static const auto CVarGTAODownsample = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.GTAO.Downsample"));
-	const uint32 DownsampleFactor = (CVarGTAODownsample && CVarGTAODownsample->GetValueOnRenderThread() > 0) ? 2 : 1;
+	static const auto GTAOThicknessBlendCVar = IConsoleManager::Get().FindTConsoleVariableDataFloat(TEXT("r.GTAO.ThicknessBlend"));
+	static const auto GTAOFalloffStartRatioCVar = IConsoleManager::Get().FindTConsoleVariableDataFloat(TEXT("r.GTAO.FalloffStartRatio"));
+	static const auto GTAOFalloffEndCVar = IConsoleManager::Get().FindTConsoleVariableDataFloat(TEXT("r.GTAO.FalloffEnd"));
+	static const auto GTAODownsampleCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.GTAO.Downsample"));
+	const uint32 DownsampleFactor = (GTAODownsampleCVar && GTAODownsampleCVar->GetValueOnRenderThread() > 0) ? 2 : 1;
 
 	const int32 MobileGTAOPreIntegratedTextureType = CVarMobileGTAOPreIntegratedTextureType.GetValueOnRenderThread();
 	const int32 MobileAmbientOcclusionQuality = CVarMobileAmbientOcclusionQuality.GetValueOnRenderThread();
@@ -462,8 +462,8 @@ void FMobileSceneRenderer::RenderAmbientOcclusion(FRHICommandListImmediate& RHIC
 
 	const FIntPoint BufferSize = AmbientOcclusionMobileOutputs.AmbientOcclusionTexture->GetDesc().Extent;
 
-	float FallOffEnd = CVarGTAOFalloffEnd ? CVarGTAOFalloffEnd->GetValueOnRenderThread() : 200.0f;
-	float FallOffStartRatio = CVarGTAOFalloffStartRatio ? FMath::Clamp(CVarGTAOFalloffStartRatio->GetValueOnRenderThread(), 0.0f, 0.999f) : 0.5f;
+	float FallOffEnd = GTAOFalloffEndCVar ? GTAOFalloffEndCVar->GetValueOnRenderThread() : 200.0f;
+	float FallOffStartRatio = GTAOFalloffStartRatioCVar ? FMath::Clamp(GTAOFalloffStartRatioCVar->GetValueOnRenderThread(), 0.0f, 0.999f) : 0.5f;
 	float FallOffStart = FallOffEnd * FallOffStartRatio;
 	float FallOffStartSq = FallOffStart * FallOffStart;
 	float FallOffEndSq = FallOffEnd * FallOffEnd;
@@ -473,7 +473,7 @@ void FMobileSceneRenderer::RenderAmbientOcclusion(FRHICommandListImmediate& RHIC
 
 	FVector4 FallOffStartEndScaleBias(FallOffStart, FallOffEnd, FallOffScale, FallOffBias);
 
-	float ThicknessBlend = CVarGTAOThicknessBlend ? CVarGTAOThicknessBlend->GetValueOnRenderThread() : 0.1f;
+	float ThicknessBlend = GTAOThicknessBlendCVar ? GTAOThicknessBlendCVar->GetValueOnRenderThread() : 0.1f;
 
 	FRDGTextureRef HorizonSearchIntegralTexture = GraphBuilder.CreateTexture(FPooledRenderTargetDesc::Create2DDesc(BufferSize, PF_R8G8B8A8, FClearValueBinding::Black, TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable | TexCreate_UAV, false), TEXT("HorizonSearchIntegralTexture"));
 	FRDGTextureUAVRef HorizonSearchIntegralTextureUAV = GraphBuilder.CreateUAV(HorizonSearchIntegralTexture);
@@ -637,8 +637,8 @@ void FMobileSceneRenderer::RenderAmbientOcclusionUpSample(FRHICommandListImmedia
 {
 	SCOPED_DRAW_EVENT(RHICmdList, AmbientOcclusionUpSample);
 
-	static const auto CVarGTAODownsample = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.GTAO.Downsample"));
-	const uint32 DownsampleFactor = (CVarGTAODownsample && CVarGTAODownsample->GetValueOnRenderThread() > 0) ? 2 : 1;
+	static const auto GTAODownsampleCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.GTAO.Downsample"));
+	const uint32 DownsampleFactor = (GTAODownsampleCVar && GTAODownsampleCVar->GetValueOnRenderThread() > 0) ? 2 : 1;
 
 	const FIntPoint BufferSize = AmbientOcclusionMobileOutputs.AmbientOcclusionTexture->GetDesc().Extent;
 

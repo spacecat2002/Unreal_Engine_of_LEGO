@@ -608,15 +608,15 @@ void FSystemTextures::InitializeFeatureLevelDependentTextures(FRHICommandListImm
 		} // end Create the SSAO randomization texture
 	} // end if (FeatureLevelInitializedTo < ERHIFeatureLevel::SM5 && InFeatureLevel >= ERHIFeatureLevel::SM5)
 
-	static const auto CVarMobileGTAOPreIntegratedTextureType = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.GTAOPreIntegratedTextureType"));
+	static const auto MobileGTAOPreIntegratedTextureTypeCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.GTAOPreIntegratedTextureType"));
 
-	if (CurrentFeatureLevel < ERHIFeatureLevel::ES3_1 && InFeatureLevel >= ERHIFeatureLevel::ES3_1 && CVarMobileGTAOPreIntegratedTextureType && CVarMobileGTAOPreIntegratedTextureType->GetValueOnAnyThread() > 0)
+	if (CurrentFeatureLevel < ERHIFeatureLevel::ES3_1 && InFeatureLevel >= ERHIFeatureLevel::ES3_1 && MobileGTAOPreIntegratedTextureTypeCVar && MobileGTAOPreIntegratedTextureTypeCVar->GetValueOnAnyThread() > 0)
 	{
 		uint32 Extent = 16; // should be consistent with LUTSize in PostprocessMobile.usf
 
 		const uint32 Square = Extent * Extent;
 
-		bool bGTAOPreIngegratedUsingVolumeLUT = CVarMobileGTAOPreIntegratedTextureType->GetValueOnAnyThread() == 2;
+		bool bGTAOPreIngegratedUsingVolumeLUT = MobileGTAOPreIntegratedTextureTypeCVar->GetValueOnAnyThread() == 2;
 
 		FPooledRenderTargetDesc Desc;
 		if (bGTAOPreIngegratedUsingVolumeLUT)
