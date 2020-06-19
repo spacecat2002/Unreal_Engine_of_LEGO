@@ -139,7 +139,6 @@ public:
 	static FORCEINLINE bool SupportsCombinedDepthStencilAttachment()	{ return true; }
 	static FORCEINLINE bool SupportsFastBufferData()					{ return true; }
 	static FORCEINLINE bool SupportsCopyImage()							{ return bSupportsCopyImage; }
-	static FORCEINLINE bool SupportsCopyTextureLevels()					{ return false; }
 	static FORCEINLINE bool SupportsTextureFilterAnisotropic()			{ return bSupportsTextureFilterAnisotropic; }
 	static FORCEINLINE bool SupportsTextureCubeLodEXT()					{ return true; }
 	static FORCEINLINE bool SupportsShaderTextureLod()					{ return false; }
@@ -239,7 +238,6 @@ public:
 	static FORCEINLINE void LabelObject(GLenum Type, GLuint Object, const ANSICHAR* Name) UGL_OPTIONAL_VOID
 	static FORCEINLINE GLsizei GetLabelObject(GLenum Type, GLuint Object, GLsizei BufferSize, ANSICHAR* OutName) UGL_OPTIONAL(0)
 	static FORCEINLINE void DiscardFramebufferEXT(GLenum Target, GLsizei NumAttachments, const GLenum* Attachments) UGL_OPTIONAL_VOID
-	static FORCEINLINE void CopyTextureLevels(GLuint destinationTexture, GLuint sourceTexture, GLint sourceBaseLevel, GLsizei sourceLevelCount) UGL_OPTIONAL_VOID
 
 	// Will assert at run-time if not implemented:
 	static FORCEINLINE void* MapBufferRange(GLenum Type, uint32 InOffset, uint32 InSize, EResourceLockMode LockMode) UGL_REQUIRED(NULL)

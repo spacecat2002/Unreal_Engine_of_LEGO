@@ -872,7 +872,7 @@ static void InitRHICapabilitiesForGL()
 	// Disable texture streaming on devices with ES3.1 or lower, unless we have the GL_APPLE_copy_texture_levels extension or support for glCopyImageSubData
 	if (GMaxRHIFeatureLevel <= ERHIFeatureLevel::ES3_1)
 	{
-		GRHISupportsTextureStreaming = FOpenGL::SupportsCopyTextureLevels() || FOpenGL::SupportsCopyImage();
+		GRHISupportsTextureStreaming = FOpenGL::SupportsCopyImage();
 	}
 	else
 	{

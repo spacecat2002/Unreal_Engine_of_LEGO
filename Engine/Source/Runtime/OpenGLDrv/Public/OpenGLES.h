@@ -674,7 +674,6 @@ struct FOpenGLES : public FOpenGLBase
 	static FORCEINLINE bool SupportsTextureCubeLodEXT() { return bSupportsTextureCubeLodEXT; }
 	static FORCEINLINE bool SupportsShaderTextureLod() { return bSupportsShaderTextureLod; }
 	static FORCEINLINE bool SupportsShaderTextureCubeLod() { return bSupportsShaderTextureCubeLod; }
-	static FORCEINLINE bool SupportsCopyTextureLevels() { return bSupportsCopyTextureLevels; }
 	static FORCEINLINE GLenum GetDepthFormat() { return GL_DEPTH_COMPONENT24; }
 	static FORCEINLINE GLenum GetShadowDepthFormat() { return GL_DEPTH_COMPONENT16; }
 	static FORCEINLINE bool SupportsFramebufferSRGBEnable() { return false; }
@@ -1261,9 +1260,6 @@ protected:
 
 	/** textureCubeLod */
 	static bool bSupportsShaderTextureCubeLod;
-
-	/** GL_APPLE_copy_texture_levels */
-	static bool bSupportsCopyTextureLevels;
 
 	/** GL_OES_texture_npot */
 	static bool bSupportsTextureNPOT;

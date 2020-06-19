@@ -1858,10 +1858,6 @@ static void GLCopyAsyncTexture2D(FOpenGLDynamicRHI* OGLRHI, FRHITexture2D* NewTe
 		FOpenGLTexture2D *OGLTexture2D = (FOpenGLTexture2D*)SourceTexture2D;
 		NewOGLTexture2D->CloneViaCopyImage(OGLTexture2D, NumSharedMips, SourceMipOffset, DestMipOffset);
 	}
-	else if (FOpenGL::SupportsCopyTextureLevels())
-	{
-		FOpenGL::CopyTextureLevels(NewTexture2D->Resource, SourceTexture2D->Resource, SourceMipOffset, NumSharedMips);
-	}
 	else
 	{
 		FOpenGLTexture2D *NewOGLTexture2D = (FOpenGLTexture2D*)NewTexture2D;

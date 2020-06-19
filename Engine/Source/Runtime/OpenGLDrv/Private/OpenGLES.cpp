@@ -210,9 +210,6 @@ bool FOpenGLES::bSupportsShaderTextureLod = false;
 /** textureCubeLod */
 bool FOpenGLES::bSupportsShaderTextureCubeLod = true;
 
-/** GL_APPLE_copy_texture_levels */
-bool FOpenGLES::bSupportsCopyTextureLevels = false;
-
 /** GL_OES_texture_npot */
 bool FOpenGLES::bSupportsTextureNPOT = false;
 
@@ -347,7 +344,6 @@ void FOpenGLES::ProcessExtensions(const FString& ExtensionsString)
 	bSupportsNVFrameBufferBlit = ExtensionsString.Contains(TEXT("GL_NV_framebuffer_blit"));
 	bSupportsShaderTextureLod = ExtensionsString.Contains(TEXT("GL_EXT_shader_texture_lod"));
 	bSupportsTextureStorageEXT = ExtensionsString.Contains(TEXT("GL_EXT_texture_storage"));
-	bSupportsCopyTextureLevels = bSupportsTextureStorageEXT && ExtensionsString.Contains(TEXT("GL_APPLE_copy_texture_levels"));
 	bSupportsTextureNPOT = ExtensionsString.Contains(TEXT("GL_OES_texture_npot")) || ExtensionsString.Contains(TEXT("GL_ARB_texture_non_power_of_two"));
 	bSupportsStandardDerivativesExtension = ExtensionsString.Contains(TEXT("GL_OES_standard_derivatives"));
 	bSupportsRGB10A2 = ExtensionsString.Contains(TEXT("GL_OES_vertex_type_10_10_10_2"));
