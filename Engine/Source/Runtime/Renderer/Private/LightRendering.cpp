@@ -1211,7 +1211,7 @@ void FDeferredShadingSceneRenderer::RenderLights(
 						StandardDeferredStart = SortedLightSet.TiledSupportedEnd;
 						bRenderSimpleLightsStandardDeferred = false;
 
-						RenderTiledDeferredLighting(GraphBuilder, SceneColorTexture, SceneTexturesUniformBuffer, SortedLights, SortedLightSet.SimpleLightsEnd, SortedLightSet.TiledSupportedEnd, SimpleLights);
+						SceneColorTexture = RenderTiledDeferredLighting(GraphBuilder, SceneColorTexture, SceneTexturesUniformBuffer, SortedLights, SortedLightSet.SimpleLightsEnd, SortedLightSet.TiledSupportedEnd, SimpleLights);
 					}
 				}
 
