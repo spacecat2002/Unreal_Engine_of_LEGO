@@ -564,7 +564,7 @@ void FOpenGLDynamicRHI::InitializeGLTexture(FRHITexture* Texture, uint32 SizeX, 
 		Target = GL_RENDERBUFFER;
 		glGenRenderbuffers(1, &TextureID);
 		glBindRenderbuffer(GL_RENDERBUFFER, TextureID);
-		glRenderbufferStorageMultisampleEXT(GL_RENDERBUFFER, NumSamplesTileMem, FOpenGL::SupportsPackedDepthStencil() ? GL_DEPTH24_STENCIL8 : GL_DEPTH_COMPONENT24, SizeX, SizeY);
+		glRenderbufferStorageMultisampleEXT(GL_RENDERBUFFER, NumSamplesTileMem, GL_DEPTH24_STENCIL8, SizeX, SizeY);
 		VERIFY_GL(glRenderbufferStorageMultisampleEXT);
 		glBindRenderbuffer(GL_RENDERBUFFER, 0);
 #endif
@@ -596,11 +596,11 @@ void FOpenGLDynamicRHI::InitializeGLTexture(FRHITexture* Texture, uint32 SizeX, 
 	}
 	else if(Flags & TexCreate_DepthStencilTargetable)
 	{
-		Attachment = (Format == PF_DepthStencil && FOpenGL::SupportsPackedDepthStencil()) ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
+		Attachment = (Format == PF_DepthStencil) ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
 	}
 	else if(Flags & TexCreate_ResolveTargetable)
 	{
-		Attachment = (Format == PF_DepthStencil && FOpenGL::SupportsPackedDepthStencil())
+		Attachment = (Format == PF_DepthStencil)
 						? GL_DEPTH_STENCIL_ATTACHMENT
 						: ((Format == PF_ShadowDepth || Format == PF_D24)
 							? GL_DEPTH_ATTACHMENT
@@ -1400,11 +1400,11 @@ FTexture2DArrayRHIRef FOpenGLDynamicRHI::RHICreateTexture2DArray(uint32 SizeX,ui
 	}
 	else if(Flags & TexCreate_DepthStencilTargetable)
 	{
-		Attachment = (FOpenGL::SupportsPackedDepthStencil() && Format == PF_DepthStencil) ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
+		Attachment = (Format == PF_DepthStencil) ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
 	}
 	else if(Flags & TexCreate_ResolveTargetable)
 	{
-		Attachment = (Format == PF_DepthStencil && FOpenGL::SupportsPackedDepthStencil())
+		Attachment = (Format == PF_DepthStencil)
 			? GL_DEPTH_STENCIL_ATTACHMENT
 			: ((Format == PF_ShadowDepth || Format == PF_D24)
 			? GL_DEPTH_ATTACHMENT

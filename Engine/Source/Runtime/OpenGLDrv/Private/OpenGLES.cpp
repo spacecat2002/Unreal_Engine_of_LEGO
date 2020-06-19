@@ -201,9 +201,6 @@ int FOpenGLES::ShaderHighPrecision = 0;
 /** GL_NV_framebuffer_blit */
 bool FOpenGLES::bSupportsNVFrameBufferBlit = false;
 
-/** GL_OES_packed_depth_stencil */
-bool FOpenGLES::bSupportsPackedDepthStencil = false;
-
 /** textureCubeLodEXT */
 bool FOpenGLES::bSupportsTextureCubeLodEXT = true;
 
@@ -239,9 +236,6 @@ bool FOpenGLES::bBinaryProgramRetrievalFailed = false;
 
 /** Vertex attributes need remapping if GL_MAX_VERTEX_ATTRIBS < 16 */
 bool FOpenGLES::bNeedsVertexAttribRemap = false;
-
-/* This hack fixes an issue with SGX540 compiler which can get upset with some operations that mix highp and mediump */
-bool FOpenGLES::bRequiresTexture2DPrecisionHack = false;
 
 /* This is a hack to add a round() function when not available to a shader compiler */
 bool FOpenGLES::bRequiresRoundFunctionHack = true;
@@ -351,7 +345,6 @@ void FOpenGLES::ProcessExtensions(const FString& ExtensionsString)
 	bSupportsVertexArrayObjects = ExtensionsString.Contains(TEXT("GL_OES_vertex_array_object"));
 	bSupportsDiscardFrameBuffer = ExtensionsString.Contains(TEXT("GL_EXT_discard_framebuffer"));
 	bSupportsNVFrameBufferBlit = ExtensionsString.Contains(TEXT("GL_NV_framebuffer_blit"));
-	bSupportsPackedDepthStencil = ExtensionsString.Contains(TEXT("GL_OES_packed_depth_stencil"));
 	bSupportsShaderTextureLod = ExtensionsString.Contains(TEXT("GL_EXT_shader_texture_lod"));
 	bSupportsTextureStorageEXT = ExtensionsString.Contains(TEXT("GL_EXT_texture_storage"));
 	bSupportsCopyTextureLevels = bSupportsTextureStorageEXT && ExtensionsString.Contains(TEXT("GL_APPLE_copy_texture_levels"));

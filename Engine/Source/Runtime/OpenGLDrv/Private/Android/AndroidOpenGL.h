@@ -141,10 +141,6 @@ struct FAndroidOpenGL : public FOpenGLES
 		return FR_ConditionSatisfied;
 	}
 	
-	// Required:
-
-	static FORCEINLINE bool SupportsR11G11B10F()						{ return true; }
-
 	// Disable all queries except occlusion
 	// Query is a limited resource on Android and we better spent them all on occlusion
 	static FORCEINLINE bool SupportsTimestampQueries()					{ return false; }

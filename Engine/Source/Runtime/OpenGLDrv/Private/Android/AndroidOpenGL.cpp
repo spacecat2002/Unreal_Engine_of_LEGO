@@ -797,13 +797,6 @@ void FAndroidOpenGL::ProcessExtensions(const FString& ExtensionsString)
 
 	FString RendererString = FString(ANSI_TO_TCHAR((const ANSICHAR*)glGetString(GL_RENDERER)));
 
-	if (RendererString.Contains(TEXT("SGX 540")))
-	{
-		UE_LOG(LogRHI, Warning, TEXT("Disabling support for GL_OES_packed_depth_stencil on SGX 540"));
-		bSupportsPackedDepthStencil = false;
-		bRequiresTexture2DPrecisionHack = true;
-	}
-
 	// Common GPU types
 	const bool bIsNvidiaBased = RendererString.Contains(TEXT("NVIDIA"));
 	const bool bIsPoverVRBased = RendererString.Contains(TEXT("PowerVR"));
@@ -822,13 +815,6 @@ void FAndroidOpenGL::ProcessExtensions(const FString& ExtensionsString)
 		// This is to avoid a bug in Adreno drivers that define GL_ARM_shader_framebuffer_fetch_depth_stencil even when device does not support this extension
 		// OpenGL ES 3.1 V@127.0 (GIT@I1af360237c)
 		bRequiresARMShaderFramebufferFetchDepthStencilUndef = !bSupportsShaderDepthStencilFetch;
-
-		// Adreno 2xx doesn't work with packed depth stencil enabled
-		if (RendererString.Contains(TEXT("Adreno (TM) 2")))
-		{
-			UE_LOG(LogRHI, Warning, TEXT("Disabling support for GL_OES_packed_depth_stencil on Adreno 2xx"));
-			bSupportsPackedDepthStencil = false;
-		}
 
 		// FORT-221329's broken adreno driver not common on Android 9 and above. TODO: check adreno driver version instead.
 		bRequiresAdrenoTilingHint = FAndroidMisc::GetAndroidBuildVersion() < 28 || CVarEnableAdrenoTilingHint.GetValueOnAnyThread() == 2;

@@ -946,7 +946,6 @@ void OPENGLDRV_API GetCurrentOpenGLShaderDeviceCapabilities(FOpenGLShaderDeviceC
 		Capabilities.bRequiresDontEmitPrecisionForTextureSamplers = false;
 		Capabilities.bRequiresTextureCubeLodEXTToTextureCubeLodDefine = false;
 		Capabilities.MaxVaryingVectors = FOpenGL::GetMaxVaryingVectors();
-		Capabilities.bRequiresTexture2DPrecisionHack = false;
 	}
 
 #elif PLATFORM_ANDROID
@@ -960,7 +959,6 @@ void OPENGLDRV_API GetCurrentOpenGLShaderDeviceCapabilities(FOpenGLShaderDeviceC
 		Capabilities.bRequiresDontEmitPrecisionForTextureSamplers = FOpenGL::RequiresDontEmitPrecisionForTextureSamplers();
 		Capabilities.bRequiresTextureCubeLodEXTToTextureCubeLodDefine = FOpenGL::RequiresTextureCubeLodEXTToTextureCubeLodDefine();
 		Capabilities.MaxVaryingVectors = FOpenGL::GetMaxVaryingVectors();
-		Capabilities.bRequiresTexture2DPrecisionHack = FOpenGL::RequiresTexture2DPrecisionHack();
 		Capabilities.bRequiresRoundFunctionHack = FOpenGL::RequiresRoundFunctionHack();
 		Capabilities.bRequiresDisabledEarlyFragmentTests = FOpenGL::RequiresDisabledEarlyFragmentTests();
 	#endif // PLATFORM_LUMINGL4

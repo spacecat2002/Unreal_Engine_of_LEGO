@@ -32,7 +32,6 @@ struct FOpenGLShaderDeviceCapabilities
 	bool bRequiresDontEmitPrecisionForTextureSamplers;
 	bool bRequiresTextureCubeLodEXTToTextureCubeLodDefine;
 	GLint MaxVaryingVectors;
-	bool bRequiresTexture2DPrecisionHack;
 	bool bRequiresRoundFunctionHack;
 	bool bRequiresDisabledEarlyFragmentTests;
 };

@@ -660,9 +660,6 @@ struct FOpenGLES : public FOpenGLBase
 	static FORCEINLINE bool SupportsTextureHalfFloat() { return bSupportsTextureHalfFloat; }
 	static FORCEINLINE bool SupportsColorBufferFloat() { return bSupportsColorBufferFloat; }
 	static FORCEINLINE bool SupportsColorBufferHalfFloat() { return bSupportsColorBufferHalfFloat; }
-	static FORCEINLINE bool	SupportsRG16UI() { return false; }
-	static FORCEINLINE bool	SupportsRG32UI() { return false; }
-	static FORCEINLINE bool SupportsR11G11B10F() { return false; }
 	static FORCEINLINE bool SupportsShaderFramebufferFetch() { return bSupportsShaderFramebufferFetch; }
 	static FORCEINLINE bool SupportsShaderDepthStencilFetch() { return bSupportsShaderDepthStencilFetch; }
 	static FORCEINLINE bool SupportsMultisampledRenderToTexture() { return bSupportsMultisampledRenderToTexture; }
@@ -674,7 +671,6 @@ struct FOpenGLES : public FOpenGLBase
 	static FORCEINLINE bool SupportsDXT() { return bSupportsDXT; }
 	static FORCEINLINE bool SupportsETC2() { return bSupportsETC2; }
 	static FORCEINLINE bool SupportsCombinedDepthStencilAttachment() { return false; }
-	static FORCEINLINE bool SupportsPackedDepthStencil() { return bSupportsPackedDepthStencil; }
 	static FORCEINLINE bool SupportsTextureCubeLodEXT() { return bSupportsTextureCubeLodEXT; }
 	static FORCEINLINE bool SupportsShaderTextureLod() { return bSupportsShaderTextureLod; }
 	static FORCEINLINE bool SupportsShaderTextureCubeLod() { return bSupportsShaderTextureCubeLod; }
@@ -693,7 +689,6 @@ struct FOpenGLES : public FOpenGLBase
 	static FORCEINLINE bool SupportsStandardDerivativesExtension() { return bSupportsStandardDerivativesExtension; }
 	static FORCEINLINE bool RequiresGLFragCoordVaryingLimitHack() { return bRequiresGLFragCoordVaryingLimitHack; }
 	static FORCEINLINE bool HasBinaryProgramRetrievalFailed() { return bBinaryProgramRetrievalFailed; }
-	static FORCEINLINE bool RequiresTexture2DPrecisionHack() { return bRequiresTexture2DPrecisionHack; }
 	static FORCEINLINE bool RequiresRoundFunctionHack() { return bRequiresRoundFunctionHack; }
 	static FORCEINLINE bool RequiresDisabledEarlyFragmentTests() { return bRequiresDisabledEarlyFragmentTests; }
 	static FORCEINLINE bool RequiresARMShaderFramebufferFetchDepthStencilUndef() { return bRequiresARMShaderFramebufferFetchDepthStencilUndef; }
@@ -963,14 +958,7 @@ struct FOpenGLES : public FOpenGLBase
 
 	static FORCEINLINE void VertexAttribIPointer(GLuint Index, GLint Size, GLenum Type, GLsizei Stride, const GLvoid* Pointer)
 	{
-		if (IsES31Usable())
-		{
-			glVertexAttribIPointer(Index, Size, Type, Stride, Pointer);
-		}
-		else
-		{
-			glVertexAttribPointer(Index, Size, Type, GL_FALSE, Stride, Pointer);
-		}
+		glVertexAttribIPointer(Index, Size, Type, Stride, Pointer);
 	}
 
 	static FORCEINLINE void GenSamplers(GLsizei Count, GLuint* Samplers)
@@ -1107,46 +1095,14 @@ struct FOpenGLES : public FOpenGLBase
 
 	static FORCEINLINE void BlitFramebuffer(GLint SrcX0, GLint SrcY0, GLint SrcX1, GLint SrcY1, GLint DstX0, GLint DstY0, GLint DstX1, GLint DstY1, GLbitfield Mask, GLenum Filter)
 	{
-		if (IsES31Usable())
-		{
-			glBlitFramebuffer(SrcX0, SrcY0, SrcX1, SrcY1, DstX0, DstY0, DstX1, DstY1, Mask, Filter);
-		}
+		glBlitFramebuffer(SrcX0, SrcY0, SrcX1, SrcY1, DstX0, DstY0, DstX1, DstY1, Mask, Filter);
 	}
 
 	static FORCEINLINE bool TexStorage2D(GLenum Target, GLint Levels, GLint InternalFormat, GLsizei Width, GLsizei Height, GLenum Format, GLenum Type, uint32 Flags)
 	{
-		// glTexStorage2D accepts only sized internal formats and thus we reject base formats
-		// also GL_BGRA8_EXT seems to be unsupported
-		bool bValidFormat = true;
-		switch (InternalFormat)
-		{
-		case GL_DEPTH_COMPONENT:
-		case GL_DEPTH_STENCIL:
-		case GL_RED:
-		case GL_RG:
-		case GL_RGB:
-		case GL_RGBA:
-		case GL_BGRA_EXT:
-		case GL_BGRA8_EXT:
-		case GL_LUMINANCE:
-		case GL_LUMINANCE_ALPHA:
-		case GL_ALPHA:
-		case GL_RED_INTEGER:
-		case GL_RG_INTEGER:
-		case GL_RGB_INTEGER:
-		case GL_RGBA_INTEGER:
-			bValidFormat = false;
-			break;
-		}
-
-		if (bValidFormat || (bUseHalfFloatTexStorage && Type == GetTextureHalfFloatPixelType() && (Flags & TexCreate_RenderTargetable) != 0))
-		{
-			glTexStorage2D(Target, Levels, InternalFormat, Width, Height);
-			VERIFY_GL(glTexStorage2D);
-			return true;
-		}
-
-		return false;
+		glTexStorage2D(Target, Levels, InternalFormat, Width, Height);
+		VERIFY_GL(glTexStorage2D);
+		return true;
 	}
 
 	static FORCEINLINE void DrawArraysInstanced(GLenum Mode, GLint First, GLsizei Count, GLsizei InstanceCount)
@@ -1181,31 +1137,7 @@ struct FOpenGLES : public FOpenGLBase
 
 	static FORCEINLINE void TexStorage3D(GLenum Target, GLint Levels, GLint InternalFormat, GLsizei Width, GLsizei Height, GLsizei Depth, GLenum Format, GLenum Type)
 	{
-		if (glTexStorage3D)
-		{
-			glTexStorage3D(Target, Levels, InternalFormat, Width, Height, Depth);
-		}
-		else
-		{
-			const bool bArrayTexture = Target == GL_TEXTURE_2D_ARRAY || Target == GL_TEXTURE_CUBE_MAP_ARRAY;
-			for (uint32 MipIndex = 0; MipIndex < uint32(Levels); MipIndex++)
-			{
-				glTexImage3D(
-					Target,
-					MipIndex,
-					InternalFormat,
-					FMath::Max<uint32>(1, (Width >> MipIndex)),
-					FMath::Max<uint32>(1, (Height >> MipIndex)),
-					(bArrayTexture) ? Depth : FMath::Max<uint32>(1, (Depth >> MipIndex)),
-					0,
-					Format,
-					Type,
-					NULL
-				);
-
-				VERIFY_GL(TexImage_3D);
-			}
-		}
+		glTexStorage3D(Target, Levels, InternalFormat, Width, Height, Depth);
 	}
 
 	// 	static FORCEINLINE void BindBufferBase(GLenum Target, GLuint Index, GLuint Buffer) UGL_OPTIONAL_VOID
@@ -1321,9 +1253,6 @@ protected:
 	/** GL_NV_framebuffer_blit */
 	static bool bSupportsNVFrameBufferBlit;
 
-	/** GL_OES_packed_depth_stencil */
-	static bool bSupportsPackedDepthStencil;
-
 	/** textureCubeLodEXT */
 	static bool bSupportsTextureCubeLodEXT;
 
@@ -1362,9 +1291,6 @@ public:
 
 	/* This indicates failure when attempting to retrieve driver's binary representation of the hack program  */
 	static bool bBinaryProgramRetrievalFailed;
-
-	/* This hack fixes an issue with SGX540 compiler which can get upset with some operations that mix highp and mediump */
-	static bool bRequiresTexture2DPrecisionHack;
 
 	/* This is a hack to add a round() function when not available to a shader compiler */
 	static bool bRequiresRoundFunctionHack;
