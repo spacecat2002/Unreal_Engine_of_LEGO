@@ -24,7 +24,7 @@
 
 #if TRACING_PROFILER
 
-class FTracingProfiler
+class UE_DEPRECATED(4.26, "Please use Unreal Insights for profiling") FTracingProfiler
 {
 private:
 

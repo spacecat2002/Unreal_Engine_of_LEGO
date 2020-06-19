@@ -14,6 +14,8 @@
 #include "RenderingThread.h"
 #include "UObject/NameTypes.h"
 
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+
 static TAutoConsoleVariable<int32> GTracingProfileBufferSize(
 	TEXT("TracingProfiler.BufferSize"),
 	65536,
@@ -377,5 +379,7 @@ void FTracingProfiler::WriteCaptureToFile()
 
 	OutputFile->Close();
 }
+
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 #endif //TRACING_PROFILER

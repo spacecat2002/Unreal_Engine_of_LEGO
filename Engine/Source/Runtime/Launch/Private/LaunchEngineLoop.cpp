@@ -2156,7 +2156,9 @@ int32 FEngineLoop::PreInitPreStartupScreen(const TCHAR* CmdLine)
 #endif
 
 #if WITH_ENGINE && TRACING_PROFILER
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	FTracingProfiler::Get()->Init();
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #endif
 
 	// Start the application

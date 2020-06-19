@@ -485,6 +485,7 @@ public:
 			}
 
 #if TRACING_PROFILER
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 			const bool bTracingStatsEnabled = !!CVarGPUTracingStatsEnabled.GetValueOnRenderThread();
 			if (bTracingStatsEnabled)
 			{
@@ -498,6 +499,7 @@ public:
 						Event.GetFrameNumber());
 				}
 			}
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #endif //TRACING_PROFILER
 		}
 
