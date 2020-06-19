@@ -238,7 +238,16 @@ inline void FRDGBuilder::QueueTextureExtraction(FRDGTextureRef Texture, TRefCoun
 
 	Texture->bExtracted = true;
 	Texture->bCulled = false;
-	ExtractedTextures.Emplace(Texture, OutTexturePtr);
+
+	// Extract the texture immediately if we have the allocation.
+	if (Texture->bPreallocated || Texture->bExternal)
+	{
+		*OutTexturePtr = Texture->PooledRenderTarget;
+	}
+	else
+	{
+		ExtractedTextures.Emplace(Texture, OutTexturePtr);
+	}
 
 	if (Texture->AccessFinal == ERHIAccess::Unknown)
 	{
@@ -255,7 +264,16 @@ inline void FRDGBuilder::QueueBufferExtraction(FRDGBufferRef Buffer, TRefCountPt
 
 	Buffer->bExtracted = true;
 	Buffer->bCulled = false;
-	ExtractedBuffers.Emplace(Buffer, OutBufferPtr);
+
+	// Extract the texture immediately if we have the allocation.
+	if (Buffer->bPreallocated || Buffer->bExternal)
+	{
+		*OutBufferPtr = Buffer->PooledBuffer;
+	}
+	else
+	{
+		ExtractedBuffers.Emplace(Buffer, OutBufferPtr);
+	}
 
 	if (Buffer->AccessFinal == ERHIAccess::Unknown)
 	{

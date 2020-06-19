@@ -395,6 +395,7 @@ FRDGTextureRef FRDGBuilder::CreateTexture(
 	if (EnumHasAnyFlags(Flags, ERDGTextureFlags::Preallocate))
 	{
 		Texture->bPreallocated = 1;
+		Texture->AccessFinal = kDefaultAccessFinal;
 		BeginResourceRHI(GetProloguePassHandle(), Texture);
 	}
 
@@ -429,6 +430,7 @@ FRDGBufferRef FRDGBuilder::CreateBuffer(
 	if (EnumHasAnyFlags(Flags, ERDGBufferFlags::Preallocate))
 	{
 		Buffer->bPreallocated = 1;
+		Buffer->AccessFinal = kDefaultAccessFinal;
 		BeginResourceRHI(GetProloguePassHandle(), Buffer);
 	}
 
