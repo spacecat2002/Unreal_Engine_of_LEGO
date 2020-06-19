@@ -15,8 +15,8 @@ class FViewInfo;
 
 struct FHairStrandsTransmittanceMaskData
 {
-	TRefCountPtr<FRDGPooledBuffer>	TransmittanceMask;
-	FShaderResourceViewRHIRef		TransmittanceMaskSRV;
+	FRDGBufferRef TransmittanceMask = nullptr;
+	FRDGBufferSRVRef TransmittanceMaskSRV = nullptr;
 };
 
 /// Write opaque hair shadow onto screen shadow mask to have fine hair details cast onto opaque geometries
@@ -36,8 +36,8 @@ void RenderHairStrandsShadowMask(
 
 /// Write hair transmittance onto screen shadow mask
 FHairStrandsTransmittanceMaskData RenderHairStrandsTransmittanceMask(
-	FRHICommandListImmediate& RHICmdList,
+	FRDGBuilder& GraphBuilder,
 	const TArray<FViewInfo>& Views,
 	const class FLightSceneInfo* LightSceneInfo,
 	const struct FHairStrandsDatas* Hairdatas,
-	TRefCountPtr<IPooledRenderTarget>& ScreenShadowMaskSubPixelTexture);
+	FRDGTextureRef ScreenShadowMaskSubPixelTexture);

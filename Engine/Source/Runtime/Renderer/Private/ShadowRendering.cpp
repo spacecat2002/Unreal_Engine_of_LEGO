@@ -1751,48 +1751,55 @@ bool FDeferredShadingSceneRenderer::RenderShadowProjections(
 	FSceneRenderer::RenderShadowProjections(RHICmdList, SceneTexturesUniformBuffer, LightSceneInfo, ScreenShadowMaskTexture, ScreenShadowMaskSubPixelTexture, false, false, HairDatas ? &HairDatas->HairVisibilityViews : nullptr);
 
 	checkSlow(RHICmdList.IsOutsideRenderPass());
-	for (int32 ShadowIndex = 0; ShadowIndex < VisibleLightInfo.ShadowsToProject.Num(); ShadowIndex++)
+
 	{
-		FProjectedShadowInfo* ProjectedShadowInfo = VisibleLightInfo.ShadowsToProject[ShadowIndex];
+		FRDGBuilder GraphBuilder(RHICmdList);
 
-		if (ProjectedShadowInfo->bAllocated
-			&& ProjectedShadowInfo->bWholeSceneShadow
-			// Not supported on translucency yet
-			&& !ProjectedShadowInfo->bRayTracedDistanceField
-			// Don't inject shadowed lighting with whole scene shadows used for previewing a light with static shadows,
-			// Since that would cause a mismatch with the built lighting
-			// However, stationary directional lights allow whole scene shadows that blend with precomputed shadowing
-			&& (!LightSceneInfo->Proxy->HasStaticShadowing() || ProjectedShadowInfo->IsWholeSceneDirectionalShadow()))
+		for (int32 ShadowIndex = 0; ShadowIndex < VisibleLightInfo.ShadowsToProject.Num(); ShadowIndex++)
 		{
-			bInjectedTranslucentVolume = true;
-			SCOPED_DRAW_EVENT(RHICmdList, InjectTranslucentVolume);
-			
-			// Inject the shadowed light into the translucency lighting volumes
-			if(ProjectedShadowInfo->DependentView != nullptr)
-			{
-				int32 ViewIndex = -1;
-				for (int32 i = 0; i < Views.Num(); ++i)
-				{
-					if (ProjectedShadowInfo->DependentView == &Views[i])
-					{
-						ViewIndex = i;
-						break;
-					}
-				}
+			FProjectedShadowInfo* ProjectedShadowInfo = VisibleLightInfo.ShadowsToProject[ShadowIndex];
 
-				SCOPED_GPU_MASK(RHICmdList, ProjectedShadowInfo->DependentView->GPUMask);
-				InjectTranslucentVolumeLighting(RHICmdList, *LightSceneInfo, ProjectedShadowInfo, *ProjectedShadowInfo->DependentView, ViewIndex);
-			}
-			else
+			if (ProjectedShadowInfo->bAllocated
+				&& ProjectedShadowInfo->bWholeSceneShadow
+				// Not supported on translucency yet
+				&& !ProjectedShadowInfo->bRayTracedDistanceField
+				// Don't inject shadowed lighting with whole scene shadows used for previewing a light with static shadows,
+				// Since that would cause a mismatch with the built lighting
+				// However, stationary directional lights allow whole scene shadows that blend with precomputed shadowing
+				&& (!LightSceneInfo->Proxy->HasStaticShadowing() || ProjectedShadowInfo->IsWholeSceneDirectionalShadow()))
 			{
-				for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
+				bInjectedTranslucentVolume = true;
+				RDG_EVENT_SCOPE(GraphBuilder, "InjectTranslucentVolume");
+
+				// Inject the shadowed light into the translucency lighting volumes
+				if (ProjectedShadowInfo->DependentView != nullptr)
 				{
-					FViewInfo& View = Views[ViewIndex];
-					SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
-					InjectTranslucentVolumeLighting(RHICmdList, *LightSceneInfo, ProjectedShadowInfo, View, ViewIndex);
+					int32 ViewIndex = -1;
+					for (int32 i = 0; i < Views.Num(); ++i)
+					{
+						if (ProjectedShadowInfo->DependentView == &Views[i])
+						{
+							ViewIndex = i;
+							break;
+						}
+					}
+
+					RDG_GPU_MASK_SCOPE(GraphBuilder, ProjectedShadowInfo->DependentView->GPUMask);
+					InjectTranslucentVolumeLighting(GraphBuilder, *LightSceneInfo, ProjectedShadowInfo, *ProjectedShadowInfo->DependentView, ViewIndex);
+				}
+				else
+				{
+					for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
+					{
+						FViewInfo& View = Views[ViewIndex];
+						RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
+						InjectTranslucentVolumeLighting(GraphBuilder, *LightSceneInfo, ProjectedShadowInfo, View, ViewIndex);
+					}
 				}
 			}
 		}
+
+		GraphBuilder.Execute();
 	}
 
 	RenderCapsuleDirectShadows(RHICmdList, *LightSceneInfo, ScreenShadowMaskTexture, VisibleLightInfo.CapsuleShadowsToProject, false);

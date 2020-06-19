@@ -26,3 +26,4 @@ struct FHairLUT
 
 /// Returns Hair LUTs. LUTs are generated on demand.
 FHairLUT GetHairLUT(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
+FHairLUT GetHairLUT(FRDGBuilder& GraphBuilder, const FViewInfo& View);

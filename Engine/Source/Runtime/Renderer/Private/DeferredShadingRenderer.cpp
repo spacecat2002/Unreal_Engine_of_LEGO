@@ -2480,8 +2480,8 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	}
 	else if (HairDatas)
 	{
-		TUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesGBufferRHI = CreateSceneTextureUniformBuffer(RHICmdList, Views[0], ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers | ESceneTextureSetupMode::SSAO);
-		RenderLightsForHair(RHICmdList, SceneTexturesGBufferRHI, SortedLightSet, HairDatas, ForwardScreenSpaceShadowMask_Hair);
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures = CreateSceneTextureUniformBuffer(GraphBuilder, Views[0]);
+		RenderLightsForHair(GraphBuilder, SceneTextures, SortedLightSet, HairDatas, GraphBuilder.RegisterExternalTexture(ForwardScreenSpaceShadowMask_Hair));
 		RenderDeferredReflectionsAndSkyLightingHair(GraphBuilder, HairDatas);
 	}
 	
@@ -2736,7 +2736,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	if (ViewFamily.EngineShowFlags.StationaryLightOverlap)
 	{
-		RenderStationaryLightOverlap(GraphBuilder);
+		RenderStationaryLightOverlap(GraphBuilder, SceneColorTexture.Target, SceneDepthTexture.Target, SceneTexturesPerView[0]);
 		AddServiceLocalQueuePass(GraphBuilder);
 	}
 

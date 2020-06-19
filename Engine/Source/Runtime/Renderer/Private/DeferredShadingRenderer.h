@@ -29,6 +29,7 @@ class FRaytracingLightDataPacked;
 struct FSceneWithoutWaterTextures;
 struct FHeightFogRenderingParameters;
 struct FRayTracingReflectionOptions;
+struct FHairStrandsTransmittanceMaskData;
 
 /**
  * Scene renderer that implements a deferred shading pipeline and associated features.
@@ -320,12 +321,15 @@ private:
 
 	/** Renders an array of lights for the stationary light overlap viewmode. */
 	void RenderLightArrayForOverlapViewmode(
-		FRHICommandListImmediate& RHICmdList,
-		const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
+		FRHICommandList& RHICmdList,
 		const TSparseArray<FLightSceneInfoCompact>& LightArray);
 
 	/** Render stationary light overlap as complexity to scene color. */
-	void RenderStationaryLightOverlap(FRDGBuilder& GraphBuilder);
+	void RenderStationaryLightOverlap(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SceneColorTexture,
+		FRDGTextureRef SceneDepthTexture,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer);
 	
 	/** Renders the scene's translucency passes. */
 	void RenderTranslucency(
@@ -468,27 +472,36 @@ private:
 	  */
 	void RenderLight(
 		FRHICommandList& RHICmdList,
-		const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
 		const FLightSceneInfo* LightSceneInfo,
-		IPooledRenderTarget* ScreenShadowMaskTexture,
+		FRHITexture* ScreenShadowMaskTexture,
 		const struct FHairStrandsVisibilityViews* InHairVisibilityViews,
 		bool bRenderOverlap,
 		bool bIssueDrawEvent);
 
+	void RenderLight(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SceneColorTexture,
+		FRDGTextureRef SceneDepthTexture,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		const FLightSceneInfo* LightSceneInfo,
+		FRDGTextureRef ScreenShadowMaskTexture,
+		const FHairStrandsVisibilityViews* InHairVisibilityViews,
+		bool bRenderOverlap);
+
 	void RenderLightsForHair(
-		FRHICommandListImmediate& RHICmdList,
-		const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
-		FSortedLightSetSceneInfo &SortedLightSet,
+		FRDGBuilder& GraphBuilder,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		FSortedLightSetSceneInfo& SortedLightSet,
 		const FHairStrandsDatas* HairDatas,
-		TRefCountPtr<IPooledRenderTarget>& InScreenShadowMaskSubPixelTexture);
+		FRDGTextureRef InScreenShadowMaskSubPixelTexture);
 
 	/** Specialized version of RenderLight for hair (run lighting evaluation on at sub-pixel rate, without depth bound) */
 	void RenderLightForHair(
-		FRHICommandList& RHICmdList,
-		const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
+		FRDGBuilder& GraphBuilder,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		const FLightSceneInfo* LightSceneInfo,
-		IPooledRenderTarget* ScreenShadowMaskSubPixelTexture,
-		struct FHairStrandsTransmittanceMaskData* InTransmittanceMaskData,
+		FRDGTextureRef ScreenShadowMaskSubPixelTexture,
+		const FHairStrandsTransmittanceMaskData& InTransmittanceMaskData,
 		const struct FHairStrandsVisibilityViews* InHairVisibilityViews);
 
 	/** Renders an array of simple lights using standard deferred shading. */
@@ -515,13 +528,13 @@ private:
 	void AccumulateTranslucentVolumeObjectShadowing(FRHICommandList& RHICmdList, const FProjectedShadowInfo* InProjectedShadowInfo, bool bClearVolume, const FViewInfo& View, const int32 ViewIndex);
 
 	/** Accumulates direct lighting for the given light.  InProjectedShadowInfo can be NULL in which case the light will be unshadowed. */
-	void InjectTranslucentVolumeLighting(FRHICommandListImmediate& RHICmdList, const FLightSceneInfo& LightSceneInfo, const FProjectedShadowInfo* InProjectedShadowInfo, const FViewInfo& View, int32 ViewIndex);
+	void InjectTranslucentVolumeLighting(FRDGBuilder& GraphBuilder, const FLightSceneInfo& LightSceneInfo, const FProjectedShadowInfo* InProjectedShadowInfo, const FViewInfo& View, int32 ViewIndex);
 
 	/** Accumulates direct lighting for an array of unshadowed lights. */
-	void InjectTranslucentVolumeLightingArray(FRHICommandListImmediate& RHICmdList, const TArray<FSortedLightSceneInfo, SceneRenderingAllocator>& SortedLights, int32 FirstLightIndex, int32 LightsEndIndex);
+	void InjectTranslucentVolumeLightingArray(FRDGBuilder& GraphBuilder, const TArray<FSortedLightSceneInfo, SceneRenderingAllocator>& SortedLights, int32 FirstLightIndex, int32 LightsEndIndex);
 
 	/** Accumulates direct lighting for simple lights. */
-	void InjectSimpleTranslucentVolumeLightingArray(FRHICommandListImmediate& RHICmdList, const FSimpleLightArray& SimpleLights, const FViewInfo& View, const int32 ViewIndex);
+	void InjectSimpleTranslucentVolumeLightingArray(FRDGBuilder& GraphBuilder, const FSimpleLightArray& SimpleLights, const FViewInfo& View, const int32 ViewIndex);
 
 	/** Filters the translucency lighting volumes to reduce aliasing. */
 	void FilterTranslucentVolumeLighting(FRDGBuilder& GraphBuilder, const FViewInfo& View, const int32 ViewIndex);
