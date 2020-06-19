@@ -6,6 +6,7 @@
 
 #include "PostProcess/PostProcessHistogram.h"
 #include "PostProcess/PostProcessEyeAdaptation.h"
+#include "ShaderCompilerCore.h"
 
 namespace
 {

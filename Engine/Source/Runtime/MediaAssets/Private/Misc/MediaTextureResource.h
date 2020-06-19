@@ -13,13 +13,13 @@
 #include "TextureResource.h"
 #include "UnrealClient.h"
 #include "IMediaTimeSource.h"
+#include "RendererInterface.h"
 
 class FMediaPlayerFacade;
 class IMediaPlayer;
 class IMediaTextureSample;
 class UMediaTexture;
 struct FGenerateMipsStruct;
-struct IPooledRenderTarget;
 
 enum class EMediaTextureSinkFormat;
 enum class EMediaTextureSinkMode;
