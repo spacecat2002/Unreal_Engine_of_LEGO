@@ -1316,7 +1316,7 @@ void ALandscape::CreateLayersRenderingResource()
 
 			if (CPUReadback == nullptr || *CPUReadback == nullptr)
 			{
-				FLandscapeLayersTexture2DCPUReadBackResource* NewCPUReadback = new FLandscapeLayersTexture2DCPUReadBackResource(ComponentHeightmap->Source.GetSizeX(), ComponentHeightmap->Source.GetSizeY(), ComponentHeightmap->GetPixelFormat(), 1);
+				FLandscapeLayersTexture2DCPUReadBackResource* NewCPUReadback = new FLandscapeLayersTexture2DCPUReadBackResource(ComponentHeightmap->Source.GetSizeX(), ComponentHeightmap->Source.GetSizeY(), ComponentHeightmap->GetPixelFormat(), ComponentHeightmap->Source.GetNumMips());
 				BeginInitResource(NewCPUReadback);
 
 				Proxy->HeightmapsCPUReadBack.Add(ComponentHeightmap, NewCPUReadback);
