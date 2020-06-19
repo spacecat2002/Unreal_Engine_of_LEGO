@@ -537,13 +537,11 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 			SceneColor = (View.bIsMobileMultiViewEnabled) ? SceneContext.MobileMultiViewSceneColor->GetRenderTargetItem().TargetableTexture : SceneContext.GetSceneColorSurface();
 			SceneColorResolve = GetMultiViewSceneColor(SceneContext);
 			ColorTargetAction = ERenderTargetActions::Clear_Resolve;
-			// Rendering to a backbuffer, make sure it's writeable
-			RHICmdList.Transition(FRHITransitionInfo(SceneColorResolve, ERHIAccess::Unknown, ERHIAccess::RTV));
+			RHICmdList.Transition(FRHITransitionInfo(SceneColorResolve, ERHIAccess::Unknown, ERHIAccess::RTV | ERHIAccess::ResolveDst));
 		}
 		else
 		{
 			SceneColor = GetMultiViewSceneColor(SceneContext);
-			// Rendering to a backbuffer, make sure it's writeable
 			RHICmdList.Transition(FRHITransitionInfo(SceneColor, ERHIAccess::Unknown, ERHIAccess::RTV));
 		}
 		SceneDepth = (View.bIsMobileMultiViewEnabled) ? SceneContext.MobileMultiViewSceneDepthZ->GetRenderTargetItem().TargetableTexture : static_cast<FTextureRHIRef>(SceneContext.GetSceneDepthSurface());
@@ -551,8 +549,18 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	else
 	{
 		SceneColor = SceneContext.GetSceneColorSurface();
-		SceneColorResolve = bMobileMSAA ? SceneContext.GetSceneColorTexture() : nullptr;
-		ColorTargetAction = bMobileMSAA ? ERenderTargetActions::Clear_Resolve : ERenderTargetActions::Clear_Store;
+		if (bMobileMSAA)
+		{
+			SceneColorResolve = SceneContext.GetSceneColorTexture();
+			ColorTargetAction = ERenderTargetActions::Clear_Resolve;
+			RHICmdList.Transition(FRHITransitionInfo(SceneColorResolve, ERHIAccess::Unknown, ERHIAccess::RTV | ERHIAccess::ResolveDst));
+		}
+		else
+		{
+			SceneColorResolve = nullptr;
+			ColorTargetAction = ERenderTargetActions::Clear_Store;
+		}
+
 		SceneDepth = SceneContext.GetSceneDepthSurface();
 				
 		if (bRequiresTranslucencyPass)
