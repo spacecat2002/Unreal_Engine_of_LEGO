@@ -156,7 +156,11 @@ namespace LevelUtil
 			{
 				if (!bIsDirectory)
 				{
-					ActorPackageNames.Add(FPackageName::FilenameToLongPackageName(FilenameOrDirectory));
+					FString Filename(FilenameOrDirectory);
+					if (Filename.EndsWith(FPackageName::GetAssetPackageExtension()))
+					{
+						ActorPackageNames.Add(FPackageName::FilenameToLongPackageName(Filename));
+					}
 				}
 				return true;
 			});
