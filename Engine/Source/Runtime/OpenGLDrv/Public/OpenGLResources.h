@@ -1427,7 +1427,6 @@ public:
 		bool bInCubemap,
 		bool bInAllocatedStorage,
 		uint32 InFlags,
-		uint8* InTextureRange,
 		const FClearValueBinding& InClearValue
 		)
 	: BaseType(InSizeX,InSizeY,InSizeZ,InNumMips,InNumSamples, InNumSamplesTileMem, InArraySize, InFormat,InFlags, InClearValue)
@@ -1438,13 +1437,11 @@ public:
 		InNumMips,
 		InAttachment
 		)
-	, TextureRange(InTextureRange)
 	, BaseLevel(0)
 	, bCubemap(bInCubemap)
 	{
 		PixelBuffers.AddZeroed(this->GetNumMips() * (bCubemap ? 6 : 1) * GetEffectiveSizeZ());
 		SetAllocatedStorage(bInAllocatedStorage);
-		ClientStorageBuffers.AddZeroed(this->GetNumMips() * (bCubemap ? 6 : 1) * GetEffectiveSizeZ());
 	}
 
 	virtual ~TOpenGLTexture()
@@ -1458,7 +1455,7 @@ public:
 
 			OpenGLTextureDeleted(this);
 
-			auto DeleteGLResources = [OpenGLRHI= OpenGLRHI, Resource=Resource, SRVResource= SRVResource, Target= Target, Flags= this->GetFlags(), TextureRange= TextureRange, Aliased = this->IsAliased()]()
+			auto DeleteGLResources = [OpenGLRHI= OpenGLRHI, Resource=Resource, SRVResource= SRVResource, Target= Target, Flags= this->GetFlags(), Aliased = this->IsAliased()]()
 			{
 				VERIFY_GL_SCOPE();
 				if (Resource != 0)
@@ -1509,11 +1506,6 @@ public:
 
 			RunOnGLRenderContextThread(MoveTemp(DeleteGLResources));
 
-			if (TextureRange)
-			{
-				delete[] TextureRange;
-				TextureRange = nullptr;
-			}
 			ReleaseOpenGLFramebuffers(OpenGLRHI, this);
 		}
 	}
@@ -1589,20 +1581,7 @@ public:
 	 */
 	void Resolve(uint32 MipIndex,uint32 ArrayIndex);
 private:
-
 	TArray< TRefCountPtr<FOpenGLPixelBuffer> > PixelBuffers;
-
-	/** Backing store for all client storage buffers for platforms and textures types where this is faster than PBOs */
-	uint8* TextureRange;
-
-	/** Client storage buffers for platforms and textures types where this is faster than PBOs */
-	struct FOpenGLClientStore
-	{
-		uint8* Data;
-		uint32 Size;
-		bool bReadOnly;
-	};
-	TArray<FOpenGLClientStore> ClientStorageBuffers;
 
 	uint32 GetEffectiveSizeZ( void ) { return this->GetSizeZ() ? this->GetSizeZ() : 1; }
 

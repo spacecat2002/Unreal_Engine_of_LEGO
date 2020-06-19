@@ -701,14 +701,16 @@ public:
 			void* RHIBuffer;
 			void* Buffer;
 			uint32 MipIndex;
+			uint32 ArrayIndex;
 			uint32 BufferSize;
 			uint32 Stride;
 			EResourceLockMode LockMode;
 
-			FORCEINLINE_DEBUGGABLE FLockParams(void* InRHIBuffer, void* InBuffer, uint32 InMipIndex, uint32 InStride, uint32 InBufferSize, EResourceLockMode InLockMode)
+			FORCEINLINE_DEBUGGABLE FLockParams(void* InRHIBuffer, void* InBuffer, uint32 InArrayIndex, uint32 InMipIndex, uint32 InStride, uint32 InBufferSize, EResourceLockMode InLockMode)
 				: RHIBuffer(InRHIBuffer)
 				, Buffer(InBuffer)
 				, MipIndex(InMipIndex)
+				, ArrayIndex(InArrayIndex)
 				, BufferSize(InBufferSize)
 				, Stride(InStride)
 				, LockMode(InLockMode)
@@ -723,24 +725,24 @@ public:
 			TotalMemoryOutstanding = 0;
 		}
 
-		FORCEINLINE_DEBUGGABLE void Lock(void* RHIBuffer, void* Buffer, uint32 MipIndex, uint32 Stride, uint32 SizeRHI, EResourceLockMode LockMode)
+		FORCEINLINE_DEBUGGABLE void Lock(void* RHIBuffer, void* Buffer, uint32 ArrayIndex, uint32 MipIndex, uint32 Stride, uint32 SizeRHI, EResourceLockMode LockMode)
 		{
 //#if DO_CHECK
 			for (auto& Parms : OutstandingLocks)
 			{
-				check(Parms.RHIBuffer != RHIBuffer || Parms.MipIndex != MipIndex);
+				check(Parms.RHIBuffer != RHIBuffer || Parms.MipIndex != MipIndex || Parms.ArrayIndex != ArrayIndex);
 			}
 //#endif
-			OutstandingLocks.Add(FLockParams(RHIBuffer, Buffer, MipIndex, Stride, SizeRHI, LockMode));
+			OutstandingLocks.Add(FLockParams(RHIBuffer, Buffer, ArrayIndex, MipIndex, Stride, SizeRHI, LockMode));
 			TotalMemoryOutstanding += SizeRHI;
 		}
 
-		FORCEINLINE_DEBUGGABLE FLockParams Unlock(void* RHIBuffer, uint32 MipIndex)
+		FORCEINLINE_DEBUGGABLE FLockParams Unlock(void* RHIBuffer, uint32 ArrayIndex, uint32 MipIndex)
 		{
 			for (int32 Index = 0; Index < OutstandingLocks.Num(); Index++)
 			{
 				FLockParams& CurrentLock = OutstandingLocks[Index];
-				if (CurrentLock.RHIBuffer == RHIBuffer && CurrentLock.MipIndex == MipIndex)
+				if (CurrentLock.RHIBuffer == RHIBuffer && CurrentLock.MipIndex == MipIndex && CurrentLock.ArrayIndex == ArrayIndex)
 				{
 					FLockParams Result = OutstandingLocks[Index];
 					OutstandingLocks.RemoveAtSwap(Index, 1, false);
@@ -749,7 +751,7 @@ public:
 				}
 			}
 			check(!"Mismatched RHI buffer locks.");
-			return FLockParams(nullptr, nullptr, 0, 0, 0, RLM_WriteOnly);
+			return FLockParams(nullptr, nullptr, 0, 0, 0, 0, RLM_WriteOnly);
 		}
 	};
 
@@ -757,6 +759,8 @@ public:
 	virtual void UnlockTexture2D_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHITexture2D* Texture, uint32 MipIndex, bool bLockWithinMiptail, bool bNeedsDefaultRHIFlush) final override;
 	virtual void* RHILockTextureCubeFace_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHITextureCube* Texture, uint32 FaceIndex, uint32 ArrayIndex, uint32 MipIndex, EResourceLockMode LockMode, uint32& DestStride, bool bLockWithinMiptail) final override;
 	virtual void RHIUnlockTextureCubeFace_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHITextureCube* Texture, uint32 FaceIndex, uint32 ArrayIndex, uint32 MipIndex, bool bLockWithinMiptail) final override;
+	virtual void* LockTexture2DArray_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHITexture2DArray* Texture, uint32 ArrayIndex, uint32 MipIndex, EResourceLockMode LockMode, uint32& DestStride, bool bLockWithinMiptail) final override;
+	virtual void UnlockTexture2DArray_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHITexture2DArray* Texture, uint32 ArrayIndex, uint32 MipIndex, bool bLockWithinMiptail) final override;
 
 	virtual FIndexBufferRHIRef CreateIndexBuffer_RenderThread(class FRHICommandListImmediate& RHICmdList, uint32 Stride, uint32 Size, uint32 InUsage, FRHIResourceCreateInfo& CreateInfo) final override;
 

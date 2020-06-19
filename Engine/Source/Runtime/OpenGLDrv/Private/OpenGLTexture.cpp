@@ -355,11 +355,11 @@ FRHITexture* FOpenGLDynamicRHI::CreateOpenGLRHITextureOnly(const uint32 SizeX, c
 	// Allocate RHIResource with empty GL values.
 	if (bCubeTexture)
 	{
-		Result = new FOpenGLTextureCube(this, 0, Target, -1, SizeX, SizeY, 0, NumMips, 1, 1, ArraySize, (EPixelFormat)Format, true, false, Flags, nullptr, InClearValue);
+		Result = new FOpenGLTextureCube(this, 0, Target, -1, SizeX, SizeY, 0, NumMips, 1, 1, ArraySize, (EPixelFormat)Format, true, false, Flags, InClearValue);
 	}
 	else
 	{
-		Result = new FOpenGLTexture2D(this, 0, Target, -1, SizeX, SizeY, 0, NumMips, NumSamples, NumSamplesTileMem, 1, (EPixelFormat)Format, false, false, Flags, nullptr, InClearValue);
+		Result = new FOpenGLTexture2D(this, 0, Target, -1, SizeX, SizeY, 0, NumMips, NumSamples, NumSamplesTileMem, 1, (EPixelFormat)Format, false, false, Flags, InClearValue);
 	}
 	OpenGLTextureAllocated(Result, Flags);
 	return Result;
@@ -397,9 +397,6 @@ void FOpenGLDynamicRHI::InitializeGLTexture(FRHITexture* Texture, uint32 SizeX, 
 	// Use a texture stage that's not likely to be used for draws, to avoid waiting
 	CachedSetupTextureStage(ContextState, FOpenGL::GetMaxCombinedTextureImageUnits() - 1, Target, TextureID, 0, NumMips);
 
-	// For client storage textures we allocate a single backing store buffer.
-	uint8* TextureRange = nullptr;
-	
 	if (NumSamples == 1 && !TileMemDepth)
 	{
 		if (Target == GL_TEXTURE_EXTERNAL_OES || !FMath::IsPowerOfTwo(SizeX) || !FMath::IsPowerOfTwo(SizeY))
@@ -455,62 +452,8 @@ void FOpenGLDynamicRHI::InitializeGLTexture(FRHITexture* Texture, uint32 SizeX, 
 		}
 		else if (Target != GL_TEXTURE_EXTERNAL_OES)
 		{
-			// Should we use client-storage to improve update time on platforms that require it
-			bool const bRenderable = (Flags & (TexCreate_RenderTargetable|TexCreate_ResolveTargetable|TexCreate_DepthStencilTargetable|TexCreate_CPUReadback)) != 0;
-			bool const bUseClientStorage = (FOpenGL::SupportsClientStorage() && !FOpenGL::SupportsTextureView() && !bRenderable && !GLFormat.bCompressed);
-			if(bUseClientStorage)
-			{
-				const bool bIsCubeTexture = Target == GL_TEXTURE_CUBE_MAP;
-				const uint32 TextureSize = CalcTextureSize(SizeX, SizeY, (EPixelFormat)Format, NumMips) * (bIsCubeTexture ? 6 : 1);
-				const GLenum FirstTarget = bIsCubeTexture ? GL_TEXTURE_CUBE_MAP_POSITIVE_X : Target;
-				const uint32 NumTargets = bIsCubeTexture ? 6 : 1;
-				
-				TextureRange = new uint8[TextureSize];
-				check(TextureRange);
-				
-				if(FOpenGL::SupportsTextureRange())
-				{
-					FOpenGL::TextureRange(Target, TextureSize, TextureRange);
-					glTexParameteri(Target, GL_TEXTURE_STORAGE_HINT_APPLE, GL_STORAGE_CACHED_APPLE);
-				}
-				
-				glPixelStorei(GL_UNPACK_CLIENT_STORAGE_APPLE, GL_TRUE);
-				glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-				
-				uint8* MipPointer = TextureRange;
-				for(uint32 MipIndex = 0; MipIndex < uint32(NumMips); MipIndex++)
-				{
-					const uint32 MipSize = CalcTextureMipMapSize(SizeX, SizeY, (EPixelFormat)Format, MipIndex);
-					for(uint32 TargetIndex = 0; TargetIndex < NumTargets; TargetIndex++)
-					{
-						glTexImage2D(
-									 FirstTarget + TargetIndex,
-									 MipIndex,
-									 GLFormat.InternalFormat[bSRGB],
-									 FMath::Max<uint32>(1,(SizeX >> MipIndex)),
-									 FMath::Max<uint32>(1,(SizeY >> MipIndex)),
-									 0,
-									 GLFormat.Format,
-									 GLFormat.Type,
-									 MipPointer
-									 );
-						MipPointer += MipSize;
-					}
-				}
-				
-				glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-				glPixelStorei(GL_UNPACK_CLIENT_STORAGE_APPLE, GL_FALSE);
-				
-				if(FOpenGL::SupportsTextureRange())
-				{
-					FOpenGL::TextureRange(Target, 0, 0);
-					glTexParameteri(Target, GL_TEXTURE_STORAGE_HINT_APPLE, GL_STORAGE_PRIVATE_APPLE);
-				}
-				
-				// Leave bAllocatedStorage as false, so that the client storage buffers are setup only when the texture is locked
-			}
 			// Try to allocate using TexStorage2D
-			else if( FOpenGL::TexStorage2D( Target, NumMips, GLFormat.SizedInternalFormat[bSRGB], SizeX, SizeY, GLFormat.Format, GLFormat.Type, Flags) )
+			if (FOpenGL::TexStorage2D(Target, NumMips, GLFormat.SizedInternalFormat[bSRGB], SizeX, SizeY, GLFormat.Format, GLFormat.Type, Flags))
 			{
 				bAllocatedStorage = true;
 			}
@@ -681,7 +624,7 @@ void FOpenGLDynamicRHI::InitializeGLTexture(FRHITexture* Texture, uint32 SizeX, 
 
 	if (bCubeTexture)
 	{
-		//	FOpenGLTextureCube* TextureCube = new FOpenGLTextureCube(this, TextureID, Target, Attachment, SizeX, SizeY, 0, NumMips, 1, 1, ArraySize, (EPixelFormat)Format, true, bAllocatedStorage, Flags, TextureRange, InClearValue);
+		//	FOpenGLTextureCube* TextureCube = new FOpenGLTextureCube(this, TextureID, Target, Attachment, SizeX, SizeY, 0, NumMips, 1, 1, ArraySize, (EPixelFormat)Format, true, bAllocatedStorage, Flags, InClearValue);
 		FOpenGLTextureCube* TextureCube = (FOpenGLTextureCube*)Texture;
 		TextureCube->Resource = TextureID;
 		TextureCube->Target = Target;
@@ -830,9 +773,6 @@ void* TOpenGLTexture<RHIResourceType>::Lock(uint32 InMipIndex,uint32 ArrayIndex,
 
 	// Should we use client-storage to improve update time on platforms that require it
 	const FOpenGLTextureFormat& GLFormat = GOpenGLTextureFormats[PixelFormat];
-	bool const bRenderable = (this->GetFlags() & (TexCreate_RenderTargetable|TexCreate_ResolveTargetable|TexCreate_DepthStencilTargetable|TexCreate_CPUReadback)) != 0;
-	bool const bUseClientStorage = FOpenGL::SupportsClientStorage() && !FOpenGL::SupportsTextureView() && !bRenderable && !this->GetSizeZ() && !GLFormat.bCompressed;
-	if(!bUseClientStorage)
 	{
 		// Standard path with a PBO mirroring ever slice of a texture to allow multiple simulataneous maps
 		bool bBufferExists = true;
@@ -855,43 +795,6 @@ void* TOpenGLTexture<RHIResourceType>::Lock(uint32 InMipIndex,uint32 ArrayIndex,
 		}
 
 		result = PixelBuffer->Lock(0, PixelBuffer->GetSize(), LockMode == RLM_ReadOnly, LockMode != RLM_ReadOnly);
-	}
-	else
-	{
-		// Use APPLE_client_storage to reduce memory usage and improve performance
-		// GL's which support this extension only need copy a pointer, not the memory contents
-		check( FOpenGL::SupportsClientStorage() && !FOpenGL::SupportsTextureView() );
-		if(GetAllocatedStorageForMip(InMipIndex,ArrayIndex))
-		{
-			result = ClientStorageBuffers[BufferIndex].Data;
-		}
-		else
-		{
-			// The assumption at present is that this only applies to 2D & cubemap textures
-			// Array, 3D and variants thereof aren't supported.
-			const bool bIsCubeTexture = Target == GL_TEXTURE_CUBE_MAP;
-			const GLenum FirstTarget = bIsCubeTexture ? GL_TEXTURE_CUBE_MAP_POSITIVE_X : Target;
-			const uint32 NumTargets = bIsCubeTexture ? 6 : 1;
-			
-			uint8* MipPointer = TextureRange;
-			for(uint32 MipIndex = 0; MipIndex < FOpenGLTextureBase::NumMips; MipIndex++)
-			{
-				const uint32 MipSize = CalcTextureMipMapSize(this->GetSizeX(), this->GetSizeY(), PixelFormat, MipIndex);
-				for(uint32 TargetIndex = 0; TargetIndex < NumTargets; TargetIndex++)
-				{
-					const int32 ClientIndex = (MipIndex * NumTargets) + TargetIndex;
-					ClientStorageBuffers[ClientIndex].Data = MipPointer;
-					ClientStorageBuffers[ClientIndex].Size = MipSize;
-					ClientStorageBuffers[ClientIndex].bReadOnly = false;
-					MipPointer += MipSize;
-					SetAllocatedStorageForMip(MipIndex,TargetIndex);
-				}
-				
-			}
-			
-			result = ClientStorageBuffers[BufferIndex].Data;
-		}
-		ClientStorageBuffers[BufferIndex].bReadOnly = (LockMode == RLM_ReadOnly);
 	}
 	
 	return result;
@@ -960,10 +863,7 @@ void TOpenGLTexture<RHIResourceType>::Unlock(uint32 MipIndex,uint32 ArrayIndex)
 	const FOpenGLTextureFormat& GLFormat = GOpenGLTextureFormats[this->GetFormat()];
 	const bool bSRGB = (this->GetFlags() & TexCreate_SRGB) != 0;
 
-	// Should we use client-storage to improve update time on platforms that require it
-	bool const bRenderable = (this->GetFlags() & (TexCreate_RenderTargetable|TexCreate_ResolveTargetable|TexCreate_DepthStencilTargetable|TexCreate_CPUReadback)) != 0;
-	bool const bUseClientStorage = FOpenGL::SupportsClientStorage() && !FOpenGL::SupportsTextureView() && !bRenderable && !this->GetSizeZ() && !GLFormat.bCompressed;
-	check(bUseClientStorage || IsValidRef(PixelBuffers[BufferIndex]));
+	check(IsValidRef(PixelBuffers[BufferIndex]));
 	
 #if PLATFORM_ANDROID && !PLATFORM_LUMINGL4
 	// check for FloatRGBA to RGBA8 conversion needed
@@ -1028,7 +928,7 @@ void TOpenGLTexture<RHIResourceType>::Unlock(uint32 MipIndex,uint32 ArrayIndex)
 	}
 #endif
 
-	if ( !bUseClientStorage && FOpenGL::SupportsPixelBuffers() )
+	if (FOpenGL::SupportsPixelBuffers())
 	{
 		// Code path for PBO per slice
 		check(IsValidRef(PixelBuffers[BufferIndex]));
@@ -1134,7 +1034,7 @@ void TOpenGLTexture<RHIResourceType>::Unlock(uint32 MipIndex,uint32 ArrayIndex)
 		//need to free PBO if we aren't keeping shadow copies
 		PixelBuffers[BufferIndex] = NULL;
 	}
-	else if(!bUseClientStorage || !ClientStorageBuffers[BufferIndex].bReadOnly)
+	else
 	{
 		// Code path for non-PBO:
 		// Volume/array textures are currently only supported if PixelBufferObjects are also supported.
@@ -1146,21 +1046,8 @@ void TOpenGLTexture<RHIResourceType>::Unlock(uint32 MipIndex,uint32 ArrayIndex)
 
 		CachedBindPixelUnpackBuffer( 0 );
 		
-		uint32 LockedSize = 0;
-		void* LockedBuffer = nullptr;
-		
-		if(bUseClientStorage)
-		{
-			glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-			glPixelStorei(GL_UNPACK_CLIENT_STORAGE_APPLE, GL_TRUE);
-			LockedSize = ClientStorageBuffers[BufferIndex].Size;
-			LockedBuffer = ClientStorageBuffers[BufferIndex].Data;
-		}
-		else
-		{
-			LockedSize = PixelBuffer->GetSize();
-			LockedBuffer = PixelBuffer->GetLockedBuffer();
-		}
+		uint32 LockedSize = PixelBuffer->GetSize();
+		void* LockedBuffer = PixelBuffer->GetLockedBuffer();
 		
 		bool bIsCompressed = GLFormat.bCompressed;
 		GLint internalFormat = GLFormat.InternalFormat[bSRGB];
@@ -1228,16 +1115,9 @@ void TOpenGLTexture<RHIResourceType>::Unlock(uint32 MipIndex,uint32 ArrayIndex)
 			}
 			glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 		}
-		if(bUseClientStorage)
-		{
-			glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-			glPixelStorei(GL_UNPACK_CLIENT_STORAGE_APPLE, GL_FALSE);
-		}
-		else
-		{
-			// Unlock "PixelBuffer" and free the temp memory after the texture upload.
-			PixelBuffer->Unlock();
-		}
+		
+		// Unlock "PixelBuffer" and free the temp memory after the texture upload.
+		PixelBuffer->Unlock();
 	}
 
 	// No need to restore texture stage; leave it like this,
@@ -1542,45 +1422,65 @@ FTexture2DArrayRHIRef FOpenGLDynamicRHI::RHICreateTexture2DArray(uint32 SizeX,ui
 
 	const bool bSRGB = (Flags&TexCreate_SRGB) != 0;
 	const FOpenGLTextureFormat& GLFormat = GOpenGLTextureFormats[Format];
+	const FPixelFormatInfo& FormatInfo = GPixelFormats[Format];
 	if (GLFormat.InternalFormat[bSRGB] == GL_NONE)
 	{
-		UE_LOG(LogRHI, Fatal,TEXT("Texture format '%s' not supported."), GPixelFormats[Format].Name);
+		UE_LOG(LogRHI, Fatal,TEXT("Texture format '%s' not supported."), FormatInfo.Name);
 	}
-
-	checkf(!GLFormat.bCompressed, TEXT("%s compressed 2D texture arrays not currently supported by the OpenGL RHI"), GPixelFormats[Format].Name);
 
 	// Make sure PBO is disabled
 	CachedBindPixelUnpackBuffer(ContextState, 0);
 
 	uint8* Data = Info.BulkData ? (uint8*)Info.BulkData->GetResourceBulkData() : NULL;
+	uint32 DataSize = Info.BulkData ? Info.BulkData->GetResourceBulkDataSize() : 0;
 	uint32 MipOffset = 0;
 
 	FOpenGL::TexStorage3D( Target, NumMips, GLFormat.SizedInternalFormat[bSRGB], SizeX, SizeY, SizeZ, GLFormat.Format, GLFormat.Type );
 
 	if (Data)
 	{
-		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 		for(uint32 MipIndex = 0; MipIndex < NumMips; MipIndex++)
 		{
-			FOpenGL::TexSubImage3D(
-				/*Target=*/ Target,
-				/*Level=*/ MipIndex,
-				0,
-				0,
-				0,
-				/*SizeX=*/ FMath::Max<uint32>(1,(SizeX >> MipIndex)),
-				/*SizeY=*/ FMath::Max<uint32>(1,(SizeY >> MipIndex)),
-				/*SizeZ=*/ SizeZ,
-				/*Format=*/ GLFormat.Format,
-				/*Type=*/ GLFormat.Type,
-				/*Data=*/ &Data[MipOffset]
-				);
+			const int32 MipSizeX = FMath::Max<int32>(1, (SizeX >> MipIndex));
+			const int32 MipSizeY = FMath::Max<int32>(1, (SizeY >> MipIndex));
 
-			uint32 SysMemPitch      =  FMath::Max<uint32>(1,SizeX >> MipIndex) * GPixelFormats[Format].BlockBytes;
-			uint32 SysMemSlicePitch =  FMath::Max<uint32>(1,SizeY >> MipIndex) * SysMemPitch;
-			MipOffset               += SizeZ * SysMemSlicePitch;
+			const uint32 MipLinePitch = FMath::DivideAndRoundUp(MipSizeX, FormatInfo.BlockSizeX) * FormatInfo.BlockBytes;
+			const uint32 MipSlicePitch = FMath::DivideAndRoundUp(MipSizeY, FormatInfo.BlockSizeY) * MipLinePitch;
+			const uint32 MipSize = MipSlicePitch * SizeZ;
+
+			if (MipOffset + MipSize > DataSize)
+			{
+				break; // Stop if the texture does not contain the mips.
+			}
+						
+			if (GLFormat.bCompressed)
+			{
+				FOpenGL::CompressedTexSubImage3D(
+					Target,
+					MipIndex,
+					0, 0, 0,
+					MipSizeX, MipSizeY, SizeZ,
+					GLFormat.InternalFormat[bSRGB],
+					MipSize,
+					&Data[MipOffset]);
+			}
+			else
+			{
+				glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+				FOpenGL::TexSubImage3D(
+					Target,
+					MipIndex,
+					0, 0, 0,
+					MipSizeX, MipSizeY, SizeZ,
+					GLFormat.Format,
+					GLFormat.Type,
+					&Data[MipOffset]
+					);
+				glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+			}
+
+			MipOffset+= MipSize;
 		}
-		glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
 		Info.BulkData->Discard();
 	}
@@ -1604,7 +1504,7 @@ FTexture2DArrayRHIRef FOpenGLDynamicRHI::RHICreateTexture2DArray(uint32 SizeX,ui
 			: GL_COLOR_ATTACHMENT0);
 	}
 
-	FOpenGLTexture2DArray* Texture = new FOpenGLTexture2DArray(this,TextureID,Target,Attachment,SizeX,SizeY,SizeZ,NumMips,1, 1, SizeZ, (EPixelFormat)Format,false,true,Flags,nullptr,Info.ClearValueBinding);
+	FOpenGLTexture2DArray* Texture = new FOpenGLTexture2DArray(this,TextureID,Target,Attachment,SizeX,SizeY,SizeZ,NumMips,1, 1, SizeZ, (EPixelFormat)Format,false,true,Flags,Info.ClearValueBinding);
 	OpenGLTextureAllocated( Texture, Flags );
 
 	// No need to restore texture stage; leave it like this,
@@ -1738,7 +1638,7 @@ FTexture3DRHIRef FOpenGLDynamicRHI::RHICreateTexture3D(uint32 SizeX,uint32 SizeY
 			: GL_COLOR_ATTACHMENT0);
 	}
 
-	FOpenGLTexture3D* Texture = new FOpenGLTexture3D(this,TextureID,Target,Attachment,SizeX,SizeY,SizeZ,NumMips,1,1,1, (EPixelFormat)Format,false,true,Flags,nullptr,CreateInfo.ClearValueBinding);
+	FOpenGLTexture3D* Texture = new FOpenGLTexture3D(this,TextureID,Target,Attachment,SizeX,SizeY,SizeZ,NumMips,1,1,1, (EPixelFormat)Format,false,true,Flags,CreateInfo.ClearValueBinding);
 	OpenGLTextureAllocated( Texture, Flags );
 
 	// No need to restore texture stage; leave it like this,
@@ -2040,11 +1940,6 @@ static void GLCopyAsyncTexture2D(FOpenGLDynamicRHI* OGLRHI, FRHITexture2D* NewTe
 	const uint32 BlockSizeY = GPixelFormats[Format].BlockSizeY;
 	const uint32 NumBytesPerBlock = GPixelFormats[Format].BlockBytes;
 
-	// Should we use client-storage to improve update time on platforms that require it
-	const bool bCompressed = GOpenGLTextureFormats[Format].bCompressed;
-	bool const bRenderable = (Flags & (TexCreate_RenderTargetable | TexCreate_ResolveTargetable | TexCreate_DepthStencilTargetable | TexCreate_CPUReadback)) != 0;
-	const bool bUseClientStorage = (FOpenGL::SupportsClientStorage() && !FOpenGL::SupportsTextureView() && !bRenderable && !bCompressed);
-
 	// Use the GPU to asynchronously copy the old mip-maps into the new texture.
 	const uint32 NumSharedMips = FMath::Min(SourceMipCount, NewMipCount);
 	const uint32 SourceMipOffset = SourceMipCount - NumSharedMips;
@@ -2060,7 +1955,7 @@ static void GLCopyAsyncTexture2D(FOpenGLDynamicRHI* OGLRHI, FRHITexture2D* NewTe
 	{
 		FOpenGL::CopyTextureLevels(NewTexture2D->Resource, SourceTexture2D->Resource, SourceMipOffset, NumSharedMips);
 	}
-	else if (FOpenGL::SupportsPixelBuffers() && !bUseClientStorage)
+	else if (FOpenGL::SupportsPixelBuffers())
 	{
 		FOpenGLTexture2D *NewOGLTexture2D = (FOpenGLTexture2D*)NewTexture2D;
 		FOpenGLTexture2D *OGLTexture2D = (FOpenGLTexture2D*)SourceTexture2D;
@@ -2319,6 +2214,7 @@ void FOpenGLDynamicRHI::InvalidateTextureResourceInCache(GLuint Resource)
 
 void FOpenGLDynamicRHI::InvalidateUAVResourceInCache(GLuint Resource)
 {
+	VERIFY_GL_SCOPE();
 	for (int32 UAVIndex = 0; UAVIndex < FOpenGL::GetMaxCombinedUAVUnits(); ++UAVIndex)
 	{
 		if (SharedContextState.UAVs[UAVIndex].Resource == Resource)
@@ -2636,7 +2532,6 @@ FTexture2DRHIRef FOpenGLDynamicRHI::RHICreateTexture2DFromResource(EPixelFormat 
 		false,
 		false,
 		TexCreateFlags,
-		nullptr,
 		ClearValueBinding);
 
 	Texture2D->SetAliased(true);
@@ -2662,7 +2557,6 @@ FTexture2DRHIRef FOpenGLDynamicRHI::RHICreateTexture2DArrayFromResource(EPixelFo
 		false,
 		false,
 		TexCreateFlags,
-		nullptr,
 		ClearValueBinding);
 
 	Texture2DArray->SetAliased(true);
@@ -2688,7 +2582,6 @@ FTextureCubeRHIRef FOpenGLDynamicRHI::RHICreateTextureCubeFromResource(EPixelFor
 		false,
 		false,
 		TexCreateFlags,
-		nullptr,
 		ClearValueBinding);
 
 	TextureCube->SetAliased(true);
@@ -2727,7 +2620,7 @@ FRHITexture* FOpenGLDynamicRHI::CreateTexture2DAliased(FOpenGLTexture2D* SourceT
 
 	FRHITexture* Result = new FOpenGLTexture2D(this, 0, SourceTexture->Target, -1, SourceTexture->GetSizeX(), SourceTexture->GetSizeY(), 0, 
 		SourceTexture->GetNumMips(), SourceTexture->GetNumSamples(), SourceTexture->GetNumSamplesTileMem(), 1, SourceTexture->GetFormat(), 
-		false, false, SourceTexture->GetFlags(), nullptr, SourceTexture->GetClearBinding());
+		false, false, SourceTexture->GetFlags(), SourceTexture->GetClearBinding());
 
 	RHIAliasTextureResources(Result, SourceTexture);
 
@@ -2740,7 +2633,7 @@ FRHITexture* FOpenGLDynamicRHI::CreateTexture2DArrayAliased(FOpenGLTexture2DArra
 
 	FRHITexture* Result = new FOpenGLTexture2DArray(this, 0, SourceTexture->Target, -1, SourceTexture->GetSizeX(), SourceTexture->GetSizeY(), SourceTexture->GetSizeZ(),
 		SourceTexture->GetNumMips(), SourceTexture->GetNumSamples(), 1 /* aka check(InNumSamplesTileMem == 1) in OpenGLResource.h FOpenGLBaseTexture2DArray constructor */,
-		1, SourceTexture->GetFormat(), false, false, SourceTexture->GetFlags(), nullptr, SourceTexture->GetClearBinding());
+		1, SourceTexture->GetFormat(), false, false, SourceTexture->GetFlags(), SourceTexture->GetClearBinding());
 
 	RHIAliasTextureResources(Result, SourceTexture);
 
@@ -2753,7 +2646,7 @@ FRHITexture* FOpenGLDynamicRHI::CreateTextureCubeAliased(FOpenGLTextureCube* Sou
 
 	FRHITexture* Result = new FOpenGLTextureCube(this, 0, SourceTexture->Target, -1, SourceTexture->GetSizeX(), SourceTexture->GetSizeY(), SourceTexture->GetSizeZ(),
 		SourceTexture->GetNumMips(), SourceTexture->GetNumSamples(), 1 /* OpenGL currently doesn't support multisample cube textures, per OpenGLResource.h FOpenGLBaseTextureCube */,
-		1, SourceTexture->GetFormat(), true, false, SourceTexture->GetFlags(), nullptr, SourceTexture->GetClearBinding());
+		1, SourceTexture->GetFormat(), true, false, SourceTexture->GetFlags(), SourceTexture->GetClearBinding());
 
 	RHIAliasTextureResources(Result, SourceTexture);
 
@@ -2814,7 +2707,7 @@ void* FOpenGLDynamicRHI::LockTexture2D_RenderThread(class FRHICommandListImmedia
 	}
 	check(Result);
 
-	GLLockTracker.Lock(Texture, Result, MipIndex, DestStride, MipBytes, LockMode);
+	GLLockTracker.Lock(Texture, Result, 0, MipIndex, DestStride, MipBytes, LockMode);
 	return Result;
 }
 
@@ -2823,7 +2716,7 @@ void FOpenGLDynamicRHI::UnlockTexture2D_RenderThread(class FRHICommandListImmedi
 	check(IsInRenderingThread());
 	static auto* CVarRHICmdBufferWriteLocks = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.RHICmdBufferWriteLocks"));
 	bool bBuffer = CVarRHICmdBufferWriteLocks->GetValueOnRenderThread() > 0;
-	FTextureLockTracker::FLockParams Params = GLLockTracker.Unlock(Texture, MipIndex);
+	FTextureLockTracker::FLockParams Params = GLLockTracker.Unlock(Texture, 0, MipIndex);
 	if (!bBuffer || Params.LockMode != RLM_WriteOnly || RHICmdList.Bypass() || !IsRunningRHIInSeparateThread())
 	{
 		GLLockTracker.TotalMemoryOutstanding = 0;
@@ -2868,7 +2761,7 @@ void* FOpenGLDynamicRHI::RHILockTextureCubeFace_RenderThread(class FRHICommandLi
 		Result = FMemory::Malloc(MipBytes, 16);
 	}
 	check(Result);
-	GLLockTracker.Lock(Texture, Result, MipIndex, DestStride, MipBytes, LockMode);
+	GLLockTracker.Lock(Texture, Result, ArrayIndex, MipIndex, DestStride, MipBytes, LockMode);
 	return Result;
 }
 
@@ -2877,7 +2770,7 @@ void FOpenGLDynamicRHI::RHIUnlockTextureCubeFace_RenderThread(class FRHICommandL
 	check(IsInRenderingThread());
 	static auto* CVarRHICmdBufferWriteLocks = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.RHICmdBufferWriteLocks"));
 	bool bBuffer = CVarRHICmdBufferWriteLocks->GetValueOnRenderThread() > 0;
-	FTextureLockTracker::FLockParams Params = GLLockTracker.Unlock(Texture, MipIndex);
+	FTextureLockTracker::FLockParams Params = GLLockTracker.Unlock(Texture, ArrayIndex, MipIndex);
 	if (!bBuffer || Params.LockMode != RLM_WriteOnly || RHICmdList.Bypass() || !IsRunningRHIInSeparateThread())
 	{
 		GLLockTracker.TotalMemoryOutstanding = 0;
@@ -2896,6 +2789,62 @@ void FOpenGLDynamicRHI::RHIUnlockTextureCubeFace_RenderThread(class FRHICommandL
 			FMemory::Memcpy(TexMem, BuffMem, Params.BufferSize);
 			FMemory::Free(Params.Buffer);
 			this->RHIUnlockTextureCubeFace(Texture, FaceIndex, ArrayIndex, MipIndex, bLockWithinMiptail);
+		};
+		ALLOC_COMMAND_CL(RHICmdList, FRHICommandGLCommand)(GLCommand);
+	}
+}
+
+
+void* FOpenGLDynamicRHI::LockTexture2DArray_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHITexture2DArray* Texture, uint32 ArrayIndex, uint32 MipIndex, EResourceLockMode LockMode, uint32& DestStride, bool bLockWithinMiptail)
+{
+	check(IsInRenderingThread());
+	static auto* CVarRHICmdBufferWriteLocks = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.RHICmdBufferWriteLocks"));
+	bool bBuffer = CVarRHICmdBufferWriteLocks->GetValueOnRenderThread() > 0;
+	void* Result;
+	uint32 MipBytes = 0;
+	if (!bBuffer || LockMode != RLM_WriteOnly || RHICmdList.Bypass() || !IsRunningRHIInSeparateThread())
+	{
+		RHITHREAD_GLCOMMAND_PROLOGUE();
+		return this->RHILockTexture2DArray(Texture, ArrayIndex, MipIndex, LockMode, DestStride, bLockWithinMiptail);
+		RHITHREAD_GLCOMMAND_EPILOGUE_GET_RETURN(void *);
+		Result = ReturnValue;
+		MipBytes = ResourceCast_Unfenced(Texture)->GetLockSize(MipIndex, ArrayIndex, LockMode, DestStride);
+	}
+	else
+	{
+		MipBytes = ResourceCast_Unfenced(Texture)->GetLockSize(MipIndex, ArrayIndex, LockMode, DestStride);
+		Result = FMemory::Malloc(MipBytes, 16);
+	}
+	check(Result);
+
+	GLLockTracker.Lock(Texture, Result, ArrayIndex, MipIndex, DestStride, MipBytes, LockMode);
+	return Result;
+}
+
+void FOpenGLDynamicRHI::UnlockTexture2DArray_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHITexture2DArray* Texture, uint32 ArrayIndex, uint32 MipIndex, bool bLockWithinMiptail)
+{
+	check(IsInRenderingThread());
+	static auto* CVarRHICmdBufferWriteLocks = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.RHICmdBufferWriteLocks"));
+	bool bBuffer = CVarRHICmdBufferWriteLocks->GetValueOnRenderThread() > 0;
+	FTextureLockTracker::FLockParams Params = GLLockTracker.Unlock(Texture, ArrayIndex, MipIndex);
+	if (!bBuffer || Params.LockMode != RLM_WriteOnly || RHICmdList.Bypass() || !IsRunningRHIInSeparateThread())
+	{
+		GLLockTracker.TotalMemoryOutstanding = 0;
+		RHITHREAD_GLCOMMAND_PROLOGUE();
+		this->RHIUnlockTexture2DArray(Texture, ArrayIndex, MipIndex, bLockWithinMiptail);
+		RHITHREAD_GLCOMMAND_EPILOGUE();
+	}
+	else
+	{
+		auto GLCommand = [=]()
+		{
+			uint32 DestStride;
+			uint8* TexMem = (uint8*)this->RHILockTexture2DArray(Texture, ArrayIndex, MipIndex, Params.LockMode, DestStride, bLockWithinMiptail);
+			uint8* BuffMem = (uint8*)Params.Buffer;
+			check(DestStride == Params.Stride);
+			FMemory::Memcpy(TexMem, BuffMem, Params.BufferSize);
+			FMemory::Free(Params.Buffer);
+			this->RHIUnlockTexture2DArray(Texture, ArrayIndex, MipIndex, bLockWithinMiptail);
 		};
 		ALLOC_COMMAND_CL(RHICmdList, FRHICommandGLCommand)(GLCommand);
 	}
