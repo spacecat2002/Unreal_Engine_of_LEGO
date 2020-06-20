@@ -5,6 +5,7 @@
 =============================================================================*/
 
 #pragma once
+#include "CoreMinimal.h"
 #include "RendererInterface.h"
 
 struct FAmbientOcclusionMobileOutputs
