@@ -1576,7 +1576,7 @@ bool FIOSPlatformMisc::DeleteStoredSection(const FString& InStoreId, const FStri
 
 	for (id Key in KeyValues)
 	{
-		if ([Key hasPrefix:SectionName]
+		if ([Key hasPrefix:SectionName])
 		{
 			[UserSettings removeObjectForKey:Key];
 			bRemoved = true;
