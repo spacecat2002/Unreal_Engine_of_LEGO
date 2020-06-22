@@ -383,8 +383,11 @@ private:
 	TArray<FVector2D> UVs;
 
 	/** The transform for the left eye */
+	UPROPERTY()
 	FTransform LeftEyeTransform;
+	
 	/** The transform for the right eye */
+	UPROPERTY()
 	FTransform RightEyeTransform;
 };
 
@@ -414,6 +417,7 @@ public:
 
 protected:
 	/** The size of area this probe covers */
+	UPROPERTY()
 	FVector Extent;
 
 	/** The cube map of the reflected environment */
@@ -460,6 +464,7 @@ public:
 	
 private:
 	/** The detailed info of the tracked pose */
+	UPROPERTY()
 	FARPose3D TrackedPose;
 };
 
