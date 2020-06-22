@@ -1087,11 +1087,20 @@ const TCHAR* FWindowsPlatformProcess::UserName(bool bOnlyAlphaNumeric/* = true*/
 void FWindowsPlatformProcess::SetCurrentWorkingDirectoryToBaseDir()
 {
 #if defined(DISABLE_CWD_CHANGES) && DISABLE_CWD_CHANGES != 0
-	check(false);
+	checkf(false, TEXT("Attempting to call 'SetCurrentWorkingDirectoryToBaseDir' while DISABLE_CWD_CHANGES is set!"));
 #else
 	FPlatformMisc::CacheLaunchDir();
-	verify(SetCurrentDirectoryW(BaseDir()));
-#endif
+
+	// Ideally we would log the following errors but this is most likely to fail right at the start of the 
+	// program and any call to UE_LOG at this point will not actually result in anything being written to disk.
+#if DO_CHECK
+	TCHAR SystemError[1024];
+#endif //DO_CHECK
+	
+	verifyf(::SetCurrentDirectoryW(BaseDir()),	TEXT("Failed to set the working directory to '%s' (%s)"), 
+												BaseDir(), 
+												FWindowsPlatformMisc::GetSystemErrorMessage(SystemError, UE_ARRAY_COUNT(SystemError), 0));
+#endif //DISABLE_CWD_CHANGES
 }
 
 /** Get the current working directory (only really makes sense on desktop platforms) */
