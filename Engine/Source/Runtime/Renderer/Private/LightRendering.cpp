@@ -1423,8 +1423,8 @@ void FDeferredShadingSceneRenderer::RenderLights(
 
 			bool bDirectLighting = ViewFamily.EngineShowFlags.DirectLighting;
 			bool bShadowMaskReadable = false;
-			TRefCountPtr<IPooledRenderTarget> ScreenShadowMaskTexture;
-			TRefCountPtr<IPooledRenderTarget> ScreenShadowMaskSubPixelTexture;
+			TRefCountPtr<IPooledRenderTarget> ScreenShadowMaskTextureRHI;
+			TRefCountPtr<IPooledRenderTarget> ScreenShadowMaskSubPixelTextureRHI;
 
 			// Draw shadowed and light function lights
 			for (int32 LightIndex = AttenuationLightStart; LightIndex < SortedLights.Num(); LightIndex++)
@@ -1444,13 +1444,13 @@ void FDeferredShadingSceneRenderer::RenderLights(
 
 				FScopeCycleCounter Context(LightSceneInfo.Proxy->GetStatId());
 
-				if ((bDrawShadows || bDrawLightFunction || bDrawPreviewIndicator) && !ScreenShadowMaskTexture.IsValid())
+				if ((bDrawShadows || bDrawLightFunction || bDrawPreviewIndicator) && !ScreenShadowMaskTextureRHI.IsValid())
 				{
-					SceneContext.AllocateScreenShadowMask(RHICmdList, ScreenShadowMaskTexture);
+					SceneContext.AllocateScreenShadowMask(RHICmdList, ScreenShadowMaskTextureRHI);
 					bShadowMaskReadable = false;
 					if (bUseHairLighting)
 					{
-						SceneContext.AllocateScreenShadowMask(RHICmdList, ScreenShadowMaskSubPixelTexture, true);
+						SceneContext.AllocateScreenShadowMask(RHICmdList, ScreenShadowMaskSubPixelTextureRHI, true);
 					}
 				}
 
@@ -1693,20 +1693,20 @@ void FDeferredShadingSceneRenderer::RenderLights(
 					if (RHI_RAYTRACING && PreprocessedShadowMaskTextures.Num() > 0 && PreprocessedShadowMaskTextures[LightIndex - AttenuationLightStart])
 					{
 						const uint32 ShadowMaskIndex = LightIndex - AttenuationLightStart;
-						ScreenShadowMaskTexture = PreprocessedShadowMaskTextures[ShadowMaskIndex];
+						ScreenShadowMaskTextureRHI = PreprocessedShadowMaskTextures[ShadowMaskIndex];
 						PreprocessedShadowMaskTextures[ShadowMaskIndex] = nullptr;
 
 						// Subp-ixel shadow for hair strands geometries
 						if (bUseHairLighting && ShadowMaskIndex < uint32(PreprocessedShadowMaskSubPixelTextures.Num()))
 						{
-							ScreenShadowMaskSubPixelTexture = PreprocessedShadowMaskSubPixelTextures[ShadowMaskIndex];
+							ScreenShadowMaskSubPixelTextureRHI = PreprocessedShadowMaskSubPixelTextures[ShadowMaskIndex];
 							PreprocessedShadowMaskSubPixelTextures[ShadowMaskIndex] = nullptr;
 						}
 
 						// Inject deep shadow mask if the light supports it
 						if (bUseHairDeepShadow)
 						{
-							RenderHairStrandsShadowMask(RHICmdList, Views, &LightSceneInfo, HairDatas, ScreenShadowMaskTexture);
+							RenderHairStrandsShadowMask(RHICmdList, Views, &LightSceneInfo, HairDatas, ScreenShadowMaskTextureRHI);
 						}
 					}
 					else if (OcclusionType == FLightOcclusionType::Raytraced)
@@ -1822,21 +1822,21 @@ void FDeferredShadingSceneRenderer::RenderLights(
 								if (bIsMultiview)
 								{
 									AddDrawTexturePass(GraphBuilder, View, Outputs[0].Mask, RayTracingShadowMaskTileTexture, View.ViewRect.Min, View.ViewRect.Min, View.ViewRect.Size());
-									GraphBuilder.QueueTextureExtraction(RayTracingShadowMaskTileTexture, &ScreenShadowMaskTexture);
+									GraphBuilder.QueueTextureExtraction(RayTracingShadowMaskTileTexture, &ScreenShadowMaskTextureRHI);
 								}
 								else
 								{
-									GraphBuilder.QueueTextureExtraction(Outputs[0].Mask, &ScreenShadowMaskTexture);
+									GraphBuilder.QueueTextureExtraction(Outputs[0].Mask, &ScreenShadowMaskTextureRHI);
 								}
 							}
 							else
 							{
-								GraphBuilder.QueueTextureExtraction(RayTracingShadowMaskTexture, &ScreenShadowMaskTexture);
+								GraphBuilder.QueueTextureExtraction(RayTracingShadowMaskTexture, &ScreenShadowMaskTextureRHI);
 							}
 
 							if (HasHairStrandsClusters(ViewIndex, HairDatas))
 							{
-								GraphBuilder.QueueTextureExtraction(SubPixelRayTracingShadowMaskTexture, &ScreenShadowMaskSubPixelTexture);
+								GraphBuilder.QueueTextureExtraction(SubPixelRayTracingShadowMaskTexture, &ScreenShadowMaskSubPixelTextureRHI);
 							}
 						}
 
@@ -1845,7 +1845,7 @@ void FDeferredShadingSceneRenderer::RenderLights(
 						// Inject deep shadow mask if the light supports it
 						if (HairDatas && bUseHairDeepShadow)
 						{
-							RenderHairStrandsShadowMask(RHICmdList, Views, &LightSceneInfo, HairDatas, ScreenShadowMaskTexture);
+							RenderHairStrandsShadowMask(RHICmdList, Views, &LightSceneInfo, HairDatas, ScreenShadowMaskTextureRHI);
 						}
 					}
 					else // (OcclusionType == FOcclusionType::Shadowmap)
@@ -1902,36 +1902,45 @@ void FDeferredShadingSceneRenderer::RenderLights(
 							RHICmdList.EndRenderPass();
 						};
 
-						ClearShadowMask(ScreenShadowMaskTexture);
-						if (ScreenShadowMaskSubPixelTexture)
+						ClearShadowMask(ScreenShadowMaskTextureRHI);
+						if (ScreenShadowMaskSubPixelTextureRHI)
 						{
-							ClearShadowMask(ScreenShadowMaskSubPixelTexture);
+							ClearShadowMask(ScreenShadowMaskSubPixelTextureRHI);
 						}
 
-						RenderShadowProjections(RHICmdList, SceneTexturesUniformBufferRHI, &LightSceneInfo, ScreenShadowMaskTexture, ScreenShadowMaskSubPixelTexture, HairDatas, bInjectedTranslucentVolume);
+						RenderShadowProjections(RHICmdList, SceneTexturesUniformBufferRHI, &LightSceneInfo, ScreenShadowMaskTextureRHI, ScreenShadowMaskSubPixelTextureRHI, HairDatas, bInjectedTranslucentVolume);
 					}
 
 					bUsedShadowMaskTexture = true;
 				}
 
+				FRDGBuilder GraphBuilder(RHICmdList);
+
 				for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 				{
 					const FViewInfo& View = Views[ViewIndex];
-					View.HeightfieldLightingViewInfo.ComputeLighting(View, RHICmdList, LightSceneInfo);
+					View.HeightfieldLightingViewInfo.ComputeLighting(GraphBuilder, View, LightSceneInfo);
 				}
+
+				FRDGTextureMSAA ScreenShadowMaskTexture = TryRegisterExternalTextureMSAA(GraphBuilder, ScreenShadowMaskTextureRHI);
+				FRDGTextureMSAA ScreenShadowMaskSubPixelTexture = TryRegisterExternalTextureMSAA(GraphBuilder, ScreenShadowMaskSubPixelTextureRHI);
+
+				TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer = CreateSceneTextureUniformBuffer(GraphBuilder, Views[0], ESceneTextureSetupMode::GBuffers | ESceneTextureSetupMode::SceneDepth);
+				FRDGTextureRef SceneColorTexture = GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor(), ERenderTargetTexture::Targetable);
+				FRDGTextureRef SceneDepthTexture = GraphBuilder.RegisterExternalTexture(SceneContext.SceneDepthZ, ERenderTargetTexture::Targetable);
 
 				// Render light function to the attenuation buffer.
 				if (bDirectLighting)
 				{
 					if (bDrawLightFunction)
 					{
-						const bool bLightFunctionRendered = RenderLightFunction(RHICmdList, SceneTexturesUniformBufferRHI, &LightSceneInfo, ScreenShadowMaskTexture, bDrawShadows, false);
+						const bool bLightFunctionRendered = RenderLightFunction(GraphBuilder, SceneDepthTexture, SceneTexturesUniformBuffer, &LightSceneInfo, ScreenShadowMaskTexture.Target, bDrawShadows, false);
 						bUsedShadowMaskTexture |= bLightFunctionRendered;
 					}
 
 					if (bDrawPreviewIndicator)
 					{
-						RenderPreviewShadowsIndicator(RHICmdList, SceneTexturesUniformBufferRHI, &LightSceneInfo, ScreenShadowMaskTexture, bUsedShadowMaskTexture);
+						RenderPreviewShadowsIndicator(GraphBuilder, SceneDepthTexture, SceneTexturesUniformBuffer, &LightSceneInfo, ScreenShadowMaskTexture.Target, bUsedShadowMaskTexture);
 					}
 
 					if (!bDrawShadows)
@@ -1942,44 +1951,35 @@ void FDeferredShadingSceneRenderer::RenderLights(
 
 				if (bUsedShadowMaskTexture)
 				{
-					check(ScreenShadowMaskTexture);
-					RHICmdList.CopyToResolveTarget(ScreenShadowMaskTexture->GetRenderTargetItem().TargetableTexture, ScreenShadowMaskTexture->GetRenderTargetItem().ShaderResourceTexture, FResolveParams(FResolveRect()));
-					if (ScreenShadowMaskSubPixelTexture)
-					{
-						RHICmdList.CopyToResolveTarget(ScreenShadowMaskSubPixelTexture->GetRenderTargetItem().TargetableTexture, ScreenShadowMaskSubPixelTexture->GetRenderTargetItem().ShaderResourceTexture, FResolveParams(FResolveRect()));
-					}
+					check(ScreenShadowMaskTexture.IsValid());
+					AddCopyToResolveTargetPass(GraphBuilder, ScreenShadowMaskTexture.Target, ScreenShadowMaskTexture.Resolve, FResolveParams());
 
-					if (!bShadowMaskReadable)
+					if (ScreenShadowMaskSubPixelTexture.IsValid())
 					{
-						RHICmdList.Transition(FRHITransitionInfo(ScreenShadowMaskTexture->GetRenderTargetItem().ShaderResourceTexture, ERHIAccess::Unknown, ERHIAccess::SRVMask));
-						if (ScreenShadowMaskSubPixelTexture)
-						{
-							RHICmdList.Transition(FRHITransitionInfo(ScreenShadowMaskSubPixelTexture->GetRenderTargetItem().ShaderResourceTexture, ERHIAccess::Unknown, ERHIAccess::SRVMask));
-						}
-						bShadowMaskReadable = true;
-					}
-
-					GVisualizeTexture.SetCheckPoint(RHICmdList, ScreenShadowMaskTexture);
-					if (ScreenShadowMaskSubPixelTexture)
-					{
-						GVisualizeTexture.SetCheckPoint(RHICmdList, ScreenShadowMaskSubPixelTexture);
+						AddCopyToResolveTargetPass(GraphBuilder, ScreenShadowMaskSubPixelTexture.Target, ScreenShadowMaskSubPixelTexture.Resolve, FResolveParams());
 					}
 				}
-
-				FRDGBuilder GraphBuilder(RHICmdList);
 
 				if(bDirectLighting && !bInjectedTranslucentVolume)
 				{
 					for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 					{
-						SCOPED_DRAW_EVENT(RHICmdList, InjectTranslucentVolume);
+						RDG_EVENT_SCOPE(GraphBuilder, "InjectTranslucentVolume");
 
 						// Accumulate this light's unshadowed contribution to the translucency lighting volume
 						InjectTranslucentVolumeLighting(GraphBuilder, LightSceneInfo, NULL, Views[ViewIndex], ViewIndex);
 					}
 				}
 
-				FRDGTextureRef LightShadowMaskSubPixelTexture = TryRegisterExternalTexture(GraphBuilder, ScreenShadowMaskSubPixelTexture);
+				// ScreenShadowMaskTexture might have been created for a previous light, but only use it if we wrote valid data into it for this light
+				FRDGTextureRef LightShadowMaskTexture = nullptr;
+				FRDGTextureRef LightShadowMaskSubPixelTexture = nullptr;
+
+				if (bUsedShadowMaskTexture)
+				{
+					LightShadowMaskTexture = ScreenShadowMaskTexture.Resolve;
+					LightShadowMaskSubPixelTexture = ScreenShadowMaskSubPixelTexture.Resolve;
+				}
 
 				FHairStrandsTransmittanceMaskData TransmittanceMaskData;
 				if (bDrawHairShadow)
@@ -1989,27 +1989,20 @@ void FDeferredShadingSceneRenderer::RenderLights(
 
 				if (ShouldRenderRayTracingStochasticRectLight(LightSceneInfo))
 				{
-					TRefCountPtr<IPooledRenderTarget> RectLightRT;
-					TRefCountPtr<IPooledRenderTarget> HitDistanceRT;
-					RenderRayTracingStochasticRectLight(RHICmdList, LightSceneInfo, RectLightRT, HitDistanceRT);
+					FRDGTextureRef RectLightRT = nullptr;
+					FRDGTextureRef HitDistanceRT = nullptr;
+					RenderRayTracingStochasticRectLight(GraphBuilder, SceneColorTexture, SceneTexturesUniformBuffer, LightSceneInfo, RectLightRT, HitDistanceRT);
 					// #dxr_todo: Denoise RectLight
 
 					CompositeRayTracingSkyLight(
 						GraphBuilder,
-						GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor(), ERenderTargetTexture::Targetable),
-						SceneContext.GetBufferSizeXY(),
+						SceneColorTexture,
+						SceneColorTexture->Desc.Extent,
 						RectLightRT,
 						HitDistanceRT);
 				}
 				else
 				{
-					TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer = CreateSceneTextureUniformBuffer(GraphBuilder, Views[0], ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers);
-					FRDGTextureRef SceneColorTexture = GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor(), ERenderTargetTexture::Targetable);
-					FRDGTextureRef SceneDepthTexture = GraphBuilder.RegisterExternalTexture(SceneContext.SceneDepthZ, ERenderTargetTexture::Targetable);
-
-					// ScreenShadowMaskTexture might have been created for a previous light, but only use it if we wrote valid data into it for this light
-					FRDGTextureRef LightShadowMaskTexture = bUsedShadowMaskTexture ? GraphBuilder.RegisterExternalTexture(ScreenShadowMaskTexture) : nullptr;
-
 					// Render the light to the scene color buffer, conditionally using the attenuation buffer or a 1x1 white texture as input 
 					if (bDirectLighting)
 					{

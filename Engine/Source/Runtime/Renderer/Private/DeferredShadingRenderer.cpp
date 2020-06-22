@@ -2272,7 +2272,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	const bool bRayTracingEnabled = IsRayTracingEnabled();
 	if (bRayTracingEnabled && bCanOverlayRayTracingOutput && !IsForwardShadingEnabled(ShaderPlatform))
-	{		
+	{
 		RenderRayTracingSkyLight(RHICmdList, SkyLightRT, SkyLightHitDistanceRT, HairDatas);
 	}
 #endif // RHI_RAYTRACING
@@ -2473,7 +2473,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 #if RHI_RAYTRACING
 		if (SkyLightRT)
 		{
-			CompositeRayTracingSkyLight(GraphBuilder, SceneColorTexture.Target, SceneTextureExtent, SkyLightRT, SkyLightHitDistanceRT);
+			CompositeRayTracingSkyLight(GraphBuilder, SceneColorTexture.Target, SceneTextureExtent, GraphBuilder.RegisterExternalTexture(SkyLightRT), GraphBuilder.RegisterExternalTexture(SkyLightHitDistanceRT));
 		}
 #endif // RHI_RAYTRACING
 		AddServiceLocalQueuePass(GraphBuilder);

@@ -758,7 +758,7 @@ void FDeferredShadingSceneRenderer::ComputeLightGrid(FRHICommandListImmediate& R
 
 void FDeferredShadingSceneRenderer::RenderForwardShadingShadowProjections(
 	FRHICommandListImmediate& RHICmdList,
-	const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
+	const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBufferRHI,
 	TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMask,
 	TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMaskSubPixel,
 	const FHairStrandsDatas* InHairDatas)
@@ -823,7 +823,7 @@ void FDeferredShadingSceneRenderer::RenderForwardShadingShadowProjections(
 
 				if (VisibleLightInfo.ShadowsToProject.Num() > 0)
 				{
-					FSceneRenderer::RenderShadowProjections(RHICmdList, SceneTexturesUniformBuffer, LightSceneInfo, ForwardScreenSpaceShadowMask, ForwardScreenSpaceShadowMaskSubPixel, true, false, bIsHairEnable ? &InHairDatas->HairVisibilityViews : nullptr);
+					FSceneRenderer::RenderShadowProjections(RHICmdList, SceneTexturesUniformBufferRHI, LightSceneInfo, ForwardScreenSpaceShadowMask, ForwardScreenSpaceShadowMaskSubPixel, true, false, bIsHairEnable ? &InHairDatas->HairVisibilityViews : nullptr);
 
 					if (InHairDatas)
 					{
@@ -835,7 +835,15 @@ void FDeferredShadingSceneRenderer::RenderForwardShadingShadowProjections(
 
 				if (LightSceneInfo->GetDynamicShadowMapChannel() >= 0 && LightSceneInfo->GetDynamicShadowMapChannel() < 4)
 				{
-					RenderLightFunction(RHICmdList, SceneTexturesUniformBuffer, LightSceneInfo, ForwardScreenSpaceShadowMask, true, true);
+					FRDGBuilder GraphBuilder(RHICmdList);
+					RenderLightFunction(
+						GraphBuilder,
+						GraphBuilder.RegisterExternalTexture(SceneRenderTargets.GetSceneColor(), ERenderTargetTexture::Targetable),
+						CreateSceneTextureUniformBuffer(GraphBuilder, Views[0], ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers),
+						LightSceneInfo,
+						GraphBuilder.RegisterExternalTexture(ForwardScreenSpaceShadowMask),
+						true, true);
+					GraphBuilder.Execute();
 				}
 			}
 			RHICmdList.CopyToResolveTarget(ForwardScreenSpaceShadowMask->GetRenderTargetItem().TargetableTexture, ForwardScreenSpaceShadowMask->GetRenderTargetItem().ShaderResourceTexture, FResolveParams(FResolveRect()));

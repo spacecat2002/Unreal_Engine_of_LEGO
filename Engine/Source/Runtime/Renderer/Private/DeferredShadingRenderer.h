@@ -430,46 +430,38 @@ private:
 		TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMaskSubPixel,
 		const struct FHairStrandsDatas* InHairDatas);
 
-	/**
-	  * Used by RenderLights to render a light function to the attenuation buffer.
-	  *
-	  * @param LightSceneInfo Represents the current light
-	  * @param LightIndex The light's index into FScene::Lights
-	  */
+	/** Used by RenderLights to render a light function to the attenuation buffer. */
 	bool RenderLightFunction(
-		FRHICommandListImmediate& RHICmdList,
-		const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SceneDepthTexture,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		const FLightSceneInfo* LightSceneInfo,
-		IPooledRenderTarget* ScreenShadowMaskTexture,
+		FRDGTextureRef ScreenShadowMaskTexture,
 		bool bLightAttenuationCleared,
 		bool bProjectingForForwardShading);
 
 	/** Renders a light function indicating that whole scene shadowing being displayed is for previewing only, and will go away in game. */
 	bool RenderPreviewShadowsIndicator(
-		FRHICommandListImmediate& RHICmdList,
-		const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SceneDepthTexture,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		const FLightSceneInfo* LightSceneInfo,
-		IPooledRenderTarget* ScreenShadowMaskTexture,
+		FRDGTextureRef ScreenShadowMaskTexture,
 		bool bLightAttenuationCleared);
 
 	/** Renders a light function with the given material. */
 	bool RenderLightFunctionForMaterial(
-		FRHICommandListImmediate& RHICmdList,
-		const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
-		const FLightSceneInfo* LightSceneInfo, 
-		IPooledRenderTarget* ScreenShadowMaskTexture,
-		const FMaterialRenderProxy* MaterialProxy, 
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SceneDepthTexture,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		const FLightSceneInfo* LightSceneInfo,
+		FRDGTextureRef ScreenShadowMaskTexture,
+		const FMaterialRenderProxy* MaterialProxy,
 		bool bLightAttenuationCleared,
-		bool bProjectingForForwardShading, 
+		bool bProjectingForForwardShading,
 		bool bRenderingPreviewShadowsIndicator);
 
-	/**
-	  * Used by RenderLights to render a light to the scene color buffer.
-	  *
-	  * @param LightSceneInfo Represents the current light
-	  * @param LightIndex The light's index into FScene::Lights
-	  * @return true if anything got rendered
-	  */
+	/** Used by RenderLights to render a light to the scene color buffer. */
 	void RenderLight(
 		FRHICommandList& RHICmdList,
 		const FLightSceneInfo* LightSceneInfo,
@@ -634,13 +626,20 @@ private:
 		FRDGTextureUAV* OutRayHitDistanceUAV,
 		FRDGTextureUAV* SubPixelRayTracingShadowMaskUAV);
 
-	void RenderRayTracingStochasticRectLight(FRHICommandListImmediate& RHICmdList, const FLightSceneInfo& RectLightSceneInfo, TRefCountPtr<IPooledRenderTarget>& RectLightRT, TRefCountPtr<IPooledRenderTarget>& HitDistanceRT);
+	void RenderRayTracingStochasticRectLight(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SceneColorTexture,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		const FLightSceneInfo& RectLightSceneInfo,
+		FRDGTextureRef& OutRectLightRT,
+		FRDGTextureRef& OutHitDistanceRT);
+
 	void CompositeRayTracingSkyLight(
 		FRDGBuilder& GraphBuilder,
 		FRDGTextureRef SceneColorTexture,
 		FIntPoint SceneTextureExtent,
-		TRefCountPtr<IPooledRenderTarget>& SkyLightRT,
-		TRefCountPtr<IPooledRenderTarget>& HitDistanceRT);
+		FRDGTextureRef SkyLightRT,
+		FRDGTextureRef HitDistanceRT);
 	
 	bool RenderRayTracingGlobalIllumination(
 		FRDGBuilder& GraphBuilder, 
@@ -681,7 +680,15 @@ private:
 	
 
 #if RHI_RAYTRACING
-	template <int TextureImportanceSampling> void RenderRayTracingRectLightInternal(FRHICommandListImmediate& RHICmdList, const TArray<FViewInfo>& Views, const FLightSceneInfo& RectLightSceneInfo, TRefCountPtr<IPooledRenderTarget>& ScreenShadowMaskTexture, TRefCountPtr<IPooledRenderTarget>& RayDistanceTexture);
+	template <int TextureImportanceSampling>
+	void RenderRayTracingRectLightInternal(
+		FRDGBuilder& GraphBuilder,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		const TArray<FViewInfo>& Views,
+		const FLightSceneInfo& RectLightSceneInfo,
+		FRDGTextureRef ScreenShadowMaskTexture,
+		FRDGTextureRef RayDistanceTexture);
+
 	void VisualizeRectLightMipTree(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, const FRWBuffer& RectLightMipTree, const FIntVector& RectLightMipTreeDimensions);
 
 	void GenerateSkyLightVisibilityRays(FRDGBuilder& GraphBuilder, FRDGBufferRef& SkyLightVisibilityRays, FIntVector& Dimensions);

@@ -116,7 +116,7 @@ public:
 		FTextureRHIRef Texture,
 		const FIntVector& Dimensions,
 		uint32 MipLevel,
-		FRWBuffer& MipTree
+		const FRWBuffer& MipTree
 	)
 	{
 		FRHIComputeShader* ShaderRHI = RHICmdList.GetBoundComputeShader();
@@ -132,7 +132,7 @@ public:
 	void UnsetParameters(
 		FRHICommandList& RHICmdList,
 		ERHIAccess TransitionAccess,
-		FRWBuffer& MipTree)
+		const FRWBuffer& MipTree)
 	{
 		FRHIComputeShader* ShaderRHI = RHICmdList.GetBoundComputeShader();
 		MipTreeParameter.UnsetUAV(RHICmdList, ShaderRHI);
@@ -153,43 +153,44 @@ IMPLEMENT_SHADER_TYPE(, FBuildRectLightMipTreeCS, TEXT("/Engine/Private/Raytraci
 
 DECLARE_GPU_STAT_NAMED(BuildRectLightMipTreeStat, TEXT("build RectLight MipTree"));
 
-FRectLightRayTracingData BuildRectLightMipTree(FRHICommandListImmediate& RHICmdList, UTexture* SourceTexture)
+void BuildRectLightMipTree(FRDGBuilder& GraphBuilder, UTexture* SourceTexture, FRectLightRayTracingData& OutData)
 {
-	SCOPED_GPU_STAT(RHICmdList, BuildRectLightMipTreeStat);
+	RDG_GPU_STAT_SCOPE(GraphBuilder, BuildRectLightMipTreeStat);
 
 	check(IsInRenderingThread());
-	FRectLightRayTracingData Data;
-	FTextureRHIRef RhiTexture = SourceTexture ? SourceTexture->Resource->TextureRHI : GWhiteTexture->TextureRHI;
 
-	const auto ShaderMap = GetGlobalShaderMap(ERHIFeatureLevel::SM5);
-	TShaderMapRef<FBuildRectLightMipTreeCS> BuildRectLightMipTreeComputeShader(ShaderMap);
-	RHICmdList.SetComputeShader(BuildRectLightMipTreeComputeShader.GetComputeShader());
+	FTextureRHIRef RhiTexture = SourceTexture ? SourceTexture->Resource->TextureRHI : GWhiteTexture->TextureRHI;
 
 	// Allocate MIP tree
 	FIntVector TextureSize = RhiTexture->GetSizeXYZ();
 	uint32 MipLevelCount = FMath::Min(FMath::CeilLogTwo(TextureSize.X), FMath::CeilLogTwo(TextureSize.Y));
-	Data.RectLightMipTreeDimensions = FIntVector(1 << MipLevelCount, 1 << MipLevelCount, 1);
-	uint32 NumElements = Data.RectLightMipTreeDimensions.X * Data.RectLightMipTreeDimensions.Y;
+	OutData.RectLightMipTreeDimensions = FIntVector(1 << MipLevelCount, 1 << MipLevelCount, 1);
+	uint32 NumElements = OutData.RectLightMipTreeDimensions.X * OutData.RectLightMipTreeDimensions.Y;
 	for (uint32 MipLevel = 1; MipLevel <= MipLevelCount; ++MipLevel)
 	{
-		uint32 NumElementsInLevel = (Data.RectLightMipTreeDimensions.X >> MipLevel) * (Data.RectLightMipTreeDimensions.Y >> MipLevel);
+		uint32 NumElementsInLevel = (OutData.RectLightMipTreeDimensions.X >> MipLevel) * (OutData.RectLightMipTreeDimensions.Y >> MipLevel);
 		NumElements += NumElementsInLevel;
 	}
 
-	Data.RectLightMipTree.Initialize(sizeof(float), NumElements, PF_R32_FLOAT, BUF_UnorderedAccess | BUF_ShaderResource);
+	OutData.RectLightMipTree.Initialize(sizeof(float), NumElements, PF_R32_FLOAT, BUF_UnorderedAccess | BUF_ShaderResource);
 
-	// Execute hierarchical build
-	for (uint32 MipLevel = 0; MipLevel <= MipLevelCount; ++MipLevel)
+	AddPass(GraphBuilder, [LocalData = OutData, MipLevelCount, RhiTexture](FRHICommandListImmediate& RHICmdList)
 	{
-		BuildRectLightMipTreeComputeShader->SetParameters(RHICmdList, RhiTexture, Data.RectLightMipTreeDimensions, MipLevel, Data.RectLightMipTree);
-		FIntVector MipLevelDimensions = FIntVector(Data.RectLightMipTreeDimensions.X >> MipLevel, Data.RectLightMipTreeDimensions.Y >> MipLevel, 1);
-		FIntVector NumGroups = FIntVector::DivideAndRoundUp(MipLevelDimensions, FBuildRectLightMipTreeCS::GetGroupSize());
-		DispatchComputeShader(RHICmdList, BuildRectLightMipTreeComputeShader.GetShader(), NumGroups.X, NumGroups.Y, 1);
-		BuildRectLightMipTreeComputeShader->UnsetParameters(RHICmdList, ERHIAccess::ERWBarrier, Data.RectLightMipTree);
-	}
-	BuildRectLightMipTreeComputeShader->UnsetParameters(RHICmdList, ERHIAccess::ERWBarrier, Data.RectLightMipTree);
+		const auto ShaderMap = GetGlobalShaderMap(ERHIFeatureLevel::SM5);
+		TShaderMapRef<FBuildRectLightMipTreeCS> BuildRectLightMipTreeComputeShader(ShaderMap);
+		RHICmdList.SetComputeShader(BuildRectLightMipTreeComputeShader.GetComputeShader());
 
-	return Data;
+		// Execute hierarchical build
+		for (uint32 MipLevel = 0; MipLevel <= MipLevelCount; ++MipLevel)
+		{
+			BuildRectLightMipTreeComputeShader->SetParameters(RHICmdList, RhiTexture, LocalData.RectLightMipTreeDimensions, MipLevel, LocalData.RectLightMipTree);
+			FIntVector MipLevelDimensions = FIntVector(LocalData.RectLightMipTreeDimensions.X >> MipLevel, LocalData.RectLightMipTreeDimensions.Y >> MipLevel, 1);
+			FIntVector NumGroups = FIntVector::DivideAndRoundUp(MipLevelDimensions, FBuildRectLightMipTreeCS::GetGroupSize());
+			DispatchComputeShader(RHICmdList, BuildRectLightMipTreeComputeShader.GetShader(), NumGroups.X, NumGroups.Y, 1);
+			BuildRectLightMipTreeComputeShader->UnsetParameters(RHICmdList, ERHIAccess::ERWBarrier, LocalData.RectLightMipTree);
+		}
+		BuildRectLightMipTreeComputeShader->UnsetParameters(RHICmdList, ERHIAccess::ERWBarrier, LocalData.RectLightMipTree);
+	});
 }
 
 
@@ -434,14 +435,20 @@ void FDeferredShadingSceneRenderer::PrepareRayTracingRectLight(const FViewInfo& 
 	OutRayGenShaders.Add(Shader1.GetRayTracingShader());
 }
 
+BEGIN_SHADER_PARAMETER_STRUCT(FRenderRayTracingRectLightParameters, )
+	SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FSceneTextureUniformParameters, SceneTextures)
+	RDG_TEXTURE_ACCESS(ShadowMaskTexture, ERHIAccess::UAVCompute)
+	RDG_TEXTURE_ACCESS(RayDistanceTexture, ERHIAccess::UAVCompute)
+END_SHADER_PARAMETER_STRUCT()
+
 template <int TextureImportanceSampling>
 void FDeferredShadingSceneRenderer::RenderRayTracingRectLightInternal(
-	FRHICommandListImmediate& RHICmdList,
+	FRDGBuilder& GraphBuilder,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	const TArray<FViewInfo>& Views,
 	const FLightSceneInfo& RectLightSceneInfo,
-	TRefCountPtr<IPooledRenderTarget>& ScreenShadowMaskTexture,
-	TRefCountPtr<IPooledRenderTarget>& RayDistanceTexture
-)
+	FRDGTextureRef ScreenShadowMaskTexture,
+	FRDGTextureRef RayDistanceTexture)
 {
 	check(RectLightSceneInfo.Proxy);
 	check(RectLightSceneInfo.Proxy->IsRectLight());
@@ -454,7 +461,7 @@ void FDeferredShadingSceneRenderer::RenderRayTracingRectLightInternal(
 		// We ignore TextureImportanceSampling and RectLightSceneProxy->HasSourceTexture() because uniform buffer expect a resource.
 		// So we always update.  
 		// dxr-todo: cache texture RayTracingData render side based on GUID in a database (render thread safe and avoid duplicating the work for each light using the same texture).
-		*RectLightSceneProxy->RayTracingData = BuildRectLightMipTree(RHICmdList, RectLightSceneProxy->SourceTexture);
+		BuildRectLightMipTree(GraphBuilder, RectLightSceneProxy->SourceTexture, *RectLightSceneProxy->RayTracingData);
 		RectLightSceneProxy->RayTracingData->bInitialised = true;
 		if (RectLightSceneProxy->SourceTexture)
 		{
@@ -472,98 +479,100 @@ void FDeferredShadingSceneRenderer::RenderRayTracingRectLightInternal(
 	}
 #endif
 
-	FLightShaderParameters LightShaderParameters;
-	RectLightSceneProxy->GetLightShaderParameters(LightShaderParameters);
+	FRenderRayTracingRectLightParameters* PassParameters = GraphBuilder.AllocParameters<FRenderRayTracingRectLightParameters>();
+	PassParameters->ShadowMaskTexture = ScreenShadowMaskTexture;
+	PassParameters->RayDistanceTexture = RayDistanceTexture;
+	PassParameters->SceneTextures = SceneTexturesUniformBuffer;
 
-	FRectLightData RectLightData;
-	RectLightData.SamplesPerPixel = GRayTracingStochasticRectLightSamplesPerPixel >= 0 ? GRayTracingStochasticRectLightSamplesPerPixel : RectLightSceneProxy->GetSamplesPerPixel();
-	RectLightData.bIsTextureImportanceSampling = GRayTracingStochasticRectLightIsTextureImportanceSampling;
-	RectLightData.Position = RectLightSceneInfo.Proxy->GetOrigin();
-	RectLightData.Normal = RectLightSceneInfo.Proxy->GetDirection();
-	const FMatrix& WorldToLight = RectLightSceneInfo.Proxy->GetWorldToLight();
-	RectLightData.dPdu = FVector(WorldToLight.M[0][1], WorldToLight.M[1][1], WorldToLight.M[2][1]);
-	RectLightData.dPdv = FVector(WorldToLight.M[0][2], WorldToLight.M[1][2], WorldToLight.M[2][2]);
-	RectLightData.Color = LightShaderParameters.Color / 2.0;
-
-	// #dxr_todo: JIRA Ray traced textured area lights are 1.5X brighter than those in lit mode.
-	if (RectLightSceneProxy->HasSourceTexture())
+	GraphBuilder.AddPass(
+		RDG_EVENT_NAME("RayTracingRectLight"),
+		PassParameters,
+		ERDGPassFlags::Compute,
+		[this, RectLightSceneProxy, &RectLightSceneInfo, &Views, SceneTexturesUniformBuffer, ScreenShadowMaskTexture, RayDistanceTexture](FRHICommandListImmediate& RHICmdList)
 	{
-		RectLightData.Color *= 2.0 / 3.0;
-	}
+		FLightShaderParameters LightShaderParameters;
+		RectLightSceneProxy->GetLightShaderParameters(LightShaderParameters);
 
-	RectLightData.Width = 2.0f * LightShaderParameters.SourceRadius;
-	RectLightData.Height = 2.0f * LightShaderParameters.SourceLength;
-	RectLightData.Texture = LightShaderParameters.SourceTexture;
-	RectLightData.TextureSampler = RHICreateSamplerState(FSamplerStateInitializerRHI(SF_Bilinear, AM_Border, AM_Border, AM_Border));
-	RectLightData.MipTree = RectLightSceneProxy->RayTracingData->RectLightMipTree.SRV;
-	RectLightData.MipTreeDimensions = RectLightSceneProxy->RayTracingData->RectLightMipTreeDimensions;
-	RectLightData.MaxNormalBias = GetRaytracingMaxNormalBias();
-	RectLightData.BarnCosAngle = FMath::Cos(FMath::DegreesToRadians(RectLightSceneProxy->BarnDoorAngle));
-	RectLightData.BarnLength = RectLightSceneProxy->BarnDoorLength;
-	FUniformBufferRHIRef RectLightUniformBuffer = RHICreateUniformBuffer(&RectLightData, FRectLightData::StaticStructMetadata.GetLayout(), EUniformBufferUsage::UniformBuffer_SingleDraw);
+		FRectLightData RectLightData;
+		RectLightData.SamplesPerPixel = GRayTracingStochasticRectLightSamplesPerPixel >= 0 ? GRayTracingStochasticRectLightSamplesPerPixel : RectLightSceneProxy->GetSamplesPerPixel();
+		RectLightData.bIsTextureImportanceSampling = GRayTracingStochasticRectLightIsTextureImportanceSampling;
+		RectLightData.Position = RectLightSceneInfo.Proxy->GetOrigin();
+		RectLightData.Normal = RectLightSceneInfo.Proxy->GetDirection();
+		const FMatrix& WorldToLight = RectLightSceneInfo.Proxy->GetWorldToLight();
+		RectLightData.dPdu = FVector(WorldToLight.M[0][1], WorldToLight.M[1][1], WorldToLight.M[2][1]);
+		RectLightData.dPdv = FVector(WorldToLight.M[0][2], WorldToLight.M[1][2], WorldToLight.M[2][2]);
+		RectLightData.Color = LightShaderParameters.Color / 2.0;
 
-	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
-	{
-		const FViewInfo& View = Views[ViewIndex];
-		const FIntPoint ViewSize = View.ViewRect.Size();
+		// #dxr_todo: JIRA Ray traced textured area lights are 1.5X brighter than those in lit mode.
+		if (RectLightSceneProxy->HasSourceTexture())
+		{
+			RectLightData.Color *= 2.0 / 3.0;
+		}
 
-		TShaderMapRef<FRectLightRGS<TextureImportanceSampling>> RectLightRayGenerationShader(GetGlobalShaderMap(View.FeatureLevel));
+		RectLightData.Width = 2.0f * LightShaderParameters.SourceRadius;
+		RectLightData.Height = 2.0f * LightShaderParameters.SourceLength;
+		RectLightData.Texture = LightShaderParameters.SourceTexture;
+		RectLightData.TextureSampler = RHICreateSamplerState(FSamplerStateInitializerRHI(SF_Bilinear, AM_Border, AM_Border, AM_Border));
+		RectLightData.MipTree = RectLightSceneProxy->RayTracingData->RectLightMipTree.SRV;
+		RectLightData.MipTreeDimensions = RectLightSceneProxy->RayTracingData->RectLightMipTreeDimensions;
+		RectLightData.MaxNormalBias = GetRaytracingMaxNormalBias();
+		RectLightData.BarnCosAngle = FMath::Cos(FMath::DegreesToRadians(RectLightSceneProxy->BarnDoorAngle));
+		RectLightData.BarnLength = RectLightSceneProxy->BarnDoorLength;
+		FUniformBufferRHIRef RectLightUniformBuffer = RHICreateUniformBuffer(&RectLightData, FRectLightData::StaticStructMetadata.GetLayout(), EUniformBufferUsage::UniformBuffer_SingleDraw);
 
-		FUniformBufferRHIRef SceneTexturesUniformBuffer = CreateSceneTextureUniformBuffer(RHICmdList, View);
+		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
+		{
+			const FViewInfo& View = Views[ViewIndex];
+			const FIntPoint ViewSize = View.ViewRect.Size();
 
-		// Dispatch
-		RectLightRayGenerationShader->Dispatch(
-			RHICmdList,
-			RectLightRayGenerationShader.GetRayTracingShader(),
-			View.RayTracingScene,
-			View.ViewUniformBuffer,
-			SceneTexturesUniformBuffer,
-			RectLightUniformBuffer,
-			ScreenShadowMaskTexture->GetRenderTargetItem().UAV,
-			RayDistanceTexture->GetRenderTargetItem().UAV,
-			ViewSize.X, ViewSize.Y
-		);
-	}
+			TShaderMapRef<FRectLightRGS<TextureImportanceSampling>> RectLightRayGenerationShader(GetGlobalShaderMap(View.FeatureLevel));
 
-	// Transition out to graphics pipeline
-	RHICmdList.Transition(FRHITransitionInfo(ScreenShadowMaskTexture->GetRenderTargetItem().UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
-	GVisualizeTexture.SetCheckPoint(RHICmdList, ScreenShadowMaskTexture);
-
-	RHICmdList.Transition(FRHITransitionInfo(RayDistanceTexture->GetRenderTargetItem().UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
-	GVisualizeTexture.SetCheckPoint(RHICmdList, RayDistanceTexture);
+			// Dispatch
+			RectLightRayGenerationShader->Dispatch(
+				RHICmdList,
+				RectLightRayGenerationShader.GetRayTracingShader(),
+				View.RayTracingScene,
+				View.ViewUniformBuffer,
+				SceneTexturesUniformBuffer->GetRHI(),
+				RectLightUniformBuffer,
+				ScreenShadowMaskTexture->GetPooledRenderTarget()->GetRenderTargetItem().UAV,
+				RayDistanceTexture->GetPooledRenderTarget()->GetRenderTargetItem().UAV,
+				ViewSize.X, ViewSize.Y
+			);
+		}
+	});
 }
 
 #endif // RHI_RAYTRACING
 
 void FDeferredShadingSceneRenderer::RenderRayTracingStochasticRectLight(
-	FRHICommandListImmediate& RHICmdList,
+	FRDGBuilder& GraphBuilder,
+	FRDGTextureRef SceneColorTexture,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	const FLightSceneInfo& RectLightSceneInfo,
-	TRefCountPtr<IPooledRenderTarget>& RectLightRT,
-	TRefCountPtr<IPooledRenderTarget>& HitDistanceRT
-)
+	FRDGTextureRef& RectLightRT,
+	FRDGTextureRef& HitDistanceRT)
 #if RHI_RAYTRACING
 {
-	SCOPED_DRAW_EVENT(RHICmdList, RayTracingRectLight);
-	SCOPED_GPU_STAT(RHICmdList, RayTracingRectLight);
+	RDG_GPU_STAT_SCOPE(GraphBuilder, RayTracingRectLight);
 
-	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-	FPooledRenderTargetDesc Desc = SceneContext.GetSceneColor()->GetDesc();
+	FRDGTextureDesc Desc = SceneColorTexture->Desc;
 	Desc.Format = PF_FloatRGBA;
 	Desc.Flags &= ~(TexCreate_FastVRAM | TexCreate_Transient);
-	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, RectLightRT, TEXT("RayTracingRectLight"));
+	RectLightRT = GraphBuilder.CreateTexture(Desc, TEXT("RayTracingRectLight"));
 	//ClearUAV(RHICmdList, RectLightRT->GetRenderTargetItem(), FLinearColor::Black);
 
 	Desc.Format = PF_R16F;
-	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, HitDistanceRT, TEXT("RayTracingRectLightDistance"));
+	HitDistanceRT = GraphBuilder.CreateTexture(Desc, TEXT("RayTracingRectLightDistance"));
 	//ClearUAV(RHICmdList, HitDistanceRT->GetRenderTargetItem(), FLinearColor::Black);
 
 	if (RectLightSceneInfo.Proxy->HasSourceTexture())
 	{
-		RenderRayTracingRectLightInternal<1>(RHICmdList, Views, RectLightSceneInfo, RectLightRT, HitDistanceRT);
+		RenderRayTracingRectLightInternal<1>(GraphBuilder, SceneTexturesUniformBuffer, Views, RectLightSceneInfo, RectLightRT, HitDistanceRT);
 	}
 	else
 	{
-		RenderRayTracingRectLightInternal<0>(RHICmdList, Views, RectLightSceneInfo, RectLightRT, HitDistanceRT);
+		RenderRayTracingRectLightInternal<0>(GraphBuilder, SceneTexturesUniformBuffer, Views, RectLightSceneInfo, RectLightRT, HitDistanceRT);
 	}
 }
 #else

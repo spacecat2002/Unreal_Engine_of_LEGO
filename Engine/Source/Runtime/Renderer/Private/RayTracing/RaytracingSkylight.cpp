@@ -681,8 +681,8 @@ void FDeferredShadingSceneRenderer::CompositeRayTracingSkyLight(
 	FRDGBuilder& GraphBuilder,
 	FRDGTextureRef SceneColorTexture,
 	FIntPoint SceneTextureExtent,
-	TRefCountPtr<IPooledRenderTarget>& SkyLightRT,
-	TRefCountPtr<IPooledRenderTarget>& HitDistanceRT)
+	FRDGTextureRef SkyLightRT,
+	FRDGTextureRef HitDistanceRT)
 #if RHI_RAYTRACING
 {
 	check(SkyLightRT);
@@ -694,7 +694,7 @@ void FDeferredShadingSceneRenderer::CompositeRayTracingSkyLight(
 		FSceneTextureParameters SceneTextures = GetSceneTextureParameters(GraphBuilder);
 
 		FCompositeSkyLightPS::FParameters *PassParameters = GraphBuilder.AllocParameters<FCompositeSkyLightPS::FParameters>();
-		PassParameters->SkyLightTexture = GraphBuilder.RegisterExternalTexture(SkyLightRT);
+		PassParameters->SkyLightTexture = SkyLightRT;
 		PassParameters->SkyLightTextureSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 		PassParameters->ViewUniformBuffer = Views[ViewIndex].ViewUniformBuffer;
 		PassParameters->RenderTargets[0] = FRenderTargetBinding(SceneColorTexture, ERenderTargetLoadAction::ELoad);

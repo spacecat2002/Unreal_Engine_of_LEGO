@@ -113,7 +113,7 @@ public:
 		FLightTileIntersectionResources* TileIntersectionResources,
 		class FDistanceFieldObjectBufferResource& CulledObjectBuffers) const;
 
-	void ComputeLighting(const FViewInfo& View, FRHICommandListImmediate& RHICmdList, const FLightSceneInfo& LightSceneInfo) const;
+	void ComputeLighting(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FLightSceneInfo& LightSceneInfo) const;
 
 	void ComputeOcclusionForScreenGrid(
 		const FViewInfo& View, 

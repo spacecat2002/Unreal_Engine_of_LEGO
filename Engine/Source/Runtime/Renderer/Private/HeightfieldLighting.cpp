@@ -1127,22 +1127,23 @@ private:
 
 IMPLEMENT_MATERIAL_SHADER_TYPE(, FLightHeightfieldsPS, TEXT("/Engine/Private/HeightfieldLighting.usf"), TEXT("LightHeightfieldsPS"), SF_Pixel);
 
-void FHeightfieldLightingViewInfo::ComputeLighting(const FViewInfo& View, FRHICommandListImmediate& RHICmdList, const FLightSceneInfo& LightSceneInfo) const
+void FHeightfieldLightingViewInfo::ComputeLighting(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FLightSceneInfo& LightSceneInfo) const
 {
 	const ERHIFeatureLevel::Type FeatureLevel = View.GetFeatureLevel();
 
-	check(RHICmdList.IsOutsideRenderPass());
-
-	if (AllowHeightfieldGI(View)
-		&& SupportsHeightfieldLighting(FeatureLevel, View.GetShaderPlatform())
+	if (!AllowHeightfieldGI(View)
+		|| !SupportsHeightfieldLighting(FeatureLevel, View.GetShaderPlatform())
 		//@todo - handle local lights
-		&& LightSceneInfo.Proxy->GetLightType() == LightType_Directional
-		&& LightSceneInfo.Proxy->CastsDynamicShadow()
-		&& Heightfield.ComponentDescriptions.Num() > 0)
+		|| LightSceneInfo.Proxy->GetLightType() != LightType_Directional
+		|| !LightSceneInfo.Proxy->CastsDynamicShadow()
+		|| Heightfield.ComponentDescriptions.Num() == 0)
 	{
-		SCOPED_DRAW_EVENT(RHICmdList, HeightfieldLightingForGI);
+		return;
+	}
 
-		FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(RHICmdList, View);
+	AddUntrackedAccessPass(GraphBuilder, RDG_EVENT_NAME("HeightfieldLightingForGI"), [this, &View, &LightSceneInfo, FeatureLevel](FRHICommandListImmediate& RHICmdList)
+	{
+		FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBuffer(RHICmdList, View);
 		FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
 		SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
 
@@ -1211,7 +1212,7 @@ void FHeightfieldLightingViewInfo::ComputeLighting(const FViewInfo& View, FRHICo
 			}
 		}
 		RHICmdList.EndRenderPass();
-	}
+	});
 }
 
 const int32 GHeightfieldOcclusionDispatchSize = 8;
