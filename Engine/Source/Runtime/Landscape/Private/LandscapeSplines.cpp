@@ -1976,6 +1976,7 @@ void ULandscapeSplineControlPoint::UpdateSplinePoints(bool bUpdateCollision, boo
 		{
 			MeshComponent->Modify();
 			MeshComponent->BodyInstance = BodyInstance;
+			MeshComponent->RecreatePhysicsState();
 			MeshComponent->MarkRenderStateDirty();
 		}
 #endif
