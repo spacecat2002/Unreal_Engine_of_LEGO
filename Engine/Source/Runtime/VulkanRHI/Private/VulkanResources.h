@@ -511,7 +511,7 @@ struct FVulkanTextureBase : public FVulkanBaseShaderResource
 
 	FTextureRHIRef AliasedTexture;
 
-	virtual void OnTransitionResource(FVulkanCommandListContext& Context, ERHIAccess TransitionType) {}
+	virtual void OnLayoutTransition(FVulkanCommandListContext& Context, VkImageLayout NewLayout) {}
 	
 	template<typename T>
 	void DumpMemory(T Callback)

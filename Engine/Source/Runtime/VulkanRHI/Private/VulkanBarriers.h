@@ -18,8 +18,8 @@ struct FVulkanPipelineBarrier
 	VkMemoryBarrier MemoryBarrier;
 	TArray<VkImageMemoryBarrier, TInlineAllocator<8>> ImageBarriers;
 
-	// Unfortunately, we need to keep the surface pointers around, because we need mip and layer counts for the tracking code.
-	TArray<const FVulkanSurface*, TInlineAllocator<8>> Surfaces;
+	// We need to keep the texture pointers around, because we need to call OnTransitionResource on them, and we need mip and layer counts for the tracking code.
+	TArray<FVulkanTextureBase*, TInlineAllocator<8>> Textures;
 
 	void AddImageLayoutTransition(VkImage Image, VkImageLayout SrcLayout, VkImageLayout DstLayout, const VkImageSubresourceRange& SubresourceRange);
 	void AddImageAccessTransition(const FVulkanSurface& Surface, ERHIAccess SrcAccess, ERHIAccess DstAccess, const VkImageSubresourceRange& SubresourceRange, VkImageLayout& InOutLayout);

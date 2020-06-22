@@ -25,7 +25,7 @@ public:
 	FVulkanBackBuffer(FVulkanDevice& Device, FVulkanViewport* InViewport, EPixelFormat Format, uint32 SizeX, uint32 SizeY, uint32 UEFlags);
 	virtual ~FVulkanBackBuffer();
 	
-	virtual void OnTransitionResource(FVulkanCommandListContext& Context, ERHIAccess TransitionType) override final;
+	virtual void OnLayoutTransition(FVulkanCommandListContext& Context, VkImageLayout NewLayout) override final;
 
 	void OnGetBackBufferImage(FRHICommandListImmediate& RHICmdList);
 	void OnAdvanceBackBufferFrame(FRHICommandListImmediate& RHICmdList);

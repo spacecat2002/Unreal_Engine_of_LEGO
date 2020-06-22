@@ -338,7 +338,7 @@ static void GetVkStageAndAccessFlags(ERHIAccess RHIAccess, FRHITransitionInfo::E
 //
 struct FDepthStencilSubresTransition
 {
-	const FVulkanSurface* Surface;
+	FVulkanTextureBase* Texture;
 	ERHIAccess SrcDepthAccess;
 	ERHIAccess DestDepthAccess;
 	ERHIAccess SrcStencilAccess;
@@ -524,14 +524,14 @@ void FVulkanDynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipe
 			check(Texture && Texture->Surface.IsDepthOrStencilAspect());
 
 			int32 Index = DSSubresTransitions.IndexOfByPredicate([Texture](const FDepthStencilSubresTransition& Entry) -> bool {
-				return Entry.Surface->Image == Texture->Surface.Image;
+				return Entry.Texture->Surface.Image == Texture->Surface.Image;
 			});
 
 			FDepthStencilSubresTransition* PendingTransition;
 			if (Index == INDEX_NONE)
 			{
 				PendingTransition = &DSSubresTransitions.AddDefaulted_GetRef();
-				PendingTransition->Surface = &Texture->Surface;
+				PendingTransition->Texture = Texture;
 				PendingTransition->bDepthAccessSet = PendingTransition->bStencilAccessSet = false;
 			}
 			else
@@ -593,8 +593,6 @@ void FVulkanDynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipe
 			continue;
 		}
 
-		check(Texture->Surface.Image != VK_NULL_HANDLE);
-
 		VkImageAspectFlags AspectMask;
 
 		if (Info.PlaneSlice == FRHISubresourceRange::kAllSubresources || !Device->HasSeparateDepthStencilLayouts())
@@ -627,7 +625,7 @@ void FVulkanDynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipe
 		VkImageMemoryBarrier& ImgBarrier = Data->ImageBarriers.AddDefaulted_GetRef();
 		SetupImageBarrier(ImgBarrier, Texture->Surface.Image, SrcAccessFlags, DstAccessFlags, SrcLayout, DstLayout, SubresRange);
 
-		Data->Surfaces.Add(&Texture->Surface);
+		Data->Textures.Add(Texture);
 	}
 
 	// Process any depth-stencil transitions which specify a single sub-resource. We only get here if the device doesn't
@@ -669,8 +667,9 @@ void FVulkanDynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipe
 		Data->DstStageMask |= DstStageMask;
 
 		VkImageMemoryBarrier& ImgBarrier = Data->ImageBarriers.AddDefaulted_GetRef();
-		SetupImageBarrierEntireRes(ImgBarrier, PendingTransition.Surface->Image, SrcAccessFlags, DstAccessFlags, SrcLayout, DstLayout, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT);
-		Data->Surfaces.Add(PendingTransition.Surface);
+		SetupImageBarrierEntireRes(ImgBarrier, PendingTransition.Texture->Surface.Image, SrcAccessFlags, DstAccessFlags, SrcLayout, DstLayout, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT);
+
+		Data->Textures.Add(PendingTransition.Texture);
 	}
 }
 
@@ -681,14 +680,9 @@ void FVulkanDynamicRHI::RHIReleaseTransition(FRHITransition* Transition)
 
 void FVulkanCommandListContext::RHIBeginTransitions(TArrayView<const FRHITransition*> Transitions)
 {
-	static IConsoleVariable* CVarShowTransitions = IConsoleManager::Get().FindConsoleVariable(TEXT("r.ProfileGPU.ShowTransitions"));
-	const bool bShowTransitionEvents = CVarShowTransitions->GetInt() != 0;
-	SCOPED_RHI_CONDITIONAL_DRAW_EVENTF(*this, RHIBeginTransitions, bShowTransitionEvents, TEXT("RHIBeginTransitions"));
-
-	for (const FRHITransition* Transition : Transitions)
-	{
-		//const FVulkanPipelineBarrier* Data = Transition->GetPrivateData<FVulkanPipelineBarrier>();
-	}
+	//static IConsoleVariable* CVarShowTransitions = IConsoleManager::Get().FindConsoleVariable(TEXT("r.ProfileGPU.ShowTransitions"));
+	//const bool bShowTransitionEvents = CVarShowTransitions->GetInt() != 0;
+	//SCOPED_RHI_CONDITIONAL_DRAW_EVENTF(*this, RHIBeginTransitions, bShowTransitionEvents, TEXT("RHIBeginTransitions"));
 }
 
 static void AddSubresourceTransitions(TArray<VkImageMemoryBarrier, TInlineAllocator<8>>& Barriers, VkPipelineStageFlags& SrcStageMask, const VkImageMemoryBarrier& TemplateBarrier, FVulkanImageLayout& CurrentLayout, VkImageLayout DstLayout)
@@ -762,15 +756,21 @@ void FVulkanCommandListContext::RHIEndTransitions(TArrayView<const FRHITransitio
 		VkPipelineStageFlags RealSrcStageMask = Data->SrcStageMask;
 		VkPipelineStageFlags RealDstStageMask = Data->DstStageMask;
 
-		check(Data->ImageBarriers.Num() == Data->Surfaces.Num());
+		check(Data->ImageBarriers.Num() == Data->Textures.Num());
 
 		for (int32 BarrierIdx = 0; BarrierIdx < Data->ImageBarriers.Num(); ++BarrierIdx)
 		{
 			const VkImageMemoryBarrier& ImageBarrier = Data->ImageBarriers[BarrierIdx];
-			const FVulkanSurface* Surface = Data->Surfaces[BarrierIdx];
-			check(ImageBarrier.image == Surface->Image);
+			FVulkanTextureBase* Texture = Data->Textures[BarrierIdx];
 
-			FVulkanImageLayout& Layout = LayoutManager.GetOrAddFullLayout(*Surface, VK_IMAGE_LAYOUT_UNDEFINED);
+			Texture->OnLayoutTransition(*this, ImageBarrier.newLayout);
+
+			// The image pointer in ImageBarrier can be NULL when r.Vulkan.DelayAcquireBackBuffer is LazyAcquire, because the backbuffer didn't have an associated image yet
+			// at the time RHICreateTransition was called. In that case the OnLayoutTransition() will set Texture->Surface.Image, so we just need to make sure we use that
+			// when creating RealBarrier below.
+			check(Texture->Surface.Image != VK_NULL_HANDLE && (ImageBarrier.image == VK_NULL_HANDLE || ImageBarrier.image == Texture->Surface.Image));
+
+			FVulkanImageLayout& Layout = LayoutManager.GetOrAddFullLayout(Texture->Surface, VK_IMAGE_LAYOUT_UNDEFINED);
 
 			VkAccessFlags SrcAccessFlags;
 			VkImageLayout SrcLayout, DstLayout;
@@ -808,14 +808,12 @@ void FVulkanCommandListContext::RHIEndTransitions(TArrayView<const FRHITransitio
 
 			VkImageMemoryBarrier& RealBarrier = RealImageBarriers.AddDefaulted_GetRef();
 			RealBarrier = ImageBarrier;
+			RealBarrier.image = Texture->Surface.Image;
 			RealBarrier.srcAccessMask = SrcAccessFlags;
 			RealBarrier.oldLayout = SrcLayout;
 			RealBarrier.newLayout = DstLayout;
 
 			Layout.Set(DstLayout, ImageBarrier.subresourceRange);
-
-			// FIXME: this used to call OnTransitionResource() on FVulkanTextureBase, which is used by FVulkanBackBuffer to implement lazy acquire.
-			// Figure out a way to do that now.
 		}
 
 		int NumMemoryBarriers = (Data->MemoryBarrier.srcAccessMask != 0) || (Data->MemoryBarrier.dstAccessMask != 0) ? 1 : 0;

@@ -65,9 +65,9 @@ void FVulkanBackBuffer::OnAdvanceBackBufferFrame(FRHICommandListImmediate& RHICm
 	ReleaseAcquiredImage();
 }
 
-void FVulkanBackBuffer::OnTransitionResource(FVulkanCommandListContext& Context, ERHIAccess TransitionType)
+void FVulkanBackBuffer::OnLayoutTransition(FVulkanCommandListContext& Context, VkImageLayout NewLayout)
 {
-	if (TransitionType == EResourceTransitionAccess::EWritable && GVulkanDelayAcquireImage == EDelayAcquireImageType::LazyAcquire)
+	if (NewLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL && GVulkanDelayAcquireImage == EDelayAcquireImageType::LazyAcquire)
 	{
 		AcquireBackBufferImage(Context);
 	}
