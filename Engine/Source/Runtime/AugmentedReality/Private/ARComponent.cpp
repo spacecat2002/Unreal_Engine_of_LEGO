@@ -272,6 +272,40 @@ void UARComponent::OnRep_Payload()
 	}
 }
 
+void UARComponent::ManageMeshComponentForDebugMode(bool bDebugModeEnabled, const FARSessionPayload& SessionPayload)
+{
+#if AR_DEBUG_MODE
+	if (bDebugModeEnabled)
+	{
+		if (!bInDebugMode)
+		{
+			// Save the wireframe info when entering debug mode
+			bSavedWireframeMode = MRMeshComponent->GetUseWireframe();
+			SavedWireframeColor = MRMeshComponent->GetWireframeColor();
+			bInDebugMode = true;
+		}
+		MRMeshComponent->SetUseWireframe(true);
+	}
+	else
+	{
+		if (bInDebugMode)
+		{
+			// Restore the wireframe info when leaving debug mode
+			MRMeshComponent->SetUseWireframe(bSavedWireframeMode);
+			MRMeshComponent->SetWireframeColor(SavedWireframeColor);
+			bInDebugMode = false;
+		}
+		
+		if (!SessionPayload.ShouldCreateMeshComponent())
+		{
+			// MRMeshComponent was created due to previously enabled debug mode
+			// so it should removed now
+			RemoveMeshComponent(MyTrackedGeometry);
+		}
+	}
+#endif
+}
+
 static UMRMeshComponent* CreateMRMeshComponent(AActor* Owner, const FARSessionPayload& SessionPayload, UMaterialInterface* DefaultMeshMaterial, bool bDebugModeEnabled = false)
 {
 #if !AR_DEBUG_MODE
@@ -369,16 +403,9 @@ void UARPlaneComponent::UpdateVisualization_Implementation()
 		}
 		
 #if AR_DEBUG_MODE
-		if (bDebugModeEnabled)
+		ManageMeshComponentForDebugMode(bDebugModeEnabled, SessionPayload);
+		if (bDebugModeEnabled && MRMeshComponent)
 		{
-			if (!bInDebugMode)
-			{
-				// Save the wireframe info when entering debug mode
-				bSavedWireframeMode = MRMeshComponent->GetUseWireframe();
-				SavedWireframeColor = MRMeshComponent->GetWireframeColor();
-				bInDebugMode = true;
-			}
-			MRMeshComponent->SetUseWireframe(true);
 			if (GetDebugMode() == (int32)EPlaneComponentDebugMode::ShowNetworkRole)
 			{
 				MRMeshComponent->SetWireframeColor(GetDebugColor());
@@ -387,23 +414,6 @@ void UARPlaneComponent::UpdateVisualization_Implementation()
 			{
 				const auto ClassificationColor = ClassificationColors.Find(ReplicatedPayload.ObjectClassification);
 				MRMeshComponent->SetWireframeColor(ClassificationColor ? *ClassificationColor : FLinearColor::White);
-			}
-		}
-		else
-		{
-			if (bInDebugMode)
-			{
-				// Restore the wireframe info when leaving debug mode
-				MRMeshComponent->SetUseWireframe(bSavedWireframeMode);
-				MRMeshComponent->SetWireframeColor(SavedWireframeColor);
-				bInDebugMode = false;
-			}
-			
-			if (!SessionPayload.ShouldCreateMeshComponent())
-			{
-				// MRMeshComponent was created due to previously enabled debug mode
-				// so it should removed now
-				RemoveMeshComponent(MyTrackedGeometry);
 			}
 		}
 #endif
@@ -474,31 +484,7 @@ void UARQRCodeComponent::UpdateVisualization_Implementation()
 		UpdatePlaneMesh(MRMeshComponent, ReplicatedPayload.WorldTransform, FVector::ZeroVector, ReplicatedPayload.Extents);
 		
 #if AR_DEBUG_MODE
-		if (bDebugModeEnabled)
-		{
-			if (!bInDebugMode)
-			{
-				// Save the wireframe info when entering debug mode
-				bSavedWireframeMode = MRMeshComponent->GetUseWireframe();
-				bInDebugMode = true;
-			}
-			MRMeshComponent->SetUseWireframe(true);
-		}
-		else
-		{
-			if (bInDebugMode)
-			{
-				// Restore the wireframe info when leaving debug mode
-				MRMeshComponent->SetUseWireframe(bSavedWireframeMode);
-				bInDebugMode = false;
-			}
-			if (!SessionPayload.ShouldCreateMeshComponent())
-			{
-				// MRMeshComponent was created due to previously enabled debug mode
-				// so it should removed now
-				RemoveMeshComponent(MyTrackedGeometry);
-			}
-		}
+		ManageMeshComponentForDebugMode(bDebugModeEnabled, SessionPayload);
 #endif
 	}
 }
@@ -520,31 +506,7 @@ void UARImageComponent::UpdateVisualization_Implementation()
 		UpdatePlaneMesh(MRMeshComponent, ReplicatedPayload.WorldTransform, FVector::ZeroVector, Extent);
 		
 #if AR_DEBUG_MODE
-		if (bDebugModeEnabled)
-		{
-			if (!bInDebugMode)
-			{
-				// Save the wireframe info when entering debug mode
-				bSavedWireframeMode = MRMeshComponent->GetUseWireframe();
-				bInDebugMode = true;
-			}
-			MRMeshComponent->SetUseWireframe(true);
-		}
-		else
-		{
-			if (bInDebugMode)
-			{
-				// Restore the wireframe info when leaving debug mode
-				MRMeshComponent->SetUseWireframe(bSavedWireframeMode);
-				bInDebugMode = false;
-			}
-			if (!SessionPayload.ShouldCreateMeshComponent())
-			{
-				// MRMeshComponent was created due to previously enabled debug mode
-				// so it should removed now
-				RemoveMeshComponent(MyTrackedGeometry);
-			}
-		}
+		ManageMeshComponentForDebugMode(bDebugModeEnabled, SessionPayload);
 #endif
 	}
 }
@@ -586,6 +548,47 @@ void UARMeshComponent::UpdateVisualization_Implementation()
 	if (!MRMeshComponent)
 	{
 		MRMeshComponent = CreateMRMeshComponent(GetOwner(), SessionPayload, DefaultMeshMaterial);
+	}
+}
+
+void UARFaceComponent::UpdateVisualization_Implementation()
+{
+	const auto& SessionPayload = ReplicatedPayload.SessionPayload;
+	
+	const bool bShowFaceMesh = GetDebugMode() == (int32)EFaceComponentDebugMode::ShowFaceMesh;
+	
+	if (!MRMeshComponent)
+	{
+		MRMeshComponent = CreateMRMeshComponent(GetOwner(), SessionPayload, DefaultMeshMaterial, bShowFaceMesh);
+	}
+	
+	if (MRMeshComponent)
+	{
+#if AR_DEBUG_MODE
+		ManageMeshComponentForDebugMode(bShowFaceMesh, SessionPayload);
+		if (bShowFaceMesh && MRMeshComponent)
+		{
+			if (auto FaceGeometry = Cast<UARFaceGeometry>(MyTrackedGeometry))
+			{
+				auto WorldTransform = FaceGeometry->GetLocalToWorldTransform();
+#if PLATFORM_IOS
+				// The face vertices from ARKit is mirrored and in real world scale (1 unit = 1 meter)
+				// so we need to fix it here
+				WorldTransform = FTransform(FRotator(0, 180, 0), FVector::ZeroVector, FVector(100)) * WorldTransform;
+#endif
+				auto Vertices = FaceGeometry->GetVertexBuffer();
+				const auto& IndexBuffer = FaceGeometry->GetIndexBuffer();
+				const auto NumIndices = IndexBuffer.Num();
+				TArray<MRMESH_INDEX_TYPE> Indices;
+				Indices.AddUninitialized(NumIndices);
+				for (auto Index = 0; Index < NumIndices; ++Index)
+				{
+					Indices[Index] = IndexBuffer[Index];
+				}
+				MRMeshComponent->UpdateMesh(WorldTransform.GetLocation(), WorldTransform.GetRotation(), WorldTransform.GetScale3D(), Vertices, Indices);
+			}
+		}
+#endif
 	}
 }
 

@@ -75,7 +75,10 @@ USTRUCT(BlueprintType, Category = "AR Gameplay")
 struct FARFaceUpdatePayload
 {
 	GENERATED_BODY()
-
+	
+	UPROPERTY(BlueprintReadOnly, Category = "AR")
+	FARSessionPayload SessionPayload;
+	
 	UPROPERTY(BlueprintReadWrite, Category = "AR")
 	FVector LeftEyePosition;
 	
@@ -220,6 +223,8 @@ protected:
 	
 	void RemoveMeshComponent(UARTrackedGeometry* TrackedGeometry);
 	
+	void ManageMeshComponentForDebugMode(bool bDebugModeEnabled, const FARSessionPayload& SessionPayload);
+	
 	FLinearColor GetDebugColor() const;
 	
 	/** If the default replication logic should be used for this component */
@@ -247,6 +252,8 @@ protected:
 	bool bIsRemoved = false;
 	
 	bool bInDebugMode = false;
+	bool bSavedWireframeMode;
+	FLinearColor SavedWireframeColor;
 };
 
 UENUM(BlueprintType)
@@ -300,10 +307,6 @@ protected:
 	virtual void OnRep_Payload() override;
 	virtual void UpdateVisualization_Implementation() override;
 	static int32 GetDebugMode();
-	
-private:
-	bool bSavedWireframeMode;
-	FLinearColor SavedWireframeColor;
 };
 
 
@@ -341,6 +344,9 @@ enum class EFaceComponentDebugMode : uint8
 	
 	/** Display vectors for both eyes */
 	ShowEyeVectors = 1,
+	
+	/** Display the face mesh */
+	ShowFaceMesh = 2,
 };
 
 UCLASS(Blueprintable, BlueprintType, Category = "AR Gameplay")
@@ -373,7 +379,7 @@ protected:
 	FARFaceUpdatePayload ReplicatedPayload;
 	
 	virtual void OnRep_Payload() override;
-	
+	virtual void UpdateVisualization_Implementation() override;
 	static int32 GetDebugMode();
 };
 
@@ -419,9 +425,6 @@ protected:
 	virtual void OnRep_Payload() override;
 	virtual void UpdateVisualization_Implementation() override;
 	static int32 GetDebugMode();
-	
-private:
-	bool bSavedWireframeMode;
 };
 
 UENUM(BlueprintType)
@@ -466,9 +469,6 @@ protected:
 	virtual void OnRep_Payload() override;
 	virtual void UpdateVisualization_Implementation() override;
 	static int32 GetDebugMode();
-	
-private:
-	bool bSavedWireframeMode;
 };
 
 UENUM(BlueprintType)

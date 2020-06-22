@@ -346,6 +346,8 @@ void UARFaceGeometry::GetNetworkPayload(FARFaceUpdatePayload& Payload)
 
 	//not sure what space this is in...
 	Payload.LookAtTarget = LocalToWorldTransform.TransformPosition(LookAtTarget);
+	
+	UpdateSessionPayload(Payload.SessionPayload);
 }
 
 float UARFaceGeometry::GetBlendShapeValue(EARFaceBlendShape BlendShape) const
