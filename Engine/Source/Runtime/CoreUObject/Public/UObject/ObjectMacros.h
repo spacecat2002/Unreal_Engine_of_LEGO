@@ -550,6 +550,14 @@ enum class EInternalObjectFlags : int32
 };
 ENUM_CLASS_FLAGS(EInternalObjectFlags);
 
+/** Flags describing a UEnum */
+enum class EEnumFlags
+{
+	None
+};
+
+ENUM_CLASS_FLAGS(EEnumFlags)
+
 /*----------------------------------------------------------------------------
 	Core types.
 ----------------------------------------------------------------------------*/

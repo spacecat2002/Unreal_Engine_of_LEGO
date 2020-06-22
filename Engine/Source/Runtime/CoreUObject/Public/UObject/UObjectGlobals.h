@@ -2459,6 +2459,7 @@ namespace UE4CodeGen_Private
 		const FEnumeratorParam*     EnumeratorParams;
 		int32                       NumEnumerators;
 		EObjectFlags                ObjectFlags;
+		EEnumFlags                  EnumFlags;
 		EDynamicType                DynamicType;
 		uint8                       CppForm; // this is of type UEnum::ECppForm
 #if WITH_METADATA

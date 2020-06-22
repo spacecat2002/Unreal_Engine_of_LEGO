@@ -588,14 +588,15 @@ bool UEnum::ContainsExistingMax() const
 	return false;
 }
 
-bool UEnum::SetEnums(TArray<TPair<FName, int64>>& InNames, UEnum::ECppForm InCppForm, bool bAddMaxKeyIfMissing)
+bool UEnum::SetEnums(TArray<TPair<FName, int64>>& InNames, UEnum::ECppForm InCppForm, EEnumFlags InFlags, bool bAddMaxKeyIfMissing)
 {
 	if (Names.Num() > 0)
 	{
 		RemoveNamesFromMasterList();
 	}
-	Names   = InNames;
-	CppForm = InCppForm;
+	Names     = InNames;
+	CppForm   = InCppForm;
+	EnumFlags = InFlags;
 
 	if (bAddMaxKeyIfMissing)
 	{

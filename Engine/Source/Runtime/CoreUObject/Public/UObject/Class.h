@@ -2049,6 +2049,11 @@ public:
 		return CppForm;
 	}
 
+	bool HasAnyEnumFlags(EEnumFlags InFlags) const
+	{
+		return EnumHasAnyFlags(EnumFlags, InFlags);
+	}
+
 	/**
 	 * Checks if a enum name is fully qualified name.
 	 *
@@ -2128,7 +2133,7 @@ public:
 	 * @param bAddMaxKeyIfMissing Should a default Max item be added.
 	 * @return	true unless the MAX enum already exists and isn't the last enum.
 	 */
-	virtual bool SetEnums(TArray<TPair<FName, int64>>& InNames, ECppForm InCppForm, bool bAddMaxKeyIfMissing = true);
+	virtual bool SetEnums(TArray<TPair<FName, int64>>& InNames, ECppForm InCppForm, EEnumFlags InFlags = EEnumFlags::None, bool bAddMaxKeyIfMissing = true);
 
 	/**
 	 * @return	 The number of enum names.
@@ -2370,6 +2375,9 @@ protected:
 
 	/** How the enum was originally defined. */
 	ECppForm CppForm;
+
+	/** Enum flags. */
+	EEnumFlags EnumFlags;
 
 	/** pointer to function used to look up the enum's display name. Currently only assigned for UEnums generated for nativized blueprints */
 	FEnumDisplayNameFn EnumDisplayNameFn;
