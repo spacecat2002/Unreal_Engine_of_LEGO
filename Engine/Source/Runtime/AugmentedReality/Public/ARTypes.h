@@ -94,7 +94,13 @@ enum class EARTrackingQualityReason : uint8
 	ExcessiveMotion,
 	
 	/** The scene visible to the camera does not contain enough distinguishable features for image-based position tracking. */
-	InsufficientFeatures
+	InsufficientFeatures,
+
+	/** Tracking lost due to poor lighting conditions. Please move to a more brightly lit area */
+	InsufficientLight,
+
+	/** Tracking lost due to bad internal state. Please try restarting the AR experience. */
+	 BadState
 };
 
 /**

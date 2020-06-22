@@ -32,7 +32,7 @@ EARTrackingQualityReason UARBlueprintLibrary::GetTrackingQualityReason()
  	}
  	else
 	{
-		return EARTrackingQualityReason::None;
+		return EARTrackingQualityReason::InsufficientFeatures;
 	}
 }
 
