@@ -106,7 +106,9 @@ void FDistanceFieldDownsampling::DispatchDownsampleTasks(FRHICommandListImmediat
 		FUpdateTexture3DData& UpdateTextureData = UpdateTextureDataArray[Index];
 		RHIEndUpdateTexture3D(UpdateTextureData);
 	}
-		
+
+	RHICmdList.Transition(FRHITransitionInfo(DFAtlasUAV, ERHIAccess::Unknown, ERHIAccess::UAVCompute));
+
 	// Dispatch CS downsample tasks
 	FRDGBuilder GraphBuilder(RHICmdList);
 
@@ -120,7 +122,7 @@ void FDistanceFieldDownsampling::DispatchDownsampleTasks(FRHICommandListImmediat
 		PassParameters->OffsetInAtlas = FIntVector4(Task.OffsetInAtlas.X, Task.OffsetInAtlas.Y, Task.OffsetInAtlas.Z, 0);
 		PassParameters->MeshDF = Task.VolumeTextureRHI;
 		PassParameters->MeshDFSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
-		PassParameters->DFAtlas = DFAtlasUAV;	
+		PassParameters->DFAtlas = DFAtlasUAV;
 
 		FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 		TShaderMapRef< FDistanceFieldDownsamplingCS > ComputeShader(GlobalShaderMap);
@@ -134,7 +136,7 @@ void FDistanceFieldDownsampling::DispatchDownsampleTasks(FRHICommandListImmediat
 			[PassParameters, ComputeShader, GroupCount, &Task, &DFAtlasUAV](FRHICommandList& CmdList)
 			{
 				FComputeShaderUtils::Dispatch(CmdList, ComputeShader, *PassParameters, GroupCount);
-				CmdList.Transition(FRHITransitionInfo(DFAtlasUAV, ERHIAccess::Unknown, ERHIAccess::ERWNoBarrier));
+				CmdList.Transition(FRHITransitionInfo(DFAtlasUAV, ERHIAccess::UAVCompute, ERHIAccess::UAVCompute));
 				Task.VolumeTextureRHI = nullptr;
 			}
 		);
@@ -142,5 +144,5 @@ void FDistanceFieldDownsampling::DispatchDownsampleTasks(FRHICommandListImmediat
 
 	GraphBuilder.Execute();
 
-	RHICmdList.Transition(FRHITransitionInfo(DFAtlasUAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
+	RHICmdList.Transition(FRHITransitionInfo(DFAtlasUAV, ERHIAccess::UAVCompute, ERHIAccess::SRVMask));
 }
