@@ -337,9 +337,6 @@ public:
 		LODGroup(),
 		Format(PF_Unknown),
 		Filter(SF_Point),
-		SamplerXAddress(AM_Wrap),
-		SamplerYAddress(AM_Wrap),
-		SamplerZAddress(AM_Wrap),
 		bDirty(false),
 		bPreventingReallocation(false)
 	{}
@@ -412,9 +409,6 @@ private:
 	TextureGroup LODGroup;
 	EPixelFormat Format;
 	ESamplerFilter Filter;
-	ESamplerAddressMode SamplerXAddress;
-	ESamplerAddressMode SamplerYAddress;
-	ESamplerAddressMode SamplerZAddress;
 
 	bool bSRGB;
 	bool bDirty;

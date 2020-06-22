@@ -2212,11 +2212,9 @@ void FTexture2DArrayResource::InitRHI()
 		}
 	}
 
-#if WITH_EDITORONLY_DATA
-		SamplerXAddress = Owner ? (ESamplerAddressMode)Owner->AddressX.GetValue() : AM_Clamp;
-		SamplerYAddress = Owner ? (ESamplerAddressMode)Owner->AddressY.GetValue() : AM_Clamp;
-		SamplerZAddress = Owner ? (ESamplerAddressMode)Owner->AddressZ.GetValue() : AM_Clamp;
-#endif
+	ESamplerAddressMode SamplerXAddress = Owner ? (ESamplerAddressMode)Owner->AddressX.GetValue() : AM_Clamp;
+	ESamplerAddressMode SamplerYAddress = Owner ? (ESamplerAddressMode)Owner->AddressY.GetValue() : AM_Clamp;
+	ESamplerAddressMode SamplerZAddress = Owner ? (ESamplerAddressMode)Owner->AddressZ.GetValue() : AM_Clamp;
 
 	FSamplerStateInitializerRHI SamplerStateInitializer
 	(
