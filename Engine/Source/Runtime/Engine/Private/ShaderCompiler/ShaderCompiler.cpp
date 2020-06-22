@@ -3657,11 +3657,6 @@ void GlobalBeginCompileShader(
 			Input.Environment.CompilerFlags.Add(CFLAG_ForceRemoveUnusedInterpolators);
 		}
 
-		if (CVarD3DForceDXC.GetValueOnAnyThread() != 0)
-		{
-			Input.Environment.CompilerFlags.Add(CFLAG_ForceDXC);
-		}
-
 		if (CVarD3DCheckedForTypedUAVs.GetValueOnAnyThread() == 0)
 		{
 			Input.Environment.CompilerFlags.Add(CFLAG_AllowTypedUAVLoads);
@@ -3755,20 +3750,12 @@ void GlobalBeginCompileShader(
 		}
 	}
 
-	if (IsOpenGLPlatform((EShaderPlatform)Target.Platform))
+	// Add compiler flag CFLAG_ForceDXC if DXC is enabled
+	const bool bIsDxcEnabled = IsDxcEnabledForPlatform((EShaderPlatform)Target.Platform);
+	Input.Environment.SetDefine(TEXT("COMPILER_DXC"), bIsDxcEnabled);
+	if (bIsDxcEnabled)
 	{
-		if (CVarOpenGLForceDXC.GetValueOnAnyThread() != 0)
-		{
-			Input.Environment.CompilerFlags.Add(CFLAG_ForceDXC);
-		}
-	}
-
-	if (IsVulkanPlatform((EShaderPlatform)Target.Platform))
-	{
-		if (IsDxcEnabledForPlatform((EShaderPlatform)Target.Platform))
-		{
-			Input.Environment.CompilerFlags.Add(CFLAG_ForceDXC);
-		}
+		Input.Environment.CompilerFlags.Add(CFLAG_ForceDXC);
 	}
 
 	if (IsOpenGLPlatform((EShaderPlatform)Target.Platform) &&
