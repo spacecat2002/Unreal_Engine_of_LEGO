@@ -690,6 +690,7 @@ void FVulkanDynamicRHI::InitInstance()
 		GSupportsRenderTargetFormat_PF_G8 = false;	// #todo-rco
 		GRHISupportsTextureStreaming = true;
 		GSupportsTimestampRenderQueries = FVulkanPlatform::SupportsTimestampRenderQueries();
+		GSupportsMobileMultiView = true;
 #if VULKAN_ENABLE_DUMP_LAYER
 		// Disable RHI thread by default if the dump layer is enabled
 		GRHISupportsRHIThread = false;
@@ -719,7 +720,6 @@ void FVulkanDynamicRHI::InitInstance()
 		GMaxTextureMipCount = FPlatformMath::Min<int32>( MAX_TEXTURE_MIP_COUNT, GMaxTextureMipCount );
 		GMaxCubeTextureDimensions = Props.limits.maxImageDimensionCube;
 		GMaxTextureArrayLayers = Props.limits.maxImageArrayLayers;
-		GMaxWorkGroupInvocations = Props.limits.maxComputeWorkGroupInvocations;
 		GRHISupportsBaseVertexIndex = true;
 		GSupportsSeparateRenderTargetBlendState = true;
 
@@ -1151,7 +1151,7 @@ FVulkanBuffer::~FVulkanBuffer()
 	// The buffer should be unmapped
 	check(BufferPtr == nullptr);
 
-	Device.GetDeferredDeletionQueue().EnqueueResource(FDeferredDeletionQueue::EType::Buffer, Buf);
+	Device.GetDeferredDeletionQueue().EnqueueResource(FDeferredDeletionQueue2::EType::Buffer, Buf);
 	Buf = VK_NULL_HANDLE;
 
 	Device.GetMemoryManager().Free(Allocation);
@@ -1356,7 +1356,7 @@ void FVulkanDescriptorSetsLayout::Compile(FVulkanDescriptorSetLayoutMap& DSetLay
 			+	LayoutTypes[VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER]
 			<	Limits.maxDescriptorSetStorageImages);
 
-	check(LayoutTypes[VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT] <= Limits.maxDescriptorSetInputAttachments);
+	check(LayoutTypes[VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT] < Limits.maxDescriptorSetInputAttachments);
 	
 	LayoutHandles.Empty(SetLayouts.Num());
 
@@ -1487,7 +1487,7 @@ void FVulkanBufferView::Destroy()
 	if (View != VK_NULL_HANDLE)
 	{
 		DEC_DWORD_STAT(STAT_VulkanNumBufferViews);
-		Device->GetDeferredDeletionQueue().EnqueueResource(FDeferredDeletionQueue::EType::BufferView, View);
+		Device->GetDeferredDeletionQueue().EnqueueResource(FDeferredDeletionQueue2::EType::BufferView, View);
 		View = VK_NULL_HANDLE;
 		ViewId = 0;
 	}
@@ -1501,12 +1501,11 @@ static VkRenderPass CreateRenderPass(FVulkanDevice& InDevice, const FVulkanRende
 	uint32 NumSubpasses = 0;
 	uint32 NumDependencies = 0;
 
-	VkSubpassDescription SubpassDescriptions[3];
-	VkSubpassDependency SubpassDependencies[3];
+	VkSubpassDescription SubpassDescriptions[2];
+	VkSubpassDependency SubpassDependencies[2];
 
-	const bool bGBufferDepthReadSubpass = RTLayout.GetSubpassHint() == ESubpassHint::DeferredShadingSubpass;
-	const bool bDepthReadSubpass =  bGBufferDepthReadSubpass || RTLayout.GetSubpassHint() == ESubpassHint::DepthReadSubpass;
-			
+	const bool bHasDepthReadSubpass = RTLayout.GetSubpassHint() == ESubpassHint::DepthReadSubpass;
+		
 	// main sub-pass
 	{
 		VkSubpassDescription& SubpassDesc = SubpassDescriptions[NumSubpasses++];
@@ -1515,13 +1514,13 @@ static VkRenderPass CreateRenderPass(FVulkanDevice& InDevice, const FVulkanRende
 		SubpassDesc.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 		SubpassDesc.colorAttachmentCount = RTLayout.GetNumColorAttachments();
 		SubpassDesc.pColorAttachments = RTLayout.GetColorAttachmentReferences();
-		SubpassDesc.pResolveAttachments = bDepthReadSubpass ? nullptr : RTLayout.GetResolveAttachmentReferences();
+		SubpassDesc.pResolveAttachments = bHasDepthReadSubpass ? nullptr : RTLayout.GetResolveAttachmentReferences();
 		SubpassDesc.pDepthStencilAttachment = RTLayout.GetDepthStencilAttachmentReference();
 	}
 
-	// Color (+ optioanl GBuffer) write and depth read sub-pass
-	VkAttachmentReference InputAttachments1[MaxSimultaneousRenderTargets + 1];
-	if (bDepthReadSubpass)
+	// depth read sub-pass
+	VkAttachmentReference InputAttachments[MaxSimultaneousRenderTargets + 1];
+	if (bHasDepthReadSubpass)
 	{
 		VkSubpassDescription& SubpassDesc = SubpassDescriptions[NumSubpasses++];
 		FMemory::Memzero(&SubpassDesc, sizeof(VkSubpassDescription));
@@ -1529,18 +1528,18 @@ static VkRenderPass CreateRenderPass(FVulkanDevice& InDevice, const FVulkanRende
 		SubpassDesc.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 		SubpassDesc.colorAttachmentCount = RTLayout.GetNumColorAttachments();
 		SubpassDesc.pColorAttachments = RTLayout.GetColorAttachmentReferences();
-		SubpassDesc.pResolveAttachments = bGBufferDepthReadSubpass ? nullptr : RTLayout.GetResolveAttachmentReferences();
+		SubpassDesc.pResolveAttachments = RTLayout.GetResolveAttachmentReferences();
 
 		check(RTLayout.GetDepthStencilAttachmentReference());
 
-		// depth as Input0
-		InputAttachments1[0].attachment = RTLayout.GetDepthStencilAttachmentReference()->attachment;
-		InputAttachments1[0].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+		uint32 NumInputAttachments = 1;
+		InputAttachments[0].attachment = RTLayout.GetDepthStencilAttachmentReference()->attachment;
+		InputAttachments[0].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 		
-		SubpassDesc.inputAttachmentCount = 1;
-		SubpassDesc.pInputAttachments = InputAttachments1;
+		SubpassDesc.inputAttachmentCount = NumInputAttachments;
+		SubpassDesc.pInputAttachments = InputAttachments;
 		// depth attachment is same as input attachment
-		SubpassDesc.pDepthStencilAttachment = InputAttachments1;
+		SubpassDesc.pDepthStencilAttachment = InputAttachments;
 						
 		VkSubpassDependency& SubpassDep = SubpassDependencies[NumDependencies++];
 		SubpassDep.srcSubpass = 0;
@@ -1549,55 +1548,6 @@ static VkRenderPass CreateRenderPass(FVulkanDevice& InDevice, const FVulkanRende
 		SubpassDep.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 		SubpassDep.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 		SubpassDep.dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
-		SubpassDep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-	}
-		
-	// Color write and Gbuffer + depth read sub-pass
-	VkAttachmentReference InputAttachments2[MaxSimultaneousRenderTargets + 1];
-	if (bGBufferDepthReadSubpass)
-	{
-		VkSubpassDescription& SubpassDesc = SubpassDescriptions[NumSubpasses++];
-		FMemory::Memzero(&SubpassDesc, sizeof(VkSubpassDescription));
-
-		SubpassDesc.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-		SubpassDesc.colorAttachmentCount = 1; // SceneColor only
-		SubpassDesc.pColorAttachments = RTLayout.GetColorAttachmentReferences();
-		SubpassDesc.pResolveAttachments = RTLayout.GetResolveAttachmentReferences();
-	
-		check(RTLayout.GetDepthStencilAttachmentReference());
-
-		// depth as Input0
-		uint32 NumInputAttachments = 1;
-		InputAttachments2[0].attachment = RTLayout.GetDepthStencilAttachmentReference()->attachment;
-		InputAttachments2[0].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-		// GBuffer inputs
-		const VkAttachmentReference* ColorRefs = RTLayout.GetColorAttachmentReferences();
-		int32 NumColorInputs = RTLayout.GetNumColorAttachments();
-		check(NumColorInputs > 0);
-		// not using SceneColor as input
-		InputAttachments2[1].attachment = VK_ATTACHMENT_UNUSED;
-		InputAttachments2[1].layout = VK_IMAGE_LAYOUT_UNDEFINED;
-		// GBuffer as inputs
-		for (int32 i = 1; i < NumColorInputs; ++i)
-		{
-			InputAttachments2[i+1].attachment = ColorRefs[i].attachment;
-			InputAttachments2[i+1].layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		}
-		NumInputAttachments+= NumColorInputs;
-		
-		SubpassDesc.inputAttachmentCount = NumInputAttachments;
-		SubpassDesc.pInputAttachments = InputAttachments2;
-		// depth attachment is same as input attachment
-		SubpassDesc.pDepthStencilAttachment = InputAttachments2;
-
-		VkSubpassDependency& SubpassDep = SubpassDependencies[NumDependencies++];
-		SubpassDep.srcSubpass = 1;
-		SubpassDep.dstSubpass = 2;
-		SubpassDep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-		SubpassDep.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-		SubpassDep.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-		SubpassDep.dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
-		SubpassDep.dstAccessMask|= VK_ACCESS_SHADER_READ_BIT; // this is not required, but flickers without on Adreno
 		SubpassDep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 	}
 	
@@ -1667,7 +1617,7 @@ FVulkanRenderPass::~FVulkanRenderPass()
 {
 	DEC_DWORD_STAT(STAT_VulkanNumRenderPasses);
 
-	Device.GetDeferredDeletionQueue().EnqueueResource(FDeferredDeletionQueue::EType::RenderPass, RenderPass);
+	Device.GetDeferredDeletionQueue().EnqueueResource(FDeferredDeletionQueue2::EType::RenderPass, RenderPass);
 	RenderPass = VK_NULL_HANDLE;
 }
 
@@ -1746,7 +1696,8 @@ FVulkanRingBuffer::FVulkanRingBuffer(FVulkanDevice* InDevice, uint64 TotalSize, 
 
 FVulkanRingBuffer::~FVulkanRingBuffer()
 {
-	delete BufferSuballocation;
+	Device->GetDeferredDeletionQueue().EnqueueBufferSuballocationDirect(BufferSuballocation);
+	BufferSuballocation = 0;
 }
 
 uint64 FVulkanRingBuffer::WrapAroundAllocateMemory(uint64 Size, uint32 Alignment, FVulkanCmdBuffer* InCmdBuffer)
