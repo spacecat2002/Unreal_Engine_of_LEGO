@@ -337,11 +337,12 @@ bool FDeferredShadingSceneRenderer::ShouldDoReflectionEnvironment() const
 		&& ViewFamily.EngineShowFlags.ReflectionEnvironment;
 }
 
-void FDeferredShadingSceneRenderer::RenderDiffuseIndirectAndAmbientOcclusion(FRHICommandListImmediate& RHICmdListImmediate)
+void FDeferredShadingSceneRenderer::RenderDiffuseIndirectAndAmbientOcclusion(
+	FRDGBuilder& GraphBuilder,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+	FRDGTextureRef SceneColorTexture)
 {
-	SCOPED_DRAW_EVENT(RHICmdListImmediate, DiffuseIndirectAndAO)
-
-	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdListImmediate);
+	RDG_EVENT_SCOPE(GraphBuilder, "DiffuseIndirectAndAO");
 
 	// Forwared shading SSAO is applied before the basepass using only the depth buffer.
 	if (IsForwardShadingEnabled(ViewFamily.GetShaderPlatform()))
@@ -349,12 +350,10 @@ void FDeferredShadingSceneRenderer::RenderDiffuseIndirectAndAmbientOcclusion(FRH
 		return;
 	}
 
-	FRDGBuilder GraphBuilder(RHICmdListImmediate);
+	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 
-	FSceneTextureParameters SceneTextures = GetSceneTextureParameters(GraphBuilder);
+	FSceneTextureParameters SceneTextures = GetSceneTextureParameters(SceneTexturesUniformBuffer);
 	
-	FRDGTextureRef SceneColor = GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor());
-
 	for (FViewInfo& View : Views)
 	{
 		// TODO: enum cvar. 
@@ -379,7 +378,7 @@ void FDeferredShadingSceneRenderer::RenderDiffuseIndirectAndAmbientOcclusion(FRH
 		}
 		else if (bApplySSGI)
 		{
-			RenderScreenSpaceDiffuseIndirect(GraphBuilder, SceneTextures, SceneColor, View, /* out */ &RayTracingConfig, /* out */ &DenoiserInputs);
+			RenderScreenSpaceDiffuseIndirect(GraphBuilder, SceneTextures, SceneColorTexture, View, /* out */ &RayTracingConfig, /* out */ &DenoiserInputs);
 
 			const IScreenSpaceDenoiser* DefaultDenoiser = IScreenSpaceDenoiser::GetDefaultDenoiser();
 			const IScreenSpaceDenoiser* DenoiserToUse = DenoiseMode == 1 ? DefaultDenoiser : GScreenSpaceDenoiser;
@@ -478,7 +477,7 @@ void FDeferredShadingSceneRenderer::RenderDiffuseIndirectAndAmbientOcclusion(FRH
 			PassParameters->ViewUniformBuffer = View.ViewUniformBuffer;
 
 			PassParameters->RenderTargets[0] = FRenderTargetBinding(
-				SceneColor, ERenderTargetLoadAction::ELoad);
+				SceneColorTexture, ERenderTargetLoadAction::ELoad);
 		
 			FDiffuseIndirectCompositePS::FPermutationDomain PermutationVector;
 			PermutationVector.Set<FDiffuseIndirectCompositePS::FApplyDiffuseIndirectDim>(PassParameters->DiffuseIndirectTexture != nullptr);
@@ -538,7 +537,7 @@ void FDeferredShadingSceneRenderer::RenderDiffuseIndirectAndAmbientOcclusion(FRH
 			PassParameters->ViewUniformBuffer = View.ViewUniformBuffer;
 
 			PassParameters->RenderTargets[0] = FRenderTargetBinding(
-				SceneColor, ERenderTargetLoadAction::ELoad);
+				SceneColorTexture, ERenderTargetLoadAction::ELoad);
 		
 			TShaderMapRef<FAmbientCubemapCompositePS> PixelShader(View.ShaderMap);
 			GraphBuilder.AddPass(
@@ -587,14 +586,13 @@ void FDeferredShadingSceneRenderer::RenderDiffuseIndirectAndAmbientOcclusion(FRH
 						EDRF_UseTriangleOptimization);
 				}
 			});
-		} // if (IsAmbientCubemapPassRequired(View))
-	} // for (FViewInfo& View : Views)
-
-	GraphBuilder.Execute();
+		}
+	}
 }
 
 void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(
 	FRDGBuilder& GraphBuilder,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	FRDGTextureMSAA SceneColorTexture,
 	FRDGTextureRef DynamicBentNormalAOTexture,
 	FRDGTextureRef VelocityTexture,
@@ -644,7 +642,7 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(
 		{
 			bApplySkyShadowing = true;
 			FDistanceFieldAOParameters Parameters(Scene->SkyLight->OcclusionMaxDistance, Scene->SkyLight->Contrast);
-			RenderDistanceFieldLighting(GraphBuilder, Parameters, SceneColorTexture.Target, VelocityTexture, DynamicBentNormalAOTexture, false, false);
+			RenderDistanceFieldLighting(GraphBuilder, SceneTexturesUniformBuffer, Parameters, SceneColorTexture.Target, VelocityTexture, DynamicBentNormalAOTexture, false, false);
 		}
 	}
 

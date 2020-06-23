@@ -731,30 +731,8 @@ bool FDeferredShadingSceneRenderer::ShouldPrepareGlobalDistanceField() const
 }
 
 void FDeferredShadingSceneRenderer::RenderDFAOAsIndirectShadowing(
-	FRHICommandListImmediate& RHICmdList,
-	const TRefCountPtr<IPooledRenderTarget>& SceneColor,
-	const TRefCountPtr<IPooledRenderTarget>& Velocity,
-	TRefCountPtr<IPooledRenderTarget>& DynamicBentNormalAO)
-{
-	FRDGBuilder GraphBuilder(RHICmdList);
-
-	FRDGTextureRef DynamicBentNormalAOTexture = nullptr;
-	FRDGTextureRef SceneColorTexture = GraphBuilder.RegisterExternalTexture(SceneColor);
-	FRDGTextureRef VelocityTexture = TryRegisterExternalTexture(GraphBuilder, Velocity);
-
-	// These modulate the scenecolor output from the basepass, which is assumed to be indirect lighting
-	RenderDFAOAsIndirectShadowing(GraphBuilder, SceneColorTexture, VelocityTexture, DynamicBentNormalAOTexture);
-
-	if (DynamicBentNormalAOTexture)
-	{
-		GraphBuilder.QueueTextureExtraction(DynamicBentNormalAOTexture, &DynamicBentNormalAO);
-	}
-
-	GraphBuilder.Execute();
-}
-
-void FDeferredShadingSceneRenderer::RenderDFAOAsIndirectShadowing(
 	FRDGBuilder& GraphBuilder,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	FRDGTextureRef SceneColorTexture,
 	FRDGTextureRef VelocityTexture,
 	FRDGTextureRef& DynamicBentNormalAO)
@@ -763,7 +741,7 @@ void FDeferredShadingSceneRenderer::RenderDFAOAsIndirectShadowing(
 	{
 		// Use the skylight's max distance if there is one, to be consistent with DFAO shadowing on the skylight
 		const float OcclusionMaxDistance = Scene->SkyLight && !Scene->SkyLight->bWantsStaticShadowing ? Scene->SkyLight->OcclusionMaxDistance : Scene->DefaultMaxDistanceFieldOcclusionDistance;
-		RenderDistanceFieldLighting(GraphBuilder, FDistanceFieldAOParameters(OcclusionMaxDistance), SceneColorTexture, VelocityTexture, DynamicBentNormalAO, true, false);
+		RenderDistanceFieldLighting(GraphBuilder, SceneTexturesUniformBuffer, FDistanceFieldAOParameters(OcclusionMaxDistance), SceneColorTexture, VelocityTexture, DynamicBentNormalAO, true, false);
 	}
 }
 
@@ -783,6 +761,7 @@ bool FDeferredShadingSceneRenderer::ShouldRenderDistanceFieldLighting() const
 
 void FDeferredShadingSceneRenderer::RenderDistanceFieldLighting(
 	FRDGBuilder& GraphBuilder,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	const FDistanceFieldAOParameters& Parameters,
 	FRDGTextureRef SceneColorTexture,
 	FRDGTextureRef VelocityTexture,
@@ -846,8 +825,6 @@ void FDeferredShadingSceneRenderer::RenderDistanceFieldLighting(
 		DistanceFieldNormal,
 		BentNormalOutput);
 
-	OutDynamicBentNormalAO = BentNormalOutput;
-
 	if (IsTransientResourceBufferAliasingEnabled() && UseAOObjectDistanceField())
 	{
 		AddPass(GraphBuilder, [&View](FRHICommandListImmediate&)
@@ -859,13 +836,15 @@ void FDeferredShadingSceneRenderer::RenderDistanceFieldLighting(
 		});
 	}
 
-	RenderCapsuleShadowsForMovableSkylight(GraphBuilder, BentNormalOutput);
+	RenderCapsuleShadowsForMovableSkylight(GraphBuilder, SceneTexturesUniformBuffer, BentNormalOutput);
 
 	// Upsample to full resolution, write to output in case of debug AO visualization or scene color modulation (standard upsampling is done later together with sky lighting and reflection environment)
 	if (bModulateToSceneColor || bVisualizeAmbientOcclusion)
 	{
 		UpsampleBentNormalAO(GraphBuilder, Views, SceneColorTexture, BentNormalOutput, bModulateToSceneColor && !bVisualizeAmbientOcclusion);
 	}
+
+	OutDynamicBentNormalAO = BentNormalOutput;
 }
 
 bool FDeferredShadingSceneRenderer::ShouldRenderDistanceFieldAO() const

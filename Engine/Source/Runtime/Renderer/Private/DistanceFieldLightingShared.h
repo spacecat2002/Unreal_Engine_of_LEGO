@@ -93,7 +93,7 @@ public:
 
 	template<typename TParamRef>
 	void Set(
-		FRHICommandList& RHICmdList,
+		FRHIComputeCommandList& RHICmdList,
 		const TParamRef& ShaderRHI,
 		const TDistanceFieldObjectBuffers<PrimitiveType>& ObjectBuffers,
 		int32 NumObjectsValue,

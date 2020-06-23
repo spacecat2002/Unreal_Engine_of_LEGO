@@ -947,16 +947,20 @@ IMPLEMENT_INJECTION_PIXELSHADER_TYPE(LightType_Point,false,false,true);
 IMPLEMENT_INJECTION_PIXELSHADER_TYPE(LightType_Point,true,false,false); 
 IMPLEMENT_INJECTION_PIXELSHADER_TYPE(LightType_Point,false,false,false); 
 
-void FDeferredShadingSceneRenderer::ClearTranslucentVolumeLighting(FRHICommandListImmediate& RHICmdList, int32 ViewIndex)
+void FDeferredShadingSceneRenderer::ClearTranslucentVolumeLighting(FRDGBuilder& GraphBuilder, int32 ViewIndex)
 {
-	if (GUseTranslucentLightingVolumes && GSupportsVolumeTextureRendering)
+	if (!GUseTranslucentLightingVolumes || !GSupportsVolumeTextureRendering)
 	{
-		SCOPED_DRAW_EVENT(RHICmdList, ClearTranslucentVolumeLighting);
-		SCOPED_GPU_STAT(RHICmdList, TranslucentLighting);
-
-		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-		SceneContext.ClearTranslucentVolumeLighting(RHICmdList, ViewIndex);		
+		return;
 	}
+
+	RDG_GPU_STAT_SCOPE(GraphBuilder, TranslucentLighting);
+
+	AddPass(GraphBuilder, RDG_EVENT_NAME("ClearTranslucentVolumeLighting"), [this, ViewIndex](FRHICommandListImmediate& RHICmdList)
+	{
+		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+		SceneContext.ClearTranslucentVolumeLighting(RHICmdList, ViewIndex);
+	});
 }
 
 class FClearTranslucentLightingVolumeCS : public FGlobalShader

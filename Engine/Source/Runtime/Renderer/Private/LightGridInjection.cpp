@@ -759,8 +759,8 @@ void FDeferredShadingSceneRenderer::ComputeLightGrid(FRHICommandListImmediate& R
 void FDeferredShadingSceneRenderer::RenderForwardShadingShadowProjections(
 	FRHICommandListImmediate& RHICmdList,
 	const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBufferRHI,
-	TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMask,
-	TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMaskSubPixel,
+	TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMaskRHI,
+	TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMaskSubPixelRHI,
 	const FHairStrandsDatas* InHairDatas)
 {
 	check(RHICmdList.IsOutsideRenderPass());
@@ -781,10 +781,10 @@ void FDeferredShadingSceneRenderer::RenderForwardShadingShadowProjections(
 	{
 		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(RenderForwardShadingShadowProjections);
 		FSceneRenderTargets& SceneRenderTargets = FSceneRenderTargets::Get(RHICmdList);
-		SceneRenderTargets.AllocateScreenShadowMask(RHICmdList, ForwardScreenSpaceShadowMask);
+		SceneRenderTargets.AllocateScreenShadowMask(RHICmdList, ForwardScreenSpaceShadowMaskRHI);
 		if (bIsHairEnable)
 		{
-			SceneRenderTargets.AllocateScreenShadowMask(RHICmdList, ForwardScreenSpaceShadowMaskSubPixel);
+			SceneRenderTargets.AllocateScreenShadowMask(RHICmdList, ForwardScreenSpaceShadowMaskSubPixelRHI);
 		}
 
 		SCOPED_DRAW_EVENT(RHICmdList, ShadowProjectionOnOpaque);
@@ -792,7 +792,7 @@ void FDeferredShadingSceneRenderer::RenderForwardShadingShadowProjections(
 
 		// All shadows render with min blending
 		{
-			FRHIRenderPassInfo RPInfo(ForwardScreenSpaceShadowMask->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Clear_Store);
+			FRHIRenderPassInfo RPInfo(ForwardScreenSpaceShadowMaskRHI->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Clear_Store);
 			TransitionRenderPassTargets(RHICmdList, RPInfo);
 			RHICmdList.BeginRenderPass(RPInfo, TEXT("RenderForwardShadingShadowProjectionsClear"));
 			RHICmdList.EndRenderPass();
@@ -800,7 +800,7 @@ void FDeferredShadingSceneRenderer::RenderForwardShadingShadowProjections(
 
 		if (bIsHairEnable)
 		{
-			FRHIRenderPassInfo RPInfo(ForwardScreenSpaceShadowMaskSubPixel->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Clear_Store);
+			FRHIRenderPassInfo RPInfo(ForwardScreenSpaceShadowMaskSubPixelRHI->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Clear_Store);
 			TransitionRenderPassTargets(RHICmdList, RPInfo);
 			RHICmdList.BeginRenderPass(RPInfo, TEXT("RenderForwardShadingShadowSubPixelProjectionsClear"));
 			RHICmdList.EndRenderPass();
@@ -823,33 +823,39 @@ void FDeferredShadingSceneRenderer::RenderForwardShadingShadowProjections(
 
 				if (VisibleLightInfo.ShadowsToProject.Num() > 0)
 				{
-					FSceneRenderer::RenderShadowProjections(RHICmdList, SceneTexturesUniformBufferRHI, LightSceneInfo, ForwardScreenSpaceShadowMask, ForwardScreenSpaceShadowMaskSubPixel, true, false, bIsHairEnable ? &InHairDatas->HairVisibilityViews : nullptr);
+					FSceneRenderer::RenderShadowProjections(RHICmdList, SceneTexturesUniformBufferRHI, LightSceneInfo, ForwardScreenSpaceShadowMaskRHI, ForwardScreenSpaceShadowMaskSubPixelRHI, true, false, bIsHairEnable ? &InHairDatas->HairVisibilityViews : nullptr);
 
 					if (InHairDatas)
 					{
-						RenderHairStrandsShadowMask(RHICmdList, Views, LightSceneInfo, InHairDatas, ForwardScreenSpaceShadowMask);
+						RenderHairStrandsShadowMask(RHICmdList, Views, LightSceneInfo, InHairDatas, ForwardScreenSpaceShadowMaskRHI);
 					}
 				}
 
-				RenderCapsuleDirectShadows(RHICmdList, *LightSceneInfo, ForwardScreenSpaceShadowMask, VisibleLightInfo.CapsuleShadowsToProject, true);
+				FRDGBuilder GraphBuilder(RHICmdList);
+				FRDGTextureRef ForwardScreenSpaceShadowMask = GraphBuilder.RegisterExternalTexture(ForwardScreenSpaceShadowMaskRHI);
+				TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextureUniformBuffer = CreateSceneTextureUniformBuffer(GraphBuilder, Views[0], ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers);
+
+				RenderCapsuleDirectShadows(GraphBuilder, SceneTextureUniformBuffer, *LightSceneInfo, ForwardScreenSpaceShadowMask, VisibleLightInfo.CapsuleShadowsToProject, true);
 
 				if (LightSceneInfo->GetDynamicShadowMapChannel() >= 0 && LightSceneInfo->GetDynamicShadowMapChannel() < 4)
 				{
-					FRDGBuilder GraphBuilder(RHICmdList);
 					RenderLightFunction(
 						GraphBuilder,
 						GraphBuilder.RegisterExternalTexture(SceneRenderTargets.GetSceneColor(), ERenderTargetTexture::Targetable),
-						CreateSceneTextureUniformBuffer(GraphBuilder, Views[0], ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers),
+						SceneTextureUniformBuffer,
 						LightSceneInfo,
-						GraphBuilder.RegisterExternalTexture(ForwardScreenSpaceShadowMask),
+						ForwardScreenSpaceShadowMask,
 						true, true);
-					GraphBuilder.Execute();
 				}
+
+				// TODO(RDG) Leave it in the RTV state to avoid flip-flopping between read and write in the loop.
+				GraphBuilder.SetTextureAccessFinal(ForwardScreenSpaceShadowMask, ERHIAccess::RTV);
+				GraphBuilder.Execute();
 			}
-			RHICmdList.CopyToResolveTarget(ForwardScreenSpaceShadowMask->GetRenderTargetItem().TargetableTexture, ForwardScreenSpaceShadowMask->GetRenderTargetItem().ShaderResourceTexture, FResolveParams(FResolveRect()));
+			RHICmdList.CopyToResolveTarget(ForwardScreenSpaceShadowMaskRHI->GetRenderTargetItem().TargetableTexture, ForwardScreenSpaceShadowMaskRHI->GetRenderTargetItem().ShaderResourceTexture, FResolveParams(FResolveRect()));
 			if (bIsHairEnable)
 			{
-				RHICmdList.CopyToResolveTarget(ForwardScreenSpaceShadowMaskSubPixel->GetRenderTargetItem().TargetableTexture, ForwardScreenSpaceShadowMaskSubPixel->GetRenderTargetItem().ShaderResourceTexture, FResolveParams(FResolveRect()));
+				RHICmdList.CopyToResolveTarget(ForwardScreenSpaceShadowMaskSubPixelRHI->GetRenderTargetItem().TargetableTexture, ForwardScreenSpaceShadowMaskSubPixelRHI->GetRenderTargetItem().ShaderResourceTexture, FResolveParams(FResolveRect()));
 			}
 		}
 	}

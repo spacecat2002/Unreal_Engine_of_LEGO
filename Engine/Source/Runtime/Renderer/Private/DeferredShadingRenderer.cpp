@@ -1977,10 +1977,16 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		ServiceLocalQueue();
 	}
 	
-	if (IsForwardShadingEnabled(ShaderPlatform))
+	if (IsForwardShadingEnabled(ShaderPlatform) && SceneContext.IsStaticLightingAllowed())
 	{
-		RenderIndirectCapsuleShadows(RHICmdList, SceneTexturesDepthRHI, NULL,
-			SceneContext.bScreenSpaceAOIsValid ? SceneContext.ScreenSpaceAO->GetRenderTargetItem().TargetableTexture : NULL);
+		FRDGBuilder GraphBuilder(RHICmdList);
+		RenderIndirectCapsuleShadows(
+			GraphBuilder,
+			CreateSceneTextureUniformBuffer(GraphBuilder, Views[0], ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers),
+			nullptr,
+			GraphBuilder.RegisterExternalTexture(SceneContext.ScreenSpaceAO),
+			SceneContext.bScreenSpaceAOIsValid);
+		GraphBuilder.Execute();
 	}
 	checkSlow(RHICmdList.IsOutsideRenderPass());
 
@@ -2368,49 +2374,65 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	// Render lighting.
 	if (bRenderDeferredLighting)
 	{
-		TUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesGBufferRHI = CreateSceneTextureUniformBuffer(RHICmdList, Views[0], ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers | ESceneTextureSetupMode::SSAO);
-
 		SCOPED_GPU_STAT(RHICmdList, RenderDeferredLighting);
 		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(RenderLighting);
 		SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_Lighting);
 
-		GRenderTargetPool.AddPhaseEvent(TEXT("Lighting"));
-
-		RenderDiffuseIndirectAndAmbientOcclusion(RHICmdList);
-
-		// These modulate the scenecolor output from the basepass, which is assumed to be indirect lighting
-		RenderIndirectCapsuleShadows(
-			RHICmdList,
-			SceneTexturesGBufferRHI,
-			SceneContext.GetSceneColorSurface(),
-			SceneContext.bScreenSpaceAOIsValid ? SceneContext.ScreenSpaceAO->GetRenderTargetItem().TargetableTexture : NULL);
-
 		TRefCountPtr<IPooledRenderTarget> DynamicBentNormalAO;
 
-		// These modulate the scenecolor output from the basepass, which is assumed to be indirect lighting
-		RenderDFAOAsIndirectShadowing(RHICmdList, SceneContext.GetSceneColor(), SceneContext.SceneVelocity, DynamicBentNormalAO);
-
-		// Clear the translucent lighting volumes before we accumulate
-		if ((GbEnableAsyncComputeTranslucencyLightingVolumeClear && GSupportsEfficientAsyncCompute) == false)
+		/** TODO(RDG): This is all really gross, but *very* temporary. All of this is going collapse as soon as RenderLights is fully ported. */
+		FRDGBuilder InnerGraphBuilder(RHICmdList);
 		{
-			for(int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
+			TRDGUniformBufferRef<FSceneTextureUniformParameters> InnerSceneTexturesGBuffer = CreateSceneTextureUniformBuffer(InnerGraphBuilder, Views[0], ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers);
+			FRDGTextureRef InnerSceneColorTexture = InnerGraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor(), ERenderTargetTexture::Targetable);
+			FRDGTextureRef InnerVelocityTexture = TryRegisterExternalTexture(GraphBuilder, SceneContext.SceneVelocity);
+			FRDGTextureRef InnerDynamicBentNormalAOTexture = nullptr;
+
+			RenderDiffuseIndirectAndAmbientOcclusion(InnerGraphBuilder, InnerSceneTexturesGBuffer, InnerSceneColorTexture);
+
+			// These modulate the scenecolor output from the basepass, which is assumed to be indirect lighting
+			if (SceneContext.IsStaticLightingAllowed())
 			{
-				FViewInfo& View = Views[ViewIndex];
-				SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
-				ClearTranslucentVolumeLighting(RHICmdList, ViewIndex);
+				RenderIndirectCapsuleShadows(
+					InnerGraphBuilder,
+					InnerSceneTexturesGBuffer,
+					InnerSceneColorTexture,
+					InnerGraphBuilder.RegisterExternalTexture(SceneContext.ScreenSpaceAO),
+					SceneContext.bScreenSpaceAOIsValid);
 			}
-			
-		}
+
+			// These modulate the scenecolor output from the basepass, which is assumed to be indirect lighting
+			RenderDFAOAsIndirectShadowing(InnerGraphBuilder, InnerSceneTexturesGBuffer, InnerSceneColorTexture, InnerVelocityTexture, InnerDynamicBentNormalAOTexture);
+
+			if (InnerDynamicBentNormalAOTexture)
+			{
+				InnerGraphBuilder.QueueTextureExtraction(InnerDynamicBentNormalAOTexture, &DynamicBentNormalAO);
+			}
+
+			// Clear the translucent lighting volumes before we accumulate
+			if ((GbEnableAsyncComputeTranslucencyLightingVolumeClear && GSupportsEfficientAsyncCompute) == false)
+			{
+				for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
+				{
+					const FViewInfo& View = Views[ViewIndex];
+					RDG_GPU_MASK_SCOPE(InnerGraphBuilder, View.GPUMask);
+					ClearTranslucentVolumeLighting(InnerGraphBuilder, ViewIndex);
+				}
+			}
 
 #if RHI_RAYTRACING
-		if (IsRayTracingEnabled())
-		{
-			RenderDitheredLODFadingOutMask(RHICmdList, Views[0]);
-		}
+			if (IsRayTracingEnabled())
+			{
+				RenderDitheredLODFadingOutMask(InnerGraphBuilder, Views[0]);
+			}
 #endif
+		}
+		InnerGraphBuilder.Execute();
 
 		RHICmdList.SetCurrentStat(GET_STATID(STAT_CLM_Lighting));
 		{
+			TUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesGBufferRHI = CreateSceneTextureUniformBuffer(RHICmdList, Views[0], ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers);
+
 			RenderLights(RHICmdList, SceneTexturesGBufferRHI, SortedLightSet, HairDatas);
 		}
 		RHICmdList.SetCurrentStat(GET_STATID(STAT_CLM_AfterLighting));
@@ -2452,6 +2474,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 			}
 		}
 
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesGBuffer = CreateSceneTextureUniformBuffer(GraphBuilder, Views[0], ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers);
 		SceneColorTexture = RegisterExternalTextureMSAA(GraphBuilder, SceneContext.GetSceneColor());
 		SceneDepthTexture = RegisterExternalTextureMSAA(GraphBuilder, SceneContext.SceneDepthZ);
 		VelocityTexture = TryRegisterExternalTexture(GraphBuilder, SceneContext.SceneVelocity);
@@ -2460,7 +2483,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		DynamicBentNormalAO = nullptr;
 
 		// Render diffuse sky lighting and reflections that only operate on opaque pixels
-		RenderDeferredReflectionsAndSkyLighting(GraphBuilder, SceneColorTexture, DynamicBentNormalAOTexture, VelocityTexture, HairDatas);
+		RenderDeferredReflectionsAndSkyLighting(GraphBuilder, SceneTexturesGBuffer, SceneColorTexture, DynamicBentNormalAOTexture, VelocityTexture, HairDatas);
 
 		AddServiceLocalQueuePass(GraphBuilder);
 
@@ -2723,7 +2746,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		// Use the skylight's max distance if there is one, to be consistent with DFAO shadowing on the skylight
 		const float OcclusionMaxDistance = Scene->SkyLight && !Scene->SkyLight->bWantsStaticShadowing ? Scene->SkyLight->OcclusionMaxDistance : Scene->DefaultMaxDistanceFieldOcclusionDistance;
 		FRDGTextureRef DummyOutput = nullptr;
-		RenderDistanceFieldLighting(GraphBuilder, FDistanceFieldAOParameters(OcclusionMaxDistance), SceneColorTexture.Target, VelocityTexture, DummyOutput, false, ViewFamily.EngineShowFlags.VisualizeDistanceFieldAO);
+		RenderDistanceFieldLighting(GraphBuilder, SceneTexturesPerView[0], FDistanceFieldAOParameters(OcclusionMaxDistance), SceneColorTexture.Target, VelocityTexture, DummyOutput, false, ViewFamily.EngineShowFlags.VisualizeDistanceFieldAO);
 		AddServiceLocalQueuePass(GraphBuilder);
 	}
 

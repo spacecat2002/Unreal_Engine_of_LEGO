@@ -223,11 +223,15 @@ private:
 	/** Render debug visualizations about the sky atmosphere into the scene render target.*/
 	void RenderDebugSkyAtmosphere(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColorTexture, FRDGTextureRef SceneDepthTexture);
 
-	void RenderDiffuseIndirectAndAmbientOcclusion(FRHICommandListImmediate& RHICmdList);
+	void RenderDiffuseIndirectAndAmbientOcclusion(
+		FRDGBuilder& GraphBuilder,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		FRDGTextureRef SceneColorTexture);
 
 	/** Renders sky lighting and reflections that can be done in a deferred pass. */
 	void RenderDeferredReflectionsAndSkyLighting(
 		FRDGBuilder& GraphBuilder,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		FRDGTextureMSAA SceneColorTexture,
 		FRDGTextureRef DynamicBentNormalAOTexture,
 		FRDGTextureRef VelocityTexture,
@@ -238,21 +242,17 @@ private:
 	/** Computes DFAO, modulates it to scene color (which is assumed to contain diffuse indirect lighting), and stores the output bent normal for use occluding specular. */
 	void RenderDFAOAsIndirectShadowing(
 		FRDGBuilder& GraphBuilder,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		FRDGTextureRef SceneColorTexture,
 		FRDGTextureRef VelocityTexture,
 		FRDGTextureRef& DynamicBentNormalAO);
-
-	void RenderDFAOAsIndirectShadowing(
-		FRHICommandListImmediate& RHICmdList,
-		const TRefCountPtr<IPooledRenderTarget>& SceneColor,
-		const TRefCountPtr<IPooledRenderTarget>& Velocity,
-		TRefCountPtr<IPooledRenderTarget>& DynamicBentNormalAO);
 
 	bool ShouldRenderDistanceFieldLighting() const;
 
 	/** Render Ambient Occlusion using mesh distance fields and the surface cache, which supports dynamic rigid meshes. */
 	void RenderDistanceFieldLighting(
 		FRDGBuilder& GraphBuilder,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		const class FDistanceFieldAOParameters& Parameters,
 		FRDGTextureRef SceneColorTexture,
 		FRDGTextureRef VelocityTexture,
@@ -262,7 +262,7 @@ private:
 
 	/** Render Ambient Occlusion using mesh distance fields on a screen based grid. */
 	void RenderDistanceFieldAOScreenGrid(
-		FRDGBuilder& GraphBuilder, 
+		FRDGBuilder& GraphBuilder,
 		const FViewInfo& View,
 		const FDistanceFieldAOParameters& Parameters, 
 		FRDGTextureRef VelocityTexture,
@@ -387,10 +387,11 @@ private:
 
 	/** Renders capsule shadows for all per-object shadows using it for the given light. */
 	bool RenderCapsuleDirectShadows(
-		FRHICommandListImmediate& RHICmdList, 
-		const FLightSceneInfo& LightSceneInfo, 
-		IPooledRenderTarget* ScreenShadowMaskTexture,
-		const TArray<FProjectedShadowInfo*, SceneRenderingAllocator>& CapsuleShadows, 
+		FRDGBuilder& GraphBuilder,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		const FLightSceneInfo& LightSceneInfo,
+		FRDGTextureRef ScreenShadowMaskTexture,
+		TArrayView<FProjectedShadowInfo*> CapsuleShadows,
 		bool bProjectingForForwardShading) const;
 
 	/** Sets up ViewState buffers for rendering capsule shadows. */
@@ -404,13 +405,17 @@ private:
 
 	/** Renders indirect shadows from capsules modulated onto scene color. */
 	void RenderIndirectCapsuleShadows(
-		FRHICommandListImmediate& RHICmdList,
-		const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
-		FRHITexture* IndirectLightingTexture,
-		FRHITexture* ExistingIndirectOcclusionTexture) const;
+		FRDGBuilder& GraphBuilder,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextureUniformBuffer,
+		FRDGTextureRef SceneColorTexture,
+		FRDGTextureRef ScreenSpaceAO,
+		bool& bScreenSpaceAOIsValid) const;
 
 	/** Renders capsule shadows for movable skylights, using the cone of visibility (bent normal) from DFAO. */
-	void RenderCapsuleShadowsForMovableSkylight(FRDGBuilder& GraphBuilder, FRDGTextureRef& BentNormalOutput) const;
+	void RenderCapsuleShadowsForMovableSkylight(
+		FRDGBuilder& GraphBuilder,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		FRDGTextureRef& BentNormalOutput) const;
 
 	/** Render deferred projections of shadows for a given light into the light attenuation buffer. */
 	bool RenderShadowProjections(
@@ -505,7 +510,7 @@ private:
 		const FSimpleLightArray& SimpleLights);
 
 	/** Clears the translucency lighting volumes before light accumulation. */
-	void ClearTranslucentVolumeLighting(FRHICommandListImmediate& RHICmdListViewIndex, int32 ViewIndex);
+	void ClearTranslucentVolumeLighting(FRDGBuilder& GraphBuilder, int32 ViewIndex);
 
 	/** Clears the translucency lighting volume via an async compute shader overlapped with the basepass. */
 	void ClearTranslucentVolumeLightingAsyncCompute(FRHICommandListImmediate& RHICmdList);
@@ -612,7 +617,7 @@ private:
 		const FRayTracingReflectionOptions& Options,
 		IScreenSpaceDenoiser::FReflectionsInputs* OutDenoiserInputs);
 
-	void RenderDitheredLODFadingOutMask(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
+	void RenderDitheredLODFadingOutMask(FRDGBuilder& GraphBuilder, const FViewInfo& View);
 
 	void RenderRayTracingShadows(
 		FRDGBuilder& GraphBuilder,

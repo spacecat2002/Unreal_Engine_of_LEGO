@@ -1734,7 +1734,7 @@ bool FDeferredShadingSceneRenderer::RenderShadowProjections(
 	FRHICommandListImmediate& RHICmdList,
 	const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
 	const FLightSceneInfo* LightSceneInfo,
-	IPooledRenderTarget* ScreenShadowMaskTexture,
+	IPooledRenderTarget* ScreenShadowMaskTextureRHI,
 	IPooledRenderTarget* ScreenShadowMaskSubPixelTexture,
 	const FHairStrandsDatas* HairDatas,
 	bool& bInjectedTranslucentVolume)
@@ -1748,13 +1748,15 @@ bool FDeferredShadingSceneRenderer::RenderShadowProjections(
 
 	FVisibleLightInfo& VisibleLightInfo = VisibleLightInfos[LightSceneInfo->Id];
 
-	FSceneRenderer::RenderShadowProjections(RHICmdList, SceneTexturesUniformBuffer, LightSceneInfo, ScreenShadowMaskTexture, ScreenShadowMaskSubPixelTexture, false, false, HairDatas ? &HairDatas->HairVisibilityViews : nullptr);
+	FSceneRenderer::RenderShadowProjections(RHICmdList, SceneTexturesUniformBuffer, LightSceneInfo, ScreenShadowMaskTextureRHI, ScreenShadowMaskSubPixelTexture, false, false, HairDatas ? &HairDatas->HairVisibilityViews : nullptr);
 
 	checkSlow(RHICmdList.IsOutsideRenderPass());
 
-	{
-		FRDGBuilder GraphBuilder(RHICmdList);
+	FRDGBuilder GraphBuilder(RHICmdList);
+	FRDGTextureRef ScreenSpaceShadowMask = GraphBuilder.RegisterExternalTexture(ScreenShadowMaskTextureRHI);
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextureUniformBuffer = CreateSceneTextureUniformBuffer(GraphBuilder, Views[0], ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::GBuffers);
 
+	{
 		for (int32 ShadowIndex = 0; ShadowIndex < VisibleLightInfo.ShadowsToProject.Num(); ShadowIndex++)
 		{
 			FProjectedShadowInfo* ProjectedShadowInfo = VisibleLightInfo.ShadowsToProject[ShadowIndex];
@@ -1798,11 +1800,13 @@ bool FDeferredShadingSceneRenderer::RenderShadowProjections(
 				}
 			}
 		}
-
-		GraphBuilder.Execute();
 	}
 
-	RenderCapsuleDirectShadows(RHICmdList, *LightSceneInfo, ScreenShadowMaskTexture, VisibleLightInfo.CapsuleShadowsToProject, false);
+	RenderCapsuleDirectShadows(GraphBuilder, SceneTextureUniformBuffer, *LightSceneInfo, ScreenSpaceShadowMask, VisibleLightInfo.CapsuleShadowsToProject, false);
+
+	// TODO(RDG) Leave it in the RTV state to avoid flip-flopping between read and write in the loop.
+	GraphBuilder.SetTextureAccessFinal(ScreenSpaceShadowMask, ERHIAccess::RTV);
+	GraphBuilder.Execute();
 
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
@@ -1824,7 +1828,7 @@ bool FDeferredShadingSceneRenderer::RenderShadowProjections(
 	// Inject deep shadow mask
 	if (HairDatas)
 	{
-		RenderHairStrandsShadowMask(RHICmdList, Views, LightSceneInfo, HairDatas, ScreenShadowMaskTexture);
+		RenderHairStrandsShadowMask(RHICmdList, Views, LightSceneInfo, HairDatas, ScreenShadowMaskTextureRHI);
 	}
 
 	return true;
