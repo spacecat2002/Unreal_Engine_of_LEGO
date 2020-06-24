@@ -189,8 +189,7 @@ static FRDGBufferRef AddDeepShadowTransmittanceMaskPass(
 	FRDGBufferRef OutBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateStructuredDesc(
 		4 * sizeof(float),
 		Params.HairVisibilityNodeData->Desc.NumElements),
-		TEXT("HairTransmittanceNodeData"),
-		ERDGBufferFlags::Preallocate);
+		TEXT("HairTransmittanceNodeData"));
 
 	FDeepTransmittanceMaskCS::FParameters* Parameters = GraphBuilder.AllocParameters<FDeepTransmittanceMaskCS::FParameters>();
 	Parameters->ViewUniformBuffer = View.ViewUniformBuffer;

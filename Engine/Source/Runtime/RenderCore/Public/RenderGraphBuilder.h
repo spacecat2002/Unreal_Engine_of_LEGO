@@ -133,10 +133,9 @@ public:
 	}
 #endif
 
-	/** Queues a pooled texture extraction to happen at the end of graph exectuion. *OutTexturePtr is assigned the internal pooled render target.
-	 *
-	 *  Note: even when the render graph uses the immediate debugging mode (executing passes as they get added), the texture extractions
-	 *  will still happen in the Execute(), to ensure there is no bug caused in code outside the render graph on whether this mode is used or not.
+	/** Queues a pooled resource extraction to happen at the end of graph execution. *OutTexturePtr is assigned the internal
+	 *  pooled render target. Extractions are still deferred in immediate mode to preserve expected behavior. However, when
+	 *  the resource is external or preallocated, the extraction happens immediately.
 	 */
 	void QueueTextureExtraction(FRDGTextureRef Texture, TRefCountPtr<IPooledRenderTarget>* OutPooledTexturePtr);
 	void QueueTextureExtraction(FRDGTextureRef Texture, TRefCountPtr<IPooledRenderTarget>* OutPooledTexturePtr, ERHIAccess AccessFinal);
@@ -144,13 +143,12 @@ public:
 	UE_DEPRECATED(4.26, "QueueTextureExtraction with bTransitionToRead is deprecated; use the ERHIAccess variant instead.")
 	void QueueTextureExtraction(FRDGTextureRef Texture, TRefCountPtr<IPooledRenderTarget>* OutTexturePtr, bool bTransitionToRead);
 
-	/** Queue a buffer extraction. This will set *OutBufferPtr with the internal pooled buffer at the Execute().
-	 *
-	 *  Note: even when the render graph uses the immediate debugging mode (executing passes as they get added), the buffer extractions
-	 *  will still happen in the Execute(), to ensure there is no bug caused in code outside the render graph on whether this mode is used or not.
-	 */
 	void QueueBufferExtraction(FRDGBufferRef Buffer, TRefCountPtr<FRDGPooledBuffer>* OutPooledBufferPtr);
 	void QueueBufferExtraction(FRDGBufferRef Buffer, TRefCountPtr<FRDGPooledBuffer>* OutPooledBufferPtr, ERHIAccess AccessFinal);
+
+	/** If the resource is created by the graph, this will force allocation of the underlying resource in order to allow immediate extraction. */
+	void PreallocateTexture(FRDGTextureRef Texture);
+	void PreallocateBuffer(FRDGBufferRef Buffer);
 
 	/** Performs an immediate query for the underlying pooled texture. This is only allowed for registered or preallocated textures. */
 	const TRefCountPtr<IPooledRenderTarget>& GetPooledTexture(FRDGTextureRef Texture) const;

@@ -243,9 +243,6 @@ protected:
 	/** Whether this is an extracted resource. */
 	uint32 bExtracted : 1;
 
-	/** Whether this resource was preallocated on creation. */
-	uint32 bPreallocated : 1;
-
 	/** Whether this resource needs acquire / discard. */
 	uint32 bTransient : 1;
 
@@ -291,6 +288,9 @@ private:
 
 		/** Tracks whether this resource was clobbered by the builder prior to use. */
 		bool bHasBeenClobbered = false;
+
+		/** Tracks whether this resource was extracted during graph setup. */
+		bool bHasBeenExtracted = false;
 
 		friend FRDGUserValidation;
 	} ParentDebugData;

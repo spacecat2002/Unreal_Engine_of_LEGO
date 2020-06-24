@@ -99,6 +99,14 @@ void FRDGUserValidation::ValidateCreateExternalBuffer(FRDGBufferRef Buffer)
 	Buffer->ParentDebugData.bHasBeenProduced = true;
 }
 
+void FRDGUserValidation::ValidatePreallocateResource(FRDGParentResourceRef Resource)
+{
+	checkf(!Resource->ParentDebugData.bHasBeenExtracted,
+		TEXT("Unable to preallocate resource %s. It has already been queued for extraction before being made external. Preallocation ")
+		TEXT("must happen before any extractions because extractions on an external resource are immediate. This is likely not intended behavior."),
+		Resource->Name);
+}
+
 void FRDGUserValidation::ValidateExtractResource(FRDGParentResourceRef Resource)
 {
 	check(Resource);
@@ -112,6 +120,7 @@ void FRDGUserValidation::ValidateExtractResource(FRDGParentResourceRef Resource)
 	 *  resources to be able to emit a proper warning.
 	 */
 	Resource->ParentDebugData.PassAccessCount++;
+	Resource->ParentDebugData.bHasBeenExtracted = true;
 }
 
 void FRDGUserValidation::RemoveUnusedWarning(FRDGParentResourceRef Resource)
@@ -1231,7 +1240,21 @@ void FRDGLogFile::End()
 	}
 	AddBraceEnd();
 
-	AddLine(FString::Printf(TEXT("label=\"%s [Active Passes: %d, Culled Passes: %d, Textures: %d, Buffers: %d]\""), *GraphName, Passes->Num() - PassesCulled.Num(), PassesCulled.Num(), Textures.Num(), Buffers.Num()));
+	uint32 PassesActive = 0;
+	uint32 PassesCulled = 0;
+	for (int32 Index = 0; Index < PassesCulled.Num(); ++Index)
+	{
+		if (PassesCulled[Index])
+		{
+			PassesCulled++;
+		}
+		else
+		{
+			PassesActive++;
+		}
+	}
+
+	AddLine(FString::Printf(TEXT("label=\"%s [Active Passes: %d, Culled Passes: %d, Textures: %d, Buffers: %d]\""), *GraphName, PassesActive, PassesCulled, Textures.Num(), Buffers.Num()));
 
 	AddBraceEnd();
 	check(Indentation.IsEmpty());

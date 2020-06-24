@@ -285,7 +285,7 @@ void AddCopyToResolveTargetPass(
 	GraphBuilder.AddPass(
 		RDG_EVENT_NAME("CopyToResolveTarget(%s -> %s)", InputTexture->Name, OutputTexture->Name),
 		Parameters,
-		ERDGPassFlags::Raster | ERDGPassFlags::SkipRenderPass,
+		ERDGPassFlags::Copy | ERDGPassFlags::Raster | ERDGPassFlags::SkipRenderPass,
 		[InputTexture, OutputTexture, LocalResolveParams](FRHICommandList& RHICmdList)
 	{
 		RHICmdList.CopyToResolveTarget(InputTexture->GetRHI(), OutputTexture->GetRHI(), LocalResolveParams);

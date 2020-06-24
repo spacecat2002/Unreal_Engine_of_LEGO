@@ -363,79 +363,28 @@ FRDGBuilder::FRDGBuilder(FRHICommandListImmediate& InRHICmdList, FRDGEventName I
 	SetupEmptyPass(ProloguePass);
 }
 
-FRDGTextureRef FRDGBuilder::CreateTexture(
-	const FRDGTextureDesc& Desc,
-	const TCHAR* Name,
-	ERDGTextureFlags Flags)
+void FRDGBuilder::PreallocateBuffer(FRDGBufferRef Buffer)
 {
-#if RDG_ENABLE_DEBUG
+	IF_RDG_ENABLE_DEBUG(UserValidation.ValidatePreallocateResource(Buffer));
+	if (!Buffer->bExternal)
 	{
-		checkf(Name, TEXT("Creating a texture requires a valid debug name."));
-		checkf(!EnumHasAnyFlags(Flags, ~ERDGTextureFlags::CreateMask), TEXT("Attempted to create a texture with incompatible flags. Only flags in ERDGTextureFlags::CreateMask are allowed."));
-		UserValidation.ExecuteGuard(TEXT("CreateTexture"), Name);
-
-		// Validate the pixel format.
-		checkf(Desc.Format != PF_Unknown, TEXT("Illegal to create texture %s with an invalid pixel format."), Name);
-		checkf(Desc.Format < PF_MAX, TEXT("Illegal to create texture %s with invalid FPooledRenderTargetDesc::Format."), Name);
-		checkf(GPixelFormats[Desc.Format].Supported,
-			TEXT("Failed to create texture %s with pixel format %s because it is not supported."), Name, GPixelFormats[Desc.Format].Name);
-		checkf(Desc.IsValid(), TEXT("Texture %s was created with an invalid descriptor."), Name);
-
-		const bool bCanHaveUAV = (Desc.Flags & TexCreate_UAV) > 0;
-		const bool bIsMSAA = Desc.NumSamples > 1;
-
-		// D3D11 doesn't allow creating a UAV on MSAA texture.
-		const bool bIsUAVForMSAATexture = bIsMSAA && bCanHaveUAV;
-		checkf(!bIsUAVForMSAATexture, TEXT("TexCreate_UAV is not allowed on MSAA texture %s."), Name);
-	}
-#endif
-
-	FRDGTextureRef Texture = Textures.Allocate(Allocator, Name, Desc, Flags, ERenderTargetTexture::ShaderResource);
-
-	if (EnumHasAnyFlags(Flags, ERDGTextureFlags::Preallocate))
-	{
-		Texture->bPreallocated = 1;
-		Texture->AccessFinal = kDefaultAccessFinal;
-		BeginResourceRHI(GetProloguePassHandle(), Texture);
-	}
-
-	IF_RDG_ENABLE_DEBUG(UserValidation.ValidateCreateTexture(Texture));
-	return Texture;
-}
-
-FRDGBufferRef FRDGBuilder::CreateBuffer(
-	const FRDGBufferDesc& Desc,
-	const TCHAR* Name,
-	ERDGBufferFlags Flags)
-{
-#if RDG_ENABLE_DEBUG
-	{
-		checkf(Name, TEXT("Creating a buffer requires a valid debug name."));
-		checkf(!EnumHasAnyFlags(Flags, ~ERDGBufferFlags::CreateMask), TEXT("Attempted to create a buffer with incompatible flags. Only flags in ERDGBufferFlags::CreateMask are allowed."));
-		UserValidation.ExecuteGuard(TEXT("CreateBuffer"), Name);
-
-		checkf(Desc.GetTotalNumBytes() > 0, TEXT("Creating buffer '%s' is zero bytes in size."), Name);
-
-		const bool bIsByteAddress = (Desc.Usage & BUF_ByteAddressBuffer) == BUF_ByteAddressBuffer;
-
-		if (bIsByteAddress && Desc.UnderlyingType == FRDGBufferDesc::EUnderlyingType::StructuredBuffer)
-		{
-			checkf(Desc.BytesPerElement == 4, TEXT("Creating buffer '%s' as a structured buffer that is also byte addressable, BytesPerElement must be 4! Instead it is %d"), Name, Desc.BytesPerElement);
-		}
-	}
-#endif
-
-	FRDGBufferRef Buffer = Buffers.Allocate(Allocator, Name, Desc, Flags);
-
-	if (EnumHasAnyFlags(Flags, ERDGBufferFlags::Preallocate))
-	{
-		Buffer->bPreallocated = 1;
+		Buffer->bExternal = 1;
 		Buffer->AccessFinal = kDefaultAccessFinal;
 		BeginResourceRHI(GetProloguePassHandle(), Buffer);
+		ExternalBuffers.Add(Buffer->PooledBuffer, Buffer);
 	}
+}
 
-	IF_RDG_ENABLE_DEBUG(UserValidation.ValidateCreateBuffer(Buffer));
-	return Buffer;
+void FRDGBuilder::PreallocateTexture(FRDGTextureRef Texture)
+{
+	IF_RDG_ENABLE_DEBUG(UserValidation.ValidatePreallocateResource(Texture));
+	if (!Texture->bExternal)
+	{
+		Texture->bExternal = 1;
+		Texture->AccessFinal = kDefaultAccessFinal;
+		BeginResourceRHI(GetProloguePassHandle(), Texture);
+		ExternalTextures.Add(Texture->GetRHIUnchecked(), Texture);
+	}
 }
 
 FRDGTextureRef FRDGBuilder::RegisterExternalTexture(
@@ -465,7 +414,6 @@ FRDGTextureRef FRDGBuilder::RegisterExternalTexture(
 	checkf(Name, TEXT("Attempted to register external texture with NULL name."));
 	checkf(ExternalPooledTexture.IsValid(), TEXT("Attempted to register NULL external texture."));
 	checkf(ExternalPooledTexture->IsCompatibleWithRDG(), TEXT("Pooled render target %s is not a compatible type for RDG."), Name);
-	checkf(!EnumHasAnyFlags(Flags, ~ERDGTextureFlags::RegisterMask), TEXT("Attempted to register an external texture %s with incompatible flags. Only flags in ERDGTextureFlags::RegisterMask are allowed."), Name);
 	UserValidation.ExecuteGuard(TEXT("RegisterExternalTexture"), Name);
 #endif
 
@@ -531,7 +479,6 @@ FRDGBufferRef FRDGBuilder::RegisterExternalBuffer(
 #if RDG_ENABLE_DEBUG
 	checkf(Name, TEXT("Attempted to register external buffer with NULL name."));
 	checkf(ExternalPooledBuffer.IsValid(), TEXT("Attempted to register NULL external buffer."));
-	checkf(!EnumHasAnyFlags(Flags, ~ERDGBufferFlags::RegisterMask), TEXT("Attempted to register an external buffer %s with incompatible flags. Only flags in ERDGBufferFlags::RegisterMask are allowed."), Name);
 	UserValidation.ExecuteGuard(TEXT("RegisterExternalBuffer"), Name);
 #endif
 
@@ -1820,7 +1767,7 @@ void FRDGBuilder::BeginResourceRHI(FRDGPassHandle PassHandle, FRDGTextureRef Tex
 		return;
 	}
 
-	check(Texture->ReferenceCount > 0 || EnumHasAnyFlags(Texture->Flags, ERDGTextureFlags::Preallocate) || IsResourceLifetimeExtended());
+	check(Texture->ReferenceCount > 0 || Texture->bExternal || IsResourceLifetimeExtended());
 
 #if RDG_ENABLE_DEBUG
 	{
@@ -1965,7 +1912,7 @@ void FRDGBuilder::BeginResourceRHI(FRDGPassHandle PassHandle, FRDGBufferRef Buff
 		return;
 	}
 
-	check(Buffer->ReferenceCount > 0 || EnumHasAnyFlags(Buffer->Flags, ERDGBufferFlags::Preallocate) || IsResourceLifetimeExtended());
+	check(Buffer->ReferenceCount > 0 || Buffer->bExternal || IsResourceLifetimeExtended());
 
 	TRefCountPtr<FRDGPooledBuffer> PooledBuffer = GRenderGraphResourcePool.FindFreeBuffer(RHICmdList, Buffer->Desc, Buffer->Name);
 
@@ -2071,8 +2018,8 @@ void FRDGBuilder::EndResourceRHI(FRDGPassHandle PassHandle, FRDGTextureRef Textu
 
 		if (Texture->ReferenceCount == 0)
 		{
-			// External / preallocated textures should never release the reference.
-			if (!Texture->bExternal && !Texture->bPreallocated)
+			// External textures should never release the reference.
+			if (!Texture->bExternal)
 			{
 				Texture->Allocation = nullptr;
 			}
@@ -2092,8 +2039,8 @@ void FRDGBuilder::EndResourceRHI(FRDGPassHandle PassHandle, FRDGBufferRef Buffer
 
 		if (Buffer->ReferenceCount == 0)
 		{
-			// External / preallocated buffers should never release the reference.
-			if (!Buffer->bExternal && !Buffer->bPreallocated)
+			// External buffers should never release the reference.
+			if (!Buffer->bExternal)
 			{
 				Buffer->Allocation = nullptr;
 			}

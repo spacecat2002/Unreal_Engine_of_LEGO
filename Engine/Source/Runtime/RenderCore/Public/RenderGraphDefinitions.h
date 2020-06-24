@@ -95,19 +95,7 @@ enum class ERDGBufferFlags : uint8
 	None = 0,
 
 	/** Tag the buffer to survive through frame, that is important for multi GPU alternate frame rendering. */
-	MultiFrame = 1 << 0,
-
-	/** Allocates the buffer immediately in CreateBuffer instead of deferring until execution. This increases memory
-	 *  pressure by pinning the allocation, but allows you to query access to the allocated resource during graph setup,
-	 *  which is useful when porting code to RDG.
-	 */
-	Preallocate = 1 << 1,
-
-	/** Mask of flags that are allowed when calling CreateBuffer. */
-	CreateMask = MultiFrame | Preallocate,
-
-	/** Mask of flags allowed when calling RegisterExternalBuffer. */
-	RegisterMask = MultiFrame
+	MultiFrame = 1 << 0
 };
 ENUM_CLASS_FLAGS(ERDGBufferFlags);
 
@@ -117,19 +105,7 @@ enum class ERDGTextureFlags : uint8
 	None = 0,
 
 	/** Tag the texture to survive through frame, that is important for multi GPU alternate frame rendering. */
-	MultiFrame = 1 << 0,
-
-	/** Allocates the texture immediately in CreateTexture instead of deferring until execution. This increases memory
-	 *  pressure by pinning the allocation, but allows you to query access to the allocated resource during graph setup,
-	 *  which is useful when porting code to RDG.
-	 */
-	Preallocate = 1 << 1,
-
-	/** Mask of flags that are allowed when calling CreateTexture. */
-	CreateMask = MultiFrame | Preallocate,
-
-	/** Mask of flags allowed when calling RegisterExternalTexture. */
-	RegisterMask = MultiFrame
+	MultiFrame = 1 << 0
 };
 ENUM_CLASS_FLAGS(ERDGTextureFlags);
 

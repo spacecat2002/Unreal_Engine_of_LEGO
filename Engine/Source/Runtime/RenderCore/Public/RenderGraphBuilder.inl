@@ -20,6 +20,63 @@ inline FRDGTextureRef FRDGBuilder::FindExternalTexture(IPooledRenderTarget* Exte
 	return nullptr;
 }
 
+inline FRDGTextureRef FRDGBuilder::CreateTexture(
+	const FRDGTextureDesc& Desc,
+	const TCHAR* Name,
+	ERDGTextureFlags Flags)
+{
+#if RDG_ENABLE_DEBUG
+	{
+		checkf(Name, TEXT("Creating a texture requires a valid debug name."));
+		UserValidation.ExecuteGuard(TEXT("CreateTexture"), Name);
+
+		// Validate the pixel format.
+		checkf(Desc.Format != PF_Unknown, TEXT("Illegal to create texture %s with an invalid pixel format."), Name);
+		checkf(Desc.Format < PF_MAX, TEXT("Illegal to create texture %s with invalid FPooledRenderTargetDesc::Format."), Name);
+		checkf(GPixelFormats[Desc.Format].Supported,
+			TEXT("Failed to create texture %s with pixel format %s because it is not supported."), Name, GPixelFormats[Desc.Format].Name);
+		checkf(Desc.IsValid(), TEXT("Texture %s was created with an invalid descriptor."), Name);
+
+		const bool bCanHaveUAV = (Desc.Flags & TexCreate_UAV) > 0;
+		const bool bIsMSAA = Desc.NumSamples > 1;
+
+		// D3D11 doesn't allow creating a UAV on MSAA texture.
+		const bool bIsUAVForMSAATexture = bIsMSAA && bCanHaveUAV;
+		checkf(!bIsUAVForMSAATexture, TEXT("TexCreate_UAV is not allowed on MSAA texture %s."), Name);
+	}
+#endif
+
+	FRDGTextureRef Texture = Textures.Allocate(Allocator, Name, Desc, Flags, ERenderTargetTexture::ShaderResource);
+	IF_RDG_ENABLE_DEBUG(UserValidation.ValidateCreateTexture(Texture));
+	return Texture;
+}
+
+inline FRDGBufferRef FRDGBuilder::CreateBuffer(
+	const FRDGBufferDesc& Desc,
+	const TCHAR* Name,
+	ERDGBufferFlags Flags)
+{
+#if RDG_ENABLE_DEBUG
+	{
+		checkf(Name, TEXT("Creating a buffer requires a valid debug name."));
+		UserValidation.ExecuteGuard(TEXT("CreateBuffer"), Name);
+
+		checkf(Desc.GetTotalNumBytes() > 0, TEXT("Creating buffer '%s' is zero bytes in size."), Name);
+
+		const bool bIsByteAddress = (Desc.Usage & BUF_ByteAddressBuffer) == BUF_ByteAddressBuffer;
+
+		if (bIsByteAddress && Desc.UnderlyingType == FRDGBufferDesc::EUnderlyingType::StructuredBuffer)
+		{
+			checkf(Desc.BytesPerElement == 4, TEXT("Creating buffer '%s' as a structured buffer that is also byte addressable, BytesPerElement must be 4! Instead it is %d"), Name, Desc.BytesPerElement);
+		}
+	}
+#endif
+
+	FRDGBufferRef Buffer = Buffers.Allocate(Allocator, Name, Desc, Flags);
+	IF_RDG_ENABLE_DEBUG(UserValidation.ValidateCreateBuffer(Buffer));
+	return Buffer;
+}
+
 inline FRDGTextureSRVRef FRDGBuilder::CreateSRV(const FRDGTextureSRVDesc& Desc)
 {
 	FRDGTextureRef Texture = Desc.Texture;
@@ -240,7 +297,7 @@ inline void FRDGBuilder::QueueTextureExtraction(FRDGTextureRef Texture, TRefCoun
 	Texture->bCulled = false;
 
 	// Extract the texture immediately if we have the allocation.
-	if (Texture->bPreallocated || Texture->bExternal)
+	if (Texture->bExternal)
 	{
 		*OutTexturePtr = Texture->PooledRenderTarget;
 	}
@@ -266,7 +323,7 @@ inline void FRDGBuilder::QueueBufferExtraction(FRDGBufferRef Buffer, TRefCountPt
 	Buffer->bCulled = false;
 
 	// Extract the texture immediately if we have the allocation.
-	if (Buffer->bPreallocated || Buffer->bExternal)
+	if (Buffer->bExternal)
 	{
 		*OutBufferPtr = Buffer->PooledBuffer;
 	}
@@ -285,28 +342,6 @@ inline void FRDGBuilder::QueueBufferExtraction(FRDGBufferRef Buffer, TRefCountPt
 {
 	QueueBufferExtraction(Buffer, OutBufferPtr);
 	SetBufferAccessFinal(Buffer, AccessFinal);
-}
-
-inline const TRefCountPtr<IPooledRenderTarget>& FRDGBuilder::GetPooledTexture(FRDGTextureRef Texture) const
-{
-#if RDG_ENABLE_DEBUG
-	check(Texture);
-	checkf(Texture->bExternal || Texture->bPreallocated, TEXT("Only an external or preallocated texture can be queried!"));
-	check(Texture->Allocation);
-#endif
-
-	return Texture->Allocation;
-}
-
-inline const TRefCountPtr<FRDGPooledBuffer>& FRDGBuilder::GetPooledBuffer(FRDGBufferRef Buffer) const
-{
-#if RDG_ENABLE_DEBUG
-	check(Buffer);
-	checkf(Buffer->bExternal || Buffer->bPreallocated, TEXT("Only an external or preallocated buffer can be queried!"));
-	check(Buffer->Allocation);
-#endif
-
-	return Buffer->Allocation;
 }
 
 inline void FRDGBuilder::SetTextureAccessFinal(FRDGTextureRef Texture, ERHIAccess AccessFinal)
