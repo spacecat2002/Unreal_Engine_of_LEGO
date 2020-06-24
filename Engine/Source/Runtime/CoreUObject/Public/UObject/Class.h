@@ -2750,10 +2750,7 @@ public:
 	 *
 	 * @return The version of this class that references should be stored to
 	 */
-	virtual UClass* GetAuthoritativeClass()
-	{
-		return this;
-	}
+	virtual UClass* GetAuthoritativeClass();
 	const UClass* GetAuthoritativeClass() const { return const_cast<UClass*>(this)->GetAuthoritativeClass(); }
 
 	/**

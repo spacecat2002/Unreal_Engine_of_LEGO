@@ -5077,6 +5077,11 @@ bool UClass::ReplaceNativeFunction(FName InFName, FNativeFuncPtr InPointer, bool
 
 #endif
 
+UClass* UClass::GetAuthoritativeClass()
+{
+	return this;
+}
+
 void UClass::AddNativeFunction(const ANSICHAR* InName, FNativeFuncPtr InPointer)
 {
 	FName InFName(InName);
