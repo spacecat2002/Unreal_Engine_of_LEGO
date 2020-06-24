@@ -3749,6 +3749,16 @@ void FWrapLayer::GetPhysicalDeviceProperties2KHR(VkResult Result, VkPhysicalDevi
 #endif
 	}
 }
+
+void FWrapLayer::GetPhysicalDeviceFeatures2KHR(VkResult Result, VkPhysicalDevice PhysicalDevice, VkPhysicalDeviceFeatures2KHR* Features)
+{
+	if (Result == VK_RESULT_MAX_ENUM)
+	{
+#if VULKAN_ENABLE_DUMP_LAYER
+		PrintfBegin(FString::Printf(TEXT("vkGetPhysicalDeviceFeatures2KHR(PhysicalDevice=0x%p, Features=0x%p)[...]"), PhysicalDevice, Features));
+#endif
+	}
+}
 #endif
 
 

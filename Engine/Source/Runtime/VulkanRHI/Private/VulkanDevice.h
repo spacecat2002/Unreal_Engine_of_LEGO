@@ -165,13 +165,9 @@ public:
 		return PhysicalFeatures;
 	}
 
-	inline VkBool32 HasSeparateDepthStencilLayouts() const
+	inline bool HasSeparateDepthStencilLayouts() const
 	{
-#if VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS
-		return SeparateDepthStencilLayoutsFeatures.separateDepthStencilLayouts;
-#else
-		return 0;
-#endif
+		return bHasSeparateDepthStencilLayouts;
 	}
 
 	inline bool HasUnifiedMemory() const
@@ -391,10 +387,7 @@ private:
 #endif
 
 	VkPhysicalDeviceFeatures PhysicalFeatures;
-
-#if VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS
-	VkPhysicalDeviceSeparateDepthStencilLayoutsFeaturesKHR SeparateDepthStencilLayoutsFeatures;
-#endif
+	bool bHasSeparateDepthStencilLayouts = false;
 
 	TArray<VkQueueFamilyProperties> QueueFamilyProps;
 	VkFormatProperties FormatProperties[VK_FORMAT_RANGE_SIZE];

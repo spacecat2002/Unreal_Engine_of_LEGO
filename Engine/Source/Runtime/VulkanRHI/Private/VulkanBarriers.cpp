@@ -14,6 +14,7 @@
 static VkAccessFlags GetVkAccessMaskForLayout(VkImageLayout Layout)
 {
 	VkAccessFlags Flags = 0;
+
 	switch (Layout)
 	{
 		case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
@@ -25,93 +26,114 @@ static VkAccessFlags GetVkAccessMaskForLayout(VkImageLayout Layout)
 		case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
 			Flags = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 			break;
+
+		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+#if VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS
+		case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL_KHR:
+		case VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL_KHR:
+#endif
+			Flags = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+			break;
+
 #if VULKAN_SUPPORTS_MAINTENANCE_LAYER2
 		case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR:
 		case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL_KHR:
-#endif
-		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-			Flags = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+			Flags = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 			break;
+#endif
+
 		case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
 			Flags = VK_ACCESS_SHADER_READ_BIT;
 			break;
+
 		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
+#if VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS
+		case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL_KHR:
+		case VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL_KHR:
+#endif
 			Flags = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
 			break;
+
 		case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
 			Flags = VK_ACCESS_MEMORY_READ_BIT;
 			break;
+
 		case VK_IMAGE_LAYOUT_GENERAL:
 		case VK_IMAGE_LAYOUT_UNDEFINED:
 			Flags = 0;
 			break;
+
 		default:
-			check(0);
+			checkNoEntry();
 			break;
 	}
+
 	return Flags;
 }
 
 static VkPipelineStageFlags GetVkStageFlagsForLayout(VkImageLayout Layout)
 {
 	VkAccessFlags Flags = 0;
+
 	switch (Layout)
 	{
 		case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
 			Flags = VK_PIPELINE_STAGE_TRANSFER_BIT;
 			break;
+
 		case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
 			Flags = VK_PIPELINE_STAGE_TRANSFER_BIT;
 			break;
+
 		case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
 			Flags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 			break;
+
+		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+#if VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS
+		case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL_KHR:
+		case VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL_KHR:
+#endif
+			Flags = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+			break;
+
+		case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+			Flags = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+			break;
+
+		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
 #if VULKAN_SUPPORTS_MAINTENANCE_LAYER2
 		case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR:
 		case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL_KHR:
 #endif
-		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-			Flags = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-			Flags = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
+#if VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS
+		case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL_KHR:
+		case VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL_KHR:
+#endif
 			Flags = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 			break;
+
 		case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
 			Flags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
 			break;
+
 		case VK_IMAGE_LAYOUT_GENERAL:
 		case VK_IMAGE_LAYOUT_UNDEFINED:
 			Flags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
 			break;
+
 		default:
 			checkNoEntry();
 			break;
 	}
-	return Flags;
-}
 
-// Given a depth-stencil plane, return the layout which has that plane read-only, and the other plane writable. Used when we
-// merge separate depth and stencil transitions into a single layout transition.
-static VkImageLayout GetReadOnlyLayoutForDSPlaneSlice(uint32 PlaneSlice)
-{
-	switch (PlaneSlice)
-	{
-		case FRHISubresourceRange::kAllSubresources:		return VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-		case FRHISubresourceRange::kDepthPlaneSlice:		return VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL_KHR;
-		case FRHISubresourceRange::kStencilPlaneSlice:		return VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL_KHR;
-		default:
-			checkNoEntry();
-			return VK_IMAGE_LAYOUT_UNDEFINED;
-	}
+	return Flags;
 }
 
 //
 // Get the Vulkan stage flags, access flags and image layout (if relevant) corresponding to an ERHIAccess value from the public API.
 //
-static void GetVkStageAndAccessFlags(ERHIAccess RHIAccess, FRHITransitionInfo::EType ResourceType, uint32 PlaneSlice, bool bIsDepthStencil, VkPipelineStageFlags& StageFlags, VkAccessFlags& AccessFlags, VkImageLayout& Layout, bool bIsSourceState)
+static void GetVkStageAndAccessFlags(ERHIAccess RHIAccess, FRHITransitionInfo::EType ResourceType, bool bIsDepthStencil, VkPipelineStageFlags& StageFlags, VkAccessFlags& AccessFlags, VkImageLayout& Layout, bool bIsSourceState)
 {
 	// From Vulkan's point of view, when performing a multisample resolve via a render pass attachment, resolve targets are the same as render targets .
 	// The caller signals this situation by setting both the RTV and ResolveDst flags, and we simply remove ResolveDst in that case,
@@ -123,7 +145,10 @@ static void GetVkStageAndAccessFlags(ERHIAccess RHIAccess, FRHITransitionInfo::E
 	}
 
 	Layout = VK_IMAGE_LAYOUT_UNDEFINED;
-	const VkImageLayout SRVLayout = bIsDepthStencil ? GetReadOnlyLayoutForDSPlaneSlice(PlaneSlice) : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	// The layout to use if SRV access is requested. In case of depth/stencil buffers, we don't need to worry about different states for the separate aspects, since that's handled explicitly elsewhere,
+	// and this function is never called for depth-only or stencil-only transitions.
+	const VkImageLayout SRVLayout = bIsDepthStencil ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
 	// States which cannot be combined.
 	switch (RHIAccess)
@@ -201,29 +226,13 @@ static void GetVkStageAndAccessFlags(ERHIAccess RHIAccess, FRHITransitionInfo::E
 			return;
 	}
 
-	// Some high level code combines DSVRead with DSVWrite. That's the same as DSVWrite from our point of view, so
-	// if DSVWrite is set, we ignore everything else.
+	// If DSVWrite is set, we ignore everything else because it decides the layout.
 	if (EnumHasAnyFlags(RHIAccess, ERHIAccess::DSVWrite))
 	{
 		check(bIsDepthStencil);
 		StageFlags = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 		AccessFlags = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-		switch (PlaneSlice)
-		{
-			case FRHISubresourceRange::kAllSubresources:
-				Layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-				break;
-			case FRHISubresourceRange::kDepthPlaneSlice:
-				Layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL_KHR;
-				break;
-			case FRHISubresourceRange::kStencilPlaneSlice:
-				Layout = VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL_KHR;
-				break;
-			default:
-				checkNoEntry();
-				Layout = VK_IMAGE_LAYOUT_UNDEFINED;
-				break;
-		}
+		Layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 		return;
 	}
 
@@ -269,7 +278,7 @@ static void GetVkStageAndAccessFlags(ERHIAccess RHIAccess, FRHITransitionInfo::E
 
 		// If any of the SRV flags is set, the code below will set Layout to SRVLayout again, but it's fine since
 		// SRVLayout takes into account bIsDepthStencil and ends up being the same as what we set here.
-		Layout = GetReadOnlyLayoutForDSPlaneSlice(PlaneSlice);
+		Layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
 		ProcessedRHIFlags |= (uint32)ERHIAccess::DSVRead;
 	}
@@ -367,7 +376,7 @@ static void GetDepthStencilStageAndAccessFlags(ERHIAccess DepthAccess, ERHIAcces
 			}
 			else
 			{
-				Layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL;
+				Layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL_KHR;
 			}
 		}
 		else
@@ -375,7 +384,7 @@ static void GetDepthStencilStageAndAccessFlags(ERHIAccess DepthAccess, ERHIAcces
 			if (EnumHasAnyFlags(StencilAccess, ERHIAccess::DSVWrite))
 			{
 				AccessFlags |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-				Layout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL;
+				Layout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR;
 			}
 			else
 			{
@@ -399,8 +408,7 @@ static void GetDepthStencilStageAndAccessFlags(ERHIAccess DepthAccess, ERHIAcces
 	{
 		// If it's not a renderable state, they better both be in the same state.
 		check(DepthAccess == StencilAccess);
-		// PlaneSlice shouldn't be used in this case, so we pass kAllSubresources.
-		GetVkStageAndAccessFlags(DepthAccess, FRHITransitionInfo::EType::Texture, FRHISubresourceRange::kAllSubresources, true, StageFlags, AccessFlags, Layout, bIsSourceState);
+		GetVkStageAndAccessFlags(DepthAccess, FRHITransitionInfo::EType::Texture, true, StageFlags, AccessFlags, Layout, bIsSourceState);
 	}
 }
 
@@ -518,11 +526,11 @@ void FVulkanDynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipe
 		VkAccessFlags SrcAccessFlags, DstAccessFlags;
 		VkImageLayout SrcLayout, DstLayout;
 
-		// If the device doesn't support separate depth-stencil layouts, we must merge depth-stencil subresource transitions so we only do one barrier on the image.
-		if ((Info.PlaneSlice != FRHISubresourceRange::kAllSubresources) && !Device->HasSeparateDepthStencilLayouts() && (EnumHasAnyFlags(Info.AccessBefore, DepthStencilFlags) || EnumHasAnyFlags(Info.AccessAfter, DepthStencilFlags)))
-		{
-			check(Texture && Texture->Surface.IsDepthOrStencilAspect());
+		const bool bIsDepthStencil = Texture && Texture->Surface.IsDepthOrStencilAspect();
 
+		// If the device doesn't support separate depth-stencil layouts, we must merge depth-stencil subresource transitions so we only do one barrier on the image.
+		if (bIsDepthStencil && Info.PlaneSlice != FRHISubresourceRange::kAllSubresources)
+		{
 			int32 Index = DSSubresTransitions.IndexOfByPredicate([Texture](const FDepthStencilSubresTransition& Entry) -> bool {
 				return Entry.Texture->Surface.Image == Texture->Surface.Image;
 			});
@@ -570,10 +578,8 @@ void FVulkanDynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipe
 		}
 		else
 		{
-			// This handles depth-stencil subresources correctly, provided that the device supports separate depth-stencil layouts.
-			const bool bIsDepthStencil = Texture && Texture->Surface.IsDepthOrStencilAspect();
-			GetVkStageAndAccessFlags(Info.AccessBefore, UnderlyingType, Info.PlaneSlice, bIsDepthStencil, SrcStageMask, SrcAccessFlags, SrcLayout, true);
-			GetVkStageAndAccessFlags(Info.AccessAfter, UnderlyingType, Info.PlaneSlice, bIsDepthStencil, DstStageMask, DstAccessFlags, DstLayout, false);
+			GetVkStageAndAccessFlags(Info.AccessBefore, UnderlyingType, bIsDepthStencil, SrcStageMask, SrcAccessFlags, SrcLayout, true);
+			GetVkStageAndAccessFlags(Info.AccessAfter, UnderlyingType, bIsDepthStencil, DstStageMask, DstAccessFlags, DstLayout, false);
 		}
 
 		// Add the stages affected by this transition.
@@ -593,34 +599,8 @@ void FVulkanDynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipe
 			continue;
 		}
 
-		VkImageAspectFlags AspectMask;
-
-		if (Info.PlaneSlice == FRHISubresourceRange::kAllSubresources || !Device->HasSeparateDepthStencilLayouts())
-		{
-			// If the device doesn't support separate depth-stencil layouts, we can get here with PlaneSlice set to depth or stencil
-			// when the code above merges the subresource transitions into a single transition. Use the full aspect mask in that case.
-			AspectMask = Texture->Surface.GetFullAspectMask();
-		}
-		else
-		{
-			// The device can do separate depth-stencil layouts, so set the correct aspect mask.
-			switch (Info.PlaneSlice)
-			{
-				case FRHISubresourceRange::kDepthPlaneSlice:
-					AspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-					break;
-				case FRHISubresourceRange::kStencilPlaneSlice:
-					AspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
-					break;
-				default:
-					checkNoEntry();
-					AspectMask = Texture->Surface.GetFullAspectMask();
-					break;
-			}
-		}
-
 		VkImageSubresourceRange SubresRange;
-		SetupSubresourceRange(SubresRange, Info, AspectMask);
+		SetupSubresourceRange(SubresRange, Info, Texture->Surface.GetFullAspectMask());
 
 		VkImageMemoryBarrier& ImgBarrier = Data->ImageBarriers.AddDefaulted_GetRef();
 		SetupImageBarrier(ImgBarrier, Texture->Surface.Image, SrcAccessFlags, DstAccessFlags, SrcLayout, DstLayout, SubresRange);
@@ -628,8 +608,7 @@ void FVulkanDynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipe
 		Data->Textures.Add(Texture);
 	}
 
-	// Process any depth-stencil transitions which specify a single sub-resource. We only get here if the device doesn't
-	// support separate depth-stencil layouts (if it does, nothing is ever pushed into DSSubresTransitions).
+	// Process any depth-stencil transitions which specify a single sub-resource.
 	for (const FDepthStencilSubresTransition& PendingTransition : DSSubresTransitions)
 	{
 		VkPipelineStageFlags SrcStageMask, DstStageMask;
@@ -783,8 +762,8 @@ void FVulkanCommandListContext::RHIEndTransitions(TArrayView<const FRHITransitio
 				if (Layout.AreAllSubresourcesSameLayout())
 				{
 					SrcLayout = Layout.MainLayout;
-					SrcAccessFlags = GetVkAccessMaskForLayout(Layout.MainLayout);
-					RealSrcStageMask |= GetVkStageFlagsForLayout(Layout.MainLayout);
+					SrcAccessFlags = GetVkAccessMaskForLayout(SrcLayout);
+					RealSrcStageMask |= GetVkStageFlagsForLayout(SrcLayout);
 				}
 				else
 				{
@@ -852,8 +831,8 @@ void FVulkanPipelineBarrier::AddImageAccessTransition(const FVulkanSurface& Surf
 	VkPipelineStageFlags ImgSrcStage, ImgDstStage;
 	VkAccessFlags SrcAccessFlags, DstAccessFlags;
 	VkImageLayout SrcLayout, DstLayout;
-	GetVkStageAndAccessFlags(SrcAccess, FRHITransitionInfo::EType::Texture, FRHISubresourceRange::kAllSubresources, bIsDepthStencil, ImgSrcStage, SrcAccessFlags, SrcLayout, true);
-	GetVkStageAndAccessFlags(DstAccess, FRHITransitionInfo::EType::Texture, FRHISubresourceRange::kAllSubresources, bIsDepthStencil, ImgDstStage, DstAccessFlags, DstLayout, false);
+	GetVkStageAndAccessFlags(SrcAccess, FRHITransitionInfo::EType::Texture, bIsDepthStencil, ImgSrcStage, SrcAccessFlags, SrcLayout, true);
+	GetVkStageAndAccessFlags(DstAccess, FRHITransitionInfo::EType::Texture, bIsDepthStencil, ImgDstStage, DstAccessFlags, DstLayout, false);
 
 	SrcStageMask |= ImgSrcStage;
 	DstStageMask |= ImgDstStage;
@@ -1155,6 +1134,7 @@ void FVulkanLayoutManager::BeginRenderPass(FVulkanCommandListContext& Context, F
 
 		FVulkanSurface& Surface = FVulkanTextureBase::Cast(DSTexture)->Surface;
 		VkImageLayout& DSLayout = FindOrAddLayoutRW(Surface, VK_IMAGE_LAYOUT_UNDEFINED);
+
 		if (DSLayout != ExpectedLayout)
 		{
 			// The high level code doesn't transition writable depth/stencil to readable, it expects it to work.
@@ -1163,10 +1143,10 @@ void FVulkanLayoutManager::BeginRenderPass(FVulkanCommandListContext& Context, F
 			{
 			case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
 				// Both aspects were writable, any destination state with at least one read-only aspect is valid.
-				ensure(ExpectedLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL || ExpectedLayout == VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL || ExpectedLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL);
+				ensure(ExpectedLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL || ExpectedLayout == VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR || ExpectedLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL_KHR);
 				break;
-			case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL:
-			case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL:
+			case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR:
+			case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL_KHR:
 				// Only one aspect is writable, the only valid destination is read-only for both aspects.
 				ensure(ExpectedLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
 				break;

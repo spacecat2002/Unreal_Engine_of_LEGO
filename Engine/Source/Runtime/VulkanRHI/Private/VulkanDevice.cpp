@@ -314,6 +314,17 @@ void FVulkanDevice::CreateDevice()
 
 	FVulkanPlatform::EnablePhysicalDeviceFeatureExtensions(DeviceInfo);
 
+#if VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS
+	if (bHasSeparateDepthStencilLayouts)
+	{
+		VkPhysicalDeviceSeparateDepthStencilLayoutsFeaturesKHR SeparateDepthStencilLayoutsFeatures;
+		ZeroVulkanStruct(SeparateDepthStencilLayoutsFeatures, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SEPARATE_DEPTH_STENCIL_LAYOUTS_FEATURES_KHR);
+		SeparateDepthStencilLayoutsFeatures.separateDepthStencilLayouts = VK_TRUE;
+		SeparateDepthStencilLayoutsFeatures.pNext = const_cast<void*>(DeviceInfo.pNext);
+		DeviceInfo.pNext = &SeparateDepthStencilLayoutsFeatures;
+	}
+#endif
+
 	// Create the device
 	VkResult Result = VulkanRHI::vkCreateDevice(Gpu, &DeviceInfo, VULKAN_CPU_ALLOCATOR, &Device);
 	if (Result == VK_ERROR_INITIALIZATION_FAILED)
@@ -810,6 +821,18 @@ bool FVulkanDevice::QueryGPU(int32 DeviceIndex)
 #endif
 
 		VulkanRHI::vkGetPhysicalDeviceProperties2KHR(Gpu, &GpuProps2);
+
+#if VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS
+		// Disabled but kept for reference. The barriers code doesn't currently use separate transitions for depth and stencil.
+		//VkPhysicalDeviceFeatures2KHR PhysicalFeatures2;
+		//ZeroVulkanStruct(PhysicalFeatures2, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR);
+		//VkPhysicalDeviceSeparateDepthStencilLayoutsFeaturesKHR SeparateDepthStencilLayoutsFeatures;
+		//ZeroVulkanStruct(SeparateDepthStencilLayoutsFeatures, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SEPARATE_DEPTH_STENCIL_LAYOUTS_FEATURES_KHR);
+		//PhysicalFeatures2.pNext = &SeparateDepthStencilLayoutsFeatures;
+		//VulkanDynamicAPI::vkGetPhysicalDeviceFeatures2KHR(Gpu, &PhysicalFeatures2);
+		//bHasSeparateDepthStencilLayouts = SeparateDepthStencilLayoutsFeatures.separateDepthStencilLayouts ? true : false;
+#endif
+
 	}
 #endif
 
@@ -884,22 +907,6 @@ void FVulkanDevice::InitGPU(int32 DeviceIndex)
 	VulkanRHI::vkGetPhysicalDeviceFeatures(Gpu, &PhysicalFeatures);
 
 	UE_LOG(LogVulkanRHI, Display, TEXT("Using Device %d: Geometry %d Tessellation %d"), DeviceIndex, PhysicalFeatures.geometryShader, PhysicalFeatures.tessellationShader);
-
-#if VULKAN_SUPPORTS_PHYSICAL_DEVICE_PROPERTIES2
-	VkPhysicalDeviceFeatures2KHR PhysicalFeatures2;
-	ZeroVulkanStruct(PhysicalFeatures2, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR);
-#if VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS
-	ZeroVulkanStruct(SeparateDepthStencilLayoutsFeatures, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SEPARATE_DEPTH_STENCIL_LAYOUTS_FEATURES_KHR);
-	PhysicalFeatures2.pNext = &SeparateDepthStencilLayoutsFeatures;
-#endif
-	if (VulkanDynamicAPI::vkGetPhysicalDeviceFeatures2KHR)
-	{
-		VulkanDynamicAPI::vkGetPhysicalDeviceFeatures2KHR(Gpu, &PhysicalFeatures2);
-		// FIXME: if SeparateDepthStencilLayoutsFeatures.separateDepthStencilLayouts is true, we also need to enable the extension.
-		// FIXME: The layout tracking code doesn't work correctly with separate layouts, so we force-disable this for now.
-		SeparateDepthStencilLayoutsFeatures.separateDepthStencilLayouts = 0;
-	}
-#endif
 
 	CreateDevice();
 
