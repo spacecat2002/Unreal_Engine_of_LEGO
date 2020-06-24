@@ -3397,7 +3397,7 @@ namespace WindowsMixedReality
 		}
 	}
 
-	bool MixedRealityInterop::SaveAnchor(const wchar_t* anchorId)
+	bool MixedRealityInterop::SaveAnchor(const wchar_t* saveId, const wchar_t* anchorId)
 	{
 		if (!IsSpatialAnchorStoreLoaded())
 		{
@@ -3407,7 +3407,7 @@ namespace WindowsMixedReality
 		
 		if (m_spatialAnchorHelper)
 		{
-			return m_spatialAnchorHelper->SaveAnchor(anchorId);
+			return m_spatialAnchorHelper->SaveAnchor(saveId, anchorId);
 		}
 		else
 		{
@@ -3416,7 +3416,7 @@ namespace WindowsMixedReality
 		}
 	}
 
-	void MixedRealityInterop::RemoveSavedAnchor(const wchar_t* anchorId)
+	void MixedRealityInterop::RemoveSavedAnchor(const wchar_t* saveId)
 	{
 		if (!IsSpatialAnchorStoreLoaded())
 		{
@@ -3426,7 +3426,7 @@ namespace WindowsMixedReality
 		
 		if (m_spatialAnchorHelper)
 		{
-			m_spatialAnchorHelper->RemoveSavedAnchor(anchorId);
+			m_spatialAnchorHelper->RemoveSavedAnchor(saveId);
 		}
 		else
 		{
@@ -3434,26 +3434,7 @@ namespace WindowsMixedReality
 		}
 	}
 
-	bool MixedRealityInterop::SaveAnchors()
-	{
-		if (!IsSpatialAnchorStoreLoaded())
-		{
-			Log(L"SaveAnchors: Anchor Store is not laoded!  Doing nothing.");
-			return false;
-		}
-		
-		if (m_spatialAnchorHelper)
-		{
-			return m_spatialAnchorHelper->SaveAnchors();
-		}
-		else
-		{
-			Log(L"SaveAnchors: m_spatialAnchorHelper is null!  Doing nothing.");
-			return false;
-		}
-	}
-
-	bool MixedRealityInterop::LoadAnchors(std::function<void(const wchar_t* text)> anchorIdWritingFunctionPointer)
+	bool MixedRealityInterop::LoadAnchors(std::function<void(const wchar_t* saveId, const wchar_t* anchorId)> anchorIdWritingFunctionPointer)
 	{
 		if (!IsSpatialAnchorStoreLoaded())
 		{

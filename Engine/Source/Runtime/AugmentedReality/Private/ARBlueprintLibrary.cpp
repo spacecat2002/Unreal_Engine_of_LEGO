@@ -245,6 +245,16 @@ UARPin* UARBlueprintLibrary::PinComponentToTraceResult( USceneComponent* Compone
 	return nullptr;
 }
 
+bool UARBlueprintLibrary::PinComponentToARPin(USceneComponent* ComponentToPin, UARPin* Pin)
+{
+	auto ARSystem = GetARSystem();
+	if (!ARSystem.IsValid())
+	{
+		return false;
+	}
+	return ARSystem.Pin()->PinComponent(ComponentToPin, Pin);
+}
+
 void UARBlueprintLibrary::UnpinComponent( USceneComponent* ComponentToUnpin )
 {
 	auto ARSystem = GetARSystem();
@@ -269,10 +279,79 @@ void UARBlueprintLibrary::RemovePin( UARPin* PinToRemove )
 	auto ARSystem = GetARSystem();
 	if (ARSystem.IsValid())
 	{
-		return ARSystem.Pin()->RemovePin( PinToRemove );
+		ARSystem.Pin()->RemovePin( PinToRemove );
 	}
 }
 
+bool UARBlueprintLibrary::IsARPinLocalStoreSupported()
+{
+	bool bSuccess = false;
+
+	auto ARSystem = GetARSystem();
+	if (ARSystem.IsValid())
+	{
+		bSuccess = ARSystem.Pin()->IsLocalPinSaveSupported();
+	}
+
+	return bSuccess;
+}
+
+bool UARBlueprintLibrary::IsARPinLocalStoreReady()
+{
+	bool bSuccess = false;
+
+	auto ARSystem = GetARSystem();
+	if (ARSystem.IsValid())
+	{
+		bSuccess = ARSystem.Pin()->ArePinsReadyToLoad();
+	}
+
+	return bSuccess;
+}
+
+TMap<FName, UARPin*> UARBlueprintLibrary::LoadARPinsFromLocalStore()
+{
+	TMap<FName, UARPin*> LoadedPins;
+
+	auto ARSystem = GetARSystem();
+	if (ARSystem.IsValid())
+	{
+		ARSystem.Pin()->LoadARPins(LoadedPins);
+	}
+
+	return LoadedPins;
+}
+
+bool UARBlueprintLibrary::SaveARPinToLocalStore(FName InSaveName, UARPin* InPin)
+{
+	bool bSuccess = false;
+
+	auto ARSystem = GetARSystem();
+	if (ARSystem.IsValid())
+	{
+		bSuccess = ARSystem.Pin()->SaveARPin(InSaveName, InPin);
+	}
+
+	return bSuccess;
+}
+
+void UARBlueprintLibrary::RemoveARPinFromLocalStore(FName InSaveName)
+{
+	auto ARSystem = GetARSystem();
+	if (ARSystem.IsValid())
+	{
+		ARSystem.Pin()->RemoveSavedARPin(InSaveName);
+	}
+}
+
+void UARBlueprintLibrary::RemoveAllARPinsFromLocalStore()
+{
+	auto ARSystem = GetARSystem();
+	if (ARSystem.IsValid())
+	{
+		ARSystem.Pin()->RemoveAllSavedARPins();
+	}
+}
 
 
 void UARBlueprintLibrary::RegisterAsARSystem(const TSharedRef<FARSupportInterface , ESPMode::ThreadSafe>& NewARSystem)

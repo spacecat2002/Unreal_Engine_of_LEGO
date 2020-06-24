@@ -188,27 +188,86 @@ public:
 	 * @return an object representing the pin that connects \c ComponentToPin component to a real-world
 	 *         location and optionally to the \c TrackedGeometry.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Pin", meta = (AdvancedDisplay="3", Keywords = "ar augmentedreality augmented reality tracking pin tracked geometry pinning anchor"))
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|ARPin", meta = (AdvancedDisplay="3", Keywords = "ar augmentedreality augmented reality tracking arpin tracked geometry pinning anchor"))
 	static UARPin* PinComponent( USceneComponent* ComponentToPin, const FTransform& PinToWorldTransform, UARTrackedGeometry* TrackedGeometry = nullptr, const FName DebugName = NAME_None );
 	
 	/**
 	 * A convenient version of \c PinComponent() that can be used in conjunction
 	 * with a result of a \c LineTraceTrackedObjects call.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Pin", meta = (AdvancedDisplay="2", Keywords = "ar augmentedreality augmented reality tracking pin tracked geometry pinning anchor"))
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|ARPin", meta = (AdvancedDisplay="2", Keywords = "ar augmentedreality augmented reality tracking arpin tracked geometry pinning anchor"))
 	static UARPin* PinComponentToTraceResult( USceneComponent* ComponentToPin, const FARTraceResult& TraceResult, const FName DebugName = NAME_None );
 	
+	/**
+	 * Associate a component with an ARPin, so that its transform will be updated by the pin.  Any previously associated component will be detached.
+	 *
+	 * @param ComponentToPin	The Component which will be updated by the Pin.
+	 * @param Pin				The Pin which the component will be updated by.
+	 *
+	 * @return					True if the operation was successful.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|ARPin", meta = (Keywords = "ar augmentedreality augmented reality tracking arpin tracked geometry pinning anchor"))
+	static bool PinComponentToARPin(USceneComponent* ComponentToPin, UARPin* Pin);
+
 	/** Given a pinned \c ComponentToUnpin, remove its attachment to the real world. */
-	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Pin", meta = (Keywords = "ar augmentedreality augmented reality tracking pin tracked geometry pinning anchor"))
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|ARPin", meta = (Keywords = "ar augmentedreality augmented reality tracking arpin tracked geometry pinning anchor"))
 	static void UnpinComponent( USceneComponent* ComponentToUnpin );
 	
 	/** Remove a pin such that it no longer updates the associated component. */
-	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Pin", meta = (Keywords = "ar augmentedreality augmented reality tracking pin tracked geometry pinning anchor"))
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|ARPin", meta = (Keywords = "ar augmentedreality augmented reality tracking arpin tracked geometry pinning anchor"))
 	static void RemovePin( UARPin* PinToRemove );
 	
 	/** Get a list of all the \c UARPin objects that the Augmented Reality session is currently using to connect virtual objects to real-world, tracked locations. */
-	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Pin", meta = (Keywords = "ar augmentedreality augmented reality tracking pin anchor"))
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|ARPin", meta = (Keywords = "ar augmentedreality augmented reality tracking arpin anchor"))
 	static TArray<UARPin*> GetAllPins();
+
+	/**
+	 * Is ARPin Local Store Supported
+	 *
+	 * @return					True if Local Pin saving is supported by the device/platform.
+	 */
+	UFUNCTION(BlueprintPure, Category = "AR AugmentedReality|ARPin", meta = (Keywords = "ar augmentedreality augmented reality tracking arpin anchor LocalStore"))
+	static bool IsARPinLocalStoreSupported();
+
+	/**
+	 * Is ARPin Local Store Ready
+	 *
+	 * @return					True if local store is ready for use.
+	 */
+	UFUNCTION(BlueprintPure, Category = "AR AugmentedReality|ARPin", meta = (Keywords = "ar augmentedreality augmented reality tracking arpin anchor LocalStore"))
+	static bool IsARPinLocalStoreReady();
+
+	/**
+	 * Load all ARPins from local save
+	 * Note: Multiple loads of a saved pin may result in duplicate pins OR overwritten pins.  It is reccomended to only load once.
+	 *
+	 * @return					Map of SaveName:ARPin.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|ARPin", meta = (Keywords = "ar augmentedreality augmented reality tracking arpin anchor LocalStore"))
+	static TMap<FName, UARPin*> LoadARPinsFromLocalStore();
+	
+	/**
+	 * Save an ARPin to local store
+	 * @param InName			The save name for the pin.
+	 * @param InPin				The ARPin which will be saved to the local store.
+	 *
+	 * @return					True if saved successfully.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|ARPin", meta = (Keywords = "ar augmentedreality augmented reality tracking arpin anchor LocalStore"))
+	static bool SaveARPinToLocalStore(FName InSaveName, UARPin* InPin);
+	
+	/**
+	 * Remove an ARPin from the local store
+	 * @param InName			The save name to remove.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|ARPin", meta = (Keywords = "ar augmentedreality augmented reality tracking arpin anchor LocalStore"))
+	static void RemoveARPinFromLocalStore(FName InSaveName);
+
+	/**
+	 * Remove all ARPins from the local store
+	 */
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|ARPin", meta = (Keywords = "ar augmentedreality augmented reality tracking arpin anchor LocalStore"))
+	static void RemoveAllARPinsFromLocalStore();
 	
 	/** @return a list of all the tracked planes as currently seen by the Augmented Reality system */
 	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Tracking", meta = (DisplayName="Get All AR Tracked Planes", Keywords = "ar augmentedreality augmented reality tracking geometry anchor"))

@@ -136,7 +136,12 @@ public:
 
 	/** @return the best available light estimate; nullptr if light estimation is inactive or not available */
 	virtual UARLightEstimate* OnGetCurrentLightEstimate() const = 0;
-	
+
+	/**
+	 * Given a scene component find the ARPin which it is pinned by, if any.
+	 */
+	virtual UARPin* FindARPinByComponent(const USceneComponent* Component) const = 0;
+
 	/**
 	 * Pin an Unreal Component to a location in the world.
 	 * Optionally, associate with a TrackedGeometry to receive transform updates that effectively attach the component to the geometry.
@@ -145,6 +150,15 @@ public:
 	 */
 	virtual UARPin* OnPinComponent(USceneComponent* ComponentToPin, const FTransform& PinToWorldTransform, UARTrackedGeometry* TrackedGeometry = nullptr, const FName DebugName = NAME_None) = 0;
 	
+	/**
+	 * Pin a component to an existing ARPin.  
+	 * If the component is alreayd pinned it will first be removed from that pin, which will be left empty.
+	 * If the target Pin is already in use the component previously pinned to it will be unpinned.
+	 *
+	 * @return true if the operation was successful
+	 */
+	virtual bool OnPinComponentToARPin(USceneComponent* ComponentToPin, UARPin* Pin) = 0;
+
 	/**
 	 * Given a pin, remove it and stop updating the associated component based on the tracked geometry.
 	 * The component in question will continue to track with the world, but will not get updates specific to a TrackedGeometry.
@@ -221,45 +235,37 @@ public:
 	 */
 	DEFINE_AR_DELEGATE_ONE_PARAM(OnTrackableRemoved, UARTrackedGeometry* /* Removed */);
 
+	// ARPin Local Store support.
+	// Some Platforms/Devices have the ability to persist AR Anchors (real world positiosn) to the device or user account.
+	// They are saved and loaded with a string identifier.
 
-	virtual UARPin* CreateNamedARPin(FName Name, const FTransform& WorldTransform)
+	virtual bool IsLocalPinSaveSupported() const
 	{
-		//UE_LOG(LogHMD, Log, TEXT("Native AR Pins are not supported on this platform"));
-
-		return nullptr;
-	}
-
-	virtual bool PinComponent(USceneComponent* ComponentToPin, UARPin* Pin)
-	{
-		//UE_LOG(LogHMD, Log, TEXT("Native AR Pins are not supported on this platform"));
-
 		return false;
 	}
 
 	virtual bool ArePinsReadyToLoad()
 	{
-		//UE_LOG(LogHMD, Log, TEXT("Native AR Pins are not supported on this platform"));
-
+		//UE_LOG(LogHMD, Log, TEXT("Pin Local Store is not supported on this platform"));
 		return false;
 	}
 
 	virtual void LoadARPins(TMap<FName, UARPin*>& LoadedPins)
 	{
-		//UE_LOG(LogHMD, Log, TEXT("Native AR Pins are not supported on this platform"));
+		//UE_LOG(LogHMD, Log, TEXT("Pin Local Store is not supported on this platform"));
 	}
-	virtual bool SaveARPin(FName InName)
+	virtual bool SaveARPin(FName InName, UARPin* InPin)
 	{
-		//UE_LOG(LogHMD, Log, TEXT("Native AR Pins are not supported on this platform"));
-
+		//UE_LOG(LogHMD, Log, TEXT("Pin Local Store is not supported on this platform"));
 		return false;
 	}
 	virtual void RemoveSavedARPin(FName InName)
 	{
-		//UE_LOG(LogHMD, Log, TEXT("Native AR Pins are not supported on this platform"));
+		//UE_LOG(LogHMD, Log, TEXT("Pin Local Store is not supported on this platform"));
 	}
 	virtual void RemoveAllSavedARPins()
 	{
-		//UE_LOG(LogHMD, Log, TEXT("Native AR Pins are not supported on this platform"));
+		//UE_LOG(LogHMD, Log, TEXT("Pin Local Store is not supported on this platform"));
 	}
 };
 

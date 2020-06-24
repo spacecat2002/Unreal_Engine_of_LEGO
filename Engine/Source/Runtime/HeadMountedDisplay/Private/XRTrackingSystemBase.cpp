@@ -153,38 +153,6 @@ void FXRTrackingSystemBase::GetMotionControllerVisualizationData(UObject* WorldC
 	MotionControllerVisualizationData.bValid = false;
 }
 
-UARPin* FXRTrackingSystemBase::CreateNamedARPin(FName Name, const FTransform& WorldTransform)
-{
-	return ARCompositionComponent->CreateNamedARPin(Name, WorldTransform);
-}
-
-bool FXRTrackingSystemBase::PinComponent(USceneComponent* ComponentToPin, UARPin* Pin)
-{
-	return ARCompositionComponent->PinComponent(ComponentToPin, Pin);
-}
-
-bool FXRTrackingSystemBase::ArePinsReadyToLoad()
-{
-	return ARCompositionComponent->ArePinsReadyToLoad();
-}
-
-void FXRTrackingSystemBase::LoadARPins(TMap<FName, UARPin*>& LoadedPins)
-{
-	ARCompositionComponent->LoadARPins(LoadedPins);
-}
-bool FXRTrackingSystemBase::SaveARPin(FName InName)
-{
-	return ARCompositionComponent->SaveARPin(InName);
-}
-void FXRTrackingSystemBase::RemoveSavedARPin(FName InName)
-{
-	ARCompositionComponent->RemoveSavedARPin(InName);
-}
-void FXRTrackingSystemBase::RemoveAllSavedARPins()
-{
-	ARCompositionComponent->RemoveAllSavedARPins();
-}
-
 
 class IXRLoadingScreen* FXRTrackingSystemBase::GetLoadingScreen()
 {

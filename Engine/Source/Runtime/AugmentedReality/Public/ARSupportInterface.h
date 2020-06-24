@@ -140,11 +140,11 @@ public:
 	// End helpers
 
 	/** Pin Interface */
-	UARPin* CreateNamedARPin(FName Name, const FTransform& WorldTransform);
 	bool PinComponent(USceneComponent* ComponentToPin, UARPin* Pin);
+	bool IsLocalPinSaveSupported() const;
 	bool ArePinsReadyToLoad();
 	void LoadARPins(TMap<FName, UARPin*>& LoadedPins);
-	bool SaveARPin(FName InName);
+	bool SaveARPin(FName InName, UARPin* InPin);
 	void RemoveSavedARPin(FName InName);
 	void RemoveAllSavedARPins();
 

@@ -333,20 +333,20 @@ void FARSupportInterface ::AddReferencedObjects(FReferenceCollector& Collector)
 	}
 }
 
-UARPin* FARSupportInterface::CreateNamedARPin(FName Name, const FTransform& WorldTransform)
-{
-	if (ARImplemention)
-	{
-		return ARImplemention->CreateNamedARPin(Name, WorldTransform);
-	}
-	return nullptr;
-}
-
 bool FARSupportInterface::PinComponent(USceneComponent* ComponentToPin, UARPin* Pin)
 {
 	if (ARImplemention)
 	{
-		return ARImplemention->PinComponent(ComponentToPin, Pin);
+		return ARImplemention->OnPinComponentToARPin(ComponentToPin, Pin);
+	}
+	return false;
+}
+
+bool FARSupportInterface::IsLocalPinSaveSupported() const
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->IsLocalPinSaveSupported();
 	}
 	return false;
 }
@@ -368,11 +368,11 @@ void FARSupportInterface::LoadARPins(TMap<FName, UARPin*>& LoadedPins)
 	}
 }
 
-bool FARSupportInterface::SaveARPin(FName InName)
+bool FARSupportInterface::SaveARPin(FName InName, UARPin* InPin)
 {
 	if (ARImplemention)
 	{
-		return ARImplemention->SaveARPin(InName);
+		return ARImplemention->SaveARPin(InName, InPin);
 	}
 	return false;
 }
