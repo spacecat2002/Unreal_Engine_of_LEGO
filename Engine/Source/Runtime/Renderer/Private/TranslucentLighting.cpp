@@ -1592,7 +1592,7 @@ void FDeferredShadingSceneRenderer::InjectTranslucentVolumeLighting(FRDGBuilder&
 	{
 		SCOPE_CYCLE_COUNTER(STAT_TranslucentInjectTime);
 
-		TArray<FTranslucentLightInjectionData, SceneRenderingAllocator> LightInjectionData;
+		auto& LightInjectionData = *GraphBuilder.AllocObject<TArray<FTranslucentLightInjectionData, SceneRenderingAllocator>>();
 
 		AddLightForInjection(*this, LightSceneInfo, InProjectedShadowInfo, LightInjectionData);
 
@@ -1605,11 +1605,13 @@ void FDeferredShadingSceneRenderer::InjectTranslucentVolumeLightingArray(FRDGBui
 {
 	SCOPE_CYCLE_COUNTER(STAT_TranslucentInjectTime);
 
-	TArray<FTranslucentLightInjectionData, SceneRenderingAllocator>* LightInjectionData = new TArray<FTranslucentLightInjectionData, SceneRenderingAllocator>[Views.Num()];
-	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
+	using FLightInjectionData = TArray<TArray<FTranslucentLightInjectionData, SceneRenderingAllocator>>;
+	auto& LightInjectionData = *GraphBuilder.AllocObject<FLightInjectionData>();
+	LightInjectionData.SetNum(Views.Num());
+
+	for (int32 ViewIndex = 0; ViewIndex < LightInjectionData.Num(); ++ViewIndex)
 	{
-		CA_SUPPRESS(6385);	// Doesn't like COM
-		LightInjectionData[ViewIndex].Empty(LightsEndIndex - FirstLightIndex);
+		LightInjectionData[ViewIndex].Reserve(LightsEndIndex - FirstLightIndex);
 	}
 
 	for (int32 LightIndex = FirstLightIndex; LightIndex < LightsEndIndex; LightIndex++)
@@ -1620,7 +1622,6 @@ void FDeferredShadingSceneRenderer::InjectTranslucentVolumeLightingArray(FRDGBui
 		{
 			if (LightSceneInfo->ShouldRenderLight(Views[ViewIndex]))
 			{
-				CA_SUPPRESS(6385);	// Doesn't like COM
 				AddLightForInjection(*this, *LightSceneInfo, NULL, LightInjectionData[ViewIndex]);
 			}
 		}
@@ -1629,14 +1630,8 @@ void FDeferredShadingSceneRenderer::InjectTranslucentVolumeLightingArray(FRDGBui
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
 		// non-shadowed, non-light function lights
-		CA_SUPPRESS(6385);
 		InjectTranslucentLightArray(GraphBuilder, Views[ViewIndex], LightInjectionData[ViewIndex], ViewIndex);
 	}
-
-	AddUntrackedAccessPass(GraphBuilder, [LightInjectionData](FRHICommandList&)
-	{
-		delete[] LightInjectionData;
-	});
 }
 
 /** Pixel shader used to inject simple lights into the translucent lighting volume */
