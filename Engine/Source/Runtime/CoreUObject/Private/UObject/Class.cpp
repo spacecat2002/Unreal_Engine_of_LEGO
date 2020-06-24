@@ -5079,6 +5079,15 @@ bool UClass::ReplaceNativeFunction(FName InFName, FNativeFuncPtr InPointer, bool
 
 UClass* UClass::GetAuthoritativeClass()
 {
+	if (GIsHotReload)
+	{
+		const TMap<UClass*, UClass*>& ReinstancedClasses = GetClassesToReinstanceForHotReload();
+		if (UClass* const* FoundMapping = ReinstancedClasses.Find(this))
+		{
+			return *FoundMapping;
+		}
+	}
+
 	return this;
 }
 
