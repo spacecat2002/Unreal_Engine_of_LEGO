@@ -120,6 +120,20 @@ BEGIN_SHADER_PARAMETER_STRUCT(FSceneTextureShaderParameters, RENDERER_API)
 	SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FMobileSceneTextureUniformParameters, MobileSceneTextures)
 END_SHADER_PARAMETER_STRUCT()
 
+FORCEINLINE FSceneTextureShaderParameters GetSceneTextureShaderParameters(TRDGUniformBufferRef<FSceneTextureUniformParameters> UniformBuffer)
+{
+	FSceneTextureShaderParameters Parameters;
+	Parameters.SceneTextures = UniformBuffer;
+	return Parameters;
+}
+
+FORCEINLINE FSceneTextureShaderParameters GetSceneTextureShaderParameters(TRDGUniformBufferRef<FMobileSceneTextureUniformParameters> UniformBuffer)
+{
+	FSceneTextureShaderParameters Parameters;
+	Parameters.MobileSceneTextures = UniformBuffer;
+	return Parameters;
+}
+
 /** Returns scene texture shader parameters containing the RDG uniform buffer for either mobile or deferred shading. */
 extern RENDERER_API FSceneTextureShaderParameters CreateSceneTextureShaderParameters(
 	FRDGBuilder& GraphBuilder,
