@@ -762,26 +762,32 @@ struct FAssetIdentifier
 	/** Returns string version of this identifier in Package.Object::Name format */
 	FString ToString() const
 	{
-		FString Result;
+		TStringBuilder<256> Builder;
+		AppendString(Builder);
+		return FString(Builder.Len(), Builder.GetData());
+	}
+
+	/** Appends to the given builder the string version of this identifier in Package.Object::Name format */
+	void AppendString(FStringBuilderBase& Builder) const
+	{
 		if (PrimaryAssetType != NAME_None)
 		{
-			Result = GetPrimaryAssetId().ToString();
+			GetPrimaryAssetId().AppendString(Builder);
 		}
 		else
 		{
-			Result = PackageName.ToString();
+			PackageName.AppendString(Builder);
 			if (ObjectName != NAME_None)
 			{
-				Result += TEXT(".");
-				Result += ObjectName.ToString();
+				Builder.Append(TEXT("."));
+				ObjectName.AppendString(Builder);
 			}
 		}
 		if (ValueName != NAME_None)
 		{
-			Result += TEXT("::");
-			Result += ValueName.ToString();
+			Builder.Append(TEXT("::"));
+			ValueName.AppendString(Builder);
 		}
-		return Result;
 	}
 
 	/** Converts from Package.Object::Name format */

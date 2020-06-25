@@ -1658,26 +1658,116 @@ bool FAssetRegistryState::IsFilterValid(const FARCompiledFilter& Filter)
 
 #if ASSET_REGISTRY_STATE_DUMPING_ENABLED
 
-void FAssetRegistryState::Dump(const TArray<FString>& Arguments, TArray<FString>& OutLines) const
+void FAssetRegistryState::Dump(const TArray<FString>& Arguments, TArray<FString>& OutPages, int32 LinesPerPage) const
 {
-	OutLines.Reserve(14 + CachedAssetsByObjectPath.Num() * 5 + CachedDependsNodes.Num() + CachedPackageData.Num());
-
-	if (Arguments.Contains(TEXT("ObjectPath")))
+	int32 ExpectedNumLines = 14 + CachedAssetsByObjectPath.Num() * 5 + CachedDependsNodes.Num() + CachedPackageData.Num();
+	const int32 EstimatedLinksPerNode = 10*2; // Each dependency shows up once as a dependency and once as a reference
+	const int32 EstimatedCharactersPerLine = 100;
+	const bool bDumpDependencyDetails = Arguments.Contains(TEXT("DependencyDetails"));
+	if (bDumpDependencyDetails)
 	{
-		OutLines.Add(FString::Printf(TEXT("--- Begin CachedAssetsByObjectPath ---")));
+		ExpectedNumLines += CachedDependsNodes.Num() * (3 + EstimatedLinksPerNode);
+	}
+	LinesPerPage = FMath::Max(LinesPerPage, 1);
+	const int32 ExpectedNumPages = ExpectedNumLines / LinesPerPage;
+	const int32 PageEndSearchLength = LinesPerPage / 20;
+	const FStringView EndLine(TEXT("\n"_SV));
+	const TCHAR EndLineChar = TEXT('\n');
+	const uint32 HashStartValue = MAX_uint32 - 49979693; // Pick a large starting value to bias against picking empty string
+	const uint32 HashMultiplier = 67867967;
+	TStringBuilder<16> PageBuffer;
+	TStringBuilder<16> OverflowText;
 
-		for (const TPair<FName, FAssetData*>& Pair : CachedAssetsByObjectPath)
+	OutPages.Reserve(ExpectedNumPages);
+	PageBuffer.AddUninitialized(LinesPerPage * EstimatedCharactersPerLine);// TODO: Add Reserve function to TStringBuilder
+	PageBuffer.Reset();
+	OverflowText.AddUninitialized(PageEndSearchLength * EstimatedCharactersPerLine);
+	OverflowText.Reset();
+	int32 NumLinesInPage = 0;
+	const int32 LineTerminatorLen = TCString<TCHAR>::Strlen(LINE_TERMINATOR);
+
+	auto FinishPage = [&PageBuffer, &NumLinesInPage, &EndLine, EndLineChar, HashStartValue, HashMultiplier, PageEndSearchLength, &OutPages, &OverflowText, LineTerminatorLen]()
+	{
+		int32 PageEndIndex = PageBuffer.Len();
+		const TCHAR* BufferEnd = PageBuffer.GetData() + PageEndIndex;
+		int32 NumOverflowLines = 0;
+		// We want to facilitate diffing dumps between two different versions that should be similar, but naively breaking up the dump into pages makes this difficult
+		// because after one missing or added line, every page from that point on will be offset and therefore different, making false positive differences
+		// To make pages after one missing or added line the same, we look for a good page ending based on the text of all the lines near the end of the current page
+		// By choosing specific-valued texts as page breaks, we will usually randomly get lucky and have the two diffs pick the same line for the end of the page
+		if (NumLinesInPage > PageEndSearchLength)
 		{
-			OutLines.Add(FString::Printf(TEXT("	%s"), *Pair.Key.ToString()));
+			const TCHAR* WinningLineEnd = BufferEnd;
+			uint32 WinningLineValue = 0;
+			int32 WinningSearchIndex = 0;
+			const TCHAR* LineEnd = BufferEnd;
+			for (int32 SearchIndex = 0; SearchIndex < PageEndSearchLength; ++SearchIndex)
+			{
+				uint32 LineValue = HashStartValue;
+				const TCHAR* LineStart = LineEnd;
+				--LineStart;
+				while (*LineStart != LINE_TERMINATOR[0] || LineStart + LineTerminatorLen > BufferEnd || TCString<TCHAR>::Strncmp(LINE_TERMINATOR, LineStart, LineTerminatorLen) != 0)
+				{
+					LineValue = LineValue * HashMultiplier + static_cast<uint32>(*LineStart);
+					--LineStart;
+				}
+				if (SearchIndex == 0 || LineValue < WinningLineValue) // We arbitrarily choose the smallest hash as the winning value
+				{
+					WinningLineValue = LineValue;
+					WinningLineEnd = LineEnd;
+					WinningSearchIndex = SearchIndex;
+				}
+				LineEnd = LineStart;
+			}
+			if (WinningLineEnd != BufferEnd)
+			{
+				PageEndIndex = WinningLineEnd - PageBuffer.GetData();
+				NumOverflowLines = WinningSearchIndex;
+			}
 		}
 
-		OutLines.Add(
-			FString::Printf(TEXT("--- End CachedAssetsByObjectPath : %d entries ---"), CachedAssetsByObjectPath.Num()));
-	}
-
-	auto PrintAssetDataMap = [&OutLines](FString Name, const TMap<FName, TArray<FAssetData*>>& AssetMap)
+		OutPages.Emplace(PageEndIndex, PageBuffer.GetData());
+		if (PageEndIndex != PageBuffer.Len())
+		{
+			PageEndIndex += LineTerminatorLen; // Skip the newline
+			OverflowText.Reset();
+			OverflowText.Append(PageBuffer.GetData() + PageEndIndex, PageBuffer.Len() - PageEndIndex);
+			PageBuffer.Reset();
+			PageBuffer.Append(OverflowText);
+			PageBuffer.Append(EndLine);
+			NumLinesInPage = NumOverflowLines;
+		}
+		else
+		{
+			PageBuffer.Reset();
+			NumLinesInPage = 0;
+		}
+	};
+	auto AddLine = [&PageBuffer, LinesPerPage, &NumLinesInPage, &FinishPage, &OutPages]()
 	{
-		OutLines.Add(FString::Printf(TEXT("--- Begin %s ---"), *Name));
+		if (LinesPerPage == 1)
+		{
+			OutPages.Emplace(PageBuffer.Len(), PageBuffer.GetData());
+			PageBuffer.Reset();
+		}
+		else
+		{
+			++NumLinesInPage;
+			if (NumLinesInPage != LinesPerPage)
+			{
+				PageBuffer.Append(LINE_TERMINATOR);
+			}
+			else
+			{
+				FinishPage();
+			}
+		}
+	};
+
+	auto PrintAssetDataMap = [&AddLine, &PageBuffer](FString Name, const TMap<FName, TArray<FAssetData*>>& AssetMap)
+	{
+		PageBuffer.Appendf(TEXT("--- Begin %s ---"), *Name);
+		AddLine();
 
 		TArray<FName> Keys;
 		AssetMap.GenerateKeyArray(Keys);
@@ -1702,15 +1792,41 @@ void FAssetRegistryState::Dump(const TArray<FString>& Arguments, TArray<FString>
 				{ return A.ObjectPath.ToString() < B.ObjectPath.ToString(); }
 				);
 
-			OutLines.Add(FString::Printf(TEXT("	%s : %d item(s)"), *Key.ToString(), Items.Num()));
+			PageBuffer.Append(TEXT("	"));
+			Key.AppendString(PageBuffer);
+			PageBuffer.Appendf(TEXT(" : %d item(s)"), Items.Num());
+			AddLine();
 			for (const FAssetData* Data : Items)
 			{
-				OutLines.Add(FString::Printf(TEXT("	 %s"), *Data->ObjectPath.ToString()));
+				PageBuffer.Append(TEXT("	 "));
+				Data->ObjectPath.AppendString(PageBuffer);
+				AddLine();
 			}
 		}
 
-		OutLines.Add(FString::Printf(TEXT("--- End %s : %d entries ---"), *Name, ValidCount));
+		PageBuffer.Appendf(TEXT("--- End %s : %d entries ---"), *Name, ValidCount);
+		AddLine();
 	};
+
+	if (Arguments.Contains(TEXT("ObjectPath")))
+	{
+		PageBuffer.Append(TEXT("--- Begin CachedAssetsByObjectPath ---"));
+		AddLine();
+
+		TArray<FName> Keys;
+		CachedAssetsByObjectPath.GenerateKeyArray(Keys);
+		Keys.Sort(FNameLexicalLess());
+
+		for (FName ObjectPath : Keys)
+		{
+			PageBuffer.Append(TEXT("	"));
+			ObjectPath.AppendString(PageBuffer);
+			AddLine();
+		}
+
+		PageBuffer.Appendf(TEXT("--- End CachedAssetsByObjectPath : %d entries ---"), CachedAssetsByObjectPath.Num());
+		AddLine();
+	}
 
 	if (Arguments.Contains(TEXT("PackageName")))
 	{
@@ -1732,9 +1848,10 @@ void FAssetRegistryState::Dump(const TArray<FString>& Arguments, TArray<FString>
 		PrintAssetDataMap(TEXT("CachedAssetsByTag"), CachedAssetsByTag);
 	}
 
-	if (Arguments.Contains(TEXT("Dependencies")))
+	if (Arguments.Contains(TEXT("Dependencies")) && !bDumpDependencyDetails)
 	{
-		OutLines.Add(FString::Printf(TEXT("--- Begin CachedDependsNodes ---")));
+		PageBuffer.Appendf(TEXT("--- Begin CachedDependsNodes ---"));
+		AddLine();
 
 		TArray<FDependsNode*> Nodes;
 		CachedDependsNodes.GenerateValueArray(Nodes);
@@ -1744,17 +1861,72 @@ void FAssetRegistryState::Dump(const TArray<FString>& Arguments, TArray<FString>
 
 		for (const FDependsNode* Node : Nodes)
 		{
-			OutLines.Add(
-				FString::Printf(TEXT("	%s : %d connection(s)"),
-					*Node->GetIdentifier().ToString(), Node->GetConnectionCount()));
+			PageBuffer.Append(TEXT("	"));
+			Node->GetIdentifier().AppendString(PageBuffer);
+			PageBuffer.Appendf(TEXT(" : %d connection(s)"), Node->GetConnectionCount());
+			AddLine();
 		}
 
-		OutLines.Add(FString::Printf(TEXT("--- End CachedDependsNodes : %d entries ---"), CachedDependsNodes.Num()));
+		PageBuffer.Appendf(TEXT("--- End CachedDependsNodes : %d entries ---"), CachedDependsNodes.Num());
+		AddLine();
 	}
 
+	if (bDumpDependencyDetails)
+	{
+		PageBuffer.Append(TEXT("--- Begin CachedDependsNodes ---"));
+		AddLine();
+
+		auto SortByAssetID = [](const FDependsNode& A, const FDependsNode& B) { return A.GetIdentifier().ToString() < B.GetIdentifier().ToString(); };
+		TArray<FDependsNode*> Nodes;
+		CachedDependsNodes.GenerateValueArray(Nodes);
+		Nodes.Sort(SortByAssetID);
+
+		EAssetRegistryDependencyType::Type CategoryTypes[] = { EAssetRegistryDependencyType::Hard ,EAssetRegistryDependencyType::Soft,EAssetRegistryDependencyType::SearchableName,EAssetRegistryDependencyType::HardManage, EAssetRegistryDependencyType::SoftManage, EAssetRegistryDependencyType::None };
+		const TCHAR* CategoryNames[] = { TEXT("Hard"), TEXT("Soft"), TEXT("SearchableName"), TEXT("HardManage"), TEXT("SoftManage"), TEXT("References") };
+		const int NumCategories = UE_ARRAY_COUNT(CategoryTypes);
+		check(NumCategories == UE_ARRAY_COUNT(CategoryNames));
+
+		TArray<FDependsNode*> Links;
+		for (const FDependsNode* Node : Nodes)
+		{
+			PageBuffer.Append(TEXT("	"));
+			Node->GetIdentifier().AppendString(PageBuffer);
+			AddLine();
+			for (int CategoryIndex = 0; CategoryIndex < NumCategories; ++CategoryIndex)
+			{
+				EAssetRegistryDependencyType::Type CategoryType = CategoryTypes[CategoryIndex];
+				const TCHAR* CategoryName = CategoryNames[CategoryIndex];
+				Links.Reset();
+				if (CategoryType != EAssetRegistryDependencyType::None)
+				{
+					Node->GetDependencies(Links, CategoryType);
+				}
+				else
+				{
+					Node->GetReferencers(Links);
+				}
+				if (Links.Num() > 0)
+				{
+					PageBuffer.Appendf(TEXT("		%s"), CategoryName);
+					AddLine();
+					Links.Sort(SortByAssetID);
+					for (FDependsNode* LinkNode : Links)
+					{
+						PageBuffer.Append(TEXT("			"));
+						LinkNode->GetIdentifier().AppendString(PageBuffer);
+						AddLine();
+					}
+				}
+			}
+		}
+
+		PageBuffer.Appendf(TEXT("--- End CachedDependsNodes : %d entries ---"), CachedDependsNodes.Num());
+		AddLine();
+	}
 	if (Arguments.Contains(TEXT("PackageData")))
 	{
-		OutLines.Add(FString::Printf(TEXT("--- Begin CachedPackageData ---")));
+		PageBuffer.Append(TEXT("--- Begin CachedPackageData ---"));
+		AddLine();
 
 		TArray<FName> Keys;
 		CachedPackageData.GenerateKeyArray(Keys);
@@ -1763,11 +1935,28 @@ void FAssetRegistryState::Dump(const TArray<FString>& Arguments, TArray<FString>
 		for (const FName& Key : Keys)
 		{
 			const FAssetPackageData* PackageData = CachedPackageData.FindChecked(Key);
-			OutLines.Add(FString::Printf(TEXT("	%s : %s : %d bytes"),
-					*Key.ToString(), *PackageData->PackageGuid.ToString(), PackageData->DiskSize));
+			PageBuffer.Append(TEXT("	"));
+			Key.AppendString(PageBuffer);
+			PageBuffer.Append(TEXT(" : "));
+			PageBuffer.Append(PackageData->PackageGuid.ToString()); // TODO: Add AppendString for Guid
+			PageBuffer.Appendf(TEXT(" : %d bytes"), PackageData->DiskSize);
+			AddLine();
 		}
 
-		OutLines.Add(FString::Printf(TEXT("--- End CachedPackageData : %d entries ---"), CachedPackageData.Num()));
+		PageBuffer.Appendf(TEXT("--- End CachedPackageData : %d entries ---"), CachedPackageData.Num());
+		AddLine();
+	}
+
+	if (PageBuffer.Len() > 0)
+	{
+		if (LinesPerPage == 1)
+		{
+			AddLine();
+		}
+		else
+		{
+			FinishPage();
+		}
 	}
 }
 

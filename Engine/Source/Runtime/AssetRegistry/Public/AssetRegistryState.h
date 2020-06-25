@@ -322,9 +322,11 @@ public:
 	/**
 	 * Writes out the state in textual form. Use arguments to control which segments to emit.
 	 * @param Arguments List of segments to emit. Possible values: 'ObjectPath', 'PackageName', 'Path', 'Class', 'Tag', 'Dependencies' and 'PackageData'
-	 * @param OutLines Textual representation will be written to this array.
+	 * @param OutPages Textual representation will be written to this array; each entry will have LinesPerPage lines of the full dump.
+	 * @param LinesPerPage - how many lines should be combined into each string element of OutPages, for e.g. breaking up the dump into separate files.
+	 *        To facilitate diffing between similar-but-different registries, the actual number of lines per page will be slightly less than LinesPerPage; we introduce partially deterministic pagebreaks near the end of each page.
 	 */
-	void Dump(const TArray<FString>& Arguments, TArray<FString>& OutLines) const;
+	void Dump(const TArray<FString>& Arguments, TArray<FString>& OutPages, int32 LinesPerPage=1) const;
 #endif
 
 private:
