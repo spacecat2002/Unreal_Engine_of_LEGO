@@ -190,11 +190,7 @@ struct FWrapLayer
 
 namespace VulkanRHI
 {
-#if VULKAN_ENABLE_DUMP_LAYER
 	void FlushDebugWrapperLog();
-#else
-	#define FlushDebugWrapperLog()
-#endif
 
 	FORCEINLINE_DEBUGGABLE VkResult  vkCreateInstance(const VkInstanceCreateInfo* CreateInfo, const VkAllocationCallbacks* Allocator, VkInstance* Instance)
 	{

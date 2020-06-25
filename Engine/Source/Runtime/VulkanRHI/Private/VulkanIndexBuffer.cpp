@@ -113,13 +113,14 @@ FVulkanResourceMultiBuffer::FVulkanResourceMultiBuffer(FVulkanDevice* InDevice, 
 
 			for (uint32 Index = 0; Index < NumBuffers; ++Index)
 			{
-				Buffers[Index] = InDevice->GetResourceHeapManager().AllocateBuffer(InSize, BufferUsageFlags, BufferMemFlags, __FILE__, __LINE__);
+				if(!InDevice->GetMemoryManager().AllocateBufferPooled(Buffers[Index], this, InSize, BufferUsageFlags, BufferMemFlags, EVulkanAllocationMetaMultiBuffer, __FILE__, __LINE__))
+				{
+					InDevice->GetMemoryManager().HandleOOM();
+				}
 			}
-
-			Current.SubAlloc = Buffers[DynamicBufferIndex];
-			Current.BufferAllocation = Current.SubAlloc->GetBufferAllocation();
-			Current.Handle = Current.SubAlloc->GetHandle();
-			Current.Offset = Current.SubAlloc->GetOffset();
+			Current.Alloc.Reference(Buffers[DynamicBufferIndex]);
+			Current.Handle = (VkBuffer)Current.Alloc.VulkanHandle;
+			Current.Offset = Current.Alloc.Offset;
 			Current.Size = InSize;
 
 			bool bRenderThread = (InRHICmdList == nullptr);
@@ -146,12 +147,11 @@ FVulkanResourceMultiBuffer::FVulkanResourceMultiBuffer(FVulkanDevice* InDevice, 
 FVulkanResourceMultiBuffer::~FVulkanResourceMultiBuffer()
 {
 	VULKAN_TRACK_OBJECT_DELETE(FVulkanResourceMultiBuffer, this);
-	//#todo-rco: Free VkBuffers
-
 	uint64_t Size = 0;
 	for (uint32 Index = 0; Index < NumBuffers; ++Index)
 	{
-		Size += Buffers[Index]->GetSize();
+		Size += Buffers[Index].Size;
+		Device->GetMemoryManager().FreeVulkanAllocation(Buffers[Index]);
 	}
 	UpdateVulkanBufferStats(Size, BufferUsageFlags, false);
 }
@@ -179,9 +179,10 @@ void* FVulkanResourceMultiBuffer::Lock(bool bFromRenderingThread, EResourceLockM
 			Device->GetImmediateContext().GetTempFrameAllocationBuffer().Alloc(Size + Offset, 256, VolatileLockInfo);
 			Data = VolatileLockInfo.Data;
 			++VolatileLockInfo.LockCounter;
-			Current.BufferAllocation = VolatileLockInfo.GetBufferAllocation();
-			Current.Handle = VolatileLockInfo.GetHandle();
-			Current.Offset = VolatileLockInfo.GetBindOffset();
+			check(!VolatileLockInfo.Allocation.HasAllocation());
+			Current.Alloc = VolatileLockInfo.Allocation;
+			Current.Handle = Current.Alloc.GetBufferHandle();
+			Current.Offset = VolatileLockInfo.CurrentOffset + Current.Alloc.Offset;
 			Current.Size = Size;
 		}
 	}
@@ -194,7 +195,7 @@ void* FVulkanResourceMultiBuffer::Lock(bool bFromRenderingThread, EResourceLockM
 			const bool bUnifiedMem = Device->HasUnifiedMemory();
 			if (bUnifiedMem)
 			{
-				Data = (uint8*)Buffers[DynamicBufferIndex]->GetMappedPointer() + Offset;
+				Data = (uint8*)Buffers[DynamicBufferIndex].GetMappedPointer(Device) + Offset;
 			}
 			else 
 			{
@@ -215,7 +216,7 @@ void* FVulkanResourceMultiBuffer::Lock(bool bFromRenderingThread, EResourceLockM
 				Regions.srcOffset = Offset;
 				Regions.dstOffset = 0;
 
-				VulkanRHI::vkCmdCopyBuffer(CmdBuffer->GetHandle(), Buffers[DynamicBufferIndex]->GetHandle(), StagingBuffer->GetHandle(), 1, &Regions);
+				VulkanRHI::vkCmdCopyBuffer(CmdBuffer->GetHandle(), Buffers[DynamicBufferIndex].GetBufferHandle(), StagingBuffer->GetHandle(), 1, &Regions);
 
 				// Setup barrier.
 				VkMemoryBarrier BarrierAfter = { VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, VK_ACCESS_MEMORY_WRITE_BIT, VK_ACCESS_HOST_READ_BIT };
@@ -251,17 +252,15 @@ void* FVulkanResourceMultiBuffer::Lock(bool bFromRenderingThread, EResourceLockM
 		{
 			check(LockMode == RLM_WriteOnly);
 			DynamicBufferIndex = (DynamicBufferIndex + 1) % NumBuffers;
-			Current.SubAlloc = Buffers[DynamicBufferIndex];
-			Current.BufferAllocation = Current.SubAlloc->GetBufferAllocation();
-			Current.Handle = Current.SubAlloc->GetHandle();
-			Current.Offset = Current.SubAlloc->GetOffset();
-			check(Current.SubAlloc->GetSize() >= Size);
+			Current.Alloc.Reference(Buffers[DynamicBufferIndex]);		
+			Current.Handle = (VkBuffer)Current.Alloc.VulkanHandle;
+			Current.Offset = Current.Alloc.Offset;
 			Current.Size = Size;
 
 			const bool bUnifiedMem = Device->HasUnifiedMemory();
 			if (bUnifiedMem)
 			{
-				Data = (uint8*)Buffers[DynamicBufferIndex]->GetMappedPointer() + Offset;
+				Data = (uint8*)Buffers[DynamicBufferIndex].GetMappedPointer(Device) + Offset;
 			}
 			else
 			{
@@ -309,11 +308,9 @@ inline void FVulkanResourceMultiBuffer::InternalUnlock(FVulkanCommandListContext
 	FMemory::Memzero(Region);
 	Region.size = LockSize;
 	//Region.srcOffset = 0;
-	Region.dstOffset = LockOffset + MultiBuffer->Buffers[InDynamicBufferIndex]->GetOffset();
-	VulkanRHI::vkCmdCopyBuffer(CmdBuffer, StagingBuffer->GetHandle(), MultiBuffer->Buffers[InDynamicBufferIndex]->GetHandle(), 1, &Region);
-	//UpdateBuffer(ResourceAllocation, IndexBuffer->GetBuffer(), LockSize, LockOffset);
+	Region.dstOffset = LockOffset + MultiBuffer->Buffers[InDynamicBufferIndex].Offset;
+	VulkanRHI::vkCmdCopyBuffer(CmdBuffer, StagingBuffer->GetHandle(), MultiBuffer->Buffers[InDynamicBufferIndex].GetBufferHandle(), 1, &Region);
 
-	//Device->GetDeferredDeletionQueue().EnqueueResource(Cmd, StagingBuffer);
 	MultiBuffer->GetParent()->GetStagingManager().ReleaseBuffer(Cmd, StagingBuffer);
 }
 

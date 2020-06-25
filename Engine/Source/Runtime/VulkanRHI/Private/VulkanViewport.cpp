@@ -373,9 +373,6 @@ FVulkanFramebuffer::FVulkanFramebuffer(FVulkanDevice& Device, const FRHISetRende
 		AttachmentTextureViews.Add(RTView);
 		AttachmentViewsToDelete.Add(RTView.View);
 
-		// Created a view to the surface memory... need to addref allocation so it doesn't get freed from under us
-		ResourceAllocationsToDelete.Add(Texture->Surface.GetResourceAllocation());
-
 		++NumColorAttachments;
 
 		// Check the RTLayout as well to make sure the resolve attachment is needed (Vulkan and Feature level specific)
@@ -466,23 +463,17 @@ FVulkanFramebuffer::~FVulkanFramebuffer()
 
 void FVulkanFramebuffer::Destroy(FVulkanDevice& Device)
 {
-	VulkanRHI::FDeferredDeletionQueue& Queue = Device.GetDeferredDeletionQueue();
+	VulkanRHI::FDeferredDeletionQueue2& Queue = Device.GetDeferredDeletionQueue();
 	
 	// will be deleted in reverse order
-	Queue.EnqueueResource(VulkanRHI::FDeferredDeletionQueue::EType::Framebuffer, Framebuffer);
+	Queue.EnqueueResource(VulkanRHI::FDeferredDeletionQueue2::EType::Framebuffer, Framebuffer);
 	Framebuffer = VK_NULL_HANDLE;
 
 	for (int32 Index = 0; Index < AttachmentViewsToDelete.Num(); ++Index)
 	{
 		DEC_DWORD_STAT(STAT_VulkanNumImageViews);
-		Queue.EnqueueResource(VulkanRHI::FDeferredDeletionQueue::EType::ImageView, AttachmentViewsToDelete[Index]);
+		Queue.EnqueueResource(VulkanRHI::FDeferredDeletionQueue2::EType::ImageView, AttachmentViewsToDelete[Index]);
 	}
-
-	for (int32 Index = 0; Index < ResourceAllocationsToDelete.Num(); ++Index)
-	{
-		Queue.EnqueueResourceAllocation(ResourceAllocationsToDelete[Index]);
-	}
-	ResourceAllocationsToDelete.Empty();
 
 	DEC_DWORD_STAT(STAT_VulkanNumFrameBuffers);
 }

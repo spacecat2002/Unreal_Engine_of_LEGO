@@ -64,6 +64,71 @@ struct FOptionalVulkanDeviceExtensions
 		return HasAMDBufferMarker || HasNVDiagnosticCheckpoints;
 	}
 };
+namespace VulkanRHI
+{
+	class FDeferredDeletionQueue2 : public FDeviceChild
+	{
+
+	public:
+		FDeferredDeletionQueue2(FVulkanDevice* InDevice);
+		~FDeferredDeletionQueue2();
+
+		enum class EType
+		{
+			RenderPass,
+			Buffer,
+			BufferView,
+			Image,
+			ImageView,
+			Pipeline,
+			PipelineLayout,
+			Framebuffer,
+			DescriptorSetLayout,
+			Sampler,
+			Semaphore,
+			ShaderModule,
+			Event,
+			ResourceAllocation,
+			BufferSuballocation,
+		};
+
+		template <typename T>
+		inline void EnqueueResource(EType Type, T Handle)
+		{
+			static_assert(sizeof(T) <= sizeof(uint64), "Vulkan resource handle type size too large.");
+			EnqueueGenericResource(Type, (uint64)Handle);
+		}
+
+
+		void EnqueueResourceAllocation(FVulkanAllocation& Allocation);
+
+		void ReleaseResources(bool bDeleteImmediately = false);
+
+		inline void Clear()
+		{
+			ReleaseResources(true);
+		}
+
+		void OnCmdBufferDeleted(FVulkanCmdBuffer* CmdBuffer);
+	private:
+		void EnqueueGenericResource(EType Type, uint64 Handle);
+
+		struct FEntry
+		{
+			EType StructureType;
+			uint32 FrameNumber;
+			uint64 FenceCounter;
+			FVulkanCmdBuffer* CmdBuffer;
+
+			uint64 Handle;
+			FVulkanAllocation Allocation;
+
+		};
+		FCriticalSection CS;
+		TArray<FEntry> Entries;
+	};
+}
+
 
 class FVulkanDevice
 {
@@ -172,7 +237,7 @@ public:
 
 	inline bool HasUnifiedMemory() const
 	{
-		return MemoryManager.HasUnifiedMemory();
+		return DeviceMemoryManager.HasUnifiedMemory();
 	}
 
 	inline uint64 GetTimestampValidBitsMask() const
@@ -205,22 +270,22 @@ public:
 		return FormatProperties;
 	}
 
-	inline VulkanRHI::FDeviceMemoryManager& GetMemoryManager()
+	inline VulkanRHI::FDeviceMemoryManager& GetDeviceMemoryManager()
 	{
-		return MemoryManager;
+		return DeviceMemoryManager;
 	}
 
 	inline const VkPhysicalDeviceMemoryProperties& GetDeviceMemoryProperties() const
 	{
-		return MemoryManager.GetMemoryProperties();
+		return DeviceMemoryManager.GetMemoryProperties();
 	}
 
-	inline VulkanRHI::FResourceHeapManager& GetResourceHeapManager()
+	inline VulkanRHI::FMemoryManager& GetMemoryManager()
 	{
-		return ResourceHeapManager;
+		return MemoryManager;
 	}
 
-	inline VulkanRHI::FDeferredDeletionQueue& GetDeferredDeletionQueue()
+	inline VulkanRHI::FDeferredDeletionQueue2& GetDeferredDeletionQueue()
 	{
 		return DeferredDeletionQueue;
 	}
@@ -359,11 +424,11 @@ private:
 
 	VkDevice Device;
 
-	VulkanRHI::FDeviceMemoryManager MemoryManager;
+	VulkanRHI::FDeviceMemoryManager DeviceMemoryManager;
 
-	VulkanRHI::FResourceHeapManager ResourceHeapManager;
+	VulkanRHI::FMemoryManager MemoryManager;
 
-	VulkanRHI::FDeferredDeletionQueue DeferredDeletionQueue;
+	VulkanRHI::FDeferredDeletionQueue2 DeferredDeletionQueue;
 
 	VulkanRHI::FStagingManager StagingManager;
 

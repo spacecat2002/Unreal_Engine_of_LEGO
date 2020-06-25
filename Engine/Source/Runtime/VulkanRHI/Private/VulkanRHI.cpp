@@ -230,7 +230,7 @@ void FVulkanDynamicRHI::Init()
 			
 	if (GPoolSizeVRAMPercentage > 0)
 	{
-		const uint64 TotalGPUMemory = Device->GetMemoryManager().GetTotalMemory(true);
+		const uint64 TotalGPUMemory = Device->GetDeviceMemoryManager().GetTotalMemory(true);
 
 		float PoolSize = float(GPoolSizeVRAMPercentage) * 0.01f * float(TotalGPUMemory);
 
@@ -246,7 +246,7 @@ void FVulkanDynamicRHI::Init()
 	{
 		GTexturePoolSize = (int64)StreamingPoolSizeValue * 1024 * 1024;
 
-		const uint64 TotalGPUMemory = Device->GetMemoryManager().GetTotalMemory(true);
+		const uint64 TotalGPUMemory = Device->GetDeviceMemoryManager().GetTotalMemory(true);
 		UE_LOG(LogRHI,Log,TEXT("Texture pool is %llu MB (of %llu MB total graphics mem)"),
 				GTexturePoolSize / 1024 / 1024,
 				TotalGPUMemory / 1024 / 1024);
@@ -324,6 +324,7 @@ void FVulkanDynamicRHI::Shutdown()
 
 #if UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT
 	IConsoleManager::Get().UnregisterConsoleObject(DumpMemoryCmd);
+	IConsoleManager::Get().UnregisterConsoleObject(DumpStagingMemoryCmd);
 	IConsoleManager::Get().UnregisterConsoleObject(DumpLRUCmd);
 	IConsoleManager::Get().UnregisterConsoleObject(TrimLRUCmd);
 #endif
@@ -765,6 +766,13 @@ void FVulkanDynamicRHI::InitInstance()
 			FConsoleCommandDelegate::CreateStatic(DumpMemory),
 			ECVF_Default
 			);
+		DumpStagingMemoryCmd = IConsoleManager::Get().RegisterConsoleCommand(
+			TEXT("r.Vulkan.DumpStagingMemory"),
+			TEXT("Dumps staging memory map."),
+			FConsoleCommandDelegate::CreateStatic(DumpStagingMemory),
+			ECVF_Default
+		);
+
 		DumpLRUCmd = IConsoleManager::Get().RegisterConsoleCommand(
 			TEXT("r.Vulkan.DumpPSOLRU"),
 			TEXT("Dumps Vulkan PSO LRU."),
@@ -858,7 +866,7 @@ void FVulkanCommandListContext::RHIEndFrame()
 	GetGPUProfiler().EndFrame();
 
 	Device->GetStagingManager().ProcessPendingFree(false, true);
-	Device->GetResourceHeapManager().ReleaseFreedPages();
+	Device->GetMemoryManager().ReleaseFreedPages();
 	
 	if (UseVulkanDescriptorCache())
 	{
@@ -1130,7 +1138,7 @@ FVulkanBuffer::FVulkanBuffer(FVulkanDevice& InDevice, uint32 InSize, VkFlags InU
 	VkMemoryRequirements MemoryRequirements;
 	VulkanRHI::vkGetBufferMemoryRequirements(Device.GetInstanceHandle(), Buf, &MemoryRequirements);
 
-	Allocation = InDevice.GetMemoryManager().Alloc(false, MemoryRequirements.size, MemoryRequirements.memoryTypeBits, InMemPropertyFlags, nullptr, VULKAN_MEMORY_MEDIUM_PRIORITY, File ? File : __FILE__, Line ? Line : __LINE__);
+	Allocation = InDevice.GetDeviceMemoryManager().Alloc(false, MemoryRequirements.size, MemoryRequirements.memoryTypeBits, InMemPropertyFlags, nullptr, VULKAN_MEMORY_MEDIUM_PRIORITY, File ? File : __FILE__, Line ? Line : __LINE__);
 	check(Allocation);
 	VERIFYVULKANRESULT_EXPANDED(VulkanRHI::vkBindBufferMemory(Device.GetInstanceHandle(), Buf, Allocation->GetHandle(), 0));
 }
@@ -1140,10 +1148,10 @@ FVulkanBuffer::~FVulkanBuffer()
 	// The buffer should be unmapped
 	check(BufferPtr == nullptr);
 
-	Device.GetDeferredDeletionQueue().EnqueueResource(FDeferredDeletionQueue::EType::Buffer, Buf);
+	Device.GetDeferredDeletionQueue().EnqueueResource(FDeferredDeletionQueue2::EType::Buffer, Buf);
 	Buf = VK_NULL_HANDLE;
 
-	Device.GetMemoryManager().Free(Allocation);
+	Device.GetDeviceMemoryManager().Free(Allocation);
 	Allocation = nullptr;
 }
 
@@ -1476,7 +1484,7 @@ void FVulkanBufferView::Destroy()
 	if (View != VK_NULL_HANDLE)
 	{
 		DEC_DWORD_STAT(STAT_VulkanNumBufferViews);
-		Device->GetDeferredDeletionQueue().EnqueueResource(FDeferredDeletionQueue::EType::BufferView, View);
+		Device->GetDeferredDeletionQueue().EnqueueResource(FDeferredDeletionQueue2::EType::BufferView, View);
 		View = VK_NULL_HANDLE;
 		ViewId = 0;
 	}
@@ -1606,7 +1614,7 @@ FVulkanRenderPass::~FVulkanRenderPass()
 {
 	DEC_DWORD_STAT(STAT_VulkanNumRenderPasses);
 
-	Device.GetDeferredDeletionQueue().EnqueueResource(FDeferredDeletionQueue::EType::RenderPass, RenderPass);
+	Device.GetDeferredDeletionQueue().EnqueueResource(FDeferredDeletionQueue2::EType::RenderPass, RenderPass);
 	RenderPass = VK_NULL_HANDLE;
 }
 
@@ -1616,16 +1624,16 @@ FVulkanRingBuffer::FVulkanRingBuffer(FVulkanDevice* InDevice, uint64 TotalSize, 
 	, BufferOffset(0)
 	, MinAlignment(0)
 {
-	BufferSuballocation = InDevice->GetResourceHeapManager().AllocateBuffer(TotalSize, Usage, MemPropertyFlags, __FILE__, __LINE__);
-	MinAlignment = BufferSuballocation->GetBufferAllocation()->GetAlignment();
 
+	InDevice->GetMemoryManager().AllocateBufferPooled(Allocation, this, TotalSize, Usage, MemPropertyFlags, EVulkanAllocationMetaRingBuffer, __FILE__, __LINE__);
+	MinAlignment = Allocation.GetBufferAlignment(Device);
 	// Start by wrapping around to set up the correct fence
 	BufferOffset = TotalSize;
 }
 
 FVulkanRingBuffer::~FVulkanRingBuffer()
 {
-	delete BufferSuballocation;
+	Device->GetMemoryManager().FreeVulkanAllocation(Allocation);
 }
 
 uint64 FVulkanRingBuffer::WrapAroundAllocateMemory(uint64 Size, uint32 Alignment, FVulkanCmdBuffer* InCmdBuffer)
@@ -1715,7 +1723,9 @@ void FVulkanDynamicRHI::SaveValidationCache()
 void FVulkanDynamicRHI::DumpMemory()
 {
 	GVulkanRHI->Device->GetMemoryManager().DumpMemory();
-	GVulkanRHI->Device->GetResourceHeapManager().DumpMemory();
+}
+void FVulkanDynamicRHI::DumpStagingMemory()
+{
 	GVulkanRHI->Device->GetStagingManager().DumpMemory();
 }
 void FVulkanDynamicRHI::DumpLRU()
@@ -1728,8 +1738,6 @@ void FVulkanDynamicRHI::TrimLRU()
 	FVulkanDynamicRHI* RHI = (FVulkanDynamicRHI*)GDynamicRHI;
 	RHI->Device->PipelineStateCache->LRUDebugEvictAll();
 }
-
-
 #endif
 
 void FVulkanDynamicRHI::DestroySwapChain()

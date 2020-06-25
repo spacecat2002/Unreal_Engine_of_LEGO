@@ -24,8 +24,46 @@ FVulkanShaderResourceView::FVulkanShaderResourceView(FVulkanDevice* Device, FRHI
 }
 
 
+FVulkanShaderResourceView::FVulkanShaderResourceView(FVulkanDevice* Device, FRHITexture* InSourceTexture, const FRHITextureSRVCreateInfo& InCreateInfo)
+	: VulkanRHI::FDeviceChild(Device)
+	, BufferViewFormat((EPixelFormat)InCreateInfo.Format)
+	, SRGBOverride(InCreateInfo.SRGBOverride)
+	, SourceTexture(InSourceTexture)
+	, SourceStructuredBuffer(nullptr)
+	, MipLevel(InCreateInfo.MipLevel)
+	, NumMips(InCreateInfo.NumMipLevels)
+	, FirstArraySlice(InCreateInfo.FirstArraySlice)
+	, NumArraySlices(InCreateInfo.NumArraySlices)
+	, Size(0)
+	, SourceBuffer(nullptr)
+{
+	FVulkanTextureBase* VulkanTexture = FVulkanTextureBase::Cast(InSourceTexture);
+	VulkanTexture->AttachView(this);
+
+}
+
+FVulkanShaderResourceView::FVulkanShaderResourceView(FVulkanDevice* Device, FVulkanStructuredBuffer* InStructuredBuffer, uint32 InOffset)
+	: VulkanRHI::FDeviceChild(Device)
+	, BufferViewFormat(PF_Unknown)
+	, SourceTexture(nullptr)
+	, SourceStructuredBuffer(InStructuredBuffer)
+	, NumMips(0)
+	, Size(InStructuredBuffer->GetSize() - InOffset)
+	, Offset(InOffset)
+	, SourceBuffer(nullptr)
+{
+}
+
+
+
 FVulkanShaderResourceView::~FVulkanShaderResourceView()
 {
+	FRHITexture* Texture = SourceTexture.GetReference();
+	if(Texture)
+	{
+		FVulkanTextureBase* VulkanTexture = FVulkanTextureBase::Cast(Texture);
+		VulkanTexture->DetachView(this);
+	}
 	Clear();
 	Device = nullptr;
 }
@@ -62,8 +100,12 @@ void FVulkanShaderResourceView::Rename(FRHIResource* InRHIBuffer, FVulkanResourc
 	Size = InSize;
 	SourceBuffer = InSourceBuffer;
 	SourceRHIBuffer = InRHIBuffer;
-	VolatileBufferHandle = VK_NULL_HANDLE;	
+	VolatileBufferHandle = VK_NULL_HANDLE;
 	VolatileLockCounter = MAX_uint32;
+}
+void FVulkanShaderResourceView::InvalidateView()
+{
+	TextureView.Destroy(*Device);
 }
 
 void FVulkanShaderResourceView::UpdateView()
@@ -86,7 +128,7 @@ void FVulkanShaderResourceView::UpdateView()
 			CurrentViewSize = FMath::Min(CurrentViewSize, AvailableSize);
 
 			// We might end up with the same BufferView, so do not recreate in that case
-			if (!BufferViews[0] 
+			if (!BufferViews[0]
 				|| BufferViews[0]->Offset != (SourceBuffer->GetOffset() + Offset)
 				|| BufferViews[0]->Size != CurrentViewSize
 				|| VolatileBufferHandle != SourceVolatileBufferHandle)

@@ -14,7 +14,6 @@
 #include "VulkanViewport.h"
 #include "VulkanDynamicRHI.h"
 #include "VulkanPipeline.h"
-#include "VulkanGlobalUniformBuffer.h"
 #include "VulkanPipelineState.h"
 
 // All the current compute pipeline states in use

@@ -26,6 +26,7 @@ struct FVulkanBufferView;
 class FVulkanResourceMultiBuffer;
 class FVulkanLayout;
 class FVulkanOcclusionQuery;
+class FVulkanShaderResourceView;
 
 namespace VulkanRHI
 {
@@ -286,7 +287,7 @@ public:
 		VkFormat* OutViewFormat = nullptr,
 		bool bForceLinearTexture = false);
 
-	FVulkanSurface(FVulkanDevice& Device, VkImageViewType ResourceType, EPixelFormat Format,
+	FVulkanSurface(FVulkanDevice& Device, FVulkanTextureBase* Owner, VkImageViewType ResourceType, EPixelFormat Format,
 					uint32 SizeX, uint32 SizeY, uint32 SizeZ, uint32 ArraySize,
 					uint32 NumMips, uint32 NumSamples, uint32 UEFlags, ERHIAccess InResourceState, const FRHIResourceCreateInfo& CreateInfo);
 
@@ -298,8 +299,11 @@ public:
 	virtual ~FVulkanSurface();
 
 	void Destroy();
-	void InvalidateMappedMemory(){ ResourceAllocation->InvalidateMappedMemory();}
-	void* GetMappedPointer() { return ResourceAllocation->GetMappedPointer(); }
+	void InvalidateMappedMemory();
+	void* GetMappedPointer();
+
+	void EvictSurface(FVulkanDevice& InDevice);
+
 
 #if 0
 	/**
@@ -388,34 +392,9 @@ public:
 		return bIsImageOwner;
 	}
 
-	inline VkDeviceMemory GetAllocationHandle() const
-	{
-		if (ResourceAllocation.IsValid())
-		{
-			return ResourceAllocation->GetHandle();
-		}
-		else
-		{
-			return VK_NULL_HANDLE;
-		}
-	}
+	VULKANRHI_API VkDeviceMemory GetAllocationHandle() const;
+	VULKANRHI_API uint64 GetAllocationOffset() const;
 
-	inline uint64 GetAllocationOffset() const
-	{
-		if (ResourceAllocation.IsValid())
-		{
-			return ResourceAllocation->GetOffset();
-		}
-		else
-		{
-			return 0;
-		}
-	}
-
-	inline TRefCountPtr<VulkanRHI::FOldResourceAllocation> GetResourceAllocation()
-	{
-		return ResourceAllocation;
-	}
 
 	FVulkanDevice* Device;
 
@@ -425,7 +404,7 @@ public:
 	VkFormat StorageFormat;
 	// Format for SRVs, render targets
 	VkFormat ViewFormat;
-	uint32 Width, Height, Depth;
+	uint32 Width, Height, Depth, ArraySize;
 	// UE format
 	EPixelFormat PixelFormat;
 	uint32 UEFlags;
@@ -445,7 +424,7 @@ private:
 	VkImageViewType	ViewType;
 
 	bool bIsImageOwner;
-	TRefCountPtr<VulkanRHI::FOldResourceAllocation> ResourceAllocation;
+	VulkanRHI::FVulkanAllocation Allocation;
 
 	uint32 NumMips;
 	uint32 NumSamples;
@@ -519,7 +498,14 @@ struct FVulkanTextureBase : public FVulkanBaseShaderResource
 		Callback(TEXT("FVulkanTextureBase"), GetResourceFName(), this, GetRHIResource(), Surface.Width, Surface.Height, Surface.Depth, Surface.StorageFormat);
 	}
 
+	virtual void Evict(FVulkanDevice& Device);
+
+	void AttachView(FVulkanShaderResourceView* View);
+	void DetachView(FVulkanShaderResourceView* View);
+
 private:
+	FVulkanShaderResourceView* FirstView = nullptr;
+
 	void DestroyViews();
 	virtual FName GetResourceFName() = 0;
 	virtual FRHIResource* GetRHIResource(){ return 0; }
@@ -1021,31 +1007,37 @@ public:
 		return WrapAroundAllocateMemory(Size, Alignment, InCmdBuffer);
 	}
 
-	inline VulkanRHI::FBufferAllocation* GetBufferAllocation() const
-	{
-		return BufferSuballocation->GetBufferAllocation();
-	}
-
 	inline uint32 GetBufferOffset() const
 	{
-		return BufferSuballocation->GetOffset();
+		return Allocation.Offset;
 	}
 
 	inline VkBuffer GetHandle() const
 	{
-		return BufferSuballocation->GetHandle();
+		return Allocation.GetBufferHandle();
 	}
 
 	inline void* GetMappedPointer()
 	{
-		return BufferSuballocation->GetMappedPointer();
+		return Allocation.GetMappedPointer(Device);
 	}
+
+	VulkanRHI::FVulkanAllocation& GetAllocation()
+	{
+		return Allocation;
+	}
+
+	const VulkanRHI::FVulkanAllocation& GetAllocation() const
+	{
+		return Allocation;
+	}
+
 
 protected:
 	uint64 BufferSize;
 	uint64 BufferOffset;
 	uint32 MinAlignment;
-	VulkanRHI::FBufferSuballocation* BufferSuballocation;
+	VulkanRHI::FVulkanAllocation Allocation;
 
 	// Fence for wrapping around
 	FVulkanCmdBuffer* FenceCmdBuffer = nullptr;
@@ -1070,9 +1062,9 @@ public:
 		return CPUBuffer->AllocateMemory(Size, Alignment, InCmdBuffer);
 	}
 
-	VulkanRHI::FBufferAllocation* GetCPUBufferAllocation() const
+	const VulkanRHI::FVulkanAllocation& GetCPUBufferAllocation() const 
 	{
-		return CPUBuffer->GetBufferAllocation();
+		return CPUBuffer->GetAllocation();
 	}
 
 	VkBuffer GetCPUBufferHandle() const
@@ -1096,9 +1088,9 @@ public:
 	FVulkanResourceMultiBuffer(FVulkanDevice* InDevice, VkBufferUsageFlags InBufferUsageFlags, uint32 InSize, uint32 InUEUsage, FRHIResourceCreateInfo& CreateInfo, class FRHICommandListImmediate* InRHICmdList = nullptr);
 	virtual ~FVulkanResourceMultiBuffer();
 
-	inline VulkanRHI::FBufferAllocation* GetBufferAllocation() const
+	inline const VulkanRHI::FVulkanAllocation& GetCurrentAllocation() const
 	{
-		return Current.BufferAllocation;
+		return Current.Alloc;
 	}
 
 	inline VkBuffer GetHandle() const
@@ -1184,11 +1176,10 @@ protected:
 		NUM_BUFFERS = 3,
 	};
 
-	TRefCountPtr<VulkanRHI::FBufferSuballocation> Buffers[NUM_BUFFERS];
+	VulkanRHI::FVulkanAllocation Buffers[NUM_BUFFERS];
 	struct
 	{
-		VulkanRHI::FBufferSuballocation* SubAlloc = nullptr;
-		VulkanRHI::FBufferAllocation* BufferAllocation = nullptr;
+		VulkanRHI::FVulkanAllocation Alloc;
 		VkBuffer Handle = VK_NULL_HANDLE;
 		uint64 Offset = 0;
 		uint64 Size = 0;
@@ -1256,27 +1247,17 @@ public:
 	FVulkanRealUniformBuffer(FVulkanDevice& Device, const FRHIUniformBufferLayout& InLayout, const void* Contents, EUniformBufferUsage InUsage, EUniformBufferValidation Validation);
 	virtual ~FVulkanRealUniformBuffer();
 
-	VulkanRHI::FBufferAllocation* GetBufferAllocation() const
-	{
-		checkSlow(UBAllocation);
-		return UBAllocation->GetBufferAllocation();
-	}
 
 	inline uint32 GetOffset() const
 	{
-		return UBAllocation->GetOffset();
+		return Allocation.Offset;
 	}
 
-	// Returns previous allocation
-	inline VulkanRHI::FBufferSuballocation* UpdateUBAllocation(VulkanRHI::FBufferSuballocation* NewAlloc)
+	inline void UpdateAllocation(VulkanRHI::FVulkanAllocation& NewAlloc)
 	{
-		checkSlow(UBAllocation);
-		VulkanRHI::FBufferSuballocation* PrevBufferSuballoc = UBAllocation;
-		UBAllocation = NewAlloc;
-
-		return PrevBufferSuballoc;
+		NewAlloc.Swap(Allocation);
 	}
-	VulkanRHI::FBufferSuballocation* UBAllocation = nullptr;
+	VulkanRHI::FVulkanAllocation Allocation;
 };
 
 class FVulkanStructuredBuffer : public FRHIStructuredBuffer, public FVulkanResourceMultiBuffer
@@ -1329,38 +1310,14 @@ class FVulkanShaderResourceView : public FRHIShaderResourceView, public VulkanRH
 {
 public:
 	FVulkanShaderResourceView(FVulkanDevice* Device, FRHIResource* InRHIBuffer, FVulkanResourceMultiBuffer* InSourceBuffer, uint32 InSize, EPixelFormat InFormat, uint32 InOffset = 0);
-
-	FVulkanShaderResourceView(FVulkanDevice* Device, FRHITexture* InSourceTexture, const FRHITextureSRVCreateInfo& InCreateInfo)
-		: VulkanRHI::FDeviceChild(Device)
-		, BufferViewFormat((EPixelFormat)InCreateInfo.Format)
-		, SRGBOverride(InCreateInfo.SRGBOverride)
-		, SourceTexture(InSourceTexture)
-		, SourceStructuredBuffer(nullptr)
-		, MipLevel(InCreateInfo.MipLevel)
-		, NumMips(InCreateInfo.NumMipLevels)
-		, FirstArraySlice(InCreateInfo.FirstArraySlice)
-		, NumArraySlices(InCreateInfo.NumArraySlices)
-		, Size(0)
-		, SourceBuffer(nullptr)
-	{
-	}
-
-	FVulkanShaderResourceView(FVulkanDevice* Device, FVulkanStructuredBuffer* InStructuredBuffer, uint32 InOffset = 0)
-		: VulkanRHI::FDeviceChild(Device)
-		, BufferViewFormat(PF_Unknown)
-		, SourceTexture(nullptr)
-		, SourceStructuredBuffer(InStructuredBuffer)
-		, NumMips(0)
-		, Size(InStructuredBuffer->GetSize() - InOffset)
-		, Offset(InOffset)
-		, SourceBuffer(nullptr)
-	{
-	}
+	FVulkanShaderResourceView(FVulkanDevice* Device, FRHITexture* InSourceTexture, const FRHITextureSRVCreateInfo& InCreateInfo);
+	FVulkanShaderResourceView(FVulkanDevice* Device, FVulkanStructuredBuffer* InStructuredBuffer, uint32 InOffset = 0);
 
 	void Clear();
 
 	void Rename(FRHIResource* InRHIBuffer, FVulkanResourceMultiBuffer* InSourceBuffer, uint32 InSize, EPixelFormat InFormat);
 
+	void InvalidateView();
 	void UpdateView();
 
 	inline FVulkanBufferView* GetBufferView()
@@ -1395,6 +1352,9 @@ protected:
 	// Used to check on volatile buffers if a new BufferView is required
 	VkBuffer VolatileBufferHandle = VK_NULL_HANDLE;
 	uint32 VolatileLockCounter = MAX_uint32;
+
+	FVulkanShaderResourceView* NextView = 0;
+	friend struct FVulkanTextureBase;
 };
 
 class FVulkanVertexInputStateInfo
