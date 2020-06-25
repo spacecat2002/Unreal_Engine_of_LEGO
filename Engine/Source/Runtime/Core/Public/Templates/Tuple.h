@@ -27,7 +27,7 @@ namespace UE4Tuple_Private
 	template <typename... ArgTypes>
 	void ConceptCheckingHelper(ArgTypes&&...);
 
-	template <typename T, uint32 Index>
+	template <typename T, uint32 Index, uint32 TupleSize>
 	struct TTupleElement
 	{
 		template <
@@ -52,14 +52,39 @@ namespace UE4Tuple_Private
 		T Value;
 	};
 
+	template <typename T>
+	struct TTupleElement<T, 0, 2>
+	{
+		template <
+			typename ArgType,
+			typename TEnableIf<TIsConstructible<T, ArgType&&>::Value>::Type* = nullptr
+		>
+		explicit TTupleElement(EForwardingConstructor, ArgType&& Arg)
+			: Key(Forward<ArgType>(Arg))
+		{
+		}
+
+		TTupleElement()
+			: Key()
+		{
+		}
+
+		TTupleElement(TTupleElement&&) = default;
+		TTupleElement(const TTupleElement&) = default;
+		TTupleElement& operator=(TTupleElement&&) = default;
+		TTupleElement& operator=(const TTupleElement&) = default;
+
+		T Key;
+	};
+
 	template <uint32 Index, uint32 TupleSize>
 	struct TTupleElementHelper
 	{
 		template <typename DeducedType, typename TupleType>
-		static FORCEINLINE decltype(auto) GetImpl(const volatile TTupleElement<DeducedType, Index>&, TupleType&& Tuple)
+		static FORCEINLINE decltype(auto) GetImpl(const volatile TTupleElement<DeducedType, Index, TupleSize>&, TupleType&& Tuple)
 		{
 			// Brackets are important here - we want a reference type to be returned, not object type
-			return (ForwardAsBase<TupleType, TTupleElement<DeducedType, Index>>(Tuple).Value);
+			return (ForwardAsBase<TupleType, TTupleElement<DeducedType, Index, TupleSize>>(Tuple).Value);
 		}
 
 		template <typename TupleType>
@@ -77,17 +102,6 @@ namespace UE4Tuple_Private
 		{
 			// Brackets are important here - we want a reference type to be returned, not object type
 			return (Forward<TupleType>(Tuple).Key);
-		}
-	};
-
-	template <>
-	struct TTupleElementHelper<1, 2>
-	{
-		template <typename TupleType>
-		static FORCEINLINE decltype(auto) Get(TupleType&& Tuple)
-		{
-			// Brackets are important here - we want a reference type to be returned, not object type
-			return (Forward<TupleType>(Tuple).Value);
 		}
 	};
 
@@ -142,97 +156,26 @@ namespace UE4Tuple_Private
 	};
 
 	template <typename Indices, typename... Types>
-	struct TTupleStorage;
-
-	template <uint32... Indices, typename... Types>
-	struct TTupleStorage<TIntegerSequence<uint32, Indices...>, Types...> : TTupleElement<Types, Indices>...
-	{
-		template <
-			typename... ArgTypes,
-			decltype(ConceptCheckingHelper(TTupleElement<Types, Indices>(ForwardingConstructor, DeclVal<ArgTypes&&>())...))* = nullptr
-		>
-		explicit TTupleStorage(EForwardingConstructor, ArgTypes&&... Args)
-			: TTupleElement<Types, Indices>(ForwardingConstructor, Forward<ArgTypes>(Args))...
-		{
-		}
-
-		TTupleStorage() = default;
-		TTupleStorage(TTupleStorage&&) = default;
-		TTupleStorage(const TTupleStorage&) = default;
-		TTupleStorage& operator=(TTupleStorage&&) = default;
-		TTupleStorage& operator=(const TTupleStorage&) = default;
-
-		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get() const&  { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<const TTupleStorage& >(*this)); }
-		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get() const&& { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<const TTupleStorage&&>(*this)); }
-		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get()      &  { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<      TTupleStorage& >(*this)); }
-		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get()      && { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<      TTupleStorage&&>(*this)); }
-	};
-
-	// Specialization of 2-TTuple to give it the API of TPair.
-	template <typename InKeyType, typename InValueType>
-	struct TTupleStorage<TIntegerSequence<uint32, 0, 1>, InKeyType, InValueType>
-	{
-		typedef InKeyType   KeyType;
-		typedef InValueType ValueType;
-
-		template <
-			typename KeyInitType,
-			typename ValueInitType,
-			typename TEnableIf<TAnd<TIsConstructible<KeyType, KeyInitType&&>, TIsConstructible<ValueType, ValueInitType&&>>::Value>::Type* = nullptr
-		>
-		explicit TTupleStorage(EForwardingConstructor, KeyInitType&& KeyInit, ValueInitType&& ValueInit)
-			: Key  (Forward<KeyInitType  >(KeyInit  ))
-			, Value(Forward<ValueInitType>(ValueInit))
-		{
-		}
-
-		TTupleStorage()
-			: Key()
-			, Value()
-		{
-		}
-
-		TTupleStorage(TTupleStorage&&) = default;
-		TTupleStorage(const TTupleStorage&) = default;
-		TTupleStorage& operator=(TTupleStorage&&) = default;
-		TTupleStorage& operator=(const TTupleStorage&) = default;
-
-		template <uint32 Index, typename TEnableIf<(Index < 2)>::Type* = nullptr> FORCEINLINE decltype(auto) Get() const& { return TTupleElementHelper<Index, 2>::Get(static_cast<const TTupleStorage&>(*this)); }
-		template <uint32 Index, typename TEnableIf<(Index < 2)>::Type* = nullptr> FORCEINLINE decltype(auto) Get() const&& { return TTupleElementHelper<Index, 2>::Get(static_cast<const TTupleStorage&&>(*this)); }
-		template <uint32 Index, typename TEnableIf<(Index < 2)>::Type* = nullptr> FORCEINLINE decltype(auto) Get()      & { return TTupleElementHelper<Index, 2>::Get(static_cast<TTupleStorage&>(*this)); }
-		template <uint32 Index, typename TEnableIf<(Index < 2)>::Type* = nullptr> FORCEINLINE decltype(auto) Get()      && { return TTupleElementHelper<Index, 2>::Get(static_cast<      TTupleStorage&&>(*this)); }
-
-		InKeyType   Key;
-		InValueType Value;
-	};
-
-	template <typename Indices, typename... Types>
 	struct TTupleImpl;
 
 	template <uint32... Indices, typename... Types>
-	struct TTupleImpl<TIntegerSequence<uint32, Indices...>, Types...> : TTupleStorage<TIntegerSequence<uint32, Indices...>, Types...>
+	struct TTupleImpl<TIntegerSequence<uint32, Indices...>, Types...> : TTupleElement<Types, Indices, sizeof...(Types)>...
 	{
-	private:
-		typedef TTupleStorage<TIntegerSequence<uint32, Indices...>, Types...> Super;
-
-	public:
-		using Super::Get;
-
 		template <
 			typename... ArgTypes,
-			decltype(ConceptCheckingHelper(Super(ForwardingConstructor, DeclVal<ArgTypes&&>()...)))* = nullptr
+			decltype(ConceptCheckingHelper(TTupleElement<Types, Indices, sizeof...(Types)>(ForwardingConstructor, DeclVal<ArgTypes&&>())...))* = nullptr
 		>
 		explicit TTupleImpl(EForwardingConstructor, ArgTypes&&... Args)
-			: Super(ForwardingConstructor, Forward<ArgTypes>(Args)...)
+			: TTupleElement<Types, Indices, sizeof...(Types)>(ForwardingConstructor, Forward<ArgTypes>(Args))...
 		{
 		}
 
 		template <
 			typename TupleType,
-			decltype(ConceptCheckingHelper(Super(ForwardingConstructor, DeclVal<TupleType&&>().template Get<Indices>()...)))* = nullptr
+			decltype(ConceptCheckingHelper(TTupleElement<Types, Indices, sizeof...(Types)>(ForwardingConstructor, DeclVal<TupleType&&>().template Get<Indices>())...))* = nullptr
 		>
 		explicit TTupleImpl(EOtherTupleConstructor, TupleType&& Other)
-			: Super(ForwardingConstructor, Forward<TupleType>(Other).template Get<Indices>()...)
+			: TTupleElement<Types, Indices, sizeof...(Types)>(ForwardingConstructor, Forward<TupleType>(Other).template Get<Indices>())...
 		{
 		}
 
@@ -241,6 +184,11 @@ namespace UE4Tuple_Private
 		TTupleImpl(const TTupleImpl& Other) = default;
 		TTupleImpl& operator=(TTupleImpl&& Other) = default;
 		TTupleImpl& operator=(const TTupleImpl& Other) = default;
+
+		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get() const&  { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<const TTupleImpl& >(*this)); }
+		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get() const&& { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<const TTupleImpl&&>(*this)); }
+		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get()      &  { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<      TTupleImpl& >(*this)); }
+		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get()      && { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<      TTupleImpl&&>(*this)); }
 
 		template <typename FuncType, typename... ArgTypes>
 		decltype(auto) ApplyAfter(FuncType&& Func, ArgTypes&&... Args) const
