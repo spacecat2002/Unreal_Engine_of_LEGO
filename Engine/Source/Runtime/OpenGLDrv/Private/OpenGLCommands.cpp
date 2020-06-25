@@ -896,6 +896,33 @@ void FOpenGLDynamicRHI::SetupUAVsForProgram(FOpenGLContextState& ContextState, c
 	}
 }
 
+static bool IsImageTextureFormatSupported(GLenum Format)
+{
+	if (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES3_1)
+	{
+		// from GLES 3.1 spec
+		switch (Format)
+		{
+			case GL_RGBA32F:
+			case GL_RGBA16F:
+			case GL_R32F:
+			case GL_RGBA32UI:
+			case GL_RGBA16UI:
+			case GL_RGBA8UI:
+			case GL_R32UI:
+			case GL_RGBA32I:
+			case GL_RGBA16I:
+			case GL_RGBA8I:
+			case GL_R32I:
+			case GL_RGBA8:
+			case GL_RGBA8_SNORM:
+				return true;
+			default:
+				return false;
+		}
+	}
+	return true;
+}
 
 void FOpenGLDynamicRHI::CachedSetupUAVStage( FOpenGLContextState& ContextState, GLint UAVIndex, GLenum Format, GLuint Resource, bool bLayered, GLint Layer, GLenum Access)
 {
@@ -910,6 +937,8 @@ void FOpenGLDynamicRHI::CachedSetupUAVStage( FOpenGLContextState& ContextState, 
 		// Nothing's changed, no need to update
 		return;
 	}
+	
+	check(IsImageTextureFormatSupported(Format));
 		
 	VERIFY_GL_SCOPE();
 	
