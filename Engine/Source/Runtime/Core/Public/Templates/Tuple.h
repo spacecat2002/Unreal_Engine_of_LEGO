@@ -84,7 +84,10 @@ namespace UE4Tuple_Private
 		static FORCEINLINE decltype(auto) GetImpl(const volatile TTupleElement<DeducedType, Index, TupleSize>&, TupleType&& Tuple)
 		{
 			// Brackets are important here - we want a reference type to be returned, not object type
-			return (ForwardAsBase<TupleType, TTupleElement<DeducedType, Index, TupleSize>>(Tuple).Value);
+			decltype(auto) Result = (ForwardAsBase<TupleType, TTupleElement<DeducedType, Index, TupleSize>>(Tuple).Value);
+
+			// Keep rvalue references as rvalue references, because that's how std::get() works, not how C++ works.
+			return static_cast<std::conditional_t<std::is_rvalue_reference<DeducedType>::value, DeducedType, decltype(Result)>>(Result);
 		}
 
 		template <typename TupleType>
@@ -101,7 +104,10 @@ namespace UE4Tuple_Private
 		static FORCEINLINE decltype(auto) Get(TupleType&& Tuple)
 		{
 			// Brackets are important here - we want a reference type to be returned, not object type
-			return (Forward<TupleType>(Tuple).Key);
+			decltype(auto) Result = (ForwardAsBase<TupleType, TTupleElement<decltype(Tuple.Key), 0, 2>>(Tuple).Key);
+
+			// Keep rvalue references as rvalue references, because that's how std::get() works, not how C++ works.
+			return static_cast<std::conditional_t<std::is_rvalue_reference<decltype(Tuple.Key)>::value, decltype(Tuple.Key), decltype(Result)>>(Result);
 		}
 	};
 
@@ -185,10 +191,14 @@ namespace UE4Tuple_Private
 		TTupleImpl& operator=(TTupleImpl&& Other) = default;
 		TTupleImpl& operator=(const TTupleImpl& Other) = default;
 
-		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get() const&  { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<const TTupleImpl& >(*this)); }
-		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get() const&& { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<const TTupleImpl&&>(*this)); }
-		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get()      &  { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<      TTupleImpl& >(*this)); }
-		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get()      && { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<      TTupleImpl&&>(*this)); }
+		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get()               &  { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<               TTupleImpl& >(*this)); }
+		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get() const         &  { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<const          TTupleImpl& >(*this)); }
+		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get()       volatile&  { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<      volatile TTupleImpl& >(*this)); }
+		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get() const volatile&  { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<const volatile TTupleImpl& >(*this)); }
+		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get()               && { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<               TTupleImpl&&>(*this)); }
+		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get() const         && { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<const          TTupleImpl&&>(*this)); }
+		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get()       volatile&& { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<      volatile TTupleImpl&&>(*this)); }
+		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get() const volatile&& { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<const volatile TTupleImpl&&>(*this)); }
 
 		template <typename FuncType, typename... ArgTypes>
 		decltype(auto) ApplyAfter(FuncType&& Func, ArgTypes&&... Args) const
