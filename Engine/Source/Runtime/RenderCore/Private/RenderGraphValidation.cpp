@@ -1240,21 +1240,21 @@ void FRDGLogFile::End()
 	}
 	AddBraceEnd();
 
-	uint32 PassesActive = 0;
-	uint32 PassesCulled = 0;
-	for (int32 Index = 0; Index < PassesCulled.Num(); ++Index)
+	uint32 NumPassesActive = 0;
+	uint32 NumPassesCulled = 0;
+	for (FRDGPassHandle PassHandle = Passes->Begin(); PassHandle != Passes->End(); ++PassHandle)
 	{
-		if (PassesCulled[Index])
+		if (PassesCulled[PassHandle])
 		{
-			PassesCulled++;
+			NumPassesCulled++;
 		}
 		else
 		{
-			PassesActive++;
+			NumPassesActive++;
 		}
 	}
 
-	AddLine(FString::Printf(TEXT("label=\"%s [Active Passes: %d, Culled Passes: %d, Textures: %d, Buffers: %d]\""), *GraphName, PassesActive, PassesCulled, Textures.Num(), Buffers.Num()));
+	AddLine(FString::Printf(TEXT("label=\"%s [Active Passes: %d, Culled Passes: %d, Textures: %d, Buffers: %d]\""), *GraphName, NumPassesActive, NumPassesCulled, Textures.Num(), Buffers.Num()));
 
 	AddBraceEnd();
 	check(Indentation.IsEmpty());
