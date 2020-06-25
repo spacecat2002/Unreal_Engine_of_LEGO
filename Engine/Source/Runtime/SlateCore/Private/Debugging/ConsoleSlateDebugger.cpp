@@ -17,7 +17,7 @@
 #include "UObject/ReflectedTypeAccessors.h"
 #include "UObject/Class.h"
 
-DEFINE_LOG_CATEGORY_STATIC(LogSlateDebugger, Log, All);
+DEFINE_LOG_CATEGORY(LogSlateDebugger);
 
 #define LOCTEXT_NAMESPACE "ConsoleSlateDebugger"
 
@@ -37,79 +37,87 @@ FConsoleSlateDebugger::FConsoleSlateDebugger()
 	, EnabledInputEvents(false, (uint8)ESlateDebuggingInputEvent::MAX)
 	, EnabledFocusEvents(false, (uint8)ESlateDebuggingFocusEvent::MAX)
 	, StartDebuggingCommand(
-		TEXT("SlateDebugger.Start"),
+		TEXT("SlateDebugger.Event.Start"),
 		*LOCTEXT("StartDebugger", "Starts the debugger.").ToString(),
 		FConsoleCommandDelegate::CreateRaw(this, &FConsoleSlateDebugger::StartDebugging))
 	, StopDebuggingCommand(
-		TEXT("SlateDebugger.Stop"),
+		TEXT("SlateDebugger.Event.Stop"),
 		*LOCTEXT("StopDebugger", "Stops the debugger.").ToString(),
 		FConsoleCommandDelegate::CreateRaw(this, &FConsoleSlateDebugger::StopDebugging))
+	, StartDebuggingCommandAlias(
+		TEXT("SlateDebugger.Start"),
+		*LOCTEXT("StartDebuggerAlias", "Alias to `SlateDebugger.Event.Start'.").ToString(),
+		FConsoleCommandDelegate::CreateRaw(this, &FConsoleSlateDebugger::StartDebugging))
+	, StopDebuggingCommandAlias(
+		TEXT("SlateDebugger.Stop"),
+		*LOCTEXT("StopDebuggerAlias", "Alias to `SlateDebugger.Event.Stop'.").ToString(),
+		FConsoleCommandDelegate::CreateRaw(this, &FConsoleSlateDebugger::StopDebugging))
 	, EnableLogWarning(
-		TEXT("SlateDebugger.LogWarning"),
+		TEXT("SlateDebugger.Event.LogWarning"),
 		bLogWarning,
 		*LOCTEXT("LogWarning", "Log warning events").ToString(),
 		FConsoleVariableDelegate::CreateRaw(this, &FConsoleSlateDebugger::OnLogVariablesChanged))
 	, EnableLogInputEvent(
-		TEXT("SlateDebugger.LogInputEvent"),
+		TEXT("SlateDebugger.Event.LogInputEvent"),
 		bLogInputEvent,
 		*LOCTEXT("LogInputEvent", "Log input events").ToString(),
 		FConsoleVariableDelegate::CreateRaw(this, &FConsoleSlateDebugger::OnLogVariablesChanged))
 	, EnableLogFocusEvent(
-		TEXT("SlateDebugger.LogFocusEvent"),
+		TEXT("SlateDebugger.Event.LogFocusEvent"),
 		bLogFocusEvent,
 		*LOCTEXT("LogFocusEvent", "Log focus events").ToString(),
 		FConsoleVariableDelegate::CreateRaw(this, &FConsoleSlateDebugger::OnLogVariablesChanged))
 	, EnableLogAttemptNavigationEvent(
-		TEXT("SlateDebugger.LogAttemptNavigationEvent"),
+		TEXT("SlateDebugger.Event.LogAttemptNavigationEvent"),
 		bLogAttemptNavigationEvent,
 		*LOCTEXT("LogAttemptNavigationEvent", "Log attempt navigation events").ToString(),
 		FConsoleVariableDelegate::CreateRaw(this, &FConsoleSlateDebugger::OnLogVariablesChanged))
 	, EnableLogExecuteNavigationEvent(
-		TEXT("SlateDebugger.LogExecuteNavigationEvent"),
+		TEXT("SlateDebugger.Event.LogExecuteNavigationEvent"),
 		bLogExecuteNavigationEvent,
 		*LOCTEXT("LogExecuteNavigationEvent", "Log execute navigation events").ToString(),
 		FConsoleVariableDelegate::CreateRaw(this, &FConsoleSlateDebugger::OnLogVariablesChanged))
 	, EnableLogCaptureStateChangeEvent(
-		TEXT("SlateDebugger.LogCaptureStateChangeEvent"),
+		TEXT("SlateDebugger.Event.LogCaptureStateChangeEvent"),
 		bLogCaptureStateChangeEvent,
 		*LOCTEXT("LogCaptureStateChangeEvent", "Log cursor state change events").ToString(),
 		FConsoleVariableDelegate::CreateRaw(this, &FConsoleSlateDebugger::OnLogVariablesChanged))
 	, EnableLogCursorChangeEvent(
-		TEXT("SlateDebugger.LogCursorChangeEvent"),
+		TEXT("SlateDebugger.Event.LogCursorChangeEvent"),
 		bLogCursorChangeEvent,
 		*LOCTEXT("LogCursorChangeEvent", "Log cursor change events").ToString(),
 		FConsoleVariableDelegate::CreateRaw(this, &FConsoleSlateDebugger::OnLogVariablesChanged))
 	, CaptureStackVariable(
-		TEXT("SlateDebugger.CaptureStack"),
+		TEXT("SlateDebugger.Event.CaptureStack"),
 		bCaptureStack,
 		*LOCTEXT("CaptureStack", "Should we capture the stack when there are events?").ToString())
 	, EnableInputRoutingMode(
-		TEXT("SlateDebugger.InputRoutingModeEnabled"),
+		TEXT("SlateDebugger.Event.InputRoutingModeEnabled"),
 		bInputRoutingModeEnabled,
 		*LOCTEXT("InputRoutingModeEnabled", "Should we output the route that an input event took?").ToString(),
 		FConsoleVariableDelegate::CreateRaw(this, &FConsoleSlateDebugger::OnLogVariablesChanged))
 	, SetInputFilterCommand(
-		TEXT("SlateDebugger.SetInputFilter"),
+		TEXT("SlateDebugger.Event.SetInputFilter"),
 		*LOCTEXT("SetInputFilter", "Enable or Disable specific input filters").ToString(),
 		FConsoleCommandWithArgsDelegate::CreateRaw(this, &FConsoleSlateDebugger::SetInputFilter))
 	, ClearInputFiltersCommand(
-		TEXT("SlateDebugger.DisableAllInputFilters"),
+		TEXT("SlateDebugger.Event.DisableAllInputFilters"),
 		*LOCTEXT("DisableAllInputFilters", "Disable all input filters").ToString(),
 		FConsoleCommandDelegate::CreateRaw(this, &FConsoleSlateDebugger::ClearInputFilters))
 	, EnableInputFiltersCommand(
-		TEXT("SlateDebugger.EnableAllInputFilters"),
+		TEXT("SlateDebugger.Event.EnableAllInputFilters"),
 		*LOCTEXT("EnableAllInputFilters", "Enable all input filters").ToString(),
 		FConsoleCommandDelegate::CreateRaw(this, &FConsoleSlateDebugger::EnableInputFilters))
 	, SetFocusFilterCommand(
-		TEXT("SlateDebugger.SetFocusFilter"),
+		TEXT("SlateDebugger.Event.SetFocusFilter"),
 		*LOCTEXT("SetFocusFilter", "Enable or Disable specific focus filters").ToString(),
 		FConsoleCommandWithArgsDelegate::CreateRaw(this, &FConsoleSlateDebugger::SetFocusFilter))
 	, ClearFocusFiltersCommand(
-		TEXT("SlateDebugger.DisableAllFocusFilters"),
+		TEXT("SlateDebugger.Event.DisableAllFocusFilters"),
 		*LOCTEXT("DisableAllFocusFilters", "Disable all focus filters").ToString(),
 		FConsoleCommandDelegate::CreateRaw(this, &FConsoleSlateDebugger::ClearFocusFilters))
 	, EnableFocusFiltersCommand(
-		TEXT("SlateDebugger.EnableAllFocusFilters"),
+		TEXT("SlateDebugger.Event.EnableAllFocusFilters"),
 		*LOCTEXT("EnableAllFocusFilters", "Enable all focus filters").ToString(),
 		FConsoleCommandDelegate::CreateRaw(this, &FConsoleSlateDebugger::EnableFocusFilters))
 {

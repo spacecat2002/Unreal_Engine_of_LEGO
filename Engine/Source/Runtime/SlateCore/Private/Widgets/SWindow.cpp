@@ -2111,7 +2111,7 @@ int32 SWindow::PaintWindow( double CurrentTime, float DeltaTime, FSlateWindowEle
 	}
 
 #if WITH_SLATE_DEBUGGING
-	FSlateDebugging::DrawDebuggerVisuals.Broadcast(PaintArgs, GetWindowGeometryInWindow(), OutDrawElements, Result.MaxLayerIdPainted);
+	FSlateDebugging::PaintDebugElements.Broadcast(PaintArgs, GetWindowGeometryInWindow(), OutDrawElements, Result.MaxLayerIdPainted);
 #endif 
 
 	return Result.MaxLayerIdPainted;

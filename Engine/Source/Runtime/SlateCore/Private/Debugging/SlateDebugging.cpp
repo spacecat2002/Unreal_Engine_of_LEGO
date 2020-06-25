@@ -337,7 +337,7 @@ FSlateDebugging::FBeginWidgetPaint FSlateDebugging::BeginWidgetPaint;
 
 FSlateDebugging::FEndWidgetPaint FSlateDebugging::EndWidgetPaint;
 
-FSlateDebugging::FDrawDebuggerVisuals FSlateDebugging::DrawDebuggerVisuals;
+FSlateDebugging::FPaintDebugElements FSlateDebugging::PaintDebugElements;
 
 FSlateDebugging::FDrawElement FSlateDebugging::ElementAdded;
 

@@ -12,14 +12,16 @@
 #include "Input/Reply.h"
 #include "HAL/IConsoleManager.h"
 
+DECLARE_LOG_CATEGORY_EXTERN(LogSlateDebugger, Log, All);
+
 /**
  * Allows debugging the behavior of Slate from the console.
  * Basics:
- *   Start - SlateDebugger.Start
- *   Stop  - SlateDebugger.Stop
+ *   Start - SlateDebugger.Event.Start
+ *   Stop  - SlateDebugger.Event.Stop
  *
  * Notes:
- *   If you need to begin debugging slate on startup do, -execcmds="SlateDebugger.Start"
+ *   If you need to begin debugging slate on startup do, -execcmds="SlateDebugger.Event.Start"
  */
 class FConsoleSlateDebugger : public FSlateDebugging::IWidgetInputRoutingEvent
 {
@@ -93,6 +95,8 @@ private:
 	//~ Console objects
 	FAutoConsoleCommand StartDebuggingCommand;
 	FAutoConsoleCommand StopDebuggingCommand;
+	FAutoConsoleCommand StartDebuggingCommandAlias;
+	FAutoConsoleCommand StopDebuggingCommandAlias;
 	FAutoConsoleVariableRef EnableLogWarning;
 	FAutoConsoleVariableRef EnableLogInputEvent;
 	FAutoConsoleVariableRef EnableLogFocusEvent;

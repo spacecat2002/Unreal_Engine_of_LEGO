@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Debugging/ConsoleSlateDebugger.h"
+#include "Debugging/ConsoleSlateDebuggerPaint.h"
 #include "Modules/ModuleInterface.h"
 #include "Modules/ModuleManager.h"
 #include "SlateGlobals.h"
@@ -24,13 +25,15 @@ public:
 	FSlateCoreModule()
 	{
 #if WITH_SLATE_DEBUGGING
-		SlateDebugger = MakeUnique<FConsoleSlateDebugger>();
+		SlateDebuggerEvent = MakeUnique<FConsoleSlateDebugger>();
+		SlateDebuggerPaint = MakeUnique<FConsoleSlateDebuggerPaint>();
 #endif
 	}
 
 #if WITH_SLATE_DEBUGGING
 private:
-	TUniquePtr<FConsoleSlateDebugger> SlateDebugger;
+	TUniquePtr<FConsoleSlateDebugger> SlateDebuggerEvent;
+	TUniquePtr<FConsoleSlateDebuggerPaint> SlateDebuggerPaint;
 #endif
 };
 

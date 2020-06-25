@@ -219,8 +219,8 @@ public:
 	static FEndWidgetPaint EndWidgetPaint;
 
 	/** Called once the window is drawn (including PaintDeferred). It can be used to draw additional debug info on top of the window. */
-	DECLARE_MULTICAST_DELEGATE_FourParams(FDrawDebuggerVisuals, const FPaintArgs& /*InArgs*/, const FGeometry& /*InAllottedGeometry*/, FSlateWindowElementList& /*InOutDrawElements*/, int32& /*InOutLayerId*/);
-	static FDrawDebuggerVisuals DrawDebuggerVisuals;
+	DECLARE_MULTICAST_DELEGATE_FourParams(FPaintDebugElements, const FPaintArgs& /*InArgs*/, const FGeometry& /*InAllottedGeometry*/, FSlateWindowElementList& /*InOutDrawElements*/, int32& /*InOutLayerId*/);
+	static FPaintDebugElements PaintDebugElements;
 
 	/**
 	 * Called as soon as the element is added to the element list.
