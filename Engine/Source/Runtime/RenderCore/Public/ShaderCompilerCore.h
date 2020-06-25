@@ -19,9 +19,9 @@ class Error;
 const int32 ShaderCompileWorkerInputVersion = 13;
 // this is for the protocol, not the data, bump if FShaderCompilerOutput or WriteToOutputArchive changes.
 const int32 ShaderCompileWorkerOutputVersion = 5;
-// this is for the protocol, not the data, bump if FShaderCompilerOutput or WriteToOutputArchive changes.
+// this is for the protocol, not the data.
 const int32 ShaderCompileWorkerSingleJobHeader = 'S';
-// this is for the protocol, not the data, bump if FShaderCompilerOutput or WriteToOutputArchive changes.
+// this is for the protocol, not the data.
 const int32 ShaderCompileWorkerPipelineJobHeader = 'P';
 
 /** Returns true if debug information should be kept for a given platform. */
