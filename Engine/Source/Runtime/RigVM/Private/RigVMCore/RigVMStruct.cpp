@@ -291,4 +291,79 @@ ERigVMPinDirection FRigVMStruct::GetPinDirectionFromProperty(FProperty* InProper
 	return ERigVMPinDirection::Hidden;
 }
 
+FString FRigVMStruct::ExportToFullyQualifiedText(FProperty* InMemberProperty, const uint8* InMemberMemoryPtr)
+{
+	check(InMemberProperty);
+	check(InMemberMemoryPtr);
+
+	FString DefaultValue;
+
+	if (FStructProperty* StructProperty = CastField<FStructProperty>(InMemberProperty))
+	{
+		DefaultValue = ExportToFullyQualifiedText(StructProperty->Struct, InMemberMemoryPtr);
+	}
+	else if (FArrayProperty* ArrayProperty = CastField<FArrayProperty>(InMemberProperty))
+	{
+		FScriptArrayHelper ScriptArrayHelper(ArrayProperty, InMemberMemoryPtr);
+
+		TArray<FString> ElementValues;
+		for (int32 ElementIndex = 0; ElementIndex < ScriptArrayHelper.Num(); ElementIndex++)
+		{
+			const uint8* ElementMemoryPtr = ScriptArrayHelper.GetRawPtr(ElementIndex);
+			ElementValues.Add(ExportToFullyQualifiedText(ArrayProperty->Inner, ElementMemoryPtr));
+		}
+
+		if (ElementValues.Num() == 0)
+		{
+			DefaultValue = TEXT("()");
+		}
+		else
+		{
+			DefaultValue = FString::Printf(TEXT("(%s)"), *FString::Join(ElementValues, TEXT(",")));
+		}
+	}
+	else
+	{
+		InMemberProperty->ExportTextItem(DefaultValue, InMemberMemoryPtr, nullptr, nullptr, PPF_None);
+
+		if (CastField<FNameProperty>(InMemberProperty) != nullptr ||
+			CastField<FStrProperty>(InMemberProperty) != nullptr)
+		{
+			if (DefaultValue.IsEmpty())
+			{
+				DefaultValue = TEXT("\"\"");
+			}
+			else
+			{
+				DefaultValue = FString::Printf(TEXT("\"%s\""), *DefaultValue);
+			}
+		}
+	}
+
+	return DefaultValue;
+}
+
+FString FRigVMStruct::ExportToFullyQualifiedText(UScriptStruct* InStruct, const uint8* InStructMemoryPtr)
+{
+	check(InStruct);
+	check(InStructMemoryPtr);
+
+	TArray<FString> FieldValues;
+	for (TFieldIterator<FProperty> It(InStruct); It; ++It)
+	{
+		FString PropertyName = It->GetName();
+		const uint8* StructMemberMemoryPtr = It->ContainerPtrToValuePtr<uint8>(InStructMemoryPtr);
+		FString DefaultValue = ExportToFullyQualifiedText(*It, StructMemberMemoryPtr);
+		FieldValues.Add(FString::Printf(TEXT("%s=%s"), *PropertyName, *DefaultValue));
+	}
+
+	if (FieldValues.Num() == 0)
+	{
+		return TEXT("()");
+	}
+
+	return FString::Printf(TEXT("(%s)"), *FString::Join(FieldValues, TEXT(",")));
+}
+
+
 #endif
