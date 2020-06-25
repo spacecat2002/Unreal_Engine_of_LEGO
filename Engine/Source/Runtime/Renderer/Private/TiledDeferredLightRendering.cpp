@@ -335,9 +335,9 @@ BEGIN_SHADER_PARAMETER_STRUCT(FTiledDeferredLightingParameters, )
 	SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FSceneTextureUniformParameters, SceneTextures)
 END_SHADER_PARAMETER_STRUCT()
 
-FRDGTextureMSAA FDeferredShadingSceneRenderer::RenderTiledDeferredLighting(
+FRDGTextureRef FDeferredShadingSceneRenderer::RenderTiledDeferredLighting(
 	FRDGBuilder& GraphBuilder,
-	FRDGTextureMSAA SceneColorTexture,
+	FRDGTextureRef SceneColorTexture,
 	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	const TArray<FSortedLightSceneInfo, SceneRenderingAllocator>& SortedLights,
 	int32 TiledDeferredLightsStart,
@@ -367,23 +367,13 @@ FRDGTextureMSAA FDeferredShadingSceneRenderer::RenderTiledDeferredLighting(
 			check(NumThisPass > 0);
 
 			// One some hardware we can read and write from the same UAV with a 32 bit format. We don't do that yet.
-			FRDGTextureMSAA SceneColorOutputTexture;
+			FRDGTextureRef SceneColorOutputTexture = nullptr;
 
-			// TODO(RDG): Since we are swapping out the scene color pooled render target on the render target context, we can't allocate
-			// using an RDG texture, since extraction of that texture would occur at the end. Any pass after this that tried to setup using
-			// the scene color on the context would get the old one. This can safely be removed after scene color is converted to an RDG texture.
 			{
-				FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
-				FPooledRenderTargetDesc Desc = SceneContext.GetSceneColor()->GetDesc();
-				Desc.TargetableFlags |= TexCreate_UAV;
-
-				TRefCountPtr<IPooledRenderTarget> SceneColorOutput;
-				GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, SceneColorOutput, TEXT("SceneColorTiled"));
-				SceneContext.SetSceneColor(SceneColorOutput);
-				SceneColorOutputTexture = RegisterExternalTextureMSAA(GraphBuilder, SceneColorOutput);
+				FRDGTextureDesc Desc = SceneColorTexture->Desc;
+				Desc.Flags |= TexCreate_UAV;
+				SceneColorOutputTexture = GraphBuilder.CreateTexture(Desc, TEXT("SceneColorTiled"));
 			}
-
-			AddResolveSceneColorPass(GraphBuilder, Views, SceneColorTexture);
 
 			const int32 ViewCount = Views.Num();
 
@@ -392,8 +382,8 @@ FRDGTextureMSAA FDeferredShadingSceneRenderer::RenderTiledDeferredLighting(
 				const FViewInfo& View = Views[ViewIndex];
 
 				FTiledDeferredLightingParameters* PassParameters = GraphBuilder.AllocParameters<FTiledDeferredLightingParameters>();
-				PassParameters->SceneColorInput = SceneColorTexture.Resolve;
-				PassParameters->SceneColorOutput = SceneColorOutputTexture.Target;
+				PassParameters->SceneColorInput = SceneColorTexture;
+				PassParameters->SceneColorOutput = SceneColorOutputTexture;
 				PassParameters->SceneTextures = SceneTexturesUniformBuffer;
 
 				GraphBuilder.AddPass(
@@ -404,17 +394,21 @@ FRDGTextureMSAA FDeferredShadingSceneRenderer::RenderTiledDeferredLighting(
 				{
 					if (View.Family->EngineShowFlags.VisualizeLightCulling)
 					{
-						SetShaderTemplTiledLighting<1>(RHICmdList, View, ViewIndex, ViewCount, SortedLights, TiledDeferredLightsStart, TiledDeferredLightsEnd, SimpleLights, StartIndex, NumThisPass, *SceneColorTexture.Resolve->GetPooledRenderTarget(), *SceneColorOutputTexture.Target->GetPooledRenderTarget());
+						SetShaderTemplTiledLighting<1>(RHICmdList, View, ViewIndex, ViewCount, SortedLights, TiledDeferredLightsStart, TiledDeferredLightsEnd, SimpleLights, StartIndex, NumThisPass, *SceneColorTexture->GetPooledRenderTarget(), *SceneColorOutputTexture->GetPooledRenderTarget());
 					}
 					else
 					{
-						SetShaderTemplTiledLighting<0>(RHICmdList, View, ViewIndex, ViewCount, SortedLights, TiledDeferredLightsStart, TiledDeferredLightsEnd, SimpleLights, StartIndex, NumThisPass, *SceneColorTexture.Resolve->GetPooledRenderTarget(), *SceneColorOutputTexture.Target->GetPooledRenderTarget());
+						SetShaderTemplTiledLighting<0>(RHICmdList, View, ViewIndex, ViewCount, SortedLights, TiledDeferredLightsStart, TiledDeferredLightsEnd, SimpleLights, StartIndex, NumThisPass, *SceneColorTexture->GetPooledRenderTarget(), *SceneColorOutputTexture->GetPooledRenderTarget());
 					}
 				});
 			}
 
 			SceneColorTexture = SceneColorOutputTexture;
 		}
+
+		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
+		GraphBuilder.PreallocateTexture(SceneColorTexture);
+		GraphBuilder.QueueTextureExtraction(SceneColorTexture, &SceneContext.GetSceneColor());
 	}
 
 	return SceneColorTexture;

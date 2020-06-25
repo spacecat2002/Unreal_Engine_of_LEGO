@@ -42,6 +42,7 @@ struct FILCUpdatePrimTaskData;
 class FRaytracingLightDataPacked;
 class FRayTracingLocalShaderBindingWriter;
 struct FCloudRenderContext;
+struct FHairStrandsVisibilityViews;
 
 DECLARE_STATS_GROUP(TEXT("Command List Markers"), STATGROUP_CommandListMarkers, STATCAT_Advanced);
 
@@ -1662,15 +1663,13 @@ protected:
 
 	void SetupMeshPass(FViewInfo& View, FExclusiveDepthStencil::Type BasePassDepthStencilAccess, FViewCommands& ViewCommands);
 
-	bool RenderShadowProjections(
+	void RenderShadowProjections(
 		FRHICommandListImmediate& RHICmdList,
-		FRHIUniformBuffer* SceneTexturesUniformBuffer,
-		const FLightSceneInfo* LightSceneInfo,
-		IPooledRenderTarget* ScreenShadowMaskTexture,
-		IPooledRenderTarget* ScreenShadowMaskSubPixelTexture,
+		const FLightSceneProxy* LightSceneProxy,
+		const FHairStrandsVisibilityViews* HairVisibilityViews,
+		TArrayView<const FProjectedShadowInfo* const> Shadows,
 		bool bProjectingForForwardShading,
-		bool bMobileModulatedProjections,
-		const struct FHairStrandsVisibilityViews* InHairVisibilityViews);
+		bool bMobileModulatedProjections);
 
 	/** Finds a matching cached preshadow, if one exists. */
 	TRefCountPtr<FProjectedShadowInfo> GetCachedPreshadow(
@@ -1750,9 +1749,6 @@ protected:
 
 	/** Gathers simple lights from visible primtives in the passed in views. */
 	static void GatherSimpleLights(const FSceneViewFamily& ViewFamily, const TArray<FViewInfo>& Views, FSimpleLightArray& SimpleLights);
-
-	/** Splits the gathered simple lights into arrays based on which view they should be rendered in */
-	static void SplitSimpleLightsByView(const FSceneViewFamily& ViewFamily, const TArray<FViewInfo>& Views, const FSimpleLightArray& SimpleLights, FSimpleLightArray* SimpleLightsByView);
 
 	/** Calculates projected shadow visibility. */
 	void InitProjectedShadowVisibility(FRHICommandListImmediate& RHICmdList);	

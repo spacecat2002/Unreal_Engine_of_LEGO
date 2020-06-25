@@ -661,7 +661,7 @@ bool FDeferredShadingSceneRenderer::RenderCapsuleDirectShadows(
 	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	const FLightSceneInfo& LightSceneInfo,
 	FRDGTextureRef ScreenShadowMaskTexture,
-	TArrayView<FProjectedShadowInfo*> CapsuleShadows,
+	TArrayView<const FProjectedShadowInfo* const> CapsuleShadows,
 	bool bProjectingForForwardShading) const
 {
 	bool bAllViewsHaveViewState = true;
@@ -706,7 +706,7 @@ bool FDeferredShadingSceneRenderer::RenderCapsuleDirectShadows(
 
 		for (int32 ShadowIndex = 0; ShadowIndex < CapsuleShadows.Num(); ShadowIndex++)
 		{
-			FProjectedShadowInfo* Shadow = CapsuleShadows[ShadowIndex];
+			const FProjectedShadowInfo* Shadow = CapsuleShadows[ShadowIndex];
 
 			int32 OriginalCapsuleIndex = CapsuleShapeData.Num();
 

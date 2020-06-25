@@ -30,6 +30,7 @@ struct FSceneWithoutWaterTextures;
 struct FHeightFogRenderingParameters;
 struct FRayTracingReflectionOptions;
 struct FHairStrandsTransmittanceMaskData;
+struct FHairStrandsDatas;
 
 /**
  * Scene renderer that implements a deferred shading pipeline and associated features.
@@ -297,9 +298,9 @@ private:
 		const FSortedLightSetSceneInfo& SortedLightsSet);
 
 	/** Renders the lights in SortedLights in the range [TiledDeferredLightsStart, TiledDeferredLightsEnd) using tiled deferred shading. */
-	FRDGTextureMSAA RenderTiledDeferredLighting(
+	FRDGTextureRef RenderTiledDeferredLighting(
 		FRDGBuilder& GraphBuilder,
-		FRDGTextureMSAA InSceneColorTexture,
+		FRDGTextureRef InSceneColorTexture,
 		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		const TArray<FSortedLightSceneInfo, SceneRenderingAllocator>& SortedLights,
 		int32 TiledDeferredLightsStart,
@@ -314,10 +315,12 @@ private:
 
 	/** Renders the scene's lighting. */
 	void RenderLights(
-		FRHICommandListImmediate& RHICmdList,
-		const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
-		FSortedLightSetSceneInfo &SortedLightSet,
-		const struct FHairStrandsDatas* HairDatas);
+		FRDGBuilder& GraphBuilder,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		FRDGTextureRef& SceneColorTexture,
+		FRDGTextureRef SceneDepthTexture,
+		FSortedLightSetSceneInfo& SortedLightSet,
+		const FHairStrandsDatas* HairDatas);
 
 	/** Renders an array of lights for the stationary light overlap viewmode. */
 	void RenderLightArrayForOverlapViewmode(
@@ -391,7 +394,7 @@ private:
 		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		const FLightSceneInfo& LightSceneInfo,
 		FRDGTextureRef ScreenShadowMaskTexture,
-		TArrayView<FProjectedShadowInfo*> CapsuleShadows,
+		TArrayView<const FProjectedShadowInfo* const> CapsuleShadows,
 		bool bProjectingForForwardShading) const;
 
 	/** Sets up ViewState buffers for rendering capsule shadows. */
@@ -417,23 +420,41 @@ private:
 		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		FRDGTextureRef& BentNormalOutput) const;
 
-	/** Render deferred projections of shadows for a given light into the light attenuation buffer. */
-	bool RenderShadowProjections(
-		FRHICommandListImmediate& RHICmdList,
-		const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
+	void RenderShadowProjections(
+		FRDGBuilder& GraphBuilder,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		FRDGTextureRef ScreenShadowMaskTexture,
+		FRDGTextureRef ScreenShadowMaskSubPixelTexture,
+		FRDGTextureRef SceneDepthTexture,
 		const FLightSceneInfo* LightSceneInfo,
-		IPooledRenderTarget* ScreenShadowMaskTexture,
-		IPooledRenderTarget* ScreenShadowMaskSubPixelTexture,
-		const struct FHairStrandsDatas* HairDatas,
+		const FHairStrandsVisibilityViews* HairVisibilityViews,
+		bool bProjectingForForwardShading);
+
+	void RenderDeferredShadowProjections(
+		FRDGBuilder& GraphBuilder,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		const FLightSceneInfo* LightSceneInfo,
+		FRDGTextureRef ScreenShadowMaskTexture,
+		FRDGTextureRef ScreenShadowMaskSubPixelTexture,
+		FRDGTextureRef SceneDepthTexture,
+		const FHairStrandsDatas* HairDatas,
 		bool& bInjectedTranslucentVolume);
 
 	/** Render shadow projections when forward rendering. */
-	void RenderForwardShadingShadowProjections(
+	void RenderForwardShadowProjections(
 		FRHICommandListImmediate& RHICmdList,
-		const TUniformBufferRef<FSceneTextureUniformParameters>& SceneTexturesUniformBuffer,
 		TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMask,
 		TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMaskSubPixel,
-		const struct FHairStrandsDatas* InHairDatas);
+		const FHairStrandsDatas* InHairDatas);
+
+	void RenderForwardShadowProjections(
+		FRDGBuilder& GraphBuilder,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		FRDGTextureRef SceneColorTexture,
+		FRDGTextureRef SceneDepthTexture,
+		FRDGTextureRef& ForwardScreenSpaceShadowMask,
+		FRDGTextureRef& ForwardScreenSpaceShadowMaskSubPixel,
+		const FHairStrandsDatas* InHairDatas);
 
 	/** Used by RenderLights to render a light function to the attenuation buffer. */
 	bool RenderLightFunction(

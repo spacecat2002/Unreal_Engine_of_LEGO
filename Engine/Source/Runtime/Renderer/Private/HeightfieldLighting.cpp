@@ -799,7 +799,7 @@ private:
 
 IMPLEMENT_SHADER_TYPE(, FShadowHeightfieldsPS, TEXT("/Engine/Private/HeightfieldLighting.usf"), TEXT("ShadowHeightfieldsPS"), SF_Pixel);
 
-void FHeightfieldLightingViewInfo::ClearShadowing(const FViewInfo& View, FRHICommandListImmediate& RHICmdList, const FLightSceneInfo& LightSceneInfo) const
+void FHeightfieldLightingViewInfo::ClearShadowing(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FLightSceneInfo& LightSceneInfo) const
 {
 	if (AllowHeightfieldGI(View)
 		&& SupportsHeightfieldLighting(View.GetFeatureLevel(), View.GetShaderPlatform())
@@ -807,16 +807,20 @@ void FHeightfieldLightingViewInfo::ClearShadowing(const FViewInfo& View, FRHICom
 		&& LightSceneInfo.Proxy->GetLightType() == LightType_Directional
 		&& LightSceneInfo.Proxy->CastsDynamicShadow())
 	{
-		FSceneViewState* ViewState = (FSceneViewState*)View.State;
-		const FHeightfieldLightingAtlas& Atlas = *ViewState->HeightfieldLightingAtlas;
+		// TODO(RDG): Port this to RDG.
+		AddPass(GraphBuilder, [this, &View, &LightSceneInfo](FRHICommandList& RHICmdList)
+		{
+			FSceneViewState* ViewState = (FSceneViewState*)View.State;
+			const FHeightfieldLightingAtlas& Atlas = *ViewState->HeightfieldLightingAtlas;
 
-		FRHIRenderPassInfo RPInfo(Atlas.DirectionalLightShadowing->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Clear_Store);
-		RHICmdList.BeginRenderPass(RPInfo, TEXT("ClearShadowing"));
-		RHICmdList.EndRenderPass();
+			FRHIRenderPassInfo RPInfo(Atlas.DirectionalLightShadowing->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Clear_Store);
+			RHICmdList.BeginRenderPass(RPInfo, TEXT("ClearShadowing"));
+			RHICmdList.EndRenderPass();
+		});
 	}
 }
 
-void FHeightfieldLightingViewInfo::ComputeShadowMapShadowing(const FViewInfo& View, FRHICommandListImmediate& RHICmdList, const FProjectedShadowInfo* ProjectedShadowInfo) const
+void FHeightfieldLightingViewInfo::ComputeShadowMapShadowing(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FProjectedShadowInfo* ProjectedShadowInfo) const
 {
 	if (AllowHeightfieldGI(View)
 		&& SupportsHeightfieldLighting(View.GetFeatureLevel(), View.GetShaderPlatform())
@@ -825,11 +829,10 @@ void FHeightfieldLightingViewInfo::ComputeShadowMapShadowing(const FViewInfo& Vi
 		&& ProjectedShadowInfo->DependentView == &View
 		&& !ProjectedShadowInfo->bRayTracedDistanceField)
 	{
-		SCOPED_DRAW_EVENT(RHICmdList, HeightfieldShadowMapShadowingForGI);
-
-		FSceneViewState* ViewState = (FSceneViewState*)View.State;
-
+		// TODO(RDG): Port this to RDG.
+		AddPass(GraphBuilder, RDG_EVENT_NAME("HeightfieldShadowMapShadowingForGI"), [this, &View, ProjectedShadowInfo](FRHICommandListImmediate& RHICmdList)
 		{
+			FSceneViewState* ViewState = (FSceneViewState*)View.State;
 			const FHeightfieldLightingAtlas& Atlas = *ViewState->HeightfieldLightingAtlas;
 
 			const FIntPoint LightingAtlasSize = Atlas.GetAtlasSize();
@@ -875,7 +878,7 @@ void FHeightfieldLightingViewInfo::ComputeShadowMapShadowing(const FViewInfo& Vi
 				}
 			}
 			RHICmdList.EndRenderPass();
-		}
+		});
 	}
 }
 
@@ -978,8 +981,8 @@ IMPLEMENT_SHADER_TYPE(, FRayTracedShadowHeightfieldsPS, TEXT("/Engine/Private/He
 
 
 void FHeightfieldLightingViewInfo::ComputeRayTracedShadowing(
+	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
-	FRHICommandListImmediate& RHICmdList,
 	const FProjectedShadowInfo* ProjectedShadowInfo,
 	FLightTileIntersectionResources* TileIntersectionResources,
 	FDistanceFieldObjectBufferResource& CulledObjectBuffers) const
@@ -991,11 +994,11 @@ void FHeightfieldLightingViewInfo::ComputeRayTracedShadowing(
 		&& ProjectedShadowInfo->DependentView == &View
 		&& ProjectedShadowInfo->bRayTracedDistanceField)
 	{
-		SCOPED_DRAW_EVENT(RHICmdList, HeightfieldRayTracedShadowingForGI);
-
-		FSceneViewState* ViewState = (FSceneViewState*)View.State;
-
+		// TODO(RDG): Port this to RDG.
+		AddPass(GraphBuilder, RDG_EVENT_NAME("HeightfieldRayTracedShadowingForGI"), [this, &View, ProjectedShadowInfo, TileIntersectionResources, &CulledObjectBuffers](FRHICommandListImmediate& RHICmdList)
 		{
+			FSceneViewState* ViewState = (FSceneViewState*)View.State;
+
 			const FHeightfieldLightingAtlas& Atlas = *ViewState->HeightfieldLightingAtlas;
 
 			const FIntPoint LightingAtlasSize = Atlas.GetAtlasSize();
@@ -1040,7 +1043,7 @@ void FHeightfieldLightingViewInfo::ComputeRayTracedShadowing(
 				}
 			}
 			RHICmdList.EndRenderPass();
-		}
+		});
 	}
 }
 

@@ -592,7 +592,7 @@ public:
 	}
 
 	template<typename TParamRef>
-	void UnsetParameters(FRHICommandList& RHICmdList, const TParamRef& ShaderRHI)
+	void UnsetParameters(FRHIComputeCommandList& RHICmdList, const TParamRef& ShaderRHI)
 	{
 		ShadowTileNumCulledObjects.UnsetUAV(RHICmdList, ShaderRHI);
 		ShadowTileStartOffsets.UnsetUAV(RHICmdList, ShaderRHI);
@@ -623,7 +623,7 @@ private:
 };
 
 extern void CullDistanceFieldObjectsForLight(
-	FRHICommandListImmediate& RHICmdList,
+	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
 	const FLightSceneProxy* LightSceneProxy, 
 	const FMatrix& WorldToShadowValue, 
@@ -634,7 +634,7 @@ extern void CullDistanceFieldObjectsForLight(
 	TUniquePtr<class FLightTileIntersectionResources>& TileIntersectionResources);
 
 extern void CullHeightFieldObjectsForLight(
-	FRHICommandListImmediate& RHICmdList,
+	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
 	const FLightSceneProxy* LightSceneProxy,
 	const FMatrix& WorldToShadowValue,
