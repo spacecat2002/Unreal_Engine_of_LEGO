@@ -207,24 +207,24 @@ private:
 //
 //////////////////////////////////////////////////////////////////////////
 
-class FRDGStatScope final
+class FRDGGPUStatScope final
 {
 public:
-	FRDGStatScope(const FRDGStatScope* InParentScope, const FName& InName, const FName& InStatName)
+	FRDGGPUStatScope(const FRDGGPUStatScope* InParentScope, const FName& InName, const FName& InStatName)
 		: ParentScope(InParentScope)
 		, Name(InName)
 		, StatName(InStatName)
 	{}
 
-	const FRDGStatScope* const ParentScope;
+	const FRDGGPUStatScope* const ParentScope;
 	const FName Name;
 	const FName StatName;
 };
 
-class RENDERCORE_API FRDGStatScopeStack final
+class RENDERCORE_API FRDGGPUStatScopeStack final
 {
 public:
-	FRDGStatScopeStack(FRHIComputeCommandList& RHICmdList);
+	FRDGGPUStatScopeStack(FRHIComputeCommandList& RHICmdList);
 
 	//////////////////////////////////////////////////////////////////////////
 	//! Called during graph setup phase.
@@ -249,23 +249,23 @@ public:
 
 	//////////////////////////////////////////////////////////////////////////
 
-	const FRDGStatScope* GetCurrentScope() const
+	const FRDGGPUStatScope* GetCurrentScope() const
 	{
 		return ScopeStack.GetCurrentScope();
 	}
 
 private:
 	static bool IsEnabled();
-	TRDGScopeStack<FRDGStatScope> ScopeStack;
+	TRDGScopeStack<FRDGGPUStatScope> ScopeStack;
 };
 
 /** RAII class for begin / end of a stat scope through the graph builder. */
-class RENDERCORE_API FRDGStatScopeGuard final
+class RENDERCORE_API FRDGGPUStatScopeGuard final
 {
 public:
-	FRDGStatScopeGuard(FRDGBuilder& InGraphBuilder, const FName& Name, const FName& StatName);
-	FRDGStatScopeGuard(const FRDGStatScopeGuard&) = delete;
-	~FRDGStatScopeGuard();
+	FRDGGPUStatScopeGuard(FRDGBuilder& InGraphBuilder, const FName& Name, const FName& StatName);
+	FRDGGPUStatScopeGuard(const FRDGGPUStatScopeGuard&) = delete;
+	~FRDGGPUStatScopeGuard();
 
 private:
 	FRDGBuilder& GraphBuilder;
@@ -273,9 +273,9 @@ private:
 
 #if HAS_GPU_STATS
 	#if STATS
-		#define RDG_GPU_STAT_SCOPE(GraphBuilder, StatName) FRDGStatScopeGuard PREPROCESSOR_JOIN(GPUStatEvent_##StatName,__LINE__) ((GraphBuilder), CSV_STAT_FNAME(StatName), GET_STATID(Stat_GPU_##StatName).GetName());
+		#define RDG_GPU_STAT_SCOPE(GraphBuilder, StatName) FRDGGPUStatScopeGuard PREPROCESSOR_JOIN(GPUStatEvent_##StatName,__LINE__) ((GraphBuilder), CSV_STAT_FNAME(StatName), GET_STATID(Stat_GPU_##StatName).GetName());
 	#else
-		#define RDG_GPU_STAT_SCOPE(GraphBuilder, StatName) FRDGStatScopeGuard PREPROCESSOR_JOIN(GPUStatEvent_##StatName,__LINE__) ((GraphBuilder), CSV_STAT_FNAME(StatName), FName());
+		#define RDG_GPU_STAT_SCOPE(GraphBuilder, StatName) FRDGGPUStatScopeGuard PREPROCESSOR_JOIN(GPUStatEvent_##StatName,__LINE__) ((GraphBuilder), CSV_STAT_FNAME(StatName), FName());
 	#endif
 #else
 	#define RDG_GPU_STAT_SCOPE(GraphBuilder, StatName)
@@ -284,7 +284,7 @@ private:
 struct FRDGScopes
 {
 	const FRDGEventScope* Event = nullptr;
-	const FRDGStatScope* Stat = nullptr;
+	const FRDGGPUStatScope* Stat = nullptr;
 };
 
 /** The complete set of scope stack implementations. */
@@ -303,7 +303,7 @@ struct FRDGScopeStacks
 	FRDGScopes GetCurrentScopes() const;
 
 	FRDGEventScopeStack Event;
-	FRDGStatScopeStack Stat;
+	FRDGGPUStatScopeStack Stat;
 };
 
 struct FRDGScopeStacksByPipeline

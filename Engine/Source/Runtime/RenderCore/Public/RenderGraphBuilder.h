@@ -315,7 +315,7 @@ private:
 	void EndStatScope();
 
 	friend FRDGEventScopeGuard;
-	friend FRDGStatScopeGuard;
+	friend FRDGGPUStatScopeGuard;
 	friend FRDGGPUMaskScopeGuard;
 };
 

@@ -462,7 +462,7 @@ struct FRDGTextureDesc;
 class FRDGPassFlagsScopeGuard;
 class FRDGGPUMaskScopeGuard;
 class FRDGEventScopeGuard;
-class FRDGStatScopeGuard;
+class FRDGGPUStatScopeGuard;
 
 class FRDGBarrierBatch;
 class FRDGBarrierBatchBegin;

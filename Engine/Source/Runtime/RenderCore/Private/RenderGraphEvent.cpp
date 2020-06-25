@@ -161,18 +161,18 @@ void FRDGEventScopeStack::EndExecute()
 	}
 }
 
-FRDGStatScopeGuard::FRDGStatScopeGuard(FRDGBuilder& InGraphBuilder, const FName& Name, const FName& StatName)
+FRDGGPUStatScopeGuard::FRDGGPUStatScopeGuard(FRDGBuilder& InGraphBuilder, const FName& Name, const FName& StatName)
 	: GraphBuilder(InGraphBuilder)
 {
 	GraphBuilder.BeginStatScope(Name, StatName);
 }
 
-FRDGStatScopeGuard::~FRDGStatScopeGuard()
+FRDGGPUStatScopeGuard::~FRDGGPUStatScopeGuard()
 {
 	GraphBuilder.EndStatScope();
 }
 
-static void OnPushStat(FRHIComputeCommandList& RHICmdList, const FRDGStatScope* Scope)
+static void OnPushStat(FRHIComputeCommandList& RHICmdList, const FRDGGPUStatScope* Scope)
 {
 #if HAS_GPU_STATS
 	// GPU stats are currently only supported on the immediate command list.
@@ -194,7 +194,7 @@ static void OnPopStat(FRHIComputeCommandList& RHICmdList)
 #endif
 }
 
-bool FRDGStatScopeStack::IsEnabled()
+bool FRDGGPUStatScopeStack::IsEnabled()
 {
 #if HAS_GPU_STATS
 	return AreGPUStatsEnabled();
@@ -203,11 +203,11 @@ bool FRDGStatScopeStack::IsEnabled()
 #endif
 }
 
-FRDGStatScopeStack::FRDGStatScopeStack(FRHIComputeCommandList& InRHICmdList)
+FRDGGPUStatScopeStack::FRDGGPUStatScopeStack(FRHIComputeCommandList& InRHICmdList)
 	: ScopeStack(InRHICmdList, &OnPushStat, &OnPopStat)
 {}
 
-void FRDGStatScopeStack::BeginScope(const FName& Name, const FName& StatName)
+void FRDGGPUStatScopeStack::BeginScope(const FName& Name, const FName& StatName)
 {
 	if (IsEnabled())
 	{
@@ -215,7 +215,7 @@ void FRDGStatScopeStack::BeginScope(const FName& Name, const FName& StatName)
 	}
 }
 
-void FRDGStatScopeStack::EndScope()
+void FRDGGPUStatScopeStack::EndScope()
 {
 	if (IsEnabled())
 	{
@@ -223,7 +223,7 @@ void FRDGStatScopeStack::EndScope()
 	}
 }
 
-void FRDGStatScopeStack::BeginExecute()
+void FRDGGPUStatScopeStack::BeginExecute()
 {
 	if (IsEnabled())
 	{
@@ -231,7 +231,7 @@ void FRDGStatScopeStack::BeginExecute()
 	}
 }
 
-void FRDGStatScopeStack::BeginExecutePass(const FRDGPass* Pass)
+void FRDGGPUStatScopeStack::BeginExecutePass(const FRDGPass* Pass)
 {
 	if (IsEnabled())
 	{
@@ -239,7 +239,7 @@ void FRDGStatScopeStack::BeginExecutePass(const FRDGPass* Pass)
 	}
 }
 
-void FRDGStatScopeStack::EndExecute()
+void FRDGGPUStatScopeStack::EndExecute()
 {
 	if (IsEnabled())
 	{
