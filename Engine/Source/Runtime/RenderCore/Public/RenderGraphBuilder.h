@@ -19,7 +19,7 @@ class FRDGLogFile;
 class RENDERCORE_API FRDGBuilder
 {
 public:
-	FRDGBuilder(FRHICommandListImmediate& InRHICmdList, FRDGEventName InName = {});
+	FRDGBuilder(FRHICommandListImmediate& InRHICmdList, FRDGEventName InName = {}, const char* UnaccountedCSVStat = kDefaultUnaccountedCSVStat);
 	FRDGBuilder(const FRDGBuilder&) = delete;
 
 	/** Finds an RDG texture associated with the external texture, or returns null if none is found. */
@@ -185,7 +185,8 @@ public:
 
 private:
 	static const ERHIAccess kDefaultAccessInitial = ERHIAccess::Unknown;
-	static const ERHIAccess kDefaultAccessFinal   = ERHIAccess::SRVMask;
+	static const ERHIAccess kDefaultAccessFinal = ERHIAccess::SRVMask;
+	static const char* const kDefaultUnaccountedCSVStat;
 
 	FRHIAsyncComputeCommandListImmediate& RHICmdListAsyncCompute;
 	FRDGAllocator Allocator;
