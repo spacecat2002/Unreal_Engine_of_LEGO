@@ -1901,7 +1901,6 @@ void FSceneView::EndFinalPostprocessSettings(const FSceneViewInitOptions& ViewIn
 	if (!Family->EngineShowFlags.ToneCurve)
 	{
 		FinalPostProcessSettings.ToneCurveAmount = 0;
-		FinalPostProcessSettings.ExpandGamut = 0;
 	}
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
