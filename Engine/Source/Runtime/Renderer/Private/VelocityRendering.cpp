@@ -268,7 +268,7 @@ void FDeferredShadingSceneRenderer::RenderVelocities(
 		return;
 	}
 
-	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(RenderVelocities);
+	RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, RenderVelocities);
 	SCOPED_NAMED_EVENT(FDeferredShadingSceneRenderer_RenderVelocities, FColor::Emerald);
 	SCOPE_CYCLE_COUNTER(STAT_RenderVelocities);
 

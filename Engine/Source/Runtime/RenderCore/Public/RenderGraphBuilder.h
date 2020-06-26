@@ -8,6 +8,7 @@
 #include "RenderGraphPass.h"
 #include "RenderGraphValidation.h"
 #include "ShaderParameterMacros.h"
+#include "ProfilingDebugging/CsvProfiler.h"
 
 class FRDGLogFile;
 
@@ -235,7 +236,9 @@ private:
 	TArray<TPair<FRDGBufferRef, TRefCountPtr<FRDGPooledBuffer>*>, TInlineAllocator<4, SceneRenderingAllocator>> ExtractedBuffers;
 
 	FRHIGPUMask GpuMaskScope;
-
+#if CSV_PROFILER
+	const char* CSVExclusiveStatName = nullptr;
+#endif
 	IF_RDG_SCOPES(FRDGScopeStacksByPipeline ScopeStacks);
 
 #if RDG_ENABLE_DEBUG
@@ -317,6 +320,8 @@ private:
 	friend FRDGEventScopeGuard;
 	friend FRDGGPUStatScopeGuard;
 	friend FRDGGPUMaskScopeGuard;
+	friend FRDGScopedCsvStatExclusive;
+	friend FRDGScopedCsvStatExclusiveConditional;
 };
 
 class FRDGGPUMaskScopeGuard final
@@ -343,6 +348,69 @@ private:
 	#define RDG_GPU_MASK_SCOPE(GraphBuilder, GPUMask) FRDGGPUMaskScopeGuard PREPROCESSOR_JOIN(RDGGPUMaskScope, __LINE__){ GraphBuilder, GPUMask }
 #else
 	#define RDG_GPU_MASK_SCOPE(GraphBuilder, GPUMask)
+#endif
+
+//////////////////////////////////////////////////////////////////////////
+//
+// CSV Profiling Stats
+//
+//////////////////////////////////////////////////////////////////////////
+
+#if CSV_PROFILER
+
+class FRDGScopedCsvStatExclusive : public FScopedCsvStatExclusive
+{
+public:
+	FRDGScopedCsvStatExclusive(FRDGBuilder& InGraphBuilder, const char* InStatName)
+		: FScopedCsvStatExclusive(InStatName)
+		, GraphBuilder(InGraphBuilder)
+		, StatNameRestore(GraphBuilder.CSVExclusiveStatName)
+	{
+		GraphBuilder.CSVExclusiveStatName = InStatName;
+	}
+
+	~FRDGScopedCsvStatExclusive()
+	{
+		GraphBuilder.CSVExclusiveStatName = StatNameRestore;
+	}
+
+private:
+	FRDGBuilder& GraphBuilder;
+	const char* StatNameRestore;
+};
+
+class FRDGScopedCsvStatExclusiveConditional : public FScopedCsvStatExclusiveConditional
+{
+public:
+	FRDGScopedCsvStatExclusiveConditional(FRDGBuilder& InGraphBuilder, const char* InStatName, bool bInCondition)
+		: FScopedCsvStatExclusiveConditional(InStatName, bInCondition)
+		, GraphBuilder(InGraphBuilder)
+	{
+		if (bCondition)
+		{
+			StatNameRestore = GraphBuilder.CSVExclusiveStatName;
+			GraphBuilder.CSVExclusiveStatName = InStatName;
+		}
+	}
+
+	~FRDGScopedCsvStatExclusiveConditional()
+	{
+		if (bCondition)
+		{
+			GraphBuilder.CSVExclusiveStatName = StatNameRestore;
+		}
+	}
+
+private:
+	FRDGBuilder& GraphBuilder;
+	const char* StatNameRestore;
+};
+
+	#define RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, StatName) FRDGScopedCsvStatExclusive RDGScopedCsvStatExclusive ## StatName (GraphBuilder, #StatName)
+	#define RDG_CSV_STAT_EXCLUSIVE_SCOPE_CONDITIONAL(GraphBuilder, StatName, bCondition) FRDGScopedCsvStatExclusiveConditional RDGScopedCsvStatExclusiveConditional ## StatName (GraphBuilder, #StatName, bCondition)
+#else
+	#define RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, StatName)
+	#define RDG_CSV_STAT_EXCLUSIVE_SCOPE_CONDITIONAL(GraphBuilder, StatName, bCondition)
 #endif
 
 #include "RenderGraphBuilder.inl"

@@ -716,7 +716,7 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWaterInner(
 	FRDGTextureMSAA SceneDepthTexture,
 	const FSceneWithoutWaterTextures& SceneWithoutWaterTextures)
 {
-	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(WaterPassRenderSingleLayer);
+	RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, WaterPassRenderSingleLayer);
 	SCOPED_NAMED_EVENT(FDeferredShadingSceneRenderer_RenderSingleLayerWaterPass, FColor::Emerald);
 	SCOPE_CYCLE_COUNTER(STAT_WaterPassDrawTime);
 	RDG_EVENT_SCOPE(GraphBuilder, "SingleLayerWater");

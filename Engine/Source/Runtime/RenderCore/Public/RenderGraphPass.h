@@ -351,6 +351,9 @@ private:
 	FRDGBarrierBatchBegin EpilogueBarriersToBeginForAsyncCompute;
 
 	FRHIGPUMask GpuMask;
+#if CSV_PROFILER
+	const char* CSVExclusiveStatName = nullptr;
+#endif
 	IF_RDG_SCOPES(FRDGScopes Scopes);
 
 	friend FRDGBuilder;

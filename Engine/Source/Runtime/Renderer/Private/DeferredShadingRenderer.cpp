@@ -2373,7 +2373,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	if (bRenderDeferredLighting)
 	{
 		RDG_GPU_STAT_SCOPE(GraphBuilder, RenderDeferredLighting);
-		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(RenderLighting);
+		RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, RenderLighting);
 		SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_Lighting);
 
 		FRDGTextureRef DynamicBentNormalAOTexture = nullptr;
@@ -2509,7 +2509,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	{
 		if (EnumHasAnyFlags(TranslucencyViewsToRender, ETranslucencyView::UnderWater))
 		{
-			CSV_SCOPED_TIMING_STAT_EXCLUSIVE(RenderTranslucency);
+			RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, RenderTranslucency);
 			SCOPE_CYCLE_COUNTER(STAT_TranslucencyDrawTime);
 			AddSetCurrentStatPass(GraphBuilder, GET_STATID(STAT_CLM_Translucency));
 			RenderTranslucency(GraphBuilder, SceneColorTexture, SceneDepthTexture, nullptr, ETranslucencyView::UnderWater);
@@ -2553,7 +2553,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	// Draw fog.
 	if (bCanOverlayRayTracingOutput && ShouldRenderFog(ViewFamily))
 	{
-		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(RenderFog);
+		RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, RenderFog);
 		SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_RenderFog);
 		RenderFog(GraphBuilder, SceneColorTexture.Target, SceneDepthTexture.Target, LightShaftOcclusionTexture, SceneTexturesDepth);
 	}
@@ -2565,10 +2565,10 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	if (Scene->FXSystem && Views.IsValidIndex(0))
 	{
 		RDG_GPU_STAT_SCOPE(GraphBuilder, PostRenderOpsFX);
+		RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, RenderOpaqueFX);
 
 		AddUntrackedAccessPass(GraphBuilder, [this](FRHICommandListImmediate& InRHICmdList)
 		{
-			CSV_SCOPED_TIMING_STAT_EXCLUSIVE(RenderOpaqueFX);
 			SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_FXSystem_PostRenderOpaque);
 
 			Scene->FXSystem->PostRenderOpaque(
@@ -2605,7 +2605,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	// Draw translucency.
 	if (bCanOverlayRayTracingOutput && TranslucencyViewsToRender != ETranslucencyView::None)
 	{
-		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(RenderTranslucency);
+		RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, RenderTranslucency);
 		SCOPE_CYCLE_COUNTER(STAT_TranslucencyDrawTime);
 
 		// Raytracing doesn't need the distortion effect.

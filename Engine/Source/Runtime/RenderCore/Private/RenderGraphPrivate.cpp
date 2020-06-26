@@ -274,6 +274,17 @@ FAutoConsoleVariableRef CVarRDGMergeRenderPasses(
 	TEXT(" 1:on(default);\n"),
 	ECVF_RenderThreadSafe);
 
+#if CSV_PROFILER
+int32 GRDGVerboseCSVStats = 0;
+FAutoConsoleVariableRef CVarRDGVerboseCSVStats(
+	TEXT("r.RDG.VerboseCSVStats"),
+	GRDGVerboseCSVStats,
+	TEXT("Controls the verbosity of CSV profiling stats for RDG.\n")
+	TEXT(" 0: emits one CSV profile for graph execution;\n")
+	TEXT(" 1: emits a CSV profile for each phase of graph execution."),
+	ECVF_RenderThreadSafe);
+#endif
+
 void InitRenderGraph()
 {
 #if RDG_ENABLE_DEBUG_WITH_ENGINE

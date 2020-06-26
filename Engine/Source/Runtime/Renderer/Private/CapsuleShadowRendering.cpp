@@ -1211,7 +1211,7 @@ void FDeferredShadingSceneRenderer::RenderIndirectCapsuleShadows(
 	}
 
 	check(ScreenSpaceAOTexture);
-	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(RenderIndirectCapsuleShadows);
+	RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, RenderIndirectCapsuleShadows);
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_RenderIndirectCapsuleShadows);
 
 	bool bAnyViewsUseCapsuleShadows = false;

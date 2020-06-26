@@ -931,13 +931,13 @@ void FDeferredShadingSceneRenderer::ComputeVolumetricFog(FRHICommandListImmediat
 	check(RHICmdListImmediate.IsOutsideRenderPass());
 
 	if (ShouldRenderVolumetricFog())
-	{		
-		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(VolumetricFog);
-		QUICK_SCOPE_CYCLE_COUNTER(STAT_VolumetricFog);
-		SCOPED_GPU_STAT(RHICmdListImmediate, VolumetricFog);
-
+	{
 		const FExponentialHeightFogSceneInfo& FogInfo = Scene->ExponentialFogs[0];
 		FRDGBuilder GraphBuilder(RHICmdListImmediate);
+
+		RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, VolumetricFog);
+		QUICK_SCOPE_CYCLE_COUNTER(STAT_VolumetricFog);
+		SCOPED_GPU_STAT(RHICmdListImmediate, VolumetricFog);
 
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{

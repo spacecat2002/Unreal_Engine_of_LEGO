@@ -1100,6 +1100,9 @@ void FRenderTargetPool::TickPoolElements()
 #if STATS
 	uint32 Count, SizeKB, UsedKB;
 	GetStats(Count, SizeKB, UsedKB);
+	CSV_CUSTOM_STAT_GLOBAL(RenderTargetPoolSize, float(SizeKB) / 1024.0f, ECsvCustomStatOp::Set);
+	CSV_CUSTOM_STAT_GLOBAL(RenderTargetPoolUsed, float(UsedKB) / 1024.0f, ECsvCustomStatOp::Set);
+	CSV_CUSTOM_STAT_GLOBAL(RenderTargetPoolCount, int32(Count), ECsvCustomStatOp::Set);
 	SET_MEMORY_STAT(STAT_RenderTargetPoolSize, int64(SizeKB) * 1024ll);
 	SET_MEMORY_STAT(STAT_RenderTargetPoolUsed, int64(UsedKB) * 1024ll);
 	SET_DWORD_STAT(STAT_RenderTargetPoolCount, Count);

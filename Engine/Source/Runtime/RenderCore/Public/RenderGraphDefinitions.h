@@ -463,6 +463,8 @@ class FRDGPassFlagsScopeGuard;
 class FRDGGPUMaskScopeGuard;
 class FRDGEventScopeGuard;
 class FRDGGPUStatScopeGuard;
+class FRDGScopedCsvStatExclusive;
+class FRDGScopedCsvStatExclusiveConditional;
 
 class FRDGBarrierBatch;
 class FRDGBarrierBatchBegin;

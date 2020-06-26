@@ -85,7 +85,12 @@ inline bool IsResourceLifetimeExtended()
 	return GRDGImmediateMode || GRDGExtendResourceLifetimes;
 }
 
-
 extern int32 GRDGAsyncCompute;
 extern int32 GRDGCullPasses;
 extern int32 GRDGMergeRenderPasses;
+
+#if CSV_PROFILER
+extern int32 GRDGVerboseCSVStats;
+#else
+const int32 GRDGVerboseCSVStats = 0;
+#endif

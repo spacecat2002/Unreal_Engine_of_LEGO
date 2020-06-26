@@ -532,6 +532,7 @@ void FRDGBuilder::AddPassDependency(FRDGPassHandle ProducerHandle, FRDGPassHandl
 
 void FRDGBuilder::Compile()
 {
+	CSV_SCOPED_TIMING_STAT_EXCLUSIVE_CONDITIONAL(RDGBuilder_Compile, GRDGVerboseCSVStats != 0);
 	SCOPED_NAMED_EVENT(FRDGBuilder_Compile, FColor::Emerald);
 
 	uint32 RasterPassCount = 0;
@@ -952,7 +953,7 @@ void FRDGBuilder::Compile()
 
 void FRDGBuilder::Execute()
 {
-	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(FRDGBuilder_Execute);
+	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(RDGBuilder_Execute);
 	SCOPED_NAMED_EVENT(FRDGBuilder_Execute, FColor::Emerald);
 
 	// Create the epilogue pass at the end of the graph just prior to compilation.
@@ -971,11 +972,15 @@ void FRDGBuilder::Execute()
 
 		IF_RDG_ENABLE_DEBUG(LogFile.Begin(BuilderName, &Passes, PassesToCull, GetProloguePassHandle(), GetEpiloguePassHandle()));
 
-		for (FRDGPassHandle PassHandle = Passes.Begin(); PassHandle != Passes.End(); ++PassHandle)
 		{
-			if (!PassesToCull[PassHandle])
+			CSV_SCOPED_TIMING_STAT_EXCLUSIVE_CONDITIONAL(RDGBuilder_CollectPassResources, GRDGVerboseCSVStats != 0);
+
+			for (FRDGPassHandle PassHandle = Passes.Begin(); PassHandle != Passes.End(); ++PassHandle)
 			{
-				CollectPassResources(PassHandle);
+				if (!PassesToCull[PassHandle])
+				{
+					CollectPassResources(PassHandle);
+				}
 			}
 		}
 
@@ -989,11 +994,15 @@ void FRDGBuilder::Execute()
 			EndResourceRHI(EpiloguePassHandle, Query.Key);
 		}
 
-		for (FRDGPassHandle PassHandle = Passes.Begin(); PassHandle != Passes.End(); ++PassHandle)
 		{
-			if (!PassesToCull[PassHandle])
+			CSV_SCOPED_TIMING_STAT_EXCLUSIVE_CONDITIONAL(RDGBuilder_CollectPassBarriers, GRDGVerboseCSVStats != 0);
+
+			for (FRDGPassHandle PassHandle = Passes.Begin(); PassHandle != Passes.End(); ++PassHandle)
 			{
-				CollectPassBarriers(PassHandle, LastUntrackedPassHandle);
+				if (!PassesToCull[PassHandle])
+				{
+					CollectPassBarriers(PassHandle, LastUntrackedPassHandle);
+				}
 			}
 		}
 	}
@@ -1044,6 +1053,7 @@ void FRDGBuilder::Execute()
 	if (!GRDGImmediateMode)
 	{
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_FRDGBuilder_Execute_Passes);
+		CSV_SCOPED_TIMING_STAT_EXCLUSIVE_CONDITIONAL(RDGBuilder_Execute_Passes, GRDGVerboseCSVStats != 0);
 
 		for (FRDGPassHandle PassHandle = Passes.Begin(); PassHandle != Passes.End(); ++PassHandle)
 		{
@@ -1097,6 +1107,7 @@ void FRDGBuilder::Execute()
 
 void FRDGBuilder::Clear()
 {
+	CSV_SCOPED_TIMING_STAT_EXCLUSIVE_CONDITIONAL(RDGBuilder_Clear, GRDGVerboseCSVStats != 0);
 	ExternalTextures.Empty();
 	ExternalBuffers.Empty();
 	ExtractedTextures.Empty();
@@ -1207,6 +1218,7 @@ void FRDGBuilder::SetupPassInternal(FRDGPass* Pass, FRDGPassHandle PassHandle, E
 void FRDGBuilder::ExecutePassPrologue(FRHIComputeCommandList& RHICmdListPass, FRDGPass* Pass)
 {
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_FRDGBuilder_ExecutePassPrologue);
+	CSV_SCOPED_TIMING_STAT_EXCLUSIVE_CONDITIONAL(RDGBuilder_ExecutePassPrologue, GRDGVerboseCSVStats != 0);
 
 	IF_RDG_ENABLE_DEBUG(UserValidation.ValidateExecutePassBegin(Pass));
 
@@ -1236,6 +1248,7 @@ void FRDGBuilder::ExecutePassPrologue(FRHIComputeCommandList& RHICmdListPass, FR
 void FRDGBuilder::ExecutePassEpilogue(FRHIComputeCommandList& RHICmdListPass, FRDGPass* Pass)
 {
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_FRDGBuilder_ExecutePassEpilogue);
+	CSV_SCOPED_TIMING_STAT_EXCLUSIVE_CONDITIONAL(RDGBuilder_ExecutePassEpilogue, GRDGVerboseCSVStats != 0);
 
 	const ERDGPassFlags PassFlags = Pass->GetFlags();
 
