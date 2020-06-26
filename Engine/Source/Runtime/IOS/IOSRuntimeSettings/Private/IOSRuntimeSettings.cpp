@@ -25,7 +25,6 @@ UIOSRuntimeSettings::UIOSRuntimeSettings(const FObjectInitializer& ObjectInitial
 	bSupportsIPhone = true;
 	MinimumiOSVersion = EIOSVersion::IOS_11;
     bBuildAsFramework = true;
-	EnableRemoteShaderCompile = false;
 	bGeneratedSYMFile = false;
 	bGeneratedSYMBundle = false;
 	bGenerateXCArchive = false;

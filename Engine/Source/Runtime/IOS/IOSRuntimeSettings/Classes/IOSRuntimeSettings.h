@@ -247,9 +247,8 @@ public:
     UPROPERTY(GlobalConfig, EditAnywhere, Category = Build, meta = (DisplayName = "Build project as a framework (Experimental)"))
     bool bBuildAsFramework;
 
-	// Remotely compile shaders offline
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = Build)
-	bool EnableRemoteShaderCompile;
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = Build, meta = (EditCondition = "bUseLocalMetalToolchain", DisplayName = "Override location of Metal toolchain"))
+	FIOSBuildResourceDirectory WindowsMetalToolchainOverride;
 
 	// Enable generation of dSYM file
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = Build, meta = (DisplayName = "Generate dSYM file for code debugging and profiling"))
