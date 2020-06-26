@@ -255,7 +255,7 @@ public:
 	/**
 	 * Determines the thickness of the debug lines.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Debugging", AdvancedDisplay, meta=( ClampMin = "0.001" ))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Debugging", AdvancedDisplay, meta=( ClampMin = "0.001", ClampMax = "50"))
 	float DebugLineThickness;
 
 	/**
