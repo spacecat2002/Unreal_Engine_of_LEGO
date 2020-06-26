@@ -28,63 +28,63 @@ namespace UE4Tuple_Private
 	void ConceptCheckingHelper(ArgTypes&&...);
 
 	template <typename T, uint32 Index, uint32 TupleSize>
-	struct TTupleElement
+	struct TTupleBaseElement
 	{
 		template <
 			typename ArgType,
 			typename TEnableIf<TIsConstructible<T, ArgType&&>::Value>::Type* = nullptr
 		>
-		explicit TTupleElement(EForwardingConstructor, ArgType&& Arg)
+		explicit TTupleBaseElement(EForwardingConstructor, ArgType&& Arg)
 			: Value(Forward<ArgType>(Arg))
 		{
 		}
 
-		TTupleElement()
+		TTupleBaseElement()
 			: Value()
 		{
 		}
 
-		TTupleElement(TTupleElement&&) = default;
-		TTupleElement(const TTupleElement&) = default;
-		TTupleElement& operator=(TTupleElement&&) = default;
-		TTupleElement& operator=(const TTupleElement&) = default;
+		TTupleBaseElement(TTupleBaseElement&&) = default;
+		TTupleBaseElement(const TTupleBaseElement&) = default;
+		TTupleBaseElement& operator=(TTupleBaseElement&&) = default;
+		TTupleBaseElement& operator=(const TTupleBaseElement&) = default;
 
 		T Value;
 	};
 
 	template <typename T>
-	struct TTupleElement<T, 0, 2>
+	struct TTupleBaseElement<T, 0, 2>
 	{
 		template <
 			typename ArgType,
 			typename TEnableIf<TIsConstructible<T, ArgType&&>::Value>::Type* = nullptr
 		>
-		explicit TTupleElement(EForwardingConstructor, ArgType&& Arg)
+		explicit TTupleBaseElement(EForwardingConstructor, ArgType&& Arg)
 			: Key(Forward<ArgType>(Arg))
 		{
 		}
 
-		TTupleElement()
+		TTupleBaseElement()
 			: Key()
 		{
 		}
 
-		TTupleElement(TTupleElement&&) = default;
-		TTupleElement(const TTupleElement&) = default;
-		TTupleElement& operator=(TTupleElement&&) = default;
-		TTupleElement& operator=(const TTupleElement&) = default;
+		TTupleBaseElement(TTupleBaseElement&&) = default;
+		TTupleBaseElement(const TTupleBaseElement&) = default;
+		TTupleBaseElement& operator=(TTupleBaseElement&&) = default;
+		TTupleBaseElement& operator=(const TTupleBaseElement&) = default;
 
 		T Key;
 	};
 
 	template <uint32 Index, uint32 TupleSize>
-	struct TTupleElementHelper
+	struct TTupleElementGetterByIndex
 	{
 		template <typename DeducedType, typename TupleType>
-		static FORCEINLINE decltype(auto) GetImpl(const volatile TTupleElement<DeducedType, Index, TupleSize>&, TupleType&& Tuple)
+		static FORCEINLINE decltype(auto) GetImpl(const volatile TTupleBaseElement<DeducedType, Index, TupleSize>&, TupleType&& Tuple)
 		{
 			// Brackets are important here - we want a reference type to be returned, not object type
-			decltype(auto) Result = (ForwardAsBase<TupleType, TTupleElement<DeducedType, Index, TupleSize>>(Tuple).Value);
+			decltype(auto) Result = (ForwardAsBase<TupleType, TTupleBaseElement<DeducedType, Index, TupleSize>>(Tuple).Value);
 
 			// Keep tuple rvalue references to rvalue reference elements as rvalues, because that's how std::get() works, not how C++ struct member access works.
 			return static_cast<std::conditional_t<std::conjunction<std::negation<std::is_reference<TupleType>>, std::is_rvalue_reference<DeducedType>>::value, DeducedType, decltype(Result)>>(Result);
@@ -98,13 +98,13 @@ namespace UE4Tuple_Private
 	};
 
 	template <>
-	struct TTupleElementHelper<0, 2>
+	struct TTupleElementGetterByIndex<0, 2>
 	{
 		template <typename TupleType>
 		static FORCEINLINE decltype(auto) Get(TupleType&& Tuple)
 		{
 			// Brackets are important here - we want a reference type to be returned, not object type
-			decltype(auto) Result = (ForwardAsBase<TupleType, TTupleElement<decltype(Tuple.Key), 0, 2>>(Tuple).Key);
+			decltype(auto) Result = (ForwardAsBase<TupleType, TTupleBaseElement<decltype(Tuple.Key), 0, 2>>(Tuple).Key);
 
 			// Keep tuple rvalue references to rvalue reference elements as rvalues, because that's how std::get() works, not how C++ struct member access works.
 			return static_cast<std::conditional_t<std::conjunction<std::negation<std::is_reference<TupleType>>, std::is_rvalue_reference<decltype(Tuple.Key)>>::value, decltype(Tuple.Key), decltype(Result)>>(Result);
@@ -162,43 +162,43 @@ namespace UE4Tuple_Private
 	};
 
 	template <typename Indices, typename... Types>
-	struct TTupleImpl;
+	struct TTupleBase;
 
 	template <uint32... Indices, typename... Types>
-	struct TTupleImpl<TIntegerSequence<uint32, Indices...>, Types...> : TTupleElement<Types, Indices, sizeof...(Types)>...
+	struct TTupleBase<TIntegerSequence<uint32, Indices...>, Types...> : TTupleBaseElement<Types, Indices, sizeof...(Types)>...
 	{
 		template <
 			typename... ArgTypes,
-			decltype(ConceptCheckingHelper(TTupleElement<Types, Indices, sizeof...(Types)>(ForwardingConstructor, DeclVal<ArgTypes&&>())...))* = nullptr
+			decltype(ConceptCheckingHelper(TTupleBaseElement<Types, Indices, sizeof...(Types)>(ForwardingConstructor, DeclVal<ArgTypes&&>())...))* = nullptr
 		>
-		explicit TTupleImpl(EForwardingConstructor, ArgTypes&&... Args)
-			: TTupleElement<Types, Indices, sizeof...(Types)>(ForwardingConstructor, Forward<ArgTypes>(Args))...
+		explicit TTupleBase(EForwardingConstructor, ArgTypes&&... Args)
+			: TTupleBaseElement<Types, Indices, sizeof...(Types)>(ForwardingConstructor, Forward<ArgTypes>(Args))...
 		{
 		}
 
 		template <
 			typename TupleType,
-			decltype(ConceptCheckingHelper(TTupleElement<Types, Indices, sizeof...(Types)>(ForwardingConstructor, DeclVal<TupleType&&>().template Get<Indices>())...))* = nullptr
+			decltype(ConceptCheckingHelper(TTupleBaseElement<Types, Indices, sizeof...(Types)>(ForwardingConstructor, DeclVal<TupleType&&>().template Get<Indices>())...))* = nullptr
 		>
-		explicit TTupleImpl(EOtherTupleConstructor, TupleType&& Other)
-			: TTupleElement<Types, Indices, sizeof...(Types)>(ForwardingConstructor, Forward<TupleType>(Other).template Get<Indices>())...
+		explicit TTupleBase(EOtherTupleConstructor, TupleType&& Other)
+			: TTupleBaseElement<Types, Indices, sizeof...(Types)>(ForwardingConstructor, Forward<TupleType>(Other).template Get<Indices>())...
 		{
 		}
 
-		TTupleImpl() = default;
-		TTupleImpl(TTupleImpl&& Other) = default;
-		TTupleImpl(const TTupleImpl& Other) = default;
-		TTupleImpl& operator=(TTupleImpl&& Other) = default;
-		TTupleImpl& operator=(const TTupleImpl& Other) = default;
+		TTupleBase() = default;
+		TTupleBase(TTupleBase&& Other) = default;
+		TTupleBase(const TTupleBase& Other) = default;
+		TTupleBase& operator=(TTupleBase&& Other) = default;
+		TTupleBase& operator=(const TTupleBase& Other) = default;
 
-		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get()               &  { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<               TTupleImpl& >(*this)); }
-		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get() const         &  { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<const          TTupleImpl& >(*this)); }
-		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get()       volatile&  { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<      volatile TTupleImpl& >(*this)); }
-		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get() const volatile&  { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<const volatile TTupleImpl& >(*this)); }
-		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get()               && { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<               TTupleImpl&&>(*this)); }
-		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get() const         && { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<const          TTupleImpl&&>(*this)); }
-		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get()       volatile&& { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<      volatile TTupleImpl&&>(*this)); }
-		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get() const volatile&& { return TTupleElementHelper<Index, sizeof...(Types)>::Get(static_cast<const volatile TTupleImpl&&>(*this)); }
+		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get()               &  { return TTupleElementGetterByIndex<Index, sizeof...(Types)>::Get(static_cast<               TTupleBase& >(*this)); }
+		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get() const         &  { return TTupleElementGetterByIndex<Index, sizeof...(Types)>::Get(static_cast<const          TTupleBase& >(*this)); }
+		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get()       volatile&  { return TTupleElementGetterByIndex<Index, sizeof...(Types)>::Get(static_cast<      volatile TTupleBase& >(*this)); }
+		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get() const volatile&  { return TTupleElementGetterByIndex<Index, sizeof...(Types)>::Get(static_cast<const volatile TTupleBase& >(*this)); }
+		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get()               && { return TTupleElementGetterByIndex<Index, sizeof...(Types)>::Get(static_cast<               TTupleBase&&>(*this)); }
+		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get() const         && { return TTupleElementGetterByIndex<Index, sizeof...(Types)>::Get(static_cast<const          TTupleBase&&>(*this)); }
+		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get()       volatile&& { return TTupleElementGetterByIndex<Index, sizeof...(Types)>::Get(static_cast<      volatile TTupleBase&&>(*this)); }
+		template <uint32 Index, typename TEnableIf<(Index < sizeof...(Types))>::Type* = nullptr> FORCEINLINE decltype(auto) Get() const volatile&& { return TTupleElementGetterByIndex<Index, sizeof...(Types)>::Get(static_cast<const volatile TTupleBase&&>(*this)); }
 
 		template <typename FuncType, typename... ArgTypes>
 		decltype(auto) ApplyAfter(FuncType&& Func, ArgTypes&&... Args) const
@@ -212,7 +212,7 @@ namespace UE4Tuple_Private
 			return ::Invoke(Func, this->template Get<Indices>()..., Forward<ArgTypes>(Args)...);
 		}
 
-		FORCEINLINE friend FArchive& operator<<(FArchive& Ar, TTupleImpl& Tuple)
+		FORCEINLINE friend FArchive& operator<<(FArchive& Ar, TTupleBase& Tuple)
 		{
 			// This should be implemented with a fold expression when our compilers support it
 			int Temp[] = { 0, (Ar << Tuple.template Get<Indices>(), 0)... };
@@ -220,7 +220,7 @@ namespace UE4Tuple_Private
 			return Ar;
 		}
 
-		FORCEINLINE friend void operator<<(FStructuredArchive::FSlot Slot, TTupleImpl& Tuple)
+		FORCEINLINE friend void operator<<(FStructuredArchive::FSlot Slot, TTupleBase& Tuple)
 		{
 			// This should be implemented with a fold expression when our compilers support it
 			FStructuredArchive::FStream Stream = Slot.EnterStream();
@@ -228,33 +228,33 @@ namespace UE4Tuple_Private
 			(void)Temp;
 		}
 
-		FORCEINLINE friend bool operator==(const TTupleImpl& Lhs, const TTupleImpl& Rhs)
+		FORCEINLINE friend bool operator==(const TTupleBase& Lhs, const TTupleBase& Rhs)
 		{
 			// This could be implemented with a fold expression when our compilers support it
 			return FEqualityHelper<sizeof...(Types), 0>::Compare(Lhs, Rhs);
 		}
 
-		FORCEINLINE friend bool operator!=(const TTupleImpl& Lhs, const TTupleImpl& Rhs)
+		FORCEINLINE friend bool operator!=(const TTupleBase& Lhs, const TTupleBase& Rhs)
 		{
 			return !(Lhs == Rhs);
 		}
 
-		FORCEINLINE friend bool operator<(const TTupleImpl& Lhs, const TTupleImpl& Rhs)
+		FORCEINLINE friend bool operator<(const TTupleBase& Lhs, const TTupleBase& Rhs)
 		{
 			return TLessThanHelper<sizeof...(Types)>::Do(Lhs, Rhs);
 		}
 
-		FORCEINLINE friend bool operator<=(const TTupleImpl& Lhs, const TTupleImpl& Rhs)
+		FORCEINLINE friend bool operator<=(const TTupleBase& Lhs, const TTupleBase& Rhs)
 		{
 			return !(Rhs < Lhs);
 		}
 
-		FORCEINLINE friend bool operator>(const TTupleImpl& Lhs, const TTupleImpl& Rhs)
+		FORCEINLINE friend bool operator>(const TTupleBase& Lhs, const TTupleBase& Rhs)
 		{
 			return Rhs < Lhs;
 		}
 
-		FORCEINLINE friend bool operator>=(const TTupleImpl& Lhs, const TTupleImpl& Rhs)
+		FORCEINLINE friend bool operator>=(const TTupleBase& Lhs, const TTupleBase& Rhs)
 		{
 			return !(Lhs < Rhs);
 		}
@@ -353,10 +353,10 @@ namespace UE4Tuple_Private
 }
 
 template <typename... Types>
-struct TTuple : UE4Tuple_Private::TTupleImpl<TMakeIntegerSequence<uint32, sizeof...(Types)>, Types...>
+struct TTuple : UE4Tuple_Private::TTupleBase<TMakeIntegerSequence<uint32, sizeof...(Types)>, Types...>
 {
 private:
-	typedef UE4Tuple_Private::TTupleImpl<TMakeIntegerSequence<uint32, sizeof...(Types)>, Types...> Super;
+	typedef UE4Tuple_Private::TTupleBase<TMakeIntegerSequence<uint32, sizeof...(Types)>, Types...> Super;
 
 public:
 	template <
