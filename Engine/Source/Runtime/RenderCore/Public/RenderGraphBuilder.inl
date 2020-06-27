@@ -383,23 +383,3 @@ inline void FRDGBuilder::RemoveUnusedBufferWarning(FRDGBufferRef Buffer)
 	UserValidation.RemoveUnusedWarning(Buffer);
 #endif
 }
-
-inline void FRDGBuilder::BeginEventScope(FRDGEventName&& ScopeName)
-{
-	IF_RDG_SCOPES(ScopeStacks.BeginEventScope(Forward<FRDGEventName&&>(ScopeName)));
-}
-
-inline void FRDGBuilder::EndEventScope()
-{
-	IF_RDG_SCOPES(ScopeStacks.EndEventScope());
-}
-
-inline void FRDGBuilder::BeginStatScope(const FName& Name, const FName& StatName)
-{
-	IF_RDG_SCOPES(ScopeStacks.BeginStatScope(Name, StatName));
-}
-
-inline void FRDGBuilder::EndStatScope()
-{
-	IF_RDG_SCOPES(ScopeStacks.EndStatScope());
-}

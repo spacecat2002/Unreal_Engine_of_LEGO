@@ -237,10 +237,8 @@ private:
 	TArray<TPair<FRDGBufferRef, TRefCountPtr<FRDGPooledBuffer>*>, TInlineAllocator<4, SceneRenderingAllocator>> ExtractedBuffers;
 
 	FRHIGPUMask GpuMaskScope;
-#if CSV_PROFILER
-	const char* CSVExclusiveStatName = nullptr;
-#endif
-	IF_RDG_SCOPES(FRDGScopeStacksByPipeline ScopeStacks);
+	IF_RDG_CPU_SCOPES(FRDGCPUScopeStacks CPUScopeStacks);
+	IF_RDG_GPU_SCOPES(FRDGGPUScopeStacksByPipeline GPUScopeStacks);
 
 #if RDG_ENABLE_DEBUG
 	FRDGUserValidation UserValidation;
@@ -306,18 +304,6 @@ private:
 	void ClobberPassOutputs(const FRDGPass* Pass);
 #endif
 
-	/** Begins / ends a named event scope. These scopes are visible in most external GPU profilers.
-	 *  Prefer to use RDG_EVENT_SCOPE instead of calling this manually.
-	 */
-	void BeginEventScope(FRDGEventName&& ScopeName);
-	void EndEventScope();
-
-	/** Begins / ends a stat scope. Stat scopes are visible via 'stat GPU'. Must be accompanied by a
-	 *  respective EndStatScope call. Prefer to use RDG_GPU_STAT_SCOPE instead of calling this manually.
-	 */
-	void BeginStatScope(const FName& Name, const FName& StatName);
-	void EndStatScope();
-
 	friend FRDGEventScopeGuard;
 	friend FRDGGPUStatScopeGuard;
 	friend FRDGGPUMaskScopeGuard;
@@ -349,69 +335,6 @@ private:
 	#define RDG_GPU_MASK_SCOPE(GraphBuilder, GPUMask) FRDGGPUMaskScopeGuard PREPROCESSOR_JOIN(RDGGPUMaskScope, __LINE__){ GraphBuilder, GPUMask }
 #else
 	#define RDG_GPU_MASK_SCOPE(GraphBuilder, GPUMask)
-#endif
-
-//////////////////////////////////////////////////////////////////////////
-//
-// CSV Profiling Stats
-//
-//////////////////////////////////////////////////////////////////////////
-
-#if CSV_PROFILER
-
-class FRDGScopedCsvStatExclusive : public FScopedCsvStatExclusive
-{
-public:
-	FRDGScopedCsvStatExclusive(FRDGBuilder& InGraphBuilder, const char* InStatName)
-		: FScopedCsvStatExclusive(InStatName)
-		, GraphBuilder(InGraphBuilder)
-		, StatNameRestore(GraphBuilder.CSVExclusiveStatName)
-	{
-		GraphBuilder.CSVExclusiveStatName = InStatName;
-	}
-
-	~FRDGScopedCsvStatExclusive()
-	{
-		GraphBuilder.CSVExclusiveStatName = StatNameRestore;
-	}
-
-private:
-	FRDGBuilder& GraphBuilder;
-	const char* StatNameRestore;
-};
-
-class FRDGScopedCsvStatExclusiveConditional : public FScopedCsvStatExclusiveConditional
-{
-public:
-	FRDGScopedCsvStatExclusiveConditional(FRDGBuilder& InGraphBuilder, const char* InStatName, bool bInCondition)
-		: FScopedCsvStatExclusiveConditional(InStatName, bInCondition)
-		, GraphBuilder(InGraphBuilder)
-	{
-		if (bCondition)
-		{
-			StatNameRestore = GraphBuilder.CSVExclusiveStatName;
-			GraphBuilder.CSVExclusiveStatName = InStatName;
-		}
-	}
-
-	~FRDGScopedCsvStatExclusiveConditional()
-	{
-		if (bCondition)
-		{
-			GraphBuilder.CSVExclusiveStatName = StatNameRestore;
-		}
-	}
-
-private:
-	FRDGBuilder& GraphBuilder;
-	const char* StatNameRestore;
-};
-
-	#define RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, StatName) FRDGScopedCsvStatExclusive RDGScopedCsvStatExclusive ## StatName (GraphBuilder, #StatName)
-	#define RDG_CSV_STAT_EXCLUSIVE_SCOPE_CONDITIONAL(GraphBuilder, StatName, bCondition) FRDGScopedCsvStatExclusiveConditional RDGScopedCsvStatExclusiveConditional ## StatName (GraphBuilder, #StatName, bCondition)
-#else
-	#define RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, StatName)
-	#define RDG_CSV_STAT_EXCLUSIVE_SCOPE_CONDITIONAL(GraphBuilder, StatName, bCondition)
 #endif
 
 #include "RenderGraphBuilder.inl"

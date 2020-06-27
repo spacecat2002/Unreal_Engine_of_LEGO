@@ -249,7 +249,6 @@ const TCHAR* FRDGPass::GetName() const
 void FRDGPass::Execute(FRHIComputeCommandList& RHICmdList)
 {
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_FRDGPass_Execute);
-	FScopedCsvStatExclusive CsvScope(CSVExclusiveStatName);
 	RHICmdList.SetGlobalUniformBuffers(ParameterStruct.GetGlobalUniformBuffers());
 	ExecuteImpl(RHICmdList);
 }

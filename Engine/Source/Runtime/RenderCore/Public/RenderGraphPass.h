@@ -226,10 +226,19 @@ public:
 		return GraphicsJoinPass;
 	}
 
-	FRDGScopes GetScopes() const
+#if RDG_CPU_SCOPES
+	FRDGCPUScopes GetCPUScopes() const
 	{
-		return Scopes;
+		return CPUScopes;
 	}
+#endif
+
+#if RDG_GPU_SCOPES
+	FRDGGPUScopes GetGPUScopes() const
+	{
+		return GPUScopes;
+	}
+#endif
 
 private:
 	FRDGBarrierBatchBegin* GetEpilogueBarriersToBeginFor(ERHIPipeline PipelineForEnd)
@@ -351,10 +360,8 @@ private:
 	FRDGBarrierBatchBegin EpilogueBarriersToBeginForAsyncCompute;
 
 	FRHIGPUMask GpuMask;
-#if CSV_PROFILER
-	const char* CSVExclusiveStatName = nullptr;
-#endif
-	IF_RDG_SCOPES(FRDGScopes Scopes);
+	IF_RDG_CPU_SCOPES(FRDGCPUScopes CPUScopes);
+	IF_RDG_GPU_SCOPES(FRDGGPUScopes GPUScopes);
 
 	friend FRDGBuilder;
 	friend FRDGPassRegistry;

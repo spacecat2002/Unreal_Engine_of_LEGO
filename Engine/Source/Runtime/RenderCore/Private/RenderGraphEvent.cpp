@@ -37,6 +37,8 @@ FRDGEventName::FRDGEventName(const TCHAR* InEventFormat, ...)
 
 #endif
 
+#if RDG_GPU_SCOPES
+
 static void GetEventScopePathRecursive(const FRDGEventScope* Root, FString& String)
 {
 	if (Root->ParentScope)
@@ -67,7 +69,7 @@ FRDGEventScopeGuard::FRDGEventScopeGuard(FRDGBuilder& InGraphBuilder, FRDGEventN
 {
 	if (bCondition)
 	{
-		GraphBuilder.BeginEventScope(MoveTemp(ScopeName));
+		GraphBuilder.GPUScopeStacks.BeginEventScope(MoveTemp(ScopeName));
 	}
 }
 
@@ -75,7 +77,7 @@ FRDGEventScopeGuard::~FRDGEventScopeGuard()
 {
 	if (bCondition)
 	{
-		GraphBuilder.EndEventScope();
+		GraphBuilder.GPUScopeStacks.EndEventScope();
 	}
 }
 
@@ -84,7 +86,7 @@ static void OnPushEvent(FRHIComputeCommandList& RHICmdList, const FRDGEventScope
 	RHICmdList.PushEvent(Scope->Name.GetTCHAR(), FColor(0));
 }
 
-static void OnPopEvent(FRHIComputeCommandList& RHICmdList)
+static void OnPopEvent(FRHIComputeCommandList& RHICmdList, const FRDGEventScope*)
 {
 	RHICmdList.PopEvent();
 }
@@ -130,7 +132,7 @@ void FRDGEventScopeStack::BeginExecutePass(const FRDGPass* Pass)
 {
 	if (IsEnabled())
 	{
-		ScopeStack.BeginExecutePass(Pass->GetScopes().Event);
+		ScopeStack.BeginExecutePass(Pass->GetGPUScopes().Event);
 
 		// Skip empty strings.
 		const TCHAR* Name = Pass->GetEventName().GetTCHAR();
@@ -164,15 +166,15 @@ void FRDGEventScopeStack::EndExecute()
 FRDGGPUStatScopeGuard::FRDGGPUStatScopeGuard(FRDGBuilder& InGraphBuilder, const FName& Name, const FName& StatName)
 	: GraphBuilder(InGraphBuilder)
 {
-	GraphBuilder.BeginStatScope(Name, StatName);
+	GraphBuilder.GPUScopeStacks.BeginStatScope(Name, StatName);
 }
 
 FRDGGPUStatScopeGuard::~FRDGGPUStatScopeGuard()
 {
-	GraphBuilder.EndStatScope();
+	GraphBuilder.GPUScopeStacks.EndStatScope();
 }
 
-static void OnPushStat(FRHIComputeCommandList& RHICmdList, const FRDGGPUStatScope* Scope)
+static void OnPushGPUStat(FRHIComputeCommandList& RHICmdList, const FRDGGPUStatScope* Scope)
 {
 #if HAS_GPU_STATS
 	// GPU stats are currently only supported on the immediate command list.
@@ -183,7 +185,7 @@ static void OnPushStat(FRHIComputeCommandList& RHICmdList, const FRDGGPUStatScop
 #endif
 }
 
-static void OnPopStat(FRHIComputeCommandList& RHICmdList)
+static void OnPopGPUStat(FRHIComputeCommandList& RHICmdList, const FRDGGPUStatScope*)
 {
 #if HAS_GPU_STATS
 	// GPU stats are currently only supported on the immediate command list.
@@ -204,7 +206,7 @@ bool FRDGGPUStatScopeStack::IsEnabled()
 }
 
 FRDGGPUStatScopeStack::FRDGGPUStatScopeStack(FRHIComputeCommandList& InRHICmdList)
-	: ScopeStack(InRHICmdList, &OnPushStat, &OnPopStat)
+	: ScopeStack(InRHICmdList, &OnPushGPUStat, &OnPopGPUStat)
 {}
 
 void FRDGGPUStatScopeStack::BeginScope(const FName& Name, const FName& StatName)
@@ -235,7 +237,7 @@ void FRDGGPUStatScopeStack::BeginExecutePass(const FRDGPass* Pass)
 {
 	if (IsEnabled())
 	{
-		ScopeStack.BeginExecutePass(Pass->GetScopes().Stat);
+		ScopeStack.BeginExecutePass(Pass->GetGPUScopes().Stat);
 	}
 }
 
@@ -247,7 +249,7 @@ void FRDGGPUStatScopeStack::EndExecute()
 	}
 }
 
-void FRDGScopeStacksByPipeline::BeginExecutePass(const FRDGPass* Pass)
+void FRDGGPUScopeStacksByPipeline::BeginExecutePass(const FRDGPass* Pass)
 {
 	ERHIPipeline Pipeline = Pass->GetPipeline();
 
@@ -260,7 +262,7 @@ void FRDGScopeStacksByPipeline::BeginExecutePass(const FRDGPass* Pass)
 	GetScopeStacks(Pipeline).BeginExecutePass(Pass);
 }
 
-void FRDGScopeStacksByPipeline::EndExecutePass(const FRDGPass* Pass)
+void FRDGGPUScopeStacksByPipeline::EndExecutePass(const FRDGPass* Pass)
 {
 	ERHIPipeline Pipeline = Pass->GetPipeline();
 
@@ -272,3 +274,128 @@ void FRDGScopeStacksByPipeline::EndExecutePass(const FRDGPass* Pass)
 
 	GetScopeStacks(Pipeline).EndExecutePass();
 }
+
+#endif
+
+//////////////////////////////////////////////////////////////////////////
+// CPU Scopes
+//////////////////////////////////////////////////////////////////////////
+
+#if RDG_CPU_SCOPES
+
+#if CSV_PROFILER
+
+FRDGScopedCsvStatExclusive::FRDGScopedCsvStatExclusive(FRDGBuilder& InGraphBuilder, const char* InStatName)
+	: FScopedCsvStatExclusive(InStatName)
+	, GraphBuilder(InGraphBuilder)
+{
+	GraphBuilder.CPUScopeStacks.CSV.BeginScope(InStatName);
+}
+
+FRDGScopedCsvStatExclusive::~FRDGScopedCsvStatExclusive()
+{
+	GraphBuilder.CPUScopeStacks.CSV.EndScope();
+}
+
+FRDGScopedCsvStatExclusiveConditional::FRDGScopedCsvStatExclusiveConditional(FRDGBuilder& InGraphBuilder, const char* InStatName, bool bInCondition)
+	: FScopedCsvStatExclusiveConditional(InStatName, bInCondition)
+	, GraphBuilder(InGraphBuilder)
+{
+	if (bCondition)
+	{
+		GraphBuilder.CPUScopeStacks.CSV.BeginScope(InStatName);
+	}
+}
+
+FRDGScopedCsvStatExclusiveConditional::~FRDGScopedCsvStatExclusiveConditional()
+{
+	if (bCondition)
+	{
+		GraphBuilder.CPUScopeStacks.CSV.EndScope();
+	}
+}
+
+#endif
+
+static void OnPushCSVStat(FRHIComputeCommandList&, const FRDGCSVStatScope* Scope)
+{
+#if CSV_PROFILER
+	FCsvProfiler::BeginExclusiveStat(Scope->StatName);
+#if CSV_EXCLUSIVE_TIMING_STATS_EMIT_NAMED_EVENTS
+	FPlatformMisc::BeginNamedEvent(FColor(255, 128, 128), Scope->StatName);
+#endif
+#endif
+}
+
+static void OnPopCSVStat(FRHIComputeCommandList&, const FRDGCSVStatScope* Scope)
+{
+#if CSV_PROFILER
+#if CSV_EXCLUSIVE_TIMING_STATS_EMIT_NAMED_EVENTS
+	FPlatformMisc::EndNamedEvent();
+#endif
+	FCsvProfiler::EndExclusiveStat(Scope->StatName);
+#endif
+}
+
+FRDGCSVStatScopeStack::FRDGCSVStatScopeStack(FRHIComputeCommandList& InRHICmdList, const char* InUnaccountedStatName)
+	: ScopeStack(InRHICmdList, &OnPushCSVStat, &OnPopCSVStat)
+	, UnaccountedStatName(InUnaccountedStatName)
+{
+	BeginScope(UnaccountedStatName);
+}
+
+FRDGCSVStatScopeStack::~FRDGCSVStatScopeStack()
+{
+	EndScope();
+}
+
+bool FRDGCSVStatScopeStack::IsEnabled()
+{
+#if CSV_PROFILER
+	return true;
+#else
+	return false;
+#endif
+}
+
+void FRDGCSVStatScopeStack::BeginScope(const char* StatName)
+{
+	if (IsEnabled())
+	{
+		ScopeStack.BeginScope(StatName);
+	}
+}
+
+void FRDGCSVStatScopeStack::EndScope()
+{
+	if (IsEnabled())
+	{
+		ScopeStack.EndScope();
+	}
+}
+
+void FRDGCSVStatScopeStack::BeginExecute()
+{
+	if (IsEnabled())
+	{
+		ScopeStack.BeginExecute();
+	}
+}
+
+void FRDGCSVStatScopeStack::BeginExecutePass(const FRDGPass* Pass)
+{
+	if (IsEnabled())
+	{
+		ScopeStack.BeginExecutePass(Pass->GetCPUScopes().CSV);
+	}
+}
+
+void FRDGCSVStatScopeStack::EndExecute()
+{
+	if (IsEnabled())
+	{
+		ScopeStack.EndExecute();
+	}
+}
+
+#endif

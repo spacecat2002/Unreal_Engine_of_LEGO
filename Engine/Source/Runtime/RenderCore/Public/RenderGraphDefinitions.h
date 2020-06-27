@@ -38,12 +38,20 @@
 	#define RDG_EVENTS RDG_EVENTS_NONE
 #endif
 
-#define RDG_SCOPES (RDG_EVENTS || HAS_GPU_STATS)
+#define RDG_GPU_SCOPES (RDG_EVENTS || HAS_GPU_STATS)
 
-#if RDG_SCOPES
-	#define IF_RDG_SCOPES(Op) Op
+#if RDG_GPU_SCOPES
+	#define IF_RDG_GPU_SCOPES(Op) Op
 #else
-	#define IF_RDG_SCOPES(Op)
+	#define IF_RDG_GPU_SCOPES(Op)
+#endif
+
+#define RDG_CPU_SCOPES (CSV_PROFILER)
+
+#if RDG_CPU_SCOPES
+	#define IF_RDG_CPU_SCOPES(Op) Op
+#else
+	#define IF_RDG_CPU_SCOPES(Op)
 #endif
 
 /** ENUMS */

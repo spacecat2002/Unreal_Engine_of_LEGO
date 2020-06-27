@@ -349,16 +349,16 @@ ERDGPassFlags FRDGBuilder::OverridePassFlags(const TCHAR* PassName, ERDGPassFlag
 
 const char* const FRDGBuilder::kDefaultUnaccountedCSVStat = "RDG_Pass";
 
-FRDGBuilder::FRDGBuilder(FRHICommandListImmediate& InRHICmdList, FRDGEventName InName, const char* UnaccountedCSVStat)
+FRDGBuilder::FRDGBuilder(FRHICommandListImmediate& InRHICmdList, FRDGEventName InName, const char* InUnaccountedCSVStat)
 	: RHICmdList(InRHICmdList)
 	, RHICmdListAsyncCompute(FRHICommandListExecutor::GetImmediateAsyncComputeCommandList())
 	, BuilderName(InName)
 	, GpuMaskScope(InRHICmdList.GetGPUMask())
-#if CSV_PROFILER
-	, CSVExclusiveStatName(UnaccountedCSVStat)
+#if RDG_CPU_SCOPES
+	, CPUScopeStacks(RHICmdList, UnaccountedCSVStat)
 #endif
-#if RDG_SCOPES
-	, ScopeStacks(RHICmdList, RHICmdListAsyncCompute)
+#if RDG_GPU_SCOPES
+	, GPUScopeStacks(RHICmdList, RHICmdListAsyncCompute)
 #endif
 #if RDG_ENABLE_DEBUG
 	, BarrierValidation(&Passes, BuilderName)
@@ -1053,7 +1053,8 @@ void FRDGBuilder::Execute()
 		}
 	}
 
-	IF_RDG_SCOPES(ScopeStacks.BeginExecute());
+	IF_RDG_CPU_SCOPES(CPUScopeStacks.BeginExecute());
+	IF_RDG_GPU_SCOPES(GPUScopeStacks.BeginExecute());
 
 	if (!GRDGImmediateMode)
 	{
@@ -1101,7 +1102,8 @@ void FRDGBuilder::Execute()
 		*Query.Value = Query.Key->PooledBuffer;
 	}
 
-	IF_RDG_SCOPES(ScopeStacks.Graphics.EndExecute());
+	IF_RDG_GPU_SCOPES(GPUScopeStacks.Graphics.EndExecute());
+	IF_RDG_CPU_SCOPES(CPUScopeStacks.EndExecute());
 
 	IF_RDG_ENABLE_DEBUG(UserValidation.ValidateExecuteEnd());
 	IF_RDG_ENABLE_DEBUG(BarrierValidation.ValidateExecuteEnd());
@@ -1198,14 +1200,11 @@ void FRDGBuilder::SetupPassInternal(FRDGPass* Pass, FRDGPassHandle PassHandle, E
 	Pass->GraphicsForkPass = PassHandle;
 	Pass->GpuMask = GpuMaskScope;
 
-#if CSV_PROFILER
-	Pass->CSVExclusiveStatName = CSVExclusiveStatName;
-#endif
+	IF_RDG_CPU_SCOPES(Pass->CPUScopes = CPUScopeStacks.GetCurrentScopes());
+	IF_RDG_GPU_SCOPES(Pass->GPUScopes = GPUScopeStacks.GetCurrentScopes(PassPipeline));
 
-	IF_RDG_SCOPES(Pass->Scopes = ScopeStacks.GetCurrentScopes(PassPipeline));
-
-#if RDG_SCOPES && RDG_ENABLE_DEBUG
-	if (const FRDGEventScope* Scope = Pass->Scopes.Event)
+#if RDG_GPU_SCOPES && RDG_ENABLE_DEBUG
+	if (const FRDGEventScope* Scope = Pass->GPUScopes.Event)
 	{
 		Pass->FullPathIfDebug = Scope->GetPath(Pass->Name);
 	}
@@ -1290,11 +1289,13 @@ void FRDGBuilder::ExecutePass(FRDGPass* Pass)
 {
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_FRDGBuilder_ExecutePass);
 
-#if RDG_SCOPES
+	IF_RDG_CPU_SCOPES(CPUScopeStacks.BeginExecutePass(Pass));
+
+#if RDG_GPU_SCOPES
 	const bool bUsePassEventScope = Pass != EpiloguePass && Pass != ProloguePass;
 	if (bUsePassEventScope)
 	{
-		ScopeStacks.BeginExecutePass(Pass);
+		GPUScopeStacks.BeginExecutePass(Pass);
 	}
 #endif
 
@@ -1320,10 +1321,10 @@ void FRDGBuilder::ExecutePass(FRDGPass* Pass)
 
 	ExecutePassEpilogue(RHICmdListPass, Pass);
 
-#if RDG_SCOPES
+#if RDG_GPU_SCOPES
 	if (bUsePassEventScope)
 	{
-		ScopeStacks.EndExecutePass(Pass);
+		GPUScopeStacks.EndExecutePass(Pass);
 	}
 #endif
 
@@ -1331,7 +1332,7 @@ void FRDGBuilder::ExecutePass(FRDGPass* Pass)
 	{
 		if (Pass->bAsyncComputeEndExecute)
 		{
-			IF_RDG_SCOPES(ScopeStacks.AsyncCompute.EndExecute());
+			IF_RDG_GPU_SCOPES(GPUScopeStacks.AsyncCompute.EndExecute());
 		}
 		FRHIAsyncComputeCommandListImmediate::ImmediateDispatch(RHICmdListAsyncCompute);
 	}
