@@ -124,10 +124,10 @@ public:
 	>
 	FORCEINLINE explicit FString(int32 InCount, const CharType* InSrc)
 	{
-		if (InSrc && *InSrc)
+		if (InSrc)
 		{
 			int32 DestLen = FPlatformString::ConvertedLength<TCHAR>(InSrc, InCount);
-			if (DestLen > 0)
+			if (DestLen > 0 && *InSrc)
 			{
 				Data.Reserve(DestLen + 1);
 				Data.AddUninitialized(DestLen + 1);
