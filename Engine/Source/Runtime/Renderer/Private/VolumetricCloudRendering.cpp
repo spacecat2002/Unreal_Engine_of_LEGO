@@ -1566,7 +1566,7 @@ void FSceneRenderer::RenderVolumetricCloud(FRDGBuilder& GraphBuilder, FRDGTextur
 					SkyRC.bShouldSampleOpaqueShadow = ShouldSkySampleAtmosphereLightsOpaqueShadow(*Scene, VisibleLightInfos, LightShadowData);
 					SkyRC.bUseDepthBoundTestIfPossible = false;
 					SkyRC.bForceRayMarching = true;				// We do not have any valid view LUT
-					SkyRC.bDisableDepthRead = true;
+					SkyRC.bDepthReadDisabled = true;
 					SkyRC.bDisableBlending = true;
 
 					SkyRC.TransmittanceLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetTransmittanceLutTexture());

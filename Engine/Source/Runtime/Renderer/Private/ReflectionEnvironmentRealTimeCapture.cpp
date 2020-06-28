@@ -312,7 +312,7 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 
 			SkyRC.bUseDepthBoundTestIfPossible = false;
 			SkyRC.bForceRayMarching = true;				// We do not have any valid view LUT
-			SkyRC.bDisableDepthRead = true;
+			SkyRC.bDepthReadDisabled = true;
 			SkyRC.bDisableBlending = true;
 
 			SkyRC.TransmittanceLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetTransmittanceLutTexture());

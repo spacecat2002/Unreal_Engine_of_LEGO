@@ -72,7 +72,7 @@ struct FSkyAtmosphereRenderContext
 
 	bool bUseDepthBoundTestIfPossible;
 	bool bForceRayMarching;
-	bool bDisableDepthRead; // Do not apply scene depth texture. As such, only far Z will be considered
+	bool bDepthReadDisabled;// Do not apply scene depth texture. As such, only far Z will be considered
 	bool bDisableBlending;	// Do not do any blending. The sky will clear the target when rendering a sky reflection capture for instance.
 	bool bFastSky;
 	bool bFastAerialPerspective;
