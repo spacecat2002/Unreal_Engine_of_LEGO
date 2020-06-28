@@ -17705,6 +17705,7 @@ UMaterialExpressionVolumetricAdvancedMaterialOutput::UMaterialExpressionVolumetr
 	ConstPhaseG2 = 0.0f;
 	ConstPhaseBlend = 0.0f;
 	PerSamplePhaseEvaluation = false;
+	bGrayScaleMaterial = false;
 
 	MultiScatteringApproximationOctaveCount = 0;
 	ConstMultiScatteringContribution = 0.5f;

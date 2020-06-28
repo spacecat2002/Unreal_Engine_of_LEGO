@@ -80,6 +80,10 @@ class UMaterialExpressionVolumetricAdvancedMaterialOutput : public UMaterialExpr
 	UPROPERTY(EditAnywhere, Category = "Options")
 	bool bGroundContribution;
 
+	/** Set this for the material to only be considered grey scale, only using the R chanel of the input parameters internally. The lighting will still be colored. This is an optimisation.*/
+	UPROPERTY(EditAnywhere, Category = "Options")
+	bool bGrayScaleMaterial;
+
 public:
 #if WITH_EDITOR
 	//~ Begin UMaterialExpression Interface
