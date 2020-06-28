@@ -61,6 +61,11 @@ static TAutoConsoleVariable<int32> CVarVolumetricCloudHighQualityAerialPerspecti
 	TEXT("True if we want to trace the aerial perspective per pixel on cloud instead of using the aerial persepctive texture. Only possible to do when r.VolumetricRenderTarget=1."),
 	ECVF_RenderThreadSafe | ECVF_Scalability);
 
+static TAutoConsoleVariable<int32> CVarVolumetricCloudHzbCulling(
+	TEXT("r.VolumetricCloud.HzbCulling"), 1,
+	TEXT("True if we want the HZB to be use in order to not trace behind opaque surfaces. Should be 0 when r.VolumetricRenderTarget.Mode is 2."),
+	ECVF_Scalability);
+
 ////////////////////////////////////////////////////////////////////////// Shadow tracing
 
 static TAutoConsoleVariable<float> CVarVolumetricCloudShadowViewRaySampleMaxCount(
@@ -454,7 +459,7 @@ void SetupDefaultRenderVolumetricCloudGlobalParameters(FRenderVolumetricCloudGlo
 
 static void SetupRenderVolumetricCloudGlobalParametersHZB(const FViewInfo& ViewInfo, FRenderVolumetricCloudGlobalParameters& ShaderParameters)
 {
-	ShaderParameters.HasValidHZB = ViewInfo.HZB.IsValid() ? 1 : 0;
+	ShaderParameters.HasValidHZB = (ViewInfo.HZB.IsValid() && CVarVolumetricCloudHzbCulling.GetValueOnAnyThread() > 0) ? 1 : 0;
 
 	ShaderParameters.HZBTexture = (ShaderParameters.HasValidHZB ? ViewInfo.HZB : GSystemTextures.BlackDummy)->GetRenderTargetItem().ShaderResourceTexture;
 	ShaderParameters.HZBSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
