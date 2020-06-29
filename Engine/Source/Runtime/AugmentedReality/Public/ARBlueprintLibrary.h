@@ -10,6 +10,8 @@
 #include "ARTraceResult.h"
 #include "ARSessionConfig.h"
 #include "ARTrackable.h"
+#include "ARTextures.h"
+
 #include "ARBlueprintLibrary.generated.h"
 
 
@@ -136,13 +138,19 @@ public:
 	static TArray<UARTrackedGeometry*> GetAllGeometries();
 
 	/** @return the current camera image from the Augmented Reality system */
-	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Camera", meta = (DisplayName="Get AR Camera Image", Keywords = "ar augmentedreality augmented reality camera image"))
+	UE_DEPRECATED(4.26, "GetCameraImage is deprecated, use GetARTexture.")
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Camera", meta = (DeprecatedFunction, DeprecationMessage="GetCameraImage is deprecated, use GetARTexture.", DisplayName="Get AR Camera Image", Keywords = "ar augmentedreality augmented reality camera image"))
 	static UARTextureCameraImage* GetCameraImage();
 
 	/** @return the current camera depth data from the Augmented Reality system */
-	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Camera", meta = (DisplayName="Get AR Camera Depth", Keywords = "ar augmentedreality augmented reality camera image depth"))
+	UE_DEPRECATED(4.26, "GetCameraDepth is deprecated, use GetARTexture.")
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Camera", meta = (DeprecatedFunction, DeprecationMessage="GetCameraDepth is deprecated, use GetARTexture.", DisplayName="Get AR Camera Depth", Keywords = "ar augmentedreality augmented reality camera image depth"))
 	static UARTextureCameraDepth* GetCameraDepth();
-
+	
+	/** @return the AR texture for the specified type */
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Texture", meta = (DisplayName="Get AR Texture", Keywords = "ar augmentedreality augmented reality texture"))
+	static UARTexture* GetARTexture(EARTextureType TextureType);
+	
 	/**
 	 * Test whether this type of session is supported by the current Augmented Reality platform.
 	 * e.g. is your device capable of doing positional tracking or orientation only?
@@ -336,11 +344,13 @@ public:
 	static TArray<UARTrackedPose*> GetAllTrackedPoses();
 	
 	/** @return the segmentation image if the person segmentation session feature is used */
-	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Person Segmentation", meta = (DisplayName="Get AR Person Segmentation Image", Keywords = "ar augmentedreality augmented reality person segmentation image"))
+	UE_DEPRECATED(4.26, "GetPersonSegmentationImage is deprecated, use GetARTexture.")
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Person Segmentation", meta = (DeprecatedFunction, DeprecationMessage="GetPersonSegmentationImage is deprecated, use GetARTexture.", DisplayName="Get AR Person Segmentation Image", Keywords = "ar augmentedreality augmented reality person segmentation image"))
 	static UARTextureCameraImage* GetPersonSegmentationImage();
 
 	/** @return the segmentation depth image if the person segmentation with depth session feature is used */
-	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Person Segmentation", meta = (DisplayName="Get AR Person Segmentation Depth Image", Keywords = "ar augmentedreality augmented reality person segmentation depth image"))
+	UE_DEPRECATED(4.26, "GetPersonSegmentationDepthImage is deprecated, use GetARTexture.")
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Person Segmentation", meta = (DeprecatedFunction, DeprecationMessage="GetPersonSegmentationDepthImage is deprecated, use GetARTexture.", DisplayName="Get AR Person Segmentation Depth Image", Keywords = "ar augmentedreality augmented reality person segmentation depth image"))
 	static UARTextureCameraImage* GetPersonSegmentationDepthImage();
 	
 	/**

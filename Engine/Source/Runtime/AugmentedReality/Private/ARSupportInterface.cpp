@@ -182,24 +182,6 @@ TArray<UARPin*> FARSupportInterface ::GetAllPins() const
 	return TArray<UARPin*>();
 }
 
-UARTextureCameraImage* FARSupportInterface ::GetCameraImage()
-{
-	if (ARImplemention)
-	{
-		return ARImplemention->OnGetCameraImage();
-	}
-	return nullptr;
-}
-
-UARTextureCameraDepth* FARSupportInterface ::GetCameraDepth()
-{
-	if (ARImplemention)
-	{
-		return ARImplemention->OnGetCameraDepth();
-	}
-	return nullptr;
-}
-
 bool FARSupportInterface ::AddManualEnvironmentCaptureProbe(FVector Location, FVector Extent)
 {
 	if (ARImplemention)
@@ -411,24 +393,6 @@ TArray<FARPose2D> FARSupportInterface::GetTracked2DPose() const
 	return {};
 }
 
-UARTextureCameraImage* FARSupportInterface::GetPersonSegmentationImage() const
-{
-	if (ARImplemention)
-	{
-		return ARImplemention->OnGetPersonSegmentationImage();
-	}
-	return nullptr;
-}
-
-UARTextureCameraImage* FARSupportInterface::GetPersonSegmentationDepthImage() const
-{
-	if (ARImplemention)
-	{
-		return ARImplemention->OnGetPersonSegmentationDepthImage();
-	}
-	return nullptr;
-}
-
 bool FARSupportInterface::IsSceneReconstructionSupported(EARSessionType SessionType, EARSceneReconstruction SceneReconstructionMethod) const
 {
 	if (ARImplemention)
@@ -454,6 +418,15 @@ int32 FARSupportInterface::GetNumberOfTrackedFacesSupported() const
 		return ARImplemention->OnGetNumberOfTrackedFacesSupported();
 	}
 	return 0;
+}
+
+UARTexture* FARSupportInterface::GetARTexture(EARTextureType TextureType) const
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->OnGetARTexture(TextureType);
+	}
+	return nullptr;
 }
 
 #define DEFINE_AR_SI_DELEGATE_FUNCS(DelegateName) \

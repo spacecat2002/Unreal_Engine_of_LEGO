@@ -74,10 +74,6 @@ public:
 	TArray<UARTrackedGeometry*> GetAllTrackedGeometries() const;
 	/** \see UARBlueprintLibrary::GetAllPins() */
 	TArray<UARPin*> GetAllPins() const;
-	/** \see UARBlueprintLibrary::GetCameraImage() */
-	UARTextureCameraImage* GetCameraImage();
-	/** \see UARBlueprintLibrary::GetCameraDepth() */
-	UARTextureCameraDepth* GetCameraDepth();
 	/**\see UARBlueprintLibrary::IsEnvironmentCaptureSupported() */
 	bool IsEnvironmentCaptureSupported() const;
 	/**\see UARBlueprintLibrary::AddEnvironmentCaptureProbe() */
@@ -117,12 +113,6 @@ public:
 	/** \see UARBlueprintLibrary::GetTracked2DPose() */
 	TArray<FARPose2D> GetTracked2DPose() const;
 	
-	/** \see UARBlueprintLibrary::GetPersonSegmentationImage() */
-	UARTextureCameraImage* GetPersonSegmentationImage() const;
-	
-	/** \see UARBlueprintLibrary::GetPersonSegmentationDepthImage() */
-	UARTextureCameraImage* GetPersonSegmentationDepthImage() const;
-	
 	/** \see UARBlueprintLibrary::IsSceneReconstructionSupported() */
 	bool IsSceneReconstructionSupported(EARSessionType SessionType, EARSceneReconstruction SceneReconstructionMethod) const;
 	
@@ -131,6 +121,9 @@ public:
 	
 	/** \see UARBlueprintLibrary::GetNumberOfTrackedFacesSupported() */
 	int32 GetNumberOfTrackedFacesSupported() const;
+	
+	/** \see UARBlueprintLibrary::GetARTexture() */
+	UARTexture* GetARTexture(EARTextureType TextureType) const;
 
 	//~ FGCObject
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;

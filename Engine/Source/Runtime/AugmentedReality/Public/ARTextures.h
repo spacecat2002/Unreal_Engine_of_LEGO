@@ -13,7 +13,9 @@ enum class EARTextureType : uint8
 {
 	CameraImage,
 	CameraDepth,
-	EnvironmentCapture
+	EnvironmentCapture,
+	PersonSegmentationImage,
+	PersonSegmentationDepth,
 };
 
 /**
@@ -50,8 +52,6 @@ UCLASS(Abstract, BlueprintType)
 class AUGMENTEDREALITY_API UARTextureCameraImage : public UARTexture
 {
 	GENERATED_UCLASS_BODY()
-
-public:
 };
 
 UENUM(BlueprintType, Category="AR AugmentedReality", meta=(Experimental))

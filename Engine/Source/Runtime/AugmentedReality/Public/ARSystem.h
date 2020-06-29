@@ -165,12 +165,6 @@ public:
 	 */
 	virtual void OnRemovePin(UARPin* PinToRemove) = 0;
 
-	/** @return the last camera image the AR system has seen */
-	virtual UARTextureCameraImage* OnGetCameraImage() = 0;
-
-	/** @return the last camera depth information the AR system has seen */
-	virtual UARTextureCameraDepth* OnGetCameraDepth() = 0;
-
 	/** Tells the ARSystem to generate a capture probe at the specified location if supported */
 	virtual bool OnAddManualEnvironmentCaptureProbe(FVector Location, FVector Extent) = 0;
 	
@@ -201,12 +195,6 @@ public:
 	/** @return all the tracked 2D poses in AR */
 	virtual TArray<FARPose2D> OnGetTracked2DPose() const { return {}; }
 	
-	/** @return the person segmentation image */
-	virtual UARTextureCameraImage* OnGetPersonSegmentationImage() const { return nullptr; }
-	
-	/** @return the person segmentation depth image */
-	virtual UARTextureCameraImage* OnGetPersonSegmentationDepthImage() const { return nullptr; }
-	
 	/** @return the required scene construction method is supported */
 	virtual bool OnIsSceneReconstructionSupported(EARSessionType SessionType, EARSceneReconstruction SceneReconstructionMethod) const { return false; }
 	
@@ -214,6 +202,9 @@ public:
 	
 	/** @return the max number of faces can be tracked at the same time */
 	virtual int32 OnGetNumberOfTrackedFacesSupported() const { return 1; }
+	
+	/** @return the AR texture for the specified type */
+	virtual UARTexture* OnGetARTexture(EARTextureType TextureType) const { return nullptr; }
 	
 	virtual ~IARSystemSupport(){}
 

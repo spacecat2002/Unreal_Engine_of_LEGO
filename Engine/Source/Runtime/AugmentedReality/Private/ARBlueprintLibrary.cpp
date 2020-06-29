@@ -399,26 +399,12 @@ EARLineTraceChannels UARTraceResultLibrary::GetTraceChannel( const FARTraceResul
 
 UARTextureCameraImage* UARBlueprintLibrary::GetCameraImage()
 {
-	UARTextureCameraImage* Image = nullptr;
-
-	auto ARSystem = GetARSystem();
-	if (ARSystem.IsValid())
-	{
-		Image = ARSystem.Pin()->GetCameraImage();
-	}
-	return Image;
+	return Cast<UARTextureCameraImage>(GetARTexture(EARTextureType::CameraImage));
 }
 
 UARTextureCameraDepth* UARBlueprintLibrary::GetCameraDepth()
 {
-	UARTextureCameraDepth* Depth = nullptr;
-
-	auto ARSystem = GetARSystem();
-	if (ARSystem.IsValid())
-	{
-		Depth = ARSystem.Pin()->GetCameraDepth();
-	}
-	return Depth;
+	return Cast<UARTextureCameraDepth>(GetARTexture(EARTextureType::CameraDepth));
 }
 
 TArray<UARPlaneGeometry*> UARBlueprintLibrary::GetAllTrackedPlanes()
@@ -619,28 +605,12 @@ TArray<UARTrackedPose*> UARBlueprintLibrary::GetAllTrackedPoses()
 
 UARTextureCameraImage* UARBlueprintLibrary::GetPersonSegmentationImage()
 {
-	auto ARSystem = GetARSystem();
-	if (ARSystem.IsValid())
-	{
-		return ARSystem.Pin()->GetPersonSegmentationImage();
-	}
-	else
-	{
-		return nullptr;
-	}
+	return Cast<UARTextureCameraImage>(GetARTexture(EARTextureType::PersonSegmentationImage));
 }
 
 UARTextureCameraImage* UARBlueprintLibrary::GetPersonSegmentationDepthImage()
 {
-	auto ARSystem = GetARSystem();
-	if (ARSystem.IsValid())
-	{
-		return ARSystem.Pin()->GetPersonSegmentationDepthImage();
-	}
-	else
-	{
-		return nullptr;
-	}
+	return Cast<UARTextureCameraImage>(GetARTexture(EARTextureType::PersonSegmentationDepth));
 }
 
 bool UARBlueprintLibrary::IsSceneReconstructionSupported(EARSessionType SessionType, EARSceneReconstruction SceneReconstructionMethod)
@@ -934,4 +904,14 @@ int32 UARBlueprintLibrary::GetNumberOfTrackedFacesSupported()
 		return ARSystem.Pin()->GetNumberOfTrackedFacesSupported();
 	}
 	return 0;
+}
+
+UARTexture* UARBlueprintLibrary::GetARTexture(EARTextureType TextureType)
+{
+	auto ARSystem = GetARSystem();
+	if (ARSystem.IsValid())
+	{
+		return ARSystem.Pin()->GetARTexture(TextureType);
+	}
+	return nullptr;
 }
