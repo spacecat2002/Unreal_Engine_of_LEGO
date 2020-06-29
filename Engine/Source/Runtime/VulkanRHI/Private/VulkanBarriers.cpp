@@ -602,8 +602,11 @@ void FVulkanDynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipe
 		VkImageSubresourceRange SubresRange;
 		SetupSubresourceRange(SubresRange, Info, Texture->Surface.GetFullAspectMask());
 
+		// For some textures, e.g. FVulkanBackBuffer, the image handle may not be set yet, or may be stale, so there's no point storing it here.
+		// We'll set the image to NULL in the barrier info, and RHIEndTransitions will fetch the up to date pointer from the texture, after
+		// OnLayoutTransition is called.
 		VkImageMemoryBarrier& ImgBarrier = Data->ImageBarriers.AddDefaulted_GetRef();
-		SetupImageBarrier(ImgBarrier, Texture->Surface.Image, SrcAccessFlags, DstAccessFlags, SrcLayout, DstLayout, SubresRange);
+		SetupImageBarrier(ImgBarrier, VK_NULL_HANDLE, SrcAccessFlags, DstAccessFlags, SrcLayout, DstLayout, SubresRange);
 
 		Data->Textures.Add(Texture);
 	}
@@ -646,7 +649,7 @@ void FVulkanDynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipe
 		Data->DstStageMask |= DstStageMask;
 
 		VkImageMemoryBarrier& ImgBarrier = Data->ImageBarriers.AddDefaulted_GetRef();
-		SetupImageBarrierEntireRes(ImgBarrier, PendingTransition.Texture->Surface.Image, SrcAccessFlags, DstAccessFlags, SrcLayout, DstLayout, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT);
+		SetupImageBarrierEntireRes(ImgBarrier, VK_NULL_HANDLE, SrcAccessFlags, DstAccessFlags, SrcLayout, DstLayout, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT);
 
 		Data->Textures.Add(PendingTransition.Texture);
 	}
@@ -744,10 +747,8 @@ void FVulkanCommandListContext::RHIEndTransitions(TArrayView<const FRHITransitio
 
 			Texture->OnLayoutTransition(*this, ImageBarrier.newLayout);
 
-			// The image pointer in ImageBarrier can be NULL when r.Vulkan.DelayAcquireBackBuffer is LazyAcquire, because the backbuffer didn't have an associated image yet
-			// at the time RHICreateTransition was called. In that case the OnLayoutTransition() will set Texture->Surface.Image, so we just need to make sure we use that
-			// when creating RealBarrier below.
-			check(Texture->Surface.Image != VK_NULL_HANDLE && (ImageBarrier.image == VK_NULL_HANDLE || ImageBarrier.image == Texture->Surface.Image));
+			// Make sure the texture contains a valid image handle now.
+			check(Texture->Surface.Image != VK_NULL_HANDLE && ImageBarrier.image == VK_NULL_HANDLE);
 
 			FVulkanImageLayout& Layout = LayoutManager.GetOrAddFullLayout(Texture->Surface, VK_IMAGE_LAYOUT_UNDEFINED);
 
@@ -787,6 +788,7 @@ void FVulkanCommandListContext::RHIEndTransitions(TArrayView<const FRHITransitio
 
 			VkImageMemoryBarrier& RealBarrier = RealImageBarriers.AddDefaulted_GetRef();
 			RealBarrier = ImageBarrier;
+			// Use the up to date image handle.
 			RealBarrier.image = Texture->Surface.Image;
 			RealBarrier.srcAccessMask = SrcAccessFlags;
 			RealBarrier.oldLayout = SrcLayout;
