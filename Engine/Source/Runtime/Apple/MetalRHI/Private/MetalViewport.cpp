@@ -489,20 +489,18 @@ void FMetalViewport::Present(FMetalCommandQueue& CommandQueue, bool bLockToVsync
 								Debugging = FMetalBlitCommandEncoderDebugging(Encoder, CmdDebug);
 							}
 #endif
-							
-							METAL_STATISTIC(Profiler->BeginEncoder(Stats, Encoder));
 							METAL_GPUPROFILE(Profiler->EncodeBlit(Stats, __FUNCTION__));
 
 							Encoder.Copy(Src, 0, 0, mtlpp::Origin(0, 0, 0), mtlpp::Size(Width, Height, 1), Dst, 0, 0, mtlpp::Origin(0, 0, 0));
 							METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, Debugging.Copy(Src, 0, 0, mtlpp::Origin(0, 0, 0), mtlpp::Size(Width, Height, 1), Dst, 0, 0, mtlpp::Origin(0, 0, 0)));
-							
-							METAL_STATISTIC(Profiler->EndEncoder(Stats, Encoder));
+
 							Encoder.EndEncoding();
 							METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, Debugging.EndEncoder());
-							
+
 							mtlpp::CommandBufferHandler H = [Src, Dst](const mtlpp::CommandBuffer &) {
+								// void
 							};
-							
+
 							CurrentCommandBuffer.AddCompletedHandler(H);
 
 							[Drawable release];
