@@ -114,7 +114,7 @@ static FAutoConsoleVariableRef GVarVulkanLogEvictStatus(
 
 
 
-int32 GVulkanEnableDedicatedImageMemory = 0;
+int32 GVulkanEnableDedicatedImageMemory = 1;
 static FAutoConsoleVariableRef CVarVulkanEnableDedicatedImageMemory(
 	TEXT("r.Vulkan.EnableDedicatedImageMemory"),
 	GVulkanEnableDedicatedImageMemory,
@@ -1339,7 +1339,7 @@ namespace VulkanRHI
 				{
 					checkNoEntry();
 				}
-				FreeDedicatedImagePages.Add(InPage);
+				ReleasePage(InPage);
 			}
 			break;
 
@@ -1569,16 +1569,6 @@ namespace VulkanRHI
 #if VULKAN_SUPPORTS_DEDICATED_ALLOCATION
 		FScopeLock ScopeLock(&GResourceLock);
 
-		for (int32 Index = 0; Index < FreeDedicatedImagePages.Num(); ++Index)
-		{
-			FVulkanSubresourceAllocator* Page = FreeDedicatedImagePages[Index];
-			if(Page->TryAllocate2(OutAllocation, AllocationOwner, Size, Alignment, MetaType, File, Line))
-			{
-				FreeDedicatedImagePages.RemoveSingleSwap(Page, false);
-				UsedDedicatedImagePages.Add(Page);
-				return true;
-			}
-		}	
 		uint32 AllocationSize = Size;
 
 		check(Image != VK_NULL_HANDLE);
@@ -2691,7 +2681,6 @@ namespace VulkanRHI
 				DumpAllocatorRange(FString::Printf(TEXT("FreeImagePages %d"), Index), ResourceTypeHeaps[Index]->FreeImagePages);
 				DumpAllocatorRange(FString::Printf(TEXT("FreePages %d"), Index ), ResourceTypeHeaps[Index]->FreePages);
 				DumpAllocatorRange(FString::Printf(TEXT("UsedDedicatedImagePages %d"), Index ), ResourceTypeHeaps[Index]->UsedDedicatedImagePages);
-				DumpAllocatorRange(FString::Printf(TEXT("FreeDedicatedImagePages %d"), Index ), ResourceTypeHeaps[Index]->FreeDedicatedImagePages);
 
 			}
 		}

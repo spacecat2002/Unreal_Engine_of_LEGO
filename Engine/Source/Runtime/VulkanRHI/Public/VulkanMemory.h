@@ -636,8 +636,6 @@ namespace VulkanRHI
 		TArray<FVulkanSubresourceAllocator*> FreePages; //buffer pages when split, when r.Vulkan.FreePageForType i 0, both image and buffer pages.
 
 		TArray<FVulkanSubresourceAllocator*> UsedDedicatedImagePages;
-		TArray<FVulkanSubresourceAllocator*> FreeDedicatedImagePages;
-
 
 		bool AllocateResource(FVulkanAllocation& OutAllocation, void* AllocationOwner, EType Type, uint32 Size, uint32 Alignment, bool bMapAllocation, bool bForceSeparateAllocation, EVulkanAllocationMetaType MetaType, const char* File, uint32 Line);
 		bool AllocateDedicatedImage(FVulkanAllocation& OutAllocation, void* AllocationOwner, VkImage Image, uint32 Size, uint32 Alignment, EVulkanAllocationMetaType MetaType, const char* File, uint32 Line);
