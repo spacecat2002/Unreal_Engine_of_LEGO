@@ -102,7 +102,7 @@ namespace UE4Tuple_Private
 			decltype(auto) Result = (ForwardAsBase<TupleType, TTupleBaseElement<DeducedType, Index, TupleSize>>(Tuple).Value);
 
 			// Keep tuple rvalue references to rvalue reference elements as rvalues, because that's how std::get() works, not how C++ struct member access works.
-			return static_cast<std::conditional_t<std::conjunction<std::negation<std::is_reference<TupleType>>, std::is_rvalue_reference<DeducedType>>::value, DeducedType, decltype(Result)>>(Result);
+			return static_cast<std::conditional_t<TAnd<TNot<TIsReferenceType<TupleType>>, TIsRValueReferenceType<DeducedType>>::Value, DeducedType, decltype(Result)>>(Result);
 		}
 
 		template <typename TupleType>
@@ -122,7 +122,7 @@ namespace UE4Tuple_Private
 			decltype(auto) Result = (ForwardAsBase<TupleType, TTupleBaseElement<decltype(Tuple.Key), 0, 2>>(Tuple).Key);
 
 			// Keep tuple rvalue references to rvalue reference elements as rvalues, because that's how std::get() works, not how C++ struct member access works.
-			return static_cast<std::conditional_t<std::conjunction<std::negation<std::is_reference<TupleType>>, std::is_rvalue_reference<decltype(Tuple.Key)>>::value, decltype(Tuple.Key), decltype(Result)>>(Result);
+			return static_cast<std::conditional_t<TAnd<TNot<TIsReferenceType<TupleType>>, TIsRValueReferenceType<decltype(Tuple.Key)>>::Value, decltype(Tuple.Key), decltype(Result)>>(Result);
 		}
 	};
 
