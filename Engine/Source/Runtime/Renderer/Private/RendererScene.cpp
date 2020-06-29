@@ -913,6 +913,8 @@ void FPersistentUniformBuffers::Clear()
 		UniformBuffer.SafeRelease();
 	}
 	MobileSkyReflectionUniformBuffer.SafeRelease();
+
+	Initialize();
 }
 void FPersistentUniformBuffers::Initialize()
 {
