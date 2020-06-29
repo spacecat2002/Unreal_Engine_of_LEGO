@@ -53,6 +53,11 @@ void URuntimeVirtualTextureComponent::DestroyRenderState_Concurrent()
 	Super::DestroyRenderState_Concurrent();
 }
 
+void URuntimeVirtualTextureComponent::Invalidate(FBoxSphereBounds const& InWorldBounds)
+{
+	GetScene()->InvalidateRuntimeVirtualTexture(this, InWorldBounds);
+}
+
 FBoxSphereBounds URuntimeVirtualTextureComponent::CalcBounds(const FTransform& LocalToWorld) const
 {
 	return FBoxSphereBounds(FBox(FVector(0.f, 0.f, 0.f), FVector(1.f, 1.f, 1.f))).TransformBy(LocalToWorld);

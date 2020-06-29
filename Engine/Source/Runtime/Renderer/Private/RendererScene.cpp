@@ -2528,6 +2528,19 @@ uint32 FScene::GetRuntimeVirtualTextureSceneIndex(uint32 ProducerId)
 	return 0;
 }
 
+void FScene::InvalidateRuntimeVirtualTexture(class URuntimeVirtualTextureComponent* Component, FBoxSphereBounds const& WorldBounds)
+{
+	if (Component->SceneProxy != nullptr)
+	{
+		FRuntimeVirtualTextureSceneProxy* SceneProxy = Component->SceneProxy;
+		ENQUEUE_RENDER_COMMAND(RuntimeVirtualTextureComponent_SetDirty)(
+			[SceneProxy, WorldBounds](FRHICommandList& RHICmdList)
+		{
+			SceneProxy->Dirty(WorldBounds);
+		});
+	}
+}
+
 void FScene::FlushDirtyRuntimeVirtualTextures()
 {
 	checkSlow(IsInRenderingThread());
