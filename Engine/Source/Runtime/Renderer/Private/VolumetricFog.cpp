@@ -930,10 +930,10 @@ void FDeferredShadingSceneRenderer::ComputeVolumetricFog(FRHICommandListImmediat
 {
 	check(RHICmdListImmediate.IsOutsideRenderPass());
 
+	FRDGBuilder GraphBuilder(RHICmdListImmediate);
 	if (ShouldRenderVolumetricFog())
 	{
 		const FExponentialHeightFogSceneInfo& FogInfo = Scene->ExponentialFogs[0];
-		FRDGBuilder GraphBuilder(RHICmdListImmediate);
 
 		RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, VolumetricFog);
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_VolumetricFog);
@@ -1148,7 +1148,6 @@ void FDeferredShadingSceneRenderer::ComputeVolumetricFog(FRHICommandListImmediat
 				View.ViewState->LightScatteringHistory = NULL;
 			}
 		}
-
-		GraphBuilder.Execute();
 	}
+	GraphBuilder.Execute();
 }
