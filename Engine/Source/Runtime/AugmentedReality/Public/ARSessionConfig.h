@@ -299,6 +299,8 @@ public:
 	
 	UMaterialInterface* GetDefaultMeshMaterial() const { return DefaultMeshMaterial; }
 	
+	int32 GetMaxNumberOfTrackedFaces() const { return MaxNumberOfTrackedFaces; }
+	
 	/** Whether the AR system should generate mesh data that can be rendered, collided against, nav mesh generated on, etc. */
 	UPROPERTY(EditAnywhere, Category = "AR Settings | World Mapping")
 	bool bGenerateMeshDataFromTrackedGeometry;
@@ -422,6 +424,10 @@ protected:
 	/** Whether to track the face as if you are looking out of the device or as a mirror */
 	UPROPERTY(EditAnywhere, Category="Face AR Settings")
 	EARFaceTrackingUpdate FaceTrackingUpdate;
+	
+	/** The maximum number of faces to track simultaneously. */
+	UPROPERTY(EditAnywhere, Category="Face AR Settings")
+	int32 MaxNumberOfTrackedFaces = 1;
 	
 	/** Data array for storing the cooked image database */
 	UPROPERTY()

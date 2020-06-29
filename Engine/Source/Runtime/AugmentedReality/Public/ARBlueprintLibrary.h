@@ -407,7 +407,10 @@ public:
 	// Computes a transform that aligns two coordinate systems. Requires the transform of the same known point in each coordinate system.
 	UFUNCTION(BlueprintCallable, Category = Alignment)
 	static void CalculateAlignmentTransform(const FTransform& TransformInFirstCoordinateSystem, const FTransform& TransformInSecondCoordinateSystem, FTransform& AlignmentTransform);
-
+	
+	/** @return the max number of faces can be tracked at the same time */
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Face Tracking")
+	static int32 GetNumberOfTrackedFacesSupported();
 
 public:
 	static void RegisterAsARSystem(const TSharedRef<FARSupportInterface , ESPMode::ThreadSafe>& NewArSystem);

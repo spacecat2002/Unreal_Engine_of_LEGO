@@ -211,7 +211,10 @@ public:
 	virtual bool OnIsSceneReconstructionSupported(EARSessionType SessionType, EARSceneReconstruction SceneReconstructionMethod) const { return false; }
 	
 	virtual bool OnAddTrackedPointWithName(const FTransform& WorldTransform, const FString& PointName, bool bDeletePointsWithSameName) { return false; }
-
+	
+	/** @return the max number of faces can be tracked at the same time */
+	virtual int32 OnGetNumberOfTrackedFacesSupported() const { return 1; }
+	
 	virtual ~IARSystemSupport(){}
 
 	/**

@@ -447,6 +447,15 @@ bool FARSupportInterface::AddTrackedPointWithName(const FTransform& WorldTransfo
 	return false;
 }
 
+int32 FARSupportInterface::GetNumberOfTrackedFacesSupported() const
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->OnGetNumberOfTrackedFacesSupported();
+	}
+	return 0;
+}
+
 #define DEFINE_AR_SI_DELEGATE_FUNCS(DelegateName) \
 FDelegateHandle FARSupportInterface::Add##DelegateName##Delegate_Handle(const F##DelegateName##Delegate& Delegate) \
 { \

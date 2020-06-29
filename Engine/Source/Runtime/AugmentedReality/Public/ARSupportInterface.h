@@ -128,6 +128,9 @@ public:
 	
 	/** \see UARBlueprintLibrary::AddTrackedPointWithName() */
 	bool AddTrackedPointWithName(const FTransform& WorldTransform, const FString& PointName, bool bDeletePointsWithSameName);
+	
+	/** \see UARBlueprintLibrary::GetNumberOfTrackedFacesSupported() */
+	int32 GetNumberOfTrackedFacesSupported() const;
 
 	//~ FGCObject
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;

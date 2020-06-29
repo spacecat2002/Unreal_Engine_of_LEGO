@@ -925,3 +925,13 @@ TArray<UARTrackedPoint*> UARBlueprintLibrary::FindTrackedPointsByName(const FStr
 	
 	return MoveTemp(Points);
 }
+
+int32 UARBlueprintLibrary::GetNumberOfTrackedFacesSupported()
+{
+	auto ARSystem = GetARSystem();
+	if (ARSystem.IsValid())
+	{
+		return ARSystem.Pin()->GetNumberOfTrackedFacesSupported();
+	}
+	return 0;
+}
