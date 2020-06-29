@@ -755,14 +755,13 @@ void FDeferredShadingSceneRenderer::ComputeLightGrid(FRHICommandListImmediate& R
 }
 
 void FDeferredShadingSceneRenderer::RenderForwardShadowProjections(
-	FRHICommandListImmediate& RHICmdList,
+	FRDGBuilder& GraphBuilder,
 	TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMaskRHI,
 	TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMaskSubPixelRHI,
 	const FHairStrandsDatas* InHairDatas)
 {
-	const FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+	const FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 
-	FRDGBuilder GraphBuilder(RHICmdList);
 	FRDGTextureRef ForwardScreenSpaceShadowMask = nullptr;
 	FRDGTextureRef ForwardScreenSpaceShadowMaskSubPixel = nullptr;
 
@@ -784,8 +783,6 @@ void FDeferredShadingSceneRenderer::RenderForwardShadowProjections(
 	{
 		GraphBuilder.QueueTextureExtraction(ForwardScreenSpaceShadowMaskSubPixel, &ForwardScreenSpaceShadowMaskSubPixelRHI);
 	}
-
-	GraphBuilder.Execute();
 }
 
 void FDeferredShadingSceneRenderer::RenderForwardShadowProjections(

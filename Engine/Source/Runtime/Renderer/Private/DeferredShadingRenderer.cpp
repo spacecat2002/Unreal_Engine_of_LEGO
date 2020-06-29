@@ -1930,14 +1930,16 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	TRefCountPtr<IPooledRenderTarget> ForwardScreenSpaceShadowMask_Hair;
 	if (IsForwardShadingEnabled(ShaderPlatform))
 	{
+		FRDGBuilder GraphBuilder(RHICmdList);
 		if (bHairEnable)
 		{
-			RenderHairPrePass(RHICmdList, Scene, Views, HairClusterData, HairDatasStorage);
-			RenderHairBasePass(RHICmdList, Scene, SceneContext, Views, HairClusterData, HairDatasStorage);
+			RenderHairPrePass(GraphBuilder, Scene, Views, HairClusterData, HairDatasStorage);
+			RenderHairBasePass(GraphBuilder, Scene, SceneContext, Views, HairClusterData, HairDatasStorage);
 			HairDatas = &HairDatasStorage;
 		}
 
-		RenderForwardShadowProjections(RHICmdList, ForwardScreenSpaceShadowMask, ForwardScreenSpaceShadowMask_Hair, HairDatas);
+		RenderForwardShadowProjections(GraphBuilder, ForwardScreenSpaceShadowMask, ForwardScreenSpaceShadowMask_Hair, HairDatas);
+		GraphBuilder.Execute();
 	}
 
 	// only temporarily available after early z pass and until base pass
@@ -2257,7 +2259,9 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	// Hair base pass for deferred shading
 	if (bHairEnable && !IsForwardShadingEnabled(ShaderPlatform))
 	{
-		RenderHairPrePass(RHICmdList, Scene, Views, HairClusterData, HairDatasStorage);
+		FRDGBuilder GraphBuilder(RHICmdList);
+		RenderHairPrePass(GraphBuilder, Scene, Views, HairClusterData, HairDatasStorage);
+		GraphBuilder.Execute();
 		HairDatas = &HairDatasStorage;
 	}
 
@@ -2334,33 +2338,6 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		ServiceLocalQueue();
 	}
 
-	// TODO: Could entirely remove this by using STENCIL_SANDBOX_BIT in ShadowRendering.cpp and DistanceFieldSurfaceCacheLighting.cpp
-	if (!IsForwardShadingEnabled(ShaderPlatform))
-	{
-		// Clear stencil to 0 now that deferred decals are done using what was setup in the base pass
-		// Shadow passes and other users of stencil assume it is cleared to 0 going in
-		// NB: Depth Load/Write necessary for Vulkan Platforms
-		FRHIRenderPassInfo RPInfo(SceneContext.GetSceneDepthSurface(),
-			EDepthStencilTargetActions::LoadDepthClearStencil_StoreDepthStencil);
-		RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil = FExclusiveDepthStencil::DepthNop_StencilWrite;
-
-		RHICmdList.TransitionResource(FExclusiveDepthStencil::DepthNop_StencilWrite, SceneContext.GetSceneDepthSurface());
-
-		RHICmdList.BeginRenderPass(RPInfo, TEXT("ClearStencilFromBasePass"));
-		RHICmdList.EndRenderPass();
-
-		RHICmdList.TransitionResource(FExclusiveDepthStencil::DepthNop_StencilRead, SceneContext.GetSceneDepthSurface());
-	}
-
-	checkSlow(RHICmdList.IsOutsideRenderPass());
-
-	// Hair base pass for deferred shading
-	if (bHairEnable && !IsForwardShadingEnabled(ShaderPlatform))
-	{
-		check(HairDatas);
-		RenderHairBasePass(RHICmdList, Scene, SceneContext, Views, HairClusterData, HairDatasStorage);
-	}
-
 	FRDGBuilder GraphBuilder(RHICmdList, RDG_EVENT_NAME("DeferredShadingRenderer_Render(ViewFamily=%s)", ViewFamily.bResolveScene ? TEXT("Primary") : TEXT("Auxiliary")));
 
 	const FIntPoint SceneTextureExtent = SceneContext.GetBufferSizeXY();
@@ -2369,7 +2346,23 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	FRDGTextureMSAA SceneDepthTexture = RegisterExternalTextureMSAA(GraphBuilder, SceneContext.SceneDepthZ);
 	FRDGTextureRef VelocityTexture = TryRegisterExternalTexture(GraphBuilder, SceneContext.SceneVelocity);
 
-	// Render lighting.
+	// TODO: Could entirely remove this by using STENCIL_SANDBOX_BIT in ShadowRendering.cpp and DistanceFieldSurfaceCacheLighting.cpp
+	if (!IsForwardShadingEnabled(ShaderPlatform))
+	{
+		// Clear stencil to 0 now that deferred decals are done using what was setup in the base pass
+		// Shadow passes and other users of stencil assume it is cleared to 0 going in
+		auto* PassParameters = GraphBuilder.AllocParameters<FRenderTargetParameters>();
+		PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(SceneDepthTexture.Target, ERenderTargetLoadAction::ELoad, ERenderTargetLoadAction::EClear, FExclusiveDepthStencil::DepthNop_StencilWrite);
+		GraphBuilder.AddPass(RDG_EVENT_NAME("ClearStencil"), PassParameters, ERDGPassFlags::Raster, [](FRHICommandList&) {});
+	}
+
+	// Hair base pass for deferred shading
+	if (bHairEnable && !IsForwardShadingEnabled(ShaderPlatform))
+	{
+		check(HairDatas);
+		RenderHairBasePass(GraphBuilder, Scene, SceneContext, Views, HairClusterData, HairDatasStorage);
+	}
+
 	if (bRenderDeferredLighting)
 	{
 		RDG_GPU_STAT_SCOPE(GraphBuilder, RenderDeferredLighting);
@@ -2454,8 +2447,6 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 		// Render diffuse sky lighting and reflections that only operate on opaque pixels
 		RenderDeferredReflectionsAndSkyLighting(GraphBuilder, SceneTexturesGBuffer, SceneColorTexture, DynamicBentNormalAOTexture, VelocityTexture, HairDatas);
-
-		AddServiceLocalQueuePass(GraphBuilder);
 
 		AddSubsurfacePass(GraphBuilder, SceneTexturesGBuffer, Views, SceneColorTexture.Target);
 

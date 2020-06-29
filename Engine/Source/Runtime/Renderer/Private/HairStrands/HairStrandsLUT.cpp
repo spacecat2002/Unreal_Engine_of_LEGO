@@ -272,13 +272,13 @@ FHairLUT GetHairLUT(FRDGBuilder& GraphBuilder, const FViewInfo& View)
 	if (bNeedGenerate)
 	{
 		FRDGTextureRef HairDualScatteringLUTTexture = AddHairLUTPass(GraphBuilder, View, HairLUTType_DualScattering);
-		GraphBuilder.QueueTextureExtraction(HairDualScatteringLUTTexture, &GSystemTextures.HairLUT0);
+		ConvertToExternalTexture(GraphBuilder, HairDualScatteringLUTTexture, GSystemTextures.HairLUT0);
 
 		FRDGTextureRef HairMeanEnergyLUTTexture = AddHairLUTPass(GraphBuilder, View, HairLUTType_MeanEnergy);
-		GraphBuilder.QueueTextureExtraction(HairMeanEnergyLUTTexture, &GSystemTextures.HairLUT1);
+		ConvertToExternalTexture(GraphBuilder, HairMeanEnergyLUTTexture, GSystemTextures.HairLUT1);
 
 		FRDGTextureRef HairCoverageLUTTexture = AddHairCoverageLUTPass(GraphBuilder, View);
-		GraphBuilder.QueueTextureExtraction(HairCoverageLUTTexture, &GSystemTextures.HairLUT2);
+		ConvertToExternalTexture(GraphBuilder, HairCoverageLUTTexture, GSystemTextures.HairLUT2);
 	}
 	FHairLUT HairLUTData;
 	HairLUTData.Textures[HairLUTType_DualScattering] = GSystemTextures.HairLUT0;

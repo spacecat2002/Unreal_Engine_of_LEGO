@@ -789,16 +789,15 @@ static void AddAllocateVoxelPagesPass(
 }
 
 FVirtualVoxelResources AllocateVirtualVoxelResources(
-	FRHICommandListImmediate& RHICmdList,
+	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
 	FHairStrandsMacroGroupDatas& MacroGroups, 
 	TRefCountPtr<FRDGPooledBuffer>& PageToPageIndexBuffer)
 {
 	DECLARE_GPU_STAT(HairStrandsVoxelPageAllocation);
-	SCOPED_DRAW_EVENT(RHICmdList, HairStrandsVoxelPageAllocation);
-	SCOPED_GPU_STAT(RHICmdList, HairStrandsVoxelPageAllocation);
+	RDG_EVENT_SCOPE(GraphBuilder, "HairStrandsVoxelPageAllocation");
+	RDG_GPU_STAT_SCOPE(GraphBuilder, HairStrandsVoxelPageAllocation);
 
-	FRDGBuilder GraphBuilder(RHICmdList);
 	FRDGBufferRef OutPageIndexBuffer = nullptr;
 	FRDGBufferRef OutPageToPageIndexBuffer = nullptr;
 	FRDGBufferRef OutPageIndexCoordBuffer = nullptr;
@@ -821,7 +820,7 @@ FVirtualVoxelResources AllocateVirtualVoxelResources(
 	Out.Parameters.Common.IndirectDispatchGroupSize = 64;
 	
 	Out.Parameters.Common.HairCoveragePixelRadiusAtDepth1	= ComputeMinStrandRadiusAtDepth1(FIntPoint(View.ViewRect.Width(), View.ViewRect.Height()), View.FOV, 1/*SampleCount*/, 1/*RasterizationScale*/).Primary;
-	Out.Parameters.Common.HairCoverageLUT					= GetHairLUT(RHICmdList, View).Textures[HairLUTType_Coverage]->GetRenderTargetItem().TargetableTexture;
+	Out.Parameters.Common.HairCoverageLUT					= GetHairLUT(GraphBuilder, View).Textures[HairLUTType_Coverage]->GetRenderTargetItem().TargetableTexture;
 	Out.Parameters.Common.HairCoverageSampler				= TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 
 	AddAllocateVoxelPagesPass(
@@ -845,37 +844,37 @@ FVirtualVoxelResources AllocateVirtualVoxelResources(
 
 	if (OutPageIndexBuffer)
 	{
-		GraphBuilder.QueueBufferExtraction(OutPageIndexBuffer, &Out.PageIndexBuffer);
+		ConvertToExternalBuffer(GraphBuilder, OutPageIndexBuffer, Out.PageIndexBuffer);
 	}
 
 	if (OutPageToPageIndexBuffer)
 	{
-		GraphBuilder.QueueBufferExtraction(OutPageToPageIndexBuffer, &PageToPageIndexBuffer);
+		ConvertToExternalBuffer(GraphBuilder, OutPageToPageIndexBuffer, PageToPageIndexBuffer);
 	}
 
 	if (OutPageIndexCoordBuffer)
 	{
-		GraphBuilder.QueueBufferExtraction(OutPageIndexCoordBuffer, &Out.PageIndexCoordBuffer);
+		ConvertToExternalBuffer(GraphBuilder, OutPageIndexCoordBuffer, Out.PageIndexCoordBuffer);
 	}
 
 	if (OutNodeDescBuffer)
 	{
-		GraphBuilder.QueueBufferExtraction(OutNodeDescBuffer, &Out.NodeDescBuffer);
+		ConvertToExternalBuffer(GraphBuilder, OutNodeDescBuffer, Out.NodeDescBuffer);
 	}
 
 	if (OutIndirectArgsBuffer)
 	{
-		GraphBuilder.QueueBufferExtraction(OutIndirectArgsBuffer, &Out.IndirectArgsBuffer);
+		ConvertToExternalBuffer(GraphBuilder, OutIndirectArgsBuffer, Out.IndirectArgsBuffer);
 	}
 
 	if (OutPageIndexGlobalCounter)
 	{
-		GraphBuilder.QueueBufferExtraction(OutPageIndexGlobalCounter, &Out.PageIndexGlobalCounter);
+		ConvertToExternalBuffer(GraphBuilder, OutPageIndexGlobalCounter, Out.PageIndexGlobalCounter);
 	}
 
 	if (OutVoxelizationViewInfoBuffer)
 	{
-		GraphBuilder.QueueBufferExtraction(OutVoxelizationViewInfoBuffer, &Out.VoxelizationViewInfoBuffer);
+		ConvertToExternalBuffer(GraphBuilder, OutVoxelizationViewInfoBuffer, Out.VoxelizationViewInfoBuffer);
 	}
 
 	GraphBuilder.Execute();
@@ -912,7 +911,7 @@ FVirtualVoxelResources AllocateVirtualVoxelResources(
 			MipCount,
 			false));
 
-		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, Out.PageTexture, TEXT("VoxelPageTexture"));
+		GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, Out.PageTexture, TEXT("VoxelPageTexture"));
 	}
 
 	Out.Parameters.Common.PageIndexBuffer		= Out.PageIndexBufferSRV;
@@ -1364,7 +1363,7 @@ static void AddVirtualVoxelGenerateMipPass(
 /////////////////////////////////////////////////////////////////////////////////////////
 
 void VoxelizeHairStrands(
-	FRHICommandListImmediate& RHICmdList, 
+	FRDGBuilder& GraphBuilder, 
 	const FScene* Scene, 
 	const TArray<FViewInfo>& Views,
 	FHairStrandsMacroGroupViews& MacroGroupsViews)
@@ -1385,8 +1384,8 @@ void VoxelizeHairStrands(
 			continue;
 
 		DECLARE_GPU_STAT(HairStrandsVoxelization);
-		SCOPED_DRAW_EVENT(RHICmdList, HairStrandsVoxelization);
-		SCOPED_GPU_STAT(RHICmdList, HairStrandsVoxelization);
+		RDG_EVENT_SCOPE(GraphBuilder, "HairStrandsVoxelization");
+		RDG_GPU_STAT_SCOPE(GraphBuilder, HairStrandsVoxelization);
 
 		if (MacroGroupDatas.Datas.Num() > 0)
 		{
@@ -1394,9 +1393,8 @@ void VoxelizeHairStrands(
 			// generates internally a non-transient constant buffer which initialized VirtualVoxelResources. This 
 			// needs to be rewritten/worked out.
 			TRefCountPtr<FRDGPooledBuffer> PageToPageIndexBuffer;
-			MacroGroupDatas.VirtualVoxelResources = AllocateVirtualVoxelResources(RHICmdList, View, MacroGroupDatas, PageToPageIndexBuffer);
+			MacroGroupDatas.VirtualVoxelResources = AllocateVirtualVoxelResources(GraphBuilder, View, MacroGroupDatas, PageToPageIndexBuffer);
 
-			FRDGBuilder GraphBuilder(RHICmdList);
 			FRDGBufferRef ClearIndArgsBuffer = IndirectVoxelPageClear(GraphBuilder, View, MacroGroupDatas.VirtualVoxelResources);
 
 			for (FHairStrandsMacroGroupData& MacroGroup : MacroGroupDatas.Datas)
@@ -1409,12 +1407,10 @@ void VoxelizeHairStrands(
 				for (FHairStrandsMacroGroupData& MacroGroup : MacroGroupDatas.Datas)
 				{
 					AddVirtualVoxelInjectOpaquePass(GraphBuilder, View, MacroGroupDatas.VirtualVoxelResources, MacroGroup);
-				}					
+				}
 			}
 
 			AddVirtualVoxelGenerateMipPass(GraphBuilder, View, MacroGroupDatas, ClearIndArgsBuffer, PageToPageIndexBuffer);
-
-			GraphBuilder.Execute();
 		}
 	}
 }

@@ -46,14 +46,14 @@ void RunHairStrandsInterpolation(
 	FHairStrandClusterData* ClusterData);
 
 void RenderHairPrePass(
-	FRHICommandListImmediate& RHICmdList,
+	FRDGBuilder& GraphBuilder,
 	FScene* Scene,
 	TArray<FViewInfo>& Views,
 	FHairStrandClusterData HairClusterData,
 	FHairStrandsDatas& OutHairDatas);
 
 void RenderHairBasePass(
-	FRHICommandListImmediate& RHICmdList,
+	FRDGBuilder& GraphBuilder,
 	FScene* Scene,
 	FSceneRenderTargets& SceneContext,
 	TArray<FViewInfo>& Views,

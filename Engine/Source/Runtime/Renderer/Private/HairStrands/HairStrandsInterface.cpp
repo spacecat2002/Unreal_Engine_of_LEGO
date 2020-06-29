@@ -279,9 +279,9 @@ void RunMeshTransfer(
 		OutTransferedPositions[LODIndex].Initialize(sizeof(float), TargetMeshData.LODs[LODIndex].Sections[0].TotalVertexCount * 3, PF_R32_FLOAT);
 		TransferMesh(GraphBuilder, ShaderMap, LODIndex, SourceMeshData, TargetMeshData, OutTransferedPositions[LODIndex], TransitionQueue);
 	}
-	
+
+	TransitBufferToReadable(GraphBuilder, TransitionQueue);
 	GraphBuilder.Execute();	
-	TransitBufferToReadable(RHICmdList, TransitionQueue);
 }
 
 void RunProjection(
@@ -296,9 +296,10 @@ void RunProjection(
 
 	FBufferTransitionQueue TransitionQueue;
 
-	auto Project = [&RHICmdList, ShaderMap, &TargetMeshData, LocalToWorld, &TransitionQueue](FHairStrandsProjectionHairData& ProjectionHairData)
+	FRDGBuilder GraphBuilder(RHICmdList);
+
+	auto Project = [&GraphBuilder, ShaderMap, &TargetMeshData, LocalToWorld, &TransitionQueue](FHairStrandsProjectionHairData& ProjectionHairData)
 	{
-		FRDGBuilder GraphBuilder(RHICmdList);
 		for (FHairStrandsProjectionHairData::HairGroup& HairGroup : ProjectionHairData.HairGroups)
 		{
 			for (FHairStrandsProjectionHairData::RestLODData& LODData : HairGroup.RestLODDatas)
@@ -309,13 +310,13 @@ void RunProjection(
 				UpdateHairStrandsMeshTriangles(GraphBuilder, ShaderMap, LODIndex, HairStrandsTriangleType::RestPose, TargetMeshData.LODs[LODIndex], HairGroup, TransitionQueue);
 			}
 		}
-		GraphBuilder.Execute();
 	};
 
 	Project(RenProjectionHairData);
 	Project(SimProjectionHairData);
 
-	TransitBufferToReadable(RHICmdList, TransitionQueue);
+	TransitBufferToReadable(GraphBuilder, TransitionQueue);
+	GraphBuilder.Execute();
 }
 
 void RunHairStrandsInterpolation(
@@ -406,8 +407,8 @@ void RunHairStrandsInterpolation(
 				InterpolateHairStrandsMeshTriangles(GraphBuilder, ShaderMap, E.FrameLODIndex, MeshDataLOD, ProjectionHairData);
 			}
 		}*/
+		TransitBufferToReadable(GraphBuilder, TransitionQueue);
 		GraphBuilder.Execute();
-		TransitBufferToReadable(RHICmdList, TransitionQueue);
 	}
 
 	// Reset deformation
@@ -732,11 +733,13 @@ bool HasHairStrandsProcess(EShaderPlatform Platform)
 		(!GBindingQueries.IsEmpty() || !GFollicleQueries.IsEmpty());
 }
 
-void TransitBufferToReadable(FRHICommandListImmediate& RHICmdList, FBufferTransitionQueue& BuffersToTransit)
+void TransitBufferToReadable(FRDGBuilder& GraphBuilder, FBufferTransitionQueue& BuffersToTransit)
 {
 	if (BuffersToTransit.Num())
 	{
-		RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, BuffersToTransit.GetData(), BuffersToTransit.Num());
-		BuffersToTransit.SetNum(0, false);
+		AddPass(GraphBuilder, [LocalBuffersToTransit = MoveTemp(BuffersToTransit)] (FRHICommandList& RHICmdList)
+		{
+			RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, LocalBuffersToTransit.GetData(), LocalBuffersToTransit.Num());
+		});
 	}
 }

@@ -434,4 +434,4 @@ bool HasHairStrandsProcess(EShaderPlatform Platform);
 
 
 typedef TArray<FRHIUnorderedAccessView*> FBufferTransitionQueue;
-RENDERER_API void TransitBufferToReadable(FRHICommandListImmediate& RHICmdList, FBufferTransitionQueue& BuffersToTransit);
+RENDERER_API void TransitBufferToReadable(FRDGBuilder& GraphBuilder, FBufferTransitionQueue& BuffersToTransit);

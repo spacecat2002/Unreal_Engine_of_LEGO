@@ -14,7 +14,7 @@ class FViewInfo;
 struct FHairStrandsDatas;
 
 void RenderHairStrandsAmbientOcclusion(
-	FRHICommandListImmediate& RHICmdList,
+	FRDGBuilder& GraphBuilder,
 	TArrayView<const FViewInfo> Views,
 	const FHairStrandsDatas* HairDatas,
 	const TRefCountPtr<IPooledRenderTarget>& InAOTexture);

@@ -80,6 +80,6 @@ struct FHairStrandsMacroGroupViews
 };
 
 FHairStrandsMacroGroupViews CreateHairStrandsMacroGroups(
-	FRHICommandListImmediate& RHICmdList,
+	FRDGBuilder& GraphBuilder,
 	const FScene* Scene,
 	const TArray<FViewInfo>& Views);

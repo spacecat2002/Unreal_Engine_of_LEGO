@@ -442,7 +442,7 @@ private:
 
 	/** Render shadow projections when forward rendering. */
 	void RenderForwardShadowProjections(
-		FRHICommandListImmediate& RHICmdList,
+		FRDGBuilder& GraphBuilder,
 		TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMask,
 		TRefCountPtr<IPooledRenderTarget>& ForwardScreenSpaceShadowMaskSubPixel,
 		const FHairStrandsDatas* InHairDatas);

@@ -378,9 +378,6 @@ void RenderHairComposition(
 							RDGCategorisationTexture,
 							GBufferATexture,
 							GBufferBTexture);
-
-						GraphBuilder.QueueTextureExtraction(GBufferATexture, &SceneContext.GBufferA);
-						GraphBuilder.QueueTextureExtraction(GBufferBTexture, &SceneContext.GBufferB);
 					}
 				}
 			}

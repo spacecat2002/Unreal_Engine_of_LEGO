@@ -65,7 +65,7 @@ struct FHairStrandsVisibilityViews
 };
 
 FHairStrandsVisibilityViews RenderHairStrandsVisibilityBuffer(
-	FRHICommandListImmediate& RHICmdList,
+	FRDGBuilder& GraphBuilder,
 	const class FScene* Scene,
 	const TArray<FViewInfo>& Views,
 	TRefCountPtr<IPooledRenderTarget> GBufferBTexture,

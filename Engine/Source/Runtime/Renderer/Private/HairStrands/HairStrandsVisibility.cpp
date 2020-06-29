@@ -2435,7 +2435,7 @@ static FRasterComputeOutput AddVisibilityComputeRasterPass(
 bool GetHairStrandsSkyLightingEnable();
 
 FHairStrandsVisibilityViews RenderHairStrandsVisibilityBuffer(
-	FRHICommandListImmediate& RHICmdList,
+	FRDGBuilder& GraphBuilder,
 	const FScene* Scene,
 	const TArray<FViewInfo>& Views,
 	TRefCountPtr<IPooledRenderTarget> InSceneGBufferBTexture,
@@ -2445,8 +2445,13 @@ FHairStrandsVisibilityViews RenderHairStrandsVisibilityBuffer(
 	const FHairStrandsMacroGroupViews& MacroGroupViews)
 {
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_CLM_RenderHairStrandsVisibility);
-	SCOPED_DRAW_EVENT(RHICmdList, HairStrandsVisibility);
-	SCOPED_GPU_STAT(RHICmdList, HairStrandsVisibility);
+	RDG_EVENT_SCOPE(GraphBuilder, "HairStrandsVisibility");
+	RDG_GPU_STAT_SCOPE(GraphBuilder, HairStrandsVisibility);
+
+	FRDGTextureRef SceneGBufferBTexture = TryRegisterExternalTexture(GraphBuilder, InSceneGBufferBTexture);
+	FRDGTextureRef SceneColorTexture = TryRegisterExternalTexture(GraphBuilder, InSceneColorTexture);
+	FRDGTextureRef SceneDepthTexture = GraphBuilder.RegisterExternalTexture(InSceneDepthTexture);
+	FRDGTextureRef SceneVelocityTexture = TryRegisterExternalTexture(GraphBuilder, InSceneVelocityTexture);
 
 	FHairStrandsVisibilityViews Output;
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
@@ -2454,7 +2459,7 @@ FHairStrandsVisibilityViews RenderHairStrandsVisibilityBuffer(
 		const FViewInfo& View = Views[ViewIndex];
 		if (View.Family)
 		{
-			FHairLUT HairLUT = GetHairLUT(RHICmdList, View);
+			FHairLUT HairLUT = GetHairLUT(GraphBuilder, View);
 
 			FHairStrandsVisibilityData& VisibilityData = Output.HairDatas.AddDefaulted_GetRef();
 			VisibilityData.NodeGroupSize = GetVendorOptimalGroupSize1D();
@@ -2468,14 +2473,6 @@ FHairStrandsVisibilityViews RenderHairStrandsVisibilityBuffer(
 			// mismatch, and create artifact (e.g. velocity computation)
 			check(InSceneDepthTexture);
 			const FIntPoint Resolution = InSceneDepthTexture->GetDesc().Extent;
-
-
-			FRDGBuilder GraphBuilder(RHICmdList);
-			FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-			FRDGTextureRef SceneGBufferBTexture = TryRegisterExternalTexture(GraphBuilder, InSceneGBufferBTexture);
-			FRDGTextureRef SceneColorTexture = TryRegisterExternalTexture(GraphBuilder, InSceneColorTexture);
-			FRDGTextureRef SceneDepthTexture = GraphBuilder.RegisterExternalTexture(InSceneDepthTexture);
-			FRDGTextureRef SceneVelocityTexture = TryRegisterExternalTexture(GraphBuilder, InSceneVelocityTexture);
 
 			const bool bRunColorAndDepthPatching = SceneGBufferBTexture && SceneColorTexture;
 			const EHairVisibilityRenderMode RenderMode = GetHairVisibilityRenderMode();
@@ -2561,13 +2558,13 @@ FHairStrandsVisibilityViews RenderHairStrandsVisibilityBuffer(
 
 				// This is used when compaction is not enabled.
 				VisibilityData.MaxSampleCount = MsaaVisibilityResources.IdTexture->Desc.NumSamples;
-				GraphBuilder.QueueTextureExtraction(MsaaVisibilityResources.IdTexture, &VisibilityData.IDTexture);
-				GraphBuilder.QueueTextureExtraction(MsaaVisibilityResources.DepthTexture, &VisibilityData.DepthTexture);
+				ConvertToExternalTexture(GraphBuilder, MsaaVisibilityResources.IdTexture, VisibilityData.IDTexture);
+				ConvertToExternalTexture(GraphBuilder, MsaaVisibilityResources.DepthTexture, VisibilityData.DepthTexture);
 				if (!bIsVisiblityEnable)
 				{
-					GraphBuilder.QueueTextureExtraction(MsaaVisibilityResources.MaterialTexture, &VisibilityData.MaterialTexture);
-					GraphBuilder.QueueTextureExtraction(MsaaVisibilityResources.AttributeTexture, &VisibilityData.AttributeTexture);
-					GraphBuilder.QueueTextureExtraction(MsaaVisibilityResources.VelocityTexture, &VisibilityData.VelocityTexture);
+					ConvertToExternalTexture(GraphBuilder, MsaaVisibilityResources.MaterialTexture, VisibilityData.MaterialTexture);
+					ConvertToExternalTexture(GraphBuilder, MsaaVisibilityResources.AttributeTexture, VisibilityData.AttributeTexture);
+					ConvertToExternalTexture(GraphBuilder, MsaaVisibilityResources.VelocityTexture, VisibilityData.VelocityTexture);
 				}
 
 				{
@@ -2642,13 +2639,13 @@ FHairStrandsVisibilityViews RenderHairStrandsVisibilityBuffer(
 					FRDGTextureRef SampleLightingBuffer = AddClearLightSamplePass(GraphBuilder, &View, VisibilityData.MaxNodeCount, NodeCounter);
 					VisibilityData.SampleLightingViewportResolution = SampleLightingBuffer->Desc.Extent;
 
-					GraphBuilder.QueueTextureExtraction(SampleLightingBuffer, 	&VisibilityData.SampleLightingBuffer);
-					GraphBuilder.QueueTextureExtraction(CompactNodeIndex,		&VisibilityData.NodeIndex);
-					GraphBuilder.QueueTextureExtraction(CategorizationTexture,	&VisibilityData.CategorizationTexture);
-					GraphBuilder.QueueBufferExtraction(CompactNodeData,			&VisibilityData.NodeData);
-					GraphBuilder.QueueBufferExtraction(CompactNodeCoord,		&VisibilityData.NodeCoord);
-					GraphBuilder.QueueBufferExtraction(IndirectArgsBuffer,		&VisibilityData.NodeIndirectArg);
-					GraphBuilder.QueueTextureExtraction(NodeCounter, 			&VisibilityData.NodeCount);
+					ConvertToExternalTexture(GraphBuilder, SampleLightingBuffer, 	VisibilityData.SampleLightingBuffer);
+					ConvertToExternalTexture(GraphBuilder, CompactNodeIndex,		VisibilityData.NodeIndex);
+					ConvertToExternalTexture(GraphBuilder, CategorizationTexture,	VisibilityData.CategorizationTexture);
+					ConvertToExternalBuffer(GraphBuilder, CompactNodeData,			VisibilityData.NodeData);
+					ConvertToExternalBuffer(GraphBuilder, CompactNodeCoord,			VisibilityData.NodeCoord);
+					ConvertToExternalBuffer(GraphBuilder, IndirectArgsBuffer,		VisibilityData.NodeIndirectArg);
+					ConvertToExternalTexture(GraphBuilder, NodeCounter, 			VisibilityData.NodeCount);
 				}
 
 				// View transmittance depth test needs to happen before the scene depth is patched with the hair depth (for fully-covered-by-hair pixels)
@@ -2660,17 +2657,17 @@ FHairStrandsVisibilityViews RenderHairStrandsVisibilityBuffer(
 						CategorizationTexture,
 						SceneDepthTexture,
 						ViewTransmittance.HairCountTexture);
-					GraphBuilder.QueueTextureExtraction(ViewTransmittance.HairCountTexture, &VisibilityData.ViewHairCountTexture);
+					ConvertToExternalTexture(GraphBuilder, ViewTransmittance.HairCountTexture, VisibilityData.ViewHairCountTexture);
 				}
 
 				if (ViewTransmittance.HairCountTextureUint)
 				{
-					GraphBuilder.QueueTextureExtraction(ViewTransmittance.HairCountTextureUint, &VisibilityData.ViewHairCountUintTexture);
+					ConvertToExternalTexture(GraphBuilder, ViewTransmittance.HairCountTextureUint, VisibilityData.ViewHairCountUintTexture);
 				}
 
 				if (ViewTransmittance.DepthTextureUint)
 				{
-					GraphBuilder.QueueTextureExtraction(ViewTransmittance.DepthTextureUint, &VisibilityData.DepthTextureUint);
+					ConvertToExternalTexture(GraphBuilder, ViewTransmittance.DepthTextureUint, VisibilityData.DepthTextureUint);
 				}
 
 				// For fully covered pixels, write: 
@@ -2698,7 +2695,7 @@ FHairStrandsVisibilityViews RenderHairStrandsVisibilityBuffer(
 				FRDGTextureRef PPLLNodeCounterTexture;
 				FRDGTextureRef PPLLNodeIndexTexture;
 				FRDGBufferRef PPLLNodeDataBuffer;
-				FRDGTextureRef ViewZDepthTexture = GraphBuilder.RegisterExternalTexture(SceneContext.SceneDepthZ);
+				FRDGTextureRef ViewZDepthTexture = SceneDepthTexture;
 
 				// Linked list generation pass
 				AddHairVisibilityPPLLPass(GraphBuilder, Scene, &View, MacroGroupDatas, Resolution, ViewZDepthTexture, PPLLNodeCounterTexture, PPLLNodeIndexTexture, PPLLNodeDataBuffer);
@@ -2731,12 +2728,12 @@ FHairStrandsVisibilityViews RenderHairStrandsVisibilityBuffer(
 						VisibilityData.MaxNodeCount);
 
 					VisibilityData.MaxSampleCount = GetPPLLMaxRenderNodePerPixel();
-					GraphBuilder.QueueTextureExtraction(CompactNodeIndex, &VisibilityData.NodeIndex);
-					GraphBuilder.QueueTextureExtraction(CategorizationTexture, &VisibilityData.CategorizationTexture);
-					GraphBuilder.QueueBufferExtraction(CompactNodeData, &VisibilityData.NodeData);
-					GraphBuilder.QueueBufferExtraction(CompactNodeCoord, &VisibilityData.NodeCoord);
-					GraphBuilder.QueueBufferExtraction(IndirectArgsBuffer, &VisibilityData.NodeIndirectArg);
-					GraphBuilder.QueueTextureExtraction(NodeCounter, &VisibilityData.NodeCount);
+					ConvertToExternalTexture(GraphBuilder, CompactNodeIndex, VisibilityData.NodeIndex);
+					ConvertToExternalTexture(GraphBuilder, CategorizationTexture, VisibilityData.CategorizationTexture);
+					ConvertToExternalBuffer(GraphBuilder, CompactNodeData, VisibilityData.NodeData);
+					ConvertToExternalBuffer(GraphBuilder, CompactNodeCoord, VisibilityData.NodeCoord);
+					ConvertToExternalBuffer(GraphBuilder, IndirectArgsBuffer, VisibilityData.NodeIndirectArg);
+					ConvertToExternalTexture(GraphBuilder, NodeCounter, VisibilityData.NodeCount);
 				}
 
 				if (bRunColorAndDepthPatching)
@@ -2753,13 +2750,13 @@ FHairStrandsVisibilityViews RenderHairStrandsVisibilityBuffer(
 				// Allocate buffer for storing all the light samples
 				FRDGTextureRef SampleLightingBuffer = AddClearLightSamplePass(GraphBuilder, &View, VisibilityData.MaxNodeCount, NodeCounter);
 				VisibilityData.SampleLightingViewportResolution = SampleLightingBuffer->Desc.Extent;
-				GraphBuilder.QueueTextureExtraction(SampleLightingBuffer, &VisibilityData.SampleLightingBuffer);
+				ConvertToExternalTexture(GraphBuilder, SampleLightingBuffer, VisibilityData.SampleLightingBuffer);
 
 #if WITH_EDITOR
 				// Extract texture for debug visualization
-				GraphBuilder.QueueTextureExtraction(PPLLNodeCounterTexture, &VisibilityData.PPLLNodeCounterTexture);
-				GraphBuilder.QueueTextureExtraction(PPLLNodeIndexTexture, &VisibilityData.PPLLNodeIndexTexture);
-				GraphBuilder.QueueBufferExtraction(PPLLNodeDataBuffer, &VisibilityData.PPLLNodeDataBuffer);
+				ConvertToExternalTexture(GraphBuilder, PPLLNodeCounterTexture, VisibilityData.PPLLNodeCounterTexture);
+				ConvertToExternalTexture(GraphBuilder, PPLLNodeIndexTexture, VisibilityData.PPLLNodeIndexTexture);
+				ConvertToExternalBuffer(GraphBuilder, PPLLNodeDataBuffer, VisibilityData.PPLLNodeDataBuffer);
 #endif
 			}
 
@@ -2772,7 +2769,7 @@ FHairStrandsVisibilityViews RenderHairStrandsVisibilityBuffer(
 					Resolution,
 					CompactNodeData,
 					CompactNodeIndex);
-				GraphBuilder.QueueTextureExtraction(LightingChannelMaskTexture, &VisibilityData.LightChannelMaskTexture);
+				ConvertToExternalTexture(GraphBuilder, LightingChannelMaskTexture, VisibilityData.LightChannelMaskTexture);
 			}
 		#endif
 
@@ -2783,12 +2780,10 @@ FHairStrandsVisibilityViews RenderHairStrandsVisibilityBuffer(
 				FRDGBufferRef TileIndirectArgs = nullptr;
 				AddGenerateTilePass(GraphBuilder, View, VisibilityData.TileThreadGroupSize, VisibilityData.TileSize, CategorizationTexture, TileIndexTexture, TileBuffer, TileIndirectArgs);
 
-				GraphBuilder.QueueTextureExtraction(TileIndexTexture, &VisibilityData.TileIndexTexture);
-				GraphBuilder.QueueBufferExtraction(TileBuffer, &VisibilityData.TileBuffer);
-				GraphBuilder.QueueBufferExtraction(TileIndirectArgs, &VisibilityData.TileIndirectArgs);
+				ConvertToExternalTexture(GraphBuilder, TileIndexTexture, VisibilityData.TileIndexTexture);
+				ConvertToExternalBuffer(GraphBuilder, TileBuffer, VisibilityData.TileBuffer);
+				ConvertToExternalBuffer(GraphBuilder, TileIndirectArgs, VisibilityData.TileIndirectArgs);
 			}
-
-			GraphBuilder.Execute();
 
 			// #hair_todo: is there a better way to get SRV view of a RDG buffer? should work as long as there is not reuse between the pass
 			if (VisibilityData.NodeData)
