@@ -343,7 +343,6 @@ class RENDERCORE_API FRDGCSVStatScopeStack final
 {
 public:
 	FRDGCSVStatScopeStack(FRHIComputeCommandList& RHICmdList, const char* UnaccountedStatName);
-	~FRDGCSVStatScopeStack();
 
 	void BeginScope(const char* StatName);
 

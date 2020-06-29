@@ -344,11 +344,6 @@ FRDGCSVStatScopeStack::FRDGCSVStatScopeStack(FRHIComputeCommandList& InRHICmdLis
 	BeginScope(UnaccountedStatName);
 }
 
-FRDGCSVStatScopeStack::~FRDGCSVStatScopeStack()
-{
-	EndScope();
-}
-
 bool FRDGCSVStatScopeStack::IsEnabled()
 {
 #if CSV_PROFILER
@@ -378,6 +373,7 @@ void FRDGCSVStatScopeStack::BeginExecute()
 {
 	if (IsEnabled())
 	{
+		EndScope();
 		ScopeStack.BeginExecute();
 	}
 }
