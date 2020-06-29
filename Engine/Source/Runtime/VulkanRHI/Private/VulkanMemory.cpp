@@ -114,7 +114,7 @@ static FAutoConsoleVariableRef GVarVulkanLogEvictStatus(
 
 
 
-int32 GVulkanEnableDedicatedImageMemory = 1;
+int32 GVulkanEnableDedicatedImageMemory = 0;
 static FAutoConsoleVariableRef CVarVulkanEnableDedicatedImageMemory(
 	TEXT("r.Vulkan.EnableDedicatedImageMemory"),
 	GVulkanEnableDedicatedImageMemory,
