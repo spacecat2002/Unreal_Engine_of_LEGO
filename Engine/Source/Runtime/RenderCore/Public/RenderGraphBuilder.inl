@@ -295,16 +295,7 @@ inline void FRDGBuilder::QueueTextureExtraction(FRDGTextureRef Texture, TRefCoun
 
 	Texture->bExtracted = true;
 	Texture->bCulled = false;
-
-	// Extract the texture immediately if we have the allocation.
-	if (Texture->bExternal)
-	{
-		*OutTexturePtr = Texture->PooledRenderTarget;
-	}
-	else
-	{
-		ExtractedTextures.Emplace(Texture, OutTexturePtr);
-	}
+	ExtractedTextures.Emplace(Texture, OutTexturePtr);
 
 	if (Texture->AccessFinal == ERHIAccess::Unknown)
 	{
@@ -321,16 +312,7 @@ inline void FRDGBuilder::QueueBufferExtraction(FRDGBufferRef Buffer, TRefCountPt
 
 	Buffer->bExtracted = true;
 	Buffer->bCulled = false;
-
-	// Extract the texture immediately if we have the allocation.
-	if (Buffer->bExternal)
-	{
-		*OutBufferPtr = Buffer->PooledBuffer;
-	}
-	else
-	{
-		ExtractedBuffers.Emplace(Buffer, OutBufferPtr);
-	}
+	ExtractedBuffers.Emplace(Buffer, OutBufferPtr);
 
 	if (Buffer->AccessFinal == ERHIAccess::Unknown)
 	{
@@ -342,6 +324,26 @@ inline void FRDGBuilder::QueueBufferExtraction(FRDGBufferRef Buffer, TRefCountPt
 {
 	QueueBufferExtraction(Buffer, OutBufferPtr);
 	SetBufferAccessFinal(Buffer, AccessFinal);
+}
+
+inline const TRefCountPtr<IPooledRenderTarget>& FRDGBuilder::GetPooledTexture(FRDGTextureRef Texture) const
+{
+#if RDG_ENABLE_DEBUG
+	check(Texture);
+	checkf(Texture->bExternal, TEXT("GetPooledTexture called on texture %s, but it is not external. Call PreallocateTexture or register as an external texture instead."), Texture->Name);
+#endif
+
+	return Texture->Allocation;
+}
+
+inline const TRefCountPtr<FRDGPooledBuffer>& FRDGBuilder::GetPooledBuffer(FRDGBufferRef Buffer) const
+{
+#if RDG_ENABLE_DEBUG
+	check(Buffer);
+	checkf(Buffer->bExternal, TEXT("GetPooledBuffer called on buffer %s, but it is not external. Call PreallocateBuffer or register as an external buffer instead."), Buffer->Name);
+#endif
+
+	return Buffer->Allocation;
 }
 
 inline void FRDGBuilder::SetTextureAccessFinal(FRDGTextureRef Texture, ERHIAccess AccessFinal)

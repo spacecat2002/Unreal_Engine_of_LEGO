@@ -135,8 +135,7 @@ public:
 #endif
 
 	/** Queues a pooled resource extraction to happen at the end of graph execution. *OutTexturePtr is assigned the internal
-	 *  pooled render target. Extractions are still deferred in immediate mode to preserve expected behavior. However, when
-	 *  the resource is external or preallocated, the extraction happens immediately.
+	 *  pooled render target. Extractions are still deferred in immediate mode to preserve expected behavior.
 	 */
 	void QueueTextureExtraction(FRDGTextureRef Texture, TRefCountPtr<IPooledRenderTarget>* OutPooledTexturePtr);
 	void QueueTextureExtraction(FRDGTextureRef Texture, TRefCountPtr<IPooledRenderTarget>* OutPooledTexturePtr, ERHIAccess AccessFinal);

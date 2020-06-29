@@ -539,6 +539,21 @@ FORCEINLINE void AddEndUAVOverlapPass(FRDGBuilder& GraphBuilder)
 	});
 }
 
+// Converts a buffer created with 'CreateBuffer' into an externally registered buffer and fills the pooled buffer reference.
+inline void ConvertToExternalBuffer(FRDGBuilder& GraphBuilder, FRDGBufferRef Buffer, TRefCountPtr<FRDGPooledBuffer>& OutPooledBuffer)
+{
+	check(Buffer);
+	GraphBuilder.PreallocateBuffer(Buffer);
+	OutPooledBuffer = GraphBuilder.GetPooledBuffer(Buffer);
+}
+
+inline void ConvertToExternalTexture(FRDGBuilder& GraphBuilder, FRDGTextureRef Texture, TRefCountPtr<IPooledRenderTarget>& OutPooledRenderTarget)
+{
+	check(Texture);
+	GraphBuilder.PreallocateTexture(Texture);
+	OutPooledRenderTarget = GraphBuilder.GetPooledTexture(Texture);
+}
+
 // Used to help port code over to RDG. If the graph builder is null, creates a passthrough RDG texture instead. Will be removed once port is complete.
 RENDERCORE_API FRDGTextureRef RegisterExternalOrPassthroughTexture(
 	FRDGBuilder* GraphBuilder,

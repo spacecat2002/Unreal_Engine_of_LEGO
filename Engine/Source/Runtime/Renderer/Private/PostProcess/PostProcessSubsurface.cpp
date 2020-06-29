@@ -1176,7 +1176,6 @@ void AddSubsurfacePass(
 
 	{
 		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
-		GraphBuilder.PreallocateTexture(SceneColorOutputTexture);
-		GraphBuilder.QueueTextureExtraction(SceneColorOutputTexture, &SceneContext.GetSceneColor());
+		ConvertToExternalTexture(GraphBuilder, SceneColorOutputTexture, SceneContext.GetSceneColor());
 	}
 }
