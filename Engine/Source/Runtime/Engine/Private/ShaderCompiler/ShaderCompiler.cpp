@@ -2265,6 +2265,7 @@ FProcHandle FShaderCompilingManager::LaunchWorker(const FString& WorkingDirector
 
 	// Launch the worker process
 	int32 PriorityModifier = -1; // below normal
+	GConfig->GetInt(TEXT("DevOptions.Shaders"), TEXT("WorkerProcessPriority"), PriorityModifier, GEngineIni);
 
 	if (DEBUG_SHADERCOMPILEWORKER)
 	{
