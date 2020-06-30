@@ -11,6 +11,7 @@
 UENUM(BlueprintType, Category="AR AugmentedReality", meta=(Experimental))
 enum class EARTextureType : uint8
 {
+	Unknown,
 	CameraImage,
 	CameraDepth,
 	EnvironmentCapture,
@@ -28,9 +29,21 @@ class AUGMENTEDREALITY_API UARTexture : public UTexture
 	GENERATED_UCLASS_BODY()
 
 public:
+	/**
+	 * Factory function for creating a new AR  texture of a particular type
+	 */
+	template<class T>
+	static T* CreateARTexture(EARTextureType InTextureType)
+	{
+		auto NewTexture = NewObject<T>();
+		NewTexture->TextureType = InTextureType;
+		check(NewTexture->TextureType != EARTextureType::Unknown);
+		return NewTexture;
+	}
+	
 	/** The type of texture this is */
 	UPROPERTY(BlueprintReadOnly, Category="AR AugmentedReality", meta=(Experimental))
-	EARTextureType TextureType;
+	EARTextureType TextureType = EARTextureType::Unknown;
 
 	/** The timestamp this texture was captured at */
 	UPROPERTY(BlueprintReadOnly, Category="AR AugmentedReality", meta=(Experimental))
