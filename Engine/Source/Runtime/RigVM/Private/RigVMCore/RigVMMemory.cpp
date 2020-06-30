@@ -1645,7 +1645,7 @@ TArray<FString> FRigVMMemoryContainer::GetRegisterValueAsString(const FRigVMOper
 			}
 			else
 			{
-				ensure(false);
+				continue;
 			}
 
 			DefaultValues.Add(DefaultValue);
