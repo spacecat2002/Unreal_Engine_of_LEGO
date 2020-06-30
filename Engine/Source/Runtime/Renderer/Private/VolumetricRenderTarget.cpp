@@ -52,7 +52,7 @@ bool ShouldViewRenderVolumetricCloudRenderTarget(const FViewInfo& ViewInfo)
 
 static bool ShouldViewComposeVolumetricRenderTarget(const FViewInfo& ViewInfo)
 {
-	return ShouldViewRenderVolumetricCloudRenderTarget(ViewInfo) && ViewInfo.ViewState->VolumetricCloudRenderTarget.GetVolumetricTracingRTValid();
+	return ShouldViewRenderVolumetricCloudRenderTarget(ViewInfo);
 }
 
 static uint32 GetMainDownsampleFactor(int32 Mode)
@@ -111,8 +111,6 @@ FVolumetricRenderTargetViewStateData::FVolumetricRenderTargetViewStateData()
 	: CurrentRT(1)
 	, bFirstTimeUsed(true)
 	, bHistoryValid(false)
-	, bVolumetricTracingRTValid(false)
-	, bVolumetricTracingRTDepthValid(false)
 	, FullResolution(FIntPoint::ZeroValue)
 	, VolumetricReconstructRTResolution(FIntPoint::ZeroValue)
 	, VolumetricTracingRTResolution(FIntPoint::ZeroValue)
@@ -208,55 +206,36 @@ void FVolumetricRenderTargetViewStateData::Initialise(
 			}
 		}
 	}
-
-	bVolumetricTracingRTValid = false;
-	bVolumetricTracingRTDepthValid = false;
 }
 
 FRDGTextureRef FVolumetricRenderTargetViewStateData::GetOrCreateVolumetricTracingRT(FRDGBuilder& GraphBuilder)
 {
 	check(FullResolution != FIntPoint::ZeroValue); // check that initialization has been done at least once
 
-	if (VolumetricTracingRT.IsValid())
+	if (!VolumetricTracingRT.IsValid())
 	{
-		return GraphBuilder.RegisterExternalTexture(VolumetricTracingRT);
+		FPooledRenderTargetDesc Desc = FPooledRenderTargetDesc::Create2DDesc(
+			VolumetricTracingRTResolution, PF_FloatRGBA, FClearValueBinding(FLinearColor(0.0f, 0.0f, 0.0f, 1.0f)),
+			TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable, false);
+		GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, VolumetricTracingRT, TEXT("RDGVolumetricTracingRT"), ERenderTargetTransience::NonTransient);
 	}
 
-	FRDGTextureRef RDGVolumetricTracingRT = GraphBuilder.CreateTexture(
-		FRDGTextureDesc::Create2D(VolumetricTracingRTResolution, PF_FloatRGBA, FClearValueBinding(FLinearColor(0.0f, 0.0f, 0.0f, 1.0f)),
-			TexCreate_ShaderResource | TexCreate_RenderTargetable), TEXT("RDGVolumetricTracingRT"));
-	return RDGVolumetricTracingRT;
+	return GraphBuilder.RegisterExternalTexture(VolumetricTracingRT);
 }
 
 FRDGTextureRef FVolumetricRenderTargetViewStateData::GetOrCreateVolumetricTracingRTDepth(FRDGBuilder& GraphBuilder)
 {
 	check(FullResolution != FIntPoint::ZeroValue); // check that initialization has been done at least once
 
-	if (VolumetricTracingRTDepth.IsValid())
+	if (!VolumetricTracingRTDepth.IsValid())
 	{
-		return GraphBuilder.RegisterExternalTexture(VolumetricTracingRTDepth);
+		FPooledRenderTargetDesc Desc = FPooledRenderTargetDesc::Create2DDesc(
+			VolumetricTracingRTResolution, PF_R16F, FClearValueBinding(FLinearColor(63000.0f, 63000.0f, 63000.0f, 63000.0f)),
+			TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable, false);
+		GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, VolumetricTracingRTDepth, TEXT("RDGVolumetricTracingRTDepth"), ERenderTargetTransience::NonTransient);
 	}
 
-	FRDGTextureRef RDGVolumetricTracingRTDepth = GraphBuilder.CreateTexture(
-		FRDGTextureDesc::Create2D(VolumetricTracingRTResolution, PF_R16F, FClearValueBinding(FLinearColor(63000.0f, 63000.0f, 63000.0f, 63000.0f)),
-			TexCreate_ShaderResource | TexCreate_RenderTargetable), TEXT("RDGVolumetricTracingRTDepth"));
-	return RDGVolumetricTracingRTDepth;
-}
-
-void FVolumetricRenderTargetViewStateData::ExtractToVolumetricTracingRT(FRDGBuilder& GraphBuilder, FRDGTextureRef RDGVolumetricTracingRT)
-{
-	check(VolumetricReconstructRTResolution != FIntPoint::ZeroValue); // check that initialization has been done at least once
-
-	bVolumetricTracingRTValid = true;
-	GraphBuilder.QueueTextureExtraction(RDGVolumetricTracingRT, &VolumetricTracingRT);
-}
-
-void FVolumetricRenderTargetViewStateData::ExtractToVolumetricTracingRTDepth(FRDGBuilder& GraphBuilder, FRDGTextureRef RDGVolumetricTracingRTDepth)
-{
-	check(VolumetricReconstructRTResolution != FIntPoint::ZeroValue); // check that initialization has been done at least once
-
-	bVolumetricTracingRTDepthValid = true;
-	GraphBuilder.QueueTextureExtraction(RDGVolumetricTracingRTDepth, &VolumetricTracingRTDepth);
+	return GraphBuilder.RegisterExternalTexture(VolumetricTracingRTDepth);
 }
 
 
@@ -264,15 +243,15 @@ FRDGTextureRef FVolumetricRenderTargetViewStateData::GetOrCreateDstVolumetricRec
 {
 	check(VolumetricReconstructRTResolution != FIntPoint::ZeroValue); // check that initialization has been done at least once
 
-	if (VolumetricReconstructRT[CurrentRT].IsValid())
+	if (!VolumetricReconstructRT[CurrentRT].IsValid())
 	{
-		return GraphBuilder.RegisterExternalTexture(VolumetricReconstructRT[CurrentRT]);
+		FPooledRenderTargetDesc Desc = FPooledRenderTargetDesc::Create2DDesc(
+			VolumetricReconstructRTResolution, PF_FloatRGBA, FClearValueBinding(FLinearColor(0.0f, 0.0f, 0.0f, 1.0f)),
+			TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable, false);
+		GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, VolumetricReconstructRT[CurrentRT], TEXT("RDGVolumetricVolumetricReconstructRTRT"), ERenderTargetTransience::NonTransient);
 	}
 
-	FRDGTextureRef RDGVolumetricVolumetricReconstructRTRT = GraphBuilder.CreateTexture(
-		FRDGTextureDesc::Create2D(VolumetricReconstructRTResolution, PF_FloatRGBA, FClearValueBinding(FLinearColor(0.0f, 0.0f, 0.0f, 1.0f)),
-		TexCreate_ShaderResource | TexCreate_RenderTargetable), TEXT("RDGVolumetricVolumetricReconstructRTRT"));
-	return RDGVolumetricVolumetricReconstructRTRT;
+	return GraphBuilder.RegisterExternalTexture(VolumetricReconstructRT[CurrentRT]);
 }
 
 
@@ -280,29 +259,15 @@ FRDGTextureRef FVolumetricRenderTargetViewStateData::GetOrCreateDstVolumetricRec
 {
 	check(VolumetricReconstructRTResolution != FIntPoint::ZeroValue); // check that initialization has been done at least once
 
-	if (VolumetricReconstructRTDepth[CurrentRT].IsValid())
+	if (!VolumetricReconstructRTDepth[CurrentRT].IsValid())
 	{
-		return GraphBuilder.RegisterExternalTexture(VolumetricReconstructRTDepth[CurrentRT]);
+		FPooledRenderTargetDesc Desc = FPooledRenderTargetDesc::Create2DDesc(
+			VolumetricReconstructRTResolution, PF_R16F, FClearValueBinding(FLinearColor(63000.0f, 63000.0f, 63000.0f, 63000.0f)),
+			TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable, false);
+		GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, VolumetricReconstructRTDepth[CurrentRT], TEXT("RDGVolumetricVolumetricReconstructRTRTDepth"), ERenderTargetTransience::NonTransient);
 	}
 
-	FRDGTextureRef RDGVolumetricVolumetricReconstructRTRTDepth = GraphBuilder.CreateTexture(
-		FRDGTextureDesc::Create2D(VolumetricReconstructRTResolution, PF_R16F, FClearValueBinding(FLinearColor(63000.0f, 63000.0f, 63000.0f, 63000.0f)),
-		TexCreate_ShaderResource | TexCreate_RenderTargetable), TEXT("RDGVolumetricVolumetricReconstructRTRTDepth"));
-	return RDGVolumetricVolumetricReconstructRTRTDepth;
-}
-
-void FVolumetricRenderTargetViewStateData::ExtractDstVolumetricReconstructRT(FRDGBuilder& GraphBuilder, FRDGTextureRef RDGVolumetricVolumetricReconstructRT)
-{
-	check(VolumetricReconstructRTResolution != FIntPoint::ZeroValue); // check that initialization has been done at least once
-
-	GraphBuilder.QueueTextureExtraction(RDGVolumetricVolumetricReconstructRT, &VolumetricReconstructRT[CurrentRT]);
-}
-
-void FVolumetricRenderTargetViewStateData::ExtractDstVolumetricReconstructRTDepth(FRDGBuilder& GraphBuilder, FRDGTextureRef RDGVolumetricRTDepth)
-{
-	check(VolumetricReconstructRTResolution != FIntPoint::ZeroValue); // check that initialization has been done at least once
-
-	GraphBuilder.QueueTextureExtraction(RDGVolumetricRTDepth, &VolumetricReconstructRTDepth[CurrentRT]);
+	return GraphBuilder.RegisterExternalTexture(VolumetricReconstructRTDepth[CurrentRT]);
 }
 
 FRDGTextureRef FVolumetricRenderTargetViewStateData::GetOrCreateSrcVolumetricReconstructRT(FRDGBuilder& GraphBuilder)
@@ -501,9 +466,6 @@ void FSceneRenderer::ReconstructVolumetricRenderTarget(FRDGBuilder& GraphBuilder
 		FPixelShaderUtils::AddFullscreenPass<FReconstructVolumetricRenderTargetPS>(
 			GraphBuilder, ViewInfo.ShaderMap, RDG_EVENT_NAME("VolumetricReconstruct"), PixelShader, PassParameters, 
 			FIntRect(0, 0, DstVolumetricSize.X, DstVolumetricSize.Y));
-
-		VolumetricCloudRT.ExtractDstVolumetricReconstructRT(GraphBuilder, DstVolumetric);
-		VolumetricCloudRT.ExtractDstVolumetricReconstructRTDepth(GraphBuilder, DstVolumetricDepth);
 	}
 
 	// Compose over the scene color.

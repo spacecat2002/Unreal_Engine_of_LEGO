@@ -1604,12 +1604,6 @@ void FSceneRenderer::RenderVolumetricCloud(FRDGBuilder& GraphBuilder, FRDGTextur
 					RenderSkyAtmosphereInternal(GraphBuilder, SkyRC);
 				}
 
-				if (bShouldViewRenderVolumetricCloudRenderTarget)
-				{
-					ViewInfo.ViewState->VolumetricCloudRenderTarget.ExtractToVolumetricTracingRT(GraphBuilder, DestinationRT);
-					ViewInfo.ViewState->VolumetricCloudRenderTarget.ExtractToVolumetricTracingRTDepth(GraphBuilder, DestinationRTDepth);
-				}
-
 
 
 				const bool DebugCloudShadowMap = CVarVolumetricCloudShadowMapDebug.GetValueOnRenderThread() && ShouldRenderCloudShadowmap(AtmosphericLight0);
