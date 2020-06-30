@@ -77,7 +77,7 @@ public:
 	FLandscapePhysicalMaterial(const FMeshMaterialShaderType::CompiledShaderInitializerType& Initializer)
 		: FMeshMaterialShader(Initializer)
 	{
-		PassUniformBuffer.Bind(Initializer.ParameterMap, FSceneTexturesUniformParameters::StaticStructMetadata.GetShaderVariableName());
+		PassUniformBuffer.Bind(Initializer.ParameterMap, FSceneTextureUniformParameters::StaticStructMetadata.GetShaderVariableName());
 	}
 
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
@@ -307,8 +307,8 @@ namespace
 			RHICmdList.EndRenderPass();
 
 			// Copy to the read back texture
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, RenderTargetTexture);
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, ReadbackTexture);
+			RHICmdList.Transition(FRHITransitionInfo(RenderTargetTexture, ERHIAccess::RTV, ERHIAccess::CopySrc));
+			RHICmdList.Transition(FRHITransitionInfo(ReadbackTexture, ERHIAccess::Unknown, ERHIAccess::CopyDest));
 			RHICmdList.CopyToResolveTarget(RenderTargetTexture, ReadbackTexture, FResolveParams());
 			RHICmdList.WriteGPUFence(ReadbackFence);
 		}

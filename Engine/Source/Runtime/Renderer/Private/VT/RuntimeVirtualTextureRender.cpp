@@ -786,7 +786,7 @@ namespace RuntimeVirtualTexture
 	}
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FCopyToOutputParameters, )
-		SHADER_PARAMETER_RDG_TEXTURE(, Input)
+		RDG_TEXTURE_ACCESS(Input, ERHIAccess::CopySrc)
 	END_SHADER_PARAMETER_STRUCT()
 
 	/** Set up the copy to final output physical texture. */
@@ -807,9 +807,9 @@ namespace RuntimeVirtualTexture
 			{
 				InputTexture->MarkResourceAsUsed();
 
-				RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, OutputTexture);
+				RHICmdList.Transition(FRHITransitionInfo(OutputTexture, ERHIAccess::SRVGraphics, ERHIAccess::CopyDest));
 				RHICmdList.CopyTexture(InputTexture->GetRHI(), OutputTexture, CopyInfo);
-				RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, OutputTexture);
+				RHICmdList.Transition(FRHITransitionInfo(OutputTexture, ERHIAccess::CopyDest, ERHIAccess::SRVGraphics));
 			});
 	}
 
