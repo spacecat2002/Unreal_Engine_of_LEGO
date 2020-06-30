@@ -2525,7 +2525,7 @@ public:
 		Transition(FRHITransitionInfo(InTexture, ERHIAccess::Unknown, TransitionType));
 	}
 
-	inline void TransitionResources(ERHIAccess TransitionType, FRHITexture** InTextures, int32 NumTextures)
+	inline void TransitionResources(ERHIAccess TransitionType, FRHITexture* const* InTextures, int32 NumTextures)
 	{
 		// Stack allocate the transition descriptors. These will get memcpy()ed onto the RHI command list if required.
 		FRHITransitionInfo* Infos = (FRHITransitionInfo*)alloca(sizeof(FRHITransitionInfo) * NumTextures);
@@ -2543,7 +2543,7 @@ public:
 		TransitionResources(TransitionType, &InTextures[0], InTextures.Num());
 	}
 
-	inline void TransitionResources(ERHIAccess TransitionType, EResourceTransitionPipeline /* ignored TransitionPipeline */, FRHIUnorderedAccessView** InUAVs, int32 NumUAVs, FRHIComputeFence* WriteFence)
+	inline void TransitionResources(ERHIAccess TransitionType, EResourceTransitionPipeline /* ignored TransitionPipeline */, FRHIUnorderedAccessView* const* InUAVs, int32 NumUAVs, FRHIComputeFence* WriteFence)
 	{
 		// Stack allocate the transition descriptors. These will get memcpy()ed onto the RHI command list if required.
 		FRHITransitionInfo* Infos = (FRHITransitionInfo*)alloca(sizeof(FRHITransitionInfo) * NumUAVs);
@@ -2580,7 +2580,7 @@ public:
 		TransitionResource(TransitionType, TransitionPipeline, InUAV, nullptr);
 	}
 
-	FORCEINLINE_DEBUGGABLE void TransitionResources(ERHIAccess TransitionType, EResourceTransitionPipeline TransitionPipeline, FRHIUnorderedAccessView** InUAVs, int32 NumUAVs)
+	FORCEINLINE_DEBUGGABLE void TransitionResources(ERHIAccess TransitionType, EResourceTransitionPipeline TransitionPipeline, FRHIUnorderedAccessView* const* InUAVs, int32 NumUAVs)
 	{
 		TransitionResources(TransitionType, TransitionPipeline, InUAVs, NumUAVs, nullptr);
 	}
