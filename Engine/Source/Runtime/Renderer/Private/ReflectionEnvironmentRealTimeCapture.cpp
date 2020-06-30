@@ -30,7 +30,7 @@ static TAutoConsoleVariable<int32> CVarRealTimeReflectionCaptureTimeSlicing(
 
 static TAutoConsoleVariable<int32> CVarRealTimeReflectionCaptureShadowFromOpaque(
 	TEXT("r.RealTimeReflectionCapture.ShadowFromOpaque"), 0,
-	TEXT("Opaque meshes cast shadow from directional lights when enabled.\n"),
+	TEXT("Opaque meshes cast shadow from directional lights onto sky and clouds when enabled.\n"),
 	ECVF_RenderThreadSafe);
 
 
