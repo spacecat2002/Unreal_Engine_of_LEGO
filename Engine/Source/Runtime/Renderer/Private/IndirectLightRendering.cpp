@@ -243,7 +243,7 @@ IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FReflectionUniformParameters, "Reflecti
 
 void SetupReflectionUniformParameters(const FViewInfo& View, FReflectionUniformParameters& OutParameters)
 {
-	FTextureRHIRef SkyLightTextureResource = GSystemTextures.BlackDummy->GetRenderTargetItem().ShaderResourceTexture;
+	FTextureRHIRef SkyLightTextureResource = GBlackTextureCube->TextureRHI;
 	FSamplerStateRHIRef SkyLightCubemapSampler = TStaticSamplerState<SF_Trilinear>::GetRHI();
 	FTexture* SkyLightBlendDestinationTextureResource = GBlackTextureCube;
 	float ApplySkyLightMask = 0;
