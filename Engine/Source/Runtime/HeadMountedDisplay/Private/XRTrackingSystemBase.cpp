@@ -122,16 +122,16 @@ void FXRTrackingSystemBase::UpdateExternalTrackingPosition(const FTransform& Ext
 	SetBasePosition(GetBasePosition() - DeltaOffset.GetTranslation());
 }
 
-void FXRTrackingSystemBase::GetMotionControllerVisualizationData(UObject* WorldContext, const EControllerHand Hand, FXRMotionControllerVisualizationData& MotionControllerVisualizationData)
+void FXRTrackingSystemBase::GetMotionControllerData(UObject* WorldContext, const EControllerHand Hand, FXRMotionControllerData& MotionControllerData)
 {
-	MotionControllerVisualizationData.DeviceName = GetSystemName();
-	MotionControllerVisualizationData.ApplicationInstanceID = FApp::GetInstanceId();
+	MotionControllerData.DeviceName = GetSystemName();
+	MotionControllerData.ApplicationInstanceID = FApp::GetInstanceId();
 
 	//get all motion controllers and find the one for this hand for this local player
 	TArray<UObject*> MotionControllers;
 	GetObjectsOfClass(UMotionControllerComponent::StaticClass(), MotionControllers);
 
-	MotionControllerVisualizationData.bValid = false;
+	MotionControllerData.bValid = false;
 
 	for (int32 MotionControllerIndex = 0; MotionControllerIndex < MotionControllers.Num(); ++MotionControllerIndex)
 	{
@@ -141,16 +141,20 @@ void FXRTrackingSystemBase::GetMotionControllerVisualizationData(UObject* WorldC
 		AActor* Owner = MotionController->GetOwner();
 		if ((Owner!= nullptr) && (MotionController->GetTrackingSource() == Hand) && (Owner->GetLocalRole() == ROLE_Authority))
 		{
-			MotionControllerVisualizationData.bValid = true;
-			MotionControllerVisualizationData.DeviceVisualType = EXRVisualType::Controller;
+			MotionControllerData.bValid = true;
+			MotionControllerData.DeviceVisualType = EXRVisualType::Controller;
 
 			FTransform WorldTransform = MotionController->GetComponentTransform();
-			MotionControllerVisualizationData.Position = WorldTransform.GetLocation();
-			MotionControllerVisualizationData.Rotation = WorldTransform.GetRotation();
+			MotionControllerData.GripPosition = WorldTransform.GetLocation();
+			MotionControllerData.GripRotation = WorldTransform.GetRotation();
+
+			MotionControllerData.AimPosition = MotionControllerData.GripPosition;
+			MotionControllerData.AimRotation = MotionControllerData.GripRotation;
+
 			break;
 		}
 	}
-	MotionControllerVisualizationData.bValid = false;
+	MotionControllerData.bValid = false;
 }
 
 

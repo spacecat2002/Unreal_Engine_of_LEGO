@@ -444,24 +444,24 @@ bool UHeadMountedDisplayFunctionLibrary::IsDeviceTracking(const FXRDeviceId& XRD
 }
 
 
-void UHeadMountedDisplayFunctionLibrary::GetHMDVisualizationData(UObject* WorldContext, FXRHMDVisualizationData& HMDVisualizationData)
+void UHeadMountedDisplayFunctionLibrary::GetHMDData(UObject* WorldContext, FXRHMDData& HMDData)
 {
-	HMDVisualizationData.bValid = false;
+	HMDData.bValid = false;
 
 	IXRTrackingSystem* TrackingSys = GEngine->XRSystem.Get();
 	if (TrackingSys)
 	{
-		TrackingSys->GetHMDVisualizationData(WorldContext,  HMDVisualizationData);
+		TrackingSys->GetHMDData(WorldContext, HMDData);
 	}
 }
 
-void UHeadMountedDisplayFunctionLibrary::GetMotionControllerVisualizationData(UObject* WorldContext, const EControllerHand Hand, FXRMotionControllerVisualizationData& MotionControllerVisualizationData)
+void UHeadMountedDisplayFunctionLibrary::GetMotionControllerData(UObject* WorldContext, const EControllerHand Hand, FXRMotionControllerData& MotionControllerData)
 {
-	MotionControllerVisualizationData.bValid = false;
+	MotionControllerData.bValid = false;
 	
 	IXRTrackingSystem* TrackingSys = GEngine->XRSystem.Get();
 	if (TrackingSys)
 	{
-		TrackingSys->GetMotionControllerVisualizationData(WorldContext, Hand, MotionControllerVisualizationData);
+		TrackingSys->GetMotionControllerData(WorldContext, Hand, MotionControllerData);
 	}
 }

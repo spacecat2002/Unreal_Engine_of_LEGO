@@ -37,14 +37,12 @@ public class HeadMountedDisplay : ModuleRules
         PublicDependencyModuleNames.AddRange(
             new string[] {
                 "AugmentedReality",
-                "XRVisualization"
             }
         );
 
         PublicIncludePathModuleNames.AddRange(
             new string[]
             {
-                "XRVisualization",
             }
        );
 

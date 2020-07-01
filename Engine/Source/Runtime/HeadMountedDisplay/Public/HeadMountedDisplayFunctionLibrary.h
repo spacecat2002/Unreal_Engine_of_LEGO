@@ -6,7 +6,6 @@
 #include "UObject/ObjectMacros.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "HeadMountedDisplayTypes.h"
-#include "XRVisualizationData.h"
 #include "IIdentifiableXRDevice.h" // for FXRDeviceId
 #include "HeadMountedDisplayFunctionLibrary.generated.h"
 
@@ -316,13 +315,13 @@ class HEADMOUNTEDDISPLAY_API UHeadMountedDisplayFunctionLibrary : public UBluepr
 	 * Cross XR-System query that returns critical information about the HMD display (position, orientation, device name)
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Input|XRTracking")
-	static void GetHMDVisualizationData(UObject* WorldContext, FXRHMDVisualizationData& HMDVisualizationData);
+	static void GetHMDData(UObject* WorldContext, FXRHMDData& HMDData);
 
 	/**
 	 * Cross XR-System query that returns critical information about the motion controller (position, orientation, hand/finger position)
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Input|XRTracking")
-	static void GetMotionControllerVisualizationData(UObject* WorldContext, const EControllerHand Hand, FXRMotionControllerVisualizationData& MotionControllerVisualizationData);
+	static void GetMotionControllerData(UObject* WorldContext, const EControllerHand Hand, FXRMotionControllerData& MotionControllerData);
 
 
 

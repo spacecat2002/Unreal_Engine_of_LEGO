@@ -160,7 +160,7 @@ public:
 	virtual void UpdateExternalTrackingPosition(const FTransform& ExternalTrackingTransform) override;
 	virtual class IXRLoadingScreen* GetLoadingScreen() override final;
 
-	virtual void GetMotionControllerVisualizationData(UObject* WorldContext, const EControllerHand Hand, FXRMotionControllerVisualizationData& MotionControllerVisualizationData) override;
+	virtual void GetMotionControllerData(UObject* WorldContext, const EControllerHand Hand, FXRMotionControllerData& MotionControllerData) override;
 
 	TSharedPtr<FARSupportInterface , ESPMode::ThreadSafe> GetARCompositionComponent();
 	const TSharedPtr<const FARSupportInterface , ESPMode::ThreadSafe> GetARCompositionComponent() const;

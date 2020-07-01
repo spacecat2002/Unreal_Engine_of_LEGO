@@ -9,7 +9,6 @@
 #include "Features/IModularFeature.h"
 #include "Engine/GameViewportClient.h"
 #include "IXRInput.h"
-#include "XRVisualizationData.h"
 #include "Kismet/GameplayStatics.h"
 
 class IXRCamera;
@@ -400,17 +399,17 @@ public:
 	/**
 	 * Platform Agnostic Query about HMD details
 	 */
-	virtual void GetHMDVisualizationData(UObject* WorldContext, FXRHMDVisualizationData& HMDVisualizationData)
+	virtual void GetHMDData(UObject* WorldContext, FXRHMDData& HMDData)
 	{
-		HMDVisualizationData.bValid = true;
-		HMDVisualizationData.DeviceName = GetSystemName();
-		HMDVisualizationData.ApplicationInstanceID = FApp::GetInstanceId();
+		HMDData.bValid = true;
+		HMDData.DeviceName = GetSystemName();
+		HMDData.ApplicationInstanceID = FApp::GetInstanceId();
 
 		APlayerCameraManager* CameraManager = UGameplayStatics::GetPlayerCameraManager(WorldContext, 0);
 		if (CameraManager)
 		{
-			HMDVisualizationData.Rotation = CameraManager->GetCameraRotation().Quaternion();
-			HMDVisualizationData.Position = CameraManager->GetCameraLocation();
+			HMDData.Rotation = CameraManager->GetCameraRotation().Quaternion();
+			HMDData.Position = CameraManager->GetCameraLocation();
 		}
 		//GetCurrentPose(0, HMDVisualizationData.Rotation, HMDVisualizationData.Position);
 	}
@@ -418,5 +417,5 @@ public:
 	/**
 	 * Platform Agnostic Query about MotionControllers details
 	 */
-	virtual void GetMotionControllerVisualizationData(UObject* WorldContext, const EControllerHand Hand, FXRMotionControllerVisualizationData& MotionControllerVisualizationData) = 0;
+	virtual void GetMotionControllerData(UObject* WorldContext, const EControllerHand Hand, FXRMotionControllerData& MotionControllerData) = 0;
 };

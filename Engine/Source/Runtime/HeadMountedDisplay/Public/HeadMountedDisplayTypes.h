@@ -209,3 +209,98 @@ enum class EXRTrackedDeviceType : uint8
 	/** Pass to EnumerateTrackedDevices to get all devices regardless of type */
 	Any = (uint8)-1,
 };
+
+
+
+/**
+ * Transforms that are tracked on the hand.
+ * Matches the enums from WMR to make it a direct mapping
+ */
+UENUM(BlueprintType)
+enum class EHandKeypoint : uint8
+{
+	Palm,
+	Wrist,
+	ThumbMetacarpal,
+	ThumbProximal,
+	ThumbDistal,
+	ThumbTip,
+	IndexMetacarpal,
+	IndexProximal,
+	IndexIntermediate,
+	IndexDistal,
+	IndexTip,
+	MiddleMetacarpal,
+	MiddleProximal,
+	MiddleIntermediate,
+	MiddleDistal,
+	MiddleTip,
+	RingMetacarpal,
+	RingProximal,
+	RingIntermediate,
+	RingDistal,
+	RingTip,
+	LittleMetacarpal,
+	LittleProximal,
+	LittleIntermediate,
+	LittleDistal,
+	LittleTip
+};
+
+const int32 EHandKeypointCount = static_cast<int32>(EHandKeypoint::LittleTip) + 1;
+
+UENUM(BlueprintType)
+enum class EXRVisualType : uint8
+{
+	Controller,
+	Hand
+};
+
+USTRUCT(BlueprintType)
+struct HEADMOUNTEDDISPLAY_API FXRHMDData
+{
+	GENERATED_USTRUCT_BODY();
+
+	UPROPERTY(BlueprintReadOnly, Category = "XR")
+	bool bValid;
+	UPROPERTY(BlueprintReadOnly, Category = "XR")
+	FName DeviceName;
+	UPROPERTY(BlueprintReadOnly, Category = "XR")
+	FGuid ApplicationInstanceID;
+
+	UPROPERTY(BlueprintReadOnly, Category = "XR")
+	FVector Position;
+	UPROPERTY(BlueprintReadOnly, Category = "XR")
+	FQuat Rotation;
+};
+
+USTRUCT(BlueprintType)
+struct HEADMOUNTEDDISPLAY_API FXRMotionControllerData
+{
+	GENERATED_USTRUCT_BODY();
+
+	UPROPERTY(BlueprintReadOnly, Category = "XR")
+	bool bValid;
+	UPROPERTY(BlueprintReadOnly, Category = "XR")
+	FName DeviceName;
+	UPROPERTY(BlueprintReadOnly, Category = "XR")
+	FGuid ApplicationInstanceID;
+	UPROPERTY(BlueprintReadOnly, Category = "XR")
+	EXRVisualType DeviceVisualType;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "XR")
+	FVector GripPosition;
+	UPROPERTY(BlueprintReadOnly, Category = "XR")
+	FQuat GripRotation;
+
+	//for hand controllers, provides a more steady vector based on the elbow
+	UPROPERTY(BlueprintReadOnly, Category = "XR")
+	FVector AimPosition;
+	UPROPERTY(BlueprintReadOnly, Category = "XR")
+	FQuat AimRotation;
+
+	UPROPERTY(BlueprintReadOnly, Category = "XR")
+	TArray<struct FVector> HandKeyPositions;
+	UPROPERTY(BlueprintReadOnly, Category = "XR")
+	TArray<float> HandKeyRadii;
+};
