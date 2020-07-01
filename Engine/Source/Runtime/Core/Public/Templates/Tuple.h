@@ -365,6 +365,53 @@ namespace UE4Tuple_Private
 		enum { Value = sizeof...(Types) };
 	};
 
+	template <typename Type, typename TupleType>
+	struct TCVTupleIndex
+	{
+		static_assert(sizeof(TupleType) == 0, "TTupleIndex instantiated with a non-tuple type");
+		static constexpr uint32 Value = 0;
+	};
+
+	template <typename Type, typename... TupleTypes>
+	struct TCVTupleIndex<Type, const volatile TTuple<TupleTypes...>>
+	{
+		static_assert(TTypeCountInParameterPack<Type, TupleTypes...>::Value >= 1, "TTupleIndex instantiated with a tuple which does not contain the type");
+		static_assert(TTypeCountInParameterPack<Type, TupleTypes...>::Value <= 1, "TTupleIndex instantiated with a tuple which contains multiple instances of the type");
+
+	private:
+		template <uint32 DeducedIndex>
+		static auto Resolve(TTupleBaseElement<Type, DeducedIndex, sizeof...(TupleTypes)>*) -> char(&)[DeducedIndex + 1];
+		static auto Resolve(...) -> char;
+
+	public:
+		static constexpr uint32 Value = sizeof(Resolve(DeclVal<TTuple<TupleTypes...>*>())) - 1;
+	};
+
+	template <uint32 Index, typename TupleType>
+	struct TCVTupleElement
+	{
+		static_assert(sizeof(TupleType) == 0, "TTupleElement instantiated with a non-tuple type");
+		using Type = void;
+	};
+
+	template <uint32 Index, typename... TupleTypes>
+	struct TCVTupleElement<Index, const volatile TTuple<TupleTypes...>>
+	{
+		static_assert(Index < sizeof...(TupleTypes), "TTupleElement instantiated with an invalid index");
+
+#ifdef __clang__
+		using Type = __type_pack_element<Index, TupleTypes...>;
+#else
+	private:
+		template <typename DeducedType>
+		static DeducedType Resolve(TTupleBaseElement<DeducedType, Index, sizeof...(TupleTypes)>*);
+		static void Resolve(...);
+
+	public:
+		using Type = decltype(Resolve(DeclVal<TTuple<TupleTypes...>*>()));
+#endif
+	};
+
 	template <uint32 ArgToCombine, uint32 ArgCount>
 	struct TGetTupleHashHelper
 	{
@@ -505,6 +552,28 @@ template <typename TupleType>
 struct TTupleArity : UE4Tuple_Private::TCVTupleArity<const volatile TupleType>
 {
 };
+
+
+/**
+ * Traits class which gets the tuple index of a given type from a given TTuple.
+ * If the type doesn't appear, or appears more than once, a compile error is generated.
+ *
+ * Given Type = char, and Tuple = TTuple<int, float, char>,
+ * TTupleIndex<Type, Tuple>::Value will be 2.
+ */
+template <typename Type, typename TupleType>
+using TTupleIndex = UE4Tuple_Private::TCVTupleIndex<Type, const volatile TupleType>;
+
+
+/**
+ * Traits class which gets the element type of a TTuple with the given index.
+ * If the index is out of range, a compile error is generated.
+ *
+ * Given Index = 1, and Tuple = TTuple<int, float, char>,
+ * TTupleElement<Index, Tuple>::Type will be float.
+ */
+template <uint32 Index, typename TupleType>
+using TTupleElement = UE4Tuple_Private::TCVTupleElement<Index, const volatile TupleType>;
 
 
 /**
