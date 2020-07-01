@@ -152,7 +152,7 @@ struct FEDLCookChecker : public TThreadSingleton<FEDLCookChecker>
 
 	static void StartSavingEDLCookInfoForVerification();
 	static bool CheckForCyclesInner(TMultiMap<FEDLNodeID, FEDLNodeID>& NodePrereqs, TSet<FEDLNodeID>& Visited, TSet<FEDLNodeID>& Stack, const FEDLNodeID& Visit, FEDLNodeID& FailNode);
-	static void Verify();
+	static void Verify(bool bFullReferencesExpected);
 };
 
 #if WITH_EDITORONLY_DATA
