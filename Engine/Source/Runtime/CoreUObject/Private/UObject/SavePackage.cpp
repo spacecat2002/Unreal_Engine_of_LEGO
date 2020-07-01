@@ -1779,7 +1779,7 @@ struct FPackageExportTagger
 			{
 				UObject* Obj = ObjectsInPackage[Index];
 				// Allowed object that have any of the top level flags or have an assigned that we are saving
-				if( Obj->HasAnyFlags(TopLevelFlags))
+				if (Obj->HasAnyFlags(TopLevelFlags))
 				{
 					ExportTagger.ProcessBaseObject(Obj);
 				}
@@ -2967,7 +2967,7 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 							}
 
 							// See whether the object we are referencing is in another map package.
-							if( ObjPackage->ContainsMap() )
+							if(ObjPackage->ContainsMap())
 							{
 								if ( ObjPackage != Obj && Obj->GetFName() != NAME_PersistentLevel && Obj->GetClass()->GetFName() != SavePackageUtilities::NAME_World )
 								{

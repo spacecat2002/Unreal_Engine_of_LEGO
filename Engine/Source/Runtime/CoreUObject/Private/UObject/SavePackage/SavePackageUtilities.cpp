@@ -1025,7 +1025,7 @@ bool FEDLCookChecker::CheckForCyclesInner(TMultiMap<FEDLNodeID, FEDLNodeID>& Nod
 	return bResult;
 }
 
-void FEDLCookChecker::Verify()
+void FEDLCookChecker::Verify(bool bFullReferencesExpected)
 {
 	check(!GIsSavingPackage);
 
@@ -1053,14 +1053,17 @@ void FEDLCookChecker::Verify()
 	{
 		double StartTime = FPlatformTime::Seconds();
 			
- 		// imports to things that are not exports...
- 		for (const auto& Pair : ImportToImportingPackage)
- 		{
- 			if (!Exports.Contains(Pair.Key))
- 			{
- 				UE_LOG(LogSavePackage, Warning, TEXT("%s imported %s, but it was never saved as an export."), *Pair.Value.ToString(), *Pair.Key.ToString());
- 			}
- 		}
+		if (bFullReferencesExpected)
+		{
+			// imports to things that are not exports...
+			for (const auto& Pair : ImportToImportingPackage)
+			{
+				if (!Exports.Contains(Pair.Key))
+				{
+					UE_LOG(LogSavePackage, Warning, TEXT("%s imported %s, but it was never saved as an export."), *Pair.Value.ToString(), *Pair.Key.ToString());
+				}
+			}
+		}
 		// cycles in the dep graph
 		TSet<FEDLNodeID> Visited;
 		TSet<FEDLNodeID> Stack;
@@ -1090,9 +1093,9 @@ void StartSavingEDLCookInfoForVerification()
 	FEDLCookChecker::StartSavingEDLCookInfoForVerification();
 }
 
-void VerifyEDLCookInfo()
+void VerifyEDLCookInfo(bool bFullReferencesExpected)
 {
-	FEDLCookChecker::Verify();
+	FEDLCookChecker::Verify(bFullReferencesExpected);
 }
 
 FScopedSavingFlag::FScopedSavingFlag(bool InSavingConcurrent)
