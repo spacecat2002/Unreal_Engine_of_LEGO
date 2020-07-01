@@ -7,7 +7,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Delegates/DelegateCombinations.h"
 
 /**
  *  SCENE VIEW EXTENSIONS
@@ -82,12 +81,6 @@ struct FMinimalViewInfo;
 struct FSceneViewProjectionData;
 class FRDGBuilder;
 struct FPostProcessingInputs;
-struct FPostProcessMaterialInputs;
-
-
-/** This is used to add more flexibility to Post Processing, so that users can subscribe to any after Post Porocessing Pass events. */
-DECLARE_DELEGATE_ThreeParams(FAfterPassCallbackDelegate, FRDGBuilder& /*GraphBuilder*/, const FSceneView& /*View*/, FPostProcessMaterialInputs* /*InOutInputs*/);
-
 
 class ISceneViewExtension
 {
@@ -138,12 +131,6 @@ public:
 	 * Called right before Post Processing rendering begins
 	 */
 	virtual void PrePostProcessPass_RenderThread(FRDGBuilder& GraphBuilder, const FSceneView& View, const FPostProcessingInputs& Inputs) {};
-
-	/**
-	* This will be called at the beginning of post processing to make sure that each view extension gets a chance to subscribe to an after pass event.
-	* Please Note: Currently the following passes can be subscribed to: EPass::MotionBlur, EPass::Tonemap, EPass::FXAA, EPass::VisualizeDepthOfField 
-	*/
-	virtual void SubscribeToPostProcessingPass(int32 PassId, TArray<FAfterPassCallbackDelegate>& InOutPassCallbacks, bool bIsPassEnabled) {};
 
 	/**
 	 * Allows to render content after the 3D content scene, useful for debugging

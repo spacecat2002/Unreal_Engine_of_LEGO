@@ -22,30 +22,6 @@ enum class EPostProcessAAQuality : uint32
 	MAX
 };
 
-enum class EPass : uint32
-{
-	MotionBlur,
-	Tonemap,
-	FXAA,
-	PostProcessMaterialAfterTonemapping,
-	VisualizeDepthOfField,
-	VisualizeStationaryLightOverlap,
-	VisualizeLightCulling,
-	SelectionOutline,
-	EditorPrimitive,
-	VisualizeShadingModels,
-	VisualizeGBufferHints,
-	VisualizeSubsurface,
-	VisualizeGBufferOverview,
-	VisualizeHDR,
-	PixelInspector,
-	HMDDistortion,
-	HighResolutionScreenshotMask,
-	PrimaryUpscale,
-	SecondaryUpscale,
-	MAX
-};
-
 // Returns the quality of post process anti-aliasing defined by CVar.
 EPostProcessAAQuality GetPostProcessAAQuality();
 

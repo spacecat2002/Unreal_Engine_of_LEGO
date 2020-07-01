@@ -50,7 +50,6 @@
 #include "SceneTextureParameters.h"
 #include "PixelShaderUtils.h"
 #include "ScreenSpaceRayTracing.h"
-#include "SceneViewExtension.h"
 
 /** The global center for all post processing activities. */
 FPostProcessing GPostProcessing;
@@ -133,22 +132,6 @@ bool IsPostProcessingEnabled(const FViewInfo& View)
 bool IsPostProcessingWithAlphaChannelSupported()
 {
 	return CVarPostProcessingPropagateAlpha.GetValueOnAnyThread() != 0;
-}
-
-FScreenPassTexture AddAfterPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, EPass PassId, TOverridePassSequence<EPass>& InOutPassSequence, FScreenPassTexture SceneColor, std::function<FPostProcessMaterialInputs(FScreenPassTexture)> GetPostProcessMaterialInputs)
-{
-	// In some cases (Ex. OCIO color conversion) we want View Extensions to be able to add extra custom post processing after tonemap.
-	// Eventually it might be a good idea to make this more generic so that every step (all passes) of the Post processing can be subscribed to.
-	FPostProcessMaterialInputs InOutPostProcessAfterTonemapInputs = GetPostProcessMaterialInputs(SceneColor);
-	TArray<FAfterPassCallbackDelegate>& PassCallbacks = InOutPassSequence.GetAfterPassCallbacks(static_cast<int32>(PassId));
-	for (int32 AfterPassCallbackIndex = 0; AfterPassCallbackIndex < PassCallbacks.Num(); AfterPassCallbackIndex++)
-	{
-		FAfterPassCallbackDelegate& AfterPassCallback = PassCallbacks[AfterPassCallbackIndex];
-		InOutPassSequence.AcceptOverrideIfLastPass(PassId, InOutPostProcessAfterTonemapInputs.OverrideOutput, AfterPassCallbackIndex);
-		AfterPassCallback.Execute(GraphBuilder, View, &InOutPostProcessAfterTonemapInputs);
-		SceneColor = InOutPostProcessAfterTonemapInputs.Textures[(uint32)EPostProcessMaterialInput::SceneColor];
-	}
-	return MoveTemp(SceneColor);
 }
 
 EPostProcessAAQuality GetPostProcessAAQuality()
@@ -273,6 +256,30 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 
 	const FPaniniProjectionConfig PaniniConfig(View);
 
+	enum class EPass : uint32
+	{
+		MotionBlur,
+		Tonemap,
+		FXAA,
+		PostProcessMaterialAfterTonemapping,
+		VisualizeDepthOfField,
+		VisualizeStationaryLightOverlap,
+		VisualizeLightCulling,
+		SelectionOutline,
+		EditorPrimitive,
+		VisualizeShadingModels,
+		VisualizeGBufferHints,
+		VisualizeSubsurface,
+		VisualizeGBufferOverview,
+		VisualizeHDR,
+		PixelInspector,
+		HMDDistortion,
+		HighResolutionScreenshotMask,
+		PrimaryUpscale,
+		SecondaryUpscale,
+		MAX
+	};
+
 	const TCHAR* PassNames[] =
 	{
 		TEXT("MotionBlur"),
@@ -324,18 +331,18 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 	PassSequence.SetEnabled(EPass::PrimaryUpscale, PaniniConfig.IsEnabled() || (View.PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::SpatialUpscale && PrimaryViewRect.Size() != View.GetSecondaryViewRectSize()));
 	PassSequence.SetEnabled(EPass::SecondaryUpscale, View.RequiresSecondaryUpscale());
 
-	const auto GetPostProcessMaterialInputs = [CustomDepth, SeparateTranslucency, Velocity](FScreenPassTexture InSceneColor)
-	{
-		FPostProcessMaterialInputs PostProcessMaterialInputs;
-		PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::SceneColor, InSceneColor);
-		PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::SeparateTranslucency, SeparateTranslucency);
-		PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::Velocity, Velocity);
-		PostProcessMaterialInputs.CustomDepthTexture = CustomDepth.Texture;
-		return PostProcessMaterialInputs;
-	};
-
 	if (IsPostProcessingEnabled(View))
 	{
+		const auto GetPostProcessMaterialInputs = [CustomDepth, SeparateTranslucency, Velocity] (FScreenPassTexture InSceneColor)
+		{
+			FPostProcessMaterialInputs PostProcessMaterialInputs;
+			PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::SceneColor, InSceneColor);
+			PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::SeparateTranslucency, SeparateTranslucency);
+			PostProcessMaterialInputs.SetInput(EPostProcessMaterialInput::Velocity, Velocity);
+			PostProcessMaterialInputs.CustomDepthTexture = CustomDepth.Texture;
+			return PostProcessMaterialInputs;
+		};
+
 		const EStereoscopicPass StereoPass = View.StereoPass;
 		const bool bPrimaryView = IStereoRendering::IsAPrimaryView(View);
 		const bool bHasViewState = View.ViewState != nullptr;
@@ -379,15 +386,6 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 		PassSequence.SetEnabled(EPass::FXAA, AntiAliasingMethod == AAM_FXAA);
 		PassSequence.SetEnabled(EPass::PostProcessMaterialAfterTonemapping, PostProcessMaterialAfterTonemappingChain.Num() != 0);
 		PassSequence.SetEnabled(EPass::VisualizeDepthOfField, bVisualizeDepthOfField);
-
-		for (int32 ViewExt = 0; ViewExt < View.Family->ViewExtensions.Num(); ++ViewExt)
-		{
-			for (int32 PassId = 0; PassId != static_cast<int>(EPass::MAX); PassId++)
-			{
-				View.Family->ViewExtensions[ViewExt]->SubscribeToPostProcessingPass(PassId, PassSequence.GetAfterPassCallbacks(PassId), PassSequence.IsEnabled(static_cast<EPass>(PassId)));
-			}
-		}
-
 		PassSequence.Finalize();
 
 		// Post Process Material Chain - Before Translucency
@@ -513,8 +511,6 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 				SceneColor = AddMotionBlurPass(GraphBuilder, View, PassInputs);
 			}
 		}
-
-		SceneColor = AddAfterPass(GraphBuilder, View, EPass::MotionBlur, PassSequence, SceneColor, GetPostProcessMaterialInputs);
 
 		// If TAA didn't do it, downsample the scene color texture by half.
 		if (!HalfResolutionSceneColor.Texture)
@@ -664,8 +660,6 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 				SceneColor = AddTonemapPass(GraphBuilder, View, PassInputs);
 			}
 		}
-		
-		SceneColor = AddAfterPass(GraphBuilder, View, EPass::Tonemap, PassSequence, SceneColor, GetPostProcessMaterialInputs);
 
 		SceneColorAfterTonemap = SceneColor;
 
@@ -678,8 +672,6 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 
 			SceneColor = AddFXAAPass(GraphBuilder, View, PassInputs);
 		}
-
-		SceneColor = AddAfterPass(GraphBuilder, View, EPass::FXAA, PassSequence, SceneColor, GetPostProcessMaterialInputs);
 
 		// Post Process Material Chain - After Tonemapping
 		if (PassSequence.IsEnabled(EPass::PostProcessMaterialAfterTonemapping))
@@ -701,8 +693,6 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 
 			SceneColor = AddVisualizeDOFPass(GraphBuilder, View, PassInputs);
 		}
-
-		SceneColor = AddAfterPass(GraphBuilder, View, EPass::VisualizeDepthOfField, PassSequence, SceneColor, GetPostProcessMaterialInputs);
 	}
 	// Minimal PostProcessing - Separate translucency composition and gamma-correction only.
 	else
@@ -729,8 +719,6 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 
 			SceneColor = AddTonemapPass(GraphBuilder, View, PassInputs);
 		}
-
-		SceneColor = AddAfterPass(GraphBuilder, View, EPass::Tonemap, PassSequence, SceneColor, GetPostProcessMaterialInputs);
 
 		SceneColorAfterTonemap = SceneColor;
 	}

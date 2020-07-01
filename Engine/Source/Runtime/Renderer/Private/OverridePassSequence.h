@@ -3,8 +3,6 @@
 #pragma once
 
 #include "ScreenPass.h"
-#include "SceneViewExtension.h"
-
 
 /** This class provides a solution for overriding the final render target / view rect in a chain of render graph passes.
  *  RDG pass setup is immediate, which makes it difficult to determine the final pass in a chain in order to swap a final
@@ -113,17 +111,11 @@ public:
 #endif
 	}
 
-	bool AcceptOverrideIfLastPass(EPass Pass, FScreenPassRenderTarget& OutTargetToOverride, int32 AfterPassCallbackIndex = -1)
+	bool AcceptOverrideIfLastPass(EPass Pass, FScreenPassRenderTarget& OutTargetToOverride)
 	{
-		// Display debug information for a Pass unless it is an after pass.
-		if (AfterPassCallbackIndex == -1)
-		{
-			AcceptPass(Pass);
-		}
+		AcceptPass(Pass);
 
-		// We need to override output only if this is the last pass and the last after pass.
-		// If the AfterPassCallbackIndex is -1 it means that the actual pass is being checked. 
-		if (IsLastPass(Pass) && (AfterPassCallbackIndex == AfterPass[(int32)Pass].Num() - 1))
+		if (IsLastPass(Pass))
 		{
 			OutTargetToOverride = OverrideOutput;
 			return true;
@@ -161,8 +153,6 @@ public:
 		}
 	}
 
-	TArray<FAfterPassCallbackDelegate>& GetAfterPassCallbacks(int32 PassId) { return AfterPass[PassId]; }
-
 private:
 	static const int32 PassCountMax = (int32)EPass::MAX;
 
@@ -178,7 +168,6 @@ private:
 
 	FScreenPassRenderTarget OverrideOutput;
 	TStaticArray<FPassInfo, PassCountMax> Passes;
-	TStaticArray<TArray<FAfterPassCallbackDelegate>, PassCountMax> AfterPass;
 	EPass LastPass = EPass::MAX;
 
 #if RDG_ENABLE_DEBUG
