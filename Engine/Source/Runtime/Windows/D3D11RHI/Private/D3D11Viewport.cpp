@@ -772,12 +772,6 @@ void FD3D11DynamicRHI::RHIEndDrawingViewport(FRHIViewport* ViewportRHI,bool bPre
 			GInputLatencyTimer.RenderThreadTrigger = false;
 		}
 	}
-
-#if CHECK_SRV_TRANSITIONS
-	check(UnresolvedTargetsConcurrencyGuard.Increment() == 1);
-	UnresolvedTargets.Reset();
-	check(UnresolvedTargetsConcurrencyGuard.Decrement() == 0);
-#endif
 }
 
 void FD3D11DynamicRHI::RHIAdvanceFrameForGetViewportBackBuffer(FRHIViewport* Viewport)

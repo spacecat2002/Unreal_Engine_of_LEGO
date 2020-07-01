@@ -157,48 +157,7 @@ public:
 class FD3D11BaseShaderResource : public IRefCountedObject
 {
 public:
-	FD3D11BaseShaderResource()
-		: CurrentGPUAccess(EResourceTransitionAccess::EReadable)
-		, LastFrameWritten(-1)
-		, bDirty(false)
-	{}
-
-	void SetCurrentGPUAccess(ERHIAccess Access)
-	{
-		if (Access == EResourceTransitionAccess::EReadable)
-		{
-			bDirty = false;
-		}
-		CurrentGPUAccess = Access;
-	}
-
-	ERHIAccess GetCurrentGPUAccess() const
-	{
-		return CurrentGPUAccess;
-	}
-
-	uint32 GetLastFrameWritten() const
-	{
-		return LastFrameWritten;
-	}	
-
-	void SetDirty(bool bInDirty, uint32 CurrentFrame);
-
-	bool IsDirty() const
-	{
-		return bDirty;
-	}
-
-private:
-	
-	/** Whether the current resource is logically GPU readable or writable.  Mostly for validation for newer RHI's*/
-	ERHIAccess CurrentGPUAccess;
-
-	/** Most recent frame this resource was written to. */
-	uint32 LastFrameWritten;
-
-	/** Resource has been written to without a subsequent read barrier.  Mostly for UAVs */
-	bool bDirty;
+	FD3D11BaseShaderResource() {}
 };
 
 /** Texture base class. */
@@ -727,8 +686,6 @@ public:
 
 	void Swap(FD3D11IndexBuffer& Other)
 	{
-		check(GetCurrentGPUAccess() == EResourceTransitionAccess::EReadable
-			&& GetCurrentGPUAccess() == Other.GetCurrentGPUAccess());
 		FRHIIndexBuffer::Swap(Other);
 		Resource.Swap(Other.Resource);
 	}
@@ -767,7 +724,6 @@ public:
 	: FRHIStructuredBuffer(InStride,InSize,InUsage)
 	, Resource(InResource)
 	{
-		SetCurrentGPUAccess(EResourceTransitionAccess::ERWBarrier);
 	}
 
 	virtual ~FD3D11StructuredBuffer()
@@ -814,8 +770,6 @@ public:
 
 	void Swap(FD3D11VertexBuffer& SrcBuffer)
 	{
-		check(GetCurrentGPUAccess() == EResourceTransitionAccess::EReadable
-			&& GetCurrentGPUAccess() == SrcBuffer.GetCurrentGPUAccess());
 		FRHIVertexBuffer::Swap(SrcBuffer);
 		Resource.Swap(SrcBuffer.Resource);
 	}

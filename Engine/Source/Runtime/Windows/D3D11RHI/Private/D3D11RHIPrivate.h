@@ -85,13 +85,6 @@ THIRD_PARTY_INCLUDES_START
 THIRD_PARTY_INCLUDES_END
 #endif // INTEL_EXTENSIONS
 
-#if UE_BUILD_SHIPPING || UE_BUILD_TEST
-#define CHECK_SRV_TRANSITIONS 0
-#else
-//Feature is broken, and also will leak memory when the program is alt-tabbed.  disable for now.
-#define CHECK_SRV_TRANSITIONS 0
-#endif
-
 // DX11 doesn't support higher MSAA count
 #define DX_MAX_MSAA_COUNT 8
 
@@ -734,8 +727,6 @@ private:
 	template <EShaderFrequency ShaderFrequency>
 	void ClearAllShaderResourcesForFrequency();
 
-	void CheckIfSRVIsResolved(ID3D11ShaderResourceView* SRV);
-
 	template <EShaderFrequency ShaderFrequency>
 	void InternalSetShaderResourceView(FD3D11BaseShaderResource* Resource, ID3D11ShaderResourceView* SRV, int32 ResourceIndex, FName SRVName, FD3D11StateCache::ESRV_Type SrvType = FD3D11StateCache::SRV_Unknown);
 
@@ -929,39 +920,6 @@ protected:
 	uint32 HDRDetectedDisplayIHVIndex;
 
 	bool bRenderDoc = false;
-#if CHECK_SRV_TRANSITIONS
-	/*
-	 * Rendertargets must be explicitly 'resolved' to manage their transition to an SRV on some platforms and DX12
-	 * We keep track of targets that need 'resolving' to provide safety asserts at SRV binding time.
-	 */
-	struct FUnresolvedRTInfo
-	{
-		FUnresolvedRTInfo(FName InResourceName, int32 InMipLevel, int32 InNumMips, int32 InArraySlice, int32 InArraySize)
-		: ResourceName(InResourceName)
-		, MipLevel(InMipLevel)
-		, NumMips(InNumMips)
-		, ArraySlice(InArraySlice)  
-		, ArraySize(InArraySize)
-		{
-		}
-
-		bool operator==(const FUnresolvedRTInfo& Other) const
-		{
-			return MipLevel == Other.MipLevel &&
-				NumMips == Other.NumMips &&
-				ArraySlice == Other.ArraySlice &&
-				ArraySize == Other.ArraySize;
-		}
-
-		FName ResourceName;
-		int32 MipLevel;
-		int32 NumMips;
-		int32 ArraySlice;
-		int32 ArraySize;
-	};
-	FThreadSafeCounter UnresolvedTargetsConcurrencyGuard;
-	TMultiMap<ID3D11Resource*, FUnresolvedRTInfo> UnresolvedTargets;
-#endif
 
 	FD3DGPUProfiler GPUProfilingData;
 	// >= 0, was computed before, unless hardware was changed during engine init it should be the same

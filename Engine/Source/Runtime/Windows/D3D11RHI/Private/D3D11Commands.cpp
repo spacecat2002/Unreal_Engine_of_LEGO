@@ -49,14 +49,6 @@ DECLARE_ISBOUNDSHADER(ComputeShader)
 #define VALIDATE_BOUND_SHADER(s)
 #endif
 
-int32 GEnableDX11TransitionChecks = 0;
-static FAutoConsoleVariableRef CVarDX11TransitionChecks(
-	TEXT("r.TransitionChecksEnableDX11"),
-	GEnableDX11TransitionChecks,
-	TEXT("Enables transition checks in the DX11 RHI."),
-	ECVF_Default
-	);
-
 static int32 GUnbindResourcesBetweenDrawsInDX11 = UE_BUILD_DEBUG;
 static FAutoConsoleVariableRef CVarUnbindResourcesBetweenDrawsInDX11(
 	TEXT("r.UnbindResourcesBetweenDrawsInDX11"),
@@ -87,16 +79,6 @@ FThreadSafeCounter GDX11CommitGraphicsResourceTables;
 #endif
 
 
-
-void FD3D11BaseShaderResource::SetDirty(bool bInDirty, uint32 CurrentFrame)
-{
-	bDirty = bInDirty;
-	if (bDirty)
-	{
-		LastFrameWritten = CurrentFrame;
-	}
-	ensureMsgf((GEnableDX11TransitionChecks == 0) || !(CurrentGPUAccess == EResourceTransitionAccess::EReadable && bDirty), TEXT("ShaderResource is dirty, but set to Readable."));
-}
 
 #if !PLATFORM_HOLOLENS
 //MultiGPU
@@ -455,15 +437,8 @@ void FD3D11DynamicRHI::RHISetUAVParameter(FRHIPixelShader* ComputeShaderRHI, uin
 	if (UAV)
 	{
 		ConditionalClearShaderResource(UAV->Resource, true);
-
-		//check it's safe for r/w for this UAV
-		const ERHIAccess CurrentUAVAccess = UAV->Resource->GetCurrentGPUAccess();
-		const bool UAVDirty = UAV->Resource->IsDirty();
-		ensureMsgf((GEnableDX11TransitionChecks == 0) || !UAVDirty || (CurrentUAVAccess == EResourceTransitionAccess::ERWNoBarrier), TEXT("UAV: %i is in unsafe state for GPU R/W: %s, Dirty: %i"), UAVIndex, *GetRHIAccessName(CurrentUAVAccess), (int32)UAVDirty);
-
-		//UAVs always dirty themselves. If a shader wanted to just read, it should use an SRV.
-		UAV->Resource->SetDirty(true, PresentCounter);
 	}
+
 	if (CurrentUAVs[UAVIndex] != UAV)
 	{
 		CurrentUAVs[UAVIndex] = UAV;
@@ -480,14 +455,6 @@ void FD3D11DynamicRHI::RHISetUAVParameter(FRHIComputeShader* ComputeShaderRHI,ui
 	if(UAV)
 	{
 		ConditionalClearShaderResource(UAV->Resource, true);		
-
-		//check it's safe for r/w for this UAV
-		const ERHIAccess CurrentUAVAccess = UAV->Resource->GetCurrentGPUAccess();
-		const bool UAVDirty = UAV->Resource->IsDirty();
-		ensureMsgf((GEnableDX11TransitionChecks == 0) || !UAVDirty || (CurrentUAVAccess == EResourceTransitionAccess::ERWNoBarrier), TEXT("UAV: %i is in unsafe state for GPU R/W: %s, Dirty: %i"), UAVIndex, *GetRHIAccessName(CurrentUAVAccess), (int32)UAVDirty);
-
-		//UAVs always dirty themselves. If a shader wanted to just read, it should use an SRV.
-		UAV->Resource->SetDirty(true, PresentCounter);
 	}
 
 	ID3D11UnorderedAccessView* D3D11UAV = UAV ? UAV->View : NULL;
@@ -505,14 +472,6 @@ void FD3D11DynamicRHI::RHISetUAVParameter(FRHIComputeShader* ComputeShaderRHI,ui
 	if(UAV)
 	{
 		ConditionalClearShaderResource(UAV->Resource, true);
-
-		//check it's safe for r/w for this UAV
-		const ERHIAccess CurrentUAVAccess = UAV->Resource->GetCurrentGPUAccess();
-		const bool UAVDirty = UAV->Resource->IsDirty();
-		ensureMsgf((GEnableDX11TransitionChecks == 0) || !UAVDirty || (CurrentUAVAccess == EResourceTransitionAccess::ERWNoBarrier), TEXT("UAV: %i is in unsafe state for GPU R/W: %s, Dirty: %i"), UAVIndex, *GetRHIAccessName(CurrentUAVAccess), (int32)UAVDirty);
-
-		//UAVs always dirty themselves. If a shader wanted to just read, it should use an SRV.
-		UAV->Resource->SetDirty(true, PresentCounter);
 	}
 
 	ID3D11UnorderedAccessView* D3D11UAV = UAV ? UAV->View : NULL;
@@ -929,17 +888,6 @@ void FD3D11DynamicRHI::CommitUAVs()
 				{
 					FD3D11UnorderedAccessView* RHIUAV = RHIUAVs[i];
 					ID3D11UnorderedAccessView* UAV = UAVs[i];
-					if (UAV)
-					{
-						//check it's safe for r/w for this UAV
-						const ERHIAccess CurrentUAVAccess = RHIUAV->Resource->GetCurrentGPUAccess();
-						const bool UAVDirty = RHIUAV->Resource->IsDirty();
-						const bool bAccessPass = (CurrentUAVAccess == EResourceTransitionAccess::ERWBarrier && !UAVDirty) || (CurrentUAVAccess == EResourceTransitionAccess::ERWNoBarrier);
-						ensureMsgf((GEnableDX11TransitionChecks == 0) || bAccessPass, TEXT("UAV: %i is in unsafe state for GPU R/W: %s"), i, *GetRHIAccessName(CurrentUAVAccess));
-
-						//UAVs get set to dirty.  If the shader just wanted to read it should have used an SRV.
-						RHIUAV->Resource->SetDirty(true, PresentCounter);
-					}
 
 					// Unbind any shader views of the UAV's resource.
 					ConditionalClearShaderResource(RHIUAV->Resource, true);
@@ -1032,16 +980,6 @@ void FD3D11DynamicRHI::SetRenderTargets(
 {
 	FD3D11TextureBase* NewDepthStencilTarget = GetD3D11TextureFromRHITexture(NewDepthStencilTargetRHI ? NewDepthStencilTargetRHI->Texture : nullptr);
 
-#if CHECK_SRV_TRANSITIONS
-	// if the depth buffer is writable then it counts as unresolved.
-	if (NewDepthStencilTargetRHI && NewDepthStencilTargetRHI->GetDepthStencilAccess() == FExclusiveDepthStencil::DepthWrite_StencilWrite && NewDepthStencilTarget)
-	{		
-		check(UnresolvedTargetsConcurrencyGuard.Increment() == 1);
-		UnresolvedTargets.Add(NewDepthStencilTarget->GetResource(), FUnresolvedRTInfo(NewDepthStencilTargetRHI->Texture->GetName(), 0, 1, -1, 1));
-		check(UnresolvedTargetsConcurrencyGuard.Decrement() == 0);
-	}
-#endif
-
 	check(NewNumSimultaneousRenderTargets <= MaxSimultaneousRenderTargets);
 
 	bool bTargetChanged = false;
@@ -1065,32 +1003,6 @@ void FD3D11DynamicRHI::SetRenderTargets(
 		bTargetChanged = true;
 	}
 
-	if (NewDepthStencilTarget)
-	{
-		uint32 CurrentFrame = PresentCounter;
-		const ERHIAccess CurrentAccess = NewDepthStencilTarget->GetCurrentGPUAccess();
-		const uint32 LastFrameWritten = NewDepthStencilTarget->GetLastFrameWritten();
-		const bool bReadable = CurrentAccess == EResourceTransitionAccess::EReadable;
-		const bool bDepthWrite = NewDepthStencilTargetRHI->GetDepthStencilAccess().IsDepthWrite();
-		const bool bAccessValid =	!bReadable ||
-									LastFrameWritten != CurrentFrame || 
-									!bDepthWrite;
-
-		ensureMsgf((GEnableDX11TransitionChecks == 0) || bAccessValid, TEXT("DepthTarget '%s' is not GPU writable."), *NewDepthStencilTargetRHI->Texture->GetName().ToString());
-
-		//switch to writable state if this is the first render of the frame.  Don't switch if it's a later render and this is a depth test only situation
-		if (!bAccessValid || (bReadable && bDepthWrite))
-		{
-			DUMP_TRANSITION(NewDepthStencilTargetRHI->Texture->GetName(), EResourceTransitionAccess::EWritable);
-			NewDepthStencilTarget->SetCurrentGPUAccess(EResourceTransitionAccess::EWritable);
-		}
-
-		if (bDepthWrite)
-		{
-			NewDepthStencilTarget->SetDirty(true, CurrentFrame);
-		}
-	}
-
 	// Gather the render target views for the new render targets.
 	ID3D11RenderTargetView* NewRenderTargetViews[MaxSimultaneousRenderTargets];
 	for(uint32 RenderTargetIndex = 0;RenderTargetIndex < MaxSimultaneousRenderTargets;++RenderTargetIndex)
@@ -1101,38 +1013,9 @@ void FD3D11DynamicRHI::SetRenderTargets(
 			int32 RTMipIndex = NewRenderTargetsRHI[RenderTargetIndex].MipIndex;
 			int32 RTSliceIndex = NewRenderTargetsRHI[RenderTargetIndex].ArraySliceIndex;
 			FD3D11TextureBase* NewRenderTarget = GetD3D11TextureFromRHITexture(NewRenderTargetsRHI[RenderTargetIndex].Texture);
-
-			if (NewRenderTarget)
-			{
-				RenderTargetView = NewRenderTarget->GetRenderTargetView(RTMipIndex, RTSliceIndex);
-				uint32 CurrentFrame = PresentCounter;
-				const ERHIAccess CurrentAccess = NewRenderTarget->GetCurrentGPUAccess();
-				const uint32 LastFrameWritten = NewRenderTarget->GetLastFrameWritten();
-				const bool bReadable = CurrentAccess == EResourceTransitionAccess::EReadable;
-				const bool bAccessValid = !bReadable || LastFrameWritten != CurrentFrame;
-				ensureMsgf((GEnableDX11TransitionChecks == 0) || bAccessValid, TEXT("RenderTarget '%s' is not GPU writable."), *NewRenderTargetsRHI[RenderTargetIndex].Texture->GetName().ToString());
-								
-				if (!bAccessValid || bReadable)
-				{
-					DUMP_TRANSITION(NewRenderTargetsRHI[RenderTargetIndex].Texture->GetName(), EResourceTransitionAccess::EWritable);
-					NewRenderTarget->SetCurrentGPUAccess(EResourceTransitionAccess::EWritable);
-				}
-				NewRenderTarget->SetDirty(true, CurrentFrame);
-			}
+			RenderTargetView = NewRenderTarget ? NewRenderTarget->GetRenderTargetView(RTMipIndex, RTSliceIndex) : nullptr;
 
 			ensureMsgf(RenderTargetView, TEXT("Texture being set as render target has no RTV"));
-#if CHECK_SRV_TRANSITIONS			
-			if (RenderTargetView)
-			{
-				// remember this target as having been bound for write.
-				ID3D11Resource* RTVResource;
-				RenderTargetView->GetResource(&RTVResource);
-				check(UnresolvedTargetsConcurrencyGuard.Increment() == 1);
-				UnresolvedTargets.Add(RTVResource, FUnresolvedRTInfo(NewRenderTargetsRHI[RenderTargetIndex].Texture->GetName(), RTMipIndex, 1, RTSliceIndex, 1));
-				check(UnresolvedTargetsConcurrencyGuard.Decrement() == 0);
-				RTVResource->Release();
-			}
-#endif
 			
 			// Unbind any shader views of the render target that are bound.
 			ConditionalClearShaderResource(NewRenderTarget, false);

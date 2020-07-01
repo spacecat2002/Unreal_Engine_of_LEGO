@@ -917,11 +917,6 @@ TD3D11Texture2D<BaseResourceType>* FD3D11DynamicRHI::CreateD3D11Texture2D(uint32
 
 	Texture2D->ResourceInfo.VRamAllocation = VRamAllocation;
 
-	if (Flags & TexCreate_RenderTargetable)
-	{
-		Texture2D->SetCurrentGPUAccess(EResourceTransitionAccess::EWritable);
-	}
-
 	D3D11TextureAllocated(*Texture2D);
 	
 #if !PLATFORM_HOLOLENS
@@ -1072,11 +1067,6 @@ FD3D11Texture3D* FD3D11DynamicRHI::CreateD3D11Texture3D(uint32 SizeX,uint32 Size
 	FD3D11Texture3D* Texture3D = new FD3D11Texture3D(this,TextureResource,ShaderResourceView,RenderTargetViews,SizeX,SizeY,SizeZ,NumMips,(EPixelFormat)Format,Flags, CreateInfo.ClearValueBinding);
 
 	Texture3D->ResourceInfo.VRamAllocation = VRamAllocation;
-
-	if (Flags & TexCreate_RenderTargetable)
-	{
-		Texture3D->SetCurrentGPUAccess(EResourceTransitionAccess::EWritable);
-	}
 
 	D3D11TextureAllocated(*Texture3D);
 #if !PLATFORM_HOLOLENS
@@ -2339,11 +2329,6 @@ TD3D11Texture2D<BaseResourceType>* FD3D11DynamicRHI::CreateTextureFromResource(b
 		ClearValueBinding
 		);
 
-	if (TexCreateFlags & TexCreate_RenderTargetable)
-	{
-		Texture2D->SetCurrentGPUAccess(EResourceTransitionAccess::EWritable);
-	}
-
 	D3D11TextureAllocated(*Texture2D);
 
 	return Texture2D;
@@ -2422,11 +2407,6 @@ TD3D11Texture2D<BaseResourceType>* FD3D11DynamicRHI::CreateAliasedD3D11Texture2D
 		/*bPooledTexture=*/ false,
 		static_cast<BaseResourceType*>(SourceTexture)->GetClearBinding()
 		);
-
-	if (SourceTexture->Flags & TexCreate_RenderTargetable)
-	{
-		Texture2D->SetCurrentGPUAccess(EResourceTransitionAccess::EWritable);
-	}
 
 	// We'll be the same size, since we're the same thing. Avoid the check in D3D11Resources.h (AliasResources).
 	Texture2D->SetMemorySize(SourceTexture->GetMemorySize());
