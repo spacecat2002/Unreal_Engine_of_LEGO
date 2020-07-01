@@ -1779,7 +1779,7 @@ struct FPackageExportTagger
 			{
 				UObject* Obj = ObjectsInPackage[Index];
 				// Allowed object that have any of the top level flags or have an assigned that we are saving
-				if (Obj->HasAnyFlags(TopLevelFlags))
+				if( Obj->HasAnyFlags(TopLevelFlags))
 				{
 					ExportTagger.ProcessBaseObject(Obj);
 				}
@@ -2147,6 +2147,21 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 
 #if WITH_EDITOR
 	TMap<UObject*, UObject*> ReplacedImportOuters;
+
+	// Add the external package flag when not cooking
+	if (TopLevelFlags != RF_NoFlags && !bIsCooking)
+	{
+		TopLevelFlags |= RF_HasExternalPackage;
+	}
+
+	// if the in memory package filename is different the filename we are saving it to,
+	// regenerate a new persistent id for it.
+	FString PackageFilename(Filename);
+	bool bIsValidLongPackageName = FPackageName::TryConvertFilenameToLongPackageName(PackageFilename, PackageFilename);
+	if (!bIsCooking && !InOuter->FileName.IsNone() && InOuter->FileName.ToString() != PackageFilename && !(SaveFlags & SAVE_FromAutosave))
+	{
+		InOuter->SetPersistentGuid(FGuid::NewGuid());
+	}
 #endif //WITH_EDITOR
 
 	const bool bSavingConcurrent = !!(SaveFlags & ESaveFlags::SAVE_Concurrent);
@@ -2907,7 +2922,8 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 						if( Obj->HasAnyMarks(OBJECTMARK_TagImp) )
 						{
 							// Make sure the package name of an import is referenced as it might be different than its outer
-							UPackage* ObjPackage = Obj->GetOutermost();
+							UPackage* ObjPackage = Obj->GetPackage();
+							check(ObjPackage);
 							NameMapSaver.MarkNameAsReferenced(ObjPackage->GetFName());
 
 							NameMapSaver.MarkNameAsReferenced(Obj->GetClass()->GetFName());
@@ -2942,7 +2958,7 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 								continue;
 							}
 
-							if(!Obj->HasAnyFlags(RF_Public) && !Obj->HasAnyFlags(RF_Transient))
+							if( !Obj->HasAnyFlags(RF_Public) && !Obj->HasAnyFlags(RF_Transient))
 							{
 								if (!IsEventDrivenLoaderEnabledInCookedBuilds() || !TargetPlatform || !ObjPackage->HasAnyPackageFlags(PKG_CompiledIn))
 								{
@@ -2951,7 +2967,7 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 							}
 
 							// See whether the object we are referencing is in another map package.
-							if(ObjPackage->ContainsMap())
+							if( ObjPackage->ContainsMap() )
 							{
 								if ( ObjPackage != Obj && Obj->GetFName() != NAME_PersistentLevel && Obj->GetClass()->GetFName() != SavePackageUtilities::NAME_World )
 								{
@@ -3357,6 +3373,7 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 				}
 				
 				// Sort exports for seek-free loading.
+				if (Linker->IsCooking() || Conform)
 				{
 					SCOPED_SAVETIMER(UPackage_Save_SortExportsForSeekFree);
 					COOK_STAT(FScopedDurationTimer SaveTimer(FSavePackageStats::SortExportsSeekfreeInnerTimeSec));
@@ -4603,7 +4620,7 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 						}
 
 						if (bComputeHash)
-						{							
+						{
 							SavePackageUtilities::IncrementOutstandingAsyncWrites();
 							AsyncWriteAndHashSequence.AddWork([NewPath](FMD5& State)
 							{
@@ -4724,6 +4741,14 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 
 		if (Success)
 		{
+			// if the save was successful, update the internal package filename path if we aren't currently cooking
+#if WITH_EDITOR
+			if (TargetPlatform == nullptr && bIsValidLongPackageName)
+			{
+				InOuter->FileName = *PackageFilename;
+			}
+#endif
+
 			auto HashCompletionFunc = [](FMD5& State)
 			{
 				FMD5Hash OutputHash;
