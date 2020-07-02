@@ -23,6 +23,7 @@ namespace EMeshPass
 	{
 		DepthPass,
 		BasePass,
+		AnisotropyPass,
 		SkyPass,
 		SingleLayerWaterPass,
 		CSMShadowDepth,
@@ -59,6 +60,7 @@ inline const TCHAR* GetMeshPassName(EMeshPass::Type MeshPass)
 	{
 	case EMeshPass::DepthPass: return TEXT("DepthPass");
 	case EMeshPass::BasePass: return TEXT("BasePass");
+	case EMeshPass::AnisotropyPass: return TEXT("AnisotropyPass");
 	case EMeshPass::SkyPass: return TEXT("SkyPass");
 	case EMeshPass::SingleLayerWaterPass: return TEXT("SingleLayerWaterPass");
 	case EMeshPass::CSMShadowDepth: return TEXT("CSMShadowDepth");

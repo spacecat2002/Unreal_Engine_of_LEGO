@@ -1605,6 +1605,7 @@ public:
 	virtual bool HasRoughnessConnected() const { return false; }
 	virtual bool HasSpecularConnected() const { return false; }
 	virtual bool HasEmissiveColorConnected() const { return false; }
+	virtual bool HasAnisotropyConnected() const { return false; }
 	virtual bool RequiresSynchronousCompilation() const { return false; };
 	virtual bool IsDefaultMaterial() const { return false; };
 	virtual int32 GetNumCustomizedUVs() const { return 0; }
@@ -2387,7 +2388,9 @@ public:
 	ENGINE_API virtual bool HasBaseColorConnected() const override;
 	ENGINE_API virtual bool HasNormalConnected() const override;
 	ENGINE_API virtual bool HasRoughnessConnected() const override;
-	ENGINE_API virtual bool HasSpecularConnected() const override;	ENGINE_API virtual bool HasEmissiveColorConnected() const override;
+	ENGINE_API virtual bool HasSpecularConnected() const override;	
+	ENGINE_API virtual bool HasEmissiveColorConnected() const override;
+	ENGINE_API virtual bool HasAnisotropyConnected() const override;
 	ENGINE_API virtual FMaterialShadingModelField GetShadingModels() const override;
 	ENGINE_API virtual bool IsShadingModelFromMaterialExpression() const override;
 	ENGINE_API virtual enum ETranslucencyLightingMode GetTranslucencyLightingMode() const override;
@@ -2952,6 +2955,7 @@ struct FMaterialShaderParameters
 			uint64 bWritesEveryPixelShadowPass : 1;
 			uint64 bHasNormalConnected : 1;
 			uint64 bHasEmissiveColorConnected : 1;
+			uint64 bHasAnisotropyConnected : 1;
 			uint64 bHasVertexPositionOffsetConnected : 1;
 			uint64 bHasPixelDepthOffsetConnected : 1;
 			uint64 bMaterialMayModifyMeshPosition : 1;
@@ -3016,6 +3020,7 @@ struct FMaterialShaderParameters
 		bWritesEveryPixelShadowPass = InMaterial->WritesEveryPixel(true);
 		bHasNormalConnected = InMaterial->HasNormalConnected();
 		bHasEmissiveColorConnected = InMaterial->HasEmissiveColorConnected();
+		bHasAnisotropyConnected = InMaterial->HasAnisotropyConnected();
 		bHasVertexPositionOffsetConnected = InMaterial->HasVertexPositionOffsetConnected();
 		bHasPixelDepthOffsetConnected = InMaterial->HasPixelDepthOffsetConnected();
 		bMaterialMayModifyMeshPosition = InMaterial->MaterialMayModifyMeshPosition();

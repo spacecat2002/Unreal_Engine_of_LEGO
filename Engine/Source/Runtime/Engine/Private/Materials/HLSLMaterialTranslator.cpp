@@ -106,6 +106,7 @@ FHLSLMaterialTranslator::FHLSLMaterialTranslator(FMaterial* InMaterial,
 ,	bIsFullyRough(0)
 ,	bAllowCodeChunkGeneration(true)
 ,	bUsesPerInstanceCustomData(false)
+,	bUsesAnisotropy(false)
 ,	AllocatedUserTexCoords()
 ,	AllocatedUserVertexTexCoords()
 ,	DynamicParticleParameterMask(0)
@@ -815,6 +816,8 @@ bool FHLSLMaterialTranslator::Translate()
 		// Fully rough if we have a roughness code chunk and it's constant and evaluates to 1.
 		bIsFullyRough = Chunk[MP_Roughness] != INDEX_NONE && IsMaterialPropertyUsed(MP_Roughness, Chunk[MP_Roughness], FLinearColor(1, 0, 0, 0), 1) == false;
 
+		bUsesAnisotropy = IsMaterialPropertyUsed(MP_Anisotropy, Chunk[MP_Anisotropy], FLinearColor(0, 0, 0, 0), 1);
+
 		if (BlendMode == BLEND_Modulate && MaterialShadingModels.IsLit() && !Material->IsDeferredDecal())
 		{
 			Errorf(TEXT("Dynamically lit translucency is not supported for BLEND_Modulate materials."));
@@ -1232,6 +1235,7 @@ void FHLSLMaterialTranslator::GetMaterialEnvironment(EShaderPlatform InPlatform,
 	OutEnvironment.SetDefine(TEXT("MATERIAL_IS_SKY"), Material->IsSky());
 	OutEnvironment.SetDefine(TEXT("MATERIAL_COMPUTE_FOG_PER_PIXEL"), Material->ComputeFogPerPixel());
 	OutEnvironment.SetDefine(TEXT("MATERIAL_FULLY_ROUGH"), bIsFullyRough || Material->IsFullyRough());
+	OutEnvironment.SetDefine(TEXT("MATERIAL_USES_ANISOTROPY"), bUsesAnisotropy);
 
 	// Count the number of VTStacks (each stack will allocate a feedback slot)
 	OutEnvironment.SetDefine(TEXT("NUM_VIRTUALTEXTURE_SAMPLES"), VTStacks.Num());
@@ -4885,28 +4889,6 @@ void FHLSLMaterialTranslator::UseSceneTextureId(ESceneTextureId SceneTextureId, 
 		if (Material->GetMaterialDomain() != MD_PostProcess)
 		{
 			Errorf(TEXT("Velocity scene textures are only available in post process materials."));
-		}
-	}
-
-	if (SceneTextureId == PPI_WorldTangent)
-	{
-		static IConsoleVariable* AnisotropicBRDF = IConsoleManager::Get().FindConsoleVariable(TEXT("r.AnisotropicBRDF"));
-		static bool bIsPopulatingDDC = FString(FCommandLine::Get()).Contains(TEXT("Run=DerivedDataCache"));
-
-		if (!bIsPopulatingDDC && (!AnisotropicBRDF || !AnisotropicBRDF->GetBool()))
-		{
-			Errorf(TEXT("World Tangent scene texture is only available when using anisotropic BRDF."));
-		}
-	}
-
-	if (SceneTextureId == PPI_Anisotropy)
-	{
-		static IConsoleVariable* AnisotropicBRDF = IConsoleManager::Get().FindConsoleVariable(TEXT("r.AnisotropicBRDF"));
-		static bool bIsPopulatingDDC = FString(FCommandLine::Get()).Contains(TEXT("Run=DerivedDataCache"));
-
-		if (!bIsPopulatingDDC && (!AnisotropicBRDF || !AnisotropicBRDF->GetBool()))
-		{
-			Errorf(TEXT("Anisotropy scene texture is only available when using anisotropic BRDF."));
 		}
 	}
 

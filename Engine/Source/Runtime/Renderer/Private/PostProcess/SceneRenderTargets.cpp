@@ -302,7 +302,6 @@ FSceneRenderTargets::FSceneRenderTargets(const FViewInfo& View, const FSceneRend
 	, bHMDAllocatedDepthTarget(SnapshotSource.bHMDAllocatedDepthTarget)
 	, bKeepDepthContent(SnapshotSource.bKeepDepthContent)
 	, bAllocatedFoveationTexture(SnapshotSource.bAllocatedFoveationTexture)
-	, bAllowTangentGBuffer(SnapshotSource.bAllowTangentGBuffer)
 {
 	FMemory::Memcpy(LargestDesiredSizes, SnapshotSource.LargestDesiredSizes);
 #if PREVENT_RENDERTARGET_SIZE_THRASHING
@@ -758,7 +757,7 @@ void FSceneRenderTargets::FinishRenderingSceneColor(FRHICommandList& RHICmdList)
 	RHICmdList.EndRenderPass();
 }
 
-int32 FSceneRenderTargets::GetGBufferRenderTargets(const TRefCountPtr<IPooledRenderTarget>* OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex, int32& OutTangentRTIndex) const
+int32 FSceneRenderTargets::GetGBufferRenderTargets(const TRefCountPtr<IPooledRenderTarget>* OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex) const
 {
 	int32 MRTCount = 0;
 	OutRenderTargets[MRTCount++] = &GetSceneColor();
@@ -786,25 +785,13 @@ int32 FSceneRenderTargets::GetGBufferRenderTargets(const TRefCountPtr<IPooledRen
 		OutVelocityRTIndex = -1;
 	}
 
-	if (bUseGBuffer && bAllowTangentGBuffer)
-	{
-		check(!bAllocateVelocityGBuffer);
-		OutTangentRTIndex = MRTCount;
-
-		OutRenderTargets[MRTCount++] = &GBufferF;
-	}
-	else
-	{
-		OutTangentRTIndex = -1;
-	}
-
 	if (bUseGBuffer)
 	{
 		OutRenderTargets[MRTCount++] = &GBufferD;
 
 		if (bAllowStaticLighting)
 		{
-			check(MRTCount == (bAllocateVelocityGBuffer || bAllowTangentGBuffer ? 6 : 5)); // As defined in BasePassPixelShader.usf
+			check(MRTCount == (bAllocateVelocityGBuffer ? 6 : 5)); // As defined in BasePassPixelShader.usf
 			OutRenderTargets[MRTCount++] = &GBufferE;
 		}
 	}
@@ -813,10 +800,10 @@ int32 FSceneRenderTargets::GetGBufferRenderTargets(const TRefCountPtr<IPooledRen
 	return MRTCount;
 }
 
-int32 FSceneRenderTargets::FillGBufferRenderPassInfo(ERenderTargetLoadAction ColorLoadAction, FRHIRenderPassInfo& OutRenderPassInfo, int32& OutVelocityRTIndex, int32& OutTangentRTIndex) const
+int32 FSceneRenderTargets::FillGBufferRenderPassInfo(ERenderTargetLoadAction ColorLoadAction, FRHIRenderPassInfo& OutRenderPassInfo, int32& OutVelocityRTIndex) const
 {
 	const TRefCountPtr<IPooledRenderTarget>* RenderTargets[MaxSimultaneousRenderTargets];
-	int32 MRTCount = GetGBufferRenderTargets(RenderTargets, OutVelocityRTIndex, OutTangentRTIndex);
+	int32 MRTCount = GetGBufferRenderTargets(RenderTargets, OutVelocityRTIndex);
 
 	for (int32 MRTIdx = 0; MRTIdx < MRTCount; ++MRTIdx)
 	{
@@ -829,10 +816,10 @@ int32 FSceneRenderTargets::FillGBufferRenderPassInfo(ERenderTargetLoadAction Col
 	return MRTCount;
 }
 
-int32 FSceneRenderTargets::GetGBufferRenderTargets(ERenderTargetLoadAction ColorLoadAction, FRHIRenderTargetView OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex, int32& OutTangentRTIndex) const
+int32 FSceneRenderTargets::GetGBufferRenderTargets(ERenderTargetLoadAction ColorLoadAction, FRHIRenderTargetView OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex) const
 {
 	const TRefCountPtr<IPooledRenderTarget>* RenderTargets[MaxSimultaneousRenderTargets];
-	int32 MRTCount = GetGBufferRenderTargets(RenderTargets, OutVelocityRTIndex, OutTangentRTIndex);
+	int32 MRTCount = GetGBufferRenderTargets(RenderTargets, OutVelocityRTIndex);
 
 	for (int32 MRTIdx = 0; MRTIdx < MRTCount; ++MRTIdx)
 	{
@@ -842,10 +829,10 @@ int32 FSceneRenderTargets::GetGBufferRenderTargets(ERenderTargetLoadAction Color
 	return MRTCount;
 }
 
-int32 FSceneRenderTargets::GetGBufferRenderTargets(FRDGBuilder& GraphBuilder, ERenderTargetLoadAction ColorLoadAction, FRenderTargetBinding OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex, int32& OutTangentRTIndex) const
+int32 FSceneRenderTargets::GetGBufferRenderTargets(FRDGBuilder& GraphBuilder, ERenderTargetLoadAction ColorLoadAction, FRenderTargetBinding OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex) const
 {
 	const TRefCountPtr<IPooledRenderTarget>* RenderTargets[MaxSimultaneousRenderTargets];
-	int32 MRTCount = GetGBufferRenderTargets(RenderTargets, OutVelocityRTIndex, OutTangentRTIndex);
+	int32 MRTCount = GetGBufferRenderTargets(RenderTargets, OutVelocityRTIndex);
 
 	for (int32 MRTIdx = 0; MRTIdx < MRTCount; ++MRTIdx)
 	{
@@ -858,9 +845,8 @@ int32 FSceneRenderTargets::GetGBufferRenderTargets(FRDGBuilder& GraphBuilder, ER
 int32 FSceneRenderTargets::GetGBufferRenderTargets(FRDGBuilder& GraphBuilder, ERenderTargetLoadAction ColorLoadAction, FRenderTargetBindingSlots& OutRenderTargets) const
 {
 	int32 OutVelocityRTIndex = -1;
-	int32 OutTangentRTIndex = -1;
 	const TRefCountPtr<IPooledRenderTarget>* RenderTargets[MaxSimultaneousRenderTargets];
-	const int32 Count = GetGBufferRenderTargets(RenderTargets, OutVelocityRTIndex, OutTangentRTIndex);
+	const int32 Count = GetGBufferRenderTargets(RenderTargets, OutVelocityRTIndex);
 
 	for (int32 Index = 0; Index < Count; ++Index)
 	{
@@ -897,7 +883,7 @@ int32 FSceneRenderTargets::GetQuadOverdrawUAVIndex(EShaderPlatform Platform, ERH
 	}
 	else // GBuffer
 	{
-		return FVelocityRendering::BasePassCanOutputVelocity(FeatureLevel) || BasePassCanOutputTangent(FeatureLevel) ? 7 : 6;
+		return FVelocityRendering::BasePassCanOutputVelocity(FeatureLevel) ? 7 : 6;
 	}
 }
 #endif // !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
@@ -966,9 +952,8 @@ void FSceneRenderTargets::BeginRenderingGBuffer(FRHICommandList& RHICmdList, ERe
 	}
 
 	int32 VelocityRTIndex = -1;
-	int32 TangentRTIndex = -1;
 	FRHIRenderPassInfo RPInfo;
-	int32 MRTCount = FillGBufferRenderPassInfo(ColorLoadAction, RPInfo, VelocityRTIndex, TangentRTIndex);
+	int32 MRTCount = FillGBufferRenderPassInfo(ColorLoadAction, RPInfo, VelocityRTIndex);
 
 	//make sure our conditions for shader clear fallback are valid.
 	check(RPInfo.ColorRenderTargets[0].RenderTarget == SceneColorTex);
@@ -1044,9 +1029,8 @@ void FSceneRenderTargets::FinishGBufferPassAndResolve(FRHICommandListImmediate& 
 	}
 
 	int32 VelocityRTIndex = -1;
-	int32 TangentRTIndex = -1;
 	FRHIRenderTargetView RenderTargets[MaxSimultaneousRenderTargets];
-	int32 NumMRTs = GetGBufferRenderTargets(ERenderTargetLoadAction::ELoad, RenderTargets, VelocityRTIndex, TangentRTIndex);
+	int32 NumMRTs = GetGBufferRenderTargets(ERenderTargetLoadAction::ELoad, RenderTargets, VelocityRTIndex);
 
 	FResolveParams ResolveParams;
 
@@ -1080,7 +1064,7 @@ int32 FSceneRenderTargets::GetNumGBufferTargets() const
 			NumGBufferTargets = bAllowStaticLighting ? 6 : 5;
 		}
 
-		if (bAllocateVelocityGBuffer || bAllowTangentGBuffer)
+		if (bAllocateVelocityGBuffer)
 		{
 			++NumGBufferTargets;
 		}
@@ -1202,7 +1186,6 @@ void FSceneRenderTargets::ReleaseGBufferTargets()
 void FSceneRenderTargets::PreallocGBufferTargets()
 {
 	bAllocateVelocityGBuffer = FVelocityRendering::BasePassCanOutputVelocity(CurrentFeatureLevel);
-	bAllowTangentGBuffer = BasePassCanOutputTangent(CurrentFeatureLevel);
 }
 
 EPixelFormat FSceneRenderTargets::GetGBufferAFormat() const
@@ -1327,14 +1310,6 @@ void FSceneRenderTargets::AllocGBufferTargets(FRHICommandList& RHICmdList)
 			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, GetGBufferEFormat(), FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource, false));
 			Desc.Flags |= GFastVRamConfig.GBufferE;
 			GRenderTargetPool.FindFreeElement(RHICmdList, Desc, GBufferE, TEXT("GBufferE"));
-		}
-
-		// Create the world-space tangent g-buffer.
-		if (bAllowTangentGBuffer)
-		{
-			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, GetGBufferFFormat(), FClearValueBinding({0.5f, 0.5f, 0.5f, 0.5f}), TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource, false));
-			Desc.Flags |= GFastVRamConfig.GBufferF;
-			GRenderTargetPool.FindFreeElement(RHICmdList, Desc, GBufferF, TEXT("GBufferF"));
 		}
 
 		// otherwise we have a severe problem
@@ -2058,6 +2033,20 @@ void FSceneRenderTargets::AllocateDeferredShadingPathRenderTargets(FRHICommandLi
 	AllocateVirtualTextureFeedbackBuffer(RHICmdList);
 
 	AllocateDebugViewModeTargets(RHICmdList);
+}
+
+void FSceneRenderTargets::AllocateAnisotropyTarget(FRHICommandListImmediate& RHICmdList)
+{
+	FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(
+		BufferSize, 
+		GetGBufferFFormat(), 
+		FClearValueBinding({ 0.5f, 0.5f, 0.5f, 0.5f }), 
+		TexCreate_None, 
+		TexCreate_RenderTargetable | TexCreate_ShaderResource, 
+		false));
+
+	Desc.Flags |= GFastVRamConfig.GBufferF;
+	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, GBufferF, TEXT("GBufferF"));
 }
 
 EPixelFormat FSceneRenderTargets::GetDesiredMobileSceneColorFormat() const

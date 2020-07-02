@@ -23,7 +23,7 @@ FSceneTextureParameters GetSceneTextureParameters(FRDGBuilder& GraphBuilder)
 	Parameters.GBufferCTexture = TryRegisterExternalTexture(GraphBuilder, SceneContext.GBufferC);
 	Parameters.GBufferDTexture = TryRegisterExternalTexture(GraphBuilder, SceneContext.GBufferD);
 	Parameters.GBufferETexture = TryRegisterExternalTexture(GraphBuilder, SceneContext.GBufferE);
-	Parameters.GBufferFTexture = TryRegisterExternalTexture(GraphBuilder, SceneContext.GBufferF);
+	Parameters.GBufferFTexture = RegisterExternalTextureWithFallback(GraphBuilder, SceneContext.GBufferF, GSystemTextures.BlackDummy);
 
 	return Parameters;
 }

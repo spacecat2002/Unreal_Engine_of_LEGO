@@ -356,6 +356,8 @@ DECLARE_CYCLE_STAT(TEXT("FXPreRender"), STAT_CLM_FXPreRender, STATGROUP_CommandL
 DECLARE_CYCLE_STAT(TEXT("AfterPrePass"), STAT_CLM_AfterPrePass, STATGROUP_CommandListMarkers);
 DECLARE_CYCLE_STAT(TEXT("BasePass"), STAT_CLM_BasePass, STATGROUP_CommandListMarkers);
 DECLARE_CYCLE_STAT(TEXT("AfterBasePass"), STAT_CLM_AfterBasePass, STATGROUP_CommandListMarkers);
+DECLARE_CYCLE_STAT(TEXT("AnisotropyPass"), STAT_CLM_AnisotropyPass, STATGROUP_CommandListMarkers);
+DECLARE_CYCLE_STAT(TEXT("AfterAnisotropyPass"), STAT_CLM_AfterAnisotropyPass, STATGROUP_CommandListMarkers);
 DECLARE_CYCLE_STAT(TEXT("Lighting"), STAT_CLM_Lighting, STATGROUP_CommandListMarkers);
 DECLARE_CYCLE_STAT(TEXT("AfterLighting"), STAT_CLM_AfterLighting, STATGROUP_CommandListMarkers);
 DECLARE_CYCLE_STAT(TEXT("WaterPass"), STAT_CLM_WaterPass, STATGROUP_CommandListMarkers);
@@ -2150,6 +2152,17 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_Resolve_After_Basepass);
 		// Will early return if simple forward
 		SceneContext.FinishGBufferPassAndResolve(RHICmdList, BasePassDepthStencilAccess);
+	}
+
+	if (ShouldRenderAnisotropyPass())
+	{
+		RHICmdList.SetCurrentStat(GET_STATID(STAT_CLM_AnisotropyPass));
+
+		FRDGBuilder GraphBuilder(RHICmdList);
+		FRDGTextureRef SceneDepthTexture = GraphBuilder.RegisterExternalTexture(SceneContext.SceneDepthZ, ERenderTargetTexture::ShaderResource);
+		RenderAnisotropyPass(GraphBuilder, SceneDepthTexture, bDoParallelBasePass);
+		RHICmdList.SetCurrentStat(GET_STATID(STAT_CLM_AfterAnisotropyPass));
+		GraphBuilder.Execute();
 	}
 
 	if (!bAllowReadonlyDepthBasePass)

@@ -1378,6 +1378,11 @@ bool FMaterialResource::HasEmissiveColorConnected() const
 	return HasMaterialAttributesConnected() || Material->HasEmissiveColorConnected();
 }
 
+bool FMaterialResource::HasAnisotropyConnected() const
+{
+	return HasMaterialAttributesConnected() || Material->HasAnisotropyConnected();
+}
+
 bool FMaterialResource::RequiresSynchronousCompilation() const
 {
 	return Material->IsDefaultMaterial();

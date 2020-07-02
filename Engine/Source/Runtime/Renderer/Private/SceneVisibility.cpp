@@ -2240,6 +2240,11 @@ struct FRelevancePacket
 								DrawCommandPacket.AddCommandsForMesh(PrimitiveIndex, PrimitiveSceneInfo, StaticMeshRelevance, StaticMesh, Scene, bCanCache, EMeshPass::BasePass);
 								MarkMask |= EMarkMaskBits::StaticMeshVisibilityMapMask;
 
+								if (StaticMeshRelevance.bUseAnisotropy)
+								{
+									DrawCommandPacket.AddCommandsForMesh(PrimitiveIndex, PrimitiveSceneInfo, StaticMeshRelevance, StaticMesh, Scene, bCanCache, EMeshPass::AnisotropyPass);
+								}
+
 								if (ShadingPath == EShadingPath::Mobile)
 								{
 									DrawCommandPacket.AddCommandsForMesh(PrimitiveIndex, PrimitiveSceneInfo, StaticMeshRelevance, StaticMesh, Scene, bCanCache, EMeshPass::MobileBasePassCSM);
@@ -2661,6 +2666,12 @@ void ComputeDynamicMeshRelevance(EShadingPath ShadingPath, bool bAddLightmapDens
 		{
 			PassMask.Set(EMeshPass::BasePass);
 			View.NumVisibleDynamicMeshElements[EMeshPass::BasePass] += NumElements;
+
+			if (ViewRelevance.bUsesAnisotropy)
+			{
+				PassMask.Set(EMeshPass::AnisotropyPass);
+				View.NumVisibleDynamicMeshElements[EMeshPass::AnisotropyPass] += NumElements;
+			}
 
 			if (ShadingPath == EShadingPath::Mobile)
 			{

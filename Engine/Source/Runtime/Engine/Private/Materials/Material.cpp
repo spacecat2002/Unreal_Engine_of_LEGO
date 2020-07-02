@@ -5689,9 +5689,6 @@ static bool IsPropertyActive_Internal(EMaterialProperty InProperty,
 	bool bHasRefraction,
 	bool bUsesShadingModelFromMaterialExpression)
 {
-	static const auto CVarAnisotropicBRDF = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.AnisotropicBRDF"));
-	bool bAnisotropicBRDF = CVarAnisotropicBRDF && CVarAnisotropicBRDF->GetValueOnAnyThread();
-	
 	if (Domain == MD_PostProcess)
 	{
 		return InProperty == MP_EmissiveColor || (bBlendableOutputAlpha && InProperty == MP_Opacity);
@@ -5705,10 +5702,10 @@ static bool IsPropertyActive_Internal(EMaterialProperty InProperty,
 	{
 		return InProperty == MP_BaseColor 
 			|| InProperty == MP_Roughness
-			|| (InProperty == MP_Anisotropy && bAnisotropicBRDF)
+			|| InProperty == MP_Anisotropy
 			|| InProperty == MP_Specular 
 			|| InProperty == MP_Normal
-			|| (InProperty == MP_Tangent && bAnisotropicBRDF)
+			|| InProperty == MP_Tangent
 			|| (InProperty == MP_Opacity && IsTranslucentBlendMode(BlendMode) && BlendMode != BLEND_Modulate);
 	}
 	else if (Domain == MD_DeferredDecal)
@@ -5898,7 +5895,7 @@ static bool IsPropertyActive_Internal(EMaterialProperty InProperty,
 		Active = ShadingModels.IsLit() && (!bIsTranslucentBlendMode || !bIsVolumetricTranslucencyLightingMode);
 		break;
 	case MP_Anisotropy:
-		Active = bAnisotropicBRDF && ShadingModels.HasAnyShadingModel({ MSM_DefaultLit, MSM_ClearCoat }) && (!bIsTranslucentBlendMode || !bIsVolumetricTranslucencyLightingMode);
+		Active = ShadingModels.HasAnyShadingModel({ MSM_DefaultLit, MSM_ClearCoat }) && (!bIsTranslucentBlendMode || !bIsVolumetricTranslucencyLightingMode);
 		break;
 	case MP_Metallic:
 		// Subsurface models store opacity in place of Metallic in the GBuffer
@@ -5908,7 +5905,7 @@ static bool IsPropertyActive_Internal(EMaterialProperty InProperty,
 		Active = (ShadingModels.IsLit() && (!bIsTranslucentBlendMode || !bIsNonDirectionalTranslucencyLightingMode)) || bHasRefraction;
 		break;
 	case MP_Tangent:
-		Active = bAnisotropicBRDF && ShadingModels.HasAnyShadingModel({ MSM_DefaultLit, MSM_ClearCoat }) && (!bIsTranslucentBlendMode || !bIsVolumetricTranslucencyLightingMode);
+		Active = ShadingModels.HasAnyShadingModel({ MSM_DefaultLit, MSM_ClearCoat }) && (!bIsTranslucentBlendMode || !bIsVolumetricTranslucencyLightingMode);
 		break;
 	case MP_SubsurfaceColor:
 		Active = ShadingModels.HasAnyShadingModel({ MSM_Subsurface, MSM_PreintegratedSkin, MSM_TwoSidedFoliage, MSM_Cloth });

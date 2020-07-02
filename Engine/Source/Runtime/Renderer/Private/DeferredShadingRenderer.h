@@ -103,6 +103,14 @@ public:
 	*/
 	bool RenderBasePass(FRHICommandListImmediate& RHICmdList, FExclusiveDepthStencil::Type BasePassDepthStencilAccess, IPooledRenderTarget* ForwardScreenSpaceShadowMask, bool bParallelBasePass, bool bRenderLightmapDensity);
 
+	bool ShouldRenderAnisotropyPass() const;
+
+	void RenderAnisotropyPass(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SceneDepthTexture,
+		bool bDoParallelPass
+		);
+
 	void RenderSingleLayerWater(
 		FRDGBuilder& GraphBuilder,
 		FRDGTextureMSAA SceneColorTexture,

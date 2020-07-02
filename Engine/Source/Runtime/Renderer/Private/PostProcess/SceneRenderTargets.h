@@ -186,8 +186,7 @@ protected:
 		DefaultDepthClear(FClearValueBinding::DepthFar),
 		bHMDAllocatedDepthTarget(false),
 		bKeepDepthContent(true),
-		bAllocatedFoveationTexture(false),
-		bAllowTangentGBuffer(false)
+		bAllocatedFoveationTexture(false)
 		{
 			FMemory::Memset(LargestDesiredSizes, 0);
 #if PREVENT_RENDERTARGET_SIZE_THRASHING
@@ -578,19 +577,22 @@ public:
 	// Temporarily Public to call from DefferedShaderRenderer to attempt recovery from a crash until cause is found.
 	void AllocateDeferredShadingPathRenderTargets(FRHICommandListImmediate& RHICmdList, const int32 NumViews = 1);
 
+	void AllocateAnisotropyTarget(FRHICommandListImmediate& RHICmdList);
+
 	/** Fills the given FRenderPassInfo with the current GBuffer */
-	int32 FillGBufferRenderPassInfo(ERenderTargetLoadAction ColorLoadAction, FRHIRenderPassInfo& OutRenderPassInfo, int32& OutVelocityRTIndex, int32& OutTangentRTIndex) const;
+	int32 FillGBufferRenderPassInfo(ERenderTargetLoadAction ColorLoadAction, FRHIRenderPassInfo& OutRenderPassInfo, int32& OutVelocityRTIndex) const;
 
 	/** Gets all GBuffers to use.  Returns the number actually used. */
-	int32 GetGBufferRenderTargets(const TRefCountPtr<IPooledRenderTarget>* OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex, int32& OutTangentRTIndex) const;
-	int32 GetGBufferRenderTargets(ERenderTargetLoadAction ColorLoadAction, FRHIRenderTargetView OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex, int32& OutTangentRTIndex) const;
-	int32 GetGBufferRenderTargets(FRDGBuilder& GraphBuilder, ERenderTargetLoadAction ColorLoadAction, FRenderTargetBinding OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex, int32& OutTangentRTIndex) const;
+	int32 GetGBufferRenderTargets(const TRefCountPtr<IPooledRenderTarget>* OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex) const;
+	int32 GetGBufferRenderTargets(ERenderTargetLoadAction ColorLoadAction, FRHIRenderTargetView OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex) const;
+	int32 GetGBufferRenderTargets(FRDGBuilder& GraphBuilder, ERenderTargetLoadAction ColorLoadAction, FRenderTargetBinding OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex) const;
 	int32 GetGBufferRenderTargets(FRDGBuilder& GraphBuilder, ERenderTargetLoadAction ColorLoadAction, FRenderTargetBindingSlots& OutRenderTargets) const;
 
 private:
 
 	/** Allocates render targets for use with the current shading path. */
 	void AllocateRenderTargets(FRHICommandListImmediate& RHICmdList, const int32 NumViews);
+
 
 	/** Allocates common depth render targets that are used by both mobile and deferred rendering paths */
 	void AllocateCommonDepthTargets(FRHICommandList& RHICmdList);
@@ -719,9 +721,6 @@ private:
 
 	/** True if the a variable resolution texture is allocated to control sampling or shading rate */
 	bool bAllocatedFoveationTexture;
-
-	/** True if base pass is allowed to emit tangent vector */
-	bool bAllowTangentGBuffer;
 
 	/** CAUTION: When adding new data, make sure you copy it in the snapshot constructor! **/
 

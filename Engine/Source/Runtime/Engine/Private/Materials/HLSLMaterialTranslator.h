@@ -289,6 +289,9 @@ protected:
 	/** True if this material reads any per-instance custom data */
 	uint32 bUsesPerInstanceCustomData : 1;
 
+	/** True if this material write anisotropy material property */
+	uint32 bUsesAnisotropy : 1;
+
 	/** Tracks the texture coordinates used by this material. */
 	TBitArray<> AllocatedUserTexCoords;
 	/** Tracks the texture coordinates used by the vertex shader in this material. */

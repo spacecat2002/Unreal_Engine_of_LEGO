@@ -155,6 +155,8 @@ FMaterialRelevance UMaterialInterface::GetRelevance_Internal(const UMaterial* Ma
 		const bool bUsesSingleLayerWaterMaterial = MaterialResource->GetShadingModels().HasShadingModel(MSM_SingleLayerWater);
 		const bool IsSinglePassWaterTranslucent = bIsMobile && bUsesSingleLayerWaterMaterial;
 
+		const bool bUsesAnisotropy = MaterialResource->GetShadingModels().HasAnyShadingModel({MSM_DefaultLit, MSM_ClearCoat}) && MaterialResource->HasAnisotropyConnected();
+
 		const EBlendMode BlendMode = (EBlendMode)GetBlendMode();
 		const bool bIsTranslucent = IsTranslucentBlendMode(BlendMode) || IsSinglePassWaterTranslucent; // We want meshes with water materials to be scheduled for translucent pass on mobile.
 
@@ -203,6 +205,7 @@ FMaterialRelevance UMaterialInterface::GetRelevance_Internal(const UMaterial* Ma
 			MaterialRelevance.bUsesCustomDepthStencil = MaterialResource->UsesCustomDepthStencil_GameThread();
 			MaterialRelevance.bUsesSkyMaterial = Material->bIsSky;
 			MaterialRelevance.bUsesSingleLayerWaterMaterial = bUsesSingleLayerWaterMaterial;
+			MaterialRelevance.bUsesAnisotropy = bUsesAnisotropy;
 		}
 		return MaterialRelevance;
 	}

@@ -311,14 +311,6 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ToolTip = "Use a separate normal map for the bottom layer of a clear coat material. This is a higher quality feature that is expensive."))
 	uint32 bClearCoatEnableSecondNormal : 1;
 
-	UPROPERTY(config, EditAnywhere, Category = Materials, meta = (
-		DisplayName = "Use anisotropic BRDF (Beta)",
-		ConsoleVariable = "r.AnisotropicBRDF",
-		EditCondition = "!bBasePassOutputsVelocity || bAnisotropicBRDF && bBasePassOutputsVelocity",
-		ConfigRestartRequired = true,
-		ToolTip = "Uses an anisotropic BRDF for default lit and clear coat surface materials. Changing this setting requires restarting the editor.\n\nNote: can only be enabled if 'Output velocities during base pass' (r.BasePassOutputsVelocity) is disabled."))
-	uint32 bAnisotropicBRDF : 1;
-
 	UPROPERTY(config, EditAnywhere, Category = Reflections, meta = (
 		ConsoleVariable = "r.ReflectionCaptureResolution", DisplayName = "Reflection Capture Resolution",
 		ToolTip = "The cubemap resolution for all reflection capture probes. Must be power of 2. Note that for very high values the memory and performance impact may be severe."))
@@ -537,9 +529,8 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 	UPROPERTY(config, EditAnywhere, Category=Optimizations, meta=(
 		DisplayName="Output velocities during base pass",
 		ConsoleVariable="r.BasePassOutputsVelocity",
-		EditCondition = "!bAnisotropicBRDF || bAnisotropicBRDF && bBasePassOutputsVelocity",
 		ConfigRestartRequired = true,
-		ToolTip="Enables emitting velocity during Base Pass rendering. Changing this setting requires restarting the editor.\n\nNote: can only be enabled if 'Use anisotropic BRDF' (r.AnisotropicBRDF) is disabled.\nNote: enabling this behaves as if 'Output velocities due to vertex deformation' (r.VertexDeformationOutputsVelocity) is also enabled."
+		ToolTip="Enables emitting velocity during Base Pass rendering. Changing this setting requires restarting the editor.\nNote: enabling this behaves as if 'Output velocities due to vertex deformation' (r.VertexDeformationOutputsVelocity) is also enabled."
 		))
 	uint32 bBasePassOutputsVelocity:1;
 

@@ -37,6 +37,7 @@ struct ENGINE_API FMaterialRelevance
 			uint8 bUsesCustomDepthStencil : 1;
 			uint8 bUsesDistanceCullFade : 1;
 			uint8 bDisableDepthTest : 1;
+			uint8 bUsesAnisotropy : 1;
 		};
 		uint64 Raw;
 	};

@@ -2323,14 +2323,6 @@ static TAutoConsoleVariable<int32> CVarAllowStaticLighting(
 	TEXT("Games that only use dynamic lighting should set this to 0 to save some static lighting overhead."),
 	ECVF_ReadOnly | ECVF_RenderThreadSafe);
 
-// Changing this causes a full shader recompile
-static TAutoConsoleVariable<int32> CVarAnisotropicBRDF(
-	TEXT("r.AnisotropicBRDF"),
-	0,
-	TEXT("Whether anisotropic BRDF is enabled. Default = 0\n")
-	TEXT("Note: base pass will only use the anisotropic BRDF if r.BasePassOutputsVelocity = 0"),
-	ECVF_ReadOnly | ECVF_RenderThreadSafe);
-
 static TAutoConsoleVariable<int32> CVarNormalMaps(
 	TEXT("r.NormalMapsForStaticLighting"),
 	0,

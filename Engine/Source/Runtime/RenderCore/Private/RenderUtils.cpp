@@ -1120,9 +1120,6 @@ static_assert(SP_NumPlatforms <= sizeof(GDBufferPlatformMask) * 8, "GDBufferPlat
 RENDERCORE_API uint64 GBasePassVelocityPlatformMask = 0;
 static_assert(SP_NumPlatforms <= sizeof(GBasePassVelocityPlatformMask) * 8, "GBasePassVelocityPlatformMask must be large enough to support all shader platforms");
 
-RENDERCORE_API uint64 GAnisotropicBRDFPlatformMask = 0;
-static_assert(SP_NumPlatforms <= sizeof(GAnisotropicBRDFPlatformMask) * 8, "GAnisotropicBRDFPlatformMask must be large enough to support all shader platforms");
-
 RENDERCORE_API uint64 GSelectiveBasePassOutputsPlatformMask = 0;
 static_assert(SP_NumPlatforms <= sizeof(GSelectiveBasePassOutputsPlatformMask) * 8, "GSelectiveBasePassOutputsPlatformMask must be large enough to support all shader platforms");
 
@@ -1149,12 +1146,6 @@ RENDERCORE_API void RenderUtilsInit()
 	if (BasePassVelocityCVar && BasePassVelocityCVar->GetInt())
 	{
 		GBasePassVelocityPlatformMask = ~0ull;
-	}
-
-	static const IConsoleVariable* AnisotropicBRDFCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.AnisotropicBRDF"));
-	if (AnisotropicBRDFCVar && AnisotropicBRDFCVar->GetInt())
-	{
-		GAnisotropicBRDFPlatformMask = ~0ull;
 	}
 
 	static IConsoleVariable* SelectiveBasePassOutputsCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.SelectiveBasePassOutputs"));
@@ -1213,15 +1204,6 @@ RENDERCORE_API void RenderUtilsInit()
 				else
 				{
 					GBasePassVelocityPlatformMask &= ~Mask;
-				}
-
-				if (TargetPlatform->UsesAnisotropicBRDF())
-				{
-					GAnisotropicBRDFPlatformMask |= Mask;
-				}
-				else
-				{
-					GAnisotropicBRDFPlatformMask &= ~Mask;
 				}
 
 				if (TargetPlatform->UsesSelectiveBasePassOutputs())
