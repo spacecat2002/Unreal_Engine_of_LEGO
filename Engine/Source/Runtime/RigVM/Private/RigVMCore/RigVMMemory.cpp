@@ -835,6 +835,13 @@ bool FRigVMMemoryContainer::Serialize(FArchive& Ar)
 
 				for (int32 SliceIndex = 0; SliceIndex < Register.SliceCount; SliceIndex++)
 				{
+					if (NestedArrayStorage->Num() <= SliceIndex)
+					{
+						FRigVMByteArray EmptyStorage;
+						Ar << EmptyStorage;
+						continue;
+					}
+
 					FRigVMByteArray& ArrayStorage = (*NestedArrayStorage)[SliceIndex];
 
 					switch (Register.Type)
