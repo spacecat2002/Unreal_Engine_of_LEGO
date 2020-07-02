@@ -224,7 +224,6 @@ void FDeferredShadingSceneRenderer::VisualizeVarianceMipTree(FRHICommandListImme
 	RHICmdList.Transition(FRHITransitionInfo(VarianceMipTree.UAV, ERHIAccess::SRVGraphics, ERHIAccess::ERWBarrier));
 
 	// Declare RT as visualizable
-	RHICmdList.CopyToResolveTarget(SceneColor->GetRenderTargetItem().TargetableTexture, SceneColor->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
 	RHICmdList.CopyToResolveTarget(VarianceMipTreeRT->GetRenderTargetItem().TargetableTexture, VarianceMipTreeRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
 	GVisualizeTexture.SetCheckPoint(RHICmdList, VarianceMipTreeRT);
 }

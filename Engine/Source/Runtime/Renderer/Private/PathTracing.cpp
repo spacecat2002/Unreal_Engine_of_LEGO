@@ -443,13 +443,16 @@ END_SHADER_PARAMETER_STRUCT()
 void FDeferredShadingSceneRenderer::RenderPathTracing(
 	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
-	FRDGTextureRef SceneColorOutputTexture,
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures)
+	FRDGTextureRef SceneColorOutputTexture)
 {
 	RDG_GPU_STAT_SCOPE(GraphBuilder, Stat_GPU_PathTracing);
 
+	ESceneTextureSetupMode SetupMode = ESceneTextureSetupMode::All;
+	EnumRemoveFlags(SetupMode, ESceneTextureSetupMode::SceneColor);
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer = CreateSceneTextureUniformBuffer(GraphBuilder, View, SetupMode);
+
 	FPathTracingPassParameters* PassParameters = GraphBuilder.AllocParameters<FPathTracingPassParameters>();
-	PassParameters->SceneTextures = SceneTextures;
+	PassParameters->SceneTextures = SceneTexturesUniformBuffer;
 
 	// NOTE: The SkipRenderPass flag means this doesn't get bound. It just ensures that it's put in the RTV state.
 	PassParameters->RenderTargets[0] = FRenderTargetBinding(SceneColorOutputTexture, ERenderTargetLoadAction::ELoad);
@@ -458,7 +461,7 @@ void FDeferredShadingSceneRenderer::RenderPathTracing(
 		RDG_EVENT_NAME("PathTracing"),
 		PassParameters,
 		ERDGPassFlags::Compute | ERDGPassFlags::Raster | ERDGPassFlags::SkipRenderPass | ERDGPassFlags::UntrackedAccess,
-		[this, &View, SceneTextures, SceneColorOutputTexture](FRHICommandListImmediate& RHICmdList)
+		[this, &View, SceneTexturesUniformBuffer, SceneColorOutputTexture](FRHICommandListImmediate& RHICmdList)
 	{
 		// The local iteration counter.
 		static int32 SPPCount = 0;
@@ -498,7 +501,7 @@ void FDeferredShadingSceneRenderer::RenderPathTracing(
 
 		FRayTracingShaderBindingsWriter GlobalResources;
 
-		FRHIUniformBuffer* SceneTexturesUniformBuffer = SceneTextures->GetRHI();
+		FRHIUniformBuffer* SceneTexturesUniformBufferRHI = SceneTexturesUniformBuffer->GetRHI();
 
 		FRHIRayTracingScene* RayTracingSceneRHI = View.RayTracingScene.RayTracingSceneRHI;
 
@@ -555,7 +558,7 @@ void FDeferredShadingSceneRenderer::RenderPathTracing(
 					GlobalResources,
 					View.RayTracingScene,
 					View.ViewUniformBuffer,
-					SceneTexturesUniformBuffer,
+					SceneTexturesUniformBufferRHI,
 					Scene->Lights,
 					SPPCount, FrameIndependentTemporalSeed, ViewState->VarianceMipTreeDimensions, *ViewState->VarianceMipTree, TileOffset,
 					RadianceRT->GetRenderTargetItem().UAV,
@@ -619,7 +622,7 @@ void FDeferredShadingSceneRenderer::RenderPathTracing(
 				GlobalResources,
 				View.RayTracingScene,
 				View.ViewUniformBuffer,
-				SceneTexturesUniformBuffer,
+				SceneTexturesUniformBufferRHI,
 				Scene->Lights,
 				SPPCount, FrameIndependentTemporalSeed, ViewState->VarianceMipTreeDimensions, *ViewState->VarianceMipTree, TileOffset,
 				RadianceRT->GetRenderTargetItem().UAV,

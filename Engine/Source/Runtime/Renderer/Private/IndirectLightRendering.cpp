@@ -352,7 +352,7 @@ void FDeferredShadingSceneRenderer::RenderDiffuseIndirectAndAmbientOcclusion(
 
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 
-	FSceneTextureParameters SceneTextures = GetSceneTextureParameters(SceneTexturesUniformBuffer);
+	FSceneTextureParameters SceneTextures = GetSceneTextureParameters(GraphBuilder, SceneTexturesUniformBuffer);
 	
 	for (FViewInfo& View : Views)
 	{

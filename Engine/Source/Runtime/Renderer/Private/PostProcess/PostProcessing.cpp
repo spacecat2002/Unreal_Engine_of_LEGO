@@ -217,7 +217,7 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 
 	const FIntRect PrimaryViewRect = View.ViewRect;
 
-	const FSceneTextureParameters SceneTextureParameters = GetSceneTextureParameters(Inputs.SceneTextures);
+	const FSceneTextureParameters SceneTextureParameters = GetSceneTextureParameters(GraphBuilder, Inputs.SceneTextures);
 
 	const FScreenPassRenderTarget ViewFamilyOutput = FScreenPassRenderTarget::CreateViewFamilyOutput(Inputs.ViewFamilyTexture, View);
 	const FScreenPassTexture SceneDepth(SceneTextureParameters.SceneDepthTexture, PrimaryViewRect);
@@ -931,7 +931,7 @@ void AddDebugViewPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo
 
 	const FIntRect PrimaryViewRect = View.ViewRect;
 
-	const FSceneTextureParameters SceneTextureParameters = GetSceneTextureParameters(Inputs.SceneTextures);
+	const FSceneTextureParameters SceneTextureParameters = GetSceneTextureParameters(GraphBuilder, Inputs.SceneTextures);
 
 	const FScreenPassRenderTarget ViewFamilyOutput = FScreenPassRenderTarget::CreateViewFamilyOutput(Inputs.ViewFamilyTexture, View);
 	const FScreenPassTexture SceneDepth(SceneTextureParameters.SceneDepthTexture, PrimaryViewRect);
@@ -1118,7 +1118,7 @@ void AddVisualizeCalibrationMaterialPostProcessingPasses(FRDGBuilder& GraphBuild
 
 	const FIntRect PrimaryViewRect = View.ViewRect;
 
-	const FSceneTextureParameters& SceneTextures = GetSceneTextureParameters(Inputs.SceneTextures);
+	const FSceneTextureParameters& SceneTextures = GetSceneTextureParameters(GraphBuilder, Inputs.SceneTextures);
 	const FScreenPassRenderTarget ViewFamilyOutput = FScreenPassRenderTarget::CreateViewFamilyOutput(Inputs.ViewFamilyTexture, View);
 
 	// Scene color is updated incrementally through the post process pipeline.

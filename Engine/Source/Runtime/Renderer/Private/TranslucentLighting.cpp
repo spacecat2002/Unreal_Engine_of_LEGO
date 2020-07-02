@@ -902,7 +902,7 @@ public:
 					VolumetricCloudShadowmapTexture,
 					VolumetricCloudShadowmapTextureSampler,
 					TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(),
-					GSystemTextures.BlackDummy->GetRenderTargetItem().ShaderResourceTexture);
+					GBlackTexture->TextureRHI);
 			}
 		}
 		

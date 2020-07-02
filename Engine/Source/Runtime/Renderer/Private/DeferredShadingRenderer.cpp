@@ -2413,7 +2413,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 #if RHI_RAYTRACING
 		if (IsRayTracingEnabled())
 		{
-			RenderDitheredLODFadingOutMask(GraphBuilder, Views[0]);
+			RenderDitheredLODFadingOutMask(GraphBuilder, Views[0], SceneDepthTexture.Target);
 		}
 #endif
 
@@ -2700,7 +2700,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		{
 			if (Views[ViewIndex].RayTracingRenderMode == ERayTracingRenderMode::PathTracing)
 			{
-				RenderPathTracing(GraphBuilder, Views[ViewIndex], SceneColorTexture.Target, SceneTexturesPerView[ViewIndex]);
+				RenderPathTracing(GraphBuilder, Views[ViewIndex], SceneColorTexture.Target);
 			}
 			else if (Views[ViewIndex].RayTracingRenderMode == ERayTracingRenderMode::RayTracingDebug)
 			{

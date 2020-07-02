@@ -28,10 +28,14 @@ FSceneTextureParameters GetSceneTextureParameters(FRDGBuilder& GraphBuilder)
 	return Parameters;
 }
 
-FSceneTextureParameters GetSceneTextureParameters(TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextureUniformBuffer)
+FSceneTextureParameters GetSceneTextureParameters(FRDGBuilder& GraphBuilder, TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextureUniformBuffer)
 {
 	FSceneTextureParameters Parameters;
 	Parameters.SceneDepthTexture = (*SceneTextureUniformBuffer)->SceneDepthTexture;
+	if (Parameters.SceneDepthTexture)
+	{
+		Parameters.SceneStencilTexture = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::CreateWithPixelFormat(Parameters.SceneDepthTexture, PF_X24_G8));
+	}
 	Parameters.GBufferATexture = (*SceneTextureUniformBuffer)->GBufferATexture;
 	Parameters.GBufferBTexture = (*SceneTextureUniformBuffer)->GBufferBTexture;
 	Parameters.GBufferCTexture = (*SceneTextureUniformBuffer)->GBufferCTexture;

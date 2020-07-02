@@ -646,7 +646,7 @@ private:
 		const FRayTracingReflectionOptions& Options,
 		IScreenSpaceDenoiser::FReflectionsInputs* OutDenoiserInputs);
 
-	void RenderDitheredLODFadingOutMask(FRDGBuilder& GraphBuilder, const FViewInfo& View);
+	void RenderDitheredLODFadingOutMask(FRDGBuilder& GraphBuilder, const FViewInfo& View, FRDGTextureRef SceneDepthTexture);
 
 	void RenderRayTracingShadows(
 		FRDGBuilder& GraphBuilder,
@@ -754,7 +754,7 @@ private:
 	void SetupRayTracingLightingMissShader(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 
 	/** Path tracing functions. */
-	void RenderPathTracing(FRDGBuilder& GraphBuilder, const FViewInfo& View, FRDGTextureRef SceneColorOutputTexture, TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures);
+	void RenderPathTracing(FRDGBuilder& GraphBuilder, const FViewInfo& View, FRDGTextureRef SceneColorOutputTexture);
 
 	void BuildVarianceMipTree(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FTextureRHIRef MeanAndDeviationTexture,
 		FRWBuffer& VarianceMipTree, FIntVector& VarianceMipTreeDimensions);

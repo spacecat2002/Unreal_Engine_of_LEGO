@@ -1585,8 +1585,8 @@ void CopyToSkyTexture(FRHICommandList& RHICmdList, FScene* Scene, FTexture* Proc
 
 		FRHITransitionInfo TransitionsAfter[] =
 		{
-			FRHITransitionInfo(FilteredCube.ShaderResourceTexture, ERHIAccess::CopySrc, ERHIAccess::SRVGraphics),
-			FRHITransitionInfo(ProcessedTexture->TextureRHI, ERHIAccess::CopyDest, ERHIAccess::SRVGraphics)
+			FRHITransitionInfo(FilteredCube.ShaderResourceTexture, ERHIAccess::CopySrc, ERHIAccess::SRVMask),
+			FRHITransitionInfo(ProcessedTexture->TextureRHI, ERHIAccess::CopyDest, ERHIAccess::SRVMask)
 		};
 		RHICmdList.Transition(MakeArrayView(TransitionsAfter, UE_ARRAY_COUNT(TransitionsAfter)));
 	}

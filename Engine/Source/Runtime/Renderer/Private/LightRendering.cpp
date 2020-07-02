@@ -1477,7 +1477,7 @@ void FDeferredShadingSceneRenderer::RenderLights(
 							TStaticArray<IScreenSpaceDenoiser::FShadowVisibilityParameters, IScreenSpaceDenoiser::kMaxBatchSize> DenoisingQueue;
 							TStaticArray<int32, IScreenSpaceDenoiser::kMaxBatchSize> LightIndices;
 
-							FSceneTextureParameters SceneTextures = GetSceneTextureParameters(SceneTexturesUniformBuffer);
+							FSceneTextureParameters SceneTextures = GetSceneTextureParameters(GraphBuilder, SceneTexturesUniformBuffer);
 
 							int32 ProcessShadows = 0;
 
@@ -1690,7 +1690,7 @@ void FDeferredShadingSceneRenderer::RenderLights(
 					}
 					else if (OcclusionType == FLightOcclusionType::Raytraced)
 					{
-						FSceneTextureParameters SceneTextures = GetSceneTextureParameters(SceneTexturesUniformBuffer);
+						FSceneTextureParameters SceneTextures = GetSceneTextureParameters(GraphBuilder, SceneTexturesUniformBuffer);
 
 						FRDGTextureRef RayTracingShadowMaskTexture;
 						{

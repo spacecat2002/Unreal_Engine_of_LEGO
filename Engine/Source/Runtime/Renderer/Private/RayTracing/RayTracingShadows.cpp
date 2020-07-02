@@ -313,19 +313,19 @@ void FDeferredShadingSceneRenderer::RenderRayTracingShadows(
 }
 #endif
 
-void FDeferredShadingSceneRenderer::RenderDitheredLODFadingOutMask(FRDGBuilder& GraphBuilder, const FViewInfo& View)
+void FDeferredShadingSceneRenderer::RenderDitheredLODFadingOutMask(FRDGBuilder& GraphBuilder, const FViewInfo& View, FRDGTextureRef SceneDepthTexture)
 {
-	AddUntrackedAccessPass(GraphBuilder, [this, &View](FRHICommandListImmediate& RHICmdList)
+	auto* PassParameters = GraphBuilder.AllocParameters<FRenderTargetParameters>();
+	PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(SceneDepthTexture, ERenderTargetLoadAction::ELoad, ERenderTargetLoadAction::ELoad, FExclusiveDepthStencil::DepthWrite_StencilWrite);
+
+	GraphBuilder.AddPass(
+		RDG_EVENT_NAME("DitheredLODFadingOutMask"),
+		PassParameters,
+		ERDGPassFlags::Raster,
+		[this, &View](FRHICommandListImmediate& RHICmdList)
 	{
-		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-
-		SceneContext.BeginRenderingPrePass(RHICmdList, false);
-
 		RHICmdList.SetScissorRect(false, 0, 0, 0, 0);
 		RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
-
 		View.ParallelMeshDrawCommandPasses[EMeshPass::DitheredLODFadingOutMaskPass].DispatchDraw(nullptr, RHICmdList);
-
-		SceneContext.FinishRenderingPrePass(RHICmdList);
 	});
 }
