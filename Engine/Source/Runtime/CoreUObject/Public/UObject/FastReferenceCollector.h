@@ -484,13 +484,15 @@ private:
 	struct FStackEntry
 	{
 		/** Current data pointer, incremented by stride */
-		uint8*	Data;
-		/** Current container helper for data pointer. DO NOT rely on its value being initialized. Instead check ContainerHelperType first. */
-		void*	ContainerHelper;
-		/** Current index within the container. DO NOT rely on its value being initialized. Instead check ContainerHelperType first. */
+		uint8* Data;
+		/** Current container property for data pointer. DO NOT rely on its value being initialized. Instead check ContainerType first. */
+		FProperty* ContainerProperty;
+		/** Pointer to the container being processed by GC. DO NOT rely on its value being initialized. Instead check ContainerType first. */
+		void* ContainerPtr;
+		/** Current index within the container. DO NOT rely on its value being initialized. Instead check ContainerType first. */
 		int32	ContainerIndex;
 		/** Current container helper type */
-		uint32	ContainerHelperType : 5; // The number of bits needs to match FGCReferenceInfo::Type
+		uint32	ContainerType : 5; // The number of bits needs to match FGCReferenceInfo::Type
 		/** Current stride */
 		uint32	Stride : 27; // This will always be bigger (8 bits more) than FGCReferenceInfo::Ofset which is the max offset GC can handle
 		/** Current loop count, decremented each iteration */
@@ -498,8 +500,6 @@ private:
 		/** First token index in loop */
 		int32	LoopStartIndex;
 	};
-
-
 
 public:
 	/** Default constructor, initializing all members. */
@@ -564,45 +564,19 @@ public:
 
 private:
 
-	FORCEINLINE void ClearContainerHelperStackEntry(FStackEntry* StackEntry) const
-	{
-		switch (StackEntry->ContainerHelperType)
-		{
-		case GCRT_AddTMapReferencedObjects:
-		{
-			FScriptMapHelper* MapHelper = (FScriptMapHelper*)StackEntry->ContainerHelper;
-			delete MapHelper;
-		}
-		break;
-		case GCRT_AddTSetReferencedObjects:
-		{
-			FScriptSetHelper* SetHelper = (FScriptSetHelper*)StackEntry->ContainerHelper;
-			delete SetHelper;
-		}
-		break;
-		case GCRT_None:
-		break;
-		default:
-			UE_LOG(LogGarbage, Fatal, TEXT("Unknown container type. Type: %d"), StackEntry->ContainerHelperType);
-			break;
-		}
-		StackEntry->ContainerHelper = nullptr;
-		StackEntry->ContainerHelperType = GCRT_None;
-	}
-
 	FORCEINLINE bool MoveToNextContainerElementAndCheckIfValid(FStackEntry* StackEntry) const
 	{
-		switch (StackEntry->ContainerHelperType)
+		switch (StackEntry->ContainerType)
 		{
 		case GCRT_AddTMapReferencedObjects:
 		{
-			FScriptMapHelper* MapHelper = (FScriptMapHelper*)StackEntry->ContainerHelper;
-			return MapHelper->IsValidIndex(++StackEntry->ContainerIndex);
+			FMapProperty* MapProperty = (FMapProperty*)StackEntry->ContainerProperty;
+			return MapProperty->IsValidIndex(StackEntry->ContainerPtr, ++StackEntry->ContainerIndex);
 		}
 		case GCRT_AddTSetReferencedObjects:
 		{
-			FScriptSetHelper* SetHelper = (FScriptSetHelper*)StackEntry->ContainerHelper;
-			return SetHelper->IsValidIndex(++StackEntry->ContainerIndex);
+			FSetProperty* SetProperty = (FSetProperty*)StackEntry->ContainerProperty;
+			return SetProperty->IsValidIndex(StackEntry->ContainerPtr, ++StackEntry->ContainerIndex);
 		}
 		default:
 		{
@@ -707,7 +681,7 @@ private:
 				FStackEntry* RESTRICT StackEntry = Stack.GetData();
 				uint8* StackEntryData = (uint8*)CurrentObject;
 				StackEntry->Data = StackEntryData;
-				StackEntry->ContainerHelperType = GCRT_None;
+				StackEntry->ContainerType = GCRT_None;
 				StackEntry->Stride = 0;
 				StackEntry->Count = -1;
 				StackEntry->LoopStartIndex = -1;
@@ -730,7 +704,7 @@ private:
 						// We pre-decrement as we're already through the loop once at this point.
 						if (--StackEntry->Count > 0)
 						{
-							if (StackEntry->ContainerHelperType == GCRT_None)
+							if (StackEntry->ContainerType == GCRT_None)
 							{
 								// Fast path for TArrays of structs
 								// Point data to next entry.
@@ -756,7 +730,7 @@ private:
 						}
 						else
 						{
-							ClearContainerHelperStackEntry(StackEntry);
+							StackEntry->ContainerType = GCRT_None;
 							StackEntry--;
 							StackEntryData = StackEntry->Data;
 						}
@@ -808,7 +782,7 @@ private:
 						StackEntry->Data = StackEntryData;
 						StackEntry->Stride = TokenStream->ReadStride(TokenStreamIndex);
 						StackEntry->Count = Array.Num();
-						StackEntry->ContainerHelperType = GCRT_None;
+						StackEntry->ContainerType = GCRT_None;
 
 						const FGCSkipInfo SkipInfo = TokenStream->ReadSkipInfo(TokenStreamIndex);
 						StackEntry->LoopStartIndex = TokenStreamIndex;
@@ -836,7 +810,7 @@ private:
 						StackEntry->Data = StackEntryData;
 						StackEntry->Stride = TokenStream->ReadStride(TokenStreamIndex);
 						StackEntry->Count = Array.Num();
-						StackEntry->ContainerHelperType = GCRT_None;
+						StackEntry->ContainerType = GCRT_None;
 
 						const FGCSkipInfo SkipInfo = TokenStream->ReadSkipInfo(TokenStreamIndex);
 						StackEntry->LoopStartIndex = TokenStreamIndex;
@@ -884,7 +858,7 @@ private:
 						StackEntry->Stride = TokenStream->ReadStride(TokenStreamIndex);
 						StackEntry->Count = TokenStream->ReadCount(TokenStreamIndex);
 						StackEntry->LoopStartIndex = TokenStreamIndex;
-						StackEntry->ContainerHelperType = GCRT_None;
+						StackEntry->ContainerType = GCRT_None;
 						TokenReturnCount = 0;
 					}
 					break;
@@ -910,14 +884,14 @@ private:
 						void* MapPtr = StackEntryData + ReferenceInfo.Offset;
 						FMapProperty* MapProperty = (FMapProperty*)TokenStream->ReadPointer(TokenStreamIndex);
 						TokenStreamIndex++; // GCRT_EndOfPointer
-						FScriptMapHelper* MapHelper = new FScriptMapHelper(MapProperty, MapPtr);
 
 						StackEntry++;
-						StackEntry->ContainerHelper = MapHelper;
-						StackEntry->ContainerHelperType = GCRT_AddTMapReferencedObjects;
+						StackEntry->ContainerType = GCRT_AddTMapReferencedObjects;
 						StackEntry->ContainerIndex = 0;
-						StackEntry->Stride = MapHelper->MapLayout.SetLayout.Size;
-						StackEntry->Count = MapHelper->Num();
+						StackEntry->ContainerProperty = MapProperty;
+						StackEntry->ContainerPtr = MapPtr;
+						StackEntry->Stride = MapProperty->GetPairStride();
+						StackEntry->Count = MapProperty->GetNum(MapPtr);
 
 						const FGCSkipInfo SkipInfo = TokenStream->ReadSkipInfo(TokenStreamIndex);
 						StackEntry->LoopStartIndex = TokenStreamIndex;
@@ -934,15 +908,15 @@ private:
 						}
 						else
 						{
-							// Skip any initial invalid entries in the map. We need a valid index for MapHelper->GetPairPtr()
+							// Skip any initial invalid entries in the map. We need a valid index for MapProperty->GetPairPtr()
 							int32 FirstValidIndex = 0;
-							while (!MapHelper->IsValidIndex(FirstValidIndex))
+							while (!MapProperty->IsValidIndex(MapPtr, FirstValidIndex))
 							{
 								FirstValidIndex++;
 							}
 
 							StackEntry->ContainerIndex = FirstValidIndex;
-							StackEntryData = MapHelper->GetPairPtr(FirstValidIndex);
+							StackEntryData = MapProperty->GetPairPtr(MapPtr, FirstValidIndex);
 							StackEntry->Data = StackEntryData;
 
 							// Loop again.
@@ -955,14 +929,14 @@ private:
 						void* SetPtr = StackEntryData + ReferenceInfo.Offset;
 						FSetProperty* SetProperty = (FSetProperty*)TokenStream->ReadPointer(TokenStreamIndex);
 						TokenStreamIndex++; // GCRT_EndOfPointer
-						FScriptSetHelper* SetHelper = new FScriptSetHelper(SetProperty, SetPtr);
 
 						StackEntry++;
-						StackEntry->ContainerHelper = SetHelper;
-						StackEntry->ContainerHelperType = GCRT_AddTSetReferencedObjects;
+						StackEntry->ContainerProperty = SetProperty;
+						StackEntry->ContainerPtr = SetPtr;
+						StackEntry->ContainerType = GCRT_AddTSetReferencedObjects;
 						StackEntry->ContainerIndex = 0;
-						StackEntry->Stride = SetHelper->SetLayout.Size;
-						StackEntry->Count = SetHelper->Num();
+						StackEntry->Stride = SetProperty->GetStride();
+						StackEntry->Count = SetProperty->GetNum(SetPtr);
 
 						const FGCSkipInfo SkipInfo = TokenStream->ReadSkipInfo(TokenStreamIndex);
 						StackEntry->LoopStartIndex = TokenStreamIndex;
@@ -979,15 +953,15 @@ private:
 						}
 						else
 						{
-							// Skip any initial invalid entries in the set. We need a valid index for SetHelper->GetElementPtr()
+							// Skip any initial invalid entries in the set. We need a valid index for SetProperty->GetElementPtr()
 							int32 FirstValidIndex = 0;
-							while (!SetHelper->IsValidIndex(FirstValidIndex))
+							while (!SetProperty->IsValidIndex(SetPtr, FirstValidIndex))
 							{
 								FirstValidIndex++;
 							}
 
 							StackEntry->ContainerIndex = FirstValidIndex;
-							StackEntryData = SetHelper->GetElementPtr(FirstValidIndex);
+							StackEntryData = SetProperty->GetElementPtr(SetPtr, FirstValidIndex);
 							StackEntry->Data = StackEntryData;
 
 							// Loop again.
