@@ -38,9 +38,6 @@ public:
 	void ValidateCreateExternalTexture(FRDGTextureRef Texture);
 	void ValidateCreateExternalBuffer(FRDGBufferRef Buffer);
 
-	/** Validates a resource preallocation operation. */
-	void ValidatePreallocateResource(FRDGParentResourceRef Resource);
-
 	/** Validates a resource extraction operation. */
 	void ValidateExtractResource(FRDGParentResourceRef Resource);
 

@@ -289,9 +289,6 @@ private:
 		/** Tracks whether this resource was clobbered by the builder prior to use. */
 		bool bHasBeenClobbered = false;
 
-		/** Tracks whether this resource was extracted during graph setup. */
-		bool bHasBeenExtracted = false;
-
 		friend FRDGUserValidation;
 	} ParentDebugData;
 #endif

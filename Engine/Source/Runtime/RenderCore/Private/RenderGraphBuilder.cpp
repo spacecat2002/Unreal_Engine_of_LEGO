@@ -370,7 +370,6 @@ FRDGBuilder::FRDGBuilder(FRHICommandListImmediate& InRHICmdList, FRDGEventName I
 
 void FRDGBuilder::PreallocateBuffer(FRDGBufferRef Buffer)
 {
-	IF_RDG_ENABLE_DEBUG(UserValidation.ValidatePreallocateResource(Buffer));
 	if (!Buffer->bExternal)
 	{
 		Buffer->bExternal = 1;
@@ -382,7 +381,6 @@ void FRDGBuilder::PreallocateBuffer(FRDGBufferRef Buffer)
 
 void FRDGBuilder::PreallocateTexture(FRDGTextureRef Texture)
 {
-	IF_RDG_ENABLE_DEBUG(UserValidation.ValidatePreallocateResource(Texture));
 	if (!Texture->bExternal)
 	{
 		Texture->bExternal = 1;

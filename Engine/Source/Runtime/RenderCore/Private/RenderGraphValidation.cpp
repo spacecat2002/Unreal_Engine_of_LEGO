@@ -99,14 +99,6 @@ void FRDGUserValidation::ValidateCreateExternalBuffer(FRDGBufferRef Buffer)
 	Buffer->ParentDebugData.bHasBeenProduced = true;
 }
 
-void FRDGUserValidation::ValidatePreallocateResource(FRDGParentResourceRef Resource)
-{
-	checkf(!Resource->ParentDebugData.bHasBeenExtracted,
-		TEXT("Unable to preallocate resource %s. It has already been queued for extraction before being made external. Preallocation ")
-		TEXT("must happen before any extractions because extractions on an external resource are immediate. This is likely not intended behavior."),
-		Resource->Name);
-}
-
 void FRDGUserValidation::ValidateExtractResource(FRDGParentResourceRef Resource)
 {
 	check(Resource);
@@ -120,7 +112,6 @@ void FRDGUserValidation::ValidateExtractResource(FRDGParentResourceRef Resource)
 	 *  resources to be able to emit a proper warning.
 	 */
 	Resource->ParentDebugData.PassAccessCount++;
-	Resource->ParentDebugData.bHasBeenExtracted = true;
 }
 
 void FRDGUserValidation::RemoveUnusedWarning(FRDGParentResourceRef Resource)
