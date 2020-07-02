@@ -514,10 +514,8 @@ private:
 UMRMeshComponent::UMRMeshComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 	, bEnableOcclusion(false)
-	, bUseWireframeForNoMaterial(false)
+	, bUseWireframe(false)
 {
-	static ConstructorHelpers::FObjectFinder<UMaterialInterface> WireframeMaterialRef(TEXT("/Engine/EngineDebugMaterials/WireframeMaterial"));
-	WireframeMaterial = WireframeMaterialRef.Object;
 }
 
 void UMRMeshComponent::BeginPlay()
@@ -930,6 +928,15 @@ void UMRMeshComponent::SetMaterial(int32 ElementIndex, class UMaterialInterface*
 	}
 }
 
+void UMRMeshComponent::SetWireframeMaterial(class UMaterialInterface* InMaterial)
+{
+	if (WireframeMaterial != InMaterial)
+	{
+		WireframeMaterial = InMaterial;
+		MarkRenderDynamicDataDirty();
+	}
+}
+
 void UMRMeshComponent::SendRenderDynamicData_Concurrent()
 {
 	Super::SendRenderDynamicData_Concurrent();
@@ -939,14 +946,14 @@ void UMRMeshComponent::SendRenderDynamicData_Concurrent()
 		// Enqueue command to send to render thread
 		UMRMeshComponent* This = this;
 		auto InMaterial = GetMaterialToUse();
-		auto bUseWireframe = bUseWireframeForNoMaterial;
+		bool bUseWireframeLocal = bUseWireframe;
 		ENQUEUE_RENDER_COMMAND(FSetMaterialLambda)(
-		[This, bUseWireframe, InMaterial](FRHICommandListImmediate& RHICmdList)
+		[This, bUseWireframeLocal, InMaterial](FRHICommandListImmediate& RHICmdList)
 		{
 			FMRMeshProxy* MRMeshProxy = static_cast<FMRMeshProxy*>(This->SceneProxy);
 			if (MRMeshProxy)
 			{
-				MRMeshProxy->RenderThread_SetMaterial(bUseWireframe, InMaterial);
+				MRMeshProxy->RenderThread_SetMaterial(bUseWireframeLocal, InMaterial);
 			}
 		});
 	}
@@ -1065,15 +1072,15 @@ void UMRMeshComponent::SetWireframeColor(const FLinearColor& InColor)
 	}
 }
 
-void UMRMeshComponent::SetUseWireframe(bool bUseWireframe)
+void UMRMeshComponent::SetUseWireframe(bool InbUseWireframe)
 {
-	bUseWireframeForNoMaterial = bUseWireframe;
+	bUseWireframe = InbUseWireframe;
 	MarkRenderDynamicDataDirty();
 }
 
 UMaterialInterface* UMRMeshComponent::GetMaterialToUse() const
 {
-	if (bUseWireframeForNoMaterial)
+	if (bUseWireframe && WireframeMaterial)
 	{
 		return WireframeMaterial;
 	}

@@ -221,6 +221,8 @@ void FARSessionPayload::FromSessionConfig(const UARSessionConfig& InConfig)
 	}
 	
 	DefaultMeshMaterial = InConfig.GetDefaultMeshMaterial();
+
+	DefaultWireframeMeshMaterial = InConfig.GetDefaultWireframeMeshMaterial();
 }
 
 void UARComponent::OnUnregister()
@@ -306,7 +308,7 @@ void UARComponent::ManageMeshComponentForDebugMode(bool bDebugModeEnabled, const
 #endif
 }
 
-static UMRMeshComponent* CreateMRMeshComponent(AActor* Owner, const FARSessionPayload& SessionPayload, UMaterialInterface* DefaultMeshMaterial, bool bDebugModeEnabled = false)
+static UMRMeshComponent* CreateMRMeshComponent(AActor* Owner, const FARSessionPayload& SessionPayload, UMaterialInterface* DefaultMeshMaterial, UMaterialInterface* DefaultWireframeMeshMaterial, bool bDebugModeEnabled = false)
 {
 #if !AR_DEBUG_MODE
 	bDebugModeEnabled = false;
@@ -322,6 +324,7 @@ static UMRMeshComponent* CreateMRMeshComponent(AActor* Owner, const FARSessionPa
 		
 		MRMeshComponent->SetEnableMeshOcclusion(SessionPayload.HasFlag(EARSessionConfigFlags::UseMeshDataForOcclusion));
 		MRMeshComponent->SetUseWireframe(SessionPayload.HasFlag(EARSessionConfigFlags::RenderMeshDataInWireframe));
+		MRMeshComponent->SetWireframeMaterial(DefaultWireframeMeshMaterial);
 		MRMeshComponent->SetNeverCreateCollisionMesh(!SessionPayload.HasFlag(EARSessionConfigFlags::GenerateCollisionForMeshData));
 		MRMeshComponent->SetEnableNavMesh(SessionPayload.HasFlag(EARSessionConfigFlags::GenerateNavMeshForMeshData));
 		
@@ -336,6 +339,17 @@ static UMRMeshComponent* CreateMRMeshComponent(AActor* Owner, const FARSessionPa
 		if (DefaultMeshMaterial)
 		{
 			MRMeshComponent->SetMaterial(0, DefaultMeshMaterial);
+		}
+		
+
+		if (!DefaultWireframeMeshMaterial)
+		{
+			DefaultWireframeMeshMaterial = SessionPayload.DefaultWireframeMeshMaterial;
+		}
+
+		if (SessionPayload.DefaultWireframeMeshMaterial)
+		{
+			MRMeshComponent->SetWireframeMaterial(SessionPayload.DefaultWireframeMeshMaterial);
 		}
 		
 		return MRMeshComponent;
@@ -377,7 +391,7 @@ void UARPlaneComponent::UpdateVisualization_Implementation()
 	
 	if (!MRMeshComponent)
 	{
-		MRMeshComponent = CreateMRMeshComponent(GetOwner(), SessionPayload, DefaultMeshMaterial, bDebugModeEnabled);
+		MRMeshComponent = CreateMRMeshComponent(GetOwner(), SessionPayload, DefaultMeshMaterial, DefaultWireframeMeshMaterial, bDebugModeEnabled);
 	}
 	
 	if (MRMeshComponent)
@@ -476,7 +490,7 @@ void UARQRCodeComponent::UpdateVisualization_Implementation()
 	
 	if (!MRMeshComponent)
 	{
-		MRMeshComponent = CreateMRMeshComponent(GetOwner(), SessionPayload, DefaultMeshMaterial, bDebugModeEnabled);
+		MRMeshComponent = CreateMRMeshComponent(GetOwner(), SessionPayload, DefaultMeshMaterial, DefaultWireframeMeshMaterial, bDebugModeEnabled);
 	}
 	
 	if (MRMeshComponent)
@@ -497,7 +511,7 @@ void UARImageComponent::UpdateVisualization_Implementation()
 	
 	if (!MRMeshComponent)
 	{
-		MRMeshComponent = CreateMRMeshComponent(GetOwner(), SessionPayload, DefaultMeshMaterial, bDebugModeEnabled);
+		MRMeshComponent = CreateMRMeshComponent(GetOwner(), SessionPayload, DefaultMeshMaterial, DefaultWireframeMeshMaterial, bDebugModeEnabled);
 	}
 	
 	if (MRMeshComponent)
@@ -547,7 +561,7 @@ void UARMeshComponent::UpdateVisualization_Implementation()
 	// but we still need to create it so that the underlying XR system can update it internally
 	if (!MRMeshComponent)
 	{
-		MRMeshComponent = CreateMRMeshComponent(GetOwner(), SessionPayload, DefaultMeshMaterial);
+		MRMeshComponent = CreateMRMeshComponent(GetOwner(), SessionPayload, DefaultMeshMaterial, DefaultWireframeMeshMaterial);
 	}
 }
 
@@ -559,7 +573,7 @@ void UARFaceComponent::UpdateVisualization_Implementation()
 	
 	if (!MRMeshComponent)
 	{
-		MRMeshComponent = CreateMRMeshComponent(GetOwner(), SessionPayload, DefaultMeshMaterial, bShowFaceMesh);
+		MRMeshComponent = CreateMRMeshComponent(GetOwner(), SessionPayload, DefaultMeshMaterial, DefaultWireframeMeshMaterial, bShowFaceMesh);
 	}
 	
 	if (MRMeshComponent)

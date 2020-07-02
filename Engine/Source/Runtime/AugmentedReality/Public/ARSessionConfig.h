@@ -298,6 +298,7 @@ public:
 	UClass* GetMeshComponentClass(void) const;
 	
 	UMaterialInterface* GetDefaultMeshMaterial() const { return DefaultMeshMaterial; }
+	UMaterialInterface* GetDefaultWireframeMeshMaterial() const { return DefaultWireframeMeshMaterial; }
 	
 	int32 GetMaxNumberOfTrackedFaces() const { return MaxNumberOfTrackedFaces; }
 	
@@ -472,4 +473,8 @@ protected:
 	/** The default mesh material used by the generated mesh component */
 	UPROPERTY(EditAnywhere, Category = "AR Settings | World Mapping")
 	UMaterialInterface* DefaultMeshMaterial;
+
+	/** The default mesh material used by the wireframe setting of the generated mesh component.  Note: It is reccomended to ignore this 'wireframe' feature and use a wirefraem material in the DefaultMeshMaterial if you want wireframe. */
+	UPROPERTY(EditAnywhere, Category = "AR Settings | World Mapping")
+	UMaterialInterface* DefaultWireframeMeshMaterial;
 };

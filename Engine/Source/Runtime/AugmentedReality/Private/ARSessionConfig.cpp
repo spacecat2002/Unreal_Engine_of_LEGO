@@ -33,8 +33,8 @@ UARSessionConfig::UARSessionConfig()
 	, ObjectComponentClass(UARObjectComponent::StaticClass())
 	, MeshComponentClass(UARMeshComponent::StaticClass())
 {
-	static ConstructorHelpers::FObjectFinder<UMaterialInterface> MaterialRef(TEXT("/Engine/EngineDebugMaterials/M_SimpleUnlitTranslucent"));
-	DefaultMeshMaterial = MaterialRef.Object;
+	DefaultMeshMaterial = UMaterial::GetDefaultMaterial(MD_Surface);
+	DefaultWireframeMeshMaterial = UMaterial::GetDefaultMaterial(MD_Surface);
 }
 
 EARWorldAlignment UARSessionConfig::GetWorldAlignment() const

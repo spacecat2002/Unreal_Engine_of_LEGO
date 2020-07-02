@@ -33,7 +33,10 @@ struct FARSessionPayload
 	
 	UPROPERTY(BlueprintReadOnly, Category = "AR")
 	UMaterialInterface* DefaultMeshMaterial = nullptr;
-	
+
+	UPROPERTY(BlueprintReadOnly, Category = "AR")
+	UMaterialInterface* DefaultWireframeMeshMaterial = nullptr;
+
 	void SetFlag(EARSessionConfigFlags InFlag);
 	bool HasFlag(EARSessionConfigFlags InFlag) const;
 	void FromSessionConfig(const UARSessionConfig& InConfig);
@@ -237,7 +240,14 @@ protected:
 	 */
 	UPROPERTY(EditAnywhere, Category = "AR Gameplay")
 	UMaterialInterface* DefaultMeshMaterial = nullptr;
-	
+
+	/**
+	 * The default wireframe material to be used for the generated mesh component.
+	 * If not set, the DefaultMeshMaterial from ARSessionConfig will be used.
+	 */
+	UPROPERTY(EditAnywhere, Category = "AR Gameplay")
+	UMaterialInterface* DefaultWireframeMeshMaterial = nullptr;
+
 	UPROPERTY()
 	UMRMeshComponent* MRMeshComponent;
 	
