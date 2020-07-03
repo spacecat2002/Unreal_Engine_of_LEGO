@@ -3162,7 +3162,7 @@ bool UEngine::InitializeHMDDevice()
 			}
 
 			// If we found a valid XRSystem, use it to get a stereo rendering device, if available
-			if (XRSystem.IsValid())
+			if (XRSystem.IsValid() && !FParse::Param(FCommandLine::Get(), TEXT("noxrstereo")))
 			{
 				StereoRenderingDevice = XRSystem->GetStereoRenderingDevice();
 				const bool bShouldStartInVR = StereoRenderingDevice.IsValid() && (FParse::Param(FCommandLine::Get(), TEXT("vr")) || GetDefault<UGeneralProjectSettings>()->bStartInVR);
