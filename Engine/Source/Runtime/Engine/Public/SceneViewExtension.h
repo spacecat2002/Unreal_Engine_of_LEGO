@@ -8,6 +8,7 @@
 
 #include "CoreMinimal.h"
 #include "Delegates/DelegateCombinations.h"
+#include "RendererInterface.h"
 
 /**
  *  SCENE VIEW EXTENSIONS
