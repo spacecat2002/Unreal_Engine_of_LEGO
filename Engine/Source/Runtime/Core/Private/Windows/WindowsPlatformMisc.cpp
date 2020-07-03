@@ -871,12 +871,6 @@ void FWindowsPlatformMisc::BeginNamedEvent(const struct FColor& Color, const TCH
 		Profiler->StartScopedEvent(Text);
 	}
 #endif
-#if CPUPROFILERTRACE_ENABLED
-	if (CpuChannel)
-	{
-		FCpuProfilerTrace::OutputBeginDynamicEvent(Text);
-	}
-#endif
 }
 
 void FWindowsPlatformMisc::BeginNamedEvent(const struct FColor& Color, const ANSICHAR* Text)
@@ -890,12 +884,6 @@ void FWindowsPlatformMisc::BeginNamedEvent(const struct FColor& Color, const ANS
 		Profiler->StartScopedEvent(ANSI_TO_TCHAR(Text));
 	}
 #endif
-#if CPUPROFILERTRACE_ENABLED
-	if (CpuChannel)
-	{
-		FCpuProfilerTrace::OutputBeginDynamicEvent(Text);
-	}
-#endif
 }
 
 void FWindowsPlatformMisc::EndNamedEvent()
@@ -907,12 +895,6 @@ void FWindowsPlatformMisc::EndNamedEvent()
 	if (Profiler)
 	{
 		Profiler->EndScopedEvent();
-	}
-#endif
-#if CPUPROFILERTRACE_ENABLED
-	if (CpuChannel)
-	{
-		FCpuProfilerTrace::OutputEndEvent();
 	}
 #endif
 }

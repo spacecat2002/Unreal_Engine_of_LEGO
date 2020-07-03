@@ -4459,6 +4459,7 @@ uint64 FScopedSampleMallocChurn::DumpFrame = 0;
 
 #endif
 
+bool bTraceFrameEventEmitted = false;
 
 static inline void BeginFrameRenderThread(FRHICommandListImmediate& RHICmdList, uint64 CurrentFrameCounter)
 {
@@ -4476,25 +4477,24 @@ static inline void BeginFrameRenderThread(FRHICommandListImmediate& RHICmdList, 
 	}
 #endif
 
+#if CPUPROFILERTRACE_ENABLED
+	bTraceFrameEventEmitted = UE_TRACE_CHANNELEXPR_IS_ENABLED(CpuChannel);
+	if (bTraceFrameEventEmitted)
+	{
+		FCpuProfilerTrace::OutputBeginDynamicEvent(TEXT("Frame"));
+	}
+#endif //CPUPROFILERTRACE_ENABLED
+
+	FString FrameString = FString::Printf(TEXT("Frame %d"), CurrentFrameCounter);
 #if ENABLE_NAMED_EVENTS
-	TCHAR IndexedFrameString[32] = { 0 };
-	const TCHAR* FrameString = nullptr;
-	if (UE_TRACE_CHANNELEXPR_IS_ENABLED(CpuChannel))
-	{
-		FrameString = TEXT("Frame");
-	}
-	else
-	{
 #if PLATFORM_LIMIT_PROFILER_UNIQUE_NAMED_EVENTS
-		FrameString = TEXT("Frame");
+	FPlatformMisc::BeginNamedEvent(FColor::Yellow, TEXT("Frame"));
 #else
-		FCString::Snprintf(IndexedFrameString, 32, TEXT("Frame %d"), CurrentFrameCounter);
-		FrameString = IndexedFrameString;
+	FPlatformMisc::BeginNamedEvent(FColor::Yellow, *FrameString);
 #endif
-	}
-	FPlatformMisc::BeginNamedEvent(FColor::Yellow, FrameString);
 #endif // ENABLE_NAMED_EVENTS
-	RHICmdList.PushEvent(FrameString, FColor::Green);
+
+	RHICmdList.PushEvent(*FrameString, FColor::Green);
 #endif // !UE_BUILD_SHIPPING
 
 	GPU_STATS_BEGINFRAME(RHICmdList);
@@ -4514,6 +4514,12 @@ static inline void EndFrameRenderThread(FRHICommandListImmediate& RHICmdList)
 #if ENABLE_NAMED_EVENTS
 	FPlatformMisc::EndNamedEvent();
 #endif
+#if CPUPROFILERTRACE_ENABLED
+	if (bTraceFrameEventEmitted)
+	{
+		FCpuProfilerTrace::OutputEndEvent();
+	}
+#endif // CPUPROFILERTRACE_ENABLED
 #endif // !UE_BUILD_SHIPPING 
 	TRACE_END_FRAME(TraceFrameType_Rendering);
 }

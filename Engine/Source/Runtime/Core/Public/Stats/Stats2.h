@@ -1520,9 +1520,17 @@ public:
  */
 class FCycleCounter
 {
+	/** Event types emitted */
+	enum 
+	{
+		NamedEvent			= 1 << 0,
+		TraceEvent			= 1 << 1,
+		ThreadStatsEvent	= 1 << 2,
+	};
+
 	/** Name of the stat, usually a short name **/
 	FName StatId;
-	bool bEmittedNamedEvent = false;
+	uint8 EmittedEvent = 0;
 
 public:
 
@@ -1546,14 +1554,23 @@ public:
 #else
 			FPlatformMisc::BeginNamedEvent( FColor( 0 ), InStatId.GetStatDescriptionWIDE() );
 #endif // PLATFORM_USES_ANSI_STRING_FOR_EXTERNAL_PROFILING
-			bEmittedNamedEvent = true;
+			EmittedEvent |= NamedEvent;
 		}
+
+#if CPUPROFILERTRACE_ENABLED
+		if (GCycleStatsShouldEmitNamedEvents > 0 && UE_TRACE_CHANNELEXPR_IS_ENABLED(CpuChannel))
+		{
+			FCpuProfilerTrace::OutputBeginDynamicEvent(InStatId.GetStatDescriptionANSI()); //todo: Could we use FName index as event id?
+			EmittedEvent |= TraceEvent;
+		}
+#endif
 
 		if( (bAlways && FThreadStats::WillEverCollectData()) || FThreadStats::IsCollectingData() )
 		{
 			FName StatName = MinimalNameToName(StatMinimalName);
 			StatId = StatName;
 			FThreadStats::AddMessage( StatName, EStatOperation::CycleScopeStart );
+			EmittedEvent |= ThreadStatsEvent;
 		}
 	}
 
@@ -1562,16 +1579,24 @@ public:
 	 */
 	FORCEINLINE_STATS void Stop()
 	{
-		if ( bEmittedNamedEvent )
+		if ( EmittedEvent & NamedEvent )
 		{
-			bEmittedNamedEvent = false;
 			FPlatformMisc::EndNamedEvent();
 		}
 
-		if( !StatId.IsNone() )
+#if CPUPROFILERTRACE_ENABLED
+		if (EmittedEvent & TraceEvent)
+		{
+			FCpuProfilerTrace::OutputEndEvent();
+		}
+#endif
+
+		if(EmittedEvent & ThreadStatsEvent)
 		{
 			FThreadStats::AddMessage(StatId, EStatOperation::CycleScopeEnd);
 		}
+
+		EmittedEvent = 0;
 	}
 
 	/**
