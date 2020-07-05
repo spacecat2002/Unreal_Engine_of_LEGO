@@ -41,6 +41,12 @@ public:
 		return NewTexture;
 	}
 	
+	// UTexture interface implementation
+	virtual float GetSurfaceWidth() const override { return Size.X; }
+	virtual float GetSurfaceHeight() const override { return Size.Y; }
+	virtual FGuid GetExternalTextureGuid() const override { return ExternalTextureGuid; }
+	// End UTexture interface
+	
 	/** The type of texture this is */
 	UPROPERTY(BlueprintReadOnly, Category="AR AugmentedReality", meta=(Experimental))
 	EARTextureType TextureType = EARTextureType::Unknown;
@@ -118,6 +124,12 @@ class AUGMENTEDREALITY_API UAREnvironmentCaptureProbeTexture : public UTextureCu
 	GENERATED_UCLASS_BODY()
 	
 public:
+	// UTexture interface implementation
+	virtual float GetSurfaceWidth() const override { return Size.X; }
+	virtual float GetSurfaceHeight() const override { return Size.Y; }
+	virtual FGuid GetExternalTextureGuid() const override { return ExternalTextureGuid; }
+	// End UTexture interface
+	
 	/** The type of texture this is */
 	UPROPERTY(BlueprintReadOnly, Category="AR AugmentedReality", meta=(Experimental))
 	EARTextureType TextureType;
