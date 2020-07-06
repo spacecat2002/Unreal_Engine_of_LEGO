@@ -132,6 +132,9 @@ enum class EARSessionTrackingFeature : uint8
 	
 	/** Person segmentation with depth info is enabled */
 	PersonSegmentationWithDepth,
+	
+	/** Accessing scene depth info is enabled */
+	SceneDepth,
 };
 
 /**
@@ -329,6 +332,10 @@ public:
 	/** Whether to occlude the virtual content with the result from person segmentation */
 	UPROPERTY(EditAnywhere, Category = "AR Settings | Occlusion")
 	bool bUsePersonSegmentationForOcclusion = true;
+	
+	/** Whether to occlude the virtual content with the scene depth information */
+	UPROPERTY(EditAnywhere, Category = "AR Settings | Occlusion")
+	bool bUseSceneDepthForOcclusion = true;
 	
 	/** @see bUseOptimalVideoFormat */
 	bool ShouldUseOptimalVideoFormat() const;

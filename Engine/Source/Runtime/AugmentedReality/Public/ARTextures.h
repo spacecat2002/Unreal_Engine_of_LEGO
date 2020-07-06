@@ -17,6 +17,8 @@ enum class EARTextureType : uint8
 	EnvironmentCapture,
 	PersonSegmentationImage,
 	PersonSegmentationDepth,
+	SceneDepthMap,
+	SceneDepthConfidenceMap,
 };
 
 /**
