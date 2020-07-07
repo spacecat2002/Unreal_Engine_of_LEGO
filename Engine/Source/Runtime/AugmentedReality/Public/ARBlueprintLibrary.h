@@ -346,12 +346,12 @@ public:
 	/** @return the segmentation image if the person segmentation session feature is used */
 	UE_DEPRECATED(4.26, "GetPersonSegmentationImage is deprecated, use GetARTexture.")
 	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Person Segmentation", meta = (DeprecatedFunction, DeprecationMessage="GetPersonSegmentationImage is deprecated, use GetARTexture.", DisplayName="Get AR Person Segmentation Image", Keywords = "ar augmentedreality augmented reality person segmentation image"))
-	static UARTextureCameraImage* GetPersonSegmentationImage();
+	static UARTexture* GetPersonSegmentationImage();
 
 	/** @return the segmentation depth image if the person segmentation with depth session feature is used */
 	UE_DEPRECATED(4.26, "GetPersonSegmentationDepthImage is deprecated, use GetARTexture.")
 	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Person Segmentation", meta = (DeprecatedFunction, DeprecationMessage="GetPersonSegmentationDepthImage is deprecated, use GetARTexture.", DisplayName="Get AR Person Segmentation Depth Image", Keywords = "ar augmentedreality augmented reality person segmentation depth image"))
-	static UARTextureCameraImage* GetPersonSegmentationDepthImage();
+	static UARTexture* GetPersonSegmentationDepthImage();
 	
 	/**
 	 * Try to determine the classification of the object at a world space location

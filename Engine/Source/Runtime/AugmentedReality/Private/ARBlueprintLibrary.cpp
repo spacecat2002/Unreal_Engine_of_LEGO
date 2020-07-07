@@ -603,14 +603,14 @@ TArray<UARTrackedPose*> UARBlueprintLibrary::GetAllTrackedPoses()
 	return TrackedPoses;
 }
 
-UARTextureCameraImage* UARBlueprintLibrary::GetPersonSegmentationImage()
+UARTexture* UARBlueprintLibrary::GetPersonSegmentationImage()
 {
-	return Cast<UARTextureCameraImage>(GetARTexture(EARTextureType::PersonSegmentationImage));
+	return GetARTexture(EARTextureType::PersonSegmentationImage);
 }
 
-UARTextureCameraImage* UARBlueprintLibrary::GetPersonSegmentationDepthImage()
+UARTexture* UARBlueprintLibrary::GetPersonSegmentationDepthImage()
 {
-	return Cast<UARTextureCameraImage>(GetARTexture(EARTextureType::PersonSegmentationDepth));
+	return GetARTexture(EARTextureType::PersonSegmentationDepth);
 }
 
 bool UARBlueprintLibrary::IsSceneReconstructionSupported(EARSessionType SessionType, EARSceneReconstruction SceneReconstructionMethod)
