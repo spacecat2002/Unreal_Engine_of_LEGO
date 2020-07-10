@@ -251,6 +251,7 @@ void UARComponent::RemoveMeshComponent(UARTrackedGeometry* TrackedGeometry)
 {
 	if (MRMeshComponent)
 	{
+		OnMRMeshDestroyed.Broadcast(MRMeshComponent);
 		MRMeshComponent->UnregisterComponent();
 		MRMeshComponent = nullptr;
 	}
@@ -392,6 +393,7 @@ void UARPlaneComponent::UpdateVisualization_Implementation()
 	if (!MRMeshComponent)
 	{
 		MRMeshComponent = CreateMRMeshComponent(GetOwner(), SessionPayload, DefaultMeshMaterial, DefaultWireframeMeshMaterial, bDebugModeEnabled);
+		OnMRMeshCreated.Broadcast(MRMeshComponent);
 	}
 	
 	if (MRMeshComponent)
@@ -491,6 +493,7 @@ void UARQRCodeComponent::UpdateVisualization_Implementation()
 	if (!MRMeshComponent)
 	{
 		MRMeshComponent = CreateMRMeshComponent(GetOwner(), SessionPayload, DefaultMeshMaterial, DefaultWireframeMeshMaterial, bDebugModeEnabled);
+		OnMRMeshCreated.Broadcast(MRMeshComponent);
 	}
 	
 	if (MRMeshComponent)
@@ -512,6 +515,7 @@ void UARImageComponent::UpdateVisualization_Implementation()
 	if (!MRMeshComponent)
 	{
 		MRMeshComponent = CreateMRMeshComponent(GetOwner(), SessionPayload, DefaultMeshMaterial, DefaultWireframeMeshMaterial, bDebugModeEnabled);
+		OnMRMeshCreated.Broadcast(MRMeshComponent);
 	}
 	
 	if (MRMeshComponent)
@@ -562,6 +566,7 @@ void UARMeshComponent::UpdateVisualization_Implementation()
 	if (!MRMeshComponent)
 	{
 		MRMeshComponent = CreateMRMeshComponent(GetOwner(), SessionPayload, DefaultMeshMaterial, DefaultWireframeMeshMaterial);
+		OnMRMeshCreated.Broadcast(MRMeshComponent);
 	}
 }
 
@@ -574,6 +579,7 @@ void UARFaceComponent::UpdateVisualization_Implementation()
 	if (!MRMeshComponent)
 	{
 		MRMeshComponent = CreateMRMeshComponent(GetOwner(), SessionPayload, DefaultMeshMaterial, DefaultWireframeMeshMaterial, bShowFaceMesh);
+		OnMRMeshCreated.Broadcast(MRMeshComponent);
 	}
 	
 	if (MRMeshComponent)

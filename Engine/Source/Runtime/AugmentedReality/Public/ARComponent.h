@@ -218,6 +218,10 @@ public:
 	UPROPERTY(Replicated)
 	FGuid NativeID;
 	
+	DECLARE_MULTICAST_DELEGATE_OneParam(FMRMeshDelegate, UMRMeshComponent*);
+	FMRMeshDelegate OnMRMeshCreated;
+	FMRMeshDelegate OnMRMeshDestroyed;
+	
 protected:
 	virtual void OnUnregister() override;
 	
