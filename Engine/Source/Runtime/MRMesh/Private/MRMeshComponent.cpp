@@ -928,6 +928,11 @@ void UMRMeshComponent::SetMaterial(int32 ElementIndex, class UMaterialInterface*
 	}
 }
 
+UMaterialInterface* UMRMeshComponent::GetMaterial(int32 ElementIndex) const
+{
+	return Material;
+}
+
 void UMRMeshComponent::SetWireframeMaterial(class UMaterialInterface* InMaterial)
 {
 	if (WireframeMaterial != InMaterial)

@@ -87,6 +87,7 @@ public:
 
 	// UPrimitiveComponent.. public BP function needs to stay public to avoid nativization errors. (RR)
 	virtual void SetMaterial(int32 ElementIndex, class UMaterialInterface* InMaterial) override;
+	virtual class UMaterialInterface* GetMaterial(int32 ElementIndex) const override;
 
 	// Set the wireframe material.
 	UFUNCTION(BlueprintCallable, Category = "Mesh Reconstruction")
