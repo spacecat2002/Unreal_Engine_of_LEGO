@@ -8,6 +8,7 @@
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
 #include "UObject/Interface.h"
+
 #include "INodeAndChannelMappings.generated.h"
 
 
@@ -23,10 +24,13 @@ enum class FFBXControlRigTypeProxyEnum : uint8
 	Transform,
 	TransformNoScale,
 	EulerTransform,
+	Integer
 };
 
 struct FMovieSceneFloatChannel;
 struct FMovieSceneBoolChannel;
+struct FMovieSceneIntegerChannel;
+struct FMovieSceneByteChannel;
 class UMovieSceneTrack;
 // For import data onto channels directly
 struct FFBXNodeAndChannels
@@ -37,6 +41,8 @@ struct FFBXNodeAndChannels
 	TArray< FMovieSceneFloatChannel*> Channels;
 	//will really only have one ever.
 	TArray< FMovieSceneBoolChannel*> BoolChannels;
+	TArray< FMovieSceneIntegerChannel*> IntegerChannels;
+	TArray< FMovieSceneByteChannel*> EnumChannels;
 
 };
 
