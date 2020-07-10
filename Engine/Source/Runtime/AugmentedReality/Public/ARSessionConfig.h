@@ -335,7 +335,7 @@ public:
 	
 	/** Whether to occlude the virtual content with the scene depth information */
 	UPROPERTY(EditAnywhere, Category = "AR Settings | Occlusion")
-	bool bUseSceneDepthForOcclusion = true;
+	bool bUseSceneDepthForOcclusion = false;
 	
 	/** @see bUseOptimalVideoFormat */
 	bool ShouldUseOptimalVideoFormat() const;
