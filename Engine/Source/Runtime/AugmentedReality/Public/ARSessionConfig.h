@@ -337,6 +337,10 @@ public:
 	UPROPERTY(EditAnywhere, Category = "AR Settings | Occlusion")
 	bool bUseSceneDepthForOcclusion = false;
 	
+	/** Whether to automatically estimate and set the scale of a detected or tracked image. */
+	UPROPERTY(EditAnywhere, Category = "AR Settings | Image Tracking")
+	bool bUseAutomaticImageScaleEstimation = true;
+	
 	/** @see bUseOptimalVideoFormat */
 	bool ShouldUseOptimalVideoFormat() const;
 
@@ -395,11 +399,11 @@ protected:
 	bool bResetTrackedObjects;
 	
 	/** The list of candidate images to detect within the AR camera view */
-	UPROPERTY(EditAnywhere, Category="AR Settings")
+	UPROPERTY(EditAnywhere, Category="AR Settings | Image Tracking")
 	TArray<UARCandidateImage*> CandidateImages;
 
     /** The maximum number of images to track at the same time. Defaults to 1 */
-    UPROPERTY(EditAnywhere, Category="AR Settings")
+    UPROPERTY(EditAnywhere, Category="AR Settings | Image Tracking")
     int32 MaxNumSimultaneousImagesTracked;
 	
 	/** How the AR system should handle texture probe capturing */
