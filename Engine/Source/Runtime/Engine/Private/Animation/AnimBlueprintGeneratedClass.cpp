@@ -336,11 +336,11 @@ void UAnimBlueprintGeneratedClass::Link(FArchive& Ar, bool bRelinkExistingProper
 
 	if(RootClass != this)
 	{
-		// State notifies and baked machines and asset player information from the root class
 		check(RootClass);
 		AnimNotifies = RootClass->AnimNotifies;
 		BakedStateMachines = RootClass->BakedStateMachines;
 		GraphAssetPlayerInformation = RootClass->GraphAssetPlayerInformation;
+		GraphBlendOptions = RootClass->GraphBlendOptions;
 	}
 
 	if(RootClass != this)
