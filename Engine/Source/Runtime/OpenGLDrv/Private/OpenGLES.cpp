@@ -184,27 +184,6 @@ int FOpenGLES::ShaderHighPrecision = 0;
 /** GL_NV_framebuffer_blit */
 bool FOpenGLES::bSupportsNVFrameBufferBlit = false;
 
-/** textureCubeLodEXT */
-bool FOpenGLES::bSupportsTextureCubeLodEXT = true;
-
-/** GL_EXT_shader_texture_lod */
-bool FOpenGLES::bSupportsShaderTextureLod = false;
-
-/** textureCubeLod */
-bool FOpenGLES::bSupportsShaderTextureCubeLod = true;
-
-/** GL_EXT_texture_storage */
-bool FOpenGLES::bSupportsTextureStorageEXT = false;
-
-/* This is a hack to remove the calls to "precision sampler" defaults which are produced by the cross compiler however don't compile on some android platforms */
-bool FOpenGLES::bRequiresDontEmitPrecisionForTextureSamplers = false;
-
-/* Some android platforms require textureCubeLod to be used some require textureCubeLodEXT however they either inconsistently or don't use the GL_TextureCubeLodEXT extension definition */
-bool FOpenGLES::bRequiresTextureCubeLodEXTToTextureCubeLodDefine = false;
-
-/* Some android platforms do not support the GL_OES_standard_derivatives extension */
-bool FOpenGLES::bSupportsStandardDerivativesExtension = false;
-
 /* This is a hack to remove the gl_FragCoord if shader will fail to link if exceeding the max varying on android platforms */
 bool FOpenGLES::bRequiresGLFragCoordVaryingLimitHack = false;
 
@@ -309,9 +288,6 @@ void FOpenGLES::ProcessExtensions(const FString& ExtensionsString)
 	bSupportsDXT = ExtensionsString.Contains(TEXT("GL_NV_texture_compression_s3tc")) || ExtensionsString.Contains(TEXT("GL_EXT_texture_compression_s3tc"));
 	bSupportsDiscardFrameBuffer = ExtensionsString.Contains(TEXT("GL_EXT_discard_framebuffer"));
 	bSupportsNVFrameBufferBlit = ExtensionsString.Contains(TEXT("GL_NV_framebuffer_blit"));
-	bSupportsShaderTextureLod = ExtensionsString.Contains(TEXT("GL_EXT_shader_texture_lod"));
-	bSupportsTextureStorageEXT = ExtensionsString.Contains(TEXT("GL_EXT_texture_storage"));
-	bSupportsStandardDerivativesExtension = ExtensionsString.Contains(TEXT("GL_OES_standard_derivatives"));
 	bSupportsProgramBinary = ExtensionsString.Contains(TEXT("GL_OES_get_program_binary"));
 
 	// Report shader precision

@@ -29,8 +29,6 @@ struct FOpenGLShaderDeviceCapabilities
 	bool bSupportsShaderFramebufferFetch;
 	bool bRequiresUEShaderFramebufferFetchDef;
 	bool bRequiresARMShaderFramebufferFetchDepthStencilUndef;
-	bool bRequiresDontEmitPrecisionForTextureSamplers;
-	bool bRequiresTextureCubeLodEXTToTextureCubeLodDefine;
 	GLint MaxVaryingVectors;
 	bool bRequiresRoundFunctionHack;
 	bool bRequiresDisabledEarlyFragmentTests;

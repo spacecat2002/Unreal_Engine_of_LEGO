@@ -830,10 +830,6 @@ void FAndroidOpenGL::ProcessExtensions(const FString& ExtensionsString)
 		UE_LOG(LogRHI, Log, TEXT("ASTC was disabled via r.OpenGL.DisableASTCSupport"));
 	}
 
-	//On Android, there are problems compiling shaders with textureCubeLodEXT calls in the glsl code,
-	// so we set this to false to modify the glsl manually at compile-time.
-	bSupportsTextureCubeLodEXT = false;
-
 	// disable swizzled render targets on Android
 	bSupportsBGRA8888RenderTarget = false;
 

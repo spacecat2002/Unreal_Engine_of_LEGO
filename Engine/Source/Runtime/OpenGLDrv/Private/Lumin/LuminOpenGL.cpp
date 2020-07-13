@@ -372,12 +372,6 @@ void FLuminOpenGL::ProcessExtensions(const FString& ExtensionsString)
 
 	glMapBufferOESa = (PFNGLMAPBUFFEROESPROC)((void*)eglGetProcAddress("glMapBufferOES"));
 	glUnmapBufferOESa = (PFNGLUNMAPBUFFEROESPROC)((void*)eglGetProcAddress("glUnmapBufferOES"));
-
-	//On Android, there are problems compiling shaders with textureCubeLodEXT calls in the glsl code,
-	// so we set this to false to modify the glsl manually at compile-time.
-	bSupportsTextureCubeLodEXT = false;
-	
-	
 }
 
 void FAndroidAppEntry::PlatformInit()

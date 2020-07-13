@@ -134,9 +134,6 @@ public:
 	static FORCEINLINE bool SupportsFastBufferData()					{ return true; }
 	static FORCEINLINE bool SupportsCopyImage()							{ return bSupportsCopyImage; }
 	static FORCEINLINE bool SupportsTextureFilterAnisotropic()			{ return bSupportsTextureFilterAnisotropic; }
-	static FORCEINLINE bool SupportsTextureCubeLodEXT()					{ return true; }
-	static FORCEINLINE bool SupportsShaderTextureLod()					{ return false; }
-	static FORCEINLINE bool SupportsShaderTextureCubeLod()				{ return true; }
 	static FORCEINLINE bool SupportsSeparateAlphaBlend()				{ return bSupportsDrawBuffersBlend; }
 	static FORCEINLINE bool SupportsTessellation()						{ return false; }
 	static FORCEINLINE void EnableSupportsClipControl()					{ bSupportsClipControl = true; }
