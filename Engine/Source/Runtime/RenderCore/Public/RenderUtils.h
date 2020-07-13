@@ -59,24 +59,6 @@ FORCEINLINE FVector GenerateYAxis(const VectorType& XAxis, const VectorType& ZAx
 	return (FVector(z) ^ x) * z.W;
 }
 
-/** Information about a pixel format. */
-struct FPixelFormatInfo
-{
-	const TCHAR*	Name;
-	int32				BlockSizeX,
-					BlockSizeY,
-					BlockSizeZ,
-					BlockBytes,
-					NumComponents;
-	/** Platform specific token, e.g. D3DFORMAT with D3DDrv										*/
-	uint32			PlatformFormat;
-	/** Whether the texture format is supported on the current platform/ rendering combination	*/
-	bool			Supported;
-	EPixelFormat	UnrealFormat;
-};
-
-extern RENDERCORE_API FPixelFormatInfo GPixelFormats[PF_MAX];		// Maps members of EPixelFormat to a FPixelFormatInfo describing the format.
-
 #define NUM_DEBUG_UTIL_COLORS (32)
 static const FColor DebugUtilColor[NUM_DEBUG_UTIL_COLORS] = 
 {
@@ -113,12 +95,6 @@ static const FColor DebugUtilColor[NUM_DEBUG_UTIL_COLORS] =
 	FColor(178,161,0),
 	FColor(19,25,126)
 };
-
-//
-//	CalculateImageBytes
-//
-
-extern RENDERCORE_API SIZE_T CalculateImageBytes(uint32 SizeX,uint32 SizeY,uint32 SizeZ,uint8 Format);
 
 /** A global white texture. */
 extern RENDERCORE_API class FTexture* GWhiteTexture;

@@ -594,6 +594,31 @@ extern RHI_API uint64 GRHIPresentCounter;
 /** True if the RHI supports setting the render target array index from any shader stage */
 extern RHI_API bool GRHISupportsArrayIndexFromAnyShader;
 
+
+/** Information about a pixel format. */
+struct FPixelFormatInfo
+{
+	const TCHAR*	Name;
+	int32			BlockSizeX,
+					BlockSizeY,
+					BlockSizeZ,
+					BlockBytes,
+					NumComponents;
+	/** Platform specific token, e.g. D3DFORMAT with D3DDrv										*/
+	uint32			PlatformFormat;
+	/** Whether the texture format is supported on the current platform/ rendering combination	*/
+	bool			Supported;
+	EPixelFormat	UnrealFormat;
+};
+
+extern RHI_API FPixelFormatInfo GPixelFormats[PF_MAX];		// Maps members of EPixelFormat to a FPixelFormatInfo describing the format.
+
+//
+//	CalculateImageBytes
+//
+
+extern RHI_API SIZE_T CalculateImageBytes(uint32 SizeX,uint32 SizeY,uint32 SizeZ,uint8 Format);
+
 /** Called once per frame only from within an RHI. */
 extern RHI_API void RHIPrivateBeginFrame();
 
