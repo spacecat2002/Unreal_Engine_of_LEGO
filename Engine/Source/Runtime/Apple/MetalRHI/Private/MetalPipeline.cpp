@@ -399,6 +399,8 @@ struct FMetalGraphicsPipelineKey
 		Key.SetHashValue(Offset_StencilFormat, NumBits_StencilFormat, StencilFormatKey);
 
 		Key.SetHashValue(Offset_SampleCount, NumBits_SampleCount, Init.NumSamples);
+
+		Key.SetHashValue(Offset_AlphaToCoverage, NumBits_AlphaToCoverage, Init.NumSamples > 1 && BlendState->bUseAlphaToCoverage ? 1 : 0);
 		
 #if PLATFORM_MAC
 		Key.SetHashValue(Offset_PrimitiveTopology, NumBits_PrimitiveTopology, TranslatePrimitiveTopology(Init.PrimitiveType));
@@ -918,7 +920,9 @@ static bool ConfigureRenderPipelineDescriptor(mtlpp::RenderPipelineDescriptor& R
 	}
 	
 	static bool bNoMSAA = FParse::Param(FCommandLine::Get(), TEXT("nomsaa"));
-	RenderPipelineDesc.SetSampleCount(!bNoMSAA ? FMath::Max(Init.NumSamples, (uint16)1u) : (uint16)1u);
+	uint16 NumSamples = !bNoMSAA ? FMath::Max(Init.NumSamples, (uint16)1u) : (uint16)1u;
+	RenderPipelineDesc.SetSampleCount(NumSamples);
+	RenderPipelineDesc.SetAlphaToCoverageEnabled(NumSamples > 1 && BlendState->bUseAlphaToCoverage);
 #if PLATFORM_MAC
 	RenderPipelineDesc.SetInputPrimitiveTopology(TranslatePrimitiveTopology(Init.PrimitiveType));
 	DebugPipelineDesc.SetSampleCount(!bNoMSAA ? FMath::Max(Init.NumSamples, (uint16)1u) : (uint16)1u);

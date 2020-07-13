@@ -62,12 +62,13 @@ enum class EPipelineCacheFileFormatVersions : uint32
 	EOFMarker = 15,
 	EngineFlags = 16,
 	Subpass = 17,
+	AlphaToCoverage = 18,
 };
 
 const uint64 FPipelineCacheFileFormatMagic = 0x5049504543414348; // PIPECACH
 const uint64 FPipelineCacheTOCFileFormatMagic = 0x544F435354415254; // TOCSTART
 const uint64 FPipelineCacheEOFFileFormatMagic = 0x454F462D4D41524B; // EOF-MARK
-const uint32 FPipelineCacheFileFormatCurrentVersion = (uint32)EPipelineCacheFileFormatVersions::Subpass;
+const uint32 FPipelineCacheFileFormatCurrentVersion = (uint32)EPipelineCacheFileFormatVersions::AlphaToCoverage;
 const int32  FPipelineCacheGraphicsDescPartsNum = 63; // parser will expect this number of parts in a description string
 
 /**

@@ -396,6 +396,7 @@ bool FOpenGLDepthStencilState::GetInitializer(FDepthStencilStateInitializerRHI& 
 bool FOpenGLBlendState::GetInitializer(FBlendStateInitializerRHI& Init)
 {
 	Init.bUseIndependentRenderTargetBlendStates = true;
+	Init.bUseAlphaToCoverage = Data.bUseAlphaToCoverage;
 	for(uint32 RenderTargetIndex = 0;RenderTargetIndex < MaxSimultaneousRenderTargets;++RenderTargetIndex)
 	{
 		FOpenGLBlendStateData::FRenderTarget const& RenderTarget = Data.RenderTargets[RenderTargetIndex];
@@ -430,6 +431,7 @@ bool FOpenGLBlendState::GetInitializer(FBlendStateInitializerRHI& Init)
 FBlendStateRHIRef FOpenGLDynamicRHI::RHICreateBlendState(const FBlendStateInitializerRHI& Initializer)
 {
 	FOpenGLBlendState* BlendState = new FOpenGLBlendState;
+	BlendState->Data.bUseAlphaToCoverage = Initializer.bUseAlphaToCoverage;
 	for(uint32 RenderTargetIndex = 0;RenderTargetIndex < MaxSimultaneousRenderTargets;++RenderTargetIndex)
 	{
 		const FBlendStateInitializerRHI::FRenderTarget& RenderTargetInitializer =

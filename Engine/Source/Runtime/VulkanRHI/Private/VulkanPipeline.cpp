@@ -1025,6 +1025,8 @@ FArchive& operator << (FArchive& Ar, FGfxPipelineDesc& Entry)
 	}
 #endif
 
+	Ar << Entry.UseAlphaToCoverage;
+
 	return Ar;
 }
 
@@ -1109,6 +1111,7 @@ bool FVulkanPipelineStateCacheManager::CreateGfxPipelineFromEntry(FVulkanRHIGrap
 	VkPipelineMultisampleStateCreateInfo MSInfo;
 	ZeroVulkanStruct(MSInfo, VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO);
 	MSInfo.rasterizationSamples = (VkSampleCountFlagBits)FMath::Max<uint16>(1u, GfxEntry->RasterizationSamples);
+	MSInfo.alphaToCoverageEnable = GfxEntry->UseAlphaToCoverage;
 
 	VkPipelineShaderStageCreateInfo ShaderStages[ShaderStage::NumStages];
 	FMemory::Memzero(ShaderStages);
@@ -1541,6 +1544,10 @@ void FVulkanPipelineStateCacheManager::CreateGfxEntry(const FGraphicsPipelineSta
 	}
 	OutGfxEntry->SubpassIndex = PSOInitializer.SubpassIndex;
 
+	FVulkanBlendState* BlendState = ResourceCast(PSOInitializer.BlendState);
+
+	OutGfxEntry->UseAlphaToCoverage = PSOInitializer.NumSamples > 1 && BlendState->Initializer.bUseAlphaToCoverage ? 1 : 0;
+
 	const bool bHasTessellation = (PSOInitializer.BoundShaderState.DomainShaderRHI != nullptr);
 
 	OutGfxEntry->RasterizationSamples = PSOInitializer.NumSamples;
@@ -1557,7 +1564,7 @@ void FVulkanPipelineStateCacheManager::CreateGfxEntry(const FGraphicsPipelineSta
 	OutGfxEntry->ColorAttachmentStates.AddUninitialized(NumRenderTargets);
 	for (int32 Index = 0; Index < OutGfxEntry->ColorAttachmentStates.Num(); ++Index)
 	{
-		OutGfxEntry->ColorAttachmentStates[Index].ReadFrom(ResourceCast(PSOInitializer.BlendState)->BlendStates[Index]);
+		OutGfxEntry->ColorAttachmentStates[Index].ReadFrom(BlendState->BlendStates[Index]);
 	}
 
 	{

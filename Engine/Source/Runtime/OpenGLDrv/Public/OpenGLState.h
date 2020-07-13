@@ -165,8 +165,11 @@ struct FOpenGLBlendStateData
 	
 	TStaticArray<FRenderTarget,MaxSimultaneousRenderTargets> RenderTargets;
 
+	bool bUseAlphaToCoverage;
+
 	FOpenGLBlendStateData()
 	{
+		bUseAlphaToCoverage = false;
 		for (int32 i = 0; i < MaxSimultaneousRenderTargets; ++i)
 		{
 			FRenderTarget& Target = RenderTargets[i];
@@ -346,6 +349,7 @@ struct FOpenGLContextState : public FOpenGLCommonState
 	float							ClearDepth;
 	int32							FirstNonzeroRenderTarget;
 	GLenum							DrawFramebuffers[MaxSimultaneousRenderTargets];
+	bool							bAlphaToCoverageEnabled;
 
 	// @todo-mobile: Used to cache the last color attachment to optimize logical buffer loads
 	GLuint							LastES2ColorRTResource;
@@ -397,6 +401,7 @@ struct FOpenGLContextState : public FOpenGLCommonState
 	,	ClearStencil(0xFFFF)
 	,	ClearDepth(-1.0f)
 	,	FirstNonzeroRenderTarget(0)
+	,	bAlphaToCoverageEnabled(false)
 #if PLATFORM_ANDROID && !PLATFORM_LUMINGL4
 	,	LastES2ColorRTResource(0xFFFFFFFF)
 #else
@@ -449,6 +454,7 @@ struct FOpenGLRHIState : public FOpenGLCommonState
 	uint32							RenderTargetWidth;
 	uint32							RenderTargetHeight;
 	GLuint							RunningOcclusionQuery;
+	bool							bAlphaToCoverageEnabled;
 
 	// Pending framebuffer setup
 	int32							FirstNonzeroRenderTarget;
@@ -505,6 +511,7 @@ struct FOpenGLRHIState : public FOpenGLCommonState
 	,	RenderTargetWidth(0)
 	,	RenderTargetHeight(0)
 	,	RunningOcclusionQuery(0)
+	,	bAlphaToCoverageEnabled(false)
 	,	FirstNonzeroRenderTarget(-1)
 	,	DepthStencil(0)
 	,	StencilStoreAction(ERenderTargetStoreAction::ENoAction)

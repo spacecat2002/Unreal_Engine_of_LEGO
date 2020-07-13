@@ -1295,6 +1295,7 @@ void FOpenGLDynamicRHI::SetPendingBlendStateForActiveRenderTargets( FOpenGLConte
 	VERIFY_GL_SCOPE();
 
 	bool bABlendWasSet = false;
+	bool bMSAAEnabled = false;
 
 	//
 	// Need to expand setting for glBlendFunction and glBlendEquation
@@ -1307,6 +1308,11 @@ void FOpenGLDynamicRHI::SetPendingBlendStateForActiveRenderTargets( FOpenGLConte
 		{
 			// Even if on this stage blend states are incompatible with other stages, we can disregard it, as no render target is assigned to it.
 			continue;
+		}
+		else if (RenderTargetIndex == 0)
+		{
+			FOpenGLTexture2D* RenderTarget2D = (FOpenGLTexture2D*)PendingState.RenderTargets[RenderTargetIndex];
+			bMSAAEnabled = RenderTarget2D->GetNumSamples() > 1 || RenderTarget2D->GetNumSamplesTileMem() > 1;
 		}
 
 		const FOpenGLBlendStateData::FRenderTarget& RenderTargetBlendState = PendingState.BlendState.RenderTargets[RenderTargetIndex];
@@ -1493,6 +1499,21 @@ void FOpenGLDynamicRHI::SetPendingBlendStateForActiveRenderTargets( FOpenGLConte
 			CachedRenderTargetBlendState.ColorWriteMaskB = RenderTargetBlendState.ColorWriteMaskB;
 			CachedRenderTargetBlendState.ColorWriteMaskA = RenderTargetBlendState.ColorWriteMaskA;
 		}
+	}
+
+	PendingState.bAlphaToCoverageEnabled = bMSAAEnabled && PendingState.BlendState.bUseAlphaToCoverage;
+	if (PendingState.bAlphaToCoverageEnabled != ContextState.bAlphaToCoverageEnabled)
+	{
+		if (PendingState.bAlphaToCoverageEnabled)
+		{
+			glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE);
+		}
+		else
+		{
+			glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
+		}
+
+		ContextState.bAlphaToCoverageEnabled = PendingState.bAlphaToCoverageEnabled;
 	}
 }
 
