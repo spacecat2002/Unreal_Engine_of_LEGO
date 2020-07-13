@@ -679,35 +679,6 @@ inline void FOpenGLDynamicRHI::ApplyTextureStage(FOpenGLContextState& ContextSta
 
 		GLint WrapS = SamplerState->Data.WrapS;
 		GLint WrapT = SamplerState->Data.WrapT;
-		if (!FOpenGL::SupportsTextureNPOT() && bHasTexture)
-		{
-			if (!TextureStage.Texture->IsPowerOfTwo())
-			{
-				bool bChanged = false;
-				if (WrapS != GL_CLAMP_TO_EDGE)
-				{
-					WrapS = GL_CLAMP_TO_EDGE;
-					bChanged = true;
-				}
-				if (WrapT != GL_CLAMP_TO_EDGE)
-				{
-					WrapT = GL_CLAMP_TO_EDGE;
-					bChanged = true;
-				}
-				if (bChanged)
-				{
-					ANSICHAR DebugName[128] = "";
-					if (FOpenGL::GetLabelObject(GL_TEXTURE, TextureStage.Resource, sizeof(DebugName), DebugName) != 0)
-					{
-						UE_LOG(LogRHI, Warning, TEXT("Texture %s (Index %d, Resource %d) has a non-clamp mode; switching to clamp to avoid driver problems"), ANSI_TO_TCHAR(DebugName), TextureIndex, TextureStage.Resource);
-					}
-					else
-					{
-						UE_LOG(LogRHI, Warning, TEXT("Texture %d (Resource %d) has a non-clamp mode; switching to clamp to avoid driver problems"), TextureIndex, TextureStage.Resource);
-					}
-				}
-			}
-		}
 
 		// Sets parameters of currently bound texture
 		FOpenGL::TexParameter(Target, GL_TEXTURE_WRAP_S, WrapS);

@@ -156,7 +156,6 @@ public:
 	static FORCEINLINE bool SupportsBufferStorage()						{ return false; }
 	static FORCEINLINE bool SupportsDepthBoundsTest()					{ return false; }
 	static FORCEINLINE bool SupportsTextureRange()						{ return false; }
-	static FORCEINLINE bool SupportsTextureNPOT()						{ return true; }
 	static FORCEINLINE bool SupportsBindlessTexture()					{ return false; }
 	static FORCEINLINE bool SupportsTextureSwizzle()					{ return false; }
 	static FORCEINLINE bool HasHardwareHiddenSurfaceRemoval()			{ return false; }

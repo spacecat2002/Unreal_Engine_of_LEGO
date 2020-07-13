@@ -708,9 +708,6 @@ struct FOpenGLES : public FOpenGLBase
 	// for glDrawArrays() and glDrawElements() on dynamic data.
 	static FORCEINLINE bool SupportsFastBufferData() { return false; }
 
-	// ES 2 will not work with non-power of two textures with non-clamp mode
-	static FORCEINLINE bool SupportsTextureNPOT() { return bSupportsTextureNPOT; }
-
 	// Optional
 	static FORCEINLINE void BeginQuery(GLenum QueryType, GLuint QueryId)
 	{
@@ -1259,9 +1256,6 @@ protected:
 
 	/** textureCubeLod */
 	static bool bSupportsShaderTextureCubeLod;
-
-	/** GL_OES_texture_npot */
-	static bool bSupportsTextureNPOT;
 
 	/** GL_EXT_texture_storage */
 	static bool bSupportsTextureStorageEXT;
