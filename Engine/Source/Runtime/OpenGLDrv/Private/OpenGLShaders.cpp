@@ -565,90 +565,6 @@ inline uint32 GetTypeHash(FAnsiCharArray const& CharArray)
 	return FCrc::MemCrc32(CharArray.GetData(), CharArray.Num() * sizeof(ANSICHAR));
 }
 
-static void BindShaderLocations(GLenum TypeEnum, GLuint Resource, uint16 InOutMask, const uint8 * RemapTable = nullptr)
-{
-	if ( OpenGLShaderPlatformNeedsBindLocation(GMaxRHIShaderPlatform) )
-	{
-		ANSICHAR Buf[32] = {0};
-		switch(TypeEnum)
-		{
-			case GL_VERTEX_SHADER:
-			{
-				uint32 Mask = InOutMask;
-				uint32 Index = 0;
-				FCStringAnsi::Strcpy(Buf, "in_ATTRIBUTE");
-				while (Mask)
-				{
-					if (Mask & 0x1)
-					{
-						if (Index < 10)
-						{
-							Buf[12] = '0' + Index;
-							Buf[13] = 0;
-						}
-						else
-						{
-							Buf[12] = '1';
-							Buf[13] = '0' + (Index % 10);
-							Buf[14] = 0;
-						}
-
-						if (FOpenGL::NeedsVertexAttribRemapTable())
-						{
-							check(RemapTable != nullptr);
-							uint32 MappedAttributeIndex = RemapTable[Index];
-							check(MappedAttributeIndex < NUM_OPENGL_VERTEX_STREAMS);
-							glBindAttribLocation(Resource, MappedAttributeIndex, Buf);
-						}
-						else
-						{
-							glBindAttribLocation(Resource, Index, Buf);
-						}
-					}
-					Index++;
-					Mask >>= 1;
-				}
-				break;
-			}
-			case GL_FRAGMENT_SHADER:
-			{
-				uint32 Mask = (InOutMask) & 0x7fff; // mask out the depth bit
-				uint32 Index = 0;
-				FCStringAnsi::Strcpy(Buf, "out_Target");
-				while (Mask)
-				{
-					if (Mask & 0x1)
-					{
-						if (Index < 10)
-						{
-							Buf[10] = '0' + Index;
-							Buf[11] = 0;
-						}
-						else
-						{
-							Buf[10] = '1';
-							Buf[11] = '0' + (Index % 10);
-							Buf[12] = 0;
-						}
-						FOpenGL::BindFragDataLocation(Resource, Index, Buf);
-					}
-					Index++;
-					Mask >>= 1;
-				}
-				break;
-			}
-			case GL_GEOMETRY_SHADER:
-			case GL_COMPUTE_SHADER:
-			case GL_TESS_CONTROL_SHADER:
-			case GL_TESS_EVALUATION_SHADER:
-				break;
-			default:
-				check(0);
-				break;
-		}
-	}
-}
-
 // Helper to compile a shader and return success, logging errors if necessary.
 GLint CompileCurrentShader(const GLuint Resource, const FAnsiCharArray& GlslCode)
 {
@@ -1108,34 +1024,20 @@ void OPENGLDRV_API GLSLToDeviceCompatibleGLSL(FAnsiCharArray& GlslCodeOriginal, 
 		}
 	}
 
-	// Only desktop with separable shader platform can use GL_ARB_separate_shader_objects for reduced shader compile/link hitches
-	// however ES3.1 relies on layout(location=) support
-	bool const bNeedsBindLocation = OpenGLShaderPlatformNeedsBindLocation(Capabilities.MaxRHIShaderPlatform) && !bES31;
-	if (OpenGLShaderPlatformSeparable(Capabilities.MaxRHIShaderPlatform) || !bNeedsBindLocation)
+	// Move version tag & extensions before beginning all other operations
+	MoveHashLines(GlslCode, GlslCodeOriginal);
+
+	// OpenGL SM5 shader platforms require location declarations for the layout, but don't necessarily use SSOs
+	if (Capabilities.TargetPlatform == EOpenGLShaderTargetPlatform::OGLSTP_Desktop)
 	{
-		// Move version tag & extensions before beginning all other operations
-		MoveHashLines(GlslCode, GlslCodeOriginal);
-		
-		// OpenGL SM5 shader platforms require location declarations for the layout, but don't necessarily use SSOs
-		if (Capabilities.bSupportsSeparateShaderObjects || !bNeedsBindLocation)
-		{
-			if (Capabilities.TargetPlatform == EOpenGLShaderTargetPlatform::OGLSTP_Desktop)
-			{
-				AppendCString(GlslCode, "#extension GL_ARB_separate_shader_objects : enable\n");
-				AppendCString(GlslCode, "#define INTERFACE_LOCATION(Pos) layout(location=Pos) \n");
-				AppendCString(GlslCode, "#define INTERFACE_BLOCK(Pos, Interp, Modifiers, Semantic, PreType, PostType) layout(location=Pos) Interp Modifiers struct { PreType PostType; }\n");
-			}
-			else
-			{
-				AppendCString(GlslCode, "#define INTERFACE_LOCATION(Pos) layout(location=Pos) \n");
-				AppendCString(GlslCode, "#define INTERFACE_BLOCK(Pos, Interp, Modifiers, Semantic, PreType, PostType) layout(location=Pos) Modifiers Semantic { PreType PostType; }\n");
-			}
-		}
-		else
-		{
-			AppendCString(GlslCode, "#define INTERFACE_LOCATION(Pos) \n");
-			AppendCString(GlslCode, "#define INTERFACE_BLOCK(Pos, Interp, Modifiers, Semantic, PreType, PostType) Modifiers Semantic { Interp PreType PostType; }\n");
-		}
+		AppendCString(GlslCode, "#extension GL_ARB_separate_shader_objects : enable\n");
+		AppendCString(GlslCode, "#define INTERFACE_LOCATION(Pos) layout(location=Pos) \n");
+		AppendCString(GlslCode, "#define INTERFACE_BLOCK(Pos, Interp, Modifiers, Semantic, PreType, PostType) layout(location=Pos) Interp Modifiers struct { PreType PostType; }\n");
+	}
+	else
+	{
+		AppendCString(GlslCode, "#define INTERFACE_LOCATION(Pos) layout(location=Pos) \n");
+		AppendCString(GlslCode, "#define INTERFACE_BLOCK(Pos, Interp, Modifiers, Semantic, PreType, PostType) layout(location=Pos) Modifiers Semantic { PreType PostType; }\n");
 	}
 
 	if (Capabilities.TargetPlatform == EOpenGLShaderTargetPlatform::OGLSTP_Desktop)
@@ -2888,23 +2790,6 @@ static FOpenGLLinkedProgram* LinkProgram( const FOpenGLLinkedProgramConfiguratio
 	
 		if( !FOpenGL::SupportsSeparateShaderObjects() )
 		{
-			// E.g. GLSL_430 uses layout(location=xx) instead of having to call glBindAttribLocation and glBindFragDataLocation
-			if (OpenGLShaderPlatformNeedsBindLocation(GMaxRHIShaderPlatform))
-			{
-				// Bind attribute indices.
-				if (Config.Shaders[CrossCompiler::SHADER_STAGE_VERTEX].Resource)
-				{
-					auto& VertexBindings = Config.Shaders[CrossCompiler::SHADER_STAGE_VERTEX].Bindings;
-					BindShaderLocations(GL_VERTEX_SHADER, Program, VertexBindings.InOutMask, VertexBindings.VertexAttributeRemap);
-				}
-
-				// Bind frag data locations.
-				if (Config.Shaders[CrossCompiler::SHADER_STAGE_PIXEL].Resource)
-				{
-					BindShaderLocations(GL_FRAGMENT_SHADER, Program, Config.Shaders[CrossCompiler::SHADER_STAGE_PIXEL].Bindings.InOutMask);
-				}
-			}
-
 			if(FOpenGLProgramBinaryCache::IsEnabled() || GetOpenGLProgramsCache().IsUsingLRU())
 			{
 				FOpenGL::ProgramParameter(Program, PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE);

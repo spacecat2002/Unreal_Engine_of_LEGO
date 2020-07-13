@@ -701,7 +701,6 @@ struct FOpenGLES : public FOpenGLBase
 	static FORCEINLINE GLenum GetTextureHalfFloatPixelType() { return GL_HALF_FLOAT; }
 	static FORCEINLINE GLenum GetTextureHalfFloatInternalFormat() { return GL_RGBA16F; }
 	static FORCEINLINE GLint GetMaxMSAASamplesTileMem() { return MaxMSAASamplesTileMem; }
-	static FORCEINLINE bool NeedsVertexAttribRemapTable() { return bNeedsVertexAttribRemap; }
 
 	// On iOS both glMapBufferOES() and glBufferSubData() for immediate vertex and index data
 	// is the slow path (they both hit GPU sync and data cache flush in driver according to profiling in driver symbols).
@@ -1269,9 +1268,6 @@ protected:
 
 	/** GL_OES_standard_derivations */
 	static bool bSupportsStandardDerivativesExtension;
-
-	/** Vertex attributes need remapping if GL_MAX_VERTEX_ATTRIBS < 16 */
-	static bool bNeedsVertexAttribRemap;
 
 	/** Maximum number of MSAA samples supported on chip in tile memory, or 1 if not available */
 	static GLint MaxMSAASamplesTileMem;

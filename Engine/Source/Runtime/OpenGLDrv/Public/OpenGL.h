@@ -162,7 +162,6 @@ public:
 	static FORCEINLINE bool HasHardwareHiddenSurfaceRemoval()			{ return false; }
 	static FORCEINLINE bool AmdWorkaround()								{ return false; }
 	static FORCEINLINE bool SupportsSeparateShaderObjects()				{ return false; }
-	static FORCEINLINE bool NeedsVertexAttribRemapTable()				{ return false; }
 	static FORCEINLINE bool SupportsRGB10A2()							{ return true; }
 	static FORCEINLINE bool SupportsProgramBinary()						{ return false; }
 	

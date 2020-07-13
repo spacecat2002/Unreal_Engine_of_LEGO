@@ -1184,31 +1184,6 @@ private:
 
 	void FreeZeroStrideBuffers();
 
-	/** Remaps vertex attributes on devices where GL_MAX_VERTEX_ATTRIBS < 16 */
-	FORCEINLINE uint32 RemapVertexAttrib(uint32 VertexAttributeIndex)
-	{
-		if (FOpenGL::NeedsVertexAttribRemapTable())
-		{
-			check(VertexAttributeIndex < UE_ARRAY_COUNT(PendingState.BoundShaderState->GetVertexShader()->Bindings.VertexAttributeRemap));
-			VertexAttributeIndex = PendingState.BoundShaderState->GetVertexShader()->Bindings.VertexAttributeRemap[VertexAttributeIndex];
-		}
-		check(VertexAttributeIndex < NUM_OPENGL_VERTEX_STREAMS); // check that this attribute has remaped correctly.
-		return VertexAttributeIndex;
-	}
-
-	FORCEINLINE uint32 RemapVertexAttrib(const FOpenGLShaderBindings& Bindings, uint32 VertexAttributeIndex)
-	{
-		if (FOpenGL::NeedsVertexAttribRemapTable())
-		{
-			check(VertexAttributeIndex < UE_ARRAY_COUNT(Bindings.VertexAttributeRemap));
-			VertexAttributeIndex = Bindings.VertexAttributeRemap[VertexAttributeIndex];
-		}
-		check(VertexAttributeIndex < NUM_OPENGL_VERTEX_STREAMS); // check that this attribute has remaped correctly.
-		return VertexAttributeIndex;
-	}
-
-	
-
 	FTextureLockTracker GLLockTracker;
 
 };

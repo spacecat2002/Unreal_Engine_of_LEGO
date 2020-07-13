@@ -231,9 +231,6 @@ bool FOpenGLES::bRequiresGLFragCoordVaryingLimitHack = false;
 /* This indicates failure when attempting to retrieve driver's binary representation of the hack program  */
 bool FOpenGLES::bBinaryProgramRetrievalFailed = false;
 
-/** Vertex attributes need remapping if GL_MAX_VERTEX_ATTRIBS < 16 */
-bool FOpenGLES::bNeedsVertexAttribRemap = false;
-
 /* This is a hack to add a round() function when not available to a shader compiler */
 bool FOpenGLES::bRequiresRoundFunctionHack = true;
 
@@ -283,10 +280,9 @@ void FOpenGLES::ProcessQueryGLInt()
 {
 	GLint MaxVertexAttribs;
 	LOG_AND_GET_GL_INT(GL_MAX_VERTEX_ATTRIBS, 0, MaxVertexAttribs);
-	bNeedsVertexAttribRemap = MaxVertexAttribs < 16;
-	if (bNeedsVertexAttribRemap)
+	if (MaxVertexAttribs < 16)
 	{
-		UE_LOG(LogRHI, Warning,
+		UE_LOG(LogRHI, Error,
 			TEXT("Device reports support for %d vertex attributes, UE4 requires 16. Rendering artifacts may occur."),
 			MaxVertexAttribs
 		);

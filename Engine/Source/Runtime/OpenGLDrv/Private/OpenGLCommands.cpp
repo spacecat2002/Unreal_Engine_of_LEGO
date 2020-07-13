@@ -1877,8 +1877,6 @@ void FOpenGLDynamicRHI::SetupVertexArrays(FOpenGLContextState& ContextState, uin
 			continue; // skip unused attributes.
 		}
 
-		AttributeIndex = RemapVertexAttrib(Bindings, AttributeIndex);
-
 		if ( VertexElement.StreamIndex < NumStreams)
 		{
 			FOpenGLStream* Stream = &Streams[VertexElement.StreamIndex];
@@ -1957,10 +1955,6 @@ void FOpenGLDynamicRHI::SetupVertexArraysVAB(FOpenGLContextState& ContextState, 
 	check(IsValidRef(PendingState.BoundShaderState));
 	FOpenGLVertexDeclaration* VertexDeclaration = PendingState.BoundShaderState->VertexDeclaration;
 	uint32 AttributeMask = PendingState.BoundShaderState->GetVertexShader()->Bindings.InOutMask;
-	if (FOpenGL::NeedsVertexAttribRemapTable())
-	{
-		AttributeMask = PendingState.BoundShaderState->GetVertexShader()->Bindings.VertexRemappedMask;
-	}
 
 	if (ContextState.VertexDecl != VertexDeclaration || AttributeMask != ContextState.ActiveAttribMask)
 	{
@@ -1975,14 +1969,9 @@ void FOpenGLDynamicRHI::SetupVertexArraysVAB(FOpenGLContextState& ContextState, 
 			FOpenGLVertexElement& VertexElement = VertexDeclaration->VertexElements[ElementIndex];
 			uint32 AttributeIndex = VertexElement.AttributeIndex;
 			const bool bAttribInUse = (PendingState.BoundShaderState->GetVertexShader()->Bindings.InOutMask & (0x1 << AttributeIndex)) != 0;
-			if (bAttribInUse)
-			{
-				AttributeIndex = RemapVertexAttrib(AttributeIndex);
-			}
-
 			const uint32 StreamIndex = VertexElement.StreamIndex;
 
-			ContextState.MaxActiveAttrib = FMath::Max( ContextState.MaxActiveAttrib, AttributeIndex);
+			ContextState.MaxActiveAttrib = FMath::Max(ContextState.MaxActiveAttrib, AttributeIndex);
 
 			//only setup/track attributes actually in use
 			FOpenGLCachedAttr &Attr = ContextState.VertexAttrs[AttributeIndex];
@@ -2142,7 +2131,6 @@ void FOpenGLDynamicRHI::SetupVertexArraysUP(FOpenGLContextState& ContextState, v
 		const bool bAttribInUse = (Bindings.InOutMask & (0x1 << AttributeIndex)) != 0;
 		if (bAttribInUse)
 		{
-			AttributeIndex = RemapVertexAttrib(Bindings, AttributeIndex);
 			check(Stride > 0);
 			EnableVertexElementCached(
 				ContextState,
