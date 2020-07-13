@@ -32,6 +32,9 @@ template<typename KeyType,typename ValueType,typename SetAllocator ,typename Key
 typedef TMap<FString, FStringFormatArg> FStringFormatNamedArguments;
 typedef TArray<FStringFormatArg> FStringFormatOrderedArguments;
 
+TCHAR*       GetData(FString&);
+const TCHAR* GetData(const FString&);
+
 /**
  * A dynamically sizeable string.
  * @see https://docs.unrealengine.com/latest/INT/Programming/UnrealArchitecture/StringHandling/FString/
@@ -45,19 +48,32 @@ private:
 	typedef TArray<TCHAR> DataType;
 	DataType Data;
 
+	template <typename RangeType>
+	using TRangeElementType = typename TRemoveCV<typename TRemovePointer<decltype(GetData(DeclVal<RangeType>()))>::Type>::Type;
+
+	template <typename CharRangeType>
+	struct TIsRangeOfCharType : TIsCharType<TRangeElementType<CharRangeType>>
+	{
+	};
+
+	template <typename CharRangeType>
+	struct TIsRangeOfTCHAR : TIsSame<TCHAR, TRangeElementType<CharRangeType>>
+	{
+	};
+
 	/** Trait testing whether a type is a contiguous range of characters, and not CharType[]. */
 	template <typename CharRangeType>
 	using TIsCharRangeNotCArray = TAnd<
 		TIsContiguousContainer<CharRangeType>,
 		TNot<TIsArray<typename TRemoveReference<CharRangeType>::Type>>,
-		TIsCharType<typename TRemoveCV<typename TRemovePointer<decltype(GetData(DeclVal<CharRangeType>()))>::Type>::Type>>;
+		TIsRangeOfCharType<CharRangeType>>;
 
 	/** Trait testing whether a type is a contiguous range of TCHAR, and not TCHAR[]. */
 	template <typename CharRangeType>
 	using TIsTCharRangeNotCArray = TAnd<
 		TIsContiguousContainer<CharRangeType>,
 		TNot<TIsArray<typename TRemoveReference<CharRangeType>::Type>>,
-		TIsSame<TCHAR, typename TRemoveCV<typename TRemovePointer<decltype(GetData(DeclVal<CharRangeType>()))>::Type>::Type>>;
+		TIsRangeOfTCHAR<CharRangeType>>;
 
 public:
 	using ElementType = TCHAR;
