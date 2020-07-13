@@ -444,7 +444,7 @@ void FOpenGLDynamicRHI::RHICopyToResolveTarget(FRHITexture* SourceTextureRHI, FR
 	FOpenGLTextureBase* SourceTexture = GetOpenGLTextureFromRHITexture(SourceTextureRHI);
 	FOpenGLTextureBase* DestTexture = GetOpenGLTextureFromRHITexture(DestTextureRHI);
 
-	if (SourceTexture != DestTexture && FOpenGL::SupportsBlitFramebuffer())
+	if (SourceTexture != DestTexture)
 	{
 		VERIFY_GL_SCOPE();
 

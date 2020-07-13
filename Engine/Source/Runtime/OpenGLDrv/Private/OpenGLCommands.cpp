@@ -780,8 +780,7 @@ void FOpenGLDynamicRHI::SetupTexturesForDraw( FOpenGLContextState& ContextState,
 			CachedSetupTextureStage( ContextState, TextureStageIndex, TextureStage.Target, TextureStage.Resource, TextureStage.LimitMip, TextureStage.NumMips );
 			
 			bool bExternalTexture = (TextureStage.Target == GL_TEXTURE_EXTERNAL_OES);
-
-			if (FOpenGL::SupportsSamplerObjects() && !bExternalTexture)
+			if (!bExternalTexture)
 			{
 				FOpenGLSamplerState* PendingSampler = PendingState.SamplerStates[TextureStageIndex];
 			
@@ -793,11 +792,8 @@ void FOpenGLDynamicRHI::SetupTexturesForDraw( FOpenGLContextState& ContextState,
 			}
 			else if (TextureStage.Target != GL_TEXTURE_BUFFER)
 			{
-				if (FOpenGL::SupportsSamplerObjects())
-				{
-					FOpenGL::BindSampler(TextureStageIndex, 0);
-					ContextState.SamplerStates[TextureStageIndex] = nullptr;
-				}
+				FOpenGL::BindSampler(TextureStageIndex, 0);
+				ContextState.SamplerStates[TextureStageIndex] = nullptr;
 				ApplyTextureStage( ContextState, TextureStageIndex, TextureStage, PendingState.SamplerStates[TextureStageIndex] );
 			}
 		}

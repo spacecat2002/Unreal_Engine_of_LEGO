@@ -440,7 +440,7 @@ void FOpenGLDynamicRHI::InitializeGLTexture(FRHITexture* Texture, uint32 SizeX, 
 		
 		TextureMipLimits.Add(TextureID, TPair<GLenum, GLenum>(0, NumMips - 1));
 		
-		if (FOpenGL::SupportsTextureSwizzle() && GLFormat.bBGRA && !(Flags & TexCreate_RenderTargetable))
+		if (GLFormat.bBGRA && !(Flags & TexCreate_RenderTargetable))
 		{
 			glTexParameteri(Target, GL_TEXTURE_SWIZZLE_R, GL_BLUE);
 			glTexParameteri(Target, GL_TEXTURE_SWIZZLE_B, GL_RED);

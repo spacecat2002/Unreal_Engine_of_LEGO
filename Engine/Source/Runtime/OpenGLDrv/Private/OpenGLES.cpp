@@ -120,17 +120,6 @@ PFNGLFRAMEBUFFERTEXTUREMULTIVIEWOVRPROC				glFramebufferTextureMultiviewOVR = NU
 PFNGLFRAMEBUFFERTEXTUREMULTISAMPLEMULTIVIEWOVRPROC	glFramebufferTextureMultisampleMultiviewOVR = NULL;
 PFNGLFRAMEBUFFERTEXTURELAYERPROC					glFramebufferTextureLayer = NULL;
 
-/** GL_OES_vertex_array_object */
-bool FOpenGLES::bSupportsVertexArrayObjects = false;
-
-/** GL_OES_mapbuffer */
-bool FOpenGLES::bSupportsMapBuffer = false;
-
-/** GL_OES_depth_texture */
-bool FOpenGLES::bSupportsDepthTexture = false;
-
-/** GL_ARB_occlusion_query2, GL_EXT_occlusion_query_boolean */
-bool FOpenGLES::bSupportsOcclusionQueries = false;
 
 /** GL_EXT_disjoint_timer_query */
 bool FOpenGLES::bSupportsDisjointTimeQueries = false;
@@ -144,9 +133,6 @@ static TAutoConsoleVariable<int32> CVarDisjointTimerQueries(
 /** Some timer query implementations are never disjoint */
 bool FOpenGLES::bTimerQueryCanBeDisjoint = true;
 
-/** GL_OES_rgb8_rgba8 */
-bool FOpenGLES::bSupportsRGBA8 = false;
-
 /** GL_APPLE_texture_format_BGRA8888 */
 bool FOpenGLES::bSupportsBGRA8888 = false;
 
@@ -155,9 +141,6 @@ bool FOpenGLES::bSupportsBGRA8888RenderTarget = false;
 
 /** GL_EXT_discard_framebuffer */
 bool FOpenGLES::bSupportsDiscardFrameBuffer = false;
-
-/** GL_OES_vertex_half_float */
-bool FOpenGLES::bSupportsVertexHalfFloat = false;
 
 /** GL_OES_texture_float */
 bool FOpenGLES::bSupportsTextureFloat = false;
@@ -240,9 +223,6 @@ bool FOpenGLES::bRequiresARMShaderFramebufferFetchDepthStencilUndef = false;
 /* Indicates shader compiler hack checks are being tested */
 bool FOpenGLES::bIsCheckingShaderCompilerHacks = false;
 
-/** GL_OES_vertex_type_10_10_10_2 */
-bool FOpenGLES::bSupportsRGB10A2 = false;
-
 /** GL_OES_program_binary extension */
 bool FOpenGLES::bSupportsProgramBinary = false;
 
@@ -313,15 +293,10 @@ void FOpenGLES::ProcessExtensions(const FString& ExtensionsString)
 	ProcessQueryGLInt();
 	FOpenGLBase::ProcessExtensions(ExtensionsString);
 
-	bSupportsMapBuffer = true;
-	bSupportsDepthTexture = ExtensionsString.Contains(TEXT("GL_OES_depth_texture"));
-	bSupportsOcclusionQueries = ExtensionsString.Contains(TEXT("GL_ARB_occlusion_query2")) || ExtensionsString.Contains(TEXT("GL_EXT_occlusion_query_boolean"));
 	bSupportsDisjointTimeQueries = ExtensionsString.Contains(TEXT("GL_EXT_disjoint_timer_query")) || ExtensionsString.Contains(TEXT("GL_NV_timer_query"));
 	bTimerQueryCanBeDisjoint = !ExtensionsString.Contains(TEXT("GL_NV_timer_query"));
-	bSupportsRGBA8 = ExtensionsString.Contains(TEXT("GL_OES_rgb8_rgba8"));
 	bSupportsBGRA8888 = ExtensionsString.Contains(TEXT("GL_APPLE_texture_format_BGRA8888")) || ExtensionsString.Contains(TEXT("GL_IMG_texture_format_BGRA8888")) || ExtensionsString.Contains(TEXT("GL_EXT_texture_format_BGRA8888"));
 	bSupportsBGRA8888RenderTarget = bSupportsBGRA8888;
-	bSupportsVertexHalfFloat = ExtensionsString.Contains(TEXT("GL_OES_vertex_half_float"));
 	bSupportsTextureFloat = ExtensionsString.Contains(TEXT("GL_OES_texture_float"));
 	bSupportsTextureHalfFloat = ExtensionsString.Contains(TEXT("GL_OES_texture_half_float"));
 	bSupportsColorBufferFloat = ExtensionsString.Contains(TEXT("GL_EXT_color_buffer_float"));
@@ -332,13 +307,11 @@ void FOpenGLES::ProcessExtensions(const FString& ExtensionsString)
 	bSupportsShaderDepthStencilFetch = ExtensionsString.Contains(TEXT("GL_ARM_shader_framebuffer_fetch_depth_stencil"));
 	bSupportsMultisampledRenderToTexture = ExtensionsString.Contains(TEXT("GL_EXT_multisampled_render_to_texture"));
 	bSupportsDXT = ExtensionsString.Contains(TEXT("GL_NV_texture_compression_s3tc")) || ExtensionsString.Contains(TEXT("GL_EXT_texture_compression_s3tc"));
-	bSupportsVertexArrayObjects = ExtensionsString.Contains(TEXT("GL_OES_vertex_array_object"));
 	bSupportsDiscardFrameBuffer = ExtensionsString.Contains(TEXT("GL_EXT_discard_framebuffer"));
 	bSupportsNVFrameBufferBlit = ExtensionsString.Contains(TEXT("GL_NV_framebuffer_blit"));
 	bSupportsShaderTextureLod = ExtensionsString.Contains(TEXT("GL_EXT_shader_texture_lod"));
 	bSupportsTextureStorageEXT = ExtensionsString.Contains(TEXT("GL_EXT_texture_storage"));
 	bSupportsStandardDerivativesExtension = ExtensionsString.Contains(TEXT("GL_OES_standard_derivatives"));
-	bSupportsRGB10A2 = ExtensionsString.Contains(TEXT("GL_OES_vertex_type_10_10_10_2"));
 	bSupportsProgramBinary = ExtensionsString.Contains(TEXT("GL_OES_get_program_binary"));
 
 	// Report shader precision
@@ -359,10 +332,8 @@ void FOpenGLES::ProcessExtensions(const FString& ExtensionsString)
 	}
 
 	GSupportsDepthRenderTargetWithoutColorRenderTarget = false;
-	bSupportsOcclusionQueries = true;
 
 	// Get procedures
-	if (bSupportsOcclusionQueries || SupportsDisjointTimeQueries())
 	{
 		glGenQueriesEXT = (PFNGLGENQUERIESEXTPROC)((void*)eglGetProcAddress("glGenQueries"));
 		glDeleteQueriesEXT = (PFNGLDELETEQUERIESEXTPROC)((void*)eglGetProcAddress("glDeleteQueries"));
@@ -475,8 +446,6 @@ void FOpenGLES::ProcessExtensions(const FString& ExtensionsString)
 	// Required by the ES3 spec
 	bSupportsTextureFloat = true;
 	bSupportsTextureHalfFloat = true;
-	bSupportsRGB10A2 = true;
-	bSupportsVertexHalfFloat = true;
 
 	// According to https://www.khronos.org/registry/gles/extensions/EXT/EXT_color_buffer_float.txt
 	bSupportsColorBufferHalfFloat = (bSupportsColorBufferHalfFloat || bSupportsColorBufferFloat);

@@ -85,16 +85,12 @@ public:
 	static void ProcessExtensions(const FString& ExtensionsString);
 	static void SetupDefaultGLContextState(const FString& ExtensionsString) {};
 
-	static FORCEINLINE bool SupportsMapBuffer()							{ return true; }
-	static FORCEINLINE bool SupportsDepthTexture()						{ return true; }
 	static FORCEINLINE bool SupportsDrawBuffers()						{ return true; }
 	static FORCEINLINE bool SupportsUniformBuffers()					{ return true; }
 	static FORCEINLINE bool SupportsStructuredBuffers()					{ return true; }
 	static FORCEINLINE bool SupportsTimestampQueries()					{ return true; }
 	static FORCEINLINE bool SupportsDisjointTimeQueries()				{ return false; } // @todo: if enabled, causes crash on PC
-	static FORCEINLINE bool SupportsOcclusionQueries()					{ return true; }
 	static FORCEINLINE bool SupportsExactOcclusionQueries()				{ return true; }
-	static FORCEINLINE bool SupportsBlitFramebuffer()					{ return true; }
 	static FORCEINLINE bool SupportsDepthStencilReadSurface()			{ return true; }
 	static FORCEINLINE bool SupportsFloatReadSurface()					{ return true; }
 	static FORCEINLINE bool SupportsMultipleRenderTargets()				{ return true; }
@@ -102,7 +98,6 @@ public:
 	static FORCEINLINE bool SupportsMultisampledTextures()				{ return true; }
 	static FORCEINLINE bool SupportsFences()							{ return true; }
 	static FORCEINLINE bool SupportsPolygonMode()						{ return true; }
-	static FORCEINLINE bool SupportsSamplerObjects()					{ return true; }
 	static FORCEINLINE bool SupportsTexture3D()							{ return true; }
 	static FORCEINLINE bool SupportsMobileMultiView()					{ return false; }
 	static FORCEINLINE bool SupportsImageExternal()						{ return false; }
@@ -114,7 +109,6 @@ public:
 	static FORCEINLINE bool SupportsVertexAttribShort()					{ return true; }
 	static FORCEINLINE bool SupportsVertexAttribByte()					{ return true; }
 	static FORCEINLINE bool SupportsVertexAttribDouble()				{ return true; }
-	static FORCEINLINE bool SupportsVertexArrayObjects()				{ return false; }
 	static FORCEINLINE bool SupportsDrawIndexOffset()					{ return true; }
 	static FORCEINLINE bool SupportsResourceView()						{ return true; }
 	static FORCEINLINE bool SupportsDiscardFrameBuffer()				{ return false; }
@@ -157,11 +151,9 @@ public:
 	static FORCEINLINE bool SupportsDepthBoundsTest()					{ return false; }
 	static FORCEINLINE bool SupportsTextureRange()						{ return false; }
 	static FORCEINLINE bool SupportsBindlessTexture()					{ return false; }
-	static FORCEINLINE bool SupportsTextureSwizzle()					{ return false; }
 	static FORCEINLINE bool HasHardwareHiddenSurfaceRemoval()			{ return false; }
 	static FORCEINLINE bool AmdWorkaround()								{ return false; }
 	static FORCEINLINE bool SupportsSeparateShaderObjects()				{ return false; }
-	static FORCEINLINE bool SupportsRGB10A2()							{ return true; }
 	static FORCEINLINE bool SupportsProgramBinary()						{ return false; }
 	
 	static FORCEINLINE GLenum GetDepthFormat()							{ return GL_DEPTH_COMPONENT16; }
