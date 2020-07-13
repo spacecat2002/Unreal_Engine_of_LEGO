@@ -1031,12 +1031,10 @@ void OPENGLDRV_API GLSLToDeviceCompatibleGLSL(FAnsiCharArray& GlslCodeOriginal, 
 	if (Capabilities.TargetPlatform == EOpenGLShaderTargetPlatform::OGLSTP_Desktop)
 	{
 		AppendCString(GlslCode, "#extension GL_ARB_separate_shader_objects : enable\n");
-		AppendCString(GlslCode, "#define INTERFACE_LOCATION(Pos) layout(location=Pos) \n");
 		AppendCString(GlslCode, "#define INTERFACE_BLOCK(Pos, Interp, Modifiers, Semantic, PreType, PostType) layout(location=Pos) Interp Modifiers struct { PreType PostType; }\n");
 	}
 	else
 	{
-		AppendCString(GlslCode, "#define INTERFACE_LOCATION(Pos) layout(location=Pos) \n");
 		AppendCString(GlslCode, "#define INTERFACE_BLOCK(Pos, Interp, Modifiers, Semantic, PreType, PostType) layout(location=Pos) Modifiers Semantic { PreType PostType; }\n");
 	}
 
