@@ -60,6 +60,7 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
 		SHADER_PARAMETER_EX(FVector4, ViewRectMin, EShaderPrecisionModifier::Half)
+		SHADER_PARAMETER_EX(FVector4, DepthBufferSizeAndInvSize, EShaderPrecisionModifier::Half)
 		SHADER_PARAMETER_EX(FVector4, BufferSizeAndInvSize, EShaderPrecisionModifier::Half)
 		SHADER_PARAMETER_EX(FVector4, ViewSizeAndInvSize, EShaderPrecisionModifier::Half)
 		SHADER_PARAMETER_EX(FVector4, FadeRadiusMulAdd_FadeDistance_ThicknessBlend, EShaderPrecisionModifier::Half)
@@ -99,7 +100,7 @@ public:
 		return PermutationVector;
 	}
 
-	static void SetupShaderParameters(FParameters& ShaderParameters, FRDGBuilder& GraphBuilder, const FViewInfo& View, const FIntRect& ViewRect, const FIntPoint& BufferSize, const FVector4& FallOffStartEndScaleBias, float ThicknessBlend, const FSceneRenderTargets& SceneContext)
+	static void SetupShaderParameters(FParameters& ShaderParameters, FRDGBuilder& GraphBuilder, const FViewInfo& View, const FIntRect& ViewRect, const FIntPoint& DepthBufferSize, const FIntPoint& BufferSize, const FVector4& FallOffStartEndScaleBias, float ThicknessBlend, const FSceneRenderTargets& SceneContext)
 	{
 		const FFinalPostProcessSettings& Settings = View.FinalPostProcessSettings;
 
@@ -108,6 +109,7 @@ public:
 
 		ShaderParameters.View = View.ViewUniformBuffer;
 		ShaderParameters.ViewRectMin = FVector4(ViewRect.Min.X, ViewRect.Min.Y, 0.0f, 0.0f);
+		ShaderParameters.DepthBufferSizeAndInvSize = FVector4(DepthBufferSize.X, DepthBufferSize.Y, 1.0f / DepthBufferSize.X, 1.0f / DepthBufferSize.Y);
 		ShaderParameters.BufferSizeAndInvSize = FVector4(BufferSize.X, BufferSize.Y, 1.0f / BufferSize.X, 1.0f / BufferSize.Y);
 		ShaderParameters.ViewSizeAndInvSize = FVector4(ViewRect.Width(), ViewRect.Height(), 1.0f / ViewRect.Width(), 1.0f / ViewRect.Height());
 		ShaderParameters.FadeRadiusMulAdd_FadeDistance_ThicknessBlend = FVector4(InvFadeRadius, -(Settings.AmbientOcclusionFadeDistance - FadeRadius) * InvFadeRadius, Settings.AmbientOcclusionFadeDistance, ThicknessBlend);
@@ -460,7 +462,8 @@ void FMobileSceneRenderer::RenderAmbientOcclusion(FRHICommandListImmediate& RHIC
 	FRDGTextureRef AmbientOcclusionTexture = GraphBuilder.RegisterExternalTexture(AmbientOcclusionMobileOutputs.AmbientOcclusionTexture, TEXT("AmbientOcclusionTexture"));
 	FRDGTextureUAVRef AmbientOcclusionTextureUAV = GraphBuilder.CreateUAV(AmbientOcclusionTexture);
 
-	const FIntPoint BufferSize = AmbientOcclusionMobileOutputs.AmbientOcclusionTexture->GetDesc().Extent;
+	const FIntPoint& DepthBufferSize = SceneContext.SceneDepthZ->GetDesc().Extent;
+	const FIntPoint& BufferSize = AmbientOcclusionMobileOutputs.AmbientOcclusionTexture->GetDesc().Extent;
 
 	float FallOffEnd = GTAOFalloffEndCVar ? GTAOFalloffEndCVar->GetValueOnRenderThread() : 200.0f;
 	float FallOffStartRatio = GTAOFalloffStartRatioCVar ? FMath::Clamp(GTAOFalloffStartRatioCVar->GetValueOnRenderThread(), 0.0f, 0.999f) : 0.5f;
@@ -489,7 +492,7 @@ void FMobileSceneRenderer::RenderAmbientOcclusion(FRHICommandListImmediate& RHIC
 		if (GetMaxWorkGroupInvocations() >= 1024 && CVarMobileAmbientOcclusionShaderType.GetValueOnRenderThread() == 0)
 		{
 			FGTAOMobile_HorizonSearchIntegralSpatialFilterCS::FParameters* HorizonSearchIntegralSpatialFilterParameters = GraphBuilder.AllocParameters<FGTAOMobile_HorizonSearchIntegralSpatialFilterCS::FParameters>();
-			FGTAOMobile_HorizonSearchIntegral::SetupShaderParameters(HorizonSearchIntegralSpatialFilterParameters->Common, GraphBuilder, View, ViewRect, BufferSize, FallOffStartEndScaleBias, ThicknessBlend, SceneContext);
+			FGTAOMobile_HorizonSearchIntegral::SetupShaderParameters(HorizonSearchIntegralSpatialFilterParameters->Common, GraphBuilder, View, ViewRect, DepthBufferSize, BufferSize, FallOffStartEndScaleBias, ThicknessBlend, SceneContext);
 			HorizonSearchIntegralSpatialFilterParameters->OutTexture = AmbientOcclusionTextureUAV;
 
 			auto ComputeShaderPermutationVector = FGTAOMobile_HorizonSearchIntegralSpatialFilterCS::BuildPermutationVector(MobileGTAOPreIntegratedTextureType, MobileAmbientOcclusionQuality - 1);
@@ -509,7 +512,7 @@ void FMobileSceneRenderer::RenderAmbientOcclusion(FRHICommandListImmediate& RHIC
 			FScreenPassRenderTarget HorizonSearchIntegralRT(HorizonSearchIntegralTexture, ViewRect, ERenderTargetLoadAction::EClear);
 
 			FGTAOMobile_HorizonSearchIntegralPS::FParameters* HorizonSearchIntegralParameters = GraphBuilder.AllocParameters<FGTAOMobile_HorizonSearchIntegralPS::FParameters>();
-			FGTAOMobile_HorizonSearchIntegral::SetupShaderParameters(HorizonSearchIntegralParameters->Common, GraphBuilder, View, ViewRect, BufferSize, FallOffStartEndScaleBias, ThicknessBlend, SceneContext);
+			FGTAOMobile_HorizonSearchIntegral::SetupShaderParameters(HorizonSearchIntegralParameters->Common, GraphBuilder, View, ViewRect, DepthBufferSize, BufferSize, FallOffStartEndScaleBias, ThicknessBlend, SceneContext);
 			HorizonSearchIntegralParameters->RenderTargets[0] = HorizonSearchIntegralRT.GetRenderTargetBinding();
 
 			auto HorizonSearchIntegralShaderPermutationVector = FGTAOMobile_HorizonSearchIntegralPS::BuildPermutationVector(MobileGTAOPreIntegratedTextureType, MobileAmbientOcclusionQuality - 1);
@@ -602,7 +605,7 @@ void FMobileSceneRenderer::RenderAmbientOcclusion(FRHICommandListImmediate& RHIC
 		else
 		{
 			FGTAOMobile_HorizonSearchIntegralCS::FParameters* HorizonSearchIntegralParameters = GraphBuilder.AllocParameters<FGTAOMobile_HorizonSearchIntegralCS::FParameters>();
-			FGTAOMobile_HorizonSearchIntegral::SetupShaderParameters(HorizonSearchIntegralParameters->Common, GraphBuilder, View, ViewRect, BufferSize, FallOffStartEndScaleBias, ThicknessBlend, SceneContext);
+			FGTAOMobile_HorizonSearchIntegral::SetupShaderParameters(HorizonSearchIntegralParameters->Common, GraphBuilder, View, ViewRect, DepthBufferSize, BufferSize, FallOffStartEndScaleBias, ThicknessBlend, SceneContext);
 			HorizonSearchIntegralParameters->OutTexture = HorizonSearchIntegralTextureUAV;
 
 			auto HorizonSearchIntegralShaderPermutationVector = FGTAOMobile_HorizonSearchIntegralCS::BuildPermutationVector(MobileGTAOPreIntegratedTextureType, MobileAmbientOcclusionQuality - 1);
