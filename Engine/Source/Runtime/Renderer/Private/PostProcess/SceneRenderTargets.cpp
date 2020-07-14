@@ -1905,7 +1905,7 @@ void FSceneRenderTargets::ResolveSeparateTranslucency(FRHICommandList& RHICmdLis
 	FResolveParams DepthResolveParams;
 	DepthResolveParams.DestRect = SeparateResolveRect;
 	DepthResolveParams.Rect = SeparateResolveRect;
-	ResolveDepthTexture(RHICmdList, (*SeparateTranslucencyDepth)->GetRenderTargetItem().TargetableTexture->GetTexture2D(), (*SeparateTranslucencyDepth)->GetRenderTargetItem().ShaderResourceTexture->GetTexture2D(), DepthResolveParams);
+	ResolveDepthTexture(RHICmdList, (FTexture2DRHIRef&)(*SeparateTranslucencyDepth)->GetRenderTargetItem().TargetableTexture, (FTexture2DRHIRef&)(*SeparateTranslucencyDepth)->GetRenderTargetItem().ShaderResourceTexture, DepthResolveParams);
 
 	GVisualizeTexture.SetCheckPoint(RHICmdList, *SeparateTranslucency);
 	GVisualizeTexture.SetCheckPoint(RHICmdList, *SeparateTranslucencyDepth);
@@ -2026,7 +2026,7 @@ void FSceneRenderTargets::ResolveSeparateTranslucencyModulate(FRHICommandList& R
 	FResolveParams DepthResolveParams;
 	DepthResolveParams.DestRect = SeparateResolveRect;
 	DepthResolveParams.Rect = SeparateResolveRect;
-	ResolveDepthTexture(RHICmdList, (*SeparateTranslucencyDepth)->GetRenderTargetItem().TargetableTexture->GetTexture2D(), (*SeparateTranslucencyDepth)->GetRenderTargetItem().ShaderResourceTexture->GetTexture2D(), DepthResolveParams);
+	ResolveDepthTexture(RHICmdList, (FTexture2DRHIRef&)(*SeparateTranslucencyDepth)->GetRenderTargetItem().TargetableTexture, (FTexture2DRHIRef&)(*SeparateTranslucencyDepth)->GetRenderTargetItem().ShaderResourceTexture, DepthResolveParams);
 
 	bSeparateTranslucencyPass = false;
 }
