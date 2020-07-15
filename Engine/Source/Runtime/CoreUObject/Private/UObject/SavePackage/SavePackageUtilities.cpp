@@ -628,7 +628,21 @@ bool IsEditorOnlyObject(const UObject* InObject, bool bCheckRecursive, bool bChe
 	// If this is a package that is editor only or the object is in editor-only package,
 	// the object is editor-only too.
 	const bool bIsAPackage = InObject->IsA<UPackage>();
-	const UPackage* Package = (bIsAPackage ? static_cast<const UPackage*>(InObject) : InObject->GetOutermost());
+	const UPackage* Package;
+	if (bIsAPackage)
+	{
+		if (InObject->HasAnyFlags(RF_ClassDefaultObject))
+		{
+			// The default package is not editor-only, and it is part of a cycle that would cause infinite recursion: DefaultPackage -> GetOuter() -> Package:/Script/CoreUObject -> GetArchetype() -> DefaultPackage
+			return false;
+		}
+		Package = static_cast<const UPackage*>(InObject);
+	}
+	else
+	{
+		Package = InObject->GetOutermost();
+	}
+	
 	if (Package && Package->HasAnyPackageFlags(PKG_EditorOnly))
 	{
 		return true;
