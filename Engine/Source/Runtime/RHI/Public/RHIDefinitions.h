@@ -1254,7 +1254,7 @@ enum ETextureCreateFlags
 	// Texture will be used as a render pass attachment that will be read from
 	TexCreate_InputAttachmentRead	= 1<<9,
 	// Disable automatic defragmentation if the initial texture memory allocation fails.
-	TexCreate_DisableAutoDefrag		= 1<<10,
+	TexCreate_DisableAutoDefrag		 UE_DEPRECATED(4.26, "TexCreate_DisableAutoDefrag is deprecated and getting removed; please don't use.") = 1<<10,
 	// This texture has no GPU or CPU backing. It only exists in tile memory on TBDR GPUs (i.e., mobile).
 	TexCreate_Memoryless			= 1<<11,
 	// Create the texture with the flag that allows mip generation later, only applicable to D3D11
