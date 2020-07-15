@@ -4571,6 +4571,7 @@ void FEngineLoop::Tick()
 
 	uint64 CurrentFrameCounter = GFrameCounter;
 
+#if ENABLE_NAMED_EVENTS
 	TCHAR IndexedFrameString[32] = { 0 };
 	const TCHAR* FrameString = nullptr;
 	if (UE_TRACE_CHANNELEXPR_IS_ENABLED(CpuChannel))
@@ -4587,6 +4588,7 @@ void FEngineLoop::Tick()
 #endif
 	}
 	SCOPED_NAMED_EVENT_TCHAR(FrameString, FColor::Red);
+#endif
 
 	// execute callbacks for cvar changes
 	{
