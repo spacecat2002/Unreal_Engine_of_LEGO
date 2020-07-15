@@ -14,10 +14,6 @@ public class Launch : ModuleRules
 				"TaskGraph",
 		});
 
-		PublicIncludePathModuleNames.AddRange(new string[] {
-				"RHI",
-		});
-
 		PrivateDependencyModuleNames.AddRange(new string[] {
 				"Core",
 				"CoreUObject",

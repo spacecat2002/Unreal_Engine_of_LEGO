@@ -172,7 +172,9 @@
 
 #include "Misc/EmbeddedCommunication.h"
 
-#include "Tests/RHIUnitTests.h"
+#if WITH_ENGINE
+	#include "Tests/RHIUnitTests.h"
+#endif
 
 class FSlateRenderer;
 class SViewport;
@@ -5773,7 +5775,7 @@ void FEngineLoop::PostInitRHI()
 	}
 	RHIPostInit(PixelFormatByteWidth);
 
-#if (!UE_BUILD_SHIPPING)
+#if WITH_ENGINE && (!UE_BUILD_SHIPPING)
 	IRHITestModule* RHIUnitTests = static_cast<IRHITestModule*>(FModuleManager::Get().GetModule(TEXT("RHITests")));
 	if (RHIUnitTests)
 	{
