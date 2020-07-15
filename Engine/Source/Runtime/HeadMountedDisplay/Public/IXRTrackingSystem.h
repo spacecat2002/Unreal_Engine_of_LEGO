@@ -9,6 +9,7 @@
 #include "Features/IModularFeature.h"
 #include "Engine/GameViewportClient.h"
 #include "IXRInput.h"
+#include "XRGestureConfig.h"
 #include "Kismet/GameplayStatics.h"
 
 class IXRCamera;
@@ -404,6 +405,7 @@ public:
 		HMDData.bValid = true;
 		HMDData.DeviceName = GetSystemName();
 		HMDData.ApplicationInstanceID = FApp::GetInstanceId();
+		HMDData.bIsTracking = IsTracking(IXRTrackingSystem::HMDDeviceId);
 
 		APlayerCameraManager* CameraManager = UGameplayStatics::GetPlayerCameraManager(WorldContext, 0);
 		if (CameraManager)
@@ -418,4 +420,6 @@ public:
 	 * Platform Agnostic Query about MotionControllers details
 	 */
 	virtual void GetMotionControllerData(UObject* WorldContext, const EControllerHand Hand, FXRMotionControllerData& MotionControllerData) = 0;
+
+	virtual bool ConfigureGestures(const FXRGestureConfig& GestureConfig) = 0;
 };

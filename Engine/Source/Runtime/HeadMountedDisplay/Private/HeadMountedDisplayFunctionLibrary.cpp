@@ -465,3 +465,14 @@ void UHeadMountedDisplayFunctionLibrary::GetMotionControllerData(UObject* WorldC
 		TrackingSys->GetMotionControllerData(WorldContext, Hand, MotionControllerData);
 	}
 }
+
+bool UHeadMountedDisplayFunctionLibrary::ConfigureGestures(const FXRGestureConfig& GestureConfig)
+{
+	IXRTrackingSystem* TrackingSys = GEngine->XRSystem.Get();
+	if (TrackingSys)
+	{
+		return TrackingSys->ConfigureGestures(GestureConfig);
+	}
+	return false;
+}
+

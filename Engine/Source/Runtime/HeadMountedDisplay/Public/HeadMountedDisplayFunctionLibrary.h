@@ -7,6 +7,7 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "HeadMountedDisplayTypes.h"
 #include "IIdentifiableXRDevice.h" // for FXRDeviceId
+#include "XRGestureConfig.h"
 #include "HeadMountedDisplayFunctionLibrary.generated.h"
 
 UCLASS()
@@ -324,5 +325,6 @@ class HEADMOUNTEDDISPLAY_API UHeadMountedDisplayFunctionLibrary : public UBluepr
 	static void GetMotionControllerData(UObject* WorldContext, const EControllerHand Hand, FXRMotionControllerData& MotionControllerData);
 
 
-
+	UFUNCTION(BlueprintCallable, Category = "Input|XRTracking", meta = (ToolTip = "Specify which gestures to capture."))
+	static bool ConfigureGestures(const FXRGestureConfig& GestureConfig);
 };

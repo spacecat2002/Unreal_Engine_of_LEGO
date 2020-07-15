@@ -269,6 +269,9 @@ struct HEADMOUNTEDDISPLAY_API FXRHMDData
 	FGuid ApplicationInstanceID;
 
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
+	bool bIsTracking;
+
+	UPROPERTY(BlueprintReadOnly, Category = "XR")
 	FVector Position;
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
 	FQuat Rotation;
