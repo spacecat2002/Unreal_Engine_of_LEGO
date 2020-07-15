@@ -263,4 +263,6 @@ public:
 	}
 	
 	virtual class UARGeoTrackingSupport* OnGetGeoTrackingSupport() const { return nullptr; }
+	
+	virtual bool OnGetCameraIntrinsics(FARCameraIntrinsics& OutCameraIntrinsics) const { return false; }
 };

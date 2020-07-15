@@ -426,6 +426,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Geo Tracking")
 	static class UARGeoTrackingSupport* GetGeoTrackingSupport();
 	
+	/** @return the intrinsics of the AR camera. */
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Geo Tracking")
+	static bool GetCameraIntrinsics(FARCameraIntrinsics& OutCameraIntrinsics);
+	
 public:
 	static void RegisterAsARSystem(const TSharedRef<FARSupportInterface , ESPMode::ThreadSafe>& NewArSystem);
 	

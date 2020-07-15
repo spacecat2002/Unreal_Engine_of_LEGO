@@ -127,6 +127,9 @@ public:
 	
 	/** \see UARBlueprintLibrary::GetGeoTrackingSupport() */
 	class UARGeoTrackingSupport* GetGeoTrackingSupport() const;
+	
+	/** \see UARBlueprintLibrary::GetCameraIntrinsics() */
+	bool GetCameraIntrinsics(FARCameraIntrinsics& OutCameraIntrinsics) const;
 
 	//~ FGCObject
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;

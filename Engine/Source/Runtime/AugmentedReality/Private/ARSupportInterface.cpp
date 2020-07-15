@@ -438,6 +438,15 @@ UARGeoTrackingSupport* FARSupportInterface::GetGeoTrackingSupport() const
 	return nullptr;
 }
 
+bool FARSupportInterface::GetCameraIntrinsics(FARCameraIntrinsics& OutCameraIntrinsics) const
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->OnGetCameraIntrinsics(OutCameraIntrinsics);
+	}
+	return false;
+}
+
 #define DEFINE_AR_SI_DELEGATE_FUNCS(DelegateName) \
 FDelegateHandle FARSupportInterface::Add##DelegateName##Delegate_Handle(const F##DelegateName##Delegate& Delegate) \
 { \

@@ -925,3 +925,13 @@ UARGeoTrackingSupport* UARBlueprintLibrary::GetGeoTrackingSupport()
 	}
 	return nullptr;
 }
+
+bool UARBlueprintLibrary::GetCameraIntrinsics(FARCameraIntrinsics& OutCameraIntrinsics)
+{
+	auto ARSystem = GetARSystem();
+	if (ARSystem.IsValid())
+	{
+		return ARSystem.Pin()->GetCameraIntrinsics(OutCameraIntrinsics);		
+	}
+	return false;
+}

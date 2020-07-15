@@ -560,3 +560,24 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "AR AugmentedReality|Pose Tracking")
 	EARJointTransformSpace JointTransformSpace = EARJointTransformSpace::Model;
 };
+
+
+/** AR camera intrinsics */
+USTRUCT(BlueprintType)
+struct AUGMENTEDREALITY_API FARCameraIntrinsics
+{
+	GENERATED_BODY()
+
+public:
+	/** Camera image resolution in pixels */
+	UPROPERTY(BlueprintReadOnly, Category="AR AugmentedReality|Camera")
+	FIntPoint ImageResolution = FIntPoint::ZeroValue;
+	
+	/** Camera focal length in pixels */
+	UPROPERTY(BlueprintReadOnly, Category="AR AugmentedReality|Camera")
+	FVector2D FocalLength = FVector2D::ZeroVector;
+	
+	/** Camera principal point in pixels */
+	UPROPERTY(BlueprintReadOnly, Category="AR AugmentedReality|Camera")
+	FVector2D PrincipalPoint = FVector2D::ZeroVector;
+};
