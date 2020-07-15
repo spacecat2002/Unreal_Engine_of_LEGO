@@ -113,8 +113,6 @@ class FRDGBuilder;
 //
 //////////////////////////////////////////////////////////////////////////
 
-#if RDG_GPU_SCOPES
-
 /** Stores a GPU event name for the render graph. Draw events can be compiled out entirely from
  *  a release build for performance.
  */
@@ -145,6 +143,8 @@ private:
 #endif
 #endif
 };
+
+#if RDG_GPU_SCOPES
 
 class FRDGEventScope final
 {
