@@ -713,6 +713,8 @@ void FLowLevelMemTracker::UpdateStatsPerFrame(const TCHAR* LogName)
 	FPlatformMemoryStats PlatformStats = FPlatformMemory::GetStats();
 #if PLATFORM_ANDROID || PLATFORM_IOS || WITH_SERVER_CODE
 	uint64 PlatformProcessMemory = PlatformStats.UsedPhysical;
+#elif PLATFORM_DESKTOP
+	uint64 PlatformProcessMemory = PlatformStats.UsedVirtual;  // virtual is working set + paged out memory
 #else
 	uint64 PlatformProcessMemory = PlatformStats.TotalPhysical - PlatformStats.AvailablePhysical;
 #endif
