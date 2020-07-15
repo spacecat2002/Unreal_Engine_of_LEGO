@@ -57,6 +57,12 @@ class HEADMOUNTEDDISPLAY_API UHeadMountedDisplayFunctionLibrary : public UBluepr
 	static int32 GetXRSystemFlags();
 
 	/**
+	 * Returns name of tracking system specific version string.
+	 */
+	UFUNCTION(BlueprintPure, Category = "HeadMountedDisplay")
+	static FString GetVersionString();
+
+	/**
 	* Returns the worn state of the device.
 	*
 	* @return	Unknown, Worn, NotWorn.  If the platform does not detect this it will always return Unknown.

@@ -61,6 +61,17 @@ FName UHeadMountedDisplayFunctionLibrary::GetHMDDeviceName()
 	return DeviceName;
 }
 
+FString UHeadMountedDisplayFunctionLibrary::GetVersionString()
+{
+	FString VersionString;
+	if (GEngine->XRSystem.IsValid())
+	{
+		VersionString = GEngine->XRSystem->GetVersionString();
+	}
+	return VersionString;
+}
+
+
 int32 UHeadMountedDisplayFunctionLibrary::GetXRSystemFlags()
 {
 	int32 SystemFlags = 0;
