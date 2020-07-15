@@ -488,3 +488,34 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Classification")
 	virtual bool GetObjectClassificationAtLocation(const FVector& InWorldLocation, EARObjectClassification& OutClassification, FVector& OutClassificationLocation, float MaxLocationDiff = 10.f) { return false; }
 };
+
+
+UCLASS(BlueprintType)
+class AUGMENTEDREALITY_API UARGeoAnchor : public UARTrackedGeometry
+{
+	GENERATED_BODY()
+	
+public:
+	void UpdateGeoAnchor(const TSharedRef<FARSupportInterface, ESPMode::ThreadSafe>& InTrackingSystem, uint32 FrameNumber, double Timestamp, const FTransform& InLocalToTrackingTransform, const FTransform& InAlignmentTransform,
+						 float InLongitude, float InLatitude, float InAltitudeMeters, EARAltitudeSource InAltitudeSource);
+	
+	void GetNetworkPayload(FARGeoAnchorUpdatePayload& Payload);
+	
+	UFUNCTION(BlueprintPure, Category = "AR AugmentedReality|Geo Tracking")
+	float GetLongitude() const { return Longitude; }
+	
+	UFUNCTION(BlueprintPure, Category = "AR AugmentedReality|Geo Tracking")
+	float GetLatitude() const { return Latitude; }
+	
+	UFUNCTION(BlueprintPure, Category = "AR AugmentedReality|Geo Tracking")
+	float GetAltitudeMeters() const { return AltitudeMeters; }
+	
+	UFUNCTION(BlueprintPure, Category = "AR AugmentedReality|Geo Tracking")
+	EARAltitudeSource GetAltitudeSource() const { return AltitudeSource; }
+	
+private:
+	float Longitude = 0.f;
+	float Latitude = 0.f;
+	float AltitudeMeters = 0.f;
+	EARAltitudeSource AltitudeSource = EARAltitudeSource::Unknown;
+};

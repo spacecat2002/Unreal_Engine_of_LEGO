@@ -73,6 +73,7 @@ DEFINE_AR_COMPONENT_DEBUG_MODE(ImageComponentDebugMode, "ar.ImageComponentDebugM
 DEFINE_AR_COMPONENT_DEBUG_MODE(FaceComponentDebugMode, "ar.FaceComponentDebugMode", "Debug mode for AR face component, see EFaceComponentDebugMode", ARFaceComponent);
 DEFINE_AR_COMPONENT_DEBUG_MODE(PoseComponentDebugMode, "ar.PoseComponentDebugMode", "Debug mode for AR pose component, see EPoseComponentDebugMode", ARPoseComponent);
 DEFINE_AR_COMPONENT_DEBUG_MODE(QRCodeComponentDebugMode, "ar.QRCodeComponentDebugMode", "Debug mode for AR QR code component, see EQRCodeComponentDebugMode", ARQRCodeComponent);
+DEFINE_AR_COMPONENT_DEBUG_MODE(GeoAnchorComponentDebugMode, "ar.GeoAnchorComponentDebugMode", "Debug mode for AR Geo anchor component, see EGeoAnchorComponentDebugMode", ARGeoAnchorComponent);
 
 UARComponent::UARComponent()
 {
@@ -176,6 +177,7 @@ DEFINE_AR_COMPONENT_VIRTUALS(ARPoseComponent,             ARTrackedPose,        
 DEFINE_AR_COMPONENT_VIRTUALS(AREnvironmentProbeComponent, AREnvironmentCaptureProbe, AREnvironmentProbeUpdatePayload);
 DEFINE_AR_COMPONENT_VIRTUALS(ARObjectComponent,           ARTrackedObject,           ARObjectUpdatePayload);
 DEFINE_AR_COMPONENT_VIRTUALS(ARMeshComponent,             ARTrackedGeometry,         ARMeshUpdatePayload);
+DEFINE_AR_COMPONENT_VIRTUALS(ARGeoAnchorComponent,        ARGeoAnchor,               ARGeoAnchorUpdatePayload);
 
 
 void FARSessionPayload::SetFlag(EARSessionConfigFlags InFlag)
@@ -650,6 +652,36 @@ void UARQRCodeComponent::TickComponent(float DeltaTime, enum ELevelTick TickType
 		const auto& WorldTransform = ReplicatedPayload.WorldTransform;
 		const auto StringLocation = WorldTransform.TransformPosition(FVector(0, 0, 10.f));
 		UKismetSystemLibrary::DrawDebugString(this, StringLocation, ReplicatedPayload.QRCode, nullptr, FLinearColor::Yellow);
+	}
+#endif
+}
+
+void UARGeoAnchorComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	
+#if AR_DEBUG_MODE
+	if (GetDebugMode() == (int32)EGeoAnchorComponentDebugMode::ShowGeoData)
+	{
+		const auto& WorldTransform = ReplicatedPayload.WorldTransform;
+		const auto StringLocation = WorldTransform.TransformPosition(FVector(0, 0, 10.f));
+		
+		static const TMap<EARAltitudeSource, FString> AltitudeSourceNames =
+		{
+			{ EARAltitudeSource::Precise,	 	TEXT("Precise") },
+			{ EARAltitudeSource::Coarse, 		TEXT("Coarse") },
+			{ EARAltitudeSource::UserDefined, 	TEXT("UserDefined") },
+			{ EARAltitudeSource::Unknown, 		TEXT("Unknown") },
+		};
+		
+		const auto DebugString = FString::Printf(TEXT("%s: Longitude (%f), Latitude (%f), AltitudeMeters (%f), AltitudeSource (%s)"),
+												 ReplicatedPayload.AnchorName.Len() ? *ReplicatedPayload.AnchorName : TEXT("Geo Anchor"),
+												 ReplicatedPayload.Longitude, ReplicatedPayload.Latitude, ReplicatedPayload.AltitudeMeters,
+												 *AltitudeSourceNames[ReplicatedPayload.AltitudeSource]);
+		UKismetSystemLibrary::DrawDebugString(this, StringLocation, DebugString, nullptr, FLinearColor::Yellow);
+		
+		const auto AxisLength = 15.f;
+		UKismetSystemLibrary::DrawDebugCoordinateSystem(this, WorldTransform.GetLocation(), WorldTransform.Rotator(), AxisLength);
 	}
 #endif
 }

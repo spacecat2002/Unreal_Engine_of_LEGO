@@ -201,6 +201,22 @@ enum class EARJointTransformSpace : uint8
 	ParentJoint,
 };
 
+UENUM(BlueprintType)
+enum class EARAltitudeSource : uint8
+{
+	// The framework sets the altitude using a high-resolution digital-elevation model.
+	Precise,
+	
+	// The framework sets the altitude using a coarse digital-elevation model.
+	Coarse,
+	
+	// The app defines the alitude.
+	UserDefined,
+	
+	// Altitude is not yet set.
+	Unknown,
+};
+
 /** The current state of the AR subsystem including an optional explanation string. */
 USTRUCT(BlueprintType)
 struct AUGMENTEDREALITY_API FARSessionStatus

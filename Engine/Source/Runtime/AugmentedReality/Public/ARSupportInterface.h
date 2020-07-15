@@ -124,6 +124,9 @@ public:
 	
 	/** \see UARBlueprintLibrary::GetARTexture() */
 	UARTexture* GetARTexture(EARTextureType TextureType) const;
+	
+	/** \see UARBlueprintLibrary::GetGeoTrackingSupport() */
+	class UARGeoTrackingSupport* GetGeoTrackingSupport() const;
 
 	//~ FGCObject
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;

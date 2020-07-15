@@ -421,7 +421,11 @@ public:
 	/** @return the max number of faces can be tracked at the same time */
 	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Face Tracking")
 	static int32 GetNumberOfTrackedFacesSupported();
-
+	
+	/** @return the interface object to support Geo tracking, return null on platforms don't support the feature. */
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Geo Tracking")
+	static class UARGeoTrackingSupport* GetGeoTrackingSupport();
+	
 public:
 	static void RegisterAsARSystem(const TSharedRef<FARSupportInterface , ESPMode::ThreadSafe>& NewArSystem);
 	

@@ -33,6 +33,7 @@ UARSessionConfig::UARSessionConfig()
 	, EnvironmentProbeComponentClass(UAREnvironmentProbeComponent::StaticClass())
 	, ObjectComponentClass(UARObjectComponent::StaticClass())
 	, MeshComponentClass(UARMeshComponent::StaticClass())
+	, GeoAnchorComponentClass(UARGeoAnchorComponent::StaticClass())
 {
 	DefaultMeshMaterial = UMaterial::GetDefaultMaterial(MD_Surface);
 	DefaultWireframeMeshMaterial = UMaterial::GetDefaultMaterial(MD_Surface);
@@ -197,6 +198,10 @@ UClass* UARSessionConfig::GetMeshComponentClass(void) const
 	return MeshComponentClass.Get() ? MeshComponentClass.Get() : UARMeshComponent::StaticClass();
 }
 
+UClass* UARSessionConfig::GetGeoAnchorComponentClass(void) const
+{
+	return GeoAnchorComponentClass.Get() ? GeoAnchorComponentClass.Get() : UARGeoAnchorComponent::StaticClass();
+}
 
 FARVideoFormat UARSessionConfig::GetDesiredVideoFormat() const
 {

@@ -176,6 +176,33 @@ struct FARMeshUpdatePayload
 };
 
 
+USTRUCT(BlueprintType, Category = "AR Gameplay")
+struct FARGeoAnchorUpdatePayload
+{
+	GENERATED_BODY()
+	
+	UPROPERTY(BlueprintReadOnly, Category = "AR")
+	FARSessionPayload SessionPayload;
+	
+	UPROPERTY(BlueprintReadWrite, Category = "AR")
+	FTransform WorldTransform = FTransform::Identity;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "AR")
+	float Longitude = 0.f;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "AR")
+	float Latitude = 0.f;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "AR")
+	float AltitudeMeters = 0.f;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "AR")
+	EARAltitudeSource AltitudeSource = EARAltitudeSource::Unknown;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "AR")
+	FString AnchorName;
+};
+
 /**
  * ARComponent handles replication and visualization update for AR tracked geometries
  * ARComponent is created in either multiplayer or local only environment
@@ -608,4 +635,48 @@ protected:
 	
 	virtual void OnRep_Payload() override;
 	virtual void UpdateVisualization_Implementation() override;
+};
+
+
+UENUM(BlueprintType)
+enum class EGeoAnchorComponentDebugMode : uint8
+{
+	/** The debug mode is disabled */
+	None = 0,
+	
+	/** Display Geo related data */
+	ShowGeoData = 1,
+};
+
+UCLASS(Blueprintable, BlueprintType, Category = "AR Gameplay")
+class AUGMENTEDREALITY_API UARGeoAnchorComponent : public UARComponent
+{
+	GENERATED_BODY()
+
+public:
+	UFUNCTION(BlueprintCallable, Category = "AR Gameplay | Debug", meta=(DevelopmentOnly))
+	static void SetGeoAnchorComponentDebugMode(EGeoAnchorComponentDebugMode NewDebugMode);
+	
+	/** Event when native representation is first added, called on server and clients. */
+	UFUNCTION(BlueprintImplementableEvent, meta = (DisplayName = "Add"))
+	void ReceiveAdd(const FARGeoAnchorUpdatePayload& Payload);
+	
+	/** Event when native representation is updated, called on server and clients. */
+	UFUNCTION(BlueprintImplementableEvent, meta = (DisplayName = "Update"))
+	void ReceiveUpdate(const FARGeoAnchorUpdatePayload& Payload);
+	
+	/** Overridable native event for when native representation is updated. */
+	virtual void Update(UARTrackedGeometry* TrackedGeometry) override;
+	
+	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+	
+protected:
+	UFUNCTION(Reliable, Server, WithValidation)
+	void ServerUpdatePayload(const FARGeoAnchorUpdatePayload& NewPayload);
+	
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing=OnRep_Payload, Category = "AR Gameplay")
+	FARGeoAnchorUpdatePayload ReplicatedPayload;
+	
+	virtual void OnRep_Payload() override;
+	static int32 GetDebugMode();
 };

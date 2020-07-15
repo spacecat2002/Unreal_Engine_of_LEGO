@@ -518,3 +518,25 @@ void UARMeshGeometry::GetNetworkPayload(FARMeshUpdatePayload& Payload)
 	
 	UpdateSessionPayload(Payload.SessionPayload);
 }
+
+void UARGeoAnchor::UpdateGeoAnchor(const TSharedRef<FARSupportInterface, ESPMode::ThreadSafe>& InTrackingSystem, uint32 FrameNumber, double Timestamp, const FTransform& InLocalToTrackingTransform, const FTransform& InAlignmentTransform,
+									  float InLongitude, float InLatitude, float InAltitudeMeters, EARAltitudeSource InAltitudeSource)
+{
+	Super::UpdateTrackedGeometry(InTrackingSystem, FrameNumber, Timestamp, InLocalToTrackingTransform, InAlignmentTransform);
+	
+	Longitude = InLongitude;
+	Latitude = InLatitude;
+	AltitudeMeters = InAltitudeMeters;
+	AltitudeSource = InAltitudeSource;
+}
+
+void UARGeoAnchor::GetNetworkPayload(FARGeoAnchorUpdatePayload& Payload)
+{
+	UpdateSessionPayload(Payload.SessionPayload);
+	Payload.WorldTransform = GetLocalToWorldTransform();
+	Payload.Longitude = Longitude;
+	Payload.Latitude = Latitude;
+	Payload.AltitudeMeters = AltitudeMeters;
+	Payload.AltitudeSource = AltitudeSource;
+	Payload.AnchorName = GetName();
+}

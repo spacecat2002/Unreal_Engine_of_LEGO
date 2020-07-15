@@ -50,7 +50,10 @@ enum class EARSessionType : uint8
 	ObjectScanning,
 	
 	/** A session used to track human pose in 3D */
-	PoseTracking
+	PoseTracking,
+	
+	/** A session used to track geographic locations */
+	GeoTracking,
 };
 
 UENUM(BlueprintType, Category = "AR AugmentedReality", meta = (Experimental, Bitflags))
@@ -299,6 +302,7 @@ public:
 	UClass* GetEnvironmentProbeComponentClass(void) const;
 	UClass* GetObjectComponentClass(void) const;
 	UClass* GetMeshComponentClass(void) const;
+	UClass* GetGeoAnchorComponentClass(void) const;
 	
 	UMaterialInterface* GetDefaultMeshMaterial() const { return DefaultMeshMaterial; }
 	UMaterialInterface* GetDefaultWireframeMeshMaterial() const { return DefaultWireframeMeshMaterial; }
@@ -480,6 +484,9 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "AR Gameplay")
 	TSubclassOf<UARMeshComponent> MeshComponentClass;
+	
+	UPROPERTY(EditAnywhere, Category = "AR Gameplay")
+	TSubclassOf<UARGeoAnchorComponent> GeoAnchorComponentClass;
 	
 	/** The default mesh material used by the generated mesh component */
 	UPROPERTY(EditAnywhere, Category = "AR Settings | World Mapping")

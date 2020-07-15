@@ -429,6 +429,15 @@ UARTexture* FARSupportInterface::GetARTexture(EARTextureType TextureType) const
 	return nullptr;
 }
 
+UARGeoTrackingSupport* FARSupportInterface::GetGeoTrackingSupport() const
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->OnGetGeoTrackingSupport();
+	}
+	return nullptr;
+}
+
 #define DEFINE_AR_SI_DELEGATE_FUNCS(DelegateName) \
 FDelegateHandle FARSupportInterface::Add##DelegateName##Delegate_Handle(const F##DelegateName##Delegate& Delegate) \
 { \
