@@ -655,7 +655,6 @@ struct FOpenGLES : public FOpenGLBase
 	static FORCEINLINE bool SupportsResourceView() { return bSupportsTextureBuffer; }
 	static FORCEINLINE bool SupportsDiscardFrameBuffer() { return bSupportsDiscardFrameBuffer; }
 	static FORCEINLINE bool SupportsIndexedExtensions() { return false; }
-	static FORCEINLINE bool SupportsVertexHalfFloat() { return bSupportsVertexHalfFloat; }
 	static FORCEINLINE bool SupportsTextureFloat() { return bSupportsTextureFloat; }
 	static FORCEINLINE bool SupportsTextureHalfFloat() { return bSupportsTextureHalfFloat; }
 	static FORCEINLINE bool SupportsColorBufferFloat() { return bSupportsColorBufferFloat; }
@@ -1199,9 +1198,6 @@ protected:
 
 	/** Whether BGRA supported as color attachment */
 	static bool bSupportsBGRA8888RenderTarget;
-
-	/** GL_OES_vertex_half_float */
-	static bool bSupportsVertexHalfFloat;
 
 	/** GL_EXT_discard_framebuffer */
 	static bool bSupportsDiscardFrameBuffer;
