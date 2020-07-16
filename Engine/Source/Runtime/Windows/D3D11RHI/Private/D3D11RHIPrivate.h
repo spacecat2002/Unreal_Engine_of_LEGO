@@ -39,10 +39,8 @@ DECLARE_LOG_CATEGORY_EXTERN(LogD3D11RHI, Log, All);
 #if NV_AFTERMATH
 #define GFSDK_Aftermath_WITH_DX11 1
 #include "GFSDK_Aftermath.h"
-#include "GFSDK_Aftermath_GpuCrashdump.h"
 #undef GFSDK_Aftermath_WITH_DX11
 extern bool GDX11NVAfterMathEnabled;
-extern bool GDX11NVAfterMathMarkers;
 #endif
 
 #if INTEL_METRICSDISCOVERY
@@ -579,9 +577,9 @@ public:
 	virtual void RHISetStencilRef(uint32 StencilRef) final override;
 	virtual void RHISetBlendState(FRHIBlendState* NewState, const FLinearColor& BlendFactor) final override;
 	virtual void RHISetBlendFactor(const FLinearColor& BlendFactor) final override;
-	virtual void RHISetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, const FRHIDepthRenderTargetView* NewDepthStencilTarget) final override;
+	void SetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, const FRHIDepthRenderTargetView* NewDepthStencilTarget);
 	void InternalSetUAVPS(uint32 BindIndex, FD3D11UnorderedAccessView* UnorderedAccessViewRHI);
-	virtual void RHISetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo) final override;
+	void SetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo);
 	virtual void RHIBindClearMRTValues(bool bClearColor, bool bClearDepth, bool bClearStencil) final override;
 	virtual void RHIDrawPrimitive(uint32 BaseVertexIndex, uint32 NumPrimitives, uint32 NumInstances) final override;
 	virtual void RHIDrawPrimitiveIndirect(FRHIVertexBuffer* ArgumentBuffer, uint32 ArgumentOffset) final override;
@@ -655,23 +653,8 @@ public:
 	virtual void RHIUnlockTextureCubeFace_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHITextureCube* Texture, uint32 FaceIndex, uint32 ArrayIndex, uint32 MipIndex, bool bLockWithinMiptail) final override;
 	virtual void RHICopySubTextureRegion_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHITexture2D* SourceTexture, FRHITexture2D* DestinationTexture, FBox2D SourceBox, FBox2D DestinationBox) final override;
 
-	virtual void RHIBeginRenderPass(const FRHIRenderPassInfo& InInfo, const TCHAR* InName) final override
-	{
-		IRHICommandContext::RHIBeginRenderPass(InInfo, InName);
-		if (InInfo.bOcclusionQueries)
-		{
-			RHIBeginOcclusionQueryBatch(InInfo.NumOcclusionQueries);
-		}
-	}
-
-	virtual void RHIEndRenderPass() final override
-	{
-		if (RenderPassInfo.bOcclusionQueries)
-		{
-			RHIEndOcclusionQueryBatch();
-		}
-		IRHICommandContext::RHIEndRenderPass();
-	}
+	virtual void RHIBeginRenderPass(const FRHIRenderPassInfo& InInfo, const TCHAR* InName) final override;
+	virtual void RHIEndRenderPass() final override;
 
 	virtual void RHICalibrateTimers() override;
 

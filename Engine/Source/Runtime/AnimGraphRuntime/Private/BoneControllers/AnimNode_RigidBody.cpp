@@ -33,7 +33,8 @@ DECLARE_LOG_CATEGORY_EXTERN(LogRBAN, Log, All);
 #endif
 DEFINE_LOG_CATEGORY(LogRBAN);
 
-TAutoConsoleVariable<int32> CVarEnableRigidBodyNode(TEXT("p.RigidBodyNode"), 1, TEXT("Enables/disables rigid body node updates and evaluations"), ECVF_Default);
+TAutoConsoleVariable<int32> CVarEnableRigidBodyNode(TEXT("p.RigidBodyNode"), 1, TEXT("Enables/disables the whole rigid body node system. When disabled, avoids all allocations and runtime costs. Can be used to disable RB Nodes on low-end platforms."), ECVF_Default);
+TAutoConsoleVariable<int32> CVarEnableRigidBodyNodeSimulation(TEXT("p.RigidBodyNode.EnableSimulation"), 1, TEXT("Runtime Enable/Disable RB Node Simulation for debugging and testing (node is initialized and bodies and constraints are created, even when disabled.)"), ECVF_Default);
 TAutoConsoleVariable<int32> CVarRigidBodyLODThreshold(TEXT("p.RigidBodyLODThreshold"), -1, TEXT("Max LOD that rigid body node is allowed to run on. Provides a global threshold that overrides per-node the LODThreshold property. -1 means no override."), ECVF_Scalability);
 
 int32 RBAN_MaxSubSteps = 4;
@@ -55,6 +56,12 @@ FAutoConsoleVariableRef CVarRigidBodyNodeSpaceMaxCompLinVel(TEXT("p.RigidBodyNod
 FAutoConsoleVariableRef CVarRigidBodyNodeSpaceMaxCompAngVel(TEXT("p.RigidBodyNode.Space.MaxAngularVelocity"), RBAN_SimSpaceOverride.MaxAngularVelocity, TEXT("RBAN SimSpaceSettings overrides"), ECVF_Default);
 FAutoConsoleVariableRef CVarRigidBodyNodeSpaceMaxCompLinAcc(TEXT("p.RigidBodyNode.Space.MaxLinearAcceleration"), RBAN_SimSpaceOverride.MaxLinearAcceleration, TEXT("RBAN SimSpaceSettings overrides"), ECVF_Default);
 FAutoConsoleVariableRef CVarRigidBodyNodeSpaceMaxCompAngAcc(TEXT("p.RigidBodyNode.Space.MaxAngularAcceleration"), RBAN_SimSpaceOverride.MaxAngularAcceleration, TEXT("RBAN SimSpaceSettings overrides"), ECVF_Default);
+FAutoConsoleVariableRef CVarRigidBodyNodeSpaceFreefall(TEXT("p.RigidBodyNode.Space.Freefall"), RBAN_SimSpaceOverride.Freefall, TEXT("RBAN SimSpaceSettings overrides"), ECVF_Default);
+FAutoConsoleVariableRef CVarRigidBodyNodeSpaceExternalLinearDrag(TEXT("p.RigidBodyNode.Space.ExternalLinearDrag"), RBAN_SimSpaceOverride.ExternalLinearDrag, TEXT("RBAN SimSpaceSettings overrides"), ECVF_Default);
+FAutoConsoleVariableRef CVarRigidBodyNodeSpaceExternalLinearVelocityX(TEXT("p.RigidBodyNode.Space.ExternalLinearVelocity.X"), RBAN_SimSpaceOverride.ExternalLinearVelocity.X, TEXT("RBAN SimSpaceSettings overrides"), ECVF_Default);
+FAutoConsoleVariableRef CVarRigidBodyNodeSpaceExternalLinearVelocityY(TEXT("p.RigidBodyNode.Space.ExternalLinearVelocity.Y"), RBAN_SimSpaceOverride.ExternalLinearVelocity.Y, TEXT("RBAN SimSpaceSettings overrides"), ECVF_Default);
+FAutoConsoleVariableRef CVarRigidBodyNodeSpaceExternalLinearVelocityZ(TEXT("p.RigidBodyNode.Space.ExternalLinearVelocity.Z"), RBAN_SimSpaceOverride.ExternalLinearVelocity.Z, TEXT("RBAN SimSpaceSettings overrides"), ECVF_Default);
+
 
 FSimSpaceSettings::FSimSpaceSettings()
 	: MasterAlpha(0)
@@ -63,6 +70,10 @@ FSimSpaceSettings::FSimSpaceSettings()
 	, MaxAngularVelocity(10000)
 	, MaxLinearAcceleration(10000)
 	, MaxAngularAcceleration(10000)
+	, Freefall(0)
+	, ExternalLinearDrag(0)
+	, ExternalLinearVelocity(FVector::ZeroVector)
+	, ExternalAngularVelocity(FVector::ZeroVector)
 {
 }
 
@@ -256,7 +267,7 @@ void FAnimNode_RigidBody::InitializeNewBodyTransformsDuringSimulation(FComponent
 				ensure(BodyAnimData[OutputData.ParentBodyIndex].bBodyTransformInitialized);
 
 				FTransform BodyRelativeTransform = FTransform::Identity;
-				for (const FCompactPoseBoneIndex CompactBoneIndex : OutputData.BoneIndicesToParentBody)
+				for (const FCompactPoseBoneIndex& CompactBoneIndex : OutputData.BoneIndicesToParentBody)
 				{
 					const FTransform& LocalSpaceTM = Output.Pose.GetLocalSpaceTransform(CompactBoneIndex);
 					BodyRelativeTransform = BodyRelativeTransform * LocalSpaceTM;
@@ -309,13 +320,21 @@ void FAnimNode_RigidBody::CalculateSimulationSpace(
 	SpaceLinearAcc = FVector::ZeroVector;
 	SpaceAngularAcc = FVector::ZeroVector;
 
-	// For world-space sims or when space acceleration is not enabled, we have nothing else to do
-	if ((Space == ESimulationSpace::WorldSpace) || (Settings.MasterAlpha == 0.0f) || (Dt < SMALL_NUMBER))
+	// If the system is disabled, nothing else to do
+	if ((Settings.MasterAlpha == 0.0f) || (Dt < SMALL_NUMBER))
 	{
 		return;
 	}
 
-	// World-space component velocity
+	if (Space == ESimulationSpace::WorldSpace)
+	{
+		SpaceLinearVel = Settings.ExternalLinearVelocity;
+		SpaceAngularVel = Settings.ExternalAngularVelocity;
+		SpaceLinearAcc = Settings.Freefall * WorldSpaceGravity;
+		return;
+	}
+
+	// World-space component velocity and acceleration
 	FVector CompLinVel = Chaos::FVec3::CalculateVelocity(PreviousComponentToWorld.GetTranslation(), ComponentToWorld.GetTranslation(), Dt);
 	FVector CompAngVel = Chaos::FRotation3::CalculateAngularVelocity(PreviousComponentToWorld.GetRotation(), ComponentToWorld.GetRotation(), Dt);
 	FVector CompLinAcc = (CompLinVel - PreviousComponentLinearVelocity) / Dt;
@@ -329,16 +348,16 @@ void FAnimNode_RigidBody::CalculateSimulationSpace(
 		CompLinVel.Z *= Settings.VelocityScaleZ;
 		CompLinAcc.Z *= Settings.VelocityScaleZ;
 
-		SpaceLinearVel = CompLinVel.GetClampedToMaxSize(Settings.MaxLinearVelocity);
-		SpaceAngularVel = CompAngVel.GetClampedToMaxSize(Settings.MaxAngularVelocity);
-		SpaceLinearAcc = CompLinAcc.GetClampedToMaxSize(Settings.MaxLinearAcceleration);
+		SpaceLinearVel = CompLinVel.GetClampedToMaxSize(Settings.MaxLinearVelocity) + Settings.ExternalLinearVelocity;
+		SpaceAngularVel = CompAngVel.GetClampedToMaxSize(Settings.MaxAngularVelocity) + Settings.ExternalAngularVelocity;
+		SpaceLinearAcc = CompLinAcc.GetClampedToMaxSize(Settings.MaxLinearAcceleration) + Settings.Freefall * WorldSpaceGravity;
 		SpaceAngularAcc = CompAngAcc.GetClampedToMaxSize(Settings.MaxAngularAcceleration);
 		return;
 	}
 	
 	if (Space == ESimulationSpace::BaseBoneSpace)
 	{
-		// World-space component-relative bone velocity
+		// World-space component-relative bone velocity and acceleration
 		FVector BoneLinVel = Chaos::FVec3::CalculateVelocity(PreviousBoneToComponent.GetTranslation(), BoneToComponent.GetTranslation(), Dt);
 		FVector BoneAngVel = Chaos::FRotation3::CalculateAngularVelocity(PreviousBoneToComponent.GetRotation(), BoneToComponent.GetRotation(), Dt);
 		BoneLinVel = ComponentToWorld.TransformVector(BoneLinVel);
@@ -349,7 +368,7 @@ void FAnimNode_RigidBody::CalculateSimulationSpace(
 		PreviousBoneLinearVelocity = BoneLinVel;
 		PreviousBoneAngularVelocity = BoneAngVel;
 
-		// World-space bone velocity
+		// World-space bone velocity and acceleration
 		FVector NetAngVel = CompAngVel + BoneAngVel;
 		FVector NetAngAcc = CompAngAcc + BoneAngAcc;
 
@@ -370,9 +389,9 @@ void FAnimNode_RigidBody::CalculateSimulationSpace(
 		NetLinVel.Z *= Settings.VelocityScaleZ;
 		NetLinAcc.Z *= Settings.VelocityScaleZ;
 
-		SpaceLinearVel = NetLinVel.GetClampedToMaxSize(Settings.MaxLinearVelocity);
-		SpaceAngularVel = NetAngVel.GetClampedToMaxSize(Settings.MaxAngularVelocity);
-		SpaceLinearAcc = NetLinAcc.GetClampedToMaxSize(Settings.MaxLinearAcceleration);
+		SpaceLinearVel = NetLinVel.GetClampedToMaxSize(Settings.MaxLinearVelocity) + Settings.ExternalLinearVelocity;
+		SpaceAngularVel = NetAngVel.GetClampedToMaxSize(Settings.MaxAngularVelocity) + Settings.ExternalAngularVelocity;
+		SpaceLinearAcc = NetLinAcc.GetClampedToMaxSize(Settings.MaxLinearAcceleration) + Settings.Freefall * WorldSpaceGravity;
 		SpaceAngularAcc = NetAngAcc.GetClampedToMaxSize(Settings.MaxAngularAcceleration);
 		return;
 	}
@@ -391,6 +410,11 @@ void FAnimNode_RigidBody::EvaluateSkeletalControl_AnyThread(FComponentSpacePoseC
 	FScopeCycleCounterUObject AdditionalScope(UsePhysicsAsset, GET_STATID(STAT_RigidBody_Eval));
 	SCOPE_CYCLE_COUNTER(STAT_ImmediateEvaluateSkeletalControl);
 	//SCOPED_NAMED_EVENT_TEXT("FAnimNode_RigidBody::EvaluateSkeletalControl_AnyThread", FColor::Magenta);
+
+	if (CVarEnableRigidBodyNodeSimulation.GetValueOnAnyThread() == 0)
+	{
+		return;
+	}
 
 	// Update our eval counter, and decide whether we need to reset simulated bodies, if our anim instance hasn't updated in a while.
 	if(EvalCounter.HasEverBeenUpdated())
@@ -677,7 +701,8 @@ void FAnimNode_RigidBody::EvaluateSkeletalControl_AnyThread(FComponentSpacePoseC
 				SimulationAngularAcceleration);
 
 			PhysicsSimulation->SetSimulationSpaceSettings(
-				UseSimSpaceSettings->MasterAlpha);
+				UseSimSpaceSettings->MasterAlpha, 
+				UseSimSpaceSettings->ExternalLinearDrag);
 
 			PhysicsSimulation->SetSolverIterations(
 				SolverIterations.FixedTimeStep,
@@ -1536,10 +1561,8 @@ void FAnimNode_RigidBody::AddImpulseAtLocation(FVector Impulse, FVector Location
 #endif
 }
 
-
 void FAnimNode_RigidBody::OnInitializeAnimInstance(const FAnimInstanceProxy* InProxy, const UAnimInstance* InAnimInstance)
 {
-	CSV_SCOPED_TIMING_STAT(Animation, RigidBodyInit);
 	InitPhysics(InAnimInstance);
 }
 

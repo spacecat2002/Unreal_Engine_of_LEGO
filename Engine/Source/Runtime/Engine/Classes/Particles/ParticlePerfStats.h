@@ -10,6 +10,8 @@
 
 #if WITH_PARTICLE_PERF_STATS
 
+#include "Containers/Array.h"
+
 struct ENGINE_API FParticlePerfStats
 {
 	struct FGroupedStats
@@ -67,6 +69,7 @@ struct ENGINE_API FParticlePerfStats
 
 	static void OnStartup();
 	static void OnShutdown();
+	static int32 RenderStats(class UWorld* World, class FViewport* Viewport, class FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation, const FRotator* ViewRotation);
 };
 
 //-TODO: Need to remove the task graph WakeUp cost otherwise it skews results!

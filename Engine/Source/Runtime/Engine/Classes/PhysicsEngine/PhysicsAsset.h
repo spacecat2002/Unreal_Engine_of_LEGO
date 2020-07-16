@@ -137,7 +137,7 @@ class UPhysicsAsset : public UObject, public IInterface_PreviewMeshProvider
 
 public:
 
-	/** Recommended solver iterations (may be overridden depending on how the Physics Asset is used). E.g., Rigid Body Anim Nodes support overrides. */
+	/** [Chaos Only] Recommended solver settings. */
 	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = SolverSettings)
 	FSolverIterations SolverIterations;
 
@@ -179,7 +179,7 @@ public:
 
 	virtual void PreEditChange(FProperty* PropertyThatWillChange) override;
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
-
+	virtual EDataValidationResult IsDataValid(TArray<FText>& ValidationErrors) override;
 #endif
 	//~ End UObject Interface
 

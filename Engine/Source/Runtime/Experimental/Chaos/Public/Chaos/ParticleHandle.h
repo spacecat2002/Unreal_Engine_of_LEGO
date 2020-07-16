@@ -66,6 +66,7 @@ void PBDRigidParticleHandleImpDefaultConstruct(TPBDRigidParticleHandleImp<T, d, 
 {
 	//don't bother calling parent since the call gets made by the corresponding hierarchy in FConcrete
 	Concrete.SetCollisionGroup(0);
+	Concrete.ClearCollisionConstraintFlag();
 	Concrete.SetDisabled(Params.bDisabled);
 	Concrete.SetPreV(Concrete.V());
 	Concrete.SetPreW(Concrete.W());
@@ -712,6 +713,11 @@ public:
 	int32& CollisionGroup() { return PBDRigidParticles->CollisionGroup(ParticleIdx); }
 	void SetCollisionGroup(const int32 InCollisionGroup) { PBDRigidParticles->CollisionGroup(ParticleIdx) = InCollisionGroup; }
 
+	bool HasCollisionConstraintFlag(const ECollisionConstraintFlags Flag) const { return  PBDRigidParticles->HasCollisionConstraintFlag(Flag, ParticleIdx); }
+	void AddCollisionConstraintFlag(const ECollisionConstraintFlags Flag) { PBDRigidParticles->AddCollisionConstraintFlag(Flag, ParticleIdx); }
+	void RemoveCollisionConstraintFlag(const ECollisionConstraintFlags Flag) { PBDRigidParticles->RemoveCollisionConstraintFlag(Flag, ParticleIdx); }
+	void ClearCollisionConstraintFlag() { PBDRigidParticles->ClearCollisionConstraintFlag(ParticleIdx); }
+
 	bool Disabled() const { return PBDRigidParticles->Disabled(ParticleIdx); }
 	bool& Disabled() { return PBDRigidParticles->DisabledRef(ParticleIdx); }
 
@@ -1016,6 +1022,13 @@ EObjectStateType TKinematicGeometryParticleHandleImp<T, d, bPersistent>::ObjectS
 	return Dyn ? Dyn->ObjectState() : EObjectStateType::Kinematic;
 }
 
+enum class EWakeEventEntry : uint8
+{
+	None,
+	Awake,
+	Sleep
+};
+
 template <typename T, int d, bool bPersistent>
 FString TGeometryParticleHandleImp<T, d, bPersistent>::ToString() const
 {
@@ -1117,6 +1130,17 @@ public:
 		return 0;
 	}
 
+	bool HasCollisionConstraintFlag(const ECollisionConstraintFlags Flag)  const
+	{
+		if (MHandle->CastToRigidParticle() && MHandle->ObjectState() == EObjectStateType::Dynamic)
+		{
+			return MHandle->CastToRigidParticle()->HasCollisionConstraintFlag(Flag);
+		}
+
+		return false;
+	}
+
+
 	// @todo(ccaulfield): should be available on all types?
 	bool Disabled() const
 	{
@@ -1216,6 +1240,11 @@ public:
 	FParticleID ParticleID() const
 	{
 		return MHandle->ParticleID();
+	}
+
+	FUniqueIdx UniqueIdx() const
+	{
+		return MHandle->UniqueIdx();
 	}
 
 	//Named this way for templated code
@@ -2069,7 +2098,7 @@ protected:
 	using Base::Proxy;
 	friend TGeometryParticle<T, d>* TGeometryParticle<T, d>::SerializationFactory(FChaosArchive& Ar, TGeometryParticle<T, d>* Serializable);
 	TPBDRigidParticle<T, d>(const TPBDRigidParticleParameters<T, d>& DynamicParams = TPBDRigidParticleParameters<T, d>())
-		: TKinematicGeometryParticle<T, d>(DynamicParams), MAwakeEvent(false)
+		: TKinematicGeometryParticle<T, d>(DynamicParams), MWakeEvent(EWakeEventEntry::None)
 	{
 		Type = EParticleType::Rigid;
 		MIsland = INDEX_NONE;
@@ -2250,9 +2279,17 @@ public:
 	EObjectStateType ObjectState() const { return MMiscData.Read().ObjectState(); }
 	void SetObjectState(const EObjectStateType InState, bool bAllowEvents = false, bool bInvalidate=true)
 	{
-		if (bAllowEvents && ObjectState() != EObjectStateType::Dynamic && InState == EObjectStateType::Dynamic)
+		if (bAllowEvents)
 		{
-			MAwakeEvent |= true;
+			const auto PreState = ObjectState();
+			if(PreState == EObjectStateType::Dynamic && InState == EObjectStateType::Sleeping)
+			{
+				MWakeEvent = EWakeEventEntry::Sleep;
+			}
+			else if(PreState == EObjectStateType::Sleeping && InState == EObjectStateType::Dynamic)
+			{
+				MWakeEvent = EWakeEventEntry::Awake;
+			}
 		}
 
 		if (InState == EObjectStateType::Sleeping)
@@ -2273,8 +2310,8 @@ public:
 
 	}
 
-	void ClearEvents() { MAwakeEvent = false; }
-	bool HasAwakeEvent() { return MAwakeEvent; }
+	void ClearEvents() { MWakeEvent = EWakeEventEntry::None; }
+	EWakeEventEntry GetWakeEvent() { return MWakeEvent; }
 
 private:
 	TParticleProperty<FParticleMassProps,EParticleProperty::MassProps> MMassProps;
@@ -2285,7 +2322,7 @@ private:
 	int32 MIsland;
 	bool MToBeRemovedOnFracture;
 	bool MInitialized;
-	bool MAwakeEvent;
+	EWakeEventEntry MWakeEvent;
 
 protected:
 	virtual void SyncRemoteDataImp(FDirtyPropertiesManager& Manager, int32 DataIdx, const FParticleDirtyData& RemoteData) const

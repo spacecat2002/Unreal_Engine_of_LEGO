@@ -19,8 +19,19 @@
 #include "PlatformHttp.h"
 #include "Misc/EngineVersion.h"
 #include "HttpRetrySystem.h"
+#include "HAL/IConsoleManager.h"
 
 #include "AnalyticsPerfTracker.h"
+
+namespace AnalyticsProviderETCvars
+{
+	static bool PreventMultipleFlushesInOneFrame = true;
+	FAutoConsoleVariableRef CvarPreventMultipleFlushesInOneFrame(
+		TEXT("AnalyticsET.PreventMultipleFlushesInOneFrame"),
+		PreventMultipleFlushesInOneFrame,
+		TEXT("When true, prevents more than one AnalyticsProviderET instance from flushing in the same frame, allowing the flush and HTTP cost to be amortized.")
+	);
+}
 
 /**
  * Implementation of analytics for Epic Telemetry.
@@ -45,16 +56,12 @@ public:
 
 	// IAnalyticsProvider
 
-	virtual bool StartSession(const TArray<FAnalyticsEventAttribute>& Attributes) override;
-	virtual bool StartSession(TArray<FAnalyticsEventAttribute>&& Attributes) override;
-	virtual bool StartSession(FString InSessionID, TArray<FAnalyticsEventAttribute>&& Attributes) override;
+	virtual bool StartSession(FString InSessionID, const TArray<FAnalyticsEventAttribute>& Attributes) override;
 	virtual void EndSession() override;
 	virtual void FlushEvents() override;
 
 	virtual void SetAppID(FString&& AppID) override;
-	virtual const FString& GetAppID() const override;
 	virtual void SetAppVersion(FString&& AppVersion) override;
-	virtual const FString& GetAppVersion() const override;
 	virtual void SetUserID(const FString& InUserID) override;
 	virtual FString GetUserID() const override;
 
@@ -62,11 +69,11 @@ public:
 	virtual bool SetSessionID(const FString& InSessionID) override;
 
 	virtual bool ShouldRecordEvent(const FString& EventName) const override;
-	virtual void RecordEvent(const FString& EventName, const TArray<FAnalyticsEventAttribute>& Attributes) override;
-	virtual void RecordEvent(FString EventName, TArray<FAnalyticsEventAttribute>&& Attributes) override;
-	virtual void RecordEventJson(FString EventName, TArray<FAnalyticsEventAttribute>&& AttributesJson) override;
+	virtual void RecordEvent(FString&& EventName, const TArray<FAnalyticsEventAttribute>& Attributes) override;
 	virtual void SetDefaultEventAttributes(TArray<FAnalyticsEventAttribute>&& Attributes) override;
-	virtual const TArray<FAnalyticsEventAttribute>& GetDefaultEventAttributes() const override;
+	virtual TArray<FAnalyticsEventAttribute> GetDefaultEventAttributesSafe() const override;
+	virtual int32 GetDefaultEventAttributeCount() const override;
+	virtual FAnalyticsEventAttribute GetDefaultEventAttribute(int AttributeIndex) const override;
 	virtual void SetEventCallback(const OnEventRecorded& Callback) override;
 
 	virtual void SetURLEndpoint(const FString& UrlEndpoint, const TArray<FString>& AltDomains) override;
@@ -77,9 +84,11 @@ public:
 	virtual const FAnalyticsET::Config& GetConfig() const override { return Config; }
 
 private:
+	void FlushEventsOnce();
+	void FlushEventLegacy(const FString& EventName, const TArray<FAnalyticsEventAttribute>& Attributes);
 
 	/** Create a request utilizing HttpRetry domains */
-	TSharedRef<IHttpRequest> CreateRequest();
+	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> CreateRequest();
 
 	bool bSessionInProgress;
 	/** The current configuration (might be updated with respect to the one provided at construction). */
@@ -88,47 +97,18 @@ private:
 	FString UserID;
 	/** The session ID */
 	FString SessionID;
-	/** Max number of analytics events to cache before pushing to server */
-	const int32 MaxCachedNumEvents;
-	/** Max time that can elapse before pushing cached events to server */
-	const float MaxCachedElapsedTime;
+	/** Default flush interval, when one is not explicitly given. */
+	const float DefaultFlushIntervalSec = 60.0f;
+	/** interval which to ensure events are flushed to the server. An event should not sit in the cache longer than this. It may be flushed sooner, but not longer (unless there is a hitch) */
+	float FlushIntervalSec;
 	/** Allows events to not be cached when -AnalyticsDisableCaching is used. This should only be used for debugging as caching significantly reduces bandwidth overhead per event. */
 	bool bShouldCacheEvents;
-	/** Current countdown timer to keep track of MaxCachedElapsedTime push */
-	float FlushEventsCountdown;
+	/** Current timer to keep track of FlushIntervalSec flushes */
+	double NextEventFlushTime;
 	/** Track destructing for unbinding callbacks when firing events at shutdown */
 	bool bInDestructor;
 
-	/**
-	* Analytics event entry to be cached
-	*/
-	struct FAnalyticsEventEntry
-	{
-		/** name of event */
-		FString EventName;
-		/** optional list of attributes */
-		TArray<FAnalyticsEventAttribute> Attributes;
-		/** local time when event was triggered */
-		FDateTime TimeStamp;
-		/** Whether this event was added using the Json API. */
-		uint32 bIsJsonEvent : 1;
-		/** Whether this event is setting the default attributes to add to all events. Every cached event list will start with one of these, though it may be empty. */
-		uint32 bIsDefaultAttributes : 1;
-		/**
-		* Constructor. Requires rvalue-refs to ensure we move values efficiently into this struct.
-		*/
-		FAnalyticsEventEntry(FString&& InEventName, TArray<FAnalyticsEventAttribute>&& InAttributes, bool bInIsJsonEvent, bool bInIsDefaultAttributes)
-			: EventName(MoveTemp(InEventName))
-			, Attributes(MoveTemp(InAttributes))
-			, TimeStamp(FDateTime::UtcNow())
-			, bIsJsonEvent(bInIsJsonEvent)
-			, bIsDefaultAttributes(bInIsDefaultAttributes)
-		{}
-	};
-
 	FAnalyticsProviderETEventCache EventCache;
-	/** Needed to support the old, unsafe GetDefaultAttributes() API. */
-	mutable TArray<FAnalyticsEventAttribute> UnsafeDefaultAttributes;
 
 	TArray<OnEventRecorded> EventRecordedCallbacks;
 
@@ -161,11 +141,12 @@ TSharedPtr<IAnalyticsProviderET> FAnalyticsET::CreateAnalyticsProvider(const Con
 FAnalyticsProviderET::FAnalyticsProviderET(const FAnalyticsET::Config& ConfigValues)
 	: bSessionInProgress(false)
 	, Config(ConfigValues)
-	, MaxCachedNumEvents(20)
-	, MaxCachedElapsedTime(60.0f)
+	, FlushIntervalSec(ConfigValues.FlushIntervalSec < 0 ? DefaultFlushIntervalSec : ConfigValues.FlushIntervalSec)
 	, bShouldCacheEvents(true)
-	, FlushEventsCountdown(MaxCachedElapsedTime)
+	, NextEventFlushTime(FPlatformTime::Seconds() + FlushIntervalSec)
 	, bInDestructor(false)
+	// avoid preallocating space if we are using the legacy protocol.
+	, EventCache(ConfigValues.MaximumPayloadSize, ConfigValues.UseLegacyProtocol ? 0 : ConfigValues.PreallocatedPayloadSize)
 {
 	if (Config.APIKeyET.IsEmpty() || Config.APIServerET.IsEmpty())
 	{
@@ -245,27 +226,35 @@ bool FAnalyticsProviderET::Tick(float DeltaSeconds)
 	// With more care, we can likely avoid holding this lock the entire time.
 	FAnalyticsProviderETEventCache::Lock EventCacheLock(EventCache);
 
-	if (EventCache.CanFlush())
+	// Countdown to flush
+	const double Now = FPlatformTime::Seconds();
+
+	// Never tick-flush more than one provider in a single frame. There's non-trivial overhead to flushing events.
+	// On servers where there may be dozens of provider instances, this will spread out the cost a bit.
+	// If caching is disabled, we still want events to be flushed immediately, so we are only guarding the flush calls from tick,
+	// any other calls to flush are allowed to happen in the same frame.
+	static uint32 LastFrameCounterFlushed = 0;
+
+	const bool bHadFlushesQueued = EventCache.HasFlushesQueued();
+	const bool bShouldFlush = bHadFlushesQueued || (EventCache.CanFlush() && Now >= NextEventFlushTime);
+
+	if (bShouldFlush)
 	{
-		// Countdown to flush
-		FlushEventsCountdown -= DeltaSeconds;
-		// If reached countdown or already at max cached events then flush
-		if (FlushEventsCountdown <= 0 ||
-			EventCache.GetNumCachedEvents()	>= MaxCachedNumEvents)
+		if (GFrameCounter == LastFrameCounterFlushed && AnalyticsProviderETCvars::PreventMultipleFlushesInOneFrame)
 		{
-			// Never tick-flush more than one provider in a single frame. There's non-trivial overhead to flushing events.
-			// On servers where there may be dozens of provider instances, this will spread out the cost a bit.
-			// If caching is disabled, we still want events to be flushed immediately, so we are only guarding the flush calls from tick,
-			// any other calls to flush are allowed to happen in the same frame.
-			static uint32 LastFrameCounterFlushed = 0;
-			if (GFrameCounter == LastFrameCounterFlushed)
+			UE_LOG(LogAnalytics, Verbose, TEXT("[%s] Tried to flush, but another analytics provider has already flushed this frame. Deferring until next frame."), *Config.APIKeyET);
+		}
+		else
+		{
+			// Just flush one payload, even if we may have more than one queued.
+			FlushEventsOnce();
+			LastFrameCounterFlushed = GFrameCounter;
+			// If we aren't flushing up a previous queued payload, then this was a regular interval flush, so we need to reset the timer.
+			// try to keep on the same cadence when flushing, since we could miss our window by several frames.
+			if (!bHadFlushesQueued && Now >= NextEventFlushTime)
 			{
-				UE_LOG(LogAnalytics, Verbose, TEXT("Tried to flush more than one analytics provider in a single frame. Deferring until next frame."));
-			}
-			else
-			{
-				FlushEvents();
-				LastFrameCounterFlushed = GFrameCounter;
+				const float Multiplier = (int)((Now - NextEventFlushTime) / FlushIntervalSec) + 1.f;
+				NextEventFlushTime += Multiplier * FlushIntervalSec;
 			}
 		}
 	}
@@ -279,28 +268,7 @@ FAnalyticsProviderET::~FAnalyticsProviderET()
 	EndSession();
 }
 
-/**
- * Start capturing stats for upload
- * Uses the unique ApiKey associated with your app
- */
-bool FAnalyticsProviderET::StartSession(const TArray<FAnalyticsEventAttribute>& Attributes)
-{
-	// Have to copy Attributes array because this doesn't come in as an rvalue ref.
-	return StartSession(TArray<FAnalyticsEventAttribute>(Attributes));
-}
-
-/**
- * Start capturing stats for upload with provided SessionID
- * Uses the unique ApiKey associated with your app
- */
-bool FAnalyticsProviderET::StartSession(TArray<FAnalyticsEventAttribute>&& Attributes)
-{
-	FGuid SessionGUID;
-	FPlatformMisc::CreateGuid(SessionGUID);
-	return StartSession(SessionGUID.ToString(EGuidFormats::DigitsWithHyphensInBraces), MoveTemp(Attributes));;
-}
-
-bool FAnalyticsProviderET::StartSession(FString InSessionID, TArray<FAnalyticsEventAttribute>&& Attributes)
+bool FAnalyticsProviderET::StartSession(FString InSessionID, const TArray<FAnalyticsEventAttribute>& Attributes)
 {
 	UE_LOG(LogAnalytics, Log, TEXT("[%s] AnalyticsET::StartSession"), *Config.APIKeyET);
 
@@ -311,11 +279,10 @@ bool FAnalyticsProviderET::StartSession(FString InSessionID, TArray<FAnalyticsEv
 	}
 	SessionID = MoveTemp(InSessionID);
 	// always ensure we send a few specific attributes on session start.
-	TArray<FAnalyticsEventAttribute> AppendedAttributes(MoveTemp(Attributes));
-	// we should always know what platform is hosting this session.
-	AppendedAttributes.Emplace(TEXT("Platform"), FString(FPlatformProperties::IniPlatformName()));
+	TArray<FAnalyticsEventAttribute> AttributesWithPlatform = Attributes;
+	AttributesWithPlatform.Emplace(TEXT("Platform"), FString(FPlatformProperties::IniPlatformName()));
 
-	RecordEvent(TEXT("SessionStart"), MoveTemp(AppendedAttributes));
+	RecordEvent(TEXT("SessionStart"), AttributesWithPlatform);
 	bSessionInProgress = true;
 	return bSessionInProgress;
 }
@@ -335,10 +302,10 @@ void FAnalyticsProviderET::EndSession()
 	bSessionInProgress = false;
 }
 
-TSharedRef<IHttpRequest> FAnalyticsProviderET::CreateRequest()
+TSharedRef<IHttpRequest, ESPMode::ThreadSafe> FAnalyticsProviderET::CreateRequest()
 {
 	// TODO add config values for retries, for now, using default
-	TSharedRef<IHttpRequest> HttpRequest = HttpRetryManager->CreateRequest(FHttpRetrySystem::FRetryLimitCountSetting(),
+	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> HttpRequest = HttpRetryManager->CreateRequest(FHttpRetrySystem::FRetryLimitCountSetting(),
 		FHttpRetrySystem::FRetryTimeoutRelativeSecondsSetting(),
 		FHttpRetrySystem::FRetryResponseCodes(),
 		FHttpRetrySystem::FRetryVerbs(),
@@ -353,6 +320,15 @@ void FAnalyticsProviderET::FlushEvents()
 	// Warn if this takes more than 2 ms
 	SCOPE_TIME_GUARD_MS(TEXT("FAnalyticsProviderET::FlushEvents"), 2);
 
+	// keep flushing until the event cache has cleared its queue.
+	while (EventCache.CanFlush())
+	{
+		FlushEventsOnce();
+	}
+}
+
+void FAnalyticsProviderET::FlushEventsOnce()
+{
 	// Make sure we don't try to flush too many times. When we are not caching events it's possible this can be called when there are no events in the array.
 	if (!EventCache.CanFlush())
 	{
@@ -365,93 +341,53 @@ void FAnalyticsProviderET::FlushEvents()
 
 	if(ensure(FModuleManager::Get().IsModuleLoaded("HTTP")))
 	{
-		if (!Config.UseLegacyProtocol)
-		{
-			FString Payload = EventCache.FlushCache();
-			// UrlEncode NOTE: need to concatenate everything
-			FString URLPath  = TEXT("datarouter/api/v1/public/data?SessionID=") + FPlatformHttp::UrlEncode(SessionID);
-					URLPath += TEXT("&AppID=") + FPlatformHttp::UrlEncode(Config.APIKeyET);
-					URLPath += TEXT("&AppVersion=") + FPlatformHttp::UrlEncode(Config.AppVersionET);
-					URLPath += TEXT("&UserID=") + FPlatformHttp::UrlEncode(UserID);
-					URLPath += TEXT("&AppEnvironment=") + FPlatformHttp::UrlEncode(Config.AppEnvironment);
-					URLPath += TEXT("&UploadType=") + FPlatformHttp::UrlEncode(Config.UploadType);
-			PayloadSize = URLPath.Len() + Payload.Len();
-
-			if (UE_LOG_ACTIVE(LogAnalytics, VeryVerbose))
-			{
-				// Recreate the URLPath for logging because we do not want to escape the parameters when logging.
-				// We cannot simply UrlEncode the entire Path after logging it because UrlEncode(Params) != UrlEncode(Param1) & UrlEncode(Param2) ...
-				FString LogString = FString::Printf(TEXT("[%s] AnalyticsET URL:datarouter/api/v1/public/data?SessionID=%s&AppID=%s&AppVersion=%s&UserID=%s&AppEnvironment=%s&UploadType=%s. Payload:%s"),
-					*Config.APIKeyET,
-					*SessionID,
-					*Config.APIKeyET,
-					*Config.AppVersionET,
-					*UserID,
-					*Config.AppEnvironment,
-					*Config.UploadType,
-					*Payload);
-				UE_LOG(LogAnalytics, VeryVerbose, TEXT("%s"), *LogString);
-			}
-
-			{
-				QUICK_SCOPE_CYCLE_COUNTER(STAT_FlushEventsHttpRequest);
-				// Create/send Http request for an event
-				TSharedRef<IHttpRequest> HttpRequest = CreateRequest();
-				HttpRequest->SetHeader(TEXT("Content-Type"), TEXT("application/json; charset=utf-8"));
-				HttpRequest->SetURL(Config.APIServerET / URLPath);
-				HttpRequest->SetVerb(TEXT("POST"));
-				HttpRequest->SetContentAsString(Payload);
-
-				// Don't set a response callback if we are in our destructor, as the instance will no longer be there to call.
-				if (!bInDestructor)
-				{
-					HttpRequest->OnProcessRequestComplete().BindSP(this, &FAnalyticsProviderET::EventRequestComplete);
-				}
-
-				HttpRequest->ProcessRequest();
-			}
-		}
-		else
-		{
-			QUICK_SCOPE_CYCLE_COUNTER(STAT_FlushEventsLegacy);
-			// this is a legacy pathway that doesn't accept batch payloads of cached data. We'll just send one request for each event, which will be slow for a large batch of requests at once.
-			EventCache.FlushCacheLegacy([this,&EventCount,&PayloadSize](const FString& EventName, const FString& EventParams)
-			{
-				++EventCount;
-				// log out the un-encoded values to make reading the log easier.
-				UE_LOG(LogAnalytics, VeryVerbose, TEXT("[%s] AnalyticsET URL:SendEvent.1?SessionID=%s&AppID=%s&AppVersion=%s&UserID=%s&EventName=%s%s"),
-					*Config.APIKeyET,
-					*SessionID,
-					*Config.APIKeyET,
-					*Config.AppVersionET,
-					*UserID,
-					*EventName,
-					*EventParams);
-
-				// Create/send Http request for an event
-				TSharedRef<IHttpRequest> HttpRequest = CreateRequest();
-				HttpRequest->SetHeader(TEXT("Content-Type"), TEXT("text/plain"));
-
-				// Don't need to URL encode the APIServer or the EventParams, which are already encoded, and contain parameter separaters that we DON'T want encoded.
-				FString URLPath = Config.APIServerET;
-				URLPath += TEXT("SendEvent.1?SessionID=") + FPlatformHttp::UrlEncode(SessionID);
+		TArray<uint8> Payload = EventCache.FlushCacheUTF8();
+		// UrlEncode NOTE: need to concatenate everything
+		FString URLPath  = TEXT("datarouter/api/v1/public/data?SessionID=") + FPlatformHttp::UrlEncode(SessionID);
 				URLPath += TEXT("&AppID=") + FPlatformHttp::UrlEncode(Config.APIKeyET);
 				URLPath += TEXT("&AppVersion=") + FPlatformHttp::UrlEncode(Config.AppVersionET);
 				URLPath += TEXT("&UserID=") + FPlatformHttp::UrlEncode(UserID);
-				URLPath += TEXT("&EventName=") + FPlatformHttp::UrlEncode(EventName);
-				URLPath += EventParams;
-				HttpRequest->SetURL(URLPath);
-				PayloadSize = HttpRequest->GetURL().Len();
-				HttpRequest->SetVerb(TEXT("GET"));
-				if (!bInDestructor)
-				{
-					HttpRequest->OnProcessRequestComplete().BindSP(this, &FAnalyticsProviderET::EventRequestComplete);
-				}
-				HttpRequest->ProcessRequest();
-			});
+				URLPath += TEXT("&AppEnvironment=") + FPlatformHttp::UrlEncode(Config.AppEnvironment);
+				URLPath += TEXT("&UploadType=") + FPlatformHttp::UrlEncode(Config.UploadType);
+		PayloadSize = URLPath.Len() + Payload.Num();
+
+		// This should never be done in production. MUCH slower!
+		if (UE_LOG_ACTIVE(LogAnalytics, VeryVerbose))
+		{
+			// need to null terminate to load the payload.
+			Payload.Add(TEXT('\0'));
+			// Recreate the URLPath for logging because we do not want to escape the parameters when logging.
+			// We cannot simply UrlEncode the entire Path after logging it because UrlEncode(Params) != UrlEncode(Param1) & UrlEncode(Param2) ...
+			FString LogString = FString::Printf(TEXT("[%s] AnalyticsET URL:datarouter/api/v1/public/data?SessionID=%s&AppID=%s&AppVersion=%s&UserID=%s&AppEnvironment=%s&UploadType=%s. Payload:%s"),
+				*Config.APIKeyET,
+				*SessionID,
+				*Config.APIKeyET,
+				*Config.AppVersionET,
+				*UserID,
+				*Config.AppEnvironment,
+				*Config.UploadType,
+				UTF8_TO_TCHAR(Payload.GetData()));
+			UE_LOG(LogAnalytics, VeryVerbose, TEXT("%s"), *LogString);
+			Payload.SetNum(Payload.Num()-1);
 		}
 
-		FlushEventsCountdown = MaxCachedElapsedTime;
+		{
+			QUICK_SCOPE_CYCLE_COUNTER(STAT_FlushEventsHttpRequest);
+			// Create/send Http request for an event
+			TSharedRef<IHttpRequest, ESPMode::ThreadSafe> HttpRequest = CreateRequest();
+			HttpRequest->SetHeader(TEXT("Content-Type"), TEXT("application/json; charset=utf-8"));
+			HttpRequest->SetURL(Config.APIServerET / URLPath);
+			HttpRequest->SetVerb(TEXT("POST"));
+			HttpRequest->SetContent(MoveTemp(Payload));
+
+			// Don't set a response callback if we are in our destructor, as the instance will no longer be there to call.
+			if (!bInDestructor)
+			{
+				HttpRequest->OnProcessRequestComplete().BindSP(this, &FAnalyticsProviderET::EventRequestComplete);
+			}
+
+			HttpRequest->ProcessRequest();
+		}
 	}
 	ANALYTICS_FLUSH_TRACKING_END(PayloadSize, EventCount);
 }
@@ -480,16 +416,6 @@ void FAnalyticsProviderET::SetAppVersion(FString&& InAppVersion)
 		FlushEvents();
 		Config.AppVersionET = MoveTemp(InAppVersion);
 	}
-}
-
-const FString& FAnalyticsProviderET::GetAppID() const
-{
-	return Config.APIKeyET;
-}
-
-const FString& FAnalyticsProviderET::GetAppVersion() const
-{
-	return Config.AppVersionET;
 }
 
 void FAnalyticsProviderET::SetUserID(const FString& InUserID)
@@ -535,13 +461,7 @@ bool FAnalyticsProviderET::ShouldRecordEvent(const FString& EventName) const
 	return !ShouldRecordEventFunc || ShouldRecordEventFunc(*this, EventName);
 }
 
-void FAnalyticsProviderET::RecordEvent(const FString& EventName, const TArray<FAnalyticsEventAttribute>& Attributes)
-{
-	// Have to copy Attributes array because this doesn't come in as an rvalue ref.
-	RecordEvent(EventName, TArray<FAnalyticsEventAttribute>(Attributes));
-}
-
-void FAnalyticsProviderET::RecordEvent(FString EventName, TArray<FAnalyticsEventAttribute>&& Attributes)
+void FAnalyticsProviderET::RecordEvent(FString&& EventName, const TArray<FAnalyticsEventAttribute>& Attributes)
 {
 	// let higher level code filter the decision of whether to send the event
 	if (ShouldRecordEvent(EventName))
@@ -549,36 +469,22 @@ void FAnalyticsProviderET::RecordEvent(FString EventName, TArray<FAnalyticsEvent
 		// fire any callbacks
 		for (const auto& Cb : EventRecordedCallbacks)
 		{
+			// we no longer track if the event was Json, each attribute does.
 			Cb(EventName, Attributes, false);
 		}
 
-		EventCache.AddToCache(MoveTemp(EventName), MoveTemp(Attributes), false);
-		// if we aren't caching events, flush immediately. This is really only for debugging as it will significantly affect bandwidth.
-		if (!bShouldCacheEvents)
+		if (!Config.UseLegacyProtocol)
 		{
-			FlushEvents();
+			EventCache.AddToCache(MoveTemp(EventName), Attributes);
+			// if we aren't caching events, flush immediately. This is really only for debugging as it will significantly affect bandwidth.
+			if (!bShouldCacheEvents)
+			{
+				FlushEvents();
+			}
 		}
-	}
-}
-
-void FAnalyticsProviderET::RecordEventJson(FString EventName, TArray<FAnalyticsEventAttribute>&& AttributesJson)
-{
-	checkf(!Config.UseLegacyProtocol, TEXT("Cannot use Json events with legacy protocol"));
-
-	// let higher level code filter the decision of whether to send the event
-	if (ShouldRecordEvent(EventName))
-	{
-		// fire any callbacks
-		for (const auto& Cb : EventRecordedCallbacks)
+		else
 		{
-			Cb(EventName, AttributesJson, true);
-		}
-
-		EventCache.AddToCache(MoveTemp(EventName), MoveTemp(AttributesJson), true);
-		// if we aren't caching events, flush immediately. This is really only for debugging as it will significantly affect bandwidth.
-		if (!bShouldCacheEvents)
-		{
-			FlushEvents();
+			FlushEventLegacy(EventName, Attributes);
 		}
 	}
 }
@@ -586,13 +492,22 @@ void FAnalyticsProviderET::RecordEventJson(FString EventName, TArray<FAnalyticsE
 void FAnalyticsProviderET::SetDefaultEventAttributes(TArray<FAnalyticsEventAttribute>&& Attributes)
 {
 	EventCache.SetDefaultAttributes(MoveTemp(Attributes));
-
 }
 
-const TArray<FAnalyticsEventAttribute>& FAnalyticsProviderET::GetDefaultEventAttributes() const
+TArray<FAnalyticsEventAttribute> FAnalyticsProviderET::GetDefaultEventAttributesSafe() const
 {
-	UnsafeDefaultAttributes	= EventCache.GetDefaultAttributes();
-	return UnsafeDefaultAttributes;
+	return EventCache.GetDefaultAttributes();
+}
+
+int32 FAnalyticsProviderET::GetDefaultEventAttributeCount() const
+{
+	return EventCache.GetDefaultAttributeCount();
+}
+
+
+FAnalyticsEventAttribute FAnalyticsProviderET::GetDefaultEventAttribute(int AttributeIndex) const
+{
+	return EventCache.GetDefaultAttribute(AttributeIndex);
 }
 
 void FAnalyticsProviderET::SetEventCallback(const OnEventRecorded& Callback)
@@ -656,4 +571,64 @@ void FAnalyticsProviderET::BlockUntilFlushed(float InTimeoutSec)
 void FAnalyticsProviderET::SetShouldRecordEventFunc(const ShouldRecordEventFunction& InShouldRecordEventFunc)
 {
 	ShouldRecordEventFunc = InShouldRecordEventFunc;
+}
+
+static inline void AnalyticsProviderETFlushEventLegacyHelper(FString& EventParams, int PayloadNdx, const FAnalyticsEventAttribute& Attribute)
+{
+	EventParams += FString::Printf(TEXT("&AttributeName%d=%s&AttributeValue%d=%s"),
+		PayloadNdx,
+		*FPlatformHttp::UrlEncode(Attribute.GetName()),
+		PayloadNdx,
+		*FPlatformHttp::UrlEncode(Attribute.GetValue()));
+}
+
+void FAnalyticsProviderET::FlushEventLegacy(const FString& EventName, const TArray<FAnalyticsEventAttribute>& Attributes)
+{
+	// this is a legacy pathway that doesn't accept batch payloads of cached data. We'll just send one request for each event, which will be slow for a large batch of requests at once.
+	if (ensure(FModuleManager::Get().IsModuleLoaded("HTTP")))
+	{
+		// first generate a payload from the eventand attributes
+		FString EventParams;
+		int PayloadNdx = 0;
+		for (int DefaultNdx = 0, NumDefaults = EventCache.GetDefaultAttributeCount(); DefaultNdx < NumDefaults; ++DefaultNdx)
+		{
+			AnalyticsProviderETFlushEventLegacyHelper(EventParams, PayloadNdx, EventCache.GetDefaultAttribute(DefaultNdx));
+			++PayloadNdx;
+		}
+		for (int AttrNdx = 0; AttrNdx < Attributes.Num(); ++AttrNdx)
+		{
+			AnalyticsProviderETFlushEventLegacyHelper(EventParams, PayloadNdx, Attributes[AttrNdx]);
+			++PayloadNdx;
+		}
+
+		// log out the un-encoded values to make reading the log easier.
+		UE_LOG(LogAnalytics, VeryVerbose, TEXT("[%s] AnalyticsET URL:SendEvent.1?SessionID=%s&AppID=%s&AppVersion=%s&UserID=%s&EventName=%s%s"),
+			*Config.APIKeyET,
+			*SessionID,
+			*Config.APIKeyET,
+			*Config.AppVersionET,
+			*UserID,
+			*EventName,
+			*EventParams);
+
+		// Create/send Http request for an event
+		TSharedRef<IHttpRequest, ESPMode::ThreadSafe> HttpRequest = CreateRequest();
+		HttpRequest->SetHeader(TEXT("Content-Type"), TEXT("text/plain"));
+
+		// Don't need to URL encode the APIServer or the EventParams, which are already encoded, and contain parameter separaters that we DON'T want encoded.
+		FString URLPath = Config.APIServerET;
+		URLPath += TEXT("SendEvent.1?SessionID=") + FPlatformHttp::UrlEncode(SessionID);
+		URLPath += TEXT("&AppID=") + FPlatformHttp::UrlEncode(Config.APIKeyET);
+		URLPath += TEXT("&AppVersion=") + FPlatformHttp::UrlEncode(Config.AppVersionET);
+		URLPath += TEXT("&UserID=") + FPlatformHttp::UrlEncode(UserID);
+		URLPath += TEXT("&EventName=") + FPlatformHttp::UrlEncode(EventName);
+		URLPath += EventParams;
+		HttpRequest->SetURL(URLPath);
+		HttpRequest->SetVerb(TEXT("GET"));
+		if (!bInDestructor)
+		{
+			HttpRequest->OnProcessRequestComplete().BindSP(this, &FAnalyticsProviderET::EventRequestComplete);
+		}
+		HttpRequest->ProcessRequest();
+	}
 }

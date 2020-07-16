@@ -136,6 +136,7 @@ UnrealEngine.cpp: Implements the UEngine class and helpers.
 #include "Particles/TypeData/ParticleModuleTypeDataMesh.h"
 #include "Particles/ParticleLODLevel.h"
 #include "Particles/ParticleModuleRequired.h"
+#include "Particles/ParticlePerfStats.h"
 
 #include "Components/TextRenderComponent.h"
 #include "Sound/AudioSettings.h"
@@ -468,10 +469,6 @@ void FTemporaryPlayInEditorIDOverride::SetID(int32 NewID)
 		UpdatePlayInEditorWorldDebugString(GEngine->GetWorldContextFromPIEInstance(GPlayInEditorID));
 	}
 }
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-FSimpleMulticastDelegate UEngine::OnPostEngineInit;
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 // We expose these variables to everyone as we need to access them in other files via an extern
 ENGINE_API float GAverageFPS = 0.0f;
@@ -1759,6 +1756,9 @@ void UEngine::Init(IEngineLoop* InEngineLoop)
 	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_UnitTime"), TEXT("STATCAT_Engine"), FText::GetEmpty(), NULL, &UEngine::ToggleStatUnitTime));
 	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_Raw"), TEXT("STATCAT_Engine"), FText::GetEmpty(), NULL, &UEngine::ToggleStatRaw));
 #endif
+#if WITH_PARTICLE_PERF_STATS
+	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_ParticlePerf"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatParticlePerf, nullptr, bIsRHS));
+#endif
 
 	// Let any listeners know about the new stats
 	for (int32 StatIdx = 0; StatIdx < EngineStats.Num(); StatIdx++)
@@ -2593,6 +2593,8 @@ void UEngine::InitializeObjectReferences()
 			DefaultPhysMaterial = NewObject<UPhysicalMaterial>();
 		}
 	}
+
+	UPhysicalMaterial::SetEngineDefaultPhysMaterial(DefaultPhysMaterial);
 
 	LoadEngineClass<UConsole>(ConsoleClassName, ConsoleClass);
 	LoadEngineClass<UGameViewportClient>(GameViewportClientClassName, GameViewportClientClass);
@@ -3467,7 +3469,9 @@ struct FSortedStaticMesh
 	int32			ResKBExc;
 	int32			ResKBInc;
 	int32			ResKBIncMobile;
+	int32			ResKBResident;
 	int32			LodCount;
+	int32			ResidentLodCount;
 	int32			MobileMinLOD;
 	int32			VertexCountLod0;
 	int32			VertexCountLod1;
@@ -3481,13 +3485,15 @@ struct FSortedStaticMesh
 	FString			Name;
 
 	/** Constructor, initializing every member variable with passed in values. */
-	FSortedStaticMesh(UStaticMesh* InMesh, int32 InNumKB, int32 InMaxKB, int32 InResKBExc, int32 InResKBInc, int32 InResKBIncMobile, int32 InLodCount, int32 InMobileMinLOD, int32 InVertexCountLod0, int32 InVertexCountLod1, int32 InVertexCountLod2, int32 InVertexCountTotal, int32 InVertexCountTotalMobile, int32 InVertexCountCollision, int32 InShapeCountCollision, int32 InUsageCount, FString InName)
+	FSortedStaticMesh(UStaticMesh* InMesh, int32 InNumKB, int32 InMaxKB, int32 InResKBExc, int32 InResKBInc, int32 InResKBIncMobile, int32 InResKBResident, int32 InLodCount, int32 InResidentLodCount, int32 InMobileMinLOD, int32 InVertexCountLod0, int32 InVertexCountLod1, int32 InVertexCountLod2, int32 InVertexCountTotal, int32 InVertexCountTotalMobile, int32 InVertexCountCollision, int32 InShapeCountCollision, int32 InUsageCount, FString InName)
 		: NumKB(InNumKB)
 		, MaxKB(InMaxKB)
 		, ResKBExc(InResKBExc)
 		, ResKBInc(InResKBInc)
 		, ResKBIncMobile(InResKBIncMobile)
+		, ResKBResident(InResKBResident)
 		, LodCount(InLodCount)
+		, ResidentLodCount(InResidentLodCount)
 		, MobileMinLOD(InMobileMinLOD)
 		, VertexCountLod0(InVertexCountLod0)
 		, VertexCountLod1(InVertexCountLod1)
@@ -3547,12 +3553,15 @@ struct FSortedSkeletalMesh
 	int32		VertexCountTotal;
 	int32		VertexCountTotalMobile;
 	int32		VertexCountCollision;
+	int32		ResidentLodCount;
+	int32		ResidentResKBExc;
 	FString		Name;
 
 	/** Constructor, initializing every member variable with passed in values. */
 	FSortedSkeletalMesh(int32 InNumKB, int32 InMaxKB, int32 InResKBExc, int32 InResKBInc, int32 InResKBIncMobile, int32 InLodCount, int32 InMobileMinLOD,
 		int32 InMeshDisablesMinLODStripping, int32 bInSupportLODStreaming, int32 InMaxNumStreamedLODs, int32 InMaxNumOptionalLODs, int32 InVertexCountLod0,
-		int32 InVertexCountLod1, int32 InVertexCountLod2, int32 InVertexCountTotal, int32 InVertexCountTotalMobile, int32 InVertexCountCollision, FString InName)
+		int32 InVertexCountLod1, int32 InVertexCountLod2, int32 InVertexCountTotal, int32 InVertexCountTotalMobile, int32 InVertexCountCollision,
+		int32 InResidentLodCount, int32 InResidentResKBExc, FString InName)
 		: NumKB(InNumKB)
 		, MaxKB(InMaxKB)
 		, ResKBExc(InResKBExc)
@@ -3570,6 +3579,8 @@ struct FSortedSkeletalMesh
 		, VertexCountTotal(InVertexCountTotal)
 		, VertexCountTotalMobile(InVertexCountTotalMobile)
 		, VertexCountCollision(InVertexCountCollision)
+		, ResidentLodCount(InResidentLodCount)
+		, ResidentResKBExc(InResidentResKBExc)
 		, Name(InName)
 	{}
 };
@@ -5369,11 +5380,25 @@ bool UEngine::HandleListStaticMeshesCommand(const TCHAR* Cmd, FOutputDevice& Ar)
 
 		int32		VertexCountTotal = 0;
 		int32		VertexCountTotalMobile = 0;
+		int32 ResidentLodCount = 0;
+		int32 ResidentResKBExc = 0;
+		int32 NumMissingLODs = 0;
+		FResourceSizeEx EvictedResourceSize(EResourceSizeMode::Exclusive);
+		if (Mesh->RenderData)
+		{
+			NumMissingLODs = Mesh->RenderData->CurrentFirstLODIdx;
+			ResidentLodCount = LodCount - NumMissingLODs;
+		}
 		for(int32 i = 0; i < LodCount; i++)
 		{
 			VertexCountTotal += Mesh->GetNumVertices(i);
 			VertexCountTotalMobile += i >= MobileMinLOD ? Mesh->GetNumVertices(i) : 0;
+			if (i < NumMissingLODs)
+			{
+				Mesh->RenderData->LODResources[i].GetResourceSizeEx(EvictedResourceSize);
+			}
 		}
+		ResidentResKBExc = (ResourceSizeExc.GetTotalMemoryBytes() - EvictedResourceSize.GetTotalMemoryBytes() + 512) / 1024;
 
 		int32		VertexCountCollision = 0;
 		if(Mesh->BodySetup)
@@ -5401,7 +5426,9 @@ bool UEngine::HandleListStaticMeshesCommand(const TCHAR* Cmd, FOutputDevice& Ar)
 			ResKBExc,
 			ResKBInc,
 			ResKBIncMobile,
+			ResidentResKBExc,
 			LodCount,
+			ResidentLodCount,
 			MobileMinLOD,
 			VertexCountLod0,
 			VertexCountLod1,
@@ -5422,11 +5449,12 @@ bool UEngine::HandleListStaticMeshesCommand(const TCHAR* Cmd, FOutputDevice& Ar)
 	int64 TotalMaxKB = 0;
 	int64 TotalResKBExc = 0;
 	int64 TotalResKBInc = 0;
+	int64 TotalResKBResident = 0;
 	int64 TotalResKBIncMobile = 0;
 	int32 TotalVertexCount = 0;
 	int32 TotalVertexCountMobile = 0;
 
-	FString HeaderString(TEXT(",       NumKB,       MaxKB,    ResKBExc,    ResKBInc,    LODCount,   VertsLOD0,   VertsLOD1,   VertsLOD2, Verts Total,  Verts Coll, Coll Shapes,     NumUsed"));
+	FString HeaderString(TEXT(",       NumKB,       MaxKB,    ResKBExc,    ResKBInc,    ResKBResident,    LODCount,    ResidentLODCount,   VertsLOD0,   VertsLOD1,   VertsLOD2, Verts Total,  Verts Coll, Coll Shapes,     NumUsed"));
 	FString MobileHeaderString = bHasMobileColumns ? FString(TEXT(", ResKBIncMob,Verts Mobile,MobileMinLOD")) : FString();
 	
 	Ar.Logf(TEXT("%s%s, Name"), *HeaderString, *MobileHeaderString);	
@@ -5437,12 +5465,14 @@ bool UEngine::HandleListStaticMeshesCommand(const TCHAR* Cmd, FOutputDevice& Ar)
 
 		if (bHasMobileColumns)
 		{
-			Ar.Logf(TEXT(", %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %s"),
+			Ar.Logf(TEXT(", %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %s"),
 				SortedMesh.NumKB,
 				SortedMesh.MaxKB,
 				SortedMesh.ResKBExc,
 				SortedMesh.ResKBInc,
+				SortedMesh.ResKBResident,
 				SortedMesh.LodCount,
+				SortedMesh.ResidentLodCount,
 				SortedMesh.VertexCountLod0,
 				SortedMesh.VertexCountLod1,
 				SortedMesh.VertexCountLod2,
@@ -5457,12 +5487,14 @@ bool UEngine::HandleListStaticMeshesCommand(const TCHAR* Cmd, FOutputDevice& Ar)
 		}
 		else
 		{
-			Ar.Logf(TEXT(" ,%11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %s"),
+			Ar.Logf(TEXT(" ,%11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %s"),
 				SortedMesh.NumKB,
 				SortedMesh.MaxKB,
 				SortedMesh.ResKBExc,
 				SortedMesh.ResKBInc,
+				SortedMesh.ResKBResident,
 				SortedMesh.LodCount,
+				SortedMesh.ResidentLodCount,
 				SortedMesh.VertexCountLod0,
 				SortedMesh.VertexCountLod1,
 				SortedMesh.VertexCountLod2,
@@ -5477,12 +5509,13 @@ bool UEngine::HandleListStaticMeshesCommand(const TCHAR* Cmd, FOutputDevice& Ar)
 		TotalMaxKB += SortedMesh.MaxKB;
 		TotalResKBExc += SortedMesh.ResKBExc;
 		TotalResKBInc += SortedMesh.ResKBInc;
+		TotalResKBResident += SortedMesh.ResKBResident;
 		TotalResKBIncMobile += SortedMesh.ResKBIncMobile;
 		TotalVertexCount += SortedMesh.VertexCountTotal;
 		TotalVertexCountMobile += SortedMesh.VertexCountTotalMobile;
 	}
 
-	Ar.Logf(TEXT("Total NumKB: %lld KB, Total MaxKB: %lld KB, Total ResKB Exc: %lld KB, Total ResKB Inc %lld KB,  Total ResKB Inc Mobile %lld KB, Total Vertex Count: %i, Total Vertex Count Mobile: %i, Static Mesh Count=%d"), TotalNumKB, TotalMaxKB, TotalResKBExc, TotalResKBInc, TotalResKBIncMobile, TotalVertexCount, TotalVertexCountMobile, SortedMeshes.Num());
+	Ar.Logf(TEXT("Total NumKB: %lld KB, Total MaxKB: %lld KB, Total ResKB Exc: %lld KB, Total ResKB Inc %lld KB,  Total ResKB Inc Mobile %lld KB, Total ResKB Resident %lld KB, Total Vertex Count: %i, Total Vertex Count Mobile: %i, Static Mesh Count=%d"), TotalNumKB, TotalMaxKB, TotalResKBExc, TotalResKBInc, TotalResKBIncMobile, TotalResKBResident, TotalVertexCount, TotalVertexCountMobile, SortedMeshes.Num());
 
 	if (bUsedComponents)
 	{
@@ -5578,11 +5611,17 @@ bool UEngine::HandleListSkeletalMeshesCommand(const TCHAR* Cmd, FOutputDevice& A
 		int32 VertexCountTotal = 0;
 		int32 VertexCountTotalMobile = 0;
 
+		int32 ResidentLodCount = 0;
+		int32 ResidentResKBExc = 0;
+
 		if(Mesh->GetResourceForRendering() && Mesh->GetResourceForRendering()->LODRenderData.Num() > 0)
 		{
 			TIndirectArray<FSkeletalMeshLODRenderData>& LodRenderData = Mesh->GetResourceForRendering()->LODRenderData;
+			const int32 NumMissingLODs = Mesh->GetResourceForRendering()->CurrentFirstLODIdx;
+			FResourceSizeEx EvictedResSize(EResourceSizeMode::Exclusive);
 
 			LodCount = LodRenderData.Num();
+			ResidentLodCount = LodCount - NumMissingLODs;
 			VertexCountLod0 = LodCount > 0 ? LodRenderData[0].GetNumVertices() : 0;
 			VertexCountLod1 = LodCount > 1 ? LodRenderData[1].GetNumVertices() : 0;
 			VertexCountLod2 = LodCount > 2 ? LodRenderData[2].GetNumVertices() : 0;
@@ -5591,7 +5630,14 @@ bool UEngine::HandleListSkeletalMeshesCommand(const TCHAR* Cmd, FOutputDevice& A
 			{
 				VertexCountTotal += LodRenderData[i].GetNumVertices();
 				VertexCountTotalMobile += i >= MobileMinLOD || MeshDisablesMinLODStripping == 1 ? LodRenderData[i].GetNumVertices() : 0;
+
+				if (i < NumMissingLODs)
+				{
+					LodRenderData[i].GetResourceSizeEx(EvictedResSize);
+				}
 			}
+
+			ResidentResKBExc = (ResourceSizeExc.GetTotalMemoryBytes() - EvictedResSize.GetTotalMemoryBytes() + 512) / 1024;
 		}
 
 		int32 VertexCountCollision = 0;
@@ -5631,6 +5677,8 @@ bool UEngine::HandleListSkeletalMeshesCommand(const TCHAR* Cmd, FOutputDevice& A
 			VertexCountTotal,
 			VertexCountTotalMobile,
 			VertexCountCollision,
+			ResidentLodCount,
+			ResidentResKBExc,
 			Name);
 	}
 
@@ -5642,17 +5690,18 @@ bool UEngine::HandleListSkeletalMeshesCommand(const TCHAR* Cmd, FOutputDevice& A
 	int64 TotalMaxKB = 0;
 	int64 TotalResKBExc = 0;
 	int64 TotalResKBInc = 0;
+	int64 TotalResKBResident = 0;
 	int64 TotalResKBIncMobile = 0;
 	int32 TotalVertexCount = 0;
 	int32 TotalVertexCountMobile = 0;
 
 	if (bCSV)
 	{
-		Ar.Logf(TEXT(",NumKB, MaxKB, ResKBExc, ResKBInc, ResKBIncMobile, LOD Count, MobileMinLOD, DisableMinLODStripping, bSupportLODStreaming, MaxNumStreamedLODs, MaxNumOptionalLODs, Verts LOD0, Verts LOD1, Verts LOD2, Verts Total, Verts Total Mobile, Verts Collision, Name"));
+		Ar.Logf(TEXT(",NumKB, MaxKB, ResKBExc, ResKBInc, ResKBIncMobile, ResKBResident, LOD Count, Resident LOD Count, MobileMinLOD, DisableMinLODStripping, bSupportLODStreaming, MaxNumStreamedLODs, MaxNumOptionalLODs, Verts LOD0, Verts LOD1, Verts LOD2, Verts Total, Verts Total Mobile, Verts Collision, Name"));
 	}
 	else
 	{
-		Ar.Logf(TEXT("       NumKB       MaxKB    ResKBExc    ResKBInc  ResKBIncMobile    NumLODs   MobileMinLOD  DisableMinLODStripping  bSupportLODStreaming  MaxNumStreamedLODs  MaxNumOptionalLODs  VertsLOD0   VertsLOD1   VertsLOD2   VertsTotal  VertsTotalMobile  VertsColl  Name"));
+		Ar.Logf(TEXT("       NumKB       MaxKB    ResKBExc    ResKBInc  ResKBIncMobile  ResKBResident  NumLODs  NumResidentLODs  MobileMinLOD  DisableMinLODStripping  bSupportLODStreaming  MaxNumStreamedLODs  MaxNumOptionalLODs  VertsLOD0   VertsLOD1   VertsLOD2   VertsTotal  VertsTotalMobile  VertsColl  Name"));
 	}
 
 	for (int32 MeshIndex = 0; MeshIndex<SortedMeshes.Num(); MeshIndex++)
@@ -5661,16 +5710,16 @@ bool UEngine::HandleListSkeletalMeshesCommand(const TCHAR* Cmd, FOutputDevice& A
 
 		if (bCSV)
 		{
-			Ar.Logf(TEXT(",%i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %s"),
-				SortedMesh.NumKB, SortedMesh.MaxKB, SortedMesh.ResKBExc, SortedMesh.ResKBInc, SortedMesh.ResKBIncMobile, SortedMesh.LodCount, SortedMesh.MobileMinLOD,
+			Ar.Logf(TEXT(",%i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %s"),
+				SortedMesh.NumKB, SortedMesh.MaxKB, SortedMesh.ResKBExc, SortedMesh.ResKBInc, SortedMesh.ResKBIncMobile, SortedMesh.ResidentResKBExc, SortedMesh.LodCount, SortedMesh.ResidentLodCount, SortedMesh.MobileMinLOD,
 				SortedMesh.MeshDisablesMinLODStripping, SortedMesh.bSupportLODStreaming, SortedMesh.MaxNumStreamedLODs, SortedMesh.MaxNumOptionalLODs,
 				SortedMesh.VertexCountLod0, SortedMesh.VertexCountLod1, SortedMesh.VertexCountLod2, SortedMesh.VertexCountTotal, SortedMesh.VertexCountTotalMobile, SortedMesh.VertexCountCollision,
 				*SortedMesh.Name);
 		}
 		else
 		{
-			Ar.Logf(TEXT("%9i KB %8i KB %8i KB %8i KB  %11i KB %10i %14i %23i %21i %19i %19i %10i %11i %11i %12i %17i %10i  %s"),
-				SortedMesh.NumKB, SortedMesh.MaxKB, SortedMesh.ResKBExc, SortedMesh.ResKBInc, SortedMesh.ResKBIncMobile, SortedMesh.LodCount, SortedMesh.MobileMinLOD,
+			Ar.Logf(TEXT("%9i KB %8i KB %8i KB %8i KB  %11i KB %10i KB %10i %10i %14i %23i %21i %19i %19i %10i %11i %11i %12i %17i %10i  %s"),
+				SortedMesh.NumKB, SortedMesh.MaxKB, SortedMesh.ResKBExc, SortedMesh.ResKBInc, SortedMesh.ResKBIncMobile, SortedMesh.ResidentResKBExc, SortedMesh.LodCount, SortedMesh.ResidentLodCount, SortedMesh.MobileMinLOD,
 				SortedMesh.MeshDisablesMinLODStripping, SortedMesh.bSupportLODStreaming, SortedMesh.MaxNumStreamedLODs, SortedMesh.MaxNumOptionalLODs,
 				SortedMesh.VertexCountLod0, SortedMesh.VertexCountLod1, SortedMesh.VertexCountLod2, SortedMesh.VertexCountTotal, SortedMesh.VertexCountTotalMobile, SortedMesh.VertexCountCollision,
 				*SortedMesh.Name);
@@ -5680,12 +5729,13 @@ bool UEngine::HandleListSkeletalMeshesCommand(const TCHAR* Cmd, FOutputDevice& A
 		TotalMaxKB += SortedMesh.MaxKB;
 		TotalResKBExc += SortedMesh.ResKBExc;
 		TotalResKBInc += SortedMesh.ResKBInc;
+		TotalResKBResident += SortedMesh.ResidentResKBExc;
 		TotalResKBIncMobile += SortedMesh.ResKBIncMobile;
 		TotalVertexCount += SortedMesh.VertexCountTotal;
 		TotalVertexCountMobile += SortedMesh.VertexCountTotalMobile;
 	}
 
-	Ar.Logf(TEXT("Total NumKB: %lld KB, Total MaxKB: %lld KB, Total ResKB Exc: %lld KB, Total ResKB Inc %lld KB,  Total ResKB Inc Mobile %lld KB, Total Vertex Count: %i, Total Vertex Count Mobile: %i, Static Mesh Count=%d"), TotalNumKB, TotalMaxKB, TotalResKBExc, TotalResKBInc, TotalResKBIncMobile, TotalVertexCount, TotalVertexCountMobile, SortedMeshes.Num());
+	Ar.Logf(TEXT("Total NumKB: %lld KB, Total MaxKB: %lld KB, Total ResKB Exc: %lld KB, Total ResKB Inc %lld KB,  Total ResKB Inc Mobile %lld KB, Total ResKB Resident %lld KB, Total Vertex Count: %i, Total Vertex Count Mobile: %i, Static Mesh Count=%d"), TotalNumKB, TotalMaxKB, TotalResKBExc, TotalResKBInc, TotalResKBIncMobile, TotalResKBResident, TotalVertexCount, TotalVertexCountMobile, SortedMeshes.Num());
 
 	return true;
 }
@@ -5731,7 +5781,14 @@ bool UEngine::HandleListAnimsCommand(const TCHAR* Cmd, FOutputDevice& Ar)
 			RateScale = AnimSeq->RateScale;
 			NumCurves = AnimSeq->RawCurveData.FloatCurves.Num();
 
-			DebugString = AnimSeq->CompressedData.CompressedDataStructure->GetDebugString();
+			if (AnimSeq->CompressedData.CompressedDataStructure != nullptr)
+			{
+				DebugString = AnimSeq->CompressedData.CompressedDataStructure->GetDebugString();
+			}
+			else
+			{
+				DebugString = TEXT("Missing CompressedDataStructure");
+			}
 		}
 
 		new(SortedAnimAssets) FSortedAnimAsset(
@@ -6550,7 +6607,7 @@ bool UEngine::HandleMemCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 	{
 		Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("Memory Stats:") );
 		Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("FMemStack (gamethread) current size = %.2f MB"), FMemStack::Get().GetByteCount() / (1024.0f * 1024.0f));
-		Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("FPageAllocator (all threads) allocation size [used/ unused] = [%.2f / %.2f] MB"), (FPageAllocator::BytesUsed()) / (1024.0f * 1024.0f), (FPageAllocator::BytesFree()) / (1024.0f * 1024.0f));
+		Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("FPageAllocator (all threads) allocation size [used/ unused] = [%.2f / %.2f] MB"), (FPageAllocator::Get().BytesUsed()) / (1024.0f * 1024.0f), (FPageAllocator::Get().BytesFree()) / (1024.0f * 1024.0f));
 		Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("Nametable memory usage = %.2f MB"), FName::GetNameTableMemorySize() / (1024.0f * 1024.0f));
 
 		FAssetRegistryModule* AssetRegistryModule = FModuleManager::LoadModulePtr<FAssetRegistryModule>(AssetRegistryConstants::ModuleName);
@@ -7597,7 +7654,7 @@ bool UEngine::HandleObjCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 
 			if (bCSV)
 			{
-				Ar.Logf(TEXT("Object, NumKB, MaxKB, ResExcKB, ResExcDedSysKB, ResExcShrSysKB, ResExcDedVidKB, ResExcShrVidKB, ResExcUnkKB"));
+				Ar.Logf(TEXT(", Object, NumKB, MaxKB, ResExcKB, ResExcDedSysKB, ResExcShrSysKB, ResExcDedVidKB, ResExcShrVidKB, ResExcUnkKB"));
 			}
 			else
 			{
@@ -7620,7 +7677,7 @@ bool UEngine::HandleObjCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 				if (bCSV)
 				{
 					Ar.Logf(
-						TEXT("%s, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f"),
+						TEXT(", %s, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f"),
 						*ObjItem.Object->GetFullName(),
 						ObjItem.Num / 1024.0f,
 						ObjItem.Max / 1024.0f,
@@ -13717,7 +13774,7 @@ bool UEngine::PrepareMapChange(FWorldContext &Context, const TArray<FName>& Leve
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 		// Verify that all levels specified are in the package file cache.
-		for (const FName LevelName : Context.LevelsToLoadForPendingMapChange)
+		for (const FName& LevelName : Context.LevelsToLoadForPendingMapChange)
 		{
 			if( !FPackageName::DoesPackageExist( LevelName.ToString() ) )
 			{
@@ -13743,7 +13800,7 @@ bool UEngine::PrepareMapChange(FWorldContext &Context, const TArray<FName>& Leve
 		}
 
 		// Kick off async loading of packages.
-		for (const FName LevelName : Context.LevelsToLoadForPendingMapChange)
+		for (const FName& LevelName : Context.LevelsToLoadForPendingMapChange)
 		{
 			STAT_ADD_CUSTOMMESSAGE_NAME( STAT_NamedMarker, *(FString( TEXT( "PrepareMapChange - " ) + LevelName.ToString() )) );
 			TRACE_BOOKMARK(TEXT("PrepareMapChange - %s"), *LevelName.ToString());
@@ -14168,6 +14225,10 @@ private:
 	int32 TaggedDataScope;
 };
 
+#if WITH_EDITOR
+static FName BlueprintCompilerGeneratedDefaultsName(TEXT("BlueprintCompilerGeneratedDefaults"));
+#endif
+
 /* Serializes and stores property data from a specified 'source' object. Only stores data compatible with a target destination object. */
 struct FCPFUOWriter : public FObjectWriter, public FCPFUOArchive
 {
@@ -14214,8 +14275,9 @@ public:
 #if WITH_EDITOR
 	virtual bool ShouldSkipProperty(const class FProperty* InProperty) const override
 	{
-		static FName BlueprintCompilerGeneratedDefaultsName(TEXT("BlueprintCompilerGeneratedDefaults"));
-		return bSkipCompilerGeneratedDefaults && InProperty->HasMetaData(BlueprintCompilerGeneratedDefaultsName);
+		return
+			(InProperty->HasAnyPropertyFlags(CPF_Transient) && !IsPersistent() && IsSerializingDefaults()) ||
+			(bSkipCompilerGeneratedDefaults && InProperty->HasMetaData(BlueprintCompilerGeneratedDefaultsName));
 	}
 #endif 
 	//~ End FArchive Interface
@@ -16172,6 +16234,14 @@ int32 UEngine::RenderStatSlateBatches(UWorld* World, FViewport* Viewport, FCanva
 	return Y;
 }
 #endif
+
+int32 UEngine::RenderStatParticlePerf(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation, const FRotator* ViewRotation)
+{
+#if WITH_PARTICLE_PERF_STATS
+	Y = FParticlePerfStats::RenderStats(World, Viewport, Canvas, X, Y, ViewLocation, ViewRotation);
+#endif
+	return Y;
+}
 
 ERHIFeatureLevel::Type UEngine::GetDefaultWorldFeatureLevel() const
 {

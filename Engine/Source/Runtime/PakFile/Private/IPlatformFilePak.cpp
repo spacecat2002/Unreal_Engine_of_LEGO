@@ -44,6 +44,7 @@ DEFINE_STAT(STAT_PakFile_Read);
 DEFINE_STAT(STAT_PakFile_NumOpenHandles);
 
 CSV_DECLARE_CATEGORY_MODULE_EXTERN(CORE_API, FileIO);
+CSV_DEFINE_CATEGORY(FileIOVerbose, false);
 
 #ifndef DISABLE_NONUFS_INI_WHEN_COOKED
 #define DISABLE_NONUFS_INI_WHEN_COOKED 0
@@ -60,6 +61,9 @@ CSV_DECLARE_CATEGORY_MODULE_EXTERN(CORE_API, FileIO);
 #endif
 
 static FString GMountStartupPaksWildCard = TEXT(MOUNT_STARTUP_PAKS_WILDCARD);
+
+
+extern TAtomic<int>	GAsyncLoadingFlushIsActive;
 
 int32 GetPakchunkIndexFromPakFile(const FString& InFilename)
 {
@@ -495,6 +499,15 @@ static FAutoConsoleVariableRef CVar_EnableNoCaching(
 	GPakCache_EnableNoCaching,
 	TEXT("if > 0, then we'll allow a read requests pak cache memory to be ditched early")
 );
+
+static int32 GAsyncLoadingAllowFlushProtection = 0;
+static FAutoConsoleVariableRef CVarAsyncLoadingAllowFlushProtection(
+	TEXT("pakcache.AsyncLoadingAllowFlushProtection"),
+	GAsyncLoadingAllowFlushProtection,
+	TEXT("Used to try and stop a hang in asyncloading if a flush comes in when the loading queue has a read request queued at a low priority and we've stopped trying to load low priority read requests because a higher priority read request has completed but hasn't been consumed!"),
+	ECVF_Default
+);
+
 
 class FPakPrecacher;
 
@@ -1909,6 +1922,10 @@ private: // below here we assume CachedFilesScopeLock until we get to the next s
 			// CachedFilesScopeLock is locked
 			for (uint16 RealPakIndex = StartPakIndex; RealPakIndex < EndPakIndex; RealPakIndex++)
 			{
+				if (!CachedPakData[RealPakIndex].Handle)
+				{
+					continue;
+				}
 				int32 CacheIndex = CachedPakData[RealPakIndex].ActualPakFile->GetCacheIndex();
 				int32 NumToKeep = bDiscardAll ? 0 : GPakCache_NumUnreferencedBlocksToCache;
 				int32 NumToRemove = FMath::Max<int32>(0, OffsetAndPakIndexOfSavedBlocked[CacheIndex].Num() - NumToKeep);
@@ -2063,6 +2080,10 @@ private: // below here we assume CachedFilesScopeLock until we get to the next s
 	FJoinedOffsetAndPakIndex GetNextBlock(EAsyncIOPriorityAndFlags& OutPriority)
 	{
 		EAsyncIOPriorityAndFlags AsyncMinPriorityLocal = AsyncMinPriority;
+		if (GAsyncLoadingAllowFlushProtection && GAsyncLoadingFlushIsActive)
+		{
+			AsyncMinPriorityLocal = AIOP_MIN;
+		}
 
 		// CachedFilesScopeLock is locked
 		uint16 BestPakIndex = 0;
@@ -2070,7 +2091,7 @@ private: // below here we assume CachedFilesScopeLock until we get to the next s
 
 		OutPriority = AIOP_MIN;
 		bool bAnyOutstanding = false;
-		for (int32 Priority = AIOP_MAX;; Priority--)
+		for (int32 Priority = AIOP_MAX; ; Priority--)
 		{
 			if (Priority < AsyncMinPriorityLocal && bAnyOutstanding)
 			{
@@ -2726,7 +2747,7 @@ public:
 
 	bool QueueRequest(IPakRequestor* Owner, FPakFile* InActualPakFile, FName File, int64 PakFileSize, int64 Offset, int64 Size, EAsyncIOPriorityAndFlags PriorityAndFlags)
 	{
-		CSV_SCOPED_TIMING_STAT(FileIO, PakPrecacherQueueRequest);
+		CSV_SCOPED_TIMING_STAT(FileIOVerbose, PakPrecacherQueueRequest);
 		check(Owner && File != NAME_None && Size > 0 && Offset >= 0 && Offset < PakFileSize && (PriorityAndFlags&AIOP_PRIORITY_MASK) >= AIOP_MIN && (PriorityAndFlags&AIOP_PRIORITY_MASK) <= AIOP_MAX);
 		FScopeLock Lock(&CachedFilesScopeLock);
 		uint16* PakIndexPtr = RegisterPakFile(InActualPakFile, File, PakFileSize);
@@ -4283,7 +4304,7 @@ public:
 
 IAsyncReadFileHandle* FPakPlatformFile::OpenAsyncRead(const TCHAR* Filename)
 {
-	CSV_SCOPED_TIMING_STAT(FileIO, PakOpenAsyncRead);
+	CSV_SCOPED_TIMING_STAT(FileIOVerbose, PakOpenAsyncRead);
 #if USE_PAK_PRECACHE
 	if (FPlatformProcess::SupportsMultithreading() && GPakCache_Enable > 0)
 	{
@@ -5535,7 +5556,7 @@ void FPakFile::PruneDirectoryIndex(FDirectoryIndex& InOutDirectoryIndex, FDirect
 		}
 
 		// For each kept directory, mark that we need to keep all of its parents up to the mount point
-		for (const TPair<FString, bool> Pair : KeepDirectory)
+		for (const TPair<FString, bool>& Pair : KeepDirectory)
 		{
 			if (Pair.Value)
 			{
@@ -5558,7 +5579,7 @@ void FPakFile::PruneDirectoryIndex(FDirectoryIndex& InOutDirectoryIndex, FDirect
 		}
 
 		// Prune all of the directories
-		for (const TPair<FString, bool> Pair : KeepDirectory)
+		for (const TPair<FString, bool>& Pair : KeepDirectory)
 		{
 			const FString& DirectoryName = Pair.Key;
 			bool bKeep = Pair.Value;
@@ -5643,7 +5664,7 @@ struct FPakFile::FIndexSettings
 {
 	FIndexSettings()
 	{
-		bKeepFullDirectory = false;
+		bKeepFullDirectory = true;
 		bValidatePruning = false;
 		bDelayPruning = false;
 		bWritePathHashIndex = true;
@@ -5661,7 +5682,12 @@ struct FPakFile::FIndexSettings
 		GConfig->GetBool(TEXT("Pak"), TEXT("WriteFullDirectoryIndex"), bWriteFullDirectoryIndex, GEngineIni);
 #endif
 
-		bKeepFullDirectory = bKeepFullDirectory || IS_PROGRAM || !FPlatformProperties::RequiresCookedData();
+#if IS_PROGRAM || WITH_EDITOR
+		// Directory pruning is not enabled in the editor or in development programs because there is no need to save the memory in those environments and some development features require not pruning
+		bKeepFullDirectory = true;
+#else
+		bKeepFullDirectory = bKeepFullDirectory || !FPlatformProperties::RequiresCookedData();
+#endif
 #if !UE_BUILD_SHIPPING
 		const TCHAR* CommandLine = FCommandLine::Get();
 		FParse::Bool(CommandLine, TEXT("ForcePakKeepFullDirectory="), bKeepFullDirectory);
@@ -6344,10 +6370,58 @@ void FPakFile::ValidateDirectorySearch(const TSet<FString>& FullFoundFiles, cons
 }
 #endif
 
+bool FPakFile::RecreatePakReaders(IPlatformFile* LowerLevel)
+{
+	FScopeLock ScopedLock(&CriticalSection);
+
+	// need to reset the decryptor as it will hold a pointer to the first created pak reader
+	Decryptor.Reset();
+
+	TMap<uint32, TUniquePtr<FArchive>> TempReaderMap;
+
+	// Create a new PakReader *per* thread that was already mapped
+	for (const TPair<uint32, TUniquePtr<FArchive>>& Reader : ReaderMap)
+	{
+		FArchive* PakReader = nullptr;
+		uint32 Thread = Reader.Key;
+
+		if (LowerLevel != nullptr)
+		{
+			IFileHandle* PakHandle = LowerLevel->OpenRead(*GetFilename());
+			if (PakHandle)
+			{
+				PakReader = CreatePakReader(*PakHandle, *GetFilename());
+			}
+		}
+		else
+		{
+			PakReader = CreatePakReader(*GetFilename());
+		}
+
+		if (!PakReader)
+		{
+			UE_LOG(LogPakFile, Warning, TEXT("Unable to re-create pak \"%s\" handle"), *GetFilename());
+			return false;
+		}
+
+#if DO_CHECK
+		FArchive* Proxy = new FThreadCheckingArchiveProxy(PakReader, Thread);
+		TempReaderMap.Emplace(Thread, Proxy);
+#else
+		TempReaderMap.Emplace(Thread, PakReader);
+#endif //DO_CHECK
+	}
+
+	// replace the current ReaderMap with the newly created pak readers leaving them to out of scope
+	ReaderMap = MoveTemp(TempReaderMap);
+
+	return true;
+}
+
 FArchive* FPakFile::GetSharedReader(IPlatformFile* LowerLevel)
 {
 	uint32 Thread = FPlatformTLS::GetCurrentThreadId();
-	FArchive* PakReader = NULL;
+	FArchive* PakReader = nullptr;
 	{
 		FScopeLock ScopedLock(&CriticalSection);
 		TUniquePtr<FArchive>* ExistingReader = ReaderMap.Find(Thread);
@@ -6359,7 +6433,7 @@ FArchive* FPakFile::GetSharedReader(IPlatformFile* LowerLevel)
 		if (!PakReader)
 		{
 			// Create a new FArchive reader and pass it to the new handle.
-			if (LowerLevel != NULL)
+			if (LowerLevel != nullptr)
 			{
 				IFileHandle* PakHandle = LowerLevel->OpenRead(*GetFilename());
 				if (PakHandle)
@@ -6485,7 +6559,7 @@ public:
 			PlatformFile.HandleMountCommand(Cmd, Ar);
 			return true;
 		}
-		if (FParse::Command(&Cmd, TEXT("Unmount")))
+		else if (FParse::Command(&Cmd, TEXT("Unmount")))
 		{
 			PlatformFile.HandleUnmountCommand(Cmd, Ar);
 			return true;
@@ -6498,6 +6572,11 @@ public:
 		else if (FParse::Command(&Cmd, TEXT("PakCorrupt")))
 		{
 			PlatformFile.HandlePakCorruptCommand(Cmd, Ar);
+			return true;
+		}
+		else if (FParse::Command(&Cmd, TEXT("ReloadPakReaders")))
+		{
+			PlatformFile.HandleReloadPakReadersCommand(Cmd, Ar);
 			return true;
 		}
 		return false;
@@ -6539,6 +6618,16 @@ void FPakPlatformFile::HandlePakCorruptCommand(const TCHAR* Cmd, FOutputDevice& 
 #if USE_PAK_PRECACHE
 	FPakPrecacher::Get().SimulatePakFileCorruption();
 #endif
+}
+
+void FPakPlatformFile::HandleReloadPakReadersCommand(const TCHAR* Cmd, FOutputDevice& Ar)
+{
+	TArray<FPakListEntry> Paks;
+	GetMountedPaks(Paks);
+	for (FPakListEntry& Pak : Paks)
+	{
+		Pak.PakFile->RecreatePakReaders(LowerLevel);
+	}
 }
 #endif // !UE_BUILD_SHIPPING
 
@@ -6820,6 +6909,20 @@ int32 GetRecursiveAllocatedSize(const FPakFile::FDirectoryIndex& Index)
 
 void FPakPlatformFile::OptimizeMemoryUsageForMountedPaks()
 {
+#if !UE_BUILD_SHIPPING
+	// UE_DEPRECATED(4.26, "UnloadPakEntryFilenamesIfPossible is deprecated.")
+	bool bUnloadPakEntryFilenamesIfPossible = false;
+	GConfig->GetBool(TEXT("Pak"), TEXT("UnloadPakEntryFilenamesIfPossible"), bUnloadPakEntryFilenamesIfPossible, GEngineIni);
+	if (bUnloadPakEntryFilenamesIfPossible)
+	{
+		UE_LOG(LogPakFile, Warning, TEXT("The UnloadPakEntryFilenamesIfPossible has been deprecated and is no longer sufficient to specify the unloading of pak files.\n")
+			TEXT("The choice to not load pak files is now made earlier than Ini settings are available.\n")
+			TEXT("To specify that filenames should be removed from the runtime PakFileIndex, use the new runtime delegate FPakPlatformFile::GetPakSetIndexSettingsDelegate().\n")
+			TEXT("In a global variable constructor that executes before the process main function, bind this delegate to a function that sets the output bool bKeepFullDirectory to false.\n")
+			TEXT("See FShooterPreMainCallbacks in Samples\\Games\\ShooterGame\\Source\\ShooterGame\\Private\\ShooterGameModule.cpp for an example binding."));
+	}
+#endif
+
 #if ENABLE_PAKFILE_RUNTIME_PRUNING || !UE_BUILD_SHIPPING
 	TArray<FPakListEntry> Paks;
 	bool bNeedsPaks = false;
@@ -7024,6 +7127,21 @@ bool FPakPlatformFile::Unmount(const TCHAR* InPakFilename)
 		}
 	}
 	return false;
+}
+
+bool FPakPlatformFile::ReloadPakReaders()
+{
+	TArray<FPakListEntry> Paks;
+	GetMountedPaks(Paks);
+	for (FPakListEntry& Pak : Paks)
+	{
+		if (!Pak.PakFile->RecreatePakReaders(LowerLevel))
+		{
+			return false;
+		}
+	}
+
+	return true;
 }
 
 IFileHandle* FPakPlatformFile::CreatePakFileHandle(const TCHAR* Filename, FPakFile* PakFile, const FPakEntry* FileEntry)

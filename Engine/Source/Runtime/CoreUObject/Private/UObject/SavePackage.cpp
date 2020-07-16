@@ -2634,7 +2634,7 @@ struct FPackageExportTagger
 			{
 				UObject* Obj = ObjectsInPackage[Index];
 				// Allowed object that have any of the top level flags or have an assigned that we are saving
-				if( Obj->HasAnyFlags(TopLevelFlags))
+				if (Obj->HasAnyFlags(TopLevelFlags))
 				{
 					ExportTagger.ProcessBaseObject(Obj);
 				}
@@ -3168,7 +3168,7 @@ struct FEDLCookChecker : public TThreadSingleton<FEDLCookChecker>
 		return bResult;
 	}
 
-	static void Verify()
+	static void Verify(bool bFullReferencesExpected)
 	{
 		check(!GIsSavingPackage);
 
@@ -3196,14 +3196,17 @@ struct FEDLCookChecker : public TThreadSingleton<FEDLCookChecker>
 		{
 			double StartTime = FPlatformTime::Seconds();
 			
- 			// imports to things that are not exports...
- 			for (const auto& Pair : ImportToImportingPackage)
- 			{
- 				if (!Exports.Contains(Pair.Key))
- 				{
- 					UE_LOG(LogSavePackage, Warning, TEXT("%s imported %s, but it was never saved as an export."), *Pair.Value.ToString(), *Pair.Key.ToString());
- 				}
- 			}
+			if (bFullReferencesExpected)
+			{
+				// imports to things that are not exports...
+				for (const auto& Pair : ImportToImportingPackage)
+				{
+					if (!Exports.Contains(Pair.Key))
+					{
+						UE_LOG(LogSavePackage, Warning, TEXT("%s imported %s, but it was never saved as an export."), *Pair.Value.ToString(), *Pair.Key.ToString());
+					}
+				}
+			}
 			// cycles in the dep graph
 			TSet<FEDLNodeID> Visited;
 			TSet<FEDLNodeID> Stack;
@@ -3234,9 +3237,9 @@ void StartSavingEDLCookInfoForVerification()
 	FEDLCookChecker::StartSavingEDLCookInfoForVerification();
 }
 
-void VerifyEDLCookInfo()
+void VerifyEDLCookInfo(bool bFullReferencesExpected)
 {
-	FEDLCookChecker::Verify();
+	FEDLCookChecker::Verify(bFullReferencesExpected);
 }
 
 void AddFileToHash(FString const& Filename, FMD5& Hash)
@@ -4176,7 +4179,7 @@ FSavePackageResultStruct UPackage::Save(UPackage* InOuter, UObject* Base, EObjec
 							}
 
 							// See whether the object we are referencing is in another map package.
-							if( ObjPackage->ContainsMap() )
+							if(ObjPackage->ContainsMap())
 							{
 								if ( ObjPackage != Obj && Obj->GetFName() != NAME_PersistentLevel && Obj->GetClass()->GetFName() != WorldClassName )
 								{
@@ -6487,7 +6490,7 @@ bool UPackage::IsEmptyPackage(UPackage* Package, const UObject* LastReferencer)
 		ForEachObjectWithPackage(Package, [LastReferencer, &bIsEmpty](UObject* InObject)
 		{
 			// if the package contains at least one object that has asset registry data and isn't the `LastReferencer` consider it not empty
-			if (InObject->IsAsset()/*HasAssetRegistryData()*/ && InObject != LastReferencer)
+			if (InObject->IsAsset() && InObject != LastReferencer)
 			{
 				bIsEmpty = false;
 				// we can break out of the iteration as soon as we find one valid object

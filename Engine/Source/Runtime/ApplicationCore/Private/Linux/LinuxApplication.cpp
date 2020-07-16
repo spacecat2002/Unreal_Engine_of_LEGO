@@ -184,6 +184,11 @@ bool FLinuxApplication::IsCursorDirectlyOverSlateWindow() const
 	return bInsideOwnWindow;
 }
 
+TSharedPtr<FGenericWindow> FLinuxApplication::GetWindowUnderCursor()
+{
+	return CurrentUnderCursorWindow;
+}
+
 void FLinuxApplication::AddPendingEvent( SDL_Event SDLEvent )
 {
 	if( GPumpingMessagesOutsideOfMainLoop && bAllowedToDeferMessageProcessing )
@@ -766,8 +771,13 @@ void FLinuxApplication::ProcessDeferredMessage( SDL_Event Event )
 						{
 							MessageHandler->OnCursorSet();
 
+							// Currently Tooltip windows will also get enter/leave events. depending on if this causes issues
+							// should avoid setting the window under cursor for tooltips and use the window under
+							CurrentUnderCursorWindow = CurrentEventWindow;
+
 							bInsideOwnWindow = true;
-							UE_LOG(LogLinuxWindow, Verbose, TEXT("Entered one of application windows"));
+
+							UE_LOG(LogLinuxWindow, Verbose, TEXT("Entered one of application windows. Cursor under Window: '%d'"), CurrentEventWindow->GetID());
 						}
 					}
 					break;
@@ -781,6 +791,7 @@ void FLinuxApplication::ProcessDeferredMessage( SDL_Event Event )
 								UpdateMouseCaptureWindow((SDL_HWindow)GetCapture());
 							}
 
+ 							CurrentUnderCursorWindow = nullptr;
 							bInsideOwnWindow = false;
 							UE_LOG(LogLinuxWindow, Verbose, TEXT("Left an application window we were hovering above."));
 						}
@@ -1362,7 +1373,10 @@ void FLinuxApplication::SetHighPrecisionMouseMode( const bool Enable, const TSha
 {
 	MessageHandler->OnCursorSet();
 	bUsingHighPrecisionMouseInput = Enable;
-	SDL_SetRelativeMouseMode(Enable ? SDL_TRUE : SDL_FALSE);
+	if (!FParse::Param(FCommandLine::Get(), TEXT("norelativemousemode")))
+	{
+		SDL_SetRelativeMouseMode(Enable ? SDL_TRUE : SDL_FALSE);
+	}
 }
 
 void FLinuxApplication::RefreshDisplayCache()

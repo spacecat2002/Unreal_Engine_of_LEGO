@@ -4647,7 +4647,7 @@ void APlayerController::TickActor( float DeltaSeconds, ELevelTick TickType, FAct
 						const AGameNetworkManager* GameNetworkManager = (const AGameNetworkManager*)(AGameNetworkManager::StaticClass()->GetDefaultObject());
 						const float ForcedUpdateInterval = GameNetworkManager->MAXCLIENTUPDATEINTERVAL;
 						const float ForcedUpdateMaxDuration = FMath::Min(GameNetworkManager->MaxClientForcedUpdateDuration, 5.0f);
-						
+
 						// If currently resolving forced updates, and exceeded max duration, then wait for a valid update before enabling them again.
 						ServerData->bForcedUpdateDurationExceeded = false;
 						if (ServerData->bTriggeringForcedUpdates)
@@ -4662,8 +4662,16 @@ void APlayerController::TickActor( float DeltaSeconds, ELevelTick TickType, FAct
 								}
 								else
 								{
-									// Waiting for ServerTimeStamp to advance from a client move.
-									ServerData->bForcedUpdateDurationExceeded = true;
+									if (ServerData->bLastRequestNeedsForcedUpdates)
+									{
+										// No valid updates, don't reset anything but don't mark as exceeded either
+										// Keep forced updates going until new and valid move request is received
+									}
+									else
+									{
+										// Waiting for ServerTimeStamp to advance from a client move.
+										ServerData->bForcedUpdateDurationExceeded = true;
+									}
 								}
 							}
 						}
@@ -4729,13 +4737,12 @@ void APlayerController::TickActor( float DeltaSeconds, ELevelTick TickType, FAct
 		// Process PlayerTick with input.
 		if (!PlayerInput && (Player == nullptr || Cast<ULocalPlayer>( Player ) != nullptr))
 		{
-			QUICK_SCOPE_CYCLE_COUNTER(HVS_InitInputSystem); // HVS_BCF - Temp.  Just trying to track down where time is being spent.
 			InitInputSystem();
 		}
 
 		if (PlayerInput)
 		{
-			QUICK_SCOPE_CYCLE_COUNTER(HVS_PlayerTick); // HVS_BCF - Temp.  Just trying to track down where time is being spent.
+			QUICK_SCOPE_CYCLE_COUNTER(PlayerTick);
 			PlayerTick(DeltaSeconds);
 		}
 
@@ -4747,7 +4754,6 @@ void APlayerController::TickActor( float DeltaSeconds, ELevelTick TickType, FAct
 		// update viewtarget replicated info
 		if (PlayerCameraManager != nullptr)
 		{
-			QUICK_SCOPE_CYCLE_COUNTER(HVS_UpdateViewtargetReplicatedInfo); // HVS_BCF - Temp.  Just trying to track down where time is being spent.
 			APawn* TargetPawn = PlayerCameraManager->GetViewTargetPawn();
 			if ((TargetPawn != GetPawn()) && (TargetPawn != nullptr))
 			{
@@ -4773,7 +4779,7 @@ void APlayerController::TickActor( float DeltaSeconds, ELevelTick TickType, FAct
 
 	if (!IsPendingKill())
 	{
-		QUICK_SCOPE_CYCLE_COUNTER(HVS_Tick); // HVS_BCF - Temp.  Just trying to track down where time is being spent.
+		QUICK_SCOPE_CYCLE_COUNTER(Tick);
 		Tick(DeltaSeconds);	// perform any tick functions unique to an actor subclass
 	}
 

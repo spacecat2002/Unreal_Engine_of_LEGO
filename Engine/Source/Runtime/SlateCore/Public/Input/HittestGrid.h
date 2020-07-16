@@ -23,12 +23,11 @@ public:
 	virtual TSharedPtr<struct FVirtualPointerPosition> TranslateMouseCoordinateForCustomHitTestChild( const TSharedRef<SWidget>& ChildWidget, const FGeometry& ViewportGeometry, const FVector2D& ScreenSpaceMouseCoordinate, const FVector2D& LastScreenSpaceMouseCoordinate ) const = 0;
 };
 
-class SLATECORE_API FHittestGrid
+class SLATECORE_API FHittestGrid : public FNoncopyable
 {
 public:
 
 	FHittestGrid();
-	~FHittestGrid();
 
 	/**
 	 * Given a Slate Units coordinate in virtual desktop space, perform a hittest
@@ -46,20 +45,17 @@ public:
 	 */
 	bool SetHittestArea(const FVector2D& HittestPositionInDesktop, const FVector2D& HittestDimensions, const FVector2D& HitestOffsetInWindow = FVector2D::ZeroVector);
 
-	/**
-	 * Clear the grid
-	 */
-	void Clear();
-
-	/** Add / Remove SWidget from the HitTest Grid */
-	void AddWidget(const TSharedRef<SWidget>& InWidget, int32 InBatchPriorityGroup, int32 InLayerId, int32 InSecondarySort);
-	void RemoveWidget(const TSharedRef<SWidget>& InWidget);
-
 	/** Insert custom hit test data for a widget already in the grid */
 	void InsertCustomHitTestPath(const TSharedRef<SWidget> InWidget, TSharedRef<ICustomHitTestPath> CustomHitTestPath);
 
 	/** Sets the current slate user index that should be associated with any added widgets */
 	void SetUserIndex(int32 UserIndex) { CurrentUserIndex = UserIndex; }
+
+	/** Set the culling rect to be used by the parent grid (in case we are appended to another grid). */
+	void SetCullingRect(const FSlateRect& InCullingRect) { CullingRect = InCullingRect; }
+
+	/** Set the owner SWidget to be used by the parent grid (in case we are appended to another grid). */
+	void SetOwner(const SWidget* InOwner) { check(Owner == nullptr || Owner == InOwner); Owner = InOwner; }
 
 	/** Gets current slate user index that should be associated with any added widgets */
 	int32 GetUserIndex() const { return CurrentUserIndex; }
@@ -74,16 +70,37 @@ public:
 	 */
 	TSharedPtr<SWidget> FindNextFocusableWidget(const FArrangedWidget& StartingWidget, const EUINavigation Direction, const FNavigationReply& NavigationReply, const FArrangedWidget& RuleWidget, int32 UserIndex);
 
-	/** Append an already existing grid that occupy the same space. */
-	UE_DEPRECATED(4.26, "Deprecated. Use the FHittestGrid::AppendGrid method that takes a non-optional SlateRect parameter instead")
-	void AppendGrid(FHittestGrid& OtherGrid);
-
-	/** Append an already existing grid that occupy the same space. */
-	void AppendGrid(FHittestGrid& OtherGrid, const FSlateRect& MyCullingRect);
-
 	FVector2D GetGridSize() const { return GridSize; }
 	FVector2D GetGridOrigin() const { return GridOrigin; }
 	FVector2D GetGridWindowOrigin() const { return GridWindowOrigin; }
+
+	/** Clear the grid */
+	void Clear();
+
+	/** Add SWidget from the HitTest Grid */
+	void AddWidget(const TSharedRef<SWidget>& InWidget, int32 InBatchPriorityGroup, int32 InLayerId, int32 InSecondarySort);
+
+	/** Remove SWidget from the HitTest Grid */
+	void RemoveWidget(const TSharedRef<SWidget>& InWidget);
+
+	/** Remove SWidget from the HitTest Grid */
+	void RemoveWidget(const SWidget* InWidget);
+
+	/** Append an already existing grid that occupy the same space. */
+	UE_DEPRECATED(4.26, "Deprecated. Use the FHittestGrid::AddGrid method instead")
+	void AppendGrid(FHittestGrid& OtherGrid) {}
+
+	/**
+	 * Add an already existing grid that occupy the same space.
+	 * The grid needs to have an owner, not be this grid and occupy the same space as this grid.
+	 */
+	void AddGrid(const TSharedRef<const FHittestGrid>& OtherGrid);
+
+	/** Remove a grid that was appended. */
+	void RemoveGrid(const TSharedRef<const FHittestGrid>& OtherGrid);
+
+	/** Remove a grid that was appended. */
+	void RemoveGrid(const SWidget* OtherGridOwner);
 
 	struct FDebuggingFindNextFocusableWidgetArgs
 	{
@@ -120,7 +137,6 @@ public:
 #endif
 
 private:
-
 	/**
 	 * Widget Data we maintain internally store along with the widget reference
 	 */
@@ -133,7 +149,6 @@ private:
 			, PrimarySort(InPrimarySort)
 			, SecondarySort(InSecondarySort)
 			, UserIndex(InUserIndex)
-			, CullingRectIndex(INDEX_NONE)
 		{}
 		TWeakPtr<SWidget> WeakWidget;
 		TWeakPtr<ICustomHitTestPath> CustomPath;
@@ -142,10 +157,47 @@ private:
 		int64 PrimarySort;
 		int32 SecondarySort;
 		int32 UserIndex;
-		int32 CullingRectIndex;
 
 		TSharedPtr<SWidget> GetWidget() const { return WeakWidget.Pin(); }
 	};
+
+	struct FWidgetIndex
+	{
+		FWidgetIndex()
+			: Grid(nullptr)
+			, WidgetIndex(INDEX_NONE)
+		{}
+		FWidgetIndex(const FHittestGrid* InHittestGrid, int32 InIndex)
+			: Grid(InHittestGrid)
+			, WidgetIndex(InIndex)
+		{}
+		bool IsValid() const { return Grid != nullptr && Grid->WidgetArray.IsValidIndex(WidgetIndex); }
+		const FWidgetData& GetWidgetData() const;
+		const FSlateRect& GetCullingRect() const { return Grid->CullingRect; }
+		const FHittestGrid* GetGrid() const { return Grid; }
+
+	private:
+		const FHittestGrid* Grid;
+		int32 WidgetIndex;
+	};
+
+	struct FIndexAndDistance : FWidgetIndex
+	{
+		FIndexAndDistance()
+			: FWidgetIndex()
+			, DistanceSqToWidget(0)
+		{}
+		FIndexAndDistance(FWidgetIndex WidgetIndex, float InDistanceSq)
+			: FWidgetIndex(WidgetIndex)
+			, DistanceSqToWidget(InDistanceSq)
+		{}
+		float GetDistanceSqToWidget() const { return DistanceSqToWidget; }
+
+	private:
+		float DistanceSqToWidget;
+	};
+
+	struct FGridTestingParams;
 
 	/**
 	 * All the available space is partitioned into Cells.
@@ -154,47 +206,44 @@ private:
 	 */
 	struct FCell
 	{
-		FCell();
+	public:
+		FCell() = default;
 
 		void AddIndex(int32 WidgetIndex);
 		void RemoveIndex(int32 WidgetIndex);
-		void Sort(const TSparseArray<FWidgetData>& InWidgetArray);
 
-		const TArray<int32>& GetCachedWidgetIndexes() const;
+		const TArray<int32>& GetWidgetIndexes() const { return WidgetIndexes; }
 		
 	private:
-		bool bRequiresSort;
-		TArray<int32> CachedWidgetIndexes;
+		TArray<int32> WidgetIndexes;
 	};
 
-	struct FGridTestingParams;
-
-	struct FIndexAndDistance
+	struct FAppendedGridData
 	{
-		FIndexAndDistance(int32 InIndex = INDEX_NONE, float InDistanceSq = 0)
-			: WidgetIndex(InIndex)
-			, DistanceSqToWidget(InDistanceSq)
-		{}
-		int32 WidgetIndex;
-		float DistanceSqToWidget;
+		FAppendedGridData(const SWidget* InCachedOwner, const TWeakPtr<const FHittestGrid>& InGrid)
+			 : CachedOwner(InCachedOwner), Grid(InGrid)
+		{ }
+		const SWidget* CachedOwner; // Cached owner of the grid
+		TWeakPtr<const FHittestGrid> Grid;
 	};
 
-	/** Helper functions */
+	//~ Helper functions
 	bool IsValidCellCoord(const FIntPoint& CellCoord) const;
 	bool IsValidCellCoord(const int32 XCoord, const int32 YCoord) const;
+	void ClearInternal(int32 TotalCells);
 
 	/** Return the Index and distance to a hit given the testing params */
-	FIndexAndDistance GetHitIndexFromCellIndex(const FGridTestingParams& Params);
+	FIndexAndDistance GetHitIndexFromCellIndex(const FGridTestingParams& Params) const;
 
 	/** @returns true if the child is a paint descendant of the provided Parent. */
-	bool IsDescendantOf(const TSharedRef<SWidget> Parent, const FWidgetData& ChildData);
+	bool IsDescendantOf(const TSharedRef<SWidget> Parent, const FWidgetData& ChildData) const;
 
 	/** Utility function for searching for the next focusable widget. */
 	template<typename TCompareFunc, typename TSourceSideFunc, typename TDestSideFunc>
-	TSharedPtr<SWidget> FindFocusableWidget(const FSlateRect WidgetRect, const FSlateRect SweptRect, int32 AxisIndex, int32 Increment, const EUINavigation Direction, const FNavigationReply& NavigationReply, TCompareFunc CompareFunc, TSourceSideFunc SourceSideFunc, TDestSideFunc DestSideFunc, int32 UserIndex, TArray<FDebuggingFindNextFocusableWidgetArgs::FWidgetResult>* IntermediatedResultPtr);
+	TSharedPtr<SWidget> FindFocusableWidget(const FSlateRect WidgetRect, const FSlateRect SweptRect, int32 AxisIndex, int32 Increment, const EUINavigation Direction, const FNavigationReply& NavigationReply, TCompareFunc CompareFunc, TSourceSideFunc SourceSideFunc, TDestSideFunc DestSideFunc, int32 UserIndex, TArray<FDebuggingFindNextFocusableWidgetArgs::FWidgetResult>* IntermediatedResultPtr) const;
 
 	/** Constrains a float position into the grid coordinate. */
-	FIntPoint GetCellCoordinate(FVector2D Position);
+	FIntPoint GetCellCoordinate(FVector2D Position) const;
 
 	/** Access a cell at coordinates X, Y. Coordinates are row and column indexes. */
 	FORCEINLINE_DEBUGGABLE FCell& CellAt(const int32 X, const int32 Y)
@@ -210,10 +259,26 @@ private:
 		return Cells[Y*NumCells.X + X];
 	}
 
-	void AppendGrid(FHittestGrid& OtherGrid, int32 CullingRectIndex);
+	/** Is the other grid compatible with this grid. */
+	bool CanBeAppended(const FHittestGrid* OtherGrid) const;
 
+	/** Are both grid of the same size. */
+	bool SameSize(const FHittestGrid* OtherGrid) const;
+
+	using FCollapsedHittestGridArray = TArray<const FHittestGrid*, TInlineAllocator<16>>;
+	/** Get all the hittest grid appended to this grid. */
+	void GetCollapsedHittestGrid(FCollapsedHittestGridArray& OutResult) const;
+
+	using FCollapsedWidgetsArray = TArray<FWidgetIndex, TInlineAllocator<100>>;
+	/** Return the list of all the widget in that cell. */
+	void GetCollapsedWidgets(FCollapsedWidgetsArray& Out, const int32 X, const int32 Y) const;
+
+	/** Remove appended hittest grid that are not valid anymore. */
+	void RemoveStaleAppendedHittestGrid();
+
+private:
 	/** Map of all the widgets currently in the hit test grid to their stable index. */
-	TMap<SWidget*, int32> WidgetMap;
+	TMap<const SWidget*, int32> WidgetMap;
 
 	/** Stable indexed sparse array of all the widget data we track. */
 	TSparseArray<FWidgetData> WidgetArray;
@@ -221,8 +286,14 @@ private:
 	/** The cells that make up the space partition. */
 	TArray<FCell> Cells;
 
-	/** Culling Rect for appended grids. */
-	TArray<FSlateRect> WidgetCullingRects;
+	/** The collapsed grid cached untiled it's dirtied. */
+	TArray<FAppendedGridData> AppendedGridArray;
+
+	/** A grid needs a owner to be appended. */
+	const SWidget* Owner;
+
+	/** Culling Rect used when the widget was painted. */
+	FSlateRect CullingRect;
 
 	/** The size of the grid in cells. */
 	FIntPoint NumCells;

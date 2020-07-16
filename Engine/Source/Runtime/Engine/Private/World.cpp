@@ -1611,7 +1611,7 @@ void UWorld::InitWorld(const InitializationValues IVS)
 			{
 				if (Level->MapBuildData->IsVTLightingValid() == false)
 				{
-					Level->MapBuildData->InvalidateStaticLighting(this);
+					Level->MapBuildData->InvalidateSurfaceLightmaps(this);
 				}
 			}
 		}
@@ -2178,13 +2178,18 @@ void UWorld::TransferBlueprintDebugReferences(UWorld* NewWorld)
 			{
 				TWeakObjectPtr<UObject>& WeakTargetObject = It.Value();
 				UObject* NewTargetObject = nullptr;
+				bool bForceClear = false;
 
 				if (WeakTargetObject.IsValid())
 				{
 					UObject* OldTargetObject = WeakTargetObject.Get();
 					check(OldTargetObject);
 
-					NewTargetObject = FindObject<UObject>(NewWorld, *OldTargetObject->GetPathName(this));
+					// We don't map from PIE objects in a client world back to editor objects, as that will transfer to the server on the next execution
+					if (GetNetMode() != NM_Client)
+					{
+						NewTargetObject = FindObject<UObject>(NewWorld, *OldTargetObject->GetPathName(this));
+					}
 				}
 
 				if (NewTargetObject != nullptr)
@@ -2192,6 +2197,7 @@ void UWorld::TransferBlueprintDebugReferences(UWorld* NewWorld)
 					// Check to see if the object we found to transfer to is of a different class.  LevelScripts are always exceptions, because a new level may have been loaded in PIE, and we have special handling for LSA debugging objects
 					if (!NewTargetObject->IsA(TargetBP->GeneratedClass))
 					{
+						bForceClear = true;
 						const FString BlueprintFullPath = TargetBP->GetPathName();
 
 						if (BlueprintFullPath.StartsWith(TEXT("/Temp/Autosaves")) || BlueprintFullPath.StartsWith(TEXT("/Temp//Autosaves")))
@@ -2220,7 +2226,15 @@ void UWorld::TransferBlueprintDebugReferences(UWorld* NewWorld)
 					}
 				}
 
-				TargetBP->SetObjectBeingDebugged(NewTargetObject);
+				if (NewTargetObject || bForceClear)
+				{
+					TargetBP->SetObjectBeingDebugged(NewTargetObject);
+				}
+				else
+				{
+					// We do not explicitly clear a null target, because ObjectPathToDebug may refer to late spawned actor
+					TargetBP->UnregisterObjectBeingDebugged();
+				}
 			}
 		}
 	}
@@ -3709,7 +3723,7 @@ bool UWorld::AreAlwaysLoadedLevelsLoaded() const
 	for (ULevelStreaming* LevelStreaming : StreamingLevels)
 	{
 		// See whether there's a level with a pending request.
-		if (LevelStreaming && LevelStreaming->ShouldBeAlwaysLoaded())
+		if (LevelStreaming && LevelStreaming->ShouldBeAlwaysLoaded() && LevelStreaming->GetCurrentState() != ULevelStreaming::ECurrentState::FailedToLoad)
 		{	
 			const ULevel* LoadedLevel = LevelStreaming->GetLoadedLevel();
 
@@ -4691,6 +4705,16 @@ void UWorld::RemoveOnActorSpawnedHandler( FDelegateHandle InHandle )
 	OnActorSpawned.Remove(InHandle);
 }
 
+FDelegateHandle UWorld::AddMovieSceneSequenceTickHandler(const FOnMovieSceneSequenceTick::FDelegate& InHandler)
+{
+	return MovieSceneSequenceTick.Add(InHandler);
+}
+
+void UWorld::RemoveMovieSceneSequenceTickHandler(FDelegateHandle InHandle)
+{
+	MovieSceneSequenceTick.Remove(InHandle);
+}
+
 ABrush* UWorld::GetDefaultBrush() const
 {
 	check(PersistentLevel);
@@ -4711,9 +4735,9 @@ void UWorld::CreatePhysicsScene(const AWorldSettings* Settings)
 {
 #if CHAOS_CHECKED
 	const FName PhysicsName = IsNetMode(NM_DedicatedServer) ? TEXT("ServerPhysics") : TEXT("ClientPhysics");
-	FPhysScene* NewScene = new FPhysScene(Settings, PhysicsName);
+	FPhysScene* NewScene = new FPhysScene(nullptr, PhysicsName);
 #else
-	FPhysScene* NewScene = new FPhysScene(Settings);
+	FPhysScene* NewScene = new FPhysScene(nullptr);
 #endif
 	SetPhysicsScene(NewScene);
 }

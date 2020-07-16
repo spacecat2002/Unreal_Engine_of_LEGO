@@ -16,6 +16,7 @@
 #include "Interfaces/IShaderFormat.h"
 #include "ShaderCodeLibrary.h"
 #include "ShaderCore.h"
+#include "ShaderCompilerCore.h"
 #include "RenderUtils.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/ScopeLock.h"
@@ -476,6 +477,29 @@ void FShaderMapPointerTable::LoadFromArchive(FArchive& Ar, void* FrozenContent, 
 		FVertexFactoryType* VFType = FVertexFactoryType::GetVFByName(TypeName);
 		VFTypes.LoadIndexedPointer(VFType);
 	}
+}
+
+FShaderCompiledShaderInitializerType::FShaderCompiledShaderInitializerType(
+	FShaderType* InType,
+	int32 InPermutationId,
+	const FShaderCompilerOutput& CompilerOutput,
+	const FSHAHash& InMaterialShaderMapHash,
+	const FShaderPipelineType* InShaderPipeline,
+	FVertexFactoryType* InVertexFactoryType
+) :
+	Type(InType),
+	Target(CompilerOutput.Target),
+	Code(CompilerOutput.ShaderCode.GetReadAccess()),
+	ParameterMap(CompilerOutput.ParameterMap),
+	OutputHash(CompilerOutput.OutputHash),
+	MaterialShaderMapHash(InMaterialShaderMapHash),
+	ShaderPipeline(InShaderPipeline),
+	VertexFactoryType(InVertexFactoryType),
+	NumInstructions(CompilerOutput.NumInstructions),
+	NumTextureSamplers(CompilerOutput.NumTextureSamplers),
+	CodeSize(CompilerOutput.ShaderCode.GetShaderCodeSize()),
+	PermutationId(InPermutationId)
+{
 }
 
 /** 
@@ -1605,7 +1629,20 @@ void ShaderMapAppendKeyString(EShaderPlatform Platform, FString& KeyString)
 
 	{
 		static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.VertexFoggingForOpaque"));
-		if (CVar && CVar->GetValueOnAnyThread() > 0)
+		bool bVertexFoggingForOpaque = CVar && CVar->GetValueOnAnyThread() > 0;
+		if (TargetPlatform)
+		{
+			const int32 PlatformHeightFogMode = TargetPlatform->GetHeightFogModeForOpaque();
+			if (PlatformHeightFogMode == 1)
+			{
+				bVertexFoggingForOpaque = false;
+			}
+			else if (PlatformHeightFogMode == 2)
+			{
+				bVertexFoggingForOpaque = true;
+			}
+		}
+		if (bVertexFoggingForOpaque)
 		{
 			KeyString += TEXT("_VFO");
 		}

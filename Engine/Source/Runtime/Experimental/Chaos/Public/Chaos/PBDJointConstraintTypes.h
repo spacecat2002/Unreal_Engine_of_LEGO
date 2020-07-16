@@ -108,6 +108,7 @@ namespace Chaos
 		FReal AngularProjection;
 		FReal ParentInvMassScale;
 
+		bool bCollisionEnabled;
 		bool bProjectionEnabled;
 		bool bSoftProjectionEnabled;
 
@@ -128,6 +129,14 @@ namespace Chaos
 		FReal SoftTwistDamping;
 		FReal SoftSwingStiffness;
 		FReal SoftSwingDamping;
+
+		FReal LinearRestitution;
+		FReal TwistRestitution;
+		FReal SwingRestitution;
+
+		FReal LinearContactDistance;
+		FReal TwistContactDistance;
+		FReal SwingContactDistance;
 
 		FVec3 LinearDrivePositionTarget;
 		FVec3 LinearDriveVelocityTarget;
@@ -152,6 +161,8 @@ namespace Chaos
 
 		FReal LinearBreakForce;
 		FReal AngularBreakTorque;
+
+		void* UserData;
 	};
 
 	class CHAOS_API FPBDJointSolverSettings

@@ -105,6 +105,12 @@ public:
 	 */
 	virtual bool LoadModulesForProject( const ELoadingPhase::Type LoadingPhase ) = 0;
 
+	/**
+	 * Callback for when modules for when LoadModulesForProject() completes loading for a specific phase.
+	 */
+	DECLARE_EVENT_TwoParams(IProjectManager, FLoadingModulesForPhaseEvent, ELoadingPhase::Type /*LoadingPhase*/, bool /*bSuccess*/);
+	virtual FLoadingModulesForPhaseEvent& OnLoadingPhaseComplete() = 0;
+
 #if !IS_MONOLITHIC
 	/**
 	 * Checks if the modules for a project are up to date
@@ -249,4 +255,13 @@ public:
 	 * Access array used to cache current project's list of module context infos
 	 */
 	virtual TArray<FModuleContextInfo>& GetCurrentProjectModuleContextInfos() = 0;
+
+	/** Returns true if project file write should be suppressed. */
+	virtual bool IsSuppressingProjectFileWrite() const = 0;
+
+	/** Suppress project file writes. */
+	PROJECTS_API virtual void AddSuppressProjectFileWrite(const FName InName) = 0;
+
+	/** Removes suppression of project file writes. */
+	PROJECTS_API virtual void RemoveSuppressProjectFileWrite(const FName InName) = 0;
 };

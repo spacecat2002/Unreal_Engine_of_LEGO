@@ -1148,31 +1148,15 @@ void ULevel::IncrementalUpdateComponents(int32 NumComponentsToUpdate, bool bReru
 		check(OwningWorld->IsGameWorld());
 	}
 
-	if (FBodyInstance::UseDeferredPhysicsBodyCreation())
 	{
 		SCOPE_CYCLE_COUNTER(STAT_DeferredUpdateBodies);
-		// Init Bodies
-		FGCScopeGuard ScopeLock;
-		int32 NumToInit = Actors.Num() - PreviousIndex;
-		TSubclassOf<UActorComponent> PrimitiveStaticClass = UPrimitiveComponent::StaticClass();
-		ParallelFor(NumToInit, [&](int32 Idx) {
-			int32 ActorIdx = Idx + PreviousIndex;
-			AActor* Actor = Actors[ActorIdx];
-			if (Actor && !Actor->IsPendingKill())
-			{
-				TArray<UActorComponent*> PrimtiveComponents;
-				Actor->GetComponents(PrimitiveStaticClass, PrimtiveComponents);
-				for (UActorComponent* PrimtiveComponent : PrimtiveComponents)
-				{
-					FBodyInstance* BodyInstance = Cast<UPrimitiveComponent>(PrimtiveComponent)->GetBodyInstance();
-					if (BodyInstance)
-					{
-						BodyInstance->InitAllBodies(GetWorld()->GetPhysicsScene());
-					}
-				}
-			}
-			// @TODO DO NOT CHECKIN
-		}, EParallelForFlags::ForceSingleThread);
+#if WITH_CHAOS
+		FPhysScene* PhysScene = OwningWorld->GetPhysicsScene();
+		if (PhysScene)
+		{
+			PhysScene->ProcessDeferredCreatePhysicsState();
+		}
+#endif
 	}
 }
 
@@ -2141,18 +2125,22 @@ TArray<FString> ULevel::GetOnDiskExternalActorPackages() const
 {
 	TArray<FString> ActorPackageNames;
 	UWorld* World = GetTypedOuter<UWorld>();
-	IFileManager::Get().IterateDirectoryRecursively(*FPackageName::LongPackageNameToFilename(ULevel::GetExternalActorsPath(World->GetPackage(), World->GetName())), [&ActorPackageNames](const TCHAR* FilenameOrDirectory, bool bIsDirectory)
+	FString ExternalActorsPath = ULevel::GetExternalActorsPath(World->GetPackage(), World->GetName());
+	if (!ExternalActorsPath.IsEmpty())
 	{
-		if (!bIsDirectory)
-		{
-			FString Filename(FilenameOrDirectory);
-			if (Filename.EndsWith(FPackageName::GetAssetPackageExtension()))
+		IFileManager::Get().IterateDirectoryRecursively(*FPackageName::LongPackageNameToFilename(ExternalActorsPath), [&ActorPackageNames](const TCHAR* FilenameOrDirectory, bool bIsDirectory)
 			{
-				ActorPackageNames.Add(FPackageName::FilenameToLongPackageName(Filename));
-			}
-		}
-		return true;
-	});
+				if (!bIsDirectory)
+				{
+					FString Filename(FilenameOrDirectory);
+					if (Filename.EndsWith(FPackageName::GetAssetPackageExtension()))
+					{
+						ActorPackageNames.Add(FPackageName::FilenameToLongPackageName(Filename));
+					}
+				}
+				return true;
+			});
+	}
 	return ActorPackageNames;
 }
 
@@ -2179,10 +2167,20 @@ FString ULevel::GetExternalActorsPath(UPackage* InLevelPackage, const FString& I
 	// We can't use the Package->FileName here because it might be a duplicated a package
 	// We can't use the package short name directly in some cases either  (PIE, instance d load) as it may contain pie prefix or not reflect the real actor location
 	check(InLevelPackage);
+
+	// Strip the temp prefix if found
+	FString LevelPackageName = InLevelPackage->GetName();
+	if (LevelPackageName.StartsWith(TEXT("/Temp")))
+	{
+		LevelPackageName = LevelPackageName.Mid(5);
+	}
+
 	FString MountPoint, PackagePath, ShortName;
-	bool bSuccess = FPackageName::SplitLongPackageName(InLevelPackage->GetName(), MountPoint, PackagePath, ShortName);
-	check(bSuccess);
-	return FString::Printf(TEXT("%s__ExternalActors__/%s%s"), *MountPoint, *PackagePath, InPackageShortName.IsEmpty() ? *ShortName : *InPackageShortName);
+	if (FPackageName::SplitLongPackageName(LevelPackageName, MountPoint, PackagePath, ShortName))
+	{
+		return FString::Printf(TEXT("%s__ExternalActors__/%s%s"), *MountPoint, *PackagePath, InPackageShortName.IsEmpty() ? *ShortName : *InPackageShortName);
+	}
+	return FString();
 }
 
 UPackage* ULevel::CreateActorPackage(UPackage* InLevelPackage, const FGuid& InGuid)

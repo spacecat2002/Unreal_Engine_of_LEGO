@@ -905,14 +905,17 @@ void FOpenGLDynamicRHI::RHIReadSurfaceData(FRHITexture* TextureRHI,FIntRect Rect
 
 void FOpenGLDynamicRHI::RHIReadSurfaceData(FRHITexture* TextureRHI, FIntRect Rect, TArray<FLinearColor>& OutData, FReadSurfaceDataFlags InFlags)
 {
-	VERIFY_GL_SCOPE();
-
 	// Verify requirements, but don't crash
 	// Ignore texture format here, GL will convert it for us in glReadPixels
 	if (!ensure(FOpenGL::SupportsFloatReadSurface()) || !ensure(TextureRHI))
 	{
 		return;
 	}
+	
+	FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
+	
+	RHITHREAD_GLCOMMAND_PROLOGUE();
+	VERIFY_GL_SCOPE();
 
 	FOpenGLTextureBase* Texture = GetOpenGLTextureFromRHITexture(TextureRHI);
 	if (!ensure(Texture))
@@ -943,6 +946,8 @@ void FOpenGLDynamicRHI::RHIReadSurfaceData(FRHITexture* TextureRHI, FIntRect Rec
 	glPixelStorei(GL_PACK_ALIGNMENT, 4);
 
 	GetContextStateForCurrentContext().Framebuffer = (GLuint)-1;
+	
+	RHITHREAD_GLCOMMAND_EPILOGUE();
 }
 
 void FOpenGLDynamicRHI::RHIMapStagingSurface(FRHITexture* TextureRHI, FRHIGPUFence* FenceRHI, void*& OutData, int32& OutWidth, int32& OutHeight, uint32 GPUIndex)
@@ -1172,7 +1177,35 @@ void FOpenGLDynamicRHI::BindPendingFramebuffer( FOpenGLContextState& ContextStat
 
 void FOpenGLDynamicRHI::RHIBeginRenderPass(const FRHIRenderPassInfo& InInfo, const TCHAR* InName)
 {
-	IRHICommandContext::RHIBeginRenderPass(InInfo, InName);
+	if (InInfo.bGeneratingMips)
+	{
+		FRHITexture* Textures[MaxSimultaneousRenderTargets];
+		FRHITexture** LastTexture = Textures;
+		for (int32 Index = 0; Index < MaxSimultaneousRenderTargets; ++Index)
+		{
+			if (!InInfo.ColorRenderTargets[Index].RenderTarget)
+			{
+				break;
+			}
+
+			*LastTexture = InInfo.ColorRenderTargets[Index].RenderTarget;
+			++LastTexture;
+		}
+
+		//Use RWBarrier since we don't transition individual subresources.  Basically treat the whole texture as R/W as we walk down the mip chain.
+		int32 NumTextures = (int32)(LastTexture - Textures);
+		if (NumTextures)
+		{
+			RHITransitionResources(EResourceTransitionAccess::ERWSubResBarrier, Textures, NumTextures);
+		}
+	}
+
+	FRHISetRenderTargetsInfo RTInfo;
+	InInfo.ConvertToRenderTargetsInfo(RTInfo);
+	SetRenderTargetsAndClear(RTInfo);
+
+	RenderPassInfo = InInfo;
+
 	if (InInfo.bOcclusionQueries)
 	{
 		extern void BeginOcclusionQueryBatch(uint32);
@@ -1195,7 +1228,22 @@ void FOpenGLDynamicRHI::RHIEndRenderPass()
 		EndOcclusionQueryBatch();
 	}
 
-	IRHICommandContext::RHIEndRenderPass();
+	for (int32 Index = 0; Index < MaxSimultaneousRenderTargets; ++Index)
+	{
+		if (!RenderPassInfo.ColorRenderTargets[Index].RenderTarget)
+		{
+			break;
+		}
+		if (RenderPassInfo.ColorRenderTargets[Index].ResolveTarget)
+		{
+			RHICopyToResolveTarget(RenderPassInfo.ColorRenderTargets[Index].RenderTarget, RenderPassInfo.ColorRenderTargets[Index].ResolveTarget, RenderPassInfo.ResolveParameters);
+		}
+	}
+
+	if (RenderPassInfo.DepthStencilRenderTarget.DepthStencilTarget && RenderPassInfo.DepthStencilRenderTarget.ResolveTarget)
+	{
+		RHICopyToResolveTarget(RenderPassInfo.DepthStencilRenderTarget.DepthStencilTarget, RenderPassInfo.DepthStencilRenderTarget.ResolveTarget, RenderPassInfo.ResolveParameters);
+	}
 
 	// Drop depth and stencil to avoid export
 	if (RenderPassInfo.DepthStencilRenderTarget.DepthStencilTarget)
@@ -1209,6 +1257,10 @@ void FOpenGLDynamicRHI::RHIEndRenderPass()
 			RHIDiscardRenderTargets(bDiscardDepth, bDiscardStencil, 0);
 		}
 	}
+
+	FRHIRenderTargetView RTV(nullptr, ERenderTargetLoadAction::ENoAction);
+	FRHIDepthRenderTargetView DepthRTV(nullptr, ERenderTargetLoadAction::ENoAction, ERenderTargetStoreAction::ENoAction);
+	SetRenderTargets(1, &RTV, &DepthRTV);
 }
 
 void FOpenGLDynamicRHI::RHINextSubpass()

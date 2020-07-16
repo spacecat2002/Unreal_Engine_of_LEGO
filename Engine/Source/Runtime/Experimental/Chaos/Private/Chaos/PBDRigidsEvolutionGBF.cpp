@@ -61,17 +61,24 @@ FAutoConsoleVariableRef CVarHackCCDDepthThreshold(TEXT("p.Chaos.CCD.DepthThresho
 
 
 DECLARE_CYCLE_STAT(TEXT("TPBDRigidsEvolutionGBF::AdvanceOneTimeStep"), STAT_Evolution_AdvanceOneTimeStep, STATGROUP_Chaos);
+DECLARE_CYCLE_STAT(TEXT("TPBDRigidsEvolutionGBF::UnclusterUnions"), STAT_Evolution_UnclusterUnions, STATGROUP_Chaos);
 DECLARE_CYCLE_STAT(TEXT("TPBDRigidsEvolutionGBF::Integrate"), STAT_Evolution_Integrate, STATGROUP_Chaos);
 DECLARE_CYCLE_STAT(TEXT("TPBDRigidsEvolutionGBF::KinematicTargets"), STAT_Evolution_KinematicTargets, STATGROUP_Chaos);
+DECLARE_CYCLE_STAT(TEXT("TPBDRigidsEvolutionGBF::PostIntegrateCallback"), STAT_Evolution_PostIntegrateCallback, STATGROUP_Chaos);
 DECLARE_CYCLE_STAT(TEXT("TPBDRigidsEvolutionGBF::PrepareConstraints"), STAT_Evolution_PrepareConstraints, STATGROUP_Chaos);
+DECLARE_CYCLE_STAT(TEXT("TPBDRigidsEvolutionGBF::CollisionModifierCallback"), STAT_Evolution_CollisionModifierCallback, STATGROUP_Chaos);
 DECLARE_CYCLE_STAT(TEXT("TPBDRigidsEvolutionGBF::UnprepareConstraints"), STAT_Evolution_UnprepareConstraints, STATGROUP_Chaos);
 DECLARE_CYCLE_STAT(TEXT("TPBDRigidsEvolutionGBF::ApplyConstraints"), STAT_Evolution_ApplyConstraints, STATGROUP_Chaos);
 DECLARE_CYCLE_STAT(TEXT("TPBDRigidsEvolutionGBF::UpdateVelocities"), STAT_Evolution_UpdateVelocites, STATGROUP_Chaos);
 DECLARE_CYCLE_STAT(TEXT("TPBDRigidsEvolutionGBF::ApplyPushOut"), STAT_Evolution_ApplyPushOut, STATGROUP_Chaos);
 DECLARE_CYCLE_STAT(TEXT("TPBDRigidsEvolutionGBF::DetectCollisions"), STAT_Evolution_DetectCollisions, STATGROUP_Chaos);
+DECLARE_CYCLE_STAT(TEXT("TPBDRigidsEvolutionGBF::PostDetectCollisionsCallback"), STAT_Evolution_PostDetectCollisionsCallback, STATGROUP_Chaos);
 DECLARE_CYCLE_STAT(TEXT("TPBDRigidsEvolutionGBF::UpdateConstraintPositionBasedState"), STAT_Evolution_UpdateConstraintPositionBasedState, STATGROUP_Chaos);
+DECLARE_CYCLE_STAT(TEXT("TPBDRigidsEvolutionGBF::ComputeIntermediateSpatialAcceleration"), STAT_Evolution_ComputeIntermediateSpatialAcceleration, STATGROUP_Chaos);
+DECLARE_CYCLE_STAT(TEXT("TPBDRigidsEvolutionGBF::CCDHack"), STAT_Evolution_CCDHack, STATGROUP_Chaos);
 DECLARE_CYCLE_STAT(TEXT("TPBDRigidsEvolutionGBF::CreateConstraintGraph"), STAT_Evolution_CreateConstraintGraph, STATGROUP_Chaos);
 DECLARE_CYCLE_STAT(TEXT("TPBDRigidsEvolutionGBF::CreateIslands"), STAT_Evolution_CreateIslands, STATGROUP_Chaos);
+DECLARE_CYCLE_STAT(TEXT("TPBDRigidsEvolutionGBF::PreApplyCallback"), STAT_Evolution_PreApplyCallback, STATGROUP_Chaos);
 DECLARE_CYCLE_STAT(TEXT("TPBDRigidsEvolutionGBF::ParallelSolve"), STAT_Evolution_ParallelSolve, STATGROUP_Chaos);
 DECLARE_CYCLE_STAT(TEXT("TPBDRigidsEvolutionGBF::DeactivateSleep"), STAT_Evolution_DeactivateSleep, STATGROUP_Chaos);
 
@@ -261,11 +268,15 @@ void TPBDRigidsEvolutionGBF<Traits>::AdvanceOneTimeStep(const FReal Dt,const FRe
 	UnprepareTick();
 }
 
+int32 DrawAwake = 0;
+FAutoConsoleVariableRef CVarDrawAwake(TEXT("p.chaos.DebugDrawAwake"),DrawAwake,TEXT("Draw particles that are awake"));
+
 template <typename Traits>
 void TPBDRigidsEvolutionGBF<Traits>::AdvanceOneTimeStepImpl(const FReal Dt,const FReal StepFraction)
 {
 	SCOPE_CYCLE_COUNTER(STAT_Evolution_AdvanceOneTimeStep);
 
+	Particles.ClearPutToSleepThisFrame();
 #if !UE_BUILD_SHIPPING
 	if (SerializeEvolution)
 	{
@@ -274,6 +285,7 @@ void TPBDRigidsEvolutionGBF<Traits>::AdvanceOneTimeStepImpl(const FReal Dt,const
 #endif
 
 	{
+		SCOPE_CYCLE_COUNTER(STAT_Evolution_UnclusterUnions);
 		Clustering.UnionClusterGroups();
 	}
 
@@ -289,6 +301,7 @@ void TPBDRigidsEvolutionGBF<Traits>::AdvanceOneTimeStepImpl(const FReal Dt,const
 
 	if (PostIntegrateCallback != nullptr)
 	{
+		SCOPE_CYCLE_COUNTER(STAT_Evolution_PostIntegrateCallback);
 		PostIntegrateCallback();
 	}
 
@@ -297,10 +310,14 @@ void TPBDRigidsEvolutionGBF<Traits>::AdvanceOneTimeStepImpl(const FReal Dt,const
 		UpdateConstraintPositionBasedState(Dt);
 	}
 	{
+		SCOPE_CYCLE_COUNTER(STAT_Evolution_ComputeIntermediateSpatialAcceleration);
 		Base::ComputeIntermediateSpatialAcceleration();
 	}
 
-	CCDHack(Dt, Particles.GetActiveParticlesView(), InternalAcceleration.Get());
+	{
+		SCOPE_CYCLE_COUNTER(STAT_Evolution_CCDHack);
+		CCDHack(Dt, Particles.GetActiveParticlesView(), InternalAcceleration.Get());
+	}
 
 	{
 		SCOPE_CYCLE_COUNTER(STAT_Evolution_DetectCollisions);
@@ -315,6 +332,7 @@ void TPBDRigidsEvolutionGBF<Traits>::AdvanceOneTimeStepImpl(const FReal Dt,const
 
 	if (PostDetectCollisionsCallback != nullptr)
 	{
+		SCOPE_CYCLE_COUNTER(STAT_Evolution_PostDetectCollisionsCallback);
 		PostDetectCollisionsCallback();
 	}
 
@@ -325,6 +343,7 @@ void TPBDRigidsEvolutionGBF<Traits>::AdvanceOneTimeStepImpl(const FReal Dt,const
 
 	if (CollisionModifierCallback)
 	{
+		SCOPE_CYCLE_COUNTER(STAT_Evolution_CollisionModifierCallback);
 		CollisionConstraints.ApplyCollisionModifier(CollisionModifierCallback);
 	}
 
@@ -339,6 +358,7 @@ void TPBDRigidsEvolutionGBF<Traits>::AdvanceOneTimeStepImpl(const FReal Dt,const
 
 	if (PreApplyCallback != nullptr)
 	{
+		SCOPE_CYCLE_COUNTER(STAT_Evolution_PreApplyCallback);
 		PreApplyCallback();
 	}
 
@@ -449,10 +469,46 @@ void TPBDRigidsEvolutionGBF<Traits>::AdvanceOneTimeStepImpl(const FReal Dt,const
 
 	if(CaptureRewindData)
 	{
-		CaptureRewindData(Particles.GetActiveParticlesView());
+		CaptureRewindData(Particles.GetDirtyParticlesView());
 	}
 
-	ParticleUpdatePosition(Particles.GetActiveParticlesView(), Dt);
+	ParticleUpdatePosition(Particles.GetDirtyParticlesView(), Dt);
+
+#if !UE_BUILD_SHIPPING
+	if(SerializeEvolution)
+	{
+		SerializeToDisk(*this);
+	}
+
+#if CHAOS_DEBUG_DRAW
+	if(FDebugDrawQueue::IsDebugDrawingEnabled())
+	{
+		if(!!DrawAwake)
+		{
+			static const FColor IslandColors[] = {FColor::Green,FColor::Red,FColor::Yellow,
+				FColor::Blue,FColor::Orange,FColor::Black,FColor::Cyan,
+				FColor::Magenta,FColor::Purple,FColor::Turquoise};
+
+			static const int32 NumColors = sizeof(IslandColors) / sizeof(IslandColors[0]);
+			
+			for(const auto& Active : Particles.GetActiveParticlesView())
+			{
+				if(const auto* Geom = Active.Geometry().Get())
+				{
+					if(Geom->HasBoundingBox())
+					{
+						const int32 Island = Active.Island();
+						ensure(Island >= 0);
+						const int32 ColorIdx = Island % NumColors;
+						const TAABB<FReal,3> LocalBounds = Geom->BoundingBox();
+						FDebugDrawQueue::GetInstance().DrawDebugBox(Active.X(),LocalBounds.Extents()*0.5f,Active.R(),IslandColors[ColorIdx],false,-1.f,0,0.f);
+					}
+				}
+			}
+		}
+	}
+#endif
+#endif
 }
 
 template <typename Traits>

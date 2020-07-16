@@ -142,6 +142,7 @@ extern void QuantizeBoundShaderState(
 
 #if D3D12_RHI_RAYTRACING
 class FD3D12RayTracingShader;
+FD3D12QuantizedBoundShaderState GetRayTracingGlobalRootSignatureDesc();
 extern void QuantizeBoundShaderState(
 	EShaderFrequency ShaderFrequency,
 	const D3D12_RESOURCE_BINDING_TIER& ResourceBindingTier,
@@ -272,6 +273,11 @@ void LogResourceBarriers(uint32 NumBarriers, D3D12_RESOURCE_BARRIER *pBarriers, 
 // To Be Determined (TBD) means we need to fill out a resource barrier before the command list is executed.
 #define D3D12_RESOURCE_STATE_TBD (D3D12_RESOURCE_STATES)-1
 #define D3D12_RESOURCE_STATE_CORRUPT (D3D12_RESOURCE_STATES)-2
+
+static bool IsValidD3D12ResourceState(D3D12_RESOURCE_STATES InState)
+{
+	return (InState != D3D12_RESOURCE_STATE_TBD && InState != D3D12_RESOURCE_STATE_CORRUPT);
+}
 
 //==================================================================================================================================
 // CResourceState

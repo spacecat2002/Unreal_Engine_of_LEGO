@@ -75,13 +75,14 @@ public:
 		RenderTargetViews.Add(View);
 	}
 
-	int32 GetMemorySize() const
+	int64 GetMemorySize() const
 	{
 		return MemorySize;
 	}
 
-	void SetMemorySize(int32 InMemorySize)
+	void SetMemorySize(int64 InMemorySize)
 	{
+		check(InMemorySize > 0);
 		MemorySize = InMemorySize;
 	}
 
@@ -190,7 +191,7 @@ public:
 protected:
 
 	/** Amount of memory allocated by this texture, in bytes. */
-	int32 MemorySize;
+	int64 MemorySize;
 
 	/** Pointer to the base shader resource. Usually the object itself, but not for texture references. */
 	FD3D12BaseShaderResource* BaseShaderResource;
@@ -259,6 +260,7 @@ public:
 		, FD3D12TextureBase(InParent)
 		, Flags(InFlags)
 		, bCubemap(bInCubemap)
+		, bStreamable(!!(InFlags & TexCreate_Streamable))
 #if PLATFORM_SUPPORTS_VIRTUAL_TEXTURES
 		, RawTextureMemory(InRawTextureMemory)
 #endif
@@ -293,6 +295,8 @@ public:
 	void GetReadBackHeapDesc(D3D12_PLACED_SUBRESOURCE_FOOTPRINT& OutFootprint, uint32 Subresource) const;
 
 	bool IsCubemap() const { return bCubemap; }
+
+	bool IsStreamable() const { return bStreamable; }
 
 	/** FRHITexture override.  See FRHITexture::GetNativeResource() */
 	virtual void* GetNativeResource() const override final
@@ -339,10 +343,13 @@ public:
 
 private:
 	/** Unlocks a previously locked mip-map. */
-	void UnlockInternal(class FRHICommandListImmediate* RHICmdList, TD3D12Texture2D* Previous, uint32 MipIndex, uint32 ArrayIndex);
+	void UnlockInternal(class FRHICommandListImmediate* RHICmdList, FLinkedObjectIterator NextObject, uint32 MipIndex, uint32 ArrayIndex);
 
 	/** Whether the texture is a cube-map. */
 	const uint32 bCubemap : 1;
+
+	/** Whether the texture has been created with flag TexCreate_Streamable */
+	const uint32 bStreamable : 1;
 
 #if PLATFORM_SUPPORTS_VIRTUAL_TEXTURES
 	void* RawTextureMemory;
@@ -370,6 +377,7 @@ public:
 		)
 		: FRHITexture3D(InSizeX, InSizeY, InSizeZ, InNumMips, InFormat, InFlags, InClearValue)
 		, FD3D12TextureBase(InParent)
+		, bStreamable(!!(InFlags & TexCreate_Streamable))
 	{
 	}
 
@@ -403,6 +411,12 @@ public:
 	{
 		return FRHIResource::GetRefCount();
 	}
+
+	bool IsStreamable() const { return bStreamable; }
+
+private:
+	/** Whether the texture has been created with flag TexCreate_Streamable */
+	const uint32 bStreamable : 1;
 };
 
 class FD3D12BaseTexture2D : public FRHITexture2D, public FD3D12FastClearResource
@@ -512,7 +526,8 @@ public:
 	// Note: This function can be called from many different threads
 	// @param TextureSize >0 to allocate, <0 to deallocate
 	// @param b3D true:3D, false:2D or cube map
-	static void UpdateD3D12TextureStats(const D3D12_RESOURCE_DESC& Desc, int64 TextureSize, bool b3D, bool bCubeMap);
+	// @param bStreamable true:Streamable, false:not streamable
+	static void UpdateD3D12TextureStats(const D3D12_RESOURCE_DESC& Desc, int64 TextureSize, bool b3D, bool bCubeMap, bool bStreamable);
 
 	template<typename BaseResourceType>
 	static void D3D12TextureAllocated(TD3D12Texture2D<BaseResourceType>& Texture, const D3D12_RESOURCE_DESC *Desc = nullptr);
@@ -546,4 +561,9 @@ template<>
 struct TD3D12ResourceTraits<FRHITextureCube>
 {
 	typedef FD3D12TextureCube TConcreteType;
+};
+template<>
+struct TD3D12ResourceTraits<FRHITextureReference>
+{
+	typedef FD3D12TextureReference TConcreteType;
 };

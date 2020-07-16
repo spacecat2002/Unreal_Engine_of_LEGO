@@ -174,6 +174,7 @@ public:
 
 	FIoRequestImpl* AllocRequest(const FIoChunkId& ChunkId, FIoReadOptions Options)
 	{
+		LLM_SCOPE(ELLMTag::FileSystem);
 		FIoRequestImpl* Request = RequestAllocator.Construct();
 
 		Request->ChunkId = ChunkId;
@@ -212,6 +213,7 @@ public:
 
 	FIoBatchImpl* AllocBatch()
 	{
+		LLM_SCOPE(ELLMTag::FileSystem);
 		FIoBatchImpl* Batch = BatchAllocator.Construct();
 
 		return Batch;
@@ -371,8 +373,12 @@ public:
 		// Create the buffer
 		uint64 TotalSize = 0;
 		for (FIoRequestImpl* Request = Batch->HeadRequest; Request; Request = Request->BatchNextRequest)
-		{	
-			TotalSize += FMath::Min(GetSizeForChunk(Request->ChunkId).ConsumeValueOrDie(), Request->Options.GetSize());
+		{
+			TIoStatusOr<uint64> SizeResult = GetSizeForChunk(Request->ChunkId);
+			if (SizeResult.IsOk())
+			{
+				TotalSize += FMath::Min(SizeResult.ConsumeValueOrDie(), Request->Options.GetSize());
+			}
 		}
 
 		// Set up memory buffers
@@ -397,7 +403,12 @@ public:
 			}
 
 			Request->Options.SetTargetVa(Ptr);
-			Ptr += FMath::Min(GetSizeForChunk(Request->ChunkId).ConsumeValueOrDie(), Request->Options.GetSize());
+
+			TIoStatusOr<uint64> SizeResult = GetSizeForChunk(Request->ChunkId);
+			if (SizeResult.IsOk())
+			{
+				Ptr += FMath::Min(SizeResult.ConsumeValueOrDie(), Request->Options.GetSize());
+			}
 		}
 
 		// Set up callback
@@ -474,7 +485,22 @@ private:
 		// Since the requests will be processed in order we can just check the tail request
 		if (Batch->TailRequest->Status.IsCompleted())
 		{
-			Batch->Callback(Batch->IoBuffer);
+			FIoStatus Status = EIoErrorCode::Ok;
+			// Check the requests in the batch to see if we need to report an error status
+			for (FIoRequestImpl* Request = Batch->HeadRequest; Request != NULL && Status.IsOk(); Request = Request->BatchNextRequest)
+			{
+				Status = Request->Status;
+			}
+
+			// Return the buffer if there are no errors, or the failed status if there were
+			if (Status.IsOk())
+			{
+				Batch->Callback(Batch->IoBuffer);
+			}
+			else
+			{
+				Batch->Callback(Status);
+			}
 		}		
 	}
 
@@ -631,6 +657,7 @@ FIoDispatcher::~FIoDispatcher()
 
 FIoStatus FIoDispatcher::Mount(const FIoStoreEnvironment& Environment)
 {
+	LLM_SCOPE(ELLMTag::FileSystem);
 	return Impl->Mount(Environment);
 }
 
@@ -705,6 +732,7 @@ FIoDispatcher::IsValidEnvironment(const FIoStoreEnvironment& Environment)
 FIoStatus
 FIoDispatcher::Initialize()
 {
+	LLM_SCOPE(ELLMTag::FileSystem);
 	GIoDispatcher = MakeUnique<FIoDispatcher>();
 
 	return GIoDispatcher->Impl->Initialize();

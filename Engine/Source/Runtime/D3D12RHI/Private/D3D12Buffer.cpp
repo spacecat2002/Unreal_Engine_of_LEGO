@@ -10,16 +10,19 @@ D3D12Buffer.cpp: D3D Common code for buffers.
 template FD3D12VertexBuffer* FD3D12Adapter::CreateRHIBuffer<FD3D12VertexBuffer>(FRHICommandListImmediate* RHICmdList,
 	const D3D12_RESOURCE_DESC& Desc,
 	uint32 Alignment, uint32 Stride, uint32 Size, uint32 InUsage,
+	ED3D12ResourceStateMode InResourceStateMode,
 	FRHIResourceCreateInfo& CreateInfo);
 
 template FD3D12IndexBuffer* FD3D12Adapter::CreateRHIBuffer<FD3D12IndexBuffer>(FRHICommandListImmediate* RHICmdList,
 	const D3D12_RESOURCE_DESC& Desc,
 	uint32 Alignment, uint32 Stride, uint32 Size, uint32 InUsage,
+	ED3D12ResourceStateMode InResourceStateMode,
 	FRHIResourceCreateInfo& CreateInfo);
 
 template FD3D12StructuredBuffer* FD3D12Adapter::CreateRHIBuffer<FD3D12StructuredBuffer>(FRHICommandListImmediate* RHICmdList,
 	const D3D12_RESOURCE_DESC& Desc,
 	uint32 Alignment, uint32 Stride, uint32 Size, uint32 InUsage,
+	ED3D12ResourceStateMode InResourceStateMode,
 	FRHIResourceCreateInfo& CreateInfo);
 
 struct FRHICommandUpdateBufferString
@@ -77,12 +80,12 @@ struct FD3D12RHICommandInitializeBufferString
 };
 struct FD3D12RHICommandInitializeBuffer final : public FRHICommand<FD3D12RHICommandInitializeBuffer, FD3D12RHICommandInitializeBufferString>
 {
-	FD3D12Buffer* CurrentBuffer;
+	FD3D12Buffer* Buffer;
 	FD3D12ResourceLocation SrcResourceLoc;
 	uint32 Size;
 
-	FORCEINLINE_DEBUGGABLE FD3D12RHICommandInitializeBuffer(FD3D12Buffer* InCurrentBuffer, FD3D12ResourceLocation& InSrcResourceLoc, uint32 InSize)
-		: CurrentBuffer(InCurrentBuffer)
+	FORCEINLINE_DEBUGGABLE FD3D12RHICommandInitializeBuffer(FD3D12Buffer* InBuffer, FD3D12ResourceLocation& InSrcResourceLoc, uint32 InSize)
+		: Buffer(InBuffer)
 		, SrcResourceLoc(InSrcResourceLoc.GetParentDevice())
 		, Size(InSize)
 	{
@@ -96,7 +99,7 @@ struct FD3D12RHICommandInitializeBuffer final : public FRHICommand<FD3D12RHIComm
 
 	void ExecuteNoCmdList()
 	{
-		while (CurrentBuffer != nullptr)
+		for (FD3D12Buffer::FLinkedObjectIterator CurrentBuffer(Buffer); CurrentBuffer; ++CurrentBuffer)
 		{
 			FD3D12Resource* Destination = CurrentBuffer->ResourceLocation.GetResource();
 			FD3D12Device* Device = Destination->GetParentDevice();
@@ -118,8 +121,6 @@ struct FD3D12RHICommandInitializeBuffer final : public FRHICommand<FD3D12RHIComm
 				hCommandList.UpdateResidency(Destination);
 				hCommandList.UpdateResidency(SrcResourceLoc.GetResource());
 			}
-
-			CurrentBuffer = CurrentBuffer->GetNextObject();
 		}
 	}
 };
@@ -128,6 +129,7 @@ void FD3D12Adapter::AllocateBuffer(FD3D12Device* Device,
 	const D3D12_RESOURCE_DESC& InDesc,
 	uint32 Size,
 	uint32 InUsage,
+	ED3D12ResourceStateMode InResourceStateMode,
 	FRHIResourceCreateInfo& CreateInfo,
 	uint32 Alignment,
 	FD3D12TransientResource& TransientResource,
@@ -140,6 +142,7 @@ void FD3D12Adapter::AllocateBuffer(FD3D12Device* Device,
 
 	if (bIsDynamic)
 	{
+		check(InResourceStateMode != ED3D12ResourceStateMode::MultiState);
 		void* pData = GetUploadHeapAllocator(Device->GetGPUIndex()).AllocUploadResource(Size, Alignment, ResourceLocation);
 		check(ResourceLocation.GetSize() == Size);
 
@@ -154,7 +157,7 @@ void FD3D12Adapter::AllocateBuffer(FD3D12Device* Device,
 	}
 	else
 	{
-		Device->GetDefaultBufferAllocator().AllocDefaultResource(InDesc, InUsage, ResourceLocation, Alignment, CreateInfo.DebugName);
+		Device->GetDefaultBufferAllocator().AllocDefaultResource(InDesc, (EBufferUsageFlags)InUsage, InResourceStateMode, ResourceLocation, Alignment, CreateInfo.DebugName);
 		check(ResourceLocation.GetSize() == Size);
 	}
 }
@@ -167,6 +170,7 @@ BufferType* FD3D12Adapter::CreateRHIBuffer(FRHICommandListImmediate* RHICmdList,
 	uint32 Stride,
 	uint32 Size,
 	uint32 InUsage,
+	ED3D12ResourceStateMode InResourceStateMode,
 	FRHIResourceCreateInfo& CreateInfo)
 {
 	SCOPE_CYCLE_COUNTER(STAT_D3D12CreateBufferTime);
@@ -185,7 +189,7 @@ BufferType* FD3D12Adapter::CreateRHIBuffer(FRHICommandListImmediate* RHICmdList,
 
 			if (Device->GetGPUIndex() == FirstGPUIndex)
 			{
-				AllocateBuffer(Device, InDesc, Size, InUsage, CreateInfo, Alignment, *NewBuffer, NewBuffer->ResourceLocation);
+				AllocateBuffer(Device, InDesc, Size, InUsage, InResourceStateMode, CreateInfo, Alignment, *NewBuffer, NewBuffer->ResourceLocation);
 				NewBuffer0 = NewBuffer;
 			}
 			else
@@ -204,7 +208,7 @@ BufferType* FD3D12Adapter::CreateRHIBuffer(FRHICommandListImmediate* RHICmdList,
 			BufferType* NewBuffer = new BufferType(Device, Stride, Size, InUsage);
 			NewBuffer->BufferAlignment = Alignment;
 
-			AllocateBuffer(Device, InDesc, Size, InUsage, CreateInfo, Alignment, *NewBuffer, NewBuffer->ResourceLocation);
+			AllocateBuffer(Device, InDesc, Size, InUsage, InResourceStateMode, CreateInfo, Alignment, *NewBuffer, NewBuffer->ResourceLocation);
 
 			return NewBuffer;
 		});
@@ -311,7 +315,7 @@ void FD3D12Buffer::RenameLDAChain(FD3D12ResourceLocation& NewLocation)
 		ensure(GetParentDevice() == NewLocation.GetParentDevice());
 
 		// Update all of the resources in the LDA chain to reference this cross-node resource
-		for (FD3D12Buffer* NextBuffer = GetNextObject(); NextBuffer; NextBuffer = NextBuffer->GetNextObject())
+		for (auto NextBuffer = ++FLinkedObjectIterator(this); NextBuffer; ++NextBuffer)
 		{
 			FD3D12ResourceLocation::ReferenceNode(NextBuffer->GetParentDevice(), NextBuffer->ResourceLocation, ResourceLocation);
 
@@ -330,14 +334,12 @@ void FD3D12Buffer::RenameLDAChain(FD3D12ResourceLocation& NewLocation)
 
 void FD3D12Buffer::ReleaseUnderlyingResource()
 {
-	check(!LockedData.bLocked && ResourceLocation.IsValid());
-	ResourceLocation.Clear();
-	RemoveAllDynamicSRVs();
-
-	FD3D12Buffer* NextBuffer = GetNextObject();
-	if (NextBuffer)
+	check(IsHeadLink());
+	for (FLinkedObjectIterator NextBuffer(this); NextBuffer; ++NextBuffer)
 	{
-		NextBuffer->ReleaseUnderlyingResource();
+		check(!NextBuffer->LockedData.bLocked && NextBuffer->ResourceLocation.IsValid());
+		NextBuffer->ResourceLocation.Clear();
+		NextBuffer->RemoveAllDynamicSRVs();
 	}
 }
 
@@ -486,7 +488,8 @@ void FD3D12DynamicRHI::UnlockBuffer(FRHICommandListImmediate* RHICmdList, FD3D12
 		else
 		{
 			// Update all of the resources in the LDA chain
-			for (FD3D12Buffer* CurrentBuffer = Buffer; CurrentBuffer; CurrentBuffer = CurrentBuffer->GetNextObject())
+			check(Buffer->IsHeadLink());
+			for (FD3D12Buffer::FLinkedObjectIterator CurrentBuffer(Buffer); CurrentBuffer; ++CurrentBuffer)
 			{
 				// If we are on the render thread, queue up the copy on the RHIThread so it happens at the correct time.
 				if (ShouldDeferBufferLockOperation(RHICmdList))

@@ -75,6 +75,13 @@ static TAutoConsoleVariable<int32> CVarMobileAdrenoOcclusionMode(
 	TEXT("1: Render occlusion queries after translucency and a flush, which can help Adreno devices in GL mode."),
 	ECVF_RenderThreadSafe);
 
+static TAutoConsoleVariable<int32> CVarMobileFlushSceneColorRendering(
+	TEXT("r.Mobile.FlushSceneColorRendering"),
+	1,
+	TEXT("0: Submmit command buffer after all rendering is finished.\n")
+	TEXT("1: Submmit command buffer (flush) before starting post-processing (default)"),
+	ECVF_RenderThreadSafe);
+
 static TAutoConsoleVariable<int32> CVarMobileCustomDepthForTranslucency(
 	TEXT("r.Mobile.CustomDepthForTranslucency"),
 	1,
@@ -200,11 +207,9 @@ void FMobileSceneRenderer::PrepareViewVisibilityLists()
 
 		// Init static mesh visibility info for CSM drawlist
 		MobileCSMVisibilityInfo.MobileCSMStaticMeshVisibilityMap.Init(false, View.StaticMeshVisibilityMap.Num());
-		MobileCSMVisibilityInfo.MobileCSMStaticBatchVisibility.AddZeroed(View.StaticMeshBatchVisibility.Num());
 
 		// Init static mesh visibility info for default drawlist that excludes meshes in CSM only drawlist.
 		MobileCSMVisibilityInfo.MobileNonCSMStaticMeshVisibilityMap = View.StaticMeshVisibilityMap;
-		MobileCSMVisibilityInfo.MobileNonCSMStaticBatchVisibility = View.StaticMeshBatchVisibility;
 	}
 }
 
@@ -437,15 +442,15 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	// Whether we need to store depth for post-processing
 	// On PowerVR we see flickering of shadows and depths not updating correctly if targets are discarded.
 	// See CVarMobileForceDepthResolve use in ConditionalResolveSceneDepth.
-	const bool bForceDepthResolve = CVarMobileForceDepthResolve.GetValueOnRenderThread() == 1;
+	const bool bForceDepthResolve = bRequiresTranslucencyPass || CVarMobileForceDepthResolve.GetValueOnRenderThread() == 1;
 	const bool bSeparateTranslucencyActive = IsMobileSeparateTranslucencyActive(View);
-	bool bKeepDepthContent = bForceDepthResolve || (bRenderToSceneColor &&
+	bool bKeepDepthContent = bForceDepthResolve || bRequiresTranslucencyPass || (bRenderToSceneColor &&
 		(bSeparateTranslucencyActive ||
 		 View.bIsReflectionCapture ||
 		 (View.bIsSceneCapture && (ViewFamily.SceneCaptureSource == ESceneCaptureSource::SCS_SceneColorHDR || ViewFamily.SceneCaptureSource == ESceneCaptureSource::SCS_SceneColorSceneDepth))));
 
 	// Whether to submit cmdbuffer with offscreen rendering before doing post-processing
-	bool bSubmitOffscreenRendering = !bGammaSpace || bRenderToSceneColor;
+	bool bSubmitOffscreenRendering = (!bGammaSpace || bRenderToSceneColor) && CVarMobileFlushSceneColorRendering.GetValueOnAnyThread() != 0;
 
 	// Initialize global system textures (pass-through if already initialized).
 	GSystemTextures.InitializeTextures(RHICmdList, ViewFeatureLevel);
@@ -454,6 +459,14 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	// Allocate the maximum scene render target space for the current view family.
 	SceneContext.SetKeepDepthContent(bKeepDepthContent);
 	SceneContext.Allocate(RHICmdList, this);
+
+	const bool bUseVirtualTexturing = UseVirtualTexturing(ViewFeatureLevel);
+	if (bUseVirtualTexturing)
+	{
+		// AllocateResources needs to be called before RHIBeginScene
+		FVirtualTextureSystem::Get().AllocateResources(RHICmdList, ViewFeatureLevel);
+		FVirtualTextureSystem::Get().CallPendingCallbacks();
+	}
 
 	//make sure all the targets we're going to use will be safely writable.
 	GRenderTargetPool.TransitionTargetsWritable(RHICmdList);
@@ -487,7 +500,6 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		RenderSkyAtmosphereLookUpTables(RHICmdList);
 	}
 
-	const bool bUseVirtualTexturing = UseVirtualTexturing(FeatureLevel);
 	if (bUseVirtualTexturing)
 	{
 		FVirtualTextureSystem::Get().Update(RHICmdList, ViewFeatureLevel, Scene);

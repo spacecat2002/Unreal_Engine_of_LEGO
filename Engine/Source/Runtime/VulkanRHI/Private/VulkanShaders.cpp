@@ -95,11 +95,8 @@ void FVulkanShader::Setup(TArrayView<const uint8> InShaderHeaderAndCode, uint64 
 	Ar << CodeHeader;
 
 	Ar << Spirv;
-#if VULKAN_ENABLE_SHADER_DEBUG_NAMES
-	checkf(Spirv.Num() != 0, TEXT("Empty SPIR-V!%s"), *CodeHeader.DebugName);
-#else
-	checkf(Spirv.Num() != 0, TEXT("Empty SPIR-V!"));
-#endif
+
+	checkf(Spirv.Num() != 0, TEXT("Empty SPIR-V! %s"), *CodeHeader.DebugName);
 
 	if (CodeHeader.bHasRealUBs)
 	{
@@ -125,7 +122,7 @@ void FVulkanShader::Setup(TArrayView<const uint8> InShaderHeaderAndCode, uint64 
 		}
 	}
 
-#if VULKAN_ENABLE_SHADER_DEBUG_NAMES
+#if UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT
 	// main_00000000_00000000
 	ANSICHAR EntryPoint[24];
 	GetEntryPoint(EntryPoint, 24);
@@ -151,7 +148,7 @@ void FVulkanShader::PurgeShaderModules()
 	for (const auto& Pair : ShaderModules)
 	{
 		VkShaderModule ShaderModule = Pair.Value;
-		Device->GetDeferredDeletionQueue().EnqueueResource(VulkanRHI::FDeferredDeletionQueue::EType::ShaderModule, ShaderModule);
+		Device->GetDeferredDeletionQueue().EnqueueResource(VulkanRHI::FDeferredDeletionQueue2::EType::ShaderModule, ShaderModule);
 	}
 	ShaderModules.Empty(0);
 }
@@ -266,7 +263,7 @@ FVulkanLayout::~FVulkanLayout()
 {
 	if (PipelineLayout != VK_NULL_HANDLE)
 	{
-		Device->GetDeferredDeletionQueue().EnqueueResource(VulkanRHI::FDeferredDeletionQueue::EType::PipelineLayout, PipelineLayout);
+		Device->GetDeferredDeletionQueue().EnqueueResource(VulkanRHI::FDeferredDeletionQueue2::EType::PipelineLayout, PipelineLayout);
 		PipelineLayout = VK_NULL_HANDLE;
 	}
 }

@@ -721,7 +721,7 @@ void UStruct::GetPreloadDependencies(TArray<UObject*>& OutDeps)
 
 	for (UField* Field = Children; Field; Field = Field->Next)
 	{
-		//if (!Cast<UFunction>(Field))
+		if (!Cast<UFunction>(Field))
 		{
 			OutDeps.Add(Field);
 		}
@@ -3400,7 +3400,7 @@ int32 FStructUtils::AttemptToFindUninitializedScriptStructMembers()
 
 	if (UninitializedScriptStructMemberCount > 0)
 	{
-		UE_LOG(LogClass, Display, TEXT("%i Uninitialized script stuct members found"), UninitializedScriptStructMemberCount);
+		UE_LOG(LogClass, Display, TEXT("%i Uninitialized script struct members found"), UninitializedScriptStructMemberCount);
 	}
 	return UninitializedScriptStructMemberCount;
 }
@@ -5945,6 +5945,12 @@ UScriptStruct* TBaseStructure<FDateTime>::Get()
 UScriptStruct* TBaseStructure<FFrameNumber>::Get()
 {
 	static UScriptStruct* ScriptStruct = StaticGetBaseStructureInternal(TEXT("FrameNumber"));
+	return ScriptStruct;
+}
+
+UScriptStruct* TBaseStructure<FFrameTime>::Get()
+{
+	static UScriptStruct* ScriptStruct = StaticGetBaseStructureInternal(TEXT("FrameTime"));
 	return ScriptStruct;
 }
 

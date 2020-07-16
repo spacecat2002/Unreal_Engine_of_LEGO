@@ -87,8 +87,8 @@ TFrameValue<int32> SRetainerWidget::Shared_RetainerWorkThisFrame(0);
 SRetainerWidget::SRetainerWidget()
 	: EmptyChildSlot(this)
 	, VirtualWindow(SNew(SVirtualWindow))
+	, HittestGrid(MakeShared<FHittestGrid>())
 	, RenderingResources(new FRetainerWidgetRenderingResources)
-
 {
 	FSlateApplicationBase::Get().OnGlobalInvalidationToggled().AddRaw(this, &SRetainerWidget::OnGlobalInvalidationToggled);
 	if (FSlateApplication::IsInitialized())
@@ -99,7 +99,7 @@ SRetainerWidget::SRetainerWidget()
 	}
 	bHasCustomPrepass = true;
 	SetInvalidationRootWidget(*this);
-	SetInvalidationRootHittestGrid(HittestGrid);
+	SetInvalidationRootHittestGrid(HittestGrid.Get());
 	SetCanTick(false);
 }
 
@@ -500,12 +500,15 @@ int32 SRetainerWidget::OnPaint(const FPaintArgs& Args, const FGeometry& Allotted
 		SCOPE_CYCLE_COUNTER(STAT_SlateRetainerWidgetPaint);
 
 		// Copy hit test grid settings from the root
-		const bool bHittestCleared = HittestGrid.SetHittestArea(Args.RootGrid.GetGridOrigin(), Args.RootGrid.GetGridSize(), Args.RootGrid.GetGridWindowOrigin());
+		const bool bHittestCleared = HittestGrid->SetHittestArea(Args.RootGrid.GetGridOrigin(), Args.RootGrid.GetGridSize(), Args.RootGrid.GetGridWindowOrigin());
 		if (bHittestCleared)
 		{
 			MutableThis->RequestRender();
 		}
-		FPaintArgs NewArgs = Args.WithNewHitTestGrid(HittestGrid);
+		HittestGrid->SetOwner(this);
+		HittestGrid->SetCullingRect(MyCullingRect);
+
+		FPaintArgs NewArgs = Args.WithNewHitTestGrid(HittestGrid.Get());
 
 		// Copy the current user index into the new grid since nested hittest grids should inherit their parents user id
 		NewArgs.GetHittestGrid().SetUserIndex(Args.RootGrid.GetUserIndex());
@@ -555,7 +558,7 @@ int32 SRetainerWidget::OnPaint(const FPaintArgs& Args, const FGeometry& Allotted
 			}
 
 			// add our widgets to the root hit test grid
-			Context.PaintArgs->RootGrid.AppendGrid(HittestGrid, MyCullingRect);
+			Args.GetHittestGrid().AddGrid(HittestGrid);
 
 			return GetCachedMaxLayerId();
 		}
@@ -582,7 +585,7 @@ void SRetainerWidget::OnGlobalInvalidationToggled(bool bGlobalInvalidationEnable
 {
 	InvalidateRoot();
 
-	ClearAllFastPathData(false);
+	ClearAllFastPathData(true);
 }
 
 bool SRetainerWidget::CustomPrepass(float LayoutScaleMultiplier)

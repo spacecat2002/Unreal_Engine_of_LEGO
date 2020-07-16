@@ -1018,6 +1018,10 @@ bool UObject::ConditionalFinishDestroy()
 		DebugFinishDestroyed.Add(this);
 #endif
 		FinishDestroy();
+
+		// Make sure this object can't be found through any delete listeners (annotation maps etc) after it's been FinishDestroyed
+		GUObjectArray.RemoveObjectFromDeleteListeners(this);
+
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 		if( DebugFinishDestroyed.Contains(this) )
 		{
@@ -1034,6 +1038,8 @@ bool UObject::ConditionalFinishDestroy()
 
 void UObject::ConditionalPostLoad()
 {
+	LLM_SCOPE(ELLMTag::UObject);
+
 	check(!GEventDrivenLoaderEnabled || !HasAnyFlags(RF_NeedLoad)); //@todoio Added this as "nicks rule"
 									  // PostLoad only if the object needs it and has already been serialized
 	//@todoio note this logic should be unchanged compared to main
@@ -1756,14 +1762,14 @@ void GetAssetRegistryTagFromProperty(const void* BaseMemoryLocation, const UObje
 			TagType = UObject::FAssetRegistryTag::ETagType::TT_Alphabetical;
 		}
 		else if (Prop->IsA(FArrayProperty::StaticClass()) || Prop->IsA(FMapProperty::StaticClass()) || Prop->IsA(FSetProperty::StaticClass())
-			|| Prop->IsA(FStructProperty::StaticClass()) || Prop->IsA(FObjectPropertyBase::StaticClass()))
+			|| Prop->IsA(FStructProperty::StaticClass()))
 		{
-			// Arrays/maps/sets/structs/objects are hidden, it is often too much information to display and sort
+			// Arrays/maps/sets/structs are hidden, it is often too much information to display and sort
 			TagType = UObject::FAssetRegistryTag::ETagType::TT_Hidden;
 		}
 		else
 		{
-			// All other types are alphabetical
+			// All other types are alphabetical, there are special UI parsers for object properties
 			TagType = UObject::FAssetRegistryTag::ETagType::TT_Alphabetical;
 		}
 	}
@@ -2412,7 +2418,7 @@ void UObject::LoadConfig( UClass* ConfigClass/*=NULL*/, const TCHAR* InFilename/
 	}
 }
 
-void UObject::SaveConfig( uint64 Flags, const TCHAR* InFilename, FConfigCacheIni* Config/*=GConfig*/ )
+void UObject::SaveConfig( uint64 Flags, const TCHAR* InFilename, FConfigCacheIni* Config/*=GConfig*/, bool bAllowCopyToDefaultObject/*=true*/)
 {
 	if( !GetClass()->HasAnyClassFlags(CLASS_Config) )
 	{
@@ -2455,7 +2461,7 @@ void UObject::SaveConfig( uint64 Flags, const TCHAR* InFilename, FConfigCacheIni
 	UObject* CDO = GetClass()->GetDefaultObject();
 
 	// only copy the values to the CDO if this is GConfig and we're not saving the CDO
-	const bool bCopyValues = (this != CDO && Config == GConfig);
+	const bool bCopyValues = (bAllowCopyToDefaultObject && this != CDO && Config == GConfig);
 
 	for ( FProperty* Property = GetClass()->PropertyLink; Property; Property = Property->PropertyLinkNext )
 	{
@@ -3240,7 +3246,7 @@ COREUOBJECT_API TArray<const TCHAR*> ParsePropertyFlags(EPropertyFlags InFlags)
 		TEXT("CPF_InstancedReference"),
 		TEXT("0x0000000000100000"),
 		TEXT("CPF_DuplicateTransient"),
-		TEXT("CPF_SubobjectReference"),
+		TEXT("0x0000000000400000"),
 		TEXT("0x0000000000800000"),
 		TEXT("CPF_SaveGame"),	
 		TEXT("CPF_NoClear"),
@@ -4370,13 +4376,6 @@ void InitUObject()
 	
 	FCoreDelegates::NewFileAddedDelegate.AddStatic(FLinkerLoad::OnNewFileAdded);
 	FCoreDelegates::OnPakFileMounted2.AddStatic(FLinkerLoad::OnPakFileMounted);
-
-#if WITH_EDITOR
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	FCoreUObjectDelegates::StringAssetReferenceLoaded.BindRaw(&GRedirectCollector, &FRedirectCollector::OnStringAssetReferenceLoaded);
-	FCoreUObjectDelegates::StringAssetReferenceSaving.BindRaw(&GRedirectCollector, &FRedirectCollector::OnStringAssetReferenceSaved);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
-#endif
 
 	// Object initialization.
 	StaticUObjectInit();

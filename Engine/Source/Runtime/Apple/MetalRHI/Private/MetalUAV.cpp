@@ -2,6 +2,7 @@
 
 
 #include "MetalRHIPrivate.h"
+#include "MetalRHIStagingBuffer.h"
 #include "MetalCommandBuffer.h"
 #include "RenderUtils.h"
 #include "ClearReplacementShaders.h"
@@ -37,12 +38,7 @@ FMetalShaderResourceView::~FMetalShaderResourceView()
 		{
 			Surface->SRVs.Remove(this);
 		}
-		
-		if (TextureView->Texture)
-		{
-			TextureView->Texture = nil;
-			TextureView->MSAATexture = nil;
-		}
+
 		delete TextureView;
 		TextureView = nullptr;
 	}
@@ -678,7 +674,7 @@ void FMetalRHICommandContext::RHICopyToStagingBuffer(FRHIVertexBuffer* SourceBuf
 	@autoreleasepool {
 		check(DestinationStagingBufferRHI);
 
-		FMetalStagingBuffer* MetalStagingBuffer = ResourceCast(DestinationStagingBufferRHI);
+		FMetalRHIStagingBuffer* MetalStagingBuffer = ResourceCast(DestinationStagingBufferRHI);
 		ensureMsgf(!MetalStagingBuffer->bIsLocked, TEXT("Attempting to Copy to a locked staging buffer. This may have undefined behavior"));
 		FMetalVertexBuffer* SourceBuffer = ResourceCast(SourceBufferRHI);
 		FMetalBuffer& ReadbackBuffer = MetalStagingBuffer->ShadowBuffer;

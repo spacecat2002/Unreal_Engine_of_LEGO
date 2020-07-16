@@ -5,6 +5,7 @@
 #include "UObject/Package.h"
 #include "UObject/PropertyPortFlags.h"
 #include "UObject/UnrealType.h"
+#include "UObject/Package.h"
 #include "Serialization/DuplicatedObject.h"
 #include "Serialization/DuplicatedDataWriter.h"
 

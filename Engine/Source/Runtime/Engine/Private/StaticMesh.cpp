@@ -778,6 +778,28 @@ void FStaticMeshLODResources::Serialize(FArchive& Ar, UObject* Owner, int32 Inde
 	}
 }
 
+void FStaticMeshLODResources::GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize) const
+{
+	const int32 VBSize = VertexBuffers.StaticMeshVertexBuffer.GetResourceSize() +
+		VertexBuffers.PositionVertexBuffer.GetStride() * VertexBuffers.PositionVertexBuffer.GetNumVertices() +
+		VertexBuffers.ColorVertexBuffer.GetStride() * VertexBuffers.ColorVertexBuffer.GetNumVertices();
+
+	int32 NumIndicies = IndexBuffer.GetNumIndices();
+
+	if (AdditionalIndexBuffers)
+	{
+		NumIndicies += AdditionalIndexBuffers->ReversedDepthOnlyIndexBuffer.GetNumIndices();
+		NumIndicies += AdditionalIndexBuffers->ReversedIndexBuffer.GetNumIndices();
+		NumIndicies += AdditionalIndexBuffers->WireframeIndexBuffer.GetNumIndices();
+		NumIndicies += (RHISupportsTessellation(GShaderPlatformForFeatureLevel[GMaxRHIFeatureLevel]) ? AdditionalIndexBuffers->AdjacencyIndexBuffer.GetNumIndices() : 0);
+	}
+
+	int32 IBSize = NumIndicies * (IndexBuffer.Is32Bit() ? 4 : 2);
+
+	CumulativeResourceSize.AddUnknownMemoryBytes(VBSize + IBSize);
+	CumulativeResourceSize.AddUnknownMemoryBytes(Sections.GetAllocatedSize());
+}
+
 int32 FStaticMeshLODResources::GetNumTriangles() const
 {
 	int32 NumTriangles = 0;
@@ -2736,24 +2758,7 @@ void FStaticMeshRenderData::GetResourceSizeEx(FResourceSizeEx& CumulativeResourc
 	{
 		const FStaticMeshLODResources& LODRenderData = LODResources[LODIndex];
 
-		const int32 VBSize = LODRenderData.VertexBuffers.StaticMeshVertexBuffer.GetResourceSize() +
-			LODRenderData.VertexBuffers.PositionVertexBuffer.GetStride()			* LODRenderData.VertexBuffers.PositionVertexBuffer.GetNumVertices() +
-			LODRenderData.VertexBuffers.ColorVertexBuffer.GetStride()				* LODRenderData.VertexBuffers.ColorVertexBuffer.GetNumVertices();
-		
-		int32 NumIndicies = LODRenderData.IndexBuffer.GetNumIndices();
-
-		if (LODRenderData.AdditionalIndexBuffers)
-		{
-			NumIndicies += LODRenderData.AdditionalIndexBuffers->ReversedDepthOnlyIndexBuffer.GetNumIndices();
-			NumIndicies += LODRenderData.AdditionalIndexBuffers->ReversedIndexBuffer.GetNumIndices();
-			NumIndicies += LODRenderData.AdditionalIndexBuffers->WireframeIndexBuffer.GetNumIndices();
-			NumIndicies += (RHISupportsTessellation(GShaderPlatformForFeatureLevel[GMaxRHIFeatureLevel]) ? LODRenderData.AdditionalIndexBuffers->AdjacencyIndexBuffer.GetNumIndices() : 0);
-		}
-
-		int32 IBSize = NumIndicies * (LODRenderData.IndexBuffer.Is32Bit() ? 4 : 2);
-
-		CumulativeResourceSize.AddUnknownMemoryBytes(VBSize + IBSize);
-		CumulativeResourceSize.AddUnknownMemoryBytes(LODRenderData.Sections.GetAllocatedSize());
+		LODResources[LODIndex].GetResourceSizeEx(CumulativeResourceSize);
 
 		if (LODRenderData.DistanceFieldData)
 		{
@@ -3359,7 +3364,7 @@ bool UStaticMesh::FixLODRequiresAdjacencyInformation(const int32 LODIndex, const
 		TPolygonGroupAttributesConstRef<FName> PolygonGroupImportedMaterialSlotNames = StaticMeshAttributes.GetPolygonGroupMaterialSlotNames();
 		int32 SectionIndex = 0;
 		
-		for (const FPolygonGroupID& PolygonGroupID : MeshDescription->PolygonGroups().GetElementIDs())
+		for (const FPolygonGroupID PolygonGroupID : MeshDescription->PolygonGroups().GetElementIDs())
 		{
 			const FName MaterialImportedName = PolygonGroupImportedMaterialSlotNames[PolygonGroupID];
 			int32 MaterialIndex = 0;
@@ -4338,7 +4343,7 @@ bool UStaticMesh::SetUVChannel(int32 LODIndex, int32 UVChannelIndex, const TMap<
 	FStaticMeshAttributes Attributes(*MeshDescription);
 
 	TMeshAttributesRef<FVertexInstanceID, FVector2D> UVs = Attributes.GetVertexInstanceUVs();
-	for (const FVertexInstanceID& VertexInstanceID : MeshDescription->VertexInstances().GetElementIDs())
+	for (const FVertexInstanceID VertexInstanceID : MeshDescription->VertexInstances().GetElementIDs())
 	{
 		if (const FVector2D* UVCoord = TexCoords.Find(VertexInstanceID))
 		{
@@ -5624,8 +5629,10 @@ bool UStaticMesh::StreamIn(int32 NewMipCount, bool bHighPrio)
 	return false;
 }
 
-bool UStaticMesh::UpdateStreamingStatus(bool bWaitForMipFading)
+bool UStaticMesh::UpdateStreamingStatus(bool bWaitForMipFading, TArray<UStreamableRenderAsset*>* DeferredTickCBAssets)
 {
+	bool bUpdatePending = false;
+
 	// if resident and requested mip counts match then no pending request is in flight
 	if (PendingUpdate)
 	{
@@ -5646,44 +5653,48 @@ bool UStaticMesh::UpdateStreamingStatus(bool bWaitForMipFading)
 
 		if (!PendingUpdate->IsCompleted())
 		{
-			return true;
+			bUpdatePending = true;
 		}
-
-#if WITH_EDITOR
-		const bool bRebuildPlatformData = PendingUpdate->DDCIsInvalid() && !IsPendingKillOrUnreachable();
-#endif
-
-		PendingUpdate.SafeRelease();
-
-#if WITH_EDITOR
-		if (GIsEditor)
+		else
 		{
-			// When all the requested mips are streamed in, generate an empty property changed event, to force the
-			// ResourceSize asset registry tag to be recalculated.
-			FPropertyChangedEvent EmptyPropertyChangedEvent(nullptr);
-			FCoreUObjectDelegates::OnObjectPropertyChanged.Broadcast(this, EmptyPropertyChangedEvent);
-
-			// We can't load the source art from a bulk data object if the mesh itself is pending kill because the linker will have been detached.
-			// In this case we don't rebuild the data and instead let the streaming request be cancelled. This will let the garbage collector finish
-			// destroying the object.
-			if (bRebuildPlatformData)
-			{
-				// TODO: force rebuild even if DDC keys match
-				ITargetPlatformManagerModule& TargetPlatformManager = GetTargetPlatformManagerRef();
-				ITargetPlatform* TargetPlatform = TargetPlatformManager.GetRunningTargetPlatform();
-				check(TargetPlatform);
-				const FStaticMeshLODSettings& LODSettings = TargetPlatform->GetStaticMeshLODSettings();
-				RenderData->Cache(TargetPlatform, this, LODSettings);
-				// @TODO this can not be called from this callstack since the entry needs to be removed completely from the streamer.
-				// UpdateResource();
-			}
-		}
+#if WITH_EDITOR
+			const bool bRebuildPlatformData = PendingUpdate->DDCIsInvalid() && !IsPendingKillOrUnreachable();
 #endif
+
+			PendingUpdate.SafeRelease();
+
+#if WITH_EDITOR
+			if (GIsEditor)
+			{
+				// When all the requested mips are streamed in, generate an empty property changed event, to force the
+				// ResourceSize asset registry tag to be recalculated.
+				FPropertyChangedEvent EmptyPropertyChangedEvent(nullptr);
+				FCoreUObjectDelegates::OnObjectPropertyChanged.Broadcast(this, EmptyPropertyChangedEvent);
+
+				// We can't load the source art from a bulk data object if the mesh itself is pending kill because the linker will have been detached.
+				// In this case we don't rebuild the data and instead let the streaming request be cancelled. This will let the garbage collector finish
+				// destroying the object.
+				if (bRebuildPlatformData)
+				{
+					// TODO: force rebuild even if DDC keys match
+					ITargetPlatformManagerModule& TargetPlatformManager = GetTargetPlatformManagerRef();
+					ITargetPlatform* TargetPlatform = TargetPlatformManager.GetRunningTargetPlatform();
+					check(TargetPlatform);
+					const FStaticMeshLODSettings& LODSettings = TargetPlatform->GetStaticMeshLODSettings();
+					RenderData->Cache(TargetPlatform, this, LODSettings);
+					// @TODO this can not be called from this callstack since the entry needs to be removed completely from the streamer.
+					// UpdateResource();
+				}
+			}
+#endif
+		}
 	}
+
+	TickMipLevelChangeCallbacks(DeferredTickCBAssets);
 
 	// TODO: LOD fading?
 
-	return false;
+	return bUpdatePending;
 }
 
 void UStaticMesh::LinkStreaming()
@@ -5703,6 +5714,7 @@ void UStaticMesh::UnlinkStreaming()
 	if (!IsTemplate() && StreamingIndex != INDEX_NONE)
 	{
 		IStreamingManager::Get().GetTextureStreamingManager().RemoveStreamingRenderAsset(this);
+		RemoveAllMipLevelChangeCallbacks();
 	}
 }
 
@@ -6480,10 +6492,12 @@ FName UStaticMesh::AddMaterial(UMaterialInterface* Material)
 	}
 
 #if WITH_EDITORONLY_DATA
-	StaticMaterials.Emplace(Material, MaterialName, MaterialName);
+	FStaticMaterial& StaticMaterial = StaticMaterials.Emplace_GetRef(Material, MaterialName, MaterialName);
 #else
-	StaticMaterials.Emplace(Material, MaterialName);
+	FStaticMaterial& StaticMaterial = StaticMaterials.Emplace_GetRef(Material, MaterialName);
 #endif
+
+	StaticMaterial.UVChannelData = FMeshUVChannelInfo(1.0f);
 
 	return MaterialName;
 }

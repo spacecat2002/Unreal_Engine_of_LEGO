@@ -729,7 +729,6 @@ UEngine::UEngine(const FObjectInitializer& ObjectInitializer)
 
 	SelectionHighlightIntensityBillboards = 0.25f;
 
-	bHardwareSurveyEnabled_DEPRECATED = false;
 	bIsInitialized = false;
 
 	BeginStreamingPauseDelegate = NULL;
@@ -1134,17 +1133,6 @@ void UGameEngine::Init(IEngineLoop* InEngineLoop)
 		UGameViewportClient::OnViewportCreated().Broadcast();
 	}
 
-	// Make sure new back buffers are initialized with scene render results before drawing UI.
-	// This fixes a glitch where only UI is drawn when windows are resized
-	if (FSlateApplication::IsInitialized())
-	{
-		FSlateRenderer* SlateRenderer = FSlateApplication::Get().GetRenderer();
-		if (SlateRenderer)
-		{
-			SlateRenderer->OnPostResizeWindowBackBuffer().AddWeakLambda(this, [this](void*) { RedrawViewports(false); });
-		}
-	}
-
 	UE_LOG(LogInit, Display, TEXT("Game Engine Initialized.") );
 
 	// for IsInitialized()
@@ -1195,15 +1183,6 @@ void UGameEngine::PreExit()
 
 			World->FlushLevelStreaming(EFlushLevelStreamingType::Visibility);
 			World->CleanupWorld();
-		}
-	}
-
-	if (FSlateApplication::IsInitialized())
-	{
-		FSlateRenderer* SlateRenderer = FSlateApplication::Get().GetRenderer();
-		if (SlateRenderer)
-		{
-			SlateRenderer->OnPostResizeWindowBackBuffer().RemoveAll(this);
 		}
 	}
 
@@ -1579,9 +1558,6 @@ void UGameEngine::Tick( float DeltaSeconds, bool bIdleMode )
 	SCOPE_TIME_GUARD(TEXT("UGameEngine::Tick"));
 	SCOPE_CYCLE_COUNTER(STAT_GameEngineTick);
 	NETWORK_PROFILER(GNetworkProfiler.TrackFrameBegin());
-
-	int32 LocalTickCycles=0;
-	CLOCK_CYCLES(LocalTickCycles);
 	
 	// -----------------------------------------------------
 	// Non-World related stuff
@@ -1653,15 +1629,6 @@ void UGameEngine::Tick( float DeltaSeconds, bool bIdleMode )
 		FStudioAnalytics::Tick(DeltaSeconds);
 	}
 
-#if WITH_CHAOS
-	// Before we begin ticking any of our worlds, dispatch the global command lists and queues for physics
-	FChaosSolversModule* ChaosModule = FChaosSolversModule::GetModule();
-	if(ensure(ChaosModule))
-	{
-		ChaosModule->DispatchGlobalCommands();
-	}
-#endif
-
 	// -----------------------------------------------------
 	// Begin ticking worlds
 	// -----------------------------------------------------
@@ -1699,10 +1666,7 @@ void UGameEngine::Tick( float DeltaSeconds, bool bIdleMode )
 			SCOPE_TIME_GUARD(TEXT("UGameEngine::Tick - WorldTick"));
 
 			// Tick the world.
-			GameCycles=0;
-			CLOCK_CYCLES(GameCycles);
 			Context.World()->Tick( LEVELTICK_All, DeltaSeconds );
-			UNCLOCK_CYCLES(GameCycles);
 		}
 
 		if (!IsRunningDedicatedServer() && !IsRunningCommandlet())
@@ -1751,9 +1715,6 @@ void UGameEngine::Tick( float DeltaSeconds, bool bIdleMode )
 			SCOPE_CYCLE_COUNTER(STAT_UpdateLevelStreaming);
 			Context.World()->UpdateLevelStreaming();
 		}
-
-		UNCLOCK_CYCLES(LocalTickCycles);
-		TickCycles=LocalTickCycles;
 
 		// See whether any map changes are pending and we requested them to be committed.
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_UGameEngine_Tick_ConditionalCommitMapChange);

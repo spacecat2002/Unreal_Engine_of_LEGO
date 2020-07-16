@@ -506,7 +506,7 @@ static bool bRequireFocusForGamepadInput = false;
 FAutoConsoleVariableRef CVarRequireFocusForGamepadInput(
 	TEXT("Slate.RequireFocusForGamepadInput"),
 	bRequireFocusForGamepadInput,
-	TEXT("")
+	TEXT("Whether gamepad input should be ignored by the engine if the application is not currently active")
 );
 
 #if PLATFORM_UI_NEEDS_TOOLTIPS
@@ -523,7 +523,7 @@ FAutoConsoleVariableRef CVarEnableTooltips(
 
 static void HandleGlobalInvalidateCVarTriggered(const TArray<FString>& Args)
 {
-	FSlateApplication::Get().InvalidateAllWidgets(false);
+	FSlateApplication::Get().InvalidateAllWidgets(true);
 }
 
 static FAutoConsoleCommand GlobalInvalidateCommand(
@@ -733,6 +733,7 @@ FSlateApplication::FSlateApplication()
 	, bIsFakingTouch(FParse::Param(FCommandLine::Get(), TEXT("simmobile")) || FParse::Param(FCommandLine::Get(), TEXT("faketouches")))
 	, bIsGameFakingTouch( false )
 	, bIsFakingTouched( false )
+	, bHandleDeviceInputWhenApplicationNotActive(false)
 	, bTouchFallbackToMouse( true )
 	, bSoftwareCursorAvailable( false )	
 	, bMenuAnimationsEnabled( false )
@@ -925,6 +926,17 @@ FVector2D FSlateApplication::GetLastCursorPos() const
 void FSlateApplication::SetCursorPos(const FVector2D& MouseCoordinate)
 {
 	GetCursorUser()->SetCursorPosition(MouseCoordinate);
+}
+
+void FSlateApplication::UsePlatformCursorForCursorUser(bool bUsePlatformCursor)
+{
+	if (TSharedPtr<FSlateUser> SlateUser = GetUser(CursorUserIndex))
+	{
+		if (PlatformApplication && PlatformApplication->Cursor)
+		{
+			SlateUser->OverrideCursor(bUsePlatformCursor ? PlatformApplication->Cursor : MakeShared<FFauxSlateCursor>());
+		}
+	}
 }
 
 FWidgetPath FSlateApplication::LocateWindowUnderMouse( FVector2D ScreenspaceMouseCoordinate, const TArray< TSharedRef< SWindow > >& Windows, bool bIgnoreEnabledStatus, int32 UserIndex)
@@ -1785,9 +1797,9 @@ static bool IsFocusInViewport(const TSet<TWeakPtr<SViewport>> Viewports, const F
 {
 	if (Viewports.Num() > 0)
 	{
-		for (const TWeakPtr<SWidget> FocusWidget : FocusPath.Widgets)
+		for (const TWeakPtr<SWidget>& FocusWidget : FocusPath.Widgets)
 		{
-			for (const TWeakPtr<SViewport> Viewport : Viewports)
+			for (const TWeakPtr<SViewport>& Viewport : Viewports)
 			{
 				if (FocusWidget == Viewport)
 				{
@@ -3073,7 +3085,7 @@ void FSlateApplication::ProcessReply( const FWidgetPath& CurrentEventPath, const
 	// are all operations that we shouldn't do if our application isn't Active (The OS ignores half of it, and we'd be in a half state)
 	// We do allow the release of capture and lock when deactivated, this is innocuous of some platforms but required on others when 
 	// the Application deactivated before the window. (Mac is an example of this)
-	if (bAppIsActive || bIsVirtualInteraction)
+	if (bHandleDeviceInputWhenApplicationNotActive || bAppIsActive || bIsVirtualInteraction)
 	{
 		TSharedPtr<SWidget> RequestedMouseCaptor = TheReply.GetMouseCaptor();
 
@@ -5457,6 +5469,10 @@ bool FSlateApplication::OnMouseMove()
 		return false;
 	}
 
+	// Force the cursor user index to use the platform cursor since we've been notified that the platform 
+	// cursor position has changed.
+	UsePlatformCursorForCursorUser(true);
+
 	bool Result = true;
 	const FVector2D CurrentCursorPosition = GetCursorPos();
 	const FVector2D LastCursorPosition = GetLastCursorPos();
@@ -6871,7 +6887,6 @@ bool FSlateApplication::InputPreProcessorsHelper::PreProcessInput(ESlateDebuggin
 	{
 		InputPreProcessorList.RemoveSingleSwap(ProcessorsPendingRemoval[Index]);
 	}
-	InputPreProcessorList.RemoveAll([this](const TSharedPtr<IInputProcessor> Processor) { return ProcessorsPendingRemoval.Contains(Processor); });
 	ProcessorsPendingRemoval.Reset();
 
 	for (TPair<TSharedPtr<IInputProcessor>, int32>& ProcessorIndexPair : ProcessorsPendingAddition)

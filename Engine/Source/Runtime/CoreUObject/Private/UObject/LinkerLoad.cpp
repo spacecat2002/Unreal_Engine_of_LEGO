@@ -84,7 +84,15 @@ bool FLinkerLoad::ShouldCreateThrottledSlowTask() const
 {
 	return ShouldReportProgress() && FSlowTask::ShouldCreateThrottledSlowTask();
 }
-#endif
+
+int32 GTreatVerifyImportErrorsAsWarnings = 0;
+static FAutoConsoleVariableRef CVarTreatVerifyImportErrorsAsWarnings(
+	TEXT("linker.TreatVerifyImportErrorsAsWarnings"),
+	GTreatVerifyImportErrorsAsWarnings,
+	TEXT("If true, the errors emitted due to verify import failures will be warnings instead."),
+	ECVF_Default
+);
+#endif // WITH_EDITOR
 
 
 int32 GAllowCookedDataInEditorBuilds = 0;
@@ -2879,7 +2887,7 @@ FLinkerLoad::EVerifyResult FLinkerLoad::VerifyImport(int32 ImportIndex)
 				{
 					FDeferredMessageLog LoadErrors(NAME_LoadErrors);
 					// put something into the load warnings dialog, with any extra information from above (in WarningAppend)
-					TSharedRef<FTokenizedMessage> TokenizedMessage = LoadErrors.Error(FText());
+					TSharedRef<FTokenizedMessage> TokenizedMessage = GTreatVerifyImportErrorsAsWarnings ? LoadErrors.Warning(FText()) : LoadErrors.Error(FText());
 					TokenizedMessage->AddToken(FAssetNameToken::Create(LinkerRoot->GetName()));
 					TokenizedMessage->AddToken(FTextToken::Create(FText::Format(LOCTEXT("ImportFailure", " : Failed import for {0}"), FText::FromName(GetImportClassName(ImportIndex)))));
 					TokenizedMessage->AddToken(FAssetNameToken::Create(GetImportPathName(ImportIndex)));
@@ -3034,7 +3042,7 @@ bool FLinkerLoad::VerifyImportInner(const int32 ImportIndex, FString& WarningSuf
 		const bool bWasFullyLoaded = Package && Package->IsFullyLoaded() && FPlatformProperties::RequiresCookedData();
 		Import.SourceLinker = !bWasFullyLoaded ? GetPackageLinker(Package, nullptr, InternalLoadFlags, nullptr, nullptr, nullptr, &SerializeContext) : FindExistingLinkerForPackage(Package);
 #if WITH_EDITORONLY_DATA
-		if (Import.SourceLinker && !Package->HasAnyFlags(RF_WasLoaded))
+		if (Import.SourceLinker && !Package->HasAnyFlags(RF_LoadCompleted))
 		{
 			// If we didn't fully load, make sure our metadata is loaded before using this
 			// We need this case for user defined structs due to the LOAD_DeferDependencyLoads code above

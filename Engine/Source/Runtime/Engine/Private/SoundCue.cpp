@@ -30,6 +30,7 @@
 #include "SoundCueGraph/SoundCueGraph.h"
 #include "SoundCueGraph/SoundCueGraphNode_Root.h"
 #include "SoundCueGraph/SoundCueGraphSchema.h"
+#include "Audio.h"
 #endif // WITH_EDITOR
 
 /*-----------------------------------------------------------------------------
@@ -80,12 +81,21 @@ void USoundCue::CacheAggregateValues()
 	{
 		FirstNode->ConditionalPostLoad();
 
-		Duration = FirstNode->GetDuration();
-
-		MaxDistance = FindMaxDistanceInternal();
-		bHasDelayNode = FirstNode->HasDelayNode();
-		bHasConcatenatorNode = FirstNode->HasConcatenatorNode();
-		bHasPlayWhenSilent = FirstNode->IsPlayWhenSilent();
+		if (GIsEditor)
+		{
+			const float NewDuration = FirstNode->GetDuration();
+#if WITH_EDITOR
+			if (!FMath::IsNearlyEqual(NewDuration, Duration) && FMath::IsNearlyZero(Duration))
+			{
+				UE_LOG(LogAudio, Display, TEXT("Cached duration for Sound Cue %s was zero and has changed. Consider manually Re-saving the asset"), *GetFullName());
+			}
+#endif // #if WITH_EDITOR
+			Duration = NewDuration;
+			MaxDistance = FindMaxDistanceInternal();
+			bHasDelayNode = FirstNode->HasDelayNode();
+			bHasConcatenatorNode = FirstNode->HasConcatenatorNode();
+			bHasPlayWhenSilent = FirstNode->IsPlayWhenSilent();
+		}
 	}
 }
 
@@ -516,10 +526,7 @@ float USoundCue::GetDuration()
 	// Always recalc the duration when in the editor as it could change
 	if (GIsEditor || (Duration < SMALL_NUMBER) || HasDelayNode())
 	{
-		if (FirstNode)
-		{
-			Duration = FirstNode->GetDuration();
-		}
+		CacheAggregateValues();
 	}
 
 	return Duration;

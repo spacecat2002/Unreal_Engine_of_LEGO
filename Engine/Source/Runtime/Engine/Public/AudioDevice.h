@@ -1252,9 +1252,6 @@ public:
 		return false;
 	}
 
-	/** Updates the source's modulation controls. */
-	virtual void UpdateModulationControls(const uint32 SourceId, const FSoundModulationControls& InControls) {}
-
 	/** Updates the source effect chain. Only implemented in audio mixer. */
 	virtual void UpdateSourceEffectChain(const uint32 SourceEffectChainId, const TArray<FSourceEffectChainEntry>& SourceEffectChain, const bool bPlayEffectChainTails) {}
 

@@ -49,7 +49,6 @@ public:
 	{
 		InTexture.Bind(Initializer.ParameterMap, TEXT("InTexture"), SPF_Mandatory);
 		InTextureSampler.Bind(Initializer.ParameterMap, TEXT("InTextureSampler"));
-		SceneTextureParameters.Bind(Initializer);
 	}
 	FMobileSceneCaptureCopyPS() {}
 
@@ -67,13 +66,11 @@ public:
 	{
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, RHICmdList.GetBoundPixelShader(), View.ViewUniformBuffer);
 		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), InTexture, InTextureSampler, SamplerStateRHI, TextureRHI);
-		SceneTextureParameters.Set(RHICmdList, RHICmdList.GetBoundPixelShader(), View.FeatureLevel, ESceneTextureSetupMode::All);
 	}
 
 private:
 	LAYOUT_FIELD(FShaderResourceParameter, InTexture)
 	LAYOUT_FIELD(FShaderResourceParameter, InTextureSampler)
-	LAYOUT_FIELD(FSceneTextureShaderParameters, SceneTextureParameters)
 };
 
 /**
@@ -116,6 +113,7 @@ IMPLEMENT_SHADER_TYPE(template<>, FMobileSceneCaptureCopyPS##SCENETYPE, TEXT("/E
 
 IMPLEMENT_MOBILE_SCENE_CAPTURECOPY(SCS_SceneColorHDR);
 IMPLEMENT_MOBILE_SCENE_CAPTURECOPY(SCS_FinalColorLDR);
+IMPLEMENT_MOBILE_SCENE_CAPTURECOPY(SCS_FinalColorHDR);
 IMPLEMENT_MOBILE_SCENE_CAPTURECOPY(SCS_SceneColorHDRNoAlpha);
 IMPLEMENT_MOBILE_SCENE_CAPTURECOPY(SCS_SceneColorSceneDepth);
 IMPLEMENT_MOBILE_SCENE_CAPTURECOPY(SCS_SceneDepth);
@@ -148,6 +146,8 @@ static TShaderRef<FShader> SetCaptureToTargetShaders(FRHICommandListImmediate& R
 			return SetCaptureToTargetShaders<SCS_SceneColorHDR>(RHICmdList, GraphicsPSOInit, View, SourceTexSize, SourceTextureRHI);
 		case SCS_FinalColorLDR:
 			return SetCaptureToTargetShaders<SCS_FinalColorLDR>(RHICmdList, GraphicsPSOInit, View, SourceTexSize, SourceTextureRHI);
+		case SCS_FinalColorHDR:
+			return SetCaptureToTargetShaders<SCS_FinalColorHDR>(RHICmdList, GraphicsPSOInit, View, SourceTexSize, SourceTextureRHI);
 		case SCS_SceneColorHDRNoAlpha:
 			return SetCaptureToTargetShaders<SCS_SceneColorHDRNoAlpha>(RHICmdList, GraphicsPSOInit, View, SourceTexSize, SourceTextureRHI);
 		case SCS_SceneColorSceneDepth:
@@ -175,6 +175,11 @@ static void CopyCaptureToTarget(
 {
 	check(SourceTextureRHI);
 	check(RHICmdList.IsOutsideRenderPass());
+
+	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+	FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(SceneContext, View.GetFeatureLevel(), ESceneTextureSetupMode::All, UniformBuffer_SingleDraw);
+	FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
+	SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
 
 	FGraphicsPipelineStateInitializer GraphicsPSOInit;
 	ESceneCaptureSource CaptureSource = View.Family->SceneCaptureSource;
@@ -324,7 +329,8 @@ void UpdateSceneCaptureContentMobile_RenderThread(
 
 	// update any resources that needed a deferred update
 	FDeferredUpdateResource::UpdateResources(RHICmdList);
-	bool bUseSceneTextures = SceneRenderer->ViewFamily.SceneCaptureSource != SCS_FinalColorLDR;
+	bool bUseSceneTextures = SceneRenderer->ViewFamily.SceneCaptureSource != SCS_FinalColorLDR &&
+								SceneRenderer->ViewFamily.SceneCaptureSource != SCS_FinalColorHDR;
 
 	{
 #if WANTS_DRAW_MESH_EVENTS

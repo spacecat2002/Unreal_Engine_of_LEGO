@@ -25,6 +25,9 @@ class ULevel;
 class UWorld;
 class UPrimitiveComponent;
 
+
+ENGINE_API extern int32 GEnableDeferredPhysicsCreation;
+
 class FRegisterComponentContext
 {
 public:
@@ -355,6 +358,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Components", meta=(Keywords = "Actor Owning Parent"))
 	AActor* GetOwner() const;
 
+	/** Templated version of GetOwner(), will return nullptr if cast fails */
+	template< class T >
+	T* GetOwner() const
+	{
+		return Cast<T>(GetOwner());
+	}
+
 	/** Getter for the cached world pointer, will return null if the component is not actually spawned in a level */
 	virtual UWorld* GetWorld() const override final { return (WorldPrivate ? WorldPrivate : GetWorld_Uncached()); }
 
@@ -424,7 +434,7 @@ public:
 	void SetTickableWhenPaused(bool bTickableWhenPaused);
 
 	/** Create any physics engine information for this component */
-	void CreatePhysicsState();
+	void CreatePhysicsState(bool bAllowDeferral = false);
 
 	/** Shut down any physics engine structure for this component */
 	void DestroyPhysicsState();

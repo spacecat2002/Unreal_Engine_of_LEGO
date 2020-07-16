@@ -29,6 +29,7 @@
 #include "IDirectoryWatcher.h"
 #include "DirectoryWatcherModule.h"
 #include "HAL/PlatformProcess.h"
+#include "HAL/IConsoleManager.h"
 #endif // WITH_EDITOR
 
 // Caching is permanently enabled in editor because memory is not that constrained, disabled by default otherwise
@@ -84,6 +85,7 @@ UAssetRegistryImpl::UAssetRegistryImpl(const FObjectInitializer& ObjectInitializ
 	
 	// The initial value doesn't matter since caching has not yet been computed
 	TempCachingRegisteredClassesVersionNumber = 0;
+	ClassGeneratorNamesRegisteredClassesVersionNumber = 0;
 
 	// Collect all code generator classes (currently BlueprintCore-derived ones)
 	CollectCodeGeneratorClasses();
@@ -451,20 +453,25 @@ void UAssetRegistryImpl::InitializeBlacklistScanFiltersFromIni()
 	}
 }
 
-void UAssetRegistryImpl::CollectCodeGeneratorClasses()
+void UAssetRegistryImpl::CollectCodeGeneratorClasses() const
 {
-	// Work around the fact we don't reference Engine module directly
-	UClass* BlueprintCoreClass = Cast<UClass>(StaticFindObject(UClass::StaticClass(), ANY_PACKAGE, TEXT("BlueprintCore")));
-	if (BlueprintCoreClass)
+	// Only refresh the list if our registered classes have changed
+	if (ClassGeneratorNamesRegisteredClassesVersionNumber != GetRegisteredClassesVersionNumber())
 	{
-		ClassGeneratorNames.Add(BlueprintCoreClass->GetFName());
-
-		TArray<UClass*> BlueprintCoreDerivedClasses;
-		GetDerivedClasses(BlueprintCoreClass, BlueprintCoreDerivedClasses);
-		for (UClass* BPCoreClass : BlueprintCoreDerivedClasses)
+		// Work around the fact we don't reference Engine module directly
+		UClass* BlueprintCoreClass = Cast<UClass>(StaticFindObject(UClass::StaticClass(), ANY_PACKAGE, TEXT("BlueprintCore")));
+		if (BlueprintCoreClass)
 		{
-			ClassGeneratorNames.Add(BPCoreClass->GetFName());
+			ClassGeneratorNames.Add(BlueprintCoreClass->GetFName());
+
+			TArray<UClass*> BlueprintCoreDerivedClasses;
+			GetDerivedClasses(BlueprintCoreClass, BlueprintCoreDerivedClasses);
+			for (UClass* BPCoreClass : BlueprintCoreDerivedClasses)
+			{
+				ClassGeneratorNames.Add(BPCoreClass->GetFName());
+			}
 		}
+		ClassGeneratorNamesRegisteredClassesVersionNumber = GetRegisteredClassesVersionNumber();
 	}
 }
 
@@ -637,7 +644,7 @@ bool UAssetRegistryImpl::GetAssetsByClass(FName ClassName, TArray<FAssetData>& O
 bool UAssetRegistryImpl::GetAssetsByTags(const TArray<FName>& AssetTags, TArray<FAssetData>& OutAssetData) const
 {
 	FARFilter Filter;
-	for (const FName AssetTag : AssetTags)
+	for (const FName& AssetTag : AssetTags)
 	{
 		Filter.TagsAndValues.Add(AssetTag);
 	}
@@ -1271,7 +1278,7 @@ void UAssetRegistryImpl::CompileFilter(const FARFilter& InFilter, FARCompiledFil
 	if (InFilter.bRecursivePaths)
 	{
 		// Add the sub-paths of all the input paths to the expanded list
-		for (const FName PackagePath : InFilter.PackagePaths)
+		for (const FName& PackagePath : InFilter.PackagePaths)
 		{
 			CachedPathTree.GetSubPaths(PackagePath, OutCompiledFilter.PackagePaths);
 		}
@@ -1698,6 +1705,9 @@ void UAssetRegistryImpl::AppendState(const FAssetRegistryState& InState)
 
 void UAssetRegistryImpl::CachePathsFromState(const FAssetRegistryState& InState)
 {
+	// Refreshes ClassGeneratorNames if out of date due to module load
+	CollectCodeGeneratorClasses();
+
 	// Add paths to cache
 	for (const TPair<FName, FAssetData*>& AssetDataPair : InState.CachedAssetsByObjectPath)
 	{
@@ -1964,6 +1974,9 @@ void UAssetRegistryImpl::ScanPathsAndFilesSynchronous(const TArray<FString>& InP
 void UAssetRegistryImpl::AssetSearchDataGathered(const double TickStartTime, TBackgroundGatherResults<FAssetData*>& AssetResults)
 {
 	const bool bFlushFullBuffer = TickStartTime < 0;
+
+	// Refreshes ClassGeneratorNames if out of date due to module load
+	CollectCodeGeneratorClasses();
 
 	// Add the found assets
 	while (AssetResults.Num() > 0)
@@ -2532,6 +2545,9 @@ void UAssetRegistryImpl::ProcessLoadedAssetsToUpdateCache(const double TickStart
 		LoadedAssetsThatDidNotHaveCachedData.Reset();
 	}
 
+	// Refreshes ClassGeneratorNames if out of date due to module load
+	CollectCodeGeneratorClasses();
+
 	// Add the found assets
 	int32 LoadedAssetIndex = 0;
 	for (LoadedAssetIndex = 0; LoadedAssetIndex < LoadedAssetsToProcess.Num(); ++LoadedAssetIndex)
@@ -2791,6 +2807,9 @@ void UAssetRegistryImpl::UpdateTemporaryCaches() const
 
 	TRACE_CPUPROFILER_EVENT_SCOPE(UAssetRegistryImpl::UpdateTemporaryCaches)
 
+	// Refreshes ClassGeneratorNames if out of date due to module load
+	CollectCodeGeneratorClasses();
+
 	TempCachedInheritanceMap = CachedBPInheritanceMap;
 	TempReverseInheritanceMap.Reset();
 	TempCachingRegisteredClassesVersionNumber = GetRegisteredClassesVersionNumber();
@@ -2882,6 +2901,39 @@ void UAssetRegistryImpl::GetSubClasses_Recursive(FName InClassName, TSet<FName>&
 	}
 }
 
+#if WITH_EDITOR
+static FString GAssetRegistryManagementPathsPackageDebugName;
+static FAutoConsoleVariableRef CVarAssetRegistryManagementPathsPackageDebugName(
+	TEXT("AssetRegistry.ManagementPathsPackageDebugName"),
+	GAssetRegistryManagementPathsPackageDebugName,
+	TEXT("If set, when manage references are set, the chain of references that caused this package to become managed will be printed to the log"));
+
+void PrintAssetRegistryManagementPathsPackageDebugInfo(FDependsNode* Node, const TMap<FDependsNode*, FDependsNode*>& EditorOnlyManagementPaths)
+{
+	if (Node)
+	{
+		UE_LOG(LogAssetRegistry, Display, TEXT("SetManageReferences is printing out the reference chain that caused '%s' to be managed"), *GAssetRegistryManagementPathsPackageDebugName);
+		TSet<FDependsNode*> AllVisitedNodes;
+		while (FDependsNode* ReferencingNode = EditorOnlyManagementPaths.FindRef(Node))
+		{
+			UE_LOG(LogAssetRegistry, Display, TEXT("  %s"), *ReferencingNode->GetPackageName().ToString());
+			if (AllVisitedNodes.Contains(ReferencingNode))
+			{
+				UE_LOG(LogAssetRegistry, Display, TEXT("  ... (Circular reference back to %s)"), *ReferencingNode->GetPackageName().ToString());
+				break;
+			}
+
+			AllVisitedNodes.Add(ReferencingNode);
+			Node = ReferencingNode;
+		}
+	}
+	else
+	{
+		UE_LOG(LogAssetRegistry, Warning, TEXT("Node with AssetRegistryManagementPathsPackageDebugName '%s' was not found"), *GAssetRegistryManagementPathsPackageDebugName);
+	}
+}
+#endif // WITH_EDITOR
+
 void UAssetRegistryImpl::SetManageReferences(const TMultiMap<FAssetIdentifier, FAssetIdentifier>& ManagerMap, bool bClearExisting, EAssetRegistryDependencyType::Type RecurseType, ShouldSetManagerPredicate ShouldSetManager)
 {
 	TSet<FDependsNode*> ExistingManagedNodes;
@@ -2938,6 +2990,11 @@ void UAssetRegistryImpl::SetManageReferences(const TMultiMap<FAssetIdentifier, F
 	TArray<FDependsNode*> NodesToHardReference;
 	TArray<FDependsNode*> NodesToRecurse;
 
+#if WITH_EDITOR
+	// Map of every depends node to the node whose reference caused it to become managed by an asset. Used to look up why an asset was chosen to be the manager.
+	TMap<FDependsNode*, FDependsNode*> EditorOnlyManagementPaths;
+#endif
+
 	// For each explicitly set asset
 	for (const TPair<FDependsNode*, TArray<FDependsNode *>>& ExplicitPair : ExplicitMap)
 	{
@@ -2952,7 +3009,11 @@ void UAssetRegistryImpl::SetManageReferences(const TMultiMap<FAssetIdentifier, F
 
 			FDependsNode* SourceNode = ManagerNode;
 
-			auto IterateFunction = [&ManagerNode, &SourceNode, &ShouldSetManager, &NodesToManage, &NodesToHardReference, &NodesToRecurse, &Visited, &ExplicitMap, &ExistingManagedNodes](FDependsNode* TargetNode, EAssetRegistryDependencyType::Type DependencyType)
+			auto IterateFunction = [&ManagerNode, &SourceNode, &ShouldSetManager, &NodesToManage, &NodesToHardReference, &NodesToRecurse, &Visited, &ExplicitMap, &ExistingManagedNodes
+#if WITH_EDITOR
+										, &EditorOnlyManagementPaths
+#endif
+										](FDependsNode* ReferencingNode, FDependsNode* TargetNode, EAssetRegistryDependencyType::Type DependencyType)
 			{
 				// Only recurse if we haven't already visited, and this node passes recursion test
 				if (!Visited.Contains(TargetNode))
@@ -2971,6 +3032,13 @@ void UAssetRegistryImpl::SetManageReferences(const TMultiMap<FAssetIdentifier, F
 					EAssetRegistryDependencyType::Type ManageType = (Flags & EAssetSetManagerFlags::IsDirectSet) ? EAssetRegistryDependencyType::HardManage : EAssetRegistryDependencyType::SoftManage;
 					NodesToManage.Add(TargetNode, ManageType);
 
+#if WITH_EDITOR
+					if (!GAssetRegistryManagementPathsPackageDebugName.IsEmpty())
+					{
+						EditorOnlyManagementPaths.Add(TargetNode, ReferencingNode);
+					}
+#endif
+
 					if (Result == EAssetSetManagerResult::SetAndRecurse)
 					{
 						NodesToRecurse.Push(TargetNode);
@@ -2979,7 +3047,7 @@ void UAssetRegistryImpl::SetManageReferences(const TMultiMap<FAssetIdentifier, F
 			};
 
 			// Check initial node
-			IterateFunction(BaseManagedNode, EAssetRegistryDependencyType::Manage);
+			IterateFunction(nullptr, BaseManagedNode, EAssetRegistryDependencyType::Manage);
 
 			// Do all recursion first, but only if we have a recurse type
 			if (RecurseType)
@@ -2991,7 +3059,10 @@ void UAssetRegistryImpl::SetManageReferences(const TMultiMap<FAssetIdentifier, F
 
 					Visited.Add(SourceNode);
 
-					SourceNode->IterateOverDependencies(IterateFunction, RecurseType);
+					SourceNode->IterateOverDependencies([&IterateFunction, SourceNode](FDependsNode* TargetNode, EAssetRegistryDependencyType::Type DependencyType)
+						{
+							IterateFunction(SourceNode, TargetNode, DependencyType);
+						}, RecurseType);
 				}
 			}
 
@@ -3002,6 +3073,14 @@ void UAssetRegistryImpl::SetManageReferences(const TMultiMap<FAssetIdentifier, F
 			}
 		}
 	}
+
+#if WITH_EDITOR
+	if (!GAssetRegistryManagementPathsPackageDebugName.IsEmpty())
+	{
+		FDependsNode* PackageDebugInfoNode = State.FindDependsNode(FName(*GAssetRegistryManagementPathsPackageDebugName));
+		PrintAssetRegistryManagementPathsPackageDebugInfo(PackageDebugInfoNode, EditorOnlyManagementPaths);
+	}
+#endif
 }
 
 bool UAssetRegistryImpl::SetPrimaryAssetIdForObjectPath(const FName ObjectPath, FPrimaryAssetId PrimaryAssetId)

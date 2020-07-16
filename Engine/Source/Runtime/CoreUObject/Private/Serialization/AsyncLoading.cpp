@@ -110,6 +110,23 @@ bool IsGarbageCollectionLocked();
 /** Global request ID counter */
 static FThreadSafeCounter GPackageRequestID;
 
+TAtomic<int>	GAsyncLoadingFlushIsActive(0);
+
+class FScopeAsyncLoadingFlushIsActive
+{
+public:
+	FScopeAsyncLoadingFlushIsActive()
+	{
+		GAsyncLoadingFlushIsActive++;
+	}
+
+	~FScopeAsyncLoadingFlushIsActive()
+	{
+		GAsyncLoadingFlushIsActive--;
+	}
+};
+
+
 /**
  * Updates FUObjectThreadContext with the current package when processing it.
  * FUObjectThreadContext::AsyncPackage is used by NotifyConstructedDuringAsyncLoading.
@@ -1245,6 +1262,7 @@ struct FPrecacheCallbackHandler
 
 	void UpdatePlatformFilePrecacheThrottling(bool bEnablePrecacheRequests)
 	{
+		CSV_EVENT(FileIO, TEXT("Precache %s"), bEnablePrecacheRequests ? TEXT("Enabled") : TEXT("Disabled"));
 		// If we're not processing precache requests, set the min priority to GAsyncLoadingPrecachePriority + 1
 		EAsyncIOPriorityAndFlags NewMinPriority = bEnablePrecacheRequests ? AIOP_MIN : (EAsyncIOPriorityAndFlags)FMath::Clamp(GAsyncLoadingPrecachePriority + 1, (int32)AIOP_MIN, (int32)AIOP_MAX);
 		FPlatformFileManager::Get().GetPlatformFile().SetAsyncMinimumPriority(NewMinPriority);
@@ -3111,11 +3129,11 @@ void FAsyncPackage::MarkNewObjectForLoadIfItIsAnExport(UObject *Object)
 
 void FAsyncPackage::EventDrivenSerializeExport(int32 LocalExportIndex)
 {
+	LLM_SCOPE(ELLMTag::UObject);
 	SCOPED_LOADTIMER(Package_PreLoadObjects);
 
 	FObjectExport& Export = Linker->ExportMap[LocalExportIndex];
 
-	LLM_SCOPE(ELLMTag::UObject);
 	LLM_SCOPED_TAG_WITH_OBJECT_IN_SET(GetLinkerRoot(), ELLMTagSet::Assets);
 	LLM_SCOPED_TAG_WITH_OBJECT_IN_SET((Export.DynamicType == FObjectExport::EDynamicType::DynamicType) ? UDynamicClass::StaticClass() :
 		CastEventDrivenIndexToObject<UClass>(Export.ClassIndex, false), ELLMTagSet::AssetClasses);
@@ -5779,13 +5797,9 @@ EAsyncPackageState::Type FAsyncPackage::CreateLinker()
 			}
 
 			// Create raw async linker, requiring to be ticked till finished creating.
-			uint32 LinkerFlags = LOAD_None;
-			if (FApp::IsGame() && !GIsEditor)
-			{
-				LinkerFlags |= (LOAD_Async | LOAD_NoVerify);
-			}
+			uint32 LinkerFlags = (LOAD_Async | LOAD_NoVerify);
 #if WITH_EDITOR
-			else if ((Desc.PackageFlags & PKG_PlayInEditor) != 0)
+			if ((!FApp::IsGame() || GIsEditor) && (Desc.PackageFlags & PKG_PlayInEditor) != 0)
 			{
 				LinkerFlags |= LOAD_PackageForPIE;
 			}
@@ -6355,8 +6369,6 @@ EAsyncPackageState::Type FAsyncPackage::FinishExternalReadDependencies()
  */
 EAsyncPackageState::Type FAsyncPackage::PostLoadObjects()
 {
-	LLM_SCOPE(ELLMTag::UObject);
-
 	SCOPE_CYCLE_COUNTER(STAT_FAsyncPackage_PostLoadObjects);
 
 	SCOPED_LOADTIMER(PostLoadObjectsTime);
@@ -6991,24 +7003,10 @@ void FAsyncLoadingThread::FlushLoading(int32 PackageID)
 		{
 			return;
 		}
+		FScopeAsyncLoadingFlushIsActive FlushIsActive;
 
 		FCoreDelegates::OnAsyncLoadingFlush.Broadcast();
 
-#if NO_LOGGING == 0
-		{
-			// Log the flush, but only display once per frame to avoid log spam.
-			static uint64 LastFrameNumber = -1;
-			if (LastFrameNumber != GFrameNumber)
-			{
-				UE_LOG(LogStreaming, Display, TEXT("FAsyncLoadingThread::FlushLoading called, %d QueuedPackagesCount, %d ExistingAsyncPackagesCount"), GetQueuedPackagesCount(), GetExistingAsyncPackagesCount());
-				LastFrameNumber = GFrameNumber;
-			}
-			else
-			{
-				UE_LOG(LogStreaming, Log, TEXT("FAsyncLoadingThread::FlushLoading called, %d QueuedPackagesCount, %d ExistingAsyncPackagesCount"), GetQueuedPackagesCount(), GetExistingAsyncPackagesCount());
-			}
-		}
-#endif
 		double StartTime = FPlatformTime::Seconds();
 
 		// Flush async loaders by not using a time limit. Needed for e.g. garbage collection.

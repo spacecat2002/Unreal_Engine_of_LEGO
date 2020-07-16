@@ -622,6 +622,13 @@ void USkinnedMeshComponent::DestroyRenderState_Concurrent()
 	}
 }
 
+bool USkinnedMeshComponent::RequiresGameThreadEndOfFrameRecreate() const
+{
+	// When we are a master/slave, we cannot recreate render state in parallel as this could 
+	// happen concurrently with our dependent component(s)
+	return MasterPoseComponent.Get() != nullptr || SlavePoseComponents.Num() > 0;
+}
+
 FString USkinnedMeshComponent::GetDetailedInfoInternal() const
 {
 	FString Result;  
@@ -3001,11 +3008,9 @@ bool USkinnedMeshComponent::UpdateLODStatus_Internal(int32 InMasterPoseComponent
 			}
 		}
 
-		// This clamp is needed for meshes with LODs streamed but doesn't work well
-		// with those that have forced LOD level. Need to think of a better solution.
 		if (SkeletalMesh->bIsStreamable && MeshObject)
 		{
-			NewPredictedLODLevel = FMath::Max(NewPredictedLODLevel, MeshObject->MinDesiredLODLevel);
+			NewPredictedLODLevel = FMath::Max<int32>(NewPredictedLODLevel, MeshObject->GetSkeletalMeshRenderData().PendingFirstLODIdx);
 		}
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
@@ -3174,8 +3179,21 @@ void USkinnedMeshComponent::ReleaseResources()
 	DetachFence.BeginFence();
 }
 
+void USkinnedMeshComponent::RegisterLODStreamingCallback(FLODStreamingCallback&& Callback, int32 LODIdx, float TimeoutSecs, bool bOnStreamIn)
+{
+	if (SkeletalMesh)
+	{
+		SkeletalMesh->RegisterMipLevelChangeCallback(this, LODIdx, TimeoutSecs, bOnStreamIn, MoveTemp(Callback));
+	}
+}
+
 void USkinnedMeshComponent::BeginDestroy()
 {
+	if (SkeletalMesh)
+	{
+		SkeletalMesh->RemoveMipLevelChangeCallback(this);
+	}
+
 	Super::BeginDestroy();
 	ReleaseResources();
 

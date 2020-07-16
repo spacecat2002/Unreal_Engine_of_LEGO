@@ -8,6 +8,7 @@
 #include "ScreenRendering.h"
 #include "VulkanPendingState.h"
 #include "VulkanContext.h"
+#include "VulkanSwapChain.h"
 #include "SceneUtils.h"
 #include "RHISurfaceDataConversion.h"
 
@@ -380,8 +381,17 @@ void FTransitionAndLayoutManager::BeginRealRenderPass(FVulkanCommandListContext&
 		FExclusiveDepthStencil RequestedDSAccess = RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil;
 		VkImageLayout FinalLayout = VulkanRHI::GetDepthStencilLayout(RequestedDSAccess, InDevice);
 
-		// Check if we need to transition the depth stencil texture(s) based on the current layout and the requested access mode for the render target
-		if (DSLayout != FinalLayout)
+		
+		const FVulkanSurface* QCOMDepthStencilSurface = Context.GetSwapChain()->GetQCOMDepthStencilSurface();
+		
+		if (RTLayout.GetQCOMRenderPassTransform() != VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR && QCOMDepthStencilSurface)
+		{
+			VkImage QCOMDepthStencilImage = QCOMDepthStencilSurface->Image;
+			VkImageLayout QCOMDepthStencilImageLayout = FindOrAddLayout(QCOMDepthStencilImage, VK_IMAGE_LAYOUT_UNDEFINED);
+			VulkanSetImageLayout(CmdBuffer->GetHandle(), QCOMDepthStencilImage, QCOMDepthStencilImageLayout, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, SetupImageSubresourceRange(QCOMDepthStencilSurface->GetFullAspectMask()));
+			Layouts[QCOMDepthStencilImage] = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		}
+		else if (DSLayout != FinalLayout) // Check if we need to transition the depth stencil texture(s) based on the current layout and the requested access mode for the render target
 		{
 			int32 BarrierIndex = Barrier.AddImageBarrier(Surface.Image, Surface.GetFullAspectMask(), 1);
 			VulkanRHI::EImageLayoutBarrier SrcLayout = VulkanRHI::GetImageLayoutFromVulkanLayout(DSLayout);
@@ -525,28 +535,6 @@ void FTransitionAndLayoutManager::TransitionResource(FVulkanCmdBuffer* CmdBuffer
 	}
 }
 
-void FVulkanCommandListContext::RHISetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, const FRHIDepthRenderTargetView* NewDepthStencilTarget)
-{
-	FRHIDepthRenderTargetView DepthView;
-	if (NewDepthStencilTarget)
-	{
-		DepthView = *NewDepthStencilTarget;
-	}
-	else
-	{
-		DepthView = FRHIDepthRenderTargetView(nullptr, ERenderTargetLoadAction::ENoAction, ERenderTargetStoreAction::ENoAction, ERenderTargetLoadAction::ENoAction, ERenderTargetStoreAction::ENoAction);
-	}
-
-	if (NumSimultaneousRenderTargets == 1 && (!NewRenderTargets || !NewRenderTargets->Texture))
-	{
-		--NumSimultaneousRenderTargets;
-	}
-
-	FRHISetRenderTargetsInfo RenderTargetsInfo(NumSimultaneousRenderTargets, NewRenderTargets, DepthView);
-	
-	RHISetRenderTargetsAndClear(RenderTargetsInfo);
-}
-
 // Find out whether we can re-use current renderpass instead of starting new one
 static bool IsCompatibleRenderPass(FVulkanRenderPass* CurrentRenderPass, FVulkanRenderPass* NewRenderPass)
 {
@@ -593,60 +581,6 @@ static bool IsCompatibleRenderPass(FVulkanRenderPass* CurrentRenderPass, FVulkan
 	}
 	
 	return true;
-}
-
-void FVulkanCommandListContext::RHISetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo)
-{
-	FVulkanRenderTargetLayout RTLayout(*Device, RenderTargetsInfo);
-
-	TransitionAndLayoutManager.GenerateMipsInfo.Reset();
-
-	FVulkanRenderPass* RenderPass = nullptr;
-	FVulkanFramebuffer* Framebuffer = nullptr;
-
-	if (RTLayout.GetExtent2D().width != 0 && RTLayout.GetExtent2D().height != 0)
-	{
-		RenderPass = TransitionAndLayoutManager.GetOrCreateRenderPass(*Device, RTLayout);
-		Framebuffer = TransitionAndLayoutManager.GetOrCreateFramebuffer(*Device, RenderTargetsInfo, RTLayout, RenderPass);
-	}
-
-	if (Framebuffer == TransitionAndLayoutManager.CurrentFramebuffer && RenderPass != nullptr && IsCompatibleRenderPass(TransitionAndLayoutManager.CurrentRenderPass, RenderPass))
-	{
-		return;
-	}
-
-	FVulkanCmdBuffer* CmdBuffer = CommandBufferManager->GetActiveCmdBuffer();
-	if (CmdBuffer->IsInsideRenderPass())
-	{
-		TransitionAndLayoutManager.EndEmulatedRenderPass(CmdBuffer);
-
-		if (GVulkanSubmitAfterEveryEndRenderPass)
-		{
-			CommandBufferManager->SubmitActiveCmdBuffer();
-			CommandBufferManager->PrepareForNewActiveCommandBuffer();
-			CmdBuffer = CommandBufferManager->GetActiveCmdBuffer();
-		}
-	}
-
-	if (SafePointSubmit())
-	{
-		CmdBuffer = CommandBufferManager->GetActiveCmdBuffer();
-	}
-
-	if (RenderPass != nullptr && Framebuffer != nullptr)
-	{
-		if (RenderTargetsInfo.DepthStencilRenderTarget.Texture ||
-			RenderTargetsInfo.NumColorRenderTargets > 1 ||
-			((RenderTargetsInfo.NumColorRenderTargets == 1) && RenderTargetsInfo.ColorRenderTarget[0].Texture))
-		{
-			TransitionAndLayoutManager.BeginEmulatedRenderPass(*this, *Device, CmdBuffer, RenderTargetsInfo, RTLayout, RenderPass, Framebuffer);
-		}
-		else
-		{
-			ensureMsgf(0, TEXT("RenderPass not started! Bad combination of values? Depth %p #Color %d Color0 %p"), (void*)RenderTargetsInfo.DepthStencilRenderTarget.Texture, RenderTargetsInfo.NumColorRenderTargets, (void*)RenderTargetsInfo.ColorRenderTarget[0].Texture);
-		}
-	}
-
 }
 
 template<typename RegionType>
@@ -1370,7 +1304,7 @@ bool FVulkanCommandListContext::FPendingTransition::GatherBarriers(FTransitionAn
 
 			VkImageLayout& Layout = InTransitionAndLayoutManager.FindOrAddLayoutRW(VulkanTexture->Surface.Image, VK_IMAGE_LAYOUT_UNDEFINED);
 			SrcAccess = UpdateAccessFromLayout(SrcAccess, Layout);
-			DestAccess = UpdateAccessFromLayout(DestAccess, Layout);
+			DestAccess = UpdateAccessFromLayout(DestAccess, DestLayout);
 
 
 			VulkanRHI::SetupAndZeroImageBarrierOLD(Barrier, VulkanTexture->Surface, SrcAccess, Layout, DestAccess, DestLayout);
@@ -1789,6 +1723,60 @@ void FVulkanCommandListContext::TransitionUAVResourcesTransferringOwnership(FVul
 	}
 }
 
+VkSurfaceTransformFlagBitsKHR FVulkanCommandListContext::GetSwapchainQCOMRenderPassTransform() const
+{
+	TArray<FVulkanViewport*>& viewports = RHI->GetViewports();
+	if (viewports.Num() == 0)
+	{
+		return VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+	}
+
+	// check(viewports.Num() == 1);
+	return viewports[0]->GetSwapchainQCOMRenderPassTransform();
+}
+
+VkFormat FVulkanCommandListContext::GetSwapchainImageFormat() const
+{
+	TArray<FVulkanViewport*>& viewports = RHI->GetViewports();
+	if (viewports.Num() == 0)
+	{
+		return VK_FORMAT_UNDEFINED;
+	}
+
+	return viewports[0]->GetSwapchainImageFormat();
+}
+
+FVulkanSwapChain* FVulkanCommandListContext::GetSwapChain() const
+{
+	TArray<FVulkanViewport*>& viewports = RHI->GetViewports();
+	uint32 numViewports = viewports.Num();
+
+	if (viewports.Num() == 0)
+	{
+		return nullptr;
+	}
+
+	return viewports[0]->GetSwapChain();
+}
+
+bool FVulkanCommandListContext::IsSwapchainImage(FRHITexture* InTexture) const
+{
+	TArray<FVulkanViewport*>& viewports = RHI->GetViewports();
+	uint32 numViewports = viewports.Num();
+
+	for (uint32 i = 0; i < numViewports; i++)
+	{
+		for (int swapchainImageIdx = 0; swapchainImageIdx < FVulkanViewport::NUM_BUFFERS; swapchainImageIdx++)
+		{
+			VkImage Image = FVulkanTextureBase::Cast(InTexture)->Surface.Image;
+			if (Image == viewports[i]->GetBackBufferImage(swapchainImageIdx))
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
 
 void FVulkanCommandListContext::RHIBeginRenderPass(const FRHIRenderPassInfo& InInfo, const TCHAR* InName)
 {
@@ -1879,12 +1867,13 @@ struct FRenderPassCompatibleHashableStruct
 		FMemory::Memzero(*this);
 	}
 
-	uint8						NumAttachments;
-	uint8						bIsMultiview;
-	uint8						NumSamples;
-	uint8						SubpassHint;
+	uint8							NumAttachments;
+	uint8							bIsMultiview;
+	uint8							NumSamples;
+	uint8							SubpassHint;
+	VkSurfaceTransformFlagBitsKHR	QCOMRenderPassTransform;
 	// +1 for DepthStencil, +1 for Fragment Density
-	VkFormat					Formats[MaxSimultaneousRenderTargets + 2];
+	VkFormat						Formats[MaxSimultaneousRenderTargets + 2];
 };
 
 // Need a separate struct so we can memzero/remove dependencies on reference counts
@@ -1937,7 +1926,12 @@ FVulkanRenderTargetLayout::FVulkanRenderTargetLayout(FVulkanDevice& InDevice, co
 		{
 			FVulkanTextureBase* Texture = FVulkanTextureBase::Cast(RTView.Texture);
 			check(Texture);
-	
+
+			if (InDevice.GetImmediateContext().IsSwapchainImage(RTView.Texture))
+			{
+				QCOMRenderPassTransform = InDevice.GetImmediateContext().GetSwapchainQCOMRenderPassTransform();
+			}
+
 			if (bSetExtent)
 			{
 				ensure(Extent.Extent3D.width == FMath::Max(1u, Texture->Surface.Width >> RTView.MipIndex));
@@ -2123,6 +2117,8 @@ FVulkanRenderTargetLayout::FVulkanRenderTargetLayout(FVulkanDevice& InDevice, co
 	SubpassHint = ESubpassHint::None;
 	CompatibleHashInfo.SubpassHint = 0;
 
+	CompatibleHashInfo.QCOMRenderPassTransform = QCOMRenderPassTransform;
+
 	CompatibleHashInfo.NumSamples = NumSamples;
 	CompatibleHashInfo.bIsMultiview = bIsMultiView;
 
@@ -2164,6 +2160,12 @@ FVulkanRenderTargetLayout::FVulkanRenderTargetLayout(FVulkanDevice& InDevice, co
 		const FRHIRenderPassInfo::FColorEntry& ColorEntry = RPInfo.ColorRenderTargets[Index];
 		FVulkanTextureBase* Texture = FVulkanTextureBase::Cast(ColorEntry.RenderTarget);
 		check(Texture);
+
+		if (InDevice.GetImmediateContext().IsSwapchainImage(ColorEntry.RenderTarget))
+		{
+			QCOMRenderPassTransform = InDevice.GetImmediateContext().GetSwapchainQCOMRenderPassTransform();
+		}
+		check(QCOMRenderPassTransform == VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR || NumAttachmentDescriptions == 0);
 
 		if (bSetExtent)
 		{
@@ -2353,6 +2355,8 @@ FVulkanRenderTargetLayout::FVulkanRenderTargetLayout(FVulkanDevice& InDevice, co
 	SubpassHint = RPInfo.SubpassHint;
 	CompatibleHashInfo.SubpassHint = (uint8)RPInfo.SubpassHint;
 
+	CompatibleHashInfo.QCOMRenderPassTransform = QCOMRenderPassTransform;
+
 	CompatibleHashInfo.NumSamples = NumSamples;
 	CompatibleHashInfo.bIsMultiview = bIsMultiView;
 
@@ -2524,6 +2528,27 @@ FVulkanRenderTargetLayout::FVulkanRenderTargetLayout(const FGraphicsPipelineStat
 
 	SubpassHint = Initializer.SubpassHint;
 	CompatibleHashInfo.SubpassHint = (uint8)Initializer.SubpassHint;
+
+	FVulkanDynamicRHI* RHI = (FVulkanDynamicRHI*)GDynamicRHI;
+	FVulkanCommandListContext& ImmediateContext = RHI->GetDevice()->GetImmediateContext();
+
+	if (RHI->GetDevice()->GetOptionalExtensions().HasQcomRenderPassTransform)
+	{
+		VkFormat SwapchainImageFormat = ImmediateContext.GetSwapchainImageFormat();
+		if (Desc[0].format == SwapchainImageFormat)
+		{
+			// Potential Swapchain RenderPass
+			QCOMRenderPassTransform = ImmediateContext.GetSwapchainQCOMRenderPassTransform();
+		}
+		// TODO: add some checks to detect potential Swapchain pass
+		else if (SwapchainImageFormat == VK_FORMAT_UNDEFINED)
+		{
+			// WA: to have compatible RP created with VK_RENDER_PASS_CREATE_TRANSFORM_BIT_QCOM flag
+			QCOMRenderPassTransform = VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR;
+		}
+	}
+
+	CompatibleHashInfo.QCOMRenderPassTransform = QCOMRenderPassTransform;
 
 	CompatibleHashInfo.NumSamples = NumSamples;
 	CompatibleHashInfo.bIsMultiview = bIsMultiView;

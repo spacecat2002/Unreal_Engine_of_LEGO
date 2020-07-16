@@ -29,6 +29,7 @@ enum class EInstallBundleManagerInitResult : int
 {
 	OK,
 	BuildMetaDataNotFound,
+	RemoteBuildMetaDataNotFound,
 	BuildMetaDataDownloadError,
 	BuildMetaDataParsingError,
 	DistributionRootParseError,
@@ -39,6 +40,7 @@ enum class EInstallBundleManagerInitResult : int
 	BackgroundDownloadsIniDownloadError,
 	NoInternetConnectionError,
 	ConfigurationError,
+	ClientPatchRequiredError,
 	Count
 };
 INSTALLBUNDLEMANAGER_API const TCHAR* LexToString(EInstallBundleManagerInitResult Result);
@@ -99,7 +101,6 @@ enum class EInstallBundleRequestInfoFlags : int32
 	SkippedInvalidBundles = (1 << 4), // Bundle can't be used with this build
 	SkippedUnusableLanguageBundles = (1 << 5), // Can't enqueue language bundles because of current system settings
 	SkippedBundlesDueToBundleSource = (1 << 6), // A bundle source rejected a bundle for some reason
-	InitializationError = (1 << 7), // Can't enqueue because the bundle manager failed to initialize
 };
 ENUM_CLASS_FLAGS(EInstallBundleRequestInfoFlags);
 
@@ -114,10 +115,12 @@ enum class EInstallBundleResult : int
 	ManifestArchiveError,
 	UserCancelledError,
 	InitializationError,
+	InitializationPending,
 	Count,
 };
 INSTALLBUNDLEMANAGER_API const TCHAR* LexToString(EInstallBundleResult Result);
 
+// TODO: Should probably be renamed to EInstallBundleRequestUpdateFlags 
 enum class EInstallBundleRequestFlags : uint32
 {
 	None = 0,
@@ -131,6 +134,13 @@ enum class EInstallBundleRequestFlags : uint32
 	Defaults = UseBackgroundDownloads,
 };
 ENUM_CLASS_FLAGS(EInstallBundleRequestFlags)
+
+enum class EInstallBundleRequestReleaseFlags : uint32
+{
+	None = 0,
+	RemoveFilesIfPossible = (1 << 0),  // Bundle sources must support removal, and bundle must not be part of the source's cache
+};
+ENUM_CLASS_FLAGS(EInstallBundleRequestReleaseFlags)
 
 struct FInstallBundleRequestInfo
 {
@@ -215,7 +225,7 @@ struct FInstallBundleSourceBundleInfo
 	bool bIsStartup = false; // Only one startup bundle allowed.  All sources must agree on this.
 	bool bDoPatchCheck = false; // This bundle should do a patch check and fail if it doesn't pass
 	EInstallBundleInstallState BundleContentState = EInstallBundleInstallState::NotInstalled; // Whether this bundle is up to date
-	bool bIsCached = false;
+	bool bIsCached = false; // Whether this bundle should be cached if this source has a bundle cache
 };
 
 struct FInstallBundleSourceBundleInfoQueryResultInfo
