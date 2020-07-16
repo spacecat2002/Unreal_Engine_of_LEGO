@@ -151,7 +151,7 @@ void FViewportInfo::RecreateDepthBuffer_RenderThread()
 		FTexture2DRHIRef ShaderResourceUnused;
 		FRHIResourceCreateInfo CreateInfo(FClearValueBinding::DepthZero);
 
-		uint32 TargetableTextureFlags = TexCreate_DepthStencilTargetable;
+		ETextureCreateFlags TargetableTextureFlags = TexCreate_DepthStencilTargetable;
 		if (CVarMemorylessDepthStencil.GetValueOnAnyThread() != 0)
 		{
 			// Use Memoryless target, expecting that DepthStencil content is intermediate and can't be preserved between renderpasses
@@ -759,7 +759,7 @@ void FSlateRHIRenderer::DrawWindow_RenderThread(FRHICommandListImmediate& RHICmd
 				|| !ViewportInfo.HDRSourceRT || ViewportInfo.HDRSourceRT->GetRenderTargetItem().TargetableTexture->GetFormat() != BackBuffer->GetFormat()))
 			{
 				// Composition buffers
-				uint32 BaseFlags = RHISupportsRenderTargetWriteMask(GMaxRHIShaderPlatform) ? TexCreate_NoFastClearFinalize : TexCreate_None;
+				ETextureCreateFlags BaseFlags = RHISupportsRenderTargetWriteMask(GMaxRHIShaderPlatform) ? TexCreate_NoFastClearFinalize : TexCreate_None;
 
 				FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(FIntPoint(ViewportWidth, ViewportHeight),
 					PF_B8G8R8A8,
@@ -962,7 +962,7 @@ void FSlateRHIRenderer::DrawWindow_RenderThread(FRHICommandListImmediate& RHICmd
 					if (RHISupportsRenderTargetWriteMask(GMaxRHIShaderPlatform))
 					{
 						IPooledRenderTarget* RenderTargets[] = { ViewportInfo.UITargetRT.GetReference() };
-						FRenderTargetWriteMask::Decode<1>(RHICmdList, ShaderMap, RenderTargets, ViewportInfo.UITargetRTMask, 0, TEXT("UIRTWriteMask"));
+						FRenderTargetWriteMask::Decode<1>(RHICmdList, ShaderMap, RenderTargets, ViewportInfo.UITargetRTMask, TexCreate_None, TEXT("UIRTWriteMask"));
 					}
 
 					RHICmdList.Transition(FRHITransitionInfo(FinalBuffer, ERHIAccess::Unknown, ERHIAccess::RTV));

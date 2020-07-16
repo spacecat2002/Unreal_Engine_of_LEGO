@@ -1114,7 +1114,7 @@ void FSceneRenderTargets::AllocSceneColor(FRHICommandList& RHICmdList)
 			// GCNPerformanceTweets.pdf Tip 37: Warning: Causes additional synchronization between draw calls when using a render target allocated with this flag, use sparingly
 			Desc.TargetableFlags |= TexCreate_UAV;
 		}
-		Desc.Flags |= MobileHWsRGB ? TexCreate_SRGB : 0;
+		Desc.Flags |= MobileHWsRGB ? TexCreate_SRGB : TexCreate_None;
 
 		// By default do not transition to writeable because of possible multiple target states
 		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, GetSceneColorForCurrentShadingPath(), GetSceneColorTargetName(CurrentShadingPath));
@@ -1143,7 +1143,7 @@ void FSceneRenderTargets::AllocMobileMultiViewSceneColor(FRHICommandList& RHICmd
 		Desc.NumSamples = GetNumSceneColorMSAASamples(CurrentFeatureLevel);
 		Desc.ArraySize = 2;
 		Desc.bIsArray = true;
-		Desc.Flags |= MobileHWsRGB ? TexCreate_SRGB : 0;
+		Desc.Flags |= MobileHWsRGB ? TexCreate_SRGB : TexCreate_None;
 		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, MobileMultiViewSceneColor, TEXT("MobileMultiViewSceneColor"));
 	}
 	check(MobileMultiViewSceneColor);
@@ -1690,7 +1690,7 @@ void FSceneRenderTargets::AllocateReflectionTargets(FRHICommandList& RHICmdList,
 		if (!bSharedReflectionTargetsAllocated)
 		{
 			// We write to these cubemap faces individually during filtering
-			uint32 CubeTexFlags = TexCreate_TargetArraySlicesIndependently;
+			ETextureCreateFlags CubeTexFlags = TexCreate_TargetArraySlicesIndependently;
 
 			{
 				// Create scratch cubemaps for filtering passes
@@ -1742,7 +1742,7 @@ void FSceneRenderTargets::AllocateDebugViewModeTargets(FRHICommandList& RHICmdLi
 			QuadOverdrawSize, 
 			PF_R32_UINT,
 			FClearValueBinding::None,
-			0,
+			TexCreate_None,
 			TexCreate_ShaderResource | TexCreate_RenderTargetable | TexCreate_UAV,
 			false
 			);
@@ -1772,10 +1772,10 @@ void FSceneRenderTargets::AllocateCommonDepthTargets(FRHICommandList& RHICmdList
 		bHMDAllocatedDepthTarget = StereoRenderTargetManager && StereoRenderTargetManager->AllocateDepthTexture(0, BufferSize.X, BufferSize.Y, PF_DepthStencil, 1, TexCreate_None, TexCreate_DepthStencilTargetable | TexCreate_ShaderResource | TexCreate_InputAttachmentRead, DepthTex, SRTex, GetNumSceneColorMSAASamples(CurrentFeatureLevel));
 
 		// Allow UAV depth?
-		const uint32 DepthUAVFlag = GRHISupportsDepthUAV ? TexCreate_UAV : 0;
+		const ETextureCreateFlags textureUAVCreateFlags = GRHISupportsDepthUAV ? TexCreate_UAV : TexCreate_None;
 
 		// Create a texture to store the resolved scene depth, and a render-targetable surface to hold the unresolved scene depth.
-		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, PF_DepthStencil, DefaultDepthClear, TexCreate_None, TexCreate_DepthStencilTargetable | TexCreate_ShaderResource | TexCreate_InputAttachmentRead | DepthUAVFlag, false));
+		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, PF_DepthStencil, DefaultDepthClear, TexCreate_None, TexCreate_DepthStencilTargetable | TexCreate_ShaderResource | TexCreate_InputAttachmentRead | textureUAVCreateFlags, false));
 		Desc.NumSamples = GetNumSceneColorMSAASamples(CurrentFeatureLevel);
 		Desc.Flags |= GFastVRamConfig.SceneDepth;
 
@@ -1936,7 +1936,7 @@ void FSceneRenderTargets::AllocateDeferredShadingPathRenderTargets(FRHICommandLi
 			const int32 TranslucencyLightingVolumeDim = GetTranslucencyLightingVolumeDim();
 
 			// TODO: We can skip the and TLV allocations when rendering in forward shading mode
-			uint32 TranslucencyTargetFlags = TexCreate_ShaderResource | TexCreate_RenderTargetable | TexCreate_ReduceMemoryWithTilingMode;
+			ETextureCreateFlags TranslucencyTargetFlags = TexCreate_ShaderResource | TexCreate_RenderTargetable | TexCreate_ReduceMemoryWithTilingMode;
 
 			if (CurrentFeatureLevel >= ERHIFeatureLevel::SM5)
 			{
@@ -1956,7 +1956,7 @@ void FSceneRenderTargets::AllocateDeferredShadingPathRenderTargets(FRHICommandLi
 						TranslucencyLightingVolumeDim,
 						PF_FloatRGBA,
 						FClearValueBinding::Transparent,
-						0,
+						TexCreate_None,
 						TranslucencyTargetFlags,
 						false,
 						1,
@@ -1980,7 +1980,7 @@ void FSceneRenderTargets::AllocateDeferredShadingPathRenderTargets(FRHICommandLi
 						TranslucencyLightingVolumeDim,
 						PF_FloatRGBA,
 						FClearValueBinding::Transparent,
-						0,
+						TexCreate_None,
 						TranslucencyTargetFlags,
 						false,
 						1,
@@ -2424,7 +2424,7 @@ IPooledRenderTarget* FSceneRenderTargets::RequestCustomDepth(FRHICommandListImme
 		{
 			// Skip depth decompression, custom depth doesn't benefit from it
 			// Also disables fast clears, but typically only a small portion of custom depth is written to anyway
-			uint32 CustomDepthFlags = TexCreate_NoFastClear;
+			ETextureCreateFlags CustomDepthFlags = TexCreate_NoFastClear;
 
 			// Todo: Could check if writes stencil here and create min viable target
 			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(CustomDepthBufferSize, PF_DepthStencil, FClearValueBinding::DepthFar, CustomDepthFlags, TexCreate_DepthStencilTargetable | TexCreate_ShaderResource, false));
@@ -2439,7 +2439,7 @@ IPooledRenderTarget* FSceneRenderTargets::RequestCustomDepth(FRHICommandListImme
 			
 			if (bMobilePath)
 			{
-				uint32 CustomDepthStencilTargetableFlags = TexCreate_RenderTargetable | TexCreate_ShaderResource;
+				ETextureCreateFlags CustomDepthStencilTargetableFlags = TexCreate_RenderTargetable | TexCreate_ShaderResource;
 				float DepthFar = (float)ERHIZBuffer::FarPlane;
 				FClearValueBinding DepthFarColor = FClearValueBinding(FLinearColor(DepthFar,DepthFar,DepthFar,DepthFar));
 				

@@ -598,7 +598,7 @@ public:
 	* @param OutAlign - Alignment required for this texture.  Output parameter.
 	*/
 	// FlushType: Thread safe
-	virtual uint64 RHICalcTexture2DPlatformSize(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 NumSamples, uint32 Flags, const FRHIResourceCreateInfo& CreateInfo, uint32& OutAlign) override final
+	virtual uint64 RHICalcTexture2DPlatformSize(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 NumSamples, ETextureCreateFlags Flags, const FRHIResourceCreateInfo& CreateInfo, uint32& OutAlign) override final
 	{
 		return RHI->RHICalcTexture2DPlatformSize(SizeX, SizeY, Format, NumMips, NumSamples, Flags, CreateInfo, OutAlign);
 	}
@@ -614,7 +614,7 @@ public:
 	* @param OutAlign - Alignment required for this texture.  Output parameter.
 	*/
 	// FlushType: Thread safe
-	virtual uint64 RHICalcTexture3DPlatformSize(uint32 SizeX, uint32 SizeY, uint32 SizeZ, uint8 Format, uint32 NumMips, uint32 Flags, const FRHIResourceCreateInfo& CreateInfo, uint32& OutAlign) override final
+	virtual uint64 RHICalcTexture3DPlatformSize(uint32 SizeX, uint32 SizeY, uint32 SizeZ, uint8 Format, uint32 NumMips, ETextureCreateFlags Flags, const FRHIResourceCreateInfo& CreateInfo, uint32& OutAlign) override final
 	{
 		return RHI->RHICalcTexture3DPlatformSize(SizeX, SizeY, SizeZ, Format, NumMips, Flags, CreateInfo, OutAlign);
 	}
@@ -628,7 +628,7 @@ public:
 	* @param OutAlign - Alignment required for this texture.  Output parameter.
 	*/
 	// FlushType: Thread safe
-	virtual uint64 RHICalcTextureCubePlatformSize(uint32 Size, uint8 Format, uint32 NumMips, uint32 Flags, const FRHIResourceCreateInfo& CreateInfo, uint32& OutAlign) override final
+	virtual uint64 RHICalcTextureCubePlatformSize(uint32 Size, uint8 Format, uint32 NumMips, ETextureCreateFlags Flags, const FRHIResourceCreateInfo& CreateInfo, uint32& OutAlign) override final
 	{
 		ensure(Size >= (1u << (FMath::Max(1u, NumMips) - 1)));
 		return RHI->RHICalcTextureCubePlatformSize(Size, Format, NumMips, Flags, CreateInfo, OutAlign);
@@ -677,7 +677,7 @@ public:
 	* @param Flags - ETextureCreateFlags creation flags
 	*/
 	// FlushType: Wait RHI Thread
-	virtual FTexture2DRHIRef RHICreateTexture2D(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 NumSamples, uint32 Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo) override final
+	virtual FTexture2DRHIRef RHICreateTexture2D(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 NumSamples, ETextureCreateFlags Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo) override final
 	{
 		ensure(FMath::Max(SizeX, SizeY) >= (1u << (FMath::Max(1u, NumMips) - 1)));
 		FTexture2DRHIRef Texture = RHI->RHICreateTexture2D(SizeX, SizeY, Format, NumMips, NumSamples, Flags, InResourceState, CreateInfo);
@@ -695,7 +695,7 @@ public:
 	* @param Flags - ETextureCreateFlags creation flags
 	*/
 	// FlushType: Wait RHI Thread
-	virtual FTexture2DRHIRef RHICreateTextureExternal2D(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 NumSamples, uint32 Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo) override final
+	virtual FTexture2DRHIRef RHICreateTextureExternal2D(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 NumSamples, ETextureCreateFlags Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo) override final
 	{
 		ensure(FMath::Max(SizeX, SizeY) >= (1u << (FMath::Max(1u, NumMips) - 1)));
 		FTexture2DRHIRef Texture = RHI->RHICreateTextureExternal2D(SizeX, SizeY, Format, NumMips, NumSamples, Flags, InResourceState, CreateInfo);
@@ -717,7 +717,7 @@ public:
 	* @returns a reference to a 2D texture resource
 	*/
 	// FlushType: Thread safe
-	virtual FTexture2DRHIRef RHIAsyncCreateTexture2D(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 Flags, ERHIAccess InResourceState, void** InitialMipData, uint32 NumInitialMips) override final
+	virtual FTexture2DRHIRef RHIAsyncCreateTexture2D(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, ETextureCreateFlags Flags, ERHIAccess InResourceState, void** InitialMipData, uint32 NumInitialMips) override final
 	{
 		check(GRHISupportsAsyncTextureCreation);
 		ensure(FMath::Max(SizeX, SizeY) >= (1u << (FMath::Max(1u, NumMips) - 1)));
@@ -767,7 +767,7 @@ public:
 	* @param Flags - ETextureCreateFlags creation flags
 	*/
 	// FlushType: Wait RHI Thread
-	virtual FTexture2DArrayRHIRef RHICreateTexture2DArray(uint32 SizeX, uint32 SizeY, uint32 SizeZ, uint8 Format, uint32 NumMips, uint32 NumSamples, uint32 Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo)
+	virtual FTexture2DArrayRHIRef RHICreateTexture2DArray(uint32 SizeX, uint32 SizeY, uint32 SizeZ, uint8 Format, uint32 NumMips, uint32 NumSamples, ETextureCreateFlags Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo)
 	{
 		ensure(FMath::Max(SizeX, SizeY) >= (1u << (FMath::Max(1u, NumMips) - 1)));
 		FTexture2DArrayRHIRef TextureArray = RHI->RHICreateTexture2DArray(SizeX, SizeY, SizeZ, Format, NumMips, NumSamples, Flags, InResourceState, CreateInfo);
@@ -785,7 +785,7 @@ public:
 	* @param Flags - ETextureCreateFlags creation flags
 	*/
 	// FlushType: Wait RHI Thread
-	virtual FTexture3DRHIRef RHICreateTexture3D(uint32 SizeX, uint32 SizeY, uint32 SizeZ, uint8 Format, uint32 NumMips, uint32 Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo) override final
+	virtual FTexture3DRHIRef RHICreateTexture3D(uint32 SizeX, uint32 SizeY, uint32 SizeZ, uint8 Format, uint32 NumMips, ETextureCreateFlags Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo) override final
 	{
 		ensure(FMath::Max(SizeX, FMath::Max(SizeY, SizeZ)) >= (1u << (FMath::Max(1u, NumMips) - 1)));
 		FTexture3DRHIRef Texture = RHI->RHICreateTexture3D(SizeX, SizeY, SizeZ, Format, NumMips, Flags, InResourceState, CreateInfo);
@@ -1011,7 +1011,7 @@ public:
 	* @param Flags - ETextureCreateFlags creation flags
 	*/
 	// FlushType: Wait RHI Thread
-	virtual FTextureCubeRHIRef RHICreateTextureCube(uint32 Size, uint8 Format, uint32 NumMips, uint32 Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo) override final
+	virtual FTextureCubeRHIRef RHICreateTextureCube(uint32 Size, uint8 Format, uint32 NumMips, ETextureCreateFlags Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo) override final
 	{
 		ensure(Size >= (1u << (FMath::Max(1u, NumMips) - 1)));
 		FTextureCubeRHIRef TextureCube = RHI->RHICreateTextureCube(Size, Format, NumMips, Flags, InResourceState, CreateInfo);
@@ -1028,7 +1028,7 @@ public:
 	* @param Flags - ETextureCreateFlags creation flags
 	*/
 	// FlushType: Wait RHI Thread
-	virtual FTextureCubeRHIRef RHICreateTextureCubeArray(uint32 Size, uint32 ArraySize, uint8 Format, uint32 NumMips, uint32 Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo) override final
+	virtual FTextureCubeRHIRef RHICreateTextureCubeArray(uint32 Size, uint32 ArraySize, uint8 Format, uint32 NumMips, ETextureCreateFlags Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo) override final
 	{
 		ensure(Size >= (1u << (FMath::Max(1u, NumMips) - 1)));
 		FTextureCubeRHIRef TextureCubeArray = RHI->RHICreateTextureCubeArray(Size, ArraySize, Format, NumMips, Flags, InResourceState, CreateInfo);
@@ -1632,7 +1632,7 @@ public:
 		return RHI->RHICreateTextureReference_RenderThread(RHICmdList, LastRenderTime);
 	}
 
-	virtual FTexture2DRHIRef RHICreateTexture2D_RenderThread(class FRHICommandListImmediate& RHICmdList, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 NumSamples, uint32 Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo) override final
+	virtual FTexture2DRHIRef RHICreateTexture2D_RenderThread(class FRHICommandListImmediate& RHICmdList, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 NumSamples, ETextureCreateFlags Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo) override final
 	{
 		ensure(FMath::Max(SizeX, SizeY) >= (1u << (FMath::Max(1u, NumMips) - 1)));
 		FTexture2DRHIRef Texture2D = RHI->RHICreateTexture2D_RenderThread(RHICmdList, SizeX, SizeY, Format, NumMips, NumSamples, Flags, InResourceState, CreateInfo);
@@ -1640,7 +1640,7 @@ public:
 		return Texture2D;
 	}
 
-	virtual FTexture2DRHIRef RHICreateTextureExternal2D_RenderThread(class FRHICommandListImmediate& RHICmdList, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 NumSamples, uint32 Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo) override final
+	virtual FTexture2DRHIRef RHICreateTextureExternal2D_RenderThread(class FRHICommandListImmediate& RHICmdList, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 NumSamples, ETextureCreateFlags Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo) override final
 	{
 		ensure(FMath::Max(SizeX, SizeY) >= (1u << (FMath::Max(1u, NumMips) - 1)));
 		FTexture2DRHIRef Texture2D = RHI->RHICreateTextureExternal2D_RenderThread(RHICmdList, SizeX, SizeY, Format, NumMips, NumSamples, Flags, InResourceState, CreateInfo);
@@ -1648,7 +1648,7 @@ public:
 		return Texture2D;
 	}
 
-	virtual FTexture3DRHIRef RHICreateTexture3D_RenderThread(class FRHICommandListImmediate& RHICmdList, uint32 SizeX, uint32 SizeY, uint32 SizeZ, uint8 Format, uint32 NumMips, uint32 Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo) override final
+	virtual FTexture3DRHIRef RHICreateTexture3D_RenderThread(class FRHICommandListImmediate& RHICmdList, uint32 SizeX, uint32 SizeY, uint32 SizeZ, uint8 Format, uint32 NumMips, ETextureCreateFlags Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo) override final
 	{
 		ensure(FMath::Max(SizeX, FMath::Max(SizeY, SizeZ)) >= (1u << (FMath::Max(1u, NumMips) - 1)));
 		FTexture3DRHIRef Texture3D = RHI->RHICreateTexture3D_RenderThread(RHICmdList, SizeX, SizeY, SizeZ, Format, NumMips, Flags, InResourceState, CreateInfo);
@@ -1737,7 +1737,7 @@ public:
 		return SRV;
 	}
 
-	virtual FTextureCubeRHIRef RHICreateTextureCube_RenderThread(class FRHICommandListImmediate& RHICmdList, uint32 Size, uint8 Format, uint32 NumMips, uint32 Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo) override final
+	virtual FTextureCubeRHIRef RHICreateTextureCube_RenderThread(class FRHICommandListImmediate& RHICmdList, uint32 Size, uint8 Format, uint32 NumMips, ETextureCreateFlags Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo) override final
 	{
 		ensure(Size >= (1u << (FMath::Max(1u, NumMips) - 1)));
 		FTextureCubeRHIRef TextureCube = RHI->RHICreateTextureCube_RenderThread(RHICmdList, Size, Format, NumMips, Flags, InResourceState, CreateInfo);
@@ -1745,7 +1745,7 @@ public:
 		return TextureCube;
 	}
 
-	virtual FTextureCubeRHIRef RHICreateTextureCubeArray_RenderThread(class FRHICommandListImmediate& RHICmdList, uint32 Size, uint32 ArraySize, uint8 Format, uint32 NumMips, uint32 Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo) override final
+	virtual FTextureCubeRHIRef RHICreateTextureCubeArray_RenderThread(class FRHICommandListImmediate& RHICmdList, uint32 Size, uint32 ArraySize, uint8 Format, uint32 NumMips, ETextureCreateFlags Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo) override final
 	{
 		ensure(Size >= (1u << (FMath::Max(1u, NumMips) - 1)));
 		FTextureCubeRHIRef TextureCubeArray = RHI->RHICreateTextureCubeArray_RenderThread(RHICmdList, Size, ArraySize, Format, NumMips, Flags, InResourceState, CreateInfo);

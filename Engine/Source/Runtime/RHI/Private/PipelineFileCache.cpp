@@ -451,7 +451,9 @@ bool FPipelineCacheFileFormatPSO::GraphicsDescriptor::StateFromString(const FStr
 	{
 		check(PartEnd - PartIt >= 4 && sizeof(ERenderTargetLoadAction) == 1 && sizeof(ERenderTargetStoreAction) == 1 && sizeof(EPixelFormat) == sizeof(uint32)); //not a very robust parser
 		LexFromString((uint32&)(RenderTargetFormats[Index]), *PartIt++);
-		LexFromString(RenderTargetFlags[Index], *PartIt++);
+		uint32 RTFlags;
+		LexFromString(RTFlags, *PartIt++);
+		RenderTargetFlags[Index] = (ETextureCreateFlags)RTFlags;
 		uint8 Load, Store;
 		LexFromString(Load, *PartIt++);
 		LexFromString(Store, *PartIt++);
@@ -940,7 +942,9 @@ bool FPipelineCacheFileFormatPSO::Verify() const
 				uint32 Format = (uint32)Info.GraphicsDesc.RenderTargetFormats[i];
 				Ar << Format;
 				Info.GraphicsDesc.RenderTargetFormats[i] = (EPixelFormat)Format;
-				Ar << Info.GraphicsDesc.RenderTargetFlags[i];
+				uint32 RTFlags = Info.GraphicsDesc.RenderTargetFlags[i];
+				Ar << RTFlags;
+				Info.GraphicsDesc.RenderTargetFlags[i] = (ETextureCreateFlags)RTFlags;
 				uint8 LoadStore = 0;
 				Ar << LoadStore;
 				Ar << LoadStore;
@@ -1121,7 +1125,7 @@ FPipelineCacheFileFormatPSO::FPipelineCacheFileFormatPSO()
 	for (uint32 i = 0; i < MaxSimultaneousRenderTargets; i++)
 	{
 		PSO.GraphicsDesc.RenderTargetFormats[i] = (EPixelFormat)Init.RenderTargetFormats[i];
-		PSO.GraphicsDesc.RenderTargetFlags[i] = Init.RenderTargetFlags[i];
+		PSO.GraphicsDesc.RenderTargetFlags[i] = (ETextureCreateFlags)Init.RenderTargetFlags[i];
 	}
 	
 	PSO.GraphicsDesc.RenderTargetsActive = Init.RenderTargetsEnabled;

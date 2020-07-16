@@ -175,8 +175,8 @@ inline FRDGTextureDesc FRDGTextureDesc::Create2DDesc(
 	FIntPoint InExtent,
 	EPixelFormat InFormat,
 	const FClearValueBinding& InClearValue,
-	uint32 InFlags,
-	uint32 InTargetableFlags,
+	ETextureCreateFlags InFlags,
+	ETextureCreateFlags InTargetableFlags,
 	bool bInForceSeparateTargetAndShaderResource,
 	uint16 InNumMips)
 {
@@ -189,8 +189,8 @@ inline FRDGTextureDesc FRDGTextureDesc::CreateVolumeDesc(
 	uint32 InSizeZ,
 	EPixelFormat InFormat,
 	const FClearValueBinding& InClearValue,
-	uint32 InFlags,
-	uint32 InTargetableFlags,
+	ETextureCreateFlags InFlags,
+	ETextureCreateFlags InTargetableFlags,
 	bool bInForceSeparateTargetAndShaderResource,
 	uint16 InNumMips)
 {
@@ -201,8 +201,8 @@ inline FRDGTextureDesc FRDGTextureDesc::CreateCubemapDesc(
 	uint32 InExtent,
 	EPixelFormat InFormat,
 	const FClearValueBinding& InClearValue,
-	uint32 InFlags,
-	uint32 InTargetableFlags,
+	ETextureCreateFlags InFlags,
+	ETextureCreateFlags InTargetableFlags,
 	bool bInForceSeparateTargetAndShaderResource,
 	uint32 InArraySize,
 	uint16 InNumMips)
@@ -214,8 +214,8 @@ inline FRDGTextureDesc FRDGTextureDesc::CreateCubemapArrayDesc(
 	uint32 InExtent,
 	EPixelFormat InFormat,
 	const FClearValueBinding& InClearValue,
-	uint32 InFlags,
-	uint32 InTargetableFlags,
+	ETextureCreateFlags InFlags,
+	ETextureCreateFlags InTargetableFlags,
 	bool bInForceSeparateTargetAndShaderResource,
 	uint32 InArraySize,
 	uint16 InNumMips)

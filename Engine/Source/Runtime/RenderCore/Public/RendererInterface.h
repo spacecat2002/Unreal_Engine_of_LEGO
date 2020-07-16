@@ -71,8 +71,8 @@ public:
 		FIntPoint InExtent,
 		EPixelFormat InFormat,
 		const FClearValueBinding& InClearValue,
-		uint32 InFlags,
-		uint32 InTargetableFlags,
+		ETextureCreateFlags InFlags,
+		ETextureCreateFlags InTargetableFlags,
 		bool bInForceSeparateTargetAndShaderResource,
 		uint16 InNumMips = 1,
 		bool InAutowritable = true,
@@ -113,8 +113,8 @@ public:
 		uint32 InSizeZ,
 		EPixelFormat InFormat,
 		const FClearValueBinding& InClearValue,
-		uint32 InFlags,
-		uint32 InTargetableFlags,
+		ETextureCreateFlags InFlags,
+		ETextureCreateFlags InTargetableFlags,
 		bool bInForceSeparateTargetAndShaderResource,
 		uint16 InNumMips = 1,
 		bool InAutowritable = true)
@@ -149,8 +149,8 @@ public:
 		uint32 InExtent,
 		EPixelFormat InFormat,
 		const FClearValueBinding& InClearValue,
-		uint32 InFlags,
-		uint32 InTargetableFlags,
+		ETextureCreateFlags InFlags,
+		ETextureCreateFlags InTargetableFlags,
 		bool bInForceSeparateTargetAndShaderResource,
 		uint32 InArraySize = 1,
 		uint16 InNumMips = 1,
@@ -187,8 +187,8 @@ public:
 		uint32 InExtent,
 		EPixelFormat InFormat,
 		const FClearValueBinding& InClearValue,
-		uint32 InFlags,
-		uint32 InTargetableFlags,
+		ETextureCreateFlags InFlags,
+		ETextureCreateFlags InTargetableFlags,
 		bool bInForceSeparateTargetAndShaderResource,
 		uint32 InArraySize,
 		uint16 InNumMips = 1,
@@ -296,7 +296,7 @@ public:
 
 		FString FlagsString = TEXT("");
 
-		uint32 LocalFlags = Flags | TargetableFlags;
+		ETextureCreateFlags LocalFlags = Flags | TargetableFlags;
 
 		if(LocalFlags & TexCreate_RenderTargetable)
 		{
@@ -370,9 +370,9 @@ public:
 	/** Value allowed for fast clears for this target. */
 	FClearValueBinding ClearValue;
 	/** The flags that must be set on both the shader-resource and the targetable texture. bit mask combined from elements of ETextureCreateFlags e.g. TexCreate_UAV */
-	uint32 Flags = TexCreate_None;
+	ETextureCreateFlags Flags = TexCreate_None;
 	/** The flags that must be set on the targetable texture. bit mask combined from elements of ETextureCreateFlags e.g. TexCreate_UAV */
-	uint32 TargetableFlags = TexCreate_None;
+	ETextureCreateFlags TargetableFlags = TexCreate_None;
 	/** Texture format e.g. PF_B8G8R8A8 */
 	EPixelFormat Format = PF_Unknown;
 	/** In pixels, (0,0) if not set, (x,0) for cube maps, todo: make 3d int vector for volume textures */

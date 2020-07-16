@@ -133,7 +133,7 @@ void FTexture2DStreamIn::DoAsyncCreateWithNewMips(const FContext& Context)
 			const FTexture2DMipMap& RequestedMipMap = OwnerMips[PendingFirstMip];
 			ensure(!IntermediateTextureRHI);
 
-			const uint32 Flags = (Context.Texture->SRGB ? TexCreate_SRGB : 0);
+			const ETextureCreateFlags  Flags = (Context.Texture->SRGB ? TexCreate_SRGB : TexCreate_None);
 			const int32 ResidentMips = OwnerMips.Num() - Context.Resource->GetCurrentFirstMip();
 
 			IntermediateTextureRHI = RHIAsyncCreateTexture2D(

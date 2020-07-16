@@ -546,7 +546,7 @@ void UpdateHistory(
 		{
 			FRDGTextureRef BentNormalHistoryTexture = GraphBuilder.RegisterExternalTexture(*BentNormalHistoryState);
 
-			ETextureCreateFlags HistoryPassOutputFlags = ETextureCreateFlags(UseAOHistoryStabilityPass() ? GFastVRamConfig.DistanceFieldAOHistory : 0);
+			ETextureCreateFlags HistoryPassOutputFlags = ETextureCreateFlags(UseAOHistoryStabilityPass() ? GFastVRamConfig.DistanceFieldAOHistory : TexCreate_None);
 			// Reuse a render target from the pool with a consistent name, for vis purposes
 			FRDGTextureRef NewBentNormalHistory = nullptr;
 			AllocateOrReuseAORenderTarget(GraphBuilder, NewBentNormalHistory, BentNormalHistoryRTName, PF_FloatRGBA, HistoryPassOutputFlags);

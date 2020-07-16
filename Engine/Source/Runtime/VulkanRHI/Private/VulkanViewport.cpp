@@ -30,7 +30,7 @@ struct FRHICommandProcessDeferredDeletionQueue final : public FRHICommand<FRHICo
 };
 
 
-FVulkanBackBuffer::FVulkanBackBuffer(FVulkanDevice& Device, FVulkanViewport* InViewport, EPixelFormat Format, uint32 SizeX, uint32 SizeY, uint32 UEFlags)
+FVulkanBackBuffer::FVulkanBackBuffer(FVulkanDevice& Device, FVulkanViewport* InViewport, EPixelFormat Format, uint32 SizeX, uint32 SizeY, ETextureCreateFlags UEFlags)
 	: FVulkanTexture2D(Device, Format, SizeX, SizeY, 1, 1, VK_NULL_HANDLE, UEFlags, FRHIResourceCreateInfo())
 	, Viewport(InViewport)
 {
@@ -114,7 +114,7 @@ FVulkanBackBuffer::~FVulkanBackBuffer()
 {
 	check(Surface.IsImageOwner() == false);
 	// Clear flags so ~FVulkanTexture2D() doesn't try to re-destroy it
-	Surface.UEFlags = 0;
+	Surface.UEFlags = TexCreate_None;
 	ReleaseAcquiredImage();
 }
 
