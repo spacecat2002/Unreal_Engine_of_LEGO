@@ -48,6 +48,45 @@ static_assert(STRUCT_OFFSET(FRHIDispatchIndirectParameters, ThreadGroupCountX) =
 static_assert(STRUCT_OFFSET(FRHIDispatchIndirectParameters, ThreadGroupCountY) == STRUCT_OFFSET(VkDispatchIndirectCommand, y), "FRHIDispatchIndirectParameters Y dimension is wrong.");
 static_assert(STRUCT_OFFSET(FRHIDispatchIndirectParameters, ThreadGroupCountZ) == STRUCT_OFFSET(VkDispatchIndirectCommand, z), "FRHIDispatchIndirectParameters Z dimension is wrong.");
 
+/** Given a pointer to a RHI texture that was created by the Vulkan RHI, returns a pointer to the FVulkanTextureBase it encapsulates. */
+inline FVulkanTextureBase* GetVulkanTextureFromRHITexture(FRHITexture* Texture)
+{
+	if (!Texture)
+	{
+		return NULL;
+	}
+	if(FRHITextureReference* TexRef = Texture->GetTextureReference())
+	{
+		Texture = TexRef->GetReferencedTexture();
+		if (!Texture)
+		{
+			return NULL;
+		}
+	}
+
+
+	if (FRHITexture2D* Tex2D = Texture->GetTexture2D())
+	{
+		return static_cast<FVulkanTexture2D*>(Tex2D);
+	}
+	else if (FRHITexture2DArray* Tex2DArray = Texture->GetTexture2DArray())
+	{
+		return static_cast<FVulkanTexture2DArray*>(Tex2DArray);
+	}
+	else if (FRHITexture3D* Tex3D = Texture->GetTexture3D())
+	{
+		return static_cast<FVulkanTexture3D*>(Tex3D);
+	}
+	else if (FRHITextureCube* TexCube = Texture->GetTextureCube())
+	{
+		return static_cast<FVulkanTextureCube*>(TexCube);
+	}
+	else
+	{
+		UE_LOG(LogVulkanRHI, Fatal, TEXT("Unknown Vulkan RHI texture type"));
+		return nullptr;
+	}
+}
 
 static FORCEINLINE ShaderStage::EStage GetAndVerifyShaderStage(FRHIGraphicsShader* ShaderRHI, FVulkanPendingGfxState* PendingGfxState)
 {

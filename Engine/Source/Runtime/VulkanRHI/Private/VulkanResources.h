@@ -365,10 +365,11 @@ public:
 		case VK_IMAGE_VIEW_TYPE_CUBE_ARRAY:
 			return 6 * NumArrayLevels;
 		default:
-			UE_LOG(LogVulkanRHI, Error, TEXT("Invalid ViewType %d"), (uint32)ViewType);
+			ErrorInvalidViewType();
 			return 1;
 		}
 	}
+	void ErrorInvalidViewType() const;
 
 	// Full includes Depth+Stencil
 	inline VkImageAspectFlags GetFullAspectMask() const
@@ -697,46 +698,6 @@ public:
 
 	void SetReferencedTexture(FRHITexture* InTexture);
 };
-
-/** Given a pointer to a RHI texture that was created by the Vulkan RHI, returns a pointer to the FVulkanTextureBase it encapsulates. */
-inline FVulkanTextureBase* GetVulkanTextureFromRHITexture(FRHITexture* Texture)
-{
-	if (!Texture)
-	{
-		return NULL;
-	}
-	if(FRHITextureReference* TexRef = Texture->GetTextureReference())
-	{
-		Texture = TexRef->GetReferencedTexture();
-		if (!Texture)
-		{
-			return NULL;
-		}
-	}
-
-
-	if (FRHITexture2D* Tex2D = Texture->GetTexture2D())
-	{
-		return static_cast<FVulkanTexture2D*>(Tex2D);
-	}
-	else if (FRHITexture2DArray* Tex2DArray = Texture->GetTexture2DArray())
-	{
-		return static_cast<FVulkanTexture2DArray*>(Tex2DArray);
-	}
-	else if (FRHITexture3D* Tex3D = Texture->GetTexture3D())
-	{
-		return static_cast<FVulkanTexture3D*>(Tex3D);
-	}
-	else if (FRHITextureCube* TexCube = Texture->GetTextureCube())
-	{
-		return static_cast<FVulkanTextureCube*>(TexCube);
-	}
-	else
-	{
-		UE_LOG(LogVulkanRHI, Fatal, TEXT("Unknown Vulkan RHI texture type"));
-		return NULL;
-	}
-}
 
 class FVulkanQueryPool : public VulkanRHI::FDeviceChild 
 {

@@ -159,6 +159,12 @@ inline void FVulkanSurface::InternalLockWrite(FVulkanCommandListContext& Context
 	}
 }
 
+void FVulkanSurface::ErrorInvalidViewType() const
+{
+	UE_LOG(LogVulkanRHI, Error, TEXT("Invalid ViewType %d"), (uint32)ViewType);
+}
+
+
 struct FRHICommandLockWriteTexture final : public FRHICommand<FRHICommandLockWriteTexture>
 {
 	FVulkanSurface* Surface;
