@@ -1128,7 +1128,8 @@ bool FProjectedShadowInfo::ShouldDrawStaticMeshes(FViewInfo& InCurrentView, FPri
 			const int8 CurFirstLODIdx = InPrimitiveSceneInfo->Proxy->GetCurrentFirstLODIdx_RenderThread();
 
 			const FBoxSphereBounds& Bounds = InPrimitiveSceneInfo->Proxy->GetBounds();
-			ViewLODToRender = ComputeLODForMeshes(InPrimitiveSceneInfo->StaticMeshRelevances, InCurrentView, Bounds.Origin, Bounds.SphereRadius, ForcedLOD, MeshScreenSizeSquared, CurFirstLODIdx, InCurrentView.LODDistanceFactor);	
+			const float LODScale = InCurrentView.LODDistanceFactor * GetCachedScalabilityCVars().StaticMeshLODDistanceScale;
+			ViewLODToRender = ComputeLODForMeshes(InPrimitiveSceneInfo->StaticMeshRelevances, InCurrentView, Bounds.Origin, Bounds.SphereRadius, ForcedLOD, MeshScreenSizeSquared, CurFirstLODIdx, LODScale);
 
 			InCurrentView.PrimitivesLODMask[PrimitiveId] = ViewLODToRender;
 		}
@@ -1252,7 +1253,8 @@ bool FProjectedShadowInfo::ShouldDrawStaticMeshes_AnyThread(
 			const int8 CurFirstLODIdx = Proxy->GetCurrentFirstLODIdx_RenderThread();
 
 			const FBoxSphereBounds& Bounds = PrimitiveSceneInfoCompact.Bounds;
-			ViewLODToRender = ComputeLODForMeshes(PrimitiveSceneInfo->StaticMeshRelevances, CurrentView, Bounds.Origin, Bounds.SphereRadius, ForcedLOD, MeshScreenSizeSquared, CurFirstLODIdx, CurrentView.LODDistanceFactor);
+			const float LODScale = CurrentView.LODDistanceFactor * GetCachedScalabilityCVars().StaticMeshLODDistanceScale;
+			ViewLODToRender = ComputeLODForMeshes(PrimitiveSceneInfo->StaticMeshRelevances, CurrentView, Bounds.Origin, Bounds.SphereRadius, ForcedLOD, MeshScreenSizeSquared, CurFirstLODIdx, LODScale);
 
 			CurrentView.PrimitivesLODMask[PrimitiveId] = ViewLODToRender;
 		}
@@ -1474,7 +1476,8 @@ void FProjectedShadowInfo::AddSubjectPrimitive(FPrimitiveSceneInfo* PrimitiveSce
 
 					if (bWholeSceneShadow)
 					{
-						const bool bDrawShadowDepth = FMath::Square( Bounds.SphereRadius ) > FMath::Square( GMinScreenRadiusForShadowCaster ) * DistanceSquared * CurrentView.LODDistanceFactorSquared;
+						const float LODScaleSquared = FMath::Square(CurrentView.LODDistanceFactor * GetCachedScalabilityCVars().StaticMeshLODDistanceScale);
+						const bool bDrawShadowDepth = FMath::Square( Bounds.SphereRadius ) > FMath::Square( GMinScreenRadiusForShadowCaster ) * DistanceSquared * LODScaleSquared;
 						if( !bDrawShadowDepth )
 						{
 							// cull object if it's too small to be considered as shadow caster
@@ -1677,7 +1680,8 @@ uint64 FProjectedShadowInfo::AddSubjectPrimitive_AnyThread(
 				{
 					const FBoxSphereBounds& Bounds = PrimitiveSceneInfoCompact.Bounds;
 					const float DistanceSquared = (Bounds.Origin - CurrentView->ShadowViewMatrices.GetViewOrigin()).SizeSquared();
-					const bool bDrawShadowDepth = FMath::Square(Bounds.SphereRadius) > FMath::Square(GMinScreenRadiusForShadowCaster) * DistanceSquared * CurrentView->LODDistanceFactorSquared;
+					const float LODScaleSquared = FMath::Square(CurrentView->LODDistanceFactor * GetCachedScalabilityCVars().StaticMeshLODDistanceScale);
+					const bool bDrawShadowDepth = FMath::Square(Bounds.SphereRadius) > FMath::Square(GMinScreenRadiusForShadowCaster) * DistanceSquared * LODScaleSquared;
 					if (!bDrawShadowDepth)
 					{
 						// cull object if it's too small to be considered as shadow caster
@@ -3774,7 +3778,8 @@ struct FGatherShadowPrimitivesPacket
 
 				{
 					const float DistanceSquared = (PrimitiveBounds.Origin - ProjectedShadowInfo->DependentView->ShadowViewMatrices.GetViewOrigin()).SizeSquared();
-					bScreenSpaceSizeCulled = FMath::Square(PrimitiveBounds.SphereRadius) < FMath::Square(MinScreenRadiusForShadowCaster) * DistanceSquared * ProjectedShadowInfo->DependentView->LODDistanceFactorSquared;
+					const float LODScaleSquared = FMath::Square(ProjectedShadowInfo->DependentView->LODDistanceFactor * GetCachedScalabilityCVars().StaticMeshLODDistanceScale);
+					bScreenSpaceSizeCulled = FMath::Square(PrimitiveBounds.SphereRadius) < FMath::Square(MinScreenRadiusForShadowCaster) * DistanceSquared * LODScaleSquared;
 				}
 
 				if (!bScreenSpaceSizeCulled
