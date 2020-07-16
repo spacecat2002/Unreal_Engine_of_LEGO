@@ -65,8 +65,6 @@ struct ENGINE_API FTemporalLODState
 {
 	/** The last two camera origin samples collected for stateless temporal LOD transitions */
 	FVector	TemporalLODViewOrigin[2];
-	/** The last two fov-like parameters from the projection matrix for stateless temporal LOD transitions */
-	float	TemporalDistanceFactor[2];
 	/** The last two time samples collected for stateless temporal LOD transitions */
 	float	TemporalLODTime[2];
 	/** If non-zero, then we are doing temporal LOD smoothing, this is the time interval. */

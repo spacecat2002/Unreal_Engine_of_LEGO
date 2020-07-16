@@ -1007,10 +1007,8 @@ public:
 	/** World origin offset value. Non-zero only for a single frame when origin is rebased */
 	FVector OriginOffsetThisFrame;
 
-	/** FOV based multiplier for cull distance on objects */
+	/** Multiplier for cull distance on objects */
 	float LODDistanceFactor;
-	/** Square of the FOV based multiplier for cull distance on objects */
-	float LODDistanceFactorSquared;
 
 	/** Whether we did a camera cut for this view this frame. */
 	bool bCameraCut;
@@ -1245,11 +1243,6 @@ public:
 	 * @return LOD origin
 	 */
 	FVector GetTemporalLODOrigin(int32 Index, bool bUseLaggedLODTransition = true) const;
-
-	/** Get LOD distance factor: Sqrt(GetLODDistanceFactor()*SphereRadius*SphereRadius / ScreenPercentage) = distance to this LOD transition
-	 * @return distance factor
-	 */
-	float GetLODDistanceFactor() const;
 
 	/** 
 	 * Returns the blend factor between the last two LOD samples

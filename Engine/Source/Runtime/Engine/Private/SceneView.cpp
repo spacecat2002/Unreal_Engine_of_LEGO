@@ -670,7 +670,6 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 	, ShowOnlyPrimitives(InitOptions.ShowOnlyPrimitives)
 	, OriginOffsetThisFrame(InitOptions.OriginOffsetThisFrame)
 	, LODDistanceFactor(InitOptions.LODDistanceFactor)
-	, LODDistanceFactorSquared(InitOptions.LODDistanceFactor*InitOptions.LODDistanceFactor)
 	, bCameraCut(InitOptions.bInCameraCut)
 	, CursorPos(InitOptions.CursorPos)
 	, bIsGameView(false)
@@ -919,23 +918,6 @@ void FSceneView::SetupAntiAliasingMethod()
 	{
 		AntiAliasingMethod = AAM_None;
 	}
-}
-
-static TAutoConsoleVariable<int32> CVarCompensateForFOV(
-	TEXT("lod.CompensateForFOV"),
-	1,
-	TEXT("When not 0 account for FOV in LOD calculations."));
-
-float FSceneView::GetLODDistanceFactor() const
-{
-	bool bCompensateForFOV = bUseFieldOfViewForLOD && CVarCompensateForFOV.GetValueOnAnyThread() != 0;
-	float ScreenScaleX = bCompensateForFOV ? ViewMatrices.GetProjectionMatrix().M[0][0] : 1.0f;
-	float ScreenScaleY = bCompensateForFOV ? ViewMatrices.GetProjectionMatrix().M[1][1] : (float(UnscaledViewRect.Width()) / UnscaledViewRect.Height());
-
-	const float ScreenMultiple = FMath::Max(UnscaledViewRect.Width() / 2.0f * ScreenScaleX,
-		UnscaledViewRect.Height() / 2.0f * ScreenScaleY);
-	float Fac = PI * ScreenMultiple * ScreenMultiple / UnscaledViewRect.Area();
-	return Fac;
 }
 
 FVector FSceneView::GetTemporalLODOrigin(int32 Index, bool bUseLaggedLODTransition) const
