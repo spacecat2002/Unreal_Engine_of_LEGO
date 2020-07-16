@@ -78,6 +78,13 @@ FThreadSafeCounter GDX11RTRebind;
 FThreadSafeCounter GDX11CommitGraphicsResourceTables;
 #endif
 
+static TAutoConsoleVariable<int32> CVarAllowUAVFlushExt(
+	TEXT("r.D3D11.AutoFlushUAV"),
+	1,
+	TEXT("If enabled, use NVAPI (Nvidia), AGS (AMD) or Intel Extensions (Intel) to not flush between dispatches/draw calls")
+	TEXT(" 1: on (default)\n")
+	TEXT(" 0: off"),
+	ECVF_RenderThreadSafe);
 
 
 #if !PLATFORM_HOLOLENS
@@ -226,7 +233,7 @@ void FD3D11DynamicRHI::RHIDispatchComputeShader(uint32 ThreadGroupCountX, uint32
 	
 	Direct3DDeviceIMContext->Dispatch(ThreadGroupCountX, ThreadGroupCountY, ThreadGroupCountZ);	
 	StateCache.SetComputeShader(nullptr);
-	ApplyUAVOverlapState();
+	EnableUAVOverlap();
 }
 
 void FD3D11DynamicRHI::RHIDispatchIndirectComputeShader(FRHIVertexBuffer* ArgumentBufferRHI, uint32 ArgumentOffset)
@@ -247,7 +254,7 @@ void FD3D11DynamicRHI::RHIDispatchIndirectComputeShader(FRHIVertexBuffer* Argume
 
 	Direct3DDeviceIMContext->DispatchIndirect(ArgumentBuffer->Resource,ArgumentOffset);
 	StateCache.SetComputeShader(nullptr);
-	ApplyUAVOverlapState();
+	EnableUAVOverlap();
 }
 
 void FD3D11DynamicRHI::RHISetViewport(float MinX, float MinY, float MinZ, float MaxX, float MaxY, float MaxZ)
@@ -1661,7 +1668,7 @@ void FD3D11DynamicRHI::RHIDrawPrimitive(uint32 BaseVertexIndex,uint32 NumPrimiti
 		Direct3DDeviceIMContext->Draw(VertexCount,BaseVertexIndex);
 	}
 
-	ApplyUAVOverlapState();
+	EnableUAVOverlap();
 }
 
 void FD3D11DynamicRHI::RHIDrawPrimitiveIndirect(FRHIVertexBuffer* ArgumentBufferRHI,uint32 ArgumentOffset)
@@ -1678,7 +1685,7 @@ void FD3D11DynamicRHI::RHIDrawPrimitiveIndirect(FRHIVertexBuffer* ArgumentBuffer
 	StateCache.SetPrimitiveTopology(GetD3D11PrimitiveType(PrimitiveType,bUsingTessellation));
 	Direct3DDeviceIMContext->DrawInstancedIndirect(ArgumentBuffer->Resource,ArgumentOffset);
 
-	ApplyUAVOverlapState();
+	EnableUAVOverlap();
 }
 
 void FD3D11DynamicRHI::RHIDrawIndexedIndirect(FRHIIndexBuffer* IndexBufferRHI, FRHIStructuredBuffer* ArgumentsBufferRHI, int32 DrawArgumentsIndex, uint32 NumInstances)
@@ -1710,7 +1717,7 @@ void FD3D11DynamicRHI::RHIDrawIndexedIndirect(FRHIIndexBuffer* IndexBufferRHI, F
 		check(0);
 	}
 
-	ApplyUAVOverlapState();
+	EnableUAVOverlap();
 }
 
 void FD3D11DynamicRHI::RHIDrawIndexedPrimitive(FRHIIndexBuffer* IndexBufferRHI,int32 BaseVertexIndex,uint32 FirstInstance,uint32 NumVertices,uint32 StartIndex,uint32 NumPrimitives,uint32 NumInstances)
@@ -1753,7 +1760,7 @@ void FD3D11DynamicRHI::RHIDrawIndexedPrimitive(FRHIIndexBuffer* IndexBufferRHI,i
 		Direct3DDeviceIMContext->DrawIndexed(IndexCount,StartIndex,BaseVertexIndex);
 	}
 
-	ApplyUAVOverlapState();
+	EnableUAVOverlap();
 }
 
 void FD3D11DynamicRHI::RHIDrawIndexedPrimitiveIndirect(FRHIIndexBuffer* IndexBufferRHI, FRHIVertexBuffer* ArgumentBufferRHI,uint32 ArgumentOffset)
@@ -1776,7 +1783,7 @@ void FD3D11DynamicRHI::RHIDrawIndexedPrimitiveIndirect(FRHIIndexBuffer* IndexBuf
 	StateCache.SetPrimitiveTopology(GetD3D11PrimitiveType(PrimitiveType,bUsingTessellation));
 	Direct3DDeviceIMContext->DrawIndexedInstancedIndirect(ArgumentBuffer->Resource,ArgumentOffset);
 
-	ApplyUAVOverlapState();
+	EnableUAVOverlap();
 }
 
 // Raster operations.
@@ -1982,13 +1989,88 @@ IRHICommandContextContainer* FD3D11DynamicRHI::RHIGetCommandContextContainer(int
 	return nullptr;
 }
 
+void FD3D11DynamicRHI::EnableUAVOverlap()
+{
+	// This function is called after every draw or dispatch to turn overlap back on if it was turned off by a UAV barrier. This way, the next
+	// draw/dispatch after the barrier executes after everything before it has completed and the caches were flushed, and any subsequent
+	// submissions are allowed to overlap until the next UAV barrier.
+
+	if (bUAVOverlapEnabled || !CVarAllowUAVFlushExt.GetValueOnRenderThread())
+	{
+		return;
+	}
+
+	bUAVOverlapEnabled = true;
+
+#if !PLATFORM_HOLOLENS
+	if (IsRHIDeviceNVIDIA())
+	{
+		NvAPI_D3D11_BeginUAVOverlap(Direct3DDevice);
+	}
+	else if (IsRHIDeviceAMD())
+	{
+		agsDriverExtensionsDX11_BeginUAVOverlap(AmdAgsContext, Direct3DDeviceIMContext);
+	}
+	else if (IsRHIDeviceIntel())
+	{
+#if INTEL_EXTENSIONS
+		if (IntelD3D11ExtensionFuncs && IntelD3D11ExtensionFuncs->D3D11BeginUAVOverlap)
+		{
+			IntelD3D11ExtensionFuncs->D3D11BeginUAVOverlap(IntelExtensionContext);
+		}
+#endif
+	}
+#endif
+}
+
+void FD3D11DynamicRHI::DisableUAVOverlap()
+{
+	// This is called when a transition to UAVCompute or UAVGraphics is executed. It disables overlapping for the next draw/dispatch, so we get the same
+	// behavior as with a UAV barrier in APIs with explicit barriers. Overlapping will be turned back on automatically after the draw/dispatch.
+	if (!bUAVOverlapEnabled)
+	{
+		return;
+	}
+
+#if !PLATFORM_HOLOLENS
+	if (IsRHIDeviceNVIDIA())
+	{
+		NvAPI_D3D11_EndUAVOverlap(Direct3DDevice);
+	}
+	else if (IsRHIDeviceAMD())
+	{
+		agsDriverExtensionsDX11_EndUAVOverlap(AmdAgsContext, Direct3DDeviceIMContext);
+	}
+	else if (IsRHIDeviceIntel())
+	{
+#if INTEL_EXTENSIONS
+		if (IntelD3D11ExtensionFuncs && IntelD3D11ExtensionFuncs->D3D11EndUAVOverlap)
+		{
+			IntelD3D11ExtensionFuncs->D3D11EndUAVOverlap(IntelExtensionContext);
+		}
+#endif
+	}
+#endif
+
+	bUAVOverlapEnabled = false;
+}
+
 void FD3D11DynamicRHI::RHICreateTransition(FRHITransition* Transition, ERHIPipeline SrcPipelines, ERHIPipeline DstPipelines, ERHICreateTransitionFlags CreateFlags, TArrayView<const FRHITransitionInfo> Infos)
 {
 	checkf(FMath::IsPowerOfTwo(uint32(SrcPipelines)) && FMath::IsPowerOfTwo(uint32(DstPipelines)), TEXT("Support for multi-pipe resources is not yet implemented."));
 
 	FD3D11TransitionData* Data = new (Transition->GetPrivateData<FD3D11TransitionData>()) FD3D11TransitionData;
-	Data->SrcPipelines = SrcPipelines;
-	Data->DstPipelines = DstPipelines;
+	Data->bUAVBarrier = false;
+
+	// If we have any transitions to UAVCompute or UAVGraphics, we need to break up the current overlap group.
+	for (const FRHITransitionInfo& Info : Infos)
+	{
+		if (Info.Resource && EnumHasAnyFlags(Info.AccessAfter, ERHIAccess::UAVMask))
+		{
+			Data->bUAVBarrier = true;
+			break;
+		}
+	}
 }
 
 void FD3D11DynamicRHI::RHIReleaseTransition(FRHITransition* Transition)
@@ -1998,195 +2080,45 @@ void FD3D11DynamicRHI::RHIReleaseTransition(FRHITransition* Transition)
 
 void FD3D11DynamicRHI::RHIBeginTransitions(TArrayView<const FRHITransition*> Transitions)
 {
-	for (const FRHITransition* Transition : Transitions)
-	{
-		const FD3D11TransitionData* Data = Transition->GetPrivateData<FD3D11TransitionData>();
-
-		ensureMsgf(Data->SrcPipelines == ERHIPipeline::Graphics, TEXT("The current resource transition is not expected to be begun on the graphics pipeline. Check the choice of ERHIPipeline for this transition."));
-	}
 }
 
 void FD3D11DynamicRHI::RHIEndTransitions(TArrayView<const FRHITransition*> Transitions)
 {
-	for (const FRHITransition* Transition : Transitions)
-	{
-		const FD3D11TransitionData* Data = Transition->GetPrivateData<FD3D11TransitionData>();
-
-		ensureMsgf(Data->DstPipelines == ERHIPipeline::Graphics, TEXT("The current resource transition is not expected to be ended on the graphics pipeline. Check the choice of ERHIPipeline for this transition."));
-	}
-
-}
-
-static TAutoConsoleVariable<int32> CVarAllowUAVFlushExt(
-	TEXT("r.D3D11.AutoFlushUAV"),
-	1,
-	TEXT("If enabled, use NVAPI (Nvidia), AGS (AMD) or Intel Extensions (Intel) to not flush between dispatches/draw calls")
-	TEXT(" 1: on (default)\n")
-	TEXT(" 0: off"),
-	ECVF_RenderThreadSafe);
-
-// Enable this to test if NvAPI/AGS/Intel returned an error during UAV overlap enabling/disabling.
-// By default we do not test because this is an optimalisation (if overlapping is not enabled, GPU execution is slower)
-// Enable it here to validate if overlapping is actually used.
-#if 0
-	#define CHECK_AGS(x)   do { AGSReturnCode err = (x); check(err == AGS_SUCCESS); } while(false)
-	#define CHECK_NVAPI(x) do { NvAPI_Status  err = (x); check(err == NVAPI_OK);    } while(false)
-	#define CHECK_INTEL(x) do { HRESULT       err = (x); check(err == S_OK);        } while(false)
-#else
-	#define CHECK_AGS(x)   do { (x); } while(false)
-	#define CHECK_NVAPI(x) do { (x); } while(false)
-	#define CHECK_INTEL(x) do { (x); } while(false)
-#endif
-
-bool FD3D11DynamicRHI::IsUAVOverlapSupported()
-{
-	return IsRHIDeviceNVIDIA() || IsRHIDeviceAMD() || IsRHIDeviceIntel();
-}
-
-void FD3D11DynamicRHI::ApplyUAVOverlapState()
-{
-	if (UAVOverlapState != EUAVOverlapState::EPending)
+	// The only thing we care about in D3D11 is breaking up the current overlap group if we have a UAV barrier. If overlap is already off, there's nothing to do.
+	if (!bUAVOverlapEnabled)
 	{
 		return;
 	}
 
-	UAVOverlapState = EUAVOverlapState::EOn;
-
-#if !PLATFORM_HOLOLENS
-	if (IsRHIDeviceNVIDIA())
+	for (const FRHITransition* Transition : Transitions)
 	{
-		CHECK_NVAPI(NvAPI_D3D11_BeginUAVOverlap(Direct3DDevice));
-	}
-	else if (IsRHIDeviceAMD())
-	{
-		CHECK_AGS(agsDriverExtensionsDX11_BeginUAVOverlap(AmdAgsContext, Direct3DDeviceIMContext));
-	}
-	else if (IsRHIDeviceIntel())
-	{
-#if INTEL_EXTENSIONS
-		if (IntelD3D11ExtensionFuncs && IntelD3D11ExtensionFuncs->D3D11BeginUAVOverlap)
+		const FD3D11TransitionData* Data = Transition->GetPrivateData<FD3D11TransitionData>();
+		if (Data->bUAVBarrier)
 		{
-			CHECK_INTEL(IntelD3D11ExtensionFuncs->D3D11BeginUAVOverlap(IntelExtensionContext));
+			DisableUAVOverlap();
+			break;
 		}
-#endif
 	}
-	else
-	{
-		ensureMsgf(false, TEXT("BeginUAVOverlap not implemented for this GPU IHV."));
-	}
-#endif
 }
 
 void FD3D11DynamicRHI::RHIBeginUAVOverlap()
 {
-	checkf(UAVOverlapState == EUAVOverlapState::EOff, TEXT("Mismatched call to BeginUAVOverlap. Ensure all calls to RHICmdList.BeginUAVOverlap() are paired with a call to RHICmdList.EndUAVOverlap()."));
-
-	bUAVOverlapAllowed = (CVarAllowUAVFlushExt.GetValueOnRenderThread() != 0) && IsUAVOverlapSupported();
-	if (!bUAVOverlapAllowed)
-	{
-		return;
-	}
-
-	// The driver APIs just set an internal flag which is used by the next dispatch in order to determine if there needs to be a barrier before
-	// running the CS. This means that we need to call the API *after* the next dispatch, because we always want a barrier before the first
-	// dispatch in an overlap group. Consider this example:
-	//
-	//		// Dispatches 1 and 2 are independent, we want them to overlap.
-	//		RHICmdList.BeginUAVOverlap();
-	//		Dispatch1();
-	//		Dispatch2();
-	//		RHICmdList.EndUAVOverlap();
-	//
-	//		// Dispatches 3 and 4 have no inter-dependencies, so they should overlap, but read UAV locations written by 1 and/or 2, so we want a barrier here.
-	//		RHICmdList.BeginUAVOverlap();
-	//		Dispatch3();
-	//		Dispatch4();
-	//		RHICmdList.EndUAVOverlap();
-	//
-	// If we just call the driver extension API immediately here, it will simply overwrite the flag set by the previous end call, and all 4 dispatches will
-	// (potentially) overlap, as if the inner end/begin pair didn't exist, producing incorrect results. Instead, we must set the state to pending here,
-	// and the next RHI draw or dispatch function will call the API after running the draw/dispatch, so the example above results in this actual set of driver calls:
-	//
-	//		Dispatch1();				// Internal barrier before, makes sure we don't overlap any earlier dispatches.
-	//		Vendor_BeginUAVOverlap();	// Set overlap flag to true.
-	//		Dispatch2();				// No barrier, overlaps 1.
-	//		Vendor_EndUAVOverlap();		// Set overlap flag to false.
-	//
-	//		Dispatch3();				// Barrier before, makes sure we don't overlap 2.
-	//		Vendor_BeginUAVOverlap();	// Set overlap flag to true.
-	//		Dispatch4();				// No barrier, overlaps 3.
-	//		Vendor_EndUAVOverlap();		// Set overlap flag to false, any dispatches after this will not overlap.
-	//
-	// This correctly serializes dispatches 2 and 3.
-	UAVOverlapState = EUAVOverlapState::EPending;
+	// No need to do anything here. Overlap is always on and the current group is broken up when we see a transition to UAVCompute or UAVGraphics.
 }
 
 void FD3D11DynamicRHI::RHIEndUAVOverlap()
 {
-	if (!bUAVOverlapAllowed)
-	{
-		return;
-	}
-
-	checkf(UAVOverlapState != EUAVOverlapState::EOff, TEXT("Mismatched call to EndUAVOverlap. Ensure all calls to RHICmdList.BeginUAVOverlap() are paired with a call to RHICmdList.EndUAVOverlap()."));
-
-	// Only call the driver API if we got a dispatch in between the call to RHIBeginUAVOverlap() and this call to RHIEndUAVOverlap(). Otherwise it's an
-	// empty overlap group and we can simply cancel the request.
-	if (UAVOverlapState == EUAVOverlapState::EOn)
-	{
-#if !PLATFORM_HOLOLENS
-		if (IsRHIDeviceNVIDIA())
-		{
-			CHECK_NVAPI(NvAPI_D3D11_EndUAVOverlap(Direct3DDevice));
-		}
-		else if (IsRHIDeviceAMD())
-		{
-			CHECK_AGS(agsDriverExtensionsDX11_EndUAVOverlap(AmdAgsContext, Direct3DDeviceIMContext));
-		}
-		else if (IsRHIDeviceIntel())
-		{
-#if INTEL_EXTENSIONS
-			if (IntelD3D11ExtensionFuncs && IntelD3D11ExtensionFuncs->D3D11EndUAVOverlap)
-			{
-				CHECK_INTEL(IntelD3D11ExtensionFuncs->D3D11EndUAVOverlap(IntelExtensionContext));
-			}
-#endif
-		}
-		else
-		{
-			ensureMsgf(false, TEXT("EndUAVOverlap not implemented for this GPU IHV."));
-		}
-#endif	
-	}
-
-	UAVOverlapState = EUAVOverlapState::EOff;
+	// Same as above.
 }
 
 void FD3D11DynamicRHI::RHIAutomaticCacheFlushAfterComputeShader(bool bEnable)
 {
-	if (bEnable)
-	{
-		if (UAVOverlapState != EUAVOverlapState::EOff)
-		{
-			RHIEndUAVOverlap();
-		}
-	}
-	else
-	{
-		if (UAVOverlapState == EUAVOverlapState::EOff)
-		{
-			RHIBeginUAVOverlap();
-		}
-	}
 }
 
 void FD3D11DynamicRHI::RHIFlushComputeShaderCache()
 {
-	if (UAVOverlapState != EUAVOverlapState::EOff)
-	{
-		RHIEndUAVOverlap();
-		RHIBeginUAVOverlap();
-	}
+	// This is deprecated and shouldn't be called anymore, but we'll honor it just in case.
+	DisableUAVOverlap();
 }
 
 //*********************** StagingBuffer Implementation ***********************//

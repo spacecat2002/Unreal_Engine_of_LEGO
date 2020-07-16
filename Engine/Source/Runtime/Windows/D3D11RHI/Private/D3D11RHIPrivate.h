@@ -348,7 +348,7 @@ private:
 
 struct FD3D11TransitionData
 {
-	ERHIPipeline SrcPipelines, DstPipelines;
+	bool bUAVBarrier;
 };
 
 /** Forward declare the context for the AMD AGS utility library. */
@@ -1030,18 +1030,9 @@ protected:
 	void StopIntelExtensions();
 #endif // INTEL_EXTENSIONS
 
-	enum class EUAVOverlapState
-	{
-		EOff,
-		EPending,
-		EOn
-	};
-
-	// UAV overlap handling
-	bool bUAVOverlapAllowed = false;
-	EUAVOverlapState UAVOverlapState = EUAVOverlapState::EOff;
-	bool IsUAVOverlapSupported();
-	void ApplyUAVOverlapState();
+	bool bUAVOverlapEnabled = false;
+	void EnableUAVOverlap();
+	void DisableUAVOverlap();
 
 #if INTEL_METRICSDISCOVERY
 	void CreateIntelMetricsDiscovery();

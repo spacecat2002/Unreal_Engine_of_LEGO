@@ -2141,6 +2141,9 @@ void FD3D11DynamicRHI::InitD3DDevice()
 		GRHICommandList.GetImmediateCommandList().SetContext(::RHIGetDefaultContext());
 		GRHICommandList.GetImmediateAsyncComputeCommandList().SetComputeContext(::RHIGetDefaultAsyncComputeContext());
 
+		// Now that the driver extensions have been initialized, turn on UAV overlap for the first time.
+		EnableUAVOverlap();
+
 		FRenderResource::InitPreRHIResources();
 		GIsRHIInitialized = true;
 	}
