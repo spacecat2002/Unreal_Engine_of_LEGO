@@ -667,7 +667,7 @@ void FVulkanCommandListContext::RHIBeginTransitions(TArrayView<const FRHITransit
 	//SCOPED_RHI_CONDITIONAL_DRAW_EVENTF(*this, RHIBeginTransitions, bShowTransitionEvents, TEXT("RHIBeginTransitions"));
 }
 
-static void AddSubresourceTransitions(TArray<VkImageMemoryBarrier, TInlineAllocator<8>>& Barriers, VkPipelineStageFlags& SrcStageMask, const VkImageMemoryBarrier& TemplateBarrier, FVulkanImageLayout& CurrentLayout, VkImageLayout DstLayout)
+static void AddSubresourceTransitions(TArray<VkImageMemoryBarrier, TInlineAllocator<8>>& Barriers, VkPipelineStageFlags& SrcStageMask, const VkImageMemoryBarrier& TemplateBarrier, VkImage ImageHandle, FVulkanImageLayout& CurrentLayout, VkImageLayout DstLayout)
 {
 	const uint32 FirstLayer = TemplateBarrier.subresourceRange.baseArrayLayer;
 	const uint32 LastLayer = FirstLayer + CurrentLayout.GetSubresRangeLayerCount(TemplateBarrier.subresourceRange);
@@ -702,6 +702,7 @@ static void AddSubresourceTransitions(TArray<VkImageMemoryBarrier, TInlineAlloca
 				Barrier.srcAccessMask = GetVkAccessMaskForLayout(SrcLayout);
 				Barrier.oldLayout = SrcLayout;
 				Barrier.newLayout = DstLayout;
+				Barrier.image = ImageHandle;
 				Barrier.subresourceRange.baseMipLevel = MipIdx;
 				Barrier.subresourceRange.levelCount = 1;
 				Barrier.subresourceRange.baseArrayLayer = LayerIdx;
@@ -769,7 +770,7 @@ void FVulkanCommandListContext::RHIEndTransitions(TArrayView<const FRHITransitio
 				else
 				{
 					// Slow path, adds one transition per subresource.
-					AddSubresourceTransitions(RealImageBarriers, RealSrcStageMask, ImageBarrier, Layout, DstLayout);
+					AddSubresourceTransitions(RealImageBarriers, RealSrcStageMask, ImageBarrier, Texture->Surface.Image, Layout, DstLayout);
 					continue;
 				}
 			}
