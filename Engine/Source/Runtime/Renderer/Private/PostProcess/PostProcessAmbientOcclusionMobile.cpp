@@ -22,7 +22,7 @@ static TAutoConsoleVariable<int32> CVarMobileGTAOPreIntegratedTextureType(
 
 static TAutoConsoleVariable<int32> CVarMobileAmbientOcclusionQuality(
 	TEXT("r.Mobile.AmbientOcclusionQuality"),
-	1,
+	0,
 	TEXT("The quality of screen space ambient occlusion on mobile platform.\n")
 	TEXT("0: Disabled.\n")
 	TEXT("1: Low.(Default)\n")
