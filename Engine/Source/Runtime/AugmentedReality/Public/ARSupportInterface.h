@@ -125,9 +125,6 @@ public:
 	/** \see UARBlueprintLibrary::GetARTexture() */
 	UARTexture* GetARTexture(EARTextureType TextureType) const;
 	
-	/** \see UARBlueprintLibrary::GetGeoTrackingSupport() */
-	class UARGeoTrackingSupport* GetGeoTrackingSupport() const;
-	
 	/** \see UARBlueprintLibrary::GetCameraIntrinsics() */
 	bool GetCameraIntrinsics(FARCameraIntrinsics& OutCameraIntrinsics) const;
 

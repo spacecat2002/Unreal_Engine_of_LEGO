@@ -429,15 +429,6 @@ UARTexture* FARSupportInterface::GetARTexture(EARTextureType TextureType) const
 	return nullptr;
 }
 
-UARGeoTrackingSupport* FARSupportInterface::GetGeoTrackingSupport() const
-{
-	if (ARImplemention)
-	{
-		return ARImplemention->OnGetGeoTrackingSupport();
-	}
-	return nullptr;
-}
-
 bool FARSupportInterface::GetCameraIntrinsics(FARCameraIntrinsics& OutCameraIntrinsics) const
 {
 	if (ARImplemention)

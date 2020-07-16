@@ -422,10 +422,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Face Tracking")
 	static int32 GetNumberOfTrackedFacesSupported();
 	
-	/** @return the interface object to support Geo tracking, return null on platforms don't support the feature. */
-	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Geo Tracking")
-	static class UARGeoTrackingSupport* GetGeoTrackingSupport();
-	
 	/** @return the intrinsics of the AR camera. */
 	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Geo Tracking")
 	static bool GetCameraIntrinsics(FARCameraIntrinsics& OutCameraIntrinsics);

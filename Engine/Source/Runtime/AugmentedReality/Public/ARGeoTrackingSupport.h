@@ -5,6 +5,7 @@
 #include "ARBlueprintProxy.h"
 #include "Misc/Optional.h"
 #include "ARTypes.h"
+#include "Features/IModularFeature.h"
 
 #include "ARGeoTrackingSupport.generated.h"
 
@@ -83,11 +84,21 @@ enum class EARGeoTrackingAccuracy : uint8
  * Interface class for Geo tracking related features.
  */
 UCLASS(BlueprintType, Abstract, Category="AR|Geo Tracking")
-class AUGMENTEDREALITY_API UARGeoTrackingSupport : public UObject
+class AUGMENTEDREALITY_API UARGeoTrackingSupport : public UObject, public IModularFeature
 {
 	GENERATED_BODY()
 	
 public:
+	static FName GetModularFeatureName()
+	{
+		static FName FeatureName = FName(TEXT("ARGeoTrackingSupport"));
+		return FeatureName;
+	}
+	
+	/** @return the interface object to support Geo tracking, return null on platforms don't support the feature. */
+	UFUNCTION(BlueprintCallable, Category = "AR AugmentedReality|Geo Tracking")
+	static class UARGeoTrackingSupport* GetGeoTrackingSupport();
+	
 	/**
 	 * @return the async task to check Geo tracking availability at the user's current location.
 	 * Can return null if the feature is not supported.

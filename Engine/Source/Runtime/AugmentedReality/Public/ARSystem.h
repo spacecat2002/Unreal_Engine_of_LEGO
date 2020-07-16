@@ -262,7 +262,5 @@ public:
 		//UE_LOG(LogHMD, Log, TEXT("Pin Local Store is not supported on this platform"));
 	}
 	
-	virtual class UARGeoTrackingSupport* OnGetGeoTrackingSupport() const { return nullptr; }
-	
 	virtual bool OnGetCameraIntrinsics(FARCameraIntrinsics& OutCameraIntrinsics) const { return false; }
 };

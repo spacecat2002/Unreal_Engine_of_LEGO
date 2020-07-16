@@ -4,6 +4,15 @@
 #include "ARBlueprintLibrary.h"
 
 
+UARGeoTrackingSupport* UARGeoTrackingSupport::GetGeoTrackingSupport()
+{
+	if (auto Implementation = IModularFeatures::Get().GetModularFeatureImplementation(GetModularFeatureName(), 0))
+	{
+		return static_cast<UARGeoTrackingSupport*>(Implementation);
+	}
+	return nullptr;
+}
+
 TSharedPtr<FCheckGeoTrackingAvailabilityAsyncTask, ESPMode::ThreadSafe> UARGeoTrackingSupport::CheckGeoTrackingAvailability(FString& OutError)
 {
 	OutError = TEXT("Not implemented");
@@ -55,7 +64,7 @@ UCheckGeoTrackingAvailabilityAsyncTaskBlueprintProxy* UCheckGeoTrackingAvailabil
 
 void UCheckGeoTrackingAvailabilityAsyncTaskBlueprintProxy::Activate()
 {
-	if (auto GeoTrackingSupport = UARBlueprintLibrary::GetGeoTrackingSupport())
+	if (auto GeoTrackingSupport = UARGeoTrackingSupport::GetGeoTrackingSupport())
 	{
 		if (Longitude.IsSet() && Latitude.IsSet())
 		{
@@ -117,7 +126,7 @@ UGetGeoLocationAsyncTaskBlueprintProxy* UGetGeoLocationAsyncTaskBlueprintProxy::
 
 void UGetGeoLocationAsyncTaskBlueprintProxy::Activate()
 {
-	if (auto GeoTrackingSupport = UARBlueprintLibrary::GetGeoTrackingSupport())
+	if (auto GeoTrackingSupport = UARGeoTrackingSupport::GetGeoTrackingSupport())
 	{
 		MyTask = GeoTrackingSupport->GetGeoLocationAtWorldPosition(WorldPosition, Error);
 		if (MyTask)

@@ -5,6 +5,7 @@
 #include "Features/IModularFeatures.h"
 #include "Engine/Engine.h"
 #include "ARPin.h"
+#include "ARGeoTrackingSupport.h"
 
 
 TWeakPtr<FARSupportInterface , ESPMode::ThreadSafe> UARBlueprintLibrary::RegisteredARSystem = nullptr;
@@ -911,17 +912,6 @@ UARTexture* UARBlueprintLibrary::GetARTexture(EARTextureType TextureType)
 	if (ARSystem.IsValid())
 	{
 		return ARSystem.Pin()->GetARTexture(TextureType);
-	}
-	return nullptr;
-}
-
-UARGeoTrackingSupport* UARBlueprintLibrary::GetGeoTrackingSupport()
-{
-	auto ARSystem = GetARSystem();
-	if (ARSystem.IsValid())
-	{
-		return ARSystem.Pin()->GetGeoTrackingSupport();
-		
 	}
 	return nullptr;
 }
