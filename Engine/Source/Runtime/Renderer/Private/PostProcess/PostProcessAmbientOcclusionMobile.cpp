@@ -24,8 +24,8 @@ static TAutoConsoleVariable<int32> CVarMobileAmbientOcclusionQuality(
 	TEXT("r.Mobile.AmbientOcclusionQuality"),
 	0,
 	TEXT("The quality of screen space ambient occlusion on mobile platform.\n")
-	TEXT("0: Disabled.\n")
-	TEXT("1: Low.(Default)\n")
+	TEXT("0: Disabled.(Default)\n")
+	TEXT("1: Low.\n")
 	TEXT("2: Medium.\n")
 	TEXT("3: High.\n"),
 	ECVF_Scalability | ECVF_RenderThreadSafe
