@@ -176,39 +176,27 @@ struct FOpenGLES : public FOpenGLBase
 	static void		ProcessExtensions(const FString& ExtensionsString);
 
 	static FORCEINLINE bool SupportsUniformBuffers() { return true; }
-	static FORCEINLINE bool SupportsStructuredBuffers() { return bES31Support; }
-	static FORCEINLINE bool SupportsOcclusionQueries() { return bSupportsOcclusionQueries; }
+	static FORCEINLINE bool SupportsStructuredBuffers() { return true; }
 	static FORCEINLINE bool SupportsExactOcclusionQueries() { return false; }
 	// MLCHANGES BEGIN -- changed to use bSupportsDisjointTimeQueries
 	static FORCEINLINE bool SupportsTimestampQueries() { return bSupportsDisjointTimeQueries; }
 	// MLCHANGES END
 	static bool SupportsDisjointTimeQueries();
-	static FORCEINLINE bool SupportsBlitFramebuffer() { return true; }
 	static FORCEINLINE bool SupportsDepthStencilRead() { return false; }
 	static FORCEINLINE bool SupportsFloatReadSurface() { return SupportsColorBufferHalfFloat(); }
 	static FORCEINLINE bool SupportsMultipleRenderTargets() { return true; }
-	static FORCEINLINE bool SupportsWideMRT() { return bES31Support; }
+	static FORCEINLINE bool SupportsWideMRT() { return true; }
 	static FORCEINLINE bool SupportsMultisampledTextures() { return false; }
-	static FORCEINLINE bool SupportsFences() { return false; }
 	static FORCEINLINE bool SupportsPolygonMode() { return false; }
-	static FORCEINLINE bool SupportsSamplerObjects() { return IsES31Usable(); }
 	static FORCEINLINE bool SupportsTexture3D() { return true; }
 	static FORCEINLINE bool SupportsMobileMultiView() { return bSupportsMobileMultiView; }
 	static FORCEINLINE bool SupportsImageExternal() { return false; }
 	static FORCEINLINE bool SupportsTextureLODBias() { return false; }
 	static FORCEINLINE bool SupportsTextureCompare() { return false; }
-	static FORCEINLINE bool SupportsTextureBaseLevel() { return false; }
-	static FORCEINLINE bool SupportsTextureMaxLevel() { return false; }
-	static FORCEINLINE bool SupportsVertexAttribInteger() { return false; }
-	static FORCEINLINE bool SupportsVertexAttribShort() { return false; }
-	static FORCEINLINE bool SupportsVertexAttribByte() { return false; }
-	static FORCEINLINE bool SupportsVertexAttribDouble() { return false; }
 	static FORCEINLINE bool SupportsDrawIndexOffset() { return false; }
 	static FORCEINLINE bool SupportsResourceView() { return glTexBufferEXT != nullptr; }
 	static FORCEINLINE bool SupportsDiscardFrameBuffer() { return true; }
 	static FORCEINLINE bool SupportsIndexedExtensions() { return false; }
-	static FORCEINLINE bool SupportsTextureFloat() { return bSupportsTextureFloat; }
-	static FORCEINLINE bool SupportsTextureHalfFloat() { return bSupportsTextureHalfFloat; }
 	static FORCEINLINE bool SupportsColorBufferFloat() { return bSupportsColorBufferFloat; }
 	static FORCEINLINE bool SupportsColorBufferHalfFloat() { return bSupportsColorBufferHalfFloat; }
 	static FORCEINLINE bool SupportsShaderFramebufferFetch() { return bSupportsShaderFramebufferFetch; }
@@ -216,41 +204,22 @@ struct FOpenGLES : public FOpenGLBase
 	static FORCEINLINE bool SupportsMultisampledRenderToTexture() { return bSupportsMultisampledRenderToTexture; }
 	static FORCEINLINE bool SupportsVertexArrayBGRA() { return false; }
 	static FORCEINLINE bool SupportsBGRA8888() { return bSupportsBGRA8888; }
-	static FORCEINLINE bool SupportsBGRA8888RenderTarget() { return bSupportsBGRA8888RenderTarget; }
-	static FORCEINLINE bool SupportsSRGB() { return IsES31Usable(); }
-	static FORCEINLINE bool SupportsRGBA8() { return bSupportsRGBA8; }
 	static FORCEINLINE bool SupportsDXT() { return bSupportsDXT; }
 	static FORCEINLINE bool SupportsETC2() { return bSupportsETC2; }
-	static FORCEINLINE bool SupportsCombinedDepthStencilAttachment() { return false; }
-	static FORCEINLINE bool SupportsTextureCubeLodEXT() { return bSupportsTextureCubeLodEXT; }
-	static FORCEINLINE bool SupportsShaderTextureLod() { return bSupportsShaderTextureLod; }
-	static FORCEINLINE bool SupportsShaderTextureCubeLod() { return bSupportsShaderTextureCubeLod; }
 	static FORCEINLINE GLenum GetDepthFormat() { return GL_DEPTH_COMPONENT24; }
 	static FORCEINLINE GLenum GetShadowDepthFormat() { return GL_DEPTH_COMPONENT16; }
 	static FORCEINLINE bool SupportsFramebufferSRGBEnable() { return false; }
 	static FORCEINLINE bool SupportsRGB10A2() { return bSupportsRGB10A2; }
-	static FORCEINLINE bool UseES30ShadingLanguage() { return bUseES30ShadingLanguage; }
-	static FORCEINLINE bool SupportsComputeShaders() { return bES31Support; }
+	static FORCEINLINE bool SupportsComputeShaders() { return true; }
 	static FORCEINLINE bool SupportsDrawIndirect() { return true; }
 
 	static FORCEINLINE bool RequiresUEShaderFramebufferFetchDef() { return bRequiresUEShaderFramebufferFetchDef; }
-	static FORCEINLINE bool RequiresDontEmitPrecisionForTextureSamplers() { return bRequiresDontEmitPrecisionForTextureSamplers; }
-	static FORCEINLINE bool RequiresTextureCubeLodEXTToTextureCubeLodDefine() { return bRequiresTextureCubeLodEXTToTextureCubeLodDefine; }
-	static FORCEINLINE bool SupportsStandardDerivativesExtension() { return bSupportsStandardDerivativesExtension; }
-	static FORCEINLINE bool RequiresGLFragCoordVaryingLimitHack() { return bRequiresGLFragCoordVaryingLimitHack; }
 	static FORCEINLINE bool HasBinaryProgramRetrievalFailed() { return bBinaryProgramRetrievalFailed; }
-	static FORCEINLINE bool RequiresRoundFunctionHack() { return bRequiresRoundFunctionHack; }
 	static FORCEINLINE bool RequiresDisabledEarlyFragmentTests() { return bRequiresDisabledEarlyFragmentTests; }
 	static FORCEINLINE bool RequiresARMShaderFramebufferFetchDepthStencilUndef() { return bRequiresARMShaderFramebufferFetchDepthStencilUndef; }
-	static FORCEINLINE bool IsCheckingShaderCompilerHacks() { return bIsCheckingShaderCompilerHacks; }
-	static FORCEINLINE bool IsLimitingShaderCompileCount() { return bIsLimitingShaderCompileCount; }
 
 	// Adreno doesn't support HALF_FLOAT
 	static FORCEINLINE int32 GetReadHalfFloatPixelsEnum() { return GL_FLOAT; }
-
-	static FORCEINLINE GLenum GetVertexHalfFloatFormat() { return GL_HALF_FLOAT; }
-	static FORCEINLINE GLenum GetTextureHalfFloatPixelType() { return GL_HALF_FLOAT; }
-	static FORCEINLINE GLenum GetTextureHalfFloatInternalFormat() { return GL_RGBA16F; }
 	static FORCEINLINE GLint GetMaxMSAASamplesTileMem() { return MaxMSAASamplesTileMem; }
 
 	// On iOS both glMapBufferOES() and glBufferSubData() for immediate vertex and index data
@@ -655,8 +624,11 @@ struct FOpenGLES : public FOpenGLBase
 
 	static FORCEINLINE void FramebufferTexture2D(GLenum Target, GLenum Attachment, GLenum TexTarget, GLuint Texture, GLint Level)
 	{
-		check(Attachment == GL_COLOR_ATTACHMENT0 || Attachment == GL_DEPTH_ATTACHMENT || Attachment == GL_STENCIL_ATTACHMENT
-			|| (SupportsMultipleRenderTargets() && Attachment >= GL_COLOR_ATTACHMENT0 && Attachment <= GL_COLOR_ATTACHMENT7));
+		check(Attachment == GL_COLOR_ATTACHMENT0 ||
+				Attachment == GL_DEPTH_ATTACHMENT || 
+				Attachment == GL_STENCIL_ATTACHMENT ||
+				Attachment == GL_DEPTH_STENCIL_ATTACHMENT ||
+				(SupportsMultipleRenderTargets() && Attachment >= GL_COLOR_ATTACHMENT0 && Attachment <= GL_COLOR_ATTACHMENT7));
 
 		glFramebufferTexture2D(Target, Attachment, TexTarget, Texture, Level);
 		VERIFY_GL(FramebufferTexture_2D);
@@ -742,35 +714,20 @@ struct FOpenGLES : public FOpenGLBase
 	}
 
 protected:
-	/** GL_ARB_occlusion_query2, GL_EXT_occlusion_query_boolean */
-	static bool bSupportsOcclusionQueries;
-
 	/** GL_EXT_disjoint_timer_query */
 	static bool bSupportsDisjointTimeQueries;
 
 	/** Some timer query implementations are never disjoint */
 	static bool bTimerQueryCanBeDisjoint;
 
-	/** GL_OES_rgb8_rgba8 */
-	static bool bSupportsRGBA8;
-
 	/** GL_APPLE_texture_format_BGRA8888 */
 	static bool bSupportsBGRA8888;
-
-	/** Whether BGRA supported as color attachment */
-	static bool bSupportsBGRA8888RenderTarget;
 
 	/** GL_NV_texture_compression_s3tc, GL_EXT_texture_compression_s3tc */
 	static bool bSupportsDXT;
 
 	/** OpenGL ES 3.0 profile */
 	static bool bSupportsETC2;
-
-	/** GL_OES_texture_float */
-	static bool bSupportsTextureFloat;
-
-	/** GL_OES_texture_half_float */
-	static bool bSupportsTextureHalfFloat;
 
 	/** GL_EXT_color_buffer_float */
 	static bool bSupportsColorBufferFloat;
@@ -802,38 +759,14 @@ protected:
 	/** GL_NV_framebuffer_blit */
 	static bool bSupportsNVFrameBufferBlit;
 
-	/** textureCubeLodEXT */
-	static bool bSupportsTextureCubeLodEXT;
-
-	/** GL_EXT_shader_texture_lod */
-	static bool bSupportsShaderTextureLod;
-
-	/** textureCubeLod */
-	static bool bSupportsShaderTextureCubeLod;
-
-	/** GL_EXT_texture_storage */
-	static bool bSupportsTextureStorageEXT;
-
 	/** GL_OES_standard_derivations */
 	static bool bSupportsStandardDerivativesExtension;
 
 	/** Maximum number of MSAA samples supported on chip in tile memory, or 1 if not available */
 	static GLint MaxMSAASamplesTileMem;
 public:
-	/* This is a hack to remove the calls to "precision sampler" defaults which are produced by the cross compiler however don't compile on some android platforms */
-	static bool bRequiresDontEmitPrecisionForTextureSamplers;
-
-	/* Some android platforms require textureCubeLod to be used some require textureCubeLodEXT however they either inconsistently or don't use the GL_TextureCubeLodEXT extension definition */
-	static bool bRequiresTextureCubeLodEXTToTextureCubeLodDefine;
-
-	/* This is a hack to remove the gl_FragCoord if shader will fail to link if exceeding the max varying on android platforms */
-	static bool bRequiresGLFragCoordVaryingLimitHack;
-
 	/* This indicates failure when attempting to retrieve driver's binary representation of the hack program  */
 	static bool bBinaryProgramRetrievalFailed;
-
-	/* This is a hack to add a round() function when not available to a shader compiler */
-	static bool bRequiresRoundFunctionHack;
 
 	/* Some Mali devices do not work correctly with early_fragment_test enabled */
 	static bool bRequiresDisabledEarlyFragmentTests;
@@ -841,17 +774,11 @@ public:
 	/* This is to avoid a bug in Adreno drivers that define GL_ARM_shader_framebuffer_fetch_depth_stencil even when device does not support this extension  */
 	static bool bRequiresARMShaderFramebufferFetchDepthStencilUndef;
 
-	/* Indicates shader compiler hack checks are being tested */
-	static bool bIsCheckingShaderCompilerHacks;
-
 	/** GL_OES_vertex_type_10_10_10_2 */
 	static bool bSupportsRGB10A2;
 
 	/** GL_OES_get_program_binary */
 	static bool bSupportsProgramBinary;
-
-	/* Indicates shader compiler should be limited */
-	static bool bIsLimitingShaderCompileCount;
 
 	enum class EFeatureLevelSupport : uint8
 	{
@@ -863,15 +790,6 @@ public:
 
 	/** Describes which feature level is currently being supported */
 	static EFeatureLevelSupport CurrentFeatureLevelSupport;
-
-	// whether to use ES 3.0 function glTexStorage2D to allocate storage for GL_HALF_FLOAT_OES render target textures
-	static bool bUseHalfFloatTexStorage;
-
-	// whether to use ES 3.0 shading language
-	static bool bUseES30ShadingLanguage;
-
-	// whether device supports ES 3.1
-	static bool bES31Support;
 
 	/** Whether device supports Hidden Surface Removal */
 	static bool bHasHardwareHiddenSurfaceRemoval;

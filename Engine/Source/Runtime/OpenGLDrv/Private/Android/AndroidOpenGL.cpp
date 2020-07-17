@@ -741,8 +741,6 @@ void FAndroidOpenGL::ProcessExtensions(const FString& ExtensionsString)
 {
 	FString VersionString = FString(ANSI_TO_TCHAR((const ANSICHAR*)glGetString(GL_VERSION)));
 	FString SubVersionString;
-	bool hasES3 = VersionString.Split(TEXT("OpenGL ES 3."), nullptr, &SubVersionString);
-	bES31Support = hasES3 && FCString::Atoi(*SubVersionString) >= 1;
 
 	FOpenGLES::ProcessExtensions(ExtensionsString);
 
@@ -781,9 +779,6 @@ void FAndroidOpenGL::ProcessExtensions(const FString& ExtensionsString)
 		UE_LOG(LogRHI, Log, TEXT("ASTC was disabled via r.OpenGL.DisableASTCSupport"));
 	}
 
-	// disable swizzled render targets on Android
-	bSupportsBGRA8888RenderTarget = false;
-
 	// Check for external image support for different ES versions
 	ImageExternalType = EImageExternalType::None;
 
@@ -815,21 +810,19 @@ void FAndroidOpenGL::ProcessExtensions(const FString& ExtensionsString)
 		if (bHasImageExternal || bHasImageExternalESSL3)
 		{
 			ImageExternalType = EImageExternalType::ImageExternal100;
-			if (bUseES30ShadingLanguage)
+			if (bHasImageExternalESSL3)
 			{
-				if (bHasImageExternalESSL3)
+				ImageExternalType = EImageExternalType::ImageExternalESSL300;
+			}
+			else
+			{
+				// Adreno 5xx can do essl3 even without extension in list
+				if (bIsAdrenoBased && RendererString.Contains(TEXT("(TM) 5")))
 				{
 					ImageExternalType = EImageExternalType::ImageExternalESSL300;
 				}
-				else
-				{
-					// Adreno 5xx can do essl3 even without extension in list
-					if (bIsAdrenoBased && RendererString.Contains(TEXT("(TM) 5")))
-					{
-						ImageExternalType = EImageExternalType::ImageExternalESSL300;
-					}
-				}
 			}
+			
 			if (bIsNvidiaBased)
 			{
 				// Nvidia needs version 100 even though it supports ES3

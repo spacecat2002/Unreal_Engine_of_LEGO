@@ -117,11 +117,6 @@ struct FLuminOpenGL : public FOpenGLES
 	static FORCEINLINE bool SupportsMultipleRenderTargets()				{ return false; }
 	static FORCEINLINE bool SupportsImageExternal()						{ return bSupportsImageExternal; }
 
-	static FORCEINLINE bool UseES30ShadingLanguage()
-	{
-		return bUseES30ShadingLanguage;
-	}
-
 	enum class EImageExternalType : uint8
 	{
 		None,

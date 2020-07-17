@@ -299,8 +299,7 @@ void FLuminOpenGL::ProcessExtensions(const FString& ExtensionsString)
 	FString VersionString = FString(ANSI_TO_TCHAR((const ANSICHAR*)glGetString(GL_VERSION)));
 
 	FOpenGLES::CurrentFeatureLevelSupport = VersionString.Contains(TEXT("OpenGL ES 3.2")) ? FOpenGLES::EFeatureLevelSupport::ES32 : FOpenGLES::EFeatureLevelSupport::ES31;
-	bES31Support = true;
-
+	
 	FOpenGLES::ProcessExtensions(ExtensionsString);
 
 	FString RendererString = FString(ANSI_TO_TCHAR((const ANSICHAR*)glGetString(GL_RENDERER)));
@@ -336,12 +335,9 @@ void FLuminOpenGL::ProcessExtensions(const FString& ExtensionsString)
 			if (bHasImageExternal || bHasImageExternalESSL3)
 			{
 				ImageExternalType = EImageExternalType::ImageExternal100;
-				if (bUseES30ShadingLanguage)
+				if (bHasImageExternalESSL3)
 				{
-					if (bHasImageExternalESSL3)
-					{
-						ImageExternalType = EImageExternalType::ImageExternalESSL300;
-					}
+					ImageExternalType = EImageExternalType::ImageExternalESSL300;
 				}
 			}
 			break;

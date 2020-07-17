@@ -74,15 +74,6 @@ bool FOpenGLES::bTimerQueryCanBeDisjoint = true;
 /** GL_APPLE_texture_format_BGRA8888 */
 bool FOpenGLES::bSupportsBGRA8888 = false;
 
-/** Whether BGRA supported as color attachment */
-bool FOpenGLES::bSupportsBGRA8888RenderTarget = false;
-
-/** GL_OES_texture_float */
-bool FOpenGLES::bSupportsTextureFloat = false;
-
-/** GL_OES_texture_half_float */
-bool FOpenGLES::bSupportsTextureHalfFloat = false;
-
 /** GL_EXT_color_buffer_half_float */
 bool FOpenGLES::bSupportsColorBufferHalfFloat = false;
 
@@ -119,14 +110,8 @@ int FOpenGLES::ShaderHighPrecision = 0;
 /** GL_NV_framebuffer_blit */
 bool FOpenGLES::bSupportsNVFrameBufferBlit = false;
 
-/* This is a hack to remove the gl_FragCoord if shader will fail to link if exceeding the max varying on android platforms */
-bool FOpenGLES::bRequiresGLFragCoordVaryingLimitHack = false;
-
 /* This indicates failure when attempting to retrieve driver's binary representation of the hack program  */
 bool FOpenGLES::bBinaryProgramRetrievalFailed = false;
-
-/* This is a hack to add a round() function when not available to a shader compiler */
-bool FOpenGLES::bRequiresRoundFunctionHack = true;
 
 /* Some Mali devices do not work correctly with early_fragment_test enabled */
 bool FOpenGLES::bRequiresDisabledEarlyFragmentTests = false;
@@ -134,15 +119,6 @@ bool FOpenGLES::bRequiresDisabledEarlyFragmentTests = false;
 /* This is to avoid a bug in Adreno drivers that define GL_ARM_shader_framebuffer_fetch_depth_stencil even when device does not support this extension  */
 bool FOpenGLES::bRequiresARMShaderFramebufferFetchDepthStencilUndef = false;
 
-/* Indicates shader compiler hack checks are being tested */
-bool FOpenGLES::bIsCheckingShaderCompilerHacks = false;
-
-/* Indicates shader compiler hack checks are being tested */
-bool FOpenGLES::bIsLimitingShaderCompileCount = false;
-
-bool FOpenGLES::bUseHalfFloatTexStorage = false;
-bool FOpenGLES::bUseES30ShadingLanguage = false;
-bool FOpenGLES::bES31Support = false;
 bool FOpenGLES::bHasHardwareHiddenSurfaceRemoval = false;
 bool FOpenGLES::bSupportsMobileMultiView = false;
 GLint FOpenGLES::MaxMSAASamplesTileMem = 1;
@@ -179,6 +155,17 @@ void FOpenGLES::ProcessQueryGLInt()
 	LOG_AND_GET_GL_INT(GL_MAX_VERTEX_UNIFORM_VECTORS, 0, MaxVertexUniformComponents);
 	LOG_AND_GET_GL_INT(GL_MAX_FRAGMENT_UNIFORM_VECTORS, 0, MaxPixelUniformComponents);
 	LOG_AND_GET_GL_INT(GL_TEXTURE_BUFFER_OFFSET_ALIGNMENT, 0, TextureBufferAlignment);
+	
+	GET_GL_INT(GL_MAX_COMPUTE_TEXTURE_IMAGE_UNITS, 0, MaxComputeTextureImageUnits);
+	GET_GL_INT(GL_MAX_COMPUTE_UNIFORM_COMPONENTS, 0, MaxComputeUniformComponents);
+	LOG_AND_GET_GL_INT(GL_MAX_COMBINED_IMAGE_UNIFORMS, 0, MaxCombinedUAVUnits);
+	LOG_AND_GET_GL_INT(GL_MAX_COMPUTE_IMAGE_UNIFORMS, 0, MaxComputeUAVUnits);
+	LOG_AND_GET_GL_INT(GL_MAX_FRAGMENT_IMAGE_UNIFORMS, 0, MaxPixelUAVUnits);
+
+	// clamp UAV units to a sensible limit
+	MaxCombinedUAVUnits = FMath::Min(MaxCombinedUAVUnits, 8);
+	MaxComputeUAVUnits = FMath::Min(MaxComputeUAVUnits, MaxCombinedUAVUnits);
+	MaxPixelUAVUnits = FMath::Min(MaxPixelUAVUnits, MaxCombinedUAVUnits);
 
 	const GLint RequiredMaxVertexUniformComponents = 256;
 	if (MaxVertexUniformComponents < RequiredMaxVertexUniformComponents)
@@ -190,12 +177,15 @@ void FOpenGLES::ProcessQueryGLInt()
 		);
 	}
 	MaxVertexUniformComponents = FMath::Max<GLint>(MaxVertexUniformComponents, RequiredMaxVertexUniformComponents);
-
 	MaxGeometryUniformComponents = 0;
-
 	MaxGeometryTextureImageUnits = 0;
 	MaxHullTextureImageUnits = 0;
 	MaxDomainTextureImageUnits = 0;
+
+	// Set lowest possible limits for texture units, to avoid extra work in GL RHI
+	MaxTextureImageUnits = FMath::Min(MaxTextureImageUnits, 16);
+	MaxVertexTextureImageUnits = FMath::Min(MaxVertexTextureImageUnits, 16);
+	MaxCombinedTextureImageUnits = FMath::Min(MaxCombinedTextureImageUnits, 32);
 }
 
 void FOpenGLES::ProcessExtensions(const FString& ExtensionsString)
@@ -206,9 +196,6 @@ void FOpenGLES::ProcessExtensions(const FString& ExtensionsString)
 	bSupportsDisjointTimeQueries = ExtensionsString.Contains(TEXT("GL_EXT_disjoint_timer_query")) || ExtensionsString.Contains(TEXT("GL_NV_timer_query"));
 	bTimerQueryCanBeDisjoint = !ExtensionsString.Contains(TEXT("GL_NV_timer_query"));
 	bSupportsBGRA8888 = ExtensionsString.Contains(TEXT("GL_APPLE_texture_format_BGRA8888")) || ExtensionsString.Contains(TEXT("GL_IMG_texture_format_BGRA8888")) || ExtensionsString.Contains(TEXT("GL_EXT_texture_format_BGRA8888"));
-	bSupportsBGRA8888RenderTarget = bSupportsBGRA8888;
-	bSupportsTextureFloat = ExtensionsString.Contains(TEXT("GL_OES_texture_float"));
-	bSupportsTextureHalfFloat = ExtensionsString.Contains(TEXT("GL_OES_texture_half_float"));
 	bSupportsColorBufferFloat = ExtensionsString.Contains(TEXT("GL_EXT_color_buffer_float"));
 	bSupportsColorBufferHalfFloat = ExtensionsString.Contains(TEXT("GL_EXT_color_buffer_half_float"));
 	bSupportsShaderFramebufferFetch = ExtensionsString.Contains(TEXT("GL_EXT_shader_framebuffer_fetch")) || ExtensionsString.Contains(TEXT("GL_NV_shader_framebuffer_fetch"))
@@ -236,8 +223,6 @@ void FOpenGLES::ProcessExtensions(const FString& ExtensionsString)
 		SetEmitDrawEvents(true);
 	}
 
-	GSupportsDepthRenderTargetWithoutColorRenderTarget = false;
-
 	glPushGroupMarkerEXT = (PFNGLPUSHGROUPMARKEREXTPROC)((void*)eglGetProcAddress("glPushGroupMarkerEXT"));
 	glPopGroupMarkerEXT = (PFNGLPOPGROUPMARKEREXTPROC)((void*)eglGetProcAddress("glPopGroupMarkerEXT"));
 
@@ -261,30 +246,10 @@ void FOpenGLES::ProcessExtensions(const FString& ExtensionsString)
 		MaxMSAASamplesTileMem = 1;
 	}
 
-	GET_GL_INT(GL_MAX_COMPUTE_TEXTURE_IMAGE_UNITS, 0, MaxComputeTextureImageUnits);
-	GET_GL_INT(GL_MAX_COMPUTE_UNIFORM_COMPONENTS, 0, MaxComputeUniformComponents);
-
-	LOG_AND_GET_GL_INT(GL_MAX_COMBINED_IMAGE_UNIFORMS, 0, MaxCombinedUAVUnits);
-	LOG_AND_GET_GL_INT(GL_MAX_COMPUTE_IMAGE_UNIFORMS, 0, MaxComputeUAVUnits);
-	LOG_AND_GET_GL_INT(GL_MAX_FRAGMENT_IMAGE_UNIFORMS, 0, MaxPixelUAVUnits);
-
-	// clamp UAV units to a sensible limit
-	MaxCombinedUAVUnits = FMath::Min(MaxCombinedUAVUnits, 8);
-	MaxComputeUAVUnits = FMath::Min(MaxComputeUAVUnits, MaxCombinedUAVUnits);
-	MaxPixelUAVUnits = FMath::Min(MaxPixelUAVUnits, MaxCombinedUAVUnits);
-
 	bSupportsETC2 = true;
-	bUseES30ShadingLanguage = true;
-	
-	// Required by the ES3 spec
-	bSupportsTextureFloat = true;
-	bSupportsTextureHalfFloat = true;
-
 	// According to https://www.khronos.org/registry/gles/extensions/EXT/EXT_color_buffer_float.txt
 	bSupportsColorBufferHalfFloat = (bSupportsColorBufferHalfFloat || bSupportsColorBufferFloat);
-
-	GSupportsDepthRenderTargetWithoutColorRenderTarget = true;
-	
+		
 	// Mobile multi-view setup
 	const bool bMultiViewSupport = ExtensionsString.Contains(TEXT("GL_OVR_multiview"));
 	const bool bMultiView2Support = ExtensionsString.Contains(TEXT("GL_OVR_multiview2"));
@@ -302,8 +267,6 @@ void FOpenGLES::ProcessExtensions(const FString& ExtensionsString)
 			UE_LOG(LogRHI, Log, TEXT("Device supports mobile multi-view."));
 		}
 	}
-
-	GSupportsDepthRenderTargetWithoutColorRenderTarget = true;
 	
 	if (IsES32Usable())
 	{
@@ -345,29 +308,6 @@ void FOpenGLES::ProcessExtensions(const FString& ExtensionsString)
 		glCopyImageSubDataEXT = (PFNGLCOPYIMAGESUBDATAEXTPROC)((void*)eglGetProcAddress("glCopyImageSubDataEXT"));
 	}
 	bSupportsCopyImage = (glCopyImageSubDataEXT != nullptr);
-
-	// Set lowest possible limits for texture units, to avoid extra work in GL RHI
-	MaxTextureImageUnits = FMath::Min(MaxTextureImageUnits, 16);
-	MaxVertexTextureImageUnits = FMath::Min(MaxVertexTextureImageUnits, 16);
-	MaxCombinedTextureImageUnits = FMath::Min(MaxCombinedTextureImageUnits, 32);
-
-	if (bSupportsBGRA8888)
-	{
-		// Check whether device supports BGRA as color attachment
-		GLuint FrameBuffer;
-		glGenFramebuffers(1, &FrameBuffer);
-		glBindFramebuffer(GL_FRAMEBUFFER, FrameBuffer);
-		GLuint BGRA8888Texture;
-		glGenTextures(1, &BGRA8888Texture);
-		glBindTexture(GL_TEXTURE_2D, BGRA8888Texture);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA_EXT, 256, 256, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, NULL);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, BGRA8888Texture, 0);
-
-		bSupportsBGRA8888RenderTarget = (glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
-
-		glDeleteTextures(1, &BGRA8888Texture);
-		glDeleteFramebuffers(1, &FrameBuffer);
-	}
 }
 
 #endif

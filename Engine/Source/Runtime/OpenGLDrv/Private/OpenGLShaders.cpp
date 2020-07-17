@@ -576,40 +576,15 @@ GLint CompileCurrentShader(const GLuint Resource, const FAnsiCharArray& GlslCode
 	glCompileShader(Resource);
 
 	GLint CompileStatus = GL_TRUE;
-#if PLATFORM_ANDROID && !PLATFORM_LUMINGL4
-	// On Android the same shader is compiled with different hacks to find the right one(s) to apply so don't cache unless successful if currently testing them
-	if (FOpenGL::IsCheckingShaderCompilerHacks())
-	{
-		glGetShaderiv(Resource, GL_COMPILE_STATUS, &CompileStatus);
-		GOpenGLShaderHackLastCompileSuccess = (CompileStatus == GL_TRUE);
-	}
-#endif
 #if ((PLATFORM_ANDROID && !PLATFORM_LUMINGL4) || PLATFORM_IOS) && !UE_BUILD_SHIPPING
-	if (!FOpenGL::IsCheckingShaderCompilerHacks())
+	glGetShaderiv(Resource, GL_COMPILE_STATUS, &CompileStatus);
+	if (CompileStatus == GL_FALSE)
 	{
-		glGetShaderiv(Resource, GL_COMPILE_STATUS, &CompileStatus);
-		if (CompileStatus == GL_FALSE)
-		{
-			char Msg[2048];
-			glGetShaderInfoLog(Resource, 2048, nullptr, Msg);
-			UE_LOG(LogRHI, Error, TEXT("Shader compile failed: %s\n Original Source is (len %d) %s"), ANSI_TO_TCHAR(Msg), GlslCodeLength, ANSI_TO_TCHAR(GlslCodeString));
-		}
+		char Msg[2048];
+		glGetShaderInfoLog(Resource, 2048, nullptr, Msg);
+		UE_LOG(LogRHI, Error, TEXT("Shader compile failed: %s\n Original Source is (len %d) %s"), ANSI_TO_TCHAR(Msg), GlslCodeLength, ANSI_TO_TCHAR(GlslCodeString));
 	}
 #endif
-
-#if PLATFORM_IOS // fix for running out of memory in the driver when compiling/linking a lot of shaders on the first frame
-	if (FOpenGL::IsLimitingShaderCompileCount())
-	{
-		static int CompileCount = 0;
-		CompileCount++;
-		if (CompileCount == 2500)
-		{
-			glFlush();
-			CompileCount = 0;
-		}
-	}
-#endif
-
 	return CompileStatus;
 }
 
@@ -856,7 +831,6 @@ void OPENGLDRV_API GetCurrentOpenGLShaderDeviceCapabilities(FOpenGLShaderDeviceC
 	if (FOpenGL::IsAndroidGLESCompatibilityModeEnabled())
 	{
 		Capabilities.TargetPlatform = EOpenGLShaderTargetPlatform::OGLSTP_Android;
-		Capabilities.bUseES30ShadingLanguage = false;
 		Capabilities.bSupportsShaderFramebufferFetch = FOpenGL::SupportsShaderFramebufferFetch();
 		Capabilities.bRequiresARMShaderFramebufferFetchDepthStencilUndef = false;
 		Capabilities.MaxVaryingVectors = FOpenGL::GetMaxVaryingVectors();
@@ -867,11 +841,9 @@ void OPENGLDRV_API GetCurrentOpenGLShaderDeviceCapabilities(FOpenGLShaderDeviceC
 		Capabilities.TargetPlatform = EOpenGLShaderTargetPlatform::OGLSTP_Desktop;
 	#else
 		Capabilities.TargetPlatform = EOpenGLShaderTargetPlatform::OGLSTP_Android;
-		Capabilities.bUseES30ShadingLanguage = FOpenGL::UseES30ShadingLanguage();
 		Capabilities.bSupportsShaderFramebufferFetch = FOpenGL::SupportsShaderFramebufferFetch();
 		Capabilities.bRequiresARMShaderFramebufferFetchDepthStencilUndef = FOpenGL::RequiresARMShaderFramebufferFetchDepthStencilUndef();
 		Capabilities.MaxVaryingVectors = FOpenGL::GetMaxVaryingVectors();
-		Capabilities.bRequiresRoundFunctionHack = FOpenGL::RequiresRoundFunctionHack();
 		Capabilities.bRequiresDisabledEarlyFragmentTests = FOpenGL::RequiresDisabledEarlyFragmentTests();
 	#endif // PLATFORM_LUMINGL4
 #elif PLATFORM_IOS
@@ -895,36 +867,20 @@ void OPENGLDRV_API GLSLToDeviceCompatibleGLSL(FAnsiCharArray& GlslCodeOriginal, 
 		return; // platform extension overrides
 	}
 
-	// Whether shader was compiled for ES 3.1
-	const ANSICHAR* ES310Version = "#version 310 es";
-	const bool bES31 = (FCStringAnsi::Strstr(GlslCodeOriginal.GetData(), ES310Version) != nullptr);
-
 	// Whether we need to emit mobile multi-view code or not.
 	const bool bEmitMobileMultiView = (FCStringAnsi::Strstr(GlslCodeOriginal.GetData(), "gl_ViewID_OVR") != nullptr);
 
 	// Whether we need to emit texture external code or not.
 	const bool bEmitTextureExternal = (FCStringAnsi::Strstr(GlslCodeOriginal.GetData(), "samplerExternalOES") != nullptr);
 
-	bool bUseES30ShadingLanguage = Capabilities.bUseES30ShadingLanguage;
-
-#if PLATFORM_ANDROID && !PLATFORM_LUMINGL4
-	FOpenGL::EImageExternalType ImageExternalType = FOpenGL::GetImageExternalType();
-
-	if (bEmitTextureExternal && ImageExternalType == FOpenGL::EImageExternalType::ImageExternal100)
-	{
-		bUseES30ShadingLanguage = false;
-	}
-#endif
-
 	FAnsiCharArray GlslCodeAfterExtensions;
 	const ANSICHAR* GlslPlaceHolderAfterExtensions = "// end extensions";
 	bool bGlslCodeHasExtensions = CStringCountOccurances(GlslCodeOriginal, GlslPlaceHolderAfterExtensions) == 1;
 	
-	bool bNeedsExtDrawInstancedDefine = false;
 	if (Capabilities.TargetPlatform == EOpenGLShaderTargetPlatform::OGLSTP_Android)
 	{
-		bNeedsExtDrawInstancedDefine = false;
-		
+		const ANSICHAR* ES310Version = "#version 310 es";
+
 		// @todo Lumin hack: This is needed for AEP on Lumin, so that some shaders compile that need version 320
 		#if PLATFORM_LUMINGL4
 			AppendCString(GlslCode, "#version 320 es\n");
@@ -935,20 +891,6 @@ void OPENGLDRV_API GLSLToDeviceCompatibleGLSL(FAnsiCharArray& GlslCodeOriginal, 
 			ReplaceCString(GlslCodeOriginal, ES310Version, "");
 		#endif
 	}
-	else if (Capabilities.TargetPlatform == EOpenGLShaderTargetPlatform::OGLSTP_iOS)
-	{
-		bNeedsExtDrawInstancedDefine = true;
-		AppendCString(GlslCode, "#version 100\n");
-		ReplaceCString(GlslCodeOriginal, "#version 100", "");
-	}
-
-	if (bNeedsExtDrawInstancedDefine)
-	{
-		// Check for the GL_EXT_draw_instanced extension if necessary (version < 300)
-		AppendCString(GlslCode, "#ifdef GL_EXT_draw_instanced\n");
-		AppendCString(GlslCode, "#define UE_EXT_draw_instanced 1\n");
-		AppendCString(GlslCode, "#endif\n");
-	}
 
 	if (TypeEnum == GL_FRAGMENT_SHADER && Capabilities.bRequiresDisabledEarlyFragmentTests)
 	{
@@ -957,7 +899,7 @@ void OPENGLDRV_API GLSLToDeviceCompatibleGLSL(FAnsiCharArray& GlslCodeOriginal, 
 
 	// The incoming glsl may have preprocessor code that is dependent on defines introduced via the engine.
 	// This is the place to insert such engine preprocessor defines, immediately after the glsl version declaration.
-	if (Capabilities.bRequiresUEShaderFramebufferFetchDef && TypeEnum == GL_FRAGMENT_SHADER )
+	if (Capabilities.bRequiresUEShaderFramebufferFetchDef && TypeEnum == GL_FRAGMENT_SHADER)
 	{
 		// Some devices (Zenfone5) support GL_EXT_shader_framebuffer_fetch but do not define GL_EXT_shader_framebuffer_fetch in GLSL compiler
 		// We can't define anything with GL_, so we use UE_EXT_shader_framebuffer_fetch to enable frame buffer fetch
@@ -976,6 +918,7 @@ void OPENGLDRV_API GLSLToDeviceCompatibleGLSL(FAnsiCharArray& GlslCodeOriginal, 
 			AppendCString(GlslCode, "\n\n");
 
 #if PLATFORM_ANDROID && !PLATFORM_LUMINGL4
+			FOpenGL::EImageExternalType ImageExternalType = FOpenGL::GetImageExternalType();
 			switch (ImageExternalType)
 			{
 				case FOpenGL::EImageExternalType::ImageExternal100:
@@ -1082,7 +1025,6 @@ void OPENGLDRV_API GLSLToDeviceCompatibleGLSL(FAnsiCharArray& GlslCodeOriginal, 
 		// the initial code has an #extension chunk. replace the placeholder line
 		ReplaceCString(GlslCode, GlslPlaceHolderAfterExtensions, GlslCodeAfterExtensions.GetData());
 	}
-
 }
 
 /**
@@ -4721,12 +4663,7 @@ void FOpenGLProgramBinaryCache::Shutdown()
 
 bool FOpenGLProgramBinaryCache::DeferShaderCompilation(GLuint Shader, const TArray<ANSICHAR>& GlslCode)
 {
-	bool bCanDeferShaderCompilation = true;
-#if PLATFORM_ANDROID && !PLATFORM_LUMINGL4
-	bCanDeferShaderCompilation = !FOpenGL::IsCheckingShaderCompilerHacks();
-#endif
-	
-	if (CachePtr && bCanDeferShaderCompilation)
+	if (CachePtr)
 	{
 		FPendingShaderCode PendingShaderCode;
 		CompressShader(GlslCode, PendingShaderCode);

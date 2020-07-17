@@ -95,26 +95,16 @@ public:
 	static FORCEINLINE bool SupportsMultipleRenderTargets()				{ return true; }
 	static FORCEINLINE bool SupportsWideMRT()							{ return true; }
 	static FORCEINLINE bool SupportsMultisampledTextures()				{ return true; }
-	static FORCEINLINE bool SupportsFences()							{ return true; }
 	static FORCEINLINE bool SupportsPolygonMode()						{ return true; }
 	static FORCEINLINE bool SupportsTexture3D()							{ return true; }
 	static FORCEINLINE bool SupportsMobileMultiView()					{ return false; }
 	static FORCEINLINE bool SupportsImageExternal()						{ return false; }
 	static FORCEINLINE bool SupportsTextureLODBias()					{ return true; }
 	static FORCEINLINE bool SupportsTextureCompare()					{ return true; }
-	static FORCEINLINE bool SupportsTextureBaseLevel()					{ return true; }
-	static FORCEINLINE bool SupportsTextureMaxLevel()					{ return true; }
-	static FORCEINLINE bool SupportsVertexAttribInteger()				{ return true; }
-	static FORCEINLINE bool SupportsVertexAttribShort()					{ return true; }
-	static FORCEINLINE bool SupportsVertexAttribByte()					{ return true; }
-	static FORCEINLINE bool SupportsVertexAttribDouble()				{ return true; }
 	static FORCEINLINE bool SupportsDrawIndexOffset()					{ return true; }
 	static FORCEINLINE bool SupportsResourceView()						{ return true; }
 	static FORCEINLINE bool SupportsDiscardFrameBuffer()				{ return false; }
 	static FORCEINLINE bool SupportsIndexedExtensions()					{ return true; }
-	static FORCEINLINE bool SupportsVertexHalfFloat()					{ return true; }
-	static FORCEINLINE bool SupportsTextureFloat()						{ return true; }
-	static FORCEINLINE bool SupportsTextureHalfFloat()					{ return true; }
 	static FORCEINLINE bool SupportsColorBufferFloat()					{ return true; }
 	static FORCEINLINE bool SupportsColorBufferHalfFloat()				{ return true; }
 	static FORCEINLINE bool SupportsVolumeTextureRendering()			{ return false; }
@@ -122,14 +112,10 @@ public:
 	static FORCEINLINE bool SupportsShaderDepthStencilFetch()			{ return false; }
 	static FORCEINLINE bool SupportsVertexArrayBGRA()					{ return true; }
 	static FORCEINLINE bool SupportsBGRA8888()							{ return true; }
-	static FORCEINLINE bool SupportsBGRA8888RenderTarget()				{ return true; }
-	static FORCEINLINE bool SupportsSRGB()								{ return true; }
-	static FORCEINLINE bool SupportsRGBA8()								{ return true; }
 	static FORCEINLINE bool SupportsDXT()								{ return true; }
 	static FORCEINLINE bool SupportsASTC()								{ return bSupportsASTC; }
 	static FORCEINLINE bool SupportsETC2()								{ return false; }
 	static FORCEINLINE bool SupportsFramebufferSRGBEnable()				{ return true; }
-	static FORCEINLINE bool SupportsCombinedDepthStencilAttachment()	{ return true; }
 	static FORCEINLINE bool SupportsFastBufferData()					{ return true; }
 	static FORCEINLINE bool SupportsCopyImage()							{ return bSupportsCopyImage; }
 	static FORCEINLINE bool SupportsTextureFilterAnisotropic()			{ return bSupportsTextureFilterAnisotropic; }
@@ -154,9 +140,6 @@ public:
 	
 	static FORCEINLINE GLenum GetDepthFormat()							{ return GL_DEPTH_COMPONENT16; }
 	static FORCEINLINE GLenum GetShadowDepthFormat()					{ return GL_DEPTH_COMPONENT16; }
-	static FORCEINLINE GLenum GetVertexHalfFloatFormat()				{ return GL_HALF_FLOAT; }
-	static FORCEINLINE GLenum GetTextureHalfFloatPixelType()			{ return GL_HALF_FLOAT; }
-	static FORCEINLINE GLenum GetTextureHalfFloatInternalFormat()		{ return GL_RGBA16F; }
 
 	static FORCEINLINE GLint GetMaxTextureImageUnits()			{ check(MaxTextureImageUnits != -1); return MaxTextureImageUnits; }
 	static FORCEINLINE GLint GetMaxVertexTextureImageUnits()	{ check(MaxVertexTextureImageUnits != -1); return MaxVertexTextureImageUnits; }

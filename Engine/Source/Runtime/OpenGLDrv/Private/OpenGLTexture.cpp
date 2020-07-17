@@ -307,12 +307,6 @@ FRHITexture* FOpenGLDynamicRHI::CreateOpenGLRHITextureOnly(const uint32 SizeX, c
 		NumSamples = 1;
 	}
 
-	if ((Flags & TexCreate_RenderTargetable) && Format == PF_B8G8R8A8 && !FOpenGL::SupportsBGRA8888RenderTarget())
-	{
-		// Some android devices does not support BGRA as a color attachment
-		Format = PF_R8G8B8A8;
-	}
-
 	GLenum Target = GL_NONE;
 	if (bCubeTexture)
 	{
@@ -423,19 +417,15 @@ void FOpenGLDynamicRHI::InitializeGLTexture(FRHITexture* Texture, uint32 SizeX, 
 		{
 			glTexParameteri(Target, GL_TEXTURE_MAX_ANISOTROPY_EXT, 1);
 		}
-		if ( FOpenGL::SupportsTextureBaseLevel() )
-		{
-			glTexParameteri(Target, GL_TEXTURE_BASE_LEVEL, 0);
-		}
-		if ( FOpenGL::SupportsTextureMaxLevel() && Target != GL_TEXTURE_EXTERNAL_OES )
-		{
+		
+		glTexParameteri(Target, GL_TEXTURE_BASE_LEVEL, 0);
+	
 #if PLATFORM_ANDROID && !PLATFORM_LUMINGL4
-			// Do not use GL_TEXTURE_MAX_LEVEL if external texture on Android
-			if (Target != GL_TEXTURE_EXTERNAL_OES)
+		// Do not use GL_TEXTURE_MAX_LEVEL if external texture on Android
+		if (Target != GL_TEXTURE_EXTERNAL_OES)
 #endif
-			{
-				glTexParameteri(Target, GL_TEXTURE_MAX_LEVEL, NumMips - 1);
-			}
+		{
+			glTexParameteri(Target, GL_TEXTURE_MAX_LEVEL, NumMips - 1);
 		}
 		
 		TextureMipLimits.Add(TextureID, TPair<GLenum, GLenum>(0, NumMips - 1));
@@ -1538,7 +1528,7 @@ FTexture3DRHIRef FOpenGLDynamicRHI::RHICreateTexture3D(uint32 SizeX,uint32 SizeY
 	}
 	else if(Flags & TexCreate_ResolveTargetable)
 	{
-		Attachment = (Format == PF_DepthStencil && FOpenGL::SupportsCombinedDepthStencilAttachment())
+		Attachment = (Format == PF_DepthStencil)
 			? GL_DEPTH_STENCIL_ATTACHMENT
 			: ((Format == PF_ShadowDepth || Format == PF_D24)
 			? GL_DEPTH_ATTACHMENT

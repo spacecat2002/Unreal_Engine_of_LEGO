@@ -632,11 +632,11 @@ void FOpenGLDynamicRHI::CachedSetupTextureStageInner(FOpenGLContextState& Contex
 		if (!bSameLimitMip || !bSameNumMips)
 		{
 			DETAILED_QUICK_SCOPE_CYCLE_COUNTER(STAT_CachedSetupTextureStage_TexParameter);
-			if (FOpenGL::SupportsTextureBaseLevel() && !bSameLimitMip)
+			if (!bSameLimitMip)
 			{
 				FOpenGL::TexParameter(Target, GL_TEXTURE_BASE_LEVEL, BaseMip);
 			}
-			if (FOpenGL::SupportsTextureMaxLevel() && !bSameNumMips)
+			if (!bSameNumMips)
 			{
 				FOpenGL::TexParameter(Target, GL_TEXTURE_MAX_LEVEL, MaxMip);
 			}

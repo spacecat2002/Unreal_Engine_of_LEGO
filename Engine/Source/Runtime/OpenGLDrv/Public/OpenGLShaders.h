@@ -24,13 +24,11 @@ struct FOpenGLShaderDeviceCapabilities
 {
 	EOpenGLShaderTargetPlatform TargetPlatform;
 	EShaderPlatform MaxRHIShaderPlatform;
-	bool bUseES30ShadingLanguage;
 	bool bSupportsSeparateShaderObjects;
 	bool bSupportsShaderFramebufferFetch;
 	bool bRequiresUEShaderFramebufferFetchDef;
 	bool bRequiresARMShaderFramebufferFetchDepthStencilUndef;
 	GLint MaxVaryingVectors;
-	bool bRequiresRoundFunctionHack;
 	bool bRequiresDisabledEarlyFragmentTests;
 };
 

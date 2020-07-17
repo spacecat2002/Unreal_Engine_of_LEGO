@@ -153,8 +153,6 @@ struct FAndroidOpenGL : public FOpenGLES
 
 	static FORCEINLINE EImageExternalType GetImageExternalType() { return ImageExternalType; }
 
-	static FORCEINLINE bool SupportsTextureMaxLevel()	 { return bES31Support; }
-
 	static FORCEINLINE GLint GetMaxComputeTextureImageUnits() { check(MaxComputeTextureImageUnits != -1); return MaxComputeTextureImageUnits; }
 	static FORCEINLINE GLint GetMaxComputeUniformComponents() { check(MaxComputeUniformComponents != -1); return MaxComputeUniformComponents; }
 	static FORCEINLINE GLint GetFirstComputeUAVUnit()			{ return 0; }
