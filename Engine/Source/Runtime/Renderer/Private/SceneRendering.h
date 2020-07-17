@@ -1645,6 +1645,9 @@ public:
 	/** Sets the stereo-compatible RHI viewport. If the view doesn't requires stereo rendering, the standard viewport is set. */
 	void SetStereoViewport(FRHICommandList& RHICmdList, const FViewInfo& View, float ViewportScale = 1.0f) const;
 
+	/** Cache the FXSystem value from the Scene. Must be ran on the renderthread to ensure it is valid throughout rendering. */
+	void InitFXSystem();
+
 protected:
 
 	/** Size of the family. */
@@ -1654,6 +1657,9 @@ protected:
 	FRHIGPUMask AllViewsGPUMask;
 	FRHIGPUMask GetGPUMaskForShadow(FProjectedShadowInfo* ProjectedShadowInfo) const;
 #endif
+
+	/** The cached FXSystem which could be released while we are rendering. */
+	class FFXSystemInterface* FXSystem = nullptr;
 
 	bool bDumpMeshDrawCommandInstancingStats;
 

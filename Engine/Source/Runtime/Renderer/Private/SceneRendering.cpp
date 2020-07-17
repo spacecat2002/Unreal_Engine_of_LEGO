@@ -61,6 +61,7 @@
 #if WITH_EDITOR
 #include "Rendering/StaticLightingSystemInterface.h"
 #endif
+#include "FXSystem.h"
 
 /*-----------------------------------------------------------------------------
 	Globals
@@ -2438,6 +2439,19 @@ void FSceneRenderer::ComputeViewGPUMasks(FRHIGPUMask RenderTargetGPUMask)
 }
 #endif // WITH_MGPU
 
+void FSceneRenderer::InitFXSystem()
+{
+	check(IsInRenderingThread());
+
+	// Cache the Scene FXSystem since it can be set to null at any time in UWorld::CleanupWorldInternal()
+	// If this happens, the FXSystem will still be valid until a render command destroys it (see FFXSystemInterface::Destroy()).
+	FXSystem = Scene ? Scene->FXSystem : nullptr;
+	if (FXSystem && FXSystem->IsPendingKill())
+	{
+		FXSystem = nullptr;
+	}
+}
+
 BEGIN_SHADER_PARAMETER_STRUCT(FCrossGPUTransferParameters, )
 	SHADER_PARAMETER_RDG_TEXTURE(, ViewFamilyTexture)
 END_SHADER_PARAMETER_STRUCT()
@@ -3594,6 +3608,12 @@ void FRendererModule::BeginRenderingViewFamily(FCanvas* Canvas, FSceneViewFamily
 
 		// Construct the scene renderer.  This copies the view family attributes into its own structures.
 		FSceneRenderer* SceneRenderer = FSceneRenderer::CreateSceneRenderer(ViewFamily, Canvas->GetHitProxyConsumer());
+
+        ENQUEUE_RENDER_COMMAND(FInitFXSystemCommand)(
+	        [SceneRenderer](FRHICommandListImmediate& RHICmdList)
+	        {
+		        SceneRenderer->InitFXSystem();
+	        });
 
 		if (!SceneRenderer->ViewFamily.EngineShowFlags.HitProxies)
 		{

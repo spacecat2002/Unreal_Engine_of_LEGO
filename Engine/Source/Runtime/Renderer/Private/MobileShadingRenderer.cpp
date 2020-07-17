@@ -491,10 +491,10 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	}
 
 	// Notify the FX system that the scene is about to be rendered.
-	if (Scene->FXSystem && ViewFamily.EngineShowFlags.Particles)
+	if (FXSystem && ViewFamily.EngineShowFlags.Particles)
 	{
-		Scene->FXSystem->PreRender(RHICmdList, NULL, !Views[0].bIsPlanarReflection);
-		if (FGPUSortManager* GPUSortManager = Scene->FXSystem->GetGPUSortManager())
+		FXSystem->PreRender(RHICmdList, NULL, !Views[0].bIsPlanarReflection);
+		if (FGPUSortManager* GPUSortManager = FXSystem->GetGPUSortManager())
 		{
 			GPUSortManager->OnPreRender(RHICmdList);
 		}
@@ -739,18 +739,18 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	// End of scene color rendering
 	RHICmdList.EndRenderPass();
 
-	if (Scene->FXSystem && Views.IsValidIndex(0))
+	if (FXSystem && Views.IsValidIndex(0))
 	{
 		check(RHICmdList.IsOutsideRenderPass());
 
-		Scene->FXSystem->PostRenderOpaque(
+		FXSystem->PostRenderOpaque(
 			RHICmdList,
 			Views[0].ViewUniformBuffer,
 			nullptr,
 			nullptr,
 			Views[0].AllowGPUParticleUpdate()
 		);
-		if (FGPUSortManager* GPUSortManager = Scene->FXSystem->GetGPUSortManager())
+		if (FGPUSortManager* GPUSortManager = FXSystem->GetGPUSortManager())
 		{
 			GPUSortManager->OnPostRenderOpaque(RHICmdList);
 		}

@@ -725,7 +725,7 @@ bool FDeferredShadingSceneRenderer::ShouldPrepareGlobalDistanceField() const
 	bool bShouldPrepareForAO = SupportsDistanceFieldAO(Scene->GetFeatureLevel(), Scene->GetShaderPlatform())
 		&& (ShouldPrepareForDistanceFieldAO()
 			|| ((Views.Num() > 0) && Views[0].bUsesGlobalDistanceField)
-			|| ((Scene->FXSystem != nullptr) && Scene->FXSystem->UsesGlobalDistanceField()));
+			|| ((FXSystem != nullptr) && FXSystem->UsesGlobalDistanceField()));
 
 	return bShouldPrepareForAO && UseGlobalDistanceField();
 }

@@ -1708,12 +1708,12 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	}
 
 	// Notify the FX system that the scene is about to be rendered.
-	if (Scene->FXSystem && Views.IsValidIndex(0))
+	if (FXSystem && Views.IsValidIndex(0))
 	{
 		SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_FXSystem_PreRender);
 		RHICmdList.SetCurrentStat(GET_STATID(STAT_CLM_FXPreRender));
-		Scene->FXSystem->PreRender(RHICmdList, &Views[0].GlobalDistanceFieldInfo.ParameterData, Views[0].AllowGPUParticleUpdate());
-		if (FGPUSortManager* GPUSortManager = Scene->FXSystem->GetGPUSortManager())
+		FXSystem->PreRender(RHICmdList, &Views[0].GlobalDistanceFieldInfo.ParameterData, Views[0].AllowGPUParticleUpdate());
+		if (FGPUSortManager* GPUSortManager = FXSystem->GetGPUSortManager())
 		{
 			GPUSortManager->OnPreRender(RHICmdList);
 		}
@@ -2566,7 +2566,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	RendererModule.RenderPostOpaqueExtensions(GraphBuilder, Views, SceneContext);
 
 	// Notify the FX system that opaque primitives have been rendered and we now have a valid depth buffer.
-	if (Scene->FXSystem && Views.IsValidIndex(0))
+	if (FXSystem && Views.IsValidIndex(0))
 	{
 		RDG_GPU_STAT_SCOPE(GraphBuilder, PostRenderOpsFX);
 		RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, RenderOpaqueFX);
@@ -2575,7 +2575,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		{
 			SCOPE_CYCLE_COUNTER(STAT_FDeferredShadingSceneRenderer_FXSystem_PostRenderOpaque);
 
-			Scene->FXSystem->PostRenderOpaque(
+			FXSystem->PostRenderOpaque(
 				InRHICmdList,
 				Views[0].ViewUniformBuffer,
 				&FSceneTextureUniformParameters::StaticStructMetadata,
@@ -2583,7 +2583,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 				Views[0].AllowGPUParticleUpdate()
 			);
 
-			if (FGPUSortManager* GPUSortManager = Scene->FXSystem->GetGPUSortManager())
+			if (FGPUSortManager* GPUSortManager = FXSystem->GetGPUSortManager())
 			{
 				GPUSortManager->OnPostRenderOpaque(InRHICmdList);
 			}
