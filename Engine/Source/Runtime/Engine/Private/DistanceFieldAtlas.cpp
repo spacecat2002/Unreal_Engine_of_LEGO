@@ -643,6 +643,8 @@ void FDistanceFieldVolumeTextureAtlas::UpdateAllocations(FRHICommandListImmediat
 				if (!bRuntimeDownsampling)
 				{
 					*AtlasUpdateDataPtr = RHIBeginUpdateTexture3D(VolumeTextureRHI, 0, UpdateRegion);
+					// This fills in any holes in the update region so we don't upload garbage data to the GPU.
+					FMemory::Memzero(AtlasUpdateDataPtr->Data, AtlasUpdateDataPtr->DataSizeBytes);
 				}
 				else
 				{
