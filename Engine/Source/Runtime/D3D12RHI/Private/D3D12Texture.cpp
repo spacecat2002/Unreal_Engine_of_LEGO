@@ -1275,7 +1275,10 @@ FTexture2DRHIRef FD3D12DynamicRHI::RHIAsyncCreateTexture2D(uint32 SizeX, uint32 
 			FD3D12CommandListHandle hCopyCommandList = Device->GetCopyCommandListManager().ObtainCommandList(*CurrentCommandAllocator);
 			hCopyCommandList.SetCurrentOwningContext(&Device->GetDefaultCommandContext());
 
-			hCopyCommandList.GetCurrentOwningContext()->numCopies++;
+			// NB: Do not increment numCopies because that will count as work on the direct
+			// queue, not the copy queue, possibly causing it to flush prematurely. We are
+			// explicitly submitting the copy command list so there's no need to increment any
+			// work counters.
 
 			if (bSplitAllocation)
 			{
