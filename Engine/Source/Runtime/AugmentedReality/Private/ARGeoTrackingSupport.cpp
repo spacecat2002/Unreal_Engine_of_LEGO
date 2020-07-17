@@ -6,9 +6,11 @@
 
 UARGeoTrackingSupport* UARGeoTrackingSupport::GetGeoTrackingSupport()
 {
-	if (auto Implementation = IModularFeatures::Get().GetModularFeatureImplementation(GetModularFeatureName(), 0))
+	auto& ModularFeatures = IModularFeatures::Get();
+	const auto FeatureName = GetModularFeatureName();
+	if (ModularFeatures.GetModularFeatureImplementationCount(FeatureName))
 	{
-		return static_cast<UARGeoTrackingSupport*>(Implementation);
+		return static_cast<UARGeoTrackingSupport*>(ModularFeatures.GetModularFeatureImplementation(FeatureName, 0));
 	}
 	return nullptr;
 }
