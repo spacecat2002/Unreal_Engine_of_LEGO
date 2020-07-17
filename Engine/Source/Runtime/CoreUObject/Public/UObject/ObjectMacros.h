@@ -553,7 +553,9 @@ ENUM_CLASS_FLAGS(EInternalObjectFlags);
 /** Flags describing a UEnum */
 enum class EEnumFlags
 {
-	None
+	None,
+
+	Flags = 0x00000001 // Whether the UEnum represents a set of flags
 };
 
 ENUM_CLASS_FLAGS(EEnumFlags)
