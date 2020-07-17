@@ -149,9 +149,12 @@ private:
 class FRDGEventScope final
 {
 public:
-	FRDGEventScope(const FRDGEventScope* InParentScope, FRDGEventName&& InName)
+	FRDGEventScope(const FRDGEventScope* InParentScope, FRDGEventName&& InName, FRHIGPUMask InGPUMask)
 		: ParentScope(InParentScope)
 		, Name(Forward<FRDGEventName&&>(InName))
+#if WITH_MGPU
+		, GPUMask(InGPUMask)
+#endif
 	{}
 
 	/** Returns a formatted path for debugging. */
@@ -159,6 +162,9 @@ public:
 
 	const FRDGEventScope* const ParentScope;
 	const FRDGEventName Name;
+#if WITH_MGPU
+	const FRHIGPUMask GPUMask;
+#endif
 };
 
 /** Manages a stack of event scopes. Scopes are recorded ahead of time in a hierarchical fashion

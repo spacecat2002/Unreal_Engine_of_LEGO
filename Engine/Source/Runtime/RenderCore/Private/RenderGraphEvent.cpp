@@ -83,11 +83,13 @@ FRDGEventScopeGuard::~FRDGEventScopeGuard()
 
 static void OnPushEvent(FRHIComputeCommandList& RHICmdList, const FRDGEventScope* Scope)
 {
+	SCOPED_GPU_MASK(RHICmdList, Scope->GPUMask);
 	RHICmdList.PushEvent(Scope->Name.GetTCHAR(), FColor(0));
 }
 
-static void OnPopEvent(FRHIComputeCommandList& RHICmdList, const FRDGEventScope*)
+static void OnPopEvent(FRHIComputeCommandList& RHICmdList, const FRDGEventScope* Scope)
 {
+	SCOPED_GPU_MASK(RHICmdList, Scope->GPUMask);
 	RHICmdList.PopEvent();
 }
 
@@ -108,7 +110,7 @@ void FRDGEventScopeStack::BeginScope(FRDGEventName&& EventName)
 {
 	if (IsEnabled())
 	{
-		ScopeStack.BeginScope(Forward<FRDGEventName&&>(EventName));
+		ScopeStack.BeginScope(Forward<FRDGEventName&&>(EventName), ScopeStack.RHICmdList.GetGPUMask());
 	}
 }
 

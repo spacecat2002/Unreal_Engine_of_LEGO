@@ -70,6 +70,7 @@ void FRHIGPUBufferReadback::EnqueueCopy(FRHICommandList& RHICmdList, FRHIVertexB
 	Fence->Clear();
 	RHICmdList.CopyToStagingBuffer(SourceBuffer, DestinationStagingBuffer, 0, NumBytes ? NumBytes : SourceBuffer->GetSize());
 	RHICmdList.WriteGPUFence(Fence);
+	LastCopyGPUMask = RHICmdList.GetGPUMask();
 }
 
 void* FRHIGPUBufferReadback::Lock(uint32 NumBytes)
@@ -125,6 +126,7 @@ void FRHIGPUTextureReadback::EnqueueCopy(FRHICommandList& RHICmdList, FRHITextur
 		ResolveParams.DestAccessFinal = ERHIAccess::CopyDest;
 		RHICmdList.CopyToResolveTarget(SourceTexture, DestinationStagingBuffer, ResolveParams);
 		RHICmdList.WriteGPUFence(Fence);
+		LastCopyGPUMask = RHICmdList.GetGPUMask();
 	}
 }
 

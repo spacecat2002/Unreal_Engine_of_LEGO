@@ -353,7 +353,6 @@ FRDGBuilder::FRDGBuilder(FRHICommandListImmediate& InRHICmdList, FRDGEventName I
 	: RHICmdList(InRHICmdList)
 	, RHICmdListAsyncCompute(FRHICommandListExecutor::GetImmediateAsyncComputeCommandList())
 	, BuilderName(InName)
-	, GpuMaskScope(InRHICmdList.GetGPUMask())
 #if RDG_CPU_SCOPES
 	, CPUScopeStacks(RHICmdList, UnaccountedCSVStat)
 #endif
@@ -1196,7 +1195,10 @@ void FRDGBuilder::SetupPassInternal(FRDGPass* Pass, FRDGPassHandle PassHandle, E
 
 	Pass->GraphicsJoinPass = PassHandle;
 	Pass->GraphicsForkPass = PassHandle;
-	Pass->GpuMask = GpuMaskScope;
+
+#if WITH_MGPU
+	Pass->GPUMask = RHICmdList.GetGPUMask();
+#endif
 
 	IF_RDG_CPU_SCOPES(Pass->CPUScopes = CPUScopeStacks.GetCurrentScopes());
 	IF_RDG_GPU_SCOPES(Pass->GPUScopes = GPUScopeStacks.GetCurrentScopes(PassPipeline));
@@ -1287,6 +1289,11 @@ void FRDGBuilder::ExecutePass(FRDGPass* Pass)
 {
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_FRDGBuilder_ExecutePass);
 
+	// Note that we must do this before doing anything with RHICmdList for the pass.
+	// For example, if this pass only executes on GPU 1 we want to avoid adding a
+	// 0-duration event for this pass on GPU 0's time line.
+	SCOPED_GPU_MASK(RHICmdList, Pass->GPUMask);
+	
 	IF_RDG_CPU_SCOPES(CPUScopeStacks.BeginExecutePass(Pass));
 
 #if RDG_GPU_SCOPES

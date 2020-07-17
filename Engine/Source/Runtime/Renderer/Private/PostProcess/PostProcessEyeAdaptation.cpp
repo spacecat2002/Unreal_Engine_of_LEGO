@@ -733,11 +733,6 @@ void FSceneViewState::FEyeAdaptationManager::SwapTextures(FRDGBuilder& GraphBuil
 {
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_FEyeAdaptationManager_SwapTextures);
 
-	// When reading back last frame's exposure data in AFR, make sure we do it on the
-	// GPUs that were actually used last frame.
-	const FRHIGPUMask ThisFrameGPUMask = GraphBuilder.GetGPUMask();
-	const FRHIGPUMask LastFrameGPUMask = AFRUtils::GetPrevSiblingGPUMask(ThisFrameGPUMask);
-
 	if (bInUpdateLastExposure && PooledRenderTarget[CurrentBuffer].IsValid() && (GIsEditor || CVarEnablePreExposureOnlyInTheEditor.GetValueOnRenderThread() == 0))
 	{
 		FRDGTextureRef CurrentTexture = GraphBuilder.RegisterExternalTexture(PooledRenderTarget[CurrentBuffer], ERenderTargetTexture::ShaderResource, ERDGTextureFlags::MultiFrame);
@@ -749,32 +744,25 @@ void FSceneViewState::FEyeAdaptationManager::SwapTextures(FRDGBuilder& GraphBuil
 			// Send the first request.
 			AddEnqueueCopyPass(GraphBuilder, ExposureTextureReadback.Get(), CurrentTexture);
 		}
-		else if (ExposureTextureReadback->IsReady(LastFrameGPUMask))
+		else
 		{
-			// Workaround until FRHIGPUTextureReadback::Lock has multigpu support
-			FRHIGPUMask ReadBackGPUMask = LastFrameGPUMask;
-			if (!ReadBackGPUMask.HasSingleIndex())
+			const FRHIGPUMask ReadbackGPUMask = FRHIGPUMask::FromIndex(ExposureTextureReadback->GetLastCopyGPUMask().GetFirstIndex());
+			if (ExposureTextureReadback->IsReady(ReadbackGPUMask))
 			{
-				ReadBackGPUMask = FRHIGPUMask::GPU0();
-			}
-
-			{
-				RDG_GPU_MASK_SCOPE(GraphBuilder, ReadBackGPUMask);
-
-				// Read the last request results.
-				FVector4* ReadbackData = (FVector4*)ExposureTextureReadback->Lock(sizeof(FVector4));
-				if (ReadbackData)
 				{
-					LastExposure = ReadbackData->X;
-					LastAverageSceneLuminance = ReadbackData->Z;
+					SCOPED_GPU_MASK(GraphBuilder.RHICmdList, ReadbackGPUMask);
 
-					ExposureTextureReadback->Unlock();
+					// Read the last request results.
+					FVector4* ReadbackData = (FVector4*)ExposureTextureReadback->Lock(sizeof(FVector4));
+					if (ReadbackData)
+					{
+						LastExposure = ReadbackData->X;
+						LastAverageSceneLuminance = ReadbackData->Z;
+
+						ExposureTextureReadback->Unlock();
+					}
 				}
-			}
 			
-			{
-				RDG_GPU_MASK_SCOPE(GraphBuilder, ThisFrameGPUMask);
-
 				// Send the request for next update.
 				AddEnqueueCopyPass(GraphBuilder, ExposureTextureReadback.Get(), CurrentTexture);
 			}

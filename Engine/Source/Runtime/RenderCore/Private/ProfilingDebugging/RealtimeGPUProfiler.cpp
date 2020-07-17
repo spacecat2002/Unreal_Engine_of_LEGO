@@ -150,7 +150,7 @@ public:
 #if DO_CHECK
 		bInsideQuery = false;
 #endif
-		ensure(GPUMask == RHICmdList.GetGPUMask());
+		SCOPED_GPU_MASK(RHICmdList, GPUMask);
 		RHICmdList.EndRenderQuery(EndQuery.GetQuery());
 	}
 

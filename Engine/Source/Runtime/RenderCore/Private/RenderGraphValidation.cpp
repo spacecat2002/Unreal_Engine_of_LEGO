@@ -4,6 +4,7 @@
 #include "RenderGraphPrivate.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "MultiGPU.h"
 
 #if RDG_ENABLE_DEBUG
 
@@ -436,7 +437,9 @@ void FRDGUserValidation::ValidateAddPass(const FRDGPass* Pass, bool bSkipPassAcc
 						// Untracked render targets aren't actually managed by the render target pool.
 						const bool bIsUntrackedRenderTarget = Texture->PooledRenderTarget && !Texture->PooledRenderTarget->IsTracked();
 
-						ensureMsgf(!bFailedToLoadProducedContent || bIsUntrackedRenderTarget,
+						// In multi-gpu, when running with "r.EnableMultiGPUForkAndJoin", it's possible for each GPU to clear the same RT in turn.
+						// When this happens, they are not actually working on the same resource, see for example the implementation of FD3D12MultiNodeGPUObject.
+						ensureMsgf((!bFailedToLoadProducedContent || bIsUntrackedRenderTarget) || (GNumExplicitGPUsForRendering > 1 && RenderTarget.GetLoadAction() == ERenderTargetLoadAction::EClear),
 							TEXT("Pass '%s' attempted to bind texture '%s' as a render target without the 'Load' action specified, despite a prior pass having produced it. It's invalid to completely clobber the contents of a resource. Create a new texture instance instead."),
 							PassName,
 							Texture->Name);
