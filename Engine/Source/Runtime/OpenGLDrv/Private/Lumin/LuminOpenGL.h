@@ -8,7 +8,7 @@
 
 #include <EGL/eglext.h>
 #include <EGL/eglplatform.h>
-#include <GLES2/gl2.h>
+#include <GLES3/gl31.h>
 #include <GLES2/gl2ext.h>
 
 typedef EGLSyncKHR		UGLsync;

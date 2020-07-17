@@ -19,107 +19,45 @@ PFNEGLDESTROYSYNCKHRPROC eglDestroySyncKHR_p = NULL;
 PFNEGLCLIENTWAITSYNCKHRPROC eglClientWaitSyncKHR_p = NULL;
 PFNEGLGETSYNCATTRIBKHRPROC eglGetSyncAttribKHR_p = NULL;
 
-// Occlusion Queries
-PFNGLGENQUERIESEXTPROC 					glGenQueriesEXT = NULL;
-PFNGLDELETEQUERIESEXTPROC 				glDeleteQueriesEXT = NULL;
-PFNGLISQUERYEXTPROC 					glIsQueryEXT = NULL;
-PFNGLBEGINQUERYEXTPROC 					glBeginQueryEXT = NULL;
-PFNGLENDQUERYEXTPROC 					glEndQueryEXT = NULL;
-PFNGLGETQUERYIVEXTPROC 					glGetQueryivEXT = NULL;
-PFNGLGETQUERYOBJECTUIVEXTPROC 			glGetQueryObjectuivEXT = NULL;
+namespace GLFuncPointers
+{
+	// Offscreen MSAA rendering
+	PFNGLFRAMEBUFFERTEXTURE2DMULTISAMPLEEXTPROC	glFramebufferTexture2DMultisampleEXT = NULL;
+	PFNGLRENDERBUFFERSTORAGEMULTISAMPLEEXTPROC	glRenderbufferStorageMultisampleEXT = NULL;
 
-PFNGLQUERYCOUNTEREXTPROC				glQueryCounterEXT = NULL;
-PFNGLGETQUERYOBJECTUI64VEXTPROC			glGetQueryObjectui64vEXT = NULL;
+	PFNGLPUSHGROUPMARKEREXTPROC				glPushGroupMarkerEXT = NULL;
+	PFNGLPOPGROUPMARKEREXTPROC				glPopGroupMarkerEXT = NULL;
+	PFNGLLABELOBJECTEXTPROC					glLabelObjectEXT = NULL;
+	PFNGLGETOBJECTLABELEXTPROC				glGetObjectLabelEXT = NULL;
 
-// Offscreen MSAA rendering
-PFNGLDISCARDFRAMEBUFFEREXTPROC			glDiscardFramebufferEXT = NULL;
-PFNGLFRAMEBUFFERTEXTURE2DMULTISAMPLEEXTPROC	glFramebufferTexture2DMultisampleEXT = NULL;
-PFNGLRENDERBUFFERSTORAGEMULTISAMPLEEXTPROC	glRenderbufferStorageMultisampleEXT = NULL;
+	// KHR_debug
+	PFNGLDEBUGMESSAGECONTROLKHRPROC			glDebugMessageControlKHR = NULL;
+	PFNGLDEBUGMESSAGEINSERTKHRPROC			glDebugMessageInsertKHR = NULL;
+	PFNGLDEBUGMESSAGECALLBACKKHRPROC		glDebugMessageCallbackKHR = NULL;
+	PFNGLGETDEBUGMESSAGELOGKHRPROC			glDebugMessageLogKHR = NULL;
+	PFNGLGETPOINTERVKHRPROC					glGetPointervKHR = NULL;
+	PFNGLPUSHDEBUGGROUPKHRPROC				glPushDebugGroupKHR = NULL;
+	PFNGLPOPDEBUGGROUPKHRPROC				glPopDebugGroupKHR = NULL;
+	PFNGLOBJECTLABELKHRPROC					glObjectLabelKHR = NULL;
+	PFNGLGETOBJECTLABELKHRPROC				glGetObjectLabelKHR = NULL;
+	PFNGLOBJECTPTRLABELKHRPROC				glObjectPtrLabelKHR = NULL;
+	PFNGLGETOBJECTPTRLABELKHRPROC			glGetObjectPtrLabelKHR = NULL;
 
-PFNGLPUSHGROUPMARKEREXTPROC				glPushGroupMarkerEXT = NULL;
-PFNGLPOPGROUPMARKEREXTPROC				glPopGroupMarkerEXT = NULL;
-PFNGLLABELOBJECTEXTPROC					glLabelObjectEXT = NULL;
-PFNGLGETOBJECTLABELEXTPROC				glGetObjectLabelEXT = NULL;
+	// ES 3.2
+	PFNGLTEXBUFFEREXTPROC					glTexBufferEXT = nullptr;
+	PFNGLTEXBUFFERRANGEEXTPROC				glTexBufferRangeEXT = nullptr;
+	PFNGLCOPYIMAGESUBDATAEXTPROC			glCopyImageSubDataEXT = nullptr;
+	PFNGLENABLEIEXTPROC						glEnableiEXT = nullptr;
+	PFNGLDISABLEIEXTPROC					glDisableiEXT = nullptr;
+	PFNGLBLENDEQUATIONIEXTPROC				glBlendEquationiEXT = nullptr;
+	PFNGLBLENDEQUATIONSEPARATEIEXTPROC		glBlendEquationSeparateiEXT = nullptr;
+	PFNGLBLENDFUNCIEXTPROC					glBlendFunciEXT = nullptr;
+	PFNGLBLENDFUNCSEPARATEIEXTPROC			glBlendFuncSeparateiEXT = nullptr;
+	PFNGLCOLORMASKIEXTPROC					glColorMaskiEXT = nullptr;
 
-PFNGLMAPBUFFEROESPROC					glMapBufferOESa = NULL;
-PFNGLUNMAPBUFFEROESPROC					glUnmapBufferOESa = NULL;
-
-PFNGLTEXSTORAGE2DPROC					glTexStorage2D = NULL;
-PFNGLTEXSTORAGE3DPROC					glTexStorage3D = NULL;
-
-// KHR_debug
-PFNGLDEBUGMESSAGECONTROLKHRPROC			glDebugMessageControlKHR = NULL;
-PFNGLDEBUGMESSAGEINSERTKHRPROC			glDebugMessageInsertKHR = NULL;
-PFNGLDEBUGMESSAGECALLBACKKHRPROC		glDebugMessageCallbackKHR = NULL;
-PFNGLGETDEBUGMESSAGELOGKHRPROC			glDebugMessageLogKHR = NULL;
-PFNGLGETPOINTERVKHRPROC					glGetPointervKHR = NULL;
-PFNGLPUSHDEBUGGROUPKHRPROC				glPushDebugGroupKHR = NULL;
-PFNGLPOPDEBUGGROUPKHRPROC				glPopDebugGroupKHR = NULL;
-PFNGLOBJECTLABELKHRPROC					glObjectLabelKHR = NULL;
-PFNGLGETOBJECTLABELKHRPROC				glGetObjectLabelKHR = NULL;
-PFNGLOBJECTPTRLABELKHRPROC				glObjectPtrLabelKHR = NULL;
-PFNGLGETOBJECTPTRLABELKHRPROC			glGetObjectPtrLabelKHR = NULL;
-
-PFNGLDRAWELEMENTSINSTANCEDPROC			glDrawElementsInstanced = NULL;
-PFNGLDRAWARRAYSINSTANCEDPROC			glDrawArraysInstanced = NULL;
-
-PFNGLGENVERTEXARRAYSPROC 				glGenVertexArrays = NULL;
-PFNGLBINDVERTEXARRAYPROC 				glBindVertexArray = NULL;
-PFNGLMAPBUFFERRANGEPROC					glMapBufferRange = NULL;
-PFNGLUNMAPBUFFERPROC					glUnmapBuffer = NULL;
-PFNGLCOPYBUFFERSUBDATAPROC				glCopyBufferSubData = NULL;
-PFNGLDRAWARRAYSINDIRECTPROC				glDrawArraysIndirect = NULL;
-PFNGLDRAWELEMENTSINDIRECTPROC			glDrawElementsIndirect = NULL;
-
-PFNGLVERTEXATTRIBDIVISORPROC			glVertexAttribDivisor = NULL;
-
-PFNGLUNIFORM4UIVPROC					glUniform4uiv = NULL;
-PFNGLTEXIMAGE3DPROC						glTexImage3D = NULL;
-PFNGLTEXSUBIMAGE3DPROC					glTexSubImage3D = NULL;
-PFNGLCOMPRESSEDTEXIMAGE3DPROC			glCompressedTexImage3D = NULL;
-PFNGLCOMPRESSEDTEXSUBIMAGE3DPROC		glCompressedTexSubImage3D = NULL;
-PFNGLCOPYTEXSUBIMAGE3DPROC				glCopyTexSubImage3D = NULL;
-PFNGLCLEARBUFFERFIPROC					glClearBufferfi = NULL;
-PFNGLCLEARBUFFERFVPROC					glClearBufferfv = NULL;
-PFNGLCLEARBUFFERIVPROC					glClearBufferiv = NULL;
-PFNGLCLEARBUFFERUIVPROC					glClearBufferuiv = NULL;
-PFNGLREADBUFFERPROC						glReadBuffer = NULL;
-PFNGLDRAWBUFFERSPROC					glDrawBuffers = NULL;
-PFNGLCOLORMASKIEXTPROC					glColorMaskiEXT = NULL;
-PFNGLTEXBUFFEREXTPROC					glTexBufferEXT = NULL;
-PFNGLTEXBUFFERRANGEEXTPROC				glTexBufferRangeEXT = NULL;
-PFNGLCOPYIMAGESUBDATAPROC				glCopyImageSubData = nullptr;
-
-PFNGLGETPROGRAMBINARYOESPROC            glGetProgramBinary = NULL;
-PFNGLPROGRAMBINARYOESPROC               glProgramBinary = NULL;
-
-PFNGLBINDBUFFERRANGEPROC				glBindBufferRange = NULL;
-PFNGLBINDBUFFERBASEPROC					glBindBufferBase = NULL;
-PFNGLGETUNIFORMBLOCKINDEXPROC			glGetUniformBlockIndex = NULL;
-PFNGLUNIFORMBLOCKBINDINGPROC			glUniformBlockBinding = NULL;
-PFNGLVERTEXATTRIBIPOINTERPROC			glVertexAttribIPointer = NULL;
-PFNGLBLITFRAMEBUFFERPROC				glBlitFramebuffer = NULL;
-
-PFNGLGENSAMPLERSPROC					glGenSamplers = NULL;
-PFNGLDELETESAMPLERSPROC					glDeleteSamplers = NULL;
-PFNGLSAMPLERPARAMETERIPROC				glSamplerParameteri = NULL;
-PFNGLBINDSAMPLERPROC					glBindSampler = NULL;
-PFNGLPROGRAMPARAMETERIPROC				glProgramParameteri = NULL;
-
-PFNGLMEMORYBARRIERPROC					glMemoryBarrier = NULL;
-PFNGLDISPATCHCOMPUTEPROC				glDispatchCompute = NULL;
-PFNGLDISPATCHCOMPUTEINDIRECTPROC		glDispatchComputeIndirect = NULL;
-PFNGLBINDIMAGETEXTUREPROC				glBindImageTexture = NULL;
-
-PFNGLDELETESYNCPROC						glDeleteSync = NULL;
-PFNGLFENCESYNCPROC						glFenceSync = NULL;
-PFNGLISSYNCPROC							glIsSync = NULL;
-PFNGLCLIENTWAITSYNCPROC					glClientWaitSync = NULL;
-
-PFNGLFRAMEBUFFERTEXTUREMULTIVIEWOVRPROC				glFramebufferTextureMultiviewOVR = NULL;
-PFNGLFRAMEBUFFERTEXTUREMULTISAMPLEMULTIVIEWOVRPROC	glFramebufferTextureMultisampleMultiviewOVR = NULL;
-PFNGLFRAMEBUFFERTEXTURELAYERPROC					glFramebufferTextureLayer = NULL;
-
+	PFNGLFRAMEBUFFERTEXTUREMULTIVIEWOVRPROC				glFramebufferTextureMultiviewOVR = NULL;
+	PFNGLFRAMEBUFFERTEXTUREMULTISAMPLEMULTIVIEWOVRPROC	glFramebufferTextureMultisampleMultiviewOVR = NULL;
+};
 
 /** GL_EXT_disjoint_timer_query */
 bool FOpenGLES::bSupportsDisjointTimeQueries = false;
@@ -138,9 +76,6 @@ bool FOpenGLES::bSupportsBGRA8888 = false;
 
 /** Whether BGRA supported as color attachment */
 bool FOpenGLES::bSupportsBGRA8888RenderTarget = false;
-
-/** GL_EXT_discard_framebuffer */
-bool FOpenGLES::bSupportsDiscardFrameBuffer = false;
 
 /** GL_OES_texture_float */
 bool FOpenGLES::bSupportsTextureFloat = false;
@@ -202,14 +137,10 @@ bool FOpenGLES::bRequiresARMShaderFramebufferFetchDepthStencilUndef = false;
 /* Indicates shader compiler hack checks are being tested */
 bool FOpenGLES::bIsCheckingShaderCompilerHacks = false;
 
-/** GL_OES_program_binary extension */
-bool FOpenGLES::bSupportsProgramBinary = false;
-
 /* Indicates shader compiler hack checks are being tested */
 bool FOpenGLES::bIsLimitingShaderCompileCount = false;
 
 bool FOpenGLES::bUseHalfFloatTexStorage = false;
-bool FOpenGLES::bSupportsTextureBuffer = false;
 bool FOpenGLES::bUseES30ShadingLanguage = false;
 bool FOpenGLES::bES31Support = false;
 bool FOpenGLES::bHasHardwareHiddenSurfaceRemoval = false;
@@ -286,9 +217,7 @@ void FOpenGLES::ProcessExtensions(const FString& ExtensionsString)
 	bSupportsShaderDepthStencilFetch = ExtensionsString.Contains(TEXT("GL_ARM_shader_framebuffer_fetch_depth_stencil"));
 	bSupportsMultisampledRenderToTexture = ExtensionsString.Contains(TEXT("GL_EXT_multisampled_render_to_texture"));
 	bSupportsDXT = ExtensionsString.Contains(TEXT("GL_NV_texture_compression_s3tc")) || ExtensionsString.Contains(TEXT("GL_EXT_texture_compression_s3tc"));
-	bSupportsDiscardFrameBuffer = ExtensionsString.Contains(TEXT("GL_EXT_discard_framebuffer"));
 	bSupportsNVFrameBufferBlit = ExtensionsString.Contains(TEXT("GL_NV_framebuffer_blit"));
-	bSupportsProgramBinary = ExtensionsString.Contains(TEXT("GL_OES_get_program_binary"));
 
 	// Report shader precision
 	int Range[2];
@@ -309,34 +238,6 @@ void FOpenGLES::ProcessExtensions(const FString& ExtensionsString)
 
 	GSupportsDepthRenderTargetWithoutColorRenderTarget = false;
 
-	// Get procedures
-	{
-		glGenQueriesEXT = (PFNGLGENQUERIESEXTPROC)((void*)eglGetProcAddress("glGenQueries"));
-		glDeleteQueriesEXT = (PFNGLDELETEQUERIESEXTPROC)((void*)eglGetProcAddress("glDeleteQueries"));
-		glIsQueryEXT = (PFNGLISQUERYEXTPROC)((void*)eglGetProcAddress("glIsQuery"));
-		glBeginQueryEXT = (PFNGLBEGINQUERYEXTPROC)((void*)eglGetProcAddress("glBeginQuery"));
-		glEndQueryEXT = (PFNGLENDQUERYEXTPROC)((void*)eglGetProcAddress("glEndQuery"));
-		glGetQueryivEXT = (PFNGLGETQUERYIVEXTPROC)((void*)eglGetProcAddress("glGetQueryiv"));
-		glGetQueryObjectuivEXT = (PFNGLGETQUERYOBJECTUIVEXTPROC)((void*)eglGetProcAddress("glGetQueryObjectuiv"));
-
-		if (SupportsDisjointTimeQueries())
-		{
-			glQueryCounterEXT = (PFNGLQUERYCOUNTEREXTPROC)((void*)eglGetProcAddress("glQueryCounterEXT"));
-			glGetQueryObjectui64vEXT = (PFNGLGETQUERYOBJECTUI64VEXTPROC)((void*)eglGetProcAddress("glGetQueryObjectui64vEXT"));
-
-			// If EXT_disjoint_timer_query wasn't found, NV_timer_query might be available
-			if (glQueryCounterEXT == NULL)
-			{
-				glQueryCounterEXT = (PFNGLQUERYCOUNTEREXTPROC)eglGetProcAddress("glQueryCounterNV");
-			}
-			if (glGetQueryObjectui64vEXT == NULL)
-			{
-				glGetQueryObjectui64vEXT = (PFNGLGETQUERYOBJECTUI64VEXTPROC)eglGetProcAddress("glGetQueryObjectui64vNV");
-			}
-		}
-	}
-
-	glDiscardFramebufferEXT = (PFNGLDISCARDFRAMEBUFFEREXTPROC)((void*)eglGetProcAddress("glDiscardFramebufferEXT"));
 	glPushGroupMarkerEXT = (PFNGLPUSHGROUPMARKEREXTPROC)((void*)eglGetProcAddress("glPushGroupMarkerEXT"));
 	glPopGroupMarkerEXT = (PFNGLPOPGROUPMARKEREXTPROC)((void*)eglGetProcAddress("glPopGroupMarkerEXT"));
 
@@ -360,65 +261,21 @@ void FOpenGLES::ProcessExtensions(const FString& ExtensionsString)
 		MaxMSAASamplesTileMem = 1;
 	}
 
-	if (bES31Support)
-	{
-		GET_GL_INT(GL_MAX_COMPUTE_TEXTURE_IMAGE_UNITS, 0, MaxComputeTextureImageUnits);
-		GET_GL_INT(GL_MAX_COMPUTE_UNIFORM_COMPONENTS, 0, MaxComputeUniformComponents);
+	GET_GL_INT(GL_MAX_COMPUTE_TEXTURE_IMAGE_UNITS, 0, MaxComputeTextureImageUnits);
+	GET_GL_INT(GL_MAX_COMPUTE_UNIFORM_COMPONENTS, 0, MaxComputeUniformComponents);
 
-		LOG_AND_GET_GL_INT(GL_MAX_COMBINED_IMAGE_UNIFORMS, 0, MaxCombinedUAVUnits);
-		LOG_AND_GET_GL_INT(GL_MAX_COMPUTE_IMAGE_UNIFORMS, 0, MaxComputeUAVUnits);
-		LOG_AND_GET_GL_INT(GL_MAX_FRAGMENT_IMAGE_UNIFORMS, 0, MaxPixelUAVUnits);
+	LOG_AND_GET_GL_INT(GL_MAX_COMBINED_IMAGE_UNIFORMS, 0, MaxCombinedUAVUnits);
+	LOG_AND_GET_GL_INT(GL_MAX_COMPUTE_IMAGE_UNIFORMS, 0, MaxComputeUAVUnits);
+	LOG_AND_GET_GL_INT(GL_MAX_FRAGMENT_IMAGE_UNIFORMS, 0, MaxPixelUAVUnits);
 
-		// clamp UAV units to a sensible limit
-		MaxCombinedUAVUnits = FMath::Min(MaxCombinedUAVUnits, 8);
-		MaxComputeUAVUnits = FMath::Min(MaxComputeUAVUnits, MaxCombinedUAVUnits);
-		MaxPixelUAVUnits = FMath::Min(MaxPixelUAVUnits, MaxCombinedUAVUnits);
-	}
+	// clamp UAV units to a sensible limit
+	MaxCombinedUAVUnits = FMath::Min(MaxCombinedUAVUnits, 8);
+	MaxComputeUAVUnits = FMath::Min(MaxComputeUAVUnits, MaxCombinedUAVUnits);
+	MaxPixelUAVUnits = FMath::Min(MaxPixelUAVUnits, MaxCombinedUAVUnits);
 
 	bSupportsETC2 = true;
 	bUseES30ShadingLanguage = true;
-
-	glDrawElementsInstanced = (PFNGLDRAWELEMENTSINSTANCEDPROC)((void*)eglGetProcAddress("glDrawElementsInstanced"));
-	glDrawArraysInstanced = (PFNGLDRAWARRAYSINSTANCEDPROC)((void*)eglGetProcAddress("glDrawArraysInstanced"));
-	glVertexAttribDivisor = (PFNGLVERTEXATTRIBDIVISORPROC)((void*)eglGetProcAddress("glVertexAttribDivisor"));
-	glUniform4uiv = (PFNGLUNIFORM4UIVPROC)((void*)eglGetProcAddress("glUniform4uiv"));
-	glTexImage3D = (PFNGLTEXIMAGE3DPROC)((void*)eglGetProcAddress("glTexImage3D"));
-	glTexSubImage3D = (PFNGLTEXSUBIMAGE3DPROC)((void*)eglGetProcAddress("glTexSubImage3D"));
-	glCompressedTexImage3D = (PFNGLCOMPRESSEDTEXIMAGE3DPROC)((void*)eglGetProcAddress("glCompressedTexImage3D"));
-	glCompressedTexSubImage3D = (PFNGLCOMPRESSEDTEXSUBIMAGE3DPROC)((void*)eglGetProcAddress("glCompressedTexSubImage3D"));
-	glCopyTexSubImage3D = (PFNGLCOPYTEXSUBIMAGE3DPROC)((void*)eglGetProcAddress("glCopyTexSubImage3D"));
-	glClearBufferfi = (PFNGLCLEARBUFFERFIPROC)((void*)eglGetProcAddress("glClearBufferfi"));
-	glClearBufferfv = (PFNGLCLEARBUFFERFVPROC)((void*)eglGetProcAddress("glClearBufferfv"));
-	glClearBufferiv = (PFNGLCLEARBUFFERIVPROC)((void*)eglGetProcAddress("glClearBufferiv"));
-	glClearBufferuiv = (PFNGLCLEARBUFFERUIVPROC)((void*)eglGetProcAddress("glClearBufferuiv"));
-	glDrawBuffers = (PFNGLDRAWBUFFERSPROC)((void*)eglGetProcAddress("glDrawBuffers"));
-	glReadBuffer = (PFNGLREADBUFFERPROC)((void*)eglGetProcAddress("glReadBuffer"));
-
-	glMapBufferRange = (PFNGLMAPBUFFERRANGEPROC)((void*)eglGetProcAddress("glMapBufferRange"));
-	glCopyBufferSubData = (PFNGLCOPYBUFFERSUBDATAPROC)((void*)eglGetProcAddress("glCopyBufferSubData"));
-	glUnmapBuffer = (PFNGLUNMAPBUFFERPROC)((void*)eglGetProcAddress("glUnmapBuffer"));
-	glBindBufferRange = (PFNGLBINDBUFFERRANGEPROC)((void*)eglGetProcAddress("glBindBufferRange"));
-	glBindBufferBase = (PFNGLBINDBUFFERBASEPROC)((void*)eglGetProcAddress("glBindBufferBase"));
-	glGetUniformBlockIndex = (PFNGLGETUNIFORMBLOCKINDEXPROC)((void*)eglGetProcAddress("glGetUniformBlockIndex"));
-	glUniformBlockBinding = (PFNGLUNIFORMBLOCKBINDINGPROC)((void*)eglGetProcAddress("glUniformBlockBinding"));
-	glVertexAttribIPointer = (PFNGLVERTEXATTRIBIPOINTERPROC)((void*)eglGetProcAddress("glVertexAttribIPointer"));
-	glBlitFramebuffer = (PFNGLBLITFRAMEBUFFERPROC)(void*)eglGetProcAddress("glBlitFramebuffer");
-
-	glGenSamplers = (PFNGLGENSAMPLERSPROC)((void*)eglGetProcAddress("glGenSamplers"));
-	glDeleteSamplers = (PFNGLDELETESAMPLERSPROC)((void*)eglGetProcAddress("glDeleteSamplers"));
-	glSamplerParameteri = (PFNGLSAMPLERPARAMETERIPROC)((void*)eglGetProcAddress("glSamplerParameteri"));
-	glBindSampler = (PFNGLBINDSAMPLERPROC)((void*)eglGetProcAddress("glBindSampler"));
-	glProgramParameteri = (PFNGLPROGRAMPARAMETERIPROC)((void*)eglGetProcAddress("glProgramParameteri"));
-
-	glTexStorage3D = (PFNGLTEXSTORAGE3DPROC)((void*)eglGetProcAddress("glTexStorage3D"));
-
-	glDeleteSync = (PFNGLDELETESYNCPROC)((void*)eglGetProcAddress("glDeleteSync"));
-	glFenceSync = (PFNGLFENCESYNCPROC)((void*)eglGetProcAddress("glFenceSync"));
-	glIsSync = (PFNGLISSYNCPROC)((void*)eglGetProcAddress("glIsSync"));
-	glClientWaitSync = (PFNGLCLIENTWAITSYNCPROC)((void*)eglGetProcAddress("glClientWaitSync"));
-
-	glFramebufferTextureLayer = (PFNGLFRAMEBUFFERTEXTURELAYERPROC)((void*)eglGetProcAddress("glFramebufferTextureLayer"));
-
+	
 	// Required by the ES3 spec
 	bSupportsTextureFloat = true;
 	bSupportsTextureHalfFloat = true;
@@ -446,62 +303,48 @@ void FOpenGLES::ProcessExtensions(const FString& ExtensionsString)
 		}
 	}
 
-	if (bES31Support)
+	GSupportsDepthRenderTargetWithoutColorRenderTarget = true;
+	
+	if (IsES32Usable())
 	{
-		glDrawArraysIndirect = (PFNGLDRAWARRAYSINDIRECTPROC)((void*)eglGetProcAddress("glDrawArraysIndirect"));
-		glDrawElementsIndirect = (PFNGLDRAWELEMENTSINDIRECTPROC)((void*)eglGetProcAddress("glDrawElementsIndirect"));
-		bSupportsTextureBuffer = ExtensionsString.Contains(TEXT("GL_EXT_texture_buffer"));
-		if (bSupportsTextureBuffer)
-		{
-			glTexBufferEXT = (PFNGLTEXBUFFEREXTPROC)((void*)eglGetProcAddress("glTexBufferEXT"));
-			glTexBufferRangeEXT = (PFNGLTEXBUFFERRANGEEXTPROC)((void*)eglGetProcAddress("glTexBufferRangeEXT"));
-		}
-
-		GSupportsDepthRenderTargetWithoutColorRenderTarget = true;
-
-		//
-		glMemoryBarrier = (PFNGLMEMORYBARRIERPROC)((void*)eglGetProcAddress("glMemoryBarrier"));
-		glDispatchCompute = (PFNGLDISPATCHCOMPUTEPROC)((void*)eglGetProcAddress("glDispatchCompute"));
-		glDispatchComputeIndirect = (PFNGLDISPATCHCOMPUTEINDIRECTPROC)((void*)eglGetProcAddress("glDispatchComputeIndirect"));
-		glBindImageTexture = (PFNGLBINDIMAGETEXTUREPROC)((void*)eglGetProcAddress("glBindImageTexture"));
-
-		// ES 3.2
+		glTexBufferEXT = (PFNGLTEXBUFFEREXTPROC)((void*)eglGetProcAddress("glTexBuffer"));
+		glTexBufferRangeEXT = (PFNGLTEXBUFFERRANGEEXTPROC)((void*)eglGetProcAddress("glTexBufferRange"));
+		glCopyImageSubDataEXT = (PFNGLCOPYIMAGESUBDATAEXTPROC)((void*)eglGetProcAddress("glCopyImageSubData"));
+		glEnableiEXT = (PFNGLENABLEIEXTPROC)((void*)eglGetProcAddress("glEnablei"));
+		glDisableiEXT = (PFNGLDISABLEIEXTPROC)((void*)eglGetProcAddress("glDisablei"));
+		glBlendEquationiEXT = (PFNGLBLENDEQUATIONIEXTPROC)((void*)eglGetProcAddress("glBlendEquationi"));
+		glBlendEquationSeparateiEXT = (PFNGLBLENDEQUATIONSEPARATEIEXTPROC)((void*)eglGetProcAddress("glBlendEquationSeparatei"));
+		glBlendFunciEXT = (PFNGLBLENDFUNCIEXTPROC)((void*)eglGetProcAddress("glBlendFunci"));
+		glBlendFuncSeparateiEXT = (PFNGLBLENDFUNCSEPARATEIEXTPROC)((void*)eglGetProcAddress("glBlendFuncSeparatei"));
 		glColorMaskiEXT = (PFNGLCOLORMASKIEXTPROC)((void*)eglGetProcAddress("glColorMaski"));
-		if (glColorMaskiEXT == nullptr)
-		{
-			glColorMaskiEXT = (PFNGLCOLORMASKIEXTPROC)((void*)eglGetProcAddress("glColorMaskiEXT"));
-		}
+	}
+	
+	if (!glEnableiEXT && ExtensionsString.Contains(TEXT("GL_EXT_draw_buffers_indexed")))
+	{
+		// GL_EXT_draw_buffers_indexed
+		glEnableiEXT = (PFNGLENABLEIEXTPROC)((void*)eglGetProcAddress("glEnableiEXT"));
+		glDisableiEXT = (PFNGLDISABLEIEXTPROC)((void*)eglGetProcAddress("glDisableiEXT"));
+		glBlendEquationiEXT = (PFNGLBLENDEQUATIONIEXTPROC)((void*)eglGetProcAddress("glBlendEquationiEXT"));
+		glBlendEquationSeparateiEXT = (PFNGLBLENDEQUATIONSEPARATEIEXTPROC)((void*)eglGetProcAddress("glBlendEquationSeparateiEXT"));
+		glBlendFunciEXT = (PFNGLBLENDFUNCIEXTPROC)((void*)eglGetProcAddress("glBlendFunciEXT"));
+		glBlendFuncSeparateiEXT = (PFNGLBLENDFUNCSEPARATEIEXTPROC)((void*)eglGetProcAddress("glBlendFuncSeparateiEXT"));
+		glColorMaskiEXT = (PFNGLCOLORMASKIEXTPROC)((void*)eglGetProcAddress("glColorMaskiEXT"));
+	}
+	bSupportsDrawBuffersBlend = (glEnableiEXT != nullptr);
+		
+	if (!glTexBufferEXT && ExtensionsString.Contains(TEXT("GL_EXT_texture_buffer")))
+	{
+		// GL_EXT_texture_buffer
+		glTexBufferEXT = (PFNGLTEXBUFFEREXTPROC)((void*)eglGetProcAddress("glTexBufferEXT"));
+		glTexBufferRangeEXT = (PFNGLTEXBUFFERRANGEEXTPROC)((void*)eglGetProcAddress("glTexBufferRangeEXT"));
 	}
 
-	// test for glCopyImageSubData functionality
-	// if device supports GLES 3.2 or higher get api function address otherwise search for glCopyImageSubDataEXT extension
+	if (!glCopyImageSubDataEXT && ExtensionsString.Contains(TEXT("GL_EXT_copy_image")))
 	{
-		if (IsES32Usable())
-		{
-			glCopyImageSubData = (PFNGLCOPYIMAGESUBDATAPROC)((void*)eglGetProcAddress("glCopyImageSubData"));
-		}
-		else
-		{
-			// search for extension name first because a non-null eglGetProcAddress() result does not necessarily imply the presence of the extension
-			if (ExtensionsString.Contains(TEXT("GL_EXT_copy_image")))
-			{
-				glCopyImageSubData = (PFNGLCOPYIMAGESUBDATAPROC)((void*)eglGetProcAddress("glCopyImageSubDataEXT"));
-			}
-		}
-		bSupportsCopyImage = (glCopyImageSubData != nullptr);
+		// GL_EXT_copy_image
+		glCopyImageSubDataEXT = (PFNGLCOPYIMAGESUBDATAEXTPROC)((void*)eglGetProcAddress("glCopyImageSubDataEXT"));
 	}
-
-	glTexStorage2D = (PFNGLTEXSTORAGE2DPROC)((void*)eglGetProcAddress("glTexStorage2D"));
-	if (glTexStorage2D != NULL)
-	{
-		bUseHalfFloatTexStorage = true;
-	}
-	else
-	{
-		// need to disable GL_EXT_color_buffer_half_float support because we have no way to allocate the storage and the driver doesn't work without it.
-		UE_LOG(LogRHI, Warning, TEXT("Disabling support for GL_EXT_color_buffer_half_float as we cannot bind glTexStorage2D"));
-		bSupportsColorBufferHalfFloat = false;
-	}
+	bSupportsCopyImage = (glCopyImageSubDataEXT != nullptr);
 
 	// Set lowest possible limits for texture units, to avoid extra work in GL RHI
 	MaxTextureImageUnits = FMath::Min(MaxTextureImageUnits, 16);

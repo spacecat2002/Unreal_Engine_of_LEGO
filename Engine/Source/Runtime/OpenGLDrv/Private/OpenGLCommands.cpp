@@ -1680,7 +1680,7 @@ void FOpenGLDynamicRHI::RHIDiscardRenderTargets(bool Depth, bool Stencil, uint32
 			}
 		}
 
-		FOpenGL::DiscardFramebufferEXT(GL_FRAMEBUFFER, I, Attachments);
+		FOpenGL::InvalidateFramebuffer(GL_FRAMEBUFFER, I, Attachments);
 	}
 }
 

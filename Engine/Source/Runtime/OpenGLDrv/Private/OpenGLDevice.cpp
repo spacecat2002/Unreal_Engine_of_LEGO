@@ -156,7 +156,7 @@ FOpenGLContextState& FOpenGLDynamicRHI::GetContextStateForCurrentContext(bool bA
 	if (bAssertIfInvalid)
 	{
 			check(ContextType >= 0);
-		}
+	}
 	else if (ContextType < 0)
 	{
 		return InvalidContextState;
@@ -701,11 +701,10 @@ static void InitRHICapabilitiesForGL()
 #endif
 	LOG_AND_GET_GL_INT_TEMP(GL_MAX_RENDERBUFFER_SIZE, 0);
 	LOG_AND_GET_GL_INT_TEMP(GL_MAX_TEXTURE_IMAGE_UNITS, 0);
-	if (FOpenGL::SupportsDrawBuffers())
-	{
-		LOG_AND_GET_GL_INT_TEMP(GL_MAX_DRAW_BUFFERS, 1);
-		GMaxOpenGLDrawBuffers = FMath::Min(Value_GL_MAX_DRAW_BUFFERS, (GLint)MaxSimultaneousRenderTargets);
-	}
+
+	LOG_AND_GET_GL_INT_TEMP(GL_MAX_DRAW_BUFFERS, 1);
+	GMaxOpenGLDrawBuffers = FMath::Min(Value_GL_MAX_DRAW_BUFFERS, (GLint)MaxSimultaneousRenderTargets);
+
 	LOG_AND_GET_GL_INT_TEMP(GL_MAX_COLOR_ATTACHMENTS, 1);
 	LOG_AND_GET_GL_INT_TEMP(GL_MAX_SAMPLES, 1);
 	LOG_AND_GET_GL_INT_TEMP(GL_MAX_COLOR_TEXTURE_SAMPLES, 1);

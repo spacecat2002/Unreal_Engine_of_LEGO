@@ -85,7 +85,6 @@ public:
 	static void ProcessExtensions(const FString& ExtensionsString);
 	static void SetupDefaultGLContextState(const FString& ExtensionsString) {};
 
-	static FORCEINLINE bool SupportsDrawBuffers()						{ return true; }
 	static FORCEINLINE bool SupportsUniformBuffers()					{ return true; }
 	static FORCEINLINE bool SupportsStructuredBuffers()					{ return true; }
 	static FORCEINLINE bool SupportsTimestampQueries()					{ return true; }
@@ -224,7 +223,7 @@ public:
 	static FORCEINLINE void PopGroupMarker() UGL_OPTIONAL_VOID
 	static FORCEINLINE void LabelObject(GLenum Type, GLuint Object, const ANSICHAR* Name) UGL_OPTIONAL_VOID
 	static FORCEINLINE GLsizei GetLabelObject(GLenum Type, GLuint Object, GLsizei BufferSize, ANSICHAR* OutName) UGL_OPTIONAL(0)
-	static FORCEINLINE void DiscardFramebufferEXT(GLenum Target, GLsizei NumAttachments, const GLenum* Attachments) UGL_OPTIONAL_VOID
+	static FORCEINLINE void InvalidateFramebuffer(GLenum Target, GLsizei NumAttachments, const GLenum* Attachments) UGL_OPTIONAL_VOID
 
 	// Will assert at run-time if not implemented:
 	static FORCEINLINE void* MapBufferRange(GLenum Type, uint32 InOffset, uint32 InSize, EResourceLockMode LockMode) UGL_REQUIRED(NULL)

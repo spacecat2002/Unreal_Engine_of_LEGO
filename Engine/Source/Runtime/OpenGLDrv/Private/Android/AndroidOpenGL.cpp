@@ -14,7 +14,6 @@
 #include "Android/AndroidPlatformMisc.h"
 #include "Android/AndroidPlatformFramePacer.h"
 
-
 PFNeglPresentationTimeANDROID eglPresentationTimeANDROID_p = NULL;
 PFNeglGetNextFrameIdANDROID eglGetNextFrameIdANDROID_p = NULL;
 PFNeglGetCompositorTimingANDROID eglGetCompositorTimingANDROID_p = NULL;
@@ -23,7 +22,10 @@ PFNeglQueryTimestampSupportedANDROID eglQueryTimestampSupportedANDROID_p = NULL;
 PFNeglQueryTimestampSupportedANDROID eglGetCompositorTimingSupportedANDROID_p = NULL;
 PFNeglQueryTimestampSupportedANDROID eglGetFrameTimestampsSupportedANDROID_p = NULL;
 
-PFNGLFRAMEBUFFERFETCHBARRIERQCOMPROC glFramebufferFetchBarrierQCOM = NULL;
+namespace GLFuncPointers
+{
+	PFNGLFRAMEBUFFERFETCHBARRIERQCOMPROC glFramebufferFetchBarrierQCOM = NULL;
+}
 
 int32 FAndroidOpenGL::GLMajorVerion = 0;
 int32 FAndroidOpenGL::GLMinorVersion = 0;
@@ -274,8 +276,6 @@ bool PlatformContextIsCurrent( uint64 QueryContext )
 
 void FPlatformOpenGLDevice::LoadEXT()
 {
-	glGenVertexArrays = (PFNGLGENVERTEXARRAYSPROC)((void*)eglGetProcAddress("glGenVertexArrays"));
-	glBindVertexArray = (PFNGLBINDVERTEXARRAYPROC)((void*)eglGetProcAddress("glBindVertexArray"));
 	eglGetSystemTimeNV_p = (PFNEGLGETSYSTEMTIMENVPROC)((void*)eglGetProcAddress("eglGetSystemTimeNV"));
 	eglCreateSyncKHR_p = (PFNEGLCREATESYNCKHRPROC)((void*)eglGetProcAddress("eglCreateSyncKHR"));
 	eglDestroySyncKHR_p = (PFNEGLDESTROYSYNCKHRPROC)((void*)eglGetProcAddress("eglDestroySyncKHR"));
@@ -319,9 +319,6 @@ void FPlatformOpenGLDevice::LoadEXT()
 	glGetObjectLabelKHR = (PFNGLGETOBJECTLABELKHRPROC)((void*)eglGetProcAddress("glGetObjectLabelKHR"));
 	glObjectPtrLabelKHR = (PFNGLOBJECTPTRLABELKHRPROC)((void*)eglGetProcAddress("glObjectPtrLabelKHR"));
 	glGetObjectPtrLabelKHR = (PFNGLGETOBJECTPTRLABELKHRPROC)((void*)eglGetProcAddress("glGetObjectPtrLabelKHR"));
-
-	glGetProgramBinary = (PFNGLGETPROGRAMBINARYOESPROC)((void*)eglGetProcAddress("glGetProgramBinaryOES"));
-	glProgramBinary = (PFNGLPROGRAMBINARYOESPROC)((void*)eglGetProcAddress("glProgramBinaryOES"));
 }
 
 FPlatformOpenGLContext* PlatformGetOpenGLRenderingContext(FPlatformOpenGLDevice* Device)
@@ -468,7 +465,6 @@ void PlatformGetNewRenderQuery(GLuint* OutQuery, uint64* OutQueryContext)
 
 #if !VIRTUALIZE_QUERIES
 	FOpenGLES::GenQueries(1, OutQuery);
-	//glGenQueriesEXT(1, OutQuery);
 #if CHECK_QUERY_ERRORS
 	Err = glGetError();
 	if (Err != GL_NO_ERROR)
@@ -486,7 +482,7 @@ void PlatformGetNewRenderQuery(GLuint* OutQuery, uint64* OutQueryContext)
 		UE_LOG(LogRHI, Log, TEXT("AndroidOpenGL: Using a maximum of %d occlusion queries."), GMaxmimumOcclusionQueries);
 
 		UsableRealQueries.AddDefaulted(GMaxmimumOcclusionQueries);
-		glGenQueriesEXT(GMaxmimumOcclusionQueries, &UsableRealQueries[0]);
+		glGenQueries(GMaxmimumOcclusionQueries, &UsableRealQueries[0]);
 #if CHECK_QUERY_ERRORS
 		Err = glGetError();
 		if (Err != GL_NO_ERROR)
@@ -513,7 +509,7 @@ void PlatformGetNewRenderQuery(GLuint* OutQuery, uint64* OutQueryContext)
 void PlatformReleaseRenderQuery(GLuint Query, uint64 QueryContext)
 {
 #if !VIRTUALIZE_QUERIES
-	glDeleteQueriesEXT(1, &Query);
+	glDeleteQueries(1, &Query);
 #else
 	GLuint RealIndex = VirtualToRealMap[Query];
 	if (RealIndex)
@@ -527,32 +523,18 @@ void PlatformReleaseRenderQuery(GLuint Query, uint64 QueryContext)
 #endif
 }
 
-void FAndroidOpenGL::GetQueryObject(GLuint QueryId, EQueryMode QueryMode, GLuint *OutResult)
+void FAndroidOpenGL::GetQueryObject(GLuint QueryId, EQueryMode QueryMode, GLuint64 *OutResult)
 {
-	GLuint64 Result;
+	GLuint Result;
 	GetQueryObject(QueryId, QueryMode, &Result);
-	*OutResult = GLuint(Result);
+	*OutResult = Result;
 }
 
-static void GetQueryObjectui64(GLuint QueryId, GLenum QueryName, GLuint64* OutResult)
+void FAndroidOpenGL::GetQueryObject(GLuint QueryId, EQueryMode QueryMode, GLuint* OutResult)
 {
-	if (glGetQueryObjectui64vEXT)
-	{
-		glGetQueryObjectui64vEXT(QueryId, QueryName, OutResult);
-	}
-	else
-	{
-		GLuint TempResult = 0;
-		glGetQueryObjectuivEXT(QueryId, QueryName, &TempResult);
-		*OutResult = TempResult;
-	}
-}
-
-void FAndroidOpenGL::GetQueryObject(GLuint QueryId, EQueryMode QueryMode, GLuint64* OutResult)
-{
-	GLenum QueryName = (QueryMode == QM_Result) ? GL_QUERY_RESULT_EXT : GL_QUERY_RESULT_AVAILABLE_EXT;
+	GLenum QueryName = (QueryMode == QM_Result) ? GL_QUERY_RESULT : GL_QUERY_RESULT_AVAILABLE;
 	VERIFY_GL_SCOPE();
-	uint32 IdleStart = (QueryName == GL_QUERY_RESULT_EXT) ? FPlatformTime::Cycles() : 0;
+	uint32 IdleStart = (QueryName == GL_QUERY_RESULT) ? FPlatformTime::Cycles() : 0;
 
 #if !VIRTUALIZE_QUERIES
 #if CHECK_QUERY_ERRORS
@@ -563,12 +545,12 @@ void FAndroidOpenGL::GetQueryObject(GLuint QueryId, EQueryMode QueryMode, GLuint
 	}
 #endif
 
-	GetQueryObjectui64(QueryId, QueryName, OutResult);
+	glGetQueryObjectuiv(QueryId, QueryName, OutResult);
 #else
 	GLuint RealIndex = VirtualToRealMap[QueryId];
 	if (!RealIndex)
 	{
-		if (QueryName == GL_QUERY_RESULT_AVAILABLE_EXT)
+		if (QueryName == GL_QUERY_RESULT_AVAILABLE)
 		{
 			*OutResult = GL_TRUE;
 		}
@@ -579,7 +561,7 @@ void FAndroidOpenGL::GetQueryObject(GLuint QueryId, EQueryMode QueryMode, GLuint
 		return;
 	}
 
-	if (QueryName == GL_QUERY_RESULT_EXT)
+	if (QueryName == GL_QUERY_RESULT)
 	{
 		{
 			QUICK_SCOPE_CYCLE_COUNTER(STAT_FAndroidOpenGL_GetQueryObject_Remove);
@@ -598,14 +580,14 @@ void FAndroidOpenGL::GetQueryObject(GLuint QueryId, EQueryMode QueryMode, GLuint
 	}
 #endif
 
-	GetQueryObjectui64(RealIndex, QueryName, OutResult);
+	glGetQueryObjectuiv(RealIndex, QueryName, OutResult);
 
-	if (QueryName == GL_QUERY_RESULT_EXT)
+	if (QueryName == GL_QUERY_RESULT)
 	{
 		VirtualResults[QueryId] = *OutResult;
 	}
 #endif
-	if (QueryName == GL_QUERY_RESULT_EXT)
+	if (QueryName == GL_QUERY_RESULT)
 	{
 		uint32 ThisCycles = FPlatformTime::Cycles() - IdleStart;
 		if (IsInRHIThread())
@@ -656,37 +638,6 @@ GLuint FAndroidOpenGL::MakeVirtualQueryReal(GLuint Query)
 #endif
 }
 
-
-void FAndroidOpenGL::QueryTimestampCounter(GLuint Query)
-{
-	QUERY_CHECK(SupportsDisjointTimeQueries());
-	VERIFY_GL_SCOPE();
-#if CHECK_QUERY_ERRORS
-	GLenum Err = glGetError();
-	while (Err != GL_NO_ERROR)
-	{
-		Err = glGetError();
-	}
-#endif
-#if !VIRTUALIZE_QUERIES
-	glQueryCounterEXT(Query, GL_TIMESTAMP_EXT);
-#else
-
-	GLuint RealIndex = MakeVirtualQueryReal(Query);
-
-	InFlightVirtualQueries.Add(Query);
-
-	glQueryCounterEXT(RealIndex, GL_TIMESTAMP_EXT);
-#endif
-#if CHECK_QUERY_ERRORS
-
-	Err = glGetError();
-
-	QUERY_CHECK(Err == GL_NO_ERROR);
-#endif
-
-}
-
 bool FAndroidOpenGL::SupportsFramebufferSRGBEnable()
 {	
 	static auto* MobileUseHWsRGBEncodingCVAR = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.UseHWsRGBEncoding"));
@@ -708,11 +659,11 @@ void FAndroidOpenGL::BeginQuery(GLenum QueryType, GLuint Query)
 	VERIFY_GL_SCOPE();
 
 #if !VIRTUALIZE_QUERIES
-	glBeginQueryEXT(QueryType, Query);
+	glBeginQuery(QueryType, Query);
 #else
 	GLuint RealIndex = MakeVirtualQueryReal(Query);
 	QueriesBeganButNotEnded.Add(Query);
-	glBeginQueryEXT(QueryType, RealIndex);
+	glBeginQuery(QueryType, RealIndex);
 #endif
 #if CHECK_QUERY_ERRORS
 	Err = glGetError();
@@ -743,7 +694,7 @@ void FAndroidOpenGL::EndQuery(GLenum QueryType)
 #if VIRTUALIZE_QUERIES
 	InFlightVirtualQueries.Add(QueriesBeganButNotEnded.Pop());
 #endif
-	glEndQueryEXT(QueryType);
+	glEndQuery(QueryType);
 
 #if CHECK_QUERY_ERRORS
 	Err = glGetError();
@@ -967,24 +918,6 @@ void FAndroidOpenGL::ProcessExtensions(const FString& ExtensionsString)
 		}
 	}
 
-	// test for glCopyImageSubData functionality
-	// if device supports GLES 3.2 or higher get api function address otherwise search for glCopyImageSubDataEXT extension
-	{
-		if (GLMajorVerion >= 3 && GLMinorVersion >= 2)
-		{
-			glCopyImageSubData = (PFNGLCOPYIMAGESUBDATAPROC)((void*)eglGetProcAddress("glCopyImageSubData"));
-		}
-		else
-		{
-			// search for extension name first because a non-null eglGetProcAddress() result does not necessarily imply the presence of the extension
-			if (ExtensionsString.Contains(TEXT("GL_EXT_copy_image")))
-			{
-				glCopyImageSubData = (PFNGLCOPYIMAGESUBDATAPROC)((void*)eglGetProcAddress("glCopyImageSubDataEXT"));
-			}
-		}
-		bSupportsCopyImage = (glCopyImageSubData != nullptr);
-	}
-
 	// Qualcomm non-coherent framebuffer_fetch
 	if (CVarDisableFBFNonCoherent.GetValueOnAnyThread() == 0 &&
 		ExtensionsString.Contains(TEXT("GL_QCOM_shader_framebuffer_fetch_noncoherent")) && 
@@ -1036,8 +969,8 @@ void FAndroidMisc::GetValidTargetPlatforms(TArray<FString>& TargetPlatformNames)
 
 void FAndroidAppEntry::PlatformInit()
 {
-	// create an ES2 EGL here for gpu queries.
-	AndroidEGL::GetInstance()->Init(AndroidEGL::AV_OpenGLES, 2, 0, false);
+	// create an ES3.1 EGL here for gpu queries.
+	AndroidEGL::GetInstance()->Init(AndroidEGL::AV_OpenGLES, 3, 1, false);
 }
 
 void FAndroidAppEntry::ReleaseEGL()
