@@ -934,7 +934,7 @@ void FRDGBuilder::Compile()
 				{
 					check(PrevRenderTargets);
 
-					if (PrevRenderTargets->CanMergeBefore(RenderTargets) && PrevPass->GpuMask == NextPass->GpuMask)
+					if (PrevRenderTargets->CanMergeBefore(RenderTargets) && PrevPass->GPUMask == NextPass->GPUMask)
 					{
 						PrevPass->bSkipRenderPassEnd = 1;
 						NextPass->bSkipRenderPassBegin = 1;
