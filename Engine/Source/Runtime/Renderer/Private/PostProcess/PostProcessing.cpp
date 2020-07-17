@@ -696,9 +696,14 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, c
 					ColorGradingTexture = AddCombineLUTPass(GraphBuilder, View);
 				}
 				// We can re-use the color grading texture from the primary view.
-				else
+				else if (View.GetTonemappingLUT())
 				{
 					ColorGradingTexture = TryRegisterExternalTexture(GraphBuilder, View.GetTonemappingLUT());
+				}
+				else
+				{
+					const FViewInfo* PrimaryView = static_cast<const FViewInfo*>(View.Family->Views[0]);
+					ColorGradingTexture = TryRegisterExternalTexture(GraphBuilder, PrimaryView->GetTonemappingLUT());
 				}
 
 				FTonemapInputs PassInputs;
