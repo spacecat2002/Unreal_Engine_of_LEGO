@@ -80,4 +80,6 @@ private:
 	TSharedRef< class FHoloLensWindow > ApplicationWindow;
 
 	static FVector2D DesktopSize;
+	
+	static bool buildForRetailWindowsStore;
 };
