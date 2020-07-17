@@ -525,6 +525,8 @@ void FDeferredShadingSceneRenderer::RenderRayTracingSkyLight(
 	int32 ViewIndex = 0;
 	for (FViewInfo& View : Views)
 	{
+		RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
+
 		FSceneViewState* SceneViewState = (FSceneViewState*)View.State;
 
 		// Sky Light Quasi Random data setup
