@@ -359,7 +359,8 @@ private:
 	FRDGBarrierBatchBegin EpilogueBarriersToBeginForGraphics;
 	FRDGBarrierBatchBegin EpilogueBarriersToBeginForAsyncCompute;
 
-	FRHIGPUMask GpuMask;
+	FRHIGPUMask GPUMask;
+
 	IF_RDG_CPU_SCOPES(FRDGCPUScopes CPUScopes);
 	IF_RDG_GPU_SCOPES(FRDGGPUScopes GPUScopes);
 

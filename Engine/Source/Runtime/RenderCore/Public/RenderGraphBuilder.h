@@ -174,11 +174,6 @@ public:
 	/** Per-frame update of the render graph resource pool. */
 	static void TickPoolElements();
 
-	const FRHIGPUMask GetGPUMask() const
-	{
-		return GpuMaskScope;
-	}
-
 	/** The RHI command list used for the render graph. */
 	FRHICommandListImmediate& RHICmdList;
 
@@ -235,7 +230,6 @@ private:
 	TArray<TPair<FRDGTextureRef, TRefCountPtr<IPooledRenderTarget>*>, TInlineAllocator<4, SceneRenderingAllocator>> ExtractedTextures;
 	TArray<TPair<FRDGBufferRef, TRefCountPtr<FRDGPooledBuffer>*>, TInlineAllocator<4, SceneRenderingAllocator>> ExtractedBuffers;
 
-	FRHIGPUMask GpuMaskScope;
 	IF_RDG_CPU_SCOPES(FRDGCPUScopeStacks CPUScopeStacks);
 	IF_RDG_GPU_SCOPES(FRDGGPUScopeStacksByPipeline GPUScopeStacks);
 
@@ -310,28 +304,9 @@ private:
 	friend FRDGScopedCsvStatExclusiveConditional;
 };
 
-class FRDGGPUMaskScopeGuard final
-{
-public:
-	FRDGGPUMaskScopeGuard(FRDGBuilder& InGraphBuilder, FRHIGPUMask InGpuMask)
-		: GraphBuilder(InGraphBuilder)
-		, GpuMaskRestore(GraphBuilder.GpuMaskScope)
-	{
-		GraphBuilder.GpuMaskScope = InGpuMask;
-	}
-
-	~FRDGGPUMaskScopeGuard()
-	{
-		GraphBuilder.GpuMaskScope = GpuMaskRestore;
-	}
-
-private:
-	FRDGBuilder& GraphBuilder;
-	FRHIGPUMask GpuMaskRestore;
-};
-
 #if WITH_MGPU
-	#define RDG_GPU_MASK_SCOPE(GraphBuilder, GPUMask) FRDGGPUMaskScopeGuard PREPROCESSOR_JOIN(RDGGPUMaskScope, __LINE__){ GraphBuilder, GPUMask }
+	// #define RDG_GPU_MASK_SCOPE(GraphBuilder, GPUMask) FRDGGPUMaskScopeGuard PREPROCESSOR_JOIN(RDGGPUMaskScope, __LINE__){ GraphBuilder, GPUMask }
+	#define RDG_GPU_MASK_SCOPE(GraphBuilder, GPUMask) SCOPED_GPU_MASK(GraphBuilder.RHICmdList, GPUMask)
 #else
 	#define RDG_GPU_MASK_SCOPE(GraphBuilder, GPUMask)
 #endif
