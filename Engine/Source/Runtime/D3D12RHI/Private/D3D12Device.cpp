@@ -370,6 +370,9 @@ void FD3D12Device::Cleanup()
 
 	ReleasePooledUniformBuffers();
 
+	// Flush all pending deletes before destroying the device or any command contexts.
+	FRHIResource::FlushPendingDeletes();
+
 	// Delete array index 0 (the default context) last
 	for (int32 i = CommandContextArray.Num() - 1; i >= 0; i--)
 	{
@@ -384,8 +387,6 @@ void FD3D12Device::Cleanup()
 		AsyncComputeContextArray[i] = nullptr;
 	}
 
-	// Flush all pending deletes before destroying the device.
-	FRHIResource::FlushPendingDeletes();
 
 	/*
 	// Cleanup thread resources
