@@ -179,9 +179,6 @@ void FOpenGLDynamicRHI::RHIBeginFrame()
 	GPUProfilingData.BeginFrame(this);
 
 #if PLATFORM_ANDROID && !PLATFORM_LUMINGL4 //adding #if since not sure if this is required for any other platform.
-	//we need to differential between 0 (backbuffer) and lastcolorRT.
-	FOpenGLContextState& ContextState = GetContextStateForCurrentContext();
-	ContextState.LastES2ColorRTResource = 0xFFFFFFFF;
 	PendingState.DepthStencil = 0 ;
 #endif
 }

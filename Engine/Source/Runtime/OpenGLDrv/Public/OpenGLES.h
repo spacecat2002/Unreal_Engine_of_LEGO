@@ -212,6 +212,7 @@ struct FOpenGLES : public FOpenGLBase
 	static FORCEINLINE bool SupportsRGB10A2() { return bSupportsRGB10A2; }
 	static FORCEINLINE bool SupportsComputeShaders() { return true; }
 	static FORCEINLINE bool SupportsDrawIndirect() { return true; }
+	static FORCEINLINE bool SupportsVertexAttribBinding() { return true; }
 
 	static FORCEINLINE bool RequiresUEShaderFramebufferFetchDef() { return bRequiresUEShaderFramebufferFetchDef; }
 	static FORCEINLINE bool HasBinaryProgramRetrievalFailed() { return bBinaryProgramRetrievalFailed; }
@@ -711,6 +712,27 @@ struct FOpenGLES : public FOpenGLBase
 		}
 
 		return Disjoint;
+	}
+
+	static FORCEINLINE void BindVertexBuffer(GLuint BindingIndex, GLuint Buffer, GLintptr Offset, GLsizei Stride)
+	{
+		glBindVertexBuffer(BindingIndex, Buffer, Offset, Stride);
+	}
+	static FORCEINLINE void VertexAttribFormat(GLuint AttribIndex, GLint Size, GLenum Type, GLboolean Normalized, GLuint RelativeOffset)
+	{
+		glVertexAttribFormat(AttribIndex, Size, Type, Normalized, RelativeOffset);
+	}
+	static FORCEINLINE void VertexAttribIFormat(GLuint AttribIndex, GLint Size, GLenum Type, GLuint RelativeOffset)
+	{
+		glVertexAttribIFormat(AttribIndex, Size, Type, RelativeOffset);
+	}
+	static FORCEINLINE void VertexAttribBinding(GLuint AttribIndex, GLuint BindingIndex)
+	{
+		glVertexAttribBinding(AttribIndex, BindingIndex);
+	}
+	static FORCEINLINE void VertexBindingDivisor(GLuint BindingIndex, GLuint Divisor)
+	{
+		glVertexBindingDivisor(BindingIndex, Divisor);
 	}
 
 protected:

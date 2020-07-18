@@ -1865,7 +1865,7 @@ void FOpenGLDynamicRHI::SetupVertexArrays(FOpenGLContextState& ContextState, uin
 			continue; // skip unused attributes.
 		}
 
-		if ( VertexElement.StreamIndex < NumStreams)
+		if (VertexElement.StreamIndex < NumStreams)
 		{
 			FOpenGLStream* Stream = &Streams[VertexElement.StreamIndex];
 			uint32 Stride = Stream->Stride;
@@ -1936,7 +1936,6 @@ void FOpenGLDynamicRHI::SetupVertexArraysVAB(FOpenGLContextState& ContextState, 
 	VERIFY_GL_SCOPE();
 	bool KnowsDivisor[NUM_OPENGL_VERTEX_STREAMS] = { 0 };
 	uint32 Divisor[NUM_OPENGL_VERTEX_STREAMS] = { 0 };
-	uint32 LastMaxAttrib = ContextState.MaxActiveAttrib;
 	bool UpdateDivisors = false;
 	uint32 StreamMask = ContextState.ActiveStreamMask;
 
@@ -1944,9 +1943,8 @@ void FOpenGLDynamicRHI::SetupVertexArraysVAB(FOpenGLContextState& ContextState, 
 	FOpenGLVertexDeclaration* VertexDeclaration = PendingState.BoundShaderState->VertexDeclaration;
 	uint32 AttributeMask = PendingState.BoundShaderState->GetVertexShader()->Bindings.InOutMask;
 
-	if (ContextState.VertexDecl != VertexDeclaration || AttributeMask != ContextState.ActiveAttribMask)
+	if (ContextState.VertexDecl != VertexDeclaration || AttributeMask != ContextState.VertexAttrs_EnabledBits)
 	{
-		ContextState.MaxActiveAttrib = 0;
 		StreamMask = 0;
 		UpdateDivisors = true;
 
@@ -1956,10 +1954,8 @@ void FOpenGLDynamicRHI::SetupVertexArraysVAB(FOpenGLContextState& ContextState, 
 		{
 			FOpenGLVertexElement& VertexElement = VertexDeclaration->VertexElements[ElementIndex];
 			uint32 AttributeIndex = VertexElement.AttributeIndex;
-			const bool bAttribInUse = (PendingState.BoundShaderState->GetVertexShader()->Bindings.InOutMask & (0x1 << AttributeIndex)) != 0;
+			const bool bAttribInUse = (AttributeMask & (0x1 << AttributeIndex)) != 0;
 			const uint32 StreamIndex = VertexElement.StreamIndex;
-
-			ContextState.MaxActiveAttrib = FMath::Max(ContextState.MaxActiveAttrib, AttributeIndex);
 
 			//only setup/track attributes actually in use
 			FOpenGLCachedAttr &Attr = ContextState.VertexAttrs[AttributeIndex];
@@ -1967,7 +1963,6 @@ void FOpenGLDynamicRHI::SetupVertexArraysVAB(FOpenGLContextState& ContextState, 
 			{
 				if (VertexElement.StreamIndex < NumStreams)
 				{
-
 					// Track the actively used streams, to limit the updates to those in use
 					StreamMask |= 0x1 << VertexElement.StreamIndex;
 
@@ -1976,8 +1971,7 @@ void FOpenGLDynamicRHI::SetupVertexArraysVAB(FOpenGLContextState& ContextState, 
 					KnowsDivisor[StreamIndex] = true;
 					Divisor[StreamIndex] = VertexElement.Divisor;
 
-					if (
-						(Attr.StreamOffset != VertexElement.Offset) ||
+					if ((Attr.StreamOffset != VertexElement.Offset) ||
 						(Attr.Size != VertexElement.Size) ||
 						(Attr.Type != VertexElement.Type) ||
 						(Attr.bNormalized != VertexElement.bNormalized))
@@ -2002,16 +1996,25 @@ void FOpenGLDynamicRHI::SetupVertexArraysVAB(FOpenGLContextState& ContextState, 
 						FOpenGL::VertexAttribBinding(AttributeIndex, VertexElement.StreamIndex);
 						Attr.StreamIndex = StreamIndex;
 					}
+
+					if (!ContextState.GetVertexAttrEnabled(AttributeIndex))
+					{
+						ContextState.SetVertexAttrEnabled(AttributeIndex, true);
+						glEnableVertexAttribArray(AttributeIndex);
+					}
 				}
 				else
 				{
-					// bogus stream, make sure current value is zero to match D3D
+					//workaround attributes with no streams
+					VERIFY_GL_SCOPE();
+
+					if (ContextState.GetVertexAttrEnabled(AttributeIndex))
+					{		
+						ContextState.SetVertexAttrEnabled(AttributeIndex, false);
+						glDisableVertexAttribArray(AttributeIndex);
+					}
 					static float data[4] = { 0.0f };
-
 					glVertexAttrib4fv(AttributeIndex, data);
-
-					//Kill this attribute to make sure it isn't enabled
-					AttributeMask &= ~(1 << AttributeIndex);
 				}
 			}
 			else
@@ -2024,77 +2027,83 @@ void FOpenGLDynamicRHI::SetupVertexArraysVAB(FOpenGLContextState& ContextState, 
 			}
 		}
 		ContextState.VertexDecl = VertexDeclaration;
-
-		//Update the stream mask
-		ContextState.ActiveStreamMask = StreamMask;
 	}
 
-	//setup streams
-	for (uint32 StreamIndex = 0; StreamIndex < NumStreams; StreamIndex++, StreamMask >>= 1)
+	// Disable remaining vertex arrays
+	uint32 NotUsedButEnabledAttrMask = (ContextState.VertexAttrs_EnabledBits & ~(AttributeMask));
+	for (GLuint AttribIndex = 0; AttribIndex < NUM_OPENGL_VERTEX_STREAMS && NotUsedButEnabledAttrMask; AttribIndex++)
 	{
-		FOpenGLStream &CachedStream = ContextState.VertexStreams[StreamIndex];
-		FOpenGLStream &Stream = Streams[StreamIndex];
-		uint32 Offset = BaseVertexIndex * Stream.Stride + Stream.Offset;
-		if ((StreamMask & 0x1) != 0 && Stream.VertexBuffer)
+		if (NotUsedButEnabledAttrMask & 1)
 		{
-			if ( CachedStream.VertexBuffer != Stream.VertexBuffer || CachedStream.Offset != Offset || CachedStream.Stride != Stream.Stride)
-			{
-				check(Stream.VertexBuffer->Resource != 0);
-				FOpenGL::BindVertexBuffer( StreamIndex, Stream.VertexBuffer->Resource, Offset, Stream.Stride);
-				CachedStream.VertexBuffer = Stream.VertexBuffer;
-				CachedStream.Offset = Offset;
-				CachedStream.Stride = Stream.Stride;
-			}
-			if (UpdateDivisors && CachedStream.Divisor != Divisor[StreamIndex])
-			{
-				FOpenGL::VertexBindingDivisor( StreamIndex, Divisor[StreamIndex]);
-				CachedStream.Divisor = Divisor[StreamIndex];
-			}
+			glDisableVertexAttribArray(AttribIndex);
+			ContextState.SetVertexAttrEnabled(AttribIndex, false);
 		}
-		else
+		NotUsedButEnabledAttrMask >>= 1;
+	}
+
+	// Active streams that are no used by this draw
+	uint32 NotUsedButActiveStreamMask = (ContextState.ActiveStreamMask & ~(StreamMask));
+	
+	// Update the stream mask
+	ContextState.ActiveStreamMask = StreamMask;
+
+	// Enable used streams
+	for (uint32 StreamIndex = 0; StreamIndex < NumStreams && StreamMask; StreamIndex++)
+	{
+		if (StreamMask & 0x1)
 		{
-			if (((StreamMask & 0x1) != 0) && (Stream.VertexBuffer == nullptr))
+			FOpenGLStream &CachedStream = ContextState.VertexStreams[StreamIndex];
+			FOpenGLStream &Stream = Streams[StreamIndex];
+			if (Stream.VertexBuffer)
+			{
+				uint32 Offset = BaseVertexIndex * Stream.Stride + Stream.Offset;
+				bool bAnyDifferent = //bitwise ors to get rid of the branches
+					(CachedStream.VertexBuffer != Stream.VertexBuffer) |
+					(CachedStream.Stride != Stream.Stride)|
+					(CachedStream.Offset != Offset);
+
+				if (bAnyDifferent)
+				{
+					check(Stream.VertexBuffer->Resource != 0);
+					FOpenGL::BindVertexBuffer(StreamIndex, Stream.VertexBuffer->Resource, Offset, Stream.Stride);
+					CachedStream.VertexBuffer = Stream.VertexBuffer;
+					CachedStream.Offset = Offset;
+					CachedStream.Stride = Stream.Stride;
+				}
+				if (UpdateDivisors && CachedStream.Divisor != Divisor[StreamIndex])
+				{
+					FOpenGL::VertexBindingDivisor(StreamIndex, Divisor[StreamIndex]);
+					CachedStream.Divisor = Divisor[StreamIndex];
+				}
+			}
+			else
 			{
 				UE_LOG(LogRHI, Error, TEXT("Stream %d marked as in use, but vertex buffer provided is NULL (Mask = %x)"), StreamIndex, StreamMask);
-			}
-			if (CachedStream.VertexBuffer != Stream.VertexBuffer || CachedStream.Offset != Offset || CachedStream.Stride != Stream.Stride)
-			{
+				
 				FOpenGL::BindVertexBuffer(StreamIndex, 0, 0, 0);
 				CachedStream.VertexBuffer = nullptr;
 				CachedStream.Offset = 0;
 				CachedStream.Stride = 0;
 			}
 		}
+		StreamMask >>= 1;
 	}
-
 	//Ensure that all requested streams were set
 	check(StreamMask == 0);
 
-	// Set the enable/disable state on the arrays
-	uint32 MaskDif = ContextState.ActiveAttribMask ^ AttributeMask;
-	if (MaskDif)
+	// Disable active unused streams
+	for (uint32 StreamIndex = 0; StreamIndex < NUM_OPENGL_VERTEX_STREAMS && NotUsedButActiveStreamMask; StreamIndex++)
 	{
-		ContextState.ActiveAttribMask = AttributeMask;
-		uint32 MaxAttrib = FMath::Max( ContextState.MaxActiveAttrib, LastMaxAttrib);
-	
-		for (GLuint AttribIndex = 0; AttribIndex < NUM_OPENGL_VERTEX_STREAMS && AttribIndex <= MaxAttrib && MaskDif; AttribIndex++)
+		if (NotUsedButActiveStreamMask & 0x1)
 		{
-			if ( MaskDif & 0x1)
-			{
-				if ( AttributeMask & 0x1)
-				{
-					glEnableVertexAttribArray(AttribIndex);
-				}
-				else
-				{
-					glDisableVertexAttribArray(AttribIndex);
-				}
-			}
-			AttributeMask >>= 1;
-			MaskDif >>= 1;
+			FOpenGL::BindVertexBuffer(StreamIndex, 0, 0, 0);
+			ContextState.VertexStreams[StreamIndex].VertexBuffer = nullptr;
+			ContextState.VertexStreams[StreamIndex].Offset = 0;
+			ContextState.VertexStreams[StreamIndex].Stride = 0;
 		}
-		check( MaskDif == 0);
+		NotUsedButActiveStreamMask >>= 1;
 	}
+	check(NotUsedButActiveStreamMask == 0);
 }
 
 // Used by default on ES2 for immediate mode rendering.
@@ -2172,31 +2181,58 @@ void FOpenGLDynamicRHI::OnVertexBufferDeletion( GLuint VertexBufferResource )
 		RenderingContextState.ArrayBufferBound = -1;	// will force refresh
 	}
 
-	for (GLuint AttribIndex = 0; AttribIndex < NUM_OPENGL_VERTEX_STREAMS; AttribIndex++)
+	if (FOpenGL::SupportsVertexAttribBinding() && OpenGLConsoleVariables::bUseVAB)
 	{
-		if( SharedContextState.VertexAttrs[AttribIndex].Buffer == VertexBufferResource )
+		// loop through active streams
+		uint32 ActiveStreamMask = SharedContextState.ActiveStreamMask;
+		for (GLuint StreamIndex = 0; StreamIndex < NUM_OPENGL_VERTEX_STREAMS && ActiveStreamMask; StreamIndex++)
 		{
-			SharedContextState.VertexAttrs[AttribIndex].Pointer = FOpenGLCachedAttr_Invalid;	// that'll enforce state update on next cache test
+			FOpenGLStream& CachedStream = SharedContextState.VertexStreams[StreamIndex];
+			if ((ActiveStreamMask & 0x1) && 
+				CachedStream.VertexBuffer && 
+				CachedStream.VertexBuffer->Resource == VertexBufferResource)
+			{
+				FOpenGL::BindVertexBuffer(StreamIndex, 0, 0, 0); // brianh@nvidia: work around driver bug 1809000
+				CachedStream.VertexBuffer = nullptr;
+				CachedStream.Offset = 0;
+				CachedStream.Stride = 0;
+			}
+			ActiveStreamMask >>= 1;
 		}
-
-		if( RenderingContextState.VertexAttrs[AttribIndex].Buffer == VertexBufferResource )
+	
+		// loop through active streams
+		ActiveStreamMask = RenderingContextState.ActiveStreamMask;
+		for (GLuint StreamIndex = 0; StreamIndex < NUM_OPENGL_VERTEX_STREAMS && ActiveStreamMask; StreamIndex++)
 		{
-			RenderingContextState.VertexAttrs[AttribIndex].Pointer = FOpenGLCachedAttr_Invalid;	// that'll enforce state update on next cache test
+			FOpenGLStream& CachedStream = RenderingContextState.VertexStreams[StreamIndex];
+			if ((ActiveStreamMask & 0x1) && 
+				CachedStream.VertexBuffer && 
+				CachedStream.VertexBuffer->Resource == VertexBufferResource)
+			{
+				FOpenGL::BindVertexBuffer(StreamIndex, 0, 0, 0); // brianh@nvidia: work around driver bug 1809000
+				CachedStream.VertexBuffer = nullptr;
+				CachedStream.Offset = 0;
+				CachedStream.Stride = 0;
+			}
+			ActiveStreamMask >>= 1;
 		}
 	}
-
-	for (GLuint StreamIndex = 0; StreamIndex < NUM_OPENGL_VERTEX_STREAMS; StreamIndex++)
+	else
 	{
-		if (SharedContextState.VertexStreams[StreamIndex].VertexBuffer != nullptr && SharedContextState.VertexStreams[StreamIndex].VertexBuffer->Resource == VertexBufferResource)
+		for (GLuint AttribIndex = 0; AttribIndex < NUM_OPENGL_VERTEX_STREAMS; AttribIndex++)
 		{
-			FOpenGL::BindVertexBuffer(StreamIndex, 0, 0, 0); // brianh@nvidia: work around driver bug 1809000
-			SharedContextState.VertexStreams[StreamIndex].VertexBuffer = nullptr;
+			if (SharedContextState.VertexAttrs[AttribIndex].Buffer == VertexBufferResource)
+			{
+				SharedContextState.VertexAttrs[AttribIndex].Pointer = FOpenGLCachedAttr_Invalid;	// that'll enforce state update on next cache test		}
+			}
 		}
-
-		if (RenderingContextState.VertexStreams[StreamIndex].VertexBuffer != nullptr && RenderingContextState.VertexStreams[StreamIndex].VertexBuffer->Resource == VertexBufferResource)
+	
+		for (GLuint AttribIndex = 0; AttribIndex < NUM_OPENGL_VERTEX_STREAMS; AttribIndex++)
 		{
-			FOpenGL::BindVertexBuffer(StreamIndex, 0, 0, 0); // brianh@nvidia: work around driver bug 1809000
-			RenderingContextState.VertexStreams[StreamIndex].VertexBuffer = nullptr;
+			if (RenderingContextState.VertexAttrs[AttribIndex].Buffer == VertexBufferResource)
+			{
+				RenderingContextState.VertexAttrs[AttribIndex].Pointer = FOpenGLCachedAttr_Invalid;	// that'll enforce state update on next cache test		}
+			}
 		}
 	}
 }
@@ -2242,16 +2278,19 @@ void FOpenGLDynamicRHI::OnUniformBufferDeletion( GLuint UniformBufferResource, u
 		RenderingContextState.UniformBufferBound = -1;	// will force refresh
 	}
 
-	for (GLuint UniformBufferIndex = 0; UniformBufferIndex < CrossCompiler::NUM_SHADER_STAGES*OGL_MAX_UNIFORM_BUFFER_BINDINGS; UniformBufferIndex++)
+	if (!GUseEmulatedUniformBuffers)
 	{
-		if( SharedContextState.UniformBuffers[UniformBufferIndex] == UniformBufferResource )
+		for (GLuint UniformBufferIndex = 0; UniformBufferIndex < CrossCompiler::NUM_SHADER_STAGES*OGL_MAX_UNIFORM_BUFFER_BINDINGS; UniformBufferIndex++)
 		{
-			SharedContextState.UniformBuffers[UniformBufferIndex] = FOpenGLCachedUniformBuffer_Invalid;	// that'll enforce state update on next cache test
-		}
+			if (SharedContextState.UniformBuffers[UniformBufferIndex] == UniformBufferResource)
+			{
+				SharedContextState.UniformBuffers[UniformBufferIndex] = FOpenGLCachedUniformBuffer_Invalid;	// that'll enforce state update on next cache test
+			}
 
-		if( RenderingContextState.UniformBuffers[UniformBufferIndex] == UniformBufferResource )
-		{
-			RenderingContextState.UniformBuffers[UniformBufferIndex] = FOpenGLCachedUniformBuffer_Invalid;	// that'll enforce state update on next cache test
+			if (RenderingContextState.UniformBuffers[UniformBufferIndex] == UniformBufferResource)
+			{
+				RenderingContextState.UniformBuffers[UniformBufferIndex] = FOpenGLCachedUniformBuffer_Invalid;	// that'll enforce state update on next cache test
+			}
 		}
 	}
 }

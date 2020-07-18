@@ -350,15 +350,13 @@ struct FOpenGLContextState : public FOpenGLCommonState
 	int32							FirstNonzeroRenderTarget;
 	GLenum							DrawFramebuffers[MaxSimultaneousRenderTargets];
 	bool							bAlphaToCoverageEnabled;
-
-	// @todo-mobile: Used to cache the last color attachment to optimize logical buffer loads
-	GLuint							LastES2ColorRTResource;
-	GLenum							LastES2ColorTargetType;
-
+	
+	FOpenGLVertexDeclaration*		VertexDecl;
 	FOpenGLCachedAttr				VertexAttrs[NUM_OPENGL_VERTEX_STREAMS];
 	FOpenGLStream					VertexStreams[NUM_OPENGL_VERTEX_STREAMS];
-
-	uint32 VertexAttrs_EnabledBits;
+		
+	uint32							ActiveStreamMask;
+	uint32							VertexAttrs_EnabledBits;
 	FORCEINLINE bool GetVertexAttrEnabled(int32 Index) const
 	{
 		static_assert(NUM_OPENGL_VERTEX_STREAMS <= sizeof(VertexAttrs_EnabledBits) * 8, "Not enough bits in VertexAttrs_EnabledBits to store NUM_OPENGL_VERTEX_STREAMS");
@@ -375,12 +373,6 @@ struct FOpenGLContextState : public FOpenGLCommonState
 			VertexAttrs_EnabledBits &= ~(1 << Index);
 		}
 	}
-
-
-	FOpenGLVertexDeclaration* VertexDecl;
-	uint32 ActiveAttribMask;
-	uint32 ActiveStreamMask;
-	uint32 MaxActiveAttrib;
 
 	uint32 ActiveUAVMask;
 
@@ -402,18 +394,10 @@ struct FOpenGLContextState : public FOpenGLCommonState
 	,	ClearDepth(-1.0f)
 	,	FirstNonzeroRenderTarget(0)
 	,	bAlphaToCoverageEnabled(false)
-#if PLATFORM_ANDROID && !PLATFORM_LUMINGL4
-	,	LastES2ColorRTResource(0xFFFFFFFF)
-#else
-	,	LastES2ColorRTResource(0)
-#endif
-	,	LastES2ColorTargetType(GL_NONE)
-	, VertexAttrs_EnabledBits(0)
-	, VertexDecl(0)
-	, ActiveAttribMask(0)
-	, ActiveStreamMask(0)
-	, MaxActiveAttrib(0)
-	, ActiveUAVMask(0)
+	,	VertexDecl(0)
+	,	ActiveStreamMask(0)
+	,	VertexAttrs_EnabledBits(0)
+	,	ActiveUAVMask(0)
 	{
 		Scissor.Min.X = Scissor.Min.Y = Scissor.Max.X = Scissor.Max.Y = 0;
 		Viewport.Min.X = Viewport.Min.Y = Viewport.Max.X = Viewport.Max.Y = 0;
