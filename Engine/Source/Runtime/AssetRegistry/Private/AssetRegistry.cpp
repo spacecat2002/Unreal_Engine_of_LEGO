@@ -1847,6 +1847,7 @@ void UAssetRegistryImpl::ScanPathsAndFilesSynchronous(const TArray<FString>& InP
 
 void UAssetRegistryImpl::ScanPathsAndFilesSynchronous(const TArray<FString>& InPaths, const TArray<FString>& InSpecificFiles, const TArray<FString>& InBlacklistScanFilters, bool bForceRescan, EAssetDataCacheMode AssetDataCacheMode, TArray<FName>* OutFoundAssets, TArray<FName>* OutFoundPaths)
 {
+	LLM_SCOPE(ELLMTag::AssetRegistry);
 	const double SearchStartTime = FPlatformTime::Seconds();
 
 	// Only scan paths that were not previously synchronously scanned, unless we were asked to force rescan.
@@ -2534,6 +2535,7 @@ void UAssetRegistryImpl::OnAssetLoaded(UObject *AssetLoaded)
 
 void UAssetRegistryImpl::ProcessLoadedAssetsToUpdateCache(const double TickStartTime)
 {
+	LLM_SCOPE(ELLMTag::AssetRegistry);
 	check(bInitialSearchCompleted && bUpdateDiskCacheAfterLoad);
 
 	const bool bFlushFullBuffer = TickStartTime < 0;
