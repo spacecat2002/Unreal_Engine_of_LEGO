@@ -1684,8 +1684,6 @@ void FAssetRegistryState::Dump(const TArray<FString>& Arguments, TArray<FString>
 	LinesPerPage = FMath::Max(LinesPerPage, 1);
 	const int32 ExpectedNumPages = ExpectedNumLines / LinesPerPage;
 	const int32 PageEndSearchLength = LinesPerPage / 20;
-	const FStringView EndLine(TEXT("\n"_SV));
-	const TCHAR EndLineChar = TEXT('\n');
 	const uint32 HashStartValue = MAX_uint32 - 49979693; // Pick a large starting value to bias against picking empty string
 	const uint32 HashMultiplier = 67867967;
 	TStringBuilder<16> PageBuffer;
@@ -1699,7 +1697,7 @@ void FAssetRegistryState::Dump(const TArray<FString>& Arguments, TArray<FString>
 	int32 NumLinesInPage = 0;
 	const int32 LineTerminatorLen = TCString<TCHAR>::Strlen(LINE_TERMINATOR);
 
-	auto FinishPage = [&PageBuffer, &NumLinesInPage, &EndLine, EndLineChar, HashStartValue, HashMultiplier, PageEndSearchLength, &OutPages, &OverflowText, LineTerminatorLen]()
+	auto FinishPage = [&PageBuffer, &NumLinesInPage, HashStartValue, HashMultiplier, PageEndSearchLength, &OutPages, &OverflowText, LineTerminatorLen]()
 	{
 		int32 PageEndIndex = PageBuffer.Len();
 		const TCHAR* BufferEnd = PageBuffer.GetData() + PageEndIndex;
@@ -1718,11 +1716,10 @@ void FAssetRegistryState::Dump(const TArray<FString>& Arguments, TArray<FString>
 			{
 				uint32 LineValue = HashStartValue;
 				const TCHAR* LineStart = LineEnd;
-				--LineStart;
-				while (*LineStart != LINE_TERMINATOR[0] || LineStart + LineTerminatorLen > BufferEnd || TCString<TCHAR>::Strncmp(LINE_TERMINATOR, LineStart, LineTerminatorLen) != 0)
+				while (LineStart[-LineTerminatorLen] != LINE_TERMINATOR[0] || TCString<TCHAR>::Strncmp(LINE_TERMINATOR, LineStart - LineTerminatorLen, LineTerminatorLen) != 0)
 				{
-					LineValue = LineValue * HashMultiplier + static_cast<uint32>(*LineStart);
 					--LineStart;
+					LineValue = LineValue * HashMultiplier + static_cast<uint32>(TChar<TCHAR>::ToLower(*LineStart));
 				}
 				if (SearchIndex == 0 || LineValue < WinningLineValue) // We arbitrarily choose the smallest hash as the winning value
 				{
@@ -1730,7 +1727,7 @@ void FAssetRegistryState::Dump(const TArray<FString>& Arguments, TArray<FString>
 					WinningLineEnd = LineEnd;
 					WinningSearchIndex = SearchIndex;
 				}
-				LineEnd = LineStart;
+				LineEnd = LineStart - LineTerminatorLen;
 			}
 			if (WinningLineEnd != BufferEnd)
 			{
@@ -1747,7 +1744,7 @@ void FAssetRegistryState::Dump(const TArray<FString>& Arguments, TArray<FString>
 			OverflowText.Append(PageBuffer.GetData() + PageEndIndex, PageBuffer.Len() - PageEndIndex);
 			PageBuffer.Reset();
 			PageBuffer.Append(OverflowText);
-			PageBuffer.Append(EndLine);
+			PageBuffer.Append(LINE_TERMINATOR);
 			NumLinesInPage = NumOverflowLines;
 		}
 		else
