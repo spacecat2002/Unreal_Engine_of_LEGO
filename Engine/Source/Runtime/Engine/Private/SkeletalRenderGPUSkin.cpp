@@ -146,7 +146,7 @@ FSkeletalMeshObjectGPUSkin::FSkeletalMeshObjectGPUSkin(USkinnedMeshComponent* In
 	LODs.Empty(SkeletalMeshRenderData->LODRenderData.Num());
 	for( int32 LODIndex=0;LODIndex < SkeletalMeshRenderData->LODRenderData.Num();LODIndex++ )
 	{
-		new(LODs) FSkeletalMeshObjectLOD(SkeletalMeshRenderData,LODIndex);
+		new(LODs) FSkeletalMeshObjectLOD(SkeletalMeshRenderData, LODIndex);
 	}
 
 	InitResources(InMeshComponent);
@@ -181,7 +181,7 @@ void FSkeletalMeshObjectGPUSkin::InitResources(USkinnedMeshComponent* InMeshComp
 				CompLODInfo = &InMeshComponent->LODInfo[LODIndex];
 			}
 
-			SkelLOD.InitResources(MeshLODInfo, CompLODInfo, FeatureLevel);
+			SkelLOD.InitResources(InMeshComponent->GetVertexOffsetUsage(LODIndex), MeshLODInfo, CompLODInfo, FeatureLevel);
 		}
 	}
 
@@ -507,6 +507,46 @@ void FSkeletalMeshObjectGPUSkin::ProcessUpdatedDynamicData(FGPUSkinCache* GPUSki
 
 	bool bGPUSkinCacheEnabled = GPUSkinCache && GEnableGPUSkinCache && (FeatureLevel >= ERHIFeatureLevel::SM5) && DynamicData->bIsSkinCacheAllowed;
 
+	if (DynamicData->PreSkinningOffsets.Num() > 0)
+	{
+		FPositionVertexBuffer& PositionBuffer = LOD.VertexOffsetVertexBuffers.PreSkinningOffsetsVertexBuffer;
+
+		check(PositionBuffer.GetNumVertices() == DynamicData->PreSkinningOffsets.Num());
+
+		uint32 SizeInBytes = PositionBuffer.GetNumVertices() * sizeof(FVector);
+
+		void* Buffer = RHICmdList.LockVertexBuffer(
+			PositionBuffer.VertexBufferRHI,
+			0,
+			SizeInBytes,
+			RLM_WriteOnly
+			);
+
+		FMemory::Memcpy(Buffer, DynamicData->PreSkinningOffsets.GetData(), SizeInBytes);
+
+		RHICmdList.UnlockVertexBuffer(PositionBuffer.VertexBufferRHI);
+	}
+
+	if (DynamicData->PostSkinningOffsets.Num() > 0)
+	{
+		FPositionVertexBuffer& PositionBuffer = LOD.VertexOffsetVertexBuffers.PostSkinningOffsetsVertexBuffer;
+
+		check(PositionBuffer.GetNumVertices() == DynamicData->PostSkinningOffsets.Num());
+
+		uint32 SizeInBytes = PositionBuffer.GetNumVertices() * sizeof(FVector);
+
+		void* Buffer = RHICmdList.LockVertexBuffer(
+			PositionBuffer.VertexBufferRHI,
+			0,
+			SizeInBytes,
+			RLM_WriteOnly
+			);
+
+		FMemory::Memcpy(Buffer, DynamicData->PostSkinningOffsets.GetData(), SizeInBytes);
+
+		RHICmdList.UnlockVertexBuffer(PositionBuffer.VertexBufferRHI);
+	}
+
 	if (LOD.MorphVertexBuffer.bNeedsInitialClear && !(bMorph && bMorphNeedsUpdate))
 	{
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_FSkeletalMeshObjectGPUSkin_ProcessUpdatedDynamicData_ClearMorphBuffer);
@@ -643,9 +683,22 @@ void FSkeletalMeshObjectGPUSkin::ProcessUpdatedDynamicData(FGPUSkinCache* GPUSki
 				// Matrices are transposed in ue4 meaning matrix multiples need to happen in reverse ((AB)x = b becomes xTBTAT = b).
 				FMatrix LocalToCloth = DynamicData->ClothObjectLocalToWorld * ClothLocalToWorld.Inverse();
 
-				GPUSkinCache->ProcessEntry(RHICmdList, VertexFactory,
-					VertexFactoryData.PassthroughVertexFactories[SectionIdx].Get(), Section, this, bMorph ? &LOD.MorphVertexBuffer : 0, bClothFactory ? &LODData.ClothVertexBuffer : 0,
-					bClothFactory ? DynamicData->ClothingSimData.Find(Section.CorrespondClothAssetIndex) : 0, LocalToCloth, DynamicData->ClothBlendWeight, RevisionNumber, SectionIdx, SkinCacheEntry);
+				GPUSkinCache->ProcessEntry(
+					RHICmdList, 
+					VertexFactory,
+					VertexFactoryData.PassthroughVertexFactories[SectionIdx].Get(), 
+					Section, 
+					this, 
+					&LOD.VertexOffsetVertexBuffers,
+					bMorph ? &LOD.MorphVertexBuffer : 0, 
+					bClothFactory ? &LODData.ClothVertexBuffer : 0,
+					bClothFactory ? DynamicData->ClothingSimData.Find(Section.CorrespondClothAssetIndex) : 0, 
+					LocalToCloth, 
+					DynamicData->ClothBlendWeight, 
+					RevisionNumber, 
+					SectionIdx, 
+					SkinCacheEntry
+					);
 			}
 
 			if (bNeedFence)
@@ -1249,6 +1302,31 @@ void InitGPUSkinVertexFactoryComponents(typename VertexFactoryType::FDataType* V
 		VertexFactoryData->ColorComponentsSRV = nullptr;
 		VertexFactoryData->ColorIndexMask = 0;
 	}
+
+	if (VertexBuffers.VertexOffsetVertexBuffers)
+	{
+		FVertexOffsetBuffers* VertexOffsetVertexBuffers = VertexBuffers.VertexOffsetVertexBuffers;
+
+		if (VertexOffsetVertexBuffers->PreSkinningOffsetsVertexBuffer.VertexBufferRHI)
+		{
+			VertexFactoryData->PreSkinningOffsets = FVertexStreamComponent(
+				&VertexOffsetVertexBuffers->PreSkinningOffsetsVertexBuffer,
+				0,
+				VertexOffsetVertexBuffers->PreSkinningOffsetsVertexBuffer.GetStride(),
+				VET_Float3
+				);
+		}
+
+		if (VertexOffsetVertexBuffers->PostSkinningOffsetsVertexBuffer.VertexBufferRHI)
+		{
+			VertexFactoryData->PostSkinningOffsets = FVertexStreamComponent(
+				&VertexOffsetVertexBuffers->PostSkinningOffsetsVertexBuffer,
+				0,
+				VertexOffsetVertexBuffers->PostSkinningOffsetsVertexBuffer.GetStride(),
+				VET_Float3
+				);
+		}
+	}
 }
 
 /** 
@@ -1525,6 +1603,7 @@ void FSkeletalMeshObjectGPUSkin::FSkeletalMeshObjectLOD::GetVertexBuffers(FVerte
 	OutVertexBuffers.SkinWeightVertexBuffer = MeshObjectWeightBuffer;
 	OutVertexBuffers.MorphVertexBuffer = &MorphVertexBuffer;
 	OutVertexBuffers.APEXClothVertexBuffer = &LODData.ClothVertexBuffer;
+	OutVertexBuffers.VertexOffsetVertexBuffers = &VertexOffsetVertexBuffers;
 	OutVertexBuffers.NumVertices = LODData.GetNumVertices();
 }
 
@@ -1695,7 +1774,7 @@ void FSkeletalMeshObjectGPUSkin::FVertexFactoryData::UpdateVertexFactoryData(con
 	}
 }
 
-void FSkeletalMeshObjectGPUSkin::FSkeletalMeshObjectLOD::InitResources(const FSkelMeshObjectLODInfo& MeshLODInfo, FSkelMeshComponentLODInfo* CompLODInfo, ERHIFeatureLevel::Type InFeatureLevel)
+void FSkeletalMeshObjectGPUSkin::FSkeletalMeshObjectLOD::InitResources(uint32 VertexOffsetUsage, const FSkelMeshObjectLODInfo& MeshLODInfo, FSkelMeshComponentLODInfo* CompLODInfo, ERHIFeatureLevel::Type InFeatureLevel)
 {
 	check(SkelMeshRenderData);
 	check(SkelMeshRenderData->LODRenderData.IsValidIndex(LODIndex));
@@ -1734,6 +1813,19 @@ void FSkeletalMeshObjectGPUSkin::FSkeletalMeshObjectLOD::InitResources(const FSk
 		MeshObjectColorBuffer = &LODData.StaticVertexBuffers.ColorVertexBuffer;
 	}
 
+	if ((VertexOffsetUsage & uint32(EVertexOffsetUsage::PreSkinningOffset)) && CompLODInfo->PreSkinningOffsets.Num() == 0)
+	{
+		CompLODInfo->PreSkinningOffsets.SetNumZeroed(LODData.GetNumVertices());
+	}
+
+	if ((VertexOffsetUsage & uint32(EVertexOffsetUsage::PostSkinningOffset)) && CompLODInfo->PostSkinningOffsets.Num() == 0)
+	{
+		CompLODInfo->PostSkinningOffsets.SetNumZeroed(LODData.GetNumVertices());
+	}
+
+	VertexOffsetVertexBuffers.Init(VertexOffsetUsage, CompLODInfo->PreSkinningOffsets, CompLODInfo->PostSkinningOffsets);
+	VertexOffsetVertexBuffers.BeginInitResource();
+
 	// Vertex buffers available for the LOD
 	FVertexFactoryBuffers VertexBuffers;
 	GetVertexBuffers(VertexBuffers, LODData);
@@ -1751,6 +1843,8 @@ void FSkeletalMeshObjectGPUSkin::FSkeletalMeshObjectLOD::InitResources(const FSk
  */
 void FSkeletalMeshObjectGPUSkin::FSkeletalMeshObjectLOD::ReleaseResources()
 {	
+	VertexOffsetVertexBuffers.BeginReleaseResource();
+
 	// Release gpu skin vertex factories
 	GPUSkinVertexFactories.ReleaseVertexFactories();
 
@@ -1989,6 +2083,9 @@ void FDynamicSkelMeshObjectDataGPUSkin::InitDynamicSkelMeshObjectDataGPUSkin(
 		bAnySegmentUsesWorldPositionOffset = SkeletalMeshProxy->bAnySegmentUsesWorldPositionOffset;
 	}
 #endif
+
+	PreSkinningOffsets = MoveTemp(InMeshComponent->LODInfo[InLODIndex].PreSkinningOffsets);
+	PostSkinningOffsets = MoveTemp(InMeshComponent->LODInfo[InLODIndex].PostSkinningOffsets);
 }
 
 bool FDynamicSkelMeshObjectDataGPUSkin::ActiveMorphTargetsEqual( const TArray<FActiveMorphTarget>& CompareActiveMorphTargets, const TArray<float>& CompareMorphTargetWeights)

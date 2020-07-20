@@ -46,6 +46,7 @@ class FGPUBaseSkinVertexFactory;
 class FMorphVertexBuffer;
 class FSkeletalMeshObjectGPUSkin;
 class FSkeletalMeshVertexClothBuffer;
+class FVertexOffsetBuffers;
 struct FClothSimulData;
 struct FSkelMeshRenderSection;
 struct FVertexBufferAndSRV;
@@ -130,10 +131,22 @@ public:
 	FCachedGeometry::Section GetCachedGeometry(FGPUSkinCacheEntry* InOutEntry, uint32 SectionId);
 	void UpdateSkinWeightBuffer(FGPUSkinCacheEntry* Entry);
 
-	void ProcessEntry(FRHICommandListImmediate& RHICmdList, FGPUBaseSkinVertexFactory* VertexFactory,
-		FGPUSkinPassthroughVertexFactory* TargetVertexFactory, const FSkelMeshRenderSection& BatchElement, FSkeletalMeshObjectGPUSkin* Skin,
-		const FMorphVertexBuffer* MorphVertexBuffer, const FSkeletalMeshVertexClothBuffer* ClothVertexBuffer, const FClothSimulData* SimData,
-		const FMatrix& ClothLocalToWorld, float ClothBlendWeight, uint32 RevisionNumber, int32 Section, FGPUSkinCacheEntry*& InOutEntry);
+	void ProcessEntry(
+		FRHICommandListImmediate& RHICmdList, 
+		FGPUBaseSkinVertexFactory* VertexFactory,
+		FGPUSkinPassthroughVertexFactory* TargetVertexFactory, 
+		const FSkelMeshRenderSection& BatchElement, 
+		FSkeletalMeshObjectGPUSkin* Skin,
+		FVertexOffsetBuffers* VertexOffsetBuffers,
+		const FMorphVertexBuffer* MorphVertexBuffer, 
+		const FSkeletalMeshVertexClothBuffer* ClothVertexBuffer, 
+		const FClothSimulData* SimData,
+		const FMatrix& ClothLocalToWorld,
+		float ClothBlendWeight, 
+		uint32 RevisionNumber, 
+		int32 Section, 
+		FGPUSkinCacheEntry*& InOutEntry
+		);
 
 	static void SetVertexStreams(FGPUSkinCacheEntry* Entry, int32 Section, FRHICommandList& RHICmdList,
 		class FRHIVertexShader* ShaderRHI, const FGPUSkinPassthroughVertexFactory* VertexFactory,

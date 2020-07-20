@@ -651,6 +651,9 @@ protected:
 
 	virtual int32 VertexColor() override;
 
+	virtual int32 PreSkinVertexOffset() override;
+	virtual int32 PostSkinVertexOffset() override;
+
 	virtual int32 PreSkinnedPosition() override;
 	virtual int32 PreSkinnedNormal() override;
 
