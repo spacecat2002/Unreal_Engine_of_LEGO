@@ -1086,6 +1086,14 @@ id<MTLDevice> GMetalDevice = nil;
 	return YES;
 }
 
+/**
+ * Tell the OS to hide the home bar
+ */
+- (BOOL)prefersHomeIndicatorAutoHidden
+{
+	return YES;
+}
+
 /*
 * Set the preferred landscape orientation 
 */
