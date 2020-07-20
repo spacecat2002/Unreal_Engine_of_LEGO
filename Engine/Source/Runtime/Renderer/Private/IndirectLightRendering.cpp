@@ -246,7 +246,7 @@ IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FReflectionUniformParameters, "Reflecti
 
 void SetupReflectionUniformParameters(const FViewInfo& View, FReflectionUniformParameters& OutParameters)
 {
-	FTextureRHIRef SkyLightTextureResource = GSystemTextures.BlackDummy->GetRenderTargetItem().ShaderResourceTexture;
+	FTextureRHIRef SkyLightTextureResource = GBlackTextureCube->TextureRHI;
 	FSamplerStateRHIRef SkyLightCubemapSampler = TStaticSamplerState<SF_Trilinear>::GetRHI();
 	FTexture* SkyLightBlendDestinationTextureResource = GBlackTextureCube;
 	float ApplySkyLightMask = 0;
@@ -269,7 +269,7 @@ void SetupReflectionUniformParameters(const FViewInfo& View, FReflectionUniformP
 			// Cannot blend with this capture mode as of today.
 			SkyLightTextureResource = Scene->ConvolvedSkyRenderTarget->GetRenderTargetItem().ShaderResourceTexture;
 		}
-		else if (SkyLight.ProcessedTexture)
+		else if (Scene->SkyLight->ProcessedTexture)
 		{
 			SkyLightTextureResource = SkyLight.ProcessedTexture->TextureRHI;
 			SkyLightCubemapSampler = SkyLight.ProcessedTexture->SamplerStateRHI;
@@ -599,7 +599,7 @@ void FDeferredShadingSceneRenderer::RenderDiffuseIndirectAndAmbientOcclusion(FRH
 	GraphBuilder.Execute();
 }
 
-void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget>& DynamicBentNormalAO, TRefCountPtr<IPooledRenderTarget>& VelocityRT, FHairStrandsDatas* HairDatas)
+void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget>& DynamicBentNormalAO, TRefCountPtr<IPooledRenderTarget>& VelocityRT, FHairStrandsRenderingData* HairDatas)
 {
 	check(RHICmdList.IsOutsideRenderPass());
 
@@ -960,7 +960,7 @@ void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLighting(FRHI
 
 void FDeferredShadingSceneRenderer::RenderDeferredReflectionsAndSkyLightingHair(
 	FRHICommandListImmediate& RHICmdList,
-	FHairStrandsDatas* HairDatas)
+	FHairStrandsRenderingData* HairDatas)
 {
 	check(RHICmdList.IsOutsideRenderPass());
 

@@ -676,7 +676,7 @@ public:
 	 * weight to blend between simulated results and key-framed positions
 	 * if weight is 1.0, shows only cloth simulation results and 0.0 will show only skinned results
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = Clothing)
 	float ClothBlendWeight;
 
 	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "This property is deprecated, please set it on the Clothing Asset / ClothConfig instead."))
@@ -1503,7 +1503,7 @@ public:
 	virtual void BeginPlay() override;
 
 	//Handle registering our end physics tick function
-	void RegisterEndPhysicsTick(bool bRegister);
+	virtual void RegisterEndPhysicsTick(bool bRegister);
 
 	//Handle registering our pre cloth tick function
 	void RegisterClothTick(bool bRegister);
@@ -2054,9 +2054,10 @@ protected:
 	/** Extract collisions for cloth from this component (given a component we want to apply the data to) */
 	static void ExtractCollisionsForCloth(USkeletalMeshComponent* SourceComponent,  UPhysicsAsset* PhysicsAsset, USkeletalMeshComponent* DestClothComponent, FClothCollisionData& OutCollisions, FClothCollisionSource& ClothCollisionSource);
 
+	FSkeletalMeshComponentEndPhysicsTickFunction EndPhysicsTickFunction;
+
 private:
 
-	FSkeletalMeshComponentEndPhysicsTickFunction EndPhysicsTickFunction;
 	friend struct FSkeletalMeshComponentEndPhysicsTickFunction;
 
 	/** Update systems after physics sim is done */
