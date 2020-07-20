@@ -10,14 +10,16 @@ class FDiskCachedAssetData
 {
 public:
 	FDateTime Timestamp;
+	FName Extension;
 	TArray<FAssetData> AssetDataList;
 	FPackageDependencyData DependencyData;
 
 	FDiskCachedAssetData()
 	{}
 
-	FDiskCachedAssetData(const FDateTime& InTimestamp)
+	FDiskCachedAssetData(const FDateTime& InTimestamp, FName InExtension)
 		: Timestamp(InTimestamp)
+		, Extension(InExtension)
 	{}
 
 	/**
@@ -27,6 +29,7 @@ public:
 	void SerializeForCache(FArchive& Ar)
 	{
 		Ar << Timestamp;
+		Ar << Extension;
 	
 		int32 AssetDataCount = AssetDataList.Num();
 		Ar << AssetDataCount;
