@@ -729,7 +729,7 @@ static void Writer_InternalInitializeImpl()
 	GInitialized = true;
 	GStartCycle = TimeGetTimestamp();
 
-	Trace::ThreadRegister(TEXT("MainThread"), 0, -1);
+	Trace::ThreadRegister(TEXT("GameThread"), 0, -1);
 
 	Writer_InitializeBuffers();
 	Writer_InitializeControl();
