@@ -656,7 +656,7 @@ uint8 GetMetalPixelFormatKey(mtlpp::PixelFormat Format)
 	return *Key;
 }
 
-FMetalSurface::FMetalSurface(ERHIResourceType ResourceType, EPixelFormat Format, uint32 InSizeX, uint32 InSizeY, uint32 InSizeZ, uint32 NumSamples, bool bArray, uint32 ArraySize, uint32 NumMips, uint32 InFlags, FResourceBulkDataInterface* BulkData)
+FMetalSurface::FMetalSurface(ERHIResourceType ResourceType, EPixelFormat Format, uint32 InSizeX, uint32 InSizeY, uint32 InSizeZ, uint32 NumSamples, bool bArray, uint32 ArraySize, uint32 NumMips, ETextureCreateFlags InFlags, FResourceBulkDataInterface* BulkData)
 : Type(ResourceType)
 , PixelFormat(Format)
 , Texture(nil)
