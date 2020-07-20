@@ -129,7 +129,7 @@ enum EPackageFlags
 //	PKG_Unused						= 0x02000000,	
 //	PKG_Unused						= 0x04000000,
 //	PKG_Unused						= 0x08000000,	
-//	PKG_Unused						= 0x10000000,	
+	PKG_DynamicImports				= 0x10000000,	///< This package should resolve dynamic imports from its export at runtime.
 	PKG_RuntimeGenerated			= 0x20000000,	///< This package contains elements that are runtime generated, and may not follow standard loading order rules
 	PKG_ReloadingForCooker			= 0x40000000,   ///< This package is reloading in the cooker, try to avoid getting data we will never need. We won't save this package.
 	PKG_FilterEditorOnly			= 0x80000000,	///< Package has editor-only data filtered out
@@ -179,8 +179,8 @@ enum EClassFlags
 	CLASS_Parsed              = 0x00000010u,
 	/** */
 	CLASS_MatchedSerializers  = 0x00000020u,
-	/** All the properties on the class are shown in the advanced section (which is hidden by default) unless SimpleDisplay is specified on the property */
-	CLASS_AdvancedDisplay	  = 0x00000040u,
+	/** Unused */
+	// CLASS_Unused			  = 0x00000040u,
 	/** Class is a native class - native interfaces will have CLASS_Native set, but not RF_MarkAsNative */
 	CLASS_Native			  = 0x00000080u,
 	/** Don't export to C++ header. */
@@ -277,7 +277,6 @@ ENUM_CLASS_FLAGS(EClassFlags);
 	CLASS_Deprecated | \
 	CLASS_HideDropDown | \
 	CLASS_Intrinsic | \
-	CLASS_AdvancedDisplay | \
 	CLASS_Const | \
 	CLASS_MinimalAPI | \
 	CLASS_RequiredAPI | \

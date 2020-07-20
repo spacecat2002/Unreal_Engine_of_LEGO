@@ -387,10 +387,9 @@ void FD3D12CommandContext::RHISetGraphicsPipelineState(FRHIGraphicsPipelineState
 	HSConstantBuffer.Reset();
 	DSConstantBuffer.Reset();
 	GSConstantBuffer.Reset();
-	// Should this be here or in RHISetComputeShader? Might need a new bDiscardSharedConstants for CS.
-	CSConstantBuffer.Reset();
+	
 	// @TODO : really should only discard the constants if the shader state has actually changed.
-	bDiscardSharedConstants = true;
+	bDiscardSharedGraphicsConstants = true;
 
 	if (!GraphicsPipelineState->PipelineStateInitializer.bDepthBounds)
 	{
@@ -419,6 +418,9 @@ void FD3D12CommandContext::RHISetComputePipelineState(FRHIComputePipelineState* 
 #endif
 
 	FD3D12ComputePipelineState* ComputePipelineState = FD3D12DynamicRHI::ResourceCast(ComputeState);
+
+	CSConstantBuffer.Reset();
+	bDiscardSharedComputeConstants = true;
 
 	// TODO: [PSO API] Every thing inside this scope is only necessary to keep the PSO shadow in sync while we convert the high level to only use PSOs
 	{
@@ -1053,42 +1055,44 @@ void FD3D12CommandContext::CommitNonComputeShaderConstants()
 	// Otherwise we will overwrite a different constant buffer
 	if (GraphicPSO->bShaderNeedsGlobalConstantBuffer[SF_Vertex])
 	{
-		StateCache.SetConstantBuffer<SF_Vertex>(VSConstantBuffer, bDiscardSharedConstants);
+		StateCache.SetConstantBuffer<SF_Vertex>(VSConstantBuffer, bDiscardSharedGraphicsConstants);
 	}
 
 	// Skip HS/DS CB updates in cases where tessellation isn't being used
-	// Note that this is *potentially* unsafe because bDiscardSharedConstants is cleared at the
-	// end of the function, however we're OK for now because bDiscardSharedConstants
+	// Note that this is *potentially* unsafe because bDiscardSharedGraphicsConstants is cleared at the
+	// end of the function, however we're OK for now because bDiscardSharedGraphicsConstants
 	// is always reset whenever bUsingTessellation changes in SetBoundShaderState()
 	if (bUsingTessellation)
 	{
 		if (GraphicPSO->bShaderNeedsGlobalConstantBuffer[SF_Hull])
 		{
-			StateCache.SetConstantBuffer<SF_Hull>(HSConstantBuffer, bDiscardSharedConstants);
+			StateCache.SetConstantBuffer<SF_Hull>(HSConstantBuffer, bDiscardSharedGraphicsConstants);
 		}
 
 		if (GraphicPSO->bShaderNeedsGlobalConstantBuffer[SF_Domain])
 		{
-			StateCache.SetConstantBuffer<SF_Domain>(DSConstantBuffer, bDiscardSharedConstants);
+			StateCache.SetConstantBuffer<SF_Domain>(DSConstantBuffer, bDiscardSharedGraphicsConstants);
 		}
 	}
 
 	if (GraphicPSO->bShaderNeedsGlobalConstantBuffer[SF_Geometry])
 	{
-		StateCache.SetConstantBuffer<SF_Geometry>(GSConstantBuffer, bDiscardSharedConstants);
+		StateCache.SetConstantBuffer<SF_Geometry>(GSConstantBuffer, bDiscardSharedGraphicsConstants);
 	}
 
 	if (GraphicPSO->bShaderNeedsGlobalConstantBuffer[SF_Pixel])
 	{
-		StateCache.SetConstantBuffer<SF_Pixel>(PSConstantBuffer, bDiscardSharedConstants);
+		StateCache.SetConstantBuffer<SF_Pixel>(PSConstantBuffer, bDiscardSharedGraphicsConstants);
 	}
 
-	bDiscardSharedConstants = false;
+	bDiscardSharedGraphicsConstants = false;
 }
 
 void FD3D12CommandContext::CommitComputeShaderConstants()
 {
-	StateCache.SetConstantBuffer<SF_Compute>(CSConstantBuffer, bDiscardSharedConstants);
+	StateCache.SetConstantBuffer<SF_Compute>(CSConstantBuffer, bDiscardSharedComputeConstants);
+
+	bDiscardSharedComputeConstants = false;
 }
 
 template <EShaderFrequency Frequency>
@@ -1341,6 +1345,8 @@ void FD3D12CommandContext::CommitComputeResourceTables(FD3D12ComputeShader* InCo
 
 void FD3D12CommandContext::RHIDrawPrimitive(uint32 BaseVertexIndex, uint32 NumPrimitives, uint32 NumInstances)
 {
+	RHI_DRAW_CALL_STATS(StateCache.GetGraphicsPipelinePrimitiveType(), FMath::Max(NumInstances, 1U) * NumPrimitives);
+
 	CommitGraphicsResourceTables();
 	CommitNonComputeShaderConstants();
 
@@ -1366,6 +1372,7 @@ void FD3D12CommandContext::RHIDrawPrimitiveIndirect(FRHIVertexBuffer* ArgumentBu
 	FD3D12Buffer* ArgumentBuffer = RetrieveObject<FD3D12Buffer>(ArgumentBufferRHI);
 
 	numDraws++;
+	RHI_DRAW_CALL_INC();
 	if (bTrackingEvents)
 	{
 		GetParentDevice()->RegisterGPUWork(0);
@@ -1409,6 +1416,7 @@ void FD3D12CommandContext::RHIDrawIndexedIndirect(FRHIIndexBuffer* IndexBufferRH
 	FD3D12Buffer* ArgumentsBuffer = RetrieveObject<FD3D12Buffer>(ArgumentsBufferRHI);
 
 	numDraws++;
+	RHI_DRAW_CALL_INC();
 	if (bTrackingEvents)
 	{
 		GetParentDevice()->RegisterGPUWork(1);
@@ -1452,6 +1460,7 @@ void FD3D12CommandContext::RHIDrawIndexedPrimitive(FRHIIndexBuffer* IndexBufferR
 {
 	// called should make sure the input is valid, this avoid hidden bugs
 	ensure(NumPrimitives > 0);
+	RHI_DRAW_CALL_STATS(StateCache.GetGraphicsPipelinePrimitiveType(), FMath::Max(NumInstances, 1U) * NumPrimitives);
 
 	NumInstances = FMath::Max<uint32>(1, NumInstances);
 	numDraws++;
@@ -1493,6 +1502,7 @@ void FD3D12CommandContext::RHIDrawIndexedPrimitiveIndirect(FRHIIndexBuffer* Inde
 	FD3D12Buffer* ArgumentBuffer = RetrieveObject<FD3D12Buffer>(ArgumentBufferRHI);
 
 	numDraws++;
+	RHI_DRAW_CALL_INC();
 	if (bTrackingEvents)
 	{
 		GetParentDevice()->RegisterGPUWork(0);
