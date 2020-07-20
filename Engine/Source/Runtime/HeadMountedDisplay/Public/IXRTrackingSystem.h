@@ -405,7 +405,9 @@ public:
 		HMDData.bValid = true;
 		HMDData.DeviceName = GetSystemName();
 		HMDData.ApplicationInstanceID = FApp::GetInstanceId();
-		HMDData.bIsTracking = IsTracking(IXRTrackingSystem::HMDDeviceId);
+
+		bool bIsTracking = IsTracking(IXRTrackingSystem::HMDDeviceId);
+		HMDData.TrackingStatus = bIsTracking ? ETrackingStatus::Tracked : ETrackingStatus::NotTracked;
 
 		APlayerCameraManager* CameraManager = UGameplayStatics::GetPlayerCameraManager(WorldContext, 0);
 		if (CameraManager)

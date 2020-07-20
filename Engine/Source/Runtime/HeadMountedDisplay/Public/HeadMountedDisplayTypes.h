@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
+#include "IMotionController.h"
 #include "RHI.h"
 #include "RHIResources.h"
 #include "HeadMountedDisplayTypes.generated.h"
@@ -269,7 +270,7 @@ struct HEADMOUNTEDDISPLAY_API FXRHMDData
 	FGuid ApplicationInstanceID;
 
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
-	bool bIsTracking;
+	ETrackingStatus TrackingStatus = ETrackingStatus::NotTracked;
 
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
 	FVector Position;
@@ -283,13 +284,16 @@ struct HEADMOUNTEDDISPLAY_API FXRMotionControllerData
 	GENERATED_USTRUCT_BODY();
 
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
-	bool bValid;
+	bool bValid = false;
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
 	FName DeviceName;
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
 	FGuid ApplicationInstanceID;
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
 	EXRVisualType DeviceVisualType;
+
+	UPROPERTY(BlueprintReadOnly, Category = "XR")
+	ETrackingStatus TrackingStatus = ETrackingStatus::NotTracked;
 	
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
 	FVector GripPosition;
@@ -306,4 +310,7 @@ struct HEADMOUNTEDDISPLAY_API FXRMotionControllerData
 	TArray<struct FVector> HandKeyPositions;
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
 	TArray<float> HandKeyRadii;
+
+	UPROPERTY(BlueprintReadOnly, Category = "XR")
+	bool bIsGrasped = false;
 };

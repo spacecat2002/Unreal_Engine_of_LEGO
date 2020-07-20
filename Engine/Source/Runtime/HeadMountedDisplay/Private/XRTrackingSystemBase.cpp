@@ -143,6 +143,7 @@ void FXRTrackingSystemBase::GetMotionControllerData(UObject* WorldContext, const
 		{
 			MotionControllerData.bValid = true;
 			MotionControllerData.DeviceVisualType = EXRVisualType::Controller;
+			MotionControllerData.TrackingStatus = MotionController->CurrentTrackingStatus;
 
 			FTransform WorldTransform = MotionController->GetComponentTransform();
 			MotionControllerData.GripPosition = WorldTransform.GetLocation();
