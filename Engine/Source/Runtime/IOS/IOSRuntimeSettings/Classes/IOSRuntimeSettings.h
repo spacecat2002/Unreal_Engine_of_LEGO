@@ -266,14 +266,6 @@ public:
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = Build, meta = (DisplayName = "Generate xcode archive package"))
 	bool bGenerateXCArchive;	
 	
-	// Enable Arm64 support?
-	UPROPERTY(GlobalConfig)
-	bool bDevForArm64;
-
-	// Enable Arm64 support?
-	UPROPERTY(GlobalConfig)
-	bool bShipForArm64;
-
 	// Enable bitcode compiling?
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = Build, meta = (DisplayName = "Support bitcode in Shipping"))
 	bool bShipForBitcode;

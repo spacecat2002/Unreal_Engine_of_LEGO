@@ -28,8 +28,6 @@ UIOSRuntimeSettings::UIOSRuntimeSettings(const FObjectInitializer& ObjectInitial
 	bGeneratedSYMFile = false;
 	bGeneratedSYMBundle = false;
 	bGenerateXCArchive = false;
-	bDevForArm64 = true;
-	bShipForArm64 = true;
 	bShipForBitcode = true;
 	bUseRSync = true;
 	bCustomLaunchscreenStoryboard = false;
@@ -78,17 +76,6 @@ void UIOSRuntimeSettings::PostEditChangeProperty(struct FPropertyChangedEvent& P
 		UpdateSinglePropertyInConfigFile(GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UIOSRuntimeSettings, bSupportsMetal)), GetDefaultConfigFilename());
 	}
 
-	// Ensure that at least arm64 is selected for shipping and dev
-	if (!bDevForArm64)
-	{
-		bDevForArm64 = true;
-		UpdateSinglePropertyInConfigFile(GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UIOSRuntimeSettings, bDevForArm64)), GetDefaultConfigFilename());
-	}
-	if (!bShipForArm64)
-	{
-		bShipForArm64 = true;
-		UpdateSinglePropertyInConfigFile(GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UIOSRuntimeSettings, bShipForArm64)), GetDefaultConfigFilename());
-	}
 }
 
 
@@ -137,16 +124,6 @@ void UIOSRuntimeSettings::PostInitProperties()
 	{
 		bSupportsMetal = true;
 		UpdateSinglePropertyInConfigFile(GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UIOSRuntimeSettings, bSupportsMetal)), GetDefaultConfigFilename());
-	}
-	if (!bDevForArm64)
-	{
-		bDevForArm64 = true;
-		UpdateSinglePropertyInConfigFile(GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UIOSRuntimeSettings, bDevForArm64)), GetDefaultConfigFilename());
-	}
-	if (!bShipForArm64)
-	{
-		bShipForArm64 = true;
-		UpdateSinglePropertyInConfigFile(GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UIOSRuntimeSettings, bShipForArm64)), GetDefaultConfigFilename());
 	}
 }
 #endif
