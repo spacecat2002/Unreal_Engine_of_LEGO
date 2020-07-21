@@ -28,6 +28,12 @@ public:
 
 	~FVulkanPendingComputeState();
 
+	void Reset()
+	{
+		CurrentPipeline = nullptr;
+		CurrentState = nullptr;
+	}
+
 	void SetComputePipeline(FVulkanComputePipeline* InComputePipeline)
 	{
 		if (InComputePipeline != CurrentPipeline)

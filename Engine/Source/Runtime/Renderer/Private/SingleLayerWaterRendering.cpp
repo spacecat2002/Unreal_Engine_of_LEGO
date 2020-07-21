@@ -581,12 +581,13 @@ void FDeferredShadingSceneRenderer::RenderSingleLayerWaterReflections(
 			{
 				check(View.ViewState);
 				FTAAPassParameters TAASettings(View);
+				TAASettings.SceneDepthTexture = SceneTextures.SceneDepthTexture;
+				TAASettings.SceneVelocityTexture = SceneTextures.GBufferVelocityTexture;
 				TAASettings.Pass = ETAAPassConfig::ScreenSpaceReflections;
 				TAASettings.SceneColorInput = DenoiserInputs.Color;
 
 				FTAAOutputs TAAOutputs = AddTemporalAAPass(
 					GraphBuilder,
-					SceneTextures, 
 					View,
 					TAASettings,
 					View.PrevViewInfo.WaterSSRHistory,

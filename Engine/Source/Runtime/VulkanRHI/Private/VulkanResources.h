@@ -369,7 +369,7 @@ public:
 			return 1;
 		}
 	}
-	void ErrorInvalidViewType() const;
+	VULKANRHI_API void ErrorInvalidViewType() const;
 
 	// Full includes Depth+Stencil
 	inline VkImageAspectFlags GetFullAspectMask() const

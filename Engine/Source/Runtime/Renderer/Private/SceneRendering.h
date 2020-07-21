@@ -773,6 +773,12 @@ struct FGTAOTAAHistory
 };
 
 
+// Plugins can derive from this and use it for their own purposes
+class RENDERER_API ICustomTemporalAAHistory : public IRefCountedObject
+{
+public:
+	virtual ~ICustomTemporalAAHistory() {}
+};
 
 // Structure that hold all information related to previous frame.
 struct FPreviousViewInfo
@@ -804,6 +810,9 @@ struct FPreviousViewInfo
 
 	// Temporal AA result of last frame
 	FTemporalAAHistory TemporalAAHistory;
+
+	// Custom Temporal AA result of last frame, used by plugins
+	TRefCountPtr<ICustomTemporalAAHistory> CustomTemporalAAHistory;
 
 	// Half resolution version temporal AA result of last frame
 	TRefCountPtr<IPooledRenderTarget> HalfResTemporalAAHistory;
@@ -1234,8 +1243,8 @@ public:
 #endif
 
 	/** Returns the size of view rect after primary upscale ( == only with secondary screen percentage). */
-	FIntPoint GetSecondaryViewRectSize() const;
-
+	RENDERER_API FIntPoint GetSecondaryViewRectSize() const;
+	
 	/** Returns whether the view requires a secondary upscale. */
 	bool RequiresSecondaryUpscale() const
 	{

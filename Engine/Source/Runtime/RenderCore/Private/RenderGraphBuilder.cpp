@@ -2090,6 +2090,22 @@ void FRDGBuilder::VisualizePassOutputs(const FRDGPass* Pass)
 	{
 		switch (Parameter.GetType())
 		{
+		case UBMT_RDG_TEXTURE_ACCESS:
+		{
+			if (FRDGTextureAccess TextureAccess = Parameter.GetAsTextureAccess())
+			{
+				if (TextureAccess.GetAccess() == ERHIAccess::UAVCompute ||
+					TextureAccess.GetAccess() == ERHIAccess::UAVGraphics ||
+					TextureAccess.GetAccess() == ERHIAccess::RTV)
+				{
+					if (TOptional<uint32> CaptureId = GVisualizeTexture.ShouldCapture(TextureAccess->Name, /* MipIndex = */ 0))
+					{
+						GVisualizeTexture.CreateContentCapturePass(*this, TextureAccess.GetTexture(), *CaptureId);
+					}
+				}
+			}
+		}
+		break;
 		case UBMT_RDG_TEXTURE_UAV:
 		{
 			if (FRDGTextureUAVRef UAV = Parameter.GetAsTextureUAV())
@@ -2167,6 +2183,29 @@ void FRDGBuilder::ClobberPassOutputs(const FRDGPass* Pass)
 				if (UserValidation.TryMarkForClobber(Buffer))
 				{
 					AddClearUAVPass(*this, UAV, GetClobberBufferValue());
+				}
+			}
+		}
+		break;
+		case UBMT_RDG_TEXTURE_ACCESS:
+		{
+			if (FRDGTextureAccess TextureAccess = Parameter.GetAsTextureAccess())
+			{
+				FRDGTextureRef Texture = TextureAccess.GetTexture();
+
+				if (UserValidation.TryMarkForClobber(Texture))
+				{
+					if (TextureAccess.GetAccess() == ERHIAccess::UAVCompute || TextureAccess.GetAccess() == ERHIAccess::UAVGraphics)
+					{
+						for (int32 MipLevel = 0; MipLevel < Texture->Desc.NumMips; MipLevel++)
+						{
+							AddClearUAVPass(*this, this->CreateUAV(FRDGTextureUAVDesc(Texture, MipLevel)), ClobberColor);
+						}
+					}
+					else if (TextureAccess.GetAccess() == ERHIAccess::RTV)
+					{
+						AddClearRenderTargetPass(*this, Texture, ClobberColor);
+					}
 				}
 			}
 		}

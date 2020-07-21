@@ -351,10 +351,12 @@ FScreenPassTexture AddTemporalAAPass(
 
 		FTAAPassParameters TAAParameters(View);
 		TAAParameters.Pass = ETAAPassConfig::LightShaft;
+		TAAParameters.SceneDepthTexture = SceneTextureParameters.SceneDepthTexture;
+		TAAParameters.SceneVelocityTexture = SceneTextureParameters.GBufferVelocityTexture;
 		TAAParameters.SetupViewRect(View, GetLightShaftDownsampleFactor());
 		TAAParameters.SceneColorInput = LightShafts.Texture;
 
-		LightShafts.Texture = AddTemporalAAPass(GraphBuilder, SceneTextureParameters, View, TAAParameters, *HistoryState, HistoryState).SceneColor;
+		LightShafts.Texture = AddTemporalAAPass(GraphBuilder, View, TAAParameters, *HistoryState, HistoryState).SceneColor;
 	}
 	return LightShafts;
 }
