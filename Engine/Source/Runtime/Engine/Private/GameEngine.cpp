@@ -740,7 +740,6 @@ UEngine::UEngine(const FObjectInitializer& ObjectInitializer)
 
 	SelectionHighlightIntensityBillboards = 0.25f;
 
-	bHardwareSurveyEnabled_DEPRECATED = false;
 	bIsInitialized = false;
 
 	BeginStreamingPauseDelegate = NULL;
@@ -1570,9 +1569,6 @@ void UGameEngine::Tick( float DeltaSeconds, bool bIdleMode )
 	SCOPE_TIME_GUARD(TEXT("UGameEngine::Tick"));
 	SCOPE_CYCLE_COUNTER(STAT_GameEngineTick);
 	NETWORK_PROFILER(GNetworkProfiler.TrackFrameBegin());
-
-	int32 LocalTickCycles=0;
-	CLOCK_CYCLES(LocalTickCycles);
 	
 	// -----------------------------------------------------
 	// Non-World related stuff
@@ -1681,10 +1677,7 @@ void UGameEngine::Tick( float DeltaSeconds, bool bIdleMode )
 			SCOPE_TIME_GUARD(TEXT("UGameEngine::Tick - WorldTick"));
 
 			// Tick the world.
-			GameCycles=0;
-			CLOCK_CYCLES(GameCycles);
 			Context.World()->Tick( LEVELTICK_All, DeltaSeconds );
-			UNCLOCK_CYCLES(GameCycles);
 		}
 
 		if (!IsRunningDedicatedServer() && !IsRunningCommandlet())
@@ -1733,9 +1726,6 @@ void UGameEngine::Tick( float DeltaSeconds, bool bIdleMode )
 			SCOPE_CYCLE_COUNTER(STAT_UpdateLevelStreaming);
 			Context.World()->UpdateLevelStreaming();
 		}
-
-		UNCLOCK_CYCLES(LocalTickCycles);
-		TickCycles=LocalTickCycles;
 
 		// See whether any map changes are pending and we requested them to be committed.
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_UGameEngine_Tick_ConditionalCommitMapChange);
