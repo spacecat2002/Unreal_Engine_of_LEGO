@@ -31,6 +31,7 @@
 #include "RenderGraph.h"
 #include "MeshDrawCommands.h"
 #include "GpuDebugRendering.h"
+#include "PostProcess/PostProcessAmbientOcclusionMobile.h"
 
 // Forward declarations.
 class FScene;
@@ -102,6 +103,13 @@ protected:
 	/** List of this light's shadow subject primitives. */
 	FSceneBitArray ShadowSubjectPrimitivesEncountered;
 	TArray<const FPrimitiveSceneInfo*, SceneRenderingAllocator> ShadowSubjectPrimitives;
+};
+
+class FMobileMovableSpotLightsShadowInfo
+{
+public:
+	FVector4 ShadowBufferSize = FVector4(0.0f);
+	FRHITexture* ShadowDepthTexture = nullptr;
 };
 
 /** Information about a visible light which is specific to the view it's visible in. */
@@ -1028,6 +1036,9 @@ public:
 	// Used by mobile renderer to determine whether static meshes will be rendered with CSM shaders or not.
 	FMobileCSMVisibilityInfo MobileCSMVisibilityInfo;
 
+	//Spotlight shadow info for mobile.
+	FMobileMovableSpotLightsShadowInfo MobileMovableSpotLightsShadowInfo;
+
 	/** Parameters for exponential height fog. */
 	FVector4 ExponentialFogParameters;
 	FVector4 ExponentialFogParameters2;
@@ -1310,6 +1321,18 @@ public:
 	const FExposureBufferData* GetLastEyeAdaptationBuffer() const;
 
 	void SwapEyeAdaptationBuffers() const;
+
+	/** Get the last frame bloom setup output for eye adaptation mobile platform. */
+	const FSceneRenderTargetItem& GetLastBloomSetupEyeAdaptationSurface() const;
+
+	/** Cache the current frame bloom setup output for eye adaptation mobile platform. */
+	void CacheBloomSetupEyeAdaptationRT(TRefCountPtr<IPooledRenderTarget>& BloomSetupEyeAdaptationRT) const;
+
+	/** Swap the bloom setup output for eye adaptation mobile platform. */
+	void SwapBloomSetupEyeAdaptationRT() const;
+
+	/** Release the cached bloom setup output for eye adaptation mobile platform. */
+	void SafeReleaseBloomSetupEyeAdaptationRT() const;
 
 	/** Tells if the eyeadaptation texture exists without attempting to allocate it. */
 	bool HasValidEyeAdaptation() const;
@@ -1730,6 +1753,7 @@ protected:
 
 	void AllocateTranslucentShadowDepthTargets(FRHICommandListImmediate& RHICmdList, TArray<FProjectedShadowInfo*, SceneRenderingAllocator>& TranslucentShadows);
 
+	void AllocateMobileCSMAndSpotLightShadowDepthTargets(FRHICommandListImmediate& RHICmdList, const TArray<FProjectedShadowInfo*, SceneRenderingAllocator>& MobileCSMAndSpotLightShadows);
 	/**
 	* Used by RenderLights to figure out if projected shadows need to be rendered to the attenuation buffer.
 	* Or to render a given shadowdepth map for forward rendering.
@@ -1900,14 +1924,14 @@ protected:
 	/** Computes how many queries will be issued this frame */
 	int32 ComputeNumOcclusionQueriesToBatch() const;
 
-	/** Whether platform requires separate translucent render pass */
-	bool RequiresTranslucencyPass(FRHICommandListImmediate& RHICmdList, const FViewInfo& View) const;
+	/** Whether platform requires multiple render-passes for SceneColor rendering */
+	bool RequiresMultiPass(FRHICommandListImmediate& RHICmdList, const FViewInfo& View) const;
 
 	/** Renders decals. */
 	void RenderDecals(FRHICommandListImmediate& RHICmdList);
 
 	/** Renders the base pass for translucency. */
-	void RenderTranslucency(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> PassViews, bool bRenderToSceneColor);
+	void RenderTranslucency(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> PassViews);
 
 	/** Perform upscaling when post process is not used. */
 	void BasicPostProcess(FRHICommandListImmediate& RHICmdList, FViewInfo &View, bool bDoUpscale, bool bDoEditorPrimitives);
@@ -1929,13 +1953,35 @@ protected:
 	void UpdateDirectionalLightUniformBuffers(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 	void UpdateSkyReflectionUniformBuffer();
 	void UpdateDepthPrepassUniformBuffer(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
+
+	FRHITexture* RenderForward(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> ViewList);
+	FRHITexture* RenderDeferred(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> ViewList);
 	
+	void InitAmbientOcclusionOutputs(FRHICommandListImmediate& RHICmdList, const FIntPoint& BufferSize);
+	void RenderAmbientOcclusion(FRHICommandListImmediate& RHICmdList, const FSceneRenderTargets& SceneContext);
+	void RenderAmbientOcclusionUpSample(FRHICommandListImmediate& RHICmdList);
+	void ReleaseAmbientOcclusionOutputs();
+
+	void InitPixelProjectedReflectionOutputs(FRHICommandListImmediate& RHICmdList, const FIntPoint& BufferSize);
+	void RenderPixelProjectedReflection(FRHICommandListImmediate& RHICmdList, const FSceneRenderTargets& SceneContext, const FPlanarReflectionSceneProxy* PlanarReflectionSceneProxy);
+	void ReleasePixelProjectedReflectionOutputs();
+
+	/** Before SetupMobileBasePassAfterShadowInit, we need to update the uniform buffer and shadow info for all movable point lights.*/
+	void UpdateMovablePointLightUniformBufferAndShadowInfo();
 private:
+	bool bRenderToSceneColor;
+	bool bRequiresMultiPass;
+	bool bKeepDepthContent;
+	bool bSubmitOffscreenRendering;
 	bool bModulatedShadowsInUse;
 	bool bShouldRenderCustomDepth;
+	bool bRequiresPixelProjectedPlanarRelfectionPass;
+	bool bRequriesAmbientOcclusionPass;
 	static FGlobalDynamicIndexBuffer DynamicIndexBuffer;
 	static FGlobalDynamicVertexBuffer DynamicVertexBuffer;
 	static TGlobalResource<FGlobalDynamicReadBuffer> DynamicReadBuffer;
+
+	FAmbientOcclusionMobileOutputs AmbientOcclusionMobileOutputs;
 };
 
 // The noise textures need to be set in Slate too.
@@ -1957,19 +2003,19 @@ inline FRHITexture* OrBlack2DIfNull(FRHITexture* Tex)
 
 inline FRHITexture* OrBlack3DIfNull(FRHITexture* Tex)
 {
-	// we fall back to 2D which are unbound es2 parameters
+	// we fall back to 2D which are unbound mobile parameters
 	return OrBlack2DIfNull(Tex ? Tex : GBlackVolumeTexture->TextureRHI.GetReference());
 }
 
 inline FRHITexture* OrBlack3DAlpha1IfNull(FRHITexture* Tex)
 {
-	// we fall back to 2D which are unbound es2 parameters
+	// we fall back to 2D which are unbound mobile parameters
 	return OrBlack2DIfNull(Tex ? Tex : GBlackAlpha1VolumeTexture->TextureRHI.GetReference());
 }
 
 inline FRHITexture* OrBlack3DUintIfNull(FRHITexture* Tex)
 {
-	// we fall back to 2D which are unbound es2 parameters
+	// we fall back to 2D which are unbound mobile parameters
 	return OrBlack2DIfNull(Tex ? Tex : GBlackUintVolumeTexture->TextureRHI.GetReference());
 }
 
@@ -1987,7 +2033,7 @@ inline void SetBlack3DIfNull(FRHITexture*& Tex)
 	if (!Tex)
 	{
 		Tex = GBlackVolumeTexture->TextureRHI.GetReference();
-		// we fall back to 2D which are unbound es2 parameters
+		// we fall back to 2D which are unbound mobile parameters
 		SetBlack2DIfNull(Tex);
 	}
 }
@@ -1997,7 +2043,7 @@ inline void SetBlackAlpha13DIfNull(FRHITexture*& Tex)
 	if (!Tex)
 	{
 		Tex = GBlackAlpha1VolumeTexture->TextureRHI.GetReference();
-		// we fall back to 2D which are unbound es2 parameters
+		// we fall back to 2D which are unbound mobile parameters
 		SetBlack2DIfNull(Tex); // This is actually a rgb=0, a=1 texture
 	}
 }

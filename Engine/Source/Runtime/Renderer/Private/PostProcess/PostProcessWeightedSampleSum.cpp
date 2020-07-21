@@ -9,7 +9,7 @@
 // maximum number of sample available using unrolled loop shaders
 #define MAX_FILTER_COMPILE_TIME_SAMPLES 32
 #define MAX_FILTER_COMPILE_TIME_SAMPLES_IOS 15
-#define MAX_FILTER_COMPILE_TIME_SAMPLES_ES2 7
+#define MAX_FILTER_COMPILE_TIME_SAMPLES_ES3_1 7
 
 namespace
 {
@@ -124,7 +124,7 @@ uint32 GetSampleCountMax(ERHIFeatureLevel::Type InFeatureLevel, EShaderPlatform 
 	}
 	else if (InFeatureLevel < ERHIFeatureLevel::SM5)
 	{
-		return MAX_FILTER_COMPILE_TIME_SAMPLES_ES2;
+		return MAX_FILTER_COMPILE_TIME_SAMPLES_ES3_1;
 	}
 	else
 	{
@@ -242,7 +242,7 @@ public:
 		}
 		else
 		{
-			return StaticSampleCount <= MAX_FILTER_COMPILE_TIME_SAMPLES_ES2;
+			return StaticSampleCount <= MAX_FILTER_COMPILE_TIME_SAMPLES_ES3_1;
 		}
 	}
 

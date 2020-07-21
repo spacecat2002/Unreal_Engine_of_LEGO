@@ -756,6 +756,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Mobile)
 	uint8 bUseLightmapDirectionality : 1;
 
+	/* Use alpha to coverage for masked material on mobile, make sure MSAA is enabled as well. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Mobile, AdvancedDisplay, meta = (EditCondition = "BlendMode != EBlendMode::BLEND_Opaque"))
+	uint8 bUseAlphaToCoverage : 1;
+
 	/* Forward (including mobile) renderer: use preintegrated GF lut for simple IBL, but will use one more sampler. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = ForwardShading, meta = (DisplayName = "PreintegratedGF For Simple IBL"))
 	uint32 bForwardRenderUsePreintegratedGFForSimpleIBL : 1;

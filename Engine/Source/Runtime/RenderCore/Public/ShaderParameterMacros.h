@@ -777,6 +777,7 @@ extern RENDERCORE_API FShaderParametersMetadata* FindUniformBufferStructByShader
 
 #define END_SHADER_PARAMETER_STRUCT() \
 		zzLastMemberId; \
+	public: \
 		static TArray<FShaderParametersMetadata::FMember> zzGetMembers() { \
 			TArray<FShaderParametersMetadata::FMember> Members; \
 			zzFuncPtr(*LastFunc)(zzLastMemberId, TArray<FShaderParametersMetadata::FMember>*); \
@@ -816,6 +817,16 @@ extern RENDERCORE_API FShaderParametersMetadata* FindUniformBufferStructByShader
 	TEXT(#StructTypeName), \
 	TEXT(#StructTypeName), \
 	TEXT(ShaderVariableName), \
+	nullptr, \
+	sizeof(StructTypeName), \
+	StructTypeName::zzGetMembers())
+
+#define IMPLEMENT_UNIFORM_BUFFER_ALIAS_STRUCT(StructTypeName, UniformBufferAlias) \
+	static const FShaderParametersMetadata UniformBufferAlias( \
+	FShaderParametersMetadata::EUseCase::UniformBuffer, \
+	TEXT(#StructTypeName), \
+	TEXT(#StructTypeName), \
+	TEXT(#UniformBufferAlias), \
 	nullptr, \
 	sizeof(StructTypeName), \
 	StructTypeName::zzGetMembers())
@@ -862,6 +873,9 @@ extern RENDERCORE_API FShaderParametersMetadata* FindUniformBufferStructByShader
 
 #define IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT \
 	IMPLEMENT_UNIFORM_BUFFER_STRUCT
+
+#define IMPLEMENT_GLOBAL_SHADER_PARAMETER_ALIAS_STRUCT \
+	IMPLEMENT_UNIFORM_BUFFER_ALIAS_STRUCT
 
 /** Adds a constant-buffer stored value.
  *

@@ -237,9 +237,7 @@ void FIOSInputInterface::HandleDisconnect(GCController* Controller)
 #if !PLATFORM_TVOS
 void ModifyVectorByOrientation(FVector& Vec, bool bIsRotation)
 {
-    UIInterfaceOrientation Orientation = [[UIApplication sharedApplication] statusBarOrientation];
-
-	switch (Orientation)
+	switch (FIOSApplication::CachedOrientation)
 	{
 	case UIInterfaceOrientationPortrait:
 		// this is the base orientation, so nothing to do

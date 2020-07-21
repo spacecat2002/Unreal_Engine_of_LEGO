@@ -558,11 +558,22 @@ void FVulkanPendingGfxState::UpdateInputAttachments(FVulkanFramebuffer* Framebuf
 	for (int32 Index = 0; Index < InputAttachmentData.Num(); ++Index)
 	{
 		const FInputAttachmentData& AttachmentData = InputAttachmentData[Index];
+		const uint32 ColorIndex = static_cast<uint32>(AttachmentData.Type);
+		
 		switch (AttachmentData.Type)
 		{
-		case FVulkanShaderHeader::EAttachmentType::Color:
-			//#todo-rco: Only supports first render target in frame buffer...
+		case FVulkanShaderHeader::EAttachmentType::Color0:
 			CurrentState->SetInputAttachment(AttachmentData.DescriptorSet, AttachmentData.BindingIndex, Framebuffer->AttachmentTextureViews[0], VK_IMAGE_LAYOUT_GENERAL);
+			break;
+		case FVulkanShaderHeader::EAttachmentType::Color1:
+		case FVulkanShaderHeader::EAttachmentType::Color2:
+		case FVulkanShaderHeader::EAttachmentType::Color3:
+		case FVulkanShaderHeader::EAttachmentType::Color4:
+		case FVulkanShaderHeader::EAttachmentType::Color5:
+		case FVulkanShaderHeader::EAttachmentType::Color6:
+		case FVulkanShaderHeader::EAttachmentType::Color7:
+			check(ColorIndex < Framebuffer->GetNumColorAttachments());
+			CurrentState->SetInputAttachment(AttachmentData.DescriptorSet, AttachmentData.BindingIndex, Framebuffer->AttachmentTextureViews[ColorIndex], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 			break;
 		case FVulkanShaderHeader::EAttachmentType::Depth:
 			CurrentState->SetInputAttachment(AttachmentData.DescriptorSet, AttachmentData.BindingIndex, Framebuffer->GetPartialDepthTextureView(), VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);

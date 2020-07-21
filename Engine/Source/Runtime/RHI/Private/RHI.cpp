@@ -343,7 +343,7 @@ FString FBlendStateInitializerRHI::ToString() const
 	{
 		Result += RenderTargets[Index].ToString();
 	}
-	Result += FString::Printf(TEXT("%d>"), uint32(!!bUseIndependentRenderTargetBlendStates));
+	Result += FString::Printf(TEXT("%d %d>"), uint32(!!bUseIndependentRenderTargetBlendStates), uint32(!!bUseAlphaToCoverage));
 	return Result;
 }
 
@@ -354,7 +354,7 @@ void FBlendStateInitializerRHI::FromString(const FString& InSrc)
 
 void FBlendStateInitializerRHI::FromString(const FStringView& InSrc)
 {
-	constexpr int32 PartCount = MaxSimultaneousRenderTargets * FRenderTarget::NUM_STRING_FIELDS + 1;
+	constexpr int32 PartCount = MaxSimultaneousRenderTargets * FRenderTarget::NUM_STRING_FIELDS + 2;
 
 	TArray<FStringView, TInlineAllocator<PartCount>> Parts;
 	UE::String::ParseTokensMultiple(InSrc.TrimStartAndEnd(), {TEXT('\r'), TEXT('\n'), TEXT('\t'), TEXT('<'), TEXT('>'), TEXT(' ')},
@@ -368,6 +368,7 @@ void FBlendStateInitializerRHI::FromString(const FStringView& InSrc)
 		PartIt += FRenderTarget::NUM_STRING_FIELDS;
 	}
 	LexFromString((int8&)bUseIndependentRenderTargetBlendStates, *PartIt++);
+	LexFromString((int8&)bUseAlphaToCoverage, *PartIt++);
 	check(Parts.GetData() + PartCount == PartIt);
 }
 
@@ -685,6 +686,7 @@ TRHIGlobal<int32> GMaxTextureDimensions(2048);
 TRHIGlobal<int64> GMaxBufferDimensions(2<<27);
 TRHIGlobal<int32> GMaxVolumeTextureDimensions(2048);
 TRHIGlobal<int32> GMaxCubeTextureDimensions(2048);
+TRHIGlobal<int32> GMaxWorkGroupInvocations(1024);
 bool GRHISupportsRWTextureBuffers = true;
 int32 GMaxTextureArrayLayers = 256;
 int32 GMaxTextureSamplers = 16;
