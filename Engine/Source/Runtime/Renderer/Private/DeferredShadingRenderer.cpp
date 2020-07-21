@@ -2021,9 +2021,12 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	checkSlow(RHICmdList.IsOutsideRenderPass());
 
 	bool bIsWireframeRenderpass = bIsWireframe && FSceneRenderer::ShouldCompositeEditorPrimitives(Views[0]);
+	bool bDebugViewMode = ViewFamily.UseDebugViewPS();
 	bool bRenderLightmapDensity = ViewFamily.EngineShowFlags.LightMapDensity && AllowDebugViewmodes();
 	bool bRenderSkyAtmosphereEditorNotifications = ShouldRenderSkyAtmosphereEditorNotifications();
-	bool bDoParallelBasePass = GRHICommandList.UseParallelAlgorithms() && CVarParallelBasePass.GetValueOnRenderThread();
+	bool bEnableParallelBasePasses = GRHICommandList.UseParallelAlgorithms() && CVarParallelBasePass.GetValueOnRenderThread();
+	bool bDoParallelBasePass = bEnableParallelBasePasses && !bDebugViewMode && !bRenderLightmapDensity; // DebugView and LightmapDensity are non-parallel substitutions inside BasePass
+	bool bDoParallelAnisoPass = bEnableParallelBasePasses;
 	
 	// BASE PASS AND GBUFFER SETUP
 	// Gross logic to cover all the cases of special rendering modes + parallel dispatch
@@ -2091,7 +2094,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 			RHICmdList.EndRenderPass();
 		}
 	}
-	else if (!bIsGBufferCurrent && (!bDoParallelBasePass || bRenderLightmapDensity))
+	else if (!bIsGBufferCurrent && !bDoParallelBasePass)
 	{
 		// Make sure we have began the renderpass
 		ERenderTargetLoadAction DepthLoadAction = bDepthWasCleared ? ERenderTargetLoadAction::ELoad : ERenderTargetLoadAction::EClear;
@@ -2118,7 +2121,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	ServiceLocalQueue();
 
 	// If we ran parallel in the basepass there will be no renderpass at this point.
-	if (bDoParallelBasePass && !bRenderLightmapDensity)
+	if (bDoParallelBasePass)
 	{
 		SceneContext.BeginRenderingGBuffer(RHICmdList, ERenderTargetLoadAction::ELoad, ERenderTargetLoadAction::ELoad, BasePassDepthStencilAccess);
 	}
@@ -2160,7 +2163,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 		FRDGBuilder GraphBuilder(RHICmdList);
 		FRDGTextureRef SceneDepthTexture = GraphBuilder.RegisterExternalTexture(SceneContext.SceneDepthZ, ERenderTargetTexture::ShaderResource);
-		RenderAnisotropyPass(GraphBuilder, SceneDepthTexture, bDoParallelBasePass);
+		RenderAnisotropyPass(GraphBuilder, SceneDepthTexture, bDoParallelAnisoPass);
 		RHICmdList.SetCurrentStat(GET_STATID(STAT_CLM_AfterAnisotropyPass));
 		GraphBuilder.Execute();
 	}
