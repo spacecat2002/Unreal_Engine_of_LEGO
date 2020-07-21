@@ -35,6 +35,10 @@ struct ANIMGRAPHRUNTIME_API FAnimNode_CopyPoseFromMesh : public FAnimNode_Base
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Copy, meta = (NeverAsPin))
 	uint8 bUseMeshPose : 1;
 
+	/* If you want to specify copy root, use this - this will ensure copy only below of this joint (inclusively) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Copy, meta = (NeverAsPin))
+	FName RootBoneToCopy;
+
 	FAnimNode_CopyPoseFromMesh();
 
 	// FAnimNode_Base interface

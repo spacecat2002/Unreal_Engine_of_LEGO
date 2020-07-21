@@ -2280,6 +2280,32 @@ void USkeletalMesh::ForceBulkDataResident(const int32 LODIndex)
 	GetMeshEditorData().GetLODImportedData(LODIndex).GetBulkData().ForceBulkDataResident();
 }
 
+void USkeletalMesh::EmptyLODImportData(const int32 LODIndex)
+{
+	if(!ImportedModel->LODModels.IsValidIndex(LODIndex) || !GetMeshEditorData().IsLODImportDataValid(LODIndex))
+	{
+		return;
+	}
+
+	FRawSkeletalMeshBulkData& RawMesh = GetMeshEditorData().GetLODImportedData(LODIndex);
+	FSkeletalMeshImportData EmptyData;
+	RawMesh.SaveRawMesh(EmptyData);
+	RawMesh.GeoImportVersion = ESkeletalMeshGeoImportVersions::Before_Versionning;
+	RawMesh.SkinningImportVersion = ESkeletalMeshSkinningImportVersions::Before_Versionning;
+	ImportedModel->LODModels[LODIndex].RawSkeletalMeshBulkDataID = RawMesh.GetIdString();
+	ImportedModel->LODModels[LODIndex].bIsBuildDataAvailable = RawMesh.IsBuildDataAvailable();
+	ImportedModel->LODModels[LODIndex].bIsRawSkeletalMeshBulkDataEmpty = RawMesh.IsEmpty();
+}
+
+void USkeletalMesh::EmptyAllImportData()
+{
+	const int32 LODNumber = GetLODNum();
+	for(int32 LODIndex = 0; LODIndex < LODNumber; ++LODIndex)
+	{
+		EmptyLODImportData(LODIndex);
+	}
+}
+
 void USkeletalMesh::CreateUserSectionsDataForLegacyAssets()
 {
 	//We want to avoid changing the ddc if we load an old asset.
@@ -4145,6 +4171,16 @@ void USkeletalMesh::RemoveLODInfo(int32 Index)
 {
 	if (LODInfo.IsValidIndex(Index))
 	{
+#if WITH_EDITOR
+		if (MeshEditorDataObject != nullptr)
+		{
+			MeshEditorDataObject->RemoveLODImportedData(Index);
+		}
+		if (GetImportedModel() && GetImportedModel()->OriginalReductionSourceMeshData.IsValidIndex(Index))
+		{
+			GetImportedModel()->OriginalReductionSourceMeshData.RemoveAt(Index);
+		}
+#endif // WITH_EDITOR
 		LODInfo.RemoveAt(Index);
 	}
 }

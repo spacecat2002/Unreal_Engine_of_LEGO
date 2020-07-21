@@ -2183,7 +2183,7 @@ static void SerializeBuildSettingsForDDC(FArchive& Ar, FMeshBuildSettings& Build
 // differences, etc.) replace the version GUID below with a new one.
 // In case of merge conflicts with DDC versions, you MUST generate a new GUID
 // and set this new GUID as the version.
-#define STATICMESH_DERIVEDDATA_VER TEXT("F9378A28F161444987BACE79B2590E57")
+#define STATICMESH_DERIVEDDATA_VER TEXT("3408C4E61A354B70852051E8365F31B7")
 
 static const FString& GetStaticMeshDerivedDataVersion()
 {

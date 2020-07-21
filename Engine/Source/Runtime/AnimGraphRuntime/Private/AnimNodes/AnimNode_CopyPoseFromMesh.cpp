@@ -22,8 +22,6 @@ void FAnimNode_CopyPoseFromMesh::Initialize_AnyThread(const FAnimationInitialize
 
 	// Initial update of the node, so we dont have a frame-delay on setup
 	GetEvaluateGraphExposedInputs().Execute(Context);
-
-	RefreshMeshComponent(Context.AnimInstanceProxy->GetSkelMeshComponent());
 }
 
 void FAnimNode_CopyPoseFromMesh::CacheBones_AnyThread(const FAnimationCacheBonesContext& Context)
@@ -269,10 +267,15 @@ void FAnimNode_CopyPoseFromMesh::ReinitializeMeshComponent(USkeletalMeshComponen
 			}
 			else
 			{
-				for (int32 ComponentSpaceBoneId=0; ComponentSpaceBoneId<TargetSkelMesh->RefSkeleton.GetNum(); ++ComponentSpaceBoneId)
+				const int32 SplitBoneIndex = (RootBoneToCopy != NAME_Name)? TargetSkelMesh->RefSkeleton.FindBoneIndex(RootBoneToCopy) : INDEX_NONE;
+				for (int32 ComponentSpaceBoneId = 0; ComponentSpaceBoneId < TargetSkelMesh->RefSkeleton.GetNum(); ++ComponentSpaceBoneId)
 				{
-					FName BoneName = TargetSkelMesh->RefSkeleton.GetBoneName(ComponentSpaceBoneId);
-					BoneMapToSource.Add(ComponentSpaceBoneId, SourceSkelMesh->RefSkeleton.FindBoneIndex(BoneName));
+					if (SplitBoneIndex == INDEX_NONE || ComponentSpaceBoneId == SplitBoneIndex
+						|| TargetSkelMesh->RefSkeleton.BoneIsChildOf(ComponentSpaceBoneId, SplitBoneIndex))
+					{
+						FName BoneName = TargetSkelMesh->RefSkeleton.GetBoneName(ComponentSpaceBoneId);
+						BoneMapToSource.Add(ComponentSpaceBoneId, SourceSkelMesh->RefSkeleton.FindBoneIndex(BoneName));
+					}
 				}
 			}
 		

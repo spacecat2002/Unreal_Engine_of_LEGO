@@ -154,6 +154,7 @@ struct FPreAnimatedAnimationTokenProducer : IMovieScenePreAnimatedTokenProducer
 					}
 				}
 #endif
+				
 			}
 
 			virtual void RestoreState(UObject& ObjectToRestore, IMovieScenePlayer& Player)

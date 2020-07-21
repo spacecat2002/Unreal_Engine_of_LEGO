@@ -2717,6 +2717,17 @@ void UKismetSystemLibrary::ParseCommandLine(const FString& InCmdLine, TArray<FSt
 	UCommandlet::ParseCommandLine(*InCmdLine, OutTokens, OutSwitches, OutParams);
 }
 
+bool UKismetSystemLibrary::ParseParam(const FString& InString, const FString& InParam)
+{
+	return FParse::Param(*InString, *InParam);
+}
+
+
+bool UKismetSystemLibrary::ParseParamValue(const FString& InString, const FString& InParam, FString& OutValue)
+{
+	return FParse::Value(*InString, *InParam, OutValue);
+}
+
 bool UKismetSystemLibrary::IsUnattended()
 {
 	return FApp::IsUnattended();

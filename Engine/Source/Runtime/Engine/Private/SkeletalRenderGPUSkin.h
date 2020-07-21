@@ -311,6 +311,15 @@ public:
 	}
 	//~ End FSkeletalMeshObject Interface
 
+	bool DoesAnySegmentUsesWorldPositionOffset() const
+	{
+#if RHI_RAYTRACING
+		return DynamicData ? DynamicData->bAnySegmentUsesWorldPositionOffset : false;
+#else
+		return false;
+#endif
+	}
+
 	FSkinWeightVertexBuffer* GetSkinWeightVertexBuffer(int32 LODIndex) const;
 
 	/** 

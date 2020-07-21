@@ -39,7 +39,7 @@ static TAutoConsoleVariable<int32> CVarGPUSkinLimit2BoneInfluences(
 	ECVF_ReadOnly);
 
 // Changing the unlimited bone influences settings require DDC key SKELETALMESH_DERIVEDDATA_VER to update in order to regenerate bone weight vertex buffers
-static const bool GUnlimitedBoneInfluences = false;
+static const bool GUnlimitedBoneInfluences = true;
 static const int32 GUnlimitedBoneInfluencesThreshold = EXTRA_BONE_INFLUENCES;
 
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FAPEXClothUniformShaderParameters,"APEXClothParam");

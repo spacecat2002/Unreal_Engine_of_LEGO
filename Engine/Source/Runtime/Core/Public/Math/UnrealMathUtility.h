@@ -387,6 +387,24 @@ public:
 		return X<Min ? Min : X<Max ? X : Max;
 	}
 
+	/** Wraps X to be between Min and Max, inclusive */
+	template< class T >
+	static FORCEINLINE T Wrap(const T X, const T Min, const T Max)
+	{
+		T Size = Max - Min;
+		T EndVal = X;
+		while (EndVal < Min)
+		{
+			EndVal += Size;
+		}
+
+		while (EndVal > Max)
+		{
+			EndVal -= Size;
+		}
+		return EndVal;
+	}
+
 	/** Snaps a value to the nearest grid multiple */
 	static FORCEINLINE float GridSnap( float Location, float Grid )
 	{

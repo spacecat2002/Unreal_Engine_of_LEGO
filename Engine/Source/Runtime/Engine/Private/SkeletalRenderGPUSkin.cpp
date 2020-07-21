@@ -397,75 +397,14 @@ void FSkeletalMeshObjectGPUSkin::UpdateDynamicData_RenderThread(FGPUSkinCache* G
 	}
 
 #if RHI_RAYTRACING
-	if (IsRayTracingEnabled())
+	if (IsRayTracingEnabled() && GEnableGPUSkinCache && !GPUSkinCache->IsBatchingDispatch())
 	{
-		if (GEnableGPUSkinCache && SkinCacheEntry)
+		if (SkinCacheEntry)
 		{
 			if (DynamicData->LODIndex >= SkeletalMeshRenderData->CurrentFirstLODIdx) // According to GetMeshElementsConditionallySelectable(), non-resident LODs should just be skipped
 			{
-				if (bRequireRecreatingRayTracingGeometry)
-				{
-					FSkeletalMeshLODRenderData& LODModel = this->SkeletalMeshRenderData->LODRenderData[DynamicData->LODIndex];
-					FIndexBufferRHIRef IndexBufferRHI = LODModel.MultiSizeIndexContainer.GetIndexBuffer()->IndexBufferRHI;
-					uint32 VertexBufferStride = LODModel.StaticVertexBuffers.PositionVertexBuffer.GetStride();
-
-					//#dxr_todo: do we need support for separate sections in FRayTracingGeometryData?
-					uint32 TrianglesCount = 0;
-					for (int32 SectionIndex = 0; SectionIndex < LODModel.RenderSections.Num(); SectionIndex++)
-					{
-						const FSkelMeshRenderSection& Section = LODModel.RenderSections[SectionIndex];
-						TrianglesCount += Section.NumTriangles;
-					}
-
-					FRayTracingGeometryInitializer Initializer;
-					static const FName DebugName("FSkeletalMeshObjectGPUSkin");
-					static int32 DebugNumber = 0;
-					Initializer.DebugName = FName(DebugName, DebugNumber++);
-
-					FRHIResourceCreateInfo CreateInfo;
-
-					Initializer.IndexBuffer = IndexBufferRHI;
-					Initializer.TotalPrimitiveCount = TrianglesCount;
-					Initializer.GeometryType = RTGT_Triangles;
-					Initializer.bFastBuild = true;
-					Initializer.bAllowUpdate = true;
-
-					Initializer.Segments.Reserve(LODModel.RenderSections.Num());
-					for (const FSkelMeshRenderSection& Section : LODModel.RenderSections)
-					{
-						FRayTracingGeometrySegment Segment;
-						Segment.VertexBuffer = nullptr;
-						Segment.VertexBufferElementType = VET_Float3;
-						Segment.VertexBufferStride = VertexBufferStride;
-						Segment.VertexBufferOffset = 0;
-						Segment.FirstPrimitive = Section.BaseIndex / 3;
-						Segment.NumPrimitives = Section.NumTriangles;
-						Segment.bEnabled = !Section.bDisabled;
-						Initializer.Segments.Add(Segment);
-					}
-
-					FGPUSkinCache::GetRayTracingSegmentVertexBuffers(*SkinCacheEntry, Initializer.Segments);
-
-					// Flush pending resource barriers before BVH is built for the first time
-					GPUSkinCache->TransitionAllToReadable(RHICmdList);
-
-					RayTracingGeometry.SetInitializer(Initializer);
-					RayTracingGeometry.UpdateRHI();
-				}
-				else
-				{
-					// If we are not using world position offset in material, handle BLAS refit here
-					if (!DynamicData->bAnySegmentUsesWorldPositionOffset)
-					{
-						// Refit BLAS with new vertex buffer data
-						FGPUSkinCache::GetRayTracingSegmentVertexBuffers(*SkinCacheEntry, RayTracingGeometry.Initializer.Segments);
-						GPUSkinCache->AddRayTracingGeometryToUpdate(&RayTracingGeometry);
-					}
-					else
-					{
-						// Otherwise, we will run the dynamic ray tracing geometry path, i.e. runnning VSinCS and refit geometry there, so do nothing here
-					}
-				}
+				FSkeletalMeshLODRenderData& LODModel = this->SkeletalMeshRenderData->LODRenderData[DynamicData->LODIndex];
+				GPUSkinCache->ProcessRayTracingGeometryToUpdate(RHICmdList, SkinCacheEntry, LODModel, bRequireRecreatingRayTracingGeometry, DynamicData->bAnySegmentUsesWorldPositionOffset);
 			}
 		}
 	}
@@ -651,9 +590,21 @@ void FSkeletalMeshObjectGPUSkin::ProcessUpdatedDynamicData(FGPUSkinCache* GPUSki
 				// Matrices are transposed in ue4 meaning matrix multiples need to happen in reverse ((AB)x = b becomes xTBTAT = b).
 				FMatrix LocalToCloth = DynamicData->ClothObjectLocalToWorld * ClothLocalToWorld.Inverse();
 
-				GPUSkinCache->ProcessEntry(RHICmdList, VertexFactory,
-					VertexFactoryData.PassthroughVertexFactories[SectionIdx].Get(), Section, this, bMorph ? &LOD.MorphVertexBuffer : 0, bClothFactory ? &LODData.ClothVertexBuffer : 0,
-					bClothFactory ? DynamicData->ClothingSimData.Find(Section.CorrespondClothAssetIndex) : 0, LocalToCloth, DynamicData->ClothBlendWeight, RevisionNumber, SectionIdx, SkinCacheEntry);
+				GPUSkinCache->ProcessEntry(
+					RHICmdList, 
+					VertexFactory,
+					VertexFactoryData.PassthroughVertexFactories[SectionIdx].Get(), 
+					Section, 
+					this, 
+					bMorph ? &LOD.MorphVertexBuffer : 0, 
+					bClothFactory ? &LODData.ClothVertexBuffer : 0,
+					bClothFactory ? DynamicData->ClothingSimData.Find(Section.CorrespondClothAssetIndex) : 0, 
+					LocalToCloth, 
+					DynamicData->ClothBlendWeight, 
+					RevisionNumber, 
+					SectionIdx,
+					SkinCacheEntry
+					);
 			}
 
 			if (bNeedFence)

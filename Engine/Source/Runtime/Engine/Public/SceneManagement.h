@@ -1410,7 +1410,7 @@ public:
 	inline bool GetForceCachedShadowsForMovablePrimitives() const { return bForceCachedShadowsForMovablePrimitives; }
 
 	inline uint32 GetSamplesPerPixel() const { return SamplesPerPixel; }
-
+	inline float GetDeepShadowLayerDistribution() const { return DeepShadowLayerDistribution;  }
 	/**
 	 * Shifts light position and all relevant data by an arbitrary delta.
 	 * Called on world origin changes
@@ -1625,6 +1625,9 @@ protected:
 
 	/** Samples per pixel for ray tracing */
 	uint32 SamplesPerPixel;
+
+	/** Deep shadow layer distribution. */
+	float DeepShadowLayerDistribution;
 
 	/**
 	 * Updates the light proxy's cached transforms.

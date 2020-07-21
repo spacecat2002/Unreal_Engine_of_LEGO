@@ -105,6 +105,7 @@
 #include "Materials/MaterialExpressionRayTracingQualitySwitch.h"
 #include "Materials/MaterialExpressionGetMaterialAttributes.h"
 #include "Materials/MaterialExpressionHairAttributes.h"
+#include "Materials/MaterialExpressionHairColor.h"
 #include "Materials/MaterialExpressionIf.h"
 #include "Materials/MaterialExpressionInverseLinearInterpolate.h"
 #include "Materials/MaterialExpressionLightmapUVs.h"
@@ -172,7 +173,6 @@
 #include "Materials/MaterialExpressionSaturate.h"
 #include "Materials/MaterialExpressionSceneColor.h"
 #include "Materials/MaterialExpressionSceneDepth.h"
-#include "Materials/MaterialExpressionSceneDepthWithoutWater.h"
 #include "Materials/MaterialExpressionSceneTexelSize.h"
 #include "Materials/MaterialExpressionSceneTexture.h"
 #include "Materials/MaterialExpressionScreenPosition.h"
@@ -17480,11 +17480,14 @@ UMaterialExpressionHairAttributes::UMaterialExpressionHairAttributes(const FObje
 	Outputs.Add(FExpressionOutput(TEXT("V"), 1, 0, 1, 0, 0));
 	Outputs.Add(FExpressionOutput(TEXT("Length"), 1, 1, 0, 0, 0));
 	Outputs.Add(FExpressionOutput(TEXT("Radius"), 1, 0, 1, 0, 0));
-	Outputs.Add(FExpressionOutput(TEXT("Seed")));
+	Outputs.Add(FExpressionOutput(TEXT("Seed"), 1, 1, 0, 0, 0));
 	Outputs.Add(FExpressionOutput(TEXT("World Tangent"), 1, 1, 1, 1, 0));
 	Outputs.Add(FExpressionOutput(TEXT("Root UV"), 1, 1, 1, 0, 0));
 	Outputs.Add(FExpressionOutput(TEXT("BaseColor"), 1, 1, 1, 1, 0));
 	Outputs.Add(FExpressionOutput(TEXT("Roughness"), 1, 1, 0, 0, 0));
+	Outputs.Add(FExpressionOutput(TEXT("Depth"), 1, 1, 0, 0, 0));
+	Outputs.Add(FExpressionOutput(TEXT("Coverage"), 1, 1, 0, 0, 0));
+	Outputs.Add(FExpressionOutput(TEXT("AtlasUVs"), 1, 1, 1, 0, 0));
 #endif
 }
 
@@ -17519,6 +17522,18 @@ int32 UMaterialExpressionHairAttributes::Compile(class FMaterialCompiler* Compil
 	{
 		return Compiler->GetHairRoughness();
 	}
+	else if (OutputIndex == 9)
+	{
+		return Compiler->GetHairDepth();
+	}
+	else if (OutputIndex == 10)
+	{
+		return Compiler->GetHairCoverage();
+	}
+	else if (OutputIndex == 11)
+	{
+		return Compiler->GetHairAtlasUVs();
+	}
 
 	return Compiler->Errorf(TEXT("Invalid input parameter"));
 }
@@ -17529,6 +17544,53 @@ void UMaterialExpressionHairAttributes::GetCaption(TArray<FString>& OutCaptions)
 }
 #endif // WITH_EDITOR
 
+//
+// Hair Color
+//
+
+UMaterialExpressionHairColor::UMaterialExpressionHairColor(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
+{
+#if WITH_EDITORONLY_DATA
+	// Structure to hold one-time initialization
+	struct FConstructorStatics
+	{
+		FText NAME_Utility;
+		FConstructorStatics()
+			: NAME_Utility(LOCTEXT("Hair Color", "Hair Color"))
+		{
+		}
+	};
+	static FConstructorStatics ConstructorStatics;
+	MenuCategories.Add(ConstructorStatics.NAME_Utility);
+
+#endif
+
+#if WITH_EDITORONLY_DATA
+	bShowOutputNameOnPin = true;
+	Outputs.Reset();
+	Outputs.Add(FExpressionOutput(TEXT("Color"), 1, 1, 1, 1, 0));
+#endif
+}
+
+#if WITH_EDITOR
+int32 UMaterialExpressionHairColor::Compile(class FMaterialCompiler* Compiler, int32 OutputIndex)
+{
+	int32 MelaninInput = Melanin.GetTracedInput().Expression ? Melanin.Compile(Compiler) : Compiler->Constant(0.5f);
+	int32 RednessInput = Redness.GetTracedInput().Expression ? Redness.Compile(Compiler) : Compiler->Constant(0.0f);
+	int32 DyeColorInput = DyeColor.GetTracedInput().Expression ? DyeColor.Compile(Compiler) : Compiler->Constant3(1.f,1.f, 1.f);
+
+	return Compiler->GetHairColorFromMelanin(
+		MelaninInput,
+		RednessInput,
+		DyeColorInput);
+}
+
+void UMaterialExpressionHairColor::GetCaption(TArray<FString>& OutCaptions) const
+{
+	OutCaptions.Add(TEXT("Hair Color"));
+}
+#endif // WITH_EDITOR
 
 //
 //  UMaterialExpressionARPassthroughCameraUVs
@@ -17965,71 +18027,7 @@ FString UMaterialExpressionThinTranslucentMaterialOutput::GetDisplayName() const
 }
 
 
-///////////////////////////////////////////////////////////////////////////////
-// UMaterialExpressionSceneDepthWithoutWater
-///////////////////////////////////////////////////////////////////////////////
-UMaterialExpressionSceneDepthWithoutWater::UMaterialExpressionSceneDepthWithoutWater()
-{
-#if WITH_EDITORONLY_DATA
-	MenuCategories.Add(LOCTEXT("Water", "Water"));
 
-	Outputs.Reset();
-	Outputs.Add(FExpressionOutput(TEXT(""), 1, 1, 0, 0, 0));
-	bShaderInputData = true;
-#endif
-
-	ConstInput = FVector2D(0.f, 0.f);
-}
-
-#if WITH_EDITOR
-int32 UMaterialExpressionSceneDepthWithoutWater::Compile(class FMaterialCompiler* Compiler, int32 OutputIndex)
-{
-	int32 OffsetIndex = INDEX_NONE;
-	int32 CoordinateIndex = INDEX_NONE;
-	bool bUseOffset = false;
-
-	if (InputMode == EMaterialSceneAttributeInputMode::OffsetFraction)
-	{
-		if (Input.GetTracedInput().Expression)
-		{
-			OffsetIndex = Input.Compile(Compiler);
-		}
-		else
-		{
-			OffsetIndex = Compiler->Constant2(ConstInput.X, ConstInput.Y);
-		}
-		bUseOffset = true;
-	}
-	else if (InputMode == EMaterialSceneAttributeInputMode::Coordinates)
-	{
-		if (Input.GetTracedInput().Expression)
-		{
-			CoordinateIndex = Input.Compile(Compiler);
-		}
-	}
-
-	int32 Result = Compiler->SceneDepthWithoutWater(OffsetIndex, CoordinateIndex, bUseOffset, FallbackDepth);
-	return Result;
-}
-
-void UMaterialExpressionSceneDepthWithoutWater::GetCaption(TArray<FString>& OutCaptions) const
-{
-	OutCaptions.Add(TEXT("Scene Depth Without Water"));
-}
-
-FName UMaterialExpressionSceneDepthWithoutWater::GetInputName(int32 InputIndex) const
-{
-	if (InputIndex == 0)
-	{
-		// Display the current InputMode enum's display name.
-		FByteProperty* InputModeProperty = FindFProperty<FByteProperty>(UMaterialExpressionSceneDepthWithoutWater::StaticClass(), "InputMode");
-		// Can't use GetNameByValue as GetNameStringByValue does name mangling that GetNameByValue does not
-		return *InputModeProperty->Enum->GetNameStringByValue((int64)InputMode.GetValue());
-	}
-	return NAME_None;
-}
-
-#endif // WITH_EDITOR
 
 
 #undef LOCTEXT_NAMESPACE

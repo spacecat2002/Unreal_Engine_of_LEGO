@@ -12,6 +12,7 @@
 #include "Engine/TextureStreamingTypes.h"
 #include "Components/MeshComponent.h"
 #include "Containers/SortedMap.h"
+#include "LODSyncInterface.h"
 #include "SkinnedMeshComponent.generated.h"
 
 enum class ESkinCacheUsage : uint8;
@@ -198,7 +199,7 @@ struct FSkelMeshRefPoseOverride
 */
 
 UCLASS(hidecategories=Object, config=Engine, editinlinenew, abstract)
-class ENGINE_API USkinnedMeshComponent : public UMeshComponent
+class ENGINE_API USkinnedMeshComponent : public UMeshComponent, public ILODSyncInterface
 {
 	GENERATED_UCLASS_BODY()
 
@@ -1495,6 +1496,12 @@ private:
 	 * relative transforms.
 	 */
 	bool GetMissingMasterBoneRelativeTransform(int32 InBoneIndex, FMissingMasterBoneCacheEntry& OutInfo) const;
+
+	// BEGIN ILODSyncComponent
+	virtual int32 GetDesiredSyncLOD() const override;
+	virtual void SetSyncLOD(int32 LODIndex) override;
+	virtual int32 GetNumSyncLODs() const override;
+	// END ILODSyncComponent
 
 	// Animation update rate control.
 public:

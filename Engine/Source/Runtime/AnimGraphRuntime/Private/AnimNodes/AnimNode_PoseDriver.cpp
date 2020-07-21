@@ -15,6 +15,9 @@ FAnimNode_PoseDriver::FAnimNode_PoseDriver()
 	RBFParams.DistanceMethod = ERBFDistanceMethod::SwingAngle;
 
 #if WITH_EDITORONLY_DATA
+	SoloTargetIndex = INDEX_NONE;
+	bSoloDrivenOnly = false;
+
 	RadialScaling_DEPRECATED = 0.25f;
 	Type_DEPRECATED = EPoseDriverType::SwingOnly;
 	TwistAxis_DEPRECATED = BA_X;
@@ -292,13 +295,23 @@ void FAnimNode_PoseDriver::Evaluate_AnyThread(FPoseContext& Output)
 
 	RBFParams.TargetDimensions = SourceBones.Num() * 3;
 
-	// Get target array as RBF types
-	TArray<FRBFTarget> RBFTargets;
-	GetRBFTargets(RBFTargets);
-
-	// Run RBF solver
 	OutputWeights.Empty();
-	FRBFSolver::Solve(RBFParams, RBFTargets, Input, OutputWeights);
+
+#if WITH_EDITORONLY_DATA
+	if (SoloTargetIndex != INDEX_NONE && SoloTargetIndex < PoseTargets.Num())
+	{
+		OutputWeights.Add(FRBFOutputWeight(SoloTargetIndex, 1.0f));
+	}
+	else
+#endif
+	{
+		// Get target array as RBF types
+		TArray<FRBFTarget> RBFTargets;
+		GetRBFTargets(RBFTargets);
+
+		// Run RBF solver
+		FRBFSolver::Solve(RBFParams, RBFTargets, Input, OutputWeights);
+	}
 
 	// Track if we have filled Output with valid pose
 	bool bHaveValidPose = false;
@@ -385,8 +398,39 @@ void FAnimNode_PoseDriver::Evaluate_AnyThread(FPoseContext& Output)
 	}
 
 	// No valid pose, just pass through
-	if(!bHaveValidPose)
+	if (!bHaveValidPose)
 	{
 		Output = SourceData;
 	}
+
+#if WITH_EDITORONLY_DATA
+	else if (!bSoloDrivenOnly && SoloTargetIndex != INDEX_NONE && SoloTargetIndex < PoseTargets.Num())
+	{
+		SourceBoneTMs.Reset();
+		const FPoseDriverTarget& PoseTarget = PoseTargets[SoloTargetIndex];
+
+		for (int32 SourceIdx = 0; SourceIdx < SourceBones.Num(); SourceIdx++)
+		{
+			const FBoneReference& SourceBoneRef = SourceBones[SourceIdx];
+			const FCompactPoseBoneIndex SourceCompactIndex = SourceBoneRef.GetCompactPoseIndex(BoneContainer);
+
+			if (PoseTarget.BoneTransforms.IsValidIndex(SourceIdx) && SourceCompactIndex.GetInt() != INDEX_NONE)
+			{
+				FTransform& TargetTransform = Output.Pose[SourceCompactIndex];
+				const FPoseDriverTransform &SourceTransform = PoseTarget.BoneTransforms[SourceIdx];
+
+				if (DriveSource == EPoseDriverSource::Translation)
+				{ 
+					TargetTransform.SetTranslation(SourceTransform.TargetTranslation);
+				}
+				else
+				{
+					TargetTransform.SetRotation(SourceTransform.TargetRotation.Quaternion());
+				}
+				SourceBoneTMs.Add(TargetTransform);
+			}
+		}
+	}
+#endif
+
 }

@@ -41,10 +41,39 @@ static TAutoConsoleVariable<int32> CVarRayTracingShadowsEnableTwoSidedGeometry(
 	ECVF_RenderThreadSafe
 );
 
+static TAutoConsoleVariable<int32> CVarRayTracingTransmissionSamplingDistanceCulling(
+	TEXT("r.RayTracing.Transmission.TransmissionSamplingDistanceCulling"),
+	0,
+	TEXT("Enables visibility testing to cull transmission sampling distance (default = 0)"),
+	ECVF_RenderThreadSafe
+);
+
+static TAutoConsoleVariable<int32> CVarRayTracingTransmissionSamplingTechnique(
+	TEXT("r.RayTracing.Transmission.SamplingTechnique"),
+	0,
+	TEXT("0: Uses constant tracking of an infinite homogeneous medium (default)\n")
+	TEXT("1: Uses constant tracking of a finite homogeneous medium whose extent is determined by transmission sampling distance"),
+	ECVF_RenderThreadSafe
+);
+
+static TAutoConsoleVariable<int32> CVarRayTracingTransmissionRejectionSamplingTrials(
+	TEXT("r.RayTracing.Transmission.RejectionSamplingTrials"),
+	0,
+	TEXT("Determines the number of rejection-sampling trials (default = 0)"),
+	ECVF_RenderThreadSafe
+);
+
 static TAutoConsoleVariable<int32> CVarRayTracingShadowsEnableHairVoxel(
 	TEXT("r.RayTracing.Shadows.EnableHairVoxel"),
 	1,
 	TEXT("Enables use of hair voxel data for tracing shadow (default = 1)"),
+	ECVF_RenderThreadSafe
+);
+
+static TAutoConsoleVariable<float> CVarRayTracingShadowsHairOcclusionThreshold(
+	TEXT("r.RayTracing.Shadows.HairOcclusionThreshold"),
+	1,
+	TEXT("Define the number of hair that need to be crossed, before casting occlusion (default = 1)"),
 	ECVF_RenderThreadSafe
 );
 
@@ -100,6 +129,10 @@ class FOcclusionRGS : public FGlobalShader
 		SHADER_PARAMETER(FIntRect, LightScissor)
 		SHADER_PARAMETER(FIntPoint, PixelOffset)
 		SHADER_PARAMETER(uint32, bUseHairVoxel)
+		SHADER_PARAMETER(float, HairOcclusionThreshold)
+		SHADER_PARAMETER(uint32, bTransmissionSamplingDistanceCulling)
+		SHADER_PARAMETER(uint32, TransmissionSamplingTechnique)
+		SHADER_PARAMETER(uint32, RejectionSamplingTrials)
 
 		SHADER_PARAMETER_STRUCT(FLightShaderParameters, Light)
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
@@ -223,10 +256,14 @@ void FDeferredShadingSceneRenderer::RenderRayTracingShadows(
 		PassParameters->LightScissor = ScissorRect;
 		PassParameters->PixelOffset = PixelOffset;
 		PassParameters->SSProfilesTexture = GraphBuilder.RegisterExternalTexture(View.RayTracingSubSurfaceProfileTexture);
+		PassParameters->bTransmissionSamplingDistanceCulling = CVarRayTracingTransmissionSamplingDistanceCulling.GetValueOnRenderThread();
+		PassParameters->TransmissionSamplingTechnique = CVarRayTracingTransmissionSamplingTechnique.GetValueOnRenderThread();
+		PassParameters->RejectionSamplingTrials = CVarRayTracingTransmissionRejectionSamplingTrials.GetValueOnRenderThread();
 		if (bUseHairLighting)
 		{
 			const bool bUseHairVoxel = CVarRayTracingShadowsEnableHairVoxel.GetValueOnRenderThread() > 0;
 			PassParameters->bUseHairVoxel = (HairResources->bUseHairVoxel && bUseHairVoxel && !IsHairRayTracingEnabled()) ? 1 : 0;
+			PassParameters->HairOcclusionThreshold = FMath::Max(0.f, CVarRayTracingShadowsHairOcclusionThreshold.GetValueOnRenderThread());
 			PassParameters->HairCategorizationTexture = HairResources->CategorizationTexture;
 			PassParameters->HairLightChannelMaskTexture = HairResources->LightChannelMaskTexture;
 			PassParameters->VirtualVoxel = HairResources->VoxelResources->UniformBuffer;
