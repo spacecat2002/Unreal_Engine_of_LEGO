@@ -2897,11 +2897,11 @@ int32 FEngineLoop::PreInitPostStartupScreen(const TCHAR* CmdLine)
 					if (FPreLoadScreenManager::Get()->HasRegisteredPreLoadScreenType(EPreLoadScreenTypes::EarlyStartupScreen))
 					{
 						// disable the splash before playing the early startup screen
-						FPreLoadScreenManager::IsResponsibleForRenderingDelegate.AddLambda(
+						FPreLoadScreenManager::Get()->IsResponsibleForRenderingDelegate.AddLambda(
 							[](bool bIsPreloadScreenManResponsibleForRendering)
-						{
-							FPlatformMisc::PlatformHandleSplashScreen(!bIsPreloadScreenManResponsibleForRendering);
-						}
+							{
+								FPlatformMisc::PlatformHandleSplashScreen(!bIsPreloadScreenManResponsibleForRendering);
+							}
 						);
 						FPreLoadScreenManager::Get()->PlayFirstPreLoadScreen(EPreLoadScreenTypes::EarlyStartupScreen);
 					}
@@ -3995,7 +3995,7 @@ int32 FEngineLoop::Init()
 		GetMoviePlayer()->WaitForMovieToFinish();
     }
 
-	FTraceAuxiliary::ParseCommandLine(FCommandLine::Get());
+	FTraceAuxiliary::EnableChannels();
 
 #if !UE_SERVER
 	// initialize media framework
@@ -4509,10 +4509,12 @@ static inline void BeginFrameRenderThread(FRHICommandListImmediate& RHICmdList, 
 	GPU_STATS_BEGINFRAME(RHICmdList);
 	RHICmdList.BeginFrame();
 	FCoreDelegates::OnBeginFrameRT.Broadcast();
+
+	GEngine->SetRenderLatencyMarkerStart(CurrentFrameCounter);
 }
 
 
-static inline void EndFrameRenderThread(FRHICommandListImmediate& RHICmdList)
+static inline void EndFrameRenderThread(FRHICommandListImmediate& RHICmdList, uint64 CurrentFrameCounter)
 {
 	FCoreDelegates::OnEndFrameRT.Broadcast();
 	RHICmdList.EndFrame();
@@ -4525,6 +4527,8 @@ static inline void EndFrameRenderThread(FRHICommandListImmediate& RHICmdList)
 #endif
 #endif // !UE_BUILD_SHIPPING 
 	TRACE_END_FRAME(TraceFrameType_Rendering);
+
+	GEngine->SetRenderLatencyMarkerEnd(CurrentFrameCounter);
 }
 
 #if BUILD_EMBEDDED_APP
@@ -4570,6 +4574,7 @@ void FEngineLoop::Tick()
 
 	uint64 CurrentFrameCounter = GFrameCounter;
 
+#if ENABLE_NAMED_EVENTS
 	TCHAR IndexedFrameString[32] = { 0 };
 	const TCHAR* FrameString = nullptr;
 	if (UE_TRACE_CHANNELEXPR_IS_ENABLED(CpuChannel))
@@ -4586,6 +4591,7 @@ void FEngineLoop::Tick()
 #endif
 	}
 	SCOPED_NAMED_EVENT_TCHAR(FrameString, FColor::Red);
+#endif
 
 	// execute callbacks for cvar changes
 	{
@@ -4632,6 +4638,7 @@ void FEngineLoop::Tick()
 		{
 			QUICK_SCOPE_CYCLE_COUNTER(STAT_FEngineLoop_UpdateTimeAndHandleMaxTickRate);
 			GEngine->UpdateTimeAndHandleMaxTickRate();
+			GEngine->SetGameLatencyMarkerStart(CurrentFrameCounter);
 		}
 
 		for (const FWorldContext& Context : GEngine->GetWorldContexts())
@@ -5036,10 +5043,12 @@ void FEngineLoop::Tick()
 
 		// end of RHI frame
 		ENQUEUE_RENDER_COMMAND(EndFrame)(
-			[](FRHICommandListImmediate& RHICmdList)
+			[CurrentFrameCounter](FRHICommandListImmediate& RHICmdList)
 			{
-				EndFrameRenderThread(RHICmdList);
+				EndFrameRenderThread(RHICmdList, CurrentFrameCounter);
 			});
+
+		GEngine->SetGameLatencyMarkerEnd(CurrentFrameCounter);
 
 		// Set CPU utilization stats.
 		const FCPUTime CPUTime = FPlatformTime::GetCPUTime();

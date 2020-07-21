@@ -65,6 +65,8 @@ UnrealEngine.cpp: Implements the UEngine class and helpers.
 #include "GameFramework/WorldSettings.h"
 #include "Components/AudioComponent.h"
 #include "Particles/ParticleSystem.h"
+#include "Performance/LatencyMarkerModule.h"
+#include "Performance/MaxTickRateHandlerModule.h"
 #include "Engine/SkeletalMesh.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/Texture.h"
@@ -136,6 +138,7 @@ UnrealEngine.cpp: Implements the UEngine class and helpers.
 #include "Particles/TypeData/ParticleModuleTypeDataMesh.h"
 #include "Particles/ParticleLODLevel.h"
 #include "Particles/ParticleModuleRequired.h"
+#include "Particles/ParticlePerfStats.h"
 
 #include "Components/TextRenderComponent.h"
 #include "Sound/AudioSettings.h"
@@ -1755,6 +1758,9 @@ void UEngine::Init(IEngineLoop* InEngineLoop)
 	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_UnitTime"), TEXT("STATCAT_Engine"), FText::GetEmpty(), NULL, &UEngine::ToggleStatUnitTime));
 	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_Raw"), TEXT("STATCAT_Engine"), FText::GetEmpty(), NULL, &UEngine::ToggleStatRaw));
 #endif
+#if WITH_PARTICLE_PERF_STATS
+	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_ParticlePerf"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatParticlePerf, nullptr, bIsRHS));
+#endif
 
 	// Let any listeners know about the new stats
 	for (int32 StatIdx = 0; StatIdx < EngineStats.Num(); StatIdx++)
@@ -2000,6 +2006,46 @@ double UEngine::CorrectNegativeTimeDelta(double DeltaRealTime)
 	return 0.01;
 }
 
+void UEngine::SetGameLatencyMarkerStart(uint64 FrameNumber)
+{
+	TArray<ILatencyMarkerModule*> LatencyMarkerModules = IModularFeatures::Get().GetModularFeatureImplementations<ILatencyMarkerModule>(ILatencyMarkerModule::GetModularFeatureName());
+
+	for (ILatencyMarkerModule* LatencyMarkerModule : LatencyMarkerModules)
+	{
+		LatencyMarkerModule->SetGameLatencyMarkerStart(FrameNumber);
+	}
+}
+
+void UEngine::SetGameLatencyMarkerEnd(uint64 FrameNumber)
+{
+	TArray<ILatencyMarkerModule*> LatencyMarkerModules = IModularFeatures::Get().GetModularFeatureImplementations<ILatencyMarkerModule>(ILatencyMarkerModule::GetModularFeatureName());
+
+	for (ILatencyMarkerModule* LatencyMarkerModule : LatencyMarkerModules)
+	{
+		LatencyMarkerModule->SetGameLatencyMarkerEnd(FrameNumber);
+	}
+}
+
+void UEngine::SetRenderLatencyMarkerStart(uint64 FrameNumber)
+{
+	TArray<ILatencyMarkerModule*> LatencyMarkerModules = IModularFeatures::Get().GetModularFeatureImplementations<ILatencyMarkerModule>(ILatencyMarkerModule::GetModularFeatureName());
+
+	for (ILatencyMarkerModule* LatencyMarkerModule : LatencyMarkerModules)
+	{
+		LatencyMarkerModule->SetRenderLatencyMarkerStart(FrameNumber);
+	}
+}
+
+void UEngine::SetRenderLatencyMarkerEnd(uint64 FrameNumber)
+{
+	TArray<ILatencyMarkerModule*> LatencyMarkerModules = IModularFeatures::Get().GetModularFeatureImplementations<ILatencyMarkerModule>(ILatencyMarkerModule::GetModularFeatureName());
+
+	for (ILatencyMarkerModule* LatencyMarkerModule : LatencyMarkerModules)
+	{
+		LatencyMarkerModule->SetRenderLatencyMarkerEnd(FrameNumber);
+	}
+}
+
 void UEngine::UpdateTimeAndHandleMaxTickRate()
 {
 	PumpABTest();
@@ -2095,36 +2141,51 @@ void UEngine::UpdateTimeAndHandleMaxTickRate()
 			SCOPE_CYCLE_COUNTER(STAT_GameTickWaitTime);
 			SCOPE_CYCLE_COUNTER(STAT_GameIdleTime);
 
-			if (IsRunningDedicatedServer()) // We aren't so concerned about wall time with a server, lots of CPU is wasted spinning. I suspect there is more to do with sleeping and time on dedicated servers.
-			{
-				FPlatformProcess::SleepNoStats(WaitTime);
-			}
-			else
-			{
-				// Sleep if we're waiting more than 5 ms. We set the scheduler granularity to 1 ms
-				// at startup on PC. We reserve 2 ms of slack time which we will wait for by giving
-				// up our timeslice.
-				if( WaitTime > 5 / 1000.f )
-				{
-					// For improved handling of drag and drop, continue to pump messages while throttled down
-					if (GIsEditor && ShouldThrottleCPUUsage())
-					{
-						do
-						{
-							FPlatformProcess::SleepNoStats(0.005f);
-							FPlatformApplicationMisc::PumpMessages(true);
-						} while (ShouldThrottleCPUUsage() && FPlatformTime::Seconds() < (WaitEndTime - 0.005f));
-					}
-					else
-					{
-						FPlatformProcess::SleepNoStats( WaitTime - 0.002f );
-					}
-				}
+			bool bMaxTickRateHandled = false;
+			TArray<IMaxTickRateHandlerModule*> MaxTickRateHandlerModules = IModularFeatures::Get().GetModularFeatureImplementations<IMaxTickRateHandlerModule>(IMaxTickRateHandlerModule::GetModularFeatureName());
 
-				// Give up timeslice for remainder of wait time.
-				while( FPlatformTime::Seconds() < WaitEndTime )
+			for (IMaxTickRateHandlerModule* MaxTickRateHandler : MaxTickRateHandlerModules)
+			{
+				if (MaxTickRateHandler->HandleMaxTickRate(MaxTickRate))
 				{
-					FPlatformProcess::SleepNoStats( 0 );
+					bMaxTickRateHandled = true;
+					break;
+				}
+			}
+
+			if (!bMaxTickRateHandled)
+			{
+				if (IsRunningDedicatedServer()) // We aren't so concerned about wall time with a server, lots of CPU is wasted spinning. I suspect there is more to do with sleeping and time on dedicated servers.
+				{
+					FPlatformProcess::SleepNoStats(WaitTime);
+				}
+				else
+				{
+					// Sleep if we're waiting more than 5 ms. We set the scheduler granularity to 1 ms
+					// at startup on PC. We reserve 2 ms of slack time which we will wait for by giving
+					// up our timeslice.
+					if (WaitTime > 5 / 1000.f)
+					{
+						// For improved handling of drag and drop, continue to pump messages while throttled down
+						if (GIsEditor && ShouldThrottleCPUUsage())
+						{
+							do
+							{
+								FPlatformProcess::SleepNoStats(0.005f);
+								FPlatformApplicationMisc::PumpMessages(true);
+							} while (ShouldThrottleCPUUsage() && FPlatformTime::Seconds() < (WaitEndTime - 0.005f));
+						}
+						else
+						{
+							FPlatformProcess::SleepNoStats(WaitTime - 0.002f);
+						}
+					}
+
+					// Give up timeslice for remainder of wait time.
+					while (FPlatformTime::Seconds() < WaitEndTime)
+					{
+						FPlatformProcess::SleepNoStats(0);
+					}
 				}
 			}
 			CurrentRealTime = FPlatformTime::Seconds();
@@ -2589,6 +2650,8 @@ void UEngine::InitializeObjectReferences()
 			DefaultPhysMaterial = NewObject<UPhysicalMaterial>();
 		}
 	}
+
+	UPhysicalMaterial::SetEngineDefaultPhysMaterial(DefaultPhysMaterial);
 
 	LoadEngineClass<UConsole>(ConsoleClassName, ConsoleClass);
 	LoadEngineClass<UGameViewportClient>(GameViewportClientClassName, GameViewportClientClass);
@@ -7648,7 +7711,7 @@ bool UEngine::HandleObjCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 
 			if (bCSV)
 			{
-				Ar.Logf(TEXT("Object, NumKB, MaxKB, ResExcKB, ResExcDedSysKB, ResExcShrSysKB, ResExcDedVidKB, ResExcShrVidKB, ResExcUnkKB"));
+				Ar.Logf(TEXT(", Object, NumKB, MaxKB, ResExcKB, ResExcDedSysKB, ResExcShrSysKB, ResExcDedVidKB, ResExcShrVidKB, ResExcUnkKB"));
 			}
 			else
 			{
@@ -7671,7 +7734,7 @@ bool UEngine::HandleObjCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 				if (bCSV)
 				{
 					Ar.Logf(
-						TEXT("%s, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f"),
+						TEXT(", %s, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f"),
 						*ObjItem.Object->GetFullName(),
 						ObjItem.Num / 1024.0f,
 						ObjItem.Max / 1024.0f,
@@ -13768,7 +13831,7 @@ bool UEngine::PrepareMapChange(FWorldContext &Context, const TArray<FName>& Leve
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 		// Verify that all levels specified are in the package file cache.
-		for (const FName LevelName : Context.LevelsToLoadForPendingMapChange)
+		for (const FName& LevelName : Context.LevelsToLoadForPendingMapChange)
 		{
 			if( !FPackageName::DoesPackageExist( LevelName.ToString() ) )
 			{
@@ -13794,7 +13857,7 @@ bool UEngine::PrepareMapChange(FWorldContext &Context, const TArray<FName>& Leve
 		}
 
 		// Kick off async loading of packages.
-		for (const FName LevelName : Context.LevelsToLoadForPendingMapChange)
+		for (const FName& LevelName : Context.LevelsToLoadForPendingMapChange)
 		{
 			STAT_ADD_CUSTOMMESSAGE_NAME( STAT_NamedMarker, *(FString( TEXT( "PrepareMapChange - " ) + LevelName.ToString() )) );
 			TRACE_BOOKMARK(TEXT("PrepareMapChange - %s"), *LevelName.ToString());
@@ -16228,6 +16291,14 @@ int32 UEngine::RenderStatSlateBatches(UWorld* World, FViewport* Viewport, FCanva
 	return Y;
 }
 #endif
+
+int32 UEngine::RenderStatParticlePerf(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation, const FRotator* ViewRotation)
+{
+#if WITH_PARTICLE_PERF_STATS
+	Y = FParticlePerfStats::RenderStats(World, Viewport, Canvas, X, Y, ViewLocation, ViewRotation);
+#endif
+	return Y;
+}
 
 ERHIFeatureLevel::Type UEngine::GetDefaultWorldFeatureLevel() const
 {

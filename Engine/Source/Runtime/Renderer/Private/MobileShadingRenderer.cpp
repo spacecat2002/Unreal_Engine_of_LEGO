@@ -79,6 +79,13 @@ static TAutoConsoleVariable<int32> CVarMobileAdrenoOcclusionMode(
 	TEXT("1: Render occlusion queries after translucency and a flush, which can help Adreno devices in GL mode."),
 	ECVF_RenderThreadSafe);
 
+static TAutoConsoleVariable<int32> CVarMobileFlushSceneColorRendering(
+	TEXT("r.Mobile.FlushSceneColorRendering"),
+	1,
+	TEXT("0: Submmit command buffer after all rendering is finished.\n")
+	TEXT("1: Submmit command buffer (flush) before starting post-processing (default)"),
+	ECVF_RenderThreadSafe);
+
 static TAutoConsoleVariable<int32> CVarMobileCustomDepthForTranslucency(
 	TEXT("r.Mobile.CustomDepthForTranslucency"),
 	1,
@@ -443,7 +450,7 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	const bool bStereoRenderingAndHMD = View.Family->EngineShowFlags.StereoRendering && View.Family->EngineShowFlags.HMDDistortion;
 	bRenderToSceneColor = bStereoRenderingAndHMD || bRequiresUpscale || FSceneRenderer::ShouldCompositeEditorPrimitives(View) || View.bIsSceneCapture || View.bIsReflectionCapture;
 	// Whether to submit cmdbuffer with offscreen rendering before doing post-processing
-	bSubmitOffscreenRendering = !bGammaSpace || bRenderToSceneColor;
+	bSubmitOffscreenRendering = (!bGammaSpace || bRenderToSceneColor) && CVarMobileFlushSceneColorRendering.GetValueOnAnyThread() != 0;
 
 	const FPlanarReflectionSceneProxy* PlanarReflectionSceneProxy = Scene ? Scene->GetForwardPassGlobalPlanarReflection() : nullptr;
 
@@ -503,6 +510,14 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		InitAmbientOcclusionOutputs(RHICmdList, SceneContext.GetSceneColor()->GetDesc().Extent);
 	}
 	
+	const bool bUseVirtualTexturing = UseVirtualTexturing(ViewFeatureLevel);
+	if (bUseVirtualTexturing)
+	{
+		// AllocateResources needs to be called before RHIBeginScene
+		FVirtualTextureSystem::Get().AllocateResources(RHICmdList, ViewFeatureLevel);
+		FVirtualTextureSystem::Get().CallPendingCallbacks();
+	}
+
 	//make sure all the targets we're going to use will be safely writable.
 	GRenderTargetPool.TransitionTargetsWritable(RHICmdList);
 
@@ -535,7 +550,6 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		RenderSkyAtmosphereLookUpTables(RHICmdList);
 	}
 
-	const bool bUseVirtualTexturing = UseVirtualTexturing(FeatureLevel);
 	if (bUseVirtualTexturing)
 	{
 		FVirtualTextureSystem::Get().Update(RHICmdList, ViewFeatureLevel, Scene);

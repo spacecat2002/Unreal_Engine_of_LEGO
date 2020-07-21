@@ -2051,9 +2051,15 @@ public:
 	virtual void Tick( float DeltaSeconds, bool bIdleMode ) PURE_VIRTUAL(UEngine::Tick,);
 
 	/**
-	 * Update FApp::CurrentTime/ FApp::DeltaTime while taking into account max tick rate.
+	 * Update FApp::CurrentTime / FApp::DeltaTime while taking into account max tick rate.
 	 */
 	void UpdateTimeAndHandleMaxTickRate();
+
+	void SetGameLatencyMarkerStart(uint64 FrameNumber);
+	void SetGameLatencyMarkerEnd(uint64 FrameNumber);
+
+	void SetRenderLatencyMarkerStart(uint64 FrameNumber);
+	void SetRenderLatencyMarkerEnd(uint64 FrameNumber);
 
 	/**
 	 * Allows games to correct the negative delta
@@ -3406,6 +3412,7 @@ private:
 #if STATS
 	int32 RenderStatSlateBatches(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation = nullptr, const FRotator* ViewRotation = nullptr);
 #endif
+	int32 RenderStatParticlePerf(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation = nullptr, const FRotator* ViewRotation = nullptr);
 
 	FDelegateHandle HandleScreenshotCapturedDelegateHandle;
 };

@@ -686,6 +686,7 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 	, bSceneCaptureUsesRayTracing(false)
 	, bIsReflectionCapture(false)
 	, bIsPlanarReflection(false)
+	, bIsVirtualTexture(false)
 	, bIsOfflineRender(false)
 	, bRenderSceneTwoSided(false)
 	, bIsLocked(false)
@@ -811,7 +812,7 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 
 	SetupAntiAliasingMethod();
 
-	if (CVarEnableTemporalUpsample.GetValueOnAnyThread() && AntiAliasingMethod == AAM_TemporalAA)
+	if (CVarEnableTemporalUpsample.GetValueOnAnyThread() && AntiAliasingMethod == AAM_TemporalAA && GetFeatureLevel() >= ERHIFeatureLevel::SM5)
 	{
 		// The renderer will automatically fallback to SpatialUpscale if not using TemporalAA anti aliasing method.
 		PrimaryScreenPercentageMethod = EPrimaryScreenPercentageMethod::TemporalUpscale;
@@ -1416,6 +1417,7 @@ void FSceneView::OverridePostProcessSettings(const FPostProcessSettings& Src, fl
 		LERP_PP(AmbientOcclusionMipBlend);
 		LERP_PP(AmbientOcclusionMipScale);
 		LERP_PP(AmbientOcclusionMipThreshold);
+		LERP_PP(AmbientOcclusionTemporalBlendWeight);
 		LERP_PP(IndirectLightingColor);
 		LERP_PP(IndirectLightingIntensity);
 		LERP_PP(DepthOfFieldFocalDistance);

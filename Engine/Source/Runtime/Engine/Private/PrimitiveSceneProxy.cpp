@@ -88,6 +88,7 @@ FPrimitiveSceneProxy::FPrimitiveSceneProxy(const UPrimitiveComponent* InComponen
 ,	DrawInGame(InComponent->IsVisible())
 ,	DrawInEditor(InComponent->GetVisibleFlag())
 ,	bReceivesDecals(InComponent->bReceivesDecals)
+,	bOnlyVirtualTexture(false)
 ,	bOnlyOwnerSee(InComponent->bOnlyOwnerSee)
 ,	bOwnerNoSee(InComponent->bOwnerNoSee)
 ,	bParentSelected(InComponent->ShouldRenderSelected())
@@ -155,7 +156,7 @@ FPrimitiveSceneProxy::FPrimitiveSceneProxy(const UPrimitiveComponent* InComponen
 ,	PrimitiveSceneInfo(NULL)
 ,	OwnerName(InComponent->GetOwner() ? InComponent->GetOwner()->GetFName() : NAME_None)
 ,	ResourceName(InResourceName)
-,	LevelName(InComponent->GetOutermost()->GetFName())
+,	LevelName(InComponent->GetOwner() ? InComponent->GetOwner()->GetLevel()->GetOutermost()->GetFName() : NAME_None)
 #if WITH_EDITOR
 // by default we are always drawn
 ,	HiddenEditorViews(0)
@@ -241,7 +242,7 @@ FPrimitiveSceneProxy::FPrimitiveSceneProxy(const UPrimitiveComponent* InComponen
 	if ((MainPassType == ERuntimeVirtualTextureMainPassType::Never && bRequestVirtualTexture) ||
 		(MainPassType == ERuntimeVirtualTextureMainPassType::Exclusive && bUseVirtualTexture))
 	{
-		bRenderInMainPass = false;
+		bOnlyVirtualTexture = true;
 	}
 
 	// Modify max draw distance for main pass if we are using virtual texturing
@@ -709,6 +710,11 @@ bool FPrimitiveSceneProxy::IsShown(const FSceneView* View) const
 		{
 			return false;
 		}
+
+		if (bOnlyVirtualTexture && !View->bIsVirtualTexture && !View->Family->EngineShowFlags.VirtualTexturePrimitives && !IsSelected())
+		{
+			return false;
+		}
 	}
 	else
 #endif
@@ -725,6 +731,11 @@ bool FPrimitiveSceneProxy::IsShown(const FSceneView* View) const
 
 		// if primitive requires component level to be visible
 		if (bRequiresVisibleLevelToRender && !bIsComponentLevelVisible)
+		{
+			return false;
+		}
+
+		if (bOnlyVirtualTexture && !View->bIsVirtualTexture)
 		{
 			return false;
 		}
@@ -787,6 +798,11 @@ bool FPrimitiveSceneProxy::IsShadowCast(const FSceneView* View) const
 			}
 		}
 #endif	//#if WITH_EDITOR
+
+		if (bOnlyVirtualTexture && !View->bIsVirtualTexture)
+		{
+			return false;
+		}
 
 		// In the OwnerSee cases, we still want to respect hidden shadows...
 		// This assumes that bCastHiddenShadow trumps the owner see flags.

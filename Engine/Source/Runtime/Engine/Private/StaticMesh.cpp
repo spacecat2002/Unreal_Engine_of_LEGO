@@ -1274,6 +1274,7 @@ void FStaticMeshLODResources::InitResources(UStaticMesh* Parent)
 					Segment.VertexBufferOffset = 0;
 					Segment.FirstPrimitive = Section.FirstIndex / 3;
 					Segment.NumPrimitives = Section.NumTriangles;
+					Segment.bEnabled = Section.bVisibleInRayTracing;
 					Segment.bForceOpaque = Section.bForceOpaque;
 					GeometrySections.Add(Segment);
 					Initializer.TotalPrimitiveCount += Section.NumTriangles;
@@ -1769,6 +1770,7 @@ void FStaticMeshRenderData::ResolveSectionInfo(UStaticMesh* Owner)
 			Section.MaterialIndex = Info.MaterialIndex;
 			Section.bEnableCollision = Info.bEnableCollision;
 			Section.bCastShadow = Info.bCastShadow;
+			Section.bVisibleInRayTracing = Info.bVisibleInRayTracing;
 			Section.bForceOpaque = Info.bForceOpaque;
 		}
 
@@ -3364,7 +3366,7 @@ bool UStaticMesh::FixLODRequiresAdjacencyInformation(const int32 LODIndex, const
 		TPolygonGroupAttributesConstRef<FName> PolygonGroupImportedMaterialSlotNames = StaticMeshAttributes.GetPolygonGroupMaterialSlotNames();
 		int32 SectionIndex = 0;
 		
-		for (const FPolygonGroupID& PolygonGroupID : MeshDescription->PolygonGroups().GetElementIDs())
+		for (const FPolygonGroupID PolygonGroupID : MeshDescription->PolygonGroups().GetElementIDs())
 		{
 			const FName MaterialImportedName = PolygonGroupImportedMaterialSlotNames[PolygonGroupID];
 			int32 MaterialIndex = 0;
@@ -4343,7 +4345,7 @@ bool UStaticMesh::SetUVChannel(int32 LODIndex, int32 UVChannelIndex, const TMap<
 	FStaticMeshAttributes Attributes(*MeshDescription);
 
 	TMeshAttributesRef<FVertexInstanceID, FVector2D> UVs = Attributes.GetVertexInstanceUVs();
-	for (const FVertexInstanceID& VertexInstanceID : MeshDescription->VertexInstances().GetElementIDs())
+	for (const FVertexInstanceID VertexInstanceID : MeshDescription->VertexInstances().GetElementIDs())
 	{
 		if (const FVector2D* UVCoord = TexCoords.Find(VertexInstanceID))
 		{
@@ -6492,10 +6494,12 @@ FName UStaticMesh::AddMaterial(UMaterialInterface* Material)
 	}
 
 #if WITH_EDITORONLY_DATA
-	StaticMaterials.Emplace(Material, MaterialName, MaterialName);
+	FStaticMaterial& StaticMaterial = StaticMaterials.Emplace_GetRef(Material, MaterialName, MaterialName);
 #else
-	StaticMaterials.Emplace(Material, MaterialName);
+	FStaticMaterial& StaticMaterial = StaticMaterials.Emplace_GetRef(Material, MaterialName);
 #endif
+
+	StaticMaterial.UVChannelData = FMeshUVChannelInfo(1.0f);
 
 	return MaterialName;
 }

@@ -1534,6 +1534,7 @@ void FPostProcessing::ProcessMobile(FRHICommandListImmediate& RHICmdList, FScene
 							FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessDofDownMobile(FinalOutputViewRect, bViewRectSource));
 							Pass->SetInput(ePId_Input0, Context.FinalOutput);
 							Pass->SetInput(ePId_Input1, PostProcessNear);
+							Pass->SetInput(ePId_Input2, PostProcessSunShaftAndDof);
 							PostProcessDofDown = FRenderingCompositeOutputRef(Pass);
 						}
 
