@@ -94,7 +94,13 @@ enum class EARTrackingQualityReason : uint8
 	ExcessiveMotion,
 	
 	/** The scene visible to the camera does not contain enough distinguishable features for image-based position tracking. */
-	InsufficientFeatures
+	InsufficientFeatures,
+
+	/** Tracking lost due to poor lighting conditions. Please move to a more brightly lit area */
+	InsufficientLight,
+
+	/** Tracking lost due to bad internal state. Please try restarting the AR experience. */
+	 BadState
 };
 
 /**
@@ -193,6 +199,22 @@ enum class EARJointTransformSpace : uint8
 	* Joint transform is relative to its parent
 	*/
 	ParentJoint,
+};
+
+UENUM(BlueprintType)
+enum class EARAltitudeSource : uint8
+{
+	// The framework sets the altitude using a high-resolution digital-elevation model.
+	Precise,
+	
+	// The framework sets the altitude using a coarse digital-elevation model.
+	Coarse,
+	
+	// The app defines the alitude.
+	UserDefined,
+	
+	// Altitude is not yet set.
+	Unknown,
 };
 
 /** The current state of the AR subsystem including an optional explanation string. */
@@ -537,4 +559,25 @@ public:
 	
 	UPROPERTY(BlueprintReadOnly, Category = "AR AugmentedReality|Pose Tracking")
 	EARJointTransformSpace JointTransformSpace = EARJointTransformSpace::Model;
+};
+
+
+/** AR camera intrinsics */
+USTRUCT(BlueprintType)
+struct AUGMENTEDREALITY_API FARCameraIntrinsics
+{
+	GENERATED_BODY()
+
+public:
+	/** Camera image resolution in pixels */
+	UPROPERTY(BlueprintReadOnly, Category="AR AugmentedReality|Camera")
+	FIntPoint ImageResolution = FIntPoint::ZeroValue;
+	
+	/** Camera focal length in pixels */
+	UPROPERTY(BlueprintReadOnly, Category="AR AugmentedReality|Camera")
+	FVector2D FocalLength = FVector2D::ZeroVector;
+	
+	/** Camera principal point in pixels */
+	UPROPERTY(BlueprintReadOnly, Category="AR AugmentedReality|Camera")
+	FVector2D PrincipalPoint = FVector2D::ZeroVector;
 };
