@@ -572,7 +572,7 @@ void ULandscapeComponent::PreFeatureLevelChange(ERHIFeatureLevel::Type PendingFe
 
 	if (PendingFeatureLevel <= ERHIFeatureLevel::ES3_1)
 	{
-		// See if we need to cook platform data for ES2 preview in editor
+		// See if we need to cook platform data for mobile preview in editor
 		CheckGenerateLandscapePlatformData(false, nullptr);
 	}
 }

@@ -129,6 +129,15 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileSceneTextureUniformParameters, RENDE
 	SHADER_PARAMETER_SAMPLER(SamplerState, MobileCustomStencilTextureSampler)
 	SHADER_PARAMETER_UAV(RWBuffer<uint>, VirtualTextureFeedbackUAV)
 	SHADER_PARAMETER_SRV(Buffer<float4>, EyeAdaptationBuffer)
+	// GBuffer
+	SHADER_PARAMETER_TEXTURE(Texture2D, GBufferATexture)
+	SHADER_PARAMETER_TEXTURE(Texture2D, GBufferBTexture)
+	SHADER_PARAMETER_TEXTURE(Texture2D, GBufferCTexture)
+	SHADER_PARAMETER_TEXTURE(Texture2D, GBufferDTexture)
+	SHADER_PARAMETER_SAMPLER(SamplerState, GBufferATextureSampler)
+	SHADER_PARAMETER_SAMPLER(SamplerState, GBufferBTextureSampler)
+	SHADER_PARAMETER_SAMPLER(SamplerState, GBufferCTextureSampler)
+	SHADER_PARAMETER_SAMPLER(SamplerState, GBufferDTextureSampler)
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
 extern void SetupMobileSceneTextureUniformParameters(

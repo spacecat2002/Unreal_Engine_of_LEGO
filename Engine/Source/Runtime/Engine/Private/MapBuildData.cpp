@@ -18,6 +18,7 @@ MapBuildData.cpp
 #include "EngineUtils.h"
 #include "Components/ModelComponent.h"
 #include "ComponentRecreateRenderStateContext.h"
+#include "UObject/MobileObjectVersion.h"
 #include "UObject/RenderingObjectVersion.h"
 #include "UObject/ReflectionCaptureObjectVersion.h"
 #include "ContentStreaming.h"
@@ -304,19 +305,9 @@ FArchive& operator<<(FArchive& Ar, FReflectionCaptureMapBuildData& ReflectionCap
 		Ar << StrippedData;
 	}
 
-	if (Formats.Num() == 0 || Formats.Contains(EncodedHDR))
+	if (Ar.CustomVer(FMobileObjectVersion::GUID) >= FMobileObjectVersion::StoreReflectionCaptureCompressedMobile)
 	{
-		if (Ar.IsSaving() 
-			&& Ar.IsCooking()
-			&& ReflectionCaptureMapBuildData.EncodedHDRCapturedData.Num() == 0
-			&& ReflectionCaptureMapBuildData.FullHDRCapturedData.Num() > 0)
-		{
-			// Encode from HDR as needed
-			//@todo - cache in DDC?
-			GenerateEncodedHDRData(ReflectionCaptureMapBuildData.FullHDRCapturedData, ReflectionCaptureMapBuildData.CubemapSize, ReflectionCaptureMapBuildData.Brightness, ReflectionCaptureMapBuildData.EncodedHDRCapturedData);
-		}
-
-		Ar << ReflectionCaptureMapBuildData.EncodedHDRCapturedData;
+		Ar << ReflectionCaptureMapBuildData.EncodedCaptureData;
 	}
 	else
 	{
@@ -339,7 +330,7 @@ FReflectionCaptureMapBuildData::~FReflectionCaptureMapBuildData()
 
 void FReflectionCaptureMapBuildData::FinalizeLoad()
 {
-	AllocatedSize = FullHDRCapturedData.GetAllocatedSize() + EncodedHDRCapturedData.GetAllocatedSize();
+	AllocatedSize = FullHDRCapturedData.GetAllocatedSize();
 	INC_DWORD_STAT_BY(STAT_ReflectionCaptureBuildData, AllocatedSize);
 }
 
@@ -358,6 +349,7 @@ void UMapBuildDataRegistry::Serialize(FArchive& Ar)
 	FStripDataFlags StripFlags(Ar, 0);
 
 	Ar.UsingCustomVersion(FRenderingObjectVersion::GUID);
+	Ar.UsingCustomVersion(FMobileObjectVersion::GUID);
 	Ar.UsingCustomVersion(FReflectionCaptureObjectVersion::GUID);
 
 	if (!StripFlags.IsDataStrippedForServer())
@@ -378,7 +370,7 @@ void UMapBuildDataRegistry::Serialize(FArchive& Ar)
 			{
 				const FReflectionCaptureMapBuildData& CaptureBuildData = It.Value();
 				// Sanity check that every reflection capture entry has valid data for at least one format
-				check(CaptureBuildData.FullHDRCapturedData.Num() > 0 || CaptureBuildData.EncodedHDRCapturedData.Num() > 0);
+				check(CaptureBuildData.FullHDRCapturedData.Num() > 0 || CaptureBuildData.EncodedCaptureData != nullptr);
 			}
 		}
 
@@ -386,7 +378,7 @@ void UMapBuildDataRegistry::Serialize(FArchive& Ar)
 		{
 			Ar << ReflectionCaptureBuildData;
 		}
-
+		
 		if (Ar.CustomVer(FRenderingObjectVersion::GUID) >= FRenderingObjectVersion::SkyAtmosphereStaticLightingVersioning)
 		{
 			Ar << SkyAtmosphereBuildData;
@@ -400,29 +392,16 @@ void UMapBuildDataRegistry::PostLoad()
 
 	if (ReflectionCaptureBuildData.Num() > 0 
 		// Only strip in PostLoad for cooked platforms.  Uncooked may need to generate encoded HDR data in UReflectionCaptureComponent::OnRegister().
-		&& FPlatformProperties::RequiresCookedData())
+		&& FPlatformProperties::RequiresCookedData()
+		&& GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5)
 	{
-		// We already stripped unneeded formats during cooking, but some cooking targets require multiple formats to be stored
-		// Strip unneeded formats for the current max feature level
-		bool bRetainAllFeatureLevelData = GIsEditor && GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5;
-		bool bEncodedDataRequired = bRetainAllFeatureLevelData || GMaxRHIFeatureLevel == ERHIFeatureLevel::ES3_1;
-		bool bFullDataRequired = GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5;
-
 		for (TMap<FGuid, FReflectionCaptureMapBuildData>::TIterator It(ReflectionCaptureBuildData); It; ++It)
 		{
 			FReflectionCaptureMapBuildData& CaptureBuildData = It.Value();
 
-			if (!bFullDataRequired)
-			{
-				CaptureBuildData.FullHDRCapturedData.Empty();
-			}
+			CaptureBuildData.FullHDRCapturedData.Empty();
 
-			if (!bEncodedDataRequired)
-			{
-				CaptureBuildData.EncodedHDRCapturedData.Empty();
-			}
-
-			check(CaptureBuildData.FullHDRCapturedData.Num() > 0 || CaptureBuildData.EncodedHDRCapturedData.Num() > 0 || FApp::CanEverRender() == false);
+			check(CaptureBuildData.FullHDRCapturedData.Num() > 0  || FApp::CanEverRender() == false);
 		}
 	}
 

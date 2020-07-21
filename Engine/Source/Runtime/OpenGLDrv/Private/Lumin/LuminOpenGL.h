@@ -8,7 +8,7 @@
 
 #include <EGL/eglext.h>
 #include <EGL/eglplatform.h>
-#include <GLES2/gl2.h>
+#include <GLES3/gl31.h>
 #include <GLES2/gl2ext.h>
 
 typedef EGLSyncKHR		UGLsync;
@@ -116,11 +116,6 @@ struct FLuminOpenGL : public FOpenGLES
 	// MRT triggers black rendering for the SensoryWare plugin. Turn it off for now.
 	static FORCEINLINE bool SupportsMultipleRenderTargets()				{ return false; }
 	static FORCEINLINE bool SupportsImageExternal()						{ return bSupportsImageExternal; }
-
-	static FORCEINLINE bool UseES30ShadingLanguage()
-	{
-		return bUseES30ShadingLanguage;
-	}
 
 	enum class EImageExternalType : uint8
 	{

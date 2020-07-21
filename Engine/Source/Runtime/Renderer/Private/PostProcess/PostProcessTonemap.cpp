@@ -21,7 +21,7 @@ namespace
 TAutoConsoleVariable<float> CVarTonemapperSharpen(
 	TEXT("r.Tonemapper.Sharpen"),
 	0,
-	TEXT("Sharpening in the tonemapper (not for ES2), actual implementation is work in progress, clamped at 10\n")
+	TEXT("Sharpening in the tonemapper (not for mobile), actual implementation is work in progress, clamped at 10\n")
 	TEXT("   0: off(default)\n")
 	TEXT(" 0.5: half strength\n")
 	TEXT("   1: full strength"),
@@ -968,7 +968,7 @@ void FRCPassPostProcessTonemap::Process(FRenderingCompositePassContext& Context)
 	Inputs.bFlipYAxis = ShouldMobilePassFlipVerticalAxis(Context, this);
 	Inputs.bGammaOnly = bDoGammaOnly;
 	Inputs.bMetalMSAAHDRDecode = bMetalMSAAHDRDecode;
-	Inputs.EyeAdaptationBuffer = bDoEyeAdaptation && View.GetEyeAdaptationBuffer() ? View.GetEyeAdaptationBuffer()->SRV : nullptr;
+	Inputs.EyeAdaptationBuffer = bDoEyeAdaptation && View.GetLastEyeAdaptationBuffer() ? View.GetLastEyeAdaptationBuffer()->SRV : nullptr;
 
 	AddTonemapPass(GraphBuilder, View, Inputs);
 
@@ -991,11 +991,11 @@ FPooledRenderTargetDesc FRCPassPostProcessTonemap::ComputeOutputDesc(EPassOutput
 	return FPooledRenderTargetDesc();
 }
 
-// ES2 version
+// Mobile version
 
-class FPostProcessTonemapPS_ES2 : public FGlobalShader
+class FPostProcessTonemapPS_Mobile : public FGlobalShader
 {
-	DECLARE_GLOBAL_SHADER(FPostProcessTonemapPS_ES2);
+	DECLARE_GLOBAL_SHADER(FPostProcessTonemapPS_Mobile);
 
 	// Mobile renderer specific permutation dimensions.
 	class FTonemapperDOFDim         : SHADER_PERMUTATION_BOOL("USE_DOF");
@@ -1091,7 +1091,7 @@ class FPostProcessTonemapPS_ES2 : public FGlobalShader
 	{
 		TonemapperPermutation::FCommonDomain CommonPermutationVector = TonemapperPermutation::BuildCommonPermutationDomain(View, /* bGammaOnly = */ false, bNeedsToSwitchVerticalAxis, bMetalMSAAHDRDecode);
 
-		FPostProcessTonemapPS_ES2::FPermutationDomain MobilePermutationVector;
+		FPostProcessTonemapPS_Mobile::FPermutationDomain MobilePermutationVector;
 		MobilePermutationVector.Set<TonemapperPermutation::FCommonDomain>(CommonPermutationVector);
 
 		// Must early exit if gamma only.
@@ -1155,7 +1155,7 @@ class FPostProcessTonemapPS_ES2 : public FGlobalShader
 			return false;
 		}
 
-		// Only cache for ES2/3.1 shader platforms, and only compile 32bpp shaders for Android or PC emulation
+		// Only cache for ES 3.1 shader platforms, and only compile 32bpp shaders for Android or PC emulation
 		return IsMobilePlatform(Parameters.Platform);
 	}
 
@@ -1166,7 +1166,7 @@ class FPostProcessTonemapPS_ES2 : public FGlobalShader
 	}
 
 	/** Default constructor. */
-	FPostProcessTonemapPS_ES2() {}
+	FPostProcessTonemapPS_Mobile() {}
 
 public:
 	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
@@ -1191,7 +1191,7 @@ public:
 	LAYOUT_FIELD(FShaderParameter, SRGBAwareTargetParam);
 
 	/** Initialization constructor. */
-	FPostProcessTonemapPS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+	FPostProcessTonemapPS_Mobile(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
 	{
 		PostprocessParameter.Bind(Initializer.ParameterMap);
@@ -1294,9 +1294,9 @@ public:
 	}
 };
 
-class FPostProcessTonemapVS_ES2 : public FGlobalShader
+class FPostProcessTonemapVS_Mobile : public FGlobalShader
 {
-	DECLARE_GLOBAL_SHADER(FPostProcessTonemapVS_ES2);
+	DECLARE_GLOBAL_SHADER(FPostProcessTonemapVS_Mobile);
 
 	using FPermutationDomain = TShaderPermutationDomain<
 		TonemapperPermutation::FTonemapperSwitchAxis, TonemapperPermutation::FTonemapperEyeAdaptationDim
@@ -1328,7 +1328,7 @@ class FPostProcessTonemapVS_ES2 : public FGlobalShader
 		return PermutationVector;
 	}
 
-	FPostProcessTonemapVS_ES2() { }
+	FPostProcessTonemapVS_Mobile() { }
 
 public:
 	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter);
@@ -1340,7 +1340,7 @@ public:
 	LAYOUT_FIELD(FShaderResourceParameter, EyeAdaptationBuffer);
 	LAYOUT_FIELD(bool, bUsedFramebufferFetch);
 
-	FPostProcessTonemapVS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+	FPostProcessTonemapVS_Mobile(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
 	{
 		PostprocessParameter.Bind(Initializer.ParameterMap);
@@ -1392,15 +1392,15 @@ public:
 		float FixedExposure = bEyeAdaptation ? 0.0f : GetEyeAdaptationFixedExposure(Context.View);
 		SetShaderValue(Context.RHICmdList, ShaderRHI, DefaultEyeExposure, FixedExposure);
 
-		SetSRVParameter(Context.RHICmdList, ShaderRHI, EyeAdaptationBuffer, bEyeAdaptation && Context.View.GetEyeAdaptationBuffer() ? Context.View.GetEyeAdaptationBuffer()->SRV : nullptr);
+		SetSRVParameter(Context.RHICmdList, ShaderRHI, EyeAdaptationBuffer, bEyeAdaptation && Context.View.GetLastEyeAdaptationBuffer() ? Context.View.GetLastEyeAdaptationBuffer()->SRV : nullptr);
 	}
 };
 
-IMPLEMENT_GLOBAL_SHADER(FPostProcessTonemapVS_ES2, "/Engine/Private/PostProcessTonemap.usf", "MainVS_ES2", SF_Vertex);
-IMPLEMENT_GLOBAL_SHADER(FPostProcessTonemapPS_ES2, "/Engine/Private/PostProcessTonemap.usf", "MainPS_ES2", SF_Pixel);
+IMPLEMENT_GLOBAL_SHADER(FPostProcessTonemapVS_Mobile, "/Engine/Private/PostProcessTonemap.usf", "MainVS_Mobile", SF_Vertex);
+IMPLEMENT_GLOBAL_SHADER(FPostProcessTonemapPS_Mobile, "/Engine/Private/PostProcessTonemap.usf", "MainPS_Mobile", SF_Pixel);
 
 
-FRCPassPostProcessTonemapES2::FRCPassPostProcessTonemapES2(const FViewInfo& InView, bool bInUsedFramebufferFetch, bool bInSRGBAwareTarget, bool bInDoEyeAdaptation, bool bInMetalMSAAHDRDecode)
+FRCPassPostProcessTonemapMobile::FRCPassPostProcessTonemapMobile(const FViewInfo& InView, bool bInUsedFramebufferFetch, bool bInSRGBAwareTarget, bool bInDoEyeAdaptation, bool bInMetalMSAAHDRDecode)
 	: bDoScreenPercentageInTonemapper(false)
 	, View(InView)
 	, bUsedFramebufferFetch(bInUsedFramebufferFetch)
@@ -1409,9 +1409,9 @@ FRCPassPostProcessTonemapES2::FRCPassPostProcessTonemapES2(const FViewInfo& InVi
 	, bMetalMSAAHDRDecode(bInMetalMSAAHDRDecode)
 { }
 
-void FRCPassPostProcessTonemapES2::Process(FRenderingCompositePassContext& Context)
+void FRCPassPostProcessTonemapMobile::Process(FRenderingCompositePassContext& Context)
 {
-	SCOPED_DRAW_EVENTF(Context.RHICmdList, PostProcessTonemapES2, TEXT("Tonemapper(ES2 FramebufferFetch=%s)"), bUsedFramebufferFetch ? TEXT("0") : TEXT("1"));
+	SCOPED_DRAW_EVENTF(Context.RHICmdList, PostProcessTonemapMobile, TEXT("Tonemapper(Mobile FramebufferFetch=%s)"), bUsedFramebufferFetch ? TEXT("0") : TEXT("1"));
 
 	const FPooledRenderTargetDesc* InputDesc = GetInputDesc(ePId_Input0);
 
@@ -1440,17 +1440,17 @@ void FRCPassPostProcessTonemapES2::Process(FRenderingCompositePassContext& Conte
 	}
 
 	FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, MakeRenderTargetActions(LoadAction, ERenderTargetStoreAction::EStore));
-	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("TonemapES2"));
+	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("TonemapMobile"));
 	{
 		Context.SetViewportAndCallRHI(DestRect);
 
 		bool bNeedsToSwitchVerticalAxis = ShouldMobilePassFlipVerticalAxis(Context, this);
 
-		auto VertexShaderPermutationVector = FPostProcessTonemapVS_ES2::BuildPermutationVector(bNeedsToSwitchVerticalAxis, bDoEyeAdaptation);
-		auto PixelShaderPermutationVector = FPostProcessTonemapPS_ES2::BuildPermutationVector(View, bNeedsToSwitchVerticalAxis, bMetalMSAAHDRDecode);
+		auto VertexShaderPermutationVector = FPostProcessTonemapVS_Mobile::BuildPermutationVector(bNeedsToSwitchVerticalAxis, bDoEyeAdaptation);
+		auto PixelShaderPermutationVector = FPostProcessTonemapPS_Mobile::BuildPermutationVector(View, bNeedsToSwitchVerticalAxis, bMetalMSAAHDRDecode);
 
-		TShaderMapRef<FPostProcessTonemapVS_ES2> VertexShader(Context.GetShaderMap(), VertexShaderPermutationVector);
-		TShaderMapRef<FPostProcessTonemapPS_ES2> PixelShader(Context.GetShaderMap(), PixelShaderPermutationVector);
+		TShaderMapRef<FPostProcessTonemapVS_Mobile> VertexShader(Context.GetShaderMap(), VertexShaderPermutationVector);
+		TShaderMapRef<FPostProcessTonemapPS_Mobile> PixelShader(Context.GetShaderMap(), PixelShaderPermutationVector);
 
 		{
 			FGraphicsPipelineStateInitializer GraphicsPSOInit;
@@ -1487,7 +1487,7 @@ void FRCPassPostProcessTonemapES2::Process(FRenderingCompositePassContext& Conte
 	Context.RHICmdList.CopyToResolveTarget(DestRenderTarget.TargetableTexture, DestRenderTarget.ShaderResourceTexture, FResolveParams());
 }
 
-FPooledRenderTargetDesc FRCPassPostProcessTonemapES2::ComputeOutputDesc(EPassOutputId InPassOutputId) const
+FPooledRenderTargetDesc FRCPassPostProcessTonemapMobile::ComputeOutputDesc(EPassOutputId InPassOutputId) const
 {
 	FPooledRenderTargetDesc Ret = GetInput(ePId_Input0)->GetOutput()->RenderTargetDesc;
 

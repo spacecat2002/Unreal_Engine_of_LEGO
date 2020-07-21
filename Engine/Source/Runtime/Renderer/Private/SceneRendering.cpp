@@ -134,7 +134,7 @@ static TAutoConsoleVariable<int32> CVarAllowOcclusionQueries(
 static TAutoConsoleVariable<float> CVarDemosaicVposOffset(
 	TEXT("r.DemosaicVposOffset"),
 	0.0f,
-	TEXT("This offset is added to the rasterized position used for demosaic in the ES2 tonemapping shader. It exists to workaround driver bugs on some Android devices that have a half-pixel offset."),
+	TEXT("This offset is added to the rasterized position used for demosaic in the mobile tonemapping shader. It exists to workaround driver bugs on some Android devices that have a half-pixel offset."),
 	ECVF_RenderThreadSafe);
 
 static TAutoConsoleVariable<int32> CVarRefractionQuality(
@@ -1919,6 +1919,47 @@ void FViewInfo::SwapEyeAdaptationBuffers() const
 	}
 }
 
+const FSceneRenderTargetItem& FViewInfo::GetLastBloomSetupEyeAdaptationSurface() const
+{
+	FSceneViewState* EffectiveViewState = GetEffectiveViewState();
+	if (EffectiveViewState)
+	{
+		return EffectiveViewState->GetLastBloomSetupEyeAdaptationSurface();
+	}
+	else
+	{
+		static FSceneRenderTargetItem SceneRenderTargetItem;
+		return SceneRenderTargetItem;
+	}
+}
+
+void FViewInfo::CacheBloomSetupEyeAdaptationRT(TRefCountPtr<IPooledRenderTarget>& BloomSetupEyeAdaptationRT) const
+{
+	FSceneViewState* EffectiveViewState = GetEffectiveViewState();
+	if (EffectiveViewState)
+	{
+		EffectiveViewState->CacheBloomSetupEyeAdaptationRT(BloomSetupEyeAdaptationRT);
+	}
+}
+
+void FViewInfo::SwapBloomSetupEyeAdaptationRT() const
+{
+	FSceneViewState* EffectiveViewState = GetEffectiveViewState();
+	if (EffectiveViewState)
+	{
+		EffectiveViewState->SwapBloomSetupEyeAdaptationRT();
+	}
+}
+
+void FViewInfo::SafeReleaseBloomSetupEyeAdaptationRT() const
+{
+	FSceneViewState* EffectiveViewState = GetEffectiveViewState();
+	if (EffectiveViewState)
+	{
+		EffectiveViewState->SafeReleaseBloomSetupEyeAdaptationRT();
+	}
+}
+
 bool FViewInfo::HasValidEyeAdaptation() const
 {
 	FSceneViewState* EffectiveViewState = GetEffectiveViewState();	
@@ -2579,7 +2620,7 @@ void FSceneRenderer::ComputeFamilySize()
 		{
 			// Note: using the unconstrained view rect to compute family size
 			// In the case of constrained views (black bars) this means the scene render targets will fill the whole screen
-			// Which is needed for ES2 paths where we render directly to the backbuffer, and the scene depth buffer has to match in size
+			// Which is needed for mobile paths where we render directly to the backbuffer, and the scene depth buffer has to match in size
 			MaxFamilyX = View.UnconstrainedViewRect.Max.X * XScale;
 			MaxFamilyY = View.UnconstrainedViewRect.Max.Y * YScale;
 			bInitializedExtents = true;
@@ -2683,7 +2724,12 @@ void FSceneRenderer::RenderFinish(FRHICommandListImmediate& RHICmdList)
 		if (Scene->PlanarReflections.Num() > 0)
 		{
 			static const auto* CVarClipPlane = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.AllowGlobalClipPlane"));
-			if (CVarClipPlane && CVarClipPlane->GetValueOnRenderThread() == 0)
+			
+			const bool bShouldUseClipPlaneForPlanarReflection = (FeatureLevel > ERHIFeatureLevel::ES3_1 && GetMobilePlanarReflectionMode() != EMobilePlanarReflectionMode::MobilePPRExclusive)
+															|| GetMobilePlanarReflectionMode() == EMobilePlanarReflectionMode::Usual;
+			
+			if (CVarClipPlane && CVarClipPlane->GetValueOnRenderThread() == 0
+				&& bShouldUseClipPlaneForPlanarReflection)
 			{
 				bShowGlobalClipPlaneWarning = true;
 			}
@@ -3616,6 +3662,9 @@ FRendererModule::FRendererModule()
 
 	static auto CVarVertexDeformationOutputsVelocity = IConsoleManager::Get().FindConsoleVariable(TEXT("r.VertexDeformationOutputsVelocity"));
 	CVarVertexDeformationOutputsVelocity->SetOnChangedCallback(FConsoleVariableDelegate::CreateStatic(&OnChangeCVarRequiringRecreateRenderState));
+
+	static auto MobilePixelProjectedReflectionQualityCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Mobile.PixelProjectedReflectionQuality"));
+	MobilePixelProjectedReflectionQualityCVar->SetOnChangedCallback(FConsoleVariableDelegate::CreateStatic(&OnChangeCVarRequiringRecreateRenderState));
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	void InitDebugViewModeInterfaces();

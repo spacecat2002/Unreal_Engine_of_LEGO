@@ -461,6 +461,13 @@ FORCEINLINE uint32 GetMaxTextureSamplers()
 	return GMaxTextureSamplers;
 }
 
+/** The maximum work group invocations allowed for compute shader. */
+extern RHI_API TRHIGlobal<int32> GMaxWorkGroupInvocations;
+FORCEINLINE uint32 GetMaxWorkGroupInvocations()
+{
+	return GMaxWorkGroupInvocations;
+}
+
 /** true if we are running with the NULL RHI */
 extern RHI_API bool GUsingNullRHI;
 
@@ -1034,15 +1041,17 @@ public:
 
 	FBlendStateInitializerRHI() {}
 
-	FBlendStateInitializerRHI(const FRenderTarget& InRenderTargetBlendState)
+	FBlendStateInitializerRHI(const FRenderTarget& InRenderTargetBlendState, bool bInUseAlphaToCoverage = false)
 	:	bUseIndependentRenderTargetBlendStates(false)
+	,	bUseAlphaToCoverage(bInUseAlphaToCoverage)
 	{
 		RenderTargets[0] = InRenderTargetBlendState;
 	}
 
 	template<uint32 NumRenderTargets>
-	FBlendStateInitializerRHI(const TStaticArray<FRenderTarget,NumRenderTargets>& InRenderTargetBlendStates)
+	FBlendStateInitializerRHI(const TStaticArray<FRenderTarget,NumRenderTargets>& InRenderTargetBlendStates, bool bInUseAlphaToCoverage = false)
 	:	bUseIndependentRenderTargetBlendStates(NumRenderTargets > 1)
+	,	bUseAlphaToCoverage(bInUseAlphaToCoverage)
 	{
 		static_assert(NumRenderTargets <= MaxSimultaneousRenderTargets, "Too many render target blend states.");
 
@@ -1054,11 +1063,13 @@ public:
 
 	TStaticArray<FRenderTarget,MaxSimultaneousRenderTargets> RenderTargets;
 	bool bUseIndependentRenderTargetBlendStates;
+	bool bUseAlphaToCoverage;
 	
 	friend FArchive& operator<<(FArchive& Ar,FBlendStateInitializerRHI& BlendStateInitializer)
 	{
 		Ar << BlendStateInitializer.RenderTargets;
 		Ar << BlendStateInitializer.bUseIndependentRenderTargetBlendStates;
+		Ar << BlendStateInitializer.bUseAlphaToCoverage;
 		return Ar;
 	}
 

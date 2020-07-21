@@ -50,11 +50,9 @@ enum ECompilerFlags
 	CFLAG_ZeroInitialise,
 	// Explicitly enforce bounds checking on shader platforms that may omit it.
 	CFLAG_BoundsChecking,
-	// Compile ES2 with ES3.1 features
-	CFLAG_FeatureLevelES31,
 	// Force removing unused interpolators for platforms that can opt out
 	CFLAG_ForceRemoveUnusedInterpolators,
-	// Set default precision to highp in a pixel shader (default is mediump on ES2 platforms)
+	// Set default precision to highp in a pixel shader (default is mediump on ES platforms)
 	CFLAG_UseFullPrecisionInPS,
 	// Hint that it is a vertex to geometry shader
 	CFLAG_VertexToGeometryShader,
