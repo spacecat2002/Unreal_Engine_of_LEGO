@@ -342,9 +342,9 @@ void AddMobileMSAADecodeAndDrawTexturePass(
 	const FScreenPassTextureViewport InputViewport(Input);
 	const FScreenPassTextureViewport OutputViewport(Output);
 
-	TShaderMapRef<FMSAADecodeAndCopyRectPS_ES2> PixelShader(View.ShaderMap);
+	TShaderMapRef<FMSAADecodeAndCopyRectPS_Mobile> PixelShader(View.ShaderMap);
 
-	FMSAADecodeAndCopyRectPS_ES2::FParameters* Parameters = GraphBuilder.AllocParameters<FMSAADecodeAndCopyRectPS_ES2::FParameters>();
+	FMSAADecodeAndCopyRectPS_Mobile::FParameters* Parameters = GraphBuilder.AllocParameters<FMSAADecodeAndCopyRectPS_Mobile::FParameters>();
 	Parameters->InputTexture = Input.Texture;
 	Parameters->InputSampler = TStaticSamplerState<>::GetRHI();
 	Parameters->RenderTargets[0] = Output.GetRenderTargetBinding();

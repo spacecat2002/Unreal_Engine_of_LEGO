@@ -137,7 +137,7 @@ private:
 	/** Cubemap texture resource used for rendering with the encoded HDR values. */
 	FTexture* EncodedHDRCubemap;
 
-	/** Temporary encoded data used to preview feature level changes in the editor, or running ES2 uncooked. */
+	/** Temporary encoded data used to preview feature level changes in the editor, or running uncooked. */
 	TArray<uint8> TemporaryEncodedHDRCapturedData;
 
 	/** Fence used to track progress of releasing resources on the rendering thread. */

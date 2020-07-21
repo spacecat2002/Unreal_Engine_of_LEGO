@@ -1736,7 +1736,7 @@ struct FPostProcessSettings
 	float DepthOfFieldFarTransitionRegion;
 
 	/** SM5: BokehDOF only: To amplify the depth of field effect (like aperture)  0=off 
-	    ES2: Used to blend DoF. 0=off
+	    ES3_1: Used to blend DoF. 0=off
 	*/
 	UPROPERTY(interp, BlueprintReadWrite, Category="Lens|Mobile Depth of Field", meta=(ClampMin = "0.0", ClampMax = "2.0", editcondition = "bOverride_DepthOfFieldScale", DisplayName = "Scale"))
 	float DepthOfFieldScale;

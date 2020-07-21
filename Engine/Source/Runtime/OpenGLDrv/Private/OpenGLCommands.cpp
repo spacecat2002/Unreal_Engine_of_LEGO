@@ -692,7 +692,7 @@ inline void FOpenGLDynamicRHI::ApplyTextureStage(FOpenGLContextState& ContextSta
 		{
 			FOpenGL::TexParameter(Target, GL_TEXTURE_LOD_BIAS, SamplerState->Data.LODBias);
 		}
-		// Make sure we don't set mip filtering on if the texture has no mip levels, as that will cause a crash/black render on ES2.
+		// Make sure we don't set mip filtering on if the texture has no mip levels, as that will cause a crash/black render on ES.
 		FOpenGL::TexParameter(Target, GL_TEXTURE_MIN_FILTER, ModifyFilterByMips(SamplerState->Data.MinFilter, TextureStage.bHasMips));
 		FOpenGL::TexParameter(Target, GL_TEXTURE_MAG_FILTER, SamplerState->Data.MagFilter);
 		if( FOpenGL::SupportsTextureFilterAnisotropic() )
@@ -986,7 +986,7 @@ void FOpenGLDynamicRHI::RHISetShaderResourceViewParameter(FRHIGraphicsShader* Sh
 	VERIFY_GL_SCOPE();
 
 #ifndef __EMSCRIPTEN__
-	// TODO: On WebGL1/GLES2 builds, the following assert() always comes out false, however when simply ignoring this check,
+	// TODO: On WebGL1 builds, the following assert() always comes out false, however when simply ignoring this check,
 	// everything seems to be working fine. That said, I don't know what should change here, shader resource views are a D3D abstraction,
 	// but I think InternalSetShaderTexture() and RHISetShaderSampler() calls below need to occur even on GLES2.
 	check(FOpenGL::SupportsResourceView());

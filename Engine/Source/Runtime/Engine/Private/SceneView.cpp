@@ -2538,7 +2538,7 @@ FSceneViewFamily::FSceneViewFamily(const ConstructionValues& CVS)
 	bNullifyWorldSpacePosition = false;
 #endif
 
-	// ScreenPercentage is not supported in ES2/3.1 with MobileHDR = false. Disable show flag so to have it respected.
+	// ScreenPercentage is not supported in ES 3.1 with MobileHDR = false. Disable show flag so to have it respected.
 	const bool bIsMobileLDR = (GetFeatureLevel() <= ERHIFeatureLevel::ES3_1 && !IsMobileHDR());
 	if (bIsMobileLDR)
 	{

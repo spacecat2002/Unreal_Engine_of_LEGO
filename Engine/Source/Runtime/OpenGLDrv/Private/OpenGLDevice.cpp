@@ -43,7 +43,7 @@ FOpenGLTextureFormat GOpenGLTextureFormats[PF_MAX];
 /** Device is necessary for vertex buffers, so they can reach the global device on destruction, and tell it to reset vertex array caches */
 static FOpenGLDynamicRHI* PrivateOpenGLDevicePtr = NULL;
 
-/** true if we're not using UBOs. (ES2) */
+/** true if we're not using UBOs. */
 bool GUseEmulatedUniformBuffers;
 
 static TAutoConsoleVariable<int32> CVarAllowRGLHIThread(

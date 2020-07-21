@@ -380,7 +380,7 @@ public:
 		const int32 MobileSkyLightPermutationOptions = MobileSkyLightPermutationCVar->GetValueOnAnyThread();
 		const bool bIsUnlit = Parameters.MaterialParameters.ShadingModels.IsUnlit();
 
-		// Only compile skylight version for lit materials on ES2 (Metal) or higher
+		// Only compile skylight version for lit materials on mobile (Metal) or higher
 		const bool bShouldCacheBySkylight = !bEnableSkyLight || !bIsUnlit;
 
 		// Only compile skylight permutations when they are enabled

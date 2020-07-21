@@ -18,10 +18,10 @@ float GetMobileDepthOfFieldScale(const FViewInfo& View);
 void SetMobilePassFlipVerticalAxis(const FRenderingCompositePass* FlipPass);
 bool ShouldMobilePassFlipVerticalAxis(const FRenderingCompositePassContext& Context, const FRenderingCompositePass* ShouldFlipPass);
 
-class FRCPassPostProcessBloomSetupES2 : public TRenderingCompositePassBase<2, 3>
+class FRCPassPostProcessBloomSetupMobile : public TRenderingCompositePassBase<2, 3>
 {
 public:
-	FRCPassPostProcessBloomSetupES2(FIntRect InPrePostSourceViewportRect, bool bInUseViewRectSource, bool bInUseBloom, bool bInUseSun, bool bInUseDof, bool bInUseEyeAdaptation, bool bInUseMetalMSAAHDRDecode)
+	FRCPassPostProcessBloomSetupMobile(FIntRect InPrePostSourceViewportRect, bool bInUseViewRectSource, bool bInUseBloom, bool bInUseSun, bool bInUseDof, bool bInUseEyeAdaptation, bool bInUseMetalMSAAHDRDecode)
 	: PrePostSourceViewportRect(InPrePostSourceViewportRect)
 	, bUseViewRectSource(bInUseViewRectSource)
 	, bUseBloom(bInUseBloom)
@@ -43,10 +43,10 @@ private:
 	bool bUseMetalMSAAHDRDecode;
 };
 
-class FRCPassPostProcessDofNearES2 : public TRenderingCompositePassBase<1, 1>
+class FRCPassPostProcessDofNearMobile : public TRenderingCompositePassBase<1, 1>
 {
 public:
-	FRCPassPostProcessDofNearES2(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
+	FRCPassPostProcessDofNearMobile(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
 	virtual void Process(FRenderingCompositePassContext& Context) override;
 	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
 	virtual void Release() override { delete this; }
@@ -55,10 +55,10 @@ private:
 	void SetShader(const FRenderingCompositePassContext& Context);
 };
 
-class FRCPassPostProcessDofDownES2 : public TRenderingCompositePassBase<2, 1>
+class FRCPassPostProcessDofDownMobile : public TRenderingCompositePassBase<2, 1>
 {
 public:
-	FRCPassPostProcessDofDownES2(FIntRect InPrePostSourceViewportRect, bool bInUseViewRectSource) : PrePostSourceViewportRect(InPrePostSourceViewportRect), bUseViewRectSource(bInUseViewRectSource) { }
+	FRCPassPostProcessDofDownMobile(FIntRect InPrePostSourceViewportRect, bool bInUseViewRectSource) : PrePostSourceViewportRect(InPrePostSourceViewportRect), bUseViewRectSource(bInUseViewRectSource) { }
 	virtual void Process(FRenderingCompositePassContext& Context) override;
 	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
 	virtual void Release() override { delete this; }
@@ -68,10 +68,10 @@ private:
 	void SetShader(const FRenderingCompositePassContext& Context);
 };
 
-class FRCPassPostProcessDofBlurES2 : public TRenderingCompositePassBase<2, 1>
+class FRCPassPostProcessDofBlurMobile : public TRenderingCompositePassBase<2, 1>
 {
 public:
-	FRCPassPostProcessDofBlurES2(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
+	FRCPassPostProcessDofBlurMobile(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
 	virtual void Process(FRenderingCompositePassContext& Context) override;
 	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
 	virtual void Release() override { delete this; }
@@ -79,10 +79,10 @@ private:
 	FIntPoint PrePostSourceViewportSize;
 };
 
-class FRCPassIntegrateDofES2 : public TRenderingCompositePassBase<3, 1>
+class FRCPassIntegrateDofMobile : public TRenderingCompositePassBase<3, 1>
 {
 public:
-	FRCPassIntegrateDofES2(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
+	FRCPassIntegrateDofMobile(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
 	virtual void Process(FRenderingCompositePassContext& Context) override;
 	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
 	virtual void Release() override { delete this; }
@@ -90,10 +90,10 @@ private:
 	FIntPoint PrePostSourceViewportSize;
 };
 
-class FRCPassPostProcessBloomDownES2 : public TRenderingCompositePassBase<1, 1>
+class FRCPassPostProcessBloomDownMobile : public TRenderingCompositePassBase<1, 1>
 {
 public:
-	FRCPassPostProcessBloomDownES2(FIntPoint InPrePostSourceViewportSize, float InScale) : PrePostSourceViewportSize(InPrePostSourceViewportSize), Scale(InScale) { }
+	FRCPassPostProcessBloomDownMobile(FIntPoint InPrePostSourceViewportSize, float InScale) : PrePostSourceViewportSize(InPrePostSourceViewportSize), Scale(InScale) { }
 	virtual void Process(FRenderingCompositePassContext& Context) override;
 	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
 	virtual void Release() override { delete this; }
@@ -102,10 +102,10 @@ private:
 	float Scale;
 };
 
-class FRCPassPostProcessBloomUpES2 : public TRenderingCompositePassBase<2, 1>
+class FRCPassPostProcessBloomUpMobile : public TRenderingCompositePassBase<2, 1>
 {
 public:
-	FRCPassPostProcessBloomUpES2(FIntPoint InPrePostSourceViewportSize, FVector2D InScaleAB, FVector4& InTintA, FVector4& InTintB) : PrePostSourceViewportSize(InPrePostSourceViewportSize), ScaleAB(InScaleAB), TintA(InTintA), TintB(InTintB) { }
+	FRCPassPostProcessBloomUpMobile(FIntPoint InPrePostSourceViewportSize, FVector2D InScaleAB, FVector4& InTintA, FVector4& InTintB) : PrePostSourceViewportSize(InPrePostSourceViewportSize), ScaleAB(InScaleAB), TintA(InTintA), TintB(InTintB) { }
 	virtual void Process(FRenderingCompositePassContext& Context) override;
 	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
 	virtual void Release() override { delete this; }
@@ -137,10 +137,10 @@ FMobileSunMaskOutputs AddMobileSunMaskPass(FRDGBuilder& GraphBuilder, const FVie
 // TEMP: Remove when converted to RDG.
 FRenderingCompositeOutputRef AddMobileSunMaskPass(FPostprocessContext& PostProcessContext, bool bInUseSun, bool bInUseDof, bool bInUseDepthTexture, bool bInUseMetalMSAAHDRDecode);
 
-class FRCPassPostProcessSunAlphaES2 : public TRenderingCompositePassBase<1, 1>
+class FRCPassPostProcessSunAlphaMobile : public TRenderingCompositePassBase<1, 1>
 {
 public:
-	FRCPassPostProcessSunAlphaES2(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
+	FRCPassPostProcessSunAlphaMobile(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
 	virtual void Process(FRenderingCompositePassContext& Context) override;
 	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
 	virtual void Release() override { delete this; }
@@ -149,10 +149,10 @@ private:
 	void SetShader(const FRenderingCompositePassContext& Context);
 };
 
-class FRCPassPostProcessSunBlurES2 : public TRenderingCompositePassBase<1, 1>
+class FRCPassPostProcessSunBlurMobile : public TRenderingCompositePassBase<1, 1>
 {
 public:
-	FRCPassPostProcessSunBlurES2(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
+	FRCPassPostProcessSunBlurMobile(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
 	virtual void Process(FRenderingCompositePassContext& Context) override;
 	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
 	virtual void Release() override { delete this; }
@@ -160,10 +160,10 @@ private:
 	FIntPoint PrePostSourceViewportSize;
 };
 
-class FRCPassPostProcessSunMergeES2 : public TRenderingCompositePassBase<3, 1>
+class FRCPassPostProcessSunMergeMobile : public TRenderingCompositePassBase<3, 1>
 {
 public:
-	FRCPassPostProcessSunMergeES2(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
+	FRCPassPostProcessSunMergeMobile(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
 	virtual void Process(FRenderingCompositePassContext& Context) override;
 	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
 	virtual void Release() override { delete this; }
@@ -172,10 +172,10 @@ private:
 	TShaderRef<FShader> SetShader(const FRenderingCompositePassContext& Context);
 };
 
-class FRCPassPostProcessSunAvgES2 : public TRenderingCompositePassBase<2, 1>
+class FRCPassPostProcessSunAvgMobile : public TRenderingCompositePassBase<2, 1>
 {
 public:
-	FRCPassPostProcessSunAvgES2(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
+	FRCPassPostProcessSunAvgMobile(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
 	virtual void Process(FRenderingCompositePassContext& Context) override;
 	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
 	virtual void Release() override { delete this; }
@@ -184,7 +184,7 @@ private:
 	void SetShader(const FRenderingCompositePassContext& Context);
 };
 
-class FRCPassPostProcessAaES2 : public TRenderingCompositePassBase<2, 1>
+class FRCPassPostProcessAaMobile : public TRenderingCompositePassBase<2, 1>
 {
 public:
 	virtual void Process(FRenderingCompositePassContext& Context) override;
@@ -194,7 +194,7 @@ private:
 	void SetShader(const FRenderingCompositePassContext& Context);
 };
 
-class FRCPassPostProcessAverageLuminanceES2 : public TRenderingCompositePassBase<1, 1>
+class FRCPassPostProcessAverageLuminanceMobile : public TRenderingCompositePassBase<1, 1>
 {
 public:
 	// interface FRenderingCompositePass ---------
@@ -203,7 +203,7 @@ public:
 	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
 };
 
-class FRCPassPostProcessBasicEyeAdaptationES2 : public TRenderingCompositePassBase<1, 1>
+class FRCPassPostProcessBasicEyeAdaptationMobile : public TRenderingCompositePassBase<1, 1>
 {
 public:
 	// interface FRenderingCompositePass ---------
@@ -212,7 +212,7 @@ public:
 	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
 };
 
-class FRCPassPostProcessHistogramES2 : public TRenderingCompositePassBase<1, 1>
+class FRCPassPostProcessHistogramMobile : public TRenderingCompositePassBase<1, 1>
 {
 public:
 	// interface FRenderingCompositePass ---------
@@ -224,7 +224,7 @@ public:
 // Computes the eye-adaptation from HDRHistogram.
 // ePId_Input0: HDRHistogram or nothing
 // derives from TRenderingCompositePassBase<InputCount, OutputCount> 
-class FRCPassPostProcessHistogramEyeAdaptationES2 : public TRenderingCompositePassBase<1, 1>
+class FRCPassPostProcessHistogramEyeAdaptationMobile : public TRenderingCompositePassBase<1, 1>
 {
 public:
 	// interface FRenderingCompositePass ---------
@@ -234,10 +234,10 @@ public:
 };
 
 /** Pixel shader to decode the input color and  copy pixels from src to dst only for mobile metal platform. */
-class FMSAADecodeAndCopyRectPS_ES2 : public FGlobalShader
+class FMSAADecodeAndCopyRectPS_Mobile : public FGlobalShader
 {
-	DECLARE_GLOBAL_SHADER(FMSAADecodeAndCopyRectPS_ES2);
-	SHADER_USE_PARAMETER_STRUCT(FMSAADecodeAndCopyRectPS_ES2, FGlobalShader);
+	DECLARE_GLOBAL_SHADER(FMSAADecodeAndCopyRectPS_Mobile);
+	SHADER_USE_PARAMETER_STRUCT(FMSAADecodeAndCopyRectPS_Mobile, FGlobalShader);
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{

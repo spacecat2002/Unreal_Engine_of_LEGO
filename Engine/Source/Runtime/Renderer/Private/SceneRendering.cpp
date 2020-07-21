@@ -134,7 +134,7 @@ static TAutoConsoleVariable<int32> CVarAllowOcclusionQueries(
 static TAutoConsoleVariable<float> CVarDemosaicVposOffset(
 	TEXT("r.DemosaicVposOffset"),
 	0.0f,
-	TEXT("This offset is added to the rasterized position used for demosaic in the ES2 tonemapping shader. It exists to workaround driver bugs on some Android devices that have a half-pixel offset."),
+	TEXT("This offset is added to the rasterized position used for demosaic in the mobile tonemapping shader. It exists to workaround driver bugs on some Android devices that have a half-pixel offset."),
 	ECVF_RenderThreadSafe);
 
 static TAutoConsoleVariable<int32> CVarRefractionQuality(
@@ -2615,7 +2615,7 @@ void FSceneRenderer::ComputeFamilySize()
 		{
 			// Note: using the unconstrained view rect to compute family size
 			// In the case of constrained views (black bars) this means the scene render targets will fill the whole screen
-			// Which is needed for ES2 paths where we render directly to the backbuffer, and the scene depth buffer has to match in size
+			// Which is needed for mobile paths where we render directly to the backbuffer, and the scene depth buffer has to match in size
 			MaxFamilyX = View.UnconstrainedViewRect.Max.X * XScale;
 			MaxFamilyY = View.UnconstrainedViewRect.Max.Y * YScale;
 			bInitializedExtents = true;

@@ -2298,7 +2298,7 @@ void FSceneRenderTargets::SetSeparateTranslucencyBufferSize(bool bAnyViewWantsDo
 
 void FSceneRenderTargets::AllocateMobileRenderTargets(FRHICommandListImmediate& RHICmdList)
 {
-	// on ES2 we don't do on demand allocation of SceneColor yet (in non ES2 it's released in the Tonemapper Process())
+	// on mobile we don't do on demand allocation of SceneColor yet (in other platforms it's released in the Tonemapper Process())
 	AllocSceneColor(RHICmdList);
 	AllocateCommonDepthTargets(RHICmdList);
 	AllocateFoveationTexture(RHICmdList);

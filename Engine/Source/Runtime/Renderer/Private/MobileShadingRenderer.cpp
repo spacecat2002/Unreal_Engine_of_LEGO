@@ -1,7 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
-	MobileShadingRenderer.cpp: Scene rendering code for the ES2 feature level.
+	MobileShadingRenderer.cpp: Scene rendering code for ES3/3.1 feature level.
 =============================================================================*/
 
 #include "CoreMinimal.h"
@@ -438,7 +438,7 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	const FIntPoint RenderTargetSize = (ViewFamily.RenderTarget->GetRenderTargetTexture().IsValid()) ? ViewFamily.RenderTarget->GetRenderTargetTexture()->GetSizeXY() : ViewFamily.RenderTarget->GetSizeXY();
 	const bool bRequiresUpscale = ((int32)RenderTargetSize.X > FamilySize.X || (int32)RenderTargetSize.Y > FamilySize.Y);
 
-	// ES2 requires that the back buffer and depth match dimensions.
+	// ES requires that the back buffer and depth match dimensions.
 	// For the most part this is not the case when using scene captures. Thus scene captures always render to scene color target.
 	const bool bStereoRenderingAndHMD = View.Family->EngineShowFlags.StereoRendering && View.Family->EngineShowFlags.HMDDistortion;
 	bRenderToSceneColor = bStereoRenderingAndHMD || bRequiresUpscale || FSceneRenderer::ShouldCompositeEditorPrimitives(View) || View.bIsSceneCapture || View.bIsReflectionCapture;
@@ -671,7 +671,7 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 				for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 				{
 					SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("View%d"), ViewIndex);
-					GPostProcessing.ProcessES2(RHICmdList, Scene, Views[ViewIndex]);
+					GPostProcessing.ProcessMobile(RHICmdList, Scene, Views[ViewIndex]);
 				}
 			}
 		}
@@ -1133,7 +1133,7 @@ void FMobileSceneRenderer::BasicPostProcess(FRHICommandListImmediate& RHICmdList
 	Context.FinalOutput.GetOutput()->PooledRenderTarget = Temp;
 	Context.FinalOutput.GetOutput()->RenderTargetDesc = Desc;
 
-	CompositeContext.Process(Context.FinalOutput.GetPass(), TEXT("ES2BasicPostProcess"));
+	CompositeContext.Process(Context.FinalOutput.GetPass(), TEXT("MobileBasicPostProcess"));
 }
 
 void FMobileSceneRenderer::RenderMobileDebugView(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> PassViews)
@@ -1484,25 +1484,25 @@ void FMobileSceneRenderer::CopyMobileMultiViewSceneColor(FRHICommandListImmediat
 	RHICmdList.EndRenderPass();
 }
 
-class FPreTonemapMSAA_ES2 : public FGlobalShader
+class FPreTonemapMSAA_Mobile : public FGlobalShader
 {
-	DECLARE_SHADER_TYPE(FPreTonemapMSAA_ES2, Global);
+	DECLARE_SHADER_TYPE(FPreTonemapMSAA_Mobile, Global);
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
 		return !IsConsolePlatform(Parameters.Platform);
 	}	
 
-	FPreTonemapMSAA_ES2() {}
+	FPreTonemapMSAA_Mobile() {}
 
 public:
-	FPreTonemapMSAA_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+	FPreTonemapMSAA_Mobile(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
 	{
 	}
 };
 
-IMPLEMENT_SHADER_TYPE(,FPreTonemapMSAA_ES2,TEXT("/Engine/Private/PostProcessMobile.usf"),TEXT("PreTonemapMSAA_ES2"),SF_Pixel);
+IMPLEMENT_SHADER_TYPE(, FPreTonemapMSAA_Mobile,TEXT("/Engine/Private/PostProcessMobile.usf"),TEXT("PreTonemapMSAA_Mobile"),SF_Pixel);
 
 void FMobileSceneRenderer::PreTonemapMSAA(FRHICommandListImmediate& RHICmdList)
 {
@@ -1528,7 +1528,7 @@ void FMobileSceneRenderer::PreTonemapMSAA(FRHICommandListImmediate& RHICmdList)
 
 	const auto ShaderMap = GetGlobalShaderMap(FeatureLevel);
 	TShaderMapRef<FScreenVS> VertexShader(ShaderMap);
-	TShaderMapRef<FPreTonemapMSAA_ES2> PixelShader(ShaderMap);
+	TShaderMapRef<FPreTonemapMSAA_Mobile> PixelShader(ShaderMap);
 
 	extern TGlobalResource<FFilterVertexDeclaration> GFilterVertexDeclaration;
 	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;

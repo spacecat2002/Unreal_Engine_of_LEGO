@@ -5,30 +5,30 @@
 #include "CoreMinimal.h"
 #include "PostProcess/RenderingCompositionGraph.h"
 
-class FRCDistortionAccumulatePassES2 : public TRenderingCompositePassBase<1, 1>
+class FRCDistortionAccumulatePassMobile : public TRenderingCompositePassBase<1, 1>
 {
 public:
-	FRCDistortionAccumulatePassES2(FIntPoint InPrePostSourceViewportSize, FScene* InScene) 
+	FRCDistortionAccumulatePassMobile(FIntPoint InPrePostSourceViewportSize, FScene* InScene) 
 		: PrePostSourceViewportSize(InPrePostSourceViewportSize) 
 		, Scene(InScene)
 	{ }
 	virtual void Process(FRenderingCompositePassContext& Context) override;
 	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
 	virtual void Release() override { delete this; }
-	virtual const TCHAR* GetDebugName() { return TEXT("FRCDistortionAccumulatePassES2"); }
+	virtual const TCHAR* GetDebugName() { return TEXT("FRCDistortionAccumulatePassMobile"); }
 private:
 	FIntPoint PrePostSourceViewportSize;
 	FScene* Scene; 
 };
 
-class FRCDistortionMergePassES2 : public TRenderingCompositePassBase<2, 1>
+class FRCDistortionMergePassMobile : public TRenderingCompositePassBase<2, 1>
 {
 public:
-	FRCDistortionMergePassES2(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
+	FRCDistortionMergePassMobile(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
 	virtual void Process(FRenderingCompositePassContext& Context) override;
 	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
 	virtual void Release() override { delete this; }
-	virtual const TCHAR* GetDebugName() { return TEXT("FRCDistortionMergePassES2"); }
+	virtual const TCHAR* GetDebugName() { return TEXT("FRCDistortionMergePassMobile"); }
 private:
 	FIntPoint PrePostSourceViewportSize;
 };

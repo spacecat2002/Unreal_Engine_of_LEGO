@@ -3954,7 +3954,7 @@ int32 FHLSLMaterialTranslator::MaterialBakingWorldPosition()
 		AllocateSlot(AllocatedUserTexCoords, 6, 2);
 	}
 
-	// Note: inlining is important so that on ES2 devices, where half precision is used in the pixel shader, 
+	// Note: inlining is important so that on GLES devices, where half precision is used in the pixel shader, 
 	// The UV does not get assigned to a half temporary in cases where the texture sample is done directly from interpolated UVs
 	return AddInlinedCodeChunk(MCT_Float3, TEXT("float3(Parameters.TexCoords[6].x, Parameters.TexCoords[6].y, Parameters.TexCoords[7].x)"));
 }
@@ -3963,7 +3963,6 @@ int32 FHLSLMaterialTranslator::MaterialBakingWorldPosition()
 
 int32 FHLSLMaterialTranslator::TextureCoordinate(uint32 CoordinateIndex, bool UnMirrorU, bool UnMirrorV)
 {
-	// ERHIFeatureLevel::ES2 was the only feature level that required a maximum of 3 coordinates. Every other feature level has a maximum of 8.
 	const uint32 MaxNumCoordinates = 8;
 
 	if (CoordinateIndex >= MaxNumCoordinates)
@@ -3998,7 +3997,7 @@ int32 FHLSLMaterialTranslator::TextureCoordinate(uint32 CoordinateIndex, bool Un
 		SampleCode = TEXT("Parameters.TexCoords[%u].xy");
 	}
 
-	// Note: inlining is important so that on ES2 devices, where half precision is used in the pixel shader, 
+	// Note: inlining is important so that on GLES devices, where half precision is used in the pixel shader, 
 	// The UV does not get assigned to a half temporary in cases where the texture sample is done directly from interpolated UVs
 	return AddInlinedCodeChunk(
 			MCT_Float2,
@@ -4123,12 +4122,6 @@ int32 FHLSLMaterialTranslator::TextureSample(
 	)
 {
 	if(TextureIndex == INDEX_NONE || CoordinateIndex == INDEX_NONE)
-	{
-		return INDEX_NONE;
-	}
-
-	if (ShaderFrequency != SF_Pixel
-		&& ErrorUnlessFeatureLevelSupported(ERHIFeatureLevel::ES3_1) == INDEX_NONE)
 	{
 		return INDEX_NONE;
 	}
@@ -4947,12 +4940,6 @@ int32 FHLSLMaterialTranslator::SceneColor(int32 Offset, int32 ViewportUV, bool b
 
 int32 FHLSLMaterialTranslator::Texture(UTexture* InTexture, int32& TextureReferenceIndex, EMaterialSamplerType SamplerType, ESamplerSourceMode SamplerSource, ETextureMipValueMode MipValueMode)
 {
-	if (ShaderFrequency != SF_Pixel
-		&& ErrorUnlessFeatureLevelSupported(ERHIFeatureLevel::ES3_1) == INDEX_NONE)
-	{
-		return INDEX_NONE;
-	}
-
 	EMaterialValueType ShaderType = InTexture->GetMaterialType();
 	TextureReferenceIndex = Material->GetReferencedTextures().Find(InTexture);
 
@@ -4982,12 +4969,6 @@ int32 FHLSLMaterialTranslator::Texture(UTexture* InTexture, int32& TextureRefere
 
 int32 FHLSLMaterialTranslator::TextureParameter(FName ParameterName, UTexture* DefaultValue, int32& TextureReferenceIndex, EMaterialSamplerType SamplerType, ESamplerSourceMode SamplerSource)
 {
-	if (ShaderFrequency != SF_Pixel
-		&& ErrorUnlessFeatureLevelSupported(ERHIFeatureLevel::ES3_1) == INDEX_NONE)
-	{
-		return INDEX_NONE;
-	}
-
 	EMaterialValueType ShaderType = DefaultValue->GetMaterialType();
 	TextureReferenceIndex = Material->GetReferencedTextures().Find(DefaultValue);
 	checkf(TextureReferenceIndex != INDEX_NONE, TEXT("Material expression called Compiler->TextureParameter() without implementing UMaterialExpression::GetReferencedTexture properly"));
@@ -6573,11 +6554,6 @@ int32 FHLSLMaterialTranslator::PixelNormalWS()
 
 int32 FHLSLMaterialTranslator::DDX( int32 X )
 {
-	if (ErrorUnlessFeatureLevelSupported(ERHIFeatureLevel::ES3_1) == INDEX_NONE)
-	{
-		return INDEX_NONE;
-	}
-
 	if (X == INDEX_NONE)
 	{
 		return INDEX_NONE;
@@ -6599,11 +6575,6 @@ int32 FHLSLMaterialTranslator::DDX( int32 X )
 
 int32 FHLSLMaterialTranslator::DDY( int32 X )
 {
-	if (ErrorUnlessFeatureLevelSupported(ERHIFeatureLevel::ES3_1) == INDEX_NONE)
-	{
-		return INDEX_NONE;
-	}
-
 	if(X == INDEX_NONE)
 	{
 		return INDEX_NONE;
@@ -6666,11 +6637,6 @@ int32 FHLSLMaterialTranslator::DepthOfFieldFunction(int32 Depth, int32 FunctionV
 
 int32 FHLSLMaterialTranslator::Sobol(int32 Cell, int32 Index, int32 Seed)
 {
-	if (ErrorUnlessFeatureLevelSupported(ERHIFeatureLevel::ES3_1) == INDEX_NONE)
-	{
-		return INDEX_NONE;
-	}
-
 	AddEstimatedTextureSample(2);
 
 	return AddCodeChunk(MCT_Float2,
@@ -6683,11 +6649,6 @@ int32 FHLSLMaterialTranslator::Sobol(int32 Cell, int32 Index, int32 Seed)
 
 int32 FHLSLMaterialTranslator::TemporalSobol(int32 Index, int32 Seed)
 {
-	if (ErrorUnlessFeatureLevelSupported(ERHIFeatureLevel::ES3_1) == INDEX_NONE)
-	{
-		return INDEX_NONE;
-	}
-
 	AddEstimatedTextureSample(2);
 
 	return AddCodeChunk(MCT_Float2,
@@ -6698,16 +6659,6 @@ int32 FHLSLMaterialTranslator::TemporalSobol(int32 Index, int32 Seed)
 
 int32 FHLSLMaterialTranslator::Noise(int32 Position, float Scale, int32 Quality, uint8 NoiseFunction, bool bTurbulence, int32 Levels, float OutputMin, float OutputMax, float LevelScale, int32 FilterWidth, bool bTiling, uint32 RepeatSize)
 {
-	// GradientTex3D uses 3D texturing, which is not available on ES2
-	if (NoiseFunction == NOISEFUNCTION_GradientTex3D)
-	{
-		if (ErrorUnlessFeatureLevelSupported(ERHIFeatureLevel::SM5) == INDEX_NONE)
-		{
-			Errorf(TEXT("3D textures are not supported for ES2"));
-			return INDEX_NONE;
-		}
-	}
-
 	if(Position == INDEX_NONE || FilterWidth == INDEX_NONE)
 	{
 		return INDEX_NONE;
@@ -7548,11 +7499,6 @@ int32 FHLSLMaterialTranslator::RotateScaleOffsetTexCoords(int32 TexCoordCodeInde
 */
 int32 FHLSLMaterialTranslator::SpeedTree(int32 GeometryArg, int32 WindArg, int32 LODArg, float BillboardThreshold, bool bAccurateWindVelocities, bool bExtraBend, int32 ExtraBendArg)
 { 
-	if (ErrorUnlessFeatureLevelSupported(ERHIFeatureLevel::ES3_1) == INDEX_NONE)
-	{
-		return INDEX_NONE;
-	}
-
 	if (Material && Material->IsUsedWithSkeletalMesh())
 	{
 		return Error(TEXT("SpeedTree node not currently supported for Skeletal Meshes, please disable usage flag."));
