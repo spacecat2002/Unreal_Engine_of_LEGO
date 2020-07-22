@@ -178,6 +178,12 @@ public:
 	// Returns the instructions of the VM
 	const FRigVMInstructionArray& GetInstructions();
 
+	// Returns true if this VM's bytecode contains a given entry
+	bool ContainsEntry(const FName& InEntryName) const;
+
+	// Returns a list of all valid entry names for this VM's bytecode
+	TArray<FName> GetEntryNames() const;
+
 #if WITH_EDITOR
 	// Returns true if the given instruction has been visited during the last run
 	FORCEINLINE bool WasInstructionVisitedDuringLastRun(int32 InIndex) const

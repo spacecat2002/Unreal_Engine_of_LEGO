@@ -244,6 +244,25 @@ const FRigVMInstructionArray& URigVM::GetInstructions()
 	return Instructions;
 }
 
+bool URigVM::ContainsEntry(const FName& InEntryName) const
+{
+	const FRigVMByteCode& ByteCode = GetByteCode();
+	return ByteCode.FindEntryIndex(InEntryName) != INDEX_NONE;
+}
+
+TArray<FName> URigVM::GetEntryNames() const
+{
+	TArray<FName> EntryNames;
+
+	const FRigVMByteCode& ByteCode = GetByteCode();
+	for (int32 EntryIndex = 0; EntryIndex < ByteCode.NumEntries(); EntryIndex++)
+	{
+		EntryNames.Add(ByteCode.GetEntry(EntryIndex).Name);
+	}
+
+	return EntryNames;
+}
+
 const TArray<FRigVMParameter>& URigVM::GetParameters() const
 {
 	return Parameters;
