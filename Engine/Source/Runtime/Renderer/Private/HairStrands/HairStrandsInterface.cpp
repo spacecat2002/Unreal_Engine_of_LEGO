@@ -739,7 +739,14 @@ void TransitBufferToReadable(FRDGBuilder& GraphBuilder, FBufferTransitionQueue& 
 	{
 		AddPass(GraphBuilder, [LocalBuffersToTransit = MoveTemp(BuffersToTransit)] (FRHICommandList& RHICmdList)
 		{
-			RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, LocalBuffersToTransit.GetData(), LocalBuffersToTransit.Num());
+			FMemMark Mark(FMemStack::Get());
+			TArray<FRHITransitionInfo, TMemStackAllocator<>> Transitions;
+			Transitions.Reserve(LocalBuffersToTransit.Num());
+			for (FRHIUnorderedAccessView* UAV : LocalBuffersToTransit)
+			{
+				Transitions.Add(FRHITransitionInfo(UAV, ERHIAccess::UAVCompute, ERHIAccess::SRVMask));
+			}
+			RHICmdList.Transition(Transitions);
 		});
 	}
 }

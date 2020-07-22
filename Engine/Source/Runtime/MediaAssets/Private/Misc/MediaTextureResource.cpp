@@ -919,10 +919,11 @@ void FMediaTextureResource::CopySample(const TSharedPtr<IMediaTextureSample, ESP
 
 				// Just clear the texture so we don't show any random memory contents...
 				FRHICommandListImmediate& CommandList = FRHICommandListExecutor::GetImmediateCommandList();
+				CommandList.Transition(FRHITransitionInfo(RenderTargetTextureRHI, ERHIAccess::Unknown, ERHIAccess::RTV));
 				FRHIRenderPassInfo RPInfo(RenderTargetTextureRHI, ERenderTargetActions::Clear_Store);
 				CommandList.BeginRenderPass(RPInfo, TEXT("ClearTexture"));
 				CommandList.EndRenderPass();
-				CommandList.TransitionResource(EResourceTransitionAccess::EReadable, RenderTargetTextureRHI);
+				CommandList.Transition(FRHITransitionInfo(RenderTargetTextureRHI, ERHIAccess::RTV, ERHIAccess::SRVMask));
 			}
 		}
 		else

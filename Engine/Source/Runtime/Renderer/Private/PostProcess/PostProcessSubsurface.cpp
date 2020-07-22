@@ -795,13 +795,11 @@ void AddSubsurfaceViewPass(
 		FClearValueBinding(),
 		TexCreate_RenderTargetable | TexCreate_ShaderResource | TexCreate_UAV);
 
-	const FRDGTextureDesc ProfileIdTextureDescriptor = FRDGTextureDesc::Create2DDesc(
+	const FRDGTextureDesc ProfileIdTextureDescriptor = FRDGTextureDesc::Create2D(
 		SubsurfaceViewport.Extent,
 		PF_R8_UINT,
 		FClearValueBinding(),
-		TexCreate_None,
-		TexCreate_RenderTargetable | TexCreate_ShaderResource | TexCreate_UAV,
-		false);
+		TexCreate_RenderTargetable | TexCreate_ShaderResource | TexCreate_UAV);
 
 	// Create texture desc with 6 mips if possible, otherwise clamp number of mips to match the viewport resolution
 	const FRDGTextureDesc SubsurfaceTextureWith6MipsDescriptor = FRDGTextureDesc::Create2D(

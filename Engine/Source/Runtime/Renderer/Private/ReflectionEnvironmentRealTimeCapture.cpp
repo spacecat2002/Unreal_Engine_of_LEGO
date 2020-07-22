@@ -710,7 +710,7 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 	{
 		// ComputeDiffuseIrradiance using N uniform samples
 		{
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToCompute, SkyIrradianceEnvironmentMap.UAV);
+			RHICmdList.Transition(FRHITransitionInfo(SkyIrradianceEnvironmentMap.UAV, ERHIAccess::SRVMask, ERHIAccess::UAVCompute));
 
 			FRDGBuilder GraphBuilder(RHICmdList);// , RDG_EVENT_NAME("ComputeDiffuseIrradiance"));
 
@@ -739,7 +739,7 @@ void FScene::AllocateAndCaptureFrameSkyEnvMap(
 			GraphBuilder.Execute();
 
 			// This buffer is now going to be read for rendering.
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, SkyIrradianceEnvironmentMap.UAV);
+			RHICmdList.Transition(FRHITransitionInfo(SkyIrradianceEnvironmentMap.UAV, ERHIAccess::UAVCompute, ERHIAccess::SRVMask));
 		}
 	};
 

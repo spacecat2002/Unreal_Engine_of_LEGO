@@ -700,7 +700,14 @@ void TransitBufferToReadable(FRHICommandList& RHICmdList, FBufferTransitionQueue
 {
 	if (BuffersToTransit.Num())
 	{
-		RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, BuffersToTransit.GetData(), BuffersToTransit.Num());
+		FMemMark Mark(FMemStack::Get());
+		TArray<FRHITransitionInfo, TMemStackAllocator<>> Transitions;
+		Transitions.Reserve(BuffersToTransit.Num());
+		for (FRHIUnorderedAccessView* UAV : BuffersToTransit)
+		{
+			Transitions.Add(FRHITransitionInfo(UAV, ERHIAccess::UAVCompute, ERHIAccess::SRVMask));
+		}
+		RHICmdList.Transition(Transitions);
 		BuffersToTransit.SetNum(0, false);
 	}
 }
