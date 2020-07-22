@@ -2556,7 +2556,7 @@ void FShaderCompilingManager::ProcessCompiledShaderMaps(
 					Material->RemoveOutstandingCompileId(ShaderMap->CompilingId);
 
 					// Only process results that still match the ID which requested a compile
-					// This avoids applying shadermaps which are out of date and a newer one is in the async compiling pipeline
+					// This avoids applying shader maps which are out of date and a newer one is in the async compiling pipeline
 					if (Material->GetMaterialId() == CompletedShaderMap->GetShaderMapId().BaseMaterialId)
 					{
 						if (!bSuccess)
@@ -2571,11 +2571,11 @@ void FShaderCompilingManager::ProcessCompiledShaderMaps(
 								// Log the errors unsuppressed before the fatal error, so it's always obvious from the log what the compile error was
 								for (int32 ErrorIndex = 0; ErrorIndex < Errors.Num(); ErrorIndex++)
 								{
-									UE_LOG(LogShaderCompilers, Warning, TEXT("	%s"), *Errors[ErrorIndex]);
+									UE_LOG(LogShaderCompilers, Display, TEXT("%s"), *Errors[ErrorIndex]);
 								}
 
 								// Assert if a default material could not be compiled, since there will be nothing for other failed materials to fall back on.
-								UE_LOG(LogShaderCompilers, Fatal,TEXT("Failed to compile default material %s!"), *Material->GetBaseMaterialPathName());
+								UE_LOG(LogShaderCompilers, Fatal, TEXT("Failed to compile default material %s!"), *Material->GetBaseMaterialPathName());
 							}
 
 							UE_LOG(LogShaderCompilers, Warning, TEXT("Failed to compile Material %s for platform %s, Default Material will be used in game."),
@@ -2606,7 +2606,7 @@ void FShaderCompilingManager::ProcessCompiledShaderMaps(
 									*LegacyShaderPlatformToShaderFormat(ShaderMap->GetShaderPlatform()).ToString());
 								for (int32 ErrorIndex = 0; ErrorIndex < Errors.Num(); ErrorIndex++)
 								{
-									UE_LOG(LogShaders, Warning, TEXT("	%s"), *Errors[ErrorIndex]);
+									UE_LOG(LogShaderCompilers, Display, TEXT("%s"), *Errors[ErrorIndex]);
 								}
 							}
 						}
@@ -4342,15 +4342,15 @@ FShader* FGlobalShaderTypeCompiler::FinishCompileShader(FGlobalShaderType* Shade
 			UE_LOG(LogShaderCompilers, Error, TEXT("Errors compiling global shader %s %s %s:\n"), CurrentJob.ShaderType->GetName(), ShaderPipelineType ? TEXT("ShaderPipeline") : TEXT(""), ShaderPipelineType ? ShaderPipelineType->GetName() : TEXT(""));
 			for (int32 ErrorIndex = 0; ErrorIndex < CurrentJob.Output.Errors.Num(); ErrorIndex++)
 			{
-				UE_LOG(LogShaderCompilers, Error, TEXT("\t%s"), *CurrentJob.Output.Errors[ErrorIndex].GetErrorStringWithLineMarker());
+				UE_LOG(LogShaderCompilers, Display, TEXT("%s"), *CurrentJob.Output.Errors[ErrorIndex].GetErrorStringWithLineMarker());
 			}
 		}
-		else if (CVarShowShaderWarnings->GetInt())
+		else if (GShowShaderWarnings)
 		{
 			UE_LOG(LogShaderCompilers, Warning, TEXT("Warnings compiling global shader %s %s %s:\n"), CurrentJob.ShaderType->GetName(), ShaderPipelineType ? TEXT("ShaderPipeline") : TEXT(""), ShaderPipelineType ? ShaderPipelineType->GetName() : TEXT(""));
 			for (int32 ErrorIndex = 0; ErrorIndex < CurrentJob.Output.Errors.Num(); ErrorIndex++)
 			{
-				UE_LOG(LogShaderCompilers, Warning, TEXT("\t%s"), *CurrentJob.Output.Errors[ErrorIndex].GetErrorStringWithLineMarker());
+				UE_LOG(LogShaderCompilers, Display, TEXT("%s"), *CurrentJob.Output.Errors[ErrorIndex].GetErrorStringWithLineMarker());
 			}
 		}
 	}
