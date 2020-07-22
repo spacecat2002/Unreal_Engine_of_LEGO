@@ -1048,27 +1048,6 @@ bool TGPUSkinAPEXClothVertexFactory<BoneInfluenceType>::ShouldCompilePermutation
 }
 
 /**
-* Add the decl elements for the streams
-* @param InData - type with stream components
-* @param OutElements - vertex decl list to modify
-*/
-template <GPUSkinBoneInfluenceType BoneInfluenceType>
-void TGPUSkinAPEXClothVertexFactory<BoneInfluenceType>::AddVertexElements(FDataType& InData, FVertexDeclarationElementList& OutElements)
-{
-	// add the base gpu skin elements
-	TGPUSkinVertexFactory<BoneInfluenceType>::AddVertexElements(InData,OutElements);
-	// add the morph delta elements
-//	return;
-	if(InData.CoordNormalComponent.VertexBuffer)
-	{
-		OutElements.Add(FVertexFactory::AccessStreamComponent(InData.CoordPositionComponent,9));
-		OutElements.Add(FVertexFactory::AccessStreamComponent(InData.CoordNormalComponent,10));
-		OutElements.Add(FVertexFactory::AccessStreamComponent(InData.CoordTangentComponent,11));
-		OutElements.Add(FVertexFactory::AccessStreamComponent(InData.SimulIndicesComponent,12));
-	}
-}
-
-/**
 * Creates declarations for each of the vertex stream components and
 * initializes the device resource
 */
