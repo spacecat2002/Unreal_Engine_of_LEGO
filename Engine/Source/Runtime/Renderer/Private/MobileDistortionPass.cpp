@@ -28,7 +28,7 @@ bool IsMobileDistortionActive(const FViewInfo& View)
 		DisableDistortion == 0;
 }
 
-void FRCDistortionAccumulatePassES2::Process(FRenderingCompositePassContext& Context)
+void FRCDistortionAccumulatePassMobile::Process(FRenderingCompositePassContext& Context)
 {
 	SCOPED_DRAW_EVENT(Context.RHICmdList, DistortionAccumulatePass);
 
@@ -57,7 +57,7 @@ void FRCDistortionAccumulatePassES2::Process(FRenderingCompositePassContext& Con
 	Context.RHICmdList.CopyToResolveTarget(DestRenderTarget.TargetableTexture, DestRenderTarget.ShaderResourceTexture, FResolveParams());
 }
 
-FPooledRenderTargetDesc FRCDistortionAccumulatePassES2::ComputeOutputDesc(EPassOutputId InPassOutputId) const
+FPooledRenderTargetDesc FRCDistortionAccumulatePassMobile::ComputeOutputDesc(EPassOutputId InPassOutputId) const
 {
 	FPooledRenderTargetDesc Ret;
 	Ret.Depth = 0;
@@ -75,22 +75,22 @@ FPooledRenderTargetDesc FRCDistortionAccumulatePassES2::ComputeOutputDesc(EPassO
 	return Ret;
 }
 
-class FDistortionMergePS_ES2 : public FGlobalShader
+class FDistortionMergePS_Mobile : public FGlobalShader
 {
-	DECLARE_SHADER_TYPE(FDistortionMergePS_ES2, Global);
+	DECLARE_SHADER_TYPE(FDistortionMergePS_Mobile, Global);
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
 		return GetMaxSupportedFeatureLevel(Parameters.Platform) <= ERHIFeatureLevel::ES3_1;
 	}
 
-	FDistortionMergePS_ES2() {}
+	FDistortionMergePS_Mobile() {}
 
 public:
 	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter)
 
 	/** Initialization constructor. */
-	FDistortionMergePS_ES2(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+	FDistortionMergePS_Mobile(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
 	{
 		PostprocessParameter.Bind(Initializer.ParameterMap);
@@ -104,9 +104,9 @@ public:
 	}
 };
 
-IMPLEMENT_SHADER_TYPE(, FDistortionMergePS_ES2, TEXT("/Engine/Private/DistortApplyScreenPS.usf"), TEXT("Merge_ES2"), SF_Pixel);
+IMPLEMENT_SHADER_TYPE(, FDistortionMergePS_Mobile, TEXT("/Engine/Private/DistortApplyScreenPS.usf"), TEXT("Merge_Mobile"), SF_Pixel);
 
-void FRCDistortionMergePassES2::Process(FRenderingCompositePassContext& Context)
+void FRCDistortionMergePassMobile::Process(FRenderingCompositePassContext& Context)
 {
 	SCOPED_DRAW_EVENT(Context.RHICmdList, DistortionMergePass);
 
@@ -134,7 +134,7 @@ void FRCDistortionMergePassES2::Process(FRenderingCompositePassContext& Context)
 		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
 
 		TShaderMapRef<FPostProcessVS> VertexShader(View.ShaderMap);
-		TShaderMapRef<FDistortionMergePS_ES2> PixelShader(View.ShaderMap);
+		TShaderMapRef<FDistortionMergePS_Mobile> PixelShader(View.ShaderMap);
 
 		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
 		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
@@ -161,7 +161,7 @@ void FRCDistortionMergePassES2::Process(FRenderingCompositePassContext& Context)
 	Context.RHICmdList.CopyToResolveTarget(DestRenderTarget.TargetableTexture, DestRenderTarget.ShaderResourceTexture, FResolveParams());
 }
 
-FPooledRenderTargetDesc FRCDistortionMergePassES2::ComputeOutputDesc(EPassOutputId InPassOutputId) const
+FPooledRenderTargetDesc FRCDistortionMergePassMobile::ComputeOutputDesc(EPassOutputId InPassOutputId) const
 {
 	FPooledRenderTargetDesc Ret;
 	Ret.Depth = 0;

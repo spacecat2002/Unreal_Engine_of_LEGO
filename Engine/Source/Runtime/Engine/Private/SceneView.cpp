@@ -37,6 +37,10 @@ IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FPrimitiveUniformShaderParameters, "Pri
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FViewUniformShaderParameters, "View");
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FInstancedViewUniformShaderParameters, "InstancedView");
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileDirectionalLightShaderParameters, "MobileDirectionalLight");
+IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileMovablePointLightUniformShaderParameters, "MobileMovablePointLight0");
+IMPLEMENT_GLOBAL_SHADER_PARAMETER_ALIAS_STRUCT(FMobileMovablePointLightUniformShaderParameters, MobileMovablePointLight1);
+IMPLEMENT_GLOBAL_SHADER_PARAMETER_ALIAS_STRUCT(FMobileMovablePointLightUniformShaderParameters, MobileMovablePointLight2);
+IMPLEMENT_GLOBAL_SHADER_PARAMETER_ALIAS_STRUCT(FMobileMovablePointLightUniformShaderParameters, MobileMovablePointLight3);
 
 
 static TAutoConsoleVariable<float> CVarSSRMaxRoughness(
@@ -329,6 +333,9 @@ EVertexColorViewMode::Type GVertexColorViewMode = EVertexColorViewMode::Color;
 
 /** Global primitive uniform buffer resource containing identity transformations. */
 ENGINE_API TGlobalResource<FIdentityPrimitiveUniformBuffer> GIdentityPrimitiveUniformBuffer;
+
+/** Global primitive uniform buffer resource containing identity transformations. */
+ENGINE_API TGlobalResource<FDummyMovablePointLightUniformBuffer> GDummyMovablePointLightUniformBuffer;
 
 FSceneViewStateReference::~FSceneViewStateReference()
 {
@@ -2581,7 +2588,7 @@ FSceneViewFamily::FSceneViewFamily(const ConstructionValues& CVS)
 	bNullifyWorldSpacePosition = false;
 #endif
 
-	// ScreenPercentage is not supported in ES2/3.1 with MobileHDR = false. Disable show flag so to have it respected.
+	// ScreenPercentage is not supported in ES 3.1 with MobileHDR = false. Disable show flag so to have it respected.
 	const bool bIsMobileLDR = (GetFeatureLevel() <= ERHIFeatureLevel::ES3_1 && !IsMobileHDR());
 	if (bIsMobileLDR)
 	{

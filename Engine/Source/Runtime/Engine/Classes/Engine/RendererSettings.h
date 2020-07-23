@@ -188,12 +188,6 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ToolTip = "Multi-sample anti-aliasing setting to use on mobile. MSAA is currently supported using Metal on iOS, and on Android devices with the required support using ES 2 or ES 3.1.\nIf MSAA is not available, the current default AA method will be used."))
 	TEnumAsByte<EMobileMSAASampleCount::Type> MobileMSAASampleCount;
 
-	UPROPERTY(config, EditAnywhere, Category = Mobile, meta = (
-		ConsoleVariable = "r.Mobile.UseLegacyShadingModel", DisplayName = "Use legacy shading model",
-		ToolTip = "If true then mobile shaders will use the cheaper but lower quality specular calculation found in versions prior to 4.20.",
-		ConfigRestartRequired = true))
-		uint32 bMobileUseLegacyShadingModel : 1;
-
 	UPROPERTY(config, EditAnywhere, Category = Mobile, meta=(
 		ConsoleVariable="r.Mobile.AllowDitheredLODTransition", DisplayName="Allow Dithered LOD Transition",
 		ToolTip="Whether to support 'Dithered LOD Transition' material option on mobile platforms. Enabling this may degrade performance as rendering will not benefit from Early-Z optimization.",
@@ -315,6 +309,11 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ConsoleVariable = "r.ReflectionCaptureResolution", DisplayName = "Reflection Capture Resolution",
 		ToolTip = "The cubemap resolution for all reflection capture probes. Must be power of 2. Note that for very high values the memory and performance impact may be severe."))
 	int32 ReflectionCaptureResolution;
+
+	UPROPERTY(config, EditAnywhere, Category = Reflections, meta = (
+		ConsoleVariable = "r.Mobile.ReflectionCaptureCompression", DisplayName = "Mobile Reflection Capture Compression",
+		ToolTip = "Whether to use the Reflection Capture Compression or not for mobile. It will use ETC2 format to do the compression."))
+	uint32 bReflectionCaptureCompression : 1;
 
 	UPROPERTY(config, EditAnywhere, Category = Reflections, meta = (
 		ConsoleVariable = "r.ReflectionEnvironmentLightmapMixBasedOnRoughness", DisplayName = "Reduce lightmap mixing on smooth surfaces",
@@ -767,6 +766,14 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ConfigRestartRequired = true))
 		uint32 bMobileAllowMovableSpotlights : 1;
 
+	UPROPERTY(config, EditAnywhere, Category = MobileShaderPermutationReduction, meta = (
+		EditCondition = "bMobileAllowMovableSpotlights",
+		ConsoleVariable = "r.Mobile.EnableMovableSpotlightsShadow",
+		DisplayName = "Support Movable SpotlightShadows",
+		ToolTip = "Generate shaders for primitives to receive shadow from movable spotlights. Changing this setting requires restarting the editor.",
+		ConfigRestartRequired = true))
+		uint32 bMobileAllowMovableSpotlightShadows : 1;
+
 	UPROPERTY(config, EditAnywhere, Category = Optimizations, meta = (
 		ConsoleVariable = "r.GPUSkin.Support16BitBoneIndex", DisplayName = "Support 16-bit Bone Index",
 		ToolTip = "If enabled, a new mesh imported will use 8 bit (if <=256 bones) or 16 bit (if > 256 bones) bone indices for rendering.",
@@ -801,6 +808,12 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ToolTip = "Whether to allow the usage and compilation of Light Propagation Volumes.",
 		ConfigRestartRequired = true))
 		uint32 bLPV : 1;
+
+	UPROPERTY(config, EditAnywhere, Category = Mobile, meta = (
+		ConsoleVariable = "r.Mobile.PlanarReflectionMode", DisplayName = "Planar Reflection Mode",
+		ToolTip = "The PlanarReflection will work differently on different mode on mobile platform, choose the proper mode as expect. Changing this setting requires restarting the editor.",
+		ConfigRestartRequired = true))
+		TEnumAsByte<EMobilePlanarReflectionMode::Type> MobilePlanarReflectionMode;
 
 	UPROPERTY(config, EditAnywhere, Category="Experimental|LOD Streaming|Skeletal Mesh", meta=(
 		DisplayName="Stream LODs by default",

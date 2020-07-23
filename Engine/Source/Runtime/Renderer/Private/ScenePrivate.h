@@ -833,6 +833,37 @@ private:
 
 		void SwapBuffers(FRDGBuilder& GraphBuilder, bool bUpdateLastExposure);
 
+		/** Get the last frame bloom setup output for eye adaptation mobile platform. */
+		const FSceneRenderTargetItem& GetLastBloomSetupEyeAdaptationSurface() const
+		{
+			checkSlow(BloomSetup_EyeAdaptation[1].IsValid());
+			return BloomSetup_EyeAdaptation[1]->GetRenderTargetItem();
+		}
+
+		/** Cache the current frame bloom setup output for eye adaptation mobile platform. */
+		void CacheBloomSetupEyeAdaptationRT(TRefCountPtr<IPooledRenderTarget>& BloomSetupEyeAdaptationRT)
+		{
+			BloomSetup_EyeAdaptation[0] = BloomSetupEyeAdaptationRT;
+			if (!BloomSetup_EyeAdaptation[1].IsValid())
+			{
+				BloomSetup_EyeAdaptation[1] = BloomSetupEyeAdaptationRT;
+			}
+		}
+
+		/** Swap the bloom setup output for eye adaptation mobile platform. */
+		void SwapBloomSetupEyeAdaptationRT()
+		{
+			BloomSetup_EyeAdaptation[1] = BloomSetup_EyeAdaptation[0];
+			BloomSetup_EyeAdaptation[0].SafeRelease();
+		}
+
+		/** Release the cached bloom setup output for eye adaptation mobile platform. */
+		void SafeReleaseBloomSetupEyeAdaptationRT()
+		{
+			checkSlow(!BloomSetup_EyeAdaptation[0].IsValid());
+			BloomSetup_EyeAdaptation[1].SafeRelease();
+		}
+
 	private:
 		const TRefCountPtr<IPooledRenderTarget>& GetTexture(uint32 TextureIndex) const;
 		const TRefCountPtr<IPooledRenderTarget>& GetOrCreateTexture(FRHICommandList& RHICmdList, uint32 TextureIndex);
@@ -850,6 +881,8 @@ private:
 
 		FExposureBufferData ExposureBufferData[2];
 		TUniquePtr<FRHIGPUBufferReadback> ExposureBufferReadback;
+
+		TRefCountPtr<IPooledRenderTarget> BloomSetup_EyeAdaptation[2];
 
 	} EyeAdaptationManager;
 
@@ -1221,6 +1254,30 @@ public:
 	void SwapEyeAdaptationBuffers(FRDGBuilder& GraphBuilder)
 	{
 		EyeAdaptationManager.SwapBuffers(GraphBuilder, bUpdateLastExposure && bValidEyeAdaptationBuffer);
+	}
+
+	/** Get the last frame bloom setup output for eye adaptation mobile platform. */
+	const FSceneRenderTargetItem& GetLastBloomSetupEyeAdaptationSurface() const
+	{
+		return EyeAdaptationManager.GetLastBloomSetupEyeAdaptationSurface();
+	}
+
+	/** Cache the current frame bloom setup output for eye adaptation mobile platform. */
+	void CacheBloomSetupEyeAdaptationRT(TRefCountPtr<IPooledRenderTarget>& BloomSetupEyeAdaptationRT)
+	{
+		EyeAdaptationManager.CacheBloomSetupEyeAdaptationRT(BloomSetupEyeAdaptationRT);
+	}
+
+	/** Swap the bloom setup output for eye adaptation mobile platform. */
+	void SwapBloomSetupEyeAdaptationRT()
+	{
+		EyeAdaptationManager.SwapBloomSetupEyeAdaptationRT();
+	}
+
+	/** Release the cached bloom setup output for eye adaptation mobile platform. */
+	void SafeReleaseBloomSetupEyeAdaptationRT()
+	{
+		EyeAdaptationManager.SafeReleaseBloomSetupEyeAdaptationRT();
 	}
 
 #if WITH_MGPU
@@ -2641,6 +2698,9 @@ public:
 	/** Track numbers of various lights types on mobile, used to show warnings for disabled shader permutations. */
 	int32 NumMobileStaticAndCSMLights_RenderThread;
 	int32 NumMobileMovableDirectionalLights_RenderThread;
+
+	/** Cached shadow atlas size for mobile, since if the resolution is changed we have to update the movable point lights uniform buffer. */
+	FIntPoint MobileWholeSceneShadowAtlasSize;
 
 	FSceneVelocityData VelocityData;
 

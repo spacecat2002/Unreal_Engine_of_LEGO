@@ -107,7 +107,7 @@ private:
 	/** True if the primitive only shadows itself. */
 	uint32 bSelfShadowOnly : 1;
 
-	/** True this is an ES2 dynamic point light interaction. */
+	/** True this is a mobile dynamic point light interaction. */
 	uint32 bMobileDynamicPointLight : 1;
 
 	/** Initialization constructor. */

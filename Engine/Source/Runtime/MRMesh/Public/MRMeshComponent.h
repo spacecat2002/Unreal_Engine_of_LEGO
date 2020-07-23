@@ -43,7 +43,7 @@ public:
 		const TArray<FPackedNormal>& TangentXZData;
 		const TArray<FColor>& ColorData;
 		const TArray<MRMESH_INDEX_TYPE>& Indices;
-		const FBox Bounds;
+		const FBox Bounds = FBox(EForceInit::ForceInit);
 	};
 
 	virtual void SetConnected(bool value) = 0;
@@ -87,6 +87,7 @@ public:
 
 	// UPrimitiveComponent.. public BP function needs to stay public to avoid nativization errors. (RR)
 	virtual void SetMaterial(int32 ElementIndex, class UMaterialInterface* InMaterial) override;
+	virtual class UMaterialInterface* GetMaterial(int32 ElementIndex) const override;
 
 	// Set the wireframe material.
 	UFUNCTION(BlueprintCallable, Category = "Mesh Reconstruction")
@@ -105,7 +106,7 @@ public:
 	void SetUseWireframe(bool bUseWireframe);
 	
 	UFUNCTION(BlueprintPure, Category = "Mesh Reconstruction")
-	bool GetUseWireframe() const { return bUseWireframeForNoMaterial; }
+	bool GetUseWireframe() const { return bUseWireframe; }
 	
 	UFUNCTION(BlueprintCallable, Category = "Mesh Reconstruction")
 	void SetWireframeColor(const FLinearColor& InColor);
@@ -193,7 +194,7 @@ private:
 	/** Whether this mesh should write z-depth to occlude meshes or not */
 	bool bEnableOcclusion;
 	/** Whether this mesh should draw using the wireframe material when no material is set or not */
-	bool bUseWireframeForNoMaterial;
+	bool bUseWireframe;
 
 	TArray<FBodyInstance*> BodyInstances;
 	TArray<IMRMesh::FBrickId> BodyIds;

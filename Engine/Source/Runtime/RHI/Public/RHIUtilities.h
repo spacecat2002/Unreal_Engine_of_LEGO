@@ -792,9 +792,6 @@ inline void RHICreateTargetableShaderResourceCube(
 	// Ensure that the targetable texture is either render or depth-stencil targetable.
 	check(TargetableTextureFlags & (TexCreate_RenderTargetable | TexCreate_DepthStencilTargetable));
 
-	// ES2 doesn't support resolve operations.
-	bForceSeparateTargetAndShaderResource &= (GMaxRHIFeatureLevel >= ERHIFeatureLevel::ES3_1);
-
 	if(!bForceSeparateTargetAndShaderResource/* && GSupportsRenderDepthTargetableShaderResources*/)
 	{
 		// Create a single texture that has both TargetableTextureFlags and TexCreate_ShaderResource set.

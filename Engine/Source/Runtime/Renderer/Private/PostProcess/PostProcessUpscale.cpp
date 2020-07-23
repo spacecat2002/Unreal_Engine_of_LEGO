@@ -128,7 +128,7 @@ public:
 		const FPermutationDomain PermutationVector(Parameters.PermutationId);
 		const EUpscaleMethod UpscaleMethod = PermutationVector.Get<FMethodDimension>();
 
-		// Always allow point and bilinear upscale. (Provides upscaling for ES2 emulation)
+		// Always allow point and bilinear upscale. (Provides upscaling for mobile emulation)
 		if (UpscaleMethod == EUpscaleMethod::Nearest || UpscaleMethod == EUpscaleMethod::Bilinear)
 		{
 			return true;

@@ -61,6 +61,37 @@ FName UHeadMountedDisplayFunctionLibrary::GetHMDDeviceName()
 	return DeviceName;
 }
 
+FString UHeadMountedDisplayFunctionLibrary::GetVersionString()
+{
+	FString VersionString;
+	if (GEngine->XRSystem.IsValid())
+	{
+		VersionString = GEngine->XRSystem->GetVersionString();
+	}
+	return VersionString;
+}
+
+
+int32 UHeadMountedDisplayFunctionLibrary::GetXRSystemFlags()
+{
+	int32 SystemFlags = 0;
+
+	if (GEngine->XRSystem.IsValid())
+	{
+		SystemFlags = GEngine->XRSystem->GetXRSystemFlags();
+		auto HMD = GEngine->XRSystem->GetHMDDevice();
+		if (HMD && !HMD->IsHMDConnected())
+		{
+			// Clear the flags if a HMD device is present but not connected
+			// Note that the HMD device is usually the XR system itself
+			// and the latter is registered as soon as the corresponding plugin is loaded
+			SystemFlags = 0;
+		}
+	}
+
+	return SystemFlags;
+}
+
 EHMDWornState::Type UHeadMountedDisplayFunctionLibrary::GetHMDWornState()
 {
 	if (GEngine->XRSystem.IsValid() && GEngine->XRSystem->GetHMDDevice())
@@ -422,3 +453,37 @@ bool UHeadMountedDisplayFunctionLibrary::IsDeviceTracking(const FXRDeviceId& XRD
 
 	return bIsTracked;
 }
+
+
+void UHeadMountedDisplayFunctionLibrary::GetHMDData(UObject* WorldContext, FXRHMDData& HMDData)
+{
+	HMDData.bValid = false;
+
+	IXRTrackingSystem* TrackingSys = GEngine->XRSystem.Get();
+	if (TrackingSys)
+	{
+		TrackingSys->GetHMDData(WorldContext, HMDData);
+	}
+}
+
+void UHeadMountedDisplayFunctionLibrary::GetMotionControllerData(UObject* WorldContext, const EControllerHand Hand, FXRMotionControllerData& MotionControllerData)
+{
+	MotionControllerData.bValid = false;
+	
+	IXRTrackingSystem* TrackingSys = GEngine->XRSystem.Get();
+	if (TrackingSys)
+	{
+		TrackingSys->GetMotionControllerData(WorldContext, Hand, MotionControllerData);
+	}
+}
+
+bool UHeadMountedDisplayFunctionLibrary::ConfigureGestures(const FXRGestureConfig& GestureConfig)
+{
+	IXRTrackingSystem* TrackingSys = GEngine->XRSystem.Get();
+	if (TrackingSys)
+	{
+		return TrackingSys->ConfigureGestures(GestureConfig);
+	}
+	return false;
+}
+

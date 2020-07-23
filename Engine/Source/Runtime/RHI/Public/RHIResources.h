@@ -2065,6 +2065,9 @@ enum class ESubpassHint : uint8
 
 	// Render pass has depth reading subpass
 	DepthReadSubpass,
+
+	// Mobile defferred shading subpass
+	DeferredShadingSubpass,
 };
 
 class FGraphicsPipelineStateInitializer
@@ -2126,7 +2129,7 @@ public:
 		uint16						InFlags,
 		bool						bInDepthBounds,
 		bool						bInMultiView,
-		bool						bHasFragmentDensityAttachment,
+		bool						bInHasFragmentDensityAttachment,
 		EVRSShadingRate				InShadingRate)
 		: BoundShaderState(InBoundShaderState)
 		, BlendState(InBlendState)
@@ -2149,7 +2152,7 @@ public:
 		, SubpassIndex(InSubpassIndex)
 		, bDepthBounds(bInDepthBounds)
 		, bMultiView(bInMultiView)
-		, bHasFragmentDensityAttachment(bHasFragmentDensityAttachment)
+		, bHasFragmentDensityAttachment(bInHasFragmentDensityAttachment)
 		, ShadingRate(InShadingRate)
 		, Flags(InFlags)
 	{

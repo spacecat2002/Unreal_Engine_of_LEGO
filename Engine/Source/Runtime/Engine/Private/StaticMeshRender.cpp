@@ -1321,8 +1321,7 @@ void FStaticMeshSceneProxy::GetDynamicMeshElements(const TArray<const FSceneView
 		|| EngineShowFlags.Bounds
 		|| bProxyIsSelected 
 		|| IsHovered()
-		|| bIsLightmapSettingError 
-		|| !IsStaticPathAvailable() );
+		|| bIsLightmapSettingError);
 
 	// Draw polygon mesh if we are either not in a collision view, or are drawing it as collision.
 	if (EngineShowFlags.StaticMeshes && bDrawMesh)
@@ -1814,8 +1813,7 @@ FPrimitiveViewRelevance FStaticMeshSceneProxy::GetViewRelevance(const FSceneView
 #endif
 		// Force down dynamic rendering path if invalid lightmap settings, so we can apply an error material in DrawRichMesh
 		(bAllowStaticLighting && HasStaticLighting() && !HasValidSettingsForStaticLighting()) ||
-		HasViewDependentDPG() ||
-		 !IsStaticPathAvailable()
+		HasViewDependentDPG()
 		)
 	{
 		Result.bDynamicRelevance = true;

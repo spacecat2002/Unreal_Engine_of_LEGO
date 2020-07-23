@@ -211,14 +211,14 @@ private:
 
 /**
  * The RHI's feature level indicates what level of support can be relied upon.
- * Note: these are named after graphics API's like ES2 but a feature level can be used with a different API (eg ERHIFeatureLevel::ES2 on D3D11)
- * As long as the graphics API supports all the features of the feature level (eg no ERHIFeatureLevel::SM5 on OpenGL ES2)
+ * Note: these are named after graphics API's like ES3 but a feature level can be used with a different API (eg ERHIFeatureLevel::ES3.1 on D3D11)
+ * As long as the graphics API supports all the features of the feature level (eg no ERHIFeatureLevel::SM5 on OpenGL ES3.1)
  */
 namespace ERHIFeatureLevel
 {
 	enum Type
 	{
-		/** Feature level defined by the core capabilities of OpenGL ES2. */
+		/** Feature level defined by the core capabilities of OpenGL ES2. Deprecated */
 		ES2_REMOVED,
 
 		/** Feature level defined by the core capabilities of OpenGL ES3.1 & Metal/Vulkan. */
@@ -1406,7 +1406,7 @@ inline bool IsPCPlatform(const FStaticShaderPlatform Platform)
 		|| FDataDrivenShaderPlatformInfo::GetIsPC(Platform);
 }
 
-/** Whether the shader platform corresponds to the ES2/ES3.1 feature level. */
+/** Whether the shader platform corresponds to the ES3.1/Metal/Vulkan feature level. */
 inline bool IsMobilePlatform(const EShaderPlatform Platform)
 {
 	return 

@@ -16,8 +16,9 @@ public class OpenXR : ModuleRules
 		string LoaderPath = RootPath + "/loader";
 
 		PublicSystemIncludePaths.Add(RootPath + "/include");
+		PublicDefinitions.Add("XR_NO_PROTOTYPES");
 
-		if(Target.Platform == UnrealTargetPlatform.Win32)
+		if (Target.Platform == UnrealTargetPlatform.Win32)
 		{
 			PublicAdditionalLibraries.Add(LoaderPath + "/win32/" + String.Format("openxr_loader-{0}.lib", OpenXRVersion));
 

@@ -267,6 +267,16 @@ FAutoConsoleCommand CmdDumpShadowDumpSetup(
 	);
 #endif // !UE_BUILD_SHIPPING
 
+/** Whether to round the shadow map up to power of two on mobile platform. */
+static TAutoConsoleVariable<int32> CVarMobileShadowmapRoundUpToPowerOfTwo(
+	TEXT("r.Mobile.ShadowmapRoundUpToPowerOfTwo"),
+	0,
+	TEXT("Round the shadow map up to power of two on mobile platform, in case there is any compatibility issue.\n")
+	TEXT(" 0: Disable (Default)\n")
+	TEXT(" 1: Enabled"),
+	ECVF_RenderThreadSafe
+);
+
 /**
  * Helper function to determine fade alpha value for shadows based on resolution. In the below ASCII art (1) is
  * the MinShadowResolution and (2) is the ShadowFadeResolution. Alpha will be 0 below the min resolution and 1
@@ -2554,7 +2564,8 @@ void FSceneRenderer::CreatePerObjectProjectedShadow(
 		// Unless we're in the editor and need to preview an object without built lighting
 		&& (!PrimitiveSceneInfo->Proxy->HasStaticLighting() || !Interaction->IsShadowMapped())
 		// Disable preshadows from directional lights for primitives that use single sample shadowing, the shadow factor will be written into the precomputed shadow mask in the GBuffer instead
-		&& !(PrimitiveSceneInfo->Proxy->UseSingleSampleShadowFromStationaryLights() && LightSceneInfo->Proxy->GetLightType() == LightType_Directional);
+		&& !(PrimitiveSceneInfo->Proxy->UseSingleSampleShadowFromStationaryLights() && LightSceneInfo->Proxy->GetLightType() == LightType_Directional)
+		&& Scene->GetFeatureLevel() >= ERHIFeatureLevel::SM5;
 
 	if (bRenderPreShadow && ShouldUseCachePreshadows())
 	{
@@ -2664,8 +2675,7 @@ void FSceneRenderer::CreatePerObjectProjectedShadow(
 		// If the subject is visible in at least one view, create a preshadow for static primitives shadowing the subject.
 		if (MaxPreFadeAlpha > 1.0f / 256.0f 
 			&& bRenderPreShadow
-			&& bOpaque
-			&& Scene->GetFeatureLevel() >= ERHIFeatureLevel::SM5)
+			&& bOpaque)
 		{
 			// Round down to the nearest power of two so that resolution changes are always doubling or halving the resolution, which increases filtering stability.
 			int32 PreshadowSizeX = 1 << (FMath::CeilLogTwo(FMath::TruncToInt(MaxDesiredResolution * CVarPreShadowResolutionFactor.GetValueOnRenderThread())) - 1);
@@ -4162,6 +4172,9 @@ void FSceneRenderer::AllocateShadowDepthTargets(FRHICommandListImmediate& RHICmd
 	// Cubemaps, can't be atlased
 	TArray<FProjectedShadowInfo*, SceneRenderingAllocator> WholeScenePointShadows;
 
+	const bool bMobile = FeatureLevel < ERHIFeatureLevel::SM5;
+	TArray<FProjectedShadowInfo*, SceneRenderingAllocator> MobileWholeSceneDirectionalShadows;
+
 	for (TSparseArray<FLightSceneInfoCompact>::TConstIterator LightIt(Scene->Lights); LightIt; ++LightIt)
 	{
 		const FLightSceneInfoCompact& LightSceneInfoCompact = *LightIt;
@@ -4205,13 +4218,6 @@ void FSceneRenderer::AllocateShadowDepthTargets(FRHICommandListImmediate& RHICmd
 				{
 					bShadowIsVisible = false;
 				}
-			}
-
-			if (FeatureLevel < ERHIFeatureLevel::SM5
-				// Mobile renderer only supports opaque per-object shadows or CSM
-				&& (!ProjectedShadowInfo->bPerObjectOpaqueShadow && !(ProjectedShadowInfo->bDirectionalLight && ProjectedShadowInfo->bWholeSceneShadow)))
-			{
-				bShadowIsVisible = false;
 			}
 
 			if (IsForwardShadingEnabled(ShaderPlatform)
@@ -4308,7 +4314,36 @@ void FSceneRenderer::AllocateShadowDepthTargets(FRHICommandListImmediate& RHICmd
 		VisibleLightInfo.ShadowsToProject.Sort(FCompareFProjectedShadowInfoBySplitIndex());
 		VisibleLightInfo.RSMsToProject.Sort(FCompareFProjectedShadowInfoBySplitIndex());
 
-		AllocateCSMDepthTargets(RHICmdList, WholeSceneDirectionalShadows);
+		if (!bMobile)
+		{
+			AllocateCSMDepthTargets(RHICmdList, WholeSceneDirectionalShadows);
+		}
+		else
+		{
+			//Only one directional light could cast csm on mobile, so we could delay allocation for it and see if we could combine any spotlight shadow with it.
+			if (WholeSceneDirectionalShadows.Num() > 0)
+			{
+				MobileWholeSceneDirectionalShadows.Append(WholeSceneDirectionalShadows);
+			}
+		}
+	}
+
+	if (bMobile)
+	{
+		// AllocateMobileCSMAndSpotLightShadowDepthTargets would only allocate a single large render target for all shadows, so if the requirement exceeds the MaxTextureSize, the rest of the shadows will not get space for rendering
+		// So we sort spotlight shadows and append them at the last to make sure csm will get space in any case.
+		Shadows.Sort(FCompareFProjectedShadowInfoByResolution());
+
+		//Limit the number of spotlights shadow for performance reason
+		static const auto MobileMaxVisibleMovableSpotLightsShadowCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.MaxVisibleMovableSpotLightsShadow"));
+		if (MobileMaxVisibleMovableSpotLightsShadowCVar)
+		{
+			int32 MobileMaxVisibleMovableSpotLightsShadow = MobileMaxVisibleMovableSpotLightsShadowCVar->GetValueOnRenderThread();
+			Shadows.RemoveAt(MobileMaxVisibleMovableSpotLightsShadow, FMath::Max(Shadows.Num() - MobileMaxVisibleMovableSpotLightsShadow, 0), false);
+		}
+
+		MobileWholeSceneDirectionalShadows.Append(Shadows);
+		Shadows.Empty();
 	}
 
 	if (CachedPreShadows.Num() > 0)
@@ -4339,6 +4374,7 @@ void FSceneRenderer::AllocateShadowDepthTargets(FRHICommandListImmediate& RHICmd
 	AllocateCachedSpotlightShadowDepthTargets(RHICmdList, CachedSpotlightShadows);
 	AllocatePerObjectShadowDepthTargets(RHICmdList, Shadows);
 	AllocateTranslucentShadowDepthTargets(RHICmdList, TranslucentShadows);
+	AllocateMobileCSMAndSpotLightShadowDepthTargets(RHICmdList, MobileWholeSceneDirectionalShadows);
 
 	// Update translucent shadow map uniform buffers.
 	for (int32 TranslucentShadowIndex = 0; TranslucentShadowIndex < TranslucentShadows.Num(); ++TranslucentShadowIndex)
@@ -4784,7 +4820,10 @@ void FSceneRenderer::InitDynamicShadows(FRHICommandListImmediate& RHICmdList, FG
 		bStaticSceneOnly = bStaticSceneOnly || View.bStaticSceneOnly;
 	}
 
-	const bool bProjectEnablePointLightShadows = Scene->ReadOnlyCVARCache.bEnablePointLightShadows;
+	const bool bProjectEnablePointLightShadows = Scene->ReadOnlyCVARCache.bEnablePointLightShadows && !bMobile; // Point light shadow is unsupported on mobile for now.
+	const bool bProjectEnableMovableDirectionLightShadows = !bMobile || Scene->ReadOnlyCVARCache.bMobileAllowMovableDirectionalLights;
+	const bool bProjectEnableMovableSpotLightShadows = !bMobile || Scene->ReadOnlyCVARCache.bMobileEnableMovableSpotlightsShadow;
+
 	uint32 NumPointShadowCachesUpdatedThisFrame = 0;
 	uint32 NumSpotShadowCachesUpdatedThisFrame = 0;
 
@@ -4831,6 +4870,8 @@ void FSceneRenderer::InitDynamicShadows(FRHICommandListImmediate& RHICmdList, FG
 					static const auto AllowStaticLightingVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.AllowStaticLighting"));
 					const bool bAllowStaticLighting = (!AllowStaticLightingVar || AllowStaticLightingVar->GetValueOnRenderThread() != 0);
 					const bool bPointLightShadow = LightSceneInfoCompact.LightType == LightType_Point || LightSceneInfoCompact.LightType == LightType_Rect;
+					const bool bDirectionalLightShadow = LightSceneInfoCompact.LightType == LightType_Directional;
+					const bool bSpotLightShadow = LightSceneInfoCompact.LightType == LightType_Spot;
 
 					// Only create whole scene shadows for lights that don't precompute shadowing (movable lights)
 					const bool bShouldCreateShadowForMovableLight = 
@@ -4839,7 +4880,9 @@ void FSceneRenderer::InitDynamicShadows(FRHICommandListImmediate& RHICmdList, FG
 
 					const bool bCreateShadowForMovableLight = 
 						bShouldCreateShadowForMovableLight
-						&& (!bPointLightShadow || bProjectEnablePointLightShadows);
+						&& (!bPointLightShadow || bProjectEnablePointLightShadows)
+						&& (!bDirectionalLightShadow || bProjectEnableMovableDirectionLightShadows)
+						&& (!bSpotLightShadow || bProjectEnableMovableSpotLightShadows);
 
 					// Also create a whole scene shadow for lights with precomputed shadows that are unbuilt
 					const bool bShouldCreateShadowToPreviewStaticLight =
@@ -4849,7 +4892,9 @@ void FSceneRenderer::InitDynamicShadows(FRHICommandListImmediate& RHICmdList, FG
 
 					const bool bCreateShadowToPreviewStaticLight = 
 						bShouldCreateShadowToPreviewStaticLight						
-						&& (!bPointLightShadow || bProjectEnablePointLightShadows);
+						&& (!bPointLightShadow || bProjectEnablePointLightShadows)
+						// Stationary point light and spot light shadow are unsupported on mobile
+						&& (!bMobile || bDirectionalLightShadow);
 
 					// Create a whole scene shadow for lights that want static shadowing but didn't get assigned to a valid shadowmap channel due to overlap
 					const bool bShouldCreateShadowForOverflowStaticShadowing =
@@ -4861,7 +4906,9 @@ void FSceneRenderer::InitDynamicShadows(FRHICommandListImmediate& RHICmdList, FG
 
 					const bool bCreateShadowForOverflowStaticShadowing =
 						bShouldCreateShadowForOverflowStaticShadowing
-						&& (!bPointLightShadow || bProjectEnablePointLightShadows);
+						&& (!bPointLightShadow || bProjectEnablePointLightShadows)
+						// Stationary point light and spot light shadow are unsupported on mobile
+						&& (!bMobile || bDirectionalLightShadow);
 
 					const bool bPointLightWholeSceneShadow = (bShouldCreateShadowForMovableLight || bShouldCreateShadowForOverflowStaticShadowing || bShouldCreateShadowToPreviewStaticLight) && bPointLightShadow;
 					if (bPointLightWholeSceneShadow)
@@ -4944,4 +4991,73 @@ void FSceneRenderer::InitDynamicShadows(FRHICommandListImmediate& RHICmdList, FG
 	// Generate mesh element arrays from shadow primitive arrays
 	GatherShadowDynamicMeshElements(DynamicIndexBuffer, DynamicVertexBuffer, DynamicReadBuffer);
 
+}
+
+void FSceneRenderer::AllocateMobileCSMAndSpotLightShadowDepthTargets(FRHICommandListImmediate& RHICmdList, const TArray<FProjectedShadowInfo*, SceneRenderingAllocator>& MobileCSMAndSpotLightShadows)
+{
+	if (MobileCSMAndSpotLightShadows.Num() > 0)
+	{
+		const int32 MaxTextureSize = 1 << (GMaxTextureMipCount - 1);
+		FLayoutAndAssignedShadows MobileCSMAndSpotLightShadowLayout(MaxTextureSize);
+
+		for (int32 ShadowIndex = 0; ShadowIndex < MobileCSMAndSpotLightShadows.Num(); ShadowIndex++)
+		{
+			FProjectedShadowInfo* ProjectedShadowInfo = MobileCSMAndSpotLightShadows[ShadowIndex];
+
+			// Atlased shadows need a border
+			checkSlow(ProjectedShadowInfo->BorderSize != 0);
+			checkSlow(!ProjectedShadowInfo->bAllocated);
+
+			if (MobileCSMAndSpotLightShadowLayout.TextureLayout.AddElement(
+				ProjectedShadowInfo->X,
+				ProjectedShadowInfo->Y,
+				ProjectedShadowInfo->ResolutionX + ProjectedShadowInfo->BorderSize * 2,
+				ProjectedShadowInfo->ResolutionY + ProjectedShadowInfo->BorderSize * 2)
+				)
+			{
+				ProjectedShadowInfo->bAllocated = true;
+				MobileCSMAndSpotLightShadowLayout.Shadows.Add(ProjectedShadowInfo);
+			}
+		}
+
+		if (MobileCSMAndSpotLightShadowLayout.TextureLayout.GetSizeX() > 0)
+		{
+			SortedShadowsForShadowDepthPass.ShadowMapAtlases.AddDefaulted();
+			FSortedShadowMapAtlas& ShadowMapAtlas = SortedShadowsForShadowDepthPass.ShadowMapAtlases.Last();
+
+			FIntPoint WholeSceneAtlasSize(MobileCSMAndSpotLightShadowLayout.TextureLayout.GetSizeX(), MobileCSMAndSpotLightShadowLayout.TextureLayout.GetSizeY());
+
+			if (CVarMobileShadowmapRoundUpToPowerOfTwo.GetValueOnRenderThread() != 0)
+			{
+				WholeSceneAtlasSize.X = 1 << FMath::CeilLogTwo(WholeSceneAtlasSize.X);
+				WholeSceneAtlasSize.Y = 1 << FMath::CeilLogTwo(WholeSceneAtlasSize.Y);
+			}
+
+			bool bResolutionChanged = Scene->MobileWholeSceneShadowAtlasSize != WholeSceneAtlasSize;
+
+			Scene->MobileWholeSceneShadowAtlasSize = WholeSceneAtlasSize;
+
+			FPooledRenderTargetDesc WholeSceneShadowMapDesc2D(FPooledRenderTargetDesc::Create2DDesc(WholeSceneAtlasSize, PF_ShadowDepth, FClearValueBinding::DepthOne, TexCreate_None, TexCreate_DepthStencilTargetable | TexCreate_ShaderResource, false));
+			WholeSceneShadowMapDesc2D.Flags |= GFastVRamConfig.ShadowCSM;
+			GRenderTargetPool.FindFreeElement(RHICmdList, WholeSceneShadowMapDesc2D, ShadowMapAtlas.RenderTargets.DepthTarget, TEXT("MobileCSMAndSpotLightShadowmap"));
+
+			for (int32 ShadowIndex = 0; ShadowIndex < MobileCSMAndSpotLightShadowLayout.Shadows.Num(); ShadowIndex++)
+			{
+				FProjectedShadowInfo* ProjectedShadowInfo = MobileCSMAndSpotLightShadowLayout.Shadows[ShadowIndex];
+
+				if (ProjectedShadowInfo->bAllocated)
+				{
+					ProjectedShadowInfo->RenderTargets.CopyReferencesFromRenderTargets(ShadowMapAtlas.RenderTargets);
+					ProjectedShadowInfo->SetupShadowDepthView(RHICmdList, this);
+					ShadowMapAtlas.Shadows.Add(ProjectedShadowInfo);
+
+					if (bResolutionChanged)
+					{
+						FLightSceneInfo* LightSceneInfo = (FLightSceneInfo*)(&ProjectedShadowInfo->GetLightSceneInfo());
+						LightSceneInfo->Proxy->SetMobileMovablePointLightUniformBufferNeedsUpdate(true);
+					}
+				}
+			}
+		}
+	}
 }

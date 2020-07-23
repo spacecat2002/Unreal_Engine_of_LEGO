@@ -13,7 +13,7 @@ bool IsMobileSeparateTranslucencyActive(const FViewInfo& View)
 	return View.ParallelMeshDrawCommandPasses[EMeshPass::TranslucencyAfterDOF].HasAnyDraw();
 }
 
-void FRCSeparateTranslucensyPassES2::Process(FRenderingCompositePassContext& Context)
+void FRCSeparateTranslucensyPassMobile::Process(FRenderingCompositePassContext& Context)
 {
 	SCOPED_DRAW_EVENT(Context.RHICmdList, SeparateTranslucensyPass);
 
@@ -35,7 +35,7 @@ void FRCSeparateTranslucensyPassES2::Process(FRenderingCompositePassContext& Con
 	Context.RHICmdList.EndRenderPass();
 }
 
-FRenderingCompositeOutput* FRCSeparateTranslucensyPassES2::GetOutput(EPassOutputId InPassOutputId)
+FRenderingCompositeOutput* FRCSeparateTranslucensyPassMobile::GetOutput(EPassOutputId InPassOutputId)
 {
 	// draw on top of input (scenecolor)
 	if (InPassOutputId == ePId_Output0)
@@ -46,9 +46,9 @@ FRenderingCompositeOutput* FRCSeparateTranslucensyPassES2::GetOutput(EPassOutput
 	return nullptr;
 }
 
-FPooledRenderTargetDesc FRCSeparateTranslucensyPassES2::ComputeOutputDesc(EPassOutputId InPassOutputId) const
+FPooledRenderTargetDesc FRCSeparateTranslucensyPassMobile::ComputeOutputDesc(EPassOutputId InPassOutputId) const
 {
 	FPooledRenderTargetDesc Ret = GetInput(ePId_Input0)->GetOutput()->RenderTargetDesc;
-	Ret.DebugName = TEXT("SeparateTranslucensyPassES2");
+	Ret.DebugName = TEXT("SeparateTranslucensyPassMobile");
 	return Ret;
 }

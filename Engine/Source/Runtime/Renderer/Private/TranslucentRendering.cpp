@@ -730,6 +730,10 @@ void SetupTranslucentBasePassUniformParameters(
 	{
 		BasePassParameters.SceneTextures.SceneColorCopyTexture = SceneColorCopyTexture;
 	}
+
+	BasePassParameters.PreIntegratedGFTexture = GSystemTextures.PreintegratedGF->GetRenderTargetItem().ShaderResourceTexture;
+	BasePassParameters.PreIntegratedGFSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+
 }
 
 TRDGUniformBufferRef<FTranslucentBasePassUniformParameters> CreateTranslucentBasePassUniformBuffer(

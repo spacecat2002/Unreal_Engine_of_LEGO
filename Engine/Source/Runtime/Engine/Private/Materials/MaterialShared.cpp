@@ -1234,6 +1234,11 @@ bool FMaterialResource::IsUsingFullPrecision() const
 	return Material->bUseFullPrecision;
 }
 
+bool FMaterialResource::IsUsingAlphaToCoverage() const
+{
+	return Material->bUseAlphaToCoverage && Material->MaterialDomain == EMaterialDomain::MD_Surface && Material->GetBlendMode() == EBlendMode::BLEND_Masked;
+}
+
 bool FMaterialResource::IsUsingPreintegratedGFForSimpleIBL() const
 {
 	return Material->bForwardRenderUsePreintegratedGFForSimpleIBL;
@@ -1246,7 +1251,9 @@ bool FMaterialResource::IsUsingHQForwardReflections() const
 
 bool FMaterialResource::IsUsingPlanarForwardReflections() const
 {
-	return Material->bUsePlanarForwardReflections;
+	return Material->bUsePlanarForwardReflections
+		// Don't use planar reflection if it is used only for mobile pixel projected reflection.
+		&& (GetFeatureLevel() <= ERHIFeatureLevel::ES3_1 || GetMobilePlanarReflectionMode() != EMobilePlanarReflectionMode::MobilePPRExclusive);
 }
 
 bool FMaterialResource::IsNonmetal() const
@@ -1746,6 +1753,7 @@ void FMaterial::SetupMaterialEnvironment(
 	OutEnvironment.SetDefine(TEXT("MATERIAL_ALLOW_NEGATIVE_EMISSIVECOLOR"), AllowNegativeEmissiveColor());
 	OutEnvironment.SetDefine(TEXT("MATERIAL_OUTPUT_OPACITY_AS_ALPHA"), GetBlendableOutputAlpha());
 	OutEnvironment.SetDefine(TEXT("TRANSLUCENT_SHADOW_WITH_MASKED_OPACITY"), GetCastDynamicShadowAsMasked());
+	OutEnvironment.SetDefine(TEXT("MATERIAL_USE_ALPHA_TO_COVERAGE"), IsUsingAlphaToCoverage());
 
 	if (IsUsingFullPrecision())
 	{

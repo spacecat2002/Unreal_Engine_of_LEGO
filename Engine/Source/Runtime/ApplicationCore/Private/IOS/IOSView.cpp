@@ -290,14 +290,12 @@ id<MTLDevice> GMetalDevice = nil;
 		// 0 means to leave the scale alone, use native
 		if (RequestedContentScaleFactor == 0.0f)
 		{
-#ifdef __IPHONE_8_0
             if ([self.window.screen respondsToSelector:@selector(nativeScale)])
             {
                 self.contentScaleFactor = self.window.screen.nativeScale;
                 UE_LOG(LogIOS, Log, TEXT("Setting contentScaleFactor to nativeScale which is = %f"), self.contentScaleFactor);
             }
             else
-#endif
             {
                 UE_LOG(LogIOS, Log, TEXT("Leaving contentScaleFactor alone, with scale = %f"), NativeScale);
             }
@@ -1084,6 +1082,14 @@ id<MTLDevice> GMetalDevice = nil;
  * Tell the OS to hide the status bar (iOS 7 method for hiding)
  */
 - (BOOL)prefersStatusBarHidden
+{
+	return YES;
+}
+
+/**
+ * Tell the OS to hide the home bar
+ */
+- (BOOL)prefersHomeIndicatorAutoHidden
 {
 	return YES;
 }
