@@ -27,7 +27,7 @@ struct FMovieSceneSkeletalAnimRootMotionTrackParams
 
 	/** Get the Root Motion transform at the specified time.*/
 	MOVIESCENETRACKS_API FTransform GetRootMotion(FFrameTime CurrentTime) const;
-	FMovieSceneSkeletalAnimRootMotionTrackParams() : bRootMotionsDirty(false) {}
+	FMovieSceneSkeletalAnimRootMotionTrackParams() : bRootMotionsDirty(true) {}
 
 };
 
