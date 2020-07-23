@@ -352,22 +352,24 @@ void FRayTracingDynamicGeometryCollection::DispatchUpdates(FRHIComputeCommandLis
 
 			FMemMark Mark(FMemStack::Get());
 
-			TSet<FRHIUnorderedAccessView*> SeenBuffers;
-			SeenBuffers.Reserve(DispatchCommands.Num());
 			TArray<FRHITransitionInfo, TMemStackAllocator<>> TransitionsBefore, TransitionsAfter;
 			TransitionsBefore.Reserve(DispatchCommands.Num());
 			TransitionsAfter.Reserve(DispatchCommands.Num());
+			const FRWBuffer* LastBuffer = nullptr;
 			for (FMeshComputeDispatchCommand& Cmd : DispatchCommands)
 			{
-				FRHIUnorderedAccessView* UAV = Cmd.TargetBuffer->UAV.GetReference();
-
-				bool bIsAlreadyInSet = false;
-				SeenBuffers.Add(UAV, &bIsAlreadyInSet);
-				if (!bIsAlreadyInSet)
+				if (LastBuffer == Cmd.TargetBuffer)
 				{
-					TransitionsBefore.Add(FRHITransitionInfo(UAV, ERHIAccess::SRVMask, ERHIAccess::UAVCompute));
-					TransitionsAfter.Add(FRHITransitionInfo(UAV, ERHIAccess::UAVCompute, ERHIAccess::SRVMask));
+					// The list is sorted by TargetBuffer, so we can remove duplicates by simply looking at the previous value we've processed.
+					continue;
 				}
+
+				FRHIUnorderedAccessView* UAV = Cmd.TargetBuffer->UAV.GetReference();
+				LastBuffer = Cmd.TargetBuffer;
+
+				// Looks like the resource can get here in either UAVCompute or SRVMask mode, so we'll have to use Unknown until we can have better tracking.
+				TransitionsBefore.Add(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::UAVCompute));
+				TransitionsAfter.Add(FRHITransitionInfo(UAV, ERHIAccess::UAVCompute, ERHIAccess::SRVMask));
 			}
 
 			TArray<FRHICommandList*> CommandLists;
