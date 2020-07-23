@@ -1049,7 +1049,7 @@ void TGPUSkinAPEXClothVertexFactory<BoneInfluenceType>::InitRHI()
 {
 	// list of declaration items
 	FVertexDeclarationElementList Elements;	
-	AddVertexElements(MeshMappingData,Elements);
+	TGPUSkinVertexFactory<BoneInfluenceType>::AddVertexElements(MeshMappingData, Elements);
 
 	// create the actual device decls
 	FVertexFactory::InitDeclaration(Elements);
