@@ -25,6 +25,8 @@ public:
 	bool bExportTransforms;
 	UPROPERTY()
 	bool bExportCurves;
+	UPROPERTY()
+	bool bIncludeComponentTransform;
 
 	void SetAnimSequence(UAnimSequence* InAnimSequence);
 	UAnimSequence* ResolveAnimSequence();

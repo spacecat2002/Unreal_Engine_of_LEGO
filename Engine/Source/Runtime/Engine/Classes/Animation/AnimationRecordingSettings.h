@@ -33,6 +33,7 @@ struct ENGINE_API FAnimationRecordingSettings
 		, bCheckDeltaTimeAtBeginning(true)
 		, bRecordTransforms(true)
 		, bRecordCurves(true)
+		, bIncludeComponentToWorld(true)
 	{}
 	
 	/** Whether to record animation in world space, defaults to true */
@@ -73,4 +74,8 @@ struct ENGINE_API FAnimationRecordingSettings
 	/** Whether or not to record curves*/
 	UPROPERTY(EditAnywhere, Category = "Settings")
 	bool bRecordCurves;
+
+	/** Whether or not to include Compoenent To World*/
+	UPROPERTY(EditAnywhere, Category = "Settings")
+	bool bIncludeComponentToWorld;
 };
