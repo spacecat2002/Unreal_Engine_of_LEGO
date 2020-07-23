@@ -1745,7 +1745,6 @@ struct FMarkRelevantStaticMeshesForViewData
 	FVector ViewOrigin;
 	int32 ForcedLODLevel;
 	float LODScale;
-	float InvLODScale;
 	float MinScreenRadiusForCSMDepthSquared;
 	float MinScreenRadiusForDepthPrepassSquared;
 	bool bFullEarlyZPass;
@@ -1758,7 +1757,6 @@ struct FMarkRelevantStaticMeshesForViewData
 		ForcedLODLevel = (View.Family->EngineShowFlags.LOD) ? GetCVarForceLOD() : 0;
 
 		LODScale = CVarStaticMeshLODDistanceScale.GetValueOnRenderThread() * View.LODDistanceFactor;
-		InvLODScale = 1.0f / LODScale;
 
 		MinScreenRadiusForCSMDepthSquared = GMinScreenRadiusForCSMDepth * GMinScreenRadiusForCSMDepth;
 		MinScreenRadiusForDepthPrepassSquared = GMinScreenRadiusForDepthPrepass * GMinScreenRadiusForDepthPrepass;
@@ -2153,7 +2151,7 @@ struct FRelevancePacket
 			const bool bIsLODDithered = LODToRender.IsDithered();
 
 			float DistanceSquared = (Bounds.BoxSphereBounds.Origin - ViewData.ViewOrigin).SizeSquared();
-			const float LODFactorDistanceSquared = DistanceSquared * FMath::Square(View.LODDistanceFactor * ViewData.InvLODScale);
+			const float LODFactorDistanceSquared = DistanceSquared * FMath::Square(ViewData.LODScale);
 			const bool bDrawShadowDepth = FMath::Square(Bounds.BoxSphereBounds.SphereRadius) > ViewData.MinScreenRadiusForCSMDepthSquared * LODFactorDistanceSquared;
 			const bool bDrawDepthOnly = ViewData.bFullEarlyZPass || FMath::Square(Bounds.BoxSphereBounds.SphereRadius) > GMinScreenRadiusForDepthPrepass * GMinScreenRadiusForDepthPrepass * LODFactorDistanceSquared;
 
