@@ -74,7 +74,7 @@ public:
 	FBitArrayTest(const FString& InName, const bool bInComplexTask)
 		: FAutomationTestBase(InName, bInComplexTask)
 		, bGrowingTrue{ true, false, true, true, false, true, true, true, false, true }
-		, GrowingTrueInt(0x1 | (0 * 0x2) | 0x4 | 0x8 | (0 * 0x10) | 0x20 | 0x40 | 0x80 | (0 * 0x100) | 0x200)
+		, GrowingTrueInt(0x1 | /*(0 * 0x2) |*/ 0x4 | 0x8 | /*(0 * 0x10) |*/ 0x20 | 0x40 | 0x80 | /*(0 * 0x100) |*/ 0x200)
 		, NumGrowingTrue(sizeof(bGrowingTrue) / sizeof(bGrowingTrue[0]))
 		, ArrGrowingTrue(true, NumGrowingTrue)
 		, NumSquareWave(12)
@@ -219,7 +219,7 @@ public:
 		TBitArray<> MediumFalse(false, 5);
 		TBitArray<> MediumTrue(true, 5);
 		TBitArray<> Long(false, 6);
-		TestFalse(TEXT("! x < x"), Short < Short);
+		TestFalse(TEXT("! x < x"), Short.operator<(Short));
 		TestTrue(TEXT("Sorted by length first, so Short < MediumFalse"), Short < MediumFalse);
 		TestFalse(TEXT("Sorted by length first, so !MediumFalse < Short"), MediumFalse < Short);
 		TestTrue(TEXT("Sorted by length first, so Short < MediumTrue"), Short < MediumTrue);
